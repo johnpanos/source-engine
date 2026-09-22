@@ -2127,14 +2127,14 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 	stages[1].module = frag;
 	stages[1].pName = "main";
 
-	// Shared dynamic vertex: position (vec3) + color (vec3) + uv (vec2), 8 floats.
-	// Shaders that ignore a component (e.g. color for the textured shader, uv for
-	// the others) simply do not read that attribute.
+	// Shared dynamic vertex: position (vec3) + color (vec3) + uv (vec2) + lightmap
+	// uv (vec2), kDynVertexFloats floats. Shaders that ignore a component (e.g.
+	// color for the textured shader, uv for the others) do not read that attribute.
 	VkVertexInputBindingDescription binding = {};
 	binding.binding = 0;
-	binding.stride = sizeof( float ) * 8;
+	binding.stride = sizeof( float ) * kDynVertexFloats;
 	binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-	VkVertexInputAttributeDescription attrs[3] = {};
+	VkVertexInputAttributeDescription attrs[4] = {};
 	attrs[0].location = 0;
 	attrs[0].format = VK_FORMAT_R32G32B32_SFLOAT;
 	attrs[0].offset = 0;
@@ -2144,11 +2144,14 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 	attrs[2].location = 2;
 	attrs[2].format = VK_FORMAT_R32G32_SFLOAT;
 	attrs[2].offset = sizeof( float ) * 6;
+	attrs[3].location = 3;
+	attrs[3].format = VK_FORMAT_R32G32_SFLOAT;
+	attrs[3].offset = sizeof( float ) * 8;
 	VkPipelineVertexInputStateCreateInfo vin = {};
 	vin.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	vin.vertexBindingDescriptionCount = 1;
 	vin.pVertexBindingDescriptions = &binding;
-	vin.vertexAttributeDescriptionCount = 3;
+	vin.vertexAttributeDescriptionCount = 4;
 	vin.pVertexAttributeDescriptions = attrs;
 
 	VkPipelineInputAssemblyStateCreateInfo ia = {};
@@ -2444,10 +2447,14 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		texPc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 		texPc.offset = 0;
 		texPc.size = sizeof( float ) * 32; // + vec4 alphaParams (128 bytes)
+		// Set 0 is the base texture and set 1 the lightmap: both are one
+		// combined image sampler, so each managed texture's single set serves
+		// either role.
+		const VkDescriptorSetLayout texSetLayouts[2] = { m_dynTexDescLayout, m_dynTexDescLayout };
 		VkPipelineLayoutCreateInfo texPl = {};
 		texPl.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		texPl.setLayoutCount = 1;
-		texPl.pSetLayouts = &m_dynTexDescLayout;
+		texPl.setLayoutCount = 2;
+		texPl.pSetLayouts = texSetLayouts;
 		texPl.pushConstantRangeCount = 1;
 		texPl.pPushConstantRanges = &texPc;
 		if ( vkCreatePipelineLayout( m_device, &texPl, nullptr, &m_dynTexPipelineLayout ) !=
@@ -2992,7 +2999,8 @@ bool CVulkanContext::QueueCopyToTexture( int dstHandle, const int *srcRect, cons
 	return true;
 }
 
-void CVulkanContext::QueueDynamicTriangles( const float *posColorInterleaved, uint32_t vertexCount )
+void CVulkanContext::QueueDynamicTriangles(
+    const float *posColorInterleaved, uint32_t vertexCount, const float *lightmapUv )
 {
 	if ( !posColorInterleaved || vertexCount == 0 )
 		return;
@@ -3000,7 +3008,7 @@ void CVulkanContext::QueueDynamicTriangles( const float *posColorInterleaved, ui
 	// transform/shader/constant per object before each Draw). 8 floats/vertex:
 	// position (3) + color (3) + uv (2).
 	DynDraw &d = AppendRecord( kRecordDraw );
-	d.firstVertex = static_cast<uint32_t>( m_dynQueued.size() / 8 );
+	d.firstVertex = static_cast<uint32_t>( m_dynQueued.size() / kDynVertexFloats );
 	d.vertexCount = vertexCount;
 	d.shaderIndex = m_dynShaderIndex;
 	std::memcpy( d.transform, m_dynTransform, sizeof( d.transform ) );
@@ -3011,8 +3019,15 @@ void CVulkanContext::QueueDynamicTriangles( const float *posColorInterleaved, ui
 	d.raster = m_dynRaster;
 	d.alphaRef = m_dynAlphaRef;
 	d.texHandle = m_dynBoundTexHandle;
-	m_dynQueued.insert( m_dynQueued.end(), posColorInterleaved,
-	    posColorInterleaved + static_cast<size_t>( vertexCount ) * 8 );
+	d.lightmapHandle = m_dynLightmapHandle;
+	d.colorFlags = m_dynColorFlags;
+	for ( uint32_t v = 0; v < vertexCount; ++v )
+	{
+		const float *vertex = posColorInterleaved + static_cast<size_t>( v ) * 8;
+		m_dynQueued.insert( m_dynQueued.end(), vertex, vertex + 8 );
+		m_dynQueued.push_back( lightmapUv ? lightmapUv[v * 2 + 0] : 0.0f );
+		m_dynQueued.push_back( lightmapUv ? lightmapUv[v * 2 + 1] : 0.0f );
+	}
 }
 
 std::string CVulkanContext::DescribeStream() const
@@ -3080,7 +3095,7 @@ std::vector<CVulkanContext::StreamRecordInfo> CVulkanContext::DescribeStreamReco
 		info.vertexCount = d.vertexCount;
 		std::memcpy( info.modulation, d.modulation, sizeof( info.modulation ) );
 		std::memcpy( info.viewport, d.viewport, sizeof( info.viewport ) );
-		const size_t base = static_cast<size_t>( d.firstVertex ) * 8;
+		const size_t base = static_cast<size_t>( d.firstVertex ) * kDynVertexFloats;
 		std::memcpy( info.texXform0, d.texXform0, sizeof( info.texXform0 ) );
 		std::memcpy( info.texXform1, d.texXform1, sizeof( info.texXform1 ) );
 		if ( d.kind == kRecordDraw && base + 6 <= m_dynQueued.size() )
@@ -3092,7 +3107,7 @@ std::vector<CVulkanContext::StreamRecordInfo> CVulkanContext::DescribeStreamReco
 			info.uvMax[0] = info.uvMax[1] = -1e30f;
 			for ( uint32_t v = 0; v < d.vertexCount; ++v )
 			{
-				const size_t at = base + static_cast<size_t>( v ) * 8 + 6;
+				const size_t at = base + static_cast<size_t>( v ) * kDynVertexFloats + 6;
 				if ( at + 1 >= m_dynQueued.size() )
 					break;
 				for ( int k = 0; k < 2; ++k )
@@ -3642,15 +3657,21 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				// falling back to the built-in set when the draw has no managed
 				// texture or its set was not allocated. A render target cannot be
 				// sampled inside its own pass (it is the color attachment there).
-				VkDescriptorSet set = m_dynTexDescSet;
-				if ( d.texHandle >= 0 &&
-				     d.texHandle < static_cast<int>( m_managedTextures.size() ) &&
-				     d.texHandle != openTarget &&
-				     m_managedTextures[static_cast<size_t>( d.texHandle )].descSet !=
-				         VK_NULL_HANDLE )
-					set = m_managedTextures[static_cast<size_t>( d.texHandle )].descSet;
+				// The lightmap (set 1) resolves the same way; without one the
+				// built-in white set is bound and the shader does not sample it.
+				const auto sampledSet = [&]( int handle ) -> VkDescriptorSet
+				{
+					if ( handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) &&
+					     handle != openTarget &&
+					     m_managedTextures[static_cast<size_t>( handle )].descSet !=
+					         VK_NULL_HANDLE )
+						return m_managedTextures[static_cast<size_t>( handle )].descSet;
+					return m_dynTexDescSet;
+				};
+				const VkDescriptorSet sets[2] = {
+				    sampledSet( d.texHandle ), sampledSet( d.lightmapHandle ) };
 				vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-				    m_dynTexPipelineLayout, 0, 1, &set, 0, nullptr );
+				    m_dynTexPipelineLayout, 0, 2, sets, 0, nullptr );
 			}
 			// Push this draw's state. The textured (UnlitGeneric) pipeline reads
 			// the faithful Source block { mat4 cModelViewProj; vec4
@@ -3665,8 +3686,9 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				std::memcpy( pushData + 20, d.texXform0, sizeof( d.texXform0 ) );
 				std::memcpy( pushData + 24, d.texXform1, sizeof( d.texXform1 ) );
 				pushData[28] = d.alphaRef; // alphaParams.x
-				pushData[29] = 0.0f;
-				pushData[30] = 0.0f;
+				// alphaParams.y: multiply by the lightmap; .z: kColorSrgb* flags.
+				pushData[29] = d.lightmapHandle >= 0 ? 1.0f : 0.0f;
+				pushData[30] = static_cast<float>( d.colorFlags );
 				pushData[31] = 0.0f;
 				pushFloats = 32;
 			}

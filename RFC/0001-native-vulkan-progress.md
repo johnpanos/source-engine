@@ -769,3 +769,92 @@ Verification:
   committed `Capture::Present(int32_t, bool)` signature and was updated.
 - `stylelint --changed` reports 0 failures. The native and DX trees both build.
 
+
+## Lightmap pixel conformance, D3D9 first (2026-09-22)
+
+The draw-state fixtures compare state, not pixels. Lightmaps needed a pixel
+oracle, and that oracle has to be established on D3D9 before any native
+implementation is judged against it.
+
+**Harness.** `material_pixel_conformance`
+(`unittests/shaderextensiontest/material_pixel_conformance.cpp`) composes the
+real material system, the standard shader library and one linked render
+provider, the way the launcher does. It renders `LightmappedGeneric` on a
+full-viewport quad for seven cases. Each case has a solid base texture and a
+lightmap allocated, packed and bound through the map-load path
+(`Begin/EndLightmapAllocation`, `UpdateLightmap` with linear float texels,
+`BindLightmapPage`). The lightmap's two halves differ, so the result also proves
+the lightmap is addressed by its own coordinates. A readback self-check
+(clear to magenta, read back) is recorded with every capture.
+
+Getting a trustworthy D3D9 capture exposed four harness requirements:
+- **Full-screen texture:** D3D9 readback silently returns nothing without it.
+  It comes from `MATERIAL_INIT_ALLOCATE_FULLSCREEN_TEXTURE` set before `Init`,
+  as `gl_shader.cpp` does.
+- **Material precache:** an unprecached material has vertex format 0, which
+  crashes the D3D9 dynamic mesh after the first present.
+- **Drawable size:** on a scaled display the back buffer must be the window's
+  drawable pixel size.
+- **Pixel writer:** procedural texels must go through `CPixelWriter`, because
+  D3D9 hands back BGRA storage.
+
+**Oracle.** `tools/quality/material_pixel_conformance.py` (13 tests, including
+seeded defects: zero readback, ignored lightmap, swapped red/blue, a
+non-monotonic ramp, linear output, an unsupported HDR mode and reference drift):
+- **Run validity:** the readback probe must return the clear color.
+- **Backend-independent properties:**
+  - a black lightmap gives black;
+  - brightness rises strictly along the ramp;
+  - channels stay independent;
+  - a unit lightmap reproduces the base;
+  - the base texture scales the result.
+- **Closed form:** in integer HDR, `sRGB(linear(base) × lightmap)` must hold
+  within 3 levels. It is validated on D3D9, where it holds exactly.
+- **Reference agreement:** within 3 levels of the versioned D3D9 references in
+  `quality/fixtures/material-pixels/` (provenance in their README).
+- **HDR mode:** a backend reporting a different mode than requested fails with
+  that reason.
+
+**Native before:** every lightmap case rendered the bare base texture. That is
+five defects, found by this test:
+
+| Defect | Fix |
+| --- | --- |
+| `VertexShaderVertexFormat` unimplemented and `ComputeVertexFormat` returned 0, so no material had a vertex layout on native | Recorded per snapshot and merged as `CShaderAPIDx8::ComputeVertexUsage` merges passes |
+| BGRA texels uploaded unconverted into R8G8B8A8 images (red/blue swapped) | Uploads convert to the image's actual channel order |
+| `TexLock`/`TexUnlock` returned false, so lightmap pages were never written | A CPU copy of mip 0 for 8-bit formats; other formats and levels are refused and reported |
+| Sampler 1, `EnableSRGBRead`/`EnableSRGBWrite` ignored; `GetLightMapScaleFactor` returned 1 | The lightmap page bound as `TEXTURE_LIGHTMAP*` on sampler 1 is sampled at texcoord 1 (second descriptor set). sRGB decode/encode follows each snapshot's shadow state. The scale matches D3D9 (`2^2.2` in LDR) |
+| Mesh layout carried no texcoord 1 | 32-byte vertex, lightmap UV at offset 24; dynamic vertex record widened to 10 floats |
+
+Bumped lightmaps (`TEXTURE_LIGHTMAP_BUMPED*`) are sampled at the flat
+coordinate and counted in the census as unimplemented.
+
+**Results:**
+
+| Backend | HDR none | HDR integer |
+| --- | --- | --- |
+| D3D9 (`vulkan-compat`) | pass | pass (closed form exact) |
+| native Vulkan | pass, within 1 level of D3D9 | **fail: backend reports HDR type 0** |
+
+Integer HDR (16-bit lightmap pages, scale 16) is not implemented natively and is
+declined explicitly, not approximated.
+
+In the real game, `portal_boot.py --renderer native-vulkan` on testchmb_a_01 now
+renders a lit chamber, with the room beyond the observation window and the
+portal glow visible. Midtone fraction rose from 0.71 to 0.998.
+
+Verification:
+- Native Vulkan suites: bring-up 20/0, backend 33/0, facing 13/0, equivalence 21/0.
+- `tools/quality` tests: 176/0.
+- `stylelint --changed` reports 0 failures. The harness is registered under
+  `legacyAbi.paths` because it composes through the preserved app-system factory
+  ABI, like `appsystemgrouptest.cpp`.
+- `archlint check --changed` still reports two entries (2 new, 2 stale). Both are
+  the pre-existing `CShaderDeviceMgrVulkan::SetMode` signature reformat already
+  present at `15cf3d78`, not this change.
+
+```sh
+python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime \
+    --build build --renderer native-vulkan --hdr none \
+    --reference quality/fixtures/material-pixels/lightmap-dx9-none.json --out OUT
+```

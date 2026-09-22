@@ -43,6 +43,26 @@ def build(bld):
 		includes=includes, defines=binding_defines,
 		use=binding_use,
 		install_path=None)
+	if not bld.env.DEDICATED and bld.env.SDL3 and ( bld.env.DXVK or bld.env.NATIVE_VULKAN ):
+		# Per-material pixel conformance: the real material system, standard
+		# shaders and the render provider this tree links, composed like the
+		# launcher. It measures pixels in a staged game runtime; the oracle is
+		# tools/quality/material_pixel_conformance.py.
+		pixel_use = ['appframework', 'materialsystem', 'shaderapiempty', 'stdshader_dx9',
+			'tier0', 'tier1', 'tier2', 'vstdlib', 'SDL3']
+		pixel_defines = list(test_env.DEFINES)
+		if bld.env.DXVK:
+			pixel_use += ['shaderapidx9']
+			pixel_defines += ['LINKED_DX9_BACKEND']
+		if bld.env.NATIVE_VULKAN:
+			pixel_use += ['shaderapivulkan']
+			pixel_defines += ['LINKED_NATIVE_VULKAN_BACKEND']
+		bld.program(
+			features='cxx', env=test_env.derive(),
+			source=['material_pixel_conformance.cpp', '../../public/filesystem_init.cpp'],
+			target='material_pixel_conformance', name='material_pixel_conformance',
+			includes=includes + ['../../common'], defines=pixel_defines, use=pixel_use,
+			install_path=None)
 	if not bld.env.DEDICATED:
 		bld.program(
 			features='cxx', env=test_env.derive(),

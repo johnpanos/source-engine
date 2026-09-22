@@ -24,6 +24,7 @@
 #include "render/legacy_shader_provider.h"
 #include "vulkan_device.h"
 #include "vtf/vtf.h"
+#include "pixelwriter.h"
 #include "shaderapi/commandbuffer.h"
 #include "drawstatefixture.h"
 
@@ -102,6 +103,10 @@ static uint64_t g_PrimitiveTypeCounts[16];
 // the default white texture is untextured on screen, so these three totals say
 // whether a blank frame is a rasterization problem or a texture-binding one.
 static int g_boundTextureHandle = -1;
+// The lightmap page bound to sampler 1 for the current pass (-1 = none), and
+// whether a BindTexture call is resolving a lightmap standard texture.
+static int g_boundLightmapHandle = -1;
+static bool g_BindingLightmap = false;
 static uint64_t g_DrawsTextured = 0;   // bound a handle whose pixels were uploaded
 static uint64_t g_DrawsUnuploaded = 0; // bound a handle that was never filled
 static uint64_t g_DrawsUntextured = 0; // bound no texture at all -> default white
@@ -123,10 +128,17 @@ struct TextureRecord
 	ImageFormat format = IMAGE_FORMAT_UNKNOWN;
 	uint64_t bindsWhileEmpty = 0;
 	uint64_t rejectedAsTarget = 0;
+	int width = 0;
+	int height = 0;
+	// CPU copy of mip 0 that TexLock hands to the material system's pixel writer
+	// (lightmap pages are written this way, a sub-rectangle at a time); TexUnlock
+	// uploads it. Allocated on first lock.
+	std::vector<uint8_t> lockSurface;
 };
 static std::vector<TextureRecord> g_TextureRecords;
 
-static void NoteTextureCreated( int handle, const char *debugName, ImageFormat format )
+static void NoteTextureCreated(
+    int handle, const char *debugName, ImageFormat format, int width, int height )
 {
 	if ( handle < 0 )
 		return;
@@ -134,6 +146,9 @@ static void NoteTextureCreated( int handle, const char *debugName, ImageFormat f
 		g_TextureRecords.resize( static_cast<size_t>( handle ) + 1 );
 	g_TextureRecords[static_cast<size_t>( handle )].name = debugName ? debugName : "(unnamed)";
 	g_TextureRecords[static_cast<size_t>( handle )].format = format;
+	g_TextureRecords[static_cast<size_t>( handle )].width = width;
+	g_TextureRecords[static_cast<size_t>( handle )].height = height;
+	g_TextureRecords[static_cast<size_t>( handle )].lockSurface.clear();
 }
 
 // True when the draw about to be emitted samples real material pixels. Both the
@@ -411,8 +426,8 @@ private:
 public:
 	enum
 	{
-		kMeshVertexStride = 24
-	}; // 12 bytes position + 4 bytes color + 8 bytes texcoord0
+		kMeshVertexStride = 32
+	}; // 12 bytes position + 4 bytes color + 8 bytes texcoord0 + 8 bytes texcoord1
 };
 
 // Every live mesh this backend created. Overrides arrive as IMesh pointers; this
@@ -518,9 +533,9 @@ public:
 	void SetPixelShader( const char *pFileName, int pshIndex );
 
 	// Convert from linear to gamma color space on writes to frame buffer.
-	void EnableSRGBWrite( bool bEnable ) {}
+	void EnableSRGBWrite( bool bEnable );
 
-	void EnableSRGBRead( Sampler_t stage, bool bEnable ) {}
+	void EnableSRGBRead( Sampler_t stage, bool bEnable );
 
 	virtual void FogMode( ShaderFogMode_t fogMode ) {}
 
@@ -561,6 +576,11 @@ public:
 	// $alphatest reference [0,1] recorded by AlphaFunc; applied only when
 	// EnableAlphaTest set m_IsAlphaTested.
 	float m_alphaRef = 0.0f;
+	// Vertex components the snapshot's vertex shader reads
+	// (VertexShaderVertexFormat); the material system sizes its meshes from it.
+	VertexFormat_t m_vertexUsage = 0;
+	// CVulkanContext::kColorSrgb* inputs/output this snapshot declared sRGB.
+	int m_colorFlags = 0;
 	// Selected pixel shader recorded during snapshot state (IShaderShadow), so a
 	// snapshot can carry which material shader to bind at draw time.
 	char m_pixelShaderName[64] = { 0 };
@@ -1241,6 +1261,11 @@ public:
 	// to a real texture it binds back through BindTexture -- exactly what the D3D9
 	// backend defers to. The bound handle is cleared first, so an id that resolves
 	// to nothing leaves no previous material's texture in place.
+	//
+	// A lightmap page bound to sampler 1 is what LightmappedGeneric multiplies by,
+	// so that binding is recorded as the draw's lightmap. Bumped lightmaps also
+	// need the normal map and three basis samples, which this backend does not
+	// implement; their page is sampled at the flat coordinate and reported.
 	virtual void BindStandardTexture( Sampler_t stage, StandardTextureId_t id )
 	{
 		if ( stage == SHADER_SAMPLER0 )
@@ -1248,7 +1273,20 @@ public:
 			g_boundTextureHandle = -1;
 			g_VulkanContext.BindManagedTexture( -1 );
 		}
+		const bool lightmap =
+		    stage == SHADER_SAMPLER1 &&
+		    ( id == TEXTURE_LIGHTMAP || id == TEXTURE_LIGHTMAP_FULLBRIGHT ||
+		        id == TEXTURE_LIGHTMAP_BUMPED || id == TEXTURE_LIGHTMAP_BUMPED_FULLBRIGHT );
+		if ( stage == SHADER_SAMPLER1 )
+		{
+			g_boundLightmapHandle = -1;
+			g_VulkanContext.BindManagedLightmap( -1 );
+		}
+		if ( id == TEXTURE_LIGHTMAP_BUMPED || id == TEXTURE_LIGHTMAP_BUMPED_FULLBRIGHT )
+			NoteUnimplemented( "lightmap: bumped lightmap sampled as its flat page" );
+		g_BindingLightmap = lightmap;
 		ShaderUtil()->BindStandardTexture( stage, id );
+		g_BindingLightmap = false;
 	}
 
 	virtual void BindStandardVertexTexture( VertexTextureSampler_t stage, StandardTextureId_t id )
@@ -1318,7 +1356,14 @@ public:
 		return dummy;
 	}
 
-	virtual float GetLightMapScaleFactor( void ) const { return 1.0; }
+	// The scale LightmappedGeneric folds into its modulation, as
+	// CShaderAPIDx8::GetLightMapScaleFactor defines it per HDR mode. This backend
+	// reports HDR_TYPE_NONE, whose 8-bit lightmaps are stored at 1/2 overbright in
+	// gamma space: GammaToLinearFullRange( 2.0 ).
+	virtual float GetLightMapScaleFactor( void ) const
+	{
+		return GetHDRType() == HDR_TYPE_NONE ? powf( 2.0f, 2.2f ) : 1.0f;
+	}
 
 	// For dealing with device lost in cases where SwapBuffers isn't called all the time (Hammer)
 	virtual void HandleDeviceLost() {}
@@ -1979,15 +2024,15 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 	desc.m_VertexSize_Position = kMeshVertexStride;
 	desc.m_VertexSize_Color = kMeshVertexStride;
 
-	// Texcoord0 lives at offset 16 (after position+color); other texcoord sets go
-	// to the dummy scratch. This lets a textured material sample the mesh UVs.
+	// Texcoord0 (base UV) lives at offset 16 and texcoord1 (the lightmap
+	// coordinate) at 24; other texcoord sets go to the dummy scratch.
 	desc.m_pNormal = (float *)m_dummyComponent;
 	int i;
 	for ( i = 0; i < VERTEX_MAX_TEXTURE_COORDINATES; ++i )
 	{
-		if ( i == 0 )
+		if ( i < 2 )
 		{
-			desc.m_pTexCoord[i] = (float *)( vertexMemory + 16 );
+			desc.m_pTexCoord[i] = (float *)( vertexMemory + 16 + i * 8 );
 			desc.m_VertexSize_TexCoord[i] = kMeshVertexStride;
 		}
 		else
@@ -2229,13 +2274,17 @@ void CEmptyMesh::EmitToNativeQueue()
 		return;
 	}
 
+	std::vector<float> lightmapUv;
 	auto appendVertex = [&]( std::vector<float> &out, int v )
 	{
 		const unsigned char *base =
 		    vertices.m_vertexData.data() + static_cast<size_t>( v ) * kMeshVertexStride;
-		float pos[3], uv[2];
+		float pos[3], uv[2], lightmap[2];
 		memcpy( pos, base, sizeof( pos ) );
 		memcpy( uv, base + 16, sizeof( uv ) );
+		memcpy( lightmap, base + 24, sizeof( lightmap ) );
+		lightmapUv.push_back( lightmap[0] );
+		lightmapUv.push_back( lightmap[1] );
 		const unsigned char *col = base + 12;
 		out.push_back( pos[0] );
 		out.push_back( pos[1] );
@@ -2341,7 +2390,7 @@ void CEmptyMesh::EmitToNativeQueue()
 		return;
 	}
 	g_VulkanContext.QueueDynamicTriangles(
-	    interleaved.data(), static_cast<uint32_t>( interleaved.size() / 8 ) );
+	    interleaved.data(), static_cast<uint32_t>( interleaved.size() / 8 ), lightmapUv.data() );
 }
 
 void CEmptyMesh::Draw( CPrimList *pPrims, int nPrims )
@@ -2377,6 +2426,26 @@ IMaterial *CEmptyMesh::GetMaterial()
 	return 0;
 }
 
+// Packs vertex components into a VertexFormat_t exactly as
+// CMeshMgr::ComputeVertexFormat does. This backend has no compressed vertices.
+static VertexFormat_t NativeVertexFormat( unsigned int flags, int nTexCoordArraySize,
+    const int *pTexCoordDimensions, int numBoneWeights, int userDataSize )
+{
+	VertexFormat_t fmt = flags & ~( VERTEX_FORMAT_USE_EXACT_FORMAT | VERTEX_FORMAT_COMPRESSED );
+	if ( numBoneWeights > 0 )
+		fmt |= VERTEX_BONEWEIGHT( 2 ); // always exactly two weights
+	fmt |= VERTEX_USERDATA_SIZE( userDataSize );
+	nTexCoordArraySize =
+	    Min( nTexCoordArraySize, static_cast<int>( VERTEX_MAX_TEXTURE_COORDINATES ) );
+	for ( int i = 0; i < nTexCoordArraySize; ++i )
+	{
+		// Without dimensions, the first N coordinates are 2D.
+		const int size = pTexCoordDimensions ? pTexCoordDimensions[i] : 2;
+		fmt |= VERTEX_TEXCOORD_SIZE( static_cast<TextureStage_t>( i ), size );
+	}
+	return fmt;
+}
+
 //-----------------------------------------------------------------------------
 // The shader shadow interface
 //-----------------------------------------------------------------------------
@@ -2404,6 +2473,27 @@ void CShaderShadowVulkan::SetDefaultState()
 	m_blendSrc = SHADER_BLEND_ONE;
 	m_blendDst = SHADER_BLEND_ZERO;
 	m_alphaRef = 0.0f;
+	m_vertexUsage = 0;
+	m_colorFlags = 0;
+}
+
+// sRGB decode on the samplers the textured pipeline reads (base on sampler 0,
+// lightmap on sampler 1) and encode on output, as D3D9's SRGBTEXTURE sampler
+// state and SRGBWRITEENABLE render state apply them.
+void CShaderShadowVulkan::EnableSRGBRead( Sampler_t stage, bool bEnable )
+{
+	int flag = 0;
+	if ( stage == SHADER_SAMPLER0 )
+		flag = render_vulkan::CVulkanContext::kColorSrgbReadBase;
+	else if ( stage == SHADER_SAMPLER1 )
+		flag = render_vulkan::CVulkanContext::kColorSrgbReadLightmap;
+	m_colorFlags = bEnable ? ( m_colorFlags | flag ) : ( m_colorFlags & ~flag );
+}
+
+void CShaderShadowVulkan::EnableSRGBWrite( bool bEnable )
+{
+	const int flag = render_vulkan::CVulkanContext::kColorSrgbWrite;
+	m_colorFlags = bEnable ? ( m_colorFlags | flag ) : ( m_colorFlags & ~flag );
 }
 
 // Methods related to depth buffering
@@ -2514,7 +2604,11 @@ void CShaderShadowVulkan::EnableConstantColor( bool bEnable )
 void CShaderShadowVulkan::VertexShaderVertexFormat(
     unsigned int nFlags, int nTexCoordCount, int *pTexCoordDimensions, int nUserDataSize )
 {
-	VK_UNIMPLEMENTED();
+	// As CShaderShadowDX8: meshes, not shaders, declare bone indices.
+	nFlags &= ~VERTEX_BONE_INDEX;
+	nFlags |= VERTEX_FORMAT_VERTEX_SHADER;
+	m_vertexUsage =
+	    NativeVertexFormat( nFlags, nTexCoordCount, pTexCoordDimensions, 0, nUserDataSize );
 }
 
 // Indicates we're going to light the model
@@ -2963,6 +3057,10 @@ static std::vector<render_vulkan::CVulkanContext::DynRasterState> g_snapshotRast
 // Parallel to g_snapshotShaders: the $alphatest reference each snapshot applies
 // (< 0 when alpha test is disabled).
 static std::vector<float> g_snapshotAlphaRef;
+// Parallel to g_snapshotShaders: the vertex usage each snapshot's shader declared.
+static std::vector<VertexFormat_t> g_snapshotVertexUsage;
+// Parallel to g_snapshotShaders: the kColorSrgb* flags each snapshot declared.
+static std::vector<int> g_snapshotColorFlags;
 // Snapshot ids are 16-bit (StateSnapshot_t is a short): four flag bits and an
 // 11-bit table index. As in D3D9's transition table, identical shadow states
 // share one snapshot, so the table holds distinct states rather than one entry
@@ -3221,9 +3319,11 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	const float alphaRef = g_ShaderShadow.m_IsAlphaTested
 	                           ? static_cast<int>( g_ShaderShadow.m_alphaRef * 255 ) / 255.0f
 	                           : -1.0f;
-	char key[96];
-	V_snprintf( key, sizeof( key ), "|%d|%u|%.6g", static_cast<int>( id ),
-	    render_vulkan::CVulkanContext::RasterStateKey( raster ), alphaRef );
+	char key[128];
+	V_snprintf( key, sizeof( key ), "|%d|%u|%.6g|%llx|%d", static_cast<int>( id ),
+	    render_vulkan::CVulkanContext::RasterStateKey( raster ), alphaRef,
+	    static_cast<unsigned long long>( g_ShaderShadow.m_vertexUsage ),
+	    g_ShaderShadow.m_colorFlags );
 	const std::string stateKey = std::string( g_ShaderShadow.m_pixelShaderName ) + key;
 	const auto existing = g_snapshotIds.find( stateKey );
 	if ( existing != g_snapshotIds.end() )
@@ -3240,6 +3340,8 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	g_snapshotShaders.push_back( g_ShaderShadow.m_pixelShaderName );
 	g_snapshotRaster.push_back( raster );
 	g_snapshotAlphaRef.push_back( alphaRef );
+	g_snapshotVertexUsage.push_back( g_ShaderShadow.m_vertexUsage );
+	g_snapshotColorFlags.push_back( g_ShaderShadow.m_colorFlags );
 	// Flags occupy bits 0..3; the index fits the remaining 11 bits of the short.
 	id = static_cast<StateSnapshot_t>( id | static_cast<int>( index << 4 ) );
 	g_snapshotIds[stateKey] = id;
@@ -3271,13 +3373,32 @@ bool CShaderAPIVulkan::UsesVertexAndPixelShaders( StateSnapshot_t id ) const
 VertexFormat_t CShaderAPIVulkan::ComputeVertexFormat(
     int numSnapshots, StateSnapshot_t *pIds ) const
 {
-	return 0;
+	return ComputeVertexUsage( numSnapshots, pIds );
 }
 
-// Gets the vertex format for a set of snapshot ids
+// The union of the vertex components a material's passes read, merged as
+// CShaderAPIDx8::ComputeVertexUsage merges them: flags OR together, and each
+// texture coordinate takes the widest size any pass declares.
 VertexFormat_t CShaderAPIVulkan::ComputeVertexUsage( int numSnapshots, StateSnapshot_t *pIds ) const
 {
-	return 0;
+	int flags = 0;
+	int numBones = 0;
+	int userDataSize = 0;
+	int texCoordSize[VERTEX_MAX_TEXTURE_COORDINATES] = {};
+	for ( int i = 0; i < numSnapshots; ++i )
+	{
+		const size_t index = static_cast<size_t>( ( pIds[i] >> 4 ) & 0x7FF );
+		if ( index >= g_snapshotVertexUsage.size() )
+			continue;
+		const VertexFormat_t fmt = g_snapshotVertexUsage[index];
+		flags |= VertexFlags( fmt );
+		numBones = Max( numBones, NumBoneWeights( fmt ) );
+		userDataSize = Max( userDataSize, UserDataSize( fmt ) );
+		for ( int j = 0; j < VERTEX_MAX_TEXTURE_COORDINATES; ++j )
+			texCoordSize[j] = Max( texCoordSize[j], TexCoordSize( j, fmt ) );
+	}
+	return NativeVertexFormat(
+	    flags, VERTEX_MAX_TEXTURE_COORDINATES, texCoordSize, numBones, userDataSize );
 }
 
 // Uses a state snapshot
@@ -3551,6 +3672,11 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 		g_CurrentRaster = g_snapshotRaster[index];
 		g_VulkanContext.SelectDynamicRasterState( g_snapshotRaster[index] );
 	}
+	g_VulkanContext.SelectDynamicColorSpace(
+	    index < g_snapshotColorFlags.size() ? g_snapshotColorFlags[index] : 0 );
+	// The lightmap is bound per pass by the shader's dynamic state.
+	g_boundLightmapHandle = -1;
+	g_VulkanContext.BindManagedLightmap( -1 );
 	// Apply the $alphatest reference this snapshot recorded (< 0 = disabled).
 	if ( index < g_snapshotAlphaRef.size() )
 	{
@@ -4236,13 +4362,19 @@ static ShaderAPITextureHandle_t g_currentModifyTexture = 0;
 
 void CShaderAPIVulkan::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t textureHandle )
 {
-	// Point the textured material shader at the base texture (sampler0). Other
-	// stages (lightmap on sampler1, bump, env) are not yet sampled, so ignore them
-	// -- otherwise a later stage's texture would overwrite the base texture.
-	if ( stage != SHADER_SAMPLER0 )
-		return;
 	// 1-based handle; 0 restores the built-in.
 	const int native = static_cast<int>( textureHandle ) - 1;
+	// Sampler 1 is sampled only when it holds a lightmap page (BindStandardTexture
+	// says so); bump, env and detail stages are not sampled yet, so they must not
+	// overwrite the base texture either.
+	if ( stage == SHADER_SAMPLER1 && g_BindingLightmap )
+	{
+		g_boundLightmapHandle = native;
+		g_VulkanContext.BindManagedLightmap( native );
+		return;
+	}
+	if ( stage != SHADER_SAMPLER0 )
+		return;
 	g_boundTextureHandle = native;
 	g_VulkanContext.BindManagedTexture( native );
 }
@@ -4323,47 +4455,60 @@ static bool UploadTextureSurface( int handle, int width, int height, ImageFormat
 		src = packed.data();
 	}
 
-	if ( srcFormat == IMAGE_FORMAT_RGBA8888 || srcFormat == IMAGE_FORMAT_BGRA8888 )
-	{
-		// The image was created with the matching 8-bit format; upload directly.
+	// The image stores B8G8R8A8 when it was created from a BGR-ordered format and
+	// R8G8B8A8 otherwise (CreateTexture). The material system may deliver either
+	// order into either image, so the source order never implies the image's.
+	const ImageFormat imageFormat = ( static_cast<size_t>( handle ) < g_TextureRecords.size() )
+	                                    ? g_TextureRecords[static_cast<size_t>( handle )].format
+	                                    : IMAGE_FORMAT_UNKNOWN;
+	const bool imageIsBgra =
+	    imageFormat == IMAGE_FORMAT_BGRA8888 || imageFormat == IMAGE_FORMAT_BGRX8888;
+	if ( ( srcFormat == IMAGE_FORMAT_RGBA8888 && !imageIsBgra ) ||
+	     ( srcFormat == IMAGE_FORMAT_BGRA8888 && imageIsBgra ) )
 		return g_VulkanContext.UploadManagedTexture( handle, src, pixels * 4, error );
-	}
-	if ( srcFormat == IMAGE_FORMAT_BGRX8888 )
-	{
-		// Opaque 32-bit BGR + unused X. The image is B8G8R8A8, so the bytes map
-		// directly; force the (meaningless) X byte to an opaque alpha.
-		std::vector<uint8_t> bgra( pixels * 4 );
-		for ( size_t i = 0; i < pixels; ++i )
-		{
-			bgra[i * 4 + 0] = src[i * 4 + 0];
-			bgra[i * 4 + 1] = src[i * 4 + 1];
-			bgra[i * 4 + 2] = src[i * 4 + 2];
-			bgra[i * 4 + 3] = 255;
-		}
-		return g_VulkanContext.UploadManagedTexture( handle, bgra.data(), bgra.size(), error );
-	}
-	if ( srcFormat == IMAGE_FORMAT_RGB888 || srcFormat == IMAGE_FORMAT_BGR888 )
-	{
-		// 24-bit color into the R8G8B8A8 image. BGR888 swaps R/B on the way in.
-		const bool bgr = ( srcFormat == IMAGE_FORMAT_BGR888 );
-		std::vector<uint8_t> rgba( pixels * 4 );
-		for ( size_t i = 0; i < pixels; ++i )
-		{
-			rgba[i * 4 + 0] = src[i * 3 + ( bgr ? 2 : 0 )];
-			rgba[i * 4 + 1] = src[i * 3 + 1];
-			rgba[i * 4 + 2] = src[i * 3 + ( bgr ? 0 : 2 )];
-			rgba[i * 4 + 3] = 255;
-		}
-		return g_VulkanContext.UploadManagedTexture( handle, rgba.data(), rgba.size(), error );
-	}
-	// IMAGE_FORMAT_I8: 8-bit intensity expanded to grayscale RGBA (r = g = b = i).
-	std::vector<uint8_t> rgba( pixels * 4 );
+
+	// Otherwise convert to RGBA, then to the image's order.
+	std::vector<uint8_t> texels( pixels * 4 );
 	for ( size_t i = 0; i < pixels; ++i )
 	{
-		rgba[i * 4 + 0] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = src[i];
-		rgba[i * 4 + 3] = 255;
+		uint8_t *d = &texels[i * 4];
+		switch ( srcFormat )
+		{
+		case IMAGE_FORMAT_RGBA8888:
+			d[0] = src[i * 4 + 0];
+			d[1] = src[i * 4 + 1];
+			d[2] = src[i * 4 + 2];
+			d[3] = src[i * 4 + 3];
+			break;
+		case IMAGE_FORMAT_BGRA8888:
+		case IMAGE_FORMAT_BGRX8888:
+			d[0] = src[i * 4 + 2];
+			d[1] = src[i * 4 + 1];
+			d[2] = src[i * 4 + 0];
+			// BGRX's X byte is meaningless; the texel is opaque.
+			d[3] = ( srcFormat == IMAGE_FORMAT_BGRX8888 ) ? 255 : src[i * 4 + 3];
+			break;
+		case IMAGE_FORMAT_RGB888:
+			d[0] = src[i * 3 + 0];
+			d[1] = src[i * 3 + 1];
+			d[2] = src[i * 3 + 2];
+			d[3] = 255;
+			break;
+		case IMAGE_FORMAT_BGR888:
+			d[0] = src[i * 3 + 2];
+			d[1] = src[i * 3 + 1];
+			d[2] = src[i * 3 + 0];
+			d[3] = 255;
+			break;
+		default: // IMAGE_FORMAT_I8: intensity as grayscale
+			d[0] = d[1] = d[2] = src[i];
+			d[3] = 255;
+			break;
+		}
+		if ( imageIsBgra )
+			std::swap( d[0], d[2] );
 	}
-	return g_VulkanContext.UploadManagedTexture( handle, rgba.data(), rgba.size(), error );
+	return g_VulkanContext.UploadManagedTexture( handle, texels.data(), texels.size(), error );
 }
 
 void CShaderAPIVulkan::TexImage2D( int level, int cubeFace, ImageFormat dstFormat, int zOffset,
@@ -4440,15 +4585,55 @@ void CShaderAPIVulkan::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 	}
 }
 
+// The texture TexLock locked (0-based), or -1.
+static int g_lockedTexture = -1;
+
+// Locks a rectangle of mip 0 of the texture selected by ModifyTexture for the
+// material system's pixel writer, as CShaderAPIDx8::TexLock does. The writer
+// addresses a CPU copy of the surface in the image's own 8-bit layout; other
+// formats and mip levels are refused, like D3D9 refuses levels it did not create.
 bool CShaderAPIVulkan::TexLock( int level, int cubeFaceID, int xOffset, int yOffset, int width,
     int height, CPixelWriter &writer )
 {
-	return false;
+	const int handle = static_cast<int>( g_currentModifyTexture ) - 1;
+	if ( g_lockedTexture >= 0 || handle < 0 ||
+	     static_cast<size_t>( handle ) >= g_TextureRecords.size() )
+		return false;
+	TextureRecord &record = g_TextureRecords[static_cast<size_t>( handle )];
+	const bool eightBit = record.format == IMAGE_FORMAT_RGBA8888 ||
+	                      record.format == IMAGE_FORMAT_BGRA8888 ||
+	                      record.format == IMAGE_FORMAT_BGRX8888;
+	if ( level != 0 || cubeFaceID != 0 || !eightBit )
+	{
+		NoteUnimplemented( "TexLock(mip > 0, cube face or non-8-bit format)" );
+		return false;
+	}
+	if ( xOffset < 0 || yOffset < 0 || width <= 0 || height <= 0 ||
+	     xOffset + width > record.width || yOffset + height > record.height )
+		return false;
+	const size_t pitch = static_cast<size_t>( record.width ) * 4;
+	if ( record.lockSurface.empty() )
+		record.lockSurface.assign( pitch * static_cast<size_t>( record.height ), 0 );
+	writer.SetPixelMemory( record.format,
+	    &record.lockSurface[static_cast<size_t>( yOffset ) * pitch +
+	                        static_cast<size_t>( xOffset ) * 4],
+	    static_cast<int>( pitch ) );
+	g_lockedTexture = handle;
+	return true;
 }
 
 void CShaderAPIVulkan::TexUnlock()
 {
-	VK_UNIMPLEMENTED();
+	if ( g_lockedTexture < 0 )
+		return;
+	const TextureRecord &record = g_TextureRecords[static_cast<size_t>( g_lockedTexture )];
+	std::string error;
+	// The copy is already in the image's layout, so it uploads as that format.
+	if ( !UploadTextureSurface( g_lockedTexture, record.width, record.height, record.format,
+	         record.lockSurface.data(), 0, &error ) &&
+	     !error.empty() )
+		Warning( "[NativeVulkan] TexUnlock upload failed: %s\n", error.c_str() );
+	g_lockedTexture = -1;
 }
 
 // These are bound to the texture, not the texture environment
@@ -4541,7 +4726,7 @@ ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height,
 		Warning( "[NativeVulkan] CreateTexture failed: %s\n", error.c_str() );
 		return 0;
 	}
-	NoteTextureCreated( native, pDebugName, dstImageFormat );
+	NoteTextureCreated( native, pDebugName, dstImageFormat, width, height );
 	return static_cast<ShaderAPITextureHandle_t>( native + 1 ); // 1-based handle
 }
 

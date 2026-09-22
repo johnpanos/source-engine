@@ -9,15 +9,17 @@
 layout( location = 0 ) in vec3 inPos;
 layout( location = 1 ) in vec3 inColor; // vertex color (VERTEXCOLOR path)
 layout( location = 2 ) in vec2 inUv;
+layout( location = 3 ) in vec2 inLightmapUv; // TEXCOORD1: lightmap page coordinates
 layout( location = 0 ) out vec2 fragUv;
 layout( location = 1 ) out vec4 fragModulation;
+layout( location = 2 ) out vec2 fragLightmapUv;
 layout( push_constant ) uniform Constants
 {
 	mat4 mvp;        // cModelViewProj
 	vec4 modulation; // cModulationColor
 	vec4 texXform0;  // cBaseTextureTransform[0]
 	vec4 texXform1;  // cBaseTextureTransform[1]
-	vec4 alphaParams; // x = alpha-test reference (<0 disables); fragment stage only
+	vec4 alphaParams; // fragment stage only; see demo_dyn_tex.frag
 }
 consts;
 void main()
@@ -29,4 +31,6 @@ void main()
 	vec4 uv4 = vec4( inUv, 0.0, 1.0 );
 	fragUv = vec2( dot( consts.texXform0, uv4 ), dot( consts.texXform1, uv4 ) );
 	fragModulation = consts.modulation;
+	// Lightmap coordinates are used as given (lightmappedgeneric_vs20.fxc).
+	fragLightmapUv = inLightmapUv;
 }

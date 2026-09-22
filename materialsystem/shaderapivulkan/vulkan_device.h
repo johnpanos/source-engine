@@ -149,8 +149,15 @@ public:
 	// the GPU through the backend (roadmap R32 mesh slice).
 	bool InitDynamicMesh( std::string *outError );
 	bool DynamicMeshReady() const { return m_dynPipeline != VK_NULL_HANDLE; }
-	// Append triangle-list vertices as interleaved [x,y,z, r,g,b, u,v] floats.
-	void QueueDynamicTriangles( const float *posColorUvInterleaved, uint32_t vertexCount );
+	// Append triangle-list vertices as interleaved [x,y,z, r,g,b, u,v] floats,
+	// plus [u,v] lightmap coordinates per vertex when the draw has them (zeros
+	// otherwise). They are stored as one kDynVertexFloats-wide record.
+	enum
+	{
+		kDynVertexFloats = 10
+	};
+	void QueueDynamicTriangles( const float *posColorUvInterleaved, uint32_t vertexCount,
+	    const float *lightmapUv = nullptr );
 	// Discard the accumulated frame geometry. Called at frame start (ClearBuffers)
 	// rather than after Present, so the last frame's geometry stays available for
 	// an on-demand screenshot capture (ReadPixels).
@@ -240,6 +247,20 @@ public:
 	bool UploadManagedTexture(
 	    int handle, const uint8_t *data, size_t dataSize, std::string *outError );
 	void BindManagedTexture( int handle );
+	// The lightmap page the textured pipeline multiplies by (LightmappedGeneric's
+	// TEXTURE_LIGHTMAP on sampler 1), sampled at the lightmap coordinates; -1
+	// draws without a lightmap.
+	void BindManagedLightmap( int handle ) { m_dynLightmapHandle = handle; }
+	// Which of the textured pipeline's inputs and output are sRGB-encoded, as the
+	// material's IShaderShadow EnableSRGBRead/EnableSRGBWrite declared them: an
+	// sRGB input is decoded to linear before use, and linear output is encoded.
+	enum
+	{
+		kColorSrgbReadBase = 1,
+		kColorSrgbReadLightmap = 2,
+		kColorSrgbWrite = 4
+	};
+	void SelectDynamicColorSpace( int flags ) { m_dynColorFlags = flags; }
 	// True when this managed texture has had pixel data uploaded into it.
 	bool IsManagedTextureUploaded( int handle ) const
 	{
@@ -521,7 +542,7 @@ private:
 	{
 		VkPipelineShaderStageCreateInfo stages[2];
 		VkVertexInputBindingDescription binding;
-		VkVertexInputAttributeDescription attrs[3];
+		VkVertexInputAttributeDescription attrs[4];
 		VkPipelineVertexInputStateCreateInfo vin;
 		VkPipelineInputAssemblyStateCreateInfo ia;
 		VkPipelineViewportStateCreateInfo vp;
@@ -575,6 +596,8 @@ private:
 	std::vector<ManagedTexture> m_managedTextures;
 	// The managed texture currently bound (BindManagedTexture); captured per draw.
 	int m_dynBoundTexHandle = -1;
+	int m_dynLightmapHandle = -1;
+	int m_dynColorFlags = 0;
 	// Column-major model->projection matrix; identity by default.
 	float m_dynTransform[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	VkBuffer m_dynVertexBuffer = VK_NULL_HANDLE;
@@ -622,6 +645,8 @@ private:
 		DynRasterState raster;
 		float alphaRef = -1.0f; // $alphatest reference; < 0 disables
 		int texHandle = -1;     // managed texture bound at this draw (-1 = built-in)
+		int lightmapHandle = -1; // lightmap page multiplied in (-1 = none)
+		int colorFlags = 0;      // kColorSrgb* inputs/output encoding
 	};
 	std::vector<DynDraw> m_dynDrawRecords;
 	// Target/viewport/scissor state captured by each record.

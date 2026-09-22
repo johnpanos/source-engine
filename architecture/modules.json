@@ -261,7 +261,8 @@
       "unittests/appframeworktest/appsystemgrouptest.cpp",
       "unittests/legacymoduleclientfixture/legacy_loader_abi_2013.h",
       "unittests/legacymoduleclientfixture/legacymoduleclientfixture.cpp",
-      "unittests/shaderextensiontest/test_shaderextension_host.cpp"
+      "unittests/shaderextensiontest/test_shaderextension_host.cpp",
+      "unittests/shaderextensiontest/material_pixel_conformance.cpp"
     ]
   },
   "loaderInventory": {
