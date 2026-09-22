@@ -500,6 +500,52 @@ composition root: every linked provider must have a distinct id, module name, an
 negative control that adds a duplicate catalog entry (simulating the collision)
 produces 5 failures, so the suite detects exactly this defect class.
 
+## Native backend: two more fixes, and where it is still blocked (2026-09-22)
+
+Fixed:
+
+1. **The world rendered black because unwritten constants were zero.** Only the
+   UnlitGeneric family publishes modulation and the base-texture transform through
+   `c37`/`c38-c39`. `LightmappedGeneric`, `vertexlit_and_unlit_generic`, `skin` and
+   the rest never touch those registers, yet the native textured pipeline
+   multiplies by them on every draw, so a zero-initialized register file produced
+   `colour * 0` for the entire world and collapsed every UV to the origin.
+   `VsConstantFile` now starts at the neutral values (modulation white, transform
+   identity) and both are committed on every draw. Measured before/after on a real
+   frame: `mod=(0,0,0,0)` -> `mod=(1,1,1,1)`, `uv0=(0,0,0,0)` -> `uv0=(1,0,0,0)`.
+2. **The portal occlusion-query segfault** described above, which killed the
+   native run outright (`SIGSEGV` in `COcclusionQueryMgr::BeginOcclusionQueryDrawing`).
+
+Verified good along the way, so these are no longer suspects: the committed
+transform (world vertices project to sane NDC, e.g. `(0.779, -0.726, 0.995)`,
+inside the frustum and in front of the 1.0 depth clear), the draw path itself
+(~90-170 draws and 80k-190k vertices per frame reach the queue), the render-pass
+clear value, render area, viewport/scissor, framebuffer indexing, swapchain
+extent and image count, and the absence of any swapchain recreation loop.
+
+**Open blocker: the swapchain -> capture readback yields one column.** Every
+capture of an in-game frame comes back black except the final pixel column, at
+both 2880x1620 (Wayland) and 1920x1080 (X11). The engine's `+screenshot` reads the
+same captured frame, which is why `portal_boot.py` reports a blank capture even
+though the window itself shows geometry. Bisected as follows:
+
+- Replacing the frame copy with `vkCmdClearColorImage` on the capture image
+  returns a perfect full-extent green readback, so the capture image, its linear
+  tiling, `rowPitch` (exactly `width * 4`), memory mapping, invalidation and the
+  BGRA conversion are all correct.
+- `vkCmdBlitImage` from the swapchain image produces the identical one-column
+  result as `vkCmdCopyImage`, so it is not specific to the copy command.
+
+That isolates the fault to reading the swapchain image as a transfer source.
+Next steps: obtain the Khronos validation layer (`vulkan-validation-layers` is not
+installed here and the flatpak runtime ships only the manifest, not the library)
+and run with `-vkvalidate`; failing that, render the scene into an owned offscreen
+colour image and blit that to the swapchain, which removes the dependency on
+swapchain images being readable and is needed for render targets anyway.
+
+Also observed: the naive per-draw path is slow enough (~50-200 ms/frame at
+190k vertices) that the boot run is sometimes killed at its timeout.
+
 ## Configuration notes for follow-up
 
 Two product build trees are configured side by side, and the render backend is a

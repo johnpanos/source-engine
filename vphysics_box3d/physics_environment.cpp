@@ -46,7 +46,7 @@ private:
 }
 
 CPhysicsEnvironmentBox3D::CPhysicsEnvironmentBox3D()
-	: m_airDensity( 2.0f ), m_timestep( kDefaultTimestep ), m_timeAccumulator( 0.0f ), m_simulationTime( 0.0f ),
+	: m_airDensity( 2.0f ), m_timestep( kDefaultTimestep ), m_timeAccumulator( 0.0f ), m_simulationTime( 0.0f ), m_stepCount( 0 ),
 	  m_inSimulation( false ), m_pSolver( NULL ), m_pCollisionEvents( NULL ), m_pObjectEvents( NULL ),
 	  m_pConstraintEvents( NULL )
 {
@@ -399,6 +399,7 @@ void CPhysicsEnvironmentBox3D::Step( float dt )
 	PreStep( dt );
 	m_inSimulation = true;
 	b3World_Step( m_world, dt, kSubSteps );
+	m_stepCount++;
 	m_inSimulation = false;
 	PostStep();
 }

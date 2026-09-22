@@ -127,7 +127,7 @@ public:
 	virtual IPhysicsFrictionSnapshot *CreateFrictionSnapshot() override;
 	virtual void DestroyFrictionSnapshot( IPhysicsFrictionSnapshot *pSnapshot ) override;
 
-	virtual void OutputDebugInfo() const override {}
+	virtual void OutputDebugInfo() const override;
 
 	// Provider internals.
 	IPhysicsShadowController *EnsureShadowController( bool allowTranslation, bool allowRotation );

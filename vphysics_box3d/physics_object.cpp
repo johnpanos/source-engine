@@ -15,6 +15,7 @@
 #include "physics_controllers.h"
 #include "physics_environment.h"
 #include "physics_material.h"
+#include "tier0/dbg.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -636,4 +637,46 @@ IPhysicsFrictionSnapshot *CPhysicsObjectBox3D::CreateFrictionSnapshot()
 void CPhysicsObjectBox3D::DestroyFrictionSnapshot( IPhysicsFrictionSnapshot *pSnapshot )
 {
 	delete pSnapshot;
+}
+
+// Same report as IVP's CPhysicsObject::OutputDebugInfo (physics_debug_entity),
+// plus the pose, which Box3D can report directly.
+void CPhysicsObjectBox3D::OutputDebugInfo() const
+{
+	Msg( "-----------------\nObject: %s\n", m_name );
+	Msg( "Mass: %.3e (inv %.3e)\n", GetMass(), GetInvMass() );
+	Vector invInertia = GetInvInertia();
+	Msg( "Inertia: %.3e, %.3e, %.3e (inv %.3e, %.3e, %.3e)\n", m_inertia.x, m_inertia.y, m_inertia.z, invInertia.x, invInertia.y, invInertia.z );
+	Vector position;
+	QAngle angles;
+	GetPosition( &position, &angles );
+	Msg( "Position: %.2f, %.2f, %.2f Angles: %.2f, %.2f, %.2f\n", position.x, position.y, position.z, angles.x, angles.y, angles.z );
+	Vector speed;
+	AngularImpulse angSpeed;
+	GetVelocity( &speed, &angSpeed );
+	Msg( "Velocity: %.2f, %.2f, %.2f \n", speed.x, speed.y, speed.z );
+	Msg( "Ang Velocity: %.2f, %.2f, %.2f \n", angSpeed.x, angSpeed.y, angSpeed.z );
+	Msg( "Damping %.3e linear, %.3e angular\n", m_linearDamping, m_angularDamping );
+	if ( IsHinged() )
+	{
+		const char *pAxisNames[] = { "x", "y", "z" };
+		Msg( "Hinged on %s axis\n", pAxisNames[m_hingeAxis] );
+	}
+	Msg( "Shadow controller: %s, player controller: %s\n", m_pShadow ? "yes" : "no", m_pPlayerController ? "yes" : "no" );
+	static const char *s_bodyTypes[] = { "static", "kinematic", "dynamic" };
+	b3BodyType type = b3Body_GetType( m_body );
+	Vector gravity;
+	m_pEnv->GetGravity( &gravity );
+	Msg( "Box3D body: %s, gravity scale %.2f; environment gravity %.1f %.1f %.1f, %d steps over %.2f s\n",
+		type >= 0 && type <= 2 ? s_bodyTypes[type] : "?", b3Body_GetGravityScale( m_body ),
+		gravity.x, gravity.y, gravity.z, m_pEnv->GetStepCount(), m_pEnv->GetSimulationTime() );
+	Msg( "State: %s, Collision %s, Motion %s, Flags %04X (game %04x, index %d)\n",
+		IsAsleep() ? "Asleep" : "Awake",
+		IsCollisionEnabled() ? "Enabled" : "Disabled",
+		IsStatic() ? "Static" : ( IsMotionEnabled() ? "Enabled" : "Disabled" ),
+		(int)GetCallbackFlags(), (int)GetGameFlags(), (int)GetGameIndex() );
+	float density = 0, thickness = 0, friction = 0, elasticity = 0;
+	g_SurfaceDatabase.GetPhysicsProperties( m_materialIndex, &density, &thickness, &friction, &elasticity );
+	Msg( "Material: %s : density(%.1f), thickness(%.2f), friction(%.2f), elasticity(%.2f)\n",
+		g_SurfaceDatabase.GetPropName( m_materialIndex ), density, thickness, friction, elasticity );
 }

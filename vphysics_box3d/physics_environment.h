@@ -115,6 +115,7 @@ public:
 	// Provider internals.
 	b3WorldId GetWorld() const { return m_world; }
 	float GetStepTime() const { return m_timestep; }
+	int GetStepCount() const { return m_stepCount; }
 
 private:
 	static bool CustomFilter( b3ShapeId shapeIdA, b3ShapeId shapeIdB, void *pContext );
@@ -131,6 +132,7 @@ private:
 	float m_timestep;
 	float m_timeAccumulator;
 	float m_simulationTime;
+	int m_stepCount;
 	bool m_inSimulation;
 	physics_performanceparams_t m_performance;
 	IPhysicsCollisionSolver *m_pSolver;
