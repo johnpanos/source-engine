@@ -10,7 +10,6 @@
 #endif
 #include <deque>
 #include "tier0/dbg.h"
-#include "tier0/tslist.h"
 #include "tier0/icommandline.h"
 #include "vstdlib/jobthread.h"
 #include "vstdlib/random.h"
@@ -169,7 +168,7 @@ public:
 	//-----------------------------------------------------
 	// Functions for any thread
 	//-----------------------------------------------------
-	unsigned GetJobCount()							{ return m_nJobs; }
+	unsigned GetJobCount() { return m_nJobs.AtomicAdd( 0 ); }
 	int NumThreads();
 	int NumIdleThreads();
 
@@ -318,6 +317,18 @@ public:
 	CJobQueue &AccessDirectQueue()
 	{ 
 		return m_DirectQueue;
+	}
+
+	bool JoinForShutdown()
+	{
+		// ThreadProc clears IsAlive before its final event signal and mutex
+		// release. Wait for those publications before joining or destroying any
+		// derived fields that the worker may still be using.
+		if ( !m_ExitEvent.Wait() )
+			return false;
+		m_Lock.Lock();
+		m_Lock.Unlock();
+		return CThread::Join();
 	}
 
 private:
@@ -504,7 +515,7 @@ int CThreadPool::NumThreads()
 //---------------------------------------------------------
 int CThreadPool::NumIdleThreads()
 {
-	return m_nIdleThreads;
+	return m_nIdleThreads.AtomicAdd( 0 );
 }
 
 /*void CThreadPool::ExecuteHighPriorityFunctor( CFunctor *pFunctor )
@@ -678,8 +689,10 @@ void CThreadPool::AddJob( CJob *pJob )
 
 	pJob->m_pThreadPool = this;
 	pJob->SetStatus( JOB_STATUS_PENDING );
-	InsertJobInQueue( pJob );
+	// Count admission before queue publication: a worker may finish as soon
+	// as Push signals the queue, and must not decrement an uncounted job.
 	++m_nJobs;
+	InsertJobInQueue( pJob );
 }
 
 //---------------------------------------------------------
@@ -1064,6 +1077,8 @@ void CThreadPool::Distribute( bool bDistribute, int *pAffinityTable )
 
 bool CThreadPool::Stop( int timeout )
 {
+	// Retain the legacy synchronous stop protocol: timeout was not honored by
+	// CallWorker or the old IsAlive spin. An exit acknowledgment is not a join.
 	for ( int i = 0; i < m_Threads.Count(); i++ )
 	{
 		m_Threads[i]->CallWorker( TPM_EXIT );
@@ -1071,10 +1086,12 @@ bool CThreadPool::Stop( int timeout )
 
 	for ( int i = 0; i < m_Threads.Count(); ++i )
 	{
-		while( m_Threads[i]->IsAlive() )
-		{
-			ThreadSleep( 0 );
-		}
+		if ( !m_Threads[i]->JoinForShutdown() )
+			return false;
+	}
+	for ( int i = 0; i < m_Threads.Count(); ++i )
+	{
+		m_Threads[i]->AccessDirectQueue().Flush();
 		delete m_Threads[i];
 	}
 

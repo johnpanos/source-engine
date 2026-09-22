@@ -19,8 +19,8 @@
 // a. By maintaining a set of incrementally updated trace results, it makes it simple to have ai
 // code use hyteresis on traces as an optimization method.
 
-// b. By updating the cache entries outside of the entity think functions, the update is done in a
-// fully multi-threaded fashion
+// b. Cache maintenance classifies entries in independent batches outside entity think functions.
+// Entity/trace callbacks and cache mutation commit in hash-chain order on the owning thread.
 
 
 enum EQueryType_t
@@ -90,7 +90,8 @@ bool IsLineOfSightBetweenTwoEntitiesClear( CBaseEntity *pSrcEntity,
 
 
 
-// call during main loop for threaded update of the query cache
+// Call from the cache-owning game sequence. The synchronous batch finishes before return;
+// callers must not concurrently mutate the cache or reenter it from a trace callback.
 void UpdateQueryCache( void );
 
 // call on level transition or other significant step-functions
