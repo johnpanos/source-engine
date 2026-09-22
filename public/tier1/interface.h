@@ -50,6 +50,7 @@
 
 // TODO: move interface.cpp into tier0 library.
 #include "tier0/platform.h"
+#include "tier1/module_load_telemetry.h"
 
 // All interfaces derive from this.
 class IBaseInterface
@@ -191,6 +192,26 @@ enum Sys_Flags
 extern CSysModule			*Sys_LoadModule( const char *pModuleName, Sys_Flags flags = SYS_NOFLAGS );
 extern void					Sys_UnloadModule( CSysModule *pModule );
 
+// Source-compatible call-site wrappers. The legacy symbols above remain
+// available for binary compatibility; new source records its requester.
+extern CSysModule *Sys_LoadModuleWithContext(
+	const char *pRequestingSubsystem,
+	int nSourceLine,
+	const char *pModuleName,
+	Sys_Flags flags = SYS_NOFLAGS );
+extern void Sys_UnloadModuleWithContext(
+	const char *pRequestingSubsystem,
+	int nSourceLine,
+	CSysModule *pModule );
+extern CreateInterfaceFn Sys_GetFactoryWithContext(
+	const char *pRequestingSubsystem,
+	int nSourceLine,
+	CSysModule *pModule );
+extern CreateInterfaceFn Sys_GetFactoryWithContext(
+	const char *pRequestingSubsystem,
+	int nSourceLine,
+	const char *pModuleName );
+
 // This is a helper function to load a module, get its factory, and get a specific interface.
 // You are expected to free all of these things.
 // Returns false and cleans up if any of the steps fail.
@@ -199,6 +220,29 @@ bool Sys_LoadInterface(
 	const char *pInterfaceVersionName,
 	CSysModule **pOutModule,
 	void **pOutInterface );
+
+bool Sys_LoadInterfaceWithContext(
+	const char *pRequestingSubsystem,
+	int nSourceLine,
+	const char *pModuleName,
+	const char *pInterfaceVersionName,
+	CSysModule **pOutModule,
+	void **pOutInterface );
+
+template <class FileSystemType>
+inline CSysModule *Sys_LoadModuleFromFileSystemWithContext(
+	const char *pRequestingSubsystem,
+	int nSourceLine,
+	FileSystemType *pFileSystem,
+	const char *pModuleName,
+	const char *pPathID = NULL,
+	bool bValidatedDllOnly = true )
+{
+	CScopedModuleLoadRequest request(
+		pRequestingSubsystem, nSourceLine );
+	return pFileSystem->LoadModule(
+		pModuleName, pPathID, bValidatedDllOnly );
+}
 
 bool Sys_IsDebuggerPresent();
 
@@ -213,6 +257,9 @@ class CDllDemandLoader
 {
 public:
 						CDllDemandLoader( char const *pchModuleName );
+						CDllDemandLoader( char const *pchModuleName,
+							const char *pRequestingSubsystem,
+							int nSourceLine );
 	virtual				~CDllDemandLoader();
 	CreateInterfaceFn	GetFactory();
 	void				Unload();
@@ -220,11 +267,29 @@ public:
 private:
 
 	char const	*m_pchModuleName;
+	char const	*m_pRequestingSubsystem;
+	int			m_nSourceLine;
 	CSysModule	*m_hModule;
 	bool		m_bLoadAttempted;
 };
 
+#if !defined( TIER1_INTERFACE_IMPLEMENTATION )
+#undef Sys_LoadModule
+#undef Sys_UnloadModule
+#undef Sys_GetFactory
+#undef Sys_LoadInterface
+#define Sys_LoadModule( ... ) \
+	Sys_LoadModuleWithContext( __FILE__, __LINE__, __VA_ARGS__ )
+#define Sys_UnloadModule( ... ) \
+	Sys_UnloadModuleWithContext( __FILE__, __LINE__, __VA_ARGS__ )
+#define Sys_GetFactory( ... ) \
+	Sys_GetFactoryWithContext( __FILE__, __LINE__, __VA_ARGS__ )
+#define Sys_LoadInterface( ... ) \
+	Sys_LoadInterfaceWithContext( __FILE__, __LINE__, __VA_ARGS__ )
+#define Sys_LoadModuleFromFileSystem( pFileSystem, ... ) \
+	Sys_LoadModuleFromFileSystemWithContext( \
+		__FILE__, __LINE__, pFileSystem, __VA_ARGS__ )
 #endif
 
-
+#endif
 

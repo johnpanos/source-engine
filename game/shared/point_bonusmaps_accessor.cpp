@@ -17,7 +17,7 @@
 
 // See interface.h/.cpp for specifics:  basically this ensures that we actually Sys_UnloadModule the dll and that we don't call Sys_LoadModule 
 //  over and over again.
-static CDllDemandLoader g_GameUI( "GameUI" );
+static CDllDemandLoader g_GameUI( "GameUI", __FILE__, __LINE__ );
 
 #ifndef CLIENT_DLL
 

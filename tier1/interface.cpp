@@ -3,6 +3,8 @@
 // Purpose: 
 //
 //===========================================================================//
+#define TIER1_INTERFACE_IMPLEMENTATION
+
 #if defined( _WIN32 ) && !defined( _X360 )
 #include <windows.h>
 #endif
@@ -16,12 +18,14 @@
 #endif
 
 #include <stdio.h>
+#include <errno.h>
 #include "interface.h"
 #include "basetypes.h"
 #include "tier0/dbg.h"
 #include <string.h>
 #include <stdlib.h>
 #include "tier1/strtools.h"
+#include "tier1/module_load_telemetry_internal.h"
 #include "tier0/icommandline.h"
 #include "tier0/dbg.h"
 #include "tier0/threadtools.h"
@@ -166,6 +170,7 @@ struct ThreadedLoadLibaryContext_t
 {
 	const char *m_pLibraryName;
 	HMODULE m_hLibrary;
+	int m_nProviderResult;
 };
 
 #ifdef _WIN32
@@ -186,13 +191,24 @@ uintp ThreadedLoadLibraryFunc( void *pParam )
 {
 	ThreadedLoadLibaryContext_t *pContext = (ThreadedLoadLibaryContext_t*)pParam;
 	pContext->m_hLibrary = InternalLoadLibrary( pContext->m_pLibraryName, SYS_NOFLAGS );
+	pContext->m_nProviderResult = pContext->m_hLibrary ? 0 : (int)GetLastError();
 	return 0;
 }
 
 #endif // _WIN32
 
-HMODULE Sys_LoadLibrary( const char *pLibraryName, Sys_Flags flags )
+static HMODULE Sys_LoadLibraryWithError(
+	const char *pLibraryName,
+	Sys_Flags flags,
+	int *pProviderResult,
+	char *pProviderError,
+	int nProviderErrorSize )
 {
+	if ( pProviderResult )
+		*pProviderResult = 0;
+	if ( pProviderError && nProviderErrorSize > 0 )
+		pProviderError[0] = '\0';
+
 	char str[ 1024 ];
 	// Note: DLL_EXT_STRING can be "_srv.so" or "_360.dll". So be careful
 	//	when using the V_*Extension* routines...
@@ -220,7 +236,19 @@ HMODULE Sys_LoadLibrary( const char *pLibraryName, Sys_Flags flags )
 #ifdef _WIN32
 	ThreadedLoadLibraryFunc_t threadFunc = GetThreadedLoadLibraryFunc();
 	if ( !threadFunc )
-		return InternalLoadLibrary( str, flags );
+	{
+		HMODULE hLibrary = InternalLoadLibrary( str, flags );
+		if ( !hLibrary )
+		{
+			int nError = (int)GetLastError();
+			if ( pProviderResult )
+				*pProviderResult = nError;
+			if ( pProviderError )
+				Q_snprintf( pProviderError, nProviderErrorSize,
+					"Win32 error %d", nError );
+		}
+		return hLibrary;
+	}
 
 	// We shouldn't be passing noload while threaded.
 	Assert( !( flags & SYS_NOLOAD ) );
@@ -228,6 +256,7 @@ HMODULE Sys_LoadLibrary( const char *pLibraryName, Sys_Flags flags )
 	ThreadedLoadLibaryContext_t context;
 	context.m_pLibraryName = str;
 	context.m_hLibrary = 0;
+	context.m_nProviderResult = 0;
 
 	ThreadHandle_t h = CreateSimpleThread( (ThreadFunc_t)ThreadedLoadLibraryFunc, &context );
 
@@ -242,6 +271,14 @@ HMODULE Sys_LoadLibrary( const char *pLibraryName, Sys_Flags flags )
 	}
 
 	ReleaseThreadHandle( h );
+	if ( !context.m_hLibrary )
+	{
+		if ( pProviderResult )
+			*pProviderResult = context.m_nProviderResult;
+		if ( pProviderError )
+			Q_snprintf( pProviderError, nProviderErrorSize,
+				"Win32 error %d", context.m_nProviderResult );
+	}
 	return context.m_hLibrary;
 
 #elif POSIX
@@ -252,11 +289,19 @@ HMODULE Sys_LoadLibrary( const char *pLibraryName, Sys_Flags flags )
 		dlopen_mode |= RTLD_NOLOAD;
 #endif
 
+	dlerror();
 	HMODULE ret = ( HMODULE )dlopen( str, dlopen_mode );
-	if ( !ret && !( flags & SYS_NOLOAD ) )
+	if ( !ret )
 	{
 		const char *pError = dlerror();
-		if ( pError && ( strstr( pError, "No such file" ) == 0 ) && ( strstr( pError, "image not found" ) == 0 ) )
+		if ( pProviderResult )
+			*pProviderResult = errno;
+		if ( pProviderError )
+			Q_strncpy( pProviderError, pError ? pError : "dlopen failed",
+				nProviderErrorSize );
+		if ( !( flags & SYS_NOLOAD ) && pError &&
+			( strstr( pError, "No such file" ) == 0 ) &&
+			( strstr( pError, "image not found" ) == 0 ) )
 		{
 			Msg( "failed to dlopen %s error=%s\n", str, pError );
 		}
@@ -264,6 +309,11 @@ HMODULE Sys_LoadLibrary( const char *pLibraryName, Sys_Flags flags )
 	
 	return ret;
 #endif
+}
+
+HMODULE Sys_LoadLibrary( const char *pLibraryName, Sys_Flags flags )
+{
+	return Sys_LoadLibraryWithError( pLibraryName, flags, NULL, NULL, 0 );
 }
 static bool s_bRunningWithDebugModules = false;
 
@@ -324,6 +374,11 @@ CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NO
 	char szModuleName[1024] = { 0 };
 #endif
 	HMODULE hDLL = NULL;
+	char szResolvedModuleName[2048];
+	char szProviderError[512] = { 0 };
+	int nProviderResult = 0;
+	Q_strncpy( szResolvedModuleName, pModuleName,
+		sizeof( szResolvedModuleName ) );
 
 	if ( !Q_IsAbsolutePath( pModuleName ) )
 	{
@@ -354,7 +409,13 @@ CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NO
 			bFound = foundLibraryWithPrefix( szAbsoluteModuleName, sizeof(szAbsoluteModuleName), modLibPath, pModuleName );
 
 			if( bFound )
-				hDLL = Sys_LoadLibrary( szAbsoluteModuleName, flags );
+			{
+				Q_strncpy( szResolvedModuleName, szAbsoluteModuleName,
+					sizeof( szResolvedModuleName ) );
+				hDLL = Sys_LoadLibraryWithError( szAbsoluteModuleName, flags,
+					&nProviderResult, szProviderError,
+					sizeof( szProviderError ) );
+			}
 
 			if( !hDLL && bFound )
 				Error("Can't find mod library %s\n", szAbsoluteModuleName);
@@ -363,22 +424,44 @@ CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NO
 		if( !foundLibraryWithPrefix( szAbsoluteModuleName, sizeof(szAbsoluteModuleName), libPath, pModuleName ) )
 		{
 			Warning("Can't find module - %s\n", pModuleName);
-			return reinterpret_cast<CSysModule *>(hDLL);
+			if ( !hDLL )
+			{
+				nProviderResult = ENOENT;
+				Q_strncpy( szProviderError, "module path resolution failed",
+					sizeof( szProviderError ) );
+				Q_strncpy( szResolvedModuleName, szAbsoluteModuleName,
+					sizeof( szResolvedModuleName ) );
+			}
+			CSysModule *pModule = reinterpret_cast<CSysModule *>( hDLL );
+			Sys_RecordModuleLoad( pModule, pModuleName,
+				szResolvedModuleName, nProviderResult, szProviderError );
+			return pModule;
 		}
 
 #elif defined( POSIX )
 		if( !foundLibraryWithPrefix(szAbsoluteModuleName, sizeof(szAbsoluteModuleName), szCwd, pModuleName) )
 		{
 			Warning("Can't find module - %s\n", pModuleName);
-			return reinterpret_cast<CSysModule *>(hDLL);
+			nProviderResult = ENOENT;
+			Q_strncpy( szProviderError, "module path resolution failed",
+				sizeof( szProviderError ) );
+			Q_strncpy( szResolvedModuleName, szAbsoluteModuleName,
+				sizeof( szResolvedModuleName ) );
+			Sys_RecordModuleLoad( NULL, pModuleName, szResolvedModuleName,
+				nProviderResult, szProviderError );
+			return NULL;
 		}
 #else
 		Q_snprintf( szAbsoluteModuleName, sizeof(szAbsoluteModuleName), "%s/bin/%s", szCwd, pModuleName );
 #endif
+		Q_strncpy( szResolvedModuleName, szAbsoluteModuleName,
+			sizeof( szResolvedModuleName ) );
 		Msg("LoadLibrary: pModule: %s, path: %s\n", pModuleName, szAbsoluteModuleName);
 
 		if( !hDLL )
-			hDLL = Sys_LoadLibrary( szAbsoluteModuleName, flags );
+			hDLL = Sys_LoadLibraryWithError( szAbsoluteModuleName, flags,
+				&nProviderResult, szProviderError,
+				sizeof( szProviderError ) );
 	}
 	else
 	{
@@ -392,10 +475,22 @@ CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NO
 		if( !bFound )
 		{
 			Warning("Can't find module - %s\n", pModuleName);
-			return reinterpret_cast<CSysModule *>(hDLL);
+			nProviderResult = ENOENT;
+			Q_strncpy( szProviderError, "module path resolution failed",
+				sizeof( szProviderError ) );
+			Q_strncpy( szResolvedModuleName, szModuleName,
+				sizeof( szResolvedModuleName ) );
+			Sys_RecordModuleLoad( NULL, pModuleName, szResolvedModuleName,
+				nProviderResult, szProviderError );
+			return NULL;
 		}
 
+		Q_strncpy( szResolvedModuleName, szModuleName,
+			sizeof( szResolvedModuleName ) );
 		Msg("LoadLibrary: path: %s\n", szModuleName);
+#else
+		Q_strncpy( szResolvedModuleName, pModuleName,
+			sizeof( szResolvedModuleName ) );
 #endif
 	}
 
@@ -403,7 +498,11 @@ CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NO
 	if ( !hDLL )
 	{
 		// full path failed, let LoadLibrary() try to search the PATH now
-		hDLL = Sys_LoadLibrary( pModuleName, flags );
+		Q_strncpy( szResolvedModuleName, pModuleName,
+			sizeof( szResolvedModuleName ) );
+		hDLL = Sys_LoadLibraryWithError( pModuleName, flags,
+			&nProviderResult, szProviderError,
+			sizeof( szProviderError ) );
 #if defined( _DEBUG )
 		if ( !hDLL )
 		{
@@ -428,7 +527,8 @@ CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NO
 			DWORD error = GetLastError();
 			Msg( "Error(%d) - Failed to load %s:\n", error, pModuleName );
 #else
-			Msg( "Failed to load %s: %s\n", pModuleName, dlerror() );
+			Msg( "Failed to load %s: %s\n", pModuleName,
+				szProviderError[0] ? szProviderError : "unknown provider error" );
 #endif // _WIN32
 		}
 #endif // DEBUG
@@ -463,7 +563,10 @@ CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NO
 	}
 #endif
 
-	return reinterpret_cast<CSysModule *>(hDLL);
+	CSysModule *pModule = reinterpret_cast<CSysModule *>( hDLL );
+	Sys_RecordModuleLoad( pModule, pModuleName, szResolvedModuleName,
+		nProviderResult, szProviderError );
+	return pModule;
 }
 
 //-----------------------------------------------------------------------------
@@ -500,12 +603,32 @@ void Sys_UnloadModule( CSysModule *pModule )
 		return;
 
 	HMODULE	hDLL = reinterpret_cast<HMODULE>(pModule);
+	bool bSuccess = false;
+	int nProviderResult = 0;
+	char szProviderError[512] = { 0 };
 
 #ifdef _WIN32
-	FreeLibrary( hDLL );
+	bSuccess = FreeLibrary( hDLL ) != FALSE;
+	if ( !bSuccess )
+	{
+		nProviderResult = (int)GetLastError();
+		Q_snprintf( szProviderError, sizeof( szProviderError ),
+			"Win32 error %d", nProviderResult );
+	}
 #elif defined(POSIX)
-	dlclose((void *)hDLL);
+	dlerror();
+	nProviderResult = dlclose((void *)hDLL);
+	bSuccess = nProviderResult == 0;
+	if ( !bSuccess )
+	{
+		const char *pError = dlerror();
+		Q_strncpy( szProviderError, pError ? pError : "dlclose failed",
+			sizeof( szProviderError ) );
+	}
 #endif
+
+	Sys_RecordModuleUnload( pModule, bSuccess, nProviderResult,
+		szProviderError );
 }
 
 //-----------------------------------------------------------------------------
@@ -517,11 +640,25 @@ void Sys_UnloadModule( CSysModule *pModule )
 CreateInterfaceFn Sys_GetFactory( CSysModule *pModule )
 {
 	if ( !pModule )
+	{
+		Sys_RecordModuleEntryPoint( NULL, NULL, "CreateInterface", false,
+			0, "module handle is null" );
 		return NULL;
+	}
 
 	HMODULE	hDLL = reinterpret_cast<HMODULE>(pModule);
+	CreateInterfaceFn pFactory = NULL;
+	int nProviderResult = 0;
+	char szProviderError[512] = { 0 };
 #ifdef _WIN32
-	return reinterpret_cast<CreateInterfaceFn>(GetProcAddress( hDLL, CREATEINTERFACE_PROCNAME ));
+	pFactory = reinterpret_cast<CreateInterfaceFn>(
+		GetProcAddress( hDLL, CREATEINTERFACE_PROCNAME ) );
+	if ( !pFactory )
+	{
+		nProviderResult = (int)GetLastError();
+		Q_snprintf( szProviderError, sizeof( szProviderError ),
+			"Win32 error %d", nProviderResult );
+	}
 #elif defined(POSIX)
 	// Linux gives this error:
 	//../public/interface.cpp: In function `IBaseInterface *(*Sys_GetFactory
@@ -530,8 +667,18 @@ CreateInterfaceFn Sys_GetFactory( CSysModule *pModule )
 	//pointer-to-function and pointer-to-object
 	//
 	// so lets get around it :)
-	return (CreateInterfaceFn)(GetProcAddress( (void *)hDLL, CREATEINTERFACE_PROCNAME ));
+	dlerror();
+	pFactory = (CreateInterfaceFn)(GetProcAddress( (void *)hDLL, CREATEINTERFACE_PROCNAME ));
+	if ( !pFactory )
+	{
+		const char *pError = dlerror();
+		Q_strncpy( szProviderError, pError ? pError : "dlsym failed",
+			sizeof( szProviderError ) );
+	}
 #endif
+	Sys_RecordModuleEntryPoint( pModule, NULL, "CreateInterface",
+		pFactory != NULL, nProviderResult, szProviderError );
+	return pFactory;
 }
 
 //-----------------------------------------------------------------------------
@@ -550,12 +697,33 @@ CreateInterfaceFn Sys_GetFactoryThis( void )
 //-----------------------------------------------------------------------------
 CreateInterfaceFn Sys_GetFactory( const char *pModuleName )
 {
+	CreateInterfaceFn pFactory = NULL;
+	int nProviderResult = 0;
+	char szProviderError[512] = { 0 };
 #ifdef _WIN32
-	return static_cast<CreateInterfaceFn>( Sys_GetProcAddress( pModuleName, CREATEINTERFACE_PROCNAME ) );
+	pFactory = static_cast<CreateInterfaceFn>(
+		Sys_GetProcAddress( pModuleName, CREATEINTERFACE_PROCNAME ) );
+	if ( !pFactory )
+	{
+		nProviderResult = (int)GetLastError();
+		Q_snprintf( szProviderError, sizeof( szProviderError ),
+			"Win32 error %d", nProviderResult );
+	}
 #elif defined(POSIX)
 	// see Sys_GetFactory( CSysModule *pModule ) for an explanation
-	return (CreateInterfaceFn)( Sys_GetProcAddress( pModuleName, CREATEINTERFACE_PROCNAME ) );
+	dlerror();
+	pFactory = (CreateInterfaceFn)(
+		Sys_GetProcAddress( pModuleName, CREATEINTERFACE_PROCNAME ) );
+	if ( !pFactory )
+	{
+		const char *pError = dlerror();
+		Q_strncpy( szProviderError, pError ? pError : "dlsym failed",
+			sizeof( szProviderError ) );
+	}
 #endif
+	Sys_RecordModuleEntryPoint( NULL, pModuleName, "CreateInterface",
+		pFactory != NULL, nProviderResult, szProviderError );
+	return pFactory;
 }
 
 //-----------------------------------------------------------------------------
@@ -576,11 +744,14 @@ bool Sys_LoadInterface(
 	CreateInterfaceFn fn = Sys_GetFactory( pMod );
 	if ( !fn )
 	{
+		Sys_RecordModuleInterface( pMod, pInterfaceVersionName, false );
 		Sys_UnloadModule( pMod );
 		return false;
 	}
 
 	*pOutInterface = fn( pInterfaceVersionName, NULL );
+	Sys_RecordModuleInterface( pMod, pInterfaceVersionName,
+		*pOutInterface != NULL );
 	if ( !( *pOutInterface ) )
 	{
 		Sys_UnloadModule( pMod );
@@ -593,6 +764,57 @@ bool Sys_LoadInterface(
 	return true;
 }
 
+CSysModule *Sys_LoadModuleWithContext(
+	const char *pRequestingSubsystem,
+	int nSourceLine,
+	const char *pModuleName,
+	Sys_Flags flags )
+{
+	CScopedModuleLoadRequest request( pRequestingSubsystem, nSourceLine );
+	return Sys_LoadModule( pModuleName, flags );
+}
+
+void Sys_UnloadModuleWithContext(
+	const char *pRequestingSubsystem,
+	int nSourceLine,
+	CSysModule *pModule )
+{
+	CScopedModuleLoadRequest request( pRequestingSubsystem, nSourceLine );
+	Sys_UnloadModule( pModule );
+}
+
+CreateInterfaceFn Sys_GetFactoryWithContext(
+	const char *pRequestingSubsystem,
+	int nSourceLine,
+	CSysModule *pModule )
+{
+	CScopedModuleLoadRequest request( pRequestingSubsystem, nSourceLine );
+	return Sys_GetFactory( pModule );
+}
+
+CreateInterfaceFn Sys_GetFactoryWithContext(
+	const char *pRequestingSubsystem,
+	int nSourceLine,
+	const char *pModuleName )
+{
+	CScopedModuleLoadRequest request( pRequestingSubsystem, nSourceLine );
+	return Sys_GetFactory( pModuleName );
+}
+
+bool Sys_LoadInterfaceWithContext(
+	const char *pRequestingSubsystem,
+	int nSourceLine,
+	const char *pModuleName,
+	const char *pInterfaceVersionName,
+	CSysModule **pOutModule,
+	void **pOutInterface )
+{
+	CScopedModuleLoadRequest request(
+		pRequestingSubsystem, nSourceLine, pInterfaceVersionName );
+	return Sys_LoadInterface( pModuleName, pInterfaceVersionName,
+		pOutModule, pOutInterface );
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: Place this as a singleton at module scope (e.g.) and use it to get the factory from the specified module name.  
 // 
@@ -602,6 +824,20 @@ bool Sys_LoadInterface(
 //-----------------------------------------------------------------------------
 CDllDemandLoader::CDllDemandLoader( char const *pchModuleName ) : 
 	m_pchModuleName( pchModuleName ), 
+	m_pRequestingSubsystem( "<legacy ABI caller>" ),
+	m_nSourceLine( 0 ),
+	m_hModule( 0 ),
+	m_bLoadAttempted( false )
+{
+}
+
+CDllDemandLoader::CDllDemandLoader(
+	char const *pchModuleName,
+	const char *pRequestingSubsystem,
+	int nSourceLine ) :
+	m_pchModuleName( pchModuleName ),
+	m_pRequestingSubsystem( pRequestingSubsystem ),
+	m_nSourceLine( nSourceLine ),
 	m_hModule( 0 ),
 	m_bLoadAttempted( false )
 {
@@ -617,7 +853,8 @@ CreateInterfaceFn CDllDemandLoader::GetFactory()
 	if ( !m_hModule && !m_bLoadAttempted )
 	{
 		m_bLoadAttempted = true;
-		m_hModule = Sys_LoadModule( m_pchModuleName );
+		m_hModule = Sys_LoadModuleWithContext(
+			m_pRequestingSubsystem, m_nSourceLine, m_pchModuleName );
 	}
 
 	if ( !m_hModule )
@@ -625,14 +862,16 @@ CreateInterfaceFn CDllDemandLoader::GetFactory()
 		return NULL;
 	}
 
-	return Sys_GetFactory( m_hModule );
+	return Sys_GetFactoryWithContext(
+		m_pRequestingSubsystem, m_nSourceLine, m_hModule );
 }
 
 void CDllDemandLoader::Unload()
 {
 	if ( m_hModule )
 	{
-		Sys_UnloadModule( m_hModule );
+		Sys_UnloadModuleWithContext(
+			m_pRequestingSubsystem, m_nSourceLine, m_hModule );
 		m_hModule = 0;
 	}
 }
@@ -658,4 +897,3 @@ extern "C" int backtrace( void **buffer, int size )
 }
 
 #endif // STAGING_ONLY && _WIN32
-

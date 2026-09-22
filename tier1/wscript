@@ -37,6 +37,7 @@ def build(bld):
 		'lzss.cpp', # [!$SOURCESDK]
 		'mempool.cpp',
 		'memstack.cpp',
+		'module_load_telemetry.cpp',
 		'NetAdr.cpp',
 		'newbitbuf.cpp',
 		'rangecheckedvar.cpp',
@@ -98,4 +99,3 @@ def build(bld):
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx      = bld.get_taskgen_count()
 	)
-
