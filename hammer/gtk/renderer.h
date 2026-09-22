@@ -67,8 +67,14 @@ public:
 	ViewMode Mode() const { return m_mode; }
 
 	// Uploads a scene's brush geometry to GL buffers, replacing any previous
-	// scene, and frames the view to fit it. A GL context must be current.
+	// scene. Does NOT move the camera (so live edits keep the current view); call
+	// FrameScene() explicitly after a load/new/reset. A GL context must be current.
 	void SetScene( const hammer::geometry::WorldScene &scene );
+
+	// The solid id to draw highlighted (a selected brush). Solids with a negative
+	// id are drawn as the in-progress "pending" box. Takes effect at the next
+	// SetScene. INT_MIN (the default) highlights nothing.
+	void SetHighlight( int solidId ) { m_highlightId = solidId; }
 
 	// Draws the current scene into the bound framebuffer at the given pixel size.
 	void Render( int widthPx, int heightPx );
@@ -82,6 +88,19 @@ public:
 	// pixels; their meaning depends on the view mode (orbit vs pan).
 	void DragBy( float dxPixels, float dyPixels );
 	void ZoomBy( float factor );
+
+	// Touchpad two-finger scroll: pans a 2D view or orbits the 3D view. Deltas are
+	// scroll units already scaled to a pixel-like magnitude by the caller.
+	void PanScroll( float dxUnits, float dyUnits );
+
+	// Figma/Apple-style zoom anchored at a cursor/pinch point (widget pixels), so
+	// the world point under that point stays put. 3D falls back to a plain dolly.
+	void ZoomAtPixel( float factor, float px, float py, int widthPx, int heightPx );
+
+	// World-space coordinates under a viewport pixel, for the status read-out.
+	// Only meaningful for 2D views; returns the two in-plane axis values.
+	void PixelToWorld(
+	    float px, float py, int widthPx, int heightPx, float &outU, float &outV ) const;
 
 	int SolidCount() const { return m_solidCount; }
 	int TriangleCount() const { return m_triCount; }
@@ -108,12 +127,14 @@ private:
 	int m_solidCount = 0;
 
 	float m_sceneCenter[3] = { 0.0f, 0.0f, 0.0f };
+	float m_sceneSize[3] = { 512.0f, 512.0f, 512.0f };
 	float m_sceneRadius = 512.0f;
 	bool m_haveScene = false;
 
 	ViewMode m_mode = ViewMode::Perspective;
 	Camera m_camera;
 	Ortho2D m_ortho;
+	int m_highlightId = -2147483647; // INT_MIN-ish: highlight nothing by default
 	bool m_initialized = false;
 };
 

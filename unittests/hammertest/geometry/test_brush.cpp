@@ -65,16 +65,17 @@ double Len( const Vec3d &a )
 // Six axis-aligned side planes (each written as three points) of the cube
 // [0,64]^3, in the VMF "plane" text form. Winding is intentionally mixed to prove
 // BuildSolid reorients each plane against the interior rather than trusting it.
-const char *kCubeVmfSolid = "solid\n"
-                            "{\n"
-                            "\t\"id\" \"42\"\n"
-                            "\tside { \"plane\" \"(64 0 0) (64 1 0) (64 0 1)\" \"material\" \"DEV/A\" }\n"
-                            "\tside { \"plane\" \"(0 0 0) (0 0 1) (0 1 0)\" \"material\" \"DEV/B\" }\n"
-                            "\tside { \"plane\" \"(0 64 0) (0 64 1) (1 64 0)\" \"material\" \"DEV/C\" }\n"
-                            "\tside { \"plane\" \"(0 0 0) (1 0 0) (0 0 1)\" \"material\" \"DEV/D\" }\n"
-                            "\tside { \"plane\" \"(0 0 64) (1 0 64) (0 1 64)\" \"material\" \"DEV/E\" }\n"
-                            "\tside { \"plane\" \"(0 0 0) (0 1 0) (1 0 0)\" \"material\" \"DEV/F\" }\n"
-                            "}\n";
+const char *kCubeVmfSolid =
+    "solid\n"
+    "{\n"
+    "\t\"id\" \"42\"\n"
+    "\tside { \"plane\" \"(64 0 0) (64 1 0) (64 0 1)\" \"material\" \"DEV/A\" }\n"
+    "\tside { \"plane\" \"(0 0 0) (0 0 1) (0 1 0)\" \"material\" \"DEV/B\" }\n"
+    "\tside { \"plane\" \"(0 64 0) (0 64 1) (1 64 0)\" \"material\" \"DEV/C\" }\n"
+    "\tside { \"plane\" \"(0 0 0) (1 0 0) (0 0 1)\" \"material\" \"DEV/D\" }\n"
+    "\tside { \"plane\" \"(0 0 64) (1 0 64) (0 1 64)\" \"material\" \"DEV/E\" }\n"
+    "\tside { \"plane\" \"(0 0 0) (0 1 0) (1 0 0)\" \"material\" \"DEV/F\" }\n"
+    "}\n";
 
 // Asserts 's' is the cube [0,64]^3: six quads, exact bounds, unit outward normals,
 // every vertex behind every face plane (convex), CCW winding about each normal.
@@ -87,7 +88,7 @@ void CheckIsUnitCube( const BrushSolid &s )
 
 	for ( const BrushFace &f : s.faces )
 	{
-		CHECK( f.vertices.size() == 4 );      // each cube face is a quad
+		CHECK( f.vertices.size() == 4 );             // each cube face is a quad
 		CHECK( Near( Len( f.plane.normal ), 1.0 ) ); // unit normal
 
 		// Every vertex lies on its own plane.
@@ -137,11 +138,11 @@ void TestPlaneParsing()
 		CHECK( Near( ( *ok2 )[0].x, -1.5 ) && Near( ( *ok2 )[2].y, 3.25 ) );
 	}
 
-	CHECK( !ParsePlanePoints( "(0 0 0) (1 0 0)" ).has_value() );             // too few points
+	CHECK( !ParsePlanePoints( "(0 0 0) (1 0 0)" ).has_value() );                 // too few points
 	CHECK( !ParsePlanePoints( "(0 0 0) (1 0 0) (0 1 0) (0 0 1)" ).has_value() ); // too many
-	CHECK( !ParsePlanePoints( "(0 0 0) (x 0 0) (0 1 0)" ).has_value() );     // non-numeric
-	CHECK( !ParsePlanePoints( "(0 0) (1 0 0) (0 1 0)" ).has_value() );       // short point
-	CHECK( !ParsePlanePoints( "(0 0 0 (1 0 0) (0 1 0)" ).has_value() );      // unbalanced
+	CHECK( !ParsePlanePoints( "(0 0 0) (x 0 0) (0 1 0)" ).has_value() );         // non-numeric
+	CHECK( !ParsePlanePoints( "(0 0) (1 0 0) (0 1 0)" ).has_value() );           // short point
+	CHECK( !ParsePlanePoints( "(0 0 0 (1 0 0) (0 1 0)" ).has_value() );          // unbalanced
 }
 
 void TestPlaneFromPoints()
@@ -162,15 +163,23 @@ void TestBuildFromPlanes()
 {
 	// Cube via explicit (already-outward) planes.
 	std::vector<Plane> planes = {
-	    { { 1, 0, 0 }, 64 }, { { -1, 0, 0 }, 0 }, { { 0, 1, 0 }, 64 },
-	    { { 0, -1, 0 }, 0 }, { { 0, 0, 1 }, 64 }, { { 0, 0, -1 }, 0 },
+	    { { 1, 0, 0 }, 64 },
+	    { { -1, 0, 0 }, 0 },
+	    { { 0, 1, 0 }, 64 },
+	    { { 0, -1, 0 }, 0 },
+	    { { 0, 0, 1 }, 64 },
+	    { { 0, 0, -1 }, 0 },
 	};
 	CheckIsUnitCube( BuildSolidFromPlanes( planes, {}, 7 ) );
 
 	// Inward-facing planes must produce the SAME cube (reorientation policy).
 	std::vector<Plane> inward = {
-	    { { -1, 0, 0 }, -64 }, { { 1, 0, 0 }, 0 }, { { 0, -1, 0 }, -64 },
-	    { { 0, 1, 0 }, 0 },    { { 0, 0, -1 }, -64 }, { { 0, 0, 1 }, 0 },
+	    { { -1, 0, 0 }, -64 },
+	    { { 1, 0, 0 }, 0 },
+	    { { 0, -1, 0 }, -64 },
+	    { { 0, 1, 0 }, 0 },
+	    { { 0, 0, -1 }, -64 },
+	    { { 0, 0, 1 }, 0 },
 	};
 	CheckIsUnitCube( BuildSolidFromPlanes( inward, {}, 8 ) );
 
@@ -180,8 +189,12 @@ void TestBuildFromPlanes()
 	// Off-origin box: the interior point must be derived from the polytope, not
 	// assumed near the origin (regression guard for a brush far from 0,0,0).
 	std::vector<Plane> offset = {
-	    { { 1, 0, 0 }, 164 }, { { -1, 0, 0 }, -100 }, { { 0, 1, 0 }, 264 },
-	    { { 0, -1, 0 }, -200 }, { { 0, 0, 1 }, 364 }, { { 0, 0, -1 }, -300 },
+	    { { 1, 0, 0 }, 164 },
+	    { { -1, 0, 0 }, -100 },
+	    { { 0, 1, 0 }, 264 },
+	    { { 0, -1, 0 }, -200 },
+	    { { 0, 0, 1 }, 364 },
+	    { { 0, 0, -1 }, -300 },
 	};
 	const BrushSolid box = BuildSolidFromPlanes( offset, {}, 9 );
 	CHECK( box.faces.size() == 6 );
@@ -243,8 +256,8 @@ void TestBuildScene()
 	}
 
 	const WorldScene scene = BuildSceneFromDocument( pr.root );
-	CHECK( scene.solids.size() == 2 );   // world solid + brush-entity solid
-	CHECK( scene.TotalFaces() == 12 );   // two cubes
+	CHECK( scene.solids.size() == 2 ); // world solid + brush-entity solid
+	CHECK( scene.TotalFaces() == 12 ); // two cubes
 	CHECK( scene.bounded );
 	CHECK( Near( scene.mins.x, 0.0 ) && Near( scene.maxs.z, 64.0 ) );
 
@@ -260,9 +273,9 @@ void TestBuildScene()
 		CHECK( scene.entities[1].origin.has_value() );
 		if ( scene.entities[1].origin )
 		{
-			CHECK( Near( scene.entities[1].origin->x, 16.0 )
-			       && Near( scene.entities[1].origin->y, 32.0 )
-			       && Near( scene.entities[1].origin->z, 48.0 ) );
+			CHECK( Near( scene.entities[1].origin->x, 16.0 ) &&
+			       Near( scene.entities[1].origin->y, 32.0 ) &&
+			       Near( scene.entities[1].origin->z, 48.0 ) );
 		}
 	}
 }

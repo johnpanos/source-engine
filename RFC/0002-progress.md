@@ -121,6 +121,66 @@ Recorded in `architecture/hammer_compatibility.json` (profiles).
   delegate geometry to the reusable library through the seam and get byte-identical
   results. The adapter is permanent sibling infrastructure, not a retirement target.
 
+### D6 — A real thin GTK sibling + a real file-store provider (HAM-GTKSHELL-001, HAM-DISKSTORE-001)
+
+- **Decision:** Realize the "thin MFC/GTK UI as siblings" structure concretely by
+  (a) giving the reusable app libraries their first **production** `IFileStore`
+  provider, `hammer::adapters::platform::DiskFileStore` (atomic temp-write+rename),
+  and (b) standing up an actual **thin GTK4/libadwaita shell**
+  (`hammer/adapters/gtk/hammer_gtk_shell.cpp`) whose every action delegates to
+  `hammer::app::EditorDocument` persisted through that store. The shell holds only
+  toolkit glue and view state; no editor policy.
+- **Verified here:**
+  - `IFileStore` is now an enforced polymorphic contract (`ports.file_store.v1`):
+    one shared suite runs against the real `DiskFileStore`, the in-memory fake, and
+    a deliberately broken provider (caught) — green on gcc, clang, and MinGW PE
+    under Wine.
+  - The GTK sibling **compiles and links to a real ELF binary** against gtk4 4.22 +
+    libadwaita 1.9 + the reusable libraries and nothing else
+    (`unittests/hammertest/adapters/build_gtk_shell.sh`), proving it carries no
+    hidden editor logic and no MFC dependency.
+  - The shell's delegated workflow — New → Set Key → Save → reopen → Undo/Redo — is
+    verified headlessly with the real disk store (`adapters.gtk_shell.v1`,
+    `test_shell_workflow.cpp`), since a GUI needs a display (none here).
+- **Honest gaps:** the GUI is not run here (no headless display); full H5 editor
+  parity (multi-view map rendering, inspector, textures, the R1 renderer viewport)
+  is not built; and the MFC sibling is not built (needs the Source Windows engine,
+  D2). This is the sibling architecture proven end-to-end for **one** buildable
+  shell, not a shipped editor. Profile `linux-gtk-desktop` is now `unverified`
+  (was `planned`) to reflect the buildable-but-not-run status.
+
+### D7 — The MFC sibling too (HAM-MFCSHELL-001) — the D2 legacy-shell caveat does not block a NEW thin MFC shell
+
+- **Correction to earlier framing:** D2's "the full MFC shell needs the whole Source
+  Windows engine" is true of the **legacy** Hammer shell (`CMapDoc`/`CMapView`), not
+  of a **new** thin MFC sibling. A new sibling — parallel to the GTK one — depends
+  only on MFC + the reusable, engine-free libraries, so it builds against the
+  extracted libraries alone.
+- **Verified here (local MSVC+MFC/Wine gate):**
+  - `hammer/adapters/mfc/hammer_mfc_shell.cpp` (a `CWinApp`/`CFrameWnd` whose command
+    handlers delegate to `EditorDocument` + `DiskFileStore`) **compiles and links to
+    a real PE32+ GUI executable** with the real MSVC+MFC toolchain (cl 19.29,
+    atlmfc, shared `mfc140.dll`) against MFC + the reusable library sources and
+    nothing else.
+  - `test_mfc_workflow.cpp` — a console **MFC-linked** binary — **runs under Wine**
+    and exercises New → Set Key → Save → reopen → Undo/Redo through
+    `EditorDocument` + the real `DiskFileStore` (exit 0), proving MFC and the
+    reusable engine-free libraries coexist in one binary and the delegated workflow
+    executes at runtime.
+  - Contract `adapters.mfc_shell.v1`; evidence `architecture/hammer_mfc_parity.json`;
+    repro `unittests/hammertest/adapters/build_mfc_shell.sh`; profile
+    `windows-mfc-sibling` = `verified` (distinct from `windows-mfc-legacy`).
+- **Both siblings now build on the same reusable libraries** — `adapters.gtk`
+  (GTK4/libadwaita) and `adapters.mfc` (MFC) — persisting through the same
+  `DiskFileStore` and serializing via the same `hammer::formats` codec, with only
+  toolkit glue per sibling (DRY). That is the "thin MFC/GTK UI as siblings" shape
+  realized for both shells.
+- **Honest gaps (unchanged):** neither GUI is run here (no display); full H5 editor
+  parity (map rendering, inspector, textures, R1 viewport) is not built; the
+  **legacy** MFC shell (`windows-mfc-legacy`) is still unverified (needs the whole
+  Source engine). This proves the factored architecture on both UI sides, not a
+  shipped editor.
+
 ## Installed H0 machinery (this change)
 
 Delivered as the first bounded H0 slice (HAM-INVENTORY-001 and HAM-RATCHET-001
@@ -186,7 +246,7 @@ baseline. No gate claims a stronger guarantee than these installed checks provid
 | H1 | **active (geometry + scene seams)** | `hammer.geometry`: `AxisAlignedBox`, `RoundHalfAwayFromZero` (DRY grid-rounding owner), angle policies. `hammer.scene`: generational `HandleTable` (stale-reference rejection, independent documents) and `SceneGraph` (handle-addressed, validated/atomic reparent with cycle rejection, atomic subtree delete). All headless-verified under gcc + clang with negative providers. See below. |
 | H3 | **partial (independent models)** | Ahead-of-authority reference models landed and pinned: `DocumentHistory` (revision vs saved-position, no-op neutrality, undo-to-saved clears modified), `PropertyValue` (empty-vs-unset-vs-mixed), and `UpdateHint` (HAM-UPDATEHINT-001) — the reusable core of MFC `CUpdateHint`, composing `hammer.geometry` + `hammer.scene` (notify-code buckets + unioned affected region, legacy `MAX_NOTIFY_CODES`=16 preserved; legacy source is orphaned dead code, so this is a reconstruction of intent). Not yet the live authority (needs H2 + legacy cutover). |
 | H2 | **partial (codec + save seams)** | `hammer.formats`: VMF/keyvalues parser + writer + versioned semantic comparator (unknown-chunk preservation, malformed diagnostics, data-loss detection). `hammer.ports` + `hammer.app`: `IFileStore` port and `SaveDocument` transactional save (temp-write + atomic rename; failed save preserves prior file), verified with an in-memory fault-injecting fake. Remaining: VMF↔scene import/export, real file-store provider, fixtures corpus. |
-| H4–H7, R1 | planned | Blocked on H0 exit and, for R1, the render contract + GTK profile. |
+| H4–H7, R1 | planned | Blocked on H0 exit and, for R1, the render contract + GTK profile. A bounded `linux-gtk-desktop` **boot + VMF-render feasibility slice** now exists (below): it is feasibility evidence, not R1/H5 completion — no editing tools, live-document authority, or material fidelity yet. |
 
 **Strict-module conformance suites** are registered in the shared RFC 0005 runner
 (`quality/conformance.manifest.json`, `tools/quality/conformance.py`): the RFC 0002
@@ -228,6 +288,59 @@ boundary:
   own value type is therefore the only way to get a genuinely hermetic, portable,
   testable geometry module now — which is exactly the RFC's "None" dependency rule
   for that module.
+
+### VMF→brush geometry bridge and first `linux-gtk-desktop` boot (feasibility)
+
+A second `hammer.geometry` extraction and the first bootable shell for the D1
+delivery target landed together as a working, testable consumer at a new boundary.
+
+- **Headless geometry bridge (HAM-GEOMETRY-001, tested).**
+  `public/hammer/geometry/brush.h` + `hammer/core/geometry/brush.cpp` turn a
+  parsed VMF (the `hammer.formats` keyvalues tree) into renderable convex solids:
+  each brush `solid`'s `side` planes are intersected into per-face polygons with
+  outward normals. It is dependency-free (C++ stdlib + `hammer.formats`), computed
+  in double precision, and **winding-independent** — outward orientation is derived
+  from an interior point found from the polytope's own vertices, not from VMF point
+  order (this fixed a real bug where an origin-relative heuristic mis-oriented an
+  off-origin brush). Contract: `unittests/hammertest/contracts/geometry.brush.v1.md`.
+  Suites `hammer.geometry.brush` (+`.sensitivity`, an unclipped provider the oracle
+  catches) pass under gcc and clang on `linux-headless-core` via
+  `run_headless.sh`. This is `characterized`: legacy Hammer's own VMF/brush code
+  remains the sole live authority; this is the strict, render-facing importer, not
+  a replacement of a legacy caller, and it does not yet cover displacements,
+  texture axes, or scene→VMF export.
+- **Shell delivery target — first boot (`hammer/gtk/`, separate product).** A GTK4
+  + libadwaita host composes the strict core (`EditorDocument` + the geometry
+  bridge, over a host-owned `IFileStore`) and:
+  - boots an Adwaita window and **opens a simple VMF** (File▸Open / `--open`);
+  - lays out the **classic Hammer UI** — menu bar, toolbar, tool palette, the four
+    viewports (3D camera + 2D top/front/side, resizable panes), the object bar
+    (Select · texture group · current texture · VisGroups · Show/Edit/Mark) and a
+    status bar with a live world-coordinate read-out;
+  - renders a shaded 3D preview and 2D wireframe-with-grid views, with
+    touchpad-native navigation (two-finger pan/orbit, pinch- and ⌃-scroll zoom
+    anchored at the cursor, kinetic scrolling).
+  Native GTK/GDK/GL detail is confined to `hammer/gtk/`; the core it drives stays
+  headless. See `hammer/gtk/README.md`.
+- **Verified.** Builds `-Wall -Wextra -Werror` under g++ 16 / clang 22 against
+  system gtk4 4.22 + libadwaita 1.9 + epoxy. The interactive window boots on the
+  live Wayland session with a GL 4.6 core context on all four viewports and stays
+  running (no crash). The 3D preview is checked **without a window server** through
+  a shared offscreen EGL path: `--screenshot` (single view) and `--quad` (the 2×2
+  camera/top/front/side composite) render the sample `hammer/gtk/samples/room.vmf`
+  correctly; `hammer/gtk/tests/viewport_smoke.sh` asserts non-blank geometry and
+  the expected solid/triangle counts. (External capture of the on-screen window is
+  blocked by the session compositor's screenshot policy; the offscreen path renders
+  the identical viewport content.)
+  - **Toolchain note:** GtkGLArea defaults to a GLES context here, which crashed
+    Mesa's GLSL linker on the `#version 330 core` shaders; forcing desktop GL core
+    (`gtk_gl_area_set_allowed_apis(GDK_GL_API_GL)` + required 3.3) fixes it and
+    matches the offscreen EGL profile.
+- **Not claimed.** This closes **no** gate. It is R1/H5 feasibility only: there is
+  no editing, selection, undo, or save wired to the live document from the UI, no
+  real material/texture rendering, no displacement support, and the legacy MFC
+  Hammer remains the authority. The tool palette, texture panel, and menu items
+  beyond Open/Quit/Reset-Views are laid out but non-functional.
 
 ## Pre-existing failures (reported separately, not introduced here)
 

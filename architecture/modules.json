@@ -8,6 +8,10 @@
       {"id": "platform.sdl3.legacy-adapter", "kind": "backend", "paths": ["platform/sdl3/legacy_include/"], "allowedEdges": [], "externalHeaders": ["SDL3/SDL.h", "SDL3/SDL_clipboard.h", "SDL3/SDL_error.h", "SDL3/SDL_events.h", "SDL3/SDL_gamepad.h", "SDL3/SDL_haptic.h", "SDL3/SDL_keycode.h", "SDL3/SDL_messagebox.h", "SDL3/SDL_misc.h", "SDL3/SDL_scancode.h", "SDL3/SDL_touch.h", "SDL3/SDL_version.h"]},
       {"id": "platform.sdl3.launcher", "kind": "backend", "paths": ["appframework/sdl3mgr.cpp"], "allowedEdges": [], "externalHeaders": ["SDL3/SDL.h"], "legacyIncludes": ["appframework/ilaunchermgr.h", "inputsystem/ButtonCode.h", "tier0/icommandline.h", "tier1/convar.h", "tier1/utllinkedlist.h", "tier0/memdbgon.h"]},
       {"id": "platform.sdl3.native-tests", "kind": "native-test", "paths": ["unittests/platformtest/sdl3/"], "allowedEdges": [], "externalHeaders": ["SDL3/SDL.h"], "legacyIncludes": ["appframework/ilaunchermgr.h", "tier0/icommandline.h"]},
+      {"id": "render.legacy-provider-contract", "paths": ["public/render/legacy_shader_provider.h"], "allowedEdges": []},
+      {"id": "render.shader-extension-contract", "paths": ["materialsystem/shaderextension_compatibility_host.h"], "allowedEdges": []},
+      {"id": "render.shader-extension-host", "kind": "legacy-interop", "paths": ["materialsystem/shaderextension_compatibility_host.cpp"], "allowedEdges": ["render.shader-extension-contract"], "legacyIncludes": ["filesystem.h", "IShaderSystem.h"]},
+      {"id": "render.shader-extension-abi-test", "kind": "native-test", "paths": ["unittests/shaderextensiontest/test_shaderextension_host.cpp"], "allowedEdges": ["render.shader-extension-contract"], "legacyIncludes": ["filesystem_passthru.h", "../../materialsystem/IShaderSystem.h"]},
       {"id": "platform.composition", "paths": ["public/platform/composition.h", "public/platform/legacy_binding.h", "platform/"], "allowedEdges": ["foundation"]},
       {"id": "testing.contracts", "paths": ["public/testing/"], "allowedEdges": []},
       {"id": "testing.runner", "paths": ["utils/unittest/capability_runner.cpp", "utils/unittest/capability_unittest.cpp"], "allowedEdges": ["foundation", "platform.composition", "testing.contracts"]},
@@ -28,11 +32,22 @@
       "external/vpc/tier1/interface.cpp",
       "unittests/appframeworktest/appsystemgrouptest.cpp",
       "unittests/legacymoduleclientfixture/legacy_loader_abi_2013.h",
-      "unittests/legacymoduleclientfixture/legacymoduleclientfixture.cpp"
+      "unittests/legacymoduleclientfixture/legacymoduleclientfixture.cpp",
+      "unittests/shaderextensiontest/test_shaderextension_host.cpp"
     ]
   },
   "loaderInventory": {
     "classifications": [
+      {
+        "name": "retained-extension",
+        "pathPrefixes": ["materialsystem/shaderextension_compatibility_host.cpp"],
+        "reason": "Private ShaderDLL004 mod-extension host; scoped filesystem acquisition, version negotiation and disconnect-before-unload preserve the retained ABI."
+      },
+      {
+        "name": "first-party-composition",
+        "pathPrefixes": ["materialsystem/shadersystem.cpp"],
+        "reason": "Remaining built-in shader-library loader (stdshader/debug); typed renderer backend selection does not retire this separate library composition yet."
+      },
       {
         "name": "tool-indirection",
         "pathPrefixes": ["devtools/", "external/vpc/", "tools/", "unittests/", "utils/"],

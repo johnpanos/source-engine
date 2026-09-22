@@ -170,6 +170,8 @@ $Project "Vbsp"
 
 	$Folder	"Link Libraries"
 	{
+		$ImpLib materialsystem
+		$ImpLib shaderapiempty
 		$Lib bitmap
 		$Lib fgdlib
 		$Lib mathlib

@@ -11,6 +11,7 @@
 
 #include <epoxy/gl.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -172,7 +173,7 @@ void SolidColor( int index, float out[3] )
 
 // Pushes one interleaved vertex (pos, normal, colour) onto a buffer.
 void PushVertex( std::vector<float> &out, float x, float y, float z, float nx, float ny, float nz,
-                 float r, float g, float b )
+    float r, float g, float b )
 {
 	out.push_back( x );
 	out.push_back( y );
@@ -191,11 +192,11 @@ void SetupAttribs()
 	glEnableVertexAttribArray( 0 );
 	glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>( 0 ) );
 	glEnableVertexAttribArray( 1 );
-	glVertexAttribPointer( 1, 3, GL_FLOAT, GL_FALSE, stride,
-	                       reinterpret_cast<void *>( 3 * sizeof( float ) ) );
+	glVertexAttribPointer(
+	    1, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>( 3 * sizeof( float ) ) );
 	glEnableVertexAttribArray( 2 );
-	glVertexAttribPointer( 2, 3, GL_FLOAT, GL_FALSE, stride,
-	                       reinterpret_cast<void *>( 6 * sizeof( float ) ) );
+	glVertexAttribPointer(
+	    2, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>( 6 * sizeof( float ) ) );
 }
 
 } // namespace
@@ -292,17 +293,17 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 				continue;
 			}
 			const float n[3] = { static_cast<float>( face.plane.normal.x ),
-			                     static_cast<float>( face.plane.normal.y ),
-			                     static_cast<float>( face.plane.normal.z ) };
+			    static_cast<float>( face.plane.normal.y ),
+			    static_cast<float>( face.plane.normal.z ) };
 			const hammer::geometry::Vec3d &v0 = face.vertices[0];
 			for ( std::size_t i = 1; i + 1 < face.vertices.size(); ++i )
 			{
-				const hammer::geometry::Vec3d tri[3] = { v0, face.vertices[i], face.vertices[i + 1] };
+				const hammer::geometry::Vec3d tri[3] = {
+				    v0, face.vertices[i], face.vertices[i + 1] };
 				for ( const hammer::geometry::Vec3d &p : tri )
 				{
 					PushVertex( mesh, static_cast<float>( p.x ), static_cast<float>( p.y ),
-					            static_cast<float>( p.z ), n[0], n[1], n[2], color[0], color[1],
-					            color[2] );
+					    static_cast<float>( p.z ), n[0], n[1], n[2], color[0], color[1], color[2] );
 				}
 				++m_triCount;
 			}
@@ -312,9 +313,9 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 				const hammer::geometry::Vec3d &a = face.vertices[i];
 				const hammer::geometry::Vec3d &b = face.vertices[( i + 1 ) % face.vertices.size()];
 				PushVertex( lines, static_cast<float>( a.x ), static_cast<float>( a.y ),
-				            static_cast<float>( a.z ), 0, 0, 1, 0.10f, 0.10f, 0.12f );
+				    static_cast<float>( a.z ), 0, 0, 1, 0.10f, 0.10f, 0.12f );
 				PushVertex( lines, static_cast<float>( b.x ), static_cast<float>( b.y ),
-				            static_cast<float>( b.z ), 0, 0, 1, 0.10f, 0.10f, 0.12f );
+				    static_cast<float>( b.z ), 0, 0, 1, 0.10f, 0.10f, 0.12f );
 			}
 		}
 	}
@@ -325,13 +326,13 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 	glBindVertexArray( m_meshVao );
 	glBindBuffer( GL_ARRAY_BUFFER, m_meshVbo );
 	glBufferData( GL_ARRAY_BUFFER, static_cast<GLsizeiptr>( mesh.size() * sizeof( float ) ),
-	              mesh.empty() ? nullptr : mesh.data(), GL_STATIC_DRAW );
+	    mesh.empty() ? nullptr : mesh.data(), GL_STATIC_DRAW );
 	SetupAttribs();
 
 	glBindVertexArray( m_lineVao );
 	glBindBuffer( GL_ARRAY_BUFFER, m_lineVbo );
 	glBufferData( GL_ARRAY_BUFFER, static_cast<GLsizeiptr>( lines.size() * sizeof( float ) ),
-	              lines.empty() ? nullptr : lines.data(), GL_STATIC_DRAW );
+	    lines.empty() ? nullptr : lines.data(), GL_STATIC_DRAW );
 	SetupAttribs();
 
 	glBindVertexArray( 0 );
@@ -345,6 +346,9 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 		const float dx = static_cast<float>( scene.maxs.x - scene.mins.x );
 		const float dy = static_cast<float>( scene.maxs.y - scene.mins.y );
 		const float dz = static_cast<float>( scene.maxs.z - scene.mins.z );
+		m_sceneSize[0] = dx;
+		m_sceneSize[1] = dy;
+		m_sceneSize[2] = dz;
 		m_sceneRadius = 0.5f * std::sqrt( dx * dx + dy * dy + dz * dz );
 		if ( m_sceneRadius < 1.0f )
 		{
@@ -396,9 +400,9 @@ void Renderer::FrameScene()
 	AxisIndices( uAxis, vAxis );
 	m_ortho.panU = m_sceneCenter[uAxis];
 	m_ortho.panV = m_sceneCenter[vAxis];
-	// Fit ~2.4 scene diameters across the viewport at a nominal 700px.
-	const float span = ( m_sceneRadius * 2.6f ) + 64.0f;
-	m_ortho.pixelsPerUnit = 700.0f / ( span * 2.0f );
+	// Fit this view's own 2D extent with a margin, relative to a nominal viewport.
+	const float fit = std::max( m_sceneSize[uAxis], m_sceneSize[vAxis] ) + 128.0f;
+	m_ortho.pixelsPerUnit = ( 0.85f * 620.0f ) / fit;
 }
 
 void Renderer::DragBy( float dxPixels, float dyPixels )
@@ -452,6 +456,50 @@ void Renderer::ZoomBy( float factor )
 	}
 }
 
+void Renderer::PanScroll( float dxUnits, float dyUnits )
+{
+	if ( m_mode == ViewMode::Perspective )
+	{
+		// Two-finger scroll orbits the camera.
+		DragBy( -dxUnits, -dyUnits );
+		return;
+	}
+	// Natural pan: the canvas follows the fingers.
+	m_ortho.panU += dxUnits / m_ortho.pixelsPerUnit;
+	m_ortho.panV -= dyUnits / m_ortho.pixelsPerUnit;
+}
+
+void Renderer::ZoomAtPixel( float factor, float px, float py, int widthPx, int heightPx )
+{
+	if ( m_mode == ViewMode::Perspective )
+	{
+		ZoomBy( 1.0f / factor ); // factor>1 zooms in; dolly closer
+		return;
+	}
+	float wu = 0.0f;
+	float wv = 0.0f;
+	PixelToWorld( px, py, widthPx, heightPx, wu, wv );
+	m_ortho.pixelsPerUnit *= factor;
+	if ( m_ortho.pixelsPerUnit < 1.0e-4f )
+	{
+		m_ortho.pixelsPerUnit = 1.0e-4f;
+	}
+	if ( m_ortho.pixelsPerUnit > 64.0f )
+	{
+		m_ortho.pixelsPerUnit = 64.0f;
+	}
+	// Re-anchor so the same world point stays under the cursor.
+	m_ortho.panU = wu - ( px - widthPx * 0.5f ) / m_ortho.pixelsPerUnit;
+	m_ortho.panV = wv + ( py - heightPx * 0.5f ) / m_ortho.pixelsPerUnit;
+}
+
+void Renderer::PixelToWorld(
+    float px, float py, int widthPx, int heightPx, float &outU, float &outV ) const
+{
+	outU = m_ortho.panU + ( px - widthPx * 0.5f ) / m_ortho.pixelsPerUnit;
+	outV = m_ortho.panV - ( py - heightPx * 0.5f ) / m_ortho.pixelsPerUnit;
+}
+
 void Renderer::RenderPerspective( int widthPx, int heightPx )
 {
 	glClearColor( 0.13f, 0.14f, 0.17f, 1.0f );
@@ -469,7 +517,7 @@ void Renderer::RenderPerspective( int widthPx, int heightPx )
 	const float aspect = static_cast<float>( widthPx ) / static_cast<float>( heightPx );
 	const float zFar = m_camera.distance + m_sceneRadius * 4.0f + 1024.0f;
 	const Mat4 mvp = Multiply( Perspective( 60.0f * kPi / 180.0f, aspect, 4.0f, zFar ),
-	                           LookAt( eye, m_camera.target, up ) );
+	    LookAt( eye, m_camera.target, up ) );
 
 	glUseProgram( m_program );
 	glUniformMatrix4fv( glGetUniformLocation( m_program, "uMVP" ), 1, GL_FALSE, mvp.m );
@@ -549,7 +597,7 @@ void Renderer::BuildGrid( int widthPx, int heightPx )
 	glBindVertexArray( m_gridVao );
 	glBindBuffer( GL_ARRAY_BUFFER, m_gridVbo );
 	glBufferData( GL_ARRAY_BUFFER, static_cast<GLsizeiptr>( grid.size() * sizeof( float ) ),
-	              grid.empty() ? nullptr : grid.data(), GL_DYNAMIC_DRAW );
+	    grid.empty() ? nullptr : grid.data(), GL_DYNAMIC_DRAW );
 	SetupAttribs();
 	glBindVertexArray( 0 );
 }
@@ -573,10 +621,10 @@ void Renderer::RenderOrtho( int widthPx, int heightPx )
 	{
 		v = 0.0f;
 	}
-	mvp.m[uAxis * 4 + 0] = 1.0f / halfU;               // world[uAxis] -> ndc.x
-	mvp.m[vAxis * 4 + 1] = 1.0f / halfV;               // world[vAxis] -> ndc.y
-	mvp.m[12] = -m_ortho.panU / halfU;                 // translate x
-	mvp.m[13] = -m_ortho.panV / halfV;                 // translate y
+	mvp.m[uAxis * 4 + 0] = 1.0f / halfU; // world[uAxis] -> ndc.x
+	mvp.m[vAxis * 4 + 1] = 1.0f / halfV; // world[vAxis] -> ndc.y
+	mvp.m[12] = -m_ortho.panU / halfU;   // translate x
+	mvp.m[13] = -m_ortho.panV / halfV;   // translate y
 	mvp.m[15] = 1.0f;
 
 	glUseProgram( m_program );

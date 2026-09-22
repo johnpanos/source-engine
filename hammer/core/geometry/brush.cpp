@@ -104,8 +104,8 @@ void ClipPolygon( std::vector<Vec3d> &poly, const Plane &clip )
 
 		// Crossing the plane (strictly, ignoring the on-plane tolerance) inserts
 		// the intersection point.
-		if ( ( dCur < -kOnPlaneEps && dNext > kOnPlaneEps )
-		     || ( dCur > kOnPlaneEps && dNext < -kOnPlaneEps ) )
+		if ( ( dCur < -kOnPlaneEps && dNext > kOnPlaneEps ) ||
+		     ( dCur > kOnPlaneEps && dNext < -kOnPlaneEps ) )
 		{
 			const double t = dCur / ( dCur - dNext );
 			out.push_back( Add( cur, Scale( Sub( next, cur ), t ) ) );
@@ -167,8 +167,8 @@ bool SolveThreePlanes( const Plane &a, const Plane &b, const Plane &c, Vec3d &ou
 	}
 	const Vec3d ca = Cross( c.normal, a.normal );
 	const Vec3d ab = Cross( a.normal, b.normal );
-	out = Scale( Add( Add( Scale( bc, a.dist ), Scale( ca, b.dist ) ), Scale( ab, c.dist ) ),
-	             1.0 / det );
+	out = Scale(
+	    Add( Add( Scale( bc, a.dist ), Scale( ca, b.dist ) ), Scale( ab, c.dist ) ), 1.0 / det );
 	return true;
 }
 
@@ -197,7 +197,7 @@ bool ComputeInteriorPoint( const std::vector<Plane> &planes, Vec3d &out )
 				// stays meaningful for large Source map coordinates.
 				const double eps =
 				    1.0e-4 * ( 1.0 + std::max( std::fabs( p.x ),
-				                               std::max( std::fabs( p.y ), std::fabs( p.z ) ) ) );
+				                         std::max( std::fabs( p.y ), std::fabs( p.z ) ) ) );
 				bool allBelow = true;
 				bool allAbove = true;
 				for ( std::size_t m = 0; m < n; ++m )
@@ -367,8 +367,8 @@ std::optional<Plane> PlaneFromPoints( const Vec3d &a, const Vec3d &b, const Vec3
 	return plane;
 }
 
-BrushSolid BuildSolidFromPlanes( const std::vector<Plane> &planes,
-                                 const std::vector<std::string> &materials, int id )
+BrushSolid BuildSolidFromPlanes(
+    const std::vector<Plane> &planes, const std::vector<std::string> &materials, int id )
 {
 	BrushSolid solid;
 	solid.id = id;
@@ -468,9 +468,9 @@ BrushSolid BuildSolidFromPlanes( const std::vector<Plane> &planes,
 			else
 			{
 				solid.mins = Vec3d( std::min( solid.mins.x, p.x ), std::min( solid.mins.y, p.y ),
-				                    std::min( solid.mins.z, p.z ) );
+				    std::min( solid.mins.z, p.z ) );
 				solid.maxs = Vec3d( std::max( solid.maxs.x, p.x ), std::max( solid.maxs.y, p.y ),
-				                    std::max( solid.maxs.z, p.z ) );
+				    std::max( solid.maxs.z, p.z ) );
 			}
 		}
 	}
@@ -534,13 +534,14 @@ void AccumulateBounds( WorldScene &scene, const BrushSolid &solid )
 		scene.bounded = true;
 		return;
 	}
-	scene.mins = Vec3d( std::min( scene.mins.x, solid.mins.x ), std::min( scene.mins.y, solid.mins.y ),
-	                    std::min( scene.mins.z, solid.mins.z ) );
-	scene.maxs = Vec3d( std::max( scene.maxs.x, solid.maxs.x ), std::max( scene.maxs.y, solid.maxs.y ),
-	                    std::max( scene.maxs.z, solid.maxs.z ) );
+	scene.mins = Vec3d( std::min( scene.mins.x, solid.mins.x ),
+	    std::min( scene.mins.y, solid.mins.y ), std::min( scene.mins.z, solid.mins.z ) );
+	scene.maxs = Vec3d( std::max( scene.maxs.x, solid.maxs.x ),
+	    std::max( scene.maxs.y, solid.maxs.y ), std::max( scene.maxs.z, solid.maxs.z ) );
 }
 
-void ImportSolids( const formats::KeyValueNode &container, WorldScene &scene, std::size_t &solidCount )
+void ImportSolids(
+    const formats::KeyValueNode &container, WorldScene &scene, std::size_t &solidCount )
 {
 	for ( const formats::KeyValueNode &child : container.children )
 	{

@@ -17,6 +17,7 @@
 #include "filesystem.h"
 #include "icommandline.h"
 #include "materialsystem/imaterialsystem.h"
+#include "render/legacy_shader_provider.h"
 #include "istudiorender.h"
 #include "mathlib/mathlib.h"
 #include "tier2/p4helpers.h"
@@ -123,7 +124,11 @@ bool CVcdUpdateApp::Create()
 		return false;
 	}
 
-	pMaterialSystem->SetShaderAPI( "shaderapiempty.dll" );
+	if ( !MaterialSystem_BindShaderProvider( pMaterialSystem, NullShaderBackend_Describe() ) )
+	{
+		Warning( "Unable to bind the null material provider.\n" );
+		return false;
+	}
 	return true;
 }
 

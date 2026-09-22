@@ -30,6 +30,9 @@ typedef int SOCKET;
 #include "tier1/utllinkedlist.h"
 #include "tier1/utlbuffer.h"
 #include "tier1/UtlStringMap.h"
+#ifdef USE_DXVK
+#include "render_diagnostics.h"
+#endif
 #include "locald3dtypes.h"
 #include "shaderapidx8_global.h"
 #include "recording.h"
@@ -2577,6 +2580,11 @@ bool CShaderManager::LoadAndCreateShaders( ShaderLookup_t &lookup, bool bVertexS
 			g_pFullFileSystem->Close( hFile );
 			lookup.m_Flags |= SHADER_FAILED_LOAD;
 			Warning( "Shader '%s' - Couldn't load combo %d of shader (dyn=%d)\n", m_ShaderSymbolTable.String( pFileCache->m_Filename ), lookup.m_nStaticIndex, pFileCache->m_Header.m_nDynamicCombos );
+#ifdef USE_DXVK
+			renderdiagnostics::Current().ShaderFailure(
+			    m_ShaderSymbolTable.String( pFileCache->m_Filename ), lookup.m_nStaticIndex,
+			    pFileCache->m_Header.m_nDynamicCombos );
+#endif
 			return false;
 		}
 
@@ -3175,6 +3183,9 @@ void CShaderManager::SetVertexShaderState( HardwareShader_t shader, DataCacheHan
 
 void CShaderManager::BindVertexShader( VertexShaderHandle_t hVertexShader )
 {
+#ifdef USE_DXVK
+	renderdiagnostics::Current().RequestShader( false, "<raw>", 0, 0, false );
+#endif
 	HardwareShader_t hHardwareShader = m_RawVertexShaderDict[ (VertexShaderIndex_t)(uintp)hVertexShader] ;
 	SetVertexShaderState( hHardwareShader );
 }
@@ -3188,6 +3199,9 @@ void CShaderManager::SetVertexShader( VertexShader_t shader )
 	// Determine which vertex shader to use...
 	if ( shader == INVALID_SHADER )
 	{
+#ifdef USE_DXVK
+		renderdiagnostics::Current().RequestShader( false, "", 0, 0, false );
+#endif
 		SetVertexShaderState( 0 );
 		return;
 	}
@@ -3200,8 +3214,13 @@ void CShaderManager::SetVertexShader( VertexShader_t shader )
 	}
 
 	ShaderLookup_t &vshLookup = m_VertexShaderDict[shader];
-//	Warning( "vsh: %s static: %d dynamic: %d\n", m_ShaderSymbolTable.String( vshLookup.m_Name ),
-//		vshLookup.m_nStaticIndex, m_nVertexShaderIndex );
+#ifdef USE_DXVK
+	renderdiagnostics::Current().RequestShader( false,
+	    m_ShaderSymbolTable.String( vshLookup.m_Name ), vshLookup.m_nStaticIndex, vshIndex,
+	    ( vshLookup.m_Flags & SHADER_FAILED_LOAD ) != 0 );
+#endif
+	//	Warning( "vsh: %s static: %d dynamic: %d\n", m_ShaderSymbolTable.String( vshLookup.m_Name ),
+	//		vshLookup.m_nStaticIndex, m_nVertexShaderIndex );
 
 #ifdef DYNAMIC_SHADER_COMPILE
 	HardwareShader_t &dxshader = m_VertexShaderDict[shader].m_ShaderStaticCombos.m_pHardwareShaders[vshIndex];
@@ -3271,6 +3290,9 @@ void CShaderManager::SetPixelShaderState( HardwareShader_t shader, DataCacheHand
 
 void CShaderManager::BindPixelShader( PixelShaderHandle_t hPixelShader )
 {
+#ifdef USE_DXVK
+	renderdiagnostics::Current().RequestShader( true, "<raw>", 0, 0, false );
+#endif
 	HardwareShader_t hHardwareShader = m_RawPixelShaderDict[ (PixelShaderIndex_t)(uintp)hPixelShader ];
 	SetPixelShaderState( hHardwareShader );
 }
@@ -3283,6 +3305,9 @@ void CShaderManager::SetPixelShader( PixelShader_t shader )
 {
 	if ( shader == INVALID_SHADER )
 	{
+#ifdef USE_DXVK
+		renderdiagnostics::Current().RequestShader( true, "", 0, 0, false );
+#endif
 		SetPixelShaderState( 0 );
 		return;
 	}
@@ -3290,8 +3315,13 @@ void CShaderManager::SetPixelShader( PixelShader_t shader )
 	int pshIndex = m_nPixelShaderIndex;
 	Assert( pshIndex >= 0 );
 	ShaderLookup_t &pshLookup = m_PixelShaderDict[shader];
-//	Warning( "psh: %s static: %d dynamic: %d\n", m_ShaderSymbolTable.String( pshLookup.m_Name ),
-//		pshLookup.m_nStaticIndex, m_nPixelShaderIndex );
+#ifdef USE_DXVK
+	renderdiagnostics::Current().RequestShader( true,
+	    m_ShaderSymbolTable.String( pshLookup.m_Name ), pshLookup.m_nStaticIndex, pshIndex,
+	    ( pshLookup.m_Flags & SHADER_FAILED_LOAD ) != 0 );
+#endif
+	//	Warning( "psh: %s static: %d dynamic: %d\n", m_ShaderSymbolTable.String( pshLookup.m_Name ),
+	//		pshLookup.m_nStaticIndex, m_nPixelShaderIndex );
 
 #ifdef DYNAMIC_SHADER_COMPILE
 	HardwareShader_t &dxshader = m_PixelShaderDict[shader].m_ShaderStaticCombos.m_pHardwareShaders[pshIndex];

@@ -105,6 +105,90 @@ bool EditorDocument::SetFirstBlockKey( const std::string &key, const std::string
 	return true;
 }
 
+const std::string &EditorDocument::EntityName( std::size_t index ) const
+{
+	static const std::string kEmpty;
+	if ( index >= m_content.children.size() )
+	{
+		return kEmpty;
+	}
+	return m_content.children[index].name;
+}
+
+const std::string &EditorDocument::EntityClassName( std::size_t index ) const
+{
+	static const std::string kEmpty;
+	if ( index >= m_content.children.size() )
+	{
+		return kEmpty;
+	}
+	const std::string *classname = m_content.children[index].Find( "classname" );
+	return classname != nullptr ? *classname : kEmpty;
+}
+
+PropertyValue EditorDocument::AggregateProperty( const EntitySelection &selection,
+    const std::string &key ) const
+{
+	PropertyValue aggregate = PropertyValue::Unset();
+	for ( const std::size_t index : selection.Indices() )
+	{
+		if ( index >= m_content.children.size() )
+		{
+			continue; // stale/out-of-range index: not a contributor
+		}
+		const std::string *value = m_content.children[index].Find( key );
+		if ( value == nullptr )
+		{
+			continue; // entity does not define the key: not a contributor
+		}
+		aggregate = aggregate.AddContributor( *value );
+	}
+	return aggregate;
+}
+
+bool EditorDocument::SetPropertyOnSelection( const EntitySelection &selection,
+    const std::string &key, const std::string &value )
+{
+	if ( selection.Empty() )
+	{
+		return false; // nothing selected -> no-op
+	}
+
+	formats::KeyValueNode candidate = m_content;
+	for ( const std::size_t index : selection.Indices() )
+	{
+		if ( index >= candidate.children.size() )
+		{
+			continue; // ignore stale/out-of-range indices
+		}
+		formats::KeyValueNode &block = candidate.children[index];
+
+		bool replaced = false;
+		for ( formats::KeyValue &pair : block.pairs )
+		{
+			if ( pair.key == key )
+			{
+				pair.value = value;
+				replaced = true;
+				break;
+			}
+		}
+		if ( !replaced )
+		{
+			block.pairs.push_back( { key, value } );
+		}
+	}
+
+	// One history unit for the whole multi-entity edit; a no-op records nothing.
+	if ( formats::CompareKeyValues( m_content, candidate ).equal )
+	{
+		return false;
+	}
+
+	CommitSnapshot( std::move( candidate ) );
+	return true;
+}
+
 bool EditorDocument::Undo()
 {
 	if ( !m_history.Undo() )

@@ -22,6 +22,8 @@ $Project "mdlinfo"
 
 	$Folder	"Link Libraries"
 	{
+		$ImpLib materialsystem
+		$ImpLib shaderapiempty
 		$Lib	appframework
 		$Lib	mathlib
 		$Lib	tier1

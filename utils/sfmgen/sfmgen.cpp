@@ -18,6 +18,7 @@
 #include "filesystem_init.h"
 #include "icommandline.h"
 #include "materialsystem/imaterialsystem.h"
+#include "render/legacy_shader_provider.h"
 #include "istudiorender.h"
 #include "mathlib/mathlib.h"
 #include "vstdlib/vstdlib.h"
@@ -321,7 +322,11 @@ bool CSFMGenApp::Create()
 		return false;
 	}
 
-	pMaterialSystem->SetShaderAPI( "shaderapiempty.dll" );
+	if ( !MaterialSystem_BindShaderProvider( pMaterialSystem, NullShaderBackend_Describe() ) )
+	{
+		Warning( "Unable to bind the null material provider.\n" );
+		return false;
+	}
 	SetupDefaultFlexController();
 	return true;
 }

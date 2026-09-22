@@ -137,7 +137,11 @@
 	#endif
 
 	#define IsPosix() true
-	#define IsPlatformOpenGL() true
+#if defined( DX_TO_GL_ABSTRACTION )
+#define IsPlatformOpenGL() true
+#else
+#define IsPlatformOpenGL() false
+#endif
 #else
 	#error
 #endif

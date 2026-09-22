@@ -213,6 +213,8 @@ $Project "Vrad_dll"
 
 	$Folder	"Link Libraries"
 	{
+		$ImpLib materialsystem
+		$ImpLib shaderapiempty
 		$Lib bitmap
 		$Lib mathlib
 		$Lib raytrace

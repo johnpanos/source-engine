@@ -1921,25 +1921,11 @@
       "excerpt": "CreateInterfaceFn g_fnMatSystemConnectCreateInterface = NULL;"
     },
     {
-      "fingerprint": "7b0d432891e8f7b95a9c",
+      "fingerprint": "59f032ff69f21a08e848",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 574,
-      "excerpt": "CreateInterfaceFn CMaterialSystem::CreateShaderAPI( char const* pShaderDLL )"
-    },
-    {
-      "fingerprint": "f0b3f8f25e4e84e6f31d",
-      "rule": "ARCH101",
-      "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 583,
-      "excerpt": "m_ShaderHInst = Sys_LoadModule( pShaderDLL );"
-    },
-    {
-      "fingerprint": "c7df73192996356e753f",
-      "rule": "ARCH102",
-      "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 590,
-      "excerpt": "return Sys_GetFactory( m_ShaderHInst );"
+      "line": 608,
+      "excerpt": "CreateInterfaceFn CMaterialSystem::CreateShaderAPI( const char *name )"
     },
     {
       "fingerprint": "5a985b811d6b10f9e56e",
@@ -2236,6 +2222,27 @@
       "excerpt": "CreateInterfaceFn CShaderDeviceMgrEmpty::SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode )"
     },
     {
+      "fingerprint": "cda253b9ed1044df605e",
+      "rule": "ARCH103",
+      "path": "materialsystem/shaderextension_compatibility_host.cpp",
+      "line": 30,
+      "excerpt": "state.m_pModule = Sys_LoadModuleFromFileSystem( &fileSystem, pFileName, \"GAMEBIN\", false );"
+    },
+    {
+      "fingerprint": "d56fe1b95b2f6a7458c5",
+      "rule": "ARCH102",
+      "path": "materialsystem/shaderextension_compatibility_host.cpp",
+      "line": 34,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( state.m_pModule );"
+    },
+    {
+      "fingerprint": "aa5132db49ac1ae750b5",
+      "rule": "ARCH105",
+      "path": "materialsystem/shaderextension_compatibility_host.cpp",
+      "line": 34,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( state.m_pModule );"
+    },
+    {
       "fingerprint": "e4f42d54ce7ccbe319ca",
       "rule": "ARCH105",
       "path": "materialsystem/shaderlib/ShaderDLL.cpp",
@@ -2278,13 +2285,6 @@
       "excerpt": "void InitShaderLibCVars( CreateInterfaceFn cvarFactory );"
     },
     {
-      "fingerprint": "1224022119b7d9e7cd94",
-      "rule": "ARCH103",
-      "path": "materialsystem/shadersystem.cpp",
-      "line": 504,
-      "excerpt": "CSysModule *hInstance = Sys_LoadModuleFromFileSystem("
-    },
-    {
       "fingerprint": "9187c916adbb70eb6089",
       "rule": "ARCH102",
       "path": "materialsystem/shadersystem.cpp",
@@ -2297,6 +2297,13 @@
       "path": "materialsystem/shadersystem.cpp",
       "line": 510,
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( hInstance );"
+    },
+    {
+      "fingerprint": "44b1d2209e1b1028dff2",
+      "rule": "ARCH103",
+      "path": "materialsystem/shadersystem.cpp",
+      "line": 513,
+      "excerpt": "hInstance = Sys_LoadModuleFromFileSystem( g_pFullFileSystem, pFullPath, pPathID, true );"
     },
     {
       "fingerprint": "0f3500909f016c386043",
@@ -3578,6 +3585,13 @@
       "path": "unittests/mathlibtest/mathlib_test.cpp",
       "line": 21,
       "excerpt": "virtual bool Connect( CreateInterfaceFn factory )"
+    },
+    {
+      "fingerprint": "e7ae2333a324e2fb9006",
+      "rule": "ARCH102",
+      "path": "unittests/shaderextensiontest/test_shaderextension_host.cpp",
+      "line": 72,
+      "excerpt": "CreateInterfaceFn Sys_GetFactoryWithContext( const char *, int, CSysModule * )"
     },
     {
       "fingerprint": "52c78327fadf40e6f6e7",

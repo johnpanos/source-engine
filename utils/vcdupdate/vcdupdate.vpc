@@ -41,6 +41,8 @@ $Project "vcdupdate"
 
 	$Folder	"Link Libraries"
 	{
+		$ImpLib materialsystem
+		$ImpLib shaderapiempty
 		$Lib appframework
 		$Lib choreoobjects
 		$Lib mathlib

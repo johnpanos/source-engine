@@ -8,7 +8,7 @@
 //
 //=============================================================================//
 
-#include "file_store_contract.h"
+#include "ports/file_store_contract.h"
 
 #include "app/fake_file_store.h"
 #include "hammer/adapters/platform/disk_file_store.h"

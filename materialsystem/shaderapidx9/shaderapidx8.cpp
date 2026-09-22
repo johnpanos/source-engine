@@ -28,6 +28,9 @@ mat_fullbright 1 doesn't work properly on alpha materials in testroom_standards
 #include "render/legacy_shader_provider.h"
 #include "shaderapidx8_global.h"
 #include "shadershadowdx8.h"
+#ifdef USE_DXVK
+#include "render_diagnostics.h"
+#endif
 #include "locald3dtypes.h"												   
 #include "utlvector.h"
 #include "IHardwareConfigInternal.h"
@@ -3868,6 +3871,9 @@ void CShaderAPIDx8::QueueResetRenderState()
 void CShaderAPIDx8::BeginFrame()
 {
 	LOCK_SHADERAPI();
+#ifdef USE_DXVK
+	renderdiagnostics::Current().BeginFrame();
+#endif
 
 	if ( m_bResetRenderStateNeeded )
 	{
@@ -3890,6 +3896,9 @@ void CShaderAPIDx8::EndFrame()
 	MEMCHECK;
 
 	ExportTextureList();
+#ifdef USE_DXVK
+	renderdiagnostics::Current().EndFrame();
+#endif
 }
 
 

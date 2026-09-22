@@ -8,7 +8,14 @@
     "render_provider": "vulkan-dxvk-native",
     "support_scope": "Native Linux Wayland compatibility smoke; not four-platform or renderer parity acceptance",
     "packaging": "Waf-installed local Linux runtime with separately supplied licensed Portal content",
-    "shader_pipeline": "Existing Source D3D9 shader artifacts consumed by pinned DXVK Native; no new offline shader compiler is implied"
+    "shader_pipeline": {
+      "compiler_profile": "quality/shader_profiles/source-dx9-fxc-wine.json",
+      "artifact_runner": "tools/quality/shader_artifacts.py",
+      "artifact_format": "manifest.json schema 1 and source-matched VCS bytecode consumed by DXVK Native",
+      "coverage": "Observed scene static groups; every valid dynamic permutation in each group. Not a complete shipping shader library.",
+      "staging": "portal_boot.py --shader-artifacts validates input and artifact hashes before copying into the private runtime",
+      "documentation": "tools/quality/shader_artifacts.md"
+    }
   },
   "toolchain": {
     "cxx": "g++",

@@ -540,6 +540,111 @@
         "live document-mutation/view-update callers route change aggregation through hammer::app::UpdateHint via the MFC adapter shell",
         "the orphaned hammer/updatehint.cpp and hammer/UpdateHint.h are removed"
       ]
+    },
+    {
+      "id": "HAM-DISKSTORE-001",
+      "title": "Provide the first real IFileStore provider (disk-backed) so the reusable app libraries can persist without a filesystem dependency of their own",
+      "phase": "H2",
+      "responsibility": "platform-adapter",
+      "evidenceKind": "decision",
+      "sources": [
+        {
+          "path": "hammer/adapters/platform/disk_file_store.h"
+        },
+        {
+          "path": "hammer/adapters/platform/disk_file_store.cpp"
+        }
+      ],
+      "destinationModule": "hammer.adapters.platform",
+      "contractIds": [
+        "ports.file_store.v1"
+      ],
+      "dependsOn": [
+        "HAM-BUILD-001",
+        "HAM-SAVE-001"
+      ],
+      "status": "substitutable",
+      "authority": "legacy",
+      "consumerSet": "editor-persistence",
+      "testSelectors": [
+        "ports/file_store",
+        "ports/file_store_negative"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/ports.file_store.v1.md",
+      "owner": "unassigned",
+      "note": "hammer::adapters::platform::DiskFileStore is the first production hammer::ports::IFileStore provider (previously only the in-memory test fake existed). Atomic Write via temp-file+rename. A shared IFileStore conformance suite now runs against the real store, the fake, and a broken provider (ports.file_store.v1), proving substitutability and oracle soundness on gcc, clang, and MinGW PE under Wine.",
+      "retireWhen": [
+        "a platform capability provider supersedes it",
+        "all editor persistence routes through IFileStore providers only"
+      ]
+    },
+    {
+      "id": "HAM-GTKSHELL-001",
+      "title": "Stand up the thin GTK4/libadwaita UI sibling on the reusable editor libraries",
+      "phase": "H5",
+      "responsibility": "presentation",
+      "evidenceKind": "decision",
+      "sources": [
+        {
+          "path": "hammer/adapters/gtk/hammer_gtk_shell.cpp"
+        }
+      ],
+      "destinationModule": "hammer.adapters.gtk",
+      "contractIds": [
+        "adapters.gtk_shell.v1"
+      ],
+      "dependsOn": [
+        "HAM-DISKSTORE-001",
+        "HAM-WORKFLOW-001",
+        "HAM-SOURCEADAPTER-001"
+      ],
+      "status": "characterized",
+      "authority": "legacy",
+      "consumerSet": "gtk-shell",
+      "testSelectors": [
+        "adapters/shell_workflow"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/adapters.gtk_shell.v1.md",
+      "owner": "unassigned",
+      "note": "hammer/adapters/gtk/hammer_gtk_shell.cpp is the actual thin GTK sibling: a libadwaita AdwApplicationWindow whose every action delegates to hammer::app::EditorDocument persisted through DiskFileStore; it holds no editor logic. It COMPILES and LINKS to a real ELF binary against gtk4 4.22 + libadwaita 1.9 + the reusable libraries and nothing else (unittests/hammertest/adapters/build_gtk_shell.sh). Its delegated New/SetKey/Save/Open/Undo/Redo workflow is verified headlessly (adapters.gtk_shell.v1, test_shell_workflow.cpp) since a GUI needs a display. This is the sibling architecture realized end-to-end for one shell; the MFC sibling drives the same libraries.",
+      "retireWhen": [
+        "the GTK shell reaches declared H5 editor parity",
+        "superseded shell/glue removed at H7"
+      ]
+    },
+    {
+      "id": "HAM-MFCSHELL-001",
+      "title": "Stand up the thin MFC UI sibling on the reusable editor libraries (new shell, not the legacy engine-bound one)",
+      "phase": "H5",
+      "responsibility": "presentation",
+      "evidenceKind": "observed",
+      "sources": [
+        {
+          "path": "hammer/adapters/mfc/hammer_mfc_shell.cpp"
+        }
+      ],
+      "destinationModule": "hammer.adapters.mfc",
+      "contractIds": [
+        "adapters.mfc_shell.v1"
+      ],
+      "dependsOn": [
+        "HAM-BUILD-001",
+        "HAM-DISKSTORE-001",
+        "HAM-WORKFLOW-001"
+      ],
+      "status": "characterized",
+      "authority": "legacy",
+      "consumerSet": "mfc-shell",
+      "testSelectors": [
+        "adapters/mfc_workflow"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/adapters.mfc_shell.v1.md",
+      "owner": "unassigned",
+      "note": "hammer/adapters/mfc/hammer_mfc_shell.cpp is the thin MFC sibling of the GTK shell: a CWinApp/CFrameWnd whose command handlers delegate to hammer::app::EditorDocument persisted through DiskFileStore; no editor policy. Built NEW (not the legacy engine-bound Hammer shell), so it depends only on MFC + the reusable libraries and BUILDS to a real PE32+ GUI exe with the real MSVC+MFC toolchain (cl 19.29, atlmfc), and its delegated New/SetKey/Save/Open/Undo/Redo workflow RUNS under Wine (test_mfc_workflow.cpp, exit 0). This is the key realization that the MFC sibling does NOT require the D2 whole-Source-engine link. Evidence: architecture/hammer_mfc_parity.json; repro unittests/hammertest/adapters/build_mfc_shell.sh. Local gate (MSVC+MFC toolchain not in CI).",
+      "retireWhen": [
+        "the MFC sibling reaches declared H5 editor parity",
+        "superseded shell/glue removed at H7"
+      ]
     }
   ]
 }

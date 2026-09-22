@@ -24,6 +24,14 @@ def build(bld):
 			'../../materialsystem/shaderextension_compatibility_host.cpp'],
 		target='shader_extension_conformance', name='shader_extension_conformance',
 		includes=includes, install_path=None)
+	bld.program(
+		features='cxx', env=test_env,
+		source=['test_material_binding.cpp'],
+		target='material_binding_conformance', name='material_binding_conformance',
+		includes=includes,
+		use=['materialsystem', 'shaderapiempty', 'tier0', 'vstdlib']
+			+ ([] if bld.env.DEDICATED else ['shaderapidx9']) + (['SDL3'] if bld.env.SDL3 else []),
+		install_path=None)
 	if bld.env.DXVK:
 		bld.program(
 			features='c cxx', env=test_env,

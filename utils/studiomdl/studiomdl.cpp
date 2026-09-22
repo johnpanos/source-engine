@@ -50,6 +50,7 @@
 #include "appframework/appframework.h"
 #include "datamodel/idatamodel.h"
 #include "materialsystem/materialsystem_config.h"
+#include "render/legacy_shader_provider.h"
 #include "vstdlib/cvar.h"
 #include "tier1/tier1.h"
 #include "tier2/tier2.h"
@@ -9593,7 +9594,11 @@ bool CStudioMDLApp::Create()
 	if ( !pMaterialSystem )
 		return false;
 
-	pMaterialSystem->SetShaderAPI( "shaderapiempty.dll" );
+	if ( !MaterialSystem_BindShaderProvider( pMaterialSystem, NullShaderBackend_Describe() ) )
+	{
+		Warning( "Unable to bind the null material provider.\n" );
+		return false;
+	}
 
 	return true;
 }

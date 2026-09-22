@@ -5,6 +5,9 @@
 //===========================================================================//
 
 #define DISABLE_PROTECTED_THINGS
+#ifdef USE_DXVK
+#include "render_diagnostics.h"
+#endif
 #include "locald3dtypes.h"
 #include "imeshdx8.h"
 #include "shaderapidx8_global.h"
@@ -3363,6 +3366,10 @@ void CMeshDX8::RenderPass()
 	{
 		Warning( "Material %s does not support vertex format used by the mesh (maybe missing fields or mismatched vertex compression?), mesh will not be rendered. Grab a programmer!\n",
 			ShaderAPI()->GetBoundMaterial()->GetName() );
+#ifdef USE_DXVK
+		renderdiagnostics::Current().Skipped(
+		    ShaderAPI()->GetBoundMaterial()->GetName(), "invalid_vertex_format" );
+#endif
 		return;
 	}
 
@@ -3379,7 +3386,12 @@ void CMeshDX8::RenderPass()
 
 			// (For point/instanced-quad lists, we don't actually fill in indices, but we treat it as
 			// though there are indices for the list up until here).
-			Dx9Device()->DrawPrimitive( m_Mode, s_FirstVertex, pPrim->m_NumIndices );
+			HRESULT drawResult =
+			    Dx9Device()->DrawPrimitive( m_Mode, s_FirstVertex, pPrim->m_NumIndices );
+#ifdef USE_DXVK
+			TraceNativeDraw( Dx9Device(), ShaderAPI()->GetBoundMaterial()->GetName(), "points",
+			    pPrim->m_NumIndices, drawResult );
+#endif
 		}
 		else
 		{
@@ -3395,19 +3407,24 @@ void CMeshDX8::RenderPass()
 				VPROF_INCREMENT_GROUP_COUNTER( "render/DrawIndexedPrimitive", COUNTER_GROUP_TELEMETRY, 1 );
 				VPROF_INCREMENT_GROUP_COUNTER( "render/numPrimitives", COUNTER_GROUP_TELEMETRY, 1 );
 
-				Dx9Device()->DrawIndexedPrimitive( 
-					m_Mode,			// Member of the D3DPRIMITIVETYPE enumerated type, describing the type of primitive to render. D3DPT_POINTLIST is not supported with this method.
+				HRESULT drawResult = Dx9Device()->DrawIndexedPrimitive(
+				    m_Mode, // Member of the D3DPRIMITIVETYPE enumerated type, describing the type of primitive to render. D3DPT_POINTLIST is not supported with this method.
 
-					m_FirstIndex,	// Offset from the start of the vertex buffer to the first vertex index. An index of 0 in the index buffer refers to this location in the vertex buffer.
+				    m_FirstIndex, // Offset from the start of the vertex buffer to the first vertex index. An index of 0 in the index buffer refers to this location in the vertex buffer.
 
-					s_FirstVertex,	// Minimum vertex index for vertices used during this call. This is a zero based index relative to BaseVertexIndex.
-									// The first Vertex in the vertexbuffer that we are currently using for the current batch.
+				    s_FirstVertex, // Minimum vertex index for vertices used during this call. This is a zero based index relative to BaseVertexIndex.
+				    // The first Vertex in the vertexbuffer that we are currently using for the current batch.
 
-					s_NumVertices,	// Number of vertices used during this call. The first vertex is located at index: BaseVertexIndex + MinIndex.
+				    s_NumVertices, // Number of vertices used during this call. The first vertex is located at index: BaseVertexIndex + MinIndex.
 
-					pPrim->m_FirstIndex, // Index of the first index to use when accesssing the vertex buffer. Beginning at StartIndex to index vertices from the vertex buffer.
+				    pPrim
+				        ->m_FirstIndex, // Index of the first index to use when accesssing the vertex buffer. Beginning at StartIndex to index vertices from the vertex buffer.
 
-					numPrimitives );// Number of primitives to render. The number of vertices used is a function of the primitive count and the primitive type.
+				    numPrimitives ); // Number of primitives to render. The number of vertices used is a function of the primitive count and the primitive type.
+#ifdef USE_DXVK
+				TraceNativeDraw( Dx9Device(), ShaderAPI()->GetBoundMaterial()->GetName(), "indexed",
+				    numPrimitives, drawResult );
+#endif
 			}
 		}
 	}
@@ -5850,23 +5867,33 @@ void CMeshMgr::RenderPassWithVertexAndIndexBuffers( void )
 					}
 				}
 #endif // CHECK_INDICES
-				Dx9Device()->DrawIndexedPrimitive( 
-					ComputeMode( m_PrimitiveType ),		// Member of the D3DPRIMITIVETYPE enumerated type, describing the type of primitive to render. D3DPT_POINTLIST is not supported with this method.
+				HRESULT drawResult = Dx9Device()->DrawIndexedPrimitive(
+				    ComputeMode(
+				        m_PrimitiveType ), // Member of the D3DPRIMITIVETYPE enumerated type, describing the type of primitive to render. D3DPT_POINTLIST is not supported with this method.
 
-					/*m_FirstIndex*/ 0,					// Offset from the start of the vertex buffer to the first vertex index. An index of 0 in the index buffer refers to this location in the vertex buffer.
+				    /*m_FirstIndex*/
+				    0, // Offset from the start of the vertex buffer to the first vertex index. An index of 0 in the index buffer refers to this location in the vertex buffer.
 
-					/*s_FirstVertex*/ m_pFirstVertex[0],// Minimum vertex index for vertices used during this call. This is a zero based index relative to BaseVertexIndex.
-														// This is zero for now since we don't do more than one batch yet with the new mesh interface.
+				    /*s_FirstVertex*/
+				    m_pFirstVertex
+				        [0], // Minimum vertex index for vertices used during this call. This is a zero based index relative to BaseVertexIndex.
+				    // This is zero for now since we don't do more than one batch yet with the new mesh interface.
 
-					/*s_NumVertices*/ m_pVertexCount[0], 
-														// Number of vertices used during this call. The first vertex is located at index: BaseVertexIndex + MinIndex.
-														// This is simple the number of verts in the current vertex buffer for now since we don't do more than one batch with the new mesh interface.
+				    /*s_NumVertices*/ m_pVertexCount[0],
+				    // Number of vertices used during this call. The first vertex is located at index: BaseVertexIndex + MinIndex.
+				    // This is simple the number of verts in the current vertex buffer for now since we don't do more than one batch with the new mesh interface.
 
-					m_nFirstIndex /*pPrim->m_FirstIndex*/,	// Index of the first index to use when accesssing the vertex buffer. Beginning at StartIndex to index vertices from the vertex buffer.
+				    m_nFirstIndex /*pPrim->m_FirstIndex*/
+				    , // Index of the first index to use when accesssing the vertex buffer. Beginning at StartIndex to index vertices from the vertex buffer.
 
-					m_nNumIndices / 3/*numPrimitives*/  // Number of primitives to render. The number of vertices used is a function of the primitive count and the primitive type.
-					);
+				    m_nNumIndices /
+				        3 /*numPrimitives*/ // Number of primitives to render. The number of vertices used is a function of the primitive count and the primitive type.
+				);
 
+#ifdef USE_DXVK
+				TraceNativeDraw( Dx9Device(), ShaderAPI()->GetBoundMaterial()->GetName(),
+				    "indexed-streams", m_nNumIndices / 3, drawResult );
+#endif
 				Assert( CMeshDX8::s_FirstVertex == 0 );
 				Assert( CMeshDX8::s_NumVertices == 0 );
 			}

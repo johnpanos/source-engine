@@ -15,7 +15,7 @@
 //
 //			Robustness policy: the outward orientation of each side plane is derived
 //			from a point known to be interior to the brush (the centroid of the
-//			side reference points), NOT from the VMF point winding. A brush whose
+//			polytope's own vertices), NOT from the VMF point winding. A brush whose
 //			planes do not bound a finite convex region yields no faces rather than
 //			an unbounded polygon.
 //
@@ -124,8 +124,8 @@ std::optional<Plane> PlaneFromPoints( const Vec3d &a, const Vec3d &b, const Vec3
 // others. Planes that contribute no face (redundant/degenerate) are dropped. The
 // 'materials' vector, when the same length as 'planes', names each face material.
 // Returns a solid with no faces when the planes do not bound a finite region.
-BrushSolid BuildSolidFromPlanes( const std::vector<Plane> &planes,
-                                 const std::vector<std::string> &materials = {}, int id = 0 );
+BrushSolid BuildSolidFromPlanes(
+    const std::vector<Plane> &planes, const std::vector<std::string> &materials = {}, int id = 0 );
 
 // Extracts a single "solid" keyvalues block into a BrushSolid (parsing its side
 // planes and materials). Returns a solid with no faces when the block has fewer

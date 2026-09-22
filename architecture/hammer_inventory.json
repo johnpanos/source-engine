@@ -8,7 +8,7 @@
     "totalHammerSourceFiles": 452,
     "totalHammerCppFiles": 221,
     "totalHammerHeaderFiles": 231,
-    "filesClassified": 40,
+    "filesClassified": 44,
     "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (public/hammer/geometry, hammer/core/geometry). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'."
   },
   "files": [
@@ -596,6 +596,58 @@
       "factorization": "replace-shell",
       "evidence": "observed",
       "note": "Legacy CUpdateHint declaration (CObject/CMapObjectList/BoundBox). Its intended model is reconstructed strictly as app.update_hint.v1; the MFC class becomes a thin shell marshalling CMapClass/BoundBox into hammer::app::UpdateHint. HAM-UPDATEHINT-001."
+    },
+    {
+      "path": "hammer/adapters/platform/disk_file_store.h",
+      "currentOwner": "hammer.adapters.platform",
+      "destinationModule": "hammer.adapters.platform",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "Real disk-backed IFileStore provider (HAM-DISKSTORE-001, ports.file_store.v1). Non-strict; uses <filesystem>."
+    },
+    {
+      "path": "hammer/adapters/platform/disk_file_store.cpp",
+      "currentOwner": "hammer.adapters.platform",
+      "destinationModule": "hammer.adapters.platform",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "Atomic whole-file Write (temp+rename). Verified against the shared IFileStore contract on gcc/clang/MinGW-Wine."
+    },
+    {
+      "path": "hammer/adapters/gtk/hammer_gtk_shell.cpp",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "Thin GTK4/libadwaita UI sibling. Only toolkit glue; delegates all editor logic to hammer::app libraries. Builds to a real binary (HAM-GTKSHELL-001, adapters.gtk_shell.v1). Outside strict roots, so gtk native tokens are permitted."
+    },
+    {
+      "path": "hammer/adapters/mfc/hammer_mfc_shell.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Thin MFC UI sibling (CWinApp/CFrameWnd). Only toolkit glue; delegates all editor logic to the reusable hammer::app libraries. Builds to a real PE32+ GUI exe and its workflow runs under Wine (HAM-MFCSHELL-001, adapters.mfc_shell.v1). MFC native tokens permitted (non-strict, outside strict roots; hammer.adapters.mfc is the legacyHost)."
     }
   ]
 }

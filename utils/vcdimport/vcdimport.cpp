@@ -31,6 +31,7 @@
 #include "datacache/imdlcache.h"
 #include "vphysics_interface.h"
 #include "materialsystem/imaterialsystem.h"
+#include "render/legacy_shader_provider.h"
 #include "istudiorender.h"
 
 #ifdef _DEBUG
@@ -103,7 +104,11 @@ bool CVcdImportApp::Create()
 		return false;
 	}
 
-	pMaterialSystem->SetShaderAPI( "shaderapiempty.dll" );
+	if ( !MaterialSystem_BindShaderProvider( pMaterialSystem, NullShaderBackend_Describe() ) )
+	{
+		Warning( "Unable to bind the null material provider.\n" );
+		return false;
+	}
 	return true;
 }
 

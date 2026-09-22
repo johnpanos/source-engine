@@ -10,6 +10,7 @@
 // C callable material system interface for the utils.
 
 #include "materialsystem/imaterialsystem.h"
+#include "render/legacy_shader_provider.h"
 #include "materialsystem/imaterial.h"
 #include "materialsystem/imaterialvar.h"
 #include <cmdlib.h>
@@ -49,10 +50,12 @@ void LoadMaterialSystemInterface( CreateInterfaceFn fileSystemFactory )
 		Error( "Could not find factory interface in library MaterialSystem.dll" );
 	}
 
-	if (!g_pMaterialSystem->Init( "shaderapiempty.dll", 0, fileSystemFactory ))
+	if ( !MaterialSystem_BindShaderProvider( g_pMaterialSystem, NullShaderBackend_Describe() ) ||
+	     !g_pMaterialSystem->Connect( fileSystemFactory ) || g_pMaterialSystem->Init() != INIT_OK )
 	{
-		Error( "Could not start the empty shader (shaderapiempty.dll)!" );
+		Error( "Could not start the null material provider!" );
 	}
+	g_pMaterialSystem->SetMaterialProxyFactory( NULL );
 }
 
 void InitMaterialSystem( const char *materialBaseDirPath, CreateInterfaceFn fileSystemFactory )
@@ -67,6 +70,7 @@ void ShutdownMaterialSystem( )
 	if ( g_pMaterialSystem )
 	{
 		g_pMaterialSystem->Shutdown();
+		g_pMaterialSystem->Disconnect();
 		g_pMaterialSystem = NULL;
 	}
 }

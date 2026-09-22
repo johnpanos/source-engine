@@ -6,6 +6,9 @@
 //
 //===========================================================================//
 #define DISABLE_PROTECTED_THINGS
+#ifdef USE_DXVK
+#include "render_diagnostics.h"
+#endif
 #include "locald3dtypes.h"
 
 #include "shaderdevicedx8.h"
@@ -2982,6 +2985,9 @@ void CShaderDeviceDx8::Present()
 			g_pShaderAPI->OwnGPUResources( false );
 			hr = Dx9Device()->Present( 0, 0, 0, 0 );
 		}
+#ifdef USE_DXVK
+		renderdiagnostics::Current().Present( hr );
+#endif
 	}
 
 	UpdatePresentStats();

@@ -15,12 +15,15 @@
     },
     {
       "id": "linux-gtk-desktop",
-      "status": "planned",
+      "status": "unverified",
       "os": "Linux x86_64",
-      "display": ["X11", "Wayland"],
+      "display": [
+        "X11",
+        "Wayland"
+      ],
       "gpu": "OpenGL via GtkGLArea (bridge under R1)",
-      "toolchain": "GTK4 >= 4.12, libadwaita >= 1.4 (minimums pinned at H5)",
-      "note": "GTK shell delivery profile; gated on H2-H4 and R1."
+      "toolchain": "GTK4 >= 4.12, libadwaita >= 1.4 (minimums pinned at H5); verified building with GTK4 4.22.5 + libadwaita 1.9.3",
+      "note": "GTK shell delivery profile. A thin GTK4/libadwaita UI sibling (hammer/adapters/gtk/hammer_gtk_shell.cpp, HAM-GTKSHELL-001) now COMPILES and LINKS to a real binary against the reusable editor libraries + a real disk IFileStore provider (build_gtk_shell.sh), and its delegated New/SetKey/Save/Open/Undo/Redo workflow is verified headlessly (adapters.gtk_shell.v1). Not yet 'verified': running the GUI needs a display (no headless display here), and full H5 editor parity (multi-view, inspector, textures, real renderer viewport R1) is not built. Still gated on R1 + H2-H4 feature depth for the delivery claim."
     },
     {
       "id": "windows-pe-core",
@@ -29,7 +32,10 @@
       "display": "none",
       "gpu": "none",
       "toolchain": "MinGW-w64 g++ 16.1.1, C++20, statically linked",
-      "runtime": ["Wine 11.0 Staging", "GE-Proton11-5"],
+      "runtime": [
+        "Wine 11.0 Staging",
+        "GE-Proton11-5"
+      ],
       "note": "The strict, MFC-free Hammer core (geometry, scene, app, formats, ports). All 19 RFC 0002 conformance suites cross-compile to native Windows PE and pass under both Wine and GE-Proton, matching the Linux gcc/clang runs. Evidence: architecture/hammer_windows_parity.json; run via tools/quality/parity_wine.py."
     },
     {
@@ -39,8 +45,22 @@
       "display": "none",
       "gpu": "none",
       "toolchain": "MSVC 19.29.30159 (VS2019 v142, toolset 14.29.30133 with atlmfc), via mstorsjo/msvc-wine",
-      "runtime": ["Wine (WINEDEBUG=-all)"],
+      "runtime": [
+        "Wine (WINEDEBUG=-all)"
+      ],
       "note": "Legacy-vs-extracted parity with the REAL Microsoft compiler: the unmodified legacy hammer/boundbox.cpp is compiled against the real mathlib/vector.h and linked with the extracted hammer::geometry::AxisAlignedBox; every observable operation is byte-identical, including the SnapToGrid .5-boundary that pins V_rint's round-half-away-from-zero. A mutant re-introducing std::rint round-half-to-even is caught (exit 1), proving the oracle sound. This proves the extracted library reproduces the actual legacy code compiled by the actual MSVC toolchain, one step beyond the MinGW self-parity of windows-pe-core. Evidence: architecture/hammer_legacy_parity.json; run via scratchpad legacy-parity/run_legacy_parity.sh."
+    },
+    {
+      "id": "windows-mfc-sibling",
+      "status": "verified",
+      "os": "Windows x86_64 (PE)",
+      "display": "MFC (GDI)",
+      "gpu": "none",
+      "toolchain": "MSVC 19.29 + MFC (atlmfc, shared mfc140.dll), via mstorsjo/msvc-wine",
+      "runtime": [
+        "Wine (mfc140.dll present)"
+      ],
+      "note": "The NEW thin MFC UI sibling (hammer/adapters/mfc/hammer_mfc_shell.cpp, HAM-MFCSHELL-001) builds to a real PE32+ GUI exe against MFC + the reusable editor libraries alone, and its delegated New/SetKey/Save/Open/Undo/Redo workflow runs under Wine (adapters.mfc_shell.v1). Distinct from windows-mfc-legacy: this sibling has NO Source-engine dependency. Running the GUI needs a display; full H5 editor parity is future. Evidence: architecture/hammer_mfc_parity.json."
     },
     {
       "id": "windows-mfc-legacy",
@@ -58,7 +78,9 @@
       "declaredFeatures": [],
       "supportedFormats": [],
       "corpusIds": [],
-      "limitations": ["No editor features are certified. This gate establishes inventory, migration schema, ratchet, corpus scaffolding, and toolchain/build evidence only."]
+      "limitations": [
+        "No editor features are certified. This gate establishes inventory, migration schema, ratchet, corpus scaffolding, and toolchain/build evidence only."
+      ]
     }
   ]
 }

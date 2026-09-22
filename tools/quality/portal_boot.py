@@ -18,6 +18,8 @@ import sys
 import time
 
 import conformance
+import render_trace
+import product_profile
 
 
 IMMUTABLE_ASSETS = {
@@ -73,25 +75,41 @@ def install_build(build, stage):
     launchers = sorted(path for path in build.rglob("hl2_launcher") if path.is_file())
     if not products or len(launchers) != 1:
         raise ValueError("build must contain shared libraries and exactly one hl2_launcher")
-    installed = {}
+    sources = {}
     # Waf gives single-game products an unqualified game/client output path.
     # Read only its literal game selection, never execute the Python cache.
     selected_games = set()
-    native_library_paths = []
+    native_library_paths, native_roots, profiles = set(), set(), set()
     for cache in (build / "c4che").rglob("*_cache.py"):
         for line in cache.read_text().splitlines():
-            if line.startswith("GAMES = "):
-                selected_games.add(ast.literal_eval(line.partition(" = ")[2]))
-            elif line.startswith("LIBPATH_DXVK = "):
-                native_library_paths += ast.literal_eval(line.partition(" = ")[2])
-    for directory in sorted(set(native_library_paths)):
-        for library in sorted(Path(directory).glob("libdxvk_d3d9.so*")):
-            destination = stage / "bin" / library.name
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.unlink(missing_ok=True)
-            shutil.copy2(library, destination)
-            installed[str(destination.relative_to(stage))] = {
-                "source": str(library), "sha256": sha256(destination)}
+            key, separator, literal = line.partition(" = ")
+            if not separator or key not in {"GAMES", "LIBPATH_DXVK", "DXVK_ROOT", "PRODUCT_PROFILE"}:
+                continue
+            try:
+                value = ast.literal_eval(literal)
+            except (ValueError, SyntaxError) as error:
+                raise ValueError("invalid literal Waf setting: " + key) from error
+            if key == "LIBPATH_DXVK":
+                if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+                    raise ValueError("invalid Waf DXVK search paths")
+                native_library_paths.update(Path(item).resolve() for item in value)
+            else:
+                if not isinstance(value, str):
+                    raise ValueError("invalid literal Waf setting: " + key)
+                {"GAMES": selected_games, "DXVK_ROOT": native_roots,
+                 "PRODUCT_PROFILE": profiles}[key].add(value)
+    if native_library_paths:
+        if len(native_roots) != 1 or len(profiles) != 1:
+            raise ValueError("DXVK staging requires one configured product profile and dependency root")
+        profile = product_profile.load_profile(next(iter(profiles)))
+        prefix = Path(next(iter(native_roots)))
+        dependency = profile["dependencies"]["dxvk_native"]
+        product_profile.verify_dependency(profile, "dxvk_native", prefix)
+        directory = (prefix / dependency["library_directory"]).resolve()
+        if native_library_paths != {directory}:
+            raise ValueError("DXVK search paths differ from the verified product profile")
+        for library in sorted(directory.glob("lib%s.so*" % dependency["link_library"])):
+            sources["bin/" + library.name] = library
     for source in products + launchers:
         relative = source.relative_to(build)
         if source.name == "hl2_launcher":
@@ -105,13 +123,109 @@ def install_build(build, stage):
         else:
             destination = stage / "bin" / source.name
         key = str(destination.relative_to(stage))
-        if key in installed:
+        if key in sources:
             raise ValueError("ambiguous build output for " + key)
+        sources[key] = source
+    # Validate the full plan before replacing any staged product.
+    installed = {}
+    for key, source in sources.items():
+        destination = stage / key
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.unlink(missing_ok=True)
         shutil.copy2(source, destination)
         installed[key] = {"source": str(source), "sha256": sha256(destination)}
     return installed
+
+
+def shader_search_path(gameinfo):
+    """Put the named shader overlay before packaged content in staged GameInfo."""
+    tokens = [match for match in re.finditer(r'"(?:\\.|[^"\\])*"|//[^\r\n]*|[{}]|[^\s{}"]+', gameinfo)
+              if not match.group().startswith("//")]
+    sections, positions = [], []
+    for index, token in enumerate(tokens):
+        value = token.group()
+        if value == "{":
+            if not index or tokens[index - 1].group() in {"{", "}"}:
+                raise ValueError("malformed staged GameInfo sections")
+            name = tokens[index - 1].group().strip('"').lower()
+            if name == "searchpaths" and sections and sections[-1] == "filesystem":
+                positions.append(token.end())
+            sections.append(name)
+        elif value == "}":
+            if not sections:
+                raise ValueError("malformed staged GameInfo sections")
+            sections.pop()
+    if sections or len(positions) != 1:
+        raise ValueError("staged GameInfo must contain exactly one FileSystem/SearchPaths section")
+    position = positions[0]
+    entry = "\n\t\t\tgame+mod\t\tportal/custom/source-engine-shaders\n"
+    return gameinfo[:position] + entry + gameinfo[position:]
+
+
+def install_shader_artifacts(artifacts, stage, source_root=None):
+    """Validate source-matched compiler output before replacing staged shaders."""
+    artifacts, stage = Path(artifacts).resolve(), Path(stage).resolve()
+    source_root = Path(source_root or conformance.repo_root()).resolve()
+    manifest_path = artifacts / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    if not isinstance(manifest, dict) or manifest.get("schema") != 1 or manifest.get("status") != "passed":
+        raise ValueError("shader artifact manifest must be schema 1 with passed status")
+    shaders = manifest.get("shaders")
+    if not isinstance(shaders, list) or not shaders:
+        raise ValueError("shader artifact manifest must enumerate compiled shaders")
+
+    def verified_file(root, relative, digest):
+        if not isinstance(relative, str) or not relative or "\\" in relative:
+            raise ValueError("invalid shader artifact/source path")
+        path = Path(relative)
+        if path.is_absolute() or ".." in path.parts or str(path) != relative:
+            raise ValueError("shader artifact/source path must be relative and canonical")
+        absolute = (root / path).resolve()
+        if root not in absolute.parents or not absolute.is_file():
+            raise ValueError("shader artifact/source is missing or outside its root: " + relative)
+        if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest) or sha256(absolute) != digest:
+            raise ValueError("shader artifact/source hash differs: " + relative)
+        return absolute
+
+    compiler = manifest.get("compiler")
+    if not isinstance(compiler, dict):
+        raise ValueError("shader artifact must record its compiler hash")
+    verified_file(source_root, compiler.get("path"), compiler.get("sha256"))
+    gameinfo = stage / "portal/gameinfo.txt"
+    staged_gameinfo = shader_search_path(gameinfo.read_text())
+    planned = {}
+    for shader in shaders:
+        if not isinstance(shader, dict):
+            raise ValueError("invalid shader artifact entry")
+        name = shader.get("name")
+        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_]+", name):
+            raise ValueError("invalid shader artifact name")
+        if name in planned:
+            raise ValueError("duplicate shader artifact: " + name)
+        relative = "shaders/fxc/%s.vcs" % name
+        if shader.get("path") != relative:
+            raise ValueError("shader artifact path does not match its name: " + name)
+        sources = shader.get("sources")
+        if not isinstance(sources, dict) or not sources:
+            raise ValueError("shader artifact must record its source hashes: " + name)
+        for source, digest in sources.items():
+            verified_file(source_root, source, digest)
+        source = verified_file(artifacts, relative, shader.get("sha256"))
+        destination = stage / "portal/custom/source-engine-shaders" / relative
+        if stage not in destination.parent.resolve().parents:
+            raise ValueError("shader staging directory escapes the private runtime")
+        planned[name] = (source, destination)
+    installed = {}
+    for name, (source, destination) in planned.items():
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.unlink(missing_ok=True)
+        shutil.copy2(source, destination)
+        installed[name] = {"path": str(destination.relative_to(stage)), "sha256": sha256(destination)}
+    gameinfo.write_text(staged_gameinfo)
+    return {"manifest": str(manifest_path), "manifest_sha256": sha256(manifest_path),
+            "coverage": manifest.get("coverage"), "shaders": installed,
+            "gameinfo_sha256": sha256(gameinfo),
+            "search_path": "portal/custom/source-engine-shaders"}
 
 
 def screenshot_info(path):
@@ -134,11 +248,16 @@ def screenshot_info(path):
     # A valid image container alone cannot prove a rendered scene. Reject the
     # blank black/white frames observed during real startup failures. This is a
     # coarse sensitivity check; visual review still establishes scene fidelity.
-    visible = sum(10 < (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3 < 245
-                  for i in range(0, len(pixels), stride))
+    visible = 0
+    colors = set()
+    for i in range(0, len(pixels), stride):
+        visible += 10 < (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3 < 245
+        if len(colors) < 32:
+            colors.add(pixels[i:i + 3])
     detail_fraction = visible / (width * height)
     return {"path": str(path), "width": width, "height": height,
-            "midtone_fraction": detail_fraction, "has_scene_detail": detail_fraction >= 0.05,
+            "midtone_fraction": detail_fraction, "distinct_colors_capped": len(colors),
+            "has_scene_detail": detail_fraction >= 0.05 and len(colors) >= 16,
             "bytes": path.stat().st_size, "sha256": sha256(path)}
 
 
@@ -155,7 +274,9 @@ def evaluate(log, screenshots, returncode, timed_out, map_name, requirements, lo
     if not screenshots:
         failures.append("no fresh complete engine screenshot")
     elif not any(frame.get("has_scene_detail", False) for frame in screenshots):
-        failures.append("engine capture is blank or almost entirely black/white")
+        failures.append("engine capture lacks scene detail (blank or almost entirely black/white)")
+    if re.search(r"Couldn't load (?:combo|vertex shader|pixel shader)|Using invalid shader combo", log):
+        failures.append("required shader artifact or permutation was unavailable")
     markers = {
         "vulkan": r"RFC0001 renderer: provider=vulkan-compat\b",
         "sdl3": r"RFC0001 window: provider=sdl3\b",
@@ -165,9 +286,25 @@ def evaluate(log, screenshots, returncode, timed_out, map_name, requirements, lo
         if not re.search(markers[requirement], log):
             failures.append("actual %s provider was not attested by the running engine" % requirement)
     for requirement, library in (("vulkan", "libvulkan"), ("sdl3", "libSDL3")):
-        if requirement in requirements and not any(library in path for path in loaded):
+        if requirement in requirements and not any(
+                re.fullmatch(re.escape(library) + r"\.so(?:\.\d+)*",
+                             Path(path.removesuffix(" (deleted)")).name) for path in loaded):
             failures.append("running process did not map " + library)
     return failures
+
+
+def inspect_render_trace(path, report_path):
+    """A produced trace must also be complete and free of observed render failures."""
+    try:
+        events, digest = render_trace.read_events(path)
+        report = render_trace.analyze(events)
+        report["input"] = {"path": str(Path(path).resolve()), "sha256": digest}
+    except render_trace.TraceError as error:
+        report = {"schema": render_trace.REPORT_SCHEMA, "status": "invalid",
+                  "error": str(error), "visibility_verified": False,
+                  "limitation": render_trace.LIMITATION}
+    Path(report_path).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    return report
 
 
 def run_product(command, stage, environment, timeout, output):
@@ -202,14 +339,22 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--build", type=Path)
+    parser.add_argument("--shader-artifacts", type=Path,
+                        help="overlay source-matched shader artifacts into the private runtime")
+    parser.add_argument("--render-trace", action="store_true",
+                        help="retain renderer diagnostics in render-trace.jsonl")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=180)
     parser.add_argument("--map", default="testchmb_a_00")
+    parser.add_argument("--width", type=int, default=1024)
+    parser.add_argument("--height", type=int, default=768)
     for name in ("vulkan", "sdl3", "wayland"):
         parser.add_argument("--require-" + name, action="store_true")
     args = parser.parse_args(argv)
     if args.timeout <= 0 or not re.fullmatch(r"[a-zA-Z0-9_]+", args.map):
         parser.error("timeout must be positive and map must be a simple map name")
+    if not (64 <= args.width <= 8192 and 64 <= args.height <= 8192):
+        parser.error("capture dimensions must be between 64 and 8192")
     output = args.out.resolve()
     output.mkdir(parents=True, exist_ok=True)
     if (output / "evidence.json").exists():
@@ -217,18 +362,21 @@ def main(argv=None):
     evidence = {"schema": "portal-boot-evidence/v1", "status": "fail",
                 "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "source": conformance.source_identity(conformance.repo_root()),
-                "runtime": str(args.runtime.resolve()), "map": args.map}
+                "runtime": str(args.runtime.resolve()), "map": args.map,
+                "requested_resolution": [args.width, args.height]}
     try:
         stage = output / "runtime"
         evidence["staging"] = stage_runtime(args.runtime, stage)
         evidence["build_overrides"] = install_build(args.build, stage) if args.build else {}
+        if args.shader_artifacts:
+            evidence["shader_overrides"] = install_shader_artifacts(args.shader_artifacts, stage)
         executable = stage / "hl2_launcher"
         if not executable.is_file():
             raise ValueError("runtime is missing hl2_launcher")
         evidence["executables"] = {str(path.relative_to(stage)): sha256(path)
                                    for path in [executable] + sorted((stage / "bin").glob("*.so"))
                                    + sorted((stage / "portal/bin").glob("*.so"))}
-        command = [str(executable), "-game", "portal", "-windowed", "-w", "1024", "-h", "768",
+        command = [str(executable), "-game", "portal", "-windowed", "-w", str(args.width), "-h", str(args.height),
                    "-novid", "-insecure", "-console", "-condebug", "-dev",
                    "+sv_cheats", "1", "+mat_queue_mode", "0", "+fps_max", "60", "+map", args.map,
                    "+wait", "180", "+status", "+hideconsole", "+developer", "0",
@@ -238,6 +386,11 @@ def main(argv=None):
         environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
         environment["SteamAppId"] = "400"
         environment["SteamGameId"] = "400"
+        if args.render_trace:
+            trace = output / "render-trace.jsonl"
+            if trace.exists():
+                raise ValueError("render trace already exists; use a new output directory")
+            environment["SOURCE_RENDER_TRACE"] = str(trace)
         requirements = [name for name in ("vulkan", "sdl3", "wayland") if getattr(args, "require_" + name)]
         if args.require_wayland:
             environment["SDL_VIDEO_DRIVER"] = "wayland"
@@ -255,6 +408,17 @@ def main(argv=None):
         screenshots = [info for path in sorted(stage.rglob("screenshots/*.tga"))
                        if (info := screenshot_info(path))]
         failures = evaluate(log, screenshots, code, timed_out, args.map, requirements, loaded)
+        if args.render_trace:
+            if not trace.is_file() or trace.stat().st_size == 0:
+                failures.append("requested renderer trace was not produced")
+            else:
+                evidence["render_trace"] = {"path": str(trace), "sha256": sha256(trace),
+                                            "bytes": trace.stat().st_size}
+                report_path = output / "render-report.json"
+                report = inspect_render_trace(trace, report_path)
+                evidence["render_trace"].update(report=str(report_path), status=report["status"])
+                if report["status"] != "complete":
+                    failures.append("renderer diagnostic capture: " + report["status"])
         evidence.update(returncode=code, timed_out=timed_out, elapsed_seconds=seconds,
                         loaded_files=loaded, screenshots=screenshots, failures=failures,
                         logs=[str(path) for path in log_paths if path.is_file()],

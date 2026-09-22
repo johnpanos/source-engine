@@ -22,6 +22,7 @@
 #include "filesystem.h"
 #include "icommandline.h"
 #include "materialsystem/imaterialsystem.h"
+#include "render/legacy_shader_provider.h"
 #include "mathlib/mathlib.h"
 #include "tier1/tier1.h"
 #include "tier2/tier2.h"
@@ -84,7 +85,11 @@ bool CDmxEditApp::Create()
 		return false;
 	}
 
-	pMaterialSystem->SetShaderAPI( "shaderapiempty.dll" );
+	if ( !MaterialSystem_BindShaderProvider( pMaterialSystem, NullShaderBackend_Describe() ) )
+	{
+		Warning( "Unable to bind the null material provider.\n" );
+		return false;
+	}
 	return true;
 }
 

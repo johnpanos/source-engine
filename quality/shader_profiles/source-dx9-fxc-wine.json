@@ -1,0 +1,17 @@
+{
+  "schema": "source-shader-compiler/v1",
+  "id": "source-dx9-fxc-wine-v1",
+  "compiler": {
+    "path": "dx9sdk/utilities/fxc.exe",
+    "version": "Microsoft Direct3D Shader Compiler 5.04.00.2904",
+    "sha256": "034b11acc7d7a09f9124968486e67d4593cbdd357c758332a2374f6e1a63f173",
+    "host_command": "wine"
+  },
+  "plan_generator": "devtools/bin/fxc_prep.pl",
+  "source_directory": "materialsystem/stdshaders",
+  "selector_directory": "materialsystem/stdshaders/fxctmp9",
+  "compiler_options_authority": "Generated fxc_prep.pl #COMMAND, including shader-model macros and the compiler's default optimization",
+  "pack_format_authority": "utils/shadercompile/shadercompile.cpp version-6 VCS writer and public/materialsystem/shader_vcs_version.h",
+  "coverage": "observed-static-sets",
+  "required_checks": ["tools.quality.tests.test_shader_artifacts", "Installed native image and shader diagnostic acceptance"]
+}

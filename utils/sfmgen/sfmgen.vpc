@@ -31,6 +31,8 @@ $Project "sfmgen"
 
 	$Folder	"Link Libraries"
 	{
+		$ImpLib materialsystem
+		$ImpLib shaderapiempty
 		$Lib appframework
 		$Lib datamodel
 		$Lib dmserializers

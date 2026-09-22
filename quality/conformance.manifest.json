@@ -304,6 +304,44 @@
       "expect": "pass"
     },
     {
+      "id": "hammer.app.entity_editor",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-SEL-001",
+      "contract": "unittests/hammertest/contracts/app.entity_editor.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/entity_selection.cpp",
+        "hammer/core/app/editor_document.cpp",
+        "hammer/core/app/document_history.cpp",
+        "hammer/core/app/save_orchestrator.cpp",
+        "hammer/core/app/property_value.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/app/test_entity_editor.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.entity_editor.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-SEL-001",
+      "contract": "unittests/hammertest/contracts/app.entity_editor.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/entity_selection.cpp",
+        "hammer/core/app/editor_document.cpp",
+        "hammer/core/app/document_history.cpp",
+        "hammer/core/app/save_orchestrator.cpp",
+        "hammer/core/app/property_value.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/app/test_entity_editor_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "hammer.formats.keyvalues",
       "domain": "Q-EDITOR",
       "rfc": "0002",
@@ -368,6 +406,8 @@
       "kind": "positive",
       "profile": "linux-headless-core",
       "sources": [
+        "hammer/core/app/entity_selection.cpp",
+        "hammer/core/app/property_value.cpp",
         "hammer/core/app/editor_document.cpp",
         "hammer/core/app/document_history.cpp",
         "hammer/core/app/save_orchestrator.cpp",
@@ -385,6 +425,8 @@
       "kind": "sensitivity",
       "profile": "linux-headless-core",
       "sources": [
+        "hammer/core/app/entity_selection.cpp",
+        "hammer/core/app/property_value.cpp",
         "hammer/core/app/editor_document.cpp",
         "hammer/core/app/document_history.cpp",
         "hammer/core/app/save_orchestrator.cpp",
@@ -585,6 +627,89 @@
         "hammer/core/geometry/aabb.cpp",
         "hammer/core/geometry/rounding.cpp",
         "unittests/hammertest/app/test_update_hint_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.editor_controller",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-WORKFLOW-001",
+      "contract": "unittests/hammertest/contracts/app.editor_controller.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/editor_controller.cpp",
+        "hammer/core/geometry/brush.cpp",
+        "hammer/core/geometry/rounding.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "hammer/core/app/document_history.cpp",
+        "unittests/hammertest/app/test_editor_controller.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.editor_controller.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-WORKFLOW-001",
+      "contract": "unittests/hammertest/contracts/app.editor_controller.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/editor_controller.cpp",
+        "hammer/core/geometry/brush.cpp",
+        "hammer/core/geometry/rounding.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "hammer/core/app/document_history.cpp",
+        "unittests/hammertest/app/test_editor_controller_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.ports.file_store",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-DISKSTORE-001",
+      "contract": "unittests/hammertest/contracts/ports.file_store.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/adapters/platform/disk_file_store.cpp",
+        "unittests/hammertest/ports/test_disk_file_store.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.ports.file_store.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-DISKSTORE-001",
+      "contract": "unittests/hammertest/contracts/ports.file_store.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/hammertest/ports/test_disk_file_store_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.adapters.shell_workflow",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-GTKSHELL-001",
+      "contract": "unittests/hammertest/contracts/adapters.gtk_shell.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/adapters/platform/disk_file_store.cpp",
+        "hammer/core/app/entity_selection.cpp",
+        "hammer/core/app/editor_document.cpp",
+        "hammer/core/app/document_history.cpp",
+        "hammer/core/app/save_orchestrator.cpp",
+        "hammer/core/app/property_value.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/adapters/test_shell_workflow.cpp"
       ],
       "expect": "pass"
     }

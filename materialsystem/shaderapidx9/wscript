@@ -56,7 +56,8 @@ def build(bld):
 	if bld.env.DEST_OS != 'win32':
 		source += ['winutils.cpp']
 	if bld.env.DXVK:
-		source += ['dxvk_math.cpp', 'dxvk_imageformat.cpp']
+		source += ['dxvk_math.cpp', 'dxvk_imageformat.cpp',
+			'render_diagnostics.cpp', 'dxvk_render_diagnostics.cpp']
 
 	includes = [
 		'.',

@@ -1,0 +1,30 @@
+{
+  "harness": "mfc_sibling_msvc/v1",
+  "description": "The thin MFC UI sibling (hammer.adapters.mfc) built with the real MSVC+MFC toolchain and verified under Wine. This is a NEW thin shell (not the legacy Hammer MFC shell), parallel to the GTK sibling: it depends only on MFC + the reusable, engine-free editor libraries, so unlike the legacy shell it builds and links against the extracted libraries alone -- no tier0/vgui2/materialsystem. This sidesteps the D2 blocker, which was specific to the legacy shell's whole-engine dependency. LOCAL gate: the MSVC+MFC toolchain (mstorsjo/msvc-wine, atlmfc) is a large licensed install and is not in CI; the reproducible CI Windows lane for the MFC-free core remains MinGW+Wine (hammer_windows_parity.json).",
+  "compiler": "Microsoft (R) C/C++ Optimizing Compiler 19.29.30159 (VS2019 v142, toolset 14.29.30133 with atlmfc)",
+  "mfc": "shared MFC (mfc140.dll, /MD /D_AFXDLL); mfc140.dll present in the Wine prefix",
+  "runtime": "Wine (WINEDEBUG=-all)",
+  "flags": "/nologo /EHsc /std:c++20 /MD /FImfc_defines.h(_AFXDLL) -I public -I .",
+  "repro": "unittests/hammertest/adapters/build_mfc_shell.sh",
+  "artifacts": [
+    {
+      "id": "hammer.adapters.mfc.shell_build",
+      "source": "hammer/adapters/mfc/hammer_mfc_shell.cpp",
+      "kind": "compile-link",
+      "expect": "links",
+      "outcome": "links",
+      "detail": "Thin MFC GUI sibling (CWinApp + CFrameWnd + programmatic menu; command handlers delegate to EditorDocument + DiskFileStore) compiles and links to a real PE32+ GUI executable against MFC + the reusable library sources and nothing else. A GUI needs a display to run (as with the GTK shell); the compile+link is the sibling-exists proof."
+    },
+    {
+      "id": "hammer.adapters.mfc.workflow",
+      "source": "unittests/hammertest/adapters/test_mfc_workflow.cpp",
+      "kind": "run",
+      "expect": "pass",
+      "outcome": "pass",
+      "exit_code": 0,
+      "detail": "Console MFC-linked binary (afx.h + CString touch-point) RUNS under Wine and exercises the delegated New -> SetKey -> Save -> reopen -> Undo/Redo workflow through EditorDocument + the real DiskFileStore. Proves MFC and the reusable engine-free libraries link and coexist in one binary and the workflow executes correctly at runtime -- a stronger runtime proof than the GTK sibling's (which runs without the toolkit)."
+    }
+  ],
+  "scope": "Proves a NEW thin MFC sibling builds against MFC + the reusable libraries and its editing workflow runs under Wine. Does NOT build the legacy Hammer MFC shell (afxwin CMapDoc/CMapView entangled with the whole Source Windows engine), which remains windows-mfc-legacy=unverified. Running the MFC GUI (message loop, windows) needs a display and is not covered here; full H5 editor feature parity is future work.",
+  "siblingSymmetry": "Both UI siblings now build on the same reusable libraries: hammer.adapters.gtk (GTK4/libadwaita, hammer_windows_parity.json + adapters.gtk_shell.v1) and hammer.adapters.mfc (MFC, this artifact + adapters.mfc_shell.v1). Both persist through hammer::adapters::platform::DiskFileStore and serialize via hammer::formats; neither contains editor policy."
+}
