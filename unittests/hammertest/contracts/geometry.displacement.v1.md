@@ -75,7 +75,13 @@ Required for any map using displacements.
 
 ## 8. Declared scope limits (this slice)
 
-- Consumes `normals`, `distances`, `offsets`, `elevation`, `power`,
-  `startposition`. Does not yet interpret `alphas`, `triangle_tags`, `subdiv`,
-  `offset_normals`, or `allowed_verts` (preserved verbatim in the keyvalues tree
-  by `hammer.formats`); those are later increments.
+- Consumes `power`, `startposition`, `elevation`, `normals`, `distances`,
+  `offsets`, and now also `alphas` (optional per-vertex blend weight `0..255`,
+  surfaced on the built surface as `vertexAlphas`), `subdiv` (optional flag,
+  preserved on `DispInfo`), and `triangle_tags` (optional; validated as a
+  `(side-1)` × `(side-1)*2` grid and flattened parallel to the triangle list).
+- Does not yet interpret `offset_normals` or `allowed_verts` (preserved verbatim
+  in the keyvalues tree by `hammer.formats`), does not apply `subdiv` smoothing to
+  the mesh, and does not consume `alphas`/`triangle_tags` for rendering — those
+  are carried for the eventual scene/render consumer; those uses are later
+  increments.

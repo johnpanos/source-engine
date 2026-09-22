@@ -23,18 +23,6 @@
   ],
   "abiDeclarations": [
     {
-      "path": "public/ilaunchabledll.h",
-      "symbolCounts": {
-        "ILaunchableDLL": 1,
-        "LAUNCHABLE_DLL_INTERFACE_VERSION": 1
-      },
-      "reason": "Frozen Source launchable-DLL ABI declaration while reviewed legacy consumers remain.",
-      "deleteWhen": [
-        "all first-party tool cohorts have zero launchable-DLL consumers",
-        "retained external consumers have a reviewed compatibility disposition"
-      ]
-    },
-    {
       "path": "external/vpc/public/ilaunchabledll.h",
       "symbolCounts": {
         "ILaunchableDLL": 1,
@@ -54,27 +42,10 @@
       "disposition": "child-process",
       "status": "planned",
       "sourcePaths": [
-        "utils/vrad_launcher/vrad_launcher.cpp",
         "utils/vrad/vraddll.h",
         "utils/vrad/vraddll.cpp"
       ],
-      "wrapperSites": [
-        {
-          "path": "utils/vrad/vraddll.h",
-          "symbolCounts": {
-            "ILaunchableDLL": 1
-          },
-          "reason": "VRAD still implements the generic launchable-DLL ABI."
-        },
-        {
-          "path": "utils/vrad/vraddll.cpp",
-          "symbolCounts": {
-            "ILaunchableDLL": 1,
-            "LAUNCHABLE_DLL_INTERFACE_VERSION": 1
-          },
-          "reason": "VRAD still exports the generic launchable-DLL ABI."
-        }
-      ],
+      "wrapperSites": [],
       "deletionConditions": [
         "the normal VRAD executable owns its entry point without filename or CreateInterface lookup",
         "redirect, alternate-version, and -both behavior uses the structured child-process boundary",
@@ -311,16 +282,7 @@
       "sourcePaths": [
         "external/vpc/utils/vpc/main.cpp"
       ],
-      "wrapperSites": [
-        {
-          "path": "external/vpc/utils/vpc/main.cpp",
-          "symbolCounts": {
-            "ILaunchableDLL": 2,
-            "LAUNCHABLE_DLL_INTERFACE_VERSION": 1
-          },
-          "reason": "Vendored VPC binlaunch compatibility consumer pending an owning upstream/tool boundary decision."
-        }
-      ],
+      "wrapperSites": [],
       "deletionConditions": [
         "the VPC binlaunch compatibility requirement is reviewed with its owning external tool workflow",
         "the consumer is retired or isolated without exposing launchable-DLL authority to first-party code"

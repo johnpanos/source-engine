@@ -346,12 +346,22 @@ def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD, trace_records=())
 
 
 def resize_commands(workload=RESIZE_WORKLOAD):
-    """Return commands for the engine command buffer, where `wait` is honored."""
-    commands = ["+mat_queue_mode", "2", "+wait", "120"]
+    """Return one-line script commands so the engine command buffer honors `wait`."""
+    commands = ["mat_queue_mode 2", "wait 120"]
     for width, height in workload:
-        commands += ["+mat_resizewindow", str(width), str(height),
-                     "+wait", "12", "+screenshot", "+wait", "1"]
-    return commands + ["+wait", "10", "+quit"]
+        commands += ["mat_resizewindow %d %d" % (width, height),
+                     "wait 12", "screenshot", "wait 1"]
+    return commands + ["wait 10", "quit"]
+
+
+def install_resize_script(stage, workload=RESIZE_WORKLOAD):
+    """Install one parsed script line, preserving delayed commands after `exec`."""
+    path = Path(stage) / "portal/cfg/rfc0001_resize_e2e.cfg"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    commands = resize_commands(workload)
+    path.write_text("; ".join(commands) + "\n")
+    return {"path": str(path.relative_to(stage)), "sha256": sha256(path),
+            "commands": commands}
 
 
 def inspect_provider_catalog(log):
@@ -481,13 +491,14 @@ def main(argv=None):
                    "+wait", "600", "+screenshot", "+mat_spewvertexandpixelshaders",
                    "+wait", "10", "+quit"]
         if args.resize_stress:
-            # `exec` evaluates its file line-by-line immediately in this branch,
-            # including `wait`. Put the workload on the process command buffer so
-            # each size remains live for rendered frames before its image oracle.
+            # Cmd_Exec_f evaluates separate file lines immediately. A single
+            # semicolon-delimited line is parsed as one delayed command sequence,
+            # so later sizes remain queued behind each `wait`.
             tail = command.index("+wait", command.index("+developer"))
-            command = command[:tail] + ["-resizetelemetry"] + resize_commands()
+            resize_script = install_resize_script(stage)
+            command = command[:tail] + ["-resizetelemetry", "+exec", "rfc0001_resize_e2e"]
             evidence["resize_workload"] = {"version": 1, "sizes": RESIZE_WORKLOAD,
-                                           "commands": resize_commands()}
+                                           **resize_script}
         if args.require_provider_catalog:
             command += ["-moduleloadtelemetry"]
         environment = os.environ.copy()

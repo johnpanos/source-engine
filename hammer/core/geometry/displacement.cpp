@@ -140,6 +140,40 @@ bool ReadVectorGrid( const formats::KeyValueNode &block, int side, std::vector<V
 	return true;
 }
 
+// Reads the "triangle_tags" grid: (side-1) rows keyed row0..row{side-2}, each
+// holding (side-1)*2 integer tags (two triangles per grid cell). Flattened
+// row-major into 2*(side-1)^2 entries. Returns false on a missing/extra row or a
+// wrong-length row.
+bool ReadTagRows( const formats::KeyValueNode &block, int side, std::vector<int> &out )
+{
+	const int rows = side - 1;
+	const int perRow = ( side - 1 ) * 2;
+	out.assign( static_cast<std::size_t>( rows ) * perRow, 0 );
+	for ( int r = 0; r < rows; ++r )
+	{
+		const std::string key = "row" + std::to_string( r );
+		const std::string *value = block.Find( key );
+		if ( value == nullptr )
+		{
+			return false;
+		}
+		std::vector<double> row;
+		if ( !ParseDoubles( *value, row ) || static_cast<int>( row.size() ) != perRow )
+		{
+			return false;
+		}
+		for ( int c = 0; c < perRow; ++c )
+		{
+			out[static_cast<std::size_t>( r ) * perRow + c] = static_cast<int>( row[c] );
+		}
+	}
+	if ( block.Find( "row" + std::to_string( rows ) ) != nullptr )
+	{
+		return false;
+	}
+	return true;
+}
+
 // Parses "x y z" (VMF sometimes wraps in brackets). Returns false when not three
 // numbers.
 bool ParseVec3( const std::string &text, Vec3d &out )
@@ -231,6 +265,39 @@ std::optional<DispInfo> ParseDispInfo( const formats::KeyValueNode &dispBlock )
 		info.offsets.assign( static_cast<std::size_t>( side ) * side, Vec3d() );
 	}
 
+	// Alphas are optional (per-vertex blend weight 0..255); absent means all-zero.
+	if ( const formats::KeyValueNode *alphas = FindChild( dispBlock, "alphas" ) )
+	{
+		if ( !ReadScalarGrid( *alphas, side, info.alphas ) )
+		{
+			return std::nullopt;
+		}
+	}
+	else
+	{
+		info.alphas.assign( static_cast<std::size_t>( side ) * side, 0.0 );
+	}
+
+	// subdiv flag is optional.
+	if ( const std::string *sub = dispBlock.Find( "subdiv" ) )
+	{
+		std::vector<double> vals;
+		if ( !ParseDoubles( *sub, vals ) || vals.size() != 1 )
+		{
+			return std::nullopt;
+		}
+		info.subdiv = static_cast<int>( vals[0] );
+	}
+
+	// triangle_tags is optional; when present it must be a full (side-1) x (side-1)*2 grid.
+	if ( const formats::KeyValueNode *tags = FindChild( dispBlock, "triangle_tags" ) )
+	{
+		if ( !ReadTagRows( *tags, side, info.triangleTags ) )
+		{
+			return std::nullopt;
+		}
+	}
+
 	return info;
 }
 
@@ -261,6 +328,16 @@ DisplacementSurface BuildDisplacementSurface(
 	const Vec3d d = corners[static_cast<std::size_t>( ( origin + 3 ) % 4 )];
 
 	surface.vertices.resize( static_cast<std::size_t>( side ) * side );
+	// Carry per-vertex blend weights straight through (row-major, parallel to
+	// vertices); default to zero when the dispinfo carried no alphas grid.
+	if ( static_cast<int>( disp.alphas.size() ) == side * side )
+	{
+		surface.vertexAlphas = disp.alphas;
+	}
+	else
+	{
+		surface.vertexAlphas.assign( static_cast<std::size_t>( side ) * side, 0.0 );
+	}
 	const double span = ( side > 1 ) ? static_cast<double>( side - 1 ) : 1.0;
 	const Vec3d elevationPush = Scale( faceNormal, disp.elevation );
 

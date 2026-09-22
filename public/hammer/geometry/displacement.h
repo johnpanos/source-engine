@@ -43,11 +43,14 @@ namespace hammer::geometry
 struct DispInfo
 {
 	int power = 0;                 // subdivision power; grid side length is 2^power + 1
+	int subdiv = 0;                // subdivision flag (0/1); preserved, not yet meshed
 	Vec3d startPosition;           // world position identifying the grid's (0,0) corner
 	double elevation = 0.0;        // uniform push along the face normal
 	std::vector<Vec3d> normals;    // per-vertex displacement direction (side*side)
 	std::vector<double> distances; // per-vertex distance along its normal (side*side)
 	std::vector<Vec3d> offsets;    // per-vertex base offset; all-zero when absent
+	std::vector<double> alphas;    // per-vertex blend weight 0..255 (side*side); 0 when absent
+	std::vector<int> triangleTags; // per-triangle tag; 2*(side-1)^2, matching triangle order
 
 	// Grid side length (2^power + 1). Valid only when power is in range.
 	int Side() const { return ( 1 << power ) + 1; }
@@ -59,6 +62,7 @@ struct DisplacementSurface
 	int power = 0;
 	int side = 0;                              // 2^power + 1
 	std::vector<Vec3d> vertices;               // side*side, row-major (r*side + c)
+	std::vector<double> vertexAlphas;          // side*side, parallel to vertices (blend weight)
 	std::vector<std::array<int, 3>> triangles; // 2*(side-1)^2 triangles
 
 	std::size_t VertexCount() const { return vertices.size(); }

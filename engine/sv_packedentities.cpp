@@ -388,7 +388,7 @@ void PackEntities_NetworkBackDoor(
 }
 
 static ConVar sv_parallel_packentities( "sv_parallel_packentities", "1" );
-static ConVar sv_packentities_job_graph( "sv_packentities_job_graph", "0", 0,
+static ConVar sv_packentities_job_graph( "sv_packentities_job_graph", "2", 0,
     "Entity packing: 0 = legacy, 1 = serial job graph, 2 = pooled job graph.", true, 0, true, 2 );
 
 struct PackWork_t

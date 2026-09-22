@@ -21,6 +21,7 @@ namespace
 {
 enum
 {
+	VRAD_INVALID_COMMAND_LINE = 1,
 	VRAD_PROCESS_ROUTING_UNAVAILABLE = 4,
 };
 
@@ -96,6 +97,12 @@ bool GetRedirectTarget( const char *pExecutable, char *pTarget, int targetLength
 
 int main( int argc, char **argv )
 {
+	if ( argc < 1 || !argv || !argv[0] || !argv[0][0] )
+	{
+		fprintf( stderr, "vrad: missing executable path; no lighting was run.\n" );
+		return VRAD_INVALID_COMMAND_LINE;
+	}
+
 	CommandLine()->CreateCmdLine( argc, argv );
 
 	if ( HasArgument( argc, argv, "-both" ) )

@@ -50,23 +50,24 @@ def load_profile(path=DEFAULT_PROFILE):
         for name, version in profile["dependencies"]["pkg_config"].items():
             if not re.fullmatch(r"[A-Za-z0-9_.+-]+", name) or not isinstance(version, str) or not version:
                 raise ProfileError("invalid pkg-config dependency pin")
-        dep = profile["dependencies"]["dxvk_native"]
-        parsed = urllib.parse.urlparse(dep["url"])
-        if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
-            raise ProfileError("dependency downloads require a public HTTPS URL")
-        if not re.fullmatch(r"[0-9a-f]{64}", dep["sha256"]):
-            raise ProfileError("dependency requires an exact SHA-256 pin")
-        if not isinstance(dep["archive_bytes"], int) or dep["archive_bytes"] <= 0:
-            raise ProfileError("dependency requires a positive archive size")
-        for field in ("cache_archive", "extracted_directory", "prefix"):
-            if len(_relative_path(dep[field]).parts) != 1:
-                raise ProfileError("%s must name one path component" % field)
-        if not dep["required_files"]:
-            raise ProfileError("dependency must declare required files")
-        for required in dep["required_files"]:
-            _relative_path(required)
-        for field in ("include_directory", "library_directory"):
-            _relative_path(dep[field])
+        if "dxvk_native" in profile["dependencies"]:
+            dep = profile["dependencies"]["dxvk_native"]
+            parsed = urllib.parse.urlparse(dep["url"])
+            if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+                raise ProfileError("dependency downloads require a public HTTPS URL")
+            if not re.fullmatch(r"[0-9a-f]{64}", dep["sha256"]):
+                raise ProfileError("dependency requires an exact SHA-256 pin")
+            if not isinstance(dep["archive_bytes"], int) or dep["archive_bytes"] <= 0:
+                raise ProfileError("dependency requires a positive archive size")
+            for field in ("cache_archive", "extracted_directory", "prefix"):
+                if len(_relative_path(dep[field]).parts) != 1:
+                    raise ProfileError("%s must name one path component" % field)
+            if not dep["required_files"]:
+                raise ProfileError("dependency must declare required files")
+            for required in dep["required_files"]:
+                _relative_path(required)
+            for field in ("include_directory", "library_directory"):
+                _relative_path(dep[field])
         return profile
     except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
         raise ProfileError("invalid product profile: %s" % error) from error

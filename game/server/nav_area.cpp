@@ -1,3 +1,4 @@
+#include "vstdlib/jobgraph_parallel.h"
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
@@ -5596,7 +5597,7 @@ void CNavArea::ComputeVisibilityToMesh( void )
 	SetupPVS();
 
 	g_pCurVisArea = this;
-	ParallelProcess( "CNavArea::ComputeVisibilityToMesh", collector.m_area.Base(), collector.m_area.Count(), &ComputeVisToArea );
+	JobGraphParallelProcess( "CNavArea::ComputeVisibilityToMesh", collector.m_area.Base(), collector.m_area.Count(), &ComputeVisToArea );
 
 	m_potentiallyVisibleAreas.EnsureCapacity( g_ComputedVis.Count() );
 	while ( g_ComputedVis.Count() )

@@ -62,9 +62,13 @@ def build(bld):
 	defines = []
 
 	libs = ['tier0','tier1','tier2','vstdlib','mathlib','bitmap','shaderlib','vtf']
-	# Renderer ownership follows the product link graph, never runtime filenames.
-	libs += ['shaderapiempty' if bld.env.DEDICATED else 'shaderapidx9']
-	if not bld.env.DEDICATED:
+	if bld.env.DEDICATED:
+		libs += ['shaderapiempty']
+	elif bld.env.NATIVE_VULKAN:
+		libs += ['shaderapivulkan']
+	else:
+		libs += ['shaderapidx9']
+	if not bld.env.DEDICATED and not bld.env.NATIVE_VULKAN:
 		libs += ['stdshader_dx9']
 		defines += ['LINKED_STANDARD_SHADERS']
 

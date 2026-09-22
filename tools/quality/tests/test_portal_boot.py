@@ -89,9 +89,18 @@ class AcceptanceTests(unittest.TestCase):
 class ResizeAcceptanceTests(unittest.TestCase):
     def test_resize_workload_uses_the_frame_command_buffer(self):
         self.assertEqual(
-            ["+mat_queue_mode", "2", "+wait", "120", "+mat_resizewindow", "641", "479", "+wait", "12",
-             "+screenshot", "+wait", "1", "+wait", "10", "+quit"],
+            ["mat_queue_mode 2", "wait 120", "mat_resizewindow 641 479", "wait 12",
+             "screenshot", "wait 1", "wait 10", "quit"],
             boot.resize_commands(((641, 479),)))
+
+    def test_resize_script_is_one_line_and_records_its_hash(self):
+        with tempfile.TemporaryDirectory() as root:
+            stage = Path(root)
+            result = boot.install_resize_script(stage, ((641, 479),))
+            script = stage / result["path"]
+            self.assertEqual(1, len(script.read_text().splitlines()))
+            self.assertIn("wait 120; mat_resizewindow 641 479; wait 12", script.read_text())
+            self.assertEqual(boot.sha256(script), result["sha256"])
 
     def test_every_resize_needs_consumption_and_nonblank_matching_image(self):
         expected = ((641, 479), (1024, 768))

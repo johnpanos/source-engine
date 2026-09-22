@@ -1,3 +1,4 @@
+#include "vstdlib/jobgraph_parallel.h"
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
@@ -4012,8 +4013,8 @@ void CClientShadowMgr::ComputeShadowTextures( const CViewSetup &view, int leafCo
 			}
 		}
 
-		ParallelProcess( "NPCShadowBoneSetups", s_NPCShadowBoneSetups.Base(), s_NPCShadowBoneSetups.Count(), &SetupBonesOnBaseAnimating );
-		ParallelProcess( "NonNPCShadowBoneSetups", s_NonNPCShadowBoneSetups.Base(), s_NonNPCShadowBoneSetups.Count(), &SetupBonesOnBaseAnimating );
+		JobGraphParallelProcess( "NPCShadowBoneSetups", s_NPCShadowBoneSetups.Base(), s_NPCShadowBoneSetups.Count(), &SetupBonesOnBaseAnimating );
+		JobGraphParallelProcess( "NonNPCShadowBoneSetups", s_NonNPCShadowBoneSetups.Base(), s_NonNPCShadowBoneSetups.Count(), &SetupBonesOnBaseAnimating );
 
 		nModelsRendered = 0;
 	}

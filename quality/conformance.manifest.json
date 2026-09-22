@@ -812,6 +812,42 @@
         "unittests/hammertest/geometry/test_displacement_negative.cpp"
       ],
       "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.instancing",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-INSTANCE-001",
+      "contract": "unittests/hammertest/contracts/formats.instancing.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-Iunittests/hammertest"
+      ],
+      "sources": [
+        "hammer/core/formats/instancing.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_instancing.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.instancing.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-INSTANCE-001",
+      "contract": "unittests/hammertest/contracts/formats.instancing.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-Iunittests/hammertest"
+      ],
+      "sources": [
+        "hammer/core/formats/instancing.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_instancing_negative.cpp"
+      ],
+      "expect": "pass"
     }
   ]
 }

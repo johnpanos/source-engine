@@ -2793,25 +2793,3 @@ int vpcmain( int argc, char **argv )
 
 	return nRetVal;
 }
-
-// VPC is a DLL in Source.
-#if !(defined(STANDALONE_VPC) || defined(OSX) || defined(LINUX))
-#include "ilaunchabledll.h"
-
-// VPC is launched by vpc.exe, which is a copy of binlaunch.exe.
-// All binlaunch does is setup the path to game\bin and load an ILaunchableDLL
-// interface out of a DLL with the same name as the exe.
-class CVPCLaunchableDLL : public ILaunchableDLL
-{
-public:
-	// All vpc.exe does is load the vpc DLL and run this.
-	virtual int	main( int argc, char **argv )
-	{
-		return vpcmain( argc, argv );
-	}
-};
-
-EXPOSE_SINGLE_INTERFACE( CVPCLaunchableDLL, ILaunchableDLL, LAUNCHABLE_DLL_INTERFACE_VERSION );
-#endif
-
-

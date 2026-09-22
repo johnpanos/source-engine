@@ -130,6 +130,33 @@ const char *kMissingNormals = "dispinfo\n{\n"
                               "\t}\n"
                               "}\n";
 
+// Valid normals + distances, but an alphas grid whose row0 has 4 values (needs 5).
+const char *kBadAlpha = "dispinfo\n{\n"
+                        "\t\"power\" \"2\"\n"
+                        "\t\"startposition\" \"[0 0 0]\"\n"
+                        "\tnormals\n\t{\n"
+                        "\t\t\"row0\" \"0 0 1 0 0 1 0 0 1 0 0 1 0 0 1\"\n"
+                        "\t\t\"row1\" \"0 0 1 0 0 1 0 0 1 0 0 1 0 0 1\"\n"
+                        "\t\t\"row2\" \"0 0 1 0 0 1 0 0 1 0 0 1 0 0 1\"\n"
+                        "\t\t\"row3\" \"0 0 1 0 0 1 0 0 1 0 0 1 0 0 1\"\n"
+                        "\t\t\"row4\" \"0 0 1 0 0 1 0 0 1 0 0 1 0 0 1\"\n"
+                        "\t}\n"
+                        "\tdistances\n\t{\n"
+                        "\t\t\"row0\" \"0 0 0 0 0\"\n"
+                        "\t\t\"row1\" \"0 0 0 0 0\"\n"
+                        "\t\t\"row2\" \"0 0 0 0 0\"\n"
+                        "\t\t\"row3\" \"0 0 0 0 0\"\n"
+                        "\t\t\"row4\" \"0 0 0 0 0\"\n"
+                        "\t}\n"
+                        "\talphas\n\t{\n"
+                        "\t\t\"row0\" \"0 0 0 0\"\n"
+                        "\t\t\"row1\" \"0 0 0 0 0\"\n"
+                        "\t\t\"row2\" \"0 0 0 0 0\"\n"
+                        "\t\t\"row3\" \"0 0 0 0 0\"\n"
+                        "\t\t\"row4\" \"0 0 0 0 0\"\n"
+                        "\t}\n"
+                        "}\n";
+
 } // namespace
 
 int main()
@@ -139,6 +166,7 @@ int main()
 	ExpectRejected( kShortRow, "distances row too short" );
 	ExpectRejected( kMissingRow, "distances missing a row" );
 	ExpectRejected( kMissingNormals, "normals grid absent" );
+	ExpectRejected( kBadAlpha, "alphas row too short" );
 
 	if ( g_failures != 0 )
 	{

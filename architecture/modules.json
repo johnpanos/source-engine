@@ -3,27 +3,248 @@
   "capabilityModules": {
     "description": "Strict RFC 0001 composition boundary. Permissions for includes and Waf links are owned here; no legacy baseline applies.",
     "modules": [
-      {"id": "foundation", "paths": ["public/foundation/"], "allowedEdges": []},
-      {"id": "platform.contracts", "paths": ["public/platform/contracts/"], "allowedEdges": ["foundation"]},
-      {"id": "platform.tool-process", "paths": ["public/platform/tool_process_client.h", "platform/tool_process_client.cpp"], "allowedEdges": ["platform.contracts"]},
-      {"id": "platform.sdl3.legacy-adapter", "kind": "backend", "paths": ["platform/sdl3/legacy_include/"], "allowedEdges": [], "externalHeaders": ["SDL3/SDL.h", "SDL3/SDL_clipboard.h", "SDL3/SDL_error.h", "SDL3/SDL_events.h", "SDL3/SDL_gamepad.h", "SDL3/SDL_haptic.h", "SDL3/SDL_keycode.h", "SDL3/SDL_messagebox.h", "SDL3/SDL_misc.h", "SDL3/SDL_scancode.h", "SDL3/SDL_touch.h", "SDL3/SDL_version.h"]},
-      {"id": "platform.sdl3.launcher", "kind": "backend", "paths": ["appframework/sdl3mgr.cpp"], "allowedEdges": [], "externalHeaders": ["SDL3/SDL.h"], "legacyIncludes": ["appframework/ilaunchermgr.h", "inputsystem/ButtonCode.h", "tier0/icommandline.h", "tier1/convar.h", "tier1/utllinkedlist.h", "tier0/memdbgon.h"]},
-      {"id": "platform.sdl3.native-tests", "kind": "native-test", "paths": ["unittests/platformtest/sdl3/"], "externalHeaders": ["SDL3/SDL.h"], "legacyIncludes": ["appframework/ilaunchermgr.h", "tier0/icommandline.h"], "allowedEdges": ["platform.window-provider-contract"]},
-      {"id": "platform.window-provider-contract", "paths": ["public/appframework/window_provider.h"], "allowedEdges": []},
-      {"id": "render.legacy-provider-contract", "paths": ["public/render/legacy_shader_provider.h", "public/render/builtin_shader_provider.h"], "allowedEdges": []},
-      {"id": "render.shader-extension-contract", "paths": ["materialsystem/shaderextension_compatibility_host.h"], "allowedEdges": []},
-      {"id": "render.shader-extension-host", "kind": "legacy-interop", "paths": ["materialsystem/shaderextension_compatibility_host.cpp"], "allowedEdges": ["render.shader-extension-contract"], "legacyIncludes": ["filesystem.h", "IShaderSystem.h"]},
-      {"id": "render.shader-extension-abi-test", "kind": "native-test", "paths": ["unittests/shaderextensiontest/test_shaderextension_host.cpp"], "allowedEdges": ["render.shader-extension-contract"], "legacyIncludes": ["filesystem_passthru.h", "../../materialsystem/IShaderSystem.h"]},
-      {"id": "platform.composition", "paths": ["public/platform/composition.h", "public/platform/legacy_binding.h", "platform/"], "allowedEdges": ["foundation"]},
-      {"id": "testing.contracts", "paths": ["public/testing/"], "allowedEdges": []},
-      {"id": "testing.runner", "paths": ["utils/unittest/capability_runner.cpp", "utils/unittest/capability_unittest.cpp"], "allowedEdges": ["foundation", "platform.composition", "testing.contracts"]},
-      {"id": "platform.tests", "paths": ["unittests/platformtest/"], "allowedEdges": ["foundation", "platform.contracts", "platform.tool-process", "platform.composition", "testing.contracts"]}
+      {
+        "id": "foundation",
+        "paths": [
+          "public/foundation/"
+        ],
+        "allowedEdges": []
+      },
+      {
+        "id": "platform.contracts",
+        "paths": [
+          "public/platform/contracts/"
+        ],
+        "allowedEdges": [
+          "foundation"
+        ]
+      },
+      {
+        "id": "platform.tool-process",
+        "paths": [
+          "public/platform/tool_process_client.h",
+          "platform/tool_process_client.cpp"
+        ],
+        "allowedEdges": [
+          "platform.contracts"
+        ]
+      },
+      {
+        "id": "platform.sdl3.legacy-adapter",
+        "kind": "backend",
+        "paths": [
+          "platform/sdl3/legacy_include/"
+        ],
+        "allowedEdges": [],
+        "externalHeaders": [
+          "SDL3/SDL.h",
+          "SDL3/SDL_clipboard.h",
+          "SDL3/SDL_error.h",
+          "SDL3/SDL_events.h",
+          "SDL3/SDL_gamepad.h",
+          "SDL3/SDL_haptic.h",
+          "SDL3/SDL_keycode.h",
+          "SDL3/SDL_messagebox.h",
+          "SDL3/SDL_misc.h",
+          "SDL3/SDL_scancode.h",
+          "SDL3/SDL_touch.h",
+          "SDL3/SDL_version.h"
+        ]
+      },
+      {
+        "id": "platform.sdl3.launcher",
+        "kind": "backend",
+        "paths": [
+          "appframework/sdl3mgr.cpp"
+        ],
+        "allowedEdges": [],
+        "externalHeaders": [
+          "SDL3/SDL.h"
+        ],
+        "legacyIncludes": [
+          "appframework/ilaunchermgr.h",
+          "inputsystem/ButtonCode.h",
+          "tier0/icommandline.h",
+          "tier1/convar.h",
+          "tier1/utllinkedlist.h",
+          "tier0/memdbgon.h"
+        ]
+      },
+      {
+        "id": "platform.sdl3.native-tests",
+        "kind": "native-test",
+        "paths": [
+          "unittests/platformtest/sdl3/"
+        ],
+        "externalHeaders": [
+          "SDL3/SDL.h"
+        ],
+        "legacyIncludes": [
+          "appframework/ilaunchermgr.h",
+          "tier0/icommandline.h"
+        ],
+        "allowedEdges": [
+          "platform.window-provider-contract"
+        ]
+      },
+      {
+        "id": "platform.window-provider-contract",
+        "paths": [
+          "public/appframework/window_provider.h"
+        ],
+        "allowedEdges": []
+      },
+      {
+        "id": "render.legacy-provider-contract",
+        "paths": [
+          "public/render/legacy_shader_provider.h",
+          "public/render/builtin_shader_provider.h"
+        ],
+        "allowedEdges": []
+      },
+      {
+        "id": "render.shader-extension-contract",
+        "paths": [
+          "materialsystem/shaderextension_compatibility_host.h"
+        ],
+        "allowedEdges": []
+      },
+      {
+        "id": "render.shader-extension-host",
+        "kind": "legacy-interop",
+        "paths": [
+          "materialsystem/shaderextension_compatibility_host.cpp"
+        ],
+        "allowedEdges": [
+          "render.shader-extension-contract"
+        ],
+        "legacyIncludes": [
+          "filesystem.h",
+          "IShaderSystem.h"
+        ]
+      },
+      {
+        "id": "render.shader-extension-abi-test",
+        "kind": "native-test",
+        "paths": [
+          "unittests/shaderextensiontest/test_shaderextension_host.cpp"
+        ],
+        "allowedEdges": [
+          "render.shader-extension-contract"
+        ],
+        "legacyIncludes": [
+          "filesystem_passthru.h",
+          "../../materialsystem/IShaderSystem.h"
+        ]
+      },
+      {
+        "id": "platform.composition",
+        "paths": [
+          "public/platform/composition.h",
+          "public/platform/legacy_binding.h",
+          "platform/"
+        ],
+        "allowedEdges": [
+          "foundation"
+        ]
+      },
+      {
+        "id": "testing.contracts",
+        "paths": [
+          "public/testing/"
+        ],
+        "allowedEdges": []
+      },
+      {
+        "id": "testing.runner",
+        "paths": [
+          "utils/unittest/capability_runner.cpp",
+          "utils/unittest/capability_unittest.cpp"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.composition",
+          "testing.contracts"
+        ]
+      },
+      {
+        "id": "platform.tests",
+        "paths": [
+          "unittests/platformtest/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.contracts",
+          "platform.tool-process",
+          "platform.composition",
+          "testing.contracts"
+        ]
+      },
+      {
+        "id": "platform.posix",
+        "kind": "backend",
+        "paths": [
+          "platform/posix/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.contracts"
+        ],
+        "externalHeaders": [
+          "unistd.h",
+          "sys/wait.h",
+          "sys/types.h",
+          "poll.h",
+          "fcntl.h",
+          "csignal",
+          "cerrno"
+        ]
+      }
     ],
-    "standardHeaders": ["algorithm", "array", "atomic", "cassert", "chrono", "cmath", "concepts", "condition_variable", "cstddef", "cstdint", "cstdio", "cstdlib", "cstring", "functional", "initializer_list", "limits", "map", "memory", "mutex", "new", "optional", "set", "span", "string", "string_view", "thread", "type_traits", "unordered_map", "utility", "vector"],
+    "standardHeaders": [
+      "algorithm",
+      "array",
+      "atomic",
+      "cassert",
+      "chrono",
+      "cmath",
+      "concepts",
+      "condition_variable",
+      "cstddef",
+      "cstdint",
+      "cstdio",
+      "cstdlib",
+      "cstring",
+      "functional",
+      "initializer_list",
+      "limits",
+      "map",
+      "memory",
+      "mutex",
+      "new",
+      "optional",
+      "set",
+      "span",
+      "string",
+      "string_view",
+      "thread",
+      "type_traits",
+      "unordered_map",
+      "utility",
+      "vector"
+    ],
     "targets": {
-      "platform_composition": {"allowedUse": []},
-      "platform_tool_process": {"allowedUse": []},
-      "unittest": {"allowedUse": ["platform_composition"]}
+      "platform_composition": {
+        "allowedUse": []
+      },
+      "platform_tool_process": {
+        "allowedUse": []
+      },
+      "unittest": {
+        "allowedUse": [
+          "platform_composition"
+        ]
+      }
     }
   },
   "description": "RFC 0001 architectural manifest. Phase A currently freezes legacy dynamic-loader boundaries.",
@@ -47,33 +268,74 @@
     "classifications": [
       {
         "name": "retained-extension",
-        "pathPrefixes": ["materialsystem/shaderextension_compatibility_host.cpp"],
+        "pathPrefixes": [
+          "materialsystem/shaderextension_compatibility_host.cpp"
+        ],
         "reason": "Private ShaderDLL004 mod-extension host; scoped filesystem acquisition, version negotiation and disconnect-before-unload preserve the retained ABI."
       },
       {
         "name": "tool-indirection",
-        "pathPrefixes": ["devtools/", "external/vpc/", "tools/", "unittests/", "utils/"],
+        "pathPrefixes": [
+          "devtools/",
+          "external/vpc/",
+          "tools/",
+          "unittests/",
+          "utils/"
+        ],
         "reason": "Tool-only implementation, wrapper, or optional tool integration."
       },
       {
         "name": "retained-extension",
-        "pathPrefixes": ["game/", "gameui/", "serverbrowser/", "engine/sv_plugin", "engine/cdll_engine", "engine/sys_dll"],
+        "pathPrefixes": [
+          "game/",
+          "gameui/",
+          "serverbrowser/",
+          "engine/sv_plugin",
+          "engine/cdll_engine",
+          "engine/sys_dll"
+        ],
         "reason": "Game, server, or UI extension boundary retained for compatibility."
       },
       {
         "name": "optional-provider",
-        "pathPrefixes": ["common/ihfx/", "common/dx_proxy/", "materialsystem/", "inputsystem/", "replay/", "sfmobjects/", "video/"],
+        "pathPrefixes": [
+          "common/ihfx/",
+          "common/dx_proxy/",
+          "materialsystem/",
+          "inputsystem/",
+          "replay/",
+          "sfmobjects/",
+          "video/"
+        ],
         "reason": "Optional product, renderer, input, video, or vendor provider."
       },
       {
         "name": "native-symbol-probe",
-        "pathPrefixes": ["tier0/", "vstdlib/", "vguimatsurface/", "engine/audio/", "engine/cl_check_process", "engine/sys_mainwind"],
-        "rules": ["INVENTORY_NATIVE_LOAD"],
+        "pathPrefixes": [
+          "tier0/",
+          "vstdlib/",
+          "vguimatsurface/",
+          "engine/audio/",
+          "engine/cl_check_process",
+          "engine/sys_mainwind"
+        ],
+        "rules": [
+          "INVENTORY_NATIVE_LOAD"
+        ],
         "reason": "Native API availability or vendor symbol probe."
       },
       {
         "name": "first-party-composition",
-        "pathPrefixes": ["appframework/", "dedicated/", "dedicated_main/", "launcher/", "launcher_main/", "filesystem/", "tier1/", "public/"],
+        "pathPrefixes": [
+          "appframework/",
+          "dedicated/",
+          "dedicated_main/",
+          "launcher/",
+          "launcher_main/",
+          "filesystem/",
+          "tier1/",
+          "public/"
+        ],
         "reason": "First-party runtime module assembled by legacy application composition."
       }
     ]
@@ -81,27 +343,196 @@
   "hammerModules": {
     "version": 1,
     "description": "RFC 0002 editor module ownership and allowed dependency edges. Strict modules carry zero baseline debt and reject native/toolkit types.",
-    "strictIncludeRoots": ["public/hammer/", "hammer/core/"],
+    "strictIncludeRoots": [
+      "public/hammer/",
+      "hammer/core/"
+    ],
     "legacyHost": "hammer.adapters.mfc",
     "modules": [
-      {"id": "hammer.geometry", "strict": true, "owns": "Geometric values, algorithms, numeric policies", "allowedEdges": []},
-      {"id": "hammer.scene", "strict": true, "owns": "Content graph, typed IDs, document metadata, invariants", "allowedEdges": ["hammer.geometry"]},
-      {"id": "hammer.ports", "strict": true, "owns": "Asset, persistence, job, and external-service contracts", "allowedEdges": ["hammer.geometry", "hammer.scene"]},
-      {"id": "hammer.formats", "strict": true, "owns": "VMF/MAP/RMF codecs and format validation", "allowedEdges": ["hammer.geometry", "hammer.scene", "hammer.ports"]},
-      {"id": "hammer.app", "strict": true, "owns": "Sessions, queries, edit transactions, history, save/build orchestration", "allowedEdges": ["hammer.geometry", "hammer.scene", "hammer.ports"]},
-      {"id": "hammer.viewport", "strict": true, "owns": "Projection, picking queries, presentation extraction, render contracts", "allowedEdges": ["hammer.geometry", "hammer.scene", "hammer.ports"]},
-      {"id": "hammer.tools", "strict": true, "owns": "Gesture state machines and edit/overlay production", "allowedEdges": ["hammer.geometry", "hammer.scene", "hammer.ports", "hammer.app", "hammer.viewport"]},
-      {"id": "hammer.presenters", "strict": true, "owns": "Inspector/browser/view presentation models and action routing", "allowedEdges": ["hammer.app", "hammer.tools", "hammer.viewport", "hammer.ports", "hammer.scene"]},
-      {"id": "hammer.adapters.source", "strict": false, "owns": "Source asset and renderer integrations", "allowedEdges": ["hammer.ports", "hammer.viewport", "hammer.scene", "hammer.geometry"]},
-      {"id": "hammer.adapters.platform", "strict": false, "owns": "Files, settings, processes, clocks, watchers, scheduling", "allowedEdges": ["hammer.ports"]},
-      {"id": "hammer.adapters.mfc", "strict": false, "owns": "Existing shell and compatibility glue", "allowedEdges": ["hammer.presenters", "hammer.app", "hammer.tools", "hammer.viewport", "hammer.ports", "hammer.scene", "hammer.geometry", "hammer.formats"]},
-      {"id": "hammer.adapters.gtk", "strict": false, "owns": "Canonical GTK4/libadwaita rendering+interaction shell at hammer/gtk/ (4-view layout, GL viewports, tool/menu input, main-context dispatch); sibling of hammer.adapters.mfc, both driving the reusable MFC-free libraries", "allowedEdges": ["hammer.presenters", "hammer.app", "hammer.tools", "hammer.viewport", "hammer.ports", "hammer.scene", "hammer.geometry", "hammer.adapters.platform"]},
-      {"id": "hammer.interop.gtk_source", "strict": false, "owns": "Private GTK/render-resource exchange", "allowedEdges": ["hammer.viewport", "hammer.adapters.gtk", "hammer.adapters.source"]},
-      {"id": "hammer.composition", "strict": false, "owns": "Provider selection, wiring, startup/shutdown", "allowedEdges": ["hammer.geometry", "hammer.scene", "hammer.ports", "hammer.formats", "hammer.app", "hammer.viewport", "hammer.tools", "hammer.presenters", "hammer.adapters.source", "hammer.adapters.platform", "hammer.adapters.mfc", "hammer.adapters.gtk", "hammer.interop.gtk_source"]}
+      {
+        "id": "hammer.geometry",
+        "strict": true,
+        "owns": "Geometric values, algorithms, numeric policies",
+        "allowedEdges": []
+      },
+      {
+        "id": "hammer.scene",
+        "strict": true,
+        "owns": "Content graph, typed IDs, document metadata, invariants",
+        "allowedEdges": [
+          "hammer.geometry"
+        ]
+      },
+      {
+        "id": "hammer.ports",
+        "strict": true,
+        "owns": "Asset, persistence, job, and external-service contracts",
+        "allowedEdges": [
+          "hammer.geometry",
+          "hammer.scene"
+        ]
+      },
+      {
+        "id": "hammer.formats",
+        "strict": true,
+        "owns": "VMF/MAP/RMF codecs and format validation",
+        "allowedEdges": [
+          "hammer.geometry",
+          "hammer.scene",
+          "hammer.ports"
+        ]
+      },
+      {
+        "id": "hammer.app",
+        "strict": true,
+        "owns": "Sessions, queries, edit transactions, history, save/build orchestration",
+        "allowedEdges": [
+          "hammer.geometry",
+          "hammer.scene",
+          "hammer.ports"
+        ]
+      },
+      {
+        "id": "hammer.viewport",
+        "strict": true,
+        "owns": "Projection, picking queries, presentation extraction, render contracts",
+        "allowedEdges": [
+          "hammer.geometry",
+          "hammer.scene",
+          "hammer.ports"
+        ]
+      },
+      {
+        "id": "hammer.tools",
+        "strict": true,
+        "owns": "Gesture state machines and edit/overlay production",
+        "allowedEdges": [
+          "hammer.geometry",
+          "hammer.scene",
+          "hammer.ports",
+          "hammer.app",
+          "hammer.viewport"
+        ]
+      },
+      {
+        "id": "hammer.presenters",
+        "strict": true,
+        "owns": "Inspector/browser/view presentation models and action routing",
+        "allowedEdges": [
+          "hammer.app",
+          "hammer.tools",
+          "hammer.viewport",
+          "hammer.ports",
+          "hammer.scene"
+        ]
+      },
+      {
+        "id": "hammer.adapters.source",
+        "strict": false,
+        "owns": "Source asset and renderer integrations",
+        "allowedEdges": [
+          "hammer.ports",
+          "hammer.viewport",
+          "hammer.scene",
+          "hammer.geometry"
+        ]
+      },
+      {
+        "id": "hammer.adapters.platform",
+        "strict": false,
+        "owns": "Files, settings, processes, clocks, watchers, scheduling",
+        "allowedEdges": [
+          "hammer.ports"
+        ]
+      },
+      {
+        "id": "hammer.adapters.mfc",
+        "strict": false,
+        "owns": "Existing shell and compatibility glue",
+        "allowedEdges": [
+          "hammer.presenters",
+          "hammer.app",
+          "hammer.tools",
+          "hammer.viewport",
+          "hammer.ports",
+          "hammer.scene",
+          "hammer.geometry",
+          "hammer.formats"
+        ]
+      },
+      {
+        "id": "hammer.adapters.gtk",
+        "strict": false,
+        "owns": "Canonical GTK4/libadwaita rendering+interaction shell at hammer/gtk/ (4-view layout, GL viewports, tool/menu input, main-context dispatch); sibling of hammer.adapters.mfc, both driving the reusable MFC-free libraries",
+        "allowedEdges": [
+          "hammer.presenters",
+          "hammer.app",
+          "hammer.tools",
+          "hammer.viewport",
+          "hammer.ports",
+          "hammer.scene",
+          "hammer.geometry",
+          "hammer.adapters.platform"
+        ]
+      },
+      {
+        "id": "hammer.interop.gtk_source",
+        "strict": false,
+        "owns": "Private GTK/render-resource exchange",
+        "allowedEdges": [
+          "hammer.viewport",
+          "hammer.adapters.gtk",
+          "hammer.adapters.source"
+        ]
+      },
+      {
+        "id": "hammer.composition",
+        "strict": false,
+        "owns": "Provider selection, wiring, startup/shutdown",
+        "allowedEdges": [
+          "hammer.geometry",
+          "hammer.scene",
+          "hammer.ports",
+          "hammer.formats",
+          "hammer.app",
+          "hammer.viewport",
+          "hammer.tools",
+          "hammer.presenters",
+          "hammer.adapters.source",
+          "hammer.adapters.platform",
+          "hammer.adapters.mfc",
+          "hammer.adapters.gtk",
+          "hammer.interop.gtk_source"
+        ]
+      }
     ],
     "nativeTokens": [
-      "afxwin.h", "afxext.h", "afx.h", "windows.h", "CWnd", "CDialog", "CDocument", "CView", "CDC", "CPalette", "HWND", "HDC", "LPARAM", "WPARAM", "__declspec",
-      "gtk/gtk.h", "gtkmm", "adwaita.h", "GtkWidget", "GdkGLContext", "GtkGLArea", "SDL.h", "SDL_", "IMaterialSystem", "vgui::", "CVGuiWnd"
+      "afxwin.h",
+      "afxext.h",
+      "afx.h",
+      "windows.h",
+      "CWnd",
+      "CDialog",
+      "CDocument",
+      "CView",
+      "CDC",
+      "CPalette",
+      "HWND",
+      "HDC",
+      "LPARAM",
+      "WPARAM",
+      "__declspec",
+      "gtk/gtk.h",
+      "gtkmm",
+      "adwaita.h",
+      "GtkWidget",
+      "GdkGLContext",
+      "GtkGLArea",
+      "SDL.h",
+      "SDL_",
+      "IMaterialSystem",
+      "vgui::",
+      "CVGuiWnd"
     ]
   }
 }

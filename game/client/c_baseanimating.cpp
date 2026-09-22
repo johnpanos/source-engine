@@ -2649,7 +2649,7 @@ CMouthInfo *C_BaseAnimating::GetMouth( void )
 ConVar cl_warn_thread_contested_bone_setup("cl_warn_thread_contested_bone_setup", "0" );
 #endif
 ConVar cl_threaded_bone_setup("cl_threaded_bone_setup", "0", 0, "Enable parallel processing of C_BaseAnimating::SetupBones()" );
-static ConVar cl_bone_job_graph( "cl_bone_job_graph", "0", 0,
+static ConVar cl_bone_job_graph( "cl_bone_job_graph", "2", 0,
     "Previous-frame bone setup: 0 legacy, 1 serial job graph, 2 pooled job graph.", true, 0, true,
     2 );
 

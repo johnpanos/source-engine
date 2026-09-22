@@ -119,7 +119,7 @@ ConVar r_drawviewmodel( "r_drawviewmodel","1", FCVAR_CHEAT );
 static ConVar r_drawtranslucentrenderables( "r_drawtranslucentrenderables", "1", FCVAR_CHEAT );
 static ConVar r_drawopaquerenderables( "r_drawopaquerenderables", "1", FCVAR_CHEAT );
 static ConVar r_threaded_renderables( "r_threaded_renderables", "0" );
-static ConVar r_renderable_job_graph( "r_renderable_job_graph", "0", 0,
+static ConVar r_renderable_job_graph( "r_renderable_job_graph", "2", 0,
     "Renderable bone setup: 0 legacy, 1 serial job graph, 2 pooled job graph.", true, 0, true, 2 );
 
 // FIXME: This is not static because we needed to turn it off for TF2 playtests

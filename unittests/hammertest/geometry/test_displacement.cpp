@@ -185,6 +185,79 @@ void TestStartPositionOrientation()
 	    "start: (0,0) rotates to startposition corner" );
 }
 
+// Builds a power-2 dispinfo that also carries alphas, subdiv, and triangle_tags,
+// so the optional attributes can be exercised.
+std::string MakeDispInfoWithExtras( double alpha )
+{
+	const int side = 5; // power 2
+	std::string text = "dispinfo\n{\n";
+	text += "\t\"power\" \"2\"\n";
+	text += "\t\"startposition\" \"[0 0 0]\"\n";
+	text += "\t\"elevation\" \"0\"\n";
+	text += "\t\"subdiv\" \"1\"\n";
+
+	auto rows = [&]( const char *name, int count, const std::string &rowVals )
+	{
+		std::string block = std::string( "\t" ) + name + "\n\t{\n";
+		for ( int r = 0; r < count; ++r )
+		{
+			block += "\t\t\"row" + std::to_string( r ) + "\" \"" + rowVals + "\"\n";
+		}
+		block += "\t}\n";
+		return block;
+	};
+
+	std::string normRow;
+	std::string distRow;
+	std::string alphaRow;
+	std::string tagRow;
+	for ( int c = 0; c < side; ++c )
+	{
+		normRow += ( c ? " " : "" ) + std::string( "0 0 1" );
+		distRow += ( c ? " " : "" ) + std::string( "0" );
+		alphaRow += ( c ? " " : "" ) + std::to_string( alpha );
+	}
+	for ( int c = 0; c < ( side - 1 ) * 2; ++c )
+	{
+		tagRow += ( c ? " " : "" ) + std::string( "9" );
+	}
+	text += rows( "normals", side, normRow );
+	text += rows( "distances", side, distRow );
+	text += rows( "alphas", side, alphaRow );
+	text += rows( "triangle_tags", side - 1, tagRow );
+	text += "}\n";
+	return text;
+}
+
+void TestAlphasTagsSubdiv()
+{
+	DispInfo info;
+	Check( ParseText( MakeDispInfoWithExtras( 128.0 ), info ), "extras: parses" );
+	const int side = info.Side(); // 5
+
+	Check( static_cast<int>( info.alphas.size() ) == side * side, "extras: alphas grid size" );
+	bool alphaOk = !info.alphas.empty();
+	for ( double a : info.alphas )
+	{
+		alphaOk = alphaOk && Near( a, 128.0 );
+	}
+	Check( alphaOk, "extras: per-vertex alpha value" );
+	Check( info.subdiv == 1, "extras: subdiv flag parsed" );
+	Check( static_cast<int>( info.triangleTags.size() ) == 2 * ( side - 1 ) * ( side - 1 ),
+	    "extras: triangle_tags count 2*(side-1)^2" );
+
+	DisplacementSurface s = BuildDisplacementSurface( UnitQuad(), Vec3d( 0, 0, 1 ), info );
+	Check( static_cast<int>( s.vertexAlphas.size() ) == side * side,
+	    "extras: surface carries per-vertex alphas" );
+	Check( Near( s.vertexAlphas[0], 128.0 ), "extras: surface alpha value preserved" );
+
+	// A dispinfo without alphas defaults every vertex weight to zero.
+	DispInfo plain;
+	Check( ParseText( MakeDispInfo( 2, "[0 0 0]", 1.0, 0.0 ), plain ), "extras: plain parses" );
+	Check( static_cast<int>( plain.alphas.size() ) == side * side && Near( plain.alphas[0], 0.0 ),
+	    "extras: absent alphas default to zero" );
+}
+
 } // namespace
 
 int main()
@@ -193,6 +266,7 @@ int main()
 	TestFlatBilinear();
 	TestUniformDisplacement();
 	TestStartPositionOrientation();
+	TestAlphasTagsSubdiv();
 
 	if ( g_failures != 0 )
 	{

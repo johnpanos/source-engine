@@ -347,7 +347,7 @@ def options(opt):
 		help = 'build engine with SDL [default: %default]')
 	grp.add_option('--platform-provider', choices=['sdl2', 'sdl3'], default='sdl2',
 		dest='PLATFORM_PROVIDER', help='linked window/input provider')
-	grp.add_option('--render-backend', choices=['legacy', 'vulkan'], default='legacy',
+	grp.add_option('--render-backend', choices=['legacy', 'vulkan', 'native-vulkan'], default='legacy',
 		dest='RENDER_BACKEND', help='linked renderer; vulkan uses the DXVK compatibility provider')
 	grp.add_option('--physics-backend', choices=['ivp', 'box3d', 'both'], default='ivp',
 		dest='PHYSICS_BACKEND', help='production physics provider, or both for tests')

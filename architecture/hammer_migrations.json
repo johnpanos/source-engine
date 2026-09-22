@@ -680,10 +680,48 @@
       ],
       "contractRecord": "unittests/hammertest/contracts/geometry.displacement.v1.md",
       "owner": "unassigned",
-      "note": "The brush contract (geometry.brush.v1) deliberately excludes displacements as a later migration; this is that migration's core. New strict headless geometry (no legacy source, authority=new): hammer::geometry::ParseDispInfo reads a VMF dispinfo block through the shared hammer::formats keyvalues codec, and BuildDisplacementSurface produces the (2^power+1)^2 vertex grid + 2*(side-1)^2 triangles, with base = bilinear interpolation of the face's four corners (grid origin = the corner nearest startposition, matching VBSP/Hammer), then per-vertex offset + normal*distance + faceNormal*elevation. Compiles headlessly under g++ and clang (-Werror); conformance unittests/hammertest/geometry/test_displacement.cpp checks grid sizes (powers 2-4), flat bilinear identity, uniform push, and startposition orientation; test_displacement_negative.cpp proves ParseDispInfo rejects a bad power, a wrong-length row, a missing row, and an absent normals grid. Not yet consumed by the scene/render bridge (that wiring, and alphas/triangle_tags/subdiv/allowed_verts, are later increments).",
+      "note": "The brush contract (geometry.brush.v1) deliberately excludes displacements as a later migration; this is that migration's core. New strict headless geometry (no legacy source, authority=new): hammer::geometry::ParseDispInfo reads a VMF dispinfo block through the shared hammer::formats keyvalues codec, and BuildDisplacementSurface produces the (2^power+1)^2 vertex grid + 2*(side-1)^2 triangles, with base = bilinear interpolation of the face's four corners (grid origin = the corner nearest startposition, matching VBSP/Hammer), then per-vertex offset + normal*distance + faceNormal*elevation. Compiles headlessly under g++ and clang (-Werror); conformance unittests/hammertest/geometry/test_displacement.cpp checks grid sizes (powers 2-4), flat bilinear identity, uniform push, and startposition orientation; test_displacement_negative.cpp proves ParseDispInfo rejects a bad power, a wrong-length row, a missing row, and an absent normals grid. Also parses alphas (per-vertex blend, surfaced as DisplacementSurface.vertexAlphas), subdiv, and triangle_tags (validated grids). Not yet consumed by the scene/render bridge (that wiring is source-engine-3c's scene/render seam), and offset_normals/allowed_verts plus subdiv smoothing / alpha+tag rendering are later increments.",
       "retireWhen": [
         "a later displacement increment supersedes it with alphas/triangle_tags/subdiv/allowed_verts support",
         "displaced faces render through this surface in the scene/render bridge"
+      ]
+    },
+    {
+      "id": "HAM-INSTANCE-001",
+      "title": "Implement func_instance expansion: load nested VMFs via IFileStore, transform (QAngle rotate + translate) and merge world solids/entities, flatten the tree",
+      "phase": "H2",
+      "responsibility": "geometry",
+      "evidenceKind": "decision",
+      "sources": [
+        {
+          "path": "public/hammer/formats/instancing.h"
+        },
+        {
+          "path": "hammer/core/formats/instancing.cpp"
+        }
+      ],
+      "destinationModule": "hammer.formats",
+      "contractIds": [
+        "formats.instancing.v1"
+      ],
+      "dependsOn": [
+        "HAM-CORPUS-001",
+        "HAM-DISKSTORE-001",
+        "HAM-GEOMETRY-001"
+      ],
+      "status": "extracted",
+      "authority": "new",
+      "consumerSet": "map-flattening",
+      "testSelectors": [
+        "formats/instancing",
+        "formats/instancing_negative"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/formats.instancing.v1.md",
+      "owner": "unassigned",
+      "note": "New strict headless module (authority=new) over the keyvalues codec (hammer.formats), the IFileStore port (hammer.ports), and geometry Vec3d. hammer::formats::ExpandInstances loads each func_instance's referenced VMF through the store, transforms its world solids (each side plane's three points) and entities (origin) by the Source QAngle rotation + origin translation, composes nested placements as a matrix product ((R*Ri)*p + (R*oi + o)), and returns a flattened document with no func_instance entities. Recursion is bounded by maxDepth so a self/cyclic reference is a reported error, not a loop. Compiles headlessly under g++ and clang (-Werror); conformance test_instancing.cpp checks translate/yaw/nested composition + instance removal, test_instancing_negative.cpp proves missing-file/cyclic/no-file are errors while a good instance expands. Declared limits: texture-axis rotation, entity angle composition, $fixup/replace variables, and instance visgroup/group merging are later increments.",
+      "retireWhen": [
+        "a later increment adds texture-axis rotation, entity angle composition, and $fixup variable substitution",
+        "the editor's collapse-instance command and map compile consume this expansion"
       ]
     }
   ]

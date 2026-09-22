@@ -1519,7 +1519,7 @@ void EndSimulateParticles( void )
 
 
 static ConVar r_threaded_particles( "r_threaded_particles", "1" );
-static ConVar r_particle_job_graph( "r_particle_job_graph", "0", 0,
+static ConVar r_particle_job_graph( "r_particle_job_graph", "2", 0,
     "Particle simulation: 0 legacy, 1 serial job graph, 2 pooled job graph.", true, 0, true, 2 );
 
 static float s_flThreadedPSystemTimeStep;

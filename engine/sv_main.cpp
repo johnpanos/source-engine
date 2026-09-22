@@ -64,10 +64,12 @@
 #include "enginethreads.h"
 #include "tier1/functors.h"
 #include "vstdlib/jobthread.h"
+#include "vstdlib/jobgraph_parallel.h"
 #include "pure_server.h"
 #include "datacache/idatacache.h"
 #include "filesystem/IQueuedLoader.h"
 #include "vstdlib/jobthread.h"
+#include "vstdlib/jobgraph_parallel.h"
 #include "SourceAppInfo.h"
 #include "cl_rcon.h"
 #include "host_state.h"
@@ -1906,7 +1908,7 @@ void CGameServer::SendClientMessages ( bool bSendSnapshots )
 			// SV_ParallelSendSnapshot will not process HLTV or Replay clients as they
 			// must be run on the main thread due to un-threadsafe global state access.
 			// It will replace anything that it does process with a NULL pointer.
-			ParallelProcess( "SV_ParallelSendSnapshot", pReceivingClients, receivingClientCount, &SV_ParallelSendSnapshot );
+			JobGraphParallelProcess( "SV_ParallelSendSnapshot", pReceivingClients, receivingClientCount, &SV_ParallelSendSnapshot );
 		}
 		
 		for (int i = 0; i < receivingClientCount; ++i)

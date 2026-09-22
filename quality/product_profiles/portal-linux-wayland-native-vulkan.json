@@ -1,0 +1,59 @@
+{
+  "schema": "source-product-profile/v1",
+  "id": "portal-linux-wayland-native-vulkan-v1",
+  "description": "Linux x86_64 Portal native Vulkan slice: SDL3 Wayland and pure Vulkan renderer.",
+  "target": {"product": "portal-client", "os": "linux", "architecture": "x86_64"},
+  "intent": {
+    "window_provider": "sdl3",
+    "render_provider": "native-vulkan",
+    "support_scope": "Native Linux Wayland pure Vulkan smoke; not four-platform or renderer parity acceptance",
+    "packaging": "Waf-installed local Linux runtime with separately supplied licensed Portal content",
+    "shader_pipeline": {
+      "compiler_profile": "quality/shader_profiles/source-dx9-fxc-wine.json",
+      "artifact_runner": "tools/quality/shader_artifacts.py",
+      "default_workload": "quality/workloads/portal-start-chambers-shaders-v1.json",
+      "artifact_format": "SPIR-V for native Vulkan",
+      "coverage": "Observed scene static groups; every valid dynamic permutation in each group. Not a complete shipping shader library.",
+      "staging": "portal_boot.py --shader-artifacts validates input and artifact hashes before copying into the private runtime",
+      "documentation": "tools/quality/shader_artifacts.md"
+    }
+  },
+  "toolchain": {
+    "cxx": "g++",
+    "family": "gcc",
+    "version": "16.2.1",
+    "standard_library": "libstdc++",
+    "legacy_cxx_standard": "c++11",
+    "strict_cxx_standard": "c++20",
+    "glibcxx_cxx11_abi": 0,
+    "build_type": "release"
+  },
+  "dependencies": {
+    "pkg_config": {
+      "sdl3": "3.4.16",
+      "vulkan": "1.4.341",
+      "freetype2": "26.6.20",
+      "fontconfig": "2.17.0",
+      "openal": "1.24.2",
+      "libjpeg": "3.1.3",
+      "libpng": "1.6.58",
+      "libcurl": "8.18.0",
+      "zlib": "1.3.1.zlib-ng"
+    }
+  },
+  "runtime_environment": {"SDL_VIDEO_DRIVER": "wayland", "GDK_BACKEND": "wayland"},
+  "configure_options": {"platform_provider": "sdl3", "render_backend": "native-vulkan", "build_games": "portal"},
+  "required_checks": [
+    "tools.quality.tests.test_product_profile",
+    "platform.dynamic_library",
+    "platform.dynamic_library.sensitivity",
+    "sdl3_launcher_conformance on native Wayland",
+    "Source architecture and changed-region style checks"
+  ],
+  "boot_check": {"map": "testchmb_a_00", "timeout_seconds": 180, "require": ["vulkan", "sdl3", "wayland"]},
+  "evidence": {
+    "status": "unverified",
+    "recorded_host_observations": {"date": "2026-09-22", "glibc": "2.43", "python": "3.14.7"},
+    "note": "Pins describe the selected reproducible host slice. Passing configure is not native graphics or product acceptance. Runtime evidence records actual GPU/driver, build/source identity, process results and artifacts separately. Performance/power budgets and other platform release gates remain open."
+  }
+}
