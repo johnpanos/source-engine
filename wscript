@@ -45,6 +45,7 @@ Context.Context.line_just = 55 # should fit for everything on 80x26
 
 projects={
 	'game': [
+		'jobsystem',
 		'appframework',
 		'bitmap',
 		'choreoobjects',
@@ -121,6 +122,7 @@ projects={
 		'utils/unittest'
 	],
 	'dedicated': [
+		'jobsystem',
 		'appframework',
 		'bitmap',
 		'choreoobjects',
@@ -200,6 +202,9 @@ def define_platform(conf):
 	conf.env.TOGLES = conf.options.TOGLES
 	conf.env.GL = conf.options.GL and not conf.options.TESTS and not conf.options.DEDICATED
 	conf.env.OPUS = conf.options.OPUS
+	conf.env.VIDEO_BINK = conf.options.VIDEO_PROVIDER == 'bink'
+	if conf.env.VIDEO_BINK and (conf.options.TESTS or conf.options.DEDICATED):
+		conf.fatal('The Bink video provider belongs to client products only')
 
 	arch32 = conf.run_test(CPP_32BIT_CHECK, 'Testing 32bit support')
 	arch64 = conf.run_test(CPP_64BIT_CHECK, 'Testing 64bit support')
@@ -321,6 +326,8 @@ def options(opt):
 		dest='PLATFORM_PROVIDER', help='linked window/input provider')
 	grp.add_option('--render-backend', choices=['legacy', 'vulkan'], default='legacy',
 		dest='RENDER_BACKEND', help='linked renderer; vulkan uses the DXVK compatibility provider')
+	grp.add_option('--video-provider', choices=['none', 'bink'], default='none',
+		dest='VIDEO_PROVIDER', help='linked video decoder (bink requires FFmpeg development libraries)')
 	grp.add_option('--dxvk-root', default='', dest='DXVK_ROOT',
 		help='pinned DXVK Native package prefix (contains include/dxvk and lib)')
 	grp.add_option('--product-profile', default='quality/product_profiles/portal-linux-wayland.json',
@@ -634,6 +641,9 @@ def configure(conf):
 	conf.env.append_unique('INCLUDES', [os.path.abspath('common/')])
 
 	check_deps( conf )
+	if conf.env.VIDEO_BINK:
+		for package, store in [('libavcodec', 'AVCODEC'), ('libavformat', 'AVFORMAT'), ('libavutil', 'AVUTIL')]:
+			conf.check_cfg(package=package, uselib_store=store, args=['--cflags', '--libs'])
 	if conf.env.DXVK:
 		sys.path.insert(0, os.path.abspath('tools/quality'))
 		from product_profile import load_profile, check_environment, verify_dependency, ProfileError
@@ -679,6 +689,8 @@ def configure(conf):
 	else:
 		if conf.env.SDL3:
 			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest']
+		if conf.env.VIDEO_BINK:
+			projects['game'] += ['video/video_bink']
 		conf.add_subproject(projects['game'])
 
 def build(bld):
@@ -714,4 +726,6 @@ def build(bld):
 		elif bld.env.GL:
 			projects['game'] += ['togl']
 
+		if bld.env.VIDEO_BINK:
+			projects['game'] += ['video/video_bink']
 		bld.add_subproject(projects['game'])

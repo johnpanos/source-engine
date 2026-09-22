@@ -52,7 +52,8 @@ RunResult PooledExecutor::Execute( const SealedGraph &graph, const RunOptions &o
 		if ( globalCancel() )
 			return true;
 		for ( const SealedGraph::Prereq &p : graph.GetJob( id ).prereqs )
-			if ( p.kind == DependencyKind::Success && result.states[p.producer] != JobState::Succeeded )
+			if ( p.kind == DependencyKind::Success &&
+			     result.states[p.producer] != JobState::Succeeded )
 				return true;
 		return false;
 	};
@@ -102,7 +103,9 @@ RunResult PooledExecutor::Execute( const SealedGraph &graph, const RunOptions &o
 			}
 			trace( id, JobState::Ready );
 			const ExecutorKind kind = graph.GetJob( id ).executor.kind;
-			if ( !inlineMode &&
+			// Empty compute nodes need no worker dispatch; their ordering edges
+			// still advance only after this wave's completion barrier.
+			if ( !inlineMode && graph.GetJob( id ).function &&
 			     ( kind == ExecutorKind::Compute || kind == ExecutorKind::Sequence ) )
 				compute.push_back( id );
 			else
@@ -112,10 +115,10 @@ RunResult PooledExecutor::Execute( const SealedGraph &graph, const RunOptions &o
 		if ( !compute.empty() )
 		{
 			m_backend->ParallelFor( (int)compute.size(),
-				[&]( int k )
-				{
-					runJob( compute[(std::size_t)k] );
-				} );
+			    [&]( int k )
+			    {
+				    runJob( compute[(std::size_t)k] );
+			    } );
 		}
 		for ( uint32_t id : caller )
 			runJob( id );

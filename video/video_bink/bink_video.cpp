@@ -5,6 +5,7 @@
 //=============================================================================
 
 #include "bink_video.h"
+#include "video/provider_catalog.h"
 #include "video_macros.h"
 
 #include "filesystem.h"
@@ -22,8 +23,8 @@
 #include "platform.h"
 
 
-#include "tier0/memdbgon.h"
 #include "bink_material.h"
+#include "tier0/memdbgon.h"
 
 // ===========================================================================
 // Singleton to expose Bink video subsystem
@@ -31,6 +32,11 @@
 static CBinkVideoSubSystem g_BinkSystem;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CBinkVideoSubSystem, IVideoSubSystem, VIDEO_SUBSYSTEM_INTERFACE_VERSION, g_BinkSystem );
 
+
+DLL_EXPORT IVideoSubSystem *VideoBink_Create()
+{
+	return &g_BinkSystem;
+}
 
 // ===========================================================================
 // List of file extensions and features supported by this subsystem

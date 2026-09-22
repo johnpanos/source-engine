@@ -29,6 +29,8 @@
 #include "quakedef.h"
 #include "idedicatedexports.h"
 #include "engine_launcher_api.h"
+#include "engine/audio/device_provider.h"
+#include "audio/device_selection.h"
 #include "ivideomode.h"
 #include "common.h"
 #include "iregistry.h"
@@ -939,6 +941,9 @@ public:
 	// Reset the map we're on
 	virtual void SetMap( const char *pMapName );
 
+	bool BindAudioProviders( const audio::DeviceSelection *selection );
+	IAudioDevice *CreateAudioDevice( bool firstStart, bool waveOnly );
+
 	bool MainLoop();
 
 	int RunListenServer();
@@ -982,6 +987,8 @@ private:
 	bool m_bRunningSimulation;
 	bool m_bSupportsVR;
 	StartupInfo_t m_StartupInfo;
+	audio::DeviceSelection m_AudioProviders;
+	bool m_bAudioCompositionConnected = false;
 };
 
 
@@ -996,11 +1003,49 @@ DLL_EXPORT IEngineAPI *Engine_CreateClientAPI()
 	return &s_EngineAPI;
 }
 
+bool CEngineAPI::BindAudioProviders( const audio::DeviceSelection *selection )
+{
+	if ( m_bAudioCompositionConnected || !selection || !selection->IsValid() )
+		return false;
+	m_AudioProviders = *selection;
+	return true;
+}
+
+DLL_EXPORT bool Engine_BindAudioProviders(
+    IEngineAPI *engine, const audio::DeviceSelection *selection )
+{
+	return engine == &s_EngineAPI && s_EngineAPI.BindAudioProviders( selection );
+}
+
+IAudioDevice *CEngineAPI::CreateAudioDevice( bool firstStart, bool waveOnly )
+{
+	IAudioDevice *device = NULL;
+	const audio::DeviceProvider *provider =
+	    m_AudioProviders.Create( firstStart, waveOnly, &device );
+	if ( !provider || !device )
+	{
+		Error( "Required audio provider composition is unavailable.\n" );
+		return NULL;
+	}
+	Msg( "RFC0001 audio: provider=%s\n", provider->id );
+	return device;
+}
+
+IAudioDevice *Engine_CreateSelectedAudioDevice( bool firstStart, bool waveOnly )
+{
+	return s_EngineAPI.CreateAudioDevice( firstStart, waveOnly );
+}
+
 //-----------------------------------------------------------------------------
 // Connect, disconnect
 //-----------------------------------------------------------------------------
-bool CEngineAPI::Connect( CreateInterfaceFn factory ) 
-{ 
+bool CEngineAPI::Connect( CreateInterfaceFn factory )
+{
+	if ( !m_AudioProviders.IsValid() )
+	{
+		Warning( "Engine requires an audio provider composition before Connect.\n" );
+		return false;
+	}
 	// Store off the app system factory...
 	g_AppSystemFactory = factory;
 
@@ -1038,7 +1083,8 @@ bool CEngineAPI::Connect( CreateInterfaceFn factory )
 	
 	ConnectMDLCacheNotify();
 
-	return true; 
+	m_bAudioCompositionConnected = true;
+	return true;
 }
 
 void CEngineAPI::Disconnect() 
@@ -1059,6 +1105,8 @@ void CEngineAPI::Disconnect()
 	BaseClass::Disconnect();
 
 	g_AppSystemFactory = NULL;
+	m_bAudioCompositionConnected = false;
+	m_AudioProviders = audio::DeviceSelection();
 }
 
 

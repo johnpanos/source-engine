@@ -23,6 +23,7 @@
 #include "tier1/utlintrusivelist.h"
 #include "particles_new.h"
 #include "vstdlib/jobthread.h"
+#include "vstdlib/jobgraph_parallel.h"
 #include "filesystem.h"
 #include "particle_parse.h"
 #include "model_types.h"
@@ -1518,10 +1519,12 @@ void EndSimulateParticles( void )
 
 
 static ConVar r_threaded_particles( "r_threaded_particles", "1" );
+static ConVar r_particle_job_graph( "r_particle_job_graph", "0", 0,
+    "Particle simulation: 0 legacy, 1 serial job graph, 2 pooled job graph.", true, 0, true, 2 );
 
 static float s_flThreadedPSystemTimeStep;
 
-static void ProcessPSystem( CNewParticleEffect *&pNewEffect )
+static void ProcessPSystemAtTime( CNewParticleEffect *pNewEffect, float flTimeStep )
 {
 	// Enable FP exceptions here when FP_EXCEPTIONS_ENABLED is defined,
 	// to help track down bad math.
@@ -1550,7 +1553,7 @@ static void ProcessPSystem( CNewParticleEffect *&pNewEffect )
 	}
 	else if ( pNewEffect->ShouldSimulate() )
 	{
-		pNewEffect->Simulate( s_flThreadedPSystemTimeStep );
+		pNewEffect->Simulate( flTimeStep );
 	}
 
 	if ( pNewEffect->IsFinished() )
@@ -1559,6 +1562,20 @@ static void ProcessPSystem( CNewParticleEffect *&pNewEffect )
 	}
 }
 
+static void ProcessPSystem( CNewParticleEffect *&pNewEffect )
+{
+	ProcessPSystemAtTime( pNewEffect, s_flThreadedPSystemTimeStep );
+}
+
+struct ParticleSimulationContext_t
+{
+	float m_flTimeStep;
+
+	void Process( CNewParticleEffect *&pNewEffect )
+	{
+		ProcessPSystemAtTime( pNewEffect, m_flTimeStep );
+	}
+};
 
 int CParticleMgr::ComputeParticleDefScreenArea( int nInfoCount, RetireInfo_t *pInfo, float *pTotalArea, CParticleSystemDefinition* pDef, 
 	const CViewSetup& view, const VMatrix &worldToPixels, float flFocalDist )
@@ -1831,8 +1848,26 @@ void CParticleMgr::UpdateNewEffects( float flTimeDelta )
 		}
 		else
 		{
+			const int nGraphMode = r_particle_job_graph.GetInt();
 			int nAltCore = false && particle_sim_alt_cores.GetInt();
-			if ( !m_pThreadPool[1] || nAltCore == 0 )
+			if ( nGraphMode != 0 )
+			{
+				// Gather/retirement above owns the list and captures the timestep. The
+				// synchronous graph drains before DetectChanges can publish or remove effects.
+				ParticleSimulationContext_t context = { flTimeDelta };
+				const jobsystem::BatchMode mode =
+				    nGraphMode == 1 ? jobsystem::BatchMode::Serial : jobsystem::BatchMode::Parallel;
+				if ( !JobGraphParallelProcess( "CParticleMgr::UpdateNewEffects",
+				         particlesToSimulate.Base(), nCount, &context,
+				         &ParticleSimulationContext_t::Process,
+				         static_cast<void ( ParticleSimulationContext_t::* )()>( NULL ),
+				         static_cast<void ( ParticleSimulationContext_t::* )()>( NULL ), INT_MAX,
+				         NULL, mode ) )
+				{
+					Error( "Invalid particle simulation job graph batch\n" );
+				}
+			}
+			else if ( !m_pThreadPool[1] || nAltCore == 0 )
 			{
 				ParallelProcess( "CParticleMgr::UpdateNewEffects", particlesToSimulate.Base(), nCount, ProcessPSystem );
 			}
@@ -2407,7 +2442,3 @@ void CParticleMgr::StatsSpewResults()
 #endif
 #endif
 }
-
-
-
-

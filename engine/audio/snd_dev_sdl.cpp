@@ -5,6 +5,7 @@
 //===========================================================================//
 
 #include "audio_pch.h"
+#include "engine/audio/device_provider.h"
 
 #if !DEDICATED
 
@@ -155,6 +156,15 @@ IAudioDevice *Audio_CreateSDLAudioDevice( void )
 	return g_wave;
 }
 
+DLL_EXPORT const audio::DeviceProvider *Audio_SDLProvider()
+{
+#if defined( USE_SDL3 )
+	static const audio::DeviceProvider provider = { "sdl3", Audio_CreateSDLAudioDevice };
+#else
+	static const audio::DeviceProvider provider = { "sdl2", Audio_CreateSDLAudioDevice };
+#endif
+	return &provider;
+}
 
 //-----------------------------------------------------------------------------
 // Init, shutdown

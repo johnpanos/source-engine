@@ -293,6 +293,37 @@ def evaluate(log, screenshots, returncode, timed_out, map_name, requirements, lo
     return failures
 
 
+def inspect_provider_catalog(log):
+    """Require executed providers and loader telemetry, not requested CLI flags."""
+    required = {
+        "input": r"RFC0001 input: provider=sdl3\b",
+        "audio": r"RFC0001 audio: provider=sdl3\b",
+        "shaders": r"RFC0001 shaders: provider=source-standard-materials shaders=[1-9][0-9]*\b",
+        "video": r"RFC0001 video: providers=0\b",
+    }
+    failures = ["selected %s catalog provider did not initialize" % name
+                for name, marker in required.items() if not re.search(marker, log)]
+    records = [line for line in log.splitlines() if line.startswith("ModuleLoadTelemetry: ")]
+    if not records:
+        failures.append("provider retirement requires runtime loader telemetry")
+    # These were first-party backend discovery names. Ordinary ELF/PE linkage
+    # maps their libraries without passing through the instrumented module loader.
+    forbidden = re.compile(r"(?:^|[/\\])(?:lib)?(?:stdshader_[^/\\ ]*|shaderapi[^/\\ ]*|"
+                           r"video_(?:bink|webm|quicktime))(?:\.[^/\\ ]*)?$", re.IGNORECASE)
+    attempted = []
+    for record in records:
+        match = re.search(r"\brequested=(.*?) resolved=", record)
+        if not match:
+            failures.append("malformed runtime loader telemetry")
+            continue
+        if forbidden.search(match.group(1)):
+            attempted.append(match.group(1))
+    if attempted:
+        failures.append("first-party backend runtime discovery: " + ", ".join(sorted(set(attempted))))
+    return {"status": "fail" if failures else "pass", "failures": failures,
+            "telemetry_records": len(records), "forbidden_attempts": sorted(set(attempted))}
+
+
 def inspect_render_trace(path, report_path):
     """A produced trace must also be complete and free of observed render failures."""
     try:
@@ -343,6 +374,8 @@ def main(argv=None):
                         help="overlay source-matched shader artifacts into the private runtime")
     parser.add_argument("--render-trace", action="store_true",
                         help="retain renderer diagnostics in render-trace.jsonl")
+    parser.add_argument("--require-provider-catalog", action="store_true",
+                        help="require initialized profile providers and no first-party backend loading")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=180)
     parser.add_argument("--map", default="testchmb_a_00")
@@ -382,6 +415,8 @@ def main(argv=None):
                    "+wait", "180", "+status", "+hideconsole", "+developer", "0",
                    "+wait", "600", "+screenshot", "+mat_spewvertexandpixelshaders",
                    "+wait", "10", "+quit"]
+        if args.require_provider_catalog:
+            command += ["-moduleloadtelemetry"]
         environment = os.environ.copy()
         environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
         environment["SteamAppId"] = "400"
@@ -408,6 +443,9 @@ def main(argv=None):
         screenshots = [info for path in sorted(stage.rglob("screenshots/*.tga"))
                        if (info := screenshot_info(path))]
         failures = evaluate(log, screenshots, code, timed_out, args.map, requirements, loaded)
+        if args.require_provider_catalog:
+            evidence["provider_catalog"] = inspect_provider_catalog(log)
+            failures.extend(evidence["provider_catalog"]["failures"])
         if args.render_trace:
             if not trace.is_file() or trace.stat().st_size == 0:
                 failures.append("requested renderer trace was not produced")

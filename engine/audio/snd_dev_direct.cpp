@@ -5,6 +5,7 @@
 //=====================================================================================//
 
 #include "audio_pch.h"
+#include "engine/audio/device_provider.h"
 #include <dsound.h>
 #pragma warning(disable : 4201)		// nameless struct/union
 #include <ks.h>
@@ -335,6 +336,12 @@ IAudioDevice *Audio_CreateDirectSoundDevice( void )
 	CAudioDirectSound::m_pSingleton = NULL;
 
 	return NULL;
+}
+
+DLL_EXPORT const audio::DeviceProvider *Audio_DirectSoundProvider()
+{
+	static const audio::DeviceProvider provider = { "directsound", Audio_CreateDirectSoundDevice };
+	return &provider;
 }
 
 int CAudioDirectSound::PaintBegin( float mixAheadTime, int soundtime, int lpaintedtime )

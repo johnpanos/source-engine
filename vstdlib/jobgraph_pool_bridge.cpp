@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "vstdlib/jobgraph_pool_bridge.h"
+#include "vstdlib/jobgraph_parallel.h"
 #include "jobsystem/worker_backend.h"
 #include "vstdlib/jobthread.h"
 
@@ -24,7 +25,7 @@ class CThreadPoolWorkerBackend : public jobsystem::IWorkerBackend
 {
 public:
 	CThreadPoolWorkerBackend( IThreadPool *pPool, int nWorkers )
-		: m_pPool( pPool ), m_nWorkers( nWorkers ), m_pCurBody( NULL ) {}
+		: m_pPool( pPool ), m_nWorkers( nWorkers ) {}
 	virtual ~CThreadPoolWorkerBackend() {}
 
 	virtual void ParallelFor( int n, const std::function<void( int )> &body )
@@ -48,11 +49,9 @@ public:
 		for ( int i = 0; i < n; ++i )
 			items[(size_t)i] = i;
 
-		m_pCurBody = &body;
-		CParallelProcessor< int, CMemberFuncJobItemProcessor< int, CThreadPoolWorkerBackend > > processor( "jobgraph.wave" );
-		processor.m_ItemProcessor.Init( this, &CThreadPoolWorkerBackend::ProcessIndex );
+		CParallelProcessor<int, IndexProcessor> processor( "jobgraph.wave" );
+		processor.m_ItemProcessor.body = &body;
 		processor.Run( items.data(), (unsigned)n, INT_MAX, m_pPool );
-		m_pCurBody = NULL;
 	}
 
 	virtual int WorkerCount() const { return m_nWorkers; }
@@ -60,11 +59,24 @@ public:
 	IThreadPool *m_pPool;
 
 private:
-	void ProcessIndex( int &i ) { ( *m_pCurBody )( i ); }
+	struct IndexProcessor : CJobItemProcessor<int>
+	{
+		const std::function<void( int )> *body;
+		void Process( int &index ) { ( *body )( index ); }
+	};
 
 	int m_nWorkers;
-	const std::function<void( int )> *m_pCurBody;
 };
+
+VSTDLIB_INTERFACE bool RunThreadPoolJobBatch( IThreadPool *pool, const jobsystem::BatchDesc &desc,
+											jobsystem::BatchMode mode )
+{
+	// Stack-owned binding permits concurrent calls and borrows the same process
+	// worker budget. CParallelProcessor runs only its own callbacks on the caller
+	// and joins/aborts only its own CJobs; it never drains unrelated queued work.
+	CThreadPoolWorkerBackend backend( pool, pool ? pool->NumThreads() : 0 );
+	return jobsystem::ExecuteParallelBatch( desc, &backend, mode );
+}
 
 //-----------------------------------------------------------------------------
 

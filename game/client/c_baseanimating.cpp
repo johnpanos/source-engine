@@ -47,6 +47,7 @@
 #include "jigglebones.h"
 #include "toolframework_client.h"
 #include "vstdlib/jobthread.h"
+#include "vstdlib/jobgraph_parallel.h"
 #include "bonetoworldarray.h"
 #include "posedebugger.h"
 #include "tier0/icommandline.h"
@@ -2648,15 +2649,23 @@ CMouthInfo *C_BaseAnimating::GetMouth( void )
 ConVar cl_warn_thread_contested_bone_setup("cl_warn_thread_contested_bone_setup", "0" );
 #endif
 ConVar cl_threaded_bone_setup("cl_threaded_bone_setup", "0", 0, "Enable parallel processing of C_BaseAnimating::SetupBones()" );
+static ConVar cl_bone_job_graph( "cl_bone_job_graph", "0", 0,
+    "Previous-frame bone setup: 0 legacy, 1 serial job graph, 2 pooled job graph.", true, 0, true,
+    2 );
 
 //-----------------------------------------------------------------------------
 // Purpose: Do the default sequence blending rules as done in HL1
 //-----------------------------------------------------------------------------
 
-static void SetupBonesOnBaseAnimating( C_BaseAnimating *&pBaseAnimating )
+static void SetupBonesOnBaseAnimatingAtTime( C_BaseAnimating *pBaseAnimating, float flTime )
 {
 	if ( !pBaseAnimating->GetMoveParent() )
-		pBaseAnimating->SetupBones( NULL, -1, -1, gpGlobals->curtime );
+		pBaseAnimating->SetupBones( NULL, -1, -1, flTime );
+}
+
+static void SetupBonesOnBaseAnimating( C_BaseAnimating *&pBaseAnimating )
+{
+	SetupBonesOnBaseAnimatingAtTime( pBaseAnimating, gpGlobals->curtime );
 }
 
 static void PreThreadedBoneSetup()
@@ -2668,6 +2677,18 @@ static void PostThreadedBoneSetup()
 {
 	mdlcache->EndLock();
 }
+
+struct ThreadedBoneSetupContext_t
+{
+	float m_flTime;
+
+	void Begin() { PreThreadedBoneSetup(); }
+	void Process( C_BaseAnimating *&pBaseAnimating )
+	{
+		SetupBonesOnBaseAnimatingAtTime( pBaseAnimating, m_flTime );
+	}
+	void End() { PostThreadedBoneSetup(); }
+};
 
 static bool g_bInThreadedBoneSetup;
 static bool g_bDoThreadedBoneSetup;
@@ -2690,7 +2711,28 @@ void C_BaseAnimating::ThreadedBoneSetup()
 		{
 			g_bInThreadedBoneSetup = true;
 
-			ParallelProcess( "C_BaseAnimating::ThreadedBoneSetup", g_PreviousBoneSetups.Base(), nCount, &SetupBonesOnBaseAnimating, &PreThreadedBoneSetup, &PostThreadedBoneSetup );
+			const int nGraphMode = cl_bone_job_graph.GetInt();
+			if ( nGraphMode == 0 )
+			{
+				ParallelProcess( "C_BaseAnimating::ThreadedBoneSetup", g_PreviousBoneSetups.Base(),
+				    nCount, &SetupBonesOnBaseAnimating, &PreThreadedBoneSetup,
+				    &PostThreadedBoneSetup );
+			}
+			else
+			{
+				// The borrowed entity list stays alive until the graph drains. Each runner
+				// retains its own model-cache lock on the thread executing its bone work.
+				ThreadedBoneSetupContext_t context = { gpGlobals->curtime };
+				const jobsystem::BatchMode mode =
+				    nGraphMode == 1 ? jobsystem::BatchMode::Serial : jobsystem::BatchMode::Parallel;
+				if ( !JobGraphParallelProcess( "C_BaseAnimating::ThreadedBoneSetup",
+				         g_PreviousBoneSetups.Base(), nCount, &context,
+				         &ThreadedBoneSetupContext_t::Process, &ThreadedBoneSetupContext_t::Begin,
+				         &ThreadedBoneSetupContext_t::End, INT_MAX, NULL, mode ) )
+				{
+					Error( "Invalid previous-frame bone setup job graph batch\n" );
+				}
+			}
 
 			g_bInThreadedBoneSetup = false;
 		}

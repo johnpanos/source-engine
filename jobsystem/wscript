@@ -24,6 +24,7 @@ def build(bld):
 		'deterministic_executor.cpp',
 		'parallel_executor.cpp',
 		'pooled_executor.cpp',
+		'parallel_batch.cpp',
 		'frame_graph.cpp',
 		'pilot_particles.cpp',
 		'dynamic_scope.cpp',

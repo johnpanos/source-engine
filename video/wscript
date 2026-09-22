@@ -17,6 +17,7 @@ def configure(conf):
 def build(bld):
 	source = [
 		'videoservices.cpp',
+		'provider_catalog_runtime.cpp',
 		'../public/tier0/memoverride.cpp'
 	]
 
@@ -31,6 +32,9 @@ def build(bld):
 	defines = []
 
 	libs = ['tier0','tier1','tier2','tier3','vstdlib']
+	if bld.env.VIDEO_BINK:
+		defines += ['LINK_VIDEO_BINK']
+		libs += ['video_bink']
 
 	if bld.env.DEST_OS == 'win32':
 		libs += ['USER32']
@@ -52,3 +56,26 @@ def build(bld):
 		idx      = bld.get_taskgen_count()
 	)
 
+
+	bld.program(
+		source = ['../unittests/videoprovidertest/catalog_test.cpp', 'provider_catalog_runtime.cpp'],
+		target = 'video_provider_catalog_test',
+		name = 'video_provider_catalog_test',
+		features = 'cxx cxxprogram',
+		includes = includes,
+		use = ['tier0'],
+		install_path = bld.env.TESTDIR,
+		idx = bld.get_taskgen_count()
+	)
+
+	bld.program(
+		source = ['../unittests/videoprovidertest/catalog_test.cpp', 'provider_catalog_runtime.cpp'],
+		target = 'video_service_catalog_test',
+		name = 'video_service_catalog_test',
+		features = 'cxx cxxprogram',
+		includes = includes,
+		defines = ['VIDEO_SERVICE_INTEGRATION'],
+		use = ['tier0', 'video_services', 'inputsystem'],
+		install_path = bld.env.TESTDIR,
+		idx = bld.get_taskgen_count()
+	)

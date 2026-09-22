@@ -19,6 +19,7 @@ def configure(conf):
 
 def build(bld):
 	source = [
+		'builtin_shader_provider.cpp',
 		'aftershock.cpp',
 		'aftershock_helper.cpp',
 		'AccumBuff4Sample.cpp',

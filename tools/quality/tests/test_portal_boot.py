@@ -86,6 +86,42 @@ class AcceptanceTests(unittest.TestCase):
                                       loaded=("/libvulkan/cache/libother.so", "/tmp/fakelibSDL3.so")))
 
 
+class ProviderCatalogTests(unittest.TestCase):
+    initialized = (
+        "RFC0001 input: provider=sdl3\n"
+        "RFC0001 audio: provider=sdl3\n"
+        "RFC0001 shaders: provider=source-standard-materials shaders=400\n"
+        "RFC0001 video: providers=0\n"
+    )
+    telemetry = ("ModuleLoadTelemetry: op=0 id=1 requester=game:1 requested=client.so "
+                 "resolved=/runtime/portal/bin/client.so entry= success=1\n")
+
+    def test_actual_initialized_providers_and_retained_game_host_pass(self):
+        result = boot.inspect_provider_catalog(self.initialized + self.telemetry)
+        self.assertEqual("pass", result["status"])
+        self.assertEqual(1, result["telemetry_records"])
+
+    def test_missing_or_null_audio_is_not_native_audio_acceptance(self):
+        for log in ("", self.initialized, self.telemetry,
+                    self.initialized.replace("audio: provider=sdl3", "audio: provider=null") + self.telemetry,
+                    self.initialized.replace("shaders=400", "shaders=0") + self.telemetry):
+            with self.subTest(log=log):
+                self.assertEqual("fail", boot.inspect_provider_catalog(log)["status"])
+
+    def test_even_failed_builtin_discovery_violates_retirement(self):
+        for name in ("stdshader_dx9.so", "/runtime/bin/libstdshader_dx9.so", "shaderapidx9.dll",
+                     "video_bink.so", "video_webm.dll", "video_quicktime.dylib"):
+            bad = self.telemetry.replace("requested=client.so", "requested=" + name).replace("success=1", "success=0")
+            with self.subTest(name=name):
+                result = boot.inspect_provider_catalog(self.initialized + bad)
+                self.assertEqual("fail", result["status"])
+                self.assertEqual([name], result["forbidden_attempts"])
+
+    def test_malformed_telemetry_fails_closed(self):
+        self.assertEqual("fail", boot.inspect_provider_catalog(
+            self.initialized + "ModuleLoadTelemetry: truncated\n")["status"])
+
+
 class StagingTests(unittest.TestCase):
     def make_build(self, root, games="portal"):
         build, stage = root / "build", root / "stage"

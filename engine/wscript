@@ -30,6 +30,26 @@ def configure(conf):
 	])
 
 def build(bld):
+	# This is the single build authority for playback providers. The launcher
+	# receives the same availability through the engine's exported definitions.
+	audio_provider_sources = []
+	audio_provider_defines = []
+	if not bld.env.DEDICATED:
+		audio_provider_sources = ['audio/device_selection.cpp']
+		audio_provider_defines = ['AUDIO_PROVIDER_NULL=1']
+		if bld.env.DEST_OS == 'darwin':
+			audio_provider_sources += ['audio/snd_dev_openal.cpp',
+				'audio/snd_dev_mac_audioqueue.cpp']
+			audio_provider_defines += ['AUDIO_PROVIDER_OPENAL=1', 'AUDIO_PROVIDER_AUDIOQUEUE=1']
+		elif bld.env.SDL:
+			audio_provider_sources += ['audio/snd_dev_sdl.cpp']
+			audio_provider_defines += ['AUDIO_PROVIDER_SDL=1']
+		elif bld.env.DEST_OS == 'win32':
+			audio_provider_sources += ['audio/snd_dev_direct.cpp', 'audio/snd_dev_wave.cpp']
+			audio_provider_defines += ['AUDIO_PROVIDER_DIRECTSOUND=1', 'AUDIO_PROVIDER_WAVE=1']
+		else:
+			bld.fatal('The client profile has no audio playback provider')
+
 	source = [
 		'socketcreator.cpp',
 		'clientframe.cpp',
@@ -210,12 +230,8 @@ def build(bld):
 		source += [
 			'audio/voice_record_sdl.cpp' #[$OSXALL||$LINUXALL]
 		]
-		if bld.env.DEST_OS != "darwin":
-			source += ['audio/snd_dev_sdl.cpp']
 
 	source_win = [
-		'audio/snd_dev_direct.cpp',
-		'audio/snd_dev_wave.cpp',
 		'audio/voice_mixer_controls.cpp',
 		'audio/voice_record_dsound.cpp'
 	]
@@ -339,10 +355,10 @@ def build(bld):
 			]
 		if bld.env.DEST_OS == 'darwin':
 			source += [
-				'audio/snd_dev_openal.cpp', # [$OSXALL]
-				'audio/snd_dev_mac_audioqueue.cpp',#	[$OSXALL]
 				'audio/voice_record_mac_audioqueue.cpp',	#[$OSXALL]
 			]
+
+	source += audio_provider_sources
 
 	includes = [
 		'.',
@@ -374,7 +390,8 @@ def build(bld):
 		name     = PROJECT_NAME,
 		features = 'c cxx',
 		includes = includes,
-		defines  = defines,
+		defines  = defines + audio_provider_defines,
+		export_defines = audio_provider_defines,
 		use      = libs,
 		install_path = install_path,
 		subsystem = bld.env.MSVC_SUBSYSTEM,

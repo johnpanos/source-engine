@@ -21,8 +21,6 @@
 #include "videoservices.h"
 #include "video_macros.h"
 
-#include "tier0/native_module_load_telemetry.h"
-#include "tier0/memdbgon.h"
 
 #if defined( WIN32 )
 	#include <windows.h>
@@ -35,58 +33,24 @@
 	#include "appframework/ilaunchermgr.h"
 #endif
 
-//-----------------------------------------------------------------------------
-// Platform specific video system controls & definitions
-//-----------------------------------------------------------------------------
+#include "tier0/memdbgon.h"
 
-enum EPlatform_t
-{
-	PLATFORM_NONE		= 0,
-	PLATFORM_WIN32		= 0x01,
-	PLATFORM_OSX		= 0x02,
-	PLATFORM_XBOX_360	= 0x04,
-	PLATFORM_PS3		= 0x08,
-	PLATFORM_LINUX		= 0x10
-};
-
-DEFINE_ENUM_BITWISE_OPERATORS( EPlatform_t );
-
-#if defined( IS_WINDOWS_PC )
-	const EPlatform_t	thisPlatform = PLATFORM_WIN32;
-#elif defined( OSX )
-	const EPlatform_t	thisPlatform = PLATFORM_OSX;
-#elif defined ( _LINUX ) || defined(PLATFORM_BSD)
-	const EPlatform_t	thisPlatform = PLATFORM_LINUX;
-#else
-  #error "UNABLE TO DETERMINE PLATFORM"
-#endif
-
-
-#if defined( OSX ) || defined( LINUX ) || defined(PLATFORM_BSD)
+#if defined( OSX ) || defined( LINUX ) || defined( PLATFORM_BSD )
 ILauncherMgr *g_pLauncherMgr = NULL;
 #endif
 
-
-struct VideoSystemInfo_t
+DLL_EXPORT const VideoProviderCatalog *VideoServices_GetBuiltProviders()
 {
-	VideoSystem_t	m_SystemID;
-	EPlatform_t		m_Platforms;
-	const char		*m_pModuleName;
-	const char		*m_pInterfaceName;
-};
-
-static VideoSystemInfo_t s_VideoAppSystems[] = 
-{
-	{ VideoSystem::QUICKTIME,	PLATFORM_WIN32 | PLATFORM_OSX,							"video_quicktime",  VIDEO_SUBSYSTEM_INTERFACE_VERSION },
-	{ VideoSystem::BINK,		PLATFORM_WIN32 | PLATFORM_OSX | PLATFORM_XBOX_360 | PLATFORM_LINUX,		"video_bink",	    VIDEO_SUBSYSTEM_INTERFACE_VERSION },
-	//{ VideoSystem::AVI,			PLATFORM_WIN32,											"avi",				VIDEO_SUBSYSTEM_INTERFACE_VERSION },
-	//{ VideoSystem::WMV,			PLATFORM_WIN32,											"wmv",				VIDEO_SUBSYSTEM_INTERFACE_VERSION },
-	{ VideoSystem::WEBM,	PLATFORM_LINUX,							"video_webm",  VIDEO_SUBSYSTEM_INTERFACE_VERSION },
-	
-	{ VideoSystem::NONE,		PLATFORM_NONE, nullptr, nullptr }			// Required to terminate the list
-};
-
-
+#if defined( LINK_VIDEO_BINK )
+	static const VideoProviderDescriptor providers[] = {
+		{ "bink", VideoSystem::BINK, VideoBink_Create, false }
+	};
+	static const VideoProviderCatalog catalog = { providers, ARRAYSIZE( providers ) };
+#else
+	static const VideoProviderCatalog catalog = { nullptr, 0 };
+#endif
+	return &catalog;
+}
 
 //-----------------------------------------------------------------------------
 // Setup Singleton for accessing Valve Video Services
@@ -99,6 +63,11 @@ DLL_EXPORT IVideoServices *VideoServices_Create()
 	return &g_VALVeVIDEO;
 }
 
+DLL_EXPORT IVideoServices *VideoServices_CreateWithProviders( const VideoProviderCatalog *catalog )
+{
+	return catalog && g_VALVeVIDEO.ConfigureProviders( *catalog ) ? &g_VALVeVIDEO : nullptr;
+}
+
 static CVideoCommonServices g_VALVEVIDEOCommon;
 
 
@@ -106,17 +75,16 @@ static CVideoCommonServices g_VALVEVIDEOCommon;
 // Valve Video Services implementation
 //-----------------------------------------------------------------------------
 CValveVideoServices::CValveVideoServices() :
-	m_nInstalledSystems( 0 ),
 	m_bInitialized( false ),
 	m_nMaterialCount( 0 )
 {
 	for ( int i = 0; i < VideoSystem::VIDEO_SYSTEM_COUNT; i++ )
 	{
-		m_VideoSystemModule[i]	= nullptr;
-		m_VideoSystems[i]		= nullptr;
 		m_VideoSystemType[i]	= VideoSystem::NONE;
 		m_VideoSystemFeatures[i] = VideoSystemFeature::NO_FEATURES;
 	}
+
+	m_Providers.Configure( *VideoServices_GetBuiltProviders() );
 
 }
 
@@ -156,6 +124,7 @@ bool CValveVideoServices::Connect( CreateInterfaceFn factory )
 void CValveVideoServices::Disconnect()
 {
 	DisconnectVideoLibraries();
+	BaseClass::Disconnect();
 }
 
 
@@ -172,59 +141,33 @@ void* CValveVideoServices::QueryInterface( const char *pInterfaceName )
 
 bool CValveVideoServices::ConnectVideoLibraries( CreateInterfaceFn factory )
 {
-	// Don't connect twice..
-	AssertExitF( m_bInitialized == false );
-
-	int n = 0;
-	
-	while ( IS_NOT_EMPTY( s_VideoAppSystems[n].m_pModuleName ) && s_VideoAppSystems[n].m_SystemID != VideoSystem::NONE )
+	if ( m_bInitialized )
+		return false;
+	if ( !m_Providers.Connect( factory, &g_VALVEVIDEOCommon ) )
 	{
-		if (BITFLAGS_SET( s_VideoAppSystems[n].m_Platforms, thisPlatform ) )
-		{
-			bool success = false;
-			CSysModule *pModule = Sys_LoadModule(s_VideoAppSystems[n].m_pModuleName );
-			if( pModule != nullptr )
-			{
-				CreateInterfaceFn fn = Sys_GetFactory( pModule );
-				if ( fn != nullptr )
-				{
-				
-					IVideoSubSystem *pVideoSystem = (IVideoSubSystem*) fn( s_VideoAppSystems[n].m_pInterfaceName, NULL );
-					if ( pVideoSystem != nullptr && pVideoSystem->Connect( factory ) )
-					{
-						if ( pVideoSystem->InitializeVideoSystem( &g_VALVEVIDEOCommon ) )
-						{
-							int slotNum = (int) pVideoSystem->GetSystemID();
+		Msg( "Required linked video provider failed: %s\n", m_Providers.FailedProvider() );
+		return false;
+	}
+	if ( m_Providers.FailedProvider() )
+		Msg( "Optional linked video provider unavailable: %s\n", m_Providers.FailedProvider() );
+	RefreshVideoLibraries();
+	m_bInitialized = true;
+	return true;
+}
 
-							if ( IS_IN_RANGECOUNT( slotNum, VideoSystem::VIDEO_SYSTEM_FIRST, VideoSystem::VIDEO_SYSTEM_COUNT ) )
-							{
-								Assert( m_VideoSystemModule[slotNum] == nullptr );
-								m_VideoSystemModule[slotNum] = pModule;
-								m_VideoSystems[slotNum] = pVideoSystem;
-								
-								m_nInstalledSystems++;
-								success = true;
-							}
-						}
-					}
-				}
-				
-				if ( success == false )
-				{
-					
-					Msg( "Error occurred while attempting to load and initialize Video Subsystem\n Video Subsystem module '%s'\n Video Subsystem Interface  '%s'", s_VideoAppSystems[n].m_pModuleName, s_VideoAppSystems[n].m_pInterfaceName );
-					Sys_UnloadModule( pModule );
-				}
-			}			
-		}
-		
-		n++;			
-	}			
+void CValveVideoServices::RefreshVideoLibraries()
+{
+	m_ExtInfo.RemoveAll();
+	for ( int i = 0; i < VideoSystem::VIDEO_SYSTEM_COUNT; ++i )
+	{
+		m_VideoSystemType[i] = VideoSystem::NONE;
+		m_VideoSystemFeatures[i] = VideoSystemFeature::NO_FEATURES;
+	}
 
 	// now we query each video system for its capabilities, and supported file extensions
 	for ( int i = VideoSystem::VIDEO_SYSTEM_FIRST; i < VideoSystem::VIDEO_SYSTEM_COUNT; i++ )
 	{
-		IVideoSubSystem *pSubSystem = m_VideoSystems[i];
+		IVideoSubSystem *pSubSystem = m_Providers.Get( i );
 		if ( pSubSystem != nullptr )
 		{
 			m_VideoSystemType[i]		= pSubSystem->GetSystemID();
@@ -249,9 +192,6 @@ bool CValveVideoServices::ConnectVideoLibraries( CreateInterfaceFn factory )
 		}
 	}
 
-	m_bInitialized = true;
-	
-	return true;
 }
 
 
@@ -265,24 +205,8 @@ bool CValveVideoServices::DisconnectVideoLibraries()
 	// free up any objects/resources still out there
 	DestroyAllVideoInterfaces();
 
-	for ( int i = 0; i < VideoSystem::VIDEO_SYSTEM_COUNT; i++ )
-	{
-		if ( m_VideoSystems[i] != nullptr )
-		{
-			m_VideoSystems[i]->ShutdownVideoSystem();
-			m_VideoSystems[i]->Disconnect();
-			m_VideoSystems[i] = nullptr;
-		}
-		
-		if ( m_VideoSystemModule[i] != nullptr )
-		{
-			Sys_UnloadModule( m_VideoSystemModule[i] );
-			m_VideoSystemModule[i] = nullptr;
-		}
-	
-		m_VideoSystemType[i]	 = VideoSystem::NONE;
-		m_VideoSystemFeatures[i] = VideoSystemFeature::NO_FEATURES;
-	}
+	m_Providers.Disconnect();
+	RefreshVideoLibraries();
 
 	m_bInitialized = false;
 	
@@ -316,18 +240,14 @@ InitReturnVal_t CValveVideoServices::Init()
 		return nRetVal;
 	}
 
-	// Initialize all loaded subsystems
-	for ( int n = VideoSystem::VIDEO_SYSTEM_FIRST; n < VideoSystem::VIDEO_SYSTEM_COUNT; n++ )
+	if ( !m_Providers.Init() )
 	{
-		if ( m_VideoSystems[n] != nullptr )
-		{
-			nRetVal = m_VideoSystems[n]->Init();
-			if ( nRetVal != INIT_OK )
-			{
-				return nRetVal;
-			}
-		}
+		Msg( "Required linked video provider failed Init: %s\n", m_Providers.FailedProvider() );
+		RefreshVideoLibraries();
+		return INIT_FAILED;
 	}
+	RefreshVideoLibraries();
+	Msg( "RFC0001 video: providers=%d\n", m_Providers.Count() );
 
 	return INIT_OK;
 }
@@ -337,15 +257,8 @@ void CValveVideoServices::Shutdown()
 {
 	DestroyAllVideoInterfaces();
 
-	// Shutdown all loaded subsystems
-	for ( int n = VideoSystem::VIDEO_SYSTEM_FIRST; n < VideoSystem::VIDEO_SYSTEM_COUNT; n++ )
-	{
-		if ( m_VideoSystems[n] != nullptr )
-		{
-			m_VideoSystems[n]->Shutdown();
-		}
-	}
-	
+	m_Providers.Shutdown();
+
 	BaseClass::Shutdown();
 }
 		
@@ -357,21 +270,21 @@ void CValveVideoServices::Shutdown()
 // Query the available video systems
 int CValveVideoServices::GetAvailableVideoSystemCount()
 {
-	return m_nInstalledSystems;
+	return m_Providers.Count();
 }
 
 
 // returns the enumerated video system, *IF* it is installed and working
 VideoSystem_t CValveVideoServices::GetAvailableVideoSystem( int n )
 {
-	if ( n< 0 || n >= m_nInstalledSystems ) 
+	if ( n< 0 || n >= m_Providers.Count() ) 
 	{
 		return VideoSystem::NONE;
 	}
 	
 	for ( int i = VideoSystem::VIDEO_SYSTEM_FIRST, c = 0; i < VideoSystem::VIDEO_SYSTEM_COUNT; i++ )
 	{
-		if ( m_VideoSystems[i] != nullptr )
+		if ( m_Providers.Get( i ) != nullptr )
 		{
 			if ( c == n ) 
 			{
@@ -391,10 +304,10 @@ VideoSystem_t CValveVideoServices::GetAvailableVideoSystem( int n )
 // ===========================================================================	
 int CValveVideoServices::GetIndexForSystem( VideoSystem_t n )
 {
-	if ( n >= VideoSystem::VIDEO_SYSTEM_FIRST && n < VideoSystem::VIDEO_SYSTEM_COUNT && m_nInstalledSystems > 0 )
+	if ( n >= VideoSystem::VIDEO_SYSTEM_FIRST && n < VideoSystem::VIDEO_SYSTEM_COUNT && m_Providers.Count() > 0 )
 	{
 		int i = (int) n;
-		if ( m_VideoSystems[i] != nullptr && m_VideoSystemFeatures[i] != VideoSystemFeature::NO_FEATURES )
+		if ( m_Providers.Get( i ) != nullptr && m_VideoSystemFeatures[i] != VideoSystemFeature::NO_FEATURES )
 		{
 			return i;
 		}
@@ -406,9 +319,9 @@ int CValveVideoServices::GetIndexForSystem( VideoSystem_t n )
 
 VideoSystem_t CValveVideoServices::GetSystemForIndex( int n )
 {
-	if ( n >= VideoSystem::VIDEO_SYSTEM_FIRST && n < VideoSystem::VIDEO_SYSTEM_COUNT && m_nInstalledSystems > 0 )
+	if ( n >= VideoSystem::VIDEO_SYSTEM_FIRST && n < VideoSystem::VIDEO_SYSTEM_COUNT && m_Providers.Count() > 0 )
 	{
-		if ( m_VideoSystems[n] != nullptr && m_VideoSystemFeatures[n] != VideoSystemFeature::NO_FEATURES )
+		if ( m_Providers.Get( n ) != nullptr && m_VideoSystemFeatures[n] != VideoSystemFeature::NO_FEATURES )
 		{
 			return (VideoSystem_t) n;
 		}
@@ -431,7 +344,7 @@ bool CValveVideoServices::IsVideoSystemAvailable( VideoSystem_t videoSystem )
 VideoSystemStatus_t CValveVideoServices::GetVideoSystemStatus( VideoSystem_t videoSystem )
 {
 	int n = GetIndexForSystem( videoSystem ); 
-	return ( n!= SYSTEM_NOT_FOUND ) ? m_VideoSystems[n]->GetSystemStatus() : VideoSystemStatus::NOT_INSTALLED;
+	return ( n!= SYSTEM_NOT_FOUND ) ? m_Providers.Get( n )->GetSystemStatus() : VideoSystemStatus::NOT_INSTALLED;
 }
 
 
@@ -446,7 +359,7 @@ VideoSystemFeature_t CValveVideoServices::GetVideoSystemFeatures( VideoSystem_t 
 const char *CValveVideoServices::GetVideoSystemName( VideoSystem_t videoSystem )
 {
 	int n = GetIndexForSystem( videoSystem ); 
-	return ( n!= SYSTEM_NOT_FOUND ) ? m_VideoSystems[n]->GetVideoSystemName() : nullptr;
+	return ( n!= SYSTEM_NOT_FOUND ) ? m_Providers.Get( n )->GetVideoSystemName() : nullptr;
 }
 
 
@@ -465,7 +378,7 @@ VideoSystem_t CValveVideoServices::FindNextSystemWithFeature( VideoSystemFeature
 
 	for ( int i = start; i < VideoSystem::VIDEO_SYSTEM_COUNT; i++ )
 	{
-		if ( m_VideoSystems[i] != nullptr && BITFLAGS_SET( m_VideoSystemFeatures[i], features )	)
+		if ( m_Providers.Get( i ) != nullptr && BITFLAGS_SET( m_VideoSystemFeatures[i], features )	)
 		{
 			return (VideoSystem_t) i;
 		}
@@ -498,7 +411,7 @@ int CValveVideoServices::GetSupportedFileExtensionCount( VideoSystem_t videoSyst
 {
 	int n = GetIndexForSystem( videoSystem ); 
 	
-	return ( n == SYSTEM_NOT_FOUND ) ? 0 : m_VideoSystems[n]->GetSupportedFileExtensionCount();
+	return ( n == SYSTEM_NOT_FOUND ) ? 0 : m_Providers.Get( n )->GetSupportedFileExtensionCount();
 }
 
 
@@ -506,9 +419,9 @@ const char *CValveVideoServices::GetSupportedFileExtension( VideoSystem_t videoS
 {
 	int n = GetIndexForSystem( videoSystem ); 
 
-	int c = ( n == SYSTEM_NOT_FOUND ) ? 0 : m_VideoSystems[n]->GetSupportedFileExtensionCount();;
+	int c = ( n == SYSTEM_NOT_FOUND ) ? 0 : m_Providers.Get( n )->GetSupportedFileExtensionCount();;
 	
-	return ( extNum < 0 || extNum >= c ) ? nullptr : m_VideoSystems[n]->GetSupportedFileExtension( extNum );
+	return ( extNum < 0 || extNum >= c ) ? nullptr : m_Providers.Get( n )->GetSupportedFileExtension( extNum );
 	
 }
 
@@ -517,9 +430,9 @@ VideoSystemFeature_t CValveVideoServices::GetSupportedFileExtensionFeatures( Vid
 {
 	int n = GetIndexForSystem( videoSystem ); 
 
-	int c = ( n == SYSTEM_NOT_FOUND ) ? 0 : m_VideoSystems[n]->GetSupportedFileExtensionCount();
+	int c = ( n == SYSTEM_NOT_FOUND ) ? 0 : m_Providers.Get( n )->GetSupportedFileExtensionCount();
 	
-	return ( extNum < 0 || extNum >= c ) ? VideoSystemFeature::NO_FEATURES : m_VideoSystems[n]->GetSupportedFileExtensionFeatures( extNum );
+	return ( extNum < 0 || extNum >= c ) ? VideoSystemFeature::NO_FEATURES : m_Providers.Get( n )->GetSupportedFileExtensionFeatures( extNum );
 }
 
 
@@ -583,7 +496,7 @@ IVideoMaterial* CValveVideoServices::CreateVideoMaterial( const char *pMaterialN
 	}
 	
 	// Create the video material
-	IVideoMaterial *pMaterial = m_VideoSystems[sysIndex]->CreateVideoMaterial( pMaterialName, ResolvedFilePath, playbackFlags );
+	IVideoMaterial *pMaterial = m_Providers.Get( sysIndex )->CreateVideoMaterial( pMaterialName, ResolvedFilePath, playbackFlags );
 
 	// Update our list, and return	
 	if ( pMaterial != nullptr )
@@ -594,7 +507,7 @@ IVideoMaterial* CValveVideoServices::CreateVideoMaterial( const char *pMaterialN
 		m_MaterialList.AddToTail( info );
 	}
 
-	SetResult( m_VideoSystems[sysIndex]->GetLastResult() );
+	SetResult( m_Providers.Get( sysIndex )->GetLastResult() );
 	return pMaterial;
 }
 
@@ -607,7 +520,7 @@ VideoResult_t CValveVideoServices::DestroyVideoMaterial( IVideoMaterial* pVideoM
 	{
 		if ( m_MaterialList[i].m_pObject == pVideoMaterial )
 		{
-			VideoResult_t Status = m_VideoSystems[ m_MaterialList[i].m_VideoSystem ]->DestroyVideoMaterial( pVideoMaterial );
+			VideoResult_t Status = m_Providers.Get( m_MaterialList[i].m_VideoSystem )->DestroyVideoMaterial( pVideoMaterial );
 			m_MaterialList.Remove( i );
 			
 			return SetResult( Status );
@@ -641,7 +554,7 @@ VideoResult_t CValveVideoServices::IsRecordCodecAvailable( VideoSystem_t videoSy
 		return SetResult( VideoResult::SYSTEM_NOT_AVAILABLE );
 	}
 
-	return m_VideoSystems[n]->CheckCodecAvailability( codec );
+	return m_Providers.Get( n )->CheckCodecAvailability( codec );
 }
 
 
@@ -664,7 +577,7 @@ IVideoRecorder*	CValveVideoServices::CreateVideoRecorder( VideoSystem_t videoSys
 		return nullptr;
 	}
 
-	IVideoRecorder *pRecorder = m_VideoSystems[n]->CreateVideoRecorder();
+	IVideoRecorder *pRecorder = m_Providers.Get( n )->CreateVideoRecorder();
 	
 	if ( pRecorder != nullptr )
 	{
@@ -674,7 +587,7 @@ IVideoRecorder*	CValveVideoServices::CreateVideoRecorder( VideoSystem_t videoSys
 		m_RecorderList.AddToTail( info );
 	}
 
-	SetResult( m_VideoSystems[n]->GetLastResult() );
+	SetResult( m_Providers.Get( n )->GetLastResult() );
 	return pRecorder;
 }
 
@@ -687,7 +600,7 @@ VideoResult_t CValveVideoServices::DestroyVideoRecorder( IVideoRecorder *pVideoR
 	{
 		if ( m_RecorderList[i].m_pObject == pVideoRecorder )
 		{
-			VideoResult_t Status = m_VideoSystems[ m_RecorderList[i].m_VideoSystem ]->DestroyVideoRecorder( pVideoRecorder );
+			VideoResult_t Status = m_Providers.Get( m_RecorderList[i].m_VideoSystem )->DestroyVideoRecorder( pVideoRecorder );
 			m_RecorderList.Remove( i );
 			
 			return SetResult( Status );
@@ -723,7 +636,7 @@ VideoResult_t CValveVideoServices::PlayVideoFileFullScreen( const char *pFileNam
 	
 	if ( sysIndex != SYSTEM_NOT_FOUND )
 	{
-		return SetResult( m_VideoSystems[sysIndex]->PlayVideoFileFullScreen( ResolvedFilePath, mainWindow, windowWidth, windowHeight, desktopWidth, desktopHeight, windowed, forcedMinTime, playbackFlags ) );
+		return SetResult( m_Providers.Get( sysIndex )->PlayVideoFileFullScreen( ResolvedFilePath, mainWindow, windowWidth, windowHeight, desktopWidth, desktopHeight, windowed, forcedMinTime, playbackFlags ) );
 	}
 	else
 	{
@@ -761,7 +674,7 @@ VideoResult_t CValveVideoServices::SoundDeviceCommand( VideoSoundDeviceOperation
 		int n = GetIndexForSystem( (VideoSystem_t) i );
 		if ( n != SYSTEM_NOT_FOUND )
 		{
-			result = m_VideoSystems[n]->VideoSoundDeviceCMD( operation, pDevice, pData );
+			result = m_Providers.Get( n )->VideoSoundDeviceCMD( operation, pDevice, pData );
 		}
 	}
 	

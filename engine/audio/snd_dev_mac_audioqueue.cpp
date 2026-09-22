@@ -5,6 +5,7 @@
 //===========================================================================//
 
 #include "audio_pch.h"
+#include "engine/audio/device_provider.h"
 #include <AudioToolbox/AudioQueue.h>
 #include <AudioToolbox/AudioFile.h>
 #include <AudioToolbox/AudioFormat.h>
@@ -114,6 +115,11 @@ IAudioDevice *Audio_CreateMacAudioQueueDevice( void )
 	return NULL;
 }
 
+DLL_EXPORT const audio::DeviceProvider *Audio_AudioQueueProvider()
+{
+	static const audio::DeviceProvider provider = { "audioqueue", Audio_CreateMacAudioQueueDevice };
+	return &provider;
+}
 
 void OnSndSurroundCvarChanged2( IConVar *pVar, const char *pOldString, float flOldValue );
 void OnSndSurroundLegacyChanged2( IConVar *pVar, const char *pOldString, float flOldValue );

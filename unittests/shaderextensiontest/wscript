@@ -32,6 +32,13 @@ def build(bld):
 		use=['materialsystem', 'shaderapiempty', 'tier0', 'vstdlib']
 			+ ([] if bld.env.DEDICATED else ['shaderapidx9']) + (['SDL3'] if bld.env.SDL3 else []),
 		install_path=None)
+	if not bld.env.DEDICATED:
+		bld.program(
+			features='cxx', env=test_env,
+			source=['test_builtin_shaders.cpp', '../../materialsystem/builtin_shader_catalog.cpp'],
+			target='builtin_shader_conformance', name='builtin_shader_conformance',
+			includes=includes, use=['stdshader_dx9', 'tier1', 'tier0', 'vstdlib'],
+			install_path=None)
 	if bld.env.DXVK:
 		bld.program(
 			features='c cxx', env=test_env,

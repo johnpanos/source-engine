@@ -7,11 +7,11 @@
 
 #include <SDL3/SDL.h>
 #include "appframework/ilaunchermgr.h"
+#include "appframework/window_provider.h"
 #include "tier0/icommandline.h"
 #include <cstdio>
 #include <cstring>
 
-extern void *CreateSDLMgr();
 
 namespace
 {
@@ -166,7 +166,12 @@ void CheckEvents( ILauncherMgr &manager )
 int main( int argc, char **argv )
 {
 	CommandLine()->CreateCmdLine( argc, argv );
-	ILauncherMgr *manager = static_cast<ILauncherMgr *>( CreateSDLMgr() );
+	const WindowProviderDescriptor *provider = WindowProvider_Describe();
+	CHECK( provider && provider->create );
+	if ( !provider || !provider->create )
+		return 1;
+	CHECK( std::strcmp( provider->name, "sdl3" ) == 0 );
+	ILauncherMgr *manager = provider->create();
 	CHECK( manager != NULL );
 	CHECK( manager->GetWindowRef() == NULL );
 	CHECK( manager->Init() == INIT_OK );

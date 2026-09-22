@@ -6,6 +6,7 @@
 
 #include "shadersystem.h"
 #include "shaderextension_compatibility_host.h"
+#include "builtin_shader_provider.h"
 #include <stdlib.h>
 #include "materialsystem_global.h"
 #include "filesystem.h"
@@ -23,13 +24,11 @@
 #include "shaderlib/cshader.h"
 #include "tier1/convar.h"
 #include "tier1/KeyValues.h"
-#include "shader_dll_verify.h"
 #include "tier0/vprof.h"
 
 // NOTE: This must be the last file included!
-#include "tier0/memdbgon.h"
 #include "mat_stub.h"
-
+#include "tier0/memdbgon.h"
 
 //#define DEBUG_DEPTH 1
 
@@ -67,8 +66,7 @@ public:
 	virtual void		ModInit();
 	virtual void		ModShutdown();
 
-	virtual bool		LoadShaderDLL( const char *pFullPath );
-	virtual bool		LoadShaderDLL( const char *pFullPath, const char *pPathID, bool bModShaderDLL );
+	virtual bool LoadShaderDLL( const char *pFullPath );
 	virtual void		UnloadShaderDLL( const char *pFullPath );
 
 	virtual IShader*	FindShader( char const* pShaderName );
@@ -99,7 +97,7 @@ private:
 	struct ShaderDLLInfo_t
 	{
 		char *m_pFileName;
-		CSysModule *m_hInstance;
+		void ( *m_pDisconnectBuiltin )();
 		CShaderExtensionCompatibilityHost *m_pExtensionHost;
 		IShaderDLLInternal *m_pShaderDLL;
 		ShaderDLL_t m_hShaderDLL;
@@ -111,11 +109,10 @@ private:
 	};
 
 private:
-	// hackhack: remove this when VAC2 is online.
-	void VerifyBaseShaderDLL( CSysModule *pModule );
-
 	// Load up the shader DLLs...
 	void LoadAllShaderDLLs();
+	void RegisterBuiltinShaders(
+	    const char *pName, IShaderDLLInternal *pShaders, void ( *disconnect )() );
 
 	// Load the "mshader_" DLLs.
 	void LoadModShaderDLLs( int dxSupportLevel );
@@ -297,64 +294,59 @@ void CShaderSystem::ModShutdown()
 //-----------------------------------------------------------------------------
 // Load up the shader DLLs...
 //-----------------------------------------------------------------------------
-void CShaderSystem::LoadAllShaderDLLs( )
+void CShaderSystem::RegisterBuiltinShaders(
+    const char *pName, IShaderDLLInternal *pShaders, void ( *disconnect )() )
+{
+	int i = m_ShaderDLLs.AddToTail();
+	int length = Q_strlen( pName ) + 1;
+	m_ShaderDLLs[i].m_pFileName = new char[length];
+	Q_strncpy( m_ShaderDLLs[i].m_pFileName, pName, length );
+	m_ShaderDLLs[i].m_pDisconnectBuiltin = disconnect;
+	m_ShaderDLLs[i].m_pExtensionHost = NULL;
+	m_ShaderDLLs[i].m_pShaderDLL = pShaders;
+	m_ShaderDLLs[i].m_bModShaderDLL = false;
+	SetupShaderDictionary( i );
+}
+
+void CShaderSystem::LoadAllShaderDLLs()
 {
 	UnloadAllShaderDLLs();
 
-	GetShaderDLLInternal()->Connect( Sys_GetFactoryThis(), true );
-
-	// Loads local defined or statically linked shaders
-	int i = m_ShaderDLLs.AddToHead();
-
-	m_ShaderDLLs[i].m_pFileName     = new char[1];
-	m_ShaderDLLs[i].m_pFileName[0]  = 0;
-	m_ShaderDLLs[i].m_hInstance     = NULL;
-	m_ShaderDLLs[i].m_pExtensionHost = NULL;
-	m_ShaderDLLs[i].m_pShaderDLL    = GetShaderDLLInternal();
-	m_ShaderDLLs[i].m_bModShaderDLL = false;
-
-	// Add the shaders to the dictionary of shaders...
-	SetupShaderDictionary( i );
-
-	// 360 has the the debug shaders in its dx9 dll
+	BuiltinShaderHostServices host = { HardwareConfig(), &g_config, this, g_pCVar };
+	IShaderDLLInternal *localShaders = ConnectBuiltinShaderLibrary( host, false );
+	if ( !localShaders )
 	{
-		// Always need the debug shaders
-		LoadShaderDLL( "stdshader_dbg" DLL_EXT_STRING );
+		Error( "Unable to connect the linked material shader library.\n" );
+		return;
 	}
+	RegisterBuiltinShaders( "local", localShaders, DisconnectBuiltinShaderLibrary );
 
-	// Load up standard shader DLLs...
-	int dxSupportLevel = HardwareConfig()->GetMaxDXSupportLevel();
-	Assert( dxSupportLevel >= 60 );
-	dxSupportLevel /= 10;
-
-	// 360 only supports its dx9 dll
-	int dxStart =  6;
-	char buf[32];
-	for ( i = dxStart; i <= dxSupportLevel; ++i )
-	{
-		Q_snprintf( buf, sizeof( buf ), "stdshader_dx%d%s", i, DLL_EXT_STRING );
-		LoadShaderDLL( buf );
-	}
-
-	const char *pShaderName = NULL;
+#if defined( LINKED_STANDARD_SHADERS )
+	const BuiltinShaderProvider *provider = StandardShaderLibrary_Describe();
+	const char *requested = HardwareConfig()->GetHWSpecificShaderDLLName();
 #ifdef _DEBUG
-	pShaderName = CommandLine()->ParmValue( "-shader" );
-#endif
-	if ( !pShaderName )
-	{
-		pShaderName = HardwareConfig()->GetHWSpecificShaderDLLName();
-	}
-	if ( pShaderName )
-	{
-		LoadShaderDLL( pShaderName );
-	}
-
-#ifdef _DEBUG
-	// For fast-iteration debugging
+	requested = CommandLine()->ParmValue( "-shader", requested );
 	if ( CommandLine()->FindParm( "-testshaders" ) )
+		requested = "shader_test";
+#endif
+	// Legacy configuration can select only a declared linked provider. Filename
+	// discovery and CreateInterface negotiation belong exclusively to mod shaders.
+	if ( !IsBuiltinShaderProviderSelected( provider, requested ) )
 	{
-		LoadShaderDLL( "shader_test" DLL_EXT_STRING );
+		UnloadAllShaderDLLs();
+		Error( "Requested material shader provider is not linked into this product.\n" );
+		return;
 	}
+	IShaderDLLInternal *standardShaders = provider->connect( host );
+	if ( !standardShaders )
+	{
+		UnloadAllShaderDLLs();
+		Error( "Unable to connect the linked standard shader provider.\n" );
+		return;
+	}
+	RegisterBuiltinShaders( provider->id, standardShaders, provider->disconnect );
+	Msg(
+	    "RFC0001 shaders: provider=%s shaders=%d\n", provider->id, standardShaders->ShaderCount() );
 #endif
 }
 
@@ -399,7 +391,7 @@ void CShaderSystem::LoadModShaderDLLs( int dxSupportLevel )
 	for ( int i = dxStart; i <= dxSupportLevel; ++i )
 	{
 		Q_snprintf( buf, sizeof( buf ), "game_shader_dx%d%s", i, DLL_EXT_STRING );
-		LoadShaderDLL( buf, pModShaderPathID, true );
+		LoadShaderDLL( buf );
 	}
 
 	// Now load the ones with any dx_ prefix.
@@ -408,7 +400,7 @@ void CShaderSystem::LoadModShaderDLLs( int dxSupportLevel )
 	while ( pFilename )
 	{
 		Q_snprintf( buf, sizeof( buf ), "%s%s", pFilename, DLL_EXT_STRING );
-		LoadShaderDLL( buf, pModShaderPathID, true );
+		LoadShaderDLL( buf );
 
 		pFilename = g_pFullFileSystem->FindNext( findHandle );
 	}
@@ -433,133 +425,34 @@ void CShaderSystem::UnloadAllShaderDLLs()
 	m_ShaderDLLs.RemoveAll();
 }
 
+// All filename-based requests are retained mod extensions. First-party shader
+// libraries are registered from the linked catalog above and cannot be replaced.
 bool CShaderSystem::LoadShaderDLL( const char *pFullPath )
 {
-	return LoadShaderDLL( pFullPath, NULL, false );
-}
-
-// HACKHACK: remove me when VAC2 is online.
-#if defined( _WIN32 )
-// Instead of including windows.h
-extern "C"
-{
-	extern void * __stdcall GetProcAddress( void *hModule, const char *pszProcName );
-};
-#endif
-
-void CShaderSystem::VerifyBaseShaderDLL( CSysModule *pModule )
-{
-//#if defined( _WIN32 ) && !defined( _X360 )
-#if 0
-	const char *pErrorStr = "Corrupt save data settings.";
-
-	unsigned char *testData1 = new unsigned char[SHADER_DLL_VERIFY_DATA_LEN1];
-
-	ShaderDLLVerifyFn fn = (ShaderDLLVerifyFn)GetProcAddress( (void *)pModule, SHADER_DLL_FNNAME_1 );
-	if ( !fn )
-		Error( pErrorStr );
-
-	IShaderDLLVerification *pVerify;
-	char *pPtr = (char*)(void*)&pVerify;
-	pPtr -= SHADER_DLL_VERIFY_DATA_PTR_OFFSET;
-	fn( pPtr );
-
-	// Test the first CRC.
-	CRC32_t testCRC;
-	CRC32_Init( &testCRC );
-	CRC32_ProcessBuffer( &testCRC, testData1, SHADER_DLL_VERIFY_DATA_LEN1 );
-	CRC32_ProcessBuffer( &testCRC, &pModule, 4 );
-	CRC32_ProcessBuffer( &testCRC, &pVerify, 4 );
-	CRC32_Final( &testCRC );
-	if ( testCRC != pVerify->Function1( testData1 - SHADER_DLL_VERIFY_DATA_PTR_OFFSET ) )
-		Error( pErrorStr );
-
-	// Test the next one.
-	unsigned char digest[MD5_DIGEST_LENGTH];
-	MD5Context_t md5Context;
-	MD5Init( &md5Context );
-	MD5Update( &md5Context, testData1 + SHADER_DLL_VERIFY_DATA_PTR_OFFSET, SHADER_DLL_VERIFY_DATA_LEN1 - SHADER_DLL_VERIFY_DATA_PTR_OFFSET );
-	MD5Final( digest, &md5Context );
-	pVerify->Function2( 2, 3, 3 ); // fn2 is supposed to place the result in testData1.
-	if ( memcmp( digest, testData1, MD5_DIGEST_LENGTH ) != 0 )
-		Error( pErrorStr );
-
-	pVerify->Function5();
-
-	delete [] testData1;
-#endif
-}
-
-//-----------------------------------------------------------------------------
-// Methods related to reading in shader DLLs
-//-----------------------------------------------------------------------------
-bool CShaderSystem::LoadShaderDLL( const char *pFullPath, const char *pPathID, bool bModShaderDLL )
-{
 	if ( !pFullPath || !pFullPath[0] )
-		return true;
+		return false;
 
-	CSysModule *hInstance = NULL;
-	IShaderDLLInternal *pShaderDLL = NULL;
-	CShaderExtensionCompatibilityHost *pExtensionHost = NULL;
-	if ( bModShaderDLL )
-	{
-		pExtensionHost = CShaderExtensionCompatibilityHost::Load( *g_pFullFileSystem, pFullPath );
-		if ( !pExtensionHost )
-			return false;
-		pShaderDLL = &pExtensionHost->Shaders();
-	}
-	else
-	{
-		hInstance = Sys_LoadModuleFromFileSystem( g_pFullFileSystem, pFullPath, pPathID, true );
-		if ( !hInstance )
-			return false;
+	// Loading an already connected legacy singleton and then disconnecting the
+	// old host would invalidate the new connection. Keep the existing borrowers
+	// stable; replacing an extension requires ModShutdown after materials drain.
+	int existing = FindShaderDLL( pFullPath );
+	if ( existing >= 0 )
+		return m_ShaderDLLs[existing].m_bModShaderDLL;
 
-		CreateInterfaceFn factory = Sys_GetFactory( hInstance );
-		pShaderDLL = factory ? static_cast<IShaderDLLInternal *>(
-		                           factory( SHADER_DLL_INTERFACE_VERSION, NULL ) )
-		                     : NULL;
-		if ( !pShaderDLL )
-		{
-			g_pFullFileSystem->UnloadModule( hInstance );
-			return false;
-		}
+	CShaderExtensionCompatibilityHost *host =
+	    CShaderExtensionCompatibilityHost::Load( *g_pFullFileSystem, pFullPath );
+	if ( !host )
+		return false;
 
-		VerifyBaseShaderDLL( hInstance );
-		if ( !pShaderDLL->Connect( Sys_GetFactoryThis(), false ) )
-		{
-			g_pFullFileSystem->UnloadModule( hInstance );
-			return false;
-		}
-	}
-
-	// FIXME: We need to do some sort of shader validation here for anticheat.
-
-	// Now replace any existing shader
-	int nShaderDLLIndex = FindShaderDLL( pFullPath );
-	if ( nShaderDLLIndex >= 0 )
-	{
-		UnloadShaderDLL( nShaderDLLIndex );
-	}
-	else
-	{
-		nShaderDLLIndex = m_ShaderDLLs.AddToTail();
-		int nLen = Q_strlen(pFullPath) + 1;
-		m_ShaderDLLs[nShaderDLLIndex].m_pFileName = new char[ nLen ];
-		Q_strncpy( m_ShaderDLLs[nShaderDLLIndex].m_pFileName, pFullPath, nLen );
-	}
-
-	// Ok, the shader DLL's good!
-	m_ShaderDLLs[nShaderDLLIndex].m_hInstance = hInstance;
-	m_ShaderDLLs[nShaderDLLIndex].m_pExtensionHost = pExtensionHost;
-	m_ShaderDLLs[nShaderDLLIndex].m_pShaderDLL = pShaderDLL;
-	m_ShaderDLLs[nShaderDLLIndex].m_bModShaderDLL = bModShaderDLL;
-	
-	// Add the shaders to the dictionary of shaders...
-	SetupShaderDictionary( nShaderDLLIndex );
-	
-	// FIXME: Fix up existing materials that were using shaders that have
-	// been reloaded?
-
+	int index = m_ShaderDLLs.AddToTail();
+	int length = Q_strlen( pFullPath ) + 1;
+	m_ShaderDLLs[index].m_pFileName = new char[length];
+	Q_strncpy( m_ShaderDLLs[index].m_pFileName, pFullPath, length );
+	m_ShaderDLLs[index].m_pDisconnectBuiltin = NULL;
+	m_ShaderDLLs[index].m_pExtensionHost = host;
+	m_ShaderDLLs[index].m_pShaderDLL = &host->Shaders();
+	m_ShaderDLLs[index].m_bModShaderDLL = true;
+	SetupShaderDictionary( index );
 	return true;
 }
 
@@ -595,12 +488,8 @@ void CShaderSystem::UnloadShaderDLL( int nShaderDLLIndex )
 		m_ShaderDLLs[nShaderDLLIndex].m_pShaderDLL = NULL;
 		return;
 	}
-	IShaderDLLInternal *pShaderDLL = m_ShaderDLLs[nShaderDLLIndex].m_pShaderDLL;
-	pShaderDLL->Disconnect( pShaderDLL == GetShaderDLLInternal() );
-	if ( m_ShaderDLLs[nShaderDLLIndex].m_hInstance )
-	{
-		g_pFullFileSystem->UnloadModule( m_ShaderDLLs[nShaderDLLIndex].m_hInstance );
-	}
+	m_ShaderDLLs[nShaderDLLIndex].m_pDisconnectBuiltin();
+	m_ShaderDLLs[nShaderDLLIndex].m_pShaderDLL = NULL;
 }
 
 //-----------------------------------------------------------------------------
@@ -609,7 +498,7 @@ void CShaderSystem::UnloadShaderDLL( int nShaderDLLIndex )
 void CShaderSystem::UnloadShaderDLL( const char *pFullPath )
 {
 	int nShaderDLLIndex = FindShaderDLL( pFullPath );
-	if ( nShaderDLLIndex >= 0 )
+	if ( nShaderDLLIndex >= 0 && m_ShaderDLLs[nShaderDLLIndex].m_bModShaderDLL )
 	{
 		UnloadShaderDLL( nShaderDLLIndex );
 		delete[] m_ShaderDLLs[nShaderDLLIndex].m_pFileName;

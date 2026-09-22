@@ -15,6 +15,8 @@
 
 
 void InitShaderLibCVars( CreateInterfaceFn cvarFactory );
+void InitBuiltinShaderLibCVars();
+void ShutdownBuiltinShaderLibCVars();
 
 
 #endif // SHADERLIB_CVAR_H

@@ -5,6 +5,7 @@
 //===========================================================================//
 
 #include "audio_pch.h"
+#include "engine/audio/device_provider.h"
 #include <OpenAL/al.h>
 #include <OpenAL/alc.h>
 #ifdef OSX
@@ -104,6 +105,11 @@ IAudioDevice *Audio_CreateOpenALDevice( void )
 	return NULL;
 }
 
+DLL_EXPORT const audio::DeviceProvider *Audio_OpenALProvider()
+{
+	static const audio::DeviceProvider provider = { "openal", Audio_CreateOpenALDevice };
+	return &provider;
+}
 
 void OnSndSurroundCvarChanged( IConVar *pVar, const char *pOldString, float flOldValue );
 void OnSndSurroundLegacyChanged( IConVar *pVar, const char *pOldString, float flOldValue );

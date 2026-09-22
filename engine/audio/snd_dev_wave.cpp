@@ -5,6 +5,7 @@
 //===========================================================================//
 
 #include "audio_pch.h"
+#include "engine/audio/device_provider.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -110,6 +111,11 @@ IAudioDevice *Audio_CreateWaveDevice( void )
 	return NULL;
 }
 
+DLL_EXPORT const audio::DeviceProvider *Audio_WaveProvider()
+{
+	static const audio::DeviceProvider provider = { "wave", Audio_CreateWaveDevice };
+	return &provider;
+}
 
 //-----------------------------------------------------------------------------
 // Init, shutdown

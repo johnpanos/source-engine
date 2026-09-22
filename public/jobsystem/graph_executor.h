@@ -89,7 +89,8 @@ struct RunOptions
 	// host pump point). When false and the graph carries MainThread work with no
 	// other eligible servicer, the run is a detectable stall rather than a hang
 	// (RFC 0003 "Sequences and physical affinity"). Executors that model no
-	// affinity (Deterministic, Pooled) ignore this.
+	// affinity (Deterministic) ignore this. Pooled runs affine/blocking work on
+	// the pumping caller, never on its compute backend.
 	bool pumpMainThread = true;
 };
 

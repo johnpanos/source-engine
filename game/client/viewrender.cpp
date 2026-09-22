@@ -26,6 +26,7 @@
 #include "tier0/vprof.h"
 #include "tier1/mempool.h"
 #include "vstdlib/jobthread.h"
+#include "vstdlib/jobgraph_parallel.h"
 #include "datacache/imdlcache.h"
 #include "engine/IEngineTrace.h"
 #include "engine/ivmodelinfo.h"
@@ -118,6 +119,8 @@ ConVar r_drawviewmodel( "r_drawviewmodel","1", FCVAR_CHEAT );
 static ConVar r_drawtranslucentrenderables( "r_drawtranslucentrenderables", "1", FCVAR_CHEAT );
 static ConVar r_drawopaquerenderables( "r_drawopaquerenderables", "1", FCVAR_CHEAT );
 static ConVar r_threaded_renderables( "r_threaded_renderables", "0" );
+static ConVar r_renderable_job_graph( "r_renderable_job_graph", "0", 0,
+    "Renderable bone setup: 0 legacy, 1 serial job graph, 2 pooled job graph.", true, 0, true, 2 );
 
 // FIXME: This is not static because we needed to turn it off for TF2 playtests
 ConVar r_DrawDetailProps( "r_DrawDetailProps", "1", FCVAR_NONE, "0=Off, 1=Normal, 2=Wireframe" );
@@ -3796,6 +3799,15 @@ static void SetupBonesOnBaseAnimating( C_BaseAnimating *&pBaseAnimating )
 	pBaseAnimating->SetupBones( NULL, -1, -1, gpGlobals->curtime );
 }
 
+struct RenderableBoneSetupContext_t
+{
+	float m_flTime;
+
+	void Process( C_BaseAnimating *&pBaseAnimating )
+	{
+		pBaseAnimating->SetupBones( NULL, -1, -1, m_flTime );
+	}
+};
 
 static void DrawOpaqueRenderables_DrawBrushModels( CClientRenderablesList::CEntry *pEntitiesBegin, CClientRenderablesList::CEntry *pEntitiesEnd, ERenderDepthMode DepthMode )
 {
@@ -3979,8 +3991,37 @@ void CRendering3dView::DrawOpaqueRenderables( ERenderDepthMode DepthMode )
 
 	if ( r_threaded_renderables.GetBool() )
 	{
-		ParallelProcess( "BoneSetupNpcsLast", arrBoneSetupNpcsLast.Base() + numOpaqueEnts - numNpcs, numNpcs, &SetupBonesOnBaseAnimating );
-		ParallelProcess( "BoneSetupNpcsLast NonNPCs", arrBoneSetupNpcsLast.Base(), numNonNpcsAnimating, &SetupBonesOnBaseAnimating );
+		const int nGraphMode = r_renderable_job_graph.GetInt();
+		if ( nGraphMode == 0 )
+		{
+			ParallelProcess( "BoneSetupNpcsLast",
+			    arrBoneSetupNpcsLast.Base() + numOpaqueEnts - numNpcs, numNpcs,
+			    &SetupBonesOnBaseAnimating );
+			ParallelProcess( "BoneSetupNpcsLast NonNPCs", arrBoneSetupNpcsLast.Base(),
+			    numNonNpcsAnimating, &SetupBonesOnBaseAnimating );
+		}
+		else
+		{
+			// Both graphs finish while their stack-backed pointer list and entities
+			// are borrowed here. Preserve the NPC-before-other-bones barrier and draw order.
+			RenderableBoneSetupContext_t context = { gpGlobals->curtime };
+			const jobsystem::BatchMode mode =
+			    nGraphMode == 1 ? jobsystem::BatchMode::Serial : jobsystem::BatchMode::Parallel;
+			if ( !JobGraphParallelProcess( "BoneSetupNpcsLast",
+			         arrBoneSetupNpcsLast.Base() + numOpaqueEnts - numNpcs, numNpcs, &context,
+			         &RenderableBoneSetupContext_t::Process,
+			         static_cast<void ( RenderableBoneSetupContext_t::* )()>( NULL ),
+			         static_cast<void ( RenderableBoneSetupContext_t::* )()>( NULL ), INT_MAX, NULL,
+			         mode ) ||
+			     !JobGraphParallelProcess( "BoneSetupNpcsLast NonNPCs", arrBoneSetupNpcsLast.Base(),
+			         numNonNpcsAnimating, &context, &RenderableBoneSetupContext_t::Process,
+			         static_cast<void ( RenderableBoneSetupContext_t::* )()>( NULL ),
+			         static_cast<void ( RenderableBoneSetupContext_t::* )()>( NULL ), INT_MAX, NULL,
+			         mode ) )
+			{
+				Error( "Invalid renderable bone setup job graph batch\n" );
+			}
+		}
 	}
 
 

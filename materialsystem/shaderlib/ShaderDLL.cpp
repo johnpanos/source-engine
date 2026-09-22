@@ -5,6 +5,7 @@
 //===========================================================================//
 
 #include "shaderlib/ShaderDLL.h"
+#include "../builtin_shader_provider.h"
 #include "materialsystem/IShader.h"
 #include "tier1/utlvector.h"
 #include "tier0/dbg.h"
@@ -83,6 +84,47 @@ IShaderDLLInternal *GetShaderDLLInternal()
 	}
 
 	return static_cast<IShaderDLLInternal*>( s_pShaderDLL );
+}
+
+// This state belongs to this linked shader library, never to the catalog. The
+// retained mod ABI below is unchanged and is used only by the extension host.
+static bool s_bBuiltinConnected;
+static bool s_bBuiltinOwnsCVars;
+
+IShaderDLLInternal *ConnectBuiltinShaderLibrary(
+    const BuiltinShaderHostServices &host, bool ownsCVars )
+{
+	if ( s_bBuiltinConnected || !host.hardware || !host.config || !host.shaders || !host.cvars )
+		return NULL;
+
+	IShaderDLLInternal *shaders = GetShaderDLLInternal();
+	g_pHardwareConfig = host.hardware;
+	g_pConfig = host.config;
+	g_pSLShaderSystem = host.shaders;
+	s_bBuiltinOwnsCVars = ownsCVars;
+	s_bBuiltinConnected = true;
+	if ( ownsCVars )
+	{
+		cvar = g_pCVar = host.cvars;
+		InitBuiltinShaderLibCVars();
+	}
+	return shaders;
+}
+
+void DisconnectBuiltinShaderLibrary()
+{
+	if ( !s_bBuiltinConnected )
+		return;
+	if ( s_bBuiltinOwnsCVars )
+	{
+		ShutdownBuiltinShaderLibCVars();
+		cvar = g_pCVar = NULL;
+	}
+	g_pHardwareConfig = NULL;
+	g_pConfig = NULL;
+	g_pSLShaderSystem = NULL;
+	s_bBuiltinConnected = false;
+	s_bBuiltinOwnsCVars = false;
 }
 
 //-----------------------------------------------------------------------------

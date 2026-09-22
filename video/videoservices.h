@@ -18,6 +18,7 @@
 #include "video/ivideoservices.h"
 
 #include "videosubsystem.h"
+#include "provider_catalog_runtime.h"
 
 
 struct CVideFileoExtInfo_t
@@ -46,6 +47,10 @@ class CValveVideoServices : public CTier3AppSystem< IVideoServices >
 	public:
 		CValveVideoServices();
 		~CValveVideoServices();
+		bool ConfigureProviders( const VideoProviderCatalog &catalog )
+		{
+			return m_Providers.Configure( catalog );
+		}
 	
 		// Inherited from IAppSystem 
 		virtual bool					Connect( CreateInterfaceFn factory );
@@ -115,6 +120,7 @@ class CValveVideoServices : public CTier3AppSystem< IVideoServices >
 	
 		bool							ConnectVideoLibraries( CreateInterfaceFn factory );
 		bool							DisconnectVideoLibraries();
+		void RefreshVideoLibraries();
 		
 		int								DestroyAllVideoInterfaces();
 
@@ -130,11 +136,9 @@ class CValveVideoServices : public CTier3AppSystem< IVideoServices >
 		
 		VideoResult_t					m_LastResult;
 		
-		int								m_nInstalledSystems;
 		bool							m_bInitialized;
 		
-		CSysModule					   *m_VideoSystemModule[VideoSystem::VIDEO_SYSTEM_COUNT];
-		IVideoSubSystem				   *m_VideoSystems[VideoSystem::VIDEO_SYSTEM_COUNT];
+		CVideoProviderSet m_Providers;
 		VideoSystem_t					m_VideoSystemType[VideoSystem::VIDEO_SYSTEM_COUNT];
 		VideoSystemFeature_t			m_VideoSystemFeatures[VideoSystem::VIDEO_SYSTEM_COUNT];
 		

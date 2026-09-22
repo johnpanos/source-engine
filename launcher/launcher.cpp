@@ -54,6 +54,10 @@
 #include "inputsystem/iinputsystem.h"
 #include "filesystem/IQueuedLoader.h"
 #include "appframework/linked_systems.h"
+#include "appframework/window_provider.h"
+#include "inputsystem/provider_catalog.h"
+#include "video/provider_catalog.h"
+#include "engine/audio/device_provider.h"
 #include "reslistgenerator.h"
 #include "tier1/fmtstr.h"
 #include "sourcevr/isourcevirtualreality.h"
@@ -63,8 +67,6 @@
 
 
 #if defined( USE_SDL )
-#include <SDL.h>
-#include <SDL_version.h>
 
 #if !defined( _WIN32 )
 #define MB_OK 			0x00000001
@@ -90,9 +92,6 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 
 #define DEFAULT_HL2_GAMEDIR	"hl2"
 
-#if defined( USE_SDL )
-extern void* CreateSDLMgr();
-#endif
 
 //-----------------------------------------------------------------------------
 // Modules...
@@ -618,6 +617,69 @@ void ReportDirtyDiskNoMaterialSystem()
 }
 
 
+// Audio policy belongs to the product root. Waf exports only factories whose
+// implementations are linked into this engine; configuration cannot name a DLL.
+static bool BindAudioProviders( IEngineAPI *engine )
+{
+	const audio::DeviceProvider *catalog[] = {
+#ifdef AUDIO_PROVIDER_SDL
+		Audio_SDLProvider(),
+#endif
+#ifdef AUDIO_PROVIDER_AUDIOQUEUE
+		Audio_AudioQueueProvider(),
+#endif
+#ifdef AUDIO_PROVIDER_OPENAL
+		Audio_OpenALProvider(),
+#endif
+#ifdef AUDIO_PROVIDER_DIRECTSOUND
+		Audio_DirectSoundProvider(),
+#endif
+#ifdef AUDIO_PROVIDER_WAVE
+		Audio_WaveProvider(),
+#endif
+		Audio_NullProvider()
+	};
+	audio::DeviceSelection selection;
+	selection.primary = catalog[0];
+	selection.nullProvider = Audio_NullProvider();
+#ifdef AUDIO_PROVIDER_AUDIOQUEUE
+	selection.fallback = Audio_OpenALProvider();
+	if ( CommandLine()->FindParm( "-snd_openal" ) )
+	{
+		selection.primary = Audio_OpenALProvider();
+		selection.fallback = NULL;
+	}
+#endif
+#ifdef AUDIO_PROVIDER_DIRECTSOUND
+	selection.fallback = Audio_WaveProvider();
+	selection.waveOnly = Audio_WaveProvider();
+	selection.primaryOnRestart = false;
+	if ( CommandLine()->FindParm( "-wavonly" ) )
+		selection.primary = Audio_WaveProvider();
+#endif
+	const char *requested = CommandLine()->ParmValue( "-audio-provider", selection.primary->id );
+	if ( CommandLine()->FindParm( "-nosound" ) )
+		requested = "null";
+	if ( CommandLine()->FindParm( "-audio-provider" ) || CommandLine()->FindParm( "-nosound" ) )
+	{
+		selection.primary = NULL;
+		selection.fallback = NULL;
+		selection.waveOnly = NULL;
+		selection.primaryOnRestart = true;
+		for ( unsigned int i = 0; i < ARRAYSIZE( catalog ); ++i )
+		{
+			if ( !Q_stricmp( requested, catalog[i]->id ) )
+				selection.primary = catalog[i];
+		}
+	}
+	if ( !selection.primary || !Engine_BindAudioProviders( engine, &selection ) )
+	{
+		Warning( "Required audio provider '%s' is not available in this product.\n", requested );
+		return false;
+	}
+	return true;
+}
+
 //-----------------------------------------------------------------------------
 // Instantiate all main libraries
 //-----------------------------------------------------------------------------
@@ -638,18 +700,66 @@ bool CSourceAppSystemGroup::Create()
 	// These modules are normal link dependencies. Keep the established lifecycle
 	// order: cvar query first, material surface before VGUI, engine API last.
 #if defined( USE_SDL )
-	AddSystem( (IAppSystem *)CreateSDLMgr(), SDLMGR_INTERFACE_VERSION );
+	const WindowProviderDescriptor *window = WindowProvider_Describe();
+	const char *requestedWindow = CommandLine()->ParmValue( "-window-provider", window->name );
+	if ( Q_stricmp( requestedWindow, window->name ) ||
+		 !AddSystem( window->create(), SDLMGR_INTERFACE_VERSION ) )
+	{
+		Warning( "Required window provider '%s' is not available in this product.\n", requestedWindow );
+		return false;
+	}
 #endif
 
+	const InputProviderDescriptor *input = InputSystem_Describe();
+	const char *requestedInput = CommandLine()->ParmValue( "-input-provider", input->name );
+	if ( Q_stricmp( requestedInput, input->name ) )
+	{
+		Warning( "Required input provider '%s' is not available in this product.\n", requestedInput );
+		return false;
+	}
+
+	const VideoProviderCatalog *builtVideo = VideoServices_GetBuiltProviders();
+	VideoProviderCatalog video = *builtVideo;
+	VideoProviderDescriptor requiredVideo;
+	const char *requestedVideo = CommandLine()->ParmValue( "-video-provider", "auto" );
+	if ( !Q_stricmp( requestedVideo, "none" ) )
+	{
+		video.providers = NULL;
+		video.count = 0;
+	}
+	else if ( Q_stricmp( requestedVideo, "auto" ) )
+	{
+		video.count = 0;
+		for ( int i = 0; i < builtVideo->count; ++i )
+		{
+			if ( !Q_stricmp( requestedVideo, builtVideo->providers[i].name ) )
+			{
+				requiredVideo = builtVideo->providers[i];
+				requiredVideo.required = true;
+				video.providers = &requiredVideo;
+				video.count = 1;
+				break;
+			}
+		}
+		if ( video.count == 0 )
+		{
+			Warning( "Required video provider '%s' is not available in this product.\n", requestedVideo );
+			return false;
+		}
+	}
+
+	if ( !BindAudioProviders( Engine_CreateClientAPI() ) )
+		return false;
+
 	if ( !AddSystem( Engine_CreateCvarQuery(), CVAR_QUERY_INTERFACE_VERSION ) ||
-	     !AddSystem( InputSystem_Create(), INPUTSYSTEM_INTERFACE_VERSION ) ||
+	     !AddSystem( input->create(), INPUTSYSTEM_INTERFACE_VERSION ) ||
 	     !AddSystem( MaterialSystem_Create(), MATERIAL_SYSTEM_INTERFACE_VERSION ) ||
 	     !AddSystem( DataCache_Create(), DATACACHE_INTERFACE_VERSION ) ||
 	     !AddSystem( MDLCache_Create(), MDLCACHE_INTERFACE_VERSION ) ||
 	     !AddSystem( StudioDataCache_Create(), STUDIO_DATA_CACHE_INTERFACE_VERSION ) ||
 	     !AddSystem( StudioRender_Create(), STUDIO_RENDER_INTERFACE_VERSION ) ||
 	     !AddSystem( Physics_Create(), VPHYSICS_INTERFACE_VERSION ) ||
-	     !AddSystem( VideoServices_Create(), VIDEO_SERVICES_INTERFACE_VERSION ) ||
+	     !AddSystem( VideoServices_CreateWithProviders( &video ), VIDEO_SERVICES_INTERFACE_VERSION ) ||
 	     !AddSystem( VGuiSurface_Create(), VGUI_SURFACE_INTERFACE_VERSION ) ||
 	     !AddSystem( VGui_Create(), VGUI_IVGUI_INTERFACE_VERSION ) ||
 	     !AddSystem( Engine_CreateClientAPI(), VENGINE_LAUNCHER_API_VERSION ) )
@@ -875,7 +985,7 @@ const char *CSourceAppSystemGroup::DetermineDefaultGame()
 
 int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uType )
 {
-	SDL_ShowSimpleMessageBox( 0, header, message, GetAssertDialogParent() );
+	WindowProvider_ShowError( header, message );
 	return 0;
 }
 
@@ -1196,19 +1306,8 @@ DLL_EXPORT int LauncherMain( int argc, char **argv )
 #endif // LINUX
 
 #ifdef USE_SDL
-#ifdef USE_SDL3
-	const int version = SDL_GetVersion();
-	Msg( "SDL version: %d.%d.%d rev: %s\n", SDL_VERSIONNUM_MAJOR( version ),
-		SDL_VERSIONNUM_MINOR( version ), SDL_VERSIONNUM_MICRO( version ), SDL_GetRevision() );
-#else
-	SDL_version ver;
-	SDL_GetVersion( &ver );
-	Msg("SDL version: %d.%d.%d rev: %s\n", (int)ver.major, (int)ver.minor, (int)ver.patch, SDL_GetRevision());
-#endif
-#endif
-
-#if (defined LINUX || defined PLATFORM_BSD) && defined USE_SDL && defined TOGLES && !defined ANDROID
-	SDL_SetHint(SDL_HINT_VIDEO_X11_FORCE_EGL, "1");
+	WindowProvider_ReportVersion();
+	WindowProvider_Prepare();
 #endif
 
 #ifdef WIN32

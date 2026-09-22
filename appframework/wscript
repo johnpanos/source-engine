@@ -22,7 +22,8 @@ def build(bld):
 
 	if bld.env.SDL:
 		source += [
-			'sdl3mgr.cpp' if bld.env.SDL3 else 'sdlmgr.cpp'
+			'sdl3mgr.cpp' if bld.env.SDL3 else 'sdlmgr.cpp',
+			'sdl_window_provider.cpp'
 		]
 
 	if bld.env.DEST_OS == 'darwin' and bld.env.GL:

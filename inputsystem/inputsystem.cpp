@@ -5,6 +5,7 @@
 //===========================================================================//
 
 #include "inputsystem.h"
+#include "inputsystem/provider_catalog.h"
 #include "key_translation.h"
 #include "inputsystem/ButtonCode.h"
 #include "inputsystem/AnalogCode.h"
@@ -30,6 +31,18 @@ EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CInputSystem, IInputSystem,
 DLL_EXPORT IInputSystem *InputSystem_Create()
 {
 	return &g_InputSystem;
+}
+
+DLL_EXPORT const InputProviderDescriptor *InputSystem_Describe()
+{
+#if defined( USE_SDL3 )
+	static const InputProviderDescriptor provider = { "sdl3", InputSystem_Create };
+#elif defined( USE_SDL )
+	static const InputProviderDescriptor provider = { "sdl2", InputSystem_Create };
+#else
+	static const InputProviderDescriptor provider = { "native", InputSystem_Create };
+#endif
+	return &provider;
 }
 
 #if defined( WIN32 )
@@ -216,6 +229,7 @@ InitReturnVal_t CInputSystem::Init()
 
 #endif
 
+	Msg( "RFC0001 input: provider=%s\n", InputSystem_Describe()->name );
 	return INIT_OK; 
 }
 
