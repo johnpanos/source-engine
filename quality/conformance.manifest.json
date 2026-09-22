@@ -1303,6 +1303,24 @@
         "unittests/hammertest/formats/test_entity_property_sheet_negative.cpp"
       ],
       "expect": "pass"
+    },
+    {
+      "id": "world.map-container",
+      "domain": "Q-CONTENT",
+      "rfc": "0008",
+      "contract": "unittests/mapcontainertest/contracts/world.map_container.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-O1"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "mapcontainer/blake2b.cpp",
+        "mapcontainer/map_container.cpp",
+        "unittests/mapcontainertest/test_map_container.cpp"
+      ],
+      "expect": "pass"
     }
   ]
 }

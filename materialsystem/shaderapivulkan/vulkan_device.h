@@ -99,8 +99,16 @@ public:
 	// causes subsequent BeginFrame calls to report a skip.
 	bool Resize( int width, int height, std::string *outError );
 
-	// Ask EndFrame() to capture the rendered color image this frame.
+	// Ask EndFrame() to capture the rendered color image (the back buffer) this frame.
 	void RequestCapture() { m_captureRequested = true; }
+	// Ask EndFrame() to capture the swapchain image instead: the back buffer as
+	// the window presents it, scaled to the drawable. Nothing is captured when
+	// the surface does not allow reading its images.
+	void RequestPresentedCapture()
+	{
+		m_captureRequested = true;
+		m_capturePresented = true;
+	}
 
 	// Bring up a bounded demo pipeline: real shader modules, a graphics
 	// pipeline matching the swapchain render pass, and a GPU vertex buffer with
@@ -315,6 +323,14 @@ public:
 	    VkFormat srgbAlias = VK_FORMAT_UNDEFINED );
 	bool UploadManagedTexture( int handle, const uint8_t *data, size_t dataSize,
 	    std::string *outError, uint32_t level = 0 );
+	// Fills the width x height rectangle at (x, y) of a level with tightly packed
+	// data in the image's format, keeping the texels outside it (IShaderAPI
+	// TexSubImage2D; VGUI writes its font pages a glyph at a time). A region of
+	// a never-filled image leaves the rest zero. Compressed regions must be 4x4
+	// block aligned.
+	bool UploadManagedTextureRegion( int handle, uint32_t x, uint32_t y, uint32_t width,
+	    uint32_t height, const uint8_t *data, size_t dataSize, std::string *outError,
+	    uint32_t level = 0 );
 	uint32_t ManagedTextureMipLevels( int handle ) const
 	{
 		return ( handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) )
@@ -506,11 +522,25 @@ public:
 	bool IsDiscrete() const { return m_isDiscrete; }
 	bool ValidationEnabled() const { return m_validationEnabled; }
 
+	// The back buffer the engine renders into (D3D9's BackBufferWidth/Height).
 	void GetSwapchainExtent( int &width, int &height ) const
 	{
 		width = static_cast<int>( m_swapExtent.width );
 		height = static_cast<int>( m_swapExtent.height );
 	}
+	// The window's drawable (swapchain) extent the back buffer is presented to.
+	void GetPresentExtent( int &width, int &height ) const
+	{
+		width = static_cast<int>( m_presentExtent.width );
+		height = static_cast<int>( m_presentExtent.height );
+	}
+	// The back buffer's size, as D3D9 takes it from the video mode
+	// (D3DPRESENT_PARAMETERS BackBufferWidth/Height), independent of the
+	// window's drawable size: Present scales it to the window, as a windowed
+	// D3D9 Present stretches the back buffer over the client area. 0 x 0 follows
+	// the drawable. Before Init it only records the size; afterwards a changed
+	// size recreates the back buffers between frames.
+	bool SetBackBufferSize( int width, int height, std::string *outError );
 
 	// Count of validation messages of severity WARNING or ERROR observed since
 	// Init(). Zero on a clean run when validation is enabled.
@@ -532,12 +562,16 @@ private:
 	bool CreateFramebuffers( std::string *outError );
 	bool CreateCommandResources( std::string *outError );
 	bool CreateSyncObjects( std::string *outError );
-	bool CreateCaptureImage( std::string *outError );
+	bool CreateCaptureImage( VkExtent2D extent, std::string *outError );
 
 	void DestroySwapchainObjects();
 	bool RecreateSwapchain( std::string *outError );
 
 	bool RecordCapture( VkCommandBuffer cmd, uint32_t imageIndex );
+	// Scale the back buffer (resting in `backBufferLayout`) into the acquired
+	// swapchain image and leave that image ready to present.
+	void RecordPresentBlit(
+	    VkCommandBuffer cmd, uint32_t imageIndex, VkImageLayout backBufferLayout, bool capture );
 	bool ResolveCapturedPixels( std::string *outError );
 
 	uint32_t FindMemoryType( uint32_t typeBits, VkMemoryPropertyFlags props, bool *found ) const;
@@ -573,7 +607,18 @@ private:
 	VkFormat m_swapFormat = VK_FORMAT_UNDEFINED;
 	VkColorSpaceKHR m_swapColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 	VkPresentModeKHR m_presentMode = VK_PRESENT_MODE_FIFO_KHR;
+	// m_swapImages are the back buffers the engine renders into, one per
+	// swapchain image, at m_swapExtent (the video mode's size). The swapchain's
+	// own images (m_presentImages, at the drawable's m_presentExtent) only
+	// receive the scaled back buffer at present.
 	VkExtent2D m_swapExtent = { 0, 0 };
+	VkExtent2D m_presentExtent = { 0, 0 };
+	VkExtent2D m_requestedBackBuffer = { 0, 0 };
+	VkFilter m_presentFilter = VK_FILTER_LINEAR;
+	bool m_capturePresented = false;
+	bool m_presentCapturable = false;
+	std::vector<VkImage> m_presentImages;
+	std::vector<VkDeviceMemory> m_backBufferMemories;
 	std::vector<VkImage> m_swapImages;
 	std::vector<VkImageView> m_swapImageViews;
 	std::vector<VkFramebuffer> m_framebuffers;

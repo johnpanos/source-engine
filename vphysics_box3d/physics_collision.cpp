@@ -251,6 +251,64 @@ void BuildHulls( const Vector *pPoints, int count, const unsigned short *pTriang
 	CoverPatch( pPoints, pTriangles, patch, interior, pConvex->hulls );
 }
 
+// IVP_Rot_Inertia_Solver: mean squared extents about the mass center over the
+// solid volume, combined per axis as sqrt(b^2 + c^2) (not the rigid-body
+// b + c), in square meters. Without volume, IVP falls back to half the
+// squared bounding radius.
+Vector ComputeRotationInertia( const CPhysCollideBox3D *pCollide )
+{
+	const float kMetersPerInch = 0.0254f;
+	double volume = 0.0, first[3] = { 0, 0, 0 }, second[3] = { 0, 0, 0 };
+	for ( int c = 0; c < pCollide->convexes.Count(); c++ )
+	{
+		const CPhysConvexBox3D *pConvex = pCollide->convexes[c];
+		int pointCount = pConvex->points.Count();
+		if ( pointCount < 4 )
+			continue;
+		Vector interior( 0, 0, 0 );
+		for ( int i = 0; i < pointCount; i++ )
+			interior += pConvex->points[i];
+		interior /= (float)pointCount;
+		for ( int t = 0; t + 2 < pConvex->triangles.Count(); t += 3 )
+		{
+			const Vector *pTet[4] = { &interior, &pConvex->points[pConvex->triangles[t]],
+				&pConvex->points[pConvex->triangles[t + 1]], &pConvex->points[pConvex->triangles[t + 2]] };
+			double v = fabs( DotProduct( *pTet[1] - interior, CrossProduct( *pTet[2] - interior, *pTet[3] - interior ) ) ) / 6.0;
+			if ( v <= 0 )
+				continue;
+			volume += v;
+			for ( int axis = 0; axis < 3; axis++ )
+			{
+				double sum = 0, squares = 0;
+				for ( int k = 0; k < 4; k++ )
+				{
+					double x = ( *pTet[k] )[axis];
+					sum += x;
+					squares += x * x;
+				}
+				first[axis] += v * sum * 0.25;
+				// Integral of x^2 over a tetrahedron: V/20 * (sum x_k^2 + (sum x_k)^2).
+				second[axis] += v * ( squares + sum * sum ) / 20.0;
+			}
+		}
+	}
+	if ( volume <= 1e-6 )
+	{
+		Vector extent = ( pCollide->maxs - pCollide->mins ) * ( 0.5f * kMetersPerInch );
+		float radiusSq = extent.LengthSqr();
+		return Vector( radiusSq, radiusSq, radiusSq ) * 0.5f;
+	}
+	double meanSq[3];
+	for ( int axis = 0; axis < 3; axis++ )
+	{
+		double center = first[axis] / volume;
+		meanSq[axis] = ( second[axis] / volume - center * center ) * kMetersPerInch * kMetersPerInch;
+	}
+	return Vector( (float)sqrt( meanSq[1] * meanSq[1] + meanSq[2] * meanSq[2] ),
+		(float)sqrt( meanSq[0] * meanSq[0] + meanSq[2] * meanSq[2] ),
+		(float)sqrt( meanSq[0] * meanSq[0] + meanSq[1] * meanSq[1] ) );
+}
+
 void FinalizeCollide( CPhysCollideBox3D *pCollide, bool computeMassCenter )
 {
 	pCollide->mins.Init( FLT_MAX, FLT_MAX, FLT_MAX );
@@ -277,6 +335,7 @@ void FinalizeCollide( CPhysCollideBox3D *pCollide, bool computeMassCenter )
 	{
 		pCollide->massCenter = pCollide->volume > 0.0f ? weighted / pCollide->volume
 			: ( pCollide->mins + pCollide->maxs ) * 0.5f;
+		pCollide->rotationInertia = ComputeRotationInertia( pCollide );
 	}
 }
 
@@ -289,6 +348,7 @@ CPhysCollideBox3D *DecodeSolid( const char *pBuffer, int size, int index )
 	pCollide->index = index;
 	pCollide->massCenter = legacy.massCenter;
 	pCollide->orthoAreas = legacy.orthoAreas;
+	pCollide->rotationInertia = legacy.rotationInertia;
 	for ( int i = 0; i < legacy.convexes.Count(); i++ )
 	{
 		const LegacyConvex_t &source = legacy.convexes[i];

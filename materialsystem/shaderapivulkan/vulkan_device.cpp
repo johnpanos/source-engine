@@ -561,7 +561,7 @@ bool CVulkanContext::CreateSwapchain( std::string *outError )
 	// Extent: honor the surface's fixed extent, else clamp the drawable size.
 	if ( caps.currentExtent.width != UINT32_MAX )
 	{
-		m_swapExtent = caps.currentExtent;
+		m_presentExtent = caps.currentExtent;
 	}
 	else
 	{
@@ -573,15 +573,16 @@ bool CVulkanContext::CreateSwapchain( std::string *outError )
 		    std::max( caps.minImageExtent.width, std::min( caps.maxImageExtent.width, e.width ) );
 		e.height = std::max(
 		    caps.minImageExtent.height, std::min( caps.maxImageExtent.height, e.height ) );
-		m_swapExtent = e;
+		m_presentExtent = e;
 	}
 
-	if ( m_swapExtent.width == 0 || m_swapExtent.height == 0 )
+	if ( m_presentExtent.width == 0 || m_presentExtent.height == 0 )
 	{
 		// Zero-size (minimized) window: retain state without a swapchain; frames
 		// are skipped until a non-zero Resize arrives. Not an error.
 		m_swapchain = VK_NULL_HANDLE;
 		m_swapImages.clear();
+		m_presentImages.clear();
 		return true;
 	}
 
@@ -595,24 +596,24 @@ bool CVulkanContext::CreateSwapchain( std::string *outError )
 	info.minImageCount = imageCount;
 	info.imageFormat = m_swapFormat;
 	info.imageColorSpace = m_swapColorSpace;
-	info.imageExtent = m_swapExtent;
+	info.imageExtent = m_presentExtent;
 	info.imageArrayLayers = 1;
-	info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	// The swapchain image only receives the scaled back buffer (RecordPresentBlit).
+	if ( !( caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT ) )
+	{
+		SetError( outError, "swapchain images cannot be transfer destinations" );
+		return false;
+	}
+	info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	// ... and, where the surface allows, a copy source for RequestPresentedCapture.
+	m_presentCapturable = ( caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT ) != 0;
+	if ( m_presentCapturable )
+		info.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	info.preTransform = caps.currentTransform;
 	info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 	info.presentMode = m_presentMode;
 	info.clipped = VK_TRUE;
 	info.oldSwapchain = VK_NULL_HANDLE;
-	const VkFormat viewFormats[2] = { m_swapFormat, m_swapFormatSrgb };
-	VkImageFormatListCreateInfo formatList = {};
-	formatList.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO;
-	formatList.viewFormatCount = 2;
-	formatList.pViewFormats = viewFormats;
-	if ( m_srgbAttachments )
-	{
-		info.flags |= VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR;
-		info.pNext = &formatList;
-	}
 
 	uint32_t families[2] = { m_graphicsQueueFamily, m_presentQueueFamily };
 	if ( m_graphicsQueueFamily != m_presentQueueFamily )
@@ -635,8 +636,75 @@ bool CVulkanContext::CreateSwapchain( std::string *outError )
 
 	uint32_t actual = 0;
 	vkGetSwapchainImagesKHR( m_device, m_swapchain, &actual, nullptr );
-	m_swapImages.resize( actual );
-	vkGetSwapchainImagesKHR( m_device, m_swapchain, &actual, m_swapImages.data() );
+	m_presentImages.resize( actual );
+	vkGetSwapchainImagesKHR( m_device, m_swapchain, &actual, m_presentImages.data() );
+
+	// One back buffer per swapchain image, so a frame never renders into one an
+	// earlier frame is still presenting from (m_imagesInFlight guards both).
+	m_swapExtent = ( m_requestedBackBuffer.width > 0 && m_requestedBackBuffer.height > 0 )
+	                   ? m_requestedBackBuffer
+	                   : m_presentExtent;
+	VkFormatProperties swapFeatures = {};
+	vkGetPhysicalDeviceFormatProperties( m_physicalDevice, m_swapFormat, &swapFeatures );
+	const VkFormatFeatureFlags blit =
+	    VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
+	if ( ( swapFeatures.optimalTilingFeatures & blit ) != blit )
+	{
+		SetError( outError, "the swapchain format cannot be blitted for present" );
+		return false;
+	}
+	m_presentFilter =
+	    ( swapFeatures.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT )
+	        ? VK_FILTER_LINEAR
+	        : VK_FILTER_NEAREST;
+	const VkFormat viewFormats[2] = { m_swapFormat, m_swapFormatSrgb };
+	VkImageFormatListCreateInfo formatList = {};
+	formatList.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO;
+	formatList.viewFormatCount = 2;
+	formatList.pViewFormats = viewFormats;
+	m_swapImages.assign( actual, VK_NULL_HANDLE );
+	m_backBufferMemories.assign( actual, VK_NULL_HANDLE );
+	for ( uint32_t i = 0; i < actual; ++i )
+	{
+		VkImageCreateInfo img = {};
+		img.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		img.imageType = VK_IMAGE_TYPE_2D;
+		img.format = m_swapFormat;
+		img.extent = { m_swapExtent.width, m_swapExtent.height, 1 };
+		img.mipLevels = 1;
+		img.arrayLayers = 1;
+		img.samples = VK_SAMPLE_COUNT_1_BIT;
+		img.tiling = VK_IMAGE_TILING_OPTIMAL;
+		img.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		img.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		img.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		if ( m_srgbAttachments )
+		{
+			img.flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+			img.pNext = &formatList;
+		}
+		if ( vkCreateImage( m_device, &img, nullptr, &m_swapImages[i] ) != VK_SUCCESS )
+		{
+			SetError( outError, "vkCreateImage (back buffer) failed" );
+			return false;
+		}
+		VkMemoryRequirements req = {};
+		vkGetImageMemoryRequirements( m_device, m_swapImages[i], &req );
+		bool found = false;
+		const uint32_t type =
+		    FindMemoryType( req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &found );
+		VkMemoryAllocateInfo ai = {};
+		ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		ai.allocationSize = req.size;
+		ai.memoryTypeIndex = type;
+		if ( !found ||
+		     vkAllocateMemory( m_device, &ai, nullptr, &m_backBufferMemories[i] ) != VK_SUCCESS )
+		{
+			SetError( outError, "vkAllocateMemory (back buffer) failed" );
+			return false;
+		}
+		vkBindImageMemory( m_device, m_swapImages[i], m_backBufferMemories[i], 0 );
+	}
 
 	m_swapImageViews.resize( actual );
 	m_swapImageViewsSrgb.assign( m_srgbAttachments ? actual : 0, VK_NULL_HANDLE );
@@ -982,11 +1050,11 @@ uint32_t CVulkanContext::FindMemoryType(
 	return 0;
 }
 
-bool CVulkanContext::CreateCaptureImage( std::string *outError )
+bool CVulkanContext::CreateCaptureImage( VkExtent2D extent, std::string *outError )
 {
 	// Recreate only when the target extent changed.
-	if ( m_captureImage != VK_NULL_HANDLE && m_captureExtent.width == m_swapExtent.width &&
-	     m_captureExtent.height == m_swapExtent.height )
+	if ( m_captureImage != VK_NULL_HANDLE && m_captureExtent.width == extent.width &&
+	     m_captureExtent.height == extent.height )
 		return true;
 
 	if ( m_captureImage != VK_NULL_HANDLE )
@@ -1004,7 +1072,7 @@ bool CVulkanContext::CreateCaptureImage( std::string *outError )
 	img.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	img.imageType = VK_IMAGE_TYPE_2D;
 	img.format = m_swapFormat;
-	img.extent = { m_swapExtent.width, m_swapExtent.height, 1 };
+	img.extent = { extent.width, extent.height, 1 };
 	img.mipLevels = 1;
 	img.arrayLayers = 1;
 	img.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -1045,7 +1113,7 @@ bool CVulkanContext::CreateCaptureImage( std::string *outError )
 		return false;
 	}
 	vkBindImageMemory( m_device, m_captureImage, m_captureMemory, 0 );
-	m_captureExtent = m_swapExtent;
+	m_captureExtent = extent;
 	return true;
 }
 
@@ -3216,8 +3284,39 @@ void CVulkanContext::SetManagedTextureSamplerState( int handle, int samplerState
 bool CVulkanContext::UploadManagedTexture(
     int handle, const uint8_t *data, size_t dataSize, std::string *outError, uint32_t level )
 {
+	if ( handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) )
+	{
+		SetError( outError, "UploadManagedTexture with invalid handle/data" );
+		return false;
+	}
+	const ManagedTexture &t = m_managedTextures[static_cast<size_t>( handle )];
+	return UploadManagedTextureRegion( handle, 0, 0, std::max( 1u, t.width >> level ),
+	    std::max( 1u, t.height >> level ), data, dataSize, outError, level );
+}
+
+static bool IsBlockCompressedFormat( VkFormat format )
+{
+	switch ( format )
+	{
+	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+	case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+	case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+	case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+	case VK_FORMAT_BC2_UNORM_BLOCK:
+	case VK_FORMAT_BC2_SRGB_BLOCK:
+	case VK_FORMAT_BC3_UNORM_BLOCK:
+	case VK_FORMAT_BC3_SRGB_BLOCK:
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_t y, uint32_t width,
+    uint32_t height, const uint8_t *data, size_t dataSize, std::string *outError, uint32_t level )
+{
 	if ( handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) || !data ||
-	     dataSize == 0 )
+	     dataSize == 0 || width == 0 || height == 0 )
 	{
 		SetError( outError, "UploadManagedTexture with invalid handle/data" );
 		return false;
@@ -3230,6 +3329,23 @@ bool CVulkanContext::UploadManagedTexture(
 	if ( level >= t.mipLevels )
 	{
 		SetError( outError, "UploadManagedTexture past the texture's mip chain" );
+		return false;
+	}
+	const uint32_t levelWidth = std::max( 1u, t.width >> level );
+	const uint32_t levelHeight = std::max( 1u, t.height >> level );
+	if ( x >= levelWidth || y >= levelHeight || width > levelWidth - x || height > levelHeight - y )
+	{
+		SetError( outError, "UploadManagedTexture region outside the level" );
+		return false;
+	}
+	const bool whole = x == 0 && y == 0 && width == levelWidth && height == levelHeight;
+	// A block-compressed region must start on a 4x4 block and end on one or at
+	// the level's edge (vkCmdCopyBufferToImage's rule for compressed images).
+	const bool compressed = IsBlockCompressedFormat( t.format );
+	if ( compressed && ( x % 4 || y % 4 || ( ( x + width ) % 4 && x + width != levelWidth ) ||
+	                       ( ( y + height ) % 4 && y + height != levelHeight ) ) )
+	{
+		SetError( outError, "UploadManagedTexture: compressed region not block aligned" );
 		return false;
 	}
 	const VkDeviceSize bytes = dataSize;
@@ -3254,22 +3370,41 @@ bool CVulkanContext::UploadManagedTexture(
 	}
 	VkImageMemoryBarrier toDst = {};
 	toDst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	// A single-level image is replaced whole; a level of a chain keeps the others.
+	// A single-level image replaced whole discards its old contents. A level of a
+	// chain (made samplable at creation) and an image updated in part (VGUI's
+	// font pages, a glyph at a time) keep the texels outside the region.
+	const bool preserve = t.mipLevels > 1 || ( !whole && t.uploaded );
 	toDst.oldLayout =
-	    t.mipLevels > 1 ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
+	    preserve ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
 	toDst.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	toDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	toDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	toDst.image = t.image;
 	toDst.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, level, 1, 0, 1 };
-	toDst.srcAccessMask = t.mipLevels > 1 ? VK_ACCESS_SHADER_READ_BIT : 0;
+	toDst.srcAccessMask = preserve ? VK_ACCESS_SHADER_READ_BIT : 0;
 	toDst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 	vkCmdPipelineBarrier( cmd,
-	    t.mipLevels > 1 ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+	    preserve ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
 	    VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toDst );
+	// A part of a never-filled single-level image: the rest reads as zero rather
+	// than undefined memory.
+	if ( !whole && !preserve && !compressed )
+	{
+		const VkClearColorValue zero = {};
+		const VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, level, 1, 0, 1 };
+		vkCmdClearColorImage(
+		    cmd, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1, &range );
+		VkMemoryBarrier cleared = {};
+		cleared.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+		cleared.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		cleared.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		    0, 1, &cleared, 0, nullptr, 0, nullptr );
+	}
 	VkBufferImageCopy copy = {};
 	copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1 };
-	copy.imageExtent = { std::max( 1u, t.width >> level ), std::max( 1u, t.height >> level ), 1 };
+	copy.imageOffset = { static_cast<int32_t>( x ), static_cast<int32_t>( y ), 0 };
+	copy.imageExtent = { width, height, 1 };
 	vkCmdCopyBufferToImage( cmd, staging, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy );
 	VkImageMemoryBarrier toRead = toDst;
 	toRead.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -3873,6 +4008,13 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		return true;
 	}
 
+	// A back-buffer size requested while a frame was open applies now.
+	if ( m_requestedBackBuffer.width > 0 && m_requestedBackBuffer.height > 0 &&
+	     ( m_requestedBackBuffer.width != m_swapExtent.width ||
+	         m_requestedBackBuffer.height != m_swapExtent.height ) &&
+	     !RecreateSwapchain( outError ) )
+		return false;
+
 	vkWaitForFences( m_device, 1, &m_inFlight[m_currentFrame], VK_TRUE, UINT64_MAX );
 
 	uint32_t imageIndex = 0;
@@ -4451,7 +4593,8 @@ bool CVulkanContext::RecordCapture( VkCommandBuffer cmd, uint32_t imageIndex )
 	vkCmdCopyImage( cmd, m_swapImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 	    m_captureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy );
 
-	// Capture image -> GENERAL for host read; swap image -> PRESENT_SRC.
+	// Capture image -> GENERAL for host read. The back buffer stays a transfer
+	// source for the present blit.
 	VkImageMemoryBarrier capGeneral = {};
 	capGeneral.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	capGeneral.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -4462,23 +4605,88 @@ bool CVulkanContext::RecordCapture( VkCommandBuffer cmd, uint32_t imageIndex )
 	capGeneral.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 	capGeneral.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 	capGeneral.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-
-	VkImageMemoryBarrier toPresent = {};
-	toPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-	toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-	toPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	toPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	toPresent.image = m_swapImages[imageIndex];
-	toPresent.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-	toPresent.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-	toPresent.dstAccessMask = 0;
-
-	VkImageMemoryBarrier post[] = { capGeneral, toPresent };
-	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-	    VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0,
-	    nullptr, 2, post );
+	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0,
+	    nullptr, 0, nullptr, 1, &capGeneral );
 	return true;
+}
+
+void CVulkanContext::RecordPresentBlit(
+    VkCommandBuffer cmd, uint32_t imageIndex, VkImageLayout backBufferLayout, bool capture )
+{
+	VkImageMemoryBarrier pre[2] = {};
+	for ( VkImageMemoryBarrier &b : pre )
+	{
+		b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		b.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	}
+	// The back buffer: its color writes (or the capture's read) done, as a source.
+	pre[0].oldLayout = backBufferLayout;
+	pre[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	pre[0].image = m_swapImages[imageIndex];
+	pre[0].srcAccessMask = backBufferLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+	                           ? VK_ACCESS_TRANSFER_READ_BIT
+	                           : VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	pre[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	// The swapchain image, available once the acquire semaphore's wait (at the
+	// transfer stage) is satisfied; its old contents are not needed.
+	pre[1].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	pre[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	pre[1].image = m_presentImages[imageIndex];
+	pre[1].srcAccessMask = 0;
+	pre[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	vkCmdPipelineBarrier( cmd,
+	    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+	    VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2, pre );
+
+	VkImageBlit blit = {};
+	blit.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+	blit.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+	blit.srcOffsets[1] = { static_cast<int32_t>( m_swapExtent.width ),
+	    static_cast<int32_t>( m_swapExtent.height ), 1 };
+	blit.dstOffsets[1] = { static_cast<int32_t>( m_presentExtent.width ),
+	    static_cast<int32_t>( m_presentExtent.height ), 1 };
+	const bool sameSize = m_swapExtent.width == m_presentExtent.width &&
+	                      m_swapExtent.height == m_presentExtent.height;
+	vkCmdBlitImage( cmd, m_swapImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+	    m_presentImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
+	    sameSize ? VK_FILTER_NEAREST : m_presentFilter );
+
+	VkImageMemoryBarrier toPresent = pre[1];
+	toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	toPresent.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	toPresent.dstAccessMask = 0;
+	if ( capture )
+	{
+		// What the window shows: the swapchain image after the blit.
+		VkImageMemoryBarrier copyIn[2] = { pre[1], pre[1] };
+		copyIn[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		copyIn[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		copyIn[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		copyIn[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		copyIn[1].image = m_captureImage;
+		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		    0, 0, nullptr, 0, nullptr, 2, copyIn );
+		VkImageCopy copy = {};
+		copy.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+		copy.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+		copy.extent = { m_presentExtent.width, m_presentExtent.height, 1 };
+		vkCmdCopyImage( cmd, m_presentImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		    m_captureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy );
+		VkImageMemoryBarrier capGeneral = copyIn[1];
+		capGeneral.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		capGeneral.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+		capGeneral.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		capGeneral.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0,
+		    nullptr, 0, nullptr, 1, &capGeneral );
+		toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		toPresent.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	}
+	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+	    0, 0, nullptr, 0, nullptr, 1, &toPresent );
 }
 
 bool CVulkanContext::EndFrame( std::string *outError )
@@ -4494,29 +4702,21 @@ bool CVulkanContext::EndFrame( std::string *outError )
 
 	vkCmdEndRenderPass( cmd );
 
-	bool doCapture = m_captureRequested;
-	if ( doCapture )
-	{
-		if ( !CreateCaptureImage( outError ) )
-			return false;
-		if ( !RecordCapture( cmd, imageIndex ) )
-			return false;
-	}
-	else
-	{
-		VkImageMemoryBarrier toPresent = {};
-		toPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		toPresent.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-		toPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toPresent.image = m_swapImages[imageIndex];
-		toPresent.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-		toPresent.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-		toPresent.dstAccessMask = 0;
-		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr, 1, &toPresent );
-	}
+	// The back buffer is captured (what ReadPixels reads), or on request the
+	// swapchain image the window presents.
+	bool doCapture = m_captureRequested && ( !m_capturePresented || m_presentCapturable );
+	const bool capturePresented = doCapture && m_capturePresented;
+	const bool captureBackBuffer = doCapture && !m_capturePresented;
+	if ( doCapture &&
+	     !CreateCaptureImage( capturePresented ? m_presentExtent : m_swapExtent, outError ) )
+		return false;
+	if ( captureBackBuffer && !RecordCapture( cmd, imageIndex ) )
+		return false;
+	RecordPresentBlit( cmd, imageIndex,
+	    captureBackBuffer ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+	                      : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	    capturePresented );
+	m_captureRequested = m_capturePresented = false;
 
 	VkResult r = vkEndCommandBuffer( cmd );
 	if ( r != VK_SUCCESS )
@@ -4525,7 +4725,9 @@ bool CVulkanContext::EndFrame( std::string *outError )
 		return false;
 	}
 
-	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	// Only the present blit touches the acquired swapchain image; rendering into
+	// the back buffer need not wait for the acquire.
+	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 	VkSubmitInfo submit = {};
 	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submit.waitSemaphoreCount = 1;
@@ -4555,7 +4757,6 @@ bool CVulkanContext::EndFrame( std::string *outError )
 		vkWaitForFences( m_device, 1, &m_inFlight[m_currentFrame], VK_TRUE, UINT64_MAX );
 		if ( !ResolveCapturedPixels( outError ) )
 			return false;
-		m_captureRequested = false;
 	}
 
 	VkPresentInfoKHR present = {};
@@ -4677,7 +4878,15 @@ void CVulkanContext::DestroySwapchainObjects()
 			vkFreeMemory( m_device, mem, nullptr );
 	m_depthMemories.clear();
 
+	for ( VkImage img : m_swapImages )
+		if ( img != VK_NULL_HANDLE )
+			vkDestroyImage( m_device, img, nullptr );
 	m_swapImages.clear();
+	for ( VkDeviceMemory mem : m_backBufferMemories )
+		if ( mem != VK_NULL_HANDLE )
+			vkFreeMemory( m_device, mem, nullptr );
+	m_backBufferMemories.clear();
+	m_presentImages.clear();
 	m_imagesInFlight.clear();
 
 	if ( m_swapchain != VK_NULL_HANDLE )
@@ -4705,6 +4914,24 @@ bool CVulkanContext::RecreateSwapchain( std::string *outError )
 	if ( !CreateFramebuffers( outError ) )
 		return false;
 	return true;
+}
+
+bool CVulkanContext::SetBackBufferSize( int width, int height, std::string *outError )
+{
+	const VkExtent2D requested = { static_cast<uint32_t>( std::max( 0, width ) ),
+	    static_cast<uint32_t>( std::max( 0, height ) ) };
+	const bool changed = requested.width != m_requestedBackBuffer.width ||
+	                     requested.height != m_requestedBackBuffer.height;
+	m_requestedBackBuffer = requested;
+	if ( !IsValid() || !changed || m_frameOpen )
+		return true;
+	const VkExtent2D current = m_swapExtent;
+	const VkExtent2D target =
+	    ( requested.width > 0 && requested.height > 0 ) ? requested : m_presentExtent;
+	if ( m_swapchain != VK_NULL_HANDLE && target.width == current.width &&
+	     target.height == current.height )
+		return true;
+	return RecreateSwapchain( outError );
 }
 
 bool CVulkanContext::Resize( int width, int height, std::string *outError )
@@ -4810,6 +5037,7 @@ void CVulkanContext::Shutdown()
 	m_captureRequested = false;
 	m_capturePending = false;
 	m_swapExtent = { 0, 0 };
+	m_presentExtent = { 0, 0 };
 }
 
 } // namespace render_vulkan

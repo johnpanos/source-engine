@@ -1,0 +1,29 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# bsp2tool (RFC 0008, phase F1): inspect, verify, convert legacy VBSP maps to
+# BSP2 and export them back. Host tool; strict C++20 over mapcontainer only.
+
+top = '.'
+PROJECT_NAME = 'bsp2tool'
+
+def options(opt):
+	return
+
+def configure(conf):
+	return
+
+def build(bld):
+	bld(
+		source       = [ 'bsp2tool.cpp' ],
+		target       = PROJECT_NAME,
+		name         = PROJECT_NAME,
+		features     = 'c cxx cxxprogram',
+		includes     = [ '../../public' ],
+		defines      = [],
+		cxxflags     = ['-std=c++20'],
+		use          = [ 'mapcontainer' ],
+		install_path = bld.env.BINDIR,
+		subsystem    = bld.env.MSVC_SUBSYSTEM,
+		idx          = bld.get_taskgen_count()
+	)

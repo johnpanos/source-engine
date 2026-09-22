@@ -39,7 +39,10 @@ def build(bld):
 		( 'jobsystemdynamictest', 'dynamicscopetest.cpp', ['jobsystem'] ),
 		( 'jobsystemqjobstest',   'qjobstest.cpp',        ['jobsystem'] ),
 		( 'jobsystembridgetest',  'enginebridgetest.cpp', ['jobsystem', 'vstdlib', 'tier1', 'tier0'] + dl_log ),
+		# Portal carving: real mathlib clipping through the C++11 game-facing facade.
+		( 'jobsystemportalcarvetest', 'portalcarvetest.cpp', ['mathlib', 'vstdlib', 'tier1', 'tier0'] + dl_log ),
 	]
+	cxx11 = [ 'jobsystemlegacybatchtest', 'jobsystemportalcarvetest' ]
 
 	for target, src, use_libs in programs:
 		bld.program(
@@ -47,9 +50,10 @@ def build(bld):
 			target       = target,
 			name         = target,
 			features     = 'c cxx cxxprogram',
-			includes     = includes + (['../../public/tier0'] if target == 'jobsystemlegacybatchtest' else []),
+			includes     = includes + (['../../public/tier0'] if target in cxx11 else []) +
+				(['../..'] if target == 'jobsystemportalcarvetest' else []),
 			defines      = [],
-			cxxflags     = ['-std=c++11' if target == 'jobsystemlegacybatchtest' else '-std=c++20'],
+			cxxflags     = ['-std=c++11' if target in cxx11 else '-std=c++20'],
 			linkflags    = linkflags,
 			use          = use_libs,
 			install_path = bld.env.TESTDIR,

@@ -6,8 +6,11 @@
 #include "utlvector.h"
 #include "box3d/id.h"
 #include "physics_controllers.h"
+#include "vphysics/constraints.h"
 
 class CPhysicsObjectBox3D;
+class CConstraintBox3D;
+class CConstraintGroupBox3D;
 
 // One VPhysics environment is one Box3D world, stepped on the caller's thread
 // with a single worker (RFC 0004 B: one-worker vertical slice). Simulate()
@@ -122,7 +125,10 @@ private:
 	IPhysicsObject *TrackObject( CPhysicsObjectBox3D *pObject );
 	void Step( float dt );
 	void PreStep( float dt );
-	void PostStep();
+	void PostStep( float dt );
+	void CheckConstraintBreaks( float dt );
+	class CConstraintBox3D *TrackConstraint( IPhysicsObject *pReference, IPhysicsObject *pAttached,
+		IPhysicsConstraintGroup *pGroup, int type, const constraint_breakableparams_t &breakable );
 	void DispatchContactEvents();
 	void DispatchSleepWakeEvents();
 
@@ -143,6 +149,9 @@ private:
 	CUtlVector<CMotionControllerBox3D *> m_motionControllers;
 	CUtlVector<CPlayerControllerBox3D *> m_playerControllers;
 	CUtlVector<CConstraintBox3D *> m_constraints;
+	CUtlVector<CConstraintGroupBox3D *> m_constraintGroups;
+	bool m_quickDelete;
+	bool m_enableConstraintNotify;
 };
 
 #endif // PHYSICS_ENVIRONMENT_H

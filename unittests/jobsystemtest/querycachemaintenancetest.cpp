@@ -28,14 +28,14 @@ void Check( bool condition, const char *what, const std::string &detail )
 }
 
 const qc::Config kConfigs[] = {
-	// Production geometry: 1024 entries, 2048 chains, 8 splits.
-	{ 1024, 2048, 8, 160, 240, 160 },
-	// Small cache: constant victim-list exhaustion and round-robin replacement.
-	{ 64, 128, 8, 48, 300, 90 },
-	// Uneven chain count: the last split takes the remainder.
-	{ 48, 100, 8, 40, 300, 60 },
-	// Fewer splits than workers and a one-chain split.
-	{ 40, 3, 3, 24, 200, 40 },
+    // Production geometry: 1024 entries, 2048 chains, 8 splits.
+    { 1024, 2048, 8, 160, 240, 160 },
+    // Small cache: constant victim-list exhaustion and round-robin replacement.
+    { 64, 128, 8, 48, 300, 90 },
+    // Uneven chain count: the last split takes the remainder.
+    { 48, 100, 8, 40, 300, 60 },
+    // Fewer splits than workers and a one-chain split.
+    { 40, 3, 3, 24, 200, 40 },
 };
 
 } // namespace
@@ -53,12 +53,12 @@ int main()
 				int workers;
 			};
 			const Candidate candidates[] = {
-				{ qc::Mode::LegacyLoop, 0 },
-				{ qc::Mode::SerialGraph, 0 },
-				{ qc::Mode::PooledGraph, 0 },
-				{ qc::Mode::PooledGraph, 1 },
-				{ qc::Mode::PooledGraph, 3 },
-				{ qc::Mode::PooledGraph, 8 },
+			    { qc::Mode::LegacyLoop, 0 },
+			    { qc::Mode::SerialGraph, 0 },
+			    { qc::Mode::PooledGraph, 0 },
+			    { qc::Mode::PooledGraph, 1 },
+			    { qc::Mode::PooledGraph, 3 },
+			    { qc::Mode::PooledGraph, 8 },
 			};
 			for ( const Candidate &candidate : candidates )
 			{
@@ -66,16 +66,16 @@ int main()
 				auto update = [&]( qc::Cache &cache )
 				{
 					return qc::KernelUpdate( cache, cfg.nSplits, candidate.mode, &backend,
-						&qc::KernelClassify, &qc::KernelCommit );
+					    &qc::KernelClassify, &qc::KernelCommit );
 				};
 				std::string why;
 				int frame = -1;
 				const int frames = qc::RunScenario( cfg, seed, update, &why, &frame );
 				char what[160];
 				std::snprintf( what, sizeof( what ),
-					"size=%d chains=%d splits=%d seed=%u mode=%s workers=%d frame=%d", cfg.nSize,
-					cfg.nChains, cfg.nSplits, seed, qc::ModeName( candidate.mode ),
-					candidate.workers, frame );
+				    "size=%d chains=%d splits=%d seed=%u mode=%s workers=%d frame=%d", cfg.nSize,
+				    cfg.nChains, cfg.nSplits, seed, qc::ModeName( candidate.mode ),
+				    candidate.workers, frame );
 				Check( frames == cfg.nFrames, what, why );
 				if ( frames > 0 )
 					nFramesCompared += frames;
@@ -93,7 +93,7 @@ int main()
 			const size_t before = cache.log.size();
 			const int wastedBefore = cache.nWasted;
 			const bool ok = qc::KernelUpdate( cache, cfg.nSplits, qc::Mode::LegacyLoop, &backend,
-				&qc::KernelClassify, &qc::KernelCommit );
+			    &qc::KernelClassify, &qc::KernelCommit );
 			for ( size_t i = before; i < cache.log.size(); ++i )
 				( cache.log[i].invalidated ? invalidations : refreshes )++;
 			wasted += cache.nWasted - wastedBefore;
@@ -103,20 +103,21 @@ int main()
 		};
 		std::string why;
 		int frame = -1;
-		Check( qc::RunScenario( cfg, 3, update, &why, &frame ) == cfg.nFrames, "coverage run", why );
+		Check(
+		    qc::RunScenario( cfg, 3, update, &why, &frame ) == cfg.nFrames, "coverage run", why );
 		char detail[160];
 		std::snprintf( detail, sizeof( detail ),
-			"refresh=%d invalidate=%d wasted=%d victims=%d speculative-hits=%d", refreshes,
-			invalidations, wasted, victimsUsed, speculative );
+		    "refresh=%d invalidate=%d wasted=%d victims=%d speculative-hits=%d", refreshes,
+		    invalidations, wasted, victimsUsed, speculative );
 		Check( refreshes > 50 && invalidations > 5 && wasted > 20 && victimsUsed > 10 &&
-				speculative > 20,
-			"workload covers refresh, invalidation, wasted expiry, victim publication and "
-			"successful speculation",
-			detail );
+		           speculative > 20,
+		    "workload covers refresh, invalidation, wasted expiry, victim publication and "
+		    "successful speculation",
+		    detail );
 		std::printf( "coverage: %s\n", detail );
 	}
 
-	std::printf( "%d frames compared, %d checks, %d failures\n", nFramesCompared, g_checks,
-		g_failures );
+	std::printf(
+	    "%d frames compared, %d checks, %d failures\n", nFramesCompared, g_checks, g_failures );
 	return g_failures ? 1 : 0;
 }

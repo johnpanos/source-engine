@@ -52,21 +52,16 @@
 #include "bspflags.h"
 #include "mathlib/polyhedron.h"
 
+#include "vphysics_conformance.h"
+
 //-----------------------------------------------------------------------------
 // Result reporting
 //-----------------------------------------------------------------------------
-enum Tier_t
-{
-	TIER_BOOT = 0,
-	TIER_GAMEPLAY,
-	TIER_COUNT
-};
-
 static const char *s_tierNames[TIER_COUNT] = { "boot", "gameplay" };
 static int s_checks[TIER_COUNT];
 static int s_failed[TIER_COUNT];
 
-static bool Check( Tier_t tier, const char *pName, bool ok, const char *pFormat = NULL, ... )
+bool Check( Tier_t tier, const char *pName, bool ok, const char *pFormat, ... )
 {
 	s_checks[tier]++;
 	if ( ok )
@@ -88,7 +83,7 @@ static bool Check( Tier_t tier, const char *pName, bool ok, const char *pFormat 
 }
 
 // Observation tolerances: "x" exact, "a<abs>" absolute, "r<frac>" relative.
-static void ObsFloats( const char *pKey, const char *pTol, int count, const float *pValues )
+void ObsFloats( const char *pKey, const char *pTol, int count, const float *pValues )
 {
 	printf( "OBS %s %s", pKey, pTol );
 	for ( int i = 0; i < count; i++ )
@@ -96,13 +91,13 @@ static void ObsFloats( const char *pKey, const char *pTol, int count, const floa
 	printf( "\n" );
 }
 
-static void ObsVector( const char *pKey, const char *pTol, const Vector &v )
+void ObsVector( const char *pKey, const char *pTol, const Vector &v )
 {
 	float values[3] = { v.x, v.y, v.z };
 	ObsFloats( pKey, pTol, 3, values );
 }
 
-static void ObsString( const char *pKey, const char *pValue )
+void ObsString( const char *pKey, const char *pValue )
 {
 	char clean[512];
 	V_strncpy( clean, pValue ? pValue : "(null)", sizeof( clean ) );
@@ -114,19 +109,19 @@ static void ObsString( const char *pKey, const char *pValue )
 	printf( "OBS %s x %s\n", pKey, clean[0] ? clean : "(empty)" );
 }
 
-static bool Near( float a, float b, float tol )
+bool Near( float a, float b, float tol )
 {
 	return fabsf( a - b ) <= tol;
 }
 
-static bool NearVec( const Vector &a, const Vector &b, float tol )
+bool NearVec( const Vector &a, const Vector &b, float tol )
 {
 	return Near( a.x, b.x, tol ) && Near( a.y, b.y, tol ) && Near( a.z, b.z, tol );
 }
 
 // Engine targets build with fast-math, where isfinite() may fold to true. A
 // magnitude comparison is false for NaN and infinity under any FP mode.
-static bool IsFiniteVec( const Vector &v )
+bool IsFiniteVec( const Vector &v )
 {
 	return fabsf( v.x ) < 1e30f && fabsf( v.y ) < 1e30f && fabsf( v.z ) < 1e30f;
 }
@@ -137,7 +132,7 @@ static bool IsFiniteVec( const Vector &v )
 //-----------------------------------------------------------------------------
 static const char *s_pFault = "";
 
-static bool FaultIs( const char *pName )
+bool FaultIs( const char *pName )
 {
 	return !V_strcmp( s_pFault, pName );
 }
@@ -298,9 +293,9 @@ private:
 // Provider under test
 //-----------------------------------------------------------------------------
 static CreateInterfaceFn s_providerFactory;
-static IPhysics *s_pPhysics;
-static IPhysicsCollision *s_pCollision;
-static IPhysicsSurfaceProps *s_pProps;
+IPhysics *s_pPhysics;
+IPhysicsCollision *s_pCollision;
+IPhysicsSurfaceProps *s_pProps;
 
 static void *HostFactory( const char *pName, int *pReturnCode )
 {
@@ -317,9 +312,9 @@ static void *HostFactory( const char *pName, int *pReturnCode )
 
 // Every provider Simulate call goes through here so the "sim-noop" fault can
 // model a provider whose step does not advance the world.
-static const float kTick = 0.015f;
+extern const float kTick = 0.015f;
 
-static void Step( IPhysicsEnvironment *pEnv, float seconds )
+void Step( IPhysicsEnvironment *pEnv, float seconds )
 {
 	int ticks = (int)( seconds / kTick + 0.5f );
 	for ( int i = 0; i < ticks; i++ )
@@ -351,7 +346,7 @@ static char *ReadFile( const char *pPath, int *pSize )
 	return pData;
 }
 
-static objectparams_t DefaultParams( float mass, void *pGameData )
+objectparams_t DefaultParams( float mass, void *pGameData )
 {
 	// Mirrors game/shared/physics_shared.cpp g_PhysDefaultObjectParams.
 	objectparams_t params;
@@ -1144,16 +1139,7 @@ public:
 	int m_calls;
 };
 
-struct World_t
-{
-	IPhysicsEnvironment *pEnv;
-	CPhysCollide *pFloorCollide;
-	CPhysCollide *pCubeCollide;
-	IPhysicsObject *pFloor;
-	int material;
-};
-
-static bool CreateWorld( World_t &world, IPhysicsCollisionSolver *pSolver )
+bool CreateWorld( World_t &world, IPhysicsCollisionSolver *pSolver )
 {
 	memset( &world, 0, sizeof( world ) );
 	world.pEnv = s_pPhysics->CreateEnvironment();
@@ -1176,7 +1162,7 @@ static bool CreateWorld( World_t &world, IPhysicsCollisionSolver *pSolver )
 	return world.pFloor != NULL;
 }
 
-static IPhysicsObject *CreateCube( World_t &world, const Vector &position, float mass = 50.0f, void *pGameData = NULL )
+IPhysicsObject *CreateCube( World_t &world, const Vector &position, float mass, void *pGameData )
 {
 	objectparams_t params = DefaultParams( mass, pGameData );
 	IPhysicsObject *pObject = world.pEnv->CreatePolyObject( world.pCubeCollide, world.material, position, vec3_angle, &params );
@@ -1189,7 +1175,7 @@ static IPhysicsObject *CreateCube( World_t &world, const Vector &position, float
 	return pObject;
 }
 
-static void DestroyWorld( World_t &world )
+void DestroyWorld( World_t &world )
 {
 	if ( !world.pEnv )
 		return;
@@ -1199,7 +1185,7 @@ static void DestroyWorld( World_t &world )
 	memset( &world, 0, sizeof( world ) );
 }
 
-static Vector PositionOf( IPhysicsObject *pObject )
+Vector PositionOf( IPhysicsObject *pObject )
 {
 	Vector position;
 	QAngle angles;
@@ -1207,12 +1193,29 @@ static Vector PositionOf( IPhysicsObject *pObject )
 	return position;
 }
 
-static Vector VelocityOf( IPhysicsObject *pObject )
+Vector VelocityOf( IPhysicsObject *pObject )
 {
 	Vector velocity;
 	AngularImpulse angular;
 	pObject->GetVelocity( &velocity, &angular );
 	return velocity;
+}
+
+AngularImpulse AngularVelocityOf( IPhysicsObject *pObject )
+{
+	Vector velocity;
+	AngularImpulse angular;
+	pObject->GetVelocity( &velocity, &angular );
+	return angular;
+}
+
+Vector AxisOf( IPhysicsObject *pObject, int axis )
+{
+	matrix3x4_t matrix;
+	pObject->GetPositionMatrix( &matrix );
+	Vector out;
+	MatrixGetColumn( matrix, axis, out );
+	return out;
 }
 
 static void TestObjects()
@@ -1586,6 +1589,8 @@ int main( int argc, char **argv )
 			TestCorpus( pCorpus );
 		TestObjects();
 		TestSimulation();
+		TestConstraints();
+		TestObjectsAndEvents();
 		for ( int i = 0; i < fixtures.Count(); i++ )
 		{
 			if ( fixtures[i].collide.solids )

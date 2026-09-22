@@ -48,6 +48,7 @@ struct CPhysCollideBox3D
 		maxs.Init();
 		massCenter.Init();
 		orthoAreas.Init( 1, 1, 1 );
+		rotationInertia.Init( 1, 1, 1 );
 	}
 	~CPhysCollideBox3D();
 
@@ -55,6 +56,12 @@ struct CPhysCollideBox3D
 	Vector mins, maxs;		// collide-space bounds
 	Vector massCenter;
 	Vector orthoAreas;
+	// Per-unit-mass rotational inertia (Source axes, square meters) by IVP's
+	// definition (vphysics objects report inertia in these units): with
+	// a, b, c the mean squared extents <x^2>, <y^2>, <z^2> about the mass
+	// center, I = ( sqrt(b^2 + c^2), sqrt(a^2 + c^2), sqrt(a^2 + b^2) ).
+	// Decoded models carry the value the tools stored.
+	Vector rotationInertia;
 	float volume;
 	int index;
 };

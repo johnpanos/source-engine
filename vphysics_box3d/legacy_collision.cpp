@@ -31,6 +31,7 @@
 //=============================================================================//
 #include "legacy_collision.h"
 
+#include <math.h>
 #include <string.h>
 
 #include "tier0/dbg.h"
@@ -159,6 +160,7 @@ bool DecodeLegacyCollide( const char *pBuffer, int size, LegacyCollide_t *pOut )
 	pOut->convexes.RemoveAll();
 	pOut->massCenter.Init();
 	pOut->orthoAreas.Init( 1, 1, 1 );
+	pOut->rotationInertia.Init( 1, 1, 1 );
 	if ( !pBuffer || size < kSurfaceSize )
 		return false;
 
@@ -182,6 +184,8 @@ bool DecodeLegacyCollide( const char *pBuffer, int size, LegacyCollide_t *pOut )
 	if ( surfaceId != kIvpSurfaceId && surfaceId != 0 )
 		return false;	// byte-swapped (console) or MOPP data is not supported
 	pOut->massCenter = reader.IvpPoint( 0 );
+	// Inertia is per axis (IVP x, y, z = Source x, -z, y): swap, no scaling.
+	pOut->rotationInertia = Vector( fabsf( reader.Float( 12 ) ), fabsf( reader.Float( 20 ) ), fabsf( reader.Float( 16 ) ) );
 	int root = reader.Int( 32 );
 	if ( !DecodeTree( reader, root, 0, pOut ) )
 	{

@@ -178,56 +178,6 @@ private:
 };
 
 //-----------------------------------------------------------------------------
-// Constraint: links two objects. Fixed constraints are Box3D weld joints;
-// constraint kinds without a Box3D mapping yet keep a live handle that does
-// not constrain motion (recorded as uncovered in the provider contract).
-//-----------------------------------------------------------------------------
-class CConstraintBox3D : public IPhysicsConstraint
-{
-public:
-	CConstraintBox3D( IPhysicsObject *pRef, IPhysicsObject *pAttached, b3JointId joint )
-		: m_pReference( pRef ), m_pAttached( pAttached ), m_pGameData( NULL ), m_joint( joint ), m_active( true ) {}
-	virtual ~CConstraintBox3D();
-
-	virtual void Activate( void ) override { m_active = true; }
-	virtual void Deactivate( void ) override { m_active = false; }
-	virtual void SetGameData( void *gameData ) override { m_pGameData = gameData; }
-	virtual void *GetGameData( void ) const override { return m_pGameData; }
-	virtual IPhysicsObject *GetReferenceObject( void ) const override { return m_pReference; }
-	virtual IPhysicsObject *GetAttachedObject( void ) const override { return m_pAttached; }
-	virtual void SetLinearMotor( float speed, float maxLinearImpulse ) override {}
-	virtual void SetAngularMotor( float rotSpeed, float maxAngularImpulse ) override {}
-	virtual void UpdateRagdollTransforms( const matrix3x4_t &constraintToReference, const matrix3x4_t &constraintToAttached ) override {}
-	virtual bool GetConstraintTransform( matrix3x4_t *pConstraintToReference, matrix3x4_t *pConstraintToAttached ) const override { return false; }
-	virtual bool GetConstraintParams( constraint_breakableparams_t *pParams ) const override { return false; }
-	virtual void OutputDebugInfo() override {}
-
-	// Called when either linked object is destroyed first: the Box3D joint
-	// dies with its body, so the handle must not destroy it again.
-	void ReleaseJoint() { m_joint = b3_nullJointId; }
-	bool Links( IPhysicsObject *pObject ) const { return pObject == m_pReference || pObject == m_pAttached; }
-
-private:
-	IPhysicsObject *m_pReference;
-	IPhysicsObject *m_pAttached;
-	void *m_pGameData;
-	b3JointId m_joint;
-	bool m_active;
-};
-
-class CConstraintGroupBox3D : public IPhysicsConstraintGroup
-{
-public:
-	virtual ~CConstraintGroupBox3D() {}
-	virtual void Activate() override {}
-	virtual bool IsInErrorState() override { return false; }
-	virtual void ClearErrorState() override {}
-	virtual void GetErrorParams( constraint_groupparams_t *pParams ) override {}
-	virtual void SetErrorParams( const constraint_groupparams_t &params ) override {}
-	virtual void SolvePenetration( IPhysicsObject *pObj0, IPhysicsObject *pObj1 ) override {}
-};
-
-//-----------------------------------------------------------------------------
 // Friction snapshot: iterates the object's current touching contacts, one
 // entry per manifold, captured when the snapshot is created.
 //-----------------------------------------------------------------------------

@@ -72,13 +72,13 @@ struct Key
 	bool Matches( const Key &other ) const
 	{
 		if ( other.m_Type != m_Type || other.m_nTraceMask != m_nTraceMask ||
-			 other.m_nFilter != m_nFilter || other.m_nNumValidPoints != m_nNumValidPoints ||
-			 other.m_flMinimumUpdateInterval != m_flMinimumUpdateInterval )
+		     other.m_nFilter != m_nFilter || other.m_nNumValidPoints != m_nNumValidPoints ||
+		     other.m_flMinimumUpdateInterval != m_flMinimumUpdateInterval )
 			return false;
 		for ( int i = 0; i < m_nNumValidPoints; ++i )
 		{
 			if ( other.m_pEntities[i] != m_pEntities[i] ||
-				 other.m_nOffsetMode[i] != m_nOffsetMode[i] )
+			     other.m_nOffsetMode[i] != m_nOffsetMode[i] )
 				return false;
 		}
 		return true;
@@ -192,10 +192,7 @@ struct World
 	std::vector<bool> alive;
 	uint32_t frame = 0;
 
-	bool Resolve( int handle ) const
-	{
-		return handle > 0 && handle <= nEntities && alive[handle];
-	}
+	bool Resolve( int handle ) const { return handle > 0 && handle <= nEntities && alive[handle]; }
 	Vec Position( int handle, int mode ) const
 	{
 		Vec v;
@@ -269,8 +266,8 @@ struct Cache
 			params.m_Points[i] = world->Position( params.m_pEntities[i], params.m_nOffsetMode[i] );
 		}
 		++nMisses;
-		e->m_bResult = world->TraceClear( params.m_Points[0], params.m_Points[1],
-			params.m_nTraceMask, params.m_nFilter );
+		e->m_bResult = world->TraceClear(
+		    params.m_Points[0], params.m_Points[1], params.m_nTraceMask, params.m_nFilter );
 		e->m_flLastUpdateTime = flTime;
 		log.push_back( { Index( e ), FloatBits( flTime ), false } );
 	}
@@ -313,7 +310,7 @@ struct Cache
 			IssueQuery( found, curtime );
 		}
 		else if ( curtime - found->m_flLastUpdateTime >=
-				  found->m_QueryParams.m_flMinimumUpdateInterval )
+		          found->m_QueryParams.m_flMinimumUpdateInterval )
 		{
 			found->m_bSpeculativelyDone = false;
 			IssueQuery( found, curtime );
@@ -343,13 +340,13 @@ inline void LegacyProcess( Cache &c, LegacyRecord &workItem )
 	{
 		Entry *pNext;
 		for ( Entry *pEntry = c.chains[i + workItem.m_nStartHashChain].m_pHead; pEntry;
-			  pEntry = pNext )
+		    pEntry = pNext )
 		{
 			pNext = pEntry->m_pNext;
 			if ( pEntry->m_bUsedSinceUpdated )
 			{
 				if ( flCurTime - pEntry->m_flLastUpdateTime >=
-					 pEntry->m_QueryParams.m_flMinimumUpdateInterval )
+				     pEntry->m_QueryParams.m_flMinimumUpdateInterval )
 				{
 					c.IssueQuery( pEntry, c.curtime );
 					pEntry->m_bUsedSinceUpdated = false;
@@ -359,7 +356,7 @@ inline void LegacyProcess( Cache &c, LegacyRecord &workItem )
 			else
 			{
 				if ( flCurTime - pEntry->m_flLastUpdateTime >
-					 pEntry->m_QueryParams.m_flMinimumUpdateInterval )
+				     pEntry->m_QueryParams.m_flMinimumUpdateInterval )
 				{
 					if ( pEntry->m_bSpeculativelyDone && ( !pEntry->m_bUsedSinceUpdated ) )
 						c.nWasted++;
@@ -406,9 +403,12 @@ inline const char *ModeName( Mode mode )
 {
 	switch ( mode )
 	{
-	case Mode::LegacyLoop: return "legacy-loop";
-	case Mode::SerialGraph: return "serial-graph";
-	case Mode::PooledGraph: return "pooled-graph";
+	case Mode::LegacyLoop:
+		return "legacy-loop";
+	case Mode::SerialGraph:
+		return "serial-graph";
+	case Mode::PooledGraph:
+		return "pooled-graph";
 	}
 	return "?";
 }
@@ -455,19 +455,22 @@ inline void ClassifyIndex( void *context, unsigned index )
 	ctx.classify( ctx.splits[index] );
 }
 
-inline void KernelClassify( Split &split ) { QueryCacheMaintenance::ClassifySplit( split ); }
+inline void KernelClassify( Split &split )
+{
+	QueryCacheMaintenance::ClassifySplit( split );
+}
 
 // Returns false only if the batch could not be constructed (a harness error).
 // classify and commit are replaceable so the sensitivity suite can prove the
 // comparator rejects plausible migration defects.
 template <class CommitFn>
 bool KernelUpdate( Cache &c, int nSplits, Mode mode, jobsystem::IWorkerBackend *backend,
-	void ( *classify )( Split & ), CommitFn commit )
+    void ( *classify )( Split & ), CommitFn commit )
 {
 	std::vector<Item> items( c.entries.size() );
 	std::vector<Split> splits( nSplits );
 	const int nItems = QueryCacheMaintenance::Gather( c.chains.data(), int( c.chains.size() ),
-		nSplits, c.curtime, items.data(), int( items.size() ), splits.data() );
+	    nSplits, c.curtime, items.data(), int( items.size() ), splits.data() );
 	if ( nItems < 0 )
 		return false;
 	if ( nItems == 0 )
@@ -486,8 +489,9 @@ bool KernelUpdate( Cache &c, int nSplits, Mode mode, jobsystem::IWorkerBackend *
 		desc.count = unsigned( nSplits );
 		desc.process = &ClassifyIndex;
 		desc.maxParticipants = 0x7fffffffu;
-		const jobsystem::BatchMode batchMode = mode == Mode::SerialGraph ?
-			jobsystem::BatchMode::Serial : jobsystem::BatchMode::Parallel;
+		const jobsystem::BatchMode batchMode = mode == Mode::SerialGraph
+		                                           ? jobsystem::BatchMode::Serial
+		                                           : jobsystem::BatchMode::Parallel;
 		if ( !jobsystem::ExecuteParallelBatch( desc, backend, batchMode ) )
 			return false;
 	}
@@ -500,7 +504,7 @@ inline void KernelCommit( Cache &c, Split *splits, int nSplits )
 	std::vector<DListWithTail> killed( nSplits );
 	Refresh refresh = { &c };
 	QueryCacheMaintenance::Commit( splits, nSplits, c.chains.data(), killed.data(), c.victims,
-		int( TYPE_INVALID ), c.nWasted, refresh );
+	    int( TYPE_INVALID ), c.nWasted, refresh );
 }
 
 // ---------------------------------------------------------------------------
@@ -529,13 +533,13 @@ inline std::string Compare( const Cache &a, const Cache &b )
 {
 	char buf[256];
 	if ( a.nQueries != b.nQueries || a.nMisses != b.nMisses ||
-		 a.nSuccessfulSpeculatives != b.nSuccessfulSpeculatives || a.nWasted != b.nWasted ||
-		 a.nReplaceCtr != b.nReplaceCtr )
+	     a.nSuccessfulSpeculatives != b.nSuccessfulSpeculatives || a.nWasted != b.nWasted ||
+	     a.nReplaceCtr != b.nReplaceCtr )
 	{
 		std::snprintf( buf, sizeof( buf ),
-			"counters queries %d/%d misses %d/%d spec %d/%d wasted %d/%d replace %d/%d",
-			a.nQueries, b.nQueries, a.nMisses, b.nMisses, a.nSuccessfulSpeculatives,
-			b.nSuccessfulSpeculatives, a.nWasted, b.nWasted, a.nReplaceCtr, b.nReplaceCtr );
+		    "counters queries %d/%d misses %d/%d spec %d/%d wasted %d/%d replace %d/%d", a.nQueries,
+		    b.nQueries, a.nMisses, b.nMisses, a.nSuccessfulSpeculatives, b.nSuccessfulSpeculatives,
+		    a.nWasted, b.nWasted, a.nReplaceCtr, b.nReplaceCtr );
 		return buf;
 	}
 	if ( a.log.size() != b.log.size() )
@@ -549,7 +553,7 @@ inline std::string Compare( const Cache &a, const Cache &b )
 		if ( x.entry != y.entry || x.time != y.time || x.invalidated != y.invalidated )
 		{
 			std::snprintf( buf, sizeof( buf ), "callback %zu: entry %d/%d time %08x/%08x inv %d/%d",
-				i, x.entry, y.entry, x.time, y.time, x.invalidated, y.invalidated );
+			    i, x.entry, y.entry, x.time, y.time, x.invalidated, y.invalidated );
 			return buf;
 		}
 	}
@@ -558,15 +562,16 @@ inline std::string Compare( const Cache &a, const Cache &b )
 		const Entry &x = a.entries[i], &y = b.entries[i];
 		const Key &p = x.m_QueryParams, &q = y.m_QueryParams;
 		bool same = p.m_Type == q.m_Type && p.m_nHashIdx == q.m_nHashIdx &&
-			x.m_bUsedSinceUpdated == y.m_bUsedSinceUpdated &&
-			x.m_bSpeculativelyDone == y.m_bSpeculativelyDone && x.m_bResult == y.m_bResult &&
-			FloatBits( x.m_flLastUpdateTime ) == FloatBits( y.m_flLastUpdateTime ) &&
-			p.Matches( q );
+		            x.m_bUsedSinceUpdated == y.m_bUsedSinceUpdated &&
+		            x.m_bSpeculativelyDone == y.m_bSpeculativelyDone &&
+		            x.m_bResult == y.m_bResult &&
+		            FloatBits( x.m_flLastUpdateTime ) == FloatBits( y.m_flLastUpdateTime ) &&
+		            p.Matches( q );
 		for ( int k = 0; same && k < MAXPNTS; ++k )
 		{
 			same = FloatBits( p.m_Points[k].x ) == FloatBits( q.m_Points[k].x ) &&
-				FloatBits( p.m_Points[k].y ) == FloatBits( q.m_Points[k].y ) &&
-				FloatBits( p.m_Points[k].z ) == FloatBits( q.m_Points[k].z );
+			       FloatBits( p.m_Points[k].y ) == FloatBits( q.m_Points[k].y ) &&
+			       FloatBits( p.m_Points[k].z ) == FloatBits( q.m_Points[k].z );
 		}
 		if ( !same )
 		{
@@ -634,8 +639,7 @@ inline Key MakeKey( Workload &w, int nEntities )
 // Runs one seed; update( cache ) performs the candidate maintenance pass.
 // Returns the number of frames compared, or -1 with *pWhy set on divergence.
 template <class Update>
-int RunScenario( const Config &cfg, uint32_t seed, Update update, std::string *pWhy,
-	int *pFrame )
+int RunScenario( const Config &cfg, uint32_t seed, Update update, std::string *pWhy, int *pFrame )
 {
 	World worldA, worldB;
 	for ( World *w : { &worldA, &worldB } )

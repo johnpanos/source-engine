@@ -216,7 +216,11 @@ bool CPhysicsObjectBox3D::IsAsleep() const
 
 bool CPhysicsObjectBox3D::IsAttachedToConstraint( bool bExternalOnly ) const
 {
-	return b3Body_GetJointCount( m_body ) > 0;
+	// IVP parity: CPhysicsObject::IsAttachedToConstraint only recognizes
+	// IVP_CP_CONSTRAINTS controllers, and every Havok constraint registers at
+	// IVP_CP_CONSTRAINTS_MIN, so IVP answers false for all of them. Game code
+	// (CanResolvePenetrationWithNPC) is tuned against that answer.
+	return false;
 }
 
 void CPhysicsObjectBox3D::EnableCollisions( bool enable )

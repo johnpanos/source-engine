@@ -419,6 +419,124 @@ class PortalTest(unittest.TestCase):
                     oracle.read_pixels(path)
 
 
+class ModelLightTest(unittest.TestCase):
+    """VertexLitGeneric model lighting (the modellight family): an independent
+    evaluation of common_vs_fxc.h DoLighting judges every lit pixel, and the D3D9
+    reference judges the whole frame."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.references = {hdr: capture(hdr, "modellight") for hdr in ("none", "integer")}
+        cls.light = oracle.material_pixel_modellight
+
+    def only(self, name, hdr="none"):
+        """The capture reduced to one case, so a seeded defect is judged alone."""
+        report = copy.deepcopy(self.references[hdr])
+        report["cases"] = [c for c in report["cases"] if c["name"] == name]
+        return report
+
+    def disagreements(self, report):
+        return [f for f in self.light.check_model(report) if "disagree" in f]
+
+    def test_d3d9_references_satisfy_their_own_oracle(self):
+        for hdr, report in self.references.items():
+            self.assertEqual(report["renderer"], "vulkan-compat")
+            self.assertEqual(oracle.evaluate(report, hdr, report), [], hdr)
+
+    def test_unlit_models_are_detected(self):
+        # The native backend before model lighting: every quad showed the base
+        # texture times the modulation.
+        report = self.only("four_lights")
+        case = report["cases"][0]
+        width, height = report["frame"]
+        model = self.light.CaseModel(report, case)
+        rgb = bytearray(self.light.material_pixel_frames.decode_frame(case, report["frame"]))
+        for y in range(height):
+            for x in range(width):
+                if model.expected(x, y) not in (None, self.light.CLEAR):
+                    rgb[(y * width + x) * 3:(y * width + x) * 3 + 3] = bytes(report["base_color"])
+        case["frame"] = self.light.material_pixel_frames.encode_frame(rgb)
+        self.assertTrue(self.disagreements(report))
+
+    def test_ambient_cube_faces_are_distinguished(self):
+        # A backend that picks the wrong face for negative normal components.
+        report = self.only("ambient_cube")
+        cube = report["cases"][0]["cube"]
+        cube[0], cube[1] = cube[1], cube[0]
+        self.assertTrue(self.disagreements(report))
+
+    def test_each_light_counts(self):
+        report = self.only("four_lights")
+        report["cases"][0]["lights"].pop()
+        self.assertTrue(self.disagreements(report))
+
+    def test_spot_cone_is_measured(self):
+        report = self.only("spot")
+        report["cases"][0]["lights"][0]["falloff"] = 1.0
+        self.assertTrue(self.disagreements(report))
+
+    def test_half_lambert_is_measured(self):
+        report = self.only("half_lambert")
+        report["cases"][0]["half_lambert"] = False
+        self.assertTrue(self.disagreements(report))
+
+    def test_static_color_mesh_is_measured(self):
+        report = self.only("static_vertex")
+        report["cases"][0]["static_color"] = False
+        self.assertTrue(self.disagreements(report))
+
+    def test_model_and_skinned_placement_turn_the_normals(self):
+        identity = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]]
+        for name in ("model_transform", "skinned"):
+            report = self.only(name)
+            report["cases"][0]["model_matrix"] = identity
+            self.assertTrue(self.disagreements(report), name)
+
+    def test_ignored_tone_scale_is_detected(self):
+        report = self.only("directional", "integer")
+        report["tone_scale"] = 1.0
+        self.assertTrue(self.disagreements(report))
+
+    def test_too_few_lights_is_rejected(self):
+        report = copy.deepcopy(self.references["none"])
+        report["max_lights"] = 2
+        failures = oracle.evaluate(report, "none", self.references["none"])
+        self.assertEqual(len(failures), 1)
+        self.assertIn("local lights", failures[0])
+
+    def test_reference_tolerance_and_drift(self):
+        reference = self.only("point")
+        within = copy.deepcopy(reference)
+        case = within["cases"][0]
+        frames = self.light.material_pixel_frames
+        rgb = frames.decode_frame(case, within["frame"])
+        case["frame"] = frames.encode_frame(bytes(max(0, c - 1) for c in rgb))
+        self.assertEqual(self.light.compare(within, reference), [])
+        drift = copy.deepcopy(reference)
+        rgb = bytearray(rgb)
+        rgb[0:3] = bytes(c ^ 0x10 for c in rgb[0:3])
+        drift["cases"][0]["frame"] = frames.encode_frame(rgb)
+        failures = self.light.compare(drift, reference)
+        self.assertEqual(len(failures), 1)
+        self.assertTrue(failures[0].startswith("point: 1 pixels differ"))
+
+    def test_changed_inputs_are_not_compared(self):
+        reference = self.only("point")
+        changed = copy.deepcopy(reference)
+        changed["cases"][0]["lights"][0]["color"][0] += 0.5
+        self.assertEqual(self.light.compare(changed, reference),
+                         ["modellight inputs differ from the reference capture"])
+
+    def test_missing_cases_are_rejected(self):
+        report = copy.deepcopy(self.references["none"])
+        report["cases"].pop()
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pixels.json"
+            path.write_text(json.dumps(report))
+            with self.assertRaises(oracle.PixelsError):
+                oracle.read_pixels(path)
+
+
 class CaptureFormatTest(unittest.TestCase):
     def test_missing_or_renamed_cases_are_rejected(self):
         report = copy.deepcopy(capture("none"))

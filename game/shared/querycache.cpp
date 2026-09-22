@@ -14,7 +14,6 @@
 #include "vstdlib/jobgraph_parallel.h"
 #include "querycache_maintenance.h"
 
-
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -167,8 +166,6 @@ static void CalculateOffsettedPosition( CBaseEntity *pEntity, EEntityOffsetMode_
 	}
 }
 
-
-
 typedef QueryCacheMaintenance::Item_t<QueryCacheEntry_t> QueryCacheUpdateItem_t;
 typedef QueryCacheMaintenance::Split_t<QueryCacheEntry_t> QueryCacheUpdateRecord_t;
 
@@ -192,7 +189,6 @@ struct QueryCacheRefresh_t
 	}
 };
 
-
 #define N_WAYS_TO_SPLIT_CACHE_UPDATE 8
 
 void UpdateQueryCache( void )
@@ -202,7 +198,7 @@ void UpdateQueryCache( void )
 	QueryCacheUpdateItem_t items[QUERYCACHE_SIZE];
 	QueryCacheUpdateRecord_t workList[N_WAYS_TO_SPLIT_CACHE_UPDATE];
 	const int nItems = QueryCacheMaintenance::Gather( s_HashChains, ARRAYSIZE( s_HashChains ),
-		N_WAYS_TO_SPLIT_CACHE_UPDATE, gpGlobals->curtime, items, QUERYCACHE_SIZE, workList );
+	    N_WAYS_TO_SPLIT_CACHE_UPDATE, gpGlobals->curtime, items, QUERYCACHE_SIZE, workList );
 	if ( nItems < 0 )
 	{
 		Error( "Query-cache entries exceed fixed storage\n" );
@@ -237,7 +233,7 @@ void UpdateQueryCache( void )
 	CUtlIntrusiveDListWithTailPtr<QueryCacheEntry_t> killed[N_WAYS_TO_SPLIT_CACHE_UPDATE];
 	QueryCacheRefresh_t refresh;
 	QueryCacheMaintenance::Commit( workList, N_WAYS_TO_SPLIT_CACHE_UPDATE, s_HashChains, killed,
-		s_VictimList, EQUERY_INVALID, s_WastedSpeculativeUpdates, refresh );
+	    s_VictimList, EQUERY_INVALID, s_WastedSpeculativeUpdates, refresh );
 }
 
 void InvalidateQueryCache( void )

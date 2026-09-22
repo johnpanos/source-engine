@@ -1168,3 +1168,197 @@ python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime \
     --build build --renderer native-vulkan --hdr none --family portal \
     --reference quality/fixtures/material-pixels/portal-dx9-none.json --out OUT
 ```
+
+## VGUI on native Vulkan: menus, console, HUD and fades (2026-09-22)
+
+On native Vulkan, VGUI (the 2D layer used for menus, the console, the HUD, text
+and screen fades) drew as flat white rectangles. A fade could also cover the
+whole view in opaque white. The draws did reach the GPU; four separate
+contract gaps produced the wrong result:
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Panels and text opaque and white | UnlitGeneric in DX9 is `vertexlit_and_unlit_generic`. Its `VERTEXCOLOR` combo multiplies by the vertex color, and `c12.w` (`g_fVertexAlpha`) weights the vertex alpha. The native pipeline applied neither, and the dynamic vertex record had no alpha | The record gains the color's alpha (`kDynVertexFloats` 18, textured-pipeline location 6). Snapshot flags 256/512/1024 come from the pixel-shader static index (`VERTEXCOLOR` stride 384, off when `DIFFUSELIGHTING`, stride 24, is on). The vertex stage gamma-converts the color unless the material doesn't write sRGB (`DONT_GAMMA_CONVERT_VERTEX_COLOR`). Vertex alpha is gated per draw on `c12.w` |
+| Screen fades (`ViewDrawFade`) and `$color`/`$alpha` ignored, so fades drew opaque white | This family's modulation is pixel `c1` (`g_DiffuseModulation`, linear), not `cModulationColor` | `CommitPassPixelConstants` takes the modulation from `c1` for `vertexlit_and_unlit_generic_*` passes |
+| Menu text sheared into diagonal streaks | `TexSubImage2D` dropped offset updates and uploaded a smaller (0,0) region as the whole level. The font cache writes each glyph that way | `CVulkanContext::UploadManagedTextureRegion` keeps the texels outside the region and zero-fills a never-filled image. `UploadTextureSurface` passes offsets through and repacks padded DXT block rows. Compressed regions must be 4x4 aligned |
+| Red and blue swapped in every vertex color (console warnings (255,90,90) measured (90,90,252)) | `CVertexBuilder::Color4ub` stores a D3DCOLOR (B,G,R,A) because `OPENGL_SWAP_COLORS` is not defined; native read it as R,G,B,A | Vertex colors are read as D3DCOLOR. The facing test's fixture bytes, which encoded the RGBA assumption, are corrected |
+
+Oracle: `material_equivalence_vulkan_conformance` grows from 21 to 29 checks.
+The new checks are held to the `vertexlit_and_unlit_generic_ps2x.fxc` formula
+and the D3DCOLOR layout:
+- a sub-rectangle at x=2 from a pitch-16 source, with the texels outside it
+  preserved;
+- the vertex color applied only with the `VERTEXCOLOR` combo (negative control);
+- `c1`, not `c37`, modulates;
+- vertex alpha only when `c12.w` = 1 (control);
+- `c1` alpha 0 is transparent.
+
+A mutation that reintroduced the RGBA read failed exactly the D3DCOLOR check.
+
+Evidence on this machine (headless and native Wayland, AMD RADV):
+- The main menu renders its title, items and "Loading..." text.
+- `-console` renders the translucent console: colored text (warnings measured
+  (252,90,90)), scrollbar, buttons, text entry, and the blurred background.
+- testchmb_a_04 draws the HUD crosshair (`sprites/hud/portal_crosshairs`) and
+  `__fontpage_additive` text.
+- testchmb_a_00, captured during the intro fade, now passes. Earlier the fade
+  covered the frame in white and `portal_boot` failed "lacks scene detail".
+- No 2D draw was dropped: the census shows no line/point drops, and only
+  `engine/preloadtexture` is refused.
+- Still passing: bring-up 20/0, facing 13/0, equivalence 29/0, and all 7
+  material-pixel families (lightmap, exposure and skinning in none and integer
+  HDR, plus portal).
+
+Open:
+- There is no D3D9 pixel capture of VGUI yet. The claim rests on the shader
+  formula and the frames above.
+- `MATERIAL_LINES` is still dropped, so VGUI `DrawLine`/`DrawPolyLine` would not
+  draw. None occurred in these frames.
+- `DIFFUSELIGHTING` passes (vertex lighting) do not use flag 256; model lighting
+  is separate work.
+- The `pow(2.2)` vertex-color conversion runs per vertex, as D3D9 does, and is
+  then interpolated.
+
+```sh
+# console at the main menu, headless
+SDL_VIDEODRIVER=offscreen ./hl2_launcher -renderer native-vulkan -game portal -windowed \
+    -novid -insecure -multirun -console +wait 400 +screenshot +wait 10 +quit
+python3 tools/quality/portal_boot.py --runtime RUNTIME --build build --renderer native-vulkan \
+    --headless --map testchmb_a_04 --out OUT
+```
+
+## Model lighting: VertexLitGeneric vertex lighting matches D3D9 (2026-09-22)
+
+The `--family modellight` harness (`material_pixel_modellight.cpp`) lights
+VertexLitGeneric models the way studiorender does:
+- `SetAmbientLightCube`;
+- up to four `SetLight` lights: directional, point and spot;
+- a static-prop color mesh (`IMesh::SetColorMesh`, VERTEX_SPECULAR).
+
+The material system picks the `vertexlit_and_unlit_generic_vs20` combos
+(DYNAMIC_LIGHT, STATIC_LIGHT, HALFLAMBERT) from that state, as in the game.
+Eleven cases draw a 3x3 grid of quads, each quad with its own normal:
+- ambient cube;
+- directional;
+- point;
+- spot;
+- four mixed lights;
+- half-Lambert;
+- static color only;
+- static plus dynamic;
+- no light;
+- a MODEL-matrix placement (a half turn with z scaled, so normalization matters);
+- a skinned placement (three bones).
+
+The oracle (`material_pixel_modellight.py`) judges the frames two ways:
+- An independent evaluation of `common_vs_fxc.h` DoLighting, with the light
+  constants exactly as `CShaderAPIDx8::SetLight`/`CommitVertexShaderLighting`
+  build them (sorted spot, point, directional). D3D9 matches it within one
+  level on every judged pixel, in both HDR modes.
+- The versioned D3D9 references `modellight-dx9-{none,integer}.json`: 1 level,
+  no pixel beyond it.
+
+Native before the change drew every model unlit (base × modulation): every
+lit pixel was off, by up to 190 levels.
+
+Native now mirrors D3D9's state and math:
+- **Lighting state:**
+  - SetLight, DisableAllLocalLights, SetAmbientLightCube and GetLight hold the
+    state as `m_DynamicState` does.
+  - `GetDX9LightState` reports the ambient light (cube nonzero), the light count
+    and static vertex light (the mesh has a color mesh).
+  - `GetMaxLights` reports 4.
+- **Combos:** the vertex shader's static combo index is kept per snapshot
+  (VERTEXCOLOR, HALFLAMBERT), and the dynamic index arrives through
+  `SetVertexShaderIndex` / `CBCMD_SET_VSHINDEX`.
+- **Vertex lighting:** `EmitToNativeQueue` evaluates DoLighting per unique
+  vertex in world space (rigid through MODEL, skinned through the bones, normals
+  renormalized) into the float vertex color. Every pass whose pixel shader has
+  DIFFUSELIGHTING multiplies by it (flags 256|512, never gamma converted).
+- **Color meshes:** a VERTEX_SPECULAR static mesh locks as packed 4-byte
+  D3DCOLORs, which the engine memcpy's baked static-prop colors into.
+- **Tone scale:** every vertexlit_and_unlit_generic pass (UnlitGeneric too) is
+  scaled by the linear tone-mapping scale, as its FinalOutput(TONEMAP_SCALE_LINEAR)
+  does. That was missing for integer HDR: 16–31 levels off.
+
+**Result:** LDR is bit-exact except two pixels one level off. Integer HDR is
+bit-exact except one flat quad in each of the two placement cases, one level
+off (a rounding boundary under the 0.75 scale).
+
+Twelve seeded oracle tests cover:
+- unlit models;
+- swapped cube faces;
+- a dropped light;
+- the spot exponent;
+- half-Lambert;
+- the static color mesh;
+- placement normals;
+- an ignored tone scale;
+- too few lights;
+- tolerance and drift;
+- changed inputs;
+- missing cases.
+
+All eight pixel families pass on native, and so do 56 oracle tests.
+`portal_boot.py` passes on testchmb_a_01 on both backends.
+
+Open:
+- **Bump and phong models** (`$bumpmap`, `$phong`): 79 of the 233 VertexLitGeneric
+  model materials in Portal's content, the exit door among them. D3D9 renders
+  them through `skin_vs20`/`skin_ps20b` (or the `_bump_` shaders) with per-pixel
+  lighting; native still draws them unlit.
+- A color mesh with bumped static lighting (three colors in the normal stream).
+- LIGHTING_PREVIEW.
+
+```sh
+python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime \
+    --build build --renderer native-vulkan --hdr integer --family modellight \
+    --reference quality/fixtures/material-pixels/modellight-dx9-integer.json --out OUT
+```
+
+### The back buffer is the video mode's size, presented scaled (2026-09-22)
+
+On a 1.5x Wayland display, VGUI covered only the top-left 2/3 of the window,
+while the world filled it. D3D9 sizes the back buffer from the video mode
+(`BackBufferWidth = m_DisplayMode.m_nWidth`), reports that size, and Present
+stretches it over the client area. DXVK scales it the same way. Native
+rendered straight into the swapchain at the drawable's physical size
+(2880x1620) and reported that as the back buffer, while the engine's mode stayed
+1920x1080. Two things kept the mode there:
+- `RequestWindowResize` needs queued-threaded mode, and the launcher runs
+  `mat_queue_mode 0`;
+- native `ChangeVideoMode` was an empty stub.
+
+So some engine code worked in 2880 space and VGUI (via the viewport) in 1920 space.
+
+Now:
+- The engine renders into offscreen back buffers, one per swapchain image, at
+  the mode's size: `SetMode`/`ChangeVideoMode` call
+  `CVulkanContext::SetBackBufferSize`, and 0 x 0 follows the drawable.
+- `EndFrame` blits the back buffer into the acquired swapchain image, with
+  linear filtering when scaling. The acquire semaphore is waited on at the
+  transfer stage.
+- `ReadPixels` and captures still read the back buffer, as D3D9 does.
+- `RequestPresentedCapture` reads the swapchain image, i.e. what the window
+  shows.
+
+Evidence:
+- `native_vulkan_bringup_conformance` grows from 20 to 25 checks. A half-size
+  back buffer is presented over the whole drawable: the triangle sits at the
+  window's centre and the far corner is the new clear. A 1:1-copy mutation
+  fails both checks, and 0 x 0 follows the drawable again.
+- It passes headless and on 1.5x Wayland.
+- The game on Wayland logs `back buffer 1920x1080, window 2880x1620`. A
+  presented 2880x1620 frame of the in-game pause menu shows the scene and the
+  menu's dim overlay covering the whole window.
+- Still passing: facing 13/0, equivalence 29/0, `portal_boot` native, and the
+  7 material-pixel families I re-ran (lightmap, exposure and skinning in none
+  and integer HDR, plus portal).
+
+Open:
+- With `mat_queue_mode 0` the mode never follows the drawable, so the frame is
+  upscaled 1.5x, as it is under DXVK. A crisp 1:1 frame needs the engine's
+  resize request to work without the queued render thread (engine-side;
+  `CMaterialSystem::RequestWindowResize`).
+- Aspect ratio is stretched to the client area as D3D9 does, with no
+  letterboxing.

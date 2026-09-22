@@ -51,7 +51,8 @@ bool PixelClose( const uint8_t *p, int r, int g, int b, int a, int tol )
 	       std::abs( int( p[2] ) - b ) <= tol && std::abs( int( p[3] ) - a ) <= tol;
 }
 
-bool PresentAndCapture( CVulkanContext &ctx, float r, float g, float b, std::string *err )
+bool PresentAndCapture(
+    CVulkanContext &ctx, float r, float g, float b, std::string *err, bool presented = false )
 {
 	ctx.SetClearColor( r, g, b, 1.0f );
 	// Present a few frames so the swapchain cycles through its images.
@@ -59,7 +60,12 @@ bool PresentAndCapture( CVulkanContext &ctx, float r, float g, float b, std::str
 	{
 		bool skip = false;
 		if ( i == 3 )
-			ctx.RequestCapture();
+		{
+			if ( presented )
+				ctx.RequestPresentedCapture();
+			else
+				ctx.RequestCapture();
+		}
 		if ( !ctx.BeginFrame( &skip, err ) )
 			return false;
 		if ( skip )
@@ -217,6 +223,50 @@ int main( int argc, char **argv )
 				Check( false, "captured a frame with the triangle" );
 			}
 		}
+
+		// A back buffer of the video mode's size, smaller than the window (D3D9's
+		// BackBufferWidth/Height), is presented scaled over the whole drawable.
+		// The clear is blue now: a back buffer copied 1:1 into the top-left would
+		// leave the window's far corner holding an earlier frame's red.
+		int dw = 0, dh = 0;
+		ctx.GetPresentExtent( dw, dh );
+		if ( !ctx.SetBackBufferSize( dw / 2, dh / 2, &err ) )
+		{
+			std::fprintf( stderr, "SetBackBufferSize failed: %s\n", err.c_str() );
+			++g_failures;
+		}
+		int bw = 0, bh = 0;
+		ctx.GetSwapchainExtent( bw, bh );
+		Check( bw == dw / 2 && bh == dh / 2, "back buffer takes the requested mode size" );
+		if ( PresentAndCapture( ctx, 0.0f, 0.0f, 1.0f, &err, true ) )
+		{
+			int cw = 0, ch = 0;
+			const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
+			if ( cw == 0 && ch == 0 )
+				std::fprintf( stderr, "note: this surface cannot read its presented images\n" );
+			else
+			{
+				Check( cw == dw && ch == dh, "presented image covers the window's drawable" );
+				if ( cw == dw && ch == dh && !px.empty() )
+				{
+					const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
+					const uint8_t *far = &px[( size_t( ch - 2 ) * cw + ( cw - 2 ) ) * 4];
+					Check( PixelClose( center, 0, 255, 0, 255, 2 ),
+					    "scaled present: the triangle is at the window's center" );
+					Check( PixelClose( far, 0, 0, 255, 255, 2 ),
+					    "scaled present: the window's far corner is the blue clear" );
+				}
+			}
+		}
+		else
+		{
+			std::fprintf( stderr, "present/capture (scaled) failed: %s\n", err.c_str() );
+			++g_failures;
+		}
+		if ( !ctx.SetBackBufferSize( 0, 0, &err ) )
+			++g_failures;
+		ctx.GetSwapchainExtent( bw, bh );
+		Check( bw == dw && bh == dh, "a 0 x 0 back buffer follows the drawable again" );
 		ctx.SetDrawDemoTriangle( false );
 	}
 

@@ -1,6 +1,6 @@
 # RFC 0003: bounded production batch migrations
 
-Updated: 2026-09-22. Portfolio: R20 / R21 / R30, all **partial**.
+Updated: 2026-09-22 (cohort defaults on; query-cache and portal-carving oracles). Portfolio: R20 / R21 / R30, all **partial**.
 
 This increment moves four existing compute cohorts onto opt-in dependency-aware
 job graphs. It preserves their synchronous gather/compute/commit boundaries and
@@ -18,12 +18,16 @@ equivalence and performance gates. Legacy mode remains the default.
 | `PackEntities_Normal` / `sv_packentities_job_graph` | Visibility gathering remains serial; snapshot/edict/send-table lifetimes extend through join; existing packing/baseline synchronization remains in force; change-info invalidation follows completion. Snapshot sending is not moved. |
 
 Every mode ConVar accepts `0` (legacy), `1` (deterministic serial graph), or `2`
-(pooled graph), and defaults to `0`. Existing `r_threaded_particles`,
-`cl_threaded_bone_setup`, `r_threaded_renderables` and
-`sv_parallel_packentities` remain respected. Roll back at the next batch boundary
-by setting the corresponding graph ConVar to zero. No graph callback or borrowed
-payload survives return. This is source migration with native smoke coverage,
-not acceptance of each cohort's arbitrary callbacks, captures or performance.
+(pooled graph). **As of 2026-09-22 (user decision) all four default to `2`, and
+the legacy gates `cl_threaded_bone_setup` and `r_threaded_renderables` default
+to `1`**, so every cohort runs its pooled graph path with no configuration
+(`r_threaded_particles` and `sv_parallel_packentities` already defaulted to `1`).
+Before this change the bone and renderable graph paths were unreachable by
+default because their legacy gates were `0`. Defaulting on does **not** close the
+open gates below: engine-pool TSan is still not clean, and gameplay captures and
+frame budgets are still missing. Roll back at the next batch boundary by setting
+the corresponding graph ConVar to zero, or the legacy gate to zero to restore the
+original serial behaviour. No graph callback or borrowed payload survives return.
 
 ## Execution and compatibility boundary
 
@@ -137,6 +141,87 @@ particle/bone/network state equivalence, frame latency, arbitrary game content,
 parented-animation/model-eviction behavior, or a clean engine-wide race gate.
 Screenshots and startup duration are not substituted for those oracles.
 
+## Query-cache maintenance and portal placement carving (2026-09-22)
+
+Two further cohorts now share one kernel between production and conformance,
+and are proven output-equivalent to their original serial code. Both stay
+**default legacy (`0`)** because measurements show no benefit (below).
+
+| Cohort / mode ConVar | Kernel (single authority) | Production caller |
+| --- | --- | --- |
+| Query-cache maintenance / `sv_querycache_job_graph` | `game/shared/querycache_maintenance.h`: gather, worker-safe classification, ordered commit and victim publication | `UpdateQueryCache` (`game/shared/querycache.cpp`) |
+| Portal placement carving / `portal_carve_job_graph` (`FCVAR_REPLICATED`) | `game/shared/portal/portal_carve.h`: `ClipBatch`/`ClipInOrder`/`ClipGroupsInOrder`, wall bounds and the whole "(Holy) Wall" carve; owns the wall geometry constants | `CPortalSimulator::CreatePolyhedrons` (world brushes, static props, wall) |
+
+Carving boundary: each clip reads one immutable polyhedron and returns a new heap
+polyhedron. Results fill indexed slots and are appended in input order on the
+owner thread. The hole-interaction filter uses the shared temporary polyhedron,
+so it stays serial. Cache lookups, `ConvertPolyhedronsToCollideable` (IVP) and
+all physics-object creation are unchanged and serial. Query-cache workers only
+classify; entity/trace callbacks and all list and counter mutation commit in
+chain order on the owner.
+
+Equivalence oracles (reference = the original code, transcribed; candidates =
+the production kernel in legacy-loop, serial-graph and pooled-graph modes):
+
+- `jobsystem.querycache` (manifest, Q-JOBS). Two cache copies are driven by one
+  generated workload of tick-quantized time, hitches, entity deletion and
+  revival, hot/cold key pools and victim exhaustion. After every frame it
+  compares all entry fields bit-exact, hash-chain and victim order and links,
+  every counter, and the ordered refresh-callback log. Configurations: the
+  production geometry (1024 entries / 2048 chains / 8 splits), a small cache, an
+  uneven chain count (100 chains) and 3 splits. Candidates run with 0/1/3/8
+  real threads. Result: **37,440 frames, 146 checks, 0 failures** under g++ 16.2.1
+  and clang++ 22.1.8. Coverage is asserted: refreshes, invalidations, wasted
+  expiry, victim publication and successful speculation. Writing the kernel
+  exposed that the migrated partition formula (`i*n/s`) differed from the
+  original (`n/s`, remainder to the last split) for uneven chain counts; the
+  kernel uses the original formula.
+- `jobsystem.querycache.sensitivity`: 6/6 plausible defects are rejected
+  (`>=` becoming `>`, a dropped item, uncounted wasted speculation, reversed
+  victim publication, reversed commit order, stale refresh time).
+- `jobsystemportalcarvetest` (Waf, `unittests/jobsystemtest`, C++11, real mathlib
+  and real vstdlib pools with 0/1/3 workers). The reference is the original
+  helpers and loops plus the "(Holy) Wall" block, extracted mechanically from
+  `3d3e5e68` with only identifier substitutions. It runs 160 generated
+  placements: axis-aligned and angled walls, floors and ceilings on tiled walls
+  with seams, recesses, room shells, rotated clutter, wedges, static-prop pieces,
+  missing brushes and invalid ids. Every output polyhedron is compared bit-exact
+  (vertices, lines, indices, polygon normals) and in order, along with prop group
+  counts. Result: **11,982 polyhedra, 1,611 checks, 0 failures**. All four
+  deliberate defects are detected: swapped wall pieces, a dropped result, clip
+  epsilon drift and a shifted prop group.
+
+```sh
+python3 tools/quality/conformance.py check --suite jobsystem.querycache --suite jobsystem.querycache.sensitivity
+WAFLOCK=.lock-waf-composition python3 waf build --targets=jobsystemportalcarvetest
+LD_LIBRARY_PATH=build-composition/tier0:build-composition/vstdlib \
+  build-composition/unittests/jobsystemtest/jobsystemportalcarvetest --benchmark
+```
+
+Native Portal (SDL3/Wayland/Vulkan, `build-portal-vulkan`, private staged
+runtimes):
+
+- `quality-results/job-defaults-native-20260922T232350Z`: 4/4 runs pass on
+  `testchmb_a_00` and `testchmb_a_01`, in `defaults` and `new-pooled` modes.
+  Console receipts with **no ConVar overrides** confirm the new defaults.
+- `quality-results/job-defaults-native-placement-20260922T233209Z`: 4/4 pass with
+  real portal-gun placements (`sv_portal_placement_never_fail 1`) and a
+  `developer 2` carve diagnostic. On `testchmb_a_01`, legacy and pooled carve the
+  same two placements with identical counts (world 13/props 2/tube 4/wall 15, and
+  8/2/4/13). `testchmb_a_00` produced no linked placement in either mode.
+  An earlier run of this experiment found that `portal_carve_job_graph`, being
+  defined in both client and server, was refused linkage ("Parent cvar in
+  server.dll not allowed"). It is now `FCVAR_REPLICATED`.
+
+Measurements (why both remain default legacy): the whole carve costs **0.05–0.12 ms
+per placement in-game**. Pooled was slower on the same placements (0.106 vs
+0.061 ms, 0.078 vs 0.051 ms), and across the 160 synthetic placements
+(25.0 vs 21.3 ms total). Query-cache classification is a few compares per entry,
+the tiny-work case where pooled dispatch regresses in the batch microbenchmark.
+The native maps issued 0 cache queries, so maintenance is not exercised there.
+Placement cost is more likely in the serial IVP collideable conversion, which is
+not migrated. Revisit the defaults with gameplay measurements.
+
 ## Measurements and open gates
 
 The real-pool fixture provides an exploratory interleaved comparison of legacy,
@@ -170,10 +255,10 @@ R20 or enabling any migrated cohort by default.
 
 Deferred consumers have concrete reasons:
 
-- Query-cache maintenance writes shared miss/waste counters and can insert expired
-  entity entries into the shared victim list from a worker. Its trace-filter and
-  entity-position callbacks also need an ownership audit. Use per-record results
-  and ordered merges plus callback coverage before migrating it.
+- Query-cache maintenance: the hazard (shared counters, victim-list insertion
+  and gameplay callbacks on workers) is resolved. Workers only classify; the
+  owner commits in order. The equivalence oracle above covers this, but the
+  default stays legacy until a workload shows a benefit.
 - Leaf/shadow parallel branches are hardcoded disabled. This work does not enable
   them or pretend that editing an unreachable dispatch establishes performance.
 - Snapshot sending remains disabled for the documented shared snapshot-manager

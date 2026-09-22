@@ -46,6 +46,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 extern "C" render_vulkan::CVulkanContext *ShaderBackend_NativeVulkanContext();
 
@@ -434,6 +435,121 @@ int main()
 	// Control, alpha test off: right texel is NOT discarded -> yellow, not red.
 	check( drawAlphaTest( false, 0.75f, c ) && c[0] >= 252 && c[1] >= 252 && c[2] <= 3,
 	    "alpha-test-off control: right texel is kept (yellow, not the clear)" );
+
+	// --- 9. TexSubImage2D sub-rectangles (VGUI writes each font glyph into its
+	//         page this way). A 4x4 blue texture gets its right half replaced by
+	//         red from a larger 4-wide source (row pitch 16 bytes, starting at
+	//         column 2, whose left columns are green). The left half must keep
+	//         its blue and the right half must be red: an ignored offset leaves it
+	//         blue, and an ignored pitch or a region uploaded as the whole level
+	//         puts green or sheared rows there.
+	services.shadow->EnableAlphaTest( false );
+	ShaderAPITextureHandle_t subTex =
+	    services.api->CreateTexture( 4, 4, 1, IMAGE_FORMAT_RGBA8888, 1, 1, 0, "sub", "sub" );
+	services.api->ModifyTexture( subTex );
+	unsigned char subBase[4 * 4 * 4];
+	unsigned char subSource[4 * 4 * 4];
+	for ( int i = 0; i < 16; ++i )
+	{
+		const unsigned char blue[4] = { 0, 0, 255, 255 };
+		const unsigned char red[4] = { 255, 0, 0, 255 };
+		const unsigned char green[4] = { 0, 255, 0, 255 };
+		memcpy( &subBase[i * 4], blue, 4 );
+		memcpy( &subSource[i * 4], ( i % 4 ) >= 2 ? red : green, 4 );
+	}
+	services.api->TexImage2D(
+	    0, 0, IMAGE_FORMAT_RGBA8888, 0, 4, 4, IMAGE_FORMAT_RGBA8888, false, subBase );
+	services.api->TexSubImage2D(
+	    0, 0, 2, 0, 0, 2, 4, IMAGE_FORMAT_RGBA8888, 16, false, &subSource[2 * 4] );
+	check( drawUnlit( subTex, white4, identityRow0, identityRow1, 0.75f, 0.5f, c ) && c[0] >= 252 &&
+	           c[1] <= 3 && c[2] <= 3,
+	    "TexSubImage2D: the region at x=2 (pitch 16) is red" );
+	check( drawUnlit( subTex, white4, identityRow0, identityRow1, 0.25f, 0.5f, c ) && c[0] <= 3 &&
+	           c[1] <= 3 && c[2] >= 252,
+	    "TexSubImage2D: texels outside the region keep their blue" );
+
+	// --- 10. vertexlit_and_unlit_generic (the DX9 UnlitGeneric that VGUI panels,
+	//          fonts and screen fades draw with). vertexlit_and_unlit_generic_ps2x:
+	//            albedo = base.rgb * g_DiffuseModulation.rgb    (c1)
+	//            diffuseLighting = i.color.rgb                  (VERTEXCOLOR, 384)
+	//            alpha = lerp( g_DiffuseModulation.a * base.a,
+	//                          ... * i.color.a, g_fVertexAlpha ) (c12.w)
+	//          The vertex color is a D3DCOLOR (B, G, R, A in memory). The
+	//          material does not write sRGB here, so it is not gamma converted.
+	auto lockColoredQuad = [&]( unsigned char r, unsigned char g, unsigned char b, unsigned char a )
+	{
+		LockFullScreenQuad( mesh );
+		MeshDesc_t desc;
+		mesh->LockMesh( 6, 0, desc );
+		for ( int i = 0; i < 6; ++i )
+		{
+			unsigned char *color =
+			    desc.m_pColor + static_cast<size_t>( i ) * desc.m_VertexSize_Color;
+			color[0] = b;
+			color[1] = g;
+			color[2] = r;
+			color[3] = a;
+		}
+		mesh->UnlockMesh( 6, 0, desc );
+	};
+	auto drawVertexLit = [&]( int pshIndex, const unsigned char rgba[4], const float c1[4],
+	                         float vertexAlpha, bool blend, uint8_t out[4] ) -> bool
+	{
+		services.shadow->EnableBlending( blend );
+		if ( blend )
+			services.shadow->BlendFunc( SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA );
+		services.shadow->VertexShaderVertexFormat( VERTEX_POSITION | VERTEX_COLOR, 1, nullptr, 0 );
+		services.shadow->SetPixelShader( "vertexlit_and_unlit_generic_ps20b", pshIndex );
+		const StateSnapshot_t snap = services.api->TakeSnapshot();
+		services.api->ClearColor4ub( 0, 255, 0, 255 );
+		services.api->ClearBuffers( true, true, true, -1, -1 );
+		services.api->BeginPass( snap );
+		services.api->SetVertexShaderConstant( kRegModelViewProj, kIdentity4x4, 4, false );
+		// cModulationColor is not this shader's modulation: set it to red, which
+		// must not reach the result.
+		const float red4[4] = { 1, 0, 0, 1 };
+		services.api->SetVertexShaderConstant( kRegModulationColor, red4, 1, false );
+		services.api->SetPixelShaderConstant( 1, c1, 1, false );
+		const float controls[4] = { 0, 0, 0, vertexAlpha };
+		services.api->SetPixelShaderConstant( 12, controls, 1, false );
+		services.api->BindTexture( SHADER_SAMPLER0, whiteTex );
+		lockColoredQuad( rgba[0], rgba[1], rgba[2], rgba[3] );
+		mesh->Draw();
+		ctx->RequestCapture();
+		services.device->Present();
+		int w = 0, h = 0;
+		const std::vector<uint8_t> &px = ctx->GetCapturedPixels( &w, &h );
+		if ( w <= 0 || h <= 0 || px.empty() )
+			return false;
+		const uint8_t *p = &px[( static_cast<size_t>( h / 2 ) * w + w / 2 ) * 4];
+		memcpy( out, p, 4 );
+		return true;
+	};
+	const int kVertexColorCombo = 384; // VERTEXCOLOR in every ps20/ps20b/ps30 build
+	const unsigned char redVertex[4] = { 255, 0, 0, 255 };
+	const unsigned char clearVertex[4] = { 255, 255, 255, 0 };
+	const unsigned char whiteVertex[4] = { 255, 255, 255, 255 };
+	const float c1Blue[4] = { 0, 0, 1, 1 };
+	check( drawVertexLit( kVertexColorCombo, redVertex, white4, 0, false, c ) && c[0] >= 252 &&
+	           c[1] <= 3 && c[2] <= 3,
+	    "$vertexcolor: white texture * red vertex color (D3DCOLOR) -> red" );
+	check( drawVertexLit( 0, redVertex, white4, 0, false, c ) && c[0] >= 252 && c[1] >= 252 &&
+	           c[2] >= 252,
+	    "negative control: without the VERTEXCOLOR combo the vertex color is not applied" );
+	check( drawVertexLit( kVertexColorCombo, whiteVertex, c1Blue, 0, false, c ) && c[0] <= 3 &&
+	           c[1] <= 3 && c[2] >= 252,
+	    "g_DiffuseModulation (c1), not cModulationColor, modulates: -> blue" );
+	check( drawVertexLit( kVertexColorCombo, clearVertex, white4, 1, true, c ) && c[0] <= 3 &&
+	           c[1] >= 252 && c[2] <= 3,
+	    "$vertexalpha (c12.w = 1): vertex alpha 0 is transparent (clear shows)" );
+	check( drawVertexLit( kVertexColorCombo, clearVertex, white4, 0, true, c ) && c[0] >= 252 &&
+	           c[1] >= 252 && c[2] >= 252,
+	    "control: c12.w = 0 ignores the vertex alpha (opaque white)" );
+	const float c1Transparent[4] = { 1, 1, 1, 0 };
+	check( drawVertexLit( kVertexColorCombo, whiteVertex, c1Transparent, 0, true, c ) &&
+	           c[0] <= 3 && c[1] >= 252 && c[2] <= 3,
+	    "AlphaModulate through c1 alpha 0 (a finished screen fade) is transparent" );
+	services.shadow->EnableBlending( false );
 
 	services.device->DestroyStaticMesh( mesh );
 	ctx->Shutdown();

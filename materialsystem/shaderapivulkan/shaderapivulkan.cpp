@@ -184,6 +184,21 @@ static render_vulkan::CVulkanContext::DynRasterState g_CurrentRaster;
 static float g_CurrentAlphaRef = -1.0f;
 // CVulkanContext::kColorSrgb*/kFragment*/kVertex* flags of the pass being drawn.
 static int g_CurrentColorFlags = 0;
+// The pass's pixel shader is vertexlit_and_unlit_generic (UnlitGeneric,
+// VertexLitGeneric), whose modulation is pixel constant c1, not cModulationColor.
+static bool g_CurrentModulationInPixelC1 = false;
+
+// What a pass's vertexlit_and_unlit_generic_vs20 static combo says about vertex
+// lighting: whether the shader is that one, VERTEXCOLOR (which replaces lighting
+// with the vertex color) and HALFLAMBERT. Its dynamic combo (DYNAMIC_LIGHT,
+// STATIC_LIGHT) comes with each draw (SetVertexShaderIndex).
+struct VertexLitCombo
+{
+	bool vertexLit = false;
+	bool vertexColor = false;
+	bool halfLambert = false;
+};
+static VertexLitCombo g_CurrentVertexLit;
 
 // D3DRS_STENCIL* render state (IShaderAPI SetStencil*), D3D9's defaults.
 struct StencilRenderState
@@ -230,10 +245,26 @@ enum
 };
 static float g_BoneMatrices[kMaxBoneMatrices][12];
 static int g_NumBoneWeights = 0;
+// Model lighting, as CShaderAPIDx8 keeps it (m_DynamicState): the local lights
+// SetLight enabled and the ambient cube. vertexlit_and_unlit_generic_vs20 reads
+// them as cLightInfo (c27..) and cAmbientCube (c21..); this backend evaluates
+// that vertex lighting where it assembles the vertices (ComputeVertexLighting).
+enum
+{
+	kMaxLocalLights = 4 // MAX_NUM_LIGHTS; ps_2_b hardware lights models with four
+};
+static LightDesc_t g_LightDescs[kMaxLocalLights];
+static bool g_LightEnabled[kMaxLocalLights] = {};
+static float g_AmbientCube[6][4] = {};
+// The vertex shader's dynamic combo index (SetVertexShaderIndex), which selects
+// vertexlit_and_unlit_generic_vs20's DYNAMIC_LIGHT and STATIC_LIGHT.
+static int g_VertexShaderDynamicIndex = 0;
 namespace
 {
 void CommitModelViewProj();
 void CommitViewProj();
+// The MODEL matrix of the matrix stack (stored transposed, for row vectors).
+const float *ModelMatrix();
 } // namespace
 
 static bool HasResidentBaseTexture()
@@ -438,7 +469,17 @@ public:
 	// gets the associated material
 	IMaterial *GetMaterial();
 
-	void SetColorMesh( IMesh *pColorMesh, int nVertexOffset ) {}
+	// The static-prop color stream (engine/l_studio.cpp CColorMeshData), read as
+	// the vertex shader's COLOR1 input (STATIC_LIGHT); nVertexOffset is in bytes of
+	// that stream, as D3D9 binds it with a stream offset.
+	void SetColorMesh( IMesh *pColorMesh, int nVertexOffset );
+	bool HasColorMesh() const { return m_pColorMesh != nullptr; }
+	// Vertex v's static lighting color from the bound color mesh, 0..1 per channel.
+	bool StaticColor( int v, float rgb[3] ) const;
+	// The format the mesh was created with. A color mesh (VERTEX_SPECULAR only)
+	// holds tightly packed 4-byte D3DCOLORs, which is how the engine fills it.
+	void SetVertexFormat( VertexFormat_t format ) { m_format = format; }
+	bool IsColorStream() const { return m_format == VERTEX_SPECULAR; }
 
 	virtual int IndexCount() const { return m_numIndices; }
 
@@ -491,6 +532,9 @@ private:
 	// Scratch target for vertex components this bounded layout does not carry, so
 	// a mesh builder writing them (with size 0) never corrupts position/color.
 	unsigned char m_dummyComponent[64] = { 0 };
+	VertexFormat_t m_format = 0;
+	CEmptyMesh *m_pColorMesh = nullptr;
+	int m_colorMeshOffset = 0;
 
 public:
 	// 12 bytes position + 4 bytes color + 8 bytes texcoord0 + 8 bytes texcoord1
@@ -523,6 +567,32 @@ static CEmptyMesh *AsOwnMesh( IMesh *pMesh )
 	if ( !pMesh || LiveMeshes().find( pMesh ) == LiveMeshes().end() )
 		return nullptr;
 	return static_cast<CEmptyMesh *>( pMesh );
+}
+
+void CEmptyMesh::SetColorMesh( IMesh *pColorMesh, int nVertexOffset )
+{
+	m_pColorMesh = pColorMesh ? AsOwnMesh( pColorMesh ) : nullptr;
+	m_colorMeshOffset = nVertexOffset;
+	if ( pColorMesh && ( !m_pColorMesh || !m_pColorMesh->IsColorStream() ) )
+	{
+		NoteUnimplemented( "SetColorMesh: color mesh other than a VERTEX_SPECULAR stream" );
+		m_pColorMesh = nullptr;
+	}
+}
+
+bool CEmptyMesh::StaticColor( int v, float rgb[3] ) const
+{
+	if ( !m_pColorMesh || v < 0 )
+		return false;
+	const size_t at = static_cast<size_t>( m_colorMeshOffset ) + static_cast<size_t>( v ) * 4;
+	if ( at + 4 > m_pColorMesh->m_vertexData.size() )
+		return false;
+	// D3DCOLOR: blue, green, red, alpha in memory.
+	const unsigned char *c = m_pColorMesh->m_vertexData.data() + at;
+	rgb[0] = c[2] / 255.0f;
+	rgb[1] = c[1] / 255.0f;
+	rgb[2] = c[0] / 255.0f;
+	return true;
 }
 
 //-----------------------------------------------------------------------------
@@ -668,6 +738,7 @@ public:
 	char m_pixelShaderName[64] = { 0 };
 	// Its static combo index (the STAGE of portal_refract_ps2x, for one).
 	int m_pixelShaderIndex = 0;
+	int m_vertexShaderIndex = 0; // the vertex shader's static combo index
 	// Selected vertex shader; screenspaceeffect_vs20 positions in clip space.
 	char m_vertexShaderName[64] = { 0 };
 };
@@ -872,6 +943,12 @@ public:
 		// (CMaterialSystem::SetMode -> g_pShaderAPI->SetMode). Bring up the native
 		// Vulkan device/surface/swapchain against the engine's SDL window and the
 		// material-facing dynamic-mesh pipelines here.
+		// The back buffer is the video mode's size, as D3D9's BackBufferWidth/Height;
+		// Present scales it to the window's drawable.
+		std::string error;
+		if ( !g_VulkanContext.SetBackBufferSize(
+		         info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight, &error ) )
+			Warning( "[NativeVulkan] back buffer resize failed: %s\n", error.c_str() );
 		if ( g_VulkanContext.IsValid() )
 			return true;
 
@@ -880,22 +957,31 @@ public:
 		config.enableValidation = ( CommandLine()->FindParm( "-vkvalidate" ) != 0 );
 		config.framesInFlight = 2;
 
-		std::string error;
 		if ( !g_VulkanContext.Init( static_cast<SDL_Window *>( hwnd ), config, &error ) )
 		{
 			Warning( "[NativeVulkan] IShaderAPI::SetMode bring-up failed: %s\n", error.c_str() );
 			return false;
 		}
-		int w = 0, h = 0;
+		int w = 0, h = 0, presentW = 0, presentH = 0;
 		g_VulkanContext.GetSwapchainExtent( w, h );
-		Msg( "[NativeVulkan] IShaderAPI::SetMode: device '%s' up (%dx%d)\n",
-		    g_VulkanContext.DeviceName(), w, h );
+		g_VulkanContext.GetPresentExtent( presentW, presentH );
+		Msg( "[NativeVulkan] IShaderAPI::SetMode: device '%s' up (back buffer %dx%d, window "
+		     "%dx%d)\n",
+		    g_VulkanContext.DeviceName(), w, h, presentW, presentH );
 		if ( !g_VulkanContext.InitDynamicMesh( &error ) )
 			Warning( "[NativeVulkan] dynamic mesh pipelines unavailable: %s\n", error.c_str() );
 		return true;
 	}
 
-	void ChangeVideoMode( const ShaderDeviceInfo_t &info ) {}
+	// A new video mode (a window resize, mat_setvideomode) sizes the back buffer,
+	// as CShaderAPIDx8::ChangeVideoMode does; the window keeps its drawable.
+	void ChangeVideoMode( const ShaderDeviceInfo_t &info )
+	{
+		std::string error;
+		if ( !g_VulkanContext.SetBackBufferSize(
+		         info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight, &error ) )
+			Warning( "[NativeVulkan] ChangeVideoMode: %s\n", error.c_str() );
+	}
 
 	// Called when the dx support level has changed
 	virtual void DXSupportLevelChanged() {}
@@ -1545,7 +1631,11 @@ public:
 		return 0;
 	}
 
-	virtual void DisableAllLocalLights() {}
+	virtual void DisableAllLocalLights()
+	{
+		for ( bool &enabled : g_LightEnabled )
+			enabled = false;
+	}
 
 	virtual bool SupportsMSAAMode( int nMSAAMode ) { return false; }
 
@@ -1838,7 +1928,12 @@ CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode(
 
 	// hWnd is an SDL_Window* on this SDL3 build (see shaderapidx9/winutils.cpp,
 	// which casts the same handle to SDL_Window*). Bring up the real native
-	// Vulkan device/surface/swapchain against it.
+	// Vulkan device/surface/swapchain against it, with a back buffer of the
+	// mode's size (0 x 0 follows the window).
+	std::string sizeError;
+	if ( !g_VulkanContext.SetBackBufferSize(
+	         mode.m_DisplayMode.m_nWidth, mode.m_DisplayMode.m_nHeight, &sizeError ) )
+		Warning( "[NativeVulkan] back buffer resize failed: %s\n", sizeError.c_str() );
 	if ( !g_VulkanContext.IsValid() )
 	{
 		render_vulkan::VulkanContextConfig config;
@@ -1998,7 +2093,9 @@ IMesh *CShaderDeviceVulkan::CreateStaticMesh(
 {
 	// A static mesh is built once and drawn many times, so it needs storage of
 	// its own; the caller owns it until DestroyStaticMesh.
-	return new CEmptyMesh( false );
+	CEmptyMesh *pMesh = new CEmptyMesh( false );
+	pMesh->SetVertexFormat( fmt );
+	return pMesh;
 }
 
 void CShaderDeviceVulkan::DestroyStaticMesh( IMesh *mesh )
@@ -2140,6 +2237,33 @@ void CEmptyMesh::ValidateData( int nIndexCount, const IndexDesc_t &desc )
 
 bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 {
+	if ( IsColorStream() )
+	{
+		// A static-prop color mesh: one D3DCOLOR per vertex, tightly packed, as
+		// D3D9's VERTEX_SPECULAR vertex buffer is. The engine copies baked colors
+		// straight to the specular pointer (CModelRender static prop colors).
+		nVertexCount = std::max( 0, std::min( nVertexCount, static_cast<int>( kMaxLockVertices ) ) );
+		m_numVerts = nVertexCount;
+		const size_t colorBytes = ( static_cast<size_t>( nVertexCount ) + 1 ) * 4;
+		if ( m_vertexData.size() < colorBytes )
+			m_vertexData.resize( colorBytes );
+		memset( &desc, 0, sizeof( desc ) );
+		desc.m_pPosition = (float *)m_dummyComponent;
+		desc.m_pBoneWeight = (float *)m_dummyComponent;
+		desc.m_pBoneMatrixIndex = m_dummyComponent;
+		desc.m_pNormal = (float *)m_dummyComponent;
+		desc.m_pColor = m_dummyComponent;
+		desc.m_pSpecular = m_vertexData.data();
+		desc.m_VertexSize_Specular = 4;
+		for ( int i = 0; i < VERTEX_MAX_TEXTURE_COORDINATES; ++i )
+			desc.m_pTexCoord[i] = (float *)m_dummyComponent;
+		desc.m_pTangentS = (float *)m_dummyComponent;
+		desc.m_pTangentT = (float *)m_dummyComponent;
+		desc.m_pUserData = (float *)m_dummyComponent;
+		desc.m_ActualVertexSize = 4;
+		return true;
+	}
+
 	// Real interleaved layout so a mesh builder writes coherent vertices that
 	// Draw() can forward to the GPU: position (vec3) at offset 0, color (4 bytes)
 	// at offset 12, stride kMeshVertexStride. Components this bounded backend
@@ -2179,6 +2303,9 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 	desc.m_pColor = vertexMemory + 12;
 	desc.m_VertexSize_Position = kMeshVertexStride;
 	desc.m_VertexSize_Color = kMeshVertexStride;
+	// Model meshes read static lighting from a separate color mesh (SetColorMesh).
+	desc.m_pSpecular = m_dummyComponent;
+	desc.m_VertexSize_Specular = 0;
 
 	// Texcoord0 (base UV) lives at offset 16 and texcoord1 (the lightmap
 	// coordinate) at 24; other texcoord sets go to the dummy scratch.
@@ -2385,6 +2512,7 @@ static void ReportDroppedMaterials()
 		    static_cast<unsigned long long>( entry.second ), entry.first.c_str() );
 }
 static CEmptyMesh *g_pRenderMesh = nullptr;
+static void CommitPassPixelConstants();
 
 // common_vs_fxc.h SkinPosition with skinning on: always three bones, indices in
 // the vertex's first three index bytes, weights w0, w1 and 1 - w0 - w1, each
@@ -2409,19 +2537,193 @@ static void SkinPosition( const unsigned char *vertex, float pos[3] )
 	pos[2] = world[2];
 }
 
+// common_vs_fxc.h SkinPositionAndNormal's normal: blended through the bones'
+// rotations with skinning, else through cModel[0] (the MODEL matrix, stored
+// here transposed for row vectors). Not normalized.
+static void WorldNormal( const unsigned char *vertex, const float normal[3], float out[3] )
+{
+	if ( g_NumBoneWeights > 0 )
+	{
+		float weights[3];
+		memcpy( weights, vertex + CEmptyMesh::kMeshBoneWeightOffset, 2 * sizeof( float ) );
+		weights[2] = 1.0f - ( weights[0] + weights[1] );
+		const unsigned char *indices = vertex + CEmptyMesh::kMeshBoneIndexOffset;
+		out[0] = out[1] = out[2] = 0.0f;
+		for ( int b = 0; b < 3; ++b )
+		{
+			const float *m = g_BoneMatrices[indices[b] < kMaxBoneMatrices ? indices[b] : 0];
+			for ( int r = 0; r < 3; ++r )
+				out[r] += weights[b] * ( m[r * 4] * normal[0] + m[r * 4 + 1] * normal[1] +
+				                           m[r * 4 + 2] * normal[2] );
+		}
+		return;
+	}
+	const float *m = ModelMatrix();
+	for ( int j = 0; j < 3; ++j )
+		out[j] = normal[0] * m[j] + normal[1] * m[4 + j] + normal[2] * m[8 + j];
+}
+
+// A model-space position through the MODEL matrix (rigid draws).
+static void ModelToWorld( float pos[3] )
+{
+	const float *m = ModelMatrix();
+	float world[3];
+	for ( int j = 0; j < 3; ++j )
+		world[j] = pos[0] * m[j] + pos[1] * m[4 + j] + pos[2] * m[8 + j] + m[12 + j];
+	memcpy( pos, world, sizeof( world ) );
+}
+
+// One cLightInfo entry, as CShaderAPIDx8::CommitVertexShaderLighting loads it.
+struct VertexLightConstants
+{
+	float color[4]; // w: 1 for a directional light
+	float dir[4];   // w: 1 for a spot light
+	float pos[3];
+	float spot[4];  // exponent, stopdot, stopdot2, 1 / ( stopdot - stopdot2 )
+	float atten[3];
+};
+
+// The enabled lights sorted as CShaderAPIDx8::SortLights orders them (spot,
+// point, directional; stable), with CShaderAPIDx8::SetLight's cone adjustment.
+static int BuildVertexLightConstants( VertexLightConstants out[kMaxLocalLights] )
+{
+	auto typeOrder = []( LightType_t type )
+	{
+		return type == MATERIAL_LIGHT_SPOT ? 0 : type == MATERIAL_LIGHT_POINT ? 1 : 2;
+	};
+	int order[kMaxLocalLights];
+	int count = 0;
+	for ( int i = 0; i < kMaxLocalLights; ++i )
+	{
+		if ( !g_LightEnabled[i] )
+			continue;
+		int j = count;
+		while ( j > 0 && typeOrder( g_LightDescs[order[j - 1]].m_Type ) >
+		                     typeOrder( g_LightDescs[i].m_Type ) )
+		{
+			order[j] = order[j - 1];
+			--j;
+		}
+		order[j] = i;
+		++count;
+	}
+	for ( int n = 0; n < count; ++n )
+	{
+		const LightDesc_t &desc = g_LightDescs[order[n]];
+		VertexLightConstants &c = out[n];
+		const bool directional = desc.m_Type == MATERIAL_LIGHT_DIRECTIONAL;
+		const bool spot = desc.m_Type == MATERIAL_LIGHT_SPOT;
+		c.color[0] = desc.m_Color.x;
+		c.color[1] = desc.m_Color.y;
+		c.color[2] = desc.m_Color.z;
+		c.color[3] = directional ? 1.0f : 0.0f;
+		c.dir[0] = desc.m_Direction.x;
+		c.dir[1] = desc.m_Direction.y;
+		c.dir[2] = desc.m_Direction.z;
+		c.dir[3] = spot ? 1.0f : 0.0f;
+		c.pos[0] = desc.m_Position.x;
+		c.pos[1] = desc.m_Position.y;
+		c.pos[2] = desc.m_Position.z;
+		if ( spot )
+		{
+			float phi = desc.m_Phi > M_PI ? static_cast<float>( M_PI ) : desc.m_Phi;
+			float theta = desc.m_Theta;
+			if ( theta - phi > -1e-3f )
+				theta = phi - 1e-3f;
+			const float stopdot = cosf( theta * 0.5f );
+			const float stopdot2 = cosf( phi * 0.5f );
+			c.spot[0] = desc.m_Falloff;
+			c.spot[1] = stopdot;
+			c.spot[2] = stopdot2;
+			c.spot[3] = stopdot > stopdot2 ? 1.0f / ( stopdot - stopdot2 ) : 0.0f;
+		}
+		else
+		{
+			c.spot[0] = 0.0f;
+			c.spot[1] = c.spot[2] = c.spot[3] = 1.0f;
+		}
+		c.atten[0] = desc.m_Attenuation0;
+		c.atten[1] = desc.m_Attenuation1;
+		c.atten[2] = desc.m_Attenuation2;
+	}
+	return count;
+}
+
+static float Saturate( float x )
+{
+	return x < 0.0f ? 0.0f : ( x > 1.0f ? 1.0f : x );
+}
+
+// common_vs_fxc.h DoLighting for one vertex: the static color (STATIC_LIGHT),
+// then the local lights and the ambient cube (DYNAMIC_LIGHT), in linear light.
+static void ComputeVertexLighting( const float worldPos[3], const float normalIn[3],
+    const float *staticColor, bool dynamicLight, bool halfLambert,
+    const VertexLightConstants *lights, int lightCount, float out[3] )
+{
+	out[0] = out[1] = out[2] = 0.0f;
+	if ( staticColor )
+	{
+		// GammaToLinear( staticLightingColor * cOverbright )
+		for ( int k = 0; k < 3; ++k )
+			out[k] += powf( staticColor[k] * 2.0f, 2.2f );
+	}
+	if ( !dynamicLight )
+		return;
+	float normal[3] = { normalIn[0], normalIn[1], normalIn[2] };
+	const float length =
+	    sqrtf( normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2] );
+	if ( length > 0.0f )
+		for ( float &n : normal )
+			n /= length;
+	for ( int i = 0; i < lightCount; ++i )
+	{
+		const VertexLightConstants &c = lights[i];
+		float toLight[3] = { c.pos[0] - worldPos[0], c.pos[1] - worldPos[1],
+			c.pos[2] - worldPos[2] };
+		const float distSq =
+		    toLight[0] * toLight[0] + toLight[1] * toLight[1] + toLight[2] * toLight[2];
+		const float ooDist = 1.0f / sqrtf( distSq );
+		float lightDir[3] = { toLight[0] * ooDist, toLight[1] * ooDist, toLight[2] * ooDist };
+		// VertexAttenInternal: dst( distSq, ooDist ) = ( 1, dist, distSq, ooDist ).
+		const float distanceAtten =
+		    1.0f / ( c.atten[0] + c.atten[1] * ( distSq * ooDist ) + c.atten[2] * distSq );
+		const float cosTheta =
+		    -( c.dir[0] * lightDir[0] + c.dir[1] * lightDir[1] + c.dir[2] * lightDir[2] );
+		float spotAtten = ( cosTheta - c.spot[2] ) * c.spot[3];
+		spotAtten = Saturate( powf( spotAtten > 0.0001f ? spotAtten : 0.0001f, c.spot[0] ) );
+		float atten = distanceAtten + ( distanceAtten * spotAtten - distanceAtten ) * c.dir[3];
+		atten = atten + ( 1.0f - atten ) * c.color[3];
+		// CosineTermInternal: the direction to a point or spot light, or the
+		// directional light's.
+		for ( int k = 0; k < 3; ++k )
+			lightDir[k] = lightDir[k] + ( -c.dir[k] - lightDir[k] ) * c.color[3];
+		float nDotL = normal[0] * lightDir[0] + normal[1] * lightDir[1] + normal[2] * lightDir[2];
+		if ( halfLambert )
+		{
+			nDotL = nDotL * 0.5f + 0.5f;
+			nDotL = nDotL * nDotL;
+		}
+		else if ( nDotL < 0.0f )
+		{
+			nDotL = 0.0f;
+		}
+		for ( int k = 0; k < 3; ++k )
+			out[k] += c.color[k] * nDotL * atten;
+	}
+	// AmbientLight: the cube faces weighted by the squared normal.
+	for ( int axis = 0; axis < 3; ++axis )
+	{
+		const float *face = g_AmbientCube[2 * axis + ( normal[axis] < 0.0f ? 1 : 0 )];
+		for ( int k = 0; k < 3; ++k )
+			out[k] += normal[axis] * normal[axis] * face[k];
+	}
+}
+
 // Draws the entire mesh
 void CEmptyMesh::Draw( int firstIndex, int numIndices )
 {
 	const CEmptyMesh &vertices = m_pVertexSource ? *m_pVertexSource : *this;
 	const CEmptyMesh &indices = m_pIndexSource ? *m_pIndexSource : *this;
-	{ // VGUIDEBUG
-		static std::map<std::string, int> seen;
-		const char *mn = g_pBoundMaterial ? g_pBoundMaterial->GetName() : "(none)";
-		if ( ++seen[mn] <= 2 )
-			fprintf( stderr, "[vguidbg] Draw mat=%s shader=%s verts=%d idx=%d prim=%d\n", mn,
-			    g_pBoundMaterial ? g_pBoundMaterial->GetShaderName() : "-", vertices.m_numVerts,
-			    indices.m_numIndices, (int)m_primitiveType );
-	}
 	if ( !g_VulkanContext.IsValid() || !g_VulkanContext.DynamicMeshReady() ||
 	     vertices.m_numVerts <= 0 )
 		return;
@@ -2438,7 +2740,10 @@ void CEmptyMesh::Draw( int firstIndex, int numIndices )
 	if ( g_pBoundMaterial )
 		g_pBoundMaterial->DrawMesh( VERTEX_COMPRESSION_NONE );
 	else
+	{
+		CommitPassPixelConstants();
 		EmitToNativeQueue();
+	}
 	g_pRenderMesh = nullptr;
 }
 
@@ -2478,6 +2783,43 @@ void CEmptyMesh::EmitToNativeQueue()
 		NoteUnimplemented( "PortalRefract: skinned normal/tangent" );
 	std::vector<float> normalTangent;
 	std::vector<float> vertexAlpha;
+	// vertexlit_and_unlit_generic_vs20 lighting the vertices (not VERTEXCOLOR),
+	// feeding a pixel shader that multiplies by it (DIFFUSELIGHTING): the vertex
+	// color is the lighting its dynamic combo selects, evaluated once per vertex.
+	const bool vertexLighting =
+	    g_CurrentVertexLit.vertexLit && !g_CurrentVertexLit.vertexColor &&
+	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentModulateVertexColor );
+	const bool dynamicLight = ( g_VertexShaderDynamicIndex / 2 ) % 2 != 0;
+	const bool staticLight = ( g_VertexShaderDynamicIndex / 4 ) % 2 != 0;
+	VertexLightConstants lights[kMaxLocalLights];
+	int lightCount = 0;
+	std::vector<float> litColors;
+	std::vector<unsigned char> litDone;
+	if ( vertexLighting )
+	{
+		if ( ( g_VertexShaderDynamicIndex / 32 ) % 2 )
+			NoteUnimplemented( "vertexlit_and_unlit_generic_vs20: LIGHTING_PREVIEW" );
+		if ( staticLight && !HasColorMesh() )
+			NoteUnimplemented( "STATIC_LIGHT without a color mesh" );
+		lightCount = dynamicLight ? BuildVertexLightConstants( lights ) : 0;
+		litColors.resize( static_cast<size_t>( numVerts ) * 3 );
+		litDone.assign( static_cast<size_t>( numVerts ), 0 );
+	}
+	auto vertexLight = [&]( int v, const unsigned char *base, const float worldPos[3] )
+	{
+		float *lit = litColors.data() + static_cast<size_t>( v ) * 3;
+		if ( !litDone[static_cast<size_t>( v )] )
+		{
+			float normal[3], worldNormal[3], staticColor[3];
+			memcpy( normal, base + kMeshNormalOffset, sizeof( normal ) );
+			WorldNormal( base, normal, worldNormal );
+			const bool hasStatic = staticLight && StaticColor( v, staticColor );
+			ComputeVertexLighting( worldPos, worldNormal, hasStatic ? staticColor : nullptr,
+			    dynamicLight, g_CurrentVertexLit.halfLambert, lights, lightCount, lit );
+			litDone[static_cast<size_t>( v )] = 1;
+		}
+		return lit;
+	};
 	auto appendVertex = [&]( std::vector<float> &out, int v )
 	{
 		const unsigned char *base =
@@ -2497,14 +2839,27 @@ void CEmptyMesh::EmitToNativeQueue()
 			memcpy( nt + 3, base + kMeshUserDataOffset, sizeof( float ) * 4 );
 			normalTangent.insert( normalTangent.end(), nt, nt + 7 );
 		}
+		// A D3DCOLOR, as CVertexBuilder::Color4ub stores it (no
+		// OPENGL_SWAP_COLORS): bytes B, G, R, A.
 		const unsigned char *col = base + 12;
 		vertexAlpha.push_back( col[3] / 255.0f );
 		out.push_back( pos[0] );
 		out.push_back( pos[1] );
 		out.push_back( pos[2] );
-		out.push_back( col[0] / 255.0f );
-		out.push_back( col[1] / 255.0f );
-		out.push_back( col[2] / 255.0f );
+		if ( vertexLighting )
+		{
+			float worldPos[3] = { pos[0], pos[1], pos[2] };
+			if ( g_NumBoneWeights <= 0 )
+				ModelToWorld( worldPos );
+			const float *lit = vertexLight( v, base, worldPos );
+			out.insert( out.end(), lit, lit + 3 );
+		}
+		else
+		{
+			out.push_back( col[2] / 255.0f );
+			out.push_back( col[1] / 255.0f );
+			out.push_back( col[0] / 255.0f );
+		}
 		out.push_back( uv[0] );
 		out.push_back( uv[1] );
 	};
@@ -2703,6 +3058,7 @@ void CShaderShadowVulkan::SetDefaultState()
 	// (WriteZ, a depth-only BufferClearObeyStencil) must not inherit the last one.
 	m_pixelShaderName[0] = '\0';
 	m_pixelShaderIndex = 0;
+	m_vertexShaderIndex = 0;
 }
 
 // sRGB decode on the samplers the textured pipeline reads (base on sampler 0,
@@ -2901,6 +3257,7 @@ void CShaderShadowVulkan::SetVertexShader( const char *pShaderName, int vshIndex
 {
 	m_bUsesVertexAndPixelShaders = ( pShaderName != NULL );
 	Q_strncpy( m_vertexShaderName, pShaderName ? pShaderName : "", sizeof( m_vertexShaderName ) );
+	m_vertexShaderIndex = vshIndex;
 }
 
 void CShaderShadowVulkan::EnableBlendingSeparateAlpha( bool bEnable )
@@ -3302,6 +3659,23 @@ static std::vector<float> g_snapshotAlphaRef;
 static std::vector<VertexFormat_t> g_snapshotVertexUsage;
 // Parallel to g_snapshotShaders: the kColorSrgb* flags each snapshot declared.
 static std::vector<int> g_snapshotColorFlags;
+static std::vector<bool> g_snapshotModulationInPixelC1;
+static std::vector<VertexLitCombo> g_snapshotVertexLit;
+
+// vertexlit_and_unlit_generic_vs20's static combos (fxctmp9/
+// vertexlit_and_unlit_generic_vs20.inc): VERTEXCOLOR at stride 192, HALFLAMBERT
+// at 768. The vs30 build (hardware with fast vertex textures) is not used here.
+static VertexLitCombo SnapshotVertexLitCombo( const CShaderShadowVulkan &shadow )
+{
+	VertexLitCombo combo;
+	combo.vertexLit = !V_stricmp( shadow.m_vertexShaderName, "vertexlit_and_unlit_generic_vs20" );
+	if ( combo.vertexLit )
+	{
+		combo.vertexColor = ( shadow.m_vertexShaderIndex / 192 ) % 2 != 0;
+		combo.halfLambert = ( shadow.m_vertexShaderIndex / 768 ) % 2 != 0;
+	}
+	return combo;
+}
 // Snapshot ids are 16-bit (StateSnapshot_t is a short): four flag bits and an
 // 11-bit table index. As in D3D9's transition table, identical shadow states
 // share one snapshot, so the table holds distinct states rather than one entry
@@ -3514,6 +3888,19 @@ static int SnapshotShaderFlags( const CShaderShadowVulkan &shadow )
 			flags |= CVulkanContext::kVertexColorNoGammaConvert;
 		flags |= CVulkanContext::kFragmentModulateVertexAlpha;
 	}
+	// VertexLitGeneric: the pixel shader's DIFFUSELIGHTING combo multiplies by
+	// its color input, which the vertex shader fills with linear vertex lighting
+	// (DoLighting; EmitToNativeQueue evaluates it into the vertex color). That
+	// color is never gamma converted.
+	if ( !V_strnicmp( shadow.m_pixelShaderName, "vertexlit_and_unlit_generic_ps", 30 ) &&
+	     ( shadow.m_pixelShaderIndex / 24 ) % 2 )
+	{
+		flags |= CVulkanContext::kFragmentModulateVertexColor |
+		         CVulkanContext::kVertexColorNoGammaConvert;
+		// With VERTEXCOLOR as well, albedo is also multiplied by the color.
+		if ( ( shadow.m_pixelShaderIndex / 384 ) % 2 )
+			NoteUnimplemented( "vertexlit_and_unlit_generic: VERTEXCOLOR with DIFFUSELIGHTING" );
+	}
 	return flags;
 }
 
@@ -3585,6 +3972,12 @@ void CommitModelViewProj()
 	MatMul( g_matrices.mat[MATERIAL_MODEL], g_matrices.mat[MATERIAL_VIEW], mv );
 	MatMul( mv, g_matrices.mat[MATERIAL_PROJECTION], mvp );
 	g_VulkanContext.SetDynamicTransform( mvp );
+}
+
+const float *ModelMatrix()
+{
+	EnsureMatricesInit();
+	return g_matrices.mat[MATERIAL_MODEL];
 }
 
 // view * proj, for world-space (skinned) positions.
@@ -3798,9 +4191,10 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	        : -1.0f;
 	const int shaderFlags = SnapshotShaderFlags( g_ShaderShadow );
 	char key[128];
-	V_snprintf( key, sizeof( key ), "|%d|%u|%.6g|%llx|%d", static_cast<int>( id ),
+	V_snprintf( key, sizeof( key ), "|%d|%u|%.6g|%llx|%d|%d", static_cast<int>( id ),
 	    render_vulkan::CVulkanContext::RasterStateKey( raster ), alphaRef,
-	    static_cast<unsigned long long>( g_ShaderShadow.m_vertexUsage ), shaderFlags );
+	    static_cast<unsigned long long>( g_ShaderShadow.m_vertexUsage ), shaderFlags,
+	    g_ShaderShadow.m_vertexShaderIndex );
 	const std::string stateKey = SnapshotShaderRoute( g_ShaderShadow ) + key;
 	const auto existing = g_snapshotIds.find( stateKey );
 	if ( existing != g_snapshotIds.end() )
@@ -3819,6 +4213,10 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	g_snapshotAlphaRef.push_back( alphaRef );
 	g_snapshotVertexUsage.push_back( g_ShaderShadow.m_vertexUsage );
 	g_snapshotColorFlags.push_back( shaderFlags );
+	// vertexlit_and_unlit_generic_ps2x/_bump_ps2x: g_DiffuseModulation : c1.
+	g_snapshotModulationInPixelC1.push_back(
+	    !V_strnicmp( g_ShaderShadow.m_pixelShaderName, "vertexlit_and_unlit_generic_", 28 ) );
+	g_snapshotVertexLit.push_back( SnapshotVertexLitCombo( g_ShaderShadow ) );
 	// Flags occupy bits 0..3; the index fits the remaining 11 bits of the short.
 	id = static_cast<StateSnapshot_t>( id | static_cast<int>( index << 4 ) );
 	g_snapshotIds[stateKey] = id;
@@ -3988,10 +4386,16 @@ void CShaderAPIVulkan::SetHeightClipMode( enum MaterialHeightClipMode_t heightCl
 	VK_UNIMPLEMENTED();
 }
 
-// Sets the lights
+// Sets the lights. As CShaderAPIDx8::SetLight: a light of an unknown type or
+// MATERIAL_LIGHT_DISABLE is disabled.
 void CShaderAPIVulkan::SetLight( int lightNum, const LightDesc_t &desc )
 {
-	VK_UNIMPLEMENTED();
+	if ( lightNum < 0 || lightNum >= kMaxLocalLights )
+		return;
+	g_LightDescs[lightNum] = desc;
+	g_LightEnabled[lightNum] = desc.m_Type == MATERIAL_LIGHT_POINT ||
+	                           desc.m_Type == MATERIAL_LIGHT_DIRECTIONAL ||
+	                           desc.m_Type == MATERIAL_LIGHT_SPOT;
 }
 
 // Sets lighting origin for the current model
@@ -4007,26 +4411,28 @@ void CShaderAPIVulkan::SetAmbientLight( float r, float g, float b )
 
 void CShaderAPIVulkan::SetAmbientLightCube( Vector4D cube[6] )
 {
-	VK_UNIMPLEMENTED();
+	for ( int face = 0; face < 6; ++face )
+		for ( int k = 0; k < 4; ++k )
+			g_AmbientCube[face][k] = cube[face][k];
 }
 
 // Get lights
 int CShaderAPIVulkan::GetMaxLights( void ) const
 {
-	return 0;
+	return MaxNumLights();
 }
 
 const LightDesc_t &CShaderAPIVulkan::GetLight( int lightNum ) const
 {
-	static LightDesc_t blah;
-	return blah;
+	static LightDesc_t s_Disabled;
+	if ( lightNum < 0 || lightNum >= kMaxLocalLights )
+		return s_Disabled;
+	return g_LightDescs[lightNum];
 }
 
-// Render state for the ambient light cube (vertex shaders)
-void CShaderAPIVulkan::SetVertexShaderStateAmbientLightCube()
-{
-	VK_UNIMPLEMENTED();
-}
+// Render state for the ambient light cube (vertex shaders): D3D9 loads c21..c26
+// here; the vertex lighting reads the cube where the draw is assembled.
+void CShaderAPIVulkan::SetVertexShaderStateAmbientLightCube() {}
 
 void CShaderAPIVulkan::SetSkinningMatrices()
 {
@@ -4172,6 +4578,10 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 		g_VulkanContext.SelectDynamicRasterState( g_snapshotRaster[index] );
 	}
 	g_CurrentColorFlags = index < g_snapshotColorFlags.size() ? g_snapshotColorFlags[index] : 0;
+	g_CurrentModulationInPixelC1 =
+	    index < g_snapshotModulationInPixelC1.size() && g_snapshotModulationInPixelC1[index];
+	g_CurrentVertexLit = index < g_snapshotVertexLit.size() ? g_snapshotVertexLit[index]
+	                                                        : VertexLitCombo();
 	g_VulkanContext.SelectDynamicColorSpace( g_CurrentColorFlags );
 	// The lightmap and samplers 1-2 are bound per pass by the shader's dynamic state.
 	g_boundLightmapHandle = -1;
@@ -4198,6 +4608,24 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 // surfaces addressed by screen position -- so drawing it as a base texture would
 // paint the wrong image, often over the whole frame. Its draws are declined by
 // name instead (census, dropped-material report and draw-state fixture).
+// The pass's pixel-shader constants the native pipeline takes as draw state,
+// once the shader's dynamic state has written them (just before emitting).
+static void CommitPassPixelConstants()
+{
+	// vertexlit_and_unlit_generic's alpha = lerp( alpha, alpha * i.color.a,
+	// g_fVertexAlpha ), where g_fVertexAlpha is c12.w ($vertexalpha, 0 or 1).
+	int colorFlags = g_CurrentColorFlags;
+	if ( ( colorFlags & render_vulkan::CVulkanContext::kFragmentModulateVertexAlpha ) &&
+	     g_psConstants[12][3] < 0.5f )
+		colorFlags &= ~render_vulkan::CVulkanContext::kFragmentModulateVertexAlpha;
+	g_VulkanContext.SelectDynamicColorSpace( colorFlags );
+	// Its albedo and alpha are scaled by g_DiffuseModulation (c1): $color and
+	// $alpha, and ColorModulate / AlphaModulate (screen fades), linear, written by
+	// every pass's dynamic state (SetModulationPixelShaderDynamicState_LinearColorSpace).
+	if ( g_CurrentModulationInPixelC1 )
+		g_VulkanContext.SetDynamicModulation( g_psConstants[1] );
+}
+
 static bool NativePipelineImplementsShader( const char *shaderName )
 {
 	static const char *const kImplemented[] = {
@@ -4246,7 +4674,7 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 	{
 		// LightmappedGeneric ends in FinalOutput( ..., TONEMAP_SCALE_LINEAR ): its
 		// color is scaled by the tone-mapping scale, which is 1 without HDR. Other
-		// shaders choose their tone-map type per combo and are not scaled yet.
+		// shaders choose their tone-map type per combo (below).
 		// D3D9's effective cull mode: the snapshot's culling with the dynamic face.
 		render_vulkan::CVulkanContext::DynRasterState raster = g_CurrentRaster;
 		if ( raster.cullMode != VK_CULL_MODE_NONE )
@@ -4259,18 +4687,16 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 			CommitPortalConstants();
 		const bool lightmapped = g_boundLightmapHandle >= 0;
 		// FinalOutput( ..., TONEMAP_SCALE_LINEAR ) also ends PortalRefract's
-		// stage 2 (the flames); its other stages do not scale.
-		g_VulkanContext.SetDynamicOutputScale(
-		    ( lightmapped || g_CurrentPortalStage == 2 ) ? g_ToneMappingScale.x : 1.0f );
-		if ( !lightmapped && CurrentHDRType() == HDR_TYPE_INTEGER && g_ToneMappingScale.x != 1.0f )
-			NoteUnimplemented( "integer HDR: tone-mapping scale on unlit/model shaders" );
-		// vertexlit_and_unlit_generic's alpha = lerp( alpha, alpha * i.color.a,
-		// g_fVertexAlpha ), where g_fVertexAlpha is c12.w ($vertexalpha, 0 or 1).
-		int colorFlags = g_CurrentColorFlags;
-		if ( ( colorFlags & render_vulkan::CVulkanContext::kFragmentModulateVertexAlpha ) &&
-		     g_psConstants[12][3] < 0.5f )
-			colorFlags &= ~render_vulkan::CVulkanContext::kFragmentModulateVertexAlpha;
-		g_VulkanContext.SelectDynamicColorSpace( colorFlags );
+		// stage 2 (the flames), its other stages not scaling, and every output of
+		// vertexlit_and_unlit_generic_ps2x (UnlitGeneric and VertexLitGeneric; only
+		// its LIGHTING_PREVIEW outputs do not scale).
+		const bool linearToneScale =
+		    lightmapped || g_CurrentPortalStage == 2 || g_CurrentModulationInPixelC1;
+		g_VulkanContext.SetDynamicOutputScale( linearToneScale ? g_ToneMappingScale.x : 1.0f );
+		if ( !linearToneScale && CurrentHDRType() == HDR_TYPE_INTEGER &&
+		     g_ToneMappingScale.x != 1.0f )
+			NoteUnimplemented( "integer HDR: tone-mapping scale on other shaders" );
+		CommitPassPixelConstants();
 		g_pRenderMesh->EmitToNativeQueue();
 	}
 	if ( drawstatefixture::Instance().Enabled() )
@@ -4657,7 +5083,7 @@ void CShaderAPIVulkan::ExecuteCommandBuffer( uint8 *pCmdBuf )
 			break;
 
 		case CBCMD_SETAMBIENTCUBEDYNAMICSTATEVERTEXSHADER:
-			NoteUnimplemented( "ExecuteCommandBuffer(vertex ambient cube)" );
+			SetVertexShaderStateAmbientLightCube();
 			pCmdBuf += sizeof( int );
 			break;
 
@@ -4689,10 +5115,19 @@ void CShaderAPIVulkan::ExecuteCommandBuffer( uint8 *pCmdBuf )
 		}
 
 		case CBCMD_SET_PSHINDEX:
-		case CBCMD_SET_VSHINDEX:
-			// Static/dynamic combo selection; the native pipelines have no combos.
+			// The pixel shader's dynamic combos change nothing the native pipelines
+			// compute yet.
 			pCmdBuf += 2 * sizeof( int );
 			break;
+
+		case CBCMD_SET_VSHINDEX:
+		{
+			int nIndex = 0;
+			ReadCommandField( pCmdBuf, sizeof( int ), &nIndex );
+			SetVertexShaderIndex( nIndex );
+			pCmdBuf += 2 * sizeof( int );
+			break;
+		}
 
 		default:
 			// The command's size is unknown, so the rest of the buffer cannot be
@@ -4794,7 +5229,7 @@ void CShaderAPIVulkan::CopyRenderTargetToTextureEx(
 // Sets the vertex and pixel shaders
 void CShaderAPIVulkan::SetVertexShaderIndex( int vshIndex )
 {
-	VK_UNIMPLEMENTED();
+	g_VertexShaderDynamicIndex = vshIndex;
 }
 
 void CShaderAPIVulkan::SetPixelShaderIndex( int pshIndex )
@@ -4968,8 +5403,17 @@ void CShaderAPIVulkan::ModifyTexture( ShaderAPITextureHandle_t textureHandle )
 // image; uncompressed formats are converted to the 8-bit image they were created
 // with. Returns false when the source format is not supported yet.
 static bool UploadTextureSurface( int handle, int width, int height, ImageFormat srcFormat,
-    const void *imageData, int srcStride, std::string *error, uint32_t level = 0 )
+    const void *imageData, int srcStride, std::string *error, uint32_t level = 0, int xOffset = 0,
+    int yOffset = 0 )
 {
+	// The width x height rectangle at (xOffset, yOffset) of the level; the whole
+	// level when it covers it.
+	const auto upload = [&]( const uint8_t *data, size_t size )
+	{
+		return g_VulkanContext.UploadManagedTextureRegion( handle, static_cast<uint32_t>( xOffset ),
+		    static_cast<uint32_t>( yOffset ), static_cast<uint32_t>( width ),
+		    static_cast<uint32_t>( height ), data, size, error, level );
+	};
 	const uint8_t *src = static_cast<const uint8_t *>( imageData );
 	const size_t pixels = static_cast<size_t>( width ) * height;
 	if ( srcFormat == IMAGE_FORMAT_DXT1 || srcFormat == IMAGE_FORMAT_DXT1_ONEBITALPHA ||
@@ -4981,8 +5425,18 @@ static bool UploadTextureSurface( int handle, int width, int height, ImageFormat
 		const size_t blockBytes =
 		    ( srcFormat == IMAGE_FORMAT_DXT1 || srcFormat == IMAGE_FORMAT_DXT1_ONEBITALPHA ) ? 8
 		                                                                                     : 16;
-		return g_VulkanContext.UploadManagedTexture(
-		    handle, src, blocksX * blocksY * blockBytes, error, level );
+		// A sub-rectangle of a larger surface arrives with that surface's row of
+		// blocks as its pitch; repack it to the region's own rows.
+		const size_t blockRow = blocksX * blockBytes;
+		std::vector<uint8_t> packedBlocks;
+		if ( srcStride > 0 && static_cast<size_t>( srcStride ) != blockRow )
+		{
+			packedBlocks.resize( blockRow * blocksY );
+			for ( size_t row = 0; row < blocksY; ++row )
+				memcpy( &packedBlocks[row * blockRow], src + row * srcStride, blockRow );
+			src = packedBlocks.data();
+		}
+		return upload( src, blockRow * blocksY );
 	}
 
 	// 16-bit integer texels (integer-HDR lightmap pages) go only into the
@@ -4997,7 +5451,7 @@ static bool UploadTextureSurface( int handle, int width, int height, ImageFormat
 			NoteUnimplemented( "upload: RGBA16161616 into another format or padded rows" );
 			return false;
 		}
-		return g_VulkanContext.UploadManagedTexture( handle, src, pixels * 8, error, level );
+		return upload( src, pixels * 8 );
 	}
 
 	int srcBpp = 0;
@@ -5042,7 +5496,7 @@ static bool UploadTextureSurface( int handle, int width, int height, ImageFormat
 	    imageFormat == IMAGE_FORMAT_BGRA8888 || imageFormat == IMAGE_FORMAT_BGRX8888;
 	if ( ( srcFormat == IMAGE_FORMAT_RGBA8888 && !imageIsBgra ) ||
 	     ( srcFormat == IMAGE_FORMAT_BGRA8888 && imageIsBgra ) )
-		return g_VulkanContext.UploadManagedTexture( handle, src, pixels * 4, error, level );
+		return upload( src, pixels * 4 );
 
 	// Otherwise convert to RGBA, then to the image's order.
 	std::vector<uint8_t> texels( pixels * 4 );
@@ -5085,8 +5539,7 @@ static bool UploadTextureSurface( int handle, int width, int height, ImageFormat
 		if ( imageIsBgra )
 			std::swap( d[0], d[2] );
 	}
-	return g_VulkanContext.UploadManagedTexture(
-	    handle, texels.data(), texels.size(), error, level );
+	return upload( texels.data(), texels.size() );
 }
 
 void CShaderAPIVulkan::TexImage2D( int level, int cubeFace, ImageFormat dstFormat, int zOffset,
@@ -5120,19 +5573,18 @@ void CShaderAPIVulkan::TexSubImage2D( int level, int cubeFace, int xOffset, int 
     int zOffset, int width, int height, ImageFormat srcFormat, int srcStride, bool bSrcIsTiled,
     void *imageData )
 {
-	if ( level < 0 || g_currentModifyTexture <= 0 || !imageData || width <= 0 || height <= 0 )
-		return;
-	// Only a full-level update can be applied; partial sub-rectangle updates are
-	// not yet supported.
-	if ( xOffset != 0 || yOffset != 0 )
+	if ( level < 0 || g_currentModifyTexture <= 0 || !imageData || width <= 0 || height <= 0 ||
+	     xOffset < 0 || yOffset < 0 )
 		return;
 
+	// A sub-rectangle keeps the rest of the level: VGUI's font cache writes each
+	// glyph into its page this way (CFontTextureCache via ITexture::Download).
 	std::string error;
 	const int handle = static_cast<int>( g_currentModifyTexture ) - 1;
 	if ( static_cast<uint32_t>( level ) >= g_VulkanContext.ManagedTextureMipLevels( handle ) )
 		return;
 	if ( !UploadTextureSurface( handle, width, height, srcFormat, imageData, srcStride, &error,
-	         static_cast<uint32_t>( level ) ) )
+	         static_cast<uint32_t>( level ), xOffset, yOffset ) )
 	{
 		if ( !error.empty() )
 			Warning( "[NativeVulkan] TexSubImage2D upload failed: %s\n", error.c_str() );
@@ -5809,11 +6261,19 @@ int CShaderAPIVulkan::GetCurrentLightCombo( void ) const
 	return 0;
 }
 
+// As CShaderAPIDx8::GetDX9LightState: ambient light when any cube face's color
+// is nonzero, the enabled local lights, and static vertex lighting when the mesh
+// being drawn has a color mesh. The shaders pick their lighting combos from it.
 void CShaderAPIVulkan::GetDX9LightState( LightState_t *state ) const
 {
-	state->m_nNumLights = 0;
 	state->m_bAmbientLight = false;
-	state->m_bStaticLightVertex = false;
+	for ( int face = 0; face < 6; ++face )
+		for ( int k = 0; k < 3; ++k )
+			state->m_bAmbientLight = state->m_bAmbientLight || g_AmbientCube[face][k] != 0.0f;
+	state->m_nNumLights = 0;
+	for ( bool enabled : g_LightEnabled )
+		state->m_nNumLights += enabled ? 1 : 0;
+	state->m_bStaticLightVertex = g_pRenderMesh && g_pRenderMesh->HasColorMesh();
 	state->m_bStaticLightTexel = false;
 }
 

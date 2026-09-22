@@ -73,6 +73,7 @@ FAULTS = {
     "collision-trace-miss": ["trace.", "vcollide.solid-trace-down"],
     "vcollide-keyvalues": ["vcollide.load-keyvalues"],
     "sim-noop": ["sim.", "env.simulation-clock"],
+    "constraint-inactive": ["constraint."],
 }
 
 LINE_RE = re.compile(r"^(PASS|FAIL) (\S+) (\S+?)(?:: (.*))?$")

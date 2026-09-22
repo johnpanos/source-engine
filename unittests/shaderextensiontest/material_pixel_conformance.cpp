@@ -31,6 +31,12 @@
 //          measurement. One case winds the quad the other way: model materials
 //          cull back faces, so it must not appear at all.
 //
+//          portal: stencil portal recursion with the real Portal materials
+//          (material_pixel_portal.cpp).
+//
+//          modellight: VertexLitGeneric model lighting, the ambient cube, local
+//          lights and static vertex lighting (material_pixel_modellight.cpp).
+//
 //          This program measures; it does not judge. It writes the inputs and
 //          the measured pixels as source-material-pixels/v1 JSON, and
 //          tools/quality/material_pixel_conformance.py applies the oracle:
@@ -39,7 +45,8 @@
 //
 //          Run inside a staged game runtime (the driver stages one):
 //            material_pixel_conformance -game portal -renderer <id>
-//                -hdr <none|integer> [-family <lightmap|exposure|skinning>] -out <file.json>
+//                -hdr <none|integer> [-family <lightmap|exposure|skinning|portal|modellight>]
+//                -out <file.json>
 //
 //=============================================================================//
 
@@ -56,6 +63,7 @@
 #include "materialsystem/imesh.h"
 #include "materialsystem/itexture.h"
 #include "materialsystem/materialsystem_config.h"
+#include "material_pixel_modellight.h"
 #include "material_pixel_portal.h"
 #include "pixelwriter.h"
 #include "render/builtin_shader_provider.h"
@@ -76,6 +84,8 @@ namespace
 {
 
 const int kWindowSize = 256;
+// The linear tone-mapping scale the modellight family draws with in integer HDR.
+const float kModelLightToneScale = 0.75f;
 // A case's lightmap is kLightmapSize square: the left half holds one value and
 // the right half another. With the one-texel border every map lightmap has, the
 // quarter points of the quad land on texel centers 2 and 5, inside each half.
@@ -293,11 +303,12 @@ int CMaterialPixelApp::Main()
 	const bool exposure = !Q_stricmp( family, "exposure" );
 	const bool skinning = !Q_stricmp( family, "skinning" );
 	const bool portal = !Q_stricmp( family, "portal" );
+	const bool modelLight = !Q_stricmp( family, "modellight" );
 	if ( !outPath[0] || ( !integerHdr && Q_stricmp( hdr, "none" ) ) ||
-	     ( !exposure && !skinning && !portal && Q_stricmp( family, "lightmap" ) ) )
+	     ( !exposure && !skinning && !portal && !modelLight && Q_stricmp( family, "lightmap" ) ) )
 	{
 		Warning( "material pixel conformance: need -out <file>, -hdr <none|integer> and "
-		         "-family <lightmap|exposure|skinning|portal>\n" );
+		         "-family <lightmap|exposure|skinning|portal|modellight>\n" );
 		return 2;
 	}
 
@@ -336,7 +347,7 @@ int CMaterialPixelApp::Main()
 	// dxsupport level's defaults (4x MSAA and mat_trilinear 1 on D3D9 here; the
 	// native backend reads no dxsupport.cfg), so the sample count and the texture
 	// filter are pinned after it.
-	if ( portal )
+	if ( portal || modelLight )
 	{
 		MaterialSystem_Config_t pinned = g_pMaterialSystem->GetCurrentConfigForVideoCard();
 		pinned.m_nAASamples = 0;
@@ -369,7 +380,12 @@ int CMaterialPixelApp::Main()
 	const bool ok = exposure   ? RunExposureCases( out )
 	                : skinning ? RunSkinningCases( out )
 	                : portal   ? RunPortalCases( out, outPath, WriteClearProbeThunk )
-	                           : RunLightmapCases( out );
+	                : modelLight
+	                    // Integer HDR scales FinalOutput's linear light (the game's
+	                    // tone-mapping scale); without HDR it is 1.
+	                    ? RunModelLightCases( out, outPath, WriteClearProbeThunk,
+	                          integerHdr ? kModelLightToneScale : 1.0f )
+	                    : RunLightmapCases( out );
 	fclose( out );
 	pLauncher->DestroyGameWindow();
 	return ok ? 0 : 1;

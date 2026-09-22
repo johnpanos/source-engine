@@ -12,6 +12,7 @@
 #include "cmodel.h"
 #include "gametrace.h"
 #include "physics_collision.h"
+#include "physics_constraint.h"
 #include "physics_object.h"
 #include "tier0/dbg.h"
 
@@ -48,7 +49,7 @@ private:
 CPhysicsEnvironmentBox3D::CPhysicsEnvironmentBox3D()
 	: m_airDensity( 2.0f ), m_timestep( kDefaultTimestep ), m_timeAccumulator( 0.0f ), m_simulationTime( 0.0f ), m_stepCount( 0 ),
 	  m_inSimulation( false ), m_pSolver( NULL ), m_pCollisionEvents( NULL ), m_pObjectEvents( NULL ),
-	  m_pConstraintEvents( NULL )
+	  m_pConstraintEvents( NULL ), m_quickDelete( false ), m_enableConstraintNotify( false )
 {
 	m_gravity.Init();
 	m_performance.Defaults();
@@ -68,6 +69,7 @@ CPhysicsEnvironmentBox3D::~CPhysicsEnvironmentBox3D()
 {
 	// Game code normally destroys its objects first; release anything left.
 	m_constraints.PurgeAndDeleteElements();
+	m_constraintGroups.PurgeAndDeleteElements();
 	m_motionControllers.PurgeAndDeleteElements();
 	m_playerControllers.PurgeAndDeleteElements();
 	for ( int i = m_objects.Count() - 1; i >= 0; i-- )
@@ -119,11 +121,16 @@ void CPhysicsEnvironmentBox3D::DestroyObject( IPhysicsObject *pObject )
 	if ( !pObject )
 		return;
 	m_objects.FindAndRemove( pObject );
-	// Box3D destroys a body's joints with it; detach their handles first.
+	// Box3D destroys a body's joints with it; its constraints become inert,
+	// and (when enabled) the game hears about each as IVP reports it.
 	for ( int i = 0; i < m_constraints.Count(); i++ )
 	{
-		if ( m_constraints[i]->Links( pObject ) )
-			m_constraints[i]->ReleaseJoint();
+		CConstraintBox3D *pConstraint = m_constraints[i];
+		if ( !pConstraint->Links( pObject ) )
+			continue;
+		pConstraint->ObjectDestroyed();
+		if ( m_enableConstraintNotify && m_pConstraintEvents )
+			m_pConstraintEvents->ConstraintBroken( pConstraint );
 	}
 	for ( int i = 0; i < m_motionControllers.Count(); i++ )
 		m_motionControllers[i]->ObjectDestroyed( pObject );
@@ -139,67 +146,118 @@ void CPhysicsEnvironmentBox3D::DestroySpring( IPhysicsSpring * ) {}
 //-----------------------------------------------------------------------------
 // Constraints
 //-----------------------------------------------------------------------------
-IPhysicsConstraint *CPhysicsEnvironmentBox3D::CreateFixedConstraint( IPhysicsObject *pReferenceObject, IPhysicsObject *pAttachedObject, IPhysicsConstraintGroup *pGroup, const constraint_fixedparams_t &fixed )
+CConstraintBox3D *CPhysicsEnvironmentBox3D::TrackConstraint( IPhysicsObject *pReference, IPhysicsObject *pAttached,
+	IPhysicsConstraintGroup *pGroup, int type, const constraint_breakableparams_t &breakable )
 {
-	// attachedRefXform places the attached object in the reference object's
-	// space; body frames are object frames, so it is the weld's frame on A.
-	b3WeldJointDef def = b3DefaultWeldJointDef();
-	def.base.bodyIdA = ToBox3D( pReferenceObject )->GetBody();
-	def.base.bodyIdB = ToBox3D( pAttachedObject )->GetBody();
-	Vector origin;
-	QAngle angles;
-	MatrixAngles( fixed.attachedRefXform, angles, origin );
-	def.base.localFrameA = ToB3Transform( origin, angles );
-	def.base.localFrameB = b3Transform_identity;
-	def.base.collideConnected = false;
-	CConstraintBox3D *pConstraint = new CConstraintBox3D( pReferenceObject, pAttachedObject, b3CreateWeldJoint( m_world, &def ) );
+	if ( !pReference || !pAttached )
+		return NULL;
+	CConstraintBox3D *pConstraint = new CConstraintBox3D( this, pReference, pAttached,
+		static_cast<CConstraintGroupBox3D *>( pGroup ), (ConstraintTypeBox3D_t)type, breakable );
 	m_constraints.AddToTail( pConstraint );
 	return pConstraint;
 }
 
-// Constraint kinds without a Box3D mapping yet: live handles that do not
-// constrain motion (vphysics.provider.v1 lists them as uncovered).
+IPhysicsConstraint *CPhysicsEnvironmentBox3D::CreateFixedConstraint( IPhysicsObject *pReferenceObject, IPhysicsObject *pAttachedObject, IPhysicsConstraintGroup *pGroup, const constraint_fixedparams_t &fixed )
+{
+	CConstraintBox3D *pConstraint = TrackConstraint( pReferenceObject, pAttachedObject, pGroup, CONSTRAINT_BOX3D_FIXED, fixed.constraint );
+	if ( pConstraint )
+		pConstraint->InitFixed( fixed );
+	return pConstraint;
+}
+
 IPhysicsConstraint *CPhysicsEnvironmentBox3D::CreateRagdollConstraint( IPhysicsObject *pReferenceObject, IPhysicsObject *pAttachedObject, IPhysicsConstraintGroup *pGroup, const constraint_ragdollparams_t &ragdoll )
 {
-	CConstraintBox3D *pConstraint = new CConstraintBox3D( pReferenceObject, pAttachedObject, b3_nullJointId );
-	m_constraints.AddToTail( pConstraint );
+	CConstraintBox3D *pConstraint = TrackConstraint( pReferenceObject, pAttachedObject, pGroup, CONSTRAINT_BOX3D_RAGDOLL, ragdoll.constraint );
+	if ( pConstraint )
+		pConstraint->InitRagdoll( ragdoll );
 	return pConstraint;
 }
 
 IPhysicsConstraint *CPhysicsEnvironmentBox3D::CreateHingeConstraint( IPhysicsObject *pReferenceObject, IPhysicsObject *pAttachedObject, IPhysicsConstraintGroup *pGroup, const constraint_hingeparams_t &hinge )
 {
-	return CreateRagdollConstraint( pReferenceObject, pAttachedObject, pGroup, constraint_ragdollparams_t() );
+	CConstraintBox3D *pConstraint = TrackConstraint( pReferenceObject, pAttachedObject, pGroup, CONSTRAINT_BOX3D_HINGE, hinge.constraint );
+	if ( pConstraint )
+		pConstraint->InitHinge( constraint_limitedhingeparams_t( hinge ) );
+	return pConstraint;
 }
 
 IPhysicsConstraint *CPhysicsEnvironmentBox3D::CreateSlidingConstraint( IPhysicsObject *pReferenceObject, IPhysicsObject *pAttachedObject, IPhysicsConstraintGroup *pGroup, const constraint_slidingparams_t &sliding )
 {
-	return CreateRagdollConstraint( pReferenceObject, pAttachedObject, pGroup, constraint_ragdollparams_t() );
+	CConstraintBox3D *pConstraint = TrackConstraint( pReferenceObject, pAttachedObject, pGroup, CONSTRAINT_BOX3D_SLIDING, sliding.constraint );
+	if ( pConstraint )
+		pConstraint->InitSliding( sliding );
+	return pConstraint;
 }
 
 IPhysicsConstraint *CPhysicsEnvironmentBox3D::CreateBallsocketConstraint( IPhysicsObject *pReferenceObject, IPhysicsObject *pAttachedObject, IPhysicsConstraintGroup *pGroup, const constraint_ballsocketparams_t &ballsocket )
 {
-	return CreateRagdollConstraint( pReferenceObject, pAttachedObject, pGroup, constraint_ragdollparams_t() );
+	CConstraintBox3D *pConstraint = TrackConstraint( pReferenceObject, pAttachedObject, pGroup, CONSTRAINT_BOX3D_BALLSOCKET, ballsocket.constraint );
+	if ( pConstraint )
+		pConstraint->InitBallsocket( ballsocket );
+	return pConstraint;
 }
 
 IPhysicsConstraint *CPhysicsEnvironmentBox3D::CreatePulleyConstraint( IPhysicsObject *pReferenceObject, IPhysicsObject *pAttachedObject, IPhysicsConstraintGroup *pGroup, const constraint_pulleyparams_t &pulley )
 {
-	return CreateRagdollConstraint( pReferenceObject, pAttachedObject, pGroup, constraint_ragdollparams_t() );
+	CConstraintBox3D *pConstraint = TrackConstraint( pReferenceObject, pAttachedObject, pGroup, CONSTRAINT_BOX3D_PULLEY, pulley.constraint );
+	if ( pConstraint )
+		pConstraint->InitPulley( pulley );
+	return pConstraint;
 }
 
 IPhysicsConstraint *CPhysicsEnvironmentBox3D::CreateLengthConstraint( IPhysicsObject *pReferenceObject, IPhysicsObject *pAttachedObject, IPhysicsConstraintGroup *pGroup, const constraint_lengthparams_t &length )
 {
-	return CreateRagdollConstraint( pReferenceObject, pAttachedObject, pGroup, constraint_ragdollparams_t() );
+	CConstraintBox3D *pConstraint = TrackConstraint( pReferenceObject, pAttachedObject, pGroup, CONSTRAINT_BOX3D_LENGTH, length.constraint );
+	if ( pConstraint )
+		pConstraint->InitLength( length );
+	return pConstraint;
 }
 
 void CPhysicsEnvironmentBox3D::DestroyConstraint( IPhysicsConstraint *pConstraint )
 {
 	CConstraintBox3D *pBox = static_cast<CConstraintBox3D *>( pConstraint );
-	m_constraints.FindAndRemove( pBox );
+	if ( !pBox || !m_constraints.FindAndRemove( pBox ) )
+		return;
+	// As IVP: unless quick-deleting, destroying a constraint wakes its objects.
+	if ( !m_quickDelete )
+	{
+		if ( pBox->GetReferenceObject() )
+			pBox->GetReferenceObject()->Wake();
+		if ( pBox->GetAttachedObject() )
+			pBox->GetAttachedObject()->Wake();
+	}
 	delete pBox;
 }
 
-IPhysicsConstraintGroup *CPhysicsEnvironmentBox3D::CreateConstraintGroup( const constraint_groupparams_t &pParams ) { return new CConstraintGroupBox3D(); }
-void CPhysicsEnvironmentBox3D::DestroyConstraintGroup( IPhysicsConstraintGroup *pGroup ) { delete pGroup; }
+IPhysicsConstraintGroup *CPhysicsEnvironmentBox3D::CreateConstraintGroup( const constraint_groupparams_t &params )
+{
+	CConstraintGroupBox3D *pGroup = new CConstraintGroupBox3D( params );
+	m_constraintGroups.AddToTail( pGroup );
+	return pGroup;
+}
+
+void CPhysicsEnvironmentBox3D::DestroyConstraintGroup( IPhysicsConstraintGroup *pGroup )
+{
+	CConstraintGroupBox3D *pBox = static_cast<CConstraintGroupBox3D *>( pGroup );
+	if ( pBox && m_constraintGroups.FindAndRemove( pBox ) )
+		delete pBox;
+}
+
+void CPhysicsEnvironmentBox3D::CheckConstraintBreaks( float dt )
+{
+	// Handlers may destroy constraints (and objects); walk a snapshot.
+	CUtlVector<CConstraintBox3D *> constraints;
+	constraints.CopyArray( m_constraints.Base(), m_constraints.Count() );
+	for ( int i = 0; i < constraints.Count(); i++ )
+	{
+		if ( m_constraints.Find( constraints[i] ) == m_constraints.InvalidIndex() )
+			continue;
+		if ( constraints[i]->CheckBreak( dt ) && m_pConstraintEvents )
+			m_pConstraintEvents->ConstraintBroken( constraints[i] );
+	}
+}
+
+void CPhysicsEnvironmentBox3D::EnableConstraintNotify( bool bEnable ) { m_enableConstraintNotify = bEnable; }
 
 //-----------------------------------------------------------------------------
 // Controllers
@@ -295,6 +353,8 @@ void CPhysicsEnvironmentBox3D::PreStep( float dt )
 		m_playerControllers[i]->Simulate( dt );
 	for ( int i = 0; i < m_motionControllers.Count(); i++ )
 		m_motionControllers[i]->Simulate( dt );
+	for ( int i = 0; i < m_constraints.Count(); i++ )
+		m_constraints[i]->PreStep( dt );
 
 	for ( int i = 0; i < m_objects.Count(); i++ )
 	{
@@ -388,8 +448,9 @@ void CPhysicsEnvironmentBox3D::DispatchSleepWakeEvents()
 	}
 }
 
-void CPhysicsEnvironmentBox3D::PostStep()
+void CPhysicsEnvironmentBox3D::PostStep( float dt )
 {
+	CheckConstraintBreaks( dt );
 	DispatchContactEvents();
 	DispatchSleepWakeEvents();
 }
@@ -401,7 +462,7 @@ void CPhysicsEnvironmentBox3D::Step( float dt )
 	b3World_Step( m_world, dt, kSubSteps );
 	m_stepCount++;
 	m_inSimulation = false;
-	PostStep();
+	PostStep( dt );
 }
 
 void CPhysicsEnvironmentBox3D::Simulate( float deltaTime )
@@ -446,7 +507,7 @@ void CPhysicsEnvironmentBox3D::SetCollisionEventHandler( IPhysicsCollisionEvent 
 void CPhysicsEnvironmentBox3D::SetObjectEventHandler( IPhysicsObjectEvent *pObjectEvents ) { m_pObjectEvents = pObjectEvents; }
 void CPhysicsEnvironmentBox3D::SetConstraintEventHandler( IPhysicsConstraintEvent *pConstraintEvents ) { m_pConstraintEvents = pConstraintEvents; }
 
-void CPhysicsEnvironmentBox3D::SetQuickDelete( bool bQuick ) {}
+void CPhysicsEnvironmentBox3D::SetQuickDelete( bool bQuick ) { m_quickDelete = bQuick; }
 
 int CPhysicsEnvironmentBox3D::GetActiveObjectCount() const
 {
@@ -524,5 +585,4 @@ unsigned int CPhysicsEnvironmentBox3D::GetObjectSerializeSize( IPhysicsObject *p
 void CPhysicsEnvironmentBox3D::SerializeObjectToBuffer( IPhysicsObject *pObject, unsigned char *pBuffer, unsigned int bufferSize ) {}
 IPhysicsObject *CPhysicsEnvironmentBox3D::UnserializeObjectFromBuffer( void *pGameData, unsigned char *pBuffer, unsigned int bufferSize, bool enableCollisions ) { return nullptr; }
 
-void CPhysicsEnvironmentBox3D::EnableConstraintNotify( bool bEnable ) {}
 void CPhysicsEnvironmentBox3D::DebugCheckContacts( void ) {}

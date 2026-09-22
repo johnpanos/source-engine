@@ -141,10 +141,11 @@ int main()
 			p[1] = positions[i][1];
 			p[2] = positions[i][2];
 			unsigned char *c = desc.m_pColor + static_cast<size_t>( i ) * desc.m_VertexSize_Color;
-			c[0] = 0;
+			// Blue vertices, as a D3DCOLOR (CVertexBuilder::Color4ub): B, G, R, A.
+			c[0] = 255;
 			c[1] = 0;
-			c[2] = 255;
-			c[3] = 255; // blue vertices, RGBA
+			c[2] = 0;
+			c[3] = 255;
 		}
 		mesh->UnlockMesh( 3, 0, desc );
 

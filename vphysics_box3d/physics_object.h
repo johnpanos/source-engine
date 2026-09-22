@@ -8,7 +8,12 @@
 class CPhysicsEnvironmentBox3D;
 class CShadowControllerBox3D;
 class CPlayerControllerBox3D;
+class CPhysicsFluidControllerBox3D;
 struct CPhysCollideBox3D;
+
+// Box3D runs in inches; VPhysics reports rotational inertia, angular impulse
+// and torque in IVP's metric units (kg*m^2), so those convert at the API.
+const float kInertiaToBox3D = ( 1.0f / 0.0254f ) * ( 1.0f / 0.0254f );
 
 // A VPhysics object backed by one Box3D body. The body origin is the object
 // origin (the collide's space), so shapes use collide-space geometry directly
@@ -17,6 +22,13 @@ struct CPhysCollideBox3D;
 // Kinds: static objects are Box3D static bodies; movable objects are dynamic
 // bodies; EnableMotion(false) pins a movable object by making it kinematic
 // with zero velocity (IVP's "pinned" core), and re-enabling restores it.
+//
+// Mass properties follow IVP, not Box3D's shape integration: mass is clamped
+// to [VPHYSICS_MIN_MASS, VPHYSICS_MAX_MASS], the diagonal rotational inertia
+// is mass * the collide's IVP per-mass inertia * the authored inertia scale,
+// clipped below at rotInertiaLimit * |I|, and SetMass rescales it. Damping,
+// air drag and velocity limits are applied by the environment before each
+// step with IVP's formulas (Box3D's own damping is off).
 class CPhysicsObjectBox3D : public IPhysicsObject
 {
 public:
@@ -27,18 +39,19 @@ public:
 	virtual bool IsStatic() const override { return m_isStatic; }
 	virtual bool IsAsleep() const override;
 	virtual bool IsTrigger() const override { return m_isTrigger; }
-	virtual bool IsFluid() const override { return false; }
+	virtual bool IsFluid() const override { return m_pFluid != NULL; }
 	virtual bool IsHinged() const override { return m_hingeAxis >= 0; }
 	virtual bool IsCollisionEnabled() const override { return m_collisionEnabled; }
-	virtual bool IsGravityEnabled() const override { return m_gravityEnabled; }
-	virtual bool IsDragEnabled() const override { return m_dragEnabled; }
+	virtual bool IsGravityEnabled() const override { return !m_isStatic && m_gravityEnabled; }
+	virtual bool IsDragEnabled() const override { return !m_isStatic && m_dragEnabled; }
+	// Static objects are never pinned, so IVP reports their motion enabled.
 	virtual bool IsMotionEnabled() const override { return m_motionEnabled; }
 	virtual bool IsMoveable() const override { return !m_isStatic && m_motionEnabled; }
 	virtual bool IsAttachedToConstraint( bool bExternalOnly ) const override;
 
 	virtual void EnableCollisions( bool enable ) override;
 	virtual void EnableGravity( bool enable ) override;
-	virtual void EnableDrag( bool enable ) override { m_dragEnabled = enable; }
+	virtual void EnableDrag( bool enable ) override;
 	virtual void EnableMotion( bool enable ) override;
 
 	virtual void SetGameData( void *pGameData ) override { m_pGameData = pGameData; }
@@ -55,11 +68,11 @@ public:
 	virtual void Sleep( void ) override;
 
 	virtual void RecheckCollisionFilter( void ) override;
-	virtual void RecheckContactPoints( void ) override {}
+	virtual void RecheckContactPoints( void ) override;
 
 	virtual void SetMass( float mass ) override;
 	virtual float GetMass( void ) const override { return m_mass; }
-	virtual float GetInvMass( void ) const override { return IsMoveable() && m_mass > 0.0f ? 1.0f / m_mass : 0.0f; }
+	virtual float GetInvMass( void ) const override;
 	virtual Vector GetInertia( void ) const override { return m_inertia; }
 	virtual Vector GetInvInertia( void ) const override;
 	virtual void SetInertia( const Vector &inertia ) override;
@@ -67,8 +80,8 @@ public:
 	virtual void SetDamping( const float *speed, const float *rot ) override;
 	virtual void GetDamping( float *speed, float *rot ) const override;
 
-	virtual void SetDragCoefficient( float *pDrag, float *pAngularDrag ) override {}
-	virtual void SetBuoyancyRatio( float ratio ) override {}
+	virtual void SetDragCoefficient( float *pDrag, float *pAngularDrag ) override;
+	virtual void SetBuoyancyRatio( float ratio ) override { m_buoyancyRatio = ratio; }
 
 	virtual int GetMaterialIndex() const override { return m_materialIndex; }
 	virtual void SetMaterialIndex( int materialIndex ) override;
@@ -104,8 +117,8 @@ public:
 	virtual void CalculateForceOffset( const Vector &forceVector, const Vector &worldPosition, Vector *centerForce, AngularImpulse *centerTorque ) const override;
 	virtual void CalculateVelocityOffset( const Vector &forceVector, const Vector &worldPosition, Vector *centerVelocity, AngularImpulse *centerAngularVelocity ) const override;
 
-	virtual float CalculateLinearDrag( const Vector &unitDirection ) const override { return 0.0f; }
-	virtual float CalculateAngularDrag( const Vector &objectSpaceRotationAxis ) const override { return 0.0f; }
+	virtual float CalculateLinearDrag( const Vector &unitDirection ) const override;
+	virtual float CalculateAngularDrag( const Vector &objectSpaceRotationAxis ) const override;
 
 	virtual bool GetContactPoint( Vector *contactPoint, IPhysicsObject **contactObject ) const override;
 
@@ -132,17 +145,23 @@ public:
 	// Provider internals.
 	IPhysicsShadowController *EnsureShadowController( bool allowTranslation, bool allowRotation );
 	CShadowControllerBox3D *GetShadow() const { return m_pShadow; }
+	// Detaches the shadow controller without destroying it (TransferObject)
+	// and attaches an existing one.
+	CShadowControllerBox3D *DetachShadowController();
+	void AttachShadowController( CShadowControllerBox3D *pShadow );
 	void SetPlayerController( CPlayerControllerBox3D *pController ) { m_pPlayerController = pController; }
 	CPlayerControllerBox3D *GetPlayerController() const { return m_pPlayerController; }
+	void SetFluidController( CPhysicsFluidControllerBox3D *pFluid ) { m_pFluid = pFluid; }
+	CPhysicsFluidControllerBox3D *GetFluidController() const { return m_pFluid; }
 	b3BodyId GetBody() const { return m_body; }
 	CPhysicsEnvironmentBox3D *GetEnvironment() const { return m_pEnv; }
 	float GetFriction() const { return m_friction; }
+	float GetVolume() const { return m_volume; }
+	float GetBuoyancyRatio() const { return m_buoyancyRatio; }
 	// Sets linear/angular (world, radians) velocity directly, as controllers do.
 	void SetWorldVelocity( const Vector &linear, const Vector &angularRadians );
 	void GetWorldVelocity( Vector *linear, Vector *angularRadians ) const;
 	void TeleportTo( const Vector &position, const QAngle &angles );
-	// Per-step gravity override used by shadows with tempDisableGravity.
-	void ApplyGravityScale( bool suppress );
 	bool WasAwake() const { return m_wasAwake; }
 	void SetWasAwake( bool awake ) { m_wasAwake = awake; }
 	// Box3D reports contacts after the step; IVP's PreCollision runs before
@@ -151,28 +170,55 @@ public:
 	void CapturePreStepVelocity();
 	void ReportPreStepVelocity( bool report ) { m_reportPreStep = report; }
 	Vector GetPreStepVelocity() const { return m_preStepLinear; }
+	// IVP's per-step damping and air drag (CDragController), applied by the
+	// environment before each step.
+	void ApplyDampingAndDrag( float dt, float airDensity );
+	bool HasTouchedDynamic() const { return m_hasTouchedDynamic; }
+	void SetTouchedDynamic() { m_hasTouchedDynamic = true; }
+	bool IsAsleepSinceCreation() const { return m_asleepSinceCreation; }
+	void SetAsleepSinceCreation( bool asleep ) { m_asleepSinceCreation = asleep; }
+	float GetDragCoefficient() const { return m_dragCoefficient; }
+	float GetAngularDragCoefficient() const { return m_angDragCoefficient; }
+	float GetRotInertiaLimit() const { return m_rotInertiaLimit; }
+	float GetInertiaScale() const { return m_inertiaScale; }
+	bool IsMarkedForDelete() const { return ( m_callbackFlags & CALLBACK_MARKED_FOR_DELETE ) != 0; }
+	// Fluid buoyancy uses the object's shapes.
+	int GetShapes( b3ShapeId *pShapes, int capacity ) const;
 
 private:
 	void CreateShapes();
+	void DestroyShapes();
+	void ComputeInitialInertia();
 	void ApplyMassProperties();
 	void ApplyBodyType();
 	void ApplyFilter();
-	float ComputeShapeVolume() const;
+	void RecomputeDragBases();
+	float GetDragInDirection( const Vector &worldVelocity ) const;
+	float GetAngularDragInDirection( const Vector &localAngularRadians ) const;
+	void ClampVelocity();
 
 	CPhysicsEnvironmentBox3D *m_pEnv;
 	const CPhysCollide *m_pCollide;
 	b3BodyId m_body;
 	CShadowControllerBox3D *m_pShadow;
 	CPlayerControllerBox3D *m_pPlayerController;
+	CPhysicsFluidControllerBox3D *m_pFluid;
 	void *m_pGameData;
 	char m_name[64];
 	Vector m_massCenter;
-	Vector m_inertia;
+	Vector m_inertia;			// IVP units (kg*m^2), object axes, diagonal
+	Vector m_dragBasis;			// per IVP: projected area per mass (m^2/kg), object axes
+	Vector m_angDragBasis;
 	float m_mass;
 	float m_inertiaScale;
+	float m_rotInertiaLimit;
 	float m_sphereRadius;
-	float m_linearDamping;
-	float m_angularDamping;
+	float m_speedDamping;
+	float m_rotDamping;
+	float m_dragCoefficient;
+	float m_angDragCoefficient;
+	float m_volume;
+	float m_buoyancyRatio;
 	float m_friction;
 	float m_restitution;
 	int m_materialIndex;
@@ -187,8 +233,11 @@ private:
 	bool m_gravityEnabled;
 	bool m_dragEnabled;
 	bool m_motionEnabled;
+	bool m_shadowTempGravityDisable;
 	bool m_wasAwake;
 	bool m_reportPreStep;
+	bool m_hasTouchedDynamic;
+	bool m_asleepSinceCreation;
 	Vector m_preStepLinear;
 	Vector m_preStepAngular;	// world, radians/second
 };

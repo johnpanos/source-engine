@@ -28,6 +28,9 @@ struct LegacyCollide_t
 	CUtlVector<LegacyConvex_t> convexes;
 	Vector massCenter;
 	Vector orthoAreas;
+	// IVP's per-unit-mass rotational inertia (Source axes, square meters), as
+	// the compact builder stored it.
+	Vector rotationInertia;
 };
 
 // Decodes one serialized solid. Returns false (and leaves pOut empty) on an

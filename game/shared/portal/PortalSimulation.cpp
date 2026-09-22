@@ -59,9 +59,19 @@ static ConVar sv_portal_collision_sim_bounds_z( "sv_portal_collision_sim_bounds_
 void DumpActiveCollision( const CPortalSimulator *pPortalSimulator, const char *szFileName ); //appends to the existing file if it exists
 #endif
 
-static ConVar portal_carve_job_graph( "portal_carve_job_graph", "2", 0,
-	"Portal placement carving clips: 0 legacy loop, 1 serial job graph, 2 pooled job graph.",
-	true, 0, true, 2 );
+// Equivalent output in every mode (jobsystemportalcarvetest). Legacy stays the
+// default: a placement's clips measure ~0.13 ms and pooled dispatch did not
+// shorten them; revisit with in-game placement timings.
+#ifdef CLIENT_DLL
+#define CLIENT_DLL_OR_SERVER "client"
+#else
+#define CLIENT_DLL_OR_SERVER "server"
+#endif
+
+// Replicated: client and server simulators both carve and must share one value.
+static ConVar portal_carve_job_graph( "portal_carve_job_graph", "0", FCVAR_REPLICATED,
+    "Portal placement carving clips: 0 legacy loop, 1 serial job graph, 2 pooled job graph.", true,
+    0, true, 2 );
 
 #ifdef DEBUG_PORTAL_COLLISION_ENVIRONMENTS
 static ConVar sv_dump_portalsimulator_collision( "sv_dump_portalsimulator_collision", "0", FCVAR_REPLICATED | FCVAR_CHEAT ); //whether to actually dump out the data now that the possibility exists
@@ -90,9 +100,8 @@ static int s_iPortalSimulatorGUID = 0; //used in standalone function that have n
 #define TABSPACING
 #endif
 
-
-
-static void GetBrushPolyhedrons( const CUtlVector<int> &Brushes, CUtlVector<const CPolyhedron *> *pPolyhedrons );
+static void GetBrushPolyhedrons(
+    const CUtlVector<int> &Brushes, CUtlVector<const CPolyhedron *> *pPolyhedrons );
 static inline CPolyhedron *TransformAndClipSinglePolyhedron( CPolyhedron *pExistingPolyhedron, const VMatrix &Transform, const float *pOutwardFacingClipPlanes, int iClipPlaneCount, float fCutEpsilon, bool bUseTempMemory );
 static int GetEntityPhysicsObjects( IPhysicsEnvironment *pEnvironment, CBaseEntity *pEntity, IPhysicsObject **pRetList, int iRetListArraySize );
 static CPhysCollide *ConvertPolyhedronsToCollideable( CPolyhedron **pPolyhedrons, int iPolyhedronCount );
@@ -1837,6 +1846,7 @@ void CPortalSimulator::CreatePolyhedrons( void )
 		return;
 
 	CREATEDEBUGTIMER( functionTimer );
+	const double flCarveStart = Plat_FloatTime();
 
 	STARTDEBUGTIMER( functionTimer );
 	DEBUGTIMERONLY( DevMsg( 2, "[PSDT:%d] %sCPortalSimulator::CreatePolyhedrons() START\n", GetPortalSimulatorGUID(), TABSPACING ); );
@@ -1922,7 +1932,10 @@ void CPortalSimulator::CreatePolyhedrons( void )
 			{
 				CUtlVector<const CPolyhedron *> BrushPolyhedrons;
 				GetBrushPolyhedrons( WorldBrushes, &BrushPolyhedrons );
-				if( !PortalCarve::ClipInOrder( BrushPolyhedrons.Base(), BrushPolyhedrons.Count(), fWorldClipPlane_Reverse, 1, PORTAL_POLYHEDRON_CUT_EPSILON, &m_InternalData.Simulation.Static.World.Brushes.Polyhedrons, portal_carve_job_graph.GetInt(), NULL ) )
+				if ( !PortalCarve::ClipInOrder( BrushPolyhedrons.Base(), BrushPolyhedrons.Count(),
+				         fWorldClipPlane_Reverse, 1, PORTAL_POLYHEDRON_CUT_EPSILON,
+				         &m_InternalData.Simulation.Static.World.Brushes.Polyhedrons,
+				         portal_carve_job_graph.GetInt(), NULL ) )
 					Error( "Invalid portal world-brush carving job graph batch\n" );
 			}
 		}
@@ -1939,22 +1952,28 @@ void CPortalSimulator::CreatePolyhedrons( void )
 			CUtlVector<const CPolyhedron *> PropPieces;
 			CUtlVector<int> PropPieceCounts;
 			PropPieceCounts.SetCount( StaticProps.Count() );
-			for( int i = StaticProps.Count(), iGroup = 0; --i >= 0; ++iGroup )
+			for ( int i = StaticProps.Count(), iGroup = 0; --i >= 0; ++iGroup )
 			{
 				CPolyhedron *PolyhedronArray[1024];
-				int iPolyhedronCount = g_StaticCollisionPolyhedronCache.GetStaticPropPolyhedrons( StaticProps[i], PolyhedronArray, 1024 );
+				int iPolyhedronCount = g_StaticCollisionPolyhedronCache.GetStaticPropPolyhedrons(
+				    StaticProps[i], PolyhedronArray, 1024 );
 				PropPieceCounts[iGroup] = iPolyhedronCount;
-				for( int j = 0; j != iPolyhedronCount; ++j )
+				for ( int j = 0; j != iPolyhedronCount; ++j )
 					PropPieces.AddToTail( PolyhedronArray[j] );
 			}
 
 			CUtlVector<int> PropClippedCounts;
 			PropClippedCounts.SetCount( StaticProps.Count() );
-			const int iFirstPropPolyhedron = m_InternalData.Simulation.Static.World.StaticProps.Polyhedrons.Count();
-			if( !PortalCarve::ClipGroupsInOrder( PropPieces.Base(), PropPieceCounts.Base(), StaticProps.Count(), fWorldClipPlane_Reverse, 1, 0.01f, &m_InternalData.Simulation.Static.World.StaticProps.Polyhedrons, PropClippedCounts.Base(), portal_carve_job_graph.GetInt(), NULL ) )
+			const int iFirstPropPolyhedron =
+			    m_InternalData.Simulation.Static.World.StaticProps.Polyhedrons.Count();
+			if ( !PortalCarve::ClipGroupsInOrder( PropPieces.Base(), PropPieceCounts.Base(),
+			         StaticProps.Count(), fWorldClipPlane_Reverse, 1, 0.01f,
+			         &m_InternalData.Simulation.Static.World.StaticProps.Polyhedrons,
+			         PropClippedCounts.Base(), portal_carve_job_graph.GetInt(), NULL ) )
 				Error( "Invalid portal static-prop carving job graph batch\n" );
 
-			for( int i = StaticProps.Count(), iGroup = 0, iNextStart = iFirstPropPolyhedron; --i >= 0; ++iGroup )
+			for ( int i = StaticProps.Count(), iGroup = 0, iNextStart = iFirstPropPolyhedron;
+			    --i >= 0; ++iGroup )
 			{
 				ICollideable *pProp = StaticProps[i];
 
@@ -2010,7 +2029,8 @@ void CPortalSimulator::CreatePolyhedrons( void )
 
 		CUtlVector<const CPolyhedron *> WallBrushPolyhedrons;
 		const bool bSimulatingVPhysics = IsSimulatingVPhysics();
-		if( bSimulatingVPhysics ) //if not simulating vphysics, we skip making the entire wall, and just create the minimal tube instead
+		//if not simulating vphysics, we skip making the entire wall, and just create the minimal tube instead
+		if ( bSimulatingVPhysics )
 		{
 			Vector vAABBMins, vAABBMaxs;
 			PortalCarve::ComputeWallBrushBounds( placement, &vAABBMins, &vAABBMaxs );
@@ -2020,13 +2040,26 @@ void CPortalSimulator::CreatePolyhedrons( void )
 			GetBrushPolyhedrons( WallBrushes, &WallBrushPolyhedrons );
 		}
 
-		if( !PortalCarve::CarveWall( placement, fWallClipPlane_Forward, bSimulatingVPhysics, WallBrushPolyhedrons.Base(), WallBrushPolyhedrons.Count(), m_InternalData.Simulation.Static.Wall.Local.Tube.Polyhedrons, m_InternalData.Simulation.Static.Wall.Local.Brushes.Polyhedrons, portal_carve_job_graph.GetInt(), NULL ) )
+		if ( !PortalCarve::CarveWall( placement, fWallClipPlane_Forward, bSimulatingVPhysics,
+		         WallBrushPolyhedrons.Base(), WallBrushPolyhedrons.Count(),
+		         m_InternalData.Simulation.Static.Wall.Local.Tube.Polyhedrons,
+		         m_InternalData.Simulation.Static.Wall.Local.Brushes.Polyhedrons,
+		         portal_carve_job_graph.GetInt(), NULL ) )
 			Error( "Invalid portal wall carving job graph batch\n" );
 	}
 
 	STOPDEBUGTIMER( functionTimer );
 	DECREMENTTABSPACING();
 	DEBUGTIMERONLY( DevMsg( 2, "[PSDT:%d] %sCPortalSimulator::CreatePolyhedrons() FINISH: %fms\n", GetPortalSimulatorGUID(), TABSPACING, functionTimer.GetDuration().GetMillisecondsF() ); );
+
+	// Placement diagnostic (developer 2): carved polyhedron counts and time, per simulator.
+	DevMsg( 2, "Portal carve (%s, mode %d): world %d, props %d, tube %d, wall %d, %.3f ms\n",
+	    CLIENT_DLL_OR_SERVER, portal_carve_job_graph.GetInt(),
+	    m_InternalData.Simulation.Static.World.Brushes.Polyhedrons.Count(),
+	    m_InternalData.Simulation.Static.World.StaticProps.Polyhedrons.Count(),
+	    m_InternalData.Simulation.Static.Wall.Local.Tube.Polyhedrons.Count(),
+	    m_InternalData.Simulation.Static.Wall.Local.Brushes.Polyhedrons.Count(),
+	    ( Plat_FloatTime() - flCarveStart ) * 1000.0 );
 
 	m_CreationChecklist.bPolyhedronsGenerated = true;
 }
@@ -2376,19 +2409,13 @@ bool CPortalSimulator::CreatedPhysicsObject( const IPhysicsObject *pObject, PS_P
 }
 #endif //#ifndef CLIENT_DLL
 
-
-
-
-
-
-
-
 // Cache lookups stay on the owning thread; invalid brushes yield NULL, which clips to nothing.
-static void GetBrushPolyhedrons( const CUtlVector<int> &Brushes, CUtlVector<const CPolyhedron *> *pPolyhedrons )
+static void GetBrushPolyhedrons(
+    const CUtlVector<int> &Brushes, CUtlVector<const CPolyhedron *> *pPolyhedrons )
 {
 	pPolyhedrons->SetCount( Brushes.Count() );
-	for( int i = 0; i != Brushes.Count(); ++i )
-		(*pPolyhedrons)[i] = g_StaticCollisionPolyhedronCache.GetBrushPolyhedron( Brushes[i] );
+	for ( int i = 0; i != Brushes.Count(); ++i )
+		( *pPolyhedrons )[i] = g_StaticCollisionPolyhedronCache.GetBrushPolyhedron( Brushes[i] );
 }
 
 static CPhysCollide *ConvertPolyhedronsToCollideable( CPolyhedron **pPolyhedrons, int iPolyhedronCount )

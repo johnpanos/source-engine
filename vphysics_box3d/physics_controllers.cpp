@@ -315,15 +315,6 @@ void CMotionControllerBox3D::Simulate( float dt )
 }
 
 //-----------------------------------------------------------------------------
-// Constraint
-//-----------------------------------------------------------------------------
-CConstraintBox3D::~CConstraintBox3D()
-{
-	if ( b3Joint_IsValid( m_joint ) )
-		b3DestroyJoint( m_joint, true );
-}
-
-//-----------------------------------------------------------------------------
 // Friction snapshot
 //-----------------------------------------------------------------------------
 CFrictionSnapshotBox3D::CFrictionSnapshotBox3D( CPhysicsObjectBox3D *pObject ) : m_pObject( pObject ), m_index( 0 )

@@ -22,10 +22,12 @@ writes one full frame per case. This module judges those frames:
 Frames travel inside the capture as base64 of zlib-compressed RGB rows.
 """
 
-import base64
 import math
 from pathlib import Path
-import zlib
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import material_pixel_frames  # noqa: E402
 
 CASES = ("recursion", "opening", "static")
 # r_portal_stencil_depth's default.
@@ -52,46 +54,17 @@ BAND_MARGIN = 0.05
 DXVK_CONFIG = "dxvk.enableGraphicsPipelineLibrary = False"
 
 
-class PortalCaptureError(ValueError):
-    pass
-
-
-def encode_frame(rgb):
-    return base64.b64encode(zlib.compress(bytes(rgb), 9)).decode("ascii")
-
-
-def decode_frame(case, frame):
-    data = zlib.decompress(base64.b64decode(case["frame"]))
-    if len(data) != frame[0] * frame[1] * 3:
-        raise PortalCaptureError("case %s holds %d bytes, not a %dx%d RGB frame"
-                                 % (case["name"], len(data), frame[0], frame[1]))
-    return data
-
-
-def embed_frames(report, directory):
-    """Moves each case's raw frame file into the capture."""
-    width, height = report["frame"]
-    for case in report["cases"]:
-        path = Path(directory) / case.pop("frame_file")
-        rgb = path.read_bytes()
-        if len(rgb) != width * height * 3:
-            raise PortalCaptureError("%s holds %d bytes, not a %dx%d RGB frame"
-                                     % (path, len(rgb), width, height))
-        case["frame"] = encode_frame(rgb)
-        path.unlink()
-    return report
+PortalCaptureError = material_pixel_frames.CaptureError
+encode_frame = material_pixel_frames.encode_frame
+decode_frame = material_pixel_frames.decode_frame
+embed_frames = material_pixel_frames.embed_frames
+write_png = material_pixel_frames.write_png
 
 
 def validate(path, report):
-    names = [case.get("name") for case in report.get("cases", [])]
-    if names != list(CASES):
-        raise PortalCaptureError("%s has portal cases %s, expected %s" % (path, names, list(CASES)))
-    if len(report.get("frame", [])) != 2 or "scene" not in report:
-        raise PortalCaptureError("%s has no frame size or scene" % path)
-    for case in report["cases"]:
-        if "frame" not in case:
-            raise PortalCaptureError("%s: case %s has no frame" % (path, case["name"]))
-        decode_frame(case, report["frame"])
+    material_pixel_frames.validate(path, report, CASES)
+    if "scene" not in report:
+        raise PortalCaptureError("%s has no scene" % path)
     return report
 
 
@@ -306,18 +279,3 @@ def evaluate(report, reference=None):
     if reference is not None:
         failures += compare(report, reference)
     return failures
-
-
-def write_png(path, width, height, rgb):
-    """A plain PNG of a frame, for looking at captures."""
-    raw = b"".join(b"\x00" + bytes(rgb[y * width * 3:(y + 1) * width * 3])
-                   for y in range(height))
-
-    def chunk(kind, data):
-        body = kind + data
-        return (len(data).to_bytes(4, "big") + body +
-                (zlib.crc32(body) & 0xffffffff).to_bytes(4, "big"))
-
-    header = width.to_bytes(4, "big") + height.to_bytes(4, "big") + b"\x08\x02\x00\x00\x00"
-    Path(path).write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) +
-                           chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))

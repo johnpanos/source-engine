@@ -52,6 +52,7 @@ def build(bld):
 		'main.cpp',
 		'legacy_collision.cpp',
 		'physics_collision.cpp',
+		'physics_constraint.cpp',
 		'physics_controllers.cpp',
 		'physics_environment.cpp',
 		'physics_material.cpp',

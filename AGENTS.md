@@ -460,10 +460,14 @@ Keep the table concise and link details below or from the domain progress file.
   CI lane, certify any domain gate, or add native/GPU/device profiles.
 
 - R20-BATCH / R21-PARTICLE / R30-BONES-PACKING: `partial`. A C++11 facade
-  runs bounded C++20 job graphs on the existing engine pool; particles,
-  previous-frame/renderable bones and entity packing have default-off serial and
-  parallel graph paths. Shared contract tests, mixed-dialect real-pool tests and
-  six Portal native smoke runs pass. Full engine-pool TSan is **not clean**;
+  runs bounded C++20 job graphs on the existing engine pool. Particles,
+  previous-frame/renderable bones and entity packing have serial and pooled graph
+  paths, now **pooled by default** by user decision; the bone and renderable
+  legacy gates also default on. Shared contract tests, mixed-dialect real-pool
+  tests and Portal native smoke runs pass. Query-cache maintenance and Portal
+  placement carving each share one kernel with their conformance suites and are
+  proven output-equivalent to the original code. They stay default legacy
+  because pooled measured no faster. Full engine-pool TSan is **not clean**;
   semantic gameplay captures and frame/performance gates remain open. See the
   [scope, evidence, rollback and deferred consumers](RFC/0003-batch-migration-progress.md).
 

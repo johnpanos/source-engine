@@ -12,6 +12,8 @@ real material system on the D3D9 backend.
 | `exposure-dx9-none.json` | exposure | `HDR_TYPE_NONE` | luminance histogram (`dev/lumcompare` under occlusion queries) |
 | `exposure-dx9-integer.json` | exposure | `HDR_TYPE_INTEGER` | as above; the path integer-HDR auto-exposure runs |
 | `portal-dx9-none.json` | portal | `HDR_TYPE_NONE` | stencil portal recursion (`PortalRefract` stages 0-2, depth 2); three 256x256 frames |
+| `modellight-dx9-none.json` | modellight | `HDR_TYPE_NONE` | VertexLitGeneric lighting: ambient cube, point/spot/directional lights, half-Lambert, static color mesh, MODEL and skinned placement; eleven 256x256 frames |
+| `modellight-dx9-integer.json` | modellight | `HDR_TYPE_INTEGER` | as above, linear tone-mapping scale 0.75 |
 
 Lightmap pixels are held to these references within `PIXEL_TOLERANCE` (3 levels
 per channel). Exposure counts are exact: every luminance range must equal the
@@ -50,6 +52,12 @@ python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime \
     --build build-portal-vulkan --renderer vulkan-compat --hdr none \
     --family portal --out OUT
 ```
+
+Model lighting frames are held to an independent evaluation of
+`common_vs_fxc.h` DoLighting (`material_pixel_modellight.py`), which D3D9 matches
+within one level everywhere it judges, and to these references within 1 level
+with no pixel beyond it. Captured 2026-09-22 from source `8c2c4268` plus a dirty
+tree, with the toolchain above (`--family modellight`, both HDR modes).
 
 Recapture only when the harness cases or the D3D9 path change, and review the
 differences before replacing a file. A reference that silently absorbs a D3D9

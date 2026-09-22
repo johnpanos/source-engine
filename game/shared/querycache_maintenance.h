@@ -37,7 +37,7 @@ enum Action_t
 };
 
 inline Action_t Classify( bool bUsedSinceUpdated, bool bSpeculativelyDone, float flElapsed,
-	float flMinimumUpdateInterval )
+    float flMinimumUpdateInterval )
 {
 	if ( bUsedSinceUpdated )
 		return flElapsed >= flMinimumUpdateInterval ? ACTION_REFRESH : ACTION_KEEP;
@@ -63,8 +63,8 @@ template <class Entry> struct Split_t
 // nSplits contiguous chain ranges. Returns the total item count, or -1 if the
 // cache holds more than nCapacity entries (nothing may be classified then).
 template <class Entry, class Chain>
-int Gather( const Chain *pChains, int nChains, int nSplits, float flCurTime,
-	Item_t<Entry> *pItems, int nCapacity, Split_t<Entry> *pSplits )
+int Gather( const Chain *pChains, int nChains, int nSplits, float flCurTime, Item_t<Entry> *pItems,
+    int nCapacity, Split_t<Entry> *pSplits )
 {
 	int nItems = 0;
 	const int nChainsPerSplit = nChains / nSplits;
@@ -101,8 +101,8 @@ template <class Entry> void ClassifySplit( Split_t<Entry> &split )
 		Item_t<Entry> &item = split.m_pItems[i];
 		const Entry &entry = *item.m_pEntry;
 		item.m_Action = Classify( entry.m_bUsedSinceUpdated, entry.m_bSpeculativelyDone,
-			split.m_flCurTime - entry.m_flLastUpdateTime,
-			entry.m_QueryParams.m_flMinimumUpdateInterval );
+		    split.m_flCurTime - entry.m_flLastUpdateTime,
+		    entry.m_QueryParams.m_flMinimumUpdateInterval );
 	}
 }
 
@@ -110,9 +110,9 @@ template <class Entry> void ClassifySplit( Split_t<Entry> &split )
 // nSplits entries and must start empty. PrependDListWithTailToDList is found
 // with the list types (tier1 in the game, a test double in the suite).
 template <class Entry, class ChainList, class KilledList, class VictimList, class Type,
-	class Refresh>
+    class Refresh>
 void Commit( Split_t<Entry> *pSplits, int nSplits, ChainList *pChains, KilledList *pKilled,
-	VictimList &victims, Type invalidType, int &nWastedSpeculativeUpdates, Refresh &refresh )
+    VictimList &victims, Type invalidType, int &nWastedSpeculativeUpdates, Refresh &refresh )
 {
 	for ( int i = 0; i < nSplits; ++i )
 	{

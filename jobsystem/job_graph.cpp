@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <functional>
 #include <utility>
 
 namespace jobsystem
@@ -43,6 +44,82 @@ void JobGraphBuilder::Write( JobHandle job, const ResourceVersion &resource )
 
 //-----------------------------------------------------------------------------
 
+namespace
+{
+
+// Compressed adjacency: the successors of node i are
+// targets[offsets[i] .. offsets[i + 1]), in unique-edge order.
+struct Csr
+{
+	std::vector<uint32_t> offsets;
+	std::vector<uint32_t> targets;
+
+	const uint32_t *begin( uint32_t i ) const { return targets.data() + offsets[i]; }
+	const uint32_t *end( uint32_t i ) const { return targets.data() + offsets[i + 1]; }
+};
+
+// Answers "is b reachable from a" for a validated DAG. A path can only move
+// forward in topological position, so the search prunes every node placed at or
+// after b and stops as soon as b is found. Stamps avoid clearing per query.
+class ReachQuery
+{
+public:
+	ReachQuery( const Csr &succ, const std::vector<uint32_t> &pos )
+	    : m_succ( succ ), m_pos( pos ), m_stamp( pos.size(), 0 )
+	{
+	}
+
+	bool Reaches( uint32_t a, uint32_t b )
+	{
+		if ( m_pos[a] >= m_pos[b] )
+			return false;
+		if ( ++m_epoch == 0 )
+		{
+			std::fill( m_stamp.begin(), m_stamp.end(), 0u );
+			m_epoch = 1;
+		}
+		const uint32_t limit = m_pos[b];
+		m_stack.clear();
+		m_stack.push_back( a );
+		m_stamp[a] = m_epoch;
+		while ( !m_stack.empty() )
+		{
+			const uint32_t i = m_stack.back();
+			m_stack.pop_back();
+			for ( const uint32_t *c = m_succ.begin( i ); c != m_succ.end( i ); ++c )
+			{
+				if ( *c == b )
+					return true;
+				if ( m_stamp[*c] == m_epoch || m_pos[*c] >= limit )
+					continue;
+				m_stamp[*c] = m_epoch;
+				m_stack.push_back( *c );
+			}
+		}
+		return false;
+	}
+
+	bool Ordered( uint32_t a, uint32_t b ) { return Reaches( a, b ) || Reaches( b, a ); }
+
+private:
+	const Csr &m_succ;
+	const std::vector<uint32_t> &m_pos;
+	std::vector<uint32_t> m_stamp;
+	std::vector<uint32_t> m_stack;
+	uint32_t m_epoch = 0;
+};
+
+inline bool ResourceLess( const ResourceVersion &a, const ResourceVersion &b )
+{
+	if ( a.domain != b.domain )
+		return a.domain < b.domain;
+	if ( a.epoch != b.epoch )
+		return a.epoch < b.epoch;
+	return a.partition < b.partition;
+}
+
+} // namespace
+
 Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 {
 	const uint32_t n = (uint32_t)m_jobs.size();
@@ -60,27 +137,34 @@ Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 	// (2) Combine explicit edges with sequence-induced ordering edges. Sequence
 	//     edges are Terminal (ordering only): the next job on a lane runs after
 	//     the previous reaches a terminal state, regardless of its outcome.
-	std::vector<Edge> edges = m_edges;
+	//     They are appended in place and removed again if sealing fails, so a
+	//     rejected builder keeps exactly its declared contents.
+	std::vector<Edge> &edges = m_edges;
+	struct RestoreOnFailure
+	{
+		std::vector<Edge> &edges;
+		size_t declared;
+		bool sealed = false;
+		~RestoreOnFailure() { if ( !sealed ) edges.resize( declared ); }
+	} restore{ edges, edges.size() };
+	if ( !m_sequenceMembers.empty() )
 	{
 		// Group sequence members by lane, preserving registration order.
-		std::vector<std::pair<uint16_t, uint32_t>> members = m_sequenceMembers;
-		std::stable_sort( members.begin(), members.end(),
+		std::stable_sort( m_sequenceMembers.begin(), m_sequenceMembers.end(),
 			[]( const auto &a, const auto &b ){ return a.first < b.first; } );
-		for ( size_t i = 1; i < members.size(); ++i )
+		for ( size_t i = 1; i < m_sequenceMembers.size(); ++i )
 		{
-			if ( members[i].first == members[i - 1].first )
+			if ( m_sequenceMembers[i].first == m_sequenceMembers[i - 1].first )
 			{
-				edges.push_back( Edge{ members[i - 1].second, members[i].second, DependencyKind::Terminal } );
+				edges.push_back( Edge{ m_sequenceMembers[i - 1].second, m_sequenceMembers[i].second, DependencyKind::Terminal } );
 			}
 		}
 	}
 
-	// (3) Validate edge endpoints and reject self-dependencies. Deduplicate,
-	//     keeping the stronger kind (Success outranks Terminal) so indegree and
-	//     prerequisite counts are exact at execution time.
-	auto keyOf = []( uint32_t p, uint32_t c ) -> uint64_t { return ( (uint64_t)p << 32 ) | c; };
-	std::vector<std::pair<uint64_t, DependencyKind>> uniqueEdges;
-	uniqueEdges.reserve( edges.size() );
+	// (3) Validate edge endpoints and reject self-dependencies, in declaration
+	//     order. Deduplicate, keeping the first occurrence's position and the
+	//     stronger kind (Success outranks Terminal) so indegree and prerequisite
+	//     counts are exact at execution time.
 	for ( const Edge &e : edges )
 	{
 		if ( e.producer >= n || e.consumer >= n )
@@ -91,18 +175,36 @@ Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 		{
 			return MakeUnexpected( GraphError{ GraphErrorCode::SelfDependency, "job depends on itself", e.producer, e.consumer } );
 		}
-		const uint64_t k = keyOf( e.producer, e.consumer );
-		bool merged = false;
-		for ( auto &ue : uniqueEdges )
-		{
-			if ( ue.first == k )
+	}
+
+	// keep[k] marks the first occurrence of each (producer, consumer) pair; its
+	// kind absorbs any later duplicate. Sorting edge indices by (key, index)
+	// groups duplicates with the first occurrence leading each group.
+	const uint32_t edgeCount = (uint32_t)edges.size();
+	std::vector<char> keep( edgeCount, 1 );
+	{
+		std::vector<uint32_t> byKey( edgeCount );
+		for ( uint32_t k = 0; k < edgeCount; ++k )
+			byKey[k] = k;
+		auto keyOf = [&]( uint32_t k ) -> uint64_t { return ( (uint64_t)edges[k].producer << 32 ) | edges[k].consumer; };
+		std::sort( byKey.begin(), byKey.end(),
+			[&]( uint32_t a, uint32_t b )
 			{
-				if ( e.kind == DependencyKind::Success ) ue.second = DependencyKind::Success;
-				merged = true;
-				break;
-			}
+				const uint64_t ka = keyOf( a ), kb = keyOf( b );
+				return ka != kb ? ka < kb : a < b;
+			} );
+		for ( uint32_t k = 1; k < edgeCount; ++k )
+		{
+			const uint32_t first = byKey[k - 1];
+			const uint32_t dup   = byKey[k];
+			if ( keyOf( first ) != keyOf( dup ) )
+				continue;
+			// Carry the group leader forward so every duplicate merges into it.
+			byKey[k] = first;
+			keep[dup] = 0;
+			if ( edges[dup].kind == DependencyKind::Success )
+				edges[first].kind = DependencyKind::Success;
 		}
-		if ( !merged ) uniqueEdges.push_back( { k, e.kind } );
 	}
 
 	// Resource decls must reference known jobs.
@@ -114,81 +216,176 @@ Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 		}
 	}
 
-	// (4) Build adjacency + indegree.
-	std::vector<std::vector<uint32_t>> succ( n );
+	// (4) Build successor adjacency (unique-edge order) + indegree/outdegree.
 	std::vector<uint32_t> indeg( n, 0 );
-	for ( const auto &ue : uniqueEdges )
+	Csr succ;
+	succ.offsets.assign( (size_t)n + 1, 0 );
+	for ( uint32_t k = 0; k < edgeCount; ++k )
 	{
-		const uint32_t p = (uint32_t)( ue.first >> 32 );
-		const uint32_t c = (uint32_t)( ue.first & 0xFFFFFFFFu );
-		succ[p].push_back( c );
-		indeg[c]++;
+		if ( !keep[k] )
+			continue;
+		succ.offsets[edges[k].producer + 1]++;
+		indeg[edges[k].consumer]++;
+	}
+	for ( uint32_t i = 0; i < n; ++i )
+		succ.offsets[i + 1] += succ.offsets[i];
+	succ.targets.resize( succ.offsets[n] );
+	{
+		std::vector<uint32_t> cursor( succ.offsets.begin(), succ.offsets.end() - 1 );
+		for ( uint32_t k = 0; k < edgeCount; ++k )
+		{
+			if ( keep[k] )
+				succ.targets[cursor[edges[k].producer]++] = edges[k].consumer;
+		}
 	}
 
-	// (5) Kahn topological sort, tie-broken by lowest index for stability.
-	//     A cycle leaves some node with indegree > 0.
+	// (5) Kahn topological sort, always placing the lowest-index ready node next
+	//     (a min-heap) for a stable order. A cycle leaves nodes unplaced.
 	std::vector<uint32_t> topo;
 	topo.reserve( n );
 	{
 		std::vector<uint32_t> work = indeg;
-		// Simple stable ready-set: scan for lowest-index ready node each step.
-		std::vector<char> done( n, 0 );
-		uint32_t placed = 0;
-		while ( placed < n )
+		std::vector<uint32_t> heap;
+		for ( uint32_t i = 0; i < n; ++i )
 		{
-			uint32_t pick = JobHandle::kInvalid;
-			for ( uint32_t i = 0; i < n; ++i )
-			{
-				if ( !done[i] && work[i] == 0 ) { pick = i; break; }
-			}
-			if ( pick == JobHandle::kInvalid ) break; // remaining nodes form a cycle
-			done[pick] = 1;
-			topo.push_back( pick );
-			++placed;
-			for ( uint32_t c : succ[pick] ) --work[c];
+			if ( work[i] == 0 )
+				heap.push_back( i ); // ascending: already a valid min-heap
 		}
-		if ( placed < n )
+		const auto greater = std::greater<uint32_t>();
+		while ( !heap.empty() )
 		{
+			std::pop_heap( heap.begin(), heap.end(), greater );
+			const uint32_t pick = heap.back();
+			heap.pop_back();
+			topo.push_back( pick );
+			for ( const uint32_t *c = succ.begin( pick ); c != succ.end( pick ); ++c )
+			{
+				if ( --work[*c] == 0 )
+				{
+					heap.push_back( *c );
+					std::push_heap( heap.begin(), heap.end(), greater );
+				}
+			}
+		}
+		if ( topo.size() < n )
+		{
+			// The lowest-index unplaced node is on (or behind) a cycle.
+			std::vector<char> placed( n, 0 );
+			for ( uint32_t id : topo )
+				placed[id] = 1;
 			uint32_t offender = JobHandle::kInvalid;
-			for ( uint32_t i = 0; i < n; ++i ) if ( !done[i] ) { offender = i; break; }
+			for ( uint32_t i = 0; i < n; ++i ) if ( !placed[i] ) { offender = i; break; }
 			return MakeUnexpected( GraphError{ GraphErrorCode::Cycle, "graph contains an ordering cycle", offender, JobHandle::kInvalid } );
 		}
 	}
 
-	// (6) Resource-conflict validation. Compute descendant reachability so we can
-	//     tell whether two conflicting accesses are ordered. Reject unordered
-	//     write/write or read/write on the same version rather than invent order.
+	// (6) Resource-conflict validation. Reject unordered write/write or
+	//     read/write on the same version rather than invent an order. The
+	//     reported pair is the first conflicting (a, b) declaration pair in
+	//     declaration order, a < b.
 	if ( !m_resources.empty() && n > 0 )
 	{
-		// reach[i] : set of nodes reachable *from* i (i is an ancestor). Filled
-		// in reverse topo order: reach[i] = union over successors of {c} + reach[c].
-		std::vector<std::vector<char>> reach( n, std::vector<char>( n, 0 ) );
-		for ( auto it = topo.rbegin(); it != topo.rend(); ++it )
-		{
-			const uint32_t i = *it;
-			for ( uint32_t c : succ[i] )
-			{
-				reach[i][c] = 1;
-				const std::vector<char> &rc = reach[c];
-				for ( uint32_t j = 0; j < n; ++j ) if ( rc[j] ) reach[i][j] = 1;
-			}
-		}
-		auto ordered = [&]( uint32_t a, uint32_t b ) { return reach[a][b] || reach[b][a]; };
+		std::vector<uint32_t> pos( n );
+		for ( uint32_t i = 0; i < n; ++i )
+			pos[topo[i]] = i;
+		ReachQuery reach( succ, pos );
 
-		for ( size_t a = 0; a < m_resources.size(); ++a )
-		{
-			for ( size_t b = a + 1; b < m_resources.size(); ++b )
+		// Group declarations by version, keeping declaration order in a group.
+		const uint32_t declCount = (uint32_t)m_resources.size();
+		std::vector<uint32_t> byVersion( declCount );
+		for ( uint32_t d = 0; d < declCount; ++d )
+			byVersion[d] = d;
+		std::sort( byVersion.begin(), byVersion.end(),
+			[&]( uint32_t a, uint32_t b )
 			{
-				const ResourceDecl &ra = m_resources[a];
-				const ResourceDecl &rb = m_resources[b];
-				if ( ra.job == rb.job ) continue;
-				if ( !( ra.resource == rb.resource ) ) continue;
-				if ( !ra.write && !rb.write ) continue; // read/read on same version is fine
-				if ( !ordered( ra.job, rb.job ) )
+				const ResourceVersion &ra = m_resources[a].resource;
+				const ResourceVersion &rb = m_resources[b].resource;
+				if ( ResourceLess( ra, rb ) ) return true;
+				if ( ResourceLess( rb, ra ) ) return false;
+				return a < b;
+			} );
+
+		uint32_t bestA = JobHandle::kInvalid, bestB = JobHandle::kInvalid; // decl indices
+		std::vector<uint32_t> writers, members;
+		for ( uint32_t g = 0; g < declCount; )
+		{
+			uint32_t e = g + 1;
+			while ( e < declCount && m_resources[byVersion[e]].resource == m_resources[byVersion[g]].resource )
+				++e;
+
+			// Fast exact test: a group is conflict-free iff its distinct writer
+			// jobs form a reachability chain in topological order and every
+			// other accessor is ordered after its preceding writer and before
+			// its following writer. Reachability is transitive, so this covers
+			// every pair; any failed link is itself an unordered conflict.
+			writers.clear();
+			members.clear();
+			for ( uint32_t k = g; k < e; ++k )
+			{
+				const ResourceDecl &r = m_resources[byVersion[k]];
+				members.push_back( r.job );
+				if ( r.write )
+					writers.push_back( r.job );
+			}
+			bool clean = true;
+			if ( !writers.empty() && members.size() > 1 )
+			{
+				auto byPos = [&]( uint32_t a, uint32_t b ) { return pos[a] < pos[b]; };
+				std::sort( writers.begin(), writers.end(), byPos );
+				writers.erase( std::unique( writers.begin(), writers.end() ), writers.end() );
+				for ( size_t w = 1; w < writers.size() && clean; ++w )
+					clean = reach.Reaches( writers[w - 1], writers[w] );
+				for ( size_t m = 0; m < members.size() && clean; ++m )
 				{
-					return MakeUnexpected( GraphError{ GraphErrorCode::ResourceConflict, "unordered conflicting resource access", ra.job, rb.job } );
+					const uint32_t job = members[m];
+					auto it = std::lower_bound( writers.begin(), writers.end(), job, byPos );
+					if ( it != writers.end() && *it == job )
+						continue; // a writer job: covered by the chain
+					if ( it != writers.begin() && !reach.Reaches( *( it - 1 ), job ) )
+						clean = false;
+					else if ( it != writers.end() && !reach.Reaches( job, *it ) )
+						clean = false;
 				}
 			}
+
+			if ( !clean )
+			{
+				// Locate this group's first conflicting pair in declaration
+				// order; keep the earliest across groups.
+				for ( uint32_t x = g; x < e; ++x )
+				{
+					const uint32_t a = byVersion[x];
+					if ( bestA != JobHandle::kInvalid && a > bestA )
+						break;
+					bool found = false;
+					for ( uint32_t y = x + 1; y < e; ++y )
+					{
+						const uint32_t b = byVersion[y];
+						const ResourceDecl &ra = m_resources[a];
+						const ResourceDecl &rb = m_resources[b];
+						if ( ra.job == rb.job ) continue;
+						if ( !ra.write && !rb.write ) continue; // read/read on same version is fine
+						if ( !reach.Ordered( ra.job, rb.job ) )
+						{
+							if ( bestA == JobHandle::kInvalid || a < bestA || ( a == bestA && b < bestB ) )
+							{
+								bestA = a;
+								bestB = b;
+							}
+							found = true;
+							break;
+						}
+					}
+					if ( found )
+						break;
+				}
+			}
+			g = e;
+		}
+		if ( bestA != JobHandle::kInvalid )
+		{
+			return MakeUnexpected( GraphError{ GraphErrorCode::ResourceConflict, "unordered conflicting resource access",
+				m_resources[bestA].job, m_resources[bestB].job } );
 		}
 	}
 
@@ -202,15 +399,20 @@ Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 		j.executor = m_jobs[i].desc.executor;
 		j.priority = m_jobs[i].desc.priority;
 		j.function = std::move( m_jobs[i].desc.function );
+		j.prereqs.reserve( indeg[i] );
+		j.dependents.reserve( succ.offsets[i + 1] - succ.offsets[i] );
 	}
-	for ( const auto &ue : uniqueEdges )
+	for ( uint32_t k = 0; k < edgeCount; ++k )
 	{
-		const uint32_t p = (uint32_t)( ue.first >> 32 );
-		const uint32_t c = (uint32_t)( ue.first & 0xFFFFFFFFu );
-		sealed.m_jobs[c].prereqs.push_back( SealedGraph::Prereq{ p, ue.second } );
+		if ( !keep[k] )
+			continue;
+		const uint32_t p = edges[k].producer;
+		const uint32_t c = edges[k].consumer;
+		sealed.m_jobs[c].prereqs.push_back( SealedGraph::Prereq{ p, edges[k].kind } );
 		sealed.m_jobs[p].dependents.push_back( c );
 	}
 	sealed.m_topoOrder = std::move( topo );
+	restore.sealed = true;
 
 	// The builder is now spent; leave it empty so it cannot be reused.
 	m_jobs.clear();

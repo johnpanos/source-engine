@@ -27,11 +27,11 @@ void ClassifyStrictRefresh( Split &split )
 		const float elapsed = split.m_flCurTime - e.m_flLastUpdateTime;
 		const float interval = e.m_QueryParams.m_flMinimumUpdateInterval;
 		if ( e.m_bUsedSinceUpdated )
-			item.m_Action = elapsed > interval ? QueryCacheMaintenance::ACTION_REFRESH :
-												 QueryCacheMaintenance::ACTION_KEEP;
+			item.m_Action = elapsed > interval ? QueryCacheMaintenance::ACTION_REFRESH
+			                                   : QueryCacheMaintenance::ACTION_KEEP;
 		else
-			item.m_Action = QueryCacheMaintenance::Classify( false, e.m_bSpeculativelyDone,
-				elapsed, interval );
+			item.m_Action =
+			    QueryCacheMaintenance::Classify( false, e.m_bSpeculativelyDone, elapsed, interval );
 	}
 }
 
@@ -61,7 +61,7 @@ void CommitReversePublish( Cache &c, Split *splits, int nSplits )
 	qc::Refresh refresh = { &c };
 	std::vector<qc::DList> ignored( 1 );
 	QueryCacheMaintenance::Commit( splits, nSplits, c.chains.data(), killed.data(), ignored[0],
-		int( qc::TYPE_INVALID ), c.nWasted, refresh );
+	    int( qc::TYPE_INVALID ), c.nWasted, refresh );
 	// Commit prepended into a scratch list; republish the killed lists reversed.
 	for ( int i = nSplits; --i >= 0; )
 		PrependDListWithTailToDList( killed[i], c.victims );
@@ -92,12 +92,12 @@ struct Mutant
 };
 
 const Mutant kMutants[] = {
-	{ "refresh boundary >= becomes >", &ClassifyStrictRefresh, &qc::KernelCommit },
-	{ "worker drops its last item", &ClassifyDropsLast, &qc::KernelCommit },
-	{ "wasted speculation not counted", &ClassifyNoWasted, &qc::KernelCommit },
-	{ "killed lists published in reverse", &qc::KernelClassify, &CommitReversePublish },
-	{ "splits committed in reverse", &qc::KernelClassify, &CommitReverseSplits },
-	{ "refresh uses a stale time", &qc::KernelClassify, &CommitStaleTime },
+    { "refresh boundary >= becomes >", &ClassifyStrictRefresh, &qc::KernelCommit },
+    { "worker drops its last item", &ClassifyDropsLast, &qc::KernelCommit },
+    { "wasted speculation not counted", &ClassifyNoWasted, &qc::KernelCommit },
+    { "killed lists published in reverse", &qc::KernelClassify, &CommitReversePublish },
+    { "splits committed in reverse", &qc::KernelClassify, &CommitReverseSplits },
+    { "refresh uses a stale time", &qc::KernelClassify, &CommitStaleTime },
 };
 
 } // namespace
@@ -109,14 +109,14 @@ int main()
 	qc::ThreadBackend backend( 3 );
 
 	auto run = [&]( void ( *classify )( Split & ), void ( *commit )( Cache &, Split *, int ),
-				   std::string *why )
+	               std::string *why )
 	{
 		for ( uint32_t seed = 1; seed <= 4; ++seed )
 		{
 			auto update = [&]( Cache &cache )
 			{
-				return qc::KernelUpdate( cache, cfg.nSplits, qc::Mode::PooledGraph, &backend,
-					classify, commit );
+				return qc::KernelUpdate(
+				    cache, cfg.nSplits, qc::Mode::PooledGraph, &backend, classify, commit );
 			};
 			int frame = -1;
 			if ( qc::RunScenario( cfg, seed, update, why, &frame ) != cfg.nFrames )

@@ -55,6 +55,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import conformance  # noqa: E402
+import material_pixel_frames  # noqa: E402
+import material_pixel_modellight  # noqa: E402
 import material_pixel_portal  # noqa: E402
 import portal_boot  # noqa: E402
 
@@ -72,7 +74,10 @@ MODEL_TOLERANCE = 3
 DARK = 2  # a channel at or below this reads as zero
 LIGHTMAP_CASES = ("black_lightmap", "ramp_low", "ramp_mid", "ramp_high", "channels",
                   "base_gray", "base_color")
-FAMILIES = ("lightmap", "exposure", "skinning", "portal")
+FAMILIES = ("lightmap", "exposure", "skinning", "portal", "modellight")
+# Families whose harness writes whole frames, and the oracle module of each
+# (validate, evaluate).
+FRAME_FAMILIES = {"portal": material_pixel_portal, "modellight": material_pixel_modellight}
 # Which third of the frame (left, middle, right) each skinning case's bones place
 # its quad in. The oracle's own copy: the harness reports its expectation too,
 # but a harness that computed placements wrongly must not pass itself.
@@ -105,10 +110,10 @@ def read_pixels(path):
                           % (path, family, list(FAMILIES)))
     if family == "exposure":
         return _read_exposure(path, report)
-    if family == "portal":
+    if family in FRAME_FAMILIES:
         try:
-            return material_pixel_portal.validate(path, report)
-        except material_pixel_portal.PortalCaptureError as error:
+            return FRAME_FAMILIES[family].validate(path, report)
+        except material_pixel_frames.CaptureError as error:
             raise PixelsError(str(error)) from error
     if family == "skinning":
         names = [case.get("name") for case in report.get("cases", [])]
@@ -389,8 +394,8 @@ def evaluate(report, hdr, reference=None):
     if reference is not None and reference.get("family") != report.get("family"):
         return ["reference holds family %r, capture %r"
                 % (reference.get("family"), report.get("family"))]
-    if report["family"] == "portal":
-        return material_pixel_portal.evaluate(report, reference)
+    if report["family"] in FRAME_FAMILIES:
+        return FRAME_FAMILIES[report["family"]].evaluate(report, reference)
     if report["family"] == "skinning":
         failures = check_skinning(report)
         if reference is not None:
@@ -468,11 +473,11 @@ def run(args):
         evidence["failures"] = ["harness exited %s without a capture" % evidence["returncode"]]
         (output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
         return 2
-    if args.family == "portal":
-        # The harness writes each portal frame to its own raw file; the capture
-        # carries them from here on.
+    if args.family in FRAME_FAMILIES:
+        # The harness writes each frame to its own raw file; the capture carries
+        # them from here on.
         report = json.loads(pixels.read_text())
-        material_pixel_portal.embed_frames(report, pixels.parent)
+        material_pixel_frames.embed_frames(report, pixels.parent)
         pixels.write_text(json.dumps(report) + "\n")
     report = read_pixels(pixels)
     reference = read_pixels(args.reference) if args.reference else None
