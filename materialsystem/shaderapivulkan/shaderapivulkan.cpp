@@ -23,9 +23,15 @@
 #include "materialsystem/deformations.h"
 #include "render/legacy_shader_provider.h"
 #include "vulkan_device.h"
+#include "vtf/vtf.h"
+#include "shaderapi/commandbuffer.h"
+#include "drawstatefixture.h"
 
+#include <algorithm>
 #include <array>
+#include <map>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 //-----------------------------------------------------------------------------
@@ -35,12 +41,243 @@
 // backend genuinely brings up native Vulkan in-process and presents a frame.
 //-----------------------------------------------------------------------------
 static render_vulkan::CVulkanContext g_VulkanContext;
-// Set when a material binds a render-target/framebuffer standard texture (a
-// post-process pass: tonemap, bloom, color correction, framebuffer copy). This
-// backend has no render targets, so those full-screen quads would sample the
-// debug texture and cover the real scene. Skip emitting the next draw when set,
-// leaving the world (drawn straight to the swapchain) visible.
-static bool g_skipPostProcessDraw = false;
+
+//-----------------------------------------------------------------------------
+// Unimplemented-entry census.
+//
+// This backend still answers a large part of IShaderAPI with do-nothing bodies.
+// A silent no-op is indistinguishable from correct behavior at the call site, so
+// a wrong frame gives no clue which dropped call produced it. Every such body
+// records itself here instead, and ReportUnimplementedEntries() prints the
+// totals for a real run: that turns "the frame is wrong" into a ranked list of
+// behavior the engine asked for and this backend did not perform.
+//
+// The table is keyed by the address of the __func__ literal, so a call costs a
+// short pointer scan and never allocates.
+//-----------------------------------------------------------------------------
+struct UnimplementedEntry
+{
+	const char *name;
+	uint64_t calls;
+};
+static UnimplementedEntry g_Unimplemented[256];
+static int g_nUnimplemented = 0;
+
+// Why the most recent material pass did not reach the device ("" = it did).
+// Reset by RenderPass; reported in draw-state fixtures.
+static const char *g_LastDropReason = "";
+
+static void NoteUnimplemented( const char *name )
+{
+	for ( int i = 0; i < g_nUnimplemented; ++i )
+	{
+		if ( g_Unimplemented[i].name == name )
+		{
+			++g_Unimplemented[i].calls;
+			return;
+		}
+	}
+	if ( g_nUnimplemented < static_cast<int>( ARRAYSIZE( g_Unimplemented ) ) )
+	{
+		g_Unimplemented[g_nUnimplemented].name = name;
+		g_Unimplemented[g_nUnimplemented].calls = 1;
+		++g_nUnimplemented;
+	}
+}
+
+#define VK_UNIMPLEMENTED() NoteUnimplemented( __func__ )
+
+static void DropDraw( const char *reason )
+{
+	g_LastDropReason = reason;
+	NoteUnimplemented( reason );
+}
+
+// Primitive types the engine submitted, indexed by MaterialPrimitiveType_t. Every
+// native pipeline rasterizes a triangle list, so anything else here is geometry
+// this backend draws as unrelated triangles.
+static uint64_t g_PrimitiveTypeCounts[16];
+
+// Base-texture residency at the moment each draw is emitted. A draw that samples
+// the default white texture is untextured on screen, so these three totals say
+// whether a blank frame is a rasterization problem or a texture-binding one.
+static int g_boundTextureHandle = -1;
+static uint64_t g_DrawsTextured = 0;   // bound a handle whose pixels were uploaded
+static uint64_t g_DrawsUnuploaded = 0; // bound a handle that was never filled
+static uint64_t g_DrawsUntextured = 0; // bound no texture at all -> default white
+// How much of the run went through render targets, so the report shows
+// whether offscreen passes are really honored rather than landing on the
+// back buffer.
+static uint64_t g_DrawsIntoTargets = 0;
+static uint64_t g_TargetSwitches = 0;
+static uint64_t g_TargetCopies = 0;
+static uint64_t g_TargetCopiesDropped = 0;
+
+// Per-texture identity and bind accounting. A draw that samples a texture the
+// material system never filled is invisible in any per-call log, so record what
+// each handle was created as and how often an unfilled one is actually bound:
+// that names the textures whose upload path is missing.
+struct TextureRecord
+{
+	std::string name;
+	ImageFormat format = IMAGE_FORMAT_UNKNOWN;
+	uint64_t bindsWhileEmpty = 0;
+	uint64_t rejectedAsTarget = 0;
+};
+static std::vector<TextureRecord> g_TextureRecords;
+
+static void NoteTextureCreated( int handle, const char *debugName, ImageFormat format )
+{
+	if ( handle < 0 )
+		return;
+	if ( static_cast<size_t>( handle ) >= g_TextureRecords.size() )
+		g_TextureRecords.resize( static_cast<size_t>( handle ) + 1 );
+	g_TextureRecords[static_cast<size_t>( handle )].name = debugName ? debugName : "(unnamed)";
+	g_TextureRecords[static_cast<size_t>( handle )].format = format;
+}
+
+// True when the draw about to be emitted samples real material pixels. Both the
+// "no texture bound" and the "bound a texture nothing ever filled" cases sample
+// something this backend invented, so neither is a drawable surface.
+// Whether the pipeline the current pass selected samples $basetexture at all.
+// The vertex-color, greenify and constant-color pipelines do not, so a missing
+// base texture is irrelevant to them and must not suppress their draws.
+static bool g_SamplesBaseTexture = true;
+// The viewport the material system last set, reported back by GetViewports.
+// Width 0 means "the whole current target", which is what D3D9 resets it to
+// whenever the render target changes.
+static ShaderViewport_t g_Viewport;
+
+// Blend mode and alpha-test reference the current pass selected (BeginPass).
+static render_vulkan::CVulkanContext::DynRasterState g_CurrentRaster;
+static float g_CurrentAlphaRef = -1.0f;
+
+static bool HasResidentBaseTexture()
+{
+	if ( !g_SamplesBaseTexture )
+		return true;
+	return g_boundTextureHandle >= 0 &&
+	       g_VulkanContext.IsManagedTextureUploaded( g_boundTextureHandle );
+}
+
+static void NoteDrawTextureResidency()
+{
+	if ( g_VulkanContext.RenderTarget() >= 0 )
+		++g_DrawsIntoTargets;
+	if ( g_boundTextureHandle < 0 )
+		++g_DrawsUntextured;
+	else if ( g_VulkanContext.IsManagedTextureUploaded( g_boundTextureHandle ) )
+		++g_DrawsTextured;
+	else
+	{
+		++g_DrawsUnuploaded;
+		if ( static_cast<size_t>( g_boundTextureHandle ) < g_TextureRecords.size() )
+			++g_TextureRecords[static_cast<size_t>( g_boundTextureHandle )].bindsWhileEmpty;
+	}
+}
+
+static void NotePrimitiveType( MaterialPrimitiveType_t type )
+{
+	const int index = static_cast<int>( type );
+	if ( index >= 0 && index < static_cast<int>( ARRAYSIZE( g_PrimitiveTypeCounts ) ) )
+		++g_PrimitiveTypeCounts[index];
+}
+
+static void ReportUnimplementedEntries()
+{
+	static const char *const kPrimitiveNames[] = { "POINTS", "LINES", "TRIANGLES", "TRIANGLE_STRIP",
+	    "LINE_STRIP", "LINE_LOOP", "POLYGON", "QUADS", "INSTANCED_QUADS" };
+	for ( int i = 0; i < static_cast<int>( ARRAYSIZE( kPrimitiveNames ) ); ++i )
+	{
+		if ( g_PrimitiveTypeCounts[i] )
+		{
+			fprintf( stderr, "[vulkan] primitive %-16s draws=%llu\n", kPrimitiveNames[i],
+			    static_cast<unsigned long long>( g_PrimitiveTypeCounts[i] ) );
+		}
+	}
+
+	fprintf( stderr, "[vulkan] draws textured=%llu unuploaded=%llu untextured=%llu\n",
+	    static_cast<unsigned long long>( g_DrawsTextured ),
+	    static_cast<unsigned long long>( g_DrawsUnuploaded ),
+	    static_cast<unsigned long long>( g_DrawsUntextured ) );
+
+	fprintf( stderr,
+	    "[vulkan] render targets: draws=%llu switches=%llu copies=%llu copies-dropped=%llu\n",
+	    static_cast<unsigned long long>( g_DrawsIntoTargets ),
+	    static_cast<unsigned long long>( g_TargetSwitches ),
+	    static_cast<unsigned long long>( g_TargetCopies ),
+	    static_cast<unsigned long long>( g_TargetCopiesDropped ) );
+
+	// The textures a draw sampled while still empty, worst first: these are the
+	// materials whose pixels never reached this backend.
+	std::vector<const TextureRecord *> empties;
+	for ( const TextureRecord &rec : g_TextureRecords )
+	{
+		if ( rec.bindsWhileEmpty )
+			empties.push_back( &rec );
+	}
+	std::sort( empties.begin(), empties.end(),
+	    []( const TextureRecord *a, const TextureRecord *b )
+	    {
+		    return a->bindsWhileEmpty > b->bindsWhileEmpty;
+	    } );
+	fprintf( stderr, "[vulkan] %zu distinct textures were sampled while empty\n", empties.size() );
+	for ( size_t i = 0; i < empties.size() && i < 20; ++i )
+	{
+		fprintf( stderr, "[vulkan]   empty-sampled binds=%-7llu fmt=%-3d %s\n",
+		    static_cast<unsigned long long>( empties[i]->bindsWhileEmpty ),
+		    static_cast<int>( empties[i]->format ), empties[i]->name.c_str() );
+	}
+
+	for ( const TextureRecord &rec : g_TextureRecords )
+	{
+		if ( rec.rejectedAsTarget )
+			fprintf( stderr, "[vulkan]   rejected-as-target calls=%-7llu fmt=%-3d %s\n",
+			    static_cast<unsigned long long>( rec.rejectedAsTarget ),
+			    static_cast<int>( rec.format ), rec.name.c_str() );
+	}
+	fprintf(
+	    stderr, "[vulkan] captured frame stream:\n%s", g_VulkanContext.DescribeStream().c_str() );
+	auto textureName = []( int handle ) -> const char *
+	{
+		if ( handle >= 0 && static_cast<size_t>( handle ) < g_TextureRecords.size() )
+			return g_TextureRecords[static_cast<size_t>( handle )].name.c_str();
+		return "(none)";
+	};
+	static const char *const kKinds[] = { "draw", "clear", "copy" };
+	for ( const auto &r : g_VulkanContext.DescribeStreamRecords() )
+	{
+		fprintf( stderr,
+		    "[vulkan]   %-5s tgt=%-4d sh=%d blend=%d verts=%-6u mod=%.2f,%.2f,%.2f,%.2f "
+		    "vcol=%.2f,%.2f,%.2f vp=%.0f,%.0f,%.0f,%.0f uv=[%.2f..%.2f,%.2f..%.2f] "
+		    "xf=%.2f,%.2f,%.2f,%.2f/%.2f,%.2f,%.2f,%.2f tex=%s\n",
+		    kKinds[r.kind], r.target, r.shaderIndex, r.raster.blend, r.vertexCount, r.modulation[0],
+		    r.modulation[1], r.modulation[2], r.modulation[3], r.firstColor[0], r.firstColor[1],
+		    r.firstColor[2], r.viewport[0], r.viewport[1], r.viewport[2], r.viewport[3], r.uvMin[0],
+		    r.uvMax[0], r.uvMin[1], r.uvMax[1], r.texXform0[0], r.texXform0[1], r.texXform0[2],
+		    r.texXform0[3], r.texXform1[0], r.texXform1[1], r.texXform1[2], r.texXform1[3],
+		    r.kind == 0 ? textureName( r.texHandle ) : textureName( r.target ) );
+	}
+
+	// Most-called first: that ordering is the work list.
+	for ( int i = 0; i < g_nUnimplemented; ++i )
+	{
+		for ( int j = i + 1; j < g_nUnimplemented; ++j )
+		{
+			if ( g_Unimplemented[j].calls > g_Unimplemented[i].calls )
+			{
+				UnimplementedEntry tmp = g_Unimplemented[i];
+				g_Unimplemented[i] = g_Unimplemented[j];
+				g_Unimplemented[j] = tmp;
+			}
+		}
+	}
+	for ( int i = 0; i < g_nUnimplemented; ++i )
+	{
+		fprintf( stderr, "[vulkan] unimplemented %-40s calls=%llu\n", g_Unimplemented[i].name,
+		    static_cast<unsigned long long>( g_Unimplemented[i].calls ) );
+	}
+}
 
 //-----------------------------------------------------------------------------
 // The empty mesh
@@ -81,6 +318,12 @@ public:
 	// returns the # of vertices (static meshes only)
 	int VertexCount() const;
 
+	// Where this mesh's vertices and indices come from for the next draw. The
+	// world draws a dynamic index list over a static mesh's vertices
+	// (GetDynamicMesh with a vertex override), and a batch reuses the indices
+	// just built into the dynamic mesh itself (the index override is the mesh).
+	void SetSources( IMesh *pVertexOverride, IMesh *pIndexOverride );
+
 	// Sets the primitive type
 	void SetPrimitiveType( MaterialPrimitiveType_t type );
 
@@ -113,7 +356,7 @@ public:
 
 	void SetColorMesh( IMesh *pColorMesh, int nVertexOffset ) {}
 
-	virtual int IndexCount() const { return 0; }
+	virtual int IndexCount() const { return m_numIndices; }
 
 	virtual void SetFlexMesh( IMesh *pMesh, int nVertexOffset ) {}
 
@@ -130,19 +373,25 @@ public:
 private:
 	enum
 	{
-		VERTEX_BUFFER_SIZE = 1024 * 1024,
-		// Index slots (unsigned short each). Real Source geometry is indexed, so the
-		// backend must keep the index buffer, not discard it.
-		INDEX_BUFFER_SIZE = 1024 * 1024
+		// Upper bounds on a single lock. A static mesh sizes its storage to what
+		// it locks; these only keep a corrupt count from exhausting memory.
+		kMaxLockVertices = 4 * 1024 * 1024,
+		kMaxLockIndices = 16 * 1024 * 1024
 	};
 
-	unsigned char *m_pVertexMemory;
-	// Index buffer the mesh builder writes into (unsigned short). Draw() uses it to
-	// assemble triangles in the authored order; without it, drawing the shared
-	// vertices sequentially scrambles the geometry into noise.
-	unsigned short *m_pIndexMemory;
+	// Each mesh owns its geometry. Static meshes (world, models) are built once at
+	// load and drawn many times, so they must not share storage: when they did,
+	// every build overwrote the last and every draw replayed whichever mesh was
+	// locked most recently.
+	std::vector<unsigned char> m_vertexData;
+	// Index list the mesh builder writes into (unsigned short). Draw() uses it to
+	// assemble triangles in the authored order.
+	std::vector<unsigned short> m_indexData;
 	bool m_bIsDynamic;
-	// Vertices locked into m_pVertexMemory as an interleaved position(vec3) +
+	// Draw-time sources (SetSources); null means this mesh's own storage.
+	CEmptyMesh *m_pVertexSource = nullptr;
+	CEmptyMesh *m_pIndexSource = nullptr;
+	// Vertices locked into m_vertexData as an interleaved position(vec3) +
 	// color(4 bytes) layout with stride kMeshVertexStride, so Draw() can forward
 	// real geometry to the native Vulkan dynamic-mesh path.
 	int m_numVerts = 0;
@@ -151,6 +400,10 @@ private:
 	// Index range recorded by the last Draw() call, replayed by EmitToNativeQueue.
 	int m_drawFirst = 0;
 	int m_drawCount = 0;
+	// Topology the mesh builder declared for this geometry. The native pipelines
+	// all rasterize a triangle list, so EmitToNativeQueue assembles the triangles
+	// this type implies rather than assuming the indices already form one.
+	MaterialPrimitiveType_t m_primitiveType = MATERIAL_TRIANGLES;
 	// Scratch target for vertex components this bounded layout does not carry, so
 	// a mesh builder writing them (with size 0) never corrupts position/color.
 	unsigned char m_dummyComponent[64] = { 0 };
@@ -161,6 +414,25 @@ public:
 		kMeshVertexStride = 24
 	}; // 12 bytes position + 4 bytes color + 8 bytes texcoord0
 };
+
+// Every live mesh this backend created. Overrides arrive as IMesh pointers; this
+// is how one is confirmed to be ours before its storage is read, instead of
+// trusting a downcast of whatever the caller passed. Constructed on first use
+// and never destroyed, because meshes are members of global objects whose
+// construction and destruction order relative to this file's globals is not
+// fixed.
+static std::unordered_set<const IMesh *> &LiveMeshes()
+{
+	static auto *s_pLive = new std::unordered_set<const IMesh *>();
+	return *s_pLive;
+}
+
+static CEmptyMesh *AsOwnMesh( IMesh *pMesh )
+{
+	if ( !pMesh || LiveMeshes().find( pMesh ) == LiveMeshes().end() )
+		return nullptr;
+	return static_cast<CEmptyMesh *>( pMesh );
+}
 
 //-----------------------------------------------------------------------------
 // The empty shader shadow
@@ -279,9 +551,11 @@ public:
 	bool m_IsTranslucent;
 	bool m_IsAlphaTested;
 	bool m_bIsDepthWriteEnabled;
+	bool m_bIsDepthTestEnabled = true;
+	ShaderDepthFunc_t m_depthFunc = SHADER_DEPTHFUNC_NEAREROREQUAL;
 	bool m_bUsesVertexAndPixelShaders;
-	// Blend factors recorded during snapshot state (IShaderShadow::BlendFunc), so
-	// TakeSnapshot can classify the D3D9 compositing (opaque/translucent/additive).
+	// Blend factors recorded during snapshot state (IShaderShadow::BlendFunc);
+	// TakeSnapshot turns them, with the depth state, into the native raster state.
 	ShaderBlendFactor_t m_blendSrc = SHADER_BLEND_ONE;
 	ShaderBlendFactor_t m_blendDst = SHADER_BLEND_ZERO;
 	// $alphatest reference [0,1] recorded by AlphaFunc; applied only when
@@ -326,6 +600,7 @@ public:
 			if ( !skip )
 				g_VulkanContext.EndFrame( &error );
 		}
+		g_VulkanContext.EndStreamFrame();
 	}
 	virtual void GetWindowSize( int &width, int &height ) const;
 	virtual bool AddView( void *hwnd );
@@ -368,10 +643,12 @@ public:
 	virtual void SetHardwareGammaRamp( float fGamma, float fGammaTVRangeMin, float fGammaTVRangeMax,
 	    float fGammaTVExponent, bool bTVEnabled )
 	{
+		VK_UNIMPLEMENTED();
 	}
 	virtual void EnableNonInteractiveMode(
 	    MaterialNonInteractiveMode_t mode, ShaderNonInteractiveInfo_t *pInfo )
 	{
+		VK_UNIMPLEMENTED();
 	}
 	virtual void RefreshFrontBufferNonInteractive() {}
 	virtual void HandleThreadEvent( uint32 threadEvent ) {}
@@ -473,6 +750,7 @@ public:
 	virtual void MarkUnusedVertexFields(
 	    unsigned int nFlags, int nTexCoordCount, bool *pUnusedTexCoords )
 	{
+		VK_UNIMPLEMENTED();
 	}
 	virtual bool OwnGPUResources( bool bEnable ) { return false; }
 
@@ -585,16 +863,18 @@ public:
 	void BindBlack( TextureStage_t stage );
 	void BindGrey( TextureStage_t stage );
 	void BindFBTexture( TextureStage_t stage, int textureIdex );
-	void CopyRenderTargetToTexture( ShaderAPITextureHandle_t texID ) {}
+	void CopyRenderTargetToTexture( ShaderAPITextureHandle_t texID )
+	{
+		CopyRenderTargetToTextureEx( texID, 0, nullptr, nullptr );
+	}
 
 	void CopyRenderTargetToTextureEx(
-	    ShaderAPITextureHandle_t texID, int nRenderTargetID, Rect_t *pSrcRect, Rect_t *pDstRect )
-	{
-	}
+	    ShaderAPITextureHandle_t texID, int nRenderTargetID, Rect_t *pSrcRect, Rect_t *pDstRect );
 
 	void CopyTextureToRenderTargetEx( int nRenderTargetID, ShaderAPITextureHandle_t textureHandle,
 	    Rect_t *pSrcRect, Rect_t *pDstRect )
 	{
+		VK_UNIMPLEMENTED();
 	}
 
 	// Special system flat normal map binding.
@@ -621,6 +901,8 @@ public:
 
 	// Renders a single pass of a material
 	void RenderPass( int nPass, int nPassCount );
+	// Records the pass just rendered as a draw-state fixture.
+	void RecordDrawStateFixture( int nPass, int nPassCount );
 
 	// stuff related to matrix stacks
 	void MatrixMode( MaterialMatrixMode_t matrixMode );
@@ -730,12 +1012,11 @@ public:
 	void SetRenderTarget(
 	    ShaderAPITextureHandle_t colorTextureHandle, ShaderAPITextureHandle_t depthTextureHandle )
 	{
+		SetRenderTargetEx( 0, colorTextureHandle, depthTextureHandle );
 	}
 
 	void SetRenderTargetEx( int nRenderTargetID, ShaderAPITextureHandle_t colorTextureHandle,
-	    ShaderAPITextureHandle_t depthTextureHandle )
-	{
-	}
+	    ShaderAPITextureHandle_t depthTextureHandle );
 
 	// Indicates we're going to be modifying this texture
 	// TexImage2D, TexSubImage2D, TexWrap, TexMinFilter, and TexMagFilter
@@ -955,23 +1236,24 @@ public:
 	// Gets the bound morph's vertex format; returns 0 if no morph is bound
 	virtual MorphFormat_t GetBoundMorphFormat() { return 0; }
 
-	// Binds a standard texture (lightmaps, and the fallback the material system uses
-	// when a material's real texture is not yet resident). Binding the pre-created
-	// white texture here reveals unresidented surfaces as flat-lit geometry, but it
-	// destabilized the boot run (exit/capture stall), so it is left as a no-op until
-	// the world-texture residency path is finished. See the native Vulkan progress
-	// record for the remaining world-texture work.
+	// Binds a standard texture (white/black/grey, lightmap pages, frame-buffer
+	// copies, ...). The material system owns every one of them and resolves the id
+	// to a real texture it binds back through BindTexture -- exactly what the D3D9
+	// backend defers to. The bound handle is cleared first, so an id that resolves
+	// to nothing leaves no previous material's texture in place.
 	virtual void BindStandardTexture( Sampler_t stage, StandardTextureId_t id )
 	{
-		// A render-target/framebuffer texture bound to sampler0 marks a post-process
-		// pass this backend cannot reproduce (no render targets). Flag its draw to be
-		// skipped so it does not paint the debug texture over the real scene.
-		if ( stage == SHADER_SAMPLER0 && id >= TEXTURE_FRAME_BUFFER_FULL_TEXTURE_0 )
-			g_skipPostProcessDraw = true;
+		if ( stage == SHADER_SAMPLER0 )
+		{
+			g_boundTextureHandle = -1;
+			g_VulkanContext.BindManagedTexture( -1 );
+		}
+		ShaderUtil()->BindStandardTexture( stage, id );
 	}
 
 	virtual void BindStandardVertexTexture( VertexTextureSampler_t stage, StandardTextureId_t id )
 	{
+		VK_UNIMPLEMENTED();
 	}
 
 	virtual void GetStandardTextureDimensions( int *pWidth, int *pHeight, StandardTextureId_t id )
@@ -981,11 +1263,13 @@ public:
 
 	virtual void SetFlashlightState( const FlashlightState_t &state, const VMatrix &worldToTexture )
 	{
+		VK_UNIMPLEMENTED();
 	}
 
 	virtual void SetFlashlightStateEx( const FlashlightState_t &state,
 	    const VMatrix &worldToTexture, ITexture *pFlashlightDepthTexture )
 	{
+		VK_UNIMPLEMENTED();
 	}
 
 	virtual const FlashlightState_t &GetFlashlightState( VMatrix &worldToTexture ) const
@@ -1017,6 +1301,7 @@ public:
 	virtual void BindVertexTexture(
 	    VertexTextureSampler_t nSampler, ShaderAPITextureHandle_t hTexture )
 	{
+		VK_UNIMPLEMENTED();
 	}
 
 	// Sets morph target factors
@@ -1108,6 +1393,7 @@ public:
 	virtual void ComputeVertexDescription(
 	    unsigned char *pBuffer, VertexFormat_t vertexFormat, MeshDesc_t &desc ) const
 	{
+		VK_UNIMPLEMENTED();
 	}
 
 	virtual bool SupportsShadowDepthTextures() { return false; }
@@ -1122,6 +1408,7 @@ public:
 	virtual void SetShadowDepthBiasFactors(
 	    float fShadowSlopeScaleDepthBias, float fShadowDepthBias )
 	{
+		VK_UNIMPLEMENTED();
 	}
 
 	virtual void SetDisallowAccess( bool ) {}
@@ -1133,9 +1420,14 @@ public:
 	void BindVertexBuffer( int streamID, IVertexBuffer *pVertexBuffer, int nOffsetInBytes,
 	    int nFirstVertex, int nVertexCount, VertexFormat_t fmt, int nRepetitions1 )
 	{
+		VK_UNIMPLEMENTED();
 	}
 	void BindIndexBuffer( IIndexBuffer *pIndexBuffer, int nOffsetInBytes ) {}
-	void Draw( MaterialPrimitiveType_t primitiveType, int firstIndex, int numIndices ) {}
+	void Draw( MaterialPrimitiveType_t primitiveType, int firstIndex, int numIndices )
+	{
+		NotePrimitiveType( primitiveType );
+		VK_UNIMPLEMENTED();
+	}
 	// ------------ End ----------------------------
 
 	virtual int GetVertexBufferCompression( void ) const { return 0; };
@@ -1161,19 +1453,21 @@ public:
 
 	void SetStandardTextureHandle( StandardTextureId_t, ShaderAPITextureHandle_t ) {}
 
-	virtual void ExecuteCommandBuffer( uint8 *pData ) {}
+	virtual void ExecuteCommandBuffer( uint8 *pData );
 	virtual bool GetHDREnabled( void ) const { return true; }
 	virtual void SetHDREnabled( bool bEnable ) {}
 
 	virtual void CopyRenderTargetToScratchTexture( ShaderAPITextureHandle_t srcRt,
 	    ShaderAPITextureHandle_t dstTex, Rect_t *pSrcRect = NULL, Rect_t *pDstRect = NULL )
 	{
+		VK_UNIMPLEMENTED();
 	}
 
 	// Allows locking and unlocking of very specific surface types.
 	virtual void LockRect( void **pOutBits, int *pOutPitch, ShaderAPITextureHandle_t texHandle,
 	    int mipmap, int x, int y, int w, int h, bool bWrite, bool bRead )
 	{
+		VK_UNIMPLEMENTED();
 	}
 
 	virtual void UnlockRect( ShaderAPITextureHandle_t texHandle, int mipmap ) {}
@@ -1185,6 +1479,7 @@ public:
 	virtual void CopyTextureToTexture(
 	    ShaderAPITextureHandle_t srcTex, ShaderAPITextureHandle_t dstTex )
 	{
+		VK_UNIMPLEMENTED();
 	}
 
 	void PrintfVA( char *fmt, va_list vargs ) {}
@@ -1434,6 +1729,7 @@ void CShaderDeviceMgrVulkan::GetModeInfo(
 
 void CShaderDeviceMgrVulkan::GetCurrentModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter ) const
 {
+	VK_UNIMPLEMENTED();
 }
 
 //-----------------------------------------------------------------------------
@@ -1484,30 +1780,39 @@ bool CShaderDeviceVulkan::AddView( void *hwnd )
 
 void CShaderDeviceVulkan::RemoveView( void *hwnd )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Activates a view
 void CShaderDeviceVulkan::SetView( void *hwnd )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderDeviceVulkan::ReleaseResources()
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderDeviceVulkan::ReacquireResources()
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Creates/destroys Mesh
 IMesh *CShaderDeviceVulkan::CreateStaticMesh(
     VertexFormat_t fmt, const char *pTextureBudgetGroup, IMaterial *pMaterial )
 {
-	return &m_Mesh;
+	// A static mesh is built once and drawn many times, so it needs storage of
+	// its own; the caller owns it until DestroyStaticMesh.
+	return new CEmptyMesh( false );
 }
 
 void CShaderDeviceVulkan::DestroyStaticMesh( IMesh *mesh )
 {
+	CEmptyMesh *own = AsOwnMesh( mesh );
+	if ( own && own != &m_Mesh && own != &m_DynamicMesh )
+		delete own;
 }
 
 // Creates/destroys static vertex + index buffers
@@ -1515,12 +1820,15 @@ IVertexBuffer *CShaderDeviceVulkan::CreateVertexBuffer(
     ShaderBufferType_t type, VertexFormat_t fmt, int nVertexCount, const char *pTextureBudgetGroup )
 {
 	return ( type == SHADER_BUFFER_TYPE_STATIC || type == SHADER_BUFFER_TYPE_STATIC_TEMP )
-	           ? &m_Mesh
+	           ? static_cast<IVertexBuffer *>( new CEmptyMesh( false ) )
 	           : &m_DynamicMesh;
 }
 
 void CShaderDeviceVulkan::DestroyVertexBuffer( IVertexBuffer *pVertexBuffer )
 {
+	// Only static buffers are allocated per call; the dynamic one is shared.
+	if ( pVertexBuffer && pVertexBuffer != &m_DynamicMesh && pVertexBuffer != &m_Mesh )
+		DestroyStaticMesh( static_cast<CEmptyMesh *>( pVertexBuffer ) );
 }
 
 IIndexBuffer *CShaderDeviceVulkan::CreateIndexBuffer( ShaderBufferType_t bufferType,
@@ -1530,7 +1838,7 @@ IIndexBuffer *CShaderDeviceVulkan::CreateIndexBuffer( ShaderBufferType_t bufferT
 	{
 	case SHADER_BUFFER_TYPE_STATIC:
 	case SHADER_BUFFER_TYPE_STATIC_TEMP:
-		return &m_Mesh;
+		return new CEmptyMesh( false );
 	default:
 		Assert( 0 );
 	case SHADER_BUFFER_TYPE_DYNAMIC:
@@ -1541,6 +1849,8 @@ IIndexBuffer *CShaderDeviceVulkan::CreateIndexBuffer( ShaderBufferType_t bufferT
 
 void CShaderDeviceVulkan::DestroyIndexBuffer( IIndexBuffer *pIndexBuffer )
 {
+	if ( pIndexBuffer && pIndexBuffer != &m_DynamicMesh && pIndexBuffer != &m_Mesh )
+		DestroyStaticMesh( static_cast<CEmptyMesh *>( pIndexBuffer ) );
 }
 
 IVertexBuffer *CShaderDeviceVulkan::GetDynamicVertexBuffer(
@@ -1562,24 +1872,36 @@ IIndexBuffer *CShaderDeviceVulkan::GetDynamicIndexBuffer(
 //-----------------------------------------------------------------------------
 CEmptyMesh::CEmptyMesh( bool bIsDynamic ) : m_bIsDynamic( bIsDynamic )
 {
-	m_pVertexMemory = new unsigned char[VERTEX_BUFFER_SIZE];
-	m_pIndexMemory = new unsigned short[INDEX_BUFFER_SIZE];
+	LiveMeshes().insert( this );
 }
 
 CEmptyMesh::~CEmptyMesh()
 {
-	delete[] m_pVertexMemory;
-	delete[] m_pIndexMemory;
+	LiveMeshes().erase( this );
+}
+
+void CEmptyMesh::SetSources( IMesh *pVertexOverride, IMesh *pIndexOverride )
+{
+	CEmptyMesh *vertexSource = AsOwnMesh( pVertexOverride );
+	CEmptyMesh *indexSource = AsOwnMesh( pIndexOverride );
+	if ( ( pVertexOverride && !vertexSource ) || ( pIndexOverride && !indexSource ) )
+		NoteUnimplemented( "GetDynamicMesh(foreign override mesh)" );
+	m_pVertexSource = ( vertexSource == this ) ? nullptr : vertexSource;
+	m_pIndexSource = ( indexSource == this ) ? nullptr : indexSource;
 }
 
 bool CEmptyMesh::Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t &desc )
 {
-	// Hand out the real index buffer so the mesh builder's authored indices are
+	// Hand out real index storage so the mesh builder's authored indices are
 	// kept (m_nIndexSize = 1 advances one slot per index). Draw() replays the
-	// geometry in this order. Clamp to the buffer; overflow would corrupt memory.
-	if ( nMaxIndexCount > INDEX_BUFFER_SIZE )
-		nMaxIndexCount = INDEX_BUFFER_SIZE;
-	desc.m_pIndices = m_pIndexMemory;
+	// geometry in this order.
+	if ( nMaxIndexCount < 0 )
+		nMaxIndexCount = 0;
+	if ( nMaxIndexCount > kMaxLockIndices )
+		nMaxIndexCount = kMaxLockIndices;
+	if ( m_indexData.size() < static_cast<size_t>( nMaxIndexCount ) + 1 )
+		m_indexData.resize( static_cast<size_t>( nMaxIndexCount ) + 1 );
+	desc.m_pIndices = m_indexData.data();
 	desc.m_nIndexSize = 1;
 	desc.m_nFirstIndex = 0;
 	desc.m_nOffset = 0;
@@ -1589,11 +1911,26 @@ bool CEmptyMesh::Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t &desc )
 
 void CEmptyMesh::Unlock( int nWrittenIndexCount, IndexDesc_t &desc )
 {
+	if ( nWrittenIndexCount >= 0 && nWrittenIndexCount <= m_numIndices )
+		m_numIndices = nWrittenIndexCount;
 }
 
 void CEmptyMesh::ModifyBegin( bool bReadOnly, int nFirstIndex, int nIndexCount, IndexDesc_t &desc )
 {
-	Lock( nIndexCount, false, desc );
+	// Modify the existing list in place; relocking would discard it.
+	if ( nFirstIndex < 0 || nIndexCount < 0 ||
+	     static_cast<size_t>( nFirstIndex ) + nIndexCount > m_indexData.size() )
+	{
+		desc.m_pIndices = reinterpret_cast<unsigned short *>( m_dummyComponent );
+		desc.m_nIndexSize = 0;
+		desc.m_nFirstIndex = 0;
+		desc.m_nOffset = 0;
+		return;
+	}
+	desc.m_pIndices = m_indexData.data() + nFirstIndex;
+	desc.m_nIndexSize = 1;
+	desc.m_nFirstIndex = 0;
+	desc.m_nOffset = 0;
 }
 
 void CEmptyMesh::ModifyEnd( IndexDesc_t &desc )
@@ -1615,10 +1952,30 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 	// at offset 12, stride kMeshVertexStride. Components this bounded backend
 	// does not carry point at a dummy scratch with size 0, so writing them never
 	// disturbs position/color.
+	if ( nVertexCount < 0 )
+		nVertexCount = 0;
+	if ( nVertexCount > kMaxLockVertices )
+		nVertexCount = kMaxLockVertices;
 	m_numVerts = nVertexCount;
+	// One spare vertex keeps the pointers valid for a zero-vertex (index-only)
+	// lock, which the builder still addresses.
+	const size_t bytes = ( static_cast<size_t>( nVertexCount ) + 1 ) * kMeshVertexStride;
+	if ( m_vertexData.size() < bytes )
+		m_vertexData.resize( bytes );
+	unsigned char *const vertexMemory = m_vertexData.data();
 
-	desc.m_pPosition = (float *)( m_pVertexMemory );
-	desc.m_pColor = m_pVertexMemory + 12;
+	// Seed the color field with opaque white before the builder writes anything.
+	// The shader MULTIPLIES by vertex color, and most Source vertex formats -- the
+	// lightmapped world format above all -- carry no color at all, so the builder
+	// never writes this field. Leaving it as whatever the allocation held means
+	// multiplying the entire world by zero, which renders it black no matter how
+	// correct its geometry and textures are. White is the identity, and a format
+	// that does author colors simply overwrites it.
+	for ( int v = 0; v < nVertexCount; ++v )
+		memset( vertexMemory + static_cast<size_t>( v ) * kMeshVertexStride + 12, 0xFF, 4 );
+
+	desc.m_pPosition = (float *)( vertexMemory );
+	desc.m_pColor = vertexMemory + 12;
 	desc.m_VertexSize_Position = kMeshVertexStride;
 	desc.m_VertexSize_Color = kMeshVertexStride;
 
@@ -1630,7 +1987,7 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 	{
 		if ( i == 0 )
 		{
-			desc.m_pTexCoord[i] = (float *)( m_pVertexMemory + 16 );
+			desc.m_pTexCoord[i] = (float *)( vertexMemory + 16 );
 			desc.m_VertexSize_TexCoord[i] = kMeshVertexStride;
 		}
 		else
@@ -1661,6 +2018,8 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 
 void CEmptyMesh::Unlock( int nVertexCount, VertexDesc_t &desc )
 {
+	if ( nVertexCount >= 0 && nVertexCount <= m_numVerts )
+		m_numVerts = nVertexCount;
 }
 
 void CEmptyMesh::Spew( int nVertexCount, const VertexDesc_t &desc )
@@ -1690,8 +2049,36 @@ void CEmptyMesh::UnlockMesh( int numVerts, int numIndices, MeshDesc_t &desc )
 void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, int firstIndex,
     int numIndices, MeshDesc_t &desc )
 {
-	Lock( numVerts, false, *static_cast<VertexDesc_t *>( &desc ) );
-	Lock( numIndices, false, *static_cast<IndexDesc_t *>( &desc ) );
+	// Modify existing geometry in place (e.g. rewriting a static mesh's colors).
+	// Relocking would reseed the colors and forget the vertex count.
+	VertexDesc_t &vdesc = *static_cast<VertexDesc_t *>( &desc );
+	const size_t vertexCapacity = m_vertexData.size() / kMeshVertexStride;
+	if ( firstVertex < 0 || numVerts < 0 ||
+	     static_cast<size_t>( firstVertex ) + numVerts > vertexCapacity )
+	{
+		// Out of range: point every component at the scratch with zero stride.
+		const int keepVerts = m_numVerts;
+		Lock( 0, false, vdesc );
+		m_numVerts = keepVerts;
+		vdesc.m_pPosition = (float *)m_dummyComponent;
+		vdesc.m_pColor = m_dummyComponent;
+		vdesc.m_VertexSize_Position = 0;
+		vdesc.m_VertexSize_Color = 0;
+		vdesc.m_pTexCoord[0] = (float *)m_dummyComponent;
+		vdesc.m_VertexSize_TexCoord[0] = 0;
+	}
+	else
+	{
+		const int keepVerts = m_numVerts;
+		Lock( 0, false, vdesc ); // fills the scratch pointers for other components
+		m_numVerts = keepVerts;
+		unsigned char *base =
+		    m_vertexData.data() + static_cast<size_t>( firstVertex ) * kMeshVertexStride;
+		vdesc.m_pPosition = (float *)base;
+		vdesc.m_pColor = base + 12;
+		vdesc.m_pTexCoord[0] = (float *)( base + 16 );
+	}
+	ModifyBegin( bReadOnly, firstIndex, numIndices, *static_cast<IndexDesc_t *>( &desc ) );
 }
 
 void CEmptyMesh::ModifyBegin(
@@ -1707,12 +2094,14 @@ void CEmptyMesh::ModifyEnd( MeshDesc_t &desc )
 // returns the # of vertices (static meshes only)
 int CEmptyMesh::VertexCount() const
 {
-	return 0;
+	return m_numVerts;
 }
 
 // Sets the primitive type
 void CEmptyMesh::SetPrimitiveType( MaterialPrimitiveType_t type )
 {
+	NotePrimitiveType( type );
+	m_primitiveType = type;
 }
 
 // The material and mesh the engine is currently drawing, so IMesh::Draw can run
@@ -1722,17 +2111,83 @@ void CEmptyMesh::SetPrimitiveType( MaterialPrimitiveType_t type )
 // mesh and kicks the material, whose RenderPass emits the geometry with the
 // material's selected shader, modulation, textures and blend state.
 static IMaterialInternal *g_pBoundMaterial = nullptr;
+
+// Stable small ids for material names, so each recorded draw can say which
+// material produced it without the device knowing about materials.
+static std::vector<std::string> g_MaterialTags;
+
+static int MaterialTag( IMaterial *pMaterial )
+{
+	const char *name = pMaterial ? pMaterial->GetName() : "(no material)";
+	for ( size_t i = 0; i < g_MaterialTags.size(); ++i )
+	{
+		if ( g_MaterialTags[i] == name )
+			return static_cast<int>( i );
+	}
+	if ( g_MaterialTags.size() >= 4096 )
+		return -1;
+	g_MaterialTags.emplace_back( name );
+	return static_cast<int>( g_MaterialTags.size() - 1 );
+}
+
+static const char *MaterialTagName( int tag )
+{
+	return ( tag >= 0 && static_cast<size_t>( tag ) < g_MaterialTags.size() )
+	           ? g_MaterialTags[static_cast<size_t>( tag )].c_str()
+	           : "?";
+}
+
+// Which materials' draws were dropped, by name, for the census report.
+static std::vector<std::pair<std::string, uint64_t>> g_DroppedMaterials;
+
+static void NoteDroppedMaterial()
+{
+	const char *name = g_pBoundMaterial ? g_pBoundMaterial->GetName() : "(no material)";
+	for ( auto &entry : g_DroppedMaterials )
+	{
+		if ( entry.first == name )
+		{
+			++entry.second;
+			return;
+		}
+	}
+	if ( g_DroppedMaterials.size() < 256 )
+		g_DroppedMaterials.emplace_back( name, 1 );
+}
+
+static void ReportDroppedMaterials()
+{
+	// The captured frame's records with the material that issued each one.
+	for ( const auto &r : g_VulkanContext.DescribeStreamRecords() )
+	{
+		if ( r.kind == 1 )
+			fprintf( stderr,
+			    "[vulkan]   frame clear tgt=%d color=%d depth=%d value=%.2f,%.2f,%.2f,%.2f\n",
+			    r.target, r.clearColor, r.clearDepth, r.clearValue[0], r.clearValue[1],
+			    r.clearValue[2], r.clearValue[3] );
+		else
+			fprintf( stderr, "[vulkan]   frame %s tgt=%d blend=%d verts=%u material=%s\n",
+			    r.kind == 0 ? "draw" : "copy", r.target, r.raster.blend, r.vertexCount,
+			    MaterialTagName( r.tag ) );
+	}
+	for ( const auto &entry : g_DroppedMaterials )
+		fprintf( stderr, "[vulkan]   dropped material draws=%-7llu %s\n",
+		    static_cast<unsigned long long>( entry.second ), entry.first.c_str() );
+}
 static CEmptyMesh *g_pRenderMesh = nullptr;
 
 // Draws the entire mesh
 void CEmptyMesh::Draw( int firstIndex, int numIndices )
 {
-	if ( !g_VulkanContext.IsValid() || !g_VulkanContext.DynamicMeshReady() || m_numVerts <= 0 )
+	const CEmptyMesh &vertices = m_pVertexSource ? *m_pVertexSource : *this;
+	const CEmptyMesh &indices = m_pIndexSource ? *m_pIndexSource : *this;
+	if ( !g_VulkanContext.IsValid() || !g_VulkanContext.DynamicMeshReady() ||
+	     vertices.m_numVerts <= 0 )
 		return;
 
 	// Record the index range. mesh->Draw() passes (-1, 0) meaning "the whole mesh".
 	m_drawFirst = ( firstIndex > 0 ) ? firstIndex : 0;
-	m_drawCount = ( numIndices > 0 ) ? numIndices : m_numIndices;
+	m_drawCount = ( numIndices > 0 ) ? numIndices : indices.m_numIndices;
 
 	// Run the real material path: the bound material's shader executes, selecting
 	// its native pipeline and constants via BeginPass, and calls back into
@@ -1748,22 +2203,36 @@ void CEmptyMesh::Draw( int firstIndex, int numIndices )
 
 void CEmptyMesh::EmitToNativeQueue()
 {
-	if ( !g_VulkanContext.IsValid() || !g_VulkanContext.DynamicMeshReady() || m_numVerts <= 0 )
+	const CEmptyMesh &vertices = m_pVertexSource ? *m_pVertexSource : *this;
+	const CEmptyMesh &indices = m_pIndexSource ? *m_pIndexSource : *this;
+	const int numVerts = vertices.m_numVerts;
+	if ( !g_VulkanContext.IsValid() || !g_VulkanContext.DynamicMeshReady() )
 		return;
-	// Skip a post-process pass that samples a render target this backend lacks, so
-	// it does not cover the real scene with the debug texture.
-	if ( g_skipPostProcessDraw )
+	// Every way a requested draw can fail to reach the GPU is recorded by name, so
+	// the census shows how much of the frame each one costs.
+	if ( numVerts <= 0 )
 	{
-		g_skipPostProcessDraw = false;
+		DropDraw( "draw dropped: mesh has no vertices" );
+		return;
+	}
+	const int first = m_drawFirst;
+	int count = m_drawCount;
+	// Never read past the indices actually written.
+	if ( count > 0 && first + count > indices.m_numIndices )
+	{
+		NoteUnimplemented( "draw clipped: index range past written indices" );
+		count = std::max( 0, indices.m_numIndices - first );
+	}
+	if ( m_drawCount > 0 && count <= 0 )
+	{
+		DropDraw( "draw dropped: no indices in range" );
 		return;
 	}
 
-	const int first = m_drawFirst;
-	const int count = m_drawCount;
-
 	auto appendVertex = [&]( std::vector<float> &out, int v )
 	{
-		const unsigned char *base = m_pVertexMemory + static_cast<size_t>( v ) * kMeshVertexStride;
+		const unsigned char *base =
+		    vertices.m_vertexData.data() + static_cast<size_t>( v ) * kMeshVertexStride;
 		float pos[3], uv[2];
 		memcpy( pos, base, sizeof( pos ) );
 		memcpy( uv, base + 16, sizeof( uv ) );
@@ -1778,34 +2247,106 @@ void CEmptyMesh::EmitToNativeQueue()
 		out.push_back( uv[1] );
 	};
 
+	// Element i of this draw, in mesh vertex indices. Indexed geometry reads the
+	// authored index list; non-indexed geometry is the vertices in order.
+	const int elementCount = ( count > 0 ) ? count : numVerts;
+	auto element = [&]( int i ) -> int
+	{
+		if ( count <= 0 )
+			return i;
+		return static_cast<int>( indices.m_indexData[static_cast<size_t>( first + i )] );
+	};
+
 	std::vector<float> interleaved;
-	if ( count > 0 )
+	interleaved.reserve( static_cast<size_t>( elementCount ) * 8 );
+
+	auto appendTriangle = [&]( int a, int b, int c )
 	{
-		// Indexed geometry: expand the authored index list into a triangle list, so
-		// the shared vertices are assembled into the correct triangles.
-		interleaved.reserve( static_cast<size_t>( count ) * 8 );
-		for ( int i = 0; i < count; ++i )
+		if ( a < 0 || b < 0 || c < 0 || a >= numVerts || b >= numVerts || c >= numVerts )
 		{
-			const int idx = static_cast<int>( m_pIndexMemory[first + i] );
-			if ( idx >= 0 && idx < m_numVerts )
-				appendVertex( interleaved, idx );
+			NoteUnimplemented( "triangle dropped: index outside vertex range" );
+			return;
 		}
-		g_VulkanContext.QueueDynamicTriangles(
-		    interleaved.data(), static_cast<uint32_t>( interleaved.size() / 8 ) );
-	}
-	else
+		// Strips stitch separate runs together with degenerate (zero-area)
+		// triangles. A strip pipeline discards those for free; assembling a list
+		// has to drop them explicitly or they become junk geometry.
+		if ( a == b || b == c || a == c )
+			return;
+		appendVertex( interleaved, a );
+		appendVertex( interleaved, b );
+		appendVertex( interleaved, c );
+	};
+
+	switch ( m_primitiveType )
 	{
-		// Non-indexed fallback: draw the vertices in order as a triangle list.
-		interleaved.reserve( static_cast<size_t>( m_numVerts ) * 8 );
-		for ( int i = 0; i < m_numVerts; ++i )
-			appendVertex( interleaved, i );
-		g_VulkanContext.QueueDynamicTriangles(
-		    interleaved.data(), static_cast<uint32_t>( m_numVerts ) );
+	case MATERIAL_TRIANGLE_STRIP:
+		// Every vertex after the first two closes a triangle with its two
+		// predecessors, alternating winding so the facing stays consistent.
+		for ( int i = 0; i + 2 < elementCount; ++i )
+		{
+			if ( i & 1 )
+				appendTriangle( element( i + 1 ), element( i ), element( i + 2 ) );
+			else
+				appendTriangle( element( i ), element( i + 1 ), element( i + 2 ) );
+		}
+		break;
+
+	case MATERIAL_POLYGON:
+		// A single convex polygon, fanned from its first vertex.
+		for ( int i = 1; i + 1 < elementCount; ++i )
+			appendTriangle( element( 0 ), element( i ), element( i + 1 ) );
+		break;
+
+	case MATERIAL_QUADS:
+	case MATERIAL_INSTANCED_QUADS:
+		for ( int i = 0; i + 3 < elementCount; i += 4 )
+		{
+			appendTriangle( element( i ), element( i + 1 ), element( i + 2 ) );
+			appendTriangle( element( i ), element( i + 2 ), element( i + 3 ) );
+		}
+		break;
+
+	case MATERIAL_POINTS:
+	case MATERIAL_LINES:
+	case MATERIAL_LINE_STRIP:
+	case MATERIAL_LINE_LOOP:
+		// No line or point pipeline exists yet, and assembling these as triangles
+		// would draw geometry the engine never asked for. Drop the draw instead.
+		DropDraw( "draw dropped: line/point topology" );
+		return;
+
+	default:
+		for ( int i = 0; i + 2 < elementCount; i += 3 )
+			appendTriangle( element( i ), element( i + 1 ), element( i + 2 ) );
+		break;
 	}
+
+	if ( interleaved.empty() )
+	{
+		DropDraw( "draw dropped: no triangles assembled" );
+		return;
+	}
+	NoteDrawTextureResidency();
+	// Emitting a draw whose base texture this backend cannot supply does not
+	// degrade gracefully: the textured shader samples the default white, and these
+	// passes (render-target copies, refraction, the 2D/VGUI overlays that bind a
+	// standard texture) are screen-covering, so a single one paints over the
+	// entire correct scene behind it. Until render targets and the standard
+	// texture set exist, drop the draw instead of covering the frame with it. The
+	// residency totals above report how much is being dropped.
+	if ( !HasResidentBaseTexture() )
+	{
+		DropDraw( "draw dropped: textured shader with no base texture" );
+		NoteDroppedMaterial();
+		return;
+	}
+	g_VulkanContext.QueueDynamicTriangles(
+	    interleaved.data(), static_cast<uint32_t>( interleaved.size() / 8 ) );
 }
 
 void CEmptyMesh::Draw( CPrimList *pPrims, int nPrims )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Copy verts and/or indices to a mesh builder. This only works for temp meshes!
@@ -1816,6 +2357,7 @@ void CEmptyMesh::CopyToMeshBuilder( int iStartVert, // Which vertices to copy.
     int indexOffset, // This is added to each index.
     CMeshBuilder &builder )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Spews the mesh data
@@ -1856,6 +2398,8 @@ void CShaderShadowVulkan::SetDefaultState()
 	m_IsTranslucent = false;
 	m_IsAlphaTested = false;
 	m_bIsDepthWriteEnabled = true;
+	m_bIsDepthTestEnabled = true;
+	m_depthFunc = SHADER_DEPTHFUNC_NEAREROREQUAL;
 	m_bUsesVertexAndPixelShaders = false;
 	m_blendSrc = SHADER_BLEND_ONE;
 	m_blendDst = SHADER_BLEND_ZERO;
@@ -1865,6 +2409,7 @@ void CShaderShadowVulkan::SetDefaultState()
 // Methods related to depth buffering
 void CShaderShadowVulkan::DepthFunc( ShaderDepthFunc_t depthFunc )
 {
+	m_depthFunc = depthFunc;
 }
 
 void CShaderShadowVulkan::EnableDepthWrites( bool bEnable )
@@ -1874,20 +2419,24 @@ void CShaderShadowVulkan::EnableDepthWrites( bool bEnable )
 
 void CShaderShadowVulkan::EnableDepthTest( bool bEnable )
 {
+	m_bIsDepthTestEnabled = bEnable;
 }
 
 void CShaderShadowVulkan::EnablePolyOffset( PolygonOffsetMode_t nOffsetMode )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Suppresses/activates color writing
 void CShaderShadowVulkan::EnableColorWrites( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Suppresses/activates alpha writing
 void CShaderShadowVulkan::EnableAlphaWrites( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Methods related to alpha blending
@@ -1905,18 +2454,22 @@ void CShaderShadowVulkan::BlendFunc( ShaderBlendFactor_t srcFactor, ShaderBlendF
 // A simpler method of dealing with alpha modulation
 void CShaderShadowVulkan::EnableAlphaPipe( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderShadowVulkan::EnableConstantAlpha( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderShadowVulkan::EnableVertexAlpha( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderShadowVulkan::EnableTextureAlpha( TextureStage_t stage, bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Alpha testing
@@ -1933,21 +2486,25 @@ void CShaderShadowVulkan::AlphaFunc( ShaderAlphaFunc_t alphaFunc, float alphaRef
 // Wireframe/filled polygons
 void CShaderShadowVulkan::PolyMode( ShaderPolyModeFace_t face, ShaderPolyMode_t polyMode )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Back face culling
 void CShaderShadowVulkan::EnableCulling( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Alpha to coverage
 void CShaderShadowVulkan::EnableAlphaToCoverage( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // constant color + transparency
 void CShaderShadowVulkan::EnableConstantColor( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Indicates the vertex format for use with a vertex shader
@@ -1957,50 +2514,61 @@ void CShaderShadowVulkan::EnableConstantColor( bool bEnable )
 void CShaderShadowVulkan::VertexShaderVertexFormat(
     unsigned int nFlags, int nTexCoordCount, int *pTexCoordDimensions, int nUserDataSize )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Indicates we're going to light the model
 void CShaderShadowVulkan::EnableLighting( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderShadowVulkan::EnableSpecular( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Activate/deactivate skinning
 void CShaderShadowVulkan::EnableVertexBlend( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // per texture unit stuff
 void CShaderShadowVulkan::OverbrightValue( TextureStage_t stage, float value )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderShadowVulkan::EnableTexture( Sampler_t stage, bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderShadowVulkan::EnableCustomPixelPipe( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderShadowVulkan::CustomTextureStages( int stageCount )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderShadowVulkan::CustomTextureOperation( TextureStage_t stage, ShaderTexChannel_t channel,
     ShaderTexOp_t op, ShaderTexArg_t arg1, ShaderTexArg_t arg2 )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderShadowVulkan::EnableTexGen( TextureStage_t stage, bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderShadowVulkan::TexGen( TextureStage_t stage, ShaderTexGenParam_t param )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Sets the vertex and pixel shaders
@@ -2011,6 +2579,7 @@ void CShaderShadowVulkan::SetVertexShader( const char *pShaderName, int vshIndex
 
 void CShaderShadowVulkan::EnableBlendingSeparateAlpha( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 void CShaderShadowVulkan::SetPixelShader( const char *pShaderName, int pshIndex )
 {
@@ -2028,10 +2597,12 @@ void CShaderShadowVulkan::SetPixelShader( const char *pShaderName, int pshIndex 
 void CShaderShadowVulkan::BlendFuncSeparateAlpha(
     ShaderBlendFactor_t srcFactor, ShaderBlendFactor_t dstFactor )
 {
+	VK_UNIMPLEMENTED();
 }
 // indicates what per-vertex data we're providing
 void CShaderShadowVulkan::DrawFlags( unsigned int drawFlags )
 {
+	VK_UNIMPLEMENTED();
 }
 
 //-----------------------------------------------------------------------------
@@ -2044,7 +2615,7 @@ void CShaderShadowVulkan::DrawFlags( unsigned int drawFlags )
 // Constructor, destructor
 //-----------------------------------------------------------------------------
 
-CShaderAPIVulkan::CShaderAPIVulkan() : m_Mesh( false )
+CShaderAPIVulkan::CShaderAPIVulkan() : m_Mesh( true )
 {
 }
 
@@ -2069,6 +2640,7 @@ bool CShaderAPIVulkan::CanDownloadTextures() const
 // Used to clear the transition table when we know it's become invalid.
 void CShaderAPIVulkan::ClearSnapshots()
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Members of IMaterialSystemHardwareConfig
@@ -2202,6 +2774,7 @@ int CShaderAPIVulkan::MaximumAnisotropicLevel() const
 
 void CShaderAPIVulkan::SetAnisotropicLevel( int nAnisotropyLevel )
 {
+	VK_UNIMPLEMENTED();
 }
 
 int CShaderAPIVulkan::MaxTextureWidth() const
@@ -2376,38 +2949,50 @@ const char *CShaderAPIVulkan::GetHWSpecificShaderDLLName() const
 // Sets the default *dynamic* state
 void CShaderAPIVulkan::SetDefaultState()
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Snapshot -> selected pixel shader name, so BeginPass can bind the matching
 // native pipeline. The snapshot id keeps the existing flag bits (0..3) and packs
 // the table index in the high bits, preserving IsTranslucent()/etc.
 static std::vector<std::string> g_snapshotShaders;
-// Parallel to g_snapshotShaders: the blend mode (CVulkanContext::kDynBlend*) each
-// snapshot composites with, classified from the recorded IShaderShadow blend
-// state so BeginPass can select the matching pipeline variant.
-static std::vector<int> g_snapshotBlend;
+// Parallel to g_snapshotShaders: the blend and depth state each snapshot draws
+// with, taken from the recorded IShaderShadow state so BeginPass can select the
+// matching pipeline.
+static std::vector<render_vulkan::CVulkanContext::DynRasterState> g_snapshotRaster;
 // Parallel to g_snapshotShaders: the $alphatest reference each snapshot applies
 // (< 0 when alpha test is disabled).
 static std::vector<float> g_snapshotAlphaRef;
+// Snapshot ids are 16-bit (StateSnapshot_t is a short): four flag bits and an
+// 11-bit table index. As in D3D9's transition table, identical shadow states
+// share one snapshot, so the table holds distinct states rather than one entry
+// per TakeSnapshot call; appending per call wrapped the index past 2048 and bound
+// other materials' blend state.
+static const size_t kMaxSnapshots = 0x800;
+static std::map<std::string, StateSnapshot_t> g_snapshotIds;
 
 // Faithful vertex-shader constant register file. The material system commits its
 // standard and shader-specific constants to fixed registers (see
 // stdshaders/common_vs_fxc.h); honoring the real register numbers -- rather than
 // a bespoke convention -- is what makes the native path a substitutable D3D9
-// backend. The registers the UnlitGeneric family consumes:
-//   c4-c7   cModelViewProj        (committed from the matrix stack)
-//   c37     cModulationColor      ($color * $alpha)
-//   c38-c39 cBaseTextureTransform (SHADER_SPECIFIC_CONST_0/1)
+// backend. The registers the UnlitGeneric family consumes, named by the one
+// authoritative enum (materialsystem/ishadersystem_declarations.h) that the
+// shaders' own dynamic state writes through:
+//   c4-c7   cModelViewProj        (VERTEX_SHADER_MODELVIEWPROJ)
+//   c47     cModulationColor      (VERTEX_SHADER_MODULATION_COLOR)
+//   c48-c49 cBaseTextureTransform (VERTEX_SHADER_SHADER_SPECIFIC_CONST_0/1)
+// common_vs_fxc.h also defines an older vs_1_1 layout (c37/c38); the DX9
+// shaders are vs_2_0 and do not use it.
 // c0-c3 is retained as a legacy alias for the model->projection matrix so the
 // direct-interface harnesses that predate the matrix stack keep working.
 namespace
 {
 enum
 {
-	kVsRegModelViewProj = 4,       // cModelViewProj, 4 registers
-	kVsRegModelViewProjLegacy = 0, // legacy c0-c3 alias
-	kVsRegModulationColor = 37,    // cModulationColor
-	kVsRegBaseTexTransform = 38,   // cBaseTextureTransform[0..1]
+	kVsRegModelViewProj = VERTEX_SHADER_MODELVIEWPROJ, // cModelViewProj, 4 registers
+	kVsRegModelViewProjLegacy = 0,                     // legacy c0-c3 alias
+	kVsRegModulationColor = VERTEX_SHADER_MODULATION_COLOR,
+	kVsRegBaseTexTransform = VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, // [0..1]
 	kVsRegCount = 64
 };
 struct VsConstantFile
@@ -2418,7 +3003,7 @@ struct VsConstantFile
 	VsConstantFile()
 	{
 		// Only the UnlitGeneric family publishes its modulation and base-texture
-		// transform through c37/c38-c39. Every other Source shader
+		// transform through c47/c48-c49. Every other Source shader
 		// (LightmappedGeneric, VertexLitGeneric, ...) leaves those registers
 		// untouched, and the native textured pipeline multiplies by them
 		// unconditionally -- so a zero-initialized register file renders the
@@ -2434,6 +3019,23 @@ struct VsConstantFile
 	}
 };
 VsConstantFile g_vsConstants;
+
+// A pass begins: return the material registers the native textured pipeline
+// reads to their identities. D3D9 constants persist between draws, but a vs_2_0
+// shader that reads cModulationColor or cBaseTextureTransform writes them in the
+// same pass's dynamic state; one that does not (LightmappedGeneric's fast path
+// uses the raw UV) never reads them. The native pipeline reads them for every
+// draw, so without this reset a surface inherits the previous material's values
+// -- collapsing its UVs to a single texel.
+void ResetPassMaterialConstants()
+{
+	static const float white[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	static const float identityRows[8] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f };
+	memcpy( g_vsConstants.regs[kVsRegModulationColor], white, sizeof( white ) );
+	memcpy( g_vsConstants.regs[kVsRegBaseTexTransform], identityRows, sizeof( identityRows ) );
+	g_VulkanContext.SetDynamicModulation( white );
+	g_VulkanContext.SetDynamicBaseTexTransform( identityRows, identityRows + 4 );
+}
 
 // Push the constants the native UnlitGeneric pipeline consumes to the context,
 // preferring the faithful cModelViewProj (c4) when the material system has set
@@ -2453,19 +3055,79 @@ void CommitDynamicVsConstants()
 	    &g_vsConstants.regs[kVsRegBaseTexTransform + 1][0] );
 }
 
-// Classify the recorded blend state into the native compositing mode, matching
-// how the D3D9 material shaders configure the fixed-function blender:
-//   blending off              -> opaque (src replaces dst)
-//   src=ONE,       dst=ONE    -> additive          ($additive)
-//   src=SRC_ALPHA, dst=ONE    -> additive (alpha-premultiplied glow)
-//   otherwise (e.g. SRC_ALPHA/ONE_MINUS_SRC_ALPHA) -> alpha blend ($translucent)
-int ClassifyBlendMode( bool blendEnabled, ShaderBlendFactor_t src, ShaderBlendFactor_t dst )
+// The native raster state of a shadow state: the blend factors and depth state
+// exactly as the material's IShaderShadow calls set them, which is what the D3D9
+// backend hands the fixed-function output merger.
+VkBlendFactor NativeBlendFactor( ShaderBlendFactor_t factor )
 {
-	if ( !blendEnabled )
-		return render_vulkan::CVulkanContext::kDynBlendOpaque;
-	if ( dst == SHADER_BLEND_ONE && ( src == SHADER_BLEND_ONE || src == SHADER_BLEND_SRC_ALPHA ) )
-		return render_vulkan::CVulkanContext::kDynBlendAdditive;
-	return render_vulkan::CVulkanContext::kDynBlendAlpha;
+	switch ( factor )
+	{
+	case SHADER_BLEND_ZERO:
+		return VK_BLEND_FACTOR_ZERO;
+	case SHADER_BLEND_ONE:
+		return VK_BLEND_FACTOR_ONE;
+	case SHADER_BLEND_DST_COLOR:
+		return VK_BLEND_FACTOR_DST_COLOR;
+	case SHADER_BLEND_ONE_MINUS_DST_COLOR:
+		return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
+	case SHADER_BLEND_SRC_ALPHA:
+		return VK_BLEND_FACTOR_SRC_ALPHA;
+	case SHADER_BLEND_ONE_MINUS_SRC_ALPHA:
+		return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	case SHADER_BLEND_DST_ALPHA:
+		return VK_BLEND_FACTOR_DST_ALPHA;
+	case SHADER_BLEND_ONE_MINUS_DST_ALPHA:
+		return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+	case SHADER_BLEND_SRC_ALPHA_SATURATE:
+		return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
+	case SHADER_BLEND_SRC_COLOR:
+		return VK_BLEND_FACTOR_SRC_COLOR;
+	case SHADER_BLEND_ONE_MINUS_SRC_COLOR:
+		return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+	}
+	NoteUnimplemented( "BlendFunc(unknown factor)" );
+	return VK_BLEND_FACTOR_ONE;
+}
+
+VkCompareOp NativeDepthCompare( ShaderDepthFunc_t func )
+{
+	switch ( func )
+	{
+	case SHADER_DEPTHFUNC_NEVER:
+		return VK_COMPARE_OP_NEVER;
+	case SHADER_DEPTHFUNC_NEARER:
+		return VK_COMPARE_OP_LESS;
+	case SHADER_DEPTHFUNC_EQUAL:
+		return VK_COMPARE_OP_EQUAL;
+	case SHADER_DEPTHFUNC_NEAREROREQUAL:
+		return VK_COMPARE_OP_LESS_OR_EQUAL;
+	case SHADER_DEPTHFUNC_FARTHER:
+		return VK_COMPARE_OP_GREATER;
+	case SHADER_DEPTHFUNC_NOTEQUAL:
+		return VK_COMPARE_OP_NOT_EQUAL;
+	case SHADER_DEPTHFUNC_FARTHEROREQUAL:
+		return VK_COMPARE_OP_GREATER_OR_EQUAL;
+	case SHADER_DEPTHFUNC_ALWAYS:
+		return VK_COMPARE_OP_ALWAYS;
+	}
+	NoteUnimplemented( "DepthFunc(unknown function)" );
+	return VK_COMPARE_OP_LESS_OR_EQUAL;
+}
+
+render_vulkan::CVulkanContext::DynRasterState SnapshotRasterState(
+    const CShaderShadowVulkan &shadow )
+{
+	render_vulkan::CVulkanContext::DynRasterState state;
+	state.blend = shadow.m_IsTranslucent;
+	if ( state.blend )
+	{
+		state.srcFactor = NativeBlendFactor( shadow.m_blendSrc );
+		state.dstFactor = NativeBlendFactor( shadow.m_blendDst );
+	}
+	state.depthTest = shadow.m_bIsDepthTestEnabled;
+	state.depthWrite = shadow.m_bIsDepthWriteEnabled;
+	state.depthCompare = NativeDepthCompare( shadow.m_depthFunc );
+	return state;
 }
 
 // --- Transform matrix stack -------------------------------------------------
@@ -2552,13 +3214,35 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	if ( g_ShaderShadow.m_bIsDepthWriteEnabled )
 		id |= DEPTHWRITE;
 
+	const render_vulkan::CVulkanContext::DynRasterState raster =
+	    SnapshotRasterState( g_ShaderShadow );
+	// D3D9 holds the alpha reference as an integer 0..255, truncating (see
+	// shadershadowdx8.cpp AlphaFunc); the same reference is applied here.
+	const float alphaRef = g_ShaderShadow.m_IsAlphaTested
+	                           ? static_cast<int>( g_ShaderShadow.m_alphaRef * 255 ) / 255.0f
+	                           : -1.0f;
+	char key[96];
+	V_snprintf( key, sizeof( key ), "|%d|%u|%.6g", static_cast<int>( id ),
+	    render_vulkan::CVulkanContext::RasterStateKey( raster ), alphaRef );
+	const std::string stateKey = std::string( g_ShaderShadow.m_pixelShaderName ) + key;
+	const auto existing = g_snapshotIds.find( stateKey );
+	if ( existing != g_snapshotIds.end() )
+		return existing->second;
+
 	const size_t index = g_snapshotShaders.size();
+	if ( index >= kMaxSnapshots )
+	{
+		// No silent aliasing: an id that cannot hold the index would bind another
+		// state's shader and blend.
+		Error( "shaderapivulkan: more than %d distinct shadow states\n",
+		    static_cast<int>( kMaxSnapshots ) );
+	}
 	g_snapshotShaders.push_back( g_ShaderShadow.m_pixelShaderName );
-	g_snapshotBlend.push_back( ClassifyBlendMode(
-	    g_ShaderShadow.m_IsTranslucent, g_ShaderShadow.m_blendSrc, g_ShaderShadow.m_blendDst ) );
-	g_snapshotAlphaRef.push_back(
-	    g_ShaderShadow.m_IsAlphaTested ? g_ShaderShadow.m_alphaRef : -1.0f );
-	id |= static_cast<StateSnapshot_t>( index << 4 ); // flags occupy bits 0..3
+	g_snapshotRaster.push_back( raster );
+	g_snapshotAlphaRef.push_back( alphaRef );
+	// Flags occupy bits 0..3; the index fits the remaining 11 bits of the short.
+	id = static_cast<StateSnapshot_t>( id | static_cast<int>( index << 4 ) );
+	g_snapshotIds[stateKey] = id;
 	return id;
 }
 
@@ -2599,46 +3283,56 @@ VertexFormat_t CShaderAPIVulkan::ComputeVertexUsage( int numSnapshots, StateSnap
 // Uses a state snapshot
 void CShaderAPIVulkan::UseSnapshot( StateSnapshot_t snapshot )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Sets the color to modulate by
 void CShaderAPIVulkan::Color3f( float r, float g, float b )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::Color3fv( float const *pColor )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::Color4f( float r, float g, float b, float a )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::Color4fv( float const *pColor )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Faster versions of color
 void CShaderAPIVulkan::Color3ub( unsigned char r, unsigned char g, unsigned char b )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::Color3ubv( unsigned char const *rgb )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::Color4ub(
     unsigned char r, unsigned char g, unsigned char b, unsigned char a )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::Color4ubv( unsigned char const *rgba )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // The shade mode
 void CShaderAPIVulkan::ShadeMode( ShaderShadeMode_t mode )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Binds a particular material to render with
@@ -2647,55 +3341,67 @@ void CShaderAPIVulkan::Bind( IMaterial *pMaterial )
 	// Record the material so IMesh::Draw can run its shader through the real
 	// material path (see CEmptyMesh::Draw / RenderPass).
 	g_pBoundMaterial = static_cast<IMaterialInternal *>( pMaterial );
+	g_VulkanContext.SetRecordTag( MaterialTag( pMaterial ) );
 }
 
 // Cull mode
 void CShaderAPIVulkan::CullMode( MaterialCullMode_t cullMode )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::ForceDepthFuncEquals( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Forces Z buffering on or off
 void CShaderAPIVulkan::OverrideDepthEnable( bool bEnable, bool bDepthEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::OverrideAlphaWriteEnable( bool bOverrideEnable, bool bAlphaWriteEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::OverrideColorWriteEnable( bool bOverrideEnable, bool bColorWriteEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 //legacy fast clipping linkage
 void CShaderAPIVulkan::SetHeightClipZ( float z )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SetHeightClipMode( enum MaterialHeightClipMode_t heightClipMode )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Sets the lights
 void CShaderAPIVulkan::SetLight( int lightNum, const LightDesc_t &desc )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Sets lighting origin for the current model
 void CShaderAPIVulkan::SetLightingOrigin( Vector vLightingOrigin )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SetAmbientLight( float r, float g, float b )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SetAmbientLightCube( Vector4D cube[6] )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Get lights
@@ -2713,35 +3419,43 @@ const LightDesc_t &CShaderAPIVulkan::GetLight( int lightNum ) const
 // Render state for the ambient light cube (vertex shaders)
 void CShaderAPIVulkan::SetVertexShaderStateAmbientLightCube()
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SetSkinningMatrices()
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Lightmap texture binding
 void CShaderAPIVulkan::BindLightmap( TextureStage_t stage )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::BindBumpLightmap( TextureStage_t stage )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::BindFullbrightLightmap( TextureStage_t stage )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::BindWhite( TextureStage_t stage )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::BindBlack( TextureStage_t stage )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::BindGrey( TextureStage_t stage )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Gets the lightmap dimensions
@@ -2753,23 +3467,28 @@ void CShaderAPIVulkan::GetLightmapDimensions( int *w, int *h )
 // Special system flat normal map binding.
 void CShaderAPIVulkan::BindFlatNormalMap( TextureStage_t stage )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::BindNormalizationCubeMap( TextureStage_t stage )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::BindSignedNormalizationCubeMap( TextureStage_t stage )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::BindFBTexture( TextureStage_t stage, int textureIndex )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Flushes any primitives that are buffered
 void CShaderAPIVulkan::FlushBufferedPrimitives()
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Gets the dynamic mesh; note that you've got to render the mesh
@@ -2778,12 +3497,18 @@ void CShaderAPIVulkan::FlushBufferedPrimitives()
 IMesh *CShaderAPIVulkan::GetDynamicMesh( IMaterial *pMaterial, int nHWSkinBoneCount, bool buffered,
     IMesh *pVertexOverride, IMesh *pIndexOverride )
 {
-	return &m_Mesh;
+	return GetDynamicMeshEx(
+	    pMaterial, 0, nHWSkinBoneCount, buffered, pVertexOverride, pIndexOverride );
 }
 
 IMesh *CShaderAPIVulkan::GetDynamicMeshEx( IMaterial *pMaterial, VertexFormat_t fmt,
     int nHWSkinBoneCount, bool buffered, IMesh *pVertexOverride, IMesh *pIndexOverride )
 {
+	// As in D3D9's mesh manager, the one dynamic mesh draws either its own
+	// geometry or an override's: the world's index lists are built here over a
+	// static mesh's vertices, and a batch passes this mesh back as its own index
+	// override to keep the indices it just built.
+	m_Mesh.SetSources( pVertexOverride, pIndexOverride );
 	return &m_Mesh;
 }
 
@@ -2795,6 +3520,8 @@ IMesh *CShaderAPIVulkan::GetFlexMesh()
 // Begins a rendering pass that uses a state snapshot
 void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 {
+	ResetPassMaterialConstants();
+
 	// Bind the material shader this snapshot selected: look up its recorded
 	// pixel-shader name and route the dynamic-mesh draw to the matching native
 	// Vulkan pipeline. This is how a material's chosen shader reaches the GPU.
@@ -2815,23 +3542,170 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 			shader = render_vulkan::CVulkanContext::kDynShaderConstColor;
 		else if ( name == "vertexcolor" || name == "vertex_passthrough" )
 			shader = render_vulkan::CVulkanContext::kDynShaderPassthrough;
+		g_SamplesBaseTexture = ( shader == render_vulkan::CVulkanContext::kDynShaderTextured );
 		g_VulkanContext.SelectDynamicShader( shader );
 	}
-	// Apply the blend mode this snapshot recorded (opaque/translucent/additive).
-	if ( index < g_snapshotBlend.size() )
-		g_VulkanContext.SelectDynamicBlend( g_snapshotBlend[index] );
+	// Apply the blend and depth state this snapshot recorded.
+	if ( index < g_snapshotRaster.size() )
+	{
+		g_CurrentRaster = g_snapshotRaster[index];
+		g_VulkanContext.SelectDynamicRasterState( g_snapshotRaster[index] );
+	}
 	// Apply the $alphatest reference this snapshot recorded (< 0 = disabled).
 	if ( index < g_snapshotAlphaRef.size() )
+	{
+		g_CurrentAlphaRef = g_snapshotAlphaRef[index];
 		g_VulkanContext.SelectDynamicAlphaTest( g_snapshotAlphaRef[index] );
+	}
 }
 
 // Renders a single pass of a material. The material's shader has, by now, run
 // BeginPass (selecting the native pipeline + blend + alpha) and set its dynamic
 // constants and textures. Emit the current mesh's geometry with that state.
+// Material shaders whose output the native textured pipeline reproduces: the
+// base texture at the mesh UVs times cModulationColor, composited with the
+// material's blend and depth state. Their lightmap, detail and env-map terms are
+// the tracked gaps. Every other shader samples or writes what this pipeline
+// cannot express -- screen-space post-processing (Engine_Post, MotionBlur, the
+// bloom downsample and blur), depth-only passes (WriteZ), refraction and portal
+// surfaces addressed by screen position -- so drawing it as a base texture would
+// paint the wrong image, often over the whole frame. Its draws are declined by
+// name instead (census, dropped-material report and draw-state fixture).
+static bool NativePipelineImplementsShader( const char *shaderName )
+{
+	static const char *const kImplemented[] = {
+	    "LightmappedGeneric",
+	    "WorldVertexTransition",
+	    "VertexLitGeneric",
+	    "UnlitGeneric",
+	    "UnlitTwoTexture_DX9",
+	    "Sprite_DX9",
+	    "Spritecard",
+	    "Cable_DX9",
+	    "Shadow",
+	    "DecalModulate",
+	};
+	for ( const char *name : kImplemented )
+	{
+		if ( V_stricmp( name, shaderName ) == 0 )
+			return true;
+	}
+	return false;
+}
+
 void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 {
-	if ( g_pRenderMesh )
+	g_LastDropReason = "";
+	// Without a bound material (the conformance fixtures drive the device
+	// directly) the snapshot's own pipeline selection stands.
+	if ( g_pBoundMaterial && !NativePipelineImplementsShader( g_pBoundMaterial->GetShaderName() ) )
+	{
+		DropDraw( "draw dropped: material shader not implemented by the native pipeline" );
+		NoteDroppedMaterial();
+	}
+	else if ( g_pRenderMesh )
 		g_pRenderMesh->EmitToNativeQueue();
+	if ( drawstatefixture::Instance().Enabled() )
+		RecordDrawStateFixture( nPass, nPassCount );
+}
+
+// Draw-state fixture (drawstatefixture.h) of the pass just rendered: what this
+// backend applied, in the terms the D3D9 reference records, so the two can be
+// compared field by field.
+static const char *FixtureTextureName( int handle )
+{
+	if ( handle < 0 )
+		return "(built-in white)";
+	if ( static_cast<size_t>( handle ) < g_TextureRecords.size() )
+		return g_TextureRecords[static_cast<size_t>( handle )].name.c_str();
+	return "(unknown)";
+}
+
+static const char *FixtureBlendName( VkBlendFactor factor )
+{
+	switch ( factor )
+	{
+	case VK_BLEND_FACTOR_ZERO:
+		return "zero";
+	case VK_BLEND_FACTOR_ONE:
+		return "one";
+	case VK_BLEND_FACTOR_SRC_COLOR:
+		return "src_color";
+	case VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR:
+		return "one_minus_src_color";
+	case VK_BLEND_FACTOR_DST_COLOR:
+		return "dst_color";
+	case VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR:
+		return "one_minus_dst_color";
+	case VK_BLEND_FACTOR_SRC_ALPHA:
+		return "src_alpha";
+	case VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA:
+		return "one_minus_src_alpha";
+	case VK_BLEND_FACTOR_DST_ALPHA:
+		return "dst_alpha";
+	case VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA:
+		return "one_minus_dst_alpha";
+	case VK_BLEND_FACTOR_SRC_ALPHA_SATURATE:
+		return "src_alpha_saturate";
+	default:
+		return "other";
+	}
+}
+
+void CShaderAPIVulkan::RecordDrawStateFixture( int nPass, int nPassCount )
+{
+	drawstatefixture::Draw draw;
+	draw.material = g_pBoundMaterial ? g_pBoundMaterial->GetName() : "";
+	draw.shader = g_pBoundMaterial ? g_pBoundMaterial->GetShaderName() : "";
+	draw.pass = nPass;
+	draw.passCount = nPassCount;
+	const int target = g_VulkanContext.RenderTarget();
+	if ( target >= 0 )
+		draw.target = FixtureTextureName( target );
+	ShaderViewport_t viewport;
+	GetViewports( &viewport, 1 );
+	if ( g_Viewport.m_nWidth <= 0 || g_Viewport.m_nHeight <= 0 )
+		g_VulkanContext.GetRenderTargetExtent( viewport.m_nWidth, viewport.m_nHeight );
+	draw.viewport[0] = viewport.m_nTopLeftX;
+	draw.viewport[1] = viewport.m_nTopLeftY;
+	draw.viewport[2] = viewport.m_nWidth;
+	draw.viewport[3] = viewport.m_nHeight;
+	draw.depthRange[0] = viewport.m_flMinZ;
+	draw.depthRange[1] = viewport.m_flMaxZ;
+
+	// The native pipelines sample one texture, sampler 0, and only the textured
+	// pipeline samples it at all.
+	if ( g_SamplesBaseTexture )
+	{
+		const int state = g_VulkanContext.ManagedTextureSamplerState( g_boundTextureHandle );
+		drawstatefixture::Sampler &sampler = draw.samplers[draw.samplerCount++];
+		sampler.stage = 0;
+		sampler.texture = FixtureTextureName( g_boundTextureHandle );
+		sampler.addressU =
+		    ( state & render_vulkan::CVulkanContext::kSamplerClampU ) ? "clamp" : "wrap";
+		sampler.addressV =
+		    ( state & render_vulkan::CVulkanContext::kSamplerClampV ) ? "clamp" : "wrap";
+		sampler.filter =
+		    ( state & render_vulkan::CVulkanContext::kSamplerLinear ) ? "linear" : "point";
+	}
+
+	// The blend and depth state of the pipeline actually bound. Only the textured
+	// pipeline honors it; the others draw opaque with the default depth state.
+	render_vulkan::CVulkanContext::DynRasterState raster;
+	if ( g_SamplesBaseTexture )
+		raster = g_CurrentRaster;
+	draw.blend = raster.blend;
+	draw.srcBlend = FixtureBlendName( raster.srcFactor );
+	draw.dstBlend = FixtureBlendName( raster.dstFactor );
+	draw.depthTest = raster.depthTest;
+	draw.depthWrite = raster.depthWrite;
+	draw.alphaTestRef = g_CurrentAlphaRef;
+	memcpy( draw.modulation, g_vsConstants.regs[kVsRegModulationColor], sizeof( draw.modulation ) );
+	memcpy( draw.baseTextureTransform, g_vsConstants.regs[kVsRegBaseTexTransform],
+	    sizeof( draw.baseTextureTransform ) );
+	draw.submitted = g_LastDropReason[0] == 0;
+	draw.dropReason = g_LastDropReason;
+	drawstatefixture::Instance().Record( draw );
 }
 
 // stuff related to matrix stacks. These drive the model/view/projection matrices
@@ -2912,6 +3786,7 @@ void CShaderAPIVulkan::LoadIdentity( void )
 
 void CShaderAPIVulkan::LoadCameraToWorld( void )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::Ortho(
@@ -2939,68 +3814,84 @@ void CShaderAPIVulkan::Ortho(
 
 void CShaderAPIVulkan::PerspectiveX( double fovx, double aspect, double zNear, double zFar )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::PerspectiveOffCenterX( double fovx, double aspect, double zNear, double zFar,
     double bottom, double top, double left, double right )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::PickMatrix( int x, int y, int width, int height )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::Rotate( float angle, float x, float y, float z )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::Translate( float x, float y, float z )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::Scale( float x, float y, float z )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::ScaleXY( float x, float y )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Fog methods...
 void CShaderAPIVulkan::FogMode( MaterialFogMode_t fogMode )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::FogStart( float fStart )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::FogEnd( float fEnd )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SetFogZ( float fogZ )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::FogMaxDensity( float flMaxDensity )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::GetFogDistances( float *fStart, float *fEnd, float *fFogZ )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SceneFogColor3ub( unsigned char r, unsigned char g, unsigned char b )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SceneFogMode( MaterialFogMode_t fogMode )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::GetSceneFogColor( unsigned char *rgb )
 {
+	VK_UNIMPLEMENTED();
 }
 
 MaterialFogMode_t CShaderAPIVulkan::GetSceneFogMode()
@@ -3015,36 +3906,232 @@ int CShaderAPIVulkan::GetPixelFogCombo()
 
 void CShaderAPIVulkan::FogColor3f( float r, float g, float b )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::FogColor3fv( float const *rgb )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::FogColor3ub( unsigned char r, unsigned char g, unsigned char b )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::FogColor3ubv( unsigned char const *rgb )
 {
+	VK_UNIMPLEMENTED();
+}
+
+// Shaders that precompute their per-draw state (LightmappedGeneric, the world's
+// shader, above all) hand it over as a command buffer instead of individual
+// calls: base-texture binds, constants and shader indices all arrive here. The
+// format is CCommandBufferBuilder's (shaderapi/commandbuffer.h); this walks it the
+// way the D3D9 backend does. An empty body silently discarded the texture of
+// every world surface.
+template <typename T> static void ReadCommandField( const uint8 *pCmd, size_t offset, T *out )
+{
+	memcpy( out, pCmd + offset, sizeof( T ) );
+}
+
+void CShaderAPIVulkan::ExecuteCommandBuffer( uint8 *pCmdBuf )
+{
+	for ( ;; )
+	{
+		int nCmd = 0;
+		ReadCommandField( pCmdBuf, 0, &nCmd );
+		switch ( nCmd )
+		{
+		case CBCMD_END:
+			return;
+
+		case CBCMD_JUMP:
+		{
+			uint8 *target = nullptr;
+			ReadCommandField( pCmdBuf, sizeof( int ), &target );
+			pCmdBuf = target;
+			break;
+		}
+
+		case CBCMD_JSR:
+		{
+			uint8 *target = nullptr;
+			ReadCommandField( pCmdBuf, sizeof( int ), &target );
+			ExecuteCommandBuffer( target );
+			pCmdBuf += sizeof( int ) + sizeof( uint8 * );
+			break;
+		}
+
+		case CBCMD_SET_PIXEL_SHADER_FLOAT_CONST:
+		case CBCMD_SET_VERTEX_SHADER_FLOAT_CONST:
+		{
+			int nStartConst = 0, nNumConsts = 0;
+			ReadCommandField( pCmdBuf, sizeof( int ), &nStartConst );
+			ReadCommandField( pCmdBuf, 2 * sizeof( int ), &nNumConsts );
+			const float *pValues = reinterpret_cast<const float *>( pCmdBuf + 3 * sizeof( int ) );
+			if ( nCmd == CBCMD_SET_PIXEL_SHADER_FLOAT_CONST )
+				SetPixelShaderConstant( nStartConst, pValues, nNumConsts, false );
+			else
+				SetVertexShaderConstant( nStartConst, pValues, nNumConsts, false );
+			pCmdBuf += nNumConsts * 4 * sizeof( float ) + 3 * sizeof( int );
+			break;
+		}
+
+		case CBCMD_SETPIXELSHADERFOGPARAMS:
+		case CBCMD_STORE_EYE_POS_IN_PSCONST:
+		case CBCMD_COMMITPIXELSHADERLIGHTING:
+		case CBCMD_SETPIXELSHADERSTATEAMBIENTLIGHTCUBE:
+			// Fog, eye position and lighting constants: the native pipelines do
+			// not consume them yet.
+			NoteUnimplemented( "ExecuteCommandBuffer(fog/eye/lighting constant)" );
+			pCmdBuf += 2 * sizeof( int );
+			break;
+
+		case CBCMD_SETAMBIENTCUBEDYNAMICSTATEVERTEXSHADER:
+			NoteUnimplemented( "ExecuteCommandBuffer(vertex ambient cube)" );
+			pCmdBuf += sizeof( int );
+			break;
+
+		case CBCMD_SET_DEPTH_FEATHERING_CONST:
+			NoteUnimplemented( "ExecuteCommandBuffer(depth feathering)" );
+			pCmdBuf += 2 * sizeof( int ) + sizeof( float );
+			break;
+
+		case CBCMD_BIND_STANDARD_TEXTURE:
+		{
+			int nSampler = 0, nTextureID = 0;
+			ReadCommandField( pCmdBuf, sizeof( int ), &nSampler );
+			ReadCommandField( pCmdBuf, 2 * sizeof( int ), &nTextureID );
+			BindStandardTexture( static_cast<Sampler_t>( nSampler ),
+			    static_cast<StandardTextureId_t>( nTextureID ) );
+			pCmdBuf += 3 * sizeof( int );
+			break;
+		}
+
+		case CBCMD_BIND_SHADERAPI_TEXTURE_HANDLE:
+		{
+			int nSampler = 0;
+			ShaderAPITextureHandle_t hTexture = INVALID_SHADERAPI_TEXTURE_HANDLE;
+			ReadCommandField( pCmdBuf, sizeof( int ), &nSampler );
+			ReadCommandField( pCmdBuf, 2 * sizeof( int ), &hTexture );
+			BindTexture( static_cast<Sampler_t>( nSampler ), hTexture );
+			pCmdBuf += 2 * sizeof( int ) + sizeof( ShaderAPITextureHandle_t );
+			break;
+		}
+
+		case CBCMD_SET_PSHINDEX:
+		case CBCMD_SET_VSHINDEX:
+			// Static/dynamic combo selection; the native pipelines have no combos.
+			pCmdBuf += 2 * sizeof( int );
+			break;
+
+		default:
+			// The command's size is unknown, so the rest of the buffer cannot be
+			// walked. Stop rather than misread it, and say so.
+			NoteUnimplemented( "ExecuteCommandBuffer(unknown command)" );
+			return;
+		}
+	}
 }
 
 void CShaderAPIVulkan::SetViewports( int nCount, const ShaderViewport_t *pViewports )
 {
+	if ( nCount <= 0 || !pViewports )
+		return;
+	// Only one viewport exists without multiple render targets.
+	g_Viewport = pViewports[0];
+	g_VulkanContext.SetViewport( g_Viewport.m_nTopLeftX, g_Viewport.m_nTopLeftY,
+	    g_Viewport.m_nWidth, g_Viewport.m_nHeight, g_Viewport.m_flMinZ, g_Viewport.m_flMaxZ );
 }
 
 int CShaderAPIVulkan::GetViewports( ShaderViewport_t *pViewports, int nMax ) const
 {
+	if ( pViewports && nMax >= 1 )
+	{
+		pViewports[0] = g_Viewport;
+		if ( g_Viewport.m_nWidth <= 0 || g_Viewport.m_nHeight <= 0 )
+		{
+			int width = 0, height = 0;
+			g_VulkanContext.GetSwapchainExtent( width, height );
+			pViewports[0].Init( 0, 0, width, height );
+		}
+	}
 	return 1;
+}
+
+void CShaderAPIVulkan::SetRenderTargetEx( int nRenderTargetID,
+    ShaderAPITextureHandle_t colorTextureHandle, ShaderAPITextureHandle_t depthTextureHandle )
+{
+	// Only render target 0 exists; multiple simultaneous render targets need
+	// pipelines with more than one color attachment.
+	if ( nRenderTargetID != 0 )
+	{
+		VK_UNIMPLEMENTED();
+		return;
+	}
+	// Each render-target texture carries its own depth buffer, and the back
+	// buffer carries the swapchain's, so the depth handle selects nothing extra.
+	int target = -1;
+	if ( colorTextureHandle != SHADER_RENDERTARGET_BACKBUFFER )
+	{
+		target = static_cast<int>( colorTextureHandle ) - 1; // 1-based handles
+		if ( !g_VulkanContext.IsRenderTargetTexture( target ) )
+		{
+			// A texture created without TEXTURE_CREATE_RENDERTARGET cannot be
+			// drawn into. Say so instead of drawing its pass onto the back buffer.
+			NoteUnimplemented( "SetRenderTargetEx(non-render-target texture)" );
+			if ( target >= 0 && static_cast<size_t>( target ) < g_TextureRecords.size() )
+				++g_TextureRecords[static_cast<size_t>( target )].rejectedAsTarget;
+			target = -1;
+		}
+	}
+	if ( target != g_VulkanContext.RenderTarget() )
+		++g_TargetSwitches;
+	g_VulkanContext.SetRenderTarget( target );
+	g_Viewport.m_nWidth = 0;
+	g_Viewport.m_nHeight = 0;
+}
+
+void CShaderAPIVulkan::CopyRenderTargetToTextureEx(
+    ShaderAPITextureHandle_t texID, int nRenderTargetID, Rect_t *pSrcRect, Rect_t *pDstRect )
+{
+	if ( nRenderTargetID != 0 )
+	{
+		VK_UNIMPLEMENTED();
+		return;
+	}
+	int src[4] = { 0, 0, 0, 0 };
+	int dst[4] = { 0, 0, 0, 0 };
+	if ( pSrcRect )
+	{
+		src[0] = pSrcRect->x;
+		src[1] = pSrcRect->y;
+		src[2] = pSrcRect->width;
+		src[3] = pSrcRect->height;
+	}
+	if ( pDstRect )
+	{
+		dst[0] = pDstRect->x;
+		dst[1] = pDstRect->y;
+		dst[2] = pDstRect->width;
+		dst[3] = pDstRect->height;
+	}
+	if ( g_VulkanContext.QueueCopyToTexture( static_cast<int>( texID ) - 1, src, dst ) )
+		++g_TargetCopies;
+	else
+		++g_TargetCopiesDropped;
 }
 
 // Sets the vertex and pixel shaders
 void CShaderAPIVulkan::SetVertexShaderIndex( int vshIndex )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SetPixelShaderIndex( int pshIndex )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Sets the constant registers for vertex and pixel shaders
@@ -3074,11 +4161,13 @@ void CShaderAPIVulkan::SetVertexShaderConstant(
 void CShaderAPIVulkan::SetBooleanVertexShaderConstant(
     int var, BOOL const *pVec, int numConst, bool bForce )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SetIntegerVertexShaderConstant(
     int var, int const *pVec, int numConst, bool bForce )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SetPixelShaderConstant(
@@ -3097,15 +4186,18 @@ void CShaderAPIVulkan::SetPixelShaderConstant(
 void CShaderAPIVulkan::SetBooleanPixelShaderConstant(
     int var, BOOL const *pVec, int numBools, bool bForce )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SetIntegerPixelShaderConstant(
     int var, int const *pVec, int numIntVecs, bool bForce )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::InvalidateDelayedShaderConstants( void )
 {
+	VK_UNIMPLEMENTED();
 }
 
 float CShaderAPIVulkan::GammaToLinear_HardwareSpecific( float fGamma ) const
@@ -3121,6 +4213,7 @@ float CShaderAPIVulkan::LinearToGamma_HardwareSpecific( float fLinear ) const
 void CShaderAPIVulkan::SetLinearToGammaConversionTextures(
     ShaderAPITextureHandle_t hSRGBWriteEnabledTexture, ShaderAPITextureHandle_t hIdentityTexture )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Returns the nearest supported format
@@ -3148,11 +4241,10 @@ void CShaderAPIVulkan::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t te
 	// -- otherwise a later stage's texture would overwrite the base texture.
 	if ( stage != SHADER_SAMPLER0 )
 		return;
-	// A real material texture bind means this is not a render-target post-process
-	// pass; clear any pending skip.
-	g_skipPostProcessDraw = false;
 	// 1-based handle; 0 restores the built-in.
-	g_VulkanContext.BindManagedTexture( static_cast<int>( textureHandle ) - 1 );
+	const int native = static_cast<int>( textureHandle ) - 1;
+	g_boundTextureHandle = native;
+	g_VulkanContext.BindManagedTexture( native );
 }
 
 void CShaderAPIVulkan::ClearColor3ub( unsigned char r, unsigned char g, unsigned char b )
@@ -3177,37 +4269,66 @@ void CShaderAPIVulkan::ModifyTexture( ShaderAPITextureHandle_t textureHandle )
 }
 
 // Texture management methods
-void CShaderAPIVulkan::TexImage2D( int level, int cubeFace, ImageFormat dstFormat, int zOffset,
-    int width, int height, ImageFormat srcFormat, bool bSrcIsTiled, void *imageData )
+// One authoritative upload path for a texture surface, shared by TexImage2D and
+// TexSubImage2D: the material system uses BOTH to deliver VTF pixels, so the
+// conversion and upload rules must live in a single place. `srcStride` is the
+// source row pitch in bytes; 0 means tightly packed. Block-compressed DXT1/DXT5
+// (Portal's dominant formats) upload their blocks directly to the matching BC
+// image; uncompressed formats are converted to the 8-bit image they were created
+// with. Returns false when the source format is not supported yet.
+static bool UploadTextureSurface( int handle, int width, int height, ImageFormat srcFormat,
+    const void *imageData, int srcStride, std::string *error )
 {
-	// Upload the material's texture data into the native texture selected by
-	// ModifyTexture (mip 0). Block-compressed DXT1/DXT5 (Portal's formats) upload
-	// their compressed blocks directly to the matching BC image; uncompressed
-	// RGBA/BGRA/RGB888 upload to a matching 8-bit image.
-	if ( level != 0 || g_currentModifyTexture <= 0 || !imageData || width <= 0 || height <= 0 )
-		return;
-
-	const int handle = static_cast<int>( g_currentModifyTexture ) - 1;
 	const uint8_t *src = static_cast<const uint8_t *>( imageData );
 	const size_t pixels = static_cast<size_t>( width ) * height;
-	std::string error;
-	bool ok = true;
-
 	if ( srcFormat == IMAGE_FORMAT_DXT1 || srcFormat == IMAGE_FORMAT_DXT5 )
 	{
 		// 4x4 block compression: DXT1 = 8 bytes/block, DXT5 = 16 bytes/block.
 		const size_t blocksX = ( static_cast<size_t>( width ) + 3 ) / 4;
 		const size_t blocksY = ( static_cast<size_t>( height ) + 3 ) / 4;
 		const size_t blockBytes = ( srcFormat == IMAGE_FORMAT_DXT1 ) ? 8 : 16;
-		ok = g_VulkanContext.UploadManagedTexture(
-		    handle, src, blocksX * blocksY * blockBytes, &error );
+		return g_VulkanContext.UploadManagedTexture(
+		    handle, src, blocksX * blocksY * blockBytes, error );
 	}
-	else if ( srcFormat == IMAGE_FORMAT_RGBA8888 || srcFormat == IMAGE_FORMAT_BGRA8888 )
+
+	int srcBpp = 0;
+	switch ( srcFormat )
+	{
+	case IMAGE_FORMAT_RGBA8888:
+	case IMAGE_FORMAT_BGRA8888:
+	case IMAGE_FORMAT_BGRX8888:
+		srcBpp = 4;
+		break;
+	case IMAGE_FORMAT_RGB888:
+	case IMAGE_FORMAT_BGR888:
+		srcBpp = 3;
+		break;
+	case IMAGE_FORMAT_I8:
+		srcBpp = 1;
+		break;
+	default:
+		return false;
+	}
+
+	// A padded source pitch is repacked so the conversions below can index rows
+	// tightly.
+	std::vector<uint8_t> packed;
+	const size_t tightRow = static_cast<size_t>( width ) * srcBpp;
+	if ( srcStride > 0 && static_cast<size_t>( srcStride ) != tightRow )
+	{
+		packed.resize( tightRow * static_cast<size_t>( height ) );
+		for ( int y = 0; y < height; ++y )
+			memcpy( &packed[static_cast<size_t>( y ) * tightRow],
+			    src + static_cast<size_t>( y ) * srcStride, tightRow );
+		src = packed.data();
+	}
+
+	if ( srcFormat == IMAGE_FORMAT_RGBA8888 || srcFormat == IMAGE_FORMAT_BGRA8888 )
 	{
 		// The image was created with the matching 8-bit format; upload directly.
-		ok = g_VulkanContext.UploadManagedTexture( handle, src, pixels * 4, &error );
+		return g_VulkanContext.UploadManagedTexture( handle, src, pixels * 4, error );
 	}
-	else if ( srcFormat == IMAGE_FORMAT_BGRX8888 )
+	if ( srcFormat == IMAGE_FORMAT_BGRX8888 )
 	{
 		// Opaque 32-bit BGR + unused X. The image is B8G8R8A8, so the bytes map
 		// directly; force the (meaningless) X byte to an opaque alpha.
@@ -3219,9 +4340,9 @@ void CShaderAPIVulkan::TexImage2D( int level, int cubeFace, ImageFormat dstForma
 			bgra[i * 4 + 2] = src[i * 4 + 2];
 			bgra[i * 4 + 3] = 255;
 		}
-		ok = g_VulkanContext.UploadManagedTexture( handle, bgra.data(), bgra.size(), &error );
+		return g_VulkanContext.UploadManagedTexture( handle, bgra.data(), bgra.size(), error );
 	}
-	else if ( srcFormat == IMAGE_FORMAT_RGB888 || srcFormat == IMAGE_FORMAT_BGR888 )
+	if ( srcFormat == IMAGE_FORMAT_RGB888 || srcFormat == IMAGE_FORMAT_BGR888 )
 	{
 		// 24-bit color into the R8G8B8A8 image. BGR888 swaps R/B on the way in.
 		const bool bgr = ( srcFormat == IMAGE_FORMAT_BGR888 );
@@ -3233,37 +4354,90 @@ void CShaderAPIVulkan::TexImage2D( int level, int cubeFace, ImageFormat dstForma
 			rgba[i * 4 + 2] = src[i * 3 + ( bgr ? 0 : 2 )];
 			rgba[i * 4 + 3] = 255;
 		}
-		ok = g_VulkanContext.UploadManagedTexture( handle, rgba.data(), rgba.size(), &error );
+		return g_VulkanContext.UploadManagedTexture( handle, rgba.data(), rgba.size(), error );
 	}
-	else if ( srcFormat == IMAGE_FORMAT_I8 )
+	// IMAGE_FORMAT_I8: 8-bit intensity expanded to grayscale RGBA (r = g = b = i).
+	std::vector<uint8_t> rgba( pixels * 4 );
+	for ( size_t i = 0; i < pixels; ++i )
 	{
-		// 8-bit intensity expanded to grayscale RGBA (r = g = b = i, opaque).
-		std::vector<uint8_t> rgba( pixels * 4 );
-		for ( size_t i = 0; i < pixels; ++i )
-		{
-			rgba[i * 4 + 0] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = src[i];
-			rgba[i * 4 + 3] = 255;
-		}
-		ok = g_VulkanContext.UploadManagedTexture( handle, rgba.data(), rgba.size(), &error );
+		rgba[i * 4 + 0] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = src[i];
+		rgba[i * 4 + 3] = 255;
 	}
-	else
-	{
-		Warning( "[NativeVulkan] TexImage2D: unsupported source format %d (skipped)\n", srcFormat );
-		return;
-	}
-
-	if ( !ok )
-		Warning( "[NativeVulkan] TexImage2D upload failed: %s\n", error.c_str() );
+	return g_VulkanContext.UploadManagedTexture( handle, rgba.data(), rgba.size(), error );
 }
 
+void CShaderAPIVulkan::TexImage2D( int level, int cubeFace, ImageFormat dstFormat, int zOffset,
+    int width, int height, ImageFormat srcFormat, bool bSrcIsTiled, void *imageData )
+{
+	// Upload the material's texture data into the native texture selected by
+	// ModifyTexture. The managed image is single-mip, so only mip 0 is taken.
+	if ( level != 0 || g_currentModifyTexture <= 0 || !imageData || width <= 0 || height <= 0 )
+		return;
+
+	std::string error;
+	const int handle = static_cast<int>( g_currentModifyTexture ) - 1;
+	if ( !UploadTextureSurface( handle, width, height, srcFormat, imageData, 0, &error ) )
+	{
+		if ( error.empty() )
+			Warning(
+			    "[NativeVulkan] TexImage2D: unsupported source format %d (skipped)\n", srcFormat );
+		else
+			Warning( "[NativeVulkan] TexImage2D upload failed: %s\n", error.c_str() );
+		return;
+	}
+}
+
+// The material system delivers most VTF pixels through this entry, not
+// TexImage2D. Leaving it empty created the texture objects but never filled
+// them, so every world surface sampled an empty image and rendered black.
 void CShaderAPIVulkan::TexSubImage2D( int level, int cubeFace, int xOffset, int yOffset,
     int zOffset, int width, int height, ImageFormat srcFormat, int srcStride, bool bSrcIsTiled,
     void *imageData )
 {
+	if ( level != 0 || g_currentModifyTexture <= 0 || !imageData || width <= 0 || height <= 0 )
+		return;
+	// The managed image holds a single full surface, so only a full-surface
+	// update can be applied; partial sub-rectangle updates are not yet supported.
+	if ( xOffset != 0 || yOffset != 0 )
+		return;
+
+	std::string error;
+	const int handle = static_cast<int>( g_currentModifyTexture ) - 1;
+	if ( !UploadTextureSurface( handle, width, height, srcFormat, imageData, srcStride, &error ) )
+	{
+		if ( !error.empty() )
+			Warning( "[NativeVulkan] TexSubImage2D upload failed: %s\n", error.c_str() );
+		return;
+	}
 }
 
+// The material system uploads every VTF-backed texture through THIS entry
+// (CTexture::WriteDataToShaderAPITexture calls it once per frame of the
+// texture), not through TexImage2D. While it was an empty stub the backend
+// created ~900 texture objects and filled almost none of them, so every world
+// surface sampled an empty image and the map rendered black.
 void CShaderAPIVulkan::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 {
+	if ( !pVTF || g_currentModifyTexture <= 0 )
+		return;
+
+	// The managed image is a single full surface, so take mip 0 of face 0.
+	int mipWidth = 0, mipHeight = 0, mipDepth = 0;
+	pVTF->ComputeMipLevelDimensions( 0, &mipWidth, &mipHeight, &mipDepth );
+	if ( mipWidth <= 0 || mipHeight <= 0 )
+		return;
+	const unsigned char *bits = pVTF->ImageData( iVTFFrame, 0, 0 );
+	if ( !bits )
+		return;
+
+	std::string error;
+	const int handle = static_cast<int>( g_currentModifyTexture ) - 1;
+	if ( !UploadTextureSurface( handle, mipWidth, mipHeight, pVTF->Format(), bits, 0, &error ) )
+	{
+		if ( !error.empty() )
+			Warning( "[NativeVulkan] TexImageFromVTF upload failed: %s\n", error.c_str() );
+		return;
+	}
 }
 
 bool CShaderAPIVulkan::TexLock( int level, int cubeFaceID, int xOffset, int yOffset, int width,
@@ -3274,23 +4448,61 @@ bool CShaderAPIVulkan::TexLock( int level, int cubeFaceID, int xOffset, int yOff
 
 void CShaderAPIVulkan::TexUnlock()
 {
+	VK_UNIMPLEMENTED();
 }
 
 // These are bound to the texture, not the texture environment
+// Sampler state of the texture selected by ModifyTexture. Vulkan samplers have
+// one filter for minification and magnification here, so linear filtering is
+// used when either direction asks for it.
+static void UpdateModifiedTextureSampler( int clearBits, int setBits )
+{
+	if ( g_currentModifyTexture <= 0 )
+		return;
+	const int handle = static_cast<int>( g_currentModifyTexture ) - 1;
+	const int state =
+	    ( g_VulkanContext.ManagedTextureSamplerState( handle ) & ~clearBits ) | setBits;
+	g_VulkanContext.SetManagedTextureSamplerState( handle, state );
+}
+
+static bool IsLinearFilter( ShaderTexFilterMode_t mode )
+{
+	return mode != SHADER_TEXFILTERMODE_NEAREST &&
+	       mode != SHADER_TEXFILTERMODE_NEAREST_MIPMAP_NEAREST &&
+	       mode != SHADER_TEXFILTERMODE_NEAREST_MIPMAP_LINEAR;
+}
+
 void CShaderAPIVulkan::TexMinFilter( ShaderTexFilterMode_t texFilterMode )
 {
+	if ( IsLinearFilter( texFilterMode ) )
+		UpdateModifiedTextureSampler( 0, render_vulkan::CVulkanContext::kSamplerLinear );
 }
 
 void CShaderAPIVulkan::TexMagFilter( ShaderTexFilterMode_t texFilterMode )
 {
+	if ( IsLinearFilter( texFilterMode ) )
+		UpdateModifiedTextureSampler( 0, render_vulkan::CVulkanContext::kSamplerLinear );
 }
 
 void CShaderAPIVulkan::TexWrap( ShaderTexCoordComponent_t coord, ShaderTexWrapMode_t wrapMode )
 {
+	int bit = 0;
+	if ( coord == SHADER_TEXCOORD_S )
+		bit = render_vulkan::CVulkanContext::kSamplerClampU;
+	else if ( coord == SHADER_TEXCOORD_T )
+		bit = render_vulkan::CVulkanContext::kSamplerClampV;
+	else
+		return; // 2D images have no third coordinate
+	// Border addressing is approximated by clamping to the edge.
+	if ( wrapMode == SHADER_TEXWRAPMODE_REPEAT )
+		UpdateModifiedTextureSampler( bit, 0 );
+	else
+		UpdateModifiedTextureSampler( 0, bit );
 }
 
 void CShaderAPIVulkan::TexSetPriority( int priority )
 {
+	VK_UNIMPLEMENTED();
 }
 
 ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height, int depth,
@@ -3318,12 +4530,18 @@ ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height,
 	}
 
 	std::string error;
-	const int native = g_VulkanContext.CreateManagedTexture( width, height, vkFormat, &error );
+	// Render targets are drawn into, so they need an attachment-capable image,
+	// a depth buffer and a framebuffer rather than a sampled-only texture.
+	const int native =
+	    ( flags & TEXTURE_CREATE_RENDERTARGET )
+	        ? g_VulkanContext.CreateRenderTargetTexture( width, height, &error )
+	        : g_VulkanContext.CreateManagedTexture( width, height, vkFormat, &error );
 	if ( native < 0 )
 	{
 		Warning( "[NativeVulkan] CreateTexture failed: %s\n", error.c_str() );
 		return 0;
 	}
+	NoteTextureCreated( native, pDebugName, dstImageFormat );
 	return static_cast<ShaderAPITextureHandle_t>( native + 1 ); // 1-based handle
 }
 
@@ -3349,6 +4567,7 @@ ShaderAPITextureHandle_t CShaderAPIVulkan::CreateDepthTexture(
 
 void CShaderAPIVulkan::DeleteTexture( ShaderAPITextureHandle_t textureHandle )
 {
+	VK_UNIMPLEMENTED();
 }
 
 bool CShaderAPIVulkan::IsTexture( ShaderAPITextureHandle_t textureHandle )
@@ -3365,35 +4584,39 @@ bool CShaderAPIVulkan::IsTextureResident( ShaderAPITextureHandle_t textureHandle
 void CShaderAPIVulkan::ClearBuffers( bool bClearColor, bool bClearDepth, bool bClearStencil,
     int renderTargetWidth, int renderTargetHeight )
 {
-	// Treat a full-frame color clear as the start of a new frame: discard the
-	// previous frame's accumulated geometry now (not after Present), so the last
-	// rendered frame's geometry stays available for an on-demand screenshot
-	// capture (ReadPixels). Smaller render-target clears are left alone.
-	if ( bClearColor && renderTargetWidth <= 0 && renderTargetHeight <= 0 )
-		g_VulkanContext.ClearDynamicQueue();
+	// A clear is part of the frame's ordered stream: it applies to whichever
+	// target is current when it is issued, bounded by the viewport as in D3D9.
+	// Frame boundaries come from Present, not from clears -- the engine clears
+	// render targets mid-frame and passes real dimensions for the back buffer.
+	g_VulkanContext.QueueClear( bClearColor, bClearDepth );
 }
 
 void CShaderAPIVulkan::ClearBuffersObeyStencil( bool bClearColor, bool bClearDepth )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::ClearBuffersObeyStencilEx(
     bool bClearColor, bool bClearAlpha, bool bClearDepth )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::PerformFullScreenStencilOperation( void )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SetScissorRect( const int nLeft, const int nTop, const int nRight,
     const int nBottom, const bool bEnableScissor )
 {
+	g_VulkanContext.SetScissor( bEnableScissor, nLeft, nTop, nRight - nLeft, nBottom - nTop );
 }
 
 void CShaderAPIVulkan::ReadPixels(
     int x, int y, int width, int height, unsigned char *data, ImageFormat dstFormat )
 {
+	drawstatefixture::Instance().WriteFrame( "screenshot" );
 	// Copy the most recently presented frame (captured by CVulkanContext) into
 	// the caller's buffer, converting to the requested format. This is what the
 	// engine's +screenshot path reads; without it every capture is blank.
@@ -3461,6 +4684,12 @@ void CShaderAPIVulkan::ReadPixels(
 void CShaderAPIVulkan::ReadPixels(
     Rect_t *pSrcRect, Rect_t *pDstRect, unsigned char *data, ImageFormat dstFormat, int nDstStride )
 {
+	// A screenshot is the one point in a real run where the frame is inspected, so
+	// report what this backend was asked for and did not do while producing it.
+	ReportUnimplementedEntries();
+	ReportDroppedMaterials();
+	drawstatefixture::Instance().WriteFrame( "screenshot" );
+
 	// The engine's +screenshot path calls THIS overload (a source rect in the back
 	// buffer -> a destination rect in `data` at `nDstStride`). Without it the
 	// screenshot buffer stays uninitialized and reads back as noise. Copy the most
@@ -3534,19 +4763,23 @@ void CShaderAPIVulkan::ReadPixels(
 
 void CShaderAPIVulkan::FlushHardware()
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::ResetRenderState( bool bFullReset )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Set the number of bone weights
 void CShaderAPIVulkan::SetNumBoneWeights( int numBones )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::EnableHWMorphing( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 // Selection mode methods
@@ -3587,10 +4820,13 @@ CMeshBuilder *CShaderAPIVulkan::GetVertexModifyBuilder()
 // Use this to begin and end the frame
 void CShaderAPIVulkan::BeginFrame()
 {
+	drawstatefixture::Instance().Configure( "vulkan-native" );
+	drawstatefixture::Instance().BeginFrame();
 }
 
 void CShaderAPIVulkan::EndFrame()
 {
+	VK_UNIMPLEMENTED();
 }
 
 // returns the current time in seconds....
@@ -3602,26 +4838,32 @@ double CShaderAPIVulkan::CurrentTime() const
 // Get the current camera position in world space.
 void CShaderAPIVulkan::GetWorldSpaceCameraPosition( float *pPos ) const
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::ForceHardwareSync( void )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SetClipPlane( int index, const float *pPlane )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::EnableClipPlane( int index, bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SetFastClipPlane( const float *pPlane )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::EnableFastClip( bool bEnable )
 {
+	VK_UNIMPLEMENTED();
 }
 
 int CShaderAPIVulkan::GetCurrentNumBones( void ) const
@@ -3683,22 +4925,27 @@ int CShaderAPIVulkan::GetCurrentDynamicVBSize( void )
 
 void CShaderAPIVulkan::DestroyVertexBuffers( bool bExitingLevel )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::EvictManagedResources()
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SetTextureTransformDimension(
     TextureStage_t textureStage, int dimension, bool projected )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SetBumpEnvMatrix(
     TextureStage_t textureStage, float m00, float m01, float m10, float m11 )
 {
+	VK_UNIMPLEMENTED();
 }
 
 void CShaderAPIVulkan::SyncToken( const char *pToken )
 {
+	VK_UNIMPLEMENTED();
 }

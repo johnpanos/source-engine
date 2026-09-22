@@ -565,3 +565,207 @@ Delete the orphaned cache and output directory when a project leaves a product.
 
 `tools/quality/portal_boot.py` also carries an edited physics module argument
 from earlier exploration; that remains independent of this slice.
+
+## Measuring the backend instead of guessing at the frame (2026-09-22)
+
+Four conformance suites were green (bring-up 20, LSP 33, material-facing 13,
+material-equivalence 17) while the product frame was black. That combination is
+the finding: those suites exercise paths written on purpose, and the backend
+answered a large part of `IShaderAPI` with do-nothing bodies that no suite and
+no log could see. A silent no-op is indistinguishable from correct behavior at
+the call site, so a wrong frame carried no information about which dropped call
+produced it.
+
+A static audit of `shaderapivulkan.cpp` counted **166 empty bodies and 76
+trivial returns against 76 implemented methods**. (The first pass of that audit
+reported 136 because its signature matcher only handled single-line signatures;
+it therefore missed the entire render-target family — `SetRenderTarget`,
+`SetRenderTargetEx`, `CopyRenderTargetToTextureEx`, `CopyTextureToRenderTargetEx`,
+`CopyRenderTargetToScratchTexture`, `SetScissorRect` — whose signatures wrap.
+The blocker below was found through the texture-residency counters instead, and
+the census matcher has since been fixed: `SetRenderTargetEx` alone records
+**30,927 ignored calls** per run.) Rather than pre-judge which of
+the 136 mattered, each now records itself in an unimplemented-entry census
+(pointer-keyed on `__func__`, no allocation) reported at the screenshot, next to
+a primitive-type histogram and per-draw base-texture residency. One boot of
+`testchmb_a_01` then ranked the entire gap by call count. That measurement
+replaced three standing hypotheses, two of which were wrong:
+
+- **Wrong:** "the screen-covering draws use `BindStandardTexture`". `BindWhite`,
+  `BindLightmap`, `BindFBTexture` and the rest recorded **zero** calls.
+- **Wrong:** "depth state is missing". `EnableDepthTest`/`DepthFunc` are indeed
+  empty, but `InitDynamicMesh` already hardcodes depth test + write, and its
+  blend variant correctly disables depth write.
+- **Right, and quantified:** `SetPrimitiveType` was an empty body called 36,719
+  times, and **15,514 of 36,456 draws (43%) were `TRIANGLE_STRIP`** while every
+  native pipeline rasterizes `TRIANGLE_LIST`. That is the "bunch of broken
+  triangles" reported against this backend, measured.
+
+### Defects found and fixed
+
+1. **Primitive topology ignored.** `CEmptyMesh` now records the declared
+   `MaterialPrimitiveType_t` and `EmitToNativeQueue` assembles the triangles it
+   implies — strips with alternating winding and degenerate-stitch rejection,
+   polygons fanned, quads split — instead of assuming the indices already form a
+   list. Line and point topologies are dropped rather than assembled as
+   triangles. A missing bound on the vertex lock was also fixed: a lock larger
+   than `VERTEX_BUFFER_SIZE / kMeshVertexStride` overran a heap buffer.
+
+2. **The default texture was a debug pattern.** The textured shader *multiplies*
+   by its sample, so the only correct default is opaque white — the
+   multiplicative identity, matching what D3D9 gets from `TEXTURE_WHITE`. The
+   built-in was a 2x1 red/green texture, which turned every texture-residency
+   gap into whole-frame corruption that read as a raster bug. Changing it moved
+   the capture from 3 distinct colors at 99.8% midtone to 32 colors.
+
+3. **The world was multiplied by zero vertex color.** `m_pVertexMemory` was
+   uninitialized heap, and most Source vertex formats — the lightmapped world
+   format above all — carry no color, so the mesh builder never writes that
+   field. The shader multiplied the entire world by whatever the allocation
+   held. The color field is now seeded to opaque white at lock. This is the same
+   error as (2): **a multiplicative input defaulting to zero.**
+
+4. **A stale "skip the next draw" flag.** `BindTexture` set a global consumed by
+   the following emit, inside an unbraced `if` that swallowed the assignment, so
+   a draw that bound no texture inherited the previous draw's decision. It also
+   ran *before* the census, which undercounted the real problem by 8x. Replaced
+   with a decision made at emit time from the state it depends on; the flag and
+   its `BindStandardTexture` producer are gone.
+
+Boot status moved from `fail` ("engine capture lacks scene detail") to
+**`portal_boot.py --renderer native-vulkan`: pass**, `has_scene_detail: true`,
+32 distinct colors, midtone fraction 0.059. All four suites remain green (one
+regression was caught and fixed in the process: the residency gate initially
+suppressed draws from the vertex-color/greenify/constant-color pipelines, which
+do not sample `$basetexture` at all).
+
+### The named, quantified blocker: no render targets
+
+With residency accounting per draw, every texture ever sampled while empty is
+named. There are exactly six, all render targets:
+
+| binds while empty | texture |
+| --- | --- |
+| 14,332 | `_rt_portal1` |
+| 2,591 | `_rt_smallfb0` |
+| 1,819 | `_rt_portal2` |
+| 698 | `_rt_fullframefb` |
+| 457 | `_rt_shadows` |
+| 363 | `_rt_smallfb1` |
+
+**57% of all draws sample a render target this backend does not implement.**
+Inspecting the capture confirms the other half of the same gap: the frame shows
+real textured geometry composited from several camera viewpoints at once,
+scattered and overlapping. With `SetRenderTarget` unimplemented, Source's portal
+views, shadow pass and framebuffer copies render *into the swapchain* instead of
+into their targets, and with `SetViewports` also empty (13,008 calls) each one
+takes the full screen. The single missing feature both corrupts the image and
+starves the draws that sample the result.
+
+Draws whose base texture cannot be supplied are currently dropped rather than
+emitted, because emitting one paints a screen-covering surface over the correct
+scene behind it. That is a bounded, reported limitation, not a fix: the census
+prints the drop counts every run.
+
+**Next rung: render targets** (`SetRenderTarget`, render-target-backed textures,
+per-view viewport), which the residency census will confirm by driving
+`unuploaded` to zero. The remaining census entries rank the work after that —
+`InvalidateDelayedShaderConstants` (71,058), `SetDefaultState` (51,699),
+`FlushBufferedPrimitives` (41,657), `ForceDepthFuncEquals` (35,529),
+`SetLight`/`SetAmbientLightCube` (lighting, ~28,000).
+
+## Render targets, the mesh layer, and draw-state fixtures (2026-09-22, later)
+
+**Correction to the section above.** The frame "composited from several camera
+viewpoints" was mostly not render targets. `ClearBuffers` only reset the draw
+queue for `(-1, -1)` dimensions, and the engine passes real dimensions, so the
+queue was never cleared and every capture replayed the whole run. Frames are now
+bounded by `Present`: the first record after a present starts the next frame.
+
+Fixed after measuring, in order:
+
+| Defect | Effect |
+| --- | --- |
+| Render targets: `TEXTURE_CREATE_RENDERTARGET` ignored, `SetRenderTarget(Ex)`, `SetViewports`, `SetScissorRect`, `CopyRenderTargetToTexture(Ex)` empty | Draws, clears and copies now form one ordered stream replayed across render-pass-compatible passes (swapchain clear/load, render-target). `unuploaded` 20,320 → 0 |
+| Every static mesh, static vertex buffer and index buffer was the *same object* sharing one 1 MB buffer; `GetDynamicMesh` ignored vertex/index overrides | Each static mesh owns its storage. The dynamic mesh draws override geometry, as D3D9's mesh manager does, which is how the world is drawn (`gl_rsurf.cpp`) |
+| `ExecuteCommandBuffer` was an empty one-line inline body (never instrumented) | `LightmappedGeneric` binds its base texture through command buffers, so every world surface was dropped. Now parsed like `CShaderAPIDx8::ExecuteCommandBuffer`; `BindStandardTexture` defers to the material system as D3D9 does |
+| Modulation/texture transform read from c37/c38 (the vs_1_1 layout) | vs_2_0 uses c47/c48-c49 (`ishadersystem_declarations.h`). The equivalence suite had the same hand-copied numbers and so could not detect it; both now name the enum. Registers are reset to identity at `BeginPass` |
+| Samplers were clamp-to-edge only | Per-texture state from `TexWrap`/`TexMinFilter`/`TexMagFilter`; default wrap, as in D3D9 |
+
+**State at the time (superseded below): the boot gate failed.** World and model draws all reach the
+GPU with their textures, but `dev/engine_post` (drawn opaque with only the bloom
+buffer) and `dev/motion_blur` (drawn additively with a copy of the frame) run
+through the generic textured pipeline and erase the final image. These shaders
+combine several samplers; the native pipeline computes `vcolor × modulation ×
+tex0`. Also recorded: on a 1.5×-scaled Wayland display the engine screenshots its
+video-mode size (1920×1080) from a 2880×1620 back buffer, so the TGA is a crop.
+
+### Draw-state fixtures: comparing against the D3D9 path
+
+Every defect above was found by hand from frame dumps. To compare directly with
+the reference instead, both backends now write **draw-state fixtures**
+(`materialsystem/drawstatefixture.h`, schema `source-draw-state/v1`). For each
+material pass of the frame being screenshotted, they record the state actually
+applied: sampled textures with addressing and filter, blend factors, depth, alpha
+test, target, viewport, c47-c49, and whether the draw was submitted (with the drop
+reason). D3D9 records at `CShaderAPIDx8::RenderPass` after state commit; native
+records only the samplers and blend factors its pipelines really use.
+
+```sh
+python3 tools/quality/portal_boot.py --runtime run/runtime --build build-portal-vulkan \
+    --renderer vulkan-compat --require-vulkan --draw-state-fixtures --out OUT_DX --map testchmb_a_01
+python3 tools/quality/portal_boot.py --runtime run/runtime --build build \
+    --renderer native-vulkan --draw-state-fixtures --out OUT_VK --map testchmb_a_01
+python3 tools/quality/draw_state_diff.py --reference OUT_DX/draw-state/dx9-0.jsonl \
+    --candidate OUT_VK/draw-state/vulkan-native-0.jsonl --out diff.json
+```
+
+The comparator groups draws by (material, pass), because two captures never line
+up draw for draw, and excludes viewport, which follows the window. Its tests
+(`tools/quality/tests/test_draw_state_diff.py`, 8) include seeded differences.
+First comparison: 65 groups, 226 differing fields — samplers 65, modulation 65,
+target 17, blend 14-16, depth write 14, base-texture transform 10, depth test 5,
+alpha ref 5. Known interpretation limits: registers are compared raw, even for
+shaders that do not read c47-c49; D3D9 quantizes the alpha reference to 1/255;
+and D3D9 renders portals with stencil while native reports no stencil bits and
+takes the render-target path, which accounts for the `target` differences.
+
+## Burning down the first fixture diff (2026-09-22, later still)
+
+The diff pointed at blend state first: decals drawn opaque with depth writes,
+and models blended that D3D9 draws opaque. The two share one cause.
+
+| Defect | Fix | Evidence |
+| --- | --- | --- |
+| `TakeSnapshot` appended a table entry on every call and packed the index into the 11 free bits of the 16-bit `StateSnapshot_t`. Past 2,048 calls the index wrapped, so draws bound another material's blend, alpha and shader | Identical shadow states share one snapshot, as in D3D9's transition table; a 2,049th *distinct* state is a hard `Error` rather than an alias | Blend-enable differences 14 → 0. New equivalence checks: identical states share an id, and a state taken after 3,000 snapshots keeps its own blend. Both fail with the dedupe disabled |
+| Blend reduced to three fixed pipelines (opaque/alpha/additive): `src_alpha, one` ran as `one, one` and modulate (`zero, src_color`; `dst_color, src_color`) as alpha | Textured pipelines are built on first use per `DynRasterState`: the recorded factors (applied to color and alpha, as D3D9 without separate alpha), depth test, depth write and depth compare | New equivalence checks for modulate and `src_alpha, one` |
+| `EnableDepthTest` and `DepthFunc` were unimplemented, and depth compare was `LESS` | Recorded in the shadow state; default `LEQUAL`, the D3D9 shadow default | depth_test / depth_write differences 5 / 14 → 0 |
+| Alpha-test reference used unquantized | Truncated to 1/255 as `shadershadowdx8.cpp` does | alpha_test_ref differences 5 → 0 |
+| Every shader not in the test catalog ran as "base texture × modulation", including screen-space post-processing that samples a bloom buffer or a frame copy | An explicit list of material shaders the textured pipeline reproduces (`NativePipelineImplementsShader`); draws by any other shader are declined by name (census, dropped-material report, fixture `submitted: false` with the reason) | `Engine_Post_dx9`, `MotionBlur_dx9`, `Downsample_nohdr`, `BlurFilterX/Y`, `WriteZ_DX9`, `ShadowBuild_DX9`, `Refract_DX90` and `Portal_DX90` are declined |
+
+With the depth test now disabled for screen-space passes as D3D9 has it, the
+post-process quads covered the whole frame. Declining them is what lets the frame
+survive. Post-processing, refraction and portal surfaces are therefore declared
+**unsupported** on the native path, not approximated.
+
+**Current state: `portal_boot.py --renderer native-vulkan` passes** on
+testchmb_a_01, with midtone fraction 0.71. The previous passing frame measured
+0.12. The frame is a textured world: ceiling tiles, concrete walls and window
+frames. Lightmaps are not applied, so it is unlit.
+
+Second comparison: 64 groups, 163 differing fields. There are **no remaining
+blend, depth or alpha-test differences.** What remains:
+- samplers (64): lightmap, detail and gamma-lookup stages, and anisotropic
+  filtering, are not implemented;
+- modulation (64): D3D9's raw c47 is `[16,16,16,1]` for many shaders;
+- target (19): portals use a render target instead of stencil;
+- base-texture transform (10);
+- submitted (6): exactly the declined shaders above.
+
+Verification:
+- Conformance suites: bring-up 20/0, render backend 33/0, material-facing 13/0,
+  material equivalence 21/0.
+- `tools/quality` tests: 163/0. The render-trace fixture had fallen behind the
+  committed `Capture::Present(int32_t, bool)` signature and was updated.
+- `stylelint --changed` reports 0 failures. The native and DX trees both build.
+

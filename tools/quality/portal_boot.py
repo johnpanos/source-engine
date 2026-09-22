@@ -445,6 +445,9 @@ def main(argv=None):
                         help="overlay source-matched shader artifacts into the private runtime")
     parser.add_argument("--render-trace", action="store_true",
                         help="retain renderer diagnostics in render-trace.jsonl")
+    parser.add_argument("--draw-state-fixtures", action="store_true",
+                        help="write the screenshot frame's per-draw state (source-draw-state/v1) "
+                             "to draw-state/ for cross-backend comparison")
     parser.add_argument("--resize-stress", action="store_true",
                         help="resize the actual native game window through a versioned workload")
     parser.add_argument("--require-gtk-decoration", action="store_true",
@@ -500,6 +503,10 @@ def main(argv=None):
                    "+wait", "10", "+quit"]
         if args.renderer:
             command[1:1] = ["-renderer", args.renderer]
+        if args.draw_state_fixtures:
+            fixture_dir = output / "draw-state"
+            fixture_dir.mkdir()
+            command[1:1] = ["-drawstatefixture", str(fixture_dir)]
         if args.resize_stress:
             # Cmd_Exec_f evaluates separate file lines immediately. A single
             # semicolon-delimited line is parsed as one delayed command sequence,
@@ -552,6 +559,12 @@ def main(argv=None):
         if args.require_provider_catalog:
             evidence["provider_catalog"] = inspect_provider_catalog(log)
             failures.extend(evidence["provider_catalog"]["failures"])
+        if args.draw_state_fixtures:
+            fixtures = sorted(fixture_dir.glob("*.jsonl"))
+            evidence["draw_state_fixtures"] = [{"path": str(path), "sha256": sha256(path),
+                                                "bytes": path.stat().st_size} for path in fixtures]
+            if not fixtures:
+                failures.append("requested draw-state fixtures were not written")
         if args.render_trace:
             if not trace.is_file() or trace.stat().st_size == 0:
                 failures.append("requested renderer trace was not produced")

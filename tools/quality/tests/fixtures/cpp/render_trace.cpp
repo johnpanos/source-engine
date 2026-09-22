@@ -36,7 +36,7 @@ int main( int argc, char **argv )
 	capture.ShaderFailure( "missing_ps20b", 96, 96 );
 	capture.Draw( draw );
 	capture.Skipped( draw.material, "zero viewport\n" );
-	capture.Present( 0 );
+	capture.Present( 0, false );
 	capture.EndFrame();
 	capture.BeginFrame();
 	capture.Draw( draw );
@@ -50,6 +50,6 @@ int main( int argc, char **argv )
 	capture.Skipped( "beyond\xf4\x90\x80\x80", "invalid Unicode scalar" );
 	capture.Skipped( "literal\\udca9", "literal escape" );
 	capture.EndFrame();
-	capture.Present( -1 );
+	capture.Present( -1, false );
 	return 0;
 }

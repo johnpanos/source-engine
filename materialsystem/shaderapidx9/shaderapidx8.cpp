@@ -99,9 +99,14 @@ mat_fullbright 1 doesn't work properly on alpha materials in testroom_standards
 #endif
 
 #include "winutils.h"
+#include "drawstatefixture.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
+// Render target 0 as last set, for draw-state fixtures (the device keeps only
+// the surface, not the texture it came from).
+static ShaderAPITextureHandle_t s_hFixtureColorTarget = SHADER_RENDERTARGET_BACKBUFFER;
 
 #if defined( OSX )
 	typedef unsigned int DWORD;
@@ -752,6 +757,8 @@ public:
 	// Draws
 	void BeginPass( StateSnapshot_t snapshot  );
 	void RenderPass( int nPass, int nPassCount );
+	// Records this pass's resolved state as a draw-state fixture.
+	void RecordDrawStateFixture( int nPass, int nPassCount );
 
 	// We use smaller dynamic VBs during level transitions, to free up memory
 	virtual int  GetCurrentDynamicVBSize( void );
@@ -3874,6 +3881,8 @@ void CShaderAPIDx8::BeginFrame()
 #ifdef USE_DXVK
 	renderdiagnostics::Current().BeginFrame();
 #endif
+	drawstatefixture::Instance().Configure( "dx9" );
+	drawstatefixture::Instance().BeginFrame();
 
 	if ( m_bResetRenderStateNeeded )
 	{
@@ -7179,6 +7188,8 @@ void CShaderAPIDx8::SetRenderTargetEx( int nRenderTargetID, ShaderAPITextureHand
 
 	// GR - need to flush batched geometry
 	FlushBufferedPrimitives();
+	if ( nRenderTargetID == 0 )
+		s_hFixtureColorTarget = colorTextureHandle;
 
 #if defined( PIX_INSTRUMENTATION )
 	{
@@ -9114,6 +9125,132 @@ void CShaderAPIDx8::SpewBoardState()
 //-----------------------------------------------------------------------------
 // Begin a render pass
 //-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+// Draw-state fixtures (drawstatefixture.h): the reference record of the state a
+// material pass is drawn with, for comparison against other backends.
+//-----------------------------------------------------------------------------
+static const char *FixtureBlendName( D3DBLEND blend )
+{
+	switch ( blend )
+	{
+	case D3DBLEND_ZERO:
+		return "zero";
+	case D3DBLEND_ONE:
+		return "one";
+	case D3DBLEND_SRCCOLOR:
+		return "src_color";
+	case D3DBLEND_INVSRCCOLOR:
+		return "one_minus_src_color";
+	case D3DBLEND_SRCALPHA:
+		return "src_alpha";
+	case D3DBLEND_INVSRCALPHA:
+		return "one_minus_src_alpha";
+	case D3DBLEND_DESTALPHA:
+		return "dst_alpha";
+	case D3DBLEND_INVDESTALPHA:
+		return "one_minus_dst_alpha";
+	case D3DBLEND_DESTCOLOR:
+		return "dst_color";
+	case D3DBLEND_INVDESTCOLOR:
+		return "one_minus_dst_color";
+	case D3DBLEND_SRCALPHASAT:
+		return "src_alpha_saturate";
+	default:
+		return "other";
+	}
+}
+
+static const char *FixtureAddressName( D3DTEXTUREADDRESS address )
+{
+	switch ( address )
+	{
+	case D3DTADDRESS_WRAP:
+		return "wrap";
+	case D3DTADDRESS_CLAMP:
+		return "clamp";
+	case D3DTADDRESS_BORDER:
+		return "border";
+	case D3DTADDRESS_MIRROR:
+	case D3DTADDRESS_MIRRORONCE:
+		return "mirror";
+	default:
+		return "other";
+	}
+}
+
+static const char *FixtureFilterName( D3DTEXTUREFILTERTYPE filter )
+{
+	switch ( filter )
+	{
+	case D3DTEXF_NONE:
+	case D3DTEXF_POINT:
+		return "point";
+	case D3DTEXF_LINEAR:
+		return "linear";
+	case D3DTEXF_ANISOTROPIC:
+		return "anisotropic";
+	default:
+		return "other";
+	}
+}
+
+void CShaderAPIDx8::RecordDrawStateFixture( int nPass, int nPassCount )
+{
+	const ShadowState_t *pShadow = m_TransitionTable.CurrentShadowState();
+	if ( !pShadow )
+		return;
+	drawstatefixture::Draw draw;
+	draw.material = m_pMaterial ? m_pMaterial->GetName() : "";
+	draw.shader = m_pMaterial ? m_pMaterial->GetShaderName() : "";
+	draw.pass = nPass;
+	draw.passCount = nPassCount;
+	if ( s_hFixtureColorTarget != SHADER_RENDERTARGET_BACKBUFFER &&
+	     s_hFixtureColorTarget != SHADER_RENDERTARGET_NONE &&
+	     TextureIsAllocated( s_hFixtureColorTarget ) )
+		draw.target = GetTexture( s_hFixtureColorTarget ).m_DebugName.String();
+	draw.viewport[0] = m_DynamicState.m_Viewport.X;
+	draw.viewport[1] = m_DynamicState.m_Viewport.Y;
+	draw.viewport[2] = m_DynamicState.m_Viewport.Width;
+	draw.viewport[3] = m_DynamicState.m_Viewport.Height;
+	draw.depthRange[0] = m_DynamicState.m_Viewport.MinZ;
+	draw.depthRange[1] = m_DynamicState.m_Viewport.MaxZ;
+
+	const int samplerCount = MIN(
+	    g_pHardwareConfig->GetSamplerCount(), static_cast<int>( drawstatefixture::kMaxSamplers ) );
+	for ( int i = 0; i < samplerCount; ++i )
+	{
+		const SamplerState_t &sampler = SamplerState( i );
+		if ( !pShadow->m_SamplerState[i].m_TextureEnable ||
+		     sampler.m_BoundTexture == INVALID_SHADERAPI_TEXTURE_HANDLE ||
+		     !TextureIsAllocated( sampler.m_BoundTexture ) )
+			continue;
+		drawstatefixture::Sampler &out = draw.samplers[draw.samplerCount++];
+		out.stage = i;
+		out.texture = GetTexture( sampler.m_BoundTexture ).m_DebugName.String();
+		out.addressU = FixtureAddressName( sampler.m_UTexWrap );
+		out.addressV = FixtureAddressName( sampler.m_VTexWrap );
+		out.filter = FixtureFilterName( sampler.m_MinFilter );
+	}
+
+	draw.blend = pShadow->m_AlphaBlendEnable;
+	draw.srcBlend = FixtureBlendName( pShadow->m_SrcBlend );
+	draw.dstBlend = FixtureBlendName( pShadow->m_DestBlend );
+	draw.depthTest = pShadow->m_ZEnable != D3DZB_FALSE;
+	draw.depthWrite = pShadow->m_ZWriteEnable;
+	draw.alphaTestRef = pShadow->m_AlphaTestEnable ? pShadow->m_AlphaRef / 255.0f : -1.0f;
+	const Vector4D *pConstants = m_DesiredState.m_pVectorVertexShaderConstant;
+	if ( pConstants )
+	{
+		for ( int i = 0; i < 4; ++i )
+		{
+			draw.modulation[i] = pConstants[VERTEX_SHADER_MODULATION_COLOR][i];
+			draw.baseTextureTransform[i] = pConstants[VERTEX_SHADER_SHADER_SPECIFIC_CONST_0][i];
+			draw.baseTextureTransform[4 + i] = pConstants[VERTEX_SHADER_SHADER_SPECIFIC_CONST_1][i];
+		}
+	}
+	drawstatefixture::Instance().Record( draw );
+}
+
 void CShaderAPIDx8::BeginPass( StateSnapshot_t snapshot )
 {
 	LOCK_SHADERAPI();
@@ -9144,6 +9281,8 @@ void CShaderAPIDx8::RenderPass( int nPass, int nPassCount )
 
 	m_TransitionTable.UseSnapshot( m_nCurrentSnapshot );
 	CommitPerPassStateChanges( m_nCurrentSnapshot );
+	if ( drawstatefixture::Instance().Enabled() )
+		RecordDrawStateFixture( nPass, nPassCount );
 
 	// Make sure that we bound a texture for every stage that is enabled
 	// NOTE: not enabled/finished yet... see comment in CShaderAPIDx8::ApplyTextureEnable
@@ -11482,6 +11621,7 @@ void CShaderAPIDx8::CopyBitsFromHostSurface( IDirect3DSurface* pSurfaceBits,
 void CShaderAPIDx8::ReadPixels( Rect_t *pSrcRect, Rect_t *pDstRect, unsigned char *pData, ImageFormat dstFormat, int nDstStride )
 {
 	LOCK_SHADERAPI();
+	drawstatefixture::Instance().WriteFrame( "screenshot" );
 	Assert( pDstRect );
 	
 	{
@@ -11512,6 +11652,7 @@ void CShaderAPIDx8::ReadPixels( Rect_t *pSrcRect, Rect_t *pDstRect, unsigned cha
 //-----------------------------------------------------------------------------
 void CShaderAPIDx8::ReadPixels( int x, int y, int width, int height, unsigned char *pData, ImageFormat dstFormat )
 {
+	drawstatefixture::Instance().WriteFrame( "screenshot" );
 	Rect_t rect;
 	rect.x = x;
 	rect.y = y;

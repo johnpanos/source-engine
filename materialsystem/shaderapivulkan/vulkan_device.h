@@ -27,6 +27,7 @@
 #include <vulkan/vulkan.h>
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -157,6 +158,7 @@ public:
 	{
 		m_dynQueued.clear();
 		m_dynDrawRecords.clear();
+		m_dynFramePresented = false;
 	}
 	// Select which material-shader pipeline the queued geometry uses this frame
 	// (0 = vertex-color passthrough, 1 = "greenify", 2 = "constant color"). This
@@ -169,19 +171,24 @@ public:
 		kDynShaderTextured = 3
 	};
 	void SelectDynamicShader( int shaderIndex ) { m_dynShaderIndex = shaderIndex; }
-	// Blend mode the queued geometry composites with this draw, mapping the
-	// material's IShaderShadow blend state to the D3D9-defined compositing:
-	//   opaque   = src replaces dst (no blend)
-	//   alpha    = src.a*src + (1-src.a)*dst   ($translucent)
-	//   additive = src + dst                   ($additive)
-	// Only the textured (UnlitGeneric) path honors this for now.
-	enum
+	// Output-merger state of the queued geometry, in the terms of the D3D9 state a
+	// material's IShaderShadow selects: blend factors (applied to color and alpha
+	// alike, as D3D9 does without separate alpha blending) and the depth test,
+	// write and comparison. The defaults are the D3D9 shadow defaults. Only the
+	// textured (material) pipeline honors this; one pipeline is built per
+	// distinct state, on first use.
+	struct DynRasterState
 	{
-		kDynBlendOpaque = 0,
-		kDynBlendAlpha = 1,
-		kDynBlendAdditive = 2
+		bool blend = false;
+		VkBlendFactor srcFactor = VK_BLEND_FACTOR_ONE;
+		VkBlendFactor dstFactor = VK_BLEND_FACTOR_ZERO;
+		bool depthTest = true;
+		bool depthWrite = true;
+		VkCompareOp depthCompare = VK_COMPARE_OP_LESS_OR_EQUAL;
 	};
-	void SelectDynamicBlend( int blendMode ) { m_dynBlendMode = blendMode; }
+	void SelectDynamicRasterState( const DynRasterState &state ) { m_dynRaster = state; }
+	// Distinct states have distinct keys.
+	static uint32_t RasterStateKey( const DynRasterState &state );
 	// $alphatest: fragments whose alpha is below `ref` are discarded (matching the
 	// D3D9 fixed-function GREATEREQUAL alpha test). A negative `ref` disables it.
 	void SelectDynamicAlphaTest( float ref ) { m_dynAlphaRef = ref; }
@@ -228,10 +235,93 @@ public:
 	// material shader's sampler at it (handle < 0 restores the built-in texture).
 	// `format` may be an uncompressed (R8G8B8A8/B8G8R8A8) or block-compressed
 	// (BC1/BC3, i.e. DXT1/DXT5) Vulkan format; upload data must match it.
-	int CreateManagedTexture( int width, int height, VkFormat format, std::string *outError );
+	int CreateManagedTexture( int width, int height, VkFormat format, std::string *outError,
+	    VkImageUsageFlags extraUsage = 0 );
 	bool UploadManagedTexture(
 	    int handle, const uint8_t *data, size_t dataSize, std::string *outError );
 	void BindManagedTexture( int handle );
+	// True when this managed texture has had pixel data uploaded into it.
+	bool IsManagedTextureUploaded( int handle ) const
+	{
+		return handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) &&
+		       m_managedTextures[static_cast<size_t>( handle )].uploaded;
+	}
+
+	// Render targets (IShaderAPI SetRenderTarget and TEXTURE_CREATE_RENDERTARGET).
+	// A render-target texture is a managed texture that can also be drawn into:
+	// it is created in the swapchain format with its own depth buffer, so the
+	// pipelines built for the swapchain pass draw into it unchanged. It starts
+	// cleared to opaque black and counts as resident.
+	int CreateRenderTargetTexture( int width, int height, std::string *outError );
+	bool IsRenderTargetTexture( int handle ) const
+	{
+		return handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) &&
+		       m_managedTextures[static_cast<size_t>( handle )].renderTarget;
+	}
+	// Direct subsequent records into a render-target texture (-1 = swapchain).
+	// Like D3D9's SetRenderTarget this resets the viewport to the whole target.
+	void SetRenderTarget( int handle );
+	int RenderTarget() const { return m_dynTarget; }
+	void GetRenderTargetExtent( int &width, int &height ) const
+	{
+		uint32_t w = 0, h = 0;
+		GetTargetExtent( m_dynTarget, &w, &h );
+		width = static_cast<int>( w );
+		height = static_cast<int>( h );
+	}
+	// Identity attached to subsequent records, reported by DescribeStreamRecords.
+	void SetRecordTag( int tag ) { m_dynTag = tag; }
+
+	// Per-texture sampler state (IShaderAPI TexWrap/TexMinFilter/TexMagFilter).
+	enum
+	{
+		kSamplerClampU = 1,
+		kSamplerClampV = 2,
+		kSamplerLinear = 4
+	};
+	void SetManagedTextureSamplerState( int handle, int samplerState );
+	int ManagedTextureSamplerState( int handle ) const
+	{
+		return ( handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) )
+		           ? m_managedTextures[static_cast<size_t>( handle )].samplerState
+		           : 0;
+	}
+	void SetViewport( int x, int y, int width, int height, float minZ, float maxZ );
+	void SetScissor( bool enable, int x, int y, int width, int height );
+	// Clear the current viewport of the current target to the clear color
+	// (SetClearColor) and/or to depth 1.
+	void QueueClear( bool color, bool depth );
+	// Copy the current target into a render-target texture, scaling between the
+	// rectangles ({x, y, width, height}; null = the whole image).
+	bool QueueCopyToTexture( int dstHandle, const int *srcRect, const int *dstRect );
+	// Called once the frame has been presented. The recorded stream stays
+	// available for an on-demand capture until the next frame records into it.
+	void EndStreamFrame() { m_dynFramePresented = true; }
+	// One line per target of the recorded stream (draws, clears, vertices,
+	// copies out), in first-use order: what the next capture will replay.
+	std::string DescribeStream() const;
+	// The recorded stream record by record, for per-draw diagnosis.
+	struct StreamRecordInfo
+	{
+		int kind;
+		int target;
+		int tag;
+		bool clearColor;
+		bool clearDepth;
+		float clearValue[4];
+		int shaderIndex;
+		int texHandle;
+		DynRasterState raster;
+		uint32_t vertexCount;
+		float modulation[4];
+		float firstColor[3];
+		float viewport[6];
+		float uvMin[2];
+		float uvMax[2];
+		float texXform0[4];
+		float texXform1[4];
+	};
+	std::vector<StreamRecordInfo> DescribeStreamRecords() const;
 
 	// The most recent captured frame as tightly-packed 8-bit RGBA, top row
 	// first. Empty until a captured EndFrame() completes. *outW/*outH give the
@@ -326,6 +416,12 @@ private:
 	std::vector<VkImageView> m_depthViews;
 
 	VkRenderPass m_renderPass = VK_NULL_HANDLE;
+	// Render-pass-compatible siblings of m_renderPass (same formats, samples and
+	// dependencies), so every pipeline built against m_renderPass draws in them:
+	// re-entering the swapchain image after a render-target pass (load, not
+	// clear), and drawing into a render-target texture (sampled-layout in/out).
+	VkRenderPass m_renderPassLoad = VK_NULL_HANDLE;
+	VkRenderPass m_renderPassTarget = VK_NULL_HANDLE;
 	VkCommandPool m_commandPool = VK_NULL_HANDLE;
 	std::vector<VkCommandBuffer> m_commandBuffers;
 
@@ -411,18 +507,39 @@ private:
 	float m_dynModulation[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	float m_dynTexXform0[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
 	float m_dynTexXform1[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
-	int m_dynBlendMode = 0;      // kDynBlendOpaque
+	DynRasterState m_dynRaster;
 	float m_dynAlphaRef = -1.0f; // $alphatest reference; < 0 disables
 	// "$basetexture" material pipeline: a built-in 2-tone texture sampled at the
 	// mesh UVs, bound through a descriptor set (its own layout adds the sampler).
-	VkPipeline m_dynPipelineTex = VK_NULL_HANDLE;      // opaque
-	VkPipeline m_dynPipelineTexAlpha = VK_NULL_HANDLE; // $translucent alpha blend
-	VkPipeline m_dynPipelineTexAdd = VK_NULL_HANDLE;   // $additive
+	// One textured pipeline per distinct DynRasterState (see RasterStateKey),
+	// built from m_texTemplate when a draw first needs it.
+	std::map<uint32_t, VkPipeline> m_dynTexPipelines;
+	VkPipeline TexturedPipeline( const DynRasterState &state );
+	// The fixed-function state every textured pipeline shares; only the blend and
+	// depth state vary. Kept (with its shader modules) for pipelines built later.
+	struct TexturedPipelineTemplate
+	{
+		VkPipelineShaderStageCreateInfo stages[2];
+		VkVertexInputBindingDescription binding;
+		VkVertexInputAttributeDescription attrs[3];
+		VkPipelineVertexInputStateCreateInfo vin;
+		VkPipelineInputAssemblyStateCreateInfo ia;
+		VkPipelineViewportStateCreateInfo vp;
+		VkPipelineRasterizationStateCreateInfo rs;
+		VkPipelineMultisampleStateCreateInfo ms;
+		VkDynamicState dynStates[2];
+		VkPipelineDynamicStateCreateInfo dyn;
+	};
+	TexturedPipelineTemplate m_texTemplate = {};
 	VkPipelineLayout m_dynTexPipelineLayout = VK_NULL_HANDLE;
 	VkImage m_dynTexImage = VK_NULL_HANDLE;
 	VkDeviceMemory m_dynTexMemory = VK_NULL_HANDLE;
 	VkImageView m_dynTexView = VK_NULL_HANDLE;
 	VkSampler m_dynTexSampler = VK_NULL_HANDLE;
+	// Sampler per addressing/filter combination (kSamplerClampU | kSamplerClampV |
+	// kSamplerLinear). D3D9 sampler state is per texture here, as Source sets it
+	// when each texture is created.
+	VkSampler m_samplers[8] = {};
 	VkDescriptorSetLayout m_dynTexDescLayout = VK_NULL_HANDLE;
 	VkDescriptorPool m_dynTexDescPool = VK_NULL_HANDLE;
 	VkDescriptorSet m_dynTexDescSet = VK_NULL_HANDLE;
@@ -442,6 +559,18 @@ private:
 		uint32_t width = 0;
 		uint32_t height = 0;
 		VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
+		// False until pixel data has actually been uploaded. Sampling an image
+		// that was created but never filled yields undefined contents.
+		bool uploaded = false;
+		// Render-target textures own a depth buffer and a framebuffer for
+		// m_renderPassTarget; their color image rests in SHADER_READ_ONLY.
+		bool renderTarget = false;
+		// Sampler state (kSampler* bits); 0 is D3D9's default: wrap, point.
+		int samplerState = 0;
+		VkImage depthImage = VK_NULL_HANDLE;
+		VkDeviceMemory depthMemory = VK_NULL_HANDLE;
+		VkImageView depthView = VK_NULL_HANDLE;
+		VkFramebuffer framebuffer = VK_NULL_HANDLE;
 	};
 	std::vector<ManagedTexture> m_managedTextures;
 	// The managed texture currently bound (BindManagedTexture); captured per draw.
@@ -457,8 +586,29 @@ private:
 	// draw (transform, shader, constant color), so the many objects the engine
 	// draws in a frame each render with their own state instead of all collapsing
 	// to the last-set state.
+	enum
+	{
+		kRecordDraw = 0,
+		kRecordClear = 1,
+		kRecordCopy = 2
+	};
 	struct DynDraw
 	{
+		// Draws, clears and render-target copies share one ordered stream, since
+		// their relative order across render targets is what the frame means.
+		int kind = kRecordDraw;
+		int target = -1; // render-target texture handle; -1 = swapchain image
+		int tag = -1;    // caller-defined identity (diagnostics only)
+		// x, y, width, height, minZ, maxZ; width <= 0 means the whole target.
+		float viewport[6] = { 0, 0, 0, 0, 0, 1 };
+		bool scissorEnabled = false;
+		int scissor[4] = { 0, 0, 0, 0 }; // x, y, width, height
+		bool clearColor = false;
+		bool clearDepth = false;
+		float clearValue[4] = { 0, 0, 0, 1 };
+		int copyDst = -1;
+		int copySrcRect[4] = { 0, 0, 0, 0 }; // width <= 0 means the whole image
+		int copyDstRect[4] = { 0, 0, 0, 0 };
 		uint32_t firstVertex = 0;
 		uint32_t vertexCount = 0;
 		int shaderIndex = 0;
@@ -469,11 +619,23 @@ private:
 		float modulation[4] = { 1, 1, 1, 1 };
 		float texXform0[4] = { 1, 0, 0, 0 };
 		float texXform1[4] = { 0, 1, 0, 0 };
-		int blendMode = 0;      // kDynBlendOpaque
+		DynRasterState raster;
 		float alphaRef = -1.0f; // $alphatest reference; < 0 disables
 		int texHandle = -1;     // managed texture bound at this draw (-1 = built-in)
 	};
 	std::vector<DynDraw> m_dynDrawRecords;
+	// Target/viewport/scissor state captured by each record.
+	int m_dynTarget = -1;
+	int m_dynTag = -1;
+	float m_dynViewport[6] = { 0, 0, 0, 0, 0, 1 };
+	bool m_dynScissorEnabled = false;
+	int m_dynScissor[4] = { 0, 0, 0, 0 };
+	// Set by EndStreamFrame; the next record discards the presented frame.
+	bool m_dynFramePresented = false;
+	DynDraw &AppendRecord( int kind );
+	void GetTargetExtent( int target, uint32_t *outW, uint32_t *outH ) const;
+	void BeginTargetPass( VkCommandBuffer cmd, int target );
+	void RecordTargetCopy( VkCommandBuffer cmd, int srcTarget, const DynDraw &copy );
 
 	// Per-frame acquisition state, valid between BeginFrame and EndFrame.
 	uint32_t m_acquiredImage = 0;

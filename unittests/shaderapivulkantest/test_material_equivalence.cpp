@@ -9,8 +9,8 @@
 //            stdshaders/unlitgeneric_ps2x.fxc:
 //              result = i.vColor0 * tex2D( TextureSampler, i.vTexCoord0 )
 //            stdshaders/unlitgeneric_vs20.fxc:
-//              o.vColor     = cModulationColor                     (c37)
-//              o.vTexCoord0 = mul( v.vTexCoord0, cBaseTextureTransform )  (c38-c39)
+//              o.vColor     = cModulationColor                     (c47)
+//              o.vTexCoord0 = mul( v.vTexCoord0, cBaseTextureTransform )  (c48-c49)
 //              o.vProjPos   = mul( float4(pos,1), cModelViewProj )        (c4-c7)
 //          i.e. the shaded pixel is
 //              cModulationColor * baseTexture( cBaseTextureTransform * uv ).
@@ -35,6 +35,7 @@
 
 #include "bitmap/imageformat.h"
 #include "materialsystem/imesh.h"
+#include "materialsystem/ishadersystem_declarations.h"
 #include "render/legacy_shader_provider.h"
 #include "shaderapi/ishaderapi.h"
 #include "shaderapi/IShaderDevice.h"
@@ -50,10 +51,13 @@ extern "C" render_vulkan::CVulkanContext *ShaderBackend_NativeVulkanContext();
 
 namespace
 {
-// Source vertex-shader constant registers (stdshaders/common_vs_fxc.h).
-constexpr int kRegModelViewProj = 4;     // cModelViewProj (c4-c7)
-constexpr int kRegModulationColor = 37;  // cModulationColor (c37)
-constexpr int kRegBaseTexTransform = 38; // cBaseTextureTransform (c38-c39)
+// Source vertex-shader constant registers, from the enum the shaders' dynamic
+// state writes through. An earlier revision hand-copied the vs_1_1 numbers
+// (c37/c38) from common_vs_fxc.h; backend and oracle then agreed with each other
+// and both disagreed with every real vs_2_0 shader.
+constexpr int kRegModelViewProj = VERTEX_SHADER_MODELVIEWPROJ;              // c4-c7
+constexpr int kRegModulationColor = VERTEX_SHADER_MODULATION_COLOR;         // c47
+constexpr int kRegBaseTexTransform = VERTEX_SHADER_SHADER_SPECIFIC_CONST_0; // c48-c49
 
 const float kIdentity4x4[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 
@@ -227,7 +231,7 @@ int main()
 	const float modRed[4] = { 1, 0, 0, 1 };
 	const bool gotRed = drawUnlit( whiteTex, modRed, identityRow0, identityRow1, 0.5f, 0.5f, c );
 	check( gotRed && c[0] >= 252 && c[1] <= 3 && c[2] <= 3,
-	    "cModulationColor (c37) masks channels: (1,0,0)*white -> red" );
+	    "cModulationColor (c47) masks channels: (1,0,0)*white -> red" );
 	// Negative control: the oracle must reject the un-modulated (white) result.
 	check( gotRed && !( c[0] >= 252 && c[1] >= 252 && c[2] >= 252 ),
 	    "negative control: modulated output is NOT the raw white texture" );
@@ -255,7 +259,7 @@ int main()
 	           half[2] < full[2] - 8,
 	    "cModulationColor magnitude: 0.5x is strictly darker than 1x" );
 
-	// --- 5. cBaseTextureTransform (c38-c39) transforms the sampled coordinate.
+	// --- 5. cBaseTextureTransform (c48-c49) transforms the sampled coordinate.
 	//         Map every u to 0.75 (row0 = (0,0,0,0.75)): the whole quad now samples
 	//         the right (yellow) half, so the LEFT pixel reads yellow. The identity
 	//         control (test 1) read blue there, so the transform is what moved it.
@@ -263,7 +267,7 @@ int main()
 	const float uvKeepV1[4] = { 0, 1, 0, 0 };
 	check( drawUnlit( toneTex, white4, uvToRight0, uvKeepV1, 0.25f, 0.5f, c ) && c[0] >= 252 &&
 	           c[1] >= 252 && c[2] <= 3,
-	    "cBaseTextureTransform (c38) remaps UV: left pixel now samples yellow" );
+	    "cBaseTextureTransform (c48) remaps UV: left pixel now samples yellow" );
 
 	// --- 6. Register fidelity negative control: modulation set at the WRONG
 	//         register (c20, unused by UnlitGeneric) must NOT affect the output.
@@ -290,7 +294,8 @@ int main()
 	    0, 0, IMAGE_FORMAT_RGBA8888, 0, 1, 1, IMAGE_FORMAT_RGBA8888, false, blue );
 
 	// Draw the blue quad over a chosen clear color under a chosen blend mode
-	// (0 opaque / 1 alpha / 2 additive), reading back the center pixel.
+	// (0 opaque / 1 alpha / 2 additive / 3 modulate / 4 alpha-additive), reading
+	// back the center pixel.
 	auto drawBlend = [&]( const float mod[4], unsigned char cr, unsigned char cg, unsigned char cb_,
 	                     int blendMode, uint8_t out[4] ) -> bool
 	{
@@ -303,6 +308,10 @@ int main()
 			services.shadow->EnableBlending( true );
 			if ( blendMode == 2 )
 				services.shadow->BlendFunc( SHADER_BLEND_ONE, SHADER_BLEND_ONE );
+			else if ( blendMode == 3 )
+				services.shadow->BlendFunc( SHADER_BLEND_ZERO, SHADER_BLEND_SRC_COLOR );
+			else if ( blendMode == 4 )
+				services.shadow->BlendFunc( SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE );
 			else
 				services.shadow->BlendFunc(
 				    SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA );
@@ -344,6 +353,31 @@ int main()
 	// Translucent with source alpha 1: result is entirely the src (blue).
 	check( drawBlend( white4, 0, 255, 0, 1, c ) && c[0] <= 3 && c[1] <= 3 && c[2] >= 252,
 	    "$translucent alpha=1: fully opaque source (blue) over the clear" );
+	// Modulate (decal shadows: ZERO, SRC_COLOR) over yellow: dst * src = black.
+	// Alpha blending would give blue and additive white, so only the recorded
+	// factors pass.
+	check( drawBlend( white4, 255, 255, 0, 3, c ) && c[0] <= 3 && c[1] <= 3 && c[2] <= 3,
+	    "modulate (zero, src_color): blue * yellow clear = black" );
+	// Alpha-additive (SRC_ALPHA, ONE) with source alpha 0 adds nothing: the red
+	// clear stays red, where plain additive (ONE, ONE) would give magenta.
+	check( drawBlend( modAlpha0, 255, 0, 0, 4, c ) && c[0] >= 252 && c[1] <= 3 && c[2] <= 3,
+	    "alpha-additive (src_alpha, one) alpha=0: clear (red) unchanged" );
+
+	// Snapshot ids are 16 bits. Materials take far more snapshots than they have
+	// distinct states; identical states must share an id, so a state taken after
+	// thousands of snapshots still binds its own blend rather than an aliased one.
+	services.shadow->EnableBlending( false );
+	services.shadow->SetPixelShader( "unlitgeneric_ps20b", 0 );
+	const StateSnapshot_t firstOpaque = services.api->TakeSnapshot();
+	bool shared = true;
+	for ( int i = 0; i < 3000; ++i )
+	{
+		if ( services.api->TakeSnapshot() != firstOpaque )
+			shared = false;
+	}
+	check( shared, "identical shadow states share one snapshot id" );
+	check( drawBlend( white4, 255, 0, 0, 2, c ) && c[0] >= 252 && c[1] <= 3 && c[2] >= 252,
+	    "a state taken after 3000 snapshots keeps its own blend ($additive = magenta)" );
 
 	// --- 8. $alphatest. A 2-tone texture with per-region alpha (left opaque, right
 	//         alpha 0) drawn over a red clear with the GEQUAL alpha test at 0.5:
