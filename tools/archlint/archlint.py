@@ -73,8 +73,8 @@ RULES = (
 )
 
 NATIVE_LOAD_PATTERN = re.compile(
-    r"(?<![A-Za-z0-9_])(?:dlopen|LoadLibrary|LoadLibraryA|LoadLibraryW|"
-    r"LoadLibraryExA|LoadLibraryExW)\s*\("
+    r"(?<![A-Za-z0-9_])(?:dlopen|Sys_LoadLibrary|LoadLibraryHandle|LoadLibrary|"
+    r"LoadLibraryA|LoadLibraryW|LoadLibraryExA|LoadLibraryExW)\s*\("
 )
 LOAD_INTERFACE_PATTERN = re.compile(r"\bSys_LoadInterface\s*\(")
 
@@ -115,46 +115,49 @@ def source_files(root: Path, selected: Iterable[str] | None = None) -> list[Path
         candidates = (root / name for name in selected)
         return sorted(path for path in candidates if path.is_file() and is_source(path, root))
 
-    search = subprocess.run(
-        [
-            "rg",
-            "-l",
-            "--null",
-            "-g",
-            "*.c",
-            "-g",
-            "*.cc",
-            "-g",
-            "*.cpp",
-            "-g",
-            "*.cxx",
-            "-g",
-            "*.h",
-            "-g",
-            "*.hh",
-            "-g",
-            "*.hpp",
-            "-g",
-            "*.inl",
-            "-g",
-            "*.mm",
-            "-g",
-            "!thirdparty/**",
-            "-g",
-            "!build*/**",
-            "-g",
-            "!tools/archlint/tests/fixtures/**",
-            r"Sys_LoadModule|Sys_LoadInterface|Sys_GetFactory|CDllDemandLoader|CreateInterfaceFn|LoadModule|dlopen|LoadLibrary",
-            ".",
-        ],
-        cwd=root,
-        text=False,
-        capture_output=True,
-        check=False,
-    )
-    if search.returncode in (0, 1):
-        names = [name for name in search.stdout.decode("utf-8").split("\0") if name]
-        return sorted(root / name.removeprefix("./") for name in names)
+    try:
+        search = subprocess.run(
+            [
+                "rg",
+                "-l",
+                "--null",
+                "-g",
+                "*.c",
+                "-g",
+                "*.cc",
+                "-g",
+                "*.cpp",
+                "-g",
+                "*.cxx",
+                "-g",
+                "*.h",
+                "-g",
+                "*.hh",
+                "-g",
+                "*.hpp",
+                "-g",
+                "*.inl",
+                "-g",
+                "*.mm",
+                "-g",
+                "!thirdparty/**",
+                "-g",
+                "!build*/**",
+                "-g",
+                "!tools/archlint/tests/fixtures/**",
+                r"Sys_LoadModule|Sys_LoadInterface|Sys_GetFactory|CDllDemandLoader|CreateInterfaceFn|LoadModule|dlopen|LoadLibrary",
+                ".",
+            ],
+            cwd=root,
+            text=False,
+            capture_output=True,
+            check=False,
+        )
+        if search.returncode in (0, 1):
+            names = [name for name in search.stdout.decode("utf-8").split("\0") if name]
+            return sorted(root / name.removeprefix("./") for name in names)
+    except FileNotFoundError:
+        pass
 
     candidates: list[Path] = []
     for directory, names, files in os.walk(root):
@@ -210,7 +213,7 @@ def strip_comments_and_literals(text: str) -> str:
             result.append("\n" if char == "\n" else " ")
         else:
             if char == "\\" and following:
-                result.extend("  ")
+                result.extend((" ", "\n" if following == "\n" else " "))
                 index += 2
                 continue
             if char == quote:
@@ -345,6 +348,20 @@ def check_command(args: argparse.Namespace, root: Path, manifest: dict) -> int:
     return 0
 
 
+def verify_baseline(root: Path, manifest: dict) -> int:
+    current = scan(root, manifest)
+    new, stale = compare_baseline(current, read_baseline(root))
+    for item in new:
+        print_violation("new dependency", item)
+    for item in stale:
+        print_violation("stale baseline entry", item)
+    if new or stale:
+        print(f"archlint: baseline failed with {len(new)} new and {len(stale)} stale occurrence(s)")
+        return 1
+    print("archlint: baseline is current")
+    return 0
+
+
 def classify(path: str, rule_id: str, manifest: dict) -> tuple[str, str]:
     for classification in manifest["loaderInventory"]["classifications"]:
         applicable_rules = classification.get("rules")
@@ -457,6 +474,8 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     if args.command == "baseline":
         if args.write == args.verify:
             raise SystemExit("baseline requires exactly one of --verify or --write")
+        if args.verify:
+            return verify_baseline(root, manifest)
         return verify_or_write(
             root / "architecture/baseline.json",
             baseline_document(scan(root, manifest)),

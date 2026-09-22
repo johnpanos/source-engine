@@ -2,11 +2,11 @@
   "version": 1,
   "description": "Static dynamic-loader site inventory for RFC 0001 retirement Phase A.",
   "classificationCounts": {
-    "first-party-composition": 101,
-    "native-symbol-probe": 20,
+    "first-party-composition": 105,
+    "native-symbol-probe": 21,
     "optional-provider": 22,
     "retained-extension": 21,
-    "tool-indirection": 127
+    "tool-indirection": 132
   },
   "sites": [
     {
@@ -917,12 +917,57 @@
       "reason": "Tool-only implementation, wrapper, or optional tool integration."
     },
     {
+      "fingerprint": "56d10521e0723dd6d949",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 331,
+      "excerpt": "static HMODULE Sys_LoadLibrary( const char *pLibraryName )",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
       "fingerprint": "71fa575015ecd5a7c86a",
       "rule": "ARCH101",
       "path": "external/vpc/tier1/interface.cpp",
       "line": 392,
       "excerpt": "CSysModule *Sys_LoadModule( const char *pModuleName )",
       "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "2f7df68cd90e11b2dee6",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 425,
+      "excerpt": "hDLL = Sys_LoadLibrary( szAbsoluteModuleName );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "a4497860c2c30252fa5a",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 431,
+      "excerpt": "hDLL = Sys_LoadLibrary( szAbsoluteModuleName );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "295c71adeba43b78550a",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 459,
+      "excerpt": "hDLL = Sys_LoadLibrary( szAbsoluteModuleName );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "de8082bb9cbb932eaa5f",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 466,
+      "excerpt": "hDLL = Sys_LoadLibrary( pModuleName );",
       "classification": "tool-indirection",
       "reason": "Tool-only implementation, wrapper, or optional tool integration."
     },
@@ -1663,6 +1708,15 @@
       "reason": "Native API availability or vendor symbol probe."
     },
     {
+      "fingerprint": "f14e1bf398dd30b526ac",
+      "mechanism": "native-loader",
+      "path": "tier0/dynfunction.cpp",
+      "line": 75,
+      "excerpt": "LibraryHandle lib = LoadLibraryHandle(name);",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
       "fingerprint": "bf1e620c21894eab4a90",
       "mechanism": "native-loader",
       "path": "tier0/etwprof.cpp",
@@ -1762,6 +1816,15 @@
       "reason": "First-party runtime module assembled by legacy application composition."
     },
     {
+      "fingerprint": "c300961808c0754ba715",
+      "mechanism": "native-loader",
+      "path": "tier1/interface.cpp",
+      "line": 194,
+      "excerpt": "HMODULE Sys_LoadLibrary( const char *pLibraryName, Sys_Flags flags )",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
       "fingerprint": "e6daa6d75ee7cd5da14f",
       "mechanism": "native-loader",
       "path": "tier1/interface.cpp",
@@ -1777,6 +1840,33 @@
       "line": 317,
       "excerpt": "CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NOFLAGS (0) */ )",
       "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "c0469628ec6e6a0e6f85",
+      "mechanism": "native-loader",
+      "path": "tier1/interface.cpp",
+      "line": 357,
+      "excerpt": "hDLL = Sys_LoadLibrary( szAbsoluteModuleName, flags );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "28f639a2c3c6d4b6f174",
+      "mechanism": "native-loader",
+      "path": "tier1/interface.cpp",
+      "line": 381,
+      "excerpt": "hDLL = Sys_LoadLibrary( szAbsoluteModuleName, flags );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "1e3dfcc5feb378ec330b",
+      "mechanism": "native-loader",
+      "path": "tier1/interface.cpp",
+      "line": 406,
+      "excerpt": "hDLL = Sys_LoadLibrary( pModuleName, flags );",
       "classification": "first-party-composition",
       "reason": "First-party runtime module assembled by legacy application composition."
     },
@@ -2095,21 +2185,21 @@
       "reason": "Tool-only implementation, wrapper, or optional tool integration."
     },
     {
-      "fingerprint": "a18f669caaa04c6847e1",
+      "fingerprint": "31b91c40626999aeecea",
       "rule": "ARCH101",
       "path": "utils/getbugs/getbugs.cpp",
-      "line": 705,
-      "excerpt": "// Now connect to steamweb and update the engineaccess table",
+      "line": 706,
+      "excerpt": "CSysModule *sql = Sys_LoadModule( \"mysql_wrapper\" );",
       "mechanism": "ARCH101",
       "classification": "tool-indirection",
       "reason": "Tool-only implementation, wrapper, or optional tool integration."
     },
     {
-      "fingerprint": "57bfbd823118abd35643",
+      "fingerprint": "4a856993455c6f0db8ce",
       "rule": "ARCH102",
       "path": "utils/getbugs/getbugs.cpp",
-      "line": 708,
-      "excerpt": "{",
+      "line": 709,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( sql );",
       "mechanism": "ARCH102",
       "classification": "tool-indirection",
       "reason": "Tool-only implementation, wrapper, or optional tool integration."
@@ -2175,21 +2265,21 @@
       "reason": "Tool-only implementation, wrapper, or optional tool integration."
     },
     {
-      "fingerprint": "5a472265c2f5a09f13e5",
+      "fingerprint": "974992d451820f093557",
       "rule": "ARCH101",
       "path": "utils/localization_check/localization_check.cpp",
-      "line": 2503,
-      "excerpt": "",
+      "line": 2523,
+      "excerpt": "e.module = Sys_LoadModule( fullpath );",
       "mechanism": "ARCH101",
       "classification": "tool-indirection",
       "reason": "Tool-only implementation, wrapper, or optional tool integration."
     },
     {
-      "fingerprint": "6a7eec2252508d10b85a",
+      "fingerprint": "e43034676381eecc50c8",
       "rule": "ARCH102",
       "path": "utils/localization_check/localization_check.cpp",
-      "line": 2510,
-      "excerpt": "FileFindHandle_t findHandle;",
+      "line": 2530,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( e.module );",
       "mechanism": "ARCH102",
       "classification": "tool-indirection",
       "reason": "Tool-only implementation, wrapper, or optional tool integration."
@@ -2401,21 +2491,21 @@
       "reason": "Tool-only implementation, wrapper, or optional tool integration."
     },
     {
-      "fingerprint": "d1e50322508b47301823",
+      "fingerprint": "fc2db8e270b5093fa36b",
       "rule": "ARCH103",
       "path": "utils/vcd_sound_check/vcd_sound_check.cpp",
-      "line": 727,
-      "excerpt": "Q_getwd( workingdir, sizeof( workingdir ) );",
+      "line": 732,
+      "excerpt": "CSysModule *pSoundEmitterModule = g_pFullFileSystem->LoadModule( \"soundemittersystem.dll\" );",
       "mechanism": "ARCH103",
       "classification": "tool-indirection",
       "reason": "Tool-only implementation, wrapper, or optional tool integration."
     },
     {
-      "fingerprint": "9f9bf96cca01bc579f58",
+      "fingerprint": "8d5e9ac2990f85bc0200",
       "rule": "ARCH102",
       "path": "utils/vcd_sound_check/vcd_sound_check.cpp",
-      "line": 734,
-      "excerpt": "{",
+      "line": 739,
+      "excerpt": "CreateInterfaceFn hSoundEmitterFactory = Sys_GetFactory( pSoundEmitterModule );",
       "mechanism": "ARCH102",
       "classification": "tool-indirection",
       "reason": "Tool-only implementation, wrapper, or optional tool integration."

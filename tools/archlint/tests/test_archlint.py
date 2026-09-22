@@ -52,6 +52,25 @@ class ArchlintTests(unittest.TestCase):
         self.assertEqual(["ARCH101"], [item.rule for item in new])
         self.assertEqual([], stale)
 
+    def test_each_frozen_loader_surface_is_detected(self) -> None:
+        cases = {
+            "ARCH101": 'Sys_LoadModule("module");',
+            "ARCH102": "Sys_GetFactory(module);",
+            "ARCH103": 'g_pFileSystem->LoadModule("module");',
+            "ARCH104": 'CDllDemandLoader loader("module");',
+        }
+        for index, (expected_rule, statement) in enumerate(cases.items()):
+            with self.subTest(rule=expected_rule):
+                relative = f"engine/case_{index}.cpp"
+                self.write(relative, f"void f() {{ {statement} }}\n")
+                rules = [
+                    item.rule
+                    for item in archlint.scan_file(
+                        self.root, self.root / relative, MANIFEST
+                    )
+                ]
+                self.assertIn(expected_rule, rules)
+
     def test_existing_occurrence_survives_line_movement(self) -> None:
         self.write("engine/old.cpp", 'void f() { Sys_GetFactory(module); }\n')
         original = archlint.scan(self.root, MANIFEST)
@@ -81,6 +100,15 @@ class ArchlintTests(unittest.TestCase):
             '// Sys_LoadModule("comment")\nconst char *s = "Sys_GetFactory(module)";\n',
         )
         self.assertEqual([], archlint.scan(self.root, MANIFEST))
+
+    def test_escaped_literal_newline_does_not_shift_diagnostics(self) -> None:
+        self.write(
+            "engine/continued.cpp",
+            'const char *s = "continued\\\ntext";\nvoid f() { Sys_LoadModule("module"); }\n',
+        )
+        occurrence = archlint.scan(self.root, MANIFEST)[0]
+        self.assertEqual(3, occurrence.line)
+        self.assertIn("Sys_LoadModule", occurrence.excerpt)
 
     def test_inventory_assigns_explicit_classification(self) -> None:
         self.write("tools/example.cpp", 'void f() { Sys_LoadModule("tool"); }\n')

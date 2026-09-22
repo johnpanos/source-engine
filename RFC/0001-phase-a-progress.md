@@ -11,8 +11,8 @@ file is the durable progress record; detailed current sites live in
 
 | Work item | Status | Evidence |
 | --- | --- | --- |
-| Classify every static load site | Complete for the initial tree | `architecture/loader_inventory.json`; verified by `archlint inventory --verify` |
-| Reject new `Sys_LoadModule`, `Sys_GetFactory`, filesystem `LoadModule`, and `CDllDemandLoader` dependencies | Complete | `ARCH101`–`ARCH104`; exact ratchet in `architecture/baseline.json` |
+| Classify every static load site | Complete for the initial tree | 301 loader-surface records in `architecture/loader_inventory.json`; verified by `archlint inventory --verify` |
+| Reject new `Sys_LoadModule`, `Sys_GetFactory`, filesystem `LoadModule`, and `CDllDemandLoader` dependencies | Complete | `ARCH101`–`ARCH104`; 683 exact legacy fingerprints including the factory-type freeze in `architecture/baseline.json` |
 | Prohibit new `CreateInterfaceFn` boundaries outside the legacy ABI package | Complete | `ARCH105`; legacy paths declared in `architecture/modules.json` |
 | Run the freeze in CI | Complete | Architecture job in `.github/workflows/tests.yml` |
 | Instrument load attempts and unloads with requester, resolved path, entry/interface, result, and lifetime | Not started | Requires an ABI-preserving telemetry context around Tier 1 and filesystem-mediated loads |

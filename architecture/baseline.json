@@ -3790,25 +3790,25 @@
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( sql );"
     },
     {
-      "fingerprint": "a18f669caaa04c6847e1",
+      "fingerprint": "31b91c40626999aeecea",
       "rule": "ARCH101",
       "path": "utils/getbugs/getbugs.cpp",
-      "line": 705,
-      "excerpt": "// Now connect to steamweb and update the engineaccess table"
+      "line": 706,
+      "excerpt": "CSysModule *sql = Sys_LoadModule( \"mysql_wrapper\" );"
     },
     {
-      "fingerprint": "57bfbd823118abd35643",
+      "fingerprint": "4a856993455c6f0db8ce",
       "rule": "ARCH102",
       "path": "utils/getbugs/getbugs.cpp",
-      "line": 708,
-      "excerpt": "{"
+      "line": 709,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( sql );"
     },
     {
-      "fingerprint": "86596601e240bf9ccbca",
+      "fingerprint": "ee599c07ddb1bdc83473",
       "rule": "ARCH105",
       "path": "utils/getbugs/getbugs.cpp",
-      "line": 708,
-      "excerpt": "{"
+      "line": 709,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( sql );"
     },
     {
       "fingerprint": "eb4a1920b803b0ac0240",
@@ -3923,25 +3923,25 @@
       "excerpt": "CreateInterfaceFn factory = GetFactory();"
     },
     {
-      "fingerprint": "5a472265c2f5a09f13e5",
+      "fingerprint": "974992d451820f093557",
       "rule": "ARCH101",
       "path": "utils/localization_check/localization_check.cpp",
-      "line": 2503,
-      "excerpt": ""
+      "line": 2523,
+      "excerpt": "e.module = Sys_LoadModule( fullpath );"
     },
     {
-      "fingerprint": "6a7eec2252508d10b85a",
+      "fingerprint": "e43034676381eecc50c8",
       "rule": "ARCH102",
       "path": "utils/localization_check/localization_check.cpp",
-      "line": 2510,
-      "excerpt": "FileFindHandle_t findHandle;"
+      "line": 2530,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( e.module );"
     },
     {
-      "fingerprint": "cc2687fda6cbbde1b51e",
+      "fingerprint": "8202cd9308f3cacf6cda",
       "rule": "ARCH105",
       "path": "utils/localization_check/localization_check.cpp",
-      "line": 2510,
-      "excerpt": "FileFindHandle_t findHandle;"
+      "line": 2530,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( e.module );"
     },
     {
       "fingerprint": "24cc714e16a6263b8fac",
@@ -4203,25 +4203,25 @@
       "excerpt": "CreateInterfaceFn physicsFactory = GetPhysicsFactory();"
     },
     {
-      "fingerprint": "d1e50322508b47301823",
+      "fingerprint": "fc2db8e270b5093fa36b",
       "rule": "ARCH103",
       "path": "utils/vcd_sound_check/vcd_sound_check.cpp",
-      "line": 727,
-      "excerpt": "Q_getwd( workingdir, sizeof( workingdir ) );"
+      "line": 732,
+      "excerpt": "CSysModule *pSoundEmitterModule = g_pFullFileSystem->LoadModule( \"soundemittersystem.dll\" );"
     },
     {
-      "fingerprint": "9f9bf96cca01bc579f58",
+      "fingerprint": "8d5e9ac2990f85bc0200",
       "rule": "ARCH102",
       "path": "utils/vcd_sound_check/vcd_sound_check.cpp",
-      "line": 734,
-      "excerpt": "{"
+      "line": 739,
+      "excerpt": "CreateInterfaceFn hSoundEmitterFactory = Sys_GetFactory( pSoundEmitterModule );"
     },
     {
-      "fingerprint": "f3f3d7382a529af9a160",
+      "fingerprint": "6da7d62f94cf5fab5bba",
       "rule": "ARCH105",
       "path": "utils/vcd_sound_check/vcd_sound_check.cpp",
-      "line": 734,
-      "excerpt": "{"
+      "line": 739,
+      "excerpt": "CreateInterfaceFn hSoundEmitterFactory = Sys_GetFactory( pSoundEmitterModule );"
     },
     {
       "fingerprint": "07b40fe42ef3bf6c0795",
