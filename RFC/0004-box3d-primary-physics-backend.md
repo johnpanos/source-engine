@@ -5,6 +5,8 @@
 - Scope: VPhysics, collision assets, physics-dependent gameplay, content tools,
   and client/dedicated-server builds
 - Related: [RFC 0001: Capability-Based Platform Architecture](0001-capability-based-platform-architecture.md)
+- Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
+- Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
 - Evaluated dependency: Box3D `9e5a4cde862fba95ff19f096b79567f3ea6c01fd`
   (`v0.1.0-24-g9e5a4cd`, branch `main`)
 
@@ -661,6 +663,14 @@ inconsistent source lists. Both require:
 - private symbol visibility and no samples/graphics dependency in the runtime;
 - independent client and dedicated-server packaging checks.
 
+New adapter/runtime C++ targets follow RFC 0006's C++20 policy; Box3D remains
+C17. Keep standard/FP/runtime settings private to their targets. Use scoped
+ownership and result values internally without changing advertised VPhysics
+vtables or exposing C++ standard-library types across its preserved ABI.
+Buffered event handoff declares capacity, publication, ownership, and overflow
+behavior. Required collision events cannot be overwritten or dropped to fit a
+ring; capture capacity failures need an explicit failure/recovery policy.
+
 The initial target is Linux x86-64. Windows x86-64 and other actively supported
 targets follow through explicit validation. Source advertises additional
 platforms and architectures, including Android, FreeBSD, and 32-bit builds;
@@ -694,6 +704,44 @@ Binary decoders validate lengths, offsets, indices, arithmetic overflow, and
 resource budgets before constructing backend objects. Truncated or malformed
 content must produce a deterministic load failure rather than a crash or
 partially colliding level.
+
+### Executable compatibility and feasibility gates
+
+Q-PHYSICS in RFC 0005 owns isolated provider execution and reports; this RFC owns
+the method/profile requirements and semantic expectations. Q-FOUNDATION adds
+frozen-header binary consumers and lifetime fixtures; Q-CONTENT adds independent
+asset readers, fuzzing, recovery, and compiler checks. Required method coverage
+references executable test IDs and actual consumers, not just method counts.
+
+Compare normalized operation inputs, public outputs, callback state/order, and
+logical identity. Keep provider-native pointers and solver memory out of the
+oracle. Analytical cases check simple conversions/motion independently of IVP;
+gameplay scenes use declared outcomes and numeric tolerances. Negative adapter
+fixtures must expose force-versus-impulse errors, lost materials, wrong trace
+flags, duplicate touches, and callbacks that report final instead of pre-impact
+velocity. A plausible trajectory cannot compensate for a failed contract.
+
+Phase A must produce executable evidence for pre/post collision state, including
+several impacts in one tick, callback reads/queued writes, and resulting damage.
+Contact deletion/friction mutation, asymmetric ragdoll limits, oversized real
+asset hulls, and decoder ownership also need tested solutions or explicit scope
+decisions. A required unresolved feature blocks its profile; it is not marked
+passed by an unsupported result or skipped test.
+
+Phase B begins with one worker and covers the documented BSP/PHY/compound-prop,
+inside-start trace, verified impact, ragdoll, and save/restore slice. Later worker
+integration uses RFC 0003's scheduler tests plus physics-specific immutable
+filters, callback affinity, bounded event transport, nested work, oversubscription,
+and shutdown. Test the bridge in both client/listen-server and dedicated profiles
+where supported. Introducing the scheduler must not simultaneously redefine the
+physics semantic baseline.
+
+Save tests distinguish matching Box3D-schema restore, old-IVP-save import, and
+IVP rollback. Corrupt/incompatible data fails before level publication; test
+partial restore cleanup and interruption as well as successful round trips.
+The content comparator retains all solid IDs, material metadata, decomposition,
+and supported unknown fields. A writer and reader sharing a defect do not prove
+compatibility; selected legacy/tool consumers must accept promised formats.
 
 ### Gameplay corpus
 
@@ -742,6 +790,13 @@ distinct tests. A one-worker correctness baseline precedes speedup claims.
 | D: Gameplay completion | Fluids, vehicles, pulley/group semantics, selected game variants and Portal support, tool workflows | Declared feature profile has no unsupported required behavior |
 | E: Performance and rollout | Parallel execution, platform CI, profiling, diagnostics, soak testing, packaging | Per-profile default-promotion checklist passes |
 | F: Retirement | Native cooking where useful, independent legacy decoder, dependency removal | Box3D runtime no longer needs IVP simulation; later removal of remaining IVP code is separately verified |
+
+Every phase uses current profile-specific RFC 0005 evidence. A/B establish the
+compatibility oracle before broad gameplay migration; C/D expand method, asset,
+and scene coverage; E requires actual installed client/server packages, measured
+budgets, and rollback. F has two independent gates: no IVP simulation dependency,
+then no remaining IVP decoder/cooking dependency after equivalent corpus results.
+The cross-RFC portfolio order and tracked state live in [AGENTS.md](../AGENTS.md).
 
 ### Phase A: Highest-risk questions first
 

@@ -3,6 +3,8 @@
 - Status: Proposed
 - Date: 2026-09-21
 - Scope: Tier 0–3, application bootstrap, and platform backends
+- Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
+- Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
 
 ## Summary
 
@@ -319,7 +321,9 @@ public:
 ```
 
 These examples are illustrative. Final interfaces must follow the C++ dialect
-and ABI constraints of their target modules.
+and ABI constraints of their target modules. New strict first-party targets
+use the staged C++20 policy in RFC 0006; legacy public headers and extension
+ABIs do not acquire that requirement implicitly.
 
 ## Render-device capability family
 
@@ -612,6 +616,17 @@ Every render backend should pass shared tests covering:
 
 Backend-specific image correctness and performance suites remain separate from
 the contract tests.
+
+These suites use Q-PRESENTATION and Q-PRODUCT from RFC 0005. A null/recording
+provider certifies only its declared command and lifetime behavior; required
+image fidelity needs real render-provider evidence. The selected window/render
+pairs must pass native integration, including GPU completion delayed beyond CPU
+submission, resource exhaustion, and device/surface epoch invalidation.
+
+Upload rings and deferred destruction use provider-owned GPU completion tokens
+under RFC 0006. A finished CPU job, an atomic fence, or a frame index is not proof
+that a device resource can be recycled. Cross-backend image tolerances are
+versioned per case/profile and cannot silently change when a backend migrates.
 
 ### Render migration sequence
 
@@ -916,6 +931,12 @@ python3 tools/archlint/archlint.py check --all --compile-deps
 python3 tools/archlint/archlint.py baseline --verify
 ```
 
+The `--compile-deps` mode above is a proposed interface, not an implemented
+command at the initial Phase A snapshot. Record actual commands, coverage, and
+blind spots as each checker increment lands. Fast static checks precede expensive
+builds; compiler-grounded checks run after the selected configurations produce
+dependency data. RFC 0005 requires negative fixtures before a new gate is enabled.
+
 The changed-file check should be fast enough for normal local use. CI runs the
 full source, transitive dependency, Waf target, cycle, and baseline checks
 before expensive build jobs. The linter itself requires fixture tests for
@@ -956,6 +977,38 @@ Every backend must pass a shared contract suite. The initial suite should test:
 The test backend should additionally offer deterministic clocks, synchronous or
 controlled scheduling, in-memory paths/files, and fake modules. This backend is
 for subsystem tests and is not a production OS port.
+
+### Harness composition, lifecycle, and ABI gates
+
+Q-ARCH, Q-FOUNDATION, Q-PRESENTATION, and Q-PRODUCT in RFC 0005 provide the
+verification infrastructure for this RFC. Ordinary contract suites are linked
+and composed explicitly. The runner must operate without ambient factories or
+Tier globals; a test of a legacy bridge installs that bridge only for its scope.
+Dedicated loader/extension tests use isolated real fixture libraries.
+
+Every provider claiming a contract runs its shared suite, including test fakes.
+Native integration is required for native guarantees; fake-provider success is
+not evidence of OS behavior. Negative providers demonstrate that the suites
+detect violated ordering, lifetime, errors, and required capability semantics.
+
+The composition suite injects failure at construction, connect, and initialization
+boundaries and verifies rollback, subscription/task drain, cleared legacy globals,
+and destruction after the last borrower. It tests repeated composition in one
+process where supported and startup with genuinely absent optional services.
+Headless product gates inspect build/link dependencies and execute without
+desktop/render providers rather than merely installing a null renderer.
+
+Versioned extension fixture consumers are built against frozen headers and
+tested against the current host/provider. Preserve their toolchain provenance;
+recompiling all consumers against current headers cannot establish old-binary
+compatibility. Test calls, ownership, failure negotiation, and unload as well as
+exports/layout. Public vtables remain unchanged unless a new version is declared.
+
+Loader telemetry tests cover unsuccessful attempts/lookups, duplicate native
+handles, nested/concurrent request contexts, sink lifetime/reentrancy, and partial
+startup. Traces compare normalized requests, interfaces, results, and lifetime
+ordering without comparing pointer values or requiring identical native errors.
+Instrumentation must not change the loader's observable success/failure behavior.
 
 ## Reference migration: dynamic-library loading
 
@@ -1342,6 +1395,19 @@ Each checkpoint produces a usable architectural outcome:
    architectural dependencies and numbered tiers no longer own unrelated
    services.
 
+Every checkpoint requires current RFC 0005 evidence for its declared profiles,
+including missing-test/provider detection and the relevant native/product gates.
+Ranks 1–4 install and exercise the architecture, runner, vocabulary, lifecycle,
+and loader harnesses. Rank 6 adds installed headless-product evidence; ranks
+7–10 add native window/input/presentation evidence; ranks 11–17 add concurrency,
+GPU correctness, and measured product budgets. Ranks 18–21 require zero remaining
+consumers before deleting the corresponding compatibility boundary.
+
+This table orders work within the platform program. The cross-RFC portfolio
+order, dependencies, and tracked completion state are maintained in
+[AGENTS.md](../AGENTS.md); it interleaves Hammer, scheduler, physics, harness,
+and C++20 work without weakening these checkpoint requirements.
+
 ### Explicit scope boundaries
 
 The following are not silently included in the estimates:
@@ -1501,14 +1567,22 @@ These are design references, not new Source dependencies.
 
 Foundation contracts use a no-exception `Expected<T, E>` value type and
 `Expected<void, E>` for operations that return no value. This follows the shape
-of Chromium's `base::expected` while remaining implementable in the C++ dialect
-supported by this repository.
+of Chromium's `base::expected`. RFC 0006 selects C++20 for new strict targets
+with a validated per-target toolchain; `std::expected` itself requires C++23,
+so C++20 uses the tested project vocabulary. Legacy-facing declarations keep
+their established dialect/ABI until their callers are deliberately migrated.
 
 `Expected` is a vocabulary type in the foundation contract library. It is
 `nodiscard` where supported, performs no hidden logging, and does not allocate.
 Accessing a value when an error is present is a programmer error and asserts or
 terminates according to the build policy; recoverable failures must be inspected
 explicitly.
+
+The wrapper itself has no allocation; any payload allocation is governed by
+the payload's contract. Use `std::optional` for absence, bounded views for
+borrowing, and values or `std::unique_ptr` for exclusive ownership where useful.
+Shared ownership requires an actual shared lifetime and an explicit destruction
+context. None of these C++ vocabulary types enter stable extension C tables.
 
 Each domain owns a compact error enum. A shared error payload contains the
 domain code, an optional provider-native integer code, and a stable operation

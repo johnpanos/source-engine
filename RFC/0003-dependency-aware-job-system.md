@@ -4,6 +4,8 @@
 - Date: 2026-09-21
 - Scope: Engine frame orchestration, CPU job scheduling, and incremental subsystem migration
 - Depends on: [RFC 0001: Capability-Based Platform Architecture](0001-capability-based-platform-architecture.md), especially its task-runner, ownership, and render-threading contracts
+- Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
+- Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
 - Evidence: Static inspection of this repository; no runtime performance baseline has been collected for this proposal
 - Implementation status: This RFC specifies future work; it does not introduce the scheduler, interfaces, or migrations described below
 
@@ -81,7 +83,7 @@ migration decisions.
 - Adding a frame of input or prediction latency as a default scheduling technique.
 - Replacing VPhysics or introducing a GPU render graph.
 - Moving every asynchronous facility into one physical thread pool.
-- Requiring fibers, coroutines, or a newer C++ dialect for the first implementation.
+- Requiring fibers or coroutines, or upgrading unrelated legacy targets as a prerequisite.
 - Extending the legacy module ABI with new C++ graph interfaces.
 - Guaranteeing a particular speedup before representative profiling.
 
@@ -271,9 +273,11 @@ public:
 ```
 
 Final signatures must define ownership transfer explicitly and follow the
-repository's supported compiler dialect. The `Expected` convention comes from
-RFC 0001. Public extension boundaries use the size-versioned C contracts
-required there; these internal C++ sketches do not extend `CreateInterface`.
+validated C++20 target policy in RFC 0006. The `Expected` convention comes from
+RFC 0001 and uses a project type on C++20. Preserve the established dialect of
+legacy bridge headers until their callers migrate. Public extension boundaries
+use the size-versioned C contracts required there; these internal C++ sketches
+do not extend `CreateInterface`.
 
 ### Dependencies and publication
 
@@ -541,6 +545,19 @@ the public graph contract does not depend on a particular deque algorithm.
 The deterministic executor chooses a stable topological order, allowing graph
 validation and subsystem testing before the parallel executor is complete.
 
+Bounded injection/completion rings follow RFC 0006: declare producer/consumer
+topology, publication and reuse ordering, capacity, overload policy, and drain.
+A work-stealing deque is not interchangeable with a FIFO ring. Required work
+cannot be silently dropped or overwritten. Use C++20 atomics/wait facilities
+where the selected profile supports them, with an explicit happens-before
+argument; notification alone is not publication. Prefer a simple synchronized
+queue until a more complex implementation has correctness and performance evidence.
+
+CPU dependency completion and GPU retirement remain distinct. Scheduler scopes
+may bridge device completion tokens, but a completed submission job cannot
+recycle an upload range or destroy a still-used GPU resource. Those tests belong
+to Q-JOBS and Q-PRESENTATION together.
+
 The host chooses a process-wide compute budget based on available processors,
 deployment, and measurements. It must account for existing material, I/O,
 audio, and legacy workers during migration. Dedicated-server deployments need
@@ -665,6 +682,26 @@ practical, with correct per-worker registration and bounded trace overhead.
 
 Dynamic child-scope tests are required before enabling that later extension.
 
+### Independent model and adversarial execution
+
+Q-JOBS in RFC 0005 supplies an independent small graph/state model, bounded
+schedule exploration, real-thread stress, and reproducible failure artifacts.
+Do not validate the production graph implementation solely by running its own
+serial executor. Model tests include rejected graphs executing zero jobs and
+terminal-state dependencies never exposing failed/canceled output as valid.
+
+Persist seeds, selected schedules, graph/resource declarations, and the first
+divergent event. Test very small queue/arena capacities, wraparound/reuse, delayed
+external completion, priority pressure, and all workers sleeping at enqueue.
+Negative executors/queues deliberately misorder publication, duplicate completion,
+or release payloads early to verify that the suite detects those defects.
+
+Real-thread tests and supported TSan builds complement deterministic exploration;
+a single-thread simulation cannot establish native memory visibility. Exercise
+supported weakly ordered architectures when claiming their support. ASan/UBSan,
+sequence assertions, and lifetime/resource checks run in appropriate separate
+configurations. A sanitizer success does not establish legacy gameplay ordering.
+
 ### Subsystem equivalence and stress tests
 
 Each migration defines observable outputs and compares legacy, serial-graph,
@@ -716,6 +753,20 @@ invent engine-wide gains or accept higher CPU utilization as proof of success.
 | F: New computation seams | Animation evaluation, render preparation, AI sensing/navigation, and streaming transforms | Stable inputs/outputs, cross-system dependencies, and per-subsystem budgets verified |
 | G: Stateful systems | Snapshot-send ownership refactor and selected entity/physics integration | Legacy-order equivalence or explicitly approved behavior change; no shared-state regressions |
 | H: Consolidation | Retire redundant compute queues/waits where safe; revise host overlap policy if measurements justify it | All affected callers migrated; total worker budget controlled; legacy adapters removed only when unused |
+
+Phase A establishes captured workloads, budgets, and the supported profiles.
+Phase B requires the independent model and legacy-versus-serial comparison;
+Phase C adds adversarial/native concurrency and queue lifetime evidence. Every
+Phase D–G migration requires three-mode comparison, first-divergence diagnostics,
+its own performance/latency gate, and tested rollback at a quiescent boundary.
+Tests execute comparisons against captured inputs/private outputs, never duplicate
+live side effects. Phase H also proves zero consumers of the retired facility.
+
+Runtime promotion uses the shared evidence and product gates in RFC 0005.
+An integration of Box3D tasks must additionally pass nested-work, total worker
+budget, callback-sequence, and shutdown tests from RFC 0004; neither scheduler's
+standalone test results establish that bridge. The cross-RFC order and tracked
+completion state live in [AGENTS.md](../AGENTS.md).
 
 Phase A can proceed independently of completing RFC 0001's provider migrations.
 Phase B uses its runner and ownership contracts and may initially adapt existing

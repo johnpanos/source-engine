@@ -4,6 +4,8 @@
 - Date: 2026-09-21
 - Scope: Hammer, its reusable editor libraries, and its application adapters
 - Related: [RFC 0001: Capability-Based Platform Architecture](0001-capability-based-platform-architecture.md)
+- Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
+- Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
 - Source inspection reference: `b5eb9915bdebf5af1045c5821d4ac3d9af15dbb2`
 - Implementation status: This RFC specifies future work. It does not introduce the modules, contracts, tools, or CI gates described below.
 
@@ -299,9 +301,13 @@ An implementation that cannot meet a contract must implement a narrower
 contract or be rejected when composing a required capability.
 
 New contracts follow RFC 0001's foundation result and path vocabulary. The
-chosen C++ dialect and any missing foundation primitives must be recorded before
-implementation. Snippets in this RFC describe semantics, not a required new ABI
-or permission to upgrade every legacy toolchain.
+C++20 target policy in RFC 0006 applies to new strict editor modules, with
+compiler/standard-library evidence established in H0. Use project `Expected`
+results, scoped ownership, strong IDs, and bounded borrowed views where useful.
+Legacy MFC-facing headers retain their supported dialect until callers migrate;
+new language/library types must not leak across an unchanged binary interface.
+Snippets in this RFC describe semantics, not a required new ABI or permission
+to upgrade every legacy toolchain.
 
 ### Scene and geometry contracts
 
@@ -757,6 +763,43 @@ authored values exactly where the representation permits it; rendered pixels
 can use documented device-specific tolerances. Semantic tests remain the primary
 oracle when screenshots cannot distinguish data loss.
 
+### Executable harness and oracle gates
+
+RFC 0005 owns shared execution, evidence, failure injection, and CI mechanics.
+This RFC owns Q-EDITOR's document semantics and its Q-CONTENT and Q-PRESENTATION
+acceptance criteria. Test selection must reconcile required features/providers
+with actual executed cases; absent assets, missing selectors, or an unavailable
+required host cannot produce a successful gate.
+
+The headless reference workflow is open VMF, resolve a property draft, select,
+transform, undo, redo, save, reopen, and compile with the selected tools. Compare
+authored fields/references, selection, history position, modified state, emitted
+change batches, and diagnostics. Use generated seeded action sequences against
+a small independent document/history model. Tests must exercise two documents,
+stale generations, invalid mixed selections, failure before commit, and
+completion delivered after cancel/close/revision change.
+
+The semantic comparator has its own negative corpus: omitted unknown chunks,
+changed texture axes, duplicate-key/order changes, broken IDs/references, and
+lost displacement/overlay/instance metadata must be detected. Enumerate allowed
+normalization instead of removing hard-to-compare fields. Use independent
+reader/compiler acceptance as well as round trips so matching codec bugs cannot
+certify data preservation. Fuzz malformed input and inject write/replacement
+failures; distinguish atomic replacement, durability, and multi-file recovery.
+
+Replay applicable tool/action traces through headless, MFC, and GTK providers.
+Do not fabricate MFC observations when the baseline cannot run. Native GTK tests
+add actual input delivery, DPI, relative navigation, focus/capture loss, multiple
+viewports, and X11/Wayland coverage. R1 requires real Source materials, GPU
+completion/resource ownership, and context/framebuffer restoration. A headless
+recorder proves only its command contract. Buffered texture handoff and ring
+reuse follow RFC 0006's completion rules.
+
+Product tests close documents while asset/compile work remains pending and
+verify argv, cancellation, stale delivery, and resource cleanup. Required
+compiler availability and content profiles are gate inputs, not assumptions
+based on source files being present in the repository.
+
 ### CI tiers
 
 1. Every change: schemas, inventories, exact ratchets, dependency DAG, contract
@@ -786,6 +829,13 @@ The phases form a dependency DAG. Renderer feasibility can be investigated
 after H0 while core extraction proceeds, but GTK feature delivery depends on
 the relevant core and rendering gates. This is not a requirement to complete
 all engine platform refactoring first.
+
+The cross-RFC portfolio order and tracked state live in [AGENTS.md](../AGENTS.md).
+The phases here retain their domain exit criteria. H0 includes trustworthy test
+discovery/evidence, a versioned comparator with negative fixtures, and an explicit
+C++20/legacy toolchain boundary. H2–H4 require the executable headless workflow
+and model-based sequences above; R1/H5 require native-host evidence; H6/H7 require
+the complete declared feature corpus, budgets, recovery, and consumer retirement.
 
 | Phase | Deliverable | Entry condition | Exit gate |
 | --- | --- | --- | --- |
