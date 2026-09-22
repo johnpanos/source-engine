@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# play — play Portal on Vulkan with one command.
+#
+#   ./play                    native Vulkan renderer (shaderapivulkan, build/)
+#   ./play dxvk               D3D9 renderer on Vulkan through DXVK Native
+#                             (build-portal-vulkan/, the stable reference)
+#   ./play native testchmb_a_02 -console      a map, then any game arguments
+#
+# It picks the build tree and renderer id that belong together, builds that tree
+# incrementally, stages it into its own runtime (run/runtime-<backend>, seeded
+# from run/runtime, big assets symlinked) and launches through ./run.sh. Every
+# run.sh setting still works as an environment override, e.g.
+#   WIDTH=2560 HEIGHT=1440 BUILD=0 ./play
+set -euo pipefail
+cd "$(dirname "$0")"
+
+backend=native
+case "${1:-}" in
+    native|dxvk) backend=$1; shift ;;
+    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+esac
+# A leading word that is not an option is the map.
+if [ $# -gt 0 ] && [ "${1#[-+]}" = "$1" ]; then
+    export MAP=$1
+    shift
+fi
+
+case "$backend" in
+    native) build_dir=build; renderer=native-vulkan ;;
+    dxvk) build_dir=build-portal-vulkan; renderer=vulkan-compat ;;
+esac
+if [ ! -d "$build_dir" ]; then
+    echo "play: $build_dir is not configured; see RFC/0001-native-vulkan-progress.md" >&2
+    exit 1
+fi
+
+export BUILD_DIR=$build_dir RENDERER=$renderer
+export RUNTIME=${RUNTIME:-run/runtime-$backend}
+if [ -z "${BASE_RUNTIME:-}" ] && [ -f run/runtime/portal/gameinfo.txt ]; then
+    export BASE_RUNTIME=run/runtime
+fi
+exec ./run.sh "$@"

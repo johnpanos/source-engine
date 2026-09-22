@@ -21,7 +21,7 @@ for k in $CONFIG_KEYS; do eval "__set_$k=\${$k+set}" "__val_$k=\${$k-}"; done
 
 MAP=testchmb_a_01
 WIDTH=1920; HEIGHT=1080; WINDOWED=1; FPS_MAX=120
-RENDERER=vulkan-native
+RENDERER=native-vulkan
 PHYSICS=vphysics
 EXTRA_ARGS="-novid -insecure +mat_queue_mode 0"
 BUILD=1
@@ -37,8 +37,9 @@ done
 
 # ---- Build (incremental; waf itself is the staleness check) ------------------
 if [ "$BUILD" = 1 ]; then
-    echo "run.sh: building (waf, incremental) ..."
-    python3 waf build
+    echo "run.sh: building $BUILD_DIR (waf, incremental) ..."
+    # Each configured tree keeps its own Waf lock file, so build from inside it.
+    (cd "$BUILD_DIR" && python3 "$ROOT/waf" build)
 fi
 [ -d "$BUILD_DIR" ] || { echo "run.sh: no build output at $BUILD_DIR" >&2; exit 1; }
 
