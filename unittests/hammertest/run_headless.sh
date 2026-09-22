@@ -40,4 +40,8 @@ run_suite test_aabb \
 	"$ROOT/hammer/core/geometry/aabb.cpp" \
 	"$ROOT/unittests/hammertest/geometry/test_aabb.cpp"
 
+run_suite test_aabb_negative \
+	"$ROOT/hammer/core/geometry/aabb.cpp" \
+	"$ROOT/unittests/hammertest/geometry/test_aabb_negative.cpp"
+
 echo "hammertest: all headless suites passed"

@@ -1,4 +1,5 @@
 # Source Engine
+
 [![GitHub Actions Status](https://github.com/nillerusr/source-engine/actions/workflows/build.yml/badge.svg)](https://github.com/nillerusr/source-engine/actions/workflows/build.yml) [![GitHub Actions Status](https://github.com/nillerusr/source-engine/actions/workflows/tests.yml/badge.svg)](https://github.com/nillerusr/source-engine/actions/workflows/tests.yml)
  Discord: [![Discord Server](https://img.shields.io/discord/672055862608658432.svg)](https://discord.gg/hZRB7WMgGw)
  
@@ -14,7 +15,71 @@ Source code is based on TF2 2018 leak. Don't use it for commercial purposes.
 
 This project is using waf buildsystem. If you have waf-related questions look https://waf.io/book
 
-# Features:
+# North star
+
+Build a **job-based Source engine with Vulkan rendering, SDL3 platform
+integration, and platform-compliant Linux, macOS, iOS, and Android backends**.
+This requires both the engine architecture and the infrastructure to build,
+verify, package, distribute, and maintain each supported platform.
+
+- Job graphs, explicit ownership, bounded execution, and deterministic commit
+  replace implicit scheduling and feature-owned threads incrementally. Serial
+  execution remains a required correctness/reference mode.
+- Vulkan is the target rendering API; SDL3 supplies the selected window/input
+  and platform integration behind narrow contracts. On macOS and iOS, the
+  planned Vulkan implementation uses [MoltenVK over Metal](https://github.com/KhronosGroup/MoltenVK),
+  with its portability limits negotiated and tested rather than hidden.
+- Linux, macOS, iOS, and Android are first-class program targets, not a Linux
+  implementation with untested portability claims. Native lifecycle, input,
+  storage, permissions, graphics, and packaging belong to explicit backends.
+- Preserve declared Source content, gameplay, tool, and ABI compatibility.
+  Modern C++20, results, RAII, ring buffers, and fences serve clear contracts;
+  they do not substitute for behavioral tests or security boundaries.
+
+The actionable architecture, platform/distribution constraints, gates, and ranked
+roadmap live in [AGENTS.md](AGENTS.md). Domain contracts are defined by
+[RFC 0001 (platform/render)](RFC/0001-capability-based-platform-architecture.md),
+[0002 (Hammer)](RFC/0002-hammer-responsibility-factorization.md),
+[0003 (jobs)](RFC/0003-dependency-aware-job-system.md),
+[0004 (physics)](RFC/0004-box3d-primary-physics-backend.md),
+[0005 (harnesses)](RFC/0005-quality-and-correctness-harnesses.md), and
+[0006 (C++20/ownership/synchronization)](RFC/0006-modern-cpp-ownership-and-synchronization.md).
+
+## Infrastructure is part of the deliverable
+
+1. **Build:** versioned platform profiles, pinned dependencies/toolchains,
+   separate host tools and target binaries, reproducible clean builds, shader
+   artifacts, and native packaging. Apple and Android SDK/build integrations
+   must be explicit; no requirement for a developer's private sibling checkout.
+2. **Verify:** shared provider contracts and domain oracles, serial/parallel
+   equivalence, malformed-input and lifetime tests, applicable sanitizers, and
+   real GPU/device lifecycle tests. Cross-compilation and simulator success
+   alone cannot certify a shipping device profile.
+3. **Fit the platform:** on iOS, statically link first-party engine/game/provider
+   modules into the app and use typed factories, not runtime shared-module
+   discovery. Use public APIs, normal app lifecycle/storage, and only needed
+   permissions. Do not download native plugins or require JIT, private APIs,
+   or platform-policy workarounds. Use ordinary packaging/signing required by the
+   intended distribution channel, not a custom signing or update framework.
+
+App-store compatibility is an architectural requirement, not a guarantee of
+approval. Check current store rules and code/content distribution rights before
+submission. Basic input validation and credential hygiene still apply; a broad
+security/compliance program is not a prerequisite to engine modernization.
+
+These are target requirements, not claims that the infrastructure is already
+installed. The current Waf configuration still uses SDL2 integration and legacy
+C++ settings, and existing CI does not certify the new four-platform stack.
+iOS is a target, not a currently verified port. Linux is the first reference
+slice; Apple/mobile build and lifecycle feasibility must begin early. The GTK
+editor remains a separate desktop product, not an implied mobile editor port.
+
+# Existing features
+
+The list below describes the project's historical feature set, not acceptance
+evidence for the new job/Vulkan/SDL3 stack. Existing Windows/FreeBSD and other
+profiles are not removed by defining the new north star.
+
 - Android, OSX, FreeBSD, Windows, Linux( glibc, musl ) support
 - Arm support( except windows )
 - 64bit support
@@ -30,13 +95,22 @@ This project is using waf buildsystem. If you have waf-related questions look ht
 - Fixed many bugs
 - Serverbrowser works without steam
 
-# Current tasks
-- Rewrite materialsystem for OpenGL render
-- dxvk-native support
-- Elbrus port
-- Bink audio support( for video_bink )
+# Current priorities
+
+- Establish trustworthy build/test baselines and platform-compatible build profiles.
+- Deliver the serial job graph, then measured parallel migrations with rollback.
+- Establish SDL3 and Vulkan contracts, including Apple portability and mobile lifecycle.
+- Pass each platform's native correctness, performance, packaging, and store-compatibility checks.
+
+The [ranked roadmap](AGENTS.md#unified-ranked-roadmap) is authoritative. Legacy
+OpenGL adapters and DXVK experiments are migration tools, not the final render
+architecture; auxiliary features do not displace the platform infrastructure.
 
 # How to Build
+
+The commands below build the existing configuration. They do not enable or
+prove the proposed SDL3/Vulkan/job stack. New platform commands must be recorded
+with working build and test evidence before being advertised here.
 
 ## Fedora Linux 44
 

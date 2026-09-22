@@ -14,13 +14,13 @@
       "sources": [{"path": "hammer/hammer_dll.vpc"}, {"path": "wscript"}],
       "contractIds": [],
       "dependsOn": [],
-      "status": "inventoried",
+      "status": "characterized",
       "authority": "legacy",
       "consumerSet": "editor-build",
-      "testSelectors": [],
+      "testSelectors": ["hammer/run_headless"],
       "owner": "unassigned",
-      "blocked": "Historical MFC/Windows Hammer build is not reproducible on the Linux 64-bit host. No hammer/wscript or strict editor build target exists; strict-module toolchain selection is gated on R03 (per-target C++20 boundary).",
-      "retireWhen": ["Linux 64-bit headless editor test target builds and runs", "legacy build status and missing dependencies are recorded in 0002-progress.md"]
+      "blocked": "A headless strict C++20 test target is established (unittests/hammertest/run_headless.sh) and builds+runs under gcc 16 and clang with -Wall -Wextra -Werror. Remaining before retirement: a Waf-integrated target and final flag/profile validation under R03. The historical MFC/Windows Hammer build stays non-reproducible on this host (recorded in 0002-progress.md).",
+      "retireWhen": ["Linux 64-bit headless editor test target builds and runs", "legacy build status and missing dependencies are recorded in 0002-progress.md", "the headless target is integrated into the project build/CI with validated final flags"]
     },
     {
       "id": "HAM-INVENTORY-001",
@@ -81,15 +81,16 @@
       "evidenceKind": "observed",
       "sources": [{"path": "hammer/boundbox.h"}, {"path": "hammer/boundbox.cpp"}],
       "destinationModule": "hammer.geometry",
-      "contractIds": ["geometry.boundbox.v1"],
-      "dependsOn": ["HAM-BUILD-001", "HAM-INVENTORY-001", "HAM-CORPUS-001"],
-      "status": "inventoried",
+      "contractIds": ["geometry.aabb.v1"],
+      "dependsOn": ["HAM-BUILD-001", "HAM-INVENTORY-001"],
+      "status": "characterized",
       "authority": "legacy",
       "consumerSet": "boundbox-callers",
-      "testSelectors": ["geometry/boundbox_invariants"],
+      "testSelectors": ["geometry/aabb_invariants"],
       "owner": "unassigned",
-      "blocked": "Requires the strict headless build target from HAM-BUILD-001 so the extracted module compiles without the legacy PCH.",
-      "retireWhen": ["BoundBox operations own their behavior in hammer.geometry", "legacy callers route through the shared owner", "extracted target builds without UI/PCH/GPU dependencies"]
+      "intentionalDifferences": ["SnapToGrid rejects a non-positive grid size (degenerate input) instead of dividing by it, as the legacy Snap() did. Documented in public/hammer/geometry/aabb.h and covered by test_aabb.cpp."],
+      "note": "Strict shared owner hammer::geometry::AxisAlignedBox is implemented in public/hammer/geometry/aabb.h + hammer/core/geometry/aabb.cpp, compiles headlessly without MFC/tier0/PCH under gcc and clang (-Werror), and passes the conformance oracle unittests/hammertest/geometry/test_aabb.cpp. Legacy hammer/BoundBox remains the sole LIVE authority; no dual mutable model exists. Advancing to 'extracted' requires routing BoundBox callers through the shared owner via a named Vector<->Vec3 boundary adapter (hammer.adapters.source/mfc).",
+      "retireWhen": ["BoundBox operations own their behavior in hammer.geometry", "legacy callers route through the shared owner via the Vector<->Vec3 adapter", "extracted target builds without UI/PCH/GPU dependencies"]
     },
     {
       "id": "HAM-SESSION-001",

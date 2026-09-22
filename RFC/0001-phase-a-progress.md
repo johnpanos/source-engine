@@ -11,16 +11,21 @@ file is the durable progress record; detailed current sites live in
 
 | Work item | Status | Evidence |
 | --- | --- | --- |
-| Classify every static load site | Initial snapshot complete; current inventory stale | Initial 301 loader-surface records in `architecture/loader_inventory.json`; telemetry changes need reviewed reclassification/verification |
-| Reject new `Sys_LoadModule`, `Sys_GetFactory`, filesystem `LoadModule`, and `CDllDemandLoader` dependencies | Checker installed; current tree fails | `ARCH101`–`ARCH104`; initial 683 exact fingerprints including factory-type freeze; changes are not automatically grandfathered |
+| Classify every static load site | Current | 326 loader-surface records in `architecture/loader_inventory.json`: 120 first-party composition, 21 retained extension, 22 optional provider, 142 tool indirection, and 21 native symbol probe |
+| Reject new `Sys_LoadModule`, `Sys_GetFactory`, filesystem `LoadModule`, and `CDllDemandLoader` dependencies | Current | `ARCH101`–`ARCH104`; `check --all` and `baseline --verify` pass against the reviewed exact fingerprints |
 | Prohibit new `CreateInterfaceFn` boundaries outside the legacy ABI package | Complete | `ARCH105`; legacy paths declared in `architecture/modules.json` |
 | Run the freeze in CI | Complete | Architecture job in `.github/workflows/tests.yml` |
-| Instrument load attempts and unloads with requester, resolved path, entry/interface, result, and lifetime | Source implementation present; acceptance incomplete | `tier1/module_load_telemetry.cpp`, scoped request API, and loader adapters exist; conformance, ABI and lifecycle gates remain unverified |
+| Instrument load attempts and unloads with requester, resolved path, entry/interface, result, and lifetime | Tier 1 and filesystem-mediated paths verified; direct native paths remain | `tier1/module_load_telemetry.cpp`, scoped request API, loader adapters, and seven fixture cases cover success/failure, entry/interface lookup, rollback, lifetime, duplicate handles, nested/concurrent context, and reentrant sink removal; the 86 direct native-loader records still need runtime routing |
 
-Assessment at source revision `87955f67`: eight checker fixture tests pass;
-`check --all` and `baseline --verify` report 10 new and 3 stale occurrences;
-`inventory --verify` reports stale. These are recorded observations, not accepted
-baseline changes. The Phase A gate is not complete.
+Assessment at source revision `a4f6f95f` plus the recorded Phase A changes: all
+26 architecture-checker tests pass; `check --all`, `baseline --verify`, and
+`inventory --verify` pass. A release game composition completed all 2,203 build
+tasks. The isolated Tier 1 test module passes with `-moduleloadtelemetry` and
+emits correlated provider results, resolved paths, entry/interface requests,
+load IDs, unload results, and lifetimes. The full legacy unit-test composition
+is not used as evidence because its pre-existing `TSList`/`TSQueue` stress tests
+crash before a complete run. Phase A remains open until direct native-loader
+paths and frozen-ABI coverage meet the same runtime gate.
 
 Shared runner/evidence and loader tests are specified by
 [RFC 0005](0005-quality-and-correctness-harnesses.md); implementation work is
@@ -41,11 +46,9 @@ the diff and its classification, use the corresponding `--write` command.
 
 ## Next increment
 
-Validate the telemetry sink, scoped request context, and loader adapters using
-Q-FOUNDATION fixtures. Verify preserved ABI calls, requester/path/interface
-observations, provider results, and unload ordering. Cover failed loads/lookups,
-duplicate native handles, nested/concurrent requests, sink lifetime/reentrancy,
-and shutdown after partial startup. Resolve every new/stale architecture
-occurrence through reviewed classification or implementation correction, then
-verify the inventory/baseline. Source presence alone does not establish ABI or
+Route the 86 recorded direct native-loader sites through telemetry without
+introducing a Tier 0 to Tier 1 dependency, including the standalone launchers.
+Add frozen-header ABI fixtures and process-shutdown reporting for intentionally
+retained handles. Re-run the isolated fixture, product build, and architecture
+gates after that routing. Source presence alone does not establish ABI or
 behavioral compatibility.

@@ -2,9 +2,13 @@
 
 ## Purpose and authorities
 
-Modernize this engine incrementally while preserving declared content, gameplay,
-tool, and binary compatibility. Keep a working, testable consumer at every new
-boundary. The active program is defined by these RFCs:
+The main north star is a **job-based engine with Vulkan rendering, SDL3 platform
+integration, and platform-compliant Linux, macOS, iOS, and Android backends**.
+Deliver the infrastructure to build this architecture and support every declared
+platform within its normal execution and distribution rules; an engine that only compiles on a developer's Linux machine
+does not meet the goal. Modernize incrementally while preserving declared
+content, gameplay, tool, and binary compatibility. Keep a working, testable
+consumer at every new boundary. The active program is defined by these RFCs:
 
 | RFC | Responsibility |
 | --- | --- |
@@ -21,6 +25,119 @@ and current source before changing a boundary. This file owns the cross-RFC
 work order and tracking summary; domain RFCs own semantics and acceptance rules.
 The module manifest owns dependency permissions. Do not keep conflicting copies
 of those facts in new registries or checkers.
+
+This user-directed north star sets the portfolio scope. Earlier RFC references
+to a first Linux profile or a single additional-OS experiment are starting
+slices, not the final support boundary. The platform gates below expand that
+scope without certifying implementation. Keep owning RFC contracts aligned as
+each platform slice is designed; do not silently weaken them to fit a backend.
+
+## Platform and build infrastructure
+
+Job-based execution means explicit dependencies, scoped inputs/outputs,
+nonblocking compute scheduling, and ordered observable effects. It does not mean
+every operation must execute in parallel. Serial graph execution remains a
+required oracle and low-capacity mode; physical-thread affinity belongs only
+to APIs that require it. Process-wide budgets must accommodate mobile power,
+thermal limits, backgrounding, and other executors.
+
+SDL3 and Vulkan are the target stack, not proof of platform parity. Keep SDKs,
+native handles, lifecycle callbacks, and loader details inside providers and
+pair-specific bridges. Desktop assumptions about windows, process lifetime,
+filesystems, plugins, and available GPUs must not leak into portable code.
+
+| Target | Planned runtime path | Native acceptance obligations |
+| --- | --- | --- |
+| Linux | SDL3 + Vulkan; independent headless server/tool compositions | Declared X11/Wayland and GPU profiles, surface loss/resize, input, filesystem/package behavior; no desktop dependencies in headless products |
+| macOS | SDL3 + Vulkan through MoltenVK/Metal | Apple toolchain/SDK and declared architectures, portability features/shaders, app lifecycle/input, app bundle and ordinary distribution-channel requirements |
+| iOS | Statically linked first-party modules; SDL3 + Vulkan through MoltenVK/Metal | Device arm64 profile, separate simulator tests, no first-party shared-module discovery, foreground/background and surface recreation, touch/orientation, memory pressure, app-container storage and normal device packaging |
+| Android | SDL3 app integration + Vulkan | Pinned SDK/NDK/JDK/build tools and declared ABIs/API/device levels, activity/surface recreation and process death, touch/input, memory pressure, permissions/storage, signed APK/AAB for the selected channel |
+
+MoltenVK implements a Vulkan portability subset over Metal; query and validate
+the required feature profile and shader translations, rather than claiming full
+desktop Vulkan equivalence. Keep Metal details private to the Apple bridge.
+See [MoltenVK](https://github.com/KhronosGroup/MoltenVK) and SDL's
+[iOS](https://wiki.libsdl.org/SDL3/README-ios) /
+[Android](https://wiki.libsdl.org/SDL3/README-android) integration documentation.
+These references describe dependencies, not evidence that this engine supports
+those combinations. Exact OS/SDK/deployment minima and hardware coverage must be
+pinned in implementation profiles before their support claim; no invented flags.
+
+The Linux GTK Hammer shell is a separate product scope, not an obligation to
+ship GTK on mobile. Existing Windows, FreeBSD, and other compatibility profiles
+are preserved unless explicitly retired; they do not substitute for any of the
+four north-star targets.
+
+Build infrastructure MUST provide:
+
+- A versioned profile per product/OS/architecture with dependency revisions,
+  compiler/standard library, SDK/deployment target, ABI, C++20/legacy/C17 settings,
+  render capabilities, shader compiler settings, packaging and required tests.
+  Profiles own facts; CI, packaging, and reports consume them instead of copying
+  conflicting platform matrices. Record target intent separately from evidence.
+- Clean isolated output directories per profile and separation of host tools
+  from target executables. Waf remains the engine build entry point; controlled
+  upstream builds and native Apple/Android package tooling are allowed without
+  duplicating the engine's source/dependency authority.
+- Pinned dependencies, repeatable clean builds, dependency-keyed caches, shader
+  artifacts, and recorded toolchain/build settings. No reliance on sibling
+  checkouts or unpinned network downloads. Use the platform's normal package
+  tooling; do not build custom signing/provenance infrastructure for its own sake.
+- Native Apple runners, Android cross-build and device infrastructure, and Linux
+  native/GPU runners. Cross-build checks run early; real device/native tests are
+  required for lifecycle, graphics, permissions, and release claims. Simulators
+  and software rendering are additional profiles, not replacements for hardware.
+- Shared conformance plus profile-specific integration, sanitizer/fuzz coverage
+  where supported, performance/power/memory budgets, installed-package smoke
+  tests, symbolized crash diagnostics, and documented rebuild/reproduction steps.
+
+## Platform-compliant composition and distribution
+
+Here, supporting platforms securely primarily means respecting their execution,
+sandbox, and app-store rules. Keep security work proportionate to real engine
+boundaries. Do not turn this roadmap into a mandatory custom signing service,
+updater, SBOM program, or enterprise compliance project.
+
+- **iOS uses static first-party composition.** Build engine, game, physics, render,
+  and other selected provider modules as static libraries/objects linked into the
+  app. Resolve them through typed factories at build/composition time. Preserve
+  module ownership and narrow interfaces; static linkage does not mean one giant
+  source target or new globals. Resolve duplicate legacy entry-point names with
+  private named adapters, not filename/string lookup or `dlopen`/`dlsym`.
+- Exclude first-party shared-module loaders and native plugin discovery from the
+  iOS target. Test the final link map/package and run startup with module-search
+  locations empty to prove no hidden loader requirement. Normal system frameworks
+  are permitted; this is our composition policy, not a claim that Apple prohibits
+  every bundled dynamic framework. Desktop retained extension hosts stay private
+  to the profiles that explicitly support them.
+- Store-targeted mobile builds do not download/load native plugins or depend on
+  JIT, executable-memory tricks, private SDK APIs, or background-execution bypasses.
+  Data/asset downloads are distinct from executable updates; script/mod features
+  need an explicit review against the selected store's current rules before being
+  enabled. Android's packaged native libraries need not be banned merely because
+  the iOS first-party build is statically linked.
+- Use documented lifecycle, graphics, input, storage, and networking APIs. Keep
+  writes in platform-approved locations; request only required permissions and
+  entitlements. Do not disable sandboxing or certificate verification to make a
+  port work. Maintain basic bounds/path validation, malformed-input tests, and
+  protection of credentials from source/logs and untrusted CI jobs.
+- Use ordinary platform packaging and the signing/provisioning required for the
+  selected channel. Release credentials are needed for the packaging/submission
+  stage, not every headless build or unit test. Prefer store-managed executable
+  updates. No extra signing/attestation infrastructure is implied by this goal.
+
+Check current [Apple App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
+(particularly public APIs and self-contained apps in 2.5.1/2.5.2) and the selected
+Android store's policies when designing distribution-sensitive features and
+before submission. Approval also depends on the actual product and code/content
+rights; static linkage alone cannot guarantee it. Preserve the repository's
+existing provenance/distribution warning.
+
+A support claim requires the declared build, contract, native runtime, and
+package checks. Missing required device tests leave that profile unverified;
+missing release credentials leave distribution unverified without preventing
+independent engine work. A successful cross-build or smoke frame is not full
+platform acceptance.
 
 ## Architecture and engineering philosophy
 
@@ -250,14 +367,14 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 26 / R26 | Remaining foundation providers; 0001 rank 12 | R10, R11 | Native clock/thread/memory/process/environment/paths/diagnostics suites pass for supported profiles, including failure and cleanup | planned |
 | 27 / R27 | Vulkan compatibility waypoint; 0001 rank 13 | R10, R16, R18 | Deployment, shader artifacts, profile selection and SDL3 presentation proven by a measured compatibility experiment; limitations recorded | planned |
 | 28 / R28 | Native Vulkan bootstrap; 0001 rank 14 | R10, R16, R18 | Native adapter/device/queues and SDL3 bridge present smoke frame; required-profile failure and validation diagnostics work | planned |
-| 29 / R29 | Additional-OS architecture proof; 0001 rank 15 | R12, R18, R26, R28 | Dedicated composition plus SDL3/Vulkan smoke and foundation suites pass using provider/composition changes; portable leaks treated as defects | planned |
+| 29 / R29 | Four-platform architecture proof; 0001 rank 15 expanded to Linux/macOS/iOS/Android | R12, R18, R26, R28 | Each target passes foundation and SDL3/Vulkan native lifecycle smoke; Apple portability, iOS static composition and mobile packaging demonstrated; headless roles tested where declared | planned |
 | 30 / R30 | Existing parallel kernels; 0003 E | R21 | Each bones/query-cache/entity-packing/leaf/shadow cohort independently passes three-mode, ownership, latency/performance and rollback gates | planned |
 | 31 / R31 | Physics core compatibility; 0004 C | R19 | Required traces, filters, events, materials, constraints/ragdolls, controllers and persistence pass client/dedicated gameplay corpus | planned |
 | 32 / R32 | Native Vulkan functional MVP; 0001 rank 16 | R10, R28 | Representative map renders opt-in; resource/pipeline/upload/sync/swapchain contracts pass; unsupported features fail explicitly | planned |
 | 33 / R33 | Hammer feature families; 0002 H6 | R25 | Each declared displacement/instance/manifest/overlay/texture/preview family passes load/edit/undo/save/build, recovery and performance gates | planned |
 | 34 / R34 | Physics gameplay and tool completion; 0004 D | R31 | Required fluids, vehicle modes, pulley/group and selected Portal/game features pass; compiler/content workflows preserve supported formats | planned |
 | 35 / R35 | New audited compute seams; 0003 F | R30 | Animation/render-list/AI/streaming cohorts have stable inputs, correct cross-system edges and ordered commit; individual equivalence/budget gates pass | planned |
-| 36 / R36 | Vulkan parity and release readiness; 0001 rank 17 | R32 | Required materials/images, loss/recovery, cache, multi-surface and hardware budgets pass; default selection is a separately recorded product decision | planned |
+| 36 / R36 | Vulkan parity and four-platform release readiness; 0001 rank 17 | R29, R32 | Per-platform materials/images, loss/recovery, cache, hardware budgets and normal package/store-compatibility checks pass; default selection is a separate product decision | planned |
 | 37 / R37 | Physics parallel rollout and default gate; 0004 E | R20, R34 | Worker-count determinism, nested-work/callback/shutdown bridge, platform packaging, budgets and supported client/server combinations pass; IVP rollback tested | planned |
 | 38 / R38 | Stateful scheduling migrations; 0003 G | R30, R35, R37 | Snapshot-send ownership and selected entity/physics cohorts preserve legacy observations/order or record intentional change; network/latency/lifetime gates pass | planned |
 | 39 / R39 | First-party module retirement; 0001 rank 18 / retirement B–D | R12, R18 | Pseudo-modules removed; mandatory systems and provider catalogs use typed linked factories; no filename/string discovery for migrated services | planned |
@@ -275,6 +392,21 @@ own gate. Likewise R30/R33–R35 are portfolios of independently accepted slices
 no broad parallelization or feature-parity claim is granted by starting a row.
 
 ## Tracking and current evidence
+
+North-star infrastructure work is tracked within the existing ranks:
+
+- R01/R03: define all four platform build profiles and establish host/target
+  toolchains early, including Apple SDK and Android cross-build probes. Do not
+  wait for the entire Linux renderer before testing mobile build feasibility.
+- R04/R06: enforce iOS static first-party composition and explicit factories as
+  an early bounded slice; do not defer it until whole-tree module retirement.
+- R10/R20/R21: establish serial graph correctness, then bounded parallel execution
+  and the measured pilot; include low-capacity and mobile lifecycle cases.
+- R18/R28/R29: deliver SDL3/Vulkan and separately record Linux, macOS, iOS, and
+  Android evidence. One additional-OS smoke test does not close the expanded R29.
+- R36: close each platform's runtime, performance, package, and distribution
+  checks. Signing credentials gate the corresponding release step only; no
+  custom security infrastructure is required. These additions mark no gate done.
 
 When starting work, change its row to `active` and record the bounded scope and
 owner in the relevant domain progress record (create one when first needed).

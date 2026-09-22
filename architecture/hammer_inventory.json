@@ -8,8 +8,8 @@
     "totalHammerSourceFiles": 452,
     "totalHammerCppFiles": 221,
     "totalHammerHeaderFiles": 231,
-    "filesClassified": 13,
-    "note": "Seeded from the RFC 0002 observed-evidence table plus the first geometry extraction candidate. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'."
+    "filesClassified": 15,
+    "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (public/hammer/geometry, hammer/core/geometry). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'."
   },
   "files": [
     {
@@ -174,6 +174,28 @@
       "factorization": "extract",
       "evidence": "observed",
       "note": "Implements BoundBox update/intersection/snap; extract with explicit grid/tolerance policy and preserve existing precision (HAM-GEOMETRY-001)."
+    },
+    {
+      "path": "public/hammer/geometry/aabb.h",
+      "currentOwner": "hammer.geometry",
+      "destinationModule": "hammer.geometry",
+      "responsibility": "geometry",
+      "effects": ["pure-computation"],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "New strict public header: hammer::geometry::AxisAlignedBox + Vec3, extracted from BoundBox. Dependency-free (only <cstddef>); no MFC/tier0/PCH. Owns its geometric value type per the hammer.geometry contract (HAM-GEOMETRY-001)."
+    },
+    {
+      "path": "hammer/core/geometry/aabb.cpp",
+      "currentOwner": "hammer.geometry",
+      "destinationModule": "hammer.geometry",
+      "responsibility": "geometry",
+      "effects": ["pure-computation"],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "New strict implementation of AxisAlignedBox. Compiles headlessly under gcc and clang (-std=c++20 -Wall -Wextra -Werror) with only <cmath>; verified by unittests/hammertest/geometry/test_aabb.cpp via unittests/hammertest/run_headless.sh."
     }
   ]
 }

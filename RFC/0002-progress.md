@@ -84,15 +84,25 @@ gate.
 | `architecture/hammer_baseline.json` | Exact editor-rule (HAM003) violations; strict modules zero-debt | Installed; **empty** (no strict modules yet) |
 | `architecture/hammer_compatibility.json` | Declared features/formats/profiles/limitations per gate | Installed; H0 declares no editor features |
 | `tools/archlint/archlint.py` → `hammer` subcommand | Validates the four artifacts + module graph; runs HAM003 native-token scan over strict roots | Installed |
-| `tools/archlint/tests/test_hammer.py` | Negative fixtures proving the validator rejects bad ownership, edges, cycles, statuses, and native tokens | 18 tests, passing |
+| `tools/archlint/archlint.py hammer --coverage` | Diffs the hammer source universe against the inventory; lists unclassified files with lexically-detected effects; warns when the authored total drifts | Installed (HAM-INVENTORY-001 aid) |
+| `tools/archlint/archlint.py hammer --scaffold` | Emits schema-valid inventory stubs (`evidence: "hypothesis"`, with `reviewTODO`) for a batch of unclassified files; never mutates the artifact | Installed (HAM-INVENTORY-001 aid) |
+| `tools/archlint/tests/test_hammer.py` | Negative fixtures proving the validator rejects bad ownership, edges, cycles, statuses, and native tokens; coverage/scaffold accuracy fixtures | 24 tests, passing |
 | `unittests/hammertest/{contracts,fixtures}/` | Contract-suite and characterization-corpus scaffolding | Directory + provenance conventions only |
 
 ### Commands
 
 ```sh
 python3 tools/archlint/archlint.py hammer --verify
+python3 tools/archlint/archlint.py hammer --coverage            # what is still unclassified
+python3 tools/archlint/archlint.py hammer --scaffold --path hammer/ --limit 25 > /tmp/stubs.json
 python3 -m unittest discover -s tools/archlint/tests -v
 ```
+
+`--coverage` and `--scaffold` assist HAM-INVENTORY-001: they enumerate the
+source universe, report the gap, and emit reviewable stubs. Every scaffolded
+field is a lexical hypothesis (`evidence: "hypothesis"`); an author must read the
+file, correct the fields, drop `reviewTODO`, and re-evidence before merging.
+Coverage flips to `complete` only by that human review, never by the tool.
 
 The loader freeze commands are unchanged and remain authoritative for RFC 0001:
 
@@ -121,8 +131,40 @@ baseline. No gate claims a stronger guarantee than these installed checks provid
 
 | Phase | State | Notes |
 | --- | --- | --- |
-| H0 | **active / partial** | Migration schema, module graph, ratchet increment 1, and corpus scaffolding installed and tested. Remaining for H0 exit: exhaustive inventory coverage, versioned semantic comparator with negative corpus, and the strict headless build target (HAM-BUILD-001). |
-| H1–H7, R1 | planned | Blocked on H0 exit and, for R1, the render contract + GTK profile. |
+| H0 | **active / partial** | Migration schema, module graph, ratchet increment 1, corpus scaffolding, and a **headless strict C++20 build+test target** (`unittests/hammertest/run_headless.sh`, HAM-BUILD-001) installed and passing under gcc 16 and clang. Remaining for H0 exit: exhaustive inventory coverage and the versioned semantic comparator with a negative corpus. |
+| H1 | **active (first extraction)** | `hammer.geometry` seam opened: `AxisAlignedBox` extracted from `BoundBox` into strict roots and proven by a headless conformance oracle. See "First H1 extraction" below. Broader geometry/scene seams remain planned. |
+| H2–H7, R1 | planned | Blocked on H0 exit and, for R1, the render contract + GTK profile. |
+
+### First H1 extraction — `hammer.geometry` AABB (HAM-GEOMETRY-001)
+
+The first real code extraction is landed as a working, testable consumer at a new
+boundary:
+
+- **Owner:** `public/hammer/geometry/aabb.h` + `hammer/core/geometry/aabb.cpp`
+  define `hammer::geometry::AxisAlignedBox` (and an owned `Vec3`), a
+  dependency-free port of legacy `hammer/BoundBox`. No MFC, no `tier0/platform.h`,
+  no PCH, no GPU — it compiles on the `linux-headless-core` profile with only the
+  C++ standard library, under **gcc 16 and clang** with `-Wall -Wextra -Werror`.
+- **Oracle:** `unittests/hammertest/geometry/test_aabb.cpp` characterizes the
+  BoundBox behavior (reset invalidity, point/box growth, open-face intersection vs
+  closed-face containment, size-preserving grid snap, `Rotate90`). Run via
+  `unittests/hammertest/run_headless.sh`.
+- **Intentional difference (declared, not silent):** `SnapToGrid` rejects a
+  non-positive grid size instead of dividing by it as the legacy `Snap()` did.
+  Documented in the header and covered by the oracle; recorded in the migration
+  ledger's `intentionalDifferences`.
+- **Authority discipline:** legacy `BoundBox` remains the **sole live authority**;
+  no dual mutable model exists. Status is `characterized`. Advancing to `extracted`
+  requires routing `BoundBox` callers through the shared owner via a named
+  `Vector`↔`Vec3` boundary adapter (`hammer.adapters.source`/`mfc`) — the next
+  bounded step, which needs the Source `Vector` (and thus the platform config) on
+  the legacy side of the seam.
+- **Why this proves the toolchain question:** compiling any `tier0`/`mathlib`
+  header headlessly requires the full Waf-generated Source platform configuration
+  (`platform.h` hard-errors otherwise). A strict `hammer.geometry` that owns its
+  own value type is therefore the only way to get a genuinely hermetic, portable,
+  testable geometry module now — which is exactly the RFC's "None" dependency rule
+  for that module.
 
 ## Pre-existing failures (reported separately, not introduced here)
 
@@ -139,7 +181,13 @@ baseline. No gate claims a stronger guarantee than these installed checks provid
 1. **HAM-INVENTORY-001 (continue):** expand `hammer_inventory.json` toward
    exhaustive per-file/per-symbol coverage; flip `coverage.status` to `complete`
    only when every hammer source file resolves to one owner and a negative fixture
-   proves unowned files fail.
+   proves unowned files fail. Use `hammer --coverage` to see the remaining files
+   and `hammer --scaffold` to draft stubs for review.
+   - **Observed (tooling):** `hammer --coverage` measures the current universe at
+     **454** source files (452 under `hammer/` plus `public/hammer/geometry/aabb.h`
+     and one new `.cpp`), while `coverage.totalHammerSourceFiles` is authored as
+     `452`. The authored total is stale by two files; update it as part of the next
+     reviewed inventory write, not automatically.
 2. **HAM-BUILD-001:** establish the Linux 64-bit headless editor test target and
    record the final C++20 flags (coordinated with R02/R03).
 3. **HAM-CORPUS-001:** author the versioned semantic comparator and its negative

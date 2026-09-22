@@ -50,15 +50,9 @@ struct Vec3
 
 	// Index access mirrors legacy pt[0]/pt[1]/pt[2] usage. The caller passes a
 	// valid axis; out-of-range access is a programming error, not a runtime path.
-	constexpr float &operator[]( std::size_t axis )
-	{
-		return ( &x )[axis];
-	}
+	constexpr float &operator[]( std::size_t axis ) { return ( &x )[axis]; }
 
-	constexpr float operator[]( std::size_t axis ) const
-	{
-		return ( &x )[axis];
-	}
+	constexpr float operator[]( std::size_t axis ) const { return ( &x )[axis]; }
 };
 
 //-----------------------------------------------------------------------------
