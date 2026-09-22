@@ -2382,10 +2382,14 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		wds.pImageInfo = &dii;
 		vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
 
+		// The UnlitGeneric push block is larger than the color pipelines': it
+		// carries cModelViewProj (mat4), cModulationColor (vec4), and the two rows
+		// of cBaseTextureTransform (2x vec4) -- 28 floats / 112 bytes, within the
+		// 128-byte guaranteed push-constant minimum.
 		VkPushConstantRange texPc = {};
 		texPc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 		texPc.offset = 0;
-		texPc.size = sizeof( float ) * 20;
+		texPc.size = sizeof( float ) * 32; // + vec4 alphaParams (128 bytes)
 		VkPipelineLayoutCreateInfo texPl = {};
 		texPl.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 		texPl.setLayoutCount = 1;
@@ -2416,6 +2420,55 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		gp.layout = m_dynTexPipelineLayout;
 		r = vkCreateGraphicsPipelines(
 		    m_device, VK_NULL_HANDLE, 1, &gp, nullptr, &m_dynPipelineTex );
+
+		// Blend variants of the textured (UnlitGeneric) pipeline. Same shaders and
+		// layout; only the color-blend attachment and depth-write change, matching
+		// the D3D9 compositing a material selects via IShaderShadow:
+		//   $translucent: src.a*src + (1-src.a)*dst, depth write off
+		//   $additive:    src + dst,                 depth write off
+		// Blended geometry does not write depth (Source draws it after opaque).
+		if ( r == VK_SUCCESS )
+		{
+			VkPipelineColorBlendAttachmentState alphaAtt = cba;
+			alphaAtt.blendEnable = VK_TRUE;
+			alphaAtt.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+			alphaAtt.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+			alphaAtt.colorBlendOp = VK_BLEND_OP_ADD;
+			alphaAtt.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+			alphaAtt.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+			alphaAtt.alphaBlendOp = VK_BLEND_OP_ADD;
+			VkPipelineColorBlendStateCreateInfo cbAlpha = cb;
+			cbAlpha.pAttachments = &alphaAtt;
+
+			VkPipelineColorBlendAttachmentState addAtt = cba;
+			addAtt.blendEnable = VK_TRUE;
+			addAtt.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+			addAtt.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+			addAtt.colorBlendOp = VK_BLEND_OP_ADD;
+			addAtt.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+			addAtt.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+			addAtt.alphaBlendOp = VK_BLEND_OP_ADD;
+			VkPipelineColorBlendStateCreateInfo cbAdd = cb;
+			cbAdd.pAttachments = &addAtt;
+
+			VkPipelineDepthStencilStateCreateInfo dsBlend = ds;
+			dsBlend.depthWriteEnable = VK_FALSE;
+
+			gp.pColorBlendState = &cbAlpha;
+			gp.pDepthStencilState = &dsBlend;
+			r = vkCreateGraphicsPipelines(
+			    m_device, VK_NULL_HANDLE, 1, &gp, nullptr, &m_dynPipelineTexAlpha );
+			if ( r == VK_SUCCESS )
+			{
+				gp.pColorBlendState = &cbAdd;
+				r = vkCreateGraphicsPipelines(
+				    m_device, VK_NULL_HANDLE, 1, &gp, nullptr, &m_dynPipelineTexAdd );
+			}
+			// Restore the opaque state on the shared struct for hygiene.
+			gp.pColorBlendState = &cb;
+			gp.pDepthStencilState = &ds;
+		}
+
 		vkDestroyShaderModule( m_device, texVert, nullptr );
 		vkDestroyShaderModule( m_device, texFrag, nullptr );
 		if ( r != VK_SUCCESS )
@@ -2427,7 +2480,7 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		}
 	}
 
-	Log( "dynamic mesh pipelines ready (4 material shaders incl. textured)\n" );
+	Log( "dynamic mesh pipelines ready (4 material shaders incl. textured + blend variants)\n" );
 	return true;
 }
 
@@ -2621,6 +2674,11 @@ void CVulkanContext::QueueDynamicTriangles( const float *posColorInterleaved, ui
 	d.shaderIndex = m_dynShaderIndex;
 	std::memcpy( d.transform, m_dynTransform, sizeof( d.transform ) );
 	std::memcpy( d.color, m_dynConstColor, sizeof( d.color ) );
+	std::memcpy( d.modulation, m_dynModulation, sizeof( d.modulation ) );
+	std::memcpy( d.texXform0, m_dynTexXform0, sizeof( d.texXform0 ) );
+	std::memcpy( d.texXform1, m_dynTexXform1, sizeof( d.texXform1 ) );
+	d.blendMode = m_dynBlendMode;
+	d.alphaRef = m_dynAlphaRef;
 	m_dynDrawRecords.push_back( d );
 	m_dynQueued.insert( m_dynQueued.end(), posColorInterleaved,
 	    posColorInterleaved + static_cast<size_t>( vertexCount ) * 8 );
@@ -2647,6 +2705,16 @@ void CVulkanContext::DestroyDynamicMesh()
 	{
 		vkDestroyPipeline( m_device, m_dynPipelineTex, nullptr );
 		m_dynPipelineTex = VK_NULL_HANDLE;
+	}
+	if ( m_dynPipelineTexAlpha != VK_NULL_HANDLE )
+	{
+		vkDestroyPipeline( m_device, m_dynPipelineTexAlpha, nullptr );
+		m_dynPipelineTexAlpha = VK_NULL_HANDLE;
+	}
+	if ( m_dynPipelineTexAdd != VK_NULL_HANDLE )
+	{
+		vkDestroyPipeline( m_device, m_dynPipelineTexAdd, nullptr );
+		m_dynPipelineTexAdd = VK_NULL_HANDLE;
 	}
 	if ( m_dynTexPipelineLayout != VK_NULL_HANDLE )
 	{
@@ -2936,7 +3004,14 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				else if ( d.shaderIndex == kDynShaderTextured &&
 				          m_dynPipelineTex != VK_NULL_HANDLE )
 				{
+					// Pick the textured pipeline variant matching this draw's blend
+					// mode (opaque / $translucent alpha / $additive).
 					selected = m_dynPipelineTex;
+					if ( d.blendMode == kDynBlendAlpha && m_dynPipelineTexAlpha != VK_NULL_HANDLE )
+						selected = m_dynPipelineTexAlpha;
+					else if ( d.blendMode == kDynBlendAdditive &&
+					          m_dynPipelineTexAdd != VK_NULL_HANDLE )
+						selected = m_dynPipelineTexAdd;
 					selectedLayout = m_dynTexPipelineLayout;
 					textured = true;
 				}
@@ -2948,13 +3023,32 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				if ( textured )
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 					    m_dynTexPipelineLayout, 0, 1, &m_dynTexDescSet, 0, nullptr );
-				// Push this draw's transform (bytes 0..63) + constant color (64..79).
-				float pushData[20];
+				// Push this draw's state. The textured (UnlitGeneric) pipeline reads
+				// the faithful Source block { mat4 cModelViewProj; vec4
+				// cModulationColor; vec4 cBaseTextureTransform[0]; [1] } (28 floats);
+				// the color pipelines read { mat4 mvp; vec4 color } (20 floats).
+				float pushData[32];
 				std::memcpy( pushData, d.transform, sizeof( d.transform ) );
-				std::memcpy( pushData + 16, d.color, sizeof( d.color ) );
+				uint32_t pushFloats;
+				if ( textured )
+				{
+					std::memcpy( pushData + 16, d.modulation, sizeof( d.modulation ) );
+					std::memcpy( pushData + 20, d.texXform0, sizeof( d.texXform0 ) );
+					std::memcpy( pushData + 24, d.texXform1, sizeof( d.texXform1 ) );
+					pushData[28] = d.alphaRef; // alphaParams.x
+					pushData[29] = 0.0f;
+					pushData[30] = 0.0f;
+					pushData[31] = 0.0f;
+					pushFloats = 32;
+				}
+				else
+				{
+					std::memcpy( pushData + 16, d.color, sizeof( d.color ) );
+					pushFloats = 20;
+				}
 				vkCmdPushConstants( cmd, selectedLayout,
 				    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-				    sizeof( pushData ), pushData );
+				    static_cast<uint32_t>( sizeof( float ) ) * pushFloats, pushData );
 				vkCmdDraw( cmd, d.vertexCount, 1, d.firstVertex, 0 );
 			}
 		}

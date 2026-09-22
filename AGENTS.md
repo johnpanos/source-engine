@@ -466,7 +466,16 @@ Current RFC 0001 evidence (2026-09-22):
   `testchmb_a_00`, and the screenshot has real scene detail, exiting cleanly.
   Fidelity is not yet full DXVK/D3D9 equivalence (bounded native shader/texture
   path, not the complete `stdshader_dx9` library), but a material-driven Portal
-  scene renders natively and passes the boot gate.
+  scene renders natively and passes the boot gate. A **material equivalence
+  oracle** (`material_equivalence_vulkan_conformance`, 14 checks) now measures
+  equivalence against the behavior the D3D9 shaders define: the native
+  UnlitGeneric path produces `cModulationColor * baseTexture(cBaseTextureTransform
+  * uv)` — the exact `unlitgeneric_ps2x`/`vs20` formula — with every constant set
+  at its real Source register (`common_vs_fxc.h`: c4/c37/c38-c39), plus the
+  `$translucent`/`$additive` blend equations selected from `IShaderShadow` state,
+  and negative controls proving a non-conforming backend is caught. UnlitGeneric
+  is the first shader family at real fidelity against it; alpha test, the matrix
+  stack, and the rest of `stdshader_dx9` are the tracked next slices.
 - [Portal SDL3/Wayland/Vulkan progress](RFC/0001-portal-vulkan-progress.md) records
   the verified Linux compatibility slice, real images and GPU/lifecycle tests.
   DXVK Native retains the D3D9 material implementation; R28/R32 native Vulkan

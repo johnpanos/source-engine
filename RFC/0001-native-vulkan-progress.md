@@ -185,6 +185,70 @@ interfaces and onto this contract is the remaining migration (below); the
 substitutable contract and its verified Vulkan provider are the foundation that
 makes it possible.
 
+## Material equivalence: an oracle, and faithful UnlitGeneric (2026-09-22)
+
+"Comparable to DXVK/D3D9" is only a claim if something *measures* it. Until now
+there was no oracle comparing the native output against the behavior the D3D9
+shaders define -- so equivalence was unfalsifiable. This slice adds one and
+brings the first shader family to real material fidelity against it.
+
+- **Equivalence oracle** (`unittests/shaderapivulkantest/test_material_equivalence.cpp`,
+  target `material_equivalence_vulkan_conformance`, **10 checks, 0 failures**).
+  The reference is the actual Source shader source, not a guess:
+  `unlitgeneric_ps2x.fxc` defines `result = i.vColor0 * tex2D( base, i.vTexCoord0 )`
+  and `unlitgeneric_vs20.fxc` defines `vColor0 = cModulationColor`,
+  `vTexCoord0 = mul( v.vTexCoord0, cBaseTextureTransform )`, so the shaded pixel
+  is `cModulationColor * baseTexture( cBaseTextureTransform * uv )`. The oracle
+  drives that formula through the material interfaces and reads pixels back:
+  base-texture sampling, per-channel modulation `(1,0,0)*white -> red`,
+  modulation of a real texture `(0,1,1)*yellow -> green`, monotone magnitude
+  attenuation (`0.5x` strictly darker than `1x`), and the `cBaseTextureTransform`
+  UV remap moving a sampled region. Checks are swapchain-format agnostic (0/1
+  channel masks and blue/yellow texels survive sRGB and UNORM alike; the one
+  magnitude check asserts only monotonicity), so the equivalence claim is honest
+  across devices.
+- **Real Source register conventions.** Every constant is set at its documented
+  register (`common_vs_fxc.h`): `cModelViewProj` c4-c7, `cModulationColor` c37,
+  `cBaseTextureTransform` c38-c39. `CShaderAPIVulkan::SetVertexShaderConstant`
+  now keeps a register file and derives the material state from those real
+  numbers (c0-c3 retained as a legacy alias for the pre-register harnesses), so
+  the backend honors the D3D9 constant contract rather than a bespoke
+  convention -- the substitutability the LSP seam promises. Two **negative
+  controls** keep the oracle honest: it rejects the un-modulated (white) result,
+  and modulation written to the wrong register (c20) is proven to have no effect.
+  The pre-slice backend (no modulation, identity UV) fails four of these checks,
+  which is the required proof that the oracle detects a non-conforming provider.
+- **Faithful UnlitGeneric pipeline.** `shaders/demo_dyn_tex.{vert,frag}` now
+  implement the exact D3D9 math: the vertex stage applies `cModelViewProj`,
+  transforms the coordinate by the 2x4 `cBaseTextureTransform`, and passes
+  `cModulationColor`; the fragment stage returns `modulation * texture(base,uv)`.
+  The push-constant block carries `{ mat4 cModelViewProj; vec4 cModulationColor;
+  vec4 cBaseTextureTransform[0]; [1] }` (112 bytes, within the guaranteed 128).
+  `portal_boot.py` still passes (this change is additive: unset modulation/UV
+  default to white/identity, so existing geometry is unchanged, and the c0 alias
+  preserves the transform path).
+
+- **Blend modes (`$translucent` / `$additive`).** The material records its blend
+  state on `IShaderShadow` (`EnableBlending`/`BlendFunc`); `TakeSnapshot` now
+  classifies it into the native compositing mode and carries it in the snapshot,
+  and `BeginPass` selects the matching textured-pipeline variant (opaque, alpha
+  blend `src.a*src + (1-src.a)*dst`, or additive `src + dst`, with depth-write off
+  for blended geometry as Source does). The oracle verifies the D3D9 blend
+  equations at 0/1 channels (format-agnostic): additive blue over a red clear
+  reads magenta (`src + dst`) while the opaque control reads blue; `$translucent`
+  with source alpha 0 shows the clear through and alpha 1 shows the source. Total
+  oracle: **14 checks, 0 failures**.
+
+This is one shader family reaching real fidelity against a reusable oracle, not
+full equivalence. What the oracle does **not** yet cover, and the backend does
+not yet implement faithfully: alpha test (`$alphatest`); the
+`MatrixMode`/`LoadMatrix` matrix stack that commits `cModelViewProj` for
+world/model geometry (still stubbed, so the transform depends on whatever sets
+c0/c4 directly); sRGB/fog/tonemap `FinalOutput`; and the rest of `stdshader_dx9`
+(VertexLitGeneric, LightmappedGeneric, ...). Each is a next slice, verified the
+same way: extend the oracle with the D3D9-defined behavior, then implement until
+it passes.
+
 ## Engine integration attempt (empirical `portal_boot.py` findings)
 
 Driving the *actual engine* through this backend (advertising the adapter via

@@ -72,3 +72,20 @@ def build(bld):
 			+ bld.env.INCLUDES_SDL3 + bld.env.INCLUDES_VULKAN,
 		use=['shaderapivulkan', 'tier0', 'tier1', 'VULKAN', 'SDL3'],
 		install_path=None)
+
+	# Material equivalence oracle: asserts the native UnlitGeneric path produces
+	# the result the D3D9 shader defines (cModulationColor * baseTexture at the
+	# transformed UV), with every constant set at its real Source register number
+	# and negative controls proving the oracle detects a non-conforming backend.
+	# Links the real backend library; skips (exit 77) without a device/display.
+	bld.program(
+		features='c cxx', env=test_env.derive(),
+		source=['test_material_equivalence.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_device.cpp'],
+		target='material_equivalence_vulkan_conformance',
+		name='material_equivalence_vulkan_conformance',
+		includes=['../../materialsystem/shaderapivulkan', '../../public',
+			'../../public/tier0', '../../public/tier1']
+			+ bld.env.INCLUDES_SDL3 + bld.env.INCLUDES_VULKAN,
+		use=['shaderapivulkan', 'tier0', 'tier1', 'VULKAN', 'SDL3'],
+		install_path=None)

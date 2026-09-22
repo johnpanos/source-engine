@@ -169,6 +169,22 @@ public:
 		kDynShaderTextured = 3
 	};
 	void SelectDynamicShader( int shaderIndex ) { m_dynShaderIndex = shaderIndex; }
+	// Blend mode the queued geometry composites with this draw, mapping the
+	// material's IShaderShadow blend state to the D3D9-defined compositing:
+	//   opaque   = src replaces dst (no blend)
+	//   alpha    = src.a*src + (1-src.a)*dst   ($translucent)
+	//   additive = src + dst                   ($additive)
+	// Only the textured (UnlitGeneric) path honors this for now.
+	enum
+	{
+		kDynBlendOpaque = 0,
+		kDynBlendAlpha = 1,
+		kDynBlendAdditive = 2
+	};
+	void SelectDynamicBlend( int blendMode ) { m_dynBlendMode = blendMode; }
+	// $alphatest: fragments whose alpha is below `ref` are discarded (matching the
+	// D3D9 fixed-function GREATEREQUAL alpha test). A negative `ref` disables it.
+	void SelectDynamicAlphaTest( float ref ) { m_dynAlphaRef = ref; }
 	// Set the shader constant the "constant color" material shader reads (linear
 	// RGBA), the way a material's pixel-shader constant parameterizes its shader.
 	void SetDynamicConstantColor( float r, float g, float b, float a )
@@ -177,6 +193,29 @@ public:
 		m_dynConstColor[1] = g;
 		m_dynConstColor[2] = b;
 		m_dynConstColor[3] = a;
+	}
+	// Set cModulationColor ($color * $alpha), the modulation the UnlitGeneric
+	// material path multiplies the base texture by (linear RGBA). Defaults to
+	// white (1,1,1,1) so an unmodulated material is unaffected.
+	void SetDynamicModulation( const float *rgba )
+	{
+		if ( !rgba )
+			return;
+		for ( int i = 0; i < 4; ++i )
+			m_dynModulation[i] = rgba[i];
+	}
+	// Set cBaseTextureTransform (the two float4 rows of the 2x4 affine UV
+	// transform, SHADER_SPECIFIC_CONST_0/1). Defaults to identity (row0 =
+	// 1,0,0,0 / row1 = 0,1,0,0), i.e. the texture coordinate passes through.
+	void SetDynamicBaseTexTransform( const float *row0, const float *row1 )
+	{
+		for ( int i = 0; i < 4; ++i )
+		{
+			if ( row0 )
+				m_dynTexXform0[i] = row0[i];
+			if ( row1 )
+				m_dynTexXform1[i] = row1[i];
+		}
 	}
 	// Set the model->projection transform the dynamic vertex shader applies (16
 	// floats, column-major), the way a material sets vertex-shader constants
@@ -366,9 +405,19 @@ private:
 	VkPipeline m_dynPipelineConst = VK_NULL_HANDLE; // "constant color" material shader
 	int m_dynShaderIndex = 0;
 	float m_dynConstColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	// UnlitGeneric material state: cModulationColor ($color * $alpha) and the two
+	// rows of cBaseTextureTransform. Defaults leave the material unmodulated and
+	// the UV coordinate untransformed.
+	float m_dynModulation[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	float m_dynTexXform0[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
+	float m_dynTexXform1[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
+	int m_dynBlendMode = 0;      // kDynBlendOpaque
+	float m_dynAlphaRef = -1.0f; // $alphatest reference; < 0 disables
 	// "$basetexture" material pipeline: a built-in 2-tone texture sampled at the
 	// mesh UVs, bound through a descriptor set (its own layout adds the sampler).
-	VkPipeline m_dynPipelineTex = VK_NULL_HANDLE;
+	VkPipeline m_dynPipelineTex = VK_NULL_HANDLE;      // opaque
+	VkPipeline m_dynPipelineTexAlpha = VK_NULL_HANDLE; // $translucent alpha blend
+	VkPipeline m_dynPipelineTexAdd = VK_NULL_HANDLE;   // $additive
 	VkPipelineLayout m_dynTexPipelineLayout = VK_NULL_HANDLE;
 	VkImage m_dynTexImage = VK_NULL_HANDLE;
 	VkDeviceMemory m_dynTexMemory = VK_NULL_HANDLE;
@@ -407,6 +456,13 @@ private:
 		int shaderIndex = 0;
 		float transform[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 		float color[4] = { 1, 1, 1, 1 };
+		// UnlitGeneric material state captured at this draw (cModulationColor and
+		// the two rows of cBaseTextureTransform).
+		float modulation[4] = { 1, 1, 1, 1 };
+		float texXform0[4] = { 1, 0, 0, 0 };
+		float texXform1[4] = { 0, 1, 0, 0 };
+		int blendMode = 0;      // kDynBlendOpaque
+		float alphaRef = -1.0f; // $alphatest reference; < 0 disables
 	};
 	std::vector<DynDraw> m_dynDrawRecords;
 

@@ -10,7 +10,15 @@ public:
 	virtual void Disconnect() {}
 	virtual InitReturnVal_t Init() { return INIT_OK; }
 	virtual void Shutdown() {}
-	virtual void *QueryInterface( const char *pInterfaceName ) { return NULL; }
+	// The app framework resolves sibling interfaces (collision, surfaceprops)
+	// through the primary IPhysics AppSystem's QueryInterface, not the module's
+	// exported CreateInterface. Delegate to this module's own factory so those
+	// interfaces are reachable, matching stock vphysics (vphysics/main.cpp).
+	virtual void *QueryInterface( const char *pInterfaceName )
+	{
+		CreateInterfaceFn factory = Sys_GetFactoryThis();
+		return factory ? factory( pInterfaceName, NULL ) : NULL;
+	}
 	virtual IPhysicsEnvironment *CreateEnvironment() { return new CPhysicsEnvironmentBox3D(); }
 	virtual void DestroyEnvironment( IPhysicsEnvironment *pEnvironment ) { delete pEnvironment; }
 	virtual IPhysicsEnvironment *GetActiveEnvironmentByIndex( int index ) { return NULL; }

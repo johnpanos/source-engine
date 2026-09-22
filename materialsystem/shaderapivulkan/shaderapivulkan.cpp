@@ -23,6 +23,7 @@
 #include "render/legacy_shader_provider.h"
 #include "vulkan_device.h"
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -116,15 +117,24 @@ public:
 private:
 	enum
 	{
-		VERTEX_BUFFER_SIZE = 1024 * 1024
+		VERTEX_BUFFER_SIZE = 1024 * 1024,
+		// Index slots (unsigned short each). Real Source geometry is indexed, so the
+		// backend must keep the index buffer, not discard it.
+		INDEX_BUFFER_SIZE = 1024 * 1024
 	};
 
 	unsigned char *m_pVertexMemory;
+	// Index buffer the mesh builder writes into (unsigned short). Draw() uses it to
+	// assemble triangles in the authored order; without it, drawing the shared
+	// vertices sequentially scrambles the geometry into noise.
+	unsigned short *m_pIndexMemory;
 	bool m_bIsDynamic;
 	// Vertices locked into m_pVertexMemory as an interleaved position(vec3) +
 	// color(4 bytes) layout with stride kMeshVertexStride, so Draw() can forward
 	// real geometry to the native Vulkan dynamic-mesh path.
 	int m_numVerts = 0;
+	// Number of indices the last lock/unlock recorded (0 = non-indexed).
+	int m_numIndices = 0;
 	// Scratch target for vertex components this bounded layout does not carry, so
 	// a mesh builder writing them (with size 0) never corrupts position/color.
 	unsigned char m_dummyComponent[64] = { 0 };
@@ -254,6 +264,13 @@ public:
 	bool m_IsAlphaTested;
 	bool m_bIsDepthWriteEnabled;
 	bool m_bUsesVertexAndPixelShaders;
+	// Blend factors recorded during snapshot state (IShaderShadow::BlendFunc), so
+	// TakeSnapshot can classify the D3D9 compositing (opaque/translucent/additive).
+	ShaderBlendFactor_t m_blendSrc = SHADER_BLEND_ONE;
+	ShaderBlendFactor_t m_blendDst = SHADER_BLEND_ZERO;
+	// $alphatest reference [0,1] recorded by AlphaFunc; applied only when
+	// EnableAlphaTest set m_IsAlphaTested.
+	float m_alphaRef = 0.0f;
 	// Selected pixel shader recorded during snapshot state (IShaderShadow), so a
 	// snapshot can carry which material shader to bind at draw time.
 	char m_pixelShaderName[64] = { 0 };
@@ -269,7 +286,10 @@ public:
 
 	// Methods of IShaderDevice
 	virtual int GetCurrentAdapter() const { return 0; }
-	virtual bool IsUsingGraphics() const { return false; }
+	// True once the native Vulkan device is up: this is a real rendering backend,
+	// so the material system must drive its actual draw path (mesh Draw, shader
+	// binding, present) rather than treating it as a headless/null device.
+	virtual bool IsUsingGraphics() const { return g_VulkanContext.IsValid(); }
 	virtual void SpewDriverInfo() const;
 	virtual ImageFormat GetBackBufferFormat() const { return IMAGE_FORMAT_RGB888; }
 	virtual void GetBackBufferDimensions( int &width, int &height ) const;
@@ -1518,20 +1538,27 @@ IIndexBuffer *CShaderDeviceVulkan::GetDynamicIndexBuffer(
 CEmptyMesh::CEmptyMesh( bool bIsDynamic ) : m_bIsDynamic( bIsDynamic )
 {
 	m_pVertexMemory = new unsigned char[VERTEX_BUFFER_SIZE];
+	m_pIndexMemory = new unsigned short[INDEX_BUFFER_SIZE];
 }
 
 CEmptyMesh::~CEmptyMesh()
 {
 	delete[] m_pVertexMemory;
+	delete[] m_pIndexMemory;
 }
 
 bool CEmptyMesh::Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t &desc )
 {
-	static int s_BogusIndex;
-	desc.m_pIndices = (unsigned short *)&s_BogusIndex;
-	desc.m_nIndexSize = 0;
+	// Hand out the real index buffer so the mesh builder's authored indices are
+	// kept (m_nIndexSize = 1 advances one slot per index). Draw() replays the
+	// geometry in this order. Clamp to the buffer; overflow would corrupt memory.
+	if ( nMaxIndexCount > INDEX_BUFFER_SIZE )
+		nMaxIndexCount = INDEX_BUFFER_SIZE;
+	desc.m_pIndices = m_pIndexMemory;
+	desc.m_nIndexSize = 1;
 	desc.m_nFirstIndex = 0;
 	desc.m_nOffset = 0;
+	m_numIndices = nMaxIndexCount;
 	return true;
 }
 
@@ -1627,6 +1654,12 @@ void CEmptyMesh::LockMesh( int numVerts, int numIndices, MeshDesc_t &desc )
 
 void CEmptyMesh::UnlockMesh( int numVerts, int numIndices, MeshDesc_t &desc )
 {
+	// Record the counts the builder actually wrote, so Draw() replays exactly the
+	// authored geometry rather than the (larger) locked capacity.
+	if ( numVerts >= 0 )
+		m_numVerts = numVerts;
+	if ( numIndices >= 0 )
+		m_numIndices = numIndices;
 }
 
 void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, int firstIndex,
@@ -1666,27 +1699,53 @@ void CEmptyMesh::Draw( int firstIndex, int numIndices )
 	if ( !g_VulkanContext.IsValid() || !g_VulkanContext.DynamicMeshReady() || m_numVerts <= 0 )
 		return;
 
-	std::vector<float> interleaved;
-	interleaved.reserve( static_cast<size_t>( m_numVerts ) * 8 );
-	for ( int i = 0; i < m_numVerts; ++i )
+	// Determine the index range to draw. mesh->Draw() passes (-1, 0) meaning "the
+	// whole mesh"; an explicit range draws a sub-batch. When the mesh carries no
+	// index buffer, fall back to a sequential triangle list over the vertices.
+	int first = ( firstIndex > 0 ) ? firstIndex : 0;
+	int count = ( numIndices > 0 ) ? numIndices : m_numIndices;
+
+	auto appendVertex = [&]( std::vector<float> &out, int v )
 	{
-		const unsigned char *base = m_pVertexMemory + static_cast<size_t>( i ) * kMeshVertexStride;
-		float pos[3];
+		const unsigned char *base = m_pVertexMemory + static_cast<size_t>( v ) * kMeshVertexStride;
+		float pos[3], uv[2];
 		memcpy( pos, base, sizeof( pos ) );
-		const unsigned char *col = base + 12;
-		float uv[2];
 		memcpy( uv, base + 16, sizeof( uv ) );
-		interleaved.push_back( pos[0] );
-		interleaved.push_back( pos[1] );
-		interleaved.push_back( pos[2] );
-		interleaved.push_back( col[0] / 255.0f );
-		interleaved.push_back( col[1] / 255.0f );
-		interleaved.push_back( col[2] / 255.0f );
-		interleaved.push_back( uv[0] );
-		interleaved.push_back( uv[1] );
+		const unsigned char *col = base + 12;
+		out.push_back( pos[0] );
+		out.push_back( pos[1] );
+		out.push_back( pos[2] );
+		out.push_back( col[0] / 255.0f );
+		out.push_back( col[1] / 255.0f );
+		out.push_back( col[2] / 255.0f );
+		out.push_back( uv[0] );
+		out.push_back( uv[1] );
+	};
+
+	std::vector<float> interleaved;
+	if ( count > 0 )
+	{
+		// Indexed geometry: expand the authored index list into a triangle list, so
+		// the shared vertices are assembled into the correct triangles.
+		interleaved.reserve( static_cast<size_t>( count ) * 8 );
+		for ( int i = 0; i < count; ++i )
+		{
+			const int idx = static_cast<int>( m_pIndexMemory[first + i] );
+			if ( idx >= 0 && idx < m_numVerts )
+				appendVertex( interleaved, idx );
+		}
+		g_VulkanContext.QueueDynamicTriangles(
+		    interleaved.data(), static_cast<uint32_t>( interleaved.size() / 8 ) );
 	}
-	g_VulkanContext.QueueDynamicTriangles(
-	    interleaved.data(), static_cast<uint32_t>( m_numVerts ) );
+	else
+	{
+		// Non-indexed fallback: draw the vertices in order as a triangle list.
+		interleaved.reserve( static_cast<size_t>( m_numVerts ) * 8 );
+		for ( int i = 0; i < m_numVerts; ++i )
+			appendVertex( interleaved, i );
+		g_VulkanContext.QueueDynamicTriangles(
+		    interleaved.data(), static_cast<uint32_t>( m_numVerts ) );
+	}
 }
 
 void CEmptyMesh::Draw( CPrimList *pPrims, int nPrims )
@@ -1742,6 +1801,9 @@ void CShaderShadowVulkan::SetDefaultState()
 	m_IsAlphaTested = false;
 	m_bIsDepthWriteEnabled = true;
 	m_bUsesVertexAndPixelShaders = false;
+	m_blendSrc = SHADER_BLEND_ONE;
+	m_blendDst = SHADER_BLEND_ZERO;
+	m_alphaRef = 0.0f;
 }
 
 // Methods related to depth buffering
@@ -1780,6 +1842,8 @@ void CShaderShadowVulkan::EnableBlending( bool bEnable )
 
 void CShaderShadowVulkan::BlendFunc( ShaderBlendFactor_t srcFactor, ShaderBlendFactor_t dstFactor )
 {
+	m_blendSrc = srcFactor;
+	m_blendDst = dstFactor;
 }
 
 // A simpler method of dealing with alpha modulation
@@ -1807,6 +1871,7 @@ void CShaderShadowVulkan::EnableAlphaTest( bool bEnable )
 
 void CShaderShadowVulkan::AlphaFunc( ShaderAlphaFunc_t alphaFunc, float alphaRef /* [0-1] */ )
 {
+	m_alphaRef = alphaRef;
 }
 
 // Wireframe/filled polygons
@@ -2258,6 +2323,144 @@ void CShaderAPIVulkan::SetDefaultState()
 // native pipeline. The snapshot id keeps the existing flag bits (0..3) and packs
 // the table index in the high bits, preserving IsTranslucent()/etc.
 static std::vector<std::string> g_snapshotShaders;
+// Parallel to g_snapshotShaders: the blend mode (CVulkanContext::kDynBlend*) each
+// snapshot composites with, classified from the recorded IShaderShadow blend
+// state so BeginPass can select the matching pipeline variant.
+static std::vector<int> g_snapshotBlend;
+// Parallel to g_snapshotShaders: the $alphatest reference each snapshot applies
+// (< 0 when alpha test is disabled).
+static std::vector<float> g_snapshotAlphaRef;
+
+// Faithful vertex-shader constant register file. The material system commits its
+// standard and shader-specific constants to fixed registers (see
+// stdshaders/common_vs_fxc.h); honoring the real register numbers -- rather than
+// a bespoke convention -- is what makes the native path a substitutable D3D9
+// backend. The registers the UnlitGeneric family consumes:
+//   c4-c7   cModelViewProj        (committed from the matrix stack)
+//   c37     cModulationColor      ($color * $alpha)
+//   c38-c39 cBaseTextureTransform (SHADER_SPECIFIC_CONST_0/1)
+// c0-c3 is retained as a legacy alias for the model->projection matrix so the
+// direct-interface harnesses that predate the matrix stack keep working.
+namespace
+{
+enum
+{
+	kVsRegModelViewProj = 4,       // cModelViewProj, 4 registers
+	kVsRegModelViewProjLegacy = 0, // legacy c0-c3 alias
+	kVsRegModulationColor = 37,    // cModulationColor
+	kVsRegBaseTexTransform = 38,   // cBaseTextureTransform[0..1]
+	kVsRegCount = 64
+};
+struct VsConstantFile
+{
+	float regs[kVsRegCount][4] = {};
+	bool written[kVsRegCount] = {};
+};
+VsConstantFile g_vsConstants;
+
+// Push the constants the native UnlitGeneric pipeline consumes to the context,
+// preferring the faithful cModelViewProj (c4) when the material system has set
+// it, falling back to the legacy c0 alias otherwise.
+void CommitDynamicVsConstants()
+{
+	if ( g_vsConstants.written[kVsRegModelViewProj] )
+		g_VulkanContext.SetDynamicTransform( &g_vsConstants.regs[kVsRegModelViewProj][0] );
+	else if ( g_vsConstants.written[kVsRegModelViewProjLegacy] )
+		g_VulkanContext.SetDynamicTransform( &g_vsConstants.regs[kVsRegModelViewProjLegacy][0] );
+
+	if ( g_vsConstants.written[kVsRegModulationColor] )
+		g_VulkanContext.SetDynamicModulation( &g_vsConstants.regs[kVsRegModulationColor][0] );
+
+	if ( g_vsConstants.written[kVsRegBaseTexTransform] )
+		g_VulkanContext.SetDynamicBaseTexTransform( &g_vsConstants.regs[kVsRegBaseTexTransform][0],
+		    &g_vsConstants.regs[kVsRegBaseTexTransform + 1][0] );
+}
+
+// Classify the recorded blend state into the native compositing mode, matching
+// how the D3D9 material shaders configure the fixed-function blender:
+//   blending off              -> opaque (src replaces dst)
+//   src=ONE,       dst=ONE    -> additive          ($additive)
+//   src=SRC_ALPHA, dst=ONE    -> additive (alpha-premultiplied glow)
+//   otherwise (e.g. SRC_ALPHA/ONE_MINUS_SRC_ALPHA) -> alpha blend ($translucent)
+int ClassifyBlendMode( bool blendEnabled, ShaderBlendFactor_t src, ShaderBlendFactor_t dst )
+{
+	if ( !blendEnabled )
+		return render_vulkan::CVulkanContext::kDynBlendOpaque;
+	if ( dst == SHADER_BLEND_ONE && ( src == SHADER_BLEND_ONE || src == SHADER_BLEND_SRC_ALPHA ) )
+		return render_vulkan::CVulkanContext::kDynBlendAdditive;
+	return render_vulkan::CVulkanContext::kDynBlendAlpha;
+}
+
+// --- Transform matrix stack -------------------------------------------------
+// The material system positions geometry through IShaderAPI's matrix stack
+// (MatrixMode/LoadMatrix/MultMatrix/...), NOT by setting cModelViewProj directly
+// -- shaderapidx8 composes and commits that constant internally before each draw
+// (SetVertexShaderModelViewProjAndModelView). This backend does the same so world
+// and model geometry receives its real transform instead of identity.
+//
+// Convention: CMatRenderContext hands us each matrix already TRANSPOSED
+// (`MatrixTranspose(...); g_pShaderAPI->LoadMatrix(...)`), stored row-major. The
+// native GLSL vertex shader is column-vector (`gl_Position = mvp * pos`) and reads
+// the pushed 16 floats column-major. Working the D3D transpose and the HLSL/GLSL
+// packing through end to end, the matrix the GLSL shader needs is exactly
+// model_stored * view_stored * proj_stored (standard row-major multiply, laid out
+// row-major) -- no extra transpose. Verified against the live Portal render.
+struct MatrixStackState
+{
+	float mat[NUM_MATRIX_MODES][16];
+	std::vector<std::array<float, 16>> stack[NUM_MATRIX_MODES];
+	MaterialMatrixMode_t mode = MATERIAL_MODEL;
+	bool initialized = false;
+};
+MatrixStackState g_matrices;
+
+void MatSetIdentity( float *m )
+{
+	for ( int i = 0; i < 16; ++i )
+		m[i] = ( i % 5 == 0 ) ? 1.0f : 0.0f;
+}
+
+// Row-major multiply: out = a * b (out[i][j] = sum_k a[i][k] * b[k][j]).
+void MatMul( const float *a, const float *b, float *out )
+{
+	float t[16];
+	for ( int i = 0; i < 4; ++i )
+		for ( int j = 0; j < 4; ++j )
+		{
+			float s = 0.0f;
+			for ( int k = 0; k < 4; ++k )
+				s += a[i * 4 + k] * b[k * 4 + j];
+			t[i * 4 + j] = s;
+		}
+	for ( int i = 0; i < 16; ++i )
+		out[i] = t[i];
+}
+
+void EnsureMatricesInit()
+{
+	if ( g_matrices.initialized )
+		return;
+	for ( int m = 0; m < NUM_MATRIX_MODES; ++m )
+		MatSetIdentity( g_matrices.mat[m] );
+	g_matrices.initialized = true;
+}
+
+float *CurrentMatrix()
+{
+	EnsureMatricesInit();
+	return g_matrices.mat[g_matrices.mode];
+}
+
+// Compose model * view * proj and hand it to the dynamic draw path as the MVP.
+void CommitModelViewProj()
+{
+	EnsureMatricesInit();
+	float mv[16], mvp[16];
+	MatMul( g_matrices.mat[MATERIAL_MODEL], g_matrices.mat[MATERIAL_VIEW], mv );
+	MatMul( mv, g_matrices.mat[MATERIAL_PROJECTION], mvp );
+	g_VulkanContext.SetDynamicTransform( mvp );
+}
+} // namespace
 
 // Returns the snapshot id for the shader state
 StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
@@ -2274,6 +2477,10 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 
 	const size_t index = g_snapshotShaders.size();
 	g_snapshotShaders.push_back( g_ShaderShadow.m_pixelShaderName );
+	g_snapshotBlend.push_back( ClassifyBlendMode(
+	    g_ShaderShadow.m_IsTranslucent, g_ShaderShadow.m_blendSrc, g_ShaderShadow.m_blendDst ) );
+	g_snapshotAlphaRef.push_back(
+	    g_ShaderShadow.m_IsAlphaTested ? g_ShaderShadow.m_alphaRef : -1.0f );
 	id |= static_cast<StateSnapshot_t>( index << 4 ); // flags occupy bits 0..3
 	return id;
 }
@@ -2529,6 +2736,12 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 			shader = render_vulkan::CVulkanContext::kDynShaderTextured;
 		g_VulkanContext.SelectDynamicShader( shader );
 	}
+	// Apply the blend mode this snapshot recorded (opaque/translucent/additive).
+	if ( index < g_snapshotBlend.size() )
+		g_VulkanContext.SelectDynamicBlend( g_snapshotBlend[index] );
+	// Apply the $alphatest reference this snapshot recorded (< 0 = disabled).
+	if ( index < g_snapshotAlphaRef.size() )
+		g_VulkanContext.SelectDynamicAlphaTest( g_snapshotAlphaRef[index] );
 }
 
 // Renders a single pass of a material
@@ -2536,37 +2749,80 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 {
 }
 
-// stuff related to matrix stacks
+// stuff related to matrix stacks. These drive the model/view/projection matrices
+// the material system positions geometry with; the composed MVP is committed to
+// the native dynamic draw path (see the matrix helpers above).
 void CShaderAPIVulkan::MatrixMode( MaterialMatrixMode_t matrixMode )
 {
+	EnsureMatricesInit();
+	if ( matrixMode >= 0 && matrixMode < NUM_MATRIX_MODES )
+		g_matrices.mode = matrixMode;
 }
 
 void CShaderAPIVulkan::PushMatrix()
 {
+	float *cur = CurrentMatrix();
+	std::array<float, 16> saved;
+	for ( int i = 0; i < 16; ++i )
+		saved[i] = cur[i];
+	g_matrices.stack[g_matrices.mode].push_back( saved );
 }
 
 void CShaderAPIVulkan::PopMatrix()
 {
+	std::vector<std::array<float, 16>> &st = g_matrices.stack[g_matrices.mode];
+	if ( !st.empty() )
+	{
+		float *cur = CurrentMatrix();
+		const std::array<float, 16> &top = st.back();
+		for ( int i = 0; i < 16; ++i )
+			cur[i] = top[i];
+		st.pop_back();
+		CommitModelViewProj();
+	}
 }
 
 void CShaderAPIVulkan::LoadMatrix( float *m )
 {
+	if ( !m )
+		return;
+	float *cur = CurrentMatrix();
+	for ( int i = 0; i < 16; ++i )
+		cur[i] = m[i];
+	CommitModelViewProj();
 }
 
 void CShaderAPIVulkan::MultMatrix( float *m )
 {
+	if ( !m )
+		return;
+	float *cur = CurrentMatrix();
+	MatMul( cur, m, cur ); // top = top * m
+	CommitModelViewProj();
 }
 
 void CShaderAPIVulkan::MultMatrixLocal( float *m )
 {
+	if ( !m )
+		return;
+	float *cur = CurrentMatrix();
+	MatMul( m, cur, cur ); // top = m * top
+	CommitModelViewProj();
 }
 
 void CShaderAPIVulkan::GetMatrix( MaterialMatrixMode_t matrixMode, float *dst )
 {
+	if ( !dst || matrixMode < 0 || matrixMode >= NUM_MATRIX_MODES )
+		return;
+	EnsureMatricesInit();
+	for ( int i = 0; i < 16; ++i )
+		dst[i] = g_matrices.mat[matrixMode][i];
 }
 
 void CShaderAPIVulkan::LoadIdentity( void )
 {
+	MatSetIdentity( CurrentMatrix() );
+	CommitModelViewProj();
 }
 
 void CShaderAPIVulkan::LoadCameraToWorld( void )
@@ -2576,6 +2832,24 @@ void CShaderAPIVulkan::LoadCameraToWorld( void )
 void CShaderAPIVulkan::Ortho(
     double left, double top, double right, double bottom, double zNear, double zFar )
 {
+	// Build a D3D-style orthographic matrix (stored transposed to match the
+	// convention LoadMatrix receives) and post-multiply it onto the current matrix.
+	const float rl = static_cast<float>( right - left );
+	const float tb = static_cast<float>( top - bottom );
+	const float fn = static_cast<float>( zFar - zNear );
+	if ( rl == 0.0f || tb == 0.0f || fn == 0.0f )
+		return;
+	float o[16];
+	MatSetIdentity( o );
+	o[0] = 2.0f / rl;
+	o[5] = 2.0f / tb;
+	o[10] = 1.0f / fn;
+	o[3] = static_cast<float>( -( right + left ) / ( right - left ) );
+	o[7] = static_cast<float>( -( top + bottom ) / ( top - bottom ) );
+	o[11] = static_cast<float>( -zNear / ( zFar - zNear ) );
+	float *cur = CurrentMatrix();
+	MatMul( cur, o, cur );
+	CommitModelViewProj();
 }
 
 void CShaderAPIVulkan::PerspectiveX( double fovx, double aspect, double zNear, double zFar )
@@ -2692,13 +2966,24 @@ void CShaderAPIVulkan::SetPixelShaderIndex( int pshIndex )
 void CShaderAPIVulkan::SetVertexShaderConstant(
     int var, float const *pVec, int numConst, bool bForce )
 {
-	// Registers c0-c3 hold the model->projection matrix in Source's vertex-shader
-	// convention; route them to the native dynamic-mesh transform. Bounded slice:
-	// only the c0-c3 matrix is consumed (roadmap R32).
-	if ( pVec && numConst >= 4 && var == 0 )
+	// Store into the faithful vertex-shader constant register file, then derive the
+	// native UnlitGeneric material state (cModelViewProj, cModulationColor,
+	// cBaseTextureTransform) from the real Source register numbers. This makes the
+	// backend honor the D3D9 constant contract rather than a bespoke convention.
+	if ( !pVec || numConst <= 0 )
+		return;
+	for ( int i = 0; i < numConst; ++i )
 	{
-		g_VulkanContext.SetDynamicTransform( pVec );
+		const int reg = var + i;
+		if ( reg < 0 || reg >= kVsRegCount )
+			continue;
+		g_vsConstants.regs[reg][0] = pVec[i * 4 + 0];
+		g_vsConstants.regs[reg][1] = pVec[i * 4 + 1];
+		g_vsConstants.regs[reg][2] = pVec[i * 4 + 2];
+		g_vsConstants.regs[reg][3] = pVec[i * 4 + 3];
+		g_vsConstants.written[reg] = true;
 	}
+	CommitDynamicVsConstants();
 }
 
 void CShaderAPIVulkan::SetBooleanVertexShaderConstant(
@@ -2830,14 +3115,41 @@ void CShaderAPIVulkan::TexImage2D( int level, int cubeFace, ImageFormat dstForma
 		// The image was created with the matching 8-bit format; upload directly.
 		ok = g_VulkanContext.UploadManagedTexture( handle, src, pixels * 4, &error );
 	}
-	else if ( srcFormat == IMAGE_FORMAT_RGB888 )
+	else if ( srcFormat == IMAGE_FORMAT_BGRX8888 )
 	{
+		// Opaque 32-bit BGR + unused X. The image is B8G8R8A8, so the bytes map
+		// directly; force the (meaningless) X byte to an opaque alpha.
+		std::vector<uint8_t> bgra( pixels * 4 );
+		for ( size_t i = 0; i < pixels; ++i )
+		{
+			bgra[i * 4 + 0] = src[i * 4 + 0];
+			bgra[i * 4 + 1] = src[i * 4 + 1];
+			bgra[i * 4 + 2] = src[i * 4 + 2];
+			bgra[i * 4 + 3] = 255;
+		}
+		ok = g_VulkanContext.UploadManagedTexture( handle, bgra.data(), bgra.size(), &error );
+	}
+	else if ( srcFormat == IMAGE_FORMAT_RGB888 || srcFormat == IMAGE_FORMAT_BGR888 )
+	{
+		// 24-bit color into the R8G8B8A8 image. BGR888 swaps R/B on the way in.
+		const bool bgr = ( srcFormat == IMAGE_FORMAT_BGR888 );
 		std::vector<uint8_t> rgba( pixels * 4 );
 		for ( size_t i = 0; i < pixels; ++i )
 		{
-			rgba[i * 4 + 0] = src[i * 3 + 0];
+			rgba[i * 4 + 0] = src[i * 3 + ( bgr ? 2 : 0 )];
 			rgba[i * 4 + 1] = src[i * 3 + 1];
-			rgba[i * 4 + 2] = src[i * 3 + 2];
+			rgba[i * 4 + 2] = src[i * 3 + ( bgr ? 0 : 2 )];
+			rgba[i * 4 + 3] = 255;
+		}
+		ok = g_VulkanContext.UploadManagedTexture( handle, rgba.data(), rgba.size(), &error );
+	}
+	else if ( srcFormat == IMAGE_FORMAT_I8 )
+	{
+		// 8-bit intensity expanded to grayscale RGBA (r = g = b = i, opaque).
+		std::vector<uint8_t> rgba( pixels * 4 );
+		for ( size_t i = 0; i < pixels; ++i )
+		{
+			rgba[i * 4 + 0] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = src[i];
 			rgba[i * 4 + 3] = 255;
 		}
 		ok = g_VulkanContext.UploadManagedTexture( handle, rgba.data(), rgba.size(), &error );
@@ -3052,6 +3364,75 @@ void CShaderAPIVulkan::ReadPixels(
 void CShaderAPIVulkan::ReadPixels(
     Rect_t *pSrcRect, Rect_t *pDstRect, unsigned char *data, ImageFormat dstFormat, int nDstStride )
 {
+	// The engine's +screenshot path calls THIS overload (a source rect in the back
+	// buffer -> a destination rect in `data` at `nDstStride`). Without it the
+	// screenshot buffer stays uninitialized and reads back as noise. Copy the most
+	// recently presented frame (captured on demand by CVulkanContext), converting
+	// to the requested format.
+	if ( !data || !pSrcRect || !pDstRect || !g_VulkanContext.IsValid() )
+		return;
+	{
+		std::string err;
+		bool skip = false;
+		g_VulkanContext.RequestCapture();
+		if ( g_VulkanContext.BeginFrame( &skip, &err ) && !skip )
+			g_VulkanContext.EndFrame( &err );
+	}
+	int cw = 0, ch = 0;
+	const std::vector<uint8_t> &px = g_VulkanContext.GetCapturedPixels( &cw, &ch );
+	if ( px.empty() || cw <= 0 || ch <= 0 )
+		return;
+
+	const int dstBpp =
+	    ( dstFormat == IMAGE_FORMAT_RGB888 || dstFormat == IMAGE_FORMAT_BGR888 ) ? 3 : 4;
+	const int copyW = ( pDstRect->width < pSrcRect->width ) ? pDstRect->width : pSrcRect->width;
+	const int copyH = ( pDstRect->height < pSrcRect->height ) ? pDstRect->height : pSrcRect->height;
+	if ( nDstStride <= 0 )
+		nDstStride = pDstRect->width * dstBpp;
+
+	for ( int row = 0; row < copyH; ++row )
+	{
+		const int sy = pSrcRect->y + row;
+		unsigned char *dRow =
+		    data + static_cast<size_t>( pDstRect->y + row ) * nDstStride + pDstRect->x * dstBpp;
+		for ( int col = 0; col < copyW; ++col )
+		{
+			const int sx = pSrcRect->x + col;
+			unsigned char *d = dRow + static_cast<size_t>( col ) * dstBpp;
+			if ( sx < 0 || sx >= cw || sy < 0 || sy >= ch )
+			{
+				for ( int i = 0; i < dstBpp; ++i )
+					d[i] = 0;
+				continue;
+			}
+			const uint8_t *s = &px[( static_cast<size_t>( sy ) * cw + sx ) * 4]; // RGBA
+			switch ( dstFormat )
+			{
+			case IMAGE_FORMAT_RGBA8888:
+				d[0] = s[0];
+				d[1] = s[1];
+				d[2] = s[2];
+				d[3] = s[3];
+				break;
+			case IMAGE_FORMAT_BGRA8888:
+				d[0] = s[2];
+				d[1] = s[1];
+				d[2] = s[0];
+				d[3] = s[3];
+				break;
+			case IMAGE_FORMAT_BGR888:
+				d[0] = s[2];
+				d[1] = s[1];
+				d[2] = s[0];
+				break;
+			default: // RGB888 and other 3-byte requests
+				d[0] = s[0];
+				d[1] = s[1];
+				d[2] = s[2];
+				break;
+			}
+		}
+	}
 }
 
 void CShaderAPIVulkan::FlushHardware()
