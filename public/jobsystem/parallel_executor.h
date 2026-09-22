@@ -9,10 +9,23 @@
 //          (release on completion / acquire on dequeue), satisfying the RFC's
 //          happens-before requirement without a bespoke fence.
 //
-//          This first implementation uses one synchronized ready queue, which
-//          the RFC explicitly prefers until a work-stealing deque has its own
-//          correctness and performance evidence. It must produce identical
+//          This first implementation uses synchronized per-lane ready queues,
+//          which the RFC explicitly prefers until a work-stealing deque has its
+//          own correctness and performance evidence. It must produce identical
 //          terminal states to DeterministicExecutor for the same inputs.
+//
+//          Lane affinity (RFC 0003 "Sequences and physical affinity",
+//          "Blocking operations and external completion"):
+//            * Compute / Sequence jobs run on any compute worker or the pumping
+//              main thread. Sequence ordering is carried by the sealed edges, so
+//              successive jobs on a lane may use different physical threads.
+//            * MainThread jobs run only on the calling (main) thread, and only
+//              when it pumps. A worker never steals them.
+//            * BlockingIO jobs run on a dedicated blocking lane (or the main
+//              thread when no blocking workers exist); they never occupy a
+//              compute worker.
+//          If the configuration provides no servicer for a lane the graph uses,
+//          the run reports RunResult::stalled instead of hanging.
 //
 //=============================================================================//
 
@@ -31,15 +44,19 @@ namespace jobsystem
 class ParallelExecutor : public IGraphExecutor
 {
 public:
-	// nWorkers == 0 runs the ready-driven loop on the calling thread (still
-	// dependency-correct, no dedicated threads). Otherwise nWorkers threads
-	// service the graph while the caller waits for completion.
-	explicit ParallelExecutor( int nWorkers );
+	// nComputeWorkers == 0 runs the ready-driven loop entirely on the calling
+	// thread (still dependency-correct, no dedicated threads, services every
+	// lane). Otherwise nComputeWorkers threads service Compute/Sequence work while
+	// the caller pumps main-thread work and helps. nBlockingWorkers dedicated
+	// threads service BlockingIO work; when 0, the pumping main thread services it
+	// instead so compute workers never absorb a blocking wait.
+	explicit ParallelExecutor( int nComputeWorkers, int nBlockingWorkers = 0 );
 
 	RunResult Execute( const SealedGraph &graph, const RunOptions &opts ) override;
 
 private:
 	int m_nWorkers;
+	int m_nBlocking;
 };
 
 } // namespace jobsystem

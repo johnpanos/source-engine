@@ -387,12 +387,15 @@ void ResolveNativeModulePath(
 	char szCanonicalPath[PATH_MAX];
 	if ( pRequestedPath && realpath( pRequestedPath, szCanonicalPath ) )
 		CopyString( pResolvedPath, nResolvedPathSize, szCanonicalPath );
-#if defined( PLATFORM_GLIBC ) && defined( RTLD_DI_LINKMAP )
+#if defined( PLATFORM_GLIBC )
 	link_map *pMap = NULL;
 	if ( pModule && dlinfo( pModule, RTLD_DI_LINKMAP, &pMap ) == 0 &&
 		pMap && pMap->l_name && pMap->l_name[0] )
 	{
-		CopyString( pResolvedPath, nResolvedPathSize, pMap->l_name );
+		if ( realpath( pMap->l_name, szCanonicalPath ) )
+			CopyString( pResolvedPath, nResolvedPathSize, szCanonicalPath );
+		else
+			CopyString( pResolvedPath, nResolvedPathSize, pMap->l_name );
 	}
 #endif
 }

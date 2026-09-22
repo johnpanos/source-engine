@@ -43,12 +43,15 @@ enum
 	APP_MODULE_INVALID = (AppModule_t)~0
 };
 
+// Temporary handle for a retained factory ABI. It never owns a native module.
 struct AppSystemFactory_t
 {
 	explicit AppSystemFactory_t( int index = -1 ) : m_Index( index ) {}
 	bool IsValid() const { return m_Index >= 0; }
 
+private:
 	int m_Index;
+	friend class CAppSystemGroup;
 };
 
 //-----------------------------------------------------------------------------

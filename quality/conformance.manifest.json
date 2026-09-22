@@ -218,6 +218,120 @@
       "expect": "pass"
     },
     {
+      "id": "hammer.app.save_orchestrator",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-SAVE-001",
+      "contract": "unittests/hammertest/contracts/app.save_orchestrator.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/save_orchestrator.cpp",
+        "unittests/hammertest/app/test_save_orchestrator.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.save_orchestrator.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-SAVE-001",
+      "contract": "unittests/hammertest/contracts/app.save_orchestrator.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/save_orchestrator.cpp",
+        "unittests/hammertest/app/test_save_orchestrator_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.editor_document",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-WORKFLOW-001",
+      "contract": "unittests/hammertest/contracts/app.editor_document.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/editor_document.cpp",
+        "hammer/core/app/document_history.cpp",
+        "hammer/core/app/save_orchestrator.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/app/test_editor_document.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.editor_document.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-WORKFLOW-001",
+      "contract": "unittests/hammertest/contracts/app.editor_document.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/editor_document.cpp",
+        "hammer/core/app/document_history.cpp",
+        "hammer/core/app/save_orchestrator.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/app/test_editor_document_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.dynamic_library",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-DYNLIB-001",
+      "contract": "unittests/platformtest/contracts/platform.dynamic_library.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/platformtest/dynamic_library/test_dynamic_library.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.dynamic_library.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-DYNLIB-001",
+      "contract": "unittests/platformtest/contracts/platform.dynamic_library.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/platformtest/dynamic_library/test_dynamic_library_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.clock",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-CLOCK-001",
+      "contract": "unittests/platformtest/contracts/platform.clock.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/platformtest/clock/test_clock.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.clock.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-CLOCK-001",
+      "contract": "unittests/platformtest/contracts/platform.clock.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/platformtest/clock/test_clock_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "jobsystem.scheduler",
       "domain": "Q-JOBS",
       "rfc": "0003",
@@ -233,6 +347,36 @@
         "jobsystem/deterministic_executor.cpp",
         "jobsystem/parallel_executor.cpp",
         "unittests/jobsystemtest/jobsystemtest.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.backend.null",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "REND-BACKEND-001",
+      "contract": "unittests/rendertest/contracts/render.backend.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/rendertest/conformance/render_backend_conformance.cpp",
+        "unittests/rendertest/fakes/null_render_backend.cpp",
+        "unittests/rendertest/test_render_backend.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.backend.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "REND-BACKEND-001",
+      "contract": "unittests/rendertest/contracts/render.backend.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/rendertest/conformance/render_backend_conformance.cpp",
+        "unittests/rendertest/fakes/null_render_backend.cpp",
+        "unittests/rendertest/test_render_backend_negative.cpp"
       ],
       "expect": "pass"
     }

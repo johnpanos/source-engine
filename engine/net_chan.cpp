@@ -1689,8 +1689,7 @@ int CNetChan::SendDatagram(bf_write *datagram)
 	m_StreamUnreliable.Reset();	// clear unreliable data buffer
 
 	// On the PC the voice data is in the main packet
-	if ( !IsX360() && 
-		m_StreamVoice.GetNumBitsWritten() > 0 && m_StreamVoice.GetNumBitsWritten() < send.GetNumBitsLeft() )
+	if ( m_StreamVoice.GetNumBitsWritten() > 0 && m_StreamVoice.GetNumBitsWritten() < send.GetNumBitsLeft() )
 	{
 		send.WriteBits(m_StreamVoice.GetData(), m_StreamVoice.GetNumBitsWritten() );
 		m_StreamVoice.Reset();
@@ -1740,7 +1739,7 @@ int CNetChan::SendDatagram(bf_write *datagram)
 
 
 	// FIXME:  This isn't actually correct since compression might make the main payload usage a bit smaller
-	bool bSendVoice = IsX360() && ( m_StreamVoice.GetNumBitsWritten() > 0 &&  m_StreamVoice.GetNumBitsWritten() < send.GetNumBitsLeft() );
+	bool bSendVoice = false && ( m_StreamVoice.GetNumBitsWritten() > 0 &&  m_StreamVoice.GetNumBitsWritten() < send.GetNumBitsLeft() );
 		
 	bool bCompress = false;
 	if ( net_compresspackets.GetBool() )
@@ -1767,7 +1766,6 @@ int CNetChan::SendDatagram(bf_write *datagram)
 	// Send the datagram
 	int	bytesSent = NET_SendPacket ( this, m_Socket, remote_address, send.GetData(), send.GetNumBytesWritten(), bSendVoice ? &m_StreamVoice : 0, bCompress );
 
-	if ( bSendVoice || !IsX360() )
 	{
 		m_StreamVoice.Reset();
 	}

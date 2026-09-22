@@ -85,11 +85,6 @@ static void WriteAchievementGlobalState( KeyValues *pKV, bool bPersistToSteamClo
 
 	char szFilename[_MAX_PATH];
 
-	if ( IsX360() )
-	{
-		Q_snprintf( szFilename, sizeof( szFilename ), "cfg:/%s_GameState.txt", COM_GetModDirectory() );
-	}
-	else
 	{
 		Q_snprintf( szFilename, sizeof( szFilename ), "GameState.txt" );
 	}
@@ -109,12 +104,7 @@ static void WriteAchievementGlobalState( KeyValues *pKV, bool bPersistToSteamClo
     if ( bPersistToSteamCloud )
     {
 #ifndef NO_STEAM
-		if ( IsX360() )
-        {
-            Q_snprintf( szFilename, sizeof( szFilename ), "cfg:/%s_GameState.txt", COM_GetModDirectory() );
-        }
-        else
-        {
+		{
             Q_snprintf( szFilename, sizeof( szFilename ), "GameState.txt" );
         }
 
@@ -325,10 +315,7 @@ void CAchievementMgr::PostInit()
 	{
 		g_AchievementSaveThread.Start();
 #ifdef WIN32
-		if ( IsX360() )
-		{
-			ThreadSetAffinity( (ThreadHandle_t)g_AchievementSaveThread.GetThreadHandle(), XBOX_PROCESSOR_3 );
-		}
+		
 #endif // WIN32
 	}
 
@@ -503,15 +490,7 @@ void CAchievementMgr::LevelInitPreEntity()
 	Q_strncpy( m_szMap, gpGlobals->mapname.ToCStr(), ARRAYSIZE( m_szMap ) );
 #endif // CLIENT_DLL
 
-	if ( IsX360() )
-	{
-		// need to remove the .360 extension on the end of the map name
-		char *pExt = Q_stristr( m_szMap, ".360" );
-		if ( pExt )
-		{
-			*pExt = '\0';
-		}
-	}
+	
 
 	// look through all achievements, see which ones we want to have listen for events
 	FOR_EACH_MAP( m_mapAchievement, iAchievement )
@@ -625,9 +604,7 @@ void CAchievementMgr::DownloadUserData()
 		}
 #endif
 	}
-	else if ( IsX360() )
-	{
-	}
+	
 }
 
 const char *COM_GetModDirectory()
@@ -672,17 +649,10 @@ void CAchievementMgr::UploadUserData()
 //-----------------------------------------------------------------------------
 void CAchievementMgr::LoadGlobalState()
 {
-	if ( IsX360() )
-	{
-	}
+	
 
 	char	szFilename[_MAX_PATH];
 
-	if ( IsX360() )
-	{
-		Q_snprintf( szFilename, sizeof( szFilename ), "cfg:/%s_GameState.txt", COM_GetModDirectory() );
-	}
-	else
 	{
 		Q_snprintf( szFilename, sizeof( szFilename ), "GameState.txt" );
 	}
@@ -896,9 +866,7 @@ void CAchievementMgr::AwardAchievement( int iAchievementID )
 		m_AchievementsAwarded.AddToTail( iAchievementID );
 #endif
 	}
-	else if ( IsX360() )
-	{
-	}
+	
 }
 
 //-----------------------------------------------------------------------------
@@ -1083,15 +1051,7 @@ bool CalcPlayersOnFriendsList( int iMinFriends )
 			return false;
 
 	}
-	else if ( IsX360() )
-	{
-		if ( !matchmaking )
-			return false;
-
-		XPlayerUid = XBX_GetPrimaryUserId();
-	}
-	else
-	{
+	else {
 		// other platforms...?
 		return false;
 	}
@@ -1116,14 +1076,7 @@ bool CalcPlayersOnFriendsList( int iMinFriends )
 					continue;
 #endif
 			}
-			else if ( IsX360() )
-			{
-				uint64 XUid[1];
-				XUid[0] = matchmaking->PlayerIdToXuid( iPlayerIndex );
-				BOOL bFriend;
-				if ( !bFriend )
-					continue;
-			}
+			
 
 			iTotalFriends++;
 		}
@@ -1180,13 +1133,7 @@ bool CalcHasNumClanPlayers( int iClanTeammates )
 		}
 		return false;
 	}
-	else if ( IsX360() )
-	{
-		// TODO: implement for 360
-		return false;
-	}
-	else 
-	{
+	else {
 		// other platforms...?
 		return false;
 	}

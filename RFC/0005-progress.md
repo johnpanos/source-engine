@@ -99,6 +99,49 @@ the runner, so the source lists live only in the manifest and cannot drift again
 - Evidence in `quality-results/` is git-ignored and per-run; a linked old run
   cannot certify new code (RFC 0005 §"Evidence identity").
 
+## Q-PRESENTATION: render backend contract (RFC 0001, contract-first)
+
+Registered two suites (`render.backend.null`, `render.backend.sensitivity`,
+migration `REND-BACKEND-001`) that pin the backend-agnostic obligations of RFC
+0001's render-device capability family **before** any real backend is ported.
+This is the RFC-sanctioned order: RFC 0001's render migration sequence makes
+"add contract tests and a fixture" step 1. The material system consumes these
+render services; the contract is what will let it be tested against a null
+provider without process-global shader interfaces.
+
+- Contract API: `public/render/render_backend.h` (`render::IRenderBackendProvider`
+  and family) — self-contained, standard fixed-width types only. Building it under
+  `-I public` alone mechanically proves the RFC obligation "absence of native
+  window and graphics API types from public portable headers".
+- Shared suite: `unittests/rendertest/conformance/render_backend_conformance.{h,cpp}`
+  runs against **any** provider claiming the contract. Reference provider:
+  `unittests/rendertest/fakes/null_render_backend.{h,cpp}` (deterministic,
+  in-memory, no GPU). Contract record:
+  `unittests/rendertest/contracts/render.backend.v1.md`.
+- Obligations covered (33 checks): stable adapter descriptions; structured
+  creation failure (invalid adapter, unsatisfied required feature); immutable
+  capabilities; child-resource lifetime gated on **provider-owned completion
+  tokens** (a frame index is not proof of completion, RFC 0006); ordered
+  monotonic submission completion; presentation resize/orientation without device
+  recreation; zero-size suspend (non-fatal) and resume; multiple surfaces up to
+  `maxPresentations`; device-loss state machine (recover vs fatal); complete
+  destruction with zero leaked devices.
+- Sensitivity: eight deliberately broken providers (one injected
+  `NullBackendDefect` each) are each **detected** by the specific named check —
+  proving the suite's teeth. `render.backend.null` and `render.backend.sensitivity`
+  pass under g++ 16.2.1 and clang++ on `linux-headless-core` via the shared runner.
+
+### Honest non-claims (render backend)
+
+- This certifies **no GPU backend**. A null/recording provider certifies only
+  command and lifetime behavior; image fidelity, performance, cross-backend pixel
+  tolerances, native window/render interop, and concurrent submission are out of
+  v1 scope and need real render-provider evidence (Q-PRESENTATION/Q-PRODUCT).
+- It does not close R15 or any RFC 0001 render-migration gate; it is the
+  contract-and-fixture-first artifact those gates build on. When a Vulkan/D3D9/GL
+  provider lands it runs **this same suite**; a green run here means the suite is
+  ready for that port, nothing more.
+
 ## Next steps
 
 - Wire `python3 tools/quality/conformance.py check` into the PR lane alongside

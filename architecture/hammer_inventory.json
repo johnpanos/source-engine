@@ -8,7 +8,7 @@
     "totalHammerSourceFiles": 452,
     "totalHammerCppFiles": 221,
     "totalHammerHeaderFiles": 231,
-    "filesClassified": 30,
+    "filesClassified": 35,
     "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (public/hammer/geometry, hammer/core/geometry). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'."
   },
   "files": [
@@ -361,6 +361,61 @@
       "factorization": "keep",
       "evidence": "decision",
       "note": "VMF/keyvalues parser/writer/comparator. Headless under gcc and clang (-Werror); verified by test_keyvalues.cpp (parse, round-trip + unknown preservation, malformed diagnostics, comparator normalization) plus a permissive-comparator negative provider that the data-loss oracle catches."
+    },
+    {
+      "path": "public/hammer/ports/file_store.h",
+      "currentOwner": "hammer.ports",
+      "destinationModule": "hammer.ports",
+      "responsibility": "persistence",
+      "effects": ["file-io"],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "IFileStore port: narrow whole-file primitives (Read/Write/Rename/Remove/Exists) with declared atomic-replace semantics. Real providers and test fakes implement the same contract; enables save-failure atomicity testing via fault injection."
+    },
+    {
+      "path": "public/hammer/app/save_orchestrator.h",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "persistence",
+      "effects": ["file-io"],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "Transactional save policy owner: temp-write + atomic rename so a failed save preserves the prior file. Depends only on the IFileStore port."
+    },
+    {
+      "path": "hammer/core/app/save_orchestrator.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "persistence",
+      "effects": ["file-io"],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "SaveDocument implementation. Headless under gcc and clang (-Werror); verified by test_save_orchestrator.cpp (clean replace, temp-write and commit failures preserve prior, temp cleaned) with an in-memory fault-injecting fake, plus a truncate-then-write negative provider."
+    },
+    {
+      "path": "public/hammer/app/editor_document.h",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": ["document-mutation", "file-io"],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "Headless editor document integrating the codec, history, and save seams into the RFC reference workflow (open/edit/undo/redo/save/reopen/compare). One history authority; undo restores recorded snapshots; detached load."
+    },
+    {
+      "path": "hammer/core/app/editor_document.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": ["document-mutation", "file-io"],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "EditorDocument implementation. Headless under gcc and clang (-Werror); the reference workflow runs end-to-end in test_editor_document.cpp (open VMF, edit, undo, redo, save, reopen, compare; no-op neutrality; save-position/modified interaction) plus a non-restoring-undo negative provider."
     }
   ]
 }

@@ -84,6 +84,13 @@ struct RunOptions
 	// Cooperative cancellation. Checked before a job starts; running jobs are
 	// never forcibly terminated. May be null.
 	const std::atomic<bool> *cancel = nullptr;
+
+	// Whether the calling thread services main-thread-affine jobs (an explicit
+	// host pump point). When false and the graph carries MainThread work with no
+	// other eligible servicer, the run is a detectable stall rather than a hang
+	// (RFC 0003 "Sequences and physical affinity"). Executors that model no
+	// affinity (Deterministic, Pooled) ignore this.
+	bool pumpMainThread = true;
 };
 
 // Result of one graph execution: the terminal state of every job by id.
@@ -95,7 +102,15 @@ struct RunResult
 	uint32_t canceled  = 0;
 	uint32_t executed  = 0; // jobs whose function actually ran
 
-	bool AllSucceeded() const { return failed == 0 && canceled == 0; }
+	// True when the graph declared work for an executor lane that the run's
+	// configuration provides no servicer for (e.g. MainThread jobs without a
+	// main-thread pump, or BlockingIO jobs without a blocking lane). Such jobs and
+	// their Success-dependents are left non-terminal; the run made no false claim
+	// of completion. This is the "wait that cannot make progress" diagnostic.
+	bool     stalled    = false;
+	uint32_t unresolved = 0; // jobs left non-terminal because of a stall
+
+	bool AllSucceeded() const { return failed == 0 && canceled == 0 && !stalled; }
 };
 
 class IGraphExecutor

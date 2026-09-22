@@ -767,12 +767,7 @@ void CMatLightmaps::BumpedLightmapBitsToPixelWriter_LDR( float* pFloatImage, flo
 void CMatLightmaps::BumpedLightmapBitsToPixelWriter_HDRF( float* pFloatImage, float *pFloatImageBump1, float *pFloatImageBump2, 
 												 float *pFloatImageBump3, int pLightmapSize[2], int pOffsetIntoLightmapPage[2], FloatBitMap_t *pfmOut )
 {
-	if ( IsX360() )
-	{
-		// 360 does not support HDR float mode 
-		Assert( 0 );
-		return;
-	}
+	
 
 	Assert( !pfmOut );		// unsupported in this mode
 
@@ -820,8 +815,7 @@ void CMatLightmaps::BumpedLightmapBitsToPixelWriter_HDRI( float* RESTRICT pFloat
 
 	if( m_LightmapPixelWriter.IsUsingFloatFormat() )
 	{
-		AssertMsg(!IsX360(), "Tried to use a floating-point pixel format for lightmaps on 360, which is not supported.");
-		if (!IsX360())
+		AssertMsg(!false, "Tried to use a floating-point pixel format for lightmaps on 360, which is not supported.");
 		{
 			for( int t = 0; t < pLightmapSize[1]; t++ )
 			{
@@ -903,22 +897,7 @@ void CMatLightmaps::BumpedLightmapBitsToPixelWriter_HDRI( float* RESTRICT pFloat
 				color[0][3] = color[1][3] = color[2][3] = color[3][3] = alpha;
 
 #if ( defined( USE_32BIT_LIGHTMAPS_ON_360 ) )
-				if( IsX360() )
-				{
-					for( int i = 0; i != 4; ++i )
-					{
-						Vector4D vRGBScale;
-
-						vRGBScale.x = color[i][0] * (16.0f / 65535.0f);
-						vRGBScale.y = color[i][1] * (16.0f / 65535.0f);
-						vRGBScale.z = color[i][2] * (16.0f / 65535.0f);
-						vRGBScale = ConvertLightmapColorToRGBScale( &vRGBScale.x );
-						color[i][0] = RoundFloatToByte( vRGBScale.x * 255.0f );
-						color[i][1] = RoundFloatToByte( vRGBScale.y * 255.0f );
-						color[i][2] = RoundFloatToByte( vRGBScale.z * 255.0f );
-						color[i][3] = RoundFloatToByte( vRGBScale.w * 255.0f );
-					}						
-				}
+				
 #endif
 				m_LightmapPixelWriter.WritePixelNoAdvance( color[0][0], color[0][1], color[0][2], color[0][3] );
 
@@ -1073,12 +1052,7 @@ void CMatLightmaps::LightmapBitsToPixelWriter_LDR( float* pFloatImage, int pLigh
 
 void CMatLightmaps::LightmapBitsToPixelWriter_HDRF( float* pFloatImage, int pLightmapSize[2], int pOffsetIntoLightmapPage[2], FloatBitMap_t *pfmOut )
 {
-	if ( IsX360() )
-	{
-		// 360 does not support HDR float 
-		Assert( 0 );
-		return;
-	}
+	
 
 	// float HDR lightmap processing
 	float *pSrc = pFloatImage;
@@ -1116,22 +1090,7 @@ void CMatLightmaps::LightmapBitsToPixelWriter_HDRI( float* RESTRICT pFloatImage,
 				float toFloat = ( 1.0f / ( float )( 1 << 16 ) );
 
 #if ( defined( USE_32BIT_LIGHTMAPS_ON_360 ) )
-				if( IsX360() )
-				{
-					Vector4D vRGBScale;
-
-					vRGBScale.x = r * (16.0f / 65535.0f);
-					vRGBScale.y = g * (16.0f / 65535.0f);
-					vRGBScale.z = b * (16.0f / 65535.0f);
-					vRGBScale = ConvertLightmapColorToRGBScale( &vRGBScale.x );
-
-					r = RoundFloatToByte( vRGBScale.x * 255.0f );
-					g = RoundFloatToByte( vRGBScale.y * 255.0f );
-					b = RoundFloatToByte( vRGBScale.z * 255.0f );
-					a = RoundFloatToByte( vRGBScale.w * 255.0f );
-
-					toFloat = ( 1.0f / ( float )( 1 << 8 ) );
-				}
+				
 
 #endif
 				Assert( pSrc[3] >= 0.0f && pSrc[3] <= 1.0f );
@@ -1156,20 +1115,7 @@ void CMatLightmaps::LightmapBitsToPixelWriter_HDRI( float* RESTRICT pFloatImage,
 				a = ColorSpace::LinearToUnsignedShort( pSrc[3], 16 );
 
 #if ( defined( USE_32BIT_LIGHTMAPS_ON_360 ) )
-				if( IsX360() )
-				{
-					Vector4D vRGBScale;
-
-					vRGBScale.x = r * (16.0f / 65535.0f);
-					vRGBScale.y = g * (16.0f / 65535.0f);
-					vRGBScale.z = b * (16.0f / 65535.0f);
-					vRGBScale = ConvertLightmapColorToRGBScale( &vRGBScale.x );
-
-					r = RoundFloatToByte( vRGBScale.x * 255.0f );
-					g = RoundFloatToByte( vRGBScale.y * 255.0f );
-					b = RoundFloatToByte( vRGBScale.z * 255.0f );
-					a = RoundFloatToByte( vRGBScale.w * 255.0f );
-				}
+				
 #endif
 				m_LightmapPixelWriter.WritePixel( r, g, b, a );
 
@@ -1190,11 +1136,6 @@ void CMatLightmaps::LightmapBitsToPixelWriter_HDRI( float* RESTRICT pFloatImage,
 	// XBOX360 code
 	if ( m_LightmapPixelWriter.IsUsingFloatFormat() )
 	{
-		if( IsX360() )
-		{
-			AssertMsg( false, "Float-format pixel writers do not exist on x360." );
-		}
-		else
 		{	// This code is here as an example only, in case floating point
 			// format is restored to 360.
 
@@ -1215,22 +1156,7 @@ void CMatLightmaps::LightmapBitsToPixelWriter_HDRI( float* RESTRICT pFloatImage,
 					float toFloat = ( 1.0f / ( float )( 1 << 16 ) );
 
 #if ( defined( USE_32BIT_LIGHTMAPS_ON_360 ) )
-					if( IsX360() )
-					{
-						Vector4D vRGBScale;
-
-						vRGBScale.x = r * (16.0f / 65535.0f);
-						vRGBScale.y = g * (16.0f / 65535.0f);
-						vRGBScale.z = b * (16.0f / 65535.0f);
-						vRGBScale = ConvertLightmapColorToRGBScale( &vRGBScale.x );
-
-						r = RoundFloatToByte( vRGBScale.x * 255.0f );
-						g = RoundFloatToByte( vRGBScale.y * 255.0f );
-						b = RoundFloatToByte( vRGBScale.z * 255.0f );
-						a = RoundFloatToByte( vRGBScale.w * 255.0f );
-
-						toFloat = ( 1.0f / ( float )( 1 << 8 ) );
-					}
+					
 
 #endif
 					Assert( pSrc[3] >= 0.0f && pSrc[3] <= 1.0f );

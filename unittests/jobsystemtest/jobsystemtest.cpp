@@ -14,9 +14,11 @@
 #include "jobsystem/job_graph.h"
 #include "jobsystem/graph_executor.h"
 #include "jobsystem/parallel_executor.h"
+#include "jobsystem/external_completion.h"
 
 #include <atomic>
 #include <cstdio>
+#include <thread>
 #include <vector>
 
 using namespace jobsystem;
@@ -378,6 +380,220 @@ static void Test_ParallelZeroWorkersRunsInline()
 	for ( int x : runs ) CHECK( x == 1 );
 }
 
+//-----------------------------------------------------------------------------
+// Phase C: lane affinity, main-thread pump, blocking lane, stall detection
+//-----------------------------------------------------------------------------
+
+// A MainThread-affine job runs only on the calling (pumping) thread, never on a
+// compute worker.
+static void Test_MainThreadJobRunsOnCaller()
+{
+	const std::thread::id caller = std::this_thread::get_id();
+	JobGraphBuilder b;
+	std::atomic<bool> ran{ false };
+	std::atomic<bool> onCaller{ false };
+	JobDesc root; root.name = "root"; // a compute root so workers have work too
+	JobHandle r = b.AddJob( root );
+	JobDesc d; d.name = "ui"; d.executor = Executor::MainThread();
+	d.function = [&]( JobRunContext & ) {
+		ran = true;
+		onCaller = ( std::this_thread::get_id() == caller );
+	};
+	JobHandle m = b.AddJob( d );
+	b.AddDependency( r, m );
+	SealedGraph g = MustSeal( b );
+
+	ParallelExecutor ex( 3 ); // 3 compute workers + the caller pumps main
+	RunResult res = ex.Execute( g, RunOptions{} );
+	CHECK( res.AllSucceeded() && !res.stalled );
+	CHECK( ran.load() );
+	CHECK( onCaller.load() ); // affine job executed on the caller, not a worker
+	CHECK( res.states[m.id] == JobState::Succeeded );
+}
+
+// Without a main-thread pump, a MainThread job cannot be serviced: the run is a
+// detectable stall, not a hang, and the job plus its Success-dependents are left
+// non-terminal (no false completion claim).
+static void Test_MainThreadUnpumpedStalls()
+{
+	JobGraphBuilder b;
+	std::atomic<bool> mRan{ false }, depRan{ false };
+	JobDesc d; d.name = "ui"; d.executor = Executor::MainThread();
+	d.function = [&]( JobRunContext & ) { mRan = true; };
+	JobHandle m = b.AddJob( d );
+	JobDesc dd; dd.name = "dep"; dd.function = [&]( JobRunContext & ) { depRan = true; };
+	JobHandle dep = b.AddJob( dd );
+	b.AddDependency( m, dep, DependencyKind::Success );
+	SealedGraph g = MustSeal( b );
+
+	RunOptions opts; opts.pumpMainThread = false;
+	ParallelExecutor ex( 2 );
+	RunResult res = ex.Execute( g, opts );
+	CHECK( res.stalled );
+	CHECK( res.unresolved == 2 );
+	CHECK( !mRan.load() && !depRan.load() );
+	CHECK( res.states[m.id] != JobState::Succeeded );   // left non-terminal
+	CHECK( res.states[dep.id] != JobState::Succeeded );
+	CHECK( !res.AllSucceeded() );
+}
+
+// A dedicated blocking lane services BlockingIO work. With no main pump and no
+// compute-worker eligibility for BlockingIO, only the blocking lane can run it,
+// so its success proves compute workers did not absorb the blocking job.
+static void Test_BlockingLaneServicesBlockingIO()
+{
+	JobGraphBuilder b;
+	std::atomic<int> n{ 0 };
+	for ( int i = 0; i < 4; ++i )
+	{
+		JobDesc d; d.name = "io"; d.executor = Executor::BlockingIO();
+		d.function = [&]( JobRunContext & ) { n++; };
+		b.AddJob( d );
+	}
+	SealedGraph g = MustSeal( b );
+
+	RunOptions opts; opts.pumpMainThread = false; // main does not help
+	ParallelExecutor ex( 2, /*nBlocking=*/1 );
+	RunResult res = ex.Execute( g, opts );
+	CHECK( res.AllSucceeded() && !res.stalled );
+	CHECK( n.load() == 4 );
+}
+
+// BlockingIO with no blocking lane and no main pump stalls; with a main pump the
+// main thread services it as a fallback so compute workers stay free.
+static void Test_BlockingIOStallAndMainFallback()
+{
+	auto build = []( JobGraphBuilder &b, std::atomic<int> &n ) {
+		JobDesc d; d.name = "io"; d.executor = Executor::BlockingIO();
+		d.function = [&n]( JobRunContext & ) { n++; };
+		b.AddJob( d );
+	};
+	{
+		std::atomic<int> n{ 0 };
+		JobGraphBuilder b; build( b, n );
+		SealedGraph g = MustSeal( b );
+		RunOptions opts; opts.pumpMainThread = false;
+		ParallelExecutor ex( 2, 0 );
+		RunResult res = ex.Execute( g, opts );
+		CHECK( res.stalled && res.unresolved == 1 && n.load() == 0 );
+	}
+	{
+		std::atomic<int> n{ 0 };
+		JobGraphBuilder b; build( b, n );
+		SealedGraph g = MustSeal( b );
+		RunOptions opts; opts.pumpMainThread = true; // main covers blocking
+		ParallelExecutor ex( 2, 0 );
+		RunResult res = ex.Execute( g, opts );
+		CHECK( res.AllSucceeded() && n.load() == 1 );
+	}
+}
+
+// Inline mode (zero compute workers) services every lane on the caller, so an
+// affine or blocking job never stalls there.
+static void Test_InlineModeServicesAllLanes()
+{
+	JobGraphBuilder b;
+	std::atomic<int> n{ 0 };
+	JobDesc a; a.name = "c"; a.function = [&]( JobRunContext & ) { n++; };
+	JobDesc m; m.name = "ui"; m.executor = Executor::MainThread(); m.function = a.function;
+	JobDesc io; io.name = "io"; io.executor = Executor::BlockingIO(); io.function = a.function;
+	b.AddJob( a ); b.AddJob( m ); b.AddJob( io );
+	SealedGraph g = MustSeal( b );
+	RunOptions opts; opts.pumpMainThread = false; // irrelevant in inline mode
+	ParallelExecutor ex( 0 );
+	RunResult res = ex.Execute( g, opts );
+	CHECK( res.AllSucceeded() && !res.stalled && n.load() == 3 );
+}
+
+// Mixed graph: affine + compute + blocking with full servicing must match the
+// deterministic reference's terminal states across worker counts.
+static void Test_MixedLaneEquivalence()
+{
+	auto buildMixed = []( JobGraphBuilder &b, std::vector<int> &runs ) {
+		int idx = 0;
+		auto mk = [&]( ExecutorToken e ) {
+			JobDesc d; d.name = "mix"; d.executor = e;
+			int i = idx++;
+			d.function = [&runs, i]( JobRunContext & ) { runs[i]++; };
+			return b.AddJob( d );
+		};
+		JobHandle g0 = mk( Executor::Compute() );
+		JobHandle u  = mk( Executor::MainThread() );
+		JobHandle io = mk( Executor::BlockingIO() );
+		JobHandle s  = mk( Executor::Sequence( 0 ) );
+		JobHandle join = mk( Executor::Compute() );
+		b.AddDependency( g0, u ); b.AddDependency( g0, io );
+		b.AddDependency( u, s ); b.AddDependency( io, s );
+		b.AddDependency( s, join );
+		runs.assign( idx, 0 );
+	};
+
+	std::vector<int> serialRuns;
+	RunResult serial;
+	{
+		JobGraphBuilder b; buildMixed( b, serialRuns );
+		SealedGraph g = MustSeal( b );
+		DeterministicExecutor ex; serial = ex.Execute( g, RunOptions{} );
+	}
+	for ( int workers = 1; workers <= 4; ++workers )
+	{
+		for ( int blk = 0; blk <= 1; ++blk )
+		{
+			std::vector<int> parRuns;
+			JobGraphBuilder b; buildMixed( b, parRuns );
+			SealedGraph g = MustSeal( b );
+			ParallelExecutor ex( workers, blk );
+			RunResult par = ex.Execute( g, RunOptions{} ); // pump on by default
+			CHECK( par.states == serial.states );
+			CHECK( !par.stalled );
+			bool once = true;
+			for ( int x : parRuns ) if ( x != 1 ) once = false;
+			CHECK( once );
+		}
+	}
+}
+
+// An external completion, adapted onto a BlockingIO job, gates a Success
+// dependent through the graph's normal dependency/failure semantics: Complete()
+// lets the dependent run; Cancel() fails the wait and cascade-cancels it.
+static void Test_ExternalCompletionGatesGraph()
+{
+	for ( int cancel = 0; cancel <= 1; ++cancel )
+	{
+		ExternalCompletion token;
+		std::atomic<bool> depRan{ false };
+		JobGraphBuilder b;
+		JobDesc io; io.name = "io"; io.executor = Executor::BlockingIO();
+		io.function = MakeExternalWait( &token );
+		JobHandle ioh = b.AddJob( io );
+		JobDesc d; d.name = "consume";
+		d.function = [&]( JobRunContext & ) { depRan = true; };
+		JobHandle dh = b.AddJob( d );
+		b.AddDependency( ioh, dh, DependencyKind::Success );
+		SealedGraph g = MustSeal( b );
+
+		// Signal from another thread so the blocking job actually parks and wakes.
+		std::thread producer( [&]{ if ( cancel ) token.Cancel(); else token.Complete(); } );
+
+		ParallelExecutor ex( 2, /*nBlocking=*/1 );
+		RunResult res = ex.Execute( g, RunOptions{} );
+		producer.join();
+
+		if ( cancel )
+		{
+			CHECK( res.states[ioh.id] == JobState::Failed );
+			CHECK( res.states[dh.id] == JobState::Canceled );
+			CHECK( !depRan.load() );
+		}
+		else
+		{
+			CHECK( res.states[ioh.id] == JobState::Succeeded );
+			CHECK( res.states[dh.id] == JobState::Succeeded );
+			CHECK( depRan.load() );
+		}
+	}
+}
+
 int main()
 {
 	std::printf( "jobsystemtest (RFC 0003 Phase B/C conformance)\n" );
@@ -401,6 +617,13 @@ int main()
 	RUN( Test_ParallelEquivalence );
 	RUN( Test_ParallelFailurePropagation );
 	RUN( Test_ParallelZeroWorkersRunsInline );
+	RUN( Test_MainThreadJobRunsOnCaller );
+	RUN( Test_MainThreadUnpumpedStalls );
+	RUN( Test_BlockingLaneServicesBlockingIO );
+	RUN( Test_BlockingIOStallAndMainFallback );
+	RUN( Test_InlineModeServicesAllLanes );
+	RUN( Test_MixedLaneEquivalence );
+	RUN( Test_ExternalCompletionGatesGraph );
 
 	std::printf( "\n%d checks, %d failures\n", g_checks, g_failures );
 	return g_failures == 0 ? 0 : 1;

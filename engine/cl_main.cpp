@@ -413,10 +413,7 @@ bool CL_CheckCRCs( const char *pszMap )
 	if ( sv.IsActive() ) // Single player
 		return true;
 
-	if ( IsX360() )
-	{
-		return true;
-	}
+	
 
 	bool couldHash = false;
 	if ( g_ClientGlobalVariables.network_protocol > PROTOCOL_VERSION_17 )
@@ -462,10 +459,7 @@ bool CL_CheckCRCs( const char *pszMap )
 	// Hacked map
 	if ( !hashValid && !demoplayer->IsPlayingBack())
 	{
-		if ( IsX360() )
-		{
-			Warning( "Disconnect: BSP CRC failed!\n" );
-		}
+		
 		COM_ExplainDisconnection( true, "Your map [%s] differs from the server's.\n", pszMap );
 		Host_Error( "Client's map differs from the server's" );
 		return false;
@@ -597,12 +591,7 @@ void CL_ClearState ( void )
 	}
 
 	R_LevelShutdown();
-	if ( IsX360() )
-	{
-		// Reset material system temporary memory (frees up memory for map loading)
-		bool bOnLevelShutdown = true;
-		materials->ResetTempHWMemory( bOnLevelShutdown );
-	}
+	
 	
 	if ( g_pLocalNetworkBackdoor )
 		g_pLocalNetworkBackdoor->ClearState();
@@ -1029,11 +1018,7 @@ void CL_FullyConnected( void )
 	// that the world entity has been created by this point)
 	StaticPropMgr()->LevelInitClient();
 
-	if ( IsX360() )
-	{
-		// Notify the loader the end of the loading context, preloads are about to be purged
-		g_pQueuedLoader->EndMapLoading( false );
-	}
+	
 
 	// flush client-side dynamic models that have no refcount
 	modelloader->FlushDynamicModels();
@@ -1080,7 +1065,6 @@ void CL_FullyConnected( void )
 
 	EngineVGui()->UpdateProgressBar( PROGRESS_READYTOPLAY );
 
-	if ( !IsX360() || cl.m_nMaxClients == 1 )
 	{
 		// Need this to persist for multiplayer respawns, 360 can't reload
 		CM_DiscardEntityString();
@@ -1100,12 +1084,7 @@ void CL_FullyConnected( void )
 			Q_pretifymem( cl.m_NetChannel->GetTotalData( FLOW_OUTGOING ), 3 ) );
 	}
 
-	if ( IsX360() )
-	{
-		// Reset material system temporary memory (once loading is complete), ready for in-map use
-		bool bOnLevelShutdown = false;
-		materials->ResetTempHWMemory( bOnLevelShutdown );
-	}
+	
 
 	// allow normal screen updates
 	SCR_EndLoadingPlaque();
@@ -1407,11 +1386,7 @@ void CL_TakeSnapshotAndSwap()
 			{
 				Q_FileBase( modelloader->GetName( ( model_t *)world->GetModel() ), base, sizeof( base ) );
 
-				if ( IsX360() )
-				{
-					// map name has an additional extension
-					V_StripExtension( base, base, sizeof( base ) );
-				}
+				
 			}
 			else
 			{
@@ -2304,13 +2279,7 @@ bool CL_ShouldLoadBackgroundLevel( const CCommand &args )
 	if ( args.ArgC() == 2 )
 	{
 		// presence of args identifies an end-of-game situation
-		if ( IsX360() )
-		{
-			// 360 needs to get UI in the correct state to transition to the Background level
-			// from the credits.
-			EngineVGui()->OnCreditsFinished();
-			return true;
-		}
+		
 
 		if ( !Q_stricmp( args[1], "force" ) )
 		{
@@ -2571,8 +2540,7 @@ void DisplaySystemVersion( char *osversion, int maxlen );
 
 void CL_SetPagedPoolInfo()
 {
-	if ( IsX360() )
-		return;
+	
 #if !defined( NO_STEAM ) && !defined( SWDS )
 	Plat_GetPagedPoolInfo( &g_pagedpoolinfo );
 #endif
@@ -2580,8 +2548,7 @@ void CL_SetPagedPoolInfo()
 
 void CL_SetSteamCrashComment()
 {
-	if ( IsX360() )
-		return;
+	
 
 	char map[ 80 ];
 	char videoinfo[ 2048 ];

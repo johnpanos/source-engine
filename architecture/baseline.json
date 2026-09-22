@@ -34,14 +34,14 @@
       "fingerprint": "86963f192b49a13f2948",
       "rule": "ARCH105",
       "path": "appframework/AppSystemGroup.cpp",
-      "line": 368,
+      "line": 369,
       "excerpt": "CreateInterfaceFn CAppSystemGroup::GetFactory()"
     },
     {
       "fingerprint": "be3f58d9eadf6b6d348e",
       "rule": "ARCH103",
       "path": "appframework/AppSystemGroup.cpp",
-      "line": 537,
+      "line": 538,
       "excerpt": "return Sys_LoadModuleFromFileSystem( m_pFileSystem, pDLLName );"
     },
     {
@@ -2365,21 +2365,21 @@
       "fingerprint": "176731b70659d8a57387",
       "rule": "ARCH105",
       "path": "public/appframework/IAppSystemGroup.h",
-      "line": 139,
+      "line": 141,
       "excerpt": "AppSystemFactory_t AddLegacyFactory( CreateInterfaceFn factory );"
     },
     {
       "fingerprint": "176acac0f90d9dd04b66",
       "rule": "ARCH105",
       "path": "public/appframework/IAppSystemGroup.h",
-      "line": 154,
+      "line": 156,
       "excerpt": "static CreateInterfaceFn GetFactory();"
     },
     {
       "fingerprint": "d608288118e1a2a8e464",
       "rule": "ARCH105",
       "path": "public/appframework/IAppSystemGroup.h",
-      "line": 186,
+      "line": 188,
       "excerpt": "CUtlVector<CreateInterfaceFn> m_LegacyFactories;"
     },
     {

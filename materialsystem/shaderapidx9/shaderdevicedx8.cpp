@@ -349,7 +349,7 @@ void CShaderDeviceMgrDx8::CheckBorderColorSupport( HardwareCaps_t *pCaps, int nA
 #ifdef DX_TO_GL_ABSTRACTION
 	if( true )
 #else
-	if( IsX360() )
+	if( false )
 #endif
 	{
 		pCaps->m_bSupportsBorderColor = true;
@@ -382,7 +382,7 @@ void CShaderDeviceMgrDx8::CheckVendorDependentShadowMappingSupport( HardwareCaps
 	return;
 #endif
 
-	if ( IsPC() || !IsX360() )
+	if ( IsPC() || !false )
 	{
 		bool bToolsMode = IsWindows() && ( CommandLine()->CheckParm( "-tools" ) != NULL );
 		bool bFound16Bit = false;
@@ -839,7 +839,7 @@ bool CShaderDeviceMgrDx8::ComputeCapsFromD3D( HardwareCaps_t *pCaps, int nAdapte
 	pCaps->m_ZBiasAndSlopeScaledDepthBiasSupported =
 		( ( caps.RasterCaps & D3DPRASTERCAPS_DEPTHBIAS) != 0 ) &&
 		( ( caps.RasterCaps & D3DPRASTERCAPS_SLOPESCALEDEPTHBIAS ) != 0 );
-	if ( IsX360() )
+	if ( false )
 	{
 		// driver lies, force it
 		pCaps->m_ZBiasAndSlopeScaledDepthBiasSupported = true;
@@ -876,7 +876,7 @@ bool CShaderDeviceMgrDx8::ComputeCapsFromD3D( HardwareCaps_t *pCaps, int nAdapte
 #endif
 	
 	// Query for SRGB support as needed for our DX 9 stuff
-	if ( IsPC() || !IsX360() )
+	if ( IsPC() || !false )
 	{
 		pCaps->m_SupportsSRGB = ( D3D()->CheckDeviceFormat( nAdapter, DX8_DEVTYPE, D3DFMT_X8R8G8B8, D3DUSAGE_QUERY_SRGBREAD, D3DRTYPE_TEXTURE, D3DFMT_DXT1 ) == S_OK);
 
@@ -1047,7 +1047,7 @@ bool CShaderDeviceMgrDx8::ComputeCapsFromD3D( HardwareCaps_t *pCaps, int nAdapte
 		bSupportsFloat16Textures &&
 		bSupportsFloat16RenderTargets &&
 		pCaps->m_SupportsSRGB && 
-		!IsX360();
+		!false;
 
 	pCaps->m_MaxHDRType = HDR_TYPE_NONE;
 	if ( bSupportsFloatHDR )
@@ -1148,7 +1148,7 @@ void CShaderDeviceMgrDx8::ComputeDXSupportLevel( HardwareCaps_t &caps )
 	// FIXME: Improve this!! There should be a whole list of features
 	// we require in order to be considered a DX7 board, DX8 board, etc.
 
-	if ( IsX360() )
+	if ( false )
 	{
 		caps.m_nMaxDXSupportLevel = 98;
 		return;
@@ -1570,7 +1570,7 @@ void CShaderDeviceDx8::SetPresentParameters( void* hWnd, int nAdapter, const Sha
 	m_PresentParameters.SwapEffect = info.m_bUsingMultipleWindows ? D3DSWAPEFFECT_COPY : D3DSWAPEFFECT_DISCARD;
 
 	// for 360, we want to create it ourselves for hierarchical z support
-	m_PresentParameters.EnableAutoDepthStencil = IsX360() ? FALSE : TRUE; 
+	m_PresentParameters.EnableAutoDepthStencil = false ? FALSE : TRUE; 
 
 	// What back-buffer format should we use?
 	ImageFormat backBufferFormat = FindNearestSupportedBackBufferFormat( nAdapter,
@@ -1605,7 +1605,7 @@ void CShaderDeviceDx8::SetPresentParameters( void* hWnd, int nAdapter, const Sha
 		m_bUsingStencil = false; //couldn't acquire a stencil buffer
 	};
 
-	if ( IsX360() || !info.m_bWindowed )
+	if ( false || !info.m_bWindowed )
 	{
 		bool useDefault = ( info.m_DisplayMode.m_nWidth == 0 ) || ( info.m_DisplayMode.m_nHeight == 0 );
 		m_PresentParameters.BackBufferCount = 1;
@@ -2261,7 +2261,7 @@ bool CShaderDeviceDx8::CreateD3DDevice( void* pHWnd, int nAdapter, const ShaderD
 //-----------------------------------------------------------------------------
 void CShaderDeviceDx8::AllocFrameSyncTextureObject()
 {
-	if ( IsX360() )
+	if ( false )
 		return;
 
 	FreeFrameSyncTextureObject();
@@ -2283,7 +2283,7 @@ void CShaderDeviceDx8::AllocFrameSyncTextureObject()
 
 void CShaderDeviceDx8::FreeFrameSyncTextureObject()
 {
-	if ( IsX360() )
+	if ( false )
 		return;
 
 	if ( m_pFrameSyncTexture )
@@ -2295,7 +2295,7 @@ void CShaderDeviceDx8::FreeFrameSyncTextureObject()
 
 void CShaderDeviceDx8::AllocFrameSyncObjects( void )
 {
-	if ( IsX360() )
+	if ( false )
 		return;
 
 	if ( mat_debugalttab.GetBool() )
@@ -2337,7 +2337,7 @@ void CShaderDeviceDx8::AllocFrameSyncObjects( void )
 
 void CShaderDeviceDx8::FreeFrameSyncObjects( void )
 {
-	if ( IsX360() )
+	if ( false )
 		return;
 
 	if ( mat_debugalttab.GetBool() )
@@ -2451,7 +2451,7 @@ void CShaderDeviceDx8::HandleThreadEvent( uint32 threadEvent )
 //-----------------------------------------------------------------------------
 bool CShaderDeviceDx8::TryDeviceReset()
 {
-	if ( IsX360() )
+	if ( false )
 		return true;
 
 	// Don't try to reset the device until we're sure our resources have been released
@@ -2596,7 +2596,7 @@ void CShaderDeviceDx8::ReacquireResourcesInternal( bool bResetState, bool bForce
 //-----------------------------------------------------------------------------
 bool CShaderDeviceDx8::ResizeWindow( const ShaderDeviceInfo_t &info ) 
 {
-	if ( IsX360() )
+	if ( false )
 		return false;
 
 	m_bPendingVideoModeChange = false;
@@ -2631,7 +2631,7 @@ bool CShaderDeviceDx8::ResizeWindow( const ShaderDeviceInfo_t &info )
 //-----------------------------------------------------------------------------
 void CShaderDeviceDx8::MarkDeviceLost( )
 {
-	if ( IsX360() )
+	if ( false )
 		return;
 
 	m_bQueuedDeviceLost = true;
@@ -2828,7 +2828,7 @@ bool CShaderDeviceDx8::InNonInteractiveMode() const
 
 void CShaderDeviceDx8::EnableNonInteractiveMode( MaterialNonInteractiveMode_t mode, ShaderNonInteractiveInfo_t *pInfo )
 {
-	if ( !IsX360() )
+	if ( !false )
 		return;
 	if ( pInfo && ( pInfo->m_hTempFullscreenTexture == INVALID_SHADERAPI_TEXTURE_HANDLE ) )
 	{
@@ -2886,7 +2886,7 @@ void CShaderDeviceDx8::UpdatePresentStats()
 
 void CShaderDeviceDx8::RefreshFrontBufferNonInteractive()
 {
-	if ( !IsX360() || !InNonInteractiveMode() )
+	if ( !false || !InNonInteractiveMode() )
 		return;
 
 	// Other code should not be talking to D3D at the same time as this
@@ -2937,9 +2937,9 @@ void CShaderDeviceDx8::Present()
 
 	// If we're not iconified, try to present (without this check, we can flicker when Alt-Tabbed away)
 #ifdef _WIN32
-	if ( IsX360() || (IsIconic( ( HWND )m_hWnd ) == 0 && bValidPresent) )
+	if ( false || (IsIconic( ( HWND )m_hWnd ) == 0 && bValidPresent) )
 #else
-	if ( IsX360() || (IsIconic( (VD3DHWND)m_hWnd ) == 0 && bValidPresent) )
+	if ( false || (IsIconic( (VD3DHWND)m_hWnd ) == 0 && bValidPresent) )
 #endif
 	{
 		if ( IsPC() && ( m_IsResizing || ( m_ViewHWnd != (VD3DHWND)m_hWnd ) ) )
@@ -3003,7 +3003,7 @@ void CShaderDeviceDx8::Present()
 		CheckDeviceLost( m_bOtherAppInitializing );
 	}
 
-	if ( IsX360() )
+	if ( false )
 	{
 		// according to docs  - "Mandatory Reset of GPU Registers"
 		// 360 must force the cached state to be dirty after any present()
@@ -3061,7 +3061,7 @@ void CShaderDeviceDx8::SetHardwareGammaRamp( float fGamma, float fGammaTVRangeMi
 
 		// Since the 360's sRGB read/write is a piecewise linear approximation, we need to correct for the difference in gamma space here
 		float flSrgbGammaValue;
-		if ( IsX360() ) // Should we also do this for the PS3?
+		if ( false ) // Should we also do this for the PS3?
 		{
 			// First undo the 360 broken sRGB curve by bringing the value back into linear space
 			float flLinearValue = X360GammaToLinear( flInputValue );

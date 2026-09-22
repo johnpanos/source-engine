@@ -1074,8 +1074,7 @@ VertexFormat_t CStudioRenderContext::CalculateVertexFormat( const studiohdr_t *p
 		// Also inspect the vertex data to see if it's appropriate for the vertex element
 		// compression techniques that we do (e.g. look at UV ranges).
 		if ( //IsX360() && // Disabled until the craziness is banished
-			 bIsHwSkinned &&
-			( g_pMaterialSystemHardwareConfig->SupportsCompressedVertices() == VERTEX_COMPRESSION_ON ) )
+			 bIsHwSkinned && ( g_pMaterialSystemHardwareConfig->SupportsCompressedVertices() == VERTEX_COMPRESSION_ON ) )
 		{
 			// this mesh is appropriate for vertex compression
 			newVertexFormat |= VERTEX_FORMAT_COMPRESSED;

@@ -264,14 +264,7 @@ void UTIL_ComputeBaseDir()
 {
 	g_szBasedir[0] = 0;
 
-	if ( IsX360() )
-	{
-		char const *pBaseDir = CommandLine()->ParmValue( "-basedir" );
-		if ( pBaseDir )
-		{
-			strcpy( g_szBasedir, pBaseDir );
-		}
-	}
+	
 
 	if ( !g_szBasedir[0] && GetExecutableName( g_szBasedir, sizeof( g_szBasedir ) ) )
 	{
@@ -372,10 +365,7 @@ CLogAllFiles::CLogAllFiles() :
 
 void CLogAllFiles::Init()
 {
-	if ( IsX360() )
-	{
-		return;
-	}
+	
 
 	// Can't do this in edit mode
 	if ( CommandLine()->CheckParm( "-edit" ) )
@@ -783,14 +773,8 @@ bool CSourceAppSystemGroup::PreInit()
 	if ( FileSystem_MountContent( fsInfo ) != FS_OK )
 		return false;
 
-	if ( IsPC() || !IsX360() )
 	{
 		fsInfo.m_pFileSystem->AddSearchPath( "platform", "PLATFORM" );
-	}
-	else
-	{
-		// 360 needs absolute paths
-		FileSystem_AddSearchPath_Platform( g_pFullFileSystem, steamInfo.m_GameInfoPath );
 	}
 
 	if ( IsPC() )

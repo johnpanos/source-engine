@@ -1,0 +1,268 @@
+//========= Copyright Valve Corporation, All rights reserved. ============//
+//
+// Purpose: Sensitivity (negative-provider) check for the RFC 0001 dynamic-library
+//			conformance suite (PLAT-DYNLIB-001, Q-FOUNDATION). A conformance suite
+//			that never rejects anything is worthless. This test feeds the SAME
+//			shared predicate a set of deliberately-broken loaders -- each
+//			violating exactly one contract clause -- and asserts the predicate
+//			catches every one, while the conforming test backend passes.
+//
+//			This suite PASSES (exit 0) when the oracle correctly distinguishes
+//			conforming from broken providers.
+//
+//			Build/run: tools/quality/conformance.py check --suite platform.dynamic_library.sensitivity
+//
+//=============================================================================//
+
+#include "dynamic_library_conformance.h"
+#include "fake_dynamic_library.h"
+
+#include "platform/contracts/dynamic_library.h"
+
+#include <cstdio>
+#include <cstring>
+#include <vector>
+
+namespace
+{
+
+int FixtureSymbol() { return 1; }
+
+const char *const kValidPath = "fixtures/engine.so";
+const char *const kValidSymbol = "CreateInterface";
+
+// Which single clause a broken loader violates.
+enum class Defect
+{
+	kUnloadDoesNotRelease,      // Unload keeps the handle live
+	kLoadMissingSucceeds,       // a missing path "loads"
+	kSilentNoLoad,              // no-load unsupported but silently returns true
+	kMissingSymbolReturnsAddr,  // an absent symbol resolves to an address
+};
+
+class CBrokenLibrary : public platform::IDynamicLibrary
+{
+public:
+	explicit CBrokenLibrary( bool missingSymbolReturnsAddr )
+		: m_missingSymbolReturnsAddr( missingSymbolReturnsAddr )
+	{
+	}
+
+	void *FindSymbol( const char *name, platform::DynamicLibraryError *error ) override
+	{
+		void *addr = reinterpret_cast<void *>( &FixtureSymbol );
+		if ( name != nullptr && std::strcmp( name, kValidSymbol ) == 0 )
+		{
+			if ( error != nullptr )
+			{
+				*error = platform::DynamicLibraryError{};
+			}
+			return addr;
+		}
+		if ( m_missingSymbolReturnsAddr )
+		{
+			// DEFECT: an absent symbol resolves anyway.
+			if ( error != nullptr )
+			{
+				*error = platform::DynamicLibraryError{};
+			}
+			return addr;
+		}
+		if ( error != nullptr )
+		{
+			error->operation = platform::DynamicLibraryOp::kFindSymbol;
+			error->status = platform::DynamicLibraryStatus::kSymbolNotFound;
+			error->requested = name;
+		}
+		return nullptr;
+	}
+
+private:
+	bool m_missingSymbolReturnsAddr;
+};
+
+// A loader that behaves correctly except for one injected defect. Its destructor
+// always frees every allocated library, so the negative test never crashes or
+// leaks regardless of the defect being exercised.
+class CBrokenLoader : public platform::IDynamicLibraryLoader
+{
+public:
+	explicit CBrokenLoader( Defect defect ) : m_defect( defect ) {}
+
+	~CBrokenLoader() override
+	{
+		for ( platform::IDynamicLibrary *lib : m_live )
+		{
+			delete lib;
+		}
+	}
+
+	platform::IDynamicLibrary *Load( const char *path,
+		platform::DynamicLibraryError *error ) override
+	{
+		if ( path == nullptr || path[0] == '\0' )
+		{
+			if ( error != nullptr )
+			{
+				error->operation = platform::DynamicLibraryOp::kLoad;
+				error->status = platform::DynamicLibraryStatus::kInvalidArgument;
+				error->requested = path;
+			}
+			return nullptr;
+		}
+
+		const bool isValid = std::strcmp( path, kValidPath ) == 0;
+		if ( !isValid && m_defect != Defect::kLoadMissingSucceeds )
+		{
+			if ( error != nullptr )
+			{
+				error->operation = platform::DynamicLibraryOp::kLoad;
+				error->status = platform::DynamicLibraryStatus::kNotFound;
+				error->requested = path;
+			}
+			return nullptr;
+		}
+
+		// Either a valid path, or a missing path under the missing-load defect.
+		if ( error != nullptr )
+		{
+			*error = platform::DynamicLibraryError{};
+		}
+		platform::IDynamicLibrary *lib =
+			new CBrokenLibrary( m_defect == Defect::kMissingSymbolReturnsAddr );
+		m_live.push_back( lib );
+		return lib;
+	}
+
+	void Unload( platform::IDynamicLibrary *library ) override
+	{
+		if ( m_defect == Defect::kUnloadDoesNotRelease )
+		{
+			// DEFECT: keep the handle live (still freed in the destructor).
+			return;
+		}
+		for ( std::size_t i = 0; i < m_live.size(); ++i )
+		{
+			if ( m_live[i] == library )
+			{
+				delete m_live[i];
+				m_live.erase( m_live.begin() + static_cast<std::ptrdiff_t>( i ) );
+				return;
+			}
+		}
+	}
+
+	int LiveLibraryCount() const override
+	{
+		return static_cast<int>( m_live.size() );
+	}
+
+	bool SupportsNoLoad() const override { return false; }
+
+	bool TryResolveNoLoad( const char *path,
+		platform::DynamicLibraryError *error ) override
+	{
+		if ( m_defect == Defect::kSilentNoLoad )
+		{
+			// DEFECT: unsupported optional capability silently emulated.
+			(void)path;
+			if ( error != nullptr )
+			{
+				*error = platform::DynamicLibraryError{};
+			}
+			return true;
+		}
+		if ( error != nullptr )
+		{
+			error->operation = platform::DynamicLibraryOp::kResolveNoLoad;
+			error->status = platform::DynamicLibraryStatus::kUnsupportedNoLoad;
+			error->requested = path;
+		}
+		return false;
+	}
+
+private:
+	Defect m_defect;
+	std::vector<platform::IDynamicLibrary *> m_live;
+};
+
+platformtest::DynLibFixture MakeFixture()
+{
+	platformtest::DynLibFixture fx;
+	fx.validPath = kValidPath;
+	fx.validSymbol = kValidSymbol;
+	fx.expectedSymbolAddr = nullptr; // broken lib returns its own address
+	fx.missingPath = "fixtures/does_not_exist.so";
+	fx.missingSymbol = "NoSuchSymbol";
+	return fx;
+}
+
+std::vector<platformtest::FakeLibraryDef> MakeConformingDefs()
+{
+	std::vector<platformtest::FakeLibraryDef> defs;
+	platformtest::FakeLibraryDef engine;
+	engine.path = kValidPath;
+	engine.symbols = {
+		{ kValidSymbol, reinterpret_cast<void *>( &FixtureSymbol ) },
+	};
+	defs.push_back( std::move( engine ) );
+	return defs;
+}
+
+struct Case
+{
+	Defect defect;
+	const char *name;
+};
+
+} // namespace
+
+int main()
+{
+	const platformtest::DynLibFixture fx = MakeFixture();
+	int failures = 0;
+
+	// 1) The conforming test backend must PASS the shared predicate. If it does
+	//    not, the suite is over-strict and cannot be trusted.
+	{
+		platformtest::CFakeDynamicLibraryLoader good( MakeConformingDefs(), /*noLoad=*/false );
+		platformtest::ConformanceReport r =
+			platformtest::RunDynamicLibraryConformance( good, fx );
+		if ( r.failures != 0 )
+		{
+			std::printf( "FAIL: conforming test backend rejected by suite "
+				"(%d/%d); first: %s (line %d)\n",
+				r.failures, r.checks, r.firstFailure, r.firstFailureLine );
+			++failures;
+		}
+	}
+
+	// 2) Every broken loader must be CAUGHT (failures > 0). If any slips through,
+	//    the corresponding clause is not actually enforced.
+	const Case cases[] = {
+		{ Defect::kUnloadDoesNotRelease, "unload-does-not-release" },
+		{ Defect::kLoadMissingSucceeds, "load-missing-succeeds" },
+		{ Defect::kSilentNoLoad, "silent-no-load" },
+		{ Defect::kMissingSymbolReturnsAddr, "missing-symbol-returns-addr" },
+	};
+	for ( const Case &c : cases )
+	{
+		CBrokenLoader bad( c.defect );
+		platformtest::ConformanceReport r =
+			platformtest::RunDynamicLibraryConformance( bad, fx );
+		if ( r.failures == 0 )
+		{
+			std::printf( "FAIL: broken provider '%s' was NOT caught by the suite "
+				"(suite is vacuous for that clause)\n", c.name );
+			++failures;
+		}
+	}
+
+	if ( failures == 0 )
+	{
+		std::printf( "ok test_dynamic_library_negative: suite accepts conforming "
+			"and rejects all %zu broken providers\n", sizeof( cases ) / sizeof( cases[0] ) );
+		return 0;
+	}
+	return 1;
+}

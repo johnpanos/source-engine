@@ -1182,11 +1182,6 @@ inline unsigned char CModelInfoClient::ComputeScreenFade( const Vector &vecAbsOr
 
 unsigned char CModelInfoClient::ComputeLevelScreenFade( const Vector &vecAbsOrigin, float flRadius, float flFadeScale ) const
 {
-	if ( IsXbox() )
-	{
-		return 255;
-	}
-	else
 	{
 		return ComputeScreenFade( vecAbsOrigin, flRadius, flFadeScale, m_LevelFade );
 	}

@@ -474,7 +474,7 @@ bool ConvertVTFTo360Format( const char *pDebugName, CUtlBuffer &sourceBuf, CUtlB
 	int numTypes;
 	
 	// Only need to byte swap writes if we are running the coversion on the PC, and data will be read from 360
-	byteSwapWriter.ActivateByteSwapping( !IsX360() );
+	byteSwapWriter.ActivateByteSwapping( !false );
 
 	// need mathlib
 	MathLib_Init( 2.2f, 2.2f, 0.0f, 2.0f );
@@ -769,7 +769,6 @@ bool ConvertVTFTo360Format( const char *pDebugName, CUtlBuffer &sourceBuf, CUtlB
 	targetHeader.lowResImageSample[2] = targetLowResSample[2];
 	targetHeader.lowResImageSample[3] = targetLowResSample[3];
 
-	if ( !IsX360() )
 	{
 		byteSwapWriter.SwapFieldsToTargetEndian( &targetHeader );
 	}
@@ -826,7 +825,6 @@ bool ConvertVTFTo360Format( const char *pDebugName, CUtlBuffer &sourceBuf, CUtlB
 			targetBuf.Put( compressedBuffer.Base(), compressedBuffer.TellPut() );
 
 			VTFFileHeaderX360_t *pHeader = (VTFFileHeaderX360_t *)targetBuf.Base();
-			if ( !IsX360() )
 			{
 				// swap it back into pc space
 				byteSwapWriter.SwapFieldsToTargetEndian( pHeader );
@@ -834,7 +832,6 @@ bool ConvertVTFTo360Format( const char *pDebugName, CUtlBuffer &sourceBuf, CUtlB
 
 			pHeader->compressedSize = compressedBuffer.TellPut();			
 
-			if ( !IsX360() )
 			{
 				// swap it back into 360 space
 				byteSwapWriter.SwapFieldsToTargetEndian( pHeader );

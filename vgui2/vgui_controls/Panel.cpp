@@ -1142,13 +1142,7 @@ void Panel::PaintTraverse( bool repaint, bool allowForce )
 	float oldAlphaMultiplier = surface()->DrawGetAlphaMultiplier();
 	float newAlphaMultiplier = oldAlphaMultiplier * m_flAlpha * 1.0f/255.0f;
 
-	if ( IsXbox() && !newAlphaMultiplier )
-	{
-		// xbox optimization not suitable for pc
-		// xbox panels are compliant and can early out and not traverse their children
-		// when they have no opacity
-		return;
-	}
+	
 
 	if ( !repaint &&
 		 allowForce &&
@@ -3159,7 +3153,7 @@ void Panel::OnKeyCodeTyped(KeyCode keycode)
 	vgui::KeyCode code = GetBaseButtonCode( keycode );
 
 	// handle focus change
-	if ( IsX360() || IsConsoleStylePanel() )
+	if ( IsConsoleStylePanel() )
 	{
 		// eat these typed codes, will get handled in OnKeyCodePressed
 		switch ( code )
@@ -4382,7 +4376,7 @@ void Panel::ApplySettings(KeyValues *inResourceData)
 	excludeEdgeFromTitleSafe.width = 0;
 	excludeEdgeFromTitleSafe.height = 0;
 
-	if ( IsX360() || panel_test_title_safe.GetBool() )
+	if ( panel_test_title_safe.GetBool() )
 	{
 		// "usetitlesafe" "1" - required inner 90%
 		// "usetitlesafe" "2" - suggested inner 85%
@@ -5508,11 +5502,11 @@ void Panel::PreparePanelMap( PanelMap_t *panelMap )
 void Panel::OnDelete()
 {
 #ifdef WIN32
-	Assert( IsX360() || ( IsPC() && _heapchk() == _HEAPOK ) );
+	Assert( false || ( IsPC() && _heapchk() == _HEAPOK ) );
 #endif
 	delete this;
 #ifdef WIN32
-	Assert( IsX360() || ( IsPC() && _heapchk() == _HEAPOK ) );
+	Assert( false || ( IsPC() && _heapchk() == _HEAPOK ) );
 #endif
 }
 
@@ -7823,10 +7817,7 @@ Panel* Panel::NavigateBack()
 //-----------------------------------------------------------------------------
 void Panel::NavigateTo()
 {
-	if ( IsX360() )
-	{
-		RequestFocus( 0 );
-	}
+	
 
 	CallParentFunction( new KeyValues( "OnNavigateTo", "panelName", GetName() ) );
 

@@ -18,10 +18,14 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <limits.h>
+#if defined( __GLIBC__ )
+#include <link.h>
+#endif
 #endif
 
 struct BootstrapModuleLoadRecord_t
 {
+	BootstrapModuleLoadRecord_t *m_pNext;
 	void *m_pModule;
 	unsigned long long m_nLoadId;
 	unsigned long long m_nStartedAtMicroseconds;
@@ -31,8 +35,7 @@ struct BootstrapModuleLoadRecord_t
 	char m_szResolvedPath[2048];
 };
 
-static BootstrapModuleLoadRecord_t g_BootstrapModuleLoads[32];
-static int g_nBootstrapModuleLoadCount = 0;
+static BootstrapModuleLoadRecord_t *g_pBootstrapModuleLoads = NULL;
 static unsigned long long g_nNextBootstrapModuleLoadId = 1;
 static bool g_bBootstrapModuleLoadTelemetryEnabled = false;
 
@@ -88,10 +91,11 @@ static void BootstrapModuleLoadEmit(
 
 static BootstrapModuleLoadRecord_t *BootstrapModuleLoadFind( void *pModule )
 {
-	for ( int i = g_nBootstrapModuleLoadCount - 1; i >= 0; --i )
+	for ( BootstrapModuleLoadRecord_t *pRecord = g_pBootstrapModuleLoads;
+		pRecord; pRecord = pRecord->m_pNext )
 	{
-		if ( g_BootstrapModuleLoads[i].m_pModule == pModule )
-			return &g_BootstrapModuleLoads[i];
+		if ( pRecord->m_pModule == pModule )
+			return pRecord;
 	}
 	return NULL;
 }
@@ -106,23 +110,25 @@ static void BootstrapModuleLoadRemember(
 	const char *pProviderError )
 {
 	const unsigned long long nLoadId = g_nNextBootstrapModuleLoadId++;
-	if ( pModule &&
-		g_nBootstrapModuleLoadCount <
-			(int)( sizeof( g_BootstrapModuleLoads ) /
-				sizeof( g_BootstrapModuleLoads[0] ) ) )
+	if ( pModule )
 	{
-		BootstrapModuleLoadRecord_t &record =
-			g_BootstrapModuleLoads[g_nBootstrapModuleLoadCount++];
-		memset( &record, 0, sizeof( record ) );
-		record.m_pModule = pModule;
-		record.m_nLoadId = nLoadId;
-		record.m_nStartedAtMicroseconds = BootstrapModuleLoadTime();
-		record.m_pRequester = pRequester;
-		record.m_nSourceLine = nSourceLine;
-		BootstrapModuleLoadCopy( record.m_szRequestedPath,
-			sizeof( record.m_szRequestedPath ), pRequestedPath );
-		BootstrapModuleLoadCopy( record.m_szResolvedPath,
-			sizeof( record.m_szResolvedPath ), pResolvedPath );
+		BootstrapModuleLoadRecord_t *pRecord =
+			(BootstrapModuleLoadRecord_t *)malloc( sizeof( *pRecord ) );
+		if ( pRecord )
+		{
+			memset( pRecord, 0, sizeof( *pRecord ) );
+			pRecord->m_pNext = g_pBootstrapModuleLoads;
+			g_pBootstrapModuleLoads = pRecord;
+			pRecord->m_pModule = pModule;
+			pRecord->m_nLoadId = nLoadId;
+			pRecord->m_nStartedAtMicroseconds = BootstrapModuleLoadTime();
+			pRecord->m_pRequester = pRequester;
+			pRecord->m_nSourceLine = nSourceLine;
+			BootstrapModuleLoadCopy( pRecord->m_szRequestedPath,
+				sizeof( pRecord->m_szRequestedPath ), pRequestedPath );
+			BootstrapModuleLoadCopy( pRecord->m_szResolvedPath,
+				sizeof( pRecord->m_szResolvedPath ), pResolvedPath );
+		}
 	}
 	BootstrapModuleLoadEmit( 0, nLoadId, pRequester, nSourceLine,
 		pRequestedPath, pResolvedPath, "", pModule != NULL, 0,
@@ -148,10 +154,15 @@ static void BootstrapModuleLoadForget(
 			nProviderResult, pProviderError );
 		if ( bSuccess )
 		{
-			const int nIndex = (int)( pRecord - g_BootstrapModuleLoads );
-			for ( int i = nIndex + 1; i < g_nBootstrapModuleLoadCount; ++i )
-				g_BootstrapModuleLoads[i - 1] = g_BootstrapModuleLoads[i];
-			--g_nBootstrapModuleLoadCount;
+			BootstrapModuleLoadRecord_t **ppRecord =
+				&g_pBootstrapModuleLoads;
+			while ( *ppRecord && *ppRecord != pRecord )
+				ppRecord = &( *ppRecord )->m_pNext;
+			if ( *ppRecord )
+			{
+				*ppRecord = pRecord->m_pNext;
+				free( pRecord );
+			}
 		}
 	}
 	else
@@ -163,15 +174,16 @@ static void BootstrapModuleLoadForget(
 
 static void BootstrapModuleLoadReportOutstanding()
 {
-	while ( g_nBootstrapModuleLoadCount > 0 )
+	while ( g_pBootstrapModuleLoads )
 	{
-		BootstrapModuleLoadRecord_t &record =
-			g_BootstrapModuleLoads[--g_nBootstrapModuleLoadCount];
-		BootstrapModuleLoadEmit( 3, record.m_nLoadId,
-			record.m_pRequester, record.m_nSourceLine,
-			record.m_szRequestedPath, record.m_szResolvedPath, "", false,
-			BootstrapModuleLoadTime() - record.m_nStartedAtMicroseconds,
+		BootstrapModuleLoadRecord_t *pRecord = g_pBootstrapModuleLoads;
+		g_pBootstrapModuleLoads = pRecord->m_pNext;
+		BootstrapModuleLoadEmit( 3, pRecord->m_nLoadId,
+			pRecord->m_pRequester, pRecord->m_nSourceLine,
+			pRecord->m_szRequestedPath, pRecord->m_szResolvedPath, "", false,
+			BootstrapModuleLoadTime() - pRecord->m_nStartedAtMicroseconds,
 			-1, "module still loaded at process shutdown" );
+		free( pRecord );
 	}
 }
 
@@ -325,6 +337,19 @@ static void *BootstrapDlopen(
 	char szCanonical[PATH_MAX];
 	if ( pPath && realpath( pPath, szCanonical ) )
 		BootstrapModuleLoadCopy( szResolved, sizeof( szResolved ), szCanonical );
+#if defined( __GLIBC__ )
+	link_map *pMap = NULL;
+	if ( pModule && dlinfo( pModule, RTLD_DI_LINKMAP, &pMap ) == 0 &&
+		pMap && pMap->l_name && pMap->l_name[0] )
+	{
+		if ( realpath( pMap->l_name, szCanonical ) )
+			BootstrapModuleLoadCopy(
+				szResolved, sizeof( szResolved ), szCanonical );
+		else
+			BootstrapModuleLoadCopy(
+				szResolved, sizeof( szResolved ), pMap->l_name );
+	}
+#endif
 	BootstrapModuleLoadRemember( pModule, pRequester, nSourceLine,
 		pPath, szResolved, nError, pError );
 	return pModule;

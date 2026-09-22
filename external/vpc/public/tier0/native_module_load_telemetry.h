@@ -11,6 +11,7 @@
 
 struct VpcModuleLoadRecord_t
 {
+	VpcModuleLoadRecord_t *m_pNext;
 	HMODULE m_hModule;
 	unsigned __int64 m_nLoadId;
 	unsigned __int64 m_nStartedAt;
@@ -20,8 +21,11 @@ struct VpcModuleLoadRecord_t
 	char m_szResolved[2048];
 };
 
-static VpcModuleLoadRecord_t g_VpcModuleLoads[32];
-static int g_nVpcModuleLoads;
+inline VpcModuleLoadRecord_t *&VpcModuleLoadRecords()
+{
+	static VpcModuleLoadRecord_t *s_pRecords;
+	return s_pRecords;
+}
 
 static unsigned __int64 VpcModuleLoadTime()
 {
@@ -78,10 +82,38 @@ static void VpcModuleLoadEmit(
 
 static VpcModuleLoadRecord_t *VpcModuleLoadFind( HMODULE hModule )
 {
-	for ( int i = g_nVpcModuleLoads - 1; i >= 0; --i )
-		if ( g_VpcModuleLoads[i].m_hModule == hModule )
-			return &g_VpcModuleLoads[i];
+	for ( VpcModuleLoadRecord_t *pRecord = VpcModuleLoadRecords();
+		pRecord; pRecord = pRecord->m_pNext )
+	{
+		if ( pRecord->m_hModule == hModule )
+			return pRecord;
+	}
 	return NULL;
+}
+
+static void VpcModuleLoadRemember(
+	HMODULE hModule, unsigned __int64 nLoadId,
+	const char *pRequester, int nSourceLine,
+	const char *pRequested, const char *pResolved )
+{
+	if ( !hModule )
+		return;
+	VpcModuleLoadRecord_t *pRecord =
+		(VpcModuleLoadRecord_t *)malloc( sizeof( *pRecord ) );
+	if ( !pRecord )
+		return;
+	memset( pRecord, 0, sizeof( *pRecord ) );
+	pRecord->m_pNext = VpcModuleLoadRecords();
+	VpcModuleLoadRecords() = pRecord;
+	pRecord->m_hModule = hModule;
+	pRecord->m_nLoadId = nLoadId;
+	pRecord->m_nStartedAt = VpcModuleLoadTime();
+	pRecord->m_pRequester = pRequester;
+	pRecord->m_nSourceLine = nSourceLine;
+	VpcModuleLoadCopy( pRecord->m_szRequested,
+		sizeof( pRecord->m_szRequested ), pRequested );
+	VpcModuleLoadCopy( pRecord->m_szResolved,
+		sizeof( pRecord->m_szResolved ), pResolved );
 }
 
 static HMODULE VpcLoadLibraryExA(
@@ -102,17 +134,8 @@ static HMODULE VpcLoadLibraryExA(
 	const unsigned __int64 nLoadId =
 		( VpcModuleLoadTime() << 8 ) ^ (unsigned __int64)(UINT_PTR)hModule ^
 		(unsigned int)nSourceLine;
-	if ( hModule && g_nVpcModuleLoads < 32 )
-	{
-		VpcModuleLoadRecord_t &record = g_VpcModuleLoads[g_nVpcModuleLoads++];
-		record.m_hModule = hModule;
-		record.m_nLoadId = nLoadId;
-		record.m_nStartedAt = VpcModuleLoadTime();
-		record.m_pRequester = pRequester;
-		record.m_nSourceLine = nSourceLine;
-		VpcModuleLoadCopy( record.m_szRequested, sizeof( record.m_szRequested ), pPath );
-		VpcModuleLoadCopy( record.m_szResolved, sizeof( record.m_szResolved ), szResolved );
-	}
+	VpcModuleLoadRemember( hModule, nLoadId, pRequester, nSourceLine,
+		pPath, szResolved );
 	VpcModuleLoadEmit( 0, nLoadId, pRequester, nSourceLine,
 		pPath, szResolved, "", hModule != NULL, 0, (int)nError, szError );
 	return hModule;
@@ -142,19 +165,8 @@ static HMODULE VpcLoadLibraryExW(
 	const unsigned __int64 nLoadId =
 		( VpcModuleLoadTime() << 8 ) ^ (unsigned __int64)(UINT_PTR)hModule ^
 		(unsigned int)nSourceLine;
-	if ( hModule && g_nVpcModuleLoads < 32 )
-	{
-		VpcModuleLoadRecord_t &record = g_VpcModuleLoads[g_nVpcModuleLoads++];
-		record.m_hModule = hModule;
-		record.m_nLoadId = nLoadId;
-		record.m_nStartedAt = VpcModuleLoadTime();
-		record.m_pRequester = pRequester;
-		record.m_nSourceLine = nSourceLine;
-		VpcModuleLoadCopy( record.m_szRequested,
-			sizeof( record.m_szRequested ), szRequested );
-		VpcModuleLoadCopy( record.m_szResolved,
-			sizeof( record.m_szResolved ), szResolved );
-	}
+	VpcModuleLoadRemember( hModule, nLoadId, pRequester, nSourceLine,
+		szRequested, szResolved );
 	VpcModuleLoadEmit( 0, nLoadId, pRequester, nSourceLine,
 		szRequested, szResolved, "", hModule != NULL, 0,
 		(int)nError, szError );
@@ -202,10 +214,14 @@ static BOOL VpcFreeLibrary(
 		(int)nError, szError );
 	if ( bResult && pRecord )
 	{
-		const int nIndex = (int)( pRecord - g_VpcModuleLoads );
-		for ( int i = nIndex + 1; i < g_nVpcModuleLoads; ++i )
-			g_VpcModuleLoads[i - 1] = g_VpcModuleLoads[i];
-		--g_nVpcModuleLoads;
+		VpcModuleLoadRecord_t **ppRecord = &VpcModuleLoadRecords();
+		while ( *ppRecord && *ppRecord != pRecord )
+			ppRecord = &( *ppRecord )->m_pNext;
+		if ( *ppRecord )
+		{
+			*ppRecord = pRecord->m_pNext;
+			free( pRecord );
+		}
 	}
 	return bResult;
 }
@@ -215,15 +231,16 @@ class CVpcModuleLoadShutdownReporter
 public:
 	~CVpcModuleLoadShutdownReporter()
 	{
-		while ( g_nVpcModuleLoads > 0 )
+		while ( VpcModuleLoadRecords() )
 		{
-			VpcModuleLoadRecord_t &record =
-				g_VpcModuleLoads[--g_nVpcModuleLoads];
-			VpcModuleLoadEmit( 3, record.m_nLoadId,
-				record.m_pRequester, record.m_nSourceLine,
-				record.m_szRequested, record.m_szResolved, "", false,
-				VpcModuleLoadTime() - record.m_nStartedAt,
+			VpcModuleLoadRecord_t *pRecord = VpcModuleLoadRecords();
+			VpcModuleLoadRecords() = pRecord->m_pNext;
+			VpcModuleLoadEmit( 3, pRecord->m_nLoadId,
+				pRecord->m_pRequester, pRecord->m_nSourceLine,
+				pRecord->m_szRequested, pRecord->m_szResolved, "", false,
+				VpcModuleLoadTime() - pRecord->m_nStartedAt,
 				-1, "module still loaded at process shutdown" );
+			free( pRecord );
 		}
 	}
 };
