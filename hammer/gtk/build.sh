@@ -18,6 +18,7 @@ PKGS="gtk4 libadwaita-1 epoxy"
 CORE="\
 $ROOT/hammer/core/app/editor_controller.cpp \
 $ROOT/hammer/core/geometry/brush.cpp \
+$ROOT/hammer/core/geometry/displacement.cpp \
 $ROOT/hammer/core/geometry/rounding.cpp \
 $ROOT/hammer/core/formats/keyvalues.cpp \
 $ROOT/hammer/core/formats/vpk_archive.cpp \

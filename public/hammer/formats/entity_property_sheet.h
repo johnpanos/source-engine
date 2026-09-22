@@ -26,12 +26,12 @@ namespace hammer::formats
 // One row of the property grid.
 struct PropertyRow
 {
-	std::string key;         // the VMF key
-	std::string type;        // FGD type, or "string" for an extra (non-schema) key
-	std::string displayName; // FGD display name, or the key when not in the schema
-	std::string value;       // the entity's current value, or the FGD default if unset
-	bool isSet = false;      // the entity actually carries this key
-	bool inSchema = false;   // the FGD class declares this key
+	std::string key;                // the VMF key
+	std::string type;               // FGD type, or "string" for an extra (non-schema) key
+	std::string displayName;        // FGD display name, or the key when not in the schema
+	std::string value;              // the entity's current value, or the FGD default if unset
+	bool isSet = false;             // the entity actually carries this key
+	bool inSchema = false;          // the FGD class declares this key
 	std::vector<FgdChoice> choices; // for choices/flags types
 };
 
@@ -48,8 +48,8 @@ struct EntityPropertySheet
 // order -- each with the entity's value or the FGD default -- followed by any
 // extra keys the entity has that the schema does not declare (isSet, !inSchema).
 // The meta keys "classname", "id", and the "editor" block are not rows.
-EntityPropertySheet BuildPropertySheet( const KeyValueNode &entity,
-										const std::vector<EntityClass> &fgdClasses );
+EntityPropertySheet BuildPropertySheet(
+    const KeyValueNode &entity, const std::vector<EntityClass> &fgdClasses );
 
 } // namespace hammer::formats
 

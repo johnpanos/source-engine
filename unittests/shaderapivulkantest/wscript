@@ -35,3 +35,40 @@ def build(bld):
 		name='native_vulkan_bringup_conformance',
 		includes=includes, use=['VULKAN', 'SDL3'],
 		install_path=None)
+
+	# Substitutability proof (LSP): the native Vulkan provider of the
+	# render.contracts backend contract runs the SAME shared conformance suite as
+	# the null provider. No SDL/window needed -- this provider is surfaceless at
+	# the contract level. Skips (exit 77) when no Vulkan device is present.
+	bld.program(
+		features='c cxx', env=test_env.derive(),
+		source=['../rendertest/test_render_backend_vulkan.cpp',
+			'../rendertest/conformance/render_backend_conformance.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_render_backend.cpp'],
+		target='render_backend_vulkan_conformance',
+		name='render_backend_vulkan_conformance',
+		includes=['../rendertest', '../../materialsystem/shaderapivulkan', '../../public',
+			'../../public/tier0', '../../public/tier1'] + bld.env.INCLUDES_VULKAN,
+		# The render.contracts headers and shared suite use C++14+ aggregate
+		# initialization; build this target at C++17 as the conformance runner does.
+		cxxflags=['-std=c++17'],
+		use=['VULKAN'],
+		install_path=None)
+
+	# Material-facing integration slice: drives the legacy IShaderAPI/IShaderDevice
+	# interfaces (as the material system does) through the linked native Vulkan
+	# backend and reads the presented frame back. Links the real backend library.
+	bld.program(
+		features='c cxx', env=test_env.derive(),
+		source=['test_material_facing_render.cpp',
+			# The backend .so hides its C++ class symbols, so compile the device
+			# core into the test too; its non-virtual methods operate on the same
+			# g_VulkanContext instance the backend's exported accessor returns.
+			'../../materialsystem/shaderapivulkan/vulkan_device.cpp'],
+		target='material_facing_vulkan_conformance',
+		name='material_facing_vulkan_conformance',
+		includes=['../../materialsystem/shaderapivulkan', '../../public',
+			'../../public/tier0', '../../public/tier1']
+			+ bld.env.INCLUDES_SDL3 + bld.env.INCLUDES_VULKAN,
+		use=['shaderapivulkan', 'tier0', 'tier1', 'VULKAN', 'SDL3'],
+		install_path=None)

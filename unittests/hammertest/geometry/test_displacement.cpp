@@ -258,6 +258,21 @@ void TestAlphasTagsSubdiv()
 	    "extras: absent alphas default to zero" );
 }
 
+void TestVertexNormals()
+{
+	DispInfo info;
+	Check( ParseText( MakeDispInfo( 3, "[0 0 0]", 1.0, 0.0 ), info ), "normals: parses" );
+	DisplacementSurface s = BuildDisplacementSurface( UnitQuad(), Vec3d( 0, 0, 1 ), info );
+	Check( s.vertexNormals.size() == s.vertices.size(), "normals: one per vertex" );
+	// A flat quad (distances 0), wound CCW from +Z, gives every vertex normal (0,0,1).
+	bool allUp = !s.vertexNormals.empty();
+	for ( const Vec3d &n : s.vertexNormals )
+	{
+		allUp = allUp && NearV( n, Vec3d( 0, 0, 1 ) );
+	}
+	Check( allUp, "normals: flat surface -> all unit (0,0,1)" );
+}
+
 } // namespace
 
 int main()
@@ -267,6 +282,7 @@ int main()
 	TestUniformDisplacement();
 	TestStartPositionOrientation();
 	TestAlphasTagsSubdiv();
+	TestVertexNormals();
 
 	if ( g_failures != 0 )
 	{

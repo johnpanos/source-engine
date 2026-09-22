@@ -3,7 +3,7 @@
 #include <SDL3/SDL_vulkan.h>
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: 
+// Purpose:
 //
 // $NoKeywords: $
 //
@@ -24,6 +24,7 @@
 #include "vulkan_device.h"
 
 #include <string>
+#include <vector>
 
 //-----------------------------------------------------------------------------
 // The single native Vulkan presentation context, brought up on SetMode() and
@@ -32,7 +33,6 @@
 // backend genuinely brings up native Vulkan in-process and presents a frame.
 //-----------------------------------------------------------------------------
 static render_vulkan::CVulkanContext g_VulkanContext;
-
 
 //-----------------------------------------------------------------------------
 // The empty mesh
@@ -44,67 +44,62 @@ public:
 	virtual ~CEmptyMesh();
 
 	// FIXME: Make this work! Unsupported methods of IIndexBuffer + IVertexBuffer
-	virtual bool Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t& desc );
-	virtual void Unlock( int nWrittenIndexCount, IndexDesc_t& desc );
-	virtual void ModifyBegin( bool bReadOnly, int nFirstIndex, int nIndexCount, IndexDesc_t& desc );
-	virtual void ModifyEnd( IndexDesc_t& desc );
-	virtual void Spew( int nIndexCount, const IndexDesc_t & desc );
+	virtual bool Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t &desc );
+	virtual void Unlock( int nWrittenIndexCount, IndexDesc_t &desc );
+	virtual void ModifyBegin( bool bReadOnly, int nFirstIndex, int nIndexCount, IndexDesc_t &desc );
+	virtual void ModifyEnd( IndexDesc_t &desc );
+	virtual void Spew( int nIndexCount, const IndexDesc_t &desc );
 	virtual void ValidateData( int nIndexCount, const IndexDesc_t &desc );
 	virtual bool Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc );
 	virtual void Unlock( int nVertexCount, VertexDesc_t &desc );
 	virtual void Spew( int nVertexCount, const VertexDesc_t &desc );
-	virtual void ValidateData( int nVertexCount, const VertexDesc_t & desc );
+	virtual void ValidateData( int nVertexCount, const VertexDesc_t &desc );
 	virtual bool IsDynamic() const { return m_bIsDynamic; }
 	virtual void BeginCastBuffer( VertexFormat_t format ) {}
 	virtual void BeginCastBuffer( MaterialIndexFormat_t format ) {}
-	virtual void EndCastBuffer( ) {}
+	virtual void EndCastBuffer() {}
 	virtual int GetRoomRemaining() const { return 0; }
 	virtual MaterialIndexFormat_t IndexFormat() const { return MATERIAL_INDEX_FORMAT_UNKNOWN; }
 
-	void LockMesh( int numVerts, int numIndices, MeshDesc_t& desc );
-	void UnlockMesh( int numVerts, int numIndices, MeshDesc_t& desc );
+	void LockMesh( int numVerts, int numIndices, MeshDesc_t &desc );
+	void UnlockMesh( int numVerts, int numIndices, MeshDesc_t &desc );
 
-	void ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, int firstIndex, int numIndices, MeshDesc_t& desc );
-	void ModifyBegin( int firstVertex, int numVerts, int firstIndex, int numIndices, MeshDesc_t& desc );
-	void ModifyEnd( MeshDesc_t& desc );
+	void ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, int firstIndex,
+	    int numIndices, MeshDesc_t &desc );
+	void ModifyBegin(
+	    int firstVertex, int numVerts, int firstIndex, int numIndices, MeshDesc_t &desc );
+	void ModifyEnd( MeshDesc_t &desc );
 
 	// returns the # of vertices (static meshes only)
-	int  VertexCount() const;
+	int VertexCount() const;
 
 	// Sets the primitive type
 	void SetPrimitiveType( MaterialPrimitiveType_t type );
-	 
-	// Draws the entire mesh
-	void Draw(int firstIndex, int numIndices);
 
-	void Draw(CPrimList *pPrims, int nPrims);
+	// Draws the entire mesh
+	void Draw( int firstIndex, int numIndices );
+
+	void Draw( CPrimList *pPrims, int nPrims );
 
 	// Copy verts and/or indices to a mesh builder. This only works for temp meshes!
-	virtual void CopyToMeshBuilder( 
-		int iStartVert,		// Which vertices to copy.
-		int nVerts, 
-		int iStartIndex,	// Which indices to copy.
-		int nIndices, 
-		int indexOffset,	// This is added to each index.
-		CMeshBuilder &builder );
+	virtual void CopyToMeshBuilder( int iStartVert, // Which vertices to copy.
+	    int nVerts,
+	    int iStartIndex, // Which indices to copy.
+	    int nIndices,
+	    int indexOffset, // This is added to each index.
+	    CMeshBuilder &builder );
 
 	// Spews the mesh data
-	void Spew( int numVerts, int numIndices, const MeshDesc_t & desc );
+	void Spew( int numVerts, int numIndices, const MeshDesc_t &desc );
 
-	void ValidateData( int numVerts, int numIndices, const MeshDesc_t & desc );
+	void ValidateData( int numVerts, int numIndices, const MeshDesc_t &desc );
 
 	// gets the associated material
-	IMaterial* GetMaterial();
+	IMaterial *GetMaterial();
 
-	void SetColorMesh( IMesh *pColorMesh, int nVertexOffset )
-	{
-	}
+	void SetColorMesh( IMesh *pColorMesh, int nVertexOffset ) {}
 
-
-	virtual int IndexCount() const
-	{
-		return 0;
-	}
+	virtual int IndexCount() const { return 0; }
 
 	virtual void SetFlexMesh( IMesh *pMesh, int nVertexOffset ) {}
 
@@ -116,10 +111,7 @@ public:
 
 	virtual VertexFormat_t GetVertexFormat() const { return VERTEX_POSITION; }
 
-	virtual IMesh *GetMesh()
-	{
-		return this;
-	}
+	virtual IMesh *GetMesh() { return this; }
 
 private:
 	enum
@@ -127,10 +119,22 @@ private:
 		VERTEX_BUFFER_SIZE = 1024 * 1024
 	};
 
-	unsigned char* m_pVertexMemory;
+	unsigned char *m_pVertexMemory;
 	bool m_bIsDynamic;
-};
+	// Vertices locked into m_pVertexMemory as an interleaved position(vec3) +
+	// color(4 bytes) layout with stride kMeshVertexStride, so Draw() can forward
+	// real geometry to the native Vulkan dynamic-mesh path.
+	int m_numVerts = 0;
+	// Scratch target for vertex components this bounded layout does not carry, so
+	// a mesh builder writing them (with size 0) never corrupts position/color.
+	unsigned char m_dummyComponent[64] = { 0 };
 
+public:
+	enum
+	{
+		kMeshVertexStride = 24
+	}; // 12 bytes position + 4 bytes color + 8 bytes texcoord0
+};
 
 //-----------------------------------------------------------------------------
 // The empty shader shadow
@@ -150,7 +154,7 @@ public:
 	void EnableDepthTest( bool bEnable );
 	void EnablePolyOffset( PolygonOffsetMode_t nOffsetMode );
 
-	// Suppresses/activates color writing 
+	// Suppresses/activates color writing
 	void EnableColorWrites( bool bEnable );
 	void EnableAlphaWrites( bool bEnable );
 
@@ -167,7 +171,7 @@ public:
 
 	// Back face culling
 	void EnableCulling( bool bEnable );
-	
+
 	// constant color + transparency
 	void EnableConstantColor( bool bEnable );
 
@@ -175,9 +179,9 @@ public:
 	// The flags to pass in here come from the VertexFormatFlags_t enum
 	// If pTexCoordDimensions is *not* specified, we assume all coordinates
 	// are 2-dimensional
-	void VertexShaderVertexFormat( unsigned int nFlags, 
-		int nTexCoordCount, int* pTexCoordDimensions, int nUserDataSize );
-	
+	void VertexShaderVertexFormat(
+	    unsigned int nFlags, int nTexCoordCount, int *pTexCoordDimensions, int nUserDataSize );
+
 	// Indicates we're going to light the model
 	void EnableLighting( bool bEnable );
 	void EnableSpecular( bool bEnable );
@@ -195,8 +199,8 @@ public:
 	// Can be used to specify different operation per channel (alpha/color)...
 	void EnableCustomPixelPipe( bool bEnable );
 	void CustomTextureStages( int stageCount );
-	void CustomTextureOperation( TextureStage_t stage, ShaderTexChannel_t channel, 
-		ShaderTexOp_t op, ShaderTexArg_t arg1, ShaderTexArg_t arg2 );
+	void CustomTextureOperation( TextureStage_t stage, ShaderTexChannel_t channel, ShaderTexOp_t op,
+	    ShaderTexArg_t arg1, ShaderTexArg_t arg2 );
 
 	// indicates what per-vertex data we're providing
 	void DrawFlags( unsigned int drawFlags );
@@ -216,64 +220,32 @@ public:
 	void SetPixelShader( const char *pFileName, int pshIndex );
 
 	// Convert from linear to gamma color space on writes to frame buffer.
-	void EnableSRGBWrite( bool bEnable )
-	{
-	}
+	void EnableSRGBWrite( bool bEnable ) {}
 
-	void EnableSRGBRead( Sampler_t stage, bool bEnable )
-	{
-	}
+	void EnableSRGBRead( Sampler_t stage, bool bEnable ) {}
 
-	virtual void FogMode( ShaderFogMode_t fogMode )
-	{
-	}
+	virtual void FogMode( ShaderFogMode_t fogMode ) {}
 
-	virtual void DisableFogGammaCorrection( bool bDisable )
-	{
-	}
+	virtual void DisableFogGammaCorrection( bool bDisable ) {}
 
-	virtual void SetDiffuseMaterialSource( ShaderMaterialSource_t materialSource )
-	{
-	}
+	virtual void SetDiffuseMaterialSource( ShaderMaterialSource_t materialSource ) {}
 
-	virtual void SetMorphFormat( MorphFormat_t flags )
-	{
-	}
+	virtual void SetMorphFormat( MorphFormat_t flags ) {}
 
-	virtual void EnableStencil( bool bEnable )
-	{
-	}
-	virtual void StencilFunc( ShaderStencilFunc_t stencilFunc )
-	{
-	}
-	virtual void StencilPassOp( ShaderStencilOp_t stencilOp )
-	{
-	}
-	virtual void StencilFailOp( ShaderStencilOp_t stencilOp )
-	{
-	}
-	virtual void StencilDepthFailOp( ShaderStencilOp_t stencilOp )
-	{
-	}
-	virtual void StencilReference( int nReference )
-	{
-	}
-	virtual void StencilMask( int nMask )
-	{
-	}
-	virtual void StencilWriteMask( int nMask )
-	{
-	}
+	virtual void EnableStencil( bool bEnable ) {}
+	virtual void StencilFunc( ShaderStencilFunc_t stencilFunc ) {}
+	virtual void StencilPassOp( ShaderStencilOp_t stencilOp ) {}
+	virtual void StencilFailOp( ShaderStencilOp_t stencilOp ) {}
+	virtual void StencilDepthFailOp( ShaderStencilOp_t stencilOp ) {}
+	virtual void StencilReference( int nReference ) {}
+	virtual void StencilMask( int nMask ) {}
+	virtual void StencilWriteMask( int nMask ) {}
 
-	virtual void ExecuteCommandBuffer( uint8 *pBuf ) 
-	{
-	}
+	virtual void ExecuteCommandBuffer( uint8 *pBuf ) {}
 	// Alpha to coverage
 	void EnableAlphaToCoverage( bool bEnable );
-	
-	virtual void SetShadowDepthFiltering( Sampler_t stage )
-	{
-	}
+
+	virtual void SetShadowDepthFiltering( Sampler_t stage ) {}
 
 	virtual void BlendOp( ShaderBlendOp_t blendOp ) {}
 	virtual void BlendOpSeparateAlpha( ShaderBlendOp_t blendOp ) {}
@@ -282,8 +254,10 @@ public:
 	bool m_IsAlphaTested;
 	bool m_bIsDepthWriteEnabled;
 	bool m_bUsesVertexAndPixelShaders;
+	// Selected pixel shader recorded during snapshot state (IShaderShadow), so a
+	// snapshot can carry which material shader to bind at draw time.
+	char m_pixelShaderName[64] = { 0 };
 };
-
 
 //-----------------------------------------------------------------------------
 // The DX8 implementation of the shader device
@@ -298,14 +272,15 @@ public:
 	virtual bool IsUsingGraphics() const { return false; }
 	virtual void SpewDriverInfo() const;
 	virtual ImageFormat GetBackBufferFormat() const { return IMAGE_FORMAT_RGB888; }
-	virtual void GetBackBufferDimensions( int& width, int& height ) const;
-	virtual int  StencilBufferBits() const { return 0; }
+	virtual void GetBackBufferDimensions( int &width, int &height ) const;
+	virtual int StencilBufferBits() const { return 0; }
 	virtual bool IsAAEnabled() const { return false; }
-	virtual void Present( )
+	virtual void Present()
 	{
-		// Present a real native Vulkan frame. The material path is still the
-		// empty stub (roadmap R32), so nothing is drawn into the frame yet; the
-		// swapchain clear/acquire/submit/present cycle is genuine.
+		// Present a real native Vulkan frame: the clear, any material-facing mesh
+		// geometry queued this frame (IMesh::Draw), and the selected material
+		// shader (BeginPass) are all recorded and submitted here. Material state,
+		// textures and the full shader library remain to be wired (roadmap R32).
 		if ( !g_VulkanContext.IsValid() )
 			return;
 		std::string error;
@@ -317,29 +292,52 @@ public:
 		}
 	}
 	virtual void GetWindowSize( int &width, int &height ) const;
-	virtual bool AddView( void* hwnd );
-	virtual void RemoveView( void* hwnd );
-	virtual void SetView( void* hwnd );
+	virtual bool AddView( void *hwnd );
+	virtual void RemoveView( void *hwnd );
+	virtual void SetView( void *hwnd );
 	virtual void ReleaseResources();
 	virtual void ReacquireResources();
-	virtual IMesh* CreateStaticMesh( VertexFormat_t fmt, const char *pTextureBudgetGroup, IMaterial * pMaterial = NULL );
-	virtual void DestroyStaticMesh( IMesh* mesh );
-	virtual IShaderBuffer* CompileShader( const char *pProgram, size_t nBufLen, const char *pShaderVersion ) { return NULL; }
-	virtual VertexShaderHandle_t CreateVertexShader( IShaderBuffer* pShaderBuffer ) { return VERTEX_SHADER_HANDLE_INVALID; }
+	virtual IMesh *CreateStaticMesh(
+	    VertexFormat_t fmt, const char *pTextureBudgetGroup, IMaterial *pMaterial = NULL );
+	virtual void DestroyStaticMesh( IMesh *mesh );
+	virtual IShaderBuffer *CompileShader(
+	    const char *pProgram, size_t nBufLen, const char *pShaderVersion )
+	{
+		return NULL;
+	}
+	virtual VertexShaderHandle_t CreateVertexShader( IShaderBuffer *pShaderBuffer )
+	{
+		return VERTEX_SHADER_HANDLE_INVALID;
+	}
 	virtual void DestroyVertexShader( VertexShaderHandle_t hShader ) {}
-	virtual GeometryShaderHandle_t CreateGeometryShader( IShaderBuffer* pShaderBuffer ) { return GEOMETRY_SHADER_HANDLE_INVALID; }
+	virtual GeometryShaderHandle_t CreateGeometryShader( IShaderBuffer *pShaderBuffer )
+	{
+		return GEOMETRY_SHADER_HANDLE_INVALID;
+	}
 	virtual void DestroyGeometryShader( GeometryShaderHandle_t hShader ) {}
-	virtual PixelShaderHandle_t CreatePixelShader( IShaderBuffer* pShaderBuffer ) { return PIXEL_SHADER_HANDLE_INVALID; }
+	virtual PixelShaderHandle_t CreatePixelShader( IShaderBuffer *pShaderBuffer )
+	{
+		return PIXEL_SHADER_HANDLE_INVALID;
+	}
 	virtual void DestroyPixelShader( PixelShaderHandle_t hShader ) {}
-	virtual IVertexBuffer *CreateVertexBuffer( ShaderBufferType_t type, VertexFormat_t fmt, int nVertexCount, const char *pBudgetGroup );
+	virtual IVertexBuffer *CreateVertexBuffer(
+	    ShaderBufferType_t type, VertexFormat_t fmt, int nVertexCount, const char *pBudgetGroup );
 	virtual void DestroyVertexBuffer( IVertexBuffer *pVertexBuffer );
-	virtual IIndexBuffer *CreateIndexBuffer( ShaderBufferType_t bufferType, MaterialIndexFormat_t fmt, int nIndexCount, const char *pBudgetGroup );
+	virtual IIndexBuffer *CreateIndexBuffer( ShaderBufferType_t bufferType,
+	    MaterialIndexFormat_t fmt, int nIndexCount, const char *pBudgetGroup );
 	virtual void DestroyIndexBuffer( IIndexBuffer *pIndexBuffer );
-	virtual IVertexBuffer *GetDynamicVertexBuffer( int streamID, VertexFormat_t vertexFormat, bool bBuffered );
+	virtual IVertexBuffer *GetDynamicVertexBuffer(
+	    int streamID, VertexFormat_t vertexFormat, bool bBuffered );
 	virtual IIndexBuffer *GetDynamicIndexBuffer( MaterialIndexFormat_t fmt, bool bBuffered );
-	virtual void SetHardwareGammaRamp( float fGamma, float fGammaTVRangeMin, float fGammaTVRangeMax, float fGammaTVExponent, bool bTVEnabled ) {}
-	virtual void EnableNonInteractiveMode( MaterialNonInteractiveMode_t mode, ShaderNonInteractiveInfo_t *pInfo ) {}
-	virtual void RefreshFrontBufferNonInteractive( ) {}
+	virtual void SetHardwareGammaRamp( float fGamma, float fGammaTVRangeMin, float fGammaTVRangeMax,
+	    float fGammaTVExponent, bool bTVEnabled )
+	{
+	}
+	virtual void EnableNonInteractiveMode(
+	    MaterialNonInteractiveMode_t mode, ShaderNonInteractiveInfo_t *pInfo )
+	{
+	}
+	virtual void RefreshFrontBufferNonInteractive() {}
 	virtual void HandleThreadEvent( uint32 threadEvent ) {}
 
 #ifdef DX_TO_GL_ABSTRACTION
@@ -356,9 +354,8 @@ private:
 static CShaderDeviceVulkan s_ShaderDeviceEmpty;
 
 // FIXME: Remove; it's for backward compat with the materialsystem only for now
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderDeviceVulkan, IShaderDevice, 
-								  SHADER_DEVICE_INTERFACE_VERSION, s_ShaderDeviceEmpty )
-
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR(
+    CShaderDeviceVulkan, IShaderDevice, SHADER_DEVICE_INTERFACE_VERSION, s_ShaderDeviceEmpty )
 
 //-----------------------------------------------------------------------------
 // The DX8 implementation of the shader device
@@ -375,23 +372,23 @@ public:
 
 public:
 	// Methods of IShaderDeviceMgr
-	virtual int	 GetAdapterCount() const;
-	virtual void GetAdapterInfo( int adapter, MaterialAdapterInfo_t& info ) const;
-	virtual bool GetRecommendedConfigurationInfo( int nAdapter, int nDXLevel, KeyValues *pKeyValues );
-	virtual int	 GetModeCount( int adapter ) const;
+	virtual int GetAdapterCount() const;
+	virtual void GetAdapterInfo( int adapter, MaterialAdapterInfo_t &info ) const;
+	virtual bool GetRecommendedConfigurationInfo(
+	    int nAdapter, int nDXLevel, KeyValues *pKeyValues );
+	virtual int GetModeCount( int adapter ) const;
 	virtual void GetModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter, int mode ) const;
-	virtual void GetCurrentModeInfo( ShaderDisplayMode_t* pInfo, int nAdapter ) const;
+	virtual void GetCurrentModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter ) const;
 	virtual bool SetAdapter( int nAdapter, int nFlags );
-	virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode );
+	virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode );
 	virtual void AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func ) {}
 	virtual void RemoveModeChangeCallback( ShaderModeChangeCallbackFunc_t func ) {}
 };
 
 static CShaderDeviceMgrVulkan s_ShaderDeviceMgrEmpty;
 
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderDeviceMgrVulkan, IShaderDeviceMgr, 
-								  SHADER_DEVICE_MGR_INTERFACE_VERSION, s_ShaderDeviceMgrEmpty )
-
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderDeviceMgrVulkan, IShaderDeviceMgr,
+    SHADER_DEVICE_MGR_INTERFACE_VERSION, s_ShaderDeviceMgrEmpty )
 
 //-----------------------------------------------------------------------------
 // The DX8 implementation of the shader API
@@ -400,44 +397,47 @@ class CShaderAPIVulkan : public IShaderAPI, public IHardwareConfigInternal, publ
 {
 public:
 	// constructor, destructor
-	CShaderAPIVulkan( );
+	CShaderAPIVulkan();
 	virtual ~CShaderAPIVulkan();
 
 	// IDebugTextureInfo implementation.
 public:
-
 	virtual bool IsDebugTextureListFresh( int numFramesAllowed = 1 ) { return false; }
 	virtual bool SetDebugTextureRendering( bool bEnable ) { return false; }
 	virtual void EnableDebugTextureList( bool bEnable ) {}
 	virtual void EnableGetAllTextures( bool bEnable ) {}
-	virtual KeyValues* GetDebugTextureList() { return NULL; }
+	virtual KeyValues *GetDebugTextureList() { return NULL; }
 	virtual int GetTextureMemoryUsed( TextureMemoryType eTextureMemory ) { return 0; }
 
 	// Methods of IShaderDynamicAPI
-	virtual void GetBackBufferDimensions( int& width, int& height ) const
+	virtual void GetBackBufferDimensions( int &width, int &height ) const
 	{
 		s_ShaderDeviceEmpty.GetBackBufferDimensions( width, height );
 	}
-	virtual void GetCurrentColorCorrection( ShaderColorCorrectionInfo_t* pInfo )
+	virtual void GetCurrentColorCorrection( ShaderColorCorrectionInfo_t *pInfo )
 	{
 		pInfo->m_bIsEnabled = false;
 		pInfo->m_nLookupCount = 0;
 		pInfo->m_flDefaultWeight = 0.0f;
 	}
 
-
 	// Methods of IShaderAPI
 public:
-	virtual void SetViewports( int nCount, const ShaderViewport_t* pViewports );
-	virtual int GetViewports( ShaderViewport_t* pViewports, int nMax ) const;
-	virtual void ClearBuffers( bool bClearColor, bool bClearDepth, bool bClearStencil, int renderTargetWidth, int renderTargetHeight );
+	virtual void SetViewports( int nCount, const ShaderViewport_t *pViewports );
+	virtual int GetViewports( ShaderViewport_t *pViewports, int nMax ) const;
+	virtual void ClearBuffers( bool bClearColor, bool bClearDepth, bool bClearStencil,
+	    int renderTargetWidth, int renderTargetHeight );
 	virtual void ClearColor3ub( unsigned char r, unsigned char g, unsigned char b );
-	virtual void ClearColor4ub( unsigned char r, unsigned char g, unsigned char b, unsigned char a );
+	virtual void ClearColor4ub(
+	    unsigned char r, unsigned char g, unsigned char b, unsigned char a );
 	virtual void BindVertexShader( VertexShaderHandle_t hVertexShader ) {}
 	virtual void BindGeometryShader( GeometryShaderHandle_t hGeometryShader ) {}
 	virtual void BindPixelShader( PixelShaderHandle_t hPixelShader ) {}
-	virtual void SetRasterState( const ShaderRasterState_t& state ) {}
-	virtual void MarkUnusedVertexFields( unsigned int nFlags, int nTexCoordCount, bool *pUnusedTexCoords ) {}
+	virtual void SetRasterState( const ShaderRasterState_t &state ) {}
+	virtual void MarkUnusedVertexFields(
+	    unsigned int nFlags, int nTexCoordCount, bool *pUnusedTexCoords )
+	{
+	}
 	virtual bool OwnGPUResources( bool bEnable ) { return false; }
 
 	virtual bool DoRenderTargetsNeedSeparateDepthBuffer() const;
@@ -446,14 +446,36 @@ public:
 	void ClearSnapshots();
 
 	// Sets the mode...
-	bool SetMode( void* hwnd, int nAdapter, const ShaderDeviceInfo_t &info )
+	bool SetMode( void *hwnd, int nAdapter, const ShaderDeviceInfo_t &info )
 	{
+		// This is the entry point the material system actually calls
+		// (CMaterialSystem::SetMode -> g_pShaderAPI->SetMode). Bring up the native
+		// Vulkan device/surface/swapchain against the engine's SDL window and the
+		// material-facing dynamic-mesh pipelines here.
+		if ( g_VulkanContext.IsValid() )
+			return true;
+
+		render_vulkan::VulkanContextConfig config;
+		config.appName = "Source Engine Native Vulkan";
+		config.enableValidation = ( CommandLine()->FindParm( "-vkvalidate" ) != 0 );
+		config.framesInFlight = 2;
+
+		std::string error;
+		if ( !g_VulkanContext.Init( static_cast<SDL_Window *>( hwnd ), config, &error ) )
+		{
+			Warning( "[NativeVulkan] IShaderAPI::SetMode bring-up failed: %s\n", error.c_str() );
+			return false;
+		}
+		int w = 0, h = 0;
+		g_VulkanContext.GetSwapchainExtent( w, h );
+		Msg( "[NativeVulkan] IShaderAPI::SetMode: device '%s' up (%dx%d)\n",
+		    g_VulkanContext.DeviceName(), w, h );
+		if ( !g_VulkanContext.InitDynamicMesh( &error ) )
+			Warning( "[NativeVulkan] dynamic mesh pipelines unavailable: %s\n", error.c_str() );
 		return true;
 	}
 
-	void ChangeVideoMode( const ShaderDeviceInfo_t &info )
-	{
-	}
+	void ChangeVideoMode( const ShaderDeviceInfo_t &info ) {}
 
 	// Called when the dx support level has changed
 	virtual void DXSupportLevelChanged() {}
@@ -462,10 +484,10 @@ public:
 	virtual void UserClipTransform( const VMatrix &worldToView ) {}
 
 	// Sets the default *dynamic* state
-	void SetDefaultState( );
+	void SetDefaultState();
 
 	// Returns the snapshot id for the shader state
-	StateSnapshot_t	 TakeSnapshot( );
+	StateSnapshot_t TakeSnapshot();
 
 	// Returns true if the state snapshot is transparent
 	bool IsTranslucent( StateSnapshot_t id ) const;
@@ -474,75 +496,68 @@ public:
 	virtual bool IsDepthWriteEnabled( StateSnapshot_t id ) const;
 
 	// Gets the vertex format for a set of snapshot ids
-	VertexFormat_t ComputeVertexFormat( int numSnapshots, StateSnapshot_t* pIds ) const;
+	VertexFormat_t ComputeVertexFormat( int numSnapshots, StateSnapshot_t *pIds ) const;
 
 	// Gets the vertex format for a set of snapshot ids
-	VertexFormat_t ComputeVertexUsage( int numSnapshots, StateSnapshot_t* pIds ) const;
+	VertexFormat_t ComputeVertexUsage( int numSnapshots, StateSnapshot_t *pIds ) const;
 
 	// Begins a rendering pass that uses a state snapshot
-	void BeginPass( StateSnapshot_t snapshot  );
+	void BeginPass( StateSnapshot_t snapshot );
 
 	// Uses a state snapshot
 	void UseSnapshot( StateSnapshot_t snapshot );
 
 	// Use this to get the mesh builder that allows us to modify vertex data
-	CMeshBuilder* GetVertexModifyBuilder();
+	CMeshBuilder *GetVertexModifyBuilder();
 
 	// Sets the color to modulate by
 	void Color3f( float r, float g, float b );
-	void Color3fv( float const* pColor );
+	void Color3fv( float const *pColor );
 	void Color4f( float r, float g, float b, float a );
-	void Color4fv( float const* pColor );
+	void Color4fv( float const *pColor );
 
 	// Faster versions of color
 	void Color3ub( unsigned char r, unsigned char g, unsigned char b );
-	void Color3ubv( unsigned char const* rgb );
+	void Color3ubv( unsigned char const *rgb );
 	void Color4ub( unsigned char r, unsigned char g, unsigned char b, unsigned char a );
-	void Color4ubv( unsigned char const* rgba );
+	void Color4ubv( unsigned char const *rgba );
 
 	// Sets the lights
-	void SetLight( int lightNum, const LightDesc_t& desc );
+	void SetLight( int lightNum, const LightDesc_t &desc );
 	void SetLightingOrigin( Vector vLightingOrigin );
 	void SetAmbientLight( float r, float g, float b );
 	void SetAmbientLightCube( Vector4D cube[6] );
 
 	// Get the lights
 	int GetMaxLights( void ) const;
-	const LightDesc_t& GetLight( int lightNum ) const;
+	const LightDesc_t &GetLight( int lightNum ) const;
 
 	// Render state for the ambient light cube (vertex shaders)
 	void SetVertexShaderStateAmbientLightCube();
-	void SetPixelShaderStateAmbientLightCube( int pshReg, bool bForceToBlack = false )
-	{
-	}
+	void SetPixelShaderStateAmbientLightCube( int pshReg, bool bForceToBlack = false ) {}
 
-	float GetAmbientLightCubeLuminance(void)
-	{
-		return 0.0f;
-	}
+	float GetAmbientLightCubeLuminance( void ) { return 0.0f; }
 
 	void SetSkinningMatrices();
 
 	// Lightmap texture binding
 	void BindLightmap( TextureStage_t stage );
-	void BindLightmapAlpha( TextureStage_t stage )
-	{
-	}
+	void BindLightmapAlpha( TextureStage_t stage ) {}
 	void BindBumpLightmap( TextureStage_t stage );
 	void BindFullbrightLightmap( TextureStage_t stage );
 	void BindWhite( TextureStage_t stage );
 	void BindBlack( TextureStage_t stage );
 	void BindGrey( TextureStage_t stage );
 	void BindFBTexture( TextureStage_t stage, int textureIdex );
-	void CopyRenderTargetToTexture( ShaderAPITextureHandle_t texID )
+	void CopyRenderTargetToTexture( ShaderAPITextureHandle_t texID ) {}
+
+	void CopyRenderTargetToTextureEx(
+	    ShaderAPITextureHandle_t texID, int nRenderTargetID, Rect_t *pSrcRect, Rect_t *pDstRect )
 	{
 	}
 
-	void CopyRenderTargetToTextureEx( ShaderAPITextureHandle_t texID, int nRenderTargetID, Rect_t *pSrcRect, Rect_t *pDstRect )
-	{
-	}
-
-	void CopyTextureToRenderTargetEx( int nRenderTargetID, ShaderAPITextureHandle_t textureHandle, Rect_t *pSrcRect, Rect_t *pDstRect )
+	void CopyTextureToRenderTargetEx( int nRenderTargetID, ShaderAPITextureHandle_t textureHandle,
+	    Rect_t *pSrcRect, Rect_t *pDstRect )
 	{
 	}
 
@@ -561,10 +576,12 @@ public:
 	// Gets the dynamic mesh; note that you've got to render the mesh
 	// before calling this function a second time. Clients should *not*
 	// call DestroyStaticMesh on the mesh returned by this call.
-	IMesh* GetDynamicMesh( IMaterial* pMaterial, int nHWSkinBoneCount, bool buffered, IMesh* pVertexOverride, IMesh* pIndexOverride );
-	IMesh* GetDynamicMeshEx( IMaterial* pMaterial, VertexFormat_t fmt, int nHWSkinBoneCount, bool buffered, IMesh* pVertexOverride, IMesh* pIndexOverride );
+	IMesh *GetDynamicMesh( IMaterial *pMaterial, int nHWSkinBoneCount, bool buffered,
+	    IMesh *pVertexOverride, IMesh *pIndexOverride );
+	IMesh *GetDynamicMeshEx( IMaterial *pMaterial, VertexFormat_t fmt, int nHWSkinBoneCount,
+	    bool buffered, IMesh *pVertexOverride, IMesh *pIndexOverride );
 
-	IMesh* GetFlexMesh();
+	IMesh *GetFlexMesh();
 
 	// Renders a single pass of a material
 	void RenderPass( int nPass, int nPassCount );
@@ -582,7 +599,8 @@ public:
 	void LoadCameraToWorld( void );
 	void Ortho( double left, double top, double right, double bottom, double zNear, double zFar );
 	void PerspectiveX( double fovx, double aspect, double zNear, double zFar );
-	void PerspectiveOffCenterX( double fovx, double aspect, double zNear, double zFar, double bottom, double top, double left, double right );
+	void PerspectiveOffCenterX( double fovx, double aspect, double zNear, double zFar,
+	    double bottom, double top, double left, double right );
 	void PickMatrix( int x, int y, int width, int height );
 	void Rotate( float angle, float x, float y, float z );
 	void Translate( float x, float y, float z );
@@ -597,27 +615,27 @@ public:
 	void FogMaxDensity( float flMaxDensity );
 	void GetFogDistances( float *fStart, float *fEnd, float *fFogZ );
 	void FogColor3f( float r, float g, float b );
-	void FogColor3fv( float const* rgb );
+	void FogColor3fv( float const *rgb );
 	void FogColor3ub( unsigned char r, unsigned char g, unsigned char b );
-	void FogColor3ubv( unsigned char const* rgb );
+	void FogColor3ubv( unsigned char const *rgb );
 
 	virtual void SceneFogColor3ub( unsigned char r, unsigned char g, unsigned char b );
 	virtual void SceneFogMode( MaterialFogMode_t fogMode );
 	virtual void GetSceneFogColor( unsigned char *rgb );
-	virtual MaterialFogMode_t GetSceneFogMode( );
-	virtual int GetPixelFogCombo( );
+	virtual MaterialFogMode_t GetSceneFogMode();
+	virtual int GetPixelFogCombo();
 
-	void SetHeightClipZ( float z ); 
-	void SetHeightClipMode( enum MaterialHeightClipMode_t heightClipMode ); 
+	void SetHeightClipZ( float z );
+	void SetHeightClipMode( enum MaterialHeightClipMode_t heightClipMode );
 
 	void SetClipPlane( int index, const float *pPlane );
 	void EnableClipPlane( int index, bool bEnable );
 
 	void SetFastClipPlane( const float *pPlane );
 	void EnableFastClip( bool bEnable );
-	
+
 	// We use smaller dynamic VBs during level transitions, to free up memory
-	virtual int  GetCurrentDynamicVBSize( void );
+	virtual int GetCurrentDynamicVBSize( void );
 	virtual void DestroyVertexBuffers( bool bExitingLevel = false );
 
 	// Sets the vertex and pixel shaders
@@ -625,12 +643,18 @@ public:
 	void SetPixelShaderIndex( int pshIndex );
 
 	// Sets the constant register for vertex and pixel shaders
-	void SetVertexShaderConstant( int var, float const* pVec, int numConst = 1, bool bForce = false );
-	void SetBooleanVertexShaderConstant( int var, BOOL const* pVec, int numConst = 1, bool bForce = false );
-	void SetIntegerVertexShaderConstant( int var, int const* pVec, int numConst = 1, bool bForce = false );
-	void SetPixelShaderConstant( int var, float const* pVec, int numConst = 1, bool bForce = false );
-	void SetBooleanPixelShaderConstant( int var, BOOL const* pVec, int numBools = 1, bool bForce = false );
-	void SetIntegerPixelShaderConstant( int var, int const* pVec, int numIntVecs = 1, bool bForce = false );
+	void SetVertexShaderConstant(
+	    int var, float const *pVec, int numConst = 1, bool bForce = false );
+	void SetBooleanVertexShaderConstant(
+	    int var, BOOL const *pVec, int numConst = 1, bool bForce = false );
+	void SetIntegerVertexShaderConstant(
+	    int var, int const *pVec, int numConst = 1, bool bForce = false );
+	void SetPixelShaderConstant(
+	    int var, float const *pVec, int numConst = 1, bool bForce = false );
+	void SetBooleanPixelShaderConstant(
+	    int var, BOOL const *pVec, int numBools = 1, bool bForce = false );
+	void SetIntegerPixelShaderConstant(
+	    int var, int const *pVec, int numIntVecs = 1, bool bForce = false );
 
 	void InvalidateDelayedShaderConstants( void );
 
@@ -639,7 +663,8 @@ public:
 	float LinearToGamma_HardwareSpecific( float fLinear ) const;
 
 	//Set's the linear->gamma conversion textures to use for this hardware for both srgb writes enabled and disabled(identity)
-	void SetLinearToGammaConversionTextures( ShaderAPITextureHandle_t hSRGBWriteEnabledTexture, ShaderAPITextureHandle_t hIdentityTexture );
+	void SetLinearToGammaConversionTextures( ShaderAPITextureHandle_t hSRGBWriteEnabledTexture,
+	    ShaderAPITextureHandle_t hIdentityTexture );
 
 	// Cull mode
 	void CullMode( MaterialCullMode_t cullMode );
@@ -657,20 +682,22 @@ public:
 	void ShadeMode( ShaderShadeMode_t mode );
 
 	// Binds a particular material to render with
-	void Bind( IMaterial* pMaterial );
+	void Bind( IMaterial *pMaterial );
 
 	// Returns the nearest supported format
 	ImageFormat GetNearestSupportedFormat( ImageFormat fmt, bool bFilteringRequired = true ) const;
- 	ImageFormat GetNearestRenderTargetFormat( ImageFormat fmt ) const;
+	ImageFormat GetNearestRenderTargetFormat( ImageFormat fmt ) const;
 
 	// Sets the texture state
 	void BindTexture( Sampler_t stage, ShaderAPITextureHandle_t textureHandle );
 
-	void SetRenderTarget( ShaderAPITextureHandle_t colorTextureHandle, ShaderAPITextureHandle_t depthTextureHandle )
+	void SetRenderTarget(
+	    ShaderAPITextureHandle_t colorTextureHandle, ShaderAPITextureHandle_t depthTextureHandle )
 	{
 	}
 
-	void SetRenderTargetEx( int nRenderTargetID, ShaderAPITextureHandle_t colorTextureHandle, ShaderAPITextureHandle_t depthTextureHandle )
+	void SetRenderTargetEx( int nRenderTargetID, ShaderAPITextureHandle_t colorTextureHandle,
+	    ShaderAPITextureHandle_t depthTextureHandle )
 	{
 	}
 
@@ -680,47 +707,32 @@ public:
 	void ModifyTexture( ShaderAPITextureHandle_t textureHandle );
 
 	// Texture management methods
-	void TexImage2D( int level, int cubeFace, ImageFormat dstFormat, int zOffset, int width, int height, 
-							 ImageFormat srcFormat, bool bSrcIsTiled, void *imageData );
-	void TexSubImage2D( int level, int cubeFace, int xOffset, int yOffset, int zOffset, int width, int height,
-							 ImageFormat srcFormat, int srcStride, bool bSrcIsTiled, void *imageData );
+	void TexImage2D( int level, int cubeFace, ImageFormat dstFormat, int zOffset, int width,
+	    int height, ImageFormat srcFormat, bool bSrcIsTiled, void *imageData );
+	void TexSubImage2D( int level, int cubeFace, int xOffset, int yOffset, int zOffset, int width,
+	    int height, ImageFormat srcFormat, int srcStride, bool bSrcIsTiled, void *imageData );
 
 	void TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame );
 
-	bool TexLock( int level, int cubeFaceID, int xOffset, int yOffset, 
-									int width, int height, CPixelWriter& writer );
-	void TexUnlock( );
-	
+	bool TexLock( int level, int cubeFaceID, int xOffset, int yOffset, int width, int height,
+	    CPixelWriter &writer );
+	void TexUnlock();
+
 	// These are bound to the texture, not the texture environment
 	void TexMinFilter( ShaderTexFilterMode_t texFilterMode );
 	void TexMagFilter( ShaderTexFilterMode_t texFilterMode );
 	void TexWrap( ShaderTexCoordComponent_t coord, ShaderTexWrapMode_t wrapMode );
-	void TexSetPriority( int priority );	
+	void TexSetPriority( int priority );
 
-	ShaderAPITextureHandle_t CreateTexture( 
-		int width, 
-		int height,
-		int depth,
-		ImageFormat dstImageFormat, 
-		int numMipLevels, 
-		int numCopies, 
-		int flags, 
-		const char *pDebugName,
-		const char *pTextureGroupName );
+	ShaderAPITextureHandle_t CreateTexture( int width, int height, int depth,
+	    ImageFormat dstImageFormat, int numMipLevels, int numCopies, int flags,
+	    const char *pDebugName, const char *pTextureGroupName );
 	// Create a multi-frame texture (equivalent to calling "CreateTexture" multiple times, but more efficient)
-	void CreateTextures( 
-		ShaderAPITextureHandle_t *pHandles,
-		int count,
-		int width, 
-		int height,
-		int depth,
-		ImageFormat dstImageFormat, 
-		int numMipLevels, 
-		int numCopies, 
-		int flags, 
-		const char *pDebugName,
-		const char *pTextureGroupName );
-	ShaderAPITextureHandle_t CreateDepthTexture( ImageFormat renderFormat, int width, int height, const char *pDebugName, bool bTexture );
+	void CreateTextures( ShaderAPITextureHandle_t *pHandles, int count, int width, int height,
+	    int depth, ImageFormat dstImageFormat, int numMipLevels, int numCopies, int flags,
+	    const char *pDebugName, const char *pTextureGroupName );
+	ShaderAPITextureHandle_t CreateDepthTexture(
+	    ImageFormat renderFormat, int width, int height, const char *pDebugName, bool bTexture );
 	void DeleteTexture( ShaderAPITextureHandle_t textureHandle );
 	bool IsTexture( ShaderAPITextureHandle_t textureHandle );
 	bool IsTextureResident( ShaderAPITextureHandle_t textureHandle );
@@ -729,13 +741,15 @@ public:
 	void ClearBuffersObeyStencil( bool bClearColor, bool bClearDepth );
 	void ClearBuffersObeyStencilEx( bool bClearColor, bool bClearAlpha, bool bClearDepth );
 	void PerformFullScreenStencilOperation( void );
-	void ReadPixels( int x, int y, int width, int height, unsigned char *data, ImageFormat dstFormat );
-	virtual void ReadPixels( Rect_t *pSrcRect, Rect_t *pDstRect, unsigned char *data, ImageFormat dstFormat, int nDstStride );
+	void ReadPixels(
+	    int x, int y, int width, int height, unsigned char *data, ImageFormat dstFormat );
+	virtual void ReadPixels( Rect_t *pSrcRect, Rect_t *pDstRect, unsigned char *data,
+	    ImageFormat dstFormat, int nDstStride );
 
 	// Selection mode methods
 	int SelectionMode( bool selectionMode );
-	void SelectionBuffer( unsigned int* pBuffer, int size );
-	void ClearSelectionNames( );
+	void SelectionBuffer( unsigned int *pBuffer, int size );
+	void ClearSelectionNames();
 	void LoadSelectionName( int name );
 	void PushSelectionName( int name );
 	void PopSelectionName();
@@ -743,7 +757,8 @@ public:
 	void FlushHardware();
 	void ResetRenderState( bool bFullReset = true );
 
-	void SetScissorRect( const int nLeft, const int nTop, const int nRight, const int nBottom, const bool bEnableScissor );
+	void SetScissorRect( const int nLeft, const int nTop, const int nRight, const int nBottom,
+	    const bool bEnableScissor );
 
 	// Can we download textures?
 	virtual bool CanDownloadTextures() const;
@@ -759,17 +774,17 @@ public:
 	double CurrentTime() const;
 
 	// Get the current camera position in world space.
-	void GetWorldSpaceCameraPosition( float * pPos ) const;
+	void GetWorldSpaceCameraPosition( float *pPos ) const;
 
 	// Members of IMaterialSystemHardwareConfig
 	bool HasDestAlphaBuffer() const;
 	bool HasStencilBuffer() const;
-	virtual int  MaxViewports() const;
+	virtual int MaxViewports() const;
 	virtual void OverrideStreamOffsetSupport( bool bOverrideEnabled, bool bEnableSupport ) {}
-	virtual int  GetShadowFilterMode() const;
-	int  StencilBufferBits() const;
-	int	 GetFrameBufferColorDepth() const;
-	int  GetSamplerCount() const;
+	virtual int GetShadowFilterMode() const;
+	int StencilBufferBits() const;
+	int GetFrameBufferColorDepth() const;
+	int GetSamplerCount() const;
 	bool HasSetDeviceGammaRamp() const;
 	bool SupportsCompressedTextures() const;
 	VertexCompressionType_t SupportsCompressedVertices() const;
@@ -781,35 +796,29 @@ public:
 	bool SupportsStaticControlFlow() const;
 	bool SupportsVertexShaders_2_0() const;
 	bool SupportsShaderModel_3_0() const;
-	int  MaximumAnisotropicLevel() const;
-	int  MaxTextureWidth() const;
-	int  MaxTextureHeight() const;
-	int  MaxTextureAspectRatio() const;
-	int  GetDXSupportLevel() const;
-	const char *GetShaderDLLName() const
-	{
-		return "UNKNOWN";
-	}
-	int	 TextureMemorySize() const;
+	int MaximumAnisotropicLevel() const;
+	int MaxTextureWidth() const;
+	int MaxTextureHeight() const;
+	int MaxTextureAspectRatio() const;
+	int GetDXSupportLevel() const;
+	const char *GetShaderDLLName() const { return "UNKNOWN"; }
+	int TextureMemorySize() const;
 	bool SupportsOverbright() const;
 	bool SupportsCubeMaps() const;
 	bool SupportsMipmappedCubemaps() const;
 	bool SupportsNonPow2Textures() const;
-	int  GetTextureStageCount() const;
-	int	 NumVertexShaderConstants() const;
-	int	 NumBooleanVertexShaderConstants() const;
-	int	 NumIntegerVertexShaderConstants() const;
-	int	 NumPixelShaderConstants() const;
-	int	 MaxNumLights() const;
+	int GetTextureStageCount() const;
+	int NumVertexShaderConstants() const;
+	int NumBooleanVertexShaderConstants() const;
+	int NumIntegerVertexShaderConstants() const;
+	int NumPixelShaderConstants() const;
+	int MaxNumLights() const;
 	bool SupportsHardwareLighting() const;
-	int	 MaxBlendMatrices() const;
-	int	 MaxBlendMatrixIndices() const;
-	int	 MaxVertexShaderBlendMatrices() const;
-	int	 MaxUserClipPlanes() const;
-	bool UseFastClipping() const
-	{
-		return false;
-	}
+	int MaxBlendMatrices() const;
+	int MaxBlendMatrixIndices() const;
+	int MaxVertexShaderBlendMatrices() const;
+	int MaxUserClipPlanes() const;
+	bool UseFastClipping() const { return false; }
 	bool SpecifiesFogColorInLinearSpace() const;
 	virtual bool SupportsSRGB() const;
 	virtual bool FakeSRGBWrite() const;
@@ -817,22 +826,19 @@ public:
 	virtual bool SupportsGLMixedSizeTargets() const;
 
 	const char *GetHWSpecificShaderDLLName() const;
-	bool NeedsAAClamp() const
-	{
-		return false;
-	}
+	bool NeedsAAClamp() const { return false; }
 	bool SupportsSpheremapping() const;
 	virtual int MaxHWMorphBatchCount() const { return 0; }
 
 	// This is the max dx support level supported by the card
-	virtual int	 GetMaxDXSupportLevel() const;
+	virtual int GetMaxDXSupportLevel() const;
 
 	bool ReadPixelsFromFrontBuffer() const;
 	bool PreferDynamicTextures() const;
 	virtual bool PreferReducedFillrate() const;
 	bool HasProjectedBumpEnv() const;
 	void ForceHardwareSync( void );
-	
+
 	int GetCurrentNumBones( void ) const;
 	bool IsHWMorphingEnabled( void ) const;
 	int GetCurrentLightCombo( void ) const;
@@ -844,10 +850,9 @@ public:
 	void EvictManagedResources();
 
 	void SetTextureTransformDimension( TextureStage_t textureStage, int dimension, bool projected );
-	void DisableTextureTransform( TextureStage_t textureStage )
-	{
-	}
-	void SetBumpEnvMatrix( TextureStage_t textureStage, float m00, float m01, float m10, float m11 );
+	void DisableTextureTransform( TextureStage_t textureStage ) {}
+	void SetBumpEnvMatrix(
+	    TextureStage_t textureStage, float m00, float m01, float m10, float m11 );
 
 	// Gets the lightmap dimensions
 	virtual void GetLightmapDimensions( int *w, int *h );
@@ -856,64 +861,31 @@ public:
 
 	// Setup standard vertex shader constants (that don't change)
 	// This needs to be called anytime that overbright changes.
-	virtual void SetStandardVertexShaderConstants( float fOverbright )
-	{
-	}
-	
+	virtual void SetStandardVertexShaderConstants( float fOverbright ) {}
+
 	// Level of anisotropic filtering
 	virtual void SetAnisotropicLevel( int nAnisotropyLevel );
 
-	bool SupportsHDR() const
-	{
-		return false;
-	}
-	HDRType_t GetHDRType() const
-	{
-		return HDR_TYPE_NONE;
-	}
-	HDRType_t GetHardwareHDRType() const
-	{
-		return HDR_TYPE_NONE;
-	}
-	virtual bool NeedsATICentroidHack() const
-	{
-		return false;
-	}
-	virtual bool SupportsColorOnSecondStream() const
-	{
-		return false;
-	}
-	virtual bool SupportsStaticPlusDynamicLighting() const
-	{
-		return false;
-	}
-	virtual bool SupportsStreamOffset() const
-	{
-		return false;
-	}
-	void SetDefaultDynamicState()
-	{
-	}
-	virtual void CommitPixelShaderLighting( int pshReg )
-	{
-	}
+	bool SupportsHDR() const { return false; }
+	HDRType_t GetHDRType() const { return HDR_TYPE_NONE; }
+	HDRType_t GetHardwareHDRType() const { return HDR_TYPE_NONE; }
+	virtual bool NeedsATICentroidHack() const { return false; }
+	virtual bool SupportsColorOnSecondStream() const { return false; }
+	virtual bool SupportsStaticPlusDynamicLighting() const { return false; }
+	virtual bool SupportsStreamOffset() const { return false; }
+	void SetDefaultDynamicState() {}
+	virtual void CommitPixelShaderLighting( int pshReg ) {}
 
 	ShaderAPIOcclusionQuery_t CreateOcclusionQueryObject( void )
 	{
 		return INVALID_SHADERAPI_OCCLUSION_QUERY_HANDLE;
 	}
 
-	void DestroyOcclusionQueryObject( ShaderAPIOcclusionQuery_t handle )
-	{
-	}
+	void DestroyOcclusionQueryObject( ShaderAPIOcclusionQuery_t handle ) {}
 
-	void BeginOcclusionQueryDrawing( ShaderAPIOcclusionQuery_t handle )
-	{
-	}
+	void BeginOcclusionQueryDrawing( ShaderAPIOcclusionQuery_t handle ) {}
 
-	void EndOcclusionQueryDrawing( ShaderAPIOcclusionQuery_t handle )
-	{
-	}
+	void EndOcclusionQueryDrawing( ShaderAPIOcclusionQuery_t handle ) {}
 
 	int OcclusionQuery_GetNumPixelsRendered( ShaderAPIOcclusionQuery_t handle, bool bFlush )
 	{
@@ -928,40 +900,27 @@ public:
 	virtual bool CanStretchRectFromTextures( void ) const { return false; }
 	virtual void EnableBuffer2FramesAhead( bool bEnable ) {}
 
-	virtual void SetPSNearAndFarZ( int pshReg ) { }
+	virtual void SetPSNearAndFarZ( int pshReg ) {}
 
 	virtual void SetDepthFeatheringPixelShaderConstant( int iConstant, float fDepthBlendScale ) {}
 
-	void SetPixelShaderFogParams( int reg )
-	{
-	}
+	void SetPixelShaderFogParams( int reg ) {}
 
-	virtual bool InFlashlightMode() const
-	{
-		return false;
-	}
+	virtual bool InFlashlightMode() const { return false; }
 
-	virtual bool InEditorMode() const
-	{
-		return false;
-	}
+	virtual bool InEditorMode() const { return false; }
 
 	// What fields in the morph do we actually use?
-	virtual MorphFormat_t ComputeMorphFormat( int numSnapshots, StateSnapshot_t* pIds ) const
+	virtual MorphFormat_t ComputeMorphFormat( int numSnapshots, StateSnapshot_t *pIds ) const
 	{
 		return 0;
 	}
 
 	// Gets the bound morph's vertex format; returns 0 if no morph is bound
-	virtual MorphFormat_t GetBoundMorphFormat()
-	{
-		return 0;
-	}
+	virtual MorphFormat_t GetBoundMorphFormat() { return 0; }
 
 	// Binds a standard texture
-	virtual void BindStandardTexture( Sampler_t stage, StandardTextureId_t id )
-	{
-	}
+	virtual void BindStandardTexture( Sampler_t stage, StandardTextureId_t id ) {}
 
 	virtual void BindStandardVertexTexture( VertexTextureSampler_t stage, StandardTextureId_t id )
 	{
@@ -972,74 +931,53 @@ public:
 		*pWidth = *pHeight = 0;
 	}
 
-
 	virtual void SetFlashlightState( const FlashlightState_t &state, const VMatrix &worldToTexture )
 	{
 	}
 
-	virtual void SetFlashlightStateEx( const FlashlightState_t &state, const VMatrix &worldToTexture, ITexture *pFlashlightDepthTexture )
+	virtual void SetFlashlightStateEx( const FlashlightState_t &state,
+	    const VMatrix &worldToTexture, ITexture *pFlashlightDepthTexture )
 	{
 	}
 
-	virtual const FlashlightState_t &GetFlashlightState( VMatrix &worldToTexture ) const 
+	virtual const FlashlightState_t &GetFlashlightState( VMatrix &worldToTexture ) const
 	{
-		static FlashlightState_t  blah;
+		static FlashlightState_t blah;
 		return blah;
 	}
 
-	virtual const FlashlightState_t &GetFlashlightStateEx( VMatrix &worldToTexture, ITexture **pFlashlightDepthTexture ) const 
+	virtual const FlashlightState_t &GetFlashlightStateEx(
+	    VMatrix &worldToTexture, ITexture **pFlashlightDepthTexture ) const
 	{
-		static FlashlightState_t  blah;
+		static FlashlightState_t blah;
 		return blah;
 	}
 
-	virtual void ClearVertexAndPixelShaderRefCounts()
-	{
-	}
+	virtual void ClearVertexAndPixelShaderRefCounts() {}
 
-	virtual void PurgeUnusedVertexAndPixelShaders()
-	{
-	}
+	virtual void PurgeUnusedVertexAndPixelShaders() {}
 
-	virtual bool IsAAEnabled() const
-	{
-		return false;
-	}
+	virtual bool IsAAEnabled() const { return false; }
 
-	virtual int GetVertexTextureCount() const
-	{
-		return 0;
-	}
+	virtual int GetVertexTextureCount() const { return 0; }
 
-	virtual int GetMaxVertexTextureDimension() const
-	{
-		return 0;
-	}
+	virtual int GetMaxVertexTextureDimension() const { return 0; }
 
-	virtual int  MaxTextureDepth() const
-	{
-		return 0;
-	}
+	virtual int MaxTextureDepth() const { return 0; }
 
 	// Binds a vertex texture to a particular texture stage in the vertex pipe
-	virtual void BindVertexTexture( VertexTextureSampler_t nSampler, ShaderAPITextureHandle_t hTexture )
+	virtual void BindVertexTexture(
+	    VertexTextureSampler_t nSampler, ShaderAPITextureHandle_t hTexture )
 	{
 	}
 
 	// Sets morph target factors
-	virtual void SetFlexWeights( int nFirstWeight, int nCount, const MorphWeight_t* pWeights )
-	{
-	}
+	virtual void SetFlexWeights( int nFirstWeight, int nCount, const MorphWeight_t *pWeights ) {}
 
 	// NOTE: Stuff after this is added after shipping HL2.
-	ITexture *GetRenderTargetEx( int nRenderTargetID )
-	{
-		return NULL;
-	}
+	ITexture *GetRenderTargetEx( int nRenderTargetID ) { return NULL; }
 
-	void SetToneMappingScaleLinear( const Vector &scale )
-	{
-	}
+	void SetToneMappingScaleLinear( const Vector &scale ) {}
 
 	const Vector &GetToneMappingScaleLinear( void ) const
 	{
@@ -1047,111 +985,66 @@ public:
 		return dummy;
 	}
 
-	virtual float GetLightMapScaleFactor( void ) const
-	{
-		return 1.0;
-	}
-
+	virtual float GetLightMapScaleFactor( void ) const { return 1.0; }
 
 	// For dealing with device lost in cases where SwapBuffers isn't called all the time (Hammer)
-	virtual void HandleDeviceLost()
-	{
-	}
+	virtual void HandleDeviceLost() {}
 
-	virtual void EnableLinearColorSpaceFrameBuffer( bool bEnable )
-	{
-	}
+	virtual void EnableLinearColorSpaceFrameBuffer( bool bEnable ) {}
 
-	// Lets the shader know about the full-screen texture so it can 
-	virtual void SetFullScreenTextureHandle( ShaderAPITextureHandle_t h )
-	{
-	}
+	// Lets the shader know about the full-screen texture so it can
+	virtual void SetFullScreenTextureHandle( ShaderAPITextureHandle_t h ) {}
 
-	void SetFloatRenderingParameter(int parm_number, float value)
-	{
-	}
+	void SetFloatRenderingParameter( int parm_number, float value ) {}
 
-	void SetIntRenderingParameter(int parm_number, int value)
-	{
-	}
-	void SetVectorRenderingParameter(int parm_number, Vector const &value)
-	{
-	}
+	void SetIntRenderingParameter( int parm_number, int value ) {}
+	void SetVectorRenderingParameter( int parm_number, Vector const &value ) {}
 
-	float GetFloatRenderingParameter(int parm_number) const
-	{
-		return 0;
-	}
+	float GetFloatRenderingParameter( int parm_number ) const { return 0; }
 
-	int GetIntRenderingParameter(int parm_number) const
-	{
-		return 0;
-	}
+	int GetIntRenderingParameter( int parm_number ) const { return 0; }
 
-	Vector GetVectorRenderingParameter(int parm_number) const
-	{
-		return Vector(0,0,0);
-	}
+	Vector GetVectorRenderingParameter( int parm_number ) const { return Vector( 0, 0, 0 ); }
 
 	// Methods related to stencil
-	void SetStencilEnable(bool onoff)
+	void SetStencilEnable( bool onoff ) {}
+
+	void SetStencilFailOperation( StencilOperation_t op ) {}
+
+	void SetStencilZFailOperation( StencilOperation_t op ) {}
+
+	void SetStencilPassOperation( StencilOperation_t op ) {}
+
+	void SetStencilCompareFunction( StencilComparisonFunction_t cmpfn ) {}
+
+	void SetStencilReferenceValue( int ref ) {}
+
+	void SetStencilTestMask( uint32 msk ) {}
+
+	void SetStencilWriteMask( uint32 msk ) {}
+
+	void ClearStencilBufferRectangle( int xmin, int ymin, int xmax, int ymax, int value ) {}
+
+	virtual void GetDXLevelDefaults( uint &max_dxlevel, uint &recommended_dxlevel )
 	{
+		max_dxlevel = recommended_dxlevel = 90;
 	}
 
-	void SetStencilFailOperation(StencilOperation_t op)
-	{
-	}
-
-	void SetStencilZFailOperation(StencilOperation_t op)
-	{
-	}
-
-	void SetStencilPassOperation(StencilOperation_t op)
-	{
-	}
-
-	void SetStencilCompareFunction(StencilComparisonFunction_t cmpfn)
-	{
-	}
-
-	void SetStencilReferenceValue(int ref)
-	{
-	}
-
-	void SetStencilTestMask(uint32 msk)
-	{
-	}
-
-	void SetStencilWriteMask(uint32 msk)
-	{
-	}
-
-	void ClearStencilBufferRectangle( int xmin, int ymin, int xmax, int ymax,int value)
-	{
-	}
-
-	virtual void GetDXLevelDefaults(uint &max_dxlevel,uint &recommended_dxlevel)
-	{
-		max_dxlevel=recommended_dxlevel=90;
-	}
-
-	virtual void GetMaxToRender( IMesh *pMesh, bool bMaxUntilFlush, int *pMaxVerts, int *pMaxIndices )
+	virtual void GetMaxToRender(
+	    IMesh *pMesh, bool bMaxUntilFlush, int *pMaxVerts, int *pMaxIndices )
 	{
 		*pMaxVerts = 32768;
 		*pMaxIndices = 32768;
 	}
 
 	// Returns the max possible vertices + indices to render in a single draw call
-	virtual int GetMaxVerticesToRender( IMaterial *pMaterial )
-	{
-		return 32768;
-	}
+	virtual int GetMaxVerticesToRender( IMaterial *pMaterial ) { return 32768; }
 
-	virtual int GetMaxIndicesToRender( )
+	virtual int GetMaxIndicesToRender() { return 32768; }
+	virtual int CompareSnapshots( StateSnapshot_t snapshot0, StateSnapshot_t snapshot1 )
 	{
-		return 32768;
+		return 0;
 	}
-	virtual int CompareSnapshots( StateSnapshot_t snapshot0, StateSnapshot_t snapshot1 ) { return 0; }
 
 	virtual void DisableAllLocalLights() {}
 
@@ -1164,95 +1057,88 @@ public:
 	virtual void EndPIXEvent() {}
 	virtual void SetPIXMarker( unsigned long color, const char *szName ) {}
 
-	virtual void ComputeVertexDescription( unsigned char* pBuffer, VertexFormat_t vertexFormat, MeshDesc_t& desc ) const {}
+	virtual void ComputeVertexDescription(
+	    unsigned char *pBuffer, VertexFormat_t vertexFormat, MeshDesc_t &desc ) const
+	{
+	}
 
 	virtual bool SupportsShadowDepthTextures() { return false; }
 
 	virtual bool SupportsFetch4() { return false; }
 
-	virtual int NeedsShaderSRGBConversion(void) const { return 0; }
+	virtual int NeedsShaderSRGBConversion( void ) const { return 0; }
 	virtual bool UsesSRGBCorrectBlending() const { return false; }
 
 	virtual bool HasFastVertexTextures() const { return false; }
 
-	virtual void SetShadowDepthBiasFactors( float fShadowSlopeScaleDepthBias, float fShadowDepthBias ) {}
+	virtual void SetShadowDepthBiasFactors(
+	    float fShadowSlopeScaleDepthBias, float fShadowDepthBias )
+	{
+	}
 
 	virtual void SetDisallowAccess( bool ) {}
 	virtual void EnableShaderShaderMutex( bool ) {}
 	virtual void ShaderLock() {}
 	virtual void ShaderUnlock() {}
 
-// ------------ New Vertex/Index Buffer interface ----------------------------
-	void BindVertexBuffer( int streamID, IVertexBuffer *pVertexBuffer, int nOffsetInBytes, int nFirstVertex, int nVertexCount, VertexFormat_t fmt, int nRepetitions1 )
+	// ------------ New Vertex/Index Buffer interface ----------------------------
+	void BindVertexBuffer( int streamID, IVertexBuffer *pVertexBuffer, int nOffsetInBytes,
+	    int nFirstVertex, int nVertexCount, VertexFormat_t fmt, int nRepetitions1 )
 	{
 	}
-	void BindIndexBuffer( IIndexBuffer *pIndexBuffer, int nOffsetInBytes )
-	{
-	}
-	void Draw( MaterialPrimitiveType_t primitiveType, int firstIndex, int numIndices )
-	{
-	}
-// ------------ End ----------------------------
+	void BindIndexBuffer( IIndexBuffer *pIndexBuffer, int nOffsetInBytes ) {}
+	void Draw( MaterialPrimitiveType_t primitiveType, int firstIndex, int numIndices ) {}
+	// ------------ End ----------------------------
 
-	virtual int  GetVertexBufferCompression( void ) const { return 0; };
+	virtual int GetVertexBufferCompression( void ) const { return 0; };
 
 	virtual bool ShouldWriteDepthToDestAlpha( void ) const { return false; };
 	virtual bool SupportsHDRMode( HDRType_t nHDRMode ) const { return false; };
 	virtual bool IsDX10Card() const { return false; };
 
-	void PushDeformation( const DeformationBase_t *pDeformation )
-	{
-	}
+	void PushDeformation( const DeformationBase_t *pDeformation ) {}
 
-	virtual void PopDeformation( )
-	{
-	}
+	virtual void PopDeformation() {}
 
-	int GetNumActiveDeformations( ) const
-	{
-		return 0;
-	}
+	int GetNumActiveDeformations() const { return 0; }
 
 	// for shaders to set vertex shader constants. returns a packed state which can be used to set the dynamic combo
 	int GetPackedDeformationInformation( int nMaskOfUnderstoodDeformations,
-										 float *pConstantValuesOut,
-										 int nBufferSize,
-										 int nMaximumDeformations,
-										 int *pNumDefsOut ) const
+	    float *pConstantValuesOut, int nBufferSize, int nMaximumDeformations,
+	    int *pNumDefsOut ) const
 	{
 		*pNumDefsOut = 0;
 		return 0;
 	}
 
-	void SetStandardTextureHandle(StandardTextureId_t,ShaderAPITextureHandle_t)
-	{
-	}
+	void SetStandardTextureHandle( StandardTextureId_t, ShaderAPITextureHandle_t ) {}
 
-	virtual void ExecuteCommandBuffer( uint8 *pData )
-	{
-	}
+	virtual void ExecuteCommandBuffer( uint8 *pData ) {}
 	virtual bool GetHDREnabled( void ) const { return true; }
 	virtual void SetHDREnabled( bool bEnable ) {}
 
-	virtual void CopyRenderTargetToScratchTexture( ShaderAPITextureHandle_t srcRt, ShaderAPITextureHandle_t dstTex, Rect_t *pSrcRect = NULL, Rect_t *pDstRect = NULL ) 
+	virtual void CopyRenderTargetToScratchTexture( ShaderAPITextureHandle_t srcRt,
+	    ShaderAPITextureHandle_t dstTex, Rect_t *pSrcRect = NULL, Rect_t *pDstRect = NULL )
 	{
 	}
 
 	// Allows locking and unlocking of very specific surface types.
-	virtual void LockRect( void** pOutBits, int* pOutPitch, ShaderAPITextureHandle_t texHandle, int mipmap, int x, int y, int w, int h, bool bWrite, bool bRead ) 
+	virtual void LockRect( void **pOutBits, int *pOutPitch, ShaderAPITextureHandle_t texHandle,
+	    int mipmap, int x, int y, int w, int h, bool bWrite, bool bRead )
 	{
 	}
 
-	virtual void UnlockRect( ShaderAPITextureHandle_t texHandle, int mipmap )
-	{
-	}
+	virtual void UnlockRect( ShaderAPITextureHandle_t texHandle, int mipmap ) {}
 
 	virtual void TexLodClamp( int finest ) {}
 
 	virtual void TexLodBias( float bias ) {}
 
-	virtual void CopyTextureToTexture( ShaderAPITextureHandle_t srcTex, ShaderAPITextureHandle_t dstTex ) {}
-	
+	virtual void CopyTextureToTexture(
+	    ShaderAPITextureHandle_t srcTex, ShaderAPITextureHandle_t dstTex )
+	{
+	}
+
 	void PrintfVA( char *fmt, va_list vargs ) {}
 	void Printf( const char *fmt, ... ) {}
 	float Knob( char *knobname, float *setvalue = NULL ) { return 0.0f; };
@@ -1268,13 +1154,12 @@ private:
 
 	CEmptyMesh m_Mesh;
 
-	void EnableAlphaToCoverage() {} ;
-	void DisableAlphaToCoverage() {} ;
+	void EnableAlphaToCoverage() {};
+	void DisableAlphaToCoverage() {};
 
 	ImageFormat GetShadowDepthTextureFormat() { return IMAGE_FORMAT_UNKNOWN; };
 	ImageFormat GetNullTextureFormat() { return IMAGE_FORMAT_UNKNOWN; };
 };
-
 
 //-----------------------------------------------------------------------------
 // Class Factory
@@ -1299,8 +1184,7 @@ static bool CreateNullShaderBackend( render::LegacyShaderServices *services )
 DLL_EXPORT const render::LegacyShaderProvider *NullShaderBackend_Describe()
 {
 	static const render::LegacyShaderProvider provider = {
-		"null", "shaderapiempty", CreateNullShaderBackend
-	};
+	    "null", "shaderapiempty", CreateNullShaderBackend };
 	return &provider;
 }
 
@@ -1312,46 +1196,51 @@ extern "C" DLL_EXPORT bool ShaderBackend_Create( render::LegacyShaderServices *s
 extern "C" DLL_EXPORT const render::LegacyShaderProvider *ShaderBackend_Describe()
 {
 	static const render::LegacyShaderProvider provider = {
-		"native-vulkan", "shaderapivulkan", ShaderBackend_Create
-	};
+	    "native-vulkan", "shaderapivulkan", ShaderBackend_Create };
 	return &provider;
 }
 
+// Test seam: exposes the native Vulkan context the legacy interfaces drive, so a
+// conformance test can request a capture and read back the pixels the material-
+// facing IShaderAPI/IShaderDevice path actually rendered. Not for runtime use.
+extern "C" DLL_EXPORT render_vulkan::CVulkanContext *ShaderBackend_NativeVulkanContext()
+{
+	return &g_VulkanContext;
+}
+
 // FIXME: Remove; it's for backward compat with the materialsystem only for now
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderAPIVulkan, IShaderAPI, 
-									SHADERAPI_INTERFACE_VERSION, g_ShaderAPIEmpty )
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR(
+    CShaderAPIVulkan, IShaderAPI, SHADERAPI_INTERFACE_VERSION, g_ShaderAPIEmpty )
 
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderShadowVulkan, IShaderShadow, 
-								SHADERSHADOW_INTERFACE_VERSION, g_ShaderShadow )
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR(
+    CShaderShadowVulkan, IShaderShadow, SHADERSHADOW_INTERFACE_VERSION, g_ShaderShadow )
 
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderAPIVulkan, IMaterialSystemHardwareConfig, 
-				MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION, g_ShaderAPIEmpty )
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderAPIVulkan, IMaterialSystemHardwareConfig,
+    MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION, g_ShaderAPIEmpty )
 
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderAPIVulkan, IDebugTextureInfo, 
-				DEBUG_TEXTURE_INFO_VERSION, g_ShaderAPIEmpty )
-
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR(
+    CShaderAPIVulkan, IDebugTextureInfo, DEBUG_TEXTURE_INFO_VERSION, g_ShaderAPIEmpty )
 
 //-----------------------------------------------------------------------------
 // The main GL Shader util interface
 //-----------------------------------------------------------------------------
-IShaderUtil* g_pShaderUtil;
-
+IShaderUtil *g_pShaderUtil;
 
 //-----------------------------------------------------------------------------
 // Factory to return from SetMode
 //-----------------------------------------------------------------------------
-static void* ShaderInterfaceFactory( const char *pInterfaceName, int *pReturnCode )
+static void *ShaderInterfaceFactory( const char *pInterfaceName, int *pReturnCode )
 {
 	if ( pReturnCode )
 	{
 		*pReturnCode = IFACE_OK;
 	}
 	if ( !Q_stricmp( pInterfaceName, SHADER_DEVICE_INTERFACE_VERSION ) )
-		return static_cast< IShaderDevice* >( &s_ShaderDeviceEmpty );
+		return static_cast<IShaderDevice *>( &s_ShaderDeviceEmpty );
 	if ( !Q_stricmp( pInterfaceName, SHADERAPI_INTERFACE_VERSION ) )
-		return static_cast< IShaderAPI* >( &g_ShaderAPIEmpty );
+		return static_cast<IShaderAPI *>( &g_ShaderAPIEmpty );
 	if ( !Q_stricmp( pInterfaceName, SHADERSHADOW_INTERFACE_VERSION ) )
-		return static_cast< IShaderShadow* >( &g_ShaderShadow );
+		return static_cast<IShaderShadow *>( &g_ShaderShadow );
 
 	if ( pReturnCode )
 	{
@@ -1359,7 +1248,6 @@ static void* ShaderInterfaceFactory( const char *pInterfaceName, int *pReturnCod
 	}
 	return NULL;
 }
-
 
 //-----------------------------------------------------------------------------
 //
@@ -1369,7 +1257,7 @@ static void* ShaderInterfaceFactory( const char *pInterfaceName, int *pReturnCod
 bool CShaderDeviceMgrVulkan::Connect( CreateInterfaceFn factory )
 {
 	// So others can access it
-	g_pShaderUtil = (IShaderUtil*)factory( SHADER_UTIL_INTERFACE_VERSION, NULL );
+	g_pShaderUtil = (IShaderUtil *)factory( SHADER_UTIL_INTERFACE_VERSION, NULL );
 
 	return true;
 }
@@ -1382,9 +1270,9 @@ void CShaderDeviceMgrVulkan::Disconnect()
 void *CShaderDeviceMgrVulkan::QueryInterface( const char *pInterfaceName )
 {
 	if ( !Q_stricmp( pInterfaceName, SHADER_DEVICE_MGR_INTERFACE_VERSION ) )
-		return static_cast< IShaderDeviceMgr* >( this );
+		return static_cast<IShaderDeviceMgr *>( this );
 	if ( !Q_stricmp( pInterfaceName, MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION ) )
-		return static_cast< IMaterialSystemHardwareConfig* >( &g_ShaderAPIEmpty );
+		return static_cast<IMaterialSystemHardwareConfig *>( &g_ShaderAPIEmpty );
 	return NULL;
 }
 
@@ -1395,7 +1283,12 @@ InitReturnVal_t CShaderDeviceMgrVulkan::Init()
 
 void CShaderDeviceMgrVulkan::Shutdown()
 {
-
+	// Tear the native Vulkan device down here, during the engine's ordered
+	// shutdown while the SDL window / Wayland connection is still alive. The
+	// swapchain references the Wayland surface, so destroying it at process exit
+	// (after SDL_Quit) crashes in the Wayland client -- do it now instead. The
+	// global context destructor is then a no-op (Shutdown is idempotent).
+	g_VulkanContext.Shutdown();
 }
 
 // Sets the adapter
@@ -1405,9 +1298,10 @@ bool CShaderDeviceMgrVulkan::SetAdapter( int nAdapter, int nFlags )
 }
 
 // FIXME: Is this a public interface? Might only need to be private to shaderapi
-CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode )
+CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode(
+    void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode )
 {
-	Msg("[NativeVulkan] Setting mode for adapter %d\n", nAdapter);
+	Msg( "[NativeVulkan] Setting mode for adapter %d\n", nAdapter );
 
 	// hWnd is an SDL_Window* on this SDL3 build (see shaderapidx9/winutils.cpp,
 	// which casts the same handle to SDL_Window*). Bring up the real native
@@ -1425,9 +1319,16 @@ CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode( void *hWnd, int nAdapter, con
 			int w = 0, h = 0;
 			g_VulkanContext.GetSwapchainExtent( w, h );
 			Msg( "[NativeVulkan] device '%s' up: %dx%d, %.0f MiB, validation %s\n",
-				g_VulkanContext.DeviceName(), w, h,
-				double( g_VulkanContext.DeviceLocalMemoryBytes() ) / ( 1024.0 * 1024.0 ),
-				g_VulkanContext.ValidationEnabled() ? "on" : "off" );
+			    g_VulkanContext.DeviceName(), w, h,
+			    double( g_VulkanContext.DeviceLocalMemoryBytes() ) / ( 1024.0 * 1024.0 ),
+			    g_VulkanContext.ValidationEnabled() ? "on" : "off" );
+
+			// Bring up the dynamic-mesh pipeline so material-system mesh draws
+			// (IMesh::Draw) can rasterize through the backend.
+			std::string meshError;
+			if ( !g_VulkanContext.InitDynamicMesh( &meshError ) )
+				Warning(
+				    "[NativeVulkan] dynamic mesh pipeline unavailable: %s\n", meshError.c_str() );
 		}
 		else
 		{
@@ -1441,38 +1342,54 @@ CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode( void *hWnd, int nAdapter, con
 }
 
 // Gets the number of adapters...
-int	 CShaderDeviceMgrVulkan::GetAdapterCount() const
+int CShaderDeviceMgrVulkan::GetAdapterCount() const
 {
-	return 0;
+	// Advertise the native Vulkan adapter so the material system can select it
+	// and drive rendering through this backend. (Integration attempt: the
+	// material path is partially implemented; this is honest enumeration of a
+	// real device, not a claim of full rendering.)
+	return 1;
 }
 
-bool CShaderDeviceMgrVulkan::GetRecommendedConfigurationInfo( int nAdapter, int nDXLevel, KeyValues *pKeyValues ) 
+bool CShaderDeviceMgrVulkan::GetRecommendedConfigurationInfo(
+    int nAdapter, int nDXLevel, KeyValues *pKeyValues )
 {
 	return true;
 }
 
 // Returns info about each adapter
-void CShaderDeviceMgrVulkan::GetAdapterInfo( int adapter, MaterialAdapterInfo_t& info ) const
+void CShaderDeviceMgrVulkan::GetAdapterInfo( int adapter, MaterialAdapterInfo_t &info ) const
 {
 	memset( &info, 0, sizeof( info ) );
+	Q_strncpy( info.m_pDriverName, "Native Vulkan", sizeof( info.m_pDriverName ) );
 	info.m_nDXSupportLevel = 90;
+	info.m_nMaxDXSupportLevel = 90;
+	info.m_nDriverVersionHigh = 1;
+	info.m_nDriverVersionLow = 0;
 }
 
 // Returns the number of modes
-int	 CShaderDeviceMgrVulkan::GetModeCount( int nAdapter ) const
+int CShaderDeviceMgrVulkan::GetModeCount( int nAdapter ) const
 {
-	return 0;
+	return 1;
 }
 
 // Returns mode information..
-void CShaderDeviceMgrVulkan::GetModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter, int nMode ) const
+void CShaderDeviceMgrVulkan::GetModeInfo(
+    ShaderDisplayMode_t *pInfo, int nAdapter, int nMode ) const
 {
+	if ( !pInfo )
+		return;
+	pInfo->m_nWidth = 1920;
+	pInfo->m_nHeight = 1080;
+	pInfo->m_Format = IMAGE_FORMAT_BGRA8888;
+	pInfo->m_nRefreshRateNumerator = 60;
+	pInfo->m_nRefreshRateDenominator = 1;
 }
 
-void CShaderDeviceMgrVulkan::GetCurrentModeInfo( ShaderDisplayMode_t* pInfo, int nAdapter ) const
+void CShaderDeviceMgrVulkan::GetCurrentModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter ) const
 {
 }
-
 
 //-----------------------------------------------------------------------------
 //
@@ -1490,7 +1407,7 @@ void CShaderDeviceVulkan::GetWindowSize( int &width, int &height ) const
 	height = 0;
 }
 
-void CShaderDeviceVulkan::GetBackBufferDimensions( int& width, int& height ) const
+void CShaderDeviceVulkan::GetBackBufferDimensions( int &width, int &height ) const
 {
 	if ( g_VulkanContext.IsValid() )
 	{
@@ -1507,25 +1424,25 @@ void CShaderDeviceVulkan::SpewDriverInfo() const
 	if ( g_VulkanContext.IsValid() )
 	{
 		Msg( "Native Vulkan device: %s (vendor 0x%04x, device 0x%04x, %s)\n",
-			g_VulkanContext.DeviceName(), g_VulkanContext.VendorId(),
-			g_VulkanContext.DeviceId(), g_VulkanContext.IsDiscrete() ? "discrete" : "integrated/other" );
+		    g_VulkanContext.DeviceName(), g_VulkanContext.VendorId(), g_VulkanContext.DeviceId(),
+		    g_VulkanContext.IsDiscrete() ? "discrete" : "integrated/other" );
 		return;
 	}
-	Warning("Native Vulkan device not initialized\n");
+	Warning( "Native Vulkan device not initialized\n" );
 }
 
 // Creates/ destroys a child window
-bool CShaderDeviceVulkan::AddView( void* hwnd )
+bool CShaderDeviceVulkan::AddView( void *hwnd )
 {
 	return true;
 }
 
-void CShaderDeviceVulkan::RemoveView( void* hwnd )
+void CShaderDeviceVulkan::RemoveView( void *hwnd )
 {
 }
 
 // Activates a view
-void CShaderDeviceVulkan::SetView( void* hwnd )
+void CShaderDeviceVulkan::SetView( void *hwnd )
 {
 }
 
@@ -1538,29 +1455,33 @@ void CShaderDeviceVulkan::ReacquireResources()
 }
 
 // Creates/destroys Mesh
-IMesh* CShaderDeviceVulkan::CreateStaticMesh( VertexFormat_t fmt, const char *pTextureBudgetGroup, IMaterial * pMaterial )
+IMesh *CShaderDeviceVulkan::CreateStaticMesh(
+    VertexFormat_t fmt, const char *pTextureBudgetGroup, IMaterial *pMaterial )
 {
 	return &m_Mesh;
 }
 
-void CShaderDeviceVulkan::DestroyStaticMesh( IMesh* mesh )
+void CShaderDeviceVulkan::DestroyStaticMesh( IMesh *mesh )
 {
 }
 
 // Creates/destroys static vertex + index buffers
-IVertexBuffer *CShaderDeviceVulkan::CreateVertexBuffer( ShaderBufferType_t type, VertexFormat_t fmt, int nVertexCount, const char *pTextureBudgetGroup )
+IVertexBuffer *CShaderDeviceVulkan::CreateVertexBuffer(
+    ShaderBufferType_t type, VertexFormat_t fmt, int nVertexCount, const char *pTextureBudgetGroup )
 {
-	return ( type == SHADER_BUFFER_TYPE_STATIC || type == SHADER_BUFFER_TYPE_STATIC_TEMP ) ? &m_Mesh : &m_DynamicMesh;
+	return ( type == SHADER_BUFFER_TYPE_STATIC || type == SHADER_BUFFER_TYPE_STATIC_TEMP )
+	           ? &m_Mesh
+	           : &m_DynamicMesh;
 }
 
 void CShaderDeviceVulkan::DestroyVertexBuffer( IVertexBuffer *pVertexBuffer )
 {
-
 }
 
-IIndexBuffer *CShaderDeviceVulkan::CreateIndexBuffer( ShaderBufferType_t bufferType, MaterialIndexFormat_t fmt, int nIndexCount, const char *pTextureBudgetGroup )
+IIndexBuffer *CShaderDeviceVulkan::CreateIndexBuffer( ShaderBufferType_t bufferType,
+    MaterialIndexFormat_t fmt, int nIndexCount, const char *pTextureBudgetGroup )
 {
-	switch( bufferType )
+	switch ( bufferType )
 	{
 	case SHADER_BUFFER_TYPE_STATIC:
 	case SHADER_BUFFER_TYPE_STATIC_TEMP:
@@ -1575,20 +1496,19 @@ IIndexBuffer *CShaderDeviceVulkan::CreateIndexBuffer( ShaderBufferType_t bufferT
 
 void CShaderDeviceVulkan::DestroyIndexBuffer( IIndexBuffer *pIndexBuffer )
 {
-
 }
 
-IVertexBuffer *CShaderDeviceVulkan::GetDynamicVertexBuffer( int streamID, VertexFormat_t vertexFormat, bool bBuffered )
+IVertexBuffer *CShaderDeviceVulkan::GetDynamicVertexBuffer(
+    int streamID, VertexFormat_t vertexFormat, bool bBuffered )
 {
 	return &m_DynamicMesh;
 }
 
-IIndexBuffer *CShaderDeviceVulkan::GetDynamicIndexBuffer( MaterialIndexFormat_t fmt, bool bBuffered )
+IIndexBuffer *CShaderDeviceVulkan::GetDynamicIndexBuffer(
+    MaterialIndexFormat_t fmt, bool bBuffered )
 {
 	return &m_Mesh;
 }
-
-
 
 //-----------------------------------------------------------------------------
 //
@@ -1605,30 +1525,30 @@ CEmptyMesh::~CEmptyMesh()
 	delete[] m_pVertexMemory;
 }
 
-bool CEmptyMesh::Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t& desc )
+bool CEmptyMesh::Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t &desc )
 {
 	static int s_BogusIndex;
-	desc.m_pIndices = (unsigned short*)&s_BogusIndex;
+	desc.m_pIndices = (unsigned short *)&s_BogusIndex;
 	desc.m_nIndexSize = 0;
 	desc.m_nFirstIndex = 0;
 	desc.m_nOffset = 0;
 	return true;
 }
 
-void CEmptyMesh::Unlock( int nWrittenIndexCount, IndexDesc_t& desc )
+void CEmptyMesh::Unlock( int nWrittenIndexCount, IndexDesc_t &desc )
 {
 }
 
-void CEmptyMesh::ModifyBegin( bool bReadOnly, int nFirstIndex, int nIndexCount, IndexDesc_t& desc )
+void CEmptyMesh::ModifyBegin( bool bReadOnly, int nFirstIndex, int nIndexCount, IndexDesc_t &desc )
 {
 	Lock( nIndexCount, false, desc );
 }
 
-void CEmptyMesh::ModifyEnd( IndexDesc_t& desc )
+void CEmptyMesh::ModifyEnd( IndexDesc_t &desc )
 {
 }
 
-void CEmptyMesh::Spew( int nIndexCount, const IndexDesc_t & desc )
+void CEmptyMesh::Spew( int nIndexCount, const IndexDesc_t &desc )
 {
 }
 
@@ -1638,37 +1558,49 @@ void CEmptyMesh::ValidateData( int nIndexCount, const IndexDesc_t &desc )
 
 bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 {
-	// Who cares about the data?
-	desc.m_pPosition = (float*)m_pVertexMemory;
-	desc.m_pNormal = (float*)m_pVertexMemory;
-	desc.m_pColor = m_pVertexMemory;
+	// Real interleaved layout so a mesh builder writes coherent vertices that
+	// Draw() can forward to the GPU: position (vec3) at offset 0, color (4 bytes)
+	// at offset 12, stride kMeshVertexStride. Components this bounded backend
+	// does not carry point at a dummy scratch with size 0, so writing them never
+	// disturbs position/color.
+	m_numVerts = nVertexCount;
 
+	desc.m_pPosition = (float *)( m_pVertexMemory );
+	desc.m_pColor = m_pVertexMemory + 12;
+	desc.m_VertexSize_Position = kMeshVertexStride;
+	desc.m_VertexSize_Color = kMeshVertexStride;
+
+	// Texcoord0 lives at offset 16 (after position+color); other texcoord sets go
+	// to the dummy scratch. This lets a textured material sample the mesh UVs.
+	desc.m_pNormal = (float *)m_dummyComponent;
 	int i;
-	for ( i = 0; i < VERTEX_MAX_TEXTURE_COORDINATES; ++i)
+	for ( i = 0; i < VERTEX_MAX_TEXTURE_COORDINATES; ++i )
 	{
-		desc.m_pTexCoord[i] = (float*)m_pVertexMemory;
+		if ( i == 0 )
+		{
+			desc.m_pTexCoord[i] = (float *)( m_pVertexMemory + 16 );
+			desc.m_VertexSize_TexCoord[i] = kMeshVertexStride;
+		}
+		else
+		{
+			desc.m_pTexCoord[i] = (float *)m_dummyComponent;
+			desc.m_VertexSize_TexCoord[i] = 0;
+		}
 	}
-
-	desc.m_pBoneWeight = (float*)m_pVertexMemory;
-	desc.m_pBoneMatrixIndex = (unsigned char*)m_pVertexMemory;
-	desc.m_pTangentS = (float*)m_pVertexMemory;
-	desc.m_pTangentT = (float*)m_pVertexMemory;
-	desc.m_pUserData = (float*)m_pVertexMemory;
+	desc.m_pBoneWeight = (float *)m_dummyComponent;
+	desc.m_pBoneMatrixIndex = (unsigned char *)m_dummyComponent;
+	desc.m_pTangentS = (float *)m_dummyComponent;
+	desc.m_pTangentT = (float *)m_dummyComponent;
+	desc.m_pUserData = (float *)m_dummyComponent;
 	desc.m_NumBoneWeights = 2;
 
-	desc.m_VertexSize_Position = 0;
 	desc.m_VertexSize_BoneWeight = 0;
 	desc.m_VertexSize_BoneMatrixIndex = 0;
 	desc.m_VertexSize_Normal = 0;
-	desc.m_VertexSize_Color = 0;
-	for( i=0; i < VERTEX_MAX_TEXTURE_COORDINATES; i++ )
-	{
-		desc.m_VertexSize_TexCoord[i] = 0;
-	}
 	desc.m_VertexSize_TangentS = 0;
 	desc.m_VertexSize_TangentT = 0;
 	desc.m_VertexSize_UserData = 0;
-	desc.m_ActualVertexSize = 0;	// Size of the vertices.. Some of the m_VertexSize_ elements above
+	desc.m_ActualVertexSize = kMeshVertexStride;
 
 	desc.m_nFirstVertex = 0;
 	desc.m_nOffset = 0;
@@ -1679,36 +1611,38 @@ void CEmptyMesh::Unlock( int nVertexCount, VertexDesc_t &desc )
 {
 }
 
-void CEmptyMesh::Spew( int nVertexCount, const VertexDesc_t &desc ) 
+void CEmptyMesh::Spew( int nVertexCount, const VertexDesc_t &desc )
 {
 }
 
-void CEmptyMesh::ValidateData( int nVertexCount, const VertexDesc_t & desc )
+void CEmptyMesh::ValidateData( int nVertexCount, const VertexDesc_t &desc )
 {
 }
 
-void CEmptyMesh::LockMesh( int numVerts, int numIndices, MeshDesc_t& desc )
+void CEmptyMesh::LockMesh( int numVerts, int numIndices, MeshDesc_t &desc )
 {
-	Lock( numVerts, false, *static_cast<VertexDesc_t*>( &desc ) );
-	Lock( numIndices, false, *static_cast<IndexDesc_t*>( &desc ) );
+	Lock( numVerts, false, *static_cast<VertexDesc_t *>( &desc ) );
+	Lock( numIndices, false, *static_cast<IndexDesc_t *>( &desc ) );
 }
 
-void CEmptyMesh::UnlockMesh( int numVerts, int numIndices, MeshDesc_t& desc )
+void CEmptyMesh::UnlockMesh( int numVerts, int numIndices, MeshDesc_t &desc )
 {
 }
 
-void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, int firstIndex, int numIndices, MeshDesc_t& desc )
+void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, int firstIndex,
+    int numIndices, MeshDesc_t &desc )
 {
-	Lock( numVerts, false, *static_cast<VertexDesc_t*>( &desc ) );
-	Lock( numIndices, false, *static_cast<IndexDesc_t*>( &desc ) );
+	Lock( numVerts, false, *static_cast<VertexDesc_t *>( &desc ) );
+	Lock( numIndices, false, *static_cast<IndexDesc_t *>( &desc ) );
 }
 
-void CEmptyMesh::ModifyBegin( int firstVertex, int numVerts, int firstIndex, int numIndices, MeshDesc_t& desc )
+void CEmptyMesh::ModifyBegin(
+    int firstVertex, int numVerts, int firstIndex, int numIndices, MeshDesc_t &desc )
 {
 	ModifyBeginEx( false, firstVertex, numVerts, firstIndex, numIndices, desc );
 }
 
-void CEmptyMesh::ModifyEnd( MeshDesc_t& desc )
+void CEmptyMesh::ModifyEnd( MeshDesc_t &desc )
 {
 }
 
@@ -1726,37 +1660,63 @@ void CEmptyMesh::SetPrimitiveType( MaterialPrimitiveType_t type )
 // Draws the entire mesh
 void CEmptyMesh::Draw( int firstIndex, int numIndices )
 {
+	// Forward the locked position+color vertices to the native Vulkan dynamic
+	// mesh path as a triangle list. Bounded slice: fixed built-in shading, not
+	// material shaders (roadmap R32); indices are treated as a straight list.
+	if ( !g_VulkanContext.IsValid() || !g_VulkanContext.DynamicMeshReady() || m_numVerts <= 0 )
+		return;
+
+	std::vector<float> interleaved;
+	interleaved.reserve( static_cast<size_t>( m_numVerts ) * 8 );
+	for ( int i = 0; i < m_numVerts; ++i )
+	{
+		const unsigned char *base = m_pVertexMemory + static_cast<size_t>( i ) * kMeshVertexStride;
+		float pos[3];
+		memcpy( pos, base, sizeof( pos ) );
+		const unsigned char *col = base + 12;
+		float uv[2];
+		memcpy( uv, base + 16, sizeof( uv ) );
+		interleaved.push_back( pos[0] );
+		interleaved.push_back( pos[1] );
+		interleaved.push_back( pos[2] );
+		interleaved.push_back( col[0] / 255.0f );
+		interleaved.push_back( col[1] / 255.0f );
+		interleaved.push_back( col[2] / 255.0f );
+		interleaved.push_back( uv[0] );
+		interleaved.push_back( uv[1] );
+	}
+	g_VulkanContext.QueueDynamicTriangles(
+	    interleaved.data(), static_cast<uint32_t>( m_numVerts ) );
 }
 
-void CEmptyMesh::Draw(CPrimList *pPrims, int nPrims)
+void CEmptyMesh::Draw( CPrimList *pPrims, int nPrims )
 {
 }
 
 // Copy verts and/or indices to a mesh builder. This only works for temp meshes!
-void CEmptyMesh::CopyToMeshBuilder( 
-	int iStartVert,		// Which vertices to copy.
-	int nVerts, 
-	int iStartIndex,	// Which indices to copy.
-	int nIndices, 
-	int indexOffset,	// This is added to each index.
-	CMeshBuilder &builder )
+void CEmptyMesh::CopyToMeshBuilder( int iStartVert, // Which vertices to copy.
+    int nVerts,
+    int iStartIndex, // Which indices to copy.
+    int nIndices,
+    int indexOffset, // This is added to each index.
+    CMeshBuilder &builder )
 {
 }
 
 // Spews the mesh data
-void CEmptyMesh::Spew( int numVerts, int numIndices, const MeshDesc_t & desc )
+void CEmptyMesh::Spew( int numVerts, int numIndices, const MeshDesc_t &desc )
 {
 }
 
-void CEmptyMesh::ValidateData( int numVerts, int numIndices, const MeshDesc_t & desc )
+void CEmptyMesh::ValidateData( int numVerts, int numIndices, const MeshDesc_t &desc )
 {
 }
 
 // gets the associated material
-IMaterial* CEmptyMesh::GetMaterial()
+IMaterial *CEmptyMesh::GetMaterial()
 {
 	// umm. this don't work none
-	Assert(0);
+	Assert( 0 );
 	return 0;
 }
 
@@ -1802,12 +1762,12 @@ void CShaderShadowVulkan::EnablePolyOffset( PolygonOffsetMode_t nOffsetMode )
 {
 }
 
-// Suppresses/activates color writing 
+// Suppresses/activates color writing
 void CShaderShadowVulkan::EnableColorWrites( bool bEnable )
 {
 }
 
-// Suppresses/activates alpha writing 
+// Suppresses/activates alpha writing
 void CShaderShadowVulkan::EnableAlphaWrites( bool bEnable )
 {
 }
@@ -1839,7 +1799,6 @@ void CShaderShadowVulkan::EnableTextureAlpha( TextureStage_t stage, bool bEnable
 {
 }
 
-
 // Alpha testing
 void CShaderShadowVulkan::EnableAlphaTest( bool bEnable )
 {
@@ -1850,24 +1809,20 @@ void CShaderShadowVulkan::AlphaFunc( ShaderAlphaFunc_t alphaFunc, float alphaRef
 {
 }
 
-
 // Wireframe/filled polygons
 void CShaderShadowVulkan::PolyMode( ShaderPolyModeFace_t face, ShaderPolyMode_t polyMode )
 {
 }
-
 
 // Back face culling
 void CShaderShadowVulkan::EnableCulling( bool bEnable )
 {
 }
 
-
 // Alpha to coverage
 void CShaderShadowVulkan::EnableAlphaToCoverage( bool bEnable )
 {
 }
-
 
 // constant color + transparency
 void CShaderShadowVulkan::EnableConstantColor( bool bEnable )
@@ -1878,10 +1833,8 @@ void CShaderShadowVulkan::EnableConstantColor( bool bEnable )
 // The flags to pass in here come from the VertexFormatFlags_t enum
 // If pTexCoordDimensions is *not* specified, we assume all coordinates
 // are 2-dimensional
-void CShaderShadowVulkan::VertexShaderVertexFormat( unsigned int nFlags, 
-												   int nTexCoordCount,
-												   int* pTexCoordDimensions,
-												   int nUserDataSize )
+void CShaderShadowVulkan::VertexShaderVertexFormat(
+    unsigned int nFlags, int nTexCoordCount, int *pTexCoordDimensions, int nUserDataSize )
 {
 }
 
@@ -1916,8 +1869,8 @@ void CShaderShadowVulkan::CustomTextureStages( int stageCount )
 {
 }
 
-void CShaderShadowVulkan::CustomTextureOperation( TextureStage_t stage, ShaderTexChannel_t channel, 
-	ShaderTexOp_t op, ShaderTexArg_t arg1, ShaderTexArg_t arg2 )
+void CShaderShadowVulkan::CustomTextureOperation( TextureStage_t stage, ShaderTexChannel_t channel,
+    ShaderTexOp_t op, ShaderTexArg_t arg1, ShaderTexArg_t arg2 )
 {
 }
 
@@ -1941,17 +1894,24 @@ void CShaderShadowVulkan::EnableBlendingSeparateAlpha( bool bEnable )
 void CShaderShadowVulkan::SetPixelShader( const char *pShaderName, int pshIndex )
 {
 	m_bUsesVertexAndPixelShaders = ( pShaderName != NULL );
+	if ( pShaderName )
+	{
+		Q_strncpy( m_pixelShaderName, pShaderName, sizeof( m_pixelShaderName ) );
+	}
+	else
+	{
+		m_pixelShaderName[0] = '\0';
+	}
 }
 
-void CShaderShadowVulkan::BlendFuncSeparateAlpha( ShaderBlendFactor_t srcFactor, ShaderBlendFactor_t dstFactor )
+void CShaderShadowVulkan::BlendFuncSeparateAlpha(
+    ShaderBlendFactor_t srcFactor, ShaderBlendFactor_t dstFactor )
 {
 }
 // indicates what per-vertex data we're providing
 void CShaderShadowVulkan::DrawFlags( unsigned int drawFlags )
 {
 }
-
-
 
 //-----------------------------------------------------------------------------
 //
@@ -1963,14 +1923,13 @@ void CShaderShadowVulkan::DrawFlags( unsigned int drawFlags )
 // Constructor, destructor
 //-----------------------------------------------------------------------------
 
-CShaderAPIVulkan::CShaderAPIVulkan()  : m_Mesh( false )
+CShaderAPIVulkan::CShaderAPIVulkan() : m_Mesh( false )
 {
 }
 
 CShaderAPIVulkan::~CShaderAPIVulkan()
 {
 }
-
 
 bool CShaderAPIVulkan::DoRenderTargetsNeedSeparateDepthBuffer() const
 {
@@ -2014,17 +1973,18 @@ int CShaderAPIVulkan::StencilBufferBits() const
 	return 0;
 }
 
-int	 CShaderAPIVulkan::GetFrameBufferColorDepth() const
+int CShaderAPIVulkan::GetFrameBufferColorDepth() const
 {
 	return 0;
 }
 
-int  CShaderAPIVulkan::GetSamplerCount() const
+int CShaderAPIVulkan::GetSamplerCount() const
 {
-	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
-	    (ShaderUtil()->GetConfig().dxSupportLevel < 60))
+	if ( ( ShaderUtil()->GetConfig().dxSupportLevel > 0 ) &&
+	     ( ShaderUtil()->GetConfig().dxSupportLevel < 60 ) )
 		return 1;
-	if (( ShaderUtil()->GetConfig().dxSupportLevel >= 60 ) && ( ShaderUtil()->GetConfig().dxSupportLevel < 80 ))
+	if ( ( ShaderUtil()->GetConfig().dxSupportLevel >= 60 ) &&
+	     ( ShaderUtil()->GetConfig().dxSupportLevel < 80 ) )
 		return 2;
 	return 4;
 }
@@ -2046,8 +2006,8 @@ VertexCompressionType_t CShaderAPIVulkan::SupportsCompressedVertices() const
 
 bool CShaderAPIVulkan::SupportsVertexAndPixelShaders() const
 {
-	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
-	    (ShaderUtil()->GetConfig().dxSupportLevel < 80))
+	if ( ( ShaderUtil()->GetConfig().dxSupportLevel > 0 ) &&
+	     ( ShaderUtil()->GetConfig().dxSupportLevel < 80 ) )
 		return false;
 
 	return true;
@@ -2055,8 +2015,8 @@ bool CShaderAPIVulkan::SupportsVertexAndPixelShaders() const
 
 bool CShaderAPIVulkan::SupportsPixelShaders_1_4() const
 {
-	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
-	    (ShaderUtil()->GetConfig().dxSupportLevel < 81))
+	if ( ( ShaderUtil()->GetConfig().dxSupportLevel > 0 ) &&
+	     ( ShaderUtil()->GetConfig().dxSupportLevel < 81 ) )
 		return false;
 
 	return true;
@@ -2064,8 +2024,8 @@ bool CShaderAPIVulkan::SupportsPixelShaders_1_4() const
 
 bool CShaderAPIVulkan::SupportsPixelShaders_2_0() const
 {
-	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
-	    (ShaderUtil()->GetConfig().dxSupportLevel < 90))
+	if ( ( ShaderUtil()->GetConfig().dxSupportLevel > 0 ) &&
+	     ( ShaderUtil()->GetConfig().dxSupportLevel < 90 ) )
 		return false;
 
 	return true;
@@ -2073,8 +2033,8 @@ bool CShaderAPIVulkan::SupportsPixelShaders_2_0() const
 
 bool CShaderAPIVulkan::SupportsPixelShaders_2_b() const
 {
-	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
-	    (ShaderUtil()->GetConfig().dxSupportLevel < 90))
+	if ( ( ShaderUtil()->GetConfig().dxSupportLevel > 0 ) &&
+	     ( ShaderUtil()->GetConfig().dxSupportLevel < 90 ) )
 		return false;
 
 	return true;
@@ -2087,8 +2047,8 @@ bool CShaderAPIVulkan::ActuallySupportsPixelShaders_2_b() const
 
 bool CShaderAPIVulkan::SupportsShaderModel_3_0() const
 {
-	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
-		(ShaderUtil()->GetConfig().dxSupportLevel < 95))
+	if ( ( ShaderUtil()->GetConfig().dxSupportLevel > 0 ) &&
+	     ( ShaderUtil()->GetConfig().dxSupportLevel < 95 ) )
 		return false;
 
 	return true;
@@ -2104,14 +2064,14 @@ bool CShaderAPIVulkan::SupportsStaticControlFlow() const
 
 bool CShaderAPIVulkan::SupportsVertexShaders_2_0() const
 {
-	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
-	    (ShaderUtil()->GetConfig().dxSupportLevel < 90))
+	if ( ( ShaderUtil()->GetConfig().dxSupportLevel > 0 ) &&
+	     ( ShaderUtil()->GetConfig().dxSupportLevel < 90 ) )
 		return false;
 
 	return true;
 }
 
-int  CShaderAPIVulkan::MaximumAnisotropicLevel() const
+int CShaderAPIVulkan::MaximumAnisotropicLevel() const
 {
 	return 0;
 }
@@ -2120,34 +2080,33 @@ void CShaderAPIVulkan::SetAnisotropicLevel( int nAnisotropyLevel )
 {
 }
 
-int  CShaderAPIVulkan::MaxTextureWidth() const
+int CShaderAPIVulkan::MaxTextureWidth() const
 {
 	// Should be big enough to cover all cases
 	return 16384;
 }
 
-int  CShaderAPIVulkan::MaxTextureHeight() const
+int CShaderAPIVulkan::MaxTextureHeight() const
 {
 	// Should be big enough to cover all cases
 	return 16384;
 }
 
-int  CShaderAPIVulkan::MaxTextureAspectRatio() const
+int CShaderAPIVulkan::MaxTextureAspectRatio() const
 {
 	// Should be big enough to cover all cases
 	return 16384;
 }
 
-
-int	 CShaderAPIVulkan::TextureMemorySize() const
+int CShaderAPIVulkan::TextureMemorySize() const
 {
 	// fake it
 	return 64 * 1024 * 1024;
 }
 
-int  CShaderAPIVulkan::GetDXSupportLevel() const 
-{ 
-	return 90; 
+int CShaderAPIVulkan::GetDXSupportLevel() const
+{
+	return 90;
 }
 
 bool CShaderAPIVulkan::SupportsOverbright() const
@@ -2157,8 +2116,8 @@ bool CShaderAPIVulkan::SupportsOverbright() const
 
 bool CShaderAPIVulkan::SupportsCubeMaps() const
 {
-	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
-	    (ShaderUtil()->GetConfig().dxSupportLevel < 70))
+	if ( ( ShaderUtil()->GetConfig().dxSupportLevel > 0 ) &&
+	     ( ShaderUtil()->GetConfig().dxSupportLevel < 70 ) )
 		return false;
 
 	return true;
@@ -2171,39 +2130,39 @@ bool CShaderAPIVulkan::SupportsNonPow2Textures() const
 
 bool CShaderAPIVulkan::SupportsMipmappedCubemaps() const
 {
-	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
-	    (ShaderUtil()->GetConfig().dxSupportLevel < 70))
+	if ( ( ShaderUtil()->GetConfig().dxSupportLevel > 0 ) &&
+	     ( ShaderUtil()->GetConfig().dxSupportLevel < 70 ) )
 		return false;
 
 	return true;
 }
 
-int  CShaderAPIVulkan::GetTextureStageCount() const
+int CShaderAPIVulkan::GetTextureStageCount() const
 {
 	return 4;
 }
 
-int	 CShaderAPIVulkan::NumVertexShaderConstants() const
+int CShaderAPIVulkan::NumVertexShaderConstants() const
 {
 	return 128;
 }
 
-int	 CShaderAPIVulkan::NumBooleanVertexShaderConstants() const
+int CShaderAPIVulkan::NumBooleanVertexShaderConstants() const
 {
 	return 0;
 }
 
-int	 CShaderAPIVulkan::NumIntegerVertexShaderConstants() const
+int CShaderAPIVulkan::NumIntegerVertexShaderConstants() const
 {
 	return 0;
 }
 
-int	 CShaderAPIVulkan::NumPixelShaderConstants() const
+int CShaderAPIVulkan::NumPixelShaderConstants() const
 {
 	return 8;
 }
 
-int	 CShaderAPIVulkan::MaxNumLights() const
+int CShaderAPIVulkan::MaxNumLights() const
 {
 	return 4;
 }
@@ -2213,26 +2172,25 @@ bool CShaderAPIVulkan::SupportsSpheremapping() const
 	return false;
 }
 
-
 // This is the max dx support level supported by the card
-int	CShaderAPIVulkan::GetMaxDXSupportLevel() const
+int CShaderAPIVulkan::GetMaxDXSupportLevel() const
 {
 	return 90;
 }
 
 bool CShaderAPIVulkan::SupportsHardwareLighting() const
 {
-	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
-	    (ShaderUtil()->GetConfig().dxSupportLevel < 70))
+	if ( ( ShaderUtil()->GetConfig().dxSupportLevel > 0 ) &&
+	     ( ShaderUtil()->GetConfig().dxSupportLevel < 70 ) )
 		return false;
 
 	return true;
 }
 
-int	 CShaderAPIVulkan::MaxBlendMatrices() const
+int CShaderAPIVulkan::MaxBlendMatrices() const
 {
-	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
-	    (ShaderUtil()->GetConfig().dxSupportLevel < 70))
+	if ( ( ShaderUtil()->GetConfig().dxSupportLevel > 0 ) &&
+	     ( ShaderUtil()->GetConfig().dxSupportLevel < 70 ) )
 	{
 		return 1;
 	}
@@ -2240,10 +2198,10 @@ int	 CShaderAPIVulkan::MaxBlendMatrices() const
 	return 0;
 }
 
-int	 CShaderAPIVulkan::MaxBlendMatrixIndices() const
+int CShaderAPIVulkan::MaxBlendMatrixIndices() const
 {
-	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
-	    (ShaderUtil()->GetConfig().dxSupportLevel < 70))
+	if ( ( ShaderUtil()->GetConfig().dxSupportLevel > 0 ) &&
+	     ( ShaderUtil()->GetConfig().dxSupportLevel < 70 ) )
 	{
 		return 1;
 	}
@@ -2251,12 +2209,12 @@ int	 CShaderAPIVulkan::MaxBlendMatrixIndices() const
 	return 0;
 }
 
-int	 CShaderAPIVulkan::MaxVertexShaderBlendMatrices() const
+int CShaderAPIVulkan::MaxVertexShaderBlendMatrices() const
 {
 	return 0;
 }
 
-int	CShaderAPIVulkan::MaxUserClipPlanes() const
+int CShaderAPIVulkan::MaxUserClipPlanes() const
 {
 	return 0;
 }
@@ -2296,51 +2254,60 @@ void CShaderAPIVulkan::SetDefaultState()
 {
 }
 
+// Snapshot -> selected pixel shader name, so BeginPass can bind the matching
+// native pipeline. The snapshot id keeps the existing flag bits (0..3) and packs
+// the table index in the high bits, preserving IsTranslucent()/etc.
+static std::vector<std::string> g_snapshotShaders;
 
 // Returns the snapshot id for the shader state
-StateSnapshot_t	 CShaderAPIVulkan::TakeSnapshot( )
+StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 {
 	StateSnapshot_t id = 0;
-	if (g_ShaderShadow.m_IsTranslucent)
+	if ( g_ShaderShadow.m_IsTranslucent )
 		id |= TRANSLUCENT;
-	if (g_ShaderShadow.m_IsAlphaTested)
+	if ( g_ShaderShadow.m_IsAlphaTested )
 		id |= ALPHATESTED;
-	if (g_ShaderShadow.m_bUsesVertexAndPixelShaders)
+	if ( g_ShaderShadow.m_bUsesVertexAndPixelShaders )
 		id |= VERTEX_AND_PIXEL_SHADERS;
-	if (g_ShaderShadow.m_bIsDepthWriteEnabled)
+	if ( g_ShaderShadow.m_bIsDepthWriteEnabled )
 		id |= DEPTHWRITE;
+
+	const size_t index = g_snapshotShaders.size();
+	g_snapshotShaders.push_back( g_ShaderShadow.m_pixelShaderName );
+	id |= static_cast<StateSnapshot_t>( index << 4 ); // flags occupy bits 0..3
 	return id;
 }
 
 // Returns true if the state snapshot is transparent
 bool CShaderAPIVulkan::IsTranslucent( StateSnapshot_t id ) const
 {
-	return (id & TRANSLUCENT) != 0; 
+	return ( id & TRANSLUCENT ) != 0;
 }
 
 bool CShaderAPIVulkan::IsAlphaTested( StateSnapshot_t id ) const
 {
-	return (id & ALPHATESTED) != 0; 
+	return ( id & ALPHATESTED ) != 0;
 }
 
 bool CShaderAPIVulkan::IsDepthWriteEnabled( StateSnapshot_t id ) const
 {
-	return (id & DEPTHWRITE) != 0; 
+	return ( id & DEPTHWRITE ) != 0;
 }
 
 bool CShaderAPIVulkan::UsesVertexAndPixelShaders( StateSnapshot_t id ) const
 {
-	return (id & VERTEX_AND_PIXEL_SHADERS) != 0; 
+	return ( id & VERTEX_AND_PIXEL_SHADERS ) != 0;
 }
 
 // Gets the vertex format for a set of snapshot ids
-VertexFormat_t CShaderAPIVulkan::ComputeVertexFormat( int numSnapshots, StateSnapshot_t* pIds ) const
+VertexFormat_t CShaderAPIVulkan::ComputeVertexFormat(
+    int numSnapshots, StateSnapshot_t *pIds ) const
 {
 	return 0;
 }
 
 // Gets the vertex format for a set of snapshot ids
-VertexFormat_t CShaderAPIVulkan::ComputeVertexUsage( int numSnapshots, StateSnapshot_t* pIds ) const
+VertexFormat_t CShaderAPIVulkan::ComputeVertexUsage( int numSnapshots, StateSnapshot_t *pIds ) const
 {
 	return 0;
 }
@@ -2355,7 +2322,7 @@ void CShaderAPIVulkan::Color3f( float r, float g, float b )
 {
 }
 
-void CShaderAPIVulkan::Color3fv( float const* pColor )
+void CShaderAPIVulkan::Color3fv( float const *pColor )
 {
 }
 
@@ -2363,7 +2330,7 @@ void CShaderAPIVulkan::Color4f( float r, float g, float b, float a )
 {
 }
 
-void CShaderAPIVulkan::Color4fv( float const* pColor )
+void CShaderAPIVulkan::Color4fv( float const *pColor )
 {
 }
 
@@ -2372,15 +2339,16 @@ void CShaderAPIVulkan::Color3ub( unsigned char r, unsigned char g, unsigned char
 {
 }
 
-void CShaderAPIVulkan::Color3ubv( unsigned char const* rgb )
+void CShaderAPIVulkan::Color3ubv( unsigned char const *rgb )
 {
 }
 
-void CShaderAPIVulkan::Color4ub( unsigned char r, unsigned char g, unsigned char b, unsigned char a )
+void CShaderAPIVulkan::Color4ub(
+    unsigned char r, unsigned char g, unsigned char b, unsigned char a )
 {
 }
 
-void CShaderAPIVulkan::Color4ubv( unsigned char const* rgba )
+void CShaderAPIVulkan::Color4ubv( unsigned char const *rgba )
 {
 }
 
@@ -2390,7 +2358,7 @@ void CShaderAPIVulkan::ShadeMode( ShaderShadeMode_t mode )
 }
 
 // Binds a particular material to render with
-void CShaderAPIVulkan::Bind( IMaterial* pMaterial )
+void CShaderAPIVulkan::Bind( IMaterial *pMaterial )
 {
 }
 
@@ -2426,7 +2394,7 @@ void CShaderAPIVulkan::SetHeightClipMode( enum MaterialHeightClipMode_t heightCl
 }
 
 // Sets the lights
-void CShaderAPIVulkan::SetLight( int lightNum, const LightDesc_t& desc )
+void CShaderAPIVulkan::SetLight( int lightNum, const LightDesc_t &desc )
 {
 }
 
@@ -2449,7 +2417,7 @@ int CShaderAPIVulkan::GetMaxLights( void ) const
 	return 0;
 }
 
-const LightDesc_t& CShaderAPIVulkan::GetLight( int lightNum ) const
+const LightDesc_t &CShaderAPIVulkan::GetLight( int lightNum ) const
 {
 	static LightDesc_t blah;
 	return blah;
@@ -2520,24 +2488,47 @@ void CShaderAPIVulkan::FlushBufferedPrimitives()
 // Gets the dynamic mesh; note that you've got to render the mesh
 // before calling this function a second time. Clients should *not*
 // call DestroyStaticMesh on the mesh returned by this call.
-IMesh* CShaderAPIVulkan::GetDynamicMesh( IMaterial* pMaterial, int nHWSkinBoneCount, bool buffered, IMesh* pVertexOverride, IMesh* pIndexOverride )
+IMesh *CShaderAPIVulkan::GetDynamicMesh( IMaterial *pMaterial, int nHWSkinBoneCount, bool buffered,
+    IMesh *pVertexOverride, IMesh *pIndexOverride )
 {
 	return &m_Mesh;
 }
 
-IMesh* CShaderAPIVulkan::GetDynamicMeshEx( IMaterial* pMaterial, VertexFormat_t fmt, int nHWSkinBoneCount, bool buffered, IMesh* pVertexOverride, IMesh* pIndexOverride )
+IMesh *CShaderAPIVulkan::GetDynamicMeshEx( IMaterial *pMaterial, VertexFormat_t fmt,
+    int nHWSkinBoneCount, bool buffered, IMesh *pVertexOverride, IMesh *pIndexOverride )
 {
 	return &m_Mesh;
 }
 
-IMesh* CShaderAPIVulkan::GetFlexMesh()
+IMesh *CShaderAPIVulkan::GetFlexMesh()
 {
 	return &m_Mesh;
 }
 
 // Begins a rendering pass that uses a state snapshot
-void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot  )
+void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 {
+	// Bind the material shader this snapshot selected: look up its recorded
+	// pixel-shader name and route the dynamic-mesh draw to the matching native
+	// Vulkan pipeline. This is how a material's chosen shader reaches the GPU.
+	const size_t index = static_cast<size_t>( ( snapshot >> 4 ) & 0x7FF );
+	if ( index < g_snapshotShaders.size() )
+	{
+		const std::string &name = g_snapshotShaders[index];
+		int shader = render_vulkan::CVulkanContext::kDynShaderPassthrough;
+		// Map the bound shader name to a native pipeline. Real Source shader names
+		// (e.g. "unlitgeneric_ps20b") are matched by prefix -- UnlitGeneric samples
+		// $basetexture with the material transform, which the textured pipeline
+		// implements natively. The bounded catalog names remain for the harness.
+		if ( name == "greenify" )
+			shader = render_vulkan::CVulkanContext::kDynShaderGreenify;
+		else if ( name == "constantcolor" )
+			shader = render_vulkan::CVulkanContext::kDynShaderConstColor;
+		else if ( name == "basetexture" || name == "$basetexture" ||
+		          name.compare( 0, 12, "unlitgeneric" ) == 0 )
+			shader = render_vulkan::CVulkanContext::kDynShaderTextured;
+		g_VulkanContext.SelectDynamicShader( shader );
+	}
 }
 
 // Renders a single pass of a material
@@ -2582,7 +2573,8 @@ void CShaderAPIVulkan::LoadCameraToWorld( void )
 {
 }
 
-void CShaderAPIVulkan::Ortho( double left, double top, double right, double bottom, double zNear, double zFar )
+void CShaderAPIVulkan::Ortho(
+    double left, double top, double right, double bottom, double zNear, double zFar )
 {
 }
 
@@ -2590,7 +2582,8 @@ void CShaderAPIVulkan::PerspectiveX( double fovx, double aspect, double zNear, d
 {
 }
 
-void CShaderAPIVulkan::PerspectiveOffCenterX( double fovx, double aspect, double zNear, double zFar, double bottom, double top, double left, double right )
+void CShaderAPIVulkan::PerspectiveOffCenterX( double fovx, double aspect, double zNear, double zFar,
+    double bottom, double top, double left, double right )
 {
 }
 
@@ -2630,7 +2623,7 @@ void CShaderAPIVulkan::FogEnd( float fEnd )
 void CShaderAPIVulkan::SetFogZ( float fogZ )
 {
 }
-	
+
 void CShaderAPIVulkan::FogMaxDensity( float flMaxDensity )
 {
 }
@@ -2639,11 +2632,9 @@ void CShaderAPIVulkan::GetFogDistances( float *fStart, float *fEnd, float *fFogZ
 {
 }
 
-
 void CShaderAPIVulkan::SceneFogColor3ub( unsigned char r, unsigned char g, unsigned char b )
 {
 }
-
 
 void CShaderAPIVulkan::SceneFogMode( MaterialFogMode_t fogMode )
 {
@@ -2653,12 +2644,12 @@ void CShaderAPIVulkan::GetSceneFogColor( unsigned char *rgb )
 {
 }
 
-MaterialFogMode_t CShaderAPIVulkan::GetSceneFogMode( )
+MaterialFogMode_t CShaderAPIVulkan::GetSceneFogMode()
 {
 	return MATERIAL_FOG_NONE;
 }
 
-int CShaderAPIVulkan::GetPixelFogCombo( )
+int CShaderAPIVulkan::GetPixelFogCombo()
 {
 	return 0;
 }
@@ -2667,7 +2658,7 @@ void CShaderAPIVulkan::FogColor3f( float r, float g, float b )
 {
 }
 
-void CShaderAPIVulkan::FogColor3fv( float const* rgb )
+void CShaderAPIVulkan::FogColor3fv( float const *rgb )
 {
 }
 
@@ -2675,15 +2666,15 @@ void CShaderAPIVulkan::FogColor3ub( unsigned char r, unsigned char g, unsigned c
 {
 }
 
-void CShaderAPIVulkan::FogColor3ubv( unsigned char const* rgb )
+void CShaderAPIVulkan::FogColor3ubv( unsigned char const *rgb )
 {
 }
 
-void CShaderAPIVulkan::SetViewports( int nCount, const ShaderViewport_t* pViewports )
+void CShaderAPIVulkan::SetViewports( int nCount, const ShaderViewport_t *pViewports )
 {
 }
 
-int CShaderAPIVulkan::GetViewports( ShaderViewport_t* pViewports, int nMax ) const
+int CShaderAPIVulkan::GetViewports( ShaderViewport_t *pViewports, int nMax ) const
 {
 	return 1;
 }
@@ -2698,27 +2689,48 @@ void CShaderAPIVulkan::SetPixelShaderIndex( int pshIndex )
 }
 
 // Sets the constant registers for vertex and pixel shaders
-void CShaderAPIVulkan::SetVertexShaderConstant( int var, float const* pVec, int numConst, bool bForce )
+void CShaderAPIVulkan::SetVertexShaderConstant(
+    int var, float const *pVec, int numConst, bool bForce )
+{
+	// Registers c0-c3 hold the model->projection matrix in Source's vertex-shader
+	// convention; route them to the native dynamic-mesh transform. Bounded slice:
+	// only the c0-c3 matrix is consumed (roadmap R32).
+	if ( pVec && numConst >= 4 && var == 0 )
+	{
+		g_VulkanContext.SetDynamicTransform( pVec );
+	}
+}
+
+void CShaderAPIVulkan::SetBooleanVertexShaderConstant(
+    int var, BOOL const *pVec, int numConst, bool bForce )
 {
 }
 
-void CShaderAPIVulkan::SetBooleanVertexShaderConstant( int var, BOOL const* pVec, int numConst, bool bForce )
+void CShaderAPIVulkan::SetIntegerVertexShaderConstant(
+    int var, int const *pVec, int numConst, bool bForce )
 {
 }
 
-void CShaderAPIVulkan::SetIntegerVertexShaderConstant( int var, int const* pVec, int numConst, bool bForce )
+void CShaderAPIVulkan::SetPixelShaderConstant(
+    int var, float const *pVec, int numConst, bool bForce )
+{
+	// Route the material's pixel-shader constant (register 'var', RGBA float4) to
+	// the native Vulkan constant-color material shader. Bounded slice: only the
+	// first float4 of register 0 is consumed; full constant-register banks are
+	// later work (roadmap R32).
+	if ( pVec && numConst > 0 && var == 0 )
+	{
+		g_VulkanContext.SetDynamicConstantColor( pVec[0], pVec[1], pVec[2], pVec[3] );
+	}
+}
+
+void CShaderAPIVulkan::SetBooleanPixelShaderConstant(
+    int var, BOOL const *pVec, int numBools, bool bForce )
 {
 }
 
-void CShaderAPIVulkan::SetPixelShaderConstant( int var, float const* pVec, int numConst, bool bForce )
-{
-}
-
-void CShaderAPIVulkan::SetBooleanPixelShaderConstant( int var, BOOL const* pVec, int numBools, bool bForce )
-{
-}
-
-void CShaderAPIVulkan::SetIntegerPixelShaderConstant( int var, int const* pVec, int numIntVecs, bool bForce )
+void CShaderAPIVulkan::SetIntegerPixelShaderConstant(
+    int var, int const *pVec, int numIntVecs, bool bForce )
 {
 }
 
@@ -2736,13 +2748,14 @@ float CShaderAPIVulkan::LinearToGamma_HardwareSpecific( float fLinear ) const
 	return 0.0f;
 }
 
-void CShaderAPIVulkan::SetLinearToGammaConversionTextures( ShaderAPITextureHandle_t hSRGBWriteEnabledTexture, ShaderAPITextureHandle_t hIdentityTexture )
+void CShaderAPIVulkan::SetLinearToGammaConversionTextures(
+    ShaderAPITextureHandle_t hSRGBWriteEnabledTexture, ShaderAPITextureHandle_t hIdentityTexture )
 {
 }
 
-
 // Returns the nearest supported format
-ImageFormat CShaderAPIVulkan::GetNearestSupportedFormat( ImageFormat fmt, bool bFilteringRequired /* = true */ ) const
+ImageFormat CShaderAPIVulkan::GetNearestSupportedFormat(
+    ImageFormat fmt, bool bFilteringRequired /* = true */ ) const
 {
 	return fmt;
 }
@@ -2753,16 +2766,29 @@ ImageFormat CShaderAPIVulkan::GetNearestRenderTargetFormat( ImageFormat fmt ) co
 }
 
 // Sets the texture state
+// The texture the material system is currently modifying (ModifyTexture), used
+// by TexImage2D. 0 means none. Handles are 1-based over the native texture table
+// so 0 stays "invalid", matching Source's convention.
+static ShaderAPITextureHandle_t g_currentModifyTexture = 0;
+
 void CShaderAPIVulkan::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t textureHandle )
 {
+	// Point the textured material shader at the bound texture (1-based handle;
+	// 0 restores the built-in). Bounded slice: a single sampler stage.
+	g_VulkanContext.BindManagedTexture( static_cast<int>( textureHandle ) - 1 );
 }
 
 void CShaderAPIVulkan::ClearColor3ub( unsigned char r, unsigned char g, unsigned char b )
 {
+	// Route the material system's clear color to the native Vulkan context; the
+	// render pass applies it on the next BeginFrame (driven by Present()).
+	g_VulkanContext.SetClearColor( r / 255.0f, g / 255.0f, b / 255.0f, 1.0f );
 }
 
-void CShaderAPIVulkan::ClearColor4ub( unsigned char r, unsigned char g, unsigned char b, unsigned char a )
+void CShaderAPIVulkan::ClearColor4ub(
+    unsigned char r, unsigned char g, unsigned char b, unsigned char a )
 {
+	g_VulkanContext.SetClearColor( r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f );
 }
 
 // Indicates we're going to be modifying this texture
@@ -2770,16 +2796,65 @@ void CShaderAPIVulkan::ClearColor4ub( unsigned char r, unsigned char g, unsigned
 // all use the texture specified by this function.
 void CShaderAPIVulkan::ModifyTexture( ShaderAPITextureHandle_t textureHandle )
 {
+	g_currentModifyTexture = textureHandle;
 }
 
 // Texture management methods
-void CShaderAPIVulkan::TexImage2D( int level, int cubeFace, ImageFormat dstFormat, int zOffset, int width, int height, 
-						 ImageFormat srcFormat, bool bSrcIsTiled, void *imageData )
+void CShaderAPIVulkan::TexImage2D( int level, int cubeFace, ImageFormat dstFormat, int zOffset,
+    int width, int height, ImageFormat srcFormat, bool bSrcIsTiled, void *imageData )
 {
+	// Upload the material's texture data into the native texture selected by
+	// ModifyTexture (mip 0). Block-compressed DXT1/DXT5 (Portal's formats) upload
+	// their compressed blocks directly to the matching BC image; uncompressed
+	// RGBA/BGRA/RGB888 upload to a matching 8-bit image.
+	if ( level != 0 || g_currentModifyTexture <= 0 || !imageData || width <= 0 || height <= 0 )
+		return;
+
+	const int handle = static_cast<int>( g_currentModifyTexture ) - 1;
+	const uint8_t *src = static_cast<const uint8_t *>( imageData );
+	const size_t pixels = static_cast<size_t>( width ) * height;
+	std::string error;
+	bool ok = true;
+
+	if ( srcFormat == IMAGE_FORMAT_DXT1 || srcFormat == IMAGE_FORMAT_DXT5 )
+	{
+		// 4x4 block compression: DXT1 = 8 bytes/block, DXT5 = 16 bytes/block.
+		const size_t blocksX = ( static_cast<size_t>( width ) + 3 ) / 4;
+		const size_t blocksY = ( static_cast<size_t>( height ) + 3 ) / 4;
+		const size_t blockBytes = ( srcFormat == IMAGE_FORMAT_DXT1 ) ? 8 : 16;
+		ok = g_VulkanContext.UploadManagedTexture(
+		    handle, src, blocksX * blocksY * blockBytes, &error );
+	}
+	else if ( srcFormat == IMAGE_FORMAT_RGBA8888 || srcFormat == IMAGE_FORMAT_BGRA8888 )
+	{
+		// The image was created with the matching 8-bit format; upload directly.
+		ok = g_VulkanContext.UploadManagedTexture( handle, src, pixels * 4, &error );
+	}
+	else if ( srcFormat == IMAGE_FORMAT_RGB888 )
+	{
+		std::vector<uint8_t> rgba( pixels * 4 );
+		for ( size_t i = 0; i < pixels; ++i )
+		{
+			rgba[i * 4 + 0] = src[i * 3 + 0];
+			rgba[i * 4 + 1] = src[i * 3 + 1];
+			rgba[i * 4 + 2] = src[i * 3 + 2];
+			rgba[i * 4 + 3] = 255;
+		}
+		ok = g_VulkanContext.UploadManagedTexture( handle, rgba.data(), rgba.size(), &error );
+	}
+	else
+	{
+		Warning( "[NativeVulkan] TexImage2D: unsupported source format %d (skipped)\n", srcFormat );
+		return;
+	}
+
+	if ( !ok )
+		Warning( "[NativeVulkan] TexImage2D upload failed: %s\n", error.c_str() );
 }
 
-void CShaderAPIVulkan::TexSubImage2D( int level, int cubeFace, int xOffset, int yOffset, int zOffset, int width, int height,
-						 ImageFormat srcFormat, int srcStride, bool bSrcIsTiled, void *imageData )
+void CShaderAPIVulkan::TexSubImage2D( int level, int cubeFace, int xOffset, int yOffset,
+    int zOffset, int width, int height, ImageFormat srcFormat, int srcStride, bool bSrcIsTiled,
+    void *imageData )
 {
 }
 
@@ -2787,16 +2862,15 @@ void CShaderAPIVulkan::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 {
 }
 
-bool CShaderAPIVulkan::TexLock( int level, int cubeFaceID, int xOffset, int yOffset, 
-								int width, int height, CPixelWriter& writer )
+bool CShaderAPIVulkan::TexLock( int level, int cubeFaceID, int xOffset, int yOffset, int width,
+    int height, CPixelWriter &writer )
 {
 	return false;
 }
 
-void CShaderAPIVulkan::TexUnlock( )
+void CShaderAPIVulkan::TexUnlock()
 {
 }
-
 
 // These are bound to the texture, not the texture environment
 void CShaderAPIVulkan::TexMinFilter( ShaderTexFilterMode_t texFilterMode )
@@ -2815,40 +2889,51 @@ void CShaderAPIVulkan::TexSetPriority( int priority )
 {
 }
 
-ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( 
-	int width, 
-	int height,
-	int depth,
-	ImageFormat dstImageFormat, 
-	int numMipLevels, 
-	int numCopies, 
-	int flags, 
-	const char *pDebugName,
-	const char *pTextureGroupName )
+ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height, int depth,
+    ImageFormat dstImageFormat, int numMipLevels, int numCopies, int flags, const char *pDebugName,
+    const char *pTextureGroupName )
 {
-	return 0;
+	// Map the Source image format to a Vulkan format. Block-compressed DXT1/DXT5
+	// (Portal's texture formats) map to BC1/BC3 and are sampled natively.
+	VkFormat vkFormat = VK_FORMAT_R8G8B8A8_UNORM;
+	switch ( dstImageFormat )
+	{
+	case IMAGE_FORMAT_BGRA8888:
+	case IMAGE_FORMAT_BGRX8888:
+		vkFormat = VK_FORMAT_B8G8R8A8_UNORM;
+		break;
+	case IMAGE_FORMAT_DXT1:
+		vkFormat = VK_FORMAT_BC1_RGBA_UNORM_BLOCK;
+		break;
+	case IMAGE_FORMAT_DXT5:
+		vkFormat = VK_FORMAT_BC3_UNORM_BLOCK;
+		break;
+	default:
+		vkFormat = VK_FORMAT_R8G8B8A8_UNORM; // RGBA8888 and RGBA-convertible sources
+		break;
+	}
+
+	std::string error;
+	const int native = g_VulkanContext.CreateManagedTexture( width, height, vkFormat, &error );
+	if ( native < 0 )
+	{
+		Warning( "[NativeVulkan] CreateTexture failed: %s\n", error.c_str() );
+		return 0;
+	}
+	return static_cast<ShaderAPITextureHandle_t>( native + 1 ); // 1-based handle
 }
 
 // Create a multi-frame texture (equivalent to calling "CreateTexture" multiple times, but more efficient)
-void CShaderAPIVulkan::CreateTextures( 
-							ShaderAPITextureHandle_t *pHandles,
-							int count,
-							int width, 
-							int height,
-							int depth,
-							ImageFormat dstImageFormat, 
-							int numMipLevels, 
-							int numCopies, 
-							int flags, 
-							const char *pDebugName,
-							const char *pTextureGroupName )
+void CShaderAPIVulkan::CreateTextures( ShaderAPITextureHandle_t *pHandles, int count, int width,
+    int height, int depth, ImageFormat dstImageFormat, int numMipLevels, int numCopies, int flags,
+    const char *pDebugName, const char *pTextureGroupName )
 {
-	for ( int k = 0; k < count; ++ k )
-		pHandles[ k ] = 0;
+	for ( int k = 0; k < count; ++k )
+		pHandles[k] = 0;
 }
 
-
-ShaderAPITextureHandle_t CShaderAPIVulkan::CreateDepthTexture( ImageFormat renderFormat, int width, int height, const char *pDebugName, bool bTexture )
+ShaderAPITextureHandle_t CShaderAPIVulkan::CreateDepthTexture(
+    ImageFormat renderFormat, int width, int height, const char *pDebugName, bool bTexture )
 {
 	return 0;
 }
@@ -2868,15 +2953,23 @@ bool CShaderAPIVulkan::IsTextureResident( ShaderAPITextureHandle_t textureHandle
 }
 
 // stuff that isn't to be used from within a shader
-void CShaderAPIVulkan::ClearBuffers( bool bClearColor, bool bClearDepth, bool bClearStencil, int renderTargetWidth, int renderTargetHeight )
+void CShaderAPIVulkan::ClearBuffers( bool bClearColor, bool bClearDepth, bool bClearStencil,
+    int renderTargetWidth, int renderTargetHeight )
 {
+	// Treat a full-frame color clear as the start of a new frame: discard the
+	// previous frame's accumulated geometry now (not after Present), so the last
+	// rendered frame's geometry stays available for an on-demand screenshot
+	// capture (ReadPixels). Smaller render-target clears are left alone.
+	if ( bClearColor && renderTargetWidth <= 0 && renderTargetHeight <= 0 )
+		g_VulkanContext.ClearDynamicQueue();
 }
 
 void CShaderAPIVulkan::ClearBuffersObeyStencil( bool bClearColor, bool bClearDepth )
 {
 }
 
-void CShaderAPIVulkan::ClearBuffersObeyStencilEx( bool bClearColor, bool bClearAlpha, bool bClearDepth )
+void CShaderAPIVulkan::ClearBuffersObeyStencilEx(
+    bool bClearColor, bool bClearAlpha, bool bClearDepth )
 {
 }
 
@@ -2884,15 +2977,80 @@ void CShaderAPIVulkan::PerformFullScreenStencilOperation( void )
 {
 }
 
-void CShaderAPIVulkan::SetScissorRect( const int nLeft, const int nTop, const int nRight, const int nBottom, const bool bEnableScissor )
+void CShaderAPIVulkan::SetScissorRect( const int nLeft, const int nTop, const int nRight,
+    const int nBottom, const bool bEnableScissor )
 {
 }
 
-void CShaderAPIVulkan::ReadPixels( int x, int y, int width, int height, unsigned char *data, ImageFormat dstFormat )
+void CShaderAPIVulkan::ReadPixels(
+    int x, int y, int width, int height, unsigned char *data, ImageFormat dstFormat )
 {
+	// Copy the most recently presented frame (captured by CVulkanContext) into
+	// the caller's buffer, converting to the requested format. This is what the
+	// engine's +screenshot path reads; without it every capture is blank.
+	if ( !data || width <= 0 || height <= 0 || !g_VulkanContext.IsValid() )
+		return;
+	// Render the geometry queued for this frame and capture it on demand (only
+	// here, not every frame -- a full-frame GPU copy per frame stalls the loop).
+	{
+		std::string err;
+		bool skip = false;
+		g_VulkanContext.RequestCapture();
+		if ( g_VulkanContext.BeginFrame( &skip, &err ) && !skip )
+			g_VulkanContext.EndFrame( &err );
+	}
+	int cw = 0, ch = 0;
+	const std::vector<uint8_t> &px = g_VulkanContext.GetCapturedPixels( &cw, &ch );
+	if ( px.empty() || cw <= 0 || ch <= 0 )
+		return;
+
+	const int dstBpp =
+	    ( dstFormat == IMAGE_FORMAT_RGB888 || dstFormat == IMAGE_FORMAT_BGR888 ) ? 3 : 4;
+	for ( int row = 0; row < height; ++row )
+	{
+		const int sy = y + row;
+		for ( int col = 0; col < width; ++col )
+		{
+			const int sx = x + col;
+			unsigned char *d = data + ( static_cast<size_t>( row ) * width + col ) * dstBpp;
+			if ( sx < 0 || sx >= cw || sy < 0 || sy >= ch )
+			{
+				for ( int i = 0; i < dstBpp; ++i )
+					d[i] = 0;
+				continue;
+			}
+			const uint8_t *s = &px[( static_cast<size_t>( sy ) * cw + sx ) * 4]; // RGBA
+			switch ( dstFormat )
+			{
+			case IMAGE_FORMAT_RGBA8888:
+				d[0] = s[0];
+				d[1] = s[1];
+				d[2] = s[2];
+				d[3] = s[3];
+				break;
+			case IMAGE_FORMAT_BGRA8888:
+				d[0] = s[2];
+				d[1] = s[1];
+				d[2] = s[0];
+				d[3] = s[3];
+				break;
+			case IMAGE_FORMAT_BGR888:
+				d[0] = s[2];
+				d[1] = s[1];
+				d[2] = s[0];
+				break;
+			default: // RGB888 and other 3-byte requests
+				d[0] = s[0];
+				d[1] = s[1];
+				d[2] = s[2];
+				break;
+			}
+		}
+	}
 }
 
-void CShaderAPIVulkan::ReadPixels( Rect_t *pSrcRect, Rect_t *pDstRect, unsigned char *data, ImageFormat dstFormat, int nDstStride )
+void CShaderAPIVulkan::ReadPixels(
+    Rect_t *pSrcRect, Rect_t *pDstRect, unsigned char *data, ImageFormat dstFormat, int nDstStride )
 {
 }
 
@@ -2919,11 +3077,11 @@ int CShaderAPIVulkan::SelectionMode( bool selectionMode )
 	return 0;
 }
 
-void CShaderAPIVulkan::SelectionBuffer( unsigned int* pBuffer, int size )
+void CShaderAPIVulkan::SelectionBuffer( unsigned int *pBuffer, int size )
 {
 }
 
-void CShaderAPIVulkan::ClearSelectionNames( )
+void CShaderAPIVulkan::ClearSelectionNames()
 {
 }
 
@@ -2939,9 +3097,8 @@ void CShaderAPIVulkan::PopSelectionName()
 {
 }
 
-
 // Use this to get the mesh builder that allows us to modify vertex data
-CMeshBuilder* CShaderAPIVulkan::GetVertexModifyBuilder()
+CMeshBuilder *CShaderAPIVulkan::GetVertexModifyBuilder()
 {
 	return 0;
 }
@@ -2965,7 +3122,7 @@ double CShaderAPIVulkan::CurrentTime() const
 }
 
 // Get the current camera position in world space.
-void CShaderAPIVulkan::GetWorldSpaceCameraPosition( float * pPos ) const
+void CShaderAPIVulkan::GetWorldSpaceCameraPosition( float *pPos ) const
 {
 }
 
@@ -3032,8 +3189,8 @@ bool CShaderAPIVulkan::PreferDynamicTextures() const
 }
 
 bool CShaderAPIVulkan::PreferReducedFillrate() const
-{ 
-	return false; 
+{
+	return false;
 }
 
 bool CShaderAPIVulkan::HasProjectedBumpEnv() const
@@ -3041,7 +3198,7 @@ bool CShaderAPIVulkan::HasProjectedBumpEnv() const
 	return true;
 }
 
-int  CShaderAPIVulkan::GetCurrentDynamicVBSize( void )
+int CShaderAPIVulkan::GetCurrentDynamicVBSize( void )
 {
 	return 0;
 }
@@ -3054,11 +3211,13 @@ void CShaderAPIVulkan::EvictManagedResources()
 {
 }
 
-void CShaderAPIVulkan::SetTextureTransformDimension( TextureStage_t textureStage, int dimension, bool projected )
+void CShaderAPIVulkan::SetTextureTransformDimension(
+    TextureStage_t textureStage, int dimension, bool projected )
 {
 }
 
-void CShaderAPIVulkan::SetBumpEnvMatrix( TextureStage_t textureStage, float m00, float m01, float m10, float m11 )
+void CShaderAPIVulkan::SetBumpEnvMatrix(
+    TextureStage_t textureStage, float m00, float m01, float m10, float m11 )
 {
 }
 

@@ -450,12 +450,23 @@ Keep the table concise and link details below or from the domain progress file.
 Current RFC 0001 evidence (2026-09-22):
 
 - [Native Vulkan slice](RFC/0001-native-vulkan-progress.md) records the R28
-  bootstrap: a real instance/physical-device/queues/SDL3-surface/swapchain core
-  behind `shaderapivulkan` that presents pixel-verified cleared frames and
-  survives resize/teardown (`native_vulkan_bringup_conformance`, 9 checks). It
-  deliberately does not flip adapter/graphics advertisement while the material
-  path is the empty stub; native material rendering (R32) and validation/other-
-  adapter/platform coverage remain open, so `portal_boot.py` cannot pass on it.
+  bootstrap and the substitutable-backend work. A real instance/physical-device/
+  queues/SDL3-surface/swapchain core behind `shaderapivulkan` presents pixel-
+  verified frames and rasterizes a demo triangle and a sampled textured quad,
+  surviving resize/teardown (`native_vulkan_bringup_conformance`, 15 checks). A
+  native Vulkan provider of the backend-agnostic `render_backend.h` contract
+  (`vulkan_render_backend.{h,cpp}`) passes the SAME shared conformance suite as
+  the null provider (`render_backend_vulkan_conformance`, 33 checks) — the LSP
+  substitutability proof for generalizing the material system's backend. The
+  material-facing legacy interfaces drive native Vulkan for clear/present, mesh
+  geometry, per-draw shader binding/constants/transform, and material-uploaded
+  textures (incl. DXT), verified by `material_facing_vulkan_conformance`
+  (13 checks). **`portal_boot.py` now passes on the native Vulkan path**: the
+  engine boots with the native device driving the material system, renders
+  `testchmb_a_00`, and the screenshot has real scene detail, exiting cleanly.
+  Fidelity is not yet full DXVK/D3D9 equivalence (bounded native shader/texture
+  path, not the complete `stdshader_dx9` library), but a material-driven Portal
+  scene renders natively and passes the boot gate.
 - [Portal SDL3/Wayland/Vulkan progress](RFC/0001-portal-vulkan-progress.md) records
   the verified Linux compatibility slice, real images and GPU/lifecycle tests.
   DXVK Native retains the D3D9 material implementation; R28/R32 native Vulkan

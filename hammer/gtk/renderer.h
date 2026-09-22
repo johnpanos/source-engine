@@ -87,6 +87,11 @@ public:
 	// SetScene. INT_MIN (the default) highlights nothing.
 	void SetHighlight( int solidId ) { m_highlightId = solidId; }
 
+	// Highlights a set of selected solids (multi-select). Additive to SetHighlight's
+	// single id; both take effect at the next SetScene. Passing an empty vector
+	// clears the multi-highlight. Ids not present in the scene are ignored.
+	void SetHighlights( const std::vector<int> &ids ) { m_highlights = ids; }
+
 	// Draws the current scene into the bound framebuffer at the given pixel size.
 	void Render( int widthPx, int heightPx );
 
@@ -108,16 +113,40 @@ public:
 	// the world point under that point stays put. 3D falls back to a plain dolly.
 	void ZoomAtPixel( float factor, float px, float py, int widthPx, int heightPx );
 
+	// Sets a 2D view's absolute zoom (pixels per world unit), clamped to the same
+	// range as the interactive zooms. No-op for the 3D view. Used by the number-key
+	// zoom presets. Pan is unchanged, so the view stays centred where it was.
+	void SetOrthoScale( float pixelsPerUnit );
+
 	// World-space coordinates under a viewport pixel, for the status read-out.
 	// Only meaningful for 2D views; returns the two in-plane axis values.
 	void PixelToWorld(
 	    float px, float py, int widthPx, int heightPx, float &outU, float &outV ) const;
+
+	// --- Free-fly navigation for the 3D view (no-op for 2D views) ------------
+	// These reproduce Hammer's classic Z / WASD + mouse-look flying. FlyLook
+	// rotates the view in place, keeping the eye fixed (deltas in degrees, e.g.
+	// mouse pixels * a look speed). FlyMove translates the eye through the world
+	// along the current view basis: 'forward' along the look direction, 'right'
+	// along screen-right, 'up' along world +Z, in world units.
+	void FlyLook( float dYawDeg, float dPitchDeg );
+	void FlyMove( float forward, float right, float up );
+
+	// Builds a world-space pick ray for a viewport pixel in the 3D view (origin at
+	// the eye, 'outDir' normalized into the scene). Returns false for 2D views, so
+	// the caller can fall back to the 2D projection pick. Used for click-to-select.
+	bool PixelToRay(
+	    float px, float py, int widthPx, int heightPx, float outOrigin[3], float outDir[3] ) const;
 
 	int SolidCount() const { return m_solidCount; }
 	int TriangleCount() const { return m_triCount; }
 
 private:
 	void ReleaseGl();
+	// Derives the 3D eye position and orthonormal view basis (forward = look
+	// direction, right = screen-right, up = screen-up) from the orbit camera, the
+	// same way RenderPerspective builds its view matrix. Shared by fly + pick.
+	void CameraVectors( float eye[3], float forward[3], float right[3], float up[3] ) const;
 	void RenderPerspective( int w, int h );
 	void RenderOrtho( int w, int h );
 	void BuildGrid( int w, int h ); // fills the dynamic grid buffer for 2D
@@ -163,6 +192,7 @@ private:
 	Camera m_camera;
 	Ortho2D m_ortho;
 	int m_highlightId = -2147483647; // INT_MIN-ish: highlight nothing by default
+	std::vector<int> m_highlights;   // additional selected solid ids (multi-select)
 	bool m_initialized = false;
 };
 

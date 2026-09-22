@@ -30,7 +30,14 @@ has no display, GPU, or platform dependency.
     box shown yellow in all views), press **Enter** to create an extruded brush.
   - **Selection tool** — click a brush to select (highlighted orange), drag to
     move (grid-snapped), click empty space to deselect, **Delete** to remove.
+    Clicking a brush in the **3D camera view** selects it too (ray pick), the same
+    way MFC Hammer selects in 3D.
   - **Undo/Redo** (`⌃Z` / `⌃Y`), **New** (`⌃N`) — one history stack for all edits.
+    **Ctrl-click** adds/removes a brush from a multi-selection (in 2D or 3D); a
+    nudge, drag-move or delete then applies to the whole selection. In a 2D view,
+    **arrow keys** nudge the selection one grid step, and **right-click** opens a
+    context menu (a selection menu when a brush is selected, otherwise the default
+    view menu). Like MFC, the 3D view has no menu.
 - **3D preview:** the camera view renders shaded, per-solid-coloured brushes; the
   2D views render wireframe geometry over a Hammer-style power-of-two grid with
   coloured world axes; the selected/pending brush is tinted in every view.
@@ -40,14 +47,47 @@ editing, vertex/clip tools, real texture/material rendering, and displacements.
 The remaining tool-palette buttons, texture panel, and unimplemented menu items
 are laid out but inert.
 
-## Navigation (Apple/Figma-style)
+## Navigation
+
+### Classic Hammer 3D camera (matches MFC)
+
+Hover the **3D camera view** to give it focus, then:
+
+| Input | Effect |
+| --- | --- |
+| **Z** | Toggle mouse-look: the cursor hides and moving the mouse turns the camera. Press **Z** again to release. |
+| **W / A / S / D** | Fly forward / left / back / right along the view. |
+| **Q / E** | Fly down / up (world vertical). |
+| **Shift** (held) | Fly faster. |
+| Left-click (no drag) | Ray-pick a brush to select it. |
+| Left-drag | Orbit the camera. |
+
+Fly keys work whenever the 3D view is focused; **Z** additionally frees the mouse
+to look around (Hammer's free-look). Movement is time-integrated, so it is smooth
+and frame-rate independent. (GTK4 cannot warp the pointer, so mouse-look rotates
+by pointer delta with the cursor hidden rather than re-centering each frame.)
+
+### 2D views (matches MFC)
+
+| Input | Effect |
+| --- | --- |
+| **Space + left-drag** | Pan the view (MFC's pan idiom). |
+| **Tab** | Cycle the view orientation: Top → Front → Side. |
+| Left-click / drag | Select a brush / drag-move it (grid-snapped). |
+| **Ctrl + click** | Add / remove a brush from the multi-selection. |
+| **Arrow keys** | Nudge the selection one grid step. |
+| **+ / −** | Zoom in / out, anchored at the cursor. |
+| **1 – 9 / 0** | Preset zoom levels / frame the whole map. |
+| **Right-click** | Context menu (selection menu when a brush is selected). |
+
+### Touchpad / mouse (Apple/Figma-style, additive)
 
 | Input | 2D views | 3D camera |
 | --- | --- | --- |
 | Two-finger scroll (touchpad) | Pan (kinetic) | Orbit |
 | Pinch | Zoom, anchored at the pinch point | Dolly |
 | ⌃ + scroll / wheel | Zoom, anchored at the cursor | Dolly |
-| Drag (mouse) | Pan | Orbit |
+| Middle-drag | Pan | Orbit |
 
 ## Build
 
@@ -77,6 +117,10 @@ hammer/gtk/hammer_gtk --demo demo.ppm --width 1600 --height 1200
 # Load a VMF THROUGH the EditorController and render it (proves real brush shapes,
 # not bounding boxes — e.g. the wedge ramp shows a triangle in the front view):
 hammer/gtk/hammer_gtk --cquad cwedge.ppm hammer/gtk/samples/wedge.vmf --width 1600 --height 1200
+
+# Render a displacement (dispinfo terrain) map — the +Z face is a subdivided,
+# displaced hill (3D shaded relief + the triangulated grid in the 2D views):
+hammer/gtk/hammer_gtk --quad disp.ppm hammer/gtk/samples/displacement.vmf --width 1600 --height 1200
 
 # Automated smoke test (build + render + assert non-blank geometry):
 hammer/gtk/tests/viewport_smoke.sh

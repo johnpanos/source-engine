@@ -362,7 +362,15 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 		// A negative id is the in-progress "pending" box; an id matching the
 		// highlight is the selected brush. Both get a distinct fill/edge colour.
 		const bool pending = solid.id < 0;
-		const bool selected = solid.id == m_highlightId;
+		bool selected = solid.id == m_highlightId;
+		for ( int id : m_highlights )
+		{
+			if ( id == solid.id )
+			{
+				selected = true;
+				break;
+			}
+		}
 
 		float color[3];
 		SolidColor( solidIndex++, color );
@@ -473,6 +481,68 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 				    static_cast<float>( b.z ), 0, 0, 1, edge[0], edge[1], edge[2] );
 			}
 		}
+	}
+
+	// Displacement (dispinfo terrain) surfaces: emit each as flat-shaded triangles
+	// into the mesh (an untextured range) and its grid edges into the wireframe, so
+	// terrain draws in the 3D view and the 2D wireframe alongside the brushes.
+	// Per-triangle flat normals give relief without stored per-vertex normals; the
+	// per-vertex alpha blends a grass/dirt colour so 2-material blends read.
+	for ( const hammer::geometry::DisplacementMesh &disp : scene.displacements )
+	{
+		const int dispFirst = static_cast<int>( mesh.size() / kVertexFloats );
+		for ( const std::array<int, 3> &tri : disp.triangles )
+		{
+			const int i0 = tri[0], i1 = tri[1], i2 = tri[2];
+			const int n = static_cast<int>( disp.vertices.size() );
+			if ( i0 < 0 || i1 < 0 || i2 < 0 || i0 >= n || i1 >= n || i2 >= n )
+			{
+				continue;
+			}
+			const hammer::geometry::Vec3d &a = disp.vertices[i0];
+			const hammer::geometry::Vec3d &b = disp.vertices[i1];
+			const hammer::geometry::Vec3d &c = disp.vertices[i2];
+			float nx =
+			    static_cast<float>( ( b.y - a.y ) * ( c.z - a.z ) - ( b.z - a.z ) * ( c.y - a.y ) );
+			float ny =
+			    static_cast<float>( ( b.z - a.z ) * ( c.x - a.x ) - ( b.x - a.x ) * ( c.z - a.z ) );
+			float nz =
+			    static_cast<float>( ( b.x - a.x ) * ( c.y - a.y ) - ( b.y - a.y ) * ( c.x - a.x ) );
+			const float nlen = std::sqrt( nx * nx + ny * ny + nz * nz );
+			if ( nlen > 1.0e-8f )
+			{
+				nx /= nlen;
+				ny /= nlen;
+				nz /= nlen;
+			}
+			const int idx[3] = { i0, i1, i2 };
+			const hammer::geometry::Vec3d *pv[3] = { &a, &b, &c };
+			for ( int k = 0; k < 3; ++k )
+			{
+				const double al =
+				    idx[k] < static_cast<int>( disp.alphas.size() ) ? disp.alphas[idx[k]] : 0.0;
+				const float t = static_cast<float>( al ) / 255.0f;
+				// grass (low alpha) -> dirt (high alpha)
+				const float cr = 0.32f + t * ( 0.52f - 0.32f );
+				const float cg = 0.48f + t * ( 0.40f - 0.48f );
+				const float cb = 0.28f + t * ( 0.30f - 0.28f );
+				PushVertex( mesh, static_cast<float>( pv[k]->x ), static_cast<float>( pv[k]->y ),
+				    static_cast<float>( pv[k]->z ), nx, ny, nz, cr, cg, cb, 0.0f, 0.0f );
+			}
+			++m_triCount;
+
+			const hammer::geometry::Vec3d *edgePts[3] = { &a, &b, &c };
+			for ( int e = 0; e < 3; ++e )
+			{
+				const hammer::geometry::Vec3d &p0 = *edgePts[e];
+				const hammer::geometry::Vec3d &p1 = *edgePts[( e + 1 ) % 3];
+				PushVertex( lines, static_cast<float>( p0.x ), static_cast<float>( p0.y ),
+				    static_cast<float>( p0.z ), 0, 0, 1, 0.35f, 0.55f, 0.40f );
+				PushVertex( lines, static_cast<float>( p1.x ), static_cast<float>( p1.y ),
+				    static_cast<float>( p1.z ), 0, 0, 1, 0.35f, 0.55f, 0.40f );
+			}
+		}
+		addRange( 0, dispFirst, static_cast<int>( mesh.size() / kVertexFloats ) - dispFirst );
 	}
 
 	m_meshVertexCount = static_cast<int>( mesh.size() / kVertexFloats );
@@ -649,11 +719,132 @@ void Renderer::ZoomAtPixel( float factor, float px, float py, int widthPx, int h
 	m_ortho.panV = wv + ( py - heightPx * 0.5f ) / m_ortho.pixelsPerUnit;
 }
 
+void Renderer::SetOrthoScale( float pixelsPerUnit )
+{
+	if ( m_mode == ViewMode::Perspective )
+	{
+		return;
+	}
+	m_ortho.pixelsPerUnit = std::clamp( pixelsPerUnit, 1.0e-4f, 64.0f );
+}
+
 void Renderer::PixelToWorld(
     float px, float py, int widthPx, int heightPx, float &outU, float &outV ) const
 {
 	outU = m_ortho.panU + ( px - widthPx * 0.5f ) / m_ortho.pixelsPerUnit;
 	outV = m_ortho.panV - ( py - heightPx * 0.5f ) / m_ortho.pixelsPerUnit;
+}
+
+void Renderer::CameraVectors( float eye[3], float forward[3], float right[3], float up[3] ) const
+{
+	const float yaw = m_camera.yawDeg * kPi / 180.0f;
+	const float pitch = m_camera.pitchDeg * kPi / 180.0f;
+	// 'dir' points from the target out to the eye (matches RenderPerspective).
+	const float dir[3] = {
+	    std::cos( pitch ) * std::cos( yaw ),
+	    std::cos( pitch ) * std::sin( yaw ),
+	    std::sin( pitch ),
+	};
+	eye[0] = m_camera.target[0] + m_camera.distance * dir[0];
+	eye[1] = m_camera.target[1] + m_camera.distance * dir[1];
+	eye[2] = m_camera.target[2] + m_camera.distance * dir[2];
+
+	// Look direction is target - eye = -dir.
+	forward[0] = -dir[0];
+	forward[1] = -dir[1];
+	forward[2] = -dir[2];
+	Normalize3( forward );
+
+	const float worldUp[3] = { 0.0f, 0.0f, 1.0f };
+	Cross3( forward, worldUp, right ); // screen-right = f x up (as in LookAt)
+	Normalize3( right );
+	Cross3( right, forward, up ); // screen-up = right x forward
+	Normalize3( up );
+}
+
+void Renderer::FlyLook( float dYawDeg, float dPitchDeg )
+{
+	if ( m_mode != ViewMode::Perspective )
+	{
+		return;
+	}
+	// Keep the eye fixed while the look direction turns: rotate, then place the
+	// orbit target back in front of the (unchanged) eye at the same distance.
+	float eye[3];
+	float f[3];
+	float r[3];
+	float u[3];
+	CameraVectors( eye, f, r, u );
+
+	m_camera.yawDeg += dYawDeg;
+	m_camera.pitchDeg += dPitchDeg;
+	if ( m_camera.pitchDeg > 89.0f )
+	{
+		m_camera.pitchDeg = 89.0f;
+	}
+	if ( m_camera.pitchDeg < -89.0f )
+	{
+		m_camera.pitchDeg = -89.0f;
+	}
+
+	const float yaw = m_camera.yawDeg * kPi / 180.0f;
+	const float pitch = m_camera.pitchDeg * kPi / 180.0f;
+	const float dir[3] = {
+	    std::cos( pitch ) * std::cos( yaw ),
+	    std::cos( pitch ) * std::sin( yaw ),
+	    std::sin( pitch ),
+	};
+	// target = eye - distance*dir keeps |eye - target| = distance with eye fixed.
+	m_camera.target[0] = eye[0] - m_camera.distance * dir[0];
+	m_camera.target[1] = eye[1] - m_camera.distance * dir[1];
+	m_camera.target[2] = eye[2] - m_camera.distance * dir[2];
+}
+
+void Renderer::FlyMove( float forward, float right, float up )
+{
+	if ( m_mode != ViewMode::Perspective )
+	{
+		return;
+	}
+	float eye[3];
+	float f[3];
+	float r[3];
+	float u[3];
+	CameraVectors( eye, f, r, u );
+	// Translate the target; the eye follows by the same delta (dir/distance fixed),
+	// so this flies the camera without changing orientation. Vertical is world +Z.
+	m_camera.target[0] += forward * f[0] + right * r[0];
+	m_camera.target[1] += forward * f[1] + right * r[1];
+	m_camera.target[2] += forward * f[2] + right * r[2] + up;
+}
+
+bool Renderer::PixelToRay(
+    float px, float py, int widthPx, int heightPx, float outOrigin[3], float outDir[3] ) const
+{
+	if ( m_mode != ViewMode::Perspective || widthPx <= 0 || heightPx <= 0 )
+	{
+		return false;
+	}
+	float eye[3];
+	float f[3];
+	float r[3];
+	float u[3];
+	CameraVectors( eye, f, r, u );
+
+	// Match RenderPerspective's projection: 60 deg vertical fov, aspect = w/h.
+	const float tanHalf = std::tan( ( 60.0f * kPi / 180.0f ) * 0.5f );
+	const float aspect = static_cast<float>( widthPx ) / static_cast<float>( heightPx );
+	const float ndcX = 2.0f * px / static_cast<float>( widthPx ) - 1.0f;
+	const float ndcY = 1.0f - 2.0f * py / static_cast<float>( heightPx );
+	for ( int i = 0; i < 3; ++i )
+	{
+		outDir[i] = f[i] + ndcX * aspect * tanHalf * r[i] + ndcY * tanHalf * u[i];
+	}
+	Normalize3( outDir );
+	outOrigin[0] = eye[0];
+	outOrigin[1] = eye[1];
+	outOrigin[2] = eye[2];
+	return true;
 }
 
 void Renderer::RenderPerspective( int widthPx, int heightPx )

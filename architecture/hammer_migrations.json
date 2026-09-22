@@ -1022,6 +1022,42 @@
         "a later increment invokes the external compiler toolchain and resolves materials for export",
         "the shell's Run Map/Export path consumes this pipeline"
       ]
+    },
+    {
+      "id": "HAM-PROPSHEET-001",
+      "title": "Build the entity property-sheet row model (FGD schema + entity keyvalues -> property grid rows) for the entity editor UI",
+      "phase": "H2",
+      "responsibility": "composition",
+      "evidenceKind": "decision",
+      "sources": [
+        {
+          "path": "public/hammer/formats/entity_property_sheet.h"
+        },
+        {
+          "path": "hammer/core/formats/entity_property_sheet.cpp"
+        }
+      ],
+      "destinationModule": "hammer.formats",
+      "contractIds": [
+        "formats.entity_property_sheet.v1"
+      ],
+      "dependsOn": [
+        "HAM-FGD-001"
+      ],
+      "status": "extracted",
+      "authority": "new",
+      "consumerSet": "entity-property-ui",
+      "testSelectors": [
+        "formats/entity_property_sheet",
+        "formats/entity_property_sheet_negative"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/formats.entity_property_sheet.v1.md",
+      "owner": "unassigned",
+      "note": "New strict headless model (authority=new) composing formats.fgd (ResolveClass) + the keyvalues codec. hammer::formats::BuildPropertySheet turns (entity block, FGD class table) into the property-grid row model an entity property-sheet widget renders: schema rows first (resolved FGD class, base-first, declaration order) each carrying type/display/choices and the entity value or the FGD default (isSet reflects whether the entity set it, case-insensitive match), then extra non-schema entity keys, with classname/id/editor excluded. This is the HEADLESS MODEL behind the FGD-driven entity property sheet UI (the widget only renders these rows; the GTK/MFC widget wiring is the shell owner's, source-engine-3c). Compiles headlessly under g++ and clang (-Werror); conformance test_entity_property_sheet.cpp checks inherited/default/choices/extra/meta, test_entity_property_sheet_negative.cpp pins unset-rows-show-defaults + meta exclusion + no spurious rows. Declared limits: does not write edits back, validate values by type, resolve I/O, or group rows into smartedit categories.",
+      "retireWhen": [
+        "a later increment writes edited values back through the app/history layer and groups smartedit categories",
+        "the shell's entity property-sheet widget renders this model"
+      ]
     }
   ]
 }

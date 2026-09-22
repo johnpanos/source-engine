@@ -169,6 +169,7 @@
       "profile": "linux-headless-core",
       "sources": [
         "hammer/core/geometry/brush.cpp",
+        "hammer/core/geometry/displacement.cpp",
         "hammer/core/formats/keyvalues.cpp",
         "unittests/hammertest/geometry/test_brush.cpp"
       ],
@@ -184,6 +185,7 @@
       "profile": "linux-headless-core",
       "sources": [
         "hammer/core/geometry/brush.cpp",
+        "hammer/core/geometry/displacement.cpp",
         "hammer/core/formats/keyvalues.cpp",
         "unittests/hammertest/geometry/test_brush_negative.cpp"
       ],
@@ -709,6 +711,7 @@
       "sources": [
         "hammer/core/app/editor_controller.cpp",
         "hammer/core/geometry/brush.cpp",
+        "hammer/core/geometry/displacement.cpp",
         "hammer/core/geometry/rounding.cpp",
         "hammer/core/formats/keyvalues.cpp",
         "hammer/core/app/document_history.cpp",
@@ -727,10 +730,30 @@
       "sources": [
         "hammer/core/app/editor_controller.cpp",
         "hammer/core/geometry/brush.cpp",
+        "hammer/core/geometry/displacement.cpp",
         "hammer/core/geometry/rounding.cpp",
         "hammer/core/formats/keyvalues.cpp",
         "hammer/core/app/document_history.cpp",
         "unittests/hammertest/app/test_editor_controller_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.editor_controller.pick",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-WORKFLOW-001",
+      "contract": "unittests/hammertest/contracts/app.editor_controller.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/editor_controller.cpp",
+        "hammer/core/geometry/brush.cpp",
+        "hammer/core/geometry/displacement.cpp",
+        "hammer/core/geometry/rounding.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "hammer/core/app/document_history.cpp",
+        "unittests/hammertest/app/test_editor_controller_pick.cpp"
       ],
       "expect": "pass"
     },
@@ -1206,6 +1229,38 @@
         "hammer/core/formats/cordon.cpp",
         "hammer/core/formats/keyvalues.cpp",
         "unittests/hammertest/formats/test_map_export_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.entity_property_sheet",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-PROPSHEET-001",
+      "contract": "unittests/hammertest/contracts/formats.entity_property_sheet.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/entity_property_sheet.cpp",
+        "hammer/core/formats/fgd.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_entity_property_sheet.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.entity_property_sheet.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-PROPSHEET-001",
+      "contract": "unittests/hammertest/contracts/formats.entity_property_sheet.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/entity_property_sheet.cpp",
+        "hammer/core/formats/fgd.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_entity_property_sheet_negative.cpp"
       ],
       "expect": "pass"
     }

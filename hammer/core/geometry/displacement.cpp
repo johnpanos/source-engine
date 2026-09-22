@@ -39,6 +39,16 @@ double DistSq( const Vec3d &a, const Vec3d &b )
 	return dx * dx + dy * dy + dz * dz;
 }
 
+Vec3d Sub( const Vec3d &a, const Vec3d &b )
+{
+	return Vec3d( a.x - b.x, a.y - b.y, a.z - b.z );
+}
+
+Vec3d Cross( const Vec3d &a, const Vec3d &b )
+{
+	return Vec3d( a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x );
+}
+
 // Parses a whitespace-separated list of doubles. Returns false if any token is
 // not a number; a well-formed empty string yields an empty vector.
 bool ParseDoubles( const std::string &text, std::vector<double> &out )
@@ -372,6 +382,31 @@ DisplacementSurface BuildDisplacementSurface(
 			const int v11 = ( r + 1 ) * side + ( col + 1 );
 			surface.triangles.push_back( { v00, v10, v11 } );
 			surface.triangles.push_back( { v00, v11, v01 } );
+		}
+	}
+
+	// Smooth per-vertex normals for lighting: accumulate each triangle's
+	// (area-weighted) face normal into its three vertices, then normalize. Winding
+	// follows the corner order passed in, so normals face the same way as the tris.
+	surface.vertexNormals.assign( surface.vertices.size(), Vec3d() );
+	for ( const std::array<int, 3> &tri : surface.triangles )
+	{
+		const Vec3d &p0 = surface.vertices[static_cast<std::size_t>( tri[0] )];
+		const Vec3d &p1 = surface.vertices[static_cast<std::size_t>( tri[1] )];
+		const Vec3d &p2 = surface.vertices[static_cast<std::size_t>( tri[2] )];
+		const Vec3d faceN = Cross( Sub( p1, p0 ), Sub( p2, p0 ) );
+		for ( int k = 0; k < 3; ++k )
+		{
+			const std::size_t idx = static_cast<std::size_t>( tri[static_cast<std::size_t>( k )] );
+			surface.vertexNormals[idx] = Add( surface.vertexNormals[idx], faceN );
+		}
+	}
+	for ( Vec3d &n : surface.vertexNormals )
+	{
+		const double len = std::sqrt( n.x * n.x + n.y * n.y + n.z * n.z );
+		if ( len > 1e-12 )
+		{
+			n = Scale( n, 1.0 / len );
 		}
 	}
 

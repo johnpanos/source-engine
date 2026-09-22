@@ -418,6 +418,39 @@ selection/mutation/history owner" realised for spatial editing:
   clang on `linux-headless-core`. The panels of the shell are drag-resizable
   (nested `GtkPaned`). Single-authority design reviewed by the sibling sessions.
 
+#### Texturing + point entities: a full VMF built from scratch (HAM-WORKFLOW-001, this change)
+
+The same authority now covers the two remaining pieces the contract flagged as
+"later migrations" for a from-scratch authoring flow — **per-face texturing** and
+**point-entity placement/keyvalue editing** — both routed through the one history
+stack, with no new document, global, or second selection owner:
+
+- **Material tool:** a click on a brush (`Tool::Material`) applies the active
+  material (`SetActiveMaterial`) to every face; `ApplyActiveMaterialToSelection()`
+  is the menu/button form. Both route through one private `RetextureBrush(id)`
+  (DRY), recording **one** history unit iff a face actually changed.
+- **Entity tool:** a click (`Tool::Entity`) places a point entity of the active
+  class (`SetEntityClass`, default `info_player_start`) at the snapped location;
+  `SetEntityProperty(id,key,value)` sets extra keys (`targetname`, `angles`, …) —
+  one unit iff changed, with `classname`/`origin`/`id` reserved. The Selection tool
+  picks/deletes entities too (nearest within a half-grid tolerance when no brush is
+  hit); placement/deletion undo/redo through the shared stack.
+- **VMF round-trip:** `ToVmf()` emits sibling top-level `entity` blocks
+  (`classname`, extra keys, `origin`); `LoadVmf` reconstructs point entities from
+  them (skipping brush entities, which still load as world brushes — a declared
+  limitation). Entities and per-face materials survive save → reload in order.
+- **The headline evidence** in `test_editor_controller.cpp` (`TestBuildRoomFromScratch`)
+  builds a complete little room **from scratch through simulated input**: four walls
+  (Block tool), a `BRICK/BRICKWALL001A` material applied to all four with the
+  Material tool, and an `info_player_start` + `weapon_portalgun` placed with the
+  Entity tool — then parses the saved VMF (4 world solids, 24 brick sides, 2 named
+  entities at the expected origins) and reloads it to confirm every brush, material,
+  and entity round-trips. `TestEntityPlaceDeleteUndo` covers place/delete undo/redo.
+  All 59 RFC 0002 Q-EDITOR suites remain green under gcc and clang on
+  `linux-headless-core`. Contract `app.editor_controller.v1.md` updated to match.
+  **Not claimed:** brush (solid) entities, non-box brush *editing*, vertex/clip
+  tools, and multi-select remain later migrations.
+
 ## Pre-existing failures (reported separately, not introduced here)
 
 - **RFC 0001 loader gate is currently failing** at the working tree: `check --all`
@@ -486,6 +519,72 @@ selection/mutation/history owner" realised for spatial editing:
   shown (no bumpmaps/proxies/blends), and HDR/float VTF and cubemaps are out of
   scope per `vtf_image.v1`. This is the asset-loading + preview slice, not the full
   Source viewport.
+
+### 3D camera navigation and view interaction parity (HAM-WORKFLOW-001, feasibility)
+
+Brought the GTK shell's view interaction in line with legacy MFC Hammer for the
+core navigation/selection flows the user exercises constantly. All additive; the
+existing touchpad/orbit/pan and 2D editing paths are unchanged.
+
+- **Classic 3D free-fly camera.** `Z` toggles mouse-look (cursor hidden; pointer
+  motion turns the camera); `W/A/S/D` fly along the view, `Q/E` rise/fall, `Shift`
+  boosts speed. Movement is time-integrated on a frame-clock tick that runs only
+  while a key is held. Confined to the presenter and renderer: new
+  `hammergtk::Renderer::FlyMove`/`FlyLook` operate on the existing orbit camera
+  (FlyLook rotates in place keeping the eye fixed; FlyMove translates the eye along
+  the view basis), so no camera-state duplication. GTK4 cannot warp the pointer, so
+  look uses pointer deltas with a hidden cursor rather than MFC's recenter-each-frame
+  loop — same feel, noted limitation.
+- **3D click-to-select.** A non-drag left click in the camera view builds a world
+  ray (`Renderer::PixelToRay`, matching the view's projection) and calls the new
+  `EditorController::PickByRay` — an AABB broad phase (the **same cached bound the
+  2D pick uses**, so selection stays one policy) followed by a precise ray/convex-
+  polytope test against the brush's real face planes, so a click through a non-box
+  brush's empty AABB corner correctly misses. It mutates only the selection (no undo
+  step), like the 2D pick, and a miss deselects. Selection stays owned by the single
+  `EditorController` authority.
+- **Right-click context menus.** 2D views show a `GtkPopoverMenu` (a selection menu
+  when a brush is selected, otherwise the default view menu), reusing the existing
+  `app.*` actions. Faithful to MFC, the 3D view has no right-click menu.
+- **2D view interaction.** **Space + left-drag** pans (MFC's pan idiom); **Tab**
+  cycles a view's orientation Top → Front → Side (renderer mode + controller edit
+  axes move together); **arrow keys** nudge the selection one grid step through the
+  new `EditorController::MoveSelectionBy` (one undo unit, single authority);
+  **+ / −** zoom anchored at the cursor; **1–9 / 0** are preset zoom levels /
+  frame-all.
+- **Multi-selection.** **Ctrl-click** (2D or 3D ray pick) toggles a brush in/out of
+  a selection set; nudge, drag-move and delete all operate on the whole set as one
+  undo unit; every selected brush is highlighted. Implemented as a primary
+  (`m_selection`) plus an extra-set (`m_extraSelected`) in the one `EditorController`
+  authority, so the single-select path is unchanged and all 60 Q-EDITOR suites still
+  pass. The renderer gained `SetHighlights(set)` for the multi-highlight.
+- **Evidence.** New headless oracles, both green under g++/clang:
+  - `hammer.app.editor_controller.pick` conformance suite
+    (`unittests/hammertest/app/test_editor_controller_pick.cpp`, registered in
+    `quality/conformance.manifest.json`, Q-EDITOR): nearest-along-ray selection,
+    reversed-ray far pick, miss/facing-away deselect, no-undo invariant, a wedge
+    (non-box) case proving the convex test rejects an empty-AABB-corner ray a
+    bounding-box pick would falsely hit, the arrow-nudge move/undo path, and
+    multi-select (Ctrl-add/toggle, count, move-all, delete-all + restore).
+  - The full **60-suite Q-EDITOR domain** still passes under g++ after the selection
+    model change, confirming the single-select drag/move/delete/undo paths are intact.
+  - `hammer/gtk/tests/camera_nav_test.sh` + `test_camera_nav.cpp`: FlyMove/FlyLook/
+    PixelToRay camera math (eye stays fixed under look, forward/strafe/vertical
+    move correctly, 2D views are no-ops). The full shell builds `-Werror`, style
+    checker clean, `--cquad`/`viewport_smoke` render paths unaffected.
+- **Not claimed.** No H5/R25 workflow gate is closed. Live GTK event dispatch
+  (Z/WASD/right-click in a real window) is not automated here (needs a display;
+  this environment's compositor blocks external capture) — the interaction *logic*
+  is what the headless oracles cover. **View navigation and selection parity with
+  MFC is complete** for the shipped editing tools: Z/WASD/QE fly + mouse-look,
+  space+drag pan, orbit, 3D + 2D single- and multi-select (Ctrl), face-precise 3D
+  picking, right-click menus, arrow-nudge, Tab view-cycle, and +/-/number zoom.
+  Space+RMB strafe is covered by A/D + Q/E (the same camera motion via the keyboard).
+  What remains is **not view-interaction parity** but separate editing *tools* with
+  their own RFC rows — displacement (R33/H6), vertex and clip editing — each a
+  feature family, not a uniform view behaviour. The GTK4-vs-MFC mouse-look nuance
+  (pointer delta + hidden cursor vs recenter-each-frame) is a platform constraint,
+  not a deferred feature.
 
 ## Next dependency-ready migrations
 

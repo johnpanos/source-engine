@@ -48,7 +48,7 @@ void Check( bool condition, const char *what )
 bool PixelClose( const uint8_t *p, int r, int g, int b, int a, int tol )
 {
 	return std::abs( int( p[0] ) - r ) <= tol && std::abs( int( p[1] ) - g ) <= tol &&
-		   std::abs( int( p[2] ) - b ) <= tol && std::abs( int( p[3] ) - a ) <= tol;
+	       std::abs( int( p[2] ) - b ) <= tol && std::abs( int( p[3] ) - a ) <= tol;
 }
 
 bool PresentAndCapture( CVulkanContext &ctx, float r, float g, float b, std::string *err )
@@ -89,8 +89,7 @@ int main( int argc, char **argv )
 		return 77; // automake-style skip: explicitly not a pass
 	}
 
-	SDL_Window *window = SDL_CreateWindow( "native-vulkan-bringup", 320, 240,
-		SDL_WINDOW_VULKAN );
+	SDL_Window *window = SDL_CreateWindow( "native-vulkan-bringup", 320, 240, SDL_WINDOW_VULKAN );
 	if ( !window )
 	{
 		std::fprintf( stderr, "SKIP: SDL_CreateWindow(vulkan) failed: %s\n", SDL_GetError() );
@@ -100,7 +99,7 @@ int main( int argc, char **argv )
 
 	VulkanContextConfig config;
 	config.appName = "native-vulkan-bringup";
-	config.enableValidation = true;      // opportunistic when the layer exists
+	config.enableValidation = true; // opportunistic when the layer exists
 	config.requireValidation = requireValidation;
 	config.framesInFlight = 2;
 
@@ -117,9 +116,9 @@ int main( int argc, char **argv )
 	}
 
 	std::fprintf( stderr, "brought up device '%s' (vendor 0x%04x, %s, %.0f MiB, validation=%s)\n",
-		ctx.DeviceName(), ctx.VendorId(), ctx.IsDiscrete() ? "discrete" : "integrated/other",
-		double( ctx.DeviceLocalMemoryBytes() ) / ( 1024.0 * 1024.0 ),
-		ctx.ValidationEnabled() ? "on" : "off" );
+	    ctx.DeviceName(), ctx.VendorId(), ctx.IsDiscrete() ? "discrete" : "integrated/other",
+	    double( ctx.DeviceLocalMemoryBytes() ) / ( 1024.0 * 1024.0 ),
+	    ctx.ValidationEnabled() ? "on" : "off" );
 
 	Check( ctx.IsValid(), "context is valid after Init" );
 	Check( ctx.DeviceName()[0] != '\0', "adapter reported a device name" );
@@ -147,7 +146,7 @@ int main( int argc, char **argv )
 			Check( PixelClose( &px[0], 255, 0, 0, 255, 2 ), "presented top-left pixel is red" );
 			// Negative control: the verifier must reject a wrong expectation.
 			Check( !PixelClose( center, 0, 255, 0, 255, 2 ),
-				"verifier rejects a wrong (green) expectation" );
+			    "verifier rejects a wrong (green) expectation" );
 		}
 	}
 
@@ -172,7 +171,8 @@ int main( int argc, char **argv )
 		if ( cw > 0 && ch > 0 && !px.empty() )
 		{
 			const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
-			Check( PixelClose( center, 0, 255, 0, 255, 2 ), "presented pixel is green after resize" );
+			Check(
+			    PixelClose( center, 0, 255, 0, 255, 2 ), "presented pixel is green after resize" );
 		}
 		else
 		{
@@ -207,8 +207,10 @@ int main( int argc, char **argv )
 			{
 				const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
 				const uint8_t *corner = &px[0]; // top-left, outside the triangle
-				Check( PixelClose( center, 0, 255, 0, 255, 2 ), "triangle center is green (geometry drawn)" );
-				Check( PixelClose( corner, 255, 0, 0, 255, 2 ), "frame corner is still red (clear preserved)" );
+				Check( PixelClose( center, 0, 255, 0, 255, 2 ),
+				    "triangle center is green (geometry drawn)" );
+				Check( PixelClose( corner, 255, 0, 0, 255, 2 ),
+				    "frame corner is still red (clear preserved)" );
 			}
 			else
 			{
@@ -216,6 +218,122 @@ int main( int argc, char **argv )
 			}
 		}
 		ctx.SetDrawDemoTriangle( false );
+	}
+
+	// Texturing: upload a distinctive magenta texture through a staging buffer,
+	// bind it via a descriptor set, and sample it onto a quad. Magenta appears
+	// nowhere else, so the quad center reading back magenta proves the texture
+	// was really uploaded, bound, and sampled; the corner stays red (clear).
+	if ( !ctx.InitTexturedQuad( &err ) )
+	{
+		std::fprintf( stderr, "InitTexturedQuad failed: %s\n", err.c_str() );
+		++g_failures;
+	}
+	else
+	{
+		Check( ctx.TexturedQuadReady(), "textured-quad pipeline is ready" );
+		ctx.SetDrawTexturedQuad( true );
+		if ( !PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
+		{
+			std::fprintf( stderr, "present/capture (textured quad) failed: %s\n", err.c_str() );
+			++g_failures;
+		}
+		else
+		{
+			int cw = 0, ch = 0;
+			const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
+			if ( cw > 0 && ch > 0 && !px.empty() )
+			{
+				const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
+				const uint8_t *corner = &px[0];
+				Check( PixelClose( center, 255, 0, 255, 255, 2 ),
+				    "quad center is magenta (texture sampled)" );
+				Check( PixelClose( corner, 255, 0, 0, 255, 2 ),
+				    "frame corner is still red (clear preserved)" );
+			}
+			else
+			{
+				Check( false, "captured a frame with the textured quad" );
+			}
+		}
+		ctx.SetDrawTexturedQuad( false );
+	}
+
+	// Index buffers + shader constants: draw an indexed quad whose fragment color
+	// comes entirely from a uniform (constant) buffer. Setting the constant to
+	// blue and reading the center back as blue proves vkCmdDrawIndexed ran and the
+	// constant reached the shader -- the shader-constant path the material system
+	// uses on every material.
+	if ( !ctx.InitIndexedUbo( &err ) )
+	{
+		std::fprintf( stderr, "InitIndexedUbo failed: %s\n", err.c_str() );
+		++g_failures;
+	}
+	else
+	{
+		Check( ctx.IndexedUboReady(), "indexed + uniform-buffer pipeline is ready" );
+		ctx.SetIndexedUboColor( 0.0f, 0.0f, 1.0f, 1.0f ); // blue via the constant buffer
+		ctx.SetDrawIndexedUbo( true );
+		if ( !PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
+		{
+			std::fprintf( stderr, "present/capture (indexed ubo) failed: %s\n", err.c_str() );
+			++g_failures;
+		}
+		else
+		{
+			int cw = 0, ch = 0;
+			const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
+			if ( cw > 0 && ch > 0 && !px.empty() )
+			{
+				const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
+				const uint8_t *corner = &px[0];
+				Check( PixelClose( center, 0, 0, 255, 255, 2 ),
+				    "indexed quad center is blue (constant buffer reached the shader)" );
+				Check( PixelClose( corner, 255, 0, 0, 255, 2 ),
+				    "frame corner is still red (clear preserved)" );
+			}
+			else
+			{
+				Check( false, "captured a frame with the indexed/ubo quad" );
+			}
+		}
+		ctx.SetDrawIndexedUbo( false );
+	}
+
+	// Depth buffering: two overlapping triangles, near (blue) drawn first, far
+	// (green) drawn second, with depth testing on. If the depth attachment
+	// resolves occlusion, the center stays blue even though green was drawn
+	// last -- the capability real 3D scene rendering needs.
+	if ( !ctx.InitDemoDepth( &err ) )
+	{
+		std::fprintf( stderr, "InitDemoDepth failed: %s\n", err.c_str() );
+		++g_failures;
+	}
+	else
+	{
+		Check( ctx.DemoDepthReady(), "depth-test pipeline is ready" );
+		ctx.SetDrawDemoDepth( true );
+		if ( !PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
+		{
+			std::fprintf( stderr, "present/capture (depth) failed: %s\n", err.c_str() );
+			++g_failures;
+		}
+		else
+		{
+			int cw = 0, ch = 0;
+			const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
+			if ( cw > 0 && ch > 0 && !px.empty() )
+			{
+				const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
+				Check( PixelClose( center, 0, 0, 255, 255, 2 ),
+				    "near (blue) triangle occludes the later far (green) one (depth test works)" );
+			}
+			else
+			{
+				Check( false, "captured a frame with the depth demo" );
+			}
+		}
+		ctx.SetDrawDemoDepth( false );
 	}
 
 	if ( ctx.ValidationEnabled() )
@@ -227,6 +345,7 @@ int main( int argc, char **argv )
 	SDL_DestroyWindow( window );
 	SDL_Quit();
 
-	std::fprintf( stderr, "native Vulkan bring-up: %d checks, %d failures\n", g_checks, g_failures );
+	std::fprintf(
+	    stderr, "native Vulkan bring-up: %d checks, %d failures\n", g_checks, g_failures );
 	return g_failures == 0 ? 0 : 1;
 }

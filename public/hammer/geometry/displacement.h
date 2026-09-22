@@ -63,6 +63,7 @@ struct DisplacementSurface
 	int side = 0;                              // 2^power + 1
 	std::vector<Vec3d> vertices;               // side*side, row-major (r*side + c)
 	std::vector<double> vertexAlphas;          // side*side, parallel to vertices (blend weight)
+	std::vector<Vec3d> vertexNormals;          // side*side, smooth per-vertex normals (lighting)
 	std::vector<std::array<int, 3>> triangles; // 2*(side-1)^2 triangles
 
 	std::size_t VertexCount() const { return vertices.size(); }

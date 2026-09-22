@@ -6,8 +6,13 @@
 //			makes from gestures/keys -- to exercise the core Hammer UX flows and
 //			builds a simple map end to end: Block-tool create with grid snapping,
 //			multi-view extrusion, Selection-tool pick/move/delete, undo/redo, and
-//			VMF save round-trip. Because the shipped UI routes through this same
-//			authority, this test covers the real editing logic, not a mock.
+//			VMF save round-trip. It also builds a complete little room FROM SCRATCH
+//			through simulated input -- four walls (Block tool), a wall texture
+//			applied with the Material tool, and an info_player_start plus a
+//			weapon_portalgun placed with the Entity tool -- then proves the saved
+//			VMF round-trips every brush, material, and entity. Because the shipped UI
+//			routes through this same authority, this test covers the real editing
+//			logic, not a mock.
 //
 //			Build/run: unittests/hammertest/run_headless.sh
 //
@@ -315,6 +320,280 @@ void TestBuildSimpleMapAndSave()
 	}
 }
 
+// Counts the top-level VMF blocks named 'name' in a parsed document.
+int CountBlocks( const hammer::formats::KeyValueNode &root, const char *name )
+{
+	int n = 0;
+	for ( const auto &block : root.children )
+	{
+		if ( block.name == name )
+		{
+			++n;
+		}
+	}
+	return n;
+}
+
+// THE GOAL FLOW: build a complete little room from scratch with simulated input --
+// four textured walls, an info_player_start and a weapon_portalgun -- then save it
+// to VMF and prove the whole thing round-trips (geometry, materials, entities).
+void TestBuildRoomFromScratch()
+{
+	using hammer::app::MapEntity;
+
+	EditorController c;
+	c.SetGridSize( 64 );
+	c.SetBlockDepth( 256 ); // walls 256 units tall
+
+	// --- Four walls around a 512x512 footprint, drawn in the Top (X/Y) view. Each
+	//     wall is a 64-thick box; drawing wall centres apart keeps them pickable. ---
+	CHECK( BlockDrag( c, ViewId::Top, 0, 0, 512, 64 ) );    // south (Y 0..64)
+	CHECK( BlockDrag( c, ViewId::Top, 0, 448, 512, 512 ) ); // north (Y 448..512)
+	CHECK( BlockDrag( c, ViewId::Top, 0, 0, 64, 512 ) );    // west  (X 0..64)
+	CHECK( BlockDrag( c, ViewId::Top, 448, 0, 512, 512 ) ); // east  (X 448..512)
+	CHECK( c.Brushes().size() == 4 );
+
+	// --- Texture the walls: pick a wall material and apply it with the Material
+	//     tool by clicking each wall's centre (the exact presenter gesture). ---
+	const std::string kWall = "BRICK/BRICKWALL001A";
+	c.SetActiveMaterial( kWall );
+	c.SetTool( Tool::Material );
+	const double wallCentres[4][2] = {
+	    { 256, 32 },  // south
+	    { 256, 480 }, // north
+	    { 32, 256 },  // west
+	    { 480, 256 }, // east
+	};
+	for ( const auto &p : wallCentres )
+	{
+		c.PointerDown( ViewId::Top, p[0], p[1] );
+		c.PointerUp( ViewId::Top, p[0], p[1] );
+	}
+	// Every face of every wall now carries the wall material.
+	for ( const auto &b : c.Brushes() )
+	{
+		CHECK( !b.materials.empty() );
+		for ( const auto &m : b.materials )
+		{
+			CHECK( m == kWall );
+		}
+	}
+
+	// --- Place the two point entities with the Entity tool (a click each). ---
+	c.SetTool( Tool::Entity );
+	c.SetEntityClass( "info_player_start" );
+	c.PointerDown( ViewId::Top, 256, 256 ); // room centre
+	c.PointerUp( ViewId::Top, 256, 256 );
+	CHECK( c.SelectedEntity().has_value() );
+
+	c.SetEntityClass( "weapon_portalgun" );
+	c.PointerDown( ViewId::Top, 128, 256 );
+	c.PointerUp( ViewId::Top, 128, 256 );
+	CHECK( c.Entities().size() == 2 );
+
+	// Give the spawn point a name -- exercises the entity property owner + history.
+	int spawnId = 0;
+	for ( const MapEntity &e : c.Entities() )
+	{
+		if ( e.classname == "info_player_start" )
+		{
+			spawnId = e.id;
+		}
+	}
+	CHECK( spawnId != 0 );
+	CHECK( c.SetEntityProperty( spawnId, "targetname", "spawn1" ) );
+	CHECK( !c.SetEntityProperty( spawnId, "targetname", "spawn1" ) ); // no-op, no history
+
+	// The renderable scene sees four wall solids and two entity markers.
+	const auto scene = c.BuildScene();
+	CHECK( scene.solids.size() == 4 );
+	CHECK( scene.entities.size() == 2 );
+
+	// --- Save to VMF and validate structure directly. ---
+	const std::string vmf = c.ToVmf();
+	hammer::formats::ParseResult pr = hammer::formats::ParseKeyValues( vmf );
+	CHECK( pr.ok );
+	CHECK( CountBlocks( pr.root, "world" ) == 1 );
+	CHECK( CountBlocks( pr.root, "entity" ) == 2 );
+
+	int worldSolids = 0;
+	int wallSides = 0;
+	for ( const auto &block : pr.root.children )
+	{
+		if ( block.name == "world" )
+		{
+			for ( const auto &child : block.children )
+			{
+				if ( child.name == "solid" )
+				{
+					++worldSolids;
+					for ( const auto &s : child.children )
+					{
+						if ( s.name == "side" )
+						{
+							const std::string *mat = s.Find( "material" );
+							if ( mat && *mat == kWall )
+							{
+								++wallSides;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	CHECK( worldSolids == 4 );
+	CHECK( wallSides == 24 ); // 4 walls * 6 faces, all the wall material
+
+	// Both entities are present with the right classnames and named spawn.
+	bool sawSpawn = false;
+	bool sawGun = false;
+	for ( const auto &block : pr.root.children )
+	{
+		if ( block.name != "entity" )
+		{
+			continue;
+		}
+		const std::string *cls = block.Find( "classname" );
+		const std::string *origin = block.Find( "origin" );
+		CHECK( cls != nullptr );
+		CHECK( origin != nullptr );
+		if ( cls && *cls == "info_player_start" )
+		{
+			sawSpawn = true;
+			const std::string *name = block.Find( "targetname" );
+			CHECK( name != nullptr && *name == "spawn1" );
+		}
+		if ( cls && *cls == "weapon_portalgun" )
+		{
+			sawGun = true;
+		}
+	}
+	CHECK( sawSpawn );
+	CHECK( sawGun );
+
+	// --- Round-trip: reload the saved VMF and confirm everything survives. ---
+	EditorController loaded;
+	std::string error;
+	CHECK( loaded.LoadVmf( vmf, error ) );
+	CHECK( error.empty() );
+	CHECK( !loaded.IsModified() );
+	CHECK( loaded.Brushes().size() == 4 );
+	CHECK( loaded.Entities().size() == 2 );
+
+	// Reloaded walls keep their material.
+	for ( const auto &b : loaded.Brushes() )
+	{
+		for ( const auto &m : b.materials )
+		{
+			CHECK( m == kWall );
+		}
+	}
+
+	// Reloaded entities keep classname, origin, and the spawn's name.
+	bool reSpawn = false;
+	bool reGun = false;
+	for ( const MapEntity &e : loaded.Entities() )
+	{
+		if ( e.classname == "info_player_start" )
+		{
+			reSpawn = true;
+			CHECK( Near( e.origin.x, 256 ) && Near( e.origin.y, 256 ) && Near( e.origin.z, 0 ) );
+			bool named = false;
+			for ( const auto &p : e.properties )
+			{
+				if ( p.key == "targetname" && p.value == "spawn1" )
+				{
+					named = true;
+				}
+			}
+			CHECK( named );
+		}
+		if ( e.classname == "weapon_portalgun" )
+		{
+			reGun = true;
+			CHECK( Near( e.origin.x, 128 ) && Near( e.origin.y, 256 ) );
+		}
+	}
+	CHECK( reSpawn );
+	CHECK( reGun );
+}
+
+// Placing an entity, then deleting it, must undo/redo cleanly through the shared
+// history -- the entity tool routes through the same one authority as brushes.
+void TestEntityPlaceDeleteUndo()
+{
+	EditorController c;
+	c.SetGridSize( 64 );
+
+	c.SetTool( Tool::Entity );
+	c.SetEntityClass( "info_player_start" );
+	c.PointerDown( ViewId::Top, 128, 128 );
+	c.PointerUp( ViewId::Top, 128, 128 );
+	CHECK( c.Entities().size() == 1 );
+	CHECK( c.IsModified() );
+
+	// Select it with the Selection tool (nearest within tolerance) and delete it.
+	c.SetTool( Tool::Select );
+	c.PointerDown( ViewId::Top, 128, 128 );
+	c.PointerUp( ViewId::Top, 128, 128 );
+	CHECK( c.SelectedEntity().has_value() );
+	CHECK( c.DeleteSelection() );
+	CHECK( c.Entities().empty() );
+
+	// Undo restores the entity; a second undo removes the placement (empty base).
+	CHECK( c.Undo() );
+	CHECK( c.Entities().size() == 1 );
+	CHECK( c.Undo() );
+	CHECK( c.Entities().empty() );
+	CHECK( !c.IsModified() );
+
+	// Redo replays placement then deletion.
+	CHECK( c.Redo() );
+	CHECK( c.Entities().size() == 1 );
+	CHECK( c.Redo() );
+	CHECK( c.Entities().empty() );
+}
+
+// A loaded map's displacement (dispinfo) surfaces must be carried through
+// BuildScene() so the interactive viewport renders terrain, and cleared by NewMap.
+void TestLoadDisplacementCarries()
+{
+	const char *kVmf =
+	    "world\n{\n\t\"id\" \"1\"\n\t\"classname\" \"worldspawn\"\n"
+	    "\tsolid\n\t{\n\t\t\"id\" \"2\"\n"
+	    "\t\tside\n\t\t{\n\t\t\t\"plane\" \"(0 64 64) (64 64 64) (64 0 64)\"\n"
+	    "\t\t\t\"material\" \"DEV/A\"\n"
+	    "\t\t\tdispinfo\n\t\t\t{\n\t\t\t\t\"power\" \"1\"\n\t\t\t\t\"startposition\" \"[0 0 64]\"\n"
+	    "\t\t\t\t\"elevation\" \"0\"\n"
+	    "\t\t\t\tnormals\n\t\t\t\t{\n\t\t\t\t\t\"row0\" \"0 0 1 0 0 1 0 0 1\"\n"
+	    "\t\t\t\t\t\"row1\" \"0 0 1 0 0 1 0 0 1\"\n\t\t\t\t\t\"row2\" \"0 0 1 0 0 1 0 0 "
+	    "1\"\n\t\t\t\t}\n"
+	    "\t\t\t\tdistances\n\t\t\t\t{\n\t\t\t\t\t\"row0\" \"0 0 0\"\n"
+	    "\t\t\t\t\t\"row1\" \"0 32 0\"\n\t\t\t\t\t\"row2\" \"0 0 0\"\n\t\t\t\t}\n\t\t\t}\n\t\t}\n"
+	    "\t\tside { \"plane\" \"(0 0 0) (64 0 0) (64 64 0)\" \"material\" \"DEV/B\" }\n"
+	    "\t\tside { \"plane\" \"(64 0 0) (64 0 64) (64 64 64)\" \"material\" \"DEV/C\" }\n"
+	    "\t\tside { \"plane\" \"(0 64 0) (0 64 64) (0 0 64)\" \"material\" \"DEV/D\" }\n"
+	    "\t\tside { \"plane\" \"(64 64 0) (64 64 64) (0 64 64)\" \"material\" \"DEV/E\" }\n"
+	    "\t\tside { \"plane\" \"(0 0 0) (0 0 64) (64 0 64)\" \"material\" \"DEV/F\" }\n"
+	    "\t}\n}\n";
+
+	EditorController c;
+	std::string error;
+	CHECK( c.LoadVmf( kVmf, error ) );
+	const auto scene = c.BuildScene();
+	CHECK( scene.solids.size() == 1 );        // the box brush
+	CHECK( scene.displacements.size() == 1 ); // its displaced top face, carried through
+	if ( scene.displacements.size() == 1 )
+	{
+		CHECK( scene.displacements[0].vertices.size() == 9 );  // (2^1+1)^2
+		CHECK( scene.displacements[0].triangles.size() == 8 ); // 2*(2^1)^2
+	}
+	// NewMap clears carried displacements.
+	c.NewMap();
+	CHECK( c.BuildScene().displacements.empty() );
+}
+
 } // namespace
 
 int main()
@@ -326,6 +605,9 @@ int main()
 	TestGuardsRejectBadInput();
 	TestLoadNonBoxPreservesShape();
 	TestBuildSimpleMapAndSave();
+	TestBuildRoomFromScratch();
+	TestEntityPlaceDeleteUndo();
+	TestLoadDisplacementCarries();
 
 	if ( g_failures != 0 )
 	{

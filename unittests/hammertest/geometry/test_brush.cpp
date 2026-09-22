@@ -280,6 +280,70 @@ void TestBuildScene()
 	}
 }
 
+// A brush face carrying a "dispinfo" block must import into WorldScene.displacements
+// as a subdivided surface (power p -> (2^p+1)^2 vertices, 2*(2^p-1)^2 triangles),
+// with the base grid actually displaced above the flat face by its distances.
+void TestDisplacementImport()
+{
+	// Box [0,64]^3 with the +Z face displaced (power 1 -> 3x3 grid). All normals
+	// +Z; the centre vertex is pushed up 32 units.
+	const char *kVmf =
+	    "world\n{\n\t\"id\" \"1\"\n\t\"classname\" \"worldspawn\"\n"
+	    "\tsolid\n\t{\n\t\t\"id\" \"2\"\n"
+	    "\t\tside\n\t\t{\n\t\t\t\"plane\" \"(0 64 64) (64 64 64) (64 0 64)\"\n"
+	    "\t\t\t\"material\" \"DEV/A\"\n"
+	    "\t\t\tdispinfo\n\t\t\t{\n\t\t\t\t\"power\" \"1\"\n\t\t\t\t\"startposition\" \"[0 0 64]\"\n"
+	    "\t\t\t\t\"elevation\" \"0\"\n\t\t\t\t\"subdiv\" \"0\"\n"
+	    "\t\t\t\tnormals\n\t\t\t\t{\n\t\t\t\t\t\"row0\" \"0 0 1 0 0 1 0 0 1\"\n"
+	    "\t\t\t\t\t\"row1\" \"0 0 1 0 0 1 0 0 1\"\n\t\t\t\t\t\"row2\" \"0 0 1 0 0 1 0 0 "
+	    "1\"\n\t\t\t\t}\n"
+	    "\t\t\t\tdistances\n\t\t\t\t{\n\t\t\t\t\t\"row0\" \"0 0 0\"\n"
+	    "\t\t\t\t\t\"row1\" \"0 32 0\"\n\t\t\t\t\t\"row2\" \"0 0 0\"\n\t\t\t\t}\n\t\t\t}\n\t\t}\n"
+	    "\t\tside { \"plane\" \"(0 0 0) (64 0 0) (64 64 0)\" \"material\" \"DEV/B\" }\n"
+	    "\t\tside { \"plane\" \"(64 0 0) (64 0 64) (64 64 64)\" \"material\" \"DEV/C\" }\n"
+	    "\t\tside { \"plane\" \"(0 64 0) (0 64 64) (0 0 64)\" \"material\" \"DEV/D\" }\n"
+	    "\t\tside { \"plane\" \"(64 64 0) (64 64 64) (0 64 64)\" \"material\" \"DEV/E\" }\n"
+	    "\t\tside { \"plane\" \"(0 0 0) (0 0 64) (64 0 64)\" \"material\" \"DEV/F\" }\n"
+	    "\t}\n}\n";
+
+	hammer::formats::ParseResult pr = hammer::formats::ParseKeyValues( kVmf );
+	CHECK( pr.ok );
+	if ( !pr.ok )
+	{
+		return;
+	}
+	const hammer::geometry::WorldScene scene = hammer::geometry::BuildSceneFromDocument( pr.root );
+
+	CHECK( scene.solids.size() == 1 ); // the box brush still imports
+	CHECK( scene.displacements.size() == 1 );
+	if ( scene.displacements.size() == 1 )
+	{
+		const hammer::geometry::DisplacementMesh &d = scene.displacements[0];
+		CHECK( d.vertices.size() == 9 );  // (2^1 + 1)^2
+		CHECK( d.triangles.size() == 8 ); // 2 * (2^1)^2
+		CHECK( d.alphas.size() == 9 );
+
+		// The surface really rises above the flat z=64 face: the peak is ~96.
+		double maxZ = 0.0;
+		for ( const hammer::geometry::Vec3d &v : d.vertices )
+		{
+			maxZ = std::max( maxZ, v.z );
+		}
+		CHECK( maxZ > 90.0 );
+
+		// Every triangle indexes valid vertices.
+		for ( const std::array<int, 3> &t : d.triangles )
+		{
+			for ( int i : t )
+			{
+				CHECK( i >= 0 && i < static_cast<int>( d.vertices.size() ) );
+			}
+		}
+	}
+	// The displaced vertices extend the scene bounds above the flat face.
+	CHECK( scene.bounded && scene.maxs.z > 90.0 );
+}
+
 } // namespace
 
 int main()
@@ -289,6 +353,7 @@ int main()
 	TestBuildFromPlanes();
 	TestBuildFromBlock();
 	TestBuildScene();
+	TestDisplacementImport();
 
 	if ( g_failures != 0 )
 	{

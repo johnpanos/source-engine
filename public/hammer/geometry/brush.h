@@ -90,11 +90,25 @@ struct SceneEntity
 	std::size_t solidCount = 0;
 };
 
+// A displaced (dispinfo) surface reduced to a renderable triangle mesh: a
+// row-major grid of world-space vertices, a per-vertex blend weight (0..255), and
+// a triangle index list. This is the presentation form the scene carries; the
+// subdivision math lives in hammer.geometry.displacement, and brush.cpp fills this
+// from it (kept here so WorldScene needs no dependency on that module's header).
+struct DisplacementMesh
+{
+	std::vector<Vec3d> vertices;
+	std::vector<double> alphas;
+	std::vector<std::array<int, 3>> triangles;
+};
+
 // The renderable result of importing a VMF document: every world and brush-entity
-// solid resolved to polygons, plus a light entity summary and overall bounds.
+// solid resolved to polygons, any displaced faces resolved to surfaces, plus a
+// light entity summary and overall bounds.
 struct WorldScene
 {
 	std::vector<BrushSolid> solids;
+	std::vector<DisplacementMesh> displacements;
 	std::vector<SceneEntity> entities;
 
 	Vec3d mins;

@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <climits>
 #include <cmath>
 #include <cstdint>
@@ -71,6 +72,24 @@ struct Viewport
 	double cursorX = 0.0;
 	double cursorY = 0.0;
 	double pinchPrev = 1.0;
+
+	// --- 3D free-fly / mouse-look navigation (Perspective view only) ---------
+	bool mouseLook = false;    // Z toggled free-look: motion rotates the camera
+	bool haveLookPrev = false; // whether lookPrev* holds a valid last position
+	double lookPrevX = 0.0;    // last pointer pos while in mouse-look
+	double lookPrevY = 0.0;    //   (widget coords), for the rotation delta
+	bool keyForward = false;   // WASD / QE / RF fly keys currently held
+	bool keyBack = false;
+	bool keyLeft = false;
+	bool keyRight = false;
+	bool keyUp = false;
+	bool keyDown = false;
+	bool keyFast = false;         // Shift held: fly faster
+	guint flyTick = 0;            // frame-clock tick source id (fly integration)
+	gint64 flyPrevUs = 0;         // last tick time for dt, 0 = uninitialised
+	double dragDist = 0.0;        // accumulated |drag| this press, to detect a click
+	bool dragIsPan = false;       // this left-drag is a space+drag pan (2D), not a tool
+	GtkWidget *caption = nullptr; // OSD label, updated when Tab cycles the 2D view
 };
 
 struct AppState
@@ -98,10 +117,17 @@ struct AppState
 	GtkToggleButton *selectBtn = nullptr;
 	GtkToggleButton *blockBtn = nullptr;
 	bool suppressToolSignal = false;
+	bool spaceHeld = false; // Space held: left-drag pans a 2D view (MFC nav idiom)
 
 	// Object-bar texture preview (current material).
 	GtkWidget *texSwatch = nullptr;
 	GtkLabel *texNameLabel = nullptr;
+	// The Texture Application window (Shift+A), when one is open. Only one exists at
+	// a time; the swatch/name mirror the object-bar preview so both stay in sync.
+	// All three are cleared when the window is destroyed.
+	GtkWidget *texToolWindow = nullptr;
+	GtkWidget *texToolSwatch = nullptr;
+	GtkLabel *texToolName = nullptr;
 	std::string currentMaterial;
 	std::vector<std::uint8_t> swatchRgba; // RGBA preview shown by DrawTextureSwatch
 	int swatchW = 0;
@@ -125,8 +151,14 @@ void UpdateChrome( AppState *st )
 	if ( st->objectsCount )
 	{
 		char buf[128];
-		std::snprintf( buf, sizeof( buf ), "%zu brush(es)%s", st->controller.Brushes().size(),
-		    st->controller.Selection() ? "  ·  1 selected" : "" );
+		char sel[48] = { 0 };
+		const std::size_t n = st->controller.SelectionCount();
+		if ( n > 0 )
+		{
+			std::snprintf( sel, sizeof( sel ), "  ·  %zu selected", n );
+		}
+		std::snprintf(
+		    buf, sizeof( buf ), "%zu brush(es)%s", st->controller.Brushes().size(), sel );
 		gtk_label_set_text( st->objectsCount, buf );
 	}
 	if ( st->snapLabel )
@@ -153,7 +185,7 @@ void UpdateChrome( AppState *st )
 void RefreshScene( AppState *st, bool frame )
 {
 	const hammer::geometry::WorldScene scene = st->controller.BuildScene();
-	const int selId = st->controller.Selection() ? *st->controller.Selection() : kNoHighlight;
+	const std::vector<int> selectedIds = st->controller.Selections();
 	for ( Viewport &vp : st->viewports )
 	{
 		if ( vp.glReady && vp.area )
@@ -162,7 +194,8 @@ void RefreshScene( AppState *st, bool frame )
 			if ( gtk_gl_area_get_error( vp.area ) == nullptr )
 			{
 				vp.renderer.SetMaterialCatalog( st->catalog.get() );
-				vp.renderer.SetHighlight( selId );
+				vp.renderer.SetHighlight( kNoHighlight );
+				vp.renderer.SetHighlights( selectedIds ); // highlight the whole selection
 				vp.renderer.SetScene( scene );
 				if ( frame )
 				{
@@ -188,6 +221,9 @@ void RefreshScene( AppState *st, bool frame )
 void SetCurrentMaterial( AppState *st, const std::string &name )
 {
 	st->currentMaterial = name;
+	// The current material IS the active material the controller applies (Material
+	// tool, Apply-to-Selection) and gives new Block brushes. One owner, one update.
+	st->controller.SetActiveMaterial( name );
 
 	std::string label = name;
 	st->swatchRgba.clear();
@@ -237,6 +273,15 @@ void SetCurrentMaterial( AppState *st, const std::string &name )
 	if ( st->texSwatch )
 	{
 		gtk_widget_queue_draw( st->texSwatch );
+	}
+	// Mirror into the Texture Application window's current-material preview, if open.
+	if ( st->texToolName )
+	{
+		gtk_label_set_text( st->texToolName, label.c_str() );
+	}
+	if ( st->texToolSwatch )
+	{
+		gtk_widget_queue_draw( st->texToolSwatch );
 	}
 }
 
@@ -626,9 +671,152 @@ void UpdateCoords( Viewport *vp )
 	gtk_label_set_text( st->coordLabel, buf );
 }
 
+// ---- 3D free-fly / mouse-look (classic Hammer camera navigation) -----------
+
+// Degrees of camera rotation per pixel of mouse motion in look mode (MFC uses
+// 0.4). World units per second the camera flies with WASD, and the Shift boost.
+constexpr double kLookSpeed = 0.4;
+constexpr double kFlyBaseSpeed = 640.0;
+constexpr double kFlyFastSpeed = 1800.0;
+
+void SetCursorHidden( Viewport *vp, bool hidden )
+{
+	if ( hidden )
+	{
+		GdkCursor *none = gdk_cursor_new_from_name( "none", nullptr );
+		gtk_widget_set_cursor( GTK_WIDGET( vp->area ), none );
+		if ( none )
+		{
+			g_object_unref( none );
+		}
+	}
+	else
+	{
+		gtk_widget_set_cursor( GTK_WIDGET( vp->area ), nullptr );
+	}
+}
+
+// Per-frame fly integration: while any movement key is held, translates the 3D
+// camera by speed*dt along the view basis. Runs only while keys are down (started
+// and stopped by UpdateFlyTick), so the frame clock idles when nothing moves.
+gboolean OnFlyTick( GtkWidget *, GdkFrameClock *clock, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	const gint64 now = gdk_frame_clock_get_frame_time( clock );
+	if ( vp->flyPrevUs == 0 )
+	{
+		vp->flyPrevUs = now;
+		return G_SOURCE_CONTINUE;
+	}
+	double dt = static_cast<double>( now - vp->flyPrevUs ) / 1.0e6;
+	vp->flyPrevUs = now;
+	if ( dt > 0.25 )
+	{
+		dt = 0.25; // clamp long stalls, like MFC's ProcessInput
+	}
+	if ( dt <= 0.0 )
+	{
+		return G_SOURCE_CONTINUE;
+	}
+
+	const double step = ( vp->keyFast ? kFlyFastSpeed : kFlyBaseSpeed ) * dt;
+	double fwd = 0.0;
+	double strafe = 0.0;
+	double rise = 0.0;
+	if ( vp->keyForward )
+	{
+		fwd += step;
+	}
+	if ( vp->keyBack )
+	{
+		fwd -= step;
+	}
+	if ( vp->keyRight )
+	{
+		strafe += step;
+	}
+	if ( vp->keyLeft )
+	{
+		strafe -= step;
+	}
+	if ( vp->keyUp )
+	{
+		rise += step;
+	}
+	if ( vp->keyDown )
+	{
+		rise -= step;
+	}
+	if ( fwd != 0.0 || strafe != 0.0 || rise != 0.0 )
+	{
+		vp->renderer.FlyMove(
+		    static_cast<float>( fwd ), static_cast<float>( strafe ), static_cast<float>( rise ) );
+		gtk_gl_area_queue_render( vp->area );
+	}
+	return G_SOURCE_CONTINUE;
+}
+
+// Starts/stops the frame-clock tick so it runs exactly while a fly key is held.
+void UpdateFlyTick( Viewport *vp )
+{
+	const bool wantTick =
+	    vp->keyForward || vp->keyBack || vp->keyLeft || vp->keyRight || vp->keyUp || vp->keyDown;
+	if ( wantTick && vp->flyTick == 0 )
+	{
+		vp->flyPrevUs = 0;
+		vp->flyTick =
+		    gtk_widget_add_tick_callback( GTK_WIDGET( vp->area ), OnFlyTick, vp, nullptr );
+	}
+	else if ( !wantTick && vp->flyTick != 0 )
+	{
+		gtk_widget_remove_tick_callback( GTK_WIDGET( vp->area ), vp->flyTick );
+		vp->flyTick = 0;
+	}
+}
+
+void SetMouseLook( Viewport *vp, bool on )
+{
+	if ( vp->mode != hammergtk::ViewMode::Perspective || vp->mouseLook == on )
+	{
+		return;
+	}
+	vp->mouseLook = on;
+	vp->haveLookPrev = false;
+	SetCursorHidden( vp, on );
+	SetHelp( vp->app, on ? "Mouse-look: move to look, WASD/QE to fly, Z to release"
+	                     : "Camera view — click to select, Z for mouse-look" );
+}
+
+void ClearFlyKeys( Viewport *vp )
+{
+	vp->keyForward = false;
+	vp->keyBack = false;
+	vp->keyLeft = false;
+	vp->keyRight = false;
+	vp->keyUp = false;
+	vp->keyDown = false;
+	UpdateFlyTick( vp );
+}
+
 void OnMotion( GtkEventControllerMotion *, double x, double y, gpointer user_data )
 {
 	Viewport *vp = static_cast<Viewport *>( user_data );
+	if ( vp->mouseLook && vp->mode == hammergtk::ViewMode::Perspective )
+	{
+		if ( vp->haveLookPrev )
+		{
+			// Mouse right -> turn right; mouse up -> look up. (Signs chosen to match
+			// a first-person feel; flip kLookSpeed's use here to invert an axis.)
+			const double dx = x - vp->lookPrevX;
+			const double dy = y - vp->lookPrevY;
+			vp->renderer.FlyLook(
+			    static_cast<float>( -dx * kLookSpeed ), static_cast<float>( dy * kLookSpeed ) );
+			gtk_gl_area_queue_render( vp->area );
+		}
+		vp->lookPrevX = x;
+		vp->lookPrevY = y;
+		vp->haveLookPrev = true;
+	}
 	vp->cursorX = x;
 	vp->cursorY = y;
 	UpdateCoords( vp );
@@ -636,21 +824,32 @@ void OnMotion( GtkEventControllerMotion *, double x, double y, gpointer user_dat
 
 // Tool drag (left button): 2D views drive the active editing tool; the camera
 // view orbits.
-void OnToolBegin( GtkGestureDrag *, double startX, double startY, gpointer user_data )
+void OnToolBegin( GtkGestureDrag *gesture, double startX, double startY, gpointer user_data )
 {
 	Viewport *vp = static_cast<Viewport *>( user_data );
 	vp->startX = startX;
 	vp->startY = startY;
 	vp->orbitPrevX = 0.0;
 	vp->orbitPrevY = 0.0;
+	vp->dragDist = 0.0;
 	if ( vp->mode == hammergtk::ViewMode::Perspective )
 	{
 		return;
 	}
+	// Space + left-drag pans a 2D view (MFC's navigation idiom), instead of editing.
+	vp->dragIsPan = vp->app->spaceHeld;
+	if ( vp->dragIsPan )
+	{
+		return;
+	}
+	// Ctrl-click adds/removes the brush from a multi-selection (MFC additive select).
+	const GdkModifierType mods =
+	    gtk_event_controller_get_current_event_state( GTK_EVENT_CONTROLLER( gesture ) );
+	const bool additive = ( mods & GDK_CONTROL_MASK ) != 0;
 	double u = 0.0;
 	double v = 0.0;
 	WidgetToWorld( vp, startX, startY, u, v );
-	vp->app->controller.PointerDown( vp->vid, u, v );
+	vp->app->controller.PointerDown( vp->vid, u, v, additive );
 	RefreshScene( vp->app, false );
 }
 
@@ -659,6 +858,18 @@ void OnToolUpdate( GtkGestureDrag *, double offX, double offY, gpointer user_dat
 	Viewport *vp = static_cast<Viewport *>( user_data );
 	if ( vp->mode == hammergtk::ViewMode::Perspective )
 	{
+		const double dx = offX - vp->orbitPrevX;
+		const double dy = offY - vp->orbitPrevY;
+		vp->orbitPrevX = offX;
+		vp->orbitPrevY = offY;
+		vp->dragDist += std::abs( dx ) + std::abs( dy );
+		vp->renderer.DragBy( static_cast<float>( dx ), static_cast<float>( dy ) );
+		gtk_gl_area_queue_render( vp->area );
+		return;
+	}
+	if ( vp->dragIsPan )
+	{
+		// Space + left-drag pan: incremental like the middle-button pan.
 		const double dx = offX - vp->orbitPrevX;
 		const double dy = offY - vp->orbitPrevY;
 		vp->orbitPrevX = offX;
@@ -674,11 +885,36 @@ void OnToolUpdate( GtkGestureDrag *, double offX, double offY, gpointer user_dat
 	RefreshScene( vp->app, false );
 }
 
-void OnToolEnd( GtkGestureDrag *, double offX, double offY, gpointer user_data )
+void OnToolEnd( GtkGestureDrag *gesture, double offX, double offY, gpointer user_data )
 {
 	Viewport *vp = static_cast<Viewport *>( user_data );
 	if ( vp->mode == hammergtk::ViewMode::Perspective )
 	{
+		// A left click that barely moved (not an orbit-drag) is a 3D ray pick, so
+		// the camera view can select brushes like MFC's selection tool does.
+		if ( vp->dragDist < 4.0 )
+		{
+			const int scale = gtk_widget_get_scale_factor( GTK_WIDGET( vp->area ) );
+			const int w = gtk_widget_get_width( GTK_WIDGET( vp->area ) ) * scale;
+			const int h = gtk_widget_get_height( GTK_WIDGET( vp->area ) ) * scale;
+			const GdkModifierType mods =
+			    gtk_event_controller_get_current_event_state( GTK_EVENT_CONTROLLER( gesture ) );
+			const bool additive = ( mods & GDK_CONTROL_MASK ) != 0;
+			float o[3] = { 0.0f, 0.0f, 0.0f };
+			float d[3] = { 0.0f, 0.0f, 0.0f };
+			if ( vp->renderer.PixelToRay( static_cast<float>( vp->startX * scale ),
+			         static_cast<float>( vp->startY * scale ), w, h, o, d ) )
+			{
+				vp->app->controller.PickByRay( hammer::geometry::Vec3d( o[0], o[1], o[2] ),
+				    hammer::geometry::Vec3d( d[0], d[1], d[2] ), additive );
+				RefreshScene( vp->app, false );
+			}
+		}
+		return;
+	}
+	if ( vp->dragIsPan )
+	{
+		vp->dragIsPan = false;
 		return;
 	}
 	double u = 0.0;
@@ -774,12 +1010,20 @@ void OnZoomChanged( GtkGestureZoom *zoom, double scaleRatio, gpointer user_data 
 	gtk_gl_area_queue_render( vp->area );
 }
 
+// Defined below (with the Texture Application window); Shift+A opens it.
+void OpenTextureWindow( AppState *st );
+
 gboolean OnKeyPressed(
     GtkEventControllerKey *, guint keyval, guint, GdkModifierType, gpointer user_data )
 {
 	AppState *st = static_cast<AppState *>( user_data );
 	switch ( keyval )
 	{
+	// Shift+A yields the uppercase keysym; this is legacy Hammer's texture-
+	// application tool shortcut. Open the Texture Application window.
+	case GDK_KEY_A:
+		OpenTextureWindow( st );
+		return TRUE;
 	case GDK_KEY_Return:
 	case GDK_KEY_KP_Enter:
 		if ( st->controller.Commit() )
@@ -812,6 +1056,312 @@ gboolean OnKeyPressed(
 	return FALSE;
 }
 
+// The two world axes a 2D view edits (its horizontal/vertical screen axes).
+void ViewAxes2D( hammergtk::ViewMode mode, int &uAxis, int &vAxis )
+{
+	switch ( mode )
+	{
+	case hammergtk::ViewMode::Front: // X / Z
+		uAxis = 0;
+		vAxis = 2;
+		break;
+	case hammergtk::ViewMode::Side: // Y / Z
+		uAxis = 1;
+		vAxis = 2;
+		break;
+	default: // Top: X / Y
+		uAxis = 0;
+		vAxis = 1;
+		break;
+	}
+}
+
+// Tab cycles a 2D view's orientation Top -> Front -> Side -> Top, like MFC's
+// draw-type cycle. Renderer mode and controller ViewId (edit axes) move together.
+void CycleView2D( Viewport *vp )
+{
+	struct ViewDef
+	{
+		hammergtk::ViewMode mode;
+		hammer::app::ViewId vid;
+		const char *label;
+	};
+	static const ViewDef order[] = {
+	    { hammergtk::ViewMode::Top, hammer::app::ViewId::Top, "top (x/y)" },
+	    { hammergtk::ViewMode::Front, hammer::app::ViewId::Front, "front (x/z)" },
+	    { hammergtk::ViewMode::Side, hammer::app::ViewId::Side, "side (y/z)" },
+	};
+	int cur = 0;
+	for ( int i = 0; i < 3; ++i )
+	{
+		if ( order[i].mode == vp->mode )
+		{
+			cur = i;
+		}
+	}
+	const ViewDef &next = order[( cur + 1 ) % 3];
+	vp->mode = next.mode;
+	vp->vid = next.vid;
+	vp->label = next.label;
+	vp->renderer.SetViewMode( next.mode );
+	vp->renderer.FrameScene(); // reframe for the new axes (pure math, no GL)
+	if ( vp->caption )
+	{
+		gtk_label_set_text( GTK_LABEL( vp->caption ), next.label );
+	}
+	gtk_gl_area_queue_render( vp->area );
+}
+
+// Arrow-key nudge of the selected brush by one grid step along the 2D view axes
+// (screen up = +v). One undo unit per nudge, via the controller (single authority).
+void Nudge2D( Viewport *vp, int du, int dv )
+{
+	if ( !vp->app->controller.Selection() )
+	{
+		return;
+	}
+	int uAxis = 0;
+	int vAxis = 1;
+	ViewAxes2D( vp->mode, uAxis, vAxis );
+	const double grid = static_cast<double>( vp->app->controller.GridSize() );
+	double d[3] = { 0.0, 0.0, 0.0 };
+	d[uAxis] += du * grid;
+	d[vAxis] += dv * grid;
+	if ( vp->app->controller.MoveSelectionBy( d[0], d[1], d[2] ) )
+	{
+		RefreshScene( vp->app, false );
+	}
+}
+
+// +/- keyboard zoom for a 2D view, anchored at the cursor like the wheel zoom.
+void Zoom2DKey( Viewport *vp, bool zoomIn )
+{
+	const int scale = gtk_widget_get_scale_factor( GTK_WIDGET( vp->area ) );
+	const int w = gtk_widget_get_width( GTK_WIDGET( vp->area ) ) * scale;
+	const int h = gtk_widget_get_height( GTK_WIDGET( vp->area ) ) * scale;
+	const float px = static_cast<float>( vp->cursorX * scale );
+	const float py = static_cast<float>( vp->cursorY * scale );
+	vp->renderer.ZoomAtPixel( zoomIn ? 1.2f : ( 1.0f / 1.2f ), px, py, w, h );
+	UpdateCoords( vp );
+	gtk_gl_area_queue_render( vp->area );
+}
+
+// Per-viewport key handling. The 3D camera view: Z toggles mouse-look and WASD/QE
+// fly (held state integrated by OnFlyTick); the 2D views: Tab cycles orientation,
+// arrows nudge the selection, +/- zoom. Space (either) arms space+drag panning.
+// Consuming a view's keys matches MFC, where the focused view captures them;
+// unhandled keys fall through to the window shortcuts (B/S tools, Delete, etc.).
+gboolean OnViewKeyPressed(
+    GtkEventControllerKey *, guint keyval, guint, GdkModifierType state, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	if ( keyval == GDK_KEY_space )
+	{
+		vp->app->spaceHeld = true; // used by the left-drag gesture; don't consume
+		return FALSE;
+	}
+	if ( vp->mode != hammergtk::ViewMode::Perspective )
+	{
+		// Number keys 1..9 jump to preset zoom levels (0.0625 px/unit doubling per
+		// step); 0 frames the whole map -- MFC's numeric zoom shortcuts.
+		if ( keyval >= GDK_KEY_1 && keyval <= GDK_KEY_9 )
+		{
+			vp->renderer.SetOrthoScale(
+			    0.0625f * std::pow( 2.0f, static_cast<float>( keyval - GDK_KEY_1 ) ) );
+			UpdateCoords( vp );
+			gtk_gl_area_queue_render( vp->area );
+			return TRUE;
+		}
+		if ( keyval == GDK_KEY_0 )
+		{
+			vp->renderer.FrameScene();
+			UpdateCoords( vp );
+			gtk_gl_area_queue_render( vp->area );
+			return TRUE;
+		}
+		switch ( keyval )
+		{
+		case GDK_KEY_Tab:
+		case GDK_KEY_ISO_Left_Tab:
+			CycleView2D( vp );
+			return TRUE;
+		case GDK_KEY_Up:
+			Nudge2D( vp, 0, 1 );
+			return TRUE;
+		case GDK_KEY_Down:
+			Nudge2D( vp, 0, -1 );
+			return TRUE;
+		case GDK_KEY_Left:
+			Nudge2D( vp, -1, 0 );
+			return TRUE;
+		case GDK_KEY_Right:
+			Nudge2D( vp, 1, 0 );
+			return TRUE;
+		case GDK_KEY_plus:
+		case GDK_KEY_equal:
+		case GDK_KEY_KP_Add:
+			Zoom2DKey( vp, true );
+			return TRUE;
+		case GDK_KEY_minus:
+		case GDK_KEY_KP_Subtract:
+			Zoom2DKey( vp, false );
+			return TRUE;
+		default:
+			return FALSE;
+		}
+	}
+	vp->keyFast = ( state & GDK_SHIFT_MASK ) != 0;
+	switch ( keyval )
+	{
+	case GDK_KEY_z:
+	case GDK_KEY_Z:
+		SetMouseLook( vp, !vp->mouseLook );
+		return TRUE;
+	case GDK_KEY_w:
+	case GDK_KEY_W:
+		vp->keyForward = true;
+		UpdateFlyTick( vp );
+		return TRUE;
+	case GDK_KEY_s:
+	case GDK_KEY_S:
+		vp->keyBack = true;
+		UpdateFlyTick( vp );
+		return TRUE;
+	case GDK_KEY_a:
+	case GDK_KEY_A:
+		vp->keyLeft = true;
+		UpdateFlyTick( vp );
+		return TRUE;
+	case GDK_KEY_d:
+	case GDK_KEY_D:
+		vp->keyRight = true;
+		UpdateFlyTick( vp );
+		return TRUE;
+	case GDK_KEY_e:
+	case GDK_KEY_E:
+		vp->keyUp = true;
+		UpdateFlyTick( vp );
+		return TRUE;
+	case GDK_KEY_q:
+	case GDK_KEY_Q:
+		vp->keyDown = true;
+		UpdateFlyTick( vp );
+		return TRUE;
+	default:
+		return FALSE;
+	}
+}
+
+void OnViewKeyReleased(
+    GtkEventControllerKey *, guint keyval, guint, GdkModifierType state, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	if ( keyval == GDK_KEY_space )
+	{
+		vp->app->spaceHeld = false;
+		return;
+	}
+	if ( vp->mode != hammergtk::ViewMode::Perspective )
+	{
+		return;
+	}
+	vp->keyFast = ( state & GDK_SHIFT_MASK ) != 0;
+	// Handle both cases: a held key's release can arrive shifted (w vs W).
+	switch ( keyval )
+	{
+	case GDK_KEY_w:
+	case GDK_KEY_W:
+		vp->keyForward = false;
+		break;
+	case GDK_KEY_s:
+	case GDK_KEY_S:
+		vp->keyBack = false;
+		break;
+	case GDK_KEY_a:
+	case GDK_KEY_A:
+		vp->keyLeft = false;
+		break;
+	case GDK_KEY_d:
+	case GDK_KEY_D:
+		vp->keyRight = false;
+		break;
+	case GDK_KEY_e:
+	case GDK_KEY_E:
+		vp->keyUp = false;
+		break;
+	case GDK_KEY_q:
+	case GDK_KEY_Q:
+		vp->keyDown = false;
+		break;
+	default:
+		return;
+	}
+	UpdateFlyTick( vp );
+}
+
+// Give a hovered viewport keyboard focus so its keys reach OnViewKeyPressed
+// (MFC makes the view active and grabs focus on mouse-move). On leave, drop any
+// held fly keys so the camera doesn't keep drifting once the pointer is away.
+void OnViewEnter( GtkEventControllerMotion *, double, double, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	gtk_widget_grab_focus( GTK_WIDGET( vp->area ) );
+}
+
+void OnViewLeave( GtkEventControllerMotion *, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	ClearFlyKeys( vp );
+	vp->haveLookPrev = false;
+}
+
+void OnPopoverClosed( GtkPopover *popover, gpointer )
+{
+	gtk_widget_unparent( GTK_WIDGET( popover ) );
+}
+
+// Right-click context menu. Faithful to MFC: the 2D views get a popup (a
+// selection menu when a brush is selected, otherwise the default view menu); the
+// 3D camera view has no right-click menu in MFC, so it gets none here either.
+void OnContextClick( GtkGestureClick *, int, double x, double y, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	if ( vp->mode == hammergtk::ViewMode::Perspective )
+	{
+		return;
+	}
+
+	GMenu *model = g_menu_new();
+	if ( vp->app->controller.Selection() )
+	{
+		g_menu_append( model, "Delete", "app.delete" );
+		GMenu *tools = g_menu_new();
+		g_menu_append( tools, "Selection Tool", "app.tool-select" );
+		g_menu_append( tools, "Block Tool", "app.tool-block" );
+		g_menu_append_section( model, nullptr, G_MENU_MODEL( tools ) );
+		g_object_unref( tools );
+	}
+	else
+	{
+		g_menu_append( model, "Block Tool", "app.tool-block" );
+		g_menu_append( model, "Selection Tool", "app.tool-select" );
+		GMenu *view = g_menu_new();
+		g_menu_append( view, "Reset Views", "app.reset-views" );
+		g_menu_append_section( model, nullptr, G_MENU_MODEL( view ) );
+		g_object_unref( view );
+	}
+
+	GtkWidget *popover = gtk_popover_menu_new_from_model( G_MENU_MODEL( model ) );
+	g_object_unref( model );
+	gtk_widget_set_parent( popover, GTK_WIDGET( vp->area ) );
+	gtk_popover_set_has_arrow( GTK_POPOVER( popover ), FALSE );
+	const GdkRectangle rect = { static_cast<int>( x ), static_cast<int>( y ), 1, 1 };
+	gtk_popover_set_pointing_to( GTK_POPOVER( popover ), &rect );
+	gtk_popover_set_position( GTK_POPOVER( popover ), GTK_POS_BOTTOM );
+	g_signal_connect( popover, "closed", G_CALLBACK( OnPopoverClosed ), nullptr );
+	gtk_popover_popup( GTK_POPOVER( popover ) );
+}
+
 // ---- Widget construction ---------------------------------------------------
 
 GtkWidget *MakeViewport(
@@ -830,6 +1380,8 @@ GtkWidget *MakeViewport(
 	gtk_gl_area_set_has_depth_buffer( GTK_GL_AREA( glarea ), TRUE );
 	gtk_widget_set_hexpand( glarea, TRUE );
 	gtk_widget_set_vexpand( glarea, TRUE );
+	// Focusable so a hovered view receives key events (camera fly / mouse-look).
+	gtk_widget_set_focusable( glarea, TRUE );
 	g_signal_connect( glarea, "realize", G_CALLBACK( OnGlRealize ), &vp );
 	g_signal_connect( glarea, "unrealize", G_CALLBACK( OnGlUnrealize ), &vp );
 	g_signal_connect( glarea, "render", G_CALLBACK( OnGlRender ), &vp );
@@ -863,11 +1415,26 @@ GtkWidget *MakeViewport(
 
 	GtkEventController *motion = gtk_event_controller_motion_new();
 	g_signal_connect( motion, "motion", G_CALLBACK( OnMotion ), &vp );
+	g_signal_connect( motion, "enter", G_CALLBACK( OnViewEnter ), &vp );
+	g_signal_connect( motion, "leave", G_CALLBACK( OnViewLeave ), &vp );
 	gtk_widget_add_controller( glarea, motion );
+
+	// Per-view keys (Z mouse-look, WASD/QE fly) for the 3D camera view.
+	GtkEventController *viewKeys = gtk_event_controller_key_new();
+	g_signal_connect( viewKeys, "key-pressed", G_CALLBACK( OnViewKeyPressed ), &vp );
+	g_signal_connect( viewKeys, "key-released", G_CALLBACK( OnViewKeyReleased ), &vp );
+	gtk_widget_add_controller( glarea, viewKeys );
+
+	// Right button: context menu (2D views; the 3D view has none, like MFC).
+	GtkGesture *context = gtk_gesture_click_new();
+	gtk_gesture_single_set_button( GTK_GESTURE_SINGLE( context ), GDK_BUTTON_SECONDARY );
+	g_signal_connect( context, "pressed", G_CALLBACK( OnContextClick ), &vp );
+	gtk_widget_add_controller( glarea, GTK_EVENT_CONTROLLER( context ) );
 
 	GtkWidget *overlay = gtk_overlay_new();
 	gtk_overlay_set_child( GTK_OVERLAY( overlay ), glarea );
 	GtkWidget *caption = gtk_label_new( label );
+	vp.caption = caption;
 	gtk_widget_add_css_class( caption, "osd" );
 	gtk_widget_set_halign( caption, GTK_ALIGN_START );
 	gtk_widget_set_valign( caption, GTK_ALIGN_START );
@@ -1216,7 +1783,7 @@ GMenu *MakeMenuModel()
 	g_menu_append( file, "Save As…", "app.saveas" );
 	GMenu *fileAssets = g_menu_new();
 	g_menu_append( fileAssets, "Mount Game Assets…", "app.mount-assets" );
-	g_menu_append( fileAssets, "Browse Materials…", "app.browse-materials" );
+	g_menu_append( fileAssets, "Texture Application (Shift+A)…", "app.browse-materials" );
 	g_menu_append_section( file, nullptr, G_MENU_MODEL( fileAssets ) );
 	GMenu *fileEnd = g_menu_new();
 	g_menu_append( fileEnd, "Quit", "app.quit" );
@@ -1233,6 +1800,7 @@ GMenu *MakeMenuModel()
 	GMenu *tools = g_menu_new();
 	g_menu_append( tools, "Selection Tool", "app.tool-select" );
 	g_menu_append( tools, "Block Tool", "app.tool-block" );
+	g_menu_append( tools, "Texture Application (Shift+A)…", "app.browse-materials" );
 	g_menu_append_submenu( bar, "Tools", G_MENU_MODEL( tools ) );
 
 	GMenu *view = g_menu_new();
@@ -1429,20 +1997,117 @@ GdkTexture *MakeThumbnail( AppState *st, const std::string &name, int size )
 	return tex;
 }
 
-void OnMaterialActivated( GtkFlowBox *, GtkFlowBoxChild *child, gpointer user_data )
+// ---------------------------------------------------------------------------
+// Texture Application window (Shift+A) — the GTK counterpart of legacy Hammer's
+// Face Edit Sheet "texture application tool" (hammer/faceeditsheet.cpp,
+// faceedit_materialpage). It shows the active material, a filterable grid of the
+// mounted materials, and applies the active material to the selected brush's
+// faces. Legacy's per-face UV scale/shift/rotate/lightmap controls are omitted:
+// this slice's face model (MapBrush::materials) stores only a material name, not
+// texture coordinates, so those controls would have nothing to drive.
+// ---------------------------------------------------------------------------
+
+// Picking a material makes it the active material (object-bar + tool-window
+// previews refresh via SetCurrentMaterial) and arms the Material tool, so the
+// next click on a brush in a viewport retextures it — as the legacy tool does.
+void OnTextureChosen( GtkFlowBox *, GtkFlowBoxChild *child, gpointer user_data )
 {
 	AppState *st = static_cast<AppState *>( user_data );
 	const char *name =
 	    static_cast<const char *>( g_object_get_data( G_OBJECT( child ), "material" ) );
-	if ( name )
+	if ( !name )
 	{
-		SetCurrentMaterial( st, name );
+		return;
+	}
+	SetCurrentMaterial( st, name );
+	SetToolUi( st, hammer::app::Tool::Material );
+	SetHelp( st, std::string( "Active material: " ) + name +
+	                 "  ·  click a brush to apply, or use Apply to Selection" );
+}
+
+// Flowbox filter: keep a cell iff its material name contains the (lowercased)
+// filter substring. The filter string is owned by the flowbox (see below).
+gboolean TextureFilter( GtkFlowBoxChild *child, gpointer user_data )
+{
+	const std::string *filter = static_cast<const std::string *>( user_data );
+	if ( !filter || filter->empty() )
+	{
+		return TRUE;
+	}
+	const char *name =
+	    static_cast<const char *>( g_object_get_data( G_OBJECT( child ), "material" ) );
+	if ( !name )
+	{
+		return FALSE;
+	}
+	std::string lower( name );
+	std::transform( lower.begin(), lower.end(), lower.begin(),
+	    []( unsigned char c )
+	    {
+		    return static_cast<char>( std::tolower( c ) );
+	    } );
+	return lower.find( *filter ) != std::string::npos ? TRUE : FALSE;
+}
+
+void OnTextureSearch( GtkSearchEntry *entry, gpointer user_data )
+{
+	GtkFlowBox *flow = GTK_FLOW_BOX( user_data );
+	std::string *filter =
+	    static_cast<std::string *>( g_object_get_data( G_OBJECT( flow ), "filter" ) );
+	if ( !filter )
+	{
+		return;
+	}
+	const char *text = gtk_editable_get_text( GTK_EDITABLE( entry ) );
+	filter->assign( text ? text : "" );
+	std::transform( filter->begin(), filter->end(), filter->begin(),
+	    []( unsigned char c )
+	    {
+		    return static_cast<char>( std::tolower( c ) );
+	    } );
+	gtk_flow_box_invalidate_filter( flow );
+}
+
+// Apply the active material to every face of the selected brush and re-render.
+void OnApplyToSelection( GtkButton *, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	if ( !st->controller.Selection() )
+	{
+		SetHelp( st, "Select a brush first, then Apply to Selection" );
+		return;
+	}
+	if ( st->controller.ApplyActiveMaterialToSelection() )
+	{
+		RefreshScene( st, false );
+		SetHelp( st, std::string( "Applied " ) + st->currentMaterial + " to the selected brush" );
+	}
+	else
+	{
+		SetHelp( st, "The selected brush already uses that material" );
 	}
 }
 
-void ActionBrowseMaterials( GSimpleAction *, GVariant *, gpointer user_data )
+// The window borrows AppState's preview-widget slots while open; release them so
+// SetCurrentMaterial does not touch destroyed widgets after it closes.
+void OnTextureWindowDestroy( GtkWidget *, gpointer user_data )
 {
 	AppState *st = static_cast<AppState *>( user_data );
+	st->texToolWindow = nullptr;
+	st->texToolSwatch = nullptr;
+	st->texToolName = nullptr;
+}
+
+void OpenTextureWindow( AppState *st )
+{
+	// Only one Texture Application window at a time: raise the existing one. (Two
+	// would share the single preview-widget registration below, so closing either
+	// would strand the other's live pointers.)
+	if ( st->texToolWindow )
+	{
+		gtk_window_present( GTK_WINDOW( st->texToolWindow ) );
+		return;
+	}
 	if ( !st->catalog )
 	{
 		SetHelp( st, "No assets mounted -- use Mount… (or File ▸ Mount Game Assets…) first" );
@@ -1450,12 +2115,57 @@ void ActionBrowseMaterials( GSimpleAction *, GVariant *, gpointer user_data )
 	}
 
 	GtkWidget *win = gtk_window_new();
-	gtk_window_set_title( GTK_WINDOW( win ), "Materials" );
-	gtk_window_set_default_size( GTK_WINDOW( win ), 720, 560 );
+	gtk_window_set_title( GTK_WINDOW( win ), "Texture Application" );
+	gtk_window_set_default_size( GTK_WINDOW( win ), 760, 620 );
 	if ( st->window )
 	{
 		gtk_window_set_transient_for( GTK_WINDOW( win ), GTK_WINDOW( st->window ) );
 	}
+
+	GtkWidget *box = gtk_box_new( GTK_ORIENTATION_VERTICAL, 6 );
+	gtk_widget_set_margin_start( box, 8 );
+	gtk_widget_set_margin_end( box, 8 );
+	gtk_widget_set_margin_top( box, 8 );
+	gtk_widget_set_margin_bottom( box, 8 );
+
+	// Header: current-material preview, its name, and Apply to Selection.
+	GtkWidget *header = gtk_box_new( GTK_ORIENTATION_HORIZONTAL, 10 );
+	GtkWidget *swatch = gtk_drawing_area_new();
+	gtk_widget_set_size_request( swatch, 96, 96 );
+	gtk_drawing_area_set_draw_func( GTK_DRAWING_AREA( swatch ), DrawTextureSwatch, st, nullptr );
+	gtk_box_append( GTK_BOX( header ), swatch );
+
+	GtkWidget *nameCol = gtk_box_new( GTK_ORIENTATION_VERTICAL, 2 );
+	gtk_widget_set_valign( nameCol, GTK_ALIGN_CENTER );
+	gtk_widget_set_hexpand( nameCol, TRUE );
+	GtkWidget *caption = gtk_label_new( "Current material:" );
+	gtk_label_set_xalign( GTK_LABEL( caption ), 0.0f );
+	gtk_widget_add_css_class( caption, "dim-label" );
+	GtkWidget *curName =
+	    gtk_label_new( st->currentMaterial.empty() ? "(none)" : st->currentMaterial.c_str() );
+	gtk_label_set_xalign( GTK_LABEL( curName ), 0.0f );
+	gtk_label_set_wrap( GTK_LABEL( curName ), TRUE );
+	gtk_box_append( GTK_BOX( nameCol ), caption );
+	gtk_box_append( GTK_BOX( nameCol ), curName );
+	gtk_box_append( GTK_BOX( header ), nameCol );
+
+	GtkWidget *applyBtn = gtk_button_new_with_label( "Apply to Selection" );
+	gtk_widget_set_valign( applyBtn, GTK_ALIGN_CENTER );
+	gtk_widget_add_css_class( applyBtn, "suggested-action" );
+	g_signal_connect( applyBtn, "clicked", G_CALLBACK( OnApplyToSelection ), st );
+	gtk_box_append( GTK_BOX( header ), applyBtn );
+	gtk_box_append( GTK_BOX( box ), header );
+
+	// Keep the header preview live: SetCurrentMaterial mirrors here while open.
+	st->texToolWindow = win;
+	st->texToolSwatch = swatch;
+	st->texToolName = GTK_LABEL( curName );
+	g_signal_connect( win, "destroy", G_CALLBACK( OnTextureWindowDestroy ), st );
+
+	// Name filter over the grid.
+	GtkWidget *search = gtk_search_entry_new();
+	gtk_widget_set_hexpand( search, TRUE );
+	gtk_box_append( GTK_BOX( box ), search );
 
 	GtkWidget *scroll = gtk_scrolled_window_new();
 	gtk_widget_set_vexpand( scroll, TRUE );
@@ -1463,7 +2173,17 @@ void ActionBrowseMaterials( GSimpleAction *, GVariant *, gpointer user_data )
 	gtk_flow_box_set_selection_mode( GTK_FLOW_BOX( flow ), GTK_SELECTION_SINGLE );
 	gtk_flow_box_set_max_children_per_line( GTK_FLOW_BOX( flow ), 32 );
 	gtk_flow_box_set_activate_on_single_click( GTK_FLOW_BOX( flow ), TRUE );
-	g_signal_connect( flow, "child-activated", G_CALLBACK( OnMaterialActivated ), st );
+	g_signal_connect( flow, "child-activated", G_CALLBACK( OnTextureChosen ), st );
+
+	// The filter substring is owned by the flowbox and freed when it is destroyed.
+	std::string *filter = new std::string();
+	g_object_set_data_full( G_OBJECT( flow ), "filter", filter,
+	    []( gpointer p )
+	    {
+		    delete static_cast<std::string *>( p );
+	    } );
+	gtk_flow_box_set_filter_func( GTK_FLOW_BOX( flow ), TextureFilter, filter, nullptr );
+	g_signal_connect( search, "search-changed", G_CALLBACK( OnTextureSearch ), flow );
 
 	// Populate a bounded number of thumbnails (decoding every shipped material up
 	// front would be needlessly slow); the status line reports the true total.
@@ -1501,20 +2221,26 @@ void ActionBrowseMaterials( GSimpleAction *, GVariant *, gpointer user_data )
 		}
 		++shown;
 	}
-
 	gtk_scrolled_window_set_child( GTK_SCROLLED_WINDOW( scroll ), flow );
 
-	GtkWidget *box = gtk_box_new( GTK_ORIENTATION_VERTICAL, 0 );
-	char header[128];
-	std::snprintf( header, sizeof( header ), "Showing %zu of %zu materials", shown,
-	    st->catalog->MaterialNames().size() );
-	GtkWidget *lbl = gtk_label_new( header );
-	gtk_widget_set_margin_top( lbl, 6 );
-	gtk_widget_set_margin_bottom( lbl, 6 );
-	gtk_box_append( GTK_BOX( box ), lbl );
+	char status[192];
+	std::snprintf( status, sizeof( status ),
+	    "Showing %zu of %zu materials  ·  click a thumbnail to make it active, then click a "
+	    "brush (Material tool) or use Apply to Selection",
+	    shown, st->catalog->MaterialNames().size() );
+	GtkWidget *statusLbl = gtk_label_new( status );
+	gtk_label_set_wrap( GTK_LABEL( statusLbl ), TRUE );
+	gtk_widget_add_css_class( statusLbl, "dim-label" );
+
 	gtk_box_append( GTK_BOX( box ), scroll );
+	gtk_box_append( GTK_BOX( box ), statusLbl );
 	gtk_window_set_child( GTK_WINDOW( win ), box );
 	gtk_window_present( GTK_WINDOW( win ) );
+}
+
+void ActionBrowseMaterials( GSimpleAction *, GVariant *, gpointer user_data )
+{
+	OpenTextureWindow( static_cast<AppState *>( user_data ) );
 }
 
 void AddActions( GtkApplication *app, AppState *st )
