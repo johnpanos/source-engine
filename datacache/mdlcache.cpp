@@ -530,8 +530,17 @@ private:
 //-----------------------------------------------------------------------------
 static CMDLCache g_MDLCache;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CMDLCache, IMDLCache, MDLCACHE_INTERFACE_VERSION, g_MDLCache );
+
+DLL_EXPORT IMDLCache *MDLCache_Create()
+{
+	return &g_MDLCache;
+}
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CMDLCache, IStudioDataCache, STUDIO_DATA_CACHE_INTERFACE_VERSION, g_MDLCache );
 
+DLL_EXPORT IStudioDataCache *StudioDataCache_Create()
+{
+	return &g_MDLCache;
+}
 
 //-----------------------------------------------------------------------------
 // Task switch

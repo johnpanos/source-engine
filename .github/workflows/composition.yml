@@ -1,0 +1,20 @@
+name: Capability composition
+on: [push, pull_request]
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+    - name: Test gate sensitivity and architecture
+      run: |
+        python3 -m unittest discover -s tools/quality/tests -v
+        python3 -m unittest discover -s tools/archlint/tests -v
+        python3 tools/archlint/archlint.py check --all
+    - name: Required composition outcomes in release mode
+      run: |
+        python3 tools/quality/conformance.py check --suite platform.composition --suite foundation.expected --suite foundation.expected.bad-access --suite foundation.expected.ignored --suite platform.test-runner
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: composition-evidence
+        path: quality-results/

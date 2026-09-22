@@ -54,18 +54,20 @@
 #include "togl/linuxwin/dxabstract_types.h"
 #include "togl/linuxwin/dxabstract.h"
 
+#elif defined( USE_DXVK )
+#include "../../materialsystem/shaderapidx9/dxvk_compat.h"
 #else
-	//USE_ACTUAL_DX
-	#ifdef WIN32
-			#include <windows.h>
-			#include "../../dx9sdk/include/d3d9.h"
-			#include "../../dx9sdk/include/d3dx9.h"
-		typedef HWND VD3DHWND;
-	#endif
+//USE_ACTUAL_DX
+#ifdef WIN32
+#include <windows.h>
+#include "../../dx9sdk/include/d3d9.h"
+#include "../../dx9sdk/include/d3dx9.h"
+typedef HWND VD3DHWND;
+#endif
 
-	#define	GLMPRINTF(args)	
-	#define	GLMPRINTSTR(args)
-	#define	GLMPRINTTEXT(args)
+#define GLMPRINTF( args )
+#define GLMPRINTSTR( args )
+#define GLMPRINTTEXT( args )
 #endif // defined(DX_TO_GL_ABSTRACTION)
 
 #endif // RENDERMECHANISM_H

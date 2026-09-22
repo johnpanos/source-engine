@@ -56,6 +56,10 @@ static CStudioRenderContext s_StudioRenderContext;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CStudioRenderContext, IStudioRender, 
 						STUDIO_RENDER_INTERFACE_VERSION, s_StudioRenderContext );
 
+DLL_EXPORT IStudioRender *StudioRender_Create()
+{
+	return &s_StudioRenderContext;
+}
 
 //-----------------------------------------------------------------------------
 // Constructor, destructor

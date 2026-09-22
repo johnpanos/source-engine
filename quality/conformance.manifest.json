@@ -4,6 +4,90 @@
   "profiles_dir": "quality/profiles",
   "suites": [
     {
+      "id": "foundation.expected.bad-access",
+      "expected_signal": 6,
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DNDEBUG"
+      ],
+      "sources": [
+        "unittests/platformtest/composition/test_expected_bad_access.cpp"
+      ],
+      "expect": "crash"
+    },
+    {
+      "id": "foundation.expected.ignored",
+      "expected_diagnostic": "nodiscard",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/platformtest/composition/test_expected_ignored.cpp"
+      ],
+      "expect": "compile-error"
+    },
+    {
+      "id": "platform.composition",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "contract": "unittests/platformtest/contracts/platform.composition.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DNDEBUG",
+        "-pthread"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "platform/composition.cpp",
+        "unittests/platformtest/composition/test_composition.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "foundation.expected",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "contract": "RFC/0006-modern-cpp-ownership-and-synchronization.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DNDEBUG"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/composition/test_expected.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.test-runner",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "contract": "unittests/platformtest/contracts/platform.composition.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DNDEBUG",
+        "-DSOURCE_CONFORMANCE_LINKED",
+        "-pthread"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "platform/composition.cpp",
+        "utils/unittest/capability_runner.cpp",
+        "utils/unittest/capability_unittest.cpp",
+        "unittests/platformtest/composition/test_composition.cpp",
+        "unittests/platformtest/composition/test_expected.cpp",
+        "unittests/platformtest/composition/test_runner.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "hammer.geometry.rounding",
       "domain": "Q-EDITOR",
       "rfc": "0002",
@@ -72,6 +156,36 @@
       "sources": [
         "hammer/core/geometry/angle.cpp",
         "unittests/hammertest/geometry/test_angle_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.geometry.brush",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-GEOMETRY-001",
+      "contract": "unittests/hammertest/contracts/geometry.brush.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/geometry/brush.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/geometry/test_brush.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.geometry.brush.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-GEOMETRY-001",
+      "contract": "unittests/hammertest/contracts/geometry.brush.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/geometry/brush.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/geometry/test_brush_negative.cpp"
       ],
       "expect": "pass"
     },
@@ -439,6 +553,38 @@
         "unittests/rendertest/conformance/render_backend_conformance.cpp",
         "unittests/rendertest/fakes/null_render_backend.cpp",
         "unittests/rendertest/test_render_backend_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.update_hint",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-UPDATEHINT-001",
+      "contract": "unittests/hammertest/contracts/app.update_hint.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/update_hint.cpp",
+        "hammer/core/geometry/aabb.cpp",
+        "hammer/core/geometry/rounding.cpp",
+        "unittests/hammertest/app/test_update_hint.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.update_hint.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-UPDATEHINT-001",
+      "contract": "unittests/hammertest/contracts/app.update_hint.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/update_hint.cpp",
+        "hammer/core/geometry/aabb.cpp",
+        "hammer/core/geometry/rounding.cpp",
+        "unittests/hammertest/app/test_update_hint_negative.cpp"
       ],
       "expect": "pass"
     }

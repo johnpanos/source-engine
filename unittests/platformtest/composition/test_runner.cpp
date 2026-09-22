@@ -11,21 +11,39 @@ public:
 	void Error( std::string_view ) override { ++errors; }
 	int results = 0, errors = 0;
 };
-testing::TestResult Pass() { return { 1, 0, 0 }; }
-testing::TestResult Fail() { return { 1, 1, 0 }; }
-testing::TestResult Empty() { return {}; }
-testing::TestResult Skip() { return { 1, 0, 1 }; }
+testing::TestResult Pass()
+{
+	return { 1, 0, 0 };
+}
+testing::TestResult Fail()
+{
+	return { 1, 1, 0 };
+}
+testing::TestResult Empty()
+{
+	return {};
+}
+testing::TestResult Skip()
+{
+	return { 1, 0, 1 };
+}
 }
 
 testing::TestResult RunRunnerConformance()
 {
 	testing::TestResult result;
-	auto check = [&]( bool value ) { ++result.checks; if ( !value ) ++result.failures; };
+	auto check = [&]( bool value )
+	{
+		++result.checks;
+		if ( !value )
+			++result.failures;
+	};
 	for ( int repeat = 0; repeat < 2; ++repeat )
 	{
 		Report report;
 		const testing::Suite suites[] = { { "first", Pass }, { "second", Pass } };
-		check( testing::RunLinkedSuites( suites, report ) == 0 && report.results == 2 && report.errors == 0 );
+		check( testing::RunLinkedSuites( suites, report ) == 0 && report.results == 2 &&
+		       report.errors == 0 );
 	}
 	for ( auto bad : { Fail, Empty, Skip } )
 	{
@@ -35,13 +53,15 @@ testing::TestResult RunRunnerConformance()
 	}
 	{
 		Report report;
-		check( testing::RunLinkedSuites( {}, report ) != 0 && report.results == 0 && report.errors == 1 );
+		check( testing::RunLinkedSuites( {}, report ) != 0 && report.results == 0 &&
+		       report.errors == 1 );
 	}
 	for ( auto bad : { testing::Suite{ "missing", nullptr }, testing::Suite{ "", Pass } } )
 	{
 		Report report;
 		const testing::Suite suites[] = { bad };
-		check( testing::RunLinkedSuites( suites, report ) != 0 && report.results == 0 && report.errors == 1 );
+		check( testing::RunLinkedSuites( suites, report ) != 0 && report.results == 0 &&
+		       report.errors == 1 );
 	}
 	{
 		Report report;

@@ -16,7 +16,9 @@
 #include "vstdlib/cvar.h"
 
 #ifndef DEDICATED
+#if defined( DX_TO_GL_ABSTRACTION )
 #include "togl/rendermechanism.h"
+#endif
 #endif
 
 // NOTE: This has to be the last file included! (turned off below, since this is included like a header)

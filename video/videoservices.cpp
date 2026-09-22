@@ -94,6 +94,10 @@ static VideoSystemInfo_t s_VideoAppSystems[] =
 static CValveVideoServices g_VALVeVIDEO;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CValveVideoServices, IVideoServices, VIDEO_SERVICES_INTERFACE_VERSION, g_VALVeVIDEO );
 
+DLL_EXPORT IVideoServices *VideoServices_Create()
+{
+	return &g_VALVeVIDEO;
+}
 
 static CVideoCommonServices g_VALVEVIDEOCommon;
 

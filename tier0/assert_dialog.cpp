@@ -27,7 +27,12 @@
 // available, so this can be included on the dedicated server too.
 #include "SDL.h"
 
+#if defined( USE_SDL3 )
+typedef bool( SDLCALL FUNC_SDL_ShowMessageBox )(
+    const SDL_MessageBoxData *messageboxdata, int *buttonid );
+#else
 typedef int ( SDLCALL FUNC_SDL_ShowMessageBox )( const SDL_MessageBoxData *messageboxdata, int *buttonid );
+#endif
 #endif
 
 class CDialogInitInfo
@@ -480,6 +485,11 @@ DBG_INTERFACE bool DoNewAssertDialog( const tchar *pFilename, int line, const tc
 	}
 
 #elif defined( POSIX ) && defined ( USE_SDL )
+#if defined( USE_SDL3 )
+	// The SDL3 client profile links its platform provider explicitly. Never load
+	// a second SDL major version to display a dialog for its window.
+	FUNC_SDL_ShowMessageBox *pfnSDLShowMessageBox = &SDL_ShowMessageBox;
+#else
 	static FUNC_SDL_ShowMessageBox *pfnSDLShowMessageBox = NULL;
 	if( !pfnSDLShowMessageBox )
 	{
@@ -491,10 +501,11 @@ DBG_INTERFACE bool DoNewAssertDialog( const tchar *pFilename, int line, const tc
 		if ( ret )
 			{ pfnSDLShowMessageBox = ( FUNC_SDL_ShowMessageBox * )dlsym( ret, "SDL_ShowMessageBox" ); }
 	}
+#endif
 
 	if( pfnSDLShowMessageBox )
 	{
-		int buttonid;
+		int buttonid = IDC_BREAK;
 		char text[ 4096 ];
 		SDL_MessageBoxData messageboxdata = { 0 };
 		const char *DefaultAction = Plat_IsInDebugSession() ? "Break" : "Corefile";
@@ -516,8 +527,12 @@ DBG_INTERFACE bool DoNewAssertDialog( const tchar *pFilename, int line, const tc
 		messageboxdata.numbuttons = ARRAYSIZE( buttondata );
 		messageboxdata.buttons = buttondata;
 
-		int Ret = ( *pfnSDLShowMessageBox )( &messageboxdata, &buttonid );
-		if( Ret == -1 )
+		const auto result = ( *pfnSDLShowMessageBox )( &messageboxdata, &buttonid );
+#if defined( USE_SDL3 )
+		if ( !result )
+#else
+		if ( result == -1 )
+#endif
 		{
 			buttonid = IDC_BREAK;
 		}

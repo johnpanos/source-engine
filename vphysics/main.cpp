@@ -126,6 +126,10 @@ static CPhysicsInterface g_MainDLLInterface;
 IPhysics *g_PhysicsInternal = &g_MainDLLInterface;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CPhysicsInterface, IPhysics, VPHYSICS_INTERFACE_VERSION, g_MainDLLInterface );
 
+DLL_EXPORT IPhysics *Physics_Create()
+{
+	return &g_MainDLLInterface;
+}
 
 //-----------------------------------------------------------------------------
 // Query interface

@@ -15,10 +15,10 @@ namespace platform
 namespace
 {
 
-constexpr std::size_t kInvalidProvider = std::numeric_limits< std::size_t >::max();
+constexpr std::size_t kInvalidProvider = std::numeric_limits<std::size_t>::max();
 
 CompositionError MakeError( CompositionErrorCode code, std::string_view provider = {},
-	                        std::string_view capability = {}, std::string_view detail = {} )
+    std::string_view capability = {}, std::string_view detail = {} )
 {
 	return { code, std::string( provider ), std::string( capability ), std::string( detail ) };
 }
@@ -30,7 +30,8 @@ ApplicationComposition::~ApplicationComposition()
 	(void)Stop();
 }
 
-foundation::Expected< void, CompositionError > ApplicationComposition::AddProvider( ProviderDescriptor descriptor )
+foundation::Expected<void, CompositionError> ApplicationComposition::AddProvider(
+    ProviderDescriptor descriptor )
 {
 	if ( m_State != State::Stopped || !m_Instances.empty() )
 		return foundation::MakeUnexpected( MakeError( CompositionErrorCode::Busy ) );
@@ -38,35 +39,40 @@ foundation::Expected< void, CompositionError > ApplicationComposition::AddProvid
 	return {};
 }
 
-foundation::Expected< std::vector< std::size_t >, CompositionError >
+foundation::Expected<std::vector<std::size_t>, CompositionError>
 ApplicationComposition::BuildStartOrder() const
 {
 	for ( std::size_t provider = 0; provider < m_Descriptors.size(); ++provider )
 	{
 		const auto &descriptor = m_Descriptors[provider];
 		if ( descriptor.Name().empty() )
-			return foundation::MakeUnexpected( MakeError( CompositionErrorCode::InvalidDescriptor ) );
+			return foundation::MakeUnexpected(
+			    MakeError( CompositionErrorCode::InvalidDescriptor ) );
 		const auto caps = descriptor.Capabilities();
 		for ( std::size_t i = 0; i < caps.size(); ++i )
 		{
 			if ( caps[i].Name().empty() )
-				return foundation::MakeUnexpected( MakeError( CompositionErrorCode::InvalidDescriptor, descriptor.Name() ) );
+				return foundation::MakeUnexpected(
+				    MakeError( CompositionErrorCode::InvalidDescriptor, descriptor.Name() ) );
 			for ( std::size_t j = 0; j < i; ++j )
 				if ( caps[i] == caps[j] )
-					return foundation::MakeUnexpected( MakeError( CompositionErrorCode::DuplicateCapability, descriptor.Name(), caps[i].Name() ) );
+					return foundation::MakeUnexpected(
+					    MakeError( CompositionErrorCode::DuplicateCapability, descriptor.Name(),
+					        caps[i].Name() ) );
 		}
 		const auto deps = descriptor.Dependencies();
 		for ( std::size_t i = 0; i < deps.size(); ++i )
 			for ( std::size_t j = 0; j < i; ++j )
 				if ( deps[i].capability == deps[j].capability )
-					return foundation::MakeUnexpected( MakeError( CompositionErrorCode::DuplicateDependency, descriptor.Name(), deps[i].capability.Name() ) );
+					return foundation::MakeUnexpected(
+					    MakeError( CompositionErrorCode::DuplicateDependency, descriptor.Name(),
+					        deps[i].capability.Name() ) );
 		for ( std::size_t other = provider + 1; other < m_Descriptors.size(); ++other )
 		{
 			if ( m_Descriptors[provider].Name() == m_Descriptors[other].Name() )
 			{
-				return foundation::MakeUnexpected(
-				    MakeError( CompositionErrorCode::DuplicateProviderName,
-				               m_Descriptors[other].Name() ) );
+				return foundation::MakeUnexpected( MakeError(
+				    CompositionErrorCode::DuplicateProviderName, m_Descriptors[other].Name() ) );
 			}
 		}
 
@@ -80,15 +86,15 @@ ApplicationComposition::BuildStartOrder() const
 					{
 						return foundation::MakeUnexpected(
 						    MakeError( CompositionErrorCode::DuplicateCapability,
-						               m_Descriptors[other].Name(), capability.Name() ) );
+						        m_Descriptors[other].Name(), capability.Name() ) );
 					}
 				}
 			}
 		}
 	}
 
-	std::vector< std::vector< std::size_t > > dependents( m_Descriptors.size() );
-	std::vector< std::size_t > incoming( m_Descriptors.size(), 0 );
+	std::vector<std::vector<std::size_t>> dependents( m_Descriptors.size() );
+	std::vector<std::size_t> incoming( m_Descriptors.size(), 0 );
 
 	for ( std::size_t consumer = 0; consumer < m_Descriptors.size(); ++consumer )
 	{
@@ -101,7 +107,7 @@ ApplicationComposition::BuildStartOrder() const
 				{
 					return foundation::MakeUnexpected(
 					    MakeError( CompositionErrorCode::MissingRequiredCapability,
-					               m_Descriptors[consumer].Name(), dependency.capability.Name() ) );
+					        m_Descriptors[consumer].Name(), dependency.capability.Name() ) );
 				}
 				continue;
 			}
@@ -115,9 +121,9 @@ ApplicationComposition::BuildStartOrder() const
 		}
 	}
 
-	std::vector< std::size_t > order;
+	std::vector<std::size_t> order;
 	order.reserve( m_Descriptors.size() );
-	std::vector< bool > emitted( m_Descriptors.size(), false );
+	std::vector<bool> emitted( m_Descriptors.size(), false );
 
 	while ( order.size() != m_Descriptors.size() )
 	{
@@ -155,11 +161,12 @@ ApplicationComposition::BuildStartOrder() const
 	return order;
 }
 
-foundation::Expected< void, CompositionError > ApplicationComposition::Start()
+foundation::Expected<void, CompositionError> ApplicationComposition::Start()
 {
 	if ( m_State != State::Stopped )
-		return foundation::MakeUnexpected( MakeError( m_State == State::Running ?
-		    CompositionErrorCode::AlreadyRunning : CompositionErrorCode::Busy ) );
+		return foundation::MakeUnexpected(
+		    MakeError( m_State == State::Running ? CompositionErrorCode::AlreadyRunning
+		                                         : CompositionErrorCode::Busy ) );
 
 	auto order = BuildStartOrder();
 	if ( !order )
@@ -174,11 +181,12 @@ foundation::Expected< void, CompositionError > ApplicationComposition::Start()
 
 	for ( std::size_t providerIndex : m_StartOrder )
 	{
-		std::vector< detail::ResolvedDependency > dependencies;
+		std::vector<detail::ResolvedDependency> dependencies;
 		dependencies.reserve( m_Descriptors[providerIndex].Dependencies().size() );
 		for ( const DependencyDescriptor &dependency : m_Descriptors[providerIndex].Dependencies() )
 		{
-			dependencies.push_back( { dependency.capability, FindCapability( dependency.capability ) } );
+			dependencies.push_back(
+			    { dependency.capability, FindCapability( dependency.capability ) } );
 		}
 
 		DependencyView view( dependencies );
@@ -188,13 +196,12 @@ foundation::Expected< void, CompositionError > ApplicationComposition::Start()
 			const ProviderError error = std::move( instance ).Error();
 			DestroyInstances();
 			m_State = State::Stopped;
-			return foundation::MakeUnexpected(
-			    MakeError( CompositionErrorCode::ConstructionFailed,
-			               m_Descriptors[providerIndex].Name(), {}, error.detail ) );
+			return foundation::MakeUnexpected( MakeError( CompositionErrorCode::ConstructionFailed,
+			    m_Descriptors[providerIndex].Name(), {}, error.detail ) );
 		}
 
 		m_Instances[providerIndex] =
-		    std::make_unique< detail::ProviderInstance >( std::move( instance ).Value() );
+		    std::make_unique<detail::ProviderInstance>( std::move( instance ).Value() );
 	}
 
 	for ( std::size_t providerIndex : m_StartOrder )
@@ -205,9 +212,8 @@ foundation::Expected< void, CompositionError > ApplicationComposition::Start()
 		{
 			const ProviderError error = std::move( connected ).Error();
 			Rollback( 0, m_ConnectedCount );
-			return foundation::MakeUnexpected(
-			    MakeError( CompositionErrorCode::ConnectFailed,
-			               m_Descriptors[providerIndex].Name(), {}, error.detail ) );
+			return foundation::MakeUnexpected( MakeError( CompositionErrorCode::ConnectFailed,
+			    m_Descriptors[providerIndex].Name(), {}, error.detail ) );
 		}
 	}
 
@@ -221,7 +227,7 @@ foundation::Expected< void, CompositionError > ApplicationComposition::Start()
 			Rollback( m_InitializedCount, m_ConnectedCount );
 			return foundation::MakeUnexpected(
 			    MakeError( CompositionErrorCode::InitializationFailed,
-			               m_Descriptors[providerIndex].Name(), {}, error.detail ) );
+			        m_Descriptors[providerIndex].Name(), {}, error.detail ) );
 		}
 	}
 
@@ -229,7 +235,7 @@ foundation::Expected< void, CompositionError > ApplicationComposition::Start()
 	return {};
 }
 
-foundation::Expected< void, CompositionError > ApplicationComposition::Stop() noexcept
+foundation::Expected<void, CompositionError> ApplicationComposition::Stop() noexcept
 {
 	if ( m_State == State::Starting || m_State == State::Stopping )
 		return foundation::MakeUnexpected( MakeError( CompositionErrorCode::Busy ) );
@@ -245,8 +251,8 @@ bool ApplicationComposition::IsRunning() const noexcept
 	return m_State == State::Running;
 }
 
-void ApplicationComposition::Rollback( std::size_t initializedCount,
-	                                   std::size_t connectedCount ) noexcept
+void ApplicationComposition::Rollback(
+    std::size_t initializedCount, std::size_t connectedCount ) noexcept
 {
 	m_State = State::Stopping;
 	while ( initializedCount > 0 )
@@ -290,7 +296,8 @@ void *ApplicationComposition::FindCapability( CapabilityKey capability ) const n
 	return nullptr;
 }
 
-std::size_t ApplicationComposition::FindCapabilityProvider( CapabilityKey capability ) const noexcept
+std::size_t ApplicationComposition::FindCapabilityProvider(
+    CapabilityKey capability ) const noexcept
 {
 	for ( std::size_t provider = 0; provider < m_Descriptors.size(); ++provider )
 	{

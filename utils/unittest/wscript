@@ -3,6 +3,7 @@
 
 from waflib import Utils
 import os
+import json
 
 top = '.'
 PROJECT_NAME = 'unittest'
@@ -15,6 +16,24 @@ def configure(conf):
 	conf.define('PROTECTED_THINGS_DISABLE',1)
 
 def build(bld):
+	# Source composition and flags are owned by the shared suite manifest/profile.
+	manifest = json.loads(bld.srcnode.find_node('quality/conformance.manifest.json').read())
+	suite = next(s for s in manifest['suites'] if s['id'] == 'platform.test-runner')
+	bld.program(
+		features='cxx cxxprogram capability_strict',
+		env=bld.strict_cpp20_env(),
+		source=[bld.srcnode.find_node(p) for p in suite['sources'] if p != 'platform/composition.cpp'],
+		target=PROJECT_NAME,
+		name=PROJECT_NAME,
+		includes=[bld.srcnode.find_dir('public').abspath()],
+		defines=['SOURCE_CONFORMANCE_LINKED', 'NDEBUG'],
+		use=['platform_composition'],
+		install_path=bld.env.BINDIR,
+		subsystem='CONSOLE',
+		idx=bld.get_taskgen_count()
+	)
+	# Frozen DLL/app-system tests retain their original dialect and ABI in a
+	# deliberately named compatibility host. New suites use the linked runner.
 	source = ['unittest.cpp']
 	includes = ['../../public']
 	defines = []
@@ -29,8 +48,8 @@ def build(bld):
 	install_path = bld.env.BINDIR
 	bld(
 		source   = source,
-		target   = PROJECT_NAME,
-		name     = PROJECT_NAME,
+		target   = 'unittest_legacy',
+		name     = 'unittest_legacy',
 		features = 'c cxx cxxprogram',
 		includes = includes,
 		defines  = defines,

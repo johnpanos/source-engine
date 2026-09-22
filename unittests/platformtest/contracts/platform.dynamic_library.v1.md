@@ -37,6 +37,10 @@ All clauses are **required** except the no-load capability (§3), which is
 - `Unload(library)`: accepts any pointer, including null or a pointer this loader
   did not produce; both are no-ops.
 - `TryResolveNoLoad(path, error)`: same `path` domain as `Load`.
+  Unsupported providers report `kUnsupportedNoLoad` before inspecting the path;
+  supported providers reject null and empty paths with `kInvalidArgument`.
+- Error-output pointers are optional on every operation. Omitting an output
+  cannot change success, failure, or ownership.
 
 ## 3. Results and guarantees
 
@@ -49,6 +53,9 @@ All clauses are **required** except the no-load capability (§3), which is
   is `kFindSymbol` and `requested` echoes the passed `name` pointer.
 - `Unload` releases the library; afterward the pointer and every symbol obtained
   from it are invalid.
+- Duplicate successful loads have distinct library objects and independent
+  releases, even when a native provider internally obtains the same OS handle.
+  Releasing one cannot invalidate the surviving library's symbols.
 - `LiveLibraryCount()` returns the number of libraries the loader currently owns
   (loaded, not yet unloaded). It is 0 for a fresh loader, increments on each
   successful `Load`, and decrements on each `Unload` of a live library.
@@ -80,6 +87,12 @@ operation, and provider error without parsing log text.
 - After `Unload`, a fresh `Load` of the same path succeeds — a clean second
   instance in the same process (RFC 0001 "clean second application instance").
 - Optional no-load never mutates library ownership.
+- Success overwrites a previous failure in the caller's error output. A failed
+  load or symbol lookup leaves other live libraries usable; a later valid
+  operation still succeeds.
+- Foreign-library unload requests cannot consume the receiving loader's own
+  references or change the producing loader's ownership. Distinct loader
+  instances can be composed and shut down independently.
 
 ## 6. Side effects and performance
 
@@ -89,18 +102,25 @@ operation, and provider error without parsing log text.
 
 ## 7. Conformance suite and providers
 
-- `dynamic_library_conformance.h` is the single shared predicate every provider
-  runs: fresh-loader emptiness, valid load + ownership, known-symbol resolution
-  (with exact address when known), missing-symbol structured failure, unload
-  release, missing-library structured failure, null-argument rejection, explicit
-  optional-capability reporting, repeat load/unload, and end-state emptiness.
+- `dynamic_library_conformance.h` contains the shared operation-sequence and
+  independent-loader predicates every provider runs: fresh-loader emptiness,
+  valid and duplicate load ownership, known-symbol resolution (with exact
+  address when known), missing/invalid-symbol structured failure, null and
+  foreign unload, surviving duplicate symbols, missing/invalid-library failure,
+  overwritten stale errors, optional error outputs, explicit no-load behavior
+  before/during/after library ownership, repeat load/unload, and final emptiness.
 - `test_dynamic_library.cpp` runs it against the deterministic test backend
   (`CFakeDynamicLibraryLoader`) in both no-load-unsupported and no-load-supported
-  configurations. **Positive; certifies contract semantics, not OS behavior.**
+  configurations and with two independent loaders. **Positive; certifies
+  contract semantics, not OS behavior.**
 - `test_dynamic_library_negative.cpp` (`sensitivity`) feeds the same predicate
-  four deliberately-broken loaders (unload-does-not-release, load-missing-
-  succeeds, silent-no-load, missing-symbol-returns-address) and asserts each is
-  caught while the conforming backend passes — proving the suite is not vacuous.
+  ten deliberately broken loaders: retained ownership on unload, successful
+  missing load, silent unsupported no-load, successful missing symbol, stale
+  success error, duplicate ownership aliasing, null unload consuming ownership,
+  no-load acquiring ownership, wrong error operation, and foreign unload
+  consuming ownership. Every defect must be caught. The same fault-injection
+  implementation also runs with all defects disabled, proving rejection is not
+  caused by an unrelated defect in the test double.
 
 ### Native providers (added as they land)
 

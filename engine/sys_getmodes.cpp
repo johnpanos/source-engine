@@ -7,7 +7,9 @@
 #if defined( USE_SDL )
 #undef PROTECTED_THINGS_ENABLE
 #include "SDL.h"
+#if !defined( USE_SDL3 )
 #include "SDL_syswm.h"
+#endif
 #endif
 
 #if defined( _WIN32 )
@@ -1031,9 +1033,13 @@ void CVideoMode_Common::InvalidateWindow()
 #if defined( USE_SDL )
 		SDL_Event fake;
 		memset(&fake, '\0', sizeof (SDL_Event));
+#if defined( USE_SDL3 )
+		fake.type = SDL_EVENT_WINDOW_EXPOSED;
+#else
 		fake.type = SDL_WINDOWEVENT;
-		fake.window.windowID = SDL_GetWindowID( (SDL_Window *) g_pLauncherMgr->GetWindowRef() );
 		fake.window.event = SDL_WINDOWEVENT_EXPOSED;
+#endif
+		fake.window.windowID = SDL_GetWindowID( (SDL_Window *)g_pLauncherMgr->GetWindowRef() );
 		SDL_PushEvent(&fake);
 #else
 		InvalidateRect( (HWND)game->GetMainWindow(), NULL, FALSE );
@@ -1158,7 +1164,6 @@ typedef struct _GUID
 } GUID;
 
 #endif
-typedef GUID UUID;
 
 #endif //WIN32
 //-----------------------------------------------------------------------------
@@ -1356,13 +1361,16 @@ void CVideoMode_Common::AdjustWindow( int nWidth, int nHeight, int nBPP, bool bW
 	// Use Change Display Settings to go full screen
 	ChangeDisplaySettingsToFullscreen( nWidth, nHeight, nBPP );
 
+	int windowWidth = nWidth;
+	int windowHeight = nHeight;
+
+#ifndef USE_SDL
 	RECT WindowRect;
 	WindowRect.top      = 0;
 	WindowRect.left     = 0;
 	WindowRect.right    = nWidth;
 	WindowRect.bottom   = nHeight;
 
-#ifndef USE_SDL
 	// Get window style
 	DWORD style = GetWindowLong( (HWND)game->GetMainWindow(), GWL_STYLE );
 	DWORD exStyle = GetWindowLong( (HWND)game->GetMainWindow(), GWL_EXSTYLE );
@@ -1416,20 +1424,18 @@ void CVideoMode_Common::AdjustWindow( int nWidth, int nHeight, int nBPP, bool bW
 		0, 0, WindowRect.right - WindowRect.left,
 		WindowRect.bottom - WindowRect.top,
 		SWP_NOREDRAW | dwSwpFlags );
+	windowWidth = WindowRect.right - WindowRect.left;
+	windowHeight = WindowRect.bottom - WindowRect.top;
 #endif // !USE_SDL
 
 	// Now center
-	CenterEngineWindow( game->GetMainWindow(),
-		WindowRect.right - WindowRect.left,
-		WindowRect.bottom - WindowRect.top );
+	CenterEngineWindow( game->GetMainWindow(), windowWidth, windowHeight );
 #if defined( USE_SDL )
-	g_pLauncherMgr->SetWindowFullScreen( !bWindowed, WindowRect.right - WindowRect.left, WindowRect.bottom - WindowRect.top );
+	g_pLauncherMgr->SetWindowFullScreen( !bWindowed, windowWidth, windowHeight );
 
-	CenterEngineWindow( game->GetMainWindow(),
-		WindowRect.right - WindowRect.left,
-		WindowRect.bottom - WindowRect.top );
+	CenterEngineWindow( game->GetMainWindow(), windowWidth, windowHeight );
 
-	g_pLauncherMgr->SizeWindow( WindowRect.right - WindowRect.left, WindowRect.bottom - WindowRect.top );
+	g_pLauncherMgr->SizeWindow( windowWidth, windowHeight );
 
 	if( bWindowed )
 	{
@@ -1532,8 +1538,12 @@ void CVideoMode_Common::CenterEngineWindow( void *hWndCenter, int width, int hei
 	static ConVarRef sdl_displayindex( "sdl_displayindex" );
 	int displayindex = sdl_displayindex.IsValid() ? sdl_displayindex.GetInt() : 0;
 
-	SDL_DisplayMode mode;
-	SDL_GetCurrentDisplayMode( displayindex, &mode );
+	SDL_DisplayMode mode = {};
+	if ( SDL_GetCurrentDisplayMode( displayindex, &mode ) != 0 )
+	{
+		Warning( "Unable to center window on display: %s\n", SDL_GetError() );
+		return;
+	}
 
 	const int wide = mode.w;
 	const int tall = mode.h;

@@ -1,0 +1,64 @@
+{
+  "harness": "legacy_parity_msvc/v1",
+  "description": "Legacy-vs-extracted geometry parity using the REAL MSVC toolchain (VS2019 v142 / cl 19.29.30159 with atlmfc present) running under Wine. The unmodified legacy translation unit hammer/boundbox.cpp is compiled against the real mathlib/vector.h and linked with the extracted hammer::geometry::AxisAlignedBox; a driver asserts every observable operation is byte-identical in float arithmetic. This raises the Windows parity bar from 'MFC-free core cross-compiles and matches itself' (hammer_windows_parity.json, MinGW+Wine) to 'the extracted library reproduces the ACTUAL legacy code compiled by the ACTUAL Microsoft compiler'. The MSVC toolchain is a large licensed local install and is not a CI lane; the reproducible CI Windows lane remains MinGW-w64 + Wine (tools/quality/parity_wine.py).",
+  "compiler": "Microsoft (R) C/C++ Optimizing Compiler Version 19.29.30159 for x64 (VS2019 v142, MSVCVER 14.29.30133, atlmfc present)",
+  "runtime": "Wine (WINEDEBUG=-all)",
+  "provisioning": "mstorsjo/msvc-wine; MSVCVER pinned to 14.29.30133 (the toolset that ships atlmfc); SDK MSIs extracted with msitools/msiextract",
+  "flags": "/nologo /EHsc /std:c++17 /D_WIN32_WINNT=0x0601 /FImsvc_defines.h -I stubs -I public -I public/tier0 -I common -I hammer",
+  "note_on_defines": "The msvc-wine cl wrapper mangles multiple command-line /D flags, so the Source platform define set (WIN32/_WIN32/WIN64/_WIN64/PLATFORM_64BITS/COMPILER_MSVC/COMPILER_MSVC64/NDEBUG) is supplied via a forced-include header (msvc_defines.h) instead. A case-alias stub 'BoundBox.h' resolves the legacy include spelling on a case-sensitive host.",
+  "component": "hammer.geometry (BoundBox -> AxisAlignedBox)",
+  "operationsCompared": [
+    "UpdateBounds(point) sequence",
+    "GetBoundsCenter",
+    "GetBoundsSize",
+    "ContainsPoint",
+    "IsIntersectingBox (open faces / touch case)",
+    "IsInsideBox",
+    "IsValidBox",
+    "SnapToGrid(16) at the exact .5 boundary (8/16 == 0.5)",
+    "SnapToGrid(8)",
+    "Rotate90 about AXIS_X, AXIS_Y, AXIS_Z"
+  ],
+  "results": {
+    "positive": {
+      "outcome": "pass",
+      "exit_code": 0,
+      "detail": "legacy-vs-extracted BoundBox parity: all operations identical"
+    },
+    "negative": {
+      "description": "Mutant provider re-introduces the round-half-to-even (std::rint) bug in the extracted RoundHalfAwayFromZero, the exact fidelity regression found and fixed during extraction. The oracle must catch it.",
+      "outcome": "caught",
+      "exit_code": 1,
+      "detail": "FAIL SnapToGrid(16) .5-boundary: legacy mins(16,-16,0) vs extracted mins(0,0,0); FAIL SnapToGrid(8). 2 mismatches -> exit 1."
+    }
+  },
+  "fidelityFinding": "Legacy V_rint rounds half AWAY from zero (floor(f+0.5) for f>0, ceil(f-0.5) for f<0), NOT std::rint's round-half-to-even. RoundHalfAwayFromZero preserves this exactly; verified against the real V_rint compiled here verbatim (legacy_vrint.cpp) and against the real legacy Snap()/SnapToGrid path.",
+  "repro": "scratchpad legacy-parity/run_legacy_parity.sh (positive + negative in one driver). Sources: unmodified hammer/boundbox.cpp, legacy_vrint.cpp (verbatim legacy V_rint), hammer/core/geometry/{aabb,rounding}.cpp, parity_boundbox.cpp.",
+  "scope": "This verifies the extracted geometry LIBRARY against the real MSVC-compiled legacy code. It does NOT build the full MFC editor shell, which requires the entire Source Windows engine (tier0/vgui2/materialsystem import libs) and is tracked as out-of-scope for the extraction gate.",
+  "adapters": {
+    "component": "hammer.adapters.source (Vector<->Vec3 / BoundBox<->AxisAlignedBox seam)",
+    "contract": "adapters.source.vector_interop.v1",
+    "header": "hammer/adapters/source/vector_interop.h",
+    "migration": "HAM-SOURCEADAPTER-001",
+    "description": "The single named owner of the Source-value boundary that both thin UI siblings (hammer.adapters.mfc, hammer.adapters.gtk) share. Proven under the same real MSVC/Wine lane that it lets a legacy BoundBox delegate geometry to the reusable library and get identical results (substitution guarantee), and that a broken seam is detected.",
+    "repro": "scratchpad legacy-parity/run_adapter_parity.sh",
+    "suites": [
+      {
+        "id": "adapters.source.vector_interop",
+        "source": "unittests/hammertest/adapters/test_vector_interop.cpp",
+        "expect": "pass",
+        "outcome": "pass",
+        "exit_code": 0,
+        "detail": "Real seam preserves legacy geometry: Vector<->Vec3 round-trip exact; op-on-legacy == ToAABB->op->FromAABB for SnapToGrid(16 .5-boundary)/SnapToGrid(8)/Rotate90(x,y,z)."
+      },
+      {
+        "id": "adapters.source.vector_interop.sensitivity",
+        "source": "unittests/hammertest/adapters/test_vector_interop_negative.cpp",
+        "expect": "pass",
+        "outcome": "pass",
+        "exit_code": 0,
+        "detail": "Negative provider (BuggyAdapter swaps y/z into the library) is caught by 9 clauses; binary exits 0 meaning the seeded violation was correctly detected. Proves the seam oracle is sound."
+      }
+    ]
+  }
+}

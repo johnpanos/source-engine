@@ -329,8 +329,11 @@ public:
 	void JoystickButtonRelease( int joystickId, int button ); // same as above.
 	void JoystickAxisMotion( int joystickId, int axis, int value );
 
-	void FingerEvent( int eventType, int fingerId, float x, float y, float dx, float dy );	
-	
+	void FingerEvent( int eventType, int fingerId, float x, float y, float dx, float dy );
+#if defined( USE_SDL3 )
+	void FingerEventSDL3( int eventType, uint64 fingerId, float x, float y, float dx, float dy );
+#endif
+
 	// Steam Controller
 	void ReadSteamController( int iIndex );
 	void PostKeyEvent( int iIndex, sKey_t sKey, int nSample );
@@ -455,6 +458,10 @@ public:
 	int	 m_mouseRawAccumX, m_mouseRawAccumY;
 
 	float m_touchAccumX[TOUCH_FINGER_MAX_COUNT], m_touchAccumY[TOUCH_FINGER_MAX_COUNT];
+#if defined( USE_SDL3 )
+	uint64 m_touchFingerIds[TOUCH_FINGER_MAX_COUNT];
+	bool m_touchFingerUsed[TOUCH_FINGER_MAX_COUNT];
+#endif
 
 	// For the 'SleepUntilInput' feature
 	HANDLE m_hEvent;

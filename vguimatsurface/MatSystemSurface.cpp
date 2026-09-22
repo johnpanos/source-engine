@@ -144,6 +144,11 @@ CMatSystemSurface g_MatSystemSurface;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CMatSystemSurface, ISurface, 
 						VGUI_SURFACE_INTERFACE_VERSION, g_MatSystemSurface );
 
+DLL_EXPORT vgui::ISurface *VGuiSurface_Create()
+{
+	return &g_MatSystemSurface;
+}
+
 #if defined(LINUX) || defined(OSX) || defined(PLATFORM_BSD)
 CUtlDict< CMatSystemSurface::font_entry, unsigned short > CMatSystemSurface::m_FontData;
 #endif

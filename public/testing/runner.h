@@ -33,6 +33,6 @@ public:
 // Suites and reporter outlive this synchronous call. Suites may not throw.
 // Zero discovery, missing callbacks, duplicates, skips and zero checks fail.
 // All state/providers are per invocation; no ambient registration or loader.
-[[nodiscard]] int RunLinkedSuites( std::span< const Suite > suites, ITestReport &report );
+[[nodiscard]] int RunLinkedSuites( std::span<const Suite> suites, ITestReport &report );
 }
 #endif

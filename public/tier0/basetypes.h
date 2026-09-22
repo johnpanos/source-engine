@@ -39,7 +39,7 @@
 #endif
 
 
-#if !defined(PLATFORM_GLIBC) && defined(LINUX) // musl compatibility: drop its nullptr macro
+#if !defined(PLATFORM_GLIBC) && defined(LINUX) // fuck musl
 #ifdef nullptr
 #undef nullptr
 #endif

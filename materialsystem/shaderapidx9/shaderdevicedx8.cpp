@@ -1437,6 +1437,17 @@ int CShaderDeviceMgrDx8::GetVidMemBytes( int nAdapter ) const
 	D3DADAPTER_IDENTIFIER9 devIndentifier;
 	D3D()->GetAdapterIdentifier( nAdapter, D3DENUM_WHQL_LEVEL, &devIndentifier );
 	return devIndentifier.VideoMemory;
+#elif defined( USE_DXVK )
+	// D3D9 exposes an available texture-memory budget only after device creation.
+	// Zero before that point means unavailable; do not invent an adapter capacity.
+	if ( !g_pD3DDevice )
+		return 0;
+	D3DDEVICE_CREATION_PARAMETERS parameters;
+	if ( FAILED( g_pD3DDevice->GetCreationParameters( &parameters ) ) ||
+	     parameters.AdapterOrdinal != static_cast<UINT>( nAdapter ) )
+		return 0;
+	const UINT bytes = g_pD3DDevice->GetAvailableTextureMem();
+	return bytes > INT_MAX ? INT_MAX : static_cast<int>( bytes );
 #else
 	// FIXME: This currently ignores the adapter
 	uint64 nBytes = ::GetVidMemBytes();
@@ -2224,6 +2235,10 @@ bool CShaderDeviceDx8::CreateD3DDevice( void* pHWnd, int nAdapter, const ShaderD
 
 	// Tell all other instances of the material system it's ok to grab memory
 	SendIPCMessage( REACQUIRE_MESSAGE );
+
+#if defined( USE_DXVK )
+	Msg( "RFC0001 renderer: provider=vulkan-compat (DXVK Native D3D9)\n" );
+#endif
 
 	m_hWnd = pHWnd;
 	m_nAdapter = m_DisplayAdapter = nAdapter;

@@ -8,6 +8,7 @@
 #define CMATERIALSYSTEM_H
 
 #include "tier1/delegates.h"
+#include "render/legacy_shader_provider.h"
 
 #include "materialsystem_global.h"
 #include "materialsystem/imaterialsystem.h"
@@ -88,10 +89,12 @@ public:
 
 	void									ModInit();
 	void									ModShutdown();
+	bool BindShaderProvider( const render::LegacyShaderProvider &provider );
 
 private:
 	// Used to dynamically load and unload the shader api
 	CreateInterfaceFn						CreateShaderAPI( const char* pShaderDLL );
+	static void *LegacyShaderInterface( const char *name, int *result );
 	void									DestroyShaderAPI();
 	
 	// Method to get at interfaces supported by the SHADDERAPI
@@ -614,7 +617,7 @@ private:
 	//---------------------------------
 
 	char *									m_pShaderDLL;
-	CSysModule *							m_ShaderHInst; // Used to dynamically load the shader DLL
+	render::LegacyShaderServices m_ShaderServices;
 	CreateInterfaceFn						m_ShaderAPIFactory;
 
 	int										m_nAdapter;

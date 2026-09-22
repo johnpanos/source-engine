@@ -991,6 +991,10 @@ private:
 static CEngineAPI s_EngineAPI;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CEngineAPI, IEngineAPI, VENGINE_LAUNCHER_API_VERSION, s_EngineAPI );
 
+DLL_EXPORT IEngineAPI *Engine_CreateClientAPI()
+{
+	return &s_EngineAPI;
+}
 
 //-----------------------------------------------------------------------------
 // Connect, disconnect

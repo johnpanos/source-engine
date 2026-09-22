@@ -6,7 +6,9 @@
 #if defined( USE_SDL )
 #undef PROTECTED_THINGS_ENABLE
 #include "SDL.h"
+#if !defined( USE_SDL3 )
 #include "SDL_syswm.h"
+#endif
 
 #if defined( OSX )
 #define DONT_DEFINE_BOOL
@@ -1412,7 +1414,7 @@ void *CGame::GetMainWindow( void )
 
 void *CGame::GetMainDeviceWindow( void )
 {
-#if defined( DX_TO_GL_ABSTRACTION ) && defined( USE_SDL )
+#if defined( USE_SDL ) && ( defined( DX_TO_GL_ABSTRACTION ) || defined( USE_DXVK ) )
 	return (void*)m_pSDLWindow;
 #else
 	return (void*)m_hWindow;
@@ -1423,6 +1425,10 @@ void *CGame::GetMainWindowPlatformSpecificHandle( void )
 {
 #ifdef WIN32
 	return (void*)m_hWindow;
+#elif defined( USE_SDL3 )
+	// Presentation consumes the opaque SDL window through its private bridge.
+	// Wayland does not expose a portable native window handle to engine clients.
+	return NULL;
 #else
 	SDL_SysWMinfo pInfo;
 	SDL_VERSION( &pInfo.version );
@@ -1503,8 +1509,12 @@ void CGame::UpdateDesktopInformation( )
 	static ConVarRef sdl_displayindex( "sdl_displayindex" );
 	int displayIndex = sdl_displayindex.IsValid() ? sdl_displayindex.GetInt() : 0;
 
-	SDL_DisplayMode mode;
-	SDL_GetDesktopDisplayMode( displayIndex, &mode );
+	SDL_DisplayMode mode = {};
+	if ( SDL_GetDesktopDisplayMode( displayIndex, &mode ) != 0 )
+	{
+		Warning( "Unable to query desktop display: %s\n", SDL_GetError() );
+		return;
+	}
 
 	m_iDesktopWidth = mode.w;
 	m_iDesktopHeight = mode.h;

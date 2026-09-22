@@ -83,6 +83,8 @@ def build(bld):
 		libs = ['ADVAPI32', 'WS2_32']
 	else:
 		libs = ['DL', 'M', 'LOG']
+	if bld.env.SDL3:
+		libs += ['SDL3']
 
 	install_path = None if bld.env.BUILD_SDK else bld.env.LIBDIR
 

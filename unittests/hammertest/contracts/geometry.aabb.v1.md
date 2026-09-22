@@ -51,7 +51,10 @@ are **required**; there are no optional capabilities in v1.
   (`mins = +99999`, `maxs = -99999`) so the first `UpdateBounds` seeds it exactly.
 - `UpdateBounds` is monotonic: it only grows the box; it never shrinks it.
 - `SnapToGrid` preserves the box **size** exactly and snaps the minimum corner to
-  the nearest grid multiple (round-half-to-even, matching legacy `V_rint`).
+  the nearest grid multiple (round-half-**away-from-zero**, matching legacy
+  `V_rint` = `floor(f+0.5)` for `f>0` / `ceil(f-0.5)` for `f<0`; **not**
+  `std::rint`'s round-half-to-even). Verified against the real MSVC-compiled
+  legacy `Snap()` in `architecture/hammer_legacy_parity.json`.
 - **Declared intentional difference from legacy:** `SnapToGrid( gridSize <= 0 )`
   leaves the box unchanged instead of dividing by the grid (legacy divided by
   zero). This is a characterized refinement, not a silent behavior change.

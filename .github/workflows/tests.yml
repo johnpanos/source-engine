@@ -44,7 +44,7 @@ jobs:
         python3 tools/quality/parity_wine.py check --cxx x86_64-w64-mingw32-g++-posix --wrapper wine
 
   tests-linux-i386:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@v2
@@ -53,7 +53,7 @@ jobs:
         scripts/tests-ubuntu-i386.sh
 
   tests-linux-amd64:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@v2
@@ -71,7 +71,7 @@ jobs:
         scripts/tests-macos-amd64.sh
 
   tests-windows-i386:
-    runs-on: windows-2019
+    runs-on: windows-2022
 
     steps:
     - uses: actions/checkout@v2
@@ -83,9 +83,11 @@ jobs:
         cd out
         $env:Path = "bin";
         ./unittest.exe
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        ./unittest_legacy.exe
 
   tests-windows-amd64:
-    runs-on: windows-2019
+    runs-on: windows-2022
 
     steps:
     - uses: actions/checkout@v2
@@ -97,3 +99,5 @@ jobs:
         cd out
         $env:Path = "bin";
         ./unittest.exe
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        ./unittest_legacy.exe

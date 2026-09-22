@@ -5,6 +5,10 @@
 //===========================================================================//
 
 #include "winutils.h"
+#include <ctype.h>
+#if defined( USE_DXVK )
+#include <SDL3/SDL_video.h>
+#endif
 
 #ifndef _WIN32
 
@@ -57,15 +61,36 @@ void GlobalMemoryStatus( MEMORYSTATUS *pOut )
 
 void Sleep( unsigned int ms )
 {
+#if !defined( USE_DXVK )
 	DebuggerBreak();
+#endif
 	ThreadSleep( ms );
 }
 
+#if defined( USE_DXVK )
+bool GetClientRect( HWND window, RECT *rect )
+{
+	if ( !rect )
+		return false;
+	rect->left = rect->top = rect->right = rect->bottom = 0;
+	int width = 0, height = 0;
+	if ( !SDL_GetWindowSizeInPixels( static_cast<SDL_Window *>( window ), &width, &height ) )
+		return false;
+	rect->right = width;
+	rect->bottom = height;
+	return true;
+}
+#endif
+
 bool IsIconic( VD3DHWND hWnd )
 {
+#if defined( USE_DXVK )
+	return ( SDL_GetWindowFlags( static_cast<SDL_Window *>( hWnd ) ) & SDL_WINDOW_MINIMIZED ) != 0;
+#else
 	// FIXME for now just act non-minimized all the time
 	//DebuggerBreak();
 	return false;
+#endif
 }
 
 BOOL ClientToScreen( VD3DHWND hWnd, LPPOINT pPoint )
@@ -85,9 +110,11 @@ void SetThreadAffinityMask( void *hThread, int nMask )
 	DebuggerBreak();
 }
 
+#if !defined( USE_DXVK )
 bool GUID::operator==( const struct _GUID &other ) const
 {
 	DebuggerBreak();
 	return memcmp( this, &other, sizeof( GUID ) ) == 0;
 }
+#endif
 #endif

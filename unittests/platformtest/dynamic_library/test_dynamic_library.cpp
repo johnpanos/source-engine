@@ -23,8 +23,14 @@ namespace
 
 // Two real functions whose addresses serve as fixture symbols. Using distinct
 // functions lets the suite assert an exact expected address.
-int FixtureCreateInterface() { return 42; }
-int FixtureGetTickCount() { return 7; }
+int FixtureCreateInterface()
+{
+	return 42;
+}
+int FixtureGetTickCount()
+{
+	return 7;
+}
 
 using platformtest::DynLibFixture;
 using platformtest::FakeLibraryDef;
@@ -35,8 +41,8 @@ std::vector<FakeLibraryDef> MakeDefs()
 	FakeLibraryDef engine;
 	engine.path = "fixtures/engine.so";
 	engine.symbols = {
-		{ "CreateInterface", reinterpret_cast<void *>( &FixtureCreateInterface ) },
-		{ "GetTickCount", reinterpret_cast<void *>( &FixtureGetTickCount ) },
+	    { "CreateInterface", reinterpret_cast<void *>( &FixtureCreateInterface ) },
+	    { "GetTickCount", reinterpret_cast<void *>( &FixtureGetTickCount ) },
 	};
 	defs.push_back( std::move( engine ) );
 	return defs;
@@ -72,6 +78,12 @@ int main()
 	{
 		platformtest::CFakeDynamicLibraryLoader loader( MakeDefs(), /*supportsNoLoad=*/true );
 		rc |= platformtest::RunPositive( "test_dynamic_library[no-load supported]", loader, fx );
+	}
+	{
+		platformtest::CFakeDynamicLibraryLoader first( MakeDefs(), false );
+		platformtest::CFakeDynamicLibraryLoader second( MakeDefs(), true );
+		rc |= platformtest::ReportConformance( "test_dynamic_library[independent loaders]",
+		    platformtest::RunDynamicLibraryIsolationConformance( first, second, fx ) );
 	}
 
 	if ( rc == 0 )

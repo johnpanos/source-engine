@@ -209,6 +209,10 @@ public:
 static CCvarQuery s_CvarQuery;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CCvarQuery, ICvarQuery, CVAR_QUERY_INTERFACE_VERSION, s_CvarQuery );
 
+DLL_EXPORT ICvarQuery *Engine_CreateCvarQuery()
+{
+	return &s_CvarQuery;
+}
 
 //-----------------------------------------------------------------------------
 //

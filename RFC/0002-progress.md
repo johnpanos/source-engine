@@ -1,6 +1,6 @@
 # RFC 0002 progress: Hammer responsibility factorization
 
-Updated: 2026-09-21
+Updated: 2026-09-22
 Source revision at assessment: `2d7e01d5` (working tree; AGENTS.md portfolio row: R08)
 
 This file is the human-readable gate-decision record for RFC 0002. The machine
@@ -48,15 +48,27 @@ Recorded in `architecture/hammer_compatibility.json` (profiles).
     `quality/profiles/windows-pe-wine.json`, evidence
     `architecture/hammer_windows_parity.json`. This is real Windows↔Linux parity
     for everything extracted so far.
-  - **`windows-mfc-legacy` — still `unverified`.** The legacy MFC *shell*
-    (`afxwin.h`) needs Visual Studio's MFC headers/import libs; only the `mfc140`
-    runtime DLL is present, and MinGW cannot provide MFC. An MSVC+MFC cross
-    toolchain is being provisioned (msvc-wine) to unblock the toolchain; building
-    the full legacy Hammer additionally needs the whole Source Windows engine and
-    remains out of scope here.
-- **Consequence:** The strict extractions are now verified on the Windows target,
-  not just Linux. Preserved legacy *runtime* behavior (the MFC shell) remains
-  gated on a full VS/MFC engine build.
+  - **`windows-msvc-legacy-core` — VERIFIED.** The real MSVC v142 + MFC toolchain
+    (cl 19.29.30159, toolset 14.29.30133 with `atlmfc`) is now provisioned via
+    `mstorsjo/msvc-wine`. The **unmodified** legacy `hammer/boundbox.cpp` compiles
+    with the real Microsoft compiler against the real `mathlib/vector.h`, links
+    against the extracted `hammer::geometry::AxisAlignedBox`, and every observable
+    operation is byte-identical — including the `SnapToGrid` `.5`-boundary that
+    pins `V_rint`'s round-half-away-from-zero. A mutant re-introducing
+    `std::rint` round-half-to-even is caught (exit 1), so the oracle is sound.
+    This is stronger than the MinGW self-parity above: the extracted library
+    reproduces the *actual legacy code compiled by the actual MSVC compiler*.
+    Evidence `architecture/hammer_legacy_parity.json`; driver
+    `scratchpad legacy-parity/run_legacy_parity.sh`.
+  - **`windows-mfc-legacy` — still `unverified`.** With the toolchain provisioned,
+    individual legacy translation units compile with the real MSVC+MFC compiler,
+    but the full MFC *shell* (`afxwin.h`) still does not LINK here: it needs the
+    whole Source Windows engine (tier0 / vgui2 / materialsystem / filesystem import
+    libraries), which is out of scope for the extraction gate.
+- **Consequence:** The strict extractions are verified on the Windows target on two
+  toolchains (MinGW self-parity, and now real-MSVC-vs-legacy parity), not just
+  Linux. Preserved legacy *runtime* behavior (the full MFC shell) remains gated on
+  a full VS/MFC engine build.
 
 ### D3 — Renderer bridge approach (R1 / HAM-RENDER-001)
 
@@ -79,6 +91,35 @@ Recorded in `architecture/hammer_compatibility.json` (profiles).
   language/library types must not cross an unchanged binary interface.
 - **Content/fidelity/docking scope:** deferred to H5 with H0/R1 measurements, per
   the RFC. Recorded here when decided.
+
+### D5 — Sibling UI shells stand on a shared Source-value seam (HAM-SOURCEADAPTER-001)
+
+- **Decision:** The "thin MFC/GTK UI as siblings" structure is realized by giving
+  the reusable strict libraries their own value types (`hammer::geometry::Vec3`
+  etc.) and marshalling Source engine types across a single named boundary owner,
+  `hammer.adapters.source` (`hammer/adapters/source/vector_interop.h`). Both thin
+  UI siblings — `hammer.adapters.mfc` and `hammer.adapters.gtk` — route Source
+  geometry through this one seam; neither open-codes `Vector`↔`Vec3` copies (DRY).
+- **Why the seam is non-strict:** `mathlib/vector.h` transitively pulls in the full
+  `platform.h`/`threadtools.h` stack, which `#error`s outside a real Source build.
+  The strict libraries therefore must not touch it; the adapter is the one place
+  allowed to, so it compiles only on profiles that provide the Source platform
+  layer (the engine build, or the MSVC/Wine parity lane), never on
+  `linux-headless-core`. This is the architectural reason the strict modules own
+  their own `Vec3`.
+- **Proof (the substitution guarantee):** Under the **real MSVC toolchain (cl 19.29
+  under Wine)**, for the unmodified legacy `BoundBox`, running a reusable geometry
+  operation directly equals `ToAABB → op → FromAABB` for `SnapToGrid(16)` (incl. the
+  `.5` boundary), `SnapToGrid(8)`, and `Rotate90` on every axis, with exact
+  `Vector`↔`Vec3` round-trips. A deliberately-broken seam (y/z swap) is caught by 9
+  clauses. Contract `adapters.source.vector_interop.v1`; suites
+  `unittests/hammertest/adapters/test_vector_interop{,_negative}.cpp`; evidence
+  `architecture/hammer_legacy_parity.json` (adapters section); driver
+  `scratchpad legacy-parity/run_adapter_parity.sh`.
+- **Consequence:** This is the enabling dependency for advancing HAM-GEOMETRY-001
+  from `characterized` toward `cutover`: a live MFC-side `BoundBox` caller can now
+  delegate geometry to the reusable library through the seam and get byte-identical
+  results. The adapter is permanent sibling infrastructure, not a retirement target.
 
 ## Installed H0 machinery (this change)
 
@@ -143,15 +184,17 @@ baseline. No gate claims a stronger guarantee than these installed checks provid
 | --- | --- | --- |
 | H0 | **active / partial** | Migration schema, module graph, ratchet increment 1, corpus scaffolding, and a **headless strict C++20 build+test target** (`unittests/hammertest/run_headless.sh`, HAM-BUILD-001) installed and passing under gcc 16 and clang. Remaining for H0 exit: exhaustive inventory coverage and the versioned semantic comparator with a negative corpus. |
 | H1 | **active (geometry + scene seams)** | `hammer.geometry`: `AxisAlignedBox`, `RoundHalfAwayFromZero` (DRY grid-rounding owner), angle policies. `hammer.scene`: generational `HandleTable` (stale-reference rejection, independent documents) and `SceneGraph` (handle-addressed, validated/atomic reparent with cycle rejection, atomic subtree delete). All headless-verified under gcc + clang with negative providers. See below. |
-| H3 | **partial (independent models)** | Ahead-of-authority reference models landed and pinned: `DocumentHistory` (revision vs saved-position, no-op neutrality, undo-to-saved clears modified) and `PropertyValue` (empty-vs-unset-vs-mixed). Not yet the live authority (needs H2 + legacy cutover). |
+| H3 | **partial (independent models)** | Ahead-of-authority reference models landed and pinned: `DocumentHistory` (revision vs saved-position, no-op neutrality, undo-to-saved clears modified), `PropertyValue` (empty-vs-unset-vs-mixed), and `UpdateHint` (HAM-UPDATEHINT-001) — the reusable core of MFC `CUpdateHint`, composing `hammer.geometry` + `hammer.scene` (notify-code buckets + unioned affected region, legacy `MAX_NOTIFY_CODES`=16 preserved; legacy source is orphaned dead code, so this is a reconstruction of intent). Not yet the live authority (needs H2 + legacy cutover). |
 | H2 | **partial (codec + save seams)** | `hammer.formats`: VMF/keyvalues parser + writer + versioned semantic comparator (unknown-chunk preservation, malformed diagnostics, data-loss detection). `hammer.ports` + `hammer.app`: `IFileStore` port and `SaveDocument` transactional save (temp-write + atomic rename; failed save preserves prior file), verified with an in-memory fault-injecting fake. Remaining: VMF↔scene import/export, real file-store provider, fixtures corpus. |
 | H4–H7, R1 | planned | Blocked on H0 exit and, for R1, the render contract + GTK profile. |
 
 **Strict-module conformance suites** are registered in the shared RFC 0005 runner
-(`quality/conformance.manifest.json`, `tools/quality/conformance.py`): 13 RFC 0002
+(`quality/conformance.manifest.json`, `tools/quality/conformance.py`): the RFC 0002
 Q-EDITOR suites (positive + sensitivity pairs), each proven to catch a seeded
-regression, green under gcc and clang on `linux-headless-core`. Inventory now
-classifies 28 files; 10 migrations tracked. (A UTF-8 decode crash in the shared
+regression, green under gcc and clang on `linux-headless-core` (23 matched on the
+current manifest) and cross-verified as native Windows PE under Wine (23/23,
+`architecture/hammer_windows_parity.json`). Inventory now classifies 40 files;
+14 migrations tracked. (A UTF-8 decode crash in the shared
 runner's git-evidence step was fixed here so the gate survives binary files in the
 working tree — this also unblocked the RFC 0003 lane on the same runner.)
 

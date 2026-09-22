@@ -1,0 +1,65 @@
+{
+  "schema": "source-product-profile/v1",
+  "id": "portal-linux-wayland-v1",
+  "description": "Linux x86_64 Portal compatibility slice: SDL3 Wayland and linked DXVK Native D3D9 over Vulkan.",
+  "target": {"product": "portal-client", "os": "linux", "architecture": "x86_64"},
+  "intent": {
+    "window_provider": "sdl3",
+    "render_provider": "vulkan-dxvk-native",
+    "support_scope": "Native Linux Wayland compatibility smoke; not four-platform or renderer parity acceptance",
+    "packaging": "Waf-installed local Linux runtime with separately supplied licensed Portal content",
+    "shader_pipeline": "Existing Source D3D9 shader artifacts consumed by pinned DXVK Native; no new offline shader compiler is implied"
+  },
+  "toolchain": {
+    "cxx": "g++",
+    "family": "gcc",
+    "version": "16.2.1",
+    "standard_library": "libstdc++",
+    "legacy_cxx_standard": "c++11",
+    "strict_cxx_standard": "c++20",
+    "glibcxx_cxx11_abi": 0,
+    "build_type": "release"
+  },
+  "dependencies": {
+    "pkg_config": {
+      "sdl3": "3.4.16",
+      "vulkan": "1.4.341",
+      "freetype2": "26.6.20",
+      "fontconfig": "2.17.0",
+      "openal": "1.24.2",
+      "libjpeg": "3.1.3",
+      "libpng": "1.6.58",
+      "libcurl": "8.18.0",
+      "zlib": "1.3.1.zlib-ng"
+    },
+    "dxvk_native": {
+      "version": "2.7.1",
+      "url": "https://github.com/doitsujin/dxvk/releases/download/v2.7.1/dxvk-native-2.7.1-steamrt-sniper.tar.gz",
+      "sha256": "bf0ebbc4bcdee52811b084abbedba51ccaaa304810ec633b76554e91957d2e20",
+      "archive_bytes": 11595775,
+      "cache_archive": "dxvk-native-2.7.1.tar.gz",
+      "extracted_directory": "dxvk-native-2.7.1",
+      "prefix": "usr",
+      "required_files": ["include/dxvk/d3d9.h", "include/dxvk/wsi/native_sdl3.h", "lib/libdxvk_d3d9.so"],
+      "link_library": "dxvk_d3d9",
+      "include_directory": "include/dxvk",
+      "library_directory": "lib"
+    }
+  },
+  "runtime_environment": {"SDL_VIDEO_DRIVER": "wayland", "DXVK_WSI_DRIVER": "SDL3"},
+  "configure_options": {"platform_provider": "sdl3", "render_backend": "vulkan", "build_games": "portal"},
+  "required_checks": [
+    "tools.quality.tests.test_product_profile",
+    "platform.dynamic_library",
+    "platform.dynamic_library.sensitivity",
+    "sdl3_launcher_conformance on native Wayland",
+    "Installed Portal boot with required SDL3, Wayland and Vulkan evidence",
+    "Source architecture and changed-region style checks"
+  ],
+  "boot_check": {"map": "testchmb_a_00", "timeout_seconds": 180, "require": ["vulkan", "sdl3", "wayland"]},
+  "evidence": {
+    "status": "unverified",
+    "recorded_host_observations": {"date": "2026-09-22", "glibc": "2.43", "python": "3.14.7"},
+    "note": "Pins describe the selected reproducible host slice. Passing configure is not native graphics or product acceptance. Runtime evidence records actual GPU/driver, build/source identity, process results and artifacts separately. Performance/power budgets and other platform release gates remain open."
+  }
+}

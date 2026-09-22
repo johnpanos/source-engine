@@ -5,6 +5,7 @@
 //===========================================================================//
 
 #include "shadersystem.h"
+#include "shaderextension_compatibility_host.h"
 #include <stdlib.h>
 #include "materialsystem_global.h"
 #include "filesystem.h"
@@ -99,6 +100,7 @@ private:
 	{
 		char *m_pFileName;
 		CSysModule *m_hInstance;
+		CShaderExtensionCompatibilityHost *m_pExtensionHost;
 		IShaderDLLInternal *m_pShaderDLL;
 		ShaderDLL_t m_hShaderDLL;
 		
@@ -307,6 +309,7 @@ void CShaderSystem::LoadAllShaderDLLs( )
 	m_ShaderDLLs[i].m_pFileName     = new char[1];
 	m_ShaderDLLs[i].m_pFileName[0]  = 0;
 	m_ShaderDLLs[i].m_hInstance     = NULL;
+	m_ShaderDLLs[i].m_pExtensionHost = NULL;
 	m_ShaderDLLs[i].m_pShaderDLL    = GetShaderDLLInternal();
 	m_ShaderDLLs[i].m_bModShaderDLL = false;
 
@@ -409,6 +412,7 @@ void CShaderSystem::LoadModShaderDLLs( int dxSupportLevel )
 
 		pFilename = g_pFullFileSystem->FindNext( findHandle );
 	}
+	g_pFullFileSystem->FindClose( findHandle );
 }
 
 
@@ -491,46 +495,41 @@ void CShaderSystem::VerifyBaseShaderDLL( CSysModule *pModule )
 //-----------------------------------------------------------------------------
 bool CShaderSystem::LoadShaderDLL( const char *pFullPath, const char *pPathID, bool bModShaderDLL )
 {
-	if ( !pFullPath && !pFullPath[0] )
+	if ( !pFullPath || !pFullPath[0] )
 		return true;
 
-	// Load the new shader
-	bool bValidatedDllOnly = true;
+	CSysModule *hInstance = NULL;
+	IShaderDLLInternal *pShaderDLL = NULL;
+	CShaderExtensionCompatibilityHost *pExtensionHost = NULL;
 	if ( bModShaderDLL )
-		bValidatedDllOnly = false;
-
-	CSysModule *hInstance = Sys_LoadModuleFromFileSystem(
-		g_pFullFileSystem, pFullPath, pPathID, bValidatedDllOnly );
-	if ( !hInstance )
-		return false;
-
-	// Get at the shader DLL interface
-	CreateInterfaceFn factory = Sys_GetFactory( hInstance );
-	if (!factory)
 	{
-		g_pFullFileSystem->UnloadModule( hInstance );
-		return false;
+		pExtensionHost = CShaderExtensionCompatibilityHost::Load( *g_pFullFileSystem, pFullPath );
+		if ( !pExtensionHost )
+			return false;
+		pShaderDLL = &pExtensionHost->Shaders();
 	}
-
-	IShaderDLLInternal *pShaderDLL = (IShaderDLLInternal*)factory( SHADER_DLL_INTERFACE_VERSION, NULL );
-	if ( !pShaderDLL )
+	else
 	{
-		g_pFullFileSystem->UnloadModule( hInstance );
-		return false;
-	}
+		hInstance = Sys_LoadModuleFromFileSystem( g_pFullFileSystem, pFullPath, pPathID, true );
+		if ( !hInstance )
+			return false;
 
-	// Make sure it's a valid base shader DLL if necessary.
-	//HACKHACK get rid of this when VAC2 comes online.
-	if ( !bModShaderDLL )
-	{
+		CreateInterfaceFn factory = Sys_GetFactory( hInstance );
+		pShaderDLL = factory ? static_cast<IShaderDLLInternal *>(
+		                           factory( SHADER_DLL_INTERFACE_VERSION, NULL ) )
+		                     : NULL;
+		if ( !pShaderDLL )
+		{
+			g_pFullFileSystem->UnloadModule( hInstance );
+			return false;
+		}
+
 		VerifyBaseShaderDLL( hInstance );
-	}
-
-	// Allow the DLL to try to connect to interfaces it needs
-	if ( !pShaderDLL->Connect( Sys_GetFactoryThis(), false ) )
-	{
-		g_pFullFileSystem->UnloadModule( hInstance );
-		return false;
+		if ( !pShaderDLL->Connect( Sys_GetFactoryThis(), false ) )
+		{
+			g_pFullFileSystem->UnloadModule( hInstance );
+			return false;
+		}
 	}
 
 	// FIXME: We need to do some sort of shader validation here for anticheat.
@@ -551,6 +550,7 @@ bool CShaderSystem::LoadShaderDLL( const char *pFullPath, const char *pPathID, b
 
 	// Ok, the shader DLL's good!
 	m_ShaderDLLs[nShaderDLLIndex].m_hInstance = hInstance;
+	m_ShaderDLLs[nShaderDLLIndex].m_pExtensionHost = pExtensionHost;
 	m_ShaderDLLs[nShaderDLLIndex].m_pShaderDLL = pShaderDLL;
 	m_ShaderDLLs[nShaderDLLIndex].m_bModShaderDLL = bModShaderDLL;
 	
@@ -588,6 +588,13 @@ void CShaderSystem::UnloadShaderDLL( int nShaderDLLIndex )
 	// FIXME: Do some sort of fixup of materials to determine which
 	// materials are referencing shaders in this DLL?
 	CleanupShaderDictionary( nShaderDLLIndex );
+	if ( m_ShaderDLLs[nShaderDLLIndex].m_pExtensionHost )
+	{
+		delete m_ShaderDLLs[nShaderDLLIndex].m_pExtensionHost;
+		m_ShaderDLLs[nShaderDLLIndex].m_pExtensionHost = NULL;
+		m_ShaderDLLs[nShaderDLLIndex].m_pShaderDLL = NULL;
+		return;
+	}
 	IShaderDLLInternal *pShaderDLL = m_ShaderDLLs[nShaderDLLIndex].m_pShaderDLL;
 	pShaderDLL->Disconnect( pShaderDLL == GetShaderDLLInternal() );
 	if ( m_ShaderDLLs[nShaderDLLIndex].m_hInstance )
@@ -717,6 +724,7 @@ void CShaderSystem::SetupShaderDictionary( int nShaderDLLIndex )
 //-----------------------------------------------------------------------------
 void CShaderSystem::CleanupShaderDictionary( int nShaderDLLIndex )
 {
+	m_ShaderDLLs[nShaderDLLIndex].m_ShaderDict.RemoveAll();
 }
 
 //-----------------------------------------------------------------------------

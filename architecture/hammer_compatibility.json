@@ -33,13 +33,23 @@
       "note": "The strict, MFC-free Hammer core (geometry, scene, app, formats, ports). All 19 RFC 0002 conformance suites cross-compile to native Windows PE and pass under both Wine and GE-Proton, matching the Linux gcc/clang runs. Evidence: architecture/hammer_windows_parity.json; run via tools/quality/parity_wine.py."
     },
     {
+      "id": "windows-msvc-legacy-core",
+      "status": "verified",
+      "os": "Windows x86_64 (PE)",
+      "display": "none",
+      "gpu": "none",
+      "toolchain": "MSVC 19.29.30159 (VS2019 v142, toolset 14.29.30133 with atlmfc), via mstorsjo/msvc-wine",
+      "runtime": ["Wine (WINEDEBUG=-all)"],
+      "note": "Legacy-vs-extracted parity with the REAL Microsoft compiler: the unmodified legacy hammer/boundbox.cpp is compiled against the real mathlib/vector.h and linked with the extracted hammer::geometry::AxisAlignedBox; every observable operation is byte-identical, including the SnapToGrid .5-boundary that pins V_rint's round-half-away-from-zero. A mutant re-introducing std::rint round-half-to-even is caught (exit 1), proving the oracle sound. This proves the extracted library reproduces the actual legacy code compiled by the actual MSVC toolchain, one step beyond the MinGW self-parity of windows-pe-core. Evidence: architecture/hammer_legacy_parity.json; run via scratchpad legacy-parity/run_legacy_parity.sh."
+    },
+    {
       "id": "windows-mfc-legacy",
       "status": "unverified",
       "os": "Windows",
       "display": "GDI/VGUI",
       "gpu": "Source material system",
       "toolchain": "MSVC + MFC",
-      "note": "Historical MFC shell (afxwin.h etc.). Still not buildable here: MFC headers/import libs ship with Visual Studio and are absent (only the mfc140 runtime DLL is present). MinGW/clang-cl cannot substitute. The MFC-free core is verified separately as windows-pe-core; the shell and legacy-caller cutovers remain gated on a real VS/MFC toolchain."
+      "note": "Historical MFC shell (afxwin.h etc.). The real MSVC v142 + MFC (atlmfc) toolchain is now provisioned locally (see windows-msvc-legacy-core), so individual legacy translation units compile with the real compiler. The full shell still does not LINK here: it requires the entire Source Windows engine (tier0/vgui2/materialsystem/filesystem import libraries), which is out of scope for the extraction gate. The MFC-free core is verified as windows-pe-core and the extracted geometry is verified against real MSVC-compiled legacy as windows-msvc-legacy-core; the shell and remaining legacy-caller cutovers stay gated on that full engine link."
     }
   ],
   "gates": [

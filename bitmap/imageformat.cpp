@@ -279,6 +279,7 @@ int GetNumMipMapLevels( int width, int height, int depth )
 // convert back and forth from D3D format to ImageFormat, regardless of
 // whether it's supported or not
 //-----------------------------------------------------------------------------
+#if !defined( USE_DXVK )
 ImageFormat D3DFormatToImageFormat( D3DFORMAT format )
 {
 
@@ -445,6 +446,8 @@ D3DFORMAT ImageFormatToD3DFormat( ImageFormat format )
 
 	return D3DFMT_UNKNOWN;
 }
+#endif
+
 
 #pragma warning (default:4063)
 

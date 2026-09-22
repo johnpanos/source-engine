@@ -256,6 +256,11 @@ private:
 CVGui g_VGui;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CVGui, IVGui, VGUI_IVGUI_INTERFACE_VERSION, g_VGui);
 
+DLL_EXPORT vgui::IVGui *VGui_Create()
+{
+	return &g_VGui;
+}
+
 bool IsDispatchingMessageQueue( void )
 {
 	return g_VGui.IsDispatchingMessages();

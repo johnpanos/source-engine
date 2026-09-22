@@ -27,6 +27,10 @@ static CInputSystem g_InputSystem;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CInputSystem, IInputSystem, 
 						INPUTSYSTEM_INTERFACE_VERSION, g_InputSystem );
 
+DLL_EXPORT IInputSystem *InputSystem_Create()
+{
+	return &g_InputSystem;
+}
 
 #if defined( WIN32 )
 typedef BOOL (WINAPI *RegisterRawInputDevices_t)
@@ -245,6 +249,7 @@ void CInputSystem::Shutdown()
 	{
 		ShutdownJoysticks();
 	}
+	ShutdownTouch();
 
 	BaseClass::Shutdown();
 }
@@ -1518,7 +1523,14 @@ ISteamController* CInputSystem::SteamControllerInterface()
 
 void CInputSystem::StartTextInput()
 {
-#ifdef USE_SDL
+#if defined( USE_SDL3 )
+	if ( m_pLauncherMgr )
+	{
+		SDL_Window *window = static_cast<SDL_Window *>( m_pLauncherMgr->GetWindowRef() );
+		if ( window )
+			SDL_StartTextInput( window );
+	}
+#elif defined( USE_SDL )
 	SDL_StartTextInput();
 #endif
 }

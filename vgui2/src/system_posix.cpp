@@ -334,7 +334,12 @@ void CSystem::SetClipboardText(const char *text, int textLen)
 #elif defined( USE_SDL )
 	if ( Q_strlen( text ) <= textLen )
 	{
-		if ( SDL_SetClipboardText( text ) )
+		const auto result = SDL_SetClipboardText( text );
+#if defined( USE_SDL3 )
+		if ( !result )
+#else
+		if ( result != 0 )
+#endif
 		{
 			Msg( "SDL_SetClipboardText failed: %s\n", SDL_GetError() );
 		}
@@ -345,7 +350,12 @@ void CSystem::SetClipboardText(const char *text, int textLen)
 		if ( ClipText )
 		{
 			Q_strncpy( ClipText, text, textLen + 1 );
-			if ( SDL_SetClipboardText( ClipText ) )
+			const auto result = SDL_SetClipboardText( ClipText );
+#if defined( USE_SDL3 )
+			if ( !result )
+#else
+			if ( result != 0 )
+#endif
 			{
 				Msg( "SDL_SetClipboardText failed: %s\n", SDL_GetError() );
 			}

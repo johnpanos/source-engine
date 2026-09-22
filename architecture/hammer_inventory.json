@@ -8,7 +8,7 @@
     "totalHammerSourceFiles": 452,
     "totalHammerCppFiles": 221,
     "totalHammerHeaderFiles": 231,
-    "filesClassified": 35,
+    "filesClassified": 40,
     "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (public/hammer/geometry, hammer/core/geometry). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'."
   },
   "files": [
@@ -17,7 +17,9 @@
       "currentOwner": "hammer.adapters.mfc",
       "destinationModule": "hammer.adapters.mfc",
       "responsibility": "composition",
-      "effects": ["native-ui"],
+      "effects": [
+        "native-ui"
+      ],
       "state": "external-resource",
       "factorization": "keep",
       "evidence": "observed",
@@ -28,14 +30,26 @@
       "currentOwner": "hammer.adapters.mfc",
       "destinationModule": "hammer.composition",
       "responsibility": "composition",
-      "effects": ["native-ui"],
+      "effects": [
+        "native-ui"
+      ],
       "state": "per-document-session-state",
       "factorization": "split",
       "evidence": "observed",
       "note": "CHammer combines MFC lifecycle and engine application-system composition. Bootstrap, service ownership, and UI lifetime need separate owners.",
       "symbolSplits": [
-        {"symbol": "CHammer", "destinationModule": "hammer.composition", "responsibility": "composition", "note": "Service ownership and app-system composition."},
-        {"symbol": "CHammer::InitInstance", "destinationModule": "hammer.adapters.mfc", "responsibility": "platform-adapter", "note": "MFC lifecycle retained on the legacy side of the seam."}
+        {
+          "symbol": "CHammer",
+          "destinationModule": "hammer.composition",
+          "responsibility": "composition",
+          "note": "Service ownership and app-system composition."
+        },
+        {
+          "symbol": "CHammer::InitInstance",
+          "destinationModule": "hammer.adapters.mfc",
+          "responsibility": "platform-adapter",
+          "note": "MFC lifecycle retained on the legacy side of the seam."
+        }
       ]
     },
     {
@@ -43,14 +57,26 @@
       "currentOwner": "hammer.adapters.mfc",
       "destinationModule": "hammer.app",
       "responsibility": "editing",
-      "effects": ["document-mutation"],
+      "effects": [
+        "document-mutation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "split",
       "evidence": "observed",
       "note": "CMapDoc derives from CDocument; editing state and operations cannot currently be instantiated independently of the MFC document layer.",
       "symbolSplits": [
-        {"symbol": "CMapDoc content model", "destinationModule": "hammer.scene", "responsibility": "scene", "note": "Authoritative brush/face/entity content."},
-        {"symbol": "CMapDoc edit operations", "destinationModule": "hammer.app", "responsibility": "editing", "note": "Mutations routed through the transaction boundary (HAM005)."}
+        {
+          "symbol": "CMapDoc content model",
+          "destinationModule": "hammer.scene",
+          "responsibility": "scene",
+          "note": "Authoritative brush/face/entity content."
+        },
+        {
+          "symbol": "CMapDoc edit operations",
+          "destinationModule": "hammer.app",
+          "responsibility": "editing",
+          "note": "Mutations routed through the transaction boundary (HAM005)."
+        }
       ]
     },
     {
@@ -58,13 +84,20 @@
       "currentOwner": "hammer.adapters.mfc",
       "destinationModule": "hammer.scene",
       "responsibility": "scene",
-      "effects": ["document-mutation"],
+      "effects": [
+        "document-mutation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "split",
       "evidence": "observed",
       "note": "Scene base exposes selection, rendering, transforms, persistence, and notifications. CMapAtom::SetParent accepts any parent; characterize the implicit base contract before extraction.",
       "symbolSplits": [
-        {"symbol": "CMapAtom::SetParent", "destinationModule": "hammer.scene", "responsibility": "scene", "note": "Observed runtime-type narrowing vs CMapClass::SetParent; target API validates parent/child before mutation."}
+        {
+          "symbol": "CMapAtom::SetParent",
+          "destinationModule": "hammer.scene",
+          "responsibility": "scene",
+          "note": "Observed runtime-type narrowing vs CMapClass::SetParent; target API validates parent/child before mutation."
+        }
       ]
     },
     {
@@ -72,7 +105,9 @@
       "currentOwner": "hammer.adapters.mfc",
       "destinationModule": "hammer.scene",
       "responsibility": "scene",
-      "effects": ["document-mutation"],
+      "effects": [
+        "document-mutation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "split",
       "evidence": "observed",
@@ -83,13 +118,21 @@
       "currentOwner": "hammer.adapters.mfc",
       "destinationModule": "hammer.app",
       "responsibility": "editing",
-      "effects": ["document-mutation", "native-ui"],
+      "effects": [
+        "document-mutation",
+        "native-ui"
+      ],
       "state": "per-document-session-state",
       "factorization": "split",
       "evidence": "observed",
       "note": "CSelection::SelectObject commits and invalidates property-dialog state; extracting selection must preserve the property-commit policy while removing the window dependency (HAM-SEL-001).",
       "symbolSplits": [
-        {"symbol": "CSelection::SelectObject", "destinationModule": "hammer.app", "responsibility": "selection-policy", "note": "Property-draft commit policy moves to the application layer; SaveData() coupling to the property sheet is removed."}
+        {
+          "symbol": "CSelection::SelectObject",
+          "destinationModule": "hammer.app",
+          "responsibility": "selection-policy",
+          "note": "Property-draft commit policy moves to the application layer; SaveData() coupling to the property sheet is removed."
+        }
       ]
     },
     {
@@ -97,7 +140,9 @@
       "currentOwner": "hammer.adapters.mfc",
       "destinationModule": "hammer.tools",
       "responsibility": "interaction",
-      "effects": ["native-ui"],
+      "effects": [
+        "native-ui"
+      ],
       "state": "per-view-state",
       "factorization": "split",
       "evidence": "observed",
@@ -108,7 +153,9 @@
       "currentOwner": "hammer.adapters.mfc",
       "destinationModule": "hammer.viewport",
       "responsibility": "presentation",
-      "effects": ["native-ui"],
+      "effects": [
+        "native-ui"
+      ],
       "state": "per-view-state",
       "factorization": "replace-shell",
       "evidence": "observed",
@@ -119,13 +166,21 @@
       "currentOwner": "hammer.adapters.mfc",
       "destinationModule": "hammer.ports",
       "responsibility": "asset-service",
-      "effects": ["native-ui", "gpu-work"],
+      "effects": [
+        "native-ui",
+        "gpu-work"
+      ],
       "state": "external-resource",
       "factorization": "split",
       "evidence": "observed",
       "note": "IEditorTexture draws through CDC/RECT/CPalette; split asset metadata, decoded-image access, thumbnail generation, and private render bindings. Characterize GetImageWidth vs GetWidth before deduplication.",
       "symbolSplits": [
-        {"symbol": "IEditorTexture::GetImageWidth/GetWidth", "destinationModule": "hammer.ports", "responsibility": "asset-service", "note": "Image vs mapping dimensions may differ; characterize before merge (do not treat the removal comment as evidence)."}
+        {
+          "symbol": "IEditorTexture::GetImageWidth/GetWidth",
+          "destinationModule": "hammer.ports",
+          "responsibility": "asset-service",
+          "note": "Image vs mapping dimensions may differ; characterize before merge (do not treat the removal comment as evidence)."
+        }
       ]
     },
     {
@@ -133,7 +188,10 @@
       "currentOwner": "hammer.adapters.mfc",
       "destinationModule": "hammer.interop.gtk_source",
       "responsibility": "presentation",
-      "effects": ["gpu-work", "native-ui"],
+      "effects": [
+        "gpu-work",
+        "native-ui"
+      ],
       "state": "external-resource",
       "factorization": "adapt-legacy",
       "evidence": "observed",
@@ -144,13 +202,20 @@
       "currentOwner": "hammer.adapters.mfc",
       "destinationModule": "hammer.viewport",
       "responsibility": "presentation",
-      "effects": ["gpu-work"],
+      "effects": [
+        "gpu-work"
+      ],
       "state": "derived-cache",
       "factorization": "split",
       "evidence": "observed",
       "note": "CRender3D::BeginRenderHitTarget/EndRenderHitTarget convert object pointers to unsigned int and back; a 64-bit migration must replace pointer encoding with bounded pick identifiers (HAM009).",
       "symbolSplits": [
-        {"symbol": "CRender3D::BeginRenderHitTarget", "destinationModule": "hammer.viewport", "responsibility": "presentation", "note": "GPU pick IDs index a frame-scoped table; they must not contain truncated object pointers."}
+        {
+          "symbol": "CRender3D::BeginRenderHitTarget",
+          "destinationModule": "hammer.viewport",
+          "responsibility": "presentation",
+          "note": "GPU pick IDs index a frame-scoped table; they must not contain truncated object pointers."
+        }
       ]
     },
     {
@@ -158,7 +223,9 @@
       "currentOwner": "hammer.adapters.mfc",
       "destinationModule": "hammer.geometry",
       "responsibility": "geometry",
-      "effects": ["pure-computation"],
+      "effects": [
+        "pure-computation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "extract",
       "evidence": "observed",
@@ -169,7 +236,9 @@
       "currentOwner": "hammer.adapters.mfc",
       "destinationModule": "hammer.geometry",
       "responsibility": "geometry",
-      "effects": ["pure-computation"],
+      "effects": [
+        "pure-computation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "extract",
       "evidence": "observed",
@@ -180,7 +249,9 @@
       "currentOwner": "hammer.geometry",
       "destinationModule": "hammer.geometry",
       "responsibility": "geometry",
-      "effects": ["pure-computation"],
+      "effects": [
+        "pure-computation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
@@ -191,7 +262,9 @@
       "currentOwner": "hammer.geometry",
       "destinationModule": "hammer.geometry",
       "responsibility": "geometry",
-      "effects": ["pure-computation"],
+      "effects": [
+        "pure-computation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
@@ -202,7 +275,9 @@
       "currentOwner": "hammer.geometry",
       "destinationModule": "hammer.geometry",
       "responsibility": "geometry",
-      "effects": ["pure-computation"],
+      "effects": [
+        "pure-computation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "extract",
       "evidence": "decision",
@@ -213,7 +288,9 @@
       "currentOwner": "hammer.geometry",
       "destinationModule": "hammer.geometry",
       "responsibility": "geometry",
-      "effects": ["pure-computation"],
+      "effects": [
+        "pure-computation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "extract",
       "evidence": "decision",
@@ -224,7 +301,9 @@
       "currentOwner": "hammer.geometry",
       "destinationModule": "hammer.geometry",
       "responsibility": "geometry",
-      "effects": ["pure-computation"],
+      "effects": [
+        "pure-computation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "extract",
       "evidence": "decision",
@@ -235,7 +314,9 @@
       "currentOwner": "hammer.geometry",
       "destinationModule": "hammer.geometry",
       "responsibility": "geometry",
-      "effects": ["pure-computation"],
+      "effects": [
+        "pure-computation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "extract",
       "evidence": "decision",
@@ -246,7 +327,9 @@
       "currentOwner": "hammer.scene",
       "destinationModule": "hammer.scene",
       "responsibility": "scene",
-      "effects": ["pure-computation"],
+      "effects": [
+        "pure-computation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
@@ -257,7 +340,9 @@
       "currentOwner": "hammer.scene",
       "destinationModule": "hammer.scene",
       "responsibility": "scene",
-      "effects": ["document-mutation"],
+      "effects": [
+        "document-mutation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
@@ -268,7 +353,9 @@
       "currentOwner": "hammer.scene",
       "destinationModule": "hammer.scene",
       "responsibility": "scene",
-      "effects": ["document-mutation"],
+      "effects": [
+        "document-mutation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
@@ -279,7 +366,9 @@
       "currentOwner": "hammer.scene",
       "destinationModule": "hammer.scene",
       "responsibility": "scene",
-      "effects": ["document-mutation"],
+      "effects": [
+        "document-mutation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
@@ -290,7 +379,9 @@
       "currentOwner": "hammer.scene",
       "destinationModule": "hammer.scene",
       "responsibility": "scene",
-      "effects": ["document-mutation"],
+      "effects": [
+        "document-mutation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
@@ -301,7 +392,9 @@
       "currentOwner": "hammer.app",
       "destinationModule": "hammer.app",
       "responsibility": "editing",
-      "effects": ["document-mutation"],
+      "effects": [
+        "document-mutation"
+      ],
       "state": "per-document-session-state",
       "factorization": "keep",
       "evidence": "decision",
@@ -312,7 +405,9 @@
       "currentOwner": "hammer.app",
       "destinationModule": "hammer.app",
       "responsibility": "editing",
-      "effects": ["document-mutation"],
+      "effects": [
+        "document-mutation"
+      ],
       "state": "per-document-session-state",
       "factorization": "keep",
       "evidence": "decision",
@@ -323,7 +418,9 @@
       "currentOwner": "hammer.app",
       "destinationModule": "hammer.app",
       "responsibility": "selection-policy",
-      "effects": ["pure-computation"],
+      "effects": [
+        "pure-computation"
+      ],
       "state": "per-document-session-state",
       "factorization": "keep",
       "evidence": "decision",
@@ -334,7 +431,9 @@
       "currentOwner": "hammer.app",
       "destinationModule": "hammer.app",
       "responsibility": "selection-policy",
-      "effects": ["pure-computation"],
+      "effects": [
+        "pure-computation"
+      ],
       "state": "per-document-session-state",
       "factorization": "keep",
       "evidence": "decision",
@@ -345,7 +444,9 @@
       "currentOwner": "hammer.formats",
       "destinationModule": "hammer.formats",
       "responsibility": "persistence",
-      "effects": ["pure-computation"],
+      "effects": [
+        "pure-computation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
@@ -356,7 +457,9 @@
       "currentOwner": "hammer.formats",
       "destinationModule": "hammer.formats",
       "responsibility": "persistence",
-      "effects": ["pure-computation"],
+      "effects": [
+        "pure-computation"
+      ],
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
@@ -367,7 +470,9 @@
       "currentOwner": "hammer.ports",
       "destinationModule": "hammer.ports",
       "responsibility": "persistence",
-      "effects": ["file-io"],
+      "effects": [
+        "file-io"
+      ],
       "state": "external-resource",
       "factorization": "keep",
       "evidence": "decision",
@@ -378,7 +483,9 @@
       "currentOwner": "hammer.app",
       "destinationModule": "hammer.app",
       "responsibility": "persistence",
-      "effects": ["file-io"],
+      "effects": [
+        "file-io"
+      ],
       "state": "per-document-session-state",
       "factorization": "keep",
       "evidence": "decision",
@@ -389,7 +496,9 @@
       "currentOwner": "hammer.app",
       "destinationModule": "hammer.app",
       "responsibility": "persistence",
-      "effects": ["file-io"],
+      "effects": [
+        "file-io"
+      ],
       "state": "per-document-session-state",
       "factorization": "keep",
       "evidence": "decision",
@@ -400,7 +509,10 @@
       "currentOwner": "hammer.app",
       "destinationModule": "hammer.app",
       "responsibility": "editing",
-      "effects": ["document-mutation", "file-io"],
+      "effects": [
+        "document-mutation",
+        "file-io"
+      ],
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
@@ -411,11 +523,79 @@
       "currentOwner": "hammer.app",
       "destinationModule": "hammer.app",
       "responsibility": "editing",
-      "effects": ["document-mutation", "file-io"],
+      "effects": [
+        "document-mutation",
+        "file-io"
+      ],
       "state": "authoritative-document-data",
       "factorization": "keep",
       "evidence": "decision",
       "note": "EditorDocument implementation. Headless under gcc and clang (-Werror); the reference workflow runs end-to-end in test_editor_document.cpp (open VMF, edit, undo, redo, save, reopen, compare; no-op neutrality; save-position/modified interaction) plus a non-restoring-undo negative provider."
+    },
+    {
+      "path": "hammer/adapters/source/vector_interop.h",
+      "currentOwner": "hammer.adapters.source",
+      "destinationModule": "hammer.adapters.source",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "adapt-legacy",
+      "evidence": "decision",
+      "note": "The single named owner of the Source Vector<->Vec3 and BoundBox<->AxisAlignedBox boundary policy (HAM-SOURCEADAPTER-001, contract adapters.source.vector_interop.v1). Non-strict: deliberately includes mathlib/vector.h and boundbox.h so the strict geometry library never has to. Shared seam under both thin UI siblings (hammer.adapters.mfc, hammer.adapters.gtk). Substitution guarantee proven against the real MSVC-compiled legacy BoundBox (architecture/hammer_legacy_parity.json)."
+    },
+    {
+      "path": "public/hammer/app/update_hint.h",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "decision",
+      "note": "Strict reusable core of MFC CUpdateHint: notify-code buckets + unioned AABB region on hammer.scene/hammer.geometry. HAM-UPDATEHINT-001, contract app.update_hint.v1."
+    },
+    {
+      "path": "hammer/core/app/update_hint.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "decision",
+      "note": "Implementation of hammer::app::UpdateHint. Headless; verified gcc/clang/MinGW-Wine (HAM-UPDATEHINT-001)."
+    },
+    {
+      "path": "hammer/updatehint.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "ORPHANED DEAD CODE: in no .vpc and does not compile (unbalanced parens line 128; non-members m_Objects/nIndex). Superseded by hammer::app::UpdateHint (HAM-UPDATEHINT-001); retire when removed."
+    },
+    {
+      "path": "hammer/updatehint.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Legacy CUpdateHint declaration (CObject/CMapObjectList/BoundBox). Its intended model is reconstructed strictly as app.update_hint.v1; the MFC class becomes a thin shell marshalling CMapClass/BoundBox into hammer::app::UpdateHint. HAM-UPDATEHINT-001."
     }
   ]
 }

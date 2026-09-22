@@ -18,7 +18,12 @@
 
 static ButtonCode_t ControllerButtonToButtonCode( SDL_GameControllerButton button );
 static AnalogCode_t ControllerAxisToAnalogCode( SDL_GameControllerAxis axis );
-static int JoystickSDLWatcher( void *userInfo, SDL_Event *event );
+#if defined( USE_SDL3 )
+typedef bool JoystickEventWatchResult;
+#else
+typedef int JoystickEventWatchResult;
+#endif
+static JoystickEventWatchResult SDLCALL JoystickSDLWatcher( void *userInfo, SDL_Event *event );
 
 ConVar joy_axisbutton_threshold( "joy_axisbutton_threshold", "0.3", FCVAR_ARCHIVE, "Analog axis range before a button press is registered." );
 ConVar joy_axis_deadzone( "joy_axis_deadzone", "0.2", FCVAR_ARCHIVE, "Dead zone near the zero point to not report movement." );
@@ -38,6 +43,19 @@ void SearchForDevice()
 	{
 		return;
 	}
+#if defined( USE_SDL3 )
+	int count = 0;
+	SDL_JoystickID *devices = SDL_GetGamepads( &count );
+	for ( int i = 0; devices && i < count; ++i )
+	{
+		if ( newJoystickId < 0 || devices[i] == static_cast<SDL_JoystickID>( newJoystickId ) )
+		{
+			pInputSystem->JoystickHotplugAdded( devices[i] );
+			break;
+		}
+	}
+	SDL_free( devices );
+#else
 	// -1 means "first available."
 	if ( newJoystickId < 0 )
 	{
@@ -62,6 +80,7 @@ void SearchForDevice()
 			break;
 		}
 	}
+#endif
 }
 
 //---------------------------------------------------------------------------------------
@@ -97,7 +116,7 @@ void joy_gamecontroller_config_changed_f( IConVar *var, const char *pOldValue, f
 //-----------------------------------------------------------------------------
 // Handle the events coming from the GameController SDL subsystem.
 //-----------------------------------------------------------------------------
-int JoystickSDLWatcher( void *userInfo, SDL_Event *event )
+JoystickEventWatchResult SDLCALL JoystickSDLWatcher( void *userInfo, SDL_Event *event )
 {
 	CInputSystem *pInputSystem = (CInputSystem *)userInfo;
 	Assert(pInputSystem != NULL);
@@ -129,6 +148,33 @@ int JoystickSDLWatcher( void *userInfo, SDL_Event *event )
 	// PostEvent (which doesn't seem to be thread safe) from other threads.
 	Assert(ThreadInMainThread());
 
+#if defined( USE_SDL3 )
+	switch ( event->type )
+	{
+	case SDL_CONTROLLERAXISMOTION:
+	{
+		pInputSystem->JoystickAxisMotion(
+		    event->gaxis.which, event->gaxis.axis, event->gaxis.value );
+		break;
+	}
+
+	case SDL_CONTROLLERBUTTONDOWN:
+		pInputSystem->JoystickButtonPress( event->gbutton.which, event->gbutton.button );
+		break;
+	case SDL_CONTROLLERBUTTONUP:
+		pInputSystem->JoystickButtonRelease( event->gbutton.which, event->gbutton.button );
+		break;
+
+	case SDL_CONTROLLERDEVICEADDED:
+		pInputSystem->JoystickHotplugAdded( event->gdevice.which );
+		break;
+	case SDL_CONTROLLERDEVICEREMOVED:
+		pInputSystem->JoystickHotplugRemoved( event->gdevice.which );
+		SearchForDevice();
+		break;
+	}
+
+#else
 	switch ( event->type )
 	{
 		case SDL_CONTROLLERAXISMOTION:
@@ -152,6 +198,8 @@ int JoystickSDLWatcher( void *userInfo, SDL_Event *event )
 			SearchForDevice();
 			break;
 	}
+
+#endif
 
 	return 1;
 }
@@ -185,7 +233,11 @@ void CInputSystem::InitializeJoysticks( void )
 		SDL_SetHint(SDL_HINT_GAMECONTROLLERCONFIG, controllerConfig);
 	}
 
+#if defined( USE_SDL3 )
+	if ( !SDL_InitSubSystem( SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC ) )
+#else
 	if ( SDL_InitSubSystem( SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC ) == -1 )
+#endif
 	{
 		Warning("Joystick init failed -- SDL_Init(SDL_INIT_GAMECONTROLLER|SDL_INIT_HAPTIC) failed: %s.\n", SDL_GetError());
 		return;
@@ -193,8 +245,27 @@ void CInputSystem::InitializeJoysticks( void )
 
 	m_bJoystickInitialized = true;
 
+#if defined( USE_SDL3 )
+	if ( !SDL_AddEventWatch( JoystickSDLWatcher, this ) )
+	{
+		Warning( "Joystick event watch failed: %s\n", SDL_GetError() );
+		SDL_QuitSubSystem( SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC );
+		m_bJoystickInitialized = false;
+		return;
+	}
+#else
 	SDL_AddEventWatch(JoystickSDLWatcher, this);
+#endif
 
+#if defined( USE_SDL3 )
+	int totalSticks = 0;
+	SDL_JoystickID *devices = SDL_GetGamepads( &totalSticks );
+	for ( int i = 0; devices && i < totalSticks; ++i )
+	{
+		JoystickHotplugAdded( devices[i] );
+	}
+	SDL_free( devices );
+#else
 	const int totalSticks = SDL_NumJoysticks();
 	for ( int i = 0; i < totalSticks; i++ )
 	{
@@ -211,6 +282,8 @@ void CInputSystem::InitializeJoysticks( void )
 			Msg("Found joystick '%s' (%s), but no recognized controller configuration for it.\n", SDL_JoystickNameForIndex(i), szGUID);
 		}
 	}
+
+#endif
 
 	if ( totalSticks < 1 )
 	{
@@ -253,6 +326,13 @@ static void SetJoyXControllerFound( bool found )
 
 void CInputSystem::JoystickHotplugAdded( int joystickIndex )
 {
+#if defined( USE_SDL3 )
+	// SDL3 hotplug events and enumeration both supply stable IDs, never indices.
+	if ( joystickIndex <= 0 || !SDL_IsGamepad( joystickIndex ) )
+		return;
+	const int joystickId = joystickIndex;
+	const char *pJoystickName = SDL_GetGamepadNameForID( joystickIndex );
+#else
 	// SDL_IsGameController doesn't bounds check its inputs.
 	if ( joystickIndex < 0 || joystickIndex >= SDL_NumJoysticks() )
 	{
@@ -274,6 +354,9 @@ void CInputSystem::JoystickHotplugAdded( int joystickIndex )
 
 	int joystickId = SDL_JoystickInstanceID(joystick);
 	SDL_JoystickClose(joystick);
+	const char *pJoystickName = SDL_JoystickNameForIndex( joystickIndex );
+
+#endif
 
 	int activeJoystick = joy_active.GetInt();
 	JoystickInfo_t& info = m_pJoystickInfo[ 0 ];
@@ -282,13 +365,15 @@ void CInputSystem::JoystickHotplugAdded( int joystickIndex )
 		// Only opportunistically open devices if we don't have one open already.
 		if ( info.m_nDeviceId != -1 )
 		{
-			Msg("Detected supported joystick #%i '%s'. Currently active joystick is #%i.\n", joystickId, SDL_JoystickNameForIndex(joystickIndex), info.m_nDeviceId);
+			Msg( "Detected supported joystick #%i '%s'. Currently active joystick is #%i.\n",
+			    joystickId, pJoystickName, info.m_nDeviceId );
 			return;
 		}
 	}
 	else if ( activeJoystick != joystickId )
 	{
-		Msg("Detected supported joystick #%i '%s'. Currently active joystick is #%i.\n", joystickId, SDL_JoystickNameForIndex(joystickIndex), activeJoystick);
+		Msg( "Detected supported joystick #%i '%s'. Currently active joystick is #%i.\n",
+		    joystickId, pJoystickName, activeJoystick );
 		return;
 	}
 
@@ -316,9 +401,15 @@ void CInputSystem::JoystickHotplugAdded( int joystickIndex )
 	// XXX: This will fail if this is a *real* hotplug event (and not coming from the initial InitializeJoysticks call).
 	// That's because the SDL haptic subsystem currently doesn't do hotplugging. Everything but haptics will work fine.
 	SDL_Haptic *haptic = SDL_HapticOpenFromJoystick(SDL_GameControllerGetJoystick(controller));
+#if defined( USE_SDL3 )
+	if ( haptic == NULL || !SDL_InitHapticRumble( haptic ) )
+#else
 	if ( haptic == NULL || SDL_HapticRumbleInit(haptic) != 0 )
+#endif
 	{
 		Warning("Unable to initialize rumble for joystick #%i: %s\n", joystickId, SDL_GetError());
+		if ( haptic )
+			SDL_HapticClose( haptic );
 		haptic = NULL;
 	}
 
@@ -546,7 +637,11 @@ void CInputSystem::SetXDeviceRumble( float fLeftMotor, float fRightMotor, int us
 	info.m_bRumbleEnabled = true;
 	info.m_fCurrentRumble = strength;
 
+#if defined( USE_SDL3 )
+	if ( !SDL_PlayHapticRumble( (SDL_Haptic *)info.m_pHaptic, strength, SDL_HAPTIC_INFINITY ) )
+#else
 	if ( SDL_HapticRumblePlay((SDL_Haptic *)info.m_pHaptic, strength, SDL_HAPTIC_INFINITY) != 0 )
+#endif
 	{
 		Warning("Couldn't play rumble (strength %.1f): %s\n", strength, SDL_GetError());
 	}

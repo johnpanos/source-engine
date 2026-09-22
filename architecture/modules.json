@@ -1,5 +1,24 @@
 {
   "version": 1,
+  "capabilityModules": {
+    "description": "Strict RFC 0001 composition boundary. Permissions for includes and Waf links are owned here; no legacy baseline applies.",
+    "modules": [
+      {"id": "foundation", "paths": ["public/foundation/"], "allowedEdges": []},
+      {"id": "platform.contracts", "paths": ["public/platform/contracts/"], "allowedEdges": ["foundation"]},
+      {"id": "platform.sdl3.legacy-adapter", "kind": "backend", "paths": ["platform/sdl3/legacy_include/"], "allowedEdges": [], "externalHeaders": ["SDL3/SDL.h", "SDL3/SDL_clipboard.h", "SDL3/SDL_error.h", "SDL3/SDL_events.h", "SDL3/SDL_gamepad.h", "SDL3/SDL_haptic.h", "SDL3/SDL_keycode.h", "SDL3/SDL_messagebox.h", "SDL3/SDL_misc.h", "SDL3/SDL_scancode.h", "SDL3/SDL_touch.h", "SDL3/SDL_version.h"]},
+      {"id": "platform.sdl3.launcher", "kind": "backend", "paths": ["appframework/sdl3mgr.cpp"], "allowedEdges": [], "externalHeaders": ["SDL3/SDL.h"], "legacyIncludes": ["appframework/ilaunchermgr.h", "inputsystem/ButtonCode.h", "tier0/icommandline.h", "tier1/convar.h", "tier1/utllinkedlist.h", "tier0/memdbgon.h"]},
+      {"id": "platform.sdl3.native-tests", "kind": "native-test", "paths": ["unittests/platformtest/sdl3/"], "allowedEdges": [], "externalHeaders": ["SDL3/SDL.h"], "legacyIncludes": ["appframework/ilaunchermgr.h", "tier0/icommandline.h"]},
+      {"id": "platform.composition", "paths": ["public/platform/composition.h", "public/platform/legacy_binding.h", "platform/"], "allowedEdges": ["foundation"]},
+      {"id": "testing.contracts", "paths": ["public/testing/"], "allowedEdges": []},
+      {"id": "testing.runner", "paths": ["utils/unittest/capability_runner.cpp", "utils/unittest/capability_unittest.cpp"], "allowedEdges": ["foundation", "platform.composition", "testing.contracts"]},
+      {"id": "platform.tests", "paths": ["unittests/platformtest/"], "allowedEdges": ["foundation", "platform.contracts", "platform.composition", "testing.contracts"]}
+    ],
+    "standardHeaders": ["algorithm", "array", "atomic", "cassert", "chrono", "cmath", "concepts", "condition_variable", "cstddef", "cstdint", "cstdio", "cstdlib", "cstring", "functional", "initializer_list", "limits", "map", "memory", "mutex", "new", "optional", "set", "span", "string", "string_view", "thread", "type_traits", "unordered_map", "utility", "vector"],
+    "targets": {
+      "platform_composition": {"allowedUse": []},
+      "unittest": {"allowedUse": ["platform_composition"]}
+    }
+  },
   "description": "RFC 0001 architectural manifest. Phase A currently freezes legacy dynamic-loader boundaries.",
   "legacyAbi": {
     "paths": [

@@ -27,6 +27,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -109,6 +110,8 @@ def load_manifest(path):
                 % (sid, kind, ", ".join(sorted(VALID_KIND))))
         if not s.get("profile"):
             raise ManifestError("suite %s declares no profile" % sid)
+        if s.get("result_protocol") not in (None, "checks-v1"):
+            raise ManifestError("suite %s has unknown result protocol" % sid)
     return data
 
 
@@ -151,7 +154,17 @@ def source_identity(root):
     diff = git(root, "diff", "HEAD") or ""
     dirty_digest = None
     if dirty_files:
-        dirty_digest = hashlib.sha1(diff.encode("utf-8", "replace")).hexdigest()[:12]
+        digest = hashlib.sha256(diff.encode("utf-8", "replace"))
+        # New sources are absent from git diff; include their bytes in evidence.
+        untracked = git(root, "ls-files", "--others", "--exclude-standard", "-z") or ""
+        for relative in sorted(filter(None, untracked.split("\0"))):
+            path = os.path.join(root, relative)
+            digest.update(relative.encode("utf-8", "replace"))
+            if os.path.isfile(path):
+                with open(path, "rb") as stream:
+                    for chunk in iter(lambda: stream.read(65536), b""):
+                        digest.update(chunk)
+        dirty_digest = digest.hexdigest()
     return {
         "source_revision": rev,
         "dirty": dirty_files > 0,
@@ -230,6 +243,8 @@ def run_suite(root, cxx, profile, suite, out_dir):
         result["first_divergence"] = first_line(build.stderr, ("error:",))
         result["detail"] = tail(build.stderr)
         result["matched"] = (expect == OUTCOME_COMPILE_ERROR)
+        if suite.get("expected_diagnostic"):
+            result["matched"] = result["matched"] and suite["expected_diagnostic"] in build.stderr
         return result
     result["build_ok"] = True
 
@@ -257,7 +272,19 @@ def run_suite(root, cxx, profile, suite, out_dir):
         result["outcome"] = OUTCOME_FAIL
         result["first_divergence"] = first_line(run.stdout, ("FAIL", "fail"))
 
+    if rc == 0 and suite.get("result_protocol") == "checks-v1":
+        records = re.findall(r"^CONFORMANCE ([0-9]+) ([0-9]+)$", run.stdout, re.MULTILINE)
+        valid = len(records) == 1
+        if valid:
+            result["checks"], result["failed_checks"] = map(int, records[0])
+            valid = result["checks"] > 0 and result["failed_checks"] == 0
+        if not valid:
+            result["outcome"] = OUTCOME_FAIL
+            result["first_divergence"] = "FAIL missing, duplicate, zero, or failing check results"
+
     result["matched"] = (result["outcome"] == expect)
+    if "expected_signal" in suite:
+        result["matched"] = result["matched"] and result.get("signal") == suite["expected_signal"]
     return result
 
 

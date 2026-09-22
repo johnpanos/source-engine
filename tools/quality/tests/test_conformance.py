@@ -66,6 +66,30 @@ class RunSuiteClassificationTest(unittest.TestCase):
         self.assertTrue(r["matched"])
         self.assertTrue(r["build_ok"])
 
+    def test_required_check_results(self):
+        for flags, expected in [([], True), (["-DCHECKS=0"], False),
+                                (["-DFAILURES=1"], False), (["-DDUPLICATE"], False)]:
+            with self.subTest(flags=flags):
+                suite = make_suite("checks", ["check_results.cpp"], extra_flags=flags)
+                suite["result_protocol"] = "checks-v1"
+                result = self._run(suite)
+                self.assertEqual(result["matched"], expected)
+
+    def test_missing_check_record_fails_successful_process(self):
+        suite = make_suite("incomplete", ["pass.cpp"])
+        suite["result_protocol"] = "checks-v1"
+        result = self._run(suite)
+        self.assertFalse(result["matched"])
+        self.assertEqual(result["outcome"], conformance.OUTCOME_FAIL)
+
+    def test_negative_fixture_requires_its_specific_defect(self):
+        suite = make_suite("wrong-diagnostic", ["compile_error.cpp"], expect="compile-error")
+        suite["expected_diagnostic"] = "not-a-real-diagnostic"
+        self.assertFalse(self._run(suite)["matched"])
+        suite = make_suite("wrong-signal", ["crash.cpp"], expect="crash")
+        suite["expected_signal"] = 999
+        self.assertFalse(self._run(suite)["matched"])
+
     def test_failing_is_detected(self):
         # A failing suite declared as expect=pass must be reported as a mismatch.
         r = self._run(make_suite("failing", ["failing.cpp"]))

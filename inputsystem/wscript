@@ -59,3 +59,14 @@ def build(bld):
 		idx      = bld.get_taskgen_count()
 	)
 
+	if bld.env.SDL3:
+		bld.program(
+			source = [ '../unittests/sdl3test/voice_record_test.cpp' ],
+			target = 'sdl3_voice_record_test',
+			name = 'sdl3_voice_record_test',
+			features = 'cxx cxxprogram',
+			includes = includes + [ '../public/engine/audio' ],
+			use = [ 'tier0', 'SDL2' ],
+			install_path = bld.env.TESTDIR,
+			idx = bld.get_taskgen_count()
+		)

@@ -19,7 +19,9 @@
 
 #include "tier1/fmtstr.h"
 #ifndef DEDICATED
+#if defined( DX_TO_GL_ABSTRACTION )
 #include "togl/rendermechanism.h"
+#endif
 #endif
 
 // NOTE: This must be the last file included!!!
@@ -3021,4 +3023,3 @@ float	CMatRenderContext::Knob( char *knobname, float *setvalue )
 		return 0.0f;
 	#endif
 }
-

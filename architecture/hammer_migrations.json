@@ -3,7 +3,15 @@
   "schema": "hammer-migrations/v1",
   "description": "RFC 0002 migration ledger: stable IDs, dependency DAG, contract IDs, caller sets, phase/status, test selectors, and retirement conditions. Status changes require test evidence for the current revision; a hand-edited status does not pass a gate.",
   "baselineRevision": "2d7e01d5",
-  "statuses": ["inventoried", "characterized", "isolated", "extracted", "substitutable", "cutover", "retired"],
+  "statuses": [
+    "inventoried",
+    "characterized",
+    "isolated",
+    "extracted",
+    "substitutable",
+    "cutover",
+    "retired"
+  ],
   "migrations": [
     {
       "id": "HAM-BUILD-001",
@@ -11,16 +19,30 @@
       "phase": "H0",
       "responsibility": "composition",
       "evidenceKind": "observed",
-      "sources": [{"path": "hammer/hammer_dll.vpc"}, {"path": "wscript"}],
+      "sources": [
+        {
+          "path": "hammer/hammer_dll.vpc"
+        },
+        {
+          "path": "wscript"
+        }
+      ],
       "contractIds": [],
       "dependsOn": [],
       "status": "characterized",
       "authority": "legacy",
       "consumerSet": "editor-build",
-      "testSelectors": ["hammer/run_headless", "hammer/parity_wine"],
+      "testSelectors": [
+        "hammer/run_headless",
+        "hammer/parity_wine"
+      ],
       "owner": "unassigned",
       "blocked": "A headless strict C++20 test target is established (unittests/hammertest/run_headless.sh) and builds+runs under gcc 16 and clang with -Wall -Wextra -Werror. Windows-target parity is now VERIFIED for the MFC-free core: all 19 strict suites cross-compile to native Windows PE (MinGW-w64 g++ 16.1.1, static) and pass under both Wine 11 and GE-Proton11-5, matching the Linux runs (tools/quality/parity_wine.py; evidence architecture/hammer_windows_parity.json; profile quality/profiles/windows-pe-wine.json). Remaining before retirement: a Waf-integrated target and R03 flag validation. The legacy MFC SHELL build stays out of scope on this host: MFC headers/libs require Visual Studio (only the mfc140 runtime DLL is present); MinGW cannot provide MFC.",
-      "retireWhen": ["Linux 64-bit headless editor test target builds and runs", "Windows-target parity of the strict core is verified under Wine/Proton", "the headless and parity targets are integrated into CI with validated final flags"]
+      "retireWhen": [
+        "Linux 64-bit headless editor test target builds and runs",
+        "Windows-target parity of the strict core is verified under Wine/Proton",
+        "the headless and parity targets are integrated into CI with validated final flags"
+      ]
     },
     {
       "id": "HAM-INVENTORY-001",
@@ -28,16 +50,31 @@
       "phase": "H0",
       "responsibility": "composition",
       "evidenceKind": "decision",
-      "sources": [{"path": "architecture/hammer_inventory.json"}, {"path": "architecture/hammer_migrations.json"}],
+      "sources": [
+        {
+          "path": "architecture/hammer_inventory.json"
+        },
+        {
+          "path": "architecture/hammer_migrations.json"
+        }
+      ],
       "contractIds": [],
       "dependsOn": [],
       "status": "isolated",
       "authority": "new",
       "consumerSet": "archlint-hammer",
-      "testSelectors": ["hammer/inventory_schema", "hammer/migration_schema", "hammer/module_edges"],
+      "testSelectors": [
+        "hammer/inventory_schema",
+        "hammer/migration_schema",
+        "hammer/module_edges"
+      ],
       "owner": "unassigned",
       "blocked": "Coverage is partial (13/452 files). Exhaustive per-file/per-symbol classification and reproducibility checks remain before H0 exit.",
-      "retireWhen": ["every hammer source file resolves to exactly one owner", "inventory coverage status is 'complete' and validates", "unowned/ambiguous files fail validation in a negative fixture"]
+      "retireWhen": [
+        "every hammer source file resolves to exactly one owner",
+        "inventory coverage status is 'complete' and validates",
+        "unowned/ambiguous files fail validation in a negative fixture"
+      ]
     },
     {
       "id": "HAM-RATCHET-001",
@@ -45,16 +82,31 @@
       "phase": "H0",
       "responsibility": "composition",
       "evidenceKind": "decision",
-      "sources": [{"path": "tools/archlint/archlint.py"}, {"path": "architecture/hammer_baseline.json"}],
+      "sources": [
+        {
+          "path": "tools/archlint/archlint.py"
+        },
+        {
+          "path": "architecture/hammer_baseline.json"
+        }
+      ],
       "contractIds": [],
-      "dependsOn": ["HAM-INVENTORY-001"],
+      "dependsOn": [
+        "HAM-INVENTORY-001"
+      ],
       "status": "isolated",
       "authority": "new",
       "consumerSet": "archlint-hammer",
-      "testSelectors": ["hammer/native_token_scan", "hammer/baseline_verify"],
+      "testSelectors": [
+        "hammer/native_token_scan",
+        "hammer/baseline_verify"
+      ],
       "owner": "unassigned",
       "blocked": "HAM003 (native/toolkit tokens in strict roots) is installed lexically. HAM001/HAM002 target/link-graph and HAM005 transaction-authority checks require the resolved build graph and compiler-grounded increments.",
-      "retireWhen": ["strict roots exist and are lexically clean", "HAM001/HAM002/HAM005 land with hermetic and compiler-grounded checks"]
+      "retireWhen": [
+        "strict roots exist and are lexically clean",
+        "HAM001/HAM002/HAM005 land with hermetic and compiler-grounded checks"
+      ]
     },
     {
       "id": "HAM-CORPUS-001",
@@ -62,17 +114,32 @@
       "phase": "H0",
       "responsibility": "persistence",
       "evidenceKind": "decision",
-      "sources": [{"path": "unittests/hammertest/fixtures"}, {"path": "unittests/hammertest/contracts"}],
-      "contractIds": ["formats.keyvalues.v1"],
+      "sources": [
+        {
+          "path": "unittests/hammertest/fixtures"
+        },
+        {
+          "path": "unittests/hammertest/contracts"
+        }
+      ],
+      "contractIds": [
+        "formats.keyvalues.v1"
+      ],
       "contractRecord": "unittests/hammertest/contracts/formats.keyvalues.v1.md",
       "dependsOn": [],
       "status": "characterized",
       "authority": "new",
       "consumerSet": "hammertest",
-      "testSelectors": ["formats/keyvalues", "formats/keyvalues_negative_provider"],
+      "testSelectors": [
+        "formats/keyvalues",
+        "formats/keyvalues_negative_provider"
+      ],
       "owner": "unassigned",
       "blocked": "The versioned semantic comparator now exists (hammer::formats::CompareKeyValues over the VMF/keyvalues parser+writer) with a passing negative corpus (a permissive always-equal comparator is caught). Remaining: broaden fixtures toward the RFC minimum corpus (convex/invalid brushes, transforms, texture axes, displacements, overlays, instances, malformed/encoding cases) and add provenance records under unittests/hammertest/fixtures.",
-      "retireWhen": ["versioned comparator exists with a passing negative corpus", "the RFC minimum characterization fixtures load in a headless test"]
+      "retireWhen": [
+        "versioned comparator exists with a passing negative corpus",
+        "the RFC minimum characterization fixtures load in a headless test"
+      ]
     },
     {
       "id": "HAM-GEOMETRY-001",
@@ -80,20 +147,45 @@
       "phase": "H1",
       "responsibility": "geometry",
       "evidenceKind": "observed",
-      "sources": [{"path": "hammer/boundbox.h"}, {"path": "hammer/boundbox.cpp"}],
+      "sources": [
+        {
+          "path": "hammer/boundbox.h"
+        },
+        {
+          "path": "hammer/boundbox.cpp"
+        }
+      ],
       "destinationModule": "hammer.geometry",
-      "contractIds": ["geometry.aabb.v1"],
-      "dependsOn": ["HAM-BUILD-001", "HAM-INVENTORY-001"],
+      "contractIds": [
+        "geometry.aabb.v1"
+      ],
+      "dependsOn": [
+        "HAM-BUILD-001",
+        "HAM-INVENTORY-001"
+      ],
       "status": "characterized",
       "authority": "legacy",
       "consumerSet": "boundbox-callers",
-      "testSelectors": ["geometry/aabb_invariants", "geometry/aabb_negative_provider", "geometry/rounding"],
+      "testSelectors": [
+        "geometry/aabb_invariants",
+        "geometry/aabb_negative_provider",
+        "geometry/rounding"
+      ],
       "contractRecord": "unittests/hammertest/contracts/geometry.aabb.v1.md",
       "owner": "unassigned",
-      "intentionalDifferences": ["SnapToGrid rejects a non-positive grid size (degenerate input) instead of dividing by it, as the legacy Snap() did. Documented in public/hammer/geometry/aabb.h and covered by test_aabb.cpp."],
-      "fidelityNotes": ["Characterization caught that legacy hammer_mathlib V_rint rounds halves AWAY from zero, not to even. SnapToGrid now routes through hammer::geometry::RoundHalfAwayFromZero (public/hammer/geometry/rounding.h + hammer/core/geometry/rounding.cpp), the single owner of that rule (DRY), instead of std::rint. test_rounding.cpp and the .5-boundary case in test_aabb.cpp pin the difference; a std::rint variant fails the suite (verified)."],
+      "intentionalDifferences": [
+        "SnapToGrid rejects a non-positive grid size (degenerate input) instead of dividing by it, as the legacy Snap() did. Documented in public/hammer/geometry/aabb.h and covered by test_aabb.cpp."
+      ],
+      "fidelityNotes": [
+        "Characterization caught that legacy hammer_mathlib V_rint rounds halves AWAY from zero, not to even. SnapToGrid now routes through hammer::geometry::RoundHalfAwayFromZero (public/hammer/geometry/rounding.h + hammer/core/geometry/rounding.cpp), the single owner of that rule (DRY), instead of std::rint. test_rounding.cpp and the .5-boundary case in test_aabb.cpp pin the difference; a std::rint variant fails the suite (verified).",
+        "Confirmed against the REAL MSVC toolchain: the unmodified legacy hammer/boundbox.cpp compiled by cl 19.29 (VS2019 v142 with atlmfc) under Wine, linked with AxisAlignedBox, is byte-identical across UpdateBounds/center/size/ContainsPoint/IsIntersectingBox/IsInsideBox/IsValidBox/SnapToGrid(.5-boundary)/Rotate90; a mutant round-half-to-even provider is caught (exit 1). Evidence: architecture/hammer_legacy_parity.json."
+      ],
       "note": "Strict shared owner hammer::geometry::AxisAlignedBox is implemented in public/hammer/geometry/aabb.h + hammer/core/geometry/aabb.cpp, compiles headlessly without MFC/tier0/PCH under gcc and clang (-Werror), and passes the conformance oracle unittests/hammertest/geometry/test_aabb.cpp. The contract record geometry.aabb.v1 is recorded, and test_aabb_negative.cpp proves the oracle detects a deliberately-broken (closed-face) provider. Legacy hammer/BoundBox remains the sole LIVE authority; no dual mutable model exists. Advancing to 'extracted' requires routing BoundBox callers through the shared owner via a named Vector<->Vec3 boundary adapter (hammer.adapters.source/mfc).",
-      "retireWhen": ["BoundBox operations own their behavior in hammer.geometry", "legacy callers route through the shared owner via the Vector<->Vec3 adapter", "extracted target builds without UI/PCH/GPU dependencies"]
+      "retireWhen": [
+        "BoundBox operations own their behavior in hammer.geometry",
+        "legacy callers route through the shared owner via the Vector<->Vec3 adapter",
+        "extracted target builds without UI/PCH/GPU dependencies"
+      ]
     },
     {
       "id": "HAM-SCENE-001",
@@ -101,18 +193,48 @@
       "phase": "H1",
       "responsibility": "scene",
       "evidenceKind": "decision",
-      "sources": [{"path": "public/hammer/scene/handle.h"}, {"path": "public/hammer/scene/handle_table.h"}, {"path": "hammer/core/scene/handle_table.cpp"}, {"path": "public/hammer/scene/scene_graph.h"}, {"path": "hammer/core/scene/scene_graph.cpp"}],
+      "sources": [
+        {
+          "path": "public/hammer/scene/handle.h"
+        },
+        {
+          "path": "public/hammer/scene/handle_table.h"
+        },
+        {
+          "path": "hammer/core/scene/handle_table.cpp"
+        },
+        {
+          "path": "public/hammer/scene/scene_graph.h"
+        },
+        {
+          "path": "hammer/core/scene/scene_graph.cpp"
+        }
+      ],
       "destinationModule": "hammer.scene",
-      "contractIds": ["scene.handle_table.v1", "scene.scene_graph.v1"],
-      "dependsOn": ["HAM-BUILD-001"],
+      "contractIds": [
+        "scene.handle_table.v1",
+        "scene.scene_graph.v1"
+      ],
+      "dependsOn": [
+        "HAM-BUILD-001"
+      ],
       "status": "characterized",
       "authority": "new",
       "consumerSet": "scene-graph",
-      "testSelectors": ["scene/handle_table", "scene/handle_table_negative_provider", "scene/scene_graph", "scene/scene_graph_negative_provider"],
+      "testSelectors": [
+        "scene/handle_table",
+        "scene/handle_table_negative_provider",
+        "scene/scene_graph",
+        "scene/scene_graph_negative_provider"
+      ],
       "contractRecord": "unittests/hammertest/contracts/scene.handle_table.v1.md",
       "owner": "unassigned",
       "note": "Strict hammer.scene mechanism. (1) NodeHandle (document+index+generation) + HandleTable: stale-after-free rejection, slot-reuse generation rejection, independent-document isolation. (2) SceneGraph: the RFC H1 mutation/query boundary -- handle-addressed nodes, validated reparent (cycle/self/foreign-document, atomic-on-failure), atomic subtree delete, two-document isolation. All headless under gcc and clang (-Werror); each invariant has a negative provider proving the oracle is not vacuous. Remaining toward extraction: migrating the legacy CMapClass/CMapWorld hierarchy onto this owner (needs the legacy build) and wiring document-close invalidation.",
-      "retireWhen": ["the legacy scene hierarchy is addressed through this graph/handles", "no raw scene pointer is stored across an edit that can free the node", "document-close invalidates all outstanding handles"]
+      "retireWhen": [
+        "the legacy scene hierarchy is addressed through this graph/handles",
+        "no raw scene pointer is stored across an edit that can free the node",
+        "document-close invalidates all outstanding handles"
+      ]
     },
     {
       "id": "HAM-HISTORY-001",
@@ -120,18 +242,36 @@
       "phase": "H3",
       "responsibility": "editing",
       "evidenceKind": "decision",
-      "sources": [{"path": "public/hammer/app/document_history.h"}, {"path": "hammer/core/app/document_history.cpp"}],
+      "sources": [
+        {
+          "path": "public/hammer/app/document_history.h"
+        },
+        {
+          "path": "hammer/core/app/document_history.cpp"
+        }
+      ],
       "destinationModule": "hammer.app",
-      "contractIds": ["app.document_history.v1"],
-      "dependsOn": ["HAM-BUILD-001"],
+      "contractIds": [
+        "app.document_history.v1"
+      ],
+      "dependsOn": [
+        "HAM-BUILD-001"
+      ],
       "status": "characterized",
       "authority": "new",
       "consumerSet": "edit-transactions",
-      "testSelectors": ["app/document_history", "app/document_history_negative_provider"],
+      "testSelectors": [
+        "app/document_history",
+        "app/document_history_negative_provider"
+      ],
       "contractRecord": "unittests/hammertest/contracts/app.document_history.v1.md",
       "owner": "unassigned",
       "note": "The RFC verification-strategy 'small independent document/history model'. Pins transaction/history semantics: no-op neutrality, redo-tail drop, monotonic revision across undo, and the subtle undo-to-saved-clears-modified rule (modified is driven by saved POSITION, not the revision counter). A revision-based negative provider proves the oracle catches the common mistake. This is a semantics oracle ahead of the full H3 application authority (which also needs H2 persistence and the reversible-change payloads); it is not yet the live editor history and does not replace CHistory.",
-      "retireWhen": ["the live edit-transaction owner adopts these semantics with reversible change records", "H2 persistence exists so save-position maps to a real saved file", "legacy CHistory is retired behind the transaction seam"]
+      "retireWhen": [
+        "the live edit-transaction owner adopts these semantics with reversible change records",
+        "H2 persistence exists so save-position maps to a real saved file",
+        "legacy CHistory is retired behind the transaction seam"
+      ]
     },
     {
       "id": "HAM-SAVE-001",
@@ -139,18 +279,40 @@
       "phase": "H2",
       "responsibility": "persistence",
       "evidenceKind": "decision",
-      "sources": [{"path": "public/hammer/ports/file_store.h"}, {"path": "public/hammer/app/save_orchestrator.h"}, {"path": "hammer/core/app/save_orchestrator.cpp"}],
+      "sources": [
+        {
+          "path": "public/hammer/ports/file_store.h"
+        },
+        {
+          "path": "public/hammer/app/save_orchestrator.h"
+        },
+        {
+          "path": "hammer/core/app/save_orchestrator.cpp"
+        }
+      ],
       "destinationModule": "hammer.app",
-      "contractIds": ["file_store.v1", "app.save_orchestrator.v1"],
-      "dependsOn": ["HAM-BUILD-001"],
+      "contractIds": [
+        "file_store.v1",
+        "app.save_orchestrator.v1"
+      ],
+      "dependsOn": [
+        "HAM-BUILD-001"
+      ],
       "status": "characterized",
       "authority": "new",
       "consumerSet": "document-save",
-      "testSelectors": ["app/save_orchestrator", "app/save_orchestrator_negative_provider"],
+      "testSelectors": [
+        "app/save_orchestrator",
+        "app/save_orchestrator_negative_provider"
+      ],
       "contractRecord": "unittests/hammertest/contracts/app.save_orchestrator.v1.md",
       "owner": "unassigned",
       "note": "First use of the hammer.ports pattern: IFileStore (a genuine polymorphic contract) plus SaveDocument (temp-write + atomic rename). A failed temp write or commit preserves the prior file; a truncate-then-write negative provider is caught. Verified headless with an in-memory fault-injecting fake that implements the same port (no app singletons/backdoors). Remaining: a real POSIX file-store provider, autosave-to-recovery-path (must not advance the ordinary save position), and multi-file manifest save recovery.",
-      "retireWhen": ["a real file-store provider passes the same IFileStore contract suite", "document save routes through SaveDocument with autosave/recovery and manifest cases", "legacy in-place save paths are retired"]
+      "retireWhen": [
+        "a real file-store provider passes the same IFileStore contract suite",
+        "document save routes through SaveDocument with autosave/recovery and manifest cases",
+        "legacy in-place save paths are retired"
+      ]
     },
     {
       "id": "HAM-WORKFLOW-001",
@@ -158,18 +320,38 @@
       "phase": "H3",
       "responsibility": "editing",
       "evidenceKind": "decision",
-      "sources": [{"path": "public/hammer/app/editor_document.h"}, {"path": "hammer/core/app/editor_document.cpp"}],
+      "sources": [
+        {
+          "path": "public/hammer/app/editor_document.h"
+        },
+        {
+          "path": "hammer/core/app/editor_document.cpp"
+        }
+      ],
       "destinationModule": "hammer.app",
-      "contractIds": ["app.editor_document.v1"],
-      "dependsOn": ["HAM-HISTORY-001", "HAM-SAVE-001", "HAM-CORPUS-001"],
+      "contractIds": [
+        "app.editor_document.v1"
+      ],
+      "dependsOn": [
+        "HAM-HISTORY-001",
+        "HAM-SAVE-001",
+        "HAM-CORPUS-001"
+      ],
       "status": "characterized",
       "authority": "new",
       "consumerSet": "editor-workflow",
-      "testSelectors": ["app/editor_document", "app/editor_document_negative_provider"],
+      "testSelectors": [
+        "app/editor_document",
+        "app/editor_document_negative_provider"
+      ],
       "contractRecord": "unittests/hammertest/contracts/app.editor_document.v1.md",
       "owner": "unassigned",
       "note": "The RFC 'executable headless reference workflow' now runs end-to-end, composing hammer.formats (VMF codec + comparator), DocumentHistory (one history authority; snapshot-based undo), and SaveDocument over the IFileStore port. Verified: detached load, one-edit-one-history-unit, no-op neutrality, undo restores recorded content, undo-to-saved clears modified, save advances the saved position, and save->reopen semantic equality. A non-restoring-undo negative provider is caught. Content is a keyvalues tree for this slice; typed scene content (NodeHandle-addressed brushes/faces via hammer.scene), selection integration, and the MFC/GTK presenter adapters are the next steps -- the presenter adapters need the legacy build / GTK host.",
-      "retireWhen": ["typed scene content replaces the keyvalues-tree document model", "selection and transform edits route through this document's transaction authority", "the workflow runs through the MFC and GTK presenter adapters"]
+      "retireWhen": [
+        "typed scene content replaces the keyvalues-tree document model",
+        "selection and transform edits route through this document's transaction authority",
+        "the workflow runs through the MFC and GTK presenter adapters"
+      ]
     },
     {
       "id": "HAM-SESSION-001",
@@ -177,16 +359,33 @@
       "phase": "H3",
       "responsibility": "editing",
       "evidenceKind": "decision",
-      "sources": [{"path": "hammer/mapdoc.h", "symbol": "CMapDoc"}],
+      "sources": [
+        {
+          "path": "hammer/mapdoc.h",
+          "symbol": "CMapDoc"
+        }
+      ],
       "destinationModule": "hammer.app",
-      "contractIds": ["editor_session.v1"],
-      "dependsOn": ["HAM-BUILD-001", "HAM-GEOMETRY-001"],
+      "contractIds": [
+        "editor_session.v1"
+      ],
+      "dependsOn": [
+        "HAM-BUILD-001",
+        "HAM-GEOMETRY-001"
+      ],
       "status": "inventoried",
       "authority": "legacy",
       "consumerSet": "document-lifecycle",
-      "testSelectors": ["app/two_documents", "app/session_lifetime"],
+      "testSelectors": [
+        "app/two_documents",
+        "app/session_lifetime"
+      ],
       "owner": "unassigned",
-      "retireWhen": ["EditorSession owns per-document application services", "two independent documents pass isolation tests", "scene objects no longer borrow a CDocument"]
+      "retireWhen": [
+        "EditorSession owns per-document application services",
+        "two independent documents pass isolation tests",
+        "scene objects no longer borrow a CDocument"
+      ]
     },
     {
       "id": "HAM-SEL-001",
@@ -194,19 +393,44 @@
       "phase": "H3",
       "responsibility": "selection-policy",
       "evidenceKind": "observed",
-      "sources": [{"path": "hammer/Selection.cpp", "symbol": "CSelection::SelectObject"}],
+      "sources": [
+        {
+          "path": "hammer/Selection.cpp",
+          "symbol": "CSelection::SelectObject"
+        }
+      ],
       "destinationModule": "hammer.app",
-      "contractIds": ["selection.change.v1", "property_draft.commit.v1", "transform.request.v1", "app.property_value.v1"],
+      "contractIds": [
+        "selection.change.v1",
+        "property_draft.commit.v1",
+        "transform.request.v1",
+        "app.property_value.v1"
+      ],
       "contractRecord": "unittests/hammertest/contracts/app.property_value.v1.md",
-      "testSelectors2": ["app/property_value", "app/property_value_negative_provider"],
-      "dependsOn": ["HAM-BUILD-001", "HAM-SESSION-001", "HAM-CORPUS-001"],
+      "testSelectors2": [
+        "app/property_value",
+        "app/property_value_negative_provider"
+      ],
+      "dependsOn": [
+        "HAM-BUILD-001",
+        "HAM-SESSION-001",
+        "HAM-CORPUS-001"
+      ],
       "status": "characterized",
       "note": "First foundational piece landed: hammer::app::PropertyValue (public/hammer/app/property_value.h + hammer/core/app/property_value.cpp) owns the RFC empty-vs-unset-vs-mixed multi-selection distinction, headless-verified under gcc and clang with a negative provider. Remaining for this worked migration: the property-draft commit policy (commit-valid/report-invalid/discard, shared across entry points), the selection set over scene handles, and the transform request -- and routing legacy CSelection callers, which needs the legacy build.",
       "authority": "legacy",
       "consumerSet": "selection-entry-points",
-      "testSelectors": ["selection/property_draft", "selection/two_documents", "transform/one_drag_one_history"],
+      "testSelectors": [
+        "selection/property_draft",
+        "selection/two_documents",
+        "transform/one_drag_one_history"
+      ],
       "owner": "unassigned",
-      "retireWhen": ["all selection entry points route through the application policy", "no property-sheet access remains in extracted selection code", "menu/keyboard/tool paths share one edit operation"]
+      "retireWhen": [
+        "all selection entry points route through the application policy",
+        "no property-sheet access remains in extracted selection code",
+        "menu/keyboard/tool paths share one edit operation"
+      ]
     },
     {
       "id": "HAM-RENDER-001",
@@ -214,17 +438,108 @@
       "phase": "R1",
       "responsibility": "presentation",
       "evidenceKind": "hypothesis",
-      "sources": [{"path": "hammer/VGuiWnd.cpp"}, {"path": "hammer/render3dms.cpp"}],
+      "sources": [
+        {
+          "path": "hammer/VGuiWnd.cpp"
+        },
+        {
+          "path": "hammer/render3dms.cpp"
+        }
+      ],
       "destinationModule": "hammer.interop.gtk_source",
-      "contractIds": ["render.baseline.v1", "host.surface.v1"],
-      "dependsOn": ["HAM-BUILD-001", "HAM-CORPUS-001"],
+      "contractIds": [
+        "render.baseline.v1",
+        "host.surface.v1"
+      ],
+      "dependsOn": [
+        "HAM-BUILD-001",
+        "HAM-CORPUS-001"
+      ],
       "status": "inventoried",
       "authority": "new",
       "consumerSet": "viewport-host",
       "testSelectors": [],
       "owner": "unassigned",
       "blocked": "Requires the H0 minimal render contract and the selected GTK4/libadwaita X11/Wayland profile before the spike can measure context/target ownership, resize, scale, capture, and shutdown.",
-      "retireWhen": ["one real Source-material viewport renders in a GTK host on the selected profiles", "bridge approach (in-context vs offscreen share) is chosen with measurements"]
+      "retireWhen": [
+        "one real Source-material viewport renders in a GTK host on the selected profiles",
+        "bridge approach (in-context vs offscreen share) is chosen with measurements"
+      ]
+    },
+    {
+      "id": "HAM-SOURCEADAPTER-001",
+      "title": "Establish the Source Vector<->Vec3 / BoundBox<->AxisAlignedBox boundary seam that both UI siblings share",
+      "phase": "H1",
+      "responsibility": "adapters.source",
+      "evidenceKind": "observed",
+      "sources": [
+        {
+          "path": "hammer/adapters/source/vector_interop.h"
+        }
+      ],
+      "destinationModule": "hammer.adapters.source",
+      "contractIds": [
+        "adapters.source.vector_interop.v1"
+      ],
+      "dependsOn": [
+        "HAM-BUILD-001",
+        "HAM-GEOMETRY-001"
+      ],
+      "status": "substitutable",
+      "authority": "legacy",
+      "consumerSet": "source-geometry-callers",
+      "testSelectors": [
+        "adapters/vector_interop",
+        "adapters/vector_interop_negative"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/adapters.source.vector_interop.v1.md",
+      "owner": "unassigned",
+      "note": "The single named owner (DRY) of the Source Vector<->Vec3 and BoundBox<->AxisAlignedBox conversion policy: hammer/adapters/source/vector_interop.h. This is the non-strict seam the thin UI siblings hammer.adapters.mfc and hammer.adapters.gtk both stand on to drive the reusable geometry library on Source's own data. It deliberately depends on the Source platform layer (mathlib/vector.h, boundbox.h), which the strict libraries never may, so its conformance suite runs on the MSVC/Wine parity lane, not linux-headless-core.",
+      "fidelityNotes": [
+        "Substitution guarantee proven under the REAL MSVC toolchain (cl 19.29 under Wine): for the unmodified legacy BoundBox, running a reusable geometry op directly equals ToAABB->op->FromAABB for SnapToGrid(16 .5-boundary), SnapToGrid(8), and Rotate90 on all axes, plus exact Vector<->Vec3 round-trip. A y/z-swap BuggyAdapter is caught by 9 clauses (oracle sound). Evidence: architecture/hammer_legacy_parity.json (adapters section); driver scratchpad legacy-parity/run_adapter_parity.sh."
+      ],
+      "note2": "This seam is the enabling dependency for advancing HAM-GEOMETRY-001 from 'characterized' to 'cutover': live BoundBox callers can now delegate geometry to hammer::geometry through this adapter. The adapter is permanent sibling infrastructure and is not itself retired."
+    },
+    {
+      "id": "HAM-UPDATEHINT-001",
+      "title": "Extract the reusable core of the MFC CUpdateHint document-change aggregation onto the strict geometry+scene libraries",
+      "phase": "H3",
+      "responsibility": "editing",
+      "evidenceKind": "decision",
+      "sources": [
+        {
+          "path": "hammer/updatehint.cpp"
+        },
+        {
+          "path": "hammer/updatehint.h"
+        }
+      ],
+      "destinationModule": "hammer.app",
+      "contractIds": [
+        "app.update_hint.v1"
+      ],
+      "dependsOn": [
+        "HAM-BUILD-001",
+        "HAM-GEOMETRY-001",
+        "HAM-SCENE-001"
+      ],
+      "status": "characterized",
+      "authority": "legacy",
+      "consumerSet": "updatehint-callers",
+      "testSelectors": [
+        "app/update_hint",
+        "app/update_hint_negative"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/app.update_hint.v1.md",
+      "owner": "unassigned",
+      "note": "hammer::app::UpdateHint (public/hammer/app/update_hint.h + hammer/core/app/update_hint.cpp) is the reusable aggregation model both UI siblings need: notify-code-bucketed changed nodes (hammer::scene::NodeHandle) + a unioned affected region (hammer::geometry::AxisAlignedBox), with the legacy kMaxNotifyCodes=16 capacity preserved. It composes the two already-extracted strict libraries and builds headlessly (no MFC/tier0/PCH). Verified on 4 lanes: gcc, clang, and MinGW-w64 PE under both Wine (architecture/hammer_windows_parity.json, 23/23).",
+      "fidelityNotes": [
+        "The legacy hammer/updatehint.cpp is ORPHANED DEAD CODE: it is in no .vpc build project and does not compile (unbalanced parens at line 128; references to non-members m_Objects/nIndex). There is no live behavior to byte-match, so this is a faithful reconstruction of the intent in hammer/updatehint.h (NotifyList_t[MAX_NOTIFY_CODES] buckets, m_nListEntries, m_UpdateRegion), rebuilt on the strict libraries. Classified evidenceKind=decision, not observed. The negative suite proves the oracle pins the capacity clause the legacy MAX_NOTIFY_CODES guarded."
+      ],
+      "retireWhen": [
+        "live document-mutation/view-update callers route change aggregation through hammer::app::UpdateHint via the MFC adapter shell",
+        "the orphaned hammer/updatehint.cpp and hammer/UpdateHint.h are removed"
+      ]
     }
   ]
 }

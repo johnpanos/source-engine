@@ -1,16 +1,8 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Shared conformance suite for the RFC 0001 dynamic-library loading
-//			capability (platform::IDynamicLibraryLoader). Every provider that
-//			claims the contract -- the deterministic test backend here, and the
-//			real Win32/POSIX backends when they land -- runs THIS predicate.
-//
-//			The suite is provider-agnostic: it drives an IDynamicLibraryLoader&
-//			through the behavior RFC 0001 requires and reports structured
-//			failures. A fake provider certifies contract semantics; native
-//			providers additionally certify OS behavior (RFC 0001: fake-provider
-//			success is not evidence of OS behavior). A negative provider proves
-//			this predicate is not vacuous -- see test_dynamic_library_negative.
+// Purpose: Shared outcome oracle for every provider of the RFC 0001 loader
+//          contract. Native providers must supply real fixture libraries;
+//          deterministic providers certify contract behavior only.
 //
 //=============================================================================//
 
@@ -24,20 +16,15 @@
 namespace platformtest
 {
 
-// Description of a known-good fixture the provider must be able to serve. A fake
-// backend is seeded with these; a native backend points them at a real fixture
-// shared library built with the suite.
 struct DynLibFixture
 {
-	const char *validPath;      // a path the loader can open
-	const char *validSymbol;    // a symbol exported by validPath
-	void *expectedSymbolAddr;   // if non-null, FindSymbol(validSymbol) must equal it
-	const char *missingPath;    // a path the loader must fail to open
-	const char *missingSymbol;  // a symbol absent from validPath
+	const char *validPath;
+	const char *validSymbol;
+	void *expectedSymbolAddr;
+	const char *missingPath;
+	const char *missingSymbol;
 };
 
-// Accumulates results and remembers the first failure so the runner can print a
-// single first-divergence line.
 struct ConformanceReport
 {
 	int checks = 0;
@@ -62,118 +49,228 @@ struct ConformanceReport
 
 #define PT_CHECK( report, cond ) ( report ).Record( ( cond ), #cond, __LINE__ )
 
-// Runs the full contract against `loader` using `fx`. Returns the report; the
-// caller decides pass/fail (failures == 0 for a conforming provider). The suite
-// does not print per-check success; a positive test asserts failures == 0 and a
-// negative test asserts failures > 0 for a broken provider.
-inline ConformanceReport RunDynamicLibraryConformance(
-	platform::IDynamicLibraryLoader &loader, const DynLibFixture &fx )
+// Start with a failure so a provider cannot pass by leaving the output untouched.
+inline platform::DynamicLibraryError PreviousFailure()
 {
-	using platform::DynamicLibraryError;
+	return { platform::DynamicLibraryOp::kUnload, platform::DynamicLibraryStatus::kProviderError,
+	    123, "previous request" };
+}
+
+inline void CheckLibrarySymbols(
+    ConformanceReport &r, platform::IDynamicLibrary &library, const DynLibFixture &fx )
+{
 	using platform::DynamicLibraryOp;
 	using platform::DynamicLibraryStatus;
 
-	ConformanceReport r;
-
-	// A fresh loader owns nothing.
-	PT_CHECK( r, loader.LiveLibraryCount() == 0 );
-
-	// --- Load of a valid path succeeds and takes ownership -------------------
-	DynamicLibraryError loadErr;
-	platform::IDynamicLibrary *lib = loader.Load( fx.validPath, &loadErr );
-	PT_CHECK( r, lib != nullptr );
-	PT_CHECK( r, loadErr.IsOk() );
-	PT_CHECK( r, loader.LiveLibraryCount() == 1 );
-
-	if ( lib != nullptr )
+	auto error = PreviousFailure();
+	void *symbol = library.FindSymbol( fx.validSymbol, &error );
+	PT_CHECK( r, symbol != nullptr );
+	PT_CHECK( r, error.IsOk() );
+	if ( fx.expectedSymbolAddr != nullptr )
 	{
-		// --- Known symbol resolves ------------------------------------------
-		DynamicLibraryError symErr;
-		void *sym = lib->FindSymbol( fx.validSymbol, &symErr );
-		PT_CHECK( r, sym != nullptr );
-		PT_CHECK( r, symErr.IsOk() );
-		if ( fx.expectedSymbolAddr != nullptr )
+		PT_CHECK( r, symbol == fx.expectedSymbolAddr );
+	}
+	PT_CHECK( r, library.FindSymbol( fx.validSymbol, nullptr ) == symbol );
+
+	error = PreviousFailure();
+	PT_CHECK( r, library.FindSymbol( fx.missingSymbol, &error ) == nullptr );
+	PT_CHECK( r, error.status == DynamicLibraryStatus::kSymbolNotFound );
+	PT_CHECK( r, error.operation == DynamicLibraryOp::kFindSymbol );
+	PT_CHECK( r, error.requested == fx.missingSymbol );
+	PT_CHECK( r, library.FindSymbol( fx.missingSymbol, nullptr ) == nullptr );
+
+	const char *invalidNames[] = { nullptr, "" };
+	for ( const char *name : invalidNames )
+	{
+		error = PreviousFailure();
+		PT_CHECK( r, library.FindSymbol( name, &error ) == nullptr );
+		PT_CHECK( r, error.status == DynamicLibraryStatus::kInvalidArgument );
+		PT_CHECK( r, error.operation == DynamicLibraryOp::kFindSymbol );
+		PT_CHECK( r, error.requested == name );
+		PT_CHECK( r, library.FindSymbol( name, nullptr ) == nullptr );
+	}
+
+	// Failure is local to that request and cannot poison subsequent lookups.
+	PT_CHECK( r, library.FindSymbol( fx.validSymbol, &error ) == symbol );
+	PT_CHECK( r, error.IsOk() );
+}
+
+inline void CheckNoLoad(
+    ConformanceReport &r, platform::IDynamicLibraryLoader &loader, const DynLibFixture &fx )
+{
+	using platform::DynamicLibraryOp;
+	using platform::DynamicLibraryStatus;
+	const int countBefore = loader.LiveLibraryCount();
+	const bool supported = loader.SupportsNoLoad();
+	const char *paths[] = { fx.validPath, fx.missingPath, nullptr, "" };
+	for ( const char *path : paths )
+	{
+		auto error = PreviousFailure();
+		const bool resolved = loader.TryResolveNoLoad( path, &error );
+		const bool expected = supported && path == fx.validPath;
+		PT_CHECK( r, resolved == expected );
+		PT_CHECK( r, loader.LiveLibraryCount() == countBefore );
+		if ( !supported )
 		{
-			PT_CHECK( r, sym == fx.expectedSymbolAddr );
+			PT_CHECK( r, error.status == DynamicLibraryStatus::kUnsupportedNoLoad );
 		}
-
-		// --- Missing symbol returns a structured failure --------------------
-		DynamicLibraryError missSymErr;
-		void *missSym = lib->FindSymbol( fx.missingSymbol, &missSymErr );
-		PT_CHECK( r, missSym == nullptr );
-		PT_CHECK( r, !missSymErr.IsOk() );
-		PT_CHECK( r, missSymErr.status == DynamicLibraryStatus::kSymbolNotFound );
-		PT_CHECK( r, missSymErr.operation == DynamicLibraryOp::kFindSymbol );
-		PT_CHECK( r, missSymErr.requested == fx.missingSymbol );
-
-		// --- Unload releases the handle -------------------------------------
-		loader.Unload( lib );
-		PT_CHECK( r, loader.LiveLibraryCount() == 0 );
+		else if ( path == fx.validPath )
+		{
+			PT_CHECK( r, error.IsOk() );
+		}
+		else if ( path == fx.missingPath )
+		{
+			PT_CHECK( r, error.status == DynamicLibraryStatus::kNotFound );
+		}
+		else
+		{
+			PT_CHECK( r, error.status == DynamicLibraryStatus::kInvalidArgument );
+		}
+		if ( !expected )
+		{
+			PT_CHECK( r, error.operation == DynamicLibraryOp::kResolveNoLoad );
+			PT_CHECK( r, error.requested == path );
+		}
+		PT_CHECK( r, loader.TryResolveNoLoad( path, nullptr ) == expected );
+		PT_CHECK( r, loader.LiveLibraryCount() == countBefore );
 	}
+	PT_CHECK( r, loader.SupportsNoLoad() == supported );
+}
 
-	// --- Missing library returns a structured failure ------------------------
-	DynamicLibraryError missLibErr;
-	platform::IDynamicLibrary *missLib = loader.Load( fx.missingPath, &missLibErr );
-	PT_CHECK( r, missLib == nullptr );
-	PT_CHECK( r, !missLibErr.IsOk() );
-	PT_CHECK( r, missLibErr.status == DynamicLibraryStatus::kNotFound );
-	PT_CHECK( r, missLibErr.operation == DynamicLibraryOp::kLoad );
-	PT_CHECK( r, missLibErr.requested == fx.missingPath );
+inline ConformanceReport RunDynamicLibraryConformance(
+    platform::IDynamicLibraryLoader &loader, const DynLibFixture &fx )
+{
+	using platform::DynamicLibraryOp;
+	using platform::DynamicLibraryStatus;
+	ConformanceReport r;
 	PT_CHECK( r, loader.LiveLibraryCount() == 0 );
+	CheckNoLoad( r, loader, fx );
 
-	// --- Null argument is rejected explicitly, not crashed on ----------------
-	DynamicLibraryError nullErr;
-	platform::IDynamicLibrary *nullLib = loader.Load( nullptr, &nullErr );
-	PT_CHECK( r, nullLib == nullptr );
-	PT_CHECK( r, nullErr.status == DynamicLibraryStatus::kInvalidArgument );
-
-	// --- Optional no-load capability is reported explicitly ------------------
-	DynamicLibraryError noLoadErr;
-	const bool resolved = loader.TryResolveNoLoad( fx.validPath, &noLoadErr );
-	if ( loader.SupportsNoLoad() )
-	{
-		PT_CHECK( r, resolved );
-		PT_CHECK( r, noLoadErr.IsOk() );
-	}
-	else
-	{
-		// Unsupported must be explicit: false + kUnsupportedNoLoad, never a
-		// silent emulated success.
-		PT_CHECK( r, !resolved );
-		PT_CHECK( r, noLoadErr.status == DynamicLibraryStatus::kUnsupportedNoLoad );
-		PT_CHECK( r, noLoadErr.operation == DynamicLibraryOp::kResolveNoLoad );
-	}
-
-	// --- A clean second load/unload cycle works (repeat-instance) ------------
-	DynamicLibraryError reErr;
-	platform::IDynamicLibrary *lib2 = loader.Load( fx.validPath, &reErr );
-	PT_CHECK( r, lib2 != nullptr );
+	auto error = PreviousFailure();
+	platform::IDynamicLibrary *first = loader.Load( fx.validPath, &error );
+	PT_CHECK( r, first != nullptr );
+	PT_CHECK( r, error.IsOk() );
 	PT_CHECK( r, loader.LiveLibraryCount() == 1 );
-	if ( lib2 != nullptr )
+	if ( first != nullptr )
 	{
-		loader.Unload( lib2 );
+		CheckLibrarySymbols( r, *first, fx );
+	}
+	CheckNoLoad( r, loader, fx );
+	loader.Unload( nullptr );
+	PT_CHECK( r, loader.LiveLibraryCount() == 1 );
+
+	// Duplicate requests own separate releases, even if the OS reuses a handle.
+	error = PreviousFailure();
+	platform::IDynamicLibrary *second = loader.Load( fx.validPath, &error );
+	PT_CHECK( r, second != nullptr );
+	PT_CHECK( r, second != first );
+	PT_CHECK( r, error.IsOk() );
+	PT_CHECK( r, loader.LiveLibraryCount() == 2 );
+	if ( first != nullptr )
+	{
+		loader.Unload( first );
+	}
+	PT_CHECK( r, loader.LiveLibraryCount() == 1 );
+	// Do not dereference the known-invalid pointer from a broken aliasing provider.
+	if ( second != nullptr && second != first )
+	{
+		CheckLibrarySymbols( r, *second, fx );
 	}
 
-	// --- Loader ends with no live handles (safe to destroy) ------------------
+	const char *invalidPaths[] = { fx.missingPath, nullptr, "" };
+	for ( const char *path : invalidPaths )
+	{
+		error = PreviousFailure();
+		platform::IDynamicLibrary *unexpected = loader.Load( path, &error );
+		PT_CHECK( r, unexpected == nullptr );
+		PT_CHECK( r,
+		    error.status == ( path == fx.missingPath ? DynamicLibraryStatus::kNotFound
+		                                             : DynamicLibraryStatus::kInvalidArgument ) );
+		PT_CHECK( r, error.operation == DynamicLibraryOp::kLoad );
+		PT_CHECK( r, error.requested == path );
+		if ( unexpected != nullptr )
+		{
+			loader.Unload( unexpected );
+		}
+		unexpected = loader.Load( path, nullptr );
+		PT_CHECK( r, unexpected == nullptr );
+		if ( unexpected != nullptr )
+		{
+			loader.Unload( unexpected );
+		}
+		PT_CHECK( r, loader.LiveLibraryCount() == 1 );
+	}
+	if ( second != nullptr && second != first )
+	{
+		loader.Unload( second );
+	}
 	PT_CHECK( r, loader.LiveLibraryCount() == 0 );
 
+	// Clean second instance, absent error output, and failure-then-success.
+	platform::IDynamicLibrary *again = loader.Load( fx.validPath, nullptr );
+	PT_CHECK( r, again != nullptr );
+	PT_CHECK( r, loader.LiveLibraryCount() == 1 );
+	if ( again != nullptr )
+	{
+		CheckLibrarySymbols( r, *again, fx );
+		loader.Unload( again );
+	}
+	PT_CHECK( r, loader.LiveLibraryCount() == 0 );
+	CheckNoLoad( r, loader, fx );
 	return r;
 }
 
-// Convenience for a positive test: run the suite, print any first divergence,
-// and return the process exit code (0 pass, 1 fail).
-inline int RunPositive( const char *suiteName,
-	platform::IDynamicLibraryLoader &loader, const DynLibFixture &fx )
+// Independent compositions must not consume each other's libraries. Keeping the
+// foreign library alive makes this a legal input, with no dangling-pointer test.
+inline ConformanceReport RunDynamicLibraryIsolationConformance(
+    platform::IDynamicLibraryLoader &first, platform::IDynamicLibraryLoader &second,
+    const DynLibFixture &fx )
 {
-	ConformanceReport r = RunDynamicLibraryConformance( loader, fx );
+	ConformanceReport r;
+	PT_CHECK( r, first.LiveLibraryCount() == 0 );
+	PT_CHECK( r, second.LiveLibraryCount() == 0 );
+	auto *firstLibrary = first.Load( fx.validPath, nullptr );
+	auto *secondLibrary = second.Load( fx.validPath, nullptr );
+	PT_CHECK( r, firstLibrary != nullptr );
+	PT_CHECK( r, secondLibrary != nullptr );
+	PT_CHECK( r, firstLibrary != secondLibrary );
+	first.Unload( secondLibrary );
+	second.Unload( firstLibrary );
+	PT_CHECK( r, first.LiveLibraryCount() == 1 );
+	PT_CHECK( r, second.LiveLibraryCount() == 1 );
+	// Only use survivors if the observable ownership state stayed valid.
+	if ( firstLibrary != nullptr && first.LiveLibraryCount() == 1 )
+	{
+		CheckLibrarySymbols( r, *firstLibrary, fx );
+		first.Unload( firstLibrary );
+	}
+	PT_CHECK( r, first.LiveLibraryCount() == 0 );
+	PT_CHECK( r, second.LiveLibraryCount() == 1 );
+	if ( secondLibrary != nullptr && second.LiveLibraryCount() == 1 )
+	{
+		CheckLibrarySymbols( r, *secondLibrary, fx );
+		second.Unload( secondLibrary );
+	}
+	PT_CHECK( r, second.LiveLibraryCount() == 0 );
+	return r;
+}
+
+inline int ReportConformance( const char *suiteName, const ConformanceReport &r )
+{
 	if ( r.failures != 0 )
 	{
-		std::printf( "FAIL %s: %d/%d checks failed; first: %s (line %d)\n",
-			suiteName, r.failures, r.checks, r.firstFailure, r.firstFailureLine );
+		std::printf( "FAIL %s: %d/%d checks failed; first: %s (line %d)\n", suiteName, r.failures,
+		    r.checks, r.firstFailure, r.firstFailureLine );
 		return 1;
 	}
 	std::printf( "ok %s: %d checks passed\n", suiteName, r.checks );
 	return 0;
+}
+
+inline int RunPositive(
+    const char *suiteName, platform::IDynamicLibraryLoader &loader, const DynLibFixture &fx )
+{
+	return ReportConformance( suiteName, RunDynamicLibraryConformance( loader, fx ) );
 }
 
 } // namespace platformtest

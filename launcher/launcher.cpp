@@ -53,6 +53,7 @@
 #include "p4lib/ip4.h"
 #include "inputsystem/iinputsystem.h"
 #include "filesystem/IQueuedLoader.h"
+#include "appframework/linked_systems.h"
 #include "reslistgenerator.h"
 #include "tier1/fmtstr.h"
 #include "sourcevr/isourcevirtualreality.h"
@@ -84,6 +85,7 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "render/legacy_shader_provider.h"
 #include "tier0/memdbgon.h"
 
 #define DEFAULT_HL2_GAMEDIR	"hl2"
@@ -633,33 +635,28 @@ bool CSourceAppSystemGroup::Create()
 
 	double st = Plat_FloatTime();
 
-	AppSystemInfo_t appSystems[] = 
-	{
-		{ "engine" DLL_EXT_STRING,			CVAR_QUERY_INTERFACE_VERSION },	// NOTE: This one must be first!!
-		{ "inputsystem" DLL_EXT_STRING,		INPUTSYSTEM_INTERFACE_VERSION },
-		{ "materialsystem" DLL_EXT_STRING,	MATERIAL_SYSTEM_INTERFACE_VERSION },
-		{ "datacache" DLL_EXT_STRING,		DATACACHE_INTERFACE_VERSION },
-		{ "datacache" DLL_EXT_STRING,		MDLCACHE_INTERFACE_VERSION },
-		{ "datacache" DLL_EXT_STRING,		STUDIO_DATA_CACHE_INTERFACE_VERSION },
-		{ "studiorender" DLL_EXT_STRING,	STUDIO_RENDER_INTERFACE_VERSION },
-		{ "vphysics" DLL_EXT_STRING,		VPHYSICS_INTERFACE_VERSION },
-		{ "video_services" DLL_EXT_STRING,  VIDEO_SERVICES_INTERFACE_VERSION },
-  
-		// NOTE: This has to occur before vgui2.dll so it replaces vgui2's surface implementation
-		{ "vguimatsurface" DLL_EXT_STRING,	VGUI_SURFACE_INTERFACE_VERSION },
-		{ "vgui2" DLL_EXT_STRING,			VGUI_IVGUI_INTERFACE_VERSION },
-		{ "engine" DLL_EXT_STRING,			VENGINE_LAUNCHER_API_VERSION },
-
-		{ "", "" }							// Required to terminate the list
-	};
-
+	// These modules are normal link dependencies. Keep the established lifecycle
+	// order: cvar query first, material surface before VGUI, engine API last.
 #if defined( USE_SDL )
 	AddSystem( (IAppSystem *)CreateSDLMgr(), SDLMGR_INTERFACE_VERSION );
 #endif
 
-	if ( !AddSystems( appSystems ) ) 
+	if ( !AddSystem( Engine_CreateCvarQuery(), CVAR_QUERY_INTERFACE_VERSION ) ||
+	     !AddSystem( InputSystem_Create(), INPUTSYSTEM_INTERFACE_VERSION ) ||
+	     !AddSystem( MaterialSystem_Create(), MATERIAL_SYSTEM_INTERFACE_VERSION ) ||
+	     !AddSystem( DataCache_Create(), DATACACHE_INTERFACE_VERSION ) ||
+	     !AddSystem( MDLCache_Create(), MDLCACHE_INTERFACE_VERSION ) ||
+	     !AddSystem( StudioDataCache_Create(), STUDIO_DATA_CACHE_INTERFACE_VERSION ) ||
+	     !AddSystem( StudioRender_Create(), STUDIO_RENDER_INTERFACE_VERSION ) ||
+	     !AddSystem( Physics_Create(), VPHYSICS_INTERFACE_VERSION ) ||
+	     !AddSystem( VideoServices_Create(), VIDEO_SERVICES_INTERFACE_VERSION ) ||
+	     !AddSystem( VGuiSurface_Create(), VGUI_SURFACE_INTERFACE_VERSION ) ||
+	     !AddSystem( VGui_Create(), VGUI_IVGUI_INTERFACE_VERSION ) ||
+	     !AddSystem( Engine_CreateClientAPI(), VENGINE_LAUNCHER_API_VERSION ) )
+	{
 		return false;
-	
+	}
+
 	// This will be NULL for games that don't support VR. That's ok. Just don't load the DLL
 	AppModule_t sourceVRModule = LoadModule( "sourcevr" DLL_EXT_STRING );
 	if( sourceVRModule != APP_MODULE_INVALID )
@@ -717,15 +714,25 @@ bool CSourceAppSystemGroup::Create()
 	}
 #endif // defined( _WIN32 ) && defined( STAGING_ONLY )
 
-	// Load up the appropriate shader DLL
-	// This has to be done before connection.
-	char const* pDLLName = "shaderapidx9" DLL_EXT_STRING;
-	if ( CommandLine()->FindParm( "-noshaderapi" ) )
+	// The selected renderer is a linked, typed capability. Configuration belongs
+	// to this composition root; the material consumer receives only its services.
+	const render::LegacyShaderProvider *catalog[] = {
+		ShaderBackend_Describe(), NullShaderBackend_Describe()
+	};
+	const char *defaultProvider = CommandLine()->FindParm( "-noshaderapi" ) ? "null" : catalog[0]->id;
+	const char *requested = CommandLine()->ParmValue( "-renderer", defaultProvider );
+	const render::LegacyShaderProvider *selected = NULL;
+	for ( unsigned int i = 0; i < ARRAYSIZE( catalog ); ++i )
 	{
-		pDLLName = "shaderapiempty" DLL_EXT_STRING;
+		if ( catalog[i] && !Q_stricmp( requested, catalog[i]->id ) )
+			selected = catalog[i];
+	}
+	if ( !selected || !MaterialSystem_BindShaderProvider( pMaterialSystem, selected ) )
+	{
+		Warning( "Required render provider '%s' is not available in this product.\n", requested );
+		return false;
 	}
 
-	pMaterialSystem->SetShaderAPI( pDLLName );
 
 	double elapsed = Plat_FloatTime() - st;
 	COM_TimestampedLog( "LoadAppSystems:  Took %.4f secs to load libraries and get factories.", (float)elapsed );
@@ -1189,9 +1196,15 @@ DLL_EXPORT int LauncherMain( int argc, char **argv )
 #endif // LINUX
 
 #ifdef USE_SDL
+#ifdef USE_SDL3
+	const int version = SDL_GetVersion();
+	Msg( "SDL version: %d.%d.%d rev: %s\n", SDL_VERSIONNUM_MAJOR( version ),
+		SDL_VERSIONNUM_MINOR( version ), SDL_VERSIONNUM_MICRO( version ), SDL_GetRevision() );
+#else
 	SDL_version ver;
 	SDL_GetVersion( &ver );
 	Msg("SDL version: %d.%d.%d rev: %s\n", (int)ver.major, (int)ver.minor, (int)ver.patch, SDL_GetRevision());
+#endif
 #endif
 
 #if (defined LINUX || defined PLATFORM_BSD) && defined USE_SDL && defined TOGLES && !defined ANDROID

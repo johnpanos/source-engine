@@ -68,7 +68,7 @@ public:
 
 private:
 	static void Fail( platform::DynamicLibraryError *error, const char *requested,
-		platform::DynamicLibraryStatus status )
+	    platform::DynamicLibraryStatus status )
 	{
 		if ( error != nullptr )
 		{
@@ -86,9 +86,9 @@ private:
 class CFakeDynamicLibraryLoader : public platform::IDynamicLibraryLoader
 {
 public:
-	explicit CFakeDynamicLibraryLoader( std::vector<FakeLibraryDef> defs,
-		bool supportsNoLoad = false )
-		: m_defs( std::move( defs ) ), m_supportsNoLoad( supportsNoLoad )
+	explicit CFakeDynamicLibraryLoader(
+	    std::vector<FakeLibraryDef> defs, bool supportsNoLoad = false )
+	    : m_defs( std::move( defs ) ), m_supportsNoLoad( supportsNoLoad )
 	{
 	}
 
@@ -103,8 +103,8 @@ public:
 		}
 	}
 
-	platform::IDynamicLibrary *Load( const char *path,
-		platform::DynamicLibraryError *error ) override
+	platform::IDynamicLibrary *Load(
+	    const char *path, platform::DynamicLibraryError *error ) override
 	{
 		if ( path == nullptr || path[0] == '\0' )
 		{
@@ -140,15 +140,11 @@ public:
 		// Null or foreign pointer: no-op, per contract.
 	}
 
-	int LiveLibraryCount() const override
-	{
-		return static_cast<int>( m_live.size() );
-	}
+	int LiveLibraryCount() const override { return static_cast<int>( m_live.size() ); }
 
 	bool SupportsNoLoad() const override { return m_supportsNoLoad; }
 
-	bool TryResolveNoLoad( const char *path,
-		platform::DynamicLibraryError *error ) override
+	bool TryResolveNoLoad( const char *path, platform::DynamicLibraryError *error ) override
 	{
 		if ( !m_supportsNoLoad )
 		{
@@ -161,14 +157,16 @@ public:
 			}
 			return false;
 		}
-		const bool ok = Find( path ) != nullptr;
+		const bool invalid = path == nullptr || path[0] == '\0';
+		const bool ok = !invalid && Find( path ) != nullptr;
 		if ( error != nullptr )
 		{
 			*error = platform::DynamicLibraryError{};
 			if ( !ok )
 			{
 				error->operation = platform::DynamicLibraryOp::kResolveNoLoad;
-				error->status = platform::DynamicLibraryStatus::kNotFound;
+				error->status = invalid ? platform::DynamicLibraryStatus::kInvalidArgument
+				                        : platform::DynamicLibraryStatus::kNotFound;
 				error->requested = path;
 			}
 		}
@@ -177,7 +175,7 @@ public:
 
 private:
 	static void FailLoad( platform::DynamicLibraryError *error, const char *requested,
-		platform::DynamicLibraryStatus status )
+	    platform::DynamicLibraryStatus status )
 	{
 		if ( error != nullptr )
 		{

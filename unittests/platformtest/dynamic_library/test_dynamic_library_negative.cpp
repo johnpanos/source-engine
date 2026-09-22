@@ -26,7 +26,10 @@
 namespace
 {
 
-int FixtureSymbol() { return 1; }
+int FixtureSymbol()
+{
+	return 1;
+}
 
 const char *const kValidPath = "fixtures/engine.so";
 const char *const kValidSymbol = "CreateInterface";
@@ -34,22 +37,38 @@ const char *const kValidSymbol = "CreateInterface";
 // Which single clause a broken loader violates.
 enum class Defect
 {
-	kUnloadDoesNotRelease,      // Unload keeps the handle live
-	kLoadMissingSucceeds,       // a missing path "loads"
-	kSilentNoLoad,              // no-load unsupported but silently returns true
-	kMissingSymbolReturnsAddr,  // an absent symbol resolves to an address
+	kNone,
+	kUnloadDoesNotRelease,     // Unload keeps the handle live
+	kLoadMissingSucceeds,      // a missing path "loads"
+	kSilentNoLoad,             // no-load unsupported but silently returns true
+	kMissingSymbolReturnsAddr, // an absent symbol resolves to an address
+	kLoadLeavesStaleError,
+	kDuplicateAliasesOwnership,
+	kNullUnloadReleasesOwned,
+	kForeignUnloadReleasesOwned,
+	kNoLoadAcquiresLibrary,
+	kWrongErrorOperation,
 };
 
 class CBrokenLibrary : public platform::IDynamicLibrary
 {
 public:
 	explicit CBrokenLibrary( bool missingSymbolReturnsAddr )
-		: m_missingSymbolReturnsAddr( missingSymbolReturnsAddr )
+	    : m_missingSymbolReturnsAddr( missingSymbolReturnsAddr )
 	{
 	}
 
 	void *FindSymbol( const char *name, platform::DynamicLibraryError *error ) override
 	{
+		if ( name == nullptr || name[0] == '\0' )
+		{
+			if ( error != nullptr )
+			{
+				*error = { platform::DynamicLibraryOp::kFindSymbol,
+				    platform::DynamicLibraryStatus::kInvalidArgument, 0, name };
+			}
+			return nullptr;
+		}
 		void *addr = reinterpret_cast<void *>( &FixtureSymbol );
 		if ( name != nullptr && std::strcmp( name, kValidSymbol ) == 0 )
 		{
@@ -70,9 +89,8 @@ public:
 		}
 		if ( error != nullptr )
 		{
-			error->operation = platform::DynamicLibraryOp::kFindSymbol;
-			error->status = platform::DynamicLibraryStatus::kSymbolNotFound;
-			error->requested = name;
+			*error = { platform::DynamicLibraryOp::kFindSymbol,
+			    platform::DynamicLibraryStatus::kSymbolNotFound, 0, name };
 		}
 		return nullptr;
 	}
@@ -97,14 +115,16 @@ public:
 		}
 	}
 
-	platform::IDynamicLibrary *Load( const char *path,
-		platform::DynamicLibraryError *error ) override
+	platform::IDynamicLibrary *Load(
+	    const char *path, platform::DynamicLibraryError *error ) override
 	{
 		if ( path == nullptr || path[0] == '\0' )
 		{
 			if ( error != nullptr )
 			{
-				error->operation = platform::DynamicLibraryOp::kLoad;
+				error->operation = m_defect == Defect::kWrongErrorOperation
+				                       ? platform::DynamicLibraryOp::kFindSymbol
+				                       : platform::DynamicLibraryOp::kLoad;
 				error->status = platform::DynamicLibraryStatus::kInvalidArgument;
 				error->requested = path;
 			}
@@ -124,18 +144,28 @@ public:
 		}
 
 		// Either a valid path, or a missing path under the missing-load defect.
-		if ( error != nullptr )
+		if ( error != nullptr && m_defect != Defect::kLoadLeavesStaleError )
 		{
 			*error = platform::DynamicLibraryError{};
 		}
+		if ( m_defect == Defect::kDuplicateAliasesOwnership && !m_live.empty() )
+		{
+			return m_live.front();
+		}
 		platform::IDynamicLibrary *lib =
-			new CBrokenLibrary( m_defect == Defect::kMissingSymbolReturnsAddr );
+		    new CBrokenLibrary( m_defect == Defect::kMissingSymbolReturnsAddr );
 		m_live.push_back( lib );
 		return lib;
 	}
 
 	void Unload( platform::IDynamicLibrary *library ) override
 	{
+		if ( library == nullptr && m_defect == Defect::kNullUnloadReleasesOwned && !m_live.empty() )
+		{
+			delete m_live.back();
+			m_live.pop_back();
+			return;
+		}
 		if ( m_defect == Defect::kUnloadDoesNotRelease )
 		{
 			// DEFECT: keep the handle live (still freed in the destructor).
@@ -150,18 +180,24 @@ public:
 				return;
 			}
 		}
+		if ( library != nullptr && m_defect == Defect::kForeignUnloadReleasesOwned &&
+		     !m_live.empty() )
+		{
+			delete m_live.back();
+			m_live.pop_back();
+		}
 	}
 
-	int LiveLibraryCount() const override
-	{
-		return static_cast<int>( m_live.size() );
-	}
+	int LiveLibraryCount() const override { return static_cast<int>( m_live.size() ); }
 
 	bool SupportsNoLoad() const override { return false; }
 
-	bool TryResolveNoLoad( const char *path,
-		platform::DynamicLibraryError *error ) override
+	bool TryResolveNoLoad( const char *path, platform::DynamicLibraryError *error ) override
 	{
+		if ( m_defect == Defect::kNoLoadAcquiresLibrary )
+		{
+			m_live.push_back( new CBrokenLibrary( false ) );
+		}
 		if ( m_defect == Defect::kSilentNoLoad )
 		{
 			// DEFECT: unsupported optional capability silently emulated.
@@ -203,7 +239,7 @@ std::vector<platformtest::FakeLibraryDef> MakeConformingDefs()
 	platformtest::FakeLibraryDef engine;
 	engine.path = kValidPath;
 	engine.symbols = {
-		{ kValidSymbol, reinterpret_cast<void *>( &FixtureSymbol ) },
+	    { kValidSymbol, reinterpret_cast<void *>( &FixtureSymbol ) },
 	};
 	defs.push_back( std::move( engine ) );
 	return defs;
@@ -226,34 +262,60 @@ int main()
 	//    not, the suite is over-strict and cannot be trusted.
 	{
 		platformtest::CFakeDynamicLibraryLoader good( MakeConformingDefs(), /*noLoad=*/false );
-		platformtest::ConformanceReport r =
-			platformtest::RunDynamicLibraryConformance( good, fx );
+		platformtest::ConformanceReport r = platformtest::RunDynamicLibraryConformance( good, fx );
 		if ( r.failures != 0 )
 		{
 			std::printf( "FAIL: conforming test backend rejected by suite "
-				"(%d/%d); first: %s (line %d)\n",
-				r.failures, r.checks, r.firstFailure, r.firstFailureLine );
+			             "(%d/%d); first: %s (line %d)\n",
+			    r.failures, r.checks, r.firstFailure, r.firstFailureLine );
 			++failures;
 		}
+	}
+	{
+		CBrokenLoader control( Defect::kNone );
+		failures += platformtest::ReportConformance( "sensitivity[defects disabled]",
+		    platformtest::RunDynamicLibraryConformance( control, fx ) );
 	}
 
 	// 2) Every broken loader must be CAUGHT (failures > 0). If any slips through,
 	//    the corresponding clause is not actually enforced.
 	const Case cases[] = {
-		{ Defect::kUnloadDoesNotRelease, "unload-does-not-release" },
-		{ Defect::kLoadMissingSucceeds, "load-missing-succeeds" },
-		{ Defect::kSilentNoLoad, "silent-no-load" },
-		{ Defect::kMissingSymbolReturnsAddr, "missing-symbol-returns-addr" },
+	    { Defect::kUnloadDoesNotRelease, "unload-does-not-release" },
+	    { Defect::kLoadMissingSucceeds, "load-missing-succeeds" },
+	    { Defect::kSilentNoLoad, "silent-no-load" },
+	    { Defect::kMissingSymbolReturnsAddr, "missing-symbol-returns-addr" },
+	    { Defect::kLoadLeavesStaleError, "load-leaves-stale-error" },
+	    { Defect::kDuplicateAliasesOwnership, "duplicate-aliases-ownership" },
+	    { Defect::kNullUnloadReleasesOwned, "null-unload-releases-owned" },
+	    { Defect::kNoLoadAcquiresLibrary, "no-load-acquires-library" },
+	    { Defect::kWrongErrorOperation, "wrong-error-operation" },
 	};
 	for ( const Case &c : cases )
 	{
 		CBrokenLoader bad( c.defect );
-		platformtest::ConformanceReport r =
-			platformtest::RunDynamicLibraryConformance( bad, fx );
+		platformtest::ConformanceReport r = platformtest::RunDynamicLibraryConformance( bad, fx );
 		if ( r.failures == 0 )
 		{
 			std::printf( "FAIL: broken provider '%s' was NOT caught by the suite "
-				"(suite is vacuous for that clause)\n", c.name );
+			             "(suite is vacuous for that clause)\n",
+			    c.name );
+			++failures;
+		}
+	}
+	{
+		CBrokenLoader first( Defect::kNone );
+		CBrokenLoader second( Defect::kNone );
+		failures += platformtest::ReportConformance( "sensitivity[isolation defects disabled]",
+		    platformtest::RunDynamicLibraryIsolationConformance( first, second, fx ) );
+	}
+	{
+		CBrokenLoader first( Defect::kForeignUnloadReleasesOwned );
+		CBrokenLoader second( Defect::kNone );
+		const auto report =
+		    platformtest::RunDynamicLibraryIsolationConformance( first, second, fx );
+		if ( report.failures == 0 )
+		{
+			std::printf( "FAIL: foreign-unload-releases-owned was not caught\n" );
 			++failures;
 		}
 	}
@@ -261,7 +323,8 @@ int main()
 	if ( failures == 0 )
 	{
 		std::printf( "ok test_dynamic_library_negative: suite accepts conforming "
-			"and rejects all %zu broken providers\n", sizeof( cases ) / sizeof( cases[0] ) );
+		             "and rejects all %zu broken providers\n",
+		    1 + sizeof( cases ) / sizeof( cases[0] ) );
 		return 0;
 	}
 	return 1;

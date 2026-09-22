@@ -34,6 +34,10 @@ CDataCache g_DataCache;
 
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CDataCache, IDataCache, DATACACHE_INTERFACE_VERSION, g_DataCache );
 
+DLL_EXPORT IDataCache *DataCache_Create()
+{
+	return &g_DataCache;
+}
 
 //-----------------------------------------------------------------------------
 //

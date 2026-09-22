@@ -24,6 +24,7 @@
 #include "materialsystem/imaterialproxy.h"
 #include "vstdlib/IKeyValuesSystem.h"
 #include "ctexturecompositor.h"
+#include "materialsystem/idebugtextureinfo.h"
 
 
 // NOTE: This must be the last file included!!!
@@ -79,6 +80,11 @@ static int ReadListFromFile(CUtlVector<char*>* outReplacementMaterials, const ch
 //-----------------------------------------------------------------------------
 
 CMaterialSystem g_MaterialSystem;
+DLL_EXPORT IMaterialSystem *MaterialSystem_Create()
+{
+	return &g_MaterialSystem;
+}
+
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CMaterialSystem, IMaterialSystem, 
 						MATERIAL_SYSTEM_INTERFACE_VERSION, g_MaterialSystem );
 
@@ -504,7 +510,6 @@ CMaterialSystem::CMaterialSystem()
 {
 	m_nRenderThreadID = (uintp)-1;
 	m_hAsyncLoadFileCache = NULL;
-	m_ShaderHInst = 0;
 	m_pMaterialProxyFactory = NULL;
 	m_nAdapter = 0;
 	m_nAdapterFlags = 0;
@@ -515,6 +520,7 @@ CMaterialSystem::CMaterialSystem()
 	m_bThreadHasOwnership = false;
 	m_ThreadOwnershipID = 0;
 	m_pShaderDLL = NULL;
+	m_ShaderAPIFactory = NULL;
 	m_FullbrightLightmapTextureHandle = INVALID_SHADERAPI_TEXTURE_HANDLE;
 	m_FullbrightBumpedLightmapTextureHandle = INVALID_SHADERAPI_TEXTURE_HANDLE;
 	m_BlackTextureHandle = INVALID_SHADERAPI_TEXTURE_HANDLE;
@@ -562,67 +568,83 @@ CMaterialSystem::~CMaterialSystem()
 //-----------------------------------------------------------------------------
 // Creates/destroys the shader implementation for the selected API
 //-----------------------------------------------------------------------------
-CreateInterfaceFn CMaterialSystem::CreateShaderAPI( char const* pShaderDLL )
+// Legacy callers still receive their versioned ABI adapter. Provider selection
+// and lifetime are now linked and typed; this function never opens a library.
+void *CMaterialSystem::LegacyShaderInterface( const char *name, int *result )
 {
-	if ( !pShaderDLL )
-		return 0;
+	void *instance = g_MaterialSystem.QueryShaderAPI( name );
+	if ( result )
+		*result = instance ? IFACE_OK : IFACE_FAILED;
+	return instance;
+}
 
-	// Clean up the old shader
-	DestroyShaderAPI();
+DLL_EXPORT bool MaterialSystem_BindShaderProvider(
+	IMaterialSystem *materialSystem, const render::LegacyShaderProvider *provider )
+{
+	return materialSystem == &g_MaterialSystem && provider &&
+		g_MaterialSystem.BindShaderProvider( *provider );
+}
 
-	// Load the new shader
-	m_ShaderHInst = Sys_LoadModule( pShaderDLL );
+bool CMaterialSystem::BindShaderProvider( const render::LegacyShaderProvider &provider )
+{
+	if ( m_ShaderAPIFactory || !provider.id || !provider.id[0] || !provider.create )
+		return false;
+	render::LegacyShaderServices services;
+	if ( !provider.create( &services ) || !services.IsComplete() )
+	{
+		Warning( "Render provider '%s' lacks required material services.\n", provider.id );
+		return false;
+	}
+	const int length = Q_strlen( provider.id ) + 1;
+	char *description = new char[length];
+	Q_memcpy( description, provider.id, length );
+	delete[] m_pShaderDLL;
+	m_pShaderDLL = description;
+	m_ShaderServices = services;
+	m_ShaderAPIFactory = LegacyShaderInterface;
+	return true;
+}
 
-	// Error loading the shader
-	if ( !m_ShaderHInst )
-		return 0;
-
-	// Get our class factory methods...
-	return Sys_GetFactory( m_ShaderHInst );
+CreateInterfaceFn CMaterialSystem::CreateShaderAPI( const char *name )
+{
+	const render::LegacyShaderProvider *provider = ShaderBackend_Describe();
+	if ( !provider || !provider->legacyModuleName )
+		return NULL;
+	char moduleName[MAX_PATH];
+	Q_FileBase( name ? name : provider->legacyModuleName, moduleName, sizeof( moduleName ) );
+	if ( Q_stricmp( moduleName, provider->legacyModuleName ) ||
+		!BindShaderProvider( *provider ) )
+	{
+		Warning( "Requested shader provider '%s' is not available in this composition.\n",
+			name ? name : "<default>" );
+		return NULL;
+	}
+	return m_ShaderAPIFactory;
 }
 
 void CMaterialSystem::DestroyShaderAPI()
 {
-	if (m_ShaderHInst)
-	{
-		// NOTE: By unloading the library, this will destroy m_pShaderAPI
-		Sys_UnloadModule( m_ShaderHInst );
-		g_pShaderAPI = 0;
-		g_pHWConfig = 0;
-		g_pShaderShadow = 0;
-		m_ShaderHInst = 0;
-	}
+	g_pShaderAPI = NULL;
+	g_pHWConfig = NULL;
+	g_pShaderShadow = NULL;
+	m_ShaderServices = render::LegacyShaderServices();
+	m_ShaderAPIFactory = NULL;
 }
 
 
 //-----------------------------------------------------------------------------
 // Sets which shader we should be using. Has to be done before connect!
 //-----------------------------------------------------------------------------
-void CMaterialSystem::SetShaderAPI( char const *pShaderAPIDLL )
+void CMaterialSystem::SetShaderAPI( const char *name )
 {
 	if ( m_ShaderAPIFactory )
 	{
 		Error( "Cannot set the shader API twice!\n" );
+		return;
 	}
-
-	if ( !pShaderAPIDLL )
-	{
-		pShaderAPIDLL = "shaderapidx9";
-	}
-
-	// m_pShaderDLL is needed to spew driver info
-	Assert( pShaderAPIDLL );
-	int len = Q_strlen( pShaderAPIDLL ) + 1;
-	m_pShaderDLL = new char[len];
-	memcpy( m_pShaderDLL, pShaderAPIDLL, len );
-
-	m_ShaderAPIFactory = CreateShaderAPI( pShaderAPIDLL );
-	if ( !m_ShaderAPIFactory )
-	{
-		DestroyShaderAPI();
-	}
+	CreateShaderAPI( name );
 }
-	
+
 
 //-----------------------------------------------------------------------------
 // Connect/disconnect
@@ -645,10 +667,10 @@ bool CMaterialSystem::Connect( CreateInterfaceFn factory )
 	}
 
 	// Get at the interfaces exported by the shader DLL
-	g_pShaderDeviceMgr = (IShaderDeviceMgr*)m_ShaderAPIFactory( SHADER_DEVICE_MGR_INTERFACE_VERSION, 0 );
+	g_pShaderDeviceMgr = m_ShaderServices.manager;
 	if ( !g_pShaderDeviceMgr )
 		return false;
-	g_pHWConfig = (IHardwareConfigInternal*)m_ShaderAPIFactory( MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION, 0 );
+	g_pHWConfig = static_cast<IHardwareConfigInternal *>( m_ShaderServices.hardware );
 	if ( !g_pHWConfig )
 		return false;
 	
@@ -664,13 +686,13 @@ bool CMaterialSystem::Connect( CreateInterfaceFn factory )
 
 
 	// FIXME: ShaderAPI, ShaderDevice, and ShaderShadow should only come in after setting mode
-	g_pShaderAPI = (IShaderAPI*)m_ShaderAPIFactory( SHADERAPI_INTERFACE_VERSION, 0 );
+	g_pShaderAPI = m_ShaderServices.api;
 	if ( !g_pShaderAPI )
 		return false;
-	g_pShaderDevice = (IShaderDevice*)m_ShaderAPIFactory( SHADER_DEVICE_INTERFACE_VERSION, 0 );
+	g_pShaderDevice = m_ShaderServices.device;
 	if ( !g_pShaderDevice )
 		return false;
-	g_pShaderShadow = (IShaderShadow*)m_ShaderAPIFactory( SHADERSHADOW_INTERFACE_VERSION, 0 );
+	g_pShaderShadow = m_ShaderServices.shadow;
 	if ( !g_pShaderShadow )
 		return false;
 
@@ -690,9 +712,10 @@ void CMaterialSystem::Disconnect()
 		g_pShaderDeviceMgr->Disconnect();
 		g_pShaderDeviceMgr = NULL;
 
-		// Unload the DLL
-		DestroyShaderAPI();
 	}
+	// A cancelled startup can bind services without ever connecting a manager.
+	// Clear every borrowed service on that path too, permitting a clean retry.
+	DestroyShaderAPI();
 	g_pShaderAPI = NULL;
 	g_pHWConfig = NULL;
 	g_pShaderShadow = NULL;
@@ -713,17 +736,24 @@ void CMaterialSystem::EnableEditorMaterials()
 //-----------------------------------------------------------------------------
 // Method to get at interfaces supported by the SHADDERAPI
 //-----------------------------------------------------------------------------
-void *CMaterialSystem::QueryShaderAPI( const char *pInterfaceName )
+void *CMaterialSystem::QueryShaderAPI( const char *name )
 {
-	// Returns various interfaces supported by the shader API dll
-	void *pInterface = NULL;
-	if (m_ShaderAPIFactory)
-	{
-		pInterface = m_ShaderAPIFactory( pInterfaceName, NULL );
-	}
-	return pInterface;
+	if ( !name || !m_ShaderServices.IsComplete() )
+		return NULL;
+	if ( !Q_strcmp( name, SHADER_DEVICE_MGR_INTERFACE_VERSION ) )
+		return m_ShaderServices.manager;
+	if ( !Q_strcmp( name, SHADERAPI_INTERFACE_VERSION ) )
+		return m_ShaderServices.api;
+	if ( !Q_strcmp( name, SHADER_DEVICE_INTERFACE_VERSION ) )
+		return m_ShaderServices.device;
+	if ( !Q_strcmp( name, SHADERSHADOW_INTERFACE_VERSION ) )
+		return m_ShaderServices.shadow;
+	if ( !Q_strcmp( name, MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION ) )
+		return m_ShaderServices.hardware;
+	if ( !Q_strcmp( name, DEBUG_TEXTURE_INFO_VERSION ) )
+		return m_ShaderServices.debugTextures;
+	return NULL;
 }
-
 
 //-----------------------------------------------------------------------------
 // Method to get at different interfaces supported by the material system

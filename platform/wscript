@@ -11,17 +11,17 @@ def options(opt):
 	return
 
 def configure(conf):
-	return
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
 
 def build(bld):
 	bld.stlib(
+		env       = bld.strict_cpp20_env(),
 		source    = [ 'composition.cpp' ],
 		target    = PROJECT_NAME,
 		name      = PROJECT_NAME,
-		features  = 'cxx',
+		features  = 'cxx capability_strict',
 		includes  = [ '../public' ],
 		defines   = [],
-		cxxflags  = [ '-std=c++20' ],
 		use       = [],
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()

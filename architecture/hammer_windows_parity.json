@@ -1,9 +1,9 @@
 {
   "harness": "parity_wine/v1",
-  "cxx": "x86_64-w64-mingw32-g++",
+  "cxx": "x86_64-w64-mingw32-g++-posix",
   "wrapper": "wine",
-  "matched": 19,
-  "total": 19,
+  "matched": 23,
+  "total": 23,
   "results": [
     {
       "id": "hammer.geometry.rounding",
@@ -12,7 +12,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.geometry rounding: all checks passed",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/geometry/rounding.cpp /home/john/src/source-engine/unittests/hammertest/geometry/test_rounding.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_geometry_rounding.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/geometry/rounding.cpp /home/john/src/source-engine/unittests/hammertest/geometry/test_rounding.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_geometry_rounding.exe"
     },
     {
       "id": "hammer.geometry.aabb",
@@ -21,7 +21,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.geometry AABB: all checks passed",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/geometry/aabb.cpp /home/john/src/source-engine/hammer/core/geometry/rounding.cpp /home/john/src/source-engine/unittests/hammertest/geometry/test_aabb.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_geometry_aabb.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/geometry/aabb.cpp /home/john/src/source-engine/hammer/core/geometry/rounding.cpp /home/john/src/source-engine/unittests/hammertest/geometry/test_aabb.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_geometry_aabb.exe"
     },
     {
       "id": "hammer.geometry.aabb.sensitivity",
@@ -30,7 +30,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.geometry AABB negative: oracle detects violations (real passes, buggy caught)",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/geometry/aabb.cpp /home/john/src/source-engine/hammer/core/geometry/rounding.cpp /home/john/src/source-engine/unittests/hammertest/geometry/test_aabb_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_geometry_aabb_sensitivity.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/geometry/aabb.cpp /home/john/src/source-engine/hammer/core/geometry/rounding.cpp /home/john/src/source-engine/unittests/hammertest/geometry/test_aabb_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_geometry_aabb_sensitivity.exe"
     },
     {
       "id": "hammer.geometry.angle",
@@ -39,7 +39,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.geometry angle: all checks passed",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/geometry/angle.cpp /home/john/src/source-engine/unittests/hammertest/geometry/test_angle.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_geometry_angle.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/geometry/angle.cpp /home/john/src/source-engine/unittests/hammertest/geometry/test_angle.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_geometry_angle.exe"
     },
     {
       "id": "hammer.geometry.angle.sensitivity",
@@ -48,7 +48,25 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.geometry angle negative: oracle detects violations (real passes, modulo caught)",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/geometry/angle.cpp /home/john/src/source-engine/unittests/hammertest/geometry/test_angle_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_geometry_angle_sensitivity.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/geometry/angle.cpp /home/john/src/source-engine/unittests/hammertest/geometry/test_angle_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_geometry_angle_sensitivity.exe"
+    },
+    {
+      "id": "hammer.geometry.brush",
+      "expect": "pass",
+      "outcome": "pass",
+      "matched": true,
+      "exit_code": 0,
+      "detail": "hammer.geometry.brush: all checks passed",
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/geometry/brush.cpp /home/john/src/source-engine/hammer/core/formats/keyvalues.cpp /home/john/src/source-engine/unittests/hammertest/geometry/test_brush.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_geometry_brush.exe"
+    },
+    {
+      "id": "hammer.geometry.brush.sensitivity",
+      "expect": "pass",
+      "outcome": "pass",
+      "matched": true,
+      "exit_code": 0,
+      "detail": "hammer.geometry.brush negative: oracle detects violations (real passes, buggy caught)",
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/geometry/brush.cpp /home/john/src/source-engine/hammer/core/formats/keyvalues.cpp /home/john/src/source-engine/unittests/hammertest/geometry/test_brush_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_geometry_brush_sensitivity.exe"
     },
     {
       "id": "hammer.scene.handle_table",
@@ -57,7 +75,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.scene HandleTable: all checks passed",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/scene/handle_table.cpp /home/john/src/source-engine/unittests/hammertest/scene/test_handle_table.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_scene_handle_table.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/scene/handle_table.cpp /home/john/src/source-engine/unittests/hammertest/scene/test_handle_table.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_scene_handle_table.exe"
     },
     {
       "id": "hammer.scene.handle_table.sensitivity",
@@ -66,7 +84,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.scene HandleTable negative: oracle detects violations (real passes, broken caught)",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/scene/handle_table.cpp /home/john/src/source-engine/unittests/hammertest/scene/test_handle_table_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_scene_handle_table_sensitivity.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/scene/handle_table.cpp /home/john/src/source-engine/unittests/hammertest/scene/test_handle_table_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_scene_handle_table_sensitivity.exe"
     },
     {
       "id": "hammer.scene.scene_graph",
@@ -75,7 +93,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.scene SceneGraph: all checks passed",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/scene/handle_table.cpp /home/john/src/source-engine/hammer/core/scene/scene_graph.cpp /home/john/src/source-engine/unittests/hammertest/scene/test_scene_graph.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_scene_scene_graph.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/scene/handle_table.cpp /home/john/src/source-engine/hammer/core/scene/scene_graph.cpp /home/john/src/source-engine/unittests/hammertest/scene/test_scene_graph.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_scene_scene_graph.exe"
     },
     {
       "id": "hammer.scene.scene_graph.sensitivity",
@@ -84,7 +102,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.scene SceneGraph negative: oracle detects violations (real passes, permissive caught)",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/scene/handle_table.cpp /home/john/src/source-engine/hammer/core/scene/scene_graph.cpp /home/john/src/source-engine/unittests/hammertest/scene/test_scene_graph_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_scene_scene_graph_sensitivity.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/scene/handle_table.cpp /home/john/src/source-engine/hammer/core/scene/scene_graph.cpp /home/john/src/source-engine/unittests/hammertest/scene/test_scene_graph_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_scene_scene_graph_sensitivity.exe"
     },
     {
       "id": "hammer.app.document_history",
@@ -93,7 +111,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.app DocumentHistory: all checks passed",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/document_history.cpp /home/john/src/source-engine/unittests/hammertest/app/test_document_history.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_document_history.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/document_history.cpp /home/john/src/source-engine/unittests/hammertest/app/test_document_history.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_document_history.exe"
     },
     {
       "id": "hammer.app.document_history.sensitivity",
@@ -102,7 +120,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.app DocumentHistory negative: oracle detects violations (real passes, revision-based caught)",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/document_history.cpp /home/john/src/source-engine/unittests/hammertest/app/test_document_history_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_document_history_sensitivity.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/document_history.cpp /home/john/src/source-engine/unittests/hammertest/app/test_document_history_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_document_history_sensitivity.exe"
     },
     {
       "id": "hammer.app.property_value",
@@ -111,7 +129,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.app PropertyValue: all checks passed",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/property_value.cpp /home/john/src/source-engine/unittests/hammertest/app/test_property_value.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_property_value.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/property_value.cpp /home/john/src/source-engine/unittests/hammertest/app/test_property_value.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_property_value.exe"
     },
     {
       "id": "hammer.app.property_value.sensitivity",
@@ -120,7 +138,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.app PropertyValue negative: oracle detects violations (real passes, empty-as-unset caught)",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/property_value.cpp /home/john/src/source-engine/unittests/hammertest/app/test_property_value_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_property_value_sensitivity.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/property_value.cpp /home/john/src/source-engine/unittests/hammertest/app/test_property_value_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_property_value_sensitivity.exe"
     },
     {
       "id": "hammer.formats.keyvalues",
@@ -129,7 +147,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.formats keyvalues: all checks passed",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/formats/keyvalues.cpp /home/john/src/source-engine/unittests/hammertest/formats/test_keyvalues.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_formats_keyvalues.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/formats/keyvalues.cpp /home/john/src/source-engine/unittests/hammertest/formats/test_keyvalues.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_formats_keyvalues.exe"
     },
     {
       "id": "hammer.formats.keyvalues.sensitivity",
@@ -138,7 +156,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.formats keyvalues negative: oracle detects violations (real passes, permissive caught)",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/formats/keyvalues.cpp /home/john/src/source-engine/unittests/hammertest/formats/test_keyvalues_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_formats_keyvalues_sensitivity.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/formats/keyvalues.cpp /home/john/src/source-engine/unittests/hammertest/formats/test_keyvalues_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_formats_keyvalues_sensitivity.exe"
     },
     {
       "id": "hammer.app.save_orchestrator",
@@ -147,7 +165,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.app SaveOrchestrator: all checks passed",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/save_orchestrator.cpp /home/john/src/source-engine/unittests/hammertest/app/test_save_orchestrator.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_save_orchestrator.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/save_orchestrator.cpp /home/john/src/source-engine/unittests/hammertest/app/test_save_orchestrator.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_save_orchestrator.exe"
     },
     {
       "id": "hammer.app.save_orchestrator.sensitivity",
@@ -156,7 +174,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.app SaveOrchestrator negative: oracle detects violations (real passes, naive caught)",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/save_orchestrator.cpp /home/john/src/source-engine/unittests/hammertest/app/test_save_orchestrator_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_save_orchestrator_sensitivity.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/save_orchestrator.cpp /home/john/src/source-engine/unittests/hammertest/app/test_save_orchestrator_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_save_orchestrator_sensitivity.exe"
     },
     {
       "id": "hammer.app.editor_document",
@@ -165,7 +183,7 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.app EditorDocument: reference workflow passed",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/editor_document.cpp /home/john/src/source-engine/hammer/core/app/document_history.cpp /home/john/src/source-engine/hammer/core/app/save_orchestrator.cpp /home/john/src/source-engine/hammer/core/formats/keyvalues.cpp /home/john/src/source-engine/unittests/hammertest/app/test_editor_document.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_editor_document.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/editor_document.cpp /home/john/src/source-engine/hammer/core/app/document_history.cpp /home/john/src/source-engine/hammer/core/app/save_orchestrator.cpp /home/john/src/source-engine/hammer/core/formats/keyvalues.cpp /home/john/src/source-engine/unittests/hammertest/app/test_editor_document.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_editor_document.exe"
     },
     {
       "id": "hammer.app.editor_document.sensitivity",
@@ -174,7 +192,25 @@
       "matched": true,
       "exit_code": 0,
       "detail": "hammer.app EditorDocument negative: oracle detects violations (real passes, broken caught)",
-      "repro": "x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/editor_document.cpp /home/john/src/source-engine/hammer/core/app/document_history.cpp /home/john/src/source-engine/hammer/core/app/save_orchestrator.cpp /home/john/src/source-engine/hammer/core/formats/keyvalues.cpp /home/john/src/source-engine/unittests/hammertest/app/test_editor_document_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_editor_document_sensitivity.exe"
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/editor_document.cpp /home/john/src/source-engine/hammer/core/app/document_history.cpp /home/john/src/source-engine/hammer/core/app/save_orchestrator.cpp /home/john/src/source-engine/hammer/core/formats/keyvalues.cpp /home/john/src/source-engine/unittests/hammertest/app/test_editor_document_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_editor_document_sensitivity.exe"
+    },
+    {
+      "id": "hammer.app.update_hint",
+      "expect": "pass",
+      "outcome": "pass",
+      "matched": true,
+      "exit_code": 0,
+      "detail": "app.update_hint: aggregation policy holds",
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/update_hint.cpp /home/john/src/source-engine/hammer/core/geometry/aabb.cpp /home/john/src/source-engine/hammer/core/geometry/rounding.cpp /home/john/src/source-engine/unittests/hammertest/app/test_update_hint.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_update_hint.exe"
+    },
+    {
+      "id": "hammer.app.update_hint.sensitivity",
+      "expect": "pass",
+      "outcome": "pass",
+      "matched": true,
+      "exit_code": 0,
+      "detail": "app.update_hint negative: oracle catches unbounded notify codes (real enforces cap, broken caught)",
+      "repro": "x86_64-w64-mingw32-g++-posix -std=c++20 -Wall -Wextra -Werror -static -static-libgcc -static-libstdc++ -I /home/john/src/source-engine/public /home/john/src/source-engine/hammer/core/app/update_hint.cpp /home/john/src/source-engine/hammer/core/geometry/aabb.cpp /home/john/src/source-engine/hammer/core/geometry/rounding.cpp /home/john/src/source-engine/unittests/hammertest/app/test_update_hint_negative.cpp -o /home/john/src/source-engine/build/parity-wine/hammer_app_update_hint_sensitivity.exe"
     }
   ]
 }

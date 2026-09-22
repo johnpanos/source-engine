@@ -987,10 +987,6 @@ static void InitializeSrcTexture_PNG( IVTFTexture *pTexture, const char *pInputF
 	nWidth /= info.m_nReduceX;
 	nHeight /= info.m_nReduceY;
 
-	FILE *f = fopen("shit", "wb");
-	fwrite(pngBuffer.Base(), 1, 256*256*4, f);
-	fclose(f);
-
 	if (!pTexture->Init( nWidth, nHeight, nDepth, IMAGE_FORMAT_DEFAULT, info.m_nFlags, nFrameCount ))
 	{
 		Error( "Error initializing texture %s\n", pInputFileName );

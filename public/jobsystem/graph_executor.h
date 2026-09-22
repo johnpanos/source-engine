@@ -107,7 +107,7 @@ struct RunResult
 	// main-thread pump, or BlockingIO jobs without a blocking lane). Such jobs and
 	// their Success-dependents are left non-terminal; the run made no false claim
 	// of completion. This is the "wait that cannot make progress" diagnostic.
-	bool     stalled    = false;
+	bool stalled = false;
 	uint32_t unresolved = 0; // jobs left non-terminal because of a stall
 
 	bool AllSucceeded() const { return failed == 0 && canceled == 0 && !stalled; }

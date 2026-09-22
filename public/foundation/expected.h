@@ -22,69 +22,69 @@ namespace detail
 {
 inline void RequireExpectedState( bool valid ) noexcept
 {
-	if ( !valid ) std::abort();
+	if ( !valid )
+		std::abort();
 }
 }
 
-template < typename E >
-struct Unexpected
+template <typename E> struct Unexpected
 {
-	template < typename U >
-	requires std::constructible_from< E, U && >
-	explicit Unexpected( U &&value ) : m_Error( std::forward< U >( value ) )
+	template <typename U>
+	    requires std::constructible_from<E, U &&>
+	explicit Unexpected( U &&value ) : m_Error( std::forward<U>( value ) )
 	{
 	}
 
 	E m_Error;
 };
 
-template < typename E >
-Unexpected< std::decay_t< E > > MakeUnexpected( E &&error )
+template <typename E> Unexpected<std::decay_t<E>> MakeUnexpected( E &&error )
 {
-	return Unexpected< std::decay_t< E > >( std::forward< E >( error ) );
+	return Unexpected<std::decay_t<E>>( std::forward<E>( error ) );
 }
 
-template < typename T, typename E >
-class [[nodiscard]] Expected
+template <typename T, typename E> class [[nodiscard]] Expected
 {
 	// Transitioning alternatives must never leave an unconstructed payload.
-	static_assert( std::is_nothrow_move_constructible_v< T > &&
-	               std::is_nothrow_move_constructible_v< E >,
-	               "Expected payloads require nothrow move construction" );
+	static_assert(
+	    std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_constructible_v<E>,
+	    "Expected payloads require nothrow move construction" );
+
 public:
-	template < typename U = T >
-	requires std::constructible_from< T, U && >
+	template <typename U = T>
+	    requires std::constructible_from<T, U &&>
 	Expected( U &&value ) : m_HasValue( true )
 	{
-		new ( &m_Storage.m_Value ) T( std::forward< U >( value ) );
+		new ( &m_Storage.m_Value ) T( std::forward<U>( value ) );
 	}
 
-	template < typename U >
-	requires std::constructible_from< E, U && >
-	Expected( Unexpected< U > error ) : m_HasValue( false )
+	template <typename U>
+	    requires std::constructible_from<E, U &&>
+	Expected( Unexpected<U> error ) : m_HasValue( false )
 	{
 		new ( &m_Storage.m_Error ) E( std::move( error.m_Error ) );
 	}
 
 	Expected( const Expected &other )
-	requires( std::copy_constructible< T > &&std::copy_constructible< E > )
+	    requires( std::copy_constructible<T> && std::copy_constructible<E> )
 	    : m_HasValue( other.m_HasValue )
 	{
 		CopyConstruct( other );
 	}
 
 	Expected( const Expected & )
-	requires( !std::copy_constructible< T > || !std::copy_constructible< E > ) = delete;
+	    requires( !std::copy_constructible<T> || !std::copy_constructible<E> )
+	= delete;
 
-	Expected( Expected &&other ) noexcept( std::is_nothrow_move_constructible_v< T > &&
-	                                      std::is_nothrow_move_constructible_v< E > )
+	Expected( Expected &&other ) noexcept(
+	    std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_constructible_v<E> )
 	    : m_HasValue( other.m_HasValue )
 	{
 		MoveConstruct( std::move( other ) );
 	}
 
 	Expected &operator=( const Expected &other )
-	requires( std::copy_constructible< T > &&std::copy_constructible< E > )
+	    requires( std::copy_constructible<T> && std::copy_constructible<E> )
 	{
 		if ( this == &other )
 			return *this;
@@ -93,8 +93,8 @@ public:
 		return *this = std::move( copy );
 	}
 
-	Expected &operator=( Expected &&other ) noexcept( std::is_nothrow_move_constructible_v< T > &&
-	                                                std::is_nothrow_move_constructible_v< E > )
+	Expected &operator=( Expected &&other ) noexcept(
+	    std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_constructible_v<E> )
 	{
 		if ( this == &other )
 			return *this;
@@ -146,10 +146,9 @@ public:
 		return std::move( m_Storage.m_Error );
 	}
 
-	template < typename U >
-	T ValueOr( U &&fallback ) const &
+	template <typename U> T ValueOr( U &&fallback ) const &
 	{
-		return m_HasValue ? m_Storage.m_Value : T( std::forward< U >( fallback ) );
+		return m_HasValue ? m_Storage.m_Value : T( std::forward<U>( fallback ) );
 	}
 
 private:
@@ -190,15 +189,14 @@ private:
 	bool m_HasValue;
 };
 
-template < typename E >
-class [[nodiscard]] Expected< void, E >
+template <typename E> class [[nodiscard]] Expected<void, E>
 {
 public:
 	Expected() = default;
 
-	template < typename U >
-	requires std::constructible_from< E, U && >
-	Expected( Unexpected< U > error ) : m_Error( std::in_place, std::move( error.m_Error ) )
+	template <typename U>
+	    requires std::constructible_from<E, U &&>
+	Expected( Unexpected<U> error ) : m_Error( std::in_place, std::move( error.m_Error ) )
 	{
 	}
 
@@ -226,7 +224,7 @@ public:
 	static Expected Ok() { return Expected(); }
 
 private:
-	std::optional< E > m_Error;
+	std::optional<E> m_Error;
 };
 
 } // namespace foundation

@@ -3160,7 +3160,7 @@ inline bool Studio_ConvertStudioHdrToNewVersion( studiohdr_t *pStudioHdr )
 
 	// for now, just slam the version number since they're compatible
 
-	// nillerusr: version slam disabled intentionally; left commented for reference
+	// nillerusr: that's stupid, comment this shit
 	//pStudioHdr->version = STUDIO_VERSION;
 
 	return bResult;

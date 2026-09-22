@@ -1,0 +1,25 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+top = '.'
+
+def options(opt):
+	return
+
+def configure(conf):
+	return
+
+def build(bld):
+	if not bld.env.SDL3:
+		return
+	bld.program(
+		source=['test_sdl3_launcher.cpp'],
+		target='sdl3_launcher_conformance',
+		name='sdl3_launcher_conformance',
+		features='cxx',
+		includes=['../../../public'],
+		use=['appframework', 'tier1', 'vstdlib', 'tier0', 'SDL3'],
+		install_path=bld.env.BINDIR,
+		subsystem='CONSOLE',
+		idx=bld.get_taskgen_count()
+	)

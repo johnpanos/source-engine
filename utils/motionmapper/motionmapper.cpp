@@ -1803,9 +1803,9 @@ void M_AngleAboutAxis(Vector &axis, float radianAngle, M_matrix4x4_t &result)
 	result[1][0] = t * axis[0] * axis[1] + s * axis[2];
 	result[1][1] = t * axis[1] * axis[1] + c;
 	result[1][2] = t * axis[1] * axis[2] - s * axis[0];
-	result[2][0] = t * axis[1] * axis[2] - s;
-	result[2][1] = t * axis[1] * axis[2] + s * axis[1];
-	result[2][2] = t * axis[2] * axis[2] + c * axis[0];
+	result[2][0] = t * axis[0] * axis[2] - s * axis[1];
+	result[2][1] = t * axis[1] * axis[2] + s * axis[0];
+	result[2][2] = t * axis[2] * axis[2] + c;
 
 }
 

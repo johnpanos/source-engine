@@ -16,6 +16,7 @@
 #include "tier0/dbg.h"
 #include "materialsystem/idebugtextureinfo.h"
 #include "materialsystem/deformations.h"
+#include "render/legacy_shader_provider.h"
 
 
 //-----------------------------------------------------------------------------
@@ -1252,6 +1253,39 @@ private:
 
 static CShaderAPIEmpty g_ShaderAPIEmpty;
 static CShaderShadowEmpty g_ShaderShadow;
+
+static bool CreateNullShaderBackend( render::LegacyShaderServices *services )
+{
+	if ( !services )
+		return false;
+	services->manager = &s_ShaderDeviceMgrEmpty;
+	services->api = &g_ShaderAPIEmpty;
+	services->device = &s_ShaderDeviceEmpty;
+	services->shadow = &g_ShaderShadow;
+	services->hardware = &g_ShaderAPIEmpty;
+	services->debugTextures = &g_ShaderAPIEmpty;
+	return true;
+}
+
+DLL_EXPORT const render::LegacyShaderProvider *NullShaderBackend_Describe()
+{
+	static const render::LegacyShaderProvider provider = {
+		"null", "shaderapiempty", CreateNullShaderBackend
+	};
+	return &provider;
+}
+
+#if defined( DEDICATED )
+DLL_EXPORT bool ShaderBackend_Create( render::LegacyShaderServices *services )
+{
+	return CreateNullShaderBackend( services );
+}
+
+DLL_EXPORT const render::LegacyShaderProvider *ShaderBackend_Describe()
+{
+	return NullShaderBackend_Describe();
+}
+#endif
 
 // FIXME: Remove; it's for backward compat with the materialsystem only for now
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderAPIEmpty, IShaderAPI, 

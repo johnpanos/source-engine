@@ -15,10 +15,13 @@ import os
 import re
 import subprocess
 import sys
+import sys
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import capabilities
 
 
 SOURCE_SUFFIXES = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".inl", ".mm"}
@@ -391,6 +394,9 @@ def print_violation(prefix: str, item: Occurrence | dict) -> None:
 
 
 def check_command(args: argparse.Namespace, root: Path, manifest: dict) -> int:
+    strict_errors = capabilities.check(root, manifest.get("capabilityModules"), strip_comments_and_literals)
+    for error in strict_errors:
+        print(error)
     selected = None
     if args.changed:
         selected = set(changed_paths(root, args.base))
@@ -401,7 +407,7 @@ def check_command(args: argparse.Namespace, root: Path, manifest: dict) -> int:
         print_violation("new dependency", item)
     for item in stale:
         print_violation("stale baseline entry", item)
-    if new or stale:
+    if new or stale or strict_errors:
         print(f"archlint: failed with {len(new)} new and {len(stale)} stale occurrence(s)")
         print_drift_triage(new, stale)
         return 1

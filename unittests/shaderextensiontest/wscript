@@ -1,0 +1,38 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+
+def options(opt):
+	pass
+
+
+def configure(conf):
+	pass
+
+
+def build(bld):
+	# These fixtures compile the real legacy-boundary implementation against its
+	# real ABI headers. Assertions remain active independently of NDEBUG.
+	test_env = bld.env.derive()
+	test_env.DEFINES = [value for value in bld.env.DEFINES
+		if not value.startswith('strncpy=')]
+	includes = ['../../public', '../../public/tier0', '../../public/tier1',
+		'../../materialsystem']
+	bld.program(
+		features='c cxx', env=test_env,
+		source=['test_shaderextension_host.cpp',
+			'../../materialsystem/shaderextension_compatibility_host.cpp'],
+		target='shader_extension_conformance', name='shader_extension_conformance',
+		includes=includes, install_path=None)
+	if bld.env.DXVK:
+		bld.program(
+			features='c cxx', env=test_env,
+			source=['test_dxvk_math.cpp', '../../materialsystem/shaderapidx9/dxvk_math.cpp'],
+			target='dxvk_math_conformance', name='dxvk_math_conformance',
+			includes=includes + bld.env.INCLUDES_DXVK, install_path=None)
+		bld.program(
+			features='c cxx', env=test_env,
+			source=['test_dxvk_presentation.cpp'],
+			target='dxvk_presentation_conformance', name='dxvk_presentation_conformance',
+			includes=includes + bld.env.INCLUDES_DXVK, use=['DXVK', 'SDL3'],
+			rpath=bld.env.LIBPATH_DXVK, install_path=None)

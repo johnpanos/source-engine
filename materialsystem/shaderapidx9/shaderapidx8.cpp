@@ -25,6 +25,7 @@ mat_fullbright 1 doesn't work properly on alpha materials in testroom_standards
 */
 #define DISABLE_PROTECTED_THINGS
 #include "shaderapidx8.h"
+#include "render/legacy_shader_provider.h"
 #include "shaderapidx8_global.h"
 #include "shadershadowdx8.h"
 #include "locald3dtypes.h"												   
@@ -1756,11 +1757,36 @@ private:
 //-----------------------------------------------------------------------------
 static CShaderAPIDx8 g_ShaderAPIDX8;
 IShaderAPIDX8 *g_pShaderAPIDX8 = &g_ShaderAPIDX8;
-CShaderDeviceDx8* g_pShaderDeviceDx8 = &g_ShaderAPIDX8;
+CShaderDeviceDx8 *g_pShaderDeviceDx8 = &g_ShaderAPIDX8;
+
+extern "C" DLL_EXPORT bool ShaderBackend_Create( render::LegacyShaderServices *services )
+{
+	if ( !services )
+		return false;
+	services->manager = g_pShaderDeviceMgrDx8;
+	services->api = &g_ShaderAPIDX8;
+	services->device = &g_ShaderAPIDX8;
+	services->shadow = g_pShaderShadowDx8;
+	services->hardware = g_pHardwareConfig;
+	services->debugTextures = &g_ShaderAPIDX8;
+	return services->IsComplete();
+}
+
+extern "C" DLL_EXPORT const render::LegacyShaderProvider *ShaderBackend_Describe()
+{
+#if defined( USE_DXVK )
+	static const render::LegacyShaderProvider provider = {
+	    "vulkan-compat", "shaderapidx9", ShaderBackend_Create };
+#else
+	static const render::LegacyShaderProvider provider = {
+	    "legacy", "shaderapidx9", ShaderBackend_Create };
+#endif
+	return &provider;
+}
 
 // FIXME: Remove IShaderAPI + IShaderDevice; they change after SetMode
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderAPIDx8, IShaderAPI, 
-				SHADERAPI_INTERFACE_VERSION, g_ShaderAPIDX8 )
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR(
+    CShaderAPIDx8, IShaderAPI, SHADERAPI_INTERFACE_VERSION, g_ShaderAPIDX8 )
 
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderAPIDx8, IShaderDevice, 
 				SHADER_DEVICE_INTERFACE_VERSION, g_ShaderAPIDX8 )
@@ -2051,7 +2077,7 @@ void CShaderAPIDx8::ReleaseInternalRenderTargets( )
 	//       Those should be released separately via the texure manager
 	if ( m_pBackBufferSurface )
 	{
-#if POSIX
+#if defined( DX_TO_GL_ABSTRACTION )
 		// dxabstract's AddRef/Release have optional args to help track usage
 		int nRetVal = m_pBackBufferSurface->Release( 0, "-B  CShaderAPIDx8::ReleaseInternalRenderTargets public release color buffer");
 #else
@@ -2063,7 +2089,7 @@ void CShaderAPIDx8::ReleaseInternalRenderTargets( )
 
 	if ( m_pZBufferSurface )
 	{
-#if POSIX
+#if defined( DX_TO_GL_ABSTRACTION )
 		// dxabstract's AddRef/Release have optional args to help track usage
 		int nRetVal = m_pZBufferSurface->Release( 0, "-B  CShaderAPIDx8::ReleaseInternalRenderTargets public release zbuffer");
 #else
@@ -7212,7 +7238,7 @@ void CShaderAPIDx8::SetRenderTargetEx( int nRenderTargetID, ShaderAPITextureHand
 		{
 			// This is just to make the code a little simpler...
 			// (simplifies the release logic)
-#if POSIX
+#if defined( DX_TO_GL_ABSTRACTION )
 			// dxabstract's AddRef/Release have optional args to help track usage
 			pColorSurface->AddRef( 0, "+C  CShaderAPIDx8::SetRenderTargetEx public addref 1");
 #else
@@ -7243,7 +7269,7 @@ void CShaderAPIDx8::SetRenderTargetEx( int nRenderTargetID, ShaderAPITextureHand
 #endif
 		{
 			// simplify the prologue logic
-#if POSIX
+#if defined( DX_TO_GL_ABSTRACTION )
 			// dxabstract's AddRef/Release have optional args to help track usage
 			pZSurface->AddRef( 0, "+D  CShaderAPIDx8::SetRenderTargetEx public addref 1");
 #else
@@ -7270,8 +7296,8 @@ void CShaderAPIDx8::SetRenderTargetEx( int nRenderTargetID, ShaderAPITextureHand
 		{
 			pZSurface = GetDepthTextureSurface( depthTextureHandle );
 			if ( pZSurface )
-			{	
-#if POSIX
+			{
+#if defined( DX_TO_GL_ABSTRACTION )
 				// dxabstract's AddRef/Release have optional args to help track usage
 				pZSurface->AddRef( 0, "+D CShaderAPIDx8::SetRenderTargetEx public addref 2");
 #else
@@ -7287,7 +7313,7 @@ void CShaderAPIDx8::SetRenderTargetEx( int nRenderTargetID, ShaderAPITextureHand
 		if ( !pZSurface )
 		{
 			// Refcount of color surface was increased above
-#if POSIX
+#if defined( DX_TO_GL_ABSTRACTION )
 			// dxabstract's AddRef/Release have optional args to help track usage
 			pColorSurface->Release( 0, "-C  CShaderAPIDx8::SetRenderTargetEx public release 1" );
 #else
@@ -7367,7 +7393,7 @@ void CShaderAPIDx8::SetRenderTargetEx( int nRenderTargetID, ShaderAPITextureHand
 	int ref;
 	if ( pZSurface )
 	{
-#if POSIX
+#if defined( DX_TO_GL_ABSTRACTION )
 		ref = pZSurface->Release( 0, "-D  CShaderAPIDx8::SetRenderTargetEx public release (z surface)");
 #else
 		ref = pZSurface->Release();
@@ -7383,7 +7409,7 @@ void CShaderAPIDx8::SetRenderTargetEx( int nRenderTargetID, ShaderAPITextureHand
 	if( pColorSurface )
 #endif
 	{
-#if POSIX
+#if defined( DX_TO_GL_ABSTRACTION )
 		ref = pColorSurface->Release( 0, "-C  CShaderAPIDx8::SetRenderTargetEx public release (color surface)");
 #else
 		ref = pColorSurface->Release();
@@ -11218,7 +11244,7 @@ IDirect3DSurface* CShaderAPIDx8::GetBackBufferImageHDR( Rect_t *pSrcRect, Rect_t
 				NULL );
 		}
 		pTmpSurface = m_pSmallBackBufferFP16TempSurface;
-#if POSIX
+#if defined( DX_TO_GL_ABSTRACTION )
 		pTmpSurface->AddRef( 0, "CShaderAPIDx8::GetBackBufferImageHDR public addref");
 #else
 		pTmpSurface->AddRef();
@@ -11318,7 +11344,7 @@ IDirect3DSurface* CShaderAPIDx8::GetBackBufferImage( Rect_t *pSrcRect, Rect_t *p
 		// Don't bother to blit through the full-screen texture if we don't
 		// have to stretch, we're not coming from the backbuffer, and we don't have to do AA resolve
 		pTmpSurface = pRenderTarget;
-#if POSIX
+#if defined( DX_TO_GL_ABSTRACTION )
 		pTmpSurface->AddRef( 0, "CShaderAPIDx8::GetBackBufferImage public addref");
 #else
 		pTmpSurface->AddRef();

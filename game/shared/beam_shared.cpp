@@ -945,7 +945,7 @@ bool CBeam::OnPredictedEntityRemove( bool isbeingremoved, C_BaseEntity *predicte
 	{
 		// Hrm, we didn't link up to correct type!!!
 		Assert( 0 );
-		// Delete right away since it's malformed
+		// Delete right away since it's fucked up
 		return true;
 	}
 

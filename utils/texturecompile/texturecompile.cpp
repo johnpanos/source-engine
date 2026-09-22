@@ -500,7 +500,10 @@ void Shared_ParseListOfCompileCommands( void )
 	{
 		char *pNewString = new char[ strlen( buf ) + 1 ];
 		strcpy( pNewString, buf );
-		pNewString[strlen( pNewString ) - 2] = '\0';  // This is some hacky shit right here.
+		// Strip trailing CR/LF defensively (short/empty lines must not underflow strlen).
+		size_t nLen = strlen( pNewString );
+		while ( nLen > 0 && ( pNewString[nLen - 1] == '\n' || pNewString[nLen - 1] == '\r' ) )
+			pNewString[--nLen] = '\0';
 		int newID = g_CompileCommands.AddToTail();
 		g_CompileCommands[newID] = pNewString;
 	}
