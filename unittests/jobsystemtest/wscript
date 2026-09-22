@@ -31,9 +31,11 @@ def build(bld):
 	# thread pool (and its tier0/tier1 dependencies); the pure-scheduler tests
 	# only need the self-contained jobsystem library.
 	programs = [
-		( 'jobsystemtest',       'jobsystemtest.cpp',    ['jobsystem'] ),
-		( 'jobsystemframetest',  'frametest.cpp',        ['jobsystem'] ),
-		( 'jobsystembridgetest', 'enginebridgetest.cpp', ['jobsystem', 'vstdlib', 'tier1', 'tier0'] + dl_log ),
+		( 'jobsystemtest',        'jobsystemtest.cpp',    ['jobsystem'] ),
+		( 'jobsystemframetest',   'frametest.cpp',        ['jobsystem'] ),
+		( 'jobsystemdynamictest', 'dynamicscopetest.cpp', ['jobsystem'] ),
+		( 'jobsystemqjobstest',   'qjobstest.cpp',        ['jobsystem'] ),
+		( 'jobsystembridgetest',  'enginebridgetest.cpp', ['jobsystem', 'vstdlib', 'tier1', 'tier0'] + dl_log ),
 	]
 
 	for target, src, use_libs in programs:

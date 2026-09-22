@@ -332,6 +332,32 @@
       "expect": "pass"
     },
     {
+      "id": "platform.paths",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-PATHS-001",
+      "contract": "unittests/platformtest/contracts/platform.paths.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/platformtest/paths/test_paths.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.paths.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-PATHS-001",
+      "contract": "unittests/platformtest/contracts/platform.paths.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/platformtest/paths/test_paths_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "jobsystem.scheduler",
       "domain": "Q-JOBS",
       "rfc": "0003",
@@ -347,6 +373,42 @@
         "jobsystem/deterministic_executor.cpp",
         "jobsystem/parallel_executor.cpp",
         "unittests/jobsystemtest/jobsystemtest.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "jobsystem.dynamicscope",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "JOB-SCHED-001",
+      "contract": "RFC/0003-dependency-aware-job-system.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "jobsystem/dynamic_scope.cpp",
+        "unittests/jobsystemtest/dynamicscopetest.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "jobsystem.qjobs",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "JOB-SCHED-001",
+      "contract": "RFC/0003-dependency-aware-job-system.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "unittests/jobsystemtest/qjobstest.cpp"
       ],
       "expect": "pass"
     },

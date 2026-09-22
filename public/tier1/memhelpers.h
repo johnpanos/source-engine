@@ -1,7 +1,7 @@
 // ======= Copyright nillerusr, 2022 =======
 
-// Helper аunctions for setting/сopying memory ( specially for non-POD types )
-// FUCK STL
+// Helper functions for setting/copying memory ( specially for non-POD types )
+// Hand-rolled to avoid pulling in STL here
 
 #ifndef MEMHELPERS_H
 #define MEMHELPERS_H

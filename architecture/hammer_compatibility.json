@@ -23,13 +23,23 @@
       "note": "GTK shell delivery profile; gated on H2-H4 and R1."
     },
     {
+      "id": "windows-pe-core",
+      "status": "verified",
+      "os": "Windows x86_64 (PE)",
+      "display": "none",
+      "gpu": "none",
+      "toolchain": "MinGW-w64 g++ 16.1.1, C++20, statically linked",
+      "runtime": ["Wine 11.0 Staging", "GE-Proton11-5"],
+      "note": "The strict, MFC-free Hammer core (geometry, scene, app, formats, ports). All 19 RFC 0002 conformance suites cross-compile to native Windows PE and pass under both Wine and GE-Proton, matching the Linux gcc/clang runs. Evidence: architecture/hammer_windows_parity.json; run via tools/quality/parity_wine.py."
+    },
+    {
       "id": "windows-mfc-legacy",
       "status": "unverified",
       "os": "Windows",
       "display": "GDI/VGUI",
       "gpu": "Source material system",
       "toolchain": "MSVC + MFC",
-      "note": "Historical compatibility host. Not reproducible on the current Linux host; retained as a comparison target only if a working build is established (see 0002-progress.md)."
+      "note": "Historical MFC shell (afxwin.h etc.). Still not buildable here: MFC headers/import libs ship with Visual Studio and are absent (only the mfc140 runtime DLL is present). MinGW/clang-cl cannot substitute. The MFC-free core is verified separately as windows-pe-core; the shell and legacy-caller cutovers remain gated on a real VS/MFC toolchain."
     }
   ],
   "gates": [

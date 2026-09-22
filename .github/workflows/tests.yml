@@ -26,6 +26,23 @@ jobs:
       run: |
         python3 -m unittest discover -s tools/archlint/tests -v
 
+  hammer-windows-parity:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install MinGW-w64 and Wine
+      run: |
+        sudo dpkg --add-architecture i386
+        sudo apt-get update
+        sudo apt-get install -y g++-mingw-w64-x86-64 wine64 wine
+    - name: RFC 0002 strict-core Windows PE parity under Wine
+      env:
+        WINEDEBUG: "-all"
+        WINEDLLOVERRIDES: "mscoree,mshtml="
+      run: |
+        # Prove the MFC-free editor core behaves identically on the Windows target.
+        python3 tools/quality/parity_wine.py check --cxx x86_64-w64-mingw32-g++-posix --wrapper wine
+
   tests-linux-i386:
     runs-on: ubuntu-20.04
 

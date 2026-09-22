@@ -39,14 +39,24 @@ Recorded in `architecture/hammer_compatibility.json` (profiles).
   project (`hammer/hammer_dll.vpc`) and depends on MFC (`afxwin.h`, `afxext.h`)
   through `hammer/stdafx.h`. There is **no `hammer/wscript`** and the root
   `wscript` does not define an editor target.
-- **Decision:** The MFC/Windows build is **not reproducible on the Linux host**
-  used for this program. We do not claim preserved legacy runtime behavior. The
-  `windows-mfc-legacy` profile is marked `unverified`; it becomes a comparison
-  target only if a working build is later established, with evidence linked here.
-- **Consequence:** Per the RFC, independent extractions may proceed, but claims of
-  preserved legacy runtime behavior remain gated. HAM-BUILD-001 stays `inventoried`
-  / `blocked` until a Linux headless editor test target exists (depends on R03, the
-  per-target C++20/toolchain boundary).
+- **Decision (updated with Wine/Proton evidence):** Two distinct things were
+  conflated in the original "not reproducible" claim, now separated:
+  - **`windows-pe-core` — VERIFIED.** The strict, MFC-free core builds as native
+    Windows PE (MinGW-w64 g++ 16.1.1, static) and all 19 conformance suites pass
+    under **Wine 11 Staging and GE-Proton11-5**, matching the Linux gcc/clang runs.
+    Harness `tools/quality/parity_wine.py`, profile
+    `quality/profiles/windows-pe-wine.json`, evidence
+    `architecture/hammer_windows_parity.json`. This is real Windows↔Linux parity
+    for everything extracted so far.
+  - **`windows-mfc-legacy` — still `unverified`.** The legacy MFC *shell*
+    (`afxwin.h`) needs Visual Studio's MFC headers/import libs; only the `mfc140`
+    runtime DLL is present, and MinGW cannot provide MFC. An MSVC+MFC cross
+    toolchain is being provisioned (msvc-wine) to unblock the toolchain; building
+    the full legacy Hammer additionally needs the whole Source Windows engine and
+    remains out of scope here.
+- **Consequence:** The strict extractions are now verified on the Windows target,
+  not just Linux. Preserved legacy *runtime* behavior (the MFC shell) remains
+  gated on a full VS/MFC engine build.
 
 ### D3 — Renderer bridge approach (R1 / HAM-RENDER-001)
 

@@ -1,0 +1,24 @@
+{
+  "schema": "conformance-profile/v1",
+  "id": "windows-pe-wine",
+  "description": "Windows x86_64 PE parity profile for the strict, MFC-free Hammer core (RFC 0002 compatibility target). The same conformance suites as linux-headless-core are cross-compiled to native Windows PE with the MinGW-w64 g++ toolchain (statically linked) and executed under Wine and GE-Proton, proving the extracted modules behave identically on Windows and Linux. This profile is run by tools/quality/parity_wine.py, not the native runner. It does NOT cover the legacy MFC shell, which requires Visual Studio's MFC headers/libs that are not present in this environment.",
+  "os": "windows",
+  "arch": "x86_64",
+  "runtime": ["wine-11.0-staging", "GE-Proton11-5"],
+  "cxx": "x86_64-w64-mingw32-g++",
+  "cxx_version": "16.1.1",
+  "cxx_std": "c++20",
+  "include_roots": [
+    "public"
+  ],
+  "base_flags": [
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-static",
+    "-static-libgcc",
+    "-static-libstdc++"
+  ],
+  "run_wrapper": ["wine"],
+  "timeout_seconds": 120
+}

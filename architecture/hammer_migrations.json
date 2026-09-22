@@ -17,10 +17,10 @@
       "status": "characterized",
       "authority": "legacy",
       "consumerSet": "editor-build",
-      "testSelectors": ["hammer/run_headless"],
+      "testSelectors": ["hammer/run_headless", "hammer/parity_wine"],
       "owner": "unassigned",
-      "blocked": "A headless strict C++20 test target is established (unittests/hammertest/run_headless.sh) and builds+runs under gcc 16 and clang with -Wall -Wextra -Werror. Remaining before retirement: a Waf-integrated target and final flag/profile validation under R03. The historical MFC/Windows Hammer build stays non-reproducible on this host (recorded in 0002-progress.md).",
-      "retireWhen": ["Linux 64-bit headless editor test target builds and runs", "legacy build status and missing dependencies are recorded in 0002-progress.md", "the headless target is integrated into the project build/CI with validated final flags"]
+      "blocked": "A headless strict C++20 test target is established (unittests/hammertest/run_headless.sh) and builds+runs under gcc 16 and clang with -Wall -Wextra -Werror. Windows-target parity is now VERIFIED for the MFC-free core: all 19 strict suites cross-compile to native Windows PE (MinGW-w64 g++ 16.1.1, static) and pass under both Wine 11 and GE-Proton11-5, matching the Linux runs (tools/quality/parity_wine.py; evidence architecture/hammer_windows_parity.json; profile quality/profiles/windows-pe-wine.json). Remaining before retirement: a Waf-integrated target and R03 flag validation. The legacy MFC SHELL build stays out of scope on this host: MFC headers/libs require Visual Studio (only the mfc140 runtime DLL is present); MinGW cannot provide MFC.",
+      "retireWhen": ["Linux 64-bit headless editor test target builds and runs", "Windows-target parity of the strict core is verified under Wine/Proton", "the headless and parity targets are integrated into CI with validated final flags"]
     },
     {
       "id": "HAM-INVENTORY-001",

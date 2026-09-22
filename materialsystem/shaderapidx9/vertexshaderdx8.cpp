@@ -1230,7 +1230,7 @@ const CShaderManager::ShaderCombos_t *CShaderManager::FindOrCreateShaderCombos( 
 
 	while( char *line = bffr.InplaceGetLinePtr() )
 	{
-		// dear god perl is better at this kind of shit!
+		// dear god, perl is better at this kind of string parsing!
 		int begin = 0;
 		int end = 0;
 

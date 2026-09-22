@@ -2418,7 +2418,7 @@ struct studiohdr_t
 	inline const mstudioboneflexdriver_t* BoneFlexDriver( int i ) const { Assert( i >= 0 && i < BoneFlexDriverCount() ); return studiohdr2index > 0 ? pStudioHdr2()->pBoneFlexDriver( i ) : NULL; }
 
 	void* 				VirtualModel() const { return studiohdr2index ? (void *)( pStudioHdr2()->virtualModel ) : nullptr; }
-	void				SetVirtualModel( void* ptr ) { Assert( studiohdr2index ); if ( studiohdr2index ) { pStudioHdr2()->virtualModel = ptr; } else { Msg("go fuck urself!\n"); } }
+	void				SetVirtualModel( void* ptr ) { Assert( studiohdr2index ); if ( studiohdr2index ) { pStudioHdr2()->virtualModel = ptr; } }
 	void*				VertexBase() const { return studiohdr2index ? (void *)( pStudioHdr2()->pVertexBase ) : nullptr; }
 	void				SetVertexBase( void* pVertexBase ) const { Assert( studiohdr2index ); if ( studiohdr2index ) { pStudioHdr2()->pVertexBase = pVertexBase; } }
 	void*				IndexBase() const { return studiohdr2index ? ( void * ) ( pStudioHdr2()->pIndexBase ) : nullptr; }
@@ -3160,7 +3160,7 @@ inline bool Studio_ConvertStudioHdrToNewVersion( studiohdr_t *pStudioHdr )
 
 	// for now, just slam the version number since they're compatible
 
-	// nillerusr: that's stupid, comment this shit
+	// nillerusr: version slam disabled intentionally; left commented for reference
 	//pStudioHdr->version = STUDIO_VERSION;
 
 	return bResult;

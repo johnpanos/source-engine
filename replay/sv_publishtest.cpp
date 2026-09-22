@@ -388,7 +388,7 @@ bool CPublishTester::Go()
 	if ( !Test_PublishedFileDelete( pFilename, fmtTmpFilename.Access(), bOffload ) )
 		return false;
 
-	// Make sure mp_waitingforplayers_cancel isn't on or replay will be fucked.
+	// Make sure mp_waitingforplayers_cancel isn't on or replay will be broken.
 	if ( !Test_WaitingForPlayersCVar() )
 		return false;
 

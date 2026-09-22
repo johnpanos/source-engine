@@ -8,18 +8,23 @@
 #ifndef FOUNDATION_EXPECTED_H
 #define FOUNDATION_EXPECTED_H
 
-#ifdef _WIN32
-#pragma once
-#endif
-
-#include <cassert>
+#include <cstdlib>
 #include <concepts>
 #include <new>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
 namespace foundation
 {
+
+namespace detail
+{
+inline void RequireExpectedState( bool valid ) noexcept
+{
+	if ( !valid ) std::abort();
+}
+}
 
 template < typename E >
 struct Unexpected
@@ -42,6 +47,10 @@ Unexpected< std::decay_t< E > > MakeUnexpected( E &&error )
 template < typename T, typename E >
 class [[nodiscard]] Expected
 {
+	// Transitioning alternatives must never leave an unconstructed payload.
+	static_assert( std::is_nothrow_move_constructible_v< T > &&
+	               std::is_nothrow_move_constructible_v< E >,
+	               "Expected payloads require nothrow move construction" );
 public:
 	template < typename U = T >
 	requires std::constructible_from< T, U && >
@@ -80,10 +89,8 @@ public:
 		if ( this == &other )
 			return *this;
 
-		Destroy();
-		m_HasValue = other.m_HasValue;
-		CopyConstruct( other );
-		return *this;
+		Expected copy( other );
+		return *this = std::move( copy );
 	}
 
 	Expected &operator=( Expected &&other ) noexcept( std::is_nothrow_move_constructible_v< T > &&
@@ -105,37 +112,37 @@ public:
 
 	T &Value() &
 	{
-		assert( m_HasValue );
+		detail::RequireExpectedState( m_HasValue );
 		return m_Storage.m_Value;
 	}
 
 	const T &Value() const &
 	{
-		assert( m_HasValue );
+		detail::RequireExpectedState( m_HasValue );
 		return m_Storage.m_Value;
 	}
 
 	T &&Value() &&
 	{
-		assert( m_HasValue );
+		detail::RequireExpectedState( m_HasValue );
 		return std::move( m_Storage.m_Value );
 	}
 
 	E &Error() &
 	{
-		assert( !m_HasValue );
+		detail::RequireExpectedState( !m_HasValue );
 		return m_Storage.m_Error;
 	}
 
 	const E &Error() const &
 	{
-		assert( !m_HasValue );
+		detail::RequireExpectedState( !m_HasValue );
 		return m_Storage.m_Error;
 	}
 
 	E &&Error() &&
 	{
-		assert( !m_HasValue );
+		detail::RequireExpectedState( !m_HasValue );
 		return std::move( m_Storage.m_Error );
 	}
 
@@ -191,36 +198,35 @@ public:
 
 	template < typename U >
 	requires std::constructible_from< E, U && >
-	Expected( Unexpected< U > error ) : m_HasValue( false ), m_Error( std::move( error.m_Error ) )
+	Expected( Unexpected< U > error ) : m_Error( std::in_place, std::move( error.m_Error ) )
 	{
 	}
 
-	bool HasValue() const noexcept { return m_HasValue; }
-	explicit operator bool() const noexcept { return m_HasValue; }
+	bool HasValue() const noexcept { return !m_Error.has_value(); }
+	explicit operator bool() const noexcept { return HasValue(); }
 
 	E &Error() &
 	{
-		assert( !m_HasValue );
-		return m_Error;
+		detail::RequireExpectedState( !HasValue() );
+		return *m_Error;
 	}
 
 	const E &Error() const &
 	{
-		assert( !m_HasValue );
-		return m_Error;
+		detail::RequireExpectedState( !HasValue() );
+		return *m_Error;
 	}
 
 	E &&Error() &&
 	{
-		assert( !m_HasValue );
-		return std::move( m_Error );
+		detail::RequireExpectedState( !HasValue() );
+		return std::move( *m_Error );
 	}
 
 	static Expected Ok() { return Expected(); }
 
 private:
-	bool m_HasValue = true;
-	E m_Error{};
+	std::optional< E > m_Error;
 };
 
 } // namespace foundation

@@ -49,9 +49,9 @@ namespace jobsystem
 
 enum class CompletionResult : uint8_t
 {
-	Pending,    // no terminal event yet
-	Completed,  // producer signaled success
-	Canceled,   // producer signaled cancellation / failure
+	Pending,   // no terminal event yet
+	Completed, // producer signaled success
+	Canceled,  // producer signaled cancellation / failure
 };
 
 class ExternalCompletion
@@ -68,7 +68,7 @@ public:
 	// Pending->terminal transition; a second call (of either kind) returns false
 	// and changes nothing. Safe to call from any thread, any number of times.
 	bool Complete() { return Transition( CompletionResult::Completed ); }
-	bool Cancel()   { return Transition( CompletionResult::Canceled ); }
+	bool Cancel() { return Transition( CompletionResult::Canceled ); }
 
 	// Current state without blocking.
 	CompletionResult Poll() const
@@ -81,7 +81,11 @@ public:
 	CompletionResult Wait()
 	{
 		std::unique_lock<std::mutex> lk( m_mtx );
-		m_cv.wait( lk, [&]{ return m_result != CompletionResult::Pending; } );
+		m_cv.wait( lk,
+		    [&]
+		    {
+			    return m_result != CompletionResult::Pending;
+		    } );
 		return m_result;
 	}
 
@@ -125,15 +129,16 @@ private:
 			}
 		}
 		m_cv.notify_all();
-		if ( cb ) cb( to ); // fire the continuation outside the lock, exactly once
+		if ( cb )
+			cb( to ); // fire the continuation outside the lock, exactly once
 		return true;
 	}
 
-	mutable std::mutex                        m_mtx;
-	std::condition_variable                   m_cv;
-	CompletionResult                          m_result  = CompletionResult::Pending;
-	std::function<void( CompletionResult )>   m_cb;
-	bool                                      m_cbFired = false;
+	mutable std::mutex m_mtx;
+	std::condition_variable m_cv;
+	CompletionResult m_result = CompletionResult::Pending;
+	std::function<void( CompletionResult )> m_cb;
+	bool m_cbFired = false;
 };
 
 // Adapt a token into a BlockingIO job body: park on the blocking lane until the

@@ -750,7 +750,7 @@ def validate_compatibility(compatibility: dict) -> list[str]:
     errors: list[str] = []
     if not compatibility.get("profiles"):
         errors.append("compatibility declares no profiles")
-    valid_status = {"target", "planned", "unverified", "supported", "retired"}
+    valid_status = {"target", "planned", "unverified", "verified", "supported", "retired"}
     for profile in compatibility.get("profiles", []):
         if "id" not in profile:
             errors.append("compatibility profile missing 'id'")

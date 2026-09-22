@@ -26,6 +26,7 @@ def build(bld):
 		'pooled_executor.cpp',
 		'frame_graph.cpp',
 		'pilot_particles.cpp',
+		'dynamic_scope.cpp',
 	]
 
 	includes = [

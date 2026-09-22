@@ -187,11 +187,6 @@ void CBaseCombatWeapon::Spawn( void )
 	}
 
 #if !defined( CLIENT_DLL )
-	if( false )
-	{
-		AddEffects( EF_ITEM_BLINK );
-	}
-
 	FallInit();
 	SetCollisionGroup( COLLISION_GROUP_WEAPON );
 	m_takedamage = DAMAGE_EVENTS_ONLY;

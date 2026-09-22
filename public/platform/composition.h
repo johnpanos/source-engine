@@ -7,10 +7,6 @@
 #ifndef PLATFORM_COMPOSITION_H
 #define PLATFORM_COMPOSITION_H
 
-#ifdef _WIN32
-#pragma once
-#endif
-
 #include "foundation/expected.h"
 
 #include <concepts>
@@ -95,11 +91,14 @@ enum class ProviderErrorCode
 struct ProviderError
 {
 	ProviderErrorCode code;
-	std::string_view detail;
+	std::string detail;
 };
 
 enum class CompositionErrorCode
 {
+	Busy,
+	InvalidDescriptor,
+	DuplicateDependency,
 	AlreadyRunning,
 	NotRunning,
 	DuplicateProviderName,
@@ -116,9 +115,9 @@ enum class CompositionErrorCode
 struct CompositionError
 {
 	CompositionErrorCode code;
-	std::string_view provider;
-	std::string_view capability;
-	std::string_view detail;
+	std::string provider;
+	std::string capability;
+	std::string detail;
 };
 
 class IProviderLifecycle
@@ -233,6 +232,9 @@ public:
 			auto result = factory( view );
 			if ( !result )
 				return foundation::MakeUnexpected( std::move( result ).Error() );
+			if ( !result.Value() )
+				return foundation::MakeUnexpected( ProviderError{
+				    ProviderErrorCode::ConstructionFailed, "factory returned a null provider" } );
 
 			return detail::ProviderInstance::Own< Provider, Contracts... >(
 			    std::move( result ).Value() );
@@ -268,10 +270,6 @@ private:
 class ApplicationComposition
 {
 public:
-	using LegacyBridgeInstall =
-	    std::function< foundation::Expected< void, ProviderError >( const ApplicationComposition & ) >;
-	using LegacyBridgeUninstall = std::function< void() >;
-
 	ApplicationComposition() = default;
 	~ApplicationComposition();
 
@@ -280,10 +278,10 @@ public:
 	ApplicationComposition( ApplicationComposition && ) = delete;
 	ApplicationComposition &operator=( ApplicationComposition && ) = delete;
 
-	void AddProvider( ProviderDescriptor descriptor );
+	[[nodiscard]] foundation::Expected< void, CompositionError > AddProvider( ProviderDescriptor descriptor );
 
 	[[nodiscard]] foundation::Expected< void, CompositionError > Start();
-	void Stop() noexcept;
+	[[nodiscard]] foundation::Expected< void, CompositionError > Stop() noexcept;
 
 	bool IsRunning() const noexcept;
 
@@ -295,21 +293,13 @@ public:
 		return static_cast< Contract * >( FindCapability( CapabilityKey::For< Contract >() ) );
 	}
 
-	[[nodiscard]] foundation::Expected< void, CompositionError > InstallLegacyBridge(
-	    std::string domain, LegacyBridgeInstall install, LegacyBridgeUninstall uninstall );
-
 private:
 	enum class State
 	{
 		Stopped,
 		Starting,
 		Running,
-	};
-
-	struct LegacyBridge
-	{
-		std::string domain;
-		LegacyBridgeUninstall uninstall;
+		Stopping,
 	};
 
 	[[nodiscard]] foundation::Expected< std::vector< std::size_t >, CompositionError >
@@ -322,7 +312,6 @@ private:
 	std::vector< ProviderDescriptor > m_Descriptors;
 	std::vector< std::unique_ptr< detail::ProviderInstance > > m_Instances;
 	std::vector< std::size_t > m_StartOrder;
-	std::vector< LegacyBridge > m_LegacyBridges;
 	State m_State = State::Stopped;
 	std::size_t m_ConnectedCount = 0;
 	std::size_t m_InitializedCount = 0;

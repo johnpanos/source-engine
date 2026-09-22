@@ -441,7 +441,7 @@ void CPerformanceController::OnSignonStateFull()
 			SetupPlaybackFromPerformance( pPerformance );
 
 			// Make a copy of the performance we're playing back so the user can make changes
-			// w/o fucking up the original.
+			// w/o corrupting the original.
 			m_pScratchPerformance = pPerformance->MakeCopy();
 		}
 		else
