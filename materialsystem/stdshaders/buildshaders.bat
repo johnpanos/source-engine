@@ -202,7 +202,6 @@ if /i "%DIRECTX_SDK_VER%" == "x360.00" (
 echo %SrcDirBase%\%DIRECTX_SDK_BIN_DIR%\dx_proxy.dll >> filestocopy.txt
 
 echo %SrcDirBase%\..\game\bin\shadercompile.exe >> filestocopy.txt
-echo %SrcDirBase%\..\game\bin\shadercompile_dll.dll >> filestocopy.txt
 echo %SrcDirBase%\..\game\bin\vstdlib.dll >> filestocopy.txt
 echo %SrcDirBase%\..\game\bin\tier0.dll >> filestocopy.txt
 
@@ -255,4 +254,3 @@ REM ****************
 
 %TTEXE% -diff %tt_start%
 echo.
-

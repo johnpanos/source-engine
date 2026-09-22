@@ -1,0 +1,338 @@
+{
+  "version": 1,
+  "schema": "rfc0001-tool-migrations/v1",
+  "description": "Authoritative RFC 0001 Phase E tool cohort ledger. Wrapper sites are exact current debt, not permissions for new indirection. A cohort is retired only after its deletion conditions and current acceptance evidence pass.",
+  "baselineRevision": "a7a41a2b",
+  "roadmap": "R40",
+  "phase": "E",
+  "statuses": [
+    "inventoried",
+    "planned",
+    "active",
+    "blocked",
+    "verified",
+    "retired"
+  ],
+  "dispositions": [
+    "normal-executable",
+    "linked-tool-library",
+    "child-process",
+    "tool-extension-host",
+    "tool-only-provider",
+    "preserved-external-abi"
+  ],
+  "abiDeclarations": [
+    {
+      "path": "public/ilaunchabledll.h",
+      "symbolCounts": {
+        "ILaunchableDLL": 1,
+        "LAUNCHABLE_DLL_INTERFACE_VERSION": 1
+      },
+      "reason": "Frozen Source launchable-DLL ABI declaration while reviewed legacy consumers remain.",
+      "deleteWhen": [
+        "all first-party tool cohorts have zero launchable-DLL consumers",
+        "retained external consumers have a reviewed compatibility disposition"
+      ]
+    },
+    {
+      "path": "external/vpc/public/ilaunchabledll.h",
+      "symbolCounts": {
+        "ILaunchableDLL": 1,
+        "LAUNCHABLE_DLL_INTERFACE_VERSION": 1
+      },
+      "reason": "Vendored VPC compatibility declaration; it is not authority for new engine or tool wrappers.",
+      "deleteWhen": [
+        "the external VPC binlaunch consumer is retired or moved to its owning upstream compatibility boundary"
+      ]
+    }
+  ],
+  "cohorts": [
+    {
+      "id": "phase-e-vrad",
+      "title": "VRAD executable and alternate-version routing",
+      "scope": "Replace vrad_launcher/vrad_dll discovery while preserving the required compile workflow and Hammer compatibility until R22 migrates it.",
+      "disposition": "child-process",
+      "status": "planned",
+      "sourcePaths": [
+        "utils/vrad_launcher/vrad_launcher.cpp",
+        "utils/vrad/vraddll.h",
+        "utils/vrad/vraddll.cpp"
+      ],
+      "wrapperSites": [
+        {
+          "path": "utils/vrad/vraddll.h",
+          "symbolCounts": {
+            "ILaunchableDLL": 1
+          },
+          "reason": "VRAD still implements the generic launchable-DLL ABI."
+        },
+        {
+          "path": "utils/vrad/vraddll.cpp",
+          "symbolCounts": {
+            "ILaunchableDLL": 1,
+            "LAUNCHABLE_DLL_INTERFACE_VERSION": 1
+          },
+          "reason": "VRAD still exports the generic launchable-DLL ABI."
+        }
+      ],
+      "deletionConditions": [
+        "the normal VRAD executable owns its entry point without filename or CreateInterface lookup",
+        "redirect, alternate-version, and -both behavior uses the structured child-process boundary",
+        "Hammer no longer requires the legacy in-process IVRadDLL path or that path is isolated under its declared compatibility owner"
+      ],
+      "acceptanceEvidence": [
+        "installed VRAD compile workflow with versioned map corpus and semantic output checks",
+        "argv, working-directory, environment, stdout/stderr, exit, failure, timeout, and acknowledged-cancellation process cases",
+        "architecture scan with zero first-party VRAD launchable-DLL occurrences"
+      ],
+      "evidence": [],
+      "remainingWork": [
+        "implement the direct executable and structured alternate-version routing",
+        "run the installed compiler workflow and record current profile evidence"
+      ]
+    },
+    {
+      "id": "phase-e-vvis",
+      "title": "VVIS normal executable",
+      "scope": "Retire vvis_launcher/vvis_dll and keep VVIS as an ordinary command-line program; VMPI must use the process path.",
+      "disposition": "normal-executable",
+      "status": "active",
+      "sourcePaths": [
+        "utils/vvis/vvis.cpp"
+      ],
+      "wrapperSites": [],
+      "deletionConditions": [
+        "the VVIS DLL adapter, wrapper target, and VMPI in-process DLL mode have zero consumers",
+        "the installed VVIS product runs the declared visibility compile workflow"
+      ],
+      "acceptanceEvidence": [
+        "installed VVIS workflow with versioned map corpus and semantic output checks",
+        "VMPI process-mode argv, cancellation, cleanup, and failure evidence",
+        "build graph proving no vvis_dll or vvis_launcher product remains"
+      ],
+      "evidence": [],
+      "remainingWork": [
+        "verify Waf/native host-tool builds and installed VVIS behavior",
+        "record process conformance and compiler output evidence"
+      ]
+    },
+    {
+      "id": "phase-e-shadercompile",
+      "title": "Shader compiler executable and remote workflow",
+      "scope": "Replace shadercompile_launcher/shadercompile_dll discovery with a normal executable while preserving declared remote compilation behavior.",
+      "disposition": "child-process",
+      "status": "active",
+      "sourcePaths": [
+        "utils/shadercompile/shadercompile.cpp"
+      ],
+      "wrapperSites": [],
+      "deletionConditions": [
+        "shadercompile has a normal executable entry and no launchable-DLL export or loader wrapper",
+        "remote or replacement execution uses the structured process protocol"
+      ],
+      "acceptanceEvidence": [
+        "installed shadercompile workflow produces source-matched artifacts for a versioned selector corpus",
+        "remote/process failure, output, exit, cancellation, and cleanup cases",
+        "build graph with no shadercompile_dll or shadercompile_launcher target"
+      ],
+      "evidence": [],
+      "remainingWork": [
+        "verify the new normal executable on declared host profiles",
+        "prove remote compiler behavior through the structured process contract"
+      ]
+    },
+    {
+      "id": "phase-e-texturecompile",
+      "title": "Texture compiler executable",
+      "scope": "Replace texturecompile_launcher/texturecompile_dll discovery with a normal executable.",
+      "disposition": "normal-executable",
+      "status": "active",
+      "sourcePaths": [
+        "utils/texturecompile/texturecompile.cpp"
+      ],
+      "wrapperSites": [],
+      "deletionConditions": [
+        "texturecompile has a normal executable entry and no launchable-DLL export or filename-loading wrapper",
+        "required VTEX worker invocation uses an explicit tool/process dependency"
+      ],
+      "acceptanceEvidence": [
+        "installed texturecompile workflow with versioned source images and semantic artifact checks",
+        "failure, output, exit, and cancellation cases for any child tools",
+        "build graph with no texturecompile_dll or texturecompile_launcher target"
+      ],
+      "evidence": [],
+      "remainingWork": [
+        "verify the new executable and its VTEX dependency on declared host profiles",
+        "record compiler output compatibility evidence"
+      ]
+    },
+    {
+      "id": "phase-e-vtex-vtexconv",
+      "title": "VTEX and vtexconv directly linked command-line products",
+      "scope": "Use a directly linked VTex_RunCommandLine entry for both products while retaining IVTex only for reviewed compatibility callers.",
+      "disposition": "linked-tool-library",
+      "status": "active",
+      "sourcePaths": [
+        "utils/vtex/vtex.cpp",
+        "utils/vtex/vtex_main.cpp"
+      ],
+      "wrapperSites": [],
+      "deletionConditions": [
+        "vtex and vtexconv link the command entry directly and no wrapper performs filename/interface discovery",
+        "the remaining IVTex consumers have an explicit compatibility owner and deletion condition"
+      ],
+      "acceptanceEvidence": [
+        "isolated host-tool Waf build and install for vtex and vtexconv",
+        "versioned image corpus with semantic VTF output and failure checks",
+        "architecture scan with zero VTEX launchable-DLL occurrences"
+      ],
+      "evidence": [],
+      "remainingWork": [
+        "complete and run the isolated host-tool build",
+        "verify installed VTEX/vtexconv workflows and current IVTex caller inventory"
+      ]
+    },
+    {
+      "id": "phase-e-vmpi-worker",
+      "title": "VMPI remote worker process boundary",
+      "scope": "Remove RunInDLL/-TryDLLMode and use only the explicit process path for distributed tool workers.",
+      "disposition": "child-process",
+      "status": "active",
+      "sourcePaths": [
+        "utils/vmpi/vmpi_service/vmpi_service.cpp"
+      ],
+      "wrapperSites": [],
+      "deletionConditions": [
+        "VMPI contains no in-process launchable-DLL worker path",
+        "the remote worker path satisfies the structured process contract and bounded shutdown"
+      ],
+      "acceptanceEvidence": [
+        "exact argv including empty/whitespace arguments plus working-directory and environment cases",
+        "separate output, exit, spawn failure, timeout, acknowledged cancellation, and child cleanup cases",
+        "installed distributed VVIS/VRAD workflow on each declared VMPI profile"
+      ],
+      "evidence": [],
+      "remainingWork": [
+        "adapt the surviving VMPI process implementation to the structured contract",
+        "run native and distributed workflow evidence"
+      ]
+    },
+    {
+      "id": "phase-e-studiomdl",
+      "title": "StudioMDL headless compiler workflow",
+      "scope": "Keep StudioMDL as a normal executable and retire generic module discovery from its tool composition without changing supported model outputs.",
+      "disposition": "normal-executable",
+      "status": "planned",
+      "sourcePaths": [
+        "utils/studiomdl/studiomdl.cpp",
+        "utils/studiomdl/collisionmodel.cpp"
+      ],
+      "wrapperSites": [],
+      "deletionConditions": [
+        "StudioMDL composition uses explicit linked tool dependencies rather than generic loader discovery",
+        "model and collision compiler workflows pass the declared content corpus"
+      ],
+      "acceptanceEvidence": [
+        "installed StudioMDL workflow with versioned QC/model/collision corpus",
+        "semantic output comparison including diagnostics and failed-input behavior",
+        "product dependency evidence that optional tool integrations do not enter runtime compositions"
+      ],
+      "evidence": [],
+      "remainingWork": [
+        "inventory and migrate the remaining physics and optional integration loader sites",
+        "establish installed compiler corpus evidence"
+      ]
+    },
+    {
+      "id": "phase-e-tool-dictionaries",
+      "title": "Tool dictionary extension ownership",
+      "scope": "Separate genuine tool plug-ins from first-party implementation indirection and give retained extensions a named tool-only host under Phase F.",
+      "disposition": "tool-extension-host",
+      "status": "planned",
+      "sourcePaths": [
+        "engine/toolframework.cpp",
+        "public/toolframework/itooldictionary.h",
+        "tools/toolutils/tool_main.cpp"
+      ],
+      "wrapperSites": [],
+      "deletionConditions": [
+        "every dictionary is classified as a linked first-party tool component or a genuine retained tool extension",
+        "no tool dictionary uses the engine-wide factory chain",
+        "retained tool extensions transfer to the family-owned Phase F host"
+      ],
+      "acceptanceEvidence": [
+        "reviewed caller/ownership inventory and Waf boundary evidence",
+        "tool startup, lookup, deterministic shutdown, and failure fixtures",
+        "zero cross-family lookup through a process-wide factory chain"
+      ],
+      "evidence": [],
+      "remainingWork": [
+        "complete the dictionary caller and ownership classification",
+        "migrate first-party dictionaries and hand retained extension semantics to Phase F"
+      ]
+    },
+    {
+      "id": "phase-e-tool-integrations",
+      "title": "Perforce, SQL/database, and proprietary tool-only integrations",
+      "scope": "Keep optional source-control/database providers in explicit tool products or named tool-only hosts and remove them from runtime product composition.",
+      "disposition": "tool-only-provider",
+      "status": "planned",
+      "sourcePaths": [
+        "launcher/launcher.cpp",
+        "materialsystem/ctexture.cpp",
+        "utils/common/mpi_stats.cpp",
+        "public/p4lib/ip4.h",
+        "public/isqlwrapper.h"
+      ],
+      "wrapperSites": [],
+      "deletionConditions": [
+        "client and dedicated runtime Waf/link graphs contain no Perforce, SQL/database, or proprietary tool provider",
+        "runtime load telemetry records no such provider",
+        "tool products that request an optional integration report absence explicitly and shut it down deterministically"
+      ],
+      "acceptanceEvidence": [
+        "runtime product link/load dependency inspection with seeded leak rejection",
+        "positive and absent-provider tool-only integration workflows",
+        "installed client and dedicated startup evidence without integration binaries"
+      ],
+      "evidence": [],
+      "remainingWork": [
+        "remove the audited runtime P4 acquisition paths",
+        "complete the Perforce/MySQL/proprietary caller inventory and migrate each tool cohort",
+        "install product dependency enforcement and evidence"
+      ]
+    },
+    {
+      "id": "phase-e-external-vpc-binlaunch",
+      "title": "External VPC binlaunch compatibility",
+      "scope": "Track the vendored VPC launchable-DLL consumer explicitly without treating it as permission for first-party wrappers.",
+      "disposition": "preserved-external-abi",
+      "status": "blocked",
+      "sourcePaths": [
+        "external/vpc/utils/vpc/main.cpp"
+      ],
+      "wrapperSites": [
+        {
+          "path": "external/vpc/utils/vpc/main.cpp",
+          "symbolCounts": {
+            "ILaunchableDLL": 2,
+            "LAUNCHABLE_DLL_INTERFACE_VERSION": 1
+          },
+          "reason": "Vendored VPC binlaunch compatibility consumer pending an owning upstream/tool boundary decision."
+        }
+      ],
+      "deletionConditions": [
+        "the VPC binlaunch compatibility requirement is reviewed with its owning external tool workflow",
+        "the consumer is retired or isolated without exposing launchable-DLL authority to first-party code"
+      ],
+      "acceptanceEvidence": [
+        "external VPC build/workflow evidence for the selected disposition",
+        "architecture scan proving the exception remains exact to this file and occurrence count"
+      ],
+      "evidence": [],
+      "remainingWork": [
+        "obtain and record the external VPC compatibility decision and workflow evidence"
+      ]
+    }
+  ]
+}

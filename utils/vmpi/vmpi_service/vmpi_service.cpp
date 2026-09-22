@@ -13,8 +13,6 @@
 #include "iphelpers.h"
 #include "bitbuf.h"
 #include "tier1/strtools.h"
-#include "interface.h"
-#include "ilaunchabledll.h"
 #include "resource.h"
 #include "consolewnd.h"
 #include <io.h>
@@ -24,7 +22,6 @@
 #include "service_conn_mgr.h"
 #include "resource.h"
 #include "perf_counters.h"
-#include "tier0/icommandline.h"
 
 
 // If we couldn't get into a job (maybe they weren't accepting more workers at the time),
@@ -626,43 +623,6 @@ bool VMPI_Waiter_Init()
 	return true;
 }
 
-
-void RunInDLL( const char *pFilename, CUtlVector<char*> &newArgv )
-{
-	if ( g_pConnMgr )						   
-		g_pConnMgr->SetAppState( VMPI_SERVICE_STATE_BUSY );
-
-	bool bSuccess = false;
-	CSysModule *pModule = Sys_LoadModule( pFilename );
-	if ( pModule )
-	{
-		CreateInterfaceFn fn = Sys_GetFactory( pModule );
-		if ( fn )
-		{
-			ILaunchableDLL *pDLL = (ILaunchableDLL*)fn( LAUNCHABLE_DLL_INTERFACE_VERSION, NULL );
-			if( pDLL )
-			{
-				// Do this here because the executables we would have launched usually would do it.
-				CommandLine()->CreateCmdLine( newArgv.Count(), newArgv.Base() );
-				pDLL->main( newArgv.Count(), newArgv.Base() );
-				bSuccess = true;
-				SpewOutputFunc( MySpewOutputFunc );
-			}
-		}
-
-		Sys_UnloadModule( pModule );
-	}
-	
-	if ( !bSuccess )
-	{
-		Msg( "Error running VRAD (or VVIS) out of DLL '%s'\n", pFilename );
-	}
-
-	if ( g_pConnMgr )
-		g_pConnMgr->SetAppState( VMPI_SERVICE_STATE_IDLE );
-}
-
-
 void GetArgsFromBuffer( 
 	bf_read &buf, 
 	CUtlVector<char*> &newArgv, 
@@ -691,31 +651,6 @@ void GetArgsFromBuffer(
 		for ( int i=0; i < newArgv.Count(); i++ )
 			Msg( "Arg %d: %s\n", i, newArgv[i] );
 	}
-}
-
-
-bool GetDLLFilename( CUtlVector<char*> &newArgv, char pDLLFilename[MAX_PATH] )
-{
-	char *argStr = newArgv[0];
-	int argLen = strlen( argStr );
-	if ( argLen <= 4 )
-		return false;
-
-	if ( Q_stricmp( &argStr[argLen-4], ".exe" ) != 0 )
-		return false;
-		
-	char baseFilename[MAX_PATH];
-	Q_strncpy( baseFilename, argStr, MAX_PATH );
-	baseFilename[ min( MAX_PATH-1, argLen-4 ) ] = 0;
-	
-	// First try _dll.dll (src_main), then try .dll (rel).
-	V_snprintf( pDLLFilename, MAX_PATH, "%s_dll.dll", baseFilename );
-	if ( _access( pDLLFilename, 0 ) != 0 )
-	{
-		V_snprintf( pDLLFilename, MAX_PATH, "%s.dll", baseFilename );
-	}
-
-	return true;
 }
 
 void BuildCommandLineFromArgs( CUtlVector<char*> &newArgv, char *pOut, int outLen )
@@ -1299,40 +1234,31 @@ bool CheckDownloaderFinished()
 		}
 	}
 
-	char DLLFilename[MAX_PATH];
-	if ( FindArg( __argc, __argv, "-TryDLLMode" ) && 
-		g_RunMode == RUNMODE_CONSOLE && 
-		GetDLLFilename( g_Waiting_Argv, DLLFilename ) &&
-		!g_Waiting_bPatching )
-	{
-		// This is just a helper for debugging. If it's VRAD, we can run it
-		// in-process as a DLL instead of running it as a separate EXE.
-		RunInDLL( DLLFilename, g_Waiting_Argv );
-	}
-	else
-	{
-		// Run the (hopefully!) MPI app they specified.
-		RunProcessAtCommandLine( g_Waiting_Argv, g_Waiting_bShowAppWindow, g_Waiting_bPatching, g_Waiting_Priority );
-		
-		if ( g_Waiting_bPatching )
-		{														
-			// Tell any currently-running UI apps to patch themselves and quit ASAP so the installer can finish.
-			SendPatchCommandToUIs( g_dwRunningProcessId );
+	// Worker tools always run as child processes. This keeps their failures and
+	// process-wide state isolated while preserving the existing argv path.
+	RunProcessAtCommandLine(
+	    g_Waiting_Argv, g_Waiting_bShowAppWindow, g_Waiting_bPatching, g_Waiting_Priority );
 
-			ResumeThread( g_hRunningThread ); // We started the installer suspended so we could make sure we'd send out the patch command.
-			
-			// We just ran the installer, but let's forget about it, otherwise we'll kill its process when we exit here.
-			CloseHandle( g_hRunningProcess );
-			CloseHandle( g_hRunningThread ) ;
-			g_hRunningProcess = g_hRunningThread = NULL;
-			g_RunningProcess_ExeName[0] = 0;
-			g_RunningProcess_MapName[0] = 0;
+	if ( g_Waiting_bPatching )
+	{
+		// Tell any currently-running UI apps to patch themselves and quit ASAP so
+		// the installer can finish.
+		SendPatchCommandToUIs( g_dwRunningProcessId );
 
-			ServiceHelpers_ExitEarly();
-			return true;
-		}
+		// We started the installer suspended so we could send the patch command first.
+		ResumeThread( g_hRunningThread );
+
+		// Forget the installer so service shutdown does not kill it.
+		CloseHandle( g_hRunningProcess );
+		CloseHandle( g_hRunningThread );
+		g_hRunningProcess = g_hRunningThread = NULL;
+		g_RunningProcess_ExeName[0] = 0;
+		g_RunningProcess_MapName[0] = 0;
+
+		ServiceHelpers_ExitEarly();
+		return true;
 	}
-	
+
 	g_Waiting_Argv.PurgeAndDeleteElements();
 	return false;
 }
@@ -1707,4 +1633,3 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 
 	return 0;
 }
-

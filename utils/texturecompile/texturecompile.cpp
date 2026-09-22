@@ -25,8 +25,6 @@
 #include "tier1/strtools.h"
 #include "threads.h"
 #include "tier0/dbg.h"
-#include "interface.h"
-#include "ilaunchabledll.h"
 #include <direct.h>
 #include "io.h"
 #include <sys/types.h>
@@ -765,14 +763,8 @@ int TextureCompile_Main( int argc, char* argv[] )
 	return 0;
 }
 
-class CTextureCompileDLL : public ILaunchableDLL
+int main( int argc, char **argv )
 {
-	int main( int argc, char **argv );
-};
-
-int CTextureCompileDLL::main( int argc, char **argv )
-{
+	CommandLine()->CreateCmdLine( argc, argv );
 	return TextureCompile_Main( argc, argv );
 }
-
-EXPOSE_SINGLE_INTERFACE( CTextureCompileDLL, ILaunchableDLL, LAUNCHABLE_DLL_INTERFACE_VERSION );

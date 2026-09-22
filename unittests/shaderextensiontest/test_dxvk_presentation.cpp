@@ -147,6 +147,39 @@ void SampledFrame( IDirect3DDevice9 &device, UINT width, UINT height )
 	    "draw resource release" );
 }
 
+void CoalescedDrag( SDL_Window *window, IDirect3DDevice9 &device,
+    D3DPRESENT_PARAMETERS &parameters )
+{
+	const int requests = 48;
+	int finalWidth = 0, finalHeight = 0;
+	for ( int step = 0; step != requests; ++step )
+	{
+		finalWidth = 240 + ( step * 29 ) % 481;
+		finalHeight = 180 + ( step * 17 ) % 361;
+		Check( SDL_SetWindowSize( window, finalWidth, finalHeight ), "drag resize request" );
+		// Keep full old-backbuffer frames flowing while configure events coalesce.
+		SampledFrame( device, parameters.BackBufferWidth, parameters.BackBufferHeight );
+		SDL_Event event;
+		while ( SDL_PollEvent( &event ) )
+			Check( event.type != SDL_EVENT_QUIT, "drag window remains open" );
+	}
+	Check( SDL_SyncWindow( window ), "drag compositor acknowledgment" );
+	int logicalWidth = 0, logicalHeight = 0;
+	int drawableWidth = 0, drawableHeight = 0;
+	Check( SDL_GetWindowSize( window, &logicalWidth, &logicalHeight ), "drag logical size" );
+	Check( logicalWidth == finalWidth && logicalHeight == finalHeight,
+	    "drag converges to latest logical size" );
+	Check( SDL_GetWindowSizeInPixels( window, &drawableWidth, &drawableHeight ) &&
+	           drawableWidth > 0 && drawableHeight > 0,
+	    "drag drawable size" );
+	parameters.BackBufferWidth = drawableWidth;
+	parameters.BackBufferHeight = drawableHeight;
+	Check( SUCCEEDED( device.Reset( &parameters ) ), "one coalesced drag reset" );
+	SampledFrame( device, drawableWidth, drawableHeight );
+	std::printf( "DRAG requests=%d resets=1 frames=%d final_logical=%dx%d final_drawable=%dx%d\n",
+	    requests, requests + 1, logicalWidth, logicalHeight, drawableWidth, drawableHeight );
+}
+
 void ResizeStress( SDL_Window *window, IDirect3DDevice9 &device, D3DPRESENT_PARAMETERS &parameters,
     bool negativeResizeOracle )
 {
@@ -228,6 +261,7 @@ void RunWindow( bool stress, bool negativeResizeOracle )
 	SampledFrame( *device, drawableWidth, drawableHeight );
 	if ( stress )
 	{
+		CoalescedDrag( window, *device, parameters );
 		ResizeStress( window, *device, parameters, negativeResizeOracle );
 	}
 	else

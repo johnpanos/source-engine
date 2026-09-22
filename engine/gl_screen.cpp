@@ -252,7 +252,8 @@ void SCR_UpdateScreen( void )
 		demoplayer->InterpolateViewpoint();
 	}
 
-	VideoMode_UpdateWindowSize();
+	if ( !VideoMode_UpdateWindowSize() )
+		return;
 	materials->BeginFrame( host_frametime );
 	{
 		tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "EngineVGui_Simulate" );
@@ -314,4 +315,3 @@ void SCR_UpdateScreen( void )
 		materials->EndFrame();
 	}
 }
-

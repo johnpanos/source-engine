@@ -1,0 +1,38 @@
+//-----------------------------------------------------------------------------
+//	VTEX.VPC
+//
+//	Normal executable linked to the VTEX tool library.
+//-----------------------------------------------------------------------------
+
+$Macro SRCDIR		"..\.."
+$Macro OUTBINDIR	"$LIBPUBLIC"
+$Macro OUTBINNAME	"vtex"
+
+$Include "$SRCDIR\vpc_scripts\source_exe_con_base.vpc"
+
+$Configuration
+{
+	$Compiler
+	{
+		$AdditionalIncludeDirectories		"$BASE;..\common"
+		$PreprocessorDefinitions			"$BASE;PROTECTED_THINGS_DISABLE"
+	}
+}
+
+$Project "Vtex"
+{
+	$Folder	"Source Files"
+	{
+		$File	"vtex_main.cpp"
+	}
+
+	$Folder	"Header Files"
+	{
+		$File	"$SRCDIR\public\ivtex.h"
+	}
+
+	$Folder	"Link Libraries"
+	{
+		$ImpLib vtex_dll
+	}
+}

@@ -115,7 +115,7 @@ int main()
 		std::printf( "hammer.app.editor_controller negative: %d check(s) FAILED\n", failures );
 		return 1;
 	}
-	std::printf(
-	    "hammer.app.editor_controller negative: oracle detects violations (real passes, buggy caught)\n" );
+	std::printf( "hammer.app.editor_controller negative: oracle detects violations (real passes, "
+	             "buggy caught)\n" );
 	return 0;
 }

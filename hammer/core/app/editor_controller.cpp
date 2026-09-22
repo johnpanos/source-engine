@@ -30,41 +30,47 @@ using geometry::Vec3d;
 std::vector<geometry::Plane> AabbToPlanes( const Vec3d &mins, const Vec3d &maxs )
 {
 	return {
-	    { { 1, 0, 0 }, maxs.x },  { { -1, 0, 0 }, -mins.x }, { { 0, 1, 0 }, maxs.y },
-	    { { 0, -1, 0 }, -mins.y }, { { 0, 0, 1 }, maxs.z },  { { 0, 0, -1 }, -mins.z },
+	    { { 1, 0, 0 }, maxs.x },
+	    { { -1, 0, 0 }, -mins.x },
+	    { { 0, 1, 0 }, maxs.y },
+	    { { 0, -1, 0 }, -mins.y },
+	    { { 0, 0, 1 }, maxs.z },
+	    { { 0, 0, -1 }, -mins.z },
 	};
 }
 
-// One VMF "plane" value (three points) for a face of the box, wound outward.
-std::string FacePlaneText( int face, const Vec3d &mn, const Vec3d &mx )
+Vec3d Cross( const Vec3d &a, const Vec3d &b )
 {
-	// Three points per face, matching Source's outward winding convention. The
-	// importer reorients regardless, but conventional text keeps the VMF portable.
-	std::array<Vec3d, 3> p;
-	switch ( face )
+	return Vec3d( a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x );
+}
+
+Vec3d Normalized( const Vec3d &a )
+{
+	const double len = std::sqrt( a.x * a.x + a.y * a.y + a.z * a.z );
+	if ( len <= 1.0e-12 )
 	{
-	case 0: // +Z (top)
-		p = { Vec3d( mn.x, mx.y, mx.z ), Vec3d( mx.x, mx.y, mx.z ), Vec3d( mx.x, mn.y, mx.z ) };
-		break;
-	case 1: // -Z (bottom)
-		p = { Vec3d( mn.x, mn.y, mn.z ), Vec3d( mx.x, mn.y, mn.z ), Vec3d( mx.x, mx.y, mn.z ) };
-		break;
-	case 2: // +X
-		p = { Vec3d( mx.x, mn.y, mn.z ), Vec3d( mx.x, mn.y, mx.z ), Vec3d( mx.x, mx.y, mx.z ) };
-		break;
-	case 3: // -X
-		p = { Vec3d( mn.x, mx.y, mn.z ), Vec3d( mn.x, mx.y, mx.z ), Vec3d( mn.x, mn.y, mx.z ) };
-		break;
-	case 4: // +Y
-		p = { Vec3d( mx.x, mx.y, mn.z ), Vec3d( mx.x, mx.y, mx.z ), Vec3d( mn.x, mx.y, mx.z ) };
-		break;
-	default: // -Y
-		p = { Vec3d( mn.x, mn.y, mn.z ), Vec3d( mn.x, mn.y, mx.z ), Vec3d( mx.x, mn.y, mx.z ) };
-		break;
+		return Vec3d( 0, 0, 1 );
 	}
+	return Vec3d( a.x / len, a.y / len, a.z / len );
+}
+
+// A VMF "plane" value (three points) for an arbitrary plane, wound so that
+// (p1-p0) x (p2-p0) points along the plane normal (outward preserved). Works for
+// any brush face, not just axis-aligned boxes.
+std::string PlaneToText( const geometry::Plane &plane )
+{
+	const Vec3d n = plane.normal;
+	const Vec3d up = ( std::fabs( n.z ) < 0.9 ) ? Vec3d( 0, 0, 1 ) : Vec3d( 1, 0, 0 );
+	const Vec3d u = Normalized( Cross( up, n ) );
+	const Vec3d v = Cross( n, u ); // unit, since u,n orthonormal
+	const double s = 64.0;
+	const Vec3d c( n.x * plane.dist, n.y * plane.dist, n.z * plane.dist );
+	const Vec3d p0 = c;
+	const Vec3d p1( c.x + u.x * s, c.y + u.y * s, c.z + u.z * s );
+	const Vec3d p2( c.x + v.x * s, c.y + v.y * s, c.z + v.z * s );
 	char buf[256];
-	std::snprintf( buf, sizeof( buf ), "(%g %g %g) (%g %g %g) (%g %g %g)", p[0].x, p[0].y, p[0].z,
-	               p[1].x, p[1].y, p[1].z, p[2].x, p[2].y, p[2].z );
+	std::snprintf( buf, sizeof( buf ), "(%g %g %g) (%g %g %g) (%g %g %g)", p0.x, p0.y, p0.z, p1.x,
+	    p1.y, p1.z, p2.x, p2.y, p2.z );
 	return buf;
 }
 
@@ -303,14 +309,23 @@ void EditorController::PointerDrag( ViewId view, double u, double v )
 		MapBrush *brush = FindBrush( *m_selection );
 		if ( brush )
 		{
-			double lo[3] = { m_dragOrig.mins.x, m_dragOrig.mins.y, m_dragOrig.mins.z };
-			double hi[3] = { m_dragOrig.maxs.x, m_dragOrig.maxs.y, m_dragOrig.maxs.z };
-			lo[uAxis] += du;
-			hi[uAxis] += du;
-			lo[vAxis] += dv;
-			hi[vAxis] += dv;
-			brush->mins = Vec3d( lo[0], lo[1], lo[2] );
-			brush->maxs = Vec3d( hi[0], hi[1], hi[2] );
+			// Translate the whole brush: shift every plane and the cached bound by
+			// the same delta, so a non-box shape moves rigidly (not just its AABB).
+			double d[3] = { 0, 0, 0 };
+			d[uAxis] = du;
+			d[vAxis] = dv;
+			const Vec3d delta( d[0], d[1], d[2] );
+
+			brush->planes = m_dragOrig.planes;
+			for ( geometry::Plane &p : brush->planes )
+			{
+				// dot(n, x') = dist + dot(n, delta) keeps the plane through x+delta.
+				p.dist += p.normal.x * delta.x + p.normal.y * delta.y + p.normal.z * delta.z;
+			}
+			brush->mins = Vec3d( m_dragOrig.mins.x + delta.x, m_dragOrig.mins.y + delta.y,
+			    m_dragOrig.mins.z + delta.z );
+			brush->maxs = Vec3d( m_dragOrig.maxs.x + delta.x, m_dragOrig.maxs.y + delta.y,
+			    m_dragOrig.maxs.z + delta.z );
 		}
 	}
 }
@@ -358,9 +373,10 @@ bool EditorController::Commit()
 
 	MapBrush brush;
 	brush.id = m_nextId++;
+	brush.planes = AabbToPlanes( mins, maxs );
+	brush.materials.assign( brush.planes.size(), m_defaultMaterial );
 	brush.mins = mins;
 	brush.maxs = maxs;
-	brush.material = m_defaultMaterial;
 	m_brushes.push_back( brush );
 	m_selection = brush.id;
 	m_pending = Pending{};
@@ -376,8 +392,11 @@ bool EditorController::DeleteSelection()
 	}
 	const int id = *m_selection;
 	const auto before = m_brushes.size();
-	m_brushes.erase(
-	    std::remove_if( m_brushes.begin(), m_brushes.end(), [id]( const MapBrush &b ) { return b.id == id; } ),
+	m_brushes.erase( std::remove_if( m_brushes.begin(), m_brushes.end(),
+	                     [id]( const MapBrush &b )
+	                     {
+		                     return b.id == id;
+	                     } ),
 	    m_brushes.end() );
 	if ( m_brushes.size() == before )
 	{
@@ -418,10 +437,10 @@ geometry::WorldScene EditorController::BuildScene() const
 {
 	geometry::WorldScene scene;
 
-	auto addSolid = [&]( const Vec3d &mins, const Vec3d &maxs, int id )
+	auto addSolid = [&]( const std::vector<geometry::Plane> &planes,
+	                    const std::vector<std::string> &materials, int id )
 	{
-		geometry::BrushSolid solid =
-		    geometry::BuildSolidFromPlanes( AabbToPlanes( mins, maxs ), {}, id );
+		geometry::BrushSolid solid = geometry::BuildSolidFromPlanes( planes, materials, id );
 		if ( solid.faces.empty() )
 		{
 			return;
@@ -437,19 +456,20 @@ geometry::WorldScene EditorController::BuildScene() const
 			else
 			{
 				scene.mins = Vec3d( std::min( scene.mins.x, solid.mins.x ),
-				                    std::min( scene.mins.y, solid.mins.y ),
-				                    std::min( scene.mins.z, solid.mins.z ) );
+				    std::min( scene.mins.y, solid.mins.y ),
+				    std::min( scene.mins.z, solid.mins.z ) );
 				scene.maxs = Vec3d( std::max( scene.maxs.x, solid.maxs.x ),
-				                    std::max( scene.maxs.y, solid.maxs.y ),
-				                    std::max( scene.maxs.z, solid.maxs.z ) );
+				    std::max( scene.maxs.y, solid.maxs.y ),
+				    std::max( scene.maxs.z, solid.maxs.z ) );
 			}
 		}
 		scene.solids.push_back( std::move( solid ) );
 	};
 
+	// Render each brush's true shape from its own planes -- not a bounding box.
 	for ( const MapBrush &b : m_brushes )
 	{
-		addSolid( b.mins, b.maxs, b.id );
+		addSolid( b.planes, b.materials, b.id );
 	}
 	if ( m_pending.active )
 	{
@@ -458,7 +478,7 @@ geometry::WorldScene EditorController::BuildScene() const
 		PendingToAabb( mins, maxs );
 		if ( mins.x < maxs.x && mins.y < maxs.y && mins.z < maxs.z )
 		{
-			addSolid( mins, maxs, kPendingSolidId );
+			addSolid( AabbToPlanes( mins, maxs ), {}, kPendingSolidId );
 		}
 	}
 	return scene;
@@ -489,13 +509,17 @@ std::string EditorController::ToVmf() const
 		formats::KeyValueNode solid;
 		solid.name = "solid";
 		AddPair( solid, "id", std::to_string( id++ ) );
-		for ( int face = 0; face < 6; ++face )
+		// One side per real plane, preserving the brush's actual shape and (when
+		// known) each face's material -- not a six-sided box approximation.
+		for ( std::size_t f = 0; f < b.planes.size(); ++f )
 		{
 			formats::KeyValueNode side;
 			side.name = "side";
 			AddPair( side, "id", std::to_string( id++ ) );
-			AddPair( side, "plane", FacePlaneText( face, b.mins, b.maxs ) );
-			AddPair( side, "material", b.material );
+			AddPair( side, "plane", PlaneToText( b.planes[f] ) );
+			AddPair( side, "material",
+			    f < b.materials.size() && !b.materials[f].empty() ? b.materials[f]
+			                                                      : m_defaultMaterial );
 			AddPair( side, "uaxis", "[1 0 0 0] 0.25" );
 			AddPair( side, "vaxis", "[0 -1 0 0] 0.25" );
 			AddPair( side, "rotation", "0" );
@@ -533,14 +557,16 @@ bool EditorController::LoadVmf( const std::string &vmfText, std::string &error )
 		{
 			continue;
 		}
+		// Preserve the brush's real shape: keep every side plane and material, not
+		// just the bounding box. The cached AABB is only for picking/grid math.
 		MapBrush b;
 		b.id = m_nextId++;
 		b.mins = solid.mins;
 		b.maxs = solid.maxs;
-		b.material = solid.faces.empty() ? m_defaultMaterial : solid.faces.front().material;
-		if ( b.material.empty() )
+		for ( const geometry::BrushFace &face : solid.faces )
 		{
-			b.material = m_defaultMaterial;
+			b.planes.push_back( face.plane );
+			b.materials.push_back( face.material.empty() ? m_defaultMaterial : face.material );
 		}
 		m_brushes.push_back( std::move( b ) );
 	}

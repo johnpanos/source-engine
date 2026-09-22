@@ -86,6 +86,39 @@ RULES = (
     ),
 )
 
+TOOL_MIGRATION_SCHEMA = "rfc0001-tool-migrations/v1"
+TOOL_MIGRATION_STATUSES = [
+    "inventoried",
+    "planned",
+    "active",
+    "blocked",
+    "verified",
+    "retired",
+]
+TOOL_MIGRATION_DISPOSITIONS = [
+    "normal-executable",
+    "linked-tool-library",
+    "child-process",
+    "tool-extension-host",
+    "tool-only-provider",
+    "preserved-external-abi",
+]
+TOOL_MIGRATION_REQUIRED_COHORTS = {
+    "phase-e-vrad",
+    "phase-e-vvis",
+    "phase-e-shadercompile",
+    "phase-e-texturecompile",
+    "phase-e-vtex-vtexconv",
+    "phase-e-vmpi-worker",
+    "phase-e-studiomdl",
+    "phase-e-tool-dictionaries",
+    "phase-e-tool-integrations",
+}
+TOOL_WRAPPER_SYMBOLS = ("ILaunchableDLL", "LAUNCHABLE_DLL_INTERFACE_VERSION")
+TOOL_WRAPPER_PATTERN = re.compile(
+    r"\b(?:" + "|".join(re.escape(symbol) for symbol in TOOL_WRAPPER_SYMBOLS) + r")\b"
+)
+
 NATIVE_LOAD_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_])(?:dlopen|Sys_LoadLibrary|LoadLibraryHandle|LoadLibrary|"
     r"LoadLibraryA|LoadLibraryW|LoadLibraryExA|LoadLibraryExW)\s*\("
@@ -159,7 +192,8 @@ def source_files(root: Path, selected: Iterable[str] | None = None) -> list[Path
                 "!build*/**",
                 "-g",
                 "!tools/archlint/tests/fixtures/**",
-                r"Sys_LoadModule|Sys_LoadInterface|Sys_GetFactory|CDllDemandLoader|CreateInterfaceFn|LoadModule|dlopen|LoadLibrary",
+                r"Sys_LoadModule|Sys_LoadInterface|Sys_GetFactory|CDllDemandLoader|CreateInterfaceFn|"
+                r"LoadModule|dlopen|LoadLibrary|ILaunchableDLL|LAUNCHABLE_DLL_INTERFACE_VERSION",
                 ".",
             ],
             cwd=root,
@@ -395,8 +429,11 @@ def print_violation(prefix: str, item: Occurrence | dict) -> None:
 
 def check_command(args: argparse.Namespace, root: Path, manifest: dict) -> int:
     strict_errors = capabilities.check(root, manifest.get("capabilityModules"), strip_comments_and_literals)
+    tool_errors = validate_tool_migrations(root, read_tool_migrations(root))
     for error in strict_errors:
         print(error)
+    for error in tool_errors:
+        print(f"archlint: [tools] {error}")
     selected = None
     if args.changed:
         selected = set(changed_paths(root, args.base))
@@ -407,7 +444,7 @@ def check_command(args: argparse.Namespace, root: Path, manifest: dict) -> int:
         print_violation("new dependency", item)
     for item in stale:
         print_violation("stale baseline entry", item)
-    if new or stale or strict_errors:
+    if new or stale or strict_errors or tool_errors:
         print(f"archlint: failed with {len(new)} new and {len(stale)} stale occurrence(s)")
         print_drift_triage(new, stale)
         return 1
@@ -566,6 +603,270 @@ def verify_or_write(
         print(f"archlint: {label} is stale; review changes and run the matching --write command")
         return 1
     print(f"archlint: {label} is current")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# RFC 0001 retirement Phase E: tool executable/process migration.
+#
+# The authored ledger is the single owner of cohort disposition and progress.
+# ARCH107 is an exact occurrence ratchet over the old ILaunchableDLL ABI: the
+# two public ABI declarations and every still-live wrapper use must be claimed
+# explicitly.  A directory allowlist would let a new wrapper hide beside an old
+# one, so claims include per-symbol occurrence counts.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ToolWrapperOccurrence:
+    symbol: str
+    path: str
+    line: int
+    excerpt: str
+
+
+def read_tool_migrations(root: Path) -> dict:
+    path = root / "architecture/tool_migrations.json"
+    if not path.is_file():
+        return {}
+    try:
+        with path.open(encoding="utf-8") as stream:
+            document = json.load(stream)
+    except (OSError, json.JSONDecodeError) as error:
+        return {"_loadError": str(error)}
+    return document if isinstance(document, dict) else {"_loadError": "root must be an object"}
+
+
+def scan_tool_wrapper_occurrences(root: Path) -> list[ToolWrapperOccurrence]:
+    occurrences: list[ToolWrapperOccurrence] = []
+    for path in source_files(root):
+        relative = path.relative_to(root).as_posix()
+        original = path.read_text(encoding="utf-8", errors="replace")
+        stripped = strip_comments_and_literals(original)
+        original_lines = original.splitlines()
+        for line_number, stripped_line in enumerate(stripped.splitlines(), start=1):
+            for match in TOOL_WRAPPER_PATTERN.finditer(stripped_line):
+                occurrences.append(
+                    ToolWrapperOccurrence(
+                        symbol=match.group(0),
+                        path=relative,
+                        line=line_number,
+                        excerpt=normalized_excerpt(original_lines[line_number - 1]),
+                    )
+                )
+    return sorted(
+        occurrences,
+        key=lambda item: (item.path, item.line, item.symbol, item.excerpt),
+    )
+
+
+def _string_list(value: object) -> bool:
+    return isinstance(value, list) and bool(value) and all(
+        isinstance(item, str) and bool(item.strip()) for item in value
+    )
+
+
+def validate_tool_migrations(root: Path, ledger: dict) -> list[str]:
+    errors: list[str] = []
+    if ledger.get("_loadError"):
+        return [f"tool migration ledger cannot be read: {ledger['_loadError']}"]
+    if ledger.get("version") != 1:
+        errors.append("tool migration ledger version must be 1")
+    if ledger.get("schema") != TOOL_MIGRATION_SCHEMA:
+        errors.append(f"tool migration ledger schema must be {TOOL_MIGRATION_SCHEMA!r}")
+    if ledger.get("statuses") != TOOL_MIGRATION_STATUSES:
+        errors.append("tool migration statuses do not match the canonical state machine")
+    if ledger.get("dispositions") != TOOL_MIGRATION_DISPOSITIONS:
+        errors.append("tool migration dispositions do not match the canonical set")
+
+    declarations = ledger.get("abiDeclarations")
+    if not isinstance(declarations, list) or not declarations:
+        errors.append("tool migration ledger must declare preserved launchable-DLL ABI headers")
+        declarations = []
+    cohorts = ledger.get("cohorts")
+    if not isinstance(cohorts, list):
+        errors.append("tool migration ledger 'cohorts' must be a list")
+        cohorts = []
+
+    cohort_ids = [
+        record.get("id") for record in cohorts if isinstance(record, dict) and record.get("id")
+    ]
+    for cohort_id, count in Counter(cohort_ids).items():
+        if count > 1:
+            errors.append(f"tool migration cohort {cohort_id!r} declared {count} times")
+    missing_cohorts = sorted(TOOL_MIGRATION_REQUIRED_COHORTS - set(cohort_ids))
+    for cohort_id in missing_cohorts:
+        errors.append(f"required tool migration cohort {cohort_id!r} is missing")
+
+    claimed_counts: dict[tuple[str, str], int] = {}
+    claimed_owners: dict[tuple[str, str], str] = {}
+
+    def add_claims(site: object, owner: str, require_delete_when: bool) -> None:
+        if not isinstance(site, dict):
+            errors.append(f"{owner}: wrapper-site record must be an object")
+            return
+        path = site.get("path")
+        if not isinstance(path, str) or not path:
+            errors.append(f"{owner}: wrapper-site record is missing a path")
+            return
+        source = root / path
+        if not source.is_file():
+            errors.append(f"{owner}: wrapper-site path {path!r} is not a source file")
+        if not isinstance(site.get("reason"), str) or not site["reason"].strip():
+            errors.append(f"{owner}: wrapper-site {path!r} is missing a reason")
+        if require_delete_when and not _string_list(site.get("deleteWhen")):
+            errors.append(f"{owner}: ABI declaration {path!r} needs non-empty deleteWhen")
+        counts = site.get("symbolCounts")
+        if not isinstance(counts, dict) or not counts:
+            errors.append(f"{owner}: wrapper-site {path!r} needs symbolCounts")
+            return
+        for symbol, count in counts.items():
+            if symbol not in TOOL_WRAPPER_SYMBOLS:
+                errors.append(f"{owner}: wrapper-site {path!r} names unknown symbol {symbol!r}")
+                continue
+            if type(count) is not int or count <= 0:
+                errors.append(
+                    f"{owner}: wrapper-site {path!r} count for {symbol} must be a positive integer"
+                )
+                continue
+            key = (path, symbol)
+            if key in claimed_counts:
+                errors.append(
+                    f"ARCH107 {path}: {symbol} is claimed by both "
+                    f"{claimed_owners[key]} and {owner}"
+                )
+                continue
+            claimed_counts[key] = count
+            claimed_owners[key] = owner
+
+    for index, declaration in enumerate(declarations):
+        add_claims(declaration, f"abiDeclarations[{index}]", True)
+
+    for index, cohort in enumerate(cohorts):
+        if not isinstance(cohort, dict):
+            errors.append(f"cohorts[{index}] must be an object")
+            continue
+        cohort_id = cohort.get("id", f"cohorts[{index}]")
+        context = f"cohort {cohort_id!r}"
+        for field in ("title", "scope", "disposition", "status"):
+            if not isinstance(cohort.get(field), str) or not cohort[field].strip():
+                errors.append(f"{context}: missing non-empty {field!r}")
+        disposition = cohort.get("disposition")
+        if disposition not in TOOL_MIGRATION_DISPOSITIONS:
+            errors.append(f"{context}: invalid disposition {disposition!r}")
+        status = cohort.get("status")
+        if status not in TOOL_MIGRATION_STATUSES:
+            errors.append(f"{context}: invalid status {status!r}")
+
+        source_paths = cohort.get("sourcePaths")
+        if not _string_list(source_paths):
+            errors.append(f"{context}: sourcePaths must be a non-empty string list")
+            source_paths = []
+        elif len(source_paths) != len(set(source_paths)):
+            errors.append(f"{context}: sourcePaths contains duplicates")
+        for path in source_paths:
+            if not (root / path).exists():
+                errors.append(f"{context}: source path {path!r} does not exist")
+
+        deletion_conditions = cohort.get("deletionConditions")
+        if not _string_list(deletion_conditions):
+            errors.append(f"{context}: deletionConditions must be a non-empty string list")
+        acceptance = cohort.get("acceptanceEvidence")
+        if not _string_list(acceptance):
+            errors.append(f"{context}: acceptanceEvidence must be a non-empty string list")
+        evidence = cohort.get("evidence")
+        valid_evidence = 0
+        if not isinstance(evidence, list):
+            errors.append(f"{context}: evidence must be a list")
+            evidence = []
+        for evidence_index, record in enumerate(evidence):
+            evidence_context = f"{context} evidence[{evidence_index}]"
+            if not isinstance(record, dict):
+                errors.append(f"{evidence_context}: record must be an object")
+                continue
+            valid = True
+            for field in ("path", "sourceRevision", "profile"):
+                if not isinstance(record.get(field), str) or not record[field].strip():
+                    errors.append(f"{evidence_context}: missing non-empty {field!r}")
+                    valid = False
+            if not _string_list(record.get("testSelectors")):
+                errors.append(f"{evidence_context}: testSelectors must be a non-empty string list")
+                valid = False
+            evidence_path = record.get("path")
+            if isinstance(evidence_path, str) and evidence_path:
+                if not (root / evidence_path).is_file():
+                    errors.append(
+                        f"{evidence_context}: evidence path {evidence_path!r} does not exist"
+                    )
+                    valid = False
+            if valid:
+                valid_evidence += 1
+        remaining = cohort.get("remainingWork")
+        if not isinstance(remaining, list) or not all(
+            isinstance(item, str) and bool(item.strip()) for item in remaining
+        ):
+            errors.append(f"{context}: remainingWork must be a string list")
+            remaining = []
+
+        wrapper_sites = cohort.get("wrapperSites")
+        if not isinstance(wrapper_sites, list):
+            errors.append(f"{context}: wrapperSites must be a list")
+            wrapper_sites = []
+        for site in wrapper_sites:
+            add_claims(site, context, False)
+            if isinstance(site, dict) and site.get("path") not in source_paths:
+                errors.append(
+                    f"{context}: wrapper-site {site.get('path')!r} is absent from sourcePaths"
+                )
+
+        if status == "retired":
+            if wrapper_sites:
+                errors.append(f"{context}: retired cohort still declares wrapperSites")
+            if remaining:
+                errors.append(f"{context}: retired cohort still declares remainingWork")
+            if valid_evidence == 0:
+                errors.append(f"{context}: retired cohort requires current acceptance evidence")
+        elif not remaining:
+            errors.append(f"{context}: non-retired cohort must state remainingWork")
+        if status == "verified" and valid_evidence == 0:
+            errors.append(f"{context}: verified cohort requires current acceptance evidence")
+
+    actual_occurrences = scan_tool_wrapper_occurrences(root)
+    actual_counts = Counter((item.path, item.symbol) for item in actual_occurrences)
+    first_occurrence = {
+        (item.path, item.symbol): item for item in actual_occurrences
+    }
+    for key, count in sorted(actual_counts.items()):
+        if key not in claimed_counts:
+            occurrence = first_occurrence[key]
+            errors.append(
+                f"ARCH107 {occurrence.path}:{occurrence.line}: unregistered "
+                f"{occurrence.symbol} use ({count} occurrence(s)): {occurrence.excerpt}"
+            )
+    for key, expected in sorted(claimed_counts.items()):
+        actual = actual_counts.get(key, 0)
+        if actual != expected:
+            path, symbol = key
+            errors.append(
+                f"ARCH107 {path}: ledger expects {expected} {symbol} occurrence(s), "
+                f"found {actual}"
+            )
+    return errors
+
+
+def tool_migrations_command(root: Path) -> int:
+    ledger = read_tool_migrations(root)
+    errors = validate_tool_migrations(root, ledger)
+    if errors:
+        for message in errors:
+            print(f"archlint: [tools] {message}")
+        print(f"archlint: tool migration verification failed with {len(errors)} problem(s)")
+        return 1
+    print(
+        "archlint: RFC 0001 Phase E tool cohort ledger and launchable-DLL "
+        f"ratchet are valid ({len(ledger['cohorts'])} cohorts; "
+        f"{len(scan_tool_wrapper_occurrences(root))} preserved occurrences)"
+    )
     return 0
 
 
@@ -1092,6 +1393,10 @@ def build_parser() -> argparse.ArgumentParser:
     inventory = subparsers.add_parser("inventory", help="verify or intentionally rewrite loader inventory")
     inventory.add_argument("--verify", action="store_true")
     inventory.add_argument("--write", action="store_true")
+    tools = subparsers.add_parser(
+        "tools", help="verify the RFC 0001 Phase E tool cohort ledger and wrapper ratchet"
+    )
+    tools.add_argument("--verify", action="store_true", help="validate the authored ledger")
     hammer = subparsers.add_parser("hammer", help="verify the RFC 0002 editor inventory, migrations, and ratchet")
     mode = hammer.add_mutually_exclusive_group()
     mode.add_argument("--verify", action="store_true", help="validate authored editor artifacts (default)")
@@ -1119,6 +1424,8 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     manifest = load_manifest(root)
     if args.command == "check":
         return check_command(args, root, manifest)
+    if args.command == "tools":
+        return tool_migrations_command(root)
     if args.command == "hammer":
         if args.coverage:
             return hammer_coverage_command(root, manifest, args)

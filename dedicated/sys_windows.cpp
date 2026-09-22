@@ -273,11 +273,21 @@ bool CSys::LoadModules( CDedicatedAppSystemGroup *pAppSystemGroup )
 	// filesystem owns the queued loader; modules outlive all borrowed services.
 	IMaterialSystem *material = MaterialSystem_Create();
 	IDedicatedServerAPI *server = Engine_CreateDedicatedAPI();
+	const char *pPhysicsModule = CommandLine()->ParmValue( "-physics", "vphysics" );
+	char physicsDLLName[MAX_PATH];
+	Q_snprintf( physicsDLLName, sizeof( physicsDLLName ), "%s" DLL_EXT_STRING, pPhysicsModule );
+	AppModule_t physicsAppModule = pAppSystemGroup->LoadModule( physicsDLLName );
+	if ( physicsAppModule == APP_MODULE_INVALID )
+	{
+		Warning( "Failed to load physics provider '%s'.\n", physicsDLLName );
+		return false;
+	}
+
 	if ( !pAppSystemGroup->AddSystem( Engine_CreateCvarQuery(), CVAR_QUERY_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddSystem( InputSystem_Create(), INPUTSYSTEM_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddSystem( material, MATERIAL_SYSTEM_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddSystem( StudioRender_Create(), STUDIO_RENDER_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( Physics_Create(), VPHYSICS_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddSystem( physicsAppModule, VPHYSICS_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddSystem( DataCache_Create(), DATACACHE_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddSystem( MDLCache_Create(), MDLCACHE_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddSystem( StudioDataCache_Create(), STUDIO_DATA_CACHE_INTERFACE_VERSION ) ||

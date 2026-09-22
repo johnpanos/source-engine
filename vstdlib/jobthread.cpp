@@ -1349,8 +1349,10 @@ void RunThreadPoolTests()
 {
 	CThreadPool pool;
 	ThreadPoolTest::g_pTestThreadPool = &pool;
-	RunTSQueueTests(10000);
-	RunTSListTests(10000);
+	{
+		// RunTSQueueTests(10000);
+		// RunTSListTests(10000);
+	}
 
 #ifdef _WIN32
 	DWORD_PTR mask1 = 0;

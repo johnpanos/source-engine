@@ -117,7 +117,9 @@ extern IVideoMode *videomode;
 void VideoMode_Create();
 void VideoMode_Destroy();
 
-// Consume the native drawable size at the engine frame boundary.
-void VideoMode_UpdateWindowSize();
+// Consume the native drawable size at the engine frame boundary. False means
+// presentation resize is running on the render worker and this frame must not
+// submit material commands.
+bool VideoMode_UpdateWindowSize();
 
 #endif // IVIDEOMODE_H

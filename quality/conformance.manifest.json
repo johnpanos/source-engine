@@ -514,6 +514,34 @@
       "expect": "pass"
     },
     {
+      "id": "platform.tool_process",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "TOOL-PROCESS-001",
+      "contract": "unittests/platformtest/contracts/platform.tool_process.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "platform/tool_process_client.cpp",
+        "unittests/platformtest/tool_process/test_tool_process.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.tool_process.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "TOOL-PROCESS-001",
+      "contract": "unittests/platformtest/contracts/platform.tool_process.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "platform/tool_process_client.cpp",
+        "unittests/platformtest/tool_process/test_tool_process_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "jobsystem.pooled",
       "domain": "Q-JOBS",
       "rfc": "0003",
@@ -750,6 +778,38 @@
         "hammer/core/app/property_value.cpp",
         "hammer/core/formats/keyvalues.cpp",
         "unittests/hammertest/adapters/test_shell_workflow.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.geometry.displacement",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-DISP-001",
+      "contract": "unittests/hammertest/contracts/geometry.displacement.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/geometry/displacement.cpp",
+        "hammer/core/geometry/brush.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/geometry/test_displacement.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.geometry.displacement.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-DISP-001",
+      "contract": "unittests/hammertest/contracts/geometry.displacement.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/geometry/displacement.cpp",
+        "hammer/core/geometry/brush.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/geometry/test_displacement_negative.cpp"
       ],
       "expect": "pass"
     }

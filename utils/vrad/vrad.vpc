@@ -1,0 +1,37 @@
+//-----------------------------------------------------------------------------
+//	VRAD.VPC
+//
+//	Normal executable linked to the retained Hammer-compatible VRAD library.
+//-----------------------------------------------------------------------------
+
+$Macro SRCDIR		"..\.."
+$Macro OUTBINDIR	"$LIBPUBLIC"
+$Macro OUTBINNAME	"vrad"
+
+$Include "$SRCDIR\vpc_scripts\source_exe_con_base.vpc"
+
+$Configuration
+{
+	$Linker [$WIN32]
+	{
+		$EnableLargeAddresses				"Support Addresses Larger Than 2 Gigabytes (/LARGEADDRESSAWARE)"
+	}
+}
+
+$Project "Vrad"
+{
+	$Folder	"Source Files"
+	{
+		$File	"vrad_main.cpp"
+	}
+
+	$Folder	"Header Files"
+	{
+		$File	"vrad_tool_entry.h"
+	}
+
+	$Folder	"Link Libraries"
+	{
+		$ImpLib vrad_dll
+	}
+}

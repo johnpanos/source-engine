@@ -11,12 +11,9 @@
 #pragma once
 #endif
 
-
 #include "ivraddll.h"
-#include "ilaunchabledll.h"
 
-
-class CVRadDLL : public IVRadDLL, public ILaunchableDLL
+class CVRadDLL : public IVRadDLL
 {
 // IVRadDLL overrides.
 public:

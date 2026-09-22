@@ -41,7 +41,7 @@ public:
 	void ShaderFailure( const char *name, int staticIndex, int dynamicCount );
 	void Draw( const DrawState &state );
 	void Skipped( const char *material, const char *reason );
-	void Present( std::int32_t result );
+	void Present( std::int32_t result, bool cropped );
 
 private:
 	struct Shader

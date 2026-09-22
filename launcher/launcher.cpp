@@ -782,6 +782,16 @@ bool CSourceAppSystemGroup::Create()
 	     !BindAudioMediaProviders( Engine_CreateClientAPI() ) )
 		return false;
 
+	const char *pPhysicsModule = CommandLine()->ParmValue( "-physics", "vphysics" );
+	char physicsDLLName[MAX_PATH];
+	Q_snprintf( physicsDLLName, sizeof( physicsDLLName ), "%s" DLL_EXT_STRING, pPhysicsModule );
+	AppModule_t physicsAppModule = LoadModule( physicsDLLName );
+	if ( physicsAppModule == APP_MODULE_INVALID )
+	{
+		Warning( "Failed to load physics provider '%s'.\n", physicsDLLName );
+		return false;
+	}
+
 	if ( !AddSystem( Engine_CreateCvarQuery(), CVAR_QUERY_INTERFACE_VERSION ) ||
 	     !AddSystem( input->create(), INPUTSYSTEM_INTERFACE_VERSION ) ||
 	     !AddSystem( MaterialSystem_Create(), MATERIAL_SYSTEM_INTERFACE_VERSION ) ||
@@ -789,7 +799,7 @@ bool CSourceAppSystemGroup::Create()
 	     !AddSystem( MDLCache_Create(), MDLCACHE_INTERFACE_VERSION ) ||
 	     !AddSystem( StudioDataCache_Create(), STUDIO_DATA_CACHE_INTERFACE_VERSION ) ||
 	     !AddSystem( StudioRender_Create(), STUDIO_RENDER_INTERFACE_VERSION ) ||
-	     !AddSystem( Physics_Create(), VPHYSICS_INTERFACE_VERSION ) ||
+	     !AddSystem( physicsAppModule, VPHYSICS_INTERFACE_VERSION ) ||
 	     !AddSystem(
 	         VideoServices_CreateWithProviders( &video ), VIDEO_SERVICES_INTERFACE_VERSION ) ||
 	     !AddSystem( VGuiSurface_Create(), VGUI_SURFACE_INTERFACE_VERSION ) ||

@@ -7,6 +7,7 @@
 
 //#include <strstrea.h>
 #include "vraddll.h"
+#include "vrad_tool_entry.h"
 #include "bsplib.h"
 #include "vrad.h"
 #include "map_shared.h"
@@ -20,8 +21,6 @@ static CUtlVector<unsigned char> g_FacesTouched;
 
 static CVRadDLL g_VRadDLL;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CVRadDLL, IVRadDLL, VRAD_INTERFACE_VERSION, g_VRadDLL );
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CVRadDLL, ILaunchableDLL, LAUNCHABLE_DLL_INTERFACE_VERSION, g_VRadDLL );
-
 
 // ---------------------------------------------------------------------------- //
 // temporary static array data size tracking
@@ -112,6 +111,10 @@ int CVRadDLL::main( int argc, char **argv )
 	return VRAD_Main( argc, argv );
 }
 
+DLL_EXPORT int VRad_RunCommandLine( int argc, char **argv )
+{
+	return g_VRadDLL.main( argc, argv );
+}
 
 bool CVRadDLL::Init( char const *pFilename )
 {
@@ -239,5 +242,3 @@ void CVRadDLL::Interrupt()
 {
 	g_bInterrupt = true;
 }
-
-

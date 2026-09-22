@@ -181,6 +181,51 @@ Recorded in `architecture/hammer_compatibility.json` (profiles).
   Source engine). This proves the factored architecture on both UI sides, not a
   shipped editor.
 
+### D8 — A shared entity editor: both siblings drive one selection + property-editing authority (HAM-SEL-001)
+
+- **Gap this closes:** D6/D7 proved the GTK and MFC shells are thin siblings over
+  the same `EditorDocument`, but the only editing verb was `SetFirstBlockKey` — a
+  placeholder that edits the first block. The RFC's multi-selection property model
+  (`PropertyValue`, empty-vs-unset-vs-mixed) existed as an **orphaned oracle**: no
+  method produced it from a live selection, so any real entity editing would have
+  been re-derived independently in each shell. That is exactly the duplication the
+  factoring goal forbids.
+- **Decision / landed:** the shared **entity editor** now lives in `hammer.app` as
+  the single authority both siblings route through:
+  - `hammer::app::EntitySelection` (`public/hammer/app/entity_selection.h` +
+    `hammer/core/app/entity_selection.cpp`): the ordered, deduplicated set of entity
+    indices a shell owns as view state. No editor policy.
+  - `EditorDocument::EntityCount/EntityName/EntityClassName` enumerate the document's
+    top-level entities; `AggregateProperty(selection, key)` folds a property across
+    the selection into `PropertyValue` under an explicit **presence-only** policy
+    (a non-contributor never forces `Mixed`; a `""` value stays `Single("")`, not
+    `Unset`); `SetPropertyOnSelection(selection, key, value)` applies a property to
+    every selected entity as **one atomic history unit** — a single `Undo` reverts
+    the whole group.
+  - Contract `app.entity_editor.v1`; suites `hammer.app.entity_editor` (+`.sensitivity`,
+    a non-atomic per-entity editor the oracle catches), green under gcc and clang on
+    `linux-headless-core` via `run_headless.sh`.
+- **The GTK sibling now drives it end to end.** `hammer/adapters/gtk/hammer_gtk_shell.cpp`
+  gained a multi-select entity list; selection changes call `AggregateProperty` to
+  show the value (with `<multiple values>` / `(unset)` states), and "Set Key" calls
+  `SetPropertyOnSelection` — no editor policy in the shell. It still builds to a real
+  ELF against gtk4 4.22 + libadwaita 1.9 + the reusable libraries alone
+  (`build_gtk_shell.sh`), and the delegated workflow (New → select both entities →
+  Set Key as one atomic edit → Save → reopen → Undo/Redo) is verified headlessly by
+  `test_shell_workflow.cpp` (no display needed). So tested logic == shipped logic.
+- **Why this is the factoring the goal asks for:** selection, multi-selection
+  aggregation, and atomic multi-entity editing are now defined **once** and consumed
+  by both the GTK sibling (D6) and the MFC sibling (D7) through the same
+  `EditorDocument` — neither re-derives them. The empty-vs-unset distinction can no
+  longer be silently lost in a shell.
+- **Honest gaps:** the MFC sibling's `test_mfc_workflow.cpp` still exercises the
+  older single-target `SetFirstBlockKey` verb (routing it through the new entity
+  path is the concurrent MFC owner's follow-up); entities here are addressed by
+  index, not yet scene `NodeHandle`s; the property-draft commit policy
+  (commit-valid/report-invalid/discard) and legacy `CSelection`/property-sheet
+  cutover remain (they need the legacy build). Status stays `characterized`: legacy
+  Hammer is still the live authority. See `HAM-SEL-001`.
+
 ## Installed H0 machinery (this change)
 
 Delivered as the first bounded H0 slice (HAM-INVENTORY-001 and HAM-RATCHET-001
@@ -244,7 +289,7 @@ baseline. No gate claims a stronger guarantee than these installed checks provid
 | --- | --- | --- |
 | H0 | **active / partial** | Migration schema, module graph, ratchet increment 1, corpus scaffolding, and a **headless strict C++20 build+test target** (`unittests/hammertest/run_headless.sh`, HAM-BUILD-001) installed and passing under gcc 16 and clang. Remaining for H0 exit: exhaustive inventory coverage and the versioned semantic comparator with a negative corpus. |
 | H1 | **active (geometry + scene seams)** | `hammer.geometry`: `AxisAlignedBox`, `RoundHalfAwayFromZero` (DRY grid-rounding owner), angle policies. `hammer.scene`: generational `HandleTable` (stale-reference rejection, independent documents) and `SceneGraph` (handle-addressed, validated/atomic reparent with cycle rejection, atomic subtree delete). All headless-verified under gcc + clang with negative providers. See below. |
-| H3 | **partial (independent models)** | Ahead-of-authority reference models landed and pinned: `DocumentHistory` (revision vs saved-position, no-op neutrality, undo-to-saved clears modified), `PropertyValue` (empty-vs-unset-vs-mixed), and `UpdateHint` (HAM-UPDATEHINT-001) — the reusable core of MFC `CUpdateHint`, composing `hammer.geometry` + `hammer.scene` (notify-code buckets + unioned affected region, legacy `MAX_NOTIFY_CODES`=16 preserved; legacy source is orphaned dead code, so this is a reconstruction of intent). Not yet the live authority (needs H2 + legacy cutover). |
+| H3 | **partial (independent models)** | Ahead-of-authority reference models landed and pinned: `DocumentHistory` (revision vs saved-position, no-op neutrality, undo-to-saved clears modified), `PropertyValue` (empty-vs-unset-vs-mixed), and `UpdateHint` (HAM-UPDATEHINT-001) — the reusable core of MFC `CUpdateHint`, composing `hammer.geometry` + `hammer.scene` (notify-code buckets + unioned affected region, legacy `MAX_NOTIFY_CODES`=16 preserved; legacy source is orphaned dead code, so this is a reconstruction of intent). Not yet the live authority (needs H2 + legacy cutover). The **shared entity editor** (`EntitySelection` + `EditorDocument` entity methods, HAM-SEL-001/D8) now wires `PropertyValue` into live multi-selection editing with atomic multi-entity undo, and the GTK sibling drives it end to end. |
 | H2 | **partial (codec + save seams)** | `hammer.formats`: VMF/keyvalues parser + writer + versioned semantic comparator (unknown-chunk preservation, malformed diagnostics, data-loss detection). `hammer.ports` + `hammer.app`: `IFileStore` port and `SaveDocument` transactional save (temp-write + atomic rename; failed save preserves prior file), verified with an in-memory fault-injecting fake. Remaining: VMF↔scene import/export, real file-store provider, fixtures corpus. |
 | H4–H7, R1 | planned | Blocked on H0 exit and, for R1, the render contract + GTK profile. A bounded `linux-gtk-desktop` **boot + VMF-render feasibility slice** now exists (below): it is feasibility evidence, not R1/H5 completion — no editing tools, live-document authority, or material fidelity yet. |
 
@@ -336,11 +381,42 @@ delivery target landed together as a working, testable consumer at a new boundar
     Mesa's GLSL linker on the `#version 330 core` shaders; forcing desktop GL core
     (`gtk_gl_area_set_allowed_apis(GDK_GL_API_GL)` + required 3.3) fixes it and
     matches the offscreen EGL profile.
-- **Not claimed.** This closes **no** gate. It is R1/H5 feasibility only: there is
-  no editing, selection, undo, or save wired to the live document from the UI, no
-  real material/texture rendering, no displacement support, and the legacy MFC
-  Hammer remains the authority. The tool palette, texture panel, and menu items
-  beyond Open/Quit/Reset-Views are laid out but non-functional.
+- **Not claimed.** This closes **no** gate. It is R1/H5 feasibility only, and the
+  legacy MFC Hammer remains the authority. Still absent: entity/property editing,
+  non-box brush *editing* (they render and round-trip, but the Block tool only
+  makes boxes), vertex/clip tools, real material/texture rendering, displacements.
+
+### Core editing loop and interaction authority (HAM-WORKFLOW-001, feasibility)
+
+A single headless **interaction authority**, `hammer::app::EditorController`
+(`public/hammer/app/editor_controller.h` + `hammer/core/app/editor_controller.cpp`),
+now owns the core Hammer UX flows over *normalized* input, with the GTK shell as a
+thin presenter that maps gestures/keys to it. This is the H3/H4 "one
+selection/mutation/history owner" realised for spatial editing:
+
+- **Flows:** Block tool (drag a grid-snapped rectangle in a 2D view → extruded
+  brush, live pending box shown; Enter commits), Selection tool (pick/move/delete),
+  and **undo/redo** — all through **one** `DocumentHistory` stack (no second stack;
+  `IsModified`/`MarkSaved` delegate to it). Grid snapping routes through the shared
+  `RoundHalfAwayFromZero` owner; geometry through the shared brush bridge.
+- **Real brush shape (not bounding boxes):** a brush is stored as its set of
+  half-space planes (+ per-face materials), so a loaded non-box brush (e.g. a
+  triangular-prism ramp) **renders and round-trips as its true shape** — verified
+  by the `hammer.app.editor_controller` suite (a 5-plane wedge stays 5-faced through
+  load → `BuildScene` → `ToVmf` → reload) and visually via `hammer_gtk --cquad`
+  (the front view shows a triangle, not a rectangle). The AABB is only a pick/grid
+  cache. This resolves the earlier "loads as bounding box" limitation.
+- **One save path (DRY):** save = `EditorController::ToVmf()` → `SaveDocument` over
+  `hammer::adapters::platform::DiskFileStore`; load = `DiskFileStore::Read` →
+  `LoadVmf`. The host holds no second `EditorDocument` or file store; the
+  host-local `posix_file_store.h` was retired in favour of `DiskFileStore`.
+- **Conformance UI test:** `unittests/hammertest/app/test_editor_controller.cpp`
+  drives the controller with simulated input to build, snap, extrude, select, move,
+  delete, undo/redo, preserve a non-box shape, and save-round-trip a map;
+  `_negative.cpp` proves the grid-snap oracle catches a no-snap provider. Contract
+  `unittests/hammertest/contracts/app.editor_controller.v1.md`, green under gcc and
+  clang on `linux-headless-core`. The panels of the shell are drag-resizable
+  (nested `GtkPaned`). Single-authority design reviewed by the sibling sessions.
 
 ## Pre-existing failures (reported separately, not introduced here)
 

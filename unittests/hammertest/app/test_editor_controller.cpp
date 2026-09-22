@@ -48,8 +48,8 @@ bool Near( double a, double b )
 
 bool BoxIs( const MapBrush &b, double x0, double y0, double z0, double x1, double y1, double z1 )
 {
-	return Near( b.mins.x, x0 ) && Near( b.mins.y, y0 ) && Near( b.mins.z, z0 )
-	       && Near( b.maxs.x, x1 ) && Near( b.maxs.y, y1 ) && Near( b.maxs.z, z1 );
+	return Near( b.mins.x, x0 ) && Near( b.mins.y, y0 ) && Near( b.mins.z, z0 ) &&
+	       Near( b.maxs.x, x1 ) && Near( b.maxs.y, y1 ) && Near( b.maxs.z, z1 );
 }
 
 // Simulates the Block-tool gesture in one view: press, drag, release, commit.
@@ -168,7 +168,7 @@ void TestUndoRedo()
 	CHECK( !c.CanRedo() );
 
 	// A new commit after undo clears the redo tail.
-	CHECK( c.Undo() );                                    // back to 1
+	CHECK( c.Undo() );                                      // back to 1
 	CHECK( BlockDrag( c, ViewId::Top, 512, 0, 640, 128 ) ); // new branch
 	CHECK( c.Brushes().size() == 2 );
 	CHECK( !c.CanRedo() );
@@ -207,6 +207,53 @@ void TestGuardsRejectBadInput()
 	CHECK( c.Brushes().empty() );
 }
 
+// A non-box brush (5-sided triangular prism) must load, render, and round-trip as
+// its REAL shape -- not be collapsed to a bounding box.
+void TestLoadNonBoxPreservesShape()
+{
+	// Right-triangular prism: x>=0, y>=0, z in [0,128], x+y<=128.
+	const char *kWedge =
+	    "world\n{\n\t\"id\" \"1\"\n\t\"classname\" \"worldspawn\"\n"
+	    "\tsolid\n\t{\n\t\t\"id\" \"2\"\n"
+	    "\t\tside { \"plane\" \"(0 0 0) (64 0 0) (0 64 0)\" \"material\" \"DEV/A\" }\n"
+	    "\t\tside { \"plane\" \"(0 0 128) (0 64 128) (64 0 128)\" \"material\" \"DEV/B\" }\n"
+	    "\t\tside { \"plane\" \"(0 0 0) (0 64 0) (0 0 128)\" \"material\" \"DEV/C\" }\n"
+	    "\t\tside { \"plane\" \"(0 0 0) (64 0 0) (0 0 128)\" \"material\" \"DEV/D\" }\n"
+	    "\t\tside { \"plane\" \"(128 0 0) (0 128 0) (128 0 128)\" \"material\" \"DEV/E\" }\n"
+	    "\t}\n}\n";
+
+	EditorController c;
+	std::string error;
+	CHECK( c.LoadVmf( kWedge, error ) );
+	CHECK( c.Brushes().size() == 1 );
+	if ( c.Brushes().empty() )
+	{
+		return;
+	}
+	// Five real side planes preserved (a box would have six).
+	CHECK( c.Brushes()[0].planes.size() == 5 );
+	// Cached AABB spans the prism's extent.
+	CHECK( BoxIs( c.Brushes()[0], 0, 0, 0, 128, 128, 128 ) );
+
+	// The rendered solid is the true 5-faced shape, not a 6-faced box.
+	const auto scene = c.BuildScene();
+	CHECK( scene.solids.size() == 1 );
+	if ( !scene.solids.empty() )
+	{
+		CHECK( scene.solids[0].faces.size() == 5 );
+	}
+
+	// Saving and reloading preserves the shape (still 5 faces), not a box.
+	EditorController c2;
+	CHECK( c2.LoadVmf( c.ToVmf(), error ) );
+	CHECK( c2.Brushes().size() == 1 );
+	if ( !c2.Brushes().empty() )
+	{
+		CHECK( c2.Brushes()[0].planes.size() == 5 );
+		CHECK( c2.BuildScene().solids[0].faces.size() == 5 );
+	}
+}
+
 // The headline flow: build a simple two-brush map with simulated input, save it
 // to VMF, and prove it round-trips back to the same geometry.
 void TestBuildSimpleMapAndSave()
@@ -214,7 +261,7 @@ void TestBuildSimpleMapAndSave()
 	EditorController c;
 	c.SetGridSize( 64 );
 
-	CHECK( BlockDrag( c, ViewId::Top, 0, 0, 512, 512 ) );    // floor footprint
+	CHECK( BlockDrag( c, ViewId::Top, 0, 0, 512, 512 ) );     // floor footprint
 	CHECK( BlockDrag( c, ViewId::Front, 0, 128, 512, 384 ) ); // a wall above it
 	CHECK( c.Brushes().size() == 2 );
 
@@ -262,8 +309,8 @@ void TestBuildSimpleMapAndSave()
 		for ( std::size_t i = 0; i < 2; ++i )
 		{
 			CHECK( BoxIs( loaded.Brushes()[i], c.Brushes()[i].mins.x, c.Brushes()[i].mins.y,
-			              c.Brushes()[i].mins.z, c.Brushes()[i].maxs.x, c.Brushes()[i].maxs.y,
-			              c.Brushes()[i].maxs.z ) );
+			    c.Brushes()[i].mins.z, c.Brushes()[i].maxs.x, c.Brushes()[i].maxs.y,
+			    c.Brushes()[i].maxs.z ) );
 		}
 	}
 }
@@ -277,6 +324,7 @@ int main()
 	TestSelectMoveDelete();
 	TestUndoRedo();
 	TestGuardsRejectBadInput();
+	TestLoadNonBoxPreservesShape();
 	TestBuildSimpleMapAndSave();
 
 	if ( g_failures != 0 )

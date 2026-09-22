@@ -298,27 +298,56 @@ def evaluate(log, screenshots, returncode, timed_out, map_name, requirements, lo
     return failures
 
 
-def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD):
-    """Every authored request needs an executed size and a nonblank image."""
-    observed = [(int(a), int(b)) for a, b in re.findall(
-        r"RFC0001 resize: drawable=(\d+)x(\d+) render=\d+x\d+ buffer=\d+x\d+", log)]
+def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD, trace_records=()):
+    """Require exact logical/drawable convergence and nonblocking full-frame presents."""
+    observed = [(int(lw), int(lh), int(dw), int(dh)) for lw, lh, dw, dh in re.findall(
+        r"RFC0001 resize observed: logical=(\d+)x(\d+) drawable=(\d+)x(\d+)", log)]
+    queued = [(int(serial), int(width), int(height), int(micros))
+              for serial, width, height, micros in re.findall(
+                  r"RFC0001 resize queued: serial=(\d+) drawable=(\d+)x(\d+) request_us=(\d+)", log)]
+    completed = [(int(serial), int(width), int(height), int(wait))
+                 for serial, width, height, wait in re.findall(
+                     r"RFC0001 resize complete: serial=(\d+) drawable=(\d+)x(\d+) main_wait_us=(\d+)", log)]
     failures = []
     if not observed:
-        failures.append("no native resize was consumed by the renderer")
-    for width, height in expected:
-        if (width, height) not in observed:
-            failures.append("renderer did not consume drawable %dx%d" % (width, height))
-        frames = [frame for frame in screenshots if (frame.get("width"), frame.get("height")) == (width, height)]
+        failures.append("no SDL logical/drawable resize was observed")
+    for logical_width, logical_height in expected:
+        extents = [(dw, dh) for lw, lh, dw, dh in observed
+                   if (lw, lh) == (logical_width, logical_height)]
+        if not extents:
+            failures.append("SDL window did not reach logical %dx%d" %
+                            (logical_width, logical_height))
+            continue
+        drawable = extents[-1]
+        requests = [item for item in queued if item[1:3] == drawable]
+        if not requests:
+            failures.append("renderer did not queue drawable %dx%d" % drawable)
+            continue
+        serial = requests[-1][0]
+        if not any(item[:3] == (serial,) + drawable for item in completed):
+            failures.append("renderer did not complete drawable %dx%d" % drawable)
+        frames = [frame for frame in screenshots
+                  if (frame.get("width"), frame.get("height")) == drawable]
         if not frames or not all(frame.get("has_scene_detail", False) for frame in frames):
-            failures.append("missing or blank resize image at %dx%d" % (width, height))
+            failures.append("missing or blank resize image at drawable %dx%d" % drawable)
+    if queued and max(item[3] for item in queued) > 2000:
+        failures.append("main-thread resize publication exceeded 2000us")
+    if any(item[3] != 0 for item in completed):
+        failures.append("main thread waited for a renderer resize")
+    presents = [record for record in trace_records if record.get("event") == "present"]
+    if trace_records and not presents:
+        failures.append("resize trace contains no presentation events")
+    if any(record.get("cropped") is not False for record in presents):
+        failures.append("resize used cropped or unclassified presentation")
     return {"schema": "source-resize-evidence/v1", "status": "fail" if failures else "pass",
-            "requested_sizes": list(expected), "observed_sizes": observed, "failures": failures,
-            "coverage": "Native window requests, frame-boundary drawable consumption and image at every requested size. GPU stress separately checks every transition frame; compositor timing requires native observation."}
+            "requested_logical_sizes": list(expected), "observed_extents": observed,
+            "queued_resizes": queued, "completed_resizes": completed, "failures": failures,
+            "coverage": "SDL logical and drawable extents, lock-free main-thread publication, render-worker completion, exact nonblank backbuffers, and uncropped presentation."}
 
 
 def resize_commands(workload=RESIZE_WORKLOAD):
     """Return commands for the engine command buffer, where `wait` is honored."""
-    commands = ["+wait", "120"]
+    commands = ["+mat_queue_mode", "2", "+wait", "120"]
     for width, height in workload:
         commands += ["+mat_resizewindow", str(width), str(height),
                      "+wait", "12", "+screenshot", "+wait", "1"]
@@ -446,7 +475,7 @@ def main(argv=None):
                                    for path in [executable] + sorted((stage / "bin").glob("*.so"))
                                    + sorted((stage / "portal/bin").glob("*.so"))}
         command = [str(executable), "-game", "portal", "-windowed", "-w", str(args.width), "-h", str(args.height),
-                   "-novid", "-insecure", "-console", "-condebug", "-dev",
+                   "-novid", "-insecure", "-console", "-condebug", "-dev", "-physics", "box3d",
                    "+sv_cheats", "1", "+mat_queue_mode", "0", "+fps_max", "60", "+map", args.map,
                    "+wait", "180", "+status", "+hideconsole", "+developer", "0",
                    "+wait", "600", "+screenshot", "+mat_spewvertexandpixelshaders",
@@ -494,7 +523,10 @@ def main(argv=None):
             if not decorated:
                 failures.append("native GNOME GTK decoration plugin was not mapped")
         if args.resize_stress:
-            evidence["resize"] = inspect_resize(log, screenshots)
+            trace_records = []
+            if args.render_trace and trace.is_file():
+                trace_records = [json.loads(line) for line in trace.read_text().splitlines() if line]
+            evidence["resize"] = inspect_resize(log, screenshots, trace_records=trace_records)
             failures.extend(evidence["resize"]["failures"])
         if args.require_provider_catalog:
             evidence["provider_catalog"] = inspect_provider_catalog(log)

@@ -14,7 +14,7 @@ $Configuration
 	$Compiler
 	{
 		$AdditionalIncludeDirectories		"$BASE,..\common"
-		$PreprocessorDefinitions			"$BASE;VTEX_DLL;VTEX_DLL_EXPORTS;PROTECTED_THINGS_DISABLE"
+		$PreprocessorDefinitions			"$BASE;VTEX_DLL;VTEX_DLL_EXPORTS;VTEX_TOOL_ENTRY_EXPORTS;PROTECTED_THINGS_DISABLE"
 	}
 
 	$Linker

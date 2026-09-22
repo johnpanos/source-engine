@@ -300,7 +300,6 @@ sub ShaderPrep
     if (open(my $fh, ">>filestocopy.txt")) {
 	print $fh "$dos_base\\$ENV{DIRECTX_SDK_BIN_DIR}\\dx_proxy.dll\n";
 	print $fh "$dos_base\\..\\game\\bin\\shadercompile.exe\n";
-	print $fh "$dos_base\\..\\game\\bin\\shadercompile_dll.dll\n";
 	print $fh "$dos_base\\..\\game\\bin\\vstdlib.dll\n";
 	print $fh "$dos_base\\..\\game\\bin\\tier0.dll\n";
     }

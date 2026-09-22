@@ -26,6 +26,20 @@ public:
 	virtual int VTex( CreateInterfaceFn filesystemFactory, const char *pGameDir, int argc, char **argv ) = 0;
 };
 
+// Normal command-line entry point for tool products that link vtex_dll as a
+// build dependency. This is not an extension-discovery ABI: the executable
+// imports the symbol directly and never resolves a module name or interface
+// string at runtime.
+#if defined( VTEX_TOOL_ENTRY_EXPORTS )
+#define VTEX_TOOL_INTERFACE DLL_EXPORT
+#else
+#define VTEX_TOOL_INTERFACE DLL_IMPORT
+#endif
+
+VTEX_TOOL_INTERFACE int VTex_RunCommandLine( int argc, char **argv );
+
+#undef VTEX_TOOL_INTERFACE
+
 #define IVTEX_VERSION_STRING "VTEX_003"
 
 

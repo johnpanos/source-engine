@@ -630,12 +630,6 @@ static void OverrideMaterialSystemConfigFromCommandLine( MaterialSystem_Config_t
 	}
 #endif // USE_SDL && !SWDS
 
-#if defined( USE_SDL3 )
-	// The native desktop window uses the established persistent-buffer resize
-	// path. Present crops the initialized viewport to the actual drawable size.
-	if ( config.Windowed() && !UseVR() && !ShouldForceVRActive() )
-		config.SetFlag( MATSYS_VIDCFG_FLAGS_RESIZING, true );
-#endif
 	if ( CommandLine()->FindParm( "-resizing" ) )
 	{
 		config.SetFlag( MATSYS_VIDCFG_FLAGS_RESIZING, CommandLine()->CheckParm( "-resizing" ) ? true : false );

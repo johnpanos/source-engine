@@ -32,6 +32,7 @@
 	#include "appframework/ilaunchermgr.h"
 #endif
 
+#include "tier0/native_module_load_telemetry.h"
 #include "tier0/memdbgon.h"
 
 #if defined( OSX ) || defined( LINUX ) || defined( PLATFORM_BSD )

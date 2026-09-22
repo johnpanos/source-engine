@@ -195,13 +195,14 @@ void Capture::Skipped( const char *material, const char *reason )
 	String( m_Output, reason );
 	std::fputs( "}\n", m_Output );
 }
-void Capture::Present( std::int32_t result )
+void Capture::Present( std::int32_t result, bool cropped )
 {
 	if ( !Enabled() )
 		return;
 	std::lock_guard<std::mutex> lock( m_Mutex );
-	std::fprintf(
-	    m_Output, "{\"event\":\"present\",\"frame\":%u,\"result\":%d}\n", m_Frame, result );
+	std::fprintf( m_Output,
+	    "{\"event\":\"present\",\"frame\":%u,\"result\":%d,\"cropped\":%s}\n",
+	    m_Frame, result, cropped ? "true" : "false" );
 }
 Capture &Current()
 {

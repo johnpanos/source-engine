@@ -18,7 +18,6 @@
 #include "collisionutils.h"
 #include "tier0/icommandline.h"
 #include "vmpi_tools_shared.h"
-#include "ilaunchabledll.h"
 #include "tools_minidump.h"
 #include "loadcmdline.h"
 #include "byteswap.h"
@@ -1231,17 +1230,3 @@ int main (int argc, char **argv)
 
 	return RunVVis( argc, argv );
 }
-
-
-// When VVIS is used as a DLL (makes debugging vmpi vvis a lot easier), this is used to
-// get it going.
-class CVVisDLL : public ILaunchableDLL
-{
-public:
-	virtual int main( int argc, char **argv )
-	{
-		return ::main( argc, argv );
-	}
-};
-
-EXPOSE_SINGLE_INTERFACE( CVVisDLL, ILaunchableDLL, LAUNCHABLE_DLL_INTERFACE_VERSION );

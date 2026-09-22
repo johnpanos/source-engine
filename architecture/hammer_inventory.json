@@ -8,7 +8,7 @@
     "totalHammerSourceFiles": 452,
     "totalHammerCppFiles": 221,
     "totalHammerHeaderFiles": 231,
-    "filesClassified": 44,
+    "filesClassified": 46,
     "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (public/hammer/geometry, hammer/core/geometry). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'."
   },
   "files": [
@@ -648,6 +648,32 @@
       "factorization": "keep",
       "evidence": "observed",
       "note": "Thin MFC UI sibling (CWinApp/CFrameWnd). Only toolkit glue; delegates all editor logic to the reusable hammer::app libraries. Builds to a real PE32+ GUI exe and its workflow runs under Wine (HAM-MFCSHELL-001, adapters.mfc_shell.v1). MFC native tokens permitted (non-strict, outside strict roots; hammer.adapters.mfc is the legacyHost)."
+    },
+    {
+      "path": "public/hammer/app/entity_selection.h",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "selection-policy",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "EntitySelection: an ordered, deduplicated set of entity indices -- the view state a UI shell owns and the entity editor consumes. Plain value type, no editor policy. Part of the HAM-SEL-001 shared entity editor."
+    },
+    {
+      "path": "hammer/core/app/entity_selection.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "selection-policy",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "EntitySelection implementation (sorted-unique insert/remove/toggle/contains). Headless under gcc and clang (-Werror); verified by test_entity_editor.cpp."
     }
   ]
 }

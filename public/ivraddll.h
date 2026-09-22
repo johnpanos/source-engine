@@ -60,7 +60,7 @@ public:
 class IVRadDLL
 {
 public:
-	// All vrad.exe does is load the VRAD DLL and run this.
+	// Retained for the legacy Hammer ABI. Normal vrad.exe uses the direct entry below.
 	virtual int			main( int argc, char **argv ) = 0;
 	
 	
@@ -94,6 +94,5 @@ public:
 	// It asynchronously tells DoIncrementalLight to stop as soon as possible and exit.
 	virtual void		Interrupt() = 0;
 };
-
 
 #endif // IVRADDLL_H

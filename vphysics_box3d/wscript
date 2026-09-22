@@ -1,0 +1,46 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+from waflib import Utils
+import os
+
+top = '.'
+PROJECT_NAME = 'vphysics_box3d'
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.env.append_unique('DEFINES',['VPHYSICS_EXPORTS'])
+
+def build(bld):
+	if bld.env.PHYSICS_BACKEND == 'ivp':
+		return
+
+	source = [
+		'main.cpp',
+		'physics_environment.cpp',
+		'../public/tier0/memoverride.cpp'
+	]
+
+	includes = [
+		'.',
+		'../public',
+		'../public/tier0',
+		'../public/tier1'
+	]
+
+	libs = ['tier0','tier1','tier2','vstdlib']
+
+	bld.shlib(
+		source   = source,
+		target   = PROJECT_NAME,
+		name     = PROJECT_NAME,
+		features = 'c cxx',
+		includes = includes,
+		defines  = [],
+		use      = libs,
+		install_path = bld.env.LIBDIR,
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx      = bld.get_taskgen_count()
+	)

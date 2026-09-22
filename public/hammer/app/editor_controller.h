@@ -10,10 +10,11 @@
 //			calls are what the conformance UI tests drive with simulated input, so
 //			the tested logic and the shipped logic are identical.
 //
-//			The editable brush model here is an axis-aligned box (mins/maxs) with a
-//			material -- exactly what the Block tool produces -- which serialises to
-//			a six-sided VMF solid and reconstructs from one. Non-box legacy brushes
-//			load as their bounding box (a declared limitation of this slice).
+//			A brush is stored as its set of half-space planes: the Block tool makes
+//			an axis-aligned box, while a VMF loaded here keeps each solid's real side
+//			planes, so arbitrary convex brush shapes are preserved, rendered, and
+//			round-tripped -- not collapsed to a bounding box. An axis-aligned bound
+//			is cached alongside for picking and grid math only.
 //
 //=============================================================================//
 
@@ -46,13 +47,18 @@ enum class ViewId
 	Side,  // Y / Z (free axis X)
 };
 
-// One editable brush: an axis-aligned box plus its material and stable id.
+// One editable brush. Its true shape is the convex intersection of 'planes' (the
+// Block tool makes an axis-aligned box; a loaded VMF brush keeps its real side
+// planes, so arbitrary brush shapes are preserved and rendered, not collapsed to a
+// box). 'materials' is parallel to 'planes' when known. 'mins'/'maxs' are a cached
+// axis-aligned bound used for picking, grid math and framing, not the shape.
 struct MapBrush
 {
 	int id = 0;
+	std::vector<geometry::Plane> planes;
+	std::vector<std::string> materials;
 	geometry::Vec3d mins;
 	geometry::Vec3d maxs;
-	std::string material;
 };
 
 // The synthetic solid id BuildScene() gives the in-progress Block-tool rectangle,
@@ -132,7 +138,7 @@ private:
 
 	static void ViewAxes( ViewId view, int &uAxis, int &vAxis, int &freeAxis );
 	void ResetHistory();
-	void PushSnapshot();          // records current brushes as a new history unit
+	void PushSnapshot();           // records current brushes as a new history unit
 	void LoadSnapshotAtPosition(); // restores brushes from the current history slot
 	MapBrush *FindBrush( int id );
 	const MapBrush *FindBrush( int id ) const;

@@ -48,7 +48,7 @@ def build(bld):
 	if bld.env.OPUS or bld.env.DEST_OS == 'android':
 		libs += ['vaudio_opus']
 	libs += ['engine', 'inputsystem', 'materialsystem', 'datacache', 'studiorender',
-	         'vphysics', 'video_services', 'vguimatsurface', 'vgui2']
+	         'video_services', 'vguimatsurface', 'vgui2']
 
 	if bld.env.DEST_OS == 'win32':
 		libs += ['USER32', 'OLE32', 'SHELL32']

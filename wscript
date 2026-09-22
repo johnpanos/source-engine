@@ -89,6 +89,7 @@ projects={
 		'vguimatsurface',
 		'video',
 		'vphysics',
+		'vphysics_box3d',
 		'vpklib',
 		'vstdlib',
 		'vtf',
@@ -122,6 +123,18 @@ projects={
 		'unittests/appframeworktest',
 		'utils/unittest'
 	],
+	'tools': [
+		'jobsystem',
+		'tier0',
+		'tier1',
+		'mathlib',
+		'bitmap',
+		'tier2',
+		'vstdlib',
+		'vtf',
+		'utils/vtex',
+		'utils/vtexconv',
+	],
 	'dedicated': [
 		'jobsystem',
 		'appframework',
@@ -152,6 +165,7 @@ projects={
 		'tier3',
 		'vgui2/vgui_controls',
 		'vphysics',
+		'vphysics_box3d',
 		'vpklib',
 		'vstdlib',
 		'vtf',
@@ -190,7 +204,7 @@ def define_platform(conf):
 	conf.env.SDL3 = conf.options.PLATFORM_PROVIDER == 'sdl3'
 	conf.env.DXVK = conf.options.RENDER_BACKEND == 'vulkan'
 	if conf.env.SDL3 or conf.env.DXVK:
-		if conf.env.DEST_OS != 'linux' or conf.options.DEDICATED or conf.options.TESTS:
+		if conf.env.DEST_OS != 'linux' or conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS:
 			conf.fatal('The SDL3/Vulkan compatibility profile currently targets the Linux client')
 		if not (conf.env.SDL3 and conf.env.DXVK):
 			conf.fatal('Select both --platform-provider=sdl3 and --render-backend=vulkan')
@@ -200,8 +214,11 @@ def define_platform(conf):
 		conf.define('USE_DXVK', 1)
 	conf.env.DEDICATED = conf.options.DEDICATED
 	conf.env.TESTS = conf.options.TESTS
+	conf.env.TOOLS = conf.options.TOOLS
+	if sum(bool(value) for value in (conf.env.DEDICATED, conf.env.TESTS, conf.env.TOOLS)) > 1:
+		conf.fatal('--dedicated, --tests, and --tools select different products')
 	conf.env.TOGLES = conf.options.TOGLES
-	conf.env.GL = conf.options.GL and not conf.options.TESTS and not conf.options.DEDICATED
+	conf.env.GL = conf.options.GL and not conf.options.TESTS and not conf.options.DEDICATED and not conf.options.TOOLS
 	conf.env.OPUS = conf.options.OPUS
 	conf.env.VIDEO_BINK = conf.options.VIDEO_PROVIDER == 'bink'
 	if conf.env.VIDEO_BINK and (conf.options.TESTS or conf.options.DEDICATED):
@@ -216,6 +233,8 @@ def define_platform(conf):
 	if conf.options.DEDICATED:
 		conf.options.SDL = False
 		conf.define('DEDICATED', 1)
+	elif conf.options.TOOLS:
+		conf.options.SDL = False
 
 	if conf.options.TESTS:
 		conf.define('UNITTESTS', 1)
@@ -318,6 +337,9 @@ def options(opt):
 	grp.add_option('--tests', action = 'store_true', dest = 'TESTS', default = False,
 		help = 'build unit tests [default: %default]')
 
+	grp.add_option('--tools', action = 'store_true', dest = 'TOOLS', default = False,
+		help = 'build isolated host content tools [default: %default]')
+
 	grp.add_option('-D', '--debug-engine', action = 'store_true', dest = 'DEBUG_ENGINE', default = False,
 		help = 'build with -DDEBUG [default: %default]')
 
@@ -327,6 +349,8 @@ def options(opt):
 		dest='PLATFORM_PROVIDER', help='linked window/input provider')
 	grp.add_option('--render-backend', choices=['legacy', 'vulkan'], default='legacy',
 		dest='RENDER_BACKEND', help='linked renderer; vulkan uses the DXVK compatibility provider')
+	grp.add_option('--physics-backend', choices=['ivp', 'box3d', 'both'], default='ivp',
+		dest='PHYSICS_BACKEND', help='production physics provider, or both for tests')
 	grp.add_option('--video-provider', choices=['none', 'bink'], default='none',
 		dest='VIDEO_PROVIDER', help='linked video decoder (bink requires FFmpeg development libraries)')
 	grp.add_option('--dxvk-root', default='', dest='DXVK_ROOT',
@@ -415,6 +439,19 @@ def check_deps(conf):
 		conf.env.FRAMEWORK_SYSTEMCONFIGURATION = "SystemConfiguration"
 
 	if conf.options.TESTS:
+		return
+
+	if conf.options.TOOLS:
+		if conf.env.DEST_OS == 'android':
+			conf.fatal('host tools cannot be built for the Android target')
+		if conf.env.DEST_OS != 'win32':
+			conf.check_cfg(package='libjpeg', uselib_store='JPEG', args=['--cflags', '--libs'])
+			conf.check_cfg(package='libpng', uselib_store='PNG', args=['--cflags', '--libs'])
+			conf.check_cfg(package='zlib', uselib_store='ZLIB', args=['--cflags', '--libs'])
+		else:
+			conf.check(lib='libz', uselib_store='ZLIB', define_name='USE_ZLIB')
+			conf.check(lib='libjpeg', uselib_store='JPEG', define_name='HAVE_JPEG')
+			conf.check(lib='libpng', uselib_store='PNG', define_name='HAVE_PNG')
 		return
 
 	if conf.env.DEST_OS != 'android':
@@ -685,6 +722,8 @@ def configure(conf):
 
 	if conf.options.TESTS:
 		conf.add_subproject(projects['tests'])
+	elif conf.options.TOOLS:
+		conf.add_subproject(projects['tools'])
 	elif conf.options.DEDICATED:
 		conf.add_subproject(projects['dedicated'])
 	else:
@@ -718,6 +757,8 @@ def build(bld):
 
 	if bld.env.TESTS:
 		bld.add_subproject(projects['tests'])
+	elif bld.env.TOOLS:
+		bld.add_subproject(projects['tools'])
 	elif bld.env.DEDICATED:
 		bld.add_subproject(projects['dedicated'])
 	else:

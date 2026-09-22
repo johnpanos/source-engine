@@ -41,7 +41,6 @@
 #ifdef WIN32
 #include "windows.h"
 #endif
-#include "ilaunchabledll.h"
 #include "ivtex.h"
 #include "appframework/IAppSystemGroup.h"
 
@@ -67,7 +66,7 @@ static bool g_CreateDir = true;
 static bool g_UseGameDir = true;
 
 static bool g_bWarningsAsErrors = false;
-static bool g_bUsedAsLaunchableDLL = false;
+static bool g_bUsedAsCommandLineTool = false;
 
 static char g_ForcedOutputDir[MAX_PATH];
 
@@ -671,7 +670,7 @@ static ImageFormat ComputeDesiredImageFormat( IVTFTexture *pTexture, VTexConfigI
 	if ( pTexture->Format() == IMAGE_FORMAT_RGB323232F )
 	{
 #ifndef DEBUG_NO_COMPRESSION
-		if ( g_bUsedAsLaunchableDLL && !( info.m_vtfProcOptions.flags0 & VtfProcessingOptions::OPT_NOCOMPRESS ) )
+		if ( g_bUsedAsCommandLineTool && !( info.m_vtfProcOptions.flags0 & VtfProcessingOptions::OPT_NOCOMPRESS ) )
 		{
 			return IMAGE_FORMAT_BGRA8888;
 		}
@@ -2173,7 +2172,7 @@ static bool LoadConfigFile( const char *pFileBaseName, VTexConfigInfo_t &info, b
 
 			if ( g_eMode == eModePFM )
 			{
-				if ( g_bUsedAsLaunchableDLL && !( info.m_vtfProcOptions.flags0 & VtfProcessingOptions::OPT_NOCOMPRESS ) )
+				if ( g_bUsedAsCommandLineTool && !( info.m_vtfProcOptions.flags0 & VtfProcessingOptions::OPT_NOCOMPRESS ) )
 				{
 					info.m_nFlags |= TEXTUREFLAGS_NOMIP;
 				}
@@ -2600,15 +2599,15 @@ static SpewRetval_t VTexOutputFunc( SpewType_t spewType, char const *pMsg )
 }
 
 
-class CVTex : public CTier2AppSystem< IVTex >, public ILaunchableDLL
+class CVTex : public CTier2AppSystem< IVTex >
 {
 public:
 	int VTex( int argc, char **argv );
 
-	// ILaunchableDLL, used by vtex.exe.
-	virtual int main( int argc, char **argv )
+	// Directly linked command-line adapter used by the vtex tool product.
+	int RunCommandLine( int argc, char **argv )
 	{
-		g_bUsedAsLaunchableDLL = true;
+		g_bUsedAsCommandLineTool = true;
 
 		// Being used as a launchable DLL, we don't want to blow away the host app's command line
 		CUtlString strOrigCmdLine( CommandLine()->GetCmdLine() );
@@ -2686,7 +2685,7 @@ int CVTex::VTex( int argc, char **argv )
 {
 //	CommandLine()->CreateCmdLine( argc, argv );
 
-	if ( g_bUsedAsLaunchableDLL )
+	if ( g_bUsedAsCommandLineTool )
 	{
 		SpewOutputFunc( VTexOutputFunc );
 	}
@@ -2820,7 +2819,7 @@ int CVTex::VTex( int argc, char **argv )
 		FileSystem_Term();
 	}
 
-	if ( g_bUsedAsLaunchableDLL )
+	if ( g_bUsedAsCommandLineTool )
 	{
 		// Make sure any further spew doesn't call the function in this module (which will be unloaded shortly)
 		SpewOutputFunc( NULL );
@@ -2831,4 +2830,8 @@ int CVTex::VTex( int argc, char **argv )
 
 CVTex g_VTex;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CVTex, IVTex, IVTEX_VERSION_STRING, g_VTex );
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CVTex, ILaunchableDLL, LAUNCHABLE_DLL_INTERFACE_VERSION, g_VTex );
+
+DLL_EXPORT int VTex_RunCommandLine( int argc, char **argv )
+{
+	return g_VTex.RunCommandLine( argc, argv );
+}

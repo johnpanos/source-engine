@@ -855,14 +855,9 @@ $Project "sfmobjects"
 	"sfmobjects\sfmobjects.vpc" [$WIN32]
 }
 
-$Project "shadercompile_dll"
+$Project "shadercompile"
 {
-	"utils\shadercompile\shadercompile_dll.vpc" [$WIN32]
-}
-
-$Project "shadercompile_launcher"
-{
-	"utils\shadercompile_launcher\shadercompile_launcher.vpc" [$WIN32]
+	"utils\shadercompile\shadercompile.vpc" [$WIN32]
 }
 
 $Project "remoteshadercompile"
@@ -1090,14 +1085,9 @@ $Project "testprocess"
 	"unittests\testprocess\testprocess.vpc" [$WINDOWS]
 }
 
-$Project "texturecompile_dll"
+$Project "texturecompile"
 {
-	"utils\texturecompile\texturecompile_dll.vpc" [$WIN32]
-}
-
-$Project "texturecompile_launcher"
-{
-	"utils\texturecompile_launcher\texturecompile_launcher.vpc" [$WIN32]
+	"utils\texturecompile\texturecompile.vpc" [$WIN32]
 }
 
 $Project "texturesynth"
@@ -1436,9 +1426,9 @@ $Project "vtex_dll"
 	"utils\vtex\vtex_dll.vpc" [ $WINDOWS || $POSIX ]
 }
 
-$Project "vtex_launcher"
+$Project "vtex"
 {
-	"utils\vtex\vtex_launcher.vpc" [$WIN32]
+	"utils\vtex\vtex.vpc" [$WIN32]
 }
 
 $Project "vtf"
@@ -1461,14 +1451,9 @@ $Project "vtfscrew"
 	"utils\vtfscrew\vtfscrew.vpc" [$WIN32]
 }
 
-$Project "vvis_dll"
+$Project "vvis"
 {
-	"utils\vvis\vvis_dll.vpc" [$WIN32]
-}
-
-$Project "vvis_launcher"
-{
-	"utils\vvis_launcher\vvis_launcher.vpc" [$WIN32]
+	"utils\vvis\vvis.vpc" [$WIN32]
 }
 
 $Project "vweightexp"

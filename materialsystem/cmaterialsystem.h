@@ -13,6 +13,7 @@
 
 #include "materialsystem_global.h"
 #include "materialsystem/imaterialsystem.h"
+#include "materialsystem/imaterialsystemwindowresize.h"
 #include "materialsystem/ishaderapi.h"
 #include "imaterialinternal.h"
 #include "imaterialsysteminternal.h"
@@ -27,6 +28,8 @@
 #include "cmatrendercontext.h"
 #include "cmatqueuedrendercontext.h"
 #include "materialsystem_global.h"
+
+#include <atomic>
 
 #ifndef MATSYS_INTERNAL
 #error "This file is private to the implementation of IMaterialSystem/IMaterialSystemInternal"
@@ -55,7 +58,9 @@ extern CThreadFastMutex g_MatSysMutex;
 //-----------------------------------------------------------------------------
 
 
-class CMaterialSystem : public CTier2AppSystem< IMaterialSystemInternal >, public IShaderUtil
+class CMaterialSystem : public CTier2AppSystem< IMaterialSystemInternal >,
+	public IShaderUtil,
+	public IMaterialSystemWindowResize
 {
 	typedef CTier2AppSystem< IMaterialSystemInternal > BaseClass;
 public:
@@ -92,6 +97,8 @@ public:
 	void									ModShutdown();
 	bool BindShaderProvider( const render::LegacyShaderProvider &provider );
 	bool BindBuiltinShaderProvider( const BuiltinShaderProvider &provider );
+	bool RequestWindowResize( const MaterialWindowResizeRequest_t &request ) override;
+	MaterialWindowResizeStatus_t GetWindowResizeStatus() const override;
 
 private:
 	// Used to dynamically load and unload the shader api
@@ -593,6 +600,7 @@ private:
 	friend CMaterialSystem *CMatLightmaps::GetMaterialSystem() const;
 
 	void ThreadExecuteQueuedContext( CMatQueuedRenderContext *pContext );
+	void ExecuteWindowResizeRequest();
 
 	IThreadPool * CreateMatQueueThreadPool();
 	void DestroyMatQueueThreadPool();
@@ -615,6 +623,14 @@ private:
 	MaterialThreadMode_t					m_IdealThreadMode;
 	bool									m_bThreadingNotAvailable;		// this is true if the VirtualAlloc()'s in the threading fail to allocate
 	int										m_nServiceThread;
+
+	std::atomic<uint64>					m_nWindowResizeRequestedSerial;
+	std::atomic<uint64>					m_nWindowResizeExecutingSerial;
+	std::atomic<uint64>					m_nWindowResizeCompletedSerial;
+	std::atomic<uint32>					m_nWindowResizeWidth;
+	std::atomic<uint32>					m_nWindowResizeHeight;
+	std::atomic<uint32>					m_nWindowResizeCompletedWidth;
+	std::atomic<uint32>					m_nWindowResizeCompletedHeight;
 
 	//---------------------------------
 

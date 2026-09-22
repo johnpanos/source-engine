@@ -2624,7 +2624,10 @@ bool CShaderDeviceDx8::ResizeWindow( const ShaderDeviceInfo_t &info )
 	if ( info.m_bResizing )
 		return false;
 
-	g_pShaderDeviceMgr->InvokeModeChangeCallbacks();
+	// Interactive resize is queued on the render worker. The engine commits its
+	// UI state on the main thread after the worker publishes completion.
+	if ( ThreadInMainThread() )
+		g_pShaderDeviceMgr->InvokeModeChangeCallbacks();
 
 	ReleaseResources();
 
@@ -2669,7 +2672,11 @@ void CShaderDeviceDx8::CheckDeviceLost( bool bOtherAppInitializing )
 	// but that seems to only make sense if we have resizable windows where 
 	// we do *not* allocate buffers as large as the entire current video mode
 	// which we're not doing
-#ifdef _WIN32
+#if defined( USE_SDL3 )
+	// SDL window queries are main-thread-only. Zero-sized drawables are filtered
+	// by the window provider before a resize request reaches this worker.
+	m_bIsMinimized = false;
+#elif defined( _WIN32 )
 	m_bIsMinimized = ( static_cast<BOOL>(IsIconic( ( HWND )m_hWnd )) == (BOOL)TRUE );
 #else
 	m_bIsMinimized = ( IsIconic( (VD3DHWND)m_hWnd ) == TRUE );
@@ -2929,6 +2936,7 @@ void CShaderDeviceDx8::Present()
 	}
 
 	HRESULT hr = S_OK;
+	bool croppedPresent = false;
 
 	// if we're in queued mode, don't present if the device is already lost
 	bool bValidPresent = true;
@@ -2954,14 +2962,21 @@ void CShaderDeviceDx8::Present()
 	}
 
 	// If we're not iconified, try to present (without this check, we can flicker when Alt-Tabbed away)
-#ifdef _WIN32
+#if defined( USE_SDL3 )
+	if ( bValidPresent )
+#elif defined( _WIN32 )
 	if ( false || (IsIconic( ( HWND )m_hWnd ) == 0 && bValidPresent) )
 #else
 	if ( false || (IsIconic( (VD3DHWND)m_hWnd ) == 0 && bValidPresent) )
 #endif
 	{
+#if defined( USE_SDL3 )
+		if ( false )
+#else
 		if ( IsPC() && ( m_IsResizing || ( m_ViewHWnd != (VD3DHWND)m_hWnd ) ) )
+#endif
 		{
+			croppedPresent = true;
 			RECT destRect;
 			#ifndef DX_TO_GL_ABSTRACTION
 					GetClientRect( ( HWND )m_ViewHWnd, &destRect );
@@ -2986,7 +3001,7 @@ void CShaderDeviceDx8::Present()
 			hr = Dx9Device()->Present( 0, 0, 0, 0 );
 		}
 #ifdef USE_DXVK
-		renderdiagnostics::Current().Present( hr );
+		renderdiagnostics::Current().Present( hr, croppedPresent );
 #endif
 	}
 
@@ -3226,4 +3241,3 @@ IIndexBuffer *CShaderDeviceDx8::GetDynamicIndexBuffer( MaterialIndexFormat_t fmt
 	LOCK_SHADERAPI();
 	return MeshMgr()->GetDynamicIndexBuffer( fmt, bBuffered );
 }
-

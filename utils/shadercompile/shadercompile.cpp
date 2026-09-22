@@ -31,14 +31,11 @@
 #include "threads.h"
 #include "tier0/dbg.h"
 #include "tier1/smartptr.h"
-#include "interface.h"
-#include "ishadercompiledll.h"
 #include <direct.h>
 #include "io.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include "materialsystem/shader_vcs_version.h"
-#include "ilaunchabledll.h"
 #include <tier1/diff.h>
 #include "utlnodehash.h"
 #include "lzma/lzma.h"
@@ -2675,25 +2672,8 @@ int ShaderCompile_Main( int argc, char* argv[] )
 	return g_Master_ShaderHadError.GetNumStrings();
 }
 
-class CShaderCompileDLL : public IShaderCompileDLL
+int main( int argc, char **argv )
 {
-	int main( int argc, char **argv );
-};
-
-int CShaderCompileDLL::main( int argc, char **argv )
-{
+	CommandLine()->CreateCmdLine( argc, argv );
 	return ShaderCompile_Main( argc, argv );
 }
-
-EXPOSE_SINGLE_INTERFACE( CShaderCompileDLL, IShaderCompileDLL, SHADER_COMPILE_INTERFACE_VERSION );
-
-
-class CLaunchableDLL : public ILaunchableDLL
-{
-	int main( int argc, char **argv )
-	{
-		return ShaderCompile_Main( argc, argv );
-	}
-};
-
-EXPOSE_SINGLE_INTERFACE( CLaunchableDLL, ILaunchableDLL, LAUNCHABLE_DLL_INTERFACE_VERSION );

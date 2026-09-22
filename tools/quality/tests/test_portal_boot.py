@@ -89,19 +89,36 @@ class AcceptanceTests(unittest.TestCase):
 class ResizeAcceptanceTests(unittest.TestCase):
     def test_resize_workload_uses_the_frame_command_buffer(self):
         self.assertEqual(
-            ["+wait", "120", "+mat_resizewindow", "641", "479", "+wait", "12",
+            ["+mat_queue_mode", "2", "+wait", "120", "+mat_resizewindow", "641", "479", "+wait", "12",
              "+screenshot", "+wait", "1", "+wait", "10", "+quit"],
             boot.resize_commands(((641, 479),)))
 
     def test_every_resize_needs_consumption_and_nonblank_matching_image(self):
         expected = ((641, 479), (1024, 768))
-        log = "".join("RFC0001 resize: drawable=%dx%d render=%dx%d buffer=1920x1080\n" % (w, h, w, h) for w, h in expected)
-        images = [{"width": w, "height": h, "has_scene_detail": True} for w, h in expected]
-        self.assertEqual("pass", boot.inspect_resize(log, images, expected)["status"])
-        self.assertEqual("fail", boot.inspect_resize(log, images[:1], expected)["status"])
-        self.assertEqual("fail", boot.inspect_resize("", images, expected)["status"])
+        log = "".join(
+            "RFC0001 resize observed: logical=%dx%d drawable=%dx%d\n"
+            "RFC0001 resize queued: serial=%d drawable=%dx%d request_us=12\n"
+            "RFC0001 resize complete: serial=%d drawable=%dx%d main_wait_us=0\n" %
+            (w, h, w * 2, h * 2, serial, w * 2, h * 2, serial, w * 2, h * 2)
+            for serial, (w, h) in enumerate(expected, 1))
+        images = [{"width": w * 2, "height": h * 2, "has_scene_detail": True}
+                  for w, h in expected]
+        trace = [{"event": "present", "cropped": False, "result": 0}]
+        self.assertEqual("pass", boot.inspect_resize(log, images, expected, trace)["status"])
+        self.assertEqual("fail", boot.inspect_resize(log, images[:1], expected, trace)["status"])
+        self.assertEqual("fail", boot.inspect_resize("", images, expected, trace)["status"])
         images[0]["has_scene_detail"] = False
-        self.assertEqual("fail", boot.inspect_resize(log, images, expected)["status"])
+        self.assertEqual("fail", boot.inspect_resize(log, images, expected, trace)["status"])
+
+    def test_resize_rejects_main_thread_wait_budget_and_cropped_present(self):
+        log = ("RFC0001 resize observed: logical=641x479 drawable=1282x958\n"
+               "RFC0001 resize queued: serial=1 drawable=1282x958 request_us=2001\n"
+               "RFC0001 resize complete: serial=1 drawable=1282x958 main_wait_us=1\n")
+        images = [{"width": 1282, "height": 958, "has_scene_detail": True}]
+        result = boot.inspect_resize(
+            log, images, ((641, 479),), [{"event": "present", "cropped": True}])
+        self.assertEqual("fail", result["status"])
+        self.assertEqual(3, len(result["failures"]))
 
 
 class ProviderCatalogTests(unittest.TestCase):

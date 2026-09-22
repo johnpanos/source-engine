@@ -92,6 +92,8 @@ EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CMaterialSystem, IMaterialSystem,
 MaterialSystem_Config_t g_config;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( MaterialSystem_Config_t, MaterialSystem_Config_t, MATERIALSYSTEM_CONFIG_VERSION, g_config );
 
+static void ConvertModeStruct( ShaderDeviceInfo_t *pMode, const MaterialSystem_Config_t &config );
+
 //-----------------------------------------------------------------------------
 
 CThreadFastMutex g_MatSysMutex;
@@ -508,6 +510,13 @@ void CMaterialSystem::CleanUpErrorMaterial()
 //-----------------------------------------------------------------------------
 CMaterialSystem::CMaterialSystem()
 {
+	m_nWindowResizeRequestedSerial.store( 0, std::memory_order_relaxed );
+	m_nWindowResizeExecutingSerial.store( 0, std::memory_order_relaxed );
+	m_nWindowResizeCompletedSerial.store( 0, std::memory_order_relaxed );
+	m_nWindowResizeWidth.store( 0, std::memory_order_relaxed );
+	m_nWindowResizeHeight.store( 0, std::memory_order_relaxed );
+	m_nWindowResizeCompletedWidth.store( 0, std::memory_order_relaxed );
+	m_nWindowResizeCompletedHeight.store( 0, std::memory_order_relaxed );
 	m_nRenderThreadID = (uintp)-1;
 	m_hAsyncLoadFileCache = NULL;
 	m_pMaterialProxyFactory = NULL;
@@ -794,6 +803,12 @@ void *CMaterialSystem::QueryShaderAPI( const char *name )
 //-----------------------------------------------------------------------------
 void *CMaterialSystem::QueryInterface( const char *pInterfaceName )
 {
+	if ( pInterfaceName &&
+	     !Q_strcmp( pInterfaceName, MATERIALSYSTEM_WINDOW_RESIZE_INTERFACE_VERSION ) )
+	{
+		return static_cast<IMaterialSystemWindowResize *>( this );
+	}
+
 	// Returns various interfaces supported by the shader API dll
 	void *pInterface = QueryShaderAPI( pInterfaceName );
 	if ( pInterface )
@@ -801,6 +816,68 @@ void *CMaterialSystem::QueryInterface( const char *pInterfaceName )
 
 	CreateInterfaceFn factory = Sys_GetFactoryThis();	// This silly construction is necessary
 	return factory( pInterfaceName, NULL );				// to prevent the LTCG compiler from crashing.
+}
+
+bool CMaterialSystem::RequestWindowResize( const MaterialWindowResizeRequest_t &request )
+{
+	if ( !ThreadInMainThread() || request.m_nSerial == 0 || request.m_nDrawableWidth == 0 ||
+	     request.m_nDrawableHeight == 0 || m_ThreadMode != MATERIAL_QUEUED_THREADED )
+	{
+		return false;
+	}
+
+	CMatCallQueue *queue = GetRenderCallQueue();
+	if ( !queue )
+		return false;
+
+	const uint64 requested = m_nWindowResizeRequestedSerial.load( std::memory_order_acquire );
+	if ( request.m_nSerial <= requested )
+		return request.m_nSerial == requested;
+
+	g_config.m_VideoMode.m_Width = static_cast<int>( request.m_nDrawableWidth );
+	g_config.m_VideoMode.m_Height = static_cast<int>( request.m_nDrawableHeight );
+	g_config.SetFlag( MATSYS_VIDCFG_FLAGS_RESIZING, false );
+	m_nWindowResizeWidth.store( request.m_nDrawableWidth, std::memory_order_relaxed );
+	m_nWindowResizeHeight.store( request.m_nDrawableHeight, std::memory_order_relaxed );
+	m_nWindowResizeRequestedSerial.store( request.m_nSerial, std::memory_order_release );
+	queue->QueueCall( this, &CMaterialSystem::ExecuteWindowResizeRequest );
+	return true;
+}
+
+MaterialWindowResizeStatus_t CMaterialSystem::GetWindowResizeStatus() const
+{
+	MaterialWindowResizeStatus_t status = {};
+	status.m_nRequestedSerial =
+	    m_nWindowResizeRequestedSerial.load( std::memory_order_acquire );
+	status.m_nCompletedSerial =
+	    m_nWindowResizeCompletedSerial.load( std::memory_order_acquire );
+	status.m_nDrawableWidth =
+	    m_nWindowResizeCompletedWidth.load( std::memory_order_relaxed );
+	status.m_nDrawableHeight =
+	    m_nWindowResizeCompletedHeight.load( std::memory_order_relaxed );
+	return status;
+}
+
+void CMaterialSystem::ExecuteWindowResizeRequest()
+{
+	const uint64 serial = m_nWindowResizeRequestedSerial.load( std::memory_order_acquire );
+	if ( serial == 0 ||
+	     serial <= m_nWindowResizeCompletedSerial.load( std::memory_order_acquire ) )
+	{
+		return;
+	}
+
+	MaterialSystem_Config_t config = g_config;
+	config.m_VideoMode.m_Width =
+	    static_cast<int>( m_nWindowResizeWidth.load( std::memory_order_relaxed ) );
+	config.m_VideoMode.m_Height =
+	    static_cast<int>( m_nWindowResizeHeight.load( std::memory_order_relaxed ) );
+	config.SetFlag( MATSYS_VIDCFG_FLAGS_RESIZING, false );
+
+	ShaderDeviceInfo_t info;
+	ConvertModeStruct( &info, config );
+	m_nWindowResizeExecutingSerial.store( serial, std::memory_order_release );
+	g_pShaderAPI->ChangeVideoMode( info );
 }
 
 
@@ -3500,7 +3577,13 @@ static const char *GetMatString( enum MaterialThreadMode_t ThreadMode )
 }
 #endif
 
-ConVar mat_queue_mode( "mat_queue_mode", "-1", FCVAR_ARCHIVE, "The queue/thread mode the material system should use: -1=default, 0=synchronous single thread"
+ConVar mat_queue_mode( "mat_queue_mode",
+#if defined( USE_SDL3 )
+	"2",
+#else
+	"-1",
+#endif
+	FCVAR_ARCHIVE, "The queue/thread mode the material system should use: -1=default, 0=synchronous single thread"
 #ifdef MAT_QUEUE_MODE_PROFILE
 	", 1=queued single thread"
 #endif
@@ -3521,6 +3604,16 @@ void CMaterialSystem::ThreadExecuteQueuedContext( CMatQueuedRenderContext *pCont
 	IMatRenderContextInternal* pSavedRenderContext = m_pRenderContext.Get();
 	m_pRenderContext.Set( &m_HardwareRenderContext );
 	pContext->EndQueue( true );
+	const uint64 resizeSerial =
+	    m_nWindowResizeExecutingSerial.exchange( 0, std::memory_order_acq_rel );
+	if ( resizeSerial != 0 )
+	{
+		m_nWindowResizeCompletedWidth.store(
+		    m_nWindowResizeWidth.load( std::memory_order_relaxed ), std::memory_order_relaxed );
+		m_nWindowResizeCompletedHeight.store(
+		    m_nWindowResizeHeight.load( std::memory_order_relaxed ), std::memory_order_relaxed );
+		m_nWindowResizeCompletedSerial.store( resizeSerial, std::memory_order_release );
+	}
 	m_pRenderContext.Set( pSavedRenderContext );
 	m_nRenderThreadID = (uintp)-1;
 }

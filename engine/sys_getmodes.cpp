@@ -41,6 +41,7 @@ typedef void *HDC;
 #include "bitmap/tgawriter.h"
 #include "vtf/vtf.h"
 #include "materialsystem/materialsystem_config.h"
+#include "materialsystem/imaterialsystemwindowresize.h"
 #include "materialsystem/itexture.h"
 #include "materialsystem/imaterialsystemhardwareconfig.h"
 #include "jpeglib/jpeglib.h"
@@ -2218,7 +2219,7 @@ public:
     typedef CVideoMode_Common BaseClass;
     
     CVideoMode_MaterialSystem( );
-	void UpdateWindowSize();
+	bool UpdateWindowSize();
 
 	virtual bool        Init( );
     virtual void        Shutdown( void );
@@ -2232,6 +2233,14 @@ public:
 private:
     virtual void        ReleaseFullScreen( void );
     virtual void        ChangeDisplaySettingsToFullscreen( int nWidth, int nHeight, int nBPP );
+
+	IMaterialSystemWindowResize *m_pWindowResize;
+	uint m_nPendingDrawableWidth;
+	uint m_nPendingDrawableHeight;
+	double m_flPendingDrawableSince;
+	uint64 m_nNextResizeSerial;
+	uint64 m_nCompletedResizeSerial;
+	bool m_bResizeQueueWarning;
 
 #ifdef WIN32
 	int m_nLastCDSWidth;
@@ -2252,6 +2261,13 @@ static void VideoMode_AdjustForModeChange( void )
 //-----------------------------------------------------------------------------
 CVideoMode_MaterialSystem::CVideoMode_MaterialSystem( )
 {
+	m_pWindowResize = NULL;
+	m_nPendingDrawableWidth = 0;
+	m_nPendingDrawableHeight = 0;
+	m_flPendingDrawableSince = 0.0;
+	m_nNextResizeSerial = 0;
+	m_nCompletedResizeSerial = 0;
+	m_bResizeQueueWarning = false;
 #ifdef WIN32
 	m_nLastCDSWidth = 0;
 	m_nLastCDSHeight = 0;
@@ -2348,6 +2364,8 @@ bool CVideoMode_MaterialSystem::Init( )
         qsort( (void *)&m_rgModeList[0], m_nNumModes, sizeof(vmode_t), VideoModeCompare );
     }
 
+	m_pWindowResize = static_cast<IMaterialSystemWindowResize *>(
+	    materials->QueryInterface( MATERIALSYSTEM_WINDOW_RESIZE_INTERFACE_VERSION ) );
     materials->AddModeChangeCallBack( &VideoMode_AdjustForModeChange );
     SetInitialized( true );
     return true;
@@ -2357,6 +2375,7 @@ bool CVideoMode_MaterialSystem::Init( )
 void CVideoMode_MaterialSystem::Shutdown()
 {
     materials->RemoveModeChangeCallBack( &VideoMode_AdjustForModeChange );
+	m_pWindowResize = NULL;
     BaseClass::Shutdown();
 }
 
@@ -2411,56 +2430,110 @@ bool CVideoMode_MaterialSystem::SetMode( int nWidth, int nHeight, bool bWindowed
     return true;
 }
 
-// Native resize changes viewport/configuration before the next frame. The
-// existing resizing mode owns a persistent display-sized backbuffer, so dragging
-// never releases materials or submits an uninitialized replacement buffer.
-void CVideoMode_MaterialSystem::UpdateWindowSize()
+// SDL publishes the newest drawable extent on the main thread. During a drag,
+// the compositor scales complete frames from the current backbuffer. Once the
+// extent settles, one device reset is queued ahead of the next rendered frame.
+// The main thread never waits for that reset or for GPU completion.
+bool CVideoMode_MaterialSystem::UpdateWindowSize()
 {
 #if defined( USE_SDL3 )
 	if ( !m_bSetModeOnce || !m_bInitialized || !g_pLauncherMgr || InEditMode() ||
 	     UseVR() || ShouldForceVRActive() || m_bVROverride ||
-	     !g_pMaterialSystemConfig->Windowed() || !g_pMaterialSystemConfig->Resizing() )
-		return;
+	     !g_pMaterialSystemConfig->Windowed() || !m_pWindowResize )
+	{
+		return true;
+	}
+
+	const MaterialWindowResizeStatus_t status = m_pWindowResize->GetWindowResizeStatus();
+	if ( status.m_nRequestedSerial != status.m_nCompletedSerial )
+		return false;
+	if ( status.m_nCompletedSerial > m_nCompletedResizeSerial )
+	{
+		m_nCompletedResizeSerial = status.m_nCompletedSerial;
+		if ( CommandLine()->FindParm( "-resizetelemetry" ) )
+		{
+			Msg( "RFC0001 resize complete: serial=%llu drawable=%ux%u main_wait_us=0\n",
+			    static_cast<unsigned long long>( status.m_nCompletedSerial ),
+			    status.m_nDrawableWidth, status.m_nDrawableHeight );
+		}
+	}
+
 	uint drawableWidth = 0, drawableHeight = 0;
 	g_pLauncherMgr->DisplayedSize( drawableWidth, drawableHeight );
 	if ( !drawableWidth || !drawableHeight )
-		return;
-	int bufferWidth = 0, bufferHeight = 0;
-	materials->GetBackBufferDimensions( bufferWidth, bufferHeight );
-	if ( bufferWidth <= 0 || bufferHeight <= 0 )
-		return;
-	// Keep the display-sized allocation bounded even if the compositor allows a
-	// window larger than the display. Presentation scales the complete viewport.
-	const double scale = MIN( 1.0,
-	    MIN( double( bufferWidth ) / drawableWidth, double( bufferHeight ) / drawableHeight ) );
-	const int width = MAX( 1, int( drawableWidth * scale ) );
-	const int height = MAX( 1, int( drawableHeight * scale ) );
-	if ( width == GetModeWidth() && height == GetModeHeight() )
-		return;
+		return true;
+	if ( drawableWidth == static_cast<uint>( GetModeWidth() ) &&
+	     drawableHeight == static_cast<uint>( GetModeHeight() ) )
+	{
+		m_nPendingDrawableWidth = m_nPendingDrawableHeight = 0;
+		return true;
+	}
+
+	if ( drawableWidth != m_nPendingDrawableWidth ||
+	     drawableHeight != m_nPendingDrawableHeight )
+	{
+		m_nPendingDrawableWidth = drawableWidth;
+		m_nPendingDrawableHeight = drawableHeight;
+		m_flPendingDrawableSince = Plat_FloatTime();
+		if ( CommandLine()->FindParm( "-resizetelemetry" ) )
+		{
+			int logicalWidth = 0, logicalHeight = 0;
+			SDL_GetWindowSize( static_cast<SDL_Window *>( g_pLauncherMgr->GetWindowRef() ),
+			    &logicalWidth, &logicalHeight );
+			Msg( "RFC0001 resize observed: logical=%dx%d drawable=%ux%u\n", logicalWidth,
+			    logicalHeight, drawableWidth, drawableHeight );
+		}
+		return true;
+	}
+
+	const double settleSeconds = 0.060;
+	if ( Plat_FloatTime() - m_flPendingDrawableSince < settleSeconds )
+		return true;
+
+	MaterialWindowResizeRequest_t request = {};
+	request.m_nSerial = ++m_nNextResizeSerial;
+	request.m_nDrawableWidth = drawableWidth;
+	request.m_nDrawableHeight = drawableHeight;
+	const double requestStarted = Plat_FloatTime();
+	if ( !m_pWindowResize->RequestWindowResize( request ) )
+	{
+		--m_nNextResizeSerial;
+		if ( !m_bResizeQueueWarning )
+		{
+			Warning( "SDL3 resize is waiting for the queued render worker.\n" );
+			m_bResizeQueueWarning = true;
+		}
+		return true;
+	}
+	m_bResizeQueueWarning = false;
 
 	const int oldUIWidth = GetModeUIWidth(), oldUIHeight = GetModeUIHeight();
-	RequestedWindowVideoMode().width = width;
-	RequestedWindowVideoMode().height = height;
-	MaterialSystem_Config_t config = *g_pMaterialSystemConfig;
-	config.m_VideoMode.m_Width = width;
-	config.m_VideoMode.m_Height = height;
-	OverrideMaterialSystemConfig( config );
-	ResetCurrentModeForNewResolution( width, height, true );
-	game->SetWindowSize( width, height );
+	RequestedWindowVideoMode().width = drawableWidth;
+	RequestedWindowVideoMode().height = drawableHeight;
+	ResetCurrentModeForNewResolution( drawableWidth, drawableHeight, true );
+	game->SetWindowSize( drawableWidth, drawableHeight );
 	MarkClientViewRectDirty();
 	CMatRenderContextPtr context( materials );
-	context->Viewport( 0, 0, width, height );
+	context->Viewport( 0, 0, drawableWidth, drawableHeight );
 	vgui::surface()->OnScreenSizeChanged( oldUIWidth, oldUIHeight );
+	m_nPendingDrawableWidth = m_nPendingDrawableHeight = 0;
 	if ( CommandLine()->FindParm( "-resizetelemetry" ) )
-		Msg( "RFC0001 resize: drawable=%ux%u render=%dx%d buffer=%dx%d\n", drawableWidth,
-		    drawableHeight, width, height, bufferWidth, bufferHeight );
+	{
+		const uint64 requestMicros = static_cast<uint64>(
+		    ( Plat_FloatTime() - requestStarted ) * 1000000.0 );
+		Msg( "RFC0001 resize queued: serial=%llu drawable=%ux%u request_us=%llu\n",
+		    static_cast<unsigned long long>( request.m_nSerial ), drawableWidth, drawableHeight,
+		    static_cast<unsigned long long>( requestMicros ) );
+	}
 #endif
+	return true;
 }
 
-void VideoMode_UpdateWindowSize()
+bool VideoMode_UpdateWindowSize()
 {
 	if ( videomode )
-		static_cast<CVideoMode_MaterialSystem *>( videomode )->UpdateWindowSize();
+		return static_cast<CVideoMode_MaterialSystem *>( videomode )->UpdateWindowSize();
+	return true;
 }
 
 //-----------------------------------------------------------------------------

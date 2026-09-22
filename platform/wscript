@@ -26,3 +26,15 @@ def build(bld):
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'tool_process_client.cpp' ],
+		target    = 'platform_tool_process',
+		name      = 'platform_tool_process',
+		features  = 'cxx capability_strict',
+		includes  = [ '../public' ],
+		defines   = [],
+		use       = [],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)

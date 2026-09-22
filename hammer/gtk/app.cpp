@@ -113,8 +113,9 @@ void UpdateChrome( AppState *st )
 	if ( st->window )
 	{
 		const std::string base =
-		    st->currentPath.empty() ? std::string( "untitled" )
-		                            : st->currentPath.substr( st->currentPath.find_last_of( "/" ) + 1 );
+		    st->currentPath.empty()
+		        ? std::string( "untitled" )
+		        : st->currentPath.substr( st->currentPath.find_last_of( "/" ) + 1 );
 		const std::string title =
 		    "Hammer - [" + base + ( st->controller.IsModified() ? " *]" : "]" );
 		gtk_window_set_title( GTK_WINDOW( st->window ), title.c_str() );
@@ -435,8 +436,8 @@ void WidgetToWorld( Viewport *vp, double wx, double wy, double &u, double &v )
 	const int h = gtk_widget_get_height( GTK_WIDGET( vp->area ) ) * scale;
 	float fu = 0.0f;
 	float fv = 0.0f;
-	vp->renderer.PixelToWorld( static_cast<float>( wx * scale ), static_cast<float>( wy * scale ), w,
-	    h, fu, fv );
+	vp->renderer.PixelToWorld(
+	    static_cast<float>( wx * scale ), static_cast<float>( wy * scale ), w, h, fu, fv );
 	u = fu;
 	v = fv;
 }
@@ -578,8 +579,8 @@ gboolean OnScroll( GtkEventControllerScroll *ctrl, double dx, double dy, gpointe
 		}
 		else
 		{
-			vp->renderer.PanScroll( static_cast<float>( dx ) * gain * 0.5f,
-			    static_cast<float>( dy ) * gain * 0.5f );
+			vp->renderer.PanScroll(
+			    static_cast<float>( dx ) * gain * 0.5f, static_cast<float>( dy ) * gain * 0.5f );
 		}
 	}
 	else if ( ctrlHeld )
@@ -622,8 +623,8 @@ void OnZoomChanged( GtkGestureZoom *zoom, double scaleRatio, gpointer user_data 
 	gtk_gl_area_queue_render( vp->area );
 }
 
-gboolean OnKeyPressed( GtkEventControllerKey *, guint keyval, guint, GdkModifierType,
-    gpointer user_data )
+gboolean OnKeyPressed(
+    GtkEventControllerKey *, guint keyval, guint, GdkModifierType, gpointer user_data )
 {
 	AppState *st = static_cast<AppState *>( user_data );
 	switch ( keyval )
@@ -662,8 +663,8 @@ gboolean OnKeyPressed( GtkEventControllerKey *, guint keyval, guint, GdkModifier
 
 // ---- Widget construction ---------------------------------------------------
 
-GtkWidget *MakeViewport( AppState *st, int index, hammergtk::ViewMode mode, hammer::app::ViewId vid,
-    const char *label )
+GtkWidget *MakeViewport(
+    AppState *st, int index, hammergtk::ViewMode mode, hammer::app::ViewId vid, const char *label )
 {
 	Viewport &vp = st->viewports[index];
 	vp.app = st;
@@ -762,8 +763,8 @@ GtkWidget *MakeToolPalette( AppState *st )
 	gtk_widget_set_margin_top( palette, 3 );
 
 	GtkWidget *select = gtk_toggle_button_new();
-	gtk_button_set_child( GTK_BUTTON( select ),
-	    gtk_image_new_from_icon_name( "edit-select-all-symbolic" ) );
+	gtk_button_set_child(
+	    GTK_BUTTON( select ), gtk_image_new_from_icon_name( "edit-select-all-symbolic" ) );
 	gtk_widget_set_tooltip_text( select, "Selection Tool (S)" );
 	gtk_toggle_button_set_active( GTK_TOGGLE_BUTTON( select ), TRUE );
 	st->selectBtn = GTK_TOGGLE_BUTTON( select );
@@ -771,7 +772,8 @@ GtkWidget *MakeToolPalette( AppState *st )
 	gtk_box_append( GTK_BOX( palette ), select );
 
 	GtkWidget *block = gtk_toggle_button_new();
-	gtk_button_set_child( GTK_BUTTON( block ), gtk_image_new_from_icon_name( "view-grid-symbolic" ) );
+	gtk_button_set_child(
+	    GTK_BUTTON( block ), gtk_image_new_from_icon_name( "view-grid-symbolic" ) );
 	gtk_widget_set_tooltip_text( block, "Block Tool (B)" );
 	gtk_toggle_button_set_group( GTK_TOGGLE_BUTTON( block ), GTK_TOGGLE_BUTTON( select ) );
 	st->blockBtn = GTK_TOGGLE_BUTTON( block );
@@ -868,7 +870,8 @@ GtkWidget *MakeObjectBar( AppState *st )
 	gtk_box_append( GTK_BOX( bar ), gtk_label_new( "Current texture:" ) );
 	GtkWidget *swatch = gtk_drawing_area_new();
 	gtk_widget_set_size_request( swatch, -1, 100 );
-	gtk_drawing_area_set_draw_func( GTK_DRAWING_AREA( swatch ), DrawTextureSwatch, nullptr, nullptr );
+	gtk_drawing_area_set_draw_func(
+	    GTK_DRAWING_AREA( swatch ), DrawTextureSwatch, nullptr, nullptr );
 	gtk_box_append( GTK_BOX( bar ), swatch );
 	GtkWidget *texName = gtk_label_new( "brick/brickfloor001a  512x512" );
 	gtk_widget_add_css_class( texName, "caption" );
@@ -963,7 +966,8 @@ GtkWidget *MakeStatusBar( AppState *st )
 	gtk_widget_set_margin_top( bar, 2 );
 	gtk_widget_set_margin_bottom( bar, 2 );
 
-	GtkWidget *help = gtk_label_new( "For Help, press F1  ·  drag to draw/select, MMB or scroll to pan" );
+	GtkWidget *help =
+	    gtk_label_new( "For Help, press F1  ·  drag to draw/select, MMB or scroll to pan" );
 	gtk_label_set_xalign( GTK_LABEL( help ), 0.0f );
 	gtk_widget_set_hexpand( help, TRUE );
 	st->helpLabel = GTK_LABEL( help );
@@ -985,18 +989,18 @@ GtkWidget *MakeStatusBar( AppState *st )
 GtkWidget *MakeViewportGrid( AppState *st )
 {
 	GtkWidget *topPane = gtk_paned_new( GTK_ORIENTATION_HORIZONTAL );
-	gtk_paned_set_start_child( GTK_PANED( topPane ),
-	    MakeViewport( st, 0, hammergtk::ViewMode::Perspective, hammer::app::ViewId::Camera,
-	        "camera" ) );
+	gtk_paned_set_start_child(
+	    GTK_PANED( topPane ), MakeViewport( st, 0, hammergtk::ViewMode::Perspective,
+	                              hammer::app::ViewId::Camera, "camera" ) );
 	gtk_paned_set_end_child( GTK_PANED( topPane ),
 	    MakeViewport( st, 1, hammergtk::ViewMode::Top, hammer::app::ViewId::Top, "top (x/y)" ) );
 	gtk_paned_set_resize_start_child( GTK_PANED( topPane ), TRUE );
 	gtk_paned_set_resize_end_child( GTK_PANED( topPane ), TRUE );
 
 	GtkWidget *bottomPane = gtk_paned_new( GTK_ORIENTATION_HORIZONTAL );
-	gtk_paned_set_start_child( GTK_PANED( bottomPane ),
-	    MakeViewport( st, 2, hammergtk::ViewMode::Front, hammer::app::ViewId::Front,
-	        "front (x/z)" ) );
+	gtk_paned_set_start_child(
+	    GTK_PANED( bottomPane ), MakeViewport( st, 2, hammergtk::ViewMode::Front,
+	                                 hammer::app::ViewId::Front, "front (x/z)" ) );
 	gtk_paned_set_end_child( GTK_PANED( bottomPane ),
 	    MakeViewport( st, 3, hammergtk::ViewMode::Side, hammer::app::ViewId::Side, "side (y/z)" ) );
 	gtk_paned_set_resize_start_child( GTK_PANED( bottomPane ), TRUE );
@@ -1138,10 +1142,14 @@ void AddActions( GtkApplication *app, AppState *st )
 		const char *accel;
 	};
 	const Accel accels[] = {
-	    { "app.new", "<Control>n" },   { "app.open", "<Control>o" },
-	    { "app.save", "<Control>s" },  { "app.saveas", "<Control><Shift>s" },
-	    { "app.quit", "<Control>q" },  { "app.undo", "<Control>z" },
-	    { "app.redo", "<Control>y" },  { "app.reset-views", "<Control>r" },
+	    { "app.new", "<Control>n" },
+	    { "app.open", "<Control>o" },
+	    { "app.save", "<Control>s" },
+	    { "app.saveas", "<Control><Shift>s" },
+	    { "app.quit", "<Control>q" },
+	    { "app.undo", "<Control>z" },
+	    { "app.redo", "<Control>y" },
+	    { "app.reset-views", "<Control>r" },
 	};
 	for ( const Accel &a : accels )
 	{
@@ -1164,8 +1172,12 @@ int RunApp( AppState *st, char **argv )
 } // namespace
 
 // Headless offscreen rendering (offscreen.cpp).
-int RenderScreenshot( const std::string &vmfPath, const std::string &outPpm, int width, int height );
+int RenderScreenshot(
+    const std::string &vmfPath, const std::string &outPpm, int width, int height );
 int RenderQuad( const std::string &vmfPath, const std::string &outPpm, int tileW, int tileH );
+int RenderControllerDemo( const std::string &outPpm, int tileW, int tileH );
+int RenderControllerLoad(
+    const std::string &vmfPath, const std::string &outPpm, int tileW, int tileH );
 
 int main( int argc, char **argv )
 {
@@ -1173,6 +1185,9 @@ int main( int argc, char **argv )
 	std::string screenshotIn;
 	std::string quadOut;
 	std::string quadIn;
+	std::string demoOut;
+	std::string cquadOut;
+	std::string cquadIn;
 	std::string openPath;
 	int width = 1024;
 	int height = 768;
@@ -1189,6 +1204,15 @@ int main( int argc, char **argv )
 		{
 			quadOut = argv[++i];
 			quadIn = argv[++i];
+		}
+		else if ( a == "--demo" && i + 1 < argc )
+		{
+			demoOut = argv[++i];
+		}
+		else if ( a == "--cquad" && i + 2 < argc )
+		{
+			cquadOut = argv[++i];
+			cquadIn = argv[++i];
 		}
 		else if ( a == "--open" && i + 1 < argc )
 		{
@@ -1218,6 +1242,14 @@ int main( int argc, char **argv )
 	if ( !quadOut.empty() )
 	{
 		return RenderQuad( quadIn, quadOut, width / 2, height / 2 );
+	}
+	if ( !demoOut.empty() )
+	{
+		return RenderControllerDemo( demoOut, width / 2, height / 2 );
+	}
+	if ( !cquadOut.empty() )
+	{
+		return RenderControllerLoad( cquadIn, cquadOut, width / 2, height / 2 );
 	}
 
 	AppState st;

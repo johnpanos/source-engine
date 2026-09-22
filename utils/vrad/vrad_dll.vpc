@@ -14,7 +14,7 @@ $Configuration
 	$Compiler
 	{
 		$AdditionalIncludeDirectories		"$BASE,..\common,..\vmpi,..\vmpi\mysql\mysqlpp\include,..\vmpi\mysql\include"
-		$PreprocessorDefinitions			"$BASE;MPI;PROTECTED_THINGS_DISABLE;VRAD"
+		$PreprocessorDefinitions			"$BASE;MPI;PROTECTED_THINGS_DISABLE;VRAD;VRAD_TOOL_ENTRY_EXPORTS"
 	}
 
 	$Linker
@@ -100,6 +100,7 @@ $Project "Vrad_dll"
 		$File	"VRAD_DispColl.h"
 		$File	"vraddetailprops.h"
 		$File	"vraddll.h"
+		$File	"vrad_tool_entry.h"
 
 		$Folder	"Common Header Files"
 		{

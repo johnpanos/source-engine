@@ -5,6 +5,7 @@
     "modules": [
       {"id": "foundation", "paths": ["public/foundation/"], "allowedEdges": []},
       {"id": "platform.contracts", "paths": ["public/platform/contracts/"], "allowedEdges": ["foundation"]},
+      {"id": "platform.tool-process", "paths": ["public/platform/tool_process_client.h", "platform/tool_process_client.cpp"], "allowedEdges": ["platform.contracts"]},
       {"id": "platform.sdl3.legacy-adapter", "kind": "backend", "paths": ["platform/sdl3/legacy_include/"], "allowedEdges": [], "externalHeaders": ["SDL3/SDL.h", "SDL3/SDL_clipboard.h", "SDL3/SDL_error.h", "SDL3/SDL_events.h", "SDL3/SDL_gamepad.h", "SDL3/SDL_haptic.h", "SDL3/SDL_keycode.h", "SDL3/SDL_messagebox.h", "SDL3/SDL_misc.h", "SDL3/SDL_scancode.h", "SDL3/SDL_touch.h", "SDL3/SDL_version.h"]},
       {"id": "platform.sdl3.launcher", "kind": "backend", "paths": ["appframework/sdl3mgr.cpp"], "allowedEdges": [], "externalHeaders": ["SDL3/SDL.h"], "legacyIncludes": ["appframework/ilaunchermgr.h", "inputsystem/ButtonCode.h", "tier0/icommandline.h", "tier1/convar.h", "tier1/utllinkedlist.h", "tier0/memdbgon.h"]},
       {"id": "platform.sdl3.native-tests", "kind": "native-test", "paths": ["unittests/platformtest/sdl3/"], "externalHeaders": ["SDL3/SDL.h"], "legacyIncludes": ["appframework/ilaunchermgr.h", "tier0/icommandline.h"], "allowedEdges": ["platform.window-provider-contract"]},
@@ -16,11 +17,12 @@
       {"id": "platform.composition", "paths": ["public/platform/composition.h", "public/platform/legacy_binding.h", "platform/"], "allowedEdges": ["foundation"]},
       {"id": "testing.contracts", "paths": ["public/testing/"], "allowedEdges": []},
       {"id": "testing.runner", "paths": ["utils/unittest/capability_runner.cpp", "utils/unittest/capability_unittest.cpp"], "allowedEdges": ["foundation", "platform.composition", "testing.contracts"]},
-      {"id": "platform.tests", "paths": ["unittests/platformtest/"], "allowedEdges": ["foundation", "platform.contracts", "platform.composition", "testing.contracts"]}
+      {"id": "platform.tests", "paths": ["unittests/platformtest/"], "allowedEdges": ["foundation", "platform.contracts", "platform.tool-process", "platform.composition", "testing.contracts"]}
     ],
     "standardHeaders": ["algorithm", "array", "atomic", "cassert", "chrono", "cmath", "concepts", "condition_variable", "cstddef", "cstdint", "cstdio", "cstdlib", "cstring", "functional", "initializer_list", "limits", "map", "memory", "mutex", "new", "optional", "set", "span", "string", "string_view", "thread", "type_traits", "unordered_map", "utility", "vector"],
     "targets": {
       "platform_composition": {"allowedUse": []},
+      "platform_tool_process": {"allowedUse": []},
       "unittest": {"allowedUse": ["platform_composition"]}
     }
   },
@@ -93,7 +95,7 @@
       {"id": "hammer.adapters.source", "strict": false, "owns": "Source asset and renderer integrations", "allowedEdges": ["hammer.ports", "hammer.viewport", "hammer.scene", "hammer.geometry"]},
       {"id": "hammer.adapters.platform", "strict": false, "owns": "Files, settings, processes, clocks, watchers, scheduling", "allowedEdges": ["hammer.ports"]},
       {"id": "hammer.adapters.mfc", "strict": false, "owns": "Existing shell and compatibility glue", "allowedEdges": ["hammer.presenters", "hammer.app", "hammer.tools", "hammer.viewport", "hammer.ports", "hammer.scene", "hammer.geometry", "hammer.formats"]},
-      {"id": "hammer.adapters.gtk", "strict": false, "owns": "GTK4/libadwaita widgets, input and main-context dispatch", "allowedEdges": ["hammer.presenters", "hammer.app", "hammer.tools", "hammer.viewport", "hammer.ports", "hammer.scene"]},
+      {"id": "hammer.adapters.gtk", "strict": false, "owns": "Canonical GTK4/libadwaita rendering+interaction shell at hammer/gtk/ (4-view layout, GL viewports, tool/menu input, main-context dispatch); sibling of hammer.adapters.mfc, both driving the reusable MFC-free libraries", "allowedEdges": ["hammer.presenters", "hammer.app", "hammer.tools", "hammer.viewport", "hammer.ports", "hammer.scene", "hammer.geometry", "hammer.adapters.platform"]},
       {"id": "hammer.interop.gtk_source", "strict": false, "owns": "Private GTK/render-resource exchange", "allowedEdges": ["hammer.viewport", "hammer.adapters.gtk", "hammer.adapters.source"]},
       {"id": "hammer.composition", "strict": false, "owns": "Provider selection, wiring, startup/shutdown", "allowedEdges": ["hammer.geometry", "hammer.scene", "hammer.ports", "hammer.formats", "hammer.app", "hammer.viewport", "hammer.tools", "hammer.presenters", "hammer.adapters.source", "hammer.adapters.platform", "hammer.adapters.mfc", "hammer.adapters.gtk", "hammer.interop.gtk_source"]}
     ],
