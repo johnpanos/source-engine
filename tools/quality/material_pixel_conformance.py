@@ -69,8 +69,9 @@ def read_pixels(path):
     names = [case.get("name") for case in report.get("cases", [])]
     if names != list(LIGHTMAP_CASES):
         raise PixelsError("%s has cases %s, expected %s" % (path, names, list(LIGHTMAP_CASES)))
-    if len(report.get("orientation", {}).get("pixels", [])) != 2:
-        raise PixelsError("%s has no orientation capture" % path)
+    for capture in ("orientation", "tone_scale"):
+        if len(report.get(capture, {}).get("pixels", [])) != 2:
+            raise PixelsError("%s has no %s capture" % (path, capture))
     return report
 
 
@@ -149,6 +150,26 @@ def check_orientation(report):
             % (top, bottom, orientation["top_texel"], orientation["bottom_texel"])]
 
 
+def check_tone_scale(report):
+    """LightmappedGeneric's output is scaled by the linear tone-mapping scale in
+    integer HDR (FinalOutput's LINEAR_LIGHT_SCALE); without HDR, D3D9 forces
+    that scale to 1."""
+    tone = report["tone_scale"]
+    case = {c["name"]: c for c in report["cases"]}[tone["case"]]
+    failures = []
+    for side, lightmap, pixel, unscaled in zip(("left", "right"), case["lightmap"],
+                                               tone["pixels"], case["pixels"]):
+        if report["hdr_type"] == HDR_TYPES["integer"]:
+            expected = lightmap_model(case["base"], [value * tone["scale"] for value in lightmap])
+            tolerance = MODEL_TOLERANCE
+        else:
+            expected, tolerance = unscaled, PIXEL_TOLERANCE
+        if not _close(pixel, expected, tolerance):
+            failures.append("tone scale %g, %s %s: %s, expected %s"
+                            % (tone["scale"], tone["case"], side, pixel, expected))
+    return failures
+
+
 def check_model(report):
     """The D3D9-validated closed form, which holds exactly in integer HDR."""
     failures = []
@@ -172,6 +193,11 @@ def compare(report, reference):
         for side, pixel, expected in zip(("left", "right"), case["pixels"], ref["pixels"]):
             if not _close(pixel, expected, PIXEL_TOLERANCE):
                 failures.append("%s %s: %s, reference %s" % (case["name"], side, pixel, expected))
+    for capture in ("orientation", "tone_scale"):
+        for index, (pixel, expected) in enumerate(zip(report[capture]["pixels"],
+                                                      reference[capture]["pixels"])):
+            if not _close(pixel, expected, PIXEL_TOLERANCE):
+                failures.append("%s %d: %s, reference %s" % (capture, index, pixel, expected))
     return failures
 
 
@@ -184,7 +210,7 @@ def evaluate(report, hdr, reference=None):
     if report["hdr_type"] != HDR_TYPES[hdr]:
         return ["backend does not support HDR mode '%s' (it reports HDR type %s)"
                 % (hdr, report["hdr_type"])]
-    failures = check_orientation(report) + check_properties(report)
+    failures = check_orientation(report) + check_properties(report) + check_tone_scale(report)
     if report["hdr_type"] == HDR_TYPES["integer"]:
         failures += check_model(report)
     if reference is not None:

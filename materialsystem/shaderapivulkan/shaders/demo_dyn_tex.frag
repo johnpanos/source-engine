@@ -24,7 +24,8 @@ layout( push_constant ) uniform Constants
 	vec4 texXform0;
 	vec4 texXform1;
 	// x = alpha-test reference (<0 disables); y = 1 to multiply by the lightmap;
-	// z = color-space flags (1 sRGB base, 2 sRGB lightmap, 4 sRGB output).
+	// z = color-space flags (1 sRGB base, 2 sRGB lightmap, 4 sRGB output);
+	// w = linear output scale (FinalOutput's LINEAR_LIGHT_SCALE).
 	vec4 alphaParams;
 }
 consts;
@@ -56,6 +57,7 @@ void main()
 	// fixed-function alpha test (ALPHAFUNC = GREATEREQUAL). Disabled when < 0.
 	if ( consts.alphaParams.x >= 0.0 && result.a < consts.alphaParams.x )
 		discard;
+	result.rgb *= consts.alphaParams.w;
 	if ( ( flags & 4 ) != 0 )
 		result.rgb = LinearToSrgb( result.rgb );
 	outColor = result;

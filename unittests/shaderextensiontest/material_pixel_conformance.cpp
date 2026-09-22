@@ -128,7 +128,8 @@ public:
 private:
 	bool RunLightmapCases( FILE *out );
 	bool RenderCase( IMaterial *pMaterial, int sortId, const int offset[2], int lightmapPageId,
-	    const float ( *points )[2], int pointCount, unsigned char ( *pixels )[3] );
+	    const float ( *points )[2], int pointCount, unsigned char ( *pixels )[3],
+	    float toneScale = 1.0f );
 	void DrawLightmappedQuad(
 	    IMaterial *pMaterial, int sortId, const int offset[2], const int pageSize[2] );
 	bool ReadPixel( float fx, float fy, unsigned char rgb[3] );
@@ -439,10 +440,28 @@ bool CMaterialPixelApp::RunLightmapCases( FILE *out )
 	     ok;
 	fprintf( out,
 	    "\"orientation\":{\"top_texel\":[%d,%d,%d],\"bottom_texel\":[%d,%d,%d],"
-	    "\"pixels\":[[%d,%d,%d],[%d,%d,%d]]}}\n",
+	    "\"pixels\":[[%d,%d,%d],[%d,%d,%d]]}",
 	    top[0], top[1], top[2], bottom[0], bottom[1], bottom[2], rows[0][0], rows[0][1], rows[0][2],
 	    rows[1][0], rows[1][1], rows[1][2] );
 	s_BaseRegenerator.m_Split = false;
+
+	// Tone-mapping scale: ramp_mid (white base, lightmap 0.25 | 0.5) drawn with the
+	// linear tone-mapping scale at 2. D3D9 multiplies LightmappedGeneric's output
+	// by it in integer HDR and forces it to 1 without HDR.
+	const float toneScale = 2.0f;
+	const int rampMid = 2;
+	for ( int k = 0; k < 3; ++k )
+		s_BaseRegenerator.m_Color[k] = kLightmapCases[rampMid].base[k];
+	pBase->Download();
+	unsigned char toned[2][3] = {};
+	ok = RenderCase( pMaterial, sortIds[rampMid], offsets[rampMid],
+	         sortInfo[sortIds[rampMid]].lightmapPageID, kHalves, 2, toned, toneScale ) &&
+	     ok;
+	fprintf( out,
+	    ",\"tone_scale\":{\"case\":\"%s\",\"scale\":%g,"
+	    "\"pixels\":[[%d,%d,%d],[%d,%d,%d]]}}\n",
+	    kLightmapCases[rampMid].name, toneScale, toned[0][0], toned[0][1], toned[0][2],
+	    toned[1][0], toned[1][1], toned[1][2] );
 	pMaterial->DecrementReferenceCount();
 	return ok;
 }
@@ -450,7 +469,8 @@ bool CMaterialPixelApp::RunLightmapCases( FILE *out )
 // Draws one case in its own frame over a magenta clear and reads the pixels at
 // the given fractions of the back buffer (x from the left, y from the top).
 bool CMaterialPixelApp::RenderCase( IMaterial *pMaterial, int sortId, const int offset[2],
-    int lightmapPageId, const float ( *points )[2], int pointCount, unsigned char ( *pixels )[3] )
+    int lightmapPageId, const float ( *points )[2], int pointCount, unsigned char ( *pixels )[3],
+    float toneScale )
 {
 	int pageSize[2] = { 0, 0 };
 	g_pMaterialSystem->GetLightmapPageSize( lightmapPageId, &pageSize[0], &pageSize[1] );
@@ -461,7 +481,7 @@ bool CMaterialPixelApp::RenderCase( IMaterial *pMaterial, int sortId, const int 
 		int width = 0, height = 0;
 		g_pMaterialSystem->GetBackBufferDimensions( width, height );
 		pRenderContext->Viewport( 0, 0, width, height );
-		pRenderContext->SetToneMappingScaleLinear( Vector( 1, 1, 1 ) );
+		pRenderContext->SetToneMappingScaleLinear( Vector( toneScale, toneScale, toneScale ) );
 		// Magenta: a pixel the quad did not cover is unmistakable.
 		pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
 		pRenderContext->ClearBuffers( true, true );

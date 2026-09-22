@@ -261,6 +261,10 @@ public:
 		kColorSrgbWrite = 4
 	};
 	void SelectDynamicColorSpace( int flags ) { m_dynColorFlags = flags; }
+	// Linear scale applied to the textured pipeline's color before the sRGB
+	// encode: D3D9's FinalOutput LINEAR_LIGHT_SCALE (cLightScale.x), the tone
+	// mapping scale in integer HDR. 1 leaves the color unchanged.
+	void SetDynamicOutputScale( float scale ) { m_dynOutputScale = scale; }
 	// True when this managed texture has had pixel data uploaded into it.
 	bool IsManagedTextureUploaded( int handle ) const
 	{
@@ -598,6 +602,7 @@ private:
 	int m_dynBoundTexHandle = -1;
 	int m_dynLightmapHandle = -1;
 	int m_dynColorFlags = 0;
+	float m_dynOutputScale = 1.0f;
 	// Column-major model->projection matrix; identity by default.
 	float m_dynTransform[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	VkBuffer m_dynVertexBuffer = VK_NULL_HANDLE;
@@ -647,6 +652,7 @@ private:
 		int texHandle = -1;     // managed texture bound at this draw (-1 = built-in)
 		int lightmapHandle = -1; // lightmap page multiplied in (-1 = none)
 		int colorFlags = 0;      // kColorSrgb* inputs/output encoding
+		float outputScale = 1.0f; // linear scale before the output encode
 	};
 	std::vector<DynDraw> m_dynDrawRecords;
 	// Target/viewport/scissor state captured by each record.

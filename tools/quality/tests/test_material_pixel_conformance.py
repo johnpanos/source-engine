@@ -78,14 +78,28 @@ class SeededDefectTest(unittest.TestCase):
         self.assertEqual(len(failures), 1)
         self.assertIn("upside down", failures[0])
 
-    def test_missing_orientation_capture_is_rejected(self):
+    def test_missing_orientation_or_tone_capture_is_rejected(self):
+        for capture_name in ("orientation", "tone_scale"):
+            report = copy.deepcopy(capture("none"))
+            del report[capture_name]
+            with tempfile.TemporaryDirectory() as temp:
+                path = Path(temp) / "pixels.json"
+                path.write_text(json.dumps(report))
+                with self.assertRaises(oracle.PixelsError):
+                    oracle.read_pixels(path)
+
+    def test_ignored_tone_scale_in_integer_hdr_is_detected(self):
+        # Integer HDR without LINEAR_LIGHT_SCALE: the scaled draw equals the unscaled one.
+        report = copy.deepcopy(capture("integer"))
+        report["tone_scale"]["pixels"] = copy.deepcopy(report["cases"][2]["pixels"])
+        failures = oracle.evaluate(report, "integer")
+        self.assertTrue(failures and all(f.startswith("tone scale") for f in failures))
+
+    def test_tone_scale_applied_without_hdr_is_detected(self):
+        # D3D9 forces the scale to 1 without HDR.
         report = copy.deepcopy(capture("none"))
-        del report["orientation"]
-        with tempfile.TemporaryDirectory() as temp:
-            path = Path(temp) / "pixels.json"
-            path.write_text(json.dumps(report))
-            with self.assertRaises(oracle.PixelsError):
-                oracle.read_pixels(path)
+        report["tone_scale"]["pixels"] = [[188, 188, 188], [255, 255, 255]]
+        self.assertTrue(any(f.startswith("tone scale") for f in oracle.evaluate(report, "none")))
 
     def test_non_monotonic_ramp_is_detected(self):
         report = with_pixels(capture("none"), "ramp_mid", [[60, 60, 60], [188, 188, 188]])

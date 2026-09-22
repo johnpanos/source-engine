@@ -19,6 +19,7 @@
 #include "materialsystem/imesh.h"
 #include "tier0/dbg.h"
 #include "tier0/icommandline.h"
+#include "tier1/tier1.h"
 #include "materialsystem/idebugtextureinfo.h"
 #include "materialsystem/deformations.h"
 #include "render/legacy_shader_provider.h"
@@ -102,6 +103,21 @@ static uint64_t g_PrimitiveTypeCounts[16];
 // Base-texture residency at the moment each draw is emitted. A draw that samples
 // the default white texture is untextured on screen, so these three totals say
 // whether a blank frame is a rasterization problem or a texture-binding one.
+// HDR state, owned as the D3D9 backend owns it: the engine enables HDR per map
+// (SetHDREnabled) and mat_hdr_level selects full HDR. This backend implements
+// HDR_TYPE_INTEGER (16-bit lightmap pages, tone-mapping scale in the shaders).
+// The cvar has the D3D9 backend's name, default and flags, so the engine's copy
+// and this one are the same setting.
+static ConVar mat_hdr_level( "mat_hdr_level", "2", FCVAR_ARCHIVE );
+static bool g_bHDREnabled = false;
+// cLightScale.x, the linear tone-mapping scale (SetToneMappingScaleLinear).
+static Vector g_ToneMappingScale( 1.0f, 1.0f, 1.0f );
+
+static HDRType_t CurrentHDRType()
+{
+	return ( mat_hdr_level.GetInt() >= 2 && g_bHDREnabled ) ? HDR_TYPE_INTEGER : HDR_TYPE_NONE;
+}
+
 static int g_boundTextureHandle = -1;
 // The lightmap page bound to sampler 1 for the current pass (-1 = none), and
 // whether a BindTexture call is resolving a lightmap standard texture.
@@ -1203,9 +1219,9 @@ public:
 	// Level of anisotropic filtering
 	virtual void SetAnisotropicLevel( int nAnisotropyLevel );
 
-	bool SupportsHDR() const { return false; }
-	HDRType_t GetHDRType() const { return HDR_TYPE_NONE; }
-	HDRType_t GetHardwareHDRType() const { return HDR_TYPE_NONE; }
+	bool SupportsHDR() const { return false; } // deprecated; GetHDRType is the query
+	HDRType_t GetHDRType() const { return CurrentHDRType(); }
+	HDRType_t GetHardwareHDRType() const { return HDR_TYPE_INTEGER; }
 	virtual bool NeedsATICentroidHack() const { return false; }
 	virtual bool SupportsColorOnSecondStream() const { return false; }
 	virtual bool SupportsStaticPlusDynamicLighting() const { return false; }
@@ -1348,21 +1364,24 @@ public:
 	// NOTE: Stuff after this is added after shipping HL2.
 	ITexture *GetRenderTargetEx( int nRenderTargetID ) { return NULL; }
 
-	void SetToneMappingScaleLinear( const Vector &scale ) {}
-
-	const Vector &GetToneMappingScaleLinear( void ) const
+	// As CShaderAPIDx8::SetToneMappingScaleLinear: without HDR the output scale is
+	// 1; in integer HDR it is the engine's exposure.
+	void SetToneMappingScaleLinear( const Vector &scale )
 	{
-		static Vector dummy;
-		return dummy;
+		g_ToneMappingScale = scale;
+		if ( CurrentHDRType() == HDR_TYPE_NONE )
+			g_ToneMappingScale.x = 1.0f;
 	}
 
+	const Vector &GetToneMappingScaleLinear( void ) const { return g_ToneMappingScale; }
+
 	// The scale LightmappedGeneric folds into its modulation, as
-	// CShaderAPIDx8::GetLightMapScaleFactor defines it per HDR mode. This backend
-	// reports HDR_TYPE_NONE, whose 8-bit lightmaps are stored at 1/2 overbright in
-	// gamma space: GammaToLinearFullRange( 2.0 ).
+	// CShaderAPIDx8::GetLightMapScaleFactor defines it per HDR mode: 8-bit LDR
+	// lightmaps are stored at 1/2 overbright in gamma space
+	// (GammaToLinearFullRange( 2.0 )); integer-HDR pages hold linear light / 16.
 	virtual float GetLightMapScaleFactor( void ) const
 	{
-		return GetHDRType() == HDR_TYPE_NONE ? powf( 2.0f, 2.2f ) : 1.0f;
+		return GetHDRType() == HDR_TYPE_INTEGER ? 16.0f : powf( 2.0f, 2.2f );
 	}
 
 	// For dealing with device lost in cases where SwapBuffers isn't called all the time (Hammer)
@@ -1478,7 +1497,10 @@ public:
 	virtual int GetVertexBufferCompression( void ) const { return 0; };
 
 	virtual bool ShouldWriteDepthToDestAlpha( void ) const { return false; };
-	virtual bool SupportsHDRMode( HDRType_t nHDRMode ) const { return false; };
+	virtual bool SupportsHDRMode( HDRType_t nHDRMode ) const
+	{
+		return nHDRMode == HDR_TYPE_NONE || nHDRMode == HDR_TYPE_INTEGER;
+	}
 	virtual bool IsDX10Card() const { return false; };
 
 	void PushDeformation( const DeformationBase_t *pDeformation ) {}
@@ -1499,8 +1521,8 @@ public:
 	void SetStandardTextureHandle( StandardTextureId_t, ShaderAPITextureHandle_t ) {}
 
 	virtual void ExecuteCommandBuffer( uint8 *pData );
-	virtual bool GetHDREnabled( void ) const { return true; }
-	virtual void SetHDREnabled( bool bEnable ) {}
+	virtual bool GetHDREnabled( void ) const { return g_bHDREnabled; }
+	virtual void SetHDREnabled( bool bEnable ) { g_bHDREnabled = bEnable; }
 
 	virtual void CopyRenderTargetToScratchTexture( ShaderAPITextureHandle_t srcRt,
 	    ShaderAPITextureHandle_t dstTex, Rect_t *pSrcRect = NULL, Rect_t *pDstRect = NULL )
@@ -1639,8 +1661,30 @@ static void *ShaderInterfaceFactory( const char *pInterfaceName, int *pReturnCod
 // CShaderDeviceMgrVulkan
 //
 //-----------------------------------------------------------------------------
+// Links this module's cvars into the engine's list, applying any command-line
+// value, as CShaderAPIConVarAccessor does for the D3D9 backend.
+class CShaderAPIVulkanConVarAccessor : public IConCommandBaseAccessor
+{
+public:
+	virtual bool RegisterConCommandBase( ConCommandBase *pCommand )
+	{
+		g_pCVar->RegisterConCommand( pCommand );
+		const char *pValue = g_pCVar->GetCommandLineValue( pCommand->GetName() );
+		if ( pValue && !pCommand->IsCommand() )
+			static_cast<ConVar *>( pCommand )->SetValue( pValue );
+		return true;
+	}
+};
+
 bool CShaderDeviceMgrVulkan::Connect( CreateInterfaceFn factory )
 {
+	ConnectTier1Libraries( &factory, 1 );
+	if ( g_pCVar )
+	{
+		static CShaderAPIVulkanConVarAccessor s_ConVarAccessor;
+		ConVar_Register( FCVAR_MATERIAL_SYSTEM_THREAD, &s_ConVarAccessor );
+	}
+
 	// So others can access it
 	g_pShaderUtil = (IShaderUtil *)factory( SHADER_UTIL_INTERFACE_VERSION, NULL );
 
@@ -1650,6 +1694,8 @@ bool CShaderDeviceMgrVulkan::Connect( CreateInterfaceFn factory )
 void CShaderDeviceMgrVulkan::Disconnect()
 {
 	g_pShaderUtil = NULL;
+	ConVar_Unregister();
+	DisconnectTier1Libraries();
 }
 
 void *CShaderDeviceMgrVulkan::QueryInterface( const char *pInterfaceName )
@@ -3730,7 +3776,16 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		NoteDroppedMaterial();
 	}
 	else if ( g_pRenderMesh )
+	{
+		// LightmappedGeneric ends in FinalOutput( ..., TONEMAP_SCALE_LINEAR ): its
+		// color is scaled by the tone-mapping scale, which is 1 without HDR. Other
+		// shaders choose their tone-map type per combo and are not scaled yet.
+		const bool lightmapped = g_boundLightmapHandle >= 0;
+		g_VulkanContext.SetDynamicOutputScale( lightmapped ? g_ToneMappingScale.x : 1.0f );
+		if ( !lightmapped && CurrentHDRType() == HDR_TYPE_INTEGER && g_ToneMappingScale.x != 1.0f )
+			NoteUnimplemented( "integer HDR: tone-mapping scale on unlit/model shaders" );
 		g_pRenderMesh->EmitToNativeQueue();
+	}
 	if ( drawstatefixture::Instance().Enabled() )
 		RecordDrawStateFixture( nPass, nPassCount );
 }
@@ -4423,6 +4478,21 @@ static bool UploadTextureSurface( int handle, int width, int height, ImageFormat
 		    handle, src, blocksX * blocksY * blockBytes, error );
 	}
 
+	// 16-bit integer texels (integer-HDR lightmap pages) go only into the
+	// R16G16B16A16 image created for them; there is no 8-bit conversion.
+	if ( srcFormat == IMAGE_FORMAT_RGBA16161616 )
+	{
+		const bool image16 = static_cast<size_t>( handle ) < g_TextureRecords.size() &&
+		                     g_TextureRecords[static_cast<size_t>( handle )].format ==
+		                         IMAGE_FORMAT_RGBA16161616;
+		if ( !image16 || ( srcStride > 0 && srcStride != width * 8 ) )
+		{
+			NoteUnimplemented( "upload: RGBA16161616 into another format or padded rows" );
+			return false;
+		}
+		return g_VulkanContext.UploadManagedTexture( handle, src, pixels * 8, error );
+	}
+
 	int srcBpp = 0;
 	switch ( srcFormat )
 	{
@@ -4590,8 +4660,9 @@ static int g_lockedTexture = -1;
 
 // Locks a rectangle of mip 0 of the texture selected by ModifyTexture for the
 // material system's pixel writer, as CShaderAPIDx8::TexLock does. The writer
-// addresses a CPU copy of the surface in the image's own 8-bit layout; other
-// formats and mip levels are refused, like D3D9 refuses levels it did not create.
+// addresses a CPU copy of the surface in the image's own layout (8-bit color or
+// 16-bit integer); other formats and mip levels are refused, like D3D9 refuses
+// levels it did not create.
 bool CShaderAPIVulkan::TexLock( int level, int cubeFaceID, int xOffset, int yOffset, int width,
     int height, CPixelWriter &writer )
 {
@@ -4600,23 +4671,26 @@ bool CShaderAPIVulkan::TexLock( int level, int cubeFaceID, int xOffset, int yOff
 	     static_cast<size_t>( handle ) >= g_TextureRecords.size() )
 		return false;
 	TextureRecord &record = g_TextureRecords[static_cast<size_t>( handle )];
-	const bool eightBit = record.format == IMAGE_FORMAT_RGBA8888 ||
-	                      record.format == IMAGE_FORMAT_BGRA8888 ||
-	                      record.format == IMAGE_FORMAT_BGRX8888;
-	if ( level != 0 || cubeFaceID != 0 || !eightBit )
+	int texelBytes = 0;
+	if ( record.format == IMAGE_FORMAT_RGBA8888 || record.format == IMAGE_FORMAT_BGRA8888 ||
+	     record.format == IMAGE_FORMAT_BGRX8888 )
+		texelBytes = 4;
+	else if ( record.format == IMAGE_FORMAT_RGBA16161616 )
+		texelBytes = 8;
+	if ( level != 0 || cubeFaceID != 0 || texelBytes == 0 )
 	{
-		NoteUnimplemented( "TexLock(mip > 0, cube face or non-8-bit format)" );
+		NoteUnimplemented( "TexLock(mip > 0, cube face or unsupported format)" );
 		return false;
 	}
 	if ( xOffset < 0 || yOffset < 0 || width <= 0 || height <= 0 ||
 	     xOffset + width > record.width || yOffset + height > record.height )
 		return false;
-	const size_t pitch = static_cast<size_t>( record.width ) * 4;
+	const size_t pitch = static_cast<size_t>( record.width ) * texelBytes;
 	if ( record.lockSurface.empty() )
 		record.lockSurface.assign( pitch * static_cast<size_t>( record.height ), 0 );
 	writer.SetPixelMemory( record.format,
 	    &record.lockSurface[static_cast<size_t>( yOffset ) * pitch +
-	                        static_cast<size_t>( xOffset ) * 4],
+	                        static_cast<size_t>( xOffset ) * texelBytes],
 	    static_cast<int>( pitch ) );
 	g_lockedTexture = handle;
 	return true;
@@ -4708,6 +4782,10 @@ ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height,
 		break;
 	case IMAGE_FORMAT_DXT5:
 		vkFormat = VK_FORMAT_BC3_UNORM_BLOCK;
+		break;
+	case IMAGE_FORMAT_RGBA16161616:
+		// Integer-HDR lightmap pages; the same memory order as D3DFMT_A16B16G16R16.
+		vkFormat = VK_FORMAT_R16G16B16A16_UNORM;
 		break;
 	default:
 		vkFormat = VK_FORMAT_R8G8B8A8_UNORM; // RGBA8888 and RGBA-convertible sources

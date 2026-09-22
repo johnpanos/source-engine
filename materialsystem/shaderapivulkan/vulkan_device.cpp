@@ -3021,6 +3021,7 @@ void CVulkanContext::QueueDynamicTriangles(
 	d.texHandle = m_dynBoundTexHandle;
 	d.lightmapHandle = m_dynLightmapHandle;
 	d.colorFlags = m_dynColorFlags;
+	d.outputScale = m_dynOutputScale;
 	for ( uint32_t v = 0; v < vertexCount; ++v )
 	{
 		const float *vertex = posColorInterleaved + static_cast<size_t>( v ) * 8;
@@ -3697,7 +3698,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				// alphaParams.y: multiply by the lightmap; .z: kColorSrgb* flags.
 				pushData[29] = d.lightmapHandle >= 0 ? 1.0f : 0.0f;
 				pushData[30] = static_cast<float>( d.colorFlags );
-				pushData[31] = 0.0f;
+				pushData[31] = d.outputScale; // alphaParams.w
 				pushFloats = 32;
 			}
 			else
