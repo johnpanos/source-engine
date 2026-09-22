@@ -49,11 +49,11 @@ struct FgdChoice
 // One key/value property a class exposes to the editor.
 struct FgdProperty
 {
-	std::string name;         // the VMF key this sets
-	std::string type;         // "string", "integer", "float", "choices", "flags", ...
-	std::string displayName;  // editor label (empty if unspecified)
-	std::string defaultValue; // default (empty if unspecified)
-	std::string help;         // help text (empty if unspecified)
+	std::string name;               // the VMF key this sets
+	std::string type;               // "string", "integer", "float", "choices", "flags", ...
+	std::string displayName;        // editor label (empty if unspecified)
+	std::string defaultValue;       // default (empty if unspecified)
+	std::string help;               // help text (empty if unspecified)
 	std::vector<FgdChoice> choices; // for "choices"/"flags"; empty otherwise
 };
 
@@ -61,9 +61,9 @@ struct FgdProperty
 struct EntityClass
 {
 	EntityKind kind = EntityKind::Other;
-	std::string name;                // classname (after '=')
-	std::string description;         // trailing ": <desc>"
-	std::vector<std::string> bases;  // base(...) class names, in order
+	std::string name;                    // classname (after '=')
+	std::string description;             // trailing ": <desc>"
+	std::vector<std::string> bases;      // base(...) class names, in order
 	std::vector<FgdProperty> properties; // this class's OWN properties (not merged)
 };
 
@@ -84,8 +84,8 @@ FgdParseResult ParseFgd( const std::string &text );
 // (recursively, in base() order), then the class's own, with a later property of
 // the same key overriding an earlier one. Returns nullopt if 'name' is unknown.
 // Cyclic base references are broken safely (each class visited once).
-std::optional<EntityClass> ResolveClass( const std::vector<EntityClass> &classes,
-										  const std::string &name );
+std::optional<EntityClass> ResolveClass(
+    const std::vector<EntityClass> &classes, const std::string &name );
 
 } // namespace hammer::formats
 

@@ -723,6 +723,42 @@
         "a later increment adds texture-axis rotation, entity angle composition, and $fixup variable substitution",
         "the editor's collapse-instance command and map compile consume this expansion"
       ]
+    },
+    {
+      "id": "HAM-FGD-001",
+      "title": "Implement the FGD entity-schema parser: class kinds, typed key properties, choices/flags, and base() inheritance resolution",
+      "phase": "H2",
+      "responsibility": "geometry",
+      "evidenceKind": "decision",
+      "sources": [
+        {
+          "path": "public/hammer/formats/fgd.h"
+        },
+        {
+          "path": "hammer/core/formats/fgd.cpp"
+        }
+      ],
+      "destinationModule": "hammer.formats",
+      "contractIds": [
+        "formats.fgd.v1"
+      ],
+      "dependsOn": [
+        "HAM-CORPUS-001"
+      ],
+      "status": "extracted",
+      "authority": "new",
+      "consumerSet": "entity-property-editing",
+      "testSelectors": [
+        "formats/fgd",
+        "formats/fgd_negative"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/formats.fgd.v1.md",
+      "owner": "unassigned",
+      "note": "New strict headless module (authority=new), self-contained tokenizer + recursive-descent parser (C++ stdlib only). hammer::formats::ParseFgd reads @PointClass/@SolidClass/@BaseClass/@KeyValueClass/@NPCClass/@FilterClass/@MoveClass declarations, base(...) inheritance, typed key properties (string/integer/float/choices/flags/target_source/angle/...), defaults, and choices/flags value lists; unknown top-level directives (@mapsize/@include/@MaterialExclusion/@AutoVisGroup) are skipped, not errors. ResolveClass flattens inheritance (base-first, child overrides, cycle-guarded). This is the entity schema the property editor consumes. Compiles headlessly under g++ and clang (-Werror); conformance test_fgd.cpp checks kinds/typed-properties/choices/flags/empty-fields/inheritance, test_fgd_negative.cpp proves missing-type, unterminated-body, missing-name, and stray-token error out while a good FGD parses. Declared limits: input/output declarations are parsed but not stored, non-base helper metadata (size/color/iconsprite/studio) is ignored, and @include is not resolved (referenced file not loaded).",
+      "retireWhen": [
+        "a later increment stores I/O (input/output) definitions and resolves @include",
+        "the entity property editor consumes this schema for authored-key validation"
+      ]
     }
   ]
 }

@@ -68,6 +68,7 @@ projects={
 		'launcher_main',
 		'materialsystem',
 		'materialsystem/shaderapiempty',
+		'materialsystem/shaderapivulkan',
 		'materialsystem/shaderapidx9',
 		'materialsystem/shaderlib',
 		'materialsystem/stdshaders',
@@ -156,6 +157,7 @@ projects={
 		'particles',
 		'scenefilecache',
 		'materialsystem/shaderapiempty',
+		'materialsystem/shaderapivulkan',
 		'materialsystem/shaderlib',
 		'soundemittersystem',
 		'studiorender',
@@ -203,10 +205,11 @@ def run_test(self, fragment, msg):
 def define_platform(conf):
 	conf.env.SDL3 = conf.options.PLATFORM_PROVIDER == 'sdl3'
 	conf.env.DXVK = conf.options.RENDER_BACKEND == 'vulkan'
-	if conf.env.SDL3 or conf.env.DXVK:
+	conf.env.NATIVE_VULKAN = conf.options.RENDER_BACKEND == 'native-vulkan'
+	if conf.env.SDL3 or conf.env.DXVK or conf.env.NATIVE_VULKAN:
 		if conf.env.DEST_OS != 'linux' or conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS:
 			conf.fatal('The SDL3/Vulkan compatibility profile currently targets the Linux client')
-		if not (conf.env.SDL3 and conf.env.DXVK):
+		if not (conf.env.SDL3 and (conf.env.DXVK or conf.env.NATIVE_VULKAN)):
 			conf.fatal('Select both --platform-provider=sdl3 and --render-backend=vulkan')
 		conf.options.SDL = 1
 		conf.options.GL = 0
@@ -682,6 +685,7 @@ def configure(conf):
 	if conf.env.VIDEO_BINK:
 		for package, store in [('libavcodec', 'AVCODEC'), ('libavformat', 'AVFORMAT'), ('libavutil', 'AVUTIL')]:
 			conf.check_cfg(package=package, uselib_store=store, args=['--cflags', '--libs'])
+		conf.check_cfg(package='vulkan', uselib_store='VULKAN', args=['--cflags', '--libs'])
 	if conf.env.DXVK:
 		sys.path.insert(0, os.path.abspath('tools/quality'))
 		from product_profile import load_profile, check_environment, verify_dependency, ProfileError

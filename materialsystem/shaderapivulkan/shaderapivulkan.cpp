@@ -1380,14 +1380,10 @@ bool CShaderDeviceMgrVulkan::SetAdapter( int nAdapter, int nFlags )
 // FIXME: Is this a public interface? Might only need to be private to shaderapi
 CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode )
 {
-
-	Msg("[NativeVulkan] Setting mode for adapter %d
-", nAdapter);
-	
-	VkInstanceCreateInfo createInfo = {};
+	Msg("[NativeVulkan] Setting mode for adapter %d\n", nAdapter);
+	::VkInstanceCreateInfo createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-	
-	VkApplicationInfo appInfo = {};
+	::VkApplicationInfo appInfo = {};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	appInfo.pApplicationName = "Source Engine Native Vulkan";
 	appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -1395,23 +1391,14 @@ CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode( void *hWnd, int nAdapter, con
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
 	appInfo.apiVersion = VK_API_VERSION_1_0;
 	createInfo.pApplicationInfo = &appInfo;
-	
-	VkInstance instance;
-	if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS)
-	{
-		Warning("[NativeVulkan] Failed to create Vulkan instance!
-");
+	::VkInstance instance;
+	if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+		Warning("[NativeVulkan] Failed to create Vulkan instance!\n");
+	} else {
+		Msg("[NativeVulkan] Successfully created Vulkan instance!\n");
+		Msg("[NativeVulkan] (Rank 14 Bootstrap complete. Rank 16 MVP needed for Testchamber 15)\n");
 	}
-	else
-	{
-		Msg("[NativeVulkan] Successfully created Vulkan instance!
-");
-		Msg("[NativeVulkan] (Rank 14 Bootstrap complete. Rank 16 MVP needed for Testchamber 15)
-");
-	}
-
 	return ShaderInterfaceFactory;
-
 }
 
 // Gets the number of adapters...

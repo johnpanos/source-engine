@@ -848,6 +848,136 @@
         "unittests/hammertest/formats/test_instancing_negative.cpp"
       ],
       "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.fgd",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-FGD-001",
+      "contract": "unittests/hammertest/contracts/formats.fgd.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/fgd.cpp",
+        "unittests/hammertest/formats/test_fgd.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.fgd.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-FGD-001",
+      "contract": "unittests/hammertest/contracts/formats.fgd.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/fgd.cpp",
+        "unittests/hammertest/formats/test_fgd_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.vpk_archive",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-ASSET-001",
+      "contract": "unittests/hammertest/contracts/formats.vpk_archive.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/vpk_archive.cpp",
+        "unittests/hammertest/formats/test_vpk_archive.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.vpk_archive.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-ASSET-001",
+      "contract": "unittests/hammertest/contracts/formats.vpk_archive.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/vpk_archive.cpp",
+        "unittests/hammertest/formats/test_vpk_archive_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.vtf_image",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-ASSET-001",
+      "contract": "unittests/hammertest/contracts/formats.vtf_image.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/vtf_image.cpp",
+        "unittests/hammertest/formats/test_vtf_image.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.vtf_image.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-ASSET-001",
+      "contract": "unittests/hammertest/contracts/formats.vtf_image.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/vtf_image.cpp",
+        "unittests/hammertest/formats/test_vtf_image_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.material",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-ASSET-001",
+      "contract": "unittests/hammertest/contracts/formats.material.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/material.cpp",
+        "hammer/core/formats/vtf_image.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_material.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.material.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-ASSET-001",
+      "contract": "unittests/hammertest/contracts/formats.material.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/material.cpp",
+        "hammer/core/formats/vtf_image.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_material_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.search_path_assets",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-ASSET-001",
+      "contract": "unittests/hammertest/contracts/formats.search_path_assets.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/search_path_assets.cpp",
+        "unittests/hammertest/formats/test_search_path_assets.cpp"
+      ],
+      "expect": "pass"
     }
   ]
 }
