@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "description": "RFC 0001 architectural manifest. Phase A currently freezes legacy dynamic-loader boundaries.",
+  "legacyAbi": {
+    "paths": [
+      "public/tier1/interface.h",
+      "tier1/interface.cpp",
+      "external/vpc/public/tier1/interface.h",
+      "external/vpc/tier1/interface.cpp"
+    ]
+  },
+  "loaderInventory": {
+    "classifications": [
+      {
+        "name": "tool-indirection",
+        "pathPrefixes": ["devtools/", "external/vpc/", "tools/", "utils/"],
+        "reason": "Tool-only implementation, wrapper, or optional tool integration."
+      },
+      {
+        "name": "retained-extension",
+        "pathPrefixes": ["game/", "gameui/", "serverbrowser/", "engine/sv_plugin", "engine/cdll_engine", "engine/sys_dll"],
+        "reason": "Game, server, or UI extension boundary retained for compatibility."
+      },
+      {
+        "name": "optional-provider",
+        "pathPrefixes": ["common/ihfx/", "common/dx_proxy/", "materialsystem/", "inputsystem/", "replay/", "sfmobjects/", "video/"],
+        "reason": "Optional product, renderer, input, video, or vendor provider."
+      },
+      {
+        "name": "native-symbol-probe",
+        "pathPrefixes": ["tier0/", "vstdlib/", "vguimatsurface/", "engine/audio/", "engine/cl_check_process", "engine/sys_mainwind"],
+        "rules": ["INVENTORY_NATIVE_LOAD"],
+        "reason": "Native API availability or vendor symbol probe."
+      },
+      {
+        "name": "first-party-composition",
+        "pathPrefixes": ["appframework/", "dedicated/", "dedicated_main/", "launcher/", "launcher_main/", "filesystem/", "tier1/", "public/"],
+        "reason": "First-party runtime module assembled by legacy application composition."
+      }
+    ]
+  }
+}

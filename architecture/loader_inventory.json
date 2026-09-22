@@ -1,0 +1,2827 @@
+{
+  "version": 1,
+  "description": "Static dynamic-loader site inventory for RFC 0001 retirement Phase A.",
+  "classificationCounts": {
+    "first-party-composition": 101,
+    "native-symbol-probe": 20,
+    "optional-provider": 22,
+    "retained-extension": 21,
+    "tool-indirection": 127
+  },
+  "sites": [
+    {
+      "fingerprint": "494ac0c9124269f14df7",
+      "rule": "ARCH101",
+      "path": "appframework/AppSystemGroup.cpp",
+      "line": 40,
+      "excerpt": "return Sys_LoadModule( pDLLName );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "90f09e3370883af6a30d",
+      "rule": "ARCH102",
+      "path": "appframework/AppSystemGroup.cpp",
+      "line": 133,
+      "excerpt": "CreateInterfaceFn pFactory = m_Modules[module].m_pModule ? Sys_GetFactory( m_Modules[module].m_pModule ) : m_Modules[module].m_Factory;",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "150badb8cb185011e451",
+      "rule": "ARCH103",
+      "path": "appframework/AppSystemGroup.cpp",
+      "line": 528,
+      "excerpt": "return m_pFileSystem->LoadModule( pDLLName );",
+      "mechanism": "ARCH103",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "9979e48d6dcfa2ff75c6",
+      "mechanism": "native-loader",
+      "path": "appframework/sdlmgr.cpp",
+      "line": 605,
+      "excerpt": "l_egl = dlopen(\"libEGL.so\", RTLD_LAZY);",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "ba62307a2d3ca2081d51",
+      "mechanism": "native-loader",
+      "path": "appframework/sdlmgr.cpp",
+      "line": 606,
+      "excerpt": "l_gles = dlopen(\"libGLESv3.so\", RTLD_LAZY);",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "9b0b16cbadceecdf3a0e",
+      "mechanism": "native-loader",
+      "path": "appframework/sdlmgr.cpp",
+      "line": 631,
+      "excerpt": "l_egl = dlopen(\"libEGL.so\", RTLD_LAZY);",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "c619c760e2df13671b52",
+      "mechanism": "native-loader",
+      "path": "appframework/sdlmgr.cpp",
+      "line": 652,
+      "excerpt": "l_gl4es = dlopen(\"libgl4es.so\", RTLD_LAZY);",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "9e411d803f45294a70e8",
+      "mechanism": "native-loader",
+      "path": "common/Steamlib_null.h",
+      "line": 112,
+      "excerpt": "hDll = dlopen( szAbsoluteLib, RTLD_NOW );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "f23c3b4459d1eb800a1d",
+      "mechanism": "native-loader",
+      "path": "common/dx_proxy/dx_proxy.h",
+      "line": 101,
+      "excerpt": "( m_hModule = ::LoadLibrary( \"dx_proxy.dll\" ) ) != NULL )",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "226a67e23c29b58787eb",
+      "mechanism": "native-loader",
+      "path": "common/ihfx/IHFX.h",
+      "line": 605,
+      "excerpt": "dllNovintHFX_ = LoadLibraryA( szNovintDll );",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "32fcc88ffe4fa456c9e3",
+      "mechanism": "native-loader",
+      "path": "common/ihfx/IHFX.h",
+      "line": 622,
+      "excerpt": "dllNovintHFX_ = LoadLibraryA( szNovintDll );",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "de82ad0dafc6a32d6dd5",
+      "mechanism": "native-loader",
+      "path": "common/ihfx/IHFX.h",
+      "line": 656,
+      "excerpt": "dllNovintHFX_ = LoadLibraryA( szNovintDll );",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "e9a774619aea15927321",
+      "mechanism": "native-loader",
+      "path": "common/ihfx/IHFX.h",
+      "line": 672,
+      "excerpt": "dllNovintHFX_ = LoadLibraryA( szNovintDll );",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "458f5bfc55080fd24d79",
+      "rule": "ARCH101",
+      "path": "common/imageutils.cpp",
+      "line": 1512,
+      "excerpt": "CSysModule *vtexmod = Sys_LoadModule(\"vtex_dll\" DLL_EXT_STRING);",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "1d7317bc88261d91d489",
+      "rule": "ARCH102",
+      "path": "common/imageutils.cpp",
+      "line": 1519,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory(vtexmod);",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "12fb78276336d4d80d2c",
+      "mechanism": "native-loader",
+      "path": "dedicated/console/TextConsoleUnix.cpp",
+      "line": 69,
+      "excerpt": "s_ncurses_handle = dlopen( names[i], RTLD_NOW );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "8456c461884db5201005",
+      "mechanism": "native-loader",
+      "path": "dedicated/isys.h",
+      "line": 32,
+      "excerpt": "virtual long LoadLibrary( char *lib ) = 0;",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "39b34317a2482d5d9de8",
+      "mechanism": "native-loader",
+      "path": "dedicated/sys_common.cpp",
+      "line": 53,
+      "excerpt": "hDLLThirdParty = sys->LoadLibrary( \"ghostinj.dll\" );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "1fd4d0f8f3c3b588ebd0",
+      "mechanism": "native-loader",
+      "path": "dedicated/sys_linux.cpp",
+      "line": 68,
+      "excerpt": "long LoadLibrary( char *lib );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "b009065e1785f2799ba2",
+      "mechanism": "native-loader",
+      "path": "dedicated/sys_linux.cpp",
+      "line": 116,
+      "excerpt": "long CSys::LoadLibrary( char *lib )",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "a1b3fb659afd6b5187dc",
+      "mechanism": "native-loader",
+      "path": "dedicated/sys_linux.cpp",
+      "line": 131,
+      "excerpt": "hDll = dlopen( absolute_lib, RTLD_NOW );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "196586677a1a63bf0e4e",
+      "mechanism": "native-loader",
+      "path": "dedicated/sys_windows.cpp",
+      "line": 59,
+      "excerpt": "long LoadLibrary( char *lib );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "66b1ca762ff9e05fa572",
+      "mechanism": "native-loader",
+      "path": "dedicated/sys_windows.cpp",
+      "line": 98,
+      "excerpt": "long CSys::LoadLibrary( char *lib )",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "c9fb5d78b0c9c186f3d1",
+      "mechanism": "native-loader",
+      "path": "dedicated/sys_windows.cpp",
+      "line": 100,
+      "excerpt": "void *hDll = ::LoadLibrary( lib );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "67deb6fca3de792a5fd1",
+      "rule": "ARCH103",
+      "path": "dedicated/vgui/vguihelpers.cpp",
+      "line": 87,
+      "excerpt": "g_hAdminServerModule = g_pFullFileSystem->LoadModule(\"AdminServer\");",
+      "mechanism": "ARCH103",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "f4dee344cd723b4ff9db",
+      "rule": "ARCH102",
+      "path": "dedicated/vgui/vguihelpers.cpp",
+      "line": 98,
+      "excerpt": "adminFactory = Sys_GetFactory(g_hAdminServerModule);",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "445809ac8648be80a130",
+      "mechanism": "native-loader",
+      "path": "dedicated_main/main.cpp",
+      "line": 98,
+      "excerpt": "HINSTANCE launcher = LoadLibrary(\"bin\\\\dedicated.dll\"); // STEAM OK ... filesystem not mounted yet",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "0f6ec2bb57d3b1fd8b56",
+      "mechanism": "native-loader",
+      "path": "dedicated_main/main.cpp",
+      "line": 206,
+      "excerpt": "void *tier0 = dlopen( \"libtier0\" DLL_EXT_STRING, RTLD_NOW );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "ad3e9b78541d14541926",
+      "mechanism": "native-loader",
+      "path": "dedicated_main/main.cpp",
+      "line": 207,
+      "excerpt": "void *vstdlib = dlopen( \"libvstdlib\" DLL_EXT_STRING, RTLD_NOW );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "7e03d3fb417910e30381",
+      "mechanism": "native-loader",
+      "path": "dedicated_main/main.cpp",
+      "line": 211,
+      "excerpt": "void *dedicated = dlopen( pBinaryName, RTLD_NOW );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "53562eb4319acf7b43c4",
+      "mechanism": "native-loader",
+      "path": "dedicated_main/main.cpp",
+      "line": 213,
+      "excerpt": "dedicated = dlopen( \"bin/libdedicated\" DLL_EXT_STRING, RTLD_NOW );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "05fbfafd2d3b567111f3",
+      "rule": "ARCH101",
+      "path": "devtools/ep2_deathmap/ep2_deathmap.cpp",
+      "line": 986,
+      "excerpt": "sql = Sys_LoadModule( \"mysql_wrapper\" );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "33ac8a963930d117f4b7",
+      "rule": "ARCH102",
+      "path": "devtools/ep2_deathmap/ep2_deathmap.cpp",
+      "line": 989,
+      "excerpt": "factory = Sys_GetFactory( sql );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "60fba148f1b09e395608",
+      "rule": "ARCH101",
+      "path": "devtools/processgamestats/processgamestats.cpp",
+      "line": 733,
+      "excerpt": "sql = Sys_LoadModule( \"mysql_wrapper\" );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "ebae328747cad0bccbcc",
+      "rule": "ARCH102",
+      "path": "devtools/processgamestats/processgamestats.cpp",
+      "line": 736,
+      "excerpt": "factory = Sys_GetFactory( sql );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "4d26913e3c914e2a75ab",
+      "rule": "ARCH101",
+      "path": "devtools/tagbuild/tagbuild.cpp",
+      "line": 127,
+      "excerpt": "CSysModule *sql = Sys_LoadModule( \"mysql_wrapper\" );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "a62910f441e249f937e7",
+      "rule": "ARCH102",
+      "path": "devtools/tagbuild/tagbuild.cpp",
+      "line": 130,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( sql );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "60f5227d5c6888208fd5",
+      "mechanism": "native-loader",
+      "path": "engine/audio/snd_dev_direct.cpp",
+      "line": 740,
+      "excerpt": "m_hInstDS = LoadLibrary(\"dsound.dll\");",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "2e6e86addd454e220913",
+      "rule": "ARCH102",
+      "path": "engine/audio/snd_dma.cpp",
+      "line": 674,
+      "excerpt": "CreateInterfaceFn vaudioFactory = Sys_GetFactory( g_pVAudioModule );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "93e2e7ee14d6ee229293",
+      "rule": "ARCH102",
+      "path": "engine/audio/voice.cpp",
+      "line": 680,
+      "excerpt": "if( !g_hVoiceCodecDLL || (createCodecFn = Sys_GetFactory(g_hVoiceCodecDLL)) == NULL )",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "4b01add84c511ef5a0c5",
+      "rule": "ARCH102",
+      "path": "engine/audio/voice.cpp",
+      "line": 686,
+      "excerpt": "if ( !g_hVoiceCodecDLL || (createCodecFn = Sys_GetFactory(g_hVoiceCodecDLL)) == NULL ||",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "d8c6ab2622d28c1b410c",
+      "mechanism": "native-loader",
+      "path": "engine/audio/voice_record_dsound.cpp",
+      "line": 190,
+      "excerpt": "m_hInstDS = LoadLibrary(\"dsound.dll\");",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "5be30cf516ab7aaf64c7",
+      "rule": "ARCH103",
+      "path": "engine/bugreporter.cpp",
+      "line": 857,
+      "excerpt": "m_hBugReporter = g_pFileSystem->LoadModule( m_sDllName);",
+      "mechanism": "ARCH103",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "69fd6edb3e1cdfb0f72d",
+      "rule": "ARCH103",
+      "path": "engine/bugreporter.cpp",
+      "line": 862,
+      "excerpt": "m_hBugReporter = g_pFileSystem->LoadModule( m_sDllName );",
+      "mechanism": "ARCH103",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "07025856d3f5bb6d23f4",
+      "rule": "ARCH102",
+      "path": "engine/bugreporter.cpp",
+      "line": 878,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( m_hBugReporter );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "d694ad99b13708f0f44f",
+      "rule": "ARCH102",
+      "path": "engine/buildcubemaps.cpp",
+      "line": 71,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( *pModule );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "6d94f240ba6b31a38f66",
+      "rule": "ARCH102",
+      "path": "engine/buildcubemaps.cpp",
+      "line": 1070,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( pModule );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "dc4883efc2486c864aca",
+      "rule": "ARCH103",
+      "path": "engine/cdll_engine_int.cpp",
+      "line": 1727,
+      "excerpt": "g_ClientDLLModule = g_pFileSystem->LoadModule( \"client\", \"GAMEBIN\", false );",
+      "mechanism": "ARCH103",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "e2afebc5837630cf31f1",
+      "rule": "ARCH102",
+      "path": "engine/cdll_engine_int.cpp",
+      "line": 1730,
+      "excerpt": "g_ClientFactory = Sys_GetFactory( g_ClientDLLModule );",
+      "mechanism": "ARCH102",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "90d9949ecfd91e587a73",
+      "mechanism": "native-loader",
+      "path": "engine/cl_check_process.cpp",
+      "line": 127,
+      "excerpt": "HMODULE hModule = LoadLibrary( \"ntdll.dll\" );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "880788baf1e9ee863ab5",
+      "mechanism": "native-loader",
+      "path": "engine/cl_check_process.cpp",
+      "line": 186,
+      "excerpt": "hInst = LoadLibrary( \"Psapi.dll\" );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "780a6f86eee94b5c54ab",
+      "mechanism": "native-loader",
+      "path": "engine/cl_check_process.cpp",
+      "line": 278,
+      "excerpt": "HINSTANCE hInst = LoadLibrary( \"Psapi.dll\" );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "8813963f452b52f9663e",
+      "rule": "ARCH101",
+      "path": "engine/cl_texturelistpanel.cpp",
+      "line": 978,
+      "excerpt": "m_pP4Module = Sys_LoadModule( \"p4lib\" );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "c310c62c9a2e9aac1c7f",
+      "rule": "ARCH102",
+      "path": "engine/cl_texturelistpanel.cpp",
+      "line": 983,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( m_pP4Module );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "243bf1603c3103214af8",
+      "rule": "ARCH102",
+      "path": "engine/enginetool.cpp",
+      "line": 352,
+      "excerpt": "factory = Sys_GetFactory( g_GameDLL );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "9b2fda63a12477c057bc",
+      "rule": "ARCH103",
+      "path": "engine/filesystem_engine.cpp",
+      "line": 111,
+      "excerpt": "return g_pFileSystem->LoadModule( path );",
+      "mechanism": "ARCH103",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "0cba6d60af035910e445",
+      "rule": "ARCH101",
+      "path": "engine/filesystem_engine.cpp",
+      "line": 113,
+      "excerpt": "return Sys_LoadModule(path);",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "9734c86efe8515eeb74e",
+      "rule": "ARCH102",
+      "path": "engine/materialproxyfactory.cpp",
+      "line": 22,
+      "excerpt": "IMaterialProxy *materialProxy = LookupProxy( proxyName, Sys_GetFactory( g_ClientDLLModule ) );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "4f1fd590b860e70de2df",
+      "rule": "ARCH103",
+      "path": "engine/modelloader.cpp",
+      "line": 5348,
+      "excerpt": "CSysModule *pmodule = g_pFullFileSystem->LoadModule( \"bsppack\" );",
+      "mechanism": "ARCH103",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "260004642e86e7b6e948",
+      "rule": "ARCH102",
+      "path": "engine/modelloader.cpp",
+      "line": 5351,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( pmodule );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "3b22ea2257c107e4845e",
+      "rule": "ARCH103",
+      "path": "engine/replay_internal.cpp",
+      "line": 61,
+      "excerpt": "gs_hReplayModule = g_pFileSystem->LoadModule( szDllName );",
+      "mechanism": "ARCH103",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "b37ec165b761a1ac9c8c",
+      "rule": "ARCH102",
+      "path": "engine/replay_internal.cpp",
+      "line": 62,
+      "excerpt": "g_fnReplayFactory = Sys_GetFactory( gs_hReplayModule );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "96804b66af2396482ac7",
+      "rule": "ARCH103",
+      "path": "engine/sv_plugin.cpp",
+      "line": 99,
+      "excerpt": "m_pPluginModule = g_pFileSystem->LoadModule( fixedFileName, \"GAME\", false );",
+      "mechanism": "ARCH103",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "d8fa5b308d9b97c24837",
+      "rule": "ARCH102",
+      "path": "engine/sv_plugin.cpp",
+      "line": 102,
+      "excerpt": "CreateInterfaceFn pluginFactory = Sys_GetFactory( m_pPluginModule );",
+      "mechanism": "ARCH102",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "c3d0fa810f760f5832bd",
+      "rule": "ARCH102",
+      "path": "engine/sv_plugin.cpp",
+      "line": 124,
+      "excerpt": "CreateInterfaceFn gameServerFactory = Sys_GetFactory( g_GameDLL );",
+      "mechanism": "ARCH102",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "de88ce4b5a32d3e0cc37",
+      "rule": "ARCH102",
+      "path": "engine/sv_plugin.cpp",
+      "line": 262,
+      "excerpt": "CreateInterfaceFn gameServerFactory = Sys_GetFactory( g_GameDLL );",
+      "mechanism": "ARCH102",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "50dca6be7ab88791ddd4",
+      "rule": "ARCH103",
+      "path": "engine/sys_dll.cpp",
+      "line": 1136,
+      "excerpt": "if ((pDLL = g_pFileSystem->LoadModule(szDllFilename, \"GAMEBIN\", false)) == NULL)",
+      "mechanism": "ARCH103",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "3e233648c30be0d2bf4d",
+      "rule": "ARCH102",
+      "path": "engine/sys_dll.cpp",
+      "line": 1144,
+      "excerpt": "g_ServerFactory = Sys_GetFactory( pDLL );",
+      "mechanism": "ARCH102",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "ab485564da2e8c9b38e6",
+      "mechanism": "native-loader",
+      "path": "engine/sys_dll2.cpp",
+      "line": 512,
+      "excerpt": "HINSTANCE hInst = LoadLibrary( \"Psapi.dll\" );",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "f8f7c828375fbf06d1a1",
+      "mechanism": "native-loader",
+      "path": "engine/sys_dll2.cpp",
+      "line": 1300,
+      "excerpt": "HINSTANCE hInst = LoadLibrary( \"kernel32.dll\" );",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "9eac445edf440aad7218",
+      "mechanism": "native-loader",
+      "path": "engine/sys_mainwind.cpp",
+      "line": 440,
+      "excerpt": "static HINSTANCE hInst = LoadLibrary( \"user32.dll\" );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "5e994d8777b1e8a11199",
+      "rule": "ARCH101",
+      "path": "engine/sys_mainwind.cpp",
+      "line": 1502,
+      "excerpt": "m_hUnicodeModule = Sys_LoadModule( \"unicode\" );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "300fb3a46f6cc9548285",
+      "rule": "ARCH102",
+      "path": "engine/sys_mainwind.cpp",
+      "line": 1509,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( m_hUnicodeModule );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "f5c4a1da16e51a5048fa",
+      "rule": "ARCH101",
+      "path": "engine/toolframework.cpp",
+      "line": 475,
+      "excerpt": "CSysModule *module = Sys_LoadModule( dllname );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "4f017d2599dc9b658d39",
+      "rule": "ARCH102",
+      "path": "engine/toolframework.cpp",
+      "line": 482,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( module );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "ea2100c930bc55a19e2e",
+      "rule": "ARCH103",
+      "path": "engine/vgui_baseui_interface.cpp",
+      "line": 569,
+      "excerpt": "m_hStaticGameUIModule = g_pFileSystem->LoadModule(szDllName, \"EXECUTABLE_PATH\", true); // LoadModule() does a GetLocalCopy() call",
+      "mechanism": "ARCH103",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "f43762e5f208fcae4f4c",
+      "rule": "ARCH102",
+      "path": "engine/vgui_baseui_interface.cpp",
+      "line": 570,
+      "excerpt": "m_GameUIFactory = Sys_GetFactory(m_hStaticGameUIModule);",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "9731802c1517a7911249",
+      "rule": "ARCH103",
+      "path": "external/vpc/public/filesystem_passthru.h",
+      "line": 120,
+      "excerpt": "virtual CSysModule *LoadModule( const char *pFileName, const char *pPathID, bool bValidatedDllOnly ) { return m_pFileSystemPassThru->LoadModule( pFileName, pPathID, bValidatedDllOnly ); }",
+      "mechanism": "ARCH103",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "c38215589b5ad1f3da37",
+      "rule": "ARCH102",
+      "path": "external/vpc/public/tier1/interface.h",
+      "line": 174,
+      "excerpt": "extern CreateInterfaceFn Sys_GetFactory( CSysModule *pModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "9fa38eaae7b87f9c2ab7",
+      "rule": "ARCH102",
+      "path": "external/vpc/public/tier1/interface.h",
+      "line": 175,
+      "excerpt": "extern CreateInterfaceFn Sys_GetFactory( const char *pModuleName );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "9b648f02a549119254ed",
+      "rule": "ARCH101",
+      "path": "external/vpc/public/tier1/interface.h",
+      "line": 183,
+      "excerpt": "extern CSysModule *Sys_LoadModule( const char *pModuleName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "53f4870353398c7fb231",
+      "mechanism": "Sys_LoadInterface",
+      "path": "external/vpc/public/tier1/interface.h",
+      "line": 192,
+      "excerpt": "bool Sys_LoadInterface(",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "1a349e595ce54c602fee",
+      "rule": "ARCH104",
+      "path": "external/vpc/public/tier1/interface.h",
+      "line": 207,
+      "excerpt": "class CDllDemandLoader",
+      "mechanism": "ARCH104",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "a85ce82d4ebe12b073a1",
+      "rule": "ARCH104",
+      "path": "external/vpc/public/tier1/interface.h",
+      "line": 210,
+      "excerpt": "CDllDemandLoader( char const *pchModuleName );",
+      "mechanism": "ARCH104",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "92f14acf2bcc18fe0820",
+      "rule": "ARCH104",
+      "path": "external/vpc/public/tier1/interface.h",
+      "line": 211,
+      "excerpt": "virtual ~CDllDemandLoader();",
+      "mechanism": "ARCH104",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "b91a2cf1512dfe0380c9",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier0/etwprof.cpp",
+      "line": 54,
+      "excerpt": "HMODULE pAdvapiDLL = LoadLibraryW( L\"Advapi32.dll\" );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "ff671270c09ef51415d3",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier0/minidump.cpp",
+      "line": 72,
+      "excerpt": "HMODULE hDbgHelpDll = ::LoadLibrary( \"DbgHelp.dll\" );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "20ef1bbee63610ba7b0a",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier0/platform.cpp",
+      "line": 334,
+      "excerpt": "HINSTANCE pVTuneDLL = LoadLibrary( \"vtuneapi.dll\" );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "c9b19e7050cdcf654f1d",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier0/platform.cpp",
+      "line": 452,
+      "excerpt": "HMODULE hModule = ::LoadLibrary( pszModule );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "1a81380a38eb1d424a82",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier0/stacktools.cpp",
+      "line": 703,
+      "excerpt": "m_hDbgHelpDll = ::LoadLibrary( \"DbgHelp.dll\" );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "daef8930433237b77da4",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier0/stacktools.cpp",
+      "line": 775,
+      "excerpt": "m_hNTDllDll = ::LoadLibrary( \"ntdll.dll\" );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "55746f6542248dada581",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier0/win32consoleio.cpp",
+      "line": 65,
+      "excerpt": "HINSTANCE hInst = ::LoadLibrary( \"kernel32.dll\" );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "a6573a35648833f45623",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 121,
+      "excerpt": "if( (handle=dlopen(name, RTLD_NOW))==NULL)",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "772c9896b64447db63c2",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 197,
+      "excerpt": "return LoadLibrary( pName );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "c5e5bc59aee10dae43ed",
+      "mechanism": "native-loader",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 311,
+      "excerpt": "HMODULE ret = (HMODULE)dlopen( str, RTLD_NOW );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "71fa575015ecd5a7c86a",
+      "rule": "ARCH101",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 392,
+      "excerpt": "CSysModule *Sys_LoadModule( const char *pModuleName )",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "f10b94abab921fc43597",
+      "rule": "ARCH102",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 579,
+      "excerpt": "CreateInterfaceFn Sys_GetFactory( CSysModule *pModule )",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "ccfc7844dd705aa7d09b",
+      "rule": "ARCH102",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 615,
+      "excerpt": "CreateInterfaceFn Sys_GetFactory( const char *pModuleName )",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "bff9965ecbc938389eab",
+      "mechanism": "Sys_LoadInterface",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 633,
+      "excerpt": "bool Sys_LoadInterface(",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "d6c27ac0650947be4a07",
+      "rule": "ARCH101",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 639,
+      "excerpt": "CSysModule *pMod = Sys_LoadModule( pModuleName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "df90bf94d642414f07f8",
+      "rule": "ARCH102",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 643,
+      "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( pMod );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "4067b93337f30cd50b6a",
+      "rule": "ARCH104",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 670,
+      "excerpt": "CDllDemandLoader::CDllDemandLoader( char const *pchModuleName ) :",
+      "mechanism": "ARCH104",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "f8d77107b485790b6071",
+      "rule": "ARCH104",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 670,
+      "excerpt": "CDllDemandLoader::CDllDemandLoader( char const *pchModuleName ) :",
+      "mechanism": "ARCH104",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "20187b11d2f61ac7a1b2",
+      "rule": "ARCH104",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 677,
+      "excerpt": "CDllDemandLoader::~CDllDemandLoader()",
+      "mechanism": "ARCH104",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "3af2404245e4d157507b",
+      "rule": "ARCH104",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 677,
+      "excerpt": "CDllDemandLoader::~CDllDemandLoader()",
+      "mechanism": "ARCH104",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "aa5507570c79270baaba",
+      "rule": "ARCH104",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 682,
+      "excerpt": "CreateInterfaceFn CDllDemandLoader::GetFactory()",
+      "mechanism": "ARCH104",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "606cddba8faff2086ac8",
+      "rule": "ARCH101",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 687,
+      "excerpt": "m_hModule = Sys_LoadModule( m_pchModuleName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "111a3de98993e57c4718",
+      "rule": "ARCH102",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 695,
+      "excerpt": "return Sys_GetFactory( m_hModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "f4905bc4744693d25eb6",
+      "rule": "ARCH104",
+      "path": "external/vpc/tier1/interface.cpp",
+      "line": 698,
+      "excerpt": "void CDllDemandLoader::Unload()",
+      "mechanism": "ARCH104",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "3f720ea50a17a188b6bd",
+      "mechanism": "Sys_LoadInterface",
+      "path": "external/vpc/utils/vpc/main.cpp",
+      "line": 209,
+      "excerpt": "if ( !Sys_LoadInterface( p4libdll, P4_INTERFACE_VERSION, &m_pP4Module, (void**)&p4 ) )",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "a5152bb9263bb2db89a1",
+      "rule": "ARCH101",
+      "path": "external/vpc/utils/vpc/main.cpp",
+      "line": 223,
+      "excerpt": "m_pFilesystemModule = Sys_LoadModule( filesystemdll );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "321d3a946cd6258dbcd8",
+      "rule": "ARCH102",
+      "path": "external/vpc/utils/vpc/main.cpp",
+      "line": 224,
+      "excerpt": "p4->Connect( Sys_GetFactory( m_pFilesystemModule ) );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "de889cb88fa0cf21d84a",
+      "rule": "ARCH101",
+      "path": "filesystem/basefilesystem.cpp",
+      "line": 5061,
+      "excerpt": "pModule = Sys_LoadModule( tempPathID );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "3fe8356e72efadeba9cd",
+      "rule": "ARCH101",
+      "path": "filesystem/basefilesystem.cpp",
+      "line": 5070,
+      "excerpt": "pModule = Sys_LoadModule( tempPathID );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "7c1d13e5742dfb89da24",
+      "rule": "ARCH101",
+      "path": "filesystem/basefilesystem.cpp",
+      "line": 5078,
+      "excerpt": "pModule = Sys_LoadModule( pFileName );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "7354a714e955b8a221ad",
+      "rule": "ARCH101",
+      "path": "filesystem/filesystem_steam.cpp",
+      "line": 370,
+      "excerpt": "m_hSteamDLL = (HMODULE)Sys_LoadModule( szSteamDLLPath );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "bcf0c1dbff112d7f88f5",
+      "rule": "ARCH101",
+      "path": "filesystem/filesystem_steam.cpp",
+      "line": 375,
+      "excerpt": "m_hSteamDLL = (HMODULE)Sys_LoadModule( \"steam\" DLL_EXT_STRING );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "3bd14eb2f920e6e34ead",
+      "rule": "ARCH101",
+      "path": "filesystem/filesystem_steam.cpp",
+      "line": 377,
+      "excerpt": "m_hSteamDLL = (HMODULE)Sys_LoadModule( \"libsteam\" DLL_EXT_STRING );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "c0f6157c6714ba1bec91",
+      "rule": "ARCH101",
+      "path": "filesystem/filesystem_steam.cpp",
+      "line": 1368,
+      "excerpt": "CSysModule *module = Sys_LoadModule( pFileName, SYS_NOLOAD );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "b69d718facc82798e6fd",
+      "rule": "ARCH101",
+      "path": "filesystem/filesystem_steam.cpp",
+      "line": 1440,
+      "excerpt": "CSysModule *module = Sys_LoadModule( newPathName );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "e7f84e62d1ec7a2024a5",
+      "rule": "ARCH101",
+      "path": "filesystem/filesystem_steam.cpp",
+      "line": 1458,
+      "excerpt": "return Sys_LoadModule( szNewPath );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "c75560b1db41f481712c",
+      "rule": "ARCH101",
+      "path": "game/client/hud_lcd.cpp",
+      "line": 181,
+      "excerpt": "m_pG15Module = Sys_LoadModule( G15_MODULE_NAME );",
+      "mechanism": "ARCH101",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "2d715000eacf6ba6f06a",
+      "rule": "ARCH102",
+      "path": "game/client/hud_lcd.cpp",
+      "line": 187,
+      "excerpt": "m_G15Factory = Sys_GetFactory( m_pG15Module );",
+      "mechanism": "ARCH102",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "96c5d68c1c1c0742ebb3",
+      "rule": "ARCH101",
+      "path": "game/client/sixense/in_sixense.cpp",
+      "line": 381,
+      "excerpt": "g_pSixenseModule = Sys_LoadModule( \"sixense\" );",
+      "mechanism": "ARCH101",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "db2a898942b99a4bbdc1",
+      "rule": "ARCH101",
+      "path": "game/client/sixense/in_sixense.cpp",
+      "line": 389,
+      "excerpt": "g_pSixenseUtilsModule = Sys_LoadModule( \"sixense_utils\" );",
+      "mechanism": "ARCH101",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "ade3b1772bcb49197bcf",
+      "rule": "ARCH102",
+      "path": "game/client/sixense/in_sixense.cpp",
+      "line": 403,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( g_pSixenseModule );",
+      "mechanism": "ARCH102",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "0a6e1416e166fe84f70e",
+      "rule": "ARCH102",
+      "path": "game/client/sixense/in_sixense.cpp",
+      "line": 428,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( g_pSixenseUtilsModule );",
+      "mechanism": "ARCH102",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "3eeb61c0538df02f84f9",
+      "rule": "ARCH104",
+      "path": "game/shared/point_bonusmaps_accessor.cpp",
+      "line": 20,
+      "excerpt": "static CDllDemandLoader g_GameUI( \"GameUI\" );",
+      "mechanism": "ARCH104",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "e9843961726610fa7d0a",
+      "rule": "ARCH102",
+      "path": "gameui/VGuiSystemModuleLoader.cpp",
+      "line": 100,
+      "excerpt": "moduleFactories[i] = Sys_GetFactory(m_Modules[i].module);",
+      "mechanism": "ARCH102",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "ec03068fac90229bb4fe",
+      "rule": "ARCH103",
+      "path": "gameui/VGuiSystemModuleLoader.cpp",
+      "line": 175,
+      "excerpt": "CSysModule *mod = g_pFullFileSystem->LoadModule(dllPath, \"EXECUTABLE_PATH\");",
+      "mechanism": "ARCH103",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "d7e2d91bda13f5768169",
+      "rule": "ARCH102",
+      "path": "gameui/VGuiSystemModuleLoader.cpp",
+      "line": 184,
+      "excerpt": "IVGuiModule *moduleInterface = (IVGuiModule *)Sys_GetFactory(mod)(pchInterface, NULL);",
+      "mechanism": "ARCH102",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "44487938402a9cd96a45",
+      "rule": "ARCH102",
+      "path": "gameui/VGuiSystemModuleLoader.cpp",
+      "line": 354,
+      "excerpt": "return Sys_GetFactory(m_Modules[moduleIndex].module);",
+      "mechanism": "ARCH102",
+      "classification": "retained-extension",
+      "reason": "Game, server, or UI extension boundary retained for compatibility."
+    },
+    {
+      "fingerprint": "f9d410e700c90caea8c8",
+      "rule": "ARCH101",
+      "path": "hammer/bsplighting.cpp",
+      "line": 843,
+      "excerpt": "m_hVRadDLL = Sys_LoadModule( \"vrad_dll.dll\" );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "1588afde90cac6983dd4",
+      "rule": "ARCH102",
+      "path": "hammer/bsplighting.cpp",
+      "line": 847,
+      "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( m_hVRadDLL );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "07903510c5d5b7eb2c31",
+      "rule": "ARCH101",
+      "path": "hammer/op_entity.cpp",
+      "line": 3488,
+      "excerpt": "g_pFSDialogModule = Sys_LoadModule( pDLLName );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "6ff0cf9a669cbd1865bc",
+      "rule": "ARCH102",
+      "path": "hammer/op_entity.cpp",
+      "line": 3490,
+      "excerpt": "(g_FSDialogFactory = Sys_GetFactory( g_pFSDialogModule )) == NULL",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "b361a5e703c9fda1622b",
+      "rule": "ARCH101",
+      "path": "inputsystem/inputsystem.cpp",
+      "line": 186,
+      "excerpt": "m_pNovintDLL = Sys_LoadModule( \"haptics.dll\" );",
+      "mechanism": "ARCH101",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "f2ef98d951ce0e11ad25",
+      "rule": "ARCH101",
+      "path": "inputsystem/inputsystem.cpp",
+      "line": 212,
+      "excerpt": "CSysModule *m_pRawInputDLL = Sys_LoadModule( \"USER32.dll\" );",
+      "mechanism": "ARCH101",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "c75a549a7e534eb066b0",
+      "mechanism": "native-loader",
+      "path": "launcher/launcher.cpp",
+      "line": 600,
+      "excerpt": "LoadLibrary( rgchSteamPath );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "99ab1075c12258c13e15",
+      "mechanism": "native-loader",
+      "path": "launcher_main/main.cpp",
+      "line": 122,
+      "excerpt": "HINSTANCE launcher = LoadLibrary( szBuffer );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "3817c03fc6b8d9787121",
+      "mechanism": "native-loader",
+      "path": "launcher_main/main.cpp",
+      "line": 238,
+      "excerpt": "void *launcher = dlopen( \"bin/liblauncher\" DLL_EXT_STRING, RTLD_NOW );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "afc2fb0cdba85c763c53",
+      "mechanism": "native-loader",
+      "path": "launcher_main/main.cpp",
+      "line": 243,
+      "excerpt": "launcher = dlopen( \"bin/launcher\" DLL_EXT_STRING, RTLD_NOW );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "71b2fec1d59515aeb3e3",
+      "mechanism": "native-loader",
+      "path": "launcher_main/main.cpp",
+      "line": 691,
+      "excerpt": "hModule = LoadLibrary( dllPath );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "d876da4e6d61d5f3fb90",
+      "mechanism": "native-loader",
+      "path": "launcher_main/main.cpp",
+      "line": 722,
+      "excerpt": "hModule = LoadLibrary( pLaunchDllName );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "f0b3f8f25e4e84e6f31d",
+      "rule": "ARCH101",
+      "path": "materialsystem/cmaterialsystem.cpp",
+      "line": 589,
+      "excerpt": "m_ShaderHInst = Sys_LoadModule( pShaderDLL );",
+      "mechanism": "ARCH101",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "c7df73192996356e753f",
+      "rule": "ARCH102",
+      "path": "materialsystem/cmaterialsystem.cpp",
+      "line": 596,
+      "excerpt": "return Sys_GetFactory( m_ShaderHInst );",
+      "mechanism": "ARCH102",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "b916eda1b73adec600a5",
+      "rule": "ARCH101",
+      "path": "materialsystem/ctexture.cpp",
+      "line": 4708,
+      "excerpt": "m_pP4Module = Sys_LoadModule( \"p4lib\" );",
+      "mechanism": "ARCH101",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "9495f1241d7317e96176",
+      "rule": "ARCH102",
+      "path": "materialsystem/ctexture.cpp",
+      "line": 4713,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( m_pP4Module );",
+      "mechanism": "ARCH102",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "dc57ad1251615f3c4529",
+      "mechanism": "native-loader",
+      "path": "materialsystem/shaderapidx9/shaderdevicedx8.cpp",
+      "line": 158,
+      "excerpt": "if ( HMODULE hMod = ::LoadLibraryA( \"d3d9.dll\" ) )",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "ef516ef80c7f59e5096c",
+      "mechanism": "native-loader",
+      "path": "materialsystem/shaderapidx9/shaderdevicedx8.cpp",
+      "line": 210,
+      "excerpt": "m_hD3D9 = LoadLibraryA(\"d3d9.dll\");",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "6396589dda77ad52fc78",
+      "rule": "ARCH101",
+      "path": "materialsystem/shaderapidx9/vertexshaderdx8.cpp",
+      "line": 910,
+      "excerpt": "m_pShaderCompiler30 = Sys_LoadModule( \"d3dx9d_33.dll\" );",
+      "mechanism": "ARCH101",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "c53f22f558727dd21ba2",
+      "rule": "ARCH101",
+      "path": "materialsystem/shaderapidx9/vertexshaderdx8.cpp",
+      "line": 914,
+      "excerpt": "m_pShaderCompiler30 = Sys_LoadModule( \"d3dx9_33.dll\" );",
+      "mechanism": "ARCH101",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "ebd20bc92ceadcc2639e",
+      "rule": "ARCH103",
+      "path": "materialsystem/shadersystem.cpp",
+      "line": 504,
+      "excerpt": "CSysModule *hInstance = g_pFullFileSystem->LoadModule( pFullPath, pPathID, bValidatedDllOnly );",
+      "mechanism": "ARCH103",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "9187c916adbb70eb6089",
+      "rule": "ARCH102",
+      "path": "materialsystem/shadersystem.cpp",
+      "line": 509,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( hInstance );",
+      "mechanism": "ARCH102",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "2d95166d02d0f3a2a045",
+      "mechanism": "Sys_LoadInterface",
+      "path": "public/filesystem_init.cpp",
+      "line": 1209,
+      "excerpt": "if ( !Sys_LoadInterface(",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "f82984e2db1c55d3eec9",
+      "rule": "ARCH103",
+      "path": "public/filesystem_passthru.h",
+      "line": 118,
+      "excerpt": "virtual CSysModule *LoadModule( const char *pFileName, const char *pPathID, bool bValidatedDllOnly ) { return m_pFileSystemPassThru->LoadModule( pFileName, pPathID, bValidatedDllOnly ); }",
+      "mechanism": "ARCH103",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "fb1f2237d00a0ea79d6e",
+      "rule": "ARCH101",
+      "path": "public/haptics/haptic_utils.cpp",
+      "line": 103,
+      "excerpt": "pFalconModule = Sys_LoadModule( HAPTICS_TEST_PREFIX HAPTICS_DLL_NAME );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "94dad0c90797cfe1baad",
+      "rule": "ARCH102",
+      "path": "public/haptics/haptic_utils.cpp",
+      "line": 106,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( pFalconModule );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "ec7f4cd640d2644bc127",
+      "rule": "ARCH101",
+      "path": "public/scratchpad3d.cpp",
+      "line": 610,
+      "excerpt": "CSysModule *pModule = Sys_LoadModule( \"filesystem_stdio\" );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "1da026bdbb20e50a1849",
+      "rule": "ARCH102",
+      "path": "public/scratchpad3d.cpp",
+      "line": 614,
+      "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( pModule );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "be686c3dd4983f3124f5",
+      "rule": "ARCH102",
+      "path": "public/tier1/interface.h",
+      "line": 176,
+      "excerpt": "extern CreateInterfaceFn Sys_GetFactory( CSysModule *pModule );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "7ea29c872431e3d034f3",
+      "rule": "ARCH102",
+      "path": "public/tier1/interface.h",
+      "line": 177,
+      "excerpt": "extern CreateInterfaceFn Sys_GetFactory( const char *pModuleName );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "13753b895d50edc832d2",
+      "rule": "ARCH101",
+      "path": "public/tier1/interface.h",
+      "line": 191,
+      "excerpt": "extern CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags = SYS_NOFLAGS );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "285c6f7f06312148d592",
+      "mechanism": "Sys_LoadInterface",
+      "path": "public/tier1/interface.h",
+      "line": 197,
+      "excerpt": "bool Sys_LoadInterface(",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "fca7d895d0c9d75384ad",
+      "rule": "ARCH104",
+      "path": "public/tier1/interface.h",
+      "line": 212,
+      "excerpt": "class CDllDemandLoader",
+      "mechanism": "ARCH104",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "ac1d7c4e94feead2de8b",
+      "rule": "ARCH104",
+      "path": "public/tier1/interface.h",
+      "line": 215,
+      "excerpt": "CDllDemandLoader( char const *pchModuleName );",
+      "mechanism": "ARCH104",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "cc0dd275b8a946131d26",
+      "rule": "ARCH104",
+      "path": "public/tier1/interface.h",
+      "line": 216,
+      "excerpt": "virtual ~CDllDemandLoader();",
+      "mechanism": "ARCH104",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "5012e82acb007f4ddc66",
+      "rule": "ARCH103",
+      "path": "sfmobjects/sfmphonemeextractor.cpp",
+      "line": 119,
+      "excerpt": "e.module = g_pFullFileSystem->LoadModule( fullpath );",
+      "mechanism": "ARCH103",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "2912a2e0b6d9119439a6",
+      "rule": "ARCH102",
+      "path": "sfmobjects/sfmphonemeextractor.cpp",
+      "line": 126,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( e.module );",
+      "mechanism": "ARCH102",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "d29a069e357337703779",
+      "mechanism": "native-loader",
+      "path": "tier0/assert_dialog.cpp",
+      "line": 542,
+      "excerpt": "void *ret = dlopen( \"libSDL2-2.0.0.dylib\", RTLD_LAZY );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "ac4b0051d1ffe78d4334",
+      "mechanism": "native-loader",
+      "path": "tier0/assert_dialog.cpp",
+      "line": 544,
+      "excerpt": "void *ret = dlopen( \"libSDL2-2.0.so.0\", RTLD_LAZY );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "bf1e620c21894eab4a90",
+      "mechanism": "native-loader",
+      "path": "tier0/etwprof.cpp",
+      "line": 55,
+      "excerpt": "HMODULE pAdvapiDLL = LoadLibraryW( L\"Advapi32.dll\" );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "12cb90ababe3822aabc0",
+      "mechanism": "native-loader",
+      "path": "tier0/minidump.cpp",
+      "line": 69,
+      "excerpt": "HMODULE hDbgHelpDll = ::LoadLibrary( \"DbgHelp.dll\" );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "d5b43df7ffbfcb485bfb",
+      "mechanism": "native-loader",
+      "path": "tier0/minidump.cpp",
+      "line": 578,
+      "excerpt": "HMODULE kernel32 = LoadLibraryA(\"kernel32.dll\");",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "d6b835653f616e7e8321",
+      "mechanism": "native-loader",
+      "path": "tier0/platform.cpp",
+      "line": 250,
+      "excerpt": "HINSTANCE pVTuneDLL = LoadLibrary( \"vtuneapi.dll\" );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "9888ff5c09eadee8cbdf",
+      "mechanism": "native-loader",
+      "path": "tier0/stacktools.cpp",
+      "line": 723,
+      "excerpt": "m_hDbgHelpDll = ::LoadLibrary( \"DbgHelp.dll\" );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "87d3ae203cf48d363fde",
+      "mechanism": "native-loader",
+      "path": "tier0/stacktools.cpp",
+      "line": 795,
+      "excerpt": "m_hNTDllDll = ::LoadLibrary( \"ntdll.dll\" );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "b0570fab9c87a388875a",
+      "mechanism": "native-loader",
+      "path": "tier0/systeminformation.cpp",
+      "line": 156,
+      "excerpt": "m_hModule = ::LoadLibrary( pszModule );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "beac7d4622a89c0c4ef7",
+      "mechanism": "native-loader",
+      "path": "tier0/win32consoleio.cpp",
+      "line": 62,
+      "excerpt": "HINSTANCE hInst = ::LoadLibrary( \"kernel32.dll\" );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "7b3e4735c09c7c3027fe",
+      "mechanism": "native-loader",
+      "path": "tier0/xbox/xbox_console.cpp",
+      "line": 19,
+      "excerpt": "HMODULE hDLL = ::LoadLibrary( \"vxbdm_360.dll\" );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "78103d19b750c9d767e7",
+      "mechanism": "native-loader",
+      "path": "tier1/interface.cpp",
+      "line": 114,
+      "excerpt": "if( (handle=dlopen(name, RTLD_NOW))==NULL)",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "9f49c2e9adaf6eace0e5",
+      "mechanism": "native-loader",
+      "path": "tier1/interface.cpp",
+      "line": 177,
+      "excerpt": "return LoadLibrary( pName );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "e6daa6d75ee7cd5da14f",
+      "mechanism": "native-loader",
+      "path": "tier1/interface.cpp",
+      "line": 255,
+      "excerpt": "HMODULE ret = ( HMODULE )dlopen( str, dlopen_mode );",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "5435e8c65a13286115d0",
+      "rule": "ARCH101",
+      "path": "tier1/interface.cpp",
+      "line": 317,
+      "excerpt": "CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NOFLAGS (0) */ )",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "0ef22b504eb4df11ee2b",
+      "rule": "ARCH102",
+      "path": "tier1/interface.cpp",
+      "line": 517,
+      "excerpt": "CreateInterfaceFn Sys_GetFactory( CSysModule *pModule )",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "5a89dd7b3f4a3fe82d66",
+      "rule": "ARCH102",
+      "path": "tier1/interface.cpp",
+      "line": 551,
+      "excerpt": "CreateInterfaceFn Sys_GetFactory( const char *pModuleName )",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "5d428a01cda0e9a07c28",
+      "mechanism": "Sys_LoadInterface",
+      "path": "tier1/interface.cpp",
+      "line": 566,
+      "excerpt": "bool Sys_LoadInterface(",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "5c2ca8be83b3e66b0a4e",
+      "rule": "ARCH101",
+      "path": "tier1/interface.cpp",
+      "line": 572,
+      "excerpt": "CSysModule *pMod = Sys_LoadModule( pModuleName );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "32872c963f74f760ffee",
+      "rule": "ARCH102",
+      "path": "tier1/interface.cpp",
+      "line": 576,
+      "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( pMod );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "6ee3479ffffbde8fe5c3",
+      "rule": "ARCH104",
+      "path": "tier1/interface.cpp",
+      "line": 603,
+      "excerpt": "CDllDemandLoader::CDllDemandLoader( char const *pchModuleName ) :",
+      "mechanism": "ARCH104",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "f0811b339c7e970b2b63",
+      "rule": "ARCH104",
+      "path": "tier1/interface.cpp",
+      "line": 603,
+      "excerpt": "CDllDemandLoader::CDllDemandLoader( char const *pchModuleName ) :",
+      "mechanism": "ARCH104",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "b556774ea0f4c01d83d7",
+      "rule": "ARCH104",
+      "path": "tier1/interface.cpp",
+      "line": 610,
+      "excerpt": "CDllDemandLoader::~CDllDemandLoader()",
+      "mechanism": "ARCH104",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "e9776c68b86c92dfa933",
+      "rule": "ARCH104",
+      "path": "tier1/interface.cpp",
+      "line": 610,
+      "excerpt": "CDllDemandLoader::~CDllDemandLoader()",
+      "mechanism": "ARCH104",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "369c0574d36e9b03d153",
+      "rule": "ARCH104",
+      "path": "tier1/interface.cpp",
+      "line": 615,
+      "excerpt": "CreateInterfaceFn CDllDemandLoader::GetFactory()",
+      "mechanism": "ARCH104",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "db23bd6ba5e794f2a209",
+      "rule": "ARCH101",
+      "path": "tier1/interface.cpp",
+      "line": 620,
+      "excerpt": "m_hModule = Sys_LoadModule( m_pchModuleName );",
+      "mechanism": "ARCH101",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "c26904f6b0e3fba6def6",
+      "rule": "ARCH102",
+      "path": "tier1/interface.cpp",
+      "line": 628,
+      "excerpt": "return Sys_GetFactory( m_hModule );",
+      "mechanism": "ARCH102",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "35db2901bd79ee1e055c",
+      "rule": "ARCH104",
+      "path": "tier1/interface.cpp",
+      "line": 631,
+      "excerpt": "void CDllDemandLoader::Unload()",
+      "mechanism": "ARCH104",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "e226060d4982e95f239c",
+      "mechanism": "Sys_LoadInterface",
+      "path": "tier2/defaultfilesystem.cpp",
+      "line": 27,
+      "excerpt": "if ( !Sys_LoadInterface( \"filesystem_stdio\", FILESYSTEM_INTERFACE_VERSION,",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "99406974d82b6b635ab6",
+      "mechanism": "Sys_LoadInterface",
+      "path": "tier2/defaultfilesystem.cpp",
+      "line": 30,
+      "excerpt": "if ( !Sys_LoadInterface( \"filesystem_steam\", FILESYSTEM_INTERFACE_VERSION,",
+      "classification": "first-party-composition",
+      "reason": "First-party runtime module assembled by legacy application composition."
+    },
+    {
+      "fingerprint": "6ce7203981a1209cb579",
+      "rule": "ARCH101",
+      "path": "utils/blackmarket/blackmarket.cpp",
+      "line": 630,
+      "excerpt": "sql = Sys_LoadModule( \"mysql_wrapper\" );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "3b05c50aa560244cb777",
+      "rule": "ARCH102",
+      "path": "utils/blackmarket/blackmarket.cpp",
+      "line": 633,
+      "excerpt": "factory = Sys_GetFactory( sql );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "048e72f62aac20944e8d",
+      "rule": "ARCH103",
+      "path": "utils/common/bsplib.cpp",
+      "line": 1557,
+      "excerpt": "CSysModule *pPhysicsModule = g_pFullFileSystem->LoadModule( \"vphysics.dll\" );",
+      "mechanism": "ARCH103",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "47539d89f95a0f9a0a39",
+      "rule": "ARCH102",
+      "path": "utils/common/bsplib.cpp",
+      "line": 1560,
+      "excerpt": "CreateInterfaceFn physicsFactory = Sys_GetFactory( pPhysicsModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "22ac1e35bfb0f15c2394",
+      "mechanism": "Sys_LoadInterface",
+      "path": "utils/common/filesystem_tools.cpp",
+      "line": 123,
+      "excerpt": "if ( !Sys_LoadInterface(",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "3d3296f18ae1e4d71fac",
+      "rule": "ARCH102",
+      "path": "utils/common/filesystem_tools.cpp",
+      "line": 205,
+      "excerpt": "return Sys_GetFactory( g_pFullFileSystemModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "db6d394b665eaa92ed36",
+      "mechanism": "Sys_LoadInterface",
+      "path": "utils/common/mpi_stats.cpp",
+      "line": 530,
+      "excerpt": "if ( !Sys_LoadInterface( \"mysql_wrapper\", MYSQL_WRAPPER_VERSION_NAME, &g_hMySQLDLL, (void**)&g_pSQL ) )",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "1d0c9057c40807fb5b91",
+      "rule": "ARCH103",
+      "path": "utils/common/physdll.cpp",
+      "line": 17,
+      "excerpt": "pPhysicsModule = g_pFullFileSystem->LoadModule( \"VPHYSICS.DLL\" );",
+      "mechanism": "ARCH103",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "81df5b5b7a2ee270a527",
+      "rule": "ARCH102",
+      "path": "utils/common/physdll.cpp",
+      "line": 22,
+      "excerpt": "return Sys_GetFactory( pPhysicsModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "b9a06ac2c7b8427a6e02",
+      "rule": "ARCH103",
+      "path": "utils/common/physdll.cpp",
+      "line": 29,
+      "excerpt": "pPhysicsModule = g_pFullFileSystem->LoadModule( pPathname );",
+      "mechanism": "ARCH103",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "595dfef233136cd0d542",
+      "rule": "ARCH103",
+      "path": "utils/common/utilmatlib.cpp",
+      "line": 31,
+      "excerpt": "materialSystemDLLHInst = g_pFullFileSystem->LoadModule( pDllName );",
+      "mechanism": "ARCH103",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "229e6943718a9b0b34e8",
+      "rule": "ARCH102",
+      "path": "utils/common/utilmatlib.cpp",
+      "line": 37,
+      "excerpt": "CreateInterfaceFn clientFactory = Sys_GetFactory( materialSystemDLLHInst );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "bab06c3004a57da58340",
+      "rule": "ARCH103",
+      "path": "utils/dumpmatsyshelp/dumpmatsyshelp.cpp",
+      "line": 33,
+      "excerpt": "CSysModule *hInstance = g_pFullFileSystem->LoadModule( pFilename );",
+      "mechanism": "ARCH103",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "50a7d574b06dcba9354e",
+      "rule": "ARCH102",
+      "path": "utils/dumpmatsyshelp/dumpmatsyshelp.cpp",
+      "line": 38,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( hInstance );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "e57ba099825a141a0f8b",
+      "mechanism": "native-loader",
+      "path": "utils/finddbgdll/finddbgdll.cpp",
+      "line": 48,
+      "excerpt": "HMODULE hLib = LoadLibrary(findFileData.cFileName);",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "adedc86bc1d470bbfaa3",
+      "rule": "ARCH101",
+      "path": "utils/gamestats_reader/gamestats_reader.cpp",
+      "line": 392,
+      "excerpt": "CSysModule *sql = Sys_LoadModule( \"mysql_wrapper\" );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "7b712787088d8814f1ff",
+      "rule": "ARCH102",
+      "path": "utils/gamestats_reader/gamestats_reader.cpp",
+      "line": 395,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( sql );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "a18f669caaa04c6847e1",
+      "rule": "ARCH101",
+      "path": "utils/getbugs/getbugs.cpp",
+      "line": 705,
+      "excerpt": "// Now connect to steamweb and update the engineaccess table",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "57bfbd823118abd35643",
+      "rule": "ARCH102",
+      "path": "utils/getbugs/getbugs.cpp",
+      "line": 708,
+      "excerpt": "{",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "99d736232d0315d77efc",
+      "rule": "ARCH101",
+      "path": "utils/hlfaceposer/mdlviewer.cpp",
+      "line": 312,
+      "excerpt": "g_pFSDialogModule = Sys_LoadModule( pDLLName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "b7b221549d6916e76216",
+      "rule": "ARCH102",
+      "path": "utils/hlfaceposer/mdlviewer.cpp",
+      "line": 315,
+      "excerpt": "g_FSDialogFactory = Sys_GetFactory( g_pFSDialogModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "d81fb6b8d1fa0eb26928",
+      "rule": "ARCH101",
+      "path": "utils/hlfaceposer/phonemeeditor.cpp",
+      "line": 7935,
+      "excerpt": "e.module = Sys_LoadModule( fullpath );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "e8a32a22a9aabc64f929",
+      "rule": "ARCH102",
+      "path": "utils/hlfaceposer/phonemeeditor.cpp",
+      "line": 7942,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( e.module );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "3f82fb125837f2df095a",
+      "rule": "ARCH101",
+      "path": "utils/hlmv/mdlviewer.cpp",
+      "line": 117,
+      "excerpt": "g_pFSDialogModule = Sys_LoadModule( pDLLName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "26158d73739115be4771",
+      "rule": "ARCH102",
+      "path": "utils/hlmv/mdlviewer.cpp",
+      "line": 120,
+      "excerpt": "g_FSDialogFactory = Sys_GetFactory( g_pFSDialogModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "5a472265c2f5a09f13e5",
+      "rule": "ARCH101",
+      "path": "utils/localization_check/localization_check.cpp",
+      "line": 2503,
+      "excerpt": "",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "6a7eec2252508d10b85a",
+      "rule": "ARCH102",
+      "path": "utils/localization_check/localization_check.cpp",
+      "line": 2510,
+      "excerpt": "FileFindHandle_t findHandle;",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "2c1ac70999ebf8b877a6",
+      "rule": "ARCH101",
+      "path": "utils/matsys_regressiontest/matsys_regressiontest.cpp",
+      "line": 151,
+      "excerpt": "g_pFileSystemModule = Sys_LoadModule( \"filesystem_stdio.dll\" );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "51beb4243e55c0f2da7c",
+      "rule": "ARCH102",
+      "path": "utils/matsys_regressiontest/matsys_regressiontest.cpp",
+      "line": 158,
+      "excerpt": "g_pFileSystemFactory = Sys_GetFactory( g_pFileSystemModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "c3588d874e049ba30f2f",
+      "rule": "ARCH101",
+      "path": "utils/matsys_regressiontest/matsys_regressiontest.cpp",
+      "line": 224,
+      "excerpt": "g_MaterialsDLL = Sys_LoadModule( \"MaterialSystem.dll\" );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "4a4cacc46582fee649f7",
+      "rule": "ARCH102",
+      "path": "utils/matsys_regressiontest/matsys_regressiontest.cpp",
+      "line": 226,
+      "excerpt": "g_MaterialsFactory = Sys_GetFactory( g_MaterialsDLL );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "c57e9f8b2aa49cb391e1",
+      "mechanism": "native-loader",
+      "path": "utils/matsysapp/matsysapp.cpp",
+      "line": 583,
+      "excerpt": "m_hMaterialSystemInst = LoadLibrary( pDLLName );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "7995c7d5ca2cd234c213",
+      "rule": "ARCH102",
+      "path": "utils/matsysapp/matsysapp.cpp",
+      "line": 589,
+      "excerpt": "CreateInterfaceFn clientFactory = Sys_GetFactory( pDLLName );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "a184bc46c5a7fb0805a0",
+      "mechanism": "Sys_LoadInterface",
+      "path": "utils/mdmpRipper/CMDRipperMain.cpp",
+      "line": 72,
+      "excerpt": "Sys_LoadInterface( \"sqlwrapper\", INTERFACEVERSION_ISQLWRAPPER, &hSQLWrapper, (void **)&sqlWrapperFactory );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "8e416ebbb7aef1574c9e",
+      "mechanism": "native-loader",
+      "path": "utils/sapi51/include/sphelper.h",
+      "line": 1062,
+      "excerpt": "HMODULE hMKernel32 = ::LoadLibraryW(L\"kernel32.dll\") ;",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "f17d32aae9953900fde6",
+      "rule": "ARCH101",
+      "path": "utils/shadercompile_launcher/shadercompile_launcher.cpp",
+      "line": 92,
+      "excerpt": "pModule = Sys_LoadModule( dllName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "777cd2c59a91a32584aa",
+      "rule": "ARCH101",
+      "path": "utils/shadercompile_launcher/shadercompile_launcher.cpp",
+      "line": 107,
+      "excerpt": "pModule = Sys_LoadModule( dllName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "bf72418b6f0725b62ab2",
+      "rule": "ARCH102",
+      "path": "utils/shadercompile_launcher/shadercompile_launcher.cpp",
+      "line": 119,
+      "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( pModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "4fc78d75a9df493786d5",
+      "rule": "ARCH101",
+      "path": "utils/studiomdl/collisionmodel.cpp",
+      "line": 2239,
+      "excerpt": "CreateInterfaceFn physicsFactory = Sys_GetFactory(Sys_LoadModule( \"vphysics.dll\" ));",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "bc7fc65d4a17c236cf8e",
+      "rule": "ARCH102",
+      "path": "utils/studiomdl/collisionmodel.cpp",
+      "line": 2239,
+      "excerpt": "CreateInterfaceFn physicsFactory = Sys_GetFactory(Sys_LoadModule( \"vphysics.dll\" ));",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "88efc87eb9ee08b5d640",
+      "mechanism": "Sys_LoadInterface",
+      "path": "utils/symbolstoreupdate/SymbolStoreUpdate.cpp",
+      "line": 172,
+      "excerpt": "if ( !Sys_LoadInterface(",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "c0618e159e68f63c7fdd",
+      "rule": "ARCH101",
+      "path": "utils/texturecompile_launcher/texturecompile_launcher.cpp",
+      "line": 91,
+      "excerpt": "pModule = Sys_LoadModule( dllName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "512dc39f17b783ca01cb",
+      "rule": "ARCH101",
+      "path": "utils/texturecompile_launcher/texturecompile_launcher.cpp",
+      "line": 106,
+      "excerpt": "pModule = Sys_LoadModule( dllName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "0a5c03fe185b2c5428ae",
+      "rule": "ARCH102",
+      "path": "utils/texturecompile_launcher/texturecompile_launcher.cpp",
+      "line": 118,
+      "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( pModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "193e2d90b6ca73f02893",
+      "rule": "ARCH101",
+      "path": "utils/unittest/unittest.cpp",
+      "line": 104,
+      "excerpt": "CSysModule* hLib = Sys_LoadModule(path);",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "2471600e6272e1d65cae",
+      "rule": "ARCH102",
+      "path": "utils/unittest/unittest.cpp",
+      "line": 107,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( hLib );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "ebe1f0ed1eb4b324d063",
+      "rule": "ARCH101",
+      "path": "utils/unittest/unittest.cpp",
+      "line": 135,
+      "excerpt": "CSysModule* hLib = Sys_LoadModule(path);",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "95f5ea19ca09de6dcad7",
+      "rule": "ARCH102",
+      "path": "utils/unittest/unittest.cpp",
+      "line": 138,
+      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( hLib );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "d1e50322508b47301823",
+      "rule": "ARCH103",
+      "path": "utils/vcd_sound_check/vcd_sound_check.cpp",
+      "line": 727,
+      "excerpt": "Q_getwd( workingdir, sizeof( workingdir ) );",
+      "mechanism": "ARCH103",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "9f9bf96cca01bc579f58",
+      "rule": "ARCH102",
+      "path": "utils/vcd_sound_check/vcd_sound_check.cpp",
+      "line": 734,
+      "excerpt": "{",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "17fe4fdec525b04cf6c6",
+      "rule": "ARCH101",
+      "path": "utils/vkeyedit/vkeyedit.cpp",
+      "line": 42,
+      "excerpt": "g_pFileSystemModule = Sys_LoadModule( sFileSystemModuleName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "306c4b210901924b43ae",
+      "rule": "ARCH102",
+      "path": "utils/vkeyedit/vkeyedit.cpp",
+      "line": 50,
+      "excerpt": "g_FileSystemFactory = Sys_GetFactory( g_pFileSystemModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "9a06a2b86b7bed236d96",
+      "mechanism": "native-loader",
+      "path": "utils/vmpi/vmpi.cpp",
+      "line": 1542,
+      "excerpt": "g_hKernel32DLL = LoadLibrary( \"kernel32.dll\" );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "ffd6e939a30147bfae30",
+      "rule": "ARCH103",
+      "path": "utils/vmpi/vmpi_filesystem_master.cpp",
+      "line": 1599,
+      "excerpt": "return m_pMasterVMPIFileSystemPassThru->LoadModule( pFileName, pPathID, bValidatedDllOnly );",
+      "mechanism": "ARCH103",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "bf21a20d616166a0c15b",
+      "rule": "ARCH101",
+      "path": "utils/vmpi/vmpi_filesystem_worker.cpp",
+      "line": 809,
+      "excerpt": "return Sys_LoadModule( pFileName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "d3dd1c0b46e0b89e8a84",
+      "mechanism": "Sys_LoadInterface",
+      "path": "utils/vmpi/vmpi_job_search/JobSearchDlg.cpp",
+      "line": 360,
+      "excerpt": "if ( !Sys_LoadInterface( \"mysql_wrapper\", MYSQL_WRAPPER_VERSION_NAME, &m_hMySQLDLL, (void**)&m_pSQL ) )",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "3f63a61da89eb4e785ad",
+      "mechanism": "Sys_LoadInterface",
+      "path": "utils/vmpi/vmpi_job_watch/JobWatchDlg.cpp",
+      "line": 251,
+      "excerpt": "if ( !Sys_LoadInterface( \"mysql_wrapper\", MYSQL_WRAPPER_VERSION_NAME, &m_hMySQLDLL, (void**)&pSQL ) )",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "f087ff7f2b04dc04bab6",
+      "rule": "ARCH101",
+      "path": "utils/vmpi/vmpi_service/vmpi_service.cpp",
+      "line": 636,
+      "excerpt": "CSysModule *pModule = Sys_LoadModule( pFilename );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "c0eba6cdfe653cb00cda",
+      "rule": "ARCH102",
+      "path": "utils/vmpi/vmpi_service/vmpi_service.cpp",
+      "line": 639,
+      "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( pModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "5ce5f47888ff090e2fe6",
+      "mechanism": "native-loader",
+      "path": "utils/vmpi/vmpi_service_install/ServiceInstallDlg.cpp",
+      "line": 452,
+      "excerpt": "HMODULE hInst = LoadLibrary( \"psapi.dll\" );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "1a1f05329d2be21e25c1",
+      "mechanism": "native-loader",
+      "path": "utils/vmpi/vmpi_services_watch/ServicesDlg.cpp",
+      "line": 847,
+      "excerpt": "HINSTANCE hInst = LoadLibrary( filename );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "5e271ba1c6a08c0e65e0",
+      "mechanism": "native-loader",
+      "path": "utils/voice_tweak/voice_tweakDlg.cpp",
+      "line": 45,
+      "excerpt": "hInst = LoadLibrary( \"dpvoice.dll\" );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "1dbc39c0e8f644e17f6e",
+      "rule": "ARCH101",
+      "path": "utils/vrad_launcher/vrad_launcher.cpp",
+      "line": 89,
+      "excerpt": "pModule = Sys_LoadModule( dllName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "d4a7c6094cbba2381a36",
+      "rule": "ARCH101",
+      "path": "utils/vrad_launcher/vrad_launcher.cpp",
+      "line": 111,
+      "excerpt": "pModule = Sys_LoadModule( dllName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "e8a478d85f8aab951054",
+      "rule": "ARCH102",
+      "path": "utils/vrad_launcher/vrad_launcher.cpp",
+      "line": 120,
+      "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( pModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "2d0aaca41785ba59d17c",
+      "rule": "ARCH101",
+      "path": "utils/vtex/vtex_launcher.cpp",
+      "line": 17,
+      "excerpt": "CSysModule *pModule = Sys_LoadModule( pModuleName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "b5fe54195de2cbf64159",
+      "rule": "ARCH102",
+      "path": "utils/vtex/vtex_launcher.cpp",
+      "line": 24,
+      "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( pModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "39a0fc983aa75dfb0a64",
+      "rule": "ARCH101",
+      "path": "utils/vtexconv/vtex_launcher.cpp",
+      "line": 17,
+      "excerpt": "CSysModule *pModule = Sys_LoadModule( pModuleName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "4cadd26dce8cb2e2ffa5",
+      "rule": "ARCH102",
+      "path": "utils/vtexconv/vtex_launcher.cpp",
+      "line": 24,
+      "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( pModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "e4bcd5e86d93e1105aea",
+      "rule": "ARCH101",
+      "path": "utils/vvis_launcher/vvis_launcher.cpp",
+      "line": 50,
+      "excerpt": "CSysModule *pModule = Sys_LoadModule( pDLLName );",
+      "mechanism": "ARCH101",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "9a26249b9aa4b2a2fe85",
+      "rule": "ARCH102",
+      "path": "utils/vvis_launcher/vvis_launcher.cpp",
+      "line": 57,
+      "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( pModule );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "3f6049b20fba8a5d8eec",
+      "rule": "ARCH103",
+      "path": "utils/xbox/AppChooser/main.cpp",
+      "line": 2113,
+      "excerpt": "pFileSystem->LoadModule( \"shaderapidx9.dll\" );",
+      "mechanism": "ARCH103",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "6a7076ef7e1ee0f13221",
+      "mechanism": "Sys_LoadInterface",
+      "path": "utils/xbox/MakeGameData/MakeGameData.cpp",
+      "line": 984,
+      "excerpt": "if ( !Sys_LoadInterface( \"vphysics.dll\", VPHYSICS_COLLISION_INTERFACE_VERSION, &g_pPhysicsModule, (void**)&g_pPhysicsCollision ) )",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "ccfed21fe3a04a38f73d",
+      "mechanism": "Sys_LoadInterface",
+      "path": "utils/xbox/MakeGameData/MakeMaps.cpp",
+      "line": 124,
+      "excerpt": "if ( !Sys_LoadInterface( \"bsppack.dll\", IBSPPACK_VERSION_STRING, &pBSPModule, &pBSPPack ) )",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "6ddca3004f085f1417a4",
+      "mechanism": "Sys_LoadInterface",
+      "path": "utils/xbox/MakeGameData/MakeMaps.cpp",
+      "line": 367,
+      "excerpt": "if ( !Sys_LoadInterface( \"bsppack.dll\", IBSPPACK_VERSION_STRING, &pBSPModule, &pBSPPack ) )",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "8c954bda40bef78dbdad",
+      "rule": "ARCH103",
+      "path": "utils/xbox/Test360/TriangleASM.cpp",
+      "line": 779,
+      "excerpt": "m_pFileSystem->LoadModule( \"shaderapidx9.dll\" );",
+      "mechanism": "ARCH103",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "c812e27738da4c87bb60",
+      "rule": "ARCH102",
+      "path": "utils/xbox/Test360/TriangleASM.cpp",
+      "line": 856,
+      "excerpt": "s_pFactoryList[0] = Sys_GetFactory( m_pFileSystem->LoadModule( \"filesystem_stdio\" ) );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "acf5c18627cb6bd83fd9",
+      "rule": "ARCH103",
+      "path": "utils/xbox/Test360/TriangleASM.cpp",
+      "line": 856,
+      "excerpt": "s_pFactoryList[0] = Sys_GetFactory( m_pFileSystem->LoadModule( \"filesystem_stdio\" ) );",
+      "mechanism": "ARCH103",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "cf78b4589a6cc5cd20cc",
+      "rule": "ARCH102",
+      "path": "utils/xbox/Test360/TriangleASM.cpp",
+      "line": 857,
+      "excerpt": "s_pFactoryList[1] = Sys_GetFactory( m_pFileSystem->LoadModule( \"vguimatsurface\" ) );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "f9736aafbaab9b9cc39c",
+      "rule": "ARCH103",
+      "path": "utils/xbox/Test360/TriangleASM.cpp",
+      "line": 857,
+      "excerpt": "s_pFactoryList[1] = Sys_GetFactory( m_pFileSystem->LoadModule( \"vguimatsurface\" ) );",
+      "mechanism": "ARCH103",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "05ef1a52ec51474172ad",
+      "rule": "ARCH102",
+      "path": "utils/xbox/Test360/TriangleASM.cpp",
+      "line": 858,
+      "excerpt": "s_pFactoryList[2] = Sys_GetFactory( m_pFileSystem->LoadModule( \"vgui2\" ) );",
+      "mechanism": "ARCH102",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "5b472ba0e8b9567adf2a",
+      "rule": "ARCH103",
+      "path": "utils/xbox/Test360/TriangleASM.cpp",
+      "line": 858,
+      "excerpt": "s_pFactoryList[2] = Sys_GetFactory( m_pFileSystem->LoadModule( \"vgui2\" ) );",
+      "mechanism": "ARCH103",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "ddb87f91bbc6ab9a274a",
+      "mechanism": "native-loader",
+      "path": "utils/xbox/vxbdm/console.cpp",
+      "line": 735,
+      "excerpt": "hModule = LoadLibrary( dllPath );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "3cd35235df35a19794db",
+      "mechanism": "native-loader",
+      "path": "utils/xbox/vxconsole/bug.cpp",
+      "line": 141,
+      "excerpt": "hModule = LoadLibrary( pDLLName );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "b22e8c821ad0325150eb",
+      "mechanism": "native-loader",
+      "path": "utils/xbox/vxconsole/vxconsole.cpp",
+      "line": 1213,
+      "excerpt": "g_hRichEdit = LoadLibrary( \"Riched32.dll\" );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "052c12354dab03d82329",
+      "mechanism": "native-loader",
+      "path": "utils/xbox/vxconsole/vxconsole.cpp",
+      "line": 1328,
+      "excerpt": "HMODULE hXBDM = LoadLibrary( TEXT( \"xbdm.dll\" ) );",
+      "classification": "tool-indirection",
+      "reason": "Tool-only implementation, wrapper, or optional tool integration."
+    },
+    {
+      "fingerprint": "a3c4ed9b320d14a634f2",
+      "mechanism": "native-loader",
+      "path": "vguimatsurface/MatSystemSurface.cpp",
+      "line": 449,
+      "excerpt": "HMODULE gdiModule = ::LoadLibrary( \"gdi32.dll\" );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "0f53832b6b17447d05d9",
+      "mechanism": "native-loader",
+      "path": "vguimatsurface/MatSystemSurface.cpp",
+      "line": 1886,
+      "excerpt": "HMODULE gdiModule = ::LoadLibrary(\"gdi32.dll\");",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    },
+    {
+      "fingerprint": "c42462eef9d7fc265c7a",
+      "rule": "ARCH101",
+      "path": "video/videoservices.cpp",
+      "line": 184,
+      "excerpt": "CSysModule *pModule = Sys_LoadModule(s_VideoAppSystems[n].m_pModuleName );",
+      "mechanism": "ARCH101",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "dbb58ebcf4343e86c36a",
+      "rule": "ARCH102",
+      "path": "video/videoservices.cpp",
+      "line": 187,
+      "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( pModule );",
+      "mechanism": "ARCH102",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "566a821c7f703bf1c702",
+      "mechanism": "native-loader",
+      "path": "video/videoservices.cpp",
+      "line": 1292,
+      "excerpt": "HINSTANCE m_UserDLLhInst = LoadLibrary( \"user32.dll\" );",
+      "classification": "optional-provider",
+      "reason": "Optional product, renderer, input, video, or vendor provider."
+    },
+    {
+      "fingerprint": "38a711bf4352cd5c893c",
+      "mechanism": "native-loader",
+      "path": "vstdlib/jobthread.cpp",
+      "line": 1020,
+      "excerpt": "HINSTANCE hInst = LoadLibrary( \"kernel32.dll\" );",
+      "classification": "native-symbol-probe",
+      "reason": "Native API availability or vendor symbol probe."
+    }
+  ]
+}

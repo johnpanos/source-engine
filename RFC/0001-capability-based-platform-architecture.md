@@ -78,9 +78,14 @@ This RFC has the following goals:
   targets;
 - allow a new OS to be added by implementing documented contracts and passing a
   shared conformance suite;
+- make named targets such as Xbox, Windows PC, macOS, and Linux predefined
+  compositions of the same capability system rather than separate engine-wide
+  platform abstractions;
 - distinguish platform capabilities from engine-domain services;
 - select render backends independently from operating-system identity and split
   device, presentation, compilation, and feature-policy responsibilities;
+- support changes to a presentation surface's drawable size at runtime, including
+  phone and tablet orientation changes, without restarting the renderer;
 - represent required and optional dependencies explicitly;
 - preserve current module ABI and legacy callers during incremental migration;
 - give client, dedicated-server, editor, and command-line applications distinct
@@ -143,6 +148,15 @@ needs through a contract.
 For example, a consumer requests dynamic-library loading. The composition root
 may satisfy it with a Win32, POSIX, console, or test provider. A renderer
 requests a render-device contract; it does not infer OpenGL from POSIX.
+
+Conventional platform labels are degenerate cases of this capability system.
+Xbox, Windows PC, macOS, Linux, and other supported targets are named
+composition presets that select a known set of providers. A constrained target
+may have exactly one valid provider for a capability, so its selection can be
+fixed at build time, but consumers still receive the same capability contracts
+as targets with multiple runtime choices. A platform label may select defaults
+in the composition root; it MUST NOT introduce a parallel `IPlatform`
+abstraction or authorize platform branches in portable feature code.
 
 Compile-time checks for compiler syntax, CPU instructions, structure layout,
 and other properties that cannot reasonably be runtime capabilities remain
@@ -209,8 +223,10 @@ The target dependency structure is:
                                New-OS backend
 ```
 
-Platform backends are vertical adapters. They do not form another horizontal
-tier that feature code may include.
+Platform backends are vertical adapters. Named platform targets, including
+Xbox, Windows PC, macOS, and Linux, are presets over these adapters and may
+reuse providers where their contracts and implementations match. They do not
+form another horizontal tier that feature code may include.
 
 An initial directory structure may be:
 
@@ -471,6 +487,16 @@ This allows an application to create a device without a window, use multiple
 windows without treating them as device-global state, and test material or
 resource behavior with an offscreen provider.
 
+Runtime resizing is a required presentation behavior, not an application
+restart or backend-reselection event. When a window's drawable extent changes
+at runtime—including when a phone or tablet rotates—the surface provider must
+report the new extent and the presentation object must recreate or resize its
+swapchain/back buffers as required while keeping the logical render device and
+backend alive. The renderer must use the new drawable extent for subsequent
+frames. Transient zero-sized, minimized, or otherwise non-presentable states
+during the transition must suspend presentation without being treated as fatal;
+presentation resumes when the surface becomes presentable again.
+
 ### Capabilities, profiles, and quirks
 
 Three categories that are currently mixed together must be represented
@@ -573,8 +599,9 @@ Every render backend should pass shared tests covering:
 - adapter enumeration and stable adapter descriptions;
 - structured failure for invalid adapters and unsatisfied required features;
 - headless device creation where advertised;
-- presentation creation, resizing, minimization, and destruction where
-  advertised;
+- presentation creation, repeated runtime resizing, orientation-style aspect
+  ratio changes, minimization or transient zero-sized states, and destruction
+  where advertised; resizing must not recreate the logical render device;
 - multiple presentation surfaces when advertised;
 - buffer, texture, shader-artifact, and command-context lifetime;
 - immutable capability reporting;
@@ -679,8 +706,11 @@ Lookup failures must carry enough information to diagnose:
 
 ## Build-system rules
 
-The build selects exactly one platform backend for a target. OS definitions and
-native include paths SHOULD be private to that backend target.
+The build selects exactly one named target composition and its provider catalog.
+That composition may resolve each required capability to a target-specific or
+shared provider; where only one implementation is possible, this is the
+degenerate single-provider case. OS definitions and native include paths SHOULD
+be private to the provider targets that require them.
 
 Portable targets may include platform contract headers but MUST NOT include
 backend headers. Backend selection should happen in Waf or the applicable
@@ -1255,7 +1285,7 @@ indicators, not one-to-one migration tasks.
 | 6 | Dedicated-server composition | Construct the dedicated server from explicit providers, omit render and desktop UI capabilities, and keep old globals only in scoped compatibility bridges. Add startup/shutdown integration tests. | 3–5 | M, 4–7 |
 | 7 | Window/input contracts with SDL2 adapter | Define window, event source, cursor, clipboard, message-box, gamepad, touch, and opaque render-surface contracts. Move current SDL2 calls behind a provider without changing behavior. | 1–3 | L, 8–14 |
 | 8 | Render provider seam | Add render provider/device/capability/profile contracts, structured creation errors, the `LegacyRenderBackendProvider` around `IShaderDeviceMgr`, a scoped `LegacyRenderServices` bundle, and a conforming null backend. | 1–3 | L, 10–16 |
-| 9 | Presentation bridge seam | Remove native window interpretation from the new device contract. Implement pair-specific bridge factories for the current supported window/render pairs and headless-null; add resize, minimize, multi-window, and destruction-order tests. | 7–8 | L, 6–10 |
+| 9 | Presentation bridge seam | Remove native window interpretation from the new device contract. Implement pair-specific bridge factories for the current supported window/render pairs and headless-null; add repeated runtime resize, orientation/aspect-ratio change, minimize/zero-size recovery, multi-window, and destruction-order tests. | 7–8 | L, 6–10 |
 | 10 | SDL3 provider | Implement SDL3 window/input providers, translate SDL3 events into portable events, add current-renderer presentation bridges, remove SDL from generic include paths, and reach behavior parity with the SDL2 provider. | 7, 9 | L, 8–14 |
 | 11 | Sequences, clocks, and deterministic scheduling | Add monotonic clock, task runner, sequenced runner, delayed scheduling, virtual-time test provider, and diagnostic sequence checks. Adapt existing queues; do not replace the job system wholesale. | 2–3 | L, 6–12 |
 | 12 | Remaining platform foundation | Extract virtual memory, physical-thread infrastructure, process launch, environment, executable/user/temp paths, and diagnostics behind platform providers with shared conformance tests. | 2, 5, 11 | L–XL, 10–18 |

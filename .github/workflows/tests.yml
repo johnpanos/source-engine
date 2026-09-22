@@ -3,6 +3,18 @@ name: Tests
 on: [push, pull_request]
 
 jobs:
+  architecture:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Verify RFC 0001 architecture baseline
+      run: |
+        python3 tools/archlint/archlint.py check --all
+        python3 tools/archlint/archlint.py baseline --verify
+        python3 tools/archlint/archlint.py inventory --verify
+        python3 -m unittest discover -s tools/archlint/tests -v
+
   tests-linux-i386:
     runs-on: ubuntu-20.04
 
