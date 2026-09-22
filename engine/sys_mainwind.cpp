@@ -40,6 +40,7 @@
 #include "quakedef.h"
 #include "tier0/vcrmode.h"
 #include "tier0/icommandline.h"
+#include "tier0/native_module_load_telemetry.h"
 #include "ivideomode.h"
 #include "gl_matsysiface.h"
 #include "cdll_engine_int.h"
@@ -1752,4 +1753,3 @@ void CGame::SetActiveApp( bool active )
 {
 	m_bActiveApp = active;
 }
-

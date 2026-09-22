@@ -1,0 +1,70 @@
+{
+  "schema": "conformance-manifest/v1",
+  "description": "Authoritative registry of headless conformance suites across all RFC domains. This is the single owner of which suites exist, what they cover, how they build, and their expected outcome. Domains add ONE row here when they land a new conformance suite; the shared runner (tools/quality/conformance.py) builds, runs, and evidences every row uniformly so a suite can never silently drift out of the gate. Profiles own toolchain/flag facts (quality/profiles/); this manifest references them by id.",
+  "profiles_dir": "quality/profiles",
+  "suites": [
+    {
+      "id": "hammer.geometry.rounding",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-GEOMETRY-001",
+      "contract": "unittests/hammertest/contracts/geometry.aabb.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/geometry/rounding.cpp",
+        "unittests/hammertest/geometry/test_rounding.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.geometry.aabb",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-GEOMETRY-001",
+      "contract": "unittests/hammertest/contracts/geometry.aabb.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/geometry/aabb.cpp",
+        "hammer/core/geometry/rounding.cpp",
+        "unittests/hammertest/geometry/test_aabb.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.geometry.aabb.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-GEOMETRY-001",
+      "contract": "unittests/hammertest/contracts/geometry.aabb.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/geometry/aabb.cpp",
+        "hammer/core/geometry/rounding.cpp",
+        "unittests/hammertest/geometry/test_aabb_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "jobsystem.scheduler",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "JOB-SCHED-001",
+      "contract": "RFC/0003-dependency-aware-job-system.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "unittests/jobsystemtest/jobsystemtest.cpp"
+      ],
+      "expect": "pass"
+    }
+  ]
+}

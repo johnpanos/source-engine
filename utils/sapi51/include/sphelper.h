@@ -9,6 +9,8 @@
 #ifndef SPHelper_h
 #define SPHelper_h
 
+#include "tier0/native_module_load_telemetry.h"
+
 #ifndef _INC_MALLOC
 #include <malloc.h>
 #endif

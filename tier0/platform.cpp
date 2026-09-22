@@ -14,6 +14,7 @@
 #include <assert.h>
 #include "tier0/platform.h"
 #include "tier0/minidump.h"
+#include "tier0/native_module_load_telemetry.h"
 #ifdef _X360
 #include "xbox/xbox_console.h"
 #include "xbox/xbox_win32stubs.h"

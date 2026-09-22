@@ -22,6 +22,7 @@
 #pragma warning(disable:4305)
 #pragma warning(disable:4244)
 #include <windows.h>
+#include "tier0/native_module_load_telemetry.h"
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -956,5 +957,4 @@ void MaterialSystemApp::QuitNextFrame()
 {
 	PostMessage( (HWND)m_hWnd, WM_CLOSE, 0, 0 );
 }
-
 

@@ -34,6 +34,7 @@ def build(bld):
 		'memstd.cpp',
 		'memvalidate.cpp',
 		'minidump.cpp',
+		'module_load_telemetry.cpp',
 		'pch_tier0.cpp',
 		#'pmc360.cpp',		[$X360]
 		'PMELib.cpp',		#[$WINDOWS||$POSIX]
@@ -97,4 +98,3 @@ def build(bld):
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx      = bld.get_taskgen_count()
 	)
-

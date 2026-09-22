@@ -6,6 +6,9 @@
 //
 //=============================================================================//
 #include <windows.h> 
+#define NATIVE_MODULE_LOAD_TELEMETRY_IMPLEMENTATION
+#include "tier0/native_module_load_telemetry.h"
+#undef NATIVE_MODULE_LOAD_TELEMETRY_IMPLEMENTATION
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -97,7 +100,8 @@ void CSys::Sleep( int msec )
 //-----------------------------------------------------------------------------
 long CSys::LoadLibrary( char *lib )
 {
-	void *hDll = ::LoadLibrary( lib );
+	void *hDll = ModuleLoadTelemetry_LoadLibraryA(
+		lib, __FILE__, __LINE__ );
 	return (long)hDll;
 }
 
@@ -110,7 +114,8 @@ void CSys::FreeLibrary( long library )
 	if ( !library )
 		return;
 
-	::FreeLibrary( (HMODULE)library );
+	ModuleLoadTelemetry_FreeLibrary(
+		(HMODULE)library, __FILE__, __LINE__ );
 }
 
 //-----------------------------------------------------------------------------
@@ -408,4 +413,3 @@ extern "C" __declspec(dllexport) int DedicatedMain( HINSTANCE hInstance, HINSTAN
 	GlobalFree( argv );
 	return iret;
 }
-

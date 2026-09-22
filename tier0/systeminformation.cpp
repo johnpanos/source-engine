@@ -13,6 +13,7 @@
 #ifdef IS_WINDOWS_PC 
 #include <windows.h>
 #include <tchar.h>
+#include "tier0/native_module_load_telemetry.h"
 
 #ifdef __cplusplus
 extern "C" {

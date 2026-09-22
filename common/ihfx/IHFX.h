@@ -1,6 +1,8 @@
 #ifndef I_NOVINT_HFX
 #define I_NOVINT_HFX
 
+#include "tier0/native_module_load_telemetry.h"
+
 #define HFX_VERSION_MAJOR 0
 #define HFX_VERSION_MAJOR_SZ "0"
 #define HFX_VERSION_MINOR 5
@@ -704,4 +706,3 @@ inline void DisconnectNovintHFX(IHapticsSystem **ppSystem=0)
 	}
 }
 #endif
-

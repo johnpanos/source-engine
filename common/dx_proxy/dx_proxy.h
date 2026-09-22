@@ -11,6 +11,7 @@
 
 #ifdef _WIN32
 #pragma once
+#include "tier0/native_module_load_telemetry.h"
 #endif
 
 

@@ -17,6 +17,10 @@ jobs:
       if: always()
       run: |
         python3 tools/archlint/archlint.py hammer --verify
+    - name: Run RFC 0002 Hammer headless strict-module suites
+      if: always()
+      run: |
+        unittests/hammertest/run_headless.sh
     - name: Run architecture unit tests
       if: always()
       run: |

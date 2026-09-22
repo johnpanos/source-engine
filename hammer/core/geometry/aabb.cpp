@@ -9,7 +9,7 @@
 
 #include "hammer/geometry/aabb.h"
 
-#include <cmath>
+#include "hammer/geometry/rounding.h"
 
 namespace hammer::geometry
 {
@@ -18,11 +18,12 @@ namespace
 {
 
 // Preserves BoundBox.cpp's file-local Snap(): round to nearest grid multiple.
-// std::rint honours the current (default: nearest-even) rounding mode, matching
-// the legacy V_rint. The intermediate int cast is preserved exactly.
+// The rounding rule is owned by RoundHalfAwayFromZero (hammer_mathlib V_rint
+// semantics: halves away from zero), not std::rint. The intermediate int cast is
+// preserved exactly.
 int Snap( float value, int gridSize )
 {
-	return static_cast<int>( std::rint( value / gridSize ) * gridSize );
+	return static_cast<int>( RoundHalfAwayFromZero( value / gridSize ) * gridSize );
 }
 
 } // namespace

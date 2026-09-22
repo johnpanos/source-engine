@@ -25,7 +25,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "tier1/strtools.h"
-#include "tier1/module_load_telemetry_internal.h"
+#include "tier0/module_load_telemetry_internal.h"
 #include "tier0/icommandline.h"
 #include "tier0/dbg.h"
 #include "tier0/threadtools.h"

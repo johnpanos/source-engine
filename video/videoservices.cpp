@@ -21,6 +21,7 @@
 #include "videoservices.h"
 #include "video_macros.h"
 
+#include "tier0/native_module_load_telemetry.h"
 #include "tier0/memdbgon.h"
 
 #if defined( WIN32 )

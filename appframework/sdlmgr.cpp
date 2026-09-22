@@ -19,6 +19,7 @@
 
 #include "tier1/utllinkedlist.h"
 #include "tier1/convar.h"
+#include "tier0/native_module_load_telemetry.h"
 #ifdef TOGLES
 #include <EGL/egl.h>
 #endif
@@ -2251,4 +2252,3 @@ GLMDisplayDB *CSDLMgr::GetDisplayDB( void )
 #endif // DX_TO_GL_ABSTRACTION
 
 #endif  // !DEDICATED
-

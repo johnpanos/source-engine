@@ -25,6 +25,7 @@
 #include "recording.h"
 #include "winutils.h"
 #include "tier0/vprof_telemetry.h"
+#include "tier0/native_module_load_telemetry.h"
 
 #if defined ( DX_TO_GL_ABSTRACTION )
 // Placed here so inlines placed in dxabstract.h can access gGL

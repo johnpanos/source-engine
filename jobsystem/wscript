@@ -1,0 +1,45 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# Dependency-aware job system (RFC 0003). A self-contained, portable C++20
+# static library over standard atomics/threads. It deliberately does not depend
+# on tier0/tier1 or the legacy jobthread pool; it is a deliberately migrated
+# strict C++20 target (RFC 0006), so it overrides the tree-wide -std=c++11.
+
+from waflib import Utils
+import os
+
+top = '.'
+PROJECT_NAME = 'jobsystem'
+
+def options(opt):
+	return
+
+def configure(conf):
+	return
+
+def build(bld):
+	source = [
+		'job_graph.cpp',
+		'deterministic_executor.cpp',
+		'parallel_executor.cpp',
+		'frame_graph.cpp',
+		'pilot_particles.cpp',
+	]
+
+	includes = [
+		'../public',
+	]
+
+	bld.stlib(
+		source    = source,
+		target    = PROJECT_NAME,
+		name      = PROJECT_NAME,
+		features  = 'c cxx',
+		includes  = includes,
+		defines   = [],
+		cxxflags  = ['-std=c++20'],
+		use       = [],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)

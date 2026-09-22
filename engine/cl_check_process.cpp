@@ -17,6 +17,7 @@
 #include <TlHelp32.h>
 #include "strtools.h"
 #include <Psapi.h>
+#include "tier0/native_module_load_telemetry.h"
 #endif // IS_WINDOWS_PC
 
 // memdbgon must be the last include file in a .cpp file!!!

@@ -6,6 +6,7 @@
 //=============================================================================//
 
 #include <windows.h>
+#include "tier0/native_module_load_telemetry.h"
 #include <io.h>
 #include <conio.h>
 #include <sys/stat.h>
@@ -2474,5 +2475,4 @@ const char* VMPI_GetParamHelpString( EVMPICmdLineParam eParam )
 		return g_VMPIParams[eParam].m_pHelpText;
 	}
 }
-
 

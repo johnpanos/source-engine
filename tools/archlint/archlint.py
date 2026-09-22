@@ -324,6 +324,54 @@ def compare_baseline(
     return new, stale
 
 
+def classify_drift(
+    new: Sequence[Occurrence], stale: Sequence[dict]
+) -> tuple[list[tuple[Occurrence, dict]], list[Occurrence], list[dict]]:
+    """Separate baseline drift into relocations, genuinely new sites, and removals.
+
+    A frozen loader occurrence carries its path in its fingerprint, so moving a
+    file that contains a loader call surfaces as a (new, stale) pair with the same
+    rule and normalized excerpt but a different path.  That is a *relocation* -- it
+    needs only a reviewed baseline path update, not an architectural decision --
+    and it should not be confused with a genuinely new loader call.  This makes the
+    R01/R07 reconciliation legible instead of an opaque "N new / M stale" count.
+    """
+    stale_by_call: dict[tuple[str, str], list[dict]] = {}
+    for entry in stale:
+        stale_by_call.setdefault((entry["rule"], entry["excerpt"]), []).append(entry)
+    relocations: list[tuple[Occurrence, dict]] = []
+    genuinely_new: list[Occurrence] = []
+    matched: set[int] = set()
+    for occurrence in new:
+        candidates = stale_by_call.get((occurrence.rule, occurrence.excerpt), [])
+        match = next(
+            (entry for entry in candidates if id(entry) not in matched and entry["path"] != occurrence.path),
+            None,
+        )
+        if match is not None:
+            matched.add(id(match))
+            relocations.append((occurrence, match))
+        else:
+            genuinely_new.append(occurrence)
+    removed = [entry for entry in stale if id(entry) not in matched]
+    return relocations, genuinely_new, removed
+
+
+def print_drift_triage(new: Sequence[Occurrence], stale: Sequence[dict]) -> None:
+    relocations, genuinely_new, removed = classify_drift(new, stale)
+    if not (relocations or genuinely_new or removed):
+        return
+    print(
+        f"archlint: drift triage -> {len(relocations)} relocated, "
+        f"{len(genuinely_new)} genuinely new, {len(removed)} removed"
+    )
+    for occurrence, entry in relocations:
+        print(f"  relocated {occurrence.rule}: {entry['path']}:{entry['line']} -> {occurrence.path}:{occurrence.line}")
+        print(f"    {occurrence.excerpt}")
+    if relocations:
+        print("  (relocations are the same frozen call in a moved file: reconcile with a reviewed baseline path update)")
+
+
 def print_violation(prefix: str, item: Occurrence | dict) -> None:
     get = (lambda key: getattr(item, key)) if isinstance(item, Occurrence) else item.__getitem__
     rule = next(rule for rule in RULES if rule.rule_id == get("rule"))
@@ -345,6 +393,7 @@ def check_command(args: argparse.Namespace, root: Path, manifest: dict) -> int:
         print_violation("stale baseline entry", item)
     if new or stale:
         print(f"archlint: failed with {len(new)} new and {len(stale)} stale occurrence(s)")
+        print_drift_triage(new, stale)
         return 1
     mode = "changed files" if args.changed else "repository"
     print(f"archlint: {mode} matches the RFC 0001 Phase A baseline")
@@ -360,6 +409,7 @@ def verify_baseline(root: Path, manifest: dict) -> int:
         print_violation("stale baseline entry", item)
     if new or stale:
         print(f"archlint: baseline failed with {len(new)} new and {len(stale)} stale occurrence(s)")
+        print_drift_triage(new, stale)
         return 1
     print("archlint: baseline is current")
     return 0

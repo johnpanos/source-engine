@@ -45,15 +45,15 @@ typedef void (*ModuleLoadTelemetrySinkFn)(
 	const ModuleLoadTelemetryEvent_t &event,
 	void *pUserData );
 
-// Installs one process-local observer for the Tier 1 loader instance. Passing
-// NULL disables observation. The loader owns no sink or user-data lifetime.
-void Sys_SetModuleLoadTelemetrySink(
+// Installs one process-local observer for the shared loader tracker. Passing
+// NULL disables observation. The tracker owns no sink or user-data lifetime.
+PLATFORM_INTERFACE void Sys_SetModuleLoadTelemetrySink(
 	ModuleLoadTelemetrySinkFn pSink,
 	void *pUserData );
 
 // Carries an original request site through filesystem path resolution and
 // other compatibility layers before the native loader is reached.
-class CScopedModuleLoadRequest
+class PLATFORM_CLASS CScopedModuleLoadRequest
 {
 public:
 	CScopedModuleLoadRequest(

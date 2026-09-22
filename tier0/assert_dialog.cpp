@@ -21,6 +21,7 @@
 
 #if defined( POSIX )
 #include <dlfcn.h>
+#include "tier0/native_module_load_telemetry.h"
 #endif
 
 #if defined( USE_SDL )
@@ -613,4 +614,3 @@ DBG_INTERFACE bool DoNewAssertDialog( const tchar *pFilename, int line, const tc
 
 	return g_bBreak;
 }
-

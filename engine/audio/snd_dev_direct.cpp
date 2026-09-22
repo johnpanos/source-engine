@@ -21,6 +21,8 @@
 #include "video//ivideoservices.h"
 #include "sys_dll.h"
 
+#include "tier0/native_module_load_telemetry.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -2093,4 +2095,3 @@ void CAudioDirectSound::S_TransferSurround16Interleaved( const portable_samplepa
 	}
 	pDSBuf->Unlock(pBuffer0, size0, pBuffer1, size1);
 }
-

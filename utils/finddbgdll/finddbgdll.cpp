@@ -10,6 +10,7 @@
 #include "tier1/strtools.h"
 #include <stdio.h>
 #include <windows.h>
+#include "tier0/native_module_load_telemetry.h"
 
 #pragma warning (disable:4100)
 
@@ -61,4 +62,3 @@ int main (int argc, char **argv)
 
 	return 0;
 }
-

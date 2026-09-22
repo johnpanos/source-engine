@@ -6,6 +6,7 @@
 
 #include "pch_tier0.h"
 #include "xbox/xbox_console.h"
+#include "tier0/native_module_load_telemetry.h"
 #include "tier0/memdbgon.h"
 
 IXboxConsole *g_pXboxConsole;

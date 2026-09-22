@@ -37,7 +37,6 @@ def build(bld):
 		'lzss.cpp', # [!$SOURCESDK]
 		'mempool.cpp',
 		'memstack.cpp',
-		'module_load_telemetry.cpp',
 		'NetAdr.cpp',
 		'newbitbuf.cpp',
 		'rangecheckedvar.cpp',

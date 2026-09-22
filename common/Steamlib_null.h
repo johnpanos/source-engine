@@ -16,6 +16,7 @@
 #include <string.h> // for strlen()
 #include <stdarg.h>
 #include <dlfcn.h>
+#include "tier0/native_module_load_telemetry.h"
 #if !defined ( _WIN32 )
 #include <string.h>
 #endif

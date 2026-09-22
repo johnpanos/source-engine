@@ -41,6 +41,7 @@
 #include "tier0/vcrmode.h"
 #include "tier0/icommandline.h"
 #include "tier0/minidump.h"
+#include "tier0/native_module_load_telemetry.h"
 #include "engine_hlds_api.h"
 #include "filesystem_engine.h"
 #include "cl_main.h"
@@ -2571,4 +2572,3 @@ CON_COMMAND( dumplongticks, "Enables generating minidumps on long ticks." )
 		}
 	}
 }
-

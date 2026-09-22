@@ -106,12 +106,14 @@ projects={
 		'vstdlib',
 		'filesystem',
 		'vpklib',
+		'jobsystem',
 		'unittests/tier0test',
 		'unittests/moduleloadfixture',
 		'unittests/tier1test',
 		'unittests/tier2test',
 		'unittests/tier3test',
 		'unittests/mathlibtest',
+		'unittests/jobsystemtest',
 		'utils/unittest'
 	],
 	'dedicated': [

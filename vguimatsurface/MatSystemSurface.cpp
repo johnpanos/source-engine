@@ -21,6 +21,7 @@ ILauncherMgr *g_pLauncherMgr = NULL;
 #include "tier1/strtools.h"
 #include "tier0/icommandline.h"
 #include "tier0/dbg.h"
+#include "tier0/native_module_load_telemetry.h"
 #include "filesystem.h"
 #include <vgui/VGUI.h>
 #include <Color.h>

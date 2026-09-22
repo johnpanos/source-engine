@@ -13,6 +13,7 @@
 #include "voice_tweakDlg.h"
 #include "voice_gain.h"
 #include "dvoice.h"
+#include "tier0/native_module_load_telemetry.h"
 
 
 void TermDPlayVoice( HINSTANCE &hInst, IDirectPlayVoiceTest* &pVoice )

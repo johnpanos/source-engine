@@ -5,6 +5,7 @@
 //	Valve XBox Console.
 //=====================================================================================//
 #include "vxconsole.h"
+#include "tier0/native_module_load_telemetry.h"
 
 HWND				g_hDlgMain;
 HWND				g_hwndCommandCombo; 
@@ -1524,5 +1525,4 @@ cleanUp:
 
     return ( msg.wParam );
 }
-
 

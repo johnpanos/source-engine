@@ -137,6 +137,14 @@ void TestSnapToGrid()
 	CHECK( NearlyEqual( sizeBefore[1], sizeAfter[1] ) );
 	CHECK( NearlyEqual( sizeBefore[2], sizeAfter[2] ) );
 
+	// Exact half boundary: snapping must round halves AWAY from zero, matching
+	// legacy V_rint. 8/16 == 0.5 -> 16 (not 0), -8/16 == -0.5 -> -16. std::rint
+	// would round to even and give 0 here, so this pins the fidelity.
+	AxisAlignedBox halfBox( Vec3( 8.0f, -8.0f, 0.0f ), Vec3( 12.0f, -4.0f, 4.0f ) );
+	halfBox.SnapToGrid( 16 );
+	CHECK( NearlyEqual( halfBox.mins[0], 16.0f ) );
+	CHECK( NearlyEqual( halfBox.mins[1], -16.0f ) );
+
 	// Degenerate grid leaves the box unchanged.
 	AxisAlignedBox unchanged( Vec3( 3.0f, 11.0f, -7.0f ), Vec3( 19.0f, 27.0f, 9.0f ) );
 	AxisAlignedBox copy = unchanged;

@@ -15,6 +15,8 @@
 
 #include <iostream>
 
+#include "tier0/native_module_load_telemetry.h"
+
 #endif // defined( _WIN32 )
 
 //-----------------------------------------------------------------------------

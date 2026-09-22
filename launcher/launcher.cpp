@@ -35,6 +35,7 @@
 #include <vgui/ISurface.h>
 #include "tier0/platform.h"
 #include "tier0/memalloc.h"
+#include "tier0/native_module_load_telemetry.h"
 #include "filesystem.h"
 #include "tier1/utlrbtree.h"
 #include "materialsystem/imaterialsystem.h"

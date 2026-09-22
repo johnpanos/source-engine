@@ -6,6 +6,7 @@
 
 #include "unitlib/unitlib.h"
 #include "tier0/dbg.h"
+#include "tier0/native_module_load_telemetry.h"
 #include "tier0/threadtools.h"
 #include "tier1/interface.h"
 #include "tier1/module_load_telemetry.h"
@@ -275,4 +276,43 @@ DEFINE_TESTCASE( ModuleLoadTelemetrySinkCanUnregisterItself, ModuleLoadTelemetry
 	Shipping_Assert( pFirst == NULL );
 	Shipping_Assert( pSecond == NULL );
 	Shipping_Assert( g_nEventCount == 1 );
+}
+
+DEFINE_TESTCASE( ModuleLoadTelemetryNativeLoaderLifecycle, ModuleLoadTelemetryTestSuite )
+{
+	ResetEvents();
+	Sys_SetModuleLoadTelemetrySink( CaptureModuleLoadEvent, NULL );
+
+#if defined( POSIX )
+	void *pModule = dlopen( "./libmoduleloadfixture.so", RTLD_NOW );
+	Shipping_Assert( pModule != NULL );
+	void *pEntryPoint = dlsym( pModule, "PhaseALoaderFixtureSymbol" );
+	Shipping_Assert( pEntryPoint != NULL );
+	const int nUnloadResult = dlclose( pModule );
+	Shipping_Assert( nUnloadResult == 0 );
+#elif defined( _WIN32 )
+	HMODULE pModule = LoadLibraryA( "moduleloadfixture.dll" );
+	Shipping_Assert( pModule != NULL );
+	FARPROC pEntryPoint = GetProcAddress(
+		pModule, "PhaseALoaderFixtureSymbol" );
+	Shipping_Assert( pEntryPoint != NULL );
+	const BOOL bUnloadResult = FreeLibrary( pModule );
+	Shipping_Assert( bUnloadResult != FALSE );
+#endif
+
+	Sys_SetModuleLoadTelemetrySink( NULL, NULL );
+	Shipping_Assert( g_nEventCount == 3 );
+	Shipping_Assert( Event( 0 ).m_Operation == MODULE_LOAD_TELEMETRY_LOAD );
+	Shipping_Assert( Event( 0 ).m_bSuccess );
+	Shipping_Assert( Q_stristr(
+		Event( 0 ).m_szResolvedPath, "moduleloadfixture" ) != NULL );
+	Shipping_Assert( Event( 1 ).m_Operation == MODULE_LOAD_TELEMETRY_ENTRY_POINT );
+	Shipping_Assert( Event( 1 ).m_bSuccess );
+	Shipping_Assert( !Q_stricmp(
+		Event( 1 ).m_szRequestedEntryPoint,
+		"PhaseALoaderFixtureSymbol" ) );
+	Shipping_Assert( Event( 2 ).m_Operation == MODULE_LOAD_TELEMETRY_UNLOAD );
+	Shipping_Assert( Event( 2 ).m_bSuccess );
+	Shipping_Assert( Event( 0 ).m_nLoadId == Event( 1 ).m_nLoadId );
+	Shipping_Assert( Event( 0 ).m_nLoadId == Event( 2 ).m_nLoadId );
 }

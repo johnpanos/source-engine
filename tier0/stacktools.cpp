@@ -17,6 +17,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <dbghelp.h>
+#include "tier0/native_module_load_telemetry.h"
 #endif
 
 #if defined( PLATFORM_X360 )
@@ -1703,5 +1704,4 @@ int DecodeBinaryFromString( const char *pString, void *pDestBuffer, int iDestBuf
 
 	return iDecodedSize;	
 }
-
 

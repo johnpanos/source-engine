@@ -36,12 +36,26 @@ run_suite()
 
 echo "hammertest: building strict modules with $CXX -std=$CXXSTD"
 
+run_suite test_rounding \
+	"$ROOT/hammer/core/geometry/rounding.cpp" \
+	"$ROOT/unittests/hammertest/geometry/test_rounding.cpp"
+
 run_suite test_aabb \
 	"$ROOT/hammer/core/geometry/aabb.cpp" \
+	"$ROOT/hammer/core/geometry/rounding.cpp" \
 	"$ROOT/unittests/hammertest/geometry/test_aabb.cpp"
 
 run_suite test_aabb_negative \
 	"$ROOT/hammer/core/geometry/aabb.cpp" \
+	"$ROOT/hammer/core/geometry/rounding.cpp" \
 	"$ROOT/unittests/hammertest/geometry/test_aabb_negative.cpp"
+
+run_suite test_handle_table \
+	"$ROOT/hammer/core/scene/handle_table.cpp" \
+	"$ROOT/unittests/hammertest/scene/test_handle_table.cpp"
+
+run_suite test_handle_table_negative \
+	"$ROOT/hammer/core/scene/handle_table.cpp" \
+	"$ROOT/unittests/hammertest/scene/test_handle_table_negative.cpp"
 
 echo "hammertest: all headless suites passed"

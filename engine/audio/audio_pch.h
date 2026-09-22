@@ -25,6 +25,7 @@
 #include "tier0/dbg.h"
 #include "tier0/vprof.h"
 #include "tier0/icommandline.h"
+#include "tier0/native_module_load_telemetry.h"
 #include "tier1/strtools.h"
 
 #include "tier2/riff.h"

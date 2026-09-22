@@ -5,6 +5,7 @@
 //	Tracker bridge
 //=====================================================================================//
 #include "vxconsole.h"
+#include "tier0/native_module_load_telemetry.h"
 
 // two bug systems, certain games are tied to a specific system
 #define BUG_REPORTER_DLLNAME_1		"bugreporter.dll" 
@@ -1573,4 +1574,3 @@ int rc_MapInfo( char* commandPtr )
 cleanUp:	
 	return errCode;
 }
-

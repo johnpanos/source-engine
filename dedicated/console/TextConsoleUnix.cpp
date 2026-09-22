@@ -19,6 +19,7 @@
 #include "filesystem.h"
 #include "../thirdparty/libedit-3.1/src/histedit.h"
 #include "tier0/vprof.h"
+#include "tier0/native_module_load_telemetry.h"
 
 #define CONSOLE_LOG_FILE "console.log"
 

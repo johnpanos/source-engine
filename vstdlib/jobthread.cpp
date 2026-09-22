@@ -23,6 +23,7 @@
 #include "xbox/xbox_win32stubs.h"
 #endif
 
+#include "tier0/native_module_load_telemetry.h"
 #include "tier0/memdbgon.h"
 
 

@@ -32,6 +32,7 @@
 #include "interface.h"
 #include "tier1/strtools.h"
 #include "tier0/icommandline.h"
+#include "tier0/native_module_load_telemetry.h"
 #include "materialsystem/imaterialsystem.h"
 #include "istudiorender.h"
 #include "SoundEmitterSystem/isoundemittersystembase.h"

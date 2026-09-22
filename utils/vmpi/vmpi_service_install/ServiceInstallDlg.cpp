@@ -11,6 +11,7 @@
 #include "stdafx.h"
 #include "ServiceInstallDlg.h"
 #include "tier1/strtools.h"
+#include "tier0/native_module_load_telemetry.h"
 
 
 #define DEFAULT_INSTALL_LOCATION		"C:\\Program Files\\Valve\\vmpi_service"
@@ -1040,4 +1041,3 @@ void CServiceInstallDlg::VerifyInstallFiles()
 		}
 	}
 }
-

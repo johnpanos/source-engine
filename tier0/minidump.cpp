@@ -15,6 +15,7 @@
 #include "tier0/valve_off.h"
 #define WIN_32_LEAN_AND_MEAN
 #include <windows.h>
+#include "tier0/native_module_load_telemetry.h"
 
 #include <dbghelp.h>
 
@@ -683,5 +684,4 @@ const char *MinidumpUserStreamInfoGet( int Index )
 
 	return g_UserStreamInfo[ Index ];
 }
-
 

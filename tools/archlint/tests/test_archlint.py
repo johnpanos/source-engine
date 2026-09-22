@@ -115,6 +115,32 @@ class ArchlintTests(unittest.TestCase):
         inventory = archlint.inventory_document(self.root, MANIFEST)
         self.assertEqual("tool-indirection", inventory["sites"][0]["classification"])
 
+    def test_moved_loader_file_is_triaged_as_a_relocation(self) -> None:
+        # A frozen loader call that simply moves files is a relocation, not a new
+        # architectural dependency: same rule + excerpt, different path.
+        self.write("tier1/telemetry.cpp", 'void f() { Sys_LoadModule("mod"); }\n')
+        baseline = archlint.baseline_document(archlint.scan(self.root, MANIFEST))
+        (self.root / "tier1/telemetry.cpp").unlink()
+        self.write("tier0/telemetry.cpp", 'void f() { Sys_LoadModule("mod"); }\n')
+        new, stale = archlint.compare_baseline(archlint.scan(self.root, MANIFEST), baseline)
+        relocations, genuinely_new, removed = archlint.classify_drift(new, stale)
+        self.assertEqual(1, len(relocations))
+        self.assertEqual([], genuinely_new)
+        self.assertEqual([], removed)
+        occurrence, entry = relocations[0]
+        self.assertEqual("tier1/telemetry.cpp", entry["path"])
+        self.assertEqual("tier0/telemetry.cpp", occurrence.path)
+
+    def test_genuinely_new_call_is_not_a_relocation(self) -> None:
+        self.write("tier1/telemetry.cpp", 'void f() { Sys_LoadModule("mod"); }\n')
+        baseline = archlint.baseline_document(archlint.scan(self.root, MANIFEST))
+        self.write("engine/other.cpp", 'void g() { Sys_LoadModule("different"); }\n')
+        new, stale = archlint.compare_baseline(archlint.scan(self.root, MANIFEST), baseline)
+        relocations, genuinely_new, removed = archlint.classify_drift(new, stale)
+        self.assertEqual([], relocations)
+        self.assertEqual(1, len(genuinely_new))
+        self.assertEqual([], removed)
+
 
 if __name__ == "__main__":
     unittest.main()

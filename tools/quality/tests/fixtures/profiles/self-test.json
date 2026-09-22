@@ -1,0 +1,15 @@
+{
+  "schema": "conformance-profile/v1",
+  "id": "self-test",
+  "description": "Minimal profile used only by the conformance runner's own self-tests (tools/quality/tests). Not a product profile.",
+  "os": "linux",
+  "arch": "x86_64",
+  "cxx_std": "c++20",
+  "include_roots": [],
+  "base_flags": [
+    "-Wall",
+    "-Wextra",
+    "-Werror"
+  ],
+  "timeout_seconds": 30
+}

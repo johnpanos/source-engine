@@ -183,11 +183,13 @@ boundary:
    only when every hammer source file resolves to one owner and a negative fixture
    proves unowned files fail. Use `hammer --coverage` to see the remaining files
    and `hammer --scaffold` to draft stubs for review.
-   - **Observed (tooling):** `hammer --coverage` measures the current universe at
-     **454** source files (452 under `hammer/` plus `public/hammer/geometry/aabb.h`
-     and one new `.cpp`), while `coverage.totalHammerSourceFiles` is authored as
-     `452`. The authored total is stale by two files; update it as part of the next
-     reviewed inventory write, not automatically.
+   - **Observed (tooling):** `hammer --coverage` measures the live source universe
+     (files under `hammer/` plus the strict roots such as `public/hammer/`) and
+     warns when it exceeds the authored `coverage.totalHammerSourceFiles` (still
+     `452`). The tree has grown past that figure (new `hammer/*.cpp` and
+     `public/hammer/geometry/aabb.h`); run the command for the current count and
+     update the authored total as part of the next reviewed inventory write, not
+     automatically.
 2. **HAM-BUILD-001:** establish the Linux 64-bit headless editor test target and
    record the final C++20 flags (coordinated with R02/R03).
 3. **HAM-CORPUS-001:** author the versioned semantic comparator and its negative

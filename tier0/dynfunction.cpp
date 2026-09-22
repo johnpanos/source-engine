@@ -23,6 +23,8 @@ typedef void *LibraryHandle;
 #error Please define your platform.
 #endif
 
+#include "tier0/native_module_load_telemetry.h"
+
 #if 1
 static inline void dbgdynfn(const char *fmt, ...) {}
 #else
@@ -145,4 +147,3 @@ void *VoidFnPtrLookup_Tier0(const char *libname, const char *fn, void *fallback)
 		retval = fallback;
 	return retval;
 }
-
