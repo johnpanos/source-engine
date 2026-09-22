@@ -316,6 +316,15 @@ def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD):
             "coverage": "Native window requests, frame-boundary drawable consumption and image at every requested size. GPU stress separately checks every transition frame; compositor timing requires native observation."}
 
 
+def resize_commands(workload=RESIZE_WORKLOAD):
+    """Return commands for the engine command buffer, where `wait` is honored."""
+    commands = ["+wait", "120"]
+    for width, height in workload:
+        commands += ["+mat_resizewindow", str(width), str(height),
+                     "+wait", "12", "+screenshot", "+wait", "1"]
+    return commands + ["+wait", "10", "+quit"]
+
+
 def inspect_provider_catalog(log):
     """Require executed providers and loader telemetry, not requested CLI flags."""
     required = {
@@ -443,18 +452,13 @@ def main(argv=None):
                    "+wait", "600", "+screenshot", "+mat_spewvertexandpixelshaders",
                    "+wait", "10", "+quit"]
         if args.resize_stress:
-            script = stage / "portal/cfg/source_resize_acceptance.cfg"
-            script.parent.mkdir(parents=True, exist_ok=True)
-            lines = ["wait 120"]
-            for width, height in RESIZE_WORKLOAD:
-                lines += ["mat_resizewindow %d %d" % (width, height), "wait 12", "screenshot", "wait 1"]
-            lines += ["wait 10", "quit"]
-            script.write_text("\n".join(lines) + "\n")
-            # Replace the ordinary capture tail after the status/hideconsole step.
+            # `exec` evaluates its file line-by-line immediately in this branch,
+            # including `wait`. Put the workload on the process command buffer so
+            # each size remains live for rendered frames before its image oracle.
             tail = command.index("+wait", command.index("+developer"))
-            command = command[:tail] + ["-resizetelemetry", "+exec", "source_resize_acceptance.cfg"]
+            command = command[:tail] + ["-resizetelemetry"] + resize_commands()
             evidence["resize_workload"] = {"version": 1, "sizes": RESIZE_WORKLOAD,
-                                           "script_sha256": sha256(script)}
+                                           "commands": resize_commands()}
         if args.require_provider_catalog:
             command += ["-moduleloadtelemetry"]
         environment = os.environ.copy()

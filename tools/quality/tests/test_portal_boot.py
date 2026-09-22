@@ -87,6 +87,12 @@ class AcceptanceTests(unittest.TestCase):
 
 
 class ResizeAcceptanceTests(unittest.TestCase):
+    def test_resize_workload_uses_the_frame_command_buffer(self):
+        self.assertEqual(
+            ["+wait", "120", "+mat_resizewindow", "641", "479", "+wait", "12",
+             "+screenshot", "+wait", "1", "+wait", "10", "+quit"],
+            boot.resize_commands(((641, 479),)))
+
     def test_every_resize_needs_consumption_and_nonblank_matching_image(self):
         expected = ((641, 479), (1024, 768))
         log = "".join("RFC0001 resize: drawable=%dx%d render=%dx%d buffer=1920x1080\n" % (w, h, w, h) for w, h in expected)
