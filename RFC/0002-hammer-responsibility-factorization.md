@@ -7,7 +7,12 @@
 - Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
 - Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
 - Source inspection reference: `b5eb9915bdebf5af1045c5821d4ac3d9af15dbb2`
-- Implementation status: This RFC specifies future work. It does not introduce the modules, contracts, tools, or CI gates described below.
+- Implementation status: Phase H0 is active. The migration schema, module graph,
+  enforcement increment 1 (inventory/DAG validation and the HAM003 native-token
+  ratchet), and corpus scaffolding are installed; inventory coverage is partial and
+  no delivery gate is complete. Gate decisions and open-question answers are in
+  [0002-progress.md](0002-progress.md). Later modules, contracts, and CI gates
+  remain future work.
 
 ## Summary
 

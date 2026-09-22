@@ -39,21 +39,22 @@ RULES = (
     Rule(
         "ARCH101",
         "direct Sys_LoadModule use",
-        re.compile(r"\bSys_LoadModule\s*\("),
+        re.compile(r"\bSys_LoadModule(?:WithContext)?\s*\("),
         "Route loading through a named extension host or application composition.",
     ),
     Rule(
         "ARCH102",
         "direct Sys_GetFactory use",
-        re.compile(r"\bSys_GetFactory\s*\("),
+        re.compile(r"\bSys_GetFactory(?:WithContext)?\s*\("),
         "Bind a typed interface at the extension boundary instead of exporting the factory.",
     ),
     Rule(
         "ARCH103",
         "filesystem-mediated module load",
         re.compile(
+            r"(?:\bSys_LoadModuleFromFileSystem(?:WithContext)?\s*\(|"
             r"\b(?:g_p(?:Full)?FileSystem|m_pFileSystem|pFileSystem|"
-            r"m_pMasterVMPIFileSystemPassThru|m_pFileSystemPassThru)\s*->\s*LoadModule\s*\("
+            r"m_pMasterVMPIFileSystemPassThru|m_pFileSystemPassThru)\s*->\s*LoadModule\s*\()"
         ),
         "Separate path resolution from loading and use a named extension host.",
     ),
@@ -649,18 +650,30 @@ def validate_compatibility(compatibility: dict) -> list[str]:
     return errors
 
 
+def strict_root_files(root: Path, strict_roots: Sequence[str]) -> list[Path]:
+    """Every source file under a strict include root, independent of loader filters."""
+    found: list[Path] = []
+    for prefix in strict_roots:
+        base = root / prefix
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*"):
+            if path.is_file() and is_source(path, root):
+                found.append(path)
+    return sorted(set(found))
+
+
 def scan_native_tokens(root: Path, strict_roots: Sequence[str], tokens: Sequence[str]) -> list[Occurrence]:
     """HAM003: reject native/toolkit tokens inside strict editor include roots."""
     token_pattern = re.compile(
         "|".join(sorted((re.escape(token) for token in tokens), key=len, reverse=True))
     )
     occurrences: list[Occurrence] = []
-    for path in source_files(root):
+    for path in strict_root_files(root, strict_roots):
         relative = path.relative_to(root).as_posix()
-        if not any(relative.startswith(prefix) for prefix in strict_roots):
-            continue
-        stripped = strip_comments_and_literals(path.read_text(encoding="utf-8", errors="replace"))
-        original_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        original_text = path.read_text(encoding="utf-8", errors="replace")
+        stripped = strip_comments_and_literals(original_text)
+        original_lines = original_text.splitlines()
         repeated: Counter[tuple[str, str]] = Counter()
         for line_number, stripped_line in enumerate(stripped.splitlines(), start=1):
             if not token_pattern.search(stripped_line):

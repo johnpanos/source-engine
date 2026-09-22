@@ -13,6 +13,13 @@ jobs:
         python3 tools/archlint/archlint.py check --all
         python3 tools/archlint/archlint.py baseline --verify
         python3 tools/archlint/archlint.py inventory --verify
+    - name: Verify RFC 0002 Hammer migration schema and ratchet
+      if: always()
+      run: |
+        python3 tools/archlint/archlint.py hammer --verify
+    - name: Run architecture unit tests
+      if: always()
+      run: |
         python3 -m unittest discover -s tools/archlint/tests -v
 
   tests-linux-i386:

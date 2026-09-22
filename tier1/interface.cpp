@@ -202,7 +202,9 @@ static HMODULE Sys_LoadLibraryWithError(
 	Sys_Flags flags,
 	int *pProviderResult,
 	char *pProviderError,
-	int nProviderErrorSize )
+	int nProviderErrorSize,
+	char *pResolvedPath,
+	int nResolvedPathSize )
 {
 	if ( pProviderResult )
 		*pProviderResult = 0;
@@ -232,6 +234,8 @@ static HMODULE Sys_LoadLibraryWithError(
 	}
 
 	Q_FixSlashes( str );
+	if ( pResolvedPath && nResolvedPathSize > 0 )
+		Q_strncpy( pResolvedPath, str, nResolvedPathSize );
 
 #ifdef _WIN32
 	ThreadedLoadLibraryFunc_t threadFunc = GetThreadedLoadLibraryFunc();
@@ -313,7 +317,8 @@ static HMODULE Sys_LoadLibraryWithError(
 
 HMODULE Sys_LoadLibrary( const char *pLibraryName, Sys_Flags flags )
 {
-	return Sys_LoadLibraryWithError( pLibraryName, flags, NULL, NULL, 0 );
+	return Sys_LoadLibraryWithError(
+		pLibraryName, flags, NULL, NULL, 0, NULL, 0 );
 }
 static bool s_bRunningWithDebugModules = false;
 
@@ -414,7 +419,8 @@ CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NO
 					sizeof( szResolvedModuleName ) );
 				hDLL = Sys_LoadLibraryWithError( szAbsoluteModuleName, flags,
 					&nProviderResult, szProviderError,
-					sizeof( szProviderError ) );
+					sizeof( szProviderError ), szResolvedModuleName,
+					sizeof( szResolvedModuleName ) );
 			}
 
 			if( !hDLL && bFound )
@@ -461,7 +467,8 @@ CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NO
 		if( !hDLL )
 			hDLL = Sys_LoadLibraryWithError( szAbsoluteModuleName, flags,
 				&nProviderResult, szProviderError,
-				sizeof( szProviderError ) );
+				sizeof( szProviderError ), szResolvedModuleName,
+				sizeof( szResolvedModuleName ) );
 	}
 	else
 	{
@@ -502,7 +509,8 @@ CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NO
 			sizeof( szResolvedModuleName ) );
 		hDLL = Sys_LoadLibraryWithError( pModuleName, flags,
 			&nProviderResult, szProviderError,
-			sizeof( szProviderError ) );
+			sizeof( szProviderError ), szResolvedModuleName,
+			sizeof( szResolvedModuleName ) );
 #if defined( _DEBUG )
 		if ( !hDLL )
 		{
