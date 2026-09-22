@@ -507,3 +507,483 @@ focus, and widget styling. Shared presenters own display-ready editor state and
 route actions. We do not create wrappers for every toolkit widget. Dense editor
 controls and docking requirements are validated with real workflows; a full
 arbitrary docking system is a separate feature decision.
+
+## Mechanical evolution and enforcement
+
+### Versioned migration artifacts
+
+Phase H0 introduces the following artifacts. They are proposed paths, not files
+created by adopting this document alone.
+
+| Artifact | Authority and contents |
+| --- | --- |
+| `architecture/modules.json` | Extend the existing versioned manifest with editor ownership, allowed edges, public/private include roots, external libraries, and target mapping. |
+| `architecture/hammer_inventory.json` | Exhaustive owned-file inventory plus symbol-level splits for mixed files, responsibility/effect/state classification, provenance, and extraction destination. |
+| `architecture/hammer_migrations.json` | Stable migration IDs, dependency DAG, contract IDs, caller sets, phase/status, test selectors, exception references, and retirement conditions. |
+| `architecture/hammer_baseline.json` | Exact editor-specific violations accepted from the legacy snapshot; existing loader debt remains in the existing loader baseline. |
+| `architecture/hammer_compatibility.json` | Declared features, supported formats, provider/profile combinations, corpus IDs, and limitations for each delivery gate. |
+| `unittests/hammertest/contracts/` | Contract records, provider-parameterized conformance tests, and negative provider fixtures. |
+| `unittests/hammertest/fixtures/` | Small, redistributable or generated maps, golden observations, seeds, and versioned semantic expectations. |
+| `RFC/0002-progress.md` | Human-readable gate decisions and links to evidence; inventory/CI artifacts remain authoritative for machine facts. |
+
+The module manifest is the sole authority for dependency permissions. Migration
+records reference module IDs rather than maintaining another list of allowed
+edges. Schemas have explicit versions and migration code; unrecognized versions
+fail validation. JSON arrays and generated reports use deterministic ordering.
+
+Each source file must resolve to exactly one owner. Unowned and ambiguously owned
+files fail inventory validation. Mixed files remain assigned to a legacy owner
+until their last forbidden dependency is removed; per-symbol destinations track
+the work without pretending the entire file is portable.
+
+A migration record has at least these fields:
+
+```json
+{
+  "id": "HAM-SEL-001",
+  "title": "Move property-draft commit policy out of selection",
+  "responsibility": "selection-policy",
+  "evidenceKind": "observed",
+  "sources": [
+    {"path": "hammer/Selection.cpp", "symbol": "CSelection::SelectObject"}
+  ],
+  "destinationModule": "hammer.app",
+  "contractIds": ["selection.change.v1", "property_draft.commit.v1"],
+  "dependsOn": ["HAM-BUILD-001", "HAM-SESSION-001"],
+  "status": "inventoried",
+  "authority": "legacy",
+  "consumerSet": "selection-entry-points",
+  "testSelectors": ["selection/property_draft", "selection/two_documents"],
+  "retireWhen": [
+    "all selection entry points route through the application policy",
+    "no property-sheet access remains in extracted selection code"
+  ]
+}
+```
+
+This is an illustrative record, not a claim that these contracts or tests exist.
+The implemented schema must also provide an accountable owner, baseline revision,
+evidence references, and any accepted deviations. Status changes require test
+evidence for the current implementation revision; a manually edited status is
+not sufficient to pass a gate.
+
+### Migration state machine
+
+Each bounded extraction moves through these states:
+
+| State | Required evidence to enter | Exit condition |
+| --- | --- | --- |
+| `inventoried` | Resolved source/symbol ownership, consumers, dependencies, effects, and baseline observation | A bounded contract and fixtures are identified. |
+| `characterized` | Existing behavior recorded; uncertain or unavailable behavior explicitly listed | Review accepts the contract and any intentional differences. |
+| `isolated` | A narrow facade routes consumers; behavior remains in the legacy implementation | Facade callers and remaining bypasses are enumerated. |
+| `extracted` | One shared implementation owns the behavior; independent target/header checks pass | Legacy host invokes that implementation through an adapter. |
+| `substitutable` | Required providers pass the same contract tests; failure/lifetime cases pass | Product workflow gates pass with selected providers. |
+| `cutover` | All intended callers select the new authority; measured rollout evidence exists | Old implementation and compatibility consumers are zero. |
+| `retired` | Old code/glue and stale exceptions/baseline entries removed | Regression and architecture checks continue to pass. |
+
+An explicit `blocked` annotation records a missing toolchain, fixture, provider,
+or unresolved contract. It does not skip a state. Reopening a completed migration
+requires a new contract revision or a recorded regression investigation.
+
+Only one implementation is authoritative for a given live document operation.
+Read-only shadow comparison may execute old and new algorithms against copies
+or immutable snapshots. Shadow execution must not write files, allocate persistent
+IDs in the live document, execute external commands, or apply mutations twice.
+
+### Standard change protocol
+
+Every implementation change that crosses a boundary follows this sequence:
+
+1. Select a migration ID and verify the relevant baseline revision and caller
+   list. Confirm no prerequisite gate is represented only by a future plan.
+2. Add or identify behavior fixtures before changing the implementation. Record
+   unavailable legacy behavior as a gap rather than fabricating an oracle.
+3. Introduce the narrow seam and route a bounded caller set through it. Do not
+   change behavior and relocate large amounts of code in the same review unit.
+4. Extract cohesive logic while preserving its semantics. Keep compatibility
+   types and global lookups on the legacy side of the seam.
+5. Compile the extracted module without the legacy PCH and with only approved
+   include/link roots. Run behavior and contract tests through real consumers.
+6. Switch the declared callers, remove duplicate authority, and update the
+   migration record and exact baseline reductions.
+7. Delete obsolete implementations and temporary adapters once their consumer
+   count is zero. Verify no build scripts or generated projects still reference
+   them.
+
+A review unit should contain one contract change or one caller cohort. Numeric
+file-count limits are less useful than a demonstrable boundary and rollback.
+Mechanical rename/include-case fixes are submitted separately when possible.
+
+A rollback changes composition or reverts the bounded extraction. It does not
+retain two synchronized mutable models indefinitely. File-format changes require
+a separate compatibility decision; ordinary extraction does not create a new
+format that prevents rollback to the previous editor.
+
+### Architecture rules
+
+Extend `tools/archlint` rather than introducing a competing dependency policy.
+The following proposed rule IDs belong to an editor range; implementation must
+check that the IDs remain unallocated when the rules land.
+
+| Proposed rule | Rejects | Enforcement |
+| --- | --- | --- |
+| `HAM001` | Missing/ambiguous file or target ownership | Inventory plus resolved build graph |
+| `HAM002` | Forbidden module edge or architectural cycle | Includes, compiler dependency output, target/link graph |
+| `HAM003` | Native/toolkit types, headers, or platform-selection branches in strict core/contracts | Lexical fast checks, hermetic header builds, compiler-grounded inspection |
+| `HAM004` | New ambient application/document/service access in extracted code | Lexical and symbol-aware checks for known accessors and globals |
+| `HAM005` | Migrated document mutations bypassing the transaction API | API visibility, symbol-aware call checks, mutation/revision tests |
+| `HAM006` | Provider-private native interop escaping its declared bridge | Header visibility and dependency checks |
+| `HAM007` | New dependencies on retired APIs or an empty adapter scheduled for deletion | Symbol references, consumer ledger, target graph |
+| `HAM008` | Invalid migration state, missing evidence/test selector, stale exemption, or stale baseline | Schema and evidence validation |
+| `HAM009` | Pointer-to-pick-ID narrowing in migrated picking paths | Compiler warnings/static analysis and round-trip handle tests |
+
+Fast scans give early feedback but do not prove dependency or mutation safety.
+Full checks use actual preprocessor configurations and dependency files, and
+symbol analysis where a rule requires it. Conditional code is covered across
+the supported build matrix. A header-only smoke compile cannot prove that a
+linked implementation is portable; target and link dependencies are checked too.
+
+For transaction authority, the strongest enforcement is construction and access
+control: migrated mutation functions require an edit context or are private to
+the document operation layer. Legacy bypasses are recorded individually and
+removed by caller cohort. Regex matches alone cannot certify this invariant.
+
+### Exact ratchets and exceptions
+
+Baseline entries identify a rule, module, repository-relative path, containing
+symbol where available, dependency/call target, normalized evidence, and
+occurrence identity. Line numbers are diagnostic metadata, not stable identity.
+Repeated identical occurrences need distinct ordinals or syntax identities so
+adding another copy cannot hide behind an existing exemption.
+
+The rules are:
+
+- New strict modules have zero baseline debt.
+- Legacy violations may remain only if they match accepted exact entries.
+- Removing a violation removes its baseline entry in the same change.
+- A move is not automatically grandfathered. An approved relocation may update
+  one exact entry with an old/new mapping and unchanged dependency, but cannot
+  move debt into a strict module.
+- A declining total count does not offset a new violation elsewhere.
+- Broad path exclusions, wildcard API exemptions, and blanket suppression of a
+  rule are not accepted migration mechanisms.
+- A true exception names a source, dependency/rule, owner, reason, tracked
+  migration, and expiry or objective removal condition.
+- CI verifies baselines; it never rewrites them automatically to accept a PR.
+
+The existing loader baseline remains authoritative for loader rules. Editor
+rules must not allow a new `CreateInterfaceFn` or module-loading boundary merely
+because it sits in a compatibility adapter. Any movement affecting the loader
+freeze requires the same explicit retirement classification as RFC 0001.
+
+### Duplicate knowledge and semantic drift
+
+DRY progress is measured by authoritative owners and routed callers. Clone
+detection is a review aid, not a rule that every similar block must be merged.
+
+Track each shared policy, including selection resolution, grid snapping,
+texture-lock transforms, property validation, asset-path normalization, and
+save/build configuration. Record which entry points still implement it locally.
+A policy is extracted only when the migrated entry points delegate to its owner.
+
+Do not merge editor and compiler code, 2D and 3D interactions, or image/mapping
+dimensions until their differences have been made explicit. Shared primitives
+plus named policies are preferable when the knowledge is partly common.
+
+### Tooling delivery and commands
+
+The following commands already exist and verify the loader architecture work:
+
+```sh
+python3 tools/archlint/archlint.py check --all
+python3 tools/archlint/archlint.py baseline --verify
+python3 tools/archlint/archlint.py inventory --verify
+python3 -m unittest discover -s tools/archlint/tests -v
+```
+
+Editor inventory validation, compiler-dependency checks, Waf ownership checks,
+and contract runners MUST be implemented with fixture tests before their gates
+become mandatory. Their final commands are recorded in `0002-progress.md` when
+they exist. In particular, the current archlint parser does not provide the
+`--compile-deps` option proposed in RFC 0001.
+
+Enforcement lands in three increments: deterministic inventory/lexical ratchets;
+hermetic header and resolved target checks; compiler-grounded transitive and
+symbol checks. Each increment records the blind spots left to the next. No gate
+claims a stronger guarantee than its installed checks provide.
+
+## Verification strategy
+
+### Characterization corpus
+
+Start with small fixtures that isolate a behavior and a separately identified
+set of representative real maps. Fixtures record their provenance, applicable
+game profile, feature tags, expected diagnostics, and comparator version.
+Generated cases record seeds. Product assets needed for rendering tests are
+declared separately from redistributable headless fixtures.
+
+Minimum coverage includes convex and invalid brushes, clipping and transforms,
+texture axes/locks, displacements and sewing, entity input/output connections,
+groups and visgroups, overlays, nested instances, unknown VMF content, missing
+assets, malformed files, and differing path case/encoding. Tool traces cover
+commit, cancel, focus/capture loss, document switch, and undo/redo.
+
+A legacy result is evidence, not automatically the desired specification. An
+observed bug is recorded as a separate behavior change with its own expected
+result. Updating a golden output cannot silently redefine the contract.
+
+### Test obligations by boundary
+
+| Boundary | Required evidence |
+| --- | --- |
+| Geometry | Example fixtures, degeneracy/tolerance cases, bounds/convexity invariants, deterministic seeded tests |
+| Scene | No cycles, valid references, atomic reparent/delete, stale handle rejection, independent documents |
+| Transactions/history | Failure atomicity, no-op behavior, one drag/one history unit, cancellation, lossless undo/redo, saved-position behavior |
+| Codecs | Supported-feature semantic round trips, explicit loss reports, malformed-input handling, legacy/compiler compatibility |
+| Selection/presenters | Same action semantics from different entry points, property-draft resolution, mixed-value handling |
+| Tools/hosts | Same normalized event traces, declared context support, DPI/coordinate conversion, capture cancellation |
+| Assets/jobs | Missing/error states, revision invalidation, reordered delivery, cancellation, close-before-completion |
+| Rendering | Pick identity, viewport isolation, resize/scale, resource ownership, baseline feature fidelity, device/context lifecycle |
+| Files/processes | Save failures, replacement guarantees, native/virtual path behavior, argv fidelity, exit status and cancellation |
+
+Provider conformance tests are parameterized over every implementation claiming
+the contract. Fakes run the same suite, plus relevant real-provider integration
+tests. Negative providers that violate a precondition, result guarantee,
+callback ordering, or ownership rule verify that the suite can detect mistakes.
+
+For numeric comparisons, tolerances are set per operation and representation.
+Do not use one broad epsilon to hide changed geometry. Undo compares restored
+authored values exactly where the representation permits it; rendered pixels
+can use documented device-specific tolerances. Semantic tests remain the primary
+oracle when screenshots cannot distinguish data loss.
+
+### CI tiers
+
+1. Every change: schemas, inventories, exact ratchets, dependency DAG, contract
+   header compilation, affected headless unit/contract tests.
+2. Every relevant merge: complete supported core toolchain matrix, codec corpus,
+   sanitizer runs where supported, legacy/new behavior comparisons, normalized
+   tool traces, and full transitive dependency checks.
+3. Render or UI changes: software-renderer smoke tests plus a declared hardware
+   matrix, GTK X11/Wayland integration, scale/resize tests, and workflow checks.
+4. Release candidate: representative large maps, required compile tools, recovery
+   tests, performance budgets, and explicit feature/profile acceptance.
+
+Phase H0 selects and records the actual toolchains. Linux 64-bit headless core
+is the initial portability target; the known working legacy Windows profile,
+if established, is the compatibility target. Existing repository CI for the
+engine does not imply Hammer has passed those configurations.
+
+Performance gates use a fixed corpus, hardware/driver description, repetitions,
+and baseline artifacts. Track load/save time, peak memory, selection/picking
+latency, gesture response, frame time, and asset-browser responsiveness. Set
+numerical budgets during characterization. A percentage without a measured
+baseline is not an acceptance criterion.
+
+## Delivery phases and gates
+
+The phases form a dependency DAG. Renderer feasibility can be investigated
+after H0 while core extraction proceeds, but GTK feature delivery depends on
+the relevant core and rendering gates. This is not a requirement to complete
+all engine platform refactoring first.
+
+| Phase | Deliverable | Entry condition | Exit gate |
+| --- | --- | --- | --- |
+| H0: Baseline and enforcement | Build evidence, exhaustive inventory, migration schema, initial corpus, lexical ratchet | RFC accepted for implementation | Legacy build status and gaps recorded; strict target can compile/test; inventories reproduce; seeded boundary violations fail. |
+| H1: Geometry and scene seams | First pure geometry operations, narrow scene mutation/query boundary, headless fixtures | H0 | Extracted targets build without UI/PCH/GPU dependencies; chosen invariants and two-document tests pass; legacy callers use the shared seam where runnable. |
+| H2: Persistence slice | VMF reader/writer for declared features, detached import, safe save orchestration | H1 plus characterized format corpus | Supported-feature round trips pass; unknown/loss behavior explicit; failed saves/imports preserve prior state; compiler acceptance checked for selected toolchain. |
+| H3: Application authority | Session, property commit policy, selection, transaction/history facade | H1 and sufficient H2 fixtures | Select/transform/undo/save sequence passes headlessly and through legacy adapter; migrated operations have one mutation/history owner. |
+| H4: Interaction and presenters | Selection and block tools, input adapters, inspector and asset models | H3 | Common event traces produce equivalent supported edits; cancel/focus/close cases pass; widgets are absent from tools/presenters. |
+| R1: Renderer bridge feasibility | One real Source-material viewport in a GTK host | H0 and bounded renderer contract | Target/context ownership, materials, resize, scale, input capture, and shutdown demonstrated on selected X11/Wayland profiles. |
+| H5: GTK workflow slice | Open/save VMF, multiple views, selection/transform/history, entity inspector, textures, compile/run | H2–H4 and R1 | Representative map workflow passes with no hidden MFC runtime dependency; fidelity and unsupported-feature policy declared. |
+| H6: Feature families | Displacements, instances/manifests, advanced texture/overlay tools, previews, remaining workflows | H5 and per-family characterization | Each family passes load/edit/undo/save/build fixtures and lifecycle/performance gates. |
+| H7: Retirement | Remove superseded implementations, adapter glue, and obsolete build paths | Declared product parity gate met | Legacy consumer counts reach zero; baselines/exceptions shrink to the accepted remainder; release/recovery evidence passes. |
+
+H0 MUST resolve the legacy baseline honestly. If the historical MFC build cannot
+be reproduced, record missing dependencies and retain source-based tests plus
+any available reference outputs. Work can continue on independent extractions,
+but claims of preserved legacy runtime behavior remain gated until supported by
+evidence. No requirement here assumes the historical editor already builds.
+
+R1 is a bounded uncertainty-reduction task. If adapting the current renderer
+cannot meet the host contract at acceptable cost, record the measurements and
+choose a separately reviewed rendering approach. A simple substitute viewport
+may help test tools, but does not pass the Source-material fidelity gate.
+
+## Worked migration: selection, property drafts, and transform
+
+This is the recommended first application workflow after geometry/model seams
+are available. It addresses an actual dependency rather than starting with a
+large directory move.
+
+1. Characterize selection changes with an empty, valid, and invalid property
+   draft; with multi-selection; and across two documents. Record what currently
+   commits, what remains pending, and what updates the modified indicator.
+2. Add an application selection action that accepts an explicit draft-resolution
+   result and selection request. The MFC presenter supplies the existing draft
+   behavior through a temporary adapter.
+3. Move selection resolution and selection-change events behind this action.
+   Remove calls from extracted selection code to `GetMainWnd()` and property
+   pages. Keep exactly one authoritative selection set.
+4. Add a transform request with selected IDs, pivot, constraint/snap policy,
+   texture-lock policy, and expected document revision. Adapt `CHistory` behind
+   the transaction seam initially.
+5. Replay a drag as begin/update/commit and begin/update/cancel. Verify one undo
+   unit, stable face IDs, unchanged content after cancel, and no callback into a
+   closed document.
+6. Route menu, keyboard nudge, and tool drag through the same edit operation.
+   These entry points may choose different explicit policies; they share the
+   implementation of each policy.
+7. Run the workflow through a headless presenter, the MFC adapter, and later the
+   GTK adapter. Compare content, history, and declared selection outcomes rather
+   than widget internals.
+8. Remove the now-unused property-sheet hooks, bypass calls, and baseline
+   entries. Record consumer counts and the passing workflow evidence.
+
+This migration proves both desired properties: the edit policy has one owner,
+and different presentation adapters satisfy the same application contract.
+
+## Completion, maintenance, and change control
+
+Each gate report records the code revision, toolchain/profile, fixture versions,
+commands/test selectors, pass/fail results, performance measurements where
+required, remaining exceptions, and the next dependency-ready migrations.
+Evidence from an earlier revision is invalidated when the relevant contract,
+provider, comparator, or consumer changes.
+
+Track progress with the following metrics:
+
+- Files/symbols classified versus unresolved, with inactive code distinguished.
+- Exact forbidden edges and ambient-access occurrences remaining, by module.
+- Migrated operations with exclusive transaction authority versus remaining
+  bypasses.
+- Shared policies with all known callers routed versus locally duplicated rules.
+- Contracts with passing claimed providers and lifecycle/error coverage.
+- Supported features with end-to-end corpus coverage.
+- Compatibility adapters with remaining consumers and their removal conditions.
+- Measured performance relative to the accepted corpus baseline.
+
+Lines moved, number of interfaces, or a raw downcast count are not success
+metrics. A type-specific operation on a typed node can be appropriate. A small
+interface with undocumented lifetime behavior can still be unsafe to substitute.
+
+A contract change includes its caller impact, provider impact, compatibility
+decision, and updated conformance tests. First-party source APIs can evolve
+through coordinated changes. Persisted data and genuine extension ABIs require
+versioned compatibility plans under RFC 0001. Optional capabilities must not
+silently become mandatory for previously supported profiles.
+
+The dependency manifest and tests are reviewed as production architecture.
+New features declare their owner and contract before introducing a new cross-
+module dependency. Every accepted temporary exception has a scheduled review or
+an objective deletion trigger; expired exceptions fail validation.
+
+## Risks and mitigations
+
+| Risk | Mitigation and decision point |
+| --- | --- |
+| Extraction changes undocumented editor behavior | Characterize workflows first; record intentional differences separately; compare authored state and tool outcomes. |
+| A new facade preserves all the old dependencies | Enforce hermetic headers, transitive includes, target dependencies, and no ambient service access in strict modules. |
+| Excessive interfaces add complexity without substitution value | Require an actual consumer and behavior contract; prefer values/functions for deterministic algorithms. |
+| UI and model each become authoritative | Explicit ownership table, transaction-only migrated mutations, one selection/history authority, revision-tagged caches. |
+| Format normalization hides data loss | Versioned semantic comparator, unknown-content fixtures, explicit lossy-export policy, compiler/legacy checks. |
+| Renderer integration dominates delivery | Run R1 early, measure real materials and lifetime behavior, gate further integration on evidence. |
+| Undo or clones leave dangling identity/reference state | Typed IDs, stale-reference checks, exact restoration fixtures, destruction/cancellation tests. |
+| Legacy toolchains prevent useful comparisons | Resolve in H0; isolate unavailable evidence; continue only work whose claims can be verified. |
+| DRY work merges different geometric policies | Preserve named tolerances and context-specific policy; require differential evidence before sharing kernels. |
+| Long-lived adapters become a permanent second architecture | Consumer ledger, strict adapter directions, explicit retirement state, deletion gates. |
+
+## Effort and planning assumptions
+
+This is a substantial editor program. The early GTK shell is unlikely to be the
+largest cost; behavior extraction, format fidelity, rendering interop, and the
+long tail of editing workflows dominate uncertainty.
+
+The initial planning range—two or three experienced engineers for
+six to nine months to a useful alpha, twelve to eighteen months for a dependable
+daily-use scope, and potentially eighteen to twenty-four months for broad
+parity—should be treated as a planning hypothesis. It assumes Source/editor
+experience, a usable reference build, accessible assets/toolchains, and a
+bounded Linux-first product profile. These milestones are cumulative ranges,
+not estimates to add together or commitments established by this RFC.
+
+H0 and R1 must produce an updated estimate based on actual toolchain status,
+renderer feasibility, corpus coverage, and the first completed extractions.
+Subsequent forecasts use completed migration throughput and remaining feature
+families. They must include testing, packaging, recovery, and performance work.
+
+## Alternatives considered
+
+### Direct widget-by-widget conversion
+
+This can make selected dialogs appear quickly, but leaves model, history,
+rendering, and input dependent on UI semantics. It is unsuitable as the governing
+strategy. Individual UI screens may still be replaced after their behavior has
+an extracted application owner.
+
+### Complete editor rewrite
+
+A rewrite permits clean boundaries but places all content and workflow semantics
+at risk simultaneously. It remains an option for a bounded component whose
+existing implementation is harder to isolate than to replace, provided the same
+behavior and compatibility tests are used.
+
+### A universal editor base class or service registry
+
+This repeats the broad contracts and hidden dependencies already visible in
+`CMapClass`, `CBaseTool`, and application globals. Explicit composition and narrow
+consumer contracts provide clearer obligations and stronger enforcement.
+
+### Finish the entire engine platform refactor first
+
+This unnecessarily couples editor delivery to unrelated engine work. Hammer
+should use RFC 0001's contracts and ownership rules as they become available,
+with contained, tracked legacy adapters for the remaining services.
+
+## Proposed decisions and initial implementation backlog
+
+Acceptance of this RFC establishes the architecture and migration protocol; it
+does not mark any delivery gate complete.
+
+The initial backlog is listed below. The rendering investigation can start after
+H0 without waiting for the later application extractions.
+
+1. `HAM-BUILD-001`: record exact legacy build reproducibility and establish the
+   initial headless editor test target/toolchain profile.
+2. `HAM-INVENTORY-001`: implement exhaustive responsibility/effect ownership and
+   migration schemas, with reproducibility and coverage checks.
+3. `HAM-RATCHET-001`: add editor lexical rules and exact baselines, preserving the
+   existing loader freeze; add negative checker fixtures.
+4. `HAM-CORPUS-001`: establish minimal VMF/geometry/selection characterization
+   fixtures and a versioned semantic comparator.
+5. `HAM-GEOMETRY-001`: extract a bounded geometry operation and compile it without
+   MFC/PCH dependencies; route its existing callers through the shared owner.
+6. `HAM-SESSION-001`: introduce the per-document application seam and explicit
+   state ownership; pass two-document independence tests.
+7. `HAM-SEL-001`: execute the worked selection/property/transform migration.
+8. `HAM-RENDER-001`: run R1 after H0 and a minimal render contract are ready;
+   record bridge feasibility and remaining renderer dependencies.
+
+Before H5, record the supported game/content profile, precise GTK/libadwaita
+minimum versions, required build-tool availability, material/model fidelity
+scope, docking scope, and unsupported-feature behavior. These decisions can be
+made from measured H0/R1 results without preventing independent core extraction.
+
+## References
+
+- [RFC 0001](0001-capability-based-platform-architecture.md): capability contracts,
+  ownership, rendering/presentation bridges, result/path types, and enforcement.
+- [RFC 0001 Phase A progress](0001-phase-a-progress.md): implemented loader freeze
+  and its current limitations.
+- [GTK4 GLArea](https://docs.gtk.org/gtk4/class.GLArea.html): widget-owned context,
+  framebuffer, render callback, and lifecycle.
+- [GDK GLTextureBuilder](https://docs.gtk.org/gdk4/class.GLTextureBuilder.html):
+  GL texture import, owning context, synchronization, and texture immutability.
+- [GTK4 Native](https://docs.gtk.org/gtk4/iface.Native.html): native surfaces and
+  widget/native ownership.
+- [libadwaita adaptive layouts](https://gnome.pages.gitlab.gnome.org/libadwaita/doc/main/adaptive-layouts.html):
+  split views and utility-pane composition.
+
+Toolkit references were consulted during the source assessment. Their current
+documentation may describe APIs newer than the eventual minimum dependency
+version; implementation must pin and test the selected versions explicitly.
