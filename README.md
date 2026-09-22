@@ -36,9 +36,64 @@ This project is using waf buildsystem. If you have waf-related questions look ht
 - Elbrus port
 - Bink audio support( for video_bink )
 
-# How to Build?
-- [Building instructions(EN)](https://github.com/nillerusr/source-engine/wiki/Source-Engine-(EN))
-- [Building instructions(RU)](https://github.com/nillerusr/source-engine/wiki/Source-Engine-(RU))
+# How to Build
+
+## Fedora Linux 44
+
+These instructions are for a traditional x86-64 Fedora installation using DNF. Install the build tools and 64-bit development libraries with:
+
+```sh
+sudo dnf install \
+    git python3 gcc gcc-c++ make pkgconf-pkg-config ccache \
+    sdl2-compat-devel freetype-devel fontconfig-devel \
+    openal-soft-devel libjpeg-turbo-devel libpng-devel libcurl-devel \
+    bzip2-devel libedit-devel zlib-ng-compat-devel
+```
+
+Clone the repository with its submodules, then configure and build a release version:
+
+```sh
+git clone --recursive --depth 1 https://github.com/nillerusr/source-engine.git
+cd source-engine
+python3 ./waf configure -T release --use-ccache
+python3 ./waf build
+```
+
+If the repository was cloned without `--recursive`, initialize its submodules before configuring:
+
+```sh
+git submodule update --init --recursive
+```
+
+### 32-bit build on x86-64
+
+Install the 32-bit development libraries in addition to the packages above:
+
+```sh
+sudo dnf install \
+    glibc-devel.i686 libstdc++-devel.i686 \
+    sdl2-compat-devel.i686 freetype-devel.i686 fontconfig-devel.i686 \
+    openal-soft-devel.i686 libjpeg-turbo-devel.i686 libpng-devel.i686 \
+    libcurl-devel.i686 bzip2-devel.i686 libedit-devel.i686 \
+    zlib-ng-compat-devel.i686
+```
+
+Point `pkg-config` at Fedora's 32-bit metadata and enable the WAF 32-bit target:
+
+```sh
+PKG_CONFIG_LIBDIR=/usr/lib/pkgconfig:/usr/share/pkgconfig \
+    python3 ./waf configure -T release --32bits --use-ccache
+python3 ./waf build
+```
+
+### Optional Opus voice support
+
+The engine requires Opus custom modes, which Fedora's standard `opus-devel` package does not enable. Build Opus from source with `--enable-custom-modes` as described in the [English building instructions](https://github.com/nillerusr/source-engine/wiki/Source-Engine-%28EN%29), then add `--enable-opus` to the WAF configure command. For a 32-bit engine, build Opus with 32-bit compiler flags as well.
+
+## Other platforms
+
+- [Building instructions (English)](https://github.com/nillerusr/source-engine/wiki/Source-Engine-%28EN%29)
+- [Building instructions (Russian)](https://github.com/nillerusr/source-engine/wiki/Source-Engine-%28RU%29)
 
 # Support me
 BTC: `bc1qnjq92jj9uqjtafcx2zvnwd48q89hgtd6w8a6na`
