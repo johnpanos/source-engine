@@ -1,0 +1,179 @@
+{
+  "version": 1,
+  "schema": "hammer-inventory/v1",
+  "description": "RFC 0002 owned-file inventory. Each record resolves a file to its current owner and its target module, with responsibility/effect/state classification, provenance, and symbol-level splits for mixed files.",
+  "baselineRevision": "2d7e01d5",
+  "coverage": {
+    "status": "partial",
+    "totalHammerSourceFiles": 452,
+    "totalHammerCppFiles": 221,
+    "totalHammerHeaderFiles": 231,
+    "filesClassified": 13,
+    "note": "Seeded from the RFC 0002 observed-evidence table plus the first geometry extraction candidate. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'."
+  },
+  "files": [
+    {
+      "path": "hammer/stdafx.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "composition",
+      "effects": ["native-ui"],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Common precompiled header pulls afxwin.h/afxext.h and Windows facilities. Removing a visible include does not establish portability; strict modules must not include this PCH."
+    },
+    {
+      "path": "hammer/hammer.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.composition",
+      "responsibility": "composition",
+      "effects": ["native-ui"],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CHammer combines MFC lifecycle and engine application-system composition. Bootstrap, service ownership, and UI lifetime need separate owners.",
+      "symbolSplits": [
+        {"symbol": "CHammer", "destinationModule": "hammer.composition", "responsibility": "composition", "note": "Service ownership and app-system composition."},
+        {"symbol": "CHammer::InitInstance", "destinationModule": "hammer.adapters.mfc", "responsibility": "platform-adapter", "note": "MFC lifecycle retained on the legacy side of the seam."}
+      ]
+    },
+    {
+      "path": "hammer/mapdoc.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": ["document-mutation"],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapDoc derives from CDocument; editing state and operations cannot currently be instantiated independently of the MFC document layer.",
+      "symbolSplits": [
+        {"symbol": "CMapDoc content model", "destinationModule": "hammer.scene", "responsibility": "scene", "note": "Authoritative brush/face/entity content."},
+        {"symbol": "CMapDoc edit operations", "destinationModule": "hammer.app", "responsibility": "editing", "note": "Mutations routed through the transaction boundary (HAM005)."}
+      ]
+    },
+    {
+      "path": "hammer/mapatom.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": ["document-mutation"],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Scene base exposes selection, rendering, transforms, persistence, and notifications. CMapAtom::SetParent accepts any parent; characterize the implicit base contract before extraction.",
+      "symbolSplits": [
+        {"symbol": "CMapAtom::SetParent", "destinationModule": "hammer.scene", "responsibility": "scene", "note": "Observed runtime-type narrowing vs CMapClass::SetParent; target API validates parent/child before mutation."}
+      ]
+    },
+    {
+      "path": "hammer/mapclass.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": ["document-mutation"],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Broad base contract hides which behaviors each object actually supports; separate persistent content from render caches, UI state, and file encoding."
+    },
+    {
+      "path": "hammer/Selection.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": ["document-mutation", "native-ui"],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CSelection::SelectObject commits and invalidates property-dialog state; extracting selection must preserve the property-commit policy while removing the window dependency (HAM-SEL-001).",
+      "symbolSplits": [
+        {"symbol": "CSelection::SelectObject", "destinationModule": "hammer.app", "responsibility": "selection-policy", "note": "Property-draft commit policy moves to the application layer; SaveData() coupling to the property sheet is removed."}
+      ]
+    },
+    {
+      "path": "hammer/toolinterface.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": ["native-ui"],
+      "state": "per-view-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CBaseTool has repeated 2D/3D/logical input entry points coupled to concrete view classes; normalize input and share gesture mechanics."
+    },
+    {
+      "path": "hammer/mapview.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": ["native-ui"],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CMapView::GetViewWnd returns CWnd*; the current interface cannot serve an ordinary GTK or headless host. Split projection/picking/extraction from native window ownership."
+    },
+    {
+      "path": "hammer/ieditortexture.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.ports",
+      "responsibility": "asset-service",
+      "effects": ["native-ui", "gpu-work"],
+      "state": "external-resource",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "IEditorTexture draws through CDC/RECT/CPalette; split asset metadata, decoded-image access, thumbnail generation, and private render bindings. Characterize GetImageWidth vs GetWidth before deduplication.",
+      "symbolSplits": [
+        {"symbol": "IEditorTexture::GetImageWidth/GetWidth", "destinationModule": "hammer.ports", "responsibility": "asset-service", "note": "Image vs mapping dimensions may differ; characterize before merge (do not treat the removal comment as evidence)."}
+      ]
+    },
+    {
+      "path": "hammer/VGuiWnd.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.interop.gtk_source",
+      "responsibility": "presentation",
+      "effects": ["gpu-work", "native-ui"],
+      "state": "external-resource",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "CVGuiWnd::DrawVGuiPanel passes native window handles into material-system views; native details must be confined to the private interop bridge."
+    },
+    {
+      "path": "hammer/render3dms.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": ["gpu-work"],
+      "state": "derived-cache",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CRender3D::BeginRenderHitTarget/EndRenderHitTarget convert object pointers to unsigned int and back; a 64-bit migration must replace pointer encoding with bounded pick identifiers (HAM009).",
+      "symbolSplits": [
+        {"symbol": "CRender3D::BeginRenderHitTarget", "destinationModule": "hammer.viewport", "responsibility": "presentation", "note": "GPU pick IDs index a frame-scoped table; they must not contain truncated object pointers."}
+      ]
+    },
+    {
+      "path": "hammer/boundbox.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.geometry",
+      "responsibility": "geometry",
+      "effects": ["pure-computation"],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Axis-aligned bounding box value type; depends only on mathlib/vector.h. First bounded geometry extraction candidate (HAM-GEOMETRY-001). Note the lone virtual IsIntersectingBox: characterize callers before deciding the extracted shape."
+    },
+    {
+      "path": "hammer/boundbox.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.geometry",
+      "responsibility": "geometry",
+      "effects": ["pure-computation"],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Implements BoundBox update/intersection/snap; extract with explicit grid/tolerance policy and preserve existing precision (HAM-GEOMETRY-001)."
+    }
+  ]
+}

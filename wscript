@@ -107,6 +107,7 @@ projects={
 		'filesystem',
 		'vpklib',
 		'unittests/tier0test',
+		'unittests/moduleloadfixture',
 		'unittests/tier1test',
 		'unittests/tier2test',
 		'unittests/tier3test',

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "schema": "hammer-baseline/v1",
+  "description": "Exact editor-specific violations accepted from the legacy snapshot for RFC 0002 rules (currently HAM003). Strict modules carry zero baseline debt; the loader freeze remains in architecture/baseline.json. This file only records occurrences found inside strict include roots, so it is empty until strict modules exist.",
+  "baselineRevision": "2d7e01d5",
+  "strictModulesZeroDebt": true,
+  "entries": []
+}

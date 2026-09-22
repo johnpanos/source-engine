@@ -247,6 +247,8 @@ def scan_file(root: Path, path: Path, manifest: dict) -> list[Occurrence]:
     for line_number, stripped_line in enumerate(stripped_lines, start=1):
         source_line = original_lines[line_number - 1]
         excerpt = normalized_excerpt(source_line)
+        if stripped_line.lstrip().startswith("#"):
+            continue
         for rule in RULES:
             if rule.rule_id == "ARCH105" and relative in allowed_legacy:
                 continue
@@ -448,6 +450,287 @@ def verify_or_write(
     return 0
 
 
+# ---------------------------------------------------------------------------
+# RFC 0002 editor migration enforcement (HAM rules).
+#
+# These checks validate the authored editor inventory, migration ledger, module
+# graph, and compatibility declarations, and run the HAM003 lexical scan for
+# native/toolkit tokens inside strict include roots.  They do not replace the
+# loader freeze above; they extend the same tool as required by RFC 0002.
+# ---------------------------------------------------------------------------
+
+HAM_RESPONSIBILITIES = {
+    "geometry", "scene", "editing", "interaction", "presentation", "persistence",
+    "asset-service", "platform-adapter", "composition", "selection-policy",
+}
+HAM_EFFECTS = {
+    "pure-computation", "document-mutation", "file-io", "process-execution",
+    "gpu-work", "native-ui", "async-delivery",
+}
+HAM_STATES = {
+    "authoritative-document-data", "per-document-session-state", "per-view-state",
+    "derived-cache", "external-resource",
+}
+HAM_FACTORIZATIONS = {"keep", "extract", "split", "adapt-legacy", "replace-shell", "retire"}
+HAM_EVIDENCE = {"observed", "hypothesis", "decision"}
+HAM_STATUSES = [
+    "inventoried", "characterized", "isolated", "extracted", "substitutable",
+    "cutover", "retired",
+]
+
+
+def _load_json(root: Path, relative: str) -> dict:
+    with (root / relative).open(encoding="utf-8") as stream:
+        return json.load(stream)
+
+
+def hammer_modules(manifest: dict) -> dict:
+    return manifest["hammerModules"]
+
+
+def _detect_cycle(edges: dict[str, list[str]]) -> list[str]:
+    """Return a cyclic path if the directed graph has one, else []."""
+    color: dict[str, int] = {}
+    order: list[str] = []
+
+    def visit(node: str) -> list[str]:
+        color[node] = 1
+        order.append(node)
+        for nxt in edges.get(node, []):
+            if nxt not in edges:
+                continue
+            if color.get(nxt) == 1:
+                start = order.index(nxt)
+                return order[start:] + [nxt]
+            if color.get(nxt, 0) == 0:
+                found = visit(nxt)
+                if found:
+                    return found
+        color[node] = 2
+        order.pop()
+        return []
+
+    for node in edges:
+        if color.get(node, 0) == 0:
+            found = visit(node)
+            if found:
+                return found
+    return []
+
+
+def validate_module_graph(module_block: dict) -> list[str]:
+    errors: list[str] = []
+    modules = module_block.get("modules", [])
+    ids = [module["id"] for module in modules]
+    known = set(ids)
+    for module_id, count in Counter(ids).items():
+        if count > 1:
+            errors.append(f"module {module_id} declared {count} times")
+    edges: dict[str, list[str]] = {}
+    for module in modules:
+        edges[module["id"]] = list(module.get("allowedEdges", []))
+        for target in module.get("allowedEdges", []):
+            if target not in known:
+                errors.append(f"module {module['id']} allows edge to unknown module {target}")
+            if target == module["id"]:
+                errors.append(f"module {module['id']} declares a self edge")
+    cycle = _detect_cycle(edges)
+    if cycle:
+        errors.append("module dependency cycle: " + " -> ".join(cycle))
+    return errors
+
+
+def validate_inventory(root: Path, module_block: dict, inventory: dict) -> list[str]:
+    errors: list[str] = []
+    known = {module["id"] for module in module_block.get("modules", [])}
+    files = inventory.get("files", [])
+    seen: set[str] = set()
+
+    def check_owner(context: str, owner: str) -> None:
+        if owner not in known:
+            errors.append(f"{context}: unknown module {owner!r}")
+
+    for record in files:
+        path = record.get("path", "<missing path>")
+        if path in seen:
+            errors.append(f"{path}: duplicate inventory record (each file resolves to one owner)")
+        seen.add(path)
+        if not (root / path).is_file():
+            errors.append(f"{path}: inventory record does not correspond to a source file")
+        check_owner(f"{path} currentOwner", record.get("currentOwner", ""))
+        check_owner(f"{path} destinationModule", record.get("destinationModule", ""))
+        if record.get("responsibility") not in HAM_RESPONSIBILITIES:
+            errors.append(f"{path}: invalid responsibility {record.get('responsibility')!r}")
+        for effect in record.get("effects", []):
+            if effect not in HAM_EFFECTS:
+                errors.append(f"{path}: invalid effect {effect!r}")
+        if record.get("state") not in HAM_STATES:
+            errors.append(f"{path}: invalid state {record.get('state')!r}")
+        if record.get("factorization") not in HAM_FACTORIZATIONS:
+            errors.append(f"{path}: invalid factorization {record.get('factorization')!r}")
+        if record.get("evidence") not in HAM_EVIDENCE:
+            errors.append(f"{path}: invalid evidence {record.get('evidence')!r}")
+        for split in record.get("symbolSplits", []):
+            if "symbol" not in split:
+                errors.append(f"{path}: symbol split missing 'symbol'")
+            check_owner(f"{path} split {split.get('symbol')}", split.get("destinationModule", ""))
+
+    coverage = inventory.get("coverage", {})
+    status = coverage.get("status")
+    if status not in {"partial", "complete"}:
+        errors.append(f"inventory coverage status must be 'partial' or 'complete', got {status!r}")
+    if coverage.get("filesClassified") != len(files):
+        errors.append(
+            f"inventory coverage.filesClassified={coverage.get('filesClassified')} "
+            f"does not match {len(files)} file records"
+        )
+    if status == "complete":
+        total = coverage.get("totalHammerSourceFiles")
+        if len(files) != total:
+            errors.append(
+                f"inventory claims complete coverage but classifies {len(files)} of {total} files"
+            )
+    return errors
+
+
+def validate_migrations(root: Path, module_block: dict, migrations: dict) -> list[str]:
+    errors: list[str] = []
+    known_modules = {module["id"] for module in module_block.get("modules", [])}
+    records = migrations.get("migrations", [])
+    if migrations.get("statuses") != HAM_STATUSES:
+        errors.append("migration ledger statuses do not match the canonical state machine")
+    ids = [record["id"] for record in records]
+    known_ids = set(ids)
+    for migration_id, count in Counter(ids).items():
+        if count > 1:
+            errors.append(f"migration {migration_id} declared {count} times")
+    edges: dict[str, list[str]] = {}
+    for record in records:
+        rid = record.get("id", "<missing id>")
+        for field in ("title", "phase", "responsibility", "evidenceKind", "status", "authority"):
+            if not record.get(field):
+                errors.append(f"migration {rid}: missing required field {field!r}")
+        if record.get("status") not in HAM_STATUSES:
+            errors.append(f"migration {rid}: invalid status {record.get('status')!r}")
+        if record.get("evidenceKind") not in HAM_EVIDENCE:
+            errors.append(f"migration {rid}: invalid evidenceKind {record.get('evidenceKind')!r}")
+        destination = record.get("destinationModule")
+        if destination is not None and destination not in known_modules:
+            errors.append(f"migration {rid}: unknown destinationModule {destination!r}")
+        for dependency in record.get("dependsOn", []):
+            if dependency not in known_ids:
+                errors.append(f"migration {rid}: dependsOn unknown migration {dependency!r}")
+        edges[rid] = list(record.get("dependsOn", []))
+        for source in record.get("sources", []):
+            spath = source.get("path")
+            if spath and not (root / spath).exists():
+                errors.append(f"migration {rid}: source path {spath!r} does not exist")
+        if "retireWhen" in record and not record["retireWhen"]:
+            errors.append(f"migration {rid}: retireWhen is present but empty")
+    cycle = _detect_cycle(edges)
+    if cycle:
+        errors.append("migration dependency cycle: " + " -> ".join(cycle))
+    return errors
+
+
+def validate_compatibility(compatibility: dict) -> list[str]:
+    errors: list[str] = []
+    if not compatibility.get("profiles"):
+        errors.append("compatibility declares no profiles")
+    valid_status = {"target", "planned", "unverified", "supported", "retired"}
+    for profile in compatibility.get("profiles", []):
+        if "id" not in profile:
+            errors.append("compatibility profile missing 'id'")
+        if profile.get("status") not in valid_status:
+            errors.append(f"compatibility profile {profile.get('id')}: invalid status {profile.get('status')!r}")
+    for gate in compatibility.get("gates", []):
+        if "phase" not in gate:
+            errors.append("compatibility gate missing 'phase'")
+    return errors
+
+
+def scan_native_tokens(root: Path, strict_roots: Sequence[str], tokens: Sequence[str]) -> list[Occurrence]:
+    """HAM003: reject native/toolkit tokens inside strict editor include roots."""
+    token_pattern = re.compile(
+        "|".join(sorted((re.escape(token) for token in tokens), key=len, reverse=True))
+    )
+    occurrences: list[Occurrence] = []
+    for path in source_files(root):
+        relative = path.relative_to(root).as_posix()
+        if not any(relative.startswith(prefix) for prefix in strict_roots):
+            continue
+        stripped = strip_comments_and_literals(path.read_text(encoding="utf-8", errors="replace"))
+        original_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        repeated: Counter[tuple[str, str]] = Counter()
+        for line_number, stripped_line in enumerate(stripped.splitlines(), start=1):
+            if not token_pattern.search(stripped_line):
+                continue
+            excerpt = normalized_excerpt(original_lines[line_number - 1])
+            key = ("HAM003", excerpt)
+            ordinal = repeated[key]
+            repeated[key] += 1
+            occurrences.append(
+                Occurrence(
+                    make_fingerprint("HAM003", relative, excerpt, ordinal),
+                    "HAM003",
+                    relative,
+                    line_number,
+                    excerpt,
+                )
+            )
+    return sorted(occurrences, key=lambda item: (item.path, item.line, item.fingerprint))
+
+
+def hammer_native_token_report(
+    root: Path, module_block: dict, baseline: dict
+) -> tuple[list[Occurrence], list[dict]]:
+    occurrences = scan_native_tokens(
+        root, module_block["strictIncludeRoots"], module_block["nativeTokens"]
+    )
+    baseline_ids = {entry["fingerprint"] for entry in baseline.get("entries", [])}
+    current_ids = {occurrence.fingerprint for occurrence in occurrences}
+    new = [occurrence for occurrence in occurrences if occurrence.fingerprint not in baseline_ids]
+    stale = [entry for entry in baseline.get("entries", []) if entry["fingerprint"] not in current_ids]
+    return new, stale
+
+
+def hammer_command(root: Path, manifest: dict) -> int:
+    module_block = hammer_modules(manifest)
+    errors: list[str] = []
+    errors.extend(f"[modules] {message}" for message in validate_module_graph(module_block))
+
+    inventory = _load_json(root, "architecture/hammer_inventory.json")
+    errors.extend(f"[inventory] {message}" for message in validate_inventory(root, module_block, inventory))
+
+    migrations = _load_json(root, "architecture/hammer_migrations.json")
+    errors.extend(f"[migrations] {message}" for message in validate_migrations(root, module_block, migrations))
+
+    compatibility = _load_json(root, "architecture/hammer_compatibility.json")
+    errors.extend(f"[compatibility] {message}" for message in validate_compatibility(compatibility))
+
+    baseline = _load_json(root, "architecture/hammer_baseline.json")
+    new, stale = hammer_native_token_report(root, module_block, baseline)
+    for occurrence in new:
+        errors.append(
+            f"[HAM003] {occurrence.path}:{occurrence.line}: native/toolkit token in strict "
+            f"module include root: {occurrence.excerpt}"
+        )
+    for entry in stale:
+        errors.append(f"[HAM003] stale baseline entry no longer present: {entry['path']}:{entry.get('line')}")
+
+    if errors:
+        for message in errors:
+            print(f"archlint: {message}")
+        print(f"archlint: hammer verification failed with {len(errors)} problem(s)")
+        return 1
+    print(
+        "archlint: hammer inventory, migration ledger, module graph, and compatibility "
+        f"declarations are valid ({len(inventory['files'])} files, "
+        f"{len(migrations['migrations'])} migrations; coverage {inventory['coverage']['status']})"
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -462,6 +745,8 @@ def build_parser() -> argparse.ArgumentParser:
     inventory = subparsers.add_parser("inventory", help="verify or intentionally rewrite loader inventory")
     inventory.add_argument("--verify", action="store_true")
     inventory.add_argument("--write", action="store_true")
+    hammer = subparsers.add_parser("hammer", help="verify the RFC 0002 editor inventory, migrations, and ratchet")
+    hammer.add_argument("--verify", action="store_true", help="validate authored editor artifacts (default)")
     return parser
 
 
@@ -471,6 +756,8 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     manifest = load_manifest(root)
     if args.command == "check":
         return check_command(args, root, manifest)
+    if args.command == "hammer":
+        return hammer_command(root, manifest)
     if args.command == "baseline":
         if args.write == args.verify:
             raise SystemExit("baseline requires exactly one of --verify or --write")

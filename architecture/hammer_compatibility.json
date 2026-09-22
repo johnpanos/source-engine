@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "schema": "hammer-compatibility/v1",
+  "description": "Declared features, supported formats, provider/profile combinations, corpus IDs, and limitations for each RFC 0002 delivery gate. A feature is declared supported only after its load/edit/save fixtures pass; nothing here certifies a gate.",
+  "baselineRevision": "2d7e01d5",
+  "profiles": [
+    {
+      "id": "linux-headless-core",
+      "status": "target",
+      "os": "Linux x86_64",
+      "display": "none",
+      "gpu": "none",
+      "toolchain": "gcc/clang C++20 (final flags recorded by R03/HAM-BUILD-001)",
+      "note": "Initial portability target for geometry, scene, formats, app, and viewport-query modules."
+    },
+    {
+      "id": "linux-gtk-desktop",
+      "status": "planned",
+      "os": "Linux x86_64",
+      "display": ["X11", "Wayland"],
+      "gpu": "OpenGL via GtkGLArea (bridge under R1)",
+      "toolchain": "GTK4 >= 4.12, libadwaita >= 1.4 (minimums pinned at H5)",
+      "note": "GTK shell delivery profile; gated on H2-H4 and R1."
+    },
+    {
+      "id": "windows-mfc-legacy",
+      "status": "unverified",
+      "os": "Windows",
+      "display": "GDI/VGUI",
+      "gpu": "Source material system",
+      "toolchain": "MSVC + MFC",
+      "note": "Historical compatibility host. Not reproducible on the current Linux host; retained as a comparison target only if a working build is established (see 0002-progress.md)."
+    }
+  ],
+  "gates": [
+    {
+      "phase": "H0",
+      "declaredFeatures": [],
+      "supportedFormats": [],
+      "corpusIds": [],
+      "limitations": ["No editor features are certified. This gate establishes inventory, migration schema, ratchet, corpus scaffolding, and toolchain/build evidence only."]
+    }
+  ]
+}

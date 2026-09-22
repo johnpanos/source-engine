@@ -1,0 +1,22 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+top = '.'
+PROJECT_NAME = 'moduleloadfixture'
+
+def options(opt):
+	return
+
+def configure(conf):
+	return
+
+def build(bld):
+	bld.shlib(
+		source = ['moduleloadfixture.cpp'],
+		target = PROJECT_NAME,
+		name = PROJECT_NAME,
+		features = 'cxx',
+		install_path = bld.env.LIBDIR,
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx = bld.get_taskgen_count()
+	)

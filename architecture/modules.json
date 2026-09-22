@@ -38,5 +38,31 @@
         "reason": "First-party runtime module assembled by legacy application composition."
       }
     ]
+  },
+  "hammerModules": {
+    "version": 1,
+    "description": "RFC 0002 editor module ownership and allowed dependency edges. Strict modules carry zero baseline debt and reject native/toolkit types.",
+    "strictIncludeRoots": ["public/hammer/", "hammer/core/"],
+    "legacyHost": "hammer.adapters.mfc",
+    "modules": [
+      {"id": "hammer.geometry", "strict": true, "owns": "Geometric values, algorithms, numeric policies", "allowedEdges": []},
+      {"id": "hammer.scene", "strict": true, "owns": "Content graph, typed IDs, document metadata, invariants", "allowedEdges": ["hammer.geometry"]},
+      {"id": "hammer.ports", "strict": true, "owns": "Asset, persistence, job, and external-service contracts", "allowedEdges": ["hammer.geometry", "hammer.scene"]},
+      {"id": "hammer.formats", "strict": true, "owns": "VMF/MAP/RMF codecs and format validation", "allowedEdges": ["hammer.geometry", "hammer.scene", "hammer.ports"]},
+      {"id": "hammer.app", "strict": true, "owns": "Sessions, queries, edit transactions, history, save/build orchestration", "allowedEdges": ["hammer.geometry", "hammer.scene", "hammer.ports"]},
+      {"id": "hammer.viewport", "strict": true, "owns": "Projection, picking queries, presentation extraction, render contracts", "allowedEdges": ["hammer.geometry", "hammer.scene", "hammer.ports"]},
+      {"id": "hammer.tools", "strict": true, "owns": "Gesture state machines and edit/overlay production", "allowedEdges": ["hammer.geometry", "hammer.scene", "hammer.ports", "hammer.app", "hammer.viewport"]},
+      {"id": "hammer.presenters", "strict": true, "owns": "Inspector/browser/view presentation models and action routing", "allowedEdges": ["hammer.app", "hammer.tools", "hammer.viewport", "hammer.ports", "hammer.scene"]},
+      {"id": "hammer.adapters.source", "strict": false, "owns": "Source asset and renderer integrations", "allowedEdges": ["hammer.ports", "hammer.viewport", "hammer.scene", "hammer.geometry"]},
+      {"id": "hammer.adapters.platform", "strict": false, "owns": "Files, settings, processes, clocks, watchers, scheduling", "allowedEdges": ["hammer.ports"]},
+      {"id": "hammer.adapters.mfc", "strict": false, "owns": "Existing shell and compatibility glue", "allowedEdges": ["hammer.presenters", "hammer.app", "hammer.tools", "hammer.viewport", "hammer.ports", "hammer.scene", "hammer.geometry", "hammer.formats"]},
+      {"id": "hammer.adapters.gtk", "strict": false, "owns": "GTK4/libadwaita widgets, input and main-context dispatch", "allowedEdges": ["hammer.presenters", "hammer.app", "hammer.tools", "hammer.viewport", "hammer.ports", "hammer.scene"]},
+      {"id": "hammer.interop.gtk_source", "strict": false, "owns": "Private GTK/render-resource exchange", "allowedEdges": ["hammer.viewport", "hammer.adapters.gtk", "hammer.adapters.source"]},
+      {"id": "hammer.composition", "strict": false, "owns": "Provider selection, wiring, startup/shutdown", "allowedEdges": ["hammer.geometry", "hammer.scene", "hammer.ports", "hammer.formats", "hammer.app", "hammer.viewport", "hammer.tools", "hammer.presenters", "hammer.adapters.source", "hammer.adapters.platform", "hammer.adapters.mfc", "hammer.adapters.gtk", "hammer.interop.gtk_source"]}
+    ],
+    "nativeTokens": [
+      "afxwin.h", "afxext.h", "afx.h", "windows.h", "CWnd", "CDialog", "CDocument", "CView", "CDC", "CPalette", "HWND", "HDC", "LPARAM", "WPARAM", "__declspec",
+      "gtk/gtk.h", "gtkmm", "adwaita.h", "GtkWidget", "GdkGLContext", "GtkGLArea", "SDL.h", "SDL_", "IMaterialSystem", "vgui::", "CVGuiWnd"
+    ]
   }
 }
