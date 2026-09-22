@@ -62,6 +62,15 @@ Old test assets and utilities may be reused after validating their build and
 oracle. The physics perf viewer, material screenshot utility, and engine test
 scripts are useful source material; their existence does not satisfy a gate.
 
+### Installed mechanical-style slice
+
+The [style checker](../tools/stylelint/README.md) now supplies a pinned Source
+formatting policy, an incremental `memdbgon.h` include-order check, self-tests
+with negative fixtures, and a PR/master workflow. This is R04-STYLE, not the
+complete Q-ARCH harness or the shared runner. Its docs-only not-applicable result
+must not be counted as runtime coverage. See [RFC 0006](0006-modern-cpp-ownership-and-synchronization.md#mechanical-style-gate)
+for its scope; [AGENTS.md](../AGENTS.md) tracks the bounded implementation state.
+
 ## Shared execution and evidence
 
 ### Runner contract

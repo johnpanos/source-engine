@@ -4,7 +4,7 @@
 - Date: 2026-09-21
 - Scope: New and migrated first-party targets, result/ownership vocabulary, queues and CPU/GPU synchronization
 - Related: [Platform](0001-capability-based-platform-architecture.md), [Hammer](0002-hammer-responsibility-factorization.md), [jobs](0003-dependency-aware-job-system.md), [physics](0004-box3d-primary-physics-backend.md), [harnesses](0005-quality-and-correctness-harnesses.md)
-- Implementation status: Specification. Existing targets are not upgraded by this document.
+- Implementation status: Specification with an installed mechanical-style checker (see below). Existing targets are not upgraded by this document.
 
 ## Summary
 
@@ -17,6 +17,24 @@ dependencies, including Box3D's C17 sources.
 The existing Waf configuration selects C++11 for applicable C++ compilation.
 Implementation therefore begins with an explicit per-target compiler and
 standard-library capability policy; it cannot assume C++20 is already active.
+
+## Mechanical style gate
+
+The installed [style checker](../tools/stylelint/README.md) and root
+[format policy](../.clang-format) implement the mechanical portion of this RFC.
+The pinned formatter preserves Source tabs, Allman braces, declarator-side
+pointer/reference sigils, and nonempty-parenthesis spacing, with a 100-column
+target. Include order is preserved; a lexical ratchet rejects new includes after
+literal `memdbgon.h`. Existing files use changed syntactic regions, new files
+whole-file checks, and vendor code keeps its own conventions.
+
+The read-only checker, regression/negative fixtures, and PR/master CI lane are
+the R04-STYLE child tracked in [AGENTS.md](../AGENTS.md). Missing dependencies or
+invalid output fail; documentation-only diffs report not-applicable. The format
+configuration's C++20 mode is not a build migration. Ownership, results, DRY,
+behavioral substitution, ring topology, memory ordering, and GPU completion
+still require the contract and native verification below; token bans cannot
+prove those properties. Do not mark M0–M3 done on the strength of a style pass.
 
 ## Build and compatibility policy
 

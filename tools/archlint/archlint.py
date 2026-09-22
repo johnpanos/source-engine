@@ -707,6 +707,222 @@ def hammer_native_token_report(
     return new, stale
 
 
+# ---------------------------------------------------------------------------
+# RFC 0002 inventory coverage assistance (HAM-INVENTORY-001).
+#
+# The `hammer --verify` path proves the *authored* inventory is internally
+# consistent.  It does not tell an author which of the ~452 hammer source files
+# are still unclassified, nor help characterize them.  That gap is the H0 exit
+# bottleneck.  These helpers enumerate the source universe, diff it against the
+# inventory, and emit *reviewable* stubs.  Every suggested field is a hypothesis
+# (evidence "hypothesis") grounded only in a lexical scan; the author remains the
+# authority and must confirm each record before coverage flips to "complete".
+# ---------------------------------------------------------------------------
+
+HAMMER_UNIVERSE_ROOTS = ("hammer/",)
+
+# Lexically grounded effect signals, scanned over comment/literal-stripped source
+# so a token inside a string or comment cannot create a false positive.
+EFFECT_SIGNALS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "native-ui",
+        re.compile(
+            r"\b(?:afxwin\.h|afxext\.h|afx\.h|windows\.h|CWnd|CDialog|CDocument|CView|CDC|"
+            r"CPalette|HWND|HDC|__declspec|GtkWidget|GdkGLContext|GtkGLArea|CVGuiWnd)\b"
+            r"|gtk/gtk\.h|vgui::"
+        ),
+    ),
+    (
+        "file-io",
+        re.compile(
+            r"\b(?:fopen|fread|fwrite|fclose|ifstream|ofstream|fstream|CUtlBuffer|"
+            r"ReadFile|WriteFile|LoadFile|SaveFile|g_pFileSystem|m_pFileSystem)\b"
+        ),
+    ),
+    (
+        "process-execution",
+        re.compile(
+            r"\b(?:system|CreateProcess[AW]?|ShellExecute[AW]?|_spawn\w*|_popen|popen|"
+            r"fork|execv[pe]?|execl[pe]?|RunCommand)\b"
+        ),
+    ),
+    (
+        "gpu-work",
+        re.compile(
+            r"\b(?:IMaterialSystem|IMatRenderContext|IMesh|CMeshBuilder|IShaderAPI|"
+            r"BeginRender\w*|glBegin|glDraw\w*)\b"
+        ),
+    ),
+)
+
+# Filename hints for the semantic fields a lexical scan cannot reliably infer.
+# First match wins.  These are guesses and are always flagged in reviewTODO.
+RESPONSIBILITY_HINTS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"(?i)(boundbox|brush|solid|disp|face|vertex|winding|convex|polygon|geom)"), "geometry"),
+    (re.compile(r"(?i)(dlg|dialog|sheet|statusbar|toolbar|\bwnd\b|mainfrm|control|options|propert)"), "presentation"),
+    (re.compile(r"(?i)(tool|select|drag|handle|morph|\bclip\b|manip|gizmo)"), "interaction"),
+    (re.compile(r"(?i)(mapdoc|mapworld|mapentity|mapgroup|mapatom|mapclass|world|entity|\btree\b|scene)"), "scene"),
+    (re.compile(r"(?i)(save|load|serial|\bvmf\b|mapfile|\brmf\b|chunk|export|import|reader|writer)"), "persistence"),
+    (re.compile(r"(?i)(view|render|camera|\bdraw\b|paint|\bgrid\b)"), "presentation"),
+    (re.compile(r"(?i)(hammer\.cpp|\bmain\b|\bapp\b|manifest|factory|\binit\b|options)"), "composition"),
+)
+STATE_HINTS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"(?i)(mapdoc|mapworld|mapentity|mapatom|mapclass|world|entity)"), "authoritative-document-data"),
+    (re.compile(r"(?i)(view|camera|render2d|render3d)"), "per-view-state"),
+    (re.compile(r"(?i)cache"), "derived-cache"),
+)
+
+# Fallback values used when no filename hint matches.  Always listed in
+# reviewTODO so nothing is mistaken for a confirmed classification.
+DEFAULT_RESPONSIBILITY = "editing"
+DEFAULT_STATE = "per-document-session-state"
+
+
+def hammer_source_universe(root: Path, module_block: dict) -> list[str]:
+    """Every source file that belongs to the editor, as repo-relative posix paths."""
+    roots = list(HAMMER_UNIVERSE_ROOTS) + list(module_block.get("strictIncludeRoots", []))
+    found: set[str] = set()
+    for prefix in roots:
+        base = root / prefix
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*"):
+            if path.is_file() and is_source(path, root):
+                found.add(path.relative_to(root).as_posix())
+    return sorted(found)
+
+
+def detect_effects(root: Path, relative: str) -> list[str]:
+    text = strip_comments_and_literals((root / relative).read_text(encoding="utf-8", errors="replace"))
+    effects = [effect for effect, pattern in EFFECT_SIGNALS if pattern.search(text)]
+    return effects or ["pure-computation"]
+
+
+def _first_hint(relative: str, hints: Sequence[tuple[re.Pattern[str], str]]) -> str | None:
+    stem = relative.rsplit("/", 1)[-1]
+    for pattern, value in hints:
+        if pattern.search(stem):
+            return value
+    return None
+
+
+def suggest_record(root: Path, module_block: dict, relative: str) -> dict:
+    """A reviewable inventory stub.  Every semantic field is a hypothesis."""
+    effects = detect_effects(root, relative)
+    responsibility = _first_hint(relative, RESPONSIBILITY_HINTS) or DEFAULT_RESPONSIBILITY
+    state = _first_hint(relative, STATE_HINTS) or DEFAULT_STATE
+    legacy_host = module_block.get("legacyHost", "hammer.adapters.mfc")
+    if "native-ui" in effects:
+        factorization, owner = "adapt-legacy", legacy_host
+    else:
+        # pure-computation, or effectful-but-portable (file-io/gpu without native UI):
+        # the default hypothesis is extraction into a strict module.
+        factorization, owner = "extract", legacy_host
+    return {
+        "path": relative,
+        "currentOwner": owner,
+        "destinationModule": owner,
+        "responsibility": responsibility,
+        "effects": effects,
+        "state": state,
+        "factorization": factorization,
+        "evidence": "hypothesis",
+        "reviewTODO": [
+            "confirm currentOwner/destinationModule by reading the file",
+            "confirm responsibility (filename heuristic)",
+            "confirm state (filename heuristic)",
+            "confirm factorization and re-evidence as 'observed' or 'decision'",
+        ],
+    }
+
+
+def hammer_coverage(root: Path, module_block: dict, inventory: dict) -> dict:
+    universe = hammer_source_universe(root, module_block)
+    universe_set = set(universe)
+    classified = [record.get("path", "") for record in inventory.get("files", [])]
+    classified_set = set(classified)
+    unclassified = [path for path in universe if path not in classified_set]
+    classified_outside = sorted(classified_set - universe_set)
+    return {
+        "universeCount": len(universe),
+        "classifiedCount": len(classified_set & universe_set),
+        "unclassified": unclassified,
+        "classifiedOutsideUniverse": classified_outside,
+        "authoredTotal": inventory.get("coverage", {}).get("totalHammerSourceFiles"),
+    }
+
+
+def _filter_paths(paths: Sequence[str], prefix: str | None) -> list[str]:
+    if not prefix:
+        return list(paths)
+    return [path for path in paths if path.startswith(prefix)]
+
+
+def hammer_coverage_command(root: Path, manifest: dict, args: argparse.Namespace) -> int:
+    module_block = hammer_modules(manifest)
+    inventory = _load_json(root, "architecture/hammer_inventory.json")
+    coverage = hammer_coverage(root, module_block, inventory)
+    unclassified = _filter_paths(coverage["unclassified"], args.path)
+
+    if args.json:
+        grouped: dict[str, list[str]] = {}
+        for path in unclassified:
+            key = _first_hint(path, RESPONSIBILITY_HINTS) or DEFAULT_RESPONSIBILITY
+            grouped.setdefault(key, []).append(path)
+        print(json.dumps({**coverage, "unclassified": unclassified, "byResponsibilityHint": grouped}, indent=2))
+        return 0
+
+    total = coverage["universeCount"]
+    done = coverage["classifiedCount"]
+    print(f"hammer inventory coverage: {done}/{total} files classified ({total - done} remaining)")
+    if coverage["authoredTotal"] not in (None, total):
+        print(
+            f"  warning: coverage.totalHammerSourceFiles={coverage['authoredTotal']} "
+            f"but the source universe now has {total} files; update the authored total"
+        )
+    for path in coverage["classifiedOutsideUniverse"]:
+        print(f"  warning: classified file is outside the hammer source universe: {path}")
+
+    groups: Counter[str] = Counter(
+        _first_hint(path, RESPONSIBILITY_HINTS) or DEFAULT_RESPONSIBILITY for path in unclassified
+    )
+    if groups:
+        print("\nremaining by responsibility hint (heuristic):")
+        for name, count in sorted(groups.items(), key=lambda item: (-item[1], item[0])):
+            print(f"  {count:>4}  {name}")
+
+    scope = f" under {args.path!r}" if args.path else ""
+    shown = unclassified if args.limit == 0 else unclassified[: args.limit]
+    print(f"\nunclassified files{scope} ({len(shown)} of {len(unclassified)} shown):")
+    for path in shown:
+        effects = ",".join(detect_effects(root, path))
+        print(f"  {path}  [effects: {effects}]")
+    if len(shown) < len(unclassified):
+        print(f"  ... {len(unclassified) - len(shown)} more (raise --limit or use --json)")
+    print("\nNext: `archlint.py hammer --scaffold --path <dir>` emits reviewable stubs to classify.")
+    return 0
+
+
+def hammer_scaffold_command(root: Path, manifest: dict, args: argparse.Namespace) -> int:
+    module_block = hammer_modules(manifest)
+    inventory = _load_json(root, "architecture/hammer_inventory.json")
+    coverage = hammer_coverage(root, module_block, inventory)
+    unclassified = _filter_paths(coverage["unclassified"], args.path)
+    batch = unclassified if args.limit == 0 else unclassified[: args.limit]
+    records = [suggest_record(root, module_block, path) for path in batch]
+
+    if not args.json:
+        print(
+            f"// Reviewable stubs for {len(records)} of {len(unclassified)} unclassified file(s).\n"
+            "// evidence is 'hypothesis': read each file, correct the fields, drop reviewTODO,\n"
+            "// re-evidence as 'observed'/'decision', then merge into hammer_inventory.json.\n"
+            "// Coverage stays 'partial' until every file is confirmed.",
+            file=sys.stderr,
+        )
+    print(json.dumps({"files": records}, indent=2))
+    return 0
+
+
 def hammer_command(root: Path, manifest: dict) -> int:
     module_block = hammer_modules(manifest)
     errors: list[str] = []
@@ -759,7 +975,23 @@ def build_parser() -> argparse.ArgumentParser:
     inventory.add_argument("--verify", action="store_true")
     inventory.add_argument("--write", action="store_true")
     hammer = subparsers.add_parser("hammer", help="verify the RFC 0002 editor inventory, migrations, and ratchet")
-    hammer.add_argument("--verify", action="store_true", help="validate authored editor artifacts (default)")
+    mode = hammer.add_mutually_exclusive_group()
+    mode.add_argument("--verify", action="store_true", help="validate authored editor artifacts (default)")
+    mode.add_argument(
+        "--coverage",
+        action="store_true",
+        help="report which hammer source files are still unclassified (HAM-INVENTORY-001)",
+    )
+    mode.add_argument(
+        "--scaffold",
+        action="store_true",
+        help="emit reviewable inventory stubs (evidence 'hypothesis') for unclassified files",
+    )
+    hammer.add_argument("--path", help="restrict --coverage/--scaffold to files under this prefix")
+    hammer.add_argument(
+        "--limit", type=int, default=25, help="max files for --coverage/--scaffold (0 = no limit)"
+    )
+    hammer.add_argument("--json", action="store_true", help="machine-readable output")
     return parser
 
 
@@ -770,6 +1002,10 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
     if args.command == "check":
         return check_command(args, root, manifest)
     if args.command == "hammer":
+        if args.coverage:
+            return hammer_coverage_command(root, manifest, args)
+        if args.scaffold:
+            return hammer_scaffold_command(root, manifest, args)
         return hammer_command(root, manifest)
     if args.command == "baseline":
         if args.write == args.verify:

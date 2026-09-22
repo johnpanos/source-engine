@@ -27,7 +27,6 @@ VENDOR_ROOTS = (
     "common/lzma/", "utils/lzma/", "utils/jpeglib/", "utils/bzip2/",
 )
 HUNK = re.compile(rb"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", re.MULTILINE)
-INCLUDE = re.compile(r'^\s*#\s*(?:include|include_next|import)\s+(.+)$')
 
 
 class LintError(Exception):
@@ -48,7 +47,7 @@ def run(command: list[str], root: Path, *, data: bytes | None = None) -> bytes:
 
 
 def git(root: Path, *args: str) -> bytes:
-    return run(["git", *args], root)
+    return run(["git", "--literal-pathspecs", *args], root)
 
 
 def required_version(root: Path) -> str:
@@ -145,7 +144,7 @@ def select_files(
         if revision and name in old_names:
             patch = git(
                 root, "diff", "--no-ext-diff", "--no-textconv", "--no-renames",
-                "--unified=0", revision, "--", name,
+                "--text", "--unified=0", revision, "--", name,
             )
             ranges = changed_ranges(patch, len(path.read_bytes().splitlines()))
             if not ranges:
@@ -220,9 +219,10 @@ def includes(text: str) -> list[tuple[int, str]]:
         # recover its operand from the original text. A raw string cannot fake it.
         directive = re.match(r'^[ \t]*#[ \t]*(?:include|include_next|import)\b', code)
         if directive:
-            operand = original[directive.end():].strip()
-            # Comments between directive and header are legal. Keep quoted names.
-            operand = re.sub(r'/\*.*?\*/', ' ', operand).strip()
+            operand_start = offset + directive.end()
+            # A block comment between keyword and operand may span lines.
+            trivia = re.match(r'(?:[ \t]|/\*[\s\S]*?\*/)*', text[operand_start:])
+            operand = text[operand_start + trivia.end():].split('\n', 1)[0].strip()
             match = re.match(r'["<]([^">]+)[">]', operand)
             result.append((source_lines[offset], match[1] if match else operand))
         offset += len(original)
@@ -260,7 +260,9 @@ def newly_broken_includes(old: str | None, new: str) -> list[tuple[int, str]]:
 def format_bytes(
     root: Path, executable: str, name: str, data: bytes, ranges: list[tuple[int, int]] | None
 ) -> tuple[bytes, list[int]]:
-    if ranges == []:
+    # clang-format emits no XML for an empty input. The caller has already
+    # validated the formatter and policy; an empty file needs no replacements.
+    if not data or ranges == []:
         return data, []
     command = [
         executable, f"--style=file:{root / '.clang-format'}",

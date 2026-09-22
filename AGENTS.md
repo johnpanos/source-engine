@@ -93,6 +93,14 @@ use it. Preserve license headers. Avoid clever template machinery, premature
 frameworks, hidden logging/allocation, and broad locks around unexamined callbacks.
 Hot-path allocation and abstraction costs need measurements, not assumptions.
 
+[`.clang-format`](.clang-format) owns mechanical formatting for new/edited
+first-party code: tabs of width four, Allman braces, Source parenthesis/pointer
+spacing, and a 100-column target. Use the pinned, read-only
+[style checker](tools/stylelint/README.md); existing files are checked around
+edited lines and new files in full. Do not reformat unrelated legacy code.
+The checker also rejects newly introduced includes after literal `memdbgon.h`.
+Do not treat formatting as proof of ownership, DRY, LSP, or fence correctness.
+
 Ring buffers need a real bounded-transport use case and documented topology,
 ordering, capacity, overflow/backpressure, payload lifetime, and close/drain.
 Never silently drop required gameplay work. SPSC, MPSC/MPMC, and work-stealing
@@ -170,6 +178,21 @@ python3 tools/archlint/archlint.py inventory --verify
 python3 -m unittest discover -s tools/archlint/tests -v
 ```
 
+Installed style commands (install the pinned formatter as described in the
+[setup instructions](tools/stylelint/README.md) first):
+
+```sh
+python3 -m unittest discover -s tools/stylelint/tests -v
+python3 tools/stylelint/stylelint.py --changed --diff
+python3 tools/stylelint/stylelint.py --changed --base origin/master --diff
+```
+
+The last command checks the complete branch diff; plain `--changed` is a local
+HEAD comparison. CI runs the style fixtures and the relevant branch/push diff.
+Missing tools and invalid history fail; no eligible changes are explicitly
+not-applicable. Whole-tree `--all` style checking is an optional legacy-debt audit,
+not a request for global formatting. Keep policy changes and fixture tests together.
+
 `check --changed` is a local convenience, not a full gate. `--compile-deps` and
 the new domain runners are proposed until implementation records working
 commands. Check the current Waf configuration before building; do not overwrite
@@ -202,7 +225,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 1 / R01 | Reproducible baseline and profile inventory; 0005 Q0, baseline portions of all domains | — | Current checks/failures recorded; exact build/content/tool availability and supported profiles established; baseline captures and budgets identified | partial |
 | 2 / R02 | Trustworthy runner, fixtures, evidence; 0005 Q1 | R01 | Zero/missing tests, skips, crashes, timeouts and incomplete output fail correctly; explicit test composition and reproducible artifacts work | planned |
 | 3 / R03 | Per-target C++20/toolchain boundary; 0006 M0 | R01, R02 | Compile/link/run proof; final flags verified; legacy/C17 settings and frozen-consumer ABI combinations preserved | planned |
-| 4 / R04 | Full architecture and migration enforcement; 0001 rank 1, 0002 H0 enforcement, Q-ARCH | R01, R02 | Ownership, direct/transitive includes, Waf/link graph, hermetic builds, exact debt and evidence schemas enforced; negative projects fail | planned |
+| 4 / R04 | Full architecture and migration enforcement; 0001 rank 1, 0002 H0 enforcement, Q-ARCH | R01, R02 | Ownership, direct/transitive includes, Waf/link graph, hermetic builds, exact debt and evidence schemas enforced; negative projects fail | partial |
 | 5 / R05 | Results, IDs, quantities, ownership vocabulary; 0001 rank 2, 0006 M1 | R03, R04 | `Expected`, borrowing/scoped resources and matchers pass value/lifetime/ABI tests; a real consumer uses them | planned |
 | 6 / R06 | Composition/lifecycle kernel and minimal test providers; 0001 rank 3, Q-FOUNDATION | R02, R05 | Unit runner composes typed providers without ambient factories; required/optional validation, failure-at-each-stage rollback and repeat-instance tests pass | planned |
 | 7 / R07 | Loader containment, telemetry and ABI fixtures; 0001 rank 4 / retirement A | R04, R06 | Scoped ownership, structured errors, legacy bridge and fake/native suites pass; telemetry handles failed/duplicate/nested requests; reviewed ratchet/inventory current | partial |
@@ -260,6 +283,15 @@ can still proceed. For `done`, link the current revision/profile evidence and
 confirm every required child and exit criterion. Reopen affected gates when a
 contract/provider/comparator/consumer changes; do not preserve stale completion.
 Keep the table concise and link details below or from the domain progress file.
+
+- R04-STYLE: `done` for the bounded mechanical-style slice requested by the user:
+  pinned formatter, Source configuration, incremental include-order check,
+  read-only CLI, and PR/master workflow are installed. The
+  [style checker evidence and reproduction commands](tools/stylelint/README.md#ci-and-acceptance-evidence)
+  cover positive/negative fixtures; local execution passed 29 tests on Python
+  3.14.7 / clang-format 22.1.8. Hosted CI has not been executed here, and making
+  its check required remains repository-administrator policy. This child does
+  not close R04, establish C++20 target support, or certify runtime harnesses.
 
 Initial evidence, observed at `87955f67` before these documentation changes:
 

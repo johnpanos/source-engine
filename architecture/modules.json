@@ -13,7 +13,7 @@
     "classifications": [
       {
         "name": "tool-indirection",
-        "pathPrefixes": ["devtools/", "external/vpc/", "tools/", "utils/"],
+        "pathPrefixes": ["devtools/", "external/vpc/", "tools/", "unittests/", "utils/"],
         "reason": "Tool-only implementation, wrapper, or optional tool integration."
       },
       {
