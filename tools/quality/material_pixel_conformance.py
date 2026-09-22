@@ -69,6 +69,8 @@ def read_pixels(path):
     names = [case.get("name") for case in report.get("cases", [])]
     if names != list(LIGHTMAP_CASES):
         raise PixelsError("%s has cases %s, expected %s" % (path, names, list(LIGHTMAP_CASES)))
+    if len(report.get("orientation", {}).get("pixels", [])) != 2:
+        raise PixelsError("%s has no orientation capture" % path)
     return report
 
 
@@ -130,6 +132,23 @@ def check_properties(report):
     return failures
 
 
+def check_orientation(report):
+    """Texture row 0 on the clip-space top edge must appear at the top of the
+    frame, as D3D9 draws it. A backend that forgets Vulkan's downward clip-space
+    Y renders the whole frame upside down and fails here."""
+    orientation = report["orientation"]
+    top, bottom = orientation["pixels"]
+    if _close(top, orientation["top_texel"], PIXEL_TOLERANCE) and \
+            _close(bottom, orientation["bottom_texel"], PIXEL_TOLERANCE):
+        return []
+    if _close(top, orientation["bottom_texel"], PIXEL_TOLERANCE) and \
+            _close(bottom, orientation["top_texel"], PIXEL_TOLERANCE):
+        return ["frame is upside down: the texture's top rows %s render at the bottom"
+                % orientation["top_texel"]]
+    return ["orientation: top %s and bottom %s, expected %s over %s"
+            % (top, bottom, orientation["top_texel"], orientation["bottom_texel"])]
+
+
 def check_model(report):
     """The D3D9-validated closed form, which holds exactly in integer HDR."""
     failures = []
@@ -165,7 +184,7 @@ def evaluate(report, hdr, reference=None):
     if report["hdr_type"] != HDR_TYPES[hdr]:
         return ["backend does not support HDR mode '%s' (it reports HDR type %s)"
                 % (hdr, report["hdr_type"])]
-    failures = check_properties(report)
+    failures = check_orientation(report) + check_properties(report)
     if report["hdr_type"] == HDR_TYPES["integer"]:
         failures += check_model(report)
     if reference is not None:

@@ -858,3 +858,14 @@ python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime \
     --build build --renderer native-vulkan --hdr none \
     --reference quality/fixtures/material-pixels/lightmap-dx9-none.json --out OUT
 ```
+
+**Orientation (same day).** The native frame was upside down: Vulkan's
+clip-space Y points down, and the material transforms are D3D's. None of the
+four native suites checked vertical orientation, and the lightmap cases only
+varied left to right, so the pixel harness gained an `orientation` capture. It
+uses a red-over-blue base texture read at 25% and 75% of the height, and the
+oracle fails it as "frame is upside down". D3D9 passes, and its references were
+recaptured with the new field. Native failed, and now passes: material draws use
+a negative-height viewport (core in Vulkan 1.1), which puts clip-space +Y at the
+top for the swapchain and render targets alike. Clears keep the unflipped
+rectangle. The Portal boot frame now matches the D3D9 layout.

@@ -82,11 +82,14 @@ const LightmapCase kLightmapCases[] = {
 };
 const int kLightmapCaseCount = sizeof( kLightmapCases ) / sizeof( kLightmapCases[0] );
 
-// Fills a procedural texture with one color; changed per case before Download().
+// Fills a procedural texture with one color, or with m_Bottom below its middle
+// row when m_Split is set; changed per case before Download().
 class CSolidColorRegenerator : public ITextureRegenerator
 {
 public:
 	unsigned char m_Color[4] = { 255, 255, 255, 255 };
+	unsigned char m_Bottom[4] = { 255, 255, 255, 255 };
+	bool m_Split = false;
 
 	void RegenerateTextureBits( ITexture *pTexture, IVTFTexture *pVTF, Rect_t *pRect ) override
 	{
@@ -101,9 +104,11 @@ public:
 			    pVTF->Format(), pVTF->ImageData( 0, 0, mip ), pVTF->RowSizeInBytes( mip ) );
 			for ( int y = 0; y < height * depth; ++y )
 			{
+				// Row 0 is the top of the texture (texture coordinate v = 0).
+				const unsigned char *c = ( m_Split && y >= height / 2 ) ? m_Bottom : m_Color;
 				writer.Seek( 0, y );
 				for ( int x = 0; x < width; ++x )
-					writer.WritePixel( m_Color[0], m_Color[1], m_Color[2], m_Color[3] );
+					writer.WritePixel( c[0], c[1], c[2], c[3] );
 			}
 		}
 	}
@@ -122,6 +127,8 @@ public:
 
 private:
 	bool RunLightmapCases( FILE *out );
+	bool RenderCase( IMaterial *pMaterial, int sortId, const int offset[2], int lightmapPageId,
+	    const float ( *points )[2], int pointCount, unsigned char ( *pixels )[3] );
 	void DrawLightmappedQuad(
 	    IMaterial *pMaterial, int sortId, const int offset[2], const int pageSize[2] );
 	bool ReadPixel( float fx, float fy, unsigned char rgb[3] );
@@ -390,44 +397,80 @@ bool CMaterialPixelApp::RunLightmapCases( FILE *out )
 	fprintf( out, "\"cases\":[" );
 
 	bool ok = true;
+	const float kHalves[2][2] = { { 0.25f, 0.5f }, { 0.75f, 0.5f } };
 	for ( int i = 0; i < kLightmapCaseCount; ++i )
 	{
 		const LightmapCase &c = kLightmapCases[i];
-		s_BaseRegenerator.m_Color[0] = c.base[0];
-		s_BaseRegenerator.m_Color[1] = c.base[1];
-		s_BaseRegenerator.m_Color[2] = c.base[2];
+		s_BaseRegenerator.m_Split = false;
+		for ( int k = 0; k < 3; ++k )
+			s_BaseRegenerator.m_Color[k] = c.base[k];
 		pBase->Download();
 
-		int pageSize[2] = { 0, 0 };
-		g_pMaterialSystem->GetLightmapPageSize(
-		    sortInfo[sortIds[i]].lightmapPageID, &pageSize[0], &pageSize[1] );
-
-		unsigned char left[3] = { 0, 0, 0 }, right[3] = { 0, 0, 0 };
-		g_pMaterialSystem->BeginFrame( 0 );
-		{
-			CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
-			int width = 0, height = 0;
-			g_pMaterialSystem->GetBackBufferDimensions( width, height );
-			pRenderContext->Viewport( 0, 0, width, height );
-			pRenderContext->SetToneMappingScaleLinear( Vector( 1, 1, 1 ) );
-			// Magenta: a pixel the quad did not cover is unmistakable.
-			pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
-			pRenderContext->ClearBuffers( true, true );
-			DrawLightmappedQuad( pMaterial, sortIds[i], offsets[i], pageSize );
-			ok = ReadPixel( 0.25f, 0.5f, left ) && ReadPixel( 0.75f, 0.5f, right ) && ok;
-		}
-		g_pMaterialSystem->EndFrame();
-		g_pMaterialSystem->SwapBuffers();
-
+		unsigned char px[2][3] = {};
+		ok = RenderCase( pMaterial, sortIds[i], offsets[i], sortInfo[sortIds[i]].lightmapPageID,
+		         kHalves, 2, px ) &&
+		     ok;
 		fprintf( out,
 		    "%s{\"name\":\"%s\",\"base\":[%d,%d,%d],"
 		    "\"lightmap\":[[%g,%g,%g],[%g,%g,%g]],\"pixels\":[[%d,%d,%d],[%d,%d,%d]]}",
 		    i ? "," : "", c.name, c.base[0], c.base[1], c.base[2], c.left[0], c.left[1], c.left[2],
-		    c.right[0], c.right[1], c.right[2], left[0], left[1], left[2], right[0], right[1],
-		    right[2] );
+		    c.right[0], c.right[1], c.right[2], px[0][0], px[0][1], px[0][2], px[1][0], px[1][1],
+		    px[1][2] );
 	}
-	fprintf( out, "]}\n" );
+	fprintf( out, "]," );
+
+	// Orientation: texture row 0 (v = 0) sits on the quad's clip-space top edge
+	// (y = +1), which D3D9 puts at the top of the frame and of readback. A red top
+	// half and a blue bottom half, lit by a unit lightmap (ramp_high's left half),
+	// are read at a quarter and three quarters of the height.
+	const unsigned char top[3] = { 255, 0, 0 }, bottom[3] = { 0, 0, 255 };
+	s_BaseRegenerator.m_Split = true;
+	for ( int k = 0; k < 3; ++k )
+	{
+		s_BaseRegenerator.m_Color[k] = top[k];
+		s_BaseRegenerator.m_Bottom[k] = bottom[k];
+	}
+	pBase->Download();
+	const int unitCase = 3; // ramp_high: lightmap 1.0 on the left half
+	const float kRows[2][2] = { { 0.25f, 0.25f }, { 0.25f, 0.75f } };
+	unsigned char rows[2][3] = {};
+	ok = RenderCase( pMaterial, sortIds[unitCase], offsets[unitCase],
+	         sortInfo[sortIds[unitCase]].lightmapPageID, kRows, 2, rows ) &&
+	     ok;
+	fprintf( out,
+	    "\"orientation\":{\"top_texel\":[%d,%d,%d],\"bottom_texel\":[%d,%d,%d],"
+	    "\"pixels\":[[%d,%d,%d],[%d,%d,%d]]}}\n",
+	    top[0], top[1], top[2], bottom[0], bottom[1], bottom[2], rows[0][0], rows[0][1], rows[0][2],
+	    rows[1][0], rows[1][1], rows[1][2] );
+	s_BaseRegenerator.m_Split = false;
 	pMaterial->DecrementReferenceCount();
+	return ok;
+}
+
+// Draws one case in its own frame over a magenta clear and reads the pixels at
+// the given fractions of the back buffer (x from the left, y from the top).
+bool CMaterialPixelApp::RenderCase( IMaterial *pMaterial, int sortId, const int offset[2],
+    int lightmapPageId, const float ( *points )[2], int pointCount, unsigned char ( *pixels )[3] )
+{
+	int pageSize[2] = { 0, 0 };
+	g_pMaterialSystem->GetLightmapPageSize( lightmapPageId, &pageSize[0], &pageSize[1] );
+	bool ok = true;
+	g_pMaterialSystem->BeginFrame( 0 );
+	{
+		CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+		int width = 0, height = 0;
+		g_pMaterialSystem->GetBackBufferDimensions( width, height );
+		pRenderContext->Viewport( 0, 0, width, height );
+		pRenderContext->SetToneMappingScaleLinear( Vector( 1, 1, 1 ) );
+		// Magenta: a pixel the quad did not cover is unmistakable.
+		pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
+		pRenderContext->ClearBuffers( true, true );
+		DrawLightmappedQuad( pMaterial, sortId, offset, pageSize );
+		for ( int i = 0; i < pointCount; ++i )
+			ok = ReadPixel( points[i][0], points[i][1], pixels[i] ) && ok;
+	}
+	g_pMaterialSystem->EndFrame();
+	g_pMaterialSystem->SwapBuffers();
 	return ok;
 }
 

@@ -70,6 +70,23 @@ class SeededDefectTest(unittest.TestCase):
         self.assertTrue(any("red-only" in failure for failure in failures))
         self.assertTrue(any("base_color" in failure for failure in failures))
 
+    def test_upside_down_frame_is_detected(self):
+        # The native path before its viewport flip: Vulkan clip-space Y points down.
+        report = copy.deepcopy(capture("none"))
+        report["orientation"]["pixels"].reverse()
+        failures = oracle.evaluate(report, "none")
+        self.assertEqual(len(failures), 1)
+        self.assertIn("upside down", failures[0])
+
+    def test_missing_orientation_capture_is_rejected(self):
+        report = copy.deepcopy(capture("none"))
+        del report["orientation"]
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pixels.json"
+            path.write_text(json.dumps(report))
+            with self.assertRaises(oracle.PixelsError):
+                oracle.read_pixels(path)
+
     def test_non_monotonic_ramp_is_detected(self):
         report = with_pixels(capture("none"), "ramp_mid", [[60, 60, 60], [188, 188, 188]])
         self.assertTrue(any("strictly brighter" in failure

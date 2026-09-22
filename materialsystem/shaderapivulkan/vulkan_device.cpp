@@ -3626,7 +3626,15 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				    static_cast<float>( d.scissor[3] ) );
 			if ( scissor.extent.width == 0 || scissor.extent.height == 0 )
 				continue;
-			vkCmdSetViewport( cmd, 0, 1, &viewport );
+			// Material transforms are D3D's: clip-space +Y is the top of the
+			// viewport. Vulkan's clip-space Y points down, so the draw viewport is
+			// flipped (negative height, core in Vulkan 1.1) to put +Y at the top,
+			// for the swapchain and render targets alike. Clears above address
+			// pixels, not clip space, and use the unflipped rectangle.
+			VkViewport d3dViewport = viewport;
+			d3dViewport.y = viewport.y + viewport.height;
+			d3dViewport.height = -viewport.height;
+			vkCmdSetViewport( cmd, 0, 1, &d3dViewport );
 			vkCmdSetScissor( cmd, 0, 1, &scissor );
 
 			VkPipeline selected = m_dynPipeline;
