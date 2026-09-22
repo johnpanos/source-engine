@@ -1,61 +1,39 @@
 #!/bin/sh
 # Headless strict-module test target for RFC 0002 (HAM-BUILD-001).
 #
-# Compiles and runs the strict Hammer editor modules and their conformance tests
-# on the Linux headless core profile: C++20, no MFC, no tier0/platform.h, no PCH,
-# no display, no GPU. This is the installed command referenced by
-# RFC/0002-progress.md; it is intentionally independent of the legacy MFC build,
-# which is not reproducible on this host.
+# Runs the Hammer editor's headless conformance suites (RFC 0002, Q-EDITOR) on
+# the linux-headless-core profile: C++20, no MFC, no tier0/platform.h, no PCH,
+# no display, no GPU. It delegates to the shared conformance runner so the suite
+# source lists, include roots, and flags live in ONE authority
+# (quality/conformance.manifest.json + quality/profiles/), and cannot drift out
+# of sync with this script -- which is exactly what happened before, when
+# aabb.cpp grew a rounding.cpp dependency this script did not track.
 #
 # Usage: unittests/hammertest/run_headless.sh
-# Exit:  0 = all suites pass, non-zero = compile or test failure.
+# Exit:  0 = all Q-EDITOR RFC 0002 suites pass under every compiler, non-zero otherwise.
 
 set -eu
 
 ROOT="$( cd "$( dirname "$0" )/../.." && pwd )"
-CXX="${CXX:-g++}"
-CXXSTD="${CXXSTD:-c++20}"
-OUT="${OUT:-$ROOT/build/hammertest}"
-mkdir -p "$OUT"
+RUNNER="$ROOT/tools/quality/conformance.py"
 
-# Strict include roots only. No tier0/mathlib/MFC roots are permitted here; that
-# is what keeps hammer.geometry dependency-free and portable.
-INCLUDES="-I $ROOT/public"
+# Build and run the RFC 0002 editor suites under each available compiler, matching
+# the historical intent of this script (gcc and clang, -Wall -Wextra -Werror).
+COMPILERS="${HAMMERTEST_CXX:-g++ clang++}"
 
-WARN="-Wall -Wextra -Werror"
+status=0
+for cxx in $COMPILERS; do
+	if ! command -v "$cxx" >/dev/null 2>&1; then
+		echo "hammertest: skipping unavailable compiler $cxx"
+		continue
+	fi
+	echo "hammertest: running RFC 0002 Q-EDITOR suites with $cxx"
+	if ! python3 "$RUNNER" check --cxx "$cxx" --rfc 0002 --domain Q-EDITOR --out -; then
+		status=1
+	fi
+done
 
-run_suite()
-{
-	name="$1"
-	shift
-	bin="$OUT/$name"
-	# shellcheck disable=SC2086
-	"$CXX" -std="$CXXSTD" $WARN $INCLUDES "$@" -o "$bin"
-	"$bin"
-}
-
-echo "hammertest: building strict modules with $CXX -std=$CXXSTD"
-
-run_suite test_rounding \
-	"$ROOT/hammer/core/geometry/rounding.cpp" \
-	"$ROOT/unittests/hammertest/geometry/test_rounding.cpp"
-
-run_suite test_aabb \
-	"$ROOT/hammer/core/geometry/aabb.cpp" \
-	"$ROOT/hammer/core/geometry/rounding.cpp" \
-	"$ROOT/unittests/hammertest/geometry/test_aabb.cpp"
-
-run_suite test_aabb_negative \
-	"$ROOT/hammer/core/geometry/aabb.cpp" \
-	"$ROOT/hammer/core/geometry/rounding.cpp" \
-	"$ROOT/unittests/hammertest/geometry/test_aabb_negative.cpp"
-
-run_suite test_handle_table \
-	"$ROOT/hammer/core/scene/handle_table.cpp" \
-	"$ROOT/unittests/hammertest/scene/test_handle_table.cpp"
-
-run_suite test_handle_table_negative \
-	"$ROOT/hammer/core/scene/handle_table.cpp" \
-	"$ROOT/unittests/hammertest/scene/test_handle_table_negative.cpp"
-
-echo "hammertest: all headless suites passed"
+if [ "$status" -eq 0 ]; then
+	echo "hammertest: all headless suites passed"
+fi
+exit "$status"

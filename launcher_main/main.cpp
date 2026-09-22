@@ -29,6 +29,7 @@
 #endif
 
 #include "tier0/basetypes.h"
+#include "tier0/bootstrap_module_load_telemetry.h"
 
 #ifdef WIN32
 typedef int (*LauncherMain_t)( HINSTANCE hInstance, HINSTANCE hPrevInstance, 
@@ -90,6 +91,7 @@ static char *GetBaseDir( const char *pszBuffer )
 
 int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow )
 {
+	BootstrapModuleLoadTelemetry_Init( 0, NULL, lpCmdLine );
 	// Must add 'bin' to the path....
 	char* pPath = getenv("PATH");
 
@@ -216,6 +218,7 @@ static void WaitForDebuggerConnect( int argc, char *argv[], int time )
 
 int main( int argc, char *argv[] )
 {
+	BootstrapModuleLoadTelemetry_Init( argc, argv );
 	char ld_path[4196];
 	char *path = "bin/";
 	char *ld_env;

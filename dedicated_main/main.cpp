@@ -25,6 +25,7 @@
 #define MAX_PATH PATH_MAX
 #endif
 #include "basetypes.h"
+#include "tier0/bootstrap_module_load_telemetry.h"
 
 #ifdef _WIN32
 typedef int (*DedicatedMain_t)( HINSTANCE hInstance, HINSTANCE hPrevInstance, 
@@ -72,6 +73,7 @@ static char *GetBaseDir( const char *pszBuffer )
 #ifdef _WIN32
 int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow )
 {
+	BootstrapModuleLoadTelemetry_Init( 0, NULL, lpCmdLine );
 	// Must add 'bin' to the path....
 	char* pPath = getenv("PATH");
 
@@ -188,6 +190,7 @@ static void WaitForDebuggerConnect( int argc, char *argv[], int time )
 
 int main( int argc, char *argv[] )
 {
+	BootstrapModuleLoadTelemetry_Init( argc, argv );
 	// Must add 'bin' to the path....
 	char* pPath = getenv("LD_LIBRARY_PATH");
 	char szBuffer[4096];
