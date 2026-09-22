@@ -738,8 +738,7 @@ bool CTest360App::Create()
 
 #if defined( USE_FILESYSTEM )
 	// Add in the cvar factory
-	AppModule_t cvarModule = LoadModule( VStdLib_GetICVarFactory() );
-	AddSystem( cvarModule, VENGINE_CVAR_INTERFACE_VERSION );
+	AddSystem( VStdLib_GetICVar(), VENGINE_CVAR_INTERFACE_VERSION );
 #endif
 
 #if defined( _X360 )

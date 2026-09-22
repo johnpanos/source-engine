@@ -646,8 +646,7 @@ bool CMakeCachesApp::Create()
 	SpewActivate( "makexvcd", 2 );
 
 	// Add in the cvar factory
-	AppModule_t cvarModule = LoadModule( VStdLib_GetICVarFactory() );
-	AddSystem( cvarModule, VENGINE_CVAR_INTERFACE_VERSION );
+	AddSystem( VStdLib_GetICVar(), VENGINE_CVAR_INTERFACE_VERSION );
 
 	AppSystemInfo_t appSystems[] = 
 	{

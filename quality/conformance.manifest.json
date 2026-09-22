@@ -48,6 +48,62 @@
       "expect": "pass"
     },
     {
+      "id": "hammer.geometry.angle",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-GEOMETRY-001",
+      "contract": "unittests/hammertest/contracts/geometry.aabb.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/geometry/angle.cpp",
+        "unittests/hammertest/geometry/test_angle.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.geometry.angle.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-GEOMETRY-001",
+      "contract": "unittests/hammertest/contracts/geometry.aabb.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/geometry/angle.cpp",
+        "unittests/hammertest/geometry/test_angle_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.scene.handle_table",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-SCENE-001",
+      "contract": "unittests/hammertest/contracts/scene.handle_table.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/scene/handle_table.cpp",
+        "unittests/hammertest/scene/test_handle_table.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.scene.handle_table.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-SCENE-001",
+      "contract": "unittests/hammertest/contracts/scene.handle_table.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/scene/handle_table.cpp",
+        "unittests/hammertest/scene/test_handle_table_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "jobsystem.scheduler",
       "domain": "Q-JOBS",
       "rfc": "0003",

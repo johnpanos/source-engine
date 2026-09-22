@@ -35,7 +35,7 @@
 #include <unistd.h>
 #endif
 
-void* FileSystemFactory( const char *pName, int *pReturnCode );
+extern IFileSystem *g_pFileSystem;
 bool InitInstance( );
 int ProcessConsoleInput( void );
 bool NET_Init( void );
@@ -223,9 +223,8 @@ bool CDedicatedAppSystemGroup::Create( )
 	// Hook the debug output stuff (override the spew func in the appframework)
 	SpewOutputFunc( DedicatedSpewOutputFunc );
 
-	// Added the dedicated exports module for the engine to grab
-	AppModule_t dedicatedModule = LoadModule( Sys_GetFactoryThis() );
-	IAppSystem *pSystem = AddSystem( dedicatedModule, VENGINE_DEDICATEDEXPORTS_API_VERSION );
+	// Add the linked dedicated exports system explicitly.
+	IAppSystem *pSystem = AddSystem( Dedicated_GetExports(), VENGINE_DEDICATEDEXPORTS_API_VERSION );
 	if ( !pSystem )
 		return false;
 
@@ -445,12 +444,10 @@ CDedicatedSteamApplication::CDedicatedSteamApplication( CSteamAppSystemGroup *pA
 //-----------------------------------------------------------------------------
 bool CDedicatedSteamApplication::Create( )
 {
-	// Add in the cvar factory
-	AppModule_t cvarModule = LoadModule( VStdLib_GetICVarFactory() );
-	AddSystem( cvarModule, CVAR_INTERFACE_VERSION );
+	AddSystem( VStdLib_GetICVar(), CVAR_INTERFACE_VERSION );
 
-	AppModule_t fileSystemModule = LoadModule( FileSystemFactory );
-	m_pFileSystem = (IFileSystem*)AddSystem( fileSystemModule, FILESYSTEM_INTERFACE_VERSION );
+	m_pFileSystem = static_cast<IFileSystem *>( AddSystem( g_pFileSystem,
+		FILESYSTEM_INTERFACE_VERSION ) );
 
 	if ( !m_pFileSystem )
 	{

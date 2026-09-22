@@ -340,7 +340,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | Rank / ID | Work and RFC scope | Prerequisites | Done looks like | State |
 | --- | --- | --- | --- | --- |
 | 1 / R01 | Reproducible baseline and profile inventory; 0005 Q0, baseline portions of all domains | — | Current checks/failures recorded; exact build/content/tool availability and supported profiles established; baseline captures and budgets identified | partial |
-| 2 / R02 | Trustworthy runner, fixtures, evidence; 0005 Q1 | R01 | Zero/missing tests, skips, crashes, timeouts and incomplete output fail correctly; explicit test composition and reproducible artifacts work | planned |
+| 2 / R02 | Trustworthy runner, fixtures, evidence; 0005 Q1 | R01 | Zero/missing tests, skips, crashes, timeouts and incomplete output fail correctly; explicit test composition and reproducible artifacts work | partial |
 | 3 / R03 | Per-target C++20/toolchain boundary; 0006 M0 | R01, R02 | Compile/link/run proof; final flags verified; legacy/C17 settings and frozen-consumer ABI combinations preserved | planned |
 | 4 / R04 | Full architecture and migration enforcement; 0001 rank 1, 0002 H0 enforcement, Q-ARCH | R01, R02 | Ownership, direct/transitive includes, Waf/link graph, hermetic builds, exact debt and evidence schemas enforced; negative projects fail | partial |
 | 5 / R05 | Results, IDs, quantities, ownership vocabulary; 0001 rank 2, 0006 M1 | R03, R04 | `Expected`, borrowing/scoped resources and matchers pass value/lifetime/ABI tests; a real consumer uses them | planned |
@@ -424,6 +424,20 @@ Keep the table concise and link details below or from the domain progress file.
   3.14.7 / clang-format 22.1.8. Hosted CI has not been executed here, and making
   its check required remains repository-administrator policy. This child does
   not close R04, establish C++20 target support, or certify runtime harnesses.
+
+- R02-RUNNER: `partial` for the bounded shared-conformance-runner slice: a
+  dependency-free host orchestrator ([`tools/quality/conformance.py`](tools/quality/conformance.py)),
+  one authoritative suite manifest ([`quality/conformance.manifest.json`](quality/conformance.manifest.json)),
+  per-profile toolchain facts ([`quality/profiles/`](quality/profiles/)), versioned
+  `conformance-evidence/v1` artifacts, and 18 negative self-tests that prove the
+  runner fails correctly on zero-discovery, unmatched selectors, missing sources,
+  failing/crashing/hanging suites, and compile errors. Registered Q-EDITOR (RFC
+  0002 geometry/scene) and Q-JOBS (RFC 0003 scheduler) suites all pass under g++
+  16.2.1 and clang++ 22.1.8 on `linux-headless-core`. Installing the runner
+  surfaced and fixed a real drift: `run_headless.sh` had stopped linking the AABB
+  suites; it now delegates to the runner so suite sources have one owner. See
+  [RFC 0005 progress](RFC/0005-progress.md). This does **not** install a required
+  CI lane, certify any domain gate, or add native/GPU/device profiles.
 
 Initial evidence, observed at `87955f67` before these documentation changes:
 

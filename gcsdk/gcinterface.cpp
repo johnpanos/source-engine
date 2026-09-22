@@ -157,8 +157,7 @@ public:
 	// Implementation of IAppSystemGroup
 	virtual bool Create() OVERRIDE
 	{
-		AppModule_t cvarModule = LoadModule( VStdLib_GetICVarFactory() );
-		AddSystem( cvarModule, CVAR_INTERFACE_VERSION );
+		AddSystem( VStdLib_GetICVar(), CVAR_INTERFACE_VERSION );
 
 		AppSystemInfo_t appSystems[] = 
 		{

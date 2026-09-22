@@ -128,11 +128,11 @@ protected:
 
 	// Methods to load + unload DLLs
 	AppModule_t LoadModule( const char *pDLLName );
-	AppModule_t LoadModule( CreateInterfaceFn factory );
+	AppModule_t AddLegacyFactory( CreateInterfaceFn factory );
 
 	// Method to add various global singleton systems 
 	IAppSystem *AddSystem( AppModule_t module, const char *pInterfaceName );
-	void AddSystem( IAppSystem *pAppSystem, const char *pInterfaceName );
+	IAppSystem *AddSystem( IAppSystem *pAppSystem, const char *pInterfaceName );
 
 	// Simpler method of doing the LoadModule/AddSystem thing.
 	// Make sure the last AppSystemInfo has a NULL module name
@@ -261,5 +261,4 @@ SuggestGameInfoDirFn_t SetSuggestGameInfoDirFn( SuggestGameInfoDirFn_t pfnNewFn 
 
 
 #endif // APPSYSTEMGROUP_H
-
 

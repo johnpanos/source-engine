@@ -28,6 +28,11 @@ public:
 static CStudioDataCache	g_StudioDataCache;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CStudioDataCache, IStudioDataCache, STUDIO_DATA_CACHE_INTERFACE_VERSION, g_StudioDataCache );
 
+IStudioDataCache *StudioMdl_GetDataCache()
+{
+	return &g_StudioDataCache;
+}
+
 
 /*
 =================
@@ -271,4 +276,3 @@ void SpewPerfStats( studiohdr_t *pStudioHdr, const char *pFilename, unsigned int
 		SpewOutputFunc( s_pSavedSpewFunc );
 	}
 }
-

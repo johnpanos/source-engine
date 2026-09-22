@@ -9575,9 +9575,8 @@ bool CStudioMDLApp::Create()
 	AddSystem( g_pDmElementFramework, VDMELEMENTFRAMEWORK_VERSION );
 	AddSystem( g_pDmSerializers, DMSERIALIZERS_INTERFACE_VERSION );
 
-	// Add in the locally-defined studio data cache
-	AppModule_t	studioDataCacheModule = LoadModule( Sys_GetFactoryThis() );
-	AddSystem( studioDataCacheModule, STUDIO_DATA_CACHE_INTERFACE_VERSION );
+	// Add the linked studio data cache explicitly.
+	AddSystem( StudioMdl_GetDataCache(), STUDIO_DATA_CACHE_INTERFACE_VERSION );
 
 	// Add the P4 module separately so that if it is absent (say in the SDK) then the other system will initialize properly
 	if ( !CommandLine()->FindParm( "-nop4" ) )

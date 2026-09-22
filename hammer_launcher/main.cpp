@@ -67,9 +67,8 @@ bool CHammerApp::Create( )
 
 	IAppSystem *pSystem;
 
-	// Add in the cvar factory
-	AppModule_t cvarModule = LoadModule( VStdLib_GetICVarFactory() );
-	pSystem = AddSystem( cvarModule, CVAR_INTERFACE_VERSION );
+	// Add the linked cvar system explicitly.
+	pSystem = AddSystem( VStdLib_GetICVar(), CVAR_INTERFACE_VERSION );
 	if ( !pSystem )
 		return false;
 	
@@ -191,7 +190,6 @@ int CHammerApp::Main( )
 {
 	return g_pHammer->MainLoop();
 }
-
 
 
 

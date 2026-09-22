@@ -17,8 +17,12 @@
 
 
 //-----------------------------------------------------------------------------
-// Returns a CVar dictionary for tool usage
+// Returns the linked CVar app-system instance.
 //-----------------------------------------------------------------------------
+VSTDLIB_INTERFACE ICvar *VStdLib_GetICVar();
+
+// Legacy extension-ABI factory. Linked application composition must use the
+// typed instance accessor above.
 VSTDLIB_INTERFACE CreateInterfaceFn VStdLib_GetICVarFactory();
 
 

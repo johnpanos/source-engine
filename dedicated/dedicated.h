@@ -23,12 +23,14 @@
 // Forward declarations 
 //-----------------------------------------------------------------------------
 class IDedicatedServerAPI;
+class IDedicatedExports;
 
 
 //-----------------------------------------------------------------------------
 // Singleton interfaces 
 //-----------------------------------------------------------------------------
 extern IDedicatedServerAPI *engine;
+IDedicatedExports *Dedicated_GetExports();
 
 
 extern char g_szEXEName[ MAX_PATH ];
@@ -54,12 +56,6 @@ public:
 	virtual int Main( );
 	virtual void PostShutdown();
 	virtual void Destroy();
-
-	// Used to chain to base class
-	AppModule_t LoadModule( CreateInterfaceFn factory )
-	{
-		return CSteamAppSystemGroup::LoadModule( factory );
-	}
 
 	// Method to add various global singleton systems 
 	bool AddSystems( AppSystemInfo_t *pSystems )

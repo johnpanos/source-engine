@@ -33,8 +33,7 @@ float FullModuloNormalize( float degrees )
 
 // The legacy-quirk clause: NormalizeAngleDegrees( 720 ) must equal 360 (single
 // wrap step), NOT 0. Returns true when the provider matches legacy behavior.
-template <typename Fn>
-bool ConformsLegacyQuirk( Fn normalize )
+template <typename Fn> bool ConformsLegacyQuirk( Fn normalize )
 {
 	return std::fabs( normalize( 720.0f ) - 360.0f ) <= 1e-3f;
 }
@@ -50,7 +49,8 @@ int main()
 
 	if ( !realConforms )
 	{
-		std::printf( "FAIL: real NormalizeAngleDegrees did not preserve the legacy single-wrap quirk\n" );
+		std::printf(
+		    "FAIL: real NormalizeAngleDegrees did not preserve the legacy single-wrap quirk\n" );
 		++failures;
 	}
 	if ( brokenConforms )
@@ -64,7 +64,7 @@ int main()
 		std::printf( "hammer.geometry angle negative: %d check(s) FAILED\n", failures );
 		return 1;
 	}
-	std::printf(
-		"hammer.geometry angle negative: oracle detects violations (real passes, modulo caught)\n" );
+	std::printf( "hammer.geometry angle negative: oracle detects violations (real passes, modulo "
+	             "caught)\n" );
 	return 0;
 }

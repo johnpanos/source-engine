@@ -2086,8 +2086,7 @@ bool CAppChooser::Create()
 	SpewOutputFunc( g_DefaultSpewFunc );
 
 	// Add in the cvar factory
-	AppModule_t cvarModule = LoadModule( VStdLib_GetICVarFactory() );
-	AddSystem( cvarModule, CVAR_INTERFACE_VERSION );
+	AddSystem( VStdLib_GetICVar(), CVAR_INTERFACE_VERSION );
 
 	// vxconsole - true will block (legacy behavior)
 	XBX_InitConsoleMonitor( false );

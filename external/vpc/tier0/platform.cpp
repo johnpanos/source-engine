@@ -13,6 +13,7 @@
 #define _WIN32_WINNT 0x0403
 #include <windows.h>
 #endif
+#include "tier0/native_module_load_telemetry.h"
 #include <errno.h>
 #include <assert.h>
 #include "tier0/platform.h"

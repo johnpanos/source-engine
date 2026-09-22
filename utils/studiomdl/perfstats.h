@@ -13,6 +13,8 @@
 #include "studio.h"
 #include "optimize.h"
 
+class IStudioDataCache;
+
 enum
 {
 	SPEWPERFSTATS_SHOWSTUDIORENDERWARNINGS = 1,
@@ -21,5 +23,6 @@ enum
 };
 
 void SpewPerfStats( studiohdr_t *pStudioHdr, const char *pFilename, unsigned int flags );
+IStudioDataCache *StudioMdl_GetDataCache();
 
 #endif // PERFSTATS_H

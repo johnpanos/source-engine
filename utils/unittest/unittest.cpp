@@ -101,19 +101,10 @@ bool CUnitTestApp::Create()
 		static char path[2048];
 		snprintf(path, sizeof(path), "tests/%s", findFileData.cFileName);
 
-		CSysModule* hLib = Sys_LoadModule(path);
-		if ( hLib )
+		AppModule_t module = LoadModule( path );
+		if ( module != APP_MODULE_INVALID )
 		{
-			CreateInterfaceFn factory = Sys_GetFactory( hLib );
-			if ( factory && factory( UNITTEST_INTERFACE_VERSION, NULL ) )
-			{
-				AppModule_t module = LoadModule( factory );
-				AddSystem( module, UNITTEST_INTERFACE_VERSION );
-			}
-			else
-			{
-				Sys_UnloadModule( hLib );
-			}
+			AddSystem( module, UNITTEST_INTERFACE_VERSION );
 		}
 
 		if (!FindNextFile( hFind, &findFileData ))
@@ -132,19 +123,10 @@ bool CUnitTestApp::Create()
 			{
 				static char path[2048];
 				snprintf(path, sizeof(path), "tests/%s", dir->d_name);
-				CSysModule* hLib = Sys_LoadModule(path);
-				if ( hLib )
+				AppModule_t module = LoadModule( path );
+				if ( module != APP_MODULE_INVALID )
 				{
-					CreateInterfaceFn factory = Sys_GetFactory( hLib );
-					if ( factory && factory( UNITTEST_INTERFACE_VERSION, NULL ) )
-					{
-						AppModule_t module = LoadModule( factory );
-						AddSystem( module, UNITTEST_INTERFACE_VERSION );
-					}
-					else
-					{
-						Sys_UnloadModule( hLib );
-					}
+					AddSystem( module, UNITTEST_INTERFACE_VERSION );
 				}
 			}
 		}

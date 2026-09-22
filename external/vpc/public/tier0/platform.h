@@ -2029,4 +2029,6 @@ int	_V_stricmp_NegativeForUnequal	  ( const char *s1, const char *s2 );
 #define strnicmp V_strncasecmp 
 #endif
 
+#include "tier0/native_module_load_telemetry.h"
+
 #endif /* PLATFORM_H */

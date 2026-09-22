@@ -173,9 +173,8 @@ bool CSteamApplication::Create()
 	if ( FileSystem_GetFileSystemDLLName( pFileSystemDLL, MAX_PATH, m_bSteam ) != FS_OK )
 		return false;
 	
-	// Add in the cvar factory
-	AppModule_t cvarModule = LoadModule( VStdLib_GetICVarFactory() );
-	AddSystem( cvarModule, CVAR_INTERFACE_VERSION );
+	// Add the linked cvar system explicitly.
+	AddSystem( VStdLib_GetICVar(), CVAR_INTERFACE_VERSION );
 
 	AppModule_t fileSystemModule = LoadModule( pFileSystemDLL );
 	m_pFileSystem = (IFileSystem*)AddSystem( fileSystemModule, FILESYSTEM_INTERFACE_VERSION );

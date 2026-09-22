@@ -8,7 +8,7 @@
     "totalHammerSourceFiles": 452,
     "totalHammerCppFiles": 221,
     "totalHammerHeaderFiles": 231,
-    "filesClassified": 20,
+    "filesClassified": 22,
     "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (public/hammer/geometry, hammer/core/geometry). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'."
   },
   "files": [
@@ -218,6 +218,28 @@
       "factorization": "extract",
       "evidence": "decision",
       "note": "Verbatim port of hammer_mathlib.cpp V_rint (floor(f+0.5)/ceil(f-0.5)). Verified by unittests/hammertest/geometry/test_rounding.cpp, which pins the .5 boundaries where this differs from std::rint."
+    },
+    {
+      "path": "public/hammer/geometry/angle.h",
+      "currentOwner": "hammer.geometry",
+      "destinationModule": "hammer.geometry",
+      "responsibility": "geometry",
+      "effects": ["pure-computation"],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "decision",
+      "note": "Angle numeric policies (NormalizeAngleDegrees, LineAngleDegrees) extracted from hammer_mathlib fixang/lineangle. Preserves the legacy single-step wrap quirk and RAD2DEG expansion exactly; future rotation/2D tools will share this owner."
+    },
+    {
+      "path": "hammer/core/geometry/angle.cpp",
+      "currentOwner": "hammer.geometry",
+      "destinationModule": "hammer.geometry",
+      "responsibility": "geometry",
+      "effects": ["pure-computation"],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "decision",
+      "note": "Verbatim port of fixang/lineangle. Verified by test_angle.cpp (incl. the 720->360 legacy quirk) plus a full-modulo sensitivity provider that the oracle catches."
     },
     {
       "path": "public/hammer/scene/handle.h",

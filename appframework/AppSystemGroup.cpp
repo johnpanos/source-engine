@@ -77,11 +77,11 @@ AppModule_t CAppSystemGroup::LoadModule( const char *pDLLName )
 	return nIndex;
 }
 
-AppModule_t CAppSystemGroup::LoadModule( CreateInterfaceFn factory )
+AppModule_t CAppSystemGroup::AddLegacyFactory( CreateInterfaceFn factory )
 {
 	if (!factory)
 	{
-		Warning("AppFramework : Unable to load module %p!\n", factory );
+		Warning("AppFramework : Unable to add legacy factory %p!\n", factory );
 		return APP_MODULE_INVALID;
 	}
 
@@ -185,16 +185,17 @@ void CAppSystemGroup::ReportStartupFailure( int nErrorStage, int nSysIndex )
 	Warning( "System (%s) failed during stage %s\n", pszSystemName, pszStageDesc );
 }
 
-void CAppSystemGroup::AddSystem( IAppSystem *pAppSystem, const char *pInterfaceName )
+IAppSystem *CAppSystemGroup::AddSystem( IAppSystem *pAppSystem, const char *pInterfaceName )
 {
 	if ( !pAppSystem )
-		return;
+		return NULL;
 
 	int sysIndex = m_Systems.AddToTail( pAppSystem );
 
 	// Inserting into the dict will help us do named lookup later
 	MEM_ALLOC_CREDIT();
 	m_SystemDict.Insert( pInterfaceName, sysIndex );
+	return pAppSystem;
 }
 
 void CAppSystemGroup::RemoveAllSystems()

@@ -138,7 +138,14 @@ public:
 	}
 };
 
-EXPOSE_SINGLE_INTERFACE( CDedicatedExports, IDedicatedExports, VENGINE_DEDICATEDEXPORTS_API_VERSION );
+static CDedicatedExports s_DedicatedExports;
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CDedicatedExports, IDedicatedExports,
+	VENGINE_DEDICATEDEXPORTS_API_VERSION, s_DedicatedExports );
+
+IDedicatedExports *Dedicated_GetExports()
+{
+	return &s_DedicatedExports;
+}
 
 static const char *get_consolelog_filename()
 {

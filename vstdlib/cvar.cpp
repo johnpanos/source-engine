@@ -208,7 +208,16 @@ EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CCvar, ICvar, CVAR_INTERFACE_VERSION, s_Cvar 
 
 
 //-----------------------------------------------------------------------------
-// Returns a CVar dictionary for tool usage
+// Returns the linked CVar app-system instance.
+//-----------------------------------------------------------------------------
+ICvar *VStdLib_GetICVar()
+{
+	return &s_Cvar;
+}
+
+
+//-----------------------------------------------------------------------------
+// Legacy extension-ABI factory.
 //-----------------------------------------------------------------------------
 CreateInterfaceFn VStdLib_GetICVarFactory()
 {
@@ -895,5 +904,4 @@ void CCvar::Find( const CCommand &args )
 		ConVar_PrintDescription( var );	
 	}	
 }
-
 

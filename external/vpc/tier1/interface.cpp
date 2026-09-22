@@ -5,6 +5,7 @@
 //===========================================================================//
 #if defined( _WIN32 ) && !defined( _X360 )
 #include <windows.h>
+#include "tier0/native_module_load_telemetry.h"
 #endif
 
 #if !defined( DONT_PROTECT_FILEIO_FUNCTIONS )
