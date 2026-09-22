@@ -43,6 +43,12 @@
 #include "filesystem/IQueuedLoader.h"
 #include "console/TextConsoleUnix.h"
 
+// platform.h maps the Win32 spelling to dlsym on POSIX. Keep this class method
+// name literal now that dlsym itself is wrapped by loader telemetry.
+#ifdef GetProcAddress
+#undef GetProcAddress
+#endif
+
 bool InitInstance( );
 
 char g_szEXEName[ MAX_PATH ];

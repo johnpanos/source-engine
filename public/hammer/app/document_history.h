@@ -60,8 +60,8 @@ public:
 	std::size_t Depth() const { return m_depth; }
 
 private:
-	std::size_t m_depth = 0;        // number of units currently in the history
-	std::size_t m_position = 0;     // 0..m_depth; units before position are "done"
+	std::size_t m_depth = 0;    // number of units currently in the history
+	std::size_t m_position = 0; // 0..m_depth; units before position are "done"
 	std::size_t m_savedPosition = 0;
 	std::uint64_t m_revision = 0;
 };

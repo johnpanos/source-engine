@@ -5,6 +5,7 @@
 - Scope: Tier 0–3, application bootstrap, and platform backends
 - Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
 - Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
+- Implementation: [Phase B complete](0001-phase-b-progress.md); Phase A runtime and ABI evidence remains tracked separately
 
 ## Summary
 

@@ -8,7 +8,7 @@
     "totalHammerSourceFiles": 452,
     "totalHammerCppFiles": 221,
     "totalHammerHeaderFiles": 231,
-    "filesClassified": 24,
+    "filesClassified": 28,
     "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (public/hammer/geometry, hammer/core/geometry). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'."
   },
   "files": [
@@ -295,6 +295,50 @@
       "factorization": "keep",
       "evidence": "decision",
       "note": "SceneGraph implementation. Headless under gcc and clang (-Werror); verified by test_scene_graph.cpp (no-cycle, atomic reparent/delete, stale rejection, two documents) plus a permissive negative provider."
+    },
+    {
+      "path": "public/hammer/app/document_history.h",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": ["document-mutation"],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "Independent document history reference model (revision counter vs saved position, no-op neutrality, undo/redo). The RFC verification-strategy oracle for transaction/history semantics ahead of full H3 authority."
+    },
+    {
+      "path": "hammer/core/app/document_history.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": ["document-mutation"],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "DocumentHistory implementation. Headless under gcc and clang (-Werror); verified by test_document_history.cpp (incl. undo-to-saved clears modified though revision advanced) plus a revision-based negative provider."
+    },
+    {
+      "path": "public/hammer/app/property_value.h",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "selection-policy",
+      "effects": ["pure-computation"],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "Multi-selection property aggregation (Unset/Single/Mixed) owning the RFC empty-vs-unset-vs-mixed distinction. Foundational value type for the HAM-SEL-001 selection/property worked migration."
+    },
+    {
+      "path": "hammer/core/app/property_value.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "selection-policy",
+      "effects": ["pure-computation"],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "PropertyValue implementation. Headless under gcc and clang (-Werror); verified by test_property_value.cpp plus an empty-as-unset negative provider that the oracle catches."
     }
   ]
 }

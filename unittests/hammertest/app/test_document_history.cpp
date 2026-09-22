@@ -97,9 +97,9 @@ void TestSavedPositionVsRevision()
 	CHECK( history.IsModified() );
 	const std::uint64_t revisionAtDirty = history.Revision();
 
-	CHECK( history.Undo() ); // back to position 1 == saved position
-	CHECK( !history.IsModified() );                 // modified cleared...
-	CHECK( history.Revision() > revisionAtDirty );  // ...even though revision grew
+	CHECK( history.Undo() );                       // back to position 1 == saved position
+	CHECK( !history.IsModified() );                // modified cleared...
+	CHECK( history.Revision() > revisionAtDirty ); // ...even though revision grew
 
 	history.Redo(); // position 2 again -> modified once more
 	CHECK( history.IsModified() );

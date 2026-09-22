@@ -322,29 +322,38 @@ DEFINE_TESTCASE( ModuleLoadTelemetryFrozenLegacyAbi, ModuleLoadTelemetryTestSuit
 {
 	ResetEvents();
 	Sys_SetModuleLoadTelemetrySink( CaptureModuleLoadEvent, NULL );
-	CSysModule *pClientModule = NULL;
-	IPhaseALegacyLoaderClient *pClient = NULL;
-	const bool bLoaded = Sys_LoadInterface(
-		"legacymoduleclientfixture",
-		PHASE_A_LEGACY_LOADER_CLIENT_INTERFACE,
-		&pClientModule,
-		reinterpret_cast<void **>( &pClient ) );
-	Shipping_Assert( bLoaded );
+#if defined( POSIX )
+	void *pClientModule = dlopen(
+		"./liblegacymoduleclientfixture.so", RTLD_NOW );
 	Shipping_Assert( pClientModule != NULL );
-	Shipping_Assert( pClient != NULL );
-	Shipping_Assert( pClient->RunLegacyLoaderAbiProbe() );
-	Sys_UnloadModule( pClientModule );
+	PhaseALegacyLoaderClientProbeFn pProbe =
+		reinterpret_cast<PhaseALegacyLoaderClientProbeFn>( dlsym(
+			pClientModule, PHASE_A_LEGACY_LOADER_CLIENT_PROBE ) );
+	Shipping_Assert( pProbe != NULL );
+	Shipping_Assert( pProbe() != 0 );
+	Shipping_Assert( dlclose( pClientModule ) == 0 );
+#elif defined( _WIN32 )
+	HMODULE pClientModule = LoadLibraryA(
+		"legacymoduleclientfixture.dll" );
+	Shipping_Assert( pClientModule != NULL );
+	PhaseALegacyLoaderClientProbeFn pProbe =
+		reinterpret_cast<PhaseALegacyLoaderClientProbeFn>( GetProcAddress(
+			pClientModule, PHASE_A_LEGACY_LOADER_CLIENT_PROBE ) );
+	Shipping_Assert( pProbe != NULL );
+	Shipping_Assert( pProbe() != 0 );
+	Shipping_Assert( FreeLibrary( pClientModule ) != FALSE );
+#endif
 	Sys_SetModuleLoadTelemetrySink( NULL, NULL );
 
-	Shipping_Assert( g_nEventCount == 7 );
-	Shipping_Assert( Event( 3 ).m_Operation == MODULE_LOAD_TELEMETRY_LOAD );
-	Shipping_Assert( Event( 3 ).m_bSuccess );
+	Shipping_Assert( g_nEventCount == 6 );
+	Shipping_Assert( Event( 2 ).m_Operation == MODULE_LOAD_TELEMETRY_LOAD );
+	Shipping_Assert( Event( 2 ).m_bSuccess );
 	Shipping_Assert( !Q_stricmp(
-		Event( 3 ).m_szRequestingSubsystem, "<legacy ABI caller>" ) );
-	Shipping_Assert( Event( 4 ).m_Operation == MODULE_LOAD_TELEMETRY_ENTRY_POINT );
+		Event( 2 ).m_szRequestingSubsystem, "<legacy ABI caller>" ) );
+	Shipping_Assert( Event( 3 ).m_Operation == MODULE_LOAD_TELEMETRY_ENTRY_POINT );
+	Shipping_Assert( Event( 4 ).m_Operation == MODULE_LOAD_TELEMETRY_UNLOAD );
+	Shipping_Assert( Event( 4 ).m_bSuccess );
+	Shipping_Assert( Event( 2 ).m_nLoadId == Event( 3 ).m_nLoadId );
+	Shipping_Assert( Event( 2 ).m_nLoadId == Event( 4 ).m_nLoadId );
 	Shipping_Assert( Event( 5 ).m_Operation == MODULE_LOAD_TELEMETRY_UNLOAD );
-	Shipping_Assert( Event( 5 ).m_bSuccess );
-	Shipping_Assert( Event( 3 ).m_nLoadId == Event( 4 ).m_nLoadId );
-	Shipping_Assert( Event( 3 ).m_nLoadId == Event( 5 ).m_nLoadId );
-	Shipping_Assert( Event( 6 ).m_Operation == MODULE_LOAD_TELEMETRY_UNLOAD );
 }

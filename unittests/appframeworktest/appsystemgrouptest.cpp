@@ -24,10 +24,8 @@ class CTestSystem : public CBaseAppSystem<IAppSystem>
 {
 public:
 	CTestSystem( int connectEvent, int initEvent, int shutdownEvent, int disconnectEvent )
-		: m_ConnectEvent( connectEvent ),
-		  m_InitEvent( initEvent ),
-		  m_ShutdownEvent( shutdownEvent ),
-		  m_DisconnectEvent( disconnectEvent )
+	    : m_ConnectEvent( connectEvent ), m_InitEvent( initEvent ),
+	      m_ShutdownEvent( shutdownEvent ), m_DisconnectEvent( disconnectEvent )
 	{
 	}
 
@@ -35,7 +33,7 @@ public:
 	{
 		Record( m_ConnectEvent );
 		return factory( "ExplicitTestSystem001", NULL ) != NULL &&
-			factory( "LegacyTestSystem001", NULL ) != NULL;
+		       factory( "LegacyTestSystem001", NULL ) != NULL;
 	}
 
 	virtual InitReturnVal_t Init()
@@ -44,15 +42,9 @@ public:
 		return INIT_OK;
 	}
 
-	virtual void Shutdown()
-	{
-		Record( m_ShutdownEvent );
-	}
+	virtual void Shutdown() { Record( m_ShutdownEvent ); }
 
-	virtual void Disconnect()
-	{
-		Record( m_DisconnectEvent );
-	}
+	virtual void Disconnect() { Record( m_DisconnectEvent ); }
 
 private:
 	int m_ConnectEvent;
@@ -76,17 +68,15 @@ void *LegacyFactory( const char *pName, int *pReturnCode )
 class CTestAppSystemGroup : public CAppSystemGroup
 {
 public:
-	CTestAppSystemGroup() : m_ExplicitSystem( 1, 4, 8, 11 )
-	{
-	}
+	CTestAppSystemGroup() : m_ExplicitSystem( 1, 4, 8, 11 ) {}
 
 	virtual bool Create()
 	{
 		if ( AddSystem( &m_ExplicitSystem, "ExplicitTestSystem001" ) != &m_ExplicitSystem )
 			return false;
 
-		AppModule_t factory = AddLegacyFactory( LegacyFactory );
-		if ( factory == APP_MODULE_INVALID )
+		AppSystemFactory_t factory = AddLegacyFactory( LegacyFactory );
+		if ( !factory.IsValid() )
 			return false;
 		return AddSystem( factory, "LegacyTestSystem001" ) == &g_LegacySystem;
 	}
@@ -103,15 +93,9 @@ public:
 		return 23;
 	}
 
-	virtual void PostShutdown()
-	{
-		Record( 9 );
-	}
+	virtual void PostShutdown() { Record( 9 ); }
 
-	virtual void Destroy()
-	{
-		Record( 12 );
-	}
+	virtual void Destroy() { Record( 12 ); }
 
 private:
 	CTestSystem m_ExplicitSystem;

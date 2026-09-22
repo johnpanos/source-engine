@@ -23,6 +23,7 @@ def build(bld):
 		'job_graph.cpp',
 		'deterministic_executor.cpp',
 		'parallel_executor.cpp',
+		'pooled_executor.cpp',
 		'frame_graph.cpp',
 		'pilot_particles.cpp',
 	]

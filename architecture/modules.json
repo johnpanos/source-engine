@@ -7,7 +7,9 @@
       "tier1/interface.cpp",
       "external/vpc/public/tier1/interface.h",
       "external/vpc/tier1/interface.cpp",
-      "unittests/legacymoduleclientfixture/legacy_loader_abi_2013.h"
+      "unittests/appframeworktest/appsystemgrouptest.cpp",
+      "unittests/legacymoduleclientfixture/legacy_loader_abi_2013.h",
+      "unittests/legacymoduleclientfixture/legacymoduleclientfixture.cpp"
     ]
   },
   "loaderInventory": {

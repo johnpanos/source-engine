@@ -23,16 +23,20 @@ def build(bld):
 		'../../public',
 	]
 
+	# DL/LOG are waf uselibs (dlopen + logging) required only when linking tier0.
+	dl_log = [ 'DL', 'LOG' ] if bld.env.DEST_OS != 'win32' else []
+	linkflags = [ '-pthread' ] if bld.env.DEST_OS != 'win32' else []
+
+	# ( target, source, use-libs ). The engine-bridge test links the real vstdlib
+	# thread pool (and its tier0/tier1 dependencies); the pure-scheduler tests
+	# only need the self-contained jobsystem library.
 	programs = [
-		( 'jobsystemtest',      'jobsystemtest.cpp' ),
-		( 'jobsystemframetest', 'frametest.cpp' ),
+		( 'jobsystemtest',       'jobsystemtest.cpp',    ['jobsystem'] ),
+		( 'jobsystemframetest',  'frametest.cpp',        ['jobsystem'] ),
+		( 'jobsystembridgetest', 'enginebridgetest.cpp', ['jobsystem', 'vstdlib', 'tier1', 'tier0'] + dl_log ),
 	]
 
-	extra_libs = []
-	if bld.env.DEST_OS != 'win32':
-		extra_libs += [ 'pthread' ]
-
-	for target, src in programs:
+	for target, src, use_libs in programs:
 		bld.program(
 			source       = [ src ],
 			target       = target,
@@ -41,8 +45,8 @@ def build(bld):
 			includes     = includes,
 			defines      = [],
 			cxxflags     = ['-std=c++20'],
-			use          = ['jobsystem'],
-			lib          = extra_libs,
+			linkflags    = linkflags,
+			use          = use_libs,
 			install_path = bld.env.TESTDIR,
 			subsystem    = bld.env.MSVC_SUBSYSTEM,
 			idx          = bld.get_taskgen_count()

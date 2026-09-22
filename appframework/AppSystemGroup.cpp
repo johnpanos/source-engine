@@ -70,36 +70,27 @@ AppModule_t CAppSystemGroup::LoadModule( const char *pDLLName )
 
 	int nIndex = m_Modules.AddToTail();
 	m_Modules[nIndex].m_pModule = pSysModule;
-	m_Modules[nIndex].m_Factory = 0;
 	m_Modules[nIndex].m_pModuleName = (char*)malloc( nLen );
 	Q_strncpy( m_Modules[nIndex].m_pModuleName, pModuleName, nLen );
 
 	return nIndex;
 }
 
-AppModule_t CAppSystemGroup::AddLegacyFactory( CreateInterfaceFn factory )
+AppSystemFactory_t CAppSystemGroup::AddLegacyFactory( CreateInterfaceFn factory )
 {
 	if (!factory)
 	{
 		Warning("AppFramework : Unable to add legacy factory %p!\n", factory );
-		return APP_MODULE_INVALID;
+		return AppSystemFactory_t();
 	}
 
-	// See if we already loaded it...
-	for ( int i = m_Modules.Count(); --i >= 0; ) 
+	for ( int i = m_LegacyFactories.Count(); --i >= 0; )
 	{
-		if ( m_Modules[i].m_Factory )
-		{
-			if ( m_Modules[i].m_Factory == factory )
-				return i;
-		}
+		if ( m_LegacyFactories[i] == factory )
+			return AppSystemFactory_t( i );
 	}
 
-	int nIndex = m_Modules.AddToTail();
-	m_Modules[nIndex].m_pModule = NULL;
-	m_Modules[nIndex].m_Factory = factory;
-	m_Modules[nIndex].m_pModuleName = NULL; 
-	return nIndex;
+	return AppSystemFactory_t( m_LegacyFactories.AddToTail( factory ) );
 }
 
 void CAppSystemGroup::UnloadAllModules()
@@ -130,7 +121,7 @@ IAppSystem *CAppSystemGroup::AddSystem( AppModule_t module, const char *pInterfa
 		return NULL;
 
 	Assert( (module >= 0) && (module < m_Modules.Count()) );
-	CreateInterfaceFn pFactory = m_Modules[module].m_pModule ? Sys_GetFactory( m_Modules[module].m_pModule ) : m_Modules[module].m_Factory;
+	CreateInterfaceFn pFactory = Sys_GetFactory( m_Modules[module].m_pModule );
 
 	int retval;
 	void *pSystem = pFactory( pInterfaceName, &retval );
@@ -148,6 +139,23 @@ IAppSystem *CAppSystemGroup::AddSystem( AppModule_t module, const char *pInterfa
 	MEM_ALLOC_CREDIT();
 	m_SystemDict.Insert( pInterfaceName, sysIndex );
 	return pAppSystem;
+}
+
+IAppSystem *CAppSystemGroup::AddSystem( AppSystemFactory_t factory, const char *pInterfaceName )
+{
+	if ( !factory.IsValid() || factory.m_Index >= m_LegacyFactories.Count() )
+		return NULL;
+
+	int retval;
+	void *pSystem = m_LegacyFactories[factory.m_Index]( pInterfaceName, &retval );
+	if ( retval != IFACE_OK || !pSystem )
+	{
+		Warning(
+		    "AppFramework : Unable to create system %s from legacy factory!\n", pInterfaceName );
+		return NULL;
+	}
+
+	return AddSystem( static_cast<IAppSystem *>( pSystem ), pInterfaceName );
 }
 
 static char const *g_StageLookup[] = 
@@ -206,6 +214,7 @@ void CAppSystemGroup::RemoveAllSystems()
 	// the deallocation will happen anyways
 	m_Systems.RemoveAll();
 	m_SystemDict.RemoveAll();
+	m_LegacyFactories.RemoveAll();
 }
 
 

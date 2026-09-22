@@ -43,6 +43,13 @@ enum
 	APP_MODULE_INVALID = (AppModule_t)~0
 };
 
+struct AppSystemFactory_t
+{
+	explicit AppSystemFactory_t( int index = -1 ) : m_Index( index ) {}
+	bool IsValid() const { return m_Index >= 0; }
+
+	int m_Index;
+};
 
 //-----------------------------------------------------------------------------
 // NOTE: The following methods must be implemented in your application
@@ -128,10 +135,11 @@ protected:
 
 	// Methods to load + unload DLLs
 	AppModule_t LoadModule( const char *pDLLName );
-	AppModule_t AddLegacyFactory( CreateInterfaceFn factory );
+	AppSystemFactory_t AddLegacyFactory( CreateInterfaceFn factory );
 
 	// Method to add various global singleton systems 
 	IAppSystem *AddSystem( AppModule_t module, const char *pInterfaceName );
+	IAppSystem *AddSystem( AppSystemFactory_t factory, const char *pInterfaceName );
 	IAppSystem *AddSystem( IAppSystem *pAppSystem, const char *pInterfaceName );
 
 	// Simpler method of doing the LoadModule/AddSystem thing.
@@ -170,11 +178,11 @@ private:
 	struct Module_t
 	{
 		CSysModule *m_pModule;
-		CreateInterfaceFn m_Factory;
 		char *m_pModuleName;
 	};
 
 	CUtlVector<Module_t> m_Modules;
+	CUtlVector<CreateInterfaceFn> m_LegacyFactories;
 	CUtlVector<IAppSystem*> m_Systems;
 	CUtlDict<int, unsigned short> m_SystemDict;
 	CAppSystemGroup *m_pParentAppSystem;
@@ -259,6 +267,4 @@ typedef bool ( * SuggestGameInfoDirFn_t ) ( CFSSteamSetupInfo const *pFsSteamSet
 //
 SuggestGameInfoDirFn_t SetSuggestGameInfoDirFn( SuggestGameInfoDirFn_t pfnNewFn );
 
-
 #endif // APPSYSTEMGROUP_H
-

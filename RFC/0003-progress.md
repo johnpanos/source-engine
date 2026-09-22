@@ -16,9 +16,12 @@ RFC, Phase A does not create a speculative machine-readable baseline "before the
 scheduler API exists"; the durable Phase A artifact remains this inventory map.
 
 Scope and owner of this increment: build the portable scheduler runtime and the
-host frame-composition seam as a self-contained, strict **C++20** module, with a
-faithful particle reference pilot, all verified by compilable/running tests. No
-real engine source (particlemgr.cpp, host.cpp) is modified yet.
+host frame-composition seam as a self-contained, strict **C++20** module, and
+bridge it to the **real engine `vstdlib` thread pool** so actual engine worker
+threads execute dependency-aware job graphs. Verified by compilable/running
+tests in the `--tests` configuration. Game-subsystem source
+(`game/client/particlemgr.cpp`, `engine/host.cpp`) is not yet modified — that
+migration needs the game build and captured workloads (see gaps).
 
 ## Status
 
@@ -35,8 +38,10 @@ real engine source (particlemgr.cpp, host.cpp) is modified yet.
 | Host frame coordinator + frame contributor contract + rollback path | B/D | Delivered + tested | `jobsystem/frame_graph.cpp`; `jobsystemframetest` |
 | Particle reference pilot (gather/compute/commit + bone attachment) | D | Delivered as reference; **not wired to engine** | `jobsystem/pilot_particles.cpp` |
 | Three-mode equivalence (legacy ref vs serial graph vs parallel graph) | B/C/D | Passing on captured inputs/private outputs | `jobsystemframetest` |
+| Wave executor over an abstract worker backend (`IWorkerBackend`) | C | Delivered + tested | `jobsystem/pooled_executor.cpp`; TSan-clean |
+| **Legacy pool bridge: real `vstdlib` `CThreadPool` executes job graphs** | C/R20 | **Delivered + tested** | `vstdlib/jobgraph_pool_bridge.cpp`; `jobsystembridgetest` |
 | Q-JOBS independent model / adversarial schedules / negative executors | B/C | **Not delivered** | RFC 0005 R02; see gaps |
-| Legacy-capture comparison; real-engine runtime | B/D | **Not delivered / unavailable** | needs engine build + captures |
+| Game-subsystem source migration; legacy-capture comparison | B/D | **Not delivered / unavailable** | needs game build + captures |
 
 ## Verification performed (this increment)
 
@@ -48,9 +53,15 @@ All at working-tree revision `a4f6f95f`.
   (`wscript:579`) — it is a deliberately migrated strict C++20 target (RFC 0006),
   self-contained over standard atomics/threads with no tier0/legacy-jobthread
   dependency.
-  - `./waf build --targets=jobsystem,jobsystemtest,jobsystemframetest`
-  - `build-phase-a-tests/unittests/jobsystemtest/jobsystemtest` → 212 checks, 0 failures
-  - `build-phase-a-tests/unittests/jobsystemtest/jobsystemframetest` → 84 checks, 0 failures
+  - `./waf build --targets=jobsystem,vstdlib,jobsystemtest,jobsystemframetest,jobsystembridgetest`
+  - `jobsystemtest` → 212 checks, 0 failures
+  - `jobsystemframetest` → 84 checks, 0 failures
+  - `jobsystembridgetest` → 91 checks, 0 failures — job graphs (the particle
+    gather/compute/commit graph and a 70-node stress graph) run on the **real
+    engine `vstdlib` `CThreadPool`** worker threads via the production
+    `CParallelProcessor` fork/join path, matching the serial reference and the
+    deterministic executor bit-for-bit, exactly-once. Run with the built
+    tier0/vstdlib `.so`s on `LD_LIBRARY_PATH`.
 - **Sanitizers** (standalone clang, same sources): TSan clean and ASan+UBSan
   (`-fno-sanitize-recover=all`) clean on both suites — the parallel executor's
   producer→consumer publication is race-free, satisfying the RFC requirement that
@@ -108,10 +119,13 @@ All at working-tree revision `a4f6f95f`.
    BlockingIO` exists as a token; a separate blocking lane and exactly-once
    external-completion registration are not implemented.
 4. **Dynamic child scopes**: not implemented (a deliberately later RFC extension).
-5. **Real-engine integration**: nothing in `game/` or `engine/` is modified. The
-   particle pilot is a faithful model, not a migration of
-   `CParticleMgr::UpdateNewEffects`. Wiring it requires the engine build, captured
-   particle workloads, and the equivalence/latency/rollback gates of Phase D.
+5. **Game-subsystem source migration**: the real engine *thread pool* (`vstdlib`)
+   now executes job graphs (delivered above), but nothing in `game/` or `engine/`
+   game-subsystem source is modified. The particle pilot is a faithful model, not
+   a migration of `CParticleMgr::UpdateNewEffects`. Wiring the pilot into that
+   call site requires the game/client build, captured particle workloads, and the
+   equivalence/latency/rollback gates of Phase D (the `--tests` config does not
+   build `game/client`).
 6. **Legacy-capture comparison and performance acceptance**: no baseline capture,
    no measured improvement, no low-core regression budget — all gated on a
    buildable/runnable engine profile (see Phase A runtime gap).
@@ -124,11 +138,15 @@ All at working-tree revision `a4f6f95f`.
 public/jobsystem/expected.h          scoped Expected<T,E> (pending R05)
 public/jobsystem/job_graph.h         handles, executors, resources, builder, SealedGraph, errors
 public/jobsystem/graph_executor.h    JobRunContext, FrameContext, RunResult, ITraceSink, IGraphExecutor, DeterministicExecutor
-public/jobsystem/parallel_executor.h ParallelExecutor
+public/jobsystem/parallel_executor.h ParallelExecutor (std::thread worker pool)
+public/jobsystem/worker_backend.h    IWorkerBackend (C++11-clean bridge boundary)
+public/jobsystem/pooled_executor.h   PooledExecutor (wave executor over a backend)
 public/jobsystem/frame_graph.h       FrameContext region, IFrameContributor, FrameCoordinator
 public/jobsystem/pilot_particles.h   ParticleFrameState, reference update, pilot contributor
+public/vstdlib/jobgraph_pool_bridge.h  C++11-clean factory: real CThreadPool -> IWorkerBackend
 jobsystem/*.cpp                      implementations + Waf stlib (C++20)
-unittests/jobsystemtest/*            standalone C++20 conformance programs + Waf wiring
+vstdlib/jobgraph_pool_bridge.cpp     real engine-pool backend (C++11, in vstdlib)
+unittests/jobsystemtest/*            C++20 conformance + engine-bridge programs + Waf wiring
 ```
 
 ---

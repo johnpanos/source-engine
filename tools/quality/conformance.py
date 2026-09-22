@@ -129,13 +129,16 @@ def load_profile(profiles_dir, profile_id):
 # ---------------------------------------------------------------------------
 
 def git(root, *args):
+    # Capture bytes and decode leniently: git diff/status can contain non-UTF-8
+    # bytes from binary files in the working tree, which would otherwise raise
+    # UnicodeDecodeError under text=True and crash evidence collection.
     try:
         out = subprocess.run(
             ["git", "-C", root, *args],
-            capture_output=True, text=True, check=False)
+            capture_output=True, text=False, check=False)
         if out.returncode != 0:
             return None
-        return out.stdout
+        return out.stdout.decode("utf-8", "replace")
     except (OSError, subprocess.SubprocessError):
         return None
 

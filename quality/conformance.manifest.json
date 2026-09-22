@@ -134,6 +134,62 @@
       "expect": "pass"
     },
     {
+      "id": "hammer.app.document_history",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-HISTORY-001",
+      "contract": "unittests/hammertest/contracts/app.document_history.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/document_history.cpp",
+        "unittests/hammertest/app/test_document_history.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.document_history.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-HISTORY-001",
+      "contract": "unittests/hammertest/contracts/app.document_history.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/document_history.cpp",
+        "unittests/hammertest/app/test_document_history_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.property_value",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-SEL-001",
+      "contract": "unittests/hammertest/contracts/app.property_value.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/property_value.cpp",
+        "unittests/hammertest/app/test_property_value.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.app.property_value.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-SEL-001",
+      "contract": "unittests/hammertest/contracts/app.property_value.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/app/property_value.cpp",
+        "unittests/hammertest/app/test_property_value_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "jobsystem.scheduler",
       "domain": "Q-JOBS",
       "rfc": "0003",

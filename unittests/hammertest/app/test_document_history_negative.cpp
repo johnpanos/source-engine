@@ -40,8 +40,7 @@ private:
 // The revision-vs-save clause: commit, save, commit, undo-back-to-save; the
 // document must then report NOT modified. Returns true when the provider
 // implements the rule correctly.
-template <typename History>
-bool ConformsUndoToSavedClearsModified( History &history )
+template <typename History> bool ConformsUndoToSavedClearsModified( History &history )
 {
 	history.Commit( true );
 	history.MarkSaved();
@@ -78,7 +77,7 @@ int main()
 		std::printf( "hammer.app DocumentHistory negative: %d check(s) FAILED\n", failures );
 		return 1;
 	}
-	std::printf(
-		"hammer.app DocumentHistory negative: oracle detects violations (real passes, revision-based caught)\n" );
+	std::printf( "hammer.app DocumentHistory negative: oracle detects violations (real passes, "
+	             "revision-based caught)\n" );
 	return 0;
 }

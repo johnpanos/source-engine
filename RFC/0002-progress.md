@@ -132,8 +132,17 @@ baseline. No gate claims a stronger guarantee than these installed checks provid
 | Phase | State | Notes |
 | --- | --- | --- |
 | H0 | **active / partial** | Migration schema, module graph, ratchet increment 1, corpus scaffolding, and a **headless strict C++20 build+test target** (`unittests/hammertest/run_headless.sh`, HAM-BUILD-001) installed and passing under gcc 16 and clang. Remaining for H0 exit: exhaustive inventory coverage and the versioned semantic comparator with a negative corpus. |
-| H1 | **active (first extraction)** | `hammer.geometry` seam opened: `AxisAlignedBox` extracted from `BoundBox` into strict roots and proven by a headless conformance oracle. See "First H1 extraction" below. Broader geometry/scene seams remain planned. |
-| H2–H7, R1 | planned | Blocked on H0 exit and, for R1, the render contract + GTK profile. |
+| H1 | **active (geometry + scene seams)** | `hammer.geometry`: `AxisAlignedBox`, `RoundHalfAwayFromZero` (DRY grid-rounding owner), angle policies. `hammer.scene`: generational `HandleTable` (stale-reference rejection, independent documents) and `SceneGraph` (handle-addressed, validated/atomic reparent with cycle rejection, atomic subtree delete). All headless-verified under gcc + clang with negative providers. See below. |
+| H3 | **partial (independent models)** | Ahead-of-authority reference models landed and pinned: `DocumentHistory` (revision vs saved-position, no-op neutrality, undo-to-saved clears modified) and `PropertyValue` (empty-vs-unset-vs-mixed). Not yet the live authority (needs H2 + legacy cutover). |
+| H2, H4–H7, R1 | planned | Blocked on H0 exit, the persistence slice, and for R1 the render contract + GTK profile. |
+
+**Strict-module conformance suites** are registered in the shared RFC 0005 runner
+(`quality/conformance.manifest.json`, `tools/quality/conformance.py`): 13 RFC 0002
+Q-EDITOR suites (positive + sensitivity pairs), each proven to catch a seeded
+regression, green under gcc and clang on `linux-headless-core`. Inventory now
+classifies 28 files; 10 migrations tracked. (A UTF-8 decode crash in the shared
+runner's git-evidence step was fixed here so the gate survives binary files in the
+working tree — this also unblocked the RFC 0003 lane on the same runner.)
 
 ### First H1 extraction — `hammer.geometry` AABB (HAM-GEOMETRY-001)
 

@@ -110,6 +110,7 @@ projects={
 		'unittests/tier0test',
 		'unittests/legacymoduleclientfixture',
 		'unittests/moduleloadfixture',
+		'unittests/moduleloadshutdownfixture',
 		'unittests/tier1test',
 		'unittests/tier2test',
 		'unittests/tier3test',
