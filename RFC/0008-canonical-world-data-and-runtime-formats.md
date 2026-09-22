@@ -1,6 +1,6 @@
 # RFC 0008: Canonical World Data and Runtime Formats
 
-- Status: Draft
+- Status: Accepted for planning (2026-09-22); implementation not started
 - Date: 2026-09-22
 - Scope: The compiled-world interchange stage, the runtime map container, world
   render data (mesh, lightmaps, probes, reflection probes), the texture container,
@@ -175,6 +175,24 @@ sublayer without rewriting geometry. The inspected revision includes the
 - The lighting layer (`lighting.usdc`) references the lightmap and probe
   payloads as KTX2 asset paths and records provider, mode, policy version, and
   sample statistics as metadata.
+
+### USD decision
+
+Decided by the user on 2026-09-22: the World Stage uses OpenUSD directly in the
+compile path, not an in-house format with a USD exporter. Consequences:
+
+- `vbsp2`, the bakers, the packer, the reference renderer, and Hammer's export
+  and preview link the OpenUSD C++ API (`pxr/usd`, `usdGeom`, `usdLux`,
+  `usdShade`) on desktop tool profiles. Engine products, the dedicated server,
+  and mobile builds never link it; R12/R53 link evidence checks this.
+- A single OpenUSD revision is pinned per tool profile with its license record
+  (TOST 1.0). It must be 25.11 or newer to match the Cycles Hydra delegate's
+  stated requirement, so one USD build serves both.
+- The stage schema is a generated USD schema. Readers use the schema API, not
+  string attribute lookups.
+- `usdchecker` runs in the validation lane for every emitted stage.
+- `.usdc` in build caches and `.usda` for reviewed fixtures, with
+  deterministic prim ordering so fixture diffs are reviewable.
 
 A typed schema (`SourceWorldAPI` and friends) is generated with
 `usdGenSchema` so attribute names and types have one definition. Fixtures use
@@ -378,19 +396,11 @@ by a global switch.
 
 F1 and F3 are independent of the lighting work and can start first.
 
-## Proposed roadmap entries
+## Roadmap
 
-AGENTS.md owns ordering. Proposed for insertion on acceptance, alongside RFC
-0007's rows:
-
-| Proposed ID | Work | Prerequisites | Done looks like |
-| --- | --- | --- | --- |
-| R53 | BSP2 container and map-reader seam (F1) | R02, R04 | Lossless carriage, fuzzing, server link evidence |
-| R54 | World Stage and lightmap charts (F2) | R48, R53 | Stage validation, comparator with seeded loss |
-| R55 | KTX2 textures end to end (F3) | R15, R53 | Validator, per-format fixtures, format negotiation |
-| R56 | Native Vulkan BSP2 world path (F4–F5) | R32, R49, R54, R55 | Feature cohorts, lighting oracles, legacy payload |
-| R57 | Incremental map build graph (F6) | R52, R54 | Cache-hit traces, cancellation/recovery |
-| R58 | Mobile map packages (F7) | R29, R55, R56 | Device format evidence, installed-package smoke |
+Tracked in the AGENTS.md ranked roadmap (added 2026-09-22): F1 → R53, F2 → R54,
+F3 → R55, F4–F5 → R56, F6 → R57, F7 → R58. AGENTS.md owns their ranks and
+states.
 
 ## Risks and mitigations
 
@@ -398,7 +408,7 @@ AGENTS.md owns ordering. Proposed for insertion on acceptance, alongside RFC
 | --- | --- |
 | Two world paths in the engine for a long time | Selected per map by capability; each migrated cohort deletes its legacy branch for BSP2 maps; legacy path retained only for legacy content |
 | New maps unplayable on old engines/tools | Explicit, versioned decision; classic v21 export profile; legacy payload for legacy renderers |
-| USD dependency weight in the compile path | Tool-only; pinned; if rejected, the stage schema is preserved in a smaller in-house binary format with a USD exporter (open decision) |
+| USD dependency weight in the compile path | Decided: USD is used (see [USD decision](#usd-decision)). Tool and desktop-host profiles only; pinned revision and license record; never linked into engine products or mobile builds |
 | Decals/overlays/displacements regress on the new world path | Triangle → face map; per-cohort tests before enabling the path |
 | Mobile format support differs by device | Profile-declared formats, device queries, composition failure instead of silent fallback |
 | Hash/compression dependencies proliferate | One hash (BLAKE3 or XXH3-128) and one new compressor (zstd), each pinned; lzma kept for legacy lumps |
@@ -434,6 +444,13 @@ This gives the smallest packages, but transcoding at load costs CPU time on
 mobile, and quality is capped by the universal format. It is kept as an option
 for data downloads. Installed packages ship pre-transcoded profile formats.
 
+### In-house stage format with a USD exporter
+
+A smaller binary format would keep OpenUSD out of the compile path. It was
+rejected by the user's decision (2026-09-22): it adds a second scene
+representation and a conversion that USD makes unnecessary, and it loses
+Cycles' and DCC tools' direct reading of the stage.
+
 ### MaterialX files instead of VMT
 
 MaterialX is the richer open standard, but the material system, proxies, and
@@ -452,8 +469,9 @@ and the stage can emit MaterialX when needed.
    alternatives), decided by pixel-oracle error and memory.
 5. Whether BSP2 packages carry the legacy payload by default during migration
    (recommended: yes until R56 closes).
-6. USD in the compile path vs an in-house stage format with USD export. Needs
-   measured build cost and the Cycles loading path decision in RFC 0007.
+6. ~~USD in the compile path vs an in-house stage format~~ *Decided
+   2026-09-22 by the user:* OpenUSD is the World Stage in the compile path. See
+   [USD decision](#usd-decision).
 7. Lightmap chart packer: our own, or a pinned library (for example xatlas).
    Charts must respect smoothing groups and displacement seams.
 8. Per-profile format tables, filled from device queries.
@@ -474,9 +492,10 @@ and the stage can emit MaterialX when needed.
 
 ## Proposed decision
 
-Accept the four-tier data model and the versioned compatibility decision:
+Accepted for planning on 2026-09-22 with OpenUSD as the World Stage. The
+four-tier data model and the versioned compatibility decision:
 new maps compile to BSP2 with KTX2 textures and canonical SH lighting, and
 legacy content and legacy renderers remain supported through carriage and a
-single derived payload. Authorize **F1** (container and reader seam) and **F3**
-(KTX2 textures) now. Neither depends on the lighting work, and both are
-testable on their own.
+single derived payload. Recommended first work is **F1** (R53, container and
+reader seam) and **F3** (R55, KTX2 textures). Neither depends on the lighting
+work, and both are testable on their own.

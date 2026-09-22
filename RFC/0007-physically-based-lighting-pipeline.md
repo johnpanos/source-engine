@@ -1,6 +1,6 @@
 # RFC 0007: Physically Based Lighting Pipeline
 
-- Status: Draft
+- Status: Accepted for planning (2026-09-22); implementation not started
 - Date: 2026-09-22
 - Scope: Map compile tools (vbsp, vvis, vrad), a substitutable light baker with a
   Cycles provider, a PBR material family on the native Vulkan backend, image-based
@@ -289,8 +289,12 @@ record is kept with the pin.
   Units and radiometric conversion are owned by one lighting policy module.
   Encodings are owned by RFC 0008's writers. Solvers own none of these.
 - **The World Stage is the bake input.** `LightBakeScene` is a typed, immutable
-  view built from the stage's geometry layer. Bakers never parse BSP faces or
-  VMF, and never write geometry.
+  view built from the OpenUSD stage's geometry layer through the generated
+  schema API (RFC 0008 USD decision). Bakers never parse BSP faces or VMF, and
+  never write geometry. The Cycles provider builds its Cycles scene from
+  `LightBakeScene` rather than through the Hydra delegate, because baking needs
+  control of the single bake target and the sample table. Reference rendering
+  (Phase G) uses Cycles' own USD loading.
 - **New material families negotiate capability.** A renderer that cannot render
   the PBR family does not claim it. Materials declare a fallback, which is
   validated.
@@ -774,21 +778,12 @@ E 2–3 months, F 4–6 weeks, G 2–3 weeks, H depends on R25/R29. The vvis
 track takes 4–8 weeks. RFC 0008's format work is sized separately. The largest uncertainty is Phase C, and E's estimate is
 not meaningful until C's decision is recorded.
 
-## Proposed roadmap entries
+## Roadmap
 
-This RFC does not own portfolio order; the AGENTS.md roadmap does. On
-acceptance, the following rows are proposed for insertion, with ranks decided
-there. They should not displace R32 (legacy-family native Vulkan fidelity),
-because existing maps still render incorrectly on native Vulkan.
-
-| Proposed ID | Work | Prerequisites | Done looks like |
-| --- | --- | --- | --- |
-| R47 | PBR shading core (Phase A, D material schema) | R15, native Vulkan pixel harness | BRDF/pixel/negative gates; capability + fallback validated on both providers |
-| R48 | Compile tools on Waf and bake seam (Phase B, vvis port) | R01, R02, R40 cohort | Byte-identical lumps and PVS; shared baker suite with bad providers |
-| R49 | Cycles bake feasibility and full bake (Phases C, E) | R48, R05 | Spike decision recorded; analytic/comparative/negative gates; quality maps load on all renderers |
-| R50 | Image-based lighting (Phase F) | R47, R32 render targets, R56 | Reflection probe and legacy prefilter gates |
-| R51 | Stage reference rendering (Phase G) | R49, R54 | Versioned Cycles references; seeded mapping error detected |
-| R52 | Hammer compile/preview and vvis job graph (Phase H, vvis track) | R25, R20, R49 | Q-PRODUCT workflow; serial/parallel/legacy PVS equivalence |
+Tracked in the AGENTS.md ranked roadmap (added 2026-09-22): A/D → R47,
+B and the vvis port → R48, C/E → R49, F → R50, G → R51, H and the vvis job
+graph → R52. AGENTS.md owns their ranks and states. The rows are ranked after
+R32, so legacy-content fidelity on native Vulkan stays ahead.
 
 ## Risks and mitigations
 
@@ -896,7 +891,8 @@ exact legacy payload, produced by the same bake at no extra cost.
 
 ## Proposed decision
 
-Accept this RFC as a draft program together with RFC 0008, and authorize
+Accepted for planning together with RFC 0008 on 2026-09-22 (roadmap rows
+R47–R52). Recommended first work is
 **Phase A** (PBR shading core with synthetic lighting and a Cycles-reference
 pixel family) and **Phase B** (compile tools on Waf with the extracted bake seam
 and byte-identical legacy provider). Neither changes shipped content or renderer
