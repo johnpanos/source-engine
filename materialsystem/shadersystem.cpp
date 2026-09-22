@@ -501,7 +501,8 @@ bool CShaderSystem::LoadShaderDLL( const char *pFullPath, const char *pPathID, b
 	if ( bModShaderDLL )
 		bValidatedDllOnly = false;
 
-	CSysModule *hInstance = g_pFullFileSystem->LoadModule( pFullPath, pPathID, bValidatedDllOnly );
+	CSysModule *hInstance = Sys_LoadModuleFromFileSystem(
+		g_pFullFileSystem, pFullPath, pPathID, bValidatedDllOnly );
 	if ( !hInstance )
 		return false;
 
@@ -2054,6 +2055,5 @@ void CShaderSystem::LoadCubeMap( IMaterialVar **ppParams, IMaterialVar *pTexture
 		pTextureVar->SetTextureValue( pTexture );
 	}
 }
-
 
 

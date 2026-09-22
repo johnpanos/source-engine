@@ -30,7 +30,8 @@ CUtlVector<CShaderDLLInfo> g_ShaderDLLs;
 bool LoadShaderDLL( const char *pFilename )
 {
 	// Load the new shader
-	CSysModule *hInstance = g_pFullFileSystem->LoadModule( pFilename );
+	CSysModule *hInstance = Sys_LoadModuleFromFileSystem(
+		g_pFullFileSystem, pFilename );
 	if ( !hInstance )
 		return false;
 

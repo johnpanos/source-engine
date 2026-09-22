@@ -525,7 +525,7 @@ void CSteamAppSystemGroup::Setup( IFileSystem *pFileSystem, CAppSystemGroup *pPa
 //-----------------------------------------------------------------------------
 CSysModule *CSteamAppSystemGroup::LoadModuleDLL( const char *pDLLName )
 {
-	return m_pFileSystem->LoadModule( pDLLName );
+	return Sys_LoadModuleFromFileSystem( m_pFileSystem, pDLLName );
 }
 
 

@@ -729,7 +729,8 @@ int main( int argc, char* argv[] )
 	// If they didn't specify -game on the command line, use VPROJECT.
 	CmdLib_InitFileSystem( workingdir );
 
-	CSysModule *pSoundEmitterModule = g_pFullFileSystem->LoadModule( "soundemittersystem.dll" );
+	CSysModule *pSoundEmitterModule = Sys_LoadModuleFromFileSystem(
+		g_pFullFileSystem, "soundemittersystem.dll" );
 	if ( !pSoundEmitterModule )
 	{
 		vprint( 0, "Sys_LoadModule( soundemittersystem.dll ) failed!\n" );

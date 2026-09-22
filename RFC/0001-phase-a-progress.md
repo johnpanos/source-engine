@@ -11,11 +11,20 @@ file is the durable progress record; detailed current sites live in
 
 | Work item | Status | Evidence |
 | --- | --- | --- |
-| Classify every static load site | Complete for the initial tree | 301 loader-surface records in `architecture/loader_inventory.json`; verified by `archlint inventory --verify` |
-| Reject new `Sys_LoadModule`, `Sys_GetFactory`, filesystem `LoadModule`, and `CDllDemandLoader` dependencies | Complete | `ARCH101`–`ARCH104`; 683 exact legacy fingerprints including the factory-type freeze in `architecture/baseline.json` |
+| Classify every static load site | Initial snapshot complete; current inventory stale | Initial 301 loader-surface records in `architecture/loader_inventory.json`; telemetry changes need reviewed reclassification/verification |
+| Reject new `Sys_LoadModule`, `Sys_GetFactory`, filesystem `LoadModule`, and `CDllDemandLoader` dependencies | Checker installed; current tree fails | `ARCH101`–`ARCH104`; initial 683 exact fingerprints including factory-type freeze; changes are not automatically grandfathered |
 | Prohibit new `CreateInterfaceFn` boundaries outside the legacy ABI package | Complete | `ARCH105`; legacy paths declared in `architecture/modules.json` |
 | Run the freeze in CI | Complete | Architecture job in `.github/workflows/tests.yml` |
-| Instrument load attempts and unloads with requester, resolved path, entry/interface, result, and lifetime | Not started | Requires an ABI-preserving telemetry context around Tier 1 and filesystem-mediated loads |
+| Instrument load attempts and unloads with requester, resolved path, entry/interface, result, and lifetime | Source implementation present; acceptance incomplete | `tier1/module_load_telemetry.cpp`, scoped request API, and loader adapters exist; conformance, ABI and lifecycle gates remain unverified |
+
+Assessment at source revision `87955f67`: eight checker fixture tests pass;
+`check --all` and `baseline --verify` report 10 new and 3 stale occurrences;
+`inventory --verify` reports stale. These are recorded observations, not accepted
+baseline changes. The Phase A gate is not complete.
+
+Shared runner/evidence and loader tests are specified by
+[RFC 0005](0005-quality-and-correctness-harnesses.md); implementation work is
+tracked as R01/R07 in [AGENTS.md](../AGENTS.md).
 
 ## Commands
 
@@ -32,9 +41,11 @@ the diff and its classification, use the corresponding `--write` command.
 
 ## Next increment
 
-Add a structured loader telemetry sink and a scoped request context. The public
-legacy symbols remain ABI-compatible; source call sites supply requester data,
-filesystem resolution reports the final path, interface lookup reports the
-entry point or version, and unload records elapsed lifetime plus provider
-result. Tests must cover failed loads, failed lookups, duplicate native handles,
-and shutdown after partial startup.
+Validate the telemetry sink, scoped request context, and loader adapters using
+Q-FOUNDATION fixtures. Verify preserved ABI calls, requester/path/interface
+observations, provider results, and unload ordering. Cover failed loads/lookups,
+duplicate native handles, nested/concurrent requests, sink lifetime/reentrancy,
+and shutdown after partial startup. Resolve every new/stale architecture
+occurrence through reviewed classification or implementation correction, then
+verify the inventory/baseline. Source presence alone does not establish ABI or
+behavioral compatibility.

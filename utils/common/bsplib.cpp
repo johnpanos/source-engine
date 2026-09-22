@@ -1554,7 +1554,8 @@ END_BYTESWAP_DATADESC()
 static void SwapPhyscollideLump( byte *pDestBase, byte *pSrcBase, unsigned int &count )
 {
 	IPhysicsCollision *physcollision = NULL;
-	CSysModule *pPhysicsModule = g_pFullFileSystem->LoadModule( "vphysics.dll" );
+	CSysModule *pPhysicsModule = Sys_LoadModuleFromFileSystem(
+		g_pFullFileSystem, "vphysics.dll" );
 	if ( pPhysicsModule )
 	{
 		CreateInterfaceFn physicsFactory = Sys_GetFactory( pPhysicsModule );
@@ -5244,4 +5245,3 @@ bool GetBSPDependants( const char *pBSPFilename, CUtlVector< CUtlString > *pList
 
 	return true;
 }
-

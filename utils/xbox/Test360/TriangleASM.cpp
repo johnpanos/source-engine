@@ -776,7 +776,7 @@ bool CTest360App::Create()
 		return false;
 	}
 #if defined( _X360 )
-	m_pFileSystem->LoadModule( "shaderapidx9.dll" );
+	Sys_LoadModuleFromFileSystem( m_pFileSystem, "shaderapidx9.dll" );
 #endif
 	m_pMaterialSystem->SetShaderAPI( "shaderapidx9.dll" );
 #endif
@@ -853,9 +853,9 @@ void *VGuiFactory( const char *pName, int *pReturnCode )
 
 int CTest360App::InitializeVGUI( void )
 {
-	s_pFactoryList[0] = Sys_GetFactory( m_pFileSystem->LoadModule( "filesystem_stdio" ) );
-	s_pFactoryList[1] = Sys_GetFactory( m_pFileSystem->LoadModule( "vguimatsurface" ) );
-	s_pFactoryList[2] = Sys_GetFactory( m_pFileSystem->LoadModule( "vgui2" ) );
+	s_pFactoryList[0] = Sys_GetFactory( Sys_LoadModuleFromFileSystem( m_pFileSystem, "filesystem_stdio" ) );
+	s_pFactoryList[1] = Sys_GetFactory( Sys_LoadModuleFromFileSystem( m_pFileSystem, "vguimatsurface" ) );
+	s_pFactoryList[2] = Sys_GetFactory( Sys_LoadModuleFromFileSystem( m_pFileSystem, "vgui2" ) );
 	int factorycount = ARRAYSIZE( s_pFactoryList );
 
 	if ( !vgui::VGui_InitInterfacesList( "test360", s_pFactoryList, factorycount ) )

@@ -84,7 +84,8 @@ int StartVGUI( CreateInterfaceFn dedicatedFactory )
 
 	// load the module
 	g_pFullFileSystem->GetLocalCopy("bin/AdminServer.dll");
-	g_hAdminServerModule = g_pFullFileSystem->LoadModule("AdminServer");
+	g_hAdminServerModule = Sys_LoadModuleFromFileSystem(
+		g_pFullFileSystem, "AdminServer" );
 	Assert(g_hAdminServerModule != NULL);
 	CreateInterfaceFn adminFactory = NULL;
 
@@ -184,4 +185,3 @@ void VGUIPrintf( const char *msg )
 }
 
 #endif // _WIN32
-

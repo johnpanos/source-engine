@@ -14,7 +14,8 @@ CreateInterfaceFn GetPhysicsFactory( void )
 {
 	if ( !pPhysicsModule )
 	{
-		pPhysicsModule = g_pFullFileSystem->LoadModule( "VPHYSICS.DLL" );
+		pPhysicsModule = Sys_LoadModuleFromFileSystem(
+			g_pFullFileSystem, "VPHYSICS.DLL" );
 		if ( !pPhysicsModule )
 			return NULL;
 	}
@@ -26,6 +27,7 @@ void PhysicsDLLPath( const char *pPathname )
 {
 	if ( !pPhysicsModule )
 	{
-		pPhysicsModule = g_pFullFileSystem->LoadModule( pPathname );
+		pPhysicsModule = Sys_LoadModuleFromFileSystem(
+			g_pFullFileSystem, pPathname );
 	}
 }

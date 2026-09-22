@@ -96,7 +96,8 @@ bool CPlugin::Load( const char *fileName )
 	if ( !Host_AllowLoadModule( fixedFileName, "GAME", false ) )
 		return false;
 
-	m_pPluginModule = g_pFileSystem->LoadModule( fixedFileName, "GAME", false );
+	m_pPluginModule = Sys_LoadModuleFromFileSystem(
+		g_pFileSystem, fixedFileName, "GAME", false );
 	if ( m_pPluginModule )
 	{
 		CreateInterfaceFn pluginFactory = Sys_GetFactory( m_pPluginModule );
@@ -754,4 +755,3 @@ CON_COMMAND( plugin_unload, "plugin_unload <index> : unloads a plugin" )
 		ConMsg( "Unloaded plugin \"%s\"\n", args[1] );
 	}
 }
-

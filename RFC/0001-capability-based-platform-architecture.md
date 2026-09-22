@@ -1297,9 +1297,11 @@ package's name or primary responsibility.
 
 ## Stack-ranked delivery plan
 
-The following is one strict portfolio order. A lower-ranked package may begin in
-parallel when its declared dependencies are stable, but staffing a higher rank
-must not delay an unfinished architectural prerequisite.
+The following ranks identify the platform program's work packages and internal
+priority. The unified portfolio order in [AGENTS.md](../AGENTS.md) interleaves
+these packages with the other RFCs. A lower-ranked package may begin when its
+declared prerequisites are stable, but must not delay a higher-priority ready
+package. Domain acceptance gates are not weakened by portfolio scheduling.
 
 Sizes are aggregate focused engineering effort, not calendar promises:
 

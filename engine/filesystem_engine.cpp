@@ -108,7 +108,7 @@ CON_COMMAND( fs_warning_level, "Set the filesystem warning level." )
 CSysModule *FileSystem_LoadModule(const char *path)
 {
 	if ( g_pFileSystem )
-		return g_pFileSystem->LoadModule( path );
+		return Sys_LoadModuleFromFileSystem( g_pFileSystem, path );
 	else
 		return Sys_LoadModule(path);
 }

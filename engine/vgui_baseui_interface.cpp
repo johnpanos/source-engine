@@ -566,7 +566,8 @@ void CEngineVGui::Init()
 
 	// load the GameUI dll
 	const char *szDllName = "GameUI";
-	m_hStaticGameUIModule = g_pFileSystem->LoadModule(szDllName, "EXECUTABLE_PATH", true); // LoadModule() does a GetLocalCopy() call
+	m_hStaticGameUIModule = Sys_LoadModuleFromFileSystem(
+		g_pFileSystem, szDllName, "EXECUTABLE_PATH", true ); // Does a GetLocalCopy() call.
 	m_GameUIFactory = Sys_GetFactory(m_hStaticGameUIModule);
 	if ( !m_GameUIFactory )
 	{

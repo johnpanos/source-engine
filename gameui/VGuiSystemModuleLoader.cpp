@@ -172,7 +172,8 @@ bool CVGuiSystemModuleLoader::LoadPlatformModules(CreateInterfaceFn *factorylist
 
 
 		// load the module (LoadModule calls GetLocalCopy() under steam)
-		CSysModule *mod = g_pFullFileSystem->LoadModule(dllPath, "EXECUTABLE_PATH");
+		CSysModule *mod = Sys_LoadModuleFromFileSystem(
+			g_pFullFileSystem, dllPath, "EXECUTABLE_PATH" );
 		if (!mod)
 		{
 			Error("Platform Error: bad module '%s', not loading\n", it->GetString("dll"));

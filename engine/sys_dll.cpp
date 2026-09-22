@@ -1133,7 +1133,8 @@ static bool LoadThisDll( char *szDllFilename, bool bIsServerOnly )
 	// Load DLL, ignore if cannot
 	// ensures that the game.dll is running under Steam
 	// this will have to be undone when we want mods to be able to run
-	if ((pDLL = g_pFileSystem->LoadModule(szDllFilename, "GAMEBIN", false)) == NULL)
+	if ((pDLL = Sys_LoadModuleFromFileSystem(
+		g_pFileSystem, szDllFilename, "GAMEBIN", false )) == NULL)
 	{
 		ConMsg("Failed to load %s\n", szDllFilename);
 		goto IgnoreThisDLL;

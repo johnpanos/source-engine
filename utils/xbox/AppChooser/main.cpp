@@ -2110,7 +2110,7 @@ bool CAppChooser::Create()
 			Error( "Failed to find %s\n", FILESYSTEM_INTERFACE_VERSION );
 			return false;
 		}
-		pFileSystem->LoadModule( "shaderapidx9.dll" );
+		Sys_LoadModuleFromFileSystem( pFileSystem, "shaderapidx9.dll" );
 	}
 
 	pMaterialSystem->SetShaderAPI( "shaderapidx9.dll" );

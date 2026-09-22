@@ -5345,7 +5345,8 @@ static bool BSPCreateCallback( const char *pSourceName, const char *pTargetName,
 {
 	// load the bsppack dll
 	IBSPPack *iBSPPack = NULL;
-	CSysModule *pmodule = g_pFullFileSystem->LoadModule( "bsppack" );
+	CSysModule *pmodule = Sys_LoadModuleFromFileSystem(
+		g_pFullFileSystem, "bsppack" );
 	if ( pmodule )
 	{
 		CreateInterfaceFn factory = Sys_GetFactory( pmodule );

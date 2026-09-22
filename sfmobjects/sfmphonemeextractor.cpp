@@ -116,7 +116,8 @@ bool CSFMPhonemeExtractor::Init()
 		// Msg( "Loading extractor from %s\n", fullpath );
 
 		Extractor e;
-		e.module = g_pFullFileSystem->LoadModule( fullpath );
+		e.module = Sys_LoadModuleFromFileSystem(
+			g_pFullFileSystem, fullpath );
 		if ( !e.module )
 		{
 			pFilename = g_pFullFileSystem->FindNext( findHandle );
@@ -1183,4 +1184,3 @@ void CSFMPhonemeExtractor::ReApply( ExtractDesc_t& info )
 		LogPhonemes( nWorkItem, info );
 	}
 }
-

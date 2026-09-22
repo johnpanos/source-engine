@@ -854,12 +854,14 @@ bool CBugUIPanel::Init()
 
 	Assert( !m_pBugReporter );
 
-	m_hBugReporter = g_pFileSystem->LoadModule( m_sDllName);
+	m_hBugReporter = Sys_LoadModuleFromFileSystem(
+		g_pFileSystem, m_sDllName );
 
 	if( m_bIsPublic )
 	{
 		// Hack due to constructor called before phonehome->Init...
-		m_hBugReporter = g_pFileSystem->LoadModule( m_sDllName );
+		m_hBugReporter = Sys_LoadModuleFromFileSystem(
+			g_pFileSystem, m_sDllName );
 
 		LoadControlSettings("Resource\\BugUIPanel_Public.res");
 

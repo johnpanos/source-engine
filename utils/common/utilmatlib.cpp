@@ -28,7 +28,8 @@ void LoadMaterialSystemInterface( CreateInterfaceFn fileSystemFactory )
 	// materialsystem.dll should be in the path, it's in bin along with vbsp.
 	const char *pDllName = "materialsystem.dll";
 	CSysModule *materialSystemDLLHInst;
-	materialSystemDLLHInst = g_pFullFileSystem->LoadModule( pDllName );
+	materialSystemDLLHInst = Sys_LoadModuleFromFileSystem(
+		g_pFullFileSystem, pDllName );
 	if( !materialSystemDLLHInst )
 	{
 		Error( "Can't load MaterialSystem.dll\n" );
