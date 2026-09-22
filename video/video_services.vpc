@@ -18,6 +18,11 @@ $Include "$SRCDIR\vpc_scripts\source_dll_base.vpc"
 
 $Configuration
 {
+	$Compiler
+	{
+		$PreprocessorDefinitions "$BASE;LINK_VIDEO_QUICKTIME" [$WINDOWS||$OSXALL]
+		$PreprocessorDefinitions "$BASE;LINK_VIDEO_WEBM" [$LINUXALL]
+	}
 	$Linker
 	{
 		$SystemLibraries                    "iconv" [$OSXALL]
@@ -49,6 +54,7 @@ $Project "video_services"
 	$Folder	"Source Files"
 	{
 		$file	"videoservices.cpp"
+		$file "provider_catalog_runtime.cpp"
 	}
 
 	$Folder	"Header Files"
@@ -56,17 +62,21 @@ $Project "video_services"
 		$file   "video_macros.h"
 		$file	"videoservices.h"
 		$file   "videosubsystem.h"
+		$file "provider_catalog_runtime.h"
 	}
 
 	$Folder	"Interface"
 	{
 		$File	"$SRCDIR\public\video\ivideoservices.h"
+		$File "$SRCDIR\public\video\provider_catalog.h"
 	}
 
 	$Folder "Link Libraries"
 	{
 		$Lib	tier2
 		$Lib	tier3
+		$ImpLib video_quicktime [$WINDOWS||$OSXALL]
+		$ImpLib video_webm [$LINUXALL]
 	}
 }
 

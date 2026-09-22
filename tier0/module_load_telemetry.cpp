@@ -143,18 +143,16 @@ void EmitEvent( const ModuleLoadTelemetryEvent_t &event )
 			AUTO_LOCK( g_ModuleLoadTelemetryMutex );
 			g_bTelemetryLogEnabled = true;
 		}
-		Msg( "ModuleLoadTelemetry: op=%d id=%llu requester=%s:%d requested=%s resolved=%s entry=%s success=%d lifetime_us=%llu provider_result=%d error=%s\n",
-			(int)event.m_Operation,
-			(unsigned long long)event.m_nLoadId,
-			event.m_szRequestingSubsystem,
-			event.m_nSourceLine,
-			event.m_szRequestedPath,
-			event.m_szResolvedPath,
-			event.m_szRequestedEntryPoint,
-			event.m_bSuccess ? 1 : 0,
-			(unsigned long long)event.m_nLifetimeMicroseconds,
-			event.m_nProviderResult,
-			event.m_szProviderError );
+		// Loader events remain observable after the engine console and UI are gone.
+		// Do not re-enter product spew callbacks from native teardown.
+		fprintf( stderr,
+		    "ModuleLoadTelemetry: op=%d id=%llu requester=%s:%d requested=%s resolved=%s entry=%s "
+		    "success=%d lifetime_us=%llu provider_result=%d error=%s\n",
+		    (int)event.m_Operation, (unsigned long long)event.m_nLoadId,
+		    event.m_szRequestingSubsystem, event.m_nSourceLine, event.m_szRequestedPath,
+		    event.m_szResolvedPath, event.m_szRequestedEntryPoint, event.m_bSuccess ? 1 : 0,
+		    (unsigned long long)event.m_nLifetimeMicroseconds, event.m_nProviderResult,
+		    event.m_szProviderError );
 	}
 
 	if ( pSink )

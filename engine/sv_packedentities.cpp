@@ -389,7 +389,7 @@ void PackEntities_NetworkBackDoor(
 
 static ConVar sv_parallel_packentities( "sv_parallel_packentities", "1" );
 static ConVar sv_packentities_job_graph( "sv_packentities_job_graph", "0", 0,
-	"Entity packing: 0 = legacy, 1 = serial job graph, 2 = pooled job graph.", true, 0, true, 2 );
+    "Entity packing: 0 = legacy, 1 = serial job graph, 2 = pooled job graph.", true, 0, true, 2 );
 
 struct PackWork_t
 {
@@ -459,11 +459,11 @@ void PackEntities_Normal(
 		// still own shared baseline/snapshot bookkeeping. No snapshot-send work
 		// overlaps this batch. Publish change-info invalidation only after join.
 		const jobsystem::BatchMode mode =
-			( sv_packentities_job_graph.GetInt() == 1 || !sv_parallel_packentities.GetBool() )
-				? jobsystem::BatchMode::Serial
-				: jobsystem::BatchMode::Parallel;
+		    ( sv_packentities_job_graph.GetInt() == 1 || !sv_parallel_packentities.GetBool() )
+		        ? jobsystem::BatchMode::Serial
+		        : jobsystem::BatchMode::Parallel;
 		if ( !JobGraphParallelProcess( "PackWork_t::Process", workItems.Base(), workItems.Count(),
-				 &PackWork_t::Process, NULL, NULL, INT_MAX, g_pThreadPool, mode ) )
+		         &PackWork_t::Process, NULL, NULL, INT_MAX, g_pThreadPool, mode ) )
 		{
 			Error( "Could not construct entity packing job graph\n" );
 		}
@@ -707,5 +707,3 @@ const char* GetObjectClassName( int objectID )
 		return "[unknown]";
 	}
 }
-
-

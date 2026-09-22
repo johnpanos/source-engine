@@ -470,17 +470,33 @@ public:
 	void ClearServiceThread()						{ m_iServicingThread = -1; }
 
 	//-----------------------------------------------------
-	// Fast queries
+	// Status queries are atomic observations, not joins: terminal status is
+	// published before DoCleanup for legacy compatibility. Acquire the job
+	// mutex (or wait on its completion event) before releasing callback data.
 	//-----------------------------------------------------
-	bool Executed() const							{ return ( m_status == JOB_OK );	}
-	bool CanExecute() const							{ return ( m_status == JOB_STATUS_PENDING || m_status == JOB_STATUS_UNSERVICED ); }
-	bool IsFinished() const							{ return ( m_status != JOB_STATUS_PENDING && m_status != JOB_STATUS_INPROGRESS && m_status != JOB_STATUS_UNSERVICED ); }
-	JobStatus_t GetStatus() const					{ return m_status; }
+	bool Executed() const { return GetStatus() == JOB_OK; }
+	bool CanExecute() const
+	{
+		const JobStatus_t status = GetStatus();
+		return status == JOB_STATUS_PENDING || status == JOB_STATUS_UNSERVICED;
+	}
+	bool IsFinished() const
+	{
+		const JobStatus_t status = GetStatus();
+		return status != JOB_STATUS_PENDING && status != JOB_STATUS_INPROGRESS &&
+		       status != JOB_STATUS_UNSERVICED;
+	}
+	JobStatus_t GetStatus() const
+	{
+		// Keep the advertised int storage/layout while making every access
+		// interlocked, including this full-barrier read of an unchanged value.
+		return ThreadInterlockedCompareExchange( &m_status, JOB_OK, JOB_OK );
+	}
 
 	/// Slam the status to a particular value.  This is named "slam" instead of "set,"
 	/// to warn you that it should only be used in unusual situations.  Otherwise, the
 	/// job manager really should manage the status for you, and you should not manhandle it.
-	void SlamStatus(JobStatus_t s) { m_status = s; }
+	void SlamStatus( JobStatus_t s ) { SetStatus( s ); }
 	
 	//-----------------------------------------------------
 	// Try to acquire ownership (to satisfy). If you take the lock, you must either execute or abort.
@@ -526,7 +542,22 @@ private:
 	//-----------------------------------------------------
 	friend class CThreadPool;
 
-	JobStatus_t			m_status;
+	void SetStatus( JobStatus_t status )
+	{
+		// Compare-exchange has a full publication barrier on the retained
+		// platforms. ThreadInterlockedExchange is only acquire on some of them.
+		JobStatus_t previous = GetStatus();
+		for ( ;; )
+		{
+			const JobStatus_t observed =
+			    ThreadInterlockedCompareExchange( &m_status, status, previous );
+			if ( observed == previous )
+				return;
+			previous = observed;
+		}
+	}
+
+	mutable JobStatus_t	m_status;
 	JobPriority_t		m_priority;
 	CThreadMutex		m_mutex;
 	unsigned char		m_flags;
@@ -1233,24 +1264,25 @@ inline JobStatus_t CJob::Execute()
 {
 	if ( IsFinished() )
 	{
-		return m_status;
+		return GetStatus();
 	}
 
-	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s %s %d", __FUNCTION__, Describe(), m_status );
+	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s %s %d", __FUNCTION__, Describe(), GetStatus() );
 
 	AUTO_LOCK( m_mutex );
 	AddRef();
 
 	JobStatus_t result;
 
-	switch ( m_status )
+	switch ( GetStatus() )
 	{
 	case JOB_STATUS_UNSERVICED:
 	case JOB_STATUS_PENDING:
 		{
 			// Service it
-			m_status = JOB_STATUS_INPROGRESS;
-			result = m_status = DoExecute();
+			SetStatus( JOB_STATUS_INPROGRESS );
+			result = DoExecute();
+			SetStatus( result );
 			DoCleanup();
 			m_CompleteEvent.Set();
 			break;
@@ -1262,12 +1294,12 @@ inline JobStatus_t CJob::Execute()
 
 	case JOB_OK:
 	case JOB_STATUS_ABORTED:
-		result = m_status;
+		result = GetStatus();
 		break;
 
 	default:
-		AssertMsg( m_status < JOB_OK, "Unknown job state");
-		result = m_status;
+		AssertMsg( GetStatus() < JOB_OK, "Unknown job state");
+		result = GetStatus();
 	}
 
 	Release();
@@ -1280,7 +1312,7 @@ inline JobStatus_t CJob::Execute()
 
 inline JobStatus_t CJob::TryExecute()
 {
-	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s %s %d", __FUNCTION__, Describe(), m_status );
+	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s %s %d", __FUNCTION__, Describe(), GetStatus() );
 
 	// TryLock() would only fail if another thread has entered
 	// Execute() or Abort()
@@ -1290,7 +1322,7 @@ inline JobStatus_t CJob::TryExecute()
 		Execute();
 		Unlock();
 	}
-	return m_status;
+	return GetStatus();
 }
 
 //---------------------------------------------------------
@@ -1299,24 +1331,25 @@ inline JobStatus_t CJob::Abort( bool bDiscard )
 {
 	if ( IsFinished() )
 	{
-		return m_status;
+		return GetStatus();
 	}
 
-	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s %s %d", __FUNCTION__, Describe(), m_status );
+	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s %s %d", __FUNCTION__, Describe(), GetStatus() );
 
 	AUTO_LOCK( m_mutex );
 	AddRef();
 
 	JobStatus_t result;
 
-	switch ( m_status )
+	switch ( GetStatus() )
 	{
 	case JOB_STATUS_UNSERVICED:
 	case JOB_STATUS_PENDING:
 		{
 			tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "CJob::DoAbort" );
 
-			result = m_status = DoAbort( bDiscard );
+			result = DoAbort( bDiscard );
+			SetStatus( result );
 			if ( bDiscard )
 				DoCleanup();
 			m_CompleteEvent.Set();
@@ -1326,12 +1359,12 @@ inline JobStatus_t CJob::Abort( bool bDiscard )
 	case JOB_STATUS_ABORTED:
 	case JOB_STATUS_INPROGRESS:
 	case JOB_OK:
-		result = m_status;
+		result = GetStatus();
 		break;
 
 	default:
-		AssertMsg( m_status < JOB_OK, "Unknown job state");
-		result = m_status;
+		AssertMsg( GetStatus() < JOB_OK, "Unknown job state");
+		result = GetStatus();
 	}
 
 	Release();

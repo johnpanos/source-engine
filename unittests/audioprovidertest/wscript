@@ -16,3 +16,25 @@ def build(bld):
 		source=['test_audio_selection.cpp', '../../engine/audio/device_selection.cpp'],
 		target='audio_provider_conformance', name='audio_provider_conformance',
 		includes=['../../public'], install_path=None)
+	bld.program(
+		features='cxx',
+		source=['test_media_selection.cpp', '../../engine/audio/media_providers.cpp'],
+		target='audio_media_conformance', name='audio_media_conformance',
+		includes=['../../public'], install_path=None)
+	# The client engine is unavailable in the deliberately limited --tests graph.
+	if not bld.env.TESTS and not bld.env.DEDICATED and bld.env.DEST_OS == 'linux':
+		bld.program(
+			features='cxx', source=['test_audio_binding.cpp'],
+			target='audio_binding_conformance', name='audio_binding_conformance',
+			includes=['../../public', '../../public/tier0', '../../public/tier1', '../../common'],
+			use=['engine', 'vaudio_minimp3', 'tier0', 'tier1', 'vstdlib'], install_path=None)
+		bld.program(
+			features='cxx', source=['test_mp3_provider.cpp'],
+			target='mp3_provider_conformance', name='mp3_provider_conformance',
+			includes=['../../public'], use=['vaudio_minimp3'], install_path=None)
+		if bld.env.OPUS:
+			bld.program(
+				features='cxx', source=['test_opus_provider.cpp'],
+				target='opus_provider_conformance', name='opus_provider_conformance',
+				includes=['../../public', '../../public/tier0', '../../public/tier1'],
+				use=['vaudio_opus'], install_path=None)

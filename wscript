@@ -118,6 +118,7 @@ projects={
 		'unittests/tier3test',
 		'unittests/mathlibtest',
 		'unittests/jobsystemtest',
+		'unittests/audioprovidertest',
 		'unittests/appframeworktest',
 		'utils/unittest'
 	],
@@ -688,7 +689,8 @@ def configure(conf):
 		conf.add_subproject(projects['dedicated'])
 	else:
 		if conf.env.SDL3:
-			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest']
+			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest',
+				'unittests/moduleloadfixture', 'unittests/moduleloadshutdownfixture']
 		if conf.env.VIDEO_BINK:
 			projects['game'] += ['video/video_bink']
 		conf.add_subproject(projects['game'])
@@ -720,7 +722,8 @@ def build(bld):
 		bld.add_subproject(projects['dedicated'])
 	else:
 		if bld.env.SDL3:
-			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest']
+			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest',
+				'unittests/moduleloadfixture', 'unittests/moduleloadshutdownfixture']
 		if bld.env.TOGLES:
 			projects['game'] += ['togles']
 		elif bld.env.GL:

@@ -58,13 +58,13 @@
 #include "inputsystem/provider_catalog.h"
 #include "video/provider_catalog.h"
 #include "engine/audio/device_provider.h"
+#include "engine/audio/media_providers.h"
 #include "reslistgenerator.h"
 #include "tier1/fmtstr.h"
 #include "sourcevr/isourcevirtualreality.h"
 
 #define VERSION_SAFE_STEAM_API_INTERFACES
 #include "steam/steam_api.h"
-
 
 #if defined( USE_SDL )
 
@@ -88,10 +88,10 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "render/legacy_shader_provider.h"
+#include "render/builtin_shader_provider.h"
 #include "tier0/memdbgon.h"
 
 #define DEFAULT_HL2_GAMEDIR	"hl2"
-
 
 //-----------------------------------------------------------------------------
 // Modules...
@@ -616,6 +616,33 @@ void ReportDirtyDiskNoMaterialSystem()
 {
 }
 
+static bool BindAudioMediaProviders( IEngineAPI *engine )
+{
+	audio::MediaProviders media;
+	media.mp3 = Audio_MP3Provider();
+#ifdef AUDIO_CODEC_OPUS
+	// Preserve the legacy missing-module fallback and original negotiated quality.
+	// These names do not assert that Opus packets implement CELT/Speex protocols.
+	static const audio::VoiceProtocolBinding voice[] = {
+	    { "vaudio_opus", Audio_OpusVoiceProvider(), 3 },
+	    { "vaudio_celt", Audio_OpusVoiceProvider(), 3 },
+	    { "vaudio_speex", Audio_OpusVoiceProvider(), 4 } };
+	media.localVoiceProtocol = "vaudio_opus";
+	media.voiceBindings = voice;
+	media.voiceBindingCount = ARRAYSIZE( voice );
+#endif
+#ifdef AUDIO_RECORD_AUDIOQUEUE
+	media.recording = VoiceRecord_AudioQueueProvider();
+	media.recordingFallback = VoiceRecord_OpenALProvider();
+#elif defined( AUDIO_RECORD_DIRECTSOUND )
+	media.recording = VoiceRecord_DirectSoundProvider();
+#elif defined( AUDIO_RECORD_SDL )
+	media.recording = VoiceRecord_SDLProvider();
+#elif defined( AUDIO_RECORD_OPENAL )
+	media.recording = VoiceRecord_OpenALProvider();
+#endif
+	return Engine_BindAudioMediaProviders( engine, &media );
+}
 
 // Audio policy belongs to the product root. Waf exports only factories whose
 // implementations are linked into this engine; configuration cannot name a DLL.
@@ -623,22 +650,21 @@ static bool BindAudioProviders( IEngineAPI *engine )
 {
 	const audio::DeviceProvider *catalog[] = {
 #ifdef AUDIO_PROVIDER_SDL
-		Audio_SDLProvider(),
+	    Audio_SDLProvider(),
 #endif
 #ifdef AUDIO_PROVIDER_AUDIOQUEUE
-		Audio_AudioQueueProvider(),
+	    Audio_AudioQueueProvider(),
 #endif
 #ifdef AUDIO_PROVIDER_OPENAL
-		Audio_OpenALProvider(),
+	    Audio_OpenALProvider(),
 #endif
 #ifdef AUDIO_PROVIDER_DIRECTSOUND
-		Audio_DirectSoundProvider(),
+	    Audio_DirectSoundProvider(),
 #endif
 #ifdef AUDIO_PROVIDER_WAVE
-		Audio_WaveProvider(),
+	    Audio_WaveProvider(),
 #endif
-		Audio_NullProvider()
-	};
+	    Audio_NullProvider() };
 	audio::DeviceSelection selection;
 	selection.primary = catalog[0];
 	selection.nullProvider = Audio_NullProvider();
@@ -666,6 +692,7 @@ static bool BindAudioProviders( IEngineAPI *engine )
 		selection.fallback = NULL;
 		selection.waveOnly = NULL;
 		selection.primaryOnRestart = true;
+		selection.allowNullFallback = !Q_stricmp( requested, "null" );
 		for ( unsigned int i = 0; i < ARRAYSIZE( catalog ); ++i )
 		{
 			if ( !Q_stricmp( requested, catalog[i]->id ) )
@@ -703,9 +730,10 @@ bool CSourceAppSystemGroup::Create()
 	const WindowProviderDescriptor *window = WindowProvider_Describe();
 	const char *requestedWindow = CommandLine()->ParmValue( "-window-provider", window->name );
 	if ( Q_stricmp( requestedWindow, window->name ) ||
-		 !AddSystem( window->create(), SDLMGR_INTERFACE_VERSION ) )
+	     !AddSystem( window->create(), SDLMGR_INTERFACE_VERSION ) )
 	{
-		Warning( "Required window provider '%s' is not available in this product.\n", requestedWindow );
+		Warning(
+		    "Required window provider '%s' is not available in this product.\n", requestedWindow );
 		return false;
 	}
 #endif
@@ -714,7 +742,8 @@ bool CSourceAppSystemGroup::Create()
 	const char *requestedInput = CommandLine()->ParmValue( "-input-provider", input->name );
 	if ( Q_stricmp( requestedInput, input->name ) )
 	{
-		Warning( "Required input provider '%s' is not available in this product.\n", requestedInput );
+		Warning(
+		    "Required input provider '%s' is not available in this product.\n", requestedInput );
 		return false;
 	}
 
@@ -743,12 +772,14 @@ bool CSourceAppSystemGroup::Create()
 		}
 		if ( video.count == 0 )
 		{
-			Warning( "Required video provider '%s' is not available in this product.\n", requestedVideo );
+			Warning( "Required video provider '%s' is not available in this product.\n",
+			    requestedVideo );
 			return false;
 		}
 	}
 
-	if ( !BindAudioProviders( Engine_CreateClientAPI() ) )
+	if ( !BindAudioProviders( Engine_CreateClientAPI() ) ||
+	     !BindAudioMediaProviders( Engine_CreateClientAPI() ) )
 		return false;
 
 	if ( !AddSystem( Engine_CreateCvarQuery(), CVAR_QUERY_INTERFACE_VERSION ) ||
@@ -759,7 +790,8 @@ bool CSourceAppSystemGroup::Create()
 	     !AddSystem( StudioDataCache_Create(), STUDIO_DATA_CACHE_INTERFACE_VERSION ) ||
 	     !AddSystem( StudioRender_Create(), STUDIO_RENDER_INTERFACE_VERSION ) ||
 	     !AddSystem( Physics_Create(), VPHYSICS_INTERFACE_VERSION ) ||
-	     !AddSystem( VideoServices_CreateWithProviders( &video ), VIDEO_SERVICES_INTERFACE_VERSION ) ||
+	     !AddSystem(
+	         VideoServices_CreateWithProviders( &video ), VIDEO_SERVICES_INTERFACE_VERSION ) ||
 	     !AddSystem( VGuiSurface_Create(), VGUI_SURFACE_INTERFACE_VERSION ) ||
 	     !AddSystem( VGui_Create(), VGUI_IVGUI_INTERFACE_VERSION ) ||
 	     !AddSystem( Engine_CreateClientAPI(), VENGINE_LAUNCHER_API_VERSION ) )
@@ -843,6 +875,21 @@ bool CSourceAppSystemGroup::Create()
 		return false;
 	}
 
+	const BuiltinShaderProvider *standardShaders = StandardShaderLibrary_Describe();
+	const char *requestedShaders =
+	    CommandLine()->ParmValue( "-shader-provider", standardShaders->id );
+#ifdef _DEBUG
+	requestedShaders = CommandLine()->ParmValue( "-shader", requestedShaders );
+	if ( CommandLine()->FindParm( "-testshaders" ) )
+		requestedShaders = "shader_test";
+#endif
+	if ( !IsBuiltinShaderProviderSelected( standardShaders, requestedShaders ) ||
+	     !MaterialSystem_BindBuiltinShaderProvider( pMaterialSystem, standardShaders ) )
+	{
+		Warning( "Required material shader provider '%s' is not available in this product.\n",
+		    requestedShaders );
+		return false;
+	}
 
 	double elapsed = Plat_FloatTime() - st;
 	COM_TimestampedLog( "LoadAppSystems:  Took %.4f secs to load libraries and get factories.", (float)elapsed );

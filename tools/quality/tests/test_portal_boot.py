@@ -86,6 +86,18 @@ class AcceptanceTests(unittest.TestCase):
                                       loaded=("/libvulkan/cache/libother.so", "/tmp/fakelibSDL3.so")))
 
 
+class ResizeAcceptanceTests(unittest.TestCase):
+    def test_every_resize_needs_consumption_and_nonblank_matching_image(self):
+        expected = ((641, 479), (1024, 768))
+        log = "".join("RFC0001 resize: drawable=%dx%d render=%dx%d buffer=1920x1080\n" % (w, h, w, h) for w, h in expected)
+        images = [{"width": w, "height": h, "has_scene_detail": True} for w, h in expected]
+        self.assertEqual("pass", boot.inspect_resize(log, images, expected)["status"])
+        self.assertEqual("fail", boot.inspect_resize(log, images[:1], expected)["status"])
+        self.assertEqual("fail", boot.inspect_resize("", images, expected)["status"])
+        images[0]["has_scene_detail"] = False
+        self.assertEqual("fail", boot.inspect_resize(log, images, expected)["status"])
+
+
 class ProviderCatalogTests(unittest.TestCase):
     initialized = (
         "RFC0001 input: provider=sdl3\n"
@@ -110,7 +122,7 @@ class ProviderCatalogTests(unittest.TestCase):
 
     def test_even_failed_builtin_discovery_violates_retirement(self):
         for name in ("stdshader_dx9.so", "/runtime/bin/libstdshader_dx9.so", "shaderapidx9.dll",
-                     "video_bink.so", "video_webm.dll", "video_quicktime.dylib"):
+                     "video_bink.so", "video_webm.dll", "video_quicktime.dylib", "vaudio_minimp3.so", "libvaudio_opus.so"):
             bad = self.telemetry.replace("requested=client.so", "requested=" + name).replace("success=1", "success=0")
             with self.subTest(name=name):
                 result = boot.inspect_provider_catalog(self.initialized + bad)

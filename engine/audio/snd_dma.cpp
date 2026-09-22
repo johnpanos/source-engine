@@ -19,6 +19,7 @@
 #include "vstdlib/random.h"
 #include "vstdlib/jobthread.h"
 #include "vaudio/ivaudio.h"
+#include "device_selection.h"
 #include "client.h"
 #include "cl_main.h"
 #include "utldict.h"
@@ -458,9 +459,8 @@ ConVar snd_mix_async( "snd_mix_async", "0" );
 static ConCommand snd_mixvol("snd_mixvol", MXR_DebugSetMixGroupVolume, "Set named Mixgroup to mix volume.");
 #endif
 
-// vaudio DLL
+// Linked MP3 decoder service
 IVAudio *vaudio = NULL;
-CSysModule *g_pVAudioModule = NULL;
 
 //-----------------------------------------------------------------------------
 // Resource loading for sound
@@ -641,18 +641,9 @@ void VAudioInit()
 {
 	if ( IsPC() )
 	{
-		if ( !IsPosix() )
-		{
-			// vaudio_miles.dll will load this...
-			g_pFileSystem->GetLocalCopy( "mss32.dll" );
-		}
-
-		g_pVAudioModule = FileSystem_LoadModule( "vaudio_minimp3" );
-		if ( g_pVAudioModule )
-		{
-			CreateInterfaceFn vaudioFactory = Sys_GetFactory( g_pVAudioModule );
-			vaudio = (IVAudio *)vaudioFactory( VAUDIO_INTERFACE_VERSION, NULL );
-		}
+		vaudio = Engine_CreateMP3Audio();
+		if ( !vaudio )
+			Error( "Required MP3 provider is unavailable.\n" );
 	}
 }
 
@@ -745,8 +736,6 @@ void S_Shutdown(void)
 		// shutdown vaudio
 		if ( vaudio )
 			delete vaudio;
-		FileSystem_UnloadModule( g_pVAudioModule );
-		g_pVAudioModule = NULL;
 		vaudio = NULL;
 	}
 

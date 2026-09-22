@@ -5,6 +5,7 @@
 //=============================================================================
 
 #include "webm_video.h"
+#include "video/provider_catalog.h"
 #include "webm_recorder.h"
 
 
@@ -32,6 +33,10 @@
 static CWebMVideoSubSystem g_WebMSystem;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CWebMVideoSubSystem, IVideoSubSystem, VIDEO_SUBSYSTEM_INTERFACE_VERSION, g_WebMSystem );
 
+DLL_EXPORT IVideoSubSystem *VideoWebM_Create()
+{
+	return &g_WebMSystem;
+}
 
 // ===========================================================================
 // List of file extensions and features supported by this subsystem

@@ -20,7 +20,6 @@
 #include "videosubsystem.h"
 #include "provider_catalog_runtime.h"
 
-
 struct CVideFileoExtInfo_t
 {
 	const char			   *m_pExtension;					// extension including "."
@@ -47,10 +46,6 @@ class CValveVideoServices : public CTier3AppSystem< IVideoServices >
 	public:
 		CValveVideoServices();
 		~CValveVideoServices();
-		bool ConfigureProviders( const VideoProviderCatalog &catalog )
-		{
-			return m_Providers.Configure( catalog );
-		}
 	
 		// Inherited from IAppSystem 
 		virtual bool					Connect( CreateInterfaceFn factory );
@@ -120,83 +115,78 @@ class CValveVideoServices : public CTier3AppSystem< IVideoServices >
 	
 		bool							ConnectVideoLibraries( CreateInterfaceFn factory );
 		bool							DisconnectVideoLibraries();
-		void RefreshVideoLibraries();
 		
 		int								DestroyAllVideoInterfaces();
 
 		int								GetIndexForSystem( VideoSystem_t n );
-		VideoSystem_t					GetSystemForIndex( int n );
-		
-		VideoResult_t					SetResult( VideoResult_t resultCode );
-		
-		const char					   *GetFileExtension( const char *pFileName );
-		
-		
-		static const int				SYSTEM_NOT_FOUND = -1;
-		
-		VideoResult_t					m_LastResult;
-		
-		bool							m_bInitialized;
-		
-		CVideoProviderSet m_Providers;
-		VideoSystem_t					m_VideoSystemType[VideoSystem::VIDEO_SYSTEM_COUNT];
-		VideoSystemFeature_t			m_VideoSystemFeatures[VideoSystem::VIDEO_SYSTEM_COUNT];
-		
-		CUtlVector< VideoFileExtensionInfo_t >	m_ExtInfo;			// info about supported file extensions
-		
-		CUtlVector< CActiveVideoObjectRecord_t > m_RecorderList;
-		CUtlVector< CActiveVideoObjectRecord_t > m_MaterialList;
-		
-		int								m_nMaterialCount;				
-			
-};
+	    VideoSystem_t GetSystemForIndex( int n );
 
+	    VideoResult_t SetResult( VideoResult_t resultCode );
+
+	    const char *GetFileExtension( const char *pFileName );
+
+	    static const int SYSTEM_NOT_FOUND = -1;
+
+	    VideoResult_t m_LastResult;
+
+	    bool m_bInitialized;
+
+	    CVideoProviderSet m_Providers;
+	    VideoSystem_t m_VideoSystemType[VideoSystem::VIDEO_SYSTEM_COUNT];
+	    VideoSystemFeature_t m_VideoSystemFeatures[VideoSystem::VIDEO_SYSTEM_COUNT];
+
+	    CUtlVector<VideoFileExtensionInfo_t> m_ExtInfo; // info about supported file extensions
+
+	    CUtlVector<CActiveVideoObjectRecord_t> m_RecorderList;
+	    CUtlVector<CActiveVideoObjectRecord_t> m_MaterialList;
+
+	    int m_nMaterialCount;
+
+	    void RefreshVideoLibraries();
+	    friend IVideoServices *VideoServices_CreateWithProviders(
+	        const VideoProviderCatalog *catalog );
+};
 
 class CVideoCommonServices : public IVideoCommonServices
 {
-	public:
-	
-		CVideoCommonServices();
-		~CVideoCommonServices();
-	
-	
-		virtual bool			CalculateVideoDimensions( int videoWidth, int videoHeight, int displayWidth, int displayHeight, VideoPlaybackFlags_t playbackFlags, 
-													  int *pOutputWidth, int *pOutputHeight, int *pXOffset, int *pYOffset );
+public:
+	CVideoCommonServices();
+	~CVideoCommonServices();
 
-		virtual	float			GetSystemVolume();
-													  
-		virtual VideoResult_t	InitFullScreenPlaybackInputHandler( VideoPlaybackFlags_t playbackFlags, float forcedMinTime, bool windowed );
-		
-		virtual bool			ProcessFullScreenInput( bool &bAbortEvent, bool &bPauseEvent, bool &bQuitEvent );
-		
-		virtual VideoResult_t	TerminateFullScreenPlaybackInputHandler();
+	virtual bool CalculateVideoDimensions( int videoWidth, int videoHeight, int displayWidth,
+	    int displayHeight, VideoPlaybackFlags_t playbackFlags, int *pOutputWidth,
+	    int *pOutputHeight, int *pXOffset, int *pYOffset );
 
+	virtual float GetSystemVolume();
 
-	private:
-		
-		void					ResetInputHandlerState();
-	
-		bool					m_bInputHandlerInitialized;
-	
-		bool					m_bScanAll;
-		bool					m_bScanEsc;
-		bool					m_bScanReturn;
-		bool					m_bScanSpace;
-		bool					m_bPauseEnabled;
-		bool					m_bAbortEnabled;
-		bool					m_bEscLast;
-		bool					m_bReturnLast;
-		bool					m_bSpaceLast;
-		bool					m_bForceMinPlayTime;
-		
-		bool					m_bWindowed;
-		VideoPlaybackFlags_t	m_playbackFlags;
-		float					m_forcedMinTime;
-		
-		double					m_StartTime;
-		
+	virtual VideoResult_t InitFullScreenPlaybackInputHandler(
+	    VideoPlaybackFlags_t playbackFlags, float forcedMinTime, bool windowed );
 
+	virtual bool ProcessFullScreenInput( bool &bAbortEvent, bool &bPauseEvent, bool &bQuitEvent );
+
+	virtual VideoResult_t TerminateFullScreenPlaybackInputHandler();
+
+private:
+	void ResetInputHandlerState();
+
+	bool m_bInputHandlerInitialized;
+
+	bool m_bScanAll;
+	bool m_bScanEsc;
+	bool m_bScanReturn;
+	bool m_bScanSpace;
+	bool m_bPauseEnabled;
+	bool m_bAbortEnabled;
+	bool m_bEscLast;
+	bool m_bReturnLast;
+	bool m_bSpaceLast;
+	bool m_bForceMinPlayTime;
+
+	bool m_bWindowed;
+	VideoPlaybackFlags_t m_playbackFlags;
+	float m_forcedMinTime;
+
+	double m_StartTime;
 };
-
 
 #endif		// VIDEOSERVICES_H

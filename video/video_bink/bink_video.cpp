@@ -22,7 +22,6 @@
 #include "tier2/tier2.h"
 #include "platform.h"
 
-
 #include "bink_material.h"
 #include "tier0/memdbgon.h"
 
@@ -31,7 +30,6 @@
 // ===========================================================================
 static CBinkVideoSubSystem g_BinkSystem;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CBinkVideoSubSystem, IVideoSubSystem, VIDEO_SUBSYSTEM_INTERFACE_VERSION, g_BinkSystem );
-
 
 DLL_EXPORT IVideoSubSystem *VideoBink_Create()
 {

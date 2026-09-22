@@ -2218,8 +2218,9 @@ public:
     typedef CVideoMode_Common BaseClass;
     
     CVideoMode_MaterialSystem( );
+	void UpdateWindowSize();
 
-    virtual bool        Init( );
+	virtual bool        Init( );
     virtual void        Shutdown( void );
     virtual void        SetGameWindow( void *hWnd );
     virtual bool        SetMode( int nWidth, int nHeight, bool bWindowed );
@@ -2410,6 +2411,57 @@ bool CVideoMode_MaterialSystem::SetMode( int nWidth, int nHeight, bool bWindowed
     return true;
 }
 
+// Native resize changes viewport/configuration before the next frame. The
+// existing resizing mode owns a persistent display-sized backbuffer, so dragging
+// never releases materials or submits an uninitialized replacement buffer.
+void CVideoMode_MaterialSystem::UpdateWindowSize()
+{
+#if defined( USE_SDL3 )
+	if ( !m_bSetModeOnce || !m_bInitialized || !g_pLauncherMgr || InEditMode() ||
+	     UseVR() || ShouldForceVRActive() || m_bVROverride ||
+	     !g_pMaterialSystemConfig->Windowed() || !g_pMaterialSystemConfig->Resizing() )
+		return;
+	uint drawableWidth = 0, drawableHeight = 0;
+	g_pLauncherMgr->DisplayedSize( drawableWidth, drawableHeight );
+	if ( !drawableWidth || !drawableHeight )
+		return;
+	int bufferWidth = 0, bufferHeight = 0;
+	materials->GetBackBufferDimensions( bufferWidth, bufferHeight );
+	if ( bufferWidth <= 0 || bufferHeight <= 0 )
+		return;
+	// Keep the display-sized allocation bounded even if the compositor allows a
+	// window larger than the display. Presentation scales the complete viewport.
+	const double scale = MIN( 1.0,
+	    MIN( double( bufferWidth ) / drawableWidth, double( bufferHeight ) / drawableHeight ) );
+	const int width = MAX( 1, int( drawableWidth * scale ) );
+	const int height = MAX( 1, int( drawableHeight * scale ) );
+	if ( width == GetModeWidth() && height == GetModeHeight() )
+		return;
+
+	const int oldUIWidth = GetModeUIWidth(), oldUIHeight = GetModeUIHeight();
+	RequestedWindowVideoMode().width = width;
+	RequestedWindowVideoMode().height = height;
+	MaterialSystem_Config_t config = *g_pMaterialSystemConfig;
+	config.m_VideoMode.m_Width = width;
+	config.m_VideoMode.m_Height = height;
+	OverrideMaterialSystemConfig( config );
+	ResetCurrentModeForNewResolution( width, height, true );
+	game->SetWindowSize( width, height );
+	MarkClientViewRectDirty();
+	CMatRenderContextPtr context( materials );
+	context->Viewport( 0, 0, width, height );
+	vgui::surface()->OnScreenSizeChanged( oldUIWidth, oldUIHeight );
+	if ( CommandLine()->FindParm( "-resizetelemetry" ) )
+		Msg( "RFC0001 resize: drawable=%ux%u render=%dx%d buffer=%dx%d\n", drawableWidth,
+		    drawableHeight, width, height, bufferWidth, bufferHeight );
+#endif
+}
+
+void VideoMode_UpdateWindowSize()
+{
+	if ( videomode )
+		static_cast<CVideoMode_MaterialSystem *>( videomode )->UpdateWindowSize();
+}
 
 //-----------------------------------------------------------------------------
 // Called by the material system when mode changes after a call to OverrideConfig

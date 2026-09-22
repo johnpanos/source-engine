@@ -15,7 +15,7 @@
 #include "tier0/threadtools.h"
 //#include "tier0/vcrmode.h"
 #include "ivoicerecord.h"
-
+#include "engine/audio/media_providers.h"
 
 #define kNumSecAudioBuffer	1.0f
 
@@ -525,4 +525,11 @@ IVoiceRecord* CreateVoiceRecord_AudioQueue( int sampleRate )
 		g_AudioQueueVoiceRecord.Release();
 		return NULL;
 	}
+}
+
+DLL_EXPORT const audio::VoiceRecordProvider *VoiceRecord_AudioQueueProvider()
+{
+	static const audio::VoiceRecordProvider provider = {
+	    "audioqueue", CreateVoiceRecord_AudioQueue };
+	return &provider;
 }

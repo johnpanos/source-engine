@@ -35,6 +35,7 @@
 //-----------------------------------------------------------------------------
 // forward declarations
 //-----------------------------------------------------------------------------
+struct BuiltinShaderProvider;
 class IMaterialVar;
 class TextureManager_t;
 class ITextureInternal;
@@ -166,7 +167,7 @@ abstract_class IShaderSystemInternal : public IShaderInit, public IShaderSystem
 {
 public:
 	// Initialization, shutdown
-	virtual void		Init() = 0;
+	virtual void Init( const BuiltinShaderProvider *provider ) = 0;
 	virtual void		Shutdown() = 0;
 	virtual void		ModInit() = 0;
 	virtual void		ModShutdown() = 0;

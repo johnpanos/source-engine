@@ -54,7 +54,7 @@
       "library_directory": "lib"
     }
   },
-  "runtime_environment": {"SDL_VIDEO_DRIVER": "wayland", "DXVK_WSI_DRIVER": "SDL3"},
+  "runtime_environment": {"SDL_VIDEO_DRIVER": "wayland", "GDK_BACKEND": "wayland", "DXVK_WSI_DRIVER": "SDL3"},
   "configure_options": {"platform_provider": "sdl3", "render_backend": "vulkan", "build_games": "portal"},
   "required_checks": [
     "tools.quality.tests.test_product_profile",

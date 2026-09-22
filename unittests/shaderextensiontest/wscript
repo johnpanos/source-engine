@@ -19,13 +19,13 @@ def build(bld):
 	includes = ['../../public', '../../public/tier0', '../../public/tier1',
 		'../../materialsystem']
 	bld.program(
-		features='c cxx', env=test_env,
+		features='c cxx', env=test_env.derive(),
 		source=['test_shaderextension_host.cpp',
 			'../../materialsystem/shaderextension_compatibility_host.cpp'],
 		target='shader_extension_conformance', name='shader_extension_conformance',
 		includes=includes, install_path=None)
 	bld.program(
-		features='cxx', env=test_env,
+		features='cxx', env=test_env.derive(),
 		source=['test_material_binding.cpp'],
 		target='material_binding_conformance', name='material_binding_conformance',
 		includes=includes,
@@ -34,19 +34,19 @@ def build(bld):
 		install_path=None)
 	if not bld.env.DEDICATED:
 		bld.program(
-			features='cxx', env=test_env,
+			features='cxx', env=test_env.derive(),
 			source=['test_builtin_shaders.cpp', '../../materialsystem/builtin_shader_catalog.cpp'],
 			target='builtin_shader_conformance', name='builtin_shader_conformance',
 			includes=includes, use=['stdshader_dx9', 'tier1', 'tier0', 'vstdlib'],
 			install_path=None)
 	if bld.env.DXVK:
 		bld.program(
-			features='c cxx', env=test_env,
+			features='c cxx', env=test_env.derive(),
 			source=['test_dxvk_math.cpp', '../../materialsystem/shaderapidx9/dxvk_math.cpp'],
 			target='dxvk_math_conformance', name='dxvk_math_conformance',
 			includes=includes + bld.env.INCLUDES_DXVK, install_path=None)
 		bld.program(
-			features='c cxx', env=test_env,
+			features='c cxx', env=test_env.derive(),
 			source=['test_dxvk_presentation.cpp'],
 			target='dxvk_presentation_conformance', name='dxvk_presentation_conformance',
 			includes=includes + bld.env.INCLUDES_DXVK, use=['DXVK', 'SDL3'],

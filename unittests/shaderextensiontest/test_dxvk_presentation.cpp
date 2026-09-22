@@ -14,6 +14,8 @@ namespace
 {
 int g_Checks;
 bool g_NegativePixelOracle;
+int g_Frames;
+int g_Resizes;
 void Check( bool condition, const char *operation )
 {
 	++g_Checks;
@@ -46,7 +48,8 @@ void Readback( IDirect3DDevice9 &device, UINT width, UINT height, const D3DCOLOR
 		    static_cast<const unsigned char *>( pixels.pBits ) + y * pixels.Pitch );
 		for ( UINT x = 0; x != width; ++x )
 		{
-			D3DCOLOR expected = colors[( y >= height / 2 ? 2 : 0 ) + ( x >= width / 2 ? 1 : 0 )];
+			D3DCOLOR expected =
+			    colors[( y >= ( height + 1 ) / 2 ? 2 : 0 ) + ( x >= ( width + 1 ) / 2 ? 1 : 0 )];
 			if ( g_NegativePixelOracle && x == 0 && y == 0 )
 				expected ^= 1;
 			if ( match && row[x] != expected )
@@ -63,6 +66,7 @@ void Readback( IDirect3DDevice9 &device, UINT width, UINT height, const D3DCOLOR
 	readback->Release();
 	target->Release();
 	Check( SUCCEEDED( device.Present( NULL, NULL, NULL, NULL ) ), "present" );
+	++g_Frames;
 }
 
 void Frame( IDirect3DDevice9 &device, UINT width, UINT height, D3DCOLOR color )
@@ -105,9 +109,11 @@ void SampledFrame( IDirect3DDevice9 &device, UINT width, UINT height )
 	           SUCCEEDED( device.SetPixelShader( pixel ) ) &&
 	           SUCCEEDED( device.SetTexture( 0, texture ) ),
 	    "programmable pipeline binding" );
-	// D3D9 samples integer pixel centers. Move the viewport edges half a pixel so
-	// the point-sampled 2x2 texture covers four exact quadrants, including edges.
-	const float clipOffset[] = { -1.0f / width, 1.0f / height, 0, 0 };
+	// D3D9 samples integer pixel centers. Quarter-pixel alignment keeps every
+	// sample strictly away from the 2x2 texel boundary even at odd dimensions.
+	// UV=(pixel+0.25)/dimension gives an independent ceil(dimension/2) split;
+	// half-pixel alignment would put the odd center exactly on a rounding tie.
+	const float clipOffset[] = { -0.5f / width, 0.5f / height, 0, 0 };
 	Check( SUCCEEDED( device.SetVertexShaderConstantF( 0, clipOffset, 1 ) ),
 	    "vertex constant publication" );
 	Check( SUCCEEDED( device.SetRenderState( D3DRS_CULLMODE, D3DCULL_NONE ) ) &&
@@ -140,16 +146,52 @@ void SampledFrame( IDirect3DDevice9 &device, UINT width, UINT height )
 	           declaration->Release() == 0,
 	    "draw resource release" );
 }
+
+void ResizeStress( SDL_Window *window, IDirect3DDevice9 &device, D3DPRESENT_PARAMETERS &parameters,
+    bool negativeResizeOracle )
+{
+	for ( int step = 0; step != 64; ++step )
+	{
+		// Fixed workload and index identify the first divergence without randomness.
+		// Both odd/even dimensions and changing aspect ratios exercise pixel sizing.
+		const int width = 192 + ( step * 73 ) % 529;
+		const int height = 144 + ( step * 47 ) % 389;
+		std::printf( "resize=%d request=%dx%d\n", g_Resizes, width, height );
+		Check( SDL_SetWindowSize( window, width, height ), "stress resize request" );
+
+		// A native resize is asynchronous. Present the complete prior frame while
+		// the compositor processes the new size; no clear-only frame is submitted.
+		SampledFrame( device, parameters.BackBufferWidth, parameters.BackBufferHeight );
+		Check( SDL_SyncWindow( window ), "stress compositor resize acknowledgment" );
+		SDL_Event event;
+		while ( SDL_PollEvent( &event ) )
+			Check( event.type != SDL_EVENT_QUIT, "stress window remains open" );
+		int logicalWidth = 0, logicalHeight = 0;
+		int drawableWidth = 0, drawableHeight = 0;
+		Check( SDL_GetWindowSize( window, &logicalWidth, &logicalHeight ), "stress logical size" );
+		Check( logicalWidth == width && logicalHeight == height, "requested size converged" );
+		Check( SDL_GetWindowSizeInPixels( window, &drawableWidth, &drawableHeight ),
+		    "stress drawable size" );
+		Check( drawableWidth > 0 && drawableHeight > 0, "nonempty drawable" );
+		parameters.BackBufferWidth = drawableWidth;
+		parameters.BackBufferHeight = drawableHeight;
+		Check( SUCCEEDED( device.Reset( &parameters ) ), "stress swapchain reset" );
+		D3DVIEWPORT9 viewport;
+		Check( SUCCEEDED( device.GetViewport( &viewport ) ) &&
+		           viewport.Width == static_cast<UINT>( drawableWidth ) &&
+		           viewport.Height == static_cast<UINT>( drawableHeight ),
+		    "reset viewport follows drawable pixels" );
+		++g_Resizes;
+		for ( int frame = 0; frame != 3; ++frame )
+		{
+			g_NegativePixelOracle = negativeResizeOracle && step == 2 && frame == 1;
+			SampledFrame( device, drawableWidth, drawableHeight );
+		}
+	}
 }
 
-int main( int argc, char **argv )
+void RunWindow( bool stress, bool negativeResizeOracle )
 {
-	Check( argc == 1 || ( argc == 2 && std::strcmp( argv[1], "--negative-pixel-oracle" ) == 0 ),
-	    "known test arguments" );
-	g_NegativePixelOracle = argc == 2;
-	Check( SDL_Init( SDL_INIT_VIDEO ), "SDL video initialization" );
-	const char *driver = SDL_GetCurrentVideoDriver();
-	Check( driver && std::strcmp( driver, "wayland" ) == 0, "native Wayland driver" );
 	SDL_Window *window = SDL_CreateWindow(
 	    "Source Vulkan conformance", 320, 240, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE );
 	Check( window != NULL, "Vulkan-capable SDL3 window" );
@@ -158,13 +200,18 @@ int main( int argc, char **argv )
 	D3DADAPTER_IDENTIFIER9 adapter;
 	Check( SUCCEEDED( d3d->GetAdapterIdentifier( D3DADAPTER_DEFAULT, 0, &adapter ) ),
 	    "adapter identity" );
-	std::printf( "driver=%s adapter=%s vendor=%04x device=%04x\n", driver, adapter.Description,
-	    adapter.VendorId, adapter.DeviceId );
+	std::printf( "driver=%s adapter=%s vendor=%04x device=%04x\n", SDL_GetCurrentVideoDriver(),
+	    adapter.Description, adapter.VendorId, adapter.DeviceId );
 	Check( adapter.VendorId != 0x10005 && !std::strstr( adapter.Description, "llvmpipe" ),
 	    "hardware Vulkan adapter" );
+	Check( SDL_SyncWindow( window ), "initial compositor acknowledgment" );
+	int drawableWidth = 0, drawableHeight = 0;
+	Check( SDL_GetWindowSizeInPixels( window, &drawableWidth, &drawableHeight ) &&
+	           drawableWidth > 0 && drawableHeight > 0,
+	    "initial drawable dimensions" );
 	D3DPRESENT_PARAMETERS parameters = {};
-	parameters.BackBufferWidth = 320;
-	parameters.BackBufferHeight = 240;
+	parameters.BackBufferWidth = drawableWidth;
+	parameters.BackBufferHeight = drawableHeight;
 	parameters.BackBufferFormat = D3DFMT_A8R8G8B8;
 	parameters.BackBufferCount = 1;
 	parameters.SwapEffect = D3DSWAPEFFECT_DISCARD;
@@ -177,19 +224,50 @@ int main( int argc, char **argv )
 	           &device ) ) &&
 	           device,
 	    "native device" );
-	Frame( *device, 320, 240, D3DCOLOR_XRGB( 37, 83, 149 ) );
-	SampledFrame( *device, 320, 240 );
-	Check( SDL_SetWindowSize( window, 400, 300 ), "window resize" );
-	Check( SDL_SyncWindow( window ), "compositor resize acknowledgment" );
-	parameters.BackBufferWidth = 400;
-	parameters.BackBufferHeight = 300;
-	Check( SUCCEEDED( device->Reset( &parameters ) ), "swapchain reset" );
-	Frame( *device, 400, 300, D3DCOLOR_XRGB( 173, 59, 101 ) );
-	SampledFrame( *device, 400, 300 );
+	Frame( *device, drawableWidth, drawableHeight, D3DCOLOR_XRGB( 37, 83, 149 ) );
+	SampledFrame( *device, drawableWidth, drawableHeight );
+	if ( stress )
+	{
+		ResizeStress( window, *device, parameters, negativeResizeOracle );
+	}
+	else
+	{
+		Check( SDL_SetWindowSize( window, 400, 300 ), "window resize" );
+		Check( SDL_SyncWindow( window ), "compositor resize acknowledgment" );
+		Check( SDL_GetWindowSizeInPixels( window, &drawableWidth, &drawableHeight ) &&
+		           drawableWidth > 0 && drawableHeight > 0,
+		    "resized drawable dimensions" );
+		parameters.BackBufferWidth = drawableWidth;
+		parameters.BackBufferHeight = drawableHeight;
+		Check( SUCCEEDED( device->Reset( &parameters ) ), "swapchain reset" );
+		Frame( *device, drawableWidth, drawableHeight, D3DCOLOR_XRGB( 173, 59, 101 ) );
+		SampledFrame( *device, drawableWidth, drawableHeight );
+	}
 	Check( device->Release() == 0, "device release" );
 	Check( d3d->Release() == 0, "provider release" );
 	SDL_DestroyWindow( window );
+}
+}
+
+int main( int argc, char **argv )
+{
+	const bool negative = argc == 2 && std::strcmp( argv[1], "--negative-pixel-oracle" ) == 0;
+	const bool stress = argc == 2 && std::strcmp( argv[1], "--resize-stress" ) == 0;
+	const bool negativeResize =
+	    argc == 2 && std::strcmp( argv[1], "--negative-resize-pixel-oracle" ) == 0;
+	Check( argc == 1 || negative || stress || negativeResize, "known test arguments" );
+	g_NegativePixelOracle = negative;
+	Check( SDL_Init( SDL_INIT_VIDEO ), "SDL video initialization" );
+	const char *driver = SDL_GetCurrentVideoDriver();
+	Check( driver && std::strcmp( driver, "wayland" ) == 0, "native Wayland driver" );
+	const Uint64 started = SDL_GetTicks();
+	const int lifetimes = stress || negativeResize ? 2 : 1;
+	for ( int lifetime = 0; lifetime != lifetimes; ++lifetime )
+		RunWindow( stress || negativeResize, negativeResize );
+	const Uint64 elapsed = SDL_GetTicks() - started;
 	SDL_Quit();
+	std::printf( "PRESENTATION lifetimes=%d resizes=%d frames=%d elapsed_ms=%llu\n", lifetimes,
+	    g_Resizes, g_Frames, static_cast<unsigned long long>( elapsed ) );
 	std::printf( "CHECKS %d\n", g_Checks );
 	return 0;
 }

@@ -167,14 +167,14 @@
       "fingerprint": "4eb391c7f2266b4b1ee6",
       "rule": "ARCH105",
       "path": "datacache/datacache.cpp",
-      "line": 980,
+      "line": 984,
       "excerpt": "bool CDataCache::Connect( CreateInterfaceFn factory )"
     },
     {
       "fingerprint": "967f4087793b3ed60fb7",
       "rule": "ARCH105",
       "path": "datacache/datacache.cpp",
-      "line": 1020,
+      "line": 1024,
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactoryThis(); // This silly construction is necessary"
     },
     {
@@ -195,7 +195,7 @@
       "fingerprint": "3daa9ce7d17a53c736c4",
       "rule": "ARCH105",
       "path": "datacache/mdlcache.cpp",
-      "line": 571,
+      "line": 580,
       "excerpt": "bool CMDLCache::Connect( CreateInterfaceFn factory )"
     },
     {
@@ -374,41 +374,6 @@
       "excerpt": "bool CDmSerializers::Connect( CreateInterfaceFn factory )"
     },
     {
-      "fingerprint": "2e6e86addd454e220913",
-      "rule": "ARCH102",
-      "path": "engine/audio/snd_dma.cpp",
-      "line": 670,
-      "excerpt": "CreateInterfaceFn vaudioFactory = Sys_GetFactory( g_pVAudioModule );"
-    },
-    {
-      "fingerprint": "f5fd33829c1e1ee701fe",
-      "rule": "ARCH105",
-      "path": "engine/audio/snd_dma.cpp",
-      "line": 670,
-      "excerpt": "CreateInterfaceFn vaudioFactory = Sys_GetFactory( g_pVAudioModule );"
-    },
-    {
-      "fingerprint": "afca8d657a9755f34298",
-      "rule": "ARCH105",
-      "path": "engine/audio/voice.cpp",
-      "line": 674,
-      "excerpt": "CreateInterfaceFn createCodecFn = NULL;"
-    },
-    {
-      "fingerprint": "93e2e7ee14d6ee229293",
-      "rule": "ARCH102",
-      "path": "engine/audio/voice.cpp",
-      "line": 677,
-      "excerpt": "if( !g_hVoiceCodecDLL || (createCodecFn = Sys_GetFactory(g_hVoiceCodecDLL)) == NULL )"
-    },
-    {
-      "fingerprint": "4b01add84c511ef5a0c5",
-      "rule": "ARCH102",
-      "path": "engine/audio/voice.cpp",
-      "line": 683,
-      "excerpt": "if ( !g_hVoiceCodecDLL || (createCodecFn = Sys_GetFactory(g_hVoiceCodecDLL)) == NULL ||"
-    },
-    {
       "fingerprint": "7c098fca8cba6a0105ea",
       "rule": "ARCH103",
       "path": "engine/bugreporter.cpp",
@@ -461,14 +426,14 @@
       "fingerprint": "6d94f240ba6b31a38f66",
       "rule": "ARCH102",
       "path": "engine/buildcubemaps.cpp",
-      "line": 1070,
+      "line": 1061,
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( pModule );"
     },
     {
       "fingerprint": "c0d4e7cccd96427dcc3f",
       "rule": "ARCH105",
       "path": "engine/buildcubemaps.cpp",
-      "line": 1070,
+      "line": 1061,
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( pModule );"
     },
     {
@@ -482,28 +447,28 @@
       "fingerprint": "e2f12a003c0a0986c83e",
       "rule": "ARCH105",
       "path": "engine/cdll_engine_int.cpp",
-      "line": 1705,
+      "line": 1700,
       "excerpt": "CreateInterfaceFn ClientDLL_GetFactory( void )"
     },
     {
       "fingerprint": "6f032691daff1d7dfb3b",
       "rule": "ARCH103",
       "path": "engine/cdll_engine_int.cpp",
-      "line": 1727,
+      "line": 1722,
       "excerpt": "g_ClientDLLModule = Sys_LoadModuleFromFileSystem("
     },
     {
       "fingerprint": "e2afebc5837630cf31f1",
       "rule": "ARCH102",
       "path": "engine/cdll_engine_int.cpp",
-      "line": 1731,
+      "line": 1726,
       "excerpt": "g_ClientFactory = Sys_GetFactory( g_ClientDLLModule );"
     },
     {
       "fingerprint": "dace001104627a1e2c3e",
       "rule": "ARCH105",
       "path": "engine/cdll_engine_int.cpp",
-      "line": 1883,
+      "line": 1878,
       "excerpt": "extern CreateInterfaceFn g_fnReplayFactory;"
     },
     {
@@ -671,49 +636,49 @@
       "fingerprint": "1c580f8c2fb624e373f2",
       "rule": "ARCH103",
       "path": "engine/sv_plugin.cpp",
-      "line": 99,
+      "line": 96,
       "excerpt": "m_pPluginModule = Sys_LoadModuleFromFileSystem("
     },
     {
       "fingerprint": "d8fa5b308d9b97c24837",
       "rule": "ARCH102",
       "path": "engine/sv_plugin.cpp",
-      "line": 103,
+      "line": 100,
       "excerpt": "CreateInterfaceFn pluginFactory = Sys_GetFactory( m_pPluginModule );"
     },
     {
       "fingerprint": "c6145965cf1d4e9e7df3",
       "rule": "ARCH105",
       "path": "engine/sv_plugin.cpp",
-      "line": 103,
+      "line": 100,
       "excerpt": "CreateInterfaceFn pluginFactory = Sys_GetFactory( m_pPluginModule );"
     },
     {
       "fingerprint": "c3d0fa810f760f5832bd",
       "rule": "ARCH102",
       "path": "engine/sv_plugin.cpp",
-      "line": 125,
+      "line": 122,
       "excerpt": "CreateInterfaceFn gameServerFactory = Sys_GetFactory( g_GameDLL );"
     },
     {
       "fingerprint": "b7bcb00ef0dccbc0c421",
       "rule": "ARCH105",
       "path": "engine/sv_plugin.cpp",
-      "line": 125,
+      "line": 122,
       "excerpt": "CreateInterfaceFn gameServerFactory = Sys_GetFactory( g_GameDLL );"
     },
     {
       "fingerprint": "de88ce4b5a32d3e0cc37",
       "rule": "ARCH102",
       "path": "engine/sv_plugin.cpp",
-      "line": 263,
+      "line": 257,
       "excerpt": "CreateInterfaceFn gameServerFactory = Sys_GetFactory( g_GameDLL );"
     },
     {
       "fingerprint": "ac0e6f3269e295ff072d",
       "rule": "ARCH105",
       "path": "engine/sv_plugin.cpp",
-      "line": 263,
+      "line": 257,
       "excerpt": "CreateInterfaceFn gameServerFactory = Sys_GetFactory( g_GameDLL );"
     },
     {
@@ -727,35 +692,35 @@
       "fingerprint": "accee7e28ea4dce3f902",
       "rule": "ARCH105",
       "path": "engine/sys_dll.cpp",
-      "line": 982,
+      "line": 977,
       "excerpt": "CreateInterfaceFn g_GameSystemFactory = GameFactory;"
     },
     {
       "fingerprint": "27846638ede18ffc0134",
       "rule": "ARCH105",
       "path": "engine/sys_dll.cpp",
-      "line": 993,
+      "line": 988,
       "excerpt": "int Sys_InitGame( CreateInterfaceFn appSystemFactory, const char* pBaseDir, void *pwnd, int bIsDedicated )"
     },
     {
       "fingerprint": "736b0503e3f6386f13a4",
       "rule": "ARCH105",
       "path": "engine/sys_dll.cpp",
-      "line": 1107,
+      "line": 1102,
       "excerpt": "CreateInterfaceFn g_ServerFactory;"
     },
     {
       "fingerprint": "3f11385849c91143e5dd",
       "rule": "ARCH103",
       "path": "engine/sys_dll.cpp",
-      "line": 1125,
+      "line": 1120,
       "excerpt": "if ((pDLL = Sys_LoadModuleFromFileSystem("
     },
     {
       "fingerprint": "3e233648c30be0d2bf4d",
       "rule": "ARCH102",
       "path": "engine/sys_dll.cpp",
-      "line": 1134,
+      "line": 1129,
       "excerpt": "g_ServerFactory = Sys_GetFactory( pDLL );"
     },
     {
@@ -783,70 +748,70 @@
       "fingerprint": "bb99775ed36f9e177149",
       "rule": "ARCH105",
       "path": "engine/sys_dll2.cpp",
-      "line": 107,
+      "line": 110,
       "excerpt": "extern CreateInterfaceFn g_AppSystemFactory;"
     },
     {
       "fingerprint": "4269bb415ebbc8aa4fa8",
       "rule": "ARCH105",
       "path": "engine/sys_dll2.cpp",
-      "line": 116,
+      "line": 119,
       "excerpt": "extern CreateInterfaceFn g_ClientFactory;"
     },
     {
       "fingerprint": "adf9bde5735e0bb5dcf9",
       "rule": "ARCH105",
       "path": "engine/sys_dll2.cpp",
-      "line": 150,
+      "line": 153,
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactoryThis(); // This silly construction is necessary to prevent the LTCG compiler from crashing."
     },
     {
       "fingerprint": "d696191933abc5ef29d3",
       "rule": "ARCH105",
       "path": "engine/sys_dll2.cpp",
-      "line": 209,
+      "line": 212,
       "excerpt": "CreateInterfaceFn GetFactory()"
     },
     {
       "fingerprint": "62b8da6bf2b4d3a0cffa",
       "rule": "ARCH105",
       "path": "engine/sys_dll2.cpp",
-      "line": 916,
+      "line": 919,
       "excerpt": "virtual bool Connect( CreateInterfaceFn factory );"
     },
     {
       "fingerprint": "139dbd028e218437e82f",
       "rule": "ARCH105",
       "path": "engine/sys_dll2.cpp",
-      "line": 998,
+      "line": 1092,
       "excerpt": "bool CEngineAPI::Connect( CreateInterfaceFn factory )"
     },
     {
       "fingerprint": "b747d38a1f13229eafa5",
       "rule": "ARCH105",
       "path": "engine/sys_dll2.cpp",
-      "line": 1067,
+      "line": 1170,
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactoryThis(); // This silly construction is necessary"
     },
     {
       "fingerprint": "efbf1e57af9a7b20b671",
       "rule": "ARCH105",
       "path": "engine/sys_dll2.cpp",
-      "line": 2138,
+      "line": 2237,
       "excerpt": "virtual bool Connect( CreateInterfaceFn factory );"
     },
     {
       "fingerprint": "aa877c3387371e700459",
       "rule": "ARCH105",
       "path": "engine/sys_dll2.cpp",
-      "line": 2267,
+      "line": 2373,
       "excerpt": "bool CDedicatedServerAPI::Connect( CreateInterfaceFn factory )"
     },
     {
       "fingerprint": "33ce6a7ad5cbc0f3760b",
       "rule": "ARCH105",
       "path": "engine/sys_dll2.cpp",
-      "line": 2339,
+      "line": 2445,
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactoryThis(); // This silly construction is necessary"
     },
     {
@@ -860,21 +825,21 @@
       "fingerprint": "5e994d8777b1e8a11199",
       "rule": "ARCH101",
       "path": "engine/sys_mainwind.cpp",
-      "line": 1366,
+      "line": 1368,
       "excerpt": "m_hUnicodeModule = Sys_LoadModule( \"unicode\" );"
     },
     {
       "fingerprint": "300fb3a46f6cc9548285",
       "rule": "ARCH102",
       "path": "engine/sys_mainwind.cpp",
-      "line": 1373,
+      "line": 1375,
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( m_hUnicodeModule );"
     },
     {
       "fingerprint": "19102b1772de5ff1dd19",
       "rule": "ARCH105",
       "path": "engine/sys_mainwind.cpp",
-      "line": 1373,
+      "line": 1375,
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( m_hUnicodeModule );"
     },
     {
@@ -1322,21 +1287,21 @@
       "fingerprint": "de889cb88fa0cf21d84a",
       "rule": "ARCH101",
       "path": "filesystem/basefilesystem.cpp",
-      "line": 5022,
+      "line": 4810,
       "excerpt": "pModule = Sys_LoadModule( tempPathID );"
     },
     {
       "fingerprint": "3fe8356e72efadeba9cd",
       "rule": "ARCH101",
       "path": "filesystem/basefilesystem.cpp",
-      "line": 5031,
+      "line": 4819,
       "excerpt": "pModule = Sys_LoadModule( tempPathID );"
     },
     {
       "fingerprint": "7c1d13e5742dfb89da24",
       "rule": "ARCH101",
       "path": "filesystem/basefilesystem.cpp",
-      "line": 5039,
+      "line": 4827,
       "excerpt": "pModule = Sys_LoadModule( pFileName );"
     },
     {
@@ -1420,7 +1385,7 @@
       "fingerprint": "1ad39da649daaace441c",
       "rule": "ARCH105",
       "path": "game/client/cdll_client_int.cpp",
-      "line": 1093,
+      "line": 1091,
       "excerpt": "bool CHLClient::ReplayInit( CreateInterfaceFn fnReplayFactory )"
     },
     {
@@ -1574,7 +1539,7 @@
       "fingerprint": "ce2c8bd5a8160ebb0d1b",
       "rule": "ARCH105",
       "path": "game/server/gameinterface.cpp",
-      "line": 803,
+      "line": 801,
       "excerpt": "bool CServerGameDLL::ReplayInit( CreateInterfaceFn fnReplayFactory )"
     },
     {
@@ -1672,7 +1637,7 @@
       "fingerprint": "87e0040207c4288b6a92",
       "rule": "ARCH105",
       "path": "gameui/GameUI_Interface.cpp",
-      "line": 356,
+      "line": 350,
       "excerpt": "void CGameUI::Connect( CreateInterfaceFn gameFactory )"
     },
     {
@@ -1707,63 +1672,63 @@
       "fingerprint": "0bcebdec625fb2eff9e2",
       "rule": "ARCH105",
       "path": "gameui/VGuiSystemModuleLoader.cpp",
-      "line": 97,
+      "line": 93,
       "excerpt": "CreateInterfaceFn *moduleFactories = (CreateInterfaceFn *)_alloca(sizeof(CreateInterfaceFn) * m_Modules.Count());"
     },
     {
       "fingerprint": "5d540ecf8cf8f152728c",
       "rule": "ARCH105",
       "path": "gameui/VGuiSystemModuleLoader.cpp",
-      "line": 97,
+      "line": 93,
       "excerpt": "CreateInterfaceFn *moduleFactories = (CreateInterfaceFn *)_alloca(sizeof(CreateInterfaceFn) * m_Modules.Count());"
     },
     {
       "fingerprint": "e99446297ca0438be4e2",
       "rule": "ARCH105",
       "path": "gameui/VGuiSystemModuleLoader.cpp",
-      "line": 97,
+      "line": 93,
       "excerpt": "CreateInterfaceFn *moduleFactories = (CreateInterfaceFn *)_alloca(sizeof(CreateInterfaceFn) * m_Modules.Count());"
     },
     {
       "fingerprint": "e9843961726610fa7d0a",
       "rule": "ARCH102",
       "path": "gameui/VGuiSystemModuleLoader.cpp",
-      "line": 100,
+      "line": 96,
       "excerpt": "moduleFactories[i] = Sys_GetFactory(m_Modules[i].module);"
     },
     {
       "fingerprint": "0ef3fe0e41a974d32772",
       "rule": "ARCH105",
       "path": "gameui/VGuiSystemModuleLoader.cpp",
-      "line": 126,
+      "line": 122,
       "excerpt": "bool CVGuiSystemModuleLoader::LoadPlatformModules(CreateInterfaceFn *factorylist, int factorycount, bool useSteamModules)"
     },
     {
       "fingerprint": "a749d63f26c2e0322823",
       "rule": "ARCH103",
       "path": "gameui/VGuiSystemModuleLoader.cpp",
-      "line": 175,
+      "line": 167,
       "excerpt": "CSysModule *mod = Sys_LoadModuleFromFileSystem("
     },
     {
       "fingerprint": "d7e2d91bda13f5768169",
       "rule": "ARCH102",
       "path": "gameui/VGuiSystemModuleLoader.cpp",
-      "line": 185,
+      "line": 177,
       "excerpt": "IVGuiModule *moduleInterface = (IVGuiModule *)Sys_GetFactory(mod)(pchInterface, NULL);"
     },
     {
       "fingerprint": "774eb341c588d28a9684",
       "rule": "ARCH105",
       "path": "gameui/VGuiSystemModuleLoader.cpp",
-      "line": 353,
+      "line": 341,
       "excerpt": "CreateInterfaceFn CVGuiSystemModuleLoader::GetModuleFactory(int moduleIndex)"
     },
     {
       "fingerprint": "44487938402a9cd96a45",
       "rule": "ARCH102",
       "path": "gameui/VGuiSystemModuleLoader.cpp",
-      "line": 355,
+      "line": 343,
       "excerpt": "return Sys_GetFactory(m_Modules[moduleIndex].module);"
     },
     {
@@ -1875,21 +1840,21 @@
       "fingerprint": "b361a5e703c9fda1622b",
       "rule": "ARCH101",
       "path": "inputsystem/inputsystem.cpp",
-      "line": 183,
+      "line": 200,
       "excerpt": "m_pNovintDLL = Sys_LoadModule( \"haptics.dll\" );"
     },
     {
       "fingerprint": "f2ef98d951ce0e11ad25",
       "rule": "ARCH101",
       "path": "inputsystem/inputsystem.cpp",
-      "line": 204,
+      "line": 221,
       "excerpt": "CSysModule *m_pRawInputDLL = Sys_LoadModule( \"USER32.dll\" );"
     },
     {
       "fingerprint": "f2f3c283d3a33549009e",
       "rule": "ARCH105",
       "path": "inputsystem/inputsystem.cpp",
-      "line": 218,
+      "line": 236,
       "excerpt": "bool CInputSystem::Connect( CreateInterfaceFn factory )"
     },
     {
@@ -1903,7 +1868,7 @@
       "fingerprint": "c532087de78ebf6eb55c",
       "rule": "ARCH105",
       "path": "launcher/launcher.cpp",
-      "line": 753,
+      "line": 906,
       "excerpt": "CreateInterfaceFn factory = GetFactory();"
     },
     {
@@ -1917,119 +1882,119 @@
       "fingerprint": "b8ba6dd9aae16914a2f7",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 66,
+      "line": 67,
       "excerpt": "CreateInterfaceFn g_fnMatSystemConnectCreateInterface = NULL;"
     },
     {
       "fingerprint": "59f032ff69f21a08e848",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 608,
+      "line": 628,
       "excerpt": "CreateInterfaceFn CMaterialSystem::CreateShaderAPI( const char *name )"
     },
     {
       "fingerprint": "5a985b811d6b10f9e56e",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 640,
+      "line": 673,
       "excerpt": "bool CMaterialSystem::Connect( CreateInterfaceFn factory )"
     },
     {
       "fingerprint": "1610cb6fbb26c28faea8",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 747,
+      "line": 802,
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactoryThis(); // This silly construction is necessary"
     },
     {
       "fingerprint": "1a391626f2ae3de23de2",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 866,
+      "line": 917,
       "excerpt": "static CreateInterfaceFn s_TempCVarFactory;"
     },
     {
       "fingerprint": "1d98a574afb1329c6f6b",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 867,
+      "line": 918,
       "excerpt": "static CreateInterfaceFn s_TempFileSystemFactory;"
     },
     {
       "fingerprint": "52e03787f7be4f80971f",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 891,
+      "line": 942,
       "excerpt": "CreateInterfaceFn CMaterialSystem::Init( char const* pShaderAPIDLL,"
     },
     {
       "fingerprint": "88dfd8e68615cad36bbd",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 893,
+      "line": 944,
       "excerpt": "CreateInterfaceFn fileSystemFactory,"
     },
     {
       "fingerprint": "3fcb92c0113b1109bb8a",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 894,
+      "line": 945,
       "excerpt": "CreateInterfaceFn cvarFactory )"
     },
     {
       "fingerprint": "bcbf41dd6ae5f77e7573",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 1421,
+      "line": 1467,
       "excerpt": "void CMaterialSystem::RestoreShaderObjects( CreateInterfaceFn shaderFactory, int nChangeFlags )"
     },
     {
       "fingerprint": "5b9ee433c1167ca47efa",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.h",
-      "line": 71,
+      "line": 73,
       "excerpt": "virtual bool Connect( CreateInterfaceFn factory );"
     },
     {
       "fingerprint": "3466d44d677d4810edcb",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.h",
-      "line": 77,
+      "line": 79,
       "excerpt": "CreateInterfaceFn Init( const char* pShaderDLL,"
     },
     {
       "fingerprint": "ca55077c73b350128c5b",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.h",
-      "line": 79,
+      "line": 81,
       "excerpt": "CreateInterfaceFn fileSystemFactory,"
     },
     {
       "fingerprint": "79d1ed40aeeaeb66b7c4",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.h",
-      "line": 80,
+      "line": 82,
       "excerpt": "CreateInterfaceFn cvarFactory );"
     },
     {
       "fingerprint": "423e6b06db9affd7d1c6",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.h",
-      "line": 94,
+      "line": 98,
       "excerpt": "CreateInterfaceFn CreateShaderAPI( const char* pShaderDLL );"
     },
     {
       "fingerprint": "31bc892275dd0d5ae6fc",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.h",
-      "line": 268,
+      "line": 273,
       "excerpt": "void RestoreShaderObjects( CreateInterfaceFn shaderFactory, int nChangeFlags = 0 );"
     },
     {
       "fingerprint": "aa0bde02f0b7d9f149d9",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.h",
-      "line": 618,
+      "line": 626,
       "excerpt": "CreateInterfaceFn m_ShaderAPIFactory;"
     },
     {
@@ -2155,14 +2120,14 @@
       "fingerprint": "3d6d0e9e9be83e95d2f2",
       "rule": "ARCH105",
       "path": "materialsystem/shaderapidx9/shaderdevicedx8.cpp",
-      "line": 131,
+      "line": 134,
       "excerpt": "bool CShaderDeviceMgrDx8::Connect( CreateInterfaceFn factory )"
     },
     {
       "fingerprint": "73331dc3d44f4282d644",
       "rule": "ARCH105",
       "path": "materialsystem/shaderapidx9/shaderdevicedx8.cpp",
-      "line": 1336,
+      "line": 1339,
       "excerpt": "CreateInterfaceFn CShaderDeviceMgrDx8::SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode )"
     },
     {
@@ -2183,42 +2148,42 @@
       "fingerprint": "6396589dda77ad52fc78",
       "rule": "ARCH101",
       "path": "materialsystem/shaderapidx9/vertexshaderdx8.cpp",
-      "line": 906,
+      "line": 908,
       "excerpt": "m_pShaderCompiler30 = Sys_LoadModule( \"d3dx9d_33.dll\" );"
     },
     {
       "fingerprint": "c53f22f558727dd21ba2",
       "rule": "ARCH101",
       "path": "materialsystem/shaderapidx9/vertexshaderdx8.cpp",
-      "line": 910,
+      "line": 912,
       "excerpt": "m_pShaderCompiler30 = Sys_LoadModule( \"d3dx9_33.dll\" );"
     },
     {
       "fingerprint": "dc04b804159388a59ddb",
       "rule": "ARCH105",
       "path": "materialsystem/shaderapiempty/shaderapiempty.cpp",
-      "line": 340,
+      "line": 341,
       "excerpt": "virtual bool Connect( CreateInterfaceFn factory );"
     },
     {
       "fingerprint": "9bc62a1453e9b0393f9d",
       "rule": "ARCH105",
       "path": "materialsystem/shaderapiempty/shaderapiempty.cpp",
-      "line": 355,
+      "line": 356,
       "excerpt": "virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode );"
     },
     {
       "fingerprint": "df17dc9f10ca8274d936",
       "rule": "ARCH105",
       "path": "materialsystem/shaderapiempty/shaderapiempty.cpp",
-      "line": 1305,
+      "line": 1339,
       "excerpt": "bool CShaderDeviceMgrEmpty::Connect( CreateInterfaceFn factory )"
     },
     {
       "fingerprint": "b42f4ad54fbd79687f96",
       "rule": "ARCH105",
       "path": "materialsystem/shaderapiempty/shaderapiempty.cpp",
-      "line": 1344,
+      "line": 1378,
       "excerpt": "CreateInterfaceFn CShaderDeviceMgrEmpty::SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode )"
     },
     {
@@ -2246,35 +2211,35 @@
       "fingerprint": "e4f42d54ce7ccbe319ca",
       "rule": "ARCH105",
       "path": "materialsystem/shaderlib/ShaderDLL.cpp",
-      "line": 31,
+      "line": 32,
       "excerpt": "virtual bool Connect( CreateInterfaceFn factory );"
     },
     {
       "fingerprint": "cc10aa57f8b992143f01",
       "rule": "ARCH105",
       "path": "materialsystem/shaderlib/ShaderDLL.cpp",
-      "line": 37,
+      "line": 38,
       "excerpt": "virtual bool Connect( CreateInterfaceFn factory, bool bIsMaterialSystem );"
     },
     {
       "fingerprint": "090a457f9b9b403cd294",
       "rule": "ARCH105",
       "path": "materialsystem/shaderlib/ShaderDLL.cpp",
-      "line": 105,
+      "line": 147,
       "excerpt": "bool CShaderDLL::Connect( CreateInterfaceFn factory, bool bIsMaterialSystem )"
     },
     {
       "fingerprint": "69e78ea8aecadf753903",
       "rule": "ARCH105",
       "path": "materialsystem/shaderlib/ShaderDLL.cpp",
-      "line": 133,
+      "line": 175,
       "excerpt": "bool CShaderDLL::Connect( CreateInterfaceFn factory )"
     },
     {
       "fingerprint": "8e996defd95c814242c5",
       "rule": "ARCH105",
       "path": "materialsystem/shaderlib/shaderlib_cvar.cpp",
-      "line": 36,
+      "line": 37,
       "excerpt": "void InitShaderLibCVars( CreateInterfaceFn cvarFactory )"
     },
     {
@@ -2283,27 +2248,6 @@
       "path": "materialsystem/shaderlib/shaderlib_cvar.h",
       "line": 17,
       "excerpt": "void InitShaderLibCVars( CreateInterfaceFn cvarFactory );"
-    },
-    {
-      "fingerprint": "9187c916adbb70eb6089",
-      "rule": "ARCH102",
-      "path": "materialsystem/shadersystem.cpp",
-      "line": 510,
-      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( hInstance );"
-    },
-    {
-      "fingerprint": "e65ed555035dd4fef762",
-      "rule": "ARCH105",
-      "path": "materialsystem/shadersystem.cpp",
-      "line": 510,
-      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( hInstance );"
-    },
-    {
-      "fingerprint": "44b1d2209e1b1028dff2",
-      "rule": "ARCH103",
-      "path": "materialsystem/shadersystem.cpp",
-      "line": 513,
-      "excerpt": "hInstance = Sys_LoadModuleFromFileSystem( g_pFullFileSystem, pFullPath, pPathID, true );"
     },
     {
       "fingerprint": "0f3500909f016c386043",
@@ -3212,14 +3156,14 @@
       "fingerprint": "606a9f40b37576a96c5b",
       "rule": "ARCH105",
       "path": "studiorender/studiorendercontext.cpp",
-      "line": 92,
+      "line": 96,
       "excerpt": "bool CStudioRenderContext::Connect( CreateInterfaceFn factory )"
     },
     {
       "fingerprint": "15552ecda677c80759df",
       "rule": "ARCH105",
       "path": "studiorender/studiorendercontext.cpp",
-      "line": 119,
+      "line": 123,
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactoryThis(); // This silly construction is necessary"
     },
     {
@@ -3233,147 +3177,147 @@
       "fingerprint": "5435e8c65a13286115d0",
       "rule": "ARCH101",
       "path": "tier1/interface.cpp",
-      "line": 362,
+      "line": 353,
       "excerpt": "CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NOFLAGS (0) */ )"
     },
     {
       "fingerprint": "0ef22b504eb4df11ee2b",
       "rule": "ARCH102",
       "path": "tier1/interface.cpp",
-      "line": 635,
+      "line": 617,
       "excerpt": "CreateInterfaceFn Sys_GetFactory( CSysModule *pModule )"
     },
     {
       "fingerprint": "5a89dd7b3f4a3fe82d66",
       "rule": "ARCH102",
       "path": "tier1/interface.cpp",
-      "line": 693,
+      "line": 675,
       "excerpt": "CreateInterfaceFn Sys_GetFactory( const char *pModuleName )"
     },
     {
       "fingerprint": "5c2ca8be83b3e66b0a4e",
       "rule": "ARCH101",
       "path": "tier1/interface.cpp",
-      "line": 735,
+      "line": 717,
       "excerpt": "CSysModule *pMod = Sys_LoadModule( pModuleName );"
     },
     {
       "fingerprint": "32872c963f74f760ffee",
       "rule": "ARCH102",
       "path": "tier1/interface.cpp",
-      "line": 739,
+      "line": 721,
       "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( pMod );"
     },
     {
       "fingerprint": "1e69fc14ca2527915001",
       "rule": "ARCH101",
       "path": "tier1/interface.cpp",
-      "line": 762,
+      "line": 744,
       "excerpt": "CSysModule *Sys_LoadModuleWithContext("
     },
     {
       "fingerprint": "e1cd8f750c1298bed426",
       "rule": "ARCH101",
       "path": "tier1/interface.cpp",
-      "line": 769,
+      "line": 751,
       "excerpt": "return Sys_LoadModule( pModuleName, flags );"
     },
     {
       "fingerprint": "86af47fa6fb02451a9fc",
       "rule": "ARCH102",
       "path": "tier1/interface.cpp",
-      "line": 781,
+      "line": 763,
       "excerpt": "CreateInterfaceFn Sys_GetFactoryWithContext("
     },
     {
       "fingerprint": "f212e75990e102192698",
       "rule": "ARCH102",
       "path": "tier1/interface.cpp",
-      "line": 787,
+      "line": 769,
       "excerpt": "return Sys_GetFactory( pModule );"
     },
     {
       "fingerprint": "54c2ca44d74c3e8a225c",
       "rule": "ARCH102",
       "path": "tier1/interface.cpp",
-      "line": 790,
+      "line": 772,
       "excerpt": "CreateInterfaceFn Sys_GetFactoryWithContext("
     },
     {
       "fingerprint": "21a544d9be74f14d4131",
       "rule": "ARCH102",
       "path": "tier1/interface.cpp",
-      "line": 796,
+      "line": 778,
       "excerpt": "return Sys_GetFactory( pModuleName );"
     },
     {
       "fingerprint": "6ee3479ffffbde8fe5c3",
       "rule": "ARCH104",
       "path": "tier1/interface.cpp",
-      "line": 820,
+      "line": 802,
       "excerpt": "CDllDemandLoader::CDllDemandLoader( char const *pchModuleName ) :"
     },
     {
       "fingerprint": "f0811b339c7e970b2b63",
       "rule": "ARCH104",
       "path": "tier1/interface.cpp",
-      "line": 820,
+      "line": 802,
       "excerpt": "CDllDemandLoader::CDllDemandLoader( char const *pchModuleName ) :"
     },
     {
       "fingerprint": "1da81717cd7f7d57d4f1",
       "rule": "ARCH104",
       "path": "tier1/interface.cpp",
-      "line": 829,
+      "line": 811,
       "excerpt": "CDllDemandLoader::CDllDemandLoader("
     },
     {
       "fingerprint": "c630e37451ed4287aa95",
       "rule": "ARCH104",
       "path": "tier1/interface.cpp",
-      "line": 829,
+      "line": 811,
       "excerpt": "CDllDemandLoader::CDllDemandLoader("
     },
     {
       "fingerprint": "b556774ea0f4c01d83d7",
       "rule": "ARCH104",
       "path": "tier1/interface.cpp",
-      "line": 841,
+      "line": 823,
       "excerpt": "CDllDemandLoader::~CDllDemandLoader()"
     },
     {
       "fingerprint": "e9776c68b86c92dfa933",
       "rule": "ARCH104",
       "path": "tier1/interface.cpp",
-      "line": 841,
+      "line": 823,
       "excerpt": "CDllDemandLoader::~CDllDemandLoader()"
     },
     {
       "fingerprint": "369c0574d36e9b03d153",
       "rule": "ARCH104",
       "path": "tier1/interface.cpp",
-      "line": 846,
+      "line": 828,
       "excerpt": "CreateInterfaceFn CDllDemandLoader::GetFactory()"
     },
     {
       "fingerprint": "f79edf6f2ced158749d0",
       "rule": "ARCH101",
       "path": "tier1/interface.cpp",
-      "line": 851,
+      "line": 833,
       "excerpt": "m_hModule = Sys_LoadModuleWithContext("
     },
     {
       "fingerprint": "0cc1337b4ed83dede4c1",
       "rule": "ARCH102",
       "path": "tier1/interface.cpp",
-      "line": 860,
+      "line": 842,
       "excerpt": "return Sys_GetFactoryWithContext("
     },
     {
       "fingerprint": "35db2901bd79ee1e055c",
       "rule": "ARCH104",
       "path": "tier1/interface.cpp",
-      "line": 864,
+      "line": 846,
       "excerpt": "void CDllDemandLoader::Unload()"
     },
     {
@@ -3870,35 +3814,35 @@
       "fingerprint": "c379ba0445a0f5da4e32",
       "rule": "ARCH105",
       "path": "utils/common/utilmatlib.cpp",
-      "line": 23,
+      "line": 24,
       "excerpt": "void LoadMaterialSystemInterface( CreateInterfaceFn fileSystemFactory )"
     },
     {
       "fingerprint": "9fe09f434a17fd60efc2",
       "rule": "ARCH103",
       "path": "utils/common/utilmatlib.cpp",
-      "line": 31,
+      "line": 32,
       "excerpt": "materialSystemDLLHInst = Sys_LoadModuleFromFileSystem("
     },
     {
       "fingerprint": "229e6943718a9b0b34e8",
       "rule": "ARCH102",
       "path": "utils/common/utilmatlib.cpp",
-      "line": 38,
+      "line": 39,
       "excerpt": "CreateInterfaceFn clientFactory = Sys_GetFactory( materialSystemDLLHInst );"
     },
     {
       "fingerprint": "6a86b6cb60a45139c752",
       "rule": "ARCH105",
       "path": "utils/common/utilmatlib.cpp",
-      "line": 38,
+      "line": 39,
       "excerpt": "CreateInterfaceFn clientFactory = Sys_GetFactory( materialSystemDLLHInst );"
     },
     {
       "fingerprint": "77b079453731e54c5bbf",
       "rule": "ARCH105",
       "path": "utils/common/utilmatlib.cpp",
-      "line": 58,
+      "line": 61,
       "excerpt": "void InitMaterialSystem( const char *materialBaseDirPath, CreateInterfaceFn fileSystemFactory )"
     },
     {
@@ -3919,7 +3863,7 @@
       "fingerprint": "0deb2ed93ee61f4ec9f4",
       "rule": "ARCH105",
       "path": "utils/dmxedit/luamain.cpp",
-      "line": 96,
+      "line": 101,
       "excerpt": "CreateInterfaceFn factory = GetFactory();"
     },
     {
@@ -4206,7 +4150,7 @@
       "fingerprint": "ec936f369230d5eb977a",
       "rule": "ARCH105",
       "path": "utils/mdlinfo/main.cpp",
-      "line": 240,
+      "line": 245,
       "excerpt": "CreateInterfaceFn factory = GetFactory();"
     },
     {
@@ -4304,7 +4248,7 @@
       "fingerprint": "39e2a662b52f3d2206cc",
       "rule": "ARCH105",
       "path": "utils/studiomdl/studiomdl.cpp",
-      "line": 9603,
+      "line": 9608,
       "excerpt": "CreateInterfaceFn factory = GetFactory();"
     },
     {
@@ -4493,7 +4437,7 @@
       "fingerprint": "51e63b8c7f12d2cb235f",
       "rule": "ARCH105",
       "path": "utils/vtex/vtex.cpp",
-      "line": 2629,
+      "line": 2625,
       "excerpt": "virtual int VTex( CreateInterfaceFn fsFactory, const char *pGameDir, int argc, char **argv )"
     },
     {
@@ -4626,14 +4570,14 @@
       "fingerprint": "646f43a8589424696400",
       "rule": "ARCH105",
       "path": "vgui2/src/vgui.cpp",
-      "line": 1112,
+      "line": 1117,
       "excerpt": "bool CVGui::Connect( CreateInterfaceFn factory )"
     },
     {
       "fingerprint": "813c8805e5bfc9f0b579",
       "rule": "ARCH105",
       "path": "vgui2/src/vgui.cpp",
-      "line": 1174,
+      "line": 1179,
       "excerpt": "CreateInterfaceFn vguiFactory = Sys_GetFactoryThis();"
     },
     {
@@ -4675,7 +4619,7 @@
       "fingerprint": "6d6933ca09c2aa178ac1",
       "rule": "ARCH105",
       "path": "vguimatsurface/MatSystemSurface.cpp",
-      "line": 226,
+      "line": 231,
       "excerpt": "bool CMatSystemSurface::Connect( CreateInterfaceFn factory )"
     },
     {
@@ -4689,7 +4633,7 @@
       "fingerprint": "af12bb721dee0242ff2a",
       "rule": "ARCH105",
       "path": "video/video_bink/bink_video.cpp",
-      "line": 67,
+      "line": 71,
       "excerpt": "bool CBinkVideoSubSystem::Connect( CreateInterfaceFn factory )"
     },
     {
@@ -4703,7 +4647,7 @@
       "fingerprint": "06d27aeee732e0ce5dd8",
       "rule": "ARCH105",
       "path": "video/video_quicktime/quicktime_video.cpp",
-      "line": 99,
+      "line": 104,
       "excerpt": "bool CQuickTimeVideoSubSystem::Connect( CreateInterfaceFn factory )"
     },
     {
@@ -4717,7 +4661,7 @@
       "fingerprint": "fc4ea242d6c5aa18cf67",
       "rule": "ARCH105",
       "path": "video/video_webm/webm_video.cpp",
-      "line": 72,
+      "line": 77,
       "excerpt": "bool CWebMVideoSubSystem::Connect( CreateInterfaceFn factory )"
     },
     {
@@ -4731,36 +4675,15 @@
       "fingerprint": "4b80538bf6c8c1ba2562",
       "rule": "ARCH105",
       "path": "video/videoservices.cpp",
-      "line": 126,
+      "line": 100,
       "excerpt": "bool CValveVideoServices::Connect( CreateInterfaceFn factory )"
     },
     {
       "fingerprint": "d0c736754c287eaa7944",
       "rule": "ARCH105",
       "path": "video/videoservices.cpp",
-      "line": 169,
+      "line": 144,
       "excerpt": "bool CValveVideoServices::ConnectVideoLibraries( CreateInterfaceFn factory )"
-    },
-    {
-      "fingerprint": "c42462eef9d7fc265c7a",
-      "rule": "ARCH101",
-      "path": "video/videoservices.cpp",
-      "line": 181,
-      "excerpt": "CSysModule *pModule = Sys_LoadModule(s_VideoAppSystems[n].m_pModuleName );"
-    },
-    {
-      "fingerprint": "dbb58ebcf4343e86c36a",
-      "rule": "ARCH102",
-      "path": "video/videoservices.cpp",
-      "line": 184,
-      "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( pModule );"
-    },
-    {
-      "fingerprint": "5e1566dd6351669e4f11",
-      "rule": "ARCH105",
-      "path": "video/videoservices.cpp",
-      "line": 184,
-      "excerpt": "CreateInterfaceFn fn = Sys_GetFactory( pModule );"
     },
     {
       "fingerprint": "ccd009cbd42bfde9afeb",
@@ -4780,7 +4703,7 @@
       "fingerprint": "846bc4ca6a17653613e5",
       "rule": "ARCH105",
       "path": "vphysics/main.cpp",
-      "line": 137,
+      "line": 141,
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactoryThis(); // This silly construction is necessary"
     },
     {

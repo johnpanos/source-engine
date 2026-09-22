@@ -521,6 +521,9 @@ CMaterialSystem::CMaterialSystem()
 	m_ThreadOwnershipID = 0;
 	m_pShaderDLL = NULL;
 	m_ShaderAPIFactory = NULL;
+	m_BuiltinShaderProvider = BuiltinShaderProvider();
+	m_bBuiltinShadersBound = false;
+	m_bConnectStarted = false;
 	m_FullbrightLightmapTextureHandle = INVALID_SHADERAPI_TEXTURE_HANDLE;
 	m_FullbrightBumpedLightmapTextureHandle = INVALID_SHADERAPI_TEXTURE_HANDLE;
 	m_BlackTextureHandle = INVALID_SHADERAPI_TEXTURE_HANDLE;
@@ -583,6 +586,23 @@ DLL_EXPORT bool MaterialSystem_BindShaderProvider(
 {
 	return materialSystem == &g_MaterialSystem && provider &&
 		g_MaterialSystem.BindShaderProvider( *provider );
+}
+
+DLL_EXPORT bool MaterialSystem_BindBuiltinShaderProvider(
+    IMaterialSystem *materialSystem, const BuiltinShaderProvider *provider )
+{
+	return materialSystem == &g_MaterialSystem && provider &&
+	       g_MaterialSystem.BindBuiltinShaderProvider( *provider );
+}
+
+bool CMaterialSystem::BindBuiltinShaderProvider( const BuiltinShaderProvider &provider )
+{
+	if ( m_bBuiltinShadersBound || m_bConnectStarted ||
+	     !IsBuiltinShaderProviderSelected( &provider, NULL ) )
+		return false;
+	m_BuiltinShaderProvider = provider;
+	m_bBuiltinShadersBound = true;
+	return true;
 }
 
 bool CMaterialSystem::BindShaderProvider( const render::LegacyShaderProvider &provider )
@@ -657,6 +677,17 @@ bool CMaterialSystem::Connect( CreateInterfaceFn factory )
 	if ( !factory )
 		return false;
 
+#if defined( LINKED_STANDARD_SHADERS )
+	// Bounded compatibility default for old IMaterialSystem callers. Product
+	// roots bind their selected catalog entry before this method is entered.
+	if ( !m_bBuiltinShadersBound )
+	{
+		const BuiltinShaderProvider *provider = StandardShaderLibrary_Describe();
+		if ( !provider || !BindBuiltinShaderProvider( *provider ) )
+			return false;
+	}
+#endif
+	m_bConnectStarted = true;
 	if ( !BaseClass::Connect( factory ) )
 		return false;
 
@@ -721,6 +752,9 @@ void CMaterialSystem::Disconnect()
 	g_pShaderShadow = NULL;
 	g_pShaderDevice = NULL;
 	BaseClass::Disconnect();
+	m_BuiltinShaderProvider = BuiltinShaderProvider();
+	m_bBuiltinShadersBound = false;
+	m_bConnectStarted = false;
 }
 
 
@@ -814,7 +848,7 @@ InitReturnVal_t CMaterialSystem::Init()
 	TextureManager()->Init( m_nAdapterFlags );
 
 	// Shader system!
-	ShaderSystem()->Init();
+	ShaderSystem()->Init( m_bBuiltinShadersBound ? &m_BuiltinShaderProvider : NULL );
 
 #if defined( WIN32 )
 	// HACKHACK: <sigh> This horrible hack is possibly the only way to reliably detect an old

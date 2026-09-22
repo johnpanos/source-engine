@@ -3,6 +3,16 @@
 Updated: 2026-09-22
 Source revision at assessment: `0649f377` (working tree; AGENTS.md portfolio row: R10)
 
+**Latest production-caller increment:** [bounded batch migrations and native
+Portal evidence](0003-batch-migration-progress.md) records the default-off
+particle, bone and entity-packing graph paths, borrowed engine-pool execution,
+affinity fix, real C++11/C++20 tests, measured dispatch costs and remaining race /
+semantic / performance gates. It supersedes the older statements below that no
+`game/` or `engine/` callers have migrated or that a runnable game is unavailable.
+The earlier substrate evidence is retained as historical evidence; no full RFC
+gate is closed by the new slice. `jobsystem/expected.h` now aliases the foundation
+result vocabulary, so the historical convergence gap has also been resolved.
+
 This file is the human-readable, durable progress record for RFC 0003. It covers
 **Phase A (Inventory and baseline)** and the first delivery of **Phase B
 (Contracts and serial graph)** and **Phase C (Compute executor)**, plus the

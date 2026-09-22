@@ -11,6 +11,7 @@
 //#include "voice.h"
 #include "tier0/platform.h"
 #include "ivoicerecord.h"
+#include "engine/audio/media_providers.h"
 #include "tier0/dbg.h"
 #include "tier0/threadtools.h"
 
@@ -386,4 +387,14 @@ IVoiceRecord* CreateVoiceRecord_SDL(int sampleRate)
 		pRecord->Release();
 
 	return NULL;
+}
+
+DLL_EXPORT const audio::VoiceRecordProvider *VoiceRecord_SDLProvider()
+{
+#if defined( USE_SDL3 )
+	static const audio::VoiceRecordProvider provider = { "sdl3", CreateVoiceRecord_SDL };
+#else
+	static const audio::VoiceRecordProvider provider = { "sdl2", CreateVoiceRecord_SDL };
+#endif
+	return &provider;
 }

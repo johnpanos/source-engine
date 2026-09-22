@@ -1267,12 +1267,12 @@ $Project "video_bink"
 
 $Project "video_quicktime"
 {
-	"video\video_quicktime.vpc" [$WINDOWS||$OSXALL]
+	"video\video_quicktime\video_quicktime.vpc" [$WINDOWS||$OSXALL]
 }
 
 $Project "video_webm"
 {
-	"video\video_webm.vpc" [$LINUX]
+	"video\video_webm\video_webm.vpc" [$LINUX]
 }
 
 $Project "vguimatsurface"

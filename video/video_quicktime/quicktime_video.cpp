@@ -5,6 +5,7 @@
 //=============================================================================
 
 #include "quicktime_video.h"
+#include "video/provider_catalog.h"
 
 #include "quicktime_common.h"
 #include "quicktime_material.h"
@@ -40,6 +41,10 @@
 static CQuickTimeVideoSubSystem g_QuickTimeSystem;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CQuickTimeVideoSubSystem, IVideoSubSystem, VIDEO_SUBSYSTEM_INTERFACE_VERSION, g_QuickTimeSystem );
 
+DLL_EXPORT IVideoSubSystem *VideoQuickTime_Create()
+{
+	return &g_QuickTimeSystem;
+}
 
 // ===========================================================================
 // Convars used by Quicktime

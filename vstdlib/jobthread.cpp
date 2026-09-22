@@ -8,6 +8,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
+#include <deque>
 #include "tier0/dbg.h"
 #include "tier0/tslist.h"
 #include "tier0/icommandline.h"
@@ -47,99 +48,48 @@ inline void ServiceJobAndRelease( CJob *pJob, int iThread = -1 )
 class ALIGN16 CJobQueue
 {
 public:
-	CJobQueue() :
-		m_nItems( 0 ),
-		m_nMaxItems( INT_MAX )
-	{
-		for ( int i = 0; i < ARRAYSIZE( m_pQueues ); i++ )
-		{
-			m_pQueues[i] = new CTSQueue<CJob *>;
-		}
-	}
-
-	~CJobQueue()
-	{
-		for ( int i = 0; i < ARRAYSIZE( m_pQueues ); i++ )
-		{
-			delete m_pQueues[i];
-		}
-	}
+	CJobQueue() : m_nItems( 0 ), m_nMaxItems( INT_MAX ) {}
 
 	int Count()
 	{
+		AUTO_LOCK( m_mutex );
 		return m_nItems;
 	}
 
 	int Count( JobPriority_t priority )
 	{
-		return m_pQueues[priority]->Count();
-	}
-
-
-	CJob *PrePush()
-	{
-		if ( m_nItems >= m_nMaxItems )
-		{
-			CJob *pOverflowJob;
-			if ( Pop( &pOverflowJob ) )
-			{
-				return pOverflowJob;
-			}
-		}
-		return NULL;
+		AUTO_LOCK( m_mutex );
+		return (int)m_Queues[priority].size();
 	}
 
 	int Push( CJob *pJob, int iThread = -1 )
 	{
 		pJob->AddRef();
-
-		CJob *pOverflowJob;
-		int nOverflow = 0;
-		while ( ( pOverflowJob = PrePush() ) != NULL )
+		CJob *pOverflowJob = NULL;
 		{
-			ServiceJobAndRelease( pJob );
-			nOverflow++;
+			AUTO_LOCK( m_mutex );
+			if ( m_nItems >= m_nMaxItems )
+				PopLocked( &pOverflowJob );
+			m_Queues[pJob->GetPriority()].push_back( pJob );
+			if ( ++m_nItems == 1 )
+				m_JobAvailableEvent.Set();
 		}
 
-		m_pQueues[pJob->GetPriority()]->PushItem( pJob );
-
-		m_mutex.Lock();
-		if ( ++m_nItems == 1 )
+		// Queue mutation and notification are one locked transition. Executing
+		// an overflow callback is outside that lock and releases the popped
+		// job's queue reference, never the incoming job's reference.
+		if ( pOverflowJob )
 		{
-			m_JobAvailableEvent.Set();
+			ServiceJobAndRelease( pOverflowJob, iThread );
+			return 1;
 		}
-		m_mutex.Unlock();
-
-		return nOverflow;
+		return 0;
 	}
 
 	bool Pop( CJob **ppJob )
 	{
-		m_mutex.Lock();
-		if ( !m_nItems )
-		{
-			m_mutex.Unlock();
-			*ppJob = NULL;
-			return false;
-		}
-		if ( --m_nItems == 0 )
-		{
-			m_JobAvailableEvent.Reset();
-		}
-		m_mutex.Unlock();
-
-		for ( int i = JP_HIGH; i >= 0; --i )
-		{
-			if ( m_pQueues[i]->PopItem( ppJob ) )
-			{
-				return true;
-			}
-		}
-
-
-		AssertMsg( 0, "Expected at least one queue item" );
-		*ppJob = NULL;
-		return false;
+		AUTO_LOCK( m_mutex );
+		return PopLocked( ppJob );
 	}
 
 	CThreadEvent &GetEventHandle()
@@ -149,24 +99,46 @@ public:
 
 	void Flush()
 	{
-		// Only safe to call when system is suspended
-		m_mutex.Lock();
-		m_nItems = 0;
-		m_JobAvailableEvent.Reset();
-		CJob *pJob;
+		// Only safe to call when the system is suspended. Detach queue ownership
+		// first so Abort/cleanup/destructors never run under the queue mutex.
+		std::deque<CJob *> pending[JP_HIGH + 1];
+		{
+			AUTO_LOCK( m_mutex );
+			for ( int i = JP_HIGH; i >= 0; --i )
+				pending[i].swap( m_Queues[i] );
+			m_nItems = 0;
+			m_JobAvailableEvent.Reset();
+		}
 		for ( int i = JP_HIGH; i >= 0; --i )
 		{
-			while ( m_pQueues[i]->PopItem( &pJob ) )
+			for ( CJob *pJob : pending[i] )
 			{
 				pJob->Abort();
 				pJob->Release();
 			}
 		}
-		m_mutex.Unlock();
 	}
 
 private:
-	CTSQueue<CJob *>	*m_pQueues[JP_HIGH + 1];
+	bool PopLocked( CJob **ppJob )
+	{
+		for ( int i = JP_HIGH; i >= 0; --i )
+		{
+			if ( !m_Queues[i].empty() )
+			{
+				*ppJob = m_Queues[i].front();
+				m_Queues[i].pop_front();
+				if ( --m_nItems == 0 )
+					m_JobAvailableEvent.Reset();
+				return true;
+			}
+		}
+		Assert( m_nItems == 0 );
+		*ppJob = NULL;
+		return false;
+	}
+
+	std::deque<CJob *>	m_Queues[JP_HIGH + 1];
 	int					m_nItems;
 	int					m_nMaxItems;
 	CThreadMutex		m_mutex;
@@ -705,7 +677,7 @@ void CThreadPool::AddJob( CJob *pJob )
 	}
 
 	pJob->m_pThreadPool = this;
-	pJob->m_status = JOB_STATUS_PENDING;
+	pJob->SetStatus( JOB_STATUS_PENDING );
 	InsertJobInQueue( pJob );
 	++m_nJobs;
 }

@@ -41,6 +41,7 @@
 #include "sourcevr/isourcevirtualreality.h"
 
 #if defined( USE_SDL )
+#include "appframework/ilaunchermgr.h"
 #include "SDL.h"
 #endif
 
@@ -629,6 +630,12 @@ static void OverrideMaterialSystemConfigFromCommandLine( MaterialSystem_Config_t
 	}
 #endif // USE_SDL && !SWDS
 
+#if defined( USE_SDL3 )
+	// The native desktop window uses the established persistent-buffer resize
+	// path. Present crops the initialized viewport to the actual drawable size.
+	if ( config.Windowed() && !UseVR() && !ShouldForceVRActive() )
+		config.SetFlag( MATSYS_VIDCFG_FLAGS_RESIZING, true );
+#endif
 	if ( CommandLine()->FindParm( "-resizing" ) )
 	{
 		config.SetFlag( MATSYS_VIDCFG_FLAGS_RESIZING, CommandLine()->CheckParm( "-resizing" ) ? true : false );
@@ -897,6 +904,19 @@ CON_COMMAND( mat_configcurrent, "show the current video control panel config for
 }
 
 #if !defined( SWDS )
+#if defined( USE_SDL3 )
+CON_COMMAND(
+    mat_resizewindow, "Resize the native window; rendering follows the drawable on the next frame" )
+{
+	if ( args.ArgC() != 3 || !g_pLauncherMgr || g_pLauncherMgr->IsWindowFullScreen() )
+		return;
+	const int width = atoi( args[1] ), height = atoi( args[2] );
+	if ( width < 64 || height < 64 || width > 8192 || height > 8192 )
+		return;
+	g_pLauncherMgr->SizeWindow( width, height );
+}
+#endif
+
 CON_COMMAND( mat_setvideomode, "sets the width, height, windowed state of the material system" )
 {
 	if ( args.ArgC() != 4 )

@@ -30,6 +30,7 @@
 #include "idedicatedexports.h"
 #include "engine_launcher_api.h"
 #include "engine/audio/device_provider.h"
+#include "engine/audio/media_providers.h"
 #include "audio/device_selection.h"
 #include "ivideomode.h"
 #include "common.h"
@@ -942,6 +943,11 @@ public:
 	virtual void SetMap( const char *pMapName );
 
 	bool BindAudioProviders( const audio::DeviceSelection *selection );
+	bool BindAudioMediaProviders( const audio::MediaProviders *providers );
+	IVAudio *CreateMP3Audio();
+	const audio::VoiceProtocolBinding *FindVoiceCodec( const char *protocolName ) const;
+	const audio::VoiceProtocolBinding *DefaultVoiceCodec() const;
+	IVoiceRecord *CreateVoiceRecorder( int sampleRate ) const;
 	IAudioDevice *CreateAudioDevice( bool firstStart, bool waveOnly );
 
 	bool MainLoop();
@@ -988,6 +994,7 @@ private:
 	bool m_bSupportsVR;
 	StartupInfo_t m_StartupInfo;
 	audio::DeviceSelection m_AudioProviders;
+	audio::MediaProviders m_AudioMediaProviders;
 	bool m_bAudioCompositionConnected = false;
 };
 
@@ -1017,6 +1024,60 @@ DLL_EXPORT bool Engine_BindAudioProviders(
 	return engine == &s_EngineAPI && s_EngineAPI.BindAudioProviders( selection );
 }
 
+bool CEngineAPI::BindAudioMediaProviders( const audio::MediaProviders *providers )
+{
+	if ( m_bAudioCompositionConnected || !providers || !providers->IsValid() )
+		return false;
+	m_AudioMediaProviders = *providers;
+	return true;
+}
+
+DLL_EXPORT bool Engine_BindAudioMediaProviders(
+    IEngineAPI *engine, const audio::MediaProviders *providers )
+{
+	return engine == &s_EngineAPI && s_EngineAPI.BindAudioMediaProviders( providers );
+}
+
+IVAudio *CEngineAPI::CreateMP3Audio()
+{
+	return m_AudioMediaProviders.IsValid() ? m_AudioMediaProviders.mp3->create() : NULL;
+}
+
+const audio::VoiceProtocolBinding *CEngineAPI::FindVoiceCodec( const char *protocolName ) const
+{
+	return m_AudioMediaProviders.FindVoice( protocolName );
+}
+
+const audio::VoiceProtocolBinding *CEngineAPI::DefaultVoiceCodec() const
+{
+	return m_AudioMediaProviders.FindVoice( m_AudioMediaProviders.localVoiceProtocol );
+}
+
+IVoiceRecord *CEngineAPI::CreateVoiceRecorder( int sampleRate ) const
+{
+	return m_AudioMediaProviders.CreateRecorder( sampleRate );
+}
+
+DLL_EXPORT IVAudio *Engine_CreateMP3Audio()
+{
+	return s_EngineAPI.CreateMP3Audio();
+}
+
+DLL_EXPORT const audio::VoiceProtocolBinding *Engine_FindVoiceCodec( const char *protocolName )
+{
+	return s_EngineAPI.FindVoiceCodec( protocolName );
+}
+
+DLL_EXPORT const audio::VoiceProtocolBinding *Engine_DefaultVoiceCodec()
+{
+	return s_EngineAPI.DefaultVoiceCodec();
+}
+
+DLL_EXPORT IVoiceRecord *Engine_CreateVoiceRecorder( int sampleRate )
+{
+	return s_EngineAPI.CreateVoiceRecorder( sampleRate );
+}
+
 IAudioDevice *CEngineAPI::CreateAudioDevice( bool firstStart, bool waveOnly )
 {
 	IAudioDevice *device = NULL;
@@ -1031,7 +1092,7 @@ IAudioDevice *CEngineAPI::CreateAudioDevice( bool firstStart, bool waveOnly )
 	return device;
 }
 
-IAudioDevice *Engine_CreateSelectedAudioDevice( bool firstStart, bool waveOnly )
+DLL_EXPORT IAudioDevice *Engine_CreateSelectedAudioDevice( bool firstStart, bool waveOnly )
 {
 	return s_EngineAPI.CreateAudioDevice( firstStart, waveOnly );
 }
@@ -1041,7 +1102,7 @@ IAudioDevice *Engine_CreateSelectedAudioDevice( bool firstStart, bool waveOnly )
 //-----------------------------------------------------------------------------
 bool CEngineAPI::Connect( CreateInterfaceFn factory )
 {
-	if ( !m_AudioProviders.IsValid() )
+	if ( !m_AudioProviders.IsValid() || !m_AudioMediaProviders.IsValid() )
 	{
 		Warning( "Engine requires an audio provider composition before Connect.\n" );
 		return false;
@@ -1107,6 +1168,7 @@ void CEngineAPI::Disconnect()
 	g_AppSystemFactory = NULL;
 	m_bAudioCompositionConnected = false;
 	m_AudioProviders = audio::DeviceSelection();
+	m_AudioMediaProviders = audio::MediaProviders();
 }
 
 

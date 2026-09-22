@@ -12,7 +12,6 @@
 #include <cstdio>
 #include <cstring>
 
-
 namespace
 {
 int checks = 0;
@@ -41,6 +40,45 @@ void DiscardPending( ILauncherMgr &manager )
 	while ( manager.GetEvents( events, 128 ) )
 	{
 	}
+}
+
+void CheckResizeRequests( ILauncherMgr &manager )
+{
+	SDL_Window *window = static_cast<SDL_Window *>( manager.GetWindowRef() );
+	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_RESIZABLE ) != 0 );
+	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_BORDERLESS ) == 0 );
+	for ( int iteration = 0; iteration < 24; ++iteration )
+	{
+		const int width = 640 + ( iteration % 7 ) * 32;
+		const int height = 480 + ( iteration % 5 ) * 24;
+		manager.SizeWindow( width, height );
+		CHECK( SDL_SyncWindow( window ) );
+		manager.PumpWindowsMessageLoop();
+		int actualWidth = 0, actualHeight = 0;
+		CHECK( SDL_GetWindowSize( window, &actualWidth, &actualHeight ) );
+		CHECK( actualWidth == width && actualHeight == height );
+		int pixelWidth = 0, pixelHeight = 0;
+		CHECK( SDL_GetWindowSizeInPixels( window, &pixelWidth, &pixelHeight ) );
+		CHECK( pixelWidth > 0 && pixelHeight > 0 );
+		manager.SizeWindow( -1, 0 );
+		CHECK( SDL_GetWindowSize( window, &actualWidth, &actualHeight ) );
+		CHECK( actualWidth == width && actualHeight == height );
+	}
+}
+
+bool HasGTKDecorationPlugin()
+{
+	// Native Linux fixture evidence; this implementation detail is not part of
+	// the portable window contract or the product's public provider interface.
+	FILE *maps = std::fopen( "/proc/self/maps", "r" );
+	if ( !maps )
+		return false;
+	char line[4096];
+	bool found = false;
+	while ( std::fgets( line, sizeof( line ), maps ) )
+		found |= std::strstr( line, "/libdecor-gtk.so" ) != nullptr;
+	std::fclose( maps );
+	return found;
 }
 
 void CheckEvents( ILauncherMgr &manager )
@@ -187,6 +225,14 @@ int main( int argc, char **argv )
 	CHECK( manager->Init() == INIT_OK );
 	CHECK( manager->GetWindowRef() == window );
 	CheckEvents( *manager );
+	CheckResizeRequests( *manager );
+	if ( CommandLine()->FindParm( "-require-gtk-decoration" ) )
+	{
+		const bool gtkDecoration = HasGTKDecorationPlugin();
+		CHECK( gtkDecoration );
+		std::printf( "GTK_DECORATION mapped=%d bordered=%d\n", gtkDecoration,
+		    ( SDL_GetWindowFlags( window ) & SDL_WINDOW_BORDERLESS ) == 0 );
+	}
 
 	manager->IncWindowRefCount();
 	manager->DestroyGameWindow();

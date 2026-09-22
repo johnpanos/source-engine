@@ -9,6 +9,7 @@
 
 #include "tier1/delegates.h"
 #include "render/legacy_shader_provider.h"
+#include "render/builtin_shader_provider.h"
 
 #include "materialsystem_global.h"
 #include "materialsystem/imaterialsystem.h"
@@ -90,6 +91,7 @@ public:
 	void									ModInit();
 	void									ModShutdown();
 	bool BindShaderProvider( const render::LegacyShaderProvider &provider );
+	bool BindBuiltinShaderProvider( const BuiltinShaderProvider &provider );
 
 private:
 	// Used to dynamically load and unload the shader api
@@ -618,6 +620,9 @@ private:
 
 	char *									m_pShaderDLL;
 	render::LegacyShaderServices m_ShaderServices;
+	BuiltinShaderProvider m_BuiltinShaderProvider;
+	bool m_bBuiltinShadersBound;
+	bool m_bConnectStarted;
 	CreateInterfaceFn						m_ShaderAPIFactory;
 
 	int										m_nAdapter;

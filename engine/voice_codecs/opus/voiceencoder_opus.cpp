@@ -7,6 +7,8 @@
 //=============================================================================//
 #include "ivoicecodec.h"
 #include "iframeencoder.h"
+#include "engine/audio/media_providers.h"
+#include "tier0/dbg.h"
 
 #include <stdio.h>
 #include <opus/opus.h>
@@ -15,7 +17,6 @@
 
 // NOTE: This has to be the last file included!
 #include "tier0/memdbgon.h"
-#include "tier0/dbg.h"
 
 #define CHANNELS 1
 
@@ -62,10 +63,21 @@ private:
 
 extern IVoiceCodec* CreateVoiceCodec_Frame(IFrameEncoder *pEncoder);
 
-void* CreateCeltVoiceCodec()
+static IVoiceCodec *CreateLinkedOpusVoiceCodec()
 {
 	IFrameEncoder *pEncoder = new VoiceEncoder_Opus;
 	return CreateVoiceCodec_Frame( pEncoder );
+}
+
+void *CreateCeltVoiceCodec()
+{
+	return CreateLinkedOpusVoiceCodec();
+}
+
+DLL_EXPORT const audio::VoiceCodecProvider *Audio_OpusVoiceProvider()
+{
+	static const audio::VoiceCodecProvider provider = { "vaudio_opus", CreateLinkedOpusVoiceCodec };
+	return &provider;
 }
 
 EXPOSE_INTERFACE_FN(CreateCeltVoiceCodec, IVoiceCodec, "vaudio_opus")
@@ -89,6 +101,11 @@ VoiceEncoder_Opus::~VoiceEncoder_Opus()
 
 bool VoiceEncoder_Opus::Init( int quality, int &rawFrameSize, int &encodedFrameSize)
 {
+	// Preserve negotiated quality; unsupported legacy fallback quality must fail
+	// explicitly instead of indexing beyond this provider's four mode records.
+	if ( quality < 0 ||
+	     quality >= static_cast<int>( sizeof( g_OpusOpts ) / sizeof( g_OpusOpts[0] ) ) )
+		return false;
 	m_iVersion = quality;
 
 	rawFrameSize = g_OpusOpts[m_iVersion].iRawFrameSize * BYTES_PER_SAMPLE;

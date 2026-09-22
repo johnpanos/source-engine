@@ -44,7 +44,9 @@ def build(bld):
 	libs = ['tier0','tier1','tier2','tier3','vstdlib','steam_api','appframework','SDL2','togl', 'UNWIND']
 	if bld.env.DXVK:
 		libs.remove('togl')
-	libs += ['shaderapidx9', 'shaderapiempty']
+	libs += ['shaderapidx9', 'shaderapiempty', 'stdshader_dx9', 'vaudio_minimp3']
+	if bld.env.OPUS or bld.env.DEST_OS == 'android':
+		libs += ['vaudio_opus']
 	libs += ['engine', 'inputsystem', 'materialsystem', 'datacache', 'studiorender',
 	         'vphysics', 'video_services', 'vguimatsurface', 'vgui2']
 

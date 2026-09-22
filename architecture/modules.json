@@ -9,7 +9,7 @@
       {"id": "platform.sdl3.launcher", "kind": "backend", "paths": ["appframework/sdl3mgr.cpp"], "allowedEdges": [], "externalHeaders": ["SDL3/SDL.h"], "legacyIncludes": ["appframework/ilaunchermgr.h", "inputsystem/ButtonCode.h", "tier0/icommandline.h", "tier1/convar.h", "tier1/utllinkedlist.h", "tier0/memdbgon.h"]},
       {"id": "platform.sdl3.native-tests", "kind": "native-test", "paths": ["unittests/platformtest/sdl3/"], "externalHeaders": ["SDL3/SDL.h"], "legacyIncludes": ["appframework/ilaunchermgr.h", "tier0/icommandline.h"], "allowedEdges": ["platform.window-provider-contract"]},
       {"id": "platform.window-provider-contract", "paths": ["public/appframework/window_provider.h"], "allowedEdges": []},
-      {"id": "render.legacy-provider-contract", "paths": ["public/render/legacy_shader_provider.h"], "allowedEdges": []},
+      {"id": "render.legacy-provider-contract", "paths": ["public/render/legacy_shader_provider.h", "public/render/builtin_shader_provider.h"], "allowedEdges": []},
       {"id": "render.shader-extension-contract", "paths": ["materialsystem/shaderextension_compatibility_host.h"], "allowedEdges": []},
       {"id": "render.shader-extension-host", "kind": "legacy-interop", "paths": ["materialsystem/shaderextension_compatibility_host.cpp"], "allowedEdges": ["render.shader-extension-contract"], "legacyIncludes": ["filesystem.h", "IShaderSystem.h"]},
       {"id": "render.shader-extension-abi-test", "kind": "native-test", "paths": ["unittests/shaderextensiontest/test_shaderextension_host.cpp"], "allowedEdges": ["render.shader-extension-contract"], "legacyIncludes": ["filesystem_passthru.h", "../../materialsystem/IShaderSystem.h"]},
@@ -26,7 +26,11 @@
   },
   "description": "RFC 0001 architectural manifest. Phase A currently freezes legacy dynamic-loader boundaries.",
   "legacyAbi": {
+    "description": "Preserved binary ABI declarations and exact private compatibility adapters/tests. Video provider runtime supplies the existing IVideoSubSystem::Connect factory without exposing it through the typed catalog.",
     "paths": [
+      "video/provider_catalog_runtime.h",
+      "video/provider_catalog_runtime.cpp",
+      "unittests/videoprovidertest/catalog_test.cpp",
       "public/tier1/interface.h",
       "tier1/interface.cpp",
       "external/vpc/public/tier1/interface.h",
@@ -43,11 +47,6 @@
         "name": "retained-extension",
         "pathPrefixes": ["materialsystem/shaderextension_compatibility_host.cpp"],
         "reason": "Private ShaderDLL004 mod-extension host; scoped filesystem acquisition, version negotiation and disconnect-before-unload preserve the retained ABI."
-      },
-      {
-        "name": "first-party-composition",
-        "pathPrefixes": ["materialsystem/shadersystem.cpp"],
-        "reason": "Remaining built-in shader-library loader (stdshader/debug); typed renderer backend selection does not retire this separate library composition yet."
       },
       {
         "name": "tool-indirection",

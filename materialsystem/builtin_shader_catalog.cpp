@@ -1,8 +1,9 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
-#include "builtin_shader_provider.h"
+#include "render/builtin_shader_provider.h"
 #include "tier1/strtools.h"
 
-bool IsBuiltinShaderProviderSelected( const BuiltinShaderProvider *provider, const char *requested )
+DLL_EXPORT bool IsBuiltinShaderProviderSelected(
+    const BuiltinShaderProvider *provider, const char *requested )
 {
 	if ( !provider || !provider->id || !provider->id[0] || !provider->legacyModuleName ||
 	     !provider->legacyModuleName[0] || !provider->connect || !provider->disconnect )

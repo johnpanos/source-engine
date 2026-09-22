@@ -13,6 +13,9 @@ class CVideoProviderSet
 {
 public:
 	CVideoProviderSet();
+	~CVideoProviderSet();
+	CVideoProviderSet( const CVideoProviderSet & ) = delete;
+	CVideoProviderSet &operator=( const CVideoProviderSet & ) = delete;
 	bool Configure( const VideoProviderCatalog &catalog );
 	bool Connect( CreateInterfaceFn factory, IVideoCommonServices *common );
 	bool Init();

@@ -30,12 +30,12 @@ void WindowProvider_ReportVersion()
 #ifdef USE_SDL3
 	const int version = SDL_GetVersion();
 	Msg( "SDL version: %d.%d.%d rev: %s\n", SDL_VERSIONNUM_MAJOR( version ),
-		 SDL_VERSIONNUM_MINOR( version ), SDL_VERSIONNUM_MICRO( version ), SDL_GetRevision() );
+	    SDL_VERSIONNUM_MINOR( version ), SDL_VERSIONNUM_MICRO( version ), SDL_GetRevision() );
 #else
 	SDL_version version;
 	SDL_GetVersion( &version );
 	Msg( "SDL version: %d.%d.%d rev: %s\n", version.major, version.minor, version.patch,
-		 SDL_GetRevision() );
+	    SDL_GetRevision() );
 #endif
 }
 

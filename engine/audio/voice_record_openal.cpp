@@ -12,6 +12,7 @@
 //#include "voice.h"
 #include "tier0/platform.h"
 #include "ivoicerecord.h"
+#include "engine/audio/media_providers.h"
 
 #include <assert.h>
 
@@ -206,6 +207,12 @@ IVoiceRecord* CreateVoiceRecord_OpenAL(int sampleRate)
 
 		return NULL;
 	}
+}
+
+DLL_EXPORT const audio::VoiceRecordProvider *VoiceRecord_OpenALProvider()
+{
+	static const audio::VoiceRecordProvider provider = { "openal", CreateVoiceRecord_OpenAL };
+	return &provider;
 }
 #endif
 

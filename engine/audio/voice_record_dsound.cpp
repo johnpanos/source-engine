@@ -16,6 +16,7 @@
 #include "voice.h"
 #include "tier0/vcrmode.h"
 #include "ivoicerecord.h"
+#include "engine/audio/media_providers.h"
 
 #if defined( _X360 )
 #include "xbox/xbox_win32stubs.h"
@@ -398,3 +399,8 @@ IVoiceRecord* CreateVoiceRecord_DSound(int sampleRate)
 	}
 }
 
+DLL_EXPORT const audio::VoiceRecordProvider *VoiceRecord_DirectSoundProvider()
+{
+	static const audio::VoiceRecordProvider provider = { "directsound", CreateVoiceRecord_DSound };
+	return &provider;
+}

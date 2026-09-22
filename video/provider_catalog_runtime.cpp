@@ -4,13 +4,18 @@
 #include <cstring>
 
 CVideoProviderSet::CVideoProviderSet()
-	: m_ProviderCount( 0 ), m_Connected( false ), m_FailedProvider( nullptr )
+    : m_ProviderCount( 0 ), m_Connected( false ), m_FailedProvider( nullptr )
 {
 	for ( int i = 0; i < VideoSystem::VIDEO_SYSTEM_COUNT; ++i )
 	{
 		m_Systems[i] = nullptr;
 		m_Started[i] = false;
 	}
+}
+
+CVideoProviderSet::~CVideoProviderSet()
+{
+	Disconnect();
 }
 
 bool CVideoProviderSet::Configure( const VideoProviderCatalog &catalog )
@@ -138,8 +143,9 @@ void CVideoProviderSet::Disconnect()
 
 IVideoSubSystem *CVideoProviderSet::Get( int system ) const
 {
-	return system >= VideoSystem::VIDEO_SYSTEM_FIRST && system < VideoSystem::VIDEO_SYSTEM_COUNT ?
-	           m_Systems[system] : nullptr;
+	return system >= VideoSystem::VIDEO_SYSTEM_FIRST && system < VideoSystem::VIDEO_SYSTEM_COUNT
+	           ? m_Systems[system]
+	           : nullptr;
 }
 
 int CVideoProviderSet::Count() const

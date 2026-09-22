@@ -17,6 +17,8 @@
 
 #include "ivoicerecord.h"
 #include "ivoicecodec.h"
+#include "engine/audio/media_providers.h"
+#include "device_selection.h"
 #include "filesystem.h"
 #include "filesystem_engine.h"
 #include "tier1/utlbuffer.h"
@@ -32,9 +34,6 @@ static CSteamAPIContext *steamapicontext = NULL;
 void Voice_EndChannel( int iChannel );
 void VoiceTweak_EndVoiceTweakMode();
 void EngineTool_OverrideSampleRate( int& rate );
-
-// A fallback codec that should be the most likely to work for local/offline use
-#define VOICE_FALLBACK_CODEC	"vaudio_opus"
 
 // Special entity index used for tweak mode.
 #define TWEAKMODE_ENTITYINDEX				-500
@@ -172,9 +171,6 @@ public:
 
 static bool		g_bLocalPlayerTalkingAck = false;
 static float	g_LocalPlayerTalkingTimeout = 0;
-
-
-CSysModule *g_hVoiceCodecDLL = 0;
 
 // Voice recorder. Can be waveIn, DSound, or whatever.
 static IVoiceRecord *g_pVoiceRecord = NULL;
@@ -639,66 +635,40 @@ bool Voice_Init( const char *pCodecName, int nSampleRate )
 	if(!VoiceSE_Init())
 		return false;
 
-	// Get the voice input device.
-#ifdef OSX
-	g_pVoiceRecord = CreateVoiceRecord_AudioQueue( Voice_SamplesPerSec() );
-	if ( !g_pVoiceRecord )
-	{
-		// Fall back to OpenAL
-		g_pVoiceRecord = CreateVoiceRecord_OpenAL( Voice_SamplesPerSec() );
-	}
-#elif defined( WIN32 )
-	g_pVoiceRecord = CreateVoiceRecord_DSound( Voice_SamplesPerSec() );
-#elif defined( USE_SDL )
-	g_pVoiceRecord = CreateVoiceRecord_SDL( Voice_SamplesPerSec() );
-#else
-	g_pVoiceRecord = CreateVoiceRecord_OpenAL( Voice_SamplesPerSec() );
-#endif
+	// Recording policy and optional fallback were selected by the product root.
+	g_pVoiceRecord = Engine_CreateVoiceRecorder( Voice_SamplesPerSec() );
 
 	if( !g_pVoiceRecord )
 	{
 		Msg( "Unable to initialize sound capture. You won't be able to speak to other players." );
 	}
 
-	// Init codec DLL for non-steam
+	// Non-Steam codec selection is a closed, linked protocol catalog. The root
+	// preserves legacy fallback mappings and their negotiated quality values.
 	if ( !bSteam )
 	{
-		// CELT's qualities are 0-3, we historically just passed 4 to the other two even though they don't really map to the
-		// same thing.
-		//
-		// Changing the quality level we use here will require either extending SVC_VoiceInit to pass down which quality is
-		// in use or using a different codec name (vaudio_celtHD!) for backwards compatibility
-		int quality = ( bCelt || bOpus ) ? 3 : 4;
-
-		// Get the codec.
-		CreateInterfaceFn createCodecFn = NULL;
-		g_hVoiceCodecDLL = FileSystem_LoadModule(pCodecName);
-
-		if( !g_hVoiceCodecDLL || (createCodecFn = Sys_GetFactory(g_hVoiceCodecDLL)) == NULL )
+		const audio::VoiceProtocolBinding *binding = Engine_FindVoiceCodec( pCodecName );
+		if ( !binding || !( g_pEncodeCodec = binding->provider->create() ) ||
+		     !g_pEncodeCodec->Init( binding->quality ) )
 		{
-			g_hVoiceCodecDLL = FileSystem_LoadModule( VOICE_FALLBACK_CODEC );
-			pCodecName = VOICE_FALLBACK_CODEC;
-		}
-
-		if ( !g_hVoiceCodecDLL || (createCodecFn = Sys_GetFactory(g_hVoiceCodecDLL)) == NULL ||
-		     (g_pEncodeCodec = (IVoiceCodec*)createCodecFn(pCodecName, NULL)) == NULL || !g_pEncodeCodec->Init( quality ) )
-		{
-			Msg("Unable to load voice codec '%s'. Voice disabled. (module %i, iface %i, codec %i)\n",
-			    pCodecName, !!g_hVoiceCodecDLL, !!createCodecFn, !!g_pEncodeCodec);
+			Msg(
+			    "Unable to initialize linked voice codec for '%s'. Voice disabled.\n", pCodecName );
 			Voice_Deinit();
 			return false;
 		}
 
-		for (int i=0; i < VOICE_NUM_CHANNELS; i++)
+		for ( int i = 0; i < VOICE_NUM_CHANNELS; ++i )
 		{
 			CVoiceChannel *pChannel = &g_VoiceChannels[i];
-
-			if ((pChannel->m_pVoiceCodec = (IVoiceCodec*)createCodecFn(pCodecName, NULL)) == NULL || !pChannel->m_pVoiceCodec->Init( quality ))
+			pChannel->m_pVoiceCodec = binding->provider->create();
+			if ( !pChannel->m_pVoiceCodec || !pChannel->m_pVoiceCodec->Init( binding->quality ) )
 			{
 				Voice_Deinit();
 				return false;
 			}
 		}
+		Msg( "RFC0001 voice: protocol=%s provider=%s quality=%d\n", pCodecName,
+		    binding->provider->id, binding->quality );
 	}
 
 	// XXX(JohnS): These don't do much in Steam codec mode, but code below uses their presence to mean 'voice fully
@@ -791,12 +761,6 @@ void Voice_Deinit()
 	{
 		g_pEncodeCodec->Release();
 		g_pEncodeCodec = NULL;
-	}
-
-	if(g_hVoiceCodecDLL)
-	{
-		FileSystem_UnloadModule(g_hVoiceCodecDLL);
-		g_hVoiceCodecDLL = NULL;
 	}
 
 	if(g_pVoiceRecord)
@@ -1492,8 +1456,10 @@ void Voice_ForceInit()
 	static ConVarRef sv_voicecodec( "sv_voicecodec" );
 	if ( !Voice_InitWithDefault( sv_voicecodec.GetString() ) )
 	{
-		// Try ultimate fallback
-		Voice_InitWithDefault( VOICE_FALLBACK_CODEC );
+		// Local/offline fallback is selected from the same product-owned catalog.
+		const audio::VoiceProtocolBinding *fallback = Engine_DefaultVoiceCodec();
+		if ( fallback )
+			Voice_InitWithDefault( fallback->protocolName );
 	}
 }
 
@@ -1571,5 +1537,4 @@ IVoiceTweak g_VoiceTweakAPI =
 	VoiceTweak_GetControlFloat,
 	VoiceTweak_IsStillTweaking,
 };
-
 

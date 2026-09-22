@@ -27,6 +27,11 @@ IMMUTABLE_ASSETS = {
     ".wav", ".mp3", ".ogg", ".webm", ".bik",
 }
 EXCLUDED_DIRECTORIES = {"screenshots", "save", "logs", "dumps"}
+# Version 1 exercises grow, shrink, aspect changes and non-aligned dimensions.
+RESIZE_WORKLOAD = ((640, 480), (801, 601), (1024, 576), (1279, 719),
+                   (960, 720), (641, 479), (1280, 800), (1001, 701),
+                   (800, 600), (1200, 675), (721, 541), (1024, 768))
+
 
 
 def sha256(path):
@@ -293,6 +298,24 @@ def evaluate(log, screenshots, returncode, timed_out, map_name, requirements, lo
     return failures
 
 
+def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD):
+    """Every authored request needs an executed size and a nonblank image."""
+    observed = [(int(a), int(b)) for a, b in re.findall(
+        r"RFC0001 resize: drawable=(\d+)x(\d+) render=\d+x\d+ buffer=\d+x\d+", log)]
+    failures = []
+    if not observed:
+        failures.append("no native resize was consumed by the renderer")
+    for width, height in expected:
+        if (width, height) not in observed:
+            failures.append("renderer did not consume drawable %dx%d" % (width, height))
+        frames = [frame for frame in screenshots if (frame.get("width"), frame.get("height")) == (width, height)]
+        if not frames or not all(frame.get("has_scene_detail", False) for frame in frames):
+            failures.append("missing or blank resize image at %dx%d" % (width, height))
+    return {"schema": "source-resize-evidence/v1", "status": "fail" if failures else "pass",
+            "requested_sizes": list(expected), "observed_sizes": observed, "failures": failures,
+            "coverage": "Native window requests, frame-boundary drawable consumption and image at every requested size. GPU stress separately checks every transition frame; compositor timing requires native observation."}
+
+
 def inspect_provider_catalog(log):
     """Require executed providers and loader telemetry, not requested CLI flags."""
     required = {
@@ -309,7 +332,7 @@ def inspect_provider_catalog(log):
     # These were first-party backend discovery names. Ordinary ELF/PE linkage
     # maps their libraries without passing through the instrumented module loader.
     forbidden = re.compile(r"(?:^|[/\\])(?:lib)?(?:stdshader_[^/\\ ]*|shaderapi[^/\\ ]*|"
-                           r"video_(?:bink|webm|quicktime))(?:\.[^/\\ ]*)?$", re.IGNORECASE)
+                           r"video_(?:bink|webm|quicktime)|vaudio_(?:minimp3|opus|speex|celt))(?:\.[^/\\ ]*)?$", re.IGNORECASE)
     attempted = []
     for record in records:
         match = re.search(r"\brequested=(.*?) resolved=", record)
@@ -374,6 +397,10 @@ def main(argv=None):
                         help="overlay source-matched shader artifacts into the private runtime")
     parser.add_argument("--render-trace", action="store_true",
                         help="retain renderer diagnostics in render-trace.jsonl")
+    parser.add_argument("--resize-stress", action="store_true",
+                        help="resize the actual native game window through a versioned workload")
+    parser.add_argument("--require-gtk-decoration", action="store_true",
+                        help="require the native libdecor GTK plugin mapped by the product")
     parser.add_argument("--require-provider-catalog", action="store_true",
                         help="require initialized profile providers and no first-party backend loading")
     parser.add_argument("--out", type=Path, required=True)
@@ -415,6 +442,19 @@ def main(argv=None):
                    "+wait", "180", "+status", "+hideconsole", "+developer", "0",
                    "+wait", "600", "+screenshot", "+mat_spewvertexandpixelshaders",
                    "+wait", "10", "+quit"]
+        if args.resize_stress:
+            script = stage / "portal/cfg/source_resize_acceptance.cfg"
+            script.parent.mkdir(parents=True, exist_ok=True)
+            lines = ["wait 120"]
+            for width, height in RESIZE_WORKLOAD:
+                lines += ["mat_resizewindow %d %d" % (width, height), "wait 12", "screenshot", "wait 1"]
+            lines += ["wait 10", "quit"]
+            script.write_text("\n".join(lines) + "\n")
+            # Replace the ordinary capture tail after the status/hideconsole step.
+            tail = command.index("+wait", command.index("+developer"))
+            command = command[:tail] + ["-resizetelemetry", "+exec", "source_resize_acceptance.cfg"]
+            evidence["resize_workload"] = {"version": 1, "sizes": RESIZE_WORKLOAD,
+                                           "script_sha256": sha256(script)}
         if args.require_provider_catalog:
             command += ["-moduleloadtelemetry"]
         environment = os.environ.copy()
@@ -428,6 +468,7 @@ def main(argv=None):
             environment["SOURCE_RENDER_TRACE"] = str(trace)
         requirements = [name for name in ("vulkan", "sdl3", "wayland") if getattr(args, "require_" + name)]
         if args.require_wayland:
+            environment["GDK_BACKEND"] = "wayland"
             environment["SDL_VIDEO_DRIVER"] = "wayland"
             environment["SDL_VIDEODRIVER"] = "wayland"
         if args.require_vulkan:
@@ -435,7 +476,7 @@ def main(argv=None):
         evidence["command"] = command
         evidence["requirements"] = requirements
         evidence["display_environment"] = {key: environment.get(key) for key in
-                                           ("DISPLAY", "WAYLAND_DISPLAY", "SDL_VIDEODRIVER")}
+                                           ("DISPLAY", "WAYLAND_DISPLAY", "SDL_VIDEODRIVER", "GDK_BACKEND")}
         code, timed_out, loaded, seconds = run_product(command, stage, environment,
                                                        args.timeout, output / "stdout.log")
         log_paths = [output / "stdout.log", stage / "engine.log", stage / "portal/console.log"]
@@ -443,6 +484,14 @@ def main(argv=None):
         screenshots = [info for path in sorted(stage.rglob("screenshots/*.tga"))
                        if (info := screenshot_info(path))]
         failures = evaluate(log, screenshots, code, timed_out, args.map, requirements, loaded)
+        if args.require_gtk_decoration:
+            decorated = any(Path(path).name == "libdecor-gtk.so" for path in loaded)
+            evidence["gtk_decoration"] = {"plugin_mapped": decorated, "gdk_backend": environment.get("GDK_BACKEND")}
+            if not decorated:
+                failures.append("native GNOME GTK decoration plugin was not mapped")
+        if args.resize_stress:
+            evidence["resize"] = inspect_resize(log, screenshots)
+            failures.extend(evidence["resize"]["failures"])
         if args.require_provider_catalog:
             evidence["provider_catalog"] = inspect_provider_catalog(log)
             failures.extend(evidence["provider_catalog"]["failures"])

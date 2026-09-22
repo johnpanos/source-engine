@@ -61,7 +61,7 @@ public:
 	virtual bool		CanUseEditorMaterials() const;
 
 	// Methods of IShaderSystemInternal
-	virtual void		Init();
+	virtual void Init( const BuiltinShaderProvider *provider );
 	virtual void		Shutdown();
 	virtual void		ModInit();
 	virtual void		ModShutdown();
@@ -171,6 +171,7 @@ private:
 private:
 	// List of all DLLs containing shaders
 	CUtlVector< ShaderDLLInfo_t > m_ShaderDLLs;
+	const BuiltinShaderProvider *m_pBuiltinShaderProvider;
 
 	// Used to prevent re-entrant rendering from warning messages
 	SpewOutputFunc_t m_SaveSpewOutput;
@@ -231,14 +232,16 @@ const char *CShaderSystem::s_pDebugShaderName[MATERIAL_DEBUG_COUNT]	=
 //-----------------------------------------------------------------------------
 CShaderSystem::CShaderSystem() : m_StoredSpew( 0, 512, 0 ), m_bForceUsingGraphicsReturnTrue( false )
 {
+	m_pBuiltinShaderProvider = NULL;
 }
 
 
 //-----------------------------------------------------------------------------
 // Initialization, shutdown
 //-----------------------------------------------------------------------------
-void CShaderSystem::Init()
+void CShaderSystem::Init( const BuiltinShaderProvider *provider )
 {
+	m_pBuiltinShaderProvider = provider;
 	m_SaveSpewOutput = NULL;
 	
 	m_bForceUsingGraphicsReturnTrue = false;
@@ -259,6 +262,7 @@ void CShaderSystem::Init()
 void CShaderSystem::Shutdown()
 {
 	UnloadAllShaderDLLs();
+	m_pBuiltinShaderProvider = NULL;
 }
 
 
@@ -321,22 +325,10 @@ void CShaderSystem::LoadAllShaderDLLs()
 	}
 	RegisterBuiltinShaders( "local", localShaders, DisconnectBuiltinShaderLibrary );
 
-#if defined( LINKED_STANDARD_SHADERS )
-	const BuiltinShaderProvider *provider = StandardShaderLibrary_Describe();
-	const char *requested = HardwareConfig()->GetHWSpecificShaderDLLName();
-#ifdef _DEBUG
-	requested = CommandLine()->ParmValue( "-shader", requested );
-	if ( CommandLine()->FindParm( "-testshaders" ) )
-		requested = "shader_test";
-#endif
-	// Legacy configuration can select only a declared linked provider. Filename
-	// discovery and CreateInterface negotiation belong exclusively to mod shaders.
-	if ( !IsBuiltinShaderProviderSelected( provider, requested ) )
-	{
-		UnloadAllShaderDLLs();
-		Error( "Requested material shader provider is not linked into this product.\n" );
+	const BuiltinShaderProvider *provider = m_pBuiltinShaderProvider;
+	if ( !provider )
 		return;
-	}
+
 	IShaderDLLInternal *standardShaders = provider->connect( host );
 	if ( !standardShaders )
 	{
@@ -347,7 +339,6 @@ void CShaderSystem::LoadAllShaderDLLs()
 	RegisterBuiltinShaders( provider->id, standardShaders, provider->disconnect );
 	Msg(
 	    "RFC0001 shaders: provider=%s shaders=%d\n", provider->id, standardShaders->ShaderCount() );
-#endif
 }
 
 const char *COM_GetModDirectory()
@@ -431,6 +422,12 @@ bool CShaderSystem::LoadShaderDLL( const char *pFullPath )
 {
 	if ( !pFullPath || !pFullPath[0] )
 		return false;
+
+	// The preserved public material API can refer to an already composed builtin
+	// by its legacy name. It must never probe GAMEBIN for that first-party name.
+	const BuiltinShaderProvider *provider = m_pBuiltinShaderProvider;
+	if ( IsBuiltinShaderProviderSelected( provider, pFullPath ) )
+		return FindShaderDLL( provider->id ) >= 0;
 
 	// Loading an already connected legacy singleton and then disconnecting the
 	// old host would invalidate the new connection. Keep the existing borrowers

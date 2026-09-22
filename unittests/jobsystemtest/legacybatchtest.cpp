@@ -95,11 +95,11 @@ static void VerifyItems( const std::vector<Item> &items )
 	}
 }
 
-static void TestModes( IThreadPool *pool )
+static void TestModes( IThreadPool *pool, bool graphsOnly )
 {
 	for ( unsigned count : { 0u, 1u, 2u, 17u, 1024u } )
 	{
-		for ( int mode = 0; mode < 3; ++mode )
+		for ( int mode = graphsOnly ? 1 : 0; mode < 3; ++mode )
 		{
 			std::vector<Item> items = Inputs( count );
 			Work work;
@@ -193,6 +193,35 @@ static void TestNestedAndConcurrent( IThreadPool *pool )
 	VerifyItems( second );
 }
 
+struct WorkerProbe
+{
+	std::thread::id caller = std::this_thread::get_id();
+	std::atomic<bool> observed{ false };
+	void Process( Item &item )
+	{
+		if ( std::this_thread::get_id() != caller )
+			observed.store( true );
+		else
+		{
+			const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds( 1 );
+			while ( !observed.load() && std::chrono::steady_clock::now() < deadline )
+				std::this_thread::yield();
+		}
+		PlainProcess( item );
+	}
+};
+
+static void TestOneWorkerParticipation( IThreadPool *pool )
+{
+	WorkerProbe probe;
+	std::vector<Item> items = Inputs( 2 );
+	CHECK( JobGraphParallelProcess( "one worker", items.data(), items.size(), &probe,
+	    &WorkerProbe::Process, static_cast<void ( WorkerProbe::* )()>( NULL ),
+	    static_cast<void ( WorkerProbe::* )()>( NULL ), INT_MAX, pool ) );
+	CHECK( probe.observed.load() );
+	VerifyItems( items );
+}
+
 static void Benchmark( IThreadPool *pool )
 {
 	std::printf( "BENCH units=microseconds sample_count=101 workers=%d\n", pool->NumThreads() );
@@ -245,6 +274,18 @@ static void Benchmark( IThreadPool *pool )
 
 int main( int argc, char **argv )
 {
+	bool benchmark = false, graphsOnly = false;
+	for ( int arg = 1; arg < argc; ++arg )
+	{
+		if ( std::strcmp( argv[arg], "--benchmark" ) == 0 )
+			benchmark = true;
+		else if ( std::strcmp( argv[arg], "--graphs-only" ) == 0 )
+			graphsOnly = true;
+		else
+			return 2;
+	}
+	if ( benchmark && graphsOnly )
+		return 2;
 	for ( int workers : { 0, 1, 3 } )
 	{
 		IThreadPool *pool = CreateThreadPool();
@@ -252,11 +293,13 @@ int main( int argc, char **argv )
 		params.nThreads = workers;
 		CHECK( pool->Start( params ) );
 		CHECK( pool->NumThreads() == workers );
-		TestModes( pool );
+		TestModes( pool, graphsOnly );
 		if ( workers )
 			TestNoQueueHelping( pool );
 		TestNestedAndConcurrent( pool );
-		if ( argc > 1 && std::strcmp( argv[1], "--benchmark" ) == 0 )
+		if ( workers == 1 )
+			TestOneWorkerParticipation( pool );
+		if ( benchmark )
 			Benchmark( pool );
 		CHECK( pool->Stop() );
 		DestroyThreadPool( pool );

@@ -117,5 +117,7 @@ extern IVideoMode *videomode;
 void VideoMode_Create();
 void VideoMode_Destroy();
 
+// Consume the native drawable size at the engine frame boundary.
+void VideoMode_UpdateWindowSize();
 
 #endif // IVIDEOMODE_H

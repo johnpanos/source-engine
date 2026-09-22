@@ -7,7 +7,7 @@
 // 
 //-----------------------------------------------------------------------------
 
-$Macro SRCDIR		".."
+$Macro SRCDIR		"..\.."
 $Macro OUTBINDIR	"$SRCDIR\..\game\bin"
 
 $Include "$SRCDIR\vpc_scripts\source_dll_base.vpc"
@@ -16,6 +16,7 @@ $Configuration
 {
 	$Compiler
 	{
+		$AdditionalIncludeDirectories "$BASE;$SRCDIR\video"
 		$AdditionalIncludeDirectories	"$BASE;$SRCDIR\dx9sdk\include"			[$WIN32]
 		$AdditionalIncludeDirectories	"$BASE;$SRCDIR\thirdparty\libvpx-v1.1.0"
 		$AdditionalIncludeDirectories	"$BASE;$SRCDIR\thirdparty\libvorbis-1.3.2\include"
@@ -24,7 +25,9 @@ $Configuration
 	}
 	$Linker
 	{
-		$IgnoreImportLibrary				"Yes" [$WIN32]
+		$IgnoreImportLibrary				"No" [$WIN32]
+		$ImportLibrary "$LIBPUBLIC\$(TargetName).lib" [$WINDOWS]
+		$ImportLibrary "$LIBPUBLIC\$_IMPLIB_PREFIX$OUTBINNAME$_IMPLIB_EXT" [$POSIX]
 		$AdditionalDependencies				"$BASE vfw32.lib" [$WIN32]
 		$SystemLibraries                    "iconv" [$OSXALL]
 		$SystemFrameworks					"Carbon" [$OSXALL]
@@ -63,8 +66,8 @@ $Project "video_webm"
 
 	$Folder	"Header Files"   [$OSXALL||$WIN32||$LINUXALL]
 	{
-		$file   "videosubsystem.h"
-		$file   "video_macros.h"
+		$file   "..\videosubsystem.h"
+		$file   "..\video_macros.h"
 		$file	"webm_video.h"
 		$file   "webm_recorder.h"
 		$file   "webm_common.h"

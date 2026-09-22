@@ -3,6 +3,7 @@
 #define MINIMP3_IMPLEMENTATION
 #include "minimp3_ex.h"
 #include "vaudio/ivaudio.h"
+#include "engine/audio/media_providers.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -37,6 +38,8 @@ int mp3dec_seek_callback(uint64_t position, void *user_data)
 class CMiniMP3 : public IAudioStream
 {
 public:
+	CMiniMP3() : mp3d() {}
+	~CMiniMP3() { mp3dec_ex_close( &mp3d ); }
 	bool Init( IAudioStreamEvent *pHandler );
 
 	// IAudioStream functions
@@ -125,6 +128,8 @@ class CVAudio : public IVAudio
 public:
 	IAudioStream *CreateMP3StreamDecoder( IAudioStreamEvent *pEventHandler )
 	{
+		if ( !pEventHandler )
+			return NULL;
 		CMiniMP3 *pMP3 = new CMiniMP3;
 		if ( !pMP3->Init( pEventHandler ) )
 		{
@@ -142,3 +147,13 @@ public:
 
 EXPOSE_INTERFACE( CVAudio, IVAudio, VAUDIO_INTERFACE_VERSION );
 
+static IVAudio *CreateLinkedMP3Audio()
+{
+	return new CVAudio;
+}
+
+DLL_EXPORT const audio::MP3Provider *Audio_MP3Provider()
+{
+	static const audio::MP3Provider provider = { "minimp3", CreateLinkedMP3Audio };
+	return &provider;
+}

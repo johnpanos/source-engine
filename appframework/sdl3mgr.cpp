@@ -183,8 +183,9 @@ InitReturnVal_t CSDL3Mgr::Init()
 	m_bVideoInitialized = true;
 	m_bForbidMouseGrab =
 	    CommandLine()->FindParm( "-nomousegrab" ) || !CommandLine()->FindParm( "-mousegrab" );
-	m_Window = SDL_CreateWindow(
-	    "", 1280, 720, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY );
+	m_Window = SDL_CreateWindow( "", 1280, 720,
+	    SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY |
+	        SDL_WINDOW_RESIZABLE );
 	if ( m_Window == NULL )
 	{
 		Warning( "SDL3 Vulkan window creation failed: %s\n", SDL_GetError() );

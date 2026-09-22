@@ -13,6 +13,7 @@
 #include "shaderapi/IShaderDevice.h"
 #include "shaderapi/ishadershadow.h"
 #include "render/legacy_shader_provider.h"
+#include "render/builtin_shader_provider.h"
 
 #if defined( USE_SDL3 )
 #include <SDL3/SDL.h>
@@ -100,6 +101,56 @@ bool CheckMalformed( IMaterialSystem *material, render::LegacyShaderProvider &pr
 	return !accepted;
 }
 
+int g_BuiltinConnects;
+IShaderDLLInternal *UnusedBuiltinConnect( const BuiltinShaderHostServices & )
+{
+	++g_BuiltinConnects;
+	return NULL;
+}
+void UnusedBuiltinDisconnect()
+{
+	CHECK( false );
+}
+void *MissingMaterialServices( const char *, int * )
+{
+	return NULL;
+}
+
+void CheckBuiltinBinding( IMaterialSystem *material )
+{
+	BuiltinShaderProvider candidate = {
+	    "binding-fixture", "fixture", UnusedBuiltinConnect, UnusedBuiltinDisconnect };
+	CHECK( !MaterialSystem_BindBuiltinShaderProvider( NULL, &candidate ) );
+	CHECK( !MaterialSystem_BindBuiltinShaderProvider( material, NULL ) );
+	int foreign;
+	CHECK( !MaterialSystem_BindBuiltinShaderProvider(
+	    reinterpret_cast<IMaterialSystem *>( &foreign ), &candidate ) );
+	BuiltinShaderProvider malformed = candidate;
+	malformed.id = NULL;
+	CHECK( !MaterialSystem_BindBuiltinShaderProvider( material, &malformed ) );
+	malformed = candidate;
+	malformed.legacyModuleName = NULL;
+	CHECK( !MaterialSystem_BindBuiltinShaderProvider( material, &malformed ) );
+	malformed = candidate;
+	malformed.connect = NULL;
+	CHECK( !MaterialSystem_BindBuiltinShaderProvider( material, &malformed ) );
+	malformed = candidate;
+	malformed.disconnect = NULL;
+	CHECK( !MaterialSystem_BindBuiltinShaderProvider( material, &malformed ) );
+	CHECK( MaterialSystem_BindBuiltinShaderProvider( material, &candidate ) );
+	CHECK( !MaterialSystem_BindBuiltinShaderProvider( material, &candidate ) );
+	CHECK( !material->Connect( MissingMaterialServices ) );
+	CHECK( !MaterialSystem_BindBuiltinShaderProvider( material, &candidate ) );
+	CHECK( g_BuiltinConnects == 0 );
+	material->Disconnect();
+	CHECK( MaterialSystem_BindBuiltinShaderProvider( material, &candidate ) );
+	CHECK( !material->Connect( NULL ) );
+	material->Disconnect();
+	CHECK( MaterialSystem_BindBuiltinShaderProvider( material, &candidate ) );
+	material->Disconnect();
+	CHECK( g_BuiltinConnects == 0 );
+}
+
 void Run()
 {
 #if defined( USE_SDL3 )
@@ -111,6 +162,7 @@ void Run()
 	CHECK( actual != NULL );
 	if ( !material || !actual )
 		return;
+	CheckBuiltinBinding( material );
 	CHECK( actual->id && actual->id[0] );
 	CHECK( actual->legacyModuleName && actual->legacyModuleName[0] );
 	CHECK( actual->create != NULL );
