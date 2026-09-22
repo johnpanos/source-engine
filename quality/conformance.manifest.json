@@ -584,6 +584,46 @@
       "expect": "pass"
     },
     {
+      "id": "jobsystem.querycache",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "JOB-QUERYCACHE-001",
+      "contract": "game/shared/querycache_maintenance.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_batch.cpp",
+        "unittests/jobsystemtest/querycachemaintenancetest.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "jobsystem.querycache.sensitivity",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "JOB-QUERYCACHE-001",
+      "contract": "game/shared/querycache_maintenance.h",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_batch.cpp",
+        "unittests/jobsystemtest/querycachemaintenance_sensitivity.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "jobsystem.scheduler",
       "domain": "Q-JOBS",
       "rfc": "0003",

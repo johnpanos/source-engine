@@ -63,6 +63,8 @@ export LD_LIBRARY_PATH="$PWD/bin:${LD_LIBRARY_PATH:-}"
 cmd=(./hl2_launcher -game portal -w "$WIDTH" -h "$HEIGHT"
      -renderer "$RENDERER" -physics "$PHYSICS" +fps_max "$FPS_MAX" +map "$MAP")
 [ "$WINDOWED" = 1 ] && cmd+=(-windowed)
+# Headless (offscreen) runs have no one listening: mute them.
+[ "$SDL_VIDEODRIVER" = offscreen ] && cmd+=(+volume 0)
 # shellcheck disable=SC2206  # EXTRA_ARGS is intentionally word-split
 extra=($EXTRA_ARGS)
 

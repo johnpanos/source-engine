@@ -19,7 +19,11 @@ Families:
 * exposure: the luminance histogram integer-HDR auto-exposure is computed from
   (dev/lumcompare drawn under occlusion queries over a frame of known regions).
   The expected count of every luminance range follows exactly from the region
-  geometry, so the counts are held to that model and to the reference exactly.
+  geometry, so the counts are held to that model and to the reference exactly;
+* skinning: model placement through the MODEL matrix LoadBoneMatrix(0) loads
+  and through hardware skinning (bone matrices, two stored weights plus the
+  implicit third, bone index bytes). Each case must cover exactly the third of
+  the frame its bones place it in, and a back-facing model quad must be culled.
 
 A backend that reports a different HDR mode than the run requested fails with
 that reason; it is never compared as if it supported the mode.
@@ -51,6 +55,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import conformance  # noqa: E402
+import material_pixel_portal  # noqa: E402
 import portal_boot  # noqa: E402
 
 
@@ -67,7 +72,16 @@ MODEL_TOLERANCE = 3
 DARK = 2  # a channel at or below this reads as zero
 LIGHTMAP_CASES = ("black_lightmap", "ramp_low", "ramp_mid", "ramp_high", "channels",
                   "base_gray", "base_color")
-FAMILIES = ("lightmap", "exposure")
+FAMILIES = ("lightmap", "exposure", "skinning", "portal")
+# Which third of the frame (left, middle, right) each skinning case's bones place
+# its quad in. The oracle's own copy: the harness reports its expectation too,
+# but a harness that computed placements wrongly must not pass itself.
+# None: the quad is back-facing and model materials cull it, so no third holds it.
+SKINNING_CASES = {"rigid_bone0": 0, "one_bone": 0, "implicit_third_weight": 1,
+                  "blend_half": 1, "high_index": 2, "rigid_back_facing": None}
+# The model material is unlit: a covered pixel is its base color up to output
+# rounding and filtering.
+SKIN_COLOR_TOLERANCE = 12
 EXPOSURE_REGIONS = ("black", "gray64", "gray128", "gray190", "white", "red", "green", "blue")
 LUMINANCE_RANGES = 17
 # luminance_compare_ps2x.fxc: NTSC weights applied to the sRGB-decoded color.
@@ -91,6 +105,18 @@ def read_pixels(path):
                           % (path, family, list(FAMILIES)))
     if family == "exposure":
         return _read_exposure(path, report)
+    if family == "portal":
+        try:
+            return material_pixel_portal.validate(path, report)
+        except material_pixel_portal.PortalCaptureError as error:
+            raise PixelsError(str(error)) from error
+    if family == "skinning":
+        names = [case.get("name") for case in report.get("cases", [])]
+        if names != list(SKINNING_CASES) or any(len(case.get("pixels", [])) != 3
+                                               for case in report["cases"]):
+            raise PixelsError("%s has skinning cases %s, expected %s"
+                              % (path, names, list(SKINNING_CASES)))
+        return report
     names = [case.get("name") for case in report.get("cases", [])]
     if names != list(LIGHTMAP_CASES):
         raise PixelsError("%s has cases %s, expected %s" % (path, names, list(LIGHTMAP_CASES)))
@@ -324,6 +350,33 @@ def compare_exposure(report, reference):
             if count != expected]
 
 
+def check_skinning(report):
+    """Every case covers the third its bones place it in and no other."""
+    failures = []
+    for case in report["cases"]:
+        expected = SKINNING_CASES[case["name"]]
+        for third, pixel in enumerate(case["pixels"]):
+            covered = _close(pixel, report["color"], SKIN_COLOR_TOLERANCE)
+            empty = _close(pixel, CLEAR, PIXEL_TOLERANCE)
+            where = ("left", "middle", "right")[third]
+            if third == expected and not covered:
+                failures.append("%s: the model is not in the %s third (pixel %s)"
+                                % (case["name"], where, pixel))
+            elif third != expected and not empty:
+                failures.append("%s: the %s third holds %s, expected the clear color (%s)"
+                                % (case["name"], where, pixel,
+                                   "a back face must be culled" if expected is None
+                                   else "the model is drawn in the wrong place"))
+    return failures
+
+
+def compare_skinning(report, reference):
+    return ["%s third %d: %s, reference %s" % (case["name"], third, pixel, expected)
+            for case, ref in zip(report["cases"], reference["cases"])
+            for third, (pixel, expected) in enumerate(zip(case["pixels"], ref["pixels"]))
+            if not _close(pixel, expected, PIXEL_TOLERANCE)]
+
+
 def evaluate(report, hdr, reference=None):
     """All failures of a capture requested in HDR mode `hdr`."""
     probe = report.get("clear_probe", {})
@@ -336,6 +389,13 @@ def evaluate(report, hdr, reference=None):
     if reference is not None and reference.get("family") != report.get("family"):
         return ["reference holds family %r, capture %r"
                 % (reference.get("family"), report.get("family"))]
+    if report["family"] == "portal":
+        return material_pixel_portal.evaluate(report, reference)
+    if report["family"] == "skinning":
+        failures = check_skinning(report)
+        if reference is not None:
+            failures += compare_skinning(report, reference)
+        return failures
     if report["family"] == "exposure":
         failures = check_exposure(report)
         if reference is not None:
@@ -381,6 +441,14 @@ def run(args):
     environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
     # DXVK presents through SDL3 in these products; the native backend ignores it.
     environment["DXVK_WSI_DRIVER"] = "SDL3"
+    if args.family == "portal":
+        # DXVK's fast-linked graphics pipeline libraries drop D3D9 user clip
+        # planes, so the custom clip plane of every nested portal view is
+        # ignored (measured: the clipped geometry is drawn in full, identically
+        # with and without the plane). D3D9 defines the clipped result, so the
+        # reference is taken with pipeline libraries off. Native ignores it.
+        environment["DXVK_CONFIG"] = material_pixel_portal.DXVK_CONFIG
+        evidence["dxvk_config"] = material_pixel_portal.DXVK_CONFIG
     if args.display == "headless":
         environment["SDL_VIDEODRIVER"] = "offscreen"
         for variable in ("WAYLAND_DISPLAY", "DISPLAY"):
@@ -400,6 +468,12 @@ def run(args):
         evidence["failures"] = ["harness exited %s without a capture" % evidence["returncode"]]
         (output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
         return 2
+    if args.family == "portal":
+        # The harness writes each portal frame to its own raw file; the capture
+        # carries them from here on.
+        report = json.loads(pixels.read_text())
+        material_pixel_portal.embed_frames(report, pixels.parent)
+        pixels.write_text(json.dumps(report) + "\n")
     report = read_pixels(pixels)
     reference = read_pixels(args.reference) if args.reference else None
     if args.reference:

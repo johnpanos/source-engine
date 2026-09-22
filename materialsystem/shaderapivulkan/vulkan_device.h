@@ -155,10 +155,16 @@ public:
 	// otherwise). They are stored as one kDynVertexFloats-wide record.
 	enum
 	{
-		kDynVertexFloats = 10
+		kDynVertexFloats = 18
 	};
+	// `normalTangent`, when given, holds each vertex's normal (3) and tangent
+	// (4, TANGENT/USERDATA with the binormal sign in w), 7 floats per vertex; it
+	// follows the lightmap coordinates in the record (zeros otherwise).
+	// `vertexAlpha`, when given, holds each vertex color's alpha, 1 float per
+	// vertex; it ends the record (1, opaque, otherwise).
 	void QueueDynamicTriangles( const float *posColorUvInterleaved, uint32_t vertexCount,
-	    const float *lightmapUv = nullptr );
+	    const float *lightmapUv = nullptr, const float *normalTangent = nullptr,
+	    const float *vertexAlpha = nullptr );
 	// Discard the accumulated frame geometry. Called at frame start (ClearBuffers)
 	// rather than after Present, so the last frame's geometry stays available for
 	// an on-demand screenshot capture (ReadPixels).
@@ -177,7 +183,10 @@ public:
 		kDynShaderPassthrough = 0,
 		kDynShaderGreenify = 1,
 		kDynShaderConstColor = 2,
-		kDynShaderTextured = 3
+		kDynShaderTextured = 3,
+		// PortalRefract (portal_refract_vs20 / portal_refract_ps2x), all three
+		// stages; see shaders/portal_refract.{vert,frag}.
+		kDynShaderPortalRefract = 4
 	};
 	void SelectDynamicShader( int shaderIndex ) { m_dynShaderIndex = shaderIndex; }
 	// Output-merger state of the queued geometry, in the terms of the D3D9 state a
@@ -197,6 +206,19 @@ public:
 		// IShaderShadow::EnableColorWrites; false leaves the target unchanged (a
 		// draw that only feeds an occlusion query, such as dev/lumcompare).
 		bool colorWrite = true;
+		// D3D9's effective D3DRS_CULLMODE (the shadow state's EnableCulling with the
+		// dynamic CullMode). Triangles are wound in D3D screen space, which the
+		// flipped draw viewport preserves, so the front face is clockwise.
+		VkCullModeFlags cullMode = VK_CULL_MODE_NONE;
+		// D3D9's D3DRS_STENCIL* render state (IShaderDynamicAPI SetStencil*): the
+		// test and the three operations, applied to front and back faces alike
+		// (D3D9 without two-sided stencil). The reference and the masks are
+		// per-draw values (SetDynamicStencilValues), not pipeline state.
+		bool stencilEnable = false;
+		VkCompareOp stencilCompare = VK_COMPARE_OP_ALWAYS;
+		VkStencilOp stencilFail = VK_STENCIL_OP_KEEP;
+		VkStencilOp stencilDepthFail = VK_STENCIL_OP_KEEP;
+		VkStencilOp stencilPass = VK_STENCIL_OP_KEEP;
 	};
 	void SelectDynamicRasterState( const DynRasterState &state ) { m_dynRaster = state; }
 	// Distinct states have distinct keys.
@@ -205,6 +227,43 @@ public:
 	// D3D9 fixed-function GREATEREQUAL alpha test, or GREATER with
 	// kFragmentAlphaGreater). A negative `ref` disables it.
 	void SelectDynamicAlphaTest( float ref ) { m_dynAlphaRef = ref; }
+	// D3DRS_STENCILREF, D3DRS_STENCILMASK and D3DRS_STENCILWRITEMASK of the draws
+	// that follow.
+	void SetDynamicStencilValues( uint32_t reference, uint32_t testMask, uint32_t writeMask )
+	{
+		m_dynStencilRef = reference;
+		m_dynStencilTestMask = testMask;
+		m_dynStencilWriteMask = writeMask;
+	}
+	// Bits of the depth-stencil attachment's stencil aspect (0 when the device
+	// offers no depth format with stencil).
+	int StencilBits() const { return m_stencilBits; }
+	// True when blended sRGB-write draws blend in linear space, as on D3D9.
+	bool LinearSpaceSrgbBlending() const { return m_srgbAttachments; }
+	// User clip planes of the draws that follow, in D3D clip space (D3D9's
+	// SetClipPlane under a vertex shader): a vertex is kept where
+	// dot( plane, position ) >= 0. At most kMaxClipPlanes; 0 disables clipping.
+	enum
+	{
+		kMaxClipPlanes = 2,
+		// Push-constant bytes of the textured pipeline with clip planes (its 32
+		// floats and the planes) and of PortalRefract (48 floats and the planes).
+		kTexturedPushBytes = ( 32 + 4 * kMaxClipPlanes ) * 4,
+		kPortalPushBytes = ( 48 + 4 * kMaxClipPlanes ) * 4
+	};
+	// kMaxClipPlanes when the device can clip (shaderClipDistance and push
+	// constants wide enough for the planes), else 0.
+	int MaxClipPlanes() const { return m_clipPlanesSupported ? kMaxClipPlanes : 0; }
+	// Whether BC1-BC3 (DXT1/DXT3/DXT5) images can be created and sampled: the
+	// textureCompressionBC feature, enabled at device creation when supported.
+	bool SupportsBlockCompression() const { return m_blockCompression; }
+	void SetDynamicClipPlanes( int count, const float ( *planes )[4] )
+	{
+		m_dynClipPlaneCount = count < 0 ? 0 : ( count > kMaxClipPlanes ? kMaxClipPlanes : count );
+		for ( int i = 0; i < m_dynClipPlaneCount; ++i )
+			for ( int k = 0; k < 4; ++k )
+				m_dynClipPlanes[i][k] = planes[i][k];
+	}
 	// Set the shader constant the "constant color" material shader reads (linear
 	// RGBA), the way a material's pixel-shader constant parameterizes its shader.
 	void SetDynamicConstantColor( float r, float g, float b, float a )
@@ -248,15 +307,51 @@ public:
 	// material shader's sampler at it (handle < 0 restores the built-in texture).
 	// `format` may be an uncompressed (R8G8B8A8/B8G8R8A8) or block-compressed
 	// (BC1/BC3, i.e. DXT1/DXT5) Vulkan format; upload data must match it.
+	// `mipLevels` is clamped to the full chain; each level is uploaded separately.
+	// `srgbAlias`, when set, is the sRGB twin of `format`: the image is created
+	// mutable between the two and also gets an sRGB view (render targets).
 	int CreateManagedTexture( int width, int height, VkFormat format, std::string *outError,
-	    VkImageUsageFlags extraUsage = 0 );
-	bool UploadManagedTexture(
-	    int handle, const uint8_t *data, size_t dataSize, std::string *outError );
+	    VkImageUsageFlags extraUsage = 0, uint32_t mipLevels = 1,
+	    VkFormat srgbAlias = VK_FORMAT_UNDEFINED );
+	bool UploadManagedTexture( int handle, const uint8_t *data, size_t dataSize,
+	    std::string *outError, uint32_t level = 0 );
+	uint32_t ManagedTextureMipLevels( int handle ) const
+	{
+		return ( handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) )
+		           ? m_managedTextures[static_cast<size_t>( handle )].mipLevels
+		           : 0;
+	}
 	void BindManagedTexture( int handle );
 	// The lightmap page the textured pipeline multiplies by (LightmappedGeneric's
 	// TEXTURE_LIGHTMAP on sampler 1), sampled at the lightmap coordinates; -1
 	// draws without a lightmap.
 	void BindManagedLightmap( int handle ) { m_dynLightmapHandle = handle; }
+	// Textures on samplers 1 and 2 for shaders that read them as ordinary
+	// textures (PortalRefract's noise and color), -1 for none.
+	void BindManagedSampler( int sampler, int handle )
+	{
+		if ( sampler >= 1 && sampler <= 2 )
+			m_dynSamplerHandles[sampler] = handle;
+	}
+	// PortalRefract's constants, in its registers' terms (portal_refract_vs20.fxc
+	// and portal_refract_ps2x.fxc). The model and view-projection matrices are
+	// laid out like SetDynamicTransform's; `stage` is the STAGE static combo.
+	struct PortalConstants
+	{
+		float model[16];
+		float viewProj[16];
+		float texXform0[4]; // SHADER_SPECIFIC_CONST_1
+		float texXform1[4]; // SHADER_SPECIFIC_CONST_2
+		float time = 0.0f;  // SHADER_SPECIFIC_CONST_0.x, already mod 1000
+		float openAmount = 0.0f;
+		float active = 1.0f; // 1 - $PortalStatic
+		float colorScale = 0.0f;
+		int stage = 0;
+	};
+	void SetDynamicPortalConstants( const PortalConstants &constants ) { m_dynPortal = constants; }
+	// False when the device's push constants cannot hold PortalRefract's block;
+	// its draws are then declined.
+	bool PortalPipelineSupported() const { return m_portalPipelineLayout != VK_NULL_HANDLE; }
 	// Which of the textured pipeline's inputs and output are sRGB-encoded, as the
 	// material's IShaderShadow EnableSRGBRead/EnableSRGBWrite declared them: an
 	// sRGB input is decoded to linear before use, and linear output is encoded.
@@ -271,7 +366,19 @@ public:
 		kColorSrgbWrite = 4,
 		kFragmentAlphaGreater = 8,
 		kFragmentLuminanceCompare = 16,
-		kVertexScreenSpace = 32
+		kVertexScreenSpace = 32,
+		// PortalRefract decodes sampler 2 (its color ramp) from sRGB.
+		kColorSrgbReadSampler2 = 64,
+		// The vertex color replaces the base texture (BufferClearObeyStencil).
+		kFragmentVertexColor = 128,
+		// vertexlit_and_unlit_generic with VERTEXCOLOR ($vertexcolor): the result
+		// is multiplied by the vertex color, which the vertex stage converts from
+		// gamma to linear unless kVertexColorNoGammaConvert
+		// (DONT_GAMMA_CONVERT_VERTEX_COLOR, a material that does not write sRGB).
+		kFragmentModulateVertexColor = 256,
+		kVertexColorNoGammaConvert = 512,
+		// ... and with g_fVertexAlpha ($vertexalpha): alpha times the vertex alpha.
+		kFragmentModulateVertexAlpha = 1024
 	};
 	void SelectDynamicColorSpace( int flags ) { m_dynColorFlags = flags; }
 	// Linear scale applied to the textured pipeline's color before the sRGB
@@ -315,7 +422,12 @@ public:
 	{
 		kSamplerClampU = 1,
 		kSamplerClampV = 2,
-		kSamplerLinear = 4
+		kSamplerLinear = 4,
+		// D3DSAMP_MIPFILTER: point or linear between mip levels; neither samples
+		// level 0 only (D3DTEXF_NONE).
+		kSamplerMipPoint = 8,
+		kSamplerMipLinear = 16,
+		kSamplerStates = 32
 	};
 	void SetManagedTextureSamplerState( int handle, int samplerState );
 	int ManagedTextureSamplerState( int handle ) const
@@ -328,7 +440,7 @@ public:
 	void SetScissor( bool enable, int x, int y, int width, int height );
 	// Clear the current viewport of the current target to the clear color
 	// (SetClearColor) and/or to depth 1.
-	void QueueClear( bool color, bool depth );
+	void QueueClear( bool color, bool depth, bool stencil = false );
 	// Copy the current target into a render-target texture, scaling between the
 	// rectangles ({x, y, width, height}; null = the whole image).
 	bool QueueCopyToTexture( int dstHandle, const int *srcRect, const int *dstRect );
@@ -468,7 +580,13 @@ private:
 
 	// Per-swapchain-image depth attachment, so depth-tested 3D geometry (real
 	// scene rendering) has an occlusion buffer. Recreated with the swapchain.
+	// The depth-stencil format, chosen at device pick: D24S8 as D3D9 asks for,
+	// else D32S8, else depth only (no stencil bits).
 	VkFormat m_depthFormat = VK_FORMAT_D32_SFLOAT;
+	VkImageAspectFlags m_depthAspects = VK_IMAGE_ASPECT_DEPTH_BIT;
+	int m_stencilBits = 0;
+	bool m_clipPlanesSupported = false;
+	bool m_blockCompression = false;
 	std::vector<VkImage> m_depthImages;
 	std::vector<VkDeviceMemory> m_depthMemories;
 	std::vector<VkImageView> m_depthViews;
@@ -571,21 +689,48 @@ private:
 	// mesh UVs, bound through a descriptor set (its own layout adds the sampler).
 	// One textured pipeline per distinct DynRasterState (see RasterStateKey),
 	// built from m_texTemplate when a draw first needs it.
-	std::map<uint32_t, VkPipeline> m_dynTexPipelines;
-	VkPipeline TexturedPipeline( const DynRasterState &state );
+	// Keyed by RasterStateKey, with bit 32 set for pipelines of the sRGB passes.
+	std::map<uint64_t, VkPipeline> m_dynTexPipelines;
+	VkPipeline TexturedPipeline( const DynRasterState &state, bool srgbPass = false );
+	// PortalRefract pipelines, one per raster state, built on first use.
+	std::map<uint64_t, VkPipeline> m_portalPipelines;
+	VkPipeline PortalPipeline( const DynRasterState &state, bool srgbPass = false );
+	VkPipelineLayout m_portalPipelineLayout = VK_NULL_HANDLE;
+	VkShaderModule m_portalVert = VK_NULL_HANDLE;
+	VkShaderModule m_portalFrag = VK_NULL_HANDLE;
+	bool m_portalPushSupported = false;
+	bool InitPortalPipeline( std::string *outError );
+	VkPipeline BuildMaterialPipeline( const DynRasterState &state, VkShaderModule vert,
+	    VkShaderModule frag, VkPipelineLayout layout,
+	    const VkPipelineVertexInputStateCreateInfo *vertexInput, VkRenderPass renderPass );
+	// D3D9 blends a draw that writes sRGB (SRGBWRITEENABLE) in linear space: the
+	// destination is decoded, blended and encoded again. Such draws render
+	// through sRGB-format views of the same attachments (mutable-format swapchain
+	// images and render targets), in these render passes, so the hardware does
+	// exactly that. Without VK_KHR_swapchain_mutable_format they blend encoded
+	// values, and the census reports it.
+	bool m_srgbAttachments = false;
+	VkFormat m_swapFormatSrgb = VK_FORMAT_UNDEFINED;
+	std::vector<VkImageView> m_swapImageViewsSrgb;
+	std::vector<VkFramebuffer> m_framebuffersSrgb;
+	VkRenderPass m_renderPassLoadSrgb = VK_NULL_HANDLE;
+	VkRenderPass m_renderPassTargetSrgb = VK_NULL_HANDLE;
+	// PortalRefract's vertex input: the textured one plus normal and tangent.
+	VkVertexInputAttributeDescription m_portalAttrs[6] = {};
+	VkPipelineVertexInputStateCreateInfo m_portalVin = {};
 	// The fixed-function state every textured pipeline shares; only the blend and
 	// depth state vary. Kept (with its shader modules) for pipelines built later.
 	struct TexturedPipelineTemplate
 	{
 		VkPipelineShaderStageCreateInfo stages[2];
 		VkVertexInputBindingDescription binding;
-		VkVertexInputAttributeDescription attrs[4];
+		VkVertexInputAttributeDescription attrs[5];
 		VkPipelineVertexInputStateCreateInfo vin;
 		VkPipelineInputAssemblyStateCreateInfo ia;
 		VkPipelineViewportStateCreateInfo vp;
 		VkPipelineRasterizationStateCreateInfo rs;
 		VkPipelineMultisampleStateCreateInfo ms;
-		VkDynamicState dynStates[2];
+		VkDynamicState dynStates[5];
 		VkPipelineDynamicStateCreateInfo dyn;
 	};
 	TexturedPipelineTemplate m_texTemplate = {};
@@ -597,7 +742,7 @@ private:
 	// Sampler per addressing/filter combination (kSamplerClampU | kSamplerClampV |
 	// kSamplerLinear). D3D9 sampler state is per texture here, as Source sets it
 	// when each texture is created.
-	VkSampler m_samplers[8] = {};
+	VkSampler m_samplers[kSamplerStates] = {};
 	VkDescriptorSetLayout m_dynTexDescLayout = VK_NULL_HANDLE;
 	VkDescriptorPool m_dynTexDescPool = VK_NULL_HANDLE;
 	VkDescriptorSet m_dynTexDescSet = VK_NULL_HANDLE;
@@ -605,7 +750,7 @@ private:
 	// bound one, or the built-in 2-tone texture when none is bound.
 	enum
 	{
-		kMaxManagedTexSets = 8192
+		kMaxManagedTexSets = 16384
 	};
 	struct ManagedTexture
 	{
@@ -616,6 +761,7 @@ private:
 		VkDescriptorSet descSet = VK_NULL_HANDLE;
 		uint32_t width = 0;
 		uint32_t height = 0;
+		uint32_t mipLevels = 1;
 		VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
 		// False until pixel data has actually been uploaded. Sampling an image
 		// that was created but never filled yields undefined contents.
@@ -629,6 +775,12 @@ private:
 		VkDeviceMemory depthMemory = VK_NULL_HANDLE;
 		VkImageView depthView = VK_NULL_HANDLE;
 		VkFramebuffer framebuffer = VK_NULL_HANDLE;
+		// sRGB view of an 8-bit or BC image: a render target's sRGB attachment
+		// (framebufferSrgb, m_renderPassTargetSrgb), and for sampling the set that
+		// decodes each texel before filtering, as D3D9's SRGBTEXTURE does.
+		VkImageView srgbView = VK_NULL_HANDLE;
+		VkFramebuffer framebufferSrgb = VK_NULL_HANDLE;
+		VkDescriptorSet descSetSrgb = VK_NULL_HANDLE;
 	};
 	std::vector<ManagedTexture> m_managedTextures;
 	// The managed texture currently bound (BindManagedTexture); captured per draw.
@@ -636,6 +788,13 @@ private:
 	int m_dynLightmapHandle = -1;
 	int m_dynColorFlags = 0;
 	float m_dynOutputScale = 1.0f;
+	uint32_t m_dynStencilRef = 0;
+	uint32_t m_dynStencilTestMask = 0xFF;
+	uint32_t m_dynStencilWriteMask = 0xFF;
+	int m_dynClipPlaneCount = 0;
+	float m_dynClipPlanes[kMaxClipPlanes][4] = {};
+	int m_dynSamplerHandles[3] = { -1, -1, -1 };
+	PortalConstants m_dynPortal;
 	// Column-major model->projection matrix; identity by default.
 	float m_dynTransform[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	VkBuffer m_dynVertexBuffer = VK_NULL_HANDLE;
@@ -692,6 +851,14 @@ private:
 		int lightmapHandle = -1; // lightmap page multiplied in (-1 = none)
 		int colorFlags = 0;      // kColorSrgb* inputs/output encoding
 		float outputScale = 1.0f; // linear scale before the output encode
+		bool clearStencil = false;
+		uint32_t stencilRef = 0;
+		uint32_t stencilTestMask = 0xFF;
+		uint32_t stencilWriteMask = 0xFF;
+		int clipPlaneCount = 0;
+		float clipPlanes[kMaxClipPlanes][4] = {};
+		int samplerHandles[3] = { -1, -1, -1 }; // [1], [2]: samplers 1 and 2
+		PortalConstants portal;
 	};
 	std::vector<DynDraw> m_dynDrawRecords;
 	// Target/viewport/scissor state captured by each record.
@@ -721,7 +888,7 @@ private:
 	std::vector<std::pair<int, uint64_t>> m_replayedQueries;
 	void FailUnsubmittedQueries();
 	void GetTargetExtent( int target, uint32_t *outW, uint32_t *outH ) const;
-	void BeginTargetPass( VkCommandBuffer cmd, int target );
+	void BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb = false );
 	void RecordTargetCopy( VkCommandBuffer cmd, int srcTarget, const DynDraw &copy );
 
 	// Per-frame acquisition state, valid between BeginFrame and EndFrame.

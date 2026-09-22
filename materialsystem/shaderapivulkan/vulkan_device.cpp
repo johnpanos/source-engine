@@ -7,6 +7,7 @@
 
 #include "vulkan_device.h"
 #include "demo_triangle_spv.h"
+#include "material_spv.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -416,7 +417,32 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 		queueInfos.push_back( pq );
 	}
 
-	const char *deviceExts[] = { kSwapchainExtension };
+	std::vector<const char *> deviceExts = { kSwapchainExtension };
+	// sRGB views of the swapchain images (linear-space blending of sRGB writes).
+	{
+		uint32_t extCount = 0;
+		vkEnumerateDeviceExtensionProperties( m_physicalDevice, nullptr, &extCount, nullptr );
+		std::vector<VkExtensionProperties> exts( extCount );
+		if ( extCount )
+			vkEnumerateDeviceExtensionProperties(
+			    m_physicalDevice, nullptr, &extCount, exts.data() );
+		const auto has = [&]( const char *name )
+		{
+			for ( const VkExtensionProperties &e : exts )
+				if ( std::strcmp( e.extensionName, name ) == 0 )
+					return true;
+			return false;
+		};
+		if ( has( VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME ) &&
+		     has( VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME ) &&
+		     has( VK_KHR_MAINTENANCE_2_EXTENSION_NAME ) )
+		{
+			deviceExts.push_back( VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME );
+			deviceExts.push_back( VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME );
+			deviceExts.push_back( VK_KHR_MAINTENANCE_2_EXTENSION_NAME );
+			m_srgbAttachments = true;
+		}
+	}
 
 	// Exact occlusion counts, which auto-exposure's luminance histogram needs
 	// (a non-precise query may report any nonzero value for a visible draw).
@@ -425,13 +451,43 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 	VkPhysicalDeviceFeatures features = {};
 	features.occlusionQueryPrecise = supported.occlusionQueryPrecise;
 	m_preciseOcclusion = supported.occlusionQueryPrecise == VK_TRUE;
+	// D3D9 user clip planes are clip distances. The planes travel in the push
+	// constants, so a device must also hold the widest block that carries them
+	// (PortalRefract's, kPortalPushBytes); without either, no clip planes are
+	// reported and the material system falls back as on D3D9 hardware without
+	// user clip planes.
+	VkPhysicalDeviceProperties properties = {};
+	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
+	m_portalPushSupported = properties.limits.maxPushConstantsSize >= kPortalPushBytes;
+	m_clipPlanesSupported = supported.shaderClipDistance == VK_TRUE &&
+	                        properties.limits.maxClipDistances >= kMaxClipPlanes &&
+	                        properties.limits.maxPushConstantsSize >= kTexturedPushBytes;
+	features.shaderClipDistance = m_clipPlanesSupported ? VK_TRUE : VK_FALSE;
+	// DXT textures upload as BC images and are decoded by the sampler, as D3D9
+	// samples them; without the feature the material system decompresses them.
+	m_blockCompression = supported.textureCompressionBC == VK_TRUE;
+	features.textureCompressionBC = supported.textureCompressionBC;
+	// A depth format with stencil, as D3D9 always creates one (D24S8): portal
+	// views are drawn with stencil recursion. D24S8 first, then D32S8.
+	for ( VkFormat candidate : { VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT_S8_UINT } )
+	{
+		VkFormatProperties fp = {};
+		vkGetPhysicalDeviceFormatProperties( m_physicalDevice, candidate, &fp );
+		if ( fp.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT )
+		{
+			m_depthFormat = candidate;
+			m_depthAspects = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+			m_stencilBits = 8;
+			break;
+		}
+	}
 
 	VkDeviceCreateInfo createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	createInfo.queueCreateInfoCount = static_cast<uint32_t>( queueInfos.size() );
 	createInfo.pQueueCreateInfos = queueInfos.data();
-	createInfo.enabledExtensionCount = 1;
-	createInfo.ppEnabledExtensionNames = deviceExts;
+	createInfo.enabledExtensionCount = static_cast<uint32_t>( deviceExts.size() );
+	createInfo.ppEnabledExtensionNames = deviceExts.data();
 	createInfo.pEnabledFeatures = &features;
 
 	VkResult r = vkCreateDevice( m_physicalDevice, &createInfo, nullptr, &m_device );
@@ -475,6 +531,18 @@ bool CVulkanContext::CreateSwapchain( std::string *outError )
 	}
 	m_swapFormat = chosen.format;
 	m_swapColorSpace = chosen.colorSpace;
+	m_swapFormatSrgb = m_swapFormat == VK_FORMAT_B8G8R8A8_UNORM   ? VK_FORMAT_B8G8R8A8_SRGB
+	                   : m_swapFormat == VK_FORMAT_R8G8B8A8_UNORM ? VK_FORMAT_R8G8B8A8_SRGB
+	                                                              : VK_FORMAT_UNDEFINED;
+	if ( m_swapFormatSrgb == VK_FORMAT_UNDEFINED )
+		m_srgbAttachments = false;
+	if ( m_srgbAttachments )
+	{
+		VkFormatProperties fp = {};
+		vkGetPhysicalDeviceFormatProperties( m_physicalDevice, m_swapFormatSrgb, &fp );
+		if ( !( fp.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT ) )
+			m_srgbAttachments = false;
+	}
 
 	// Present mode: mailbox when requested and available, else guaranteed FIFO.
 	m_presentMode = VK_PRESENT_MODE_FIFO_KHR;
@@ -535,6 +603,16 @@ bool CVulkanContext::CreateSwapchain( std::string *outError )
 	info.presentMode = m_presentMode;
 	info.clipped = VK_TRUE;
 	info.oldSwapchain = VK_NULL_HANDLE;
+	const VkFormat viewFormats[2] = { m_swapFormat, m_swapFormatSrgb };
+	VkImageFormatListCreateInfo formatList = {};
+	formatList.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO;
+	formatList.viewFormatCount = 2;
+	formatList.pViewFormats = viewFormats;
+	if ( m_srgbAttachments )
+	{
+		info.flags |= VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR;
+		info.pNext = &formatList;
+	}
 
 	uint32_t families[2] = { m_graphicsQueueFamily, m_presentQueueFamily };
 	if ( m_graphicsQueueFamily != m_presentQueueFamily )
@@ -561,6 +639,7 @@ bool CVulkanContext::CreateSwapchain( std::string *outError )
 	vkGetSwapchainImagesKHR( m_device, m_swapchain, &actual, m_swapImages.data() );
 
 	m_swapImageViews.resize( actual );
+	m_swapImageViewsSrgb.assign( m_srgbAttachments ? actual : 0, VK_NULL_HANDLE );
 	for ( uint32_t i = 0; i < actual; ++i )
 	{
 		VkImageViewCreateInfo iv = {};
@@ -574,6 +653,11 @@ bool CVulkanContext::CreateSwapchain( std::string *outError )
 		iv.subresourceRange.levelCount = 1;
 		iv.subresourceRange.layerCount = 1;
 		r = vkCreateImageView( m_device, &iv, nullptr, &m_swapImageViews[i] );
+		if ( r == VK_SUCCESS && m_srgbAttachments )
+		{
+			iv.format = m_swapFormatSrgb;
+			r = vkCreateImageView( m_device, &iv, nullptr, &m_swapImageViewsSrgb[i] );
+		}
 		if ( r != VK_SUCCESS )
 		{
 			SetError( outError, std::string( "vkCreateImageView failed: " ) + ResultString( r ) );
@@ -640,7 +724,7 @@ bool CVulkanContext::CreateDepthResources( std::string *outError )
 		iv.image = m_depthImages[i];
 		iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
 		iv.format = m_depthFormat;
-		iv.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+		iv.subresourceRange.aspectMask = m_depthAspects;
 		iv.subresourceRange.levelCount = 1;
 		iv.subresourceRange.layerCount = 1;
 		if ( vkCreateImageView( m_device, &iv, nullptr, &m_depthViews[i] ) != VK_SUCCESS )
@@ -662,11 +746,11 @@ bool CVulkanContext::CreateRenderPass( std::string *outError )
 	// m_renderPass is therefore valid in all three. Formats, sample counts and
 	// dependencies must stay identical between them.
 	auto makePass = [&]( VkAttachmentLoadOp loadOp, VkImageLayout colorInitial,
-	                    VkImageLayout colorFinal, VkImageLayout depthInitial,
-	                    VkRenderPass *outPass ) -> bool
+	                    VkImageLayout colorFinal, VkImageLayout depthInitial, VkRenderPass *outPass,
+	                    VkFormat colorFormat ) -> bool
 	{
 		VkAttachmentDescription color = {};
-		color.format = m_swapFormat;
+		color.format = colorFormat;
 		color.samples = VK_SAMPLE_COUNT_1_BIT;
 		color.loadOp = loadOp;
 		color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -686,8 +770,9 @@ bool CVulkanContext::CreateRenderPass( std::string *outError )
 		depth.samples = VK_SAMPLE_COUNT_1_BIT;
 		depth.loadOp = loadOp;
 		depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		depth.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		depth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		// Stencil persists like depth: portal recursion spans render passes.
+		depth.stencilLoadOp = loadOp;
+		depth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
 		depth.initialLayout = depthInitial;
 		depth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
@@ -759,15 +844,27 @@ bool CVulkanContext::CreateRenderPass( std::string *outError )
 	// The frame's first pass clears the swapchain image and leaves it in a
 	// color-attachment layout; EndFrame() performs the explicit transition to
 	// PRESENT_SRC (or the capture path) so one pass serves present and readback.
+	// The sRGB passes are the load passes over sRGB views of the same images.
 	return makePass( VK_ATTACHMENT_LOAD_OP_CLEAR, VK_IMAGE_LAYOUT_UNDEFINED,
-	           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED,
-	           &m_renderPass ) &&
+	           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED, &m_renderPass,
+	           m_swapFormat ) &&
 	       makePass( VK_ATTACHMENT_LOAD_OP_LOAD, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 	           VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-	           VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, &m_renderPassLoad ) &&
+	           VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, &m_renderPassLoad,
+	           m_swapFormat ) &&
 	       makePass( VK_ATTACHMENT_LOAD_OP_LOAD, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	           VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, &m_renderPassTarget );
+	           VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, &m_renderPassTarget,
+	           m_swapFormat ) &&
+	       ( !m_srgbAttachments ||
+	           ( makePass( VK_ATTACHMENT_LOAD_OP_LOAD, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	                 VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, &m_renderPassLoadSrgb,
+	                 m_swapFormatSrgb ) &&
+	               makePass( VK_ATTACHMENT_LOAD_OP_LOAD, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	                   VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, &m_renderPassTargetSrgb,
+	                   m_swapFormatSrgb ) ) );
 }
 
 bool CVulkanContext::CreateFramebuffers( std::string *outError )
@@ -788,6 +885,24 @@ bool CVulkanContext::CreateFramebuffers( std::string *outError )
 		if ( r != VK_SUCCESS )
 		{
 			SetError( outError, std::string( "vkCreateFramebuffer failed: " ) + ResultString( r ) );
+			return false;
+		}
+	}
+	m_framebuffersSrgb.assign( m_srgbAttachments ? m_swapImageViews.size() : 0, VK_NULL_HANDLE );
+	for ( size_t i = 0; i < m_framebuffersSrgb.size(); ++i )
+	{
+		VkImageView attachments[] = { m_swapImageViewsSrgb[i], m_depthViews[i] };
+		VkFramebufferCreateInfo fb = {};
+		fb.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+		fb.renderPass = m_renderPassLoadSrgb;
+		fb.attachmentCount = 2;
+		fb.pAttachments = attachments;
+		fb.width = m_swapExtent.width;
+		fb.height = m_swapExtent.height;
+		fb.layers = 1;
+		if ( vkCreateFramebuffer( m_device, &fb, nullptr, &m_framebuffersSrgb[i] ) != VK_SUCCESS )
+		{
+			SetError( outError, "vkCreateFramebuffer (sRGB) failed" );
 			return false;
 		}
 	}
@@ -2134,7 +2249,7 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 	stages[1].pName = "main";
 
 	// Shared dynamic vertex: position (vec3) + color (vec3) + uv (vec2) + lightmap
-	// uv (vec2), kDynVertexFloats floats. Shaders that ignore a component (e.g.
+	// uv (vec2), then normal, tangent and color alpha, kDynVertexFloats floats. Shaders that ignore a component (e.g.
 	// color for the textured shader, uv for the others) do not read that attribute.
 	VkVertexInputBindingDescription binding = {};
 	binding.binding = 0;
@@ -2153,6 +2268,8 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 	attrs[3].location = 3;
 	attrs[3].format = VK_FORMAT_R32G32_SFLOAT;
 	attrs[3].offset = sizeof( float ) * 8;
+	// Normal (10..12) and tangent (13..16) complete the record; only
+	// PortalRefract reads them (m_portalVin).
 	VkPipelineVertexInputStateCreateInfo vin = {};
 	vin.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	vin.vertexBindingDescriptionCount = 1;
@@ -2370,7 +2487,7 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		// span many repeats, so clamping by default would collapse every tiled
 		// surface onto its edge texel. Wrap is D3D9's default; Source clamps the
 		// textures that need it through TexWrap.
-		for ( int state = 0; state < 8; ++state )
+		for ( int state = 0; state < kSamplerStates; ++state )
 		{
 			VkSamplerCreateInfo sc = {};
 			sc.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -2378,6 +2495,11 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 			    ( state & kSamplerLinear ) ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
 			sc.magFilter = filter;
 			sc.minFilter = filter;
+			sc.mipmapMode = ( state & kSamplerMipLinear ) ? VK_SAMPLER_MIPMAP_MODE_LINEAR
+			                                              : VK_SAMPLER_MIPMAP_MODE_NEAREST;
+			sc.minLod = 0.0f;
+			sc.maxLod =
+			    ( state & ( kSamplerMipPoint | kSamplerMipLinear ) ) ? VK_LOD_CLAMP_NONE : 0.0f;
 			sc.addressModeU = ( state & kSamplerClampU ) ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
 			                                             : VK_SAMPLER_ADDRESS_MODE_REPEAT;
 			sc.addressModeV = ( state & kSamplerClampV ) ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
@@ -2452,7 +2574,9 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		VkPushConstantRange texPc = {};
 		texPc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 		texPc.offset = 0;
-		texPc.size = sizeof( float ) * 32; // + vec4 alphaParams (128 bytes)
+		// + vec4 alphaParams (128 bytes), and the user clip planes when the device
+		// clips (demo_dyn_tex_clip.vert reads them after the block).
+		texPc.size = m_clipPlanesSupported ? kTexturedPushBytes : sizeof( float ) * 32;
 		// Set 0 is the base texture and set 1 the lightmap: both are one
 		// combined image sampler, so each managed texture's single set serves
 		// either role.
@@ -2471,11 +2595,13 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		}
 
 		VkShaderModule texVert = VK_NULL_HANDLE, texFrag = VK_NULL_HANDLE;
-		if ( !CreateShaderModule(
-		         g_demoDynTexVertSpv, sizeof( g_demoDynTexVertSpv ), &texVert, outError ) )
+		if ( !( m_clipPlanesSupported ? CreateShaderModule( g_materialTexClipVertSpv,
+		                                    sizeof( g_materialTexClipVertSpv ), &texVert, outError )
+		                              : CreateShaderModule( g_materialTexVertSpv,
+		                                    sizeof( g_materialTexVertSpv ), &texVert, outError ) ) )
 			return false;
 		if ( !CreateShaderModule(
-		         g_demoDynTexFragSpv, sizeof( g_demoDynTexFragSpv ), &texFrag, outError ) )
+		         g_materialTexFragSpv, sizeof( g_materialTexFragSpv ), &texFrag, outError ) )
 		{
 			vkDestroyShaderModule( m_device, texVert, nullptr );
 			return false;
@@ -2488,16 +2614,28 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		t.stages[0].module = texVert;
 		t.stages[1].module = texFrag;
 		t.binding = binding;
-		std::memcpy( t.attrs, attrs, sizeof( t.attrs ) );
+		std::memcpy( t.attrs, attrs, sizeof( attrs ) );
+		// The textured stage also reads the vertex color's alpha, which ends the
+		// record ($vertexalpha; demo_dyn_tex.vert location 6).
+		t.attrs[4].location = 6;
+		t.attrs[4].format = VK_FORMAT_R32_SFLOAT;
+		t.attrs[4].offset = sizeof( float ) * 17;
 		t.vin = vin;
 		t.vin.pVertexBindingDescriptions = &t.binding;
+		t.vin.vertexAttributeDescriptionCount = 5;
 		t.vin.pVertexAttributeDescriptions = t.attrs;
 		t.ia = ia;
 		t.vp = vp;
 		t.rs = rs;
 		t.ms = ms;
-		std::memcpy( t.dynStates, dynStates, sizeof( t.dynStates ) );
+		// Material pipelines also take D3D9's stencil reference and masks per draw.
+		t.dynStates[0] = VK_DYNAMIC_STATE_VIEWPORT;
+		t.dynStates[1] = VK_DYNAMIC_STATE_SCISSOR;
+		t.dynStates[2] = VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK;
+		t.dynStates[3] = VK_DYNAMIC_STATE_STENCIL_WRITE_MASK;
+		t.dynStates[4] = VK_DYNAMIC_STATE_STENCIL_REFERENCE;
 		t.dyn = dyn;
+		t.dyn.dynamicStateCount = 5;
 		t.dyn.pDynamicStates = t.dynStates;
 
 		// Build the default (opaque) state now so a device that cannot create
@@ -2508,6 +2646,8 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 			return false;
 		}
 	}
+	if ( !InitPortalPipeline( outError ) )
+		return false;
 
 	Log( "dynamic mesh pipelines ready (4 material shaders incl. textured + blend variants)\n" );
 	return true;
@@ -2521,18 +2661,68 @@ uint32_t CVulkanContext::RasterStateKey( const DynRasterState &state )
 	       ( static_cast<uint32_t>( state.dstFactor ) & 31u ) << 6 |
 	       ( state.depthTest ? 1u : 0u ) << 11 | ( state.depthWrite ? 1u : 0u ) << 12 |
 	       ( static_cast<uint32_t>( state.depthCompare ) & 7u ) << 13 |
-	       ( state.colorWrite ? 1u : 0u ) << 16;
+	       ( state.colorWrite ? 1u : 0u ) << 16 |
+	       ( static_cast<uint32_t>( state.cullMode ) & 3u ) << 17 |
+	       ( state.stencilEnable ? 1u : 0u ) << 19 |
+	       ( state.stencilEnable
+	               ? ( static_cast<uint32_t>( state.stencilCompare ) & 7u ) << 20 |
+	                     ( static_cast<uint32_t>( state.stencilFail ) & 7u ) << 23 |
+	                     ( static_cast<uint32_t>( state.stencilDepthFail ) & 7u ) << 26 |
+	                     ( static_cast<uint32_t>( state.stencilPass ) & 7u ) << 29
+	               : 0u );
 }
 
-VkPipeline CVulkanContext::TexturedPipeline( const DynRasterState &state )
+VkPipeline CVulkanContext::TexturedPipeline( const DynRasterState &state, bool srgbPass )
 {
-	const uint32_t key = RasterStateKey( state );
+	const uint64_t key = RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull );
 	const auto existing = m_dynTexPipelines.find( key );
 	if ( existing != m_dynTexPipelines.end() )
 		return existing->second;
 	if ( m_texTemplate.stages[0].module == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE;
+	VkPipeline pipeline = BuildMaterialPipeline( state, m_texTemplate.stages[0].module,
+	    m_texTemplate.stages[1].module, m_dynTexPipelineLayout, &m_texTemplate.vin,
+	    srgbPass ? m_renderPassLoadSrgb : m_renderPass );
+	if ( pipeline == VK_NULL_HANDLE )
+		Log( "vkCreateGraphicsPipelines (textured, state %#llx) failed\n",
+		    static_cast<unsigned long long>( key ) );
+	// A failed state is cached too, so it is reported once rather than per draw.
+	m_dynTexPipelines[key] = pipeline;
+	return pipeline;
+}
 
+VkPipeline CVulkanContext::PortalPipeline( const DynRasterState &state, bool srgbPass )
+{
+	const uint64_t key = RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull );
+	const auto existing = m_portalPipelines.find( key );
+	if ( existing != m_portalPipelines.end() )
+		return existing->second;
+	if ( m_portalVert == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE;
+	VkPipeline pipeline = BuildMaterialPipeline( state, m_portalVert, m_portalFrag,
+	    m_portalPipelineLayout, &m_portalVin, srgbPass ? m_renderPassLoadSrgb : m_renderPass );
+	if ( pipeline == VK_NULL_HANDLE )
+		Log( "vkCreateGraphicsPipelines (PortalRefract, state %#llx) failed\n",
+		    static_cast<unsigned long long>( key ) );
+	m_portalPipelines[key] = pipeline;
+	return pipeline;
+}
+
+static VkStencilOpState StencilFaceState( const CVulkanContext::DynRasterState &state )
+{
+	VkStencilOpState face = {};
+	face.failOp = state.stencilFail;
+	face.passOp = state.stencilPass;
+	face.depthFailOp = state.stencilDepthFail;
+	face.compareOp = state.stencilCompare;
+	// The masks and the reference are dynamic (set per draw).
+	return face;
+}
+
+VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, VkShaderModule vert,
+    VkShaderModule frag, VkPipelineLayout layout,
+    const VkPipelineVertexInputStateCreateInfo *vertexInput, VkRenderPass renderPass )
+{
 	VkPipelineColorBlendAttachmentState att = {};
 	att.colorWriteMask = state.colorWrite ? VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
 	                                            VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
@@ -2553,36 +2743,92 @@ VkPipeline CVulkanContext::TexturedPipeline( const DynRasterState &state )
 	ds.depthTestEnable = state.depthTest ? VK_TRUE : VK_FALSE;
 	ds.depthWriteEnable = state.depthWrite ? VK_TRUE : VK_FALSE;
 	ds.depthCompareOp = state.depthCompare;
+	ds.stencilTestEnable = ( state.stencilEnable && m_stencilBits > 0 ) ? VK_TRUE : VK_FALSE;
+	ds.front = StencilFaceState( state );
+	ds.back = ds.front;
 
 	const TexturedPipelineTemplate &t = m_texTemplate;
+	VkPipelineShaderStageCreateInfo stages[2] = { t.stages[0], t.stages[1] };
+	stages[0].module = vert;
+	stages[1].module = frag;
 	VkGraphicsPipelineCreateInfo gp = {};
 	gp.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	gp.stageCount = 2;
-	gp.pStages = t.stages;
-	gp.pVertexInputState = &t.vin;
+	gp.pStages = stages;
+	gp.pVertexInputState = vertexInput;
 	gp.pInputAssemblyState = &t.ia;
 	gp.pViewportState = &t.vp;
-	gp.pRasterizationState = &t.rs;
+	VkPipelineRasterizationStateCreateInfo rs = t.rs;
+	rs.cullMode = state.cullMode;
+	rs.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	gp.pRasterizationState = &rs;
 	gp.pMultisampleState = &t.ms;
 	gp.pColorBlendState = &cb;
 	gp.pDynamicState = &t.dyn;
 	gp.pDepthStencilState = &ds;
-	gp.layout = m_dynTexPipelineLayout;
-	// The swapchain and render-target passes are render-pass compatible.
-	gp.renderPass = m_renderPass;
+	gp.layout = layout;
+	// The swapchain and render-target passes are render-pass compatible, and so
+	// are the two sRGB passes with each other.
+	gp.renderPass = renderPass;
 	gp.subpass = 0;
 	VkPipeline pipeline = VK_NULL_HANDLE;
-	const VkResult r =
-	    vkCreateGraphicsPipelines( m_device, VK_NULL_HANDLE, 1, &gp, nullptr, &pipeline );
-	if ( r != VK_SUCCESS )
-	{
-		Log( "vkCreateGraphicsPipelines (textured, state %#x) failed: %s\n", key,
-		    ResultString( r ) );
+	if ( vkCreateGraphicsPipelines( m_device, VK_NULL_HANDLE, 1, &gp, nullptr, &pipeline ) !=
+	     VK_SUCCESS )
 		pipeline = VK_NULL_HANDLE;
-	}
-	// A failed state is cached too, so it is reported once rather than per draw.
-	m_dynTexPipelines[key] = pipeline;
 	return pipeline;
+}
+
+// PortalRefract: its own shaders (a GLSL port of portal_refract_vs20.fxc and
+// portal_refract_ps2x.fxc), three sampler sets (s0 refraction, s1 noise, s2
+// color) and a push block with its registers (see shaders/portal_refract.vert).
+// A device whose push constants cannot hold the block gets no pipeline, and the
+// shader API declines the material by name.
+bool CVulkanContext::InitPortalPipeline( std::string *outError )
+{
+	if ( !m_portalPushSupported || !m_clipPlanesSupported )
+	{
+		Log( "PortalRefract pipeline unavailable: push constants or clip distances too small\n" );
+		return true;
+	}
+	VkPushConstantRange pc = {};
+	pc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+	pc.size = kPortalPushBytes;
+	const VkDescriptorSetLayout sets[3] = {
+	    m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout };
+	VkPipelineLayoutCreateInfo pl = {};
+	pl.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pl.setLayoutCount = 3;
+	pl.pSetLayouts = sets;
+	pl.pushConstantRangeCount = 1;
+	pl.pPushConstantRanges = &pc;
+	if ( vkCreatePipelineLayout( m_device, &pl, nullptr, &m_portalPipelineLayout ) != VK_SUCCESS )
+	{
+		SetError( outError, "vkCreatePipelineLayout (PortalRefract) failed" );
+		return false;
+	}
+	if ( !CreateShaderModule(
+	         g_portalRefractVertSpv, sizeof( g_portalRefractVertSpv ), &m_portalVert, outError ) ||
+	     !CreateShaderModule(
+	         g_portalRefractFragSpv, sizeof( g_portalRefractFragSpv ), &m_portalFrag, outError ) )
+		return false;
+	// Position, color, uv and lightmap uv as the textured stage reads them (not
+	// its vertex alpha, which PortalRefract does not use).
+	std::memcpy( m_portalAttrs, m_texTemplate.attrs, sizeof( m_portalAttrs[0] ) * 4 );
+	m_portalAttrs[4].location = 4;
+	m_portalAttrs[4].format = VK_FORMAT_R32G32B32_SFLOAT;
+	m_portalAttrs[4].offset = sizeof( float ) * 10;
+	m_portalAttrs[5].location = 5;
+	m_portalAttrs[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	m_portalAttrs[5].offset = sizeof( float ) * 13;
+	m_portalVin = m_texTemplate.vin;
+	m_portalVin.vertexAttributeDescriptionCount = 6;
+	m_portalVin.pVertexAttributeDescriptions = m_portalAttrs;
+	if ( PortalPipeline( DynRasterState() ) == VK_NULL_HANDLE )
+	{
+		SetError( outError, "vkCreateGraphicsPipelines (PortalRefract) failed" );
+		return false;
+	}
+	return true;
 }
 
 void CVulkanContext::SetDynamicTransform( const float *m16 )
@@ -2591,8 +2837,8 @@ void CVulkanContext::SetDynamicTransform( const float *m16 )
 		std::memcpy( m_dynTransform, m16, sizeof( m_dynTransform ) );
 }
 
-int CVulkanContext::CreateManagedTexture(
-    int width, int height, VkFormat format, std::string *outError, VkImageUsageFlags extraUsage )
+int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format,
+    std::string *outError, VkImageUsageFlags extraUsage, uint32_t mipLevels, VkFormat srgbAlias )
 {
 	if ( !IsValid() || width <= 0 || height <= 0 )
 	{
@@ -2614,19 +2860,62 @@ int CVulkanContext::CreateManagedTexture(
 	t.width = static_cast<uint32_t>( width );
 	t.height = static_cast<uint32_t>( height );
 	t.format = format;
+	uint32_t fullChain = 1;
+	for ( uint32_t size = std::max( t.width, t.height ); size > 1; size >>= 1 )
+		++fullChain;
+	t.mipLevels = std::max( 1u, std::min( mipLevels, fullChain ) );
 
 	VkImageCreateInfo ii = {};
 	ii.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	ii.imageType = VK_IMAGE_TYPE_2D;
 	ii.format = format;
 	ii.extent = { t.width, t.height, 1 };
-	ii.mipLevels = 1;
+	ii.mipLevels = t.mipLevels;
 	ii.arrayLayers = 1;
 	ii.samples = VK_SAMPLE_COUNT_1_BIT;
 	ii.tiling = VK_IMAGE_TILING_OPTIMAL;
 	ii.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | extraUsage;
 	ii.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	// 8-bit and BC color formats also get an sRGB view for sRGB sampling.
+	if ( srgbAlias == VK_FORMAT_UNDEFINED )
+	{
+		switch ( format )
+		{
+		case VK_FORMAT_R8G8B8A8_UNORM:
+			srgbAlias = VK_FORMAT_R8G8B8A8_SRGB;
+			break;
+		case VK_FORMAT_B8G8R8A8_UNORM:
+			srgbAlias = VK_FORMAT_B8G8R8A8_SRGB;
+			break;
+		case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
+			srgbAlias = VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
+			break;
+		case VK_FORMAT_BC2_UNORM_BLOCK:
+			srgbAlias = VK_FORMAT_BC2_SRGB_BLOCK;
+			break;
+		case VK_FORMAT_BC3_UNORM_BLOCK:
+			srgbAlias = VK_FORMAT_BC3_SRGB_BLOCK;
+			break;
+		default:
+			break;
+		}
+		VkFormatProperties sp = {};
+		if ( srgbAlias != VK_FORMAT_UNDEFINED )
+			vkGetPhysicalDeviceFormatProperties( m_physicalDevice, srgbAlias, &sp );
+		if ( !( sp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT ) )
+			srgbAlias = VK_FORMAT_UNDEFINED;
+	}
+	const VkFormat viewFormats[2] = { format, srgbAlias };
+	VkImageFormatListCreateInfo formatList = {};
+	formatList.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO;
+	formatList.viewFormatCount = 2;
+	formatList.pViewFormats = viewFormats;
+	if ( srgbAlias != VK_FORMAT_UNDEFINED )
+	{
+		ii.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+		ii.pNext = &formatList;
+	}
 	if ( vkCreateImage( m_device, &ii, nullptr, &t.image ) != VK_SUCCESS )
 	{
 		SetError( outError, "vkCreateImage (managed texture) failed" );
@@ -2660,7 +2949,7 @@ int CVulkanContext::CreateManagedTexture(
 	iv.image = t.image;
 	iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	iv.format = format;
-	iv.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	iv.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, t.mipLevels, 0, 1 };
 	if ( vkCreateImageView( m_device, &iv, nullptr, &t.view ) != VK_SUCCESS )
 	{
 		vkFreeMemory( m_device, t.memory, nullptr );
@@ -2668,32 +2957,74 @@ int CVulkanContext::CreateManagedTexture(
 		SetError( outError, "vkCreateImageView (managed texture) failed" );
 		return -1;
 	}
+	if ( srgbAlias != VK_FORMAT_UNDEFINED )
+	{
+		iv.format = srgbAlias;
+		if ( vkCreateImageView( m_device, &iv, nullptr, &t.srgbView ) != VK_SUCCESS )
+		{
+			vkDestroyImageView( m_device, t.view, nullptr );
+			vkFreeMemory( m_device, t.memory, nullptr );
+			vkDestroyImage( m_device, t.image, nullptr );
+			SetError( outError, "vkCreateImageView (managed texture, sRGB) failed" );
+			return -1;
+		}
+	}
+	// A mip chain is filled level by level, so every level is made samplable up
+	// front; each upload then moves only its own level.
+	if ( t.mipLevels > 1 )
+	{
+		VkCommandBuffer cmd = VK_NULL_HANDLE;
+		if ( !BeginSingleTimeCommands( &cmd, outError ) )
+			return -1;
+		VkImageMemoryBarrier ready = {};
+		ready.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		ready.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		ready.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		ready.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		ready.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		ready.image = t.image;
+		ready.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, t.mipLevels, 0, 1 };
+		ready.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+		    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &ready );
+		if ( !EndSingleTimeCommands( cmd, outError ) )
+			return -1;
+	}
 
 	// Allocate this texture's own descriptor set (if the pool/layout are ready and
 	// have room), so per-draw texture binding can point each draw at its texture.
+	// The sRGB view has a set of its own.
 	if ( m_dynTexDescLayout != VK_NULL_HANDLE && m_dynTexDescPool != VK_NULL_HANDLE &&
-	     m_managedTextures.size() + 1 < kMaxManagedTexSets )
+	     2 * ( m_managedTextures.size() + 1 ) < kMaxManagedTexSets )
 	{
-		VkDescriptorSetAllocateInfo da = {};
-		da.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		da.descriptorPool = m_dynTexDescPool;
-		da.descriptorSetCount = 1;
-		da.pSetLayouts = &m_dynTexDescLayout;
-		if ( vkAllocateDescriptorSets( m_device, &da, &t.descSet ) == VK_SUCCESS )
+		const auto allocateSet = [&]( VkImageView view, VkDescriptorSet *outSet )
 		{
+			VkDescriptorSetAllocateInfo da = {};
+			da.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+			da.descriptorPool = m_dynTexDescPool;
+			da.descriptorSetCount = 1;
+			da.pSetLayouts = &m_dynTexDescLayout;
+			if ( vkAllocateDescriptorSets( m_device, &da, outSet ) != VK_SUCCESS )
+			{
+				*outSet = VK_NULL_HANDLE;
+				return;
+			}
 			VkDescriptorImageInfo dii = {};
 			dii.sampler = m_dynTexSampler;
-			dii.imageView = t.view;
+			dii.imageView = view;
 			dii.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			VkWriteDescriptorSet wds = {};
 			wds.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			wds.dstSet = t.descSet;
+			wds.dstSet = *outSet;
 			wds.dstBinding = 0;
 			wds.descriptorCount = 1;
 			wds.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 			wds.pImageInfo = &dii;
 			vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
-		}
+		};
+		allocateSet( t.view, &t.descSet );
+		if ( t.srgbView != VK_NULL_HANDLE )
+			allocateSet( t.srgbView, &t.descSetSrgb );
 	}
 
 	m_managedTextures.push_back( t );
@@ -2720,7 +3051,8 @@ int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::strin
 		return -1;
 	}
 	const int handle = CreateManagedTexture( width, height, m_swapFormat, outError,
-	    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT );
+	    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, 1,
+	    m_srgbAttachments ? m_swapFormatSrgb : VK_FORMAT_UNDEFINED );
 	if ( handle < 0 )
 		return -1;
 	ManagedTexture &t = m_managedTextures[static_cast<size_t>( handle )];
@@ -2763,7 +3095,7 @@ int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::strin
 	dv.image = t.depthImage;
 	dv.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	dv.format = m_depthFormat;
-	dv.subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+	dv.subresourceRange = { m_depthAspects, 0, 1, 0, 1 };
 	if ( vkCreateImageView( m_device, &dv, nullptr, &t.depthView ) != VK_SUCCESS )
 	{
 		SetError( outError, "vkCreateImageView (render-target depth) failed" );
@@ -2783,6 +3115,17 @@ int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::strin
 	{
 		SetError( outError, "vkCreateFramebuffer (render target) failed" );
 		return -1;
+	}
+	if ( t.srgbView != VK_NULL_HANDLE && m_srgbAttachments )
+	{
+		VkImageView srgbAttachments[] = { t.srgbView, t.depthView };
+		fb.renderPass = m_renderPassTargetSrgb;
+		fb.pAttachments = srgbAttachments;
+		if ( vkCreateFramebuffer( m_device, &fb, nullptr, &t.framebufferSrgb ) != VK_SUCCESS )
+		{
+			SetError( outError, "vkCreateFramebuffer (render target, sRGB) failed" );
+			return -1;
+		}
 	}
 
 	// Bring both images to the layouts m_renderPassTarget expects on entry, with
@@ -2804,7 +3147,7 @@ int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::strin
 	toDst[0].image = t.image;
 	toDst[0].subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 	toDst[1].image = t.depthImage;
-	toDst[1].subresourceRange = { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 };
+	toDst[1].subresourceRange = { m_depthAspects, 0, 1, 0, 1 };
 	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
 	    0, nullptr, 0, nullptr, 2, toDst );
 	const VkClearColorValue black = { { 0.0f, 0.0f, 0.0f, 1.0f } };
@@ -2838,7 +3181,7 @@ int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::strin
 void CVulkanContext::SetManagedTextureSamplerState( int handle, int samplerState )
 {
 	if ( handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) || samplerState < 0 ||
-	     samplerState >= 8 )
+	     samplerState >= kSamplerStates )
 		return;
 	ManagedTexture &t = m_managedTextures[static_cast<size_t>( handle )];
 	if ( t.samplerState == samplerState )
@@ -2850,22 +3193,28 @@ void CVulkanContext::SetManagedTextureSamplerState( int handle, int samplerState
 	// samples it. A later change must not rewrite a set that a submitted frame
 	// may still be reading, so let the device finish first.
 	vkDeviceWaitIdle( m_device );
-	VkDescriptorImageInfo dii = {};
-	dii.sampler = m_samplers[samplerState];
-	dii.imageView = t.view;
-	dii.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	VkWriteDescriptorSet wds = {};
-	wds.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	wds.dstSet = t.descSet;
-	wds.dstBinding = 0;
-	wds.descriptorCount = 1;
-	wds.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	wds.pImageInfo = &dii;
-	vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
+	for ( int srgb = 0; srgb < 2; ++srgb )
+	{
+		const VkDescriptorSet set = srgb ? t.descSetSrgb : t.descSet;
+		if ( set == VK_NULL_HANDLE )
+			continue;
+		VkDescriptorImageInfo dii = {};
+		dii.sampler = m_samplers[samplerState];
+		dii.imageView = srgb ? t.srgbView : t.view;
+		dii.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		VkWriteDescriptorSet wds = {};
+		wds.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		wds.dstSet = set;
+		wds.dstBinding = 0;
+		wds.descriptorCount = 1;
+		wds.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		wds.pImageInfo = &dii;
+		vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
+	}
 }
 
 bool CVulkanContext::UploadManagedTexture(
-    int handle, const uint8_t *data, size_t dataSize, std::string *outError )
+    int handle, const uint8_t *data, size_t dataSize, std::string *outError, uint32_t level )
 {
 	if ( handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) || !data ||
 	     dataSize == 0 )
@@ -2878,6 +3227,11 @@ bool CVulkanContext::UploadManagedTexture(
 	// swapchain format, which caller pixel data does not match.
 	if ( t.renderTarget )
 		return true;
+	if ( level >= t.mipLevels )
+	{
+		SetError( outError, "UploadManagedTexture past the texture's mip chain" );
+		return false;
+	}
 	const VkDeviceSize bytes = dataSize;
 
 	VkBuffer staging = VK_NULL_HANDLE;
@@ -2900,18 +3254,22 @@ bool CVulkanContext::UploadManagedTexture(
 	}
 	VkImageMemoryBarrier toDst = {};
 	toDst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	toDst.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	// A single-level image is replaced whole; a level of a chain keeps the others.
+	toDst.oldLayout =
+	    t.mipLevels > 1 ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
 	toDst.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	toDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	toDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	toDst.image = t.image;
-	toDst.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	toDst.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, level, 1, 0, 1 };
+	toDst.srcAccessMask = t.mipLevels > 1 ? VK_ACCESS_SHADER_READ_BIT : 0;
 	toDst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-	    0, nullptr, 0, nullptr, 1, &toDst );
+	vkCmdPipelineBarrier( cmd,
+	    t.mipLevels > 1 ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+	    VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toDst );
 	VkBufferImageCopy copy = {};
-	copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
-	copy.imageExtent = { t.width, t.height, 1 };
+	copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1 };
+	copy.imageExtent = { std::max( 1u, t.width >> level ), std::max( 1u, t.height >> level ), 1 };
 	vkCmdCopyBufferToImage( cmd, staging, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy );
 	VkImageMemoryBarrier toRead = toDst;
 	toRead.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -2923,7 +3281,7 @@ bool CVulkanContext::UploadManagedTexture(
 	const bool ok = EndSingleTimeCommands( cmd, outError );
 	vkDestroyBuffer( m_device, staging, nullptr );
 	vkFreeMemory( m_device, stagingMem, nullptr );
-	if ( ok )
+	if ( ok && level == 0 )
 		t.uploaded = true;
 
 	return ok;
@@ -2983,13 +3341,15 @@ void CVulkanContext::SetScissor( bool enable, int x, int y, int width, int heigh
 	m_dynScissor[3] = height;
 }
 
-void CVulkanContext::QueueClear( bool color, bool depth )
+void CVulkanContext::QueueClear( bool color, bool depth, bool stencil )
 {
-	if ( !color && !depth )
+	stencil = stencil && m_stencilBits > 0;
+	if ( !color && !depth && !stencil )
 		return;
 	DynDraw &d = AppendRecord( kRecordClear );
 	d.clearColor = color;
 	d.clearDepth = depth;
+	d.clearStencil = stencil;
 	for ( int i = 0; i < 4; ++i )
 		d.clearValue[i] = m_clearColor.float32[i];
 }
@@ -3115,8 +3475,8 @@ void CVulkanContext::FailUnsubmittedQueries()
 	}
 }
 
-void CVulkanContext::QueueDynamicTriangles(
-    const float *posColorInterleaved, uint32_t vertexCount, const float *lightmapUv )
+void CVulkanContext::QueueDynamicTriangles( const float *posColorInterleaved, uint32_t vertexCount,
+    const float *lightmapUv, const float *normalTangent, const float *vertexAlpha )
 {
 	if ( !posColorInterleaved || vertexCount == 0 )
 		return;
@@ -3138,12 +3498,29 @@ void CVulkanContext::QueueDynamicTriangles(
 	d.lightmapHandle = m_dynLightmapHandle;
 	d.colorFlags = m_dynColorFlags;
 	d.outputScale = m_dynOutputScale;
+	d.stencilRef = m_dynStencilRef;
+	d.stencilTestMask = m_dynStencilTestMask;
+	d.stencilWriteMask = m_dynStencilWriteMask;
+	d.clipPlaneCount = m_clipPlanesSupported ? m_dynClipPlaneCount : 0;
+	std::memcpy( d.clipPlanes, m_dynClipPlanes, sizeof( d.clipPlanes ) );
+	std::memcpy( d.samplerHandles, m_dynSamplerHandles, sizeof( d.samplerHandles ) );
+	d.portal = m_dynPortal;
+	m_dynQueued.reserve(
+	    m_dynQueued.size() + static_cast<size_t>( vertexCount ) * kDynVertexFloats );
 	for ( uint32_t v = 0; v < vertexCount; ++v )
 	{
 		const float *vertex = posColorInterleaved + static_cast<size_t>( v ) * 8;
 		m_dynQueued.insert( m_dynQueued.end(), vertex, vertex + 8 );
 		m_dynQueued.push_back( lightmapUv ? lightmapUv[v * 2 + 0] : 0.0f );
 		m_dynQueued.push_back( lightmapUv ? lightmapUv[v * 2 + 1] : 0.0f );
+		if ( normalTangent )
+		{
+			const float *nt = normalTangent + static_cast<size_t>( v ) * 7;
+			m_dynQueued.insert( m_dynQueued.end(), nt, nt + 7 );
+		}
+		else
+			m_dynQueued.insert( m_dynQueued.end(), 7, 0.0f );
+		m_dynQueued.push_back( vertexAlpha ? vertexAlpha[v] : 1.0f );
 	}
 }
 
@@ -3251,21 +3628,25 @@ void CVulkanContext::GetTargetExtent( int target, uint32_t *outW, uint32_t *outH
 	*outH = m_swapExtent.height;
 }
 
-void CVulkanContext::BeginTargetPass( VkCommandBuffer cmd, int target )
+void CVulkanContext::BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb )
 {
 	// Re-entering a target loads what it already holds; clears arrive as
-	// explicit records, exactly where the engine issued them.
+	// explicit records, exactly where the engine issued them. `srgb` enters it
+	// through its sRGB view.
+	srgb = srgb && m_srgbAttachments;
 	VkRenderPassBeginInfo rp = {};
 	rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	if ( IsRenderTargetTexture( target ) )
 	{
-		rp.renderPass = m_renderPassTarget;
-		rp.framebuffer = m_managedTextures[static_cast<size_t>( target )].framebuffer;
+		const ManagedTexture &t = m_managedTextures[static_cast<size_t>( target )];
+		rp.renderPass = srgb ? m_renderPassTargetSrgb : m_renderPassTarget;
+		rp.framebuffer = srgb ? t.framebufferSrgb : t.framebuffer;
 	}
 	else
 	{
-		rp.renderPass = m_renderPassLoad;
-		rp.framebuffer = m_framebuffers[m_acquiredImage];
+		rp.renderPass = srgb ? m_renderPassLoadSrgb : m_renderPassLoad;
+		rp.framebuffer =
+		    srgb ? m_framebuffersSrgb[m_acquiredImage] : m_framebuffers[m_acquiredImage];
 	}
 	GetTargetExtent( target, &rp.renderArea.extent.width, &rp.renderArea.extent.height );
 	vkCmdBeginRenderPass( cmd, &rp, VK_SUBPASS_CONTENTS_INLINE );
@@ -3366,6 +3747,20 @@ void CVulkanContext::DestroyDynamicMesh()
 	for ( const auto &entry : m_dynTexPipelines )
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_dynTexPipelines.clear();
+	for ( const auto &entry : m_portalPipelines )
+		vkDestroyPipeline( m_device, entry.second, nullptr );
+	m_portalPipelines.clear();
+	for ( VkShaderModule *module : { &m_portalVert, &m_portalFrag } )
+	{
+		if ( *module != VK_NULL_HANDLE )
+			vkDestroyShaderModule( m_device, *module, nullptr );
+		*module = VK_NULL_HANDLE;
+	}
+	if ( m_portalPipelineLayout != VK_NULL_HANDLE )
+	{
+		vkDestroyPipelineLayout( m_device, m_portalPipelineLayout, nullptr );
+		m_portalPipelineLayout = VK_NULL_HANDLE;
+	}
 	for ( VkPipelineShaderStageCreateInfo &stage : m_texTemplate.stages )
 	{
 		if ( stage.module != VK_NULL_HANDLE )
@@ -3414,6 +3809,10 @@ void CVulkanContext::DestroyDynamicMesh()
 	{
 		if ( t.framebuffer != VK_NULL_HANDLE )
 			vkDestroyFramebuffer( m_device, t.framebuffer, nullptr );
+		if ( t.framebufferSrgb != VK_NULL_HANDLE )
+			vkDestroyFramebuffer( m_device, t.framebufferSrgb, nullptr );
+		if ( t.srgbView != VK_NULL_HANDLE )
+			vkDestroyImageView( m_device, t.srgbView, nullptr );
 		if ( t.depthView != VK_NULL_HANDLE )
 			vkDestroyImageView( m_device, t.depthView, nullptr );
 		if ( t.depthImage != VK_NULL_HANDLE )
@@ -3665,6 +4064,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		// new target's, so a portal view rendered into _rt_portal1 lands there and
 		// is finished before the main view samples it.
 		int openTarget = -1; // the swapchain pass opened above
+		bool openSrgb = false; // entered through the target's sRGB view
 		VkPipeline boundPipeline = VK_NULL_HANDLE;
 		// A query must begin and end inside one render pass, and only one
 		// occlusion query may be active at a time. One that would span a pass
@@ -3679,22 +4079,55 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				m_querySlots[static_cast<size_t>( activeQuery )].failed = true;
 			activeQuery = -1;
 		};
-		for ( const DynDraw &d : m_dynDrawRecords )
+		// D3D9 (SRGBWRITEENABLE) encodes an sRGB-writing draw in hardware and
+		// blends it in linear space; such a draw is drawn through the target's
+		// sRGB view (the hardware decodes, blends and encodes, rounding as D3D9
+		// does). Everything else, clears above all, uses the UNORM view, which
+		// stores what it is given.
+		const auto drawWantsSrgb = [&]( const DynDraw &r )
 		{
+			return m_srgbAttachments && r.kind == kRecordDraw &&
+			       ( r.shaderIndex == kDynShaderTextured ||
+			           r.shaderIndex == kDynShaderPortalRefract ) &&
+			       ( r.colorFlags & kColorSrgbWrite );
+		};
+		for ( size_t recordIndex = 0; recordIndex < m_dynDrawRecords.size(); ++recordIndex )
+		{
+			const DynDraw &d = m_dynDrawRecords[recordIndex];
 			if ( d.kind == kRecordCopy )
 			{
 				endActiveQuery( false );
 				vkCmdEndRenderPass( cmd );
 				RecordTargetCopy( cmd, openTarget, d );
-				BeginTargetPass( cmd, openTarget );
+				BeginTargetPass( cmd, openTarget, openSrgb );
 				continue;
 			}
-			if ( d.target != openTarget )
+			// A query begins in the pass its next draw needs, so the query and the
+			// draws it counts share one render pass; it ends in the open pass.
+			bool wantSrgb = drawWantsSrgb( d );
+			if ( d.kind == kRecordQueryEnd )
+				wantSrgb = openSrgb;
+			else if ( d.kind == kRecordQueryBegin )
+			{
+				wantSrgb = openSrgb;
+				for ( size_t next = recordIndex + 1; next < m_dynDrawRecords.size(); ++next )
+				{
+					const DynDraw &n = m_dynDrawRecords[next];
+					if ( n.kind == kRecordQueryBegin || n.kind == kRecordQueryEnd )
+						continue;
+					if ( n.target == d.target && n.kind != kRecordCopy )
+						wantSrgb = drawWantsSrgb( n );
+					break;
+				}
+			}
+			if ( d.target != openTarget || wantSrgb != openSrgb )
 			{
 				endActiveQuery( false );
 				vkCmdEndRenderPass( cmd );
 				openTarget = d.target;
-				BeginTargetPass( cmd, openTarget );
+				openSrgb = wantSrgb;
+				BeginTargetPass( cmd, openTarget, openSrgb );
+				boundPipeline = VK_NULL_HANDLE;
 			}
 			if ( d.kind == kRecordQueryBegin )
 			{
@@ -3773,9 +4206,11 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 						clears[clearCount].clearValue.color.float32[i] = d.clearValue[i];
 					++clearCount;
 				}
-				if ( d.clearDepth )
+				if ( d.clearDepth || d.clearStencil )
 				{
-					clears[clearCount].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+					clears[clearCount].aspectMask =
+					    ( d.clearDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : 0 ) |
+					    ( d.clearStencil ? VK_IMAGE_ASPECT_STENCIL_BIT : 0 );
 					clears[clearCount].clearValue.depthStencil = { 1.0f, 0 };
 					++clearCount;
 				}
@@ -3815,6 +4250,10 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			VkPipeline selected = m_dynPipeline;
 			VkPipelineLayout selectedLayout = m_dynPipelineLayout;
 			bool textured = false;
+			bool portal = false;
+			// sRGB inputs decoded by the sampler and output encoded by the view,
+			// which the shader must then not apply itself.
+			int decodedFlags = openSrgb ? kColorSrgbWrite : 0;
 			if ( d.shaderIndex == kDynShaderGreenify && m_dynPipelineGreen != VK_NULL_HANDLE )
 				selected = m_dynPipelineGreen;
 			else if ( d.shaderIndex == kDynShaderConstColor &&
@@ -3823,18 +4262,33 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			else if ( d.shaderIndex == kDynShaderTextured )
 			{
 				// The textured pipeline built for this draw's blend/depth state.
-				selected = TexturedPipeline( d.raster );
+				selected = TexturedPipeline( d.raster, openSrgb );
 				if ( selected == VK_NULL_HANDLE )
 					continue;
 				selectedLayout = m_dynTexPipelineLayout;
 				textured = true;
+			}
+			else if ( d.shaderIndex == kDynShaderPortalRefract )
+			{
+				selected = PortalPipeline( d.raster, openSrgb );
+				if ( selected == VK_NULL_HANDLE )
+					continue;
+				selectedLayout = m_portalPipelineLayout;
+				portal = true;
 			}
 			if ( selected != boundPipeline )
 			{
 				vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, selected );
 				boundPipeline = selected;
 			}
-			if ( textured )
+			if ( textured || portal )
+			{
+				vkCmdSetStencilCompareMask(
+				    cmd, VK_STENCIL_FACE_FRONT_AND_BACK, d.stencilTestMask );
+				vkCmdSetStencilWriteMask( cmd, VK_STENCIL_FACE_FRONT_AND_BACK, d.stencilWriteMask );
+				vkCmdSetStencilReference( cmd, VK_STENCIL_FACE_FRONT_AND_BACK, d.stencilRef );
+			}
+			if ( textured || portal )
 			{
 				// Bind this draw's own texture descriptor set (per-draw texture),
 				// falling back to the built-in set when the draw has no managed
@@ -3842,28 +4296,76 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				// sampled inside its own pass (it is the color attachment there).
 				// The lightmap (set 1) resolves the same way; without one the
 				// built-in white set is bound and the shader does not sample it.
-				const auto sampledSet = [&]( int handle ) -> VkDescriptorSet
+				// A sampler the material reads as sRGB samples the texture's sRGB
+				// view, which decodes each texel before filtering as D3D9's
+				// SRGBTEXTURE does; the shader then skips its own decode for it.
+				const auto sampledSet = [&]( int handle, int srgbFlag ) -> VkDescriptorSet
 				{
 					if ( handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) &&
 					     handle != openTarget &&
 					     m_managedTextures[static_cast<size_t>( handle )].descSet !=
 					         VK_NULL_HANDLE )
-						return m_managedTextures[static_cast<size_t>( handle )].descSet;
+					{
+						const ManagedTexture &t = m_managedTextures[static_cast<size_t>( handle )];
+						if ( ( d.colorFlags & srgbFlag ) && t.descSetSrgb != VK_NULL_HANDLE )
+						{
+							decodedFlags |= srgbFlag;
+							return t.descSetSrgb;
+						}
+						return t.descSet;
+					}
 					return m_dynTexDescSet;
 				};
-				const VkDescriptorSet sets[2] = {
-				    sampledSet( d.texHandle ), sampledSet( d.lightmapHandle ) };
-				vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-				    m_dynTexPipelineLayout, 0, 2, sets, 0, nullptr );
+				if ( portal )
+				{
+					const VkDescriptorSet sets[3] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					    sampledSet( d.samplerHandles[1], kColorSrgbReadLightmap ),
+					    sampledSet( d.samplerHandles[2], kColorSrgbReadSampler2 ) };
+					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+					    m_portalPipelineLayout, 0, 3, sets, 0, nullptr );
+				}
+				else
+				{
+					const VkDescriptorSet sets[2] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					    sampledSet( d.lightmapHandle, kColorSrgbReadLightmap ) };
+					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+					    m_dynTexPipelineLayout, 0, 2, sets, 0, nullptr );
+				}
 			}
 			// Push this draw's state. The textured (UnlitGeneric) pipeline reads
 			// the faithful Source block { mat4 cModelViewProj; vec4
 			// cModulationColor; vec4 cBaseTextureTransform[0]; [1] } (28 floats);
 			// the color pipelines read { mat4 mvp; vec4 color } (20 floats).
-			float pushData[32];
+			// User clip planes follow each block; a plane of zeros keeps everything.
+			const auto appendClipPlanes = [&]( float *out )
+			{
+				for ( int i = 0; i < kMaxClipPlanes; ++i )
+					for ( int k = 0; k < 4; ++k )
+						out[i * 4 + k] = i < d.clipPlaneCount ? d.clipPlanes[i][k] : 0.0f;
+			};
+			float pushData[kPortalPushBytes / sizeof( float )];
 			std::memcpy( pushData, d.transform, sizeof( d.transform ) );
 			uint32_t pushFloats;
-			if ( textured )
+			if ( portal )
+			{
+				// shaders/portal_refract.vert's block.
+				const PortalConstants &c = d.portal;
+				std::memcpy( pushData, c.model, sizeof( c.model ) );
+				std::memcpy( pushData + 16, c.viewProj, sizeof( c.viewProj ) );
+				std::memcpy( pushData + 32, c.texXform0, sizeof( c.texXform0 ) );
+				std::memcpy( pushData + 36, c.texXform1, sizeof( c.texXform1 ) );
+				pushData[40] = c.time;
+				pushData[41] = c.openAmount;
+				pushData[42] = c.active;
+				pushData[43] = c.colorScale;
+				pushData[44] = d.alphaRef;
+				pushData[45] = static_cast<float>( c.stage );
+				pushData[46] = static_cast<float>( d.colorFlags & ~decodedFlags );
+				pushData[47] = d.outputScale;
+				appendClipPlanes( pushData + 48 );
+				pushFloats = kPortalPushBytes / sizeof( float );
+			}
+			else if ( textured )
 			{
 				// luminance_compare_ps2x reads c0 (the constant color) where the
 				// other variants read cModulationColor.
@@ -3875,9 +4377,14 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				pushData[28] = d.alphaRef; // alphaParams.x
 				// alphaParams.y: multiply by the lightmap; .z: kColorSrgb* flags.
 				pushData[29] = d.lightmapHandle >= 0 ? 1.0f : 0.0f;
-				pushData[30] = static_cast<float>( d.colorFlags );
+				pushData[30] = static_cast<float>( d.colorFlags & ~decodedFlags );
 				pushData[31] = d.outputScale; // alphaParams.w
 				pushFloats = 32;
+				if ( m_clipPlanesSupported )
+				{
+					appendClipPlanes( pushData + 32 );
+					pushFloats = kTexturedPushBytes / sizeof( float );
+				}
 			}
 			else
 			{
@@ -3892,7 +4399,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		endActiveQuery( false );
 		// EndFrame closes the swapchain pass and transitions the image for
 		// present or capture, so the frame must end inside it.
-		if ( openTarget != -1 )
+		if ( openTarget != -1 || openSrgb )
 		{
 			vkCmdEndRenderPass( cmd );
 			BeginTargetPass( cmd, -1 );
@@ -4143,11 +4650,19 @@ void CVulkanContext::DestroySwapchainObjects()
 		if ( fb != VK_NULL_HANDLE )
 			vkDestroyFramebuffer( m_device, fb, nullptr );
 	m_framebuffers.clear();
+	for ( VkFramebuffer fb : m_framebuffersSrgb )
+		if ( fb != VK_NULL_HANDLE )
+			vkDestroyFramebuffer( m_device, fb, nullptr );
+	m_framebuffersSrgb.clear();
 
 	for ( VkImageView iv : m_swapImageViews )
 		if ( iv != VK_NULL_HANDLE )
 			vkDestroyImageView( m_device, iv, nullptr );
 	m_swapImageViews.clear();
+	for ( VkImageView iv : m_swapImageViewsSrgb )
+		if ( iv != VK_NULL_HANDLE )
+			vkDestroyImageView( m_device, iv, nullptr );
+	m_swapImageViewsSrgb.clear();
 
 	for ( VkImageView iv : m_depthViews )
 		if ( iv != VK_NULL_HANDLE )
@@ -4253,7 +4768,8 @@ void CVulkanContext::Shutdown()
 		}
 		m_commandBuffers.clear();
 
-		for ( VkRenderPass *pass : { &m_renderPass, &m_renderPassLoad, &m_renderPassTarget } )
+		for ( VkRenderPass *pass : { &m_renderPass, &m_renderPassLoad, &m_renderPassTarget,
+		          &m_renderPassLoadSrgb, &m_renderPassTargetSrgb } )
 		{
 			if ( *pass != VK_NULL_HANDLE )
 			{

@@ -273,12 +273,13 @@ int main()
 			mesh->LockMesh( 6, 0, desc );
 			const float quad[6][5] = {
 			    // x, y, z, u, v
+			    // Clockwise on screen: D3D's front face under the default CCW culling.
 			    { -1.0f, -1.0f, 0.5f, 0.0f, 0.0f },
+			    { 1.0f, 1.0f, 0.5f, 1.0f, 1.0f },
 			    { 1.0f, -1.0f, 0.5f, 1.0f, 0.0f },
-			    { 1.0f, 1.0f, 0.5f, 1.0f, 1.0f },
 			    { -1.0f, -1.0f, 0.5f, 0.0f, 0.0f },
-			    { 1.0f, 1.0f, 0.5f, 1.0f, 1.0f },
 			    { -1.0f, 1.0f, 0.5f, 0.0f, 1.0f },
+			    { 1.0f, 1.0f, 0.5f, 1.0f, 1.0f },
 			};
 			for ( int i = 0; i < 6; ++i )
 			{

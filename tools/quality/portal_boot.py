@@ -462,6 +462,13 @@ def main(argv=None):
                         help="require initialized profile providers and no first-party backend loading")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=180)
+    parser.add_argument("--headless", action="store_true",
+                        help="render offscreen on the GPU (SDL offscreen driver) with the "
+                             "volume muted")
+    parser.add_argument("--console-command", action="append", default=[],
+                        help="console command to run after the map loads and before the "
+                             "screenshot (repeatable). Player commands such as setpos and "
+                             "setang need the client prefix: 'cmd setpos 0 0 64'")
     parser.add_argument("--map", default="testchmb_a_00")
     parser.add_argument("--physics", default="vphysics",
                         help="physics provider module name (e.g. vphysics, vphysics_box3d)")
@@ -502,10 +509,24 @@ def main(argv=None):
                                    for path in [executable] + sorted((stage / "bin").glob("*.so"))
                                    + sorted((stage / "portal/bin").glob("*.so"))}
         command = [str(executable), "-game", "portal", "-windowed", "-w", str(args.width), "-h", str(args.height),
+                   # -multirun: an isolated boot must not collide with (or be refused
+                   # by) a game the user is running.
+                   "-multirun",
                    "-novid", "-insecure", "-console", "-condebug", "-dev", "-physics", args.physics,
                    "+sv_cheats", "1", "+mat_queue_mode", "0", "+fps_max", "60", "+map", args.map,
-                   "+wait", "180", "+status", "+hideconsole", "+developer", "0",
-                   "+wait", "600", "+screenshot", "+mat_spewvertexandpixelshaders",
+                   "+wait", "180", "+status", "+hideconsole", "+developer", "0"]
+        # Extra console commands run once the map has loaded, before the capture
+        # (e.g. "setpos X Y Z" / "setang P Y R" to frame the same view on every
+        # backend).
+        if args.console_command:
+            # Written to a cfg and exec'd: the command line splits arguments (and
+            # reads a negative number as an option), a cfg keeps each line whole.
+            # The local player exists only after spawn, hence the wait.
+            (stage / "portal/cfg").mkdir(parents=True, exist_ok=True)
+            (stage / "portal/cfg/portal_boot_commands.cfg").write_text(
+                "".join(line + "\n" for line in args.console_command))
+            command += ["+wait", "300", "+exec", "portal_boot_commands.cfg"]
+        command += ["+wait", "600", "+screenshot", "+mat_spewvertexandpixelshaders",
                    # The exposure the client's auto-exposure settled on for the
                    # screenshot frame (it writes its goal here every frame).
                    "+mat_hdr_tonemapscale",
@@ -543,6 +564,15 @@ def main(argv=None):
             environment["SDL_VIDEODRIVER"] = "wayland"
         if args.require_vulkan:
             environment["DXVK_WSI_DRIVER"] = "SDL3"
+        if args.headless:
+            # SDL3's offscreen driver: real GPU rendering through
+            # VK_EXT_headless_surface, no window, compositor or display.
+            environment["SDL_VIDEODRIVER"] = environment["SDL_VIDEO_DRIVER"] = "offscreen"
+            for variable in ("WAYLAND_DISPLAY", "DISPLAY"):
+                environment.pop(variable, None)
+        if environment.get("SDL_VIDEODRIVER") == "offscreen":
+            # Nobody is watching or listening to a headless run.
+            command[command.index("+map"):command.index("+map")] = ["+volume", "0"]
         evidence["command"] = command
         evidence["requirements"] = requirements
         evidence["display_environment"] = {key: environment.get(key) for key in

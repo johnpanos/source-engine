@@ -233,6 +233,192 @@ class ExposureTest(unittest.TestCase):
                     oracle.read_pixels(path)
 
 
+class SkinningTest(unittest.TestCase):
+    CLEAR = [255, 0, 255]
+
+    def skinning(self, hdr="none"):
+        return capture(hdr, "skinning")
+
+    def test_d3d9_references_satisfy_their_own_oracle(self):
+        for hdr in ("none", "integer"):
+            report = self.skinning(hdr)
+            self.assertEqual(report["renderer"], "vulkan-compat")
+            self.assertEqual(oracle.evaluate(report, hdr, report), [], hdr)
+
+    def test_every_model_at_the_origin_is_detected(self):
+        # The native backend before bone matrices: LoadBoneMatrix was a no-op, so
+        # every model drew at the model-space origin, the middle of the frame.
+        report = copy.deepcopy(self.skinning())
+        color = report["color"]
+        for case in report["cases"]:
+            if case["name"] != "rigid_back_facing":
+                case["pixels"] = [self.CLEAR, color, self.CLEAR]
+        failures = oracle.evaluate(report, "none", self.skinning())
+        for name in ("rigid_bone0", "one_bone", "high_index"):
+            self.assertTrue(any(f.startswith(name + ": the model is not in") for f in failures))
+        self.assertFalse(any(f.startswith("implicit_third_weight") for f in failures))
+
+    def test_skinning_ignored_draws_at_the_decoy(self):
+        # Drawing skinned vertices with bone 0 only (the MODEL matrix) puts them at
+        # the decoy placement in the right third.
+        report = copy.deepcopy(self.skinning())
+        for case in report["cases"][1:5]:
+            case["pixels"] = [self.CLEAR, self.CLEAR, report["color"]]
+        failures = oracle.check_skinning(report)
+        self.assertTrue(any(f.startswith("one_bone") for f in failures))
+        self.assertTrue(any(f.startswith("blend_half") for f in failures))
+
+    def test_unculled_back_face_is_detected(self):
+        report = copy.deepcopy(self.skinning())
+        report["cases"][-1]["pixels"][0] = report["color"]
+        failures = oracle.check_skinning(report)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("back face must be culled", failures[0])
+
+    def test_missing_or_renamed_cases_are_rejected(self):
+        report = copy.deepcopy(self.skinning())
+        report["cases"].pop()
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pixels.json"
+            path.write_text(json.dumps(report))
+            with self.assertRaises(oracle.PixelsError):
+                oracle.read_pixels(path)
+
+
+class PortalTest(unittest.TestCase):
+    """Stencil portal recursion (the portal family): the ray-traced scene model
+    judges the structure, the D3D9 reference judges PortalRefract's pixels."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.reference = capture("none", "portal")
+        cls.portal = oracle.material_pixel_portal
+
+    def report(self):
+        return copy.deepcopy(self.reference)
+
+    def repaint(self, report, name, paint):
+        """Rewrites case `name`'s frame; paint(x, y, rgb) returns the new pixel
+        or None to keep it."""
+        case = next(c for c in report["cases"] if c["name"] == name)
+        width, height = report["frame"]
+        rgb = bytearray(self.portal.decode_frame(case, report["frame"]))
+        for y in range(height):
+            for x in range(width):
+                index = (y * width + x) * 3
+                pixel = paint(x, y, list(rgb[index:index + 3]))
+                if pixel is not None:
+                    rgb[index:index + 3] = bytes(pixel)
+        case["frame"] = self.portal.encode_frame(rgb)
+        return report
+
+    def recursion_model(self, report, **scene):
+        changed = copy.deepcopy(report)
+        changed["scene"].update(scene)
+        case = next(c for c in changed["cases"] if c["name"] == "recursion")
+        return self.portal.SceneModel(changed, case)
+
+    def test_d3d9_reference_satisfies_its_own_oracle(self):
+        report = self.report()
+        self.assertEqual(report["renderer"], "vulkan-compat")
+        self.assertEqual(report["max_depth"], self.portal.PORTAL_STENCIL_DEPTH)
+        self.assertEqual(oracle.evaluate(report, "none", self.reference), [])
+
+    def test_backend_without_stencil_is_rejected(self):
+        report = self.report()
+        report["stencil_bits"] = 0
+        failures = oracle.evaluate(report, "none", self.reference)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("no stencil bits", failures[0])
+
+    def test_shallow_recursion_is_rejected(self):
+        report = self.report()
+        report["max_depth"] = 1
+        self.assertTrue(any("recursion depth 1" in f
+                            for f in oracle.evaluate(report, "none", self.reference)))
+
+    def test_unpinned_sampling_is_rejected(self):
+        # D3D9's dxsupport defaults (4x MSAA, trilinear) differ from a backend
+        # that reads no dxsupport.cfg; such frames are not comparable.
+        for key, value in (("aa_samples", 4), ("force_trilinear", False),
+                           ("force_anisotropy", 8)):
+            report = self.report()
+            report[key] = value
+            failures = oracle.evaluate(report, "none", self.reference)
+            self.assertTrue(any("not pinned" in f and key in f for f in failures), key)
+
+    def test_ignored_recursion_is_detected(self):
+        # Nested views drawn without their camera step show the outer level.
+        report = self.report()
+        model = self.recursion_model(report)
+        level0 = model.color((0, "wall"))
+
+        def flatten(x, y, rgb):
+            label = model.label(x, y)
+            return level0 if label is not None and label[0] > 0 else None
+        failures = self.portal.check_model(self.repaint(report, "recursion", flatten))
+        self.assertTrue(any(f.startswith("recursion:") and "disagree with the scene model" in f
+                            for f in failures))
+
+    def test_ignored_clip_plane_is_detected(self):
+        # The exit portal's clip plane (DXVK's fast-linked pipelines drop it):
+        # the blocker behind the exit portal shows in the first nested view.
+        report = self.report()
+        clipped = self.recursion_model(report)
+        unclipped = self.recursion_model(report, exit_portal_distance=-1.0e9)
+        color = clipped.color((1, "blocker"))
+        seeded = []
+
+        def unclip(x, y, rgb):
+            label = clipped.label(x, y)
+            if label not in (None, (1, "blocker")) and unclipped.label(x, y) == (1, "blocker"):
+                seeded.append((x, y))
+                return color
+            return None
+        failures = self.portal.check_model(self.repaint(report, "recursion", unclip))
+        self.assertTrue(seeded)
+        self.assertTrue(any(f.startswith("recursion: %d pixels disagree" % len(seeded))
+                            for f in failures), failures)
+
+    def test_reference_drift_is_detected(self):
+        # Flames a few levels off (the DXT software-decode rounding the native
+        # backend had) over more pixels than the allowance.
+        report = self.repaint(self.report(), "static",
+                              lambda x, y, rgb: [min(255, c + 2) for c in rgb]
+                              if 100 <= x < 110 and 100 <= y < 110 else None)
+        failures = self.portal.compare(report, self.reference)
+        self.assertEqual(len(failures), 1)
+        self.assertTrue(failures[0].startswith("static: 100 pixels differ"))
+
+    def test_reference_tolerance(self):
+        within = self.repaint(self.report(), "opening",
+                              lambda x, y, rgb: [max(0, c - 1) for c in rgb])
+        self.assertEqual(self.portal.compare(within, self.reference), [])
+        few = self.repaint(self.report(), "opening",
+                           lambda x, y, rgb: [0, 0, 0] if y == 0 and x < 8 else None)
+        self.assertEqual(self.portal.compare(few, self.reference), [])
+
+    def test_changed_scene_is_not_compared(self):
+        report = self.report()
+        report["scene"]["time"] += 1.0
+        self.assertEqual(self.portal.compare(report, self.reference),
+                         ["portal scene or case inputs differ from the reference capture"])
+
+    def test_missing_cases_or_frames_are_rejected(self):
+        truncated = self.report()
+        truncated["cases"].pop()
+        missing = self.report()
+        del missing["cases"][0]["frame"]
+        short = self.report()
+        short["cases"][1]["frame"] = self.portal.encode_frame(b"\0" * 12)
+        for report in (truncated, missing, short):
+            with tempfile.TemporaryDirectory() as temp:
+                path = Path(temp) / "pixels.json"
+                path.write_text(json.dumps(report))
+                with self.assertRaises(oracle.PixelsError):
+                    oracle.read_pixels(path)
+
+
 class CaptureFormatTest(unittest.TestCase):
     def test_missing_or_renamed_cases_are_rejected(self):
         report = copy.deepcopy(capture("none"))

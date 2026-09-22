@@ -19,6 +19,7 @@
 layout( location = 0 ) in vec2 fragUv;
 layout( location = 1 ) in vec4 fragModulation;
 layout( location = 2 ) in vec2 fragLightmapUv;
+layout( location = 3 ) in vec4 fragVertexColor;
 layout( location = 0 ) out vec4 outColor;
 layout( set = 0, binding = 0 ) uniform sampler2D baseTexture;
 layout( set = 1, binding = 0 ) uniform sampler2D lightmapTexture;
@@ -31,7 +32,12 @@ layout( push_constant ) uniform Constants
 	// x = alpha-test reference (<0 disables); y = 1 to multiply by the lightmap;
 	// z = flags: 1 sRGB base, 2 sRGB lightmap, 4 sRGB output, 8 alpha test
 	// passes only above the reference (GREATER; else GREATEREQUAL), 16 luminance
-	// compare, 32 screen-space vertex stage (see demo_dyn_tex.vert);
+	// compare, 32 screen-space vertex stage (see demo_dyn_tex.vert), 128 the
+	// vertex color in place of the base texture (bufferclearobeystencil_ps2x:
+	// result = vColor, the clear color the quad's vertices carry), 256 times
+	// the vertex color and 1024 times the vertex alpha
+	// (vertexlit_and_unlit_generic_ps2x with VERTEXCOLOR / g_fVertexAlpha;
+	// 512 is read by the vertex stage);
 	// w = linear output scale (FinalOutput's LINEAR_LIGHT_SCALE).
 	vec4 alphaParams;
 }
@@ -49,7 +55,7 @@ vec3 LinearToSrgb( vec3 c )
 void main()
 {
 	const int flags = int( consts.alphaParams.z );
-	vec4 base = texture( baseTexture, fragUv );
+	vec4 base = ( flags & 128 ) != 0 ? fragVertexColor : texture( baseTexture, fragUv );
 	if ( ( flags & 1 ) != 0 )
 		base.rgb = SrgbToLinear( base.rgb );
 	vec4 result;
@@ -63,6 +69,13 @@ void main()
 	else
 	{
 		result = fragModulation * base;
+		// vertexlit_and_unlit_generic_ps2x.fxc, unlit: diffuseLighting =
+		// i.color.rgb with VERTEXCOLOR, and
+		// alpha = lerp( alpha, alpha * i.color.a, g_fVertexAlpha ).
+		if ( ( flags & 256 ) != 0 )
+			result.rgb *= fragVertexColor.rgb;
+		if ( ( flags & 1024 ) != 0 )
+			result.a *= fragVertexColor.a;
 		if ( consts.alphaParams.y > 0.5 )
 		{
 			vec3 lightmap = texture( lightmapTexture, fragLightmapUv ).rgb;

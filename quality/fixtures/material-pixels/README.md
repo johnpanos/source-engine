@@ -11,6 +11,7 @@ real material system on the D3D9 backend.
 | `lightmap-dx9-integer.json` | lightmap | `HDR_TYPE_INTEGER` | 16-bit lightmap pages, scale 16; also matches the closed-form model exactly |
 | `exposure-dx9-none.json` | exposure | `HDR_TYPE_NONE` | luminance histogram (`dev/lumcompare` under occlusion queries) |
 | `exposure-dx9-integer.json` | exposure | `HDR_TYPE_INTEGER` | as above; the path integer-HDR auto-exposure runs |
+| `portal-dx9-none.json` | portal | `HDR_TYPE_NONE` | stencil portal recursion (`PortalRefract` stages 0-2, depth 2); three 256x256 frames |
 
 Lightmap pixels are held to these references within `PIXEL_TOLERANCE` (3 levels
 per channel). Exposure counts are exact: every luminance range must equal the
@@ -31,6 +32,23 @@ desktop (384x384).
 python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime \
     --build build-portal-vulkan --renderer vulkan-compat --hdr none \
     --family exposure --out OUT
+```
+
+Portal frames are held to the reference within 1 level per channel, with at
+most 8 pixels beyond it (`material_pixel_portal.py`); native Vulkan measured one
+channel of one pixel one level off. The harness pins the sampling configuration
+on every backend (one sample per pixel, `mat_trilinear 1`, no forced
+anisotropy) and the oracle rejects a capture without it. The D3D9 run needs
+`DXVK_CONFIG="dxvk.enableGraphicsPipelineLibrary = False"`, which the runner sets
+for this family: DXVK 2.7.1's fast-linked graphics-pipeline-library pipelines
+ignore D3D9 user clip planes, so the recursion's clipped blocker renders
+unclipped. Captured 2026-09-22 from source `3d3e5e68` plus a dirty tree, with the
+toolchain above:
+
+```sh
+python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime \
+    --build build-portal-vulkan --renderer vulkan-compat --hdr none \
+    --family portal --out OUT
 ```
 
 Recapture only when the harness cases or the D3D9 path change, and review the

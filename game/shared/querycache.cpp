@@ -12,6 +12,7 @@
 #include "datacache/imdlcache.h"
 #include "vstdlib/jobthread.h"
 #include "vstdlib/jobgraph_parallel.h"
+#include "querycache_maintenance.h"
 
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -168,81 +169,28 @@ static void CalculateOffsettedPosition( CBaseEntity *pEntity, EEntityOffsetMode_
 
 
 
-enum QueryCacheUpdateAction_t
-{
-	QUERYCACHE_KEEP,
-	QUERYCACHE_REFRESH,
-	QUERYCACHE_EXPIRE,
-	QUERYCACHE_EXPIRE_WASTED,
-};
-
-struct QueryCacheUpdateItem_t
-{
-	QueryCacheEntry_t *m_pEntry;
-	QueryCacheUpdateAction_t m_Action;
-};
-
-struct QueryCacheUpdateRecord_t
-{
-	QueryCacheUpdateItem_t *m_pItems;
-	int m_nItems;
-	float m_flCurTime;
-	CUtlIntrusiveDListWithTailPtr<QueryCacheEntry_t> m_KilledList;
-};
+typedef QueryCacheMaintenance::Item_t<QueryCacheEntry_t> QueryCacheUpdateItem_t;
+typedef QueryCacheMaintenance::Split_t<QueryCacheEntry_t> QueryCacheUpdateRecord_t;
 
 static void ProcessQueryCacheUpdate( QueryCacheUpdateRecord_t &workItem )
 {
 	// The caller owns the cache for this entire synchronous batch. Workers only
 	// read pinned metadata and write their own decision slots; they never call
 	// entities, trace filters, or mutate hash/victim lists and shared counters.
-	for ( int i = 0; i < workItem.m_nItems; ++i )
-	{
-		QueryCacheUpdateItem_t &item = workItem.m_pItems[i];
-		const QueryCacheEntry_t &entry = *item.m_pEntry;
-		const float flElapsed = workItem.m_flCurTime - entry.m_flLastUpdateTime;
-		item.m_Action = QUERYCACHE_KEEP;
-		if ( entry.m_bUsedSinceUpdated )
-		{
-			if ( flElapsed >= entry.m_QueryParams.m_flMinimumUpdateInterval )
-			{
-				item.m_Action = QUERYCACHE_REFRESH;
-			}
-		}
-		else if ( flElapsed > entry.m_QueryParams.m_flMinimumUpdateInterval )
-		{
-			item.m_Action = entry.m_bSpeculativelyDone ? QUERYCACHE_EXPIRE_WASTED : QUERYCACHE_EXPIRE;
-		}
-	}
+	QueryCacheMaintenance::ClassifySplit( workItem );
 }
 
 static void IssueQueryAtTime( QueryCacheEntry_t *pEntry, float flCurTime );
 
-static void CommitQueryCacheUpdate( QueryCacheUpdateRecord_t &workItem )
+struct QueryCacheRefresh_t
 {
-	for ( int i = 0; i < workItem.m_nItems; ++i )
+	// Entity positions and even the default trace filter call gameplay code.
+	// The commit preserves the serial reference's callback order on this thread.
+	void operator()( QueryCacheEntry_t *pEntry, float flCurTime ) const
 	{
-		const QueryCacheUpdateItem_t &item = workItem.m_pItems[i];
-		QueryCacheEntry_t *pEntry = item.m_pEntry;
-		if ( item.m_Action == QUERYCACHE_REFRESH )
-		{
-			// Entity positions and even the default trace filter call gameplay code.
-			// Preserve the serial reference's callback order on the owning thread.
-			IssueQueryAtTime( pEntry, workItem.m_flCurTime );
-			pEntry->m_bUsedSinceUpdated = false;
-			pEntry->m_bSpeculativelyDone = true;
-		}
-		else if ( item.m_Action == QUERYCACHE_EXPIRE || item.m_Action == QUERYCACHE_EXPIRE_WASTED )
-		{
-			if ( item.m_Action == QUERYCACHE_EXPIRE_WASTED )
-			{
-				++s_WastedSpeculativeUpdates;
-			}
-			pEntry->m_QueryParams.m_Type = EQUERY_INVALID;
-			s_HashChains[pEntry->m_QueryParams.m_nHashIdx].RemoveNode( pEntry );
-			workItem.m_KilledList.AddToHead( pEntry );
-		}
+		IssueQueryAtTime( pEntry, flCurTime );
 	}
-}
+};
 
 
 #define N_WAYS_TO_SPLIT_CACHE_UPDATE 8
@@ -253,30 +201,12 @@ void UpdateQueryCache( void )
 	// every decision job joins. Keep one bounded buffer, with no heap allocation.
 	QueryCacheUpdateItem_t items[QUERYCACHE_SIZE];
 	QueryCacheUpdateRecord_t workList[N_WAYS_TO_SPLIT_CACHE_UPDATE];
-	const float flCurTime = gpGlobals->curtime;
-	int nItems = 0;
-	for ( int i = 0; i < N_WAYS_TO_SPLIT_CACHE_UPDATE; ++i )
+	const int nItems = QueryCacheMaintenance::Gather( s_HashChains, ARRAYSIZE( s_HashChains ),
+		N_WAYS_TO_SPLIT_CACHE_UPDATE, gpGlobals->curtime, items, QUERYCACHE_SIZE, workList );
+	if ( nItems < 0 )
 	{
-		QueryCacheUpdateRecord_t &record = workList[i];
-		record.m_pItems = items + nItems;
-		record.m_nItems = 0;
-		record.m_flCurTime = flCurTime;
-		const int nFirstChain = i * ARRAYSIZE( s_HashChains ) / N_WAYS_TO_SPLIT_CACHE_UPDATE;
-		const int nLastChain = ( i + 1 ) * ARRAYSIZE( s_HashChains ) / N_WAYS_TO_SPLIT_CACHE_UPDATE;
-		for ( int chain = nFirstChain; chain < nLastChain; ++chain )
-		{
-			for ( QueryCacheEntry_t *pEntry = s_HashChains[chain].m_pHead; pEntry;
-				  pEntry = pEntry->m_pNext )
-			{
-				if ( nItems == QUERYCACHE_SIZE )
-				{
-					Error( "Query-cache entries exceed fixed storage\n" );
-					return;
-				}
-				items[nItems++].m_pEntry = pEntry;
-				++record.m_nItems;
-			}
-		}
+		Error( "Query-cache entries exceed fixed storage\n" );
+		return;
 	}
 	if ( nItems == 0 )
 		return;
@@ -302,18 +232,12 @@ void UpdateQueryCache( void )
 
 	// The owner performs all gameplay callbacks and authoritative mutation. No
 	// model-cache lock is moved between threads. Invalid query handles enter the
-	// victim list here, before the unchanged ordered prepend of expired entries.
+	// victim list during commit, before the ordered prepend of expired entries.
 	MDLCACHE_CRITICAL_SECTION();
-	for ( int i = 0; i < N_WAYS_TO_SPLIT_CACHE_UPDATE; ++i )
-	{
-		CommitQueryCacheUpdate( workList[i] );
-	}
-	// now, we need to take all of the obsolete cache entries each thread generated and add them to
-	// the victim cache
-	for( int i = 0 ; i < N_WAYS_TO_SPLIT_CACHE_UPDATE; i++ )
-	{
-		PrependDListWithTailToDList( workList[i].m_KilledList, s_VictimList );
-	}
+	CUtlIntrusiveDListWithTailPtr<QueryCacheEntry_t> killed[N_WAYS_TO_SPLIT_CACHE_UPDATE];
+	QueryCacheRefresh_t refresh;
+	QueryCacheMaintenance::Commit( workList, N_WAYS_TO_SPLIT_CACHE_UPDATE, s_HashChains, killed,
+		s_VictimList, EQUERY_INVALID, s_WastedSpeculativeUpdates, refresh );
 }
 
 void InvalidateQueryCache( void )

@@ -59,7 +59,8 @@ def build(bld):
 			pixel_defines += ['LINKED_NATIVE_VULKAN_BACKEND']
 		bld.program(
 			features='cxx', env=test_env.derive(),
-			source=['material_pixel_conformance.cpp', '../../public/filesystem_init.cpp'],
+			source=['material_pixel_conformance.cpp', 'material_pixel_portal.cpp',
+				'../../public/filesystem_init.cpp'],
 			target='material_pixel_conformance', name='material_pixel_conformance',
 			includes=includes + ['../../common'], defines=pixel_defines, use=pixel_use,
 			install_path=None)

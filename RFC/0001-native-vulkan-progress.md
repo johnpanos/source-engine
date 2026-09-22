@@ -1025,3 +1025,146 @@ python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime \
 SDL_VIDEODRIVER=offscreen WAYLAND_DISPLAY= DISPLAY= python3 tools/quality/portal_boot.py \
     --runtime run/runtime --build build --renderer native-vulkan --map testchmb_a_01 --out OUT
 ```
+
+## Model placement: bone matrices, hardware skinning and culling (2026-09-22)
+
+On native Vulkan, multi-bone props (dynamic props such as the round exit door,
+elevators and security cameras) all drew at one spot. Studiorender places them
+with bone matrices:
+- **Rigid models:** `LoadBoneMatrix(0)`, which D3D9 also loads as the MODEL matrix.
+- **Skinned strips:** `SetNumBoneWeights` plus `LoadBoneMatrix(n)`, with the
+  vertex shader's `SkinPosition` blending three bones per vertex (two stored
+  weights and the implicit third).
+
+Native's `LoadBoneMatrix`, `SetNumBoneWeights` and `GetCurrentNumBones` were
+stubs, and its mesh layout dropped bone weights and indices. So every such model
+drew with whatever MODEL matrix was current.
+
+**Fix.**
+- Native stores `cModel[53]`, and bone 0 loads MODEL as `CShaderAPIDx8` does.
+- The mesh layout carries two float weights and four index bytes: stride 44,
+  offsets 32 and 40.
+- `EmitToNativeQueue` skins skinned draws on the CPU with D3D9's formula into
+  world space, and draws them with view × projection.
+
+**Culling.** Native never culled, so the back faces of single-sided props (the
+elevator shaft walls) covered the scene. D3D9's effective cull mode is the
+shadow state's `EnableCulling` (on by default, off for `$nocull`) combined with
+the dynamic `CullMode`: CCW normally, CW for mirrored views. Native now applies
+the same rule. The flipped draw viewport preserves D3D screen winding, so the
+front face is clockwise. The four native suites drew counter-clockwise quads,
+which D3D9 would also cull; they were rewound clockwise.
+
+**Fixture: `skinning` family** (`skinning-dx9-{none,integer}.json`). Five cases
+place a `$model` UnlitGeneric quad in one third of the frame each:
+- rigid through bone 0;
+- one bone;
+- the implicit third weight on index byte 2;
+- a 50/50 blend;
+- bone index 3.
+
+Bone 0 always holds a decoy position, so ignoring skinning is visible. A sixth,
+back-facing case must be culled. D3D9 matches the oracle's independent table
+exactly, and native passes in both HDR modes. Negative controls on the real
+backend:
+- the stub `LoadBoneMatrix` puts every model in the middle, reproducing "all in
+  one spot";
+- culling disabled draws the back-facing quad.
+
+Five seeded oracle tests cover these.
+
+**In the game.** `portal_boot.py` gained `--console-command` (exec'd from a cfg;
+player commands need the `cmd` prefix), `--headless` (offscreen and volume 0)
+and `-multirun`, so framed views can be compared on both backends. On
+testchmb_a_01 the exit door, exit sign, portal frames and the exit elevator with
+its shaft now sit where D3D9 draws them. A temporary diagnostic confirmed that
+static props already had correct transforms (for example the shaft wall at
+(−256, −192.1, 96), rotated 90°, matching the map's static-prop lump). Their
+wrong look came from culling.
+
+Still different from D3D9, and not placement:
+- model lighting (native props are unlit, so brighter);
+- portal openings (being worked on separately);
+- native's swapchain follows the window size, not `-w`/`-h`;
+- testchmb_a_00 renders white on native, with or without this change.
+
+## Portal stencil recursion: PortalRefract matches D3D9 (2026-09-22)
+
+`--family portal` renders Portal's openings in the harness. It replicates the
+client's `CPortalRender::DrawPortalsUsingStencils` with the real materials:
+- `portal_stencil_hole`,
+- `portalstaticoverlay_1` (PortalRefract stage 2),
+- `portal_refract_1` (stage 0),
+- `engine/writez_model`.
+
+It runs through the real material system: stencil INCR/DECR recursion to
+`r_portal_stencil_depth` 2, `ClearBuffersObeyStencil`, D3D9 user clip planes on
+the exit portal, and `_rt_PowerOfTwoFB` refraction. There are three cases:
+`recursion` (open), `opening` (half open) and `static` (all static).
+
+The oracle (`tools/quality/material_pixel_portal.py`) has two parts:
+- An independent ray-traced model judges the structure. It checks every decidable
+  pixel of each nested view's wall, and the first nested view's blocker clipped
+  by the exit portal's plane.
+- The versioned D3D9 reference (`quality/fixtures/material-pixels/portal-dx9-none.json`)
+  judges PortalRefract's pixels: 1 level per channel, at most 8 pixels beyond it.
+
+**Result:** native Vulkan matches D3D9 bit for bit in `opening` and `static`. In
+`recursion`, one channel of one flame pixel is one level off.
+
+Differences found and fixed on the way:
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| D3D9 reference showed the clipped blocker unclipped | DXVK 2.7.1's fast-linked graphics-pipeline-library pipelines ignore user clip planes | The runner sets `DXVK_CONFIG="dxvk.enableGraphicsPipelineLibrary = False"` for this family, recorded in evidence |
+| D3D9 ran 4x MSAA; native one sample | `SetMode` applies the dxsupport level's defaults | The harness pins one sample per pixel |
+| 3951 → 539 pixels off at the flame rims | Native blended sRGB-writing draws in sRGB space | sRGB views of mutable-format targets (`VK_KHR_swapchain_mutable_format`), as D3D9 `SRGBWRITEENABLE` blends in linear |
+| ~1200 flame/static pixels off by up to 59 | `mat_trilinear` 1 on D3D9 (dxsupport.cfg), 0 on native, which reads no dxsupport.cfg | The harness pins trilinear and no forced anisotropy; the oracle rejects captures that don't report it |
+| 67 static pixels off by up to 15, native brighter | Native reported no compressed-texture support, so the material system decoded DXT1 on the CPU. Its rounding reads the noise about half a unit low, and the flame ramp magnifies that | `SupportsCompressedTextures` reports `textureCompressionBC` (now enabled); DXT1/DXT1_ONEBITALPHA/DXT3/DXT5 upload as BC1/BC1/BC2/BC3 |
+| 893 refraction pixels one level dark | Only blended sRGB draws used the sRGB view; opaque stage 0 encoded in the shader | Every sRGB-writing draw uses the sRGB view (hardware encode, as DXVK). A query begins in the pass of the draw it counts, so occlusion queries are not split |
+
+These were ruled out by experiment (the frames were unchanged or worse):
+- FXC's `rcp(rsq)` square root;
+- the `.xx` ramp coordinate;
+- decoding the ramp after filtering;
+- DXVK's `0.5 - 1/128` viewport bias (it made an edge 180 levels off);
+- fog, which is 0 with fog off: `c6` is set so that CalcRangeFog returns 0.
+
+Real negative controls against the fixture:
+- the build before the DXT fix fails (688 static pixels);
+- the unpinned-sampling build fails.
+
+Ten seeded oracle tests cover:
+- no stencil;
+- shallow recursion;
+- unpinned sampling;
+- ignored recursion;
+- an ignored clip plane;
+- drift;
+- the tolerance boundary;
+- a changed scene;
+- malformed captures.
+
+Also passing after these changes:
+- all 7 material-pixel captures, native against D3D9 (lightmap, exposure,
+  skinning, portal);
+- bring-up 20/0, backend 33/0, facing 13/0, equivalence 21/0;
+- 206 `tools/quality` tests;
+- `portal_boot.py` native on testchmb_a_01, where BC-compressed world textures
+  render correctly.
+
+`archlint check --all` reports the existing `SetMode` baseline drift (the text was
+reformatted before this change) and other sessions' physics entries.
+
+Open:
+- Native reads no `dxsupport.cfg`: `GetRecommendedConfigurationInfo` is a stub,
+  and it reports dx level 90 and no anisotropy (D3D9: 95 and 16). The game
+  therefore runs with different convar defaults from D3D9.
+- ATI1N/ATI2N remain unsupported, as before.
+- PortalRefract range fog is not ported; the harness runs with fog off.
+
+```sh
+python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime \
+    --build build --renderer native-vulkan --hdr none --family portal \
+    --reference quality/fixtures/material-pixels/portal-dx9-none.json --out OUT
+```

@@ -18,6 +18,8 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0004](RFC/0004-box3d-primary-physics-backend.md) | Box3D behind VPhysics, legacy assets, gameplay/persistence, profile-specific rollout |
 | [0005](RFC/0005-quality-and-correctness-harnesses.md) | Eight harness families, shared execution/evidence, trustworthy quality gates |
 | [0006](RFC/0006-modern-cpp-ownership-and-synchronization.md) | C++20 targets, results, ownership, bounded queues, CPU publication and GPU fences |
+| [0007](RFC/0007-physically-based-lighting-pipeline.md) | Substitutable light baker (legacy vrad, Cycles), PBR material family, image-based lighting, compile-tool port |
+| [0008](RFC/0008-canonical-world-data-and-runtime-formats.md) | USD World Stage, BSP2 container, KTX2 textures, canonical lighting data, BSP2 world path, incremental map builds |
 
 RFC status and implementation status are separate. A proposed interface, tool,
 directory, or command is not installed infrastructure. Read the relevant RFC
@@ -371,20 +373,32 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 30 / R30 | Existing parallel kernels; 0003 E | R21 | Each bones/query-cache/entity-packing/leaf/shadow cohort independently passes three-mode, ownership, latency/performance and rollback gates | partial ([batch migration](RFC/0003-batch-migration-progress.md)) |
 | 31 / R31 | Physics core compatibility; 0004 C | R19 | Required traces, filters, events, materials, constraints/ragdolls, controllers and persistence pass client/dedicated gameplay corpus | planned |
 | 32 / R32 | Native Vulkan functional MVP; 0001 rank 16 | R10, R28 | Representative map renders opt-in; resource/pipeline/upload/sync/swapchain contracts pass; unsupported features fail explicitly | planned |
-| 33 / R33 | Hammer feature families; 0002 H6 | R25 | Each declared displacement/instance/manifest/overlay/texture/preview family passes load/edit/undo/save/build, recovery and performance gates | planned |
-| 34 / R34 | Physics gameplay and tool completion; 0004 D | R31 | Required fluids, vehicle modes, pulley/group and selected Portal/game features pass; compiler/content workflows preserve supported formats | planned |
-| 35 / R35 | New audited compute seams; 0003 F | R30 | Animation/render-list/AI/streaming cohorts have stable inputs, correct cross-system edges and ordered commit; individual equivalence/budget gates pass | planned |
-| 36 / R36 | Vulkan parity and four-platform release readiness; 0001 rank 17 | R29, R32 | Per-platform materials/images, loss/recovery, cache, hardware budgets and normal package/store-compatibility checks pass; default selection is a separate product decision | planned |
-| 37 / R37 | Physics parallel rollout and default gate; 0004 E | R20, R34 | Worker-count determinism, nested-work/callback/shutdown bridge, platform packaging, budgets and supported client/server combinations pass; IVP rollback tested | planned |
-| 38 / R38 | Stateful scheduling migrations; 0003 G | R30, R35, R37 | Snapshot-send ownership and selected entity/physics cohorts preserve legacy observations/order or record intentional change; network/latency/lifetime gates pass | planned |
-| 39 / R39 | First-party module retirement; 0001 rank 18 / retirement B–D | R12, R18 | Pseudo-modules removed; mandatory systems and provider catalogs use typed linked factories; no filename/string discovery for migrated services | active ([Phase D](RFC/0001-phase-d-progress.md)) |
-| 40 / R40 | Tool executable/process cleanup; 0001 rank 19 / retirement E | R11, R12, R22 | Launchable-DLL wrappers retired by cohort; structured argv/process protocol, outputs/cancellation and required compiler workflows pass; integrations tool-only | active ([Phase E](RFC/0001-phase-e-progress.md)) |
-| 41 / R41 | Extension hosts and public-loader removal; 0001 rank 20 / retirement F–G | R07, R11, R39, R40 | Family-owned versioned ABI/trust/lifetime fixtures pass; Waf enumerates boundaries; only approved hosts load; Tier1/filesystem general loader APIs retired | planned |
-| 42 / R42 | Scheduler consolidation; 0003 H | R35, R38 | Redundant queues/waits have zero consumers; process worker budget controlled; supported host modes retain correctness/latency and rollback evidence | planned |
-| 43 / R43 | Hammer legacy retirement; 0002 H7 | R33 | Declared product parity/recovery gate met; old consumer counts zero; superseded shell/glue/build references and stale exceptions removed | planned |
-| 44 / R44 | IVP simulation retirement; 0004 F first gate | R37 | Declared profiles no longer depend on IVP simulation; gameplay/save/package gates pass and rollback/support decision recorded; decoder dependency remains explicit | planned |
-| 45 / R45 | Independent collision decoding/cooking; 0004 F second gate | R40, R44 | Legacy/native format corpus and tool compatibility pass without IVP code; dependency audit clean; schema and old-content policy explicit | planned |
-| 46 / R46 | Tier-global/domain retirement; 0001 rank 21 | R39, R41, R42, R43, R45 | All declared domain cohorts use explicit ownership; old globals have zero consumers; cohesive targets pass architecture/product gates; tiers removed only when empty | planned |
+| 33 / R47 | PBR material family core; 0007 A/D | R02, R15 | BRDF analytic and white-furnace tests; `pbr` pixel family matches Cycles references; negative controls fail; capability and validated fallback on D3D9/DXVK | planned |
+| 34 / R48 | Compile tools on Waf and bake seam; 0007 B, vvis track | R01, R02, R03 | vbsp/vvis/vrad build on a declared profile; byte-identical legacy lumps and PVS vs legacy executables; shared baker suite passes the legacy provider and rejects bad providers | planned |
+| 35 / R53 | BSP2 container and map-reader seam; 0008 F1 | R02, R04 | Legacy lumps carried byte-identically; client/server load both containers; independent reader, fuzzing and dedicated-server link evidence pass | planned |
+| 36 / R55 | KTX2 textures; 0008 F3 | R15, R53 | Container-neutral texture reader; UASTC encode and per-profile transcode; native Vulkan BC/ASTC/ETC2 formats; `ktx validate` and per-format pixel fixtures; missing required format fails composition | planned |
+| 37 / R54 | USD World Stage and lightmap charts; 0008 F2 | R48, R53 | vbsp2 emits the geometry layer with charts; `usdchecker` clean; stage renders in pinned Cycles; semantic comparator detects seeded loss | planned |
+| 38 / R49 | Cycles light baker; 0007 C/E | R05, R48, R54 | Feasibility decision recorded; SH L1/RNM, probe and reflection outputs pass analytic, comparative and negative oracles | planned |
+| 39 / R56 | BSP2 native Vulkan world path; 0008 F4–F5 | R32, R49, R54, R55 | World mesh uploaded without rebuild; style-layer lightmaps, probe volume and clustered dynamic lights; each engine feature cohort passes; legacy payload renders on D3D9/DXVK | planned |
+| 40 / R50 | Image-based lighting; 0007 F | R47, R56 | Baked reflection probes and legacy runtime prefilter pass IBL pixel fixtures and cache invalidation; legacy families unchanged | planned |
+| 41 / R51 | Stage reference rendering; 0007 G | R49, R54 | Versioned Cycles reference fixtures rendered from stages; seeded material-mapping error detected | planned |
+| 42 / R52 | Hammer compile/preview and vvis job graph; 0007 H | R20, R25, R49 | GTK compile/run and progressive preview with cancellation/recovery; serial/parallel/legacy PVS byte equivalence | planned |
+| 43 / R57 | Incremental map build graph; 0008 F6 | R52, R54 | Cache-hit traces per change class; cancellation leaves the previous package intact | planned |
+| 44 / R58 | Mobile map packages; 0008 F7 | R29, R55, R56 | Device format queries recorded; per-profile packages pass installed-package smoke tests on R29 runners | planned |
+| 45 / R33 | Hammer feature families; 0002 H6 | R25 | Each declared displacement/instance/manifest/overlay/texture/preview family passes load/edit/undo/save/build, recovery and performance gates | planned |
+| 46 / R34 | Physics gameplay and tool completion; 0004 D | R31 | Required fluids, vehicle modes, pulley/group and selected Portal/game features pass; compiler/content workflows preserve supported formats | planned |
+| 47 / R35 | New audited compute seams; 0003 F | R30 | Animation/render-list/AI/streaming cohorts have stable inputs, correct cross-system edges and ordered commit; individual equivalence/budget gates pass | planned |
+| 48 / R36 | Vulkan parity and four-platform release readiness; 0001 rank 17 | R29, R32 | Per-platform materials/images, loss/recovery, cache, hardware budgets and normal package/store-compatibility checks pass; default selection is a separate product decision | planned |
+| 49 / R37 | Physics parallel rollout and default gate; 0004 E | R20, R34 | Worker-count determinism, nested-work/callback/shutdown bridge, platform packaging, budgets and supported client/server combinations pass; IVP rollback tested | planned |
+| 50 / R38 | Stateful scheduling migrations; 0003 G | R30, R35, R37 | Snapshot-send ownership and selected entity/physics cohorts preserve legacy observations/order or record intentional change; network/latency/lifetime gates pass | planned |
+| 51 / R39 | First-party module retirement; 0001 rank 18 / retirement B–D | R12, R18 | Pseudo-modules removed; mandatory systems and provider catalogs use typed linked factories; no filename/string discovery for migrated services | active ([Phase D](RFC/0001-phase-d-progress.md)) |
+| 52 / R40 | Tool executable/process cleanup; 0001 rank 19 / retirement E | R11, R12, R22 | Launchable-DLL wrappers retired by cohort; structured argv/process protocol, outputs/cancellation and required compiler workflows pass; integrations tool-only | active ([Phase E](RFC/0001-phase-e-progress.md)) |
+| 53 / R41 | Extension hosts and public-loader removal; 0001 rank 20 / retirement F–G | R07, R11, R39, R40 | Family-owned versioned ABI/trust/lifetime fixtures pass; Waf enumerates boundaries; only approved hosts load; Tier1/filesystem general loader APIs retired | planned |
+| 54 / R42 | Scheduler consolidation; 0003 H | R35, R38 | Redundant queues/waits have zero consumers; process worker budget controlled; supported host modes retain correctness/latency and rollback evidence | planned |
+| 55 / R43 | Hammer legacy retirement; 0002 H7 | R33 | Declared product parity/recovery gate met; old consumer counts zero; superseded shell/glue/build references and stale exceptions removed | planned |
+| 56 / R44 | IVP simulation retirement; 0004 F first gate | R37 | Declared profiles no longer depend on IVP simulation; gameplay/save/package gates pass and rollback/support decision recorded; decoder dependency remains explicit | planned |
+| 57 / R45 | Independent collision decoding/cooking; 0004 F second gate | R40, R44 | Legacy/native format corpus and tool compatibility pass without IVP code; dependency audit clean; schema and old-content policy explicit | planned |
+| 58 / R46 | Tier-global/domain retirement; 0001 rank 21 | R39, R41, R42, R43, R45 | All declared domain cohorts use explicit ownership; old globals have zero consumers; cohesive targets pass architecture/product gates; tiers removed only when empty | planned |
 
 R39–R46 describe completion gates, not a reason to retain dead code until late.
 Delete each unused adapter/global/queue when its bounded cohort has passed its
@@ -415,6 +429,12 @@ can still proceed. For `done`, link the current revision/profile evidence and
 confirm every required child and exit criterion. Reopen affected gates when a
 contract/provider/comparator/consumer changes; do not preserve stale completion.
 Keep the table concise and link details below or from the domain progress file.
+
+- R47–R58 (RFC 0007/0008): added 2026-09-22 as `planned` at the user's direction,
+  ranked after R32 so legacy-content fidelity on native Vulkan stays ahead. The user
+  authorized upgrading the renderer, BSP and intermediate formats and chose OpenUSD for
+  the World Stage. Only source-inspection findings exist (see each RFC's findings
+  section); no build, runtime or harness evidence.
 
 - R04-STYLE: `done` for the bounded mechanical-style slice requested by the user:
   pinned formatter, Source configuration, incremental include-order check,

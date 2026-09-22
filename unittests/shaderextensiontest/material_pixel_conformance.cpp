@@ -22,6 +22,15 @@
 //          client's histogram, each draw bracketed by an occlusion query. The
 //          query counts are the histogram the client turns into an exposure.
 //
+//          skinning: model placement. A model material ($model UnlitGeneric)
+//          draws a small quad from a static mesh with bone weights and indices,
+//          as studiorender builds and draws models: rigid models through the
+//          MODEL matrix that LoadBoneMatrix( 0 ) loads, skinned ones through the
+//          bone matrices (SetNumBoneWeights, LoadBoneMatrix). Each case places
+//          the quad in one third of the frame; which third it covers is the
+//          measurement. One case winds the quad the other way: model materials
+//          cull back faces, so it must not appear at all.
+//
 //          This program measures; it does not judge. It writes the inputs and
 //          the measured pixels as source-material-pixels/v1 JSON, and
 //          tools/quality/material_pixel_conformance.py applies the oracle:
@@ -30,7 +39,7 @@
 //
 //          Run inside a staged game runtime (the driver stages one):
 //            material_pixel_conformance -game portal -renderer <id>
-//                -hdr <none|integer> [-family <lightmap|exposure>] -out <file.json>
+//                -hdr <none|integer> [-family <lightmap|exposure|skinning>] -out <file.json>
 //
 //=============================================================================//
 
@@ -47,6 +56,7 @@
 #include "materialsystem/imesh.h"
 #include "materialsystem/itexture.h"
 #include "materialsystem/materialsystem_config.h"
+#include "material_pixel_portal.h"
 #include "pixelwriter.h"
 #include "render/builtin_shader_provider.h"
 #include "render/legacy_shader_provider.h"
@@ -122,6 +132,34 @@ const float kExposureCenterRegionX = 0.9f;
 const float kExposureCenterRegionY = 0.85f;
 // Frames to wait for query results before the run is declared incomplete.
 const int kMaxQueryPollFrames = 60;
+// Skinning cases. Bones translate the quad along clip-space x; the frame is read
+// at the centers of its thirds. Bone 0 always holds kSkinDecoy, the placement a
+// backend that ignored skinning would draw every skinned case at.
+struct SkinningCase
+{
+	const char *name;
+	int numBoneWeights;     // SetNumBoneWeights; 0 draws rigidly through MODEL
+	float bone0;            // bone 0 translation (also the MODEL matrix)
+	float bones[3];         // bones 1..3 translations
+	float weights[2];       // stored weights; the third is 1 - w0 - w1
+	unsigned char index[3]; // bone indices of the three weights
+	int expectedThird;      // 0 left, 1 middle, 2 right, -1 culled (the oracle decides)
+	bool backFacing;        // wound counter-clockwise on screen: culled by default
+};
+const float kSkinLeft = -2.0f / 3.0f, kSkinMiddle = 0.0f, kSkinRight = 2.0f / 3.0f;
+const float kSkinDecoy = kSkinRight;
+const SkinningCase kSkinningCases[] = {
+    // Rigid: studiorender loads bone 0 and draws without bone weights.
+    { "rigid_bone0", 0, kSkinLeft, { 0, 0, 0 }, { 1, 0 }, { 0, 0, 0 }, 0 },
+    { "one_bone", 2, kSkinDecoy, { kSkinLeft, 0, 0 }, { 1, 0 }, { 1, 0, 0 }, 0 },
+    { "implicit_third_weight", 2, kSkinDecoy, { 0, kSkinMiddle, 0 }, { 0, 0 }, { 1, 0, 2 }, 1 },
+    { "blend_half", 2, kSkinDecoy, { kSkinLeft, 0, 0 }, { 0.5f, 0.5f }, { 1, 0, 0 }, 1 },
+    { "high_index", 2, kSkinDecoy, { kSkinMiddle, 0, kSkinRight }, { 1, 0 }, { 3, 0, 0 }, 2 },
+    { "rigid_back_facing", 0, kSkinLeft, { 0, 0, 0 }, { 1, 0 }, { 0, 0, 0 }, -1, true },
+};
+const int kSkinningCaseCount = sizeof( kSkinningCases ) / sizeof( kSkinningCases[0] );
+const float kSkinHalfWidth = 0.25f;
+
 // What IMatRenderContext::OcclusionQuery_GetNumPixelsRendered returns before a
 // query has a result (the shader API's OCCLUSION_QUERY_RESULT_PENDING).
 const int kQueryPending = -1;
@@ -168,11 +206,13 @@ public:
 	int Main() override;
 	void PostShutdown() override;
 	void Destroy() override {}
+	// Shared with the portal family (material_pixel_portal.cpp).
+	void WriteClearProbe( FILE *out );
 
 private:
 	bool RunLightmapCases( FILE *out );
 	bool RunExposureCases( FILE *out );
-	void WriteClearProbe( FILE *out );
+	bool RunSkinningCases( FILE *out );
 	bool RenderCase( IMaterial *pMaterial, int sortId, const int offset[2], int lightmapPageId,
 	    const float ( *points )[2], int pointCount, unsigned char ( *pixels )[3],
 	    float toneScale = 1.0f );
@@ -236,18 +276,28 @@ void CMaterialPixelApp::PostShutdown()
 	DisconnectTier1Libraries();
 }
 
+// RunPortalCases (material_pixel_portal.cpp) writes the shared probe through this.
+static CMaterialPixelApp *s_pApp = nullptr;
+static void WriteClearProbeThunk( FILE *out )
+{
+	s_pApp->WriteClearProbe( out );
+}
+
 int CMaterialPixelApp::Main()
 {
+	s_pApp = this;
 	const char *outPath = CommandLine()->ParmValue( "-out", "" );
 	const char *hdr = CommandLine()->ParmValue( "-hdr", "none" );
 	const bool integerHdr = !Q_stricmp( hdr, "integer" );
 	const char *family = CommandLine()->ParmValue( "-family", "lightmap" );
 	const bool exposure = !Q_stricmp( family, "exposure" );
+	const bool skinning = !Q_stricmp( family, "skinning" );
+	const bool portal = !Q_stricmp( family, "portal" );
 	if ( !outPath[0] || ( !integerHdr && Q_stricmp( hdr, "none" ) ) ||
-	     ( !exposure && Q_stricmp( family, "lightmap" ) ) )
+	     ( !exposure && !skinning && !portal && Q_stricmp( family, "lightmap" ) ) )
 	{
 		Warning( "material pixel conformance: need -out <file>, -hdr <none|integer> and "
-		         "-family <lightmap|exposure>\n" );
+		         "-family <lightmap|exposure|skinning|portal>\n" );
 		return 2;
 	}
 
@@ -281,6 +331,19 @@ int CMaterialPixelApp::Main()
 		Warning( "material pixel conformance: SetMode failed\n" );
 		return 3;
 	}
+	// Portal frames are compared pixel for pixel, so both backends rasterize one
+	// sample per pixel and filter textures the same way. SetMode applies the
+	// dxsupport level's defaults (4x MSAA and mat_trilinear 1 on D3D9 here; the
+	// native backend reads no dxsupport.cfg), so the sample count and the texture
+	// filter are pinned after it.
+	if ( portal )
+	{
+		MaterialSystem_Config_t pinned = g_pMaterialSystem->GetCurrentConfigForVideoCard();
+		pinned.m_nAASamples = 0;
+		pinned.m_nForceAnisotropicLevel = 1;
+		pinned.SetFlag( MATSYS_VIDCFG_FLAGS_FORCE_TRILINEAR, true );
+		g_pMaterialSystem->OverrideConfig( pinned, false );
+	}
 
 	// The HDR mode decides the lightmap page format and the lightmap scale, so it
 	// is chosen before lightmaps are allocated, the way map load orders it.
@@ -303,7 +366,10 @@ int CMaterialPixelApp::Main()
 		Warning( "material pixel conformance: cannot write %s\n", outPath );
 		return 2;
 	}
-	const bool ok = exposure ? RunExposureCases( out ) : RunLightmapCases( out );
+	const bool ok = exposure   ? RunExposureCases( out )
+	                : skinning ? RunSkinningCases( out )
+	                : portal   ? RunPortalCases( out, outPath, WriteClearProbeThunk )
+	                           : RunLightmapCases( out );
 	fclose( out );
 	pLauncher->DestroyGameWindow();
 	return ok ? 0 : 1;
@@ -683,6 +749,120 @@ bool CMaterialPixelApp::RunExposureCases( FILE *out )
 	fprintf( out, "]}\n" );
 	pMaterial->DecrementReferenceCount();
 	pFrameBuffer->DecrementReferenceCount();
+	return ok;
+}
+
+// A translation along x as the 3x4 pose-to-world matrix LoadBoneMatrix takes.
+static matrix3x4_t SkinTranslation( float x )
+{
+	return matrix3x4_t( 1, 0, 0, x, 0, 1, 0, 0, 0, 0, 1, 0 );
+}
+
+bool CMaterialPixelApp::RunSkinningCases( FILE *out )
+{
+	static CSolidColorRegenerator s_SkinRegenerator;
+	const unsigned char color[3] = { 40, 200, 90 };
+	for ( int k = 0; k < 3; ++k )
+		s_SkinRegenerator.m_Color[k] = color[k];
+	ITexture *pBase = g_pMaterialSystem->CreateProceduralTexture( "conformance/skinning_base",
+	    TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888,
+	    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL |
+	        TEXTUREFLAGS_SINGLECOPY );
+	if ( !pBase )
+		return false;
+	pBase->SetTextureRegenerator( &s_SkinRegenerator );
+	pBase->Download();
+
+	KeyValues *pKeys = new KeyValues( "UnlitGeneric" );
+	pKeys->SetString( "$basetexture", "conformance/skinning_base" );
+	pKeys->SetInt( "$model", 1 );
+	IMaterial *pMaterial = g_pMaterialSystem->CreateMaterial( "conformance/skinned", pKeys );
+	if ( !pMaterial || pMaterial->IsErrorMaterial() )
+		return false;
+	pMaterial->IncrementReferenceCount();
+	g_pMaterialSystem->CacheUsedMaterials();
+	if ( pMaterial->GetVertexFormat() == 0 )
+	{
+		Warning( "material pixel conformance: %s has no vertex format after precache\n",
+		    pMaterial->GetName() );
+		return false;
+	}
+
+	fprintf( out, "{\"schema\":\"source-material-pixels/v1\",\"family\":\"skinning\"," );
+	WriteClearProbe( out );
+	fprintf( out, "\"color\":[%d,%d,%d],\"cases\":[", color[0], color[1], color[2] );
+
+	// The model mesh format: the material's, plus two bone weights and the bone
+	// indices, uncompressed (studiorendercontext.cpp R_StudioCreateStaticMeshes).
+	const VertexFormat_t format = ( pMaterial->GetVertexFormat() & ~VERTEX_FORMAT_COMPRESSED ) |
+	                              VERTEX_BONEWEIGHT( 2 ) | VERTEX_BONE_INDEX;
+	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+	bool ok = true;
+	for ( int i = 0; i < kSkinningCaseCount; ++i )
+	{
+		const SkinningCase &c = kSkinningCases[i];
+		IMesh *pMesh = pRenderContext->CreateStaticMesh(
+		    format, TEXTURE_GROUP_STATIC_VERTEX_BUFFER_MODELS, pMaterial );
+		CMeshBuilder meshBuilder;
+		meshBuilder.Begin( pMesh, MATERIAL_TRIANGLES, 4, 6 );
+		const float corners[4][2] = { { -1, 1 }, { 1, 1 }, { 1, -1 }, { -1, -1 } };
+		for ( int v = 0; v < 4; ++v )
+		{
+			meshBuilder.Position3f(
+			    corners[v][0] * kSkinHalfWidth, corners[v][1] * kSkinHalfWidth, 0.5f );
+			meshBuilder.Normal3f( 0.0f, 0.0f, -1.0f );
+			meshBuilder.Color4ub( 255, 255, 255, 255 );
+			meshBuilder.TexCoord2f( 0, 0.5f * ( corners[v][0] + 1 ), 0.5f * ( 1 - corners[v][1] ) );
+			meshBuilder.BoneWeight( 0, c.weights[0] );
+			meshBuilder.BoneWeight( 1, c.weights[1] );
+			for ( int b = 0; b < 3; ++b )
+				meshBuilder.BoneMatrix( b, c.index[b] );
+			meshBuilder.BoneMatrix( 3, 0 );
+			meshBuilder.AdvanceVertex();
+		}
+		// Clockwise on screen (the front face); reversed for a back-facing case.
+		const unsigned short front[6] = { 0, 1, 2, 0, 2, 3 };
+		const unsigned short back[6] = { 0, 2, 1, 0, 3, 2 };
+		for ( unsigned short index : c.backFacing ? back : front )
+			meshBuilder.FastIndex( index );
+		meshBuilder.End();
+
+		unsigned char thirds[3][3] = {};
+		g_pMaterialSystem->BeginFrame( 0 );
+		{
+			int width = 0, height = 0;
+			g_pMaterialSystem->GetBackBufferDimensions( width, height );
+			pRenderContext->Viewport( 0, 0, width, height );
+			pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
+			pRenderContext->ClearBuffers( true, true );
+			for ( int mode = MATERIAL_VIEW; mode <= MATERIAL_PROJECTION; ++mode )
+			{
+				pRenderContext->MatrixMode( static_cast<MaterialMatrixMode_t>( mode ) );
+				pRenderContext->LoadIdentity();
+			}
+			// studiorender's order (R_StudioDrawGroupHWSkin): bone count, bones,
+			// then the draw. A rigid draw sees bone 0 only as the MODEL matrix.
+			pRenderContext->SetNumBoneWeights( c.numBoneWeights );
+			pRenderContext->LoadBoneMatrix( 0, SkinTranslation( c.bone0 ) );
+			for ( int b = 0; b < 3; ++b )
+				pRenderContext->LoadBoneMatrix( b + 1, SkinTranslation( c.bones[b] ) );
+			pRenderContext->Bind( pMaterial );
+			pMesh->Draw();
+			pRenderContext->SetNumBoneWeights( 0 );
+			for ( int t = 0; t < 3; ++t )
+				ok = ReadPixel( ( 2 * t + 1 ) / 6.0f, 0.5f, thirds[t] ) && ok;
+		}
+		g_pMaterialSystem->EndFrame();
+		g_pMaterialSystem->SwapBuffers();
+		pRenderContext->DestroyStaticMesh( pMesh );
+		fprintf( out,
+		    "%s{\"name\":\"%s\",\"expected_third\":%d,"
+		    "\"pixels\":[[%d,%d,%d],[%d,%d,%d],[%d,%d,%d]]}",
+		    i ? "," : "", c.name, c.expectedThird, thirds[0][0], thirds[0][1], thirds[0][2],
+		    thirds[1][0], thirds[1][1], thirds[1][2], thirds[2][0], thirds[2][1], thirds[2][2] );
+	}
+	fprintf( out, "]}\n" );
+	pMaterial->DecrementReferenceCount();
 	return ok;
 }
 
