@@ -424,6 +424,35 @@ def classify(path: str, rule_id: str, manifest: dict) -> tuple[str, str]:
     return "first-party-composition", "First-party runtime module assembled by legacy application composition."
 
 
+NATIVE_TELEMETRY_DELEGATIONS = {
+    "dedicated/isys.h": "delegates-to-dedicated-native-adapter",
+    "dedicated/sys_common.cpp": "delegates-to-dedicated-native-adapter",
+    "engine/audio/voice_record_dsound.cpp": "shared-audio-pch-native-adapter",
+    "tier1/interface.cpp": "tier1-shared-tracker",
+}
+NATIVE_TELEMETRY_PROVIDERS = {
+    "public/tier0/bootstrap_module_load_telemetry.h": "bootstrap-provider-boundary",
+    "public/tier0/native_module_load_telemetry.h": "tier0-provider-boundary",
+    "tier0/module_load_telemetry.cpp": "tier0-provider-boundary",
+    "external/vpc/public/tier0/native_module_load_telemetry.h": "vpc-provider-boundary",
+}
+
+
+def native_telemetry_coverage(path: str, original: str) -> str:
+    """Return the concrete runtime adapter covering one raw native loader site."""
+    if path in NATIVE_TELEMETRY_PROVIDERS:
+        return NATIVE_TELEMETRY_PROVIDERS[path]
+    if path in NATIVE_TELEMETRY_DELEGATIONS:
+        return NATIVE_TELEMETRY_DELEGATIONS[path]
+    if path.startswith("external/vpc/"):
+        return "vpc-platform-native-adapter"
+    if "tier0/bootstrap_module_load_telemetry.h" in original:
+        return "bootstrap-native-adapter"
+    if "tier0/native_module_load_telemetry.h" in original:
+        return "tier0-native-adapter"
+    return "missing"
+
+
 def supplemental_inventory_occurrences(root: Path, manifest: dict) -> list[dict]:
     results: list[dict] = []
     for path in source_files(root):
@@ -446,8 +475,7 @@ def supplemental_inventory_occurrences(root: Path, manifest: dict) -> list[dict]
                 repeated[key] += 1
                 fingerprint = make_fingerprint(inventory_rule, relative, excerpt, ordinal)
                 category, reason = classify(relative, inventory_rule, manifest)
-                results.append(
-                    {
+                record = {
                         "fingerprint": fingerprint,
                         "mechanism": mechanism,
                         "path": relative,
@@ -456,7 +484,11 @@ def supplemental_inventory_occurrences(root: Path, manifest: dict) -> list[dict]
                         "classification": category,
                         "reason": reason,
                     }
-                )
+                if mechanism == "native-loader":
+                    record["telemetry"] = native_telemetry_coverage(
+                        relative, original
+                    )
+                results.append(record)
     return results
 
 
@@ -476,10 +508,21 @@ def inventory_document(root: Path, manifest: dict) -> dict:
     sites.extend(supplemental_inventory_occurrences(root, manifest))
     sites.sort(key=lambda item: (item["path"], item["line"], item["mechanism"]))
     counts = Counter(item["classification"] for item in sites)
+    native_sites = [item for item in sites if item["mechanism"] == "native-loader"]
+    covered_native_sites = [
+        item for item in native_sites if item.get("telemetry") != "missing"
+    ]
     return {
         "version": 1,
         "description": "Static dynamic-loader site inventory for RFC 0001 retirement Phase A.",
         "classificationCounts": dict(sorted(counts.items())),
+        "nativeTelemetryCoverage": {
+            "covered": len(covered_native_sites),
+            "total": len(native_sites),
+            "status": "complete"
+            if len(covered_native_sites) == len(native_sites)
+            else "partial",
+        },
         "sites": sites,
     }
 
@@ -1070,9 +1113,27 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
         )
     if args.write == args.verify:
         raise SystemExit("inventory requires exactly one of --verify or --write")
+    inventory_expected = inventory_document(root, manifest)
+    missing_native_telemetry = [
+        site
+        for site in inventory_expected["sites"]
+        if site["mechanism"] == "native-loader"
+        and site.get("telemetry") == "missing"
+    ]
+    if missing_native_telemetry:
+        for site in missing_native_telemetry:
+            print(
+                f"{site['path']}:{site['line']}: native loader site has no "
+                "runtime telemetry adapter"
+            )
+        print(
+            "archlint: loader inventory rejected; "
+            f"{len(missing_native_telemetry)} native site(s) are uninstrumented"
+        )
+        return 1
     return verify_or_write(
         root / "architecture/loader_inventory.json",
-        inventory_document(root, manifest),
+        inventory_expected,
         args.write,
         "loader inventory",
     )

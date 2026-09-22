@@ -104,6 +104,36 @@
       "expect": "pass"
     },
     {
+      "id": "hammer.scene.scene_graph",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-SCENE-001",
+      "contract": "unittests/hammertest/contracts/scene.scene_graph.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/scene/handle_table.cpp",
+        "hammer/core/scene/scene_graph.cpp",
+        "unittests/hammertest/scene/test_scene_graph.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.scene.scene_graph.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-SCENE-001",
+      "contract": "unittests/hammertest/contracts/scene.scene_graph.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/scene/handle_table.cpp",
+        "hammer/core/scene/scene_graph.cpp",
+        "unittests/hammertest/scene/test_scene_graph_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "jobsystem.scheduler",
       "domain": "Q-JOBS",
       "rfc": "0003",
