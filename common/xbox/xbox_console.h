@@ -18,7 +18,7 @@
 	#define XBXCONSOLE_OVERLOAD	DLL_GLOBAL_IMPORT
 #endif
 
-#else	// BUILD_AS_DLL
+#else
 
 #define XBXCONSOLE_INTERFACE	extern
 #define XBXCONSOLE_OVERLOAD	
@@ -30,12 +30,10 @@
 
 #define XBX_MAX_PROFILE_COUNTERS 64
 
-#if !defined( _X360 )
 #define xMaterialList_t void
 #define xTextureList_t	void
 #define xSoundList_t	void
 #define xMapInfo_t		void
-#endif
 
 class IXboxConsole
 {

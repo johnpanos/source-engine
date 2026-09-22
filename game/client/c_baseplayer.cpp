@@ -1143,9 +1143,7 @@ bool C_BasePlayer::CreateMove( float flInputSampleTime, CUserCmd *pCmd )
 	}
 	else 
 	{
-#ifndef _X360
 		if ( joy_autosprint.GetBool() )
-#endif
 		{
 			if ( input->KeyState( &in_joyspeed ) != 0.0f )
 			{
@@ -2815,7 +2813,7 @@ bool C_BasePlayer::GetSteamID( CSteamID *pID )
 				universe = steamapicontext->SteamUtils()->GetConnectedUniverse();
 
 			pID->InstancedSet( pi.friendsID, 1, universe, k_EAccountTypeIndividual );
-#else	// old
+#else
 			pID->InstancedSet( pi.friendsID, 1, steamapicontext->SteamUtils()->GetConnectedUniverse(), k_EAccountTypeIndividual );
 #endif
 

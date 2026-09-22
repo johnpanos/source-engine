@@ -71,6 +71,16 @@ RULES = (
         "Keep CreateInterfaceFn inside the legacy ABI package; expose a typed contract elsewhere.",
         inventory=False,
     ),
+    Rule(
+        "ARCH106",
+        "factory treated as an app-system module",
+        re.compile(
+            r"\bLoadModule\s*\(\s*(?:CreateInterfaceFn\s+\w+|Sys_GetFactoryThis\s*\(\s*\)|"
+            r"VStdLib_GetICVarFactory\s*\(\s*\)|(?:[A-Za-z_]\w*)?[Ff]actory\s*(?:\(\s*\))?)\s*\)"
+        ),
+        "Inject the linked IAppSystem instance directly or use AddLegacyFactory at a retained ABI boundary.",
+        inventory=False,
+    ),
 )
 
 NATIVE_LOAD_PATTERN = re.compile(

@@ -620,9 +620,6 @@ DECLARE_CLIENT_EFFECT( "GlassImpact", GlassImpactCallback );
 //-----------------------------------------------------------------------------
 void FX_AntlionImpact( const Vector &pos, trace_t *trace )
 {
-#if defined( _X360 )
-	return;
-#endif // _X360
 
 	VPROF_BUDGET( "FX_AntlionImpact", VPROF_BUDGETGROUP_PARTICLE_RENDERING );
 
@@ -1248,7 +1245,7 @@ void FX_GaussExplosion( const Vector &pos, const Vector &dir, int type )
 
 	int i;
 
-#if defined(_XBOX) || defined(_X360)
+#if defined( _XBOX )
 
 	//
 	// XBox version

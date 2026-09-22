@@ -8,7 +8,7 @@
     "totalHammerSourceFiles": 452,
     "totalHammerCppFiles": 221,
     "totalHammerHeaderFiles": 231,
-    "filesClassified": 22,
+    "filesClassified": 24,
     "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (public/hammer/geometry, hammer/core/geometry). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'."
   },
   "files": [
@@ -273,6 +273,28 @@
       "factorization": "keep",
       "evidence": "decision",
       "note": "HandleTable implementation. Compiles headlessly under gcc and clang (-Werror); verified by unittests/hammertest/scene/test_handle_table.cpp plus a stale-accepting negative provider."
+    },
+    {
+      "path": "public/hammer/scene/scene_graph.h",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": ["document-mutation"],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "Scene node graph and its mutation/query boundary (RFC 0002 H1). Handle-addressed; validated reparent (cycle/self/foreign-document) and atomic subtree delete. Consumes hammer.scene handles."
+    },
+    {
+      "path": "hammer/core/scene/scene_graph.cpp",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": ["document-mutation"],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "SceneGraph implementation. Headless under gcc and clang (-Werror); verified by test_scene_graph.cpp (no-cycle, atomic reparent/delete, stale rejection, two documents) plus a permissive negative provider."
     }
   ]
 }

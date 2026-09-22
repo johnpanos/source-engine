@@ -28,11 +28,11 @@ namespace hammer::scene
 enum class ReparentResult
 {
 	kOk,
-	kInvalidChild,   // child handle is stale/foreign
-	kInvalidParent,  // parent handle is non-null but stale/foreign
+	kInvalidChild,    // child handle is stale/foreign
+	kInvalidParent,   // parent handle is non-null but stale/foreign
 	kForeignDocument, // parent belongs to a different document than the graph
-	kSelfParent,     // child == parent
-	kWouldCycle,     // parent is the child or one of its descendants
+	kSelfParent,      // child == parent
+	kWouldCycle,      // parent is the child or one of its descendants
 };
 
 class SceneGraph

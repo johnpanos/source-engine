@@ -38,7 +38,7 @@
 #define DBG_CLASS		DLL_CLASS_IMPORT
 #endif
 
-#else // BUILD_AS_DLL
+#else
 
 #define DBG_INTERFACE	extern
 #define DBG_OVERLOAD	
@@ -315,7 +315,7 @@ DBG_INTERFACE struct SDL_Window * GetAssertDialogParent();
 #define  AssertFatalMsg8( _exp, _msg, a1, a2, a3, a4, a5, a6, a7, a8 )		AssertFatalMsg( _exp, _msg, a1, a2, a3, a4, a5, a6, a7, a8 )
 #define  AssertFatalMsg9( _exp, _msg, a1, a2, a3, a4, a5, a6, a7, a8, a9 )	AssertFatalMsg( _exp, _msg, a1, a2, a3, a4, a5, a6, a7, a8, a9 )
 
-#else // DBGFLAG_ASSERTFATAL
+#else
 
 #define  AssertFatal( _exp )									((void)0)
 #define  AssertFatalOnce( _exp )								((void)0)
@@ -381,7 +381,7 @@ DBG_INTERFACE struct SDL_Window * GetAssertDialogParent();
 #define  AssertMsg8( _exp, _msg, a1, a2, a3, a4, a5, a6, a7, a8 )		AssertMsg( _exp, _msg, a1, a2, a3, a4, a5, a6, a7, a8 )
 #define  AssertMsg9( _exp, _msg, a1, a2, a3, a4, a5, a6, a7, a8, a9 )	AssertMsg( _exp, _msg, a1, a2, a3, a4, a5, a6, a7, a8, a9 )
 
-#else // DBGFLAG_ASSERT
+#else
 
 #define  Assert( _exp )										((void)0)
 #define  AssertOnce( _exp )									((void)0)
@@ -435,7 +435,6 @@ DBG_INTERFACE struct SDL_Window * GetAssertDialogParent();
 #define MESSAGE(msg) message(__FILE__ "(" V_STRINGIFY(__LINE__) "): " msg)
 
 
-#if !defined( _X360 ) || !defined( _RETAIL )
 
 /* These are always compiled in */
 DBG_INTERFACE void Msg( PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 );
@@ -460,21 +459,6 @@ DBG_INTERFACE void NORETURN ErrorV( PRINTF_FORMAT_STRING const tchar *pMsg, va_l
 
 #endif
 
-#else
-
-inline void Msg( ... ) {}
-inline void DMsg( ... ) {}
-inline void MsgV( PRINTF_FORMAT_STRING const tchar *pMsg, va_list arglist ) {}
-inline void Warning( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) {}
-inline void WarningV( PRINTF_FORMAT_STRING const tchar *pMsg, va_list arglist ) {}
-inline void DWarning( ... ) {}
-inline void Log( ... ) {}
-inline void DLog( ... ) {}
-inline void LogV( PRINTF_FORMAT_STRING const tchar *pMsg, va_list arglist ) {}
-inline void Error( ... ) {}
-inline void ErrorV( PRINTF_FORMAT_STRING const tchar *pMsg, va_list arglist ) {}
-
-#endif
 
 // You can use this macro like a runtime assert macro.
 // If the condition fails, then Error is called with the message. This macro is called
@@ -489,7 +473,6 @@ inline void ErrorV( PRINTF_FORMAT_STRING const tchar *pMsg, va_list arglist ) {}
 		Error msg;			\
 	}
 
-#if !defined( _X360 ) || !defined( _RETAIL )
 
 /* A couple of super-common dynamic spew messages, here for convenience */
 /* These looked at the "developer" group */
@@ -527,18 +510,6 @@ DBG_INTERFACE void NetLog( int level, PRINTF_FORMAT_STRING const tchar *pMsg, ..
 
 void ValidateSpew( class CValidator &validator );
 
-#else
-
-inline void DevMsg( ... ) {}
-inline void DevWarning( ... ) {}
-inline void DevLog( ... ) {}
-inline void ConMsg( ... ) {}
-inline void ConLog( ... ) {}
-inline void NetMsg( ... ) {}
-inline void NetWarning( ... ) {}
-inline void NetLog( ... ) {}
-
-#endif
 
 DBG_INTERFACE void COM_TimestampedLog( PRINTF_FORMAT_STRING char const *fmt, ... ) FMTFUNCTION( 1, 2 );
 
@@ -551,7 +522,7 @@ DBG_INTERFACE void COM_TimestampedLog( PRINTF_FORMAT_STRING char const *fmt, ...
 #define DBG_DCODE( _g, _l, _code )   if (IsSpewActive( _g, _l )) { _code } else {}
 #define DBG_BREAK()                  DebuggerBreak()	/* defined in platform.h */ 
 
-#else /* not _DEBUG */
+#else
 
 #define DBG_CODE( _code )            ((void)0)
 #define DBG_CODE_NOSCOPE( _code )	 
@@ -698,7 +669,7 @@ private:
 //
 // Purpose: Embed debug info in each file.
 //
-#if defined( _WIN32 ) && !defined( _X360 )
+#if defined( _WIN32 )
 
 	#ifdef _DEBUG
 		#pragma comment(compiler)

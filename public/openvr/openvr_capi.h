@@ -12,7 +12,7 @@
 #endif
 
 // OPENVR API export macro
-#if defined( _WIN32 ) && !defined( _X360 )
+#if defined( _WIN32 )
 	#if defined( OPENVR_API_EXPORTS )
 	#define S_API extern "C" __declspec( dllexport ) 
 	#elif defined( OPENVR_API_NODLL )
@@ -26,7 +26,7 @@
 	#else
 	#define S_API extern "C" 
 	#endif // OPENVR_API_EXPORTS
-#else // !WIN32
+#else
 	#if defined( OPENVR_API_EXPORTS )
 	#define S_API extern "C"  
 	#else

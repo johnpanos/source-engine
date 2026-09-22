@@ -1,0 +1,24 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+top = '.'
+PROJECT_NAME = 'legacymoduleclientfixture'
+
+def options(opt):
+	return
+
+def configure(conf):
+	return
+
+def build(bld):
+	bld.shlib(
+		source = ['legacymoduleclientfixture.cpp'],
+		target = PROJECT_NAME,
+		name = PROJECT_NAME,
+		features = 'cxx',
+		includes = ['.'],
+		use = ['tier0', 'tier1'],
+		install_path = bld.env.LIBDIR,
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx = bld.get_taskgen_count()
+	)

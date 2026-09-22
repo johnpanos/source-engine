@@ -11,9 +11,7 @@
 #pragma once
 #endif
 
-#ifndef _X360
 #error This file must only be compiled for XBOX360! 
-#endif
 
 
 // Warning: 

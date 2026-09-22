@@ -4,7 +4,7 @@
 //
 //=============================================================================
 
-#if defined(WIN32) && !defined( _X360 )
+#if defined( WIN32 )
 #include <windows.h>
 #endif
 #include "filesystem.h"
@@ -30,9 +30,6 @@
 #include "vgui/Cursor.h"
 #include "vgui_controls/KeyBoardEditorDialog.h"
 
-#if defined( _X360 )
-#include "xbox/xbox_win32stubs.h"
-#endif
 
 using namespace vgui;
 

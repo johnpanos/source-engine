@@ -20,9 +20,6 @@
 #include "filesystem.h"
 #include "filesystem_engine.h"
 #include "tier1/utlbuffer.h"
-#if defined( _X360 )
-#include "xauddefs.h"
-#endif
 
 #include "steam/steam_api.h"
 
@@ -1179,7 +1176,7 @@ int Voice_GetCompressedData(char *pchDest, int nCount, bool bFinal)
 		{
 			pchDest[i] = (char)(tempData[i] >> 8);
 		}
-#else			
+#else
 		int nCompressedBytes = pCodec->Compress((char*)tempData, gotten, pchDest, nCount, !!bFinal);
 #endif
 

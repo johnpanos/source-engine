@@ -853,7 +853,7 @@ int CHardwareConfig::GetShadowFilterMode() const
 #ifdef DX_TO_GL_ABSTRACTION
 	if ( !m_Caps.m_bSupportsShadowDepthTextures )
 		return 0;
-#else	
+#else
 	if ( !m_Caps.m_bSupportsShadowDepthTextures || !ShaderUtil()->GetConfig().ShadowDepthTexture() )
 		return 0;
 #endif
@@ -873,12 +873,6 @@ int CHardwareConfig::GetShadowFilterMode() const
 
 			return ATI_NOPCF;									// ATI vanilla depth texture sampling
 
-#if defined( _X360 )
-		case IMAGE_FORMAT_X360_DST16:
-		case IMAGE_FORMAT_X360_DST24:
-		case IMAGE_FORMAT_X360_DST24F:
-			return 0;
-#endif
 
 		default:
 			return 0;

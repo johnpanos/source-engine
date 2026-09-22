@@ -20,13 +20,6 @@
 #include "tier0/native_module_load_telemetry.h"
 #endif
 
-#if defined( PLATFORM_X360 )
-#include <xbdm.h>
-#include "xbox/xbox_console.h"
-#include "xbox/xbox_vxconsole.h"
-#include <map>
-#include <set>
-#endif
 
 #if defined( LINUX ) && defined( PLATFORM_GLIBC )
 #include <execinfo.h>
@@ -110,7 +103,7 @@ bool GetModuleNameFromAddress( const void *pAddress, tchar *pModuleNameOut, int 
 	return false;
 }
 
-#else //#if !defined( ENABLE_RUNTIME_STACK_TRANSLATION )
+#else
 
 //===============================================================================================================
 // Shared Windows/X360 code
@@ -163,7 +156,7 @@ inline bool ValidStackAddress( void *pAddress, const void *pNoLessThan, const vo
 	if( pAddress > pNoGreaterThan ) //never traverse outside the stack (Oh 0xCCCCCCCC, how I hate you)
 		return false;
 
-#if defined( WIN32 ) && !defined( _X360 ) && 1
+#if defined( WIN32 )
 	if( IsBadReadPtr( pAddress, (sizeof( void * ) * 2) ) ) //safety net, but also throws an exception (handled internally) to stop bad access
 		return false;
 #endif
@@ -260,7 +253,7 @@ int GetCallStack_Fast( void **pReturnAddressesOut, int iArrayCount, int iSkipCou
 
 
 
-#if defined( WIN32 ) && !defined( _X360 )
+#if defined( WIN32 )
 //===============================================================================================================
 // Windows version of the toolset
 //===============================================================================================================
@@ -275,7 +268,7 @@ int GetCallStack_Fast( void **pReturnAddressesOut, int iArrayCount, int iSkipCou
 #	define USE_STACKWALK64
 #	if defined(_M_IX86)
 #		define STACKWALK64_MACHINETYPE IMAGE_FILE_MACHINE_I386
-#	else
+#else
 #		define STACKWALK64_MACHINETYPE IMAGE_FILE_MACHINE_AMD64
 #	endif
 #endif
@@ -1001,7 +994,7 @@ bool GetModuleNameFromAddress( const void *pAddress, tchar *pModuleNameOut, int 
 	return s_HelperFunctions.GetModuleNameFromAddress( pAddress, pModuleNameOut, iMaxModuleNameLength );
 }
 
-#else //#if defined( WIN32 ) && !defined( _X360 )
+#else
 
 //===============================================================================================================
 // X360 version of the toolset

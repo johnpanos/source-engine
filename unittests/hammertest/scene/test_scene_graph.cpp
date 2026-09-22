@@ -81,12 +81,12 @@ void TestRemoveSubtree()
 	CHECK( graph.NodeCount() == 3 );
 
 	CHECK( graph.Remove( mid ) );
-	CHECK( graph.NodeCount() == 1 );      // only root remains
-	CHECK( !graph.IsValid( mid ) );       // stale
-	CHECK( !graph.IsValid( leaf ) );      // subtree stale too
-	CHECK( graph.IsValid( root ) );       // untouched
+	CHECK( graph.NodeCount() == 1 );         // only root remains
+	CHECK( !graph.IsValid( mid ) );          // stale
+	CHECK( !graph.IsValid( leaf ) );         // subtree stale too
+	CHECK( graph.IsValid( root ) );          // untouched
 	CHECK( graph.Children( root ).empty() ); // mid removed from root's children
-	CHECK( !graph.Remove( mid ) );        // double remove rejected
+	CHECK( !graph.Remove( mid ) );           // double remove rejected
 }
 
 // A handle from one document is rejected by another document's graph, even for

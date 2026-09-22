@@ -45,12 +45,11 @@ private:
 
 // The no-cycle clause: after b is parented under a, parenting a under b (a's
 // descendant) must be REJECTED. Returns true when the provider enforces it.
-template <typename Graph>
-bool ConformsNoCycle( Graph &graph )
+template <typename Graph> bool ConformsNoCycle( Graph &graph )
 {
 	const NodeHandle a = graph.CreateNode();
 	const NodeHandle b = graph.CreateNode();
-	const bool firstOk = graph.TrySetParent( b, a ); // b under a: allowed
+	const bool firstOk = graph.TrySetParent( b, a );        // b under a: allowed
 	const bool cycleRejected = !graph.TrySetParent( a, b ); // a under b: must fail
 	return firstOk && cycleRejected;
 }
@@ -83,7 +82,7 @@ int main()
 		std::printf( "hammer.scene SceneGraph negative: %d check(s) FAILED\n", failures );
 		return 1;
 	}
-	std::printf(
-		"hammer.scene SceneGraph negative: oracle detects violations (real passes, permissive caught)\n" );
+	std::printf( "hammer.scene SceneGraph negative: oracle detects violations (real passes, "
+	             "permissive caught)\n" );
 	return 0;
 }

@@ -46,7 +46,7 @@ using sixenseMath::Vector4;
 using sixenseMath::Quat;
 using sixenseMath::Line;
 
-#if defined( WIN32 ) && !defined( _X360 )
+#if defined( WIN32 )
 #define _WIN32_WINNT 0x0502
 #endif
 #include <winlite.h>
@@ -1257,7 +1257,7 @@ void SixenseInput::Init()
 #ifdef PORTAL2
 	m_pFPSViewAngles->setGame( "portal" );
 	m_pFPSEvents->setGame( "portal" );
-#else 
+#else
 	m_pFPSViewAngles->setGame( "cstrike15" );
 	m_pFPSEvents->setGame( "cstrike15" );
 #endif
@@ -1442,7 +1442,7 @@ bool SixenseInput::InMenuMode()
 		PANEL_COMMENTARY_MODELVIEWER,	
 		PANEL_SURVEY				
 	};
-#else // css
+#else
 	const int num_panels = 15;
 	char *panel_names[] = {
 		PANEL_OVERVIEW,		

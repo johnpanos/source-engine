@@ -53,7 +53,7 @@ const HALF4 g_EnvmapTint : register( c0 );
 
 #	if FASTPATHENVMAPCONTRAST == 0
 static const HALF3 g_EnvmapContrast = { 0.0f, 0.0f, 0.0f };
-#	else
+#else
 static const HALF3 g_EnvmapContrast = { 1.0f, 1.0f, 1.0f };
 #	endif
 static const HALF3 g_EnvmapSaturation = { 1.0f, 1.0f, 1.0f };
@@ -146,11 +146,6 @@ sampler AlphaMaskSampler		: register( s11 );	// alpha
 #endif
 #endif
 
-#if defined( _X360 ) && FLASHLIGHT
-sampler FlashlightSampler		: register( s13 );
-sampler ShadowDepthSampler		: register( s14 );
-sampler RandRotSampler			: register( s15 );
-#endif
 
 struct PS_INPUT
 {
@@ -176,10 +171,6 @@ struct PS_INPUT
 	float4 vertexBlendX_fogFactorW	: COLOR1;
 
 	// Extra iterators on 360, used in flashlight combo
-#if defined( _X360 ) && FLASHLIGHT
-	float4 flashlightSpacePos		: TEXCOORD8;
-	float4 vProjPos					: TEXCOORD9;
-#endif
 };
 
 #if LIGHTING_PREVIEW == 2
@@ -296,7 +287,7 @@ HALF4 main( PS_INPUT i ) : COLOR
 #   endif
 #   if SOFTEDGES
 	baseColor.a *= smoothstep( SOFT_MASK_MAX, SOFT_MASK_MIN, distAlphaMask );
-#   else
+#else
 	baseColor.a *= distAlphaMask >= 0.5;
 #   endif
 #endif
@@ -372,7 +363,7 @@ HALF4 main( PS_INPUT i ) : COLOR
 
 			vNormal.xyz = lerp( vNormalMask.xyz, vNormal.xyz, vNormalMask.a );		// Mask out normals from vNormal
 			specularFactor = vNormalMask.a;
-	#else // BUMPMASK == 0
+	#else
 			if ( FANCY_BLENDING && bNormalMapAlphaEnvmapMask )
 			{
 				vNormal = lerp( vNormal, vNormal2, blendfactor);
@@ -475,42 +466,12 @@ HALF4 main( PS_INPUT i ) : COLOR
 	diffuseLighting *= 2.0*tex2D(WarpLightingSampler,float2(len,0));
 #endif
 
-#if CUBEMAP || LIGHTING_PREVIEW || ( defined( _X360 ) && FLASHLIGHT )
+#if CUBEMAP || LIGHTING_PREVIEW
 	float3 worldSpaceNormal = mul( vNormal, i.tangentSpaceTranspose );
 #endif
 
 	float3 diffuseComponent = albedo.xyz * diffuseLighting;
 
-#if defined( _X360 ) && FLASHLIGHT
-
-	// ssbump doesn't pass a normal to the flashlight...it computes shadowing a different way
-#if ( BUMPMAP == 2 )
-	bool bHasNormal = false;
-
-	float3 worldPosToLightVector = g_FlashlightPos - i.worldPos_projPosZ.xyz;
-
-	float3 tangentPosToLightVector;
-	tangentPosToLightVector.x = dot( worldPosToLightVector, i.tangentSpaceTranspose[0] );
-	tangentPosToLightVector.y = dot( worldPosToLightVector, i.tangentSpaceTranspose[1] );
-	tangentPosToLightVector.z = dot( worldPosToLightVector, i.tangentSpaceTranspose[2] );
-
-	tangentPosToLightVector = normalize( tangentPosToLightVector );
-
-	float nDotL = saturate( vSSBumpVector.x*dot( tangentPosToLightVector, bumpBasis[0]) +
-							vSSBumpVector.y*dot( tangentPosToLightVector, bumpBasis[1]) +
-							vSSBumpVector.z*dot( tangentPosToLightVector, bumpBasis[2]) );
-#else
-	bool bHasNormal = true;
-	float nDotL = 1.0f;
-#endif
-
-	float fFlashlight = DoFlashlight( g_FlashlightPos, i.worldPos_projPosZ.xyz, i.flashlightSpacePos,
-		worldSpaceNormal, g_FlashlightAttenuationFactors.xyz, 
-		g_FlashlightAttenuationFactors.w, FlashlightSampler, ShadowDepthSampler,
-		RandRotSampler, 0, true, false, i.vProjPos.xy / i.vProjPos.w, false, g_ShadowTweaks, bHasNormal );
-
-	diffuseComponent = albedo.xyz * ( diffuseLighting + ( fFlashlight * nDotL ) );
-#endif
 
 	if( bSelfIllum )
 	{
@@ -552,7 +513,7 @@ HALF4 main( PS_INPUT i ) : COLOR
 #	if LIGHTING_PREVIEW == 1
 	float dotprod = 0.7+0.25 * dot( worldSpaceNormal, normalize( float3( 1, 2, -.5 ) ) );
 	return FinalOutput( HALF4( dotprod*albedo.xyz, alpha ), 0, PIXEL_FOG_TYPE_NONE, TONEMAP_SCALE_NONE );
-#	else
+#else
 	LPREVIEW_PS_OUT ret;
 	ret.color = float4( albedo.xyz,alpha );
 	ret.normal = float4( worldSpaceNormal,alpha );
@@ -561,7 +522,7 @@ HALF4 main( PS_INPUT i ) : COLOR
 
 	return FinalOutput( ret, 0, PIXEL_FOG_TYPE_NONE, TONEMAP_SCALE_NONE );	
 #	endif
-#else // == end LIGHTING_PREVIEW ==
+#else
 
 	bool bWriteDepthToAlpha = false;
 

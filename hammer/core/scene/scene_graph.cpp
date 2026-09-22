@@ -14,7 +14,9 @@ namespace hammer::scene
 
 const std::vector<NodeHandle> SceneGraph::s_noChildren{};
 
-SceneGraph::SceneGraph( std::uint32_t documentId ) : m_table( documentId ) {}
+SceneGraph::SceneGraph( std::uint32_t documentId ) : m_table( documentId )
+{
+}
 
 NodeHandle SceneGraph::CreateNode()
 {
@@ -85,7 +87,8 @@ void SceneGraph::DetachFromParent( const NodeHandle &child )
 	const std::int64_t parentIndex = RecordIndex( parent );
 	if ( parentIndex >= 0 )
 	{
-		std::vector<NodeHandle> &siblings = m_records[static_cast<std::size_t>( parentIndex )].children;
+		std::vector<NodeHandle> &siblings =
+		    m_records[static_cast<std::size_t>( parentIndex )].children;
 		siblings.erase( std::remove( siblings.begin(), siblings.end(), child ), siblings.end() );
 	}
 	m_records[static_cast<std::size_t>( childIndex )].parent = kInvalidNodeHandle;

@@ -295,7 +295,7 @@ void TrackedFile_t::RebuildFileName( CStringPool &stringPool, const char *pFilen
 
 void CFileTracker2::NotePackFileAccess( const char *pFilename, const char *pPathID, int iSearchPathStoreId, CPackedStoreFileHandle &VPKHandle )
 {
-#if !defined( _GAMECONSOLE ) && !defined( DEDICATED )
+#if !defined( DEDICATED )
 	AUTO_LOCK( m_Mutex );
 	Assert( iSearchPathStoreId > 0 );
 
@@ -466,7 +466,6 @@ int CFileTracker2::IdxFileFromName( const char *pFilename, const char *pPathID, 
 
 int CFileTracker2::NotePackFileOpened( const char *pVPKAbsPath, const char *pPathID, int64 nLength )
 {
-#if !defined( _GAMECONSOLE )
 	AUTO_LOCK( m_Mutex );
 
 	int idxFile = IdxFileFromName( pVPKAbsPath, pPathID, 0, true );
@@ -479,26 +478,21 @@ int CFileTracker2::NotePackFileOpened( const char *pVPKAbsPath, const char *pPat
 	trackedfile.m_filehashFinal.m_nPackFileNumber = -1;
 	m_treeAllOpenedFiles.Reinsert( idxFile );
 	return idxFile + 1;
-#else
-	return 0;
-#endif
 }
 
 #endif // SUPPORT_PACKED_STORE
 
 void CFileTracker2::NoteFileIgnoredForPureServer( const char *pFilename, const char *pPathID, int iSearchPathStoreId )
 {
-#if !defined( _GAMECONSOLE )
 	AUTO_LOCK( m_Mutex );
 
 	int idxFile = IdxFileFromName( pFilename, pPathID, 0, false );
 	m_treeAllOpenedFiles[ idxFile ].m_bIgnoredForPureServer = true;
-#endif
 }
 
 void CFileTracker2::NoteFileLoadedFromDisk( const char *pFilename, const char *pPathID, int iSearchPathStoreId, FILE *fp, int64 nLength )
 {
-#if !defined( _GAMECONSOLE ) && !defined( DEDICATED )
+#if !defined( DEDICATED )
 	AUTO_LOCK( m_Mutex );
 
 	Assert( iSearchPathStoreId != 0 );
@@ -511,7 +505,6 @@ void CFileTracker2::NoteFileLoadedFromDisk( const char *pFilename, const char *p
 
 void CFileTracker2::NoteFileUnloaded( const char *pFilename, const char *pPathID )
 {
-#if !defined( _GAMECONSOLE )
 	AUTO_LOCK( m_Mutex );
 
 	// Locate bookeeping entry, if any
@@ -526,7 +519,6 @@ void CFileTracker2::NoteFileUnloaded( const char *pFilename, const char *pPathID
 		trackedfile.m_iLoadedSearchPathStoreId = 0;
 		trackedfile.m_bIgnoredForPureServer = false;
 	}
-#endif
 }
 
 int CFileTracker2::ListOpenedFiles( bool bAllOpened, const char *pchFilenameFind )

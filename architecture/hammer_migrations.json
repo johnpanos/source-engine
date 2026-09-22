@@ -100,18 +100,18 @@
       "phase": "H1",
       "responsibility": "scene",
       "evidenceKind": "decision",
-      "sources": [{"path": "public/hammer/scene/handle.h"}, {"path": "public/hammer/scene/handle_table.h"}, {"path": "hammer/core/scene/handle_table.cpp"}],
+      "sources": [{"path": "public/hammer/scene/handle.h"}, {"path": "public/hammer/scene/handle_table.h"}, {"path": "hammer/core/scene/handle_table.cpp"}, {"path": "public/hammer/scene/scene_graph.h"}, {"path": "hammer/core/scene/scene_graph.cpp"}],
       "destinationModule": "hammer.scene",
-      "contractIds": ["scene.handle_table.v1"],
+      "contractIds": ["scene.handle_table.v1", "scene.scene_graph.v1"],
       "dependsOn": ["HAM-BUILD-001"],
       "status": "characterized",
       "authority": "new",
       "consumerSet": "scene-graph",
-      "testSelectors": ["scene/handle_table", "scene/handle_table_negative_provider"],
+      "testSelectors": ["scene/handle_table", "scene/handle_table_negative_provider", "scene/scene_graph", "scene/scene_graph_negative_provider"],
       "contractRecord": "unittests/hammertest/contracts/scene.handle_table.v1.md",
       "owner": "unassigned",
-      "note": "Strict hammer.scene primitive: NodeHandle (document+index+generation) and HandleTable. Compiles headlessly under gcc and clang (-Werror). Oracle proves stale-after-free rejection, slot-reuse generation rejection, and independent-document isolation (RFC 'a late result cannot access a closed document or update a new document that reused an address'). A stale-accepting negative provider proves the oracle is not vacuous. This is the mechanism the scene graph and history/session layers will consume; the scene graph itself is a later bounded step.",
-      "retireWhen": ["scene graph nodes are addressed exclusively through NodeHandle", "no raw scene pointer is stored across an edit that can free the node", "document-close invalidates all outstanding handles"]
+      "note": "Strict hammer.scene mechanism. (1) NodeHandle (document+index+generation) + HandleTable: stale-after-free rejection, slot-reuse generation rejection, independent-document isolation. (2) SceneGraph: the RFC H1 mutation/query boundary -- handle-addressed nodes, validated reparent (cycle/self/foreign-document, atomic-on-failure), atomic subtree delete, two-document isolation. All headless under gcc and clang (-Werror); each invariant has a negative provider proving the oracle is not vacuous. Remaining toward extraction: migrating the legacy CMapClass/CMapWorld hierarchy onto this owner (needs the legacy build) and wiring document-close invalidation.",
+      "retireWhen": ["the legacy scene hierarchy is addressed through this graph/handles", "no raw scene pointer is stored across an edit that can free the node", "document-close invalidates all outstanding handles"]
     },
     {
       "id": "HAM-SESSION-001",

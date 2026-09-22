@@ -225,7 +225,7 @@ ConVar  alyx_darkness_force( "alyx_darkness_force", "0", FCVAR_CHEAT | FCVAR_REP
 #ifdef CLIENT_DLL //{
 
 
-#else //}{
+#else
 
 	extern bool		g_fGameOver;
 
@@ -1688,9 +1688,6 @@ bool CHalfLife2::ShouldAutoAim( CBasePlayer *pPlayer, edict_t *target )
 //---------------------------------------------------------
 float CHalfLife2::GetAutoAimScale( CBasePlayer *pPlayer )
 {
-#ifdef _X360
-	return 1.0f;
-#else
 	switch( GetSkillLevel() )
 	{
 	case SKILL_EASY:
@@ -1702,7 +1699,6 @@ float CHalfLife2::GetAutoAimScale( CBasePlayer *pPlayer )
 	default:
 		return 0.0f;
 	}
-#endif
 }
 
 //---------------------------------------------------------

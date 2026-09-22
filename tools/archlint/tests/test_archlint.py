@@ -94,6 +94,26 @@ class ArchlintTests(unittest.TestCase):
         current = archlint.scan(self.root, MANIFEST)
         self.assertEqual(["engine/new.h"], [item.path for item in current if item.rule == "ARCH105"])
 
+    def test_factory_cannot_be_treated_as_an_app_system_module(self) -> None:
+        cases = (
+            "LoadModule( CreateInterfaceFn factory );",
+            "LoadModule( Sys_GetFactoryThis() );",
+            "LoadModule( VStdLib_GetICVarFactory() );",
+            "LoadModule( FileSystemFactory );",
+            "LoadModule( factory );",
+        )
+        for index, statement in enumerate(cases):
+            with self.subTest(statement=statement):
+                relative = f"app/case_{index}.cpp"
+                self.write(relative, statement + "\n")
+                rules = [
+                    item.rule
+                    for item in archlint.scan_file(
+                        self.root, self.root / relative, MANIFEST
+                    )
+                ]
+                self.assertIn("ARCH106", rules)
+
     def test_comments_and_strings_do_not_create_occurrences(self) -> None:
         self.write(
             "engine/clean.cpp",
@@ -114,6 +134,36 @@ class ArchlintTests(unittest.TestCase):
         self.write("tools/example.cpp", 'void f() { Sys_LoadModule("tool"); }\n')
         inventory = archlint.inventory_document(self.root, MANIFEST)
         self.assertEqual("tool-indirection", inventory["sites"][0]["classification"])
+
+    def test_native_loader_inventory_requires_runtime_telemetry(self) -> None:
+        self.write("engine/native.cpp", 'void f() { dlopen("provider.so", 1); }\n')
+        inventory = archlint.inventory_document(self.root, MANIFEST)
+        native = [
+            site for site in inventory["sites"]
+            if site["mechanism"] == "native-loader"
+        ]
+        self.assertEqual("missing", native[0]["telemetry"])
+        self.assertEqual(
+            {"covered": 0, "total": 1, "status": "partial"},
+            inventory["nativeTelemetryCoverage"],
+        )
+
+    def test_native_loader_adapter_marks_runtime_coverage_complete(self) -> None:
+        self.write(
+            "engine/native.cpp",
+            '#include "tier0/native_module_load_telemetry.h"\n'
+            'void f() { dlopen("provider.so", 1); }\n',
+        )
+        inventory = archlint.inventory_document(self.root, MANIFEST)
+        native = [
+            site for site in inventory["sites"]
+            if site["mechanism"] == "native-loader"
+        ]
+        self.assertEqual("tier0-native-adapter", native[0]["telemetry"])
+        self.assertEqual(
+            {"covered": 1, "total": 1, "status": "complete"},
+            inventory["nativeTelemetryCoverage"],
+        )
 
     def test_moved_loader_file_is_triaged_as_a_relocation(self) -> None:
         # A frozen loader call that simply moves files is a relocation, not a new

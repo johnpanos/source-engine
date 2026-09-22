@@ -6,7 +6,7 @@
 //
 //===========================================================================//
 
-#if defined( _WIN32 ) && !defined( _X360 )
+#if defined( _WIN32 )
 #include <windows.h>
 #include "shlwapi.h" // registry stuff
 #include <direct.h>
@@ -16,7 +16,6 @@
 	#include <sys/stat.h>
 	#include <fcntl.h>
 	#include <locale.h>
-#elif defined ( _X360 )
 #else
 #error
 #endif
@@ -61,11 +60,6 @@
 #define VERSION_SAFE_STEAM_API_INTERFACES
 #include "steam/steam_api.h"
 
-#if defined( _X360 )
-#include "xbox/xbox_win32stubs.h"
-#include "xbox/xbox_console.h"
-#include "xbox/xbox_launch.h"
-#endif
 
 #if defined( USE_SDL )
 #include <SDL.h>
@@ -316,9 +310,7 @@ void UTIL_ComputeBaseDir()
 #ifdef WIN32
 BOOL WINAPI MyHandlerRoutine( DWORD dwCtrlType )
 {
-#if !defined( _X360 )
 	TerminateProcess( GetCurrentProcess(), 2 );
-#endif
 	return TRUE;
 }
 #endif
@@ -326,7 +318,6 @@ BOOL WINAPI MyHandlerRoutine( DWORD dwCtrlType )
 void InitTextMode()
 {
 #ifdef WIN32
-#if !defined( _X360 )
 	AllocConsole();
 
 	SetConsoleCtrlHandler( MyHandlerRoutine, TRUE );
@@ -334,9 +325,6 @@ void InitTextMode()
 	freopen( "CONIN$", "rb", stdin );		// reopen stdin handle as console window input
 	freopen( "CONOUT$", "wb", stdout );		// reopen stout handle as console window output
 	freopen( "CONOUT$", "wb", stderr );		// reopen stderr handle as console window output
-#else
-	XBX_Error( "%s %s: Not Supported", __FILE__, __LINE__ );
-#endif
 #endif
 }
 
@@ -535,7 +523,7 @@ static bool IsWin98OrOlder()
 {
 	bool retval = false;
 
-#if defined( WIN32 ) && !defined( _X360 )
+#if defined( WIN32 )
 	OSVERSIONINFOEX osvi;
 	ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
 	osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
@@ -578,7 +566,7 @@ static bool IsWin98OrOlder()
 //-----------------------------------------------------------------------------
 void TryToLoadSteamOverlayDLL()
 {
-#if defined( WIN32 ) && !defined( _X360 )
+#if defined( WIN32 )
 	// First, check if the module is already loaded, perhaps because we were run from Steam directly
 	HMODULE hMod = GetModuleHandle( "GameOverlayRenderer" DLL_EXT_STRING );
 	if ( hMod )
@@ -635,17 +623,6 @@ private:
 //-----------------------------------------------------------------------------
 void ReportDirtyDiskNoMaterialSystem()
 {
-#ifdef _X360
-	for ( int i = 0; i < 4; ++i )
-	{
-		if ( XUserGetSigninState( i ) != eXUserSigninState_NotSignedIn )
-		{
-			XShowDirtyDiscErrorUI( i );
-			return;
-		}
-	}
-	XShowDirtyDiscErrorUI( 0 );
-#endif
 }
 
 
@@ -1290,54 +1267,8 @@ DLL_EXPORT int LauncherMain( int argc, char **argv )
 	// Useful for side-by-side comparisons of different renderers.
 	g_MultiRun = CommandLine()->CheckParm( "-multirun" ) != NULL;
 
-#if defined( _X360 )
-	bool bSpewDllInfo = CommandLine()->CheckParm( "-dllinfo" );
-	bool bWaitForConsole = CommandLine()->CheckParm( "-vxconsole" );
-	XboxConsoleInit();
-	XBX_InitConsoleMonitor( bWaitForConsole || bSpewDllInfo );
-#endif
 
 
-#if defined( _X360 )
-	if ( bWaitForConsole )
-		COM_TimestampedLog( "LauncherMain: Application Start - %s", CommandLine()->GetCmdLine() );
-	if ( bSpewDllInfo )
-	{	
-		XBX_DumpDllInfo( GetBaseDirectory() );
-		Error( "Stopped!\n" );
-	}
-
-	int storageID = XboxLaunch()->GetStorageID();
-	if ( storageID != XBX_INVALID_STORAGE_ID && storageID != XBX_STORAGE_DECLINED )
-	{
-		// Validate the storage device
-		XDEVICE_DATA deviceData;
-		DWORD ret = XContentGetDeviceData( storageID, &deviceData );
-		if ( ret != ERROR_SUCCESS )
-		{
-			// Device was removed
-			storageID = XBX_INVALID_STORAGE_ID;
-			XBX_QueueEvent( XEV_LISTENER_NOTIFICATION, WM_SYS_STORAGEDEVICESCHANGED, 0, 0 );
-		}
-	}
-	XBX_SetStorageDeviceId( storageID );
-
-	int userID = XboxLaunch()->GetUserID();
-	if ( !IsRetail() && userID == XBX_INVALID_USER_ID )
-	{
-		// didn't come from appchooser, try find a valid user id for dev purposes
-		XUSER_SIGNIN_INFO info;
-		for ( int i = 0; i < 4; ++i )
-		{
-			if ( ERROR_NO_SUCH_USER != XUserGetSigninInfo( i, 0, &info ) )
-			{
-				userID = i;
-				break;
-			}
-		}
-	}
-	XBX_SetPrimaryUserId( userID );
-#endif // defined( _X360 )
 	
 #ifdef POSIX
 	{
@@ -1542,7 +1473,7 @@ DLL_EXPORT int LauncherMain( int argc, char **argv )
 	// Allow other source apps to run
 	ReleaseSourceMutex();
 
-#if defined( WIN32 ) && !defined( _X360 )
+#if defined( WIN32 )
 
 	// Now that the mutex has been released, check HKEY_CURRENT_USER\Software\Valve\Source\Relaunch URL. If there is a URL here, exec it.
 	// This supports the capability of immediately re-launching the the game via Steam in a different audio language 
@@ -1589,7 +1520,6 @@ DLL_EXPORT int LauncherMain( int argc, char **argv )
 			unlink( RELAUNCH_FILE );
 		}
 	}
-#elif defined( _X360 )
 #else
 #error
 #endif

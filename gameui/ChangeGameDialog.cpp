@@ -11,9 +11,7 @@
 #include "xbox/xbox_win32stubs.h"
 #endif
 
-#if !defined( _X360 )
 #include <windows.h>
-#endif
 #include <stdio.h>
 
 #include "ChangeGameDialog.h"

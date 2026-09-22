@@ -5,7 +5,7 @@
 //===========================================================================//
 #define TIER1_INTERFACE_IMPLEMENTATION
 
-#if defined( _WIN32 ) && !defined( _X360 )
+#if defined( _WIN32 )
 #include <windows.h>
 #endif
 
@@ -35,9 +35,6 @@
 #include <dlfcn.h>
 #include <unistd.h>
 #define _getcwd getcwd
-#endif
-#if defined( _X360 )
-#include "xbox/xbox_win32stubs.h"
 #endif
 
 #ifdef POSIX
@@ -130,7 +127,7 @@ void *GetModuleHandle(const char *name)
 }
 #endif
 
-#if defined( _WIN32 ) && !defined( _X360 )
+#if defined( _WIN32 )
 #define WIN32_LEAN_AND_MEAN
 #include "windows.h"
 #endif
@@ -178,14 +175,10 @@ struct ThreadedLoadLibaryContext_t
 // wraps LoadLibraryEx() since 360 doesn't support that
 static HMODULE InternalLoadLibrary( const char *pName, Sys_Flags flags )
 {
-#if defined(_X360)
-	return LoadLibrary( pName );
-#else
 	if ( flags & SYS_NOLOAD )
 		return GetModuleHandle( pName );
 	else
 		return LoadLibraryEx( pName, NULL, LOAD_WITH_ALTERED_SEARCH_PATH );
-#endif
 }
 uintp ThreadedLoadLibraryFunc( void *pParam )
 {
@@ -264,9 +257,6 @@ static HMODULE Sys_LoadLibraryWithError(
 
 	ThreadHandle_t h = CreateSimpleThread( (ThreadFunc_t)ThreadedLoadLibraryFunc, &context );
 
-#ifdef _X360
-	ThreadSetAffinity( h, XBOX_PROCESSOR_3 );
-#endif
 
 	unsigned int nTimeout = 0;
 	while( ThreadWaitForObject( h, true, nTimeout ) == TW_TIMEOUT )
@@ -515,7 +505,7 @@ CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NO
 		if ( !hDLL )
 		{
 // So you can see what the error is in the debugger...
-#if defined( _WIN32 ) && !defined( _X360 )
+#if defined( _WIN32 )
 			char *lpMsgBuf;
 			
 			FormatMessage( 
@@ -531,9 +521,6 @@ CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NO
 			);
 
 			LocalFree( (HLOCAL)lpMsgBuf );
-#elif defined( _X360 )
-			DWORD error = GetLastError();
-			Msg( "Error(%d) - Failed to load %s:\n", error, pModuleName );
 #else
 			Msg( "Failed to load %s: %s\n", pModuleName,
 				szProviderError[0] ? szProviderError : "unknown provider error" );

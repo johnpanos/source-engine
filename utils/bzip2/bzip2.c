@@ -183,7 +183,7 @@
 
 #   ifdef __GNUC__
 #      define NORETURN __attribute__ ((noreturn))
-#   else
+#else
 #      define NORETURN /**/
 #   endif
 
@@ -1048,7 +1048,7 @@ FILE* fopen_output_safely ( Char* name, const char* mode )
    fp = fdopen(fh, mode);
    if (fp == NULL) close(fh);
    return fp;
-#  else
+#else
    return fopen(name, mode);
 #  endif
 }
@@ -1160,7 +1160,7 @@ Bool containsDubiousChars ( Char* name )
     * is performed by the shell.
     */
    return False;
-#  else /* ! BZ_UNIX */
+#else
    /* On non-unix (Win* platforms), wildcard characters are not allowed in 
     * filenames.
     */
@@ -1818,7 +1818,6 @@ Cell *snocString ( Cell *root, Char *name )
 static 
 void addFlagsFromEnvVar ( Cell** argList, Char* varName ) 
 {
-#ifndef _X360
    Int32 i, j, k;
    Char *envbase, *p;
 
@@ -1840,7 +1839,6 @@ void addFlagsFromEnvVar ( Cell** argList, Char* varName )
          }
       }
    }
-#endif
 }
 
 

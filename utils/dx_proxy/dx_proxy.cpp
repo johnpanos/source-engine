@@ -65,7 +65,7 @@ const char * WINAPI GetDllVersion( void );
 #pragma comment ( lib, "../../x360xdk/lib/win32/vs2005/d3d9d" )
 #pragma comment ( lib, "../../x360xdk/lib/win32/vs2005/d3dx9d" )
 #pragma comment ( lib, "../../x360xdk/lib/win32/vs2005/xgraphicsd" )
-#else*/
+#else
 #if _MSC_VER >= 1900
 #pragma comment ( lib, "../../x360xdk/lib/win32/vs2005/d3d9" )
 #pragma comment ( lib, "../../lib/common/win32/2015/release/d3dx9" )

@@ -30,11 +30,7 @@
 
 #if !defined(_MINIMUM_BUILD_)
 #include <stdio.h>  // Needed for file access
-#if defined( _PS3 )
-#include <sys/memory.h>
-#else
 #include <memory.h>
-#endif
 #include <string.h> // Needed for strcat and strcpy
 #endif
 
@@ -56,7 +52,7 @@ typedef	unsigned char SHADigest_t[ k_cubHash ];
 
 #if !defined(_MINIMUM_BUILD_)
 class CSHA1
-#else 
+#else
 class Minimum_CSHA1 
 #endif
 {

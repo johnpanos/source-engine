@@ -108,12 +108,14 @@ projects={
 		'vpklib',
 		'jobsystem',
 		'unittests/tier0test',
+		'unittests/legacymoduleclientfixture',
 		'unittests/moduleloadfixture',
 		'unittests/tier1test',
 		'unittests/tier2test',
 		'unittests/tier3test',
 		'unittests/mathlibtest',
 		'unittests/jobsystemtest',
+		'unittests/appframeworktest',
 		'utils/unittest'
 	],
 	'dedicated': [
