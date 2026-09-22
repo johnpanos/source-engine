@@ -448,13 +448,22 @@ NATIVE_TELEMETRY_PROVIDERS = {
 }
 
 
-def native_telemetry_coverage(path: str, original: str) -> str:
+def native_telemetry_coverage(
+    root: Path, path: str, original: str, excerpt: str
+) -> str:
     """Return the concrete runtime adapter covering one raw native loader site."""
     if path in NATIVE_TELEMETRY_PROVIDERS:
         return NATIVE_TELEMETRY_PROVIDERS[path]
     if path in NATIVE_TELEMETRY_DELEGATIONS:
         return NATIVE_TELEMETRY_DELEGATIONS[path]
     if path.startswith("external/vpc/"):
+        wide_loader = re.search(r"\b(LoadLibraryW|LoadLibraryExW)\s*\(", excerpt)
+        if wide_loader:
+            provider = (
+                root / "external/vpc/public/tier0/native_module_load_telemetry.h"
+            ).read_text(encoding="utf-8", errors="replace")
+            if f"#define {wide_loader.group(1)}(" not in provider:
+                return "missing"
         return "vpc-platform-native-adapter"
     if "tier0/bootstrap_module_load_telemetry.h" in original:
         return "bootstrap-native-adapter"
@@ -496,7 +505,7 @@ def supplemental_inventory_occurrences(root: Path, manifest: dict) -> list[dict]
                     }
                 if mechanism == "native-loader":
                     record["telemetry"] = native_telemetry_coverage(
-                        relative, original
+                        root, relative, original, excerpt
                     )
                 results.append(record)
     return results

@@ -86,11 +86,6 @@ float4 main( PS_INPUT i ) : COLOR
 	float4 result = FinalOutput( rgba, fogFactor, PIXELFOGTYPE, TONEMAP_SCALE_NONE );
 
 	// The 360 will do an sRGB write to put the linear values into 360 gamma space, but the PC just outputs gamma values directly
-	#if defined( _X360 )
-		result.r = SrgbGammaToLinear( result.r );
-		result.g = SrgbGammaToLinear( result.g );
-		result.b = SrgbGammaToLinear( result.b );
-	#endif
 
 	return result.rgba;
 }

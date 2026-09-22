@@ -190,6 +190,34 @@
       "expect": "pass"
     },
     {
+      "id": "hammer.formats.keyvalues",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-CORPUS-001",
+      "contract": "unittests/hammertest/contracts/formats.keyvalues.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_keyvalues.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.keyvalues.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-CORPUS-001",
+      "contract": "unittests/hammertest/contracts/formats.keyvalues.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_keyvalues_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "jobsystem.scheduler",
       "domain": "Q-JOBS",
       "rfc": "0003",

@@ -8,7 +8,7 @@
     "totalHammerSourceFiles": 452,
     "totalHammerCppFiles": 221,
     "totalHammerHeaderFiles": 231,
-    "filesClassified": 28,
+    "filesClassified": 30,
     "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (public/hammer/geometry, hammer/core/geometry). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'."
   },
   "files": [
@@ -339,6 +339,28 @@
       "factorization": "keep",
       "evidence": "decision",
       "note": "PropertyValue implementation. Headless under gcc and clang (-Werror); verified by test_property_value.cpp plus an empty-as-unset negative provider that the oracle catches."
+    },
+    {
+      "path": "public/hammer/formats/keyvalues.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": ["pure-computation"],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "VMF/keyvalues document model, parser, writer, and versioned semantic comparator API. Foundation for the H2 persistence slice and the HAM-CORPUS-001 comparator; preserves unknown chunks."
+    },
+    {
+      "path": "hammer/core/formats/keyvalues.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": ["pure-computation"],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "decision",
+      "note": "VMF/keyvalues parser/writer/comparator. Headless under gcc and clang (-Werror); verified by test_keyvalues.cpp (parse, round-trip + unknown preservation, malformed diagnostics, comparator normalization) plus a permissive-comparator negative provider that the data-loss oracle catches."
     }
   ]
 }

@@ -39,9 +39,6 @@ struct PS_INPUT
 	float4 worldPos_projPosZ		: TEXCOORD7;		// Necessary for water fog dest alpha
 	float4 fogFactorW				: COLOR1;
 	
-#if defined( _X360 ) //matching pixel shader inputs to vertex shader outputs to avoid shader patches	
-	float4 vColor	: COLOR0;
-#endif
 };
 
 #if LIGHTING_PREVIEW == 2
@@ -54,7 +51,7 @@ float4 main( PS_INPUT i ) : COLOR
 #if LIGHTING_PREVIEW
 # if LIGHTING_PREVIEW == 1
 	return FinalOutput( float4( 0.0f, 0.0f, 0.0f, 1.0f ), 0, PIXEL_FOG_TYPE_NONE, TONEMAP_SCALE_LINEAR );
-# else
+#else
 	LPREVIEW_PS_OUT ret;
 	float alpha = 1.0f;
 	ret.flags=float4(1,1,1,1);

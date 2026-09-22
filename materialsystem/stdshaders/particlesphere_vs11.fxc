@@ -22,9 +22,7 @@ struct VS_INPUT
 struct VS_OUTPUT
 {
     float4 projPos					: POSITION;	
-#if !defined( _X360 )
 	float  fog						: FOG;
-#endif
 	float2 vBumpTexCoord			: TEXCOORD0;
 	float3 vTangentSpaceLightDir	: TEXCOORD1;
 	float3 vAmbientColor			: TEXCOORD2;
@@ -39,10 +37,8 @@ VS_OUTPUT main( const VS_INPUT v )
 	float4 projPos = mul( v.vPos, cModelViewProj );
 	o.projPos = projPos;
 
-#if !defined( _X360 )
 	// Setup fog.
 	o.fog = CalcFog( mul( v.vPos, cModel[0] ), projPos, g_FogType );
-#endif
 
 	// Copy texcoords over.
 	o.vBumpTexCoord = v.vBumpTexCoord;

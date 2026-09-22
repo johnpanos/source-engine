@@ -38,6 +38,7 @@ python3 -m unittest discover -s tools/archlint/tests -v
 ./waf build --targets=appsystemgrouptest -j4
 LD_LIBRARY_PATH=build-phase-b-tests/tier0:build-phase-b-tests/vstdlib \
   build-phase-b-tests/unittests/appframeworktest/appsystemgrouptest
+./waf build --targets=unittest -j8
 ./waf configure --dedicated --use-sdl=0 --use-togl=0 --use-ccache \
   --disable-warns -T release -o build-phase-b-dedicated \
   --prefix=/tmp/source-engine-phase-b-dedicated-out
@@ -49,8 +50,8 @@ python3 tools/archlint/archlint.py inventory --verify
 
 `appsystemgrouptest` checks explicit and temporary legacy-factory composition,
 lookup during connect, forward connect/init order, reverse shutdown/disconnect
-order, and application callbacks. The Linux test executable and dedicated
-library build pass. The dedicated build also carries a narrow macro fix that
+order, and application callbacks. The Linux test executable, migrated unit-test
+launcher, and dedicated library build pass. The dedicated build also carries a narrow macro fix that
 keeps its POSIX `GetProcAddress` method name from expanding through the
 instrumented `dlsym` wrapper; the underlying `dlsym` operation remains covered
 by loader telemetry.

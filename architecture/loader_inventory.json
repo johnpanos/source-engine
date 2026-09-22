@@ -38,7 +38,7 @@
       "fingerprint": "be3f58d9eadf6b6d348e",
       "rule": "ARCH103",
       "path": "appframework/AppSystemGroup.cpp",
-      "line": 537,
+      "line": 538,
       "excerpt": "return Sys_LoadModuleFromFileSystem( m_pFileSystem, pDLLName );",
       "mechanism": "ARCH103",
       "classification": "first-party-composition",

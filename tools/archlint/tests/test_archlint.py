@@ -165,6 +165,32 @@ class ArchlintTests(unittest.TestCase):
             inventory["nativeTelemetryCoverage"],
         )
 
+    def test_vpc_wide_loader_requires_matching_adapter_macro(self) -> None:
+        provider = "external/vpc/public/tier0/native_module_load_telemetry.h"
+        self.write(provider, "#define LoadLibraryA(path) Wrapped(path)\n")
+        self.write(
+            "external/vpc/tier0/native.cpp",
+            'void f() { LoadLibraryW(L"provider.dll"); }\n',
+        )
+        inventory = archlint.inventory_document(self.root, MANIFEST)
+        native = [
+            site for site in inventory["sites"]
+            if site["mechanism"] == "native-loader"
+        ]
+        self.assertEqual("missing", native[0]["telemetry"])
+
+        self.write(
+            provider,
+            "#define LoadLibraryA(path) Wrapped(path)\n"
+            "#define LoadLibraryW(path) WrappedWide(path)\n",
+        )
+        inventory = archlint.inventory_document(self.root, MANIFEST)
+        native = [
+            site for site in inventory["sites"]
+            if site["mechanism"] == "native-loader"
+        ]
+        self.assertEqual("vpc-platform-native-adapter", native[0]["telemetry"])
+
     def test_moved_loader_file_is_triaged_as_a_relocation(self) -> None:
         # A frozen loader call that simply moves files is a relocation, not a new
         # architectural dependency: same rule + excerpt, different path.

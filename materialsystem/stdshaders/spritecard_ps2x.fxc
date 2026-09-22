@@ -145,11 +145,7 @@ float4 main( PS_INPUT i ) : COLOR
 
 	//Soft Particles FTW
 #	if (DEPTHBLEND == 1)
-#		if defined( _X360 )
-			float fDepthBlend = DepthFeathering( DepthSampler, i.vScreenPos_ReverseZ.xy / i.vScreenPos_ReverseZ.w, i.vScreenPos_ReverseZ.z, i.vScreenPos_ReverseZ.w, g_DepthFeatheringConstants );
-#		else
 			float fDepthBlend = DepthFeathering( DepthSampler, i.vScreenPos.xy / i.vScreenPos.w, i.vScreenPos.z, i.vScreenPos.w, g_DepthFeatheringConstants );
-#		endif
 		i.argbcolor.a *= fDepthBlend;
 #	endif
 

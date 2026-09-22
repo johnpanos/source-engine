@@ -159,7 +159,7 @@ float3 PerformAA( float3 baseColor, float2 fbTexCoord, out float3 unlike, out fl
 	// Scaling down colour deltas (DELTA_SCALE) reduces the over-blurring of 45-degree edges
 	// by the 5-tap filter. Conversely, increasing it smooths stairsteps more strongly.
 	const float DELTA_SCALE					= 0.75f;
-#else // AA_QUALITY_MODE == 0
+#else
 	const float COLOUR_DELTA_BASE			= (FAST_DELTAS == 0) ? 0.24f : 0.65f;
 	const float COLOUR_DELTA_CONTRAST		= 100;
 	const float DELTA_SCALE					= 1.0f;
@@ -293,7 +293,7 @@ float3 PerformAA( float3 baseColor, float2 fbTexCoord, out float3 unlike, out fl
 	unlikeCentroid.y += dot( 1-weights,  float4( +1,  0, -1,  0 ) ); // the neighbour sample texel offsets
 #if AA_QUALITY_MODE == 0
 	unlikeCentroid /= 4 - unlikeSum;
-#else // AA_QUALITY_MODE == 0
+#else
 	unlikeCentroid.x += dot( 1-weights2, float4( -1, +1, +1, -1 ) );
 	unlikeCentroid.y += dot( 1-weights2, float4( +1, -1, +1, -1 ) );
 	unlikeCentroid /= 8 - unlikeSum;
@@ -302,7 +302,7 @@ float3 PerformAA( float3 baseColor, float2 fbTexCoord, out float3 unlike, out fl
 	onePixelLineBias = onePixelLineBlurReduction*saturate(ONE_PIXEL_LINE_BIAS_BASE + ONE_PIXEL_LINE_BIAS_CONTRAST*(onePixelLineBias - ONE_PIXEL_LINE_BIAS_BASE));
 #if AA_QUALITY_MODE == 0
 	unlikeSum -= 2*onePixelLineBias*0.4f*saturate( 3 - unlikeSum ); // The 'min' thing avoids this affecting lone/pair pixels
-#else // AA_QUALITY_MODE == 0
+#else
 	unlikeSum -= 2*onePixelLineBias*1.9f*saturate( 7 - unlikeSum );
 #endif // AA_QUALITY_MODE == 0
 #endif // AA_REDUCE_ONE_PIXEL_LINE_BLUR
@@ -319,7 +319,7 @@ float3 PerformAA( float3 baseColor, float2 fbTexCoord, out float3 unlike, out fl
 		// Uncomment the following to blend slightly across vertical/horizontal edges (better for 45-degree edges, worse for 90-degree edges)
 		//lerpFactor = saturate( strengthMultiplier*DELTA_SCALE*( unlikeSum / 6 ) );
 	}
-	#else // AA_QUALITY_MODE != 0
+	#else
 	{
 		lerpFactor = saturate( strengthMultiplier*DELTA_SCALE*( (unlikeSum - 3) / 3 ) );
 	}
@@ -381,10 +381,6 @@ struct PS_INPUT
 {
 	float2 baseTexCoord : TEXCOORD0;
 	
-#if defined( _X360 ) //avoid a shader patch on 360 due to pixel shader inputs being fewer than vertex shader outputs
-	float2 ZeroTexCoord			: TEXCOORD1;
-	float2 bloomTexCoord		: TEXCOORD2;
-#endif	
 };
 	   
 float4 main( PS_INPUT i ) : COLOR

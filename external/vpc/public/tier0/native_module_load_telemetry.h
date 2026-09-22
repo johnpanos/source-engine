@@ -45,6 +45,16 @@ static void VpcModuleLoadCopy(
 	pDestination[nSize - 1] = '\0';
 }
 
+static void VpcModuleLoadWideCopy(
+	char *pDestination, int nSize, const wchar_t *pSource )
+{
+	if ( !pSource || !WideCharToMultiByte( CP_UTF8, 0, pSource, -1,
+		pDestination, nSize, NULL, NULL ) )
+	{
+		VpcModuleLoadCopy( pDestination, nSize, "" );
+	}
+}
+
 static void VpcModuleLoadEmit(
 	int nOperation, unsigned __int64 nLoadId,
 	const char *pRequester, int nSourceLine,
@@ -105,6 +115,49 @@ static HMODULE VpcLoadLibraryExA(
 	}
 	VpcModuleLoadEmit( 0, nLoadId, pRequester, nSourceLine,
 		pPath, szResolved, "", hModule != NULL, 0, (int)nError, szError );
+	return hModule;
+}
+
+static HMODULE VpcLoadLibraryExW(
+	LPCWSTR pPath, HANDLE hFile, DWORD nFlags,
+	const char *pRequester, int nSourceLine )
+{
+	SetLastError( ERROR_SUCCESS );
+	HMODULE hModule = LoadLibraryExW( pPath, hFile, nFlags );
+	const DWORD nError = hModule ? ERROR_SUCCESS : GetLastError();
+	char szRequested[2048];
+	VpcModuleLoadWideCopy( szRequested, sizeof( szRequested ), pPath );
+	wchar_t wszResolved[2048];
+	char szResolved[2048];
+	VpcModuleLoadCopy( szResolved, sizeof( szResolved ), szRequested );
+	if ( hModule && GetModuleFileNameW(
+		hModule, wszResolved, sizeof( wszResolved ) / sizeof( wszResolved[0] ) ) )
+	{
+		VpcModuleLoadWideCopy( szResolved, sizeof( szResolved ), wszResolved );
+	}
+	char szError[512] = "";
+	if ( nError )
+		FormatMessageA( FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+			NULL, nError, 0, szError, sizeof( szError ), NULL );
+	const unsigned __int64 nLoadId =
+		( VpcModuleLoadTime() << 8 ) ^ (unsigned __int64)(UINT_PTR)hModule ^
+		(unsigned int)nSourceLine;
+	if ( hModule && g_nVpcModuleLoads < 32 )
+	{
+		VpcModuleLoadRecord_t &record = g_VpcModuleLoads[g_nVpcModuleLoads++];
+		record.m_hModule = hModule;
+		record.m_nLoadId = nLoadId;
+		record.m_nStartedAt = VpcModuleLoadTime();
+		record.m_pRequester = pRequester;
+		record.m_nSourceLine = nSourceLine;
+		VpcModuleLoadCopy( record.m_szRequested,
+			sizeof( record.m_szRequested ), szRequested );
+		VpcModuleLoadCopy( record.m_szResolved,
+			sizeof( record.m_szResolved ), szResolved );
+	}
+	VpcModuleLoadEmit( 0, nLoadId, pRequester, nSourceLine,
+		szRequested, szResolved, "", hModule != NULL, 0,
+		(int)nError, szError );
 	return hModule;
 }
 
@@ -178,12 +231,18 @@ public:
 static CVpcModuleLoadShutdownReporter g_VpcModuleLoadShutdownReporter;
 
 #undef LoadLibraryA
+#undef LoadLibraryW
 #undef LoadLibraryExA
+#undef LoadLibraryExW
 #undef GetProcAddress
 #undef FreeLibrary
 #define LoadLibraryA( path ) VpcLoadLibraryExA( \
 	path, NULL, 0, __FILE__, __LINE__ )
+#define LoadLibraryW( path ) VpcLoadLibraryExW( \
+	path, NULL, 0, __FILE__, __LINE__ )
 #define LoadLibraryExA( path, file, flags ) VpcLoadLibraryExA( \
+	path, file, flags, __FILE__, __LINE__ )
+#define LoadLibraryExW( path, file, flags ) VpcLoadLibraryExW( \
 	path, file, flags, __FILE__, __LINE__ )
 #define GetProcAddress( module, entry ) VpcGetProcAddress( \
 	module, entry, __FILE__, __LINE__ )
