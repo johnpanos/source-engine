@@ -17,9 +17,20 @@ SPEC.loader.exec_module(oracle)
 REFERENCES = QUALITY.parents[1] / "quality" / "fixtures" / "material-pixels"
 
 
-def capture(hdr):
+def capture(hdr, family="lightmap"):
     """The versioned D3D9 reference capture for an HDR mode."""
-    return json.loads((REFERENCES / ("lightmap-dx9-%s.json" % hdr)).read_text())
+    return json.loads((REFERENCES / ("%s-dx9-%s.json" % (family, hdr))).read_text())
+
+
+def exposure(hdr="integer"):
+    return capture(hdr, "exposure")
+
+
+def with_counts(report, counts):
+    changed = copy.deepcopy(report)
+    for bar, count in zip(changed["ranges"], counts):
+        bar["pixels"] = count
+    return changed
 
 
 def with_pixels(report, name, pixels):
@@ -130,6 +141,96 @@ class SeededDefectTest(unittest.TestCase):
         report = copy.deepcopy(reference)
         report["cases"][2]["lightmap"][0] = [0.3, 0.3, 0.3]
         self.assertIn("inputs differ", oracle.compare(report, reference)[0])
+
+
+class ExposureTest(unittest.TestCase):
+    def test_d3d9_references_satisfy_their_own_oracle(self):
+        for hdr in ("none", "integer"):
+            report = exposure(hdr)
+            self.assertEqual(report["renderer"], "vulkan-compat")
+            self.assertEqual(oracle.evaluate(report, hdr, report), [], hdr)
+
+    def test_d3d9_counts_every_sample_of_a_multisampled_target(self):
+        # The reference ran with 4x MSAA: every count is the model times 4, which
+        # the all-pixels range measures and the comparison divides out.
+        report = exposure()
+        self.assertEqual(report["aa_samples"], 4)
+        area = report["query_rect"][2] * report["query_rect"][3]
+        self.assertEqual(report["ranges"][-1]["pixels"], 4 * area)
+        single = with_counts(report, [bar["pixels"] // 4 for bar in report["ranges"]])
+        self.assertEqual(oracle.evaluate(single, "integer", report), [])
+
+    def test_queries_without_results_are_incomplete(self):
+        # The native backend before occlusion queries: every read stays pending.
+        report = with_counts(exposure(), [-1] * oracle.LUMINANCE_RANGES)
+        failures = oracle.evaluate(report, "integer", exposure())
+        self.assertEqual(len(failures), 1)
+        self.assertIn("no result", failures[0])
+
+    def test_texel_edge_sampling_is_detected(self):
+        # The native backend before the D3D9 half-pixel offset: screen-space
+        # samples land on texel edges and blend regions into ranges they lack.
+        # Measured headless (256x256) with the offset removed.
+        counts = [5777, 0, 12375, 173, 160, 13831, 1, 109, 171, 0, 5559, 0, 6804, 0, 0, 5616,
+                  50576]
+        failures = oracle.evaluate(with_counts(exposure(), counts), "integer", exposure())
+        self.assertTrue(any(f.startswith("luminance range 3 ") for f in failures))
+        self.assertTrue(any("reference" in f for f in failures))
+
+    def test_greater_equal_alpha_test_counts_everything(self):
+        # dev/lumcompare's alpha test is GREATER 0; GREATEREQUAL keeps every pixel.
+        report = exposure()
+        everything = report["ranges"][-1]["pixels"]
+        failures = oracle.check_exposure(with_counts(report, [everything] * len(report["ranges"])))
+        self.assertTrue(failures)
+
+    def test_color_writes_are_detected(self):
+        report = copy.deepcopy(exposure())
+        for region in report["regions"]:
+            region["pixel"] = [255, 255, 255]
+        failures = oracle.check_exposure(report)
+        self.assertTrue(failures and all("must not write color" in f for f in failures))
+
+    def test_ignored_srgb_read_is_detected(self):
+        # Luminance of the gamma-encoded values instead of linear light.
+        report = exposure()
+        unit = report["ranges"][-1]["pixels"] // (report["query_rect"][2] * report["query_rect"][3])
+        counts = []
+        for bar in report["ranges"]:
+            count = 0
+            for region in report["regions"]:
+                gamma = sum(w * c / 255.0 for w, c in zip(oracle.LUMINANCE_WEIGHTS, region["color"]))
+                if bar["min"] <= gamma <= bar["max"]:
+                    count += oracle._overlap(region["rect"], report["query_rect"])
+            counts.append(count * unit)
+        self.assertNotEqual(oracle.check_exposure(with_counts(report, counts)), [])
+
+    def test_counts_that_are_not_whole_samples_are_rejected(self):
+        report = exposure()
+        counts = [bar["pixels"] for bar in report["ranges"]]
+        counts[-1] += 1
+        failures = oracle.check_exposure(with_counts(report, counts))
+        self.assertEqual(len(failures), 1)
+        self.assertIn("whole multiple", failures[0])
+
+    def test_different_frame_size_is_not_compared(self):
+        report = copy.deepcopy(exposure())
+        report["frame"] = [384, 384]
+        self.assertIn("differ from the reference", oracle.compare_exposure(report, exposure())[0])
+
+    def test_family_mismatch_is_rejected(self):
+        failures = oracle.evaluate(exposure(), "integer", capture("integer"))
+        self.assertEqual(failures, ["reference holds family 'lightmap', capture 'exposure'"])
+
+    def test_renamed_regions_or_missing_ranges_are_rejected(self):
+        for mutate in (lambda r: r["regions"].pop(), lambda r: r["ranges"].pop()):
+            report = copy.deepcopy(exposure())
+            mutate(report)
+            with tempfile.TemporaryDirectory() as temp:
+                path = Path(temp) / "pixels.json"
+                path.write_text(json.dumps(report))
+                with self.assertRaises(oracle.PixelsError):
+                    oracle.read_pixels(path)
 
 
 class CaptureFormatTest(unittest.TestCase):

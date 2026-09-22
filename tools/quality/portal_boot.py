@@ -266,6 +266,12 @@ def screenshot_info(path):
             "bytes": path.stat().st_size, "sha256": sha256(path)}
 
 
+def tonemap_scale(log):
+    """The last value the console printed for mat_hdr_tonemapscale, or None."""
+    values = re.findall(r'"mat_hdr_tonemapscale" = "([-0-9.eE+]+)"', log)
+    return float(values[-1]) if values else None
+
+
 def evaluate(log, screenshots, returncode, timed_out, map_name, requirements, loaded):
     failures = []
     if timed_out:
@@ -500,6 +506,9 @@ def main(argv=None):
                    "+sv_cheats", "1", "+mat_queue_mode", "0", "+fps_max", "60", "+map", args.map,
                    "+wait", "180", "+status", "+hideconsole", "+developer", "0",
                    "+wait", "600", "+screenshot", "+mat_spewvertexandpixelshaders",
+                   # The exposure the client's auto-exposure settled on for the
+                   # screenshot frame (it writes its goal here every frame).
+                   "+mat_hdr_tonemapscale",
                    "+wait", "10", "+quit"]
         if args.renderer:
             command[1:1] = ["-renderer", args.renderer]
@@ -576,6 +585,7 @@ def main(argv=None):
                 evidence["render_trace"].update(report=str(report_path), status=report["status"])
                 if report["status"] != "complete":
                     failures.append("renderer diagnostic capture: " + report["status"])
+        evidence["tonemap_scale"] = tonemap_scale(log)
         evidence.update(returncode=code, timed_out=timed_out, elapsed_seconds=seconds,
                         loaded_files=loaded, screenshots=screenshots, failures=failures,
                         logs=[str(path) for path in log_paths if path.is_file()],

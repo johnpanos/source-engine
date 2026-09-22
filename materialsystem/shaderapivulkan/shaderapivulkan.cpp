@@ -182,6 +182,8 @@ static ShaderViewport_t g_Viewport;
 // Blend mode and alpha-test reference the current pass selected (BeginPass).
 static render_vulkan::CVulkanContext::DynRasterState g_CurrentRaster;
 static float g_CurrentAlphaRef = -1.0f;
+// CVulkanContext::kColorSrgb*/kFragment*/kVertex* flags of the pass being drawn.
+static int g_CurrentColorFlags = 0;
 
 static bool HasResidentBaseTexture()
 {
@@ -589,9 +591,12 @@ public:
 	// TakeSnapshot turns them, with the depth state, into the native raster state.
 	ShaderBlendFactor_t m_blendSrc = SHADER_BLEND_ONE;
 	ShaderBlendFactor_t m_blendDst = SHADER_BLEND_ZERO;
-	// $alphatest reference [0,1] recorded by AlphaFunc; applied only when
-	// EnableAlphaTest set m_IsAlphaTested.
+	// $alphatest reference [0,1] and comparison recorded by AlphaFunc; applied
+	// only when EnableAlphaTest set m_IsAlphaTested. D3D9's default is GEQUAL.
 	float m_alphaRef = 0.0f;
+	ShaderAlphaFunc_t m_alphaFunc = SHADER_ALPHAFUNC_GEQUAL;
+	// IShaderShadow::EnableColorWrites.
+	bool m_colorWrites = true;
 	// Vertex components the snapshot's vertex shader reads
 	// (VertexShaderVertexFormat); the material system sizes its meshes from it.
 	VertexFormat_t m_vertexUsage = 0;
@@ -600,6 +605,8 @@ public:
 	// Selected pixel shader recorded during snapshot state (IShaderShadow), so a
 	// snapshot can carry which material shader to bind at draw time.
 	char m_pixelShaderName[64] = { 0 };
+	// Selected vertex shader; screenspaceeffect_vs20 positions in clip space.
+	char m_vertexShaderName[64] = { 0 };
 };
 
 //-----------------------------------------------------------------------------
@@ -1229,20 +1236,58 @@ public:
 	void SetDefaultDynamicState() {}
 	virtual void CommitPixelShaderLighting( int pshReg ) {}
 
+	// Occlusion queries are CVulkanContext query slots; the handle is the slot
+	// plus one, since 0 is INVALID_SHADERAPI_OCCLUSION_QUERY_HANDLE.
 	ShaderAPIOcclusionQuery_t CreateOcclusionQueryObject( void )
 	{
-		return INVALID_SHADERAPI_OCCLUSION_QUERY_HANDLE;
+		std::string error;
+		const int query = g_VulkanContext.CreateOcclusionQuery( &error );
+		if ( query < 0 )
+		{
+			static bool s_warned = false;
+			if ( !s_warned )
+				Warning( "shaderapivulkan: no occlusion queries: %s\n", error.c_str() );
+			s_warned = true;
+			NoteUnimplemented( "occlusion query unavailable on this device" );
+			return INVALID_SHADERAPI_OCCLUSION_QUERY_HANDLE;
+		}
+		return reinterpret_cast<ShaderAPIOcclusionQuery_t>( static_cast<intp>( query ) + 1 );
 	}
 
-	void DestroyOcclusionQueryObject( ShaderAPIOcclusionQuery_t handle ) {}
+	static int QuerySlot( ShaderAPIOcclusionQuery_t handle )
+	{
+		return static_cast<int>( reinterpret_cast<intp>( handle ) ) - 1;
+	}
 
-	void BeginOcclusionQueryDrawing( ShaderAPIOcclusionQuery_t handle ) {}
+	void DestroyOcclusionQueryObject( ShaderAPIOcclusionQuery_t handle )
+	{
+		g_VulkanContext.DestroyOcclusionQuery( QuerySlot( handle ) );
+	}
 
-	void EndOcclusionQueryDrawing( ShaderAPIOcclusionQuery_t handle ) {}
+	void BeginOcclusionQueryDrawing( ShaderAPIOcclusionQuery_t handle )
+	{
+		g_VulkanContext.QueueBeginOcclusionQuery( QuerySlot( handle ) );
+	}
+
+	void EndOcclusionQueryDrawing( ShaderAPIOcclusionQuery_t handle )
+	{
+		g_VulkanContext.QueueEndOcclusionQuery( QuerySlot( handle ) );
+	}
 
 	int OcclusionQuery_GetNumPixelsRendered( ShaderAPIOcclusionQuery_t handle, bool bFlush )
 	{
-		return 0;
+		const int64_t samples = g_VulkanContext.OcclusionQueryResult( QuerySlot( handle ), bFlush );
+		if ( samples == render_vulkan::CVulkanContext::kQueryPending )
+			return OCCLUSION_QUERY_RESULT_PENDING;
+		if ( samples < 0 )
+		{
+			// D3D9 can flush a query issued this frame; this backend submits only
+			// at present, so such a read (and a query its frame never submitted)
+			// reports an error, which the material system treats as no result.
+			NoteUnimplemented( "occlusion query result before its frame was submitted" );
+			return OCCLUSION_QUERY_RESULT_ERROR;
+		}
+		return static_cast<int>( MIN( samples, static_cast<int64_t>( INT_MAX ) ) );
 	}
 
 	virtual void AcquireThreadOwnership() {}
@@ -2519,8 +2564,11 @@ void CShaderShadowVulkan::SetDefaultState()
 	m_blendSrc = SHADER_BLEND_ONE;
 	m_blendDst = SHADER_BLEND_ZERO;
 	m_alphaRef = 0.0f;
+	m_alphaFunc = SHADER_ALPHAFUNC_GEQUAL;
+	m_colorWrites = true;
 	m_vertexUsage = 0;
 	m_colorFlags = 0;
+	m_vertexShaderName[0] = '\0';
 }
 
 // sRGB decode on the samplers the textured pipeline reads (base on sampler 0,
@@ -2566,7 +2614,7 @@ void CShaderShadowVulkan::EnablePolyOffset( PolygonOffsetMode_t nOffsetMode )
 // Suppresses/activates color writing
 void CShaderShadowVulkan::EnableColorWrites( bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_colorWrites = bEnable;
 }
 
 // Suppresses/activates alpha writing
@@ -2616,6 +2664,7 @@ void CShaderShadowVulkan::EnableAlphaTest( bool bEnable )
 
 void CShaderShadowVulkan::AlphaFunc( ShaderAlphaFunc_t alphaFunc, float alphaRef /* [0-1] */ )
 {
+	m_alphaFunc = alphaFunc;
 	m_alphaRef = alphaRef;
 }
 
@@ -2715,6 +2764,7 @@ void CShaderShadowVulkan::TexGen( TextureStage_t stage, ShaderTexGenParam_t para
 void CShaderShadowVulkan::SetVertexShader( const char *pShaderName, int vshIndex )
 {
 	m_bUsesVertexAndPixelShaders = ( pShaderName != NULL );
+	Q_strncpy( m_vertexShaderName, pShaderName ? pShaderName : "", sizeof( m_vertexShaderName ) );
 }
 
 void CShaderShadowVulkan::EnableBlendingSeparateAlpha( bool bEnable )
@@ -3271,7 +3321,31 @@ render_vulkan::CVulkanContext::DynRasterState SnapshotRasterState(
 	state.depthTest = shadow.m_bIsDepthTestEnabled;
 	state.depthWrite = shadow.m_bIsDepthWriteEnabled;
 	state.depthCompare = NativeDepthCompare( shadow.m_depthFunc );
+	state.colorWrite = shadow.m_colorWrites;
 	return state;
+}
+
+// The textured pipeline variant a snapshot selects, beyond its sRGB flags: the
+// alpha-test comparison, and the D3D9 shaders it reproduces other than the base
+// texture times modulation (see demo_dyn_tex.{vert,frag}).
+static int SnapshotShaderFlags( const CShaderShadowVulkan &shadow )
+{
+	using render_vulkan::CVulkanContext;
+	int flags = shadow.m_colorFlags;
+	if ( shadow.m_IsAlphaTested )
+	{
+		if ( shadow.m_alphaFunc == SHADER_ALPHAFUNC_GREATER )
+			flags |= CVulkanContext::kFragmentAlphaGreater;
+		else if ( shadow.m_alphaFunc != SHADER_ALPHAFUNC_GEQUAL &&
+		          shadow.m_alphaFunc != SHADER_ALPHAFUNC_ALWAYS )
+			NoteUnimplemented( "alpha test comparison other than GEQUAL/GREATER/ALWAYS" );
+	}
+	// luminance_compare_ps20 and its ps20b build (screenspace_general picks it).
+	if ( !V_strnicmp( shadow.m_pixelShaderName, "luminance_compare_ps20", 22 ) )
+		flags |= CVulkanContext::kFragmentLuminanceCompare;
+	if ( !V_stricmp( shadow.m_vertexShaderName, "screenspaceeffect_vs20" ) )
+		flags |= CVulkanContext::kVertexScreenSpace;
+	return flags;
 }
 
 // --- Transform matrix stack -------------------------------------------------
@@ -3362,14 +3436,16 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	    SnapshotRasterState( g_ShaderShadow );
 	// D3D9 holds the alpha reference as an integer 0..255, truncating (see
 	// shadershadowdx8.cpp AlphaFunc); the same reference is applied here.
-	const float alphaRef = g_ShaderShadow.m_IsAlphaTested
-	                           ? static_cast<int>( g_ShaderShadow.m_alphaRef * 255 ) / 255.0f
-	                           : -1.0f;
+	// ALWAYS passes every fragment, as no test.
+	const float alphaRef =
+	    g_ShaderShadow.m_IsAlphaTested && g_ShaderShadow.m_alphaFunc != SHADER_ALPHAFUNC_ALWAYS
+	        ? static_cast<int>( g_ShaderShadow.m_alphaRef * 255 ) / 255.0f
+	        : -1.0f;
+	const int shaderFlags = SnapshotShaderFlags( g_ShaderShadow );
 	char key[128];
 	V_snprintf( key, sizeof( key ), "|%d|%u|%.6g|%llx|%d", static_cast<int>( id ),
 	    render_vulkan::CVulkanContext::RasterStateKey( raster ), alphaRef,
-	    static_cast<unsigned long long>( g_ShaderShadow.m_vertexUsage ),
-	    g_ShaderShadow.m_colorFlags );
+	    static_cast<unsigned long long>( g_ShaderShadow.m_vertexUsage ), shaderFlags );
 	const std::string stateKey = std::string( g_ShaderShadow.m_pixelShaderName ) + key;
 	const auto existing = g_snapshotIds.find( stateKey );
 	if ( existing != g_snapshotIds.end() )
@@ -3387,7 +3463,7 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	g_snapshotRaster.push_back( raster );
 	g_snapshotAlphaRef.push_back( alphaRef );
 	g_snapshotVertexUsage.push_back( g_ShaderShadow.m_vertexUsage );
-	g_snapshotColorFlags.push_back( g_ShaderShadow.m_colorFlags );
+	g_snapshotColorFlags.push_back( shaderFlags );
 	// Flags occupy bits 0..3; the index fits the remaining 11 bits of the short.
 	id = static_cast<StateSnapshot_t>( id | static_cast<int>( index << 4 ) );
 	g_snapshotIds[stateKey] = id;
@@ -3718,8 +3794,8 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 		g_CurrentRaster = g_snapshotRaster[index];
 		g_VulkanContext.SelectDynamicRasterState( g_snapshotRaster[index] );
 	}
-	g_VulkanContext.SelectDynamicColorSpace(
-	    index < g_snapshotColorFlags.size() ? g_snapshotColorFlags[index] : 0 );
+	g_CurrentColorFlags = index < g_snapshotColorFlags.size() ? g_snapshotColorFlags[index] : 0;
+	g_VulkanContext.SelectDynamicColorSpace( g_CurrentColorFlags );
 	// The lightmap is bound per pass by the shader's dynamic state.
 	g_boundLightmapHandle = -1;
 	g_VulkanContext.BindManagedLightmap( -1 );
@@ -3770,7 +3846,12 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 	g_LastDropReason = "";
 	// Without a bound material (the conformance fixtures drive the device
 	// directly) the snapshot's own pipeline selection stands.
-	if ( g_pBoundMaterial && !NativePipelineImplementsShader( g_pBoundMaterial->GetShaderName() ) )
+	// screenspace_general is one material shader over many pixel shaders; the
+	// pass is implemented when its pixel shader is (dev/lumcompare's).
+	const bool implemented =
+	    !g_pBoundMaterial || NativePipelineImplementsShader( g_pBoundMaterial->GetShaderName() ) ||
+	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentLuminanceCompare );
+	if ( !implemented )
 	{
 		DropDraw( "draw dropped: material shader not implemented by the native pipeline" );
 		NoteDroppedMaterial();
@@ -4482,9 +4563,9 @@ static bool UploadTextureSurface( int handle, int width, int height, ImageFormat
 	// R16G16B16A16 image created for them; there is no 8-bit conversion.
 	if ( srcFormat == IMAGE_FORMAT_RGBA16161616 )
 	{
-		const bool image16 = static_cast<size_t>( handle ) < g_TextureRecords.size() &&
-		                     g_TextureRecords[static_cast<size_t>( handle )].format ==
-		                         IMAGE_FORMAT_RGBA16161616;
+		const bool image16 =
+		    static_cast<size_t>( handle ) < g_TextureRecords.size() &&
+		    g_TextureRecords[static_cast<size_t>( handle )].format == IMAGE_FORMAT_RGBA16161616;
 		if ( !image16 || ( srcStride > 0 && srcStride != width * 8 ) )
 		{
 			NoteUnimplemented( "upload: RGBA16161616 into another format or padded rows" );

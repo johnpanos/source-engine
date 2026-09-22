@@ -11,6 +11,11 @@
 // material folds GetLightMapScaleFactor() into the modulation. Inputs the
 // material reads as sRGB are decoded first and the result is encoded when it
 // writes sRGB, as EnableSRGBRead/EnableSRGBWrite select on D3D9.
+//
+// With the luminance-compare flag it is luminance_compare_ps2x.fxc, the pixel
+// shader of dev/lumcompare that auto-exposure's histogram counts with:
+//   result = step( c0.x, L ) * step( L, c0.y ),  L = dot( base * c0.z, NTSC )
+// with c0 carried in the modulation slot, which that shader does not use.
 layout( location = 0 ) in vec2 fragUv;
 layout( location = 1 ) in vec4 fragModulation;
 layout( location = 2 ) in vec2 fragLightmapUv;
@@ -24,7 +29,9 @@ layout( push_constant ) uniform Constants
 	vec4 texXform0;
 	vec4 texXform1;
 	// x = alpha-test reference (<0 disables); y = 1 to multiply by the lightmap;
-	// z = color-space flags (1 sRGB base, 2 sRGB lightmap, 4 sRGB output);
+	// z = flags: 1 sRGB base, 2 sRGB lightmap, 4 sRGB output, 8 alpha test
+	// passes only above the reference (GREATER; else GREATEREQUAL), 16 luminance
+	// compare, 32 screen-space vertex stage (see demo_dyn_tex.vert);
 	// w = linear output scale (FinalOutput's LINEAR_LIGHT_SCALE).
 	vec4 alphaParams;
 }
@@ -45,17 +52,30 @@ void main()
 	vec4 base = texture( baseTexture, fragUv );
 	if ( ( flags & 1 ) != 0 )
 		base.rgb = SrgbToLinear( base.rgb );
-	vec4 result = fragModulation * base;
-	if ( consts.alphaParams.y > 0.5 )
+	vec4 result;
+	if ( ( flags & 16 ) != 0 )
 	{
-		vec3 lightmap = texture( lightmapTexture, fragLightmapUv ).rgb;
-		if ( ( flags & 2 ) != 0 )
-			lightmap = SrgbToLinear( lightmap );
-		result.rgb *= lightmap;
+		const float luminance =
+		    dot( base.rgb * consts.modulation.z, vec3( 0.2125, 0.7154, 0.0721 ) );
+		result = vec4(
+		    step( consts.modulation.x, luminance ) * step( luminance, consts.modulation.y ) );
 	}
-	// $alphatest: discard fragments below the reference alpha, matching the D3D9
-	// fixed-function alpha test (ALPHAFUNC = GREATEREQUAL). Disabled when < 0.
-	if ( consts.alphaParams.x >= 0.0 && result.a < consts.alphaParams.x )
+	else
+	{
+		result = fragModulation * base;
+		if ( consts.alphaParams.y > 0.5 )
+		{
+			vec3 lightmap = texture( lightmapTexture, fragLightmapUv ).rgb;
+			if ( ( flags & 2 ) != 0 )
+				lightmap = SrgbToLinear( lightmap );
+			result.rgb *= lightmap;
+		}
+	}
+	// The D3D9 fixed-function alpha test: GREATEREQUAL ($alphatest) or GREATER
+	// (screenspace_general), against the reference. Disabled when < 0.
+	if ( consts.alphaParams.x >= 0.0 &&
+	     ( ( flags & 8 ) != 0 ? result.a <= consts.alphaParams.x
+	                          : result.a < consts.alphaParams.x ) )
 		discard;
 	result.rgb *= consts.alphaParams.w;
 	if ( ( flags & 4 ) != 0 )

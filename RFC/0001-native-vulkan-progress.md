@@ -869,3 +869,159 @@ recaptured with the new field. Native failed, and now passes: material draws use
 a negative-height viewport (core in Vulkan 1.1), which puts clip-space +Y at the
 top for the swapchain and render targets alike. Clears keep the unflipped
 rectangle. The Portal boot frame now matches the D3D9 layout.
+
+## Integer HDR on native Vulkan (2026-09-22)
+
+Native previously hardcoded `HDR_TYPE_NONE`, and the lightmap pixel test declined
+integer HDR explicitly. Native now implements it the way the D3D9 backend
+defines it:
+
+- **HDR type:** `GetHDRType()` is `HDR_TYPE_INTEGER` when `mat_hdr_level >= 2` and
+  the engine has enabled HDR for the map (`SetHDREnabled`, previously ignored).
+  Native owns `mat_hdr_level` with D3D9's name, default and flags. Its device
+  manager now connects tier1 and registers its cvars through an accessor, as
+  `CShaderDeviceMgrBase::Connect` does.
+- **Lightmap pages:** `RGBA16161616` maps to `R16G16B16A16_UNORM`, with direct
+  upload and 8-byte `TexLock`. `GetLightMapScaleFactor()` returns 16.
+- **Tone mapping:** `SetToneMappingScaleLinear` is recorded, forced to 1 without
+  HDR as D3D9 does. Lightmapped draws apply it as `FinalOutput`'s
+  `LINEAR_LIGHT_SCALE` before the sRGB encode.
+
+The pixel harness gained a `tone_scale` capture: `ramp_mid` drawn at scale 2.
+D3D9 confirmed both predictions: the closed form with the lightmap doubled in
+integer HDR, and the scale ignored in LDR. The references were recaptured; the
+diff is additive only. Seeded tests cover an ignored scale and a scale applied
+in LDR (180 `tools/quality` tests pass).
+
+| Backend | HDR none | HDR integer |
+| --- | --- | --- |
+| D3D9 | pass | pass |
+| native Vulkan | pass | **pass**, at most 1 level from D3D9, closed form holds |
+
+In the game, native now runs Portal in integer HDR: testchmb_a_01's
+`LightmappedGeneric` draws carry c47 = `[16,16,16,1]` exactly as on D3D9, and the
+boot passes (midtone 0.993).
+
+Known gaps, recorded rather than approximated:
+- **Other shaders:** only lightmapped draws apply the tone scale. They choose
+  their tone-map type per combo, and the census counts
+  "integer HDR: tone-mapping scale on unlit/model shaders".
+- **Exposure:** it does not adapt, because D3D9's luminance measurement runs in
+  post-process passes that native declines. The native frame is darker than
+  D3D9's. *(Resolved the same day; see "Auto-exposure luminance
+  histogram" below.)*
+
+## Auto-exposure luminance histogram (2026-09-22)
+
+Integer-HDR auto-exposure is client code (`CLuminanceHistogramSystem`,
+`game/client/viewpostprocess.cpp`) shared by both backends. The backend's part is
+the measurement it rests on:
+- the back buffer is copied to `_rt_FullFrameFB`;
+- `dev/lumcompare` (`screenspace_general` with `luminance_compare_ps20`) is drawn
+  over the centre 90% x 85% of the viewport, once per luminance range;
+- each draw is bracketed by an occlusion query, which counts the pixels in that
+  range.
+
+Native's occlusion queries were stubs, and it declined `screenspace_general`. Every
+query stayed pending, the histogram was empty, and exposure stayed at its reset
+value. That is the "darker than D3D9" gap recorded above.
+
+**Fixture.** The pixel harness has an `exposure` family (`-family exposure`).
+- It clears eight regions of known sRGB colour: black, three greys, white, and
+  pure red, green and blue. Each colour's linear luminance lies inside one range,
+  clear of the range edges.
+- It then runs the client's measurement step for step: the same 17 ranges
+  (algorithm 1), the same measured rectangle and the same
+  `DrawScreenSpaceRectangle` call.
+- It reads the regions back *after* the luminance draws, since `dev/lumcompare`
+  must not write colour.
+
+The oracle holds every count to a geometric model: each region's area inside the
+rectangle, placed in its luminance range. The model and the D3D9 comparison are
+both exact. D3D9 matches the model exactly in both HDR modes. It runs with 4x
+MSAA, so its queries count 4 samples per pixel; the oracle measures that unit
+with the all-pixels range, as the client does. References:
+`quality/fixtures/material-pixels/exposure-dx9-{none,integer}.json`.
+
+**Native implementation.**
+- **Occlusion queries.** `CVulkanContext` has a precise occlusion query pool
+  (`occlusionQueryPrecise` is enabled when supported). Query begin and end are
+  stream records, so a query counts exactly the draws between them, in engine
+  order.
+  - Each slot is reset outside the render pass before the replay that uses it.
+  - A result is readable once its frame is submitted.
+  - A query that would span a render-pass boundary fails. So does one whose frame
+    is discarded unsubmitted, and one read with flush before its frame is
+    submitted; that last case is counted in the unimplemented-features report.
+    Failures report `OCCLUSION_QUERY_RESULT_ERROR`, never a wrong count.
+- **dev/lumcompare.** The snapshot records the vertex shader and pixel shader
+  names, the alpha-test comparison and `EnableColorWrites`.
+  - `luminance_compare_ps20[b]` becomes a textured-pipeline variant: sRGB-read
+    base × `c0.z`, NTSC luminance, `step(c0.x) * step(c0.y)`.
+  - `screenspaceeffect_vs20` passes clip-space positions and texture coordinates
+    through untransformed.
+  - The GREATER alpha test and the colour write mask are honoured.
+  - `screenspace_general` is accepted only for that pixel shader; its other
+    post-process shaders are still declined.
+- **D3D9 half-pixel convention.** The first native run counted every pixel
+  (113488 of 113488). But pixels at region boundaries fell into ranges no region
+  occupies. D3D9 puts pixel centres at integer coordinates, and
+  `DrawScreenSpaceRectangle` offsets its quad by −0.5 to suit. So under Vulkan's
+  +0.5 centres every sample landed on a texel edge and was blended. Native draw
+  viewports now shift half a pixel right and down, as DXVK does. This applies to
+  every native draw, not only post-process.
+
+Negative controls on the real backend all fail the fixture:
+- colour writes left on: "region … reads back [255,255,255] after the luminance
+  draws";
+- the GREATER alpha test treated as GEQUAL: every range counts the whole
+  rectangle;
+- the half-pixel offset removed: blended boundary pixels.
+
+Seeded oracle tests cover those three and five more: no results, an ignored sRGB
+read, fractional sample counts, a mismatched frame size and a family mismatch.
+
+**Headless on the GPU.** The runner now defaults to `--display headless`.
+- It sets `SDL_VIDEODRIVER=offscreen` and removes `WAYLAND_DISPLAY` and `DISPLAY`.
+- The system SDL3's offscreen driver creates Vulkan surfaces through
+  `VK_EXT_headless_surface`. So DXVK and native both render and present a real
+  swapchain on the real GPU (RADV) with no window or compositor.
+- The drawable is exactly 256×256 whatever the desktop's scale, which makes the
+  references reproducible.
+- `--display desktop` keeps the windowed run.
+
+All four references were recaptured headless. The lightmap pixels are identical
+to the earlier desktop captures. `portal_boot.py` also runs headless with the
+same variables.
+
+| Backend | lightmap none | lightmap integer | exposure none | exposure integer |
+| --- | --- | --- | --- | --- |
+| D3D9 | pass | pass | pass | pass |
+| native Vulkan | pass | pass | **pass** (exact) | **pass** (exact) |
+
+**In the game** (headless boot, testchmb_a_01). `portal_boot.py` now prints
+`mat_hdr_tonemapscale`, the exposure goal the client writes every frame, and
+records it as `tonemap_scale` in the evidence.
+
+| Boot | `tonemap_scale` |
+| --- | --- |
+| D3D9 | 1.3 |
+| native Vulkan | 1.3 |
+| native Vulkan, occlusion queries disabled (negative control) | 1.0 |
+
+Verification:
+- native suites: bring-up 20/0, backend 33/0, facing 13/0, equivalence 21/0;
+- `tools/quality`: 191 tests OK;
+- stylelint `--changed`: 0 failures;
+- archlint: only the two pre-existing `SetMode` entries.
+
+Remaining exposure gap: bloom and the rest of the integer-HDR post chain are
+still declined. Only lightmapped draws apply the tone scale (see above).
+
+```sh
+python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime \
+    --build build --renderer native-vulkan --hdr integer --family exposure \
+    --reference quality/fixtures/material-pixels/exposure-dx9-integer.json --out OUT
+SDL_VIDEODRIVER=offscreen WAYLAND_DISPLAY= DISPLAY= python3 tools/quality/portal_boot.py \
+    --runtime run/runtime --build build --renderer native-vulkan --map testchmb_a_01 --out OUT
+```

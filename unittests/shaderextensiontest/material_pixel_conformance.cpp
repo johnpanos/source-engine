@@ -4,13 +4,23 @@
 //          the real material system and the selected render provider, and
 //          reports the pixels each backend produced for fixed inputs.
 //
-//          The first family is LightmappedGeneric's lightmap term. Each case
+//          Families (-family):
+//
+//          lightmap (default): LightmappedGeneric's lightmap term. Each case
 //          draws one full-viewport quad with a solid base texture and a lightmap
 //          allocated, packed and bound exactly as a compiled map's lightmaps are
 //          (Begin/EndLightmapAllocation, UpdateLightmap with linear float texels,
 //          BindLightmapPage). The lightmap's left and right halves hold different
 //          values and one pixel is read from each half, so the result also shows
 //          that the lightmap is addressed by its own texture coordinates.
+//
+//          exposure: the measurement integer-HDR auto-exposure is built on
+//          (CLuminanceHistogramSystem, game/client/viewpostprocess.cpp). The frame
+//          is filled with regions of known color, copied to _rt_FullFrameFB, and
+//          the real dev/lumcompare material (screenspace_general with
+//          luminance_compare_ps20) is drawn once per luminance range of the
+//          client's histogram, each draw bracketed by an occlusion query. The
+//          query counts are the histogram the client turns into an exposure.
 //
 //          This program measures; it does not judge. It writes the inputs and
 //          the measured pixels as source-material-pixels/v1 JSON, and
@@ -20,7 +30,7 @@
 //
 //          Run inside a staged game runtime (the driver stages one):
 //            material_pixel_conformance -game portal -renderer <id>
-//                -hdr <none|integer> -out <file.json>
+//                -hdr <none|integer> [-family <lightmap|exposure>] -out <file.json>
 //
 //=============================================================================//
 
@@ -47,6 +57,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -81,6 +92,39 @@ const LightmapCase kLightmapCases[] = {
     { "base_color", { 255, 128, 64 }, { 0.5f, 0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f } },
 };
 const int kLightmapCaseCount = sizeof( kLightmapCases ) / sizeof( kLightmapCases[0] );
+
+// Exposure frame: four columns by two rows, top row first. Each color's linear
+// luminance (the NTSC weights luminance_compare_ps2x.fxc applies after the sRGB
+// read) lies well inside one histogram range, clear of the range edges.
+struct ExposureRegion
+{
+	const char *name;
+	unsigned char color[3]; // written to the back buffer as-is (sRGB-encoded)
+};
+const ExposureRegion kExposureRegions[] = {
+    { "black", { 0, 0, 0 } },
+    { "gray64", { 64, 64, 64 } },
+    { "gray128", { 128, 128, 128 } },
+    { "gray190", { 190, 190, 190 } },
+    { "white", { 255, 255, 255 } },
+    { "red", { 255, 0, 0 } },
+    { "green", { 0, 255, 0 } },
+    { "blue", { 0, 0, 255 } },
+};
+const int kExposureRegionCount = sizeof( kExposureRegions ) / sizeof( kExposureRegions[0] );
+const int kExposureColumns = 4;
+const int kExposureRows = 2;
+// The client's default histogram (mat_tonemap_algorithm 1): N_LUMINANCE_RANGES_NEW
+// ranges, the last of which counts every pixel (it calibrates the query counts).
+const int kLuminanceRanges = 17;
+// The client's defaults for the measured region, mat_exposure_center_region_x/y.
+const float kExposureCenterRegionX = 0.9f;
+const float kExposureCenterRegionY = 0.85f;
+// Frames to wait for query results before the run is declared incomplete.
+const int kMaxQueryPollFrames = 60;
+// What IMatRenderContext::OcclusionQuery_GetNumPixelsRendered returns before a
+// query has a result (the shader API's OCCLUSION_QUERY_RESULT_PENDING).
+const int kQueryPending = -1;
 
 // Fills a procedural texture with one color, or with m_Bottom below its middle
 // row when m_Split is set; changed per case before Download().
@@ -127,6 +171,8 @@ public:
 
 private:
 	bool RunLightmapCases( FILE *out );
+	bool RunExposureCases( FILE *out );
+	void WriteClearProbe( FILE *out );
 	bool RenderCase( IMaterial *pMaterial, int sortId, const int offset[2], int lightmapPageId,
 	    const float ( *points )[2], int pointCount, unsigned char ( *pixels )[3],
 	    float toneScale = 1.0f );
@@ -195,9 +241,13 @@ int CMaterialPixelApp::Main()
 	const char *outPath = CommandLine()->ParmValue( "-out", "" );
 	const char *hdr = CommandLine()->ParmValue( "-hdr", "none" );
 	const bool integerHdr = !Q_stricmp( hdr, "integer" );
-	if ( !outPath[0] || ( !integerHdr && Q_stricmp( hdr, "none" ) ) )
+	const char *family = CommandLine()->ParmValue( "-family", "lightmap" );
+	const bool exposure = !Q_stricmp( family, "exposure" );
+	if ( !outPath[0] || ( !integerHdr && Q_stricmp( hdr, "none" ) ) ||
+	     ( !exposure && Q_stricmp( family, "lightmap" ) ) )
 	{
-		Warning( "material pixel conformance: need -out <file> and -hdr <none|integer>\n" );
+		Warning( "material pixel conformance: need -out <file>, -hdr <none|integer> and "
+		         "-family <lightmap|exposure>\n" );
 		return 2;
 	}
 
@@ -253,7 +303,7 @@ int CMaterialPixelApp::Main()
 		Warning( "material pixel conformance: cannot write %s\n", outPath );
 		return 2;
 	}
-	const bool ok = RunLightmapCases( out );
+	const bool ok = exposure ? RunExposureCases( out ) : RunLightmapCases( out );
 	fclose( out );
 	pLauncher->DestroyGameWindow();
 	return ok ? 0 : 1;
@@ -317,6 +367,29 @@ bool CMaterialPixelApp::ReadPixel( float fx, float fy, unsigned char rgb[3] )
 	return true;
 }
 
+// Writes the renderer, the HDR type the backend reports, and the readback
+// self-check: a cleared, undrawn frame must read back as the clear color.
+// Without it a backend whose readback returns zeros would "pass" every case
+// that expects black.
+void CMaterialPixelApp::WriteClearProbe( FILE *out )
+{
+	fprintf( out, "\"renderer\":\"%s\",\"hdr_type\":%d,",
+	    CommandLine()->ParmValue( "-renderer", "" ),
+	    static_cast<int>( g_pMaterialSystemHardwareConfig->GetHDRType() ) );
+	unsigned char probe[3] = { 0, 0, 0 };
+	g_pMaterialSystem->BeginFrame( 0 );
+	{
+		CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+		pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
+		pRenderContext->ClearBuffers( true, true );
+		ReadPixel( 0.5f, 0.5f, probe );
+	}
+	g_pMaterialSystem->EndFrame();
+	g_pMaterialSystem->SwapBuffers();
+	fprintf( out, "\"clear_probe\":{\"clear\":[255,0,255],\"pixel\":[%d,%d,%d]},", probe[0],
+	    probe[1], probe[2] );
+}
+
 bool CMaterialPixelApp::RunLightmapCases( FILE *out )
 {
 	static CSolidColorRegenerator s_BaseRegenerator;
@@ -377,24 +450,7 @@ bool CMaterialPixelApp::RunLightmapCases( FILE *out )
 	}
 
 	fprintf( out, "{\"schema\":\"source-material-pixels/v1\",\"family\":\"lightmap\"," );
-	fprintf( out, "\"renderer\":\"%s\",\"hdr_type\":%d,",
-	    CommandLine()->ParmValue( "-renderer", "" ),
-	    static_cast<int>( g_pMaterialSystemHardwareConfig->GetHDRType() ) );
-	// Readback self-check: a cleared, undrawn frame must read back as the clear
-	// color. Without it a backend whose readback returns zeros would "pass" every
-	// case that expects black.
-	unsigned char probe[3] = { 0, 0, 0 };
-	g_pMaterialSystem->BeginFrame( 0 );
-	{
-		CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
-		pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
-		pRenderContext->ClearBuffers( true, true );
-		ReadPixel( 0.5f, 0.5f, probe );
-	}
-	g_pMaterialSystem->EndFrame();
-	g_pMaterialSystem->SwapBuffers();
-	fprintf( out, "\"clear_probe\":{\"clear\":[255,0,255],\"pixel\":[%d,%d,%d]},", probe[0],
-	    probe[1], probe[2] );
+	WriteClearProbe( out );
 	fprintf( out, "\"cases\":[" );
 
 	bool ok = true;
@@ -460,9 +516,173 @@ bool CMaterialPixelApp::RunLightmapCases( FILE *out )
 	fprintf( out,
 	    ",\"tone_scale\":{\"case\":\"%s\",\"scale\":%g,"
 	    "\"pixels\":[[%d,%d,%d],[%d,%d,%d]]}}\n",
-	    kLightmapCases[rampMid].name, toneScale, toned[0][0], toned[0][1], toned[0][2],
-	    toned[1][0], toned[1][1], toned[1][2] );
+	    kLightmapCases[rampMid].name, toneScale, toned[0][0], toned[0][1], toned[0][2], toned[1][0],
+	    toned[1][1], toned[1][2] );
 	pMaterial->DecrementReferenceCount();
+	return ok;
+}
+
+// The client's histogram measurement, step for step (CHistogram_entry_t::IssueQuery
+// and DoPreBloomTonemapping in game/client/viewpostprocess.cpp): the back buffer
+// is copied to _rt_FullFrameFB (UpdateScreenEffectTexture), then for each
+// luminance range dev/lumcompare is drawn over the center of the viewport with
+// $C0_X/$C0_Y as the range and $C0_Z as the scale, inside an occlusion query.
+// The shader keeps only pixels whose luminance is in range, so each query counts
+// the pixels of one histogram bar.
+bool CMaterialPixelApp::RunExposureCases( FILE *out )
+{
+	// The engine creates _rt_FullFrameFB at startup (matsys_interface.cpp
+	// CreateFullFrameFBTexture); dev/lumcompare names it as its base texture.
+	g_pMaterialSystem->BeginRenderTargetAllocation();
+	ITexture *pFrameBuffer = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2(
+	    "_rt_FullFrameFB", 1, 1, RT_SIZE_FULL_FRAME_BUFFER,
+	    g_pMaterialSystem->GetBackBufferFormat(), MATERIAL_RT_DEPTH_SHARED,
+	    TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT, CREATERENDERTARGETFLAGS_HDR );
+	g_pMaterialSystem->EndRenderTargetAllocation();
+	if ( !pFrameBuffer || pFrameBuffer->IsError() )
+	{
+		Warning( "material pixel conformance: cannot create _rt_FullFrameFB\n" );
+		return false;
+	}
+	pFrameBuffer->IncrementReferenceCount();
+	IMaterial *pMaterial = g_pMaterialSystem->FindMaterial( "dev/lumcompare", TEXTURE_GROUP_OTHER );
+	if ( !pMaterial || pMaterial->IsErrorMaterial() )
+	{
+		Warning( "material pixel conformance: dev/lumcompare is not in the runtime content\n" );
+		return false;
+	}
+	pMaterial->IncrementReferenceCount();
+	g_pMaterialSystem->CacheUsedMaterials();
+	IMaterialVar *pMin = pMaterial->FindVar( "$C0_X", NULL );
+	IMaterialVar *pMax = pMaterial->FindVar( "$C0_Y", NULL );
+	IMaterialVar *pScale = pMaterial->FindVar( "$C0_Z", NULL );
+
+	fprintf( out, "{\"schema\":\"source-material-pixels/v1\",\"family\":\"exposure\"," );
+	WriteClearProbe( out );
+
+	int width = 0, height = 0;
+	g_pMaterialSystem->GetBackBufferDimensions( width, height );
+	fprintf( out, "\"frame\":[%d,%d],\"regions\":[", width, height );
+
+	// The client's ranges (UpdateLuminanceRanges, algorithm 1): even steps with
+	// more resolution at the dark end, and a last range that counts every pixel.
+	// A range ending at 1.0 is tested up to 10000, so overbright pixels count.
+	float rangeMin[kLuminanceRanges], rangeMax[kLuminanceRanges];
+	for ( int i = 0; i < kLuminanceRanges; ++i )
+	{
+		if ( i == kLuminanceRanges - 1 )
+		{
+			rangeMin[i] = 0.0f;
+			rangeMax[i] = 100000.0f;
+			continue;
+		}
+		rangeMin[i] = powf( float( i ) / float( kLuminanceRanges - 1 ), 1.5f );
+		rangeMax[i] = powf( float( i + 1 ) / float( kLuminanceRanges - 1 ), 1.5f );
+		if ( rangeMax[i] == 1.0f )
+			rangeMax[i] = 10000.0f;
+	}
+	// The measured rectangle, as IssueQuery derives it from the viewport.
+	const int skipX = static_cast<int>( width * ( 0.5f * ( 1.0f - kExposureCenterRegionX ) ) );
+	const int skipY = static_cast<int>( height * ( 0.5f * ( 1.0f - kExposureCenterRegionY ) ) );
+	const int query[4] = { skipX, skipY, width - 2 * skipX, height - 2 * skipY };
+
+	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+	OcclusionQueryObjectHandle_t queries[kLuminanceRanges];
+	for ( int i = 0; i < kLuminanceRanges; ++i )
+		queries[i] = pRenderContext->CreateOcclusionQueryObject();
+
+	bool ok = true;
+	g_pMaterialSystem->BeginFrame( 0 );
+	pRenderContext->Viewport( 0, 0, width, height );
+	pRenderContext->ClearColor4ub( 0, 0, 0, 255 );
+	pRenderContext->ClearBuffers( true, true );
+	int rects[kExposureRegionCount][4];
+	for ( int r = 0; r < kExposureRegionCount; ++r )
+	{
+		const int column = r % kExposureColumns, row = r / kExposureColumns;
+		rects[r][0] = width * column / kExposureColumns;
+		rects[r][1] = height * row / kExposureRows;
+		rects[r][2] = width * ( column + 1 ) / kExposureColumns - rects[r][0];
+		rects[r][3] = height * ( row + 1 ) / kExposureRows - rects[r][1];
+		const unsigned char *c = kExposureRegions[r].color;
+		pRenderContext->Viewport( rects[r][0], rects[r][1], rects[r][2], rects[r][3] );
+		pRenderContext->ClearColor4ub( c[0], c[1], c[2], 255 );
+		pRenderContext->ClearBuffers( true, false );
+	}
+	pRenderContext->Viewport( 0, 0, width, height );
+
+	Rect_t whole = { 0, 0, width, height };
+	pRenderContext->CopyRenderTargetToTextureEx( pFrameBuffer, 0, &whole, NULL );
+	// Integer HDR measures the frame as displayed: the client passes a scale of 1
+	// (only float HDR passes the tone-mapping scale).
+	const float scale = 1.0f;
+	for ( int i = 0; i < kLuminanceRanges; ++i )
+	{
+		pMin->SetFloatValue( rangeMin[i] );
+		pMax->SetFloatValue( rangeMax[i] );
+		pScale->SetFloatValue( scale );
+		pRenderContext->BeginOcclusionQueryDrawing( queries[i] );
+		pRenderContext->DrawScreenSpaceRectangle( pMaterial, query[0], query[1], query[2], query[3],
+		    query[0], query[1], query[0] + query[2] - 1, query[1] + query[3] - 1, width, height );
+		pRenderContext->EndOcclusionQueryDrawing( queries[i] );
+	}
+	// Read after the luminance draws: dev/lumcompare disables color writes, so
+	// the frame still holds exactly the regions it was cleared to.
+	for ( int r = 0; r < kExposureRegionCount; ++r )
+	{
+		unsigned char pixel[3] = {};
+		ok = ReadPixel( ( rects[r][0] + 0.5f * rects[r][2] ) / width,
+		         ( rects[r][1] + 0.5f * rects[r][3] ) / height, pixel ) &&
+		     ok;
+		const unsigned char *c = kExposureRegions[r].color;
+		fprintf( out,
+		    "%s{\"name\":\"%s\",\"color\":[%d,%d,%d],\"rect\":[%d,%d,%d,%d],"
+		    "\"pixel\":[%d,%d,%d]}",
+		    r ? "," : "", kExposureRegions[r].name, c[0], c[1], c[2], rects[r][0], rects[r][1],
+		    rects[r][2], rects[r][3], pixel[0], pixel[1], pixel[2] );
+	}
+	g_pMaterialSystem->EndFrame();
+	g_pMaterialSystem->SwapBuffers();
+
+	// Results arrive frames later, as the client reads them; poll across frames.
+	int counts[kLuminanceRanges];
+	for ( int i = 0; i < kLuminanceRanges; ++i )
+		counts[i] = kQueryPending;
+	int frames = 0;
+	for ( ; frames < kMaxQueryPollFrames; ++frames )
+	{
+		bool pending = false;
+		for ( int i = 0; i < kLuminanceRanges; ++i )
+		{
+			if ( counts[i] == kQueryPending )
+				counts[i] = pRenderContext->OcclusionQuery_GetNumPixelsRendered( queries[i] );
+			pending = pending || counts[i] == kQueryPending;
+		}
+		if ( !pending )
+			break;
+		g_pMaterialSystem->BeginFrame( 0 );
+		pRenderContext->ClearBuffers( true, true );
+		g_pMaterialSystem->EndFrame();
+		g_pMaterialSystem->SwapBuffers();
+	}
+
+	// An occlusion query counts samples: with a multisampled back buffer every
+	// pixel counts once per sample, which the client calibrates out with its
+	// last range. The configured sample count is recorded next to the counts.
+	fprintf( out,
+	    "],\"query_rect\":[%d,%d,%d,%d],\"scale\":%g,\"aa_samples\":%d,\"poll_frames\":%d,"
+	    "\"ranges\":[",
+	    query[0], query[1], query[2], query[3], scale,
+	    g_pMaterialSystem->GetCurrentConfigForVideoCard().m_nAASamples, frames );
+	for ( int i = 0; i < kLuminanceRanges; ++i )
+	{
+		fprintf( out, "%s{\"min\":%.9g,\"max\":%.9g,\"pixels\":%d}", i ? "," : "", rangeMin[i],
+		    rangeMax[i], counts[i] );
+		pRenderContext->DestroyOcclusionQueryObject( queries[i] );
+	}
+	fprintf( out, "]}\n" );
+	pMaterial->DecrementReferenceCount();
+	pFrameBuffer->DecrementReferenceCount();
 	return ok;
 }
 

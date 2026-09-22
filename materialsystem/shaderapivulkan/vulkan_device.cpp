@@ -418,7 +418,13 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 
 	const char *deviceExts[] = { kSwapchainExtension };
 
+	// Exact occlusion counts, which auto-exposure's luminance histogram needs
+	// (a non-precise query may report any nonzero value for a visible draw).
+	VkPhysicalDeviceFeatures supported = {};
+	vkGetPhysicalDeviceFeatures( m_physicalDevice, &supported );
 	VkPhysicalDeviceFeatures features = {};
+	features.occlusionQueryPrecise = supported.occlusionQueryPrecise;
+	m_preciseOcclusion = supported.occlusionQueryPrecise == VK_TRUE;
 
 	VkDeviceCreateInfo createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -2514,7 +2520,8 @@ uint32_t CVulkanContext::RasterStateKey( const DynRasterState &state )
 	return ( state.blend ? 1u : 0u ) | ( static_cast<uint32_t>( state.srcFactor ) & 31u ) << 1 |
 	       ( static_cast<uint32_t>( state.dstFactor ) & 31u ) << 6 |
 	       ( state.depthTest ? 1u : 0u ) << 11 | ( state.depthWrite ? 1u : 0u ) << 12 |
-	       ( static_cast<uint32_t>( state.depthCompare ) & 7u ) << 13;
+	       ( static_cast<uint32_t>( state.depthCompare ) & 7u ) << 13 |
+	       ( state.colorWrite ? 1u : 0u ) << 16;
 }
 
 VkPipeline CVulkanContext::TexturedPipeline( const DynRasterState &state )
@@ -2527,8 +2534,9 @@ VkPipeline CVulkanContext::TexturedPipeline( const DynRasterState &state )
 		return VK_NULL_HANDLE;
 
 	VkPipelineColorBlendAttachmentState att = {};
-	att.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-	                     VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	att.colorWriteMask = state.colorWrite ? VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+	                                            VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
+	                                      : 0;
 	att.blendEnable = state.blend ? VK_TRUE : VK_FALSE;
 	att.srcColorBlendFactor = state.srcFactor;
 	att.dstColorBlendFactor = state.dstFactor;
@@ -2999,6 +3007,114 @@ bool CVulkanContext::QueueCopyToTexture( int dstHandle, const int *srcRect, cons
 	return true;
 }
 
+int CVulkanContext::CreateOcclusionQuery( std::string *outError )
+{
+	if ( !IsValid() )
+	{
+		SetError( outError, "occlusion query on an invalid context" );
+		return -1;
+	}
+	if ( !m_preciseOcclusion )
+	{
+		SetError( outError, "the device cannot count occlusion samples exactly "
+		                    "(occlusionQueryPrecise is not supported)" );
+		return -1;
+	}
+	if ( m_queryPool == VK_NULL_HANDLE )
+	{
+		VkQueryPoolCreateInfo info = {};
+		info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+		info.queryType = VK_QUERY_TYPE_OCCLUSION;
+		info.queryCount = kMaxOcclusionQueries;
+		const VkResult r = vkCreateQueryPool( m_device, &info, nullptr, &m_queryPool );
+		if ( r != VK_SUCCESS )
+		{
+			SetError( outError, std::string( "vkCreateQueryPool failed: " ) + ResultString( r ) );
+			return -1;
+		}
+		m_querySlots.assign( kMaxOcclusionQueries, OcclusionQuerySlot() );
+	}
+	for ( size_t slot = 0; slot < m_querySlots.size(); ++slot )
+	{
+		if ( !m_querySlots[slot].live )
+		{
+			m_querySlots[slot] = OcclusionQuerySlot();
+			m_querySlots[slot].live = true;
+			return static_cast<int>( slot );
+		}
+	}
+	SetError( outError, "all occlusion query slots are in use" );
+	return -1;
+}
+
+void CVulkanContext::DestroyOcclusionQuery( int query )
+{
+	// The slot's pool entry is reset before any later reuse records into it.
+	if ( query >= 0 && query < static_cast<int>( m_querySlots.size() ) )
+		m_querySlots[static_cast<size_t>( query )].live = false;
+}
+
+void CVulkanContext::QueueBeginOcclusionQuery( int query )
+{
+	if ( query < 0 || query >= static_cast<int>( m_querySlots.size() ) ||
+	     !m_querySlots[static_cast<size_t>( query )].live )
+		return;
+	DynDraw &d = AppendRecord( kRecordQueryBegin );
+	OcclusionQuerySlot &slot = m_querySlots[static_cast<size_t>( query )];
+	slot.failed = false;
+	d.query = query;
+	d.querySerial = ++slot.issued;
+}
+
+void CVulkanContext::QueueEndOcclusionQuery( int query )
+{
+	if ( query < 0 || query >= static_cast<int>( m_querySlots.size() ) )
+		return;
+	AppendRecord( kRecordQueryEnd ).query = query;
+}
+
+int64_t CVulkanContext::OcclusionQueryResult( int query, bool wait )
+{
+	if ( query < 0 || query >= static_cast<int>( m_querySlots.size() ) )
+		return kQueryFailed;
+	const OcclusionQuerySlot &slot = m_querySlots[static_cast<size_t>( query )];
+	if ( !slot.live || slot.failed || slot.issued == 0 )
+		return kQueryFailed;
+	if ( slot.submitted != slot.issued )
+	{
+		// Still in the frame being recorded: nothing can be waited for until it
+		// is submitted at present, so a caller that must have an answer now gets
+		// a failure rather than a wait that never ends.
+		return wait ? kQueryFailed : kQueryPending;
+	}
+	uint64_t result[2] = { 0, 0 }; // samples passed, availability
+	VkQueryResultFlags flags = VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT;
+	if ( wait )
+		flags |= VK_QUERY_RESULT_WAIT_BIT;
+	const VkResult r = vkGetQueryPoolResults( m_device, m_queryPool, static_cast<uint32_t>( query ),
+	    1, sizeof( result ), result, sizeof( result ), flags );
+	if ( r != VK_SUCCESS && r != VK_NOT_READY )
+		return kQueryFailed;
+	if ( !result[1] )
+		return kQueryPending;
+	return static_cast<int64_t>( result[0] );
+}
+
+void CVulkanContext::FailUnsubmittedQueries()
+{
+	// The stream is being discarded: an issue it holds that no frame submitted
+	// will never produce a result.
+	for ( const DynDraw &d : m_dynDrawRecords )
+	{
+		if ( d.kind != kRecordQueryBegin || d.query < 0 ||
+		     d.query >= static_cast<int>( m_querySlots.size() ) )
+			continue;
+		OcclusionQuerySlot &slot = m_querySlots[static_cast<size_t>( d.query )];
+		if ( slot.issued == d.querySerial && slot.submitted != d.querySerial )
+			slot.failed = true;
+	}
+}
+
 void CVulkanContext::QueueDynamicTriangles(
     const float *posColorInterleaved, uint32_t vertexCount, const float *lightmapUv )
 {
@@ -3396,6 +3512,19 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		return false;
 	}
 
+	// Queries are reset outside any render pass, before the stream that issues
+	// them replays. Only the slots this stream issues are reset, so a result of
+	// an earlier frame that the engine has yet to read survives.
+	m_replayedQueries.clear();
+	if ( m_queryPool != VK_NULL_HANDLE && m_dynPipeline != VK_NULL_HANDLE )
+	{
+		for ( const DynDraw &d : m_dynDrawRecords )
+		{
+			if ( d.kind == kRecordQueryBegin )
+				vkCmdResetQueryPool( cmd, m_queryPool, static_cast<uint32_t>( d.query ), 1 );
+		}
+	}
+
 	VkClearValue clears[2] = {};
 	clears[0].color = m_clearColor;
 	clears[1].depthStencil = { 1.0f, 0 };
@@ -3537,10 +3666,24 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		// is finished before the main view samples it.
 		int openTarget = -1; // the swapchain pass opened above
 		VkPipeline boundPipeline = VK_NULL_HANDLE;
+		// A query must begin and end inside one render pass, and only one
+		// occlusion query may be active at a time. One that would span a pass
+		// boundary is ended there and fails rather than report a partial count.
+		int activeQuery = -1;
+		const auto endActiveQuery = [&]( bool complete )
+		{
+			if ( activeQuery < 0 )
+				return;
+			vkCmdEndQuery( cmd, m_queryPool, static_cast<uint32_t>( activeQuery ) );
+			if ( !complete )
+				m_querySlots[static_cast<size_t>( activeQuery )].failed = true;
+			activeQuery = -1;
+		};
 		for ( const DynDraw &d : m_dynDrawRecords )
 		{
 			if ( d.kind == kRecordCopy )
 			{
+				endActiveQuery( false );
 				vkCmdEndRenderPass( cmd );
 				RecordTargetCopy( cmd, openTarget, d );
 				BeginTargetPass( cmd, openTarget );
@@ -3548,9 +3691,35 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			}
 			if ( d.target != openTarget )
 			{
+				endActiveQuery( false );
 				vkCmdEndRenderPass( cmd );
 				openTarget = d.target;
 				BeginTargetPass( cmd, openTarget );
+			}
+			if ( d.kind == kRecordQueryBegin )
+			{
+				endActiveQuery( false );
+				// A slot is reset once per replay, so a second issue of the same
+				// query in one frame cannot begin; that issue fails.
+				bool reissued = false;
+				for ( const std::pair<int, uint64_t> &issue : m_replayedQueries )
+					reissued = reissued || issue.first == d.query;
+				if ( reissued )
+				{
+					m_querySlots[static_cast<size_t>( d.query )].failed = true;
+					continue;
+				}
+				vkCmdBeginQuery( cmd, m_queryPool, static_cast<uint32_t>( d.query ),
+				    VK_QUERY_CONTROL_PRECISE_BIT );
+				activeQuery = d.query;
+				m_replayedQueries.emplace_back( d.query, d.querySerial );
+				continue;
+			}
+			if ( d.kind == kRecordQueryEnd )
+			{
+				if ( d.query == activeQuery )
+					endActiveQuery( true );
+				continue;
 			}
 
 			// D3D9 semantics: the viewport maps clip space and bounds clears; the
@@ -3630,10 +3799,15 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			// Material transforms are D3D's: clip-space +Y is the top of the
 			// viewport. Vulkan's clip-space Y points down, so the draw viewport is
 			// flipped (negative height, core in Vulkan 1.1) to put +Y at the top,
-			// for the swapchain and render targets alike. Clears above address
-			// pixels, not clip space, and use the unflipped rectangle.
+			// for the swapchain and render targets alike. D3D9 also puts pixel
+			// centers at integer coordinates where Vulkan puts them at +0.5, so
+			// the viewport moves half a pixel right and down: Source's screen-space
+			// quads (DrawScreenSpaceRectangle offsets by -0.5 for D3D9) then cover
+			// the pixels and sample the texel centers D3D9 does. Clears above
+			// address pixels, not clip space, and use the unflipped rectangle.
 			VkViewport d3dViewport = viewport;
-			d3dViewport.y = viewport.y + viewport.height;
+			d3dViewport.x = viewport.x + 0.5f;
+			d3dViewport.y = viewport.y + viewport.height + 0.5f;
 			d3dViewport.height = -viewport.height;
 			vkCmdSetViewport( cmd, 0, 1, &d3dViewport );
 			vkCmdSetScissor( cmd, 0, 1, &scissor );
@@ -3691,7 +3865,11 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			uint32_t pushFloats;
 			if ( textured )
 			{
-				std::memcpy( pushData + 16, d.modulation, sizeof( d.modulation ) );
+				// luminance_compare_ps2x reads c0 (the constant color) where the
+				// other variants read cModulationColor.
+				const float *modulation =
+				    ( d.colorFlags & kFragmentLuminanceCompare ) ? d.color : d.modulation;
+				std::memcpy( pushData + 16, modulation, sizeof( d.modulation ) );
 				std::memcpy( pushData + 20, d.texXform0, sizeof( d.texXform0 ) );
 				std::memcpy( pushData + 24, d.texXform1, sizeof( d.texXform1 ) );
 				pushData[28] = d.alphaRef; // alphaParams.x
@@ -3711,6 +3889,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			    static_cast<uint32_t>( sizeof( float ) ) * pushFloats, pushData );
 			vkCmdDraw( cmd, d.vertexCount, 1, d.firstVertex, 0 );
 		}
+		endActiveQuery( false );
 		// EndFrame closes the swapchain pass and transitions the image for
 		// present or capture, so the frame must end inside it.
 		if ( openTarget != -1 )
@@ -3857,6 +4036,10 @@ bool CVulkanContext::EndFrame( std::string *outError )
 		SetError( outError, std::string( "vkQueueSubmit failed: " ) + ResultString( r ) );
 		return false;
 	}
+	// The queries this frame replayed now have results on their way.
+	for ( const std::pair<int, uint64_t> &issue : m_replayedQueries )
+		m_querySlots[static_cast<size_t>( issue.first )].submitted = issue.second;
+	m_replayedQueries.clear();
 
 	// If we captured, resolve the pixels now: the submission must complete
 	// before the host-visible copy is valid to read.
@@ -4042,6 +4225,13 @@ void CVulkanContext::Shutdown()
 		DestroyDemoDepth();
 		DestroyDynamicMesh();
 		DestroySwapchainObjects();
+		if ( m_queryPool != VK_NULL_HANDLE )
+		{
+			vkDestroyQueryPool( m_device, m_queryPool, nullptr );
+			m_queryPool = VK_NULL_HANDLE;
+		}
+		m_querySlots.clear();
+		m_replayedQueries.clear();
 
 		for ( VkSemaphore s : m_imageAvailable )
 			if ( s != VK_NULL_HANDLE )

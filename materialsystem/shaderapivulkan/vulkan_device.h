@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 struct SDL_Window;
@@ -163,6 +164,7 @@ public:
 	// an on-demand screenshot capture (ReadPixels).
 	void ClearDynamicQueue()
 	{
+		FailUnsubmittedQueries();
 		m_dynQueued.clear();
 		m_dynDrawRecords.clear();
 		m_dynFramePresented = false;
@@ -192,12 +194,16 @@ public:
 		bool depthTest = true;
 		bool depthWrite = true;
 		VkCompareOp depthCompare = VK_COMPARE_OP_LESS_OR_EQUAL;
+		// IShaderShadow::EnableColorWrites; false leaves the target unchanged (a
+		// draw that only feeds an occlusion query, such as dev/lumcompare).
+		bool colorWrite = true;
 	};
 	void SelectDynamicRasterState( const DynRasterState &state ) { m_dynRaster = state; }
 	// Distinct states have distinct keys.
 	static uint32_t RasterStateKey( const DynRasterState &state );
 	// $alphatest: fragments whose alpha is below `ref` are discarded (matching the
-	// D3D9 fixed-function GREATEREQUAL alpha test). A negative `ref` disables it.
+	// D3D9 fixed-function GREATEREQUAL alpha test, or GREATER with
+	// kFragmentAlphaGreater). A negative `ref` disables it.
 	void SelectDynamicAlphaTest( float ref ) { m_dynAlphaRef = ref; }
 	// Set the shader constant the "constant color" material shader reads (linear
 	// RGBA), the way a material's pixel-shader constant parameterizes its shader.
@@ -254,11 +260,18 @@ public:
 	// Which of the textured pipeline's inputs and output are sRGB-encoded, as the
 	// material's IShaderShadow EnableSRGBRead/EnableSRGBWrite declared them: an
 	// sRGB input is decoded to linear before use, and linear output is encoded.
+	// The same flags select the textured pipeline's other D3D9 shader variants:
+	// the GREATER alpha test, luminance_compare_ps2x (which reads its c0 from the
+	// constant color, SetDynamicConstantColor), and screenspaceeffect_vs20's
+	// clip-space positions and untransformed texture coordinates.
 	enum
 	{
 		kColorSrgbReadBase = 1,
 		kColorSrgbReadLightmap = 2,
-		kColorSrgbWrite = 4
+		kColorSrgbWrite = 4,
+		kFragmentAlphaGreater = 8,
+		kFragmentLuminanceCompare = 16,
+		kVertexScreenSpace = 32
 	};
 	void SelectDynamicColorSpace( int flags ) { m_dynColorFlags = flags; }
 	// Linear scale applied to the textured pipeline's color before the sRGB
@@ -319,6 +332,26 @@ public:
 	// Copy the current target into a render-target texture, scaling between the
 	// rectangles ({x, y, width, height}; null = the whole image).
 	bool QueueCopyToTexture( int dstHandle, const int *srcRect, const int *dstRect );
+	// Occlusion queries (IShaderAPI CreateOcclusionQueryObject and friends). Begin
+	// and end are stream records like draws, so a query counts exactly the
+	// samples the draws between them pass, in engine order. A result exists once
+	// the frame holding the query has been submitted; OcclusionQueryResult
+	// returns kQueryPending until the GPU has produced it (waiting for it when
+	// `wait` is set), and kQueryFailed for a query that cannot produce one: its
+	// frame was discarded unsubmitted, it was split across render passes, or it
+	// is read with `wait` before its frame was submitted. Creation fails (-1)
+	// when the device cannot count samples exactly (occlusionQueryPrecise).
+	enum
+	{
+		kQueryPending = -1,
+		kQueryFailed = -2,
+		kMaxOcclusionQueries = 1024
+	};
+	int CreateOcclusionQuery( std::string *outError );
+	void DestroyOcclusionQuery( int query );
+	void QueueBeginOcclusionQuery( int query );
+	void QueueEndOcclusionQuery( int query );
+	int64_t OcclusionQueryResult( int query, bool wait );
 	// Called once the frame has been presented. The recorded stream stays
 	// available for an on-demand capture until the next frame records into it.
 	void EndStreamFrame() { m_dynFramePresented = true; }
@@ -618,7 +651,9 @@ private:
 	{
 		kRecordDraw = 0,
 		kRecordClear = 1,
-		kRecordCopy = 2
+		kRecordCopy = 2,
+		kRecordQueryBegin = 3,
+		kRecordQueryEnd = 4
 	};
 	struct DynDraw
 	{
@@ -635,6 +670,10 @@ private:
 		bool clearDepth = false;
 		float clearValue[4] = { 0, 0, 0, 1 };
 		int copyDst = -1;
+		// Occlusion query slot of a begin/end record, and which issue of that
+		// query the begin record is.
+		int query = -1;
+		uint64_t querySerial = 0;
 		int copySrcRect[4] = { 0, 0, 0, 0 }; // width <= 0 means the whole image
 		int copyDstRect[4] = { 0, 0, 0, 0 };
 		uint32_t firstVertex = 0;
@@ -664,6 +703,23 @@ private:
 	// Set by EndStreamFrame; the next record discards the presented frame.
 	bool m_dynFramePresented = false;
 	DynDraw &AppendRecord( int kind );
+
+	// Occlusion queries: one pool slot per query object. `issued` counts begins
+	// recorded; `submitted` is the issue whose frame was last submitted, so a
+	// result is readable only when the two agree.
+	struct OcclusionQuerySlot
+	{
+		bool live = false;
+		uint64_t issued = 0;
+		uint64_t submitted = 0;
+		bool failed = false; // the latest issue cannot produce a result
+	};
+	VkQueryPool m_queryPool = VK_NULL_HANDLE;
+	std::vector<OcclusionQuerySlot> m_querySlots;
+	bool m_preciseOcclusion = false;
+	// Issues replayed into the frame being recorded; marked submitted by EndFrame.
+	std::vector<std::pair<int, uint64_t>> m_replayedQueries;
+	void FailUnsubmittedQueries();
 	void GetTargetExtent( int target, uint32_t *outW, uint32_t *outH ) const;
 	void BeginTargetPass( VkCommandBuffer cmd, int target );
 	void RecordTargetCopy( VkCommandBuffer cmd, int srcTarget, const DynDraw &copy );
