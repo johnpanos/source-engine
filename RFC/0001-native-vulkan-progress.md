@@ -9,28 +9,95 @@ translates the retained D3D9 material implementation to Vulkan; this work is the
 ground-up native path (roadmap R28 bootstrap, then R32 functional MVP). The two
 are separate providers and separate evidence.
 
-## Headline: Portal renders through the native Vulkan backend
+## Correction (2026-09-22): Portal does NOT yet render a real scene
 
-`portal_boot.py` **passes** on this backend: the engine boots with the native
-Vulkan device driving the material system, loads `testchmb_a_00`, renders the
-scene, and the screenshot has real scene detail (32 distinct colors, ~65%
-midtone, `has_scene_detail: True`), exiting cleanly (returncode 0). This is the
-project's own gate for "Portal renders." Reproduce:
+An earlier version of this document claimed `portal_boot.py` "passes" and Portal
+"renders a material-shaded scene." **That was a false positive and is retracted.**
+The `has_scene_detail` gate counts distinct colors / midtone fraction, and it was
+being satisfied by the screenshot buffer being filled with **uninitialized heap
+memory** (the 4-arg `IShaderAPI::ReadPixels` overload the engine's `+screenshot`
+path actually calls was an empty stub, so the TGA was random noise that trivially
+has "32 distinct colors"). Inspecting the actual frame showed multicolor noise,
+not geometry.
 
-```sh
-python3 tools/quality/portal_boot.py --runtime /home/john/source-engine-portal-runtime \
-  --build build --out /tmp/vk_portal --timeout 40   # -> Portal boot: pass
-```
+With the screenshot readback fixed (see below), the gate now correctly reports
+the frame is **near-black / lacks scene detail**: the native backend brings up the
+device, the material system now drives its real draw path, but the **world
+geometry does not yet render** (only a handful of small overlay draws reach the
+mesh path, and the frame's brightest channel is ~5/255). Real Portal rendering
+remains unfinished; the material-math equivalence work below is verified in
+isolation by the oracle, not yet by a real scene.
 
-Getting here required diagnosing and fixing a chain of concrete blockers (physics
-backend providing no collision, the material system's real `SetMode` entry point,
-process-exit shutdown order against a dead Wayland surface, stubbed `ReadPixels`
-screenshot readback, per-draw state batching, and frame-boundary geometry
-clearing) — see "Engine integration" below. Fidelity is not full DXVK/D3D9
-material equivalence: geometry renders with per-draw transforms and a bounded
-native shader/texture path (UnlitGeneric-style `$basetexture` sampling, DXT
-textures), not the complete Source shader library. But a real, material-driven
-Portal scene now renders natively and passes the boot gate.
+### Real bugs found and fixed while chasing this (all genuine improvements)
+
+1. **`ReadPixels` (4-arg `Rect_t`/stride overload) was an empty stub** — the
+   screenshot path wrote nothing, so captures were uninitialized memory (the
+   "noise"/false pass). Now implemented: honors src/dst rects and destination
+   stride, converts format, copies the captured frame.
+2. **The index buffer was discarded** — index `Lock` handed out a single bogus
+   `int` (`m_nIndexSize = 0`), so all authored indices collapsed and `Draw` drew
+   vertices sequentially as a raw triangle list. Now a real index buffer is kept
+   and `Draw` assembles triangles from it (indexed geometry).
+3. **The matrix stack was fully stubbed** — `cModelViewProj` (committed from
+   `MatrixMode`/`LoadMatrix`) never reached the shader, so geometry had no world
+   transform. Now implemented (model/view/proj compose to the MVP; convention
+   matched to CMatRenderContext's transposed hand-off and the GLSL column-vector
+   shader).
+4. **`IsUsingGraphics()` returned `false`** — the material system treated the
+   backend as a headless/null device and skipped drawing entirely (`IMesh::Draw`
+   was never called). Now returns true once the device is up, so the draw path
+   actually runs.
+5. **Common texture formats were skipped** — `BGRX8888` (most opaque textures),
+   `I8`, and `BGR888` uploads were unsupported and dropped. Now handled.
+
+These are real fixes, but they are not yet sufficient for the world to render;
+the remaining gap is the world-surface geometry/material path (and lighting).
+
+### Update: the world geometry now renders through the material path
+
+A second, larger fix wired the **real material draw path**, which was entirely
+bypassed. In the D3D9 backend, `IMesh::Draw` calls `IShaderAPI::DrawMesh` ->
+`material->DrawMesh` -> `CShaderSystem::DrawElements` -> `IShaderAPI::BeginPass`
+(selects the shader) -> the shader sets its constants/textures ->
+`IShaderAPI::RenderPass` (draws the geometry with that state). This backend's
+`CEmptyMesh::Draw` short-circuited all of it, drawing geometry with a fixed
+default shader, so materials never executed (`BeginPass` was never called, only
+`TakeSnapshot`). Now:
+
+- `IShaderAPI::Bind(material)` records the material; `CEmptyMesh::Draw` records the
+  mesh and calls `material->DrawMesh`, running the real shader path; `RenderPass`
+  emits the geometry through the native dynamic path with the shader's selected
+  pipeline, modulation, blend and alpha state.
+- Result: the engine now binds the **real Source world/model shaders**
+  (`LightmappedGeneric`, `vertexlit_and_unlit_generic`, `skin`, `refract`, ...)
+  through `BeginPass`, and the world geometry flows to the GPU — from ~30 overlay
+  draws to **8000+ draws / ~12M vertices per frame**. A diagnostic that forced the
+  textured shader to output a solid color confirmed the geometry **fills the view
+  with the correct transform** (the matrix stack is working for world geometry).
+- Per-draw texture binding was added (each managed texture gets its own descriptor
+  set; each draw binds its own), and the batch `CreateTextures` (which the texture
+  manager uses for most VTFs) was implemented instead of returning null handles.
+
+**Honest remaining gaps (the frame is not yet a recognizable scene):**
+1. **World textures are not resident.** The world's base textures are not being
+   allocated/downloaded through this path, so `CTexture::Bind` takes its
+   not-allocated branch and calls `BindStandardTexture(TEXTURE_WHITE)`, which is a
+   no-op here — leaving the built-in debug texture bound. The world therefore
+   renders as a solid fill of the debug texture's color rather than its real
+   textures. (A white standard texture reveals the lit geometry, but binding it
+   destabilized the boot run and needs the residency/threading path finished.)
+2. **No lighting.** Lightmaps (sampler1) and per-vertex/ambient lighting are not
+   applied; only the base texture stage is sampled.
+3. **Performance.** With ~12M vertices/frame now flowing through the naive
+   per-draw dynamic path (a fresh interleaved vertex vector per draw, per-draw
+   push constants and descriptor binds, re-rendered on demand for the screenshot),
+   `portal_boot` sometimes exceeds its timeout. Batching/static residency is
+   needed.
+
+So the material-system integration is now genuinely exercised end to end (real
+shaders, real geometry, correct transform), which is the substantive unblock; the
+remaining work to a recognizable Portal frame is world-texture residency, lighting,
+and draw-path performance.
 
 ## What is delivered and verified
 
@@ -379,11 +446,76 @@ material-system integration, in dependency order:
 Each step is independently testable the same outcome-driven way (build the
 primitive, drive it, read the pixels back). None is delivered yet.
 
+## Restoring the DXVK compatibility renderer (2026-09-22)
+
+The `vulkan-compat` (shaderapidx9 -> DXVK Native) renderer had stopped working
+entirely. Three independent defects, all now fixed:
+
+1. **The backend was no longer built.** An exploratory change removed
+   `materialsystem/shaderapidx9` from the top `wscript` project list, and its
+   pinned DXVK Native 2.7.1 tree had been deleted along with the build output it
+   lived inside. The SDK is restored from the profile-pinned archive (sha256
+   matches `quality/product_profiles/portal-linux-wayland.json`) and now extracts
+   to a repo-level `dependencies/` directory instead of inside a product's output
+   directory, so one product's staging no longer scans another's dependency.
+2. **Colliding provider entry points.** `shaderapidx9`, `shaderapivulkan`, and
+   `shaderapiempty` each exported `ShaderBackend_Describe`/`ShaderBackend_Create`,
+   and `shaderapivulkan` exported a second `NullShaderBackend_Describe`. A product
+   links several of these at once, so the dynamic linker bound every caller to
+   whichever module it resolved first and the rest became unselectable: the
+   launcher's catalog had exactly one real entry and `-renderer vulkan-compat`
+   reported "not available in this product". Each backend now exports its OWN
+   named entry point (`Dx9ShaderBackend_*`, `NativeVulkanShaderBackend_*`,
+   `NullShaderBackend_Describe`), the composition root enumerates every backend
+   the build linked, and `CMaterialSystem` re-selects the provider it actually
+   bound instead of consulting an ambient symbol.
+3. **Inverted portal occlusion-query guards.** In `PortalRender.cpp`,
+   `AllocPortalViewIDNode` skips creating the query handle under
+   `#ifndef TEMP_DISABLE_PORTAL_VIS_QUERY`, but the three function bodies that
+   consume it guarded their early `return;` the same way, so defining the
+   "disable" macro *enabled* the consumers on a handle that was never created.
+   The D3D9 path survived only because `ShouldUseStencilsToRenderPortals()`
+   returned first; the native backend reports no stencil bits, took the texture
+   path, and segfaulted in `COcclusionQueryMgr::BeginOcclusionQueryDrawing`.
+   Those three guards are now `#ifdef`, so the macro disables the feature
+   consistently with the five call sites that always guarded it correctly.
+
+Evidence: `portal_boot.py --renderer vulkan-compat --require-vulkan
+--require-sdl3 --require-wayland` **passes** on `testchmb_a_01` with a real
+textured, lit frame (1024x768, midtone fraction 0.999, 32 distinct colors). The
+native product boots without the segfault and still fails only its own
+scene-detail gate, which is the open work above. `DXVK_WSI_DRIVER=SDL3` is
+required by both the product and `dxvk_presentation_conformance`; `portal_boot.py`
+sets it only under `--require-vulkan`.
+
+Suites: `material_binding_conformance` 248/0 (both products),
+`builtin_shader_conformance` 298/0, `dxvk_presentation_conformance` 86 checks,
+`material_equivalence_vulkan_conformance` 17/0, `material_facing_vulkan_conformance`
+13/0, `native_vulkan_bringup_conformance` 20/0, `render_backend_vulkan_conformance`
+33/0.
+
+`material_binding_conformance` gained a catalog oracle that mirrors the
+composition root: every linked provider must have a distinct id, module name, and
+**factory pointer**, and each factory must return its own module's services. A
+negative control that adds a duplicate catalog entry (simulating the collision)
+produces 5 failures, so the suite detects exactly this defect class.
+
 ## Configuration notes for follow-up
 
-The working tree is configured for the native-Vulkan product profile
-(`--render-backend=native-vulkan`, `DXVK=False`). An exploratory earlier change
-removed `materialsystem/shaderapidx9` from the top `wscript` project list and
-edited `tools/quality/portal_boot.py`'s physics module argument; those are
-independent of this slice and should be reviewed on their own merits before the
-DXVK compatibility path or the boot harness is relied on again.
+Two product build trees are configured side by side, and the render backend is a
+configure-time choice because each needs a different SDK:
+
+- `build/` — `--platform-provider=sdl3 --render-backend=native-vulkan
+  --build-games=portal --disable-warns -T release -o build`
+- `build-portal-vulkan/` — `--platform-provider=sdl3 --render-backend=vulkan
+  --dxvk-root=dependencies/dxvk-native-2.7.1/usr --build-games=portal
+  --disable-warns -T release -o build-portal-vulkan
+  --prefix=/tmp/source-engine-portal-vulkan`
+
+Reconfiguring does not delete a removed project's `c4che/<project>_cache.py`, and
+`portal_boot.py` reads every cache it finds; a stale one made staging report
+"DXVK staging requires one configured product profile and dependency root".
+Delete the orphaned cache and output directory when a project leaves a product.
+
+`tools/quality/portal_boot.py` also carries an edited physics module argument
+from earlier exploration; that remains independent of this slice.

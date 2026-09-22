@@ -24,13 +24,24 @@ def build(bld):
 			'../../materialsystem/shaderextension_compatibility_host.cpp'],
 		target='shader_extension_conformance', name='shader_extension_conformance',
 		includes=includes, install_path=None)
+	# The catalog check must see exactly the backends this product linked, so it
+	# mirrors the composition root's own link conditions and defines.
+	binding_use = ['materialsystem', 'shaderapiempty', 'tier0', 'vstdlib']
+	binding_defines = list(test_env.DEFINES)
+	if bld.env.DXVK:
+		binding_use += ['shaderapidx9']
+		binding_defines += ['LINKED_DX9_BACKEND']
+	if bld.env.NATIVE_VULKAN:
+		binding_use += ['shaderapivulkan']
+		binding_defines += ['LINKED_NATIVE_VULKAN_BACKEND']
+	if bld.env.SDL3:
+		binding_use += ['SDL3']
 	bld.program(
 		features='cxx', env=test_env.derive(),
 		source=['test_material_binding.cpp'],
 		target='material_binding_conformance', name='material_binding_conformance',
-		includes=includes,
-		use=['materialsystem', 'shaderapiempty', 'tier0', 'vstdlib']
-			+ ([] if bld.env.DEDICATED else ['shaderapidx9']) + (['SDL3'] if bld.env.SDL3 else []),
+		includes=includes, defines=binding_defines,
+		use=binding_use,
 		install_path=None)
 	if not bld.env.DEDICATED:
 		bld.program(

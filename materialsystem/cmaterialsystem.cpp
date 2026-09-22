@@ -529,6 +529,8 @@ CMaterialSystem::CMaterialSystem()
 	m_bThreadHasOwnership = false;
 	m_ThreadOwnershipID = 0;
 	m_pShaderDLL = NULL;
+	m_SelectedShaderProvider = render::LegacyShaderProvider();
+	m_bShaderProviderSelected = false;
 	m_ShaderAPIFactory = NULL;
 	m_BuiltinShaderProvider = BuiltinShaderProvider();
 	m_bBuiltinShadersBound = false;
@@ -630,14 +632,21 @@ bool CMaterialSystem::BindShaderProvider( const render::LegacyShaderProvider &pr
 	delete[] m_pShaderDLL;
 	m_pShaderDLL = description;
 	m_ShaderServices = services;
+	m_SelectedShaderProvider = provider;
+	m_bShaderProviderSelected = true;
 	m_ShaderAPIFactory = LegacyShaderInterface;
 	return true;
 }
 
 CreateInterfaceFn CMaterialSystem::CreateShaderAPI( const char *name )
 {
-	const render::LegacyShaderProvider *provider = ShaderBackend_Describe();
-	if ( !provider || !provider->legacyModuleName )
+	// Legacy ABI entry: it re-selects the backend the composition root already
+	// chose. It must never consult an ambient describe symbol, because a product
+	// that links several backends would resolve that to an arbitrary one.
+	if ( !m_bShaderProviderSelected )
+		return NULL;
+	const render::LegacyShaderProvider *provider = &m_SelectedShaderProvider;
+	if ( !provider->legacyModuleName )
 		return NULL;
 	char moduleName[MAX_PATH];
 	Q_FileBase( name ? name : provider->legacyModuleName, moduleName, sizeof( moduleName ) );

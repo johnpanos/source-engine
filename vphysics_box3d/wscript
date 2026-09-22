@@ -13,13 +13,55 @@ def options(opt):
 def configure(conf):
 	conf.env.append_unique('DEFINES',['VPHYSICS_EXPORTS'])
 
+def build_box3d(bld):
+	# Pinned upstream Box3D (submodule ../box3d at the commit RFC 0004 reviewed)
+	# compiled as a private C17 static library. It keeps upstream's settings:
+	# gnu17 with extensions, hidden visibility, no FMA contraction, and none of
+	# the engine's fast-math flags or engine-wide defines. The source list is
+	# the upstream src/*.c set (verified equal to box3d/src/CMakeLists.txt), so
+	# no second list is maintained here.
+	box3d_env = bld.env.derive()
+	box3d_env.detach()
+	unsafe = ('-ffast-math', '-funsafe-math-optimizations')
+	box3d_env.CFLAGS = [flag for flag in bld.env.CFLAGS if flag not in unsafe] + \
+		['-std=gnu17', '-ffp-contract=off', '-fno-fast-math', '-fvisibility=hidden', '-fPIC']
+	box3d_env.DEFINES = [value for value in bld.env.DEFINES if value == 'NDEBUG']
+
+	root = bld.path.find_dir('../box3d')
+	if not root or not root.find_node('src/core.c'):
+		bld.fatal('Box3D submodule missing: run git submodule update --init box3d')
+
+	bld.stlib(
+		source   = root.ant_glob('src/*.c'),
+		target   = 'box3d_private',
+		name     = 'box3d_private',
+		features = 'c',
+		env      = box3d_env,
+		includes = [root.find_dir('include'), root.find_dir('src')],
+		export_includes = [root.find_dir('include')],
+		install_path = None
+	)
+
 def build(bld):
 	if bld.env.PHYSICS_BACKEND == 'ivp':
 		return
 
+	build_box3d(bld)
+
 	source = [
 		'main.cpp',
+		'legacy_collision.cpp',
+		'physics_collision.cpp',
+		'physics_controllers.cpp',
 		'physics_environment.cpp',
+		'physics_material.cpp',
+		'physics_object.cpp',
+		# Shared authored-keyvalue parser (solid/constraint/vehicle blocks in
+		# .phy/vcollide text). Reused from the vphysics owner so Box3D does not
+		# duplicate that parsing; compiled here against this module's light
+		# cbase.h shim so no IVP header or FP configuration leaks in.
+		'../vphysics/vcollide_parse.cpp',
+		'../public/filesystem_helpers.cpp',
 		'../public/tier0/memoverride.cpp'
 	]
 
@@ -27,10 +69,13 @@ def build(bld):
 		'.',
 		'../public',
 		'../public/tier0',
-		'../public/tier1'
+		'../public/tier1',
+		# Last: supplies vcollide_parse_private.h without shadowing this
+		# module's own cbase.h / physics_*.h (which '.' resolves first).
+		'../vphysics'
 	]
 
-	libs = ['tier0','tier1','tier2','vstdlib']
+	libs = ['tier0','tier1','tier2','vstdlib','mathlib','box3d_private','M']
 
 	bld.shlib(
 		source   = source,

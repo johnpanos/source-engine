@@ -11,6 +11,7 @@
 
 #include "utlvector.h"
 #include "materialsystem/imaterialsystem.h"
+#include "imaterialinternal.h"
 #include "IHardwareConfigInternal.h"
 #include "shadersystem.h"
 #include "shaderapi/ishaderutil.h"
@@ -34,6 +35,12 @@
 // backend genuinely brings up native Vulkan in-process and presents a frame.
 //-----------------------------------------------------------------------------
 static render_vulkan::CVulkanContext g_VulkanContext;
+// Set when a material binds a render-target/framebuffer standard texture (a
+// post-process pass: tonemap, bloom, color correction, framebuffer copy). This
+// backend has no render targets, so those full-screen quads would sample the
+// debug texture and cover the real scene. Skip emitting the next draw when set,
+// leaving the world (drawn straight to the swapchain) visible.
+static bool g_skipPostProcessDraw = false;
 
 //-----------------------------------------------------------------------------
 // The empty mesh
@@ -81,6 +88,12 @@ public:
 	void Draw( int firstIndex, int numIndices );
 
 	void Draw( CPrimList *pPrims, int nPrims );
+
+	// Queue the current geometry (the range recorded by the last Draw) to the
+	// native Vulkan dynamic path, with whatever shader/material state is currently
+	// selected. Called from CShaderAPIVulkan::RenderPass, i.e. AFTER the material's
+	// shader has run BeginPass and set its constants/textures.
+	void EmitToNativeQueue();
 
 	// Copy verts and/or indices to a mesh builder. This only works for temp meshes!
 	virtual void CopyToMeshBuilder( int iStartVert, // Which vertices to copy.
@@ -135,6 +148,9 @@ private:
 	int m_numVerts = 0;
 	// Number of indices the last lock/unlock recorded (0 = non-indexed).
 	int m_numIndices = 0;
+	// Index range recorded by the last Draw() call, replayed by EmitToNativeQueue.
+	int m_drawFirst = 0;
+	int m_drawCount = 0;
 	// Scratch target for vertex components this bounded layout does not carry, so
 	// a mesh builder writing them (with size 0) never corrupts position/color.
 	unsigned char m_dummyComponent[64] = { 0 };
@@ -939,8 +955,20 @@ public:
 	// Gets the bound morph's vertex format; returns 0 if no morph is bound
 	virtual MorphFormat_t GetBoundMorphFormat() { return 0; }
 
-	// Binds a standard texture
-	virtual void BindStandardTexture( Sampler_t stage, StandardTextureId_t id ) {}
+	// Binds a standard texture (lightmaps, and the fallback the material system uses
+	// when a material's real texture is not yet resident). Binding the pre-created
+	// white texture here reveals unresidented surfaces as flat-lit geometry, but it
+	// destabilized the boot run (exit/capture stall), so it is left as a no-op until
+	// the world-texture residency path is finished. See the native Vulkan progress
+	// record for the remaining world-texture work.
+	virtual void BindStandardTexture( Sampler_t stage, StandardTextureId_t id )
+	{
+		// A render-target/framebuffer texture bound to sampler0 marks a post-process
+		// pass this backend cannot reproduce (no render targets). Flag its draw to be
+		// skipped so it does not paint the debug texture over the real scene.
+		if ( stage == SHADER_SAMPLER0 && id >= TEXTURE_FRAME_BUFFER_FULL_TEXTURE_0 )
+			g_skipPostProcessDraw = true;
+	}
 
 	virtual void BindStandardVertexTexture( VertexTextureSampler_t stage, StandardTextureId_t id )
 	{
@@ -1188,7 +1216,10 @@ private:
 static CShaderAPIVulkan g_ShaderAPIEmpty;
 static CShaderShadowVulkan g_ShaderShadow;
 
-static bool CreateNullShaderBackend( render::LegacyShaderServices *services )
+// The null provider belongs to shaderapiempty. This module must not export a
+// second definition of it: a product links both, and duplicate C entry points
+// would leave the dynamic linker to pick one for every caller.
+static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *services )
 {
 	if ( !services )
 		return false;
@@ -1201,22 +1232,16 @@ static bool CreateNullShaderBackend( render::LegacyShaderServices *services )
 	return true;
 }
 
-DLL_EXPORT const render::LegacyShaderProvider *NullShaderBackend_Describe()
+extern "C" DLL_EXPORT bool NativeVulkanShaderBackend_Create(
+    render::LegacyShaderServices *services )
 {
-	static const render::LegacyShaderProvider provider = {
-	    "null", "shaderapiempty", CreateNullShaderBackend };
-	return &provider;
+	return CreateNativeVulkanShaderBackend( services );
 }
 
-extern "C" DLL_EXPORT bool ShaderBackend_Create( render::LegacyShaderServices *services )
-{
-	return CreateNullShaderBackend( services );
-}
-
-extern "C" DLL_EXPORT const render::LegacyShaderProvider *ShaderBackend_Describe()
+extern "C" DLL_EXPORT const render::LegacyShaderProvider *NativeVulkanShaderBackend_Describe()
 {
 	static const render::LegacyShaderProvider provider = {
-	    "native-vulkan", "shaderapivulkan", ShaderBackend_Create };
+	    "native-vulkan", "shaderapivulkan", NativeVulkanShaderBackend_Create };
 	return &provider;
 }
 
@@ -1690,20 +1715,51 @@ void CEmptyMesh::SetPrimitiveType( MaterialPrimitiveType_t type )
 {
 }
 
+// The material and mesh the engine is currently drawing, so IMesh::Draw can run
+// the real material render path (material -> shader DrawElements -> BeginPass ->
+// RenderPass) exactly as the D3D9 backend does, instead of drawing the geometry
+// with a fixed default shader. Bind() records the material; Draw() records the
+// mesh and kicks the material, whose RenderPass emits the geometry with the
+// material's selected shader, modulation, textures and blend state.
+static IMaterialInternal *g_pBoundMaterial = nullptr;
+static CEmptyMesh *g_pRenderMesh = nullptr;
+
 // Draws the entire mesh
 void CEmptyMesh::Draw( int firstIndex, int numIndices )
 {
-	// Forward the locked position+color vertices to the native Vulkan dynamic
-	// mesh path as a triangle list. Bounded slice: fixed built-in shading, not
-	// material shaders (roadmap R32); indices are treated as a straight list.
 	if ( !g_VulkanContext.IsValid() || !g_VulkanContext.DynamicMeshReady() || m_numVerts <= 0 )
 		return;
 
-	// Determine the index range to draw. mesh->Draw() passes (-1, 0) meaning "the
-	// whole mesh"; an explicit range draws a sub-batch. When the mesh carries no
-	// index buffer, fall back to a sequential triangle list over the vertices.
-	int first = ( firstIndex > 0 ) ? firstIndex : 0;
-	int count = ( numIndices > 0 ) ? numIndices : m_numIndices;
+	// Record the index range. mesh->Draw() passes (-1, 0) meaning "the whole mesh".
+	m_drawFirst = ( firstIndex > 0 ) ? firstIndex : 0;
+	m_drawCount = ( numIndices > 0 ) ? numIndices : m_numIndices;
+
+	// Run the real material path: the bound material's shader executes, selecting
+	// its native pipeline and constants via BeginPass, and calls back into
+	// RenderPass -> EmitToNativeQueue to draw this geometry with that state. When no
+	// material is bound, emit directly with the default (vertex-color) shader.
+	g_pRenderMesh = this;
+	if ( g_pBoundMaterial )
+		g_pBoundMaterial->DrawMesh( VERTEX_COMPRESSION_NONE );
+	else
+		EmitToNativeQueue();
+	g_pRenderMesh = nullptr;
+}
+
+void CEmptyMesh::EmitToNativeQueue()
+{
+	if ( !g_VulkanContext.IsValid() || !g_VulkanContext.DynamicMeshReady() || m_numVerts <= 0 )
+		return;
+	// Skip a post-process pass that samples a render target this backend lacks, so
+	// it does not cover the real scene with the debug texture.
+	if ( g_skipPostProcessDraw )
+	{
+		g_skipPostProcessDraw = false;
+		return;
+	}
+
+	const int first = m_drawFirst;
+	const int count = m_drawCount;
 
 	auto appendVertex = [&]( std::vector<float> &out, int v )
 	{
@@ -2004,7 +2060,10 @@ bool CShaderAPIVulkan::DoRenderTargetsNeedSeparateDepthBuffer() const
 // Can we download textures?
 bool CShaderAPIVulkan::CanDownloadTextures() const
 {
-	return false;
+	// True once the device is up: CTexture::Download gates every material texture
+	// download on this, so returning false leaves all world/model VTFs unresident
+	// (they fall back to the debug texture). This is a real rendering backend.
+	return g_VulkanContext.IsValid();
 }
 
 // Used to clear the transition table when we know it's become invalid.
@@ -2355,6 +2414,24 @@ struct VsConstantFile
 {
 	float regs[kVsRegCount][4] = {};
 	bool written[kVsRegCount] = {};
+
+	VsConstantFile()
+	{
+		// Only the UnlitGeneric family publishes its modulation and base-texture
+		// transform through c37/c38-c39. Every other Source shader
+		// (LightmappedGeneric, VertexLitGeneric, ...) leaves those registers
+		// untouched, and the native textured pipeline multiplies by them
+		// unconditionally -- so a zero-initialized register file renders the
+		// whole world black and collapses every UV to the origin. Start them at
+		// the neutral values instead: modulation white, texture transform
+		// identity. A shader that does set them still overrides these.
+		regs[kVsRegModulationColor][0] = 1.0f;
+		regs[kVsRegModulationColor][1] = 1.0f;
+		regs[kVsRegModulationColor][2] = 1.0f;
+		regs[kVsRegModulationColor][3] = 1.0f;
+		regs[kVsRegBaseTexTransform][0] = 1.0f;
+		regs[kVsRegBaseTexTransform + 1][1] = 1.0f;
+	}
 };
 VsConstantFile g_vsConstants;
 
@@ -2368,12 +2445,12 @@ void CommitDynamicVsConstants()
 	else if ( g_vsConstants.written[kVsRegModelViewProjLegacy] )
 		g_VulkanContext.SetDynamicTransform( &g_vsConstants.regs[kVsRegModelViewProjLegacy][0] );
 
-	if ( g_vsConstants.written[kVsRegModulationColor] )
-		g_VulkanContext.SetDynamicModulation( &g_vsConstants.regs[kVsRegModulationColor][0] );
-
-	if ( g_vsConstants.written[kVsRegBaseTexTransform] )
-		g_VulkanContext.SetDynamicBaseTexTransform( &g_vsConstants.regs[kVsRegBaseTexTransform][0],
-		    &g_vsConstants.regs[kVsRegBaseTexTransform + 1][0] );
+	// Always commit these: the register file holds neutral defaults for shaders
+	// that never set them, so the draw is modulated by white through an identity
+	// texture transform rather than by an unwritten (zero) register.
+	g_VulkanContext.SetDynamicModulation( &g_vsConstants.regs[kVsRegModulationColor][0] );
+	g_VulkanContext.SetDynamicBaseTexTransform( &g_vsConstants.regs[kVsRegBaseTexTransform][0],
+	    &g_vsConstants.regs[kVsRegBaseTexTransform + 1][0] );
 }
 
 // Classify the recorded blend state into the native compositing mode, matching
@@ -2567,6 +2644,9 @@ void CShaderAPIVulkan::ShadeMode( ShaderShadeMode_t mode )
 // Binds a particular material to render with
 void CShaderAPIVulkan::Bind( IMaterial *pMaterial )
 {
+	// Record the material so IMesh::Draw can run its shader through the real
+	// material path (see CEmptyMesh::Draw / RenderPass).
+	g_pBoundMaterial = static_cast<IMaterialInternal *>( pMaterial );
 }
 
 // Cull mode
@@ -2722,18 +2802,19 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	if ( index < g_snapshotShaders.size() )
 	{
 		const std::string &name = g_snapshotShaders[index];
-		int shader = render_vulkan::CVulkanContext::kDynShaderPassthrough;
-		// Map the bound shader name to a native pipeline. Real Source shader names
-		// (e.g. "unlitgeneric_ps20b") are matched by prefix -- UnlitGeneric samples
-		// $basetexture with the material transform, which the textured pipeline
-		// implements natively. The bounded catalog names remain for the harness.
+		// Map the bound shader to a native pipeline. The test-catalog names keep
+		// their bespoke pipelines; every real Source material shader
+		// (LightmappedGeneric, VertexLitGeneric/vertexlit_and_unlit_generic, World,
+		// UnlitGeneric, ...) samples a base texture, so it routes to the textured
+		// pipeline, which samples $basetexture (bound to sampler0) with the material
+		// transform and modulation. Lightmaps/bump/env are not yet applied.
+		int shader = render_vulkan::CVulkanContext::kDynShaderTextured;
 		if ( name == "greenify" )
 			shader = render_vulkan::CVulkanContext::kDynShaderGreenify;
 		else if ( name == "constantcolor" )
 			shader = render_vulkan::CVulkanContext::kDynShaderConstColor;
-		else if ( name == "basetexture" || name == "$basetexture" ||
-		          name.compare( 0, 12, "unlitgeneric" ) == 0 )
-			shader = render_vulkan::CVulkanContext::kDynShaderTextured;
+		else if ( name == "vertexcolor" || name == "vertex_passthrough" )
+			shader = render_vulkan::CVulkanContext::kDynShaderPassthrough;
 		g_VulkanContext.SelectDynamicShader( shader );
 	}
 	// Apply the blend mode this snapshot recorded (opaque/translucent/additive).
@@ -2744,9 +2825,13 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 		g_VulkanContext.SelectDynamicAlphaTest( g_snapshotAlphaRef[index] );
 }
 
-// Renders a single pass of a material
+// Renders a single pass of a material. The material's shader has, by now, run
+// BeginPass (selecting the native pipeline + blend + alpha) and set its dynamic
+// constants and textures. Emit the current mesh's geometry with that state.
 void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 {
+	if ( g_pRenderMesh )
+		g_pRenderMesh->EmitToNativeQueue();
 }
 
 // stuff related to matrix stacks. These drive the model/view/projection matrices
@@ -3058,8 +3143,15 @@ static ShaderAPITextureHandle_t g_currentModifyTexture = 0;
 
 void CShaderAPIVulkan::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t textureHandle )
 {
-	// Point the textured material shader at the bound texture (1-based handle;
-	// 0 restores the built-in). Bounded slice: a single sampler stage.
+	// Point the textured material shader at the base texture (sampler0). Other
+	// stages (lightmap on sampler1, bump, env) are not yet sampled, so ignore them
+	// -- otherwise a later stage's texture would overwrite the base texture.
+	if ( stage != SHADER_SAMPLER0 )
+		return;
+	// A real material texture bind means this is not a render-target post-process
+	// pass; clear any pending skip.
+	g_skipPostProcessDraw = false;
+	// 1-based handle; 0 restores the built-in.
 	g_VulkanContext.BindManagedTexture( static_cast<int>( textureHandle ) - 1 );
 }
 
@@ -3240,8 +3332,13 @@ void CShaderAPIVulkan::CreateTextures( ShaderAPITextureHandle_t *pHandles, int c
     int height, int depth, ImageFormat dstImageFormat, int numMipLevels, int numCopies, int flags,
     const char *pDebugName, const char *pTextureGroupName )
 {
+	// The material system's texture manager creates most textures (all world/model
+	// VTFs) through this batch call, not the single CreateTexture -- so it must
+	// create real native textures, or nothing samples and the world renders with
+	// the built-in fallback. Create one managed texture per handle.
 	for ( int k = 0; k < count; ++k )
-		pHandles[k] = 0;
+		pHandles[k] = CreateTexture( width, height, depth, dstImageFormat, numMipLevels, numCopies,
+		    flags, pDebugName, pTextureGroupName );
 }
 
 ShaderAPITextureHandle_t CShaderAPIVulkan::CreateDepthTexture(

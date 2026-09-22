@@ -62,15 +62,20 @@ def build(bld):
 	defines = []
 
 	libs = ['tier0','tier1','tier2','vstdlib','mathlib','bitmap','shaderlib','vtf']
+	# A client links every backend it can offer and its composition root selects
+	# one at runtime (-renderer). Each backend exports its own named entry point,
+	# so linking several does not make them shadow each other.
 	if bld.env.DEDICATED:
 		libs += ['shaderapiempty']
-	elif bld.env.NATIVE_VULKAN:
-		libs += ['shaderapivulkan']
 	else:
-		libs += ['shaderapidx9']
-	if not bld.env.DEDICATED and not bld.env.NATIVE_VULKAN:
 		libs += ['stdshader_dx9']
 		defines += ['LINKED_STANDARD_SHADERS']
+		if bld.env.DXVK:
+			libs += ['shaderapidx9']
+			defines += ['LINKED_DX9_BACKEND']
+		if bld.env.NATIVE_VULKAN:
+			libs += ['shaderapivulkan']
+			defines += ['LINKED_NATIVE_VULKAN_BACKEND']
 
 	install_path = bld.env.LIBDIR
 

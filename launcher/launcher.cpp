@@ -868,9 +868,20 @@ bool CSourceAppSystemGroup::Create()
 
 	// The selected renderer is a linked, typed capability. Configuration belongs
 	// to this composition root; the material consumer receives only its services.
+	// Every backend this product links is offered through its OWN named entry
+	// point, so -renderer can select any of them. They must not share a C
+	// entry-point name; see legacy_shader_provider.h. The first entry is the
+	// default when -renderer is absent.
 	const render::LegacyShaderProvider *catalog[] = {
-		ShaderBackend_Describe(), NullShaderBackend_Describe()
-	};
+#if defined( LINKED_DX9_BACKEND )
+	    Dx9ShaderBackend_Describe(),
+#endif
+#if defined( LINKED_NATIVE_VULKAN_BACKEND )
+	    // Opt-in only (RFC 0001 R32); the compatibility path stays the default
+	    // wherever it is linked, so it is listed first above.
+	    NativeVulkanShaderBackend_Describe(),
+#endif
+	    NullShaderBackend_Describe() };
 	const char *defaultProvider = CommandLine()->FindParm( "-noshaderapi" ) ? "null" : catalog[0]->id;
 	const char *requested = CommandLine()->ParmValue( "-renderer", defaultProvider );
 	const render::LegacyShaderProvider *selected = NULL;

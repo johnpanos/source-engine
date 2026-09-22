@@ -454,6 +454,10 @@ def main(argv=None):
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=180)
     parser.add_argument("--map", default="testchmb_a_00")
+    parser.add_argument("--physics", default="vphysics",
+                        help="physics provider module name (e.g. vphysics, vphysics_box3d)")
+    parser.add_argument("--renderer", default=None,
+                        help="render provider id (e.g. vulkan-compat, native-vulkan); engine default if unset")
     parser.add_argument("--width", type=int, default=1024)
     parser.add_argument("--height", type=int, default=768)
     for name in ("vulkan", "sdl3", "wayland"):
@@ -461,6 +465,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.timeout <= 0 or not re.fullmatch(r"[a-zA-Z0-9_]+", args.map):
         parser.error("timeout must be positive and map must be a simple map name")
+    if not re.fullmatch(r"[a-zA-Z0-9_]+", args.physics):
+        parser.error("physics must be a simple module name")
+    if args.renderer is not None and not re.fullmatch(r"[a-zA-Z0-9_-]+", args.renderer):
+        parser.error("renderer must be a simple provider id")
     if not (64 <= args.width <= 8192 and 64 <= args.height <= 8192):
         parser.error("capture dimensions must be between 64 and 8192")
     output = args.out.resolve()
@@ -485,11 +493,13 @@ def main(argv=None):
                                    for path in [executable] + sorted((stage / "bin").glob("*.so"))
                                    + sorted((stage / "portal/bin").glob("*.so"))}
         command = [str(executable), "-game", "portal", "-windowed", "-w", str(args.width), "-h", str(args.height),
-                   "-novid", "-insecure", "-console", "-condebug", "-dev", "-physics", "vphysics",
+                   "-novid", "-insecure", "-console", "-condebug", "-dev", "-physics", args.physics,
                    "+sv_cheats", "1", "+mat_queue_mode", "0", "+fps_max", "60", "+map", args.map,
                    "+wait", "180", "+status", "+hideconsole", "+developer", "0",
                    "+wait", "600", "+screenshot", "+mat_spewvertexandpixelshaders",
                    "+wait", "10", "+quit"]
+        if args.renderer:
+            command[1:1] = ["-renderer", args.renderer]
         if args.resize_stress:
             # Cmd_Exec_f evaluates separate file lines immediately. A single
             # semicolon-delimited line is parsed as one delayed command sequence,

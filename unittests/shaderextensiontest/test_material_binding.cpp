@@ -43,6 +43,61 @@ void Check( bool passed, const char *condition, int line )
 
 #define CHECK( condition ) Check( ( condition ), #condition, __LINE__ )
 
+// A product links several backends at once and its composition root selects one
+// by id at runtime. Each backend must therefore stay independently reachable: if
+// two of them exported the same C entry point, the dynamic linker would bind
+// every caller to whichever module it resolved first and the others would be
+// silently unselectable. Distinct ids AND distinct factories are what make the
+// catalog a real choice, so check both across every linked provider.
+void CheckProviderCatalogIsDistinct()
+{
+	const render::LegacyShaderProvider *catalog[] = {
+#if defined( LINKED_DX9_BACKEND )
+	    Dx9ShaderBackend_Describe(),
+#endif
+#if defined( LINKED_NATIVE_VULKAN_BACKEND )
+	    NativeVulkanShaderBackend_Describe(),
+#endif
+	    NullShaderBackend_Describe() };
+	const int count = (int)( sizeof( catalog ) / sizeof( catalog[0] ) );
+	for ( int i = 0; i < count; ++i )
+	{
+		CHECK( catalog[i] != NULL );
+		if ( !catalog[i] )
+			return;
+		CHECK( catalog[i]->id && catalog[i]->id[0] );
+		CHECK( catalog[i]->legacyModuleName && catalog[i]->legacyModuleName[0] );
+		CHECK( catalog[i]->create != NULL );
+	}
+	for ( int i = 0; i < count; ++i )
+	{
+		for ( int j = i + 1; j < count; ++j )
+		{
+			CHECK( std::strcmp( catalog[i]->id, catalog[j]->id ) != 0 );
+			CHECK( std::strcmp( catalog[i]->legacyModuleName, catalog[j]->legacyModuleName ) != 0 );
+			// The decisive one: a shared factory pointer means the entry points
+			// collided and both ids now name the same backend.
+			CHECK( catalog[i]->create != catalog[j]->create );
+		}
+	}
+	// Each factory must supply its own module's services, not another's.
+	for ( int i = 0; i < count; ++i )
+	{
+		render::LegacyShaderServices services;
+		CHECK( catalog[i]->create( &services ) );
+		CHECK( services.IsComplete() );
+		for ( int j = 0; j < count; ++j )
+		{
+			if ( j == i )
+				continue;
+			render::LegacyShaderServices other;
+			if ( !catalog[j]->create( &other ) )
+				continue;
+			CHECK( services.api != other.api );
+		}
+	}
+}
+
 bool CountingFactory( render::LegacyShaderServices *services )
 {
 	++g_FactoryCalls;
@@ -157,7 +212,16 @@ void Run()
 	CHECK( SDL_WasInit( SDL_INIT_VIDEO ) == 0 );
 #endif
 	IMaterialSystem *material = MaterialSystem_Create();
-	const render::LegacyShaderProvider *actual = ShaderBackend_Describe();
+	CheckProviderCatalogIsDistinct();
+	// The graphics backend this product actually linked, whichever it is.
+	const render::LegacyShaderProvider *actual =
+#if defined( LINKED_DX9_BACKEND )
+	    Dx9ShaderBackend_Describe();
+#elif defined( LINKED_NATIVE_VULKAN_BACKEND )
+	    NativeVulkanShaderBackend_Describe();
+#else
+	    NullShaderBackend_Describe();
+#endif
 	CHECK( material != NULL );
 	CHECK( actual != NULL );
 	if ( !material || !actual )

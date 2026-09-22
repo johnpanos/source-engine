@@ -428,16 +428,24 @@ private:
 	VkDescriptorSet m_dynTexDescSet = VK_NULL_HANDLE;
 	// Material-supplied textures (IShaderAPI). The descriptor set points at the
 	// bound one, or the built-in 2-tone texture when none is bound.
+	enum
+	{
+		kMaxManagedTexSets = 8192
+	};
 	struct ManagedTexture
 	{
 		VkImage image = VK_NULL_HANDLE;
 		VkDeviceMemory memory = VK_NULL_HANDLE;
 		VkImageView view = VK_NULL_HANDLE;
+		// Per-texture descriptor set, so each draw can bind its own texture.
+		VkDescriptorSet descSet = VK_NULL_HANDLE;
 		uint32_t width = 0;
 		uint32_t height = 0;
 		VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
 	};
 	std::vector<ManagedTexture> m_managedTextures;
+	// The managed texture currently bound (BindManagedTexture); captured per draw.
+	int m_dynBoundTexHandle = -1;
 	// Column-major model->projection matrix; identity by default.
 	float m_dynTransform[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	VkBuffer m_dynVertexBuffer = VK_NULL_HANDLE;
@@ -463,6 +471,7 @@ private:
 		float texXform1[4] = { 0, 1, 0, 0 };
 		int blendMode = 0;      // kDynBlendOpaque
 		float alphaRef = -1.0f; // $alphatest reference; < 0 disables
+		int texHandle = -1;     // managed texture bound at this draw (-1 = built-in)
 	};
 	std::vector<DynDraw> m_dynDrawRecords;
 

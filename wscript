@@ -68,8 +68,9 @@ projects={
 		'launcher_main',
 		'materialsystem',
 		'materialsystem/shaderapiempty',
-		'materialsystem/shaderapivulkan',
-
+		# Each graphics backend is added below only when its product configured
+		# the SDK it needs (DXVK Native for shaderapidx9, the Vulkan SDK for
+		# shaderapivulkan). The composition root offers whichever were linked.
 		'materialsystem/shaderlib',
 		'materialsystem/stdshaders',
 		'mathlib',
@@ -157,7 +158,6 @@ projects={
 		'particles',
 		'scenefilecache',
 		'materialsystem/shaderapiempty',
-		'materialsystem/shaderapivulkan',
 		'materialsystem/shaderlib',
 		'soundemittersystem',
 		'studiorender',
@@ -737,8 +737,11 @@ def configure(conf):
 		if conf.env.SDL3:
 			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest',
 				'unittests/moduleloadfixture', 'unittests/moduleloadshutdownfixture']
+		if conf.env.DXVK:
+			projects['game'] += ['materialsystem/shaderapidx9']
 		if conf.env.NATIVE_VULKAN:
-			projects['game'] += ['unittests/shaderapivulkantest']
+			projects['game'] += ['materialsystem/shaderapivulkan', 'unittests/shaderapivulkantest']
+		projects['game'] += ['unittests/physicstest']
 		if conf.env.VIDEO_BINK:
 			projects['game'] += ['video/video_bink']
 		conf.add_subproject(projects['game'])
@@ -774,8 +777,11 @@ def build(bld):
 		if bld.env.SDL3:
 			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest',
 				'unittests/moduleloadfixture', 'unittests/moduleloadshutdownfixture']
+		if bld.env.DXVK:
+			projects['game'] += ['materialsystem/shaderapidx9']
 		if bld.env.NATIVE_VULKAN:
-			projects['game'] += ['unittests/shaderapivulkantest']
+			projects['game'] += ['materialsystem/shaderapivulkan', 'unittests/shaderapivulkantest']
+		projects['game'] += ['unittests/physicstest']
 		if bld.env.TOGLES:
 			projects['game'] += ['togles']
 		elif bld.env.GL:

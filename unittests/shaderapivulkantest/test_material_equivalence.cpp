@@ -106,9 +106,10 @@ int main()
 	}
 
 	render::LegacyShaderServices services;
-	if ( !ShaderBackend_Create( &services ) || !services.IsComplete() )
+	if ( !NativeVulkanShaderBackend_Create( &services ) || !services.IsComplete() )
 	{
-		std::fprintf( stderr, "FAIL: ShaderBackend_Create did not return complete services\n" );
+		std::fprintf(
+		    stderr, "FAIL: NativeVulkanShaderBackend_Create did not return complete services\n" );
 		SDL_DestroyWindow( window );
 		SDL_Quit();
 		return 1;

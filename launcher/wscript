@@ -44,7 +44,16 @@ def build(bld):
 	libs = ['tier0','tier1','tier2','tier3','vstdlib','steam_api','appframework','SDL2','togl', 'UNWIND']
 	if bld.env.DXVK:
 		libs.remove('togl')
-	libs += ['shaderapidx9', 'shaderapiempty', 'stdshader_dx9', 'vaudio_minimp3']
+	libs += ['shaderapiempty', 'stdshader_dx9', 'vaudio_minimp3']
+	# The composition root offers every backend this product linked through
+	# -renderer. Each is built only when its SDK was configured, so guard both
+	# the link and the catalog entry on the same condition.
+	if bld.env.DXVK:
+		libs += ['shaderapidx9']
+		defines += ['LINKED_DX9_BACKEND']
+	if bld.env.NATIVE_VULKAN:
+		libs += ['shaderapivulkan']
+		defines += ['LINKED_NATIVE_VULKAN_BACKEND']
 	if bld.env.OPUS or bld.env.DEST_OS == 'android':
 		libs += ['vaudio_opus']
 	libs += ['engine', 'inputsystem', 'materialsystem', 'datacache', 'studiorender',

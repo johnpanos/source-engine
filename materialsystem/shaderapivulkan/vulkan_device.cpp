@@ -2346,12 +2346,15 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 			SetError( outError, "vkCreateDescriptorSetLayout (dynamic texture) failed" );
 			return false;
 		}
+		// One combined-image-sampler set for the built-in texture plus one per
+		// material-supplied managed texture, so each draw can sample its own texture
+		// (per-draw binding). Sized for a map's texture set.
 		VkDescriptorPoolSize ps = {};
 		ps.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		ps.descriptorCount = 1;
+		ps.descriptorCount = kMaxManagedTexSets;
 		VkDescriptorPoolCreateInfo dp = {};
 		dp.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		dp.maxSets = 1;
+		dp.maxSets = kMaxManagedTexSets;
 		dp.poolSizeCount = 1;
 		dp.pPoolSizes = &ps;
 		if ( vkCreateDescriptorPool( m_device, &dp, nullptr, &m_dynTexDescPool ) != VK_SUCCESS )
@@ -2568,6 +2571,33 @@ int CVulkanContext::CreateManagedTexture(
 		return -1;
 	}
 
+	// Allocate this texture's own descriptor set (if the pool/layout are ready and
+	// have room), so per-draw texture binding can point each draw at its texture.
+	if ( m_dynTexDescLayout != VK_NULL_HANDLE && m_dynTexDescPool != VK_NULL_HANDLE &&
+	     m_managedTextures.size() + 1 < kMaxManagedTexSets )
+	{
+		VkDescriptorSetAllocateInfo da = {};
+		da.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		da.descriptorPool = m_dynTexDescPool;
+		da.descriptorSetCount = 1;
+		da.pSetLayouts = &m_dynTexDescLayout;
+		if ( vkAllocateDescriptorSets( m_device, &da, &t.descSet ) == VK_SUCCESS )
+		{
+			VkDescriptorImageInfo dii = {};
+			dii.sampler = m_dynTexSampler;
+			dii.imageView = t.view;
+			dii.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			VkWriteDescriptorSet wds = {};
+			wds.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			wds.dstSet = t.descSet;
+			wds.dstBinding = 0;
+			wds.descriptorCount = 1;
+			wds.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			wds.pImageInfo = &dii;
+			vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
+		}
+	}
+
 	m_managedTextures.push_back( t );
 	return static_cast<int>( m_managedTextures.size() - 1 );
 }
@@ -2632,33 +2662,11 @@ bool CVulkanContext::UploadManagedTexture(
 
 void CVulkanContext::BindManagedTexture( int handle )
 {
-	if ( m_dynTexDescSet == VK_NULL_HANDLE )
-		return;
-	// Point the textured material shader's sampler at the bound texture (or the
-	// built-in 2-tone texture when handle < 0). Bounded slice: updates the shared
-	// descriptor set directly; per-frame descriptor sets are later work.
-	VkImageView view = m_dynTexView; // built-in default
-	if ( handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) )
-		view = m_managedTextures[static_cast<size_t>( handle )].view;
-	if ( view == VK_NULL_HANDLE )
-		return;
-
-	// Safe without a wait: geometry is recorded at Present() time, so descriptor
-	// updates during the engine's draw phase happen before any command buffer
-	// binds this set. (Per-draw texture selection is future work; the last bind
-	// before Present applies to the frame's textured draws.)
-	VkDescriptorImageInfo dii = {};
-	dii.sampler = m_dynTexSampler;
-	dii.imageView = view;
-	dii.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	VkWriteDescriptorSet wds = {};
-	wds.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	wds.dstSet = m_dynTexDescSet;
-	wds.dstBinding = 0;
-	wds.descriptorCount = 1;
-	wds.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	wds.pImageInfo = &dii;
-	vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
+	// Just record which managed texture is bound; each queued draw captures this
+	// handle (QueueDynamicTriangles) and binds that texture's own descriptor set at
+	// replay, so different objects in a frame sample their own textures. A handle
+	// with no allocated descriptor set (or < 0) falls back to the built-in texture.
+	m_dynBoundTexHandle = handle;
 }
 
 void CVulkanContext::QueueDynamicTriangles( const float *posColorInterleaved, uint32_t vertexCount )
@@ -2679,6 +2687,7 @@ void CVulkanContext::QueueDynamicTriangles( const float *posColorInterleaved, ui
 	std::memcpy( d.texXform1, m_dynTexXform1, sizeof( d.texXform1 ) );
 	d.blendMode = m_dynBlendMode;
 	d.alphaRef = m_dynAlphaRef;
+	d.texHandle = m_dynBoundTexHandle;
 	m_dynDrawRecords.push_back( d );
 	m_dynQueued.insert( m_dynQueued.end(), posColorInterleaved,
 	    posColorInterleaved + static_cast<size_t>( vertexCount ) * 8 );
@@ -3021,8 +3030,19 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					boundPipeline = selected;
 				}
 				if ( textured )
+				{
+					// Bind this draw's own texture descriptor set (per-draw texture),
+					// falling back to the built-in set when the draw has no managed
+					// texture or its set was not allocated.
+					VkDescriptorSet set = m_dynTexDescSet;
+					if ( d.texHandle >= 0 &&
+					     d.texHandle < static_cast<int>( m_managedTextures.size() ) &&
+					     m_managedTextures[static_cast<size_t>( d.texHandle )].descSet !=
+					         VK_NULL_HANDLE )
+						set = m_managedTextures[static_cast<size_t>( d.texHandle )].descSet;
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					    m_dynTexPipelineLayout, 0, 1, &m_dynTexDescSet, 0, nullptr );
+					    m_dynTexPipelineLayout, 0, 1, &set, 0, nullptr );
+				}
 				// Push this draw's state. The textured (UnlitGeneric) pipeline reads
 				// the faithful Source block { mat4 cModelViewProj; vec4
 				// cModulationColor; vec4 cBaseTextureTransform[0]; [1] } (28 floats);

@@ -1762,7 +1762,7 @@ static CShaderAPIDx8 g_ShaderAPIDX8;
 IShaderAPIDX8 *g_pShaderAPIDX8 = &g_ShaderAPIDX8;
 CShaderDeviceDx8 *g_pShaderDeviceDx8 = &g_ShaderAPIDX8;
 
-extern "C" DLL_EXPORT bool ShaderBackend_Create( render::LegacyShaderServices *services )
+extern "C" DLL_EXPORT bool Dx9ShaderBackend_Create( render::LegacyShaderServices *services )
 {
 	if ( !services )
 		return false;
@@ -1775,14 +1775,14 @@ extern "C" DLL_EXPORT bool ShaderBackend_Create( render::LegacyShaderServices *s
 	return services->IsComplete();
 }
 
-extern "C" DLL_EXPORT const render::LegacyShaderProvider *ShaderBackend_Describe()
+extern "C" DLL_EXPORT const render::LegacyShaderProvider *Dx9ShaderBackend_Describe()
 {
 #if defined( USE_DXVK )
 	static const render::LegacyShaderProvider provider = {
-	    "vulkan-compat", "shaderapidx9", ShaderBackend_Create };
+	    "vulkan-compat", "shaderapidx9", Dx9ShaderBackend_Create };
 #else
 	static const render::LegacyShaderProvider provider = {
-	    "legacy", "shaderapidx9", ShaderBackend_Create };
+	    "legacy", "shaderapidx9", Dx9ShaderBackend_Create };
 #endif
 	return &provider;
 }

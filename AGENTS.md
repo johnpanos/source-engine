@@ -461,12 +461,27 @@ Current RFC 0001 evidence (2026-09-22):
   material-facing legacy interfaces drive native Vulkan for clear/present, mesh
   geometry, per-draw shader binding/constants/transform, and material-uploaded
   textures (incl. DXT), verified by `material_facing_vulkan_conformance`
-  (13 checks). **`portal_boot.py` now passes on the native Vulkan path**: the
-  engine boots with the native device driving the material system, renders
-  `testchmb_a_00`, and the screenshot has real scene detail, exiting cleanly.
-  Fidelity is not yet full DXVK/D3D9 equivalence (bounded native shader/texture
-  path, not the complete `stdshader_dx9` library), but a material-driven Portal
-  scene renders natively and passes the boot gate. A **material equivalence
+  (13 checks). **Correction:** an earlier claim that `portal_boot.py` passes was a
+  false positive — the screenshot `ReadPixels` overload the engine uses was a stub,
+  so the `has_scene_detail` gate was satisfied by uninitialized-memory noise. With
+  `ReadPixels` fixed the gate correctly reports the frame is near-black: the world
+  geometry does not yet render through the native path. Real bugs fixed while
+  finding this (stub `ReadPixels`, discarded index buffer, stubbed matrix stack,
+  `IsUsingGraphics()` returning false so the material system skipped drawing, and
+  unsupported `BGRX8888`/`I8`/`BGR888` texture uploads) are genuine improvements.
+  A further fix wired the **real material draw path** (`IMesh::Draw` ->
+  `IShaderAPI::Bind`/`DrawMesh` -> `material->DrawMesh` -> `CShaderSystem::DrawElements`
+  -> `BeginPass` -> `RenderPass`), which `CEmptyMesh::Draw` had bypassed entirely:
+  the engine now binds the **real Source world/model shaders** (LightmappedGeneric,
+  vertexlit_and_unlit_generic, ...) and the world geometry flows to the GPU
+  (~30 -> 8000+ draws / ~12M verts/frame) with the correct transform (verified: a
+  forced solid-color shader fills the view). Per-draw texture binding and the batch
+  `CreateTextures` were also implemented. Remaining before a recognizable frame:
+  world-texture residency (base textures aren't downloaded, so surfaces hit the
+  no-op `BindStandardTexture` fallback and render the debug color), lighting
+  (lightmaps unapplied), and draw-path performance (12M verts through the naive
+  per-draw path sometimes exceeds the boot timeout). Conformance suites (equiv 17,
+  facing 13, bringup 20, LSP 33) remain green. A **material equivalence
   oracle** (`material_equivalence_vulkan_conformance`, 14 checks) now measures
   equivalence against the behavior the D3D9 shaders define: the native
   UnlitGeneric path produces `cModulationColor * baseTexture(cBaseTextureTransform

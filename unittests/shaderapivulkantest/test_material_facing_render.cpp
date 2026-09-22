@@ -7,7 +7,7 @@
 //          IShaderDevice::Present, IMesh (lock/write/unlock/draw), and the shader
 //          binding flow (IShaderShadow::SetPixelShader -> IShaderAPI::TakeSnapshot
 //          -> BeginPass) -- obtained from the linked backend via
-//          ShaderBackend_Create, then reads the presented image back.
+//          NativeVulkanShaderBackend_Create, then reads the presented image back.
 //
 //          This is the bridge between the two goal halves: the generalized
 //          backend (render_backend.h, proven substitutable by
@@ -60,9 +60,10 @@ int main()
 
 	// Obtain the material-facing services exactly as composition does.
 	render::LegacyShaderServices services;
-	if ( !ShaderBackend_Create( &services ) || !services.IsComplete() )
+	if ( !NativeVulkanShaderBackend_Create( &services ) || !services.IsComplete() )
 	{
-		std::fprintf( stderr, "FAIL: ShaderBackend_Create did not return complete services\n" );
+		std::fprintf(
+		    stderr, "FAIL: NativeVulkanShaderBackend_Create did not return complete services\n" );
 		SDL_DestroyWindow( window );
 		SDL_Quit();
 		return 1;

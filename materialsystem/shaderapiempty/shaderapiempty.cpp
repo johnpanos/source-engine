@@ -1270,22 +1270,9 @@ static bool CreateNullShaderBackend( render::LegacyShaderServices *services )
 DLL_EXPORT const render::LegacyShaderProvider *NullShaderBackend_Describe()
 {
 	static const render::LegacyShaderProvider provider = {
-		"null", "shaderapiempty", CreateNullShaderBackend
-	};
+	    "null", "shaderapiempty", CreateNullShaderBackend };
 	return &provider;
 }
-
-#if defined( DEDICATED )
-DLL_EXPORT bool ShaderBackend_Create( render::LegacyShaderServices *services )
-{
-	return CreateNullShaderBackend( services );
-}
-
-DLL_EXPORT const render::LegacyShaderProvider *ShaderBackend_Describe()
-{
-	return NullShaderBackend_Describe();
-}
-#endif
 
 // FIXME: Remove; it's for backward compat with the materialsystem only for now
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderAPIEmpty, IShaderAPI, 

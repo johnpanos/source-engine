@@ -38,3 +38,6 @@ waf3*/
 .vscode/
 .depproj/
 source-engine.sln
+
+# Pinned native SDKs fetched by tools/quality/product_profile.py (not sources).
+dependencies/

@@ -5,11 +5,22 @@
 // $NoKeywords: $
 //
 //=============================================================================//
-#include "cbase.h"
+// This shared authored-keyvalue parser has no IVP dependency, so it includes
+// only the tier0/mathlib/tier1 and public vphysics declarations it actually
+// uses instead of the IVP-heavy vphysics/cbase.h. That lets the Box3D provider
+// reuse this one owner (RFC 0004 B3) without inheriting IVP headers or FP
+// configuration; the stock IVP module compiles the same set unchanged.
+#include <stdio.h>
+#include "tier0/dbg.h"
+#include "mathlib/mathlib.h"
+#include "mathlib/vector.h"
+#include "utlvector.h"
+#include "commonmacros.h"
+#include "vphysics_interface.h"
 
 #include "vcollide_parse_private.h"
 
-#include "tier1/strtools.h" 
+#include "tier1/strtools.h"
 #include "vphysics/constraints.h"
 #include "vphysics/vehicles.h"
 #include "filesystem_helpers.h"
@@ -17,6 +28,23 @@
 #include "utlbuffer.h"
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
+// Authored surfaceprop names resolve to indices through whichever provider owns
+// the surface database. The parser stays provider-agnostic: each surface-props
+// implementation registers itself here (see VPhysicsParseSetSurfaceProps) when
+// it parses surface data, and the parser resolves through the public interface.
+// Before any provider registers, unknown names resolve to the default (0).
+static IPhysicsSurfaceProps *s_pParseSurfaceProps = NULL;
+
+void VPhysicsParseSetSurfaceProps( IPhysicsSurfaceProps *pProps )
+{
+	s_pParseSurfaceProps = pProps;
+}
+
+static int ParseSurfaceIndex( const char *pName )
+{
+	return s_pParseSurfaceProps ? s_pParseSurfaceProps->GetSurfaceIndex( pName ) : 0;
+}
 
 static void ReadVector( const char *pString, Vector& out )
 {
@@ -367,7 +395,7 @@ void CVPhysicsParse::ParseSurfaceTable( int *table, IVPhysicsKeyHandler *unknown
 			return;
 		}
 
-		int propIndex = physprops->GetSurfaceIndex( key );
+		int propIndex = ParseSurfaceIndex( key );
 		int tableIndex = atoi(value);
 		if ( tableIndex >= 0 && tableIndex < 128 )
 		{
@@ -484,15 +512,15 @@ void CVPhysicsParse::ParseVehicleWheel( vehicle_wheelparams_t &wheel )
 		}
 		else if ( !Q_stricmp( key, "material" ) )
 		{
-			wheel.materialIndex = physprops->GetSurfaceIndex( value );
+			wheel.materialIndex = ParseSurfaceIndex( value );
 		}
 		else if ( !Q_stricmp( key, "skidmaterial" ) )
 		{
-			wheel.skidMaterialIndex = physprops->GetSurfaceIndex( value );
+			wheel.skidMaterialIndex = ParseSurfaceIndex( value );
 		}
 		else if ( !Q_stricmp( key, "brakematerial" ) )
 		{
-			wheel.brakeMaterialIndex = physprops->GetSurfaceIndex( value );
+			wheel.brakeMaterialIndex = ParseSurfaceIndex( value );
 		}
 	}
 }

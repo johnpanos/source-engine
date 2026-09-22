@@ -635,6 +635,13 @@ private:
 	//---------------------------------
 
 	char *									m_pShaderDLL;
+	// The provider this material system most recently bound, retained across
+	// Disconnect so the legacy SetShaderAPI entry can re-select the SAME backend
+	// by its module name. A product may link several backends, so this must not
+	// be re-derived from an ambient entry point. Copied by value; the id and
+	// module strings belong to the provider's module, which outlives us.
+	render::LegacyShaderProvider m_SelectedShaderProvider;
+	bool m_bShaderProviderSelected;
 	render::LegacyShaderServices m_ShaderServices;
 	BuiltinShaderProvider m_BuiltinShaderProvider;
 	bool m_bBuiltinShadersBound;

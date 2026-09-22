@@ -49,10 +49,16 @@ struct LegacyShaderProvider
 
 } // namespace render
 
-// The build links exactly one implementation. No filename, native handle, or
+// A product may link several backends and let its composition root choose one at
+// runtime, so every implementation exports its OWN named entry point. A shared
+// `ShaderBackend_Describe` would collide across the linked modules and the
+// dynamic linker would silently bind all callers to whichever module it resolved
+// first, making the other backends unselectable. No filename, native handle, or
 // untyped interface registry crosses this boundary.
-extern "C" bool ShaderBackend_Create( render::LegacyShaderServices *services );
-extern "C" const render::LegacyShaderProvider *ShaderBackend_Describe();
+extern "C" const render::LegacyShaderProvider *Dx9ShaderBackend_Describe();
+extern "C" bool Dx9ShaderBackend_Create( render::LegacyShaderServices *services );
+extern "C" const render::LegacyShaderProvider *NativeVulkanShaderBackend_Describe();
+extern "C" bool NativeVulkanShaderBackend_Create( render::LegacyShaderServices *services );
 extern "C" const render::LegacyShaderProvider *NullShaderBackend_Describe();
 extern "C" bool MaterialSystem_BindShaderProvider(
 	IMaterialSystem *materialSystem, const render::LegacyShaderProvider *provider );

@@ -19,6 +19,10 @@ class IVPhysicsKeyParser;
 class CPackedPhysicsDescription;
 
 const char			*ParseKeyvalue( const char *pBuffer, OUT_Z_ARRAY char (&key)[MAX_KEYVALUE], OUT_Z_ARRAY char (&value)[MAX_KEYVALUE] );
+// Register the surface-props owner the parser resolves authored surfaceprop
+// names through. Each vphysics provider (IVP, Box3D) calls this with its own
+// IPhysicsSurfaceProps when it parses surface data.
+void				VPhysicsParseSetSurfaceProps( IPhysicsSurfaceProps *pProps );
 IVPhysicsKeyParser	*CreateVPhysicsKeyParser( const char *pKeyData );
 void				DestroyVPhysicsKeyParser( IVPhysicsKeyParser * );
 const char			*PackVCollideText( IPhysicsCollision *physcollision, const char *pTextIn, int *pSizeOut, bool storeSolidNames, bool storeSurfacepropsAsNames );

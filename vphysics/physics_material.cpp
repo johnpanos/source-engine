@@ -401,6 +401,10 @@ void CPhysicsSurfaceProps::CopyPhysicsProperties( CSurface *pOut, int baseIndex 
 
 int CPhysicsSurfaceProps::ParseSurfaceData( const char *pFileName, const char *pTextfile )
 {
+	// This surface database owns authored-name resolution for the vcollide
+	// parser while the IVP provider is active.
+	VPhysicsParseSetSurfaceProps( this );
+
 	if ( !AddFileToDatabase( pFileName ) )
 	{
 		return 0;
