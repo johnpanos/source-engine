@@ -87,7 +87,14 @@ First-party extensions: `.c`, `.cc`, `.cpp`, `.cxx`, `.h`, `.hh`, `.hpp`, `.inl`
 `thirdparty/`, `external/`, `ivp/`, `lib/`, `common/protobuf-2.3.0/`, `common/lzma/`,
 `utils/lzma/`, `utils/jpeglib/`, `utils/bzip2/`. Git-ignored untracked build outputs
 and submodule contents are not enumerated. Symlinked source paths are rejected,
-not followed; selected sources must be UTF-8. These style exclusions do not waive
+not followed. New and modified text must be UTF-8. Under `--changed`, unchanged
+historical comment/literal lines may retain non-UTF-8 bytes when those exact lines
+exist in the Git comparison baseline. This is a byte-preserving allowance, not
+encoding detection or conversion: current and baseline lexical views use
+surrogate escaping, clang-format receives original bytes, and redirected proposed
+diffs retain those bytes. Invalid code tokens, new/modified non-UTF-8 text, missing
+baselines and malformed formatter XML still fail. Whole-file audits have no
+encoding-baseline allowance. These style exclusions do not waive
 architecture or dependency requirements. Keep generated sources in ignored build
 outputs or document/review any additional narrowly scoped exclusion.
 

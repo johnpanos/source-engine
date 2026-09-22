@@ -48,6 +48,17 @@ released after the query. With capture disabled, no file or native state query
 is created. Enabled capture changes timing and is unsuitable for performance
 measurement.
 
+Names preserve valid UTF-8, including supplementary Unicode characters. A
+malformed input byte uses the JSON surrogateescape convention `\uDC80`–`\uDCFF`;
+this differs from both valid Unicode and a literal backslash sequence. Consumers
+that need original name bytes can encode the decoded string as UTF-8 with
+`surrogateescape`. The analyzer retains these escapes in its JSON report.
+The collector serializes its own records, while request/bind/draw correlation
+still relies on the renderer's existing command sequencing. It does not make
+parallel native device access safe. Render producers must finish before the
+provider's static collector is destroyed; the declared Portal profile uses the
+existing engine shutdown sequence and `mat_queue_mode 0`.
+
 ## Read the report
 
 The JSON report includes aggregate material/target data, capture coverage,

@@ -353,10 +353,10 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 12 / R12 | Dedicated-server composition; 0001 rank 6 | R06, R07, R11 | Installed startup/shutdown and partial failure pass; link/runtime evidence shows render and desktop UI absent | planned |
 | 13 / R13 | Hammer geometry and scene seams; 0002 H1 | R05, R08 | Strict headless targets; geometry/reference/reparent tests and independent documents pass; selected legacy callers route through shared owner | planned |
 | 14 / R14 | Window/input contracts and SDL2 adapter; 0001 rank 7 | R06 | Existing behavior captured and preserved; normalized events, optional behavior, surface ownership and input lifecycle conformance pass | planned |
-| 15 / R15 | Render seam, scoped legacy services and null provider; 0001 rank 8 | R06 | Explicit provider/caps/profile selection; null and legacy contract suites; material consumer tested without new shader globals | planned |
-| 16 / R16 | Pair-specific presentation bridges; 0001 rank 9, 0006 M3 | R14, R15 | Native handles confined; multi-surface resize/zero-size/loss/shutdown pass; delayed GPU completion prevents early reuse | planned |
+| 15 / R15 | Render seam, scoped legacy services and null provider; 0001 rank 8 | R06 | Explicit provider/caps/profile selection; null and legacy contract suites; material consumer tested without new shader globals | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
+| 16 / R16 | Pair-specific presentation bridges; 0001 rank 9, 0006 M3 | R14, R15 | Native handles confined; multi-surface resize/zero-size/loss/shutdown pass; delayed GPU completion prevents early reuse | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
 | 17 / R17 | Hammer real renderer feasibility; 0002 R1 | R08, R15, R16 | Source-material viewport on declared GTK X11/Wayland profiles; state/target restoration, scale, capture, sharing and teardown measured | planned |
-| 18 / R18 | SDL3 provider parity; 0001 rank 10 | R14, R16 | Same window/input suites and representative behavior pass for SDL2/SDL3; SDK dependency is private; supported interop pairs tested | planned |
+| 18 / R18 | SDL3 provider parity; 0001 rank 10 | R14, R16 | Same window/input suites and representative behavior pass for SDL2/SDL3; SDK dependency is private; supported interop pairs tested | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
 | 19 / R19 | Box3D one-worker vertical slice; 0004 B | R05, R09 | Pinned coherent provider loads existing BSP/PHY, compound prop, inside trace, verified impact, ragdoll and matching-schema restore | planned |
 | 20 / R20 | Parallel scheduler and controlled legacy bridge; 0003 C, 0006 M2 | R10 | Bounded queue/worker contracts, publication/wake/overflow and native stress pass; no forbidden helping/nested wait; total capacity and overhead measured | planned |
 | 21 / R21 | Particle reference migration; 0003 D | R20 | Legacy/serial/parallel captured outputs agree; attachment/lifetime tests, improvement and small-workload budgets pass; quiescent rollback works | planned |
@@ -365,7 +365,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 24 / R24 | Hammer tools and presenters; 0002 H4 | R23 | Normalized traces share policies across entry points; two-document and close/focus/capture tests pass; no widgets in tools/presenters | planned |
 | 25 / R25 | GTK editor workflow; 0002 H5 | R17, R22, R24 | Open/edit/undo/save/reopen/compile/run with multiple views, inspector and textures; declared fidelity and no hidden MFC runtime dependency | planned |
 | 26 / R26 | Remaining foundation providers; 0001 rank 12 | R10, R11 | Native clock/thread/memory/process/environment/paths/diagnostics suites pass for supported profiles, including failure and cleanup | planned |
-| 27 / R27 | Vulkan compatibility waypoint; 0001 rank 13 | R10, R16, R18 | Deployment, shader artifacts, profile selection and SDL3 presentation proven by a measured compatibility experiment; limitations recorded | planned |
+| 27 / R27 | Vulkan compatibility waypoint; 0001 rank 13 | R10, R16, R18 | Deployment, shader artifacts, profile selection and SDL3 presentation proven by a measured compatibility experiment; limitations recorded | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
 | 28 / R28 | Native Vulkan bootstrap; 0001 rank 14 | R10, R16, R18 | Native adapter/device/queues and SDL3 bridge present smoke frame; required-profile failure and validation diagnostics work | planned |
 | 29 / R29 | Four-platform architecture proof; 0001 rank 15 expanded to Linux/macOS/iOS/Android | R12, R18, R26, R28 | Each target passes foundation and SDL3/Vulkan native lifecycle smoke; Apple portability, iOS static composition and mobile packaging demonstrated; headless roles tested where declared | planned |
 | 30 / R30 | Existing parallel kernels; 0003 E | R21 | Each bones/query-cache/entity-packing/leaf/shadow cohort independently passes three-mode, ownership, latency/performance and rollback gates | planned |
@@ -377,7 +377,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 36 / R36 | Vulkan parity and four-platform release readiness; 0001 rank 17 | R29, R32 | Per-platform materials/images, loss/recovery, cache, hardware budgets and normal package/store-compatibility checks pass; default selection is a separate product decision | planned |
 | 37 / R37 | Physics parallel rollout and default gate; 0004 E | R20, R34 | Worker-count determinism, nested-work/callback/shutdown bridge, platform packaging, budgets and supported client/server combinations pass; IVP rollback tested | planned |
 | 38 / R38 | Stateful scheduling migrations; 0003 G | R30, R35, R37 | Snapshot-send ownership and selected entity/physics cohorts preserve legacy observations/order or record intentional change; network/latency/lifetime gates pass | planned |
-| 39 / R39 | First-party module retirement; 0001 rank 18 / retirement B–D | R12, R18 | Pseudo-modules removed; mandatory systems and provider catalogs use typed linked factories; no filename/string discovery for migrated services | planned |
+| 39 / R39 | First-party module retirement; 0001 rank 18 / retirement B–D | R12, R18 | Pseudo-modules removed; mandatory systems and provider catalogs use typed linked factories; no filename/string discovery for migrated services | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
 | 40 / R40 | Tool executable/process cleanup; 0001 rank 19 / retirement E | R11, R12, R22 | Launchable-DLL wrappers retired by cohort; structured argv/process protocol, outputs/cancellation and required compiler workflows pass; integrations tool-only | planned |
 | 41 / R41 | Extension hosts and public-loader removal; 0001 rank 20 / retirement F–G | R07, R11, R39, R40 | Family-owned versioned ABI/trust/lifetime fixtures pass; Waf enumerates boundaries; only approved hosts load; Tier1/filesystem general loader APIs retired | planned |
 | 42 / R42 | Scheduler consolidation; 0003 H | R35, R38 | Redundant queues/waits have zero consumers; process worker budget controlled; supported host modes retain correctness/latency and rollback evidence | planned |
@@ -438,6 +438,19 @@ Keep the table concise and link details below or from the domain progress file.
   suites; it now delegates to the runner so suite sources have one owner. See
   [RFC 0005 progress](RFC/0005-progress.md). This does **not** install a required
   CI lane, certify any domain gate, or add native/GPU/device profiles.
+
+Current RFC 0001 evidence (2026-09-22):
+
+- [Portal SDL3/Wayland/Vulkan progress](RFC/0001-portal-vulkan-progress.md) records
+  the verified Linux compatibility slice, real images and GPU/lifecycle tests.
+  DXVK Native retains the D3D9 material implementation; R28/R32 native Vulkan
+  implementation and R29/R36 platform/release gates are not delivered by it.
+- The linked renderer/null binding, source-matched shader build and opt-in render
+  trace have outcome tests and deliberately bad fixtures. Product staging
+  verifies dependency/source/artifact hashes and preserves the supplied runtime.
+- Phase A/B progress records remain scoped completion evidence. R39 is partial:
+  typed first-party composition has migrated caller cohorts, but built-in shader
+  loading and remaining provider catalogs still prevent global Phase D closure.
 
 Initial evidence, observed at `87955f67` before these documentation changes:
 

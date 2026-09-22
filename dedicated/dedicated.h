@@ -57,10 +57,10 @@ public:
 	virtual void PostShutdown();
 	virtual void Destroy();
 
-	// Method to add various global singleton systems 
-	bool AddSystems( AppSystemInfo_t *pSystems )
+	// The platform root registers linked, module-owned service instances.
+	IAppSystem *AddSystem( IAppSystem *system, const char *interfaceName )
 	{
-		return CSteamAppSystemGroup::AddSystems( pSystems );
+		return BaseClass::AddSystem( system, interfaceName );
 	}
 
 	void *FindSystem( const char *pInterfaceName )

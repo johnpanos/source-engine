@@ -224,6 +224,15 @@ private:
 static CQueuedLoader g_QueuedLoader;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CQueuedLoader, IQueuedLoader, QUEUEDLOADER_INTERFACE_VERSION, g_QueuedLoader );
 
+#if defined( LAUNCHERONLY )
+// The dedicated root embeds its filesystem. Return that module's own queued
+// loader, preserving the existing legacy export's identity and lifetime.
+DLL_EXPORT IQueuedLoader *Dedicated_CreateQueuedLoader()
+{
+	return &g_QueuedLoader;
+}
+#endif
+
 
 class CResourcePreloadAnonymous : public IResourcePreload
 {
@@ -1961,4 +1970,3 @@ bool CQueuedLoader::CleanupDynamicLoad()
 
 	return true;
 }
-

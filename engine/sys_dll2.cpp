@@ -2154,7 +2154,14 @@ public:
 //-----------------------------------------------------------------------------
 // Singleton
 //-----------------------------------------------------------------------------
-EXPOSE_SINGLE_INTERFACE( CDedicatedServerAPI, IDedicatedServerAPI, VENGINE_HLDS_API_VERSION );
+static CDedicatedServerAPI s_DedicatedServerAPI;
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CDedicatedServerAPI, IDedicatedServerAPI,
+	VENGINE_HLDS_API_VERSION, s_DedicatedServerAPI );
+
+DLL_EXPORT IDedicatedServerAPI *Engine_CreateDedicatedAPI()
+{
+	return &s_DedicatedServerAPI;
+}
 
 #define LONG_TICK_TIME					0.12f // about 8/66ths of a second
 #define MIN_TIME_BETWEEN_DUMPED_TICKS	5.0f;

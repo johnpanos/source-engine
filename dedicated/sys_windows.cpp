@@ -28,6 +28,8 @@
 #include "vgui/vguihelpers.h"
 #include "appframework/appframework.h"
 #include "materialsystem/imaterialsystem.h"
+#include "appframework/linked_systems.h"
+#include "render/legacy_shader_provider.h"
 #include "istudiorender.h"
 #include "vgui/ivgui.h"
 #include "console/TextConsoleWin32.h"
@@ -267,29 +269,27 @@ void CSys::DestroyConsoleWindow( void )
 //-----------------------------------------------------------------------------
 bool CSys::LoadModules( CDedicatedAppSystemGroup *pAppSystemGroup )
 {
-	AppSystemInfo_t appSystems[] = 
+	// Linked instances preserve the established Connect/Init order. The embedded
+	// filesystem owns the queued loader; modules outlive all borrowed services.
+	IMaterialSystem *material = MaterialSystem_Create();
+	IDedicatedServerAPI *server = Engine_CreateDedicatedAPI();
+	if ( !pAppSystemGroup->AddSystem( Engine_CreateCvarQuery(), CVAR_QUERY_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddSystem( InputSystem_Create(), INPUTSYSTEM_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddSystem( material, MATERIAL_SYSTEM_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddSystem( StudioRender_Create(), STUDIO_RENDER_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddSystem( Physics_Create(), VPHYSICS_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddSystem( DataCache_Create(), DATACACHE_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddSystem( MDLCache_Create(), MDLCACHE_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddSystem( StudioDataCache_Create(), STUDIO_DATA_CACHE_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddSystem( VGui_Create(), VGUI_IVGUI_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddSystem( server, VENGINE_HLDS_API_VERSION ) ||
+	     !pAppSystemGroup->AddSystem( Dedicated_CreateQueuedLoader(), QUEUEDLOADER_INTERFACE_VERSION ) )
 	{
-		{ "engine.dll",				CVAR_QUERY_INTERFACE_VERSION },	// NOTE: This one must be first!!
-		{ "inputsystem.dll",		INPUTSYSTEM_INTERFACE_VERSION },
-		{ "materialsystem.dll",		MATERIAL_SYSTEM_INTERFACE_VERSION },
-		{ "studiorender.dll",		STUDIO_RENDER_INTERFACE_VERSION },
-		{ "vphysics.dll",			VPHYSICS_INTERFACE_VERSION },
-		{ "datacache.dll",			DATACACHE_INTERFACE_VERSION },
-		{ "datacache.dll",			MDLCACHE_INTERFACE_VERSION },
-		{ "datacache.dll",			STUDIO_DATA_CACHE_INTERFACE_VERSION },
-		{ "vgui2.dll",				VGUI_IVGUI_INTERFACE_VERSION },
-		{ "engine.dll",				VENGINE_HLDS_API_VERSION },
-		{ "dedicated.dll",			QUEUEDLOADER_INTERFACE_VERSION },
-		{ "", "" }	// Required to terminate the list
-	};
-
-	if ( !pAppSystemGroup->AddSystems( appSystems ) ) 
 		return false;
-	
-	engine = (IDedicatedServerAPI *)pAppSystemGroup->FindSystem( VENGINE_HLDS_API_VERSION );
-
-	IMaterialSystem* pMaterialSystem = (IMaterialSystem*)pAppSystemGroup->FindSystem( MATERIAL_SYSTEM_INTERFACE_VERSION );
-	pMaterialSystem->SetShaderAPI( "shaderapiempty.dll" );
+	}
+	if ( !MaterialSystem_BindShaderProvider( material, NullShaderBackend_Describe() ) )
+		return false;
+	engine = server;
 	return true;
 }
 

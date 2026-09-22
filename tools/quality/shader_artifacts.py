@@ -14,6 +14,7 @@ import json
 import math
 import os
 from pathlib import Path
+import platform
 import re
 import shlex
 import struct
@@ -69,6 +70,61 @@ def demands_from_log(text):
     ):
         found.setdefault(match[1], set()).add(int(match[2]))
     return found
+
+
+def parse_workload(document):
+    if not isinstance(document, dict) or document.get("schema") != "source-shader-workload/v1":
+        raise ValueError("unsupported shader workload schema")
+    if not isinstance(document.get("id"), str) or not document["id"]:
+        raise ValueError("shader workload requires an id")
+    if document.get("coverage") != "observed-static-sets":
+        raise ValueError("shader workload must declare observed-only coverage")
+    rows = document.get("shaders")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("shader workload contains no shader requests")
+    observed = document.get("observations")
+    if not isinstance(observed, list) or not observed:
+        raise ValueError("shader workload requires captured-input provenance")
+    for observation in observed:
+        if (not isinstance(observation, dict) or not isinstance(observation.get("map"), str)
+                or not observation["map"] or not isinstance(observation.get("console_sha256"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", observation["console_sha256"])):
+            raise ValueError("invalid shader workload captured-input provenance")
+    demands, selectors, names = {}, {}, set()
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("shader workload request must be an object")
+        name = row.get("name")
+        if not isinstance(name, str) or not NAME.fullmatch(name):
+            raise ValueError("invalid shader workload shader name")
+        if name.lower() in names:
+            raise ValueError("duplicate shader workload shader name")
+        names.add(name.lower())
+        indices = row.get("static_bases")
+        if (not isinstance(indices, list) or not indices
+                or any(type(index) is not int or index < 0 or index > 0x7FFFFFFF for index in indices)):
+            raise ValueError("shader workload requires nonnegative integer static bases")
+        if len(set(indices)) != len(indices):
+            raise ValueError("duplicate shader workload static base")
+        selector = row.get("selector_sha256")
+        if not isinstance(selector, str) or not re.fullmatch(r"[0-9a-f]{64}", selector):
+            raise ValueError("shader workload requires exact selector schema hash")
+        demands[name] = set(indices)
+        selectors[name] = selector
+    return demands, selectors
+
+
+def load_workload(path):
+    def unique_fields(pairs):
+        result = {}
+        for name, value in pairs:
+            if name in result:
+                raise ValueError("duplicate shader workload JSON field: " + name)
+            result[name] = value
+        return result
+    document = json.loads(Path(path).read_text(), object_pairs_hook=unique_fields)
+    demands, selectors = parse_workload(document)
+    return document, demands, selectors
 
 
 def resolve_source(source_dir, name):
@@ -262,7 +318,7 @@ def compile_shader(compiler, source, arguments, values, output, timeout):
 
 
 def build_one(name, bases, source_dir, output, compiler, jobs, timeout, profile_path, profile,
-              cache_root=None):
+              cache_root=None, expected_selector=None):
     source = resolve_source(source_dir, name)
     with tempfile.TemporaryDirectory(prefix="source-shader-plan-") as temp:
         work = Path(temp)
@@ -276,6 +332,8 @@ def build_one(name, bases, source_dir, output, compiler, jobs, timeout, profile_
     plan = parse_plan(plan_text)
     selectors = {p.name.lower(): p for p in (ROOT / profile["selector_directory"]).glob("*.inc")}
     selector = selectors[name.lower() + ".inc"]
+    if expected_selector is not None and digest(selector.read_bytes()) != expected_selector:
+        raise ValueError(f"{name} workload selector schema changed; recapture and review the workload")
     verify_selector(selector.read_text(), name, plan)
     sources = {}
     expanded = flatten_source(source, source_dir, sources)
@@ -318,6 +376,8 @@ def build_one(name, bases, source_dir, output, compiler, jobs, timeout, profile_
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--log", type=Path, action="append", default=[], help="engine shader demand dump")
+    parser.add_argument("--workload", type=Path, action="append", default=[],
+                        help="versioned shader demand fixture; defaults to the product profile workload")
     parser.add_argument("--shader", action="append", default=[], help="name:static_base[,static_base...]")
     parser.add_argument("--out", type=Path, required=True, help="build artifact directory (never game content)")
     parser.add_argument("--jobs", type=int, default=4)
@@ -331,7 +391,19 @@ def main(argv=None):
         parser.error("jobs and compile timeout must be positive")
     if (output / "gameinfo.txt").exists() or (output / "portal/gameinfo.txt").exists():
         parser.error("output must be a build artifact directory, not installed content")
-    demands = {}
+    if not args.workload and not args.log and not args.shader:
+        args.workload = [ROOT / product_profile.load_profile()["intent"]["shader_pipeline"]["default_workload"]]
+    demands, expected_selectors, workloads = {}, {}, []
+    for workload in args.workload:
+        document, requests, selectors = load_workload(workload)
+        for name, bases in requests.items():
+            demands.setdefault(name, set()).update(bases)
+            if name in expected_selectors and expected_selectors[name] != selectors[name]:
+                raise ValueError("workloads disagree on selector schema: " + name)
+            expected_selectors[name] = selectors[name]
+        workloads.append({"path": str(workload.resolve()), "sha256": digest(workload.read_bytes()),
+                          "id": document["id"], "coverage": document["coverage"],
+                          "observations": document["observations"]})
     for log in args.log:
         for name, bases in demands_from_log(log.read_text(errors="replace")).items():
             demands.setdefault(name, set()).update(bases)
@@ -342,6 +414,9 @@ def main(argv=None):
         parser.error("no demanded shaders; capture mat_spewvertexandpixelshaders first")
     profile_path, profile = load_compiler_profile(args.compiler_profile)
     compiler = ROOT / profile["compiler"]["path"]
+    wine_version = subprocess.check_output(["wine", "--version"], text=True, timeout=30).strip()
+    if wine_version != profile["compiler"]["host_version"]:
+        raise ValueError("Wine host differs from pinned shader compiler profile: " + wine_version)
     output.mkdir(parents=True, exist_ok=True)
     evidence = {"schema": 1, "status": "incomplete", "coverage": "observed-static-sets",
                 "compiler": profile["compiler"],
@@ -349,6 +424,10 @@ def main(argv=None):
                                      "sha256": digest(profile_path.read_bytes())},
                 **conformance.source_identity(str(ROOT)), "invocation": sys.argv, "shaders": [],
                 "producer_sha256": digest(Path(__file__).read_bytes())}
+    evidence["host_tools"] = {"wine": wine_version, "python": platform.python_version(),
+                              "perl": subprocess.check_output(["perl", "-e", "print $^V"],
+                                                               text=True, timeout=30)}
+    evidence["input_workloads"] = workloads
     evidence["input_logs"] = {str(p.resolve()): digest(p.read_bytes()) for p in args.log}
     started = time.monotonic()
     (output / "manifest.json").write_text(json.dumps(evidence, indent=2) + "\n")
@@ -356,8 +435,11 @@ def main(argv=None):
         for name, bases in sorted(demands.items()):
             evidence["shaders"].append(build_one(name, bases, ROOT / profile["source_directory"],
                                                  output, compiler, args.jobs, args.compile_timeout,
-                                                 profile_path, profile, cache_root))
+                                                 profile_path, profile, cache_root,
+                                                 expected_selectors.get(name)))
             (output / "manifest.json").write_text(json.dumps(evidence, indent=2) + "\n")
+        if any(digest(Path(row["path"]).read_bytes()) != row["sha256"] for row in workloads):
+            raise ValueError("shader workload changed during compilation")
         evidence["status"] = "passed"
     except Exception as error:
         evidence["failure"] = str(error)

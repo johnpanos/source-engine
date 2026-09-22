@@ -12,6 +12,9 @@
 
 class ICvarQuery;
 class IEngineAPI;
+class IDedicatedServerAPI;
+class ISoundEmitterSystemBase;
+class IQueuedLoader;
 class IInputSystem;
 class IMaterialSystem;
 class IDataCache;
@@ -30,6 +33,9 @@ extern "C"
 {
 	ICvarQuery *Engine_CreateCvarQuery();
 	IEngineAPI *Engine_CreateClientAPI();
+	IDedicatedServerAPI *Engine_CreateDedicatedAPI();
+	ISoundEmitterSystemBase *SoundEmitterSystem_Create();
+	IQueuedLoader *Dedicated_CreateQueuedLoader();
 	IInputSystem *InputSystem_Create();
 	IMaterialSystem *MaterialSystem_Create();
 	IDataCache *DataCache_Create();

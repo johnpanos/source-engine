@@ -16,8 +16,37 @@ void String( std::FILE *out, const char *value )
 	{
 		if ( *p == '\"' || *p == '\\' )
 			std::fprintf( out, "\\%c", *p );
-		else if ( *p < 32 || *p >= 127 )
+		else if ( *p < 32 )
 			std::fprintf( out, "\\u%04x", *p );
+		else if ( *p >= 128 )
+		{
+			unsigned length = *p >= 0xc2 && *p <= 0xdf   ? 2
+			                  : *p >= 0xe0 && *p <= 0xef ? 3
+			                  : *p >= 0xf0 && *p <= 0xf4 ? 4
+			                                             : 0;
+			bool valid = length != 0;
+			for ( unsigned i = 1; valid && i < length; ++i )
+			{
+				// Stop at the first NUL; never probe further into a truncated sequence.
+				valid = p[i] >= 0x80 && p[i] <= 0xbf;
+			}
+			if ( valid )
+			{
+				valid = !( ( *p == 0xe0 && p[1] < 0xa0 ) || ( *p == 0xed && p[1] >= 0xa0 ) ||
+				           ( *p == 0xf0 && p[1] < 0x90 ) || ( *p == 0xf4 && p[1] >= 0x90 ) );
+			}
+			if ( valid )
+			{
+				std::fwrite( p, 1, length, out );
+				p += length - 1;
+			}
+			else
+			{
+				// JSON surrogateescape preserves one malformed input byte without
+				// conflating it with valid Unicode or a literal backslash escape.
+				std::fprintf( out, "\\udc%02x", *p );
+			}
+		}
 		else
 			std::fputc( *p, out );
 	}

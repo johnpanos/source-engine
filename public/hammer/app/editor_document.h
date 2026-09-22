@@ -84,8 +84,8 @@ public:
 	//     legitimate single value, distinct from unset).
 	//   * Single iff every contributor agrees; Mixed iff contributors disagree.
 	// Out-of-range indices are ignored. An empty selection aggregates to Unset.
-	PropertyValue AggregateProperty( const EntitySelection &selection,
-	    const std::string &key ) const;
+	PropertyValue AggregateProperty(
+	    const EntitySelection &selection, const std::string &key ) const;
 
 	// Sets 'key'='value' on every selected entity, adding the key where absent.
 	// Commits exactly ONE history unit iff at least one selected entity's content
@@ -93,8 +93,8 @@ public:
 	// (every selected entity already has that value) records nothing and does not
 	// mark the document modified. Out-of-range indices are ignored. Returns whether
 	// the document changed.
-	bool SetPropertyOnSelection( const EntitySelection &selection, const std::string &key,
-	    const std::string &value );
+	bool SetPropertyOnSelection(
+	    const EntitySelection &selection, const std::string &key, const std::string &value );
 
 	bool CanUndo() const { return m_history.CanUndo(); }
 	bool CanRedo() const { return m_history.CanRedo(); }

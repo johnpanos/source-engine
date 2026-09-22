@@ -5,7 +5,8 @@
 - Scope: Tier 0–3, application bootstrap, and platform backends
 - Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
 - Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
-- Implementation: [Phase B complete](0001-phase-b-progress.md); Phase A runtime and ABI evidence remains tracked separately
+- Implementation: [Phase A](0001-phase-a-progress.md) and [Phase B](0001-phase-b-progress.md) complete in their documented scope; [Portal SDL3/Wayland/Vulkan slice and Phase C–D progress](0001-portal-vulkan-progress.md) verified separately
+- Current native outcome (2026-09-22): Portal renders through linked DXVK Native on SDL3/Wayland; native Vulkan material replacement and global Phase D retirement remain open
 
 ## Summary
 
@@ -34,6 +35,33 @@ legacy consumers while new and migrated code uses explicit capabilities.
 Dynamic-library loading will be the first reference migration because it is a
 small, well-defined platform behavior currently implemented in Tier 1 despite
 being foundational to module and interface discovery.
+
+## Implementation snapshot (2026-09-22)
+
+This RFC's architectural contracts remain the acceptance authority; implemented
+slices do not weaken the remaining gates. The selected Linux Portal profile now
+has a working SDL3 provider, a composition-owned linked renderer/null catalog,
+and source-matched shader artifacts for its first two chamber workloads. Native
+GPU conformance checks textured draw/readback and resize, with a deliberately
+wrong pixel oracle. Portal captures show textured geometry and lighting on
+Vulkan through DXVK Native. The opt-in draw/shader trace and its negative-tested
+analyzer explain missing versus stale shaders and keep image evidence separate
+from successful API calls.
+
+Mandatory launcher systems use typed linked factories. The earlier-phase audit
+also identified dedicated-server composition and null-renderer tool consumers
+as caller cohorts requiring explicit migration and verification. Mod shaders
+are isolated in a named compatibility host. The built-in shader library loader,
+remaining audio/input/video provider selection, native Vulkan materials, full
+SDL2/SDL3 parity and non-Linux platform gates remain open. In particular, this
+compatibility result does not complete retirement Phase D or checkpoint 4.
+
+Rebuild instructions, exact local evidence, test results and outstanding scope
+are recorded in [the Portal progress record](0001-portal-vulkan-progress.md),
+[the product profile instructions](../quality/product_profiles/README.md),
+[shader artifact tooling](../tools/quality/shader_artifacts.md), and
+[render diagnostics](../tools/quality/render_trace.md). Dependency and toolchain
+facts belong to the referenced profile, not a second matrix in this RFC.
 
 ## Motivation
 

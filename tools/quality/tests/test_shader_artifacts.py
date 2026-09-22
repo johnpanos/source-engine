@@ -1,6 +1,8 @@
 """Permutation and binary-format conformance, including deliberately wrong packs."""
 
 from pathlib import Path
+import copy
+import json
 import struct
 import subprocess
 import sys
@@ -17,6 +19,12 @@ PLAN = {
     "dynamic": [("FOG", 0, 1), ("LIGHTS", 0, 2)],
     "static": [("BUMPMAP", 0, 1), ("DETAIL", 0, 1)],
     "dynamic_count": 6, "total": 24, "flags": 0, "centroid": 4, "skip": "0",
+}
+
+WORKLOAD = {
+    "schema": "source-shader-workload/v1", "id": "fixture-v1", "coverage": "observed-static-sets",
+    "observations": [{"map": "fixture_map", "console_sha256": "a" * 64}],
+    "shaders": [{"name": "fixture_ps20b", "static_bases": [0, 12], "selector_sha256": "b" * 64}],
 }
 
 
@@ -192,6 +200,80 @@ class PackingTests(unittest.TestCase):
             with patch.object(artifacts.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "", "")):
                 with self.assertRaises(RuntimeError):
                     artifacts.compile_shader(path / "fxc.exe", path / "source.fxc", [], {}, path / "result.o", 1)
+
+
+class WorkloadTests(unittest.TestCase):
+    def test_committed_default_workload_reproduces_both_captured_chambers(self):
+        profile = artifacts.product_profile.load_profile()
+        path = artifacts.ROOT / profile["intent"]["shader_pipeline"]["default_workload"]
+        document, demands, selectors = artifacts.load_workload(path)
+        self.assertEqual({"testchmb_a_00", "testchmb_a_01"}, {o["map"] for o in document["observations"]})
+        self.assertEqual(60, len(demands))
+        self.assertEqual(121, sum(map(len, demands.values())))
+        headers = {p.name.lower(): p for p in (artifacts.ROOT / "materialsystem/stdshaders/fxctmp9").glob("*.inc")}
+        for name, expected in selectors.items():
+            self.assertEqual(expected, artifacts.digest(headers[name.lower() + ".inc"].read_bytes()))
+
+    def test_fixture_preserves_indices_and_selector_provenance(self):
+        demands, selectors = artifacts.parse_workload(WORKLOAD)
+        self.assertEqual({"fixture_ps20b": {0, 12}}, demands)
+        self.assertEqual({"fixture_ps20b": "b" * 64}, selectors)
+
+    def test_missing_and_empty_fixture_fail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "missing.json"
+            with self.assertRaises(OSError):
+                artifacts.load_workload(path)
+            path.write_text("")
+            with self.assertRaises(ValueError):
+                artifacts.load_workload(path)
+
+    def test_schema_and_empty_requests_fail(self):
+        for document in ({}, [], dict(WORKLOAD, schema="future/v2"), dict(WORKLOAD, shaders=[]),
+                         dict(WORKLOAD, shaders=None), dict(WORKLOAD, coverage="complete-library")):
+            with self.assertRaises(ValueError):
+                artifacts.parse_workload(document)
+
+    def test_duplicate_shader_names_are_rejected_case_insensitively(self):
+        document = copy.deepcopy(WORKLOAD)
+        duplicate = dict(document["shaders"][0], name="FIXTURE_PS20B")
+        document["shaders"].append(duplicate)
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            artifacts.parse_workload(document)
+
+    def test_duplicate_indices_fail(self):
+        document = copy.deepcopy(WORKLOAD)
+        document["shaders"][0]["static_bases"] = [0, 0]
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            artifacts.parse_workload(document)
+
+    def test_invalid_names_and_indices_fail(self):
+        for name in (None, "", "../escape", "fixture.vcs", "with space"):
+            document = copy.deepcopy(WORKLOAD)
+            document["shaders"][0]["name"] = name
+            with self.assertRaises(ValueError):
+                artifacts.parse_workload(document)
+        for indices in (None, [], [-1], [True], [0.0], ["0"], [2147483648]):
+            document = copy.deepcopy(WORKLOAD)
+            document["shaders"][0]["static_bases"] = indices
+            with self.assertRaises(ValueError):
+                artifacts.parse_workload(document)
+
+    def test_missing_or_invalid_schema_and_capture_hashes_fail(self):
+        for value in (None, "", "not-a-sha", "c" * 63):
+            document = copy.deepcopy(WORKLOAD)
+            document["shaders"][0]["selector_sha256"] = value
+            with self.assertRaises(ValueError):
+                artifacts.parse_workload(document)
+        with self.assertRaises(ValueError):
+            artifacts.parse_workload(dict(WORKLOAD, observations=[]))
+
+    def test_duplicate_json_fields_fail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "duplicate.json"
+            path.write_text('{"schema":"source-shader-workload/v1","schema":"source-shader-workload/v1"}')
+            with self.assertRaisesRegex(ValueError, "duplicate"):
+                artifacts.load_workload(path)
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ int main( int argc, char **argv )
 	if ( !capture.WantsDrawState() )
 		return 3;
 	renderdiagnostics::DrawState draw;
-	draw.material = "material\"\\\n\tname";
+	draw.material = "caf\xc3\xa9 \xf0\x9f\x9a\x80 material\"\\\n\tname";
 	draw.kind = "indexed";
 	draw.primitives = 2;
 	draw.viewportWidth = draw.targetWidth = 320;
@@ -43,6 +43,12 @@ int main( int argc, char **argv )
 	if ( capture.WantsDrawState() )
 		return 4;
 	capture.Draw( draw );
+	capture.Skipped( "bad\xa9", "malformed byte" );
+	capture.Skipped( "truncated\xe2\x82", "truncated UTF-8" );
+	capture.Skipped( "overlong\xc0\xaf", "overlong UTF-8" );
+	capture.Skipped( "surrogate\xed\xa0\x80", "invalid Unicode scalar" );
+	capture.Skipped( "beyond\xf4\x90\x80\x80", "invalid Unicode scalar" );
+	capture.Skipped( "literal\\udca9", "literal escape" );
 	capture.EndFrame();
 	capture.Present( -1 );
 	return 0;

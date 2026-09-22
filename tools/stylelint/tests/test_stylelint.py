@@ -193,6 +193,68 @@ class RepositoryTests(unittest.TestCase):
         self.write('new.cpp', 'int *right;\n')
         self.assertEqual(self.main('--changed')[0], 0)
 
+    def historical_source(self, source):
+        path = self.root / 'historical.cpp'
+        path.write_bytes(source)
+        self.commit()
+        return path
+
+    def test_unchanged_legacy_comment_bytes_survive_current_and_baseline(self):
+        path = self.historical_source(b'// Copyright \xa9\r\nint old;\r\n')
+        current = b'// Copyright \xa9\r\nint changed;\r\n'
+        path.write_bytes(current)
+        self.assertEqual(self.main('--changed')[0], 0)
+        self.assertEqual(path.read_bytes(), current)
+
+    def test_legacy_bytes_are_preserved_in_suggested_diff(self):
+        path = self.historical_source(b'// Copyright \xa9\nint old;\n')
+        current = b'// Copyright \xa9\nint * wrong;\n'
+        path.write_bytes(current)
+        status, output = self.main('--changed', '--diff')
+        self.assertEqual(status, 1)
+        self.assertIn(b' // Copyright \xa9\n', output.encode('utf-8', errors='surrogateescape'))
+        self.assertIn('+int *wrong;', output)
+        self.assertEqual(path.read_bytes(), current)
+
+    def test_new_non_utf8_text_is_not_silently_accepted(self):
+        (self.root / 'new.cpp').write_bytes(b'// Copyright \xa9\nint x;\n')
+        status, output = self.main('--changed')
+        self.assertEqual(status, 2)
+        self.assertIn('invalid UTF-8', output)
+
+    def test_modified_non_utf8_comment_requires_explicit_encoding_fix(self):
+        path = self.historical_source(b'// Copyright \xa9\nint x;\n')
+        path.write_bytes(b'// Copyright \xa9 changed\nint x;\n')
+        self.assertEqual(self.main('--changed')[0], 2)
+
+    def test_legacy_invalid_code_token_still_fails(self):
+        path = self.historical_source(b'int \xffname;\nint old;\n')
+        path.write_bytes(b'int \xffname;\nint changed;\n')
+        status, output = self.main('--changed')
+        self.assertEqual(status, 2)
+        self.assertIn('code token', output)
+
+    def test_utf8_current_with_legacy_baseline_is_readable(self):
+        path = self.historical_source(b'// Copyright \xa9\nint old;\n')
+        path.write_bytes('// Copyright ©\nint changed;\n'.encode('utf-8'))
+        self.assertEqual(self.main('--changed')[0], 0)
+
+    def test_legacy_bytes_do_not_hide_new_include_violation(self):
+        path = self.historical_source(b'// Copyright \xa9\n#include "memdbgon.h"\n')
+        path.write_bytes(b'// Copyright \xa9\n#include "memdbgon.h"\n#include "late.h"\n')
+        status, output = self.main('--changed')
+        self.assertEqual(status, 1)
+        self.assertIn('STYLE002', output)
+
+    def test_full_file_audit_does_not_invent_encoding_baseline(self):
+        self.historical_source(b'// Copyright \xa9\nint x;\n')
+        self.assertEqual(self.main('historical.cpp')[0], 2)
+
+    def test_formatter_receives_legacy_source_bytes_without_reencoding(self):
+        source = b'// Copyright \xa9\nint * wrong;\n'
+        formatted, _ = lint.format_bytes(ROOT, FORMATTER, 'legacy.cpp', source, [(2, 2)])
+        self.assertEqual(formatted, b'// Copyright \xa9\nint *wrong;\n')
+
     def test_include_violation_is_not_hidden_by_formatting(self):
         self.write('new.cpp', '#include "memdbgon.h"\n#include "a.h"\n')
         status, output = self.main('--changed')

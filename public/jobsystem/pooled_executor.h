@@ -4,12 +4,21 @@
 //
 //          PooledExecutor drives a SealedGraph in dependency "waves": it
 //          repeatedly gathers the jobs whose prerequisites are all terminal and
-//          runs that independent set through the backend's ParallelFor barrier,
-//          then advances readiness. This maps directly onto the engine's
+//          runs that independent set through the backend's ParallelFor barrier
+//          and the caller pump, then advances readiness. This maps onto the engine's
 //          existing ParallelProcess fork/join primitive (the mechanism particle,
 //          bone, query-cache and packing seams already use), so real engine
-//          worker pools can execute job graphs. It must agree with the
-//          Deterministic/Parallel executors on every job's terminal state.
+//          worker pools can execute job graphs. Compute/Sequence jobs may use
+//          the backend; MainThread/BlockingIO jobs run only on the caller with
+//          RunOptions::pumpMainThread enabled. No dedicated blocking executor
+//          is provided. Unpumped lanes and their dependents remain nonterminal
+//          and are reported as stalled. A null/zero-worker backend runs every
+//          lane inline, matching ParallelExecutor's low-capacity mode.
+//
+//          Execute is a synchronous host entry point: it must not be nested
+//          inside a job on the same backend. The wave join does not pump caller
+//          work while workers run. For serviceable graphs its terminal states
+//          must agree with the Deterministic/Parallel executors.
 //
 //=============================================================================//
 
@@ -29,7 +38,8 @@ namespace jobsystem
 class PooledExecutor : public IGraphExecutor
 {
 public:
-	// Borrowed; must outlive Execute(). If null, work runs inline on the caller.
+	// Borrowed; must outlive Execute() and return only after all invocations join.
+	// A null backend or one reporting zero workers runs inline on the caller.
 	explicit PooledExecutor( IWorkerBackend *backend ) : m_backend( backend ) {}
 
 	RunResult Execute( const SealedGraph &graph, const RunOptions &opts ) override;

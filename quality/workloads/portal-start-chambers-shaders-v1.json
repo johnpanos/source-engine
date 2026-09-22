@@ -1,0 +1,509 @@
+{
+  "schema": "source-shader-workload/v1",
+  "id": "portal-start-chambers-shaders-v1",
+  "coverage": "observed-static-sets",
+  "description": "Observed shader requests for Portal testchmb_a_00 and testchmb_a_01 native SDL3/Wayland Vulkan compatibility boots. Not a complete map/content shader library. Selector hashes freeze the meaning of captured static bases.",
+  "observations": [
+    {
+      "map": "testchmb_a_00",
+      "capture": "mat_spewvertexandpixelshaders after active-player screenshot",
+      "console_sha256": "cca6dd8d428df25c706a0f0eb1b94705bf8cccf6972affc22e86a5c9014a9402",
+      "product_profile": "portal-linux-wayland-v1"
+    },
+    {
+      "map": "testchmb_a_00",
+      "capture": "mat_spewvertexandpixelshaders after active-player screenshot",
+      "console_sha256": "7bd014a614234036c78d4b42c404d8a6720ef19ced80328e3afe98ad6d584711",
+      "product_profile": "portal-linux-wayland-v1"
+    },
+    {
+      "map": "testchmb_a_01",
+      "capture": "mat_spewvertexandpixelshaders after active-player screenshot",
+      "console_sha256": "1f2e0a300608880203f1cfd5193e0e6da4b72278be5303eeee1479343a4f2e3f",
+      "product_profile": "portal-linux-wayland-v1"
+    }
+  ],
+  "shaders": [
+    {
+      "name": "Downsample_vs20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "4187af35776238cbd7f6480373b6db1472834a3d256fe81850a0ae17e39274ab"
+    },
+    {
+      "name": "bloomadd_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "7887145a7f4ff075708fc9f09260227b26dcfda73ba1d1ca34dc5afd9da6b1c8"
+    },
+    {
+      "name": "blurfilter_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "40acc98c31e85d0bbce8371532b05f77a0556343fb883eeea2cb790a6b1a2291"
+    },
+    {
+      "name": "blurfilter_vs20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "0ac5bdb1c3cf473d30f89862c1cf835726c3608f59123de75e516e51d34a2672"
+    },
+    {
+      "name": "bufferclearobeystencil_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "4043539177f6554c1ec0f31caa72338be4f073b3bc4825dcb743a99d4455dce8"
+    },
+    {
+      "name": "bufferclearobeystencil_vs20",
+      "static_bases": [
+        0,
+        1
+      ],
+      "selector_sha256": "c245d54a73777a30537ec1cc49bc9a7ec20a59fe2775b84ad7470678e8f5ed13"
+    },
+    {
+      "name": "cable_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "e5b2b8bd9c7bd6fd4655bce3e99b62c1d8ebe6a5cd2c9567bce8804aa35239a8"
+    },
+    {
+      "name": "cable_vs20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "2f0b558c5cebed4a5c23b7ab323da6ba784030849f85dd44359aa2264c6f7de5"
+    },
+    {
+      "name": "constant_color_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "432d80cc39ca314496f2b40944abc339a0ce922c934f7c227127bc522bedc318"
+    },
+    {
+      "name": "decalmodulate_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "9572d94a496288234250db0e121ec808f95a7898f23259cc85e9924535df4951"
+    },
+    {
+      "name": "depthtodestalpha_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "b899a8d56b2069a34e395199108b0e2dd9780135d1309e5ab8e0f1547274500d"
+    },
+    {
+      "name": "depthtodestalpha_vs20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "1b5c87e18284f563ece466b349286856318485bd84e4544140ca931ee51f8b4d"
+    },
+    {
+      "name": "depthwrite_ps20b",
+      "static_bases": [
+        0,
+        2
+      ],
+      "selector_sha256": "5a291fa45aacf650f2fb1db0ce1439cc971a29eba3d6f6543f32f7e41bfda11c"
+    },
+    {
+      "name": "depthwrite_vs20",
+      "static_bases": [
+        0,
+        4
+      ],
+      "selector_sha256": "8e808655300ffaf9399a6b3f36641fe2539716ba0c2a6e84308513929502b658"
+    },
+    {
+      "name": "downsample_nohdr_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "f0392c386a5c600eb48ae6a550aab330f5f29f03d0ef59cd4ba77fd9aae655a8"
+    },
+    {
+      "name": "downsample_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "048c19504f2974ec9841b87439feef725735fada282161da3fa28d5056239a62"
+    },
+    {
+      "name": "engine_post_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "e5577a890b697c169543a37e2a2172f3022dd102155308f4f6b415eb598afe52"
+    },
+    {
+      "name": "eye_refract_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "efc369dbe5affab6c817834cceb2b7908df9bd25294ac6e8c2e659e56748955f"
+    },
+    {
+      "name": "eye_refract_vs20",
+      "static_bases": [
+        320
+      ],
+      "selector_sha256": "7a547aee810edce92b0ffb30f7b8638a21b6ee59bbdc2952adb945933d2b1179"
+    },
+    {
+      "name": "eyeglint_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "bc63ab93aa6e5248a62314f34376a6a291aae91459883d73d8092719cea9d091"
+    },
+    {
+      "name": "eyeglint_vs20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "56c41f7bb56252ad5b40ca66d21240055d24b4dba3492c96792d08795b9b6747"
+    },
+    {
+      "name": "floatcombine_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "1d7d539e34a4a7e85bb1db131eb89e501285bb7953b355a3041ad05e94b320d4"
+    },
+    {
+      "name": "floattoscreen_notonemap_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "cdff032a9c499431a4dfb167fb581ac822b99d5957ce797a2e7b99a07ca7c486"
+    },
+    {
+      "name": "floattoscreen_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "a1efafe2537e7a33203a618e70b61f087ce69ac7fbb522c3697e6836e5e77552"
+    },
+    {
+      "name": "introscreenspaceeffect_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "53ff8578b162aeb0a64a81f9c63b4b2ee32d2210ef294c91635e5b335627a735"
+    },
+    {
+      "name": "lightmappedgeneric_ps20b",
+      "static_bases": [
+        0,
+        384,
+        4608,
+        23040,
+        36864,
+        41472,
+        148992,
+        149376,
+        152832,
+        153600,
+        223104,
+        226560,
+        226944,
+        227328
+      ],
+      "selector_sha256": "d85e5fa9ae6605c3977bd5715757913976fae2ae87f23a13870e535c3643c882"
+    },
+    {
+      "name": "lightmappedgeneric_vs20",
+      "static_bases": [
+        0,
+        16,
+        96,
+        112,
+        128
+      ],
+      "selector_sha256": "dd677ff518e189d489f87cc79221f4e895b4267d16031dc4aa040643681597c5"
+    },
+    {
+      "name": "luminance_compare_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "4cef699d758b047f04d66ca47abff866abc890737c4500ce1fb6eb5619d331be"
+    },
+    {
+      "name": "modulate_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "7c2f2a5901a2ae43482e5c6c82d3cbff8935d87d6344b459c8890e7d3d6ee64d"
+    },
+    {
+      "name": "motion_blur_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "ec880d1fe1a27e40eb131dcd819cd3bdf2de6d35de42e53421a4dfb2fc499e1a"
+    },
+    {
+      "name": "motion_blur_vs20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "ab20d6b44f0ed45fe7129fb18b755acc4eb016f706c69cbe5d8f41326946a356"
+    },
+    {
+      "name": "particlesphere_ps20b",
+      "static_bases": [
+        4
+      ],
+      "selector_sha256": "a412f4baa5d4a7922090259742c98169854c84121b6fdbc90d18e460548ac1af"
+    },
+    {
+      "name": "particlesphere_vs20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "fd50c38080b8e84ce2a63748558461e850ab0d93bf7a821935672c94b8feca34"
+    },
+    {
+      "name": "portal_ps20b",
+      "static_bases": [
+        0,
+        16
+      ],
+      "selector_sha256": "ff6cf13b2a06ca55fe565e2dfaf0b631e9d04f2ca722908a95bd6cc60d473456"
+    },
+    {
+      "name": "portal_refract_ps20b",
+      "static_bases": [
+        0,
+        4,
+        8
+      ],
+      "selector_sha256": "54e10f47f6329d72906f5ddb96b27e148d6846e09ede95ee3c33e0e93609fe6e"
+    },
+    {
+      "name": "portal_refract_vs20",
+      "static_bases": [
+        0,
+        1,
+        2
+      ],
+      "selector_sha256": "c491377b024feb06481924739d339692a25d710805da359408462bf72e955d9e"
+    },
+    {
+      "name": "portal_vs20",
+      "static_bases": [
+        0,
+        4,
+        20
+      ],
+      "selector_sha256": "732ff89c7fedeb9ce73e3f0f2348aef4acd28ae3f2415add9c8480abb5c43fb4"
+    },
+    {
+      "name": "refract_ps20b",
+      "static_bases": [
+        40,
+        264
+      ],
+      "selector_sha256": "a56a5a6f4b1602b291cb7bdf011ed5b3de32b0b2cbc00f172433216db149bf56"
+    },
+    {
+      "name": "refract_vs20",
+      "static_bases": [
+        4,
+        8
+      ],
+      "selector_sha256": "afc7bb1bb3b62a3248019c0e0dce834f2213007142f971eb8867290628e1dfdf"
+    },
+    {
+      "name": "screenspaceeffect_vs20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "56c39507645e83e2e25154adfb9783404c53c36c4bc86fcdd87bb9bb6b0ea814"
+    },
+    {
+      "name": "shadow_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "4d374d950d171d42b3b0934d7b8f752bd90453cf0568dd4ac1699ab46426d840"
+    },
+    {
+      "name": "shadow_vs20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "9c1c86317c3244a9bb29ec73bc0c5cc5028e09534e72c31c7a9bed516cbdfc8e"
+    },
+    {
+      "name": "shadowbuildtexture_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "a2989d6556ae03287d74ff64c6ccd8c54074983c5b4cff5f5dd107767e6ce83f"
+    },
+    {
+      "name": "shadowmodel_ps20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "cfb08c0e2718fa3e0f482c8b538711e6af436d6eb4cbf9fff57c77e8232b9588"
+    },
+    {
+      "name": "shadowmodel_vs20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "81d1ffffd2b90665bea5288e45733cbed2db2eca8f7f62acc3cefffcefd4a31f"
+    },
+    {
+      "name": "skin_ps20b",
+      "static_bases": [
+        0,
+        80,
+        160,
+        240,
+        1280,
+        1440
+      ],
+      "selector_sha256": "8b02f63f69c6de5b12f230b530d06c75b0f7a2cbc6833a35f9bf3a23cfcc3659"
+    },
+    {
+      "name": "skin_vs20",
+      "static_bases": [
+        48
+      ],
+      "selector_sha256": "ee11529e4ae076786c67d0cee3a9d334cbfc5bd3199e34889fd1dbf97895cf1c"
+    },
+    {
+      "name": "sprite_ps20b",
+      "static_bases": [
+        32,
+        40,
+        56
+      ],
+      "selector_sha256": "2bfacc8cb4a57ac9e70de7d93340e597230db69e73d76ba30a37308b7f9744cd"
+    },
+    {
+      "name": "sprite_vs20",
+      "static_bases": [
+        0,
+        2
+      ],
+      "selector_sha256": "fa312b32e541a010466f25df46627c1d822214d7d5a4d70698e5361c83839b2a"
+    },
+    {
+      "name": "spritecard_ps20b",
+      "static_bases": [
+        1536,
+        1920,
+        1926,
+        2688
+      ],
+      "selector_sha256": "fc5841dc2281a04ac11af5c5678d5bab11a71e092643473432826e2233832a20"
+    },
+    {
+      "name": "spritecard_vs20",
+      "static_bases": [
+        0,
+        9
+      ],
+      "selector_sha256": "ed9b4d7dd34fc85b39b793913ae1f2a9104068df7985c86dde1d715fdbc95021"
+    },
+    {
+      "name": "unlitgeneric_vs20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "55b8f54951065ad2e8528c89057f3288e6464bb7775d7f1ee2ef71cb2736d637"
+    },
+    {
+      "name": "unlittwotexture_ps20b",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "58d7062b5d8583365cf0078526db5df5ec9c97ea1ae91a2f77ee7f2721d6b3f8"
+    },
+    {
+      "name": "unlittwotexture_vs20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "5f1b04b993e09ba6fef0d33c15bf97cdc534d5114c7a62abf8a0ed0d6cf00325"
+    },
+    {
+      "name": "vertexlit_and_unlit_generic_bump_ps20b",
+      "static_bases": [
+        40,
+        60,
+        200,
+        700,
+        860,
+        1400
+      ],
+      "selector_sha256": "a9ce1b6b05ebad99ce26cc10740f6d9fc1cc362df26729d1771a040931d0ac23"
+    },
+    {
+      "name": "vertexlit_and_unlit_generic_bump_vs20",
+      "static_bases": [
+        144,
+        168
+      ],
+      "selector_sha256": "6e47846404fe3782061aef94bb305b33476917f49d4bb2438604317d88979e0b"
+    },
+    {
+      "name": "vertexlit_and_unlit_generic_ps20b",
+      "static_bases": [
+        0,
+        12,
+        24,
+        36,
+        84,
+        132,
+        216,
+        276,
+        384,
+        444,
+        11796864
+      ],
+      "selector_sha256": "f801bd51346ee20abd7027d7ded16edf28d2d3a3da9d11cfc6a57f026e4100b5"
+    },
+    {
+      "name": "vertexlit_and_unlit_generic_vs20",
+      "static_bases": [
+        24576,
+        24768,
+        24960,
+        25152,
+        25344
+      ],
+      "selector_sha256": "16a0075dbc00cf0fee9a558110e9749afc81f7860ca6c68e632a7054808fee9c"
+    },
+    {
+      "name": "white_ps20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "16f01eb3d7fc4d15425daab758859d470b51074d3bc7ebf3ae1707f2e60d352a"
+    },
+    {
+      "name": "writez_vs20",
+      "static_bases": [
+        0
+      ],
+      "selector_sha256": "6e4156ca551ab8002712130fcb70f7cd71c1ce3bc0c301ae574edd214eaef7e5"
+    }
+  ]
+}

@@ -45,7 +45,8 @@ void Check( bool ok, const char *label )
 }
 
 // The value of a key on entity 'index', or nullptr, for assertions.
-const std::string *EntityValue( const EditorDocument &doc, std::size_t index, const std::string &key )
+const std::string *EntityValue(
+    const EditorDocument &doc, std::size_t index, const std::string &key )
 {
 	if ( index >= doc.EntityCount() )
 	{
@@ -55,9 +56,8 @@ const std::string *EntityValue( const EditorDocument &doc, std::size_t index, co
 }
 
 // The two-entity seed the shell starts on (world + one entity).
-const char *const kSeed =
-    "world\n{\n\t\"classname\" \"worldspawn\"\n}\n"
-    "entity\n{\n\t\"classname\" \"info_player_start\"\n}\n";
+const char *const kSeed = "world\n{\n\t\"classname\" \"worldspawn\"\n}\n"
+                          "entity\n{\n\t\"classname\" \"info_player_start\"\n}\n";
 } // namespace
 
 int main()
@@ -88,13 +88,15 @@ int main()
 	EntitySelection selection;
 	selection.Add( 0 );
 	selection.Add( 1 );
-	Check( doc.SetPropertyOnSelection( selection, "_note", "shared" ), "Set Key commits across selection" );
+	Check( doc.SetPropertyOnSelection( selection, "_note", "shared" ),
+	    "Set Key commits across selection" );
 	Check( doc.IsModified(), "Set Key marks modified" );
 	Check( doc.CanUndo(), "Set Key enables undo" );
 
 	// The aggregate display the shell shows: both agree -> Single("shared").
 	const PropertyValue aggregate = doc.AggregateProperty( selection, "_note" );
-	Check( aggregate.IsSingle() && aggregate.Value() == "shared", "aggregate shows the shared value" );
+	Check(
+	    aggregate.IsSingle() && aggregate.Value() == "shared", "aggregate shows the shared value" );
 
 	// "Save" (OnSave) through the real disk store.
 	Check( doc.Save( store, path ) == SaveStatus::kOk, "Save returns kOk" );

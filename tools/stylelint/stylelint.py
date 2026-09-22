@@ -257,6 +257,47 @@ def newly_broken_includes(old: str | None, new: str) -> list[tuple[int, str]]:
     return [item for item in current if item not in allowed]
 
 
+def source_text(data: bytes, name: str, old: str | None) -> str:
+    """Retain legacy bytes only in unchanged baseline comments or literals.
+
+    Surrogates are a lossless lexical view, never replacement characters or a
+    source reencoding. New text and code tokens must still be valid UTF-8.
+    """
+    text = data.decode("utf-8", errors="surrogateescape")
+    invalid = [index for index, char in enumerate(text) if "\udc80" <= char <= "\udcff"]
+    if not invalid:
+        return text
+    if old is None:
+        raise LintError(f"{name}: invalid UTF-8 without an unchanged Git baseline")
+    masked = mask_non_code(text)
+    if any(masked[index] != " " for index in invalid):
+        raise LintError(f"{name}: invalid UTF-8 in a code token")
+    unchanged = set()
+    matcher = difflib.SequenceMatcher(None, old.splitlines(), text.splitlines(), autojunk=False)
+    for block in matcher.get_matching_blocks():
+        unchanged.update(range(block.b + 1, block.b + block.size + 1))
+    starts = [0] + [match.end() for match in re.finditer("\n", text)]
+    if any(bisect.bisect_right(starts, index) not in unchanged for index in invalid):
+        raise LintError(f"{name}: invalid UTF-8 in new or modified comment/literal text")
+    return text
+
+
+def print_diff(name: str, original: bytes, formatted: bytes) -> None:
+    """A redirected suggested patch must preserve historical bytes exactly."""
+    difference = b"".join(difflib.diff_bytes(
+        difflib.unified_diff, original.splitlines(keepends=True), formatted.splitlines(keepends=True),
+        fromfile=os.fsencode(f"a/{name}"), tofile=os.fsencode(f"b/{name}"),
+    ))
+    if hasattr(sys.stdout, "buffer"):
+        sys.stdout.flush()
+        sys.stdout.buffer.write(difference)
+        sys.stdout.buffer.flush()
+    else:
+        # StringIO is used by embedding callers and fixtures; round-trips bytes
+        # with the same surrogateescape convention as the lexical source view.
+        sys.stdout.write(difference.decode("utf-8", errors="surrogateescape"))
+
+
 def format_bytes(
     root: Path, executable: str, name: str, data: bytes, ranges: list[tuple[int, int]] | None
 ) -> tuple[bytes, list[int]]:
@@ -316,8 +357,8 @@ def main(argv: list[str] | None = None, *, root: Path = ROOT) -> int:
         failures = 0
         for name, ranges in selected.items():
             data = (root / name).read_bytes()
-            text = data.decode("utf-8")
-            old = git(root, "show", f"{revision}:{name}").decode("utf-8") if revision and name in old_names else None
+            old = git(root, "show", f"{revision}:{name}").decode("utf-8", errors="surrogateescape") if revision and name in old_names else None
+            text = source_text(data, name, old)
             for line, header in newly_broken_includes(old, text):
                 print(f"{name}:{line}: STYLE002 include {header!r} follows memdbgon.h; keep memdbgon last")
                 failures += 1
@@ -326,10 +367,7 @@ def main(argv: list[str] | None = None, *, root: Path = ROOT) -> int:
                 failures += 1
                 print(f"{name}:{locations[0] if locations else 1}: STYLE001 formatting differs from .clang-format")
                 if args.diff:
-                    print("".join(difflib.unified_diff(
-                        text.splitlines(keepends=True), formatted.decode("utf-8").splitlines(keepends=True),
-                        fromfile=f"a/{name}", tofile=f"b/{name}",
-                    )), end="")
+                    print_diff(name, data, formatted)
         if not selected:
             print("stylelint: no eligible C/C++ changes (not applicable); formatter/config validated")
         else:

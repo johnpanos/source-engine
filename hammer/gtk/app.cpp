@@ -1,28 +1,30 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: GTK4 + libadwaita desktop shell for Hammer (RFC 0002,
-//			linux-gtk-desktop). This is the delivery-target host: it composes the
-//			strict headless editor core (hammer::app::EditorDocument, the VMF codec,
-//			and the VMF -> convex brush geometry bridge) with a native UI laid out
-//			like the classic Hammer editor -- menu bar, tool palette, the four
-//			viewports (3D camera + Top/Front/Side 2D wireframes), the object bar,
-//			and a status bar -- plus modern touchpad navigation (two-finger pan,
-//			pinch-to-zoom anchored at the cursor, kinetic scrolling).
+//			linux-gtk-desktop). This is the delivery-target host: it presents the
+//			classic Hammer layout (menu, toolbar, tool palette, the four viewports,
+//			object bar, status bar) over the strict headless editor core.
 //
-//			All GTK/GDK/GL native detail is confined to this product; the editor
-//			core it drives has no display, GPU, or MFC dependency. A headless
-//			"--screenshot OUT.ppm IN.vmf" path (offscreen.cpp) shares the same
-//			renderer so the 3D preview can be verified without a window server.
+//			It is a THIN PRESENTER: the single live editing authority is
+//			hammer::app::EditorController (spatial tools, selection, one undo
+//			history). This host only translates GTK gestures/keys into normalized
+//			controller calls and renders controller.BuildScene(); it holds no second
+//			document or undo stack. Save routes through the shared SaveDocument
+//			orchestrator over hammer::adapters::platform::DiskFileStore; load reads
+//			the file and feeds the text to EditorController::LoadVmf. All GTK/GDK/GL
+//			native detail is confined here. A headless "--screenshot/--quad" path
+//			(offscreen.cpp) shares the renderer for windowless verification.
 //
 //=============================================================================//
 
-#include "hammer/app/editor_document.h"
-#include "hammer/geometry/brush.h"
+#include "hammer/adapters/platform/disk_file_store.h"
+#include "hammer/app/editor_controller.h"
+#include "hammer/app/save_orchestrator.h"
 
-#include "posix_file_store.h"
 #include "renderer.h"
 
 #include <array>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -36,22 +38,27 @@ namespace
 {
 
 constexpr const char *kAppId = "com.valvesoftware.HammerGtk";
+constexpr int kNoHighlight = INT_MIN;
 
 struct AppState;
 
-// One of the four Hammer viewports: a GtkGLArea driven by its own Renderer in a
-// fixed view mode, plus per-view input bookkeeping.
 struct Viewport
 {
 	AppState *app = nullptr;
 	hammergtk::Renderer renderer;
 	hammergtk::ViewMode mode = hammergtk::ViewMode::Perspective;
+	hammer::app::ViewId vid = hammer::app::ViewId::Camera;
 	const char *label = "";
 	GtkGLArea *area = nullptr;
 	bool glReady = false;
 	bool pending = false;
-	double dragPrevX = 0.0;
-	double dragPrevY = 0.0;
+
+	double startX = 0.0; // tool-drag start (widget coords)
+	double startY = 0.0;
+	double orbitPrevX = 0.0; // incremental orbit/pan bookkeeping
+	double orbitPrevY = 0.0;
+	double panPrevX = 0.0;
+	double panPrevY = 0.0;
 	double cursorX = 0.0;
 	double cursorY = 0.0;
 	double pinchPrev = 1.0;
@@ -59,37 +66,25 @@ struct Viewport
 
 struct AppState
 {
+	hammer::app::EditorController controller;
 	std::array<Viewport, 4> viewports;
-	hammer::geometry::WorldScene scene;
 	std::string currentPath;
 	std::string openOnStart;
 
 	GtkApplication *application = nullptr;
 	GtkWidget *window = nullptr;
-	GtkListBox *visgroups = nullptr;
 	GtkLabel *helpLabel = nullptr;
 	GtkLabel *coordLabel = nullptr;
 	GtkLabel *snapLabel = nullptr;
-	GtkButton *groupsBtn = nullptr;
 	GtkLabel *objectsCount = nullptr;
+	GtkToggleButton *selectBtn = nullptr;
+	GtkToggleButton *blockBtn = nullptr;
+	bool suppressToolSignal = false;
 };
 
 // ---------------------------------------------------------------------------
-// Shared load path: VMF text -> document -> renderable scene.
+// Presentation refresh: push the controller's scene to every viewport.
 // ---------------------------------------------------------------------------
-
-bool LoadSceneFromFile(
-    const std::string &path, hammer::geometry::WorldScene &scene, std::string &error )
-{
-	hammergtk::PosixFileStore store;
-	hammer::app::EditorDocument doc;
-	if ( !doc.Load( store, path, error ) )
-	{
-		return false;
-	}
-	scene = hammer::geometry::BuildSceneFromDocument( doc.Content() );
-	return true;
-}
 
 void SetHelp( AppState *st, const std::string &text )
 {
@@ -99,84 +94,39 @@ void SetHelp( AppState *st, const std::string &text )
 	}
 }
 
-const char *AxisLetter( int axis )
+void UpdateChrome( AppState *st )
 {
-	return axis == 0 ? "x" : ( axis == 1 ? "y" : "z" );
-}
-
-void ViewAxes( hammergtk::ViewMode mode, int &u, int &v )
-{
-	switch ( mode )
+	if ( st->objectsCount )
 	{
-	case hammergtk::ViewMode::Top:
-		u = 0;
-		v = 1;
-		break;
-	case hammergtk::ViewMode::Front:
-		u = 0;
-		v = 2;
-		break;
-	case hammergtk::ViewMode::Side:
-		u = 1;
-		v = 2;
-		break;
-	default:
-		u = 0;
-		v = 1;
-		break;
+		char buf[128];
+		std::snprintf( buf, sizeof( buf ), "%zu brush(es)%s", st->controller.Brushes().size(),
+		    st->controller.Selection() ? "  ·  1 selected" : "" );
+		gtk_label_set_text( st->objectsCount, buf );
+	}
+	if ( st->snapLabel )
+	{
+		char buf[64];
+		std::snprintf( buf, sizeof( buf ), "Grid: %d  ·  %s", st->controller.GridSize(),
+		    st->controller.CurrentTool() == hammer::app::Tool::Block ? "Block" : "Select" );
+		gtk_label_set_text( st->snapLabel, buf );
+	}
+	if ( st->window )
+	{
+		const std::string base =
+		    st->currentPath.empty() ? std::string( "untitled" )
+		                            : st->currentPath.substr( st->currentPath.find_last_of( "/" ) + 1 );
+		const std::string title =
+		    "Hammer - [" + base + ( st->controller.IsModified() ? " *]" : "]" );
+		gtk_window_set_title( GTK_WINDOW( st->window ), title.c_str() );
 	}
 }
 
-void PopulateVisGroups( AppState *st )
+// Uploads the current scene to every ready viewport. 'frame' re-centres each view
+// (used on load/new/reset); live edits pass false so the view stays put.
+void RefreshScene( AppState *st, bool frame )
 {
-	if ( !st->visgroups )
-	{
-		return;
-	}
-	gtk_list_box_remove_all( st->visgroups );
-
-	// VisGroups in Hammer classify map objects; here we surface the map's entity
-	// classes as toggleable groups, mirroring the classic checkbox list.
-	auto addRow = [&]( const char *name, bool checked )
-	{
-		GtkWidget *row = gtk_list_box_row_new();
-		GtkWidget *box = gtk_box_new( GTK_ORIENTATION_HORIZONTAL, 6 );
-		gtk_widget_set_margin_start( box, 4 );
-		gtk_widget_set_margin_top( box, 1 );
-		gtk_widget_set_margin_bottom( box, 1 );
-		GtkWidget *check = gtk_check_button_new();
-		gtk_check_button_set_active( GTK_CHECK_BUTTON( check ), checked );
-		GtkWidget *lbl = gtk_label_new( name );
-		gtk_label_set_xalign( GTK_LABEL( lbl ), 0.0f );
-		gtk_box_append( GTK_BOX( box ), check );
-		gtk_box_append( GTK_BOX( box ), lbl );
-		gtk_list_box_row_set_child( GTK_LIST_BOX_ROW( row ), box );
-		gtk_list_box_row_set_activatable( GTK_LIST_BOX_ROW( row ), FALSE );
-		gtk_list_box_append( st->visgroups, row );
-	};
-
-	addRow( "World geometry", true );
-	bool seen[64] = { false };
-	int distinct = 0;
-	for ( const hammer::geometry::SceneEntity &e : st->scene.entities )
-	{
-		// De-duplicate classnames cheaply for the small maps this slice targets.
-		std::size_t h = std::hash<std::string>{}( e.classname ) % 64;
-		if ( seen[h] )
-		{
-			continue;
-		}
-		seen[h] = true;
-		addRow( e.classname.empty() ? "(entity)" : e.classname.c_str(), true );
-		if ( ++distinct >= 32 )
-		{
-			break;
-		}
-	}
-}
-
-void ApplyScene( AppState *st )
-{
+	const hammer::geometry::WorldScene scene = st->controller.BuildScene();
+	const int selId = st->controller.Selection() ? *st->controller.Selection() : kNoHighlight;
 	for ( Viewport &vp : st->viewports )
 	{
 		if ( vp.glReady && vp.area )
@@ -184,9 +134,13 @@ void ApplyScene( AppState *st )
 			gtk_gl_area_make_current( vp.area );
 			if ( gtk_gl_area_get_error( vp.area ) == nullptr )
 			{
-				vp.renderer.SetScene( st->scene );
+				vp.renderer.SetHighlight( selId );
+				vp.renderer.SetScene( scene );
+				if ( frame )
+				{
+					vp.renderer.FrameScene();
+				}
 			}
-			vp.pending = false;
 			gtk_gl_area_queue_render( vp.area );
 		}
 		else
@@ -194,40 +148,50 @@ void ApplyScene( AppState *st )
 			vp.pending = true;
 		}
 	}
-
-	PopulateVisGroups( st );
-
-	if ( st->objectsCount )
-	{
-		char buf[128];
-		std::snprintf( buf, sizeof( buf ), "%zu solids · %zu faces · %zu entities",
-		    st->scene.solids.size(), st->scene.TotalFaces(), st->scene.entities.size() );
-		gtk_label_set_text( st->objectsCount, buf );
-	}
-
-	const std::string base = st->currentPath.substr( st->currentPath.find_last_of( "/" ) + 1 );
-	if ( st->window )
-	{
-		gtk_window_set_title( GTK_WINDOW( st->window ), ( "Hammer - [" + base + "]" ).c_str() );
-	}
-	SetHelp( st, "Loaded " + base );
+	UpdateChrome( st );
 }
 
-void LoadPath( AppState *st, const std::string &path )
+// ---------------------------------------------------------------------------
+// File operations (single save path via SaveDocument + DiskFileStore).
+// ---------------------------------------------------------------------------
+
+void DoOpen( AppState *st, const std::string &path )
 {
-	hammer::geometry::WorldScene scene;
-	std::string error;
-	if ( !LoadSceneFromFile( path, scene, error ) )
+	hammer::adapters::platform::DiskFileStore store;
+	std::string text;
+	if ( !store.Read( path, text ) )
 	{
-		SetHelp( st, std::string( "Failed to open: " ) + error );
+		SetHelp( st, "Failed to read: " + path );
 		return;
 	}
-	st->scene = std::move( scene );
+	std::string error;
+	if ( !st->controller.LoadVmf( text, error ) )
+	{
+		SetHelp( st, "Failed to parse VMF: " + error );
+		return;
+	}
 	st->currentPath = path;
-	ApplyScene( st );
+	RefreshScene( st, true );
+	SetHelp( st, "Opened " + path );
 }
 
-// ---- GtkFileDialog open flow ----------------------------------------------
+void DoSave( AppState *st, const std::string &path )
+{
+	hammer::adapters::platform::DiskFileStore store;
+	const std::string text = st->controller.ToVmf();
+	const hammer::app::SaveStatus status = hammer::app::SaveDocument( store, path, text );
+	if ( status == hammer::app::SaveStatus::kOk )
+	{
+		st->controller.MarkSaved();
+		st->currentPath = path;
+		UpdateChrome( st );
+		SetHelp( st, "Saved " + path );
+	}
+	else
+	{
+		SetHelp( st, "Save failed: " + path );
+	}
+}
 
 void OnOpenFinished( GObject *source, GAsyncResult *res, gpointer user_data )
 {
@@ -245,17 +209,15 @@ void OnOpenFinished( GObject *source, GAsyncResult *res, gpointer user_data )
 	char *path = g_file_get_path( file );
 	if ( path )
 	{
-		LoadPath( st, path );
+		DoOpen( st, path );
 		g_free( path );
 	}
 	g_object_unref( file );
 }
 
-void OpenDialog( AppState *st )
+GtkFileDialog *MakeVmfDialog()
 {
 	GtkFileDialog *dialog = gtk_file_dialog_new();
-	gtk_file_dialog_set_title( dialog, "Open VMF map" );
-
 	GtkFileFilter *filter = gtk_file_filter_new();
 	gtk_file_filter_set_name( filter, "Valve Map Format (*.vmf)" );
 	gtk_file_filter_add_pattern( filter, "*.vmf" );
@@ -264,16 +226,72 @@ void OpenDialog( AppState *st )
 	gtk_file_dialog_set_filters( dialog, G_LIST_MODEL( filters ) );
 	g_object_unref( filter );
 	g_object_unref( filters );
+	return dialog;
+}
 
-	gtk_file_dialog_open( dialog, GTK_WINDOW( st->window ), nullptr, OnOpenFinished, st );
-	g_object_unref( dialog );
+void OnSaveFinished( GObject *source, GAsyncResult *res, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	GError *err = nullptr;
+	GFile *file = gtk_file_dialog_save_finish( GTK_FILE_DIALOG( source ), res, &err );
+	if ( !file )
+	{
+		if ( err )
+		{
+			g_error_free( err );
+		}
+		return;
+	}
+	char *path = g_file_get_path( file );
+	if ( path )
+	{
+		DoSave( st, path );
+		g_free( path );
+	}
+	g_object_unref( file );
 }
 
 // ---- GAction handlers ------------------------------------------------------
 
 void ActionOpen( GSimpleAction *, GVariant *, gpointer user_data )
 {
-	OpenDialog( static_cast<AppState *>( user_data ) );
+	AppState *st = static_cast<AppState *>( user_data );
+	GtkFileDialog *dialog = MakeVmfDialog();
+	gtk_file_dialog_set_title( dialog, "Open VMF map" );
+	gtk_file_dialog_open( dialog, GTK_WINDOW( st->window ), nullptr, OnOpenFinished, st );
+	g_object_unref( dialog );
+}
+
+void ActionSaveAs( GSimpleAction *, GVariant *, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	GtkFileDialog *dialog = MakeVmfDialog();
+	gtk_file_dialog_set_title( dialog, "Save VMF map" );
+	gtk_file_dialog_set_initial_name( dialog, "untitled.vmf" );
+	gtk_file_dialog_save( dialog, GTK_WINDOW( st->window ), nullptr, OnSaveFinished, st );
+	g_object_unref( dialog );
+}
+
+void ActionSave( GSimpleAction *action, GVariant *param, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	if ( st->currentPath.empty() )
+	{
+		ActionSaveAs( action, param, user_data );
+	}
+	else
+	{
+		DoSave( st, st->currentPath );
+	}
+}
+
+void ActionNew( GSimpleAction *, GVariant *, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	st->controller.NewMap();
+	st->currentPath.clear();
+	RefreshScene( st, true );
+	SetHelp( st, "New map" );
 }
 
 void ActionQuit( GSimpleAction *, GVariant *, gpointer user_data )
@@ -285,17 +303,75 @@ void ActionQuit( GSimpleAction *, GVariant *, gpointer user_data )
 	}
 }
 
+void ActionUndo( GSimpleAction *, GVariant *, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	if ( st->controller.Undo() )
+	{
+		RefreshScene( st, false );
+		SetHelp( st, "Undo" );
+	}
+}
+
+void ActionRedo( GSimpleAction *, GVariant *, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	if ( st->controller.Redo() )
+	{
+		RefreshScene( st, false );
+		SetHelp( st, "Redo" );
+	}
+}
+
+void ActionDelete( GSimpleAction *, GVariant *, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	if ( st->controller.DeleteSelection() )
+	{
+		RefreshScene( st, false );
+	}
+}
+
 void ActionResetViews( GSimpleAction *, GVariant *, gpointer user_data )
 {
 	AppState *st = static_cast<AppState *>( user_data );
 	for ( Viewport &vp : st->viewports )
 	{
-		vp.renderer.FrameScene();
 		if ( vp.area )
 		{
+			gtk_gl_area_make_current( vp.area );
+			vp.renderer.FrameScene();
 			gtk_gl_area_queue_render( vp.area );
 		}
 	}
+}
+
+void SetToolUi( AppState *st, hammer::app::Tool tool )
+{
+	st->controller.SetTool( tool );
+	st->suppressToolSignal = true;
+	if ( st->selectBtn )
+	{
+		gtk_toggle_button_set_active( st->selectBtn, tool == hammer::app::Tool::Select );
+	}
+	if ( st->blockBtn )
+	{
+		gtk_toggle_button_set_active( st->blockBtn, tool == hammer::app::Tool::Block );
+	}
+	st->suppressToolSignal = false;
+	RefreshScene( st, false );
+	SetHelp( st, tool == hammer::app::Tool::Block ? "Block tool: drag in a 2D view, Enter to create"
+	                                              : "Selection tool: click a brush, drag to move" );
+}
+
+void ActionToolSelect( GSimpleAction *, GVariant *, gpointer user_data )
+{
+	SetToolUi( static_cast<AppState *>( user_data ), hammer::app::Tool::Select );
+}
+
+void ActionToolBlock( GSimpleAction *, GVariant *, gpointer user_data )
+{
+	SetToolUi( static_cast<AppState *>( user_data ), hammer::app::Tool::Block );
 }
 
 // ---- GtkGLArea callbacks ---------------------------------------------------
@@ -324,11 +400,13 @@ void OnGlRealize( GtkGLArea *area, gpointer user_data )
 	}
 	vp->renderer.SetViewMode( vp->mode );
 	vp->glReady = true;
-	if ( vp->pending )
-	{
-		vp->renderer.SetScene( vp->app->scene );
-		vp->pending = false;
-	}
+
+	const int selId =
+	    vp->app->controller.Selection() ? *vp->app->controller.Selection() : kNoHighlight;
+	vp->renderer.SetHighlight( selId );
+	vp->renderer.SetScene( vp->app->controller.BuildScene() );
+	vp->renderer.FrameScene();
+	vp->pending = false;
 }
 
 void OnGlUnrealize( GtkGLArea *area, gpointer user_data )
@@ -348,7 +426,20 @@ gboolean OnGlRender( GtkGLArea *area, GdkGLContext *, gpointer user_data )
 	return TRUE;
 }
 
-// ---- Input: drag, scroll, pinch, motion ------------------------------------
+// ---- Input helpers ---------------------------------------------------------
+
+void WidgetToWorld( Viewport *vp, double wx, double wy, double &u, double &v )
+{
+	const int scale = gtk_widget_get_scale_factor( GTK_WIDGET( vp->area ) );
+	const int w = gtk_widget_get_width( GTK_WIDGET( vp->area ) ) * scale;
+	const int h = gtk_widget_get_height( GTK_WIDGET( vp->area ) ) * scale;
+	float fu = 0.0f;
+	float fv = 0.0f;
+	vp->renderer.PixelToWorld( static_cast<float>( wx * scale ), static_cast<float>( wy * scale ), w,
+	    h, fu, fv );
+	u = fu;
+	v = fv;
+}
 
 void UpdateCoords( Viewport *vp )
 {
@@ -357,19 +448,29 @@ void UpdateCoords( Viewport *vp )
 	{
 		return;
 	}
-	const int scale = gtk_widget_get_scale_factor( GTK_WIDGET( vp->area ) );
-	const int w = gtk_widget_get_width( GTK_WIDGET( vp->area ) ) * scale;
-	const int h = gtk_widget_get_height( GTK_WIDGET( vp->area ) ) * scale;
-	float wu = 0.0f;
-	float wv = 0.0f;
-	vp->renderer.PixelToWorld( static_cast<float>( vp->cursorX * scale ),
-	    static_cast<float>( vp->cursorY * scale ), w, h, wu, wv );
-	int u = 0;
-	int v = 1;
-	ViewAxes( vp->mode, u, v );
+	double u = 0.0;
+	double v = 0.0;
+	WidgetToWorld( vp, vp->cursorX, vp->cursorY, u, v );
+	int ua = 0;
+	int va = 1;
+	int fa = 2;
+	switch ( vp->mode )
+	{
+	case hammergtk::ViewMode::Front:
+		ua = 0;
+		va = 2;
+		break;
+	case hammergtk::ViewMode::Side:
+		ua = 1;
+		va = 2;
+		break;
+	default:
+		break;
+	}
+	(void)fa;
+	const char *letters = "xyz";
 	char buf[96];
-	std::snprintf(
-	    buf, sizeof( buf ), "%s %.0f  %s %.0f", AxisLetter( u ), wu, AxisLetter( v ), wv );
+	std::snprintf( buf, sizeof( buf ), "%c %.0f  %c %.0f", letters[ua], u, letters[va], v );
 	gtk_label_set_text( st->coordLabel, buf );
 }
 
@@ -381,20 +482,75 @@ void OnMotion( GtkEventControllerMotion *, double x, double y, gpointer user_dat
 	UpdateCoords( vp );
 }
 
-void OnDragBegin( GtkGestureDrag *, double, double, gpointer user_data )
+// Tool drag (left button): 2D views drive the active editing tool; the camera
+// view orbits.
+void OnToolBegin( GtkGestureDrag *, double startX, double startY, gpointer user_data )
 {
 	Viewport *vp = static_cast<Viewport *>( user_data );
-	vp->dragPrevX = 0.0;
-	vp->dragPrevY = 0.0;
+	vp->startX = startX;
+	vp->startY = startY;
+	vp->orbitPrevX = 0.0;
+	vp->orbitPrevY = 0.0;
+	if ( vp->mode == hammergtk::ViewMode::Perspective )
+	{
+		return;
+	}
+	double u = 0.0;
+	double v = 0.0;
+	WidgetToWorld( vp, startX, startY, u, v );
+	vp->app->controller.PointerDown( vp->vid, u, v );
+	RefreshScene( vp->app, false );
 }
 
-void OnDragUpdate( GtkGestureDrag *, double offsetX, double offsetY, gpointer user_data )
+void OnToolUpdate( GtkGestureDrag *, double offX, double offY, gpointer user_data )
 {
 	Viewport *vp = static_cast<Viewport *>( user_data );
-	const double dx = offsetX - vp->dragPrevX;
-	const double dy = offsetY - vp->dragPrevY;
-	vp->dragPrevX = offsetX;
-	vp->dragPrevY = offsetY;
+	if ( vp->mode == hammergtk::ViewMode::Perspective )
+	{
+		const double dx = offX - vp->orbitPrevX;
+		const double dy = offY - vp->orbitPrevY;
+		vp->orbitPrevX = offX;
+		vp->orbitPrevY = offY;
+		vp->renderer.DragBy( static_cast<float>( dx ), static_cast<float>( dy ) );
+		gtk_gl_area_queue_render( vp->area );
+		return;
+	}
+	double u = 0.0;
+	double v = 0.0;
+	WidgetToWorld( vp, vp->startX + offX, vp->startY + offY, u, v );
+	vp->app->controller.PointerDrag( vp->vid, u, v );
+	RefreshScene( vp->app, false );
+}
+
+void OnToolEnd( GtkGestureDrag *, double offX, double offY, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	if ( vp->mode == hammergtk::ViewMode::Perspective )
+	{
+		return;
+	}
+	double u = 0.0;
+	double v = 0.0;
+	WidgetToWorld( vp, vp->startX + offX, vp->startY + offY, u, v );
+	vp->app->controller.PointerUp( vp->vid, u, v );
+	RefreshScene( vp->app, false );
+}
+
+// Pan drag (middle button): pans a 2D view / orbits the camera.
+void OnPanBegin( GtkGestureDrag *, double, double, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	vp->panPrevX = 0.0;
+	vp->panPrevY = 0.0;
+}
+
+void OnPanUpdate( GtkGestureDrag *, double offX, double offY, gpointer user_data )
+{
+	Viewport *vp = static_cast<Viewport *>( user_data );
+	const double dx = offX - vp->panPrevX;
+	const double dy = offY - vp->panPrevY;
+	vp->panPrevX = offX;
+	vp->panPrevY = offY;
 	vp->renderer.DragBy( static_cast<float>( dx ), static_cast<float>( dy ) );
 	gtk_gl_area_queue_render( vp->area );
 }
@@ -422,9 +578,8 @@ gboolean OnScroll( GtkEventControllerScroll *ctrl, double dx, double dy, gpointe
 		}
 		else
 		{
-			// Two-finger scroll orbits the camera.
-			vp->renderer.PanScroll(
-			    static_cast<float>( dx ) * gain * 0.5f, static_cast<float>( dy ) * gain * 0.5f );
+			vp->renderer.PanScroll( static_cast<float>( dx ) * gain * 0.5f,
+			    static_cast<float>( dy ) * gain * 0.5f );
 		}
 	}
 	else if ( ctrlHeld )
@@ -456,7 +611,6 @@ void OnZoomChanged( GtkGestureZoom *zoom, double scaleRatio, gpointer user_data 
 	}
 	const double delta = scaleRatio / vp->pinchPrev;
 	vp->pinchPrev = scaleRatio;
-
 	const int scale = gtk_widget_get_scale_factor( GTK_WIDGET( vp->area ) );
 	const int w = gtk_widget_get_width( GTK_WIDGET( vp->area ) ) * scale;
 	const int h = gtk_widget_get_height( GTK_WIDGET( vp->area ) ) * scale;
@@ -468,13 +622,53 @@ void OnZoomChanged( GtkGestureZoom *zoom, double scaleRatio, gpointer user_data 
 	gtk_gl_area_queue_render( vp->area );
 }
 
+gboolean OnKeyPressed( GtkEventControllerKey *, guint keyval, guint, GdkModifierType,
+    gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	switch ( keyval )
+	{
+	case GDK_KEY_Return:
+	case GDK_KEY_KP_Enter:
+		if ( st->controller.Commit() )
+		{
+			RefreshScene( st, false );
+			SetHelp( st, "Brush created" );
+		}
+		return TRUE;
+	case GDK_KEY_Delete:
+	case GDK_KEY_BackSpace:
+		if ( st->controller.DeleteSelection() )
+		{
+			RefreshScene( st, false );
+		}
+		return TRUE;
+	case GDK_KEY_Escape:
+		SetToolUi( st, st->controller.CurrentTool() ); // clears any pending box
+		return TRUE;
+	case GDK_KEY_b:
+	case GDK_KEY_B:
+		SetToolUi( st, hammer::app::Tool::Block );
+		return TRUE;
+	case GDK_KEY_s:
+	case GDK_KEY_S:
+		SetToolUi( st, hammer::app::Tool::Select );
+		return TRUE;
+	default:
+		break;
+	}
+	return FALSE;
+}
+
 // ---- Widget construction ---------------------------------------------------
 
-GtkWidget *MakeViewport( AppState *st, int index, hammergtk::ViewMode mode, const char *label )
+GtkWidget *MakeViewport( AppState *st, int index, hammergtk::ViewMode mode, hammer::app::ViewId vid,
+    const char *label )
 {
 	Viewport &vp = st->viewports[index];
 	vp.app = st;
 	vp.mode = mode;
+	vp.vid = vid;
 	vp.label = label;
 
 	GtkWidget *glarea = gtk_gl_area_new();
@@ -488,31 +682,37 @@ GtkWidget *MakeViewport( AppState *st, int index, hammergtk::ViewMode mode, cons
 	g_signal_connect( glarea, "unrealize", G_CALLBACK( OnGlUnrealize ), &vp );
 	g_signal_connect( glarea, "render", G_CALLBACK( OnGlRender ), &vp );
 
-	// Mouse drag (orbit/pan fallback).
-	GtkGesture *drag = gtk_gesture_drag_new();
-	g_signal_connect( drag, "drag-begin", G_CALLBACK( OnDragBegin ), &vp );
-	g_signal_connect( drag, "drag-update", G_CALLBACK( OnDragUpdate ), &vp );
-	gtk_widget_add_controller( glarea, GTK_EVENT_CONTROLLER( drag ) );
+	// Left button: tool / orbit.
+	GtkGesture *tool = gtk_gesture_drag_new();
+	gtk_gesture_single_set_button( GTK_GESTURE_SINGLE( tool ), GDK_BUTTON_PRIMARY );
+	g_signal_connect( tool, "drag-begin", G_CALLBACK( OnToolBegin ), &vp );
+	g_signal_connect( tool, "drag-update", G_CALLBACK( OnToolUpdate ), &vp );
+	g_signal_connect( tool, "drag-end", G_CALLBACK( OnToolEnd ), &vp );
+	gtk_widget_add_controller( glarea, GTK_EVENT_CONTROLLER( tool ) );
 
-	// Touchpad two-finger scroll (pan/orbit) with kinetic momentum; ctrl = zoom.
+	// Middle button: pan / orbit.
+	GtkGesture *pan = gtk_gesture_drag_new();
+	gtk_gesture_single_set_button( GTK_GESTURE_SINGLE( pan ), GDK_BUTTON_MIDDLE );
+	g_signal_connect( pan, "drag-begin", G_CALLBACK( OnPanBegin ), &vp );
+	g_signal_connect( pan, "drag-update", G_CALLBACK( OnPanUpdate ), &vp );
+	gtk_widget_add_controller( glarea, GTK_EVENT_CONTROLLER( pan ) );
+
+	// Touchpad two-finger scroll (pan/orbit, kinetic) + ctrl/pinch zoom.
 	GtkEventController *scroll =
 	    gtk_event_controller_scroll_new( static_cast<GtkEventControllerScrollFlags>(
 	        GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES | GTK_EVENT_CONTROLLER_SCROLL_KINETIC ) );
 	g_signal_connect( scroll, "scroll", G_CALLBACK( OnScroll ), &vp );
 	gtk_widget_add_controller( glarea, scroll );
 
-	// Pinch-to-zoom anchored at the pinch centre.
 	GtkGesture *pinch = gtk_gesture_zoom_new();
 	g_signal_connect( pinch, "begin", G_CALLBACK( OnZoomBegin ), &vp );
 	g_signal_connect( pinch, "scale-changed", G_CALLBACK( OnZoomChanged ), &vp );
 	gtk_widget_add_controller( glarea, GTK_EVENT_CONTROLLER( pinch ) );
 
-	// Motion for the coordinate read-out.
 	GtkEventController *motion = gtk_event_controller_motion_new();
 	g_signal_connect( motion, "motion", G_CALLBACK( OnMotion ), &vp );
 	gtk_widget_add_controller( glarea, motion );
 
-	// A corner label like Hammer's per-view caption.
 	GtkWidget *overlay = gtk_overlay_new();
 	gtk_overlay_set_child( GTK_OVERLAY( overlay ), glarea );
 	GtkWidget *caption = gtk_label_new( label );
@@ -521,7 +721,6 @@ GtkWidget *MakeViewport( AppState *st, int index, hammergtk::ViewMode mode, cons
 	gtk_widget_set_valign( caption, GTK_ALIGN_START );
 	gtk_widget_set_margin_start( caption, 4 );
 	gtk_widget_set_margin_top( caption, 4 );
-	gtk_label_set_xalign( GTK_LABEL( caption ), 0.0f );
 	gtk_overlay_add_overlay( GTK_OVERLAY( overlay ), caption );
 
 	GtkWidget *frame = gtk_frame_new( nullptr );
@@ -529,30 +728,84 @@ GtkWidget *MakeViewport( AppState *st, int index, hammergtk::ViewMode mode, cons
 	return frame;
 }
 
-GtkWidget *MakeToolButton( const char *icon, const char *tip )
+void OnSelectToggled( GtkToggleButton *btn, gpointer user_data )
 {
-	GtkWidget *b = gtk_button_new_from_icon_name( icon );
-	gtk_widget_set_tooltip_text( b, tip );
-	gtk_button_set_has_frame( GTK_BUTTON( b ), FALSE );
-	return b;
+	AppState *st = static_cast<AppState *>( user_data );
+	if ( st->suppressToolSignal )
+	{
+		return;
+	}
+	if ( gtk_toggle_button_get_active( btn ) )
+	{
+		SetToolUi( st, hammer::app::Tool::Select );
+	}
 }
 
-GtkWidget *MakeToggleTool( const char *icon, const char *tip, GtkToggleButton *group, bool active )
+void OnBlockToggled( GtkToggleButton *btn, gpointer user_data )
 {
-	GtkWidget *b = gtk_toggle_button_new();
-	gtk_button_set_child( GTK_BUTTON( b ), gtk_image_new_from_icon_name( icon ) );
-	gtk_widget_set_tooltip_text( b, tip );
-	if ( group )
+	AppState *st = static_cast<AppState *>( user_data );
+	if ( st->suppressToolSignal )
 	{
-		gtk_toggle_button_set_group( GTK_TOGGLE_BUTTON( b ), group );
+		return;
 	}
-	gtk_toggle_button_set_active( GTK_TOGGLE_BUTTON( b ), active );
-	return b;
+	if ( gtk_toggle_button_get_active( btn ) )
+	{
+		SetToolUi( st, hammer::app::Tool::Block );
+	}
+}
+
+GtkWidget *MakeToolPalette( AppState *st )
+{
+	GtkWidget *palette = gtk_box_new( GTK_ORIENTATION_VERTICAL, 2 );
+	gtk_widget_set_margin_start( palette, 3 );
+	gtk_widget_set_margin_end( palette, 3 );
+	gtk_widget_set_margin_top( palette, 3 );
+
+	GtkWidget *select = gtk_toggle_button_new();
+	gtk_button_set_child( GTK_BUTTON( select ),
+	    gtk_image_new_from_icon_name( "edit-select-all-symbolic" ) );
+	gtk_widget_set_tooltip_text( select, "Selection Tool (S)" );
+	gtk_toggle_button_set_active( GTK_TOGGLE_BUTTON( select ), TRUE );
+	st->selectBtn = GTK_TOGGLE_BUTTON( select );
+	g_signal_connect( select, "toggled", G_CALLBACK( OnSelectToggled ), st );
+	gtk_box_append( GTK_BOX( palette ), select );
+
+	GtkWidget *block = gtk_toggle_button_new();
+	gtk_button_set_child( GTK_BUTTON( block ), gtk_image_new_from_icon_name( "view-grid-symbolic" ) );
+	gtk_widget_set_tooltip_text( block, "Block Tool (B)" );
+	gtk_toggle_button_set_group( GTK_TOGGLE_BUTTON( block ), GTK_TOGGLE_BUTTON( select ) );
+	st->blockBtn = GTK_TOGGLE_BUTTON( block );
+	g_signal_connect( block, "toggled", G_CALLBACK( OnBlockToggled ), st );
+	gtk_box_append( GTK_BOX( palette ), block );
+
+	// Remaining classic tools (laid out; not yet functional).
+	struct Tool
+	{
+		const char *icon;
+		const char *tip;
+	};
+	const Tool rest[] = {
+	    { "zoom-in-symbolic", "Magnify" },
+	    { "camera-photo-symbolic", "Camera" },
+	    { "insert-object-symbolic", "Entity Tool" },
+	    { "edit-cut-symbolic", "Clipping Tool" },
+	    { "format-justify-fill-symbolic", "Vertex Tool" },
+	    { "applications-graphics-symbolic", "Apply Texture" },
+	    { "insert-link-symbolic", "Apply Decal" },
+	};
+	for ( const Tool &t : rest )
+	{
+		GtkWidget *b = gtk_toggle_button_new();
+		gtk_button_set_child( GTK_BUTTON( b ), gtk_image_new_from_icon_name( t.icon ) );
+		gtk_widget_set_tooltip_text( b, t.tip );
+		gtk_toggle_button_set_group( GTK_TOGGLE_BUTTON( b ), GTK_TOGGLE_BUTTON( select ) );
+		gtk_box_append( GTK_BOX( palette ), b );
+	}
+	return palette;
 }
 
 void DrawTextureSwatch( GtkDrawingArea *, cairo_t *cr, int w, int h, gpointer )
 {
-	// A brick-ish placeholder swatch for the "current texture" slot.
 	cairo_set_source_rgb( cr, 0.42, 0.28, 0.22 );
 	cairo_rectangle( cr, 0, 0, w, h );
 	cairo_fill( cr );
@@ -579,13 +832,11 @@ void DrawTextureSwatch( GtkDrawingArea *, cairo_t *cr, int w, int h, gpointer )
 GtkWidget *MakeObjectBar( AppState *st )
 {
 	GtkWidget *bar = gtk_box_new( GTK_ORIENTATION_VERTICAL, 8 );
-	gtk_widget_set_size_request( bar, 190, -1 );
 	gtk_widget_set_margin_start( bar, 6 );
 	gtk_widget_set_margin_end( bar, 6 );
 	gtk_widget_set_margin_top( bar, 6 );
 	gtk_widget_set_margin_bottom( bar, 6 );
 
-	// Select: Groups / Objects / Solids (linked toggle row).
 	gtk_box_append( GTK_BOX( bar ), gtk_label_new( "Select:" ) );
 	GtkWidget *selRow = gtk_box_new( GTK_ORIENTATION_HORIZONTAL, 0 );
 	gtk_widget_add_css_class( selRow, "linked" );
@@ -595,35 +846,29 @@ GtkWidget *MakeObjectBar( AppState *st )
 	gtk_toggle_button_set_group( GTK_TOGGLE_BUTTON( objects ), GTK_TOGGLE_BUTTON( groups ) );
 	gtk_toggle_button_set_group( GTK_TOGGLE_BUTTON( solids ), GTK_TOGGLE_BUTTON( groups ) );
 	gtk_toggle_button_set_active( GTK_TOGGLE_BUTTON( objects ), TRUE );
-	gtk_widget_set_hexpand( groups, TRUE );
-	gtk_widget_set_hexpand( objects, TRUE );
-	gtk_widget_set_hexpand( solids, TRUE );
-	gtk_box_append( GTK_BOX( selRow ), groups );
-	gtk_box_append( GTK_BOX( selRow ), objects );
-	gtk_box_append( GTK_BOX( selRow ), solids );
+	for ( GtkWidget *b : { groups, objects, solids } )
+	{
+		gtk_widget_set_hexpand( b, TRUE );
+		gtk_box_append( GTK_BOX( selRow ), b );
+	}
 	gtk_box_append( GTK_BOX( bar ), selRow );
-	st->groupsBtn = GTK_BUTTON( groups );
 
 	GtkWidget *count = gtk_label_new( "no map loaded" );
 	gtk_label_set_xalign( GTK_LABEL( count ), 0.0f );
 	gtk_widget_add_css_class( count, "dim-label" );
-	gtk_label_set_wrap( GTK_LABEL( count ), TRUE );
 	st->objectsCount = GTK_LABEL( count );
 	gtk_box_append( GTK_BOX( bar ), count );
 
 	gtk_box_append( GTK_BOX( bar ), gtk_separator_new( GTK_ORIENTATION_HORIZONTAL ) );
 
-	// Texture group + current texture.
 	gtk_box_append( GTK_BOX( bar ), gtk_label_new( "Texture group:" ) );
 	const char *groupsList[] = { "All Textures", "brick", "concrete", "dev", "metal", nullptr };
-	GtkWidget *texGroup = gtk_drop_down_new_from_strings( groupsList );
-	gtk_box_append( GTK_BOX( bar ), texGroup );
+	gtk_box_append( GTK_BOX( bar ), gtk_drop_down_new_from_strings( groupsList ) );
 
 	gtk_box_append( GTK_BOX( bar ), gtk_label_new( "Current texture:" ) );
 	GtkWidget *swatch = gtk_drawing_area_new();
-	gtk_widget_set_size_request( swatch, -1, 110 );
-	gtk_drawing_area_set_draw_func(
-	    GTK_DRAWING_AREA( swatch ), DrawTextureSwatch, nullptr, nullptr );
+	gtk_widget_set_size_request( swatch, -1, 100 );
+	gtk_drawing_area_set_draw_func( GTK_DRAWING_AREA( swatch ), DrawTextureSwatch, nullptr, nullptr );
 	gtk_box_append( GTK_BOX( bar ), swatch );
 	GtkWidget *texName = gtk_label_new( "brick/brickfloor001a  512x512" );
 	gtk_widget_add_css_class( texName, "caption" );
@@ -631,23 +876,33 @@ GtkWidget *MakeObjectBar( AppState *st )
 
 	GtkWidget *texBtns = gtk_box_new( GTK_ORIENTATION_HORIZONTAL, 0 );
 	gtk_widget_add_css_class( texBtns, "linked" );
-	GtkWidget *browse = gtk_button_new_with_label( "Browse…" );
-	GtkWidget *replace = gtk_button_new_with_label( "Replace…" );
-	gtk_widget_set_hexpand( browse, TRUE );
-	gtk_widget_set_hexpand( replace, TRUE );
-	gtk_box_append( GTK_BOX( texBtns ), browse );
-	gtk_box_append( GTK_BOX( texBtns ), replace );
+	for ( const char *name : { "Browse…", "Replace…" } )
+	{
+		GtkWidget *b = gtk_button_new_with_label( name );
+		gtk_widget_set_hexpand( b, TRUE );
+		gtk_box_append( GTK_BOX( texBtns ), b );
+	}
 	gtk_box_append( GTK_BOX( bar ), texBtns );
 
 	gtk_box_append( GTK_BOX( bar ), gtk_separator_new( GTK_ORIENTATION_HORIZONTAL ) );
 
-	// VisGroups.
 	gtk_box_append( GTK_BOX( bar ), gtk_label_new( "VisGroups:" ) );
 	GtkWidget *vgScroll = gtk_scrolled_window_new();
 	gtk_widget_set_vexpand( vgScroll, TRUE );
 	GtkWidget *vg = gtk_list_box_new();
 	gtk_list_box_set_selection_mode( GTK_LIST_BOX( vg ), GTK_SELECTION_NONE );
-	st->visgroups = GTK_LIST_BOX( vg );
+	for ( const char *name : { "World geometry", "Entities", "Displacements", "Triggers" } )
+	{
+		GtkWidget *row = gtk_list_box_row_new();
+		GtkWidget *box = gtk_box_new( GTK_ORIENTATION_HORIZONTAL, 6 );
+		GtkWidget *check = gtk_check_button_new();
+		gtk_check_button_set_active( GTK_CHECK_BUTTON( check ), TRUE );
+		GtkWidget *lbl = gtk_label_new( name );
+		gtk_box_append( GTK_BOX( box ), check );
+		gtk_box_append( GTK_BOX( box ), lbl );
+		gtk_list_box_row_set_child( GTK_LIST_BOX_ROW( row ), box );
+		gtk_list_box_append( GTK_LIST_BOX( vg ), row );
+	}
 	gtk_scrolled_window_set_child( GTK_SCROLLED_WINDOW( vgScroll ), vg );
 	gtk_box_append( GTK_BOX( bar ), vgScroll );
 
@@ -664,110 +919,7 @@ GtkWidget *MakeObjectBar( AppState *st )
 	return bar;
 }
 
-GtkWidget *MakeToolPalette()
-{
-	GtkWidget *palette = gtk_box_new( GTK_ORIENTATION_VERTICAL, 2 );
-	gtk_widget_set_margin_start( palette, 3 );
-	gtk_widget_set_margin_end( palette, 3 );
-	gtk_widget_set_margin_top( palette, 3 );
-
-	struct Tool
-	{
-		const char *icon;
-		const char *tip;
-	};
-	const Tool tools[] = {
-	    { "edit-select-all-symbolic", "Selection Tool" },
-	    { "zoom-in-symbolic", "Magnify" },
-	    { "camera-photo-symbolic", "Camera" },
-	    { "insert-object-symbolic", "Entity Tool" },
-	    { "view-grid-symbolic", "Block Tool" },
-	    { "edit-cut-symbolic", "Clipping Tool" },
-	    { "format-justify-fill-symbolic", "Vertex Tool" },
-	    { "applications-graphics-symbolic", "Apply Texture" },
-	    { "object-flip-horizontal-symbolic", "Toggle Texture Application" },
-	    { "insert-link-symbolic", "Apply Decal" },
-	};
-	GtkToggleButton *group = nullptr;
-	bool first = true;
-	for ( const Tool &t : tools )
-	{
-		GtkWidget *b = MakeToggleTool( t.icon, t.tip, group, first );
-		if ( first )
-		{
-			group = GTK_TOGGLE_BUTTON( b );
-			first = false;
-		}
-		gtk_box_append( GTK_BOX( palette ), b );
-	}
-	return palette;
-}
-
-GMenu *MakeMenuModel()
-{
-	GMenu *bar = g_menu_new();
-
-	GMenu *file = g_menu_new();
-	g_menu_append( file, "New", "app.new" );
-	g_menu_append( file, "Open…", "app.open" );
-	g_menu_append( file, "Save", "app.save" );
-	g_menu_append( file, "Save As…", "app.saveas" );
-	GMenu *fileEnd = g_menu_new();
-	g_menu_append( fileEnd, "Quit", "app.quit" );
-	g_menu_append_section( file, nullptr, G_MENU_MODEL( fileEnd ) );
-	g_menu_append_submenu( bar, "File", G_MENU_MODEL( file ) );
-	g_object_unref( fileEnd );
-
-	GMenu *edit = g_menu_new();
-	g_menu_append( edit, "Undo", "app.undo" );
-	g_menu_append( edit, "Redo", "app.redo" );
-	g_menu_append( edit, "Cut", "app.cut" );
-	g_menu_append( edit, "Copy", "app.copy" );
-	g_menu_append( edit, "Paste", "app.paste" );
-	g_menu_append_submenu( bar, "Edit", G_MENU_MODEL( edit ) );
-
-	GMenu *map = g_menu_new();
-	g_menu_append( map, "Snap to Grid", "app.snap" );
-	g_menu_append( map, "Show Grid", "app.grid" );
-	g_menu_append( map, "Entity Report…", "app.entreport" );
-	g_menu_append_submenu( bar, "Map", G_MENU_MODEL( map ) );
-
-	GMenu *view = g_menu_new();
-	g_menu_append( view, "Reset Views", "app.reset-views" );
-	g_menu_append( view, "3D Textured", "app.textured" );
-	g_menu_append( view, "Center on Selection", "app.center" );
-	g_menu_append_submenu( bar, "View", G_MENU_MODEL( view ) );
-
-	GMenu *tools = g_menu_new();
-	g_menu_append( tools, "Apply Current Texture", "app.applytex" );
-	g_menu_append( tools, "Options…", "app.options" );
-	g_menu_append_submenu( bar, "Tools", G_MENU_MODEL( tools ) );
-
-	GMenu *inst = g_menu_new();
-	g_menu_append( inst, "Create Instance", "app.instance" );
-	g_menu_append_submenu( bar, "Instancing", G_MENU_MODEL( inst ) );
-
-	GMenu *win = g_menu_new();
-	g_menu_append( win, "Cascade", "app.cascade" );
-	g_menu_append( win, "Tile", "app.tile" );
-	g_menu_append_submenu( bar, "Window", G_MENU_MODEL( win ) );
-
-	GMenu *help = g_menu_new();
-	g_menu_append( help, "About Hammer", "app.about" );
-	g_menu_append_submenu( bar, "Help", G_MENU_MODEL( help ) );
-
-	g_object_unref( file );
-	g_object_unref( edit );
-	g_object_unref( map );
-	g_object_unref( view );
-	g_object_unref( tools );
-	g_object_unref( inst );
-	g_object_unref( win );
-	g_object_unref( help );
-	return bar;
-}
-
-GtkWidget *MakeToolbar( AppState * )
+GtkWidget *MakeToolbar()
 {
 	GtkWidget *tb = gtk_box_new( GTK_ORIENTATION_HORIZONTAL, 2 );
 	gtk_widget_add_css_class( tb, "toolbar" );
@@ -788,21 +940,16 @@ GtkWidget *MakeToolbar( AppState * )
 	    { "document-save-symbolic", "Save", "app.save" },
 	    { "edit-undo-symbolic", "Undo", "app.undo" },
 	    { "edit-redo-symbolic", "Redo", "app.redo" },
-	    { "edit-cut-symbolic", "Cut", "app.cut" },
-	    { "edit-copy-symbolic", "Copy", "app.copy" },
-	    { "edit-paste-symbolic", "Paste", "app.paste" },
+	    { "edit-delete-symbolic", "Delete", "app.delete" },
 	    { "view-restore-symbolic", "Reset Views", "app.reset-views" },
 	};
 	for ( const Item &it : items )
 	{
-		GtkWidget *b = MakeToolButton( it.icon, it.tip );
+		GtkWidget *b = gtk_button_new_from_icon_name( it.icon );
+		gtk_widget_set_tooltip_text( b, it.tip );
+		gtk_button_set_has_frame( GTK_BUTTON( b ), FALSE );
 		gtk_actionable_set_action_name( GTK_ACTIONABLE( b ), it.action );
 		gtk_box_append( GTK_BOX( tb ), b );
-		if ( std::string( it.action ) == "app.save" || std::string( it.action ) == "app.redo" ||
-		     std::string( it.action ) == "app.paste" )
-		{
-			gtk_box_append( GTK_BOX( tb ), gtk_separator_new( GTK_ORIENTATION_VERTICAL ) );
-		}
 	}
 	return tb;
 }
@@ -816,7 +963,7 @@ GtkWidget *MakeStatusBar( AppState *st )
 	gtk_widget_set_margin_top( bar, 2 );
 	gtk_widget_set_margin_bottom( bar, 2 );
 
-	GtkWidget *help = gtk_label_new( "For Help, press F1" );
+	GtkWidget *help = gtk_label_new( "For Help, press F1  ·  drag to draw/select, MMB or scroll to pan" );
 	gtk_label_set_xalign( GTK_LABEL( help ), 0.0f );
 	gtk_widget_set_hexpand( help, TRUE );
 	st->helpLabel = GTK_LABEL( help );
@@ -827,7 +974,7 @@ GtkWidget *MakeStatusBar( AppState *st )
 	gtk_box_append( GTK_BOX( bar ), gtk_separator_new( GTK_ORIENTATION_VERTICAL ) );
 	gtk_box_append( GTK_BOX( bar ), coord );
 
-	GtkWidget *snap = gtk_label_new( "Snap: On  Grid: 64" );
+	GtkWidget *snap = gtk_label_new( "Grid: 64  ·  Select" );
 	st->snapLabel = GTK_LABEL( snap );
 	gtk_box_append( GTK_BOX( bar ), gtk_separator_new( GTK_ORIENTATION_VERTICAL ) );
 	gtk_box_append( GTK_BOX( bar ), snap );
@@ -837,20 +984,21 @@ GtkWidget *MakeStatusBar( AppState *st )
 
 GtkWidget *MakeViewportGrid( AppState *st )
 {
-	// Nested paned so the four views are resizable like Hammer's splitters.
 	GtkWidget *topPane = gtk_paned_new( GTK_ORIENTATION_HORIZONTAL );
-	gtk_paned_set_start_child(
-	    GTK_PANED( topPane ), MakeViewport( st, 0, hammergtk::ViewMode::Perspective, "camera" ) );
-	gtk_paned_set_end_child(
-	    GTK_PANED( topPane ), MakeViewport( st, 1, hammergtk::ViewMode::Top, "top (x/y)" ) );
+	gtk_paned_set_start_child( GTK_PANED( topPane ),
+	    MakeViewport( st, 0, hammergtk::ViewMode::Perspective, hammer::app::ViewId::Camera,
+	        "camera" ) );
+	gtk_paned_set_end_child( GTK_PANED( topPane ),
+	    MakeViewport( st, 1, hammergtk::ViewMode::Top, hammer::app::ViewId::Top, "top (x/y)" ) );
 	gtk_paned_set_resize_start_child( GTK_PANED( topPane ), TRUE );
 	gtk_paned_set_resize_end_child( GTK_PANED( topPane ), TRUE );
 
 	GtkWidget *bottomPane = gtk_paned_new( GTK_ORIENTATION_HORIZONTAL );
-	gtk_paned_set_start_child(
-	    GTK_PANED( bottomPane ), MakeViewport( st, 2, hammergtk::ViewMode::Front, "front (x/z)" ) );
-	gtk_paned_set_end_child(
-	    GTK_PANED( bottomPane ), MakeViewport( st, 3, hammergtk::ViewMode::Side, "side (y/z)" ) );
+	gtk_paned_set_start_child( GTK_PANED( bottomPane ),
+	    MakeViewport( st, 2, hammergtk::ViewMode::Front, hammer::app::ViewId::Front,
+	        "front (x/z)" ) );
+	gtk_paned_set_end_child( GTK_PANED( bottomPane ),
+	    MakeViewport( st, 3, hammergtk::ViewMode::Side, hammer::app::ViewId::Side, "side (y/z)" ) );
 	gtk_paned_set_resize_start_child( GTK_PANED( bottomPane ), TRUE );
 	gtk_paned_set_resize_end_child( GTK_PANED( bottomPane ), TRUE );
 
@@ -864,6 +1012,51 @@ GtkWidget *MakeViewportGrid( AppState *st )
 	return vPane;
 }
 
+GMenu *MakeMenuModel()
+{
+	GMenu *bar = g_menu_new();
+
+	GMenu *file = g_menu_new();
+	g_menu_append( file, "New", "app.new" );
+	g_menu_append( file, "Open…", "app.open" );
+	g_menu_append( file, "Save", "app.save" );
+	g_menu_append( file, "Save As…", "app.saveas" );
+	GMenu *fileEnd = g_menu_new();
+	g_menu_append( fileEnd, "Quit", "app.quit" );
+	g_menu_append_section( file, nullptr, G_MENU_MODEL( fileEnd ) );
+	g_menu_append_submenu( bar, "File", G_MENU_MODEL( file ) );
+	g_object_unref( fileEnd );
+
+	GMenu *edit = g_menu_new();
+	g_menu_append( edit, "Undo", "app.undo" );
+	g_menu_append( edit, "Redo", "app.redo" );
+	g_menu_append( edit, "Delete", "app.delete" );
+	g_menu_append_submenu( bar, "Edit", G_MENU_MODEL( edit ) );
+
+	GMenu *tools = g_menu_new();
+	g_menu_append( tools, "Selection Tool", "app.tool-select" );
+	g_menu_append( tools, "Block Tool", "app.tool-block" );
+	g_menu_append_submenu( bar, "Tools", G_MENU_MODEL( tools ) );
+
+	GMenu *view = g_menu_new();
+	g_menu_append( view, "Reset Views", "app.reset-views" );
+	g_menu_append_submenu( bar, "View", G_MENU_MODEL( view ) );
+
+	for ( const char *name : { "Map", "Instancing", "Window", "Help" } )
+	{
+		GMenu *stub = g_menu_new();
+		g_menu_append( stub, "(not implemented)", "app.noop" );
+		g_menu_append_submenu( bar, name, G_MENU_MODEL( stub ) );
+		g_object_unref( stub );
+	}
+
+	g_object_unref( file );
+	g_object_unref( edit );
+	g_object_unref( tools );
+	g_object_unref( view );
+	return bar;
+}
+
 void OnActivate( GtkApplication *app, gpointer user_data )
 {
 	AppState *st = static_cast<AppState *>( user_data );
@@ -871,40 +1064,51 @@ void OnActivate( GtkApplication *app, gpointer user_data )
 
 	GtkWidget *window = gtk_application_window_new( app );
 	st->window = window;
-	gtk_window_set_default_size( GTK_WINDOW( window ), 1280, 820 );
-	gtk_window_set_title( GTK_WINDOW( window ), "Hammer" );
+	gtk_window_set_default_size( GTK_WINDOW( window ), 1320, 840 );
+	gtk_window_set_title( GTK_WINDOW( window ), "Hammer - [untitled]" );
 
 	GtkWidget *root = gtk_box_new( GTK_ORIENTATION_VERTICAL, 0 );
 
-	// Menu bar.
 	GMenu *menuModel = MakeMenuModel();
 	GtkWidget *menubar = gtk_popover_menu_bar_new_from_model( G_MENU_MODEL( menuModel ) );
 	g_object_unref( menuModel );
 	gtk_box_append( GTK_BOX( root ), menubar );
 
-	// Toolbar.
-	gtk_box_append( GTK_BOX( root ), MakeToolbar( st ) );
+	gtk_box_append( GTK_BOX( root ), MakeToolbar() );
 	gtk_box_append( GTK_BOX( root ), gtk_separator_new( GTK_ORIENTATION_HORIZONTAL ) );
 
-	// Body: tool palette | viewports | object bar.
-	GtkWidget *body = gtk_box_new( GTK_ORIENTATION_HORIZONTAL, 0 );
-	gtk_widget_set_vexpand( body, TRUE );
-	gtk_box_append( GTK_BOX( body ), MakeToolPalette() );
-	gtk_box_append( GTK_BOX( body ), gtk_separator_new( GTK_ORIENTATION_VERTICAL ) );
-	gtk_box_append( GTK_BOX( body ), MakeViewportGrid( st ) );
-	gtk_box_append( GTK_BOX( body ), gtk_separator_new( GTK_ORIENTATION_VERTICAL ) );
-	gtk_box_append( GTK_BOX( body ), MakeObjectBar( st ) );
-	gtk_box_append( GTK_BOX( root ), body );
+	// Body: [tool palette | [viewports | object bar]] with drag-resizable panels.
+	GtkWidget *rightPane = gtk_paned_new( GTK_ORIENTATION_HORIZONTAL );
+	gtk_paned_set_start_child( GTK_PANED( rightPane ), MakeViewportGrid( st ) );
+	gtk_paned_set_end_child( GTK_PANED( rightPane ), MakeObjectBar( st ) );
+	gtk_paned_set_resize_start_child( GTK_PANED( rightPane ), TRUE );
+	gtk_paned_set_resize_end_child( GTK_PANED( rightPane ), FALSE );
+	gtk_paned_set_shrink_end_child( GTK_PANED( rightPane ), FALSE );
+	gtk_paned_set_position( GTK_PANED( rightPane ), 1050 );
 
-	// Status bar.
+	GtkWidget *bodyPane = gtk_paned_new( GTK_ORIENTATION_HORIZONTAL );
+	gtk_paned_set_start_child( GTK_PANED( bodyPane ), MakeToolPalette( st ) );
+	gtk_paned_set_end_child( GTK_PANED( bodyPane ), rightPane );
+	gtk_paned_set_resize_start_child( GTK_PANED( bodyPane ), FALSE );
+	gtk_paned_set_shrink_start_child( GTK_PANED( bodyPane ), FALSE );
+	gtk_paned_set_resize_end_child( GTK_PANED( bodyPane ), TRUE );
+	gtk_paned_set_position( GTK_PANED( bodyPane ), 48 );
+	gtk_widget_set_vexpand( bodyPane, TRUE );
+	gtk_box_append( GTK_BOX( root ), bodyPane );
+
 	gtk_box_append( GTK_BOX( root ), gtk_separator_new( GTK_ORIENTATION_HORIZONTAL ) );
 	gtk_box_append( GTK_BOX( root ), MakeStatusBar( st ) );
+
+	// Window-level key handling (Enter/Delete/Esc/tool shortcuts).
+	GtkEventController *keys = gtk_event_controller_key_new();
+	g_signal_connect( keys, "key-pressed", G_CALLBACK( OnKeyPressed ), st );
+	gtk_widget_add_controller( window, keys );
 
 	gtk_window_set_child( GTK_WINDOW( window ), root );
 
 	if ( !st->openOnStart.empty() )
 	{
-		LoadPath( st, st->openOnStart );
+		DoOpen( st, st->openOnStart );
 	}
 
 	gtk_window_present( GTK_WINDOW( window ) );
@@ -913,19 +1117,40 @@ void OnActivate( GtkApplication *app, gpointer user_data )
 void AddActions( GtkApplication *app, AppState *st )
 {
 	const GActionEntry entries[] = {
+	    { "new", ActionNew, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "open", ActionOpen, nullptr, nullptr, nullptr, { 0, 0, 0 } },
+	    { "save", ActionSave, nullptr, nullptr, nullptr, { 0, 0, 0 } },
+	    { "saveas", ActionSaveAs, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "quit", ActionQuit, nullptr, nullptr, nullptr, { 0, 0, 0 } },
+	    { "undo", ActionUndo, nullptr, nullptr, nullptr, { 0, 0, 0 } },
+	    { "redo", ActionRedo, nullptr, nullptr, nullptr, { 0, 0, 0 } },
+	    { "delete", ActionDelete, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "reset-views", ActionResetViews, nullptr, nullptr, nullptr, { 0, 0, 0 } },
+	    { "tool-select", ActionToolSelect, nullptr, nullptr, nullptr, { 0, 0, 0 } },
+	    { "tool-block", ActionToolBlock, nullptr, nullptr, nullptr, { 0, 0, 0 } },
+	    { "noop", nullptr, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	};
 	g_action_map_add_action_entries( G_ACTION_MAP( app ), entries, G_N_ELEMENTS( entries ), st );
 
-	const char *openAccel[] = { "<Control>o", nullptr };
-	gtk_application_set_accels_for_action( app, "app.open", openAccel );
-	const char *quitAccel[] = { "<Control>q", nullptr };
-	gtk_application_set_accels_for_action( app, "app.quit", quitAccel );
+	struct Accel
+	{
+		const char *action;
+		const char *accel;
+	};
+	const Accel accels[] = {
+	    { "app.new", "<Control>n" },   { "app.open", "<Control>o" },
+	    { "app.save", "<Control>s" },  { "app.saveas", "<Control><Shift>s" },
+	    { "app.quit", "<Control>q" },  { "app.undo", "<Control>z" },
+	    { "app.redo", "<Control>y" },  { "app.reset-views", "<Control>r" },
+	};
+	for ( const Accel &a : accels )
+	{
+		const char *v[] = { a.accel, nullptr };
+		gtk_application_set_accels_for_action( app, a.action, v );
+	}
 }
 
-int RunApp( AppState *st, int, char **argv )
+int RunApp( AppState *st, char **argv )
 {
 	AdwApplication *app = adw_application_new( kAppId, G_APPLICATION_NON_UNIQUE );
 	AddActions( GTK_APPLICATION( app ), st );
@@ -939,8 +1164,7 @@ int RunApp( AppState *st, int, char **argv )
 } // namespace
 
 // Headless offscreen rendering (offscreen.cpp).
-int RenderScreenshot(
-    const std::string &vmfPath, const std::string &outPpm, int width, int height );
+int RenderScreenshot( const std::string &vmfPath, const std::string &outPpm, int width, int height );
 int RenderQuad( const std::string &vmfPath, const std::string &outPpm, int tileW, int tileH );
 
 int main( int argc, char **argv )
@@ -980,9 +1204,9 @@ int main( int argc, char **argv )
 		}
 		else if ( a == "--help" || a == "-h" )
 		{
-			std::printf(
-			    "Usage: hammer_gtk [--open MAP.vmf]\n"
-			    "       hammer_gtk --screenshot OUT.ppm MAP.vmf [--width W --height H]\n" );
+			std::printf( "Usage: hammer_gtk [--open MAP.vmf]\n"
+			             "       hammer_gtk --screenshot OUT.ppm MAP.vmf [--width W --height H]\n"
+			             "       hammer_gtk --quad OUT.ppm MAP.vmf [--width W --height H]\n" );
 			return 0;
 		}
 	}
@@ -998,5 +1222,5 @@ int main( int argc, char **argv )
 
 	AppState st;
 	st.openOnStart = openPath;
-	return RunApp( &st, argc, argv );
+	return RunApp( &st, argv );
 }

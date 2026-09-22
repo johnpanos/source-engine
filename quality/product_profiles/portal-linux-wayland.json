@@ -11,6 +11,7 @@
     "shader_pipeline": {
       "compiler_profile": "quality/shader_profiles/source-dx9-fxc-wine.json",
       "artifact_runner": "tools/quality/shader_artifacts.py",
+      "default_workload": "quality/workloads/portal-start-chambers-shaders-v1.json",
       "artifact_format": "manifest.json schema 1 and source-matched VCS bytecode consumed by DXVK Native",
       "coverage": "Observed scene static groups; every valid dynamic permutation in each group. Not a complete shipping shader library.",
       "staging": "portal_boot.py --shader-artifacts validates input and artifact hashes before copying into the private runtime",
@@ -59,6 +60,13 @@
     "tools.quality.tests.test_product_profile",
     "platform.dynamic_library",
     "platform.dynamic_library.sensitivity",
+    "shader_extension_conformance with failure-at-each-stage rollback",
+    "material_binding_conformance with real linked selected and null providers",
+    "dxvk_math_conformance",
+    "dxvk_presentation_conformance on native Wayland (sampled indexed geometry, pixels and device reset)",
+    "dxvk_presentation_conformance --negative-pixel-oracle must fail",
+    "tools.quality.tests.test_shader_artifacts",
+    "tools.quality.tests.test_render_trace positive and deliberately invalid captures",
     "sdl3_launcher_conformance on native Wayland",
     "Installed Portal boot with required SDL3, Wayland and Vulkan evidence",
     "Source architecture and changed-region style checks"

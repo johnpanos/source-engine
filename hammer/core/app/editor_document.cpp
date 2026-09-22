@@ -126,8 +126,8 @@ const std::string &EditorDocument::EntityClassName( std::size_t index ) const
 	return classname != nullptr ? *classname : kEmpty;
 }
 
-PropertyValue EditorDocument::AggregateProperty( const EntitySelection &selection,
-    const std::string &key ) const
+PropertyValue EditorDocument::AggregateProperty(
+    const EntitySelection &selection, const std::string &key ) const
 {
 	PropertyValue aggregate = PropertyValue::Unset();
 	for ( const std::size_t index : selection.Indices() )
@@ -146,8 +146,8 @@ PropertyValue EditorDocument::AggregateProperty( const EntitySelection &selectio
 	return aggregate;
 }
 
-bool EditorDocument::SetPropertyOnSelection( const EntitySelection &selection,
-    const std::string &key, const std::string &value )
+bool EditorDocument::SetPropertyOnSelection(
+    const EntitySelection &selection, const std::string &key, const std::string &value )
 {
 	if ( selection.Empty() )
 	{

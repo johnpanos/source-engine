@@ -20,8 +20,11 @@ DXVK Native comes from the upstream
 the Steam Runtime. It is a native D3D9-to-Vulkan compatibility provider. It does
 not require Wine. The selected WSI uses SDL3 as documented in the
 [pinned upstream README](https://github.com/doitsujin/dxvk/blob/v2.7.1/README.md#dxvk-native).
-Existing Source D3D9 shader artifacts remain inputs to that provider; this does
-not establish a new native Vulkan material renderer or shader parity.
+Source-matched D3D9 shader artifacts remain inputs to that provider; this does
+not establish a new native Vulkan material renderer or shader parity. The
+product profile references the pinned offline compiler profile and versioned
+opening-chambers workload. Wine is used by that offline compiler only, not by
+the running game. See [shader artifact tooling](../../tools/quality/shader_artifacts.md).
 
 From the repository root, fetch or verify the pinned dependency:
 
@@ -66,15 +69,46 @@ the Waf products; it does not rewrite the source content/runtime. The output
 directory must be new for each run:
 
 ```sh
-LD_LIBRARY_PATH="$PWD/build/dependencies/dxvk-native-2.7.1/usr/lib" \
+# Compile the versioned workload selected by the product profile.
+python3 tools/quality/shader_artifacts.py \
+  --out build-portal-vulkan/shaders/portal-matched --jobs 4
+
 python3 tools/quality/portal_boot.py \
   --runtime /path/to/portal-runtime --build build-portal-vulkan \
-  --out build/portal-native-evidence-run1 \
-  --require-vulkan --require-sdl3 --require-wayland
+  --shader-artifacts build-portal-vulkan/shaders/portal-matched \
+  --out /path/to/new-portal-evidence \
+  --require-vulkan --require-sdl3 --require-wayland --render-trace
 ```
+
+Use `--map testchmb_a_01` for the second workload and `--width 1920 --height 1080`
+for a full-HD capture. Each run needs a new output directory. An existing game
+process can hold Source's single-instance lock; the runner reports that as failed
+startup and does not stop the user's game.
+
+The staged runtime is also playable without the runner's automatic screenshot
+and quit sequence:
+
+```sh
+cd /path/to/new-portal-evidence/runtime
+SDL_VIDEO_DRIVER=wayland SDL_VIDEODRIVER=wayland DXVK_WSI_DRIVER=SDL3 \
+SteamAppId=400 SteamGameId=400 LD_LIBRARY_PATH="$PWD/bin" \
+./hl2_launcher -game portal -windowed -w 1920 -h 1080 -novid -insecure \
+  -renderer vulkan-compat +mat_queue_mode 0 +fps_max 120 +map testchmb_a_00
+```
+
+This pack covers the declared observed shader groups, not the entire game.
+Additional map/material groups must be compiled and verified before a broader
+playthrough claim. The original supplied runtime, configs and VPKs remain
+unchanged; mutable files and replacement artifacts live in the private stage.
+
 
 The boot runner records source/build identities, actual runtime module paths,
 window and renderer markers, map startup, screenshot and process results.
+It also verifies DXVK bytes again when staging, validates every shader source and
+artifact hash, gives the replacement shaders explicit priority over VPKs, and
+rejects uniform/blank images. Requested render traces are analyzed, not merely
+checked for existence. See [render diagnostics](../../tools/quality/render_trace.md)
+for per-material/state reports and their visibility limits.
 Required profile acceptance also includes architecture/style gates and the
 shared dynamic-library positive and negative-provider suites. Runtime evidence
 belongs in the runner's output, not in a copied dependency matrix. Existing

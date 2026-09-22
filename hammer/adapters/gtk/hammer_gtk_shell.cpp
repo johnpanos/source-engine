@@ -198,8 +198,8 @@ void OnSetKey( GtkButton *, gpointer user_data )
 	if ( key != nullptr && *key != '\0' )
 	{
 		// One atomic edit across every selected entity; the core owns the policy.
-		shell->document.SetPropertyOnSelection( shell->selection, key,
-		    value != nullptr ? value : "" );
+		shell->document.SetPropertyOnSelection(
+		    shell->selection, key, value != nullptr ? value : "" );
 		Refresh( shell );
 	}
 }
@@ -284,11 +284,11 @@ void OnActivate( GtkApplication *app, gpointer user_data )
 	// Left: the entity list (multi-select drives the shared entity editor).
 	shell->entityList = GTK_LIST_BOX( gtk_list_box_new() );
 	gtk_list_box_set_selection_mode( shell->entityList, GTK_SELECTION_MULTIPLE );
-	g_signal_connect( shell->entityList, "selected-rows-changed",
-	    G_CALLBACK( OnSelectionChanged ), shell );
+	g_signal_connect(
+	    shell->entityList, "selected-rows-changed", G_CALLBACK( OnSelectionChanged ), shell );
 	GtkWidget *listScroller = gtk_scrolled_window_new();
-	gtk_scrolled_window_set_child( GTK_SCROLLED_WINDOW( listScroller ),
-	    GTK_WIDGET( shell->entityList ) );
+	gtk_scrolled_window_set_child(
+	    GTK_SCROLLED_WINDOW( listScroller ), GTK_WIDGET( shell->entityList ) );
 	gtk_widget_set_size_request( listScroller, 220, -1 );
 
 	// Right: the serialized document (read-only mirror of the core's content).

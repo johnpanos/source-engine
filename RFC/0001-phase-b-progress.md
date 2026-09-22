@@ -62,8 +62,10 @@ gates remain required before a platform support claim.
 
 ## Later work not claimed here
 
-Phase C must replace filename and string discovery for mandatory engine systems
-with typed construction functions. Phase D must introduce build-assembled
-provider catalogs. Phases E–G still own tool executable cleanup, named extension
+Phase C now has typed linked launcher factories and a dedicated-server caller
+cohort under verification. Phase D has a working linked renderer/null catalog
+and SDL3/Wayland/Vulkan Portal consumer. The [current progress
+record](0001-portal-vulkan-progress.md) distinguishes these delivered slices from
+the remaining provider catalogs and first-party shader loader. Phases E–G still own tool executable cleanup, named extension
 hosts, and removal of the public loader. Consequently, portfolio item R39 remains
 open even though its Phase B sub-scope is complete.

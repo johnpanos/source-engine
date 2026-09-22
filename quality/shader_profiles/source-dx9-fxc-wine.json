@@ -5,7 +5,8 @@
     "path": "dx9sdk/utilities/fxc.exe",
     "version": "Microsoft Direct3D Shader Compiler 5.04.00.2904",
     "sha256": "034b11acc7d7a09f9124968486e67d4593cbdd357c758332a2374f6e1a63f173",
-    "host_command": "wine"
+    "host_command": "wine",
+    "host_version": "wine-11.0 (Staging)"
   },
   "plan_generator": "devtools/bin/fxc_prep.pl",
   "source_directory": "materialsystem/stdshaders",

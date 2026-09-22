@@ -93,3 +93,19 @@ python3 -m unittest discover -s tools/quality/tests -v
 This installs the shared runner and its negative self-tests. It does **not** by
 itself certify any domain gate, establish native/GPU/device coverage, or wire a
 required CI lane; those remain their own gates. See `RFC/0005-progress.md`.
+
+## Native Portal product and render diagnostics
+
+The [Portal profile](../../quality/product_profiles/README.md) adds an isolated
+Waf/native runner alongside the headless suite runner. `portal_boot.py` stages
+licensed content privately, verifies native dependency and shader artifacts,
+requires actual SDL3/Wayland/Vulkan markers and mapped libraries, checks an active
+map/player and fresh scene capture, and records clean shutdown. `--render-trace`
+also requires a complete trace with no observed shader, draw or presentation
+failures. A file's mere existence cannot satisfy that gate.
+
+[Shader artifact tooling](shader_artifacts.md) compiles the source permutation
+schema from a versioned workload. [Render diagnostics](render_trace.md) retain
+per-material draw state and requested-versus-bound shader identities, with
+independent analyzer and seeded-failure fixtures. Neither source-matched bytecode
+nor successful GPU submission replaces native visual acceptance.

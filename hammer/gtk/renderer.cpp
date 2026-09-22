@@ -283,8 +283,32 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 	int solidIndex = 0;
 	for ( const hammer::geometry::BrushSolid &solid : scene.solids )
 	{
+		// A negative id is the in-progress "pending" box; an id matching the
+		// highlight is the selected brush. Both get a distinct fill/edge colour.
+		const bool pending = solid.id < 0;
+		const bool selected = solid.id == m_highlightId;
+
 		float color[3];
 		SolidColor( solidIndex++, color );
+		float edge[3] = { 0.50f, 0.52f, 0.58f };
+		if ( pending )
+		{
+			color[0] = 0.90f;
+			color[1] = 0.80f;
+			color[2] = 0.30f;
+			edge[0] = 1.00f;
+			edge[1] = 0.88f;
+			edge[2] = 0.30f;
+		}
+		else if ( selected )
+		{
+			color[0] = 1.00f;
+			color[1] = 0.62f;
+			color[2] = 0.28f;
+			edge[0] = 1.00f;
+			edge[1] = 0.58f;
+			edge[2] = 0.15f;
+		}
 
 		for ( const hammer::geometry::BrushFace &face : solid.faces )
 		{
@@ -313,9 +337,9 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 				const hammer::geometry::Vec3d &a = face.vertices[i];
 				const hammer::geometry::Vec3d &b = face.vertices[( i + 1 ) % face.vertices.size()];
 				PushVertex( lines, static_cast<float>( a.x ), static_cast<float>( a.y ),
-				    static_cast<float>( a.z ), 0, 0, 1, 0.10f, 0.10f, 0.12f );
+				    static_cast<float>( a.z ), 0, 0, 1, edge[0], edge[1], edge[2] );
 				PushVertex( lines, static_cast<float>( b.x ), static_cast<float>( b.y ),
-				    static_cast<float>( b.z ), 0, 0, 1, 0.10f, 0.10f, 0.12f );
+				    static_cast<float>( b.z ), 0, 0, 1, edge[0], edge[1], edge[2] );
 			}
 		}
 	}
@@ -360,7 +384,8 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 	{
 		m_haveScene = false;
 	}
-	FrameScene();
+	// Note: SetScene does NOT move the camera, so live edits keep the current
+	// view. Callers frame explicitly via FrameScene() after a load/new/reset.
 }
 
 void Renderer::AxisIndices( int &uAxis, int &vAxis ) const
@@ -637,12 +662,11 @@ void Renderer::RenderOrtho( int widthPx, int heightPx )
 	glBindVertexArray( m_gridVao );
 	glDrawArrays( GL_LINES, 0, m_gridVertexCount );
 
-	// Scene edges, drawn bright white like Hammer's 2D wireframe.
-	glUniform1i( glGetUniformLocation( m_program, "uOverride" ), 1 );
-	glUniform3f( glGetUniformLocation( m_program, "uOverrideColor" ), 0.85f, 0.85f, 0.88f );
+	// Scene edges in their per-brush colours (normal grey, selected orange,
+	// pending yellow) -- Hammer's 2D wireframe with selection feedback.
+	glUniform1i( glGetUniformLocation( m_program, "uOverride" ), 0 );
 	glBindVertexArray( m_lineVao );
 	glDrawArrays( GL_LINES, 0, m_lineVertexCount );
-	glUniform1i( glGetUniformLocation( m_program, "uOverride" ), 0 );
 }
 
 void Renderer::Render( int widthPx, int heightPx )

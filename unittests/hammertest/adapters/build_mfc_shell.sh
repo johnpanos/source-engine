@@ -41,6 +41,7 @@ LIBS=(
   "$REPO/hammer/core/app/document_history.cpp"
   "$REPO/hammer/core/app/save_orchestrator.cpp"
   "$REPO/hammer/core/app/property_value.cpp"
+  "$REPO/hammer/core/app/entity_selection.cpp"
   "$REPO/hammer/core/formats/keyvalues.cpp"
 )
 CL=(cl /nologo /EHsc /std:c++20 /MD "/FI$DEFS" -I "$REPO/public" -I "$REPO")
