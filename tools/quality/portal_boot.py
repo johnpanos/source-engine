@@ -485,7 +485,7 @@ def main(argv=None):
                                    for path in [executable] + sorted((stage / "bin").glob("*.so"))
                                    + sorted((stage / "portal/bin").glob("*.so"))}
         command = [str(executable), "-game", "portal", "-windowed", "-w", str(args.width), "-h", str(args.height),
-                   "-novid", "-insecure", "-console", "-condebug", "-dev", "-physics", "box3d",
+                   "-novid", "-insecure", "-console", "-condebug", "-dev", "-physics", "vphysics_box3d",
                    "+sv_cheats", "1", "+mat_queue_mode", "0", "+fps_max", "60", "+map", args.map,
                    "+wait", "180", "+status", "+hideconsole", "+developer", "0",
                    "+wait", "600", "+screenshot", "+mat_spewvertexandpixelshaders",

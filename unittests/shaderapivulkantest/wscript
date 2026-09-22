@@ -1,0 +1,37 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+
+def options(opt):
+	pass
+
+
+def configure(conf):
+	pass
+
+
+def build(bld):
+	# Native Vulkan bring-up / presentation smoke test (roadmap R28). It links
+	# the real device core directly (no engine composition) and requires a
+	# Vulkan device plus a display at run time; without them it reports an
+	# explicit skip (exit 77) rather than a false pass. Only built in native
+	# Vulkan configurations.
+	if not bld.env.NATIVE_VULKAN:
+		return
+
+	test_env = bld.env.derive()
+	test_env.DEFINES = [value for value in bld.env.DEFINES
+		if not value.startswith('strncpy=')]
+
+	includes = ['../../materialsystem/shaderapivulkan', '../../public',
+		'../../public/tier0', '../../public/tier1'] \
+		+ bld.env.INCLUDES_SDL3 + bld.env.INCLUDES_VULKAN
+
+	bld.program(
+		features='c cxx', env=test_env.derive(),
+		source=['test_vulkan_bringup.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_device.cpp'],
+		target='native_vulkan_bringup_conformance',
+		name='native_vulkan_bringup_conformance',
+		includes=includes, use=['VULKAN', 'SDL3'],
+		install_path=None)

@@ -36,7 +36,7 @@ struct CordonBox
 
 struct CordonResult
 {
-	KeyValueNode document;         // the filtered VMF
+	KeyValueNode document; // the filtered VMF
 	std::size_t solidsKept = 0;
 	std::size_t solidsRemoved = 0;
 	std::size_t entitiesKept = 0;

@@ -17,9 +17,21 @@
 #include "shaderapi/ishaderapi.h"
 #include "materialsystem/imesh.h"
 #include "tier0/dbg.h"
+#include "tier0/icommandline.h"
 #include "materialsystem/idebugtextureinfo.h"
 #include "materialsystem/deformations.h"
 #include "render/legacy_shader_provider.h"
+#include "vulkan_device.h"
+
+#include <string>
+
+//-----------------------------------------------------------------------------
+// The single native Vulkan presentation context, brought up on SetMode() and
+// torn down at shutdown. Owns the real instance/device/queues/swapchain. While
+// the material path is still the empty stub (roadmap R32), this proves the
+// backend genuinely brings up native Vulkan in-process and presents a frame.
+//-----------------------------------------------------------------------------
+static render_vulkan::CVulkanContext g_VulkanContext;
 
 
 //-----------------------------------------------------------------------------
@@ -289,7 +301,21 @@ public:
 	virtual void GetBackBufferDimensions( int& width, int& height ) const;
 	virtual int  StencilBufferBits() const { return 0; }
 	virtual bool IsAAEnabled() const { return false; }
-	virtual void Present( ) {}
+	virtual void Present( )
+	{
+		// Present a real native Vulkan frame. The material path is still the
+		// empty stub (roadmap R32), so nothing is drawn into the frame yet; the
+		// swapchain clear/acquire/submit/present cycle is genuine.
+		if ( !g_VulkanContext.IsValid() )
+			return;
+		std::string error;
+		bool skip = false;
+		if ( g_VulkanContext.BeginFrame( &skip, &error ) )
+		{
+			if ( !skip )
+				g_VulkanContext.EndFrame( &error );
+		}
+	}
 	virtual void GetWindowSize( int &width, int &height ) const;
 	virtual bool AddView( void* hwnd );
 	virtual void RemoveView( void* hwnd );
@@ -1278,17 +1304,18 @@ DLL_EXPORT const render::LegacyShaderProvider *NullShaderBackend_Describe()
 	return &provider;
 }
 
-#if defined( DEDICATED )
-DLL_EXPORT bool ShaderBackend_Create( render::LegacyShaderServices *services )
+extern "C" DLL_EXPORT bool ShaderBackend_Create( render::LegacyShaderServices *services )
 {
 	return CreateNullShaderBackend( services );
 }
 
-DLL_EXPORT const render::LegacyShaderProvider *ShaderBackend_Describe()
+extern "C" DLL_EXPORT const render::LegacyShaderProvider *ShaderBackend_Describe()
 {
-	return NullShaderBackend_Describe();
+	static const render::LegacyShaderProvider provider = {
+		"native-vulkan", "shaderapivulkan", ShaderBackend_Create
+	};
+	return &provider;
 }
-#endif
 
 // FIXME: Remove; it's for backward compat with the materialsystem only for now
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderAPIVulkan, IShaderAPI, 
@@ -1381,23 +1408,35 @@ bool CShaderDeviceMgrVulkan::SetAdapter( int nAdapter, int nFlags )
 CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode )
 {
 	Msg("[NativeVulkan] Setting mode for adapter %d\n", nAdapter);
-	::VkInstanceCreateInfo createInfo = {};
-	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-	::VkApplicationInfo appInfo = {};
-	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-	appInfo.pApplicationName = "Source Engine Native Vulkan";
-	appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-	appInfo.pEngineName = "Source";
-	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-	appInfo.apiVersion = VK_API_VERSION_1_0;
-	createInfo.pApplicationInfo = &appInfo;
-	::VkInstance instance;
-	if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
-		Warning("[NativeVulkan] Failed to create Vulkan instance!\n");
-	} else {
-		Msg("[NativeVulkan] Successfully created Vulkan instance!\n");
-		Msg("[NativeVulkan] (Rank 14 Bootstrap complete. Rank 16 MVP needed for Testchamber 15)\n");
+
+	// hWnd is an SDL_Window* on this SDL3 build (see shaderapidx9/winutils.cpp,
+	// which casts the same handle to SDL_Window*). Bring up the real native
+	// Vulkan device/surface/swapchain against it.
+	if ( !g_VulkanContext.IsValid() )
+	{
+		render_vulkan::VulkanContextConfig config;
+		config.appName = "Source Engine Native Vulkan";
+		config.enableValidation = ( CommandLine()->FindParm( "-vkvalidate" ) != 0 );
+		config.framesInFlight = 2;
+
+		std::string error;
+		if ( g_VulkanContext.Init( static_cast<SDL_Window *>( hWnd ), config, &error ) )
+		{
+			int w = 0, h = 0;
+			g_VulkanContext.GetSwapchainExtent( w, h );
+			Msg( "[NativeVulkan] device '%s' up: %dx%d, %.0f MiB, validation %s\n",
+				g_VulkanContext.DeviceName(), w, h,
+				double( g_VulkanContext.DeviceLocalMemoryBytes() ) / ( 1024.0 * 1024.0 ),
+				g_VulkanContext.ValidationEnabled() ? "on" : "off" );
+		}
+		else
+		{
+			// Required behavior (a presentable native device) is unavailable:
+			// fail loudly rather than silently pretending to be a GPU backend.
+			Warning( "[NativeVulkan] device bring-up failed: %s\n", error.c_str() );
+		}
 	}
+
 	return ShaderInterfaceFactory;
 }
 
@@ -1442,20 +1481,37 @@ void CShaderDeviceMgrVulkan::GetCurrentModeInfo( ShaderDisplayMode_t* pInfo, int
 //-----------------------------------------------------------------------------
 void CShaderDeviceVulkan::GetWindowSize( int &width, int &height ) const
 {
+	if ( g_VulkanContext.IsValid() )
+	{
+		g_VulkanContext.GetSwapchainExtent( width, height );
+		return;
+	}
 	width = 0;
 	height = 0;
 }
 
 void CShaderDeviceVulkan::GetBackBufferDimensions( int& width, int& height ) const
 {
+	if ( g_VulkanContext.IsValid() )
+	{
+		g_VulkanContext.GetSwapchainExtent( width, height );
+		return;
+	}
 	width = 1024;
 	height = 768;
 }
 
-// Use this to spew information about the 3D layer 
+// Use this to spew information about the 3D layer
 void CShaderDeviceVulkan::SpewDriverInfo() const
 {
-	Warning("Empty shader\n");
+	if ( g_VulkanContext.IsValid() )
+	{
+		Msg( "Native Vulkan device: %s (vendor 0x%04x, device 0x%04x, %s)\n",
+			g_VulkanContext.DeviceName(), g_VulkanContext.VendorId(),
+			g_VulkanContext.DeviceId(), g_VulkanContext.IsDiscrete() ? "discrete" : "integrated/other" );
+		return;
+	}
+	Warning("Native Vulkan device not initialized\n");
 }
 
 // Creates/ destroys a child window

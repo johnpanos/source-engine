@@ -759,6 +759,269 @@
         "a later increment stores I/O (input/output) definitions and resolves @include",
         "the entity property editor consumes this schema for authored-key validation"
       ]
+    },
+    {
+      "id": "HAM-CORDON-001",
+      "title": "Implement cordon filtering: keep only world solids/entities whose bounds intersect a cordon box for partial compile/export",
+      "phase": "H2",
+      "responsibility": "geometry",
+      "evidenceKind": "decision",
+      "sources": [
+        {
+          "path": "public/hammer/formats/cordon.h"
+        },
+        {
+          "path": "hammer/core/formats/cordon.cpp"
+        }
+      ],
+      "destinationModule": "hammer.formats",
+      "contractIds": [
+        "formats.cordon.v1"
+      ],
+      "dependsOn": [
+        "HAM-CORPUS-001",
+        "HAM-GEOMETRY-001"
+      ],
+      "status": "extracted",
+      "authority": "new",
+      "consumerSet": "partial-compile-export",
+      "testSelectors": [
+        "formats/cordon",
+        "formats/cordon_negative"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/formats.cordon.v1.md",
+      "owner": "unassigned",
+      "note": "New strict headless module (authority=new) over the keyvalues codec + geometry Vec3d. hammer::formats::ApplyCordon returns a VMF filtered to a CordonBox: a world solid is kept iff its AABB (union of side-plane points) intersects the box (inclusive edges); a point entity iff its origin is inside; a brush entity iff any of its solids intersect; a positionless entity always. An inverted (mins>maxs) box removes all positional geometry. Non-world/entity blocks are preserved verbatim. Compiles headlessly under g++ and clang (-Werror); conformance test_cordon.cpp checks inside/outside/straddling/edge-touching + entity rules + metadata preservation, test_cordon_negative.cpp proves discrimination (universe keeps all, empty/far removes all) so a constant keep-all/remove-all impl is caught. Declared limits: brush-bounds intersection (not exact hull-vs-box clipping) and no boundary splitting of solids.",
+      "retireWhen": [
+        "a later increment adds exact hull-vs-box clipping and cordon-boundary solid splitting",
+        "the partial-compile/export path consumes this filter"
+      ]
+    },
+    {
+      "id": "HAM-OVERLAY-001",
+      "title": "Implement info_overlay parsing + world-quad projection so decal overlays render on brush faces",
+      "phase": "H2",
+      "responsibility": "geometry",
+      "evidenceKind": "decision",
+      "sources": [
+        {
+          "path": "public/hammer/formats/overlay.h"
+        },
+        {
+          "path": "hammer/core/formats/overlay.cpp"
+        }
+      ],
+      "destinationModule": "hammer.formats",
+      "contractIds": [
+        "formats.overlay.v1"
+      ],
+      "dependsOn": [
+        "HAM-CORPUS-001",
+        "HAM-GEOMETRY-001"
+      ],
+      "status": "extracted",
+      "authority": "new",
+      "consumerSet": "overlay-rendering",
+      "testSelectors": [
+        "formats/overlay",
+        "formats/overlay_negative"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/formats.overlay.v1.md",
+      "owner": "unassigned",
+      "note": "New strict headless module (authority=new) over the keyvalues codec + geometry Vec3d. hammer::formats::ParseOverlay reads an info_overlay entity (material, sides face-id list, BasisOrigin/U/V/Normal, uv0..uv3 corners, StartU/EndU/StartV/EndV) and WorldCorners() projects the four corners to world space (BasisOrigin + BasisU*uv.x + BasisV*uv.y + BasisNormal*uv.z); ExtractOverlays pulls every valid overlay from a document. Missing material/sides/basis/corner or a non-info_overlay yields nullopt (no partial overlay). Compiles headlessly under g++ and clang (-Werror); conformance test_overlay.cpp checks parse + projected corner positions + non-overlay skip, test_overlay_negative.cpp proves the required-field rejections. Declared limits: no quad-to-face clipping, no material rendering, no info_overlay_transition (water) support.",
+      "retireWhen": [
+        "a later increment clips the overlay quad to its target faces and handles info_overlay_transition",
+        "the renderer draws overlays from this projection"
+      ]
+    },
+    {
+      "id": "HAM-VISGROUP-001",
+      "title": "Implement VisGroup tree parsing + visibility filtering (hide a parent hides descendant members) for the VisGroup panel",
+      "phase": "H2",
+      "responsibility": "geometry",
+      "evidenceKind": "decision",
+      "sources": [
+        {
+          "path": "public/hammer/formats/visgroups.h"
+        },
+        {
+          "path": "hammer/core/formats/visgroups.cpp"
+        }
+      ],
+      "destinationModule": "hammer.formats",
+      "contractIds": [
+        "formats.visgroups.v1"
+      ],
+      "dependsOn": [
+        "HAM-CORPUS-001"
+      ],
+      "status": "extracted",
+      "authority": "new",
+      "consumerSet": "visgroup-visibility",
+      "testSelectors": [
+        "formats/visgroups",
+        "formats/visgroups_negative"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/formats.visgroups.v1.md",
+      "owner": "unassigned",
+      "note": "New strict headless module (authority=new) over the keyvalues codec. hammer::formats::ParseVisGroups builds the nested visgroup tree from the top-level visgroups block; ApplyVisGroupFilter removes every world solid/entity whose editor.visgroupid membership falls in the hidden set, expanded down the tree so hiding a parent hides descendant-group members. Objects with no (or non-numeric) membership stay; non-world/entity blocks preserved. Compiles headlessly under g++ and clang (-Werror); conformance test_visgroups.cpp checks tree parse + hide-parent/leaf + empty-keeps-all + counts, test_visgroups_negative.cpp pins descendant expansion, empty/unknown keep-all, and non-numeric-membership handling (the properties a naive filter gets wrong). Declared limits: no group-block (object grouping) membership, no persisted visgroupshown flags, no auto-visgroups.",
+      "retireWhen": [
+        "a later increment adds group-block membership, persisted visgroupshown flags, and auto-visgroups",
+        "the VisGroup panel drives visibility through this filter"
+      ]
+    },
+    {
+      "id": "HAM-MATERIAL-001",
+      "title": "Implement the VMT material-definition parser (shader + parameters + proxy/patch detection) as the single DRY VMT parser",
+      "phase": "H2",
+      "responsibility": "geometry",
+      "evidenceKind": "decision",
+      "sources": [
+        {
+          "path": "public/hammer/formats/material.h"
+        },
+        {
+          "path": "hammer/core/formats/material.cpp"
+        }
+      ],
+      "destinationModule": "hammer.formats",
+      "contractIds": [
+        "formats.material.v1"
+      ],
+      "dependsOn": [
+        "HAM-CORPUS-001"
+      ],
+      "status": "extracted",
+      "authority": "new",
+      "consumerSet": "material-definition",
+      "testSelectors": [
+        "formats/material",
+        "formats/material_negative"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/formats.material.v1.md",
+      "owner": "unassigned",
+      "note": "New strict headless module (authority=new) over the keyvalues codec. hammer::formats::ParseMaterial reads a VMT definition: shader = first top-level block name, parameters = its pairs, hasProxies flags a Proxies sub-block; Param/HasParam are case-insensitive, BaseTexture()/SurfaceProp() are convenience accessors, IsPatch() detects the patch shader. Definition-only: no VTF pixels, no rendering. This is the single DRY VMT parser: source-engine-87's material_catalog (VPK/texture loading) consumes THIS Material/ParseMaterial rather than a second parser (a prior duplicate material.cpp was reconciled to this one). Compiles headlessly under g++ and clang (-Werror); conformance test_material.cpp checks shader/params/accessors/case-insensitivity/proxy/patch, test_material_negative.cpp proves empty/whitespace/unterminated are rejected. Declared limits: patch include/replace not resolved (replace/insert child blocks not exposed as params), no VTF decode.",
+      "retireWhen": [
+        "a later increment resolves patch include/replace and exposes replace/insert parameters",
+        "the material catalog and renderer consume this definition parser"
+      ]
+    },
+    {
+      "id": "HAM-GROUP-001",
+      "title": "Implement object-group resolution: parse group hierarchy + expand a selection to top-level group siblings",
+      "phase": "H2",
+      "responsibility": "geometry",
+      "evidenceKind": "decision",
+      "sources": [
+        {
+          "path": "public/hammer/formats/groups.h"
+        },
+        {
+          "path": "hammer/core/formats/groups.cpp"
+        }
+      ],
+      "destinationModule": "hammer.formats",
+      "contractIds": [
+        "formats.groups.v1"
+      ],
+      "dependsOn": [
+        "HAM-CORPUS-001"
+      ],
+      "status": "extracted",
+      "authority": "new",
+      "consumerSet": "group-selection",
+      "testSelectors": [
+        "formats/groups",
+        "formats/groups_negative"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/formats.groups.v1.md",
+      "owner": "unassigned",
+      "note": "New strict headless module (authority=new) over the keyvalues codec. hammer::formats::ParseGroups builds a GroupTable (solid->group, group->parent) from world group/solid editor.groupid; TopLevelGroupOfSolid follows the parent chain (cycle-guarded); ExpandGroupSelection expands selected solid ids to every solid sharing a top-level group, so a member of a nested sub-group selects the whole top-level group while ungrouped solids stay singular. Compiles headlessly under g++ and clang (-Werror); conformance test_groups.cpp checks nested top-level resolution + selection expansion + multi-select union, test_groups_negative.cpp pins nested top-level expansion, ungrouped singularity, and cyclic-chain termination. Declared limits: world-solid group membership only (no entity group membership), no create/dissolve/persist group edits.",
+      "retireWhen": [
+        "a later increment expands entity group membership and persists group create/dissolve edits",
+        "the selection tool drives group-select through this resolver"
+      ]
+    },
+    {
+      "id": "HAM-PREFAB-001",
+      "title": "Implement prefab instantiation (place a VMF fragment by origin/angles) on the shared VMF transform owner",
+      "phase": "H2",
+      "responsibility": "geometry",
+      "evidenceKind": "decision",
+      "sources": [
+        {
+          "path": "public/hammer/formats/prefab.h"
+        },
+        {
+          "path": "hammer/core/formats/prefab.cpp"
+        },
+        {
+          "path": "public/hammer/formats/vmf_transform.h"
+        },
+        {
+          "path": "hammer/core/formats/vmf_transform.cpp"
+        }
+      ],
+      "destinationModule": "hammer.formats",
+      "contractIds": [
+        "formats.prefab.v1"
+      ],
+      "dependsOn": [
+        "HAM-CORPUS-001",
+        "HAM-INSTANCE-001"
+      ],
+      "status": "extracted",
+      "authority": "new",
+      "consumerSet": "prefab-library",
+      "testSelectors": [
+        "formats/prefab",
+        "formats/prefab_negative"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/formats.prefab.v1.md",
+      "owner": "unassigned",
+      "note": "New strict headless module (authority=new). hammer::formats::InstantiatePrefab places a parsed VMF fragment at a Placement (origin + Source QAngle), returning transformed world solids + entities. It builds on the NEW shared transform owner hammer/formats/vmf_transform (Mat3/AngleMatrix/Multiply/Rotate/Place/TransformSolid/TransformEntity), which was EXTRACTED from instancing.cpp so func_instance and prefab share ONE QAngle placement implementation (DRY) instead of duplicating the rotation matrix + plane/origin math; instancing.cpp was refactored to use it and its suites still pass (its manifest sources now include vmf_transform.cpp). Compiles headlessly under g++ and clang (-Werror); conformance test_prefab.cpp checks translate/yaw placement + count preservation, test_prefab_negative.cpp pins placement-applied, identity-preserved, and count preservation. Declared limits: entity-angle composition + texture-axis rotation are shared vmf_transform limits; no on-disk prefab library or id-remap on merge.",
+      "retireWhen": [
+        "a later increment adds entity-angle composition, texture-axis rotation, and id-remap on merge",
+        "the prefab library/insert tool consumes this instantiation"
+      ]
+    },
+    {
+      "id": "HAM-EXPORT-001",
+      "title": "Compose the map export/compile-prep pipeline (expand instances -> drop hidden visgroups -> clip cordon) over the format cores",
+      "phase": "H2",
+      "responsibility": "composition",
+      "evidenceKind": "decision",
+      "sources": [
+        {
+          "path": "public/hammer/formats/map_export.h"
+        },
+        {
+          "path": "hammer/core/formats/map_export.cpp"
+        }
+      ],
+      "destinationModule": "hammer.formats",
+      "contractIds": [
+        "formats.map_export.v1"
+      ],
+      "dependsOn": [
+        "HAM-INSTANCE-001",
+        "HAM-VISGROUP-001",
+        "HAM-CORDON-001"
+      ],
+      "status": "extracted",
+      "authority": "new",
+      "consumerSet": "compile-export",
+      "testSelectors": [
+        "formats/map_export",
+        "formats/map_export_negative"
+      ],
+      "contractRecord": "unittests/hammertest/contracts/formats.map_export.v1.md",
+      "owner": "unassigned",
+      "note": "New strict headless COMPOSITION (authority=new): hammer::formats::PrepareForCompile turns an authored VMF into compile-ready geometry by ordering the single-purpose cores -- (1) ExpandInstances (flatten func_instances via IFileStore), (2) ApplyVisGroupFilter (drop hidden-visgroup objects), (3) optional ApplyCordon (partial-compile clip). It adds NO new transform/intersection logic (DRY); it only orders instancing+visgroups+cordon and returns counts. A failed stage (bad func_instance) aborts with a diagnostic, no silent partial. This is the headless entry point behind the shell's Run Map/Export. Compiles headlessly under g++ and clang (-Werror); conformance test_map_export.cpp checks instance-expand + visgroup-drop + cordon-clip compose with correct survivors, test_map_export_negative.cpp proves stage-failure propagation. Declared limits: no BSP/VIS/RAD or external compiler invocation, no material resolution, cordon-boundary splitting is the cordon core's limit.",
+      "retireWhen": [
+        "a later increment invokes the external compiler toolchain and resolves materials for export",
+        "the shell's Run Map/Export path consumes this pipeline"
+      ]
     }
   ]
 }

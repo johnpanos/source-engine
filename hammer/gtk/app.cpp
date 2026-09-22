@@ -17,18 +17,27 @@
 //
 //=============================================================================//
 
+#include "hammer/adapters/platform/disk_byte_store.h"
 #include "hammer/adapters/platform/disk_file_store.h"
 #include "hammer/app/editor_controller.h"
 #include "hammer/app/save_orchestrator.h"
+#include "hammer/formats/material_catalog.h"
+#include "hammer/formats/search_path_assets.h"
+#include "hammer/formats/vpk_archive.h"
 
 #include "renderer.h"
 
+#include <algorithm>
 #include <array>
 #include <climits>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include <adwaita.h>
 #include <epoxy/gl.h>
@@ -70,6 +79,15 @@ struct AppState
 	std::array<Viewport, 4> viewports;
 	std::string currentPath;
 	std::string openOnStart;
+	std::string mountOnStart; // comma-separated _dir.vpk paths to mount at launch
+
+	// Mounted game assets and the material catalog resolved over them. The catalog
+	// borrows the search path, which borrows the archives; declaration order here
+	// keeps them alive together and destroyed in the correct (reverse) order.
+	hammer::adapters::platform::DiskByteStore byteStore;
+	std::vector<std::unique_ptr<hammer::formats::VpkArchive>> archives;
+	hammer::formats::SearchPathAssets assets;
+	std::unique_ptr<hammer::formats::MaterialCatalog> catalog;
 
 	GtkApplication *application = nullptr;
 	GtkWidget *window = nullptr;
@@ -80,6 +98,14 @@ struct AppState
 	GtkToggleButton *selectBtn = nullptr;
 	GtkToggleButton *blockBtn = nullptr;
 	bool suppressToolSignal = false;
+
+	// Object-bar texture preview (current material).
+	GtkWidget *texSwatch = nullptr;
+	GtkLabel *texNameLabel = nullptr;
+	std::string currentMaterial;
+	std::vector<std::uint8_t> swatchRgba; // RGBA preview shown by DrawTextureSwatch
+	int swatchW = 0;
+	int swatchH = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -135,6 +161,7 @@ void RefreshScene( AppState *st, bool frame )
 			gtk_gl_area_make_current( vp.area );
 			if ( gtk_gl_area_get_error( vp.area ) == nullptr )
 			{
+				vp.renderer.SetMaterialCatalog( st->catalog.get() );
 				vp.renderer.SetHighlight( selId );
 				vp.renderer.SetScene( scene );
 				if ( frame )
@@ -150,6 +177,129 @@ void RefreshScene( AppState *st, bool frame )
 		}
 	}
 	UpdateChrome( st );
+}
+
+// ---------------------------------------------------------------------------
+// Game-asset mounting and material preview.
+// ---------------------------------------------------------------------------
+
+// Nearest-neighbour downscale of an RGBA image into a swatch-sized preview stored
+// on the AppState, so the (Cairo) object-bar swatch can paint the real texture.
+void SetCurrentMaterial( AppState *st, const std::string &name )
+{
+	st->currentMaterial = name;
+
+	std::string label = name;
+	st->swatchRgba.clear();
+	st->swatchW = 0;
+	st->swatchH = 0;
+
+	if ( st->catalog )
+	{
+		if ( const hammer::formats::VtfImage *img = st->catalog->BaseTextureImage( name ) )
+		{
+			const int dstW = 128;
+			const int dstH = 128;
+			st->swatchRgba.assign( static_cast<std::size_t>( dstW ) * dstH * 4, 0 );
+			for ( int y = 0; y < dstH; ++y )
+			{
+				const int sy = img->height > 0 ? ( y * img->height ) / dstH : 0;
+				for ( int x = 0; x < dstW; ++x )
+				{
+					const int sx = img->width > 0 ? ( x * img->width ) / dstW : 0;
+					const std::size_t s = ( static_cast<std::size_t>( sy ) * img->width + sx ) * 4;
+					const std::size_t d = ( static_cast<std::size_t>( y ) * dstW + x ) * 4;
+					if ( s + 3 < img->rgba.size() )
+					{
+						st->swatchRgba[d + 0] = img->rgba[s + 0];
+						st->swatchRgba[d + 1] = img->rgba[s + 1];
+						st->swatchRgba[d + 2] = img->rgba[s + 2];
+						st->swatchRgba[d + 3] = 255;
+					}
+				}
+			}
+			st->swatchW = dstW;
+			st->swatchH = dstH;
+			char dims[64];
+			std::snprintf( dims, sizeof( dims ), "  %dx%d", img->width, img->height );
+			label += dims;
+		}
+		else
+		{
+			label += "  (no texture)";
+		}
+	}
+
+	if ( st->texNameLabel )
+	{
+		gtk_label_set_text( st->texNameLabel, label.c_str() );
+	}
+	if ( st->texSwatch )
+	{
+		gtk_widget_queue_draw( st->texSwatch );
+	}
+}
+
+// Mounts a comma-separated list of _dir.vpk paths into the asset search path,
+// (re)builds the material catalog, and re-textures every viewport. Returns the
+// number of materials the catalog can enumerate (0 on total failure).
+std::size_t MountAssets( AppState *st, const std::string &vpkList )
+{
+	st->catalog.reset();
+	st->archives.clear();
+	st->assets = hammer::formats::SearchPathAssets();
+
+	std::size_t begin = 0;
+	while ( begin <= vpkList.size() )
+	{
+		const std::size_t comma = vpkList.find( ',', begin );
+		const std::string path =
+		    vpkList.substr( begin, comma == std::string::npos ? std::string::npos : comma - begin );
+		if ( !path.empty() )
+		{
+			std::string err;
+			auto vpk = hammer::formats::VpkArchive::Open( st->byteStore, path, err );
+			if ( vpk )
+			{
+				st->assets.AddProvider( vpk.get() );
+				st->archives.push_back( std::move( vpk ) );
+			}
+			else
+			{
+				SetHelp( st, "Mount failed: " + path + " (" + err + ")" );
+			}
+		}
+		if ( comma == std::string::npos )
+		{
+			break;
+		}
+		begin = comma + 1;
+	}
+
+	if ( st->assets.ProviderCount() == 0 )
+	{
+		return 0;
+	}
+
+	st->catalog = std::make_unique<hammer::formats::MaterialCatalog>( st->assets );
+	const std::size_t count = st->catalog->MaterialNames().size();
+
+	// Show the first resolvable material as a proof-of-life preview.
+	for ( const std::string &name : st->catalog->MaterialNames() )
+	{
+		if ( st->catalog->BaseTextureImage( name ) )
+		{
+			SetCurrentMaterial( st, name );
+			break;
+		}
+	}
+
+	RefreshScene( st, false );
+	char msg[128];
+	std::snprintf( msg, sizeof( msg ), "Mounted %zu archive(s); %zu materials available",
+	    st->archives.size(), count );
+	SetHelp( st, msg );
+	return count;
 }
 
 // ---------------------------------------------------------------------------
@@ -404,6 +554,7 @@ void OnGlRealize( GtkGLArea *area, gpointer user_data )
 
 	const int selId =
 	    vp->app->controller.Selection() ? *vp->app->controller.Selection() : kNoHighlight;
+	vp->renderer.SetMaterialCatalog( vp->app->catalog.get() );
 	vp->renderer.SetHighlight( selId );
 	vp->renderer.SetScene( vp->app->controller.BuildScene() );
 	vp->renderer.FrameScene();
@@ -806,8 +957,42 @@ GtkWidget *MakeToolPalette( AppState *st )
 	return palette;
 }
 
-void DrawTextureSwatch( GtkDrawingArea *, cairo_t *cr, int w, int h, gpointer )
+void DrawTextureSwatch( GtkDrawingArea *, cairo_t *cr, int w, int h, gpointer user_data )
 {
+	// When a material is mounted and previewed, paint its real decoded texture,
+	// scaled to fill the swatch. Otherwise fall back to the placeholder pattern.
+	AppState *st = static_cast<AppState *>( user_data );
+	if ( st && !st->swatchRgba.empty() && st->swatchW > 0 && st->swatchH > 0 )
+	{
+		const int sw = st->swatchW;
+		const int sh = st->swatchH;
+		const int stride = cairo_format_stride_for_width( CAIRO_FORMAT_RGB24, sw );
+		std::vector<unsigned char> buf( static_cast<std::size_t>( stride ) * sh, 0 );
+		for ( int y = 0; y < sh; ++y )
+		{
+			auto *row = reinterpret_cast<std::uint32_t *>(
+			    buf.data() + static_cast<std::size_t>( y ) * stride );
+			for ( int x = 0; x < sw; ++x )
+			{
+				const std::size_t s = ( static_cast<std::size_t>( y ) * sw + x ) * 4;
+				const std::uint32_t r = st->swatchRgba[s + 0];
+				const std::uint32_t g = st->swatchRgba[s + 1];
+				const std::uint32_t b = st->swatchRgba[s + 2];
+				row[x] = ( r << 16 ) | ( g << 8 ) | b; // CAIRO_FORMAT_RGB24 is 0x00RRGGBB
+			}
+		}
+		cairo_surface_t *surface =
+		    cairo_image_surface_create_for_data( buf.data(), CAIRO_FORMAT_RGB24, sw, sh, stride );
+		cairo_save( cr );
+		cairo_scale( cr, static_cast<double>( w ) / sw, static_cast<double>( h ) / sh );
+		cairo_set_source_surface( cr, surface, 0, 0 );
+		cairo_pattern_set_filter( cairo_get_source( cr ), CAIRO_FILTER_NEAREST );
+		cairo_paint( cr );
+		cairo_restore( cr );
+		cairo_surface_destroy( surface );
+		return;
+	}
+
 	cairo_set_source_rgb( cr, 0.42, 0.28, 0.22 );
 	cairo_rectangle( cr, 0, 0, w, h );
 	cairo_fill( cr );
@@ -870,21 +1055,25 @@ GtkWidget *MakeObjectBar( AppState *st )
 	gtk_box_append( GTK_BOX( bar ), gtk_label_new( "Current texture:" ) );
 	GtkWidget *swatch = gtk_drawing_area_new();
 	gtk_widget_set_size_request( swatch, -1, 100 );
-	gtk_drawing_area_set_draw_func(
-	    GTK_DRAWING_AREA( swatch ), DrawTextureSwatch, nullptr, nullptr );
+	gtk_drawing_area_set_draw_func( GTK_DRAWING_AREA( swatch ), DrawTextureSwatch, st, nullptr );
 	gtk_box_append( GTK_BOX( bar ), swatch );
-	GtkWidget *texName = gtk_label_new( "brick/brickfloor001a  512x512" );
+	st->texSwatch = swatch;
+	GtkWidget *texName = gtk_label_new( "no assets mounted" );
 	gtk_widget_add_css_class( texName, "caption" );
+	gtk_label_set_wrap( GTK_LABEL( texName ), TRUE );
 	gtk_box_append( GTK_BOX( bar ), texName );
+	st->texNameLabel = GTK_LABEL( texName );
 
 	GtkWidget *texBtns = gtk_box_new( GTK_ORIENTATION_HORIZONTAL, 0 );
 	gtk_widget_add_css_class( texBtns, "linked" );
-	for ( const char *name : { "Browse…", "Replace…" } )
-	{
-		GtkWidget *b = gtk_button_new_with_label( name );
-		gtk_widget_set_hexpand( b, TRUE );
-		gtk_box_append( GTK_BOX( texBtns ), b );
-	}
+	GtkWidget *browseBtn = gtk_button_new_with_label( "Browse…" );
+	gtk_widget_set_hexpand( browseBtn, TRUE );
+	gtk_actionable_set_action_name( GTK_ACTIONABLE( browseBtn ), "app.browse-materials" );
+	gtk_box_append( GTK_BOX( texBtns ), browseBtn );
+	GtkWidget *mountBtn = gtk_button_new_with_label( "Mount…" );
+	gtk_widget_set_hexpand( mountBtn, TRUE );
+	gtk_actionable_set_action_name( GTK_ACTIONABLE( mountBtn ), "app.mount-assets" );
+	gtk_box_append( GTK_BOX( texBtns ), mountBtn );
 	gtk_box_append( GTK_BOX( bar ), texBtns );
 
 	gtk_box_append( GTK_BOX( bar ), gtk_separator_new( GTK_ORIENTATION_HORIZONTAL ) );
@@ -1025,6 +1214,10 @@ GMenu *MakeMenuModel()
 	g_menu_append( file, "Open…", "app.open" );
 	g_menu_append( file, "Save", "app.save" );
 	g_menu_append( file, "Save As…", "app.saveas" );
+	GMenu *fileAssets = g_menu_new();
+	g_menu_append( fileAssets, "Mount Game Assets…", "app.mount-assets" );
+	g_menu_append( fileAssets, "Browse Materials…", "app.browse-materials" );
+	g_menu_append_section( file, nullptr, G_MENU_MODEL( fileAssets ) );
 	GMenu *fileEnd = g_menu_new();
 	g_menu_append( fileEnd, "Quit", "app.quit" );
 	g_menu_append_section( file, nullptr, G_MENU_MODEL( fileEnd ) );
@@ -1110,12 +1303,218 @@ void OnActivate( GtkApplication *app, gpointer user_data )
 
 	gtk_window_set_child( GTK_WINDOW( window ), root );
 
+	if ( !st->mountOnStart.empty() )
+	{
+		MountAssets( st, st->mountOnStart );
+	}
+
 	if ( !st->openOnStart.empty() )
 	{
 		DoOpen( st, st->openOnStart );
 	}
 
 	gtk_window_present( GTK_WINDOW( window ) );
+}
+
+// ---------------------------------------------------------------------------
+// Asset mounting (folder chooser -> discover *_dir.vpk) and material browser.
+// ---------------------------------------------------------------------------
+
+// Joins every "*_dir.vpk" directly under 'dir' into a comma-separated mount list,
+// sorted so the mount order is deterministic.
+std::string DiscoverVpks( const std::string &dir )
+{
+	std::vector<std::string> found;
+	std::error_code ec;
+	for ( const auto &entry : std::filesystem::directory_iterator( dir, ec ) )
+	{
+		if ( ec )
+		{
+			break;
+		}
+		const std::string name = entry.path().filename().string();
+		if ( name.size() >= 8 && name.compare( name.size() - 8, 8, "_dir.vpk" ) == 0 )
+		{
+			found.push_back( entry.path().string() );
+		}
+	}
+	std::sort( found.begin(), found.end() );
+	std::string list;
+	for ( const std::string &p : found )
+	{
+		if ( !list.empty() )
+		{
+			list += ",";
+		}
+		list += p;
+	}
+	return list;
+}
+
+void OnMountFolderChosen( GObject *source, GAsyncResult *res, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	GError *err = nullptr;
+	GFile *folder = gtk_file_dialog_select_folder_finish( GTK_FILE_DIALOG( source ), res, &err );
+	if ( !folder )
+	{
+		if ( err )
+		{
+			g_error_free( err );
+		}
+		return;
+	}
+	char *path = g_file_get_path( folder );
+	if ( path )
+	{
+		const std::string list = DiscoverVpks( path );
+		if ( list.empty() )
+		{
+			SetHelp( st, std::string( "No *_dir.vpk found in " ) + path );
+		}
+		else
+		{
+			MountAssets( st, list );
+		}
+		g_free( path );
+	}
+	g_object_unref( folder );
+}
+
+void ActionMountAssets( GSimpleAction *, GVariant *, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	GtkFileDialog *dialog = gtk_file_dialog_new();
+	gtk_file_dialog_set_title( dialog, "Choose a game directory (containing *_dir.vpk)" );
+	gtk_file_dialog_select_folder(
+	    dialog, GTK_WINDOW( st->window ), nullptr, OnMountFolderChosen, st );
+	g_object_unref( dialog );
+}
+
+// A GdkTexture RGBA thumbnail (nearest-downscaled to 'size' x 'size') for a
+// decoded base texture, or nullptr when there is none.
+GdkTexture *MakeThumbnail( AppState *st, const std::string &name, int size )
+{
+	if ( !st->catalog )
+	{
+		return nullptr;
+	}
+	const hammer::formats::VtfImage *img = st->catalog->BaseTextureImage( name );
+	if ( !img || img->width <= 0 || img->height <= 0 )
+	{
+		return nullptr;
+	}
+	std::vector<std::uint8_t> small( static_cast<std::size_t>( size ) * size * 4, 0 );
+	for ( int y = 0; y < size; ++y )
+	{
+		const int sy = ( y * img->height ) / size;
+		for ( int x = 0; x < size; ++x )
+		{
+			const int sx = ( x * img->width ) / size;
+			const std::size_t s = ( static_cast<std::size_t>( sy ) * img->width + sx ) * 4;
+			const std::size_t d = ( static_cast<std::size_t>( y ) * size + x ) * 4;
+			if ( s + 3 < img->rgba.size() )
+			{
+				small[d + 0] = img->rgba[s + 0];
+				small[d + 1] = img->rgba[s + 1];
+				small[d + 2] = img->rgba[s + 2];
+				small[d + 3] = 255;
+			}
+		}
+	}
+	GBytes *bytes = g_bytes_new( small.data(), small.size() );
+	GdkTexture *tex = gdk_memory_texture_new(
+	    size, size, GDK_MEMORY_R8G8B8A8, bytes, static_cast<gsize>( size ) * 4 );
+	g_bytes_unref( bytes );
+	return tex;
+}
+
+void OnMaterialActivated( GtkFlowBox *, GtkFlowBoxChild *child, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	const char *name =
+	    static_cast<const char *>( g_object_get_data( G_OBJECT( child ), "material" ) );
+	if ( name )
+	{
+		SetCurrentMaterial( st, name );
+	}
+}
+
+void ActionBrowseMaterials( GSimpleAction *, GVariant *, gpointer user_data )
+{
+	AppState *st = static_cast<AppState *>( user_data );
+	if ( !st->catalog )
+	{
+		SetHelp( st, "No assets mounted -- use Mount… (or File ▸ Mount Game Assets…) first" );
+		return;
+	}
+
+	GtkWidget *win = gtk_window_new();
+	gtk_window_set_title( GTK_WINDOW( win ), "Materials" );
+	gtk_window_set_default_size( GTK_WINDOW( win ), 720, 560 );
+	if ( st->window )
+	{
+		gtk_window_set_transient_for( GTK_WINDOW( win ), GTK_WINDOW( st->window ) );
+	}
+
+	GtkWidget *scroll = gtk_scrolled_window_new();
+	gtk_widget_set_vexpand( scroll, TRUE );
+	GtkWidget *flow = gtk_flow_box_new();
+	gtk_flow_box_set_selection_mode( GTK_FLOW_BOX( flow ), GTK_SELECTION_SINGLE );
+	gtk_flow_box_set_max_children_per_line( GTK_FLOW_BOX( flow ), 32 );
+	gtk_flow_box_set_activate_on_single_click( GTK_FLOW_BOX( flow ), TRUE );
+	g_signal_connect( flow, "child-activated", G_CALLBACK( OnMaterialActivated ), st );
+
+	// Populate a bounded number of thumbnails (decoding every shipped material up
+	// front would be needlessly slow); the status line reports the true total.
+	const std::size_t kMaxThumbnails = 400;
+	std::size_t shown = 0;
+	for ( const std::string &name : st->catalog->MaterialNames() )
+	{
+		if ( shown >= kMaxThumbnails )
+		{
+			break;
+		}
+		GdkTexture *tex = MakeThumbnail( st, name, 96 );
+		if ( !tex )
+		{
+			continue;
+		}
+		GtkWidget *cell = gtk_box_new( GTK_ORIENTATION_VERTICAL, 2 );
+		GtkWidget *pic = gtk_picture_new_for_paintable( GDK_PAINTABLE( tex ) );
+		gtk_widget_set_size_request( pic, 96, 96 );
+		g_object_unref( tex );
+		GtkWidget *lbl = gtk_label_new( name.c_str() );
+		gtk_label_set_ellipsize( GTK_LABEL( lbl ), PANGO_ELLIPSIZE_MIDDLE );
+		gtk_widget_set_size_request( lbl, 96, -1 );
+		gtk_widget_add_css_class( lbl, "caption" );
+		gtk_box_append( GTK_BOX( cell ), pic );
+		gtk_box_append( GTK_BOX( cell ), lbl );
+		gtk_widget_set_tooltip_text( cell, name.c_str() );
+		gtk_flow_box_append( GTK_FLOW_BOX( flow ), cell );
+		// Attach the material name to the child that GTK wraps our cell in.
+		GtkWidget *fchild = gtk_widget_get_parent( cell );
+		if ( GTK_IS_FLOW_BOX_CHILD( fchild ) )
+		{
+			g_object_set_data_full(
+			    G_OBJECT( fchild ), "material", g_strdup( name.c_str() ), g_free );
+		}
+		++shown;
+	}
+
+	gtk_scrolled_window_set_child( GTK_SCROLLED_WINDOW( scroll ), flow );
+
+	GtkWidget *box = gtk_box_new( GTK_ORIENTATION_VERTICAL, 0 );
+	char header[128];
+	std::snprintf( header, sizeof( header ), "Showing %zu of %zu materials", shown,
+	    st->catalog->MaterialNames().size() );
+	GtkWidget *lbl = gtk_label_new( header );
+	gtk_widget_set_margin_top( lbl, 6 );
+	gtk_widget_set_margin_bottom( lbl, 6 );
+	gtk_box_append( GTK_BOX( box ), lbl );
+	gtk_box_append( GTK_BOX( box ), scroll );
+	gtk_window_set_child( GTK_WINDOW( win ), box );
+	gtk_window_present( GTK_WINDOW( win ) );
 }
 
 void AddActions( GtkApplication *app, AppState *st )
@@ -1132,6 +1531,8 @@ void AddActions( GtkApplication *app, AppState *st )
 	    { "reset-views", ActionResetViews, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "tool-select", ActionToolSelect, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "tool-block", ActionToolBlock, nullptr, nullptr, nullptr, { 0, 0, 0 } },
+	    { "mount-assets", ActionMountAssets, nullptr, nullptr, nullptr, { 0, 0, 0 } },
+	    { "browse-materials", ActionBrowseMaterials, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	    { "noop", nullptr, nullptr, nullptr, nullptr, { 0, 0, 0 } },
 	};
 	g_action_map_add_action_entries( G_ACTION_MAP( app ), entries, G_N_ELEMENTS( entries ), st );
@@ -1178,6 +1579,8 @@ int RenderQuad( const std::string &vmfPath, const std::string &outPpm, int tileW
 int RenderControllerDemo( const std::string &outPpm, int tileW, int tileH );
 int RenderControllerLoad(
     const std::string &vmfPath, const std::string &outPpm, int tileW, int tileH );
+int RenderTexturedScreenshot( const std::string &vmfPath, const std::string &outPpm, int width,
+    int height, const std::string &vpkList );
 
 int main( int argc, char **argv )
 {
@@ -1188,7 +1591,11 @@ int main( int argc, char **argv )
 	std::string demoOut;
 	std::string cquadOut;
 	std::string cquadIn;
+	std::string texturedOut;
+	std::string texturedIn;
+	std::string texturedVpks;
 	std::string openPath;
+	std::string mountVpks;
 	int width = 1024;
 	int height = 768;
 
@@ -1214,9 +1621,19 @@ int main( int argc, char **argv )
 			cquadOut = argv[++i];
 			cquadIn = argv[++i];
 		}
+		else if ( a == "--textured" && i + 3 < argc )
+		{
+			texturedOut = argv[++i];
+			texturedIn = argv[++i];
+			texturedVpks = argv[++i];
+		}
 		else if ( a == "--open" && i + 1 < argc )
 		{
 			openPath = argv[++i];
+		}
+		else if ( a == "--mount" && i + 1 < argc )
+		{
+			mountVpks = argv[++i];
 		}
 		else if ( a == "--width" && i + 1 < argc )
 		{
@@ -1251,8 +1668,13 @@ int main( int argc, char **argv )
 	{
 		return RenderControllerLoad( cquadIn, cquadOut, width / 2, height / 2 );
 	}
+	if ( !texturedOut.empty() )
+	{
+		return RenderTexturedScreenshot( texturedIn, texturedOut, width, height, texturedVpks );
+	}
 
 	AppState st;
 	st.openOnStart = openPath;
+	st.mountOnStart = mountVpks;
 	return RunApp( &st, argv );
 }

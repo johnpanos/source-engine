@@ -26,8 +26,8 @@ public:
 	DiskByteStore() = default;
 
 	bool Size( const std::string &path, std::uint64_t &outSize ) const override;
-	bool ReadRange(
-	    const std::string &path, std::uint64_t offset, std::size_t length, std::string &out ) const override;
+	bool ReadRange( const std::string &path, std::uint64_t offset, std::size_t length,
+	    std::string &out ) const override;
 };
 
 } // namespace hammer::adapters::platform

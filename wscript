@@ -69,7 +69,7 @@ projects={
 		'materialsystem',
 		'materialsystem/shaderapiempty',
 		'materialsystem/shaderapivulkan',
-		'materialsystem/shaderapidx9',
+
 		'materialsystem/shaderlib',
 		'materialsystem/stdshaders',
 		'mathlib',
@@ -682,11 +682,14 @@ def configure(conf):
 	conf.env.append_unique('INCLUDES', [os.path.abspath('common/')])
 
 	check_deps( conf )
+
+	if conf.env.NATIVE_VULKAN:
+		conf.check_cfg(package='vulkan', uselib_store='VULKAN', args=['--cflags', '--libs'])
 	if conf.env.VIDEO_BINK:
 		for package, store in [('libavcodec', 'AVCODEC'), ('libavformat', 'AVFORMAT'), ('libavutil', 'AVUTIL')]:
 			conf.check_cfg(package=package, uselib_store=store, args=['--cflags', '--libs'])
-		conf.check_cfg(package='vulkan', uselib_store='VULKAN', args=['--cflags', '--libs'])
 	if conf.env.DXVK:
+
 		sys.path.insert(0, os.path.abspath('tools/quality'))
 		from product_profile import load_profile, check_environment, verify_dependency, ProfileError
 		try:
@@ -734,6 +737,8 @@ def configure(conf):
 		if conf.env.SDL3:
 			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest',
 				'unittests/moduleloadfixture', 'unittests/moduleloadshutdownfixture']
+		if conf.env.NATIVE_VULKAN:
+			projects['game'] += ['unittests/shaderapivulkantest']
 		if conf.env.VIDEO_BINK:
 			projects['game'] += ['video/video_bink']
 		conf.add_subproject(projects['game'])
@@ -769,6 +774,8 @@ def build(bld):
 		if bld.env.SDL3:
 			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest',
 				'unittests/moduleloadfixture', 'unittests/moduleloadshutdownfixture']
+		if bld.env.NATIVE_VULKAN:
+			projects['game'] += ['unittests/shaderapivulkantest']
 		if bld.env.TOGLES:
 			projects['game'] += ['togles']
 		elif bld.env.GL:

@@ -39,9 +39,7 @@ public:
 	// union across providers in search order.
 	bool HasAsset( const std::string &path ) const override;
 	bool ReadAsset( const std::string &path, std::string &out ) const override;
-	void ListAssets(
-	    const std::string &prefix,
-	    const std::string &extensionWithDot,
+	void ListAssets( const std::string &prefix, const std::string &extensionWithDot,
 	    std::vector<std::string> &out ) const override;
 
 private:

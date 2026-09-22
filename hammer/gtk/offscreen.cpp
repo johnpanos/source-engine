@@ -28,9 +28,15 @@
 // shared DiskFileStore and imports full-fidelity VMF geometry directly through the
 // keyvalues codec + brush bridge (not the editable box model), so a screenshot of
 // an arbitrary map shows its real brushes.
+#include "hammer/adapters/platform/disk_byte_store.h"
 #include "hammer/adapters/platform/disk_file_store.h"
 #include "hammer/app/editor_controller.h"
 #include "hammer/formats/keyvalues.h"
+#include "hammer/formats/material_catalog.h"
+#include "hammer/formats/search_path_assets.h"
+#include "hammer/formats/vpk_archive.h"
+
+#include <memory>
 
 namespace
 {
@@ -273,6 +279,109 @@ int RenderScreenshot( const std::string &vmfPath, const std::string &outPpm, int
 			else
 			{
 				std::printf( "screenshot: wrote %s (%dx%d), %d solids, %d triangles\n",
+				    outPpm.c_str(), width, height, renderer.SolidCount(),
+				    renderer.TriangleCount() );
+			}
+		}
+	}
+
+	glDeleteFramebuffers( 1, &fbo );
+	glDeleteRenderbuffers( 1, &depthRb );
+	glDeleteTextures( 1, &colorTex );
+	DestroyEgl( egl );
+	return rc;
+}
+
+// Renders a single 3D view of a VMF with materials mounted from one or more VPK
+// archives, so the screenshot shows real Source textures. 'vpkList' is a
+// comma-separated list of _dir.vpk paths (later ones are lower priority). This is
+// the headless evidence path for texture loading reaching the frontend renderer.
+int RenderTexturedScreenshot( const std::string &vmfPath, const std::string &outPpm, int width,
+    int height, const std::string &vpkList )
+{
+	if ( width <= 0 || height <= 0 )
+	{
+		std::fprintf( stderr, "textured: invalid size %dx%d\n", width, height );
+		return 2;
+	}
+	hammer::geometry::WorldScene scene;
+	std::string error;
+	if ( !LoadSceneForScreenshot( vmfPath, scene, error ) )
+	{
+		std::fprintf( stderr, "textured: failed to load %s: %s\n", vmfPath.c_str(), error.c_str() );
+		return 3;
+	}
+
+	// Mount the VPKs into an ordered asset search path, then a material catalog.
+	hammer::adapters::platform::DiskByteStore byteStore;
+	hammer::formats::SearchPathAssets assets;
+	std::vector<std::unique_ptr<hammer::formats::VpkArchive>> archives;
+	std::size_t start = 0;
+	while ( start <= vpkList.size() )
+	{
+		std::size_t comma = vpkList.find( ',', start );
+		std::string path =
+		    vpkList.substr( start, comma == std::string::npos ? std::string::npos : comma - start );
+		if ( !path.empty() )
+		{
+			std::string err;
+			auto vpk = hammer::formats::VpkArchive::Open( byteStore, path, err );
+			if ( !vpk )
+			{
+				std::fprintf(
+				    stderr, "textured: cannot mount %s: %s\n", path.c_str(), err.c_str() );
+				return 3;
+			}
+			std::printf(
+			    "textured: mounted %s (%zu entries)\n", path.c_str(), vpk->Entries().size() );
+			assets.AddProvider( vpk.get() );
+			archives.push_back( std::move( vpk ) );
+		}
+		if ( comma == std::string::npos )
+			break;
+		start = comma + 1;
+	}
+	hammer::formats::MaterialCatalog catalog( assets );
+
+	EglContext egl = CreateEgl( width, height );
+	if ( !egl.ok )
+	{
+		std::fprintf( stderr, "textured: EGL context creation failed\n" );
+		DestroyEgl( egl );
+		return 4;
+	}
+	GLuint fbo = 0, colorTex = 0, depthRb = 0;
+	if ( !CreateFbo( width, height, fbo, colorTex, depthRb ) )
+	{
+		std::fprintf( stderr, "textured: framebuffer incomplete\n" );
+		DestroyEgl( egl );
+		return 5;
+	}
+
+	int rc = 0;
+	{
+		hammergtk::Renderer renderer;
+		if ( !renderer.Init( error ) )
+		{
+			std::fprintf( stderr, "textured: renderer init failed: %s\n", error.c_str() );
+			rc = 6;
+		}
+		else
+		{
+			renderer.SetMaterialCatalog( &catalog );
+			renderer.SetScene( scene );
+			renderer.FrameScene();
+			renderer.Render( width, height );
+			glFinish();
+			const std::vector<std::uint8_t> rgb = ReadRgbTopDown( width, height );
+			if ( !WritePpm( outPpm, width, height, rgb ) )
+			{
+				std::fprintf( stderr, "textured: failed to write %s\n", outPpm.c_str() );
+				rc = 7;
+			}
+			else
+			{
+				std::printf( "textured: wrote %s (%dx%d), %d solids, %d triangles\n",
 				    outPpm.c_str(), width, height, renderer.SolidCount(),
 				    renderer.TriangleCount() );
 			}

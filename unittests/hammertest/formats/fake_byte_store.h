@@ -39,8 +39,8 @@ public:
 		return true;
 	}
 
-	bool ReadRange(
-	    const std::string &path, std::uint64_t offset, std::size_t length, std::string &out ) const override
+	bool ReadRange( const std::string &path, std::uint64_t offset, std::size_t length,
+	    std::string &out ) const override
 	{
 		auto it = files.find( path );
 		if ( it == files.end() )
@@ -56,9 +56,9 @@ public:
 // One file to place in a built VPK.
 struct VpkBuildFile
 {
-	std::string path;              // canonical: lower, forward-slash, ext included
-	std::string data;              // full file contents
-	std::uint16_t preload = 0;     // first N bytes stored inline in the directory
+	std::string path;                    // canonical: lower, forward-slash, ext included
+	std::string data;                    // full file contents
+	std::uint16_t preload = 0;           // first N bytes stored inline in the directory
 	std::uint16_t archiveIndex = 0x7fff; // 0x7fff = inline dir data section; else _NNN.vpk
 };
 
@@ -81,7 +81,8 @@ inline void PutU32( std::string &b, std::uint32_t v )
 
 // Splits "materials/foo/bar.vmt" into ext="vmt", dir="materials/foo", name="bar".
 // A root file "bar.vmt" yields dir=" " (the VPK root marker).
-inline void SplitPath( const std::string &path, std::string &ext, std::string &dir, std::string &name )
+inline void SplitPath(
+    const std::string &path, std::string &ext, std::string &dir, std::string &name )
 {
 	std::size_t dot = path.rfind( '.' );
 	std::string stem = ( dot == std::string::npos ) ? path : path.substr( 0, dot );
@@ -105,10 +106,8 @@ inline void SplitPath( const std::string &path, std::string &ext, std::string &d
 // 'externalArchives' is filled with archiveIndex -> blob for any file whose
 // archiveIndex != 0x7fff. Inline chunks (0x7fff) are placed in the directory
 // blob's data section (v1: right after the tree; v2: the file-data section).
-inline std::string BuildVpk(
-    const std::vector<VpkBuildFile> &files,
-    std::map<int, std::string> &externalArchives,
-    std::uint32_t version = 2 )
+inline std::string BuildVpk( const std::vector<VpkBuildFile> &files,
+    std::map<int, std::string> &externalArchives, std::uint32_t version = 2 )
 {
 	using namespace detail;
 
@@ -166,12 +165,12 @@ inline std::string BuildVpk(
 				SplitPath( files[idx].path, ext, dir, name );
 				body += name;
 				body.push_back( '\0' );
-				PutU32( body, 0 );                        // crc (unchecked by reader)
-				PutU16( body, files[idx].preload );       // preload byte count
-				PutU16( body, files[idx].archiveIndex );  // archive index
-				PutU32( body, placed[idx].chunkOffset );  // chunk offset
-				PutU32( body, placed[idx].chunkLength );  // chunk length
-				PutU16( body, 0xffff );                   // terminator
+				PutU32( body, 0 );                       // crc (unchecked by reader)
+				PutU16( body, files[idx].preload );      // preload byte count
+				PutU16( body, files[idx].archiveIndex ); // archive index
+				PutU32( body, placed[idx].chunkOffset ); // chunk offset
+				PutU32( body, placed[idx].chunkLength ); // chunk length
+				PutU16( body, 0xffff );                  // terminator
 				body += files[idx].data.substr( 0, files[idx].preload ); // inline preload
 			}
 			body.push_back( '\0' ); // end of files in this dir
@@ -181,8 +180,8 @@ inline std::string BuildVpk(
 	body.push_back( '\0' ); // end of tree
 
 	std::string blob;
-	PutU32( blob, 0x55aa1234u );      // signature
-	PutU32( blob, version );          // version
+	PutU32( blob, 0x55aa1234u );                  // signature
+	PutU32( blob, version );                      // version
 	PutU32( blob, std::uint32_t( body.size() ) ); // tree size
 	if ( version == 2 )
 	{

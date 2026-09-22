@@ -116,32 +116,39 @@ const char *kVertexSrc = "#version 330 core\n"
                          "layout(location=0) in vec3 aPos;\n"
                          "layout(location=1) in vec3 aNormal;\n"
                          "layout(location=2) in vec3 aColor;\n"
+                         "layout(location=3) in vec2 aTexCoord;\n"
                          "uniform mat4 uMVP;\n"
                          "out vec3 vNormal;\n"
                          "out vec3 vColor;\n"
+                         "out vec2 vUV;\n"
                          "void main(){\n"
                          "  vNormal = aNormal;\n"
                          "  vColor = aColor;\n"
+                         "  vUV = aTexCoord;\n"
                          "  gl_Position = uMVP * vec4(aPos, 1.0);\n"
                          "}\n";
 
 const char *kFragmentSrc = "#version 330 core\n"
                            "in vec3 vNormal;\n"
                            "in vec3 vColor;\n"
+                           "in vec2 vUV;\n"
                            "uniform int uWire;\n"
                            "uniform int uOverride;\n"
                            "uniform vec3 uOverrideColor;\n"
+                           "uniform int uUseTexture;\n"
+                           "uniform sampler2D uTex;\n"
                            "out vec4 fragColor;\n"
                            "void main(){\n"
                            "  if (uWire == 1) {\n"
                            "    fragColor = vec4(uOverride == 1 ? uOverrideColor : vColor, 1.0);\n"
                            "    return;\n"
                            "  }\n"
+                           "  vec3 base = (uUseTexture == 1) ? texture(uTex, vUV).rgb : vColor;\n"
                            "  vec3 n = normalize(vNormal);\n"
                            "  vec3 l1 = normalize(vec3(0.4, 0.6, 0.8));\n"
                            "  vec3 l2 = normalize(vec3(-0.5, -0.3, 0.4));\n"
                            "  float d = 0.35 + 0.55*max(dot(n,l1),0.0) + 0.25*max(dot(n,l2),0.0);\n"
-                           "  fragColor = vec4(vColor * clamp(d,0.0,1.0), 1.0);\n"
+                           "  fragColor = vec4(base * clamp(d,0.0,1.0), 1.0);\n"
                            "}\n";
 
 bool CompileShader( GLenum type, const char *src, GLuint &out, std::string &error )
@@ -171,9 +178,14 @@ void SolidColor( int index, float out[3] )
 	out[2] = 0.45f + 0.5f * ( ( ( h >> 16 ) & 0xFF ) / 255.0f );
 }
 
-// Pushes one interleaved vertex (pos, normal, colour) onto a buffer.
+// One interleaved vertex is 11 floats: pos(3) normal(3) colour(3) texcoord(2).
+// The line and grid buffers carry the same layout with dummy (0,0) texcoords, so
+// SetupAttribs is uniform and no stale attribute state leaks between draws.
+constexpr int kVertexFloats = 11;
+
+// Pushes one interleaved vertex (pos, normal, colour, uv) onto a buffer.
 void PushVertex( std::vector<float> &out, float x, float y, float z, float nx, float ny, float nz,
-    float r, float g, float b )
+    float r, float g, float b, float u = 0.0f, float v = 0.0f )
 {
 	out.push_back( x );
 	out.push_back( y );
@@ -184,11 +196,13 @@ void PushVertex( std::vector<float> &out, float x, float y, float z, float nx, f
 	out.push_back( r );
 	out.push_back( g );
 	out.push_back( b );
+	out.push_back( u );
+	out.push_back( v );
 }
 
 void SetupAttribs()
 {
-	const GLsizei stride = 9 * sizeof( float );
+	const GLsizei stride = kVertexFloats * sizeof( float );
 	glEnableVertexAttribArray( 0 );
 	glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>( 0 ) );
 	glEnableVertexAttribArray( 1 );
@@ -197,6 +211,9 @@ void SetupAttribs()
 	glEnableVertexAttribArray( 2 );
 	glVertexAttribPointer(
 	    2, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>( 6 * sizeof( float ) ) );
+	glEnableVertexAttribArray( 3 );
+	glVertexAttribPointer(
+	    3, 2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void *>( 9 * sizeof( float ) ) );
 }
 
 } // namespace
@@ -216,6 +233,15 @@ void Renderer::ReleaseGl()
 	glDeleteBuffers( 3, buffers );
 	const GLuint arrays[] = { m_meshVao, m_lineVao, m_gridVao };
 	glDeleteVertexArrays( 3, arrays );
+	for ( const auto &kv : m_textures )
+	{
+		if ( kv.second )
+		{
+			GLuint t = kv.second;
+			glDeleteTextures( 1, &t );
+		}
+	}
+	m_textures.clear();
 	if ( m_program )
 	{
 		glDeleteProgram( m_program );
@@ -223,6 +249,38 @@ void Renderer::ReleaseGl()
 	m_meshVbo = m_lineVbo = m_gridVbo = 0;
 	m_meshVao = m_lineVao = m_gridVao = m_program = 0;
 	m_initialized = false;
+}
+
+unsigned int Renderer::TextureFor( const std::string &material )
+{
+	if ( !m_catalog || material.empty() )
+	{
+		return 0;
+	}
+	auto it = m_textures.find( material );
+	if ( it != m_textures.end() )
+	{
+		return it->second;
+	}
+
+	GLuint tex = 0;
+	const hammer::formats::VtfImage *image = m_catalog->BaseTextureImage( material );
+	if ( image && image->width > 0 && image->height > 0 )
+	{
+		glGenTextures( 1, &tex );
+		glBindTexture( GL_TEXTURE_2D, tex );
+		glPixelStorei( GL_UNPACK_ALIGNMENT, 1 );
+		glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA8, image->width, image->height, 0, GL_RGBA,
+		    GL_UNSIGNED_BYTE, image->rgba.data() );
+		glGenerateMipmap( GL_TEXTURE_2D );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+		glBindTexture( GL_TEXTURE_2D, 0 );
+	}
+	m_textures.emplace( material, tex );
+	return tex;
 }
 
 bool Renderer::Init( std::string &error )
@@ -279,6 +337,24 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 	std::vector<float> lines;
 	m_triCount = 0;
 	m_solidCount = static_cast<int>( scene.solids.size() );
+	m_meshRanges.clear();
+
+	// Appends a per-texture draw run, merging with the previous run when the
+	// texture matches so a wall of same-material faces is one draw call.
+	auto addRange = [&]( unsigned int texture, int firstVertex, int vertexCount )
+	{
+		if ( vertexCount <= 0 )
+			return;
+		if ( !m_meshRanges.empty() && m_meshRanges.back().texture == texture &&
+		     m_meshRanges.back().firstVertex + m_meshRanges.back().vertexCount == firstVertex )
+		{
+			m_meshRanges.back().vertexCount += vertexCount;
+		}
+		else
+		{
+			m_meshRanges.push_back( { texture, firstVertex, vertexCount } );
+		}
+	};
 
 	int solidIndex = 0;
 	for ( const hammer::geometry::BrushSolid &solid : scene.solids )
@@ -319,6 +395,57 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 			const float n[3] = { static_cast<float>( face.plane.normal.x ),
 			    static_cast<float>( face.plane.normal.y ),
 			    static_cast<float>( face.plane.normal.z ) };
+
+			// Resolve this face's texture. Pending/selected brushes stay flat-shaded
+			// so their highlight fill reads clearly; only ordinary faces are textured.
+			unsigned int texture = 0;
+			if ( !pending && !selected )
+			{
+				texture = TextureFor( face.material );
+			}
+
+			// World-planar UVs: project onto the two world axes least aligned with
+			// the face normal, at Source's default 0.25 texels/unit, so the texture
+			// tiles at a plausible real-world size. Only meaningful when textured.
+			int aU = 0, aV = 1;
+			const float ax = std::fabs( n[0] ), ay = std::fabs( n[1] ), az = std::fabs( n[2] );
+			if ( az >= ax && az >= ay )
+			{
+				aU = 0;
+				aV = 1; // floor/ceiling: X,Y
+			}
+			else if ( ax >= ay )
+			{
+				aU = 1;
+				aV = 2; // X-facing wall: Y,Z
+			}
+			else
+			{
+				aU = 0;
+				aV = 2; // Y-facing wall: X,Z
+			}
+			float worldU = 128.0f, worldV = 128.0f;
+			if ( texture )
+			{
+				if ( const hammer::formats::VtfImage *img =
+				         m_catalog->BaseTextureImage( face.material ) )
+				{
+					worldU = ( img->width > 0 ? img->width : 512 ) * 0.25f;
+					worldV = ( img->height > 0 ? img->height : 512 ) * 0.25f;
+				}
+			}
+			auto uAt = [&]( const hammer::geometry::Vec3d &p )
+			{
+				const double c[3] = { p.x, p.y, p.z };
+				return static_cast<float>( c[aU] ) / worldU;
+			};
+			auto vAt = [&]( const hammer::geometry::Vec3d &p )
+			{
+				const double c[3] = { p.x, p.y, p.z };
+				return static_cast<float>( c[aV] ) / worldV;
+			};
+
+			const int faceFirstVertex = static_cast<int>( mesh.size() / kVertexFloats );
 			const hammer::geometry::Vec3d &v0 = face.vertices[0];
 			for ( std::size_t i = 1; i + 1 < face.vertices.size(); ++i )
 			{
@@ -327,10 +454,14 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 				for ( const hammer::geometry::Vec3d &p : tri )
 				{
 					PushVertex( mesh, static_cast<float>( p.x ), static_cast<float>( p.y ),
-					    static_cast<float>( p.z ), n[0], n[1], n[2], color[0], color[1], color[2] );
+					    static_cast<float>( p.z ), n[0], n[1], n[2], color[0], color[1], color[2],
+					    uAt( p ), vAt( p ) );
 				}
 				++m_triCount;
 			}
+			const int faceVertexCount =
+			    static_cast<int>( mesh.size() / kVertexFloats ) - faceFirstVertex;
+			addRange( texture, faceFirstVertex, faceVertexCount );
 
 			for ( std::size_t i = 0; i < face.vertices.size(); ++i )
 			{
@@ -344,8 +475,8 @@ void Renderer::SetScene( const hammer::geometry::WorldScene &scene )
 		}
 	}
 
-	m_meshVertexCount = static_cast<int>( mesh.size() / 9 );
-	m_lineVertexCount = static_cast<int>( lines.size() / 9 );
+	m_meshVertexCount = static_cast<int>( mesh.size() / kVertexFloats );
+	m_lineVertexCount = static_cast<int>( lines.size() / kVertexFloats );
 
 	glBindVertexArray( m_meshVao );
 	glBindBuffer( GL_ARRAY_BUFFER, m_meshVbo );
@@ -549,10 +680,31 @@ void Renderer::RenderPerspective( int widthPx, int heightPx )
 	glUniform1i( glGetUniformLocation( m_program, "uOverride" ), 0 );
 
 	glUniform1i( glGetUniformLocation( m_program, "uWire" ), 0 );
+	glUniform1i( glGetUniformLocation( m_program, "uTex" ), 0 ); // sampler on unit 0
 	glEnable( GL_POLYGON_OFFSET_FILL );
 	glPolygonOffset( 1.0f, 1.0f );
 	glBindVertexArray( m_meshVao );
-	glDrawArrays( GL_TRIANGLES, 0, m_meshVertexCount );
+	const GLint useTexLoc = glGetUniformLocation( m_program, "uUseTexture" );
+	if ( m_meshRanges.empty() )
+	{
+		// No catalog / untextured scene: one flat draw, identical to the original.
+		glUniform1i( useTexLoc, 0 );
+		glDrawArrays( GL_TRIANGLES, 0, m_meshVertexCount );
+	}
+	else
+	{
+		glActiveTexture( GL_TEXTURE0 );
+		for ( const MeshRange &range : m_meshRanges )
+		{
+			glUniform1i( useTexLoc, range.texture ? 1 : 0 );
+			if ( range.texture )
+			{
+				glBindTexture( GL_TEXTURE_2D, range.texture );
+			}
+			glDrawArrays( GL_TRIANGLES, range.firstVertex, range.vertexCount );
+		}
+		glBindTexture( GL_TEXTURE_2D, 0 );
+	}
 	glDisable( GL_POLYGON_OFFSET_FILL );
 
 	glUniform1i( glGetUniformLocation( m_program, "uWire" ), 1 );
@@ -618,7 +770,7 @@ void Renderer::BuildGrid( int widthPx, int heightPx )
 		pushLine( minU, 0.0f, maxU, 0.0f, 0.45f, 0.20f, 0.20f );
 	}
 
-	m_gridVertexCount = static_cast<int>( grid.size() / 9 );
+	m_gridVertexCount = static_cast<int>( grid.size() / kVertexFloats );
 	glBindVertexArray( m_gridVao );
 	glBindBuffer( GL_ARRAY_BUFFER, m_gridVbo );
 	glBufferData( GL_ARRAY_BUFFER, static_cast<GLsizeiptr>( grid.size() * sizeof( float ) ),

@@ -45,9 +45,7 @@ public:
 	// and ends with 'extensionWithDot' (when non-empty, e.g. ".vmt"). Order is
 	// provider-defined; the catalog sorts. An empty prefix and empty extension
 	// lists every asset. Duplicates within one provider are not produced.
-	virtual void ListAssets(
-	    const std::string &prefix,
-	    const std::string &extensionWithDot,
+	virtual void ListAssets( const std::string &prefix, const std::string &extensionWithDot,
 	    std::vector<std::string> &out ) const = 0;
 };
 

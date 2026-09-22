@@ -20,20 +20,21 @@ namespace
 {
 int g_failures = 0;
 }
-#define CHECK( cond, msg )                              \
-	do                                                  \
-	{                                                   \
-		if ( !( cond ) )                                \
-		{                                               \
-			std::printf( "FAIL: %s\n", ( msg ) );       \
-			++g_failures;                               \
-		}                                               \
+#define CHECK( cond, msg )                                                                         \
+	do                                                                                             \
+	{                                                                                              \
+		if ( !( cond ) )                                                                           \
+		{                                                                                          \
+			std::printf( "FAIL: %s\n", ( msg ) );                                                  \
+			++g_failures;                                                                          \
+		}                                                                                          \
 	} while ( 0 )
 
 using hammer::formats::VpkArchive;
 
 // Reads and compares a whole asset back to its original bytes.
-static void ExpectContent( const VpkArchive &vpk, const std::string &path, const std::string &expected )
+static void ExpectContent(
+    const VpkArchive &vpk, const std::string &path, const std::string &expected )
 {
 	std::string out;
 	if ( !vpk.ReadAsset( path, out ) )
@@ -44,8 +45,8 @@ static void ExpectContent( const VpkArchive &vpk, const std::string &path, const
 	}
 	if ( out != expected )
 	{
-		std::printf( "FAIL: content mismatch for '%s' (got %zu bytes, want %zu)\n",
-		    path.c_str(), out.size(), expected.size() );
+		std::printf( "FAIL: content mismatch for '%s' (got %zu bytes, want %zu)\n", path.c_str(),
+		    out.size(), expected.size() );
 		++g_failures;
 	}
 }
@@ -62,9 +63,11 @@ static void RunForVersion( std::uint32_t version )
 	//  - a root-level file (no directory component)
 	std::vector<hammertest::VpkBuildFile> files;
 	files.push_back( { "materials/concrete/floor.vtf", std::string( 300, 'A' ), 0, 0x7fff } );
-	files.push_back( { "materials/concrete/floor.vmt", std::string( "\"LightmappedGeneric\"{}" ), 21, 0x7fff } );
+	files.push_back(
+	    { "materials/concrete/floor.vmt", std::string( "\"LightmappedGeneric\"{}" ), 21, 0x7fff } );
 	files.push_back( { "materials/metal/plate.vtf", std::string( 500, 'B' ), 16, 0x7fff } );
-	files.push_back( { "sound/ambient/hum.wav", std::string( 128, 'C' ), 0, 0 } ); // external archive 0
+	files.push_back(
+	    { "sound/ambient/hum.wav", std::string( 128, 'C' ), 0, 0 } ); // external archive 0
 	files.push_back( { "readme.txt", std::string( "hello root file" ), 0, 0x7fff } );
 
 	std::map<int, std::string> external;

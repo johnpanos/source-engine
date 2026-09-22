@@ -366,7 +366,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 25 / R25 | GTK editor workflow; 0002 H5 | R17, R22, R24 | Open/edit/undo/save/reopen/compile/run with multiple views, inspector and textures; declared fidelity and no hidden MFC runtime dependency | planned |
 | 26 / R26 | Remaining foundation providers; 0001 rank 12 | R10, R11 | Native clock/thread/memory/process/environment/paths/diagnostics suites pass for supported profiles, including failure and cleanup | planned |
 | 27 / R27 | Vulkan compatibility waypoint; 0001 rank 13 | R10, R16, R18 | Deployment, shader artifacts, profile selection and SDL3 presentation proven by a measured compatibility experiment; limitations recorded | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
-| 28 / R28 | Native Vulkan bootstrap; 0001 rank 14 | R10, R16, R18 | Native adapter/device/queues and SDL3 bridge present smoke frame; required-profile failure and validation diagnostics work | planned |
+| 28 / R28 | Native Vulkan bootstrap; 0001 rank 14 | R10, R16, R18 | Native adapter/device/queues and SDL3 bridge present smoke frame; required-profile failure and validation diagnostics work | partial ([native Vulkan slice](RFC/0001-native-vulkan-progress.md)) |
 | 29 / R29 | Four-platform architecture proof; 0001 rank 15 expanded to Linux/macOS/iOS/Android | R12, R18, R26, R28 | Each target passes foundation and SDL3/Vulkan native lifecycle smoke; Apple portability, iOS static composition and mobile packaging demonstrated; headless roles tested where declared | planned |
 | 30 / R30 | Existing parallel kernels; 0003 E | R21 | Each bones/query-cache/entity-packing/leaf/shadow cohort independently passes three-mode, ownership, latency/performance and rollback gates | partial ([batch migration](RFC/0003-batch-migration-progress.md)) |
 | 31 / R31 | Physics core compatibility; 0004 C | R19 | Required traces, filters, events, materials, constraints/ragdolls, controllers and persistence pass client/dedicated gameplay corpus | planned |
@@ -449,6 +449,13 @@ Keep the table concise and link details below or from the domain progress file.
 
 Current RFC 0001 evidence (2026-09-22):
 
+- [Native Vulkan slice](RFC/0001-native-vulkan-progress.md) records the R28
+  bootstrap: a real instance/physical-device/queues/SDL3-surface/swapchain core
+  behind `shaderapivulkan` that presents pixel-verified cleared frames and
+  survives resize/teardown (`native_vulkan_bringup_conformance`, 9 checks). It
+  deliberately does not flip adapter/graphics advertisement while the material
+  path is the empty stub; native material rendering (R32) and validation/other-
+  adapter/platform coverage remain open, so `portal_boot.py` cannot pass on it.
 - [Portal SDL3/Wayland/Vulkan progress](RFC/0001-portal-vulkan-progress.md) records
   the verified Linux compatibility slice, real images and GPU/lifecycle tests.
   DXVK Native retains the D3D9 material implementation; R28/R32 native Vulkan

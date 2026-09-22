@@ -65,8 +65,8 @@ std::uint16_t GetU16( const std::string &b, std::size_t off )
 std::uint32_t GetU32( const std::string &b, std::size_t off )
 {
 	const unsigned char *p = reinterpret_cast<const unsigned char *>( b.data() ) + off;
-	return std::uint32_t( p[0] ) | ( std::uint32_t( p[1] ) << 8 ) | ( std::uint32_t( p[2] ) << 16 )
-	    | ( std::uint32_t( p[3] ) << 24 );
+	return std::uint32_t( p[0] ) | ( std::uint32_t( p[1] ) << 8 ) |
+	       ( std::uint32_t( p[2] ) << 16 ) | ( std::uint32_t( p[3] ) << 24 );
 }
 
 std::int32_t GetS32( const std::string &b, std::size_t off )
@@ -114,7 +114,8 @@ bool FormatSupported( int format )
 	return FormatMipBytes( format, 1, 1 ) != 0;
 }
 
-void PutPixel( VtfImage &img, int x, int y, std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a )
+void PutPixel(
+    VtfImage &img, int x, int y, std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a )
 {
 	if ( x < 0 || y < 0 || x >= img.width || y >= img.height )
 		return;
@@ -166,8 +167,8 @@ void DecodeDxtColorBlock(
 		if ( honorPunchthroughAlpha )
 			a[3] = 0;
 	}
-	std::uint32_t bits = std::uint32_t( src[4] ) | ( std::uint32_t( src[5] ) << 8 )
-	    | ( std::uint32_t( src[6] ) << 16 ) | ( std::uint32_t( src[7] ) << 24 );
+	std::uint32_t bits = std::uint32_t( src[4] ) | ( std::uint32_t( src[5] ) << 8 ) |
+	                     ( std::uint32_t( src[6] ) << 16 ) | ( std::uint32_t( src[7] ) << 24 );
 	for ( int py = 0; py < 4; ++py )
 	{
 		for ( int px = 0; px < 4; ++px )
@@ -250,7 +251,8 @@ bool DecodeBlock( int format, const std::string &data, std::size_t dataOff, VtfI
 		{
 			for ( int bxBlock = 0; bxBlock < blocksX; ++bxBlock )
 			{
-				const unsigned char *blk = src + std::size_t( byBlock * blocksX + bxBlock ) * blockBytes;
+				const unsigned char *blk =
+				    src + std::size_t( byBlock * blocksX + bxBlock ) * blockBytes;
 				const unsigned char *colorBlk = ( format == FMT_DXT1 ) ? blk : blk + 8;
 				DecodeDxtColorBlock( colorBlk, img, bxBlock * 4, byBlock * 4, format == FMT_DXT1 );
 				if ( format == FMT_DXT3 )
@@ -352,11 +354,7 @@ bool DecodeBlock( int format, const std::string &data, std::size_t dataOff, VtfI
 
 // Parses the header common to 7.1-7.5 and derives the byte offset of the mip-0
 // high-res image and the image format. Returns false with 'error' set on failure.
-bool ParseHeader(
-    const std::string &b,
-    std::string &error,
-    VtfInfo &info,
-    std::size_t &mip0Offset )
+bool ParseHeader( const std::string &b, std::string &error, VtfInfo &info, std::size_t &mip0Offset )
 {
 	if ( b.size() < 0x40 )
 	{

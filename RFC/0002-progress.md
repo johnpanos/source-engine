@@ -428,6 +428,65 @@ selection/mutation/history owner" realised for spatial editing:
   regression from RFC 0002 work. This change touches no scanned source and no
   loader manifest section, so it does not affect that count.
 
+### VPK + texture (VTF/VMT) loading: asset catalog and textured viewport (HAM-ASSET-001)
+
+- **Gap this closes:** the shell rendered brushes flat-shaded; there was no path
+  from a Source game's packed assets to a material preview or a textured viewport.
+  The legacy Hammer path drove everything through the engine `IMaterialSystem` /
+  `IMaterial` globals, which the strict core may not use.
+- **Strict-core codecs (dependency-free: C++ stdlib + narrow ports only).**
+  - `hammer::ports::IByteStore` (`public/hammer/ports/byte_store.h`): ranged,
+    read-only byte source. Adapter `hammer::adapters::platform::DiskByteStore`
+    (`<fstream>`, non-strict) so a texture is pulled from a data archive without
+    reading the whole file.
+  - `hammer::ports::IAssetSource` (`asset_source.h`): logical asset lookup +
+    enumeration. `hammer::formats::SearchPathAssets` composes several providers
+    first-hit-wins (a `.vmt` in one VPK naming a `.vtf` in another).
+  - `hammer::formats::VpkArchive` (`vpk_archive.{h,cpp}`): dependency-free VPK v1/v2
+    directory reader over `IByteStore`, resolving inline/preload/external chunks —
+    the clean-core replacement for the tier2-coupled `vpklib` `CPackedStore`.
+  - `hammer::formats::VtfImage` / `DecodeVtf` (`vtf_image.{h,cpp}`): VTF 7.1–7.5
+    decoder to mip-0 RGBA8 (RGBA/BGR/BGRA/… + DXT1/3/5), header read by byte offset
+    (packing/endian independent). Unsupported formats fail with a diagnostic.
+  - `hammer::formats::MaterialCatalog` (`material_catalog.{h,cpp}`): enumerates
+    `materials/**.vmt`, canonicalizes authored names, resolves `$basetexture`
+    (following one level of `patch` `include`), and decodes it to RGBA, caching
+    both. It **builds on** `hammer::formats::ParseMaterial` / `Material`
+    (`material.{h,cpp}`, owned separately, HAM-MATERIAL-001) — one VMT parser, no
+    duplicate. A patch's own `$basetexture` (incl. `replace`/`insert`) comes from
+    the parser's `ResolvedParam`; the catalog additionally follows the patch
+    `include` one level. Deeper include chains are out of scope.
+- **Conformance (RFC 0005 runner, `linux-headless-core`, g++ 16.2 + clang 22.1,
+  `-Wall -Wextra -Werror`).** Seven new suites, positive + sensitivity, all green:
+  `hammer.formats.vpk_archive[.sensitivity]`, `.vtf_image[.sensitivity]`,
+  `.material_catalog[.sensitivity]`, `.search_path_assets`. Fixtures are built by
+  independent serializers (a VPK-blob builder, a VTF-blob builder) — the reader is
+  never its own oracle — and the sensitivity suites reject malformed archives,
+  truncated/unsupported VTFs, and missing/corrupt textures. Full RFC 0002 Q-EDITOR
+  gate is 53/53. Contracts: `formats.{vpk_archive,vtf_image,material_catalog,
+  search_path_assets}.v1.md`.
+- **Real shipped content (integration smoke, not a required gate — asset absent in
+  CI).** Mounting HL2 `hl2_misc_dir.vpk` + `hl2_textures_dir.vpk` (18 796 + 5 232
+  entries) enumerated 5 292 materials and decoded DXT1/DXT5 512×512 base textures
+  end-to-end through the search path.
+- **GTK frontend (`hammer/gtk/`, additive).** The renderer textures the 3D view:
+  a location-3 `aTexCoord` + `sampler2D`, per-face texture bind keyed by
+  `BrushFace.material` via a borrowed `MaterialCatalog`, world-planar UVs at
+  Source's 0.25 texels/unit, lazily-uploaded/cached GL textures. **Safety net:** no
+  catalog → a single flat draw, byte-for-byte the prior mesh path (the offscreen
+  `--quad`/`--demo`/`--cquad`/`--screenshot` paths and 2D/grid/highlight are
+  unaffected). New `--textured OUT.ppm MAP.vmf VPK[,VPK]` offscreen mode is the
+  headless evidence: `room.vmf` over the HL2 VPKs renders the `dev/dev_measure`
+  grid texture tiled on the faces (13 → 126 distinct colours vs the flat render);
+  `viewport_smoke.sh` still PASSes. A material-browser dock (thumbnail grid),
+  object-bar current-texture swatch/name, and a `File ▸ Mount Game Assets…` folder
+  chooser (auto-discovers `*_dir.vpk`) wire the catalog into the live shell.
+- **Not claimed.** No R17/R25 material-fidelity gate is closed: UVs are
+  world-planar (VMF `uaxis`/`vaxis` are not yet parsed), only `$basetexture` is
+  shown (no bumpmaps/proxies/blends), and HDR/float VTF and cubemaps are out of
+  scope per `vtf_image.v1`. This is the asset-loading + preview slice, not the full
+  Source viewport.
+
 ## Next dependency-ready migrations
 
 1. **HAM-INVENTORY-001 (continue):** expand `hammer_inventory.json` toward

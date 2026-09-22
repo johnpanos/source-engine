@@ -18,14 +18,14 @@ namespace
 {
 int g_failures = 0;
 }
-#define CHECK( cond, msg )                        \
-	do                                            \
-	{                                             \
-		if ( !( cond ) )                          \
-		{                                         \
-			std::printf( "FAIL: %s\n", ( msg ) ); \
-			++g_failures;                         \
-		}                                         \
+#define CHECK( cond, msg )                                                                         \
+	do                                                                                             \
+	{                                                                                              \
+		if ( !( cond ) )                                                                           \
+		{                                                                                          \
+			std::printf( "FAIL: %s\n", ( msg ) );                                                  \
+			++g_failures;                                                                          \
+		}                                                                                          \
 	} while ( 0 )
 
 using hammer::formats::DecodeVtf;
@@ -49,8 +49,8 @@ static void ExpectRejected( const std::string &blob, const char *what )
 int main()
 {
 	// A valid 2x2 BGR888 to mutate.
-	std::string good =
-	    hammertest::BuildVtf( 2, 2, hammertest::VTF_FMT_BGR888, 1, { std::string( 12, '\1' ) }, false );
+	std::string good = hammertest::BuildVtf(
+	    2, 2, hammertest::VTF_FMT_BGR888, 1, { std::string( 12, '\1' ) }, false );
 
 	// Bad signature.
 	{
@@ -82,8 +82,8 @@ int main()
 	// Header valid, but image data missing (claims a mip larger than the bytes).
 	{
 		// Build a header for an 8x8 BGR888 with 1 mip, then chop off the pixels.
-		std::string big =
-		    hammertest::BuildVtf( 8, 8, hammertest::VTF_FMT_BGR888, 1, { std::string( 8 * 8 * 3, '\2' ) }, false );
+		std::string big = hammertest::BuildVtf(
+		    8, 8, hammertest::VTF_FMT_BGR888, 1, { std::string( 8 * 8 * 3, '\2' ) }, false );
 		ExpectRejected( big.substr( 0, big.size() - 10 ), "truncated image data" );
 	}
 

@@ -34,21 +34,19 @@ public:
 		return true;
 	}
 
-	void ListAssets(
-	    const std::string &prefix, const std::string &extensionWithDot, std::vector<std::string> &out )
-	    const override
+	void ListAssets( const std::string &prefix, const std::string &extensionWithDot,
+	    std::vector<std::string> &out ) const override
 	{
 		for ( const auto &kv : assets )
 		{
 			const std::string &path = kv.first;
-			if ( !prefix.empty()
-			    && ( path.size() < prefix.size() || path.compare( 0, prefix.size(), prefix ) != 0 ) )
+			if ( !prefix.empty() &&
+			     ( path.size() < prefix.size() || path.compare( 0, prefix.size(), prefix ) != 0 ) )
 				continue;
-			if ( !extensionWithDot.empty()
-			    && ( path.size() < extensionWithDot.size()
-			         || path.compare(
-			                path.size() - extensionWithDot.size(), extensionWithDot.size(), extensionWithDot )
-			             != 0 ) )
+			if ( !extensionWithDot.empty() &&
+			     ( path.size() < extensionWithDot.size() ||
+			         path.compare( path.size() - extensionWithDot.size(), extensionWithDot.size(),
+			             extensionWithDot ) != 0 ) )
 				continue;
 			out.push_back( path );
 		}

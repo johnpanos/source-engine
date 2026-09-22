@@ -1,93 +1,60 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: VMT material parsing and a material catalog for the editor (RFC 0002,
-//			hammer.formats). A Source .vmt is a keyvalues document naming a shader
-//			and its parameters; the parameter that matters for a 2D editor preview
-//			is $basetexture, which names a .vtf under materials/. This module:
-//
-//			 - ParseMaterial: reads a .vmt's shader name and $basetexture using the
-//			   strict hammer::formats keyvalues parser, case-insensitively (VMT keys
-//			   are case-insensitive), including the one-level "patch" shader form
-//			   (a patch names an include and may override $basetexture in an
-//			   insert/replace block).
-//			 - MaterialCatalog: enumerates every materials/**.vmt in an IAssetSource,
-//			   resolves a VMF-authored material name (any case, either slash) to its
-//			   shader/$basetexture, and decodes that base texture to an RGBA image,
-//			   caching both. This is the clean-core replacement for the legacy
-//			   Hammer path, which drove everything through the engine IMaterial /
-//			   IMaterialSystem globals.
-//
-//			Strict-core: C++ standard library, the keyvalues codec, the VTF decoder,
-//			and the IAssetSource port only. No tier0, no engine material system.
+// Purpose: Headless VMT (Valve Material Type) definition parser for the Hammer
+//			editor (RFC 0002, hammer.formats). A .vmt names a shader and its
+//			parameters ($basetexture, $surfaceprop, ...) plus optional proxies; it
+//			is the material *definition* the editor and renderer consume to know a
+//			material's base texture, surface property, and flags. This strict,
+//			MFC-free, GPU-free core parses the definition (it does not load VTF
+//			pixels or render anything). VMT is keyvalues syntax, so this builds on
+//			the shared keyvalues codec and adds material semantics on top:
+//			case-insensitive parameter lookup and the common accessors.
 //
 //=============================================================================//
 
 #ifndef HAMMER_FORMATS_MATERIAL_H
 #define HAMMER_FORMATS_MATERIAL_H
 
-#include "hammer/formats/vtf_image.h"
-#include "hammer/ports/asset_source.h"
+#include "hammer/formats/keyvalues.h"
 
-#include <map>
-#include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <vector>
 
 namespace hammer::formats
 {
 
-// The editor-relevant facts about a material. 'name' is the canonical catalog name
-// (lower-case, forward slash, no "materials/" prefix, no ".vmt"). 'baseTexture' is
-// the canonical .vtf name (same convention, no ".vtf"), empty when the material
-// declares none.
-struct MaterialInfo
+// A parsed VMT material definition.
+struct Material
 {
-	std::string name;
-	std::string shader;      // lower-cased shader/block name (e.g. "lightmappedgeneric")
-	std::string baseTexture; // canonical, no extension; empty when absent
+	std::string shader;                 // the top-level shader block name (e.g. LightmappedGeneric)
+	std::vector<KeyValue> parameters;   // top-level $-parameters
+	bool hasProxies = false;            // a "Proxies" sub-block is present
+	std::vector<KeyValue> patchReplace; // a patch's "replace" block params (else empty)
+	std::vector<KeyValue> patchInsert;  // a patch's "insert" block params (else empty)
+
+	// Case-insensitive lookup of a TOP-LEVEL parameter (VMT names ignore case).
+	const std::string *Param( const std::string &name ) const;
+	bool HasParam( const std::string &name ) const;
+
+	// Case-insensitive lookup that, for a patch material, resolves in the order
+	// replace -> insert -> top-level, so a patched value wins. For a non-patch
+	// material this is identical to Param.
+	const std::string *ResolvedParam( const std::string &name ) const;
+
+	// Common accessors (empty string when the parameter is absent). These resolve
+	// through ResolvedParam, so a patch's replaced $basetexture is returned.
+	std::string BaseTexture() const;
+	std::string SurfaceProp() const;
+
+	// True for a "patch" material (shader == "patch", case-insensitive), which
+	// includes and overrides another VMT.
+	bool IsPatch() const;
 };
 
-// Parses a single .vmt's text. Fills 'out' (shader + baseTexture) and, when the
-// shader is "patch", 'includeOut' with the referenced material path (canonical,
-// no extension, no "materials/" prefix). 'out.name' is left empty (the caller
-// knows the name). Returns false with 'error' set when the text is not parseable
-// keyvalues or has no top block.
-bool ParseMaterial( const std::string &vmtText, MaterialInfo &out, std::string &includeOut, std::string &error );
-
-// Normalizes a VMF-authored material name (mixed case, back or forward slashes, an
-// optional leading slash or ".vmt"/".vtf" suffix) to the catalog's canonical form.
-std::string CanonicalizeMaterialName( const std::string &name );
-
-class MaterialCatalog
-{
-public:
-	// Reads through 'source' (which must outlive the catalog). Nothing is loaded
-	// until queried.
-	explicit MaterialCatalog( const hammer::ports::IAssetSource &source );
-
-	// Every material name found under materials/*.vmt, sorted and de-duplicated.
-	// Built lazily on first call and cached.
-	const std::vector<std::string> &MaterialNames();
-
-	// Resolves a material (any authored spelling) to its info, following one level
-	// of "patch" include. Returns nullptr when the .vmt is absent or unparseable.
-	// The returned pointer is stable for the catalog's lifetime.
-	const MaterialInfo *Material( const std::string &name );
-
-	// Decodes the material's $basetexture to RGBA, cached. Returns nullptr when the
-	// material or its base texture is missing or cannot be decoded. The pointer is
-	// stable for the catalog's lifetime.
-	const VtfImage *BaseTextureImage( const std::string &name );
-
-private:
-	const hammer::ports::IAssetSource &m_source;
-	std::optional<std::vector<std::string>> m_names;
-	std::map<std::string, MaterialInfo> m_materials; // canonical name -> info (hits)
-	std::set<std::string> m_materialMisses;
-	std::map<std::string, std::unique_ptr<VtfImage>> m_images; // canonical name -> image (null = miss)
-};
+// Parses VMT text. Returns nullopt when the text has no top-level shader block or
+// fails keyvalues parsing.
+std::optional<Material> ParseMaterial( const std::string &vmtText );
 
 } // namespace hammer::formats
 

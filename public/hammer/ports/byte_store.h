@@ -42,10 +42,7 @@ public:
 	// the requested range extends past end-of-file: a short read is a failure, not
 	// a truncation, so codecs never silently consume partial records. A zero-length
 	// read at a valid offset succeeds with an empty 'out'.
-	virtual bool ReadRange(
-	    const std::string &path,
-	    std::uint64_t offset,
-	    std::size_t length,
+	virtual bool ReadRange( const std::string &path, std::uint64_t offset, std::size_t length,
 	    std::string &out ) const = 0;
 };
 

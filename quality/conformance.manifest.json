@@ -826,6 +826,7 @@
       ],
       "sources": [
         "hammer/core/formats/instancing.cpp",
+        "hammer/core/formats/vmf_transform.cpp",
         "hammer/core/formats/keyvalues.cpp",
         "unittests/hammertest/formats/test_instancing.cpp"
       ],
@@ -844,6 +845,7 @@
       ],
       "sources": [
         "hammer/core/formats/instancing.cpp",
+        "hammer/core/formats/vmf_transform.cpp",
         "hammer/core/formats/keyvalues.cpp",
         "unittests/hammertest/formats/test_instancing_negative.cpp"
       ],
@@ -937,13 +939,12 @@
       "id": "hammer.formats.material",
       "domain": "Q-EDITOR",
       "rfc": "0002",
-      "migration": "HAM-ASSET-001",
+      "migration": "HAM-MATERIAL-001",
       "contract": "unittests/hammertest/contracts/formats.material.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
       "sources": [
         "hammer/core/formats/material.cpp",
-        "hammer/core/formats/vtf_image.cpp",
         "hammer/core/formats/keyvalues.cpp",
         "unittests/hammertest/formats/test_material.cpp"
       ],
@@ -953,13 +954,12 @@
       "id": "hammer.formats.material.sensitivity",
       "domain": "Q-EDITOR",
       "rfc": "0002",
-      "migration": "HAM-ASSET-001",
+      "migration": "HAM-MATERIAL-001",
       "contract": "unittests/hammertest/contracts/formats.material.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
       "sources": [
         "hammer/core/formats/material.cpp",
-        "hammer/core/formats/vtf_image.cpp",
         "hammer/core/formats/keyvalues.cpp",
         "unittests/hammertest/formats/test_material_negative.cpp"
       ],
@@ -976,6 +976,236 @@
       "sources": [
         "hammer/core/formats/search_path_assets.cpp",
         "unittests/hammertest/formats/test_search_path_assets.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.cordon",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-CORDON-001",
+      "contract": "unittests/hammertest/contracts/formats.cordon.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/cordon.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_cordon.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.cordon.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-CORDON-001",
+      "contract": "unittests/hammertest/contracts/formats.cordon.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/cordon.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_cordon_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.overlay",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-OVERLAY-001",
+      "contract": "unittests/hammertest/contracts/formats.overlay.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/overlay.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_overlay.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.overlay.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-OVERLAY-001",
+      "contract": "unittests/hammertest/contracts/formats.overlay.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/overlay.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_overlay_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.visgroups",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-VISGROUP-001",
+      "contract": "unittests/hammertest/contracts/formats.visgroups.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/visgroups.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_visgroups.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.visgroups.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-VISGROUP-001",
+      "contract": "unittests/hammertest/contracts/formats.visgroups.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/visgroups.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_visgroups_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.material_catalog",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-ASSET-001",
+      "contract": "unittests/hammertest/contracts/formats.material_catalog.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/material_catalog.cpp",
+        "hammer/core/formats/material.cpp",
+        "hammer/core/formats/vtf_image.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_material_catalog.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.material_catalog.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-ASSET-001",
+      "contract": "unittests/hammertest/contracts/formats.material_catalog.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/material_catalog.cpp",
+        "hammer/core/formats/material.cpp",
+        "hammer/core/formats/vtf_image.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_material_catalog_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.groups",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-GROUP-001",
+      "contract": "unittests/hammertest/contracts/formats.groups.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/groups.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_groups.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.groups.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-GROUP-001",
+      "contract": "unittests/hammertest/contracts/formats.groups.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/groups.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_groups_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.prefab",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-PREFAB-001",
+      "contract": "unittests/hammertest/contracts/formats.prefab.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/prefab.cpp",
+        "hammer/core/formats/vmf_transform.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_prefab.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.prefab.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-PREFAB-001",
+      "contract": "unittests/hammertest/contracts/formats.prefab.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "hammer/core/formats/prefab.cpp",
+        "hammer/core/formats/vmf_transform.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_prefab_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.map_export",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-EXPORT-001",
+      "contract": "unittests/hammertest/contracts/formats.map_export.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-Iunittests/hammertest"
+      ],
+      "sources": [
+        "hammer/core/formats/map_export.cpp",
+        "hammer/core/formats/instancing.cpp",
+        "hammer/core/formats/vmf_transform.cpp",
+        "hammer/core/formats/visgroups.cpp",
+        "hammer/core/formats/cordon.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_map_export.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "hammer.formats.map_export.sensitivity",
+      "domain": "Q-EDITOR",
+      "rfc": "0002",
+      "migration": "HAM-EXPORT-001",
+      "contract": "unittests/hammertest/contracts/formats.map_export.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-Iunittests/hammertest"
+      ],
+      "sources": [
+        "hammer/core/formats/map_export.cpp",
+        "hammer/core/formats/instancing.cpp",
+        "hammer/core/formats/vmf_transform.cpp",
+        "hammer/core/formats/visgroups.cpp",
+        "hammer/core/formats/cordon.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_map_export_negative.cpp"
       ],
       "expect": "pass"
     }

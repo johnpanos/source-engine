@@ -20,9 +20,15 @@ $ROOT/hammer/core/app/editor_controller.cpp \
 $ROOT/hammer/core/geometry/brush.cpp \
 $ROOT/hammer/core/geometry/rounding.cpp \
 $ROOT/hammer/core/formats/keyvalues.cpp \
+$ROOT/hammer/core/formats/vpk_archive.cpp \
+$ROOT/hammer/core/formats/vtf_image.cpp \
+$ROOT/hammer/core/formats/material.cpp \
+$ROOT/hammer/core/formats/material_catalog.cpp \
+$ROOT/hammer/core/formats/search_path_assets.cpp \
 $ROOT/hammer/core/app/document_history.cpp \
 $ROOT/hammer/core/app/save_orchestrator.cpp \
-$ROOT/hammer/adapters/platform/disk_file_store.cpp"
+$ROOT/hammer/adapters/platform/disk_file_store.cpp \
+$ROOT/hammer/adapters/platform/disk_byte_store.cpp"
 
 HOST="\
 $ROOT/hammer/gtk/app.cpp \

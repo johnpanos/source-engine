@@ -38,8 +38,8 @@ bool SearchPathAssets::ReadAsset( const std::string &path, std::string &out ) co
 	return false;
 }
 
-void SearchPathAssets::ListAssets(
-    const std::string &prefix, const std::string &extensionWithDot, std::vector<std::string> &out ) const
+void SearchPathAssets::ListAssets( const std::string &prefix, const std::string &extensionWithDot,
+    std::vector<std::string> &out ) const
 {
 	std::unordered_set<std::string> seen;
 	// Preserve search order, keep the first occurrence of each path.

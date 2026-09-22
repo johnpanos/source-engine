@@ -32,14 +32,14 @@ void PutU32( std::string &b, std::uint32_t v )
 	b.push_back( char( ( v >> 24 ) & 0xff ) );
 }
 } // namespace
-#define CHECK( cond, msg )                        \
-	do                                            \
-	{                                             \
-		if ( !( cond ) )                          \
-		{                                         \
-			std::printf( "FAIL: %s\n", ( msg ) ); \
-			++g_failures;                         \
-		}                                         \
+#define CHECK( cond, msg )                                                                         \
+	do                                                                                             \
+	{                                                                                              \
+		if ( !( cond ) )                                                                           \
+		{                                                                                          \
+			std::printf( "FAIL: %s\n", ( msg ) );                                                  \
+			++g_failures;                                                                          \
+		}                                                                                          \
 	} while ( 0 )
 
 using hammer::formats::VpkArchive;
@@ -153,7 +153,8 @@ int main()
 		CHECK( vpk != nullptr, "good archive opens" );
 		std::string out;
 		CHECK( vpk && !vpk->ReadAsset( "does/not/exist.txt", out ), "unknown path read fails" );
-		CHECK( vpk && vpk->ReadAsset( "a/b.txt", out ) && out == "payload-bytes", "known path reads" );
+		CHECK(
+		    vpk && vpk->ReadAsset( "a/b.txt", out ) && out == "payload-bytes", "known path reads" );
 	}
 
 	// External-archive entry whose data file is missing must fail the read.

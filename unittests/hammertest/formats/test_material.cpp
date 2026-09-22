@@ -1,132 +1,106 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Positive conformance suite for formats.material.v1. Covers VMT parsing
-//			(shader + $basetexture, case-insensitive keys, one-level patch/include),
-//			material-name canonicalization, catalog enumeration, and the full
-//			VMT -> $basetexture -> VTF -> RGBA resolution through an in-memory asset
-//			source. Build/run via the conformance manifest (linux-headless-core).
+// Purpose: Conformance oracle for the VMT material parser (formats.material.v1).
+//			Parses a shader material and a patch material and checks the shader
+//			name, parameter access (case-insensitive), the common accessors, and
+//			proxy/patch detection. Build/run via the conformance manifest. Exit 0 on
+//			success.
 //
 //=============================================================================//
 
-#include "formats/fake_asset_source.h"
-#include "formats/fake_vtf.h"
-
 #include "hammer/formats/material.h"
 
-#include <algorithm>
 #include <cstdio>
 #include <string>
+
+using hammer::formats::Material;
+using hammer::formats::ParseMaterial;
 
 namespace
 {
 int g_failures = 0;
-}
-#define CHECK( cond, msg )                        \
-	do                                            \
-	{                                             \
-		if ( !( cond ) )                          \
-		{                                         \
-			std::printf( "FAIL: %s\n", ( msg ) ); \
-			++g_failures;                         \
-		}                                         \
-	} while ( 0 )
 
-using namespace hammer::formats;
+void Check( bool ok, const char *label )
+{
+	if ( !ok )
+	{
+		std::printf( "FAIL: %s\n", label );
+		++g_failures;
+	}
+}
+
+const char *kVmt =
+    "\"LightmappedGeneric\"\n"
+    "{\n"
+    "\t\"$basetexture\" \"brick/brickwall001\"\n"
+    "\t\"$surfaceprop\" \"brick\"\n"
+    "\t\"$detail\" \"detail/noise\"\n"
+    "\t\"Proxies\"\n"
+    "\t{\n"
+    "\t\t\"AnimatedTexture\"\n\t\t{\n\t\t\t\"animatedtexturevar\" \"$basetexture\"\n\t\t}\n"
+    "\t}\n"
+    "}\n";
+
+const char *kPatch = "\"patch\"\n"
+                     "{\n"
+                     "\t\"include\" \"materials/brick/brickwall001.vmt\"\n"
+                     "\t\"replace\"\n\t{\n\t\t\"$basetexture\" \"brick/brickwall002\"\n\t}\n"
+                     "}\n";
+
+void TestShaderMaterial()
+{
+	auto m = ParseMaterial( kVmt );
+	Check( m.has_value(), "vmt parses" );
+	if ( !m )
+	{
+		return;
+	}
+	Check( m->shader == "LightmappedGeneric", "shader name" );
+	Check( m->BaseTexture() == "brick/brickwall001", "$basetexture accessor" );
+	Check( m->SurfaceProp() == "brick", "$surfaceprop accessor" );
+	Check( m->HasParam( "$detail" ), "$detail present" );
+	Check( !m->HasParam( "$bumpmap" ), "$bumpmap absent" );
+	Check( m->hasProxies, "Proxies block detected" );
+	Check( !m->IsPatch(), "not a patch material" );
+
+	// Parameter lookup is case-insensitive.
+	const std::string *a = m->Param( "$basetexture" );
+	const std::string *b = m->Param( "$BASETEXTURE" );
+	Check( a != nullptr && b != nullptr && *a == *b, "case-insensitive parameter lookup" );
+}
+
+void TestPatchMaterial()
+{
+	auto m = ParseMaterial( kPatch );
+	Check( m.has_value(), "patch parses" );
+	if ( !m )
+	{
+		return;
+	}
+	Check( m->IsPatch(), "IsPatch true for patch shader" );
+	Check( m->HasParam( "include" ), "patch include present" );
+	// The $basetexture lives in the patch's "replace" block, not top-level.
+	Check( m->Param( "$basetexture" ) == nullptr, "patch has no TOP-LEVEL $basetexture" );
+	// ...but ResolvedParam / BaseTexture() resolve it through replace.
+	const std::string *resolved = m->ResolvedParam( "$basetexture" );
+	Check( resolved != nullptr && *resolved == "brick/brickwall002",
+	    "ResolvedParam pulls $basetexture from the replace block" );
+	Check( m->BaseTexture() == "brick/brickwall002", "BaseTexture() resolves the patched value" );
+}
+
+} // namespace
 
 int main()
 {
-	// --- Canonicalization --------------------------------------------------------
-	CHECK( CanonicalizeMaterialName( "Concrete\\Floor001A.vmt" ) == "concrete/floor001a",
-	    "canonicalize case+backslash+ext" );
-	CHECK( CanonicalizeMaterialName( "/materials/metal/plate" ) == "metal/plate",
-	    "canonicalize leading slash + materials prefix" );
-	CHECK( CanonicalizeMaterialName( "TILE/floor.VTF" ) == "tile/floor", "canonicalize .vtf strip" );
-
-	// --- ParseMaterial: basic ----------------------------------------------------
-	{
-		MaterialInfo info;
-		std::string include, err;
-		bool ok = ParseMaterial(
-		    "\"LightmappedGeneric\"\n{\n\t\"$baseTexture\" \"Concrete/Floor001a\"\n}\n", info, include, err );
-		CHECK( ok, "ParseMaterial ok" );
-		CHECK( info.shader == "lightmappedgeneric", "shader lower-cased" );
-		CHECK( info.baseTexture == "concrete/floor001a", "basetexture canonical (case-insensitive key)" );
-		CHECK( include.empty(), "no include for a normal material" );
-	}
-
-	// --- ParseMaterial: patch/include --------------------------------------------
-	{
-		MaterialInfo info;
-		std::string include, err;
-		bool ok = ParseMaterial(
-		    "patch\n{\n\tinclude \"materials/base/wall.vmt\"\n\treplace\n\t{\n\t\t\"$basetexture\" "
-		    "\"custom/wall\"\n\t}\n}\n",
-		    info, include, err );
-		CHECK( ok, "ParseMaterial patch ok" );
-		CHECK( info.shader == "patch", "patch shader" );
-		CHECK( include == "base/wall", "patch include canonicalized" );
-		CHECK( info.baseTexture == "custom/wall", "patch replace $basetexture found in child block" );
-	}
-
-	// --- Catalog: enumeration + end-to-end resolution to RGBA --------------------
-	{
-		hammertest::InMemoryAssetSource src;
-
-		// A 1x1 BGR888 VTF whose only pixel is B=10 G=20 R=30 -> RGBA (30,20,10,255).
-		std::string pixel;
-		const unsigned char px[] = { 10, 20, 30 };
-		pixel.assign( reinterpret_cast<const char *>( px ), sizeof( px ) );
-		src.assets["materials/concrete/floor001a.vtf"] =
-		    hammertest::BuildVtf( 1, 1, hammertest::VTF_FMT_BGR888, 1, { pixel }, false );
-		src.assets["materials/concrete/floor001a.vmt"] =
-		    "\"LightmappedGeneric\" { \"$basetexture\" \"concrete/floor001a\" }";
-
-		// A patch material that pulls its base texture from the included file.
-		src.assets["materials/base/wall.vmt"] =
-		    "\"LightmappedGeneric\" { \"$basetexture\" \"concrete/floor001a\" }";
-		src.assets["materials/custom/wall.vmt"] =
-		    "patch { include \"materials/base/wall.vmt\" }";
-
-		// A non-material asset that must not appear in the material listing.
-		src.assets["materials/readme.txt"] = "not a material";
-
-		MaterialCatalog catalog( src );
-
-		const std::vector<std::string> &names = catalog.MaterialNames();
-		CHECK( names.size() == 3, "three materials enumerated" );
-		CHECK(
-		    std::find( names.begin(), names.end(), "concrete/floor001a" ) != names.end(),
-		    "enumeration includes concrete/floor001a" );
-
-		const MaterialInfo *m = catalog.Material( "Concrete\\Floor001A" );
-		CHECK( m != nullptr, "Material resolves an authored (mixed-case, backslash) name" );
-		CHECK( m && m->baseTexture == "concrete/floor001a", "resolved base texture" );
-
-		const VtfImage *img = catalog.BaseTextureImage( "concrete/floor001a" );
-		CHECK( img != nullptr, "base texture image decoded" );
-		if ( img )
-		{
-			CHECK( img->width == 1 && img->height == 1, "image dimensions" );
-			CHECK( img->rgba.size() == 4 && img->rgba[0] == 30 && img->rgba[1] == 20
-			        && img->rgba[2] == 10 && img->rgba[3] == 255,
-			    "image RGBA end-to-end" );
-		}
-
-		// Caching returns the same stable pointer.
-		CHECK( catalog.BaseTextureImage( "concrete/floor001a" ) == img, "image cache stable pointer" );
-
-		// Patch resolves its base texture through the include.
-		const MaterialInfo *patched = catalog.Material( "custom/wall" );
-		CHECK( patched != nullptr && patched->baseTexture == "concrete/floor001a",
-		    "patch resolves base texture via include" );
-		CHECK( catalog.BaseTextureImage( "custom/wall" ) != nullptr, "patch base texture decodes" );
-	}
+	TestShaderMaterial();
+	TestPatchMaterial();
 
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.material: %d FAILURE(S)\n", g_failures );
 		return 1;
 	}
-	std::printf( "formats.material: all cases passed\n" );
+	std::printf( "formats.material: shader/params/accessors, case-insensitive lookup, proxy and "
+	             "patch detection all correct\n" );
 	return 0;
 }

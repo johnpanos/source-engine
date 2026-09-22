@@ -17,9 +17,12 @@
 #ifndef HAMMER_GTK_RENDERER_H
 #define HAMMER_GTK_RENDERER_H
 
+#include "hammer/formats/material_catalog.h"
 #include "hammer/geometry/brush.h"
 
+#include <map>
 #include <string>
+#include <vector>
 
 namespace hammergtk
 {
@@ -65,6 +68,14 @@ public:
 
 	void SetViewMode( ViewMode mode ) { m_mode = mode; }
 	ViewMode Mode() const { return m_mode; }
+
+	// Optional material catalog for textured shading of the 3D view. When set (and
+	// a face's material resolves to a decoded base texture), the perspective mesh
+	// is drawn textured with world-planar UVs; otherwise the renderer falls back to
+	// the flat per-brush fill exactly as before. The catalog is borrowed and must
+	// outlive the renderer. Passing nullptr disables texturing. Textures are
+	// created lazily during SetScene (a GL context must be current then).
+	void SetMaterialCatalog( hammer::formats::MaterialCatalog *catalog ) { m_catalog = catalog; }
 
 	// Uploads a scene's brush geometry to GL buffers, replacing any previous
 	// scene. Does NOT move the camera (so live edits keep the current view); call
@@ -112,6 +123,19 @@ private:
 	void BuildGrid( int w, int h ); // fills the dynamic grid buffer for 2D
 	void AxisIndices( int &uAxis, int &vAxis ) const;
 
+	// Gets or lazily creates the GL texture for a material's base texture, via the
+	// catalog. Returns 0 (no texture) when there is no catalog, no material, or no
+	// decodable image; the miss is cached. A GL context must be current.
+	unsigned int TextureFor( const std::string &material );
+
+	// A run of mesh vertices sharing one GL texture (0 = draw flat/untextured).
+	struct MeshRange
+	{
+		unsigned int texture = 0;
+		int firstVertex = 0;
+		int vertexCount = 0;
+	};
+
 	unsigned int m_program = 0;
 	unsigned int m_meshVao = 0;
 	unsigned int m_meshVbo = 0;
@@ -125,6 +149,10 @@ private:
 	int m_gridVertexCount = 0;
 	int m_triCount = 0;
 	int m_solidCount = 0;
+
+	hammer::formats::MaterialCatalog *m_catalog = nullptr;
+	std::map<std::string, unsigned int> m_textures; // material name -> GL texture (0 = miss)
+	std::vector<MeshRange> m_meshRanges;            // per-texture draw runs over the mesh VBO
 
 	float m_sceneCenter[3] = { 0.0f, 0.0f, 0.0f };
 	float m_sceneSize[3] = { 512.0f, 512.0f, 512.0f };

@@ -24,8 +24,8 @@ bool ReadU32( const std::string &buf, std::size_t &pos, std::uint32_t &out )
 	if ( pos + 4 > buf.size() )
 		return false;
 	const unsigned char *p = reinterpret_cast<const unsigned char *>( buf.data() ) + pos;
-	out = std::uint32_t( p[0] ) | ( std::uint32_t( p[1] ) << 8 ) | ( std::uint32_t( p[2] ) << 16 )
-	    | ( std::uint32_t( p[3] ) << 24 );
+	out = std::uint32_t( p[0] ) | ( std::uint32_t( p[1] ) << 8 ) | ( std::uint32_t( p[2] ) << 16 ) |
+	      ( std::uint32_t( p[3] ) << 24 );
 	pos += 4;
 	return true;
 }
@@ -60,8 +60,10 @@ VpkArchive::VpkArchive( const hammer::ports::IByteStore &store, std::string dirV
 	// Derive the base name used for data archives: strip a trailing "_dir.vpk"
 	// (the usual form) or a plain ".vpk".
 	m_baseName = m_dirVpkPath;
-	auto ends_with = []( const std::string &s, const std::string &suffix ) {
-		return s.size() >= suffix.size() && s.compare( s.size() - suffix.size(), suffix.size(), suffix ) == 0;
+	auto ends_with = []( const std::string &s, const std::string &suffix )
+	{
+		return s.size() >= suffix.size() &&
+		       s.compare( s.size() - suffix.size(), suffix.size(), suffix ) == 0;
 	};
 	if ( ends_with( m_baseName, "_dir.vpk" ) )
 		m_baseName.erase( m_baseName.size() - 8 );
@@ -175,10 +177,10 @@ std::unique_ptr<VpkArchive> VpkArchive::Open(
 
 				VpkEntry entry;
 				std::uint16_t terminator = 0;
-				if ( !ReadU32( tree, tp, entry.crc ) || !ReadU16( tree, tp, entry.preloadBytes )
-				    || !ReadU16( tree, tp, entry.archiveIndex )
-				    || !ReadU32( tree, tp, entry.chunkOffset ) || !ReadU32( tree, tp, entry.chunkLength )
-				    || !ReadU16( tree, tp, terminator ) )
+				if ( !ReadU32( tree, tp, entry.crc ) || !ReadU16( tree, tp, entry.preloadBytes ) ||
+				     !ReadU16( tree, tp, entry.archiveIndex ) ||
+				     !ReadU32( tree, tp, entry.chunkOffset ) ||
+				     !ReadU32( tree, tp, entry.chunkLength ) || !ReadU16( tree, tp, terminator ) )
 				{
 					error = "vpk: truncated file record";
 					return nullptr;
@@ -239,7 +241,8 @@ bool VpkArchive::ReadAsset( const std::string &path, std::string &out ) const
 	if ( entry->preloadBytes > 0 )
 	{
 		std::string preload;
-		if ( !m_store.ReadRange( m_dirVpkPath, entry->preloadOffset, entry->preloadBytes, preload ) )
+		if ( !m_store.ReadRange(
+		         m_dirVpkPath, entry->preloadOffset, entry->preloadBytes, preload ) )
 			return false;
 		assembled += preload;
 	}
@@ -249,14 +252,14 @@ bool VpkArchive::ReadAsset( const std::string &path, std::string &out ) const
 		std::string chunk;
 		if ( entry->archiveIndex == kInlineArchiveIndex )
 		{
-			if ( !m_store.ReadRange(
-			         m_dirVpkPath, m_dataSectionOffset + entry->chunkOffset, entry->chunkLength, chunk ) )
+			if ( !m_store.ReadRange( m_dirVpkPath, m_dataSectionOffset + entry->chunkOffset,
+			         entry->chunkLength, chunk ) )
 				return false;
 		}
 		else
 		{
-			if ( !m_store.ReadRange(
-			         DataArchivePath( entry->archiveIndex ), entry->chunkOffset, entry->chunkLength, chunk ) )
+			if ( !m_store.ReadRange( DataArchivePath( entry->archiveIndex ), entry->chunkOffset,
+			         entry->chunkLength, chunk ) )
 				return false;
 		}
 		assembled += chunk;
@@ -266,20 +269,18 @@ bool VpkArchive::ReadAsset( const std::string &path, std::string &out ) const
 	return true;
 }
 
-void VpkArchive::ListAssets(
-    const std::string &prefix, const std::string &extensionWithDot, std::vector<std::string> &out ) const
+void VpkArchive::ListAssets( const std::string &prefix, const std::string &extensionWithDot,
+    std::vector<std::string> &out ) const
 {
 	for ( const VpkEntry &entry : m_entries )
 	{
-		if ( !prefix.empty()
-		    && ( entry.path.size() < prefix.size()
-		         || entry.path.compare( 0, prefix.size(), prefix ) != 0 ) )
+		if ( !prefix.empty() && ( entry.path.size() < prefix.size() ||
+		                            entry.path.compare( 0, prefix.size(), prefix ) != 0 ) )
 			continue;
-		if ( !extensionWithDot.empty()
-		    && ( entry.path.size() < extensionWithDot.size()
-		         || entry.path.compare(
-		                entry.path.size() - extensionWithDot.size(), extensionWithDot.size(), extensionWithDot )
-		             != 0 ) )
+		if ( !extensionWithDot.empty() &&
+		     ( entry.path.size() < extensionWithDot.size() ||
+		         entry.path.compare( entry.path.size() - extensionWithDot.size(),
+		             extensionWithDot.size(), extensionWithDot ) != 0 ) )
 			continue;
 		out.push_back( entry.path );
 	}

@@ -72,13 +72,8 @@ inline void PutU32At( std::string &b, std::size_t off, std::uint32_t v )
 // missing/short mip is zero-filled to its computed size. When 'useResourceDict'
 // is true a 7.4 header with a single image resource is emitted; otherwise a 7.2
 // header with the image immediately after it (no thumbnail).
-inline std::string BuildVtf(
-    int width,
-    int height,
-    int format,
-    int mipCount,
-    const std::vector<std::string> &mipsLargestFirst,
-    bool useResourceDict )
+inline std::string BuildVtf( int width, int height, int format, int mipCount,
+    const std::vector<std::string> &mipsLargestFirst, bool useResourceDict )
 {
 	using namespace detail;
 
@@ -89,28 +84,28 @@ inline std::string BuildVtf(
 	blob[1] = 'T';
 	blob[2] = 'F';
 	blob[3] = '\0';
-	PutU32At( blob, 0x04, 7 );                            // major
-	PutU32At( blob, 0x08, useResourceDict ? 4 : 2 );      // minor
+	PutU32At( blob, 0x04, 7 );                              // major
+	PutU32At( blob, 0x08, useResourceDict ? 4 : 2 );        // minor
 	PutU32At( blob, 0x0c, std::uint32_t( kHeaderRegion ) ); // headerSize
 	PutU16At( blob, 0x10, std::uint16_t( width ) );
 	PutU16At( blob, 0x12, std::uint16_t( height ) );
-	PutU32At( blob, 0x14, 0 );                            // flags (not envmap)
-	PutU16At( blob, 0x18, 1 );                            // frameCount
-	PutU16At( blob, 0x1a, 0 );                            // startFrame
-	PutU32At( blob, 0x34, std::uint32_t( format ) );      // imageFormat
-	blob[0x38] = char( mipCount );                        // mipCount
-	PutU32At( blob, 0x39, 0xffffffffu );                  // lowResImageFormat = NONE
-	blob[0x3d] = 0;                                       // lowResImageWidth
-	blob[0x3e] = 0;                                       // lowResImageHeight
-	PutU16At( blob, 0x3f, 1 );                            // depth
+	PutU32At( blob, 0x14, 0 );                       // flags (not envmap)
+	PutU16At( blob, 0x18, 1 );                       // frameCount
+	PutU16At( blob, 0x1a, 0 );                       // startFrame
+	PutU32At( blob, 0x34, std::uint32_t( format ) ); // imageFormat
+	blob[0x38] = char( mipCount );                   // mipCount
+	PutU32At( blob, 0x39, 0xffffffffu );             // lowResImageFormat = NONE
+	blob[0x3d] = 0;                                  // lowResImageWidth
+	blob[0x3e] = 0;                                  // lowResImageHeight
+	PutU16At( blob, 0x3f, 1 );                       // depth
 
 	if ( useResourceDict )
 	{
-		PutU32At( blob, 0x48, 1 );        // numResources
-		blob[0x50] = char( 0x30 );        // VTF_LEGACY_RSRC_IMAGE tag byte 0
+		PutU32At( blob, 0x48, 1 ); // numResources
+		blob[0x50] = char( 0x30 ); // VTF_LEGACY_RSRC_IMAGE tag byte 0
 		blob[0x51] = 0;
 		blob[0x52] = 0;
-		blob[0x53] = 0;                   // flags
+		blob[0x53] = 0;                                         // flags
 		PutU32At( blob, 0x54, std::uint32_t( kHeaderRegion ) ); // image data offset
 	}
 

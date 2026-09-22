@@ -21,14 +21,14 @@ namespace
 {
 int g_failures = 0;
 }
-#define CHECK( cond, msg )                        \
-	do                                            \
-	{                                             \
-		if ( !( cond ) )                          \
-		{                                         \
-			std::printf( "FAIL: %s\n", ( msg ) ); \
-			++g_failures;                         \
-		}                                         \
+#define CHECK( cond, msg )                                                                         \
+	do                                                                                             \
+	{                                                                                              \
+		if ( !( cond ) )                                                                           \
+		{                                                                                          \
+			std::printf( "FAIL: %s\n", ( msg ) );                                                  \
+			++g_failures;                                                                          \
+		}                                                                                          \
 	} while ( 0 )
 
 int main()
@@ -52,7 +52,8 @@ int main()
 	std::string out;
 	CHECK( search.ReadAsset( "materials/shared.vmt", out ) && out == "HIGH-SHARED",
 	    "shadowed asset served from the first provider" );
-	CHECK( search.ReadAsset( "materials/b.vmt", out ) && out == "LOW-B", "fallback provider served" );
+	CHECK(
+	    search.ReadAsset( "materials/b.vmt", out ) && out == "LOW-B", "fallback provider served" );
 	CHECK( search.HasAsset( "materials/tex.vtf" ), "HasAsset across providers" );
 	CHECK( !search.HasAsset( "materials/missing.vmt" ), "absent everywhere is a miss" );
 	CHECK( !search.ReadAsset( "materials/missing.vmt", out ), "absent read fails" );
@@ -62,8 +63,8 @@ int main()
 	search.ListAssets( "materials/", ".vmt", vmts );
 	std::sort( vmts.begin(), vmts.end() );
 	CHECK( vmts.size() == 3, "union of .vmt de-duplicated (a, b, shared)" );
-	CHECK( std::find( vmts.begin(), vmts.end(), "materials/shared.vmt" ) != vmts.end()
-	        && std::count( vmts.begin(), vmts.end(), "materials/shared.vmt" ) == 1,
+	CHECK( std::find( vmts.begin(), vmts.end(), "materials/shared.vmt" ) != vmts.end() &&
+	           std::count( vmts.begin(), vmts.end(), "materials/shared.vmt" ) == 1,
 	    "shared listed exactly once" );
 
 	std::vector<std::string> all;

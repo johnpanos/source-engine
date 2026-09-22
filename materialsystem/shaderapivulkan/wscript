@@ -20,6 +20,7 @@ def configure(conf):
 def build(bld):
 	source = [
 		'shaderapivulkan.cpp',
+		'vulkan_device.cpp',
 		'../../public/tier0/memoverride.cpp'
 	]
 

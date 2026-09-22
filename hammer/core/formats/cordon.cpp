@@ -7,7 +7,6 @@
 
 #include "hammer/formats/cordon.h"
 
-#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -98,7 +97,7 @@ Bounds SolidBounds( const KeyValueNode &solid )
 bool BoxesIntersect( const Vec3d &aMin, const Vec3d &aMax, const Vec3d &bMin, const Vec3d &bMax )
 {
 	return aMin.x <= bMax.x && aMax.x >= bMin.x && aMin.y <= bMax.y && aMax.y >= bMin.y &&
-		   aMin.z <= bMax.z && aMax.z >= bMin.z;
+	       aMin.z <= bMax.z && aMax.z >= bMin.z;
 }
 
 bool SolidInBox( const KeyValueNode &solid, const CordonBox &box )
@@ -114,7 +113,7 @@ bool SolidInBox( const KeyValueNode &solid, const CordonBox &box )
 bool PointInBox( const Vec3d &p, const CordonBox &box )
 {
 	return p.x >= box.mins.x && p.x <= box.maxs.x && p.y >= box.mins.y && p.y <= box.maxs.y &&
-		   p.z >= box.mins.z && p.z <= box.maxs.z;
+	       p.z >= box.mins.z && p.z <= box.maxs.z;
 }
 
 bool ParseVec3( const std::string &text, Vec3d &out )
@@ -176,7 +175,8 @@ CordonResult ApplyCordon( const KeyValueNode &root, const CordonBox &box )
 					break;
 				}
 			}
-			if ( const std::string *o = block.Find( "origin" ); o != nullptr && ParseVec3( *o, origin ) )
+			if ( const std::string *o = block.Find( "origin" );
+			    o != nullptr && ParseVec3( *o, origin ) )
 			{
 				keep = PointInBox( origin, box ); // point entity
 			}
