@@ -12,6 +12,7 @@
 //=============================================================================//
 
 #include "hammer/formats/keyvalues.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
@@ -66,13 +67,16 @@ int main()
 	const bool realDetects = DetectsDataLoss( RealCompare );
 	const bool permissiveDetects = DetectsDataLoss( PermissiveCompare );
 
+	int checks = 0;
 	int failures = 0;
 
+	++checks;
 	if ( !realDetects )
 	{
 		std::printf( "FAIL: real comparator missed a changed value or a dropped block\n" );
 		++failures;
 	}
+	++checks;
 	if ( permissiveDetects )
 	{
 		std::printf( "FAIL: predicate did NOT detect the permissive (always-equal) comparator\n" );
@@ -82,9 +86,9 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "hammer.formats keyvalues negative: %d check(s) FAILED\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf( "hammer.formats keyvalues negative: oracle detects violations (real passes, "
 	             "permissive caught)\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }

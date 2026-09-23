@@ -28,6 +28,7 @@
 #include "jobsystem/parallel_executor.h"
 #include "jobsystem/pooled_executor.h"
 #include "jobsystem/worker_backend.h"
+#include "testing/conformance_result.h"
 
 #include <algorithm>
 #include <atomic>
@@ -773,5 +774,5 @@ int main( int argc, char **argv )
 		WriteJson( g_config.jsonPath );
 	std::printf(
 	    "%zu benchmarks, %lld checks, %d failures\n", g_results.size(), g_checks, g_failures );
-	return g_failures == 0 ? 0 : 1;
+	return testing::ReportConformance( g_checks, g_failures );
 }

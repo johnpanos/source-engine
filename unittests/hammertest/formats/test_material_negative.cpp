@@ -8,6 +8,7 @@
 //=============================================================================//
 
 #include "hammer/formats/material.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
@@ -16,10 +17,12 @@ using hammer::formats::ParseMaterial;
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 
 void ExpectParses( const char *text, const char *label )
 {
+	++g_checks;
 	if ( !ParseMaterial( text ).has_value() )
 	{
 		std::printf( "FAIL: good material rejected (%s)\n", label );
@@ -29,6 +32,7 @@ void ExpectParses( const char *text, const char *label )
 
 void ExpectRejected( const char *text, const char *label )
 {
+	++g_checks;
 	if ( ParseMaterial( text ).has_value() )
 	{
 		std::printf( "FAIL: malformed material accepted (%s)\n", label );
@@ -50,9 +54,9 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.material negative: ORACLE UNSOUND (%d)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "formats.material negative: good material parses; empty, whitespace-only, and "
 	             "unterminated-block all rejected\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

@@ -10,6 +10,7 @@
 //=============================================================================//
 
 #include "hammer/geometry/angle.h"
+#include "testing/conformance_result.h"
 
 #include <cmath>
 #include <cstdio>
@@ -21,6 +22,7 @@ namespace
 {
 
 int g_failures = 0;
+int g_checks = 0;
 
 bool Near( float a, float b )
 {
@@ -29,6 +31,7 @@ bool Near( float a, float b )
 
 void Check( bool condition, const char *expression, int line )
 {
+	++g_checks;
 	if ( !condition )
 	{
 		std::printf( "FAIL %s:%d: %s\n", "test_angle.cpp", line, expression );
@@ -71,8 +74,8 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "hammer.geometry angle: %d check(s) FAILED\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "hammer.geometry angle: all checks passed\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

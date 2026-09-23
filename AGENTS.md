@@ -341,8 +341,8 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 
 | Rank / ID | Work and RFC scope | Prerequisites | Done looks like | State |
 | --- | --- | --- | --- | --- |
-| 1 / R01 | Reproducible baseline and profile inventory; 0005 Q0, baseline portions of all domains | — | Current checks/failures recorded; exact build/content/tool availability and supported profiles established; baseline captures and budgets identified | partial |
-| 2 / R02 | Trustworthy runner, fixtures, evidence; 0005 Q1 | R01 | Zero/missing tests, skips, crashes, timeouts and incomplete output fail correctly; explicit test composition and reproducible artifacts work | partial |
+| 1 / R01 | Reproducible baseline and profile inventory; 0005 Q0, baseline portions of all domains | — | Current checks/failures recorded; exact build/content/tool availability and supported profiles established; baseline captures and budgets identified | done ([Q0 baseline](RFC/0005-progress.md#q0--r01-baseline-and-profile-inventory)) |
+| 2 / R02 | Trustworthy runner, fixtures, evidence; 0005 Q1 | R01 | Zero/missing tests, skips, crashes, timeouts and incomplete output fail correctly; explicit test composition and reproducible artifacts work | done ([Q1 runner](RFC/0005-progress.md#q1--r02-runner-shared-conformance-runner)) |
 | 3 / R03 | Per-target C++20/toolchain boundary; 0006 M0 | R01, R02 | Compile/link/run proof; final flags verified; legacy/C17 settings and frozen-consumer ABI combinations preserved | planned |
 | 4 / R04 | Full architecture and migration enforcement; 0001 rank 1, 0002 H0 enforcement, Q-ARCH | R01, R02 | Ownership, direct/transitive includes, Waf/link graph, hermetic builds, exact debt and evidence schemas enforced; negative projects fail | partial |
 | 5 / R05 | Results, IDs, quantities, ownership vocabulary; 0001 rank 2, 0006 M1 | R03, R04 | `Expected`, borrowing/scoped resources and matchers pass value/lifetime/ABI tests; a real consumer uses them | planned |
@@ -391,7 +391,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 48 / R36 | Vulkan parity and four-platform release readiness; 0001 rank 17 | R29, R32 | Per-platform materials/images, loss/recovery, cache, hardware budgets and normal package/store-compatibility checks pass; default selection is a separate product decision | planned |
 | 49 / R37 | Physics parallel rollout and default gate; 0004 E | R20, R34 | Worker-count determinism, nested-work/callback/shutdown bridge, platform packaging, budgets and supported client/server combinations pass; IVP rollback tested | planned |
 | 50 / R38 | Stateful scheduling migrations; 0003 G | R30, R35, R37 | Snapshot-send ownership and selected entity/physics cohorts preserve legacy observations/order or record intentional change; network/latency/lifetime gates pass | planned |
-| 51 / R39 | First-party module retirement; 0001 rank 18 / retirement B–D | R12, R18 | Pseudo-modules removed; mandatory systems and provider catalogs use typed linked factories; no filename/string discovery for migrated services | active ([Phase D](RFC/0001-phase-d-progress.md)) |
+| 51 / R39 | First-party module retirement; 0001 rank 18 / retirement B–D | R12, R18 | Pseudo-modules removed; mandatory systems and provider catalogs use typed linked factories; no filename/string discovery for migrated services | active ([Phase D](RFC/0001-phase-b-progress.md#later-work-not-claimed-here)) |
 | 52 / R40 | Tool executable/process cleanup; 0001 rank 19 / retirement E | R11, R12, R22 | Launchable-DLL wrappers retired by cohort; structured argv/process protocol, outputs/cancellation and required compiler workflows pass; integrations tool-only | active ([Phase E](RFC/0001-phase-e-progress.md)) |
 | 53 / R41 | Extension hosts and public-loader removal; 0001 rank 20 / retirement F–G | R07, R11, R39, R40 | Family-owned versioned ABI/trust/lifetime fixtures pass; Waf enumerates boundaries; only approved hosts load; Tier1/filesystem general loader APIs retired | planned |
 | 54 / R42 | Scheduler consolidation; 0003 H | R35, R38 | Redundant queues/waits have zero consumers; process worker budget controlled; supported host modes retain correctness/latency and rollback evidence | planned |
@@ -465,6 +465,24 @@ Keep the table concise and link details below or from the domain progress file.
     lane. Findings: Wayland cannot unminimize; hiding after a FIFO present kills
     the connection. See the [presentation bridge record](RFC/0001-presentation-bridge-progress.md).
 
+- R01: `done` (2026-09-22) for the Q0 baseline and profile inventory:
+  - One declaration, [`quality/baseline.json`](quality/baseline.json), holds
+    host tools, content corpora, the 17-profile support matrix, 33 installed
+    checks with recorded outcomes and owners, and the captures and budgets per
+    domain. [`baseline.py audit`](tools/quality/baseline.py) reproduces it and
+    fails on any deviation. It has 21 negative self-tests.
+  - At `2b2ee370` plus a dirty tree, all 32 non-package checks matched: 24 pass,
+    6 known fail, 2 known crash.
+  - Recorded failures: ARCH105 drift (R04), 10 uninstrumented loader sites (R07),
+    roadmap hard-gate violations for R15/R16, the dedicated-server compile error
+    (R12), and `unittest_legacy` crashes on gcc (TSList) and clang (fixture path).
+  - Unavailable here: gcc sanitizer runtimes, i386 multilib, MSVC, Xcode/MoltenVK,
+    OpenUSD and KTX tools. No performance budget exists for any profile; each
+    missing budget has an owning row.
+  - This certifies no domain or platform gate. See the
+    [Q0 record](RFC/0005-progress.md#q0--r01-baseline-and-profile-inventory).
+    Reopen R01 when an audit deviates and the declaration is not reviewed.
+
 - R15: `done` (2026-09-22) for the rank 8 scope:
   - Contracts: feature profile, quirks and structured selection errors
     (`render.profile.v1`).
@@ -512,19 +530,39 @@ Keep the table concise and link details below or from the domain progress file.
   its check required remains repository-administrator policy. This child does
   not close R04, establish C++20 target support, or certify runtime harnesses.
 
-- R02-RUNNER: `partial` for the bounded shared-conformance-runner slice: a
-  dependency-free host orchestrator ([`tools/quality/conformance.py`](tools/quality/conformance.py)),
-  one authoritative suite manifest ([`quality/conformance.manifest.json`](quality/conformance.manifest.json)),
-  per-profile toolchain facts ([`quality/profiles/`](quality/profiles/)), versioned
-  `conformance-evidence/v1` artifacts, and 18 negative self-tests that prove the
-  runner fails correctly on zero-discovery, unmatched selectors, missing sources,
-  failing/crashing/hanging suites, and compile errors. Registered Q-EDITOR (RFC
-  0002 geometry/scene) and Q-JOBS (RFC 0003 scheduler) suites all pass under g++
-  16.2.1 and clang++ 22.1.8 on `linux-headless-core`. Installing the runner
-  surfaced and fixed a real drift: `run_headless.sh` had stopped linking the AABB
-  suites; it now delegates to the runner so suite sources have one owner. See
-  [RFC 0005 progress](RFC/0005-progress.md). This does **not** install a required
-  CI lane, certify any domain gate, or add native/GPU/device profiles.
+- R02: `done` (2026-09-22) for the RFC 0005 Q1 runner scope.
+  - Runner: [`tools/quality/conformance.py`](tools/quality/conformance.py)
+    runs `plan`/`check` against the manifest and writes
+    `conformance-evidence/v2` with full per-suite logs.
+  - Result record: every suite that expects `pass` must report exactly one
+    `checks-v1` record through
+    [`conformance_result.h`](public/testing/conformance_result.h). All 82
+    suites were converted, so zero checks, a missing or duplicate record, and
+    incomplete output all fail even with exit status 0.
+  - Also fail correctly:
+    - required providers that are unavailable (`optional` suites are skipped
+      with a reason and never certified);
+    - crashes, timeouts (the whole process group is killed), memory overruns,
+      and `assert()`-based oracles;
+    - zero discovery and partially unmatched selectors;
+    - interrupted runs, which leave `incomplete` evidence.
+  - Also supported: repeats and seeds.
+  - Self-tests: 44 negative and positive runner self-tests.
+  - Legacy hosts: `unittest_legacy`, `run_headless.sh` and `parity_wine.py`
+    now fail on zero discovery.
+  - Evidence (93/93 each):
+    - g++ 16.2.1 and clang++ 22.1.8 in the default and `-O2 -DNDEBUG`
+      configurations;
+    - GCC 13.3 and Clang 18.1 in `ubuntu:24.04`.
+  - Wine parity: 60/60.
+  - CI: [`conformance.yml`](.github/workflows/conformance.yml) runs the matrix.
+    It hasn't run on hosted CI yet, and making it required is administrator
+    policy.
+  - The gcc legacy `unittest_legacy` crash is a tier0 `CTSQueue` lock-free
+    defect, triaged to R20.
+  - Not delivered: native, GPU, device and sanitizer runner profiles, and any
+    domain gate.
+  - See [Q1](RFC/0005-progress.md#q1--r02-runner-shared-conformance-runner).
 
 - R20-BATCH / R21-PARTICLE / R30-BONES-PACKING: `partial`. A C++11 facade
   runs bounded C++20 job graphs on the existing engine pool. Particles,
@@ -541,6 +579,16 @@ Keep the table concise and link details below or from the domain progress file.
   [recorded with microbenchmarks and oracles](RFC/0003-scheduler-performance-progress.md).
   Examples: real-pool 1-worker 2048-item dispatch 38.8→4.4 µs, and Seal up to 42×
   faster. Q-JOBS is now 10/10. This sets no frame budget and closes no gate.
+
+- R32-FRAME-PACING: `partial` (2026-09-22). The Android portal stutter is
+  reproduced on Linux by [`frame_pacing.py`](tools/quality/frame_pacing.py) with
+  the [portal scenario](quality/workloads/portal-frame-pacing-v1.json) and the
+  backend's `-vkframestats` stream. Native-backend fixes: emit rewrite with
+  indexed draws, per-slot stream buffers (a real frame-overlap race), within-frame
+  geometry reuse with a shadow verifier, a prewarmed pipeline store, and deferred
+  texel uploads. Interleaved A/B warm median 18.4 -> 6.1 ms; material-pixel
+  captures byte-identical. Android not measured. See the
+  [frame pacing record](RFC/0001-native-vulkan-frame-pacing-progress.md).
 
 Current RFC 0001 evidence (2026-09-22):
 

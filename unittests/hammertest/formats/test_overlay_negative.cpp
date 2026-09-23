@@ -10,6 +10,7 @@
 
 #include "hammer/formats/keyvalues.h"
 #include "hammer/formats/overlay.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
@@ -19,6 +20,7 @@ using hammer::formats::ParseOverlay;
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 
 // Parses a single-entity document and runs ParseOverlay on that entity.
@@ -34,6 +36,7 @@ bool Parses( const std::string &entityText )
 
 void ExpectParses( const std::string &text, const char *label )
 {
+	++g_checks;
 	if ( !Parses( text ) )
 	{
 		std::printf( "FAIL: good overlay rejected (%s)\n", label );
@@ -43,6 +46,7 @@ void ExpectParses( const std::string &text, const char *label )
 
 void ExpectRejected( const std::string &text, const char *label )
 {
+	++g_checks;
 	if ( Parses( text ) )
 	{
 		std::printf( "FAIL: malformed overlay accepted (%s)\n", label );
@@ -92,9 +96,9 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.overlay negative: ORACLE UNSOUND (%d)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "formats.overlay negative: complete overlay parses; missing material/sides/basis/"
 	             "corner and non-overlay all rejected\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

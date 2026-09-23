@@ -13,6 +13,7 @@
 //=============================================================================//
 
 #include "jobsystem/job_graph.h"
+#include "testing/conformance_result.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -495,5 +496,5 @@ int main()
 	TestLargeShapes();
 	TestComparatorSensitivity();
 	std::printf( "%d checks, %d failures\n", g_checks, g_failures );
-	return g_failures == 0 ? 0 : 1;
+	return testing::ReportConformance( g_checks, g_failures );
 }

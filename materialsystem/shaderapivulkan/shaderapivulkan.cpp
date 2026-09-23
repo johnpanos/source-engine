@@ -31,8 +31,10 @@
 
 #include <algorithm>
 #include <array>
+#include <functional>
 #include <map>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -65,7 +67,30 @@ static bool InitVulkanContext(
 	std::string statsError;
 	if ( statsPath && !g_VulkanContext.OpenFrameStats( statsPath, &statsError ) )
 		Warning( "[NativeVulkan] frame stats unavailable: %s\n", statsError.c_str() );
+	// The pipeline store lives in the mod directory (the launcher runs from the
+	// base directory, and the mod directory is where the engine writes its
+	// config on every platform); -vkpipelinecache names another directory, or
+	// "none" to build every pipeline on first use without a store.
+	const char *gameDir =
+	    CommandLine()->ParmValue( "-game", CommandLine()->ParmValue( "-defaultgamedir", "hl2" ) );
+	const char *storeDir = CommandLine()->ParmValue( "-vkpipelinecache", gameDir );
+	std::string storeError;
+	if ( Q_stricmp( storeDir, "none" ) != 0 &&
+	     !g_VulkanContext.OpenPipelineStore( storeDir, &storeError ) )
+		Warning( "[NativeVulkan] pipeline store unavailable: %s\n", storeError.c_str() );
 	return true;
+}
+
+// Builds the material pipeline variants earlier runs needed (the pipeline
+// store), during bring-up, so the frame that first draws with one does not
+// stall on its compile (a portal opening, say).
+static void PrewarmVulkanPipelines()
+{
+	const uint64_t start = render_vulkan::FrameClockMicros();
+	const int built = g_VulkanContext.PrewarmPipelines();
+	if ( built > 0 )
+		Msg( "[NativeVulkan] prewarmed %d pipelines in %.1f ms\n", built,
+		    ( render_vulkan::FrameClockMicros() - start ) / 1000.0 );
 }
 
 // Labels the frame being built in the frame-stats stream, so a scenario script
@@ -554,6 +579,15 @@ private:
 	// assemble triangles in the authored order.
 	std::vector<unsigned short> m_indexData;
 	bool m_bIsDynamic;
+	// Changes (to a value no mesh has had) whenever this mesh hands out or takes
+	// back writable storage, so a conversion of its data can be reused only while
+	// the data is unchanged (EmitToNativeQueue).
+	uint64_t m_revision = 0;
+	void NoteWrite()
+	{
+		static uint64_t s_revisions = 0;
+		m_revision = ++s_revisions;
+	}
 	// Draw-time sources (SetSources); null means this mesh's own storage.
 	CEmptyMesh *m_pVertexSource = nullptr;
 	CEmptyMesh *m_pIndexSource = nullptr;
@@ -1013,6 +1047,8 @@ public:
 		    g_VulkanContext.DeviceName(), w, h, presentW, presentH );
 		if ( !g_VulkanContext.InitDynamicMesh( &error ) )
 			Warning( "[NativeVulkan] dynamic mesh pipelines unavailable: %s\n", error.c_str() );
+		else
+			PrewarmVulkanPipelines();
 		return true;
 	}
 
@@ -2015,6 +2051,8 @@ CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode(
 			if ( !g_VulkanContext.InitDynamicMesh( &meshError ) )
 				Warning(
 				    "[NativeVulkan] dynamic mesh pipeline unavailable: %s\n", meshError.c_str() );
+			else
+				PrewarmVulkanPipelines();
 		}
 		else
 		{
@@ -2220,6 +2258,7 @@ IIndexBuffer *CShaderDeviceVulkan::GetDynamicIndexBuffer(
 //-----------------------------------------------------------------------------
 CEmptyMesh::CEmptyMesh( bool bIsDynamic ) : m_bIsDynamic( bIsDynamic )
 {
+	NoteWrite();
 	LiveMeshes().insert( this );
 }
 
@@ -2243,6 +2282,7 @@ bool CEmptyMesh::Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t &desc )
 	// Hand out real index storage so the mesh builder's authored indices are
 	// kept (m_nIndexSize = 1 advances one slot per index). Draw() replays the
 	// geometry in this order.
+	NoteWrite();
 	if ( nMaxIndexCount < 0 )
 		nMaxIndexCount = 0;
 	if ( nMaxIndexCount > kMaxLockIndices )
@@ -2259,6 +2299,7 @@ bool CEmptyMesh::Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t &desc )
 
 void CEmptyMesh::Unlock( int nWrittenIndexCount, IndexDesc_t &desc )
 {
+	NoteWrite();
 	if ( nWrittenIndexCount >= 0 && nWrittenIndexCount <= m_numIndices )
 		m_numIndices = nWrittenIndexCount;
 }
@@ -2266,6 +2307,7 @@ void CEmptyMesh::Unlock( int nWrittenIndexCount, IndexDesc_t &desc )
 void CEmptyMesh::ModifyBegin( bool bReadOnly, int nFirstIndex, int nIndexCount, IndexDesc_t &desc )
 {
 	// Modify the existing list in place; relocking would discard it.
+	NoteWrite();
 	if ( nFirstIndex < 0 || nIndexCount < 0 ||
 	     static_cast<size_t>( nFirstIndex ) + nIndexCount > m_indexData.size() )
 	{
@@ -2283,6 +2325,7 @@ void CEmptyMesh::ModifyBegin( bool bReadOnly, int nFirstIndex, int nIndexCount, 
 
 void CEmptyMesh::ModifyEnd( IndexDesc_t &desc )
 {
+	NoteWrite();
 }
 
 void CEmptyMesh::Spew( int nIndexCount, const IndexDesc_t &desc )
@@ -2295,6 +2338,7 @@ void CEmptyMesh::ValidateData( int nIndexCount, const IndexDesc_t &desc )
 
 bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 {
+	NoteWrite();
 	if ( IsColorStream() )
 	{
 		// A static-prop color mesh: one D3DCOLOR per vertex, tightly packed, as
@@ -2406,6 +2450,7 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 
 void CEmptyMesh::Unlock( int nVertexCount, VertexDesc_t &desc )
 {
+	NoteWrite();
 	if ( nVertexCount >= 0 && nVertexCount <= m_numVerts )
 		m_numVerts = nVertexCount;
 }
@@ -2428,6 +2473,7 @@ void CEmptyMesh::UnlockMesh( int numVerts, int numIndices, MeshDesc_t &desc )
 {
 	// Record the counts the builder actually wrote, so Draw() replays exactly the
 	// authored geometry rather than the (larger) locked capacity.
+	NoteWrite();
 	if ( numVerts >= 0 )
 		m_numVerts = numVerts;
 	if ( numIndices >= 0 )
@@ -2439,6 +2485,7 @@ void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, i
 {
 	// Modify existing geometry in place (e.g. rewriting a static mesh's colors).
 	// Relocking would reseed the colors and forget the vertex count.
+	NoteWrite();
 	VertexDesc_t &vdesc = *static_cast<VertexDesc_t *>( &desc );
 	const size_t vertexCapacity = m_vertexData.size() / kMeshVertexStride;
 	if ( firstVertex < 0 || numVerts < 0 ||
@@ -2485,6 +2532,7 @@ void CEmptyMesh::ModifyBegin(
 
 void CEmptyMesh::ModifyEnd( MeshDesc_t &desc )
 {
+	NoteWrite();
 }
 
 // returns the # of vertices (static meshes only)
@@ -2728,7 +2776,11 @@ static float VertexAtten(
 	    1.0f / ( c.atten[0] + c.atten[1] * ( distSq * ooDist ) + c.atten[2] * distSq );
 	const float cosTheta = -( c.dir[0] * dir[0] + c.dir[1] * dir[1] + c.dir[2] * dir[2] );
 	float spotAtten = ( cosTheta - c.spot[2] ) * c.spot[3];
-	spotAtten = Saturate( powf( spotAtten > 0.0001f ? spotAtten : 0.0001f, c.spot[0] ) );
+	// pow( x, 0 ) is 1 for every x (C Annex F), so the point and directional
+	// lights' zero exponent skips a powf per light per vertex, bit-exactly.
+	spotAtten = c.spot[0] == 0.0f
+	                ? 1.0f
+	                : Saturate( powf( spotAtten > 0.0001f ? spotAtten : 0.0001f, c.spot[0] ) );
 	const float atten = distanceAtten + ( distanceAtten * spotAtten - distanceAtten ) * c.dir[3];
 	if ( lightDir )
 		memcpy( lightDir, dir, sizeof( dir ) );
@@ -2817,6 +2869,89 @@ void CEmptyMesh::Draw( int firstIndex, int numIndices )
 	g_pRenderMesh = nullptr;
 }
 
+// Reuse of converted geometry within a frame's stream. Portal views, recursion
+// and multipass materials draw the same mesh range several times per frame with
+// the same conversion inputs (the converted vertices are in model or world
+// space, never view space), so a repeat draw can index the vertices the first
+// one queued instead of converting them again. A draw is reused only when every
+// input of EmitToNativeQueue's conversion matches exactly: the meshes (by write
+// revision), range and topology in the key; the constants in `inputs`; and the
+// bone matrices its vertices reference.
+struct EmitReuseKey
+{
+	const void *vertexMesh;
+	uint64_t vertexRevision;
+	const void *indexMesh;
+	uint64_t indexRevision;
+	const void *colorMesh;
+	uint64_t colorRevision;
+	int colorOffset;
+	int first;
+	int count;
+	int numVerts;
+	int primitive;
+	unsigned flags;
+	int skinLightCount;
+	int lightCount;
+
+	bool operator==( const EmitReuseKey &other ) const
+	{
+		return vertexMesh == other.vertexMesh && vertexRevision == other.vertexRevision &&
+		       indexMesh == other.indexMesh && indexRevision == other.indexRevision &&
+		       colorMesh == other.colorMesh && colorRevision == other.colorRevision &&
+		       colorOffset == other.colorOffset && first == other.first && count == other.count &&
+		       numVerts == other.numVerts && primitive == other.primitive && flags == other.flags &&
+		       skinLightCount == other.skinLightCount && lightCount == other.lightCount;
+	}
+	uint64_t Hash() const
+	{
+		uint64_t h = reinterpret_cast<uintptr_t>( vertexMesh ) * 0x9E3779B97F4A7C15ull;
+		h ^= vertexRevision + 0x632BE59BD9B4E019ull + ( h << 6 ) + ( h >> 2 );
+		h ^= static_cast<uint64_t>( first ) * 0xFF51AFD7ED558CCDull + ( h << 6 ) + ( h >> 2 );
+		h ^= static_cast<uint64_t>( count ) + ( h << 6 ) + ( h >> 2 );
+		return h;
+	}
+};
+
+struct EmitReuseEntry
+{
+	EmitReuseKey key;
+	std::vector<float> inputs;
+	int maxBone;              // highest bone matrix the vertices read; -1 without skinning
+	std::vector<float> bones; // g_BoneMatrices[0..maxBone]
+	render_vulkan::CVulkanContext::DrawRange range;
+};
+
+// Entries of the current stream epoch; a draw converting fewer indices than
+// this is cheaper to convert again than to key.
+static std::vector<EmitReuseEntry> s_emitReuse;
+static std::unordered_multimap<uint64_t, size_t> s_emitReuseIndex;
+static uint64_t s_emitReuseEpoch = 0;
+enum
+{
+	kMinReusedIndices = 96
+};
+
+// -vkemitreuseverify: every reused draw is also converted, privately, and the
+// result compared with the reused geometry; mismatches are reported by name.
+static bool VerifyEmitReuse()
+{
+	static const bool s_verify = CommandLine()->FindParm( "-vkemitreuseverify" ) != 0;
+	return s_verify;
+}
+
+static void NoteEmitReuseCheck( bool equal )
+{
+	static uint64_t s_checked = 0, s_mismatched = 0;
+	++s_checked;
+	if ( !equal )
+		++s_mismatched;
+	if ( !equal || s_checked % 1000 == 0 )
+		fprintf( stderr, "[vulkan] emit reuse verify: %llu checked, %llu mismatched\n",
+		    static_cast<unsigned long long>( s_checked ),
+		    static_cast<unsigned long long>( s_mismatched ) );
+}
+
 void CEmptyMesh::EmitToNativeQueue()
 {
 	render_vulkan::CFrameCostScope cost( g_VulkanContext.CurrentFrameCost(), render_vulkan::kCostEmit );
@@ -2846,7 +2981,6 @@ void CEmptyMesh::EmitToNativeQueue()
 		return;
 	}
 
-	std::vector<float> lightmapUv;
 	// Normal and tangent, only for the shaders that read them: PortalRefract
 	// (model space; skinned normals and tangents are not blended) and the skin
 	// shader (world space, below).
@@ -2858,8 +2992,6 @@ void CEmptyMesh::EmitToNativeQueue()
 	// in SortLights order, 0 for the absent ones) and the world tangent frame.
 	VertexLightConstants skinLights[kMaxLocalLights];
 	const int skinLightCount = skin ? BuildVertexLightConstants( skinLights ) : 0;
-	std::vector<float> normalTangent;
-	std::vector<float> vertexAlpha;
 	// vertexlit_and_unlit_generic_vs20 lighting the vertices (not VERTEXCOLOR),
 	// feeding a pixel shader that multiplies by it (DIFFUSELIGHTING): the vertex
 	// color is the lighting its dynamic combo selects, evaluated once per vertex.
@@ -2874,8 +3006,6 @@ void CEmptyMesh::EmitToNativeQueue()
 	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentSelfIllum ) != 0;
 	VertexLightConstants lights[kMaxLocalLights];
 	int lightCount = 0;
-	std::vector<float> litColors;
-	std::vector<unsigned char> litDone;
 	if ( vertexLighting )
 	{
 		if ( ( g_VertexShaderDynamicIndex / 32 ) % 2 )
@@ -2883,39 +3013,37 @@ void CEmptyMesh::EmitToNativeQueue()
 		if ( staticLight && !HasColorMesh() )
 			NoteUnimplemented( "STATIC_LIGHT without a color mesh" );
 		lightCount = dynamicLight ? BuildVertexLightConstants( lights ) : 0;
-		litColors.resize( static_cast<size_t>( numVerts ) * 3 );
-		litDone.assign( static_cast<size_t>( numVerts ), 0 );
 	}
-	auto vertexLight = [&]( int v, const unsigned char *base, const float worldPos[3] )
+	// One mesh vertex as the stream's record (CVulkanContext::QueueDynamicTriangles
+	// documents the layout): position, color, uv, lightmap uv, normal/tangent,
+	// alpha. It depends only on the vertex and this draw's state, so each vertex
+	// an index list reuses is converted once per draw.
+	enum
 	{
-		float *lit = litColors.data() + static_cast<size_t>( v ) * 3;
-		if ( !litDone[static_cast<size_t>( v )] )
-		{
-			float normal[3], worldNormal[3], staticColor[3];
-			memcpy( normal, base + kMeshNormalOffset, sizeof( normal ) );
-			WorldNormal( base, normal, worldNormal );
-			const bool hasStatic = staticLight && StaticColor( v, staticColor );
-			ComputeVertexLighting( worldPos, worldNormal, hasStatic ? staticColor : nullptr,
-			    dynamicLight, g_CurrentVertexLit.halfLambert, lights, lightCount, lit );
-			litDone[static_cast<size_t>( v )] = 1;
-		}
-		return lit;
+		kRecordFloats = render_vulkan::CVulkanContext::kDynVertexFloats
 	};
-	auto appendVertex = [&]( std::vector<float> &out, int v )
+	int maxBone = -1;
+	auto convertVertex = [&]( int v, float *out )
 	{
 		const unsigned char *base =
 		    vertices.m_vertexData.data() + static_cast<size_t>( v ) * kMeshVertexStride;
-		float pos[3], uv[2], lightmap[2];
+		if ( g_NumBoneWeights > 0 )
+		{
+			// The bones SkinPosition and WorldNormal read for this vertex.
+			const unsigned char *boneIndices = base + kMeshBoneIndexOffset;
+			for ( int b = 0; b < 3; ++b )
+				maxBone = std::max(
+				    maxBone, boneIndices[b] < kMaxBoneMatrices ? int( boneIndices[b] ) : 0 );
+		}
+		float pos[3], uv[2];
 		memcpy( pos, base, sizeof( pos ) );
 		if ( g_NumBoneWeights > 0 )
 			SkinPosition( base, pos );
 		memcpy( uv, base + 16, sizeof( uv ) );
-		memcpy( lightmap, base + 24, sizeof( lightmap ) );
-		lightmapUv.push_back( lightmap[0] );
-		lightmapUv.push_back( lightmap[1] );
+		memcpy( out + 8, base + 24, 2 * sizeof( float ) ); // lightmap uv
 		if ( wantsTangents )
 		{
-			float nt[7];
+			float *nt = out + 10;
 			memcpy( nt, base + kMeshNormalOffset, sizeof( float ) * 3 );
 			memcpy( nt + 3, base + kMeshUserDataOffset, sizeof( float ) * 4 );
 			if ( skin )
@@ -2927,15 +3055,15 @@ void CEmptyMesh::EmitToNativeQueue()
 				WorldNormal( base, normal, nt );
 				WorldNormal( base, tangent, nt + 3 );
 			}
-			normalTangent.insert( normalTangent.end(), nt, nt + 7 );
+		}
+		else
+		{
+			std::fill( out + 10, out + 17, 0.0f );
 		}
 		// A D3DCOLOR, as CVertexBuilder::Color4ub stores it (no
 		// OPENGL_SWAP_COLORS): bytes B, G, R, A.
 		const unsigned char *col = base + 12;
-		vertexAlpha.push_back( col[3] / 255.0f );
-		out.push_back( pos[0] );
-		out.push_back( pos[1] );
-		out.push_back( pos[2] );
+		out[17] = col[3] / 255.0f;
 		if ( skin )
 		{
 			// World-space position (the push block holds only cViewProj), and the
@@ -2945,40 +3073,36 @@ void CEmptyMesh::EmitToNativeQueue()
 			float atten[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
 			for ( int i = 0; i < skinLightCount; ++i )
 				atten[i] = VertexAtten( skinLights[i], pos );
-			out[out.size() - 3] = pos[0];
-			out[out.size() - 2] = pos[1];
-			out[out.size() - 1] = pos[2];
-			out.insert( out.end(), atten, atten + 3 );
-			vertexAlpha.back() = atten[3];
+			memcpy( out + 3, atten, 3 * sizeof( float ) );
+			out[17] = atten[3];
 		}
 		else if ( vertexLighting )
 		{
 			float worldPos[3] = { pos[0], pos[1], pos[2] };
 			if ( g_NumBoneWeights <= 0 )
 				ModelToWorld( worldPos );
-			const float *lit = vertexLight( v, base, worldPos );
-			if ( selfIllum )
-			{
-				for ( int k = 0; k < 3; ++k )
-					out.push_back( lit[k] * g_psConstants[1][k] );
-			}
-			else
-			{
-				out.insert( out.end(), lit, lit + 3 );
-			}
+			float normal[3], worldNormal[3], staticColor[3], lit[3];
+			memcpy( normal, base + kMeshNormalOffset, sizeof( normal ) );
+			WorldNormal( base, normal, worldNormal );
+			const bool hasStatic = staticLight && StaticColor( v, staticColor );
+			ComputeVertexLighting( worldPos, worldNormal, hasStatic ? staticColor : nullptr,
+			    dynamicLight, g_CurrentVertexLit.halfLambert, lights, lightCount, lit );
+			for ( int k = 0; k < 3; ++k )
+				out[3 + k] = selfIllum ? lit[k] * g_psConstants[1][k] : lit[k];
 		}
 		else if ( selfIllum )
 		{
-			out.insert( out.end(), g_psConstants[1], g_psConstants[1] + 3 );
+			memcpy( out + 3, g_psConstants[1], 3 * sizeof( float ) );
 		}
 		else
 		{
-			out.push_back( col[2] / 255.0f );
-			out.push_back( col[1] / 255.0f );
-			out.push_back( col[0] / 255.0f );
+			out[3] = col[2] / 255.0f;
+			out[4] = col[1] / 255.0f;
+			out[5] = col[0] / 255.0f;
 		}
-		out.push_back( uv[0] );
-		out.push_back( uv[1] );
+		memcpy( out, pos, sizeof( pos ) );
+		out[6] = uv[0];
+		out[7] = uv[1];
 	};
 
 	// Element i of this draw, in mesh vertex indices. Indexed geometry reads the
@@ -2990,56 +3114,8 @@ void CEmptyMesh::EmitToNativeQueue()
 			return i;
 		return static_cast<int>( indices.m_indexData[static_cast<size_t>( first + i )] );
 	};
-
-	std::vector<float> interleaved;
-	interleaved.reserve( static_cast<size_t>( elementCount ) * 8 );
-
-	auto appendTriangle = [&]( int a, int b, int c )
-	{
-		if ( a < 0 || b < 0 || c < 0 || a >= numVerts || b >= numVerts || c >= numVerts )
-		{
-			NoteUnimplemented( "triangle dropped: index outside vertex range" );
-			return;
-		}
-		// Strips stitch separate runs together with degenerate (zero-area)
-		// triangles. A strip pipeline discards those for free; assembling a list
-		// has to drop them explicitly or they become junk geometry.
-		if ( a == b || b == c || a == c )
-			return;
-		appendVertex( interleaved, a );
-		appendVertex( interleaved, b );
-		appendVertex( interleaved, c );
-	};
-
 	switch ( m_primitiveType )
 	{
-	case MATERIAL_TRIANGLE_STRIP:
-		// Every vertex after the first two closes a triangle with its two
-		// predecessors, alternating winding so the facing stays consistent.
-		for ( int i = 0; i + 2 < elementCount; ++i )
-		{
-			if ( i & 1 )
-				appendTriangle( element( i + 1 ), element( i ), element( i + 2 ) );
-			else
-				appendTriangle( element( i ), element( i + 1 ), element( i + 2 ) );
-		}
-		break;
-
-	case MATERIAL_POLYGON:
-		// A single convex polygon, fanned from its first vertex.
-		for ( int i = 1; i + 1 < elementCount; ++i )
-			appendTriangle( element( 0 ), element( i ), element( i + 1 ) );
-		break;
-
-	case MATERIAL_QUADS:
-	case MATERIAL_INSTANCED_QUADS:
-		for ( int i = 0; i + 3 < elementCount; i += 4 )
-		{
-			appendTriangle( element( i ), element( i + 1 ), element( i + 2 ) );
-			appendTriangle( element( i ), element( i + 2 ), element( i + 3 ) );
-		}
-		break;
-
 	case MATERIAL_POINTS:
 	case MATERIAL_LINES:
 	case MATERIAL_LINE_STRIP:
@@ -3048,14 +3124,72 @@ void CEmptyMesh::EmitToNativeQueue()
 		// would draw geometry the engine never asked for. Drop the draw instead.
 		DropDraw( "draw dropped: line/point topology" );
 		return;
-
 	default:
-		for ( int i = 0; i + 2 < elementCount; i += 3 )
-			appendTriangle( element( i ), element( i + 1 ), element( i + 2 ) );
 		break;
 	}
+	// Calls triangle(a, b, c) for each triangle the topology assembles, in draw
+	// order. `note` reports rejected triangles to the census (the counting pass
+	// does, so each is reported once).
+	auto forEachTriangle = [&]( bool note, const std::function<void( int, int, int )> &triangle )
+	{
+		auto emit = [&]( int a, int b, int c )
+		{
+			if ( a < 0 || b < 0 || c < 0 || a >= numVerts || b >= numVerts || c >= numVerts )
+			{
+				if ( note )
+					NoteUnimplemented( "triangle dropped: index outside vertex range" );
+				return;
+			}
+			// Strips stitch separate runs together with degenerate (zero-area)
+			// triangles. A strip pipeline discards those for free; assembling a
+			// list has to drop them explicitly or they become junk geometry.
+			if ( a == b || b == c || a == c )
+				return;
+			triangle( a, b, c );
+		};
+		switch ( m_primitiveType )
+		{
+		case MATERIAL_TRIANGLE_STRIP:
+			// Every vertex after the first two closes a triangle with its two
+			// predecessors, alternating winding so the facing stays consistent.
+			for ( int i = 0; i + 2 < elementCount; ++i )
+			{
+				if ( i & 1 )
+					emit( element( i + 1 ), element( i ), element( i + 2 ) );
+				else
+					emit( element( i ), element( i + 1 ), element( i + 2 ) );
+			}
+			break;
 
-	if ( interleaved.empty() )
+		case MATERIAL_POLYGON:
+			// A single convex polygon, fanned from its first vertex.
+			for ( int i = 1; i + 1 < elementCount; ++i )
+				emit( element( 0 ), element( i ), element( i + 1 ) );
+			break;
+
+		case MATERIAL_QUADS:
+		case MATERIAL_INSTANCED_QUADS:
+			for ( int i = 0; i + 3 < elementCount; i += 4 )
+			{
+				emit( element( i ), element( i + 1 ), element( i + 2 ) );
+				emit( element( i ), element( i + 2 ), element( i + 3 ) );
+			}
+			break;
+
+		default:
+			for ( int i = 0; i + 2 < elementCount; i += 3 )
+				emit( element( i ), element( i + 1 ), element( i + 2 ) );
+			break;
+		}
+	};
+
+	uint32_t triangles = 0;
+	forEachTriangle( true,
+	    [&]( int, int, int )
+	    {
+		    ++triangles;
+	    } );
+	if ( triangles == 0 )
 	{
 		DropDraw( "draw dropped: no triangles assembled" );
 		return;
@@ -3078,9 +3212,145 @@ void CEmptyMesh::EmitToNativeQueue()
 	// projection only, as the skinned vertex shaders apply cViewProj.
 	if ( g_NumBoneWeights > 0 )
 		CommitViewProj();
-	g_VulkanContext.QueueDynamicTriangles( interleaved.data(),
-	    static_cast<uint32_t>( interleaved.size() / 8 ), lightmapUv.data(),
-	    wantsTangents ? normalTangent.data() : nullptr, vertexAlpha.data() );
+	// The draw is indexed: each mesh vertex it uses is converted once, straight
+	// into the frame's stream, in first-use order, and the triangles index those
+	// records. A per-draw generation stamp marks the vertices already written (and
+	// where), so the bookkeeping never needs clearing; it persists across draws.
+	static std::vector<uint32_t> s_vertexStamp;
+	static std::vector<uint32_t> s_vertexSlot;
+	static uint32_t s_generation = 0;
+	if ( s_vertexStamp.size() < static_cast<size_t>( numVerts ) )
+	{
+		s_vertexStamp.resize( static_cast<size_t>( numVerts ), 0 );
+		s_vertexSlot.resize( static_cast<size_t>( numVerts ) );
+	}
+	auto convertDraw =
+	    [&]( float *vertexOut, uint32_t *indexOut, uint32_t &written, uint32_t &indexCount )
+	{
+		if ( ++s_generation == 0 )
+		{
+			std::fill( s_vertexStamp.begin(), s_vertexStamp.end(), 0u );
+			s_generation = 1;
+		}
+		written = indexCount = 0;
+		auto put = [&]( int v )
+		{
+			if ( s_vertexStamp[static_cast<size_t>( v )] != s_generation )
+			{
+				convertVertex( v, vertexOut + static_cast<size_t>( written ) * kRecordFloats );
+				s_vertexStamp[static_cast<size_t>( v )] = s_generation;
+				s_vertexSlot[static_cast<size_t>( v )] = written++;
+			}
+			indexOut[indexCount++] = s_vertexSlot[static_cast<size_t>( v )];
+		};
+		forEachTriangle( false,
+		    [&]( int a, int b, int c )
+		    {
+			    put( a );
+			    put( b );
+			    put( c );
+		    } );
+	};
+
+	// A repeat of a draw this stream already converted reuses its geometry.
+	const uint32_t maxIndices = triangles * 3;
+	const bool reusable =
+	    !vertices.m_bIsDynamic && !indices.m_bIsDynamic && maxIndices >= kMinReusedIndices;
+	EmitReuseKey key;
+	std::vector<float> inputs;
+	if ( reusable )
+	{
+		if ( s_emitReuseEpoch != g_VulkanContext.StreamEpoch() )
+		{
+			s_emitReuse.clear();
+			s_emitReuseIndex.clear();
+			s_emitReuseEpoch = g_VulkanContext.StreamEpoch();
+		}
+		memset( &key, 0, sizeof( key ) );
+		key.vertexMesh = &vertices;
+		key.vertexRevision = vertices.m_revision;
+		key.indexMesh = &indices;
+		key.indexRevision = indices.m_revision;
+		key.colorMesh = vertexLighting && staticLight ? m_pColorMesh : nullptr;
+		key.colorRevision = key.colorMesh ? m_pColorMesh->m_revision : 0;
+		key.colorOffset = key.colorMesh ? m_colorMeshOffset : 0;
+		key.first = first;
+		key.count = count;
+		key.numVerts = numVerts;
+		key.primitive = m_primitiveType;
+		key.flags =
+		    ( skin ? 1u : 0u ) | ( wantsTangents ? 2u : 0u ) | ( vertexLighting ? 4u : 0u ) |
+		    ( selfIllum ? 8u : 0u ) | ( dynamicLight ? 16u : 0u ) | ( staticLight ? 32u : 0u ) |
+		    ( g_CurrentVertexLit.halfLambert ? 64u : 0u ) | ( g_NumBoneWeights > 0 ? 128u : 0u );
+		key.skinLightCount = skinLightCount;
+		key.lightCount = lightCount;
+		// The constants the conversion reads, beyond the bones.
+		if ( g_NumBoneWeights <= 0 && ( skin || vertexLighting ) )
+			inputs.insert( inputs.end(), ModelMatrix(), ModelMatrix() + 16 );
+		for ( int i = 0; i < skinLightCount; ++i )
+		{
+			const float *light = reinterpret_cast<const float *>( &skinLights[i] );
+			inputs.insert( inputs.end(), light, light + sizeof( skinLights[i] ) / sizeof( float ) );
+		}
+		for ( int i = 0; i < lightCount; ++i )
+		{
+			const float *light = reinterpret_cast<const float *>( &lights[i] );
+			inputs.insert( inputs.end(), light, light + sizeof( lights[i] ) / sizeof( float ) );
+		}
+		if ( vertexLighting && dynamicLight )
+			inputs.insert( inputs.end(), &g_AmbientCube[0][0], &g_AmbientCube[0][0] + 6 * 4 );
+		if ( selfIllum )
+			inputs.insert( inputs.end(), g_psConstants[1], g_psConstants[1] + 3 );
+		const auto candidates = s_emitReuseIndex.equal_range( key.Hash() );
+		for ( auto it = candidates.first; it != candidates.second; ++it )
+		{
+			const EmitReuseEntry &entry = s_emitReuse[it->second];
+			if ( !( entry.key == key ) || entry.inputs.size() != inputs.size() ||
+			     ( !inputs.empty() && memcmp( entry.inputs.data(), inputs.data(),
+			                              inputs.size() * sizeof( float ) ) ) ||
+			     ( entry.maxBone >= 0 && memcmp( entry.bones.data(), g_BoneMatrices,
+			                                 entry.bones.size() * sizeof( float ) ) ) )
+				continue;
+			if ( VerifyEmitReuse() )
+			{
+				// Shadow check: convert anyway, privately, and compare with the
+				// geometry being reused.
+				std::vector<float> vertexCheck(
+				    static_cast<size_t>(
+				        std::min( static_cast<uint32_t>( numVerts ), maxIndices ) ) *
+				    kRecordFloats );
+				std::vector<uint32_t> indexCheck( maxIndices );
+				uint32_t checkVertices = 0, checkIndices = 0;
+				convertDraw( vertexCheck.data(), indexCheck.data(), checkVertices, checkIndices );
+				NoteEmitReuseCheck( g_VulkanContext.StreamRangeEquals( entry.range,
+				    vertexCheck.data(), checkVertices, indexCheck.data(), checkIndices ) );
+			}
+			g_VulkanContext.ReuseDynamicDraw( entry.range );
+			g_VulkanContext.CurrentFrameCost().Add( render_vulkan::kCostEmitReuse, 0 );
+			if ( g_NumBoneWeights > 0 )
+				CommitModelViewProj();
+			return;
+		}
+	}
+
+	uint32_t *indexOut = nullptr;
+	float *const vertexOut = g_VulkanContext.BeginDynamicDraw(
+	    std::min( static_cast<uint32_t>( numVerts ), maxIndices ), maxIndices, &indexOut );
+	uint32_t written = 0, indexCount = 0;
+	convertDraw( vertexOut, indexOut, written, indexCount );
+	g_VulkanContext.EndDynamicDraw( written, indexCount );
+	if ( reusable && written > 0 )
+	{
+		EmitReuseEntry entry;
+		entry.key = key;
+		entry.inputs.swap( inputs );
+		entry.maxBone = maxBone;
+		if ( maxBone >= 0 )
+			entry.bones.assign( &g_BoneMatrices[0][0], &g_BoneMatrices[maxBone][0] + 12 );
+		entry.range = g_VulkanContext.LastDrawRange();
+		s_emitReuseIndex.emplace( key.Hash(), s_emitReuse.size() );
+		s_emitReuse.push_back( std::move( entry ) );
+	}
 	if ( g_NumBoneWeights > 0 )
 		CommitModelViewProj();
 }

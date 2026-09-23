@@ -14,6 +14,7 @@
 
 #include "conformance/render_backend_conformance.h"
 #include "fakes/null_render_backend.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <functional>
@@ -110,5 +111,5 @@ int main()
 
 	std::printf( "render.backend.sensitivity: %d defect(s), %d undetected\n",
 		static_cast<int>( cases.size() ), undetected );
-	return undetected == 0 ? 0 : 1;
+	return testing::ReportConformance( cases.size(), undetected );
 }

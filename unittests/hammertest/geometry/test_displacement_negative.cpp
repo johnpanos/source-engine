@@ -11,6 +11,7 @@
 
 #include "hammer/geometry/displacement.h"
 #include "hammer/formats/keyvalues.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
@@ -20,6 +21,7 @@ using hammer::geometry::ParseDispInfo;
 namespace
 {
 int g_failures = 0;
+int g_checks = 0;
 
 // Returns true iff 'text' (one dispinfo block) PARSES.
 bool Parses( const std::string &text )
@@ -34,6 +36,7 @@ bool Parses( const std::string &text )
 
 void ExpectParses( const std::string &text, const char *label )
 {
+	++g_checks;
 	if ( !Parses( text ) )
 	{
 		std::printf( "FAIL: good block rejected (%s)\n", label );
@@ -43,6 +46,7 @@ void ExpectParses( const std::string &text, const char *label )
 
 void ExpectRejected( const std::string &text, const char *label )
 {
+	++g_checks;
 	if ( Parses( text ) )
 	{
 		std::printf( "FAIL: malformed block accepted (%s)\n", label );
@@ -171,9 +175,9 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "geometry.displacement negative: ORACLE UNSOUND (%d)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "geometry.displacement negative: good block parses; bad power/row-length/"
 	             "row-count/missing-grid all rejected\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

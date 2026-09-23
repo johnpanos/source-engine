@@ -16,6 +16,7 @@
 //=============================================================================//
 
 #include "hammer/app/editor_controller.h"
+#include "testing/conformance_result.h"
 
 #include <cmath>
 #include <cstdio>
@@ -28,9 +29,11 @@ namespace
 {
 
 int g_failures = 0;
+int g_checks = 0;
 
 void Check( bool condition, const char *expression, int line )
 {
+	++g_checks;
 	if ( !condition )
 	{
 		std::printf( "FAIL %s:%d: %s\n", "test_editor_controller_pick.cpp", line, expression );
@@ -301,8 +304,8 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "hammer.app.editor_controller_pick: %d check(s) FAILED\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "hammer.app.editor_controller_pick: all checks passed\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

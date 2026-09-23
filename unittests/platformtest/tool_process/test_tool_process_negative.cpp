@@ -7,6 +7,7 @@
 #include "fake_tool_process.h"
 #include "tool_process_conformance.h"
 #include "tool_process_fixture.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 
@@ -28,12 +29,14 @@ int main()
 	platformtest::CTestCancellation cancellation( true );
 	const platformtest::ToolProcessFixture fixture =
 	    platformtest::MakeToolProcessFixture( &cancellation );
+	int checks = 0;
 	int failures = 0;
 
 	{
 		platformtest::CFakeToolProcessProvider good( fixture );
 		const platformtest::ToolProcessReport report =
 		    platformtest::RunToolProcessConformance( good, fixture );
+		++checks;
 		if ( report.failures != 0 )
 		{
 			std::printf( "FAIL: conforming provider rejected: %s (line %d)\n", report.firstFailure,
@@ -60,6 +63,7 @@ int main()
 		platformtest::CFakeToolProcessProvider broken( fixture, defectCase.defect );
 		const platformtest::ToolProcessReport report =
 		    platformtest::RunToolProcessConformance( broken, fixture );
+		++checks;
 		if ( report.failures == 0 )
 		{
 			std::printf( "FAIL: broken provider '%s' was not caught\n", defectCase.name );
@@ -71,7 +75,6 @@ int main()
 	{
 		std::printf( "ok platform.tool_process.sensitivity: all %zu defects caught\n",
 		    sizeof( cases ) / sizeof( cases[0] ) );
-		return 0;
 	}
-	return 1;
+	return testing::ReportConformance( checks, failures );
 }

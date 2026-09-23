@@ -10,6 +10,7 @@
 //=============================================================================//
 
 #include "hammer/formats/keyvalues.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
@@ -23,10 +24,12 @@ using hammer::formats::WriteKeyValues;
 namespace
 {
 
+int g_checks = 0;
 int g_failures = 0;
 
 void Check( bool condition, const char *expression, int line )
 {
+	++g_checks;
 	if ( !condition )
 	{
 		std::printf( "FAIL %s:%d: %s\n", "test_keyvalues.cpp", line, expression );
@@ -137,8 +140,8 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "hammer.formats keyvalues: %d check(s) FAILED\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "hammer.formats keyvalues: all checks passed\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

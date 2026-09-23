@@ -22,6 +22,7 @@
 #include "jobsystem/parallel_executor.h"
 #include "jobsystem/pooled_executor.h"
 #include "jobsystem/worker_backend.h"
+#include "testing/conformance_result.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -646,5 +647,5 @@ int main()
 	TestDynamicScopeStress();
 	TestBatchGraphCache();
 	std::printf( "%d checks, %d failures\n", g_checks.load(), g_failures.load() );
-	return g_failures.load() == 0 ? 0 : 1;
+	return testing::ReportConformance( g_checks.load(), g_failures.load() );
 }

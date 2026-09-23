@@ -10,6 +10,7 @@
 //=============================================================================//
 
 #include "hammer/formats/fgd.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
@@ -18,10 +19,12 @@ using hammer::formats::ParseFgd;
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 
 void ExpectOk( const char *text, const char *label )
 {
+	++g_checks;
 	if ( !ParseFgd( text ).ok )
 	{
 		std::printf( "FAIL: good FGD rejected (%s)\n", label );
@@ -31,6 +34,7 @@ void ExpectOk( const char *text, const char *label )
 
 void ExpectError( const char *text, const char *label )
 {
+	++g_checks;
 	if ( ParseFgd( text ).ok )
 	{
 		std::printf( "FAIL: malformed FGD accepted (%s)\n", label );
@@ -55,9 +59,9 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.fgd negative: ORACLE UNSOUND (%d)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "formats.fgd negative: good parses; missing-type, unterminated-body, "
 	             "missing-name, and stray-token all reported as errors\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

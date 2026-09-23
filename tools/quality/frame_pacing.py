@@ -34,6 +34,7 @@ CFG_PREFIX = "frame_pacing_scenario"
 # The console parses at most COMMAND_MAX_LENGTH (512) characters of a line and
 # runs the remainder as further, out-of-order commands; each cfg stays below it.
 CFG_LINE_LIMIT = 400
+ENGINE_COMMAND_LIMIT = 512
 # A frame is a hitch when its interval exceeds both a multiple of the window's
 # median and the median plus a floor: the multiple follows the workload's own
 # cadence; the floor keeps sub-millisecond jitter of a fast frame out.
@@ -146,10 +147,14 @@ def percentile(values, fraction):
     return ordered[rank - 1]
 
 
-def summarize(intervals_ms):
-    if not intervals_ms:
+def summarize(frames):
+    """Interval percentiles, plus medians of the presenting thread's CPU time and
+    of the named per-frame costs. CPU time separates a slower frame from a
+    preempted one on a shared host."""
+    if not frames:
         return {"frames": 0}
-    return {
+    intervals_ms = [frame["interval"] / 1000.0 for frame in frames]
+    summary = {
         "frames": len(intervals_ms),
         "mean_ms": round(sum(intervals_ms) / len(intervals_ms), 3),
         "median_ms": round(percentile(intervals_ms, 0.5), 3),
@@ -157,6 +162,18 @@ def summarize(intervals_ms):
         "p99_ms": round(percentile(intervals_ms, 0.99), 3),
         "max_ms": round(max(intervals_ms), 3),
     }
+    if all("cpu" in frame for frame in frames):
+        summary["cpu_median_ms"] = round(percentile([f["cpu"] / 1000.0 for f in frames], 0.5), 3)
+    for kind in ("emit", "record"):
+        summary[kind + "_median_ms"] = round(percentile(
+            [frame.get("cost", {}).get(kind, [0, 0])[1] / 1000.0 for frame in frames], 0.5), 3)
+    summary["vertex_mb_median"] = round(percentile([f["vertex_bytes"] / 1e6 for f in frames], 0.5), 3)
+    # Blocking one-off work inside the measured frames (each is a stall a
+    # slower driver or device magnifies): totals, not medians.
+    for kind in ("pipeline_create", "single_submit", "device_wait_idle", "texture_create"):
+        values = [frame.get("cost", {}).get(kind, [0, 0]) for frame in frames]
+        summary[kind] = {"count": sum(v[0] for v in values), "ms": round(sum(v[1] for v in values) / 1000.0, 3)}
+    return summary
 
 
 def frame_costs(frame):
@@ -183,9 +200,8 @@ def analyze(frames, passes, hitch_ratio=DEFAULT_HITCH_RATIO, hitch_floor_ms=DEFA
             failures.append("pass %d marks missing from the frame stream" % index)
             continue
         window = frames[begin + 1:end + 1]
-        intervals = [frame["interval"] / 1000.0 for frame in window]
-        stats = summarize(intervals)
-        if not intervals:
+        stats = summarize(window)
+        if not window:
             failures.append("pass %d measured no frames" % index)
             report["passes"].append({"pass": index, "summary": stats})
             continue
@@ -196,8 +212,7 @@ def analyze(frames, passes, hitch_ratio=DEFAULT_HITCH_RATIO, hitch_floor_ms=DEFA
                 if not mark.startswith("pass_"):
                     phase = mark
             interval = frame["interval"] / 1000.0
-            bucket = phases.setdefault(phase, [])
-            bucket.append(interval)
+            phases.setdefault(phase, []).append(frame)
             for kind, value in frame.get("cost", {}).items():
                 total = report["cost_totals"].setdefault(kind, {"count": 0, "ms": 0.0, "frames": 0})
                 total["count"] += value[0]
@@ -222,9 +237,9 @@ def analyze(frames, passes, hitch_ratio=DEFAULT_HITCH_RATIO, hitch_floor_ms=DEFA
             "pass": index, "summary": stats, "hitch_threshold_ms": round(threshold, 3),
             "hitch_count": len(hitches),
             "hitch_excess_ms": round(sum(h["interval_ms"] - stats["median_ms"] for h in hitches), 3),
-            "phases": {name: {**summarize(values),
+            "phases": {name: {**summarize(members),
                               "hitches": sum(1 for h in hitches if h["phase"] == name)}
-                       for name, values in phases.items()},
+                       for name, members in phases.items()},
             "hitches": hitches,
         })
     for total in report["cost_totals"].values():
@@ -268,12 +283,15 @@ def print_report(report):
         if not summary.get("frames"):
             print("  pass %d: no frames" % entry["pass"])
             continue
-        print("  pass %d: %d frames, median %.2f ms, p99 %.2f ms, max %.2f ms, %d hitches (> %.2f ms, %.1f ms excess)"
-              % (entry["pass"], summary["frames"], summary["median_ms"], summary["p99_ms"], summary["max_ms"],
-                 entry["hitch_count"], entry["hitch_threshold_ms"], entry["hitch_excess_ms"]))
+        print("  pass %d: %d frames, median %.2f ms (cpu %s), p99 %.2f ms, max %.2f ms, %d hitches (> %.2f ms, %.1f ms excess)"
+              % (entry["pass"], summary["frames"], summary["median_ms"], summary.get("cpu_median_ms", "-"),
+                 summary["p99_ms"], summary["max_ms"], entry["hitch_count"], entry["hitch_threshold_ms"],
+                 entry["hitch_excess_ms"]))
         for name, phase in entry["phases"].items():
-            print("    %-16s %5d frames  median %6.2f  p99 %6.2f  max %6.2f  hitches %d"
-                  % (name, phase["frames"], phase["median_ms"], phase["p99_ms"], phase["max_ms"], phase["hitches"]))
+            print("    %-14s %4d frames  median %6.2f  cpu %6s  emit %6.2f  p99 %6.2f  max %6.2f  %5.1f MB  hitches %d"
+                  % (name, phase["frames"], phase["median_ms"], phase.get("cpu_median_ms", "-"),
+                     phase["emit_median_ms"], phase["p99_ms"], phase["max_ms"], phase["vertex_mb_median"],
+                     phase["hitches"]))
         for hitch in sorted(entry["hitches"], key=lambda h: -h["interval_ms"])[:8]:
             costs = ", ".join("%s %dx %.1fms" % (kind, cost["count"], cost["ms"])
                               for kind, cost in sorted(hitch["costs"].items(), key=lambda item: -item[1]["ms"])
@@ -284,10 +302,138 @@ def print_report(report):
                      costs or "no named backend cost"))
 
 
+def run_once(args, scenario, passes, build, output):
+    """One launch of the product on `build`; returns its evidence."""
+    output = output.resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    if (output / "evidence.json").exists():
+        raise ScenarioError("evidence already exists in %s; use a new output directory" % output)
+    evidence = {"schema": EVIDENCE_SCHEMA, "status": "fail",
+                "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "source": conformance.source_identity(conformance.repo_root()),
+                "runtime": str(args.runtime.resolve()), "build": str(build.resolve()),
+                "scenario": {"path": str(args.scenario.resolve()), "id": scenario["id"],
+                             "sha256": portal_boot.sha256(args.scenario), "passes": passes}}
+    failures = []
+    try:
+        stage = output / "runtime"
+        evidence["staging"] = portal_boot.stage_runtime(args.runtime, stage)
+        evidence["build_overrides"] = portal_boot.install_build(build, stage)
+        (stage / "portal/cfg").mkdir(parents=True, exist_ok=True)
+        cfgs = scenario_cfgs(scenario_commands(scenario, passes))
+        for name, text in cfgs.items():
+            (stage / "portal/cfg" / name).write_text(text)
+        stats_path = output / "frame-stats.jsonl"
+        # The backend's pipeline store (vulkan_pipelines.keys/.cache). By default
+        # it is the private staged mod directory, so every run starts without one
+        # (a first run); --pipeline-store shares one between runs (a later run).
+        store = (args.pipeline_store.resolve() if args.pipeline_store else stage / "portal")
+        store.mkdir(parents=True, exist_ok=True)
+        keys = store / "vulkan_pipelines.keys"
+        evidence["pipeline_store"] = {
+            "directory": str(store), "shared": bool(args.pipeline_store),
+            "keys_at_start": max(0, len(keys.read_text().splitlines()) - 1) if keys.is_file() else 0}
+        command = [str(stage / "hl2_launcher"), "-game", "portal", "-renderer", args.renderer,
+                   "-windowed", "-w", str(args.width), "-h", str(args.height), "-multirun",
+                   "-novid", "-insecure", "-console", "-condebug", "-dev", "-physics", args.physics,
+                   "-vkframestats", str(stats_path)] + (
+                   ["-vkpipelinecache", str(store)] if args.pipeline_store else []) + args.extra_arg + [
+                   "+sv_cheats", "1", "+mat_queue_mode", "0", "+fps_max", str(args.fps_max),
+                   "+host_framerate", str(scenario["host_framerate"]),
+                   "+volume", "0", "+map", scenario["map"],
+                   "+wait", "120", "+exec", next(iter(cfgs))]
+        # The engine refuses a command line over 512 characters outright.
+        if len(" ".join(command)) >= ENGINE_COMMAND_LIMIT:
+            raise ScenarioError("engine command line is %d characters (limit %d): use a shorter --out"
+                                % (len(" ".join(command)), ENGINE_COMMAND_LIMIT))
+        environment = dict(portal_boot.os.environ)
+        environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
+        environment["SteamAppId"] = environment["SteamGameId"] = "400"
+        if args.cold_shader_cache:
+            # The driver's own on-disk shader cache hides pipeline compilation
+            # on a developer machine; a first run (and a mobile driver without
+            # it) pays the full compile when a pipeline is first needed.
+            environment["MESA_SHADER_CACHE_DISABLE"] = "true"
+            environment["__GL_SHADER_DISK_CACHE"] = "0"
+        evidence["cold_shader_cache"] = args.cold_shader_cache
+        if not args.windowed:
+            # Real GPU rendering through VK_EXT_headless_surface: no window on
+            # anyone's desktop and no compositor pacing in the measurement.
+            environment["SDL_VIDEODRIVER"] = environment["SDL_VIDEO_DRIVER"] = "offscreen"
+            for variable in ("WAYLAND_DISPLAY", "DISPLAY"):
+                environment.pop(variable, None)
+        evidence["command"] = command
+        evidence["host_load_before"] = list(portal_boot.os.getloadavg())
+        code, timed_out, _, seconds = portal_boot.run_product(
+            command, stage, environment, args.timeout, output / "stdout.log")
+        evidence["host_load_after"] = list(portal_boot.os.getloadavg())
+        evidence.update(returncode=code, timed_out=timed_out, elapsed_seconds=round(seconds, 1))
+        if timed_out:
+            failures.append("product timed out after %.0f s" % args.timeout)
+        elif code != 0:
+            failures.append("product exited with %d" % code)
+        log = (output / "stdout.log").read_text(errors="replace") if (output / "stdout.log").is_file() else ""
+        prewarm = re.search(r"prewarmed (\d+) pipelines in ([0-9.]+) ms", log)
+        evidence["pipeline_store"]["prewarmed"] = int(prewarm.group(1)) if prewarm else 0
+        evidence["pipeline_store"]["prewarm_ms"] = float(prewarm.group(2)) if prewarm else 0.0
+        if not stats_path.is_file():
+            failures.append("no frame stats were written (is the renderer native-vulkan?)")
+        else:
+            header, frames, truncated = read_stats(stats_path)
+            evidence["device"] = header
+            evidence["frames_recorded"] = len(frames)
+            evidence["truncated_lines"] = truncated
+            report, analysis_failures = analyze(frames, passes, args.hitch_ratio, args.hitch_floor_ms)
+            failures.extend(analysis_failures)
+            evidence["analysis"] = report
+            budgets = scenario.get("budgets", {})
+            evidence["budgets"] = budgets
+            evidence["budget_failures"] = check_budgets(report, budgets)
+    except (OSError, ValueError) as error:
+        failures.append(str(error))
+    evidence["failures"] = failures
+    # A run that could not measure is a failure; a run over budget is a
+    # measured result with a verdict, reported separately.
+    if failures:
+        evidence["status"] = "fail"
+    else:
+        evidence["status"] = "over-budget" if evidence.get("budget_failures") else "pass"
+    (output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
+    return evidence
+
+
+AB_KEYS = ("median_ms", "cpu_median_ms", "emit_median_ms", "p99_ms", "max_ms")
+
+
+def ab_summary(runs):
+    """Median over rounds of each build's warm-pass metrics, and B relative to A.
+
+    Rounds alternate A and B, so load from other processes on a shared host
+    lands on both builds instead of biasing whichever ran during it.
+    """
+    result = {}
+    for label in ("a", "b"):
+        warm = [run["analysis"]["passes"][-1] for run in runs[label]
+                if run.get("status") != "fail" and run.get("analysis", {}).get("passes")]
+        row = {"rounds": len(warm)}
+        for key in AB_KEYS:
+            values = [entry["summary"][key] for entry in warm if key in entry["summary"]]
+            if values:
+                row[key] = round(percentile(values, 0.5), 3)
+        row["hitches"] = [entry["hitch_count"] for entry in warm]
+        result[label] = row
+    result["b_over_a"] = {key: round(result["b"][key] / result["a"][key], 3)
+                          for key in AB_KEYS if result["a"].get(key) and key in result["b"]}
+    return result
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--runtime", type=Path, required=True, help="installed Portal runtime")
     parser.add_argument("--build", type=Path, required=True, help="Waf output tree to overlay")
+    parser.add_argument("--ab-build", type=Path,
+                        help="second build tree (B) to compare with --build (A) in alternating rounds")
+    parser.add_argument("--rounds", type=int, default=3, help="A/B rounds (each runs A then B)")
     parser.add_argument("--scenario", type=Path,
                         default=Path(conformance.repo_root()) / "quality/workloads/portal-frame-pacing-v1.json")
     parser.add_argument("--out", type=Path, required=True)
@@ -302,93 +448,71 @@ def main(argv=None):
     parser.add_argument("--timeout", type=float, default=240)
     parser.add_argument("--windowed", action="store_true",
                         help="use the ambient display instead of the SDL offscreen driver")
+    parser.add_argument("--cold-shader-cache", action="store_true",
+                        help="disable the driver's on-disk shader cache (Mesa, NVIDIA), so pipeline "
+                             "creation costs what it costs on a first run")
+    parser.add_argument("--pipeline-store", type=Path,
+                        help="pipeline store directory shared between runs (default: a fresh one per run)")
     parser.add_argument("--hitch-ratio", type=float, default=DEFAULT_HITCH_RATIO)
     parser.add_argument("--hitch-floor-ms", type=float, default=DEFAULT_HITCH_FLOOR_MS)
     parser.add_argument("--baseline", type=Path, help="earlier evidence.json to compare against")
     parser.add_argument("--extra-arg", action="append", default=[],
                         help="extra engine command-line argument (repeatable), e.g. an A/B switch")
     args = parser.parse_args(argv)
-
-    output = args.out.resolve()
-    output.mkdir(parents=True, exist_ok=True)
-    if (output / "evidence.json").exists():
-        parser.error("evidence already exists; use a new output directory")
-    evidence = {"schema": EVIDENCE_SCHEMA, "status": "fail",
-                "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "source": conformance.source_identity(conformance.repo_root()),
-                "runtime": str(args.runtime.resolve()), "build": str(args.build.resolve())}
-    failures = []
+    if not 1 <= args.rounds <= 20:
+        parser.error("rounds must be in [1, 20]")
     try:
         scenario = load_scenario(args.scenario)
-        passes = args.passes or scenario.get("passes", 1)
-        evidence["scenario"] = {"path": str(args.scenario.resolve()), "id": scenario["id"],
-                                "sha256": portal_boot.sha256(args.scenario), "passes": passes}
-        stage = output / "runtime"
-        evidence["staging"] = portal_boot.stage_runtime(args.runtime, stage)
-        evidence["build_overrides"] = portal_boot.install_build(args.build, stage)
-        (stage / "portal/cfg").mkdir(parents=True, exist_ok=True)
-        cfgs = scenario_cfgs(scenario_commands(scenario, passes))
-        for name, text in cfgs.items():
-            (stage / "portal/cfg" / name).write_text(text)
-        stats_path = output / "frame-stats.jsonl"
-        command = [str(stage / "hl2_launcher"), "-game", "portal", "-renderer", args.renderer,
-                   "-windowed", "-w", str(args.width), "-h", str(args.height), "-multirun",
-                   "-novid", "-insecure", "-console", "-condebug", "-dev", "-physics", args.physics,
-                   "-vkframestats", str(stats_path)] + args.extra_arg + [
-                   "+sv_cheats", "1", "+mat_queue_mode", "0", "+fps_max", str(args.fps_max),
-                   "+host_framerate", str(scenario["host_framerate"]),
-                   "+volume", "0", "+map", scenario["map"],
-                   "+wait", "120", "+exec", next(iter(cfgs))]
-        environment = dict(portal_boot.os.environ)
-        environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
-        environment["SteamAppId"] = environment["SteamGameId"] = "400"
-        if not args.windowed:
-            # Real GPU rendering through VK_EXT_headless_surface: no window on
-            # anyone's desktop and no compositor pacing in the measurement.
-            environment["SDL_VIDEODRIVER"] = environment["SDL_VIDEO_DRIVER"] = "offscreen"
-            for variable in ("WAYLAND_DISPLAY", "DISPLAY"):
-                environment.pop(variable, None)
-        evidence["command"] = command
-        code, timed_out, _, seconds = portal_boot.run_product(
-            command, stage, environment, args.timeout, output / "stdout.log")
-        evidence.update(returncode=code, timed_out=timed_out, elapsed_seconds=round(seconds, 1))
-        if timed_out:
-            failures.append("product timed out after %.0f s" % args.timeout)
-        elif code != 0:
-            failures.append("product exited with %d" % code)
-        if not stats_path.is_file():
-            failures.append("no frame stats were written (is the renderer native-vulkan?)")
-        else:
-            header, frames, truncated = read_stats(stats_path)
-            evidence["device"] = header
-            evidence["frames_recorded"] = len(frames)
-            evidence["truncated_lines"] = truncated
-            report, analysis_failures = analyze(frames, passes, args.hitch_ratio, args.hitch_floor_ms)
-            failures.extend(analysis_failures)
-            evidence["analysis"] = report
-            budgets = scenario.get("budgets", {})
-            evidence["budgets"] = budgets
-            evidence["budget_failures"] = check_budgets(report, budgets)
-            if args.baseline:
-                evidence["baseline"] = {"path": str(args.baseline.resolve()),
-                                        "passes": compare(report, json.loads(args.baseline.read_text()))}
     except (OSError, ValueError) as error:
-        failures.append(str(error))
-    evidence["failures"] = failures
-    # A run that could not measure is a failure; a run over budget is a
-    # measured result with a verdict, reported separately.
-    if failures:
-        evidence["status"] = "fail"
-    else:
-        evidence["status"] = "over-budget" if evidence.get("budget_failures") else "pass"
-    (output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
+        parser.error(str(error))
+    passes = args.passes or scenario.get("passes", 1)
+    output = args.out.resolve()
+
+    if args.ab_build:
+        runs = {"a": [], "b": []}
+        for index in range(1, args.rounds + 1):
+            for label, build in (("a", args.build), ("b", args.ab_build)):
+                evidence = run_once(args, scenario, passes, build, output / ("%s-%d" % (label, index)))
+                runs[label].append(evidence)
+                warm = evidence.get("analysis", {}).get("passes", [{}])[-1].get("summary", {})
+                print("round %d %s: %s, warm median %s ms, cpu %s ms, emit %s ms, p99 %s ms, load %.1f"
+                      % (index, label.upper(), evidence["status"], warm.get("median_ms"),
+                         warm.get("cpu_median_ms"), warm.get("emit_median_ms"), warm.get("p99_ms"),
+                         evidence.get("host_load_after", [0])[0]))
+        summary = {"schema": EVIDENCE_SCHEMA + "+ab", "a": str(args.build.resolve()),
+                   "b": str(args.ab_build.resolve()), "rounds": args.rounds,
+                   "failures": [failure for label in runs for run in runs[label] for failure in run["failures"]],
+                   "summary": ab_summary(runs)}
+        (output / "ab.json").write_text(json.dumps(summary, indent=2) + "\n")
+        for label in ("a", "b"):
+            print("%s: %s" % (label.upper(), json.dumps(summary["summary"][label])))
+        print("B/A: %s" % json.dumps(summary["summary"]["b_over_a"]))
+        for failure in summary["failures"]:
+            print("  " + failure)
+        return 1 if summary["failures"] else 0
+
+    evidence = run_once(args, scenario, passes, args.build, output)
+    if args.baseline and "analysis" in evidence:
+        evidence["baseline"] = {"path": str(args.baseline.resolve()),
+                                "passes": compare(evidence["analysis"], json.loads(args.baseline.read_text()))}
+        (output / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
     print("Frame pacing: %s (%s)" % (evidence["status"], output / "evidence.json"))
+    store = evidence.get("pipeline_store", {})
+    print("  pipeline store: %d keys at start, %d prewarmed in %.1f ms (%s)"
+          % (store.get("keys_at_start", 0), store.get("prewarmed", 0), store.get("prewarm_ms", 0.0),
+             "shared" if store.get("shared") else "fresh"))
+    for entry in evidence.get("analysis", {}).get("passes", []):
+        summary = entry.get("summary", {})
+        if summary.get("frames"):
+            print("  pass %d blocking work: %s" % (entry["pass"], ", ".join(
+                "%s %dx %.1f ms" % (kind, summary[kind]["count"], summary[kind]["ms"])
+                for kind in ("pipeline_create", "single_submit", "device_wait_idle", "texture_create"))))
     if "analysis" in evidence:
         print_report(evidence["analysis"])
     for row in evidence.get("baseline", {}).get("passes", []):
         print("  vs baseline pass %d: %s" % (row["pass"], ", ".join(
             "%s %s -> %s" % (key, value[0], value[1]) for key, value in row.items() if key != "pass")))
-    for failure in failures + evidence.get("budget_failures", []):
+    for failure in evidence["failures"] + evidence.get("budget_failures", []):
         print("  " + failure)
     return 0 if evidence["status"] == "pass" else 1
 

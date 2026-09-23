@@ -18,6 +18,7 @@
 #include "fake_dynamic_library.h"
 
 #include "platform/contracts/dynamic_library.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <cstring>
@@ -256,6 +257,7 @@ struct Case
 int main()
 {
 	const platformtest::DynLibFixture fx = MakeFixture();
+	int checks = 0;
 	int failures = 0;
 
 	// 1) The conforming test backend must PASS the shared predicate. If it does
@@ -263,6 +265,7 @@ int main()
 	{
 		platformtest::CFakeDynamicLibraryLoader good( MakeConformingDefs(), /*noLoad=*/false );
 		platformtest::ConformanceReport r = platformtest::RunDynamicLibraryConformance( good, fx );
+		++checks;
 		if ( r.failures != 0 )
 		{
 			std::printf( "FAIL: conforming test backend rejected by suite "
@@ -273,6 +276,7 @@ int main()
 	}
 	{
 		CBrokenLoader control( Defect::kNone );
+		++checks;
 		failures += platformtest::ReportConformance( "sensitivity[defects disabled]",
 		    platformtest::RunDynamicLibraryConformance( control, fx ) );
 	}
@@ -294,6 +298,7 @@ int main()
 	{
 		CBrokenLoader bad( c.defect );
 		platformtest::ConformanceReport r = platformtest::RunDynamicLibraryConformance( bad, fx );
+		++checks;
 		if ( r.failures == 0 )
 		{
 			std::printf( "FAIL: broken provider '%s' was NOT caught by the suite "
@@ -305,6 +310,7 @@ int main()
 	{
 		CBrokenLoader first( Defect::kNone );
 		CBrokenLoader second( Defect::kNone );
+		++checks;
 		failures += platformtest::ReportConformance( "sensitivity[isolation defects disabled]",
 		    platformtest::RunDynamicLibraryIsolationConformance( first, second, fx ) );
 	}
@@ -313,6 +319,7 @@ int main()
 		CBrokenLoader second( Defect::kNone );
 		const auto report =
 		    platformtest::RunDynamicLibraryIsolationConformance( first, second, fx );
+		++checks;
 		if ( report.failures == 0 )
 		{
 			std::printf( "FAIL: foreign-unload-releases-owned was not caught\n" );
@@ -325,7 +332,6 @@ int main()
 		std::printf( "ok test_dynamic_library_negative: suite accepts conforming "
 		             "and rejects all %zu broken providers\n",
 		    1 + sizeof( cases ) / sizeof( cases[0] ) );
-		return 0;
 	}
-	return 1;
+	return testing::ReportConformance( checks, failures );
 }

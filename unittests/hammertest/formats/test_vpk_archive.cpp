@@ -11,6 +11,7 @@
 #include "formats/fake_byte_store.h"
 
 #include "hammer/formats/vpk_archive.h"
+#include "testing/conformance_result.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -18,11 +19,13 @@
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 }
 #define CHECK( cond, msg )                                                                         \
 	do                                                                                             \
 	{                                                                                              \
+		++g_checks;                                                                                \
 		if ( !( cond ) )                                                                           \
 		{                                                                                          \
 			std::printf( "FAIL: %s\n", ( msg ) );                                                  \
@@ -36,6 +39,7 @@ using hammer::formats::VpkArchive;
 static void ExpectContent(
     const VpkArchive &vpk, const std::string &path, const std::string &expected )
 {
+	++g_checks;
 	std::string out;
 	if ( !vpk.ReadAsset( path, out ) )
 	{
@@ -134,8 +138,8 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.vpk_archive: %d FAILURE(S)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "formats.vpk_archive: all cases passed\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

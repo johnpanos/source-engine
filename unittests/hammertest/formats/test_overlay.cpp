@@ -10,6 +10,7 @@
 
 #include "hammer/formats/keyvalues.h"
 #include "hammer/formats/overlay.h"
+#include "testing/conformance_result.h"
 
 #include <array>
 #include <cmath>
@@ -23,10 +24,12 @@ using hammer::geometry::Vec3d;
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 
 void Check( bool ok, const char *label )
 {
+	++g_checks;
 	if ( !ok )
 	{
 		std::printf( "FAIL: %s\n", label );
@@ -95,9 +98,9 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.overlay: %d FAILURE(S)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "formats.overlay: material/sides/basis parse and WorldCorners project the quad "
 	             "correctly; non-overlay entities ignored\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

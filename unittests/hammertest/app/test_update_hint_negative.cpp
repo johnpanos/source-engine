@@ -14,6 +14,7 @@
 //=============================================================================//
 
 #include "hammer/app/update_hint.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <vector>
@@ -88,12 +89,15 @@ int main()
 	const bool realConforms = ConformsBoundedNotifyCodes( real );
 	const bool brokenConforms = ConformsBoundedNotifyCodes( broken );
 
+	int checks = 0;
 	int failures = 0;
+	++checks;
 	if ( !realConforms )
 	{
 		std::printf( "FAIL: real UpdateHint did not enforce the notify-code capacity\n" );
 		++failures;
 	}
+	++checks;
 	if ( brokenConforms )
 	{
 		std::printf( "FAIL: oracle did not catch the unbounded provider\n" );
@@ -103,9 +107,9 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "app.update_hint negative: ORACLE UNSOUND (%d)\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf( "app.update_hint negative: oracle catches unbounded notify codes "
 				 "(real enforces cap, broken caught)\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }

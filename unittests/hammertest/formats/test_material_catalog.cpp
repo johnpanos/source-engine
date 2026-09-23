@@ -13,6 +13,7 @@
 #include "formats/fake_vtf.h"
 
 #include "hammer/formats/material_catalog.h"
+#include "testing/conformance_result.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -20,11 +21,13 @@
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 }
 #define CHECK( cond, msg )                                                                         \
 	do                                                                                             \
 	{                                                                                              \
+		++g_checks;                                                                                \
 		if ( !( cond ) )                                                                           \
 		{                                                                                          \
 			std::printf( "FAIL: %s\n", ( msg ) );                                                  \
@@ -107,8 +110,8 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.material_catalog: %d FAILURE(S)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "formats.material_catalog: all cases passed\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

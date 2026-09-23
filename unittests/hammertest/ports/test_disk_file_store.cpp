@@ -12,6 +12,7 @@
 
 #include "app/fake_file_store.h"
 #include "hammer/adapters/platform/disk_file_store.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -22,6 +23,7 @@ int main()
 {
 	namespace fs = std::filesystem;
 
+	int checks = 0;
 	int failures = 0;
 
 	// Real provider over a unique temp directory.
@@ -37,12 +39,14 @@ int main()
 
 	{
 		hammer::adapters::platform::DiskFileStore disk;
+		++checks;
 		failures += hammertest::RunFileStoreContract( disk, ( dir / "d_" ).string(), "disk" );
 	}
 
 	// In-memory fake, same contract.
 	{
 		hammertest::InMemoryFileStore mem;
+		++checks;
 		failures += hammertest::RunFileStoreContract( mem, "mem/", "memory" );
 	}
 
@@ -52,8 +56,8 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "ports.file_store: %d FAILURE(S)\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf( "ports.file_store: DiskFileStore and InMemoryFileStore both conform\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }

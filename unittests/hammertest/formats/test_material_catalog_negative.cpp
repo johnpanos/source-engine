@@ -10,17 +10,20 @@
 #include "formats/fake_asset_source.h"
 
 #include "hammer/formats/material_catalog.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 }
 #define CHECK( cond, msg )                                                                         \
 	do                                                                                             \
 	{                                                                                              \
+		++g_checks;                                                                                \
 		if ( !( cond ) )                                                                           \
 		{                                                                                          \
 			std::printf( "FAIL: %s\n", ( msg ) );                                                  \
@@ -71,8 +74,8 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.material_catalog.sensitivity: %d FAILURE(S)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "formats.material_catalog.sensitivity: all malformed inputs handled cleanly\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

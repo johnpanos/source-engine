@@ -15,6 +15,7 @@
 #include "fake_clock.h"
 
 #include "platform/contracts/clock.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 
@@ -105,6 +106,7 @@ bool Caught( platform::IMonotonicClock &clock )
 
 int main()
 {
+	int checks = 0;
 	int failures = 0;
 
 	// 1) The conforming virtual-time backend must PASS.
@@ -112,6 +114,7 @@ int main()
 		platformtest::CFakeMonotonicClock good;
 		platformtest::ClockReport r =
 			platformtest::RunMonotonicClockConformance( good, 8 );
+		++checks;
 		if ( r.failures != 0 )
 		{
 			std::printf( "FAIL: conforming clock rejected by suite (%d/%d); "
@@ -132,6 +135,7 @@ int main()
 	};
 	for ( const Case &c : cases )
 	{
+		++checks;
 		if ( !Caught( *c.clock ) )
 		{
 			std::printf( "FAIL: broken clock '%s' was NOT caught by the suite\n",
@@ -143,8 +147,8 @@ int main()
 	if ( failures == 0 )
 	{
 		std::printf( "ok test_clock_negative: suite accepts conforming and rejects "
-			"all %zu broken clocks\n", sizeof( cases ) / sizeof( cases[0] ) );
-		return 0;
+		             "all %zu broken clocks\n",
+		    sizeof( cases ) / sizeof( cases[0] ) );
 	}
-	return 1;
+	return testing::ReportConformance( checks, failures );
 }

@@ -891,11 +891,8 @@ namespace
 {
 // IVP ends a sweep clipEpsilon from the surface, measured along the hit
 // normal (DIST_EPSILON for traces, the collision tolerance for collide
-// sweeps). A ray cast is exact; a shape cast stops within Box3D's linear
-// slop. Measure the actual separation at the reported pose and move the
-// fraction so the separation is clipEpsilon.
-float ClipToEpsilon( const b3HullData *pHull, const b3Vec3 *pLocalPoints, int pointCount, const b3Vec3 &localDelta,
-	const b3CastOutput &output, float clipEpsilon )
+// sweeps). A ray cast is exact: back it off along the normal.
+float ClipRayToEpsilon( const b3Vec3 &localDelta, const b3CastOutput &output, float clipEpsilon )
 {
 	float length = b3Length( localDelta );
 	if ( length <= 0.0f )
@@ -903,27 +900,111 @@ float ClipToEpsilon( const b3HullData *pHull, const b3Vec3 *pLocalPoints, int po
 	float cosine = fabsf( b3Dot( localDelta, output.normal ) ) / length;
 	if ( cosine < 1e-3f )
 		return output.fraction;
+	float fraction = output.fraction - clipEpsilon / ( cosine * length );
+	return fraction < 0.0f ? 0.0f : fraction;
+}
 
-	float separation = 0.0f;
-	if ( pointCount > 1 )
+// True when the point set penetrates the hull. As IVP, a trace starts solid
+// only inside a surface: b3OverlapHull also counts anything within Box3D's
+// overlap slop (about 0.02 inch here), less than DIST_EPSILON, so a prop
+// settling against a mover would leave all of the mover's traces solid.
+// GJK reports a few millionths of an inch, not zero, for some overlaps.
+const float kPenetrationDistance = 1e-4f;
+
+bool PointsPenetrateHull( const b3HullData *pHull, const b3ShapeProxy &proxy )
+{
+	b3DistanceInput input;
+	memset( &input, 0, sizeof( input ) );
+	input.proxyA.points = b3GetHullPoints( pHull );
+	input.proxyA.count = pHull->vertexCount;
+	input.proxyB = proxy;
+	input.transform = b3Transform_identity;
+	input.useRadii = false;
+	b3SimplexCache cache;
+	memset( &cache, 0, sizeof( cache ) );
+	return b3ShapeDistance( &input, &cache, NULL, 0 ).distance <= kPenetrationDistance;
+}
+
+// Sweeps a point set (not overlapping the hull) until it is clipEpsilon from
+// the hull, following IVP's CTraceSolver::SweepSingleConvex. Box3D's own
+// shape cast is not used: it reports any start within its linear slop
+// (about a quarter inch here) as an initial overlap, a hit at fraction 0 with
+// no normal, even when moving away. Traces leave movers DIST_EPSILON from
+// surfaces, so every following trace from there would be blocked.
+bool SweepPointsToSeparation( const b3HullData *pHull, const b3Vec3 *pLocalPoints, int pointCount,
+    const b3Vec3 &localDelta, float clipEpsilon, float maxFraction, float *pFraction,
+    b3Vec3 *pNormal )
+{
+	const float kTolerance = 0.25f * clipEpsilon;
+	const int kMaxIterations = 32;
+	b3Vec3 moved[B3_MAX_SHAPE_CAST_POINTS];
+	b3DistanceInput input;
+	memset( &input, 0, sizeof( input ) );
+	input.proxyA.points = b3GetHullPoints( pHull );
+	input.proxyA.count = pHull->vertexCount;
+	input.proxyB.points = moved;
+	input.transform = b3Transform_identity;
+	input.useRadii = false;
+	b3SimplexCache cache;
+
+	// The volume a translated convex point set sweeps is the hull of its
+	// start and end points. When that stays apart from the hull, the sweep
+	// hits only if it ends within clipEpsilon while still closing on the
+	// surface; one that merely grazes past (or runs along a surface it starts
+	// against) misses. Closing is measured over the whole sweep.
+	if ( 2 * pointCount <= B3_MAX_SHAPE_CAST_POINTS )
 	{
-		b3Vec3 moved[B3_MAX_SHAPE_CAST_POINTS];
 		for ( int i = 0; i < pointCount; i++ )
-			moved[i] = b3MulAdd( pLocalPoints[i], output.fraction, localDelta );
-		b3DistanceInput input;
-		memset( &input, 0, sizeof( input ) );
-		input.proxyA.points = b3GetHullPoints( pHull );
-		input.proxyA.count = pHull->vertexCount;
-		input.proxyB.points = moved;
-		input.proxyB.count = pointCount;
-		input.transform = b3Transform_identity;
-		input.useRadii = false;
-		b3SimplexCache cache;
+		{
+			moved[i] = pLocalPoints[i];
+			moved[pointCount + i] = b3Add( pLocalPoints[i], localDelta );
+		}
+		input.proxyB.count = 2 * pointCount;
 		memset( &cache, 0, sizeof( cache ) );
-		separation = b3ShapeDistance( &input, &cache, NULL, 0 ).distance;
+		b3DistanceOutput swept = b3ShapeDistance( &input, &cache, NULL, 0 );
+		if ( swept.distance >= clipEpsilon )
+			return false;
+		if ( swept.distance > kPenetrationDistance )
+		{
+			float closing = -b3Dot( localDelta, swept.normal );
+			if ( !( closing > 0.1f * clipEpsilon ||
+			         ( closing > 1e-4f && swept.distance < 0.9f * clipEpsilon ) ) )
+				return false;
+			float fraction = 1.0f - ( clipEpsilon - swept.distance ) / closing;
+			*pFraction = fraction > 0.0f ? fraction : 0.0f;
+			*pNormal = swept.normal;
+			return *pFraction < maxFraction;
+		}
 	}
-	float fraction = output.fraction + ( separation - clipEpsilon ) / ( cosine * length );
-	return fraction < 0.0f ? 0.0f : ( fraction > 1.0f ? 1.0f : fraction );
+
+	// The sweep reaches the hull: advance conservatively on the exact
+	// distance until it is clipEpsilon.
+	input.proxyB.count = pointCount;
+	memset( &cache, 0, sizeof( cache ) );
+	float alpha = 0.0f;
+	for ( int iteration = 0; iteration < kMaxIterations; iteration++ )
+	{
+		for ( int i = 0; i < pointCount; i++ )
+			moved[i] = b3MulAdd( pLocalPoints[i], alpha, localDelta );
+		b3DistanceOutput output = b3ShapeDistance( &input, &cache, NULL, 0 );
+		// The normal points from the hull toward the swept points.
+		float closing = -b3Dot( localDelta, output.normal ) * ( 1.0f - alpha );
+		if ( output.distance < clipEpsilon + kTolerance &&
+		     ( iteration > 0 || output.distance <= clipEpsilon ) )
+		{
+			if ( closing <= 0.0f )
+				return false; // touching, but moving away or along it
+			*pFraction = alpha;
+			*pNormal = output.normal;
+			return true;
+		}
+		if ( closing <= 0.0f )
+			return false;
+		alpha += ( output.distance - clipEpsilon ) / closing * ( 1.0f - alpha );
+		if ( alpha >= maxFraction )
+			return false;
+	}
+	return false;
 }
 }
 
@@ -946,16 +1027,11 @@ void SweepPointsAgainstCollide( const Vector *pWorldPoints, int pointCount, cons
 		endPoints[i] = b3Add( localPoints[i], localDelta );
 	}
 
-	b3ShapeCastInput input;
-	memset( &input, 0, sizeof( input ) );
-	input.proxy.points = localPoints;
-	input.proxy.count = pointCount;
-	input.proxy.radius = 0.0f;
-	input.translation = localDelta;
-	input.maxFraction = 1.0f;
-	input.canEncroach = false;
-
-	b3ShapeProxy endProxy = input.proxy;
+	b3ShapeProxy startProxy;
+	memset( &startProxy, 0, sizeof( startProxy ) );
+	startProxy.points = localPoints;
+	startProxy.count = pointCount;
+	b3ShapeProxy endProxy = startProxy;
 	endProxy.points = endPoints;
 
 	for ( int c = 0; c < pCollide->convexes.Count(); c++ )
@@ -970,38 +1046,41 @@ void SweepPointsAgainstCollide( const Vector *pWorldPoints, int pointCount, cons
 		for ( int h = 0; h < pConvex->hulls.Count(); h++ )
 		{
 			const b3HullData *pHull = pConvex->hulls[h];
-			if ( b3OverlapHull( pHull, b3Transform_identity, &input.proxy ) )
+			if ( PointsPenetrateHull( pHull, startProxy ) )
 			{
 				ptr->startsolid = true;
 				ptr->fraction = 0.0f;
 				ptr->contents = contents;
-				if ( b3OverlapHull( pHull, b3Transform_identity, &endProxy ) )
+				if ( PointsPenetrateHull( pHull, endProxy ) )
 					ptr->allsolid = true;
 				continue;
 			}
 			if ( ptr->startsolid )
 				continue;
 
-			// A ray is cast exactly; swept shapes use a shape cast, which
-			// stops within Box3D's linear slop of the surface.
-			b3CastOutput output;
+			float fraction;
+			b3Vec3 normal;
 			if ( pointCount == 1 )
 			{
 				b3RayCastInput ray;
 				ray.origin = localPoints[0];
 				ray.translation = localDelta;
 				ray.maxFraction = 1.0f;
-				output = b3RayCastHull( pHull, &ray );
+				b3CastOutput output = b3RayCastHull( pHull, &ray );
+				if ( !output.hit )
+					continue;
+				fraction = ClipRayToEpsilon( localDelta, output, clipEpsilon );
+				normal = output.normal;
 			}
-			else
+			else if ( !SweepPointsToSeparation( pHull, localPoints, pointCount, localDelta,
+			              clipEpsilon, ptr->fraction, &fraction, &normal ) )
 			{
-				output = b3ShapeCastHull( pHull, &input );
+				continue;
 			}
-			if ( output.hit && output.fraction < ptr->fraction )
+			if ( fraction < ptr->fraction )
 			{
-				output.fraction = ClipToEpsilon( pHull, localPoints, pointCount, localDelta, output, clipEpsilon );
-				ptr->fraction = output.fraction;
-				ptr->plane.normal = FromB3( b3RotateVector( xform.q, output.normal ) );
+				ptr->fraction = fraction;
+				ptr->plane.normal = FromB3( b3RotateVector( xform.q, normal ) );
 				ptr->contents = contents;
 			}
 		}
@@ -1010,6 +1089,23 @@ void SweepPointsAgainstCollide( const Vector *pWorldPoints, int pointCount, cons
 
 namespace
 {
+// Box3D rests and pushes bodies on soft contacts, which pitch a prop the
+// player pushes by a fraction of a milliradian (IVP's stiff contacts do not).
+// Movement slides along the hit plane, and any rise that gives is taken for a
+// step, which stops CBasePlayer::PostThinkVPhysics from pushing: report
+// near-vertical planes of swept traces as vertical.
+const float kVerticalNormalTolerance = 0.005f;
+
+void SnapNearVerticalNormal( trace_t *ptr )
+{
+	if ( ptr->DidHit() && !ptr->startsolid && ptr->plane.normal.z != 0.0f &&
+	     fabsf( ptr->plane.normal.z ) < kVerticalNormalTolerance )
+	{
+		ptr->plane.normal.z = 0.0f;
+		VectorNormalize( ptr->plane.normal );
+	}
+}
+
 void FinishTrace( const Vector &startPos, const Vector &delta, trace_t *ptr )
 {
 	ptr->startpos = startPos;
@@ -1037,6 +1133,8 @@ void CPhysicsCollisionBox3D::TraceBox( const Ray_t &ray, unsigned int contentsMa
 	Vector points[8];
 	int count = RayProxyPoints( ray, points );
 	SweepPointsAgainstCollide( points, count, ray.m_Delta, ToBox3D( pCollide ), collideOrigin, collideAngles, contentsMask, pConvexInfo, DIST_EPSILON, ptr );
+	if ( !ray.m_IsRay )
+		SnapNearVerticalNormal( ptr );
 	FinishTrace( ray.m_Start + ray.m_StartOffset, ray.m_Delta, ptr );
 }
 

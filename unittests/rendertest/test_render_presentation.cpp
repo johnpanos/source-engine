@@ -12,6 +12,7 @@
 #include "conformance/render_presentation_conformance.h"
 #include "fakes/headless_presentation.h"
 #include "fakes/null_render_backend.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <memory>
@@ -45,5 +46,5 @@ int main()
 		    static_cast<int>( report.checks.size() ) );
 		return 1;
 	}
-	return passed ? 0 : 1;
+	return testing::ReportConformance( report.checks.size(), report.FailureCount() );
 }

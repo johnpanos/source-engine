@@ -32,7 +32,10 @@ accepts `--all` to include blocked tasks.
 ## What `check` enforces
 
 Errors (exit 1): duplicate/malformed ids, unknown or self prerequisites,
-dependency cycles, invalid states, and the hard-gate invariant that a `done` task
-may not depend on an unfinished one. Notes (non-fatal): non-contiguous ranks
+dependency cycles, invalid states, a missing progress record linked from a State
+cell, and the hard-gate invariant that a `done` task may not depend on an
+unfinished one. A State cell is a state word optionally followed by a
+parenthesized link to the row's progress record, e.g.
+`partial ([batch migration](RFC/0003-batch-migration-progress.md))`. Notes (non-fatal): non-contiguous ranks
 (child tasks may share a parent's band) and in-progress tasks whose prerequisites
 have not been started (allowed only for baseline/feasibility work).

@@ -32,6 +32,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <ctime>
 
 namespace render_vulkan
 {
@@ -52,6 +53,7 @@ enum FrameCostKind
 	kCostPresent,        // vkQueuePresentKHR
 	kCostMeshDraw,       // IMesh::Draw: the material's shader passes and their emits
 	kCostEmit,           // converting a pass's mesh into the frame's vertex stream
+	kCostEmitReuse,      // a pass that reused geometry already in the stream (count only)
 	kFrameCostKinds
 };
 
@@ -59,8 +61,8 @@ enum FrameCostKind
 inline const char *FrameCostName( int kind )
 {
 	static const char *const kNames[kFrameCostKinds] = { "pipeline_create", "single_submit",
-		"device_wait_idle", "texture_create", "texture_upload", "buffer_grow", "query_wait",
-		"fence_wait", "acquire", "record", "submit", "present", "mesh_draw", "emit" };
+	    "device_wait_idle", "texture_create", "texture_upload", "buffer_grow", "query_wait",
+	    "fence_wait", "acquire", "record", "submit", "present", "mesh_draw", "emit", "emit_reuse" };
 	return kind >= 0 && kind < kFrameCostKinds ? kNames[kind] : "unknown";
 }
 
@@ -69,6 +71,23 @@ inline uint64_t FrameClockMicros()
 	return static_cast<uint64_t>( std::chrono::duration_cast<std::chrono::microseconds>(
 	    std::chrono::steady_clock::now().time_since_epoch() )
 	                                  .count() );
+}
+
+// CPU time consumed by the calling thread, in microseconds (0 where the
+// platform has no per-thread clock). A frame's wall interval minus the render
+// thread's CPU time is time it waited or was preempted: on a loaded host the
+// wall interval alone cannot tell a slower build from a busier machine.
+inline uint64_t ThreadCpuMicros()
+{
+#if defined( CLOCK_THREAD_CPUTIME_ID )
+	timespec now;
+	if ( clock_gettime( CLOCK_THREAD_CPUTIME_ID, &now ) != 0 )
+		return 0;
+	return static_cast<uint64_t>( now.tv_sec ) * 1000000u +
+	       static_cast<uint64_t>( now.tv_nsec ) / 1000u;
+#else
+	return 0;
+#endif
 }
 
 struct FrameCost

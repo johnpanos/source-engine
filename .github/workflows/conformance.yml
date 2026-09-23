@@ -1,0 +1,40 @@
+name: Conformance
+# RFC 0005 Q1 / roadmap R02: the shared conformance runner over every suite in
+# quality/conformance.manifest.json. The runner self-tests prove outcome
+# handling first; the matrix then runs the full manifest under both compilers in
+# the default and optimized NDEBUG configurations. Every job uploads its
+# conformance-evidence/v2 JSON and per-suite build/run logs, including failures.
+on: [push, pull_request]
+jobs:
+  runner-self-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@v4
+    - name: Runner outcome handling (negative fixtures)
+      run: python3 -m unittest tools/quality/tests/test_conformance.py -v
+
+  headless-manifest:
+    needs: runner-self-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        cxx: [g++, clang++]
+        config: [default, release]
+    steps:
+    - uses: actions/checkout@v4
+    - name: Enumerate selected suites and providers
+      run: python3 tools/quality/conformance.py plan
+    - name: Build, run and evidence every manifest suite
+      run: >
+        python3 tools/quality/conformance.py check
+        --cxx ${{ matrix.cxx }} --config ${{ matrix.config }}
+        --out quality-results/conformance-${{ matrix.cxx }}-${{ matrix.config }}.json
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: conformance-${{ matrix.cxx }}-${{ matrix.config }}
+        path: quality-results/
+        if-no-files-found: error

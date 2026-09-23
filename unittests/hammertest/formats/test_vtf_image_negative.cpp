@@ -10,17 +10,20 @@
 #include "formats/fake_vtf.h"
 
 #include "hammer/formats/vtf_image.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 }
 #define CHECK( cond, msg )                                                                         \
 	do                                                                                             \
 	{                                                                                              \
+		++g_checks;                                                                                \
 		if ( !( cond ) )                                                                           \
 		{                                                                                          \
 			std::printf( "FAIL: %s\n", ( msg ) );                                                  \
@@ -32,6 +35,7 @@ using hammer::formats::DecodeVtf;
 
 static void ExpectRejected( const std::string &blob, const char *what )
 {
+	++g_checks;
 	std::string error;
 	auto img = DecodeVtf( blob, error );
 	if ( img.has_value() )
@@ -90,8 +94,8 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.vtf_image.sensitivity: %d FAILURE(S)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "formats.vtf_image.sensitivity: all malformed inputs rejected\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

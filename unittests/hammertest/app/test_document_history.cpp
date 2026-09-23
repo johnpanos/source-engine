@@ -12,6 +12,7 @@
 //=============================================================================//
 
 #include "hammer/app/document_history.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 
@@ -21,9 +22,11 @@ namespace
 {
 
 int g_failures = 0;
+int g_checks = 0;
 
 void Check( bool condition, const char *expression, int line )
 {
+	++g_checks;
 	if ( !condition )
 	{
 		std::printf( "FAIL %s:%d: %s\n", "test_document_history.cpp", line, expression );
@@ -115,8 +118,8 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "hammer.app DocumentHistory: %d check(s) FAILED\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "hammer.app DocumentHistory: all checks passed\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

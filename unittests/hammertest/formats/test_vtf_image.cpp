@@ -12,17 +12,20 @@
 #include "formats/fake_vtf.h"
 
 #include "hammer/formats/vtf_image.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 }
 #define CHECK( cond, msg )                                                                         \
 	do                                                                                             \
 	{                                                                                              \
+		++g_checks;                                                                                \
 		if ( !( cond ) )                                                                           \
 		{                                                                                          \
 			std::printf( "FAIL: %s\n", ( msg ) );                                                  \
@@ -36,6 +39,7 @@ using hammer::formats::VtfImage;
 static void ExpectPixel(
     const VtfImage &img, int x, int y, int r, int g, int b, int a, const char *what )
 {
+	++g_checks;
 	std::size_t i = ( std::size_t( y ) * img.width + x ) * 4;
 	if ( i + 3 >= img.rgba.size() )
 	{
@@ -192,8 +196,8 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.vtf_image: %d FAILURE(S)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "formats.vtf_image: all cases passed\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

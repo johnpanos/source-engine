@@ -13,6 +13,7 @@
 #include "ports/file_store_contract.h"
 
 #include "app/fake_file_store.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
@@ -43,12 +44,15 @@ int main()
 	const int goodFailures = hammertest::RunFileStoreContract( good, "good/", "good" );
 	const int brokenFailures = hammertest::RunFileStoreContract( broken, "broken/", "broken" );
 
+	int checks = 0;
 	int failures = 0;
+	++checks;
 	if ( goodFailures != 0 )
 	{
 		std::printf( "FAIL: real InMemoryFileStore did not conform (%d)\n", goodFailures );
 		++failures;
 	}
+	++checks;
 	if ( brokenFailures == 0 )
 	{
 		std::printf( "FAIL: oracle did not catch the forgetful provider\n" );
@@ -58,9 +62,9 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "ports.file_store negative: ORACLE UNSOUND (%d)\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf( "ports.file_store negative: oracle catches a non-persisting store "
 	             "(real conforms, broken caught)\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }

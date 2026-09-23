@@ -60,10 +60,29 @@ public:
 	virtual void Destroy();
 
 private:
+	void AddTestModule( const char *pPath );
+
+	int m_nTestModules = 0;
 };
 
 DEFINE_CONSOLE_STEAM_APPLICATION_OBJECT( CUnitTestApp );
 
+//-----------------------------------------------------------------------------
+// Every library in tests/ is a declared test module. One that fails to load or
+// does not export the unit test interface is a missing test, not a skip
+// (RFC 0005 runner contract), so it fails the run.
+//-----------------------------------------------------------------------------
+void CUnitTestApp::AddTestModule( const char *pPath )
+{
+	AppModule_t module = LoadModule( pPath );
+	if ( module == APP_MODULE_INVALID || !AddSystem( module, UNITTEST_INTERFACE_VERSION ) )
+	{
+		printf( "FAIL unittest: test module %s could not be loaded\n", pPath );
+		g_TestResult = 1;
+		return;
+	}
+	++m_nTestModules;
+}
 
 //-----------------------------------------------------------------------------
 // The application object
@@ -101,11 +120,7 @@ bool CUnitTestApp::Create()
 		static char path[2048];
 		snprintf(path, sizeof(path), "tests/%s", findFileData.cFileName);
 
-		AppModule_t module = LoadModule( path );
-		if ( module != APP_MODULE_INVALID )
-		{
-			AddSystem( module, UNITTEST_INTERFACE_VERSION );
-		}
+		AddTestModule( path );
 
 		if (!FindNextFile( hFind, &findFileData ))
 			break;
@@ -123,11 +138,7 @@ bool CUnitTestApp::Create()
 			{
 				static char path[2048];
 				snprintf(path, sizeof(path), "tests/%s", dir->d_name);
-				AppModule_t module = LoadModule( path );
-				if ( module != APP_MODULE_INVALID )
-				{
-					AddSystem( module, UNITTEST_INTERFACE_VERSION );
-				}
+				AddTestModule( path );
 			}
 		}
 		closedir(d);
@@ -151,7 +162,16 @@ int CUnitTestApp::Main()
 {
     printf( "Valve Software - unittest (%s)\n", __DATE__ );
 
+	// Zero discovery certifies nothing: an empty or missing tests/ directory
+	// must fail rather than report success (RFC 0005 runner contract).
 	int nTestCount = UnitTestCount();
+	if ( m_nTestModules == 0 || nTestCount == 0 )
+	{
+		printf( "FAIL unittest: discovered %d test module(s) and %d test(s)\n", m_nTestModules,
+		    nTestCount );
+		return 1;
+	}
+
 	for ( int i = 0; i < nTestCount; ++i )
 	{
 		ITestCase* pTestCase = GetUnitTest(i);
@@ -159,5 +179,7 @@ int CUnitTestApp::Main()
 		pTestCase->RunTest();
 	}
 
-    return g_TestResult;
+	printf( "unittest: ran %d test(s) from %d module(s): %s\n", nTestCount, m_nTestModules,
+	    g_TestResult ? "FAILED" : "passed" );
+	return g_TestResult;
 }

@@ -20,6 +20,7 @@
 #include "hammer/app/entity_selection.h"
 #include "hammer/app/property_value.h"
 #include "hammer/formats/keyvalues.h"
+#include "testing/conformance_result.h"
 
 #include <cstddef>
 #include <cstdio>
@@ -34,9 +35,11 @@ using hammer::app::SaveStatus;
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 void Check( bool ok, const char *label )
 {
+	++g_checks;
 	if ( !ok )
 	{
 		std::printf( "FAIL: %s\n", label );
@@ -125,9 +128,9 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "adapters.shell_workflow: %d FAILURE(S)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "adapters.shell_workflow: GTK-sibling composition (EditorDocument + entity editor "
 	             "+ DiskFileStore) round-trips New/Select/SetKey/Save/Open/Undo/Redo\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

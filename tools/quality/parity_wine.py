@@ -83,15 +83,14 @@ def run_one(root, cxx, wrapper, profile, suite, out_dir, timeout):
     except subprocess.TimeoutExpired:
         record["outcome"] = "timeout"
         return record
+    # One result-protocol implementation: the native runner's classifier also
+    # rejects a missing, duplicate, zero-check or failing checks-v1 record here.
+    observed = conformance.classify_run(suite, run.returncode, run.stdout or "")
     record["exit_code"] = run.returncode
+    record["outcome"] = observed["outcome"]
+    record["checks"] = observed["checks"]
     tail = (run.stdout or "").strip().splitlines()
-    record["detail"] = tail[-1] if tail else None
-    if run.returncode < 0:
-        record["outcome"] = "crash"
-    elif run.returncode == 0:
-        record["outcome"] = "pass"
-    else:
-        record["outcome"] = "fail"
+    record["detail"] = observed["first_divergence"] or (tail[-1] if tail else None)
     record["matched"] = (record["outcome"] == expect)
     return record
 
@@ -117,6 +116,12 @@ def cmd_check(args):
         and (args.rfc is None or s.get("rfc") == args.rfc)
         and (args.domain is None or s.get("domain") == args.domain)
     ]
+
+    if not suites:
+        # Zero discovery certifies nothing (RFC 0005 runner contract).
+        print("FATAL: no suite matches rfc=%s domain=%s" % (args.rfc, args.domain),
+              file=sys.stderr)
+        return 2
 
     print("parity(wine): %d suite(s) selected; cxx=%s wrapper=%s"
           % (len(suites), args.cxx, args.wrapper or "(none)"))

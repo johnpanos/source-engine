@@ -10,21 +10,25 @@
 # aabb.cpp grew a rounding.cpp dependency this script did not track.
 #
 # Usage: unittests/hammertest/run_headless.sh
-# Exit:  0 = all Q-EDITOR RFC 0002 suites pass under every compiler, non-zero otherwise.
+# Exit:  0 = all Q-EDITOR RFC 0002 suites pass under every listed compiler, non-zero otherwise
+#        (including when a listed compiler is unavailable or the list is empty).
 
 set -eu
 
 ROOT="$( cd "$( dirname "$0" )/../.." && pwd )"
 RUNNER="$ROOT/tools/quality/conformance.py"
 
-# Build and run the RFC 0002 editor suites under each available compiler, matching
+# Build and run the RFC 0002 editor suites under each required compiler, matching
 # the historical intent of this script (gcc and clang, -Wall -Wextra -Werror).
+# Every listed compiler is a required provider: an unavailable one fails the run
+# instead of shrinking coverage. Narrow the list explicitly with HAMMERTEST_CXX.
 COMPILERS="${HAMMERTEST_CXX:-g++ clang++}"
 
 status=0
 for cxx in $COMPILERS; do
 	if ! command -v "$cxx" >/dev/null 2>&1; then
-		echo "hammertest: skipping unavailable compiler $cxx"
+		echo "hammertest: FAIL required compiler $cxx is unavailable"
+		status=1
 		continue
 	fi
 	echo "hammertest: running RFC 0002 Q-EDITOR suites with $cxx"
@@ -32,6 +36,11 @@ for cxx in $COMPILERS; do
 		status=1
 	fi
 done
+
+if [ -z "$( echo $COMPILERS )" ]; then
+	echo "hammertest: FAIL no compiler requested"
+	status=1
+fi
 
 if [ "$status" -eq 0 ]; then
 	echo "hammertest: all headless suites passed"

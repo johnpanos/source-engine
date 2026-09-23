@@ -10,6 +10,7 @@
 
 #include "hammer/formats/cordon.h"
 #include "hammer/formats/keyvalues.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
@@ -23,10 +24,12 @@ using hammer::geometry::Vec3d;
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 
 void Check( bool ok, const char *label )
 {
+	++g_checks;
 	if ( !ok )
 	{
 		std::printf( "FAIL: %s\n", label );
@@ -58,6 +61,7 @@ std::string PointEntity( const char *classname, const char *origin )
 CordonResult Run( const std::string &vmf, const CordonBox &box )
 {
 	hammer::formats::ParseResult pr = ParseKeyValues( vmf );
+	++g_checks;
 	if ( !pr.ok )
 	{
 		std::printf( "FAIL: fixture parse: %s\n", pr.error.c_str() );
@@ -143,9 +147,9 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.cordon: %d FAILURE(S)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "formats.cordon: solids/entities inside the box are kept, outside removed, "
 	             "straddling/edge-touching kept, metadata preserved\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

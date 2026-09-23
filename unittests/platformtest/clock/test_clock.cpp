@@ -13,29 +13,56 @@
 
 #include "clock_conformance.h"
 #include "fake_clock.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
+
+namespace
+{
+
+// Runs the shared suite for one variant, prints its summary and adds its check
+// counts to the suite-wide totals reported to the runner.
+int RunVariant( const char *suiteName, const platform::IMonotonicClock &clock, int sampleCount,
+    int &checks, int &failures )
+{
+	const platformtest::ClockReport r =
+	    platformtest::RunMonotonicClockConformance( clock, sampleCount );
+	checks += r.checks;
+	failures += r.failures;
+	if ( r.failures != 0 )
+	{
+		std::printf( "FAIL %s: %d/%d checks failed; first: %s (line %d)\n", suiteName, r.failures,
+		    r.checks, r.firstFailure, r.firstFailureLine );
+		return 1;
+	}
+	std::printf( "ok %s: %d checks passed\n", suiteName, r.checks );
+	return 0;
+}
+
+} // namespace
 
 int main()
 {
 	int rc = 0;
+	int checks = 0;
+	int failures = 0;
 
 	// Default resolution/step.
 	{
 		platformtest::CFakeMonotonicClock clock;
-		rc |= platformtest::RunClockPositive( "test_clock[1us]", clock, 8 );
+		rc |= RunVariant( "test_clock[1us]", clock, 8, checks, failures );
 	}
 
 	// A coarser clock with a larger, odd step -- exercises additivity with tick
 	// deltas that are not powers of two.
 	{
 		platformtest::CFakeMonotonicClock clock( /*resolutionNs=*/1000000, /*stepNs=*/333333 );
-		rc |= platformtest::RunClockPositive( "test_clock[1ms/odd-step]", clock, 12 );
+		rc |= RunVariant( "test_clock[1ms/odd-step]", clock, 12, checks, failures );
 	}
 
 	if ( rc == 0 )
 	{
 		std::printf( "ok test_clock: all variants passed\n" );
 	}
-	return rc;
+	return testing::ReportConformance( checks, failures );
 }

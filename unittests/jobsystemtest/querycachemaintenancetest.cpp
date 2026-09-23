@@ -8,6 +8,7 @@
 //=============================================================================//
 
 #include "querycache_harness.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 
@@ -119,5 +120,5 @@ int main()
 
 	std::printf(
 	    "%d frames compared, %d checks, %d failures\n", nFramesCompared, g_checks, g_failures );
-	return g_failures ? 1 : 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

@@ -10,6 +10,7 @@
 
 #include "hammer/formats/groups.h"
 #include "hammer/formats/keyvalues.h"
+#include "testing/conformance_result.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -23,10 +24,12 @@ using hammer::formats::ParseKeyValues;
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 
 void Check( bool ok, const char *label )
 {
+	++g_checks;
 	if ( !ok )
 	{
 		std::printf( "FAIL: %s\n", label );
@@ -96,9 +99,9 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.groups: %d FAILURE(S)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "formats.groups: nested group hierarchy resolves to top-level; selection expands "
 	             "to group siblings; ungrouped stays singular\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

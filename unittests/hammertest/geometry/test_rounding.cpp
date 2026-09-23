@@ -11,6 +11,7 @@
 //=============================================================================//
 
 #include "hammer/geometry/rounding.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 
@@ -20,9 +21,11 @@ namespace
 {
 
 int g_failures = 0;
+int g_checks = 0;
 
 void ExpectEqual( float actual, float expected, const char *label, int line )
 {
+	++g_checks;
 	if ( actual != expected )
 	{
 		std::printf( "FAIL %s:%d: %s -> %.6f, expected %.6f\n", "test_rounding.cpp", line, label,
@@ -55,8 +58,8 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "hammer.geometry rounding: %d check(s) FAILED\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "hammer.geometry rounding: all checks passed\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

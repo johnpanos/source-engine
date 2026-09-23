@@ -145,7 +145,8 @@
           "unittests/rendertest/"
         ],
         "allowedEdges": [
-          "render.contracts"
+          "render.contracts",
+          "testing.contracts"
         ]
       },
       {

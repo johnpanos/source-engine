@@ -10,6 +10,7 @@
 
 #include "hammer/formats/keyvalues.h"
 #include "hammer/formats/prefab.h"
+#include "testing/conformance_result.h"
 
 #include <cmath>
 #include <cstdio>
@@ -23,10 +24,12 @@ using hammer::formats::PrefabInstance;
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 
 void Check( bool ok, const char *label )
 {
+	++g_checks;
 	if ( !ok )
 	{
 		std::printf( "FAIL: %s\n", label );
@@ -111,9 +114,9 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.prefab negative: ORACLE UNSOUND (%d)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf(
 	    "formats.prefab negative: identity preserves, translate moves, counts preserved\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

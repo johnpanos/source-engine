@@ -11,6 +11,7 @@
 
 #include "hammer/formats/instancing.h"
 #include "hammer/formats/keyvalues.h"
+#include "testing/conformance_result.h"
 
 #include "app/fake_file_store.h"
 
@@ -23,6 +24,7 @@ using hammer::formats::ParseKeyValues;
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 
 const char *kMinimalWorld = "world\n{\n\t\"id\" \"1\"\n\t\"classname\" \"worldspawn\"\n}\n";
@@ -53,6 +55,7 @@ InstanceExpandResult Expand(
 
 void ExpectOk( const InstanceExpandResult &r, const char *label )
 {
+	++g_checks;
 	if ( !r.ok )
 	{
 		std::printf( "FAIL: good case reported error (%s): %s\n", label, r.error.c_str() );
@@ -62,6 +65,7 @@ void ExpectOk( const InstanceExpandResult &r, const char *label )
 
 void ExpectError( const InstanceExpandResult &r, const char *label )
 {
+	++g_checks;
 	if ( r.ok )
 	{
 		std::printf( "FAIL: broken case accepted (%s)\n", label );
@@ -107,9 +111,9 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.instancing negative: ORACLE UNSOUND (%d)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "formats.instancing negative: good expands; missing-file, cyclic, and no-file all "
 	             "reported as errors\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

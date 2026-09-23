@@ -7,6 +7,7 @@
 //=============================================================================//
 
 #include "querycache_harness.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 
@@ -147,5 +148,5 @@ int main()
 		}
 	}
 	std::printf( "%d checks, %d failures\n", checks, failures );
-	return failures ? 1 : 0;
+	return testing::ReportConformance( checks, failures );
 }

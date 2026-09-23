@@ -48,6 +48,7 @@
 #include "vcollide_parse.h"
 #include "cmodel.h"
 #include "gametrace.h"
+#include "coordsize.h"
 #include "phyfile.h"
 #include "bspflags.h"
 #include "mathlib/polyhedron.h"
@@ -641,6 +642,36 @@ static void TestBoxCollide()
 	TraceRay( pBox, origin, identity, Vector( 100, 0, 50 ), Vector( 100, 0, -50 ), vec3_origin, &tr );
 	Check( TIER_GAMEPLAY, "trace.ray-hit-top", Near( tr.fraction, 0.48f, 0.01f ) && Near( tr.plane.normal.z, 1.0f, 0.01f ),
 		"fraction %.3f normal z %.2f", tr.fraction, tr.plane.normal.z );
+
+	// Movement leaves a hull DIST_EPSILON from what it hit, and every later
+	// trace starts there: resting against a surface blocks only moves into it.
+	// Starting solid takes actual penetration.
+	const Vector touching( 90.0f - 2.0f - DIST_EPSILON, 0, 0 ), hull( 2, 2, 2 );
+	TraceRay( pBox, origin, identity, touching, touching - Vector( 10, 0, 0 ), hull, &tr );
+	Check( TIER_GAMEPLAY, "trace.box-touching-away", tr.fraction == 1.0f && !tr.startsolid,
+	    "fraction %.3f startsolid %d", tr.fraction, tr.startsolid );
+	TraceRay( pBox, origin, identity, touching, touching + Vector( 0, 3, 0 ), hull, &tr );
+	Check( TIER_GAMEPLAY, "trace.box-touching-along", tr.fraction == 1.0f && !tr.startsolid,
+	    "fraction %.3f startsolid %d", tr.fraction, tr.startsolid );
+	TraceRay( pBox, origin, identity, touching + Vector( 0, 0, 8 ), touching - Vector( 0, 0, 8 ),
+	    hull, &tr );
+	Check( TIER_GAMEPLAY, "trace.box-touching-down-face", tr.fraction == 1.0f && !tr.startsolid,
+	    "fraction %.3f startsolid %d", tr.fraction, tr.startsolid );
+	TraceRay( pBox, origin, identity, touching, touching, hull, &tr );
+	Check( TIER_GAMEPLAY, "trace.box-touching-stationary", tr.fraction == 1.0f && !tr.startsolid,
+	    "fraction %.3f startsolid %d", tr.fraction, tr.startsolid );
+	TraceRay( pBox, origin, identity, touching, touching + Vector( 10, 0, 0 ), hull, &tr );
+	Check( TIER_GAMEPLAY, "trace.box-touching-into",
+	    tr.fraction < 0.01f && !tr.startsolid && Near( tr.plane.normal.x, -1.0f, 0.01f ),
+	    "fraction %.4f startsolid %d normal x %.2f", tr.fraction, tr.startsolid,
+	    tr.plane.normal.x );
+	const Vector near( 90.0f - 2.0f - 0.01f, 0, 0 );
+	TraceRay( pBox, origin, identity, near, near, hull, &tr );
+	Check(
+	    TIER_GAMEPLAY, "trace.box-near-not-solid", !tr.startsolid, "startsolid %d", tr.startsolid );
+	const Vector penetrating( 90.0f - 2.0f + 0.1f, 0, 0 );
+	TraceRay( pBox, origin, identity, penetrating, penetrating, hull, &tr );
+	Check( TIER_GAMEPLAY, "trace.box-penetrating", tr.startsolid, "startsolid %d", tr.startsolid );
 
 	CPhysCollide *pSmall = s_pCollision->BBoxToCollide( Vector( -2, -2, -2 ), Vector( 2, 2, 2 ) );
 	ResetTrace( &tr );

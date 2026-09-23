@@ -13,6 +13,7 @@
 #include "hammer/app/save_orchestrator.h"
 
 #include "fake_file_store.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
@@ -59,13 +60,16 @@ int main()
 	const bool realPreserves = PreservesPriorOnFailedWrite( RealSave );
 	const bool naivePreserves = PreservesPriorOnFailedWrite( NaiveSave );
 
+	int checks = 0;
 	int failures = 0;
 
+	++checks;
 	if ( !realPreserves )
 	{
 		std::printf( "FAIL: real SaveDocument lost the prior file on a failed write\n" );
 		++failures;
 	}
+	++checks;
 	if ( naivePreserves )
 	{
 		std::printf( "FAIL: predicate did NOT detect the truncate-then-write saver\n" );
@@ -75,9 +79,9 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "hammer.app SaveOrchestrator negative: %d check(s) FAILED\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf( "hammer.app SaveOrchestrator negative: oracle detects violations (real passes, "
 	             "naive caught)\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }

@@ -7,6 +7,7 @@
 #include "fake_tool_process.h"
 #include "tool_process_conformance.h"
 #include "tool_process_fixture.h"
+#include "testing/conformance_result.h"
 
 int main()
 {
@@ -14,6 +15,8 @@ int main()
 	const platformtest::ToolProcessFixture fixture =
 	    platformtest::MakeToolProcessFixture( &cancellation );
 	platformtest::CFakeToolProcessProvider provider( fixture );
-	return platformtest::ReportToolProcessConformance(
-	    "platform.tool_process", platformtest::RunToolProcessConformance( provider, fixture ) );
+	const platformtest::ToolProcessReport report =
+	    platformtest::RunToolProcessConformance( provider, fixture );
+	platformtest::ReportToolProcessConformance( "platform.tool_process", report );
+	return testing::ReportConformance( report.checks, report.failures );
 }

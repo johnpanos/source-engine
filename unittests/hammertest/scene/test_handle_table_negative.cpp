@@ -12,6 +12,7 @@
 
 #include "hammer/scene/handle.h"
 #include "hammer/scene/handle_table.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 
@@ -72,13 +73,16 @@ int main()
 	const bool realConforms = ConformsStaleRejection( realTable );
 	const bool brokenConforms = ConformsStaleRejection( brokenTable );
 
+	int checks = 0;
 	int failures = 0;
 
+	++checks;
 	if ( !realConforms )
 	{
 		std::printf( "FAIL: real HandleTable violated stale-reference rejection\n" );
 		++failures;
 	}
+	++checks;
 	if ( brokenConforms )
 	{
 		std::printf( "FAIL: predicate did NOT detect the stale-accepting provider\n" );
@@ -88,9 +92,9 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "hammer.scene HandleTable negative: %d check(s) FAILED\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf( "hammer.scene HandleTable negative: oracle detects violations (real passes, "
 	             "broken caught)\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }

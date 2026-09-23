@@ -11,6 +11,7 @@
 //=============================================================================//
 
 #include "hammer/geometry/angle.h"
+#include "testing/conformance_result.h"
 
 #include <cmath>
 #include <cstdio>
@@ -45,14 +46,17 @@ int main()
 	const bool realConforms = ConformsLegacyQuirk( NormalizeAngleDegrees );
 	const bool brokenConforms = ConformsLegacyQuirk( FullModuloNormalize );
 
+	int checks = 0;
 	int failures = 0;
 
+	++checks;
 	if ( !realConforms )
 	{
 		std::printf(
 		    "FAIL: real NormalizeAngleDegrees did not preserve the legacy single-wrap quirk\n" );
 		++failures;
 	}
+	++checks;
 	if ( brokenConforms )
 	{
 		std::printf( "FAIL: predicate did NOT detect the full-modulo divergence\n" );
@@ -62,9 +66,9 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "hammer.geometry angle negative: %d check(s) FAILED\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf( "hammer.geometry angle negative: oracle detects violations (real passes, modulo "
 	             "caught)\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }

@@ -12,6 +12,7 @@
 //=============================================================================//
 
 #include "jobsystem/dynamic_scope.h"
+#include "testing/conformance_result.h"
 
 #include <atomic>
 #include <cstdio>
@@ -298,5 +299,5 @@ int main()
 	RUN( Test_ZeroWorkerOwnerDrain );
 	RUN( Test_StressRandomDag );
 	std::printf( "\n%d checks, %d failures\n", g_checks, g_failures );
-	return g_failures == 0 ? 0 : 1;
+	return testing::ReportConformance( g_checks, g_failures );
 }

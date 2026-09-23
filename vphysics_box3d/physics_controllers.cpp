@@ -623,6 +623,12 @@ void CMotionControllerBox3D::Simulate( float dt )
 //-----------------------------------------------------------------------------
 // Friction snapshot
 //-----------------------------------------------------------------------------
+namespace
+{
+// IVP's global collision tolerance: the distance at which its objects collide.
+const float kFrictionContactDistance = 0.25f;
+}
+
 CFrictionSnapshotBox3D::CFrictionSnapshotBox3D( CPhysicsObjectBox3D *pObject ) : m_pObject( pObject ), m_index( 0 )
 {
 	b3BodyId body = pObject->GetBody();
@@ -643,24 +649,34 @@ CFrictionSnapshotBox3D::CFrictionSnapshotBox3D( CPhysicsObjectBox3D *pObject ) :
 		for ( int m = 0; m < data.manifoldCount; m++ )
 		{
 			const b3Manifold &manifold = data.manifolds[m];
-			if ( manifold.pointCount <= 0 )
+			// Anchor A is relative to body A's center of mass, in world space.
+			b3BodyId bodyA = b3Shape_GetBody( data.shapeIdA );
+			Vector centerA = FromB3( b3Body_GetWorldCenter( bodyA ) );
+			Vector point( 0, 0, 0 );
+			float impulse = 0.0f;
+			int pointCount = 0;
+			for ( int p = 0; p < manifold.pointCount; p++ )
+			{
+				// IVP's friction contacts are pairs that have collided. Box3D
+				// also keeps speculative points up to about 0.8 inch apart;
+				// skip those that neither touch (within IVP's collision
+				// tolerance) nor pushed this step, or the player controller
+				// treats surfaces it has not reached as blocking it.
+				const b3ManifoldPoint &mp = manifold.points[p];
+				if ( mp.separation > kFrictionContactDistance && mp.totalNormalImpulse <= 0.0f )
+					continue;
+				point += centerA + FromB3( mp.anchorA );
+				impulse += mp.totalNormalImpulse;
+				pointCount++;
+			}
+			if ( pointCount <= 0 )
 				continue;
 			Entry_t entry;
 			entry.pOther = pOther;
 			entry.normal = FromB3( manifold.normal );
 			if ( !isA )
 				entry.normal = -entry.normal;
-			// Anchor A is relative to body A's center of mass, in world space.
-			b3BodyId bodyA = b3Shape_GetBody( data.shapeIdA );
-			Vector centerA = FromB3( b3Body_GetWorldCenter( bodyA ) );
-			Vector point( 0, 0, 0 );
-			float impulse = 0.0f;
-			for ( int p = 0; p < manifold.pointCount; p++ )
-			{
-				point += centerA + FromB3( manifold.points[p].anchorA );
-				impulse += manifold.points[p].totalNormalImpulse;
-			}
-			entry.point = point / (float)manifold.pointCount;
+			entry.point = point / (float)pointCount;
 			entry.normalForce = stepTime > 0 ? impulse / stepTime : 0.0f;
 			// IVP's product rule (see the environment's mixing callbacks).
 			entry.friction = clamp( pObject->GetFriction() * ( pOther ? pOther->GetFriction() : 1.0f ), 0.0f, 1.0f );

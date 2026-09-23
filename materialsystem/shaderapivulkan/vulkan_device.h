@@ -34,12 +34,32 @@
 #include <cstdint>
 #include <cstdio>
 #include <map>
+#include <memory>
+#include <new>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace render_vulkan
 {
+
+// An allocator whose value-less construct leaves the element uninitialized, so
+// resize() grows a buffer that the caller is about to overwrite without first
+// zero-filling it (the frame's vertex stream, written in place per draw).
+template <typename T> struct DefaultInitAllocator : std::allocator<T>
+{
+	template <typename U> struct rebind
+	{
+		typedef DefaultInitAllocator<U> other;
+	};
+	DefaultInitAllocator() = default;
+	template <typename U> DefaultInitAllocator( const DefaultInitAllocator<U> & ) {}
+	template <typename U> void construct( U *p ) { ::new ( static_cast<void *>( p ) ) U; }
+	template <typename U, typename... Args> void construct( U *p, Args &&...args )
+	{
+		::new ( static_cast<void *>( p ) ) U( std::forward<Args>( args )... );
+	}
+};
 
 // Requested behavior for a device bring-up. Required behavior that cannot be
 // satisfied fails Init() with a diagnostic instead of silently degrading.
@@ -178,13 +198,45 @@ public:
 	void QueueDynamicTriangles( const float *posColorUvInterleaved, uint32_t vertexCount,
 	    const float *lightmapUv = nullptr, const float *normalTangent = nullptr,
 	    const float *vertexAlpha = nullptr );
+	// The same draw written in place: record a draw with the current state and
+	// reserve room for up to `maxVertices` kDynVertexFloats-wide records in the
+	// frame's stream; the caller fills them and ends the draw with the count it
+	// wrote (0 withdraws the draw). The pointer is valid until the next call
+	// that queues geometry. This avoids building the vertices in caller buffers
+	// only to copy them here.
+	// A draw may also be indexed: `maxIndices` > 0 reserves an index list,
+	// relative to the draw's first vertex, returned through *outIndices; the
+	// draw then renders the index count EndDynamicDraw is given.
+	float *BeginDynamicDraw(
+	    uint32_t maxVertices, uint32_t maxIndices = 0, uint32_t **outIndices = nullptr );
+	void EndDynamicDraw( uint32_t vertexCount, uint32_t indexCount = 0 );
+	// Record a draw with the current state over geometry an earlier draw of the
+	// same stream already queued (its vertex and index ranges, as a DrawRange
+	// read back after its EndDynamicDraw). Nothing is added to the stream.
+	struct DrawRange
+	{
+		uint32_t firstVertex;
+		uint32_t vertexCount;
+		uint32_t firstIndex;
+		uint32_t indexCount;
+	};
+	DrawRange LastDrawRange() const;
+	void ReuseDynamicDraw( const DrawRange &range );
+	// Whether `range` of the stream holds exactly these vertices and indices.
+	bool StreamRangeEquals( const DrawRange &range, const float *vertices, uint32_t vertexCount,
+	    const uint32_t *indices, uint32_t indexCount ) const;
+	// Changes whenever the stream is discarded; a DrawRange is valid only while
+	// the epoch it was read in lasts.
+	uint64_t StreamEpoch() const { return m_streamEpoch; }
 	// Discard the accumulated frame geometry. Called at frame start (ClearBuffers)
 	// rather than after Present, so the last frame's geometry stays available for
 	// an on-demand screenshot capture (ReadPixels).
 	void ClearDynamicQueue()
 	{
 		FailUnsubmittedQueries();
+		++m_streamEpoch;
 		m_dynQueued.clear();
+		m_dynIndices.clear();
 		m_dynDrawRecords.clear();
 		m_dynSkinConstants.clear();
 		m_dynFramePresented = false;
@@ -240,6 +292,9 @@ public:
 	void SelectDynamicRasterState( const DynRasterState &state ) { m_dynRaster = state; }
 	// Distinct states have distinct keys.
 	static uint32_t RasterStateKey( const DynRasterState &state );
+	// Its inverse: the state a key was made from (fields a disabled stencil test
+	// ignores come back as their defaults).
+	static DynRasterState RasterStateFromKey( uint64_t key );
 	// $alphatest: fragments whose alpha is below `ref` are discarded (matching the
 	// D3D9 fixed-function GREATEREQUAL alpha test, or GREATER with
 	// kFragmentAlphaGreater). A negative `ref` disables it.
@@ -601,6 +656,16 @@ public:
 	// labels the frame being built (a scenario phase such as "fire_blue"), so a
 	// measured hitch can be placed in the workload that produced it. Labels are
 	// reduced to [A-Za-z0-9_.-].
+	// Pipeline store: a VkPipelineCache and the list of material pipeline
+	// variants (family and raster-state key) this game has needed, kept in two
+	// files under `directory`. Open it after Init and before InitDynamicMesh;
+	// PrewarmPipelines then builds every recorded variant up front (at load, not
+	// the first frame that needs one), and SavePipelineStore (also run by
+	// Shutdown) writes both files back. A missing or unreadable store starts
+	// empty; the driver rejects cache data from another device or driver.
+	bool OpenPipelineStore( const std::string &directory, std::string *outError );
+	int PrewarmPipelines();
+	bool SavePipelineStore( std::string *outError );
 	bool OpenFrameStats( const char *path, std::string *outError );
 	void CloseFrameStats();
 	void MarkFrame( const char *label );
@@ -623,6 +688,8 @@ private:
 	uint64_t m_prevFrameBeginUs = 0;
 	uint64_t m_prevFrameEndUs = 0;
 	uint64_t m_recordBeginUs = 0;
+	uint64_t m_frameBeginCpuUs = 0;
+	uint64_t m_prevFrameBeginCpuUs = 0;
 	std::string m_frameMarks;
 	VkQueryPool m_timestampPool = VK_NULL_HANDLE;
 	double m_timestampPeriodNs = 0.0;
@@ -843,6 +910,23 @@ private:
 	// Keyed by RasterStateKey, with bit 32 set for pipelines of the sRGB passes.
 	std::map<uint64_t, VkPipeline> m_dynTexPipelines;
 	VkPipeline TexturedPipeline( const DynRasterState &state, bool srgbPass = false );
+	// The pipeline store (OpenPipelineStore): the cache every material pipeline
+	// is built through, the variants built this session, and the files.
+	enum PipelineFamily
+	{
+		kPipelineTextured = 0,
+		kPipelinePortal = 1,
+		kPipelineSkin = 2,
+		kPipelineFamilies
+	};
+	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
+	std::vector<std::pair<int, uint64_t>> m_pipelineVariants;
+	std::string m_pipelineStoreDirectory;
+	void NotePipelineVariant( int family, uint64_t key )
+	{
+		m_pipelineVariants.push_back( std::make_pair( family, key ) );
+	}
+
 	// PortalRefract pipelines, one per raster state, built on first use.
 	std::map<uint64_t, VkPipeline> m_portalPipelines;
 	VkPipeline PortalPipeline( const DynRasterState &state, bool srgbPass = false );
@@ -998,11 +1082,60 @@ private:
 	std::vector<SkinConstants> m_dynSkinConstants;
 	// Column-major model->projection matrix; identity by default.
 	float m_dynTransform[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
-	VkBuffer m_dynVertexBuffer = VK_NULL_HANDLE;
-	VkDeviceMemory m_dynVertexMemory = VK_NULL_HANDLE;
-	void *m_dynMapped = nullptr;
-	VkDeviceSize m_dynCapacityBytes = 0;
-	std::vector<float> m_dynQueued; // interleaved [x,y,z,r,g,b,u,v] per vertex
+	// A persistently mapped host-visible buffer the frame's stream is copied
+	// into. Each frame slot has its own: a slot's fence has signalled when its
+	// frame begins, so its buffers are free to rewrite or regrow, while the
+	// previous frame may still be reading the other slot's.
+	struct StreamBuffer
+	{
+		VkBuffer buffer = VK_NULL_HANDLE;
+		VkDeviceMemory memory = VK_NULL_HANDLE;
+		void *mapped = nullptr;
+		VkDeviceSize capacity = 0;
+	};
+	StreamBuffer m_dynVertexStreams[kMaxFramesInFlight];
+	StreamBuffer m_dynIndexStreams[kMaxFramesInFlight];
+	// Texel uploads small enough to defer (a font glyph, a lightmap patch): the
+	// texels are copied here and the copy is recorded at the start of the next
+	// frame's command buffer, ahead of every draw that frame replays, instead of
+	// each upload submitting a copy and waiting for the queue to go idle. All of
+	// a frame's draws replay at present, so they see the same texels either way.
+	// Larger uploads (level load) stay synchronous, after the pending ones.
+	struct PendingUpload
+	{
+		int handle;
+		uint32_t x, y, width, height, level;
+		// The image's contents outside the region survive (a mip chain level, a
+		// part of an uploaded image); a never-filled image's rest is cleared.
+		bool preserve;
+		bool clearRest;
+		size_t offset;
+		size_t size;
+	};
+	enum : size_t
+	{
+		// An upload up to this size is deferred; a bigger one runs at once.
+		kDeferredUploadMaxBytes = 256 * 1024,
+		// Texels held back at most; beyond this the pending ones run at once.
+		kPendingUploadCapBytes = 8 * 1024 * 1024
+	};
+	std::vector<PendingUpload> m_pendingUploads;
+	std::vector<uint8_t> m_pendingUploadData;
+	StreamBuffer m_uploadStreams[kMaxFramesInFlight];
+	void RecordTextureUpload( VkCommandBuffer cmd, VkImage image, const PendingUpload &upload,
+	    VkBuffer staging, VkDeviceSize offset );
+	// Records every pending upload into `cmd`, staging from `stream`.
+	bool RecordPendingUploads( VkCommandBuffer cmd, StreamBuffer &stream );
+	// Runs the pending uploads now, in their own submission (before a
+	// synchronous upload, so the order of uploads is kept).
+	bool FlushPendingUploads( std::string *outError );
+	bool EnsureStreamBuffer( StreamBuffer &stream, VkDeviceSize bytes, VkBufferUsageFlags usage );
+	void DestroyStreamBuffer( StreamBuffer &stream );
+	// kDynVertexFloats per vertex (QueueDynamicTriangles documents the record).
+	std::vector<float, DefaultInitAllocator<float>> m_dynQueued;
+	// Index lists of indexed draws, each relative to its draw's first vertex.
+	std::vector<uint32_t, DefaultInitAllocator<uint32_t>> m_dynIndices;
+	uint64_t m_streamEpoch = 1;
 	// Each IMesh::Draw becomes one record capturing the state current at that
 	// draw (transform, shader, constant color), so the many objects the engine
 	// draws in a frame each render with their own state instead of all collapsing
@@ -1038,6 +1171,9 @@ private:
 		int copyDstRect[4] = { 0, 0, 0, 0 };
 		uint32_t firstVertex = 0;
 		uint32_t vertexCount = 0;
+		// Indexed draws only (indexCount > 0): the range of m_dynIndices drawn.
+		uint32_t firstIndex = 0;
+		uint32_t indexCount = 0;
 		int shaderIndex = 0;
 		float transform[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 		float color[4] = { 1, 1, 1, 1 };
@@ -1063,6 +1199,8 @@ private:
 		PortalConstants portal;
 		int skin = -1; // index into m_dynSkinConstants
 	};
+	// A draw record carrying the state current now, before its geometry.
+	DynDraw &AppendDrawRecord();
 	std::vector<DynDraw> m_dynDrawRecords;
 	// Target/viewport/scissor state captured by each record.
 	int m_dynTarget = -1;

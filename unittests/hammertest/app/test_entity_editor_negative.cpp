@@ -18,6 +18,7 @@
 
 #include "hammer/app/editor_document.h"
 #include "hammer/app/entity_selection.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
@@ -86,13 +87,16 @@ bool BrokenPathConforms()
 
 int main()
 {
+	int checks = 0;
 	int failures = 0;
 
+	++checks;
 	if ( !RealPathConforms() )
 	{
 		std::printf( "FAIL: real grouped edit was not atomic under one Undo\n" );
 		++failures;
 	}
+	++checks;
 	if ( BrokenPathConforms() )
 	{
 		std::printf( "FAIL: invariant did NOT detect the non-atomic per-entity editor\n" );
@@ -102,9 +106,9 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "app.entity_editor.sensitivity: %d FAILURE(S)\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf( "app.entity_editor.sensitivity: atomic-multi-entity-undo invariant is "
 	             "effective (real passes, non-atomic editor caught)\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }

@@ -15,6 +15,7 @@
 
 #include "dynamic_library_conformance.h"
 #include "fake_dynamic_library.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 
@@ -65,30 +66,43 @@ int main()
 {
 	const DynLibFixture fx = MakeFixture();
 	int rc = 0;
+	int checks = 0;
+	int failures = 0;
 
 	// Variant 1: a provider that does NOT support no-load -- the suite verifies
 	// the unsupported optional capability is reported explicitly.
 	{
 		platformtest::CFakeDynamicLibraryLoader loader( MakeDefs(), /*supportsNoLoad=*/false );
-		rc |= platformtest::RunPositive( "test_dynamic_library[no-load unsupported]", loader, fx );
+		const platformtest::ConformanceReport r =
+		    platformtest::RunDynamicLibraryConformance( loader, fx );
+		checks += r.checks;
+		failures += r.failures;
+		rc |= platformtest::ReportConformance( "test_dynamic_library[no-load unsupported]", r );
 	}
 
 	// Variant 2: a provider that DOES support no-load -- the suite verifies the
 	// resolve-without-load path succeeds for a valid path.
 	{
 		platformtest::CFakeDynamicLibraryLoader loader( MakeDefs(), /*supportsNoLoad=*/true );
-		rc |= platformtest::RunPositive( "test_dynamic_library[no-load supported]", loader, fx );
+		const platformtest::ConformanceReport r =
+		    platformtest::RunDynamicLibraryConformance( loader, fx );
+		checks += r.checks;
+		failures += r.failures;
+		rc |= platformtest::ReportConformance( "test_dynamic_library[no-load supported]", r );
 	}
 	{
 		platformtest::CFakeDynamicLibraryLoader first( MakeDefs(), false );
 		platformtest::CFakeDynamicLibraryLoader second( MakeDefs(), true );
-		rc |= platformtest::ReportConformance( "test_dynamic_library[independent loaders]",
-		    platformtest::RunDynamicLibraryIsolationConformance( first, second, fx ) );
+		const platformtest::ConformanceReport r =
+		    platformtest::RunDynamicLibraryIsolationConformance( first, second, fx );
+		checks += r.checks;
+		failures += r.failures;
+		rc |= platformtest::ReportConformance( "test_dynamic_library[independent loaders]", r );
 	}
 
 	if ( rc == 0 )
 	{
 		std::printf( "ok test_dynamic_library: all variants passed\n" );
 	}
-	return rc;
+	return testing::ReportConformance( checks, failures );
 }

@@ -16,6 +16,7 @@
 #include "fake_paths.h"
 
 #include "platform/contracts/paths.h"
+#include "testing/conformance_result.h"
 
 #include <cstring>
 #include <cstdio>
@@ -109,12 +110,14 @@ bool Caught( const platform::IPlatformPaths &paths )
 
 int main()
 {
+	int checks = 0;
 	int failures = 0;
 
 	// 1) The conforming test backend must PASS.
 	{
 		platformtest::CFakePlatformPaths good;
 		platformtest::PathsReport r = platformtest::RunPlatformPathsConformance( good );
+		++checks;
 		if ( r.failures != 0 )
 		{
 			std::printf( "FAIL: conforming paths backend rejected by suite (%d/%d); "
@@ -134,6 +137,7 @@ int main()
 	for ( const Case &c : cases )
 	{
 		CBrokenPaths bad( c.defect );
+		++checks;
 		if ( !Caught( bad ) )
 		{
 			std::printf( "FAIL: broken paths provider '%s' was NOT caught\n", c.name );
@@ -144,8 +148,8 @@ int main()
 	if ( failures == 0 )
 	{
 		std::printf( "ok test_paths_negative: suite accepts conforming and rejects "
-			"all %zu broken providers\n", sizeof( cases ) / sizeof( cases[0] ) );
-		return 0;
+		             "all %zu broken providers\n",
+		    sizeof( cases ) / sizeof( cases[0] ) );
 	}
-	return 1;
+	return testing::ReportConformance( checks, failures );
 }

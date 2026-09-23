@@ -10,6 +10,7 @@
 //=============================================================================//
 
 #include "hammer/scene/scene_graph.h"
+#include "testing/conformance_result.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -64,13 +65,16 @@ int main()
 	const bool realConforms = ConformsNoCycle( realGraph );
 	const bool brokenConforms = ConformsNoCycle( brokenGraph );
 
+	int checks = 0;
 	int failures = 0;
 
+	++checks;
 	if ( !realConforms )
 	{
 		std::printf( "FAIL: real SceneGraph did not reject a cycle-forming reparent\n" );
 		++failures;
 	}
+	++checks;
 	if ( brokenConforms )
 	{
 		std::printf( "FAIL: predicate did NOT detect the permissive (cycle-accepting) provider\n" );
@@ -80,9 +84,9 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "hammer.scene SceneGraph negative: %d check(s) FAILED\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf( "hammer.scene SceneGraph negative: oracle detects violations (real passes, "
 	             "permissive caught)\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }

@@ -15,6 +15,7 @@
 //=============================================================================//
 
 #include "hammer/app/editor_controller.h"
+#include "testing/conformance_result.h"
 
 #include <cmath>
 #include <cstdio>
@@ -98,12 +99,15 @@ int main()
 	const bool realConforms = ConformsGridSnap( RealBuild );
 	const bool buggyConforms = ConformsGridSnap( NoSnapBuild );
 
+	int checks = 0;
 	int failures = 0;
+	++checks;
 	if ( !realConforms )
 	{
 		std::printf( "FAIL: real EditorController violated the grid-snapping clause\n" );
 		++failures;
 	}
+	++checks;
 	if ( buggyConforms )
 	{
 		std::printf( "FAIL: conformance predicate did NOT detect the no-snap provider\n" );
@@ -113,9 +117,9 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "hammer.app.editor_controller negative: %d check(s) FAILED\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf( "hammer.app.editor_controller negative: oracle detects violations (real passes, "
 	             "buggy caught)\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }

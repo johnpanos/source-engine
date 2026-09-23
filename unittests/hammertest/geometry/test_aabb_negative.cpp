@@ -13,6 +13,7 @@
 //=============================================================================//
 
 #include "hammer/geometry/aabb.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 
@@ -75,9 +76,11 @@ int main()
 	const bool realConforms = ConformsOpenFaceIntersection( realBox );
 	const bool buggyConforms = ConformsOpenFaceIntersection( buggyBox );
 
+	int checks = 0;
 	int failures = 0;
 
 	// The real provider MUST satisfy the contract clause.
+	++checks;
 	if ( !realConforms )
 	{
 		std::printf( "FAIL: real AxisAlignedBox violated the open-face intersection clause\n" );
@@ -86,6 +89,7 @@ int main()
 
 	// The oracle MUST detect the broken provider. If the buggy provider passed,
 	// the suite is vacuous and cannot be trusted.
+	++checks;
 	if ( buggyConforms )
 	{
 		std::printf( "FAIL: conformance predicate did NOT detect the broken provider\n" );
@@ -95,9 +99,9 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "hammer.geometry AABB negative: %d check(s) FAILED\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf(
 	    "hammer.geometry AABB negative: oracle detects violations (real passes, buggy caught)\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }

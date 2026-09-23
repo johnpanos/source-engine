@@ -2785,6 +2785,30 @@ uint32_t CVulkanContext::RasterStateKey( const DynRasterState &state )
 	               : 0u );
 }
 
+// The inverse of RasterStateKey (bit 32, the sRGB pass, is the caller's).
+CVulkanContext::DynRasterState CVulkanContext::RasterStateFromKey( uint64_t key )
+{
+	const uint32_t k = static_cast<uint32_t>( key );
+	DynRasterState state;
+	state.blend = ( k & 1u ) != 0;
+	state.srcFactor = static_cast<VkBlendFactor>( ( k >> 1 ) & 31u );
+	state.dstFactor = static_cast<VkBlendFactor>( ( k >> 6 ) & 31u );
+	state.depthTest = ( ( k >> 11 ) & 1u ) != 0;
+	state.depthWrite = ( ( k >> 12 ) & 1u ) != 0;
+	state.depthCompare = static_cast<VkCompareOp>( ( k >> 13 ) & 7u );
+	state.colorWrite = ( ( k >> 16 ) & 1u ) != 0;
+	state.cullMode = static_cast<VkCullModeFlags>( ( k >> 17 ) & 3u );
+	state.stencilEnable = ( ( k >> 19 ) & 1u ) != 0;
+	if ( state.stencilEnable )
+	{
+		state.stencilCompare = static_cast<VkCompareOp>( ( k >> 20 ) & 7u );
+		state.stencilFail = static_cast<VkStencilOp>( ( k >> 23 ) & 7u );
+		state.stencilDepthFail = static_cast<VkStencilOp>( ( k >> 26 ) & 7u );
+		state.stencilPass = static_cast<VkStencilOp>( ( k >> 29 ) & 7u );
+	}
+	return state;
+}
+
 VkPipeline CVulkanContext::TexturedPipeline( const DynRasterState &state, bool srgbPass )
 {
 	const uint64_t key = RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull );
@@ -2801,6 +2825,8 @@ VkPipeline CVulkanContext::TexturedPipeline( const DynRasterState &state, bool s
 		    static_cast<unsigned long long>( key ) );
 	// A failed state is cached too, so it is reported once rather than per draw.
 	m_dynTexPipelines[key] = pipeline;
+	if ( pipeline != VK_NULL_HANDLE )
+		NotePipelineVariant( kPipelineTextured, key );
 	return pipeline;
 }
 
@@ -2818,6 +2844,8 @@ VkPipeline CVulkanContext::PortalPipeline( const DynRasterState &state, bool srg
 		Log( "vkCreateGraphicsPipelines (PortalRefract, state %#llx) failed\n",
 		    static_cast<unsigned long long>( key ) );
 	m_portalPipelines[key] = pipeline;
+	if ( pipeline != VK_NULL_HANDLE )
+		NotePipelineVariant( kPipelinePortal, key );
 	return pipeline;
 }
 
@@ -2835,6 +2863,8 @@ VkPipeline CVulkanContext::SkinPipeline( const DynRasterState &state, bool srgbP
 		Log( "vkCreateGraphicsPipelines (skin, state %#llx) failed\n",
 		    static_cast<unsigned long long>( key ) );
 	m_skinPipelines[key] = pipeline;
+	if ( pipeline != VK_NULL_HANDLE )
+		NotePipelineVariant( kPipelineSkin, key );
 	return pipeline;
 }
 
@@ -2903,7 +2933,7 @@ VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, V
 	gp.renderPass = renderPass;
 	gp.subpass = 0;
 	VkPipeline pipeline = VK_NULL_HANDLE;
-	if ( vkCreateGraphicsPipelines( m_device, VK_NULL_HANDLE, 1, &gp, nullptr, &pipeline ) !=
+	if ( vkCreateGraphicsPipelines( m_device, m_pipelineCache, 1, &gp, nullptr, &pipeline ) !=
 	     VK_SUCCESS )
 		pipeline = VK_NULL_HANDLE;
 	return pipeline;
@@ -3406,6 +3436,12 @@ void CVulkanContext::DestroyManagedTexture( int handle )
 	// Retired after the frame being recorded is submitted and complete: until
 	// then no record can see the handle reused.
 	ManagedTexture &slot = m_managedTextures[static_cast<size_t>( handle )];
+	// Texels still waiting to be uploaded to it are of no use now.
+	size_t keptUploads = 0;
+	for ( const PendingUpload &upload : m_pendingUploads )
+		if ( upload.handle != handle )
+			m_pendingUploads[keptUploads++] = upload;
+	m_pendingUploads.resize( keptUploads );
 	m_retiredTextures.push_back( { slot, handle, m_submitSerial + 1 } );
 	slot = ManagedTexture();
 	if ( m_dynBoundTexHandle == handle )
@@ -3688,17 +3724,50 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 		SetError( outError, "UploadManagedTexture: compressed region not block aligned" );
 		return false;
 	}
-	const VkDeviceSize bytes = dataSize;
+	// A single-level image replaced whole discards its old contents. A level of a
+	// chain (made samplable at creation) and an image updated in part (VGUI's
+	// font pages, a glyph at a time) keep the texels outside the region.
+	PendingUpload upload;
+	upload.handle = handle;
+	upload.x = x;
+	upload.y = y;
+	upload.width = width;
+	upload.height = height;
+	upload.level = level;
+	upload.preserve = t.mipLevels > 1 || ( !whole && t.uploaded );
+	// A part of a never-filled single-level image: the rest reads as zero rather
+	// than undefined memory.
+	upload.clearRest = !whole && !upload.preserve && !compressed;
+	upload.size = dataSize;
 
+	if ( dataSize <= kDeferredUploadMaxBytes )
+	{
+		// Staging offsets keep the 16-byte alignment every format here needs
+		// (vkCmdCopyBufferToImage: a multiple of 4 and of the texel block).
+		if ( m_pendingUploadData.size() + dataSize + 16 > kPendingUploadCapBytes &&
+		     !FlushPendingUploads( outError ) )
+			return false;
+		upload.offset = ( m_pendingUploadData.size() + 15 ) & ~static_cast<size_t>( 15 );
+		m_pendingUploadData.resize( upload.offset + dataSize );
+		std::memcpy( m_pendingUploadData.data() + upload.offset, data, dataSize );
+		m_pendingUploads.push_back( upload );
+		if ( level == 0 )
+			t.uploaded = true;
+		return true;
+	}
+
+	// Synchronous: after whatever is pending, so uploads keep their order.
+	if ( !FlushPendingUploads( outError ) )
+		return false;
 	VkBuffer staging = VK_NULL_HANDLE;
 	VkDeviceMemory stagingMem = VK_NULL_HANDLE;
-	if ( !CreateBuffer( bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+	if ( !CreateBuffer( dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &staging,
 	         &stagingMem, outError ) )
 		return false;
 	void *mapped = nullptr;
-	vkMapMemory( m_device, stagingMem, 0, bytes, 0, &mapped );
-	std::memcpy( mapped, data, bytes );
+	vkMapMemory( m_device, stagingMem, 0, dataSize, 0, &mapped );
+	std::memcpy( mapped, data, dataSize );
 	vkUnmapMemory( m_device, stagingMem );
 
 	VkCommandBuffer cmd = VK_NULL_HANDLE;
@@ -3708,32 +3777,40 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 		vkFreeMemory( m_device, stagingMem, nullptr );
 		return false;
 	}
+	upload.offset = 0;
+	RecordTextureUpload( cmd, t.image, upload, staging, 0 );
+	const bool ok = EndSingleTimeCommands( cmd, outError );
+	vkDestroyBuffer( m_device, staging, nullptr );
+	vkFreeMemory( m_device, stagingMem, nullptr );
+	if ( ok && level == 0 )
+		t.uploaded = true;
+	return ok;
+}
+
+void CVulkanContext::RecordTextureUpload( VkCommandBuffer cmd, VkImage image,
+    const PendingUpload &upload, VkBuffer staging, VkDeviceSize offset )
+{
+	const uint32_t level = upload.level;
 	VkImageMemoryBarrier toDst = {};
 	toDst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	// A single-level image replaced whole discards its old contents. A level of a
-	// chain (made samplable at creation) and an image updated in part (VGUI's
-	// font pages, a glyph at a time) keep the texels outside the region.
-	const bool preserve = t.mipLevels > 1 || ( !whole && t.uploaded );
 	toDst.oldLayout =
-	    preserve ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
+	    upload.preserve ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED;
 	toDst.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	toDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	toDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	toDst.image = t.image;
+	toDst.image = image;
 	toDst.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, level, 1, 0, 1 };
-	toDst.srcAccessMask = preserve ? VK_ACCESS_SHADER_READ_BIT : 0;
+	// Earlier submissions' shader reads (a frame still in flight) finish before
+	// the copy overwrites the texels, whether or not the contents are kept.
+	toDst.srcAccessMask = upload.preserve ? VK_ACCESS_SHADER_READ_BIT : 0;
 	toDst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-	vkCmdPipelineBarrier( cmd,
-	    preserve ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 	    VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toDst );
-	// A part of a never-filled single-level image: the rest reads as zero rather
-	// than undefined memory.
-	if ( !whole && !preserve && !compressed )
+	if ( upload.clearRest )
 	{
 		const VkClearColorValue zero = {};
 		const VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, level, 1, 0, 1 };
-		vkCmdClearColorImage(
-		    cmd, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1, &range );
+		vkCmdClearColorImage( cmd, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1, &range );
 		VkMemoryBarrier cleared = {};
 		cleared.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
 		cleared.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -3742,10 +3819,11 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 		    0, 1, &cleared, 0, nullptr, 0, nullptr );
 	}
 	VkBufferImageCopy copy = {};
+	copy.bufferOffset = offset;
 	copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1 };
-	copy.imageOffset = { static_cast<int32_t>( x ), static_cast<int32_t>( y ), 0 };
-	copy.imageExtent = { width, height, 1 };
-	vkCmdCopyBufferToImage( cmd, staging, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy );
+	copy.imageOffset = { static_cast<int32_t>( upload.x ), static_cast<int32_t>( upload.y ), 0 };
+	copy.imageExtent = { upload.width, upload.height, 1 };
+	vkCmdCopyBufferToImage( cmd, staging, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy );
 	VkImageMemoryBarrier toRead = toDst;
 	toRead.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	toRead.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -3753,12 +3831,48 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 	toRead.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
 	    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toRead );
-	const bool ok = EndSingleTimeCommands( cmd, outError );
-	vkDestroyBuffer( m_device, staging, nullptr );
-	vkFreeMemory( m_device, stagingMem, nullptr );
-	if ( ok && level == 0 )
-		t.uploaded = true;
+}
 
+bool CVulkanContext::RecordPendingUploads( VkCommandBuffer cmd, StreamBuffer &stream )
+{
+	if ( m_pendingUploads.empty() )
+		return true;
+	CFrameCostScope cost( m_frameCost, kCostTextureUpload );
+	if ( !EnsureStreamBuffer(
+	         stream, m_pendingUploadData.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT ) )
+		return false;
+	std::memcpy( stream.mapped, m_pendingUploadData.data(), m_pendingUploadData.size() );
+	for ( const PendingUpload &upload : m_pendingUploads )
+	{
+		const ManagedTexture &t = m_managedTextures[static_cast<size_t>( upload.handle )];
+		if ( t.image != VK_NULL_HANDLE )
+			RecordTextureUpload( cmd, t.image, upload, stream.buffer, upload.offset );
+	}
+	m_pendingUploads.clear();
+	m_pendingUploadData.clear();
+	return true;
+}
+
+bool CVulkanContext::FlushPendingUploads( std::string *outError )
+{
+	if ( m_pendingUploads.empty() )
+		return true;
+	// Its own staging buffer: the frame slots' may still be read by the GPU.
+	StreamBuffer stream;
+	VkCommandBuffer cmd = VK_NULL_HANDLE;
+	bool ok = BeginSingleTimeCommands( &cmd, outError );
+	if ( ok )
+	{
+		ok = RecordPendingUploads( cmd, stream );
+		ok = EndSingleTimeCommands( cmd, outError ) && ok;
+	}
+	DestroyStreamBuffer( stream );
+	if ( !ok )
+	{
+		m_pendingUploads.clear();
+		m_pendingUploadData.clear();
+		SetError( outError, "pending texture uploads failed" );
+	}
 	return ok;
 }
 
@@ -3953,17 +4067,11 @@ void CVulkanContext::FailUnsubmittedQueries()
 	}
 }
 
-void CVulkanContext::QueueDynamicTriangles( const float *posColorInterleaved, uint32_t vertexCount,
-    const float *lightmapUv, const float *normalTangent, const float *vertexAlpha )
+CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 {
-	if ( !posColorInterleaved || vertexCount == 0 )
-		return;
 	// Record this draw with the state current right now (the engine sets the
-	// transform/shader/constant per object before each Draw). 8 floats/vertex:
-	// position (3) + color (3) + uv (2).
+	// transform/shader/constant per object before each Draw).
 	DynDraw &d = AppendRecord( kRecordDraw );
-	d.firstVertex = static_cast<uint32_t>( m_dynQueued.size() / kDynVertexFloats );
-	d.vertexCount = vertexCount;
 	d.shaderIndex = m_dynShaderIndex;
 	std::memcpy( d.transform, m_dynTransform, sizeof( d.transform ) );
 	std::memcpy( d.color, m_dynConstColor, sizeof( d.color ) );
@@ -3988,23 +4096,118 @@ void CVulkanContext::QueueDynamicTriangles( const float *posColorInterleaved, ui
 		d.skin = static_cast<int>( m_dynSkinConstants.size() );
 		m_dynSkinConstants.push_back( m_dynSkin );
 	}
-	m_dynQueued.reserve(
-	    m_dynQueued.size() + static_cast<size_t>( vertexCount ) * kDynVertexFloats );
-	for ( uint32_t v = 0; v < vertexCount; ++v )
+	return d;
+}
+
+float *CVulkanContext::BeginDynamicDraw(
+    uint32_t maxVertices, uint32_t maxIndices, uint32_t **outIndices )
+{
+	DynDraw &d = AppendDrawRecord();
+	d.firstVertex = static_cast<uint32_t>( m_dynQueued.size() / kDynVertexFloats );
+	d.vertexCount = maxVertices;
+	const size_t start = m_dynQueued.size();
+	const size_t grown = start + static_cast<size_t>( maxVertices ) * kDynVertexFloats;
+	// Geometric growth: an exact reserve per draw would reallocate (and copy
+	// the whole frame's stream) on every draw of a frame larger than the last.
+	if ( grown > m_dynQueued.capacity() )
+		m_dynQueued.reserve( std::max( grown, m_dynQueued.capacity() * 2 ) );
+	m_dynQueued.resize( grown );
+	d.firstIndex = static_cast<uint32_t>( m_dynIndices.size() );
+	d.indexCount = maxIndices;
+	if ( maxIndices > 0 )
 	{
-		const float *vertex = posColorInterleaved + static_cast<size_t>( v ) * 8;
-		m_dynQueued.insert( m_dynQueued.end(), vertex, vertex + 8 );
-		m_dynQueued.push_back( lightmapUv ? lightmapUv[v * 2 + 0] : 0.0f );
-		m_dynQueued.push_back( lightmapUv ? lightmapUv[v * 2 + 1] : 0.0f );
-		if ( normalTangent )
-		{
-			const float *nt = normalTangent + static_cast<size_t>( v ) * 7;
-			m_dynQueued.insert( m_dynQueued.end(), nt, nt + 7 );
-		}
-		else
-			m_dynQueued.insert( m_dynQueued.end(), 7, 0.0f );
-		m_dynQueued.push_back( vertexAlpha ? vertexAlpha[v] : 1.0f );
+		const size_t indices = m_dynIndices.size() + maxIndices;
+		if ( indices > m_dynIndices.capacity() )
+			m_dynIndices.reserve( std::max( indices, m_dynIndices.capacity() * 2 ) );
+		m_dynIndices.resize( indices );
 	}
+	if ( outIndices )
+		*outIndices = maxIndices > 0 ? m_dynIndices.data() + d.firstIndex : nullptr;
+	return m_dynQueued.data() + start;
+}
+
+void CVulkanContext::EndDynamicDraw( uint32_t vertexCount, uint32_t indexCount )
+{
+	DynDraw &d = m_dynDrawRecords.back();
+	const bool indexed = d.indexCount > 0; // as reserved by BeginDynamicDraw
+	vertexCount = std::min( vertexCount, d.vertexCount );
+	indexCount = std::min( indexCount, d.indexCount );
+	if ( vertexCount == 0 || ( indexed && indexCount == 0 ) )
+	{
+		// Withdraw the draw and everything it reserved.
+		m_dynQueued.resize( static_cast<size_t>( d.firstVertex ) * kDynVertexFloats );
+		m_dynIndices.resize( d.firstIndex );
+		if ( d.skin >= 0 && d.shaderIndex == kDynShaderSkin )
+			m_dynSkinConstants.pop_back();
+		m_dynDrawRecords.pop_back();
+		return;
+	}
+	m_dynQueued.resize( ( static_cast<size_t>( d.firstVertex ) + vertexCount ) * kDynVertexFloats );
+	m_dynIndices.resize( static_cast<size_t>( d.firstIndex ) + indexCount );
+	d.vertexCount = vertexCount;
+	d.indexCount = indexCount;
+}
+
+CVulkanContext::DrawRange CVulkanContext::LastDrawRange() const
+{
+	DrawRange range = { 0, 0, 0, 0 };
+	if ( !m_dynDrawRecords.empty() && m_dynDrawRecords.back().kind == kRecordDraw )
+	{
+		const DynDraw &d = m_dynDrawRecords.back();
+		range.firstVertex = d.firstVertex;
+		range.vertexCount = d.vertexCount;
+		range.firstIndex = d.firstIndex;
+		range.indexCount = d.indexCount;
+	}
+	return range;
+}
+
+bool CVulkanContext::StreamRangeEquals( const DrawRange &range, const float *vertices,
+    uint32_t vertexCount, const uint32_t *indices, uint32_t indexCount ) const
+{
+	const size_t firstFloat = static_cast<size_t>( range.firstVertex ) * kDynVertexFloats;
+	const size_t floats = static_cast<size_t>( vertexCount ) * kDynVertexFloats;
+	return range.vertexCount == vertexCount && range.indexCount == indexCount &&
+	       firstFloat + floats <= m_dynQueued.size() &&
+	       static_cast<size_t>( range.firstIndex ) + indexCount <= m_dynIndices.size() &&
+	       std::memcmp( m_dynQueued.data() + firstFloat, vertices, floats * sizeof( float ) ) ==
+	           0 &&
+	       std::memcmp( m_dynIndices.data() + range.firstIndex, indices,
+	           indexCount * sizeof( uint32_t ) ) == 0;
+}
+
+void CVulkanContext::ReuseDynamicDraw( const DrawRange &range )
+{
+	if ( range.vertexCount == 0 )
+		return;
+	DynDraw &d = AppendDrawRecord();
+	d.firstVertex = range.firstVertex;
+	d.vertexCount = range.vertexCount;
+	d.firstIndex = range.firstIndex;
+	d.indexCount = range.indexCount;
+}
+
+void CVulkanContext::QueueDynamicTriangles( const float *posColorInterleaved, uint32_t vertexCount,
+    const float *lightmapUv, const float *normalTangent, const float *vertexAlpha )
+{
+	if ( !posColorInterleaved || vertexCount == 0 )
+		return;
+	float *out = BeginDynamicDraw( vertexCount );
+	for ( uint32_t v = 0; v < vertexCount; ++v, out += kDynVertexFloats )
+	{
+		// position (3) + color (3) + uv (2), lightmap uv (2), normal/tangent (7),
+		// alpha (1).
+		std::memcpy( out, posColorInterleaved + static_cast<size_t>( v ) * 8, 8 * sizeof( float ) );
+		out[8] = lightmapUv ? lightmapUv[v * 2 + 0] : 0.0f;
+		out[9] = lightmapUv ? lightmapUv[v * 2 + 1] : 0.0f;
+		if ( normalTangent )
+			std::memcpy(
+			    out + 10, normalTangent + static_cast<size_t>( v ) * 7, 7 * sizeof( float ) );
+		else
+			std::fill( out + 10, out + 17, 0.0f );
+		out[17] = vertexAlpha ? vertexAlpha[v] : 1.0f;
+	}
+	EndDynamicDraw( vertexCount );
 }
 
 std::string CVulkanContext::DescribeStream() const
@@ -4031,7 +4234,7 @@ std::string CVulkanContext::DescribeStream() const
 		if ( d.kind == kRecordDraw )
 		{
 			++t->draws;
-			t->vertices += d.vertexCount;
+			t->vertices += d.indexCount > 0 ? d.indexCount : d.vertexCount;
 		}
 		else if ( d.kind == kRecordClear )
 			++t->clears;
@@ -4069,7 +4272,8 @@ std::vector<CVulkanContext::StreamRecordInfo> CVulkanContext::DescribeStreamReco
 		info.shaderIndex = d.shaderIndex;
 		info.texHandle = d.texHandle;
 		info.raster = d.raster;
-		info.vertexCount = d.vertexCount;
+		// Elements drawn: an indexed draw renders its index count.
+		info.vertexCount = d.indexCount > 0 ? d.indexCount : d.vertexCount;
 		std::memcpy( info.modulation, d.modulation, sizeof( info.modulation ) );
 		std::memcpy( info.viewport, d.viewport, sizeof( info.viewport ) );
 		const size_t base = static_cast<size_t>( d.firstVertex ) * kDynVertexFloats;
@@ -4303,23 +4507,52 @@ void CVulkanContext::DestroyDynamicMesh()
 		vkDestroyPipelineLayout( m_device, m_dynPipelineLayout, nullptr );
 		m_dynPipelineLayout = VK_NULL_HANDLE;
 	}
-	if ( m_dynMapped )
+	for ( int slot = 0; slot < kMaxFramesInFlight; ++slot )
 	{
-		vkUnmapMemory( m_device, m_dynVertexMemory );
-		m_dynMapped = nullptr;
+		DestroyStreamBuffer( m_dynVertexStreams[slot] );
+		DestroyStreamBuffer( m_dynIndexStreams[slot] );
+		DestroyStreamBuffer( m_uploadStreams[slot] );
 	}
-	if ( m_dynVertexBuffer != VK_NULL_HANDLE )
-	{
-		vkDestroyBuffer( m_device, m_dynVertexBuffer, nullptr );
-		m_dynVertexBuffer = VK_NULL_HANDLE;
-	}
-	if ( m_dynVertexMemory != VK_NULL_HANDLE )
-	{
-		vkFreeMemory( m_device, m_dynVertexMemory, nullptr );
-		m_dynVertexMemory = VK_NULL_HANDLE;
-	}
-	m_dynCapacityBytes = 0;
+	m_pendingUploads.clear();
+	m_pendingUploadData.clear();
 	m_dynQueued.clear();
+	m_dynIndices.clear();
+	++m_streamEpoch;
+}
+
+bool CVulkanContext::EnsureStreamBuffer(
+    StreamBuffer &stream, VkDeviceSize bytes, VkBufferUsageFlags usage )
+{
+	if ( bytes <= stream.capacity )
+		return stream.mapped != nullptr;
+	CFrameCostScope cost( m_frameCost, kCostBufferGrow );
+	DestroyStreamBuffer( stream );
+	// Headroom so a frame slightly larger than the last does not regrow.
+	const VkDeviceSize capacity = bytes + bytes / 2 + 4096;
+	std::string error;
+	if ( !CreateBuffer( capacity, usage,
+	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+	         &stream.buffer, &stream.memory, &error ) ||
+	     vkMapMemory( m_device, stream.memory, 0, capacity, 0, &stream.mapped ) != VK_SUCCESS )
+	{
+		Log( "stream buffer (%llu bytes) unavailable: %s\n",
+		    static_cast<unsigned long long>( capacity ), error.c_str() );
+		DestroyStreamBuffer( stream );
+		return false;
+	}
+	stream.capacity = capacity;
+	return true;
+}
+
+void CVulkanContext::DestroyStreamBuffer( StreamBuffer &stream )
+{
+	if ( stream.mapped )
+		vkUnmapMemory( m_device, stream.memory );
+	if ( stream.buffer != VK_NULL_HANDLE )
+		vkDestroyBuffer( m_device, stream.buffer, nullptr );
+	if ( stream.memory != VK_NULL_HANDLE )
+		vkFreeMemory( m_device, stream.memory, nullptr );
+	stream = StreamBuffer();
 }
 
 bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
@@ -4327,6 +4560,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	if ( outSkip )
 		*outSkip = false;
 	m_frameBeginUs = FrameClockMicros();
+	m_frameBeginCpuUs = ThreadCpuMicros();
 	if ( !IsValid() )
 	{
 		SetError( outError, "BeginFrame on an invalid context" );
@@ -4432,6 +4666,14 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		const uint32_t first = m_currentFrame * 2;
 		vkCmdResetQueryPool( cmd, m_timestampPool, first, 2 );
 		vkCmdWriteTimestamp( cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_timestampPool, first );
+	}
+	// Texel uploads deferred since the last frame, ahead of every draw. This
+	// slot's staging buffer is free: its fence was waited on above.
+	if ( !RecordPendingUploads( cmd, m_uploadStreams[m_currentFrame] ) )
+	{
+		Log( "deferred texture uploads dropped: no staging buffer\n" );
+		m_pendingUploads.clear();
+		m_pendingUploadData.clear();
 	}
 
 	// Queries are reset outside any render pass, before the stream that issues
@@ -4542,45 +4784,23 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	if ( m_dynPipeline != VK_NULL_HANDLE && !m_dynDrawRecords.empty() )
 	{
 		const VkDeviceSize needed = m_dynQueued.size() * sizeof( float );
-		bool bufferOk = true;
-		if ( needed > m_dynCapacityBytes )
-		{
-			CFrameCostScope cost( m_frameCost, kCostBufferGrow );
-			// Grow the persistently-mapped host-visible vertex buffer.
-			if ( m_dynMapped )
-			{
-				vkUnmapMemory( m_device, m_dynVertexMemory );
-				m_dynMapped = nullptr;
-			}
-			if ( m_dynVertexBuffer != VK_NULL_HANDLE )
-				vkDestroyBuffer( m_device, m_dynVertexBuffer, nullptr );
-			if ( m_dynVertexMemory != VK_NULL_HANDLE )
-				vkFreeMemory( m_device, m_dynVertexMemory, nullptr );
-			m_dynVertexBuffer = VK_NULL_HANDLE;
-			m_dynVertexMemory = VK_NULL_HANDLE;
-
-			VkDeviceSize cap = needed + needed / 2 + 4096;
-			std::string bufErr;
-			if ( CreateBuffer( cap, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-			         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			         &m_dynVertexBuffer, &m_dynVertexMemory, &bufErr ) &&
-			     vkMapMemory( m_device, m_dynVertexMemory, 0, cap, 0, &m_dynMapped ) == VK_SUCCESS )
-			{
-				m_dynCapacityBytes = cap;
-			}
-			else
-			{
-				bufferOk = false;
-				m_dynCapacityBytes = 0;
-			}
-		}
-
-		const bool geometryOk = bufferOk && ( needed == 0 || m_dynMapped );
+		const VkDeviceSize indexBytes = m_dynIndices.size() * sizeof( uint32_t );
+		StreamBuffer &vertexStream = m_dynVertexStreams[m_currentFrame];
+		StreamBuffer &indexStream = m_dynIndexStreams[m_currentFrame];
+		const bool geometryOk = needed == 0 || EnsureStreamBuffer( vertexStream, needed,
+		                                           VK_BUFFER_USAGE_VERTEX_BUFFER_BIT );
+		const bool indicesOk = indexBytes == 0 || EnsureStreamBuffer( indexStream, indexBytes,
+		                                              VK_BUFFER_USAGE_INDEX_BUFFER_BIT );
 		if ( geometryOk && needed > 0 )
 		{
-			std::memcpy( m_dynMapped, m_dynQueued.data(), needed );
+			std::memcpy( vertexStream.mapped, m_dynQueued.data(), needed );
 			VkDeviceSize offset = 0;
-			vkCmdBindVertexBuffers( cmd, 0, 1, &m_dynVertexBuffer, &offset );
+			vkCmdBindVertexBuffers( cmd, 0, 1, &vertexStream.buffer, &offset );
+		}
+		if ( indicesOk && indexBytes > 0 )
+		{
+			std::memcpy( indexStream.mapped, m_dynIndices.data(), indexBytes );
+			vkCmdBindIndexBuffer( cmd, indexStream.buffer, 0, VK_INDEX_TYPE_UINT32 );
 		}
 
 		// Replay the stream in engine order. Each record names the target it was
@@ -4968,7 +5188,16 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			vkCmdPushConstants( cmd, selectedLayout,
 			    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
 			    static_cast<uint32_t>( sizeof( float ) ) * pushFloats, pushData );
-			vkCmdDraw( cmd, d.vertexCount, 1, d.firstVertex, 0 );
+			if ( d.indexCount > 0 )
+			{
+				if ( indicesOk )
+					vkCmdDrawIndexed( cmd, d.indexCount, 1, d.firstIndex,
+					    static_cast<int32_t>( d.firstVertex ), 0 );
+			}
+			else
+			{
+				vkCmdDraw( cmd, d.vertexCount, 1, d.firstVertex, 0 );
+			}
 		}
 		endActiveQuery( false );
 		// EndFrame closes the swapchain pass and transitions the image for
@@ -5244,6 +5473,161 @@ bool CVulkanContext::EndFrame( std::string *outError )
 	return true;
 }
 
+static const char kPipelineCacheFile[] = "vulkan_pipelines.cache";
+static const char kPipelineKeysFile[] = "vulkan_pipelines.keys";
+// The first line of the keys file. Bump the version when RasterStateKey's
+// encoding or a family's meaning changes, so old keys are ignored, not misread.
+static const char kPipelineKeysHeader[] = "vulkan-pipeline-keys/v1";
+
+static bool ReadWholeFile( const std::string &path, std::vector<char> *out )
+{
+	FILE *file = std::fopen( path.c_str(), "rb" );
+	if ( !file )
+		return false;
+	out->clear();
+	char buffer[65536];
+	size_t got;
+	while ( ( got = std::fread( buffer, 1, sizeof( buffer ), file ) ) > 0 )
+		out->insert( out->end(), buffer, buffer + got );
+	const bool ok = !std::ferror( file );
+	std::fclose( file );
+	return ok;
+}
+
+// Replaces `path` only once the new contents are complete on disk, so an
+// interrupted save leaves the previous store rather than a truncated one.
+static bool WriteFileAtomically( const std::string &path, const void *data, size_t size )
+{
+	const std::string temporary = path + ".tmp";
+	FILE *file = std::fopen( temporary.c_str(), "wb" );
+	if ( !file )
+		return false;
+	const bool written = std::fwrite( data, 1, size, file ) == size;
+	const bool closed = std::fclose( file ) == 0;
+	if ( !written || !closed || std::rename( temporary.c_str(), path.c_str() ) != 0 )
+	{
+		std::remove( temporary.c_str() );
+		return false;
+	}
+	return true;
+}
+
+bool CVulkanContext::OpenPipelineStore( const std::string &directory, std::string *outError )
+{
+	if ( !IsValid() || directory.empty() )
+	{
+		SetError( outError, "pipeline store needs a device and a directory" );
+		return false;
+	}
+	if ( m_pipelineCache != VK_NULL_HANDLE )
+	{
+		SetError( outError, "pipeline store is already open" );
+		return false;
+	}
+	std::vector<char> data;
+	const bool haveData = ReadWholeFile( directory + "/" + kPipelineCacheFile, &data );
+	VkPipelineCacheCreateInfo info = {};
+	info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+	info.initialDataSize = haveData ? data.size() : 0;
+	info.pInitialData = haveData && !data.empty() ? data.data() : nullptr;
+	VkResult r = vkCreatePipelineCache( m_device, &info, nullptr, &m_pipelineCache );
+	if ( r != VK_SUCCESS && info.initialDataSize )
+	{
+		// Data the driver will not take starts the cache empty.
+		info.initialDataSize = 0;
+		info.pInitialData = nullptr;
+		r = vkCreatePipelineCache( m_device, &info, nullptr, &m_pipelineCache );
+	}
+	if ( r != VK_SUCCESS )
+	{
+		m_pipelineCache = VK_NULL_HANDLE;
+		SetError( outError, std::string( "vkCreatePipelineCache failed: " ) + ResultString( r ) );
+		return false;
+	}
+	m_pipelineStoreDirectory = directory;
+	Log( "pipeline store %s: %zu bytes of cache data\n", directory.c_str(),
+	    haveData ? data.size() : static_cast<size_t>( 0 ) );
+	return true;
+}
+
+int CVulkanContext::PrewarmPipelines()
+{
+	if ( m_pipelineStoreDirectory.empty() )
+		return 0;
+	std::vector<char> text;
+	if ( !ReadWholeFile( m_pipelineStoreDirectory + "/" + kPipelineKeysFile, &text ) )
+		return 0;
+	text.push_back( '\0' );
+	const char *line = text.data();
+	if ( std::strncmp( line, kPipelineKeysHeader, sizeof( kPipelineKeysHeader ) - 1 ) != 0 )
+	{
+		Log( "pipeline keys ignored: not %s\n", kPipelineKeysHeader );
+		return 0;
+	}
+	int built = 0;
+	for ( line = std::strchr( line, '\n' ); line; line = std::strchr( line, '\n' ) )
+	{
+		++line;
+		int family = -1;
+		unsigned long long key = 0;
+		if ( std::sscanf( line, "%d %llx", &family, &key ) != 2 )
+			continue;
+		const DynRasterState state = RasterStateFromKey( key );
+		const bool srgb = ( key >> 32 ) & 1u;
+		// A key from another build can name a variant this device cannot make;
+		// it fails here, once, and is not written back.
+		VkPipeline pipeline = VK_NULL_HANDLE;
+		if ( family == kPipelineTextured )
+			pipeline = TexturedPipeline( state, srgb );
+		else if ( family == kPipelinePortal )
+			pipeline = PortalPipeline( state, srgb );
+		else if ( family == kPipelineSkin )
+			pipeline = SkinPipeline( state, srgb );
+		if ( pipeline != VK_NULL_HANDLE )
+			++built;
+	}
+	return built;
+}
+
+bool CVulkanContext::SavePipelineStore( std::string *outError )
+{
+	if ( m_pipelineCache == VK_NULL_HANDLE || m_pipelineStoreDirectory.empty() )
+	{
+		SetError( outError, "pipeline store is not open" );
+		return false;
+	}
+	size_t size = 0;
+	std::vector<char> data;
+	if ( vkGetPipelineCacheData( m_device, m_pipelineCache, &size, nullptr ) == VK_SUCCESS )
+	{
+		data.resize( size );
+		if ( size &&
+		     vkGetPipelineCacheData( m_device, m_pipelineCache, &size, data.data() ) != VK_SUCCESS )
+			size = 0;
+		data.resize( size );
+	}
+	std::vector<std::pair<int, uint64_t>> variants = m_pipelineVariants;
+	std::sort( variants.begin(), variants.end() );
+	variants.erase( std::unique( variants.begin(), variants.end() ), variants.end() );
+	std::string keys = std::string( kPipelineKeysHeader ) + "\n";
+	for ( const std::pair<int, uint64_t> &variant : variants )
+	{
+		char line[64];
+		std::snprintf( line, sizeof( line ), "%d %llx\n", variant.first,
+		    static_cast<unsigned long long>( variant.second ) );
+		keys += line;
+	}
+	const std::string base = m_pipelineStoreDirectory + "/";
+	if ( ( !data.empty() &&
+	         !WriteFileAtomically( base + kPipelineCacheFile, data.data(), data.size() ) ) ||
+	     !WriteFileAtomically( base + kPipelineKeysFile, keys.data(), keys.size() ) )
+	{
+		SetError( outError, "cannot write the pipeline store in " + m_pipelineStoreDirectory );
+		return false;
+	}
+	return true;
+}
+
 void CVulkanContext::CreateTimestampPool()
 {
 	// Optional: without timestamps the stats carry CPU costs only.
@@ -5340,18 +5724,22 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 		// f: stats frame id (submission order); t: frame start (steady clock,
 		// microseconds); interval: since the previous frame's start; engine: the
 		// caller's time between the previous frame's end and this start; backend:
-		// BeginFrame through present.
+		// BeginFrame through present; cpu: the presenting thread's CPU time over
+		// the same interval.
 		std::fprintf( m_frameStatsFile,
-		    "{\"f\":%llu,\"t\":%llu,\"interval\":%llu,\"engine\":%llu,\"backend\":%llu,"
-		    "\"records\":%zu,\"vertex_bytes\":%zu,\"upload_bytes\":%llu",
+		    "{\"f\":%llu,\"t\":%llu,\"interval\":%llu,\"cpu\":%llu,\"engine\":%llu,"
+		    "\"backend\":%llu,\"records\":%zu,\"vertex_bytes\":%zu,\"index_bytes\":%zu,"
+		    "\"upload_bytes\":%llu",
 		    static_cast<unsigned long long>( m_statsFrame ),
 		    static_cast<unsigned long long>( m_frameBeginUs ),
 		    static_cast<unsigned long long>(
 		        m_prevFrameBeginUs ? m_frameBeginUs - m_prevFrameBeginUs : 0 ),
 		    static_cast<unsigned long long>(
+		        m_prevFrameBeginCpuUs ? m_frameBeginCpuUs - m_prevFrameBeginCpuUs : 0 ),
+		    static_cast<unsigned long long>(
 		        m_prevFrameEndUs ? m_frameBeginUs - m_prevFrameEndUs : 0 ),
 		    static_cast<unsigned long long>( endUs - m_frameBeginUs ), m_dynDrawRecords.size(),
-		    m_dynQueued.size() * sizeof( float ),
+		    m_dynQueued.size() * sizeof( float ), m_dynIndices.size() * sizeof( uint32_t ),
 		    static_cast<unsigned long long>( m_frameCost.uploadBytes ) );
 		std::fputs( ",\"cost\":{", m_frameStatsFile );
 		bool first = true;
@@ -5380,6 +5768,7 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 	m_frameMarks.clear();
 	m_frameCost.Reset();
 	m_prevFrameBeginUs = m_frameBeginUs;
+	m_prevFrameBeginCpuUs = m_frameBeginCpuUs;
 	m_prevFrameEndUs = endUs;
 }
 
@@ -5550,6 +5939,12 @@ bool CVulkanContext::Resize( int width, int height, std::string *outError )
 void CVulkanContext::Shutdown()
 {
 	CloseFrameStats();
+	if ( m_device != VK_NULL_HANDLE && !m_pipelineStoreDirectory.empty() )
+	{
+		std::string storeError;
+		if ( !SavePipelineStore( &storeError ) )
+			Log( "pipeline store not saved: %s\n", storeError.c_str() );
+	}
 	if ( m_device != VK_NULL_HANDLE )
 		vkDeviceWaitIdle( m_device );
 
@@ -5583,6 +5978,13 @@ void CVulkanContext::Shutdown()
 			vkDestroyQueryPool( m_device, m_timestampPool, nullptr );
 			m_timestampPool = VK_NULL_HANDLE;
 		}
+		if ( m_pipelineCache != VK_NULL_HANDLE )
+		{
+			vkDestroyPipelineCache( m_device, m_pipelineCache, nullptr );
+			m_pipelineCache = VK_NULL_HANDLE;
+		}
+		m_pipelineVariants.clear();
+		m_pipelineStoreDirectory.clear();
 		m_querySlots.clear();
 		m_replayedQueries.clear();
 

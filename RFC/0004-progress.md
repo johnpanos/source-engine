@@ -8,7 +8,7 @@ This file is the human-readable, durable progress record for RFC 0004. It tracks
 ## Status
 
 Evidence (2026-09-22): `python3 tools/quality/physics_conformance.py --out <dir>`
-passes. IVP and Box3D each pass 547 checks (149 boot, 398 gameplay); 12,372
+passes. IVP and Box3D each pass 554 checks (149 boot, 405 gameplay); 12,372
 observations agree; all 17 sensitivity faults are detected. The contract and its
 known gaps are in
 [`vphysics.provider.v1`](../unittests/physicstest/contracts/vphysics.provider.v1.md).
@@ -16,6 +16,39 @@ known gaps are in
 the default physics in `./play` (`PHYSICS=vphysics` selects IVP). This closes no
 roadmap gate: there are no performance budgets, no CI lane, no dedicated-server
 or non-Linux profile, and no gameplay soak.
+
+Gameplay regression fixes (2026-09-22): with Box3D, walking into props left the
+player stuck, and walking into a portal stopped the player short of it. Both came
+from provider traces and the player controller, not from the game:
+
+- `TraceBox` swept boxes with Box3D's shape cast. It reports any start within its
+  linear slop (about 0.25 inch) as a hit at fraction 0 with no normal. Movement
+  leaves the player `DIST_EPSILON` from what it touched, so every later trace was
+  blocked. Inside a portal environment, movement traces the carved local-world
+  collides, so the floor alone blocked it. Sweeps now follow IVP's
+  `CTraceSolver::SweepSingleConvex`: the swept volume is tested first, a sweep that
+  stays apart hits only while closing on the surface, and a sweep that reaches the
+  hull advances conservatively to `DIST_EPSILON`.
+- `startsolid` used `b3OverlapHull`, which also counts anything within 0.02 inch.
+  It now requires actual penetration, as IVP does.
+- Box3D's soft contacts pitch a pushed prop by about 2e-4 rad. The slide then rose
+  slightly, and the game treated that as a step and stopped pushing. Swept traces
+  now report planes within 0.005 of vertical as vertical.
+- The friction snapshot listed speculative contact points up to 0.8 inch away, so
+  the player controller treated a wall and a prop it had not reached as a crease
+  and froze. It now lists points within IVP's 0.25 inch collision tolerance, plus
+  points that pushed this step.
+
+Evidence:
+
+- Seven new `trace.box-*` checks cover the resting-contact cases. IVP passes them.
+  The pre-fix Box3D module fails six.
+- A local headless Portal movement repro on `testchmb_a_01` compared IVP and
+  Box3D trajectories: portal walk-through, free box push, and box-against-wall
+  pushes. The portal path is identical to IVP. Box3D pushes the box about 20–30%
+  slower than IVP and never sticks. The repro is not installed as a tool; a
+  Q-PHYSICS gameplay-scene runner is still open.
+- No CI lane runs these checks yet.
 
 | Work item | Phase | Status | Evidence |
 | --- | --- | --- | --- |

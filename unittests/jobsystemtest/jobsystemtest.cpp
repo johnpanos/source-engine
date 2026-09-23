@@ -15,6 +15,7 @@
 #include "jobsystem/graph_executor.h"
 #include "jobsystem/parallel_executor.h"
 #include "jobsystem/external_completion.h"
+#include "testing/conformance_result.h"
 
 #include <atomic>
 #include <cstdio>
@@ -626,5 +627,5 @@ int main()
 	RUN( Test_ExternalCompletionGatesGraph );
 
 	std::printf( "\n%d checks, %d failures\n", g_checks, g_failures );
-	return g_failures == 0 ? 0 : 1;
+	return testing::ReportConformance( g_checks, g_failures );
 }

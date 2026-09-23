@@ -8,6 +8,7 @@
 //=============================================================================//
 
 #include "hammer/app/update_hint.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 
@@ -20,9 +21,11 @@ namespace
 {
 
 int g_failures = 0;
+int g_checks = 0;
 
 void Check( bool ok, const char *label )
 {
+	++g_checks;
 	if ( !ok )
 	{
 		std::printf( "FAIL: %s\n", label );
@@ -108,8 +111,8 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "app.update_hint: %d FAILURE(S)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "app.update_hint: aggregation policy holds\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

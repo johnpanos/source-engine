@@ -10,6 +10,7 @@
 
 #include "hammer/formats/cordon.h"
 #include "hammer/formats/keyvalues.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
@@ -22,10 +23,12 @@ using hammer::geometry::Vec3d;
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 
 void Check( bool ok, const char *label )
 {
+	++g_checks;
 	if ( !ok )
 	{
 		std::printf( "FAIL: %s\n", label );
@@ -47,6 +50,7 @@ CordonResult Run( const std::string &vmf, const CordonBox &box )
 {
 	hammer::formats::ParseResult pr = ParseKeyValues( vmf );
 	CordonResult empty;
+	++g_checks;
 	if ( !pr.ok )
 	{
 		std::printf( "FAIL: fixture parse\n" );
@@ -98,9 +102,9 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.cordon negative: ORACLE UNSOUND (%d)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "formats.cordon negative: filter discriminates by position (universe keeps all, "
 	             "empty/far box removes all)\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

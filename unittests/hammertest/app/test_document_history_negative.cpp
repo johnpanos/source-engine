@@ -11,6 +11,7 @@
 //=============================================================================//
 
 #include "hammer/app/document_history.h"
+#include "testing/conformance_result.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -59,13 +60,16 @@ int main()
 	const bool realConforms = ConformsUndoToSavedClearsModified( realHistory );
 	const bool brokenConforms = ConformsUndoToSavedClearsModified( brokenHistory );
 
+	int checks = 0;
 	int failures = 0;
 
+	++checks;
 	if ( !realConforms )
 	{
 		std::printf( "FAIL: real DocumentHistory did not clear modified on undo-to-saved\n" );
 		++failures;
 	}
+	++checks;
 	if ( brokenConforms )
 	{
 		std::printf( "FAIL: predicate did NOT detect the revision-based modified provider\n" );
@@ -75,9 +79,9 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "hammer.app DocumentHistory negative: %d check(s) FAILED\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf( "hammer.app DocumentHistory negative: oracle detects violations (real passes, "
 	             "revision-based caught)\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }

@@ -14,6 +14,7 @@
 #include "hammer/app/editor_document.h"
 #include "hammer/app/entity_selection.h"
 #include "hammer/app/property_value.h"
+#include "testing/conformance_result.h"
 
 #include <cstddef>
 #include <cstdio>
@@ -28,8 +29,10 @@ using hammer::app::PropertyValue;
 namespace
 {
 int g_failures = 0;
+int g_checks = 0;
 void Check( bool ok, const char *label )
 {
+	++g_checks;
 	if ( !ok )
 	{
 		std::printf( "FAIL: %s\n", label );
@@ -212,9 +215,9 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "app.entity_editor: %d FAILURE(S)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "app.entity_editor: selection + multi-select aggregation + atomic multi-entity "
 	             "edit verified (shared by both shells)\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

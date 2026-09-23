@@ -12,6 +12,7 @@
 #include "conformance/render_presentation_conformance.h"
 #include "fakes/headless_presentation.h"
 #include "fakes/null_render_backend.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <functional>
@@ -151,5 +152,5 @@ int main()
 
 	std::printf( "render.presentation.sensitivity: %d defect(s), %d undetected\n",
 	    static_cast<int>( cases.size() ), undetected );
-	return undetected == 0 ? 0 : 1;
+	return testing::ReportConformance( cases.size(), undetected );
 }

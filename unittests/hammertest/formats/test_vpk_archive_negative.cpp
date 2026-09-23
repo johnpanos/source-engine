@@ -11,12 +11,14 @@
 #include "formats/fake_byte_store.h"
 
 #include "hammer/formats/vpk_archive.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
 
 namespace
 {
+int g_checks = 0;
 int g_failures = 0;
 
 void PutU16( std::string &b, std::uint16_t v )
@@ -35,6 +37,7 @@ void PutU32( std::string &b, std::uint32_t v )
 #define CHECK( cond, msg )                                                                         \
 	do                                                                                             \
 	{                                                                                              \
+		++g_checks;                                                                                \
 		if ( !( cond ) )                                                                           \
 		{                                                                                          \
 			std::printf( "FAIL: %s\n", ( msg ) );                                                  \
@@ -47,6 +50,7 @@ using hammer::formats::VpkArchive;
 // Opens a single-file store and asserts the open is rejected.
 static void ExpectRejected( const std::string &blob, const char *what )
 {
+	++g_checks;
 	hammertest::InMemoryByteStore store;
 	store.files["x_dir.vpk"] = blob;
 	std::string error;
@@ -174,8 +178,8 @@ int main()
 	if ( g_failures != 0 )
 	{
 		std::printf( "formats.vpk_archive.sensitivity: %d FAILURE(S)\n", g_failures );
-		return 1;
+		return testing::ReportConformance( g_checks, g_failures );
 	}
 	std::printf( "formats.vpk_archive.sensitivity: all malformed inputs rejected\n" );
-	return 0;
+	return testing::ReportConformance( g_checks, g_failures );
 }

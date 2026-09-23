@@ -10,6 +10,7 @@
 //=============================================================================//
 
 #include "hammer/app/property_value.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
@@ -64,13 +65,16 @@ int main()
 	const bool realConforms = ConformsEmptyIsSingle( RealAggregate( onlyEmpty ).State() );
 	const bool brokenConforms = ConformsEmptyIsSingle( BrokenAggregateState( onlyEmpty ) );
 
+	int checks = 0;
 	int failures = 0;
 
+	++checks;
 	if ( !realConforms )
 	{
 		std::printf( "FAIL: real PropertyValue collapsed empty string into unset\n" );
 		++failures;
 	}
+	++checks;
 	if ( brokenConforms )
 	{
 		std::printf( "FAIL: predicate did NOT detect the empty-as-unset aggregator\n" );
@@ -80,9 +84,9 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "hammer.app PropertyValue negative: %d check(s) FAILED\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf( "hammer.app PropertyValue negative: oracle detects violations (real passes, "
 	             "empty-as-unset caught)\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }

@@ -16,6 +16,7 @@
 //=============================================================================//
 
 #include "hammer/geometry/brush.h"
+#include "testing/conformance_result.h"
 
 #include <cmath>
 #include <cstdio>
@@ -113,13 +114,16 @@ int main()
 	    } );
 	const bool buggyConforms = ConformsConvexIntersection( BuggyBuild );
 
+	int checks = 0;
 	int failures = 0;
 
+	++checks;
 	if ( !realConforms )
 	{
 		std::printf( "FAIL: real BuildSolidFromPlanes violated the convex-intersection clause\n" );
 		++failures;
 	}
+	++checks;
 	if ( buggyConforms )
 	{
 		std::printf( "FAIL: conformance predicate did NOT detect the unclipped provider\n" );
@@ -129,9 +133,9 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "hammer.geometry.brush negative: %d check(s) FAILED\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf(
 	    "hammer.geometry.brush negative: oracle detects violations (real passes, buggy caught)\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }

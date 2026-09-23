@@ -13,6 +13,7 @@
 #include "hammer/app/editor_document.h"
 
 #include "hammer/formats/keyvalues.h"
+#include "testing/conformance_result.h"
 
 #include <cstdio>
 #include <string>
@@ -91,13 +92,16 @@ int main()
 	const bool realConforms = ConformsUndoRestores<EditorDocument>( original );
 	const bool brokenConforms = ConformsUndoRestores<BrokenDocument>( original );
 
+	int checks = 0;
 	int failures = 0;
 
+	++checks;
 	if ( !realConforms )
 	{
 		std::printf( "FAIL: real EditorDocument did not restore content on undo\n" );
 		++failures;
 	}
+	++checks;
 	if ( brokenConforms )
 	{
 		std::printf( "FAIL: predicate did NOT detect the non-restoring document\n" );
@@ -107,9 +111,9 @@ int main()
 	if ( failures != 0 )
 	{
 		std::printf( "hammer.app EditorDocument negative: %d check(s) FAILED\n", failures );
-		return 1;
+		return testing::ReportConformance( checks, failures );
 	}
 	std::printf( "hammer.app EditorDocument negative: oracle detects violations (real passes, "
 	             "broken caught)\n" );
-	return 0;
+	return testing::ReportConformance( checks, failures );
 }
