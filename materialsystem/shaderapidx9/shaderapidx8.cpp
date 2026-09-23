@@ -1787,10 +1787,10 @@ extern "C" DLL_EXPORT const render::LegacyShaderProvider *Dx9ShaderBackend_Descr
 {
 #if defined( USE_DXVK )
 	static const render::LegacyShaderProvider provider = {
-	    "vulkan-compat", "shaderapidx9", Dx9ShaderBackend_Create };
+	    "vulkan-compat", "shaderapidx9", Dx9ShaderBackend_Create, true };
 #else
 	static const render::LegacyShaderProvider provider = {
-	    "legacy", "shaderapidx9", Dx9ShaderBackend_Create };
+	    "legacy", "shaderapidx9", Dx9ShaderBackend_Create, true };
 #endif
 	return &provider;
 }

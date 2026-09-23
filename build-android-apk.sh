@@ -386,9 +386,13 @@ package_apk()
 	sed -e "s|@PACKAGE@|$APP_ID|g" -e "s|@APP_LABEL@|$APP_LABEL|g" \
 		"$MANIFEST_TEMPLATE" > "$work/manifest/AndroidManifest.xml"
 
+	# The app's own UI art, installed into <game>/custom/ at startup.
+	rm -rf "$work/assets"
+	python3 "$ROOT/tools/android/touch_icons.py" "$work/assets/touch" >/dev/null
+
 	local link_mode=()
 	[ "$RELEASE" = 1 ] || link_mode=(--debug-mode) # run-as, native debugging
-	"$BT/aapt2" link -o "$work/base.apk" -I "$ANDROID_JAR" "${link_mode[@]}" \
+	"$BT/aapt2" link -o "$work/base.apk" -I "$ANDROID_JAR" "${link_mode[@]}" -A "$work/assets" \
 		--manifest "$work/manifest/AndroidManifest.xml" \
 		--min-sdk-version "$MIN_SDK" --target-sdk-version "$TARGET_SDK" \
 		--version-code "$VERSION_CODE" --version-name "$VERSION_NAME"

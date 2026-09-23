@@ -1815,8 +1815,11 @@ extern "C" DLL_EXPORT bool NativeVulkanShaderBackend_Create(
 
 extern "C" DLL_EXPORT const render::LegacyShaderProvider *NativeVulkanShaderBackend_Describe()
 {
+	// Not queued: ComputeVertexDescription is unimplemented, and the fixed mesh
+	// layout seeds defaults (white color, unit bone weight) that a replayed
+	// queued vertex buffer would overwrite.
 	static const render::LegacyShaderProvider provider = {
-	    "native-vulkan", "shaderapivulkan", NativeVulkanShaderBackend_Create };
+	    "native-vulkan", "shaderapivulkan", NativeVulkanShaderBackend_Create, false };
 	return &provider;
 }
 

@@ -3883,6 +3883,12 @@ void CMaterialSystem::EndFrame( void )
 	{
 		nextThreadMode = MATERIAL_SINGLE_THREADED;
 	}
+	// A bound provider that cannot replay queued meshes is never queued, whatever
+	// mat_queue_mode asks for. Legacy module selection keeps its behavior.
+	if ( m_bShaderProviderSelected && !m_SelectedShaderProvider.supportsQueuedRendering )
+	{
+		nextThreadMode = MATERIAL_SINGLE_THREADED;
+	}
 
 	if ( m_bForcedSingleThreaded || m_bThreadingNotAvailable )
 	{

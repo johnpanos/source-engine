@@ -193,7 +193,9 @@ InitReturnVal_t CSDL3Mgr::Init()
 		return INIT_FAILED;
 	}
 	m_nWindowRefs = 1;
-	if ( !SDL_StartTextInput( m_Window ) )
+	// Where text input raises an on-screen keyboard (Android), it starts only
+	// when a text field takes focus (IInputSystem::StartTextInput).
+	if ( !SDL_HasScreenKeyboardSupport() && !SDL_StartTextInput( m_Window ) )
 	{
 		Warning( "SDL3 text input initialization failed: %s\n", SDL_GetError() );
 		Shutdown();

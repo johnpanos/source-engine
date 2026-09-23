@@ -1282,7 +1282,7 @@ static bool CreateNullShaderBackend( render::LegacyShaderServices *services )
 DLL_EXPORT const render::LegacyShaderProvider *NullShaderBackend_Describe()
 {
 	static const render::LegacyShaderProvider provider = {
-	    "null", "shaderapiempty", CreateNullShaderBackend };
+	    "null", "shaderapiempty", CreateNullShaderBackend, false };
 	return &provider;
 }
 

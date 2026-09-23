@@ -120,6 +120,7 @@ CPhysicsEnvironmentBox3D::CPhysicsEnvironmentBox3D()
 	m_world = b3CreateWorld( &def );
 	b3World_SetCustomFilterCallback( m_world, CustomFilter, this );
 	b3World_SetPreSolveCallback( m_world, PreSolve, this );
+	m_contactRecycleDistance = b3World_GetContactRecycleDistance( m_world );
 }
 
 CPhysicsEnvironmentBox3D::~CPhysicsEnvironmentBox3D()
@@ -649,10 +650,7 @@ void CPhysicsEnvironmentBox3D::DeleteContactPair( CPhysicsObjectBox3D *pA, CPhys
 	}
 	DeletedPair_t pair = { pA, pB, true, true };
 	m_deletedPairs.AddToTail( pair );
-	// Recycled contacts skip the narrow phase (and so the pre-solve that
-	// holds this one off); recompute them while the deletion is pending.
-	b3Body_EnableContactRecycling( pA->GetBody(), false );
-	b3Body_EnableContactRecycling( pB->GetBody(), false );
+
 	// As IVP, only the partner is woken.
 	if ( wake && !pB->IsStatic() )
 		pB->Wake();
@@ -660,6 +658,20 @@ void CPhysicsEnvironmentBox3D::DeleteContactPair( CPhysicsObjectBox3D *pA, CPhys
 
 void CPhysicsEnvironmentBox3D::UpdateDeletedPairs()
 {
+	// Recycled contacts skip the narrow phase, and with it the pre-solve that
+	// holds a deleted contact off: recompute every contact while a deletion
+	// is pending (Box3D recycles only with a positive recycle distance).
+	struct Restore_t
+	{
+		CPhysicsEnvironmentBox3D *pEnv;
+		~Restore_t()
+		{
+			float distance = pEnv->m_deletedPairs.Count() ? 0.0f : pEnv->m_contactRecycleDistance;
+			if ( b3World_GetContactRecycleDistance( pEnv->m_world ) != distance )
+				b3World_SetContactRecycleDistance( pEnv->m_world, distance );
+		}
+	} restore = { this };
+
 	for ( int i = m_deletedPairs.Count() - 1; i >= 0; i-- )
 	{
 		DeletedPair_t &pair = m_deletedPairs[i];
@@ -676,18 +688,7 @@ void CPhysicsEnvironmentBox3D::UpdateDeletedPairs()
 		}
 		// IVP re-creates the contact once the rules allow the pair again.
 		if ( PairAllowed( pair.pA, pair.pB ) )
-		{
-			CPhysicsObjectBox3D *pObjects[2] = { pair.pA, pair.pB };
 			m_deletedPairs.FastRemove( i );
-			for ( int k = 0; k < 2; k++ )
-			{
-				bool pending = false;
-				for ( int j = 0; j < m_deletedPairs.Count() && !pending; j++ )
-					pending = m_deletedPairs[j].pA == pObjects[k] || m_deletedPairs[j].pB == pObjects[k];
-				if ( !pending )
-					b3Body_EnableContactRecycling( pObjects[k]->GetBody(), true );
-			}
-		}
 	}
 }
 

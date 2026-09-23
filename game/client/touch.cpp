@@ -88,7 +88,7 @@ void CTouchPanel::OnScreenSizeChanged(int iOldWide, int iOldTall)
 	int w,h;
 	w = ScreenWidth();
 	h = ScreenHeight();
-	gTouch.screen_w = ScreenWidth(); gTouch.screen_h = h;
+	gTouch.SetScreenSize( w, h );
 
 	SetBounds( 0, 0, w, h );
 }
@@ -100,7 +100,7 @@ void CTouchPanel::ApplySchemeSettings(vgui::IScheme *pScheme)
 	int w,h;
 	w = ScreenWidth();
 	h = ScreenHeight();
-	gTouch.screen_w = ScreenWidth(); gTouch.screen_h = h;
+	gTouch.SetScreenSize( w, h );
 
 	SetBounds( 0, 0, w, h );
 }
@@ -309,9 +309,76 @@ void CTouchControls::GetTouchDelta( float yaw, float pitch, float *dx, float *dy
 	m_flPreviousPitch = pitch;
 }
 
-void CTouchControls::ResetToDefaults()
+// The built-in layout, used until the player saves their own (touch.cfg) and
+// when a game ships no cfg/touch_default.cfg. Buttons are squared to the screen
+// aspect when added (round_aspect), so heights follow from the widths.
+void CTouchControls::AddDefaultButtons()
 {
 	rgba_t color(255, 255, 255, 155);
+
+	// Look and move zones: the screen halves. Buttons above them take the
+	// press as well, so a finger that starts on a button can still aim.
+	AddButton( "look", "", "_look", 0.5, 0, 1, 1, color, 0, 0, 0 );
+	AddButton( "move", "", "_move", 0, 0, 0.5, 1, color, 0, 0, 0 );
+
+#ifdef PORTAL
+	// Portal needs the two portals, use (carry), jump and crouch; it has no
+	// weapon switching, reload, flashlight or sprint. The portal buttons sit
+	// where the right thumb rests, blue (+attack) left of orange (+attack2),
+	// as on a mouse, and share one icon tinted with the portal colours.
+	AddButton( "attack", "vgui/touch/portal", "+attack", 0.760000, 0.440000, 0.860000, 0.540000,
+	    rgba_t( 64, 160, 255, 210 ) );
+	AddButton( "attack2", "vgui/touch/portal", "+attack2", 0.880000, 0.440000, 0.980000, 0.540000,
+	    rgba_t( 255, 150, 40, 210 ) );
+	AddButton( "use", "vgui/touch/use", "+use", 0.880000, 0.200000, 0.980000, 0.300000, color );
+	AddButton( "jump", "vgui/touch/jump", "+jump", 0.880000, 0.740000, 0.980000, 0.840000, color );
+	AddButton(
+	    "duck", "vgui/touch/crouch", "+duck", 0.760000, 0.740000, 0.860000, 0.840000, color );
+	AddButton(
+	    "tduck", "vgui/touch/tduck", ";+duck", 0.020000, 0.780000, 0.080000, 0.840000, color );
+	AddButton( "menu", "vgui/touch/menu", "gameui_activate", 0.000000, 0.000000, 0.070000, 0.070000,
+	    color );
+	AddButton( "edit", "vgui/touch/settings", "touch_enableedit", 0.465000, 0.000000, 0.535000,
+	    0.070000, color );
+	AddButton( "savequick", "vgui/touch/save", "save quick", 0.840000, 0.000000, 0.910000, 0.070000,
+	    color );
+	AddButton( "loadquick", "vgui/touch/load", "load quick", 0.920000, 0.000000, 0.990000, 0.070000,
+	    color );
+#else
+	AddButton( "use", "vgui/touch/use", "+use", 0.880000, 0.213333, 1.000000, 0.426667, color );
+	AddButton( "jump", "vgui/touch/jump", "+jump", 0.880000, 0.462222, 1.000000, 0.675556, color );
+	AddButton(
+	    "attack", "vgui/touch/shoot", "+attack", 0.760000, 0.583333, 0.880000, 0.796667, color );
+	AddButton( "attack2", "vgui/touch/shoot_alt", "+attack2", 0.760000, 0.320000, 0.880000,
+	    0.533333, color );
+	AddButton(
+	    "duck", "vgui/touch/crouch", "+duck", 0.880000, 0.746667, 1.000000, 0.960000, color );
+	AddButton(
+	    "tduck", "vgui/touch/tduck", ";+duck", 0.560000, 0.817778, 0.620000, 0.924444, color );
+	AddButton( "zoom", "vgui/touch/zoom", "+zoom", 0.680000, 0.00000, 0.760000, 0.142222, color );
+	AddButton(
+	    "speed", "vgui/touch/speed", "+speed", 0.180000, 0.568889, 0.280000, 0.746667, color );
+	AddButton( "loadquick", "vgui/touch/load", "load quick", 0.760000, 0.000000, 0.840000, 0.142222,
+	    color );
+	AddButton( "savequick", "vgui/touch/save", "save quick", 0.840000, 0.000000, 0.920000, 0.142222,
+	    color );
+	AddButton(
+	    "reload", "vgui/touch/reload", "+reload", 0.000000, 0.320000, 0.120000, 0.533333, color );
+	AddButton( "flashlight", "vgui/touch/flash_light_filled", "impulse 100", 0.920000, 0.000000,
+	    1.000000, 0.142222, color );
+	AddButton( "invnext", "vgui/touch/next_weap", "invnext", 0.000000, 0.533333, 0.120000, 0.746667,
+	    color );
+	AddButton( "invprev", "vgui/touch/prev_weap", "invprev", 0.000000, 0.071111, 0.120000, 0.284444,
+	    color );
+	AddButton( "edit", "vgui/touch/settings", "touch_enableedit", 0.420000, 0.000000, 0.500000,
+	    0.151486, color );
+	AddButton( "menu", "vgui/touch/menu", "gameui_activate", 0.000000, 0.00000, 0.080000, 0.142222,
+	    color );
+#endif
+}
+
+void CTouchControls::ResetToDefaults()
+{
 	char buf[MAX_PATH];
 	gridcolor = rgba_t(255, 0, 0, 30);
 
@@ -320,25 +387,7 @@ void CTouchControls::ResetToDefaults()
 	Q_snprintf(buf, sizeof buf, "cfg/%s", TOUCH_DEFAULT_CFG);
 	if( !filesystem->FileExists(buf) )
 	{
-		AddButton( "look", "", "_look", 0.5, 0, 1, 1, color, 0, 0, 0 );
-		AddButton( "move", "", "_move", 0, 0, 0.5, 1, color, 0, 0, 0 );
-
-		AddButton( "use", "vgui/touch/use", "+use", 0.880000, 0.213333, 1.000000, 0.426667, color );
-		AddButton( "jump", "vgui/touch/jump", "+jump", 0.880000, 0.462222, 1.000000, 0.675556, color );
-		AddButton( "attack", "vgui/touch/shoot", "+attack", 0.760000, 0.583333, 0.880000, 0.796667, color );
-		AddButton( "attack2", "vgui/touch/shoot_alt", "+attack2", 0.760000, 0.320000, 0.880000, 0.533333, color );
-		AddButton( "duck", "vgui/touch/crouch", "+duck", 0.880000, 0.746667, 1.000000, 0.960000, color );
-		AddButton( "tduck", "vgui/touch/tduck", ";+duck", 0.560000, 0.817778, 0.620000, 0.924444, color );
-		AddButton( "zoom", "vgui/touch/zoom", "+zoom", 0.680000, 0.00000, 0.760000, 0.142222, color );
-		AddButton( "speed", "vgui/touch/speed", "+speed", 0.180000, 0.568889, 0.280000, 0.746667, color );
-		AddButton( "loadquick", "vgui/touch/load", "load quick", 0.760000, 0.000000, 0.840000, 0.142222, color );
-		AddButton( "savequick", "vgui/touch/save", "save quick", 0.840000, 0.000000, 0.920000, 0.142222, color );
-		AddButton( "reload", "vgui/touch/reload", "+reload", 0.000000, 0.320000, 0.120000, 0.533333, color );
-		AddButton( "flashlight", "vgui/touch/flash_light_filled", "impulse 100", 0.920000, 0.000000, 1.000000, 0.142222, color );
-		AddButton( "invnext", "vgui/touch/next_weap", "invnext", 0.000000, 0.533333, 0.120000, 0.746667, color );
-		AddButton( "invprev", "vgui/touch/prev_weap", "invprev", 0.000000, 0.071111, 0.120000, 0.284444, color );
-		AddButton( "edit", "vgui/touch/settings", "touch_enableedit", 0.420000, 0.000000, 0.500000, 0.151486, color );
-		AddButton( "menu", "vgui/touch/menu", "gameui_activate", 0.000000, 0.00000, 0.080000, 0.142222, color );
+		AddDefaultButtons();
 	}
 	else
 	{
@@ -378,27 +427,7 @@ void CTouchControls::Init()
 	showtexture = hidetexture = resettexture = closetexture = joytexture = 0;
 	configchanged = false;
 
-	rgba_t color(255, 255, 255, 155);
-
-	AddButton( "look", "", "_look", 0.5, 0, 1, 1, color, 0, 0, 0 );
-	AddButton( "move", "", "_move", 0, 0, 0.5, 1, color, 0, 0, 0 );
-
-	AddButton( "use", "vgui/touch/use", "+use", 0.880000, 0.213333, 1.000000, 0.426667, color );
-	AddButton( "jump", "vgui/touch/jump", "+jump", 0.880000, 0.462222, 1.000000, 0.675556, color );
-	AddButton( "attack", "vgui/touch/shoot", "+attack", 0.760000, 0.583333, 0.880000, 0.796667, color );
-	AddButton( "attack2", "vgui/touch/shoot_alt", "+attack2", 0.760000, 0.320000, 0.880000, 0.533333, color );
-	AddButton( "duck", "vgui/touch/crouch", "+duck", 0.880000, 0.746667, 1.000000, 0.960000, color );
-	AddButton( "tduck", "vgui/touch/tduck", ";+duck", 0.560000, 0.817778, 0.620000, 0.924444, color );
-	AddButton( "zoom", "vgui/touch/zoom", "+zoom", 0.680000, 0.00000, 0.760000, 0.142222, color );
-	AddButton( "speed", "vgui/touch/speed", "+speed", 0.180000, 0.568889, 0.280000, 0.746667, color );
-	AddButton( "loadquick", "vgui/touch/load", "load quick", 0.760000, 0.000000, 0.840000, 0.142222, color );
-	AddButton( "savequick", "vgui/touch/save", "save quick", 0.840000, 0.000000, 0.920000, 0.142222, color );
-	AddButton( "reload", "vgui/touch/reload", "+reload", 0.000000, 0.320000, 0.120000, 0.533333, color );
-	AddButton( "flashlight", "vgui/touch/flash_light_filled", "impulse 100", 0.920000, 0.000000, 1.000000, 0.142222, color );
-	AddButton( "invnext", "vgui/touch/next_weap", "invnext", 0.000000, 0.533333, 0.120000, 0.746667, color );
-	AddButton( "invprev", "vgui/touch/prev_weap", "invprev", 0.000000, 0.071111, 0.120000, 0.284444, color );
-	AddButton( "edit", "vgui/touch/settings", "touch_enableedit", 0.420000, 0.000000, 0.500000, 0.151486, color );
-	AddButton( "menu", "vgui/touch/menu", "gameui_activate", 0.000000, 0.00000, 0.080000, 0.142222, color );
+	AddDefaultButtons();
 
 	char buf[256];
 
@@ -466,8 +495,7 @@ void CTouchControls::CreateAtlasTexture()
 		fp = ::filesystem->Open( fullFileName, "rb" );
 		if( !fp )
 		{
-			t->textureID = vgui::surface()->CreateNewTextureID();
-			vgui::surface()->DrawSetTextureFile( t->textureID, t->szName, true, false );
+			t->isMissing = true;
 			continue;
 		}
 
@@ -538,7 +566,7 @@ void CTouchControls::CreateAtlasTexture()
 	for( int i = 0; i < textureList.Count(); i++ )
 	{
 		CTouchTexture *t = textureList[i];
-		if( t->textureID )
+		if ( t->textureID || t->isMissing )
 			continue;
 
 		t->X0 = rects[rectCount].x / (float)atlasHeight;
@@ -614,6 +642,47 @@ void CTouchControls::IN_CheckCoords( float *x1, float *y1, float *x2, float *y2 
 		*x2 = GRID_ROUND_X( *x2 );
 		*y1 = GRID_ROUND_Y( *y1 );
 		*y2 = GRID_ROUND_Y( *y2 );
+	}
+}
+
+// Button coordinates are screen fractions, so a rotation or a move to another
+// display (foldables) would stretch them. Keep each button's size in pixels
+// and its distance from the screen edge it sits nearest; buttons in the
+// middle third keep their centre. The look/move zones stay screen fractions.
+static void RemapTouchSpan( float *lo, float *hi, float oldSize, float newSize )
+{
+	const float size = Min( ( *hi - *lo ) * oldSize, newSize );
+	const float centre = ( *lo + *hi ) * 0.5f;
+	float start;
+	if ( centre < 1.0f / 3.0f )
+		start = *lo * oldSize;
+	else if ( centre > 2.0f / 3.0f )
+		start = newSize - ( 1.0f - *hi ) * oldSize - size;
+	else
+		start = centre * newSize - size * 0.5f;
+	start = clamp( start, 0.0f, newSize - size );
+	*lo = start / newSize;
+	*hi = ( start + size ) / newSize;
+}
+
+void CTouchControls::SetScreenSize( int w, int h )
+{
+	if ( w <= 0 || h <= 0 )
+		return;
+	const float oldW = screen_w, oldH = screen_h;
+	screen_w = w;
+	screen_h = h;
+	if ( oldW <= 0 || oldH <= 0 || ( oldW == screen_w && oldH == screen_h ) )
+		return;
+
+	CUtlLinkedList<CTouchButton *>::iterator it;
+	for ( it = btns.begin(); it != btns.end(); it++ )
+	{
+		CTouchButton *btn = *it;
+		if ( btn->type != touch_command )
+			continue;
+		RemapTouchSpan( &btn->x1, &btn->x2, oldW, screen_w );
+		RemapTouchSpan( &btn->y1, &btn->y2, oldH, screen_h );
 	}
 }
 
@@ -738,10 +807,10 @@ void CTouchControls::Paint()
 
 				m_pMesh->Draw();
 			}
-			else if( !btn->texture->isInAtlas )
+			else if ( !btn->texture->isInAtlas && !t->isMissing )
 				CreateAtlasTexture();
 
-			if( !t->textureID )
+			if ( !t->textureID && !t->isMissing )
 				meshCount++;
 		}
 	}
@@ -753,7 +822,8 @@ void CTouchControls::Paint()
 	{
 		CTouchButton *btn = *it;
 
-		if( btn->texture != NULL && !(btn->flags & TOUCH_FL_HIDE) && !btn->texture->textureID )
+		if ( btn->texture != NULL && !( btn->flags & TOUCH_FL_HIDE ) && !btn->texture->textureID &&
+		     !btn->texture->isMissing )
 		{
 			CTouchTexture *t = btn->texture;
 
@@ -785,6 +855,26 @@ void CTouchControls::Paint()
 	meshBuilder.End();
 	m_pMesh->Draw();
 
+	for ( it = btns.begin(); it != btns.end(); it++ )
+	{
+		CTouchButton *btn = *it;
+
+		if ( btn->texture == NULL || ( btn->flags & TOUCH_FL_HIDE ) || !btn->texture->isMissing )
+			continue;
+
+		int alpha = ( btn->color.a > MIN_ALPHA_IN_CUTSCENE )
+		                ? max( MIN_ALPHA_IN_CUTSCENE, btn->color.a - m_AlphaDiff )
+		                : btn->color.a;
+		int x1 = btn->x1 * screen_w, y1 = btn->y1 * screen_h, x2 = btn->x2 * screen_w,
+		    y2 = btn->y2 * screen_h;
+
+		vgui::surface()->DrawSetColor( btn->color.r, btn->color.g, btn->color.b, alpha / 4 );
+		vgui::surface()->DrawFilledRect( x1, y1, x2, y2 );
+		vgui::surface()->DrawSetColor( btn->color.r, btn->color.g, btn->color.b, alpha );
+		vgui::surface()->DrawOutlinedRect( x1, y1, x2, y2 );
+		g_pMatSystemSurface->DrawColoredText(
+		    2, x1 + 8, y1 + 8, btn->color.r, btn->color.g, btn->color.b, alpha, "%s", btn->name );
+	}
 
 	if( m_flHideTouch < gpGlobals->curtime )
 	{

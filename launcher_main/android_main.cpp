@@ -13,10 +13,12 @@
 #include <SDL3/SDL_main.h>
 
 #include <dlfcn.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "tier0/platform.h"
@@ -62,6 +64,90 @@ int AppendArgumentsFile( const char *path, char **argv, int argc, char *storage,
 	return argc;
 }
 
+bool MakeDirectories( const char *path )
+{
+	char partial[PATH_MAX];
+	snprintf( partial, sizeof( partial ), "%s", path );
+	for ( char *p = partial + 1; *p; ++p )
+	{
+		if ( *p != '/' )
+			continue;
+		*p = '\0';
+		if ( mkdir( partial, 0775 ) != 0 && errno != EEXIST )
+			return false;
+		*p = '/';
+	}
+	return mkdir( partial, 0775 ) == 0 || errno == EEXIST;
+}
+
+bool FileHasContents( const char *path, const void *data, size_t size )
+{
+	FILE *file = fopen( path, "rb" );
+	if ( !file )
+		return false;
+	bool same = true;
+	char buffer[16384];
+	size_t offset = 0;
+	for ( size_t read; ( read = fread( buffer, 1, sizeof( buffer ), file ) ) != 0; offset += read )
+	{
+		if ( offset + read > size ||
+		     memcmp( buffer, static_cast<const char *>( data ) + offset, read ) != 0 )
+		{
+			same = false;
+			break;
+		}
+	}
+	fclose( file );
+	return same && offset == size;
+}
+
+// The app's own UI art (the touch-control icons, tools/android/touch_icons.py)
+// ships in the APK's assets; the game reads it from <game>/custom/, which its
+// gameinfo mounts at boot. Files are rewritten only when the APK's differ.
+void InstallAppContent( const char *gameDir )
+{
+	size_t manifestSize = 0;
+	char *manifest = static_cast<char *>( SDL_LoadFile( "touch/touch_icons.txt", &manifestSize ) );
+	if ( !manifest )
+	{
+		SDL_Log( "Source: no packaged touch icons: %s", SDL_GetError() );
+		return;
+	}
+	int installed = 0;
+	char *save = NULL;
+	for ( char *entry = strtok_r( manifest, "\r\n", &save ); entry;
+	    entry = strtok_r( NULL, "\r\n", &save ) )
+	{
+		if ( strstr( entry, ".." ) || entry[0] == '/' )
+			continue;
+		char asset[PATH_MAX], target[PATH_MAX];
+		snprintf( asset, sizeof( asset ), "touch/%s", entry );
+		snprintf( target, sizeof( target ), "%s/custom/android_touch/%s", gameDir, entry );
+		size_t size = 0;
+		void *data = SDL_LoadFile( asset, &size );
+		if ( !data )
+			continue;
+		if ( !FileHasContents( target, data, size ) )
+		{
+			char directory[PATH_MAX];
+			snprintf( directory, sizeof( directory ), "%s", target );
+			*strrchr( directory, '/' ) = '\0';
+			FILE *file = MakeDirectories( directory ) ? fopen( target, "wb" ) : NULL;
+			if ( file && fwrite( data, 1, size, file ) == size )
+				++installed;
+			else
+				SDL_Log( "Source: cannot install %s", target );
+			if ( file )
+				fclose( file );
+		}
+		SDL_free( data );
+	}
+	SDL_free( manifest );
+	if ( installed )
+		SDL_Log(
+		    "Source: installed %d touch icon(s) into %s/custom/android_touch", installed, gameDir );
+}
+
 } // namespace
 
 extern "C" int SDL_main( int, char ** )
@@ -72,6 +158,10 @@ extern "C" int SDL_main( int, char ** )
 	// Rotation: every orientation the device and the user's rotation lock
 	// allow. A resizable SDL window requests FULL_USER from the activity.
 	SDL_SetHint( SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight Portrait PortraitUpsideDown" );
+	// Fingers reach the game only as touch events: the client's touch controls
+	// (game/client/touch.cpp) and VGUI's finger handling. SDL's synthesized
+	// mouse would otherwise turn every look drag into a left click (+attack).
+	SDL_SetHint( SDL_HINT_TOUCH_MOUSE_EVENTS, "0" );
 
 	static char libraryDir[PATH_MAX];
 	if ( !GetNativeLibraryDir( libraryDir, sizeof( libraryDir ) ) )
@@ -105,6 +195,7 @@ extern "C" int SDL_main( int, char ** )
 		SDL_Log( "Source: cannot enter the content directory %s", contentDir );
 		return 1;
 	}
+	InstallAppContent( ANDROID_DEFAULT_GAME );
 
 	static char program[PATH_MAX];
 	snprintf( program, sizeof( program ), "%s/hl2_linux", libraryDir );

@@ -54,6 +54,11 @@ struct LegacyShaderProvider
 	const char *id;
 	const char *legacyModuleName;
 	bool ( *create )( LegacyShaderServices *services );
+	// The provider implements the queued material-system contract: meshes locked
+	// on the main thread are described by IShaderAPI::ComputeVertexDescription and
+	// their vertex bytes replayed into the provider's own mesh on the render
+	// thread. A provider without it runs the material system single-threaded.
+	bool supportsQueuedRendering;
 };
 
 } // namespace render

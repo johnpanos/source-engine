@@ -1,27 +1,37 @@
 # RFC 0004 progress: Box3D Primary Physics Backend
 
-Updated: 2026-09-22
+Updated: 2026-09-22 (Box3D provider completion)
 Source revision at assessment: `87955f67` (working tree; AGENTS.md portfolio rows: R09, R19, R31, R34, R37, R44, R45)
 
 This file is the human-readable, durable progress record for RFC 0004. It tracks the phased implementation of replacing IVP/Havana with Box3D as Source's primary rigid-body physics backend.
 
 ## Status
 
+Evidence (2026-09-22): `python3 tools/quality/physics_conformance.py --out <dir>`
+passes. IVP and Box3D each pass 547 checks (149 boot, 398 gameplay); 12,372
+observations agree; all 17 sensitivity faults are detected. The contract and its
+known gaps are in
+[`vphysics.provider.v1`](../unittests/physicstest/contracts/vphysics.provider.v1.md).
+`portal_boot.py --physics vphysics_box3d` passes on `testchmb_a_00`, and Box3D is
+the default physics in `./play` (`PHYSICS=vphysics` selects IVP). This closes no
+roadmap gate: there are no performance budgets, no CI lane, no dedicated-server
+or non-Linux profile, and no gameplay soak.
+
 | Work item | Phase | Status | Evidence |
 | --- | --- | --- | --- |
-| Interface & Consumer Inventory | A | Not started | — |
-| Asset Corpus & IVP Baselines | A | Not started | — |
-| Event & Contact-mutation Prototypes | A | Not started | — |
-| Box3D Build Integration (Pinned) | B | Not started | — |
-| VPhysics Adapter & World Lifecycle | B | Not started | — |
-| Legacy Geometry Decoder | B | Not started | — |
-| Trace & Query Foundation | B | Not started | — |
-| One-ragdoll & Impact Event | B | Not started | — |
-| Constraints & Player Controllers | C | Not started | — |
-| Persistence & Materials | C | Not started | — |
-| Fluids & Vehicles | D | Not started | — |
-| Tool Workflows (`studiomdl`, `vbsp`) | D | Not started | — |
-| Parallel Scheduler Integration | E | Not started | — |
+| Interface & Consumer Inventory | A | Partial | Every VPhysics interface implemented and covered by the contract; no method-level consumer inventory |
+| Asset Corpus & IVP Baselines | A | Partial | Conformance corpus: every `.phy` in the Portal and HL2 packs, `testchmb_a_00.bsp`, HL2 vehicle scripts, with IVP as the oracle; no performance baselines |
+| Event & Contact-mutation Prototypes | A | Done (provider) | Pre-step velocities for `PreCollision`; snapshot contact deletion via pre-solve (`contacts.*`) |
+| Box3D Build Integration (Pinned) | B | Done | `box3d/` pinned, private C17 target |
+| VPhysics Adapter & World Lifecycle | B | Done | `vphysics_box3d` module, `-physics` selection |
+| Legacy Geometry Decoder | B | Done | `.phy`/BSP decode (`vcollide.*`, `corpus.*`, `bsp.*`), IVP-format writer (`collide.write-*`) |
+| Trace & Query Foundation | B | Done | `trace.*`, `bsp.world-traces` |
+| One-ragdoll & Impact Event | B | Done | Chell ragdoll fixture, `events.*` |
+| Constraints & Player Controllers | C | Done | `constraint.*`, `player.*`, `shadow.*`, `motion.*` |
+| Persistence & Materials | C | Done | `save.*`, `restore.*`, `vehicle.restore-*`, `surfaceprops.*` |
+| Fluids & Vehicles | D | Done (gaps recorded) | `fluid.*`, `vehicle.*`; the raycast car type and wheel side-friction are listed gaps |
+| Tool Workflows (`studiomdl`, `vbsp`) | D | Partial | `CollideWrite` emits the legacy format; tools not rebuilt against Box3D |
+| Parallel Scheduler Integration | E | Not started | One Box3D worker |
 | Performance Budgets & Packaging | E | Not started | — |
 | Independent Collision Cooking | F | Not started | — |
 | IVP Simulation Retirement | F | Not started | — |

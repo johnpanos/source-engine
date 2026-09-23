@@ -263,7 +263,8 @@ void Run()
 	CHECK( g_ActualServices.IsComplete() );
 	CheckViews( *material, render::LegacyShaderServices() );
 
-	render::LegacyShaderProvider candidate = { "binding-fixture", "fixture", CountingFactory };
+	render::LegacyShaderProvider candidate = {
+	    "binding-fixture", "fixture", CountingFactory, false };
 	CHECK( !MaterialSystem_BindShaderProvider( NULL, &candidate ) );
 	// The foreign pointer names an actual live provider object. It is never
 	// dereferenced or treated as a material implementation by this entry point.

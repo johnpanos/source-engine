@@ -219,6 +219,7 @@ private:
 		bool disabled;
 	};
 	CUtlVector<DeletedPair_t> m_deletedPairs;
+	float m_contactRecycleDistance;		// Box3D's, restored when none are pending
 	// Counters since ClearStats (IVP's statistic manager).
 	physics_stats_t m_stats;
 	CUtlVector<TriggerOverlap_t> m_triggerOverlaps;

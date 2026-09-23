@@ -88,7 +88,7 @@ bool DescribeFake( int adapter, render::RenderAdapterInfo *info )
 	return true;
 }
 
-const render::LegacyShaderProvider g_FakeProvider = { "fixture", "fixture_module", NULL };
+const render::LegacyShaderProvider g_FakeProvider = { "fixture", "fixture_module", NULL, false };
 
 render::LegacyRenderBackendProvider FakeProvider( bool withDescribe )
 {
