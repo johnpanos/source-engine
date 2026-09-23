@@ -124,7 +124,7 @@ void main()
 		// alpha = lerp( alpha, alpha * i.color.a, g_fVertexAlpha ).
 		if ( ( flags & 256 ) != 0 )
 			result.rgb *= fragVertexColor.rgb;
-		if ( ( flags & 1024 ) != 0 )
+		if ( ( flags & ( 1024 | 65536 ) ) != 0 )
 			result.a *= fragVertexColor.a;
 		if ( consts.alphaParams.y > 0.5 )
 		{
@@ -144,5 +144,4 @@ void main()
 	if ( ( flags & 4 ) != 0 )
 		result.rgb = LinearToSrgb( result.rgb );
 	outColor = result;
-	outColor = vec4( 1.0, 0.0, 0.0, 1.0 );
 }

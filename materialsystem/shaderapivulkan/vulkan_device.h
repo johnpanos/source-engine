@@ -509,7 +509,9 @@ public:
 		kFragmentCable = 4096,
 		kFragmentSky = 8192,
 		kFragmentMonitor = 16384,
-		kFragmentMonitorTexture2 = 32768
+		kFragmentMonitorTexture2 = 32768,
+		// Sprite_DX9's VERTEXCOLOR combo multiplies both RGB and alpha directly.
+		kFragmentSpriteVertexAlpha = 65536
 	};
 	void SelectDynamicColorSpace( int flags ) { m_dynColorFlags = flags; }
 	// Linear scale applied to the textured pipeline's color before the sRGB

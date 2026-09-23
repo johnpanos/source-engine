@@ -4311,6 +4311,17 @@ static int SnapshotShaderFlags( const CShaderShadowVulkan &shadow )
 	// color (DrawClearBufferQuad's), which bufferclearobeystencil_ps2x returns.
 	if ( !V_stricmp( shadow.m_vertexShaderName, "bufferclearobeystencil_vs20" ) )
 		flags |= CVulkanContext::kVertexScreenSpace | CVulkanContext::kFragmentVertexColor;
+	// sprite_ps2x.fxc multiplies the sampled color and alpha by the vertex
+	// color when its VERTEXCOLOR combo is selected. The sprite vertex shader
+	// gamma-decodes RGB only when SRGB is enabled; its alpha stays linear.
+	if ( !V_strnicmp( shadow.m_pixelShaderName, "sprite_ps20", 11 ) &&
+	     ( shadow.m_vertexUsage & VERTEX_COLOR ) )
+	{
+		flags |= CVulkanContext::kFragmentModulateVertexColor |
+		         CVulkanContext::kFragmentSpriteVertexAlpha;
+		if ( !( shadow.m_colorFlags & CVulkanContext::kColorSrgbReadBase ) )
+			flags |= CVulkanContext::kVertexColorNoGammaConvert;
+	}
 	// vertexlit_and_unlit_generic (UnlitGeneric: VGUI, fonts, sprites) with a
 	// vertex color stream, which its vertex shader's VERTEXCOLOR combo reads
 	// ($vertexcolor or $vertexalpha; vertexlitgeneric_dx9_helper.cpp). The pixel
