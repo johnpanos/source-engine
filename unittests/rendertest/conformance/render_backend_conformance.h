@@ -11,9 +11,8 @@
 //
 //			The suite reports structured results and never aborts, so a positive
 //			run can assert it passes and a sensitivity run can assert a broken
-//			provider is DETECTED. Optional sections (presentation, multiple
-//			surfaces, device-loss recovery) run only when the provider advertises
-//			the capability, so a null/recording provider certifies only its
+//			provider is DETECTED. Optional sections (offscreen devices, device-loss
+//			recovery) run only when the provider advertises the capability, so a null/recording provider certifies only its
 //			claimed command and lifetime behavior -- not image fidelity, which
 //			needs real render-provider evidence.
 //
@@ -46,6 +45,18 @@ struct CheckResult
 struct Report
 {
 	std::vector<CheckResult> checks;
+	// Obligations this run could not exercise, with the reason. A skip never
+	// counts as a pass; another profile must cover it.
+	std::vector<CheckResult> skipped;
+
+	void Skip( const std::string &id, const std::string &reason )
+	{
+		CheckResult result;
+		result.id = id;
+		result.ok = false;
+		result.detail = reason;
+		skipped.push_back( result );
+	}
 
 	void Record( const std::string &id, bool ok, const std::string &detail = "" )
 	{

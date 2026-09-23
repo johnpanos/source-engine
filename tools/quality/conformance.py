@@ -8,17 +8,19 @@
 # (quality/conformance.manifest.json). It is the connective tissue that lets
 # "achieve parity as we go through all our RFCs" scale: a domain adds one
 # manifest row when it lands a suite, and this runner guarantees the suite is
-# built with the correct sources, run under a bounded timeout, classified by
-# outcome, and recorded in immutable evidence -- so a suite can never silently
-# drift out of the gate (as the hammer geometry suites did when aabb.cpp grew a
-# dependency that run_headless.sh did not track).
+# built with the correct sources, run under bounded time and memory, classified
+# by outcome, and recorded in immutable evidence with its full logs -- so a
+# suite can never silently drift out of the gate (as the hammer geometry suites
+# did when aabb.cpp grew a dependency that run_headless.sh did not track).
 #
 # Dependency-free: Python 3 standard library only, per RFC 0005 "the
 # orchestrator may use dependency-free Python".
 #
 # The runner is itself tested with negative fixtures (tools/quality/tests/) that
-# discover no suites, deliberately fail, crash, hang, fail to compile, and go
-# missing -- proving outcome handling before it is trusted as a gate.
+# discover no suites, deliberately fail, crash, hang, omit or duplicate their
+# result record, fail to compile, go missing, rely on assert(), and request an
+# unavailable required provider -- proving outcome handling before it is
+# trusted as a gate.
 #
 # ============================================================================
 
@@ -27,26 +29,39 @@ import datetime
 import hashlib
 import json
 import os
+import platform
 import re
+import shutil
+import signal
 import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import toolchain_policy  # noqa: E402
 
+try:
+    import resource
+except ImportError:  # non-POSIX hosts: limits are recorded as unavailable
+    resource = None
+
 MANIFEST_SCHEMA = "conformance-manifest/v1"
 PROFILE_SCHEMA = "conformance-profile/v1"
-EVIDENCE_SCHEMA = "conformance-evidence/v1"
+EVIDENCE_SCHEMA = "conformance-evidence/v2"
+RESULT_PROTOCOL = "checks-v1"
 
 # Outcomes the runner can observe for a suite. `expect` in the manifest names
 # the outcome a suite SHOULD produce; a suite passes the gate only when its
-# observed outcome equals its expected outcome.
-OUTCOME_PASS = "pass"            # built, ran, exit 0
-OUTCOME_FAIL = "fail"            # built, ran, exit != 0 (a check failed)
+# observed outcome equals its expected outcome on every attempt.
+OUTCOME_PASS = "pass"            # built, ran, exit 0, one valid result record
+OUTCOME_FAIL = "fail"            # built, ran, exit != 0 or invalid/failing record
 OUTCOME_CRASH = "crash"          # terminated by a signal
 OUTCOME_TIMEOUT = "timeout"      # exceeded the profile/suite timeout
 OUTCOME_COMPILE_ERROR = "compile-error"  # did not build
 OUTCOME_MISSING_SOURCE = "missing-source"  # a declared source file is absent
+# Runner-level outcomes that no manifest row may expect.
+OUTCOME_UNAVAILABLE = "unavailable-provider"  # a required provider is absent
+OUTCOME_SKIPPED = "skipped"      # optional suite whose provider is absent
+OUTCOME_INVALID_ORACLE = "invalid-oracle"  # suite checks compile out under NDEBUG
 
 VALID_EXPECT = {
     OUTCOME_PASS,
@@ -57,6 +72,21 @@ VALID_EXPECT = {
     OUTCOME_MISSING_SOURCE,
 }
 VALID_KIND = {"positive", "sensitivity", "self-test"}
+PROVIDER_KINDS = ("executable", "env", "path")
+
+# Build configurations. `release` proves test assertions stay effective in an
+# optimized NDEBUG build (RFC 0005 runner contract); it is appended after the
+# profile and suite flags so it cannot be undone by them.
+BUILD_CONFIGS = {
+    "default": [],
+    "release": ["-O2", "-DNDEBUG"],
+}
+DEFAULT_SEED = 20260921
+DEFAULT_MEMORY_LIMIT_MB = 4096
+
+# assert() is compiled out by NDEBUG; test sources must use counted checks.
+ASSERT_CALL = re.compile(r"(?<![\w.:>])assert\s*\(")
+RESULT_RECORD = re.compile(r"^CONFORMANCE ([0-9]+) ([0-9]+)$", re.MULTILINE)
 
 
 class ManifestError(Exception):
@@ -80,6 +110,16 @@ def load_json(path):
         raise ManifestError("file not found: %s" % path)
     except json.JSONDecodeError as e:
         raise ManifestError("invalid JSON in %s: %s" % (path, e))
+
+
+def parse_requirement(text):
+    """`kind:value` provider requirement -> (kind, value)."""
+    kind, sep, value = str(text).partition(":")
+    if not sep or kind not in PROVIDER_KINDS or not value:
+        raise ManifestError(
+            "invalid provider requirement %r (expected one of %s followed by ':<name>')"
+            % (text, ", ".join(PROVIDER_KINDS)))
+    return kind, value
 
 
 def load_manifest(path):
@@ -122,8 +162,28 @@ def load_manifest(path):
                 % (sid, kind, ", ".join(sorted(VALID_KIND))))
         if not s.get("profile"):
             raise ManifestError("suite %s declares no profile" % sid)
-        if s.get("result_protocol") not in (None, "checks-v1"):
-            raise ManifestError("suite %s has unknown result protocol" % sid)
+        protocol = s.get("result_protocol")
+        if protocol not in (None, RESULT_PROTOCOL):
+            raise ManifestError("suite %s has unknown result protocol %r" % (sid, protocol))
+        # An exit status alone cannot distinguish a complete run from one that
+        # returned before its checks: every suite expected to pass must report.
+        if expect == OUTCOME_PASS and protocol != RESULT_PROTOCOL:
+            raise ManifestError(
+                "suite %s expects pass but does not declare result_protocol %r "
+                "(end main with testing::ReportConformance)" % (sid, RESULT_PROTOCOL))
+        min_checks = s.get("min_checks")
+        if min_checks is not None and (not isinstance(min_checks, int) or min_checks < 1):
+            raise ManifestError("suite %s has invalid min_checks %r" % (sid, min_checks))
+        requires = s.get("requires", [])
+        if not isinstance(requires, list):
+            raise ManifestError("suite %s 'requires' must be a list" % sid)
+        for req in requires:
+            parse_requirement(req)
+        if not isinstance(s.get("optional", False), bool):
+            raise ManifestError("suite %s 'optional' must be a boolean" % sid)
+        if s.get("optional") and not requires:
+            raise ManifestError(
+                "suite %s is optional but names no provider it may be skipped for" % sid)
     return data
 
 
@@ -202,31 +262,111 @@ def source_identity(root):
     }
 
 
+def submodule_identity(root):
+    """Pinned submodule revisions (`git submodule status`), keyed by path."""
+    out = git(root, "submodule", "status", "--recursive") or ""
+    modules = {}
+    for line in out.splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 2:
+            state = {"-": "uninitialized", "+": "modified", "U": "conflict"}.get(line[:1], "clean")
+            modules[parts[1]] = {"revision": parts[0].lstrip("-+U"), "state": state}
+    return modules
+
+
 def compiler_identity(cxx):
-    try:
-        out = subprocess.run([cxx, "--version"], capture_output=True, text=True, check=False)
-        version = out.stdout.splitlines()[0] if out.stdout else None
-    except OSError:
-        version = None
-    return {"cxx": cxx, "cxx_version": version}
+    def first_output(*args):
+        try:
+            out = subprocess.run([cxx, *args], capture_output=True, text=True, check=False)
+        except OSError:
+            return None
+        lines = (out.stdout or "").splitlines()
+        return lines[0].strip() if out.returncode == 0 and lines else None
+    return {
+        "cxx": cxx,
+        "cxx_path": shutil.which(cxx),
+        "cxx_version": first_output("--version"),
+        "cxx_target": first_output("-dumpmachine"),
+    }
+
+
+def host_identity():
+    return {
+        "system": platform.system(),
+        "release": platform.release(),
+        "machine": platform.machine(),
+        "python": platform.python_version(),
+    }
+
+
+def file_digest(root, relative):
+    path = os.path.join(root, relative)
+    if not os.path.isfile(path):
+        return None
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def suite_input_digest(root, suite):
+    """Digest of the declared sources and contract record plus the suite row.
+
+    Includes reached by those sources are covered by the revision/dirty digest,
+    not by this value; it identifies which declared inputs a result belongs to.
+    """
+    digest = hashlib.sha256(json.dumps(suite, sort_keys=True).encode("utf-8"))
+    for relative in sorted(set(suite_sources(suite)) | ({suite["contract"]} if suite.get("contract") else set())):
+        digest.update(relative.encode("utf-8"))
+        digest.update((file_digest(root, relative) or "absent").encode("ascii"))
+    return digest.hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Providers
+# ---------------------------------------------------------------------------
+
+def provider_available(root, requirement):
+    """Return (available, detail) for one `kind:value` requirement."""
+    kind, value = parse_requirement(requirement)
+    if kind == "executable":
+        path = shutil.which(value)
+        return (path is not None), (path or "not found on PATH")
+    if kind == "env":
+        present = bool(os.environ.get(value))
+        return present, ("set" if present else "environment variable unset or empty")
+    path = value if os.path.isabs(value) else os.path.join(root, value)
+    exists = os.path.exists(path)
+    return exists, (path if exists else "%s does not exist" % path)
+
+
+def missing_providers(root, suite):
+    missing = []
+    for req in suite.get("requires", []):
+        ok, detail = provider_available(root, req)
+        if not ok:
+            missing.append("%s (%s)" % (req, detail))
+    return missing
 
 
 # ---------------------------------------------------------------------------
 # Building and running one suite
 # ---------------------------------------------------------------------------
 
-def build_command(root, cxx, profile, suite, out_bin):
+def build_command(root, cxx, profile, suite, out_bin, config="default"):
     flags = ["-std=" + profile["cxx_std"]]
     flags += list(profile.get("base_flags", []))
     flags += list(suite.get("extra_flags", []))
+    flags += BUILD_CONFIGS[config]
     includes = []
     for inc in profile.get("include_roots", []):
         includes += ["-I", os.path.join(root, inc)]
     sources = [os.path.join(root, s) for s in suite["sources"]]
-    return [cxx, *flags, *includes, *sources, "-o", out_bin]
+    return [cxx, *flags, *includes, *sources, *suite.get("link_flags", []), "-o", out_bin]
 
 
-def unit_build_commands(root, cxx, profile, suite, out_bin):
+def unit_build_commands(root, cxx, profile, suite, out_bin, config="default"):
     """Mixed-dialect suites: each unit compiles its sources with its own policy
     dialect (plus the profile's warnings and the suite's shared flags) into
     objects, and one link step joins them. Returns the command list."""
@@ -245,106 +385,272 @@ def unit_build_commands(root, cxx, profile, suite, out_bin):
             obj = "%s.%s.%d.o" % (out_bin, unit["id"], index)
             objects.append(obj)
             commands.append([cxx, *dialect, *profile.get("base_flags", []),
-                             *suite.get("extra_flags", []), *unit.get("flags", []), *includes,
+                             *suite.get("extra_flags", []), *unit.get("flags", []),
+                             *BUILD_CONFIGS[config], *includes,
                              "-c", os.path.join(root, source), "-o", obj])
     commands.append([cxx, *objects, *suite.get("link_flags", []), "-o", out_bin])
     return commands
 
 
-def run_suite(root, cxx, profile, suite, out_dir):
-    sid = suite["id"]
-    expect = suite.get("expect", OUTCOME_PASS)
-    kind = suite.get("kind", "positive")
-    timeout = suite.get("timeout_seconds", profile.get("timeout_seconds", 60))
+def assert_users(root, suite):
+    """Test sources (under unittests/) whose checks would vanish under NDEBUG."""
+    offenders = []
+    for relative in suite_sources(suite):
+        if not relative.startswith("unittests/"):
+            continue
+        path = os.path.join(root, relative)
+        with open(path, "r", encoding="utf-8", errors="replace") as stream:
+            text = stream.read()
+        # Ignore comments so documentation may mention assert().
+        text = re.sub(r"//[^\n]*|/\*.*?\*/", "", text, flags=re.DOTALL)
+        if ASSERT_CALL.search(text):
+            offenders.append(relative)
+    return offenders
 
-    result = {
-        "id": sid,
+
+def memory_limit_mb(profile, suite):
+    """The per-process address-space cap, or None when it cannot apply.
+
+    Sanitizer runtimes reserve very large shadow mappings, so an address-space
+    cap would make them fail spuriously; those builds rely on the timeout.
+    """
+    flags = list(profile.get("base_flags", [])) + list(suite.get("extra_flags", []))
+    if any(f.startswith("-fsanitize") for f in flags) or resource is None:
+        return None
+    limit = suite.get("memory_limit_mb", profile.get("memory_limit_mb", DEFAULT_MEMORY_LIMIT_MB))
+    return limit or None
+
+
+def _limit_child(limit_mb):
+    def apply():
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+        if limit_mb:
+            size = int(limit_mb) * 1024 * 1024
+            resource.setrlimit(resource.RLIMIT_AS, (size, size))
+    return apply if resource is not None else None
+
+
+def execute(argv, timeout, limit_mb, env):
+    """Run one suite process in its own session under time and memory bounds.
+
+    Returns (returncode, stdout, stderr, timed_out). On timeout the whole
+    process group is killed and whatever it wrote so far is retained.
+    """
+    proc = subprocess.Popen(
+        argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+        start_new_session=True, preexec_fn=_limit_child(limit_mb))
+    try:
+        out, err = proc.communicate(timeout=timeout)
+        return proc.returncode, _as_text(out), _as_text(err), False
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            proc.kill()
+        out, err = proc.communicate()
+        return proc.returncode, _as_text(out), _as_text(err), True
+
+
+def classify_run(suite, returncode, stdout):
+    """Classify a completed (non-timed-out) process run of `suite`.
+
+    Shared by every runner that executes manifest suites (native, Wine) so the
+    result protocol has one implementation. Returns a dict of observed fields.
+    """
+    observed = {"outcome": None, "exit_code": returncode, "signal": None,
+                "checks": None, "failed_checks": None, "first_divergence": None}
+    if returncode < 0:
+        observed["signal"] = -returncode
+        observed["outcome"] = OUTCOME_CRASH
+        return observed
+    records = RESULT_RECORD.findall(stdout)
+    if len(records) == 1:
+        observed["checks"], observed["failed_checks"] = map(int, records[0])
+    if returncode != 0:
+        observed["outcome"] = OUTCOME_FAIL
+        observed["first_divergence"] = first_line(stdout, ("FAIL", "fail")) or \
+            ("exit status %d" % returncode)
+        return observed
+    observed["outcome"] = OUTCOME_PASS
+    if suite.get("result_protocol") == RESULT_PROTOCOL:
+        problem = None
+        if len(records) != 1:
+            problem = ("missing result record (incomplete run)" if not records
+                       else "%d result records (expected exactly one)" % len(records))
+        elif observed["checks"] == 0:
+            problem = "zero checks executed"
+        elif observed["failed_checks"]:
+            problem = "%d failed check(s) with exit status 0" % observed["failed_checks"]
+        elif suite.get("min_checks") and observed["checks"] < suite["min_checks"]:
+            problem = "%d check(s) executed, manifest requires at least %d" % (
+                observed["checks"], suite["min_checks"])
+        if problem:
+            observed["outcome"] = OUTCOME_FAIL
+            observed["first_divergence"] = "FAIL result protocol: " + problem
+    return observed
+
+
+def new_result(suite):
+    return {
+        "id": suite["id"],
         "domain": suite.get("domain"),
         "rfc": suite.get("rfc"),
         "migration": suite.get("migration"),
         "contract": suite.get("contract"),
-        "kind": kind,
+        "kind": suite.get("kind", "positive"),
         "profile": suite.get("profile"),
-        "expect": expect,
+        "expect": suite.get("expect", OUTCOME_PASS),
+        "optional": bool(suite.get("optional", False)),
+        "requires": list(suite.get("requires", [])),
         "outcome": None,
         "matched": False,
+        "certified": False,
+        "skip_reason": None,
         "build_ok": None,
         "exit_code": None,
         "signal": None,
+        "checks": None,
+        "failed_checks": None,
         "duration_s": None,
         "first_divergence": None,
         "detail": None,
         "repro": None,
+        "input_digest": None,
+        "logs": {},
+        "attempts": [],
     }
+
+
+def write_log(log_dir, name, sections):
+    if not log_dir:
+        return None
+    os.makedirs(log_dir, exist_ok=True)
+    path = os.path.join(log_dir, name)
+    with open(path, "w", encoding="utf-8") as stream:
+        for title, body in sections:
+            stream.write("==== %s ====\n%s\n" % (title, body or ""))
+    return path
+
+
+def run_suite(root, cxx, profile, suite, out_dir, config="default", repeat=1,
+              seed=DEFAULT_SEED, log_dir=None):
+    sid = suite["id"]
+    expect = suite.get("expect", OUTCOME_PASS)
+    timeout = suite.get("timeout_seconds", profile.get("timeout_seconds", 60))
+    result = new_result(suite)
+    result["input_digest"] = suite_input_digest(root, suite)
+    safe = sid.replace("/", "_")
+    suite_log_dir = os.path.join(log_dir, safe) if log_dir else None
+
+    def finish(outcome, detail=None):
+        result["outcome"] = outcome
+        if detail is not None:
+            result["detail"] = detail
+        result["matched"] = (outcome == expect)
+        result["certified"] = result["matched"]
+        return result
+
+    # An unavailable provider is never a pass. Required suites fail; optional
+    # suites record why they were skipped and certify nothing.
+    missing = missing_providers(root, suite)
+    if missing:
+        reason = "unavailable provider(s): " + "; ".join(missing)
+        if suite.get("optional"):
+            result["outcome"] = OUTCOME_SKIPPED
+            result["skip_reason"] = reason
+            result["detail"] = reason
+            result["matched"] = True   # a declared optional skip is not a gate failure
+            result["certified"] = False
+            return result
+        return finish(OUTCOME_UNAVAILABLE, reason)
 
     # Missing sources are a runner-level failure: a suite that cannot be found
     # can never certify anything (RFC 0005: fail on missing fixtures).
-    missing = [s for s in suite_sources(suite) if not os.path.exists(os.path.join(root, s))]
-    if missing:
-        result["outcome"] = OUTCOME_MISSING_SOURCE
-        result["detail"] = "missing source(s): " + ", ".join(missing)
-        result["matched"] = (expect == OUTCOME_MISSING_SOURCE)
-        return result
+    absent = [s for s in suite_sources(suite) if not os.path.exists(os.path.join(root, s))]
+    if absent:
+        return finish(OUTCOME_MISSING_SOURCE, "missing source(s): " + ", ".join(absent))
 
-    out_bin = os.path.join(out_dir, sid.replace("/", "_").replace(".", "_"))
+    offenders = assert_users(root, suite)
+    if offenders:
+        result["first_divergence"] = "FAIL assert() in test source(s): " + ", ".join(offenders)
+        return finish(OUTCOME_INVALID_ORACLE,
+                      "assert() is compiled out by NDEBUG; use counted checks reported "
+                      "through testing::ReportConformance")
+
+    out_bin = os.path.join(out_dir, "%s.%s" % (safe.replace(".", "_"), config))
     if suite.get("units") is not None:
-        commands = unit_build_commands(root, cxx, profile, suite, out_bin)
+        commands = unit_build_commands(root, cxx, profile, suite, out_bin, config)
     else:
-        commands = [build_command(root, cxx, profile, suite, out_bin)]
+        commands = [build_command(root, cxx, profile, suite, out_bin, config)]
     result["repro"] = " && ".join(" ".join(cmd) for cmd in commands)
 
+    build_output = []
+    build_rc = 0
     for cmd in commands:
-        build = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if build.returncode != 0:
+        try:
+            build = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        except OSError as e:
+            return finish(OUTCOME_UNAVAILABLE, "compiler %s could not be started: %s" % (cxx, e))
+        build_output.append(("$ " + " ".join(cmd), build.stdout + build.stderr))
+        build_rc = build.returncode
+        if build_rc != 0:
             break
-    if build.returncode != 0:
+    result["logs"]["build"] = write_log(suite_log_dir, "build.log", build_output)
+    if build_rc != 0:
+        stderr = build_output[-1][1]
         result["build_ok"] = False
-        result["outcome"] = OUTCOME_COMPILE_ERROR
-        result["first_divergence"] = first_line(build.stderr, ("error:",))
-        result["detail"] = tail(build.stderr)
-        result["matched"] = (expect == OUTCOME_COMPILE_ERROR)
+        result["first_divergence"] = first_line(stderr, ("error:",)) or \
+            next((ln.strip() for ln in stderr.splitlines() if "error:" in ln), None)
+        finish(OUTCOME_COMPILE_ERROR, tail(stderr))
         if suite.get("expected_diagnostic"):
-            result["matched"] = result["matched"] and suite["expected_diagnostic"] in build.stderr
+            result["matched"] = result["matched"] and suite["expected_diagnostic"] in stderr
+            result["certified"] = result["matched"]
         return result
     result["build_ok"] = True
 
-    start = datetime.datetime.now()
-    try:
-        run = subprocess.run([out_bin], capture_output=True, text=True,
-                             check=False, timeout=timeout)
-    except subprocess.TimeoutExpired as e:
-        result["duration_s"] = round((datetime.datetime.now() - start).total_seconds(), 3)
-        result["outcome"] = OUTCOME_TIMEOUT
-        result["detail"] = "timed out after %ss; %s" % (timeout, tail(_as_text(e.stdout)))
-        result["matched"] = (expect == OUTCOME_TIMEOUT)
-        return result
-    result["duration_s"] = round((datetime.datetime.now() - start).total_seconds(), 3)
+    limit = memory_limit_mb(profile, suite)
+    result["memory_limit_mb"] = limit
+    result["timeout_seconds"] = timeout
+    env = dict(os.environ)
+    env["CONFORMANCE_SEED"] = str(seed)
+    env["CONFORMANCE_SUITE"] = sid
 
-    rc = run.returncode
-    result["exit_code"] = rc
-    result["detail"] = tail(run.stdout + run.stderr)
-    if rc < 0:
-        result["signal"] = -rc
-        result["outcome"] = OUTCOME_CRASH
-    elif rc == 0:
-        result["outcome"] = OUTCOME_PASS
-    else:
-        result["outcome"] = OUTCOME_FAIL
-        result["first_divergence"] = first_line(run.stdout, ("FAIL", "fail"))
+    # Every attempt is retained: repeats expose nondeterminism and are never a
+    # retry-until-green mechanism. The suite matches only if all attempts do.
+    for attempt in range(repeat):
+        env["CONFORMANCE_ATTEMPT"] = str(attempt)
+        start = datetime.datetime.now()
+        rc, stdout, stderr, timed_out = execute([out_bin], timeout, limit, env)
+        duration = round((datetime.datetime.now() - start).total_seconds(), 3)
+        if timed_out:
+            observed = {"outcome": OUTCOME_TIMEOUT, "exit_code": None, "signal": None,
+                        "checks": None, "failed_checks": None,
+                        "first_divergence": "timed out after %ss" % timeout}
+        else:
+            observed = classify_run(suite, rc, stdout)
+        observed["attempt"] = attempt
+        observed["duration_s"] = duration
+        observed["log"] = write_log(suite_log_dir, "run.%d.log" % attempt, [
+            ("command", out_bin),
+            ("seed", str(seed)),
+            ("exit", "timeout" if timed_out else str(rc)),
+            ("stdout", stdout),
+            ("stderr", stderr),
+        ])
+        observed["detail"] = tail(stdout + stderr)
+        observed["matched"] = observed["outcome"] == expect
+        if "expected_signal" in suite:
+            observed["matched"] = observed["matched"] and observed["signal"] == suite["expected_signal"]
+        result["attempts"].append(observed)
 
-    if rc == 0 and suite.get("result_protocol") == "checks-v1":
-        records = re.findall(r"^CONFORMANCE ([0-9]+) ([0-9]+)$", run.stdout, re.MULTILINE)
-        valid = len(records) == 1
-        if valid:
-            result["checks"], result["failed_checks"] = map(int, records[0])
-            valid = result["checks"] > 0 and result["failed_checks"] == 0
-        if not valid:
-            result["outcome"] = OUTCOME_FAIL
-            result["first_divergence"] = "FAIL missing, duplicate, zero, or failing check results"
-
-    result["matched"] = (result["outcome"] == expect)
-    if "expected_signal" in suite:
-        result["matched"] = result["matched"] and result.get("signal") == suite["expected_signal"]
+    # Report the first mismatching attempt (or the last one when all matched).
+    decisive = next((a for a in result["attempts"] if not a["matched"]), result["attempts"][-1])
+    for key in ("exit_code", "signal", "checks", "failed_checks", "first_divergence", "detail"):
+        result[key] = decisive[key]
+    result["duration_s"] = round(sum(a["duration_s"] for a in result["attempts"]), 3)
+    result["outcome"] = decisive["outcome"]
+    result["matched"] = all(a["matched"] for a in result["attempts"])
+    result["certified"] = result["matched"]
     return result
 
 
@@ -374,25 +680,29 @@ def tail(text, n=20):
 # Selection
 # ---------------------------------------------------------------------------
 
+def selectors_from(args):
+    selectors = []
+    for field in ("suite", "domain", "rfc", "profile"):
+        values = getattr(args, field, None)
+        if values:
+            selectors.append(("id" if field == "suite" else field, set(values)))
+    return selectors
+
+
 def select_suites(manifest, args):
     suites = manifest["suites"]
-    selectors = []
-    if args.suite:
-        selectors.append(("id", set(args.suite)))
-    if args.domain:
-        selectors.append(("domain", set(args.domain)))
-    if args.rfc:
-        selectors.append(("rfc", set(args.rfc)))
-    if args.profile:
-        selectors.append(("profile", set(args.profile)))
-
+    selectors = selectors_from(args)
     if not selectors:
         return list(suites), None
 
-    selected = []
-    for s in suites:
-        if all(s.get(field) in wanted for field, wanted in selectors):
-            selected.append(s)
+    # Every requested value must match something: a mistyped id or domain is
+    # a required selector that matched nothing, not a smaller passing run.
+    for field, wanted in selectors:
+        known = {s.get(field) for s in suites}
+        unmatched = sorted(wanted - known)
+        if unmatched:
+            return [], "no suite matches required %s selector(s): %s" % (field, ", ".join(unmatched))
+    selected = [s for s in suites if all(s.get(field) in wanted for field, wanted in selectors)]
     if not selected:
         wanted = "; ".join("%s in {%s}" % (f, ", ".join(sorted(w))) for f, w in selectors)
         return [], "no suite matches required selector(s): " + wanted
@@ -414,86 +724,179 @@ def cmd_list(args):
     return 0
 
 
-def cmd_check(args):
-    root = args.root
-    manifest_path = os.path.join(root, args.manifest)
-    manifest = load_manifest(manifest_path)
-    profiles_dir = os.path.join(root, manifest.get("profiles_dir", "quality/profiles"))
-
-    suites = manifest["suites"]
-    if not suites:
+def plan(root, manifest, args):
+    """Enumerate the selected suites and provider/profile combinations before
+    anything executes. Returns (selected, profiles) or raises/returns an error."""
+    if not manifest["suites"]:
         # Zero discovery is a hard failure: an empty required run cannot certify
         # anything (RFC 0005 runner contract).
-        print("FATAL: manifest declares zero suites (zero discovery)", file=sys.stderr)
-        return 2
-
+        return None, None, "manifest declares zero suites (zero discovery)"
     selected, sel_err = select_suites(manifest, args)
     if sel_err:
-        print("FATAL: " + sel_err, file=sys.stderr)
-        return 2
-
-    cxx = args.cxx
-    out_dir = args.build_dir
-    os.makedirs(out_dir, exist_ok=True)
-
-    # Load every referenced profile up front so a bad profile fails fast.
+        return None, None, sel_err
+    profiles_dir = os.path.join(root, manifest.get("profiles_dir", "quality/profiles"))
     profiles = {}
     for s in selected:
         pid = s["profile"]
         if pid not in profiles:
             profiles[pid] = load_profile(profiles_dir, pid)
+    return selected, profiles, None
+
+
+def cmd_plan(args):
+    root = args.root
+    manifest = load_manifest(os.path.join(root, args.manifest))
+    selected, profiles, err = plan(root, manifest, args)
+    if err:
+        print("FATAL: " + err, file=sys.stderr)
+        return 2
+    for s in selected:
+        missing = missing_providers(root, s)
+        status = "ready"
+        if missing:
+            status = ("skip (optional): " if s.get("optional") else "UNAVAILABLE: ") + "; ".join(missing)
+        print("%-40s profile:%-22s %s" % (s["id"], s["profile"], status))
+    print("\n%d suite(s) selected across %d profile(s)" % (len(selected), len(profiles)))
+    return 0
+
+
+def evidence_paths(root, out_arg, build_dir, stamp):
+    """(evidence json path or None, log directory)."""
+    if out_arg == "-":
+        return None, os.path.join(build_dir, "logs", stamp)
+    if out_arg:
+        path = out_arg if os.path.isabs(out_arg) else os.path.join(root, out_arg)
+    else:
+        path = os.path.join(root, "quality-results", "conformance.%s.json" % stamp)
+    return path, os.path.splitext(path)[0] + ".logs"
+
+
+def cmd_check(args):
+    root = args.root
+    manifest_path = os.path.join(root, args.manifest)
+    manifest = load_manifest(manifest_path)
+    selected, profiles, err = plan(root, manifest, args)
+    if err:
+        print("FATAL: " + err, file=sys.stderr)
+        return 2
+    if args.repeat < 1:
+        print("FATAL: --repeat must be at least 1", file=sys.stderr)
+        return 2
+
+    cxx = args.cxx
+    if shutil.which(cxx) is None:
+        # The compiler is the one provider every suite requires.
+        print("FATAL: required compiler provider %r is unavailable" % cxx, file=sys.stderr)
+        return 2
+    out_dir = args.build_dir
+    os.makedirs(out_dir, exist_ok=True)
+
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    evidence_path, log_dir = evidence_paths(root, args.out, out_dir, stamp)
 
     expected_ids = [s["id"] for s in selected]
-    print("conformance: %d suite(s) selected, cxx=%s" % (len(selected), cxx))
+    run = {
+        "invocation": [sys.executable, os.path.relpath(os.path.abspath(__file__), root)]
+                      + list(args.argv),
+        "selectors": {f: sorted(v) for f, v in selectors_from(args)},
+        "config": args.config,
+        "config_flags": BUILD_CONFIGS[args.config],
+        "repeat": args.repeat,
+        "seed": args.seed,
+    }
+    print("conformance: %d suite(s) selected, cxx=%s, config=%s, repeat=%d, seed=%d"
+          % (len(selected), cxx, args.config, args.repeat, args.seed))
 
+    identity = source_identity(root)
+    identity.update(compiler_identity(cxx))
+    identity["host"] = host_identity()
+    identity["submodules"] = submodule_identity(root)
+
+    # Evidence is written before execution and after every suite, so a runner
+    # that is killed leaves an artifact whose decision is "incomplete".
     results = []
+
+    def record(decision):
+        if evidence_path:
+            write_evidence(evidence_path, build_evidence(
+                root, manifest_path, manifest, identity, profiles, run, results,
+                expected_ids, decision, log_dir))
+
+    record("incomplete")
     for s in selected:
-        profile = profiles[s["profile"]]
-        r = run_suite(root, cxx, profile, s, out_dir)
+        r = run_suite(root, cxx, profiles[s["profile"]], s, out_dir, config=args.config,
+                      repeat=args.repeat, seed=args.seed, log_dir=log_dir)
         results.append(r)
-        status = "ok  " if r["matched"] else "FAIL"
+        record("incomplete")
+        if r["outcome"] == OUTCOME_SKIPPED:
+            status = "skip"
+        else:
+            status = "ok  " if r["matched"] else "FAIL"
         line = "  [%s] %-34s expect=%-14s got=%-14s" % (
             status, r["id"], r["expect"], r["outcome"])
+        if r["checks"] is not None:
+            line += " checks=%d" % r["checks"]
         if r["duration_s"] is not None:
             line += " (%.2fs)" % r["duration_s"]
         print(line)
-        if not r["matched"]:
+        if r["skip_reason"]:
+            print("        " + r["skip_reason"])
+        elif not r["matched"]:
             if r["first_divergence"]:
                 print("        first divergence: " + r["first_divergence"])
-            elif r["detail"]:
+            if r["detail"]:
                 print("        " + r["detail"].replace("\n", "\n        "))
+            failing_log = next((a["log"] for a in r["attempts"] if not a["matched"]), None) \
+                or r["logs"].get("build")
+            if failing_log:
+                print("        log: " + os.path.relpath(failing_log, root))
 
-    # Reconcile: every selected suite must have produced a result.
-    executed_ids = [r["id"] for r in results]
-    reconciled = sorted(expected_ids) == sorted(executed_ids)
-
-    passed = sum(1 for r in results if r["matched"])
-    failed = len(results) - passed
-    decision = "pass" if (failed == 0 and reconciled) else "fail"
-
-    evidence = build_evidence(root, manifest_path, manifest, cxx, profiles, results,
-                              expected_ids, executed_ids, reconciled, decision)
-    evidence_path = write_evidence(root, args.out, evidence)
-
-    print("\n%d suite(s): %d matched, %d mismatched -> %s"
-          % (len(results), passed, failed, decision.upper()))
-    if not reconciled:
+    decision = decide(expected_ids, results)
+    record(decision)
+    counts = count(results)
+    print("\n%d suite(s): %d matched, %d mismatched, %d skipped -> %s"
+          % (counts["total"], counts["matched"], counts["mismatched"], counts["skipped"],
+             decision.upper()))
+    if sorted(expected_ids) != sorted(r["id"] for r in results):
         print("FATAL: reconciliation mismatch (expected != executed)", file=sys.stderr)
     if evidence_path:
         print("evidence: " + os.path.relpath(evidence_path, root))
     return 0 if decision == "pass" else 1
 
 
-def build_evidence(root, manifest_path, manifest, cxx, profiles, results,
-                   expected_ids, executed_ids, reconciled, decision):
-    ident = source_identity(root)
-    ident.update(compiler_identity(cxx))
+def count(results):
+    skipped = sum(1 for r in results if r["outcome"] == OUTCOME_SKIPPED)
+    matched = sum(1 for r in results if r["matched"] and r["outcome"] != OUTCOME_SKIPPED)
+    return {
+        "total": len(results),
+        "matched": matched,
+        "mismatched": sum(1 for r in results if not r["matched"]),
+        "skipped": skipped,
+        "certified": sum(1 for r in results if r["certified"]),
+        "checks": sum(r["checks"] or 0 for r in results),
+    }
+
+
+def decide(expected_ids, results):
+    executed = [r["id"] for r in results]
+    if sorted(expected_ids) != sorted(executed) or len(set(executed)) != len(executed):
+        return "fail"
+    return "pass" if all(r["matched"] for r in results) else "fail"
+
+
+def build_evidence(root, manifest_path, manifest, identity, profiles, run, results,
+                   expected_ids, decision, log_dir):
+    executed_ids = [r["id"] for r in results]
     return {
         "schema": EVIDENCE_SCHEMA,
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "manifest": os.path.relpath(manifest_path, root),
         "manifest_schema": manifest.get("schema"),
-        "identity": ident,
+        "manifest_digest": file_digest(root, os.path.relpath(manifest_path, root)),
+        "result_protocol": RESULT_PROTOCOL,
+        "identity": identity,
+        "run": run,
+        "logs": os.path.relpath(log_dir, root) if log_dir else None,
         "profiles": {
             pid: {
                 "dialect": p.get("dialect"),
@@ -501,40 +904,38 @@ def build_evidence(root, manifest_path, manifest, cxx, profiles, results,
                 "base_flags": p.get("base_flags", []),
                 "include_roots": p.get("include_roots", []),
                 "timeout_seconds": p.get("timeout_seconds"),
+                "memory_limit_mb": p.get("memory_limit_mb", DEFAULT_MEMORY_LIMIT_MB),
             } for pid, p in profiles.items()
         },
         "expected_ids": sorted(expected_ids),
         "executed_ids": sorted(executed_ids),
-        "reconciled": reconciled,
-        "counts": {
-            "total": len(results),
-            "matched": sum(1 for r in results if r["matched"]),
-            "mismatched": sum(1 for r in results if not r["matched"]),
-        },
+        "reconciled": sorted(expected_ids) == sorted(executed_ids),
+        "counts": count(results),
         "suites": results,
         "decision": decision,
     }
 
 
-def write_evidence(root, out_arg, evidence):
-    if out_arg == "-":
-        return None
-    if out_arg:
-        path = out_arg if os.path.isabs(out_arg) else os.path.join(root, out_arg)
-    else:
-        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        out_dir = os.path.join(root, "quality-results")
-        os.makedirs(out_dir, exist_ok=True)
-        path = os.path.join(out_dir, "conformance.%s.json" % stamp)
-    with open(path, "w", encoding="utf-8") as f:
+def write_evidence(path, evidence):
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(evidence, f, indent=2, sort_keys=False)
         f.write("\n")
+    os.replace(tmp, path)
     return path
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
+def add_selectors(p):
+    p.add_argument("--suite", action="append", help="Select by suite id (repeatable).")
+    p.add_argument("--domain", action="append", help="Select by domain, e.g. Q-EDITOR.")
+    p.add_argument("--rfc", action="append", help="Select by RFC number, e.g. 0002.")
+    p.add_argument("--profile", action="append", help="Select by profile id.")
+
 
 def build_parser():
     p = argparse.ArgumentParser(
@@ -549,24 +950,36 @@ def build_parser():
     lst = sub.add_parser("list", help="List declared conformance suites.")
     lst.set_defaults(func=cmd_list)
 
+    pln = sub.add_parser("plan", help="Enumerate selected suites and provider availability "
+                                      "without building or running anything.")
+    add_selectors(pln)
+    pln.set_defaults(func=cmd_plan)
+
     chk = sub.add_parser("check", help="Build, run, and evidence conformance suites.")
     chk.add_argument("--cxx", default=os.environ.get("CXX", "g++"),
                      help="C++ compiler to use (default: $CXX or g++).")
-    chk.add_argument("--suite", action="append", help="Select by suite id (repeatable).")
-    chk.add_argument("--domain", action="append", help="Select by domain, e.g. Q-EDITOR.")
-    chk.add_argument("--rfc", action="append", help="Select by RFC number, e.g. 0002.")
-    chk.add_argument("--profile", action="append", help="Select by profile id.")
+    add_selectors(chk)
+    chk.add_argument("--config", choices=sorted(BUILD_CONFIGS), default="default",
+                     help="Build configuration; 'release' appends %s."
+                          % " ".join(BUILD_CONFIGS["release"]))
+    chk.add_argument("--repeat", type=int, default=1,
+                     help="Run each suite N times; every attempt is retained and all must match.")
+    chk.add_argument("--seed", type=int, default=DEFAULT_SEED,
+                     help="Deterministic seed exported to suites as CONFORMANCE_SEED.")
     chk.add_argument("--build-dir", default=os.path.join(repo_root(), "build", "quality"),
                      help="Directory for compiled suite binaries.")
     chk.add_argument("--out", default=None,
-                     help="Evidence JSON path (default: quality-results/<timestamp>.json; "
-                          "'-' to skip writing).")
+                     help="Evidence JSON path (default: quality-results/conformance.<timestamp>.json, "
+                          "logs beside it in <name>.logs/); '-' skips the evidence file and "
+                          "keeps logs under --build-dir.")
     chk.set_defaults(func=cmd_check)
     return p
 
 
 def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(argv)
+    args.argv = argv
     try:
         return args.func(args)
     except ManifestError as e:

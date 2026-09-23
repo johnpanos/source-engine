@@ -59,7 +59,21 @@ static bool InitVulkanContext(
 	if ( !g_VulkanContext.Init( *host, config, outError ) )
 		return false;
 	g_VulkanSurfaceHost = std::move( host );
+	// Frame-pacing telemetry (tools/quality/frame_pacing.py): one line per
+	// presented frame. Optional, so a sink that cannot be created only warns.
+	const char *statsPath = CommandLine()->ParmValue( "-vkframestats", (const char *)NULL );
+	std::string statsError;
+	if ( statsPath && !g_VulkanContext.OpenFrameStats( statsPath, &statsError ) )
+		Warning( "[NativeVulkan] frame stats unavailable: %s\n", statsError.c_str() );
 	return true;
+}
+
+// Labels the frame being built in the frame-stats stream, so a scenario script
+// can name its phases (vk_frame_mark fire_blue).
+CON_COMMAND( vk_frame_mark, "Label the current frame in the -vkframestats stream" )
+{
+	for ( int i = 1; i < args.ArgC(); ++i )
+		g_VulkanContext.MarkFrame( args[i] );
 }
 
 //-----------------------------------------------------------------------------
@@ -2782,6 +2796,8 @@ void CEmptyMesh::Draw( int firstIndex, int numIndices )
 	     vertices.m_numVerts <= 0 )
 		return;
 
+	render_vulkan::CFrameCostScope cost(
+	    g_VulkanContext.CurrentFrameCost(), render_vulkan::kCostMeshDraw );
 	// Record the index range. mesh->Draw() passes (-1, 0) meaning "the whole mesh".
 	m_drawFirst = ( firstIndex > 0 ) ? firstIndex : 0;
 	m_drawCount = ( numIndices > 0 ) ? numIndices : indices.m_numIndices;
@@ -2803,6 +2819,7 @@ void CEmptyMesh::Draw( int firstIndex, int numIndices )
 
 void CEmptyMesh::EmitToNativeQueue()
 {
+	render_vulkan::CFrameCostScope cost( g_VulkanContext.CurrentFrameCost(), render_vulkan::kCostEmit );
 	const CEmptyMesh &vertices = m_pVertexSource ? *m_pVertexSource : *this;
 	const CEmptyMesh &indices = m_pIndexSource ? *m_pIndexSource : *this;
 	const int numVerts = vertices.m_numVerts;
@@ -2851,6 +2868,10 @@ void CEmptyMesh::EmitToNativeQueue()
 	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentModulateVertexColor );
 	const bool dynamicLight = ( g_VertexShaderDynamicIndex / 2 ) % 2 != 0;
 	const bool staticLight = ( g_VertexShaderDynamicIndex / 4 ) % 2 != 0;
+	// vertexlit_and_unlit_generic's SELFILLUM reads its diffuse term, c1 times
+	// the lighting (1 unlit), from the vertex color (demo_dyn_tex.frag).
+	const bool selfIllum =
+	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentSelfIllum ) != 0;
 	VertexLightConstants lights[kMaxLocalLights];
 	int lightCount = 0;
 	std::vector<float> litColors;
@@ -2936,7 +2957,19 @@ void CEmptyMesh::EmitToNativeQueue()
 			if ( g_NumBoneWeights <= 0 )
 				ModelToWorld( worldPos );
 			const float *lit = vertexLight( v, base, worldPos );
-			out.insert( out.end(), lit, lit + 3 );
+			if ( selfIllum )
+			{
+				for ( int k = 0; k < 3; ++k )
+					out.push_back( lit[k] * g_psConstants[1][k] );
+			}
+			else
+			{
+				out.insert( out.end(), lit, lit + 3 );
+			}
+		}
+		else if ( selfIllum )
+		{
+			out.insert( out.end(), g_psConstants[1], g_psConstants[1] + 3 );
 		}
 		else
 		{
@@ -3985,6 +4018,26 @@ static int SnapshotShaderFlags( const CShaderShadowVulkan &shadow )
 		if ( ( shadow.m_pixelShaderIndex / 384 ) % 2 )
 			NoteUnimplemented( "vertexlit_and_unlit_generic: VERTEXCOLOR with DIFFUSELIGHTING" );
 	}
+	// Its SELFILLUM static combo ($selfillum; stride 192 in every build) blends
+	// the diffuse term toward the tinted albedo by the base alpha (the mask
+	// texture is the dynamic c3.w; CommitPassPixelConstants). The pipeline reads
+	// the diffuse term, c1 times the lighting, from the vertex color
+	// (EmitToNativeQueue), which is linear. SELFILLUM_ENVMAPMASK_ALPHA (stride
+	// 1536) needs the env-map mask, and VERTEXCOLOR would also multiply albedo.
+	if ( !V_strnicmp( shadow.m_pixelShaderName, "vertexlit_and_unlit_generic_ps", 30 ) )
+	{
+		const int index = shadow.m_pixelShaderIndex;
+		if ( ( index / 1536 ) % 2 )
+			NoteUnimplemented( "vertexlit_and_unlit_generic: SELFILLUM_ENVMAPMASK_ALPHA" );
+		if ( ( index / 192 ) % 2 )
+		{
+			if ( ( index / 384 ) % 2 )
+				NoteUnimplemented( "vertexlit_and_unlit_generic: SELFILLUM with VERTEXCOLOR" );
+			else
+				flags |=
+				    CVulkanContext::kFragmentSelfIllum | CVulkanContext::kVertexColorNoGammaConvert;
+		}
+	}
 	return flags;
 }
 
@@ -4820,8 +4873,23 @@ static void CommitPassPixelConstants()
 	// Its albedo and alpha are scaled by g_DiffuseModulation (c1): $color and
 	// $alpha, and ColorModulate / AlphaModulate (screen fades), linear, written by
 	// every pass's dynamic state (SetModulationPixelShaderDynamicState_LinearColorSpace).
-	if ( g_CurrentModulationInPixelC1 )
-		g_VulkanContext.SetDynamicModulation( g_psConstants[1] );
+	if ( !g_CurrentModulationInPixelC1 )
+		return;
+	if ( colorFlags & render_vulkan::CVulkanContext::kFragmentSelfIllum )
+	{
+		// SELFILLUM's blend target is g_SelfIllumTint (c4.rgb) times albedo; the
+		// pipeline takes it as c1 * c4 (demo_dyn_tex.frag). c3.w = 1 reads the
+		// mask from $selfillummask (sampler 11) instead of the base alpha.
+		if ( g_psConstants[3][3] != 0.0f )
+			NoteUnimplemented(
+			    "vertexlit_and_unlit_generic: $selfillummask (drawn with base alpha)" );
+		const float modulation[4] = { g_psConstants[1][0] * g_psConstants[4][0],
+		    g_psConstants[1][1] * g_psConstants[4][1], g_psConstants[1][2] * g_psConstants[4][2],
+		    g_psConstants[1][3] };
+		g_VulkanContext.SetDynamicModulation( modulation );
+		return;
+	}
+	g_VulkanContext.SetDynamicModulation( g_psConstants[1] );
 }
 
 static bool NativePipelineImplementsShader( const char *shaderName )

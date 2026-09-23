@@ -356,7 +356,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 13 / R13 | Hammer geometry and scene seams; 0002 H1 | R05, R08 | Strict headless targets; geometry/reference/reparent tests and independent documents pass; selected legacy callers route through shared owner | planned |
 | 14 / R14 | Window/input contracts and SDL2 adapter; 0001 rank 7 | R06 | Existing behavior captured and preserved; normalized events, optional behavior, surface ownership and input lifecycle conformance pass | planned |
 | 15 / R15 | Render seam, scoped legacy services and null provider; 0001 rank 8 | R06 | Explicit provider/caps/profile selection; null and legacy contract suites; material consumer tested without new shader globals | done ([render seam](RFC/0001-render-seam-progress.md)) |
-| 16 / R16 | Pair-specific presentation bridges; 0001 rank 9, 0006 M3 | R14, R15 | Native handles confined; multi-surface resize/zero-size/loss/shutdown pass; delayed GPU completion prevents early reuse | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
+| 16 / R16 | Pair-specific presentation bridges; 0001 rank 9, 0006 M3 | R14, R15 | Native handles confined; multi-surface resize/zero-size/loss/shutdown pass; delayed GPU completion prevents early reuse | done ([presentation bridges](RFC/0001-presentation-bridge-progress.md); R14 surface slice only) |
 | 17 / R17 | Hammer real renderer feasibility; 0002 R1 | R08, R15, R16 | Source-material viewport on declared GTK X11/Wayland profiles; state/target restoration, scale, capture, sharing and teardown measured | planned |
 | 18 / R18 | SDL3 provider parity; 0001 rank 10 | R14, R16 | Same window/input suites and representative behavior pass for SDL2/SDL3; SDK dependency is private; supported interop pairs tested | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
 | 19 / R19 | Box3D one-worker vertical slice; 0004 B | R05, R09 | Pinned coherent provider loads existing BSP/PHY, compound prop, inside trace, verified impact, ragdoll and matching-schema restore | planned |
@@ -444,6 +444,26 @@ Keep the table concise and link details below or from the domain progress file.
   - No CI lane exists yet.
   - See [RFC 0008 progress](RFC/0008-progress.md). R54–R58 have only
     source-inspection findings.
+
+- R16: `done` (2026-09-22) for the rank 9 scope:
+  - Contract: `public/render/render_presentation.h` (`render.presentation.v1`).
+    Devices no longer present; pair-specific bridges do, with structured
+    composition errors and `ReleaseDevice` ordering. Back buffers and swapchains
+    retire only behind device completion tokens.
+  - Pairs: headless-null (46 checks; 14 of 14 sensitivity defects detected) and
+    SDL3–Vulkan. SDL3–Vulkan passes the same suite natively on isolated
+    X11 (48 checks) and Wayland (46 checks, 2 recorded skips) profiles, with
+    GPU completion held by a timeline semaphore and real two-window pixels.
+  - Native handles confined: the Vulkan core and `shaderapivulkan.cpp` include
+    no SDL. `SetMode`'s window reference is interpreted only by the bridge's
+    legacy host. `architecture/modules.json` enforces this (seeded violations
+    rejected). Portal native-Vulkan boot passes through the new host.
+  - Prerequisite note: R16 uses only R14's surface-ownership slice, delivered
+    here. R14's event/input contracts and SDL2 adapter remain `planned`.
+  - Open: the D3D9/DXVK pair stays on the legacy `SetMode` membrane (no D3D9
+    new-contract device); Android, macOS and iOS surfaces are unverified; no CI
+    lane. Findings: Wayland cannot unminimize; hiding after a FIFO present kills
+    the connection. See the [presentation bridge record](RFC/0001-presentation-bridge-progress.md).
 
 - R15: `done` (2026-09-22) for the rank 8 scope:
   - Contracts: feature profile, quirks and structured selection errors

@@ -1437,10 +1437,9 @@ Evidence:
   after the trigger's on-animation) record `awe_blank` at alpha reference
   0.698039 on both backends. The native frame is the blank dark panel, as on DXVK.
 
-Open: once the sign has animated on (skins 3–6), native draws the panel
-gray-blue where D3D9 draws it white. `newsignage_back01/02` are VertexLitGeneric
-`$selfillum`, and the non-phong vertexlit path does not implement the
-self-illumination combo yet.
+Once the sign has animated on (skins 3–6), native drew the panel gray-blue
+where D3D9 draws it white. `newsignage_back01/02` are VertexLitGeneric
+`$selfillum`, and that is now implemented (next section).
 
 ```sh
 SDL_VIDEODRIVER=offscreen WAYLAND_DISPLAY= DISPLAY= python3 tools/quality/portal_boot.py \
@@ -1448,4 +1447,65 @@ SDL_VIDEODRIVER=offscreen WAYLAND_DISPLAY= DISPLAY= python3 tools/quality/portal
     --map testchmb_a_01 --draw-state-fixtures --console-command noclip \
     --console-command "cmd setpos -590 64 640" --console-command "cmd setang 0 180 0" \
     --console-command "ent_fire sign_03 skin 1 4" --out quality-results/sign
+```
+
+## VertexLitGeneric self-illumination without $phong (2026-09-22)
+
+Portal ships 177 VertexLitGeneric `$selfillum` materials that do not take the
+skin path, including the lit chamber-sign panels. 27 of them set
+`$selfillumtint`, and none set `$selfillummask`. D3D9 draws them with
+`vertexlit_and_unlit_generic_ps2x`'s SELFILLUM static combo (stride 192):
+
+    diffuse = lerp( albedo * diffuseLighting, g_SelfIllumTint(c4) * albedo, base.a )
+    alpha   = g_DiffuseModulation(c1).a      (base alpha is the mask, not opacity)
+
+Native drew only the lit term. The textured push block is full at the
+guaranteed 128 bytes, so the tint rides in existing inputs. Because albedo =
+base * c1, the blend factors as `base * lerp( c1 * L, c1 * tint, base.a )`:
+- `EmitToNativeQueue` writes `c1 * L` as the vertex color, or `c1` when unlit.
+  It is linear, since vertex lighting is evaluated on the CPU.
+- `CommitPassPixelConstants` pushes `( c1 * c4, c1.a )` as the modulation.
+- `demo_dyn_tex.frag`, flag `kFragmentSelfIllum` (2048), blends by the base
+  alpha.
+
+The cases this does not express are reported in the census:
+- `$selfillummask` (c3.w, sampler 11);
+- SELFILLUM with VERTEXCOLOR;
+- SELFILLUM_ENVMAPMASK_ALPHA.
+
+Evidence:
+- A new modellight case, `selfillum`: tint `[0.9 0.6 0.3]`, mask 160/255,
+  two lights and an ambient cube. The independent oracle blends the evaluated
+  vertex lighting toward the tint by the base alpha.
+  - D3D9 satisfies that oracle in both HDR modes.
+  - The recaptured D3D9 fixtures are byte-identical to the old ones in every
+    previous case.
+  - Native matches the oracle and D3D9 within 1 level, with 0 pixels over, in
+    both HDR modes.
+  - With the flag disabled, native fails with 40401 pixels off the model
+    (worst 122).
+- Three seeded oracle tests fail as intended: `$selfillum` removed, tint
+  `[1 1 1]`, mask 255. All 279 quality tests pass.
+- Suites: equivalence 31/0, facing 13/0, bring-up 25/0, backend 33/0.
+- In game (sign_03, lit): the native panel went from (83, 94, 103) to
+  (199, 204, 209). D3D9 draws (223, 233, 240). The remaining difference is the
+  lighting input, not self-illumination:
+  - The pre-change native value implies vertex lighting of about 0.08, and
+    the D3D9 formula with that lighting predicts about 205.
+  - The concrete wall beside the sign differs in the same direction, native
+    (46, 54, 57) vs D3D9 (71, 90, 96). That is the same before and after this
+    change.
+
+Open: native in-game lighting is darker than D3D9 on testchmb_a_01, for world
+lightmaps and model vertex lighting alike. The modellight harness, fed the same
+inputs, matches, so the in-game inputs differ.
+
+The D3D9 tree needed a reconfigure with its recorded argv. Its configuration
+predated a jobsystem wscript change, and `deterministic_executor.cpp` failed on
+`std::decay_t`.
+
+```sh
+python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime \
+    --build build --renderer native-vulkan --hdr none --family modellight \
+    --reference quality/fixtures/material-pixels/modellight-dx9-none.json --out OUT
 ```

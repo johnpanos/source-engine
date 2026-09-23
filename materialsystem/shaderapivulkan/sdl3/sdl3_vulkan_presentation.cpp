@@ -79,8 +79,8 @@ void ImageBarrier( VkCommandBuffer cmd, VkImage image, VkImageLayout from, VkIma
 	vkCmdPipelineBarrier( cmd, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &b );
 }
 
-bool FindMemoryType( VkPhysicalDevice phys, uint32_t bits, VkMemoryPropertyFlags props,
-    uint32_t *outType )
+bool FindMemoryType(
+    VkPhysicalDevice phys, uint32_t bits, VkMemoryPropertyFlags props, uint32_t *outType )
 {
 	VkPhysicalDeviceMemoryProperties mem = {};
 	vkGetPhysicalDeviceMemoryProperties( phys, &mem );
@@ -153,8 +153,8 @@ public:
 	Sdl3VulkanPresentation( platform_sdl3::Sdl3RenderSurfaces &surfaces, IRenderDevice &device,
 	    VulkanDeviceEndpoint &endpoint, IRenderSurface &surface,
 	    const RenderPresentationConfig &config, RenderExtent extent )
-	    : m_Surfaces( surfaces ), m_Device( device ), m_Ep( endpoint ),
-	      m_Surface( surface ), m_Config( config ), m_Extent( extent )
+	    : m_Surfaces( surfaces ), m_Device( device ), m_Ep( endpoint ), m_Surface( surface ),
+	      m_Config( config ), m_Extent( extent )
 	{
 		VkSemaphoreCreateInfo sci = {};
 		sci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -328,10 +328,10 @@ public:
 		blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		blit.srcSubresource.layerCount = 1;
 		blit.srcOffsets[1] = { static_cast<int32_t>( m_BackBufferExtent.width ),
-			static_cast<int32_t>( m_BackBufferExtent.height ), 1 };
+		    static_cast<int32_t>( m_BackBufferExtent.height ), 1 };
 		blit.dstSubresource = blit.srcSubresource;
 		blit.dstOffsets[1] = { static_cast<int32_t>( m_SwapExtent.width ),
-			static_cast<int32_t>( m_SwapExtent.height ), 1 };
+		    static_cast<int32_t>( m_SwapExtent.height ), 1 };
 		vkCmdBlitImage( cmd, back, VK_IMAGE_LAYOUT_GENERAL, swap,
 		    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR );
 
@@ -356,8 +356,8 @@ public:
 			host.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 			host.buffer = m_CaptureBuffer;
 			host.size = VK_WHOLE_SIZE;
-			vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0,
-			    0, nullptr, 1, &host, 0, nullptr );
+			vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+			    0, 0, nullptr, 1, &host, 0, nullptr );
 			ImageBarrier( cmd, swap, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
 			    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0 );
@@ -372,9 +372,9 @@ public:
 		ImageBarrier( cmd, back, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
 		    VK_PIPELINE_STAGE_TRANSFER_BIT, 0, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0 );
 
-		IRenderCompletionToken *token = m_Ep.SubmitWithSemaphores( *context,
-		    m_ImageAvailable[m_Slot], VK_PIPELINE_STAGE_TRANSFER_BIT,
-		    m_RenderFinished[m_ImageIndex] );
+		IRenderCompletionToken *token =
+		    m_Ep.SubmitWithSemaphores( *context, m_ImageAvailable[m_Slot],
+		        VK_PIPELINE_STAGE_TRANSFER_BIT, m_RenderFinished[m_ImageIndex] );
 		m_SlotToken[m_Slot] = token;
 		if ( capture )
 		{
@@ -406,6 +406,16 @@ public:
 			m_SwapDirty = true;
 		if ( r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR )
 			return RenderPresentStatus::kRecoverable;
+		return RenderPresentStatus::kOk;
+	}
+
+	RenderPresentStatus CancelFrame() override
+	{
+		if ( !m_FrameOpen )
+			return RenderPresentStatus::kInvalidSequence;
+		// The acquired image goes back with the swapchain: rebuild it next frame.
+		ConsumeOpenFrame();
+		m_SwapDirty = true;
 		return RenderPresentStatus::kOk;
 	}
 
@@ -492,13 +502,15 @@ public:
 		if ( !m_CaptureToken->IsComplete() )
 			return false;
 		void *mapped = nullptr;
-		const VkDeviceSize bytes = VkDeviceSize( m_CaptureExtent.width ) * m_CaptureExtent.height * 4;
+		const VkDeviceSize bytes =
+		    VkDeviceSize( m_CaptureExtent.width ) * m_CaptureExtent.height * 4;
 		if ( vkMapMemory( m_Ep.Device(), m_CaptureMemory, 0, bytes, 0, &mapped ) != VK_SUCCESS )
 			return false;
 		outRgba->resize( static_cast<size_t>( bytes ) );
 		std::memcpy( outRgba->data(), mapped, static_cast<size_t>( bytes ) );
 		vkUnmapMemory( m_Ep.Device(), m_CaptureMemory );
-		if ( m_CaptureFormat == VK_FORMAT_B8G8R8A8_UNORM || m_CaptureFormat == VK_FORMAT_B8G8R8A8_SRGB )
+		if ( m_CaptureFormat == VK_FORMAT_B8G8R8A8_UNORM ||
+		     m_CaptureFormat == VK_FORMAT_B8G8R8A8_SRGB )
 			for ( size_t i = 0; i + 3 < outRgba->size(); i += 4 )
 				std::swap( ( *outRgba )[i], ( *outRgba )[i + 2] );
 		*outWidth = m_CaptureExtent.width;
@@ -559,15 +571,16 @@ private:
 		vkCmdClearColorImage( cmd, image, VK_IMAGE_LAYOUT_GENERAL, &black, 1, &range );
 		ImageBarrier( cmd, image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
 		    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-		    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT );
+		    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+		    VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT );
 		return m_Device.Submit( *context ) != nullptr;
 	}
 
 	bool SurfaceChangedSinceSwapchain()
 	{
 		VkSurfaceCapabilitiesKHR caps = {};
-		if ( vkGetPhysicalDeviceSurfaceCapabilitiesKHR( m_Ep.PhysicalDevice(), m_VkSurface, &caps ) !=
-		     VK_SUCCESS )
+		if ( vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+		         m_Ep.PhysicalDevice(), m_VkSurface, &caps ) != VK_SUCCESS )
 			return true;
 		return caps.currentTransform != m_SwapSurfaceTransform ||
 		       caps.currentExtent.width != m_SwapSurfaceExtent.width ||
@@ -600,8 +613,8 @@ private:
 		VkExtent2D extent = caps.currentExtent;
 		if ( extent.width == UINT32_MAX )
 		{
-			extent.width = std::max( caps.minImageExtent.width,
-			    std::min( caps.maxImageExtent.width, drawable.width ) );
+			extent.width = std::max(
+			    caps.minImageExtent.width, std::min( caps.maxImageExtent.width, drawable.width ) );
 			extent.height = std::max( caps.minImageExtent.height,
 			    std::min( caps.maxImageExtent.height, drawable.height ) );
 		}
@@ -864,14 +877,16 @@ IRenderPresentation *Sdl3VulkanPresentationBridge::CreatePresentation( IRenderDe
 	err = RenderCreateError();
 	CollectParked( false, nullptr, nullptr );
 
-	auto fail = [&err]( RenderCreateStatus status, const char *message ) -> IRenderPresentation * {
+	auto fail = [&err]( RenderCreateStatus status, const char *message ) -> IRenderPresentation *
+	{
 		err.status = status;
 		std::snprintf( err.message, sizeof( err.message ), "%s", message );
 		return nullptr;
 	};
 	VulkanDeviceEndpoint *endpoint = m_Provider.FindDevice( device );
 	if ( !endpoint || !m_Surfaces.Owns( surface ) )
-		return fail( RenderCreateStatus::kForeignObject, "device or surface is foreign to this bridge" );
+		return fail(
+		    RenderCreateStatus::kForeignObject, "device or surface is foreign to this bridge" );
 	if ( surface.GetStatus() == RenderSurfaceStatus::kDestroyed )
 		return fail( RenderCreateStatus::kSurfaceLost, "the window is destroyed" );
 	const RenderDeviceState state = device.GetState();
@@ -888,8 +903,8 @@ IRenderPresentation *Sdl3VulkanPresentationBridge::CreatePresentation( IRenderDe
 	const RenderExtent extent = ( config.extent.width == 0 && config.extent.height == 0 )
 	                                ? surface.GetDrawableExtent()
 	                                : config.extent;
-	Sdl3VulkanPresentation *p = new Sdl3VulkanPresentation(
-	    m_Surfaces, device, *endpoint, surface, config, extent );
+	Sdl3VulkanPresentation *p =
+	    new Sdl3VulkanPresentation( m_Surfaces, device, *endpoint, surface, config, extent );
 	if ( !surface.AttachListener( *p ) )
 	{
 		delete p;
@@ -961,7 +976,8 @@ bool Sdl3VulkanPresentationBridge::ReleaseDevice( IRenderDevice &device )
 	return true;
 }
 
-Sdl3VulkanPresentation *Sdl3VulkanPresentationBridge::Find( IRenderPresentation &presentation ) const
+Sdl3VulkanPresentation *Sdl3VulkanPresentationBridge::Find(
+    IRenderPresentation &presentation ) const
 {
 	for ( Sdl3VulkanPresentation *p : m_Live )
 		if ( p == &presentation )

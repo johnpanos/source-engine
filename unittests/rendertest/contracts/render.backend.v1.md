@@ -25,7 +25,7 @@ evidence** and are deliberately out of scope for v1.
 
 Own the portable boundary between the engine (material system, resource owners)
 and a GPU backend. Consumers request behavior — adapter enumeration, device
-creation, presentation, submission — never backend identity and never a native
+creation, submission — never backend identity and never a native
 window handle. `IRenderBackendProvider` is a genuine polymorphic contract (null,
 Vulkan, D3D9, GL are behaviorally different providers), so a virtual interface is
 appropriate. Rendering is optional at the product level: a dedicated server omits
@@ -40,7 +40,6 @@ provider is never failed for a capability it never claimed.
 - `GetAdapterInfo(index, out)`: a valid index in `[0, GetAdapterCount())`.
 - `CreateDevice(request, error)`: an adapter index, required/optional feature
   sets, and a validation flag.
-- `CreatePresentation(surface, config, error)`: an `IRenderSurface` and an extent.
 - `Submit(context)`, `DestroyResourceWhenComplete(handle, token)`,
   `PollCompletion()`, `SimulateDeviceLoss()`, `RecoverDevice()`.
 
@@ -67,11 +66,11 @@ exist only so documented quirks can name the adapters they affect
   index (RFC 0006).
 - **Ordered completion** — submissions complete in submission order;
   `LastCompletedSubmission()` advances monotonically.
-- **Presentation** — runtime resize (including orientation/aspect change) updates
-  the drawable extent **without recreating the logical device**; a zero-sized
-  surface **suspends** presentation non-fatally and resumes when presentable;
-  multiple surfaces up to `maxPresentations` are supported where advertised, and
-  one beyond the limit fails with `kTooManyPresentations`.
+- **No presentation on the device** — devices never interpret a window. A
+  pair-specific bridge creates presentations from a device and a surface; see
+  [`render.presentation.v1`](render.presentation.v1.md) (roadmap R16).
+- **Ownership query** — `OwnsDevice` recognizes every live device the provider
+  created, so a bridge can reject a foreign device structurally.
 - **Device loss** — `SimulateDeviceLoss()` enters `kDeviceLost`; a
   recovery-capable provider returns to `kAvailable`, and one without recovery
   reports `kFatal`.
@@ -80,9 +79,10 @@ exist only so documented quirks can name the adapters they affect
 
 ## 4. Ownership, threading
 
-- The provider owns devices; a device owns its resources, command contexts,
-  completion tokens, and presentations. Child objects cannot outlive their
-  device; the device cannot outlive the provider.
+- The provider owns devices; a device owns its resources, command contexts and
+  completion tokens. Presentations belong to the bridge that created them.
+  Child objects cannot outlive their device; the device cannot outlive the
+  provider.
 - Completion tokens are provider-owned and valid until the device is destroyed;
   callers observe `IsComplete()` but never delete them.
 - v1 is single-threaded by construction; the threading contract for concurrent
@@ -95,8 +95,6 @@ exist only so documented quirks can name the adapters they affect
 - `DestroyResourceWhenComplete` then `CollectCompletedDestructions` keeps the
   resource live while the token is incomplete; after `PollCompletion` completes
   the token, the next collection recycles it and the live count returns to base.
-- Resize → `GetState()` stays `kAvailable`; the device pointer is unchanged.
-- Zero-size `Present()` → `kSuspended`, `GetState()` not `kFatal`.
 
 ## 6. Side effects and performance
 
@@ -114,15 +112,15 @@ the headless C++20 profile and the C++17 Vulkan target.
   `LegacyRenderBackendProvider` over the real `shaderapiempty` module (the
   product null backend), the native Vulkan module where it is linked, and five
   deliberately bad legacy backends that the suite must reject. Legacy providers
-  claim neither offscreen devices nor presentation (those stay on the legacy
-  `SetMode` path), so they certify identity, adapter enumeration, structured
+  claim no offscreen devices (presentation stays on the legacy `SetMode`
+  path), so they certify identity, adapter enumeration, structured
   creation failure and zero live devices. The D3D9 module enumerates adapters
   only inside a composed material system; product boots cover it.
 
 - `test_render_backend.cpp` (`render.backend.null`, positive): the null provider
-  must pass every obligation above (33 checks today) and the suite must have run a
+  must pass every obligation above (24 checks today) and the suite must have run a
   meaningful number of checks.
-- `test_render_backend_negative.cpp` (`render.backend.sensitivity`): eight
+- `test_render_backend_negative.cpp` (`render.backend.sensitivity`): seven
   deliberately broken providers, each violating exactly one obligation via a
   `NullBackendDefect`, must each be **detected** — both by an overall failure and
   by the specific named check failing. This proves the suite's teeth
@@ -140,7 +138,7 @@ the headless C++20 profile and the C++17 Vulkan target.
 - Concurrent/multi-threaded submission and the recorded-command-buffer threading
   model.
 - Shader-compiler (`IShaderCompiler`) artifact identity and caching.
-- Native window/render interop bridge (surface handle exchange) — private to a
-  pair-specific bridge, validated by native integration, not this headless suite.
+- Native window/render interop — owned by `render.presentation.v1` and its
+  pair-specific bridges.
 - The material system's own restoration policy across device loss (owned by the
   material system, layered on this contract).

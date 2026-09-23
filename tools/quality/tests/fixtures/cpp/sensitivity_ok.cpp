@@ -1,6 +1,7 @@
 // Self-test fixture modelling a well-formed "sensitivity" suite: it runs a
 // contract predicate against a conforming provider (must pass) and a broken
 // provider (must be caught), and exits 0 only when the oracle is non-vacuous.
+#include "testing/conformance_result.h"
 #include <cstdio>
 
 namespace
@@ -25,5 +26,5 @@ int main()
 		return 1;
 	}
 	std::printf( "sensitivity ok: real passes, buggy caught\n" );
-	return 0;
+	return testing::ReportConformance( 2, 0 );
 }

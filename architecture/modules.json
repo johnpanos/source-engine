@@ -108,7 +108,8 @@
         "id": "render.contracts",
         "paths": [
           "public/render/render_backend.h",
-          "public/render/render_profile.h"
+          "public/render/render_profile.h",
+          "public/render/render_presentation.h"
         ],
         "allowedEdges": []
       },
@@ -136,6 +137,97 @@
         "legacyIncludes": [
           "materialsystem/imaterialsystem.h",
           "shaderapi/IShaderDevice.h"
+        ]
+      },
+      {
+        "id": "render.conformance-tests",
+        "paths": [
+          "unittests/rendertest/"
+        ],
+        "allowedEdges": [
+          "render.contracts"
+        ]
+      },
+      {
+        "id": "render.vulkan.core",
+        "kind": "backend",
+        "paths": [
+          "materialsystem/shaderapivulkan/vulkan_device.h",
+          "materialsystem/shaderapivulkan/vulkan_device.cpp",
+          "materialsystem/shaderapivulkan/vulkan_surface_host.h",
+          "materialsystem/shaderapivulkan/vulkan_render_backend.h",
+          "materialsystem/shaderapivulkan/vulkan_render_backend.cpp",
+          "materialsystem/shaderapivulkan/vulkan_render_backend_native.h",
+          "materialsystem/shaderapivulkan/demo_triangle_spv.h",
+          "materialsystem/shaderapivulkan/material_spv.h"
+        ],
+        "allowedEdges": [
+          "render.contracts"
+        ],
+        "externalHeaders": [
+          "vulkan/vulkan.h"
+        ]
+      },
+      {
+        "id": "platform.sdl3.render-surface",
+        "kind": "backend",
+        "paths": [
+          "platform/sdl3/render_surface/"
+        ],
+        "allowedEdges": [
+          "render.contracts"
+        ],
+        "externalHeaders": [
+          "SDL3/SDL.h"
+        ]
+      },
+      {
+        "id": "render.bridge.sdl3-vulkan",
+        "kind": "backend",
+        "paths": [
+          "materialsystem/shaderapivulkan/sdl3/"
+        ],
+        "allowedEdges": [
+          "render.contracts",
+          "render.vulkan.core",
+          "platform.sdl3.render-surface"
+        ],
+        "externalHeaders": [
+          "SDL3/SDL.h",
+          "SDL3/SDL_vulkan.h",
+          "vulkan/vulkan.h"
+        ]
+      },
+      {
+        "id": "render.bridge.sdl3-vulkan.native-tests",
+        "kind": "native-test",
+        "paths": [
+          "unittests/shaderapivulkantest/test_sdl3_vulkan_presentation.cpp"
+        ],
+        "allowedEdges": [
+          "render.contracts",
+          "render.conformance-tests",
+          "render.vulkan.core",
+          "render.bridge.sdl3-vulkan",
+          "platform.sdl3.render-surface"
+        ],
+        "externalHeaders": [
+          "SDL3/SDL.h",
+          "vulkan/vulkan.h",
+          "unistd.h",
+          "csignal"
+        ]
+      },
+      {
+        "id": "render.vulkan.native-tests",
+        "kind": "native-test",
+        "paths": [
+          "unittests/rendertest/test_render_backend_vulkan.cpp"
+        ],
+        "allowedEdges": [
+          "render.contracts",
+          "render.conformance-tests",
+          "render.vulkan.core"
         ]
       },
       {
@@ -246,6 +338,7 @@
       "cmath",
       "concepts",
       "condition_variable",
+      "cstdarg",
       "cstddef",
       "cstdint",
       "cstdio",

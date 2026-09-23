@@ -12,6 +12,9 @@
 // material reads as sRGB are decoded first and the result is encoded when it
 // writes sRGB, as EnableSRGBRead/EnableSRGBWrite select on D3D9.
 //
+// With the self-illumination flag it is vertexlit_and_unlit_generic_ps2x's
+// SELFILLUM blend (see main).
+//
 // With the luminance-compare flag it is luminance_compare_ps2x.fxc, the pixel
 // shader of dev/lumcompare that auto-exposure's histogram counts with:
 //   result = step( c0.x, L ) * step( L, c0.y ),  L = dot( base * c0.z, NTSC )
@@ -37,7 +40,7 @@ layout( push_constant ) uniform Constants
 	// result = vColor, the clear color the quad's vertices carry), 256 times
 	// the vertex color and 1024 times the vertex alpha
 	// (vertexlit_and_unlit_generic_ps2x with VERTEXCOLOR / g_fVertexAlpha;
-	// 512 is read by the vertex stage);
+	// 512 is read by the vertex stage), 2048 its SELFILLUM (see main);
 	// w = linear output scale (FinalOutput's LINEAR_LIGHT_SCALE).
 	vec4 alphaParams;
 }
@@ -65,6 +68,19 @@ void main()
 		    dot( base.rgb * consts.modulation.z, vec3( 0.2125, 0.7154, 0.0721 ) );
 		result = vec4(
 		    step( consts.modulation.x, luminance ) * step( luminance, consts.modulation.y ) );
+	}
+	else if ( ( flags & 2048 ) != 0 )
+	{
+		// vertexlit_and_unlit_generic_ps2x.fxc with SELFILLUM (no mask texture):
+		//   diffuse = lerp( albedo * diffuseLighting, g_SelfIllumTint * albedo, base.a )
+		//   alpha   = g_DiffuseModulation.a
+		// with albedo = base * c1. Factored as base * lerp( c1 * L, c1 * tint, a):
+		// the vertex color carries c1 * L (L = 1 when unlit) and the modulation
+		// carries ( c1 * tint, c1.a ), so the tint needs no push-constant slot.
+		result = vec4( base.rgb * mix( fragVertexColor.rgb, fragModulation.rgb, base.a ),
+		    fragModulation.a );
+		if ( ( flags & 1024 ) != 0 )
+			result.a *= fragVertexColor.a;
 	}
 	else
 	{

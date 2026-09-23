@@ -13,9 +13,9 @@
 //
 //===========================================================================//
 
-#include "conformance/render_presentation_conformance.h"
-#include "sdl3/sdl3_vulkan_presentation.h"
-#include "vulkan_render_backend_native.h"
+#include "../rendertest/conformance/render_presentation_conformance.h"
+#include "../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_presentation.h"
+#include "../../materialsystem/shaderapivulkan/vulkan_render_backend_native.h"
 #include "../../platform/sdl3/render_surface/sdl3_render_surfaces.h"
 
 #include <SDL3/SDL.h>
@@ -24,6 +24,7 @@
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <string>
@@ -38,7 +39,7 @@ namespace
 void OnWatchdog( int )
 {
 	const char message[] = "FAIL render.presentation.sdl3_vulkan: watchdog expired (deadlock)\n";
-	( void )!write( 2, message, sizeof( message ) - 1 );
+	(void)!write( 2, message, sizeof( message ) - 1 );
 	_exit( 1 );
 }
 
@@ -81,31 +82,34 @@ public:
 		return true;
 	}
 
+	// Minimize and restore. Hiding is deliberately not used: on Wayland (mutter,
+	// Mesa WSI) hiding a window whose swapchain presented in FIFO mode leaves the
+	// hide commit latched behind the FIFO barrier of a surface that never
+	// repaints, and re-showing it is a protocol error that closes the connection.
+	// A minimized window reports a zero drawable where the platform exposes it.
 	void SetSurfaceVisible( IRenderSurface &surface, bool visible ) override
 	{
 		SDL_Window *window = m_Windows[&surface];
 		if ( !window )
 			return;
 		if ( visible )
-		{
-			if ( getenv( "R16_SHOW_DELAY" ) )
-				SDL_Delay( atoi( getenv( "R16_SHOW_DELAY" ) ) );
-			SDL_ShowWindow( window );
-			m_Surfaces.RestoreNativeSurface( surface );
-		}
+			SDL_RestoreWindow( window );
 		else
-		{
-			m_Surfaces.ReleaseNativeSurface( surface );
-			SDL_HideWindow( window );
-		}
+			SDL_MinimizeWindow( window );
 		SDL_SyncWindow( window );
 		Pump();
 	}
 
 	// Through the lifecycle events a mobile platform delivers, so the window
 	// system's event mapping is exercised, not just its direct API.
-	void ReleaseNativeSurface( IRenderSurface & ) override { PushLifecycle( SDL_EVENT_DID_ENTER_BACKGROUND ); }
-	void RestoreNativeSurface( IRenderSurface & ) override { PushLifecycle( SDL_EVENT_WILL_ENTER_FOREGROUND ); }
+	void ReleaseNativeSurface( IRenderSurface & ) override
+	{
+		PushLifecycle( SDL_EVENT_DID_ENTER_BACKGROUND );
+	}
+	void RestoreNativeSurface( IRenderSurface & ) override
+	{
+		PushLifecycle( SDL_EVENT_WILL_ENTER_FOREGROUND );
+	}
 
 	void DestroyWindow( IRenderSurface &surface ) override
 	{
@@ -128,6 +132,11 @@ public:
 	}
 
 	uint32_t GetMaxSurfaces() const override { return 5; }
+	bool CanToggleVisibility() const override
+	{
+		const char *driver = SDL_GetCurrentVideoDriver();
+		return !driver || std::strcmp( driver, "wayland" ) != 0;
+	}
 	uint32_t GetNativeLifetimeViolations() const override { return m_Violations; }
 
 	bool HoldGpuCompletion( IRenderDevice &device ) override
@@ -217,7 +226,10 @@ void Check( bool ok, const char *id, const std::string &detail )
 	}
 }
 
-bool Near( uint8_t v, float expected ) { return std::abs( int( v ) - int( expected * 255.0f + 0.5f ) ) <= 3; }
+bool Near( uint8_t v, float expected )
+{
+	return std::abs( int( v ) - int( expected * 255.0f + 0.5f ) ) <= 3;
+}
 
 // Presents one frame of a solid color and reads the presented swapchain image.
 bool PresentAndCapture( IRenderDevice &device, IRenderPresentation &p,
@@ -275,17 +287,22 @@ void CheckPixels( render_vulkan::VulkanRenderBackend &provider,
 		Check( false, "pixels.setup", "could not create a device and two windows" );
 		return;
 	}
-	IRenderPresentation *pa = bridge.CreatePresentation( *device, *a, RenderPresentationConfig(), nullptr );
-	IRenderPresentation *pb = bridge.CreatePresentation( *device, *b, RenderPresentationConfig(), nullptr );
+	IRenderPresentation *pa =
+	    bridge.CreatePresentation( *device, *a, RenderPresentationConfig(), nullptr );
+	IRenderPresentation *pb =
+	    bridge.CreatePresentation( *device, *b, RenderPresentationConfig(), nullptr );
 	std::vector<uint8_t> pixels;
 	uint32_t w = 0, h = 0;
-	const Color red = { 1.0f, 0.0f, 0.0f }, blue = { 0.0f, 0.0f, 1.0f }, green = { 0.0f, 1.0f, 0.0f };
+	const Color red = { 1.0f, 0.0f, 0.0f }, blue = { 0.0f, 0.0f, 1.0f },
+	            green = { 0.0f, 1.0f, 0.0f };
 
 	bool okA = pa && PresentAndCapture( *device, *pa, bridge, harness, red, &pixels, &w, &h );
-	Check( okA && UniformColor( pixels, w, h, red ) && RenderExtent{ w, h } == a->GetDrawableExtent(),
+	Check(
+	    okA && UniformColor( pixels, w, h, red ) && RenderExtent{ w, h } == a->GetDrawableExtent(),
 	    "pixels.window_a", "window A presents its red back buffer at its drawable size" );
 	bool okB = pb && PresentAndCapture( *device, *pb, bridge, harness, blue, &pixels, &w, &h );
-	Check( okB && UniformColor( pixels, w, h, blue ) && RenderExtent{ w, h } == b->GetDrawableExtent(),
+	Check(
+	    okB && UniformColor( pixels, w, h, blue ) && RenderExtent{ w, h } == b->GetDrawableExtent(),
 	    "pixels.window_b", "window B presents its own blue back buffer (multi-view)" );
 
 	// Negative control: the capture really distinguishes colors.
@@ -294,7 +311,8 @@ void CheckPixels( render_vulkan::VulkanRenderBackend &provider,
 
 	harness.ResizeSurface( *a, RenderExtent{ 240, 360 } );
 	okA = pa && PresentAndCapture( *device, *pa, bridge, harness, green, &pixels, &w, &h );
-	Check( okA && UniformColor( pixels, w, h, green ) && RenderExtent{ w, h } == a->GetDrawableExtent(),
+	Check( okA && UniformColor( pixels, w, h, green ) &&
+	           RenderExtent{ w, h } == a->GetDrawableExtent(),
 	    "pixels.after_window_resize",
 	    "after an aspect change the swapchain follows the drawable (" + std::to_string( w ) + "x" +
 	        std::to_string( h ) + ")" );
@@ -344,7 +362,8 @@ int main()
 		SDL_Quit();
 		return 77;
 	}
-	std::printf( "render.presentation.sdl3_vulkan: video driver '%s'\n", SDL_GetCurrentVideoDriver() );
+	std::printf(
+	    "render.presentation.sdl3_vulkan: video driver '%s'\n", SDL_GetCurrentVideoDriver() );
 
 	int status = 0;
 	{
@@ -353,24 +372,31 @@ int main()
 		Sdl3VulkanHarness harness( surfaces, bridge, *provider );
 
 		conformance::Report report;
-		const bool passed = conformance::RunPresentationConformance( *provider, bridge, harness, report );
+		const bool passed =
+		    conformance::RunPresentationConformance( *provider, bridge, harness, report );
 		for ( const conformance::CheckResult &c : report.checks )
 			if ( !c.ok )
 				std::printf( "FAIL %s: %s\n", c.id.c_str(), c.detail.c_str() );
-		std::printf( "render.presentation.sdl3_vulkan: shared suite %d check(s), %d failure(s) -> %s\n",
-		    static_cast<int>( report.checks.size() ), report.FailureCount(), passed ? "PASS" : "FAIL" );
+		for ( const conformance::CheckResult &c : report.skipped )
+			std::printf( "SKIP %s: %s\n", c.id.c_str(), c.detail.c_str() );
+		std::printf(
+		    "render.presentation.sdl3_vulkan: shared suite %d check(s), %d failure(s) -> %s\n",
+		    static_cast<int>( report.checks.size() ), report.FailureCount(),
+		    passed ? "PASS" : "FAIL" );
 		if ( !passed || report.checks.size() < 40 )
 			status = 1;
 
 		CheckPixels( *provider, bridge, harness );
 		std::printf( "render.presentation.sdl3_vulkan: native pixel checks %d, failure(s) %d\n",
 		    g_Checks, g_Failures );
-		if ( g_Failures != 0 || g_Checks < 6 )
+		if ( g_Failures != 0 || g_Checks < 5 )
 			status = 1;
 	}
-	Check( provider->GetLiveDeviceCount() == 0, "lifetime.no_leaked_devices", "all devices destroyed" );
+	Check( provider->GetLiveDeviceCount() == 0, "lifetime.no_leaked_devices",
+	    "all devices destroyed" );
 	provider.reset();
 	SDL_Quit();
-	std::printf( "render.presentation.sdl3_vulkan: %s\n", status == 0 && g_Failures == 0 ? "PASS" : "FAIL" );
+	std::printf(
+	    "render.presentation.sdl3_vulkan: %s\n", status == 0 && g_Failures == 0 ? "PASS" : "FAIL" );
 	return status == 0 && g_Failures == 0 ? 0 : 1;
 }

@@ -555,6 +555,20 @@ class ModelLightTest(unittest.TestCase):
         del report["materials"][report["cases"][0]["material"]]["$selfillum"]
         self.assertTrue(self.disagreements(report))
 
+    def test_vertex_lit_self_illumination_is_measured(self):
+        # The native backend before SELFILLUM: the lit albedo, never the tint.
+        report = self.only("selfillum")
+        del report["materials"][report["cases"][0]["material"]]["$selfillum"]
+        self.assertTrue(self.disagreements(report))
+
+    def test_vertex_lit_self_illumination_tint_and_mask_are_measured(self):
+        report = self.only("selfillum")
+        report["materials"][report["cases"][0]["material"]]["$selfillumtint"] = "[1 1 1]"
+        self.assertTrue(self.disagreements(report))
+        report = self.only("selfillum")
+        report["textures"]["conformance/modellight_base_masked"]["row"][0][3] = 255
+        self.assertTrue(self.disagreements(report))
+
     def test_missing_cases_are_rejected(self):
         report = copy.deepcopy(self.references["none"])
         report["cases"].pop()

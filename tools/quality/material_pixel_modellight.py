@@ -16,8 +16,9 @@ module judges the frames:
   built exactly as CShaderAPIDx8::SetLight and CommitVertexShaderLighting build
   them (lights sorted spot, point, directional), then DoLighting of
   common_vs_fxc.h runs per vertex (static color, local lights, ambient cube),
-  interpolated over each triangle at D3D9's pixel centers, times the
-  sRGB-decoded base texture and the linear tone-mapping scale, and sRGB-encoded
+  interpolated over each triangle at D3D9's pixel centers (with $selfillum,
+  blended toward $selfillumtint by the base alpha), times the sRGB-decoded base
+  texture and the linear tone-mapping scale, and sRGB-encoded
   (vertexlit_and_unlit_generic_ps2x.fxc). Every pixel well inside a quad must
   match it; pixels well outside must be the clear color;
 * $phong materials (skin_vs20 / skin_ps20b) are evaluated per pixel: the
@@ -39,7 +40,7 @@ import material_pixel_frames  # noqa: E402
 CASES = ("ambient_cube", "directional", "point", "spot", "four_lights", "half_lambert",
          "static_vertex", "static_and_dynamic", "no_light", "model_transform", "skinned",
          "phong", "phong_four_lights", "phong_lightwarp", "phong_selfillum", "phong_constant",
-         "phong_basealphamask", "phong_skinned")
+         "phong_basealphamask", "phong_skinned", "selfillum")
 # CShaderAPIDx8::CommitPixelShaderLighting places a directional light this far
 # from the lighting origin, against its direction.
 DIRECTIONAL_DISTANCE = 10000.0
@@ -393,6 +394,15 @@ class CaseModel:
         self.report = report
         params = report.get("materials", {}).get(case.get("material"), {})
         self.phong = PhongMaterial(report, params) if wants_skin_shader(params) else None
+        # vertexlit_and_unlit_generic's SELFILLUM: the base alpha blends the
+        # vertex lighting toward $selfillumtint (the albedo multiplies both).
+        self.self_illum = None
+        if not self.phong and params.get("$selfillum") == "1":
+            texel = _texel(report, params["$basetexture"])
+            self.base = [srgb_to_linear(c) for c in texel[:3]]
+            tint = (_vector(params["$selfillumtint"]) if "$selfillumtint" in params
+                    else [1.0, 1.0, 1.0])
+            self.self_illum = (tint, texel[3])
         matrix = case["model_matrix"]
         for quad in report["quads"]:
             world = [_transform(matrix, (x, y, report["quad_z"]), 1.0)
@@ -443,6 +453,9 @@ class CaseModel:
                     return tuple(round(linear_to_srgb(x) * 255.0) for x in color)
                 light = [sum(w * lighting[v][k] for w, v in zip(weights, (a, b, c)))
                          for k in range(3)]
+                if self.self_illum:
+                    tint, mask = self.self_illum
+                    light = [_lerp(light[k], tint[k], mask) for k in range(3)]
                 return tuple(round(linear_to_srgb(self.base[k] * light[k] * self.scale) * 255.0)
                              for k in range(3))
             return None

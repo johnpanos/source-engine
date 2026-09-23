@@ -38,20 +38,48 @@ struct Case
 int main()
 {
 	const std::vector<Case> cases = {
-		{ "mutableCaps", []( NullBackendDefects &d ) { d.mutableCaps = true; },
-			"caps.immutable" },
-		{ "recycleOnFrameAdvance", []( NullBackendDefects &d ) { d.recycleOnFrameAdvance = true; },
-			"resource.deferred_until_complete" },
-		{ "unorderedCompletion", []( NullBackendDefects &d ) { d.unorderedCompletion = true; },
-			"submit.ordered_completion" },
-		{ "leakResources", []( NullBackendDefects &d ) { d.leakResources = true; },
-			"resource.recycled_after_complete" },
-		{ "swallowRequiredFeature", []( NullBackendDefects &d ) { d.swallowRequiredFeature = true; },
-			"create.unsupported_required_feature" },
-		{ "lossSkipsLostState", []( NullBackendDefects &d ) { d.lossSkipsLostState = true; },
-			"loss.enters_lost_state" },
-		{ "disownDevices", []( NullBackendDefects &d ) { d.disownDevices = true; },
-			"lifetime.owns_device" },
+	    { "mutableCaps",
+	        []( NullBackendDefects &d )
+	        {
+		        d.mutableCaps = true;
+	        },
+	        "caps.immutable" },
+	    { "recycleOnFrameAdvance",
+	        []( NullBackendDefects &d )
+	        {
+		        d.recycleOnFrameAdvance = true;
+	        },
+	        "resource.deferred_until_complete" },
+	    { "unorderedCompletion",
+	        []( NullBackendDefects &d )
+	        {
+		        d.unorderedCompletion = true;
+	        },
+	        "submit.ordered_completion" },
+	    { "leakResources",
+	        []( NullBackendDefects &d )
+	        {
+		        d.leakResources = true;
+	        },
+	        "resource.recycled_after_complete" },
+	    { "swallowRequiredFeature",
+	        []( NullBackendDefects &d )
+	        {
+		        d.swallowRequiredFeature = true;
+	        },
+	        "create.unsupported_required_feature" },
+	    { "lossSkipsLostState",
+	        []( NullBackendDefects &d )
+	        {
+		        d.lossSkipsLostState = true;
+	        },
+	        "loss.enters_lost_state" },
+	    { "disownDevices",
+	        []( NullBackendDefects &d )
+	        {
+		        d.disownDevices = true;
+	        },
+	        "lifetime.owns_device" },
 	};
 
 	int undetected = 0;

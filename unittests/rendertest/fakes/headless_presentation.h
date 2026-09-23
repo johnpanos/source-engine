@@ -62,26 +62,26 @@ private:
 // field false.
 struct HeadlessBridgeDefects
 {
-	bool recycleOnResize = false;			// completion.retired_until_complete
-	bool resizeLosesDevice = false;			// resize.keeps_device
-	bool fatalOnZeroSize = false;			// zero.backbuffer_suspends
-	bool ignoreSurfaceDestroyed = false;	// loss.window_destroyed
-	bool ignoreSurfaceUnavailable = false;	// surface.unavailable_suspends
-	bool sharedExtent = false;				// multi.independent_resize
-	bool acceptForeignDevice = false;		// create.foreign_device
-	bool allowSecondPresentation = false;	// create.surface_busy
-	bool leakOnDestroy = false;				// lifetime.device_resources_baseline
-	bool keepListenerAttached = false;		// lifetime.surface_detached
-	bool noLimit = false;					// multi.over_limit
-	bool keepNativeAfterRelease = false;	// lifetime.native_released_before_window
-	bool resizeDuringFrame = false;			// resize.rejected_during_frame
-	bool releaseDeviceWhileLive = false;	// lifetime.release_device_order
+	bool recycleOnResize = false;          // completion.retired_until_complete
+	bool resizeLosesDevice = false;        // resize.keeps_device
+	bool fatalOnZeroSize = false;          // zero.backbuffer_suspends
+	bool ignoreSurfaceDestroyed = false;   // loss.window_destroyed
+	bool ignoreSurfaceUnavailable = false; // surface.unavailable_suspends
+	bool sharedExtent = false;             // multi.independent_resize
+	bool acceptForeignDevice = false;      // create.foreign_device
+	bool allowSecondPresentation = false;  // create.surface_busy
+	bool leakOnDestroy = false;            // lifetime.device_resources_baseline
+	bool keepListenerAttached = false;     // lifetime.surface_detached
+	bool noLimit = false;                  // multi.over_limit
+	bool keepNativeAfterRelease = false;   // lifetime.native_released_before_window
+	bool resizeDuringFrame = false;        // resize.rejected_during_frame
+	bool releaseDeviceWhileLive = false;   // lifetime.release_device_order
 };
 
 // Builds the bridge joining 'surfaces' to 'provider'. Both must outlive it.
 std::unique_ptr<render::IRenderPresentationBridgeFactory> MakeHeadlessPresentationBridge(
-	render::IRenderBackendProvider &provider, HeadlessSurfaces &surfaces,
-	uint32_t maxPresentations = 4, HeadlessBridgeDefects defects = HeadlessBridgeDefects{} );
+    render::IRenderBackendProvider &provider, HeadlessSurfaces &surfaces,
+    uint32_t maxPresentations = 4, HeadlessBridgeDefects defects = HeadlessBridgeDefects{} );
 
 // Drives HeadlessSurfaces for the shared suite. A null device completes nothing
 // until PollCompletion, so GPU completion is inherently held.
@@ -98,6 +98,7 @@ public:
 	void DestroyWindow( render::IRenderSurface &surface ) override;
 	void DestroySurface( render::IRenderSurface *surface ) override;
 	uint32_t GetMaxSurfaces() const override { return 8; }
+	bool CanToggleVisibility() const override { return true; }
 	uint32_t GetNativeLifetimeViolations() const override;
 	bool HoldGpuCompletion( render::IRenderDevice &device ) override;
 	void ReleaseGpuCompletion( render::IRenderDevice &device ) override;

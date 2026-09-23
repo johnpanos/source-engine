@@ -126,6 +126,11 @@ provider without process-global shader interfaces.
   recreation; zero-size suspend (non-fatal) and resume; multiple surfaces up to
   `maxPresentations`; device-loss state machine (recover vs fatal); complete
   destruction with zero leaked devices.
+  (2026-09-22, R16: the presentation obligations moved to the separate
+  `render.presentation.v1` suite, `render.presentation.{headless,sensitivity}`,
+  46 checks and 14 defects. The backend suite now has 24 checks and 7 defects,
+  including `lifetime.owns_device`. See
+  [presentation bridges](0001-presentation-bridge-progress.md).)
 - Sensitivity: eight deliberately broken providers (one injected
   `NullBackendDefect` each) are each **detected** by the specific named check —
   proving the suite's teeth. `render.backend.null` and `render.backend.sensitivity`

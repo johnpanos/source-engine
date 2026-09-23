@@ -270,7 +270,7 @@ bool RunRenderBackendConformance( IRenderBackendProvider &provider, Report &repo
 		if ( device )
 		{
 			report.Record( "lifetime.owns_device", provider.OwnsDevice( *device ),
-				"a provider must recognize a live device it created" );
+			    "a provider must recognize a live device it created" );
 			CheckImmutableCaps( *device, report );
 			CheckResourceLifetimeAndCompletion( *device, report );
 			CheckSubmissionOrdering( *device, report );

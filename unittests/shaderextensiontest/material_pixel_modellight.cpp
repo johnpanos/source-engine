@@ -91,6 +91,7 @@ enum ModelMaterial
 	kPhongSelfIllum,
 	kPhongConstant,
 	kPhongBaseAlphaMask,
+	kSelfIllum,
 	kMaterialCount
 };
 
@@ -171,6 +172,12 @@ const ModelLightCase kCases[] = {
         2, { kDirectional, kPoint }, false },
     { "phong_basealphamask", kPhongBaseAlphaMask, {}, 2, { kDirectional, kPoint }, false },
     { "phong_skinned", kPhong, {}, 2, { kDirectional, kPoint }, false, kSkinned },
+    // VertexLitGeneric $selfillum without $phong: vertexlit_and_unlit_generic's
+    // SELFILLUM combo, the vertex lighting blended toward the tint by base alpha.
+    { "selfillum", kSelfIllum,
+        { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
+            { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
+        2, { kDirectional, kPoint }, false },
 };
 
 // Procedural textures (sRGB-encoded where the material reads them as sRGB).
@@ -246,6 +253,10 @@ const MaterialVariant kMaterials[kMaterialCount] = {
             { "$phongexponenttexture", "conformance/modellight_exponent" },
             { "$basemapalphaphongmask", "1" }, { "$phongboost", "2" },
             { "$phongfresnelranges", "[0.2 0.6 1]" } } },
+    // Alpha 160/255 is the mask; the tint differs per channel.
+    { "conformance/modellight_selfillum",
+        { { "$basetexture", "conformance/modellight_base_masked" }, { "$selfillum", "1" },
+            { "$selfillumtint", "[0.9 0.6 0.3]" } } },
 };
 
 // The static-prop color of a quad's corner (sRGB-like bytes, as vrad bakes them

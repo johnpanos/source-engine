@@ -359,8 +359,8 @@ public:
 		return static_cast<VkCommandContextImpl &>( context ).Cmd();
 	}
 
-	IRenderCompletionToken *SubmitWithSemaphores( IRenderCommandContext &context,
-	    VkSemaphore wait, VkPipelineStageFlags waitStage, VkSemaphore signal ) override
+	IRenderCompletionToken *SubmitWithSemaphores( IRenderCommandContext &context, VkSemaphore wait,
+	    VkPipelineStageFlags waitStage, VkSemaphore signal ) override
 	{
 		VkCommandContextImpl &ctx = static_cast<VkCommandContextImpl &>( context );
 		VkCommandBuffer cmd = ctx.Cmd();
@@ -549,7 +549,6 @@ private:
 	std::vector<VkCompletionToken *> m_RetiredTokens;
 	uint64_t m_NextSubmissionId = 0;
 	uint64_t m_LastCompleted = 0;
-
 };
 
 // ---------------------------------------------------------------------------
@@ -718,7 +717,8 @@ public:
 		VkPhysicalDeviceTimelineSemaphoreFeatures timeline = {};
 		timeline.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
 		timeline.timelineSemaphore = VK_TRUE;
-		const bool gate = m_Options.enableCompletionGate && m_Api12 && DeviceSupportsTimeline( phys );
+		const bool gate =
+		    m_Options.enableCompletionGate && m_Api12 && DeviceSupportsTimeline( phys );
 		if ( gate )
 			dci.pNext = &timeline;
 

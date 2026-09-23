@@ -48,7 +48,10 @@ struct RenderExtent
 	uint32_t height = 0;
 
 	bool IsPresentable() const { return width > 0 && height > 0; }
-	bool operator==( const RenderExtent &o ) const { return width == o.width && height == o.height; }
+	bool operator==( const RenderExtent &o ) const
+	{
+		return width == o.width && height == o.height;
+	}
 	bool operator!=( const RenderExtent &o ) const { return !( *this == o ); }
 };
 
@@ -72,9 +75,9 @@ struct RenderPresentationConfig
 enum class RenderPresentStatus : uint32_t
 {
 	kOk = 0,
-	kSuspended,		  // not presentable now (zero area, surface unavailable); retry later
-	kRecoverable,	  // transient native error; the presentation rebuilt what it needed
-	kLost,			  // surface destroyed or device lost; destroy the presentation
+	kSuspended,       // not presentable now (zero area, surface unavailable); retry later
+	kRecoverable,     // transient native error; the presentation rebuilt what it needed
+	kLost,            // surface destroyed or device lost; destroy the presentation
 	kInvalidSequence, // Present without an open frame, or BeginFrame with one open
 };
 
@@ -86,7 +89,7 @@ enum class RenderSurfaceStatus : uint32_t
 {
 	kAvailable = 0,
 	kUnavailable, // native surface temporarily absent (e.g. a backgrounded mobile app)
-	kDestroyed,	  // the window is gone; terminal
+	kDestroyed,   // the window is gone; terminal
 };
 
 // Implemented by a presentation. The window system calls it synchronously,
@@ -152,6 +155,11 @@ public:
 	// it. Returns kInvalidSequence with no open frame.
 	virtual RenderPresentStatus Present() = 0;
 
+	// Closes the open frame without presenting it (a skipped frame). Work already
+	// submitted against the back buffer still completes on the GPU and keeps the
+	// back buffer live until it does. Returns kInvalidSequence with no open frame.
+	virtual RenderPresentStatus CancelFrame() = 0;
+
 	// Presentation-owned storage (back buffers, native swapchains) waiting for GPU
 	// completion before it is released. Reaches zero once the device has
 	// completed every submission that used it and the presentation has collected.
@@ -168,7 +176,7 @@ public:
 
 struct RenderPresentationPairId
 {
-	const char *windowSystem = nullptr; // e.g. "sdl3", "headless"
+	const char *windowSystem = nullptr;  // e.g. "sdl3", "headless"
 	const char *renderBackend = nullptr; // matches RenderBackendId::id
 };
 
@@ -186,9 +194,8 @@ public:
 	// (kSurfaceLost), an unusable device (kDeviceUnavailable), a surface the device
 	// cannot present to (kSurfaceIncompatible) or the presentation limit
 	// (kTooManyPresentations).
-	virtual IRenderPresentation *CreatePresentation( IRenderDevice &device,
-		IRenderSurface &surface, const RenderPresentationConfig &config,
-		RenderCreateError *error ) = 0;
+	virtual IRenderPresentation *CreatePresentation( IRenderDevice &device, IRenderSurface &surface,
+	    const RenderPresentationConfig &config, RenderCreateError *error ) = 0;
 
 	// Retires the presentation's storage behind its completion tokens without
 	// waiting for the GPU; the device collects back buffers later. Native objects
@@ -208,8 +215,8 @@ public:
 // Composition-time selection: returns the bridge joining exactly this pair, or
 // nullptr with kUnsupportedPair. Unsupported pairs never fall back to another.
 inline IRenderPresentationBridgeFactory *SelectPresentationBridge(
-	IRenderPresentationBridgeFactory *const *bridges, size_t count, const char *windowSystem,
-	const char *renderBackend, RenderCreateError *error )
+    IRenderPresentationBridgeFactory *const *bridges, size_t count, const char *windowSystem,
+    const char *renderBackend, RenderCreateError *error )
 {
 	for ( size_t i = 0; bridges != nullptr && i < count; ++i )
 	{
@@ -217,8 +224,8 @@ inline IRenderPresentationBridgeFactory *SelectPresentationBridge(
 			continue;
 		const RenderPresentationPairId pair = bridges[i]->GetPairId();
 		if ( pair.windowSystem && pair.renderBackend && windowSystem && renderBackend &&
-			contract_detail::EqualStrings( pair.windowSystem, windowSystem, 64 ) &&
-			contract_detail::EqualStrings( pair.renderBackend, renderBackend, 64 ) )
+		     contract_detail::EqualStrings( pair.windowSystem, windowSystem, 64 ) &&
+		     contract_detail::EqualStrings( pair.renderBackend, renderBackend, 64 ) )
 			return bridges[i];
 	}
 	if ( error )

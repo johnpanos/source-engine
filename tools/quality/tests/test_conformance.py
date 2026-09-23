@@ -4,9 +4,11 @@
 # Self-tests for the shared conformance runner (RFC 0005 Q1 / roadmap R02).
 #
 # These prove the runner's outcome handling before it is trusted as a gate: it
-# must detect suites that pass, fail, crash, hang, fail to compile, and go
-# missing, and it must fail on zero discovery, unmatched selectors, and an
-# unsupported schema. Run:
+# must detect suites that pass, fail, crash, hang, exhaust memory, omit or
+# duplicate their result record, run zero checks, rely on assert(), fail to
+# compile, go missing, or need an unavailable provider; it must fail on zero
+# discovery, unmatched selectors, an unavailable compiler, and an unsupported
+# schema; and it must retain every repeated attempt and its logs. Run:
 #
 #   python3 -m unittest discover -s tools/quality/tests -v
 #
@@ -14,8 +16,10 @@
 
 import json
 import os
+import shutil
 import sys
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -31,7 +35,7 @@ CXX = os.environ.get("CXX", "g++")
 
 
 def make_suite(sid, sources, expect="pass", kind="self-test", extra_flags=None,
-               timeout=None):
+               timeout=None, protocol=True):
     s = {
         "id": sid,
         "domain": "Q-SELFTEST",
@@ -41,6 +45,8 @@ def make_suite(sid, sources, expect="pass", kind="self-test", extra_flags=None,
         "sources": [CPP + "/" + x for x in sources],
         "expect": expect,
     }
+    if protocol and expect == "pass":
+        s["result_protocol"] = conformance.RESULT_PROTOCOL
     if extra_flags:
         s["extra_flags"] = extra_flags
     if timeout is not None:
@@ -57,30 +63,39 @@ class RunSuiteClassificationTest(unittest.TestCase):
             os.path.join(REPO, PROFILES_DIR), "self-test")
         cls.build_dir = tempfile.mkdtemp(prefix="conf-selftest-")
 
-    def _run(self, suite):
-        return conformance.run_suite(REPO, CXX, self.profile, suite, self.build_dir)
+    def _run(self, suite, **kwargs):
+        return conformance.run_suite(REPO, CXX, self.profile, suite, self.build_dir, **kwargs)
 
     def test_pass(self):
         r = self._run(make_suite("pass", ["pass.cpp"]))
         self.assertEqual(r["outcome"], conformance.OUTCOME_PASS)
         self.assertTrue(r["matched"])
+        self.assertTrue(r["certified"])
         self.assertTrue(r["build_ok"])
+        self.assertEqual(r["checks"], 1)
 
     def test_required_check_results(self):
         for flags, expected in [([], True), (["-DCHECKS=0"], False),
                                 (["-DFAILURES=1"], False), (["-DDUPLICATE"], False)]:
             with self.subTest(flags=flags):
                 suite = make_suite("checks", ["check_results.cpp"], extra_flags=flags)
-                suite["result_protocol"] = "checks-v1"
                 result = self._run(suite)
                 self.assertEqual(result["matched"], expected)
+                if not expected:
+                    self.assertIn("result protocol", result["first_divergence"])
 
-    def test_missing_check_record_fails_successful_process(self):
-        suite = make_suite("incomplete", ["pass.cpp"])
-        suite["result_protocol"] = "checks-v1"
-        result = self._run(suite)
+    def test_missing_record_is_an_incomplete_run(self):
+        result = self._run(make_suite("incomplete", ["no_record.cpp"]))
         self.assertFalse(result["matched"])
         self.assertEqual(result["outcome"], conformance.OUTCOME_FAIL)
+        self.assertIn("incomplete", result["first_divergence"])
+
+    def test_min_checks_detects_dropped_cases(self):
+        suite = make_suite("shrunk", ["check_results.cpp"])
+        suite["min_checks"] = 5  # the fixture reports 4
+        result = self._run(suite)
+        self.assertFalse(result["matched"])
+        self.assertIn("at least 5", result["first_divergence"])
 
     def test_negative_fixture_requires_its_specific_defect(self):
         suite = make_suite("wrong-diagnostic", ["compile_error.cpp"], expect="compile-error")
@@ -107,6 +122,38 @@ class RunSuiteClassificationTest(unittest.TestCase):
         r = self._run(make_suite("hang", ["hang.cpp"], timeout=2))
         self.assertEqual(r["outcome"], conformance.OUTCOME_TIMEOUT)
         self.assertFalse(r["matched"])
+
+    def test_timeout_kills_the_process_group_and_keeps_output(self):
+        log_dir = tempfile.mkdtemp(prefix="conf-logs-")
+        pid_file = os.path.join(log_dir, "child.pid")
+        os.environ["CHILD_PID_FILE"] = pid_file
+        try:
+            r = self._run(make_suite("hang-child", ["hang_with_child.cpp"], timeout=2),
+                          log_dir=log_dir)
+        finally:
+            del os.environ["CHILD_PID_FILE"]
+        self.assertEqual(r["outcome"], conformance.OUTCOME_TIMEOUT)
+        # Output written before the hang is retained as a diagnostic.
+        self.assertIn("parent waiting forever", r["detail"])
+        with open(r["attempts"][0]["log"], encoding="utf-8") as log:
+            self.assertIn("parent waiting forever", log.read())
+        with open(pid_file, encoding="utf-8") as stream:
+            child = int(stream.read())
+        deadline = time.monotonic() + 5
+        alive = True
+        while alive and time.monotonic() < deadline:
+            try:
+                os.kill(child, 0)
+                time.sleep(0.05)
+            except ProcessLookupError:
+                alive = False
+        self.assertFalse(alive, "suite child process outlived the timeout")
+
+    def test_memory_is_bounded(self):
+        r = self._run(make_suite("hog", ["memory_hog.cpp"]))
+        self.assertIn(r["outcome"], (conformance.OUTCOME_CRASH, conformance.OUTCOME_FAIL))
+        self.assertFalse(r["matched"])
+        self.assertEqual(r["memory_limit_mb"], 64)
 
     def test_compile_error_is_detected(self):
         r = self._run(make_suite("broken", ["compile_error.cpp"]))
@@ -142,6 +189,125 @@ class RunSuiteClassificationTest(unittest.TestCase):
         self.assertFalse(r["matched"])
 
 
+class ProviderTest(unittest.TestCase):
+    """Unavailable providers never pass; optional skips never certify."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.profile = conformance.load_profile(
+            os.path.join(REPO, PROFILES_DIR), "self-test")
+        cls.build_dir = tempfile.mkdtemp(prefix="conf-provider-")
+
+    def _run(self, suite):
+        return conformance.run_suite(REPO, CXX, self.profile, suite, self.build_dir)
+
+    def test_required_unavailable_provider_fails(self):
+        for req in ("executable:conformance-selftest-no-such-tool",
+                    "env:CONFORMANCE_SELFTEST_UNSET_VARIABLE",
+                    "path:tools/quality/tests/fixtures/no-such-content"):
+            with self.subTest(req=req):
+                suite = make_suite("needs", ["pass.cpp"])
+                suite["requires"] = [req]
+                r = self._run(suite)
+                self.assertEqual(r["outcome"], conformance.OUTCOME_UNAVAILABLE)
+                self.assertFalse(r["matched"])
+                self.assertFalse(r["certified"])
+                self.assertIn(req, r["detail"])
+
+    def test_optional_unavailable_provider_skips_with_reason(self):
+        suite = make_suite("maybe", ["pass.cpp"])
+        suite["requires"] = ["executable:conformance-selftest-no-such-tool"]
+        suite["optional"] = True
+        r = self._run(suite)
+        self.assertEqual(r["outcome"], conformance.OUTCOME_SKIPPED)
+        self.assertTrue(r["matched"])
+        self.assertFalse(r["certified"])
+        self.assertIn("conformance-selftest-no-such-tool", r["skip_reason"])
+
+    def test_available_provider_runs(self):
+        suite = make_suite("has", ["pass.cpp"])
+        suite["requires"] = ["executable:" + CXX, "path:" + CPP + "/pass.cpp"]
+        r = self._run(suite)
+        self.assertEqual(r["outcome"], conformance.OUTCOME_PASS)
+        self.assertTrue(r["certified"])
+
+
+class OptimizedBuildTest(unittest.TestCase):
+    """Test assertions stay effective in optimized NDEBUG builds."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.profile = conformance.load_profile(
+            os.path.join(REPO, PROFILES_DIR), "self-test")
+        cls.build_dir = tempfile.mkdtemp(prefix="conf-release-")
+
+    def test_counted_failure_fails_in_every_config(self):
+        for config in sorted(conformance.BUILD_CONFIGS):
+            with self.subTest(config=config):
+                r = conformance.run_suite(REPO, CXX, self.profile,
+                                          make_suite("counted", ["counted_failure.cpp"]),
+                                          self.build_dir, config=config)
+                self.assertEqual(r["outcome"], conformance.OUTCOME_FAIL)
+                self.assertEqual(r["failed_checks"], 1)
+                if config == "release":
+                    self.assertIn("-DNDEBUG", r["repro"])
+
+    def test_assert_based_suite_is_rejected(self):
+        # Staged under a unittests/ path, where the rule applies to test sources.
+        root = tempfile.mkdtemp(prefix="conf-assert-")
+        os.makedirs(os.path.join(root, "unittests"))
+        shutil.copy(os.path.join(REPO, CPP, "assert_only.cpp"), os.path.join(root, "unittests"))
+        suite = make_suite("asserts", ["x"])
+        suite["sources"] = ["unittests/assert_only.cpp"]
+        r = conformance.run_suite(root, CXX, self.profile, suite, self.build_dir)
+        self.assertEqual(r["outcome"], conformance.OUTCOME_INVALID_ORACLE)
+        self.assertFalse(r["matched"])
+        self.assertIn("unittests/assert_only.cpp", r["first_divergence"])
+
+    def test_static_assert_and_comments_are_not_flagged(self):
+        root = tempfile.mkdtemp(prefix="conf-assert-ok-")
+        os.makedirs(os.path.join(root, "unittests"))
+        with open(os.path.join(root, "unittests", "ok.cpp"), "w", encoding="utf-8") as f:
+            f.write("// never use assert( x ) here\nstatic_assert( sizeof( int ) >= 2 );\n")
+        suite = {"sources": ["unittests/ok.cpp"]}
+        self.assertEqual(conformance.assert_users(root, suite), [])
+
+
+class RepeatAndSeedTest(unittest.TestCase):
+    """Repeats retain every attempt; the seed reaches the suite."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.profile = conformance.load_profile(
+            os.path.join(REPO, PROFILES_DIR), "self-test")
+        cls.build_dir = tempfile.mkdtemp(prefix="conf-repeat-")
+
+    def _run(self, **kwargs):
+        return conformance.run_suite(REPO, CXX, self.profile,
+                                     make_suite("env", ["environment.cpp"]),
+                                     self.build_dir, log_dir=tempfile.mkdtemp(), **kwargs)
+
+    def test_seed_and_attempt_are_exported(self):
+        r = self._run(seed=4242, repeat=2)
+        self.assertTrue(r["matched"])
+        self.assertEqual(len(r["attempts"]), 2)
+        with open(r["attempts"][1]["log"], encoding="utf-8") as log:
+            text = log.read()
+        self.assertIn("seed=4242 attempt=1", text)
+
+    def test_intermittent_failure_is_retained(self):
+        os.environ["FAIL_ON_ATTEMPT"] = "1"
+        try:
+            r = self._run(repeat=3)
+        finally:
+            del os.environ["FAIL_ON_ATTEMPT"]
+        self.assertFalse(r["matched"])
+        self.assertEqual(len(r["attempts"]), 3)  # no stop-at-green, no retry
+        self.assertEqual([a["matched"] for a in r["attempts"]], [True, False, True])
+        self.assertEqual(r["outcome"], conformance.OUTCOME_FAIL)
+        self.assertIn("attempt 1", r["first_divergence"])
+
+
 class ManifestValidationTest(unittest.TestCase):
     """Structural manifest problems are fatal."""
 
@@ -152,6 +318,10 @@ class ManifestValidationTest(unittest.TestCase):
         f.close()
         return f.name
 
+    def _load(self, suites):
+        return conformance.load_manifest(
+            self._write({"schema": conformance.MANIFEST_SCHEMA, "suites": suites}))
+
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="conf-manifest-")
 
@@ -161,32 +331,60 @@ class ManifestValidationTest(unittest.TestCase):
             conformance.load_manifest(path)
 
     def test_duplicate_id_rejected(self):
-        path = self._write({
-            "schema": conformance.MANIFEST_SCHEMA,
-            "suites": [make_suite("dup", ["pass.cpp"]), make_suite("dup", ["pass.cpp"])],
-        })
         with self.assertRaises(conformance.ManifestError):
-            conformance.load_manifest(path)
+            self._load([make_suite("dup", ["pass.cpp"]), make_suite("dup", ["pass.cpp"])])
 
     def test_invalid_expect_rejected(self):
         bad = make_suite("x", ["pass.cpp"])
         bad["expect"] = "sometimes"
-        path = self._write({"schema": conformance.MANIFEST_SCHEMA, "suites": [bad]})
         with self.assertRaises(conformance.ManifestError):
-            conformance.load_manifest(path)
+            self._load([bad])
+
+    def test_passing_suite_without_result_protocol_rejected(self):
+        with self.assertRaises(conformance.ManifestError):
+            self._load([make_suite("x", ["pass.cpp"], protocol=False)])
+        # Negative fixtures expecting another outcome need no record.
+        self._load([make_suite("y", ["failing.cpp"], expect="fail", protocol=False)])
+
+    def test_runner_outcomes_cannot_be_expected(self):
+        for outcome in (conformance.OUTCOME_SKIPPED, conformance.OUTCOME_UNAVAILABLE,
+                        conformance.OUTCOME_INVALID_ORACLE):
+            with self.subTest(outcome=outcome), self.assertRaises(conformance.ManifestError):
+                self._load([make_suite("x", ["pass.cpp"], expect=outcome)])
+
+    def test_bad_requirements_rejected(self):
+        for requires in (["gpu"], ["socket:x"], ["executable:"], "executable:x"):
+            with self.subTest(requires=requires), self.assertRaises(conformance.ManifestError):
+                suite = make_suite("x", ["pass.cpp"])
+                suite["requires"] = requires
+                self._load([suite])
+
+    def test_optional_without_provider_rejected(self):
+        suite = make_suite("x", ["pass.cpp"])
+        suite["optional"] = True
+        with self.assertRaises(conformance.ManifestError):
+            self._load([suite])
+
+    def test_invalid_min_checks_rejected(self):
+        suite = make_suite("x", ["pass.cpp"])
+        suite["min_checks"] = 0
+        with self.assertRaises(conformance.ManifestError):
+            self._load([suite])
 
 
 class EndToEndTest(unittest.TestCase):
     """Drive the full `check` command through main()."""
 
-    def _check(self, suites, extra_args=None):
+    def _check(self, suites, extra_args=None, out="-", cxx=CXX, command="check"):
         f = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
         json.dump(
             {"schema": conformance.MANIFEST_SCHEMA,
              "profiles_dir": PROFILES_DIR, "suites": suites}, f)
         f.close()
-        args = ["--root", REPO, "--manifest", f.name, "check", "--cxx", CXX,
-                "--out", "-", "--build-dir", tempfile.mkdtemp(prefix="conf-e2e-")]
+        args = ["--root", REPO, "--manifest", f.name, command]
+        if command == "check":
+            args += ["--cxx", cxx, "--out", out,
+                     "--build-dir", tempfile.mkdtemp(prefix="conf-e2e-")]
         if extra_args:
             args += extra_args
         try:
@@ -204,10 +402,17 @@ class EndToEndTest(unittest.TestCase):
 
     def test_zero_discovery_is_fatal(self):
         self.assertEqual(self._check([]), 2)
+        self.assertEqual(self._check([], command="plan"), 2)
 
     def test_unmatched_selector_is_fatal(self):
         rc = self._check([make_suite("p", ["pass.cpp"])],
                          extra_args=["--suite", "nope"])
+        self.assertEqual(rc, 2)
+
+    def test_partially_unmatched_selector_is_fatal(self):
+        # One real id plus one mistyped id must not shrink to a passing run.
+        rc = self._check([make_suite("p", ["pass.cpp"])],
+                         extra_args=["--suite", "p", "--suite", "p-typo"])
         self.assertEqual(rc, 2)
 
     def test_selector_runs_only_matching(self):
@@ -215,6 +420,86 @@ class EndToEndTest(unittest.TestCase):
                           make_suite("f", ["failing.cpp"])],
                          extra_args=["--suite", "p"])
         self.assertEqual(rc, 0)  # the failing suite is filtered out
+
+    def test_unavailable_compiler_is_fatal(self):
+        rc = self._check([make_suite("p", ["pass.cpp"])], cxx="conformance-no-such-compiler")
+        self.assertEqual(rc, 2)
+
+    def test_required_unavailable_provider_fails_the_run(self):
+        suite = make_suite("p", ["pass.cpp"])
+        suite["requires"] = ["executable:conformance-selftest-no-such-tool"]
+        self.assertEqual(self._check([suite]), 1)
+
+    def test_optional_skip_passes_but_is_not_certified(self):
+        suite = make_suite("maybe", ["pass.cpp"])
+        suite["requires"] = ["env:CONFORMANCE_SELFTEST_UNSET_VARIABLE"]
+        suite["optional"] = True
+        out = os.path.join(tempfile.mkdtemp(prefix="conf-ev-"), "evidence.json")
+        self.assertEqual(self._check([suite, make_suite("p", ["pass.cpp"])], out=out), 0)
+        with open(out, encoding="utf-8") as f:
+            evidence = json.load(f)
+        self.assertEqual(evidence["counts"]["skipped"], 1)
+        self.assertEqual(evidence["counts"]["certified"], 1)
+        skipped = [s for s in evidence["suites"] if s["id"] == "maybe"][0]
+        self.assertFalse(skipped["certified"])
+        self.assertIn("CONFORMANCE_SELFTEST_UNSET_VARIABLE", skipped["skip_reason"])
+
+    def test_plan_enumerates_without_running(self):
+        suite = make_suite("needs", ["does_not_exist.cpp"])
+        suite["requires"] = ["executable:conformance-selftest-no-such-tool"]
+        self.assertEqual(self._check([suite], command="plan"), 0)
+
+    def test_evidence_is_complete_and_reproducible(self):
+        out_dir = tempfile.mkdtemp(prefix="conf-ev-")
+        out = os.path.join(out_dir, "evidence.json")
+        rc = self._check([make_suite("p", ["pass.cpp"]), make_suite("f", ["failing.cpp"])],
+                         out=out, extra_args=["--seed", "7", "--config", "release"])
+        self.assertEqual(rc, 1)
+        with open(out, encoding="utf-8") as f:
+            evidence = json.load(f)
+        self.assertEqual(evidence["schema"], conformance.EVIDENCE_SCHEMA)
+        self.assertEqual(evidence["decision"], "fail")
+        self.assertTrue(evidence["reconciled"])
+        self.assertEqual(evidence["expected_ids"], ["f", "p"])
+        self.assertEqual(evidence["run"]["seed"], 7)
+        self.assertEqual(evidence["run"]["config"], "release")
+        self.assertIn("--seed", evidence["run"]["invocation"])
+        for key in ("source_revision", "cxx_version", "cxx_target", "host", "submodules"):
+            self.assertIn(key, evidence["identity"])
+        self.assertTrue(evidence["manifest_digest"])
+        failing = [s for s in evidence["suites"] if s["id"] == "f"][0]
+        self.assertTrue(failing["input_digest"])
+        self.assertIn("-DNDEBUG", failing["repro"])
+        # Full per-suite logs live beside the evidence and are referenced by it.
+        run_log = failing["attempts"][0]["log"]
+        self.assertTrue(run_log.startswith(os.path.join(out_dir, "evidence.logs")))
+        with open(run_log, encoding="utf-8") as log:
+            self.assertIn("deliberate self-test failure", log.read())
+        self.assertTrue(os.path.isfile(failing["logs"]["build"]))
+
+    def test_interrupted_run_leaves_incomplete_evidence(self):
+        out = os.path.join(tempfile.mkdtemp(prefix="conf-ev-"), "evidence.json")
+        original = conformance.run_suite
+        calls = []
+
+        def interrupted(*args, **kwargs):
+            if calls:
+                raise KeyboardInterrupt
+            calls.append(1)
+            return original(*args, **kwargs)
+
+        conformance.run_suite = interrupted
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                self._check([make_suite("a", ["pass.cpp"]), make_suite("b", ["pass.cpp"])],
+                            out=out)
+        finally:
+            conformance.run_suite = original
+        with open(out, encoding="utf-8") as f:
+            evidence = json.load(f)
+        self.assertEqual(evidence["decision"], "incomplete")
+        self.assertEqual(evidence["executed_ids"], ["a"])
+        self.assertFalse(evidence["reconciled"])
 
 
 if __name__ == "__main__":

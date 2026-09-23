@@ -44,6 +44,16 @@ class ParseTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             roadmap.parse_roadmap("# doc\n\nno table here\n")
 
+    def test_state_cell_may_link_progress_records(self) -> None:
+        parsed = roadmap.parse_roadmap(table(row(1, "R01", "—", "partial ([record](RFC/x.md), [more](RFC/y.md#z))")))
+        self.assertEqual("partial", parsed.by_id["R01"].state)
+        self.assertEqual(("RFC/x.md", "RFC/y.md#z"), parsed.by_id["R01"].records)
+
+    def test_malformed_state_annotation_stays_invalid(self) -> None:
+        parsed = roadmap.parse_roadmap(table(row(1, "R01", "—", "partial [record](RFC/x.md)")))
+        errors, _ = roadmap.validate(parsed)
+        self.assertTrue(any("state" in message for message in errors))
+
     def test_ends_at_first_non_row_line(self) -> None:
         parsed = roadmap.parse_roadmap(table(row(1, "R01", "—", "done")))
         self.assertEqual(1, len(parsed.tasks))
@@ -81,6 +91,22 @@ class ValidateTests(unittest.TestCase):
     def test_invalid_state_is_an_error(self) -> None:
         errors, _ = self.validate(row(1, "R01", "—", "almost"))
         self.assertTrue(any("state" in message for message in errors))
+
+    def test_missing_linked_record_is_an_error_only_with_root(self) -> None:
+        import tempfile
+
+        parsed = roadmap.parse_roadmap(
+            table(row(1, "R01", "—", "active ([ok](RFC/ok.md#part))"), row(2, "R02", "—", "active ([gone](RFC/gone.md))"))
+        )
+        self.assertEqual([], roadmap.validate(parsed)[0])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "RFC").mkdir()
+            (root / "RFC" / "ok.md").write_text("record\n", encoding="utf-8")
+            errors, _ = roadmap.validate(parsed, root)
+        self.assertEqual(1, len(errors))
+        self.assertIn("R02", errors[0])
+        self.assertIn("RFC/gone.md", errors[0])
 
     def test_started_before_prerequisite_is_a_note_not_error(self) -> None:
         errors, notes = self.validate(row(1, "R01", "—", "planned"), row(2, "R02", "R01", "active"))

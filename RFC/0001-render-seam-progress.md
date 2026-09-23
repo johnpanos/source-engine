@@ -84,4 +84,5 @@ HiDPI adoption (1024×768 → 1536×1152) and the boot passes.
 - Rendering-capability completion beyond rank 8 remains open. RFC 0001 asks for
   a material system with no process-global shader interfaces (`g_pShaderAPI`
   and related globals remain), separate caps from DX-level policy (step 8),
-  presentation bridges (R16) and adapter limits in selection.
+  presentation bridges (R16, since delivered: see
+  [presentation bridges](0001-presentation-bridge-progress.md)) and adapter limits in selection.

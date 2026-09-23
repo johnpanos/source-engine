@@ -95,6 +95,7 @@
       "contract": "unittests/hammertest/contracts/geometry.aabb.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/geometry/rounding.cpp",
         "unittests/hammertest/geometry/test_rounding.cpp"
@@ -109,6 +110,7 @@
       "contract": "unittests/hammertest/contracts/geometry.aabb.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/geometry/aabb.cpp",
         "hammer/core/geometry/rounding.cpp",
@@ -124,6 +126,7 @@
       "contract": "unittests/hammertest/contracts/geometry.aabb.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/geometry/aabb.cpp",
         "hammer/core/geometry/rounding.cpp",
@@ -139,6 +142,7 @@
       "contract": "unittests/hammertest/contracts/geometry.aabb.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/geometry/angle.cpp",
         "unittests/hammertest/geometry/test_angle.cpp"
@@ -153,6 +157,7 @@
       "contract": "unittests/hammertest/contracts/geometry.aabb.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/geometry/angle.cpp",
         "unittests/hammertest/geometry/test_angle_negative.cpp"
@@ -167,6 +172,7 @@
       "contract": "unittests/hammertest/contracts/geometry.brush.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/geometry/brush.cpp",
         "hammer/core/geometry/displacement.cpp",
@@ -183,6 +189,7 @@
       "contract": "unittests/hammertest/contracts/geometry.brush.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/geometry/brush.cpp",
         "hammer/core/geometry/displacement.cpp",
@@ -199,6 +206,7 @@
       "contract": "unittests/hammertest/contracts/scene.handle_table.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/scene/handle_table.cpp",
         "unittests/hammertest/scene/test_handle_table.cpp"
@@ -213,6 +221,7 @@
       "contract": "unittests/hammertest/contracts/scene.handle_table.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/scene/handle_table.cpp",
         "unittests/hammertest/scene/test_handle_table_negative.cpp"
@@ -227,6 +236,7 @@
       "contract": "unittests/hammertest/contracts/scene.scene_graph.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/scene/handle_table.cpp",
         "hammer/core/scene/scene_graph.cpp",
@@ -242,6 +252,7 @@
       "contract": "unittests/hammertest/contracts/scene.scene_graph.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/scene/handle_table.cpp",
         "hammer/core/scene/scene_graph.cpp",
@@ -257,6 +268,7 @@
       "contract": "unittests/hammertest/contracts/app.document_history.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/document_history.cpp",
         "unittests/hammertest/app/test_document_history.cpp"
@@ -271,6 +283,7 @@
       "contract": "unittests/hammertest/contracts/app.document_history.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/document_history.cpp",
         "unittests/hammertest/app/test_document_history_negative.cpp"
@@ -285,6 +298,7 @@
       "contract": "unittests/hammertest/contracts/app.property_value.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/property_value.cpp",
         "unittests/hammertest/app/test_property_value.cpp"
@@ -299,6 +313,7 @@
       "contract": "unittests/hammertest/contracts/app.property_value.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/property_value.cpp",
         "unittests/hammertest/app/test_property_value_negative.cpp"
@@ -313,6 +328,7 @@
       "contract": "unittests/hammertest/contracts/app.entity_editor.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/entity_selection.cpp",
         "hammer/core/app/editor_document.cpp",
@@ -332,6 +348,7 @@
       "contract": "unittests/hammertest/contracts/app.entity_editor.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/entity_selection.cpp",
         "hammer/core/app/editor_document.cpp",
@@ -351,6 +368,7 @@
       "contract": "unittests/hammertest/contracts/formats.keyvalues.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/keyvalues.cpp",
         "unittests/hammertest/formats/test_keyvalues.cpp"
@@ -365,6 +383,7 @@
       "contract": "unittests/hammertest/contracts/formats.keyvalues.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/keyvalues.cpp",
         "unittests/hammertest/formats/test_keyvalues_negative.cpp"
@@ -379,6 +398,7 @@
       "contract": "unittests/hammertest/contracts/app.save_orchestrator.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/save_orchestrator.cpp",
         "unittests/hammertest/app/test_save_orchestrator.cpp"
@@ -393,6 +413,7 @@
       "contract": "unittests/hammertest/contracts/app.save_orchestrator.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/save_orchestrator.cpp",
         "unittests/hammertest/app/test_save_orchestrator_negative.cpp"
@@ -407,6 +428,7 @@
       "contract": "unittests/hammertest/contracts/app.editor_document.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/entity_selection.cpp",
         "hammer/core/app/property_value.cpp",
@@ -426,6 +448,7 @@
       "contract": "unittests/hammertest/contracts/app.editor_document.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/entity_selection.cpp",
         "hammer/core/app/property_value.cpp",
@@ -445,6 +468,7 @@
       "contract": "unittests/platformtest/contracts/platform.dynamic_library.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "unittests/platformtest/dynamic_library/test_dynamic_library.cpp"
       ],
@@ -458,6 +482,7 @@
       "contract": "unittests/platformtest/contracts/platform.dynamic_library.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "unittests/platformtest/dynamic_library/test_dynamic_library_negative.cpp"
       ],
@@ -471,6 +496,7 @@
       "contract": "unittests/platformtest/contracts/platform.clock.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "unittests/platformtest/clock/test_clock.cpp"
       ],
@@ -484,6 +510,7 @@
       "contract": "unittests/platformtest/contracts/platform.clock.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "unittests/platformtest/clock/test_clock_negative.cpp"
       ],
@@ -497,6 +524,7 @@
       "contract": "unittests/platformtest/contracts/platform.paths.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "unittests/platformtest/paths/test_paths.cpp"
       ],
@@ -510,6 +538,7 @@
       "contract": "unittests/platformtest/contracts/platform.paths.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "unittests/platformtest/paths/test_paths_negative.cpp"
       ],
@@ -523,6 +552,7 @@
       "contract": "unittests/platformtest/contracts/platform.tool_process.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "platform/tool_process_client.cpp",
         "unittests/platformtest/tool_process/test_tool_process.cpp"
@@ -537,6 +567,7 @@
       "contract": "unittests/platformtest/contracts/platform.tool_process.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "platform/tool_process_client.cpp",
         "unittests/platformtest/tool_process/test_tool_process_negative.cpp"
@@ -551,6 +582,7 @@
       "contract": "RFC/0003-dependency-aware-job-system.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "extra_flags": [
         "-pthread"
       ],
@@ -571,6 +603,7 @@
       "contract": "RFC/0003-dependency-aware-job-system.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "extra_flags": [
         "-pthread"
       ],
@@ -591,6 +624,7 @@
       "contract": "game/shared/querycache_maintenance.h",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "extra_flags": [
         "-pthread"
       ],
@@ -611,6 +645,7 @@
       "contract": "game/shared/querycache_maintenance.h",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "extra_flags": [
         "-pthread"
       ],
@@ -631,6 +666,7 @@
       "contract": "RFC/0003-dependency-aware-job-system.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "extra_flags": [
         "-pthread"
       ],
@@ -650,6 +686,7 @@
       "contract": "RFC/0003-dependency-aware-job-system.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "extra_flags": [
         "-pthread"
       ],
@@ -667,6 +704,7 @@
       "contract": "RFC/0003-dependency-aware-job-system.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "extra_flags": [
         "-pthread"
       ],
@@ -686,6 +724,7 @@
       "contract": "RFC/0003-dependency-aware-job-system.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "extra_flags": [
         "-pthread"
       ],
@@ -703,6 +742,7 @@
       "contract": "RFC/0003-dependency-aware-job-system.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "extra_flags": [
         "-pthread"
       ],
@@ -725,6 +765,7 @@
       "contract": "RFC/0003-dependency-aware-job-system.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "extra_flags": [
         "-pthread"
       ],
@@ -747,6 +788,7 @@
       "contract": "unittests/rendertest/contracts/render.backend.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "unittests/rendertest/conformance/render_backend_conformance.cpp",
         "unittests/rendertest/fakes/null_render_backend.cpp",
@@ -762,6 +804,7 @@
       "contract": "unittests/rendertest/contracts/render.backend.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "unittests/rendertest/conformance/render_backend_conformance.cpp",
         "unittests/rendertest/fakes/null_render_backend.cpp",
@@ -777,6 +820,7 @@
       "contract": "unittests/rendertest/contracts/render.presentation.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "unittests/rendertest/conformance/render_backend_conformance.cpp",
         "unittests/rendertest/conformance/render_presentation_conformance.cpp",
@@ -794,6 +838,7 @@
       "contract": "unittests/rendertest/contracts/render.presentation.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "unittests/rendertest/conformance/render_backend_conformance.cpp",
         "unittests/rendertest/conformance/render_presentation_conformance.cpp",
@@ -825,6 +870,7 @@
       "contract": "unittests/hammertest/contracts/app.update_hint.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/update_hint.cpp",
         "hammer/core/geometry/aabb.cpp",
@@ -841,6 +887,7 @@
       "contract": "unittests/hammertest/contracts/app.update_hint.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/update_hint.cpp",
         "hammer/core/geometry/aabb.cpp",
@@ -857,6 +904,7 @@
       "contract": "unittests/hammertest/contracts/app.editor_controller.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/editor_controller.cpp",
         "hammer/core/geometry/brush.cpp",
@@ -876,6 +924,7 @@
       "contract": "unittests/hammertest/contracts/app.editor_controller.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/editor_controller.cpp",
         "hammer/core/geometry/brush.cpp",
@@ -895,6 +944,7 @@
       "contract": "unittests/hammertest/contracts/app.editor_controller.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/app/editor_controller.cpp",
         "hammer/core/geometry/brush.cpp",
@@ -914,6 +964,7 @@
       "contract": "unittests/hammertest/contracts/ports.file_store.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/adapters/platform/disk_file_store.cpp",
         "unittests/hammertest/ports/test_disk_file_store.cpp"
@@ -928,6 +979,7 @@
       "contract": "unittests/hammertest/contracts/ports.file_store.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "unittests/hammertest/ports/test_disk_file_store_negative.cpp"
       ],
@@ -941,6 +993,7 @@
       "contract": "unittests/hammertest/contracts/adapters.gtk_shell.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/adapters/platform/disk_file_store.cpp",
         "hammer/core/app/entity_selection.cpp",
@@ -961,6 +1014,7 @@
       "contract": "unittests/hammertest/contracts/geometry.displacement.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/geometry/displacement.cpp",
         "hammer/core/geometry/brush.cpp",
@@ -977,6 +1031,7 @@
       "contract": "unittests/hammertest/contracts/geometry.displacement.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/geometry/displacement.cpp",
         "hammer/core/geometry/brush.cpp",
@@ -993,6 +1048,7 @@
       "contract": "unittests/hammertest/contracts/formats.instancing.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "extra_flags": [
         "-Iunittests/hammertest"
       ],
@@ -1012,6 +1068,7 @@
       "contract": "unittests/hammertest/contracts/formats.instancing.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "extra_flags": [
         "-Iunittests/hammertest"
       ],
@@ -1031,6 +1088,7 @@
       "contract": "unittests/hammertest/contracts/formats.fgd.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/fgd.cpp",
         "unittests/hammertest/formats/test_fgd.cpp"
@@ -1045,6 +1103,7 @@
       "contract": "unittests/hammertest/contracts/formats.fgd.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/fgd.cpp",
         "unittests/hammertest/formats/test_fgd_negative.cpp"
@@ -1059,6 +1118,7 @@
       "contract": "unittests/hammertest/contracts/formats.vpk_archive.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/vpk_archive.cpp",
         "unittests/hammertest/formats/test_vpk_archive.cpp"
@@ -1073,6 +1133,7 @@
       "contract": "unittests/hammertest/contracts/formats.vpk_archive.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/vpk_archive.cpp",
         "unittests/hammertest/formats/test_vpk_archive_negative.cpp"
@@ -1087,6 +1148,7 @@
       "contract": "unittests/hammertest/contracts/formats.vtf_image.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/vtf_image.cpp",
         "unittests/hammertest/formats/test_vtf_image.cpp"
@@ -1101,6 +1163,7 @@
       "contract": "unittests/hammertest/contracts/formats.vtf_image.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/vtf_image.cpp",
         "unittests/hammertest/formats/test_vtf_image_negative.cpp"
@@ -1115,6 +1178,7 @@
       "contract": "unittests/hammertest/contracts/formats.material.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/material.cpp",
         "hammer/core/formats/keyvalues.cpp",
@@ -1130,6 +1194,7 @@
       "contract": "unittests/hammertest/contracts/formats.material.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/material.cpp",
         "hammer/core/formats/keyvalues.cpp",
@@ -1145,6 +1210,7 @@
       "contract": "unittests/hammertest/contracts/formats.search_path_assets.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/search_path_assets.cpp",
         "unittests/hammertest/formats/test_search_path_assets.cpp"
@@ -1159,6 +1225,7 @@
       "contract": "unittests/hammertest/contracts/formats.cordon.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/cordon.cpp",
         "hammer/core/formats/keyvalues.cpp",
@@ -1174,6 +1241,7 @@
       "contract": "unittests/hammertest/contracts/formats.cordon.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/cordon.cpp",
         "hammer/core/formats/keyvalues.cpp",
@@ -1189,6 +1257,7 @@
       "contract": "unittests/hammertest/contracts/formats.overlay.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/overlay.cpp",
         "hammer/core/formats/keyvalues.cpp",
@@ -1204,6 +1273,7 @@
       "contract": "unittests/hammertest/contracts/formats.overlay.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/overlay.cpp",
         "hammer/core/formats/keyvalues.cpp",
@@ -1219,6 +1289,7 @@
       "contract": "unittests/hammertest/contracts/formats.visgroups.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/visgroups.cpp",
         "hammer/core/formats/keyvalues.cpp",
@@ -1234,6 +1305,7 @@
       "contract": "unittests/hammertest/contracts/formats.visgroups.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/visgroups.cpp",
         "hammer/core/formats/keyvalues.cpp",
@@ -1249,6 +1321,7 @@
       "contract": "unittests/hammertest/contracts/formats.material_catalog.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/material_catalog.cpp",
         "hammer/core/formats/material.cpp",
@@ -1266,6 +1339,7 @@
       "contract": "unittests/hammertest/contracts/formats.material_catalog.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/material_catalog.cpp",
         "hammer/core/formats/material.cpp",
@@ -1283,6 +1357,7 @@
       "contract": "unittests/hammertest/contracts/formats.groups.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/groups.cpp",
         "hammer/core/formats/keyvalues.cpp",
@@ -1298,6 +1373,7 @@
       "contract": "unittests/hammertest/contracts/formats.groups.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/groups.cpp",
         "hammer/core/formats/keyvalues.cpp",
@@ -1313,6 +1389,7 @@
       "contract": "unittests/hammertest/contracts/formats.prefab.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/prefab.cpp",
         "hammer/core/formats/vmf_transform.cpp",
@@ -1329,6 +1406,7 @@
       "contract": "unittests/hammertest/contracts/formats.prefab.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/prefab.cpp",
         "hammer/core/formats/vmf_transform.cpp",
@@ -1345,6 +1423,7 @@
       "contract": "unittests/hammertest/contracts/formats.map_export.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "extra_flags": [
         "-Iunittests/hammertest"
       ],
@@ -1367,6 +1446,7 @@
       "contract": "unittests/hammertest/contracts/formats.map_export.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "extra_flags": [
         "-Iunittests/hammertest"
       ],
@@ -1389,6 +1469,7 @@
       "contract": "unittests/hammertest/contracts/formats.entity_property_sheet.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/entity_property_sheet.cpp",
         "hammer/core/formats/fgd.cpp",
@@ -1405,6 +1486,7 @@
       "contract": "unittests/hammertest/contracts/formats.entity_property_sheet.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/entity_property_sheet.cpp",
         "hammer/core/formats/fgd.cpp",

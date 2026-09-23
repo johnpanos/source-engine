@@ -38,7 +38,8 @@ public:
 	{
 		if ( m_Status != RenderSurfaceStatus::kAvailable )
 			return m_Status;
-		return CurrentNative() ? RenderSurfaceStatus::kAvailable : RenderSurfaceStatus::kUnavailable;
+		return CurrentNative() ? RenderSurfaceStatus::kAvailable
+		                       : RenderSurfaceStatus::kUnavailable;
 	}
 
 	uint64_t GetGeneration() const override
@@ -109,8 +110,8 @@ private:
 		if ( !m_Window )
 			return nullptr;
 #if defined( __ANDROID__ )
-		return SDL_GetPointerProperty( SDL_GetWindowProperties( m_Window ),
-			SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr );
+		return SDL_GetPointerProperty(
+		    SDL_GetWindowProperties( m_Window ), SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr );
 #else
 		return m_Window;
 #endif

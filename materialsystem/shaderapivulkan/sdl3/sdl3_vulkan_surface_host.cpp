@@ -28,8 +28,8 @@ public:
 		if ( !names )
 		{
 			if ( outError )
-				*outError = std::string( "SDL_Vulkan_GetInstanceExtensions failed: " ) +
-				            SDL_GetError();
+				*outError =
+				    std::string( "SDL_Vulkan_GetInstanceExtensions failed: " ) + SDL_GetError();
 			return false;
 		}
 		outExtensions->assign( names, names + count );
@@ -78,8 +78,8 @@ private:
 	const void *CurrentNativeWindow() const
 	{
 #if defined( __ANDROID__ )
-		return SDL_GetPointerProperty( SDL_GetWindowProperties( m_Window ),
-		    SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr );
+		return SDL_GetPointerProperty(
+		    SDL_GetWindowProperties( m_Window ), SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr );
 #else
 		return m_Window;
 #endif

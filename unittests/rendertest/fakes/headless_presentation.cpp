@@ -59,7 +59,9 @@ public:
 	IRenderSurfaceListener *m_Listener = nullptr;
 };
 
-HeadlessSurfaces::HeadlessSurfaces() : m_Violations( 0 ) {}
+HeadlessSurfaces::HeadlessSurfaces() : m_Violations( 0 )
+{
+}
 
 HeadlessSurfaces::~HeadlessSurfaces()
 {
@@ -182,8 +184,8 @@ class HeadlessPresentation : public IRenderPresentation, public IRenderSurfaceLi
 {
 public:
 	HeadlessPresentation( HeadlessBridge &bridge, IRenderDevice &device, IRenderSurface &surface,
-		RenderExtent extent )
-		: m_Bridge( bridge ), m_Device( device ), m_Surface( surface ), m_Extent( extent )
+	    RenderExtent extent )
+	    : m_Bridge( bridge ), m_Device( device ), m_Surface( surface ), m_Extent( extent )
 	{
 	}
 
@@ -191,6 +193,13 @@ public:
 	bool ResizeTo( RenderExtent extent ) override;
 	RenderPresentStatus BeginFrame( RenderResourceHandle *outBackBuffer ) override;
 	RenderPresentStatus Present() override;
+	RenderPresentStatus CancelFrame() override
+	{
+		if ( !m_FrameOpen )
+			return RenderPresentStatus::kInvalidSequence;
+		m_FrameOpen = false;
+		return RenderPresentStatus::kOk;
+	}
 
 	size_t GetPendingRetirementCount() const override { return m_Retiring.size(); }
 	void CollectRetired() override
@@ -233,8 +242,8 @@ class HeadlessBridge : public IRenderPresentationBridgeFactory
 {
 public:
 	HeadlessBridge( IRenderBackendProvider &provider, HeadlessSurfaces &surfaces, uint32_t max,
-		const HeadlessBridgeDefects &defects )
-		: m_Provider( provider ), m_Surfaces( surfaces ), m_Max( max ), m_Defects( defects )
+	    const HeadlessBridgeDefects &defects )
+	    : m_Provider( provider ), m_Surfaces( surfaces ), m_Max( max ), m_Defects( defects )
 	{
 	}
 
@@ -255,13 +264,13 @@ public:
 	uint32_t GetMaxPresentations() const override { return m_Max; }
 
 	IRenderPresentation *CreatePresentation( IRenderDevice &device, IRenderSurface &surface,
-		const RenderPresentationConfig &config, RenderCreateError *error ) override
+	    const RenderPresentationConfig &config, RenderCreateError *error ) override
 	{
 		RenderCreateError local;
 		RenderCreateError &err = error ? *error : local;
 		err = RenderCreateError();
 		if ( ( !m_Defects.acceptForeignDevice && !m_Provider.OwnsDevice( device ) ) ||
-			!m_Surfaces.Owns( surface ) )
+		     !m_Surfaces.Owns( surface ) )
 			return Fail( err, RenderCreateStatus::kForeignObject, "device or surface is foreign" );
 		if ( surface.GetStatus() == RenderSurfaceStatus::kDestroyed )
 			return Fail( err, RenderCreateStatus::kSurfaceLost, "the window is destroyed" );
@@ -270,16 +279,17 @@ public:
 			return Fail( err, RenderCreateStatus::kDeviceUnavailable, "the device is lost" );
 		if ( !m_Defects.noLimit && m_Live.size() >= m_Max )
 			return Fail(
-				err, RenderCreateStatus::kTooManyPresentations, "presentation limit reached" );
+			    err, RenderCreateStatus::kTooManyPresentations, "presentation limit reached" );
 
-		const RenderExtent extent =
-			( config.extent.width == 0 && config.extent.height == 0 ) ? surface.GetDrawableExtent()
-																	  : config.extent;
+		const RenderExtent extent = ( config.extent.width == 0 && config.extent.height == 0 )
+		                                ? surface.GetDrawableExtent()
+		                                : config.extent;
 		HeadlessPresentation *p = new HeadlessPresentation( *this, device, surface, extent );
 		if ( !surface.AttachListener( *p ) && !m_Defects.allowSecondPresentation )
 		{
 			delete p;
-			return Fail( err, RenderCreateStatus::kSurfaceBusy, "the surface is already presented" );
+			return Fail(
+			    err, RenderCreateStatus::kSurfaceBusy, "the surface is already presented" );
 		}
 		m_Live.push_back( p );
 		return p;
@@ -326,7 +336,7 @@ public:
 
 private:
 	static IRenderPresentation *Fail(
-		RenderCreateError &err, RenderCreateStatus status, const char *message )
+	    RenderCreateError &err, RenderCreateStatus status, const char *message )
 	{
 		err.status = status;
 		std::snprintf( err.message, sizeof( err.message ), "%s", message );
@@ -409,13 +419,15 @@ RenderPresentStatus HeadlessPresentation::BeginFrame( RenderResourceHandle *outB
 	if ( surface == RenderSurfaceStatus::kUnavailable && !defects.ignoreSurfaceUnavailable )
 		return RenderPresentStatus::kSuspended;
 	if ( !m_Extent.IsPresentable() )
-		return defects.fatalOnZeroSize ? RenderPresentStatus::kLost : RenderPresentStatus::kSuspended;
-	if ( !m_Surface.GetDrawableExtent().IsPresentable() && surface == RenderSurfaceStatus::kAvailable )
+		return defects.fatalOnZeroSize ? RenderPresentStatus::kLost
+		                               : RenderPresentStatus::kSuspended;
+	if ( !m_Surface.GetDrawableExtent().IsPresentable() &&
+	     surface == RenderSurfaceStatus::kAvailable )
 		return RenderPresentStatus::kSuspended;
 
 	// (Re)build the simulated native binding for the current native surface.
 	if ( surface == RenderSurfaceStatus::kAvailable &&
-		( !m_NativeBound || m_BoundGeneration != m_Surface.GetGeneration() ) )
+	     ( !m_NativeBound || m_BoundGeneration != m_Surface.GetGeneration() ) )
 	{
 		m_NativeBound = true;
 		m_BoundGeneration = m_Surface.GetGeneration();
@@ -464,11 +476,11 @@ void HeadlessPresentation::Shutdown( bool leak )
 } // namespace
 
 std::unique_ptr<IRenderPresentationBridgeFactory> MakeHeadlessPresentationBridge(
-	IRenderBackendProvider &provider, HeadlessSurfaces &surfaces, uint32_t maxPresentations,
-	HeadlessBridgeDefects defects )
+    IRenderBackendProvider &provider, HeadlessSurfaces &surfaces, uint32_t maxPresentations,
+    HeadlessBridgeDefects defects )
 {
 	return std::unique_ptr<IRenderPresentationBridgeFactory>(
-		new HeadlessBridge( provider, surfaces, maxPresentations, defects ) );
+	    new HeadlessBridge( provider, surfaces, maxPresentations, defects ) );
 }
 
 // ---------------------------------------------------------------------------

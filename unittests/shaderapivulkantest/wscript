@@ -39,8 +39,8 @@ def build(bld):
 
 	# Substitutability proof (LSP): the native Vulkan provider of the
 	# render.contracts backend contract runs the SAME shared conformance suite as
-	# the null provider. No SDL/window needed -- this provider is surfaceless at
-	# the contract level. Skips (exit 77) when no Vulkan device is present.
+	# the null provider. No SDL/window needed -- devices never present; the
+	# presentation bridges do. Skips (exit 77) when no Vulkan device is present.
 	bld.program(
 		features='c cxx', env=test_env.derive(),
 		source=['../rendertest/test_render_backend_vulkan.cpp',
@@ -54,6 +54,27 @@ def build(bld):
 		# initialization; the target is C++20 in quality/toolchain/policy.json,
 		# the same dialect the conformance runner uses.
 		use=['VULKAN'],
+		install_path=None)
+
+	# RFC 0001 R16: the SDL3-Vulkan presentation bridge runs the SAME shared
+	# presentation suite as the headless pair (unittests/rendertest), against real
+	# windows, a real swapchain and GPU completion held by a timeline semaphore,
+	# then checks presented pixels in two windows. Opens windows: run it only
+	# under an isolated compositor (see RFC/0001-presentation-bridge-progress.md).
+	# Skips (exit 77) without a display or Vulkan device.
+	bld.program(
+		features='c cxx', env=test_env.derive(),
+		source=['test_sdl3_vulkan_presentation.cpp',
+			'../rendertest/conformance/render_backend_conformance.cpp',
+			'../rendertest/conformance/render_presentation_conformance.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_render_backend.cpp',
+			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_presentation.cpp',
+			'../../platform/sdl3/render_surface/sdl3_render_surfaces.cpp'],
+		target='render_presentation_sdl3_vulkan_conformance',
+		name='render_presentation_sdl3_vulkan_conformance',
+		includes=['../rendertest', '../../materialsystem/shaderapivulkan', '../../public']
+			+ bld.env.INCLUDES_SDL3 + bld.env.INCLUDES_VULKAN,
+		use=['VULKAN', 'SDL3'],
 		install_path=None)
 
 	# Material-facing integration slice: drives the legacy IShaderAPI/IShaderDevice

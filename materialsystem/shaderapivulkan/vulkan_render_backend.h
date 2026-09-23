@@ -15,14 +15,13 @@
 //          GPU: real instance and physical-device enumeration, a real logical
 //          device and queue, real device-memory-backed buffer/image resources,
 //          and real command-buffer submission with VkFence completion. Contract
-//          semantics that are lifecycle state rather than GPU fact -- presentation
-//          resize/suspend and device-loss transitions -- are modeled as the
-//          contract defines them (the suite certifies lifecycle here, not image
-//          fidelity; real pixels are proven separately by CVulkanContext).
+//          semantics that are lifecycle state rather than GPU fact -- device-loss
+//          transitions -- are modeled as the contract defines them.
 //
 //          Depends only on render_backend.h and <vulkan/vulkan.h>: no SDL, no
-//          native window, no legacy IShaderAPI. Presentation in this provider is
-//          therefore surfaceless/offscreen at the contract level.
+//          native window, no legacy IShaderAPI. Devices do not present; the
+//          SDL3-Vulkan bridge (sdl3/sdl3_vulkan_presentation.h) presents from them
+//          through the private endpoint in vulkan_render_backend_native.h.
 //
 //===========================================================================//
 

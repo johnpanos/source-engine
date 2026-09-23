@@ -38,8 +38,12 @@ public:
 	// Resizes the window. Returns false when the window system refused.
 	virtual bool ResizeSurface( IRenderSurface &surface, RenderExtent extent ) = 0;
 
-	// Hides (zero drawable extent) or shows the window.
+	// Minimizes/hides (zero drawable extent) or restores the window. Only called
+	// when CanToggleVisibility() is true.
 	virtual void SetSurfaceVisible( IRenderSurface &surface, bool visible ) = 0;
+	// False where the window system cannot restore a window programmatically
+	// (Wayland has no unminimize); the suite then records a skip, not a pass.
+	virtual bool CanToggleVisibility() const = 0;
 
 	// Takes the native surface away (as a mobile platform does in the background)
 	// and later provides a new one.
@@ -70,11 +74,11 @@ public:
 	// Records frame content into the back buffer. Optional; the default draws
 	// nothing and only records the resource use.
 	virtual void DrawFrame( IRenderDevice &device, IRenderCommandContext &context,
-		RenderResourceHandle backBuffer, uint32_t frameIndex )
+	    RenderResourceHandle backBuffer, uint32_t frameIndex )
 	{
-		( void )device;
-		( void )backBuffer;
-		( void )frameIndex;
+		(void)device;
+		(void)backBuffer;
+		(void)frameIndex;
 		context.RecordUse( backBuffer );
 	}
 };
@@ -82,7 +86,7 @@ public:
 // Runs the full suite. 'provider' must be the bridge's render provider; the
 // suite creates and destroys its own devices. Returns report.Passed().
 bool RunPresentationConformance( IRenderBackendProvider &provider,
-	IRenderPresentationBridgeFactory &bridge, IPresentationHarness &harness, Report &report );
+    IRenderPresentationBridgeFactory &bridge, IPresentationHarness &harness, Report &report );
 
 } // namespace conformance
 } // namespace render

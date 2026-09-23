@@ -195,11 +195,11 @@ enum class RenderCreateStatus : uint32_t
 	kTooManyPresentations,
 	kNotAdvertised,
 	// Presentation-bridge composition failures (render_presentation.h).
-	kUnsupportedPair,	// no bridge joins the requested window system and render backend
-	kForeignObject,		// the device or surface was not created by the bridge's providers
-	kSurfaceBusy,		// the surface already has a live presentation
-	kSurfaceLost,		// the surface's window is destroyed
-	kDeviceUnavailable,	// the device is lost/fatal and cannot present now
+	kUnsupportedPair,   // no bridge joins the requested window system and render backend
+	kForeignObject,     // the device or surface was not created by the bridge's providers
+	kSurfaceBusy,       // the surface already has a live presentation
+	kSurfaceLost,       // the surface's window is destroyed
+	kDeviceUnavailable, // the device is lost/fatal and cannot present now
 };
 
 struct RenderCreateError

@@ -139,6 +139,7 @@ bool CVulkanContext::Init(
 		Shutdown();
 		return false;
 	}
+	CreateTimestampPool();
 
 	Log( "device '%s' vendor=0x%04x %s validation=%s %ux%u images=%zu\n", m_deviceName.c_str(),
 	    m_vendorId, m_isDiscrete ? "discrete" : "integrated/other",
@@ -1423,6 +1424,7 @@ bool CVulkanContext::BeginSingleTimeCommands( VkCommandBuffer *outCmd, std::stri
 
 bool CVulkanContext::EndSingleTimeCommands( VkCommandBuffer cmd, std::string *outError )
 {
+	CFrameCostScope cost( m_frameCost, kCostSingleSubmit );
 	if ( vkEndCommandBuffer( cmd ) != VK_SUCCESS )
 	{
 		SetError( outError, "vkEndCommandBuffer (single-time) failed" );
@@ -2851,6 +2853,7 @@ VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, V
     VkShaderModule frag, VkPipelineLayout layout,
     const VkPipelineVertexInputStateCreateInfo *vertexInput, VkRenderPass renderPass )
 {
+	CFrameCostScope cost( m_frameCost, kCostPipelineCreate );
 	VkPipelineColorBlendAttachmentState att = {};
 	att.colorWriteMask = state.colorWrite ? VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
 	                                            VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
@@ -3076,6 +3079,7 @@ bool CVulkanContext::UploadSkinConstants( std::vector<uint32_t> *offsets )
 	SkinUniformBuffer &slot = m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()];
 	if ( needed > slot.capacity )
 	{
+		CFrameCostScope cost( m_frameCost, kCostBufferGrow );
 		if ( slot.mapped )
 			vkUnmapMemory( m_device, slot.memory );
 		if ( slot.buffer != VK_NULL_HANDLE )
@@ -3162,6 +3166,7 @@ void CVulkanContext::SetDynamicTransform( const float *m16 )
 int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format,
     std::string *outError, VkImageUsageFlags extraUsage, uint32_t mipLevels, VkFormat srgbAlias )
 {
+	CFrameCostScope cost( m_frameCost, kCostTextureCreate );
 	if ( !IsValid() || width <= 0 || height <= 0 )
 	{
 		SetError( outError, "CreateManagedTexture with invalid size or context" );
@@ -3430,6 +3435,7 @@ void CVulkanContext::RetireCompletedTextures()
 
 int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::string *outError )
 {
+	CFrameCostScope cost( m_frameCost, kCostTextureCreate );
 	if ( !IsValid() || m_renderPassTarget == VK_NULL_HANDLE )
 	{
 		SetError( outError, "CreateRenderTargetTexture before the render passes exist" );
@@ -3589,7 +3595,10 @@ void CVulkanContext::SetManagedTextureSamplerState( int handle, int samplerState
 	// Source sets sampler state while it creates the texture, before any frame
 	// samples it. A later change must not rewrite a set that a submitted frame
 	// may still be reading, so let the device finish first.
-	vkDeviceWaitIdle( m_device );
+	{
+		CFrameCostScope cost( m_frameCost, kCostDeviceWaitIdle );
+		vkDeviceWaitIdle( m_device );
+	}
 	for ( int srgb = 0; srgb < 2; ++srgb )
 	{
 		const VkDescriptorSet set = srgb ? t.descSetSrgb : t.descSet;
@@ -3644,6 +3653,8 @@ static bool IsBlockCompressedFormat( VkFormat format )
 bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_t y, uint32_t width,
     uint32_t height, const uint8_t *data, size_t dataSize, std::string *outError, uint32_t level )
 {
+	CFrameCostScope cost( m_frameCost, kCostTextureUpload );
+	m_frameCost.uploadBytes += dataSize;
 	if ( handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) || !data ||
 	     dataSize == 0 || width == 0 || height == 0 )
 	{
@@ -3915,8 +3926,11 @@ int64_t CVulkanContext::OcclusionQueryResult( int query, bool wait )
 	VkQueryResultFlags flags = VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT;
 	if ( wait )
 		flags |= VK_QUERY_RESULT_WAIT_BIT;
+	const uint64_t readStart = wait ? FrameClockMicros() : 0;
 	const VkResult r = vkGetQueryPoolResults( m_device, m_queryPool, static_cast<uint32_t>( query ),
 	    1, sizeof( result ), result, sizeof( result ), flags );
+	if ( wait )
+		m_frameCost.Add( kCostQueryWait, FrameClockMicros() - readStart );
 	if ( r != VK_SUCCESS && r != VK_NOT_READY )
 		return kQueryFailed;
 	if ( !result[1] )
@@ -4312,6 +4326,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 {
 	if ( outSkip )
 		*outSkip = false;
+	m_frameBeginUs = FrameClockMicros();
 	if ( !IsValid() )
 	{
 		SetError( outError, "BeginFrame on an invalid context" );
@@ -4351,15 +4366,23 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		return true;
 	}
 
-	vkWaitForFences( m_device, 1, &m_inFlight[m_currentFrame], VK_TRUE, UINT64_MAX );
+	{
+		CFrameCostScope wait( m_frameCost, kCostFenceWait );
+		vkWaitForFences( m_device, 1, &m_inFlight[m_currentFrame], VK_TRUE, UINT64_MAX );
+	}
 	// One queue completes submissions in order: this slot's is done, so are all
 	// before it.
 	m_completedSerial = std::max( m_completedSerial, m_slotSerial[m_currentFrame] );
 	RetireCompletedTextures();
+	ReadSlotGpuTime( m_currentFrame );
 
 	uint32_t imageIndex = 0;
-	VkResult r = vkAcquireNextImageKHR( m_device, m_swapchain, UINT64_MAX,
-	    m_imageAvailable[m_currentFrame], VK_NULL_HANDLE, &imageIndex );
+	VkResult r;
+	{
+		CFrameCostScope acquire( m_frameCost, kCostAcquire );
+		r = vkAcquireNextImageKHR( m_device, m_swapchain, UINT64_MAX,
+		    m_imageAvailable[m_currentFrame], VK_NULL_HANDLE, &imageIndex );
+	}
 	if ( r == VK_ERROR_SURFACE_LOST_KHR )
 	{
 		// The next frame replaces the surface (EnsureSurfaceCurrent).
@@ -4384,7 +4407,10 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 
 	// If a previous frame is still using this image, wait on its fence.
 	if ( m_imagesInFlight[imageIndex] != VK_NULL_HANDLE )
+	{
+		CFrameCostScope wait( m_frameCost, kCostFenceWait );
 		vkWaitForFences( m_device, 1, &m_imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX );
+	}
 	m_imagesInFlight[imageIndex] = m_inFlight[m_currentFrame];
 
 	m_acquiredImage = imageIndex;
@@ -4399,6 +4425,13 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	{
 		SetError( outError, std::string( "vkBeginCommandBuffer failed: " ) + ResultString( r ) );
 		return false;
+	}
+	m_recordBeginUs = FrameClockMicros();
+	if ( m_timestampPool != VK_NULL_HANDLE )
+	{
+		const uint32_t first = m_currentFrame * 2;
+		vkCmdResetQueryPool( cmd, m_timestampPool, first, 2 );
+		vkCmdWriteTimestamp( cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, m_timestampPool, first );
 	}
 
 	// Queries are reset outside any render pass, before the stream that issues
@@ -4512,6 +4545,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		bool bufferOk = true;
 		if ( needed > m_dynCapacityBytes )
 		{
+			CFrameCostScope cost( m_frameCost, kCostBufferGrow );
 			// Grow the persistently-mapped host-visible vertex buffer.
 			if ( m_dynMapped )
 			{
@@ -5119,7 +5153,11 @@ bool CVulkanContext::EndFrame( std::string *outError )
 	    capturePresented );
 	m_captureRequested = m_capturePresented = false;
 
+	if ( m_timestampPool != VK_NULL_HANDLE )
+		vkCmdWriteTimestamp( cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_timestampPool,
+		    m_currentFrame * 2 + 1 );
 	VkResult r = vkEndCommandBuffer( cmd );
+	m_frameCost.Add( kCostRecord, FrameClockMicros() - m_recordBeginUs );
 	if ( r != VK_SUCCESS )
 	{
 		SetError( outError, std::string( "vkEndCommandBuffer failed: " ) + ResultString( r ) );
@@ -5140,9 +5178,15 @@ bool CVulkanContext::EndFrame( std::string *outError )
 	submit.pSignalSemaphores = &m_renderFinished[m_currentFrame];
 
 	vkResetFences( m_device, 1, &m_inFlight[m_currentFrame] );
-	r = vkQueueSubmit( m_graphicsQueue, 1, &submit, m_inFlight[m_currentFrame] );
+	{
+		CFrameCostScope submitCost( m_frameCost, kCostSubmit );
+		r = vkQueueSubmit( m_graphicsQueue, 1, &submit, m_inFlight[m_currentFrame] );
+	}
 	if ( r == VK_SUCCESS )
+	{
 		m_slotSerial[m_currentFrame] = ++m_submitSerial;
+		m_slotStatsFrame[m_currentFrame] = ++m_statsFrame;
+	}
 	if ( r != VK_SUCCESS )
 	{
 		SetError( outError, std::string( "vkQueueSubmit failed: " ) + ResultString( r ) );
@@ -5170,9 +5214,13 @@ bool CVulkanContext::EndFrame( std::string *outError )
 	present.pSwapchains = &m_swapchain;
 	present.pImageIndices = &imageIndex;
 
-	r = vkQueuePresentKHR( m_presentQueue, &present );
+	{
+		CFrameCostScope presentCost( m_frameCost, kCostPresent );
+		r = vkQueuePresentKHR( m_presentQueue, &present );
+	}
 	m_frameOpen = false;
 	m_currentFrame = ( m_currentFrame + 1 ) % m_framesInFlight;
+	WriteFrameStats( FrameClockMicros() );
 
 	if ( r == VK_ERROR_SURFACE_LOST_KHR )
 	{
@@ -5194,6 +5242,145 @@ bool CVulkanContext::EndFrame( std::string *outError )
 		return false;
 	}
 	return true;
+}
+
+void CVulkanContext::CreateTimestampPool()
+{
+	// Optional: without timestamps the stats carry CPU costs only.
+	VkPhysicalDeviceProperties properties = {};
+	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
+	uint32_t familyCount = 0;
+	vkGetPhysicalDeviceQueueFamilyProperties( m_physicalDevice, &familyCount, nullptr );
+	std::vector<VkQueueFamilyProperties> families( familyCount );
+	if ( familyCount )
+		vkGetPhysicalDeviceQueueFamilyProperties( m_physicalDevice, &familyCount, families.data() );
+	if ( m_graphicsQueueFamily >= familyCount ||
+	     families[m_graphicsQueueFamily].timestampValidBits == 0 ||
+	     properties.limits.timestampPeriod <= 0.0f )
+		return;
+	VkQueryPoolCreateInfo info = {};
+	info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+	info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+	info.queryCount = kMaxFramesInFlight * 2;
+	if ( vkCreateQueryPool( m_device, &info, nullptr, &m_timestampPool ) != VK_SUCCESS )
+	{
+		m_timestampPool = VK_NULL_HANDLE;
+		return;
+	}
+	const uint32_t bits = families[m_graphicsQueueFamily].timestampValidBits;
+	m_timestampMask = bits >= 64 ? ~0ull : ( ( 1ull << bits ) - 1 );
+	m_timestampPeriodNs = properties.limits.timestampPeriod;
+}
+
+void CVulkanContext::ReadSlotGpuTime( uint32_t slot )
+{
+	// Called once the slot's fence has signalled: its timestamps are final.
+	if ( m_timestampPool == VK_NULL_HANDLE || m_slotStatsFrame[slot] == 0 )
+		return;
+	uint64_t stamps[2] = { 0, 0 };
+	if ( vkGetQueryPoolResults( m_device, m_timestampPool, slot * 2, 2, sizeof( stamps ), stamps,
+	         sizeof( uint64_t ), VK_QUERY_RESULT_64_BIT ) == VK_SUCCESS )
+	{
+		const uint64_t ticks = ( stamps[1] - stamps[0] ) & m_timestampMask;
+		m_gpuResultFrame = m_slotStatsFrame[slot];
+		m_gpuResultUs = static_cast<uint64_t>( double( ticks ) * m_timestampPeriodNs / 1000.0 );
+	}
+	m_slotStatsFrame[slot] = 0;
+}
+
+bool CVulkanContext::OpenFrameStats( const char *path, std::string *outError )
+{
+	if ( !path || !*path )
+	{
+		SetError( outError, "frame stats need an output path" );
+		return false;
+	}
+	FILE *file = std::fopen( path, "w" );
+	if ( !file )
+	{
+		SetError( outError, std::string( "cannot create frame stats file " ) + path );
+		return false;
+	}
+	CloseFrameStats();
+	m_frameStatsFile = file;
+	std::fprintf( m_frameStatsFile,
+	    "{\"schema\":\"vulkan-frame-stats/v1\",\"device\":\"%s\",\"frames_in_flight\":%u,"
+	    "\"gpu_timestamps\":%s,\"present_mode\":%d}\n",
+	    m_deviceName.c_str(), m_framesInFlight, m_timestampPool ? "true" : "false",
+	    static_cast<int>( m_presentMode ) );
+	return true;
+}
+
+void CVulkanContext::CloseFrameStats()
+{
+	if ( !m_frameStatsFile )
+		return;
+	std::fclose( m_frameStatsFile );
+	m_frameStatsFile = nullptr;
+}
+
+void CVulkanContext::MarkFrame( const char *label )
+{
+	if ( !label || m_frameMarks.size() > 256 )
+		return;
+	if ( !m_frameMarks.empty() )
+		m_frameMarks += ',';
+	for ( const char *c = label; *c && c - label < 64; ++c )
+	{
+		const bool safe = ( *c >= 'a' && *c <= 'z' ) || ( *c >= 'A' && *c <= 'Z' ) ||
+		                  ( *c >= '0' && *c <= '9' ) || *c == '_' || *c == '.' || *c == '-';
+		m_frameMarks += safe ? *c : '_';
+	}
+}
+
+void CVulkanContext::WriteFrameStats( uint64_t endUs )
+{
+	if ( m_frameStatsFile )
+	{
+		// f: stats frame id (submission order); t: frame start (steady clock,
+		// microseconds); interval: since the previous frame's start; engine: the
+		// caller's time between the previous frame's end and this start; backend:
+		// BeginFrame through present.
+		std::fprintf( m_frameStatsFile,
+		    "{\"f\":%llu,\"t\":%llu,\"interval\":%llu,\"engine\":%llu,\"backend\":%llu,"
+		    "\"records\":%zu,\"vertex_bytes\":%zu,\"upload_bytes\":%llu",
+		    static_cast<unsigned long long>( m_statsFrame ),
+		    static_cast<unsigned long long>( m_frameBeginUs ),
+		    static_cast<unsigned long long>(
+		        m_prevFrameBeginUs ? m_frameBeginUs - m_prevFrameBeginUs : 0 ),
+		    static_cast<unsigned long long>(
+		        m_prevFrameEndUs ? m_frameBeginUs - m_prevFrameEndUs : 0 ),
+		    static_cast<unsigned long long>( endUs - m_frameBeginUs ), m_dynDrawRecords.size(),
+		    m_dynQueued.size() * sizeof( float ),
+		    static_cast<unsigned long long>( m_frameCost.uploadBytes ) );
+		std::fputs( ",\"cost\":{", m_frameStatsFile );
+		bool first = true;
+		for ( int kind = 0; kind < kFrameCostKinds; ++kind )
+		{
+			if ( !m_frameCost.count[kind] )
+				continue;
+			std::fprintf( m_frameStatsFile, "%s\"%s\":[%u,%llu]", first ? "" : ",",
+			    FrameCostName( kind ), m_frameCost.count[kind],
+			    static_cast<unsigned long long>( m_frameCost.us[kind] ) );
+			first = false;
+		}
+		std::fputc( '}', m_frameStatsFile );
+		if ( m_gpuResultFrame )
+			std::fprintf( m_frameStatsFile, ",\"gpu\":[%llu,%llu]",
+			    static_cast<unsigned long long>( m_gpuResultFrame ),
+			    static_cast<unsigned long long>( m_gpuResultUs ) );
+		if ( !m_frameMarks.empty() )
+			std::fprintf( m_frameStatsFile, ",\"mark\":\"%s\"", m_frameMarks.c_str() );
+		std::fputs( "}\n", m_frameStatsFile );
+		// Bounded loss if the process is killed rather than shut down.
+		if ( m_statsFrame % 60 == 0 )
+			std::fflush( m_frameStatsFile );
+	}
+	m_gpuResultFrame = 0;
+	m_frameMarks.clear();
+	m_frameCost.Reset();
+	m_prevFrameBeginUs = m_frameBeginUs;
+	m_prevFrameEndUs = endUs;
 }
 
 bool CVulkanContext::ResolveCapturedPixels( std::string *outError )
@@ -5362,6 +5549,7 @@ bool CVulkanContext::Resize( int width, int height, std::string *outError )
 
 void CVulkanContext::Shutdown()
 {
+	CloseFrameStats();
 	if ( m_device != VK_NULL_HANDLE )
 		vkDeviceWaitIdle( m_device );
 
@@ -5389,6 +5577,11 @@ void CVulkanContext::Shutdown()
 		{
 			vkDestroyQueryPool( m_device, m_queryPool, nullptr );
 			m_queryPool = VK_NULL_HANDLE;
+		}
+		if ( m_timestampPool != VK_NULL_HANDLE )
+		{
+			vkDestroyQueryPool( m_device, m_timestampPool, nullptr );
+			m_timestampPool = VK_NULL_HANDLE;
 		}
 		m_querySlots.clear();
 		m_replayedQueries.clear();

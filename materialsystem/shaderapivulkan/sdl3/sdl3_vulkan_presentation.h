@@ -81,8 +81,8 @@ public:
 
 private:
 	Sdl3VulkanPresentation *Find( render::IRenderPresentation &presentation ) const;
-	void CollectParked( bool wait, render::IRenderDevice *onlyDevice,
-	    const render::IRenderSurface *onlySurface );
+	void CollectParked(
+	    bool wait, render::IRenderDevice *onlyDevice, const render::IRenderSurface *onlySurface );
 
 	VulkanRenderBackend &m_Provider;
 	platform_sdl3::Sdl3RenderSurfaces &m_Surfaces;

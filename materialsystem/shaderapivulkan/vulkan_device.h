@@ -26,11 +26,13 @@
 #pragma once
 #endif
 
+#include "vulkan_frame_stats.h"
 #include "vulkan_surface_host.h"
 
 #include <vulkan/vulkan.h>
 
 #include <cstdint>
+#include <cstdio>
 #include <map>
 #include <string>
 #include <utility>
@@ -74,8 +76,7 @@ public:
 	// borrowed and must outlive Shutdown(). On failure returns false, fills
 	// *outError with a specific reason, and leaves the context fully torn down
 	// (safe to destroy, never partially live).
-	bool Init(
-	    IVulkanSurfaceHost &host, const VulkanContextConfig &config, std::string *outError );
+	bool Init( IVulkanSurfaceHost &host, const VulkanContextConfig &config, std::string *outError );
 
 	// Idempotent teardown. Waits for the device to go idle first.
 	void Shutdown();
@@ -434,7 +435,11 @@ public:
 		kFragmentModulateVertexColor = 256,
 		kVertexColorNoGammaConvert = 512,
 		// ... and with g_fVertexAlpha ($vertexalpha): alpha times the vertex alpha.
-		kFragmentModulateVertexAlpha = 1024
+		kFragmentModulateVertexAlpha = 1024,
+		// vertexlit_and_unlit_generic with SELFILLUM ($selfillum): the base alpha
+		// blends the vertex color (the diffuse term, times c1) toward the
+		// modulation (c1 times $selfillumtint); alpha is the modulation's.
+		kFragmentSelfIllum = 2048
 	};
 	void SelectDynamicColorSpace( int flags ) { m_dynColorFlags = flags; }
 	// Linear scale applied to the textured pipeline's color before the sRGB
@@ -590,12 +595,45 @@ public:
 	// Init(). Zero on a clean run when validation is enabled.
 	uint32_t ValidationErrorCount() const { return m_validationErrorCount; }
 
+	// Frame-pacing telemetry (vulkan_frame_stats.h). OpenFrameStats writes one
+	// JSON line per presented frame to path until CloseFrameStats/Shutdown; it
+	// fails without side effects when the file cannot be created. MarkFrame
+	// labels the frame being built (a scenario phase such as "fire_blue"), so a
+	// measured hitch can be placed in the workload that produced it. Labels are
+	// reduced to [A-Za-z0-9_.-].
+	bool OpenFrameStats( const char *path, std::string *outError );
+	void CloseFrameStats();
+	void MarkFrame( const char *label );
+	FrameCost &CurrentFrameCost() { return m_frameCost; }
+
 	enum
 	{
 		kMaxFramesInFlight = 3
 	};
 
 private:
+	// Frame-pacing telemetry state: the cost of the frame being built, the sink,
+	// frame boundaries (FrameClockMicros), pending marks, and per-slot GPU
+	// timestamps (begin/end of each slot's command buffer) with the stats frame
+	// each slot last submitted and the newest GPU duration read back.
+	FrameCost m_frameCost;
+	FILE *m_frameStatsFile = nullptr;
+	uint64_t m_statsFrame = 0;
+	uint64_t m_frameBeginUs = 0;
+	uint64_t m_prevFrameBeginUs = 0;
+	uint64_t m_prevFrameEndUs = 0;
+	uint64_t m_recordBeginUs = 0;
+	std::string m_frameMarks;
+	VkQueryPool m_timestampPool = VK_NULL_HANDLE;
+	double m_timestampPeriodNs = 0.0;
+	uint64_t m_timestampMask = 0;
+	uint64_t m_slotStatsFrame[kMaxFramesInFlight] = {};
+	uint64_t m_gpuResultFrame = 0;
+	uint64_t m_gpuResultUs = 0;
+	void CreateTimestampPool();
+	void ReadSlotGpuTime( uint32_t slot );
+	void WriteFrameStats( uint64_t endUs );
+
 	bool CreateInstance( std::string *outError );
 	bool SetupDebugMessenger( std::string *outError );
 	bool CreateSurface( std::string *outError );

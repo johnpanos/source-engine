@@ -44,6 +44,11 @@ DONE_STATE = "done"
 HEADER_CELLS = ("Rank / ID", "Work and RFC scope", "Prerequisites", "Done looks like", "State")
 RANK_ID_PATTERN = re.compile(r"^\s*(\d+)\s*/\s*(R\d+)\s*$")
 ID_PATTERN = re.compile(r"^R\d+$")
+# A State cell is a bare state word, optionally followed by a parenthesized
+# annotation that links the row's progress record, e.g.
+# ``partial ([batch migration](RFC/0003-batch-migration-progress.md))``.
+STATE_CELL_PATTERN = re.compile(r"^(\w+)\s*\((.*)\)$")
+MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 
 # Readiness classification for a non-done task.
 GATE_READY = "gate-ready"       # every prerequisite is done -> completable now
@@ -60,6 +65,7 @@ class Task:
     prerequisites: tuple[str, ...]
     done_looks_like: str
     state: str
+    records: tuple[str, ...] = ()
 
 
 @dataclass
@@ -119,6 +125,19 @@ def parse_prerequisites(cell: str) -> tuple[str, ...]:
     return tuple(part for part in parts if part)
 
 
+def parse_state(cell: str) -> tuple[str, tuple[str, ...]]:
+    """Split a State cell into the state word and its linked progress records.
+
+    An annotation that does not match the ``state (links)`` shape is returned
+    unchanged as the state so validation rejects it rather than guessing.
+    """
+    text = cell.strip()
+    match = STATE_CELL_PATTERN.match(text)
+    if not match:
+        return text, ()
+    return match.group(1), tuple(MARKDOWN_LINK_PATTERN.findall(match.group(2)))
+
+
 def parse_roadmap(markdown: str) -> Roadmap:
     """Extract the ranked roadmap table.  Raises ValueError if it is absent."""
     lines = markdown.splitlines()
@@ -143,7 +162,8 @@ def parse_roadmap(markdown: str) -> Roadmap:
             continue
         if len(cells) != len(HEADER_CELLS):
             raise ValueError(f"roadmap row has {len(cells)} cells, expected {len(HEADER_CELLS)}: {line.strip()}")
-        rank_id, scope, prereqs, done, state = cells
+        rank_id, scope, prereqs, done, state_cell = cells
+        state, records = parse_state(state_cell)
         match = RANK_ID_PATTERN.match(rank_id)
         if not match:
             raise ValueError(f"roadmap row has malformed 'Rank / ID' cell: {rank_id!r}")
@@ -155,6 +175,7 @@ def parse_roadmap(markdown: str) -> Roadmap:
                 prerequisites=parse_prerequisites(prereqs),
                 done_looks_like=done,
                 state=state,
+                records=records,
             )
         )
     if not tasks:
@@ -200,11 +221,22 @@ def _find_cycle(edges: dict[str, list[str]]) -> list[str]:
     return []
 
 
-def validate(roadmap: Roadmap) -> tuple[list[str], list[str]]:
-    """Return (errors, notes).  Errors mean the roadmap is inconsistent."""
+def validate(roadmap: Roadmap, root: Path | None = None) -> tuple[list[str], list[str]]:
+    """Return (errors, notes).  Errors mean the roadmap is inconsistent.
+
+    With ``root``, every progress record linked from a State cell must exist
+    relative to it (the roadmap lives in the repository-root AGENTS.md).
+    """
     errors: list[str] = []
     notes: list[str] = []
     tasks = roadmap.tasks
+
+    if root is not None:
+        for task in tasks:
+            for record in task.records:
+                target = record.split("#", 1)[0]
+                if target and not (root / target).is_file():
+                    errors.append(f"{task.id}: linked progress record {record!r} does not exist")
 
     seen_ids: set[str] = set()
     for task in tasks:
@@ -327,8 +359,8 @@ def task_summary(roadmap: Roadmap, task: Task) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def check_command(roadmap: Roadmap) -> int:
-    errors, notes = validate(roadmap)
+def check_command(roadmap: Roadmap, root: Path) -> int:
+    errors, notes = validate(roadmap, root)
     for note in notes:
         print(f"roadmap: note: {note}")
     for error in errors:
@@ -466,7 +498,7 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
         return 2
 
     if args.command == "check":
-        return check_command(roadmap)
+        return check_command(roadmap, root)
     if args.command == "ready":
         return ready_command(roadmap, args.json, args.all)
     if args.command == "show":
