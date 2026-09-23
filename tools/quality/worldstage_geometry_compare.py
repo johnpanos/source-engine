@@ -137,6 +137,11 @@ def compare(bsp_faces, bsp_entities, stage):
     world = stage.GetPrimAtPath("/World")
     if not world or not world.HasAPI("SourceWorldAPI"):
         raise ValueError("missing SourceWorldAPI")
+    if (stage.GetDefaultPrim() != world or
+            UsdGeom.GetStageUpAxis(stage) != UsdGeom.Tokens.z or
+            UsdGeom.GetStageMetersPerUnit(stage) != 0.0254 or
+            world.GetAttribute("source:schemaVersion").Get() != 2):
+        raise ValueError("World Stage identity, units or schema version diverges")
     width = world.GetAttribute("source:lightmapAtlasWidth").Get()
     height = world.GetAttribute("source:lightmapAtlasHeight").Get()
     ids = list(world.GetAttribute("source:chartFaceIds").Get())

@@ -9,7 +9,7 @@ def Xform "World" (
     prepend apiSchemas = ["SourceWorldAPI"]
 )
 {
-    uniform int source:schemaVersion = 2
+    uniform int source:schemaVersion = 3
     uniform int source:lightmapAtlasWidth = 64
     uniform int source:lightmapAtlasHeight = 64
     int[] source:chartFaceIds = [0]
@@ -57,6 +57,30 @@ def Xform "World" (
             uniform int source:entityIndex = 0
             string[] source:keyNames = ["classname"]
             string[] source:keyValues = ["worldspawn"]
+        }
+        def "Entity_1" (
+            prepend apiSchemas = ["SourceEntityAPI"]
+        )
+        {
+            uniform int source:entityIndex = 1
+            string[] source:keyNames = ["classname", "origin", "_light"]
+            string[] source:keyValues = ["light", "0 0 32", "255 255 255 100"]
+        }
+    }
+
+    def Scope "Lights"
+    {
+        def SphereLight "Light_1" (
+            prepend apiSchemas = ["SourceLightAPI"]
+        )
+        {
+            float inputs:intensity = 100
+            color3f inputs:color = (1, 1, 1)
+            float inputs:radius = 8
+            double3 xformOp:translate = (0, 0, 32)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            uniform int source:entityIndex = 1
+            uniform token source:lightingPolicy = "preview-v1"
         }
     }
 }

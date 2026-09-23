@@ -390,9 +390,9 @@ public:
 	// mutable between the two and also gets an sRGB view (render targets).
 	int CreateManagedTexture( int width, int height, VkFormat format, std::string *outError,
 	    VkImageUsageFlags extraUsage = 0, uint32_t mipLevels = 1,
-	    VkFormat srgbAlias = VK_FORMAT_UNDEFINED );
+	    VkFormat srgbAlias = VK_FORMAT_UNDEFINED, bool cube = false );
 	bool UploadManagedTexture( int handle, const uint8_t *data, size_t dataSize,
-	    std::string *outError, uint32_t level = 0 );
+	    std::string *outError, uint32_t level = 0, uint32_t face = 0 );
 	// Releases a managed texture (IShaderAPI::DeleteTexture). The handle stops
 	// naming it at once: records still referencing it sample the built-in
 	// texture, and records rendering into it are dropped. Its Vulkan objects
@@ -406,7 +406,7 @@ public:
 	// block aligned.
 	bool UploadManagedTextureRegion( int handle, uint32_t x, uint32_t y, uint32_t width,
 	    uint32_t height, const uint8_t *data, size_t dataSize, std::string *outError,
-	    uint32_t level = 0 );
+	    uint32_t level = 0, uint32_t face = 0 );
 	uint32_t ManagedTextureMipLevels( int handle ) const
 	{
 		return ( handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) )
@@ -1053,6 +1053,7 @@ private:
 		uint32_t width = 0;
 		uint32_t height = 0;
 		uint32_t mipLevels = 1;
+		uint32_t layers = 1;
 		VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
 		// False until pixel data has actually been uploaded. Sampling an image
 		// that was created but never filled yields undefined contents.
@@ -1132,7 +1133,7 @@ private:
 	struct PendingUpload
 	{
 		int handle;
-		uint32_t x, y, width, height, level;
+		uint32_t x, y, width, height, level, face;
 		// The image's contents outside the region survive (a mip chain level, a
 		// part of an uploaded image); a never-filled image's rest is cleared.
 		bool preserve;

@@ -32,7 +32,7 @@ def invoke(command, environment, timeout=60):
 
 
 def check(args):
-    for required in (args.vbsp2, args.usdchecker, args.python, args.plugin_root,
+    for required in (args.vbsp, args.vbsp2, args.usdchecker, args.python, args.plugin_root,
                      args.openusd_python, COMPARATOR, FIXTURE / "sealed_room.vmf",
                      FIXTURE / "game"):
         if not required.exists():
@@ -50,6 +50,15 @@ def check(args):
                 str(folder / "sealed_room.vmf")], environment)
         if not bsp.is_file() or not stage.is_file():
             raise RuntimeError("vbsp2 did not publish both BSP and World Stage geometry")
+        legacy = folder / "legacy"
+        legacy.mkdir()
+        shutil.copytree(FIXTURE / "game", legacy / "game")
+        shutil.copy2(FIXTURE / "sealed_room.vmf", legacy / "sealed_room.vmf")
+        invoke([str(args.vbsp.resolve()), "-game", str(legacy / "game"),
+                str(legacy / "sealed_room.vmf")], environment)
+        if (not (legacy / "sealed_room.bsp").is_file() or
+                (legacy / "sealed_room.bsp").read_bytes() != bsp.read_bytes()):
+            raise RuntimeError("vbsp2 changed the legacy sealed-room BSP bytes")
         checker_output = invoke([str(args.usdchecker.resolve()), str(stage)], environment)
         if "Success!" not in checker_output:
             raise RuntimeError("usdchecker did not report success")
@@ -63,7 +72,8 @@ def check(args):
             raise RuntimeError("semantic comparator did not pass its negative control")
         return {
             "status": "pass", "fixture_sha256": digest(FIXTURE / "sealed_room.vmf"),
-            "vbsp2_sha256": digest(args.vbsp2), "bsp_sha256": digest(bsp),
+            "vbsp_sha256": digest(args.vbsp), "vbsp2_sha256": digest(args.vbsp2),
+            "bsp_sha256": digest(bsp), "legacy_bsp_byte_exact": True,
             "stage_sha256": digest(stage), "usdchecker_success": True,
             "comparison": comparison,
         }
@@ -71,6 +81,7 @@ def check(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--vbsp", type=Path, required=True)
     parser.add_argument("--vbsp2", type=Path, required=True)
     parser.add_argument("--usdchecker", type=Path, required=True)
     parser.add_argument("--python", type=Path, required=True,

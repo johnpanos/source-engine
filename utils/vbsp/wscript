@@ -106,7 +106,8 @@ def build(bld):
 	schema = bld.env.WORLDSTAGE_SCHEMA_DIR
 	generated_names = ('api.h', 'tokens.h', 'tokens.cpp', 'sourceWorldAPI.h',
 		'sourceWorldAPI.cpp', 'sourceMeshAPI.h', 'sourceMeshAPI.cpp',
-		'sourceEntityAPI.h', 'sourceEntityAPI.cpp',
+		'sourceEntityAPI.h', 'sourceEntityAPI.cpp', 'sourceLightAPI.h',
+		'sourceLightAPI.cpp',
 		'generatedSchema.usda', 'plugInfo.json', 'pluginRoot.json')
 	generated_nodes = [bld.bldnode.find_node('utils/worldstage/' + name)
 		for name in generated_names]
@@ -123,7 +124,8 @@ def build(bld):
 	# Finish schema generation before posting its C++ consumers.
 	bld.add_group()
 	generated = [bld.bldnode.find_node('utils/worldstage/' + name) for name in
-		('sourceWorldAPI.cpp', 'sourceMeshAPI.cpp', 'sourceEntityAPI.cpp', 'tokens.cpp')]
+		('sourceWorldAPI.cpp', 'sourceMeshAPI.cpp', 'sourceEntityAPI.cpp',
+		 'sourceLightAPI.cpp', 'tokens.cpp')]
 	bld.shlib(
 		source = generated,
 		target = 'sourceWorld',

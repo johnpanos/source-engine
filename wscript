@@ -835,7 +835,7 @@ def configure(conf):
 			os.path.join(worldstage_paths[5], 'include'), '/usr/include/python3.12']
 		conf.env.LIBPATH_OPENUSD = [conf.env.WORLDSTAGE_OPENUSD_LIBDIR,
 			conf.env.WORLDSTAGE_TBB_LIBDIR]
-		conf.env.LIB_OPENUSD = ['usd_usdGeom', 'usd_usd', 'usd_sdf', 'usd_tf', 'usd_vt',
+		conf.env.LIB_OPENUSD = ['usd_usdLux', 'usd_usdGeom', 'usd_usd', 'usd_sdf', 'usd_tf', 'usd_vt',
 			'usd_gf', 'usd_plug', 'usd_python', 'tbb', 'python3.12']
 	if conf.env.VIDEO_BINK:
 		for package, store in [('libavcodec', 'AVCODEC'), ('libavformat', 'AVFORMAT'), ('libavutil', 'AVUTIL')]:

@@ -108,7 +108,9 @@ Its typed `sourceWorld` OpenUSD schema is generated into the isolated Waf build
 directory and installed with the product; a strict C++20 `vbspworldstage`
 adapter owns the stage writer. Legacy VBSP's libstdc++ ABI stays unchanged and
 crosses a C-compatible function boundary into the OpenUSD ABI. No OpenUSD
-dependency enters the existing `vbsp`, engine, or dedicated products. The
+dependency enters the existing `vbsp`, engine, or dedicated products. Installed
+ELF `NEEDED` inspection confirms `vbsp` has no OpenUSD dependency while
+`vbsp2` links `libsourceWorld` and OpenUSD. The
 compiler writes `<map>.geometry.usda` after the BSP: one `UsdGeomMesh` per
 compiled world face, fan-triangulated face topology, Source face/smoothing/chart
 IDs, material path and UVs, Z-up Source units, and a single atlas chart table.
@@ -121,14 +123,18 @@ It rejects brush-entity models, displacement faces, malformed references and
 an overflowing atlas explicitly. BSP and USD publication are not yet atomic.
 
 The sealed room emitted 16 faces, 32 triangles, and three entities;
-`usdchecker` passed. The
+`usdchecker` passed. Legacy `vbsp` and `vbsp2` produced byte-identical BSP
+files from private copies of the same fixture. The
 [independent comparator](../tools/quality/worldstage_geometry_compare.py)
 reads the BSP face/edge/vertex/model lumps directly and checks every mesh's
 vertices, triangle indices, identity, material path, smoothing group, both UV
 sets, chart size and chart overlap. It independently parses the serialized BSP
 entity lump and checks record order and values. Removing a mesh or entity in
 memory makes that comparator fail. Local ignored evidence is
-`quality-results/rfc0008-worldstage-room-20260923.json`.
+`quality-results/rfc0008-worldstage-room-20260923.json`. A second isolated
+Waf output and install prefix also passed a clean configure, full install, and
+the same smoke with matching BSP and stage hashes; its ignored evidence is
+`quality-results/rfc0008-worldstage-clean-20260923.json`.
 
 ```sh
 WAFLOCK=.lock-waf-rfc0008-worldstage ./waf configure \
@@ -142,6 +148,7 @@ WAFLOCK=.lock-waf-rfc0008-worldstage ./waf configure \
   --prefix=/tmp/rfc0008-worldstage-install
 WAFLOCK=.lock-waf-rfc0008-worldstage ./waf install -j8
 python3 tools/quality/worldstage_host_smoke.py \
+  --vbsp /tmp/rfc0008-worldstage-install/vbsp \
   --vbsp2 /tmp/rfc0008-worldstage-install/vbsp2 \
   --usdchecker /tmp/rfc0008-openusd-install/bin/usdchecker \
   --python /usr/bin/python3.12 \
@@ -151,8 +158,9 @@ python3 tools/quality/worldstage_host_smoke.py \
 ```
 
 The [smoke runner](../tools/quality/worldstage_host_smoke.py) copies the game
-and VMF into a temporary directory, compiles them, runs `usdchecker` and the
-semantic comparator, and records content hashes. The full F2 gate still needs
+and VMF into temporary directories, compiles with both tools, compares the BSP
+bytes, runs `usdchecker` and the semantic comparator, and records content
+hashes. The full F2 gate still needs
 complete authored content semantics,
 versioned corpus, Cycles open/render, lightmap chart ownership across all
 supported face types, failure recovery, and the R48 legacy compiler oracle.

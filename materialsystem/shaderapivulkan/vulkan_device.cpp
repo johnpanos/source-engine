@@ -3317,10 +3317,11 @@ void CVulkanContext::SetDynamicTransform( const float *m16 )
 }
 
 int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format,
-    std::string *outError, VkImageUsageFlags extraUsage, uint32_t mipLevels, VkFormat srgbAlias )
+    std::string *outError, VkImageUsageFlags extraUsage, uint32_t mipLevels, VkFormat srgbAlias,
+    bool cube )
 {
 	CFrameCostScope cost( m_frameCost, kCostTextureCreate );
-	if ( !IsValid() || width <= 0 || height <= 0 )
+	if ( !IsValid() || width <= 0 || height <= 0 || ( cube && width != height ) )
 	{
 		SetError( outError, "CreateManagedTexture with invalid size or context" );
 		return -1;
@@ -3341,6 +3342,7 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	ManagedTexture t;
 	t.width = static_cast<uint32_t>( width );
 	t.height = static_cast<uint32_t>( height );
+	t.layers = cube ? 6 : 1;
 	t.format = format;
 	uint32_t fullChain = 1;
 	for ( uint32_t size = std::max( t.width, t.height ); size > 1; size >>= 1 )
@@ -3353,12 +3355,14 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	ii.format = format;
 	ii.extent = { t.width, t.height, 1 };
 	ii.mipLevels = t.mipLevels;
-	ii.arrayLayers = 1;
+	ii.arrayLayers = t.layers;
 	ii.samples = VK_SAMPLE_COUNT_1_BIT;
 	ii.tiling = VK_IMAGE_TILING_OPTIMAL;
 	ii.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | extraUsage;
 	ii.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	if ( cube )
+		ii.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	// 8-bit and BC color formats also get an sRGB view for sRGB sampling.
 	if ( srgbAlias == VK_FORMAT_UNDEFINED )
 	{
@@ -3429,9 +3433,9 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	VkImageViewCreateInfo iv = {};
 	iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	iv.image = t.image;
-	iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	iv.viewType = cube ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D;
 	iv.format = format;
-	iv.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, t.mipLevels, 0, 1 };
+	iv.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, t.mipLevels, 0, t.layers };
 	if ( vkCreateImageView( m_device, &iv, nullptr, &t.view ) != VK_SUCCESS )
 	{
 		vkFreeMemory( m_device, t.memory, nullptr );
@@ -3453,7 +3457,7 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	}
 	// A mip chain is filled level by level, so every level is made samplable up
 	// front; each upload then moves only its own level.
-	if ( t.mipLevels > 1 )
+	if ( t.mipLevels > 1 || cube )
 	{
 		VkCommandBuffer cmd = VK_NULL_HANDLE;
 		if ( !BeginSingleTimeCommands( &cmd, outError ) )
@@ -3468,7 +3472,7 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 		ready.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		ready.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		ready.image = t.image;
-		ready.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, t.mipLevels, 0, 1 };
+		ready.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, t.mipLevels, 0, t.layers };
 		ready.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
 		    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &ready );
@@ -3789,7 +3793,8 @@ void CVulkanContext::SetManagedTextureSamplerState( int handle, int samplerState
 }
 
 bool CVulkanContext::UploadManagedTexture(
-    int handle, const uint8_t *data, size_t dataSize, std::string *outError, uint32_t level )
+    int handle, const uint8_t *data, size_t dataSize, std::string *outError, uint32_t level,
+    uint32_t face )
 {
 	if ( handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) )
 	{
@@ -3798,7 +3803,7 @@ bool CVulkanContext::UploadManagedTexture(
 	}
 	const ManagedTexture &t = m_managedTextures[static_cast<size_t>( handle )];
 	return UploadManagedTextureRegion( handle, 0, 0, std::max( 1u, t.width >> level ),
-	    std::max( 1u, t.height >> level ), data, dataSize, outError, level );
+	    std::max( 1u, t.height >> level ), data, dataSize, outError, level, face );
 }
 
 static size_t TextureBlockBytes( VkFormat format )
@@ -3830,7 +3835,8 @@ static size_t TextureBlockBytes( VkFormat format )
 }
 
 bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_t y, uint32_t width,
-    uint32_t height, const uint8_t *data, size_t dataSize, std::string *outError, uint32_t level )
+    uint32_t height, const uint8_t *data, size_t dataSize, std::string *outError, uint32_t level,
+    uint32_t face )
 {
 	CFrameCostScope cost( m_frameCost, kCostTextureUpload );
 	m_frameCost.uploadBytes += dataSize;
@@ -3845,7 +3851,7 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 	// swapchain format, which caller pixel data does not match.
 	if ( t.renderTarget )
 		return true;
-	if ( level >= t.mipLevels )
+	if ( level >= t.mipLevels || face >= t.layers )
 	{
 		SetError( outError, "UploadManagedTexture past the texture's mip chain" );
 		return false;
@@ -3890,7 +3896,8 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 	upload.width = width;
 	upload.height = height;
 	upload.level = level;
-	upload.preserve = t.mipLevels > 1 || ( !whole && t.uploaded );
+	upload.face = face;
+	upload.preserve = t.mipLevels > 1 || t.layers > 1 || ( !whole && t.uploaded );
 	// A part of a never-filled single-level image: the rest reads as zero rather
 	// than undefined memory.
 	upload.clearRest = !whole && !upload.preserve && !compressed;
@@ -3955,7 +3962,7 @@ void CVulkanContext::RecordTextureUpload( VkCommandBuffer cmd, VkImage image,
 	toDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	toDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	toDst.image = image;
-	toDst.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, level, 1, 0, 1 };
+	toDst.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, level, 1, upload.face, 1 };
 	// Earlier submissions' shader reads (a frame still in flight) finish before
 	// the copy overwrites the texels, whether or not the contents are kept.
 	toDst.srcAccessMask = upload.preserve ? VK_ACCESS_SHADER_READ_BIT : 0;
@@ -3965,7 +3972,7 @@ void CVulkanContext::RecordTextureUpload( VkCommandBuffer cmd, VkImage image,
 	if ( upload.clearRest )
 	{
 		const VkClearColorValue zero = {};
-		const VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, level, 1, 0, 1 };
+		const VkImageSubresourceRange range = { VK_IMAGE_ASPECT_COLOR_BIT, level, 1, upload.face, 1 };
 		vkCmdClearColorImage( cmd, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1, &range );
 		VkMemoryBarrier cleared = {};
 		cleared.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
@@ -3976,7 +3983,7 @@ void CVulkanContext::RecordTextureUpload( VkCommandBuffer cmd, VkImage image,
 	}
 	VkBufferImageCopy copy = {};
 	copy.bufferOffset = offset;
-	copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1 };
+	copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, level, upload.face, 1 };
 	copy.imageOffset = { static_cast<int32_t>( upload.x ), static_cast<int32_t>( upload.y ), 0 };
 	copy.imageExtent = { upload.width, upload.height, 1 };
 	vkCmdCopyBufferToImage( cmd, staging, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy );

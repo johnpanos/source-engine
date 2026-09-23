@@ -128,7 +128,7 @@ def check(args):
         generated_sources = sorted((root / "generated").glob("*.cpp"))
         generated_sources = [path for path in generated_sources
                              if not path.name.startswith("wrap")]
-        if len(generated_sources) != 4:
+        if len(generated_sources) != 5:
             raise ValueError("generated Source schema C++ sources are incomplete")
         python_include = cache.get("_Python3_INCLUDE_DIR", "")
         if not python_include:

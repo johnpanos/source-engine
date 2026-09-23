@@ -7,10 +7,12 @@
 #include "worldstage.h"
 
 #include "utils/worldstage/sourceEntityAPI.h"
+#include "utils/worldstage/sourceLightAPI.h"
 #include "utils/worldstage/sourceMeshAPI.h"
 #include "utils/worldstage/sourceWorldAPI.h"
 
 #include "pxr/base/gf/vec2f.h"
+#include "pxr/base/gf/vec3d.h"
 #include "pxr/base/gf/vec3f.h"
 #include "pxr/base/gf/vec4i.h"
 #include "pxr/base/vt/array.h"
@@ -20,12 +22,16 @@
 #include "pxr/usd/usdGeom/primvarsAPI.h"
 #include "pxr/usd/usdGeom/scope.h"
 #include "pxr/usd/usdGeom/xform.h"
+#include "pxr/usd/usdGeom/xformable.h"
+#include "pxr/usd/usdLux/sphereLight.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <locale>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -361,6 +367,101 @@ bool AuthorEntities(
 	return true;
 }
 
+bool FindSingleEntityValue( const EntityRecord &record, const char *key, std::string &value )
+{
+	bool found = false;
+	for ( std::size_t index = 0; index < record.keys.size(); ++index )
+	{
+		if ( record.keys[index] != key )
+			continue;
+		if ( found )
+			return false;
+		value = record.values[index];
+		found = true;
+	}
+	return found;
+}
+
+bool ParseLightValues( const std::string &value, float *numbers, int count )
+{
+	std::istringstream stream( value );
+	stream.imbue( std::locale::classic() );
+	for ( int index = 0; index < count; ++index )
+	{
+		if ( !( stream >> numbers[index] ) || !std::isfinite( numbers[index] ) )
+			return false;
+	}
+	std::string extra;
+	return !( stream >> extra );
+}
+
+float SrgbChannelToLinear( float channel )
+{
+	channel /= 255.0f;
+	return channel <= 0.04045f ? channel / 12.92f :
+	                             std::pow( ( channel + 0.055f ) / 1.055f, 2.4f );
+}
+
+bool AuthorLights( const pxr::UsdStageRefPtr &stage,
+    const std::vector<EntityRecord> &records, std::string &error )
+{
+	if ( !pxr::UsdGeomScope::Define( stage, pxr::SdfPath( "/World/Lights" ) ) )
+	{
+		error = "OpenUSD could not define the lights scope";
+		return false;
+	}
+	for ( std::size_t index = 0; index < records.size(); ++index )
+	{
+		std::string className;
+		if ( !FindSingleEntityValue( records[index], "classname", className ) )
+		{
+			error = "compiled entity has no unique classname";
+			return false;
+		}
+		if ( className == "light_dynamic" || className.rfind( "light", 0 ) != 0 )
+			continue;
+		if ( className != "light" )
+		{
+			error = "World Stage preview lighting does not support " + className;
+			return false;
+		}
+		std::string originValue;
+		std::string lightValue;
+		float origin[3];
+		float sourceLight[4];
+		if ( !FindSingleEntityValue( records[index], "origin", originValue ) ||
+		     !FindSingleEntityValue( records[index], "_light", lightValue ) ||
+		     !ParseLightValues( originValue, origin, 3 ) ||
+		     !ParseLightValues( lightValue, sourceLight, 4 ) ||
+		     sourceLight[0] < 0.0f || sourceLight[0] > 255.0f ||
+		     sourceLight[1] < 0.0f || sourceLight[1] > 255.0f ||
+		     sourceLight[2] < 0.0f || sourceLight[2] > 255.0f || sourceLight[3] < 0.0f )
+		{
+			error = "compiled point light has invalid origin or _light data";
+			return false;
+		}
+		const pxr::SdfPath path( "/World/Lights/Light_" + std::to_string( index ) );
+		const pxr::UsdLuxSphereLight light = pxr::UsdLuxSphereLight::Define( stage, path );
+		const pxr::SourceLightAPI source = pxr::SourceLightAPI::Apply( light.GetPrim() );
+		if ( !light || !source ||
+		     !pxr::UsdGeomXformable( light ).AddTranslateOp().Set(
+		         pxr::GfVec3d( origin[0], origin[1], origin[2] ) ) ||
+		     !light.CreateRadiusAttr().Set( 8.0f ) ||
+		     !light.CreateIntensityAttr().Set( sourceLight[3] ) ||
+		     !light.CreateColorAttr().Set( pxr::GfVec3f(
+		         SrgbChannelToLinear( sourceLight[0] ),
+		         SrgbChannelToLinear( sourceLight[1] ),
+		         SrgbChannelToLinear( sourceLight[2] ) ) ) ||
+		     !source.CreateSourceEntityIndexAttr().Set( static_cast<int>( index ) ) ||
+		     !source.CreateSourceLightingPolicyAttr().Set( pxr::TfToken( "preview-v1" ) ) )
+		{
+			error = "OpenUSD could not author point light " + std::to_string( index );
+			return false;
+		}
+	}
+	return true;
+}
+
 bool WriteWorldStageGeometryImpl( const char *bspPath, std::string &error )
 {
 	std::vector<FaceGeometry> faces;
@@ -403,7 +504,7 @@ bool WriteWorldStageGeometryImpl( const char *bspPath, std::string &error )
 			return false;
 		}
 	}
-	if ( !source.CreateSourceSchemaVersionAttr().Set( 2 ) ||
+	if ( !source.CreateSourceSchemaVersionAttr().Set( 3 ) ||
 	     !source.CreateSourceLightmapAtlasWidthAttr().Set( kAtlasWidth ) ||
 	     !source.CreateSourceLightmapAtlasHeightAttr().Set( atlasHeight ) ||
 	     !source.CreateSourceChartFaceIdsAttr().Set( chartFaceIds ) ||
@@ -413,6 +514,8 @@ bool WriteWorldStageGeometryImpl( const char *bspPath, std::string &error )
 		return false;
 	}
 	if ( !AuthorEntities( stage, entities, error ) )
+		return false;
+	if ( !AuthorLights( stage, entities, error ) )
 		return false;
 	std::filesystem::path output( bspPath );
 	output.replace_extension( ".geometry.usda" );

@@ -6060,7 +6060,7 @@ void CShaderAPIVulkan::ModifyTexture( ShaderAPITextureHandle_t textureHandle )
 // with. Returns false when the source format is not supported yet.
 static bool UploadTextureSurface( int handle, int width, int height, ImageFormat srcFormat,
     const void *imageData, int srcStride, std::string *error, uint32_t level = 0, int xOffset = 0,
-    int yOffset = 0 )
+    int yOffset = 0, uint32_t face = 0 )
 {
 	// The width x height rectangle at (xOffset, yOffset) of the level; the whole
 	// level when it covers it.
@@ -6068,7 +6068,7 @@ static bool UploadTextureSurface( int handle, int width, int height, ImageFormat
 	{
 		return g_VulkanContext.UploadManagedTextureRegion( handle, static_cast<uint32_t>( xOffset ),
 		    static_cast<uint32_t>( yOffset ), static_cast<uint32_t>( width ),
-		    static_cast<uint32_t>( height ), data, size, error, level );
+		    static_cast<uint32_t>( height ), data, size, error, level, face );
 	};
 	const uint8_t *src = static_cast<const uint8_t *>( imageData );
 	const size_t pixels = static_cast<size_t>( width ) * height;
@@ -6211,7 +6211,7 @@ void CShaderAPIVulkan::TexImage2D( int level, int cubeFace, ImageFormat dstForma
 	if ( static_cast<uint32_t>( level ) >= g_VulkanContext.ManagedTextureMipLevels( handle ) )
 		return;
 	if ( !UploadTextureSurface( handle, width, height, srcFormat, imageData, 0, &error,
-	         static_cast<uint32_t>( level ) ) )
+	         static_cast<uint32_t>( level ), 0, 0, static_cast<uint32_t>( cubeFace ) ) )
 	{
 		if ( error.empty() )
 			Warning(
@@ -6240,7 +6240,8 @@ void CShaderAPIVulkan::TexSubImage2D( int level, int cubeFace, int xOffset, int 
 	if ( static_cast<uint32_t>( level ) >= g_VulkanContext.ManagedTextureMipLevels( handle ) )
 		return;
 	if ( !UploadTextureSurface( handle, width, height, srcFormat, imageData, srcStride, &error,
-	         static_cast<uint32_t>( level ), xOffset, yOffset ) )
+	         static_cast<uint32_t>( level ), xOffset, yOffset,
+	         static_cast<uint32_t>( cubeFace ) ) )
 	{
 		if ( !error.empty() )
 			Warning( "[NativeVulkan] TexSubImage2D upload failed: %s\n", error.c_str() );
@@ -6258,8 +6259,8 @@ void CShaderAPIVulkan::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 	if ( !pVTF || g_currentModifyTexture <= 0 )
 		return;
 
-	// Face 0, every level the texture has, as D3D9's LoadTextureFromVTF loads
-	// them. A texture created smaller than the VTF (mip skipping) starts at the
+	// Every cubemap face and mip the VTF has. A texture created smaller than
+	// the VTF (mip skipping) starts at the
 	// VTF level whose size matches its level 0.
 	const int handle = static_cast<int>( g_currentModifyTexture ) - 1;
 	const int textureWidth = static_cast<size_t>( handle ) < g_TextureRecords.size()
@@ -6274,18 +6275,20 @@ void CShaderAPIVulkan::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 			break;
 	}
 	const uint32_t levels = g_VulkanContext.ManagedTextureMipLevels( handle );
+	const int faces = ( pVTF->Flags() & TEXTUREFLAGS_ENVMAP ) ? 6 : 1;
+	for ( int face = 0; face < faces; ++face )
 	for ( uint32_t level = 0;
 	    level < levels && firstMip + static_cast<int>( level ) < pVTF->MipCount(); ++level )
 	{
 		const int mip = firstMip + static_cast<int>( level );
 		int mipWidth = 0, mipHeight = 0, mipDepth = 0;
 		pVTF->ComputeMipLevelDimensions( mip, &mipWidth, &mipHeight, &mipDepth );
-		const unsigned char *bits = pVTF->ImageData( iVTFFrame, 0, mip );
+		const unsigned char *bits = pVTF->ImageData( iVTFFrame, face, mip );
 		if ( mipWidth <= 0 || mipHeight <= 0 || !bits )
 			return;
 		std::string error;
 		if ( !UploadTextureSurface(
-		         handle, mipWidth, mipHeight, pVTF->Format(), bits, 0, &error, level ) )
+		         handle, mipWidth, mipHeight, pVTF->Format(), bits, 0, &error, level, 0, 0, face ) )
 		{
 			if ( !error.empty() )
 				Warning( "[NativeVulkan] TexImageFromVTF upload failed: %s\n", error.c_str() );
@@ -6470,7 +6473,8 @@ ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height,
 	const int native = ( flags & TEXTURE_CREATE_RENDERTARGET )
 	                       ? g_VulkanContext.CreateRenderTargetTexture( width, height, &error )
 	                       : g_VulkanContext.CreateManagedTexture( width, height, vkFormat, &error,
-	                             0, static_cast<uint32_t>( std::max( 1, numMipLevels ) ) );
+	                             0, static_cast<uint32_t>( std::max( 1, numMipLevels ) ),
+	                             VK_FORMAT_UNDEFINED, ( flags & TEXTURE_CREATE_CUBEMAP ) != 0 );
 	if ( native < 0 )
 	{
 		Warning( "[NativeVulkan] CreateTexture failed: %s\n", error.c_str() );
