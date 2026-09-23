@@ -31,6 +31,7 @@ def build(bld):
 		features='c cxx', env=test_env.derive(),
 		source=['test_vulkan_bringup.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='native_vulkan_bringup_conformance',
 		name='native_vulkan_bringup_conformance',
@@ -84,6 +85,7 @@ def build(bld):
 		features='c cxx', env=test_env.derive(),
 		source=['test_pbr_pixels.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='pbr_native_pixel_conformance',
 		name='pbr_native_pixel_conformance',
@@ -96,9 +98,27 @@ def build(bld):
 		features='c cxx', env=test_env.derive(),
 		source=['test_ktx2_pixels.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='ktx2_native_pixel_conformance',
 		name='ktx2_native_pixel_conformance',
+		includes=includes,
+		use=['VULKAN', 'SDL3', 'vulkan_texture_image']
+			+ (['texturecontainer', 'KTXREAD'] if bld.env.KTX_READ_ENABLED else []),
+		defines=['RFC0008_KTX_READER'] if bld.env.KTX_READ_ENABLED else [],
+		install_path=None)
+
+	# RFC 0008 F4: a scene-derived WMSH PBR shader reads the packed tangent,
+	# material masks and map-scoped linear irradiance on a real Vulkan device.
+	bld.program(
+		features='c cxx', env=test_env.derive(),
+		source=['test_world_pbr_pixels.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp',
+			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
+		target='world_pbr_native_pixel_conformance',
+		name='world_pbr_native_pixel_conformance',
 		includes=includes,
 		use=['VULKAN', 'SDL3', 'vulkan_texture_image']
 			+ (['texturecontainer', 'KTXREAD'] if bld.env.KTX_READ_ENABLED else []),
@@ -114,7 +134,8 @@ def build(bld):
 			# The backend .so hides its C++ class symbols, so compile the device
 			# core into the test too; its non-virtual methods operate on the same
 			# g_VulkanContext instance the backend's exported accessor returns.
-			'../../materialsystem/shaderapivulkan/vulkan_device.cpp'],
+			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp'],
 		target='material_facing_vulkan_conformance',
 		name='material_facing_vulkan_conformance',
 		includes=['../../materialsystem/shaderapivulkan', '../../public',
@@ -131,7 +152,8 @@ def build(bld):
 	bld.program(
 		features='c cxx', env=test_env.derive(),
 		source=['test_material_equivalence.cpp',
-			'../../materialsystem/shaderapivulkan/vulkan_device.cpp'],
+			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp'],
 		target='material_equivalence_vulkan_conformance',
 		name='material_equivalence_vulkan_conformance',
 		includes=['../../materialsystem/shaderapivulkan', '../../public',

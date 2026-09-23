@@ -111,12 +111,18 @@ std::optional<PixelFormat> DescribeFormat( std::uint32_t vkFormat )
 		return PixelFormat::Bc5Unorm;
 	case VK_FORMAT_BC6H_UFLOAT_BLOCK:
 		return PixelFormat::Bc6hUfloat;
+	case VK_FORMAT_BC7_UNORM_BLOCK:
+		return PixelFormat::Bc7Unorm;
 	case VK_FORMAT_BC7_SRGB_BLOCK:
 		return PixelFormat::Bc7Srgb;
+	case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
+		return PixelFormat::Astc4x4Unorm;
 	case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
 		return PixelFormat::Astc4x4Srgb;
 	case VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK:
 		return PixelFormat::Astc4x4Float;
+	case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
+		return PixelFormat::Etc2RgbaUnorm;
 	case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
 		return PixelFormat::Etc2RgbaSrgb;
 	case VK_FORMAT_EAC_R11_UNORM_BLOCK:

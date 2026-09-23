@@ -67,12 +67,13 @@ template <size_t N> std::vector<std::uint8_t> Blocks( const std::array<std::uint
 
 bool DrawAndCapture( render_vulkan::CVulkanContext &context, int texture,
     std::array<std::uint8_t, 4> &center, std::array<std::uint8_t, 4> &corner, std::string &error,
-    float textureScale = 1.0f )
+    float textureScale = 1.0f, bool srgbRead = true )
 {
 	context.ClearDynamicQueue();
 	context.SetClearColor( 0, 0, 0, 1 );
 	context.SelectDynamicShader( render_vulkan::CVulkanContext::kDynShaderTextured );
-	context.SelectDynamicColorSpace( render_vulkan::CVulkanContext::kColorSrgbReadBase );
+	context.SelectDynamicColorSpace(
+	    srgbRead ? render_vulkan::CVulkanContext::kColorSrgbReadBase : 0 );
 	context.BindManagedTexture( texture );
 	const float white[4] = { 1, 1, 1, 1 };
 	context.SetDynamicModulation( white );
@@ -160,6 +161,15 @@ int main()
 		check( oversized < 0 && error.find( "2D image limit" ) != std::string::npos,
 		    "oversized texture fails before image allocation" );
 	}
+	if ( maxDimension >= 16384 )
+	{
+		const int large =
+		    context.CreateManagedTexture( 16384, 16384, VK_FORMAT_BC7_SRGB_BLOCK, &error, 0, 15 );
+		check( large >= 0 && context.ManagedTextureMipLevels( large ) == 15,
+		    "device allocates a 16K BC7 texture with its full mip chain" );
+		if ( large >= 0 )
+			context.DestroyManagedTexture( large );
+	}
 	const bool meshReady = context.InitDynamicMesh( &error );
 	check( meshReady, "native textured pipeline initializes" );
 	const int red = context.CreateManagedTexture( 8, 8, VK_FORMAT_BC7_SRGB_BLOCK, &error );
@@ -179,6 +189,7 @@ int main()
 #ifdef RFC0008_KTX_READER
 		int packagedHandle = -1;
 		int packagedMipsHandle = -1;
+		int packagedMraoHandle = -1;
 		std::ifstream package( "quality/fixtures/ktx2/red-8x8-bc7.ktx2", std::ios::binary );
 		std::vector<char> packageBytes(
 		    std::istreambuf_iterator<char>{ package }, std::istreambuf_iterator<char>{} );
@@ -217,6 +228,22 @@ int main()
 		else
 		{
 			check( false, "KTX2 package format and topology match the native image" );
+		}
+		std::ifstream maskPackage( "quality/fixtures/ktx2/mrao-8x8-bc7.ktx2", std::ios::binary );
+		std::vector<char> maskPackageBytes(
+		    std::istreambuf_iterator<char>{ maskPackage }, std::istreambuf_iterator<char>{} );
+		const auto maskImage =
+		    texturecontainer::ReadKtx2Image( std::as_bytes( std::span( maskPackageBytes ) ) );
+		check( maskImage && maskImage.Value().format == texturecontainer::PixelFormat::Bc7Unorm,
+		    "linear MRAO KTX2 reads as BC7 UNORM" );
+		if ( maskImage )
+		{
+			const auto maskUpload =
+			    render_vulkan::CreateManagedTextureImage( context, maskImage.Value() );
+			check(
+			    maskUpload.HasValue(), "linear BC7 MRAO uploads through the shared image bridge" );
+			if ( maskUpload )
+				packagedMraoHandle = maskUpload.Value();
 		}
 		std::ifstream mipPackage(
 		    "quality/fixtures/ktx2/red-8x8-rgba8-mips.ktx2", std::ios::binary );
@@ -324,6 +351,17 @@ int main()
 			check( center[0] >= 250 && center[1] <= 5 && center[2] <= 5,
 			    "reader-to-bridge BC7 pixels sample red" );
 			context.DestroyManagedTexture( packagedHandle );
+		}
+		if ( packagedMraoHandle >= 0 )
+		{
+			check(
+			    DrawAndCapture( context, packagedMraoHandle, center, corner, error, 1.0f, false ),
+			    "linear BC7 MRAO image renders" );
+			std::fprintf(
+			    stderr, "Linear BC7 MRAO RGB=(%u,%u,%u)\n", center[0], center[1], center[2] );
+			check( center[0] >= 245 && center[1] >= 110 && center[1] <= 145 && center[2] >= 245,
+			    "linear BC7 keeps metal, roughness and AO channels separate" );
+			context.DestroyManagedTexture( packagedMraoHandle );
 		}
 		if ( packagedMipsHandle >= 0 )
 		{

@@ -275,7 +275,8 @@ public:
 		// shaders/skin.{vert,frag}.
 		kDynShaderSkin = 5,
 		// RFC 0007 synthetic direct-light BRDF, tested against the headless model.
-		kDynShaderPbrDirect = 6
+		kDynShaderPbrDirect = 6,
+		kDynShaderPbrWorld = 7
 	};
 	void SelectDynamicShader( int shaderIndex ) { m_dynShaderIndex = shaderIndex; }
 	// Output-merger state of the queued geometry, in the terms of the D3D9 state a
@@ -493,6 +494,16 @@ public:
 		for ( int i = 0; i < 4; ++i )
 			m_dynPbrAngles[i] = angles[i];
 	}
+	struct PbrWorldScene
+	{
+		float eye[4] = { 0, 0, 1, 0 };
+		float lightDirection[4] = { 0, 0, -1, 0 };
+		float lightRadiance[4] = { 1, 1, 1, 0 };
+		float material[4] = { -1, 0, 0, 0 };
+	};
+	void SetDynamicPbrWorldScene( const PbrWorldScene &scene ) { m_dynPbrWorld = scene; }
+	bool PbrWorldPipelineSupported() const { return m_pbrWorldReady; }
+	bool SelectPbrWorldMaterial( int mrao, int normal, const float eye[3], float alphaReference );
 	bool PbrDirectPipelineSupported() const { return m_pbrDirectReady; }
 	// False when the device cannot bind the skin shader's seven descriptor sets
 	// or its push block; its draws are then declined.
@@ -952,6 +963,7 @@ private:
 	float m_dynTexXform0[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
 	float m_dynTexXform1[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
 	float m_dynPbrAngles[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	PbrWorldScene m_dynPbrWorld;
 	DynRasterState m_dynRaster;
 	float m_dynAlphaRef = -1.0f; // $alphatest reference; < 0 disables
 	// "$basetexture" material pipeline: a built-in 2-tone texture sampled at the
@@ -965,9 +977,18 @@ private:
 	VkPipeline WorldTexturedPipeline( const DynRasterState &state, bool srgbPass = false );
 	std::map<uint64_t, VkPipeline> m_worldPbrPipelines;
 	VkPipeline WorldPbrPipeline( const DynRasterState &state, bool srgbPass = false );
+	bool PbrWorldTexturesReady(
+	    int base, int mrao, int normal, bool useNormal, bool baseReadSrgb ) const;
+	bool PbrWorldNormalReady( int handle ) const;
 	VkShaderModule m_worldVert = VK_NULL_HANDLE;
 	VkVertexInputBindingDescription m_worldBinding = {};
 	VkVertexInputAttributeDescription m_worldAttrs[4] = {};
+	VkVertexInputAttributeDescription m_worldPbrAttrs[6] = {};
+	VkPipelineVertexInputStateCreateInfo m_worldPbrVin = {};
+	VkShaderModule m_worldPbrVert = VK_NULL_HANDLE;
+	VkShaderModule m_worldPbrFrag = VK_NULL_HANDLE;
+	VkPipelineLayout m_worldPbrPipelineLayout = VK_NULL_HANDLE;
+	bool m_pbrWorldReady = false;
 	VkPipelineVertexInputStateCreateInfo m_worldVin = {};
 	// The pipeline store (OpenPipelineStore): the cache every material pipeline
 	// is built through, the variants built this session, and the files.
@@ -1004,6 +1025,8 @@ private:
 	bool m_pbrDirectReady = false;
 	bool InitPbrDirectPipeline( std::string *outError );
 	void DestroyPbrDirectPipeline();
+	bool InitPbrWorldPipeline( std::string *outError );
+	void DestroyPbrWorldPipeline();
 	VkPipelineLayout m_skinPipelineLayout = VK_NULL_HANDLE;
 	VkDescriptorSetLayout m_skinUboLayout = VK_NULL_HANDLE;
 	VkDescriptorPool m_skinUboPool = VK_NULL_HANDLE;
@@ -1261,6 +1284,7 @@ private:
 		float texXform0[4] = { 1, 0, 0, 0 };
 		float texXform1[4] = { 0, 1, 0, 0 };
 		float pbrAngles[4] = { 1, 1, 1, 1 };
+		PbrWorldScene pbrWorld;
 		float monitorContrast = 0.0f;
 		DynRasterState raster;
 		float alphaRef = -1.0f;   // $alphatest reference; < 0 disables

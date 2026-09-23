@@ -36,9 +36,12 @@ enum class PixelFormat
 	Bc4Unorm,
 	Bc5Unorm,
 	Bc6hUfloat,
+	Bc7Unorm,
 	Bc7Srgb,
+	Astc4x4Unorm,
 	Astc4x4Srgb,
 	Astc4x4Float,
+	Etc2RgbaUnorm,
 	Etc2RgbaSrgb,
 	EacR11Unorm,
 	EacRg11Unorm,
@@ -80,9 +83,12 @@ constexpr BlockLayout LayoutForPixelFormat( PixelFormat format ) noexcept
 	case PixelFormat::Bc3Srgb:
 	case PixelFormat::Bc5Unorm:
 	case PixelFormat::Bc6hUfloat:
+	case PixelFormat::Bc7Unorm:
 	case PixelFormat::Bc7Srgb:
+	case PixelFormat::Astc4x4Unorm:
 	case PixelFormat::Astc4x4Srgb:
 	case PixelFormat::Astc4x4Float:
+	case PixelFormat::Etc2RgbaUnorm:
 	case PixelFormat::Etc2RgbaSrgb:
 	case PixelFormat::EacRg11Unorm:
 		return { 4, 4, 16 };

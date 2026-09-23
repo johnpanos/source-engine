@@ -74,8 +74,8 @@ def profile_at(path):
     fixture = profile["fixture"]
     if (fixture["width"], fixture["height"]) != (8, 8):
         raise ProbeFailure("this fixture requires an 8x8 image")
-    if set(profile["texture_classes"]) != {"base-color", "normal", "mask", "hdr"}:
-        raise ProbeFailure("profile must declare all four texture classes")
+    if set(profile["texture_classes"]) != {"base-color", "mrao", "normal", "mask", "hdr"}:
+        raise ProbeFailure("profile must declare all five texture classes")
     return profile
 
 
@@ -134,6 +134,9 @@ def fixture_bytes(kind):
             index = (y // 4) * 2 + x // 4
             if kind == "base-color":
                 out.extend(colors[index])
+            elif kind == "mrao":
+                out.extend(((0, 64, 255, 255), (85, 128, 255, 255),
+                            (170, 192, 128, 255), (255, 255, 0, 255))[index])
             elif kind == "normal":
                 out.extend(normals[index])
             elif kind == "mask":

@@ -2800,9 +2800,15 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		Log( "PBR direct pipeline unavailable: %s\n", pbrError.c_str() );
 		DestroyPbrDirectPipeline();
 	}
+	else if ( !InitPbrWorldPipeline( &pbrError ) )
+	{
+		Log( "WMSH PBR pipeline unavailable: %s\n", pbrError.c_str() );
+		DestroyPbrWorldPipeline();
+	}
 
-	Log( "dynamic mesh pipelines ready (PBR direct %s)\n",
-	    m_pbrDirectReady ? "available" : "unavailable" );
+	Log( "dynamic mesh pipelines ready (PBR direct %s, WMSH PBR %s)\n",
+	    m_pbrDirectReady ? "available" : "unavailable",
+	    m_pbrWorldReady ? "available" : "unavailable" );
 	return true;
 }
 
@@ -2884,23 +2890,6 @@ VkPipeline CVulkanContext::WorldTexturedPipeline( const DynRasterState &state, b
 		Log( "vkCreateGraphicsPipelines (WMSH textured, state %#llx) failed\n",
 		    static_cast<unsigned long long>( key ) );
 	m_worldTexPipelines[key] = pipeline;
-	return pipeline;
-}
-
-VkPipeline CVulkanContext::WorldPbrPipeline( const DynRasterState &state, bool srgbPass )
-{
-	const uint64_t key = RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull );
-	const auto existing = m_worldPbrPipelines.find( key );
-	if ( existing != m_worldPbrPipelines.end() )
-		return existing->second;
-	if ( m_worldVert == VK_NULL_HANDLE || m_pbrDirectFrag == VK_NULL_HANDLE )
-		return VK_NULL_HANDLE;
-	VkPipeline pipeline = BuildMaterialPipeline( state, m_worldVert, m_pbrDirectFrag,
-	    m_pbrDirectPipelineLayout, &m_worldVin, srgbPass ? m_renderPassLoadSrgb : m_renderPass );
-	if ( pipeline == VK_NULL_HANDLE )
-		Log( "vkCreateGraphicsPipelines (WMSH PBR, state %#llx) failed\n",
-		    static_cast<unsigned long long>( key ) );
-	m_worldPbrPipelines[key] = pipeline;
 	return pipeline;
 }
 
@@ -3015,8 +3004,9 @@ VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, V
 	gp.pViewportState = &t.vp;
 	VkPipelineRasterizationStateCreateInfo rs = t.rs;
 	rs.cullMode = state.cullMode;
-	rs.frontFace =
-	    vertexInput == &m_worldVin ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
+	rs.frontFace = vertexInput == &m_worldVin || vertexInput == &m_worldPbrVin
+	                   ? VK_FRONT_FACE_COUNTER_CLOCKWISE
+	                   : VK_FRONT_FACE_CLOCKWISE;
 	gp.pRasterizationState = &rs;
 	gp.pMultisampleState = &t.ms;
 	gp.pColorBlendState = &cb;
@@ -4015,9 +4005,12 @@ static size_t TextureBlockBytes( VkFormat format )
 	case VK_FORMAT_BC3_SRGB_BLOCK:
 	case VK_FORMAT_BC5_UNORM_BLOCK:
 	case VK_FORMAT_BC6H_UFLOAT_BLOCK:
+	case VK_FORMAT_BC7_UNORM_BLOCK:
 	case VK_FORMAT_BC7_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
 	case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
 	case VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK:
+	case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
 	case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
 	case VK_FORMAT_EAC_R11G11_UNORM_BLOCK:
 		return 16;
@@ -4435,6 +4428,7 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 	std::memcpy( d.texXform0, m_dynTexXform0, sizeof( d.texXform0 ) );
 	std::memcpy( d.texXform1, m_dynTexXform1, sizeof( d.texXform1 ) );
 	std::memcpy( d.pbrAngles, m_dynPbrAngles, sizeof( d.pbrAngles ) );
+	d.pbrWorld = m_dynPbrWorld;
 	d.raster = m_dynRaster;
 	d.alphaRef = m_dynAlphaRef;
 	d.texHandle = m_dynBoundTexHandle;
@@ -4794,9 +4788,7 @@ void CVulkanContext::DestroyDynamicMesh()
 	for ( const auto &entry : m_worldTexPipelines )
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_worldTexPipelines.clear();
-	for ( const auto &entry : m_worldPbrPipelines )
-		vkDestroyPipeline( m_device, entry.second, nullptr );
-	m_worldPbrPipelines.clear();
+	DestroyPbrWorldPipeline();
 	if ( m_worldVert != VK_NULL_HANDLE )
 	{
 		vkDestroyShaderModule( m_device, m_worldVert, nullptr );
@@ -5046,8 +5038,16 @@ bool CVulkanContext::QueueWorldMeshBatch( uint32_t firstIndex, uint32_t indexCou
 {
 	if ( !WorldMeshResident() || m_worldVert == VK_NULL_HANDLE || !indexCount ||
 	     firstIndex > m_worldIndexCount || indexCount > m_worldIndexCount - firstIndex ||
-	     ( m_dynShaderIndex != kDynShaderTextured && m_dynShaderIndex != kDynShaderPbrDirect ) )
+	     ( m_dynShaderIndex != kDynShaderTextured && m_dynShaderIndex != kDynShaderPbrWorld ) )
 		return false;
+	if ( m_dynShaderIndex == kDynShaderPbrWorld )
+	{
+		if ( !m_pbrWorldReady ||
+		     !PbrWorldTexturesReady( m_dynBoundTexHandle, m_dynSamplerHandles[1],
+		         m_dynSamplerHandles[2], m_dynPbrWorld.material[1] >= 0.5f,
+		         ( m_dynColorFlags & kColorSrgbReadBase ) != 0 ) )
+			return false;
+	}
 	DynDraw &draw = AppendDrawRecord();
 	draw.worldMesh = true;
 	draw.worldMeshRevision = m_worldMeshRevision;
@@ -5592,6 +5592,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			VkPipelineLayout selectedLayout = m_dynPipelineLayout;
 			bool textured = false;
 			bool pbrDirect = false;
+			bool pbrWorld = false;
 			bool portal = false;
 			bool skin = false;
 			// sRGB inputs decoded by the sampler and output encoded by the view,
@@ -5614,12 +5615,23 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			}
 			else if ( d.shaderIndex == kDynShaderPbrDirect )
 			{
-				selected = d.worldMesh ? WorldPbrPipeline( d.raster, openSrgb )
-				                       : PbrDirectPipeline( d.raster, openSrgb );
+				selected = d.worldMesh ? VK_NULL_HANDLE : PbrDirectPipeline( d.raster, openSrgb );
 				if ( selected == VK_NULL_HANDLE )
 					continue;
 				selectedLayout = m_pbrDirectPipelineLayout;
 				pbrDirect = true;
+			}
+			else if ( d.shaderIndex == kDynShaderPbrWorld )
+			{
+				if ( !PbrWorldTexturesReady( d.texHandle, d.samplerHandles[1], d.samplerHandles[2],
+				         d.pbrWorld.material[1] >= 0.5f,
+				         ( d.colorFlags & kColorSrgbReadBase ) != 0 ) )
+					continue;
+				selected = d.worldMesh ? WorldPbrPipeline( d.raster, openSrgb ) : VK_NULL_HANDLE;
+				if ( selected == VK_NULL_HANDLE )
+					continue;
+				selectedLayout = m_worldPbrPipelineLayout;
+				pbrWorld = true;
 			}
 			else if ( d.shaderIndex == kDynShaderPortalRefract )
 			{
@@ -5643,14 +5655,14 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, selected );
 				boundPipeline = selected;
 			}
-			if ( textured || pbrDirect || portal || skin )
+			if ( textured || pbrDirect || pbrWorld || portal || skin )
 			{
 				vkCmdSetStencilCompareMask(
 				    cmd, VK_STENCIL_FACE_FRONT_AND_BACK, d.stencilTestMask );
 				vkCmdSetStencilWriteMask( cmd, VK_STENCIL_FACE_FRONT_AND_BACK, d.stencilWriteMask );
 				vkCmdSetStencilReference( cmd, VK_STENCIL_FACE_FRONT_AND_BACK, d.stencilRef );
 			}
-			if ( textured || pbrDirect || portal || skin )
+			if ( textured || pbrDirect || pbrWorld || portal || skin )
 			{
 				// Bind this draw's own texture descriptor set (per-draw texture),
 				// falling back to the built-in set when the draw has no managed
@@ -5707,6 +5719,15 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					    m_managedTextures[static_cast<size_t>( m_pbrSplitSumHandle )].descSet };
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 					    m_pbrDirectPipelineLayout, 0, 3, sets, 0, nullptr );
+				}
+				else if ( pbrWorld )
+				{
+					const VkDescriptorSet sets[5] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					    sampledSet( d.samplerHandles[1], 0 ), sampledSet( d.samplerHandles[2], 0 ),
+					    sampledSet( m_worldLightmapHandle, 0 ),
+					    m_managedTextures[static_cast<size_t>( m_pbrSplitSumHandle )].descSet };
+					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+					    m_worldPbrPipelineLayout, 0, 5, sets, 0, nullptr );
 				}
 				else
 				{
@@ -5790,6 +5811,20 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				std::memcpy( pushData + 20, d.texXform0, sizeof( d.texXform0 ) );
 				std::memcpy( pushData + 24, d.texXform1, sizeof( d.texXform1 ) );
 				std::memcpy( pushData + 28, d.pbrAngles, sizeof( d.pbrAngles ) );
+				pushFloats = 32;
+				if ( m_clipPlanesSupported )
+				{
+					appendClipPlanes( pushData + 32 );
+					pushFloats = kTexturedPushBytes / sizeof( float );
+				}
+			}
+			else if ( pbrWorld )
+			{
+				const PbrWorldScene &scene = d.pbrWorld;
+				std::memcpy( pushData + 16, scene.eye, sizeof( scene.eye ) );
+				std::memcpy( pushData + 20, scene.lightDirection, sizeof( scene.lightDirection ) );
+				std::memcpy( pushData + 24, scene.lightRadiance, sizeof( scene.lightRadiance ) );
+				std::memcpy( pushData + 28, scene.material, sizeof( scene.material ) );
 				pushFloats = 32;
 				if ( m_clipPlanesSupported )
 				{

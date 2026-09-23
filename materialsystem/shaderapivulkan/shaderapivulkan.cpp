@@ -22,12 +22,8 @@
 #include "materialsystem/idebugtextureinfo.h"
 #include "materialsystem/deformations.h"
 #include "render/legacy_shader_provider.h"
-#include "render/world_mesh_upload.h"
 #include "vulkan_device.h"
-#ifdef RFC0008_KTX_READER
-#include "vulkan_texture_image.h"
-#include "texturecontainer/texture_image.h"
-#endif
+#include "vulkan_world_mesh_upload.h"
 #include "sdl3/sdl3_vulkan_surface_host.h"
 #include "vtf/vtf.h"
 #include "pixelwriter.h"
@@ -188,6 +184,8 @@ static int g_boundEnvmapHandle = -1;
 static int g_boundRefractNormalHandle = -1;
 static int g_boundRefractCubeHandle = -1;
 static int g_boundNormalMaskHandle = -1;
+static int g_boundPbrNormalHandle = -1;
+static int g_boundPbrMraoHandle = -1;
 static bool g_BindingLightmap = false;
 static uint64_t g_DrawsTextured = 0;   // bound a handle whose pixels were uploaded
 static uint64_t g_DrawsUnuploaded = 0; // bound a handle that was never filled
@@ -521,6 +519,7 @@ public:
 		m_worldDrawQueued = false;
 	}
 	bool WorldMeshDrawQueued() const { return m_worldDrawQueued; }
+	bool IsWorldMeshBatch() const { return m_worldMeshBatch; }
 
 	// Sets the primitive type
 	void SetPrimitiveType( MaterialPrimitiveType_t type );
@@ -1890,69 +1889,16 @@ static bool DescribeNativeVulkanAdapter( int adapter, render::RenderAdapterInfo 
 	return true;
 }
 
-class CVulkanWorldMeshUpload final : public world_mesh_gpu::IWorldMeshUpload
+static bool DrawWorldMaterialBatch( uint32_t firstIndex, uint32_t indexCount )
 {
-public:
-	bool Upload( const world_mesh_gpu::WorldMeshUploadRequest &request ) override
-	{
-		if ( !request.vertexCount || !request.indexCount ||
-		     request.vertexBytes != size_t( request.vertexCount ) * 40 ||
-		     request.indexBytes != size_t( request.indexCount ) * sizeof( uint32_t ) )
-			return false;
-		std::string error;
-		if ( !g_VulkanContext.UploadWorldMesh( request.vertices, request.vertexBytes,
-		         request.indices, request.indexBytes, &error ) )
-		{
-			Warning( "[NativeVulkan] WMSH upload failed: %s\n", error.c_str() );
-			return false;
-		}
-		return true;
-	}
-	bool UploadLightmapKtx2( const void *bytes, size_t size ) override
-	{
-#ifdef RFC0008_KTX_READER
-		if ( !g_VulkanContext.WorldMeshResident() || !bytes || size < 80 ||
-		     size > 256ull * 1024 * 1024 )
-			return false;
-		const auto encoded = std::span( static_cast<const std::byte *>( bytes ), size );
-		const auto image = texturecontainer::ReadKtx2Image( encoded );
-		if ( !image || image.Value().format != texturecontainer::PixelFormat::Rgba16Float ||
-		     image.Value().levels.size() != 1 )
-		{
-			Warning( "[NativeVulkan] WMSH LMAP KTX2 rejected\n" );
-			return false;
-		}
-		const auto upload =
-		    render_vulkan::CreateManagedTextureImage( g_VulkanContext, image.Value() );
-		if ( !upload )
-		{
-			Warning( "[NativeVulkan] WMSH LMAP GPU upload failed\n" );
-			return false;
-		}
-		g_VulkanContext.SetWorldLightmapHandle( upload.Value() );
-		Msg( "[NativeVulkan] WMSH LMAP ready (%u x %u, linear RGBA16F)\n",
-		    image.Value().levels[0].width, image.Value().levels[0].height );
-		return true;
-#else
-		Warning( "[NativeVulkan] WMSH LMAP requires the pinned KTX reader profile\n" );
-		return false;
-#endif
-	}
-	bool DrawBatch( uint32_t firstIndex, uint32_t indexCount ) override
-	{
-		if ( !g_VulkanContext.WorldMeshResident() || !indexCount )
-			return false;
-		CEmptyMesh mesh( false );
-		mesh.SetWorldMeshBatch( firstIndex, indexCount );
-		mesh.Draw( 0, static_cast<int>( indexCount ) );
-		return mesh.WorldMeshDrawQueued();
-	}
+	CEmptyMesh mesh( false );
+	mesh.SetWorldMeshBatch( firstIndex, indexCount );
+	mesh.Draw( 0, static_cast<int>( indexCount ) );
+	return mesh.WorldMeshDrawQueued();
+}
 
-	void Release() override { g_VulkanContext.ReleaseWorldMesh(); }
-	bool IsResident() const override { return g_VulkanContext.WorldMeshResident(); }
-};
-
-static CVulkanWorldMeshUpload g_WorldMeshUpload;
+static render_vulkan::CVulkanWorldMeshUpload g_WorldMeshUpload(
+    g_VulkanContext, DrawWorldMaterialBatch );
 
 static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *services )
 {
@@ -3051,6 +2997,33 @@ void CEmptyMesh::EmitToNativeQueue()
 	render_vulkan::CFrameCostScope cost( g_VulkanContext.CurrentFrameCost(), render_vulkan::kCostEmit );
 	if ( m_worldMeshBatch )
 	{
+		if ( g_pBoundMaterial && !V_stricmp( g_pBoundMaterial->GetShaderName(), "PBR" ) )
+		{
+			// PBR's dynamic pass already bound its VTF base, MRAO (sampler 10)
+			// and normal (sampler 1). The WMSH pipeline uses those same images at
+			// sets 0, 1 and 2, and the map-owned HDR LMAP at set 3.
+			float eye[3];
+			g_ShaderAPIEmpty.GetWorldSpaceCameraPosition( eye );
+			if ( !g_VulkanContext.SelectPbrWorldMaterial(
+			         g_boundPbrMraoHandle, g_boundPbrNormalHandle, eye, g_CurrentAlphaRef ) )
+			{
+				DropDraw( "draw dropped: WMSH PBR images or pipeline unavailable" );
+				return;
+			}
+			static bool s_reportedPbrWorld = false;
+			if ( !s_reportedPbrWorld )
+			{
+				const int mask = g_boundPbrMraoHandle;
+				const char *maskName = mask >= 0 && size_t( mask ) < g_TextureRecords.size()
+				                           ? g_TextureRecords[size_t( mask )].name.c_str()
+				                           : "(none)";
+				Msg( "[NativeVulkan] WMSH PBR material %s: MRAO %s, alpha %.2f, "
+				     "eye %.1f %.1f %.1f\n",
+				    g_pBoundMaterial->GetName(), maskName, g_CurrentAlphaRef, eye[0], eye[1],
+				    eye[2] );
+				s_reportedPbrWorld = true;
+			}
+		}
 		if ( g_VulkanContext.QueueWorldMeshBatch( m_worldFirstIndex, m_worldIndexCount ) )
 			m_worldDrawQueued = true;
 		else
@@ -5368,6 +5341,8 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	g_boundRefractNormalHandle = -1;
 	g_boundRefractCubeHandle = -1;
 	g_boundNormalMaskHandle = -1;
+	g_boundPbrNormalHandle = -1;
+	g_boundPbrMraoHandle = -1;
 	g_VulkanContext.BindManagedLightmap( -1 );
 	for ( int sampler = 1; sampler < render_vulkan::CVulkanContext::kMaxSamplers; ++sampler )
 		g_VulkanContext.BindManagedSampler( sampler, -1 );
@@ -5466,6 +5441,11 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	// device with too few push-constant bytes or clip distances does not get.
 	if ( !V_stricmp( shaderName, "PortalRefract_dx9" ) )
 		return g_VulkanContext.PortalPipelineSupported();
+	// The legacy PBR shader's sampler contract can feed WMSH tangents and the
+	// map-scoped HDR lightmap. Its ordinary dynamic meshes are not implemented.
+	if ( !V_stricmp( shaderName, "PBR" ) )
+		return g_pRenderMesh && g_pRenderMesh->IsWorldMeshBatch() &&
+		       g_VulkanContext.PbrWorldPipelineSupported();
 	return false;
 }
 
@@ -6311,6 +6291,10 @@ void CShaderAPIVulkan::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t te
 		g_VulkanContext.BindManagedSampler( static_cast<int>( stage ), native );
 	if ( stage == SHADER_SAMPLER2 )
 		g_boundEnvmapHandle = native;
+	if ( stage == SHADER_SAMPLER1 )
+		g_boundPbrNormalHandle = native;
+	if ( stage == SHADER_SAMPLER10 )
+		g_boundPbrMraoHandle = native;
 	if ( stage == SHADER_SAMPLER3 )
 		g_boundRefractNormalHandle = native;
 	if ( stage == SHADER_SAMPLER4 )

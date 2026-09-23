@@ -80,6 +80,22 @@ int main( int argc, char **argv )
 		check( image.Value().levels[0].bytes[0] == std::byte{ redBlock[0] },
 		    "mip storage outlives and does not alias encoded input" );
 	}
+	const std::vector<std::byte> linearMask = LoadFixture( directory + "/mrao-8x8-bc7.ktx2" );
+	const auto maskImage = texturecontainer::ReadKtx2Image( linearMask );
+	check( maskImage && maskImage.Value().format == texturecontainer::PixelFormat::Bc7Unorm &&
+	           maskImage.Value().levels.size() == 1 &&
+	           maskImage.Value().levels[0].bytes.size() == 64,
+	    "packed linear BC7 MRAO keeps its format and exact blocks" );
+	const auto astcMask =
+	    texturecontainer::ReadKtx2Image( LoadFixture( directory + "/mrao-8x8-astc.ktx2" ) );
+	check( astcMask && astcMask.Value().format == texturecontainer::PixelFormat::Astc4x4Unorm &&
+	           astcMask.Value().levels.size() == 1 && astcMask.Value().levels[0].bytes.size() == 64,
+	    "packed linear ASTC MRAO keeps its format and exact blocks" );
+	const auto etcMask =
+	    texturecontainer::ReadKtx2Image( LoadFixture( directory + "/mrao-8x8-etc-rgba.ktx2" ) );
+	check( etcMask && etcMask.Value().format == texturecontainer::PixelFormat::Etc2RgbaUnorm &&
+	           etcMask.Value().levels.size() == 1 && etcMask.Value().levels[0].bytes.size() == 64,
+	    "packed linear ETC2 MRAO keeps its format and exact blocks" );
 	std::vector<std::byte> mipPackage = LoadFixture( directory + "/red-8x8-rgba8-mips.ktx2" );
 	const auto mips = texturecontainer::ReadKtx2Image( mipPackage );
 	check( mips && mips.Value().format == texturecontainer::PixelFormat::Rgba8Srgb &&

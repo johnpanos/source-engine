@@ -59,12 +59,18 @@ std::optional<VkFormat> VulkanFormat( texturecontainer::PixelFormat format )
 		return VK_FORMAT_BC5_UNORM_BLOCK;
 	case PixelFormat::Bc6hUfloat:
 		return VK_FORMAT_BC6H_UFLOAT_BLOCK;
+	case PixelFormat::Bc7Unorm:
+		return VK_FORMAT_BC7_UNORM_BLOCK;
 	case PixelFormat::Bc7Srgb:
 		return VK_FORMAT_BC7_SRGB_BLOCK;
+	case PixelFormat::Astc4x4Unorm:
+		return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
 	case PixelFormat::Astc4x4Srgb:
 		return VK_FORMAT_ASTC_4x4_SRGB_BLOCK;
 	case PixelFormat::Astc4x4Float:
 		return VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK;
+	case PixelFormat::Etc2RgbaUnorm:
+		return VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK;
 	case PixelFormat::Etc2RgbaSrgb:
 		return VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK;
 	case PixelFormat::EacR11Unorm:

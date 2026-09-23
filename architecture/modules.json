@@ -232,6 +232,7 @@
         "paths": [
           "materialsystem/shaderapivulkan/vulkan_device.h",
           "materialsystem/shaderapivulkan/vulkan_device.cpp",
+          "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
           "materialsystem/shaderapivulkan/vulkan_surface_host.h",
           "materialsystem/shaderapivulkan/vulkan_render_backend.h",
           "materialsystem/shaderapivulkan/vulkan_render_backend.cpp",
@@ -251,11 +252,29 @@
         "kind": "backend",
         "paths": [
           "materialsystem/shaderapivulkan/vulkan_texture_image.h",
-          "materialsystem/shaderapivulkan/vulkan_texture_image.cpp"
+          "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+          "materialsystem/shaderapivulkan/vulkan_world_lightmap.h",
+          "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp"
         ],
         "allowedEdges": [
           "content.texture-contract",
           "render.vulkan.core"
+        ]
+      },
+      {
+        "id": "render.bridge.world-mesh-vulkan",
+        "kind": "legacy-interop",
+        "paths": [
+          "materialsystem/shaderapivulkan/vulkan_world_mesh_upload.h",
+          "materialsystem/shaderapivulkan/vulkan_world_mesh_upload.cpp"
+        ],
+        "allowedEdges": [
+          "render.vulkan.core",
+          "render.bridge.texture-image-vulkan"
+        ],
+        "legacyIncludes": [
+          "render/world_mesh_upload.h",
+          "tier0/dbg.h"
         ]
       },
       {
@@ -294,7 +313,8 @@
         "paths": [
           "unittests/shaderapivulkantest/test_sdl3_vulkan_presentation.cpp",
           "unittests/shaderapivulkantest/test_pbr_pixels.cpp",
-          "unittests/shaderapivulkantest/test_ktx2_pixels.cpp"
+          "unittests/shaderapivulkantest/test_ktx2_pixels.cpp",
+          "unittests/shaderapivulkantest/test_world_pbr_pixels.cpp"
         ],
         "allowedEdges": [
           "content.texture-contract",

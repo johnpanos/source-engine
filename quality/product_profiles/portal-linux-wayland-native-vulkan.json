@@ -10,6 +10,7 @@
       "host_tool_profile": "quality/product_profiles/ktx2-linux-tools.json",
       "format_preferences": {
         "base-color": ["bc7", "astc", "etc-rgba"],
+        "mrao": ["bc7", "astc", "etc-rgba"],
         "normal": ["bc5", "eac-rg11"],
         "mask": ["bc4", "eac-r11"],
         "hdr": ["bc6hu", "astc-hdr-4x4", "rgb9e5"]

@@ -25,6 +25,7 @@
   },
   "texture_classes": {
       "base-color": {"create_format": "R8G8B8A8_SRGB", "oracle_target": "rgba8", "formats": {"bc7": "VK_FORMAT_BC7_SRGB_BLOCK", "astc": "VK_FORMAT_ASTC_4x4_SRGB_BLOCK", "etc-rgba": "VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK"}},
+      "mrao": {"create_format": "R8G8B8A8_UNORM", "oracle_target": "rgba8", "formats": {"bc7": "VK_FORMAT_BC7_UNORM_BLOCK", "astc": "VK_FORMAT_ASTC_4x4_UNORM_BLOCK", "etc-rgba": "VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK"}},
       "normal": {"create_format": "R8G8_UNORM", "oracle_target": "rg8", "formats": {"bc5": "VK_FORMAT_BC5_UNORM_BLOCK", "eac-rg11": "VK_FORMAT_EAC_R11G11_UNORM_BLOCK"}},
       "mask": {"create_format": "R8_UNORM", "oracle_target": "r8", "formats": {"bc4": "VK_FORMAT_BC4_UNORM_BLOCK", "eac-r11": "VK_FORMAT_EAC_R11_UNORM_BLOCK"}},
       "hdr": {"create_format": "R16G16B16A16_SFLOAT", "oracle_target": "rgba16f", "formats": {"bc6hu": "VK_FORMAT_BC6H_UFLOAT_BLOCK", "astc-hdr-4x4": "VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK", "rgb9e5": "VK_FORMAT_E5B9G9R9_UFLOAT_PACK32"}}

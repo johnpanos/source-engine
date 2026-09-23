@@ -8,6 +8,7 @@ texture hashes and conversion dimensions are retained for later KTX2 rollout.
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -51,6 +52,17 @@ def compile_texture(image, destination, vtex):
     return sha256(encoded)
 
 
+def verify_solid_vtf(path, rgb):
+    """Check the compiled 4x4 preview texels against authored RGB channels."""
+    payload = path.read_bytes()
+    if (len(payload) < 48 or payload[:4] != b"VTF\0" or
+            int.from_bytes(payload[16:18], "little") != 4 or
+            int.from_bytes(payload[18:20], "little") != 4 or
+            int.from_bytes(payload[52:56], "little") != 3 or
+            payload[-48:] != bytes((rgb[2], rgb[1], rgb[0])) * 16):
+        raise ValueError("VTEX changed solid material channels: " + str(path))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scene", type=Path, required=True)
@@ -58,8 +70,14 @@ def main():
     parser.add_argument("--render-evidence", type=Path, required=True)
     parser.add_argument("--bsp2", type=Path, required=True)
     parser.add_argument("--vtex", type=Path, required=True)
+    parser.add_argument("--world-pbr-prefix",
+                        help="optional WMSH PBR material namespace")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    if args.world_pbr_prefix and (
+            not re.fullmatch(r"[a-z0-9_]+(?:/[a-z0-9_]+)*", args.world_pbr_prefix) or
+            args.world_pbr_prefix in {"staircase2", "staircase2_fallback"}):
+        parser.error("WMSH PBR prefix must be a distinct normalized relative path")
     if args.out.exists():
         parser.error("output directory already exists: " + str(args.out))
     receipt = json.loads(args.render_evidence.read_text())
@@ -73,6 +91,8 @@ def main():
         raise FileNotFoundError("VTEX or BSP2 package is missing")
     material_root = args.out / "materials/staircase2"
     fallback_root = args.out / "materials/staircase2_fallback"
+    pbr_root = (args.out / "materials" / args.world_pbr_prefix
+                if args.world_pbr_prefix else None)
     map_path = args.out / "maps/staircase2_playable.bsp"
     map_path.parent.mkdir(parents=True)
     shutil.copy2(args.bsp2, map_path)
@@ -95,8 +115,11 @@ def main():
             dimensions = base.size
             source_hash = None
         base_hash = compile_texture(base, directory / "basecolor", args.vtex.resolve())
+        if color is not None:
+            verify_solid_vtf(directory / "basecolor.vtf", color)
         mrao = Image.new("RGB", (4, 4), (metal, roughness, 255))
         mrao_hash = compile_texture(mrao, directory / "mrao", args.vtex.resolve())
+        verify_solid_vtf(directory / "mrao.vtf", (metal, roughness, 255))
         vmt = (f'"PBRMetalRough"\n{{\n'
                f'\t"$basetexture" "staircase2/{name}/basecolor"\n'
                f'\t"$mraotexture" "staircase2/{name}/mrao"\n'
@@ -114,16 +137,33 @@ def main():
             f'{glass_alpha}'
             f'{emitter_nocull}'
             f'\t"$surfaceprop" "tile"\n}}\n')
+        pbr_vmt_hash = None
+        if pbr_root:
+            pbr_root.mkdir(parents=True, exist_ok=True)
+            if name in {"glass", "spotholder", "emitter"}:
+                preview_vmt = (fallback_root / (name + ".vmt")).read_text()
+            else:
+                preview_vmt = (f'"PBR"\n{{\n'
+                               f'\t"$basetexture" "staircase2/{name}/basecolor"\n'
+                               f'\t"$mraotexture" "staircase2/{name}/mrao"\n'
+                               f'\t"$fallbackmaterial" "staircase2_fallback/{name}"\n'
+                               f'\t"$surfaceprop" "tile"\n}}\n')
+            pbr_vmt = pbr_root / (name + ".vmt")
+            pbr_vmt.write_text(preview_vmt)
+            pbr_vmt_hash = sha256(pbr_vmt)
         assets[name] = {"source_texture_sha256": source_hash,
                         "encoded_dimensions": dimensions,
                         "basecolor_vtf_sha256": base_hash,
                         "mrao_vtf_sha256": mrao_hash,
                         "vmt_sha256": sha256(material_root / (name + ".vmt")),
                         "fallback_vmt_sha256": sha256(fallback_root / (name + ".vmt"))}
+        if pbr_vmt_hash:
+            assets[name]["world_pbr_vmt_sha256"] = pbr_vmt_hash
     evidence = {"status": "pass", "scope": "staircase2-playable-content-preview",
                 "scene_sha256": sha256(args.scene), "stage_sha256": sha256(args.stage),
                 "render_evidence_sha256": sha256(args.render_evidence),
                 "bsp2_sha256": sha256(args.bsp2), "map_sha256": sha256(map_path),
+                "world_pbr_prefix": args.world_pbr_prefix,
                 "materials": assets,
                 "transmission_limit": "glass uses alpha blending; refraction is pending",
                 "texture_container": "VTF preview bridge; KTX2 runtime binding pending"}

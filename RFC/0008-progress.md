@@ -36,9 +36,9 @@ iteration. The current WMSH/LMAP preview does not pass those gates.
 | --- | --- | --- |
 | F1 BSP2 container and map-reader seam | **active (prototype; gate incomplete)** | Container, seam, both readers, pinned v20/v21 lossless corpora, 64-bit sparse tool export, client boot, a 26-map Portal v20 dedicated comparison and five-map v21 client/dedicated engine-seam comparisons work. A derived v19-header map also loads in both products. Authored v19 content, native Portal 2 gameplay and the CI content lane remain (see [Remaining for the F1 gate](#remaining-for-the-f1-gate)) |
 | F2 World Stage | partial (world geometry, light and Portal material preview; gate incomplete) | Opt-in `vbsp2` emits BSP, lossless BSP2 and OpenUSD world faces, a lightmap chart table, ordered entities and a `UsdLuxSphereLight` with its compiled style ID. A private Portal-remaster VMF compiles; a separate `UsdPreviewSurface` layer binds two real PBR materials and renders in Blender Cycles at 2048×1152. A preview bridge places Cycles flat and three RNM lightmap samples in a legacy lighting lump. The BSP2 map carries them and renders the flat page in native Vulkan; a controlled legacy DXVK comparison shows the RNM samples change in-game pixels. Pinned standalone Cycles, a canonical baker, accepted SH L1, render lumps and native consumption of directional lighting remain. |
-| F4–F5 BSP2 world path | partial (diagnostic WMSH draw and Cycles preview; gate incomplete) | An independently checked WMSH v1 mesh payload from the Portal World Stage is carried in BSP2 beside byte-identical legacy data. The client validates and retains WMSH for the map lifetime; native Vulkan uploads its vertex and index sections once into device-local buffers. An opt-in diagnostic draw uses the engine's visible leaves, WMSH meshlet references, and Source material passes. A controlled playable comparison proves that this USD-derived mesh samples both real upsampled Portal base textures and Cycles-derived lighting carried by the legacy lightmap page. The Cycles flat atlas also packages as validated HDR KTX2 and passes the engine's image reader. Malformed optional WMSH is rejected while the legacy map stays playable. Canonical lightmap/probe data, automatic map-selected rendering, feature cohorts and load-cost gates remain. |
+| F4–F5 BSP2 world path | partial (opt-in playable WMSH PBR slice; gate incomplete) | An independently checked WMSH v1 mesh payload from the Portal World Stage is carried in BSP2 beside byte-identical legacy data. The client validates and retains WMSH for the map lifetime; native Vulkan uploads its vertex and index sections once into device-local buffers. An opt-in draw uses the engine's visible leaves, WMSH meshlet references, and Source material passes. A playable USD-derived staircase now binds VTF base color/MRAO and a Cycles HDR KTX2 atlas through the native WMSH PBR pipeline, with a generated material namespace and a real player frame. The GPU pixel fixture covers tangents, material masks, normal maps, linear irradiance and back-face culling. Malformed optional WMSH is rejected while the legacy map stays playable. Canonical lightmap/probe data, automatic map-selected PBR rendering, feature cohorts, visual parity and load-cost gates remain. |
 | F6–F7 | planned | Not started |
-| F3 KTX2 textures | **partial (host packer, device selection, owned readers and native/GTK consumers)** | Pinned Linux tool builds; ten transcode targets validate, UASTC master decode pixels match fixtures, and the packer publishes validated packages from explicit or product-profile device selections. Strict KTX2 and VTF readers produce the same owned image description for a 2D caller cohort; BC7 feeds the native pixel test. Hammer's GTK material catalog previews packaged RGBA8/BGRA8 KTX2 through that reader. Material-system file selection, Hammer compressed-format preview, installed product device identity and ASTC/ETC2/EAC GPU pixels remain. |
+| F3 KTX2 textures | **partial (host packer, device selection, owned readers and native/GTK consumers)** | Pinned Linux tool builds; thirteen transcode targets validate, UASTC master decode pixels match fixtures, and the packer publishes validated packages from explicit or product-profile device selections. Strict KTX2 and VTF readers produce the same owned image description for a 2D caller cohort; sRGB base color and linear BC7 MRAO feed native pixel tests. Hammer's GTK material catalog previews packaged RGBA8/BGRA8 KTX2 through that reader. Material-system file selection, Hammer compressed-format preview, installed product device identity and ASTC/ETC2/EAC GPU pixels remain. |
 
 F2 requires the R48 host compile-tool gate. Its [current compiler preparation](0007-progress.md#r48-host-compiler-preparation-2026-09-23)
 now builds and installs VBSP, local non-MPI VVIS, and local non-MPI VRAD with
@@ -1155,6 +1155,26 @@ PYTHONPATH=/tmp/rfc0008-openusd-install/lib/python /usr/bin/python3.12 \
   --out-bsp2 quality-results/staircase2-integrated-v1.bsp2
 ```
 
+### F4 native world upload adapter extraction (2026-09-23)
+
+The WMSH service now lives in
+[`vulkan_world_mesh_upload.cpp`](../materialsystem/shaderapivulkan/vulkan_world_mesh_upload.cpp)
+instead of the 7,000-line shader API implementation. It owns request size
+validation, context upload/release, and checked HDR LMAP attachment. A narrow
+callback in the shader API still submits each batch through its bound Source
+material pass; the adapter has no access to that pass's global state. The
+module manifest records the adapter's Vulkan and legacy interface dependencies.
+
+The `shaderapivulkan` Waf target built in the staircase client profile.
+The [playable boot receipt](../quality-results/staircase2-playable-world-upload-extract-draw-v1/evidence.json)
+reports a native Vulkan player frame, 92,199 WMSH vertices and indices, a
+2048² linear RGBA16F LMAP, nine material batches, and 1,520 queued visible
+meshlets with `r_worldmesh_draw 2`. Style checking and `git diff --check`
+passed. Architecture checking still reports its eight existing CAP002 entries,
+with zero new and zero stale occurrences. This extraction preserves the
+diagnostic WMSH path; `PBRMetalRough` materials still select their legacy
+fallback, so it does not close F4/F5 or establish PBR parity in the playable map.
+
 ## F1: what exists
 
 ### Format (prototype choices, recorded against open decisions 1 and 2)
@@ -1834,3 +1854,94 @@ RGBA8/HDR chains do not. Runtime KTX2 material selection, memory budgeting and
 large-texture load/pixel evidence remain F3 work. No numeric Source 2 texture
 ceiling has been verified from a Valve source; 16K is this profile's tested
 device capability and current content ceiling, not an asserted Source 2 fact.
+
+### F3 linear BC7 MRAO and 16K allocation; F4 WMSH PBR shader (2026-09-23)
+
+The host and Portal product profiles now select a separate linear MRAO class.
+The pinned KTX tool produces BC7, ASTC 4×4 and ETC2 RGBA **UNORM** packages
+from a linear UASTC master, and the owned KTX2 reader and Vulkan bridge
+preserve those formats. Committed 8×8 packages pass `ktx validate` and the
+reader suite; BC7 also passes native sampled-pixel checks for separate
+metalness, roughness and AO channels. The host probe and packer conformance
+pass with thirteen targets across five classes. ASTC/ETC2 native pixel checks
+still require a selected device that supports those formats.
+
+The selected RADV device also allocated a 16,384² BC7 sRGB image with all 15
+mip levels; the native suite rejected a dimension beyond the device limit. This
+proves an image allocation on this profile, while the sampled-pixel fixtures
+prove color space and format handling at small sizes. Full-size content upload,
+streaming and budget evidence remain open.
+
+An opt-in native WMSH PBR pipeline now reads the packed WMSH normal and tangent,
+base color, linear MRAO, optional tangent-space normal and map-scoped RGBA16F
+irradiance. Its pixel suite changes metalness, roughness, directional light and
+normal direction independently, and rejects an sRGB texture in the linear MRAO
+slot. Draw recording and replay require live descriptors and matching image
+formats, so a missing required PBR image cannot silently sample the built-in
+fallback texture. The renderer's material selection still chooses the legacy
+path for gameplay; map-authored lights, style layers, probes, HDR output and
+Cycles image parity remain F4/F5 work.
+Its pipeline construction, image requirements and teardown live in
+`materialsystem/shaderapivulkan/vulkan_world_pbr.cpp`, leaving the device core
+to own common allocation, command recording and submission. The BSP2 KTX2
+lightmap validation/upload now lives in `vulkan_world_lightmap.cpp`; the large
+legacy shader API adapter only invokes it and reports the result. The WMSH PBR
+pixel suite uses that bridge with a checked RGBA16F KTX2 fixture and rejects a
+corrupt package before the successful upload.
+
+Evidence: `ktx2_reader_conformance` **18/0**,
+`ktx2_native_pixel_conformance` **47/0**,
+`world_pbr_native_pixel_conformance` **22/0**, and
+`material_facing_vulkan_conformance` **15/0** on the selected Radeon 8060S.
+The native validation layer was unavailable, so those runs did not verify
+validation-clean command recording. The pinned host probe and packer conformance
+both pass; the texture selector's ten Python unit tests pass. Changed-line
+style and `git diff --check` pass. The architecture checker reports no new or
+stale occurrences for this change, but exits nonzero on existing CAP002 include
+violations in the current tree.
+
+### F4 playable WMSH PBR material bridge and winding fix (2026-09-23)
+
+The native Vulkan shader API now recognizes the legacy `PBR` shader only for
+WMSH batches. It forwards that shader's bound base color, MRAO and optional
+normal image, alpha reference and actual camera position to the WMSH PBR
+pipeline; missing required images reject the draw. The native device keeps the
+map-owned HDR lightmap in its PBR descriptor set. Ordinary dynamic `PBR` meshes
+remain outside this bridge, and canonical `PBRMetalRough` material selection
+still uses its legacy fallback. This is an explicit preview cohort, not the
+final runtime material contract.
+
+The first playable PBR capture culled most of the room. `BuildMaterialPipeline`
+classified only the textured WMSH vertex input as world geometry, so the PBR
+vertex input received the opposite Vulkan front face. It now classifies both
+world inputs consistently and keeps back-face culling enabled. The native GPU
+pixel suite added a back-face-culling fixture and passes **25 checks, zero
+failures** on the selected Radeon 8060S. Temporary two-sided and fragment
+shader diagnostic probes were removed after the source of the culling error
+was identified.
+
+The [staircase content bridge](../tools/quality/staircase2_playable_content.py)
+accepts an optional `--world-pbr-prefix` matching the USD world packer's
+`--material-prefix`. It emits the `PBR` VMT namespace for six opaque WMSH
+materials while retaining the `PBRMetalRough` and legacy fallback namespaces;
+glass and small emitter fixtures retain their unlit preview materials. The
+script checks compiled solid VTF channel values, including metalness and
+roughness. Its generated 46 content files are byte-identical to the manually
+assembled preview fixture. The reproducible generated fixture and namespaced
+BSP2 pass the [native playable boot](../quality-results/staircase2-playable-pbr-generated-v1/evidence.json)
+with nine batches and 1,520 queued meshlets. The earlier fixed-winding
+[inspection frame](../quality-results/staircase2-playable-pbr-winding-fixed-v1/inspection.png)
+shows the complete room and PBR response; the generated boot also captured a
+scene-detailed frame. Its requested 1024² mode became 2816×1713 on this
+desktop, so no Cycles pixel-parity score is claimed.
+
+The map uses the unscaled Cycles 2048² RGBA16F atlas, but still looks darker
+than the Cycles reference. The WMSH PBR scene uses a synthetic directional
+source and has no authored reflection probes, transmission or validated output
+exposure. Gameplay material loading still uses VTF; KTX2 is consumed here for
+the HDR atlas only. These gaps, plus spatial meshlet visibility and feature
+cohorts, remain before high visual parity or F4/F5 acceptance. The native GPU
+run requested validation, but the validation layer was unavailable. Changed-line
+style, Python syntax and `git diff --check` pass. The current full architecture
+check reports eight CAP002 include violations and 47 baseline drift entries in
+unrelated legacy files; no new entry is in this WMSH material cohort.

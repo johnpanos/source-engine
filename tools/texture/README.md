@@ -36,6 +36,9 @@ class. Missing support fails the plan. `vulkaninfo --json` describes its first
 reported device; the runtime must confirm it selected the same device before
 using packages. The real-tool positive and negative checks are in
 `tools/quality/ktx2_pack_conformance.py`.
+The linear MRAO class carries metalness in R, roughness in G and AO in B. Its
+profile choices are BC7 UNORM, ASTC 4×4 UNORM and ETC2 RGBA UNORM, each
+selected only after the device query confirms support.
 
 The strict C++20 reader in `texturecontainer/` consumes already transcoded
 KTX2 packages and returns owned, container-neutral mip data. It rejects UASTC
@@ -57,9 +60,9 @@ build-rfc0008-ktx-reader/unittests/texturecontainertest/ktx2_reader_conformance 
   quality/fixtures/ktx2
 ```
 
-The native pixel test reads the committed BC7 KTX2 fixture through this reader
-when configured with the pinned KTX source and build. Material-system VTF/KTX2
-selection and the Hammer texture reader are still pending F3 integration.
+The native pixel test reads committed sRGB base-color and linear MRAO BC7 KTX2
+fixtures through this reader when configured with the pinned KTX source and
+build. Material-system VTF/KTX2 selection remains pending F3 integration.
 
 The VTF adapter uses the existing VTF library to produce the same owned image
 description for a 2D, one-frame, one-face material cohort. Its shared-data
@@ -83,9 +86,10 @@ system for file textures.
 The native Vulkan image bridge accepts the same description. It validates
 every mip's dimensions and byte count, requires the selected device to support
 the requested sample/upload format, and destroys a managed image if an upload
-fails. The native pixel test captures the committed BC7 package and a copy of
+fails. The native pixel test captures the committed BC7 packages and a copy of
 the four-mip RGBA8 package after bridge upload. The copy marks each lower mip
-with a distinct color and samples all four levels:
+with a distinct color and samples all four levels. It also allocates a 16K BC7
+image with the complete mip chain on devices that report a 16K 2D limit:
 
 ```sh
 WAFLOCK=.lock-waf-rfc0008-ktx-reader ./waf build \
