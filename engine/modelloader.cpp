@@ -4574,8 +4574,33 @@ void CModelLoader::Map_LoadWorldMesh()
 		m_WorldMeshBytes.Purge();
 		return;
 	}
-	m_worldBrushData.pWorldMeshData = m_WorldMeshBytes.Base();
-	m_worldBrushData.worldMeshSize = m_WorldMeshBytes.Count();
+	mapcontainer::MapLumpInfo lightmapLump{};
+	const bool hasLightmap =
+	    s_pMapContainer->FindLump( mapcontainer::kLumpWorldLightmap, &lightmapLump );
+	CUtlVector<byte> lightmapBytes;
+	if ( hasLightmap )
+	{
+		const uint64_t kMaxLightmapBytes = 256ull * 1024 * 1024;
+		if ( lightmapLump.version != mapcontainer::kWorldLightmapVersion ||
+		     lightmapLump.flags != 0 || lightmapLump.storedSize < 80 ||
+		     lightmapLump.storedSize > kMaxLightmapBytes )
+		{
+			Warning( "Map %s: LMAP version, flags or size unsupported\n", s_szMapName );
+			m_WorldMeshBytes.Purge();
+			return;
+		}
+		lightmapBytes.SetCount( (int)lightmapLump.storedSize );
+		if ( !s_MapByteSource.ReadAt(
+		         lightmapLump.offset, lightmapBytes.Base(), lightmapBytes.Count() ) ||
+		     !s_pMapContainer
+		         ->VerifyContent( lightmapLump, lightmapBytes.Base(), lightmapBytes.Count() )
+		         .Ok() )
+		{
+			Warning( "Map %s: LMAP read or hash failed\n", s_szMapName );
+			m_WorldMeshBytes.Purge();
+			return;
+		}
+	}
 	Msg( "Map %s: WMSH ready (%u vertices, %u triangles, %u meshlets, %u leaves)\n", s_szMapName,
 	    summary.vertexCount, summary.triangleCount, summary.meshletCount, summary.leafCount );
 	world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshUploader();
@@ -4599,7 +4624,20 @@ void CModelLoader::Map_LoadWorldMesh()
 			Warning( "Map %s: WMSH GPU upload unavailable\n", s_szMapName );
 	}
 	if ( !uploaded )
+	{
+		m_WorldMeshBytes.Purge();
 		return;
+	}
+	if ( hasLightmap &&
+	     !uploader->UploadLightmapKtx2( lightmapBytes.Base(), lightmapBytes.Count() ) )
+	{
+		Warning( "Map %s: WMSH LMAP upload failed\n", s_szMapName );
+		uploader->Release();
+		m_WorldMeshBytes.Purge();
+		return;
+	}
+	m_worldBrushData.pWorldMeshData = m_WorldMeshBytes.Base();
+	m_worldBrushData.worldMeshSize = m_WorldMeshBytes.Count();
 	// The validator established batch/material ordering, section bounds and
 	// UTF-8 paths. Resolve each path once while the map is loading; the world
 	// brush borrows the finished array until unload.

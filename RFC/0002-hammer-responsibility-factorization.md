@@ -4,6 +4,8 @@
 - Date: 2026-09-21
 - Scope: Hammer, its reusable editor libraries, and its application adapters
 - Related: [RFC 0001: Capability-Based Platform Architecture](0001-capability-based-platform-architecture.md)
+- Future source format: [RFC 0009: USD-Native Map Authoring](0009-usd-native-map-authoring.md)
+  owns the editable USD map schema and native compile workflow
 - Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
 - Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
 - Source inspection reference: `b5eb9915bdebf5af1045c5821d4ac3d9af15dbb2`
@@ -43,6 +45,13 @@ The migration will proceed by working editor workflows. A representative slice
 opens a VMF, selects and transforms a brush, undoes the edit, saves the map, and
 compiles it. This gives each extraction a concrete consumer and prevents an
 extended period of interface design without usable behavior.
+
+That VMF workflow is a compatibility and extraction slice, not the final
+authoring format. RFC 0009 targets USD as the saved authority for new maps and
+separates world solids, static props, dynamic props, physics props, and
+geometric entities by their editing and compile contracts. The document,
+transaction, and tool seams extracted here must not require a VMF key/value
+tree, BSP face ID, or one global active map in their public contracts.
 
 ## Motivation and observed state
 
@@ -98,7 +107,8 @@ the include-graph, target-graph, or editor contract checks proposed here. See
 
 - Completing a GTK port or the full RFC 0001 platform migration in this RFC.
 - Rewriting the renderer, compilers, or all geometry algorithms together.
-- Changing BSP, VMF, network, or engine content limits as part of extraction.
+- Changing BSP, VMF, network, or engine content limits as part of extraction;
+  the native USD source path is separately gated by RFC 0009.
 - Making all map objects share the same editing capabilities.
 - Building a generic UI toolkit abstraction that mirrors MFC and GTK widgets.
 - Introducing a plugin ABI, scripting language, ECS, or dependency injection
@@ -850,7 +860,7 @@ the complete declared feature corpus, budgets, recovery, and consumer retirement
 | H3: Application authority | Session, property commit policy, selection, transaction/history facade | H1 and sufficient H2 fixtures | Select/transform/undo/save sequence passes headlessly and through legacy adapter; migrated operations have one mutation/history owner. |
 | H4: Interaction and presenters | Selection and block tools, input adapters, inspector and asset models | H3 | Common event traces produce equivalent supported edits; cancel/focus/close cases pass; widgets are absent from tools/presenters. |
 | R1: Renderer bridge feasibility | One real Source-material viewport in a GTK host | H0 and bounded renderer contract | Target/context ownership, materials, resize, scale, input capture, and shutdown demonstrated on selected X11/Wayland profiles. |
-| H5: GTK workflow slice | Open/save VMF, multiple views, selection/transform/history, entity inspector, textures, compile/run | H2–H4 and R1 | Representative map workflow passes with no hidden MFC runtime dependency; fidelity and unsupported-feature policy declared. |
+| H5: GTK workflow slice | Open/save VMF, multiple views, selection/transform/history, entity inspector, textures, compile/run; keep document and tools format-neutral | H2–H4 and R1 | Representative compatibility map workflow passes with no hidden MFC runtime dependency; fidelity and unsupported-feature policy declared. RFC 0009's USD authoring gate remains separate. |
 | H6: Feature families | Displacements, instances/manifests, advanced texture/overlay tools, previews, remaining workflows | H5 and per-family characterization | Each family passes load/edit/undo/save/build fixtures and lifecycle/performance gates. |
 | H7: Retirement | Remove superseded implementations, adapter glue, and obsolete build paths | Declared product parity gate met | Legacy consumer counts reach zero; baselines/exceptions shrink to the accepted remainder; release/recovery evidence passes. |
 

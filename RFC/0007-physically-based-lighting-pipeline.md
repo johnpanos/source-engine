@@ -8,6 +8,8 @@
   lighting, open-format scene interchange, and Hammer compile/preview integration
 - Formats: [RFC 0008: Canonical World Data and Runtime Formats](0008-canonical-world-data-and-runtime-formats.md)
   owns the World Stage, BSP2, KTX2, and lighting data encodings this RFC produces
+- Native authoring: [RFC 0009: USD-Native Map Authoring](0009-usd-native-map-authoring.md)
+  owns the editable USD source; this RFC's baker consumes the compiled stage
 - Related: [RFC 0001: Capability-Based Platform Architecture](0001-capability-based-platform-architecture.md)
   (render seam, native Vulkan, tool/process cleanup),
   [RFC 0002: Hammer Responsibility Factorization](0002-hammer-responsibility-factorization.md)
@@ -106,8 +108,9 @@ making Blender (GPL) a build or runtime dependency.
   this RFC owns the values computed into them.
 - Replacing vbsp's BSP construction, or making vvis use Cycles.
 - Linking Blender or any GPL component into engine, tools, or products.
-- Importing USD/glTF back into VMF as an editable document (possible later;
-  requires its own loss policy under RFC 0002 and RFC 0008).
+- Importing USD/glTF back into VMF as an editable document. RFC 0009 instead
+  defines native USD authoring, with VMF as a compatibility import and an
+  explicit loss policy.
 - Requiring a GPU for map compilation. CPU is always a supported bake profile.
 
 ## Evidence and current architecture

@@ -48,6 +48,8 @@ namespace mapcontainer
 {
 
 static const uint32_t kLumpWorldMesh = 0x48534D57u; // "WMSH"
+static const uint32_t kLumpWorldLightmap = 0x50414D4Cu; // "LMAP"
+static const uint32_t kWorldLightmapVersion = 1;
 static const uint32_t kWorldMeshVersion = 1;
 static const uint32_t kWorldMeshHeaderSize = 128;
 static const uint32_t kWorldMeshVertexSize = 40;

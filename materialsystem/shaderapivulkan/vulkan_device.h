@@ -107,6 +107,7 @@ public:
 	// The old pair survives a failed replacement; Release waits for GPU readers.
 	bool UploadWorldMesh( const void *vertices, size_t vertexBytes, const void *indices,
 	    size_t indexBytes, std::string *outError );
+	void SetWorldLightmapHandle( int handle );
 	void ReleaseWorldMesh();
 	bool WorldMeshResident() const;
 	// Diagnostic readback for the native conformance test; synchronizes and
@@ -1108,6 +1109,7 @@ private:
 		VkDescriptorSet descSetSrgb = VK_NULL_HANDLE;
 	};
 	std::vector<ManagedTexture> m_managedTextures;
+	int m_worldLightmapHandle = -1;
 	// Deleted textures awaiting the completion of the submission that may still
 	// use them (`afterSerial`, a value of m_submitSerial), and handles free again.
 	struct RetiredTexture

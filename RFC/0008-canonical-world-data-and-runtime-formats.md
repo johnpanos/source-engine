@@ -8,6 +8,8 @@
   them, and incremental map builds
 - Related: [RFC 0007: Physically Based Lighting Pipeline](0007-physically-based-lighting-pipeline.md)
   (produces the lighting data defined here),
+  [RFC 0009: USD-Native Map Authoring](0009-usd-native-map-authoring.md)
+  (owns the future editable USD source and its native compiler),
   [RFC 0001: Capability-Based Platform Architecture](0001-capability-based-platform-architecture.md)
   (render seam, native Vulkan, platform profiles, tool/process cleanup),
   [RFC 0002: Hammer Responsibility Factorization](0002-hammer-responsibility-factorization.md)
@@ -35,9 +37,11 @@ The world has exactly **four representations**, each with one owner. Every
 transformation between them happens once, is keyed by content hash, and is
 cached:
 
-1. **Authoring:** VMF plus source assets (RFC 0002 owns the document). Brush and
-   CSG semantics have no open-standard equivalent, so VMF stays.
-2. **World Stage:** an OpenUSD stage emitted once by the geometry compiler. It is
+1. **Authoring:** VMF plus source assets for the current compatibility path;
+   RFC 0009 defines editable OpenUSD as the source for new maps. RFC 0002 owns
+   editor operations in either path. Authored USD and compiled USD are different
+   representations even though they use the same file technology.
+2. **Compiled World Stage:** an OpenUSD stage emitted by a geometry compiler. It is
    the single compiled-world description read by the light baker (RFC 0007),
    reference rendering, DCC tools, and the runtime packer. Lighting is a separate
    USD layer, so rebaking never rewrites geometry.
@@ -54,6 +58,12 @@ Legacy maps (BSP v19–21, VTF, VMT) keep loading unchanged forever. BSP2 packag
 may also carry derived legacy lighting lumps, so that the D3D9/DXVK provider and
 legacy shaders can still render new maps. That derivation lives in one exporter
 and is the only place new data is converted to legacy data.
+
+The installed `vbsp2` slice emits this compiled stage from VMF. That path is a
+bootstrap and compatibility producer, not a requirement that all future World
+Stages originate in VMF or BSP. RFC 0009 adds the native USD source producer;
+the baker, packer, and runtime format should depend on the compiled-stage
+contract rather than on its producer.
 
 ## Motivation: where the world is converted today
 
@@ -79,6 +89,8 @@ conversions. This RFC removes the repeated work instead.
 
 - One authoritative representation per tier, one owner per transformation, and
   a content-addressed cache so unchanged inputs are never recomputed.
+- A compiled-stage contract that accepts either the legacy VMF producer or
+  RFC 0009's native USD producer without losing object/surface provenance.
 - Open, widely supported formats wherever an equivalent exists: OpenUSD (scene),
   KTX2 (textures), UsdLux (lights), UsdPreviewSurface / glTF metallic-roughness /
   OpenPBR subset (materials).
@@ -91,11 +103,14 @@ conversions. This RFC removes the repeated work instead.
 
 ## Non-goals
 
-- Replacing VMF as the authoring document (RFC 0002 owns it), or storing brushes
-  in USD.
+- Implementing RFC 0009's editable USD map schema, native USD compiler, or
+  editor migration in F1–F7. Those have separate gates; they are the intended
+  next source path, not excluded from the program.
 - Changing the encoding or meaning of gameplay lumps (planes, nodes, leafs,
   brushes, areaportals, visibility, physics collision, entities, static-prop
-  placement). They are carried into BSP2 byte-for-byte.
+  placement). Existing compiled BSP lumps are carried into BSP2 byte-for-byte;
+  RFC 0009's native compiler produces semantically compatible lumps without a
+  legacy byte source.
 - Replacing the MDL/VVD/VTX model runtime format. Model modernization needs its
   own RFC because animation, gameplay, and networking depend on `studio.h`.
   This RFC only reads model geometry into the World Stage for baking and export.
@@ -107,13 +122,14 @@ conversions. This RFC removes the repeated work instead.
 ## The four tiers
 
 ```
-AUTHORING                 WORLD STAGE (tools)                 RUNTIME PACKAGE            GPU
-VMF + models + VMT  ──►  geometry.usdc  (vbsp2)  ──┐
-+ texture masters         lighting.usdc (baker)  ──┼──► packer ──► map.bsp2 ──► native Vulkan
-                          probes.usdc   (baker)  ──┘     │          + KTX2       world path
-                                │                        │
-                                ▼                        └──► derived legacy lumps (optional)
-                       DCC tools / Cycles reference                 ──► D3D9/DXVK, legacy shaders
+AUTHORING                    COMPILED WORLD STAGE             RUNTIME PACKAGE           GPU
+VMF + legacy assets ──► vbsp2 ─┐
+editable USD + assets ──►      ├──► geometry.usdc ──┐
+  native USD compiler (0009) ──┘    lighting.usdc ──┼──► packer ──► map.bsp2 ──► Vulkan
+                                    probes.usdc   ──┘     │          + KTX2
+                                          │                └──► optional legacy payload
+                                          ▼                         ──► D3D9/DXVK
+                                 DCC tools / Cycles reference
 ```
 
 ### Conversion ledger
@@ -122,7 +138,8 @@ Every arrow above is one row. No other code performs these transformations.
 
 | Transformation | Sole owner | Cache key |
 | --- | --- | --- |
-| VMF → geometry layer + gameplay lumps | `vbsp2` (vbsp ported and split, RFC 0007 Phase B) | VMF semantic hash, referenced asset hashes, tool version |
+| VMF → compiled geometry layer + gameplay lumps | `vbsp2` compatibility producer (RFC 0007 Phase B) | VMF semantic hash, referenced asset hashes, tool version |
+| Authored USD → compiled geometry layer + gameplay data | Native USD map compiler (RFC 0009; planned) | Composed source-layer and referenced-asset hashes, schema/tool versions |
 | Portals → visibility | `vvis` | Portal lump hash, tool version |
 | Geometry layer → lighting/probe layers | `ILightBaker` providers (RFC 0007) | Geometry layer hash, light prims hash, material albedo/emission hashes, bake settings, provider version |
 | Texture master → KTX2 UASTC (LDR/HDR) | `TextureEncoder` | Source image hash, encode settings, encoder version |
@@ -132,7 +149,8 @@ Every arrow above is one row. No other code performs these transformations.
 | BSP2 lumps → GPU resources | native Vulkan world path | None (direct upload) |
 
 Build steps are nodes in a dependency graph that uses the RFC 0003 job system
-inside tools. Changing only a light re-runs the bake and pack steps. Changing
+inside tools. The input producer is part of each graph's cache key. Changing
+only a light re-runs the bake and pack steps. Changing
 only a material parameter re-runs pack (and bake if albedo or emission changed).
 Changing only a texture re-runs encode, transcode, and pack. Geometry changes
 re-run the whole graph.
@@ -149,14 +167,14 @@ MaterialX) schemas. Its layer composition lets the baker add lighting as a
 sublayer without rewriting geometry. The inspected revision includes the
 `usdchecker` validation tool (`pxr/usdValidation/bin/usdchecker`).
 
-### Stage structure
+### Compiled-stage structure
 
 ```
 /World                               (Xform; metersPerUnit = 0.0254, upAxis = Z)
   /Geometry
     /WorldSpawn/Mesh_<materialBatch> (Mesh; triangulated faces and displacements)
     /BrushEntities/<entity>/Mesh_... (func_* models, with entity reference)
-  /Props/<id>                        (instanceable references to model geometry)
+  /Props/<id>                        (model references with explicit source role)
   /Lights/<entity>                   (UsdLux prims + source: attributes)
   /Materials/<vmt path>              (UsdShade Material + source: attributes)
   /Probes
@@ -166,8 +184,12 @@ sublayer without rewriting geometry. The inspected revision includes the
 ```
 
 - Geometry meshes carry primvars: `st` (material UV), `lightmap:st` (atlas UV
-  from the lightmap chart packer), `source:faceId` (maps each triangle back to
-  the BSP face for decals, overlays, and legacy export), `source:smoothingGroup`.
+  from the lightmap chart packer), and source surface identity. The current
+  VMF-derived slice writes `source:faceId` to map triangles back to BSP faces
+  for decals, overlays, and legacy export, plus `source:smoothingGroup`.
+  A native USD source need not have BSP face IDs; RFC 0009 owns stable authored
+  IDs and the compiler's triangle-to-surface mapping. New compiled-stage
+  consumers must not infer that every mesh is named after a BSP face.
 - The **lightmap chart layout is authored in the geometry layer**, so bakers,
   runtime, and exporters share one layout. It replaces per-face
   `lightmapVecsLuxelsPerWorldUnits` as the canonical source. The legacy face
@@ -177,6 +199,17 @@ sublayer without rewriting geometry. The inspected revision includes the
 - The lighting layer (`lighting.usdc`) references the lightmap and probe
   payloads as KTX2 asset paths and records provider, mode, policy version, and
   sample statistics as metadata.
+
+The installed schema's `source:chartFaceIds`, `primvars:source:faceId`, and
+`source:materialPath` are VMF/BSP/VMT provenance. They cannot be required for
+all producers. Before F2 closes, evolve the versioned compiled schema so
+charts and triangles map to canonical source surface IDs and materials have a
+producer-independent asset identity; retain the legacy fields when available.
+An independent fixture with authored surface IDs and no BSP face IDs must pass
+schema validation and chart/triangle provenance checks. Schema readers and
+the future baker/packer must not synthesize face ID zero or infer a VMT path
+to accept that fixture. The compiled entity index remains an output identity,
+not an editable-map object ID.
 
 ### USD decision
 
@@ -196,9 +229,11 @@ compile path, not an in-house format with a USD exporter. Consequences:
 - `.usdc` in build caches and `.usda` for reviewed fixtures, with
   deterministic prim ordering so fixture diffs are reviewable.
 
-A typed schema (`SourceWorldAPI` and friends) is generated with
-`usdGenSchema` so attribute names and types have one definition. Fixtures use
-`.usda`; build caches use `.usdc`.
+A typed compiled-stage schema (`SourceWorldAPI` and friends) is generated with
+`usdGenSchema` so attribute names and types have one definition. RFC 0009's
+editable-map schema is versioned separately; generated chart and BSP IDs must
+not become required authored fields. Fixtures use `.usda`; build caches use
+`.usdc`.
 
 ## Runtime package: BSP2
 
@@ -393,7 +428,7 @@ by a global switch.
 | Phase | Slice | Gate |
 | --- | --- | --- |
 | F1 | BSP2 container, `IMapContainer` seam in `CMapLoadHelper`, Python reader; legacy lumps only | Byte-identical carriage, server/client load, fuzzing, dedicated server link evidence |
-| F2 | World Stage schema and `vbsp2` geometry-layer emitter (with RFC 0007 Phase B), lightmap chart packer | `usdchecker` clean; stage opens in Cycles standalone; semantic comparator vs BSP faces; seeded loss detected |
+| F2 | Compiled World Stage schema and VMF `vbsp2` geometry-layer emitter (with RFC 0007 Phase B), lightmap chart packer | `usdchecker` clean; stage opens in Cycles standalone; semantic comparator vs BSP faces; seeded loss detected; face-ID-free compiled fixture validates with stable surface/material provenance; native USD source is a separate RFC 0009 gate |
 | F3 | KTX2: container-neutral texture reader, UASTC encode/transcode in the packer, native Vulkan BC/ASTC/ETC2 formats, Hammer reader | `ktx validate`; per-format pixel fixtures; profile format negotiation fails correctly when a format is missing |
 | F4 | `WMSH` + native Vulkan world path using legacy-equivalent lighting data | Legacy feature cohorts (decals, overlays, displacements, water, areaportals, fog, sky, props) each pass; load cost measured |
 | F5 | `LMAP`/`LSTY`/`PRBV`/`RPRB` from RFC 0007 bakes, legacy exporter, light-style blending, clustered dynamic lights | Pixel oracles vs Cycles; legacy payload renders on D3D9/DXVK; style switching and dynamic light tests |

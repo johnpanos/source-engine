@@ -20,6 +20,13 @@ disagrees with the versioned artifacts, the artifacts win:
 The evidence directory is local and not versioned; the reproduction commands
 below regenerate it.
 
+[RFC 0009](0009-usd-native-map-authoring.md) now defines USD as the editable
+source for new maps, with separate world-solid and prop roles. Its native
+compiler and editor gates (R59–R60) are planned. F2's current VMF-derived
+World Stage is compiled interchange evidence, not native USD authoring; no
+RFC 0009 gate is complete. F2 must also validate a compiled-stage fixture with
+stable source surface/material identity and no BSP face IDs before closing.
+
 ## Phase status
 
 | Phase | State | Summary |

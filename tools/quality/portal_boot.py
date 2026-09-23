@@ -319,7 +319,8 @@ def tonemap_scale(log):
     return float(values[-1]) if values else None
 
 
-def evaluate(log, screenshots, returncode, timed_out, map_name, requirements, loaded):
+def evaluate(log, screenshots, returncode, timed_out, map_name, requirements, loaded,
+             renderer=None):
     failures = []
     if timed_out:
         failures.append("product timed out")
@@ -336,7 +337,9 @@ def evaluate(log, screenshots, returncode, timed_out, map_name, requirements, lo
     if re.search(r"Couldn't load (?:combo|vertex shader|pixel shader)|Using invalid shader combo", log):
         failures.append("required shader artifact or permutation was unavailable")
     markers = {
-        "vulkan": r"RFC0001 renderer: provider=vulkan-compat\b",
+        "vulkan": (r"\[NativeVulkan\] IShaderAPI::SetMode: device [^\n]+ up\b"
+                   if renderer == "native-vulkan" else
+                   r"RFC0001 renderer: provider=vulkan-compat\b"),
         "sdl3": r"RFC0001 window: provider=sdl3\b",
         "wayland": r"RFC0001 window: provider=sdl3 driver=wayland\b",
     }
@@ -718,7 +721,8 @@ def main(argv=None):
         log = "\n".join(path.read_text(errors="replace") for path in log_paths if path.is_file())
         screenshots = [info for path in sorted(stage.rglob("screenshots/*.tga"))
                        if (info := screenshot_info(path))]
-        failures = evaluate(log, screenshots, code, timed_out, args.map, requirements, loaded)
+        failures = evaluate(log, screenshots, code, timed_out, args.map, requirements, loaded,
+                            args.renderer)
         if args.require_gtk_decoration:
             decorated = any(Path(path).name == "libdecor-gtk.so" for path in loaded)
             evidence["gtk_decoration"] = {"plugin_mapped": decorated, "gdk_backend": environment.get("GDK_BACKEND")}

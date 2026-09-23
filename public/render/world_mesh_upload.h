@@ -13,7 +13,7 @@
 namespace world_mesh_gpu
 {
 
-static const char *const kWorldMeshUploadInterface = "WorldMeshUpload002";
+static const char *const kWorldMeshUploadInterface = "WorldMeshUpload003";
 
 struct WorldMeshUploadRequest
 {
@@ -35,6 +35,10 @@ class IWorldMeshUpload
 public:
 	virtual ~IWorldMeshUpload() = default;
 	virtual bool Upload( const WorldMeshUploadRequest &request ) = 0;
+	// Optional LMAP v1 is an owned linear RGBA16F KTX2 page. The provider
+	// validates and uploads it before any WMSH batch can draw. On failure the
+	// caller releases the map's WMSH so no unlit substitute is presented.
+	virtual bool UploadLightmapKtx2( const void *bytes, size_t size ) = 0;
 	// The caller binds the material first. The provider runs its material pass
 	// and queues this WMSH index range in the current ordered world view.
 	virtual bool DrawBatch( uint32_t firstIndex, uint32_t indexCount ) = 0;

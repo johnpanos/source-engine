@@ -34,9 +34,9 @@ PROVIDERS = "RFC0001 renderer: provider=vulkan-compat\nRFC0001 window: provider=
 
 class AcceptanceTests(unittest.TestCase):
     def evaluate(self, log=STATUS, screenshots=None, code=0, timeout=False,
-                 requirements=(), loaded=()):
+                 requirements=(), loaded=(), renderer=None):
         return boot.evaluate(log, [{"path": "fresh.tga", "has_scene_detail": True}] if screenshots is None else screenshots,
-                             code, timeout, "testchmb_a_00", requirements, loaded)
+                             code, timeout, "testchmb_a_00", requirements, loaded, renderer)
 
     def test_success_requires_map_player_image_and_exit(self):
         self.assertEqual([], self.evaluate())
@@ -79,6 +79,16 @@ class AcceptanceTests(unittest.TestCase):
         self.assertEqual([], self.evaluate(log=STATUS + PROVIDERS,
                                           requirements=("vulkan", "sdl3", "wayland"),
                                           loaded=("/usr/lib/libvulkan.so.1", "/usr/lib/libSDL3.so.0")))
+
+    def test_native_vulkan_needs_its_own_live_provider_marker(self):
+        native = (STATUS + "RFC0001 window: provider=sdl3 driver=offscreen\n"
+                  "[NativeVulkan] IShaderAPI::SetMode: device 'GPU' up (back buffer 1024x768)\n")
+        loaded = ("/usr/lib/libvulkan.so.1", "/usr/lib/libSDL3.so.0")
+        self.assertEqual([], self.evaluate(log=native, requirements=("vulkan", "sdl3"),
+                                          loaded=loaded, renderer="native-vulkan"))
+        self.assertTrue(self.evaluate(log=STATUS + PROVIDERS,
+                                      requirements=("vulkan", "sdl3"), loaded=loaded,
+                                      renderer="native-vulkan"))
 
     def test_unrelated_library_paths_cannot_attest_native_providers(self):
         self.assertTrue(self.evaluate(log=STATUS + PROVIDERS,

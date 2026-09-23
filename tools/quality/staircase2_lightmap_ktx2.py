@@ -27,6 +27,8 @@ def main():
     parser.add_argument("--bake-evidence", type=Path, required=True)
     parser.add_argument("--lighting-stage", type=Path, required=True)
     parser.add_argument("--ktx-tool", type=Path, required=True)
+    parser.add_argument("--preview-gain", type=float, default=1.0,
+                        help="linear lightmap gain for the Source preview renderer")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     evidence = json.loads(args.bake_evidence.read_text())
@@ -39,8 +41,10 @@ def main():
     if (pixels.shape != (evidence["size"], evidence["size"], 4) or
             not np.isfinite(pixels).all() or np.min(pixels[:, :, :3]) < 0):
         raise ValueError("Cycles atlas has invalid dimensions or pixels")
+    if not np.isfinite(args.preview_gain) or not 0 < args.preview_gain <= 1:
+        raise ValueError("preview gain must be finite and in (0, 1]")
     rgba = np.empty(pixels.shape, dtype="<f2")
-    rgba[:, :, :3] = pixels[::-1, :, :3].astype("<f2")
+    rgba[:, :, :3] = (pixels[::-1, :, :3] * args.preview_gain).astype("<f2")
     rgba[:, :, 3] = 1.0
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="staircase2-lmap-", dir=args.out.parent) as name:
@@ -65,11 +69,12 @@ def main():
               "lighting_stage_sha256": sha256(args.lighting_stage),
               "ktx2_sha256": sha256(args.out), "format": "R16G16B16A16_SFLOAT",
               "orientation": "top-left", "width": evidence["size"],
-              "height": evidence["size"],
+              "height": evidence["size"], "preview_gain": args.preview_gain,
               "max_half_quantization_error": float(np.max(np.abs(
-                  rgba[::-1, :, :3].astype(np.float32) - pixels[:, :, :3])))}
-    args.out.with_suffix(".json").write_text(json.dumps(result, indent=2,
-                                                      sort_keys=True) + "\n")
+                  rgba[::-1, :, :3].astype(np.float32) -
+                  pixels[:, :, :3] * args.preview_gain)))}
+    args.out.with_name(args.out.name + ".json").write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps(result, sort_keys=True))
 
 

@@ -4901,6 +4901,7 @@ bool CVulkanContext::UploadWorldMesh( const void *vertices, size_t vertexBytes, 
 			return false;
 		}
 	}
+	SetWorldLightmapHandle( -1 );
 	DestroyStreamBuffer( m_worldIndexBuffer );
 	DestroyStreamBuffer( m_worldVertexBuffer );
 	newVertices.capacity = vertexBytes;
@@ -4911,6 +4912,16 @@ bool CVulkanContext::UploadWorldMesh( const void *vertices, size_t vertexBytes, 
 	m_worldIndexCount = static_cast<uint32_t>( indexBytes / sizeof( uint32_t ) );
 	++m_worldMeshRevision;
 	return true;
+}
+
+void CVulkanContext::SetWorldLightmapHandle( int handle )
+{
+	if ( m_worldLightmapHandle == handle )
+		return;
+	const int old = m_worldLightmapHandle;
+	m_worldLightmapHandle = handle;
+	if ( old >= 0 )
+		DestroyManagedTexture( old );
 }
 
 bool CVulkanContext::QueueWorldMeshBatch( uint32_t firstIndex, uint32_t indexCount )
@@ -4997,6 +5008,7 @@ void CVulkanContext::ReleaseWorldMesh()
 	++m_worldMeshRevision;
 	if ( WorldMeshResident() )
 		vkDeviceWaitIdle( m_device );
+	SetWorldLightmapHandle( -1 );
 	DestroyStreamBuffer( m_worldIndexBuffer );
 	DestroyStreamBuffer( m_worldVertexBuffer );
 	m_worldVertexCount = 0;
@@ -5583,8 +5595,12 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					const bool secondSampler =
 					    ( d.colorFlags &
 					        ( kFragmentCable | kFragmentMonitor | kFragmentRefract ) ) != 0;
-					const int secondTexture =
-					    secondSampler ? d.samplerHandles[1] : d.lightmapHandle;
+					const int secondTexture = secondSampler ? d.samplerHandles[1]
+					                          : d.worldMesh && m_worldLightmapHandle >= 0
+					                              ? m_worldLightmapHandle
+					                              : d.lightmapHandle;
+					if ( d.worldMesh && m_worldLightmapHandle >= 0 && !secondSampler )
+						decodedFlags |= kColorSrgbReadLightmap; // LMAP is scene-linear HDR.
 					const int cubeTexture =
 					    ( d.colorFlags & ( kFragmentLightmappedEnvmap | kFragmentRefract ) ) != 0
 					        ? d.samplerHandles[2]

@@ -48,12 +48,24 @@ def main():
     if len(meshes) != 19:
         raise ValueError("USD source mesh inventory changed")
     bpy.ops.object.select_all(action="DESELECT")
+    baked_meshes = []
     for obj in meshes:
         if not obj.data.uv_layers.get("st"):
             raise ValueError("source mesh lacks material UVs: " + obj.name)
         obj.data.uv_layers.active = obj.data.uv_layers.new(name="lightmap_st")
-        obj.select_set(True)
-    bpy.context.view_layer.objects.active = meshes[0]
+        material_names = {slot.material.name.lower() for slot in obj.material_slots
+                          if slot.material}
+        if len(material_names) != 1:
+            raise ValueError("source mesh has ambiguous material: " + obj.name)
+        if material_names.isdisjoint({"spotholder", "glass"}):
+            obj.select_set(True)
+            baked_meshes.append(obj)
+        else:
+            for loop in obj.data.uv_layers.active.data:
+                loop.uv = (0.0, 0.0)
+    if not baked_meshes:
+        raise ValueError("no architectural meshes selected for baking")
+    bpy.context.view_layer.objects.active = baked_meshes[0]
     result = bpy.ops.uv.lightmap_pack(PREF_CONTEXT="ALL_FACES", PREF_PACK_IN_ONE=True,
                                       PREF_NEW_UVLAYER=False, PREF_BOX_DIV=12,
                                       PREF_MARGIN_DIV=0.1)
@@ -107,7 +119,7 @@ def main():
     scene.world.node_tree.nodes.get("Background").inputs["Strength"].default_value = 0.0
     atlas = bpy.data.images.new("Staircase2Lightmap", width=args.size, height=args.size,
                                 alpha=True, float_buffer=True)
-    for material in {slot.material for obj in meshes for slot in obj.material_slots}:
+    for material in {slot.material for obj in baked_meshes for slot in obj.material_slots}:
         if not material or not material.use_nodes:
             raise ValueError("source mesh has no Cycles material")
         node = material.node_tree.nodes.new("ShaderNodeTexImage")
@@ -126,11 +138,12 @@ def main():
                 "lighting_stage_sha256": sha256(args.out_stage),
                 "scene_sha256": sha256(args.scene), "atlas_exr_sha256": sha256(args.out_exr),
                 "size": args.size, "samples": args.samples,
-                "mesh_count": len(meshes), "emitter_count": len(lights),
+                "mesh_count": len(meshes), "baked_mesh_count": len(baked_meshes),
+                "emitter_count": len(lights),
                 "uv_extents": uv_extents, "blender": bpy.app.version_string,
                 "ocio_configuration_sha256": sha256(Path(os.environ["OCIO"]))}
-    args.out_exr.with_suffix(".json").write_text(json.dumps(evidence, indent=2,
-                                                        sort_keys=True) + "\n")
+    args.out_exr.with_name(args.out_exr.name + ".json").write_text(
+        json.dumps(evidence, indent=2, sort_keys=True) + "\n")
     print("STAIRCASE2_LIGHTMAP_BAKE " + json.dumps(evidence, sort_keys=True))
 
 

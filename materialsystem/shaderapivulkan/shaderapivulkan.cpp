@@ -24,6 +24,10 @@
 #include "render/legacy_shader_provider.h"
 #include "render/world_mesh_upload.h"
 #include "vulkan_device.h"
+#ifdef RFC0008_KTX_READER
+#include "vulkan_texture_image.h"
+#include "texturecontainer/texture_image.h"
+#endif
 #include "sdl3/sdl3_vulkan_surface_host.h"
 #include "vtf/vtf.h"
 #include "pixelwriter.h"
@@ -1903,6 +1907,36 @@ public:
 			return false;
 		}
 		return true;
+	}
+	bool UploadLightmapKtx2( const void *bytes, size_t size ) override
+	{
+#ifdef RFC0008_KTX_READER
+		if ( !g_VulkanContext.WorldMeshResident() || !bytes || size < 80 ||
+		     size > 256ull * 1024 * 1024 )
+			return false;
+		const auto encoded = std::span( static_cast<const std::byte *>( bytes ), size );
+		const auto image = texturecontainer::ReadKtx2Image( encoded );
+		if ( !image || image.Value().format != texturecontainer::PixelFormat::Rgba16Float ||
+		     image.Value().levels.size() != 1 )
+		{
+			Warning( "[NativeVulkan] WMSH LMAP KTX2 rejected\n" );
+			return false;
+		}
+		const auto upload =
+		    render_vulkan::CreateManagedTextureImage( g_VulkanContext, image.Value() );
+		if ( !upload )
+		{
+			Warning( "[NativeVulkan] WMSH LMAP GPU upload failed\n" );
+			return false;
+		}
+		g_VulkanContext.SetWorldLightmapHandle( upload.Value() );
+		Msg( "[NativeVulkan] WMSH LMAP ready (%u x %u, linear RGBA16F)\n",
+		    image.Value().levels[0].width, image.Value().levels[0].height );
+		return true;
+#else
+		Warning( "[NativeVulkan] WMSH LMAP requires the pinned KTX reader profile\n" );
+		return false;
+#endif
 	}
 	bool DrawBatch( uint32_t firstIndex, uint32_t indexCount ) override
 	{
