@@ -48,6 +48,17 @@ PHY_FIXTURES = [
     "models/player/chell.phy",
 ]
 
+# Vehicles driven through the controller as the game builds them: HL2's
+# jeep script on the buggy body (real wheels) and the airboat (raycast
+# pontoons), each script with its body's collision model.
+VEHICLE_FIXTURES = [
+    ("car", "scripts/vehicles/jeep_test.txt", "models/buggy.phy"),
+    ("airboat", "scripts/vehicles/airboat.txt", "models/airboat.phy"),
+]
+
+# A map whose world collision (the BSP physics lump) is decoded and traced.
+BSP_FIXTURE = "maps/testchmb_a_00.bsp"
+
 SURFACE_MANIFEST = "scripts/surfaceproperties_manifest.txt"
 
 # Every collision model shipped in these packs is swept (corpus mode): each
@@ -82,6 +93,7 @@ FAULTS = {
     "soup-null": ["polysoup.", "virtualmesh."],
     "collide-write-stub": ["collide.write"],
     "player-inert": ["player."],
+    "vehicle-stub": ["vehicle."],
 }
 
 LINE_RE = re.compile(r"^(PASS|FAIL) (\S+) (\S+?)(?:: (.*))?$")
@@ -195,6 +207,10 @@ def extract_fixtures(runtime, out_dir):
         raise ValueError("surface property manifest lists no files")
     surfaces = [extract(name) for name in surface_files]
     phys = [extract(name) for name in PHY_FIXTURES]
+    # Vehicle fixtures ride along as extra arguments after the models.
+    for kind, script, model in VEHICLE_FIXTURES:
+        phys.append(("--vehicle", "%s=%s,%s" % (kind, extract(script), extract(model))))
+    phys.append(("--bsp", extract(BSP_FIXTURE)))
     return surfaces, phys, provenance
 
 
@@ -256,7 +272,7 @@ def run_provider(binary, library, surfaces, phys, env, timeout, fault=None, corp
     for path in surfaces:
         command += ["--surfaceprops", path]
     for path in phys:
-        command += ["--phy", path]
+        command += list(path) if isinstance(path, tuple) else ["--phy", path]
     if corpus:
         command += ["--corpus", corpus]
     if fault:

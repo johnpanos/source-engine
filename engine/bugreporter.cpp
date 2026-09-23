@@ -1277,7 +1277,7 @@ void CBugUIPanel::OnDirectorySelected( char const *dir )
 	Q_FixSlashes( m_szVMFContentDirFullpath );
 	Q_StripTrailingSlash( m_szVMFContentDirFullpath );
 
-	if ( m_hDirectorySelectDialog != 0 )
+	if ( m_hDirectorySelectDialog.Get() != NULL )
 	{
 		m_hDirectorySelectDialog->MarkForDeletion();
 	}
@@ -1319,7 +1319,7 @@ void CBugUIPanel::OnFileSelected( char const *fullpath )
 	char ext[ 10 ];
 	Q_ExtractFileExtension( relativepath, ext, sizeof( ext ) );
 
-	if ( m_hFileOpenDialog != 0 )
+	if ( m_hFileOpenDialog.Get() != NULL )
 	{
 		m_hFileOpenDialog->MarkForDeletion();
 	}
@@ -1357,7 +1357,7 @@ void CBugUIPanel::OnIncludeFile()
 	if ( !m_hFileOpenDialog.Get() )
 	{
 		m_hFileOpenDialog = new FileOpenDialog( this, "Choose file to include", true );
-		if ( m_hFileOpenDialog != 0 )
+		if ( m_hFileOpenDialog.Get() != NULL )
 		{
 			m_hFileOpenDialog->AddFilter("*.*", "All Files (*.*)", true);
 		}

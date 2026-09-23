@@ -57,6 +57,7 @@ def build(bld):
 		'physics_material.cpp',
 		'physics_object.cpp',
 		'physics_saverestore.cpp',
+		'physics_vehicle.cpp',
 		# Shared authored-keyvalue parser (solid/constraint/vehicle blocks in
 		# .phy/vcollide text). Reused from the vphysics owner so Box3D does not
 		# duplicate that parsing; compiled here against this module's light

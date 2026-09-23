@@ -22,7 +22,7 @@ for k in $CONFIG_KEYS; do eval "__set_$k=\${$k+set}" "__val_$k=\${$k-}"; done
 MAP=testchmb_a_01
 WIDTH=1920; HEIGHT=1080; WINDOWED=1; FPS_MAX=120
 RENDERER=native-vulkan
-PHYSICS=vphysics
+PHYSICS=vphysics_box3d
 EXTRA_ARGS="-novid -insecure +mat_queue_mode 0"
 BUILD=1
 BUILD_DIR=build

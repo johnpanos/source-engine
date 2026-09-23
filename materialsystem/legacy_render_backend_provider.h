@@ -26,8 +26,24 @@
 #include "render/render_backend.h"
 #include "render/render_profile.h"
 
+struct MaterialAdapterInfo_t;
+
 namespace render
 {
+
+// The only part of IShaderDeviceMgr the provider uses: adapter enumeration.
+// Production code views the bound manager through it; tests supply fakes.
+class ILegacyAdapterSource
+{
+public:
+	virtual int GetAdapterCount() const = 0;
+	virtual void GetAdapterInfo( int adapter, MaterialAdapterInfo_t &info ) const = 0;
+
+protected:
+	~ILegacyAdapterSource() {}
+};
+
+typedef bool ( *LegacyDescribeAdapterFn )( int adapter, RenderAdapterInfo *info );
 
 class LegacyRenderBackendProvider : public IRenderBackendProvider
 {
@@ -37,7 +53,10 @@ public:
 	// Borrows nothing past construction: the adapter descriptions are copied.
 	// 'services' must hold a connected manager.
 	LegacyRenderBackendProvider(
-		const LegacyShaderProvider &provider, const LegacyShaderServices &services );
+	    const LegacyShaderProvider &provider, const LegacyShaderServices &services );
+	// 'adapters' may be null (an invalid provider); 'describe' is optional.
+	LegacyRenderBackendProvider( const LegacyShaderProvider &provider,
+	    const ILegacyAdapterSource *adapters, LegacyDescribeAdapterFn describe );
 
 	// False when the backend's facts contradict its manager (for example the
 	// manager enumerates an adapter the describe hook rejects). An invalid
@@ -50,11 +69,12 @@ public:
 	int GetAdapterCount() const override;
 	bool GetAdapterInfo( int index, RenderAdapterInfo *out ) const override;
 	IRenderDevice *CreateDevice(
-		const RenderDeviceRequest &request, RenderCreateError *error ) override;
+	    const RenderDeviceRequest &request, RenderCreateError *error ) override;
 	void DestroyDevice( IRenderDevice *device ) override;
 	size_t GetLiveDeviceCount() const override;
 
 private:
+	void Capture( const ILegacyAdapterSource *adapters, LegacyDescribeAdapterFn describe );
 	void Invalidate( const char *reason );
 
 	const char *m_pId;
@@ -73,8 +93,10 @@ const RenderQuirk *LegacyRenderQuirks( size_t *count );
 // The material system calls it during Init; tests call it with real and fake
 // services.
 bool SelectLegacyRenderProfile( const LegacyShaderProvider &provider,
-	const LegacyShaderServices &services, int adapter, const RenderProfileRequest &request,
-	RenderFeatureProfile *profile, RenderProfileError *error );
+    const LegacyShaderServices &services, int adapter, const RenderProfileRequest &request,
+    RenderFeatureProfile *profile, RenderProfileError *error );
+bool SelectLegacyRenderProfile( const LegacyRenderBackendProvider &backend, int adapter,
+    const RenderProfileRequest &request, RenderFeatureProfile *profile, RenderProfileError *error );
 
 // Writes a one-line human description of a profile for logs and diagnostics.
 void DescribeRenderProfile( const RenderFeatureProfile &profile, char *buffer, size_t size );

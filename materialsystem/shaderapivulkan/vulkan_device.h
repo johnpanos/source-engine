@@ -608,6 +608,16 @@ private:
 
 	void DestroySwapchainObjects();
 	bool RecreateSwapchain( std::string *outError );
+	// Whether the surface's extent or transform differs from the ones the
+	// swapchain was built against; a SUBOPTIMAL result rebuilds only then.
+	bool SurfaceChangedSinceSwapchain();
+	// The platform surface the window currently presents to (Android's
+	// ANativeWindow), or null where the window keeps one surface for its life.
+	void *CurrentNativeWindow() const;
+	// Keep m_surface bound to the window's current native surface, replacing it
+	// (and the swapchain) when the platform swapped or lost it. `outReady` is
+	// false while the platform has no surface at all (a backgrounded activity).
+	bool EnsureSurfaceCurrent( bool *outReady, std::string *outError );
 
 	bool RecordCapture( VkCommandBuffer cmd, uint32_t imageIndex );
 	// Scale the back buffer (resting in `backBufferLayout`) into the acquired
@@ -658,6 +668,16 @@ private:
 	// The window's drawable size when the swapchain was built; a different size
 	// at the next frame rebuilds it (Wayland reports no OUT_OF_DATE on resize).
 	int m_presentDrawable[2] = { 0, 0 };
+	// The surface's reported extent and transform when the swapchain was built.
+	// With an identity pre-transform on a rotated Android display every present
+	// is SUBOPTIMAL; only a change of these rebuilds, not every such frame.
+	VkExtent2D m_swapSurfaceExtent = { 0, 0 };
+	VkSurfaceTransformFlagBitsKHR m_swapSurfaceTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	// The native window m_surface was created from. Android destroys and
+	// recreates it (backgrounding, some display swaps); SDL then publishes a
+	// new one, and a surface of the old one can no longer present.
+	void *m_surfaceNativeWindow = nullptr;
+	bool m_surfaceLost = false;
 	VkExtent2D m_requestedBackBuffer = { 0, 0 };
 	VkFilter m_presentFilter = VK_FILTER_LINEAR;
 	bool m_capturePresented = false;

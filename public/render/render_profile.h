@@ -95,7 +95,7 @@ struct RenderQuirk
 	uint32_t deviceIdMax;
 	uint64_t driverVersionMin;
 	uint64_t driverVersionMax;
-	uint32_t removedFeatureBits;   // RenderFeatureSet bits the quirk disables
+	uint32_t removedFeatureBits;    // RenderFeatureSet bits the quirk disables
 	uint32_t enabledWorkaroundBits; // RenderWorkaroundSet bits the quirk enables
 };
 
@@ -140,12 +140,12 @@ struct RenderFeatureProfile
 enum class RenderProfileStatus : uint32_t
 {
 	kOk = 0,
-	kInvalidQuirk,          // the quirk table violates the rules above
+	kInvalidQuirk,           // the quirk table violates the rules above
 	kMissingRequiredFeature, // the adapter does not support a required feature
-	kRemovedByQuirk,        // a quirk disabled a required feature
-	kTooManyQuirks,         // more than kRenderMaxAppliedQuirks matched
-	kInvalidProvider,       // the provider's adapter facts are inconsistent
-	kInvalidAdapter,        // the requested adapter does not exist
+	kRemovedByQuirk,         // a quirk disabled a required feature
+	kTooManyQuirks,          // more than kRenderMaxAppliedQuirks matched
+	kInvalidProvider,        // the provider's adapter facts are inconsistent
+	kInvalidAdapter,         // the requested adapter does not exist
 };
 
 struct RenderProfileError
@@ -171,7 +171,7 @@ namespace profile_detail
 inline bool SelectorMatches( const char *selector, const char *value )
 {
 	return !selector ||
-		( value && contract_detail::EqualStrings( selector, value, kRenderMaxSelectorLength ) );
+	       ( value && contract_detail::EqualStrings( selector, value, kRenderMaxSelectorLength ) );
 }
 
 inline RenderFeature LowestFeature( uint32_t bits )
@@ -185,7 +185,7 @@ inline RenderFeature LowestFeature( uint32_t bits )
 }
 
 inline bool Fail( RenderProfileError *error, RenderProfileStatus status, const char *message,
-	RenderFeature feature = RenderFeature::kNeverSupported, const RenderQuirk *quirk = nullptr )
+    RenderFeature feature = RenderFeature::kNeverSupported, const RenderQuirk *quirk = nullptr )
 {
 	if ( error )
 	{
@@ -193,7 +193,7 @@ inline bool Fail( RenderProfileError *error, RenderProfileStatus status, const c
 		error->feature = feature;
 		error->quirk = quirk;
 		std::snprintf( error->message, sizeof( error->message ), "%s%s%s", message,
-			quirk && quirk->id ? ": " : "", quirk && quirk->id ? quirk->id : "" );
+		    quirk && quirk->id ? ": " : "", quirk && quirk->id ? quirk->id : "" );
 	}
 	return false;
 }
@@ -205,22 +205,22 @@ inline bool Fail( RenderProfileError *error, RenderProfileStatus status, const c
 inline bool IsValidRenderQuirk( const RenderQuirk &quirk )
 {
 	return quirk.id && quirk.id[0] && quirk.reason && quirk.reason[0] &&
-		( quirk.backendId || quirk.driverApi || quirk.vendorId != 0 ) &&
-		quirk.deviceIdMin <= quirk.deviceIdMax &&
-		quirk.driverVersionMin <= quirk.driverVersionMax &&
-		( quirk.removedFeatureBits != 0 || quirk.enabledWorkaroundBits != 0 ) &&
-		( quirk.enabledWorkaroundBits & ~RenderWorkaroundSet::KnownBits() ) == 0;
+	       ( quirk.backendId || quirk.driverApi || quirk.vendorId != 0 ) &&
+	       quirk.deviceIdMin <= quirk.deviceIdMax &&
+	       quirk.driverVersionMin <= quirk.driverVersionMax &&
+	       ( quirk.removedFeatureBits != 0 || quirk.enabledWorkaroundBits != 0 ) &&
+	       ( quirk.enabledWorkaroundBits & ~RenderWorkaroundSet::KnownBits() ) == 0;
 }
 
-inline bool RenderQuirkMatches( const RenderQuirk &quirk, const char *backendId,
-	const RenderAdapterInfo &adapter )
+inline bool RenderQuirkMatches(
+    const RenderQuirk &quirk, const char *backendId, const RenderAdapterInfo &adapter )
 {
 	return profile_detail::SelectorMatches( quirk.backendId, backendId ) &&
-		profile_detail::SelectorMatches( quirk.driverApi, adapter.driverApi ) &&
-		( quirk.vendorId == 0 || quirk.vendorId == adapter.vendorId ) &&
-		adapter.deviceId >= quirk.deviceIdMin && adapter.deviceId <= quirk.deviceIdMax &&
-		adapter.driverVersion >= quirk.driverVersionMin &&
-		adapter.driverVersion <= quirk.driverVersionMax;
+	       profile_detail::SelectorMatches( quirk.driverApi, adapter.driverApi ) &&
+	       ( quirk.vendorId == 0 || quirk.vendorId == adapter.vendorId ) &&
+	       adapter.deviceId >= quirk.deviceIdMin && adapter.deviceId <= quirk.deviceIdMax &&
+	       adapter.driverVersion >= quirk.driverVersionMin &&
+	       adapter.driverVersion <= quirk.driverVersionMax;
 }
 
 // Selects the profile for one adapter of the provider identified by backendId.
@@ -228,26 +228,26 @@ inline bool RenderQuirkMatches( const RenderQuirk &quirk, const char *backendId,
 // rather than only the adapters it happens to match. Quirks apply in table order.
 // On failure 'out' is left unchanged.
 inline bool SelectRenderFeatureProfile( const char *backendId, const RenderAdapterInfo &adapter,
-	const RenderProfileRequest &request, const RenderQuirk *quirks, size_t quirkCount,
-	RenderFeatureProfile *out, RenderProfileError *error )
+    const RenderProfileRequest &request, const RenderQuirk *quirks, size_t quirkCount,
+    RenderFeatureProfile *out, RenderProfileError *error )
 {
 	using profile_detail::Fail;
 	if ( !out || !backendId || !backendId[0] || ( quirkCount && !quirks ) )
 		return Fail( error, RenderProfileStatus::kInvalidProvider,
-			"selection needs a provider id, an output and a quirk table" );
+		    "selection needs a provider id, an output and a quirk table" );
 
 	for ( size_t i = 0; i < quirkCount; ++i )
 	{
 		if ( !IsValidRenderQuirk( quirks[i] ) )
 			return Fail( error, RenderProfileStatus::kInvalidQuirk, "invalid quirk entry",
-				RenderFeature::kNeverSupported, &quirks[i] );
+			    RenderFeature::kNeverSupported, &quirks[i] );
 	}
 
 	const uint32_t supported = adapter.supportedFeatures.bits;
 	const uint32_t missing = request.required.bits & ~supported;
 	if ( missing )
 		return Fail( error, RenderProfileStatus::kMissingRequiredFeature,
-			"adapter lacks a required feature", profile_detail::LowestFeature( missing ) );
+		    "adapter lacks a required feature", profile_detail::LowestFeature( missing ) );
 
 	RenderFeatureProfile profile;
 	uint32_t removed = 0;
@@ -259,17 +259,18 @@ inline bool SelectRenderFeatureProfile( const char *backendId, const RenderAdapt
 		const uint32_t removesRequired = quirk.removedFeatureBits & request.required.bits;
 		if ( removesRequired )
 			return Fail( error, RenderProfileStatus::kRemovedByQuirk,
-				"a quirk disables a required feature",
-				profile_detail::LowestFeature( removesRequired ), &quirk );
+			    "a quirk disables a required feature",
+			    profile_detail::LowestFeature( removesRequired ), &quirk );
 		if ( profile.appliedQuirkCount == kRenderMaxAppliedQuirks )
-			return Fail( error, RenderProfileStatus::kTooManyQuirks,
-				"too many quirks match this adapter" );
+			return Fail(
+			    error, RenderProfileStatus::kTooManyQuirks, "too many quirks match this adapter" );
 		removed |= quirk.removedFeatureBits;
 		profile.workarounds.bits |= quirk.enabledWorkaroundBits;
 		profile.appliedQuirks[profile.appliedQuirkCount++] = &quirk;
 	}
 
-	profile.enabled.bits = ( request.required.bits | request.preferred.bits ) & supported & ~removed;
+	profile.enabled.bits =
+	    ( request.required.bits | request.preferred.bits ) & supported & ~removed;
 	*out = profile;
 	if ( error )
 		*error = RenderProfileError();

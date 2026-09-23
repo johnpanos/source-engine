@@ -16,6 +16,7 @@
 #include "physics_constraint.h"
 #include "physics_fluid.h"
 #include "physics_object.h"
+#include "physics_vehicle.h"
 #include "tier0/dbg.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -104,6 +105,7 @@ CPhysicsEnvironmentBox3D::CPhysicsEnvironmentBox3D()
 	  m_pDebugOverlay( &s_defaultDebugOverlay )
 {
 	m_gravity.Init();
+	memset( &m_stats, 0, sizeof( m_stats ) );
 	m_performance.Defaults();
 
 	b3WorldDef def = b3DefaultWorldDef();
@@ -117,6 +119,7 @@ CPhysicsEnvironmentBox3D::CPhysicsEnvironmentBox3D()
 	def.userData = this;
 	m_world = b3CreateWorld( &def );
 	b3World_SetCustomFilterCallback( m_world, CustomFilter, this );
+	b3World_SetPreSolveCallback( m_world, PreSolve, this );
 }
 
 CPhysicsEnvironmentBox3D::~CPhysicsEnvironmentBox3D()
@@ -132,6 +135,8 @@ CPhysicsEnvironmentBox3D::~CPhysicsEnvironmentBox3D()
 	m_constraintGroups.PurgeAndDeleteElements();
 	m_motionControllers.PurgeAndDeleteElements();
 	m_playerControllers.PurgeAndDeleteElements();
+	// Vehicles destroy their wheel objects.
+	m_vehicles.PurgeAndDeleteElements();
 	m_springs.PurgeAndDeleteElements();
 	m_fluids.PurgeAndDeleteElements();
 	ClearDeadObjects();
@@ -223,6 +228,13 @@ void CPhysicsEnvironmentBox3D::DetachObject( CPhysicsObjectBox3D *pObject, bool 
 		m_motionControllers[i]->ObjectDestroyed( pObject );
 	for ( int i = 0; i < m_playerControllers.Count(); i++ )
 		m_playerControllers[i]->ObjectDestroyed( pObject );
+	for ( int i = 0; i < m_vehicles.Count(); i++ )
+		m_vehicles[i]->ObjectDestroyed( pObject );
+	for ( int i = m_deletedPairs.Count() - 1; i >= 0; i-- )
+	{
+		if ( m_deletedPairs[i].pA == pObject || m_deletedPairs[i].pB == pObject )
+			m_deletedPairs.FastRemove( i );
+	}
 	for ( int i = m_triggerOverlaps.Count() - 1; i >= 0; i-- )
 	{
 		if ( m_triggerOverlaps[i].pTrigger == pObject || m_triggerOverlaps[i].pObject == pObject )
@@ -570,10 +582,22 @@ void CPhysicsEnvironmentBox3D::DestroyMotionController( IPhysicsMotionController
 		delete pBox;
 }
 
-IPhysicsVehicleController *CPhysicsEnvironmentBox3D::CreateVehicleController( IPhysicsObject *pVehicleBodyObject, const vehicleparams_t &params, unsigned int nVehicleType, IPhysicsGameTrace *pGameTrace ) { return nullptr; }
-void CPhysicsEnvironmentBox3D::DestroyVehicleController( IPhysicsVehicleController * ) {}
-bool CPhysicsEnvironmentBox3D::SaveVehicle( const physsaveparams_t &params ) { return false; }
-bool CPhysicsEnvironmentBox3D::RestoreVehicle( const physrestoreparams_t &params ) { return false; }
+IPhysicsVehicleController *CPhysicsEnvironmentBox3D::CreateVehicleController( IPhysicsObject *pVehicleBodyObject, const vehicleparams_t &params, unsigned int nVehicleType, IPhysicsGameTrace *pGameTrace )
+{
+	if ( !pVehicleBodyObject )
+		return NULL;
+	CVehicleControllerBox3D *pController = new CVehicleControllerBox3D( this, params, nVehicleType, pGameTrace );
+	pController->InitCarSystem( ToBox3D( pVehicleBodyObject ) );
+	m_vehicles.AddToTail( pController );
+	return pController;
+}
+
+void CPhysicsEnvironmentBox3D::DestroyVehicleController( IPhysicsVehicleController *pController )
+{
+	CVehicleControllerBox3D *pBox = static_cast<CVehicleControllerBox3D *>( pController );
+	if ( pBox && m_vehicles.FindAndRemove( pBox ) )
+		delete pBox;
+}
 
 //-----------------------------------------------------------------------------
 // Simulation
@@ -581,8 +605,11 @@ bool CPhysicsEnvironmentBox3D::RestoreVehicle( const physrestoreparams_t &params
 bool CPhysicsEnvironmentBox3D::CustomFilter( b3ShapeId shapeIdA, b3ShapeId shapeIdB, void *pContext )
 {
 	CPhysicsEnvironmentBox3D *pEnv = static_cast<CPhysicsEnvironmentBox3D *>( pContext );
-	CPhysicsObjectBox3D *pA = ObjectOf( shapeIdA );
-	CPhysicsObjectBox3D *pB = ObjectOf( shapeIdB );
+	return pEnv->PairAllowed( ObjectOf( shapeIdA ), ObjectOf( shapeIdB ) );
+}
+
+bool CPhysicsEnvironmentBox3D::PairAllowed( CPhysicsObjectBox3D *pA, CPhysicsObjectBox3D *pB ) const
+{
 	if ( !pA || !pB || pA == pB )
 		return false;
 	if ( !pA->IsCollisionEnabled() || !pB->IsCollisionEnabled() )
@@ -595,8 +622,87 @@ bool CPhysicsEnvironmentBox3D::CustomFilter( b3ShapeId shapeIdA, b3ShapeId shape
 	if ( ( flagsB & CALLBACK_ENABLING_COLLISION ) && ( flagsA & CALLBACK_MARKED_FOR_DELETE ) )
 		return false;
 	// The game's collision rules (portal environments, player/prop filters).
-	if ( pEnv->m_pSolver && !pEnv->m_pSolver->ShouldCollide( pA, pB, pA->GetGameData(), pB->GetGameData() ) )
+	if ( m_pSolver && !m_pSolver->ShouldCollide( pA, pB, pA->GetGameData(), pB->GetGameData() ) )
 		return false;
+	return true;
+}
+
+// Box3D consults the collision rules when a pair's contact is created and
+// keeps the contact while the shapes' bounds overlap. IVP likewise keeps its
+// contact until the game deletes it through a friction snapshot, after which
+// the pair collides again only if the rules allow it. The deleted contact is
+// held off (pre-solve) for the next step, then for as long as the rules say
+// no.
+void CPhysicsEnvironmentBox3D::DeleteContactPair( CPhysicsObjectBox3D *pA, CPhysicsObjectBox3D *pB, bool wake )
+{
+	if ( !pA || !pB || pA == pB )
+		return;
+	for ( int i = 0; i < m_deletedPairs.Count(); i++ )
+	{
+		DeletedPair_t &pair = m_deletedPairs[i];
+		if ( ( pair.pA == pA && pair.pB == pB ) || ( pair.pA == pB && pair.pB == pA ) )
+		{
+			pair.fresh = true;
+			pair.disabled = true;
+			return;
+		}
+	}
+	DeletedPair_t pair = { pA, pB, true, true };
+	m_deletedPairs.AddToTail( pair );
+	// Recycled contacts skip the narrow phase (and so the pre-solve that
+	// holds this one off); recompute them while the deletion is pending.
+	b3Body_EnableContactRecycling( pA->GetBody(), false );
+	b3Body_EnableContactRecycling( pB->GetBody(), false );
+	// As IVP, only the partner is woken.
+	if ( wake && !pB->IsStatic() )
+		pB->Wake();
+}
+
+void CPhysicsEnvironmentBox3D::UpdateDeletedPairs()
+{
+	for ( int i = m_deletedPairs.Count() - 1; i >= 0; i-- )
+	{
+		DeletedPair_t &pair = m_deletedPairs[i];
+		if ( !IsLive( pair.pA ) || !IsLive( pair.pB ) )
+		{
+			m_deletedPairs.FastRemove( i );
+			continue;
+		}
+		if ( pair.fresh )
+		{
+			pair.fresh = false;
+			pair.disabled = true;
+			continue;
+		}
+		// IVP re-creates the contact once the rules allow the pair again.
+		if ( PairAllowed( pair.pA, pair.pB ) )
+		{
+			CPhysicsObjectBox3D *pObjects[2] = { pair.pA, pair.pB };
+			m_deletedPairs.FastRemove( i );
+			for ( int k = 0; k < 2; k++ )
+			{
+				bool pending = false;
+				for ( int j = 0; j < m_deletedPairs.Count() && !pending; j++ )
+					pending = m_deletedPairs[j].pA == pObjects[k] || m_deletedPairs[j].pB == pObjects[k];
+				if ( !pending )
+					b3Body_EnableContactRecycling( pObjects[k]->GetBody(), true );
+			}
+		}
+	}
+}
+
+bool CPhysicsEnvironmentBox3D::PreSolve( b3ShapeId shapeIdA, b3ShapeId shapeIdB, b3Pos point, b3Vec3 normal, void *pContext )
+{
+	CPhysicsEnvironmentBox3D *pEnv = static_cast<CPhysicsEnvironmentBox3D *>( pContext );
+	if ( !pEnv->m_deletedPairs.Count() )
+		return true;
+	CPhysicsObjectBox3D *pA = ObjectOf( shapeIdA ), *pB = ObjectOf( shapeIdB );
+	for ( int i = 0; i < pEnv->m_deletedPairs.Count(); i++ )
+	{
+		const DeletedPair_t &pair = pEnv->m_deletedPairs[i];
+		if ( ( pair.pA == pA && pair.pB == pB ) || ( pair.pA == pB && pair.pB == pA ) )
+			return !pair.disabled;
+	}
 	return true;
 }
 
@@ -604,6 +710,7 @@ void CPhysicsEnvironmentBox3D::SetCollisionSolver( IPhysicsCollisionSolver *pSol
 
 void CPhysicsEnvironmentBox3D::PreStep( float dt )
 {
+	UpdateDeletedPairs();
 	// Controllers may create or destroy objects; walk snapshots.
 	CUtlVector<IPhysicsObject *> objects;
 	objects.CopyArray( m_objects.Base(), m_objects.Count() );
@@ -625,6 +732,8 @@ void CPhysicsEnvironmentBox3D::PreStep( float dt )
 	// IVP runs player controllers just after motion controllers.
 	for ( int i = 0; i < m_playerControllers.Count(); i++ )
 		m_playerControllers[i]->Simulate( dt );
+	for ( int i = 0; i < m_vehicles.Count(); i++ )
+		m_vehicles[i]->Simulate( dt );
 	for ( int i = 0; i < m_springs.Count(); i++ )
 		m_springs[i]->Simulate( dt );
 	for ( int i = 0; i < m_fluids.Count(); i++ )
@@ -675,6 +784,8 @@ float CPhysicsEnvironmentBox3D::PairDeltaTime( IPhysicsObject *pA, IPhysicsObjec
 void CPhysicsEnvironmentBox3D::DispatchContactEvents( float dt )
 {
 	b3ContactEvents events = b3World_GetContactEvents( m_world );
+	m_stats.collisionPairsCreated += events.beginCount;
+	m_stats.collisionPairsDestroyed += events.endCount;
 
 	// Impacts: new contacts and hard hits on existing ones, once per object
 	// pair per step.
@@ -729,6 +840,18 @@ void CPhysicsEnvironmentBox3D::DispatchContactEvents( float dt )
 			if ( pA->IsMoveable() )
 				pB->SetTouchedDynamic();
 		}
+		// Every impact counts, reported or not (IVP's impact statistics).
+		{
+			float closing = DotProduct( pA->GetPreStepVelocity() - pB->GetPreStepVelocity(), impacts[i].normal );
+			float invMass = ( pA->IsMoveable() ? pA->GetInvMass() : 0.0f ) + ( pB->IsMoveable() ? pB->GetInvMass() : 0.0f );
+			m_stats.impactCounter++;
+			if ( pA->IsStatic() || pB->IsStatic() )
+				m_stats.impactStaticCount++;
+			// Kinetic energy of the closing motion (J), the most an impact
+			// can destroy.
+			if ( invMass > 0.0f )
+				m_stats.totalEnergyDestroyed += 0.5 * closing * closing / invMass / kInertiaToBox3D;
+		}
 		if ( !m_pCollisionEvents )
 			continue;
 
@@ -747,6 +870,7 @@ void CPhysicsEnvironmentBox3D::DispatchContactEvents( float dt )
 			continue;
 
 		Vector relative = pA->GetPreStepVelocity() - pB->GetPreStepVelocity();
+
 		event.pObjects[0] = pA;
 		event.pObjects[1] = pB;
 		event.surfaceProps[0] = pA->GetMaterialIndex();
@@ -954,6 +1078,7 @@ void CPhysicsEnvironmentBox3D::DispatchFrictionEvents( float dt )
 			if ( pA != pObject )
 				normal = -normal;
 			CCollisionDataBox3D collisionData( normal, point, vec3_origin );
+			m_stats.frictionEventsProcessed++;
 			m_pCollisionEvents->Friction( pObject, scaled * kInertiaToBox3D, pObject->GetMaterialIndex(),
 				pOther->GetMaterialIndex(), &collisionData );
 		}
@@ -1114,7 +1239,23 @@ void CPhysicsEnvironmentBox3D::SetPerformanceSettings( const physics_performance
 	b3World_SetMaximumLinearSpeed( m_world, m_performance.maxVelocity );
 }
 
-void CPhysicsEnvironmentBox3D::ReadStats( physics_stats_t *pOutput ) {}
-void CPhysicsEnvironmentBox3D::ClearStats() {}
+// IVP reports its statistic manager's counters; the Box3D equivalents are
+// kept since the last ClearStats: impacts (and those against static
+// objects), contact pairs begun and ended, the pairs currently touching, and
+// friction events. IVP's rescue/speed-gain and range counters have no Box3D
+// counterpart and read zero.
+void CPhysicsEnvironmentBox3D::ReadStats( physics_stats_t *pOutput )
+{
+	if ( !pOutput )
+		return;
+	*pOutput = m_stats;
+	b3Counters counters = b3World_GetCounters( m_world );
+	pOutput->collisionPairsTotal = counters.contactCount;
+}
+
+void CPhysicsEnvironmentBox3D::ClearStats()
+{
+	memset( &m_stats, 0, sizeof( m_stats ) );
+}
 
 void CPhysicsEnvironmentBox3D::DebugCheckContacts( void ) {}

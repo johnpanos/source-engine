@@ -324,7 +324,7 @@ void Step( IPhysicsEnvironment *pEnv, float seconds )
 	}
 }
 
-static char *ReadFile( const char *pPath, int *pSize )
+char *ReadFixtureFile( const char *pPath, int *pSize )
 {
 	FILE *fp = fopen( pPath, "rb" );
 	if ( !fp )
@@ -415,7 +415,7 @@ static void TestSurfaceProps( const CUtlVector<const char *> &files )
 	int parsed = 0;
 	for ( int i = 0; i < files.Count(); i++ )
 	{
-		char *pText = ReadFile( files[i], NULL );
+		char *pText = ReadFixtureFile( files[i], NULL );
 		if ( !Check( TIER_BOOT, "surfaceprops.read-fixture", pText != NULL, "%s", files[i] ) )
 			continue;
 		parsed = s_pProps->ParseSurfaceData( files[i], pText );
@@ -465,7 +465,7 @@ static void TestSurfaceProps( const CUtlVector<const char *> &files )
 	// Re-parsing an already-loaded file is a no-op returning 0.
 	if ( files.Count() )
 	{
-		char *pText = ReadFile( files[0], NULL );
+		char *pText = ReadFixtureFile( files[0], NULL );
 		int again = pText ? s_pProps->ParseSurfaceData( files[0], pText ) : -1;
 		free( pText );
 		Check( TIER_BOOT, "surfaceprops.duplicate-file", again == 0 && s_pProps->SurfacePropCount() == count,
@@ -751,7 +751,7 @@ static void TestPhyFixture( PhyFixture_t &fixture, int fixtureIndex )
 {
 	fixture.loaded = false;
 	int size = 0;
-	char *pData = ReadFile( fixture.pPath, &size );
+	char *pData = ReadFixtureFile( fixture.pPath, &size );
 	if ( !Check( TIER_BOOT, "vcollide.read-fixture", pData != NULL && size > (int)sizeof( phyheader_t ), "%s", fixture.pPath ) )
 		return;
 	phyheader_t header;
@@ -1043,7 +1043,7 @@ static void TestCorpus( const char *pListFile )
 		const char *pName = line;
 
 		int size = 0;
-		char *pData = ReadFile( pPath, &size );
+		char *pData = ReadFixtureFile( pPath, &size );
 		phyheader_t header;
 		if ( !pData || size < (int)sizeof( header ) )
 		{
@@ -1609,6 +1609,8 @@ int main( int argc, char **argv )
 	const char *pCorpus = NULL;
 	CUtlVector<const char *> surfaceFiles;
 	CUtlVector<PhyFixture_t> fixtures;
+	CUtlVector<VehicleFixture_t> vehicles;
+	const char *pBsp = NULL;
 	for ( int i = 1; i < argc; i++ )
 	{
 		if ( !V_strcmp( argv[i], "--provider" ) && i + 1 < argc )
@@ -1622,13 +1624,30 @@ int main( int argc, char **argv )
 			fixture.pPath = argv[++i];
 			fixtures.AddToTail( fixture );
 		}
+		else if ( !V_strcmp( argv[i], "--bsp" ) && i + 1 < argc )
+			pBsp = argv[++i];
+		else if ( !V_strcmp( argv[i], "--vehicle" ) && i + 1 < argc )
+		{
+			// kind=script,model
+			char *pSpec = argv[++i];
+			char *pEquals = strchr( pSpec, '=' );
+			char *pComma = pEquals ? strchr( pEquals, ',' ) : NULL;
+			if ( !pComma )
+			{
+				fprintf( stderr, "bad --vehicle %s\n", pSpec );
+				return 2;
+			}
+			*pEquals = *pComma = '\0';
+			VehicleFixture_t vehicle = { pSpec, pEquals + 1, pComma + 1 };
+			vehicles.AddToTail( vehicle );
+		}
 		else if ( !V_strcmp( argv[i], "--fault" ) && i + 1 < argc )
 			s_pFault = argv[++i];
 		else if ( !V_strcmp( argv[i], "--corpus" ) && i + 1 < argc )
 			pCorpus = argv[++i];
 		else
 		{
-			fprintf( stderr, "usage: %s --provider <lib.so> --surfaceprops <file>... --phy <file>... [--corpus <list>] [--fault <name>]\n", argv[0] );
+			fprintf( stderr, "usage: %s --provider <lib.so> --surfaceprops <file>... --phy <file>... [--vehicle <kind>=<script>,<phy>]... [--bsp <map>] [--corpus <list>] [--fault <name>]\n", argv[0] );
 			return 2;
 		}
 	}
@@ -1659,7 +1678,8 @@ int main( int argc, char **argv )
 		TestFluidsAndSprings();
 		TestSaveRestore();
 		TestPlayerController();
-		TestCollideModels( fixtures.Count() && fixtures[0].loaded ? &fixtures[0].collide : NULL );
+		TestVehicles( vehicles.Base(), vehicles.Count() );
+		TestCollideModels( fixtures.Count() && fixtures[0].loaded ? &fixtures[0].collide : NULL, pBsp );
 		for ( int i = 0; i < fixtures.Count(); i++ )
 		{
 			if ( fixtures[i].collide.solids )

@@ -282,47 +282,46 @@ void CheckPresentation( IRenderBackendProvider &provider, IRenderDevice &device,
 
 	RenderCreateError err;
 	IRenderPresentation *pres = device.CreatePresentation( surface, config, &err );
-	report.Record( "present.create", pres != nullptr,
-		"presentation creation must succeed where advertised" );
+	report.Record(
+	    "present.create", pres != nullptr, "presentation creation must succeed where advertised" );
 	if ( !pres )
 		return;
 
 	report.Record( "present.initial_extent", pres->GetExtent() == config.extent,
-		"presentation must report its configured extent" );
+	    "presentation must report its configured extent" );
 
 	// Runtime resize must not recreate the logical device.
 	const bool resized = pres->ResizeTo( Extent( 1024, 768 ) );
 	report.Record( "present.resize", resized && pres->GetExtent() == Extent( 1024, 768 ),
-		"runtime resize must update the drawable extent" );
+	    "runtime resize must update the drawable extent" );
 	report.Record( "present.resize_keeps_device",
-		&device == deviceBefore && device.GetState() == RenderDeviceState::kAvailable,
-		"runtime resize must not recreate or lose the logical render device" );
+	    &device == deviceBefore && device.GetState() == RenderDeviceState::kAvailable,
+	    "runtime resize must not recreate or lose the logical render device" );
 
 	// Orientation-style aspect change.
 	const bool rotated = pres->ResizeTo( Extent( 600, 800 ) );
 	report.Record( "present.orientation_change",
-		rotated && pres->GetExtent() == Extent( 600, 800 ) &&
-			device.GetState() == RenderDeviceState::kAvailable,
-		"an aspect/orientation change must resize without losing the device" );
+	    rotated && pres->GetExtent() == Extent( 600, 800 ) &&
+	        device.GetState() == RenderDeviceState::kAvailable,
+	    "an aspect/orientation change must resize without losing the device" );
 
 	// Transient zero-sized state suspends non-fatally.
 	pres->ResizeTo( Extent( 0, 0 ) );
 	const RenderPresentStatus suspended = pres->Present();
 	report.Record( "present.zero_size_suspends",
-		suspended == RenderPresentStatus::kSuspended &&
-			device.GetState() != RenderDeviceState::kFatal,
-		"a zero-sized surface must suspend presentation, not fail fatally" );
+	    suspended == RenderPresentStatus::kSuspended &&
+	        device.GetState() != RenderDeviceState::kFatal,
+	    "a zero-sized surface must suspend presentation, not fail fatally" );
 
 	// Resume when presentable again.
 	pres->ResizeTo( Extent( 640, 480 ) );
 	const RenderPresentStatus resumed = pres->Present();
 	report.Record( "present.resume_after_suspend", resumed == RenderPresentStatus::kOk,
-		"presentation must resume once the surface is presentable again" );
+	    "presentation must resume once the surface is presentable again" );
 
 	device.DestroyPresentation( pres );
-	report.Record( "present.destroy_keeps_device",
-		device.GetState() != RenderDeviceState::kFatal,
-		"destroying a presentation must not fault the device" );
+	report.Record( "present.destroy_keeps_device", device.GetState() != RenderDeviceState::kFatal,
+	    "destroying a presentation must not fault the device" );
 
 	// Multiple presentations, where advertised.
 	const RenderProviderCaps caps = provider.GetProviderCaps();
@@ -344,7 +343,7 @@ void CheckPresentation( IRenderBackendProvider &provider, IRenderDevice &device,
 				live.push_back( p );
 		}
 		report.Record( "present.multiple_surfaces", allOk && live.size() == caps.maxPresentations,
-			"a provider must support up to maxPresentations concurrent surfaces" );
+		    "a provider must support up to maxPresentations concurrent surfaces" );
 
 		// One beyond the limit must fail structurally.
 		TestSurface extra( Extent( 320, 240 ) );
@@ -353,8 +352,8 @@ void CheckPresentation( IRenderBackendProvider &provider, IRenderDevice &device,
 		RenderCreateError overErr;
 		IRenderPresentation *over = device.CreatePresentation( extra, cfg, &overErr );
 		report.Record( "present.over_limit_rejected",
-			over == nullptr && overErr.status == RenderCreateStatus::kTooManyPresentations,
-			"exceeding maxPresentations must fail with kTooManyPresentations" );
+		    over == nullptr && overErr.status == RenderCreateStatus::kTooManyPresentations,
+		    "exceeding maxPresentations must fail with kTooManyPresentations" );
 		if ( over )
 			device.DestroyPresentation( over );
 

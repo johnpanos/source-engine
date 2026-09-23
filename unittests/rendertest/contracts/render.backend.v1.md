@@ -46,7 +46,10 @@ provider is never failed for a capability it never claimed.
 
 No field in a returned value (notably `RenderAdapterInfo`) may point into
 transient provider memory; descriptions are pure values that outlive the
-enumeration.
+enumeration. `RenderAdapterInfo` also carries driver facts (`vendorId`,
+`deviceId`, `driverVersion`, `driverApi`). They take part in value equality and
+exist only so documented quirks can name the adapters they affect
+([`render.profile.v1`](render.profile.v1.md)); portable code must not branch on them.
 
 ## 3. Results and guarantees
 
@@ -102,6 +105,19 @@ enumeration.
   the suite is reproducible under the headless profile.
 
 ## 7. Conformance suite and providers
+
+The suite is C++11-compatible, so legacy-dialect targets run the same code as
+the headless C++20 profile and the C++17 Vulkan target.
+
+- `unittests/shaderextensiontest/test_legacy_render_provider.cpp`
+  (`legacy_render_provider_conformance`, Waf): runs this suite against
+  `LegacyRenderBackendProvider` over the real `shaderapiempty` module (the
+  product null backend), the native Vulkan module where it is linked, and five
+  deliberately bad legacy backends that the suite must reject. Legacy providers
+  claim neither offscreen devices nor presentation (those stay on the legacy
+  `SetMode` path), so they certify identity, adapter enumeration, structured
+  creation failure and zero live devices. The D3D9 module enumerates adapters
+  only inside a composed material system; product boots cover it.
 
 - `test_render_backend.cpp` (`render.backend.null`, positive): the null provider
   must pass every obligation above (33 checks today) and the suite must have run a

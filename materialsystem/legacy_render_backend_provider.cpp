@@ -10,8 +10,8 @@
 #include "materialsystem/imaterialsystem.h"
 #include "shaderapi/IShaderDevice.h"
 
-#include <stdio.h>
-#include <string.h>
+// <cstring> is unavailable here: material-system targets define strncpy away.
+#include <cstdio>
 
 namespace render
 {
@@ -21,16 +21,16 @@ namespace
 
 void CopyString( char *dest, size_t size, const char *source )
 {
-	snprintf( dest, size, "%s", source ? source : "" );
+	std::snprintf( dest, size, "%s", source ? source : "" );
 }
 
 const RenderQuirk s_LegacyQuirks[] = {
-	{ "gl.float-normalization-cubemaps",
-		"The D3D9-to-OpenGL translation layer (togl) has poor 8-bit and signed "
-		"UVWQ8888 cubemap format support, so the texture manager has always built "
-		"normalization cubemaps as RGBA16F whenever it ran over OpenGL.",
-		nullptr, "opengl", 0, 0, kRenderAnyDeviceIdMax, 0, kRenderAnyDriverVersionMax, 0,
-		RenderWorkaroundSet::Bit( RenderWorkaround::kFloatNormalizationCubemaps ) },
+    { "gl.float-normalization-cubemaps",
+        "The D3D9-to-OpenGL translation layer (togl) has poor 8-bit and signed "
+        "UVWQ8888 cubemap format support, so the texture manager has always built "
+        "normalization cubemaps as RGBA16F whenever it ran over OpenGL.",
+        nullptr, "opengl", 0, 0, kRenderAnyDeviceIdMax, 0, kRenderAnyDriverVersionMax, 0,
+        RenderWorkaroundSet::Bit( RenderWorkaround::kFloatNormalizationCubemaps ) },
 };
 
 struct FeatureName
@@ -40,36 +40,72 @@ struct FeatureName
 };
 
 const FeatureName s_FeatureNames[] = {
-	{ RenderFeature::kSampledSrgb, "sampled-srgb" },
-	{ RenderFeature::kDepthColorPairing, "depth-color-pairing" },
-	{ RenderFeature::kComputeShaders, "compute-shaders" },
-	{ RenderFeature::kMultiSample4x, "msaa-4x" },
-	{ RenderFeature::kRuntimeShaderCompile, "runtime-shader-compile" },
-	{ RenderFeature::kOffscreenRender, "offscreen-render" },
+    { RenderFeature::kSampledSrgb, "sampled-srgb" },
+    { RenderFeature::kDepthColorPairing, "depth-color-pairing" },
+    { RenderFeature::kComputeShaders, "compute-shaders" },
+    { RenderFeature::kMultiSample4x, "msaa-4x" },
+    { RenderFeature::kRuntimeShaderCompile, "runtime-shader-compile" },
+    { RenderFeature::kOffscreenRender, "offscreen-render" },
+};
+
+// Views a bound device manager as an adapter source.
+class CDeviceMgrAdapterSource : public ILegacyAdapterSource
+{
+public:
+	explicit CDeviceMgrAdapterSource( const IShaderDeviceMgr &manager ) : m_Manager( manager ) {}
+	int GetAdapterCount() const { return m_Manager.GetAdapterCount(); }
+	void GetAdapterInfo( int adapter, MaterialAdapterInfo_t &info ) const
+	{
+		m_Manager.GetAdapterInfo( adapter, info );
+	}
+
+private:
+	const IShaderDeviceMgr &m_Manager;
 };
 
 void Append( char *buffer, size_t size, const char *text )
 {
-	const size_t used = strlen( buffer );
+	size_t used = 0;
+	while ( used < size && buffer[used] )
+		++used;
 	if ( used + 1 < size )
-		snprintf( buffer + used, size - used, "%s", text );
+		std::snprintf( buffer + used, size - used, "%s", text );
 }
 
 } // namespace
 
 LegacyRenderBackendProvider::LegacyRenderBackendProvider(
-	const LegacyShaderProvider &provider, const LegacyShaderServices &services )
-	: m_pId( provider.id ), m_pName( provider.legacyModuleName ), m_bValid( true ),
-	  m_nAdapters( 0 )
+    const LegacyShaderProvider &provider, const LegacyShaderServices &services )
+    : m_pId( provider.id ), m_pName( provider.legacyModuleName ), m_bValid( true ), m_nAdapters( 0 )
 {
 	m_InvalidReason[0] = '\0';
-	if ( !m_pId || !m_pId[0] || !services.manager )
+	if ( !services.manager )
+	{
+		Capture( NULL, services.describeAdapter );
+		return;
+	}
+	const CDeviceMgrAdapterSource adapters( *services.manager );
+	Capture( &adapters, services.describeAdapter );
+}
+
+LegacyRenderBackendProvider::LegacyRenderBackendProvider( const LegacyShaderProvider &provider,
+    const ILegacyAdapterSource *adapters, LegacyDescribeAdapterFn describe )
+    : m_pId( provider.id ), m_pName( provider.legacyModuleName ), m_bValid( true ), m_nAdapters( 0 )
+{
+	m_InvalidReason[0] = '\0';
+	Capture( adapters, describe );
+}
+
+void LegacyRenderBackendProvider::Capture(
+    const ILegacyAdapterSource *adapters, LegacyDescribeAdapterFn describe )
+{
+	if ( !m_pId || !m_pId[0] || !adapters )
 	{
 		Invalidate( "the provider has no id or no connected device manager" );
 		return;
 	}
 
-	const int count = services.manager->GetAdapterCount();
+	const int count = adapters->GetAdapterCount();
 	if ( count < 0 || count > kMaxAdapters )
 	{
 		Invalidate( "the device manager reports an unsupported adapter count" );
@@ -78,26 +114,25 @@ LegacyRenderBackendProvider::LegacyRenderBackendProvider(
 
 	for ( int i = 0; i < count; ++i )
 	{
-		MaterialAdapterInfo_t legacy;
-		memset( &legacy, 0, sizeof( legacy ) );
-		services.manager->GetAdapterInfo( i, legacy );
+		MaterialAdapterInfo_t legacy = MaterialAdapterInfo_t();
+		adapters->GetAdapterInfo( i, legacy );
 
 		RenderAdapterInfo &info = m_Adapters[i];
 		info = RenderAdapterInfo();
-		snprintf( info.id, sizeof( info.id ), "%s:%d", m_pId, i );
+		std::snprintf( info.id, sizeof( info.id ), "%s:%d", m_pId, i );
 		legacy.m_pDriverName[sizeof( legacy.m_pDriverName ) - 1] = '\0';
 		CopyString( info.name, sizeof( info.name ), legacy.m_pDriverName );
 		info.vendorId = legacy.m_VendorID;
 		info.deviceId = legacy.m_DeviceID;
 		info.driverVersion =
-			( uint64_t( legacy.m_nDriverVersionHigh ) << 32 ) | legacy.m_nDriverVersionLow;
+		    ( uint64_t( legacy.m_nDriverVersionHigh ) << 32 ) | legacy.m_nDriverVersionLow;
 
 		// The manager owns adapter identity; the backend's describe hook owns
 		// only the semantic facts the legacy structure cannot express.
-		if ( services.describeAdapter )
+		if ( describe )
 		{
 			RenderAdapterInfo facts;
-			if ( !services.describeAdapter( i, &facts ) )
+			if ( !describe( i, &facts ) )
 			{
 				Invalidate( "the backend cannot describe an adapter its manager enumerates" );
 				return;
@@ -153,7 +188,7 @@ bool LegacyRenderBackendProvider::GetAdapterInfo( int index, RenderAdapterInfo *
 }
 
 IRenderDevice *LegacyRenderBackendProvider::CreateDevice(
-	const RenderDeviceRequest &request, RenderCreateError *error )
+    const RenderDeviceRequest &request, RenderCreateError *error )
 {
 	RenderCreateError result;
 	if ( request.adapterIndex < 0 || request.adapterIndex >= m_nAdapters )
@@ -162,10 +197,10 @@ IRenderDevice *LegacyRenderBackendProvider::CreateDevice(
 		CopyString( result.message, sizeof( result.message ), "no such adapter" );
 	}
 	else if ( !m_Adapters[request.adapterIndex].supportedFeatures.Contains(
-				  request.requiredFeatures ) )
+	              request.requiredFeatures ) )
 	{
-		const uint32_t missing =
-			request.requiredFeatures.bits & ~m_Adapters[request.adapterIndex].supportedFeatures.bits;
+		const uint32_t missing = request.requiredFeatures.bits &
+		                         ~m_Adapters[request.adapterIndex].supportedFeatures.bits;
 		result.status = RenderCreateStatus::kUnsupportedRequiredFeature;
 		for ( uint32_t bit = 0; bit < 32; ++bit )
 		{
@@ -181,7 +216,7 @@ IRenderDevice *LegacyRenderBackendProvider::CreateDevice(
 	{
 		result.status = RenderCreateStatus::kNotAdvertised;
 		CopyString( result.message, sizeof( result.message ),
-			"legacy devices are created by the material system's SetMode path" );
+		    "legacy devices are created by the material system's SetMode path" );
 	}
 	if ( error )
 		*error = result;
@@ -206,10 +241,17 @@ const RenderQuirk *LegacyRenderQuirks( size_t *count )
 }
 
 bool SelectLegacyRenderProfile( const LegacyShaderProvider &provider,
-	const LegacyShaderServices &services, int adapter, const RenderProfileRequest &request,
-	RenderFeatureProfile *profile, RenderProfileError *error )
+    const LegacyShaderServices &services, int adapter, const RenderProfileRequest &request,
+    RenderFeatureProfile *profile, RenderProfileError *error )
 {
 	const LegacyRenderBackendProvider backend( provider, services );
+	return SelectLegacyRenderProfile( backend, adapter, request, profile, error );
+}
+
+bool SelectLegacyRenderProfile( const LegacyRenderBackendProvider &backend, int adapter,
+    const RenderProfileRequest &request, RenderFeatureProfile *profile, RenderProfileError *error )
+{
+	const char *id = backend.GetBackendId().id;
 	if ( !backend.IsValid() )
 	{
 		if ( error )
@@ -228,16 +270,15 @@ bool SelectLegacyRenderProfile( const LegacyShaderProvider &provider,
 		{
 			*error = RenderProfileError();
 			error->status = RenderProfileStatus::kInvalidAdapter;
-			snprintf( error->message, sizeof( error->message ),
-				"provider '%s' has no adapter %d", provider.id, adapter );
+			std::snprintf( error->message, sizeof( error->message ),
+			    "provider '%s' has no adapter %d", id, adapter );
 		}
 		return false;
 	}
 
 	size_t quirkCount = 0;
 	const RenderQuirk *quirks = LegacyRenderQuirks( &quirkCount );
-	return SelectRenderFeatureProfile(
-		provider.id, info, request, quirks, quirkCount, profile, error );
+	return SelectRenderFeatureProfile( id, info, request, quirks, quirkCount, profile, error );
 }
 
 void DescribeRenderProfile( const RenderFeatureProfile &profile, char *buffer, size_t size )

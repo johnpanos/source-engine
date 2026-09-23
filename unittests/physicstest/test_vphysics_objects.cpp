@@ -16,6 +16,7 @@
 #include "vphysics/friction.h"
 #include "tier1/utlvector.h"
 #include "bspflags.h"
+#include "vphysics/stats.h"
 
 namespace
 {
@@ -714,8 +715,137 @@ void TestLifetime()
 }
 }
 
+namespace
+{
+// Game collision rules that can turn one pair off (the NPC solver's
+// penetration mode).
+class CPairRule : public IPhysicsCollisionSolver
+{
+public:
+	CPairRule() : m_pA( NULL ), m_pB( NULL ) {}
+	virtual int ShouldCollide( IPhysicsObject *p0, IPhysicsObject *p1, void *, void * )
+	{
+		return !( ( p0 == m_pA && p1 == m_pB ) || ( p0 == m_pB && p1 == m_pA ) );
+	}
+	virtual int ShouldSolvePenetration( IPhysicsObject *, IPhysicsObject *, void *, void *, float ) { return 1; }
+	virtual bool ShouldFreezeObject( IPhysicsObject * ) { return false; }
+	virtual int AdditionalCollisionChecksThisTick( int ) { return 0; }
+	virtual bool ShouldFreezeContacts( IPhysicsObject **, int ) { return false; }
+	IPhysicsObject *m_pA;
+	IPhysicsObject *m_pB;
+};
+
+class CTouchCounter : public IPhysicsCollisionEvent
+{
+public:
+	CTouchCounter() : m_start( 0 ), m_end( 0 ) {}
+	virtual void PreCollision( vcollisionevent_t * ) {}
+	virtual void PostCollision( vcollisionevent_t * ) {}
+	virtual void Friction( IPhysicsObject *, float, int, int, IPhysicsCollisionData * ) {}
+	virtual void StartTouch( IPhysicsObject *, IPhysicsObject *, IPhysicsCollisionData * ) { m_start++; }
+	virtual void EndTouch( IPhysicsObject *, IPhysicsObject *, IPhysicsCollisionData * ) { m_end++; }
+	virtual void FluidStartTouch( IPhysicsObject *, IPhysicsFluidController * ) {}
+	virtual void FluidEndTouch( IPhysicsObject *, IPhysicsFluidController * ) {}
+	virtual void PostSimulationFrame() {}
+	int m_start, m_end;
+};
+
+// A cube resting on the floor; then optionally the rules drop the pair and/or
+// the game deletes their contact through the cube's friction snapshot, as
+// CPhysicsNPCSolver does. Returns the cube's height a second later.
+float ContactDeletion( bool ruleOff, bool deleteContact, int *pStarts = NULL, int *pEnds = NULL )
+{
+	CPairRule rule;
+	World_t world;
+	if ( !CreateWorld( world, &rule ) )
+		return 0.0f;
+	CTouchCounter touches;
+	world.pEnv->SetCollisionEventHandler( &touches );
+	IPhysicsObject *pCube = CreateCube( world, Vector( 0, 0, 17 ) );
+	pCube->SetCallbackFlags( pCube->GetCallbackFlags() | CALLBACK_GLOBAL_TOUCH_STATIC );
+	Step( world.pEnv, 1.0f );
+	touches.m_start = touches.m_end = 0;
+	if ( ruleOff )
+	{
+		rule.m_pA = pCube;
+		rule.m_pB = world.pFloor;
+	}
+	if ( deleteContact )
+	{
+		IPhysicsFrictionSnapshot *pSnapshot = pCube->CreateFrictionSnapshot();
+		while ( pSnapshot->IsValid() )
+		{
+			if ( pSnapshot->GetObject( 1 ) == world.pFloor )
+				pSnapshot->MarkContactForDelete();
+			pSnapshot->NextFrictionData();
+		}
+		pSnapshot->DeleteAllMarkedContacts( true );
+		pCube->DestroyFrictionSnapshot( pSnapshot );
+	}
+	// The deletion wakes only the partner (here the static floor).
+	pCube->Wake();
+	Step( world.pEnv, 1.0f );
+	float z = PositionOf( pCube ).z;
+	if ( pStarts )
+		*pStarts = touches.m_start;
+	if ( pEnds )
+		*pEnds = touches.m_end;
+	world.pEnv->SetCollisionEventHandler( NULL );
+	world.pEnv->DestroyObject( pCube );
+	DestroyWorld( world );
+	return z;
+}
+
+void TestContactDeletion()
+{
+	// A rule change alone leaves the existing contact in place; deleting the
+	// contact applies it; a deleted contact the rules still allow returns.
+	float ruleOnly = ContactDeletion( true, false );
+	int starts = 0, ends = 0;
+	float deleted = ContactDeletion( true, true );
+	float restored = ContactDeletion( false, true, &starts, &ends );
+
+	Check( TIER_GAMEPLAY, "contacts.rule-change-keeps-contact", Near( ruleOnly, 16.0f, 2.0f ), "z %.2f", ruleOnly );
+	Check( TIER_GAMEPLAY, "contacts.delete-applies-rules", deleted < -40.0f, "z %.2f", deleted );
+	// The deleted contact ends and begins again (IVP reports each contact
+	// point; the count may differ).
+	Check( TIER_GAMEPLAY, "contacts.deleted-contact-returns", Near( restored, 16.0f, 2.0f ) && starts > 0 && ends > 0,
+		"z %.2f starts %d ends %d", restored, starts, ends );
+}
+
+// Simulation statistics: counters accumulate as objects collide and reset
+// on ClearStats.
+void TestStats()
+{
+	World_t world;
+	if ( !CreateWorld( world, NULL ) )
+		return;
+	world.pEnv->ClearStats();
+	physics_stats_t cleared;
+	memset( &cleared, 0xFF, sizeof( cleared ) );
+	world.pEnv->ReadStats( &cleared );
+	IPhysicsObject *pCube = CreateCube( world, Vector( 0, 0, 100 ) );
+	Step( world.pEnv, 2.0f );
+	physics_stats_t stats;
+	memset( &stats, 0, sizeof( stats ) );
+	world.pEnv->ReadStats( &stats );
+	Check( TIER_GAMEPLAY, "stats.counts-collisions", cleared.impactCounter == 0 && cleared.collisionPairsCreated == 0 &&
+		stats.impactCounter > 0 && stats.collisionPairsCreated > 0, "cleared %d/%d then impacts %d pairs %d", cleared.impactCounter,
+		cleared.collisionPairsCreated, stats.impactCounter, stats.collisionPairsCreated );
+	world.pEnv->ClearStats();
+	world.pEnv->ReadStats( &stats );
+	Check( TIER_GAMEPLAY, "stats.clear", stats.impactCounter == 0 && stats.collisionPairsCreated == 0 );
+	// Debug hook: callable in any state.
+	world.pEnv->DebugCheckContacts();
+	world.pEnv->DestroyObject( pCube );
+	DestroyWorld( world );
+}
+}
+
 void TestObjectsAndEvents()
 {
+	TestStats();
+	TestContactDeletion();
 	TestMassProperties();
 	TestDrag();
 	TestDynamicsHelpers();

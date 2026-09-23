@@ -3,10 +3,14 @@
 
 #include "vphysics_interface.h"
 #include "vphysics/performance.h"
+#include "vphysics/stats.h"
 #include "vphysics/constraints.h"
 #include "utlvector.h"
 #include "box3d/id.h"
+#include "box3d/math_functions.h"
 #include "physics_controllers.h"
+
+class CVehicleControllerBox3D;
 
 class CPhysicsObjectBox3D;
 class CConstraintBox3D;
@@ -133,6 +137,9 @@ public:
 	// Object registration used by object creation from saved/serialized state.
 	IPhysicsObject *TrackObject( CPhysicsObjectBox3D *pObject );
 	void AddPlayerController( CPlayerControllerBox3D *pController );
+	// Drops the contact between two objects (IPhysicsFrictionSnapshot::
+	// DeleteAllMarkedContacts).
+	void DeleteContactPair( CPhysicsObjectBox3D *pA, CPhysicsObjectBox3D *pB, bool wake );
 	void RemovePlayerController( CPlayerControllerBox3D *pController );
 	CPlayerControllerBox3D *FindPlayerController( IPhysicsObject *pObject ) const;
 	// Linked providers (restore): fluids, springs and constraints that a
@@ -141,6 +148,9 @@ public:
 		IPhysicsConstraintGroup *pGroup, int type, const constraint_breakableparams_t &breakable );
 
 private:
+	static bool PreSolve( b3ShapeId shapeIdA, b3ShapeId shapeIdB, b3Pos point, b3Vec3 normal, void *pContext );
+	bool PairAllowed( CPhysicsObjectBox3D *pA, CPhysicsObjectBox3D *pB ) const;
+	void UpdateDeletedPairs();
 	static bool CustomFilter( b3ShapeId shapeIdA, b3ShapeId shapeIdB, void *pContext );
 	void Step( float dt );
 	void PreStep( float dt );
@@ -198,6 +208,19 @@ private:
 	CUtlVector<CConstraintGroupBox3D *> m_constraintGroups;
 	CUtlVector<CPhysicsFluidControllerBox3D *> m_fluids;
 	CUtlVector<CPhysicsSpringBox3D *> m_springs;
+	CUtlVector<CVehicleControllerBox3D *> m_vehicles;
+	// Contacts the game deleted through a friction snapshot (IVP's
+	// DeleteAllFrictionPairs), kept off while the collision rules say so.
+	struct DeletedPair_t
+	{
+		CPhysicsObjectBox3D *pA;
+		CPhysicsObjectBox3D *pB;
+		bool fresh;		// deleted since the last step: off for one step
+		bool disabled;
+	};
+	CUtlVector<DeletedPair_t> m_deletedPairs;
+	// Counters since ClearStats (IVP's statistic manager).
+	physics_stats_t m_stats;
 	CUtlVector<TriggerOverlap_t> m_triggerOverlaps;
 	CUtlVector<ImpactPair_t> m_impactPairs;
 };

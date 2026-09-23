@@ -605,6 +605,7 @@ private:
 	void ThreadExecuteQueuedContext( CMatQueuedRenderContext *pContext );
 	void ExecuteWindowResizeRequest();
 	bool ExecuteWindowResizeNow( const MaterialWindowResizeRequest_t &request );
+	void ApplyWindowResize( const MaterialSystem_Config_t &config );
 
 	IThreadPool * CreateMatQueueThreadPool();
 	void DestroyMatQueueThreadPool();

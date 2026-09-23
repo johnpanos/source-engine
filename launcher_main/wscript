@@ -12,9 +12,24 @@ def options(opt):
 	return
 
 def configure(conf):
-	return
+	# The Android application root names the game it launches (-game).
+	conf.env.GAMES = conf.options.GAMES
 
 def build(bld):
+	if bld.env.ANDROID_SDL3:
+		# SDLActivity's native entry: libmain.so exporting SDL_main.
+		bld.shlib(
+			source   = ['android_main.cpp'],
+			target   = 'main',
+			name     = PROJECT_NAME,
+			features = 'c cxx',
+			includes = ['../public', '../public/tier0'],
+			defines  = ['ANDROID_DEFAULT_GAME="%s"' % bld.env.GAMES],
+			use      = ['launcher', 'tier0', 'SDL3'],
+			install_path = bld.env.LIBDIR,
+			idx      = bld.get_taskgen_count()
+		)
+		return
 	if bld.env.DEST_OS == 'android':
 		return
 

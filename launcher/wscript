@@ -24,7 +24,7 @@ def build(bld):
 		'../public/tier0/memoverride.cpp'
 	]
 
-	if bld.env.DEST_OS == 'android':
+	if bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3:
 		source += [
 			'android/main.cpp',
 			'android/crashhandler.cpp'
@@ -54,7 +54,7 @@ def build(bld):
 	if bld.env.NATIVE_VULKAN:
 		libs += ['shaderapivulkan']
 		defines += ['LINKED_NATIVE_VULKAN_BACKEND']
-	if bld.env.OPUS or bld.env.DEST_OS == 'android':
+	if bld.env.OPUS or (bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3):
 		libs += ['vaudio_opus']
 	libs += ['engine', 'inputsystem', 'materialsystem', 'datacache', 'studiorender',
 	         'video_services', 'vguimatsurface', 'vgui2']

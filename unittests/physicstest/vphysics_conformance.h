@@ -72,13 +72,26 @@ AngularImpulse AngularVelocityOf( IPhysicsObject *pObject );
 // World-space direction of the object's local axis (0=x, 1=y, 2=z).
 Vector AxisOf( IPhysicsObject *pObject, int axis );
 
+// Reads a whole file (NUL-terminated, malloc'd); NULL when unreadable.
+char *ReadFixtureFile( const char *pPath, int *pSize );
+
+// A vehicle fixture: a vehicle script and its body's collision model.
+struct VehicleFixture_t
+{
+	const char *pKind;		// "car" or "airboat"
+	const char *pScript;
+	const char *pModel;
+};
+
 // Clause families implemented in their own translation units.
 void TestConstraints();
 void TestObjectsAndEvents();
 void TestFluidsAndSprings();
 void TestSaveRestore();
-// pFixture: a loaded authored model (may be NULL when none loaded).
 void TestPlayerController();
-void TestCollideModels( const struct vcollide_t *pFixture );
+void TestVehicles( const VehicleFixture_t *pFixtures, int count );
+// pFixture: a loaded authored model (NULL when none); pBsp: a map whose
+// world collision is checked.
+void TestCollideModels( const struct vcollide_t *pFixture, const char *pBsp );
 
 #endif // VPHYSICS_CONFORMANCE_H

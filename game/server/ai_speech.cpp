@@ -273,7 +273,7 @@ static const int LEN_SPECIFIC_SCENE_MODIFIER = strlen( AI_SPECIFIC_SCENE_MODIFIE
 //			NULL - 
 // Output : AI_Response
 //-----------------------------------------------------------------------------
-AI_Response *CAI_Expresser::SpeakFindResponse( AIConcept_t concept, const char *modifiers /*= NULL*/ )
+AI_Response *CAI_Expresser::SpeakFindResponse( AIConcept_t speechConcept, const char *modifiers /*= NULL*/ )
 {
 	IResponseSystem *rs = GetOuter()->GetResponseSystem();
 	if ( !rs )
@@ -284,7 +284,7 @@ AI_Response *CAI_Expresser::SpeakFindResponse( AIConcept_t concept, const char *
 
 	AI_CriteriaSet set;
 	// Always include the concept name
-	set.AppendCriteria( "concept", concept, CONCEPT_WEIGHT );
+	set.AppendCriteria( "concept", speechConcept, CONCEPT_WEIGHT );
 
 	// Always include any optional modifiers
 	if ( modifiers != NULL )
@@ -343,11 +343,11 @@ AI_Response *CAI_Expresser::SpeakFindResponse( AIConcept_t concept, const char *
 				char response[ 256 ];
 				result->GetResponse( response, sizeof( response ) );
 
-				Warning( "RESPONSERULES: %s spoke '%s'. Found response '%s'.\n", pszName, concept, response );
+				Warning( "RESPONSERULES: %s spoke '%s'. Found response '%s'.\n", pszName, speechConcept, response );
 			}
 			else
 			{
-				Warning( "RESPONSERULES: %s spoke '%s'. Found no matching response.\n", pszName, concept );
+				Warning( "RESPONSERULES: %s spoke '%s'. Found no matching response.\n", pszName, speechConcept );
 			}
 		}
 	}
@@ -381,7 +381,7 @@ AI_Response *CAI_Expresser::SpeakFindResponse( AIConcept_t concept, const char *
 // Purpose: Dispatches the result
 // Input  : *response - 
 //-----------------------------------------------------------------------------
-bool CAI_Expresser::SpeakDispatchResponse( AIConcept_t concept, AI_Response *result, IRecipientFilter *filter /* = NULL */ )
+bool CAI_Expresser::SpeakDispatchResponse( AIConcept_t speechConcept, AI_Response *result, IRecipientFilter *filter /* = NULL */ )
 {
 	char response[ 256 ];
 	result->GetResponse( response, sizeof( response ) );
@@ -392,9 +392,9 @@ bool CAI_Expresser::SpeakDispatchResponse( AIConcept_t concept, AI_Response *res
 
 	soundlevel_t soundlevel = result->GetSoundLevel();
 
-	if ( IsSpeaking() && concept[0] != 0 )
+	if ( IsSpeaking() && speechConcept[0] != 0 )
 	{
-		DevMsg( "SpeakDispatchResponse:  Entity ( %i/%s ) already speaking, forcing '%s'\n", GetOuter()->entindex(), STRING( GetOuter()->GetEntityName() ), concept );
+		DevMsg( "SpeakDispatchResponse:  Entity ( %i/%s ) already speaking, forcing '%s'\n", GetOuter()->entindex(), STRING( GetOuter()->GetEntityName() ), speechConcept );
 
 		// Tracker 15911:  Can break the game if we stop an imported map placed lcs here, so only
 		//  cancel actor out of instanced scripted scenes.  ywb
@@ -403,7 +403,7 @@ bool CAI_Expresser::SpeakDispatchResponse( AIConcept_t concept, AI_Response *res
 
 		if ( IsRunningScriptedScene( GetOuter() ) )
 		{
-			DevMsg( "SpeakDispatchResponse:  Entity ( %i/%s ) refusing to speak due to scene entity, tossing '%s'\n", GetOuter()->entindex(), STRING( GetOuter()->GetEntityName() ), concept );
+			DevMsg( "SpeakDispatchResponse:  Entity ( %i/%s ) refusing to speak due to scene entity, tossing '%s'\n", GetOuter()->entindex(), STRING( GetOuter()->GetEntityName() ), speechConcept );
 			delete result;
 			return false;
 		}
@@ -472,7 +472,7 @@ bool CAI_Expresser::SpeakDispatchResponse( AIConcept_t concept, AI_Response *res
 		{
 			Vector vPrintPos;
 			GetOuter()->CollisionProp()->NormalizedToWorldSpace( Vector(0.5,0.5,1.0f), &vPrintPos );
-			NDebugOverlay::Text( vPrintPos, CFmtStr( "%s: %s", concept, response ), true, 1.5 );
+			NDebugOverlay::Text( vPrintPos, CFmtStr( "%s: %s", speechConcept, response ), true, 1.5 );
 		}
 
 		if ( result->IsApplyContextToWorld() )
@@ -487,7 +487,7 @@ bool CAI_Expresser::SpeakDispatchResponse( AIConcept_t concept, AI_Response *res
 		{
 			GetOuter()->AddContext( result->GetContext() );
 		}
-		SetSpokeConcept( concept, result );
+		SetSpokeConcept( speechConcept, result );
 	}
 	else
 	{
@@ -550,17 +550,17 @@ float CAI_Expresser::GetResponseDuration( AI_Response *result )
 // Input  : concept - 
 // Output : Returns true on success, false on failure.
 //-----------------------------------------------------------------------------
-bool CAI_Expresser::Speak( AIConcept_t concept, const char *modifiers /*= NULL*/, char *pszOutResponseChosen /* = NULL*/, size_t bufsize /* = 0 */, IRecipientFilter *filter /* = NULL */ )
+bool CAI_Expresser::Speak( AIConcept_t speechConcept, const char *modifiers /*= NULL*/, char *pszOutResponseChosen /* = NULL*/, size_t bufsize /* = 0 */, IRecipientFilter *filter /* = NULL */ )
 {
-	AI_Response *result = SpeakFindResponse( concept, modifiers );
+	AI_Response *result = SpeakFindResponse( speechConcept, modifiers );
 	if ( !result )
 	{
 		return false;
 	}
 
-	SpeechMsg( GetOuter(), "%s (%p) spoke %s (%f)\n", STRING(GetOuter()->GetEntityName()), GetOuter(), concept, gpGlobals->curtime );
+	SpeechMsg( GetOuter(), "%s (%p) spoke %s (%f)\n", STRING(GetOuter()->GetEntityName()), GetOuter(), speechConcept, gpGlobals->curtime );
 
-	bool spoke = SpeakDispatchResponse( concept, result, filter );
+	bool spoke = SpeakDispatchResponse( speechConcept, result, filter );
 	if ( pszOutResponseChosen )
 	{
 		result->GetResponse( pszOutResponseChosen, bufsize );
@@ -744,10 +744,10 @@ bool CAI_Expresser::CanSpeakAfterMyself()
 }
 
 //-------------------------------------
-bool CAI_Expresser::CanSpeakConcept( AIConcept_t concept )
+bool CAI_Expresser::CanSpeakConcept( AIConcept_t speechConcept )
 {
 	// Not in history?
-	int iter = m_ConceptHistories.Find( concept );
+	int iter = m_ConceptHistories.Find( speechConcept );
 	if ( iter == m_ConceptHistories.InvalidIndex() )
 	{
 		return true;
@@ -776,16 +776,16 @@ bool CAI_Expresser::CanSpeakConcept( AIConcept_t concept )
 
 //-------------------------------------
 
-bool CAI_Expresser::SpokeConcept( AIConcept_t concept )
+bool CAI_Expresser::SpokeConcept( AIConcept_t speechConcept )
 {
-	return GetTimeSpokeConcept( concept ) != -1.f;
+	return GetTimeSpokeConcept( speechConcept ) != -1.f;
 }
 
 //-------------------------------------
 
-float CAI_Expresser::GetTimeSpokeConcept( AIConcept_t concept )
+float CAI_Expresser::GetTimeSpokeConcept( AIConcept_t speechConcept )
 {
-	int iter = m_ConceptHistories.Find( concept );
+	int iter = m_ConceptHistories.Find( speechConcept );
 	if ( iter == m_ConceptHistories.InvalidIndex() ) 
 		return -1;
 	
@@ -795,14 +795,14 @@ float CAI_Expresser::GetTimeSpokeConcept( AIConcept_t concept )
 
 //-------------------------------------
 
-void CAI_Expresser::SetSpokeConcept( AIConcept_t concept, AI_Response *response, bool bCallback )
+void CAI_Expresser::SetSpokeConcept( AIConcept_t speechConcept, AI_Response *response, bool bCallback )
 {
-	int idx = m_ConceptHistories.Find( concept );
+	int idx = m_ConceptHistories.Find( speechConcept );
 	if ( idx == m_ConceptHistories.InvalidIndex() )
 	{
 		ConceptHistory_t h;
 		h.timeSpoken = gpGlobals->curtime;
-		idx = m_ConceptHistories.Insert( concept, h );
+		idx = m_ConceptHistories.Insert( speechConcept, h );
 	}
 
 	ConceptHistory_t *slot = &m_ConceptHistories[ idx ];
@@ -822,14 +822,14 @@ void CAI_Expresser::SetSpokeConcept( AIConcept_t concept, AI_Response *response,
 	}
 
 	if ( bCallback )
-		GetSink()->OnSpokeConcept( concept, response );
+		GetSink()->OnSpokeConcept( speechConcept, response );
 }
 
 //-------------------------------------
 
-void CAI_Expresser::ClearSpokeConcept( AIConcept_t concept )
+void CAI_Expresser::ClearSpokeConcept( AIConcept_t speechConcept )
 {
-	m_ConceptHistories.Remove( concept );
+	m_ConceptHistories.Remove( speechConcept );
 }
 
 //-------------------------------------

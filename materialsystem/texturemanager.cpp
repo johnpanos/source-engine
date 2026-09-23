@@ -1493,7 +1493,7 @@ void CTextureManager::Init( int nFlags, const render::RenderFeatureProfile &prof
 	m_nFlags = nFlags;
 	// A documented quirk, not the backend identity, selects float cubemaps.
 	const bool bFloatNormalizationCubemaps =
-		profile.workarounds.Has( render::RenderWorkaround::kFloatNormalizationCubemaps );
+	    profile.workarounds.Has( render::RenderWorkaround::kFloatNormalizationCubemaps );
 	color32 color, color2;
 	m_iNextTexID = 4096;
 
@@ -1539,7 +1539,7 @@ void CTextureManager::Init( int nFlags, const render::RenderFeatureProfile &prof
 	if ( HardwareConfig()->GetMaxDXSupportLevel() >= 80 )
 	{
 		ImageFormat fmt =
-			bFloatNormalizationCubemaps ? IMAGE_FORMAT_RGBA16161616F : IMAGE_FORMAT_BGRX8888;
+		    bFloatNormalizationCubemaps ? IMAGE_FORMAT_RGBA16161616F : IMAGE_FORMAT_BGRX8888;
 
 		// Create a normalization cubemap
 		m_pNormalizationCubemap = CreateProceduralTexture( "normalize", TEXTURE_GROUP_CUBE_MAP,
@@ -1553,8 +1553,7 @@ void CTextureManager::Init( int nFlags, const render::RenderFeatureProfile &prof
 		// Some translation layers have poor signed-format support; the quirk
 		// that enables this workaround records which ones and why.
 		ImageFormat fmt =
-			bFloatNormalizationCubemaps ? IMAGE_FORMAT_RGBA16161616F : IMAGE_FORMAT_UVWQ8888;
-
+		    bFloatNormalizationCubemaps ? IMAGE_FORMAT_RGBA16161616F : IMAGE_FORMAT_UVWQ8888;
 
 #ifdef OSX
 		// JasonM - ridiculous hack around R500 lameness...we never use this texture on OSX anyways (right?)

@@ -355,7 +355,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 12 / R12 | Dedicated-server composition; 0001 rank 6 | R06, R07, R11 | Installed startup/shutdown and partial failure pass; link/runtime evidence shows render and desktop UI absent | planned |
 | 13 / R13 | Hammer geometry and scene seams; 0002 H1 | R05, R08 | Strict headless targets; geometry/reference/reparent tests and independent documents pass; selected legacy callers route through shared owner | planned |
 | 14 / R14 | Window/input contracts and SDL2 adapter; 0001 rank 7 | R06 | Existing behavior captured and preserved; normalized events, optional behavior, surface ownership and input lifecycle conformance pass | planned |
-| 15 / R15 | Render seam, scoped legacy services and null provider; 0001 rank 8 | R06 | Explicit provider/caps/profile selection; null and legacy contract suites; material consumer tested without new shader globals | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
+| 15 / R15 | Render seam, scoped legacy services and null provider; 0001 rank 8 | R06 | Explicit provider/caps/profile selection; null and legacy contract suites; material consumer tested without new shader globals | done ([render seam](RFC/0001-render-seam-progress.md)) |
 | 16 / R16 | Pair-specific presentation bridges; 0001 rank 9, 0006 M3 | R14, R15 | Native handles confined; multi-surface resize/zero-size/loss/shutdown pass; delayed GPU completion prevents early reuse | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
 | 17 / R17 | Hammer real renderer feasibility; 0002 R1 | R08, R15, R16 | Source-material viewport on declared GTK X11/Wayland profiles; state/target restoration, scale, capture, sharing and teardown measured | planned |
 | 18 / R18 | SDL3 provider parity; 0001 rank 10 | R14, R16 | Same window/input suites and representative behavior pass for SDL2/SDL3; SDK dependency is private; supported interop pairs tested | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
@@ -444,6 +444,24 @@ Keep the table concise and link details below or from the domain progress file.
   - No CI lane exists yet.
   - See [RFC 0008 progress](RFC/0008-progress.md). R54–R58 have only
     source-inspection findings.
+
+- R15: `done` (2026-09-22) for the rank 8 scope:
+  - Contracts: feature profile, quirks and structured selection errors
+    (`render.profile.v1`).
+  - A `LegacyRenderBackendProvider` around `IShaderDeviceMgr`, with backend
+    adapter facts for null, D3D9 and native Vulkan.
+  - Explicit profile requests from the launcher and dedicated roots.
+  - Profile selection in material-system `Init`. The texture manager's
+    `IsOpenGL()` test became a documented quirk.
+  - Evidence: the shared suite passes against the real null and native Vulkan
+    legacy modules and rejects bad legacy backends; the headless profile suite
+    passes with sensitivity tests; the binding suite passes on DXVK and
+    native-Vulkan trees; DXVK and null boots log the selected profile.
+  - Unverified: the D3D9 module through the shared suite (it needs a composed
+    material system), a togl profile, and a required CI lane. The fuller RFC 0001
+    render completion (no process-global shader interfaces, step 8, R16) stays
+    open.
+  - See the [render seam record](RFC/0001-render-seam-progress.md).
 
 - R04-STYLE: `done` for the bounded mechanical-style slice requested by the user:
   pinned formatter, Source configuration, incremental include-order check,

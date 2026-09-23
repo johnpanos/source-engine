@@ -273,12 +273,73 @@ bool CVulkanContext::SetupDebugMessenger( std::string *outError )
 
 bool CVulkanContext::CreateSurface( std::string *outError )
 {
+	// Read before creating: SDL builds the surface from the same native window.
+	void *nativeWindow = CurrentNativeWindow();
 	if ( !SDL_Vulkan_CreateSurface( m_window, m_instance, nullptr, &m_surface ) )
 	{
 		SetError( outError, std::string( "SDL_Vulkan_CreateSurface failed: " ) + SDL_GetError() );
 		return false;
 	}
+	m_surfaceNativeWindow = nativeWindow;
+	m_surfaceLost = false;
 	return true;
+}
+
+void *CVulkanContext::CurrentNativeWindow() const
+{
+#if defined( __ANDROID__ )
+	return SDL_GetPointerProperty(
+	    SDL_GetWindowProperties( m_window ), SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr );
+#else
+	return nullptr;
+#endif
+}
+
+bool CVulkanContext::EnsureSurfaceCurrent( bool *outReady, std::string *outError )
+{
+	*outReady = true;
+	void *nativeWindow = CurrentNativeWindow();
+	if ( !m_surfaceLost && nativeWindow == m_surfaceNativeWindow )
+		return true;
+#if defined( __ANDROID__ )
+	if ( nativeWindow == nullptr )
+	{
+		// No surface until the activity's next surfaceCreated; keep everything.
+		*outReady = false;
+		return true;
+	}
+#endif
+	// Present nothing more to the old surface, then rebuild against the new one.
+	vkDeviceWaitIdle( m_device );
+	m_completedSerial = m_submitSerial;
+	RetireCompletedTextures();
+	DestroySwapchainObjects();
+	SDL_Vulkan_DestroySurface( m_instance, m_surface, nullptr );
+	m_surface = VK_NULL_HANDLE;
+	if ( !CreateSurface( outError ) )
+		return false;
+	VkBool32 presentable = VK_FALSE;
+	vkGetPhysicalDeviceSurfaceSupportKHR(
+	    m_physicalDevice, m_presentQueueFamily, m_surface, &presentable );
+	if ( !presentable )
+	{
+		SetError( outError, "the replacement surface cannot present from the selected queue" );
+		return false;
+	}
+	if ( !CreateSwapchain( outError ) )
+		return false;
+	return m_swapchain == VK_NULL_HANDLE || CreateFramebuffers( outError );
+}
+
+bool CVulkanContext::SurfaceChangedSinceSwapchain()
+{
+	VkSurfaceCapabilitiesKHR caps = {};
+	if ( vkGetPhysicalDeviceSurfaceCapabilitiesKHR( m_physicalDevice, m_surface, &caps ) !=
+	     VK_SUCCESS )
+		return true; // The rebuild reports the failure.
+	return caps.currentTransform != m_swapSurfaceTransform ||
+	       caps.currentExtent.width != m_swapSurfaceExtent.width ||
+	       caps.currentExtent.height != m_swapSurfaceExtent.height;
 }
 
 bool CVulkanContext::PickPhysicalDevice( std::string *outError )
@@ -512,6 +573,8 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 		                        ResultString( r ) );
 		return false;
 	}
+	m_swapSurfaceExtent = caps.currentExtent;
+	m_swapSurfaceTransform = caps.currentTransform;
 
 	// Choose surface format: prefer B8G8R8A8_UNORM (straightforward readback),
 	// then any BGRA/RGBA 8-bit, else the first reported.
@@ -610,7 +673,12 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 	m_presentCapturable = ( caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT ) != 0;
 	if ( m_presentCapturable )
 		info.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	info.preTransform = caps.currentTransform;
+	// The back buffer is drawn in the window's orientation and the compositor
+	// rotates it on a rotated mobile display. Taking currentTransform instead
+	// would promise pre-rotated images, which this renderer does not draw.
+	info.preTransform = ( caps.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR )
+	                        ? VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR
+	                        : caps.currentTransform;
 	info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 	info.presentMode = m_presentMode;
 	info.clipped = VK_TRUE;
@@ -4284,6 +4352,15 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		SetError( outError, "BeginFrame called while a frame is already open" );
 		return false;
 	}
+	bool surfaceReady = true;
+	if ( !EnsureSurfaceCurrent( &surfaceReady, outError ) )
+		return false;
+	if ( !surfaceReady )
+	{
+		if ( outSkip )
+			*outSkip = true;
+		return true;
+	}
 	// A back-buffer size requested while a frame was open applies now, and a
 	// drawable that changed size gets a swapchain of its new size.
 	int drawable[2] = { 0, 0 };
@@ -4313,6 +4390,14 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	uint32_t imageIndex = 0;
 	VkResult r = vkAcquireNextImageKHR( m_device, m_swapchain, UINT64_MAX,
 	    m_imageAvailable[m_currentFrame], VK_NULL_HANDLE, &imageIndex );
+	if ( r == VK_ERROR_SURFACE_LOST_KHR )
+	{
+		// The next frame replaces the surface (EnsureSurfaceCurrent).
+		m_surfaceLost = true;
+		if ( outSkip )
+			*outSkip = true;
+		return true;
+	}
 	if ( r == VK_ERROR_OUT_OF_DATE_KHR )
 	{
 		if ( !RecreateSwapchain( outError ) )
@@ -5119,13 +5204,20 @@ bool CVulkanContext::EndFrame( std::string *outError )
 	m_frameOpen = false;
 	m_currentFrame = ( m_currentFrame + 1 ) % m_framesInFlight;
 
-	if ( r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR )
+	if ( r == VK_ERROR_SURFACE_LOST_KHR )
+	{
+		m_surfaceLost = true; // Replaced before the next frame. Not fatal.
+		return true;
+	}
+	if ( r == VK_ERROR_OUT_OF_DATE_KHR || ( r == VK_SUBOPTIMAL_KHR && SurfaceChangedSinceSwapchain() ) )
 	{
 		// Present surface changed; rebuild for the next frame. Not fatal.
 		if ( !RecreateSwapchain( outError ) )
 			return false;
 		return true;
 	}
+	if ( r == VK_SUBOPTIMAL_KHR )
+		return true; // Presented; the compositor adapts (e.g. rotates) the image.
 	if ( r != VK_SUCCESS )
 	{
 		SetError( outError, std::string( "vkQueuePresentKHR failed: " ) + ResultString( r ) );

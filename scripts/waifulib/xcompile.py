@@ -27,8 +27,12 @@ ANDROID_NDK_UNIFIED_SYSROOT_MIN = 15
 ANDROID_NDK_SYSROOT_FLAG_MAX = 19 # latest NDK that need --sysroot flag
 ANDROID_NDK_API_MIN = { 10: 3, 19: 16, 20: 16 } # minimal API level ndk revision supports
 ANDROID_64BIT_API_MIN = 21 # minimal API level that supports 64-bit targets
+# r23+ ship one LLVM toolchain with a unified sysroot and libc++ only
+# (no GCC, no gnustl, no platforms/ directory). Any such revision is accepted;
+# the product profile pins the exact one.
+ANDROID_NDK_LLVM_MIN = 23
 
-# This class does support ONLY r10e and r19c/r20 NDK
+# Legacy r10e and r19c/r20 NDKs, and LLVM-only r23+ NDKs
 class Android:
 	ctx            = None # waf context
 	arch           = None
@@ -66,7 +70,7 @@ class Android:
 					if 'Pkg.Revision' in trimed_tokens:
 						self.ndk_rev = int(trimed_tokens[1].split('.')[0])
 
-			if self.ndk_rev not in ANDROID_NDK_SUPPORTED:
+			if self.ndk_rev not in ANDROID_NDK_SUPPORTED and not self.is_llvm_ndk():
 				ctx.fatal('Unknown NDK revision: %d' % (self.ndk_rev))
 		else:
 			self.ndk_rev = ANDROID_NDK_SUPPORTED[0]
@@ -81,13 +85,19 @@ class Android:
 			else:
 				ctx.fatal('NDK does not support hardfloat ABI')
 
-		if self.api < ANDROID_NDK_API_MIN[self.ndk_rev]:
+		if not self.is_llvm_ndk() and self.api < ANDROID_NDK_API_MIN[self.ndk_rev]:
 			self.api = ANDROID_NDK_API_MIN[self.ndk_rev]
 			Logs.warn('API level automatically was set to %d due to NDK support' % self.api)
 
-		if self.is_arm64() or self.is_amd64() and self.api < ANDROID_64BIT_API_MIN:
+		if (self.is_arm64() or self.is_amd64()) and self.api < ANDROID_64BIT_API_MIN:
 			self.api = ANDROID_64BIT_API_MIN
 			Logs.warn('API level for 64-bit target automatically was set to %d' % self.api)
+
+	def is_llvm_ndk(self):
+		'''
+		Checks if the NDK is LLVM-only with a unified sysroot and libc++ (r23+)
+		'''
+		return self.ndk_rev >= ANDROID_NDK_LLVM_MIN
 
 	def is_host(self):
 		'''
@@ -209,6 +219,8 @@ class Android:
 	def strip(self):
 		if self.is_host():
 			return 'llvm-strip'
+		if self.is_llvm_ndk():
+			return os.path.join(self.gen_gcc_toolchain_path(), 'bin', 'llvm-strip')
 		return os.path.join(self.gen_binutils_path(), 'strip')
 
 	def system_stl(self):
@@ -246,7 +258,9 @@ class Android:
 					'-isystem', '%s/usr/include/' % (self.sysroot())
 				]
 
-		cflags += ['-I%s'%i for i in self.system_stl()]+['-DANDROID', '-D__ANDROID__']
+		if not self.is_llvm_ndk():
+			cflags += ['-I%s'%i for i in self.system_stl()]
+		cflags += ['-DANDROID', '-D__ANDROID__']
 
 		if cxx and not self.is_clang() and self.toolchain not in ['4.8','4.9']:
 			cflags += ['-fno-sized-deallocation']
@@ -302,7 +316,8 @@ class Android:
 		if not self.is_clang():
 			ldflags += ['-lgcc']
 
-		if self.is_clang() or self.is_host():
+		# LLVM NDKs link libc++_shared: one C++ runtime for every packaged module.
+		if (self.is_clang() or self.is_host()) and not self.is_llvm_ndk():
 			ldflags += ['-stdlib=libstdc++']
 		if self.is_arm():
 			if self.arch == 'armeabi-v7a':
@@ -345,12 +360,16 @@ def configure(conf):
 		conf.env.CXXFLAGS += android.cflags(True)
 		conf.env.LINKFLAGS += android.linkflags()
 		conf.env.LDFLAGS += android.ldflags()
-		conf.env.INCLUDES += [
-			os.path.abspath(os.path.join(android.ndk_home, 'sources', 'cxx-stl', 'gnu-libstdc++', '4.9', 'include')),
-			os.path.abspath(os.path.join(android.ndk_home, 'sources', 'cxx-stl', 'gnu-libstdc++', '4.9', 'libs', stlarch, 'include'))
-		]
-		conf.env.STLIBPATH += [os.path.abspath(os.path.join(android.ndk_home, 'sources','cxx-stl','gnu-libstdc++','4.9','libs',stlarch))]
-		conf.env.LDFLAGS += ['-lgnustl_static']
+		if not android.is_llvm_ndk():
+			conf.env.INCLUDES += [
+				os.path.abspath(os.path.join(android.ndk_home, 'sources', 'cxx-stl', 'gnu-libstdc++', '4.9', 'include')),
+				os.path.abspath(os.path.join(android.ndk_home, 'sources', 'cxx-stl', 'gnu-libstdc++', '4.9', 'libs', stlarch, 'include'))
+			]
+			conf.env.STLIBPATH += [os.path.abspath(os.path.join(android.ndk_home, 'sources','cxx-stl','gnu-libstdc++','4.9','libs',stlarch))]
+			conf.env.LDFLAGS += ['-lgnustl_static']
+		conf.env.ANDROID_NDK_HOME = android.ndk_home
+		conf.env.ANDROID_API = android.api
+		conf.env.ANDROID_APK_ARCH = android.apk_arch()
 
 		conf.env.HAVE_M = True
 		if android.is_hardfp():

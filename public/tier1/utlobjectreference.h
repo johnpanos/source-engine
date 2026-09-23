@@ -103,6 +103,14 @@ public:
 		return ( o.m_pObject == m_pObject );
 	}	
 
+	// Direct pointer comparison (ref == pObj, ref != NULL). Without it C++20's
+	// rewritten comparisons make these ambiguous with the built-in comparison
+	// through operator const T*(), and they would construct a temporary reference.
+	FORCEINLINE bool operator==( const T *pObj ) const
+	{
+		return ( m_pObject == pObj );
+	}
+
 public:
 	CUtlReference *m_pNext;
 	CUtlReference *m_pPrev;

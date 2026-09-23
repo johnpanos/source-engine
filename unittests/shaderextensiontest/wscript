@@ -43,6 +43,23 @@ def build(bld):
 		includes=includes, defines=binding_defines,
 		use=binding_use,
 		install_path=None)
+	# RFC 0001 rank 8: legacy render modules through the render.contracts provider
+	# contract, running the shared render-backend suite (C++11-compatible) against
+	# the real null module, the native Vulkan module where linked, and bad fakes.
+	provider_use = ['shaderapiempty', 'tier0', 'tier1', 'vstdlib']
+	provider_defines = list(test_env.DEFINES)
+	if bld.env.NATIVE_VULKAN:
+		provider_use += ['shaderapivulkan']
+		provider_defines += ['LINKED_NATIVE_VULKAN_BACKEND']
+	bld.program(
+		features='cxx', env=test_env.derive(),
+		source=['test_legacy_render_provider.cpp',
+			'../rendertest/conformance/render_backend_conformance.cpp',
+			'../../materialsystem/legacy_render_backend_provider.cpp'],
+		target='legacy_render_provider_conformance',
+		name='legacy_render_provider_conformance',
+		includes=includes + ['../rendertest'], defines=provider_defines,
+		use=provider_use, install_path=None)
 	if not bld.env.DEDICATED and bld.env.SDL3 and ( bld.env.DXVK or bld.env.NATIVE_VULKAN ):
 		# Per-material pixel conformance: the real material system, standard
 		# shaders and the render provider this tree links, composed like the

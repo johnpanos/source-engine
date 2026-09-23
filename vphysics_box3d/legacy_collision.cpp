@@ -256,13 +256,13 @@ bool BuildLedge( const LegacyConvex_t &convex, bool sizeOnly, EncodedLedge_t *pL
 		interior += pLedge->points[i];
 	interior /= (float)pLedge->points.Count();
 
-	// IVP's outward normal is (p2 - p0) x (p1 - p0): a triangle's
-	// (p1 - p0) x (p2 - p0) points into the solid.
+	// IVP winds its triangles so (p1 - p0) x (p2 - p0) points out of the
+	// solid (checked against IVP's own writer by the conformance suite).
 	for ( int t = 0; t < sourceTriangles; t++ )
 	{
 		int a = remap[convex.triangles[t * 3]], b = remap[convex.triangles[t * 3 + 1]], c = remap[convex.triangles[t * 3 + 2]];
 		Vector normal = CrossProduct( pLedge->points[b] - pLedge->points[a], pLedge->points[c] - pLedge->points[a] );
-		if ( sourceTriangles > 1 && DotProduct( normal, interior - pLedge->points[a] ) < 0.0f )
+		if ( sourceTriangles > 1 && DotProduct( normal, interior - pLedge->points[a] ) > 0.0f )
 			V_swap( b, c );
 		pLedge->triangles.AddToTail( a );
 		pLedge->triangles.AddToTail( b );
@@ -315,7 +315,7 @@ bool BuildLedge( const LegacyConvex_t &convex, bool sizeOnly, EncodedLedge_t *pL
 		const Vector &p0 = pLedge->points[pLedge->triangles[t * 3]];
 		const Vector &p1 = pLedge->points[pLedge->triangles[t * 3 + 1]];
 		const Vector &p2 = pLedge->points[pLedge->triangles[t * 3 + 2]];
-		Vector inward = CrossProduct( p1 - p0, p2 - p0 );
+		Vector inward = -CrossProduct( p1 - p0, p2 - p0 );
 		Vector start = ( p0 + p1 + p2 ) / 3.0f;
 		int best = t == 0 ? ( triangleCount > 1 ? 1 : 0 ) : 0;
 		float bestDistance = FLT_MAX;
@@ -324,7 +324,7 @@ bool BuildLedge( const LegacyConvex_t &convex, bool sizeOnly, EncodedLedge_t *pL
 			if ( u == t )
 				continue;
 			const Vector &q0 = pLedge->points[pLedge->triangles[u * 3]];
-			Vector normal = -CrossProduct( pLedge->points[pLedge->triangles[u * 3 + 1]] - q0, pLedge->points[pLedge->triangles[u * 3 + 2]] - q0 );
+			Vector normal = CrossProduct( pLedge->points[pLedge->triangles[u * 3 + 1]] - q0, pLedge->points[pLedge->triangles[u * 3 + 2]] - q0 );
 			float approach = DotProduct( normal, inward );
 			if ( approach <= 0.0f )
 				continue;

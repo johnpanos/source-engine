@@ -212,14 +212,20 @@ def define_platform(conf):
 	conf.env.DXVK = conf.options.RENDER_BACKEND == 'vulkan'
 	conf.env.NATIVE_VULKAN = conf.options.RENDER_BACKEND == 'native-vulkan'
 	if conf.env.SDL3 or conf.env.DXVK or conf.env.NATIVE_VULKAN:
-		if conf.env.DEST_OS != 'linux' or conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS:
-			conf.fatal('The SDL3/Vulkan compatibility profile currently targets the Linux client')
+		if conf.env.DEST_OS not in ['linux', 'android'] or conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS:
+			conf.fatal('The SDL3/Vulkan profiles currently target the Linux and Android clients')
+		if conf.env.DEST_OS == 'android' and not conf.env.NATIVE_VULKAN:
+			conf.fatal('The Android client requires --render-backend=native-vulkan')
 		if not (conf.env.SDL3 and (conf.env.DXVK or conf.env.NATIVE_VULKAN)):
 			conf.fatal('Select both --platform-provider=sdl3 and --render-backend=vulkan')
 		conf.options.SDL = 1
 		conf.options.GL = 0
 		conf.define('USE_SDL3', 1)
 		conf.define('USE_DXVK', 1)
+	# The SDL3/native Vulkan Android client (build-android-apk.sh). Its native
+	# dependencies come from the profile's cross-built prefix through
+	# pkg-config, not from the legacy prebuilt lib/android tree.
+	conf.env.ANDROID_SDL3 = conf.env.DEST_OS == 'android' and conf.env.SDL3
 	conf.env.DEDICATED = conf.options.DEDICATED
 	conf.env.TESTS = conf.options.TESTS
 	conf.env.TOOLS = conf.options.TOOLS
@@ -398,7 +404,8 @@ def options(opt):
 def check_deps(conf):
 	if conf.env.DEST_OS != 'win32':
 		conf.check_cc(lib='dl', mandatory=False)
-		conf.check_cc(lib='bz2', mandatory=True)
+		if not conf.env.ANDROID_SDL3: # built in-tree (utils/bzip2), as on Windows
+			conf.check_cc(lib='bz2', mandatory=True)
 		conf.check_cc(lib='rt', mandatory=False)
 
 		if not conf.env.LIB_M: # HACK: already added in xcompile!
@@ -486,6 +493,19 @@ def check_deps(conf):
 
 			if conf.options.OPUS:
 				conf.check_cfg(package='opus', uselib_store='OPUS', args=['--cflags', '--libs'])
+	elif conf.env.ANDROID_SDL3:
+		# PKG_CONFIG_LIBDIR names only the cross-built prefix, so no host
+		# package can satisfy a target check. No fontconfig: Android fonts are
+		# files the app ships. Audio uses SDL3; zlib is the NDK's system library.
+		conf.check_cfg(package='sdl3', uselib_store='SDL2', args=['--cflags', '--libs'])
+		conf.check_cfg(package='sdl3', uselib_store='SDL3', args=['--cflags', '--libs'])
+		conf.env.INCLUDES_SDL2 += [os.path.abspath('platform/sdl3/legacy_include')]
+		conf.check_pkg('freetype2', 'FT2', FT2_CHECK)
+		conf.check_cfg(package='libjpeg', uselib_store='JPEG', args=['--cflags', '--libs'])
+		conf.check_cfg(package='libpng', uselib_store='PNG', args=['--cflags', '--libs'])
+		conf.check_cfg(package='libcurl', uselib_store='CURL', args=['--cflags', '--libs'])
+		conf.check_cc(lib='z', uselib_store='ZLIB')
+		conf.check_cc(lib='android', uselib_store='ANDROID')
 	else:
 		conf.check(lib='SDL2', uselib_store='SDL2')
 		conf.check(lib='freetype2', uselib_store='FT2')
@@ -550,8 +570,10 @@ def configure(conf):
 	if conf.env.DEST_OS == 'win32':
 		projects['game'] += ['utils/bzip2']
 		projects['dedicated'] += ['utils/bzip2']
-	if conf.options.OPUS or conf.env.DEST_OS == 'android':
+	if conf.options.OPUS or (conf.env.DEST_OS == 'android' and not conf.env.ANDROID_SDL3):
 		projects['game'] += ['engine/voice_codecs/opus']
+	if conf.env.ANDROID_SDL3:
+		projects['game'] += ['utils/bzip2']
 
 	if conf.options.DISABLE_WARNS:
 		compiler_optional_flags = ['-w']
@@ -584,12 +606,16 @@ def configure(conf):
 	if conf.options.SANITIZE:
 		flags += ['-fsanitize=%s'%conf.options.SANITIZE, '-fno-sanitize=vptr']
 
-	if conf.env.DEST_OS != 'win32':
+	if conf.env.ANDROID_SDL3:
+		flags += ['-pipe', '-fPIC']
+	elif conf.env.DEST_OS != 'win32':
 		flags += ['-pipe', '-fPIC', '-L'+os.path.abspath('.')+'/lib/'+conf.env.DEST_OS+'/'+conf.env.DEST_CPU+'/']
 	if conf.env.COMPILER_CC != 'msvc':
 		flags += ['-pthread']
 
-	if conf.env.DEST_OS == 'android':
+	if conf.env.ANDROID_SDL3:
+		flags += ['-llog', '-funwind-tables', '-g']
+	elif conf.env.DEST_OS == 'android':
 		flags += [
 			'-I'+os.path.abspath('.')+'/thirdparty/curl/include',
 			'-I'+os.path.abspath('.')+'/thirdparty/SDL',
@@ -694,7 +720,10 @@ def configure(conf):
 
 	check_deps( conf )
 
-	if conf.env.NATIVE_VULKAN:
+	if conf.env.NATIVE_VULKAN and conf.env.DEST_OS == 'android':
+		# The NDK sysroot provides the Vulkan headers and loader stub.
+		conf.check_cc(lib='vulkan', header_name='vulkan/vulkan.h', uselib_store='VULKAN')
+	elif conf.env.NATIVE_VULKAN:
 		conf.check_cfg(package='vulkan', uselib_store='VULKAN', args=['--cflags', '--libs'])
 	if conf.env.VIDEO_BINK:
 		for package, store in [('libavcodec', 'AVCODEC'), ('libavformat', 'AVFORMAT'), ('libavutil', 'AVUTIL')]:
@@ -745,14 +774,18 @@ def configure(conf):
 	elif conf.options.DEDICATED:
 		conf.add_subproject(projects['dedicated'])
 	else:
-		if conf.env.SDL3:
+		# Desktop conformance harnesses; the Android product packages only runtime modules.
+		if conf.env.SDL3 and not conf.env.ANDROID_SDL3:
 			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest',
 				'unittests/moduleloadfixture', 'unittests/moduleloadshutdownfixture']
 		if conf.env.DXVK:
 			projects['game'] += ['materialsystem/shaderapidx9']
 		if conf.env.NATIVE_VULKAN:
-			projects['game'] += ['materialsystem/shaderapivulkan', 'unittests/shaderapivulkantest']
-		projects['game'] += ['unittests/physicstest']
+			projects['game'] += ['materialsystem/shaderapivulkan']
+			if not conf.env.ANDROID_SDL3:
+				projects['game'] += ['unittests/shaderapivulkantest']
+		if not conf.env.ANDROID_SDL3:
+			projects['game'] += ['unittests/physicstest']
 		if conf.env.VIDEO_BINK:
 			projects['game'] += ['video/video_bink']
 		conf.add_subproject(projects['game'])
@@ -766,7 +799,7 @@ def build(bld):
 		for library in Path(bld.env.LIBPATH_DXVK[0]).glob('libdxvk_d3d9.so*'):
 			bld.install_files(bld.env.LIBDIR, [str(library)])
 
-	if bld.env.DEST_OS in ['win32', 'android']:
+	if bld.env.DEST_OS == 'win32' or (bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3):
 		sdl_name = 'SDL2.dll' if bld.env.DEST_OS == 'win32' else 'libSDL2.so'
 		sdl_path = os.path.join('lib', bld.env.DEST_OS, bld.env.DEST_CPU, sdl_name)
 		bld.install_files(bld.env.LIBDIR, [sdl_path])
@@ -775,8 +808,10 @@ def build(bld):
 		projects['game'] += ['utils/bzip2']
 		projects['dedicated'] += ['utils/bzip2']
 
-	if bld.env.OPUS or bld.env.DEST_OS == 'android':
+	if bld.env.OPUS or (bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3):
 		projects['game'] += ['engine/voice_codecs/opus']
+	if bld.env.ANDROID_SDL3:
+		projects['game'] += ['utils/bzip2']
 
 	if bld.env.TESTS:
 		bld.add_subproject(projects['tests'])
@@ -785,14 +820,18 @@ def build(bld):
 	elif bld.env.DEDICATED:
 		bld.add_subproject(projects['dedicated'])
 	else:
-		if bld.env.SDL3:
+		# Desktop conformance harnesses; the Android product packages only runtime modules.
+		if bld.env.SDL3 and not bld.env.ANDROID_SDL3:
 			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest',
 				'unittests/moduleloadfixture', 'unittests/moduleloadshutdownfixture']
 		if bld.env.DXVK:
 			projects['game'] += ['materialsystem/shaderapidx9']
 		if bld.env.NATIVE_VULKAN:
-			projects['game'] += ['materialsystem/shaderapivulkan', 'unittests/shaderapivulkantest']
-		projects['game'] += ['unittests/physicstest']
+			projects['game'] += ['materialsystem/shaderapivulkan']
+			if not bld.env.ANDROID_SDL3:
+				projects['game'] += ['unittests/shaderapivulkantest']
+		if not bld.env.ANDROID_SDL3:
+			projects['game'] += ['unittests/physicstest']
 		if bld.env.TOGLES:
 			projects['game'] += ['togles']
 		elif bld.env.GL:

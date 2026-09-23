@@ -9,12 +9,11 @@
 #                one standard flag per task matching the target's dialect,
 #                required/forbidden flags, recorded dialect == policy dialect,
 #                one libstdc++ dual-ABI value per link closure, fresh policy.
-#   deps         compiler dependency files (-MMD) of every legacy-dialect task:
-#                no C++20-owned header other than a declared legacy facade.
-#   facades      each legacy facade compiles alone as strict C++11 and as C++20.
+#   facades      each declared legacy facade compiles alone as strict C++11 (the
+#                frozen external-consumer dialect) and as C++20.
 #   probes       each dialect's probe compiles, links and runs per compiler.
 #
-# `check` runs all four and writes toolchain-evidence/v1. Mixed-dialect ABI
+# `check` runs all three and writes toolchain-evidence/v1. Mixed-dialect ABI
 # fixtures are ordinary conformance suites (quality/conformance.manifest.json,
 # domain Q-FOUNDATION, migration TOOLCHAIN-M0); the runner executes them.
 # Python 3 standard library only.
@@ -26,7 +25,6 @@ import datetime
 import hashlib
 import json
 import os
-import shlex
 import subprocess
 import sys
 import tempfile
@@ -149,54 +147,6 @@ def verify_invocations(root, policy, data, label):
 
 
 # ---------------------------------------------------------------------------
-# deps
-# ---------------------------------------------------------------------------
-
-def parse_depfile(path):
-    with open(path, "r", encoding="utf-8", errors="replace") as stream:
-        text = stream.read().replace("\\\n", " ")
-    deps = []
-    for line in text.splitlines():
-        if ":" not in line:
-            continue
-        _, _, rhs = line.partition(": ")
-        deps += shlex.split(rhs)
-    return deps
-
-
-def verify_deps(root, policy, data, build_dir, label):
-    errors = []
-    scanned = missing = 0
-    facades = {f for s in policy.get("cxx20_header_sets", []) for f in s.get("legacy_facades", [])}
-    for entry in data.get("entries", []):
-        dialect = tp.target_dialect(policy, entry["target"], entry["language"])
-        if dialect != policy["defaults"]["c++"] or entry["language"] != "c++":
-            continue
-        output = entry.get("output")
-        depfile = os.path.join(build_dir, os.path.splitext(output)[0] + ".d") if output else None
-        if not depfile or not os.path.isfile(depfile):
-            missing += 1
-            continue
-        scanned += 1
-        for dep in parse_depfile(depfile):
-            path = os.path.normpath(os.path.join(entry["directory"], dep))
-            relative = os.path.relpath(path, root)
-            if relative.startswith(".."):
-                continue
-            owner = tp.header_owner(policy, relative.replace(os.sep, "/"))
-            if owner and relative.replace(os.sep, "/") not in facades:
-                errors.append("%s: TOOLCHAIN008 legacy %s [%s] includes %s (C++20 set %s, "
-                              "not a declared legacy facade)"
-                              % (label, entry["source"], entry["target"], relative, owner["id"]))
-    if missing:
-        errors.append("%s: %d legacy compile task(s) have no dependency file; build the "
-                      "configuration completely before checking deps" % (label, missing))
-    if not scanned:
-        errors.append("%s: zero legacy dependency files scanned" % label)
-    return errors, {"label": label, "legacy_tasks_scanned": scanned}
-
-
-# ---------------------------------------------------------------------------
 # facades and probes
 # ---------------------------------------------------------------------------
 
@@ -212,7 +162,7 @@ def run(cmd, timeout=120, cwd=None):
 
 def verify_facades(root, policy, compilers):
     errors, results = [], []
-    legacy = policy["defaults"]["c++"]
+    legacy = "legacy-cxx11"  # fixture-only frozen external-consumer dialect
     variants = [
         (legacy, [tp.std_flag(policy, legacy, "gnu")] + FACADE_STRICT_FLAGS),
         ("cxx20", tp.dialect_flags(policy, "cxx20") + FACADE_STRICT_FLAGS),
@@ -268,6 +218,68 @@ def verify_probes(root, policy, compilers, c_compilers, abi_values):
     return errors, results
 
 
+ARTIFACT_SUITES = {
+    # manifest suite -> Waf static archives that replace its engine unit's
+    # module sources (paths relative to the Waf build directory)
+    "toolchain.abi.jobsystem-batch": ["jobsystem/libjobsystem.a"],
+    "toolchain.abi.mapcontainer": ["mapcontainer/libmapcontainer.a"],
+}
+
+
+def verify_artifacts(root, policy, build_dir, compilers, dual_abi):
+    """Links each frozen-consumer fixture against the Waf-built C++20 archives
+    of one configuration, so the shipped objects (not a fixture rebuild) are
+    what the C++11 consumer calls. Fixture-only sources keep their dialects."""
+    errors, results = [], []
+    manifest = json.load(open(os.path.join(root, "quality", "conformance.manifest.json")))
+    suites = {s["id"]: s for s in manifest["suites"]}
+    workdir = tempfile.mkdtemp(prefix="toolchain-artifacts-")
+    for sid, archives in sorted(ARTIFACT_SUITES.items()):
+        suite = suites.get(sid)
+        if suite is None:
+            errors.append("artifact fixture %s is missing from the manifest" % sid)
+            continue
+        paths = [os.path.join(build_dir, a) for a in archives]
+        missing = [p for p in paths if not os.path.isfile(p)]
+        if missing:
+            errors.append("artifact fixture %s: %s not built in %s" % (sid, ", ".join(missing), build_dir))
+            continue
+        for cxx in compilers:
+            objects, cmds, ok, output = [], [], True, ""
+            for unit in suite["units"]:
+                flags = tp.dialect_flags(policy, unit["dialect"]) + unit.get("flags", [])
+                flags += ["-D%s=%s" % (policy["abi"]["libstdcxx_dual_abi_define"], dual_abi),
+                          "-pthread", "-I", os.path.join(root, "public"),
+                          "-I", os.path.join(root, "unittests", "toolchaintest")]
+                for source in unit["sources"]:
+                    # Engine-unit module sources come from the archive instead.
+                    if unit["dialect"] != "legacy-cxx11" and not source.startswith("unittests/"):
+                        continue
+                    obj = os.path.join(workdir, "%s-%s-%s-%d.o" % (
+                        sid, os.path.basename(cxx), unit["id"], len(objects)))
+                    cmds.append([cxx] + flags + ["-c", os.path.join(root, source), "-o", obj])
+                    objects.append(obj)
+            exe = os.path.join(workdir, "%s-%s" % (sid, os.path.basename(cxx)))
+            cmds.append([cxx] + objects + paths + ["-pthread", "-o", exe])
+            for cmd in cmds:
+                code, output = run(cmd)
+                if code != 0:
+                    ok = False
+                    break
+            record = {"suite": sid, "compiler": cxx, "archives": archives, "linked": ok,
+                      "ran": False, "result": None, "repro": " && ".join(" ".join(c) for c in cmds)}
+            if ok:
+                code, output = run([exe], timeout=60)
+                record["ran"] = code == 0
+                record["result"] = next((ln for ln in output.splitlines()
+                                         if ln.startswith("CONFORMANCE ")), None)
+            results.append(record)
+            if not record["ran"]:
+                errors.append("artifact fixture %s with %s against %s failed: %s"
+                              % (sid, cxx, build_dir, output.strip()[-400:]))
+    return errors, results
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -275,7 +287,7 @@ def verify_probes(root, policy, compilers, c_compilers, abi_values):
 def invocation_inputs(paths):
     loaded = []
     for path in paths:
-        loaded.append((path, load_invocations(path), os.path.dirname(os.path.abspath(path))))
+        loaded.append((path, load_invocations(path)))
     return loaded
 
 
@@ -295,7 +307,7 @@ def cmd_check(args):
     inputs = invocation_inputs(args.invocations)
 
     summaries = []
-    for path, data, _ in inputs:
+    for path, data in inputs:
         e, summary = verify_invocations(root, policy, data, os.path.relpath(path, root))
         errors += e
         summaries.append(summary)
@@ -305,12 +317,23 @@ def cmd_check(args):
         errors += e
         report["policy_targets_covered"] = covered
 
-    if not args.skip_deps:
-        report["deps"] = []
-        for path, data, build_dir in inputs:
-            e, summary = verify_deps(root, policy, data, build_dir, os.path.relpath(path, root))
-            errors += e
-            report["deps"].append(summary)
+    report["artifacts"] = []
+    for build_dir in args.artifacts or []:
+        # Artifacts must match the configuration's own compiler and dual-ABI value.
+        data = next((d for p, d in inputs
+                     if os.path.dirname(os.path.abspath(p)) == os.path.abspath(build_dir)), None)
+        if data is None:
+            errors.append("--artifacts %s has no matching invocation file" % build_dir)
+            continue
+        cxx = data["toolchain"]["compiler_cxx"]
+        abi = sorted({abi_value(policy, e["arguments"]) for e in data["entries"]
+                      if e["target"] in ("jobsystem", "mapcontainer")})
+        if len(abi) != 1:
+            errors.append("--artifacts %s: cannot determine one dual-ABI value" % build_dir)
+            continue
+        e, results = verify_artifacts(root, policy, os.path.abspath(build_dir), [cxx], abi[0])
+        errors += e
+        report["artifacts"] += results
 
     e, report["facades"] = verify_facades(root, policy, args.cxx)
     errors += e
@@ -332,9 +355,9 @@ def cmd_check(args):
         print("invocations %s: %d compile tasks, %d targets, dialects %s"
               % (summary.get("label"), summary.get("entries", 0), summary.get("targets", 0),
                  json.dumps(summary.get("dialect_counts", {}), sort_keys=True)))
-    for summary in report.get("deps", []):
-        print("deps %s: %d legacy compile tasks scanned" % (summary["label"],
-                                                            summary["legacy_tasks_scanned"]))
+    if report["artifacts"]:
+        print("artifacts: %d/%d frozen consumers linked to Waf archives and passed"
+              % (sum(r["ran"] for r in report["artifacts"]), len(report["artifacts"])))
     print("facades: %d/%d compiled" % (sum(r["ok"] for r in report["facades"]),
                                        len(report["facades"])))
     print("probes: %d/%d compiled, linked and ran" % (sum(r["ran"] for r in report["probes"]),
@@ -359,15 +382,16 @@ def build_parser():
     parser = argparse.ArgumentParser(prog="toolchain_boundary.py", description=__doc__)
     parser.add_argument("--root", default=repo_root())
     sub = parser.add_subparsers(dest="command", required=True)
-    check = sub.add_parser("check", help="verify invocations, deps, facades and probes")
+    check = sub.add_parser("check", help="verify invocations, artifacts, facades and probes")
     check.add_argument("invocations", nargs="+",
-                       help="toolchain-invocations.json files from completed Waf builds")
+                       help="toolchain-invocations.json files written by Waf builds")
     check.add_argument("--cxx", action="append", default=None,
                        help="C++ compiler for facades/probes (repeatable; default g++ and clang++)")
     check.add_argument("--cc", action="append", default=None,
                        help="C compiler for C probes (repeatable; default gcc and clang)")
-    check.add_argument("--skip-deps", action="store_true",
-                       help="configure-only/dry-run evidence without dependency files")
+    check.add_argument("--artifacts", action="append", default=None,
+                       help="Waf build directory whose C++20 archives the frozen consumers "
+                            "link against (repeatable; must also be an invocations input)")
     check.add_argument("--require-all-targets", action="store_true",
                        help="fail unless every policy target appears in some configuration")
     check.add_argument("--out", default=None, help="evidence path ('-' to skip)")

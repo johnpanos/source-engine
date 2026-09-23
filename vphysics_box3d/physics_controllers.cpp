@@ -669,6 +669,24 @@ CFrictionSnapshotBox3D::CFrictionSnapshotBox3D( CPhysicsObjectBox3D *pObject ) :
 	}
 }
 
+void CFrictionSnapshotBox3D::MarkContactForDelete()
+{
+	CPhysicsObjectBox3D *pOther = IsValid() ? Current().pOther : NULL;
+	if ( pOther && pOther != m_pObject && m_marked.Find( pOther ) == m_marked.InvalidIndex() )
+		m_marked.AddToTail( pOther );
+}
+
+// Deletes the contacts with every marked partner; like IVP's, the snapshot
+// is exhausted afterwards.
+void CFrictionSnapshotBox3D::DeleteAllMarkedContacts( bool wakeObjects )
+{
+	for ( int i = 0; i < m_marked.Count(); i++ )
+		m_pObject->GetEnvironment()->DeleteContactPair( m_pObject, m_marked[i], wakeObjects );
+	if ( m_marked.Count() )
+		m_index = m_entries.Count();
+	m_marked.RemoveAll();
+}
+
 IPhysicsObject *CFrictionSnapshotBox3D::GetObject( int index )
 {
 	if ( !IsValid() )

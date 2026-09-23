@@ -163,26 +163,26 @@ private:
 	CON_COMMAND_MEMBER_F( CCvar, "find", Find, "Find concommands with the specified string in their name/help text.", 0 )
 };
 
-void CCvar::CCVarIteratorInternal::SetFirst( void ) RESTRICT
+void CCvar::CCVarIteratorInternal::SetFirst( void )
 {
 	//m_hashIter = m_pHash->First();
 	m_pCur = m_pOuter->GetCommands();
 }
 
-void CCvar::CCVarIteratorInternal::Next( void ) RESTRICT
+void CCvar::CCVarIteratorInternal::Next( void )
 {
 	//m_hashIter = m_pHash->Next( m_hashIter );
 	if ( m_pCur )
 		m_pCur = m_pCur->GetNext();
 }
 
-bool CCvar::CCVarIteratorInternal::IsValid( void ) RESTRICT
+bool CCvar::CCVarIteratorInternal::IsValid( void )
 {
 	//return m_pHash->IsValidIterator( m_hashIter );
 	return m_pCur != NULL;
 }
 
-ConCommandBase *CCvar::CCVarIteratorInternal::Get( void ) RESTRICT
+ConCommandBase *CCvar::CCVarIteratorInternal::Get( void )
 {
 	Assert( IsValid( ) );
 	//return (*m_pHash)[m_hashIter];

@@ -1660,6 +1660,7 @@ void CVideoMode_Common::TakeSnapshotTGA( const char *pFilename )
 
     // Get Bits from the material system
     ReadScreenPixels( 0, 0, GetModeStereoWidth(), GetModeStereoHeight(), pImage, IMAGE_FORMAT_RGB888 );
+	Msg( "R03DBG screenshot t=%.4f mode=%dx%d\n", Plat_FloatTime(), GetModeStereoWidth(), GetModeStereoHeight() ); // R03DBG
 
     CUtlBuffer outBuf;
     if ( TGAWriter::WriteToBuffer( pImage, outBuf, GetModeStereoWidth(), GetModeStereoHeight(), IMAGE_FORMAT_RGB888,
@@ -2430,6 +2431,17 @@ bool CVideoMode_MaterialSystem::SetMode( int nWidth, int nHeight, bool bWindowed
     return true;
 }
 
+#if defined( USE_SDL3 )
+// Windowed fullscreen: a fullscreen window whose extent the system owns (the
+// desktop size, or the whole display on mobile). Its back buffer follows the
+// drawable at native resolution, so rotation, a foldable's display swap or a
+// monitor change resizes the renderer. Plain fullscreen keeps the chosen mode
+// and the presenter scales it. Application roots that have no fixed-mode
+// fullscreen (Android) select it on the command line.
+static ConVar mat_windowed_fullscreen( "mat_windowed_fullscreen", "0", FCVAR_ARCHIVE,
+	"Fullscreen renders at the display's native size and follows it when the display changes" );
+#endif
+
 // SDL publishes the newest drawable extent on the main thread. With a queued
 // render worker, the compositor scales complete frames from the current
 // backbuffer during a drag; once the extent settles, one device reset is queued
@@ -2439,14 +2451,16 @@ bool CVideoMode_MaterialSystem::SetMode( int nWidth, int nHeight, bool bWindowed
 bool CVideoMode_MaterialSystem::UpdateWindowSize()
 {
 #if defined( USE_SDL3 )
+	const bool bWindowed = g_pMaterialSystemConfig->Windowed();
 	if ( !m_bSetModeOnce || !m_bInitialized || !g_pLauncherMgr || InEditMode() ||
 	     UseVR() || ShouldForceVRActive() || m_bVROverride ||
-	     !g_pMaterialSystemConfig->Windowed() || !m_pWindowResize )
+	     !( bWindowed || mat_windowed_fullscreen.GetBool() ) || !m_pWindowResize )
 	{
 		return true;
 	}
 
 	const MaterialWindowResizeStatus_t status = m_pWindowResize->GetWindowResizeStatus();
+	if ( status.m_nRequestedSerial != status.m_nCompletedSerial ) Msg( "R03DBG update-pending t=%.4f req=%llu done=%llu\n", Plat_FloatTime(), (unsigned long long)status.m_nRequestedSerial, (unsigned long long)status.m_nCompletedSerial ); // R03DBG
 	if ( status.m_nRequestedSerial != status.m_nCompletedSerial )
 		return false;
 	if ( status.m_nCompletedSerial > m_nCompletedResizeSerial )
@@ -2516,24 +2530,44 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 	m_bResizeQueueWarning = false;
 
 	const int oldUIWidth = GetModeUIWidth(), oldUIHeight = GetModeUIHeight();
+	// The drawable is taken as-is (the requested window size), not snapped to a
+	// listed display mode; windowed fullscreen stays fullscreen.
 	RequestedWindowVideoMode().width = drawableWidth;
 	RequestedWindowVideoMode().height = drawableHeight;
 	ResetCurrentModeForNewResolution( drawableWidth, drawableHeight, true );
+	m_bWindowed = bWindowed;
 	game->SetWindowSize( drawableWidth, drawableHeight );
-	MarkClientViewRectDirty();
+	// The view covers the drawable the renderer is switching to. Recomputing it
+	// from the back buffer (MarkClientViewRectDirty) would read the old extent:
+	// a D3D9 device only resets on a later frame, so the stale view would stay
+	// cached, clamped to the new back buffer, and post-processing would sample
+	// the wrong region (black frames after every resize).
+	vrect_t viewRect;
+	viewRect.x = viewRect.y = 0;
+	viewRect.width = static_cast<int>( drawableWidth );
+	viewRect.height = static_cast<int>( drawableHeight );
+	viewRect.pnext = NULL;
+	SetClientViewRect( viewRect );
 	CMatRenderContextPtr context( materials );
 	context->Viewport( 0, 0, drawableWidth, drawableHeight );
-	const double tv0 = Plat_FloatTime(); // TEMPTIMING
+	// request_us is the renderer request and mode commit (publication only when
+	// a worker owns the device). The UI relayout that follows every resize
+	// (proportional fonts, panel layout) is main-thread UI work, reported
+	// separately as ui_us rather than hidden inside the request.
+	const double uiStarted = Plat_FloatTime();
 	vgui::surface()->OnScreenSizeChanged( oldUIWidth, oldUIHeight );
-	Msg( "TEMPTIMING renderer=%.1fms vgui=%.1fms\n", ( tv0 - requestStarted ) * 1000.0, ( Plat_FloatTime() - tv0 ) * 1000.0 ); // TEMPTIMING
+	const double uiFinished = Plat_FloatTime();
 	m_nPendingDrawableWidth = m_nPendingDrawableHeight = 0;
 	if ( CommandLine()->FindParm( "-resizetelemetry" ) )
 	{
-		const uint64 requestMicros = static_cast<uint64>(
-		    ( Plat_FloatTime() - requestStarted ) * 1000000.0 );
-		Msg( "RFC0001 resize queued: serial=%llu drawable=%ux%u request_us=%llu\n",
+		const uint64 requestMicros =
+		    static_cast<uint64>( ( uiStarted - requestStarted ) * 1000000.0 );
+		const uint64 uiMicros = static_cast<uint64>( ( uiFinished - uiStarted ) * 1000000.0 );
+		Msg( "R03DBG queued t=%.4f\n", Plat_FloatTime() ); // R03DBG
+		Msg( "RFC0001 resize queued: serial=%llu drawable=%ux%u request_us=%llu ui_us=%llu\n",
 		    static_cast<unsigned long long>( request.m_nSerial ), drawableWidth, drawableHeight,
-		    static_cast<unsigned long long>( requestMicros ) );
+		    static_cast<unsigned long long>( requestMicros ),
+		    static_cast<unsigned long long>( uiMicros ) );
 	}
 #endif
 	return true;
@@ -2563,19 +2597,36 @@ void CVideoMode_MaterialSystem::AdjustForModeChange( void )
     int nNewHeight = g_pMaterialSystemConfig->m_VideoMode.m_Height;
     bool bWindowed = g_pMaterialSystemConfig->Windowed();
 
-    // reset the window size
-    CMatRenderContextPtr pRenderContext( materials );
+#if defined( USE_SDL3 )
+	// A resize that follows the drawable (UpdateWindowSize) has already committed
+	// the mode and UI, and the window already has this size. Without a render
+	// worker the device reset runs on the main thread and still reports a mode
+	// change. Sizing the window again would pass pixels where SDL expects window
+	// units, so on a scaled display the window would grow on every frame.
+	uint nDrawableWidth = 0, nDrawableHeight = 0;
+	if ( g_pLauncherMgr )
+		g_pLauncherMgr->DisplayedSize( nDrawableWidth, nDrawableHeight );
+	if ( bWindowed == IsWindowedMode() && nNewWidth == GetModeWidth() &&
+	     nNewHeight == GetModeHeight() && nDrawableWidth == static_cast<uint>( nNewWidth ) &&
+	     nDrawableHeight == static_cast<uint>( nNewHeight ) )
+	{
+		return;
+	}
+#endif
 
-    ResetCurrentModeForNewResolution( nNewWidth, nNewHeight, bWindowed );
-    AdjustWindow( GetModeWidth(), GetModeHeight(), GetModeBPP(), IsWindowedMode() );
-    MarkClientViewRectDirty();
-    pRenderContext->Viewport( 0, 0, GetModeStereoWidth(), GetModeStereoHeight() );
+	// reset the window size
+	CMatRenderContextPtr pRenderContext( materials );
 
-    // fixup vgui
-    vgui::surface()->OnScreenSizeChanged( nOldUIWidth, nOldUIHeight );
-    
-    // Re-init the HUD
-    ClientDLL_HudVidInit();
+	ResetCurrentModeForNewResolution( nNewWidth, nNewHeight, bWindowed );
+	AdjustWindow( GetModeWidth(), GetModeHeight(), GetModeBPP(), IsWindowedMode() );
+	MarkClientViewRectDirty();
+	pRenderContext->Viewport( 0, 0, GetModeStereoWidth(), GetModeStereoHeight() );
+
+	// fixup vgui
+	vgui::surface()->OnScreenSizeChanged( nOldUIWidth, nOldUIHeight );
+
+	// Re-init the HUD
+	ClientDLL_HudVidInit();
 }
 
 

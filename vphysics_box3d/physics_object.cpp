@@ -26,7 +26,13 @@ namespace
 // IVP's default callback set for a new object (vphysics/physics_object.cpp).
 const unsigned short kDefaultCallbacks = CALLBACK_GLOBAL_COLLISION | CALLBACK_GLOBAL_FRICTION |
 	CALLBACK_FLUID_TOUCH | CALLBACK_GLOBAL_TOUCH | CALLBACK_GLOBAL_COLLIDE_STATIC | CALLBACK_DO_FLUID_SIMULATION;
-const int kMaxShapes = 256;
+// A body's shapes (one per hull; triangle meshes have one per triangle).
+void GetBodyShapes( b3BodyId body, CUtlVector<b3ShapeId> &shapes )
+{
+	shapes.SetCount( b3Body_GetShapeCount( body ) );
+	if ( shapes.Count() )
+		shapes.SetCount( b3Body_GetShapes( body, shapes.Base(), shapes.Count() ) );
+}
 const float kMetersPerInch = 0.0254f;
 
 b3WorldTransform BodyTransform( b3BodyId body )
@@ -279,6 +285,10 @@ void CPhysicsObjectBox3D::CreateShapes()
 	def.userData = this;
 	def.enableCustomFiltering = true;
 	def.enableContactEvents = true;
+	// Contacts carry the pre-solve flag from creation, so every shape has it:
+	// the environment holds off contacts the game deleted (friction snapshot
+	// DeleteAllMarkedContacts). The callback returns at once when none are.
+	def.enablePreSolveEvents = true;
 	def.enableHitEvents = true;
 	// Every shape is visible to triggers and fluids (Box3D sensors).
 	def.enableSensorEvents = true;
@@ -309,8 +319,9 @@ void CPhysicsObjectBox3D::CreateShapes()
 
 void CPhysicsObjectBox3D::DestroyShapes()
 {
-	b3ShapeId shapes[kMaxShapes];
-	int shapeCount = b3Body_GetShapes( m_body, shapes, kMaxShapes );
+	CUtlVector<b3ShapeId> shapes;
+	GetBodyShapes( m_body, shapes );
+	int shapeCount = shapes.Count();
 	for ( int i = 0; i < shapeCount; i++ )
 		b3DestroyShape( shapes[i], false );
 }
@@ -390,8 +401,9 @@ void CPhysicsObjectBox3D::ApplyFilter()
 	// Refiltering re-evaluates contacts, which wakes the body in Box3D; a
 	// filter change alone does not wake an IVP object.
 	bool asleep = !m_isStatic && IsAsleep();
-	b3ShapeId shapes[kMaxShapes];
-	int shapeCount = b3Body_GetShapes( m_body, shapes, kMaxShapes );
+	CUtlVector<b3ShapeId> shapes;
+	GetBodyShapes( m_body, shapes );
+	int shapeCount = shapes.Count();
 	for ( int i = 0; i < shapeCount; i++ )
 	{
 		b3Filter filter = b3Shape_GetFilter( shapes[i] );
@@ -568,8 +580,9 @@ void CPhysicsObjectBox3D::SetMaterialIndex( int materialIndex )
 		m_friction = pSurface->physics.friction;
 		m_restitution = pSurface->physics.elasticity;
 	}
-	b3ShapeId shapes[kMaxShapes];
-	int shapeCount = b3Body_GetShapes( m_body, shapes, kMaxShapes );
+	CUtlVector<b3ShapeId> shapes;
+	GetBodyShapes( m_body, shapes );
+	int shapeCount = shapes.Count();
 	for ( int i = 0; i < shapeCount; i++ )
 	{
 		b3SurfaceMaterial material = b3Shape_GetSurfaceMaterial( shapes[i] );

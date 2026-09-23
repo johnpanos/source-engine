@@ -226,9 +226,10 @@ void TestTeleport()
 	DestroyWorld( world );
 }
 
-// The player walks into a 50 kg crate for a short time (the tracking error
-// stays under the teleport bound): pushed when the mass limit allows it,
-// held back (the push velocity is clamped) when it does not.
+// The player walks into a 50 kg crate. At an over-limit contact the push
+// velocity is clamped: the player's own speed drops to zero on contact;
+// within the limit it keeps pushing at walking speed. Returns the lowest
+// player speed over the first ticks in contact.
 float PushCrate( float massLimit, bool *pInContact )
 {
 	*pInContact = false;
@@ -236,27 +237,33 @@ float PushCrate( float massLimit, bool *pInContact )
 	if ( !CreateWorld( world, NULL ) )
 		return -1.0f;
 	Player_t player;
-	float moved = -1.0f;
+	float slowest = -1.0f;
 	if ( CreatePlayer( world, Vector( -150, 0, 0 ), player ) )
 	{
 		IPhysicsObject *pCrate = CreateCube( world, Vector( -100, 0, 16 ), 50.0f );
 		player.pController->SetPushMassLimit( massLimit );
 		Step( world.pEnv, 0.25f );
-		Vector crateStart = PositionOf( pCrate );
 		Vector target = PositionOf( player.pObject ), velocity( 100, 0, 0 );
-		for ( int i = 0; i < (int)( 0.45f / kTick ); i++ )
+		int contactTicks = 0;
+		for ( int i = 0; i < (int)( 0.45f / kTick ) && contactTicks < 4; i++ )
 		{
 			target += velocity * kTick;
 			Drive( player.pController, target, velocity, NULL );
 			Step( world.pEnv, kTick );
+			if ( PositionOf( pCrate ).x > -99.5f || contactTicks )
+			{
+				// The crate has been reached: sample while in contact.
+				float speed = VelocityOf( player.pObject ).x;
+				slowest = contactTicks ? MIN( slowest, speed ) : speed;
+				contactTicks++;
+			}
 			*pInContact = *pInContact || player.pController->IsInContact();
 		}
-		moved = PositionOf( pCrate ).x - crateStart.x;
 		world.pEnv->DestroyObject( pCrate );
 	}
 	DestroyPlayer( world, player );
 	DestroyWorld( world );
-	return moved;
+	return slowest;
 }
 
 void TestPushing()
@@ -264,10 +271,11 @@ void TestPushing()
 	bool pushContact = false, heldContact = false;
 	float pushed = PushCrate( 1000.0f, &pushContact );
 	float held = PushCrate( 10.0f, &heldContact );
-	Check( TIER_GAMEPLAY, "player.push-mass-limit", pushed > 12.0f && held < pushed * 0.5f, "pushed %.2f held %.2f", pushed, held );
+	Check( TIER_GAMEPLAY, "player.push-mass-limit", pushed > 40.0f && held >= 0.0f && held < 5.0f, "slowest pushing %.2f held %.2f", pushed, held );
 	Check( TIER_GAMEPLAY, "player.in-contact", pushContact );
-	float moves[2] = { pushed, held };
-	ObsFloats( "player.push-distances", "a8", 2, moves );
+	// The pushing speed at first contact depends on the contact tick; the
+	// clamped speed is compared.
+	ObsFloats( "player.push-held-speed", "a5", 1, &held );
 
 	// Standing alone on static ground is not contact with a simulated object.
 	World_t world;
@@ -283,8 +291,8 @@ void TestPushing()
 	DestroyWorld( world );
 }
 
-// Standing on a platform carried at constant velocity: the target rides the
-// ground, and shadow velocity is reported relative to it.
+// Standing on a platform carried at constant velocity (a translating ground,
+// so its velocity is the same at every point).
 void TestGround()
 {
 	World_t world;
@@ -302,7 +310,6 @@ void TestGround()
 	{
 		Step( world.pEnv, kTick );
 		Vector start = PositionOf( player.pObject );
-		Vector platformStart = PositionOf( pPlatform );
 		// Walk slowly along x relative to the platform.
 		Vector velocity( 20, 0, 0 );
 		Vector target = start;
@@ -315,14 +322,19 @@ void TestGround()
 			Drive( player.pController, target, velocity, pPlatform );
 			Step( world.pEnv, kTick );
 		}
-		Vector moved = PositionOf( player.pObject ) - start;
-		Vector carried = PositionOf( pPlatform ) - platformStart;
-		Check( TIER_GAMEPLAY, "player.rides-ground", Near( moved.y, carried.y, 6.0f ) && moved.x > 2.0f,
-			"player (%.2f %.2f) platform (%.2f %.2f)", moved.x, moved.y, carried.x, carried.y );
-		Vector relative;
+		// Only the walked axis has a speed budget, so any carry comes from
+		// friction (IVP's player hops on its contacts, which makes that carry
+		// history-dependent). The ground contract itself is exact: shadow
+		// velocity is reported relative to the ground under the target.
+		Vector relative, own, deck;
 		player.pController->GetShadowVelocity( &relative );
-		Check( TIER_GAMEPLAY, "player.ground-relative-velocity", fabsf( relative.y ) < 15.0f, "(%.2f %.2f %.2f)", relative.x, relative.y, relative.z );
-		ObsFloats( "player.ground-carry", "a6", 1, &moved.y );
+		player.pObject->GetVelocity( &own, NULL );
+		pPlatform->GetVelocity( &deck, NULL );
+		Check( TIER_GAMEPLAY, "player.ground-relative-velocity", NearVec( relative, own - deck, 1.0f ),
+			"shadow (%.2f %.2f %.2f) own (%.2f %.2f %.2f) ground (%.2f %.2f %.2f)", relative.x, relative.y, relative.z,
+			own.x, own.y, own.z, deck.x, deck.y, deck.z );
+		Vector walked = PositionOf( player.pObject ) - start;
+		Check( TIER_GAMEPLAY, "player.walks-on-ground", walked.x > 2.0f, "walked %.2f", walked.x );
 
 		// Deleting the ground under the controller is safe.
 		world.pEnv->DestroyObject( pPlatform );

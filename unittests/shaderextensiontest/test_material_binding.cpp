@@ -206,6 +206,32 @@ void CheckBuiltinBinding( IMaterialSystem *material )
 	CHECK( g_BuiltinConnects == 0 );
 }
 
+// The composition root's render profile request is accepted only before
+// Connect, and no profile exists until Init has selected one.
+void CheckRenderProfileRequest( IMaterialSystem *material )
+{
+	render::RenderProfileRequest request;
+	request.required.Add( render::RenderFeature::kSampledSrgb );
+	render::RenderFeatureProfile profile;
+	CHECK( !MaterialSystem_SetRenderProfileRequest( NULL, &request ) );
+	int foreign;
+	CHECK( !MaterialSystem_SetRenderProfileRequest(
+	    reinterpret_cast<IMaterialSystem *>( &foreign ), &request ) );
+	CHECK( !MaterialSystem_SetRenderProfileRequest( material, NULL ) );
+	CHECK( MaterialSystem_SetRenderProfileRequest( material, &request ) );
+	CHECK( !MaterialSystem_GetRenderProfile( material, &profile ) );
+	CHECK( !MaterialSystem_GetRenderProfile( material, NULL ) );
+	CHECK( !MaterialSystem_GetRenderProfile( NULL, &profile ) );
+
+	// A started (here: failing) Connect freezes the request until Disconnect.
+	CHECK( !material->Connect( MissingMaterialServices ) );
+	CHECK( !MaterialSystem_SetRenderProfileRequest( material, &request ) );
+	CHECK( !MaterialSystem_GetRenderProfile( material, &profile ) );
+	material->Disconnect();
+	const render::RenderProfileRequest restored = render::PreferAvailableRenderFeatures();
+	CHECK( MaterialSystem_SetRenderProfileRequest( material, &restored ) );
+}
+
 void Run()
 {
 #if defined( USE_SDL3 )
@@ -227,6 +253,7 @@ void Run()
 	if ( !material || !actual )
 		return;
 	CheckBuiltinBinding( material );
+	CheckRenderProfileRequest( material );
 	CHECK( actual->id && actual->id[0] );
 	CHECK( actual->legacyModuleName && actual->legacyModuleName[0] );
 	CHECK( actual->create != NULL );

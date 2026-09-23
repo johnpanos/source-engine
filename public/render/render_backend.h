@@ -137,11 +137,12 @@ struct RenderAdapterInfo
 	bool operator==( const RenderAdapterInfo &o ) const
 	{
 		return contract_detail::EqualStrings( id, o.id, sizeof( id ) ) &&
-			contract_detail::EqualStrings( name, o.name, sizeof( name ) ) && vendorId == o.vendorId &&
-			deviceId == o.deviceId && driverVersion == o.driverVersion &&
-			contract_detail::EqualStrings( driverApi, o.driverApi, sizeof( driverApi ) ) &&
-			deviceMemoryBytes == o.deviceMemoryBytes && isSoftware == o.isSoftware &&
-			supportedFeatures == o.supportedFeatures;
+		       contract_detail::EqualStrings( name, o.name, sizeof( name ) ) &&
+		       vendorId == o.vendorId && deviceId == o.deviceId &&
+		       driverVersion == o.driverVersion &&
+		       contract_detail::EqualStrings( driverApi, o.driverApi, sizeof( driverApi ) ) &&
+		       deviceMemoryBytes == o.deviceMemoryBytes && isSoftware == o.isSoftware &&
+		       supportedFeatures == o.supportedFeatures;
 	}
 	bool operator!=( const RenderAdapterInfo &o ) const { return !( *this == o ); }
 };

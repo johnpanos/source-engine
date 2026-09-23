@@ -1,0 +1,79 @@
+{
+  "schema": "source-android-product-profile/v1",
+  "id": "portal-android-native-vulkan-v1",
+  "description": "Android Portal client: SDL3 app integration and the native Vulkan renderer, packaged as a debug- or release-signed APK by build-android-apk.sh.",
+  "target": {"product": "portal-client", "os": "android", "abis": ["arm64-v8a", "x86_64"]},
+  "intent": {
+    "window_provider": "sdl3",
+    "render_provider": "native-vulkan",
+    "support_scope": "Android build and packaging slice (R01/R03 cross-build probe, R29 groundwork). Not platform acceptance: device lifecycle, texture-format, performance and store checks are open.",
+    "packaging": "APK from SDK build-tools (aapt2, d8, zipalign, apksigner); licensed Portal content is pushed separately to the app-specific external files directory",
+    "display": "Windowed fullscreen (+mat_windowed_fullscreen 1): every orientation the user's rotation lock allows; rotation and foldable display swaps resize the back buffer"
+  },
+  "android": {
+    "application_id": "org.sourceengine.portal",
+    "application_label": "Portal (Source Engine)",
+    "version_code": 1,
+    "version_name": "0.1.0",
+    "min_sdk": 29,
+    "target_sdk": 36,
+    "compile_platform": "android-36",
+    "compile_platform_jar_sha256": "d9eb9da824d9e247a352f570f01e1169e725b2954bca9e283a71786c59b59f9a",
+    "build_tools": "36.0.0",
+    "java_release": 11,
+    "page_size_alignment": 16384,
+    "manifest_template": "launcher_main/android/AndroidManifest.xml",
+    "waf_arch": {"arm64-v8a": "aarch64", "x86_64": "x86_64"},
+    "ndk_triple": {"arm64-v8a": "aarch64-linux-android", "x86_64": "x86_64-linux-android"}
+  },
+  "dependencies": {
+    "ndk": {
+      "version": "r30",
+      "revision": "30.0.16248370",
+      "url": "https://dl.google.com/android/repository/android-ndk-r30-linux.zip",
+      "sha1": "5107f898313790e449e87eee2183d9a20602dee9",
+      "sha256": "753611f410d002cfcd3f3dc2ef49aad532089d3180b436c060a90bf0fcb64df2",
+      "archive_bytes": 738633529,
+      "cache_archive": "android-ndk-r30-linux.zip",
+      "extracted_directory": "android-ndk-r30",
+      "note": "sha1 and size are Google's published repository2-3.xml values; sha256 was computed from the verified archive on 2026-09-22."
+    },
+    "sdl3": {
+      "version": "3.4.16",
+      "url": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-3.4.16.tar.gz",
+      "sha256": "7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68",
+      "archive_bytes": 15640667,
+      "cache_archive": "SDL3-3.4.16.tar.gz",
+      "extracted_directory": "SDL3-3.4.16",
+      "note": "Same SDL3 version as the Linux profile's pkg-config pin. Provides libSDL3.so and the SDLActivity Java sources."
+    },
+    "vendored": {
+      "source": "thirdparty submodule (revision pinned by the superproject)",
+      "freetype": "2.11.0",
+      "libpng": "1.6.38",
+      "libjpeg": "9a",
+      "curl": "7.79.0 (HTTP only; no TLS backend)",
+      "bzip2": "utils/bzip2 (in-tree Waf target)"
+    },
+    "ndk_system_libraries": ["z", "vulkan", "log", "android", "c++_shared"]
+  },
+  "configure_options": {"platform_provider": "sdl3", "render_backend": "native-vulkan", "build_games": "portal"},
+  "content": {
+    "location": "/sdcard/Android/data/<application_id>/files (SDL_GetAndroidExternalStoragePath)",
+    "extra_arguments": "<content>/commandline.txt, whitespace-separated"
+  },
+  "required_checks": [
+    "build-android-apk.sh for each declared ABI",
+    "apksigner verify and zipalign -c -P 16 on the produced APK",
+    "installed-package smoke on an x86_64 emulator and an arm64 device",
+    "rotation (adb emu rotate) and fold/unfold (adb emu fold/unfold) keep presenting at the new size",
+    "background/foreground surface recreation"
+  ],
+  "evidence": {
+    "status": "unverified",
+    "known_blockers": [
+      "Source DXT (BC) textures need BC support or transcoding; most phone GPUs lack BC (RFC 0008 R55/R58)",
+      "Surface teardown on backgrounding is not yet synchronized with SDL's surfaceDestroyed callback"
+    ]
+  }
+}

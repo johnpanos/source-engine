@@ -418,49 +418,55 @@ char *TryFindFont(const char *winFontName, bool bBold, int italic)
 	const char *fontName, *fontNamePost = NULL;
 
 #ifdef ANDROID
+	// Fonts an app ships in APP_DATA_PATH/files are preferred; otherwise the
+	// platform's own fonts (present on every Android release this client
+	// supports) stand in for them.
 	const char *lang = cl_language.GetString();
+	const char *systemFont = "DroidSans.ttf";
 
 	if( strcmp( winFontName, "Courier New") == 0 )
 	{
 		fontName = "LiberationMono-Regular.ttf";
-		snprintf( fontFile, sizeof fontFile, "%s/files/%s", getenv("APP_DATA_PATH"), fontName);
-		return fontFile;
+		systemFont = "DroidSansMono.ttf";
 	}
-
-	if( strcmp(lang, "japanese") == 0 ||
+	else if( strcmp(lang, "japanese") == 0 ||
 		strcmp(lang, "koreana") == 0 ||
 		strcmp(lang, "korean") == 0 ||
 		strcmp(lang, "tchinese") == 0 ||
 		strcmp(lang, "schinese") == 0 )
 	{
 		fontName = "DroidSansFallback.ttf"; // for chinese/japanese/korean
-		snprintf( fontFile, sizeof fontFile, "%s/files/%s", getenv("APP_DATA_PATH"), fontName);
-		return fontFile;
+		systemFont = "NotoSansCJK-Regular.ttc";
 	}
 	else if( strcmp(lang, "thai") == 0 )
 	{
 		fontName = "Itim-Regular.otf";
-		snprintf( fontFile, sizeof fontFile, "%s/files/%s", getenv("APP_DATA_PATH"), fontName);
-		return fontFile;
 	}
-
-	fontName = "dejavusans";
-
-	if( bBold )
+	else
 	{
-		if( italic )
-			fontNamePost = "boldoblique";
-		else
-			fontNamePost = "bold";
+		fontName = "dejavusans";
+
+		if( bBold )
+		{
+			if( italic )
+				fontNamePost = "boldoblique";
+			else
+				fontNamePost = "bold";
+			systemFont = "DroidSans-Bold.ttf";
+		}
+		else if( italic )
+			fontNamePost = "oblique";
 	}
-	else if( italic )
-		fontNamePost = "oblique";
 
 	if( fontNamePost )
 		snprintf(fontFile, sizeof fontFile, "%s/files/%s-%s.ttf", getenv("APP_DATA_PATH"), fontName, fontNamePost);
+	else if( strchr( fontName, '.' ) )
+		snprintf(fontFile, sizeof fontFile, "%s/files/%s", getenv("APP_DATA_PATH"), fontName);
 	else
 		snprintf(fontFile, sizeof fontFile, "%s/files/%s.ttf", getenv("APP_DATA_PATH"), fontName);
 
+	if( access( fontFile, R_OK ) != 0 )
+		snprintf( fontFile, sizeof fontFile, "/system/fonts/%s", systemFont );
 
 	return fontFile;
 #else

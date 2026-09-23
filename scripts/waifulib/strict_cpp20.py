@@ -46,7 +46,11 @@ def strict_cpp20_env(ctx):
     env = ctx.env.derive()
     env.detach()
     removed = {'-fpermissive', '-w', '-ffast-math', '-funsafe-math-optimizations'}
-    env.CXXFLAGS = [flag for flag in env.CXXFLAGS if flag not in removed]
+    # The root wscript also puts its library search path (-L) in the compile
+    # flags; it belongs to LINKFLAGS only and is an unused-argument error for
+    # clang under -Werror.
+    env.CXXFLAGS = [flag for flag in env.CXXFLAGS
+                    if flag not in removed and not flag.startswith('-L')]
     if env.COMPILER_CXX != 'msvc':
         env.CXXFLAGS += profile['base_flags']
     env.INCLUDES = []

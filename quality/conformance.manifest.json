@@ -1396,6 +1396,191 @@
         "unittests/mapcontainertest/test_map_container.cpp"
       ],
       "expect": "pass"
+    },
+    {
+      "id": "toolchain.abi.jobsystem-batch",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "migration": "TOOLCHAIN-M0",
+      "contract": "unittests/toolchaintest/contracts/toolchain.abi.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-D_GLIBCXX_USE_CXX11_ABI=0",
+        "-pthread",
+        "-Iunittests/toolchaintest"
+      ],
+      "link_flags": [
+        "-pthread"
+      ],
+      "units": [
+        {
+          "id": "frozen-consumer",
+          "dialect": "legacy-cxx11",
+          "flags": [
+            "-DTOOLCHAIN_LAYOUT_FN=ToolchainLayoutsLegacy"
+          ],
+          "sources": [
+            "unittests/toolchaintest/jobsystem_batch_consumer.cpp",
+            "unittests/toolchaintest/boundary_layout_unit.cpp"
+          ]
+        },
+        {
+          "id": "engine",
+          "dialect": "cxx20",
+          "flags": [
+            "-DTOOLCHAIN_LAYOUT_FN=ToolchainLayoutsCxx20"
+          ],
+          "sources": [
+            "jobsystem/job_graph.cpp",
+            "jobsystem/deterministic_executor.cpp",
+            "jobsystem/pooled_executor.cpp",
+            "jobsystem/parallel_batch.cpp",
+            "unittests/toolchaintest/boundary_layout_unit.cpp"
+          ]
+        }
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "toolchain.abi.mapcontainer",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "migration": "TOOLCHAIN-M0",
+      "contract": "unittests/toolchaintest/contracts/toolchain.abi.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-D_GLIBCXX_USE_CXX11_ABI=0",
+        "-pthread",
+        "-Iunittests/toolchaintest"
+      ],
+      "link_flags": [
+        "-pthread"
+      ],
+      "units": [
+        {
+          "id": "frozen-consumer",
+          "dialect": "legacy-cxx11",
+          "flags": [
+            "-DTOOLCHAIN_LAYOUT_FN=ToolchainLayoutsLegacy"
+          ],
+          "sources": [
+            "unittests/toolchaintest/mapcontainer_consumer.cpp",
+            "unittests/toolchaintest/boundary_layout_unit.cpp"
+          ]
+        },
+        {
+          "id": "engine",
+          "dialect": "cxx20",
+          "flags": [
+            "-DTOOLCHAIN_LAYOUT_FN=ToolchainLayoutsCxx20"
+          ],
+          "sources": [
+            "mapcontainer/blake2b.cpp",
+            "mapcontainer/map_container.cpp",
+            "unittests/toolchaintest/mapcontainer_bsp2_helper.cpp",
+            "unittests/toolchaintest/boundary_layout_unit.cpp"
+          ]
+        }
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "toolchain.abi.sensitivity-dialect-layout",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "migration": "TOOLCHAIN-M0",
+      "contract": "unittests/toolchaintest/contracts/toolchain.abi.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-D_GLIBCXX_USE_CXX11_ABI=0",
+        "-DTOOLCHAIN_SEED_DIALECT_LAYOUT",
+        "-pthread",
+        "-Iunittests/toolchaintest"
+      ],
+      "link_flags": [
+        "-pthread"
+      ],
+      "units": [
+        {
+          "id": "frozen-consumer",
+          "dialect": "legacy-cxx11",
+          "flags": [
+            "-DTOOLCHAIN_LAYOUT_FN=ToolchainLayoutsLegacy"
+          ],
+          "sources": [
+            "unittests/toolchaintest/jobsystem_batch_consumer.cpp",
+            "unittests/toolchaintest/boundary_layout_unit.cpp"
+          ]
+        },
+        {
+          "id": "engine",
+          "dialect": "cxx20",
+          "flags": [
+            "-DTOOLCHAIN_LAYOUT_FN=ToolchainLayoutsCxx20"
+          ],
+          "sources": [
+            "jobsystem/job_graph.cpp",
+            "jobsystem/deterministic_executor.cpp",
+            "jobsystem/pooled_executor.cpp",
+            "jobsystem/parallel_batch.cpp",
+            "unittests/toolchaintest/boundary_layout_unit.cpp"
+          ]
+        }
+      ],
+      "expect": "fail"
+    },
+    {
+      "id": "toolchain.abi.sensitivity-dual-abi",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "migration": "TOOLCHAIN-M0",
+      "contract": "unittests/toolchaintest/contracts/toolchain.abi.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread",
+        "-Iunittests/toolchaintest"
+      ],
+      "link_flags": [
+        "-pthread"
+      ],
+      "units": [
+        {
+          "id": "frozen-consumer",
+          "dialect": "legacy-cxx11",
+          "flags": [
+            "-DTOOLCHAIN_LAYOUT_FN=ToolchainLayoutsLegacy",
+            "-D_GLIBCXX_USE_CXX11_ABI=1"
+          ],
+          "sources": [
+            "unittests/toolchaintest/jobsystem_batch_consumer.cpp",
+            "unittests/toolchaintest/boundary_layout_unit.cpp"
+          ]
+        },
+        {
+          "id": "engine",
+          "dialect": "cxx20",
+          "flags": [
+            "-DTOOLCHAIN_LAYOUT_FN=ToolchainLayoutsCxx20",
+            "-D_GLIBCXX_USE_CXX11_ABI=0"
+          ],
+          "sources": [
+            "jobsystem/job_graph.cpp",
+            "jobsystem/deterministic_executor.cpp",
+            "jobsystem/pooled_executor.cpp",
+            "jobsystem/parallel_batch.cpp",
+            "unittests/toolchaintest/boundary_layout_unit.cpp"
+          ]
+        }
+      ],
+      "expect": "fail"
     }
   ]
 }

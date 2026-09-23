@@ -44,15 +44,16 @@ void Check( bool passed, const char *condition, int line )
 
 #define CHECK( condition ) Check( ( condition ), #condition, __LINE__ )
 
-const uint32_t kFloatCubemaps = RenderWorkaroundSet::Bit( RenderWorkaround::kFloatNormalizationCubemaps );
+const uint32_t kFloatCubemaps =
+    RenderWorkaroundSet::Bit( RenderWorkaround::kFloatNormalizationCubemaps );
 
 uint32_t Bits( RenderFeature a )
 {
 	return RenderFeatureSet::Bit( a );
 }
 
-RenderAdapterInfo Adapter( const char *driverApi, uint32_t vendor, uint32_t device, uint64_t driver,
-	uint32_t features )
+RenderAdapterInfo Adapter(
+    const char *driverApi, uint32_t vendor, uint32_t device, uint64_t driver, uint32_t features )
 {
 	RenderAdapterInfo info;
 	std::snprintf( info.id, sizeof( info.id ), "fixture:0" );
@@ -66,10 +67,11 @@ RenderAdapterInfo Adapter( const char *driverApi, uint32_t vendor, uint32_t devi
 }
 
 RenderQuirk Quirk( const char *id, const char *backend, const char *api, uint32_t vendor,
-	uint32_t removed, uint32_t workarounds )
+    uint32_t removed, uint32_t workarounds )
 {
-	RenderQuirk quirk = { id, "fixture reason", backend, api, vendor, 0, render::kRenderAnyDeviceIdMax,
-		0, render::kRenderAnyDriverVersionMax, removed, workarounds };
+	RenderQuirk quirk = { id, "fixture reason", backend, api, vendor, 0,
+	    render::kRenderAnyDeviceIdMax, 0, render::kRenderAnyDriverVersionMax, removed,
+	    workarounds };
 	return quirk;
 }
 
@@ -94,7 +96,7 @@ RenderFeatureProfile Sentinel()
 bool SameProfile( const RenderFeatureProfile &a, const RenderFeatureProfile &b )
 {
 	if ( a.enabled != b.enabled || a.workarounds != b.workarounds ||
-		 a.appliedQuirkCount != b.appliedQuirkCount )
+	     a.appliedQuirkCount != b.appliedQuirkCount )
 		return false;
 	for ( uint32_t i = 0; i < a.appliedQuirkCount; ++i )
 	{
@@ -117,7 +119,7 @@ void CheckPositiveSelection()
 		RenderProfileError error;
 		error.status = RenderProfileStatus::kInvalidQuirk;
 		const bool ok = render::SelectRenderFeatureProfile( "legacy", adapter,
-			render::PreferAvailableRenderFeatures(), nullptr, 0, &profile, &error );
+		    render::PreferAvailableRenderFeatures(), nullptr, 0, &profile, &error );
 		CHECK( ok );
 		CHECK( profile.enabled.bits == ( srgb | offscreen ) );
 		CHECK( profile.workarounds.IsEmpty() );
@@ -136,7 +138,7 @@ void CheckPositiveSelection()
 	{
 		RenderFeatureProfile profile;
 		const bool ok = render::SelectRenderFeatureProfile( "legacy", adapter,
-			Request( srgb, compute | offscreen ), nullptr, 0, &profile, nullptr );
+		    Request( srgb, compute | offscreen ), nullptr, 0, &profile, nullptr );
 		CHECK( ok );
 		CHECK( profile.enabled.bits == ( srgb | offscreen ) );
 	}
@@ -145,7 +147,7 @@ void CheckPositiveSelection()
 	{
 		RenderFeatureProfile profile;
 		CHECK( render::SelectRenderFeatureProfile(
-			"legacy", adapter, Request( 0, 0 ), nullptr, 0, &profile, nullptr ) );
+		    "legacy", adapter, Request( 0, 0 ), nullptr, 0, &profile, nullptr ) );
 		CHECK( profile.enabled.bits == 0 );
 	}
 
@@ -153,11 +155,12 @@ void CheckPositiveSelection()
 	{
 		RenderFeatureProfile a;
 		RenderFeatureProfile b;
-		const RenderQuirk quirks[] = { Quirk( "q.api", nullptr, "d3d9", 0, offscreen, kFloatCubemaps ) };
-		CHECK( render::SelectRenderFeatureProfile( "legacy", adapter,
-			render::PreferAvailableRenderFeatures(), quirks, 1, &a, nullptr ) );
-		CHECK( render::SelectRenderFeatureProfile( "legacy", adapter,
-			render::PreferAvailableRenderFeatures(), quirks, 1, &b, nullptr ) );
+		const RenderQuirk quirks[] = {
+		    Quirk( "q.api", nullptr, "d3d9", 0, offscreen, kFloatCubemaps ) };
+		CHECK( render::SelectRenderFeatureProfile(
+		    "legacy", adapter, render::PreferAvailableRenderFeatures(), quirks, 1, &a, nullptr ) );
+		CHECK( render::SelectRenderFeatureProfile(
+		    "legacy", adapter, render::PreferAvailableRenderFeatures(), quirks, 1, &b, nullptr ) );
 		CHECK( SameProfile( a, b ) );
 	}
 }
@@ -166,18 +169,19 @@ void CheckQuirkApplication()
 {
 	const uint32_t srgb = Bits( RenderFeature::kSampledSrgb );
 	const uint32_t offscreen = Bits( RenderFeature::kOffscreenRender );
-	const RenderAdapterInfo gl = Adapter( "opengl", 0x1002, 0x7300, 0x0001000200030004ull, srgb | offscreen );
+	const RenderAdapterInfo gl =
+	    Adapter( "opengl", 0x1002, 0x7300, 0x0001000200030004ull, srgb | offscreen );
 
 	// A driverApi quirk enables its workaround, removes a preferred feature and is
 	// recorded by pointer into the table.
 	{
 		const RenderQuirk quirks[] = {
-			Quirk( "q.other-api", nullptr, "vulkan", 0, srgb, kFloatCubemaps ),
-			Quirk( "q.gl", nullptr, "opengl", 0, srgb, kFloatCubemaps ),
+		    Quirk( "q.other-api", nullptr, "vulkan", 0, srgb, kFloatCubemaps ),
+		    Quirk( "q.gl", nullptr, "opengl", 0, srgb, kFloatCubemaps ),
 		};
 		RenderFeatureProfile profile;
-		CHECK( render::SelectRenderFeatureProfile( "legacy", gl,
-			render::PreferAvailableRenderFeatures(), quirks, 2, &profile, nullptr ) );
+		CHECK( render::SelectRenderFeatureProfile(
+		    "legacy", gl, render::PreferAvailableRenderFeatures(), quirks, 2, &profile, nullptr ) );
 		CHECK( profile.workarounds.Has( RenderWorkaround::kFloatNormalizationCubemaps ) );
 		CHECK( profile.enabled.bits == offscreen );
 		CHECK( profile.appliedQuirkCount == 1 );
@@ -192,9 +196,11 @@ void CheckQuirkApplication()
 		bool matches;
 	};
 	RenderQuirk backend = Quirk( "q.backend", "legacy", nullptr, 0, 0, kFloatCubemaps );
-	RenderQuirk otherBackend = Quirk( "q.backend-other", "native-vulkan", nullptr, 0, 0, kFloatCubemaps );
+	RenderQuirk otherBackend =
+	    Quirk( "q.backend-other", "native-vulkan", nullptr, 0, 0, kFloatCubemaps );
 	RenderQuirk vendor = Quirk( "q.vendor", nullptr, nullptr, 0x1002, 0, kFloatCubemaps );
-	RenderQuirk otherVendor = Quirk( "q.vendor-other", nullptr, nullptr, 0x10DE, 0, kFloatCubemaps );
+	RenderQuirk otherVendor =
+	    Quirk( "q.vendor-other", nullptr, nullptr, 0x10DE, 0, kFloatCubemaps );
 	RenderQuirk deviceLow = Quirk( "q.device-min", nullptr, nullptr, 0x1002, 0, kFloatCubemaps );
 	deviceLow.deviceIdMin = 0x7300;
 	deviceLow.deviceIdMax = 0x73FF;
@@ -215,22 +221,22 @@ void CheckQuirkApplication()
 	RenderQuirk emptyApi = Quirk( "q.empty-api", nullptr, "", 0, 0, kFloatCubemaps );
 
 	const SelectorCase cases[] = {
-		{ "backend", backend, true },
-		{ "other backend", otherBackend, false },
-		{ "vendor", vendor, true },
-		{ "other vendor", otherVendor, false },
-		{ "device range starts at the device", deviceLow, true },
-		{ "device range ends at the device", deviceHigh, true },
-		{ "device range excludes the device", deviceOutside, false },
-		{ "exact driver version", driverExact, true },
-		{ "driver range below", driverBelow, false },
-		{ "empty driverApi selector matches only an empty api", emptyApi, false },
+	    { "backend", backend, true },
+	    { "other backend", otherBackend, false },
+	    { "vendor", vendor, true },
+	    { "other vendor", otherVendor, false },
+	    { "device range starts at the device", deviceLow, true },
+	    { "device range ends at the device", deviceHigh, true },
+	    { "device range excludes the device", deviceOutside, false },
+	    { "exact driver version", driverExact, true },
+	    { "driver range below", driverBelow, false },
+	    { "empty driverApi selector matches only an empty api", emptyApi, false },
 	};
 	for ( size_t i = 0; i < sizeof( cases ) / sizeof( cases[0] ); ++i )
 	{
 		RenderFeatureProfile profile;
 		const bool ok = render::SelectRenderFeatureProfile( "legacy", gl,
-			render::PreferAvailableRenderFeatures(), &cases[i].quirk, 1, &profile, nullptr );
+		    render::PreferAvailableRenderFeatures(), &cases[i].quirk, 1, &profile, nullptr );
 		const bool matched = profile.appliedQuirkCount == 1;
 		if ( !ok || matched != cases[i].matches )
 			std::printf( "FAIL selector case '%s'\n", cases[i].label );
@@ -241,12 +247,12 @@ void CheckQuirkApplication()
 	// Several matching quirks apply in table order and their workarounds combine.
 	{
 		const RenderQuirk quirks[] = {
-			Quirk( "q.first", "legacy", nullptr, 0, srgb, 0 ),
-			Quirk( "q.second", nullptr, "opengl", 0, 0, kFloatCubemaps ),
+		    Quirk( "q.first", "legacy", nullptr, 0, srgb, 0 ),
+		    Quirk( "q.second", nullptr, "opengl", 0, 0, kFloatCubemaps ),
 		};
 		RenderFeatureProfile profile;
-		CHECK( render::SelectRenderFeatureProfile( "legacy", gl,
-			render::PreferAvailableRenderFeatures(), quirks, 2, &profile, nullptr ) );
+		CHECK( render::SelectRenderFeatureProfile(
+		    "legacy", gl, render::PreferAvailableRenderFeatures(), quirks, 2, &profile, nullptr ) );
 		CHECK( profile.appliedQuirkCount == 2 );
 		CHECK( profile.appliedQuirks[0] == &quirks[0] && profile.appliedQuirks[1] == &quirks[1] );
 		CHECK( profile.enabled.bits == offscreen );
@@ -261,31 +267,30 @@ struct FailureCase
 };
 
 void ExpectFailure( const FailureCase &expected, const char *backendId,
-	const RenderAdapterInfo &adapter, const RenderProfileRequest &request,
-	const RenderQuirk *quirks, size_t count, RenderFeature feature,
-	const RenderQuirk *quirk )
+    const RenderAdapterInfo &adapter, const RenderProfileRequest &request,
+    const RenderQuirk *quirks, size_t count, RenderFeature feature, const RenderQuirk *quirk )
 {
 	RenderFeatureProfile profile = Sentinel();
 	RenderProfileError error;
 	const bool ok = render::SelectRenderFeatureProfile(
-		backendId, adapter, request, quirks, count, &profile, &error );
+	    backendId, adapter, request, quirks, count, &profile, &error );
 	const bool statusOk = error.status == expected.status;
 	if ( ok || !statusOk )
 		std::printf( "FAIL failure case '%s': ok=%d status=%u\n", expected.label, ok ? 1 : 0,
-			static_cast<unsigned int>( error.status ) );
+		    static_cast<unsigned int>( error.status ) );
 	CHECK( !ok && statusOk );
 	CHECK( SameProfile( profile, Sentinel() ) );
 	CHECK( error.message[0] != '\0' );
 	if ( expected.status == RenderProfileStatus::kMissingRequiredFeature ||
-		 expected.status == RenderProfileStatus::kRemovedByQuirk )
+	     expected.status == RenderProfileStatus::kRemovedByQuirk )
 		CHECK( error.feature == feature );
 	if ( expected.status == RenderProfileStatus::kInvalidQuirk ||
-		 expected.status == RenderProfileStatus::kRemovedByQuirk )
+	     expected.status == RenderProfileStatus::kRemovedByQuirk )
 		CHECK( error.quirk == quirk );
 	// A null error pointer is permitted on every failure path.
 	RenderFeatureProfile again = Sentinel();
-	CHECK( !render::SelectRenderFeatureProfile( backendId, adapter, request, quirks, count, &again,
-		nullptr ) );
+	CHECK( !render::SelectRenderFeatureProfile(
+	    backendId, adapter, request, quirks, count, &again, nullptr ) );
 }
 
 void CheckFailures()
@@ -312,7 +317,7 @@ void CheckFailures()
 	invalid[5].deviceIdMax = 1;
 	invalid[6].driverVersionMin = 9;
 	invalid[6].driverVersionMax = 8;
-	invalid[7].enabledWorkaroundBits = 0; // no effect
+	invalid[7].enabledWorkaroundBits = 0;        // no effect
 	invalid[8].enabledWorkaroundBits = 1u << 30; // unknown workaround
 	for ( int i = 0; i < 9; ++i )
 	{
@@ -321,20 +326,20 @@ void CheckFailures()
 		char label[64];
 		std::snprintf( label, sizeof( label ), "invalid quirk %d", i );
 		ExpectFailure( { label, RenderProfileStatus::kInvalidQuirk }, "legacy", adapter, prefer,
-			table, 2, RenderFeature::kNeverSupported, &table[1] );
+		    table, 2, RenderFeature::kNeverSupported, &table[1] );
 	}
 	CHECK( render::IsValidRenderQuirk( valid ) );
 
 	// A required feature the adapter lacks is named (the lowest missing bit).
 	ExpectFailure( { "missing required", RenderProfileStatus::kMissingRequiredFeature }, "legacy",
-		adapter, Request( srgb | msaa | compute, 0 ), nullptr, 0, RenderFeature::kComputeShaders,
-		nullptr );
+	    adapter, Request( srgb | msaa | compute, 0 ), nullptr, 0, RenderFeature::kComputeShaders,
+	    nullptr );
 
 	// A quirk that removes a required feature fails with both the feature and quirk.
 	{
 		const RenderQuirk table[] = { Quirk( "q.removes-srgb", nullptr, "d3d9", 0, srgb, 0 ) };
 		ExpectFailure( { "removed by quirk", RenderProfileStatus::kRemovedByQuirk }, "legacy",
-			adapter, Request( srgb, offscreen ), table, 1, RenderFeature::kSampledSrgb, &table[0] );
+		    adapter, Request( srgb, offscreen ), table, 1, RenderFeature::kSampledSrgb, &table[0] );
 	}
 
 	// More matching quirks than a profile can record.
@@ -342,27 +347,27 @@ void CheckFailures()
 		RenderQuirk table[render::kRenderMaxAppliedQuirks + 1];
 		for ( uint32_t i = 0; i <= render::kRenderMaxAppliedQuirks; ++i )
 			table[i] = Quirk( "q.many", nullptr, "d3d9", 0, 0, kFloatCubemaps );
-		ExpectFailure( { "too many quirks", RenderProfileStatus::kTooManyQuirks }, "legacy", adapter,
-			prefer, table, render::kRenderMaxAppliedQuirks + 1, RenderFeature::kNeverSupported,
-			nullptr );
+		ExpectFailure( { "too many quirks", RenderProfileStatus::kTooManyQuirks }, "legacy",
+		    adapter, prefer, table, render::kRenderMaxAppliedQuirks + 1,
+		    RenderFeature::kNeverSupported, nullptr );
 		// Exactly the capacity is still accepted.
 		RenderFeatureProfile profile;
 		CHECK( render::SelectRenderFeatureProfile( "legacy", adapter, prefer, table,
-			render::kRenderMaxAppliedQuirks, &profile, nullptr ) );
+		    render::kRenderMaxAppliedQuirks, &profile, nullptr ) );
 		CHECK( profile.appliedQuirkCount == render::kRenderMaxAppliedQuirks );
 	}
 
 	// Malformed calls.
 	ExpectFailure( { "null backend id", RenderProfileStatus::kInvalidProvider }, nullptr, adapter,
-		prefer, nullptr, 0, RenderFeature::kNeverSupported, nullptr );
+	    prefer, nullptr, 0, RenderFeature::kNeverSupported, nullptr );
 	ExpectFailure( { "empty backend id", RenderProfileStatus::kInvalidProvider }, "", adapter,
-		prefer, nullptr, 0, RenderFeature::kNeverSupported, nullptr );
+	    prefer, nullptr, 0, RenderFeature::kNeverSupported, nullptr );
 	ExpectFailure( { "count without table", RenderProfileStatus::kInvalidProvider }, "legacy",
-		adapter, prefer, nullptr, 1, RenderFeature::kNeverSupported, nullptr );
+	    adapter, prefer, nullptr, 1, RenderFeature::kNeverSupported, nullptr );
 	{
 		RenderProfileError error;
-		CHECK( !render::SelectRenderFeatureProfile( "legacy", adapter, prefer, nullptr, 0, nullptr,
-			&error ) );
+		CHECK( !render::SelectRenderFeatureProfile(
+		    "legacy", adapter, prefer, nullptr, 0, nullptr, &error ) );
 		CHECK( error.status == RenderProfileStatus::kInvalidProvider );
 	}
 }

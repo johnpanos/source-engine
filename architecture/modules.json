@@ -105,12 +105,38 @@
         "allowedEdges": []
       },
       {
+        "id": "render.contracts",
+        "paths": [
+          "public/render/render_backend.h",
+          "public/render/render_profile.h"
+        ],
+        "allowedEdges": []
+      },
+      {
         "id": "render.legacy-provider-contract",
         "paths": [
           "public/render/legacy_shader_provider.h",
           "public/render/builtin_shader_provider.h"
         ],
-        "allowedEdges": []
+        "allowedEdges": [
+          "render.contracts"
+        ]
+      },
+      {
+        "id": "render.legacy-backend-provider",
+        "kind": "legacy-interop",
+        "paths": [
+          "materialsystem/legacy_render_backend_provider.h",
+          "materialsystem/legacy_render_backend_provider.cpp"
+        ],
+        "allowedEdges": [
+          "render.contracts",
+          "render.legacy-provider-contract"
+        ],
+        "legacyIncludes": [
+          "materialsystem/imaterialsystem.h",
+          "shaderapi/IShaderDevice.h"
+        ]
       },
       {
         "id": "render.shader-extension-contract",

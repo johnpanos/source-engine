@@ -325,6 +325,8 @@ def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD, trace_records=(),
     queued = [(int(serial), int(width), int(height), int(micros))
               for serial, width, height, micros in re.findall(
                   r"RFC0001 resize queued: serial=(\d+) drawable=(\d+)x(\d+) request_us=(\d+)", log)]
+    ui_micros = [int(value) for value in re.findall(
+        r"RFC0001 resize queued: serial=\d+ drawable=\d+x\d+ request_us=\d+ ui_us=(\d+)", log)]
     completed = [(int(serial), int(width), int(height), int(wait))
                  for serial, width, height, wait in re.findall(
                      r"RFC0001 resize complete: serial=(\d+) drawable=(\d+)x(\d+) main_wait_us=(\d+)", log)]
@@ -384,6 +386,8 @@ def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD, trace_records=(),
         failures.append("resize used cropped or unclassified presentation")
     return {"schema": "source-resize-evidence/v1", "status": "fail" if failures else "pass",
             "mode": mode, "request_budget_us": budget, "scaled_presents": scaled,
+            # Main-thread UI relayout after each resize; measured, not budgeted.
+            "max_ui_relayout_us": max(ui_micros) if ui_micros else None,
             "requested_logical_sizes": list(expected), "observed_extents": observed,
             "queued_resizes": queued, "completed_resizes": completed, "failures": failures,
             "coverage": "SDL logical and drawable extents, lock-free main-thread publication, render-worker completion, exact nonblank backbuffers, and uncropped presentation."}

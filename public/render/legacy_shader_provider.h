@@ -78,9 +78,9 @@ extern "C" bool MaterialSystem_BindShaderProvider(
 // a required feature is unavailable. Roots that never call this get
 // render::PreferAvailableRenderFeatures() (the legacy tool default).
 extern "C" bool MaterialSystem_SetRenderProfileRequest(
-	IMaterialSystem *materialSystem, const render::RenderProfileRequest *request );
+    IMaterialSystem *materialSystem, const render::RenderProfileRequest *request );
 // Copies the profile selected by Init. Returns false before selection.
 extern "C" bool MaterialSystem_GetRenderProfile(
-	IMaterialSystem *materialSystem, render::RenderFeatureProfile *profile );
+    IMaterialSystem *materialSystem, render::RenderFeatureProfile *profile );
 
 #endif // RENDER_LEGACY_SHADER_PROVIDER_H

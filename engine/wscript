@@ -58,7 +58,7 @@ def build(bld):
 			audio_provider_defines += ['AUDIO_RECORD_SDL=1']
 		else:
 			audio_provider_defines += ['AUDIO_RECORD_OPENAL=1']
-		if bld.env.OPUS or bld.env.DEST_OS == 'android':
+		if bld.env.OPUS or (bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3):
 			audio_provider_defines += ['AUDIO_CODEC_OPUS=1']
 
 	source = [
@@ -389,10 +389,12 @@ def build(bld):
 
 	if not bld.env.DEDICATED:
 		libs += ['vaudio_minimp3']
-		if bld.env.OPUS or bld.env.DEST_OS == 'android':
+		if bld.env.OPUS or (bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3):
 			libs += ['vaudio_opus']
 
-	if bld.env.DEST_OS == 'android':
+	if bld.env.ANDROID_SDL3:
+		libs += ['bzip2']
+	elif bld.env.DEST_OS == 'android':
 		libs += ['SSL', 'CRYPTO'] # android curl was built with openssl
 	elif bld.env.DEST_OS == 'win32':
 		libs += ['USER32', 'WINMM', 'WININET', 'DSOUND', 'DXGUID', 'GDI32', 'bzip2']

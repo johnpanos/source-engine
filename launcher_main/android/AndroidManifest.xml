@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android manifest for the SDL3/native Vulkan client (launcher_main/android_main.cpp).
+    build-android-apk.sh substitutes the @TOKENS@ from the product profile
+    (quality/product_profiles/portal-android-native-vulkan.json); aapt2 sets
+    the SDK levels and version from the same profile.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="@PACKAGE@"
+    android:installLocation="auto">
+
+    <!-- The renderer is native Vulkan 1.1 (materialsystem/shaderapivulkan). -->
+    <uses-feature android:name="android.hardware.vulkan.version"
+        android:version="0x401000" android:required="true" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+    <uses-feature android:name="android.hardware.type.pc" android:required="false" />
+
+    <!-- Engine networking (listen/remote servers, downloads). Nothing else is requested:
+         content lives in the app-specific external files directory. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- extractNativeLibs: the engine loads its modules by path from the native
+         library directory (APP_LIB_PATH), so they must exist as files. -->
+    <application android:label="@APP_LABEL@"
+        android:allowBackup="false"
+        android:hasCode="true"
+        android:extractNativeLibs="true"
+        android:hardwareAccelerated="true"
+        android:resizeableActivity="true"
+        android:appCategory="game"
+        android:isGame="true"
+        android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+
+        <!-- Rotation and foldables: the activity survives orientation, size,
+             density and display changes (a fold moves it to a display of another
+             size and density) instead of being recreated. SDL reports the new
+             surface size; the engine resizes the back buffer in windowed
+             fullscreen, and the Vulkan provider rebuilds the swapchain or, when
+             Android replaced the surface, the VkSurfaceKHR. -->
+        <activity android:name="org.libsdl.app.SDLActivity"
+            android:label="@APP_LABEL@"
+            android:alwaysRetainTaskState="true"
+            android:launchMode="singleInstance"
+            android:screenOrientation="fullUser"
+            android:configChanges="layoutDirection|locale|grammaticalGender|fontScale|fontWeightAdjustment|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|density|keyboard|keyboardHidden|navigation"
+            android:preferMinimalPostProcessing="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

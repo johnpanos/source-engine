@@ -80,6 +80,17 @@
 #include <iconv.h>
 #endif
 
+// Bionic's iconv (API 28+) names UTF-16/UTF-32 only, not glibc's UCS-2/UCS-4
+// aliases; an unknown name fails iconv_open and every conversion yields "".
+// For BMP text the encodings are the same bytes.
+#ifdef ANDROID
+#define ICONV_UCS2LE "UTF-16LE"
+#define ICONV_UCS4LE "UTF-32LE"
+#else
+#define ICONV_UCS2LE "UCS-2LE"
+#define ICONV_UCS4LE "UCS-4LE"
+#endif
+
 static int FastToLower( char c )
 {
 	int i = (unsigned char) c;
@@ -1411,7 +1422,7 @@ int _V_UCS2ToUnicode( const ucs2 *pUCS2, wchar_t *pUnicode, int cubDestSizeInByt
 	int cchResult = V_wcslen( pUCS2 );
 	V_memcpy( pUnicode, pUCS2, cubDestSizeInBytes );
 #else
-	iconv_t conv_t = iconv_open( "UCS-4LE", "UCS-2LE" );
+	iconv_t conv_t = iconv_open( ICONV_UCS4LE, ICONV_UCS2LE );
 	int cchResult = -1;
 	size_t nLenUnicde = cubDestSizeInBytes;
 	size_t nMaxUTF8 = cubDestSizeInBytes;
@@ -1451,7 +1462,7 @@ int _V_UnicodeToUCS2( const wchar_t *pUnicode, int cubSrcInBytes, char *pUCS2, i
 	// Make sure we NULL-terminate.
 	pDest[ cchResult - 1 ] = 0;
 #elif defined (POSIX)
-	iconv_t conv_t = iconv_open( "UCS-2LE", "UTF-32LE" );
+	iconv_t conv_t = iconv_open( ICONV_UCS2LE, "UTF-32LE" );
 	size_t cchResult = -1;
 	size_t nLenUnicde = cubSrcInBytes;
 	size_t nMaxUCS2 = cubDestSizeInBytes;
@@ -1486,7 +1497,7 @@ int _V_UCS2ToUTF8( const ucs2 *pUCS2, char *pUTF8, int cubDestSizeInBytes )
 	// under win32 wchar_t == ucs2, sigh
 	int cchResult = WideCharToMultiByte( CP_UTF8, 0, pUCS2, -1, pUTF8, cubDestSizeInBytes, NULL, NULL );
 #elif defined(POSIX)
-	iconv_t conv_t = iconv_open( "UTF-8", "UCS-2LE" );
+	iconv_t conv_t = iconv_open( "UTF-8", ICONV_UCS2LE );
 	size_t cchResult = -1;
 
 	// pUCS2 will be null-terminated so use that to work out the input
@@ -1541,7 +1552,7 @@ int _V_UTF8ToUCS2( const char *pUTF8, int cubSrcInBytes, ucs2 *pUCS2, int cubDes
 	// under win32 wchar_t == ucs2, sigh
 	int cchResult = MultiByteToWideChar( CP_UTF8, 0, pUTF8, -1, pUCS2, cubDestSizeInBytes / sizeof(wchar_t) );
 #elif defined(POSIX)
-	iconv_t conv_t = iconv_open( "UCS-2LE", "UTF-8" );
+	iconv_t conv_t = iconv_open( ICONV_UCS2LE, "UTF-8" );
 	size_t cchResult = -1;
 	size_t nLenUnicde = cubSrcInBytes;
 	size_t nMaxUTF8 = cubDestSizeInBytes;

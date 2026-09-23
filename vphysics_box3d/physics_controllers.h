@@ -239,10 +239,12 @@ public:
 	virtual void GetSurfaceNormal( Vector &out ) override { out = Current().normal; }
 	virtual float GetNormalForce() override { return Current().normalForce; }
 	virtual float GetEnergyAbsorbed() override { return 0.0f; }
+	// IVP resets its friction springs; Box3D contacts keep no static
+	// friction anchor for these to clear.
 	virtual void RecomputeFriction() override {}
 	virtual void ClearFrictionForce() override {}
-	virtual void MarkContactForDelete() override {}
-	virtual void DeleteAllMarkedContacts( bool wakeObjects ) override {}
+	virtual void MarkContactForDelete() override;
+	virtual void DeleteAllMarkedContacts( bool wakeObjects ) override;
 	virtual void NextFrictionData() override { m_index++; }
 	virtual float GetFrictionCoefficient() override { return Current().friction; }
 
@@ -263,6 +265,7 @@ private:
 
 	CPhysicsObjectBox3D *m_pObject;
 	CUtlVector<Entry_t> m_entries;
+	CUtlVector<CPhysicsObjectBox3D *> m_marked;
 	int m_index;
 };
 

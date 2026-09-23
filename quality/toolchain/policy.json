@@ -60,6 +60,25 @@
       },
       "probe": "quality/toolchain/probes/cxx20.cpp"
     },
+    "cxx20-vendored-ivp": {
+      "language": "c++",
+      "mode": "apply",
+      "description": "The vendored IVP physics submodule (ivp/, pinned; not edited here) compiled as C++20 with the engine's permissive relaxation. Its sources still use the `register` storage class, which C++17 removed; -Wno-register accepts it on clang (gcc already only warns). Retire when IVP simulation retires (R44/R45) or the submodule is updated.",
+      "gnu": {
+        "std": "c++20",
+        "required": [
+          "-fpermissive",
+          "-Wno-register"
+        ],
+        "forbidden": []
+      },
+      "msvc": {
+        "std": "/std:c++20",
+        "required": [],
+        "forbidden": []
+      },
+      "probe": "quality/toolchain/probes/cxx20.cpp"
+    },
     "legacy-cxx11": {
       "language": "c++",
       "mode": "verify",
@@ -185,6 +204,26 @@
     },
     "box3d_private": {
       "dialect": "box3d-c17",
+      "rfc": "0004"
+    },
+    "ivp_physics": {
+      "dialect": "cxx20-vendored-ivp",
+      "rfc": "0004"
+    },
+    "ivp_compactbuilder": {
+      "dialect": "cxx20-vendored-ivp",
+      "rfc": "0004"
+    },
+    "havana_constraints": {
+      "dialect": "cxx20-vendored-ivp",
+      "rfc": "0004"
+    },
+    "hk_base": {
+      "dialect": "cxx20-vendored-ivp",
+      "rfc": "0004"
+    },
+    "hk_math": {
+      "dialect": "cxx20-vendored-ivp",
       "rfc": "0004"
     }
   },

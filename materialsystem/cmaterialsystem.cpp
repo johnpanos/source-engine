@@ -27,7 +27,6 @@
 #include "materialsystem/idebugtextureinfo.h"
 #include "legacy_render_backend_provider.h"
 
-
 // NOTE: This must be the last file included!!!
 #include "tier0/memdbgon.h"
 
@@ -603,17 +602,17 @@ DLL_EXPORT bool MaterialSystem_BindShaderProvider(
 }
 
 DLL_EXPORT bool MaterialSystem_SetRenderProfileRequest(
-	IMaterialSystem *materialSystem, const render::RenderProfileRequest *request )
+    IMaterialSystem *materialSystem, const render::RenderProfileRequest *request )
 {
 	return materialSystem == &g_MaterialSystem && request &&
-		g_MaterialSystem.SetRenderProfileRequest( *request );
+	       g_MaterialSystem.SetRenderProfileRequest( *request );
 }
 
 DLL_EXPORT bool MaterialSystem_GetRenderProfile(
-	IMaterialSystem *materialSystem, render::RenderFeatureProfile *profile )
+    IMaterialSystem *materialSystem, render::RenderFeatureProfile *profile )
 {
 	return materialSystem == &g_MaterialSystem && profile &&
-		g_MaterialSystem.GetRenderProfile( profile );
+	       g_MaterialSystem.GetRenderProfile( profile );
 }
 
 bool CMaterialSystem::SetRenderProfileRequest( const render::RenderProfileRequest &request )
@@ -922,20 +921,7 @@ bool CMaterialSystem::ExecuteWindowResizeNow( const MaterialWindowResizeRequest_
 	m_nWindowResizeHeight.store( request.m_nDrawableHeight, std::memory_order_relaxed );
 	m_nWindowResizeRequestedSerial.store( request.m_nSerial, std::memory_order_release );
 
-	int oldWidth = 0, oldHeight = 0;
-	g_pShaderAPI->GetBackBufferDimensions( oldWidth, oldHeight );
-	ShaderDeviceInfo_t info;
-	ConvertModeStruct( &info, g_config );
-	g_pShaderAPI->ChangeVideoMode( info );
-	int newWidth = 0, newHeight = 0;
-	g_pShaderAPI->GetBackBufferDimensions( newWidth, newHeight );
-	if ( newWidth != oldWidth || newHeight != oldHeight )
-		TextureManager()->ReallocateRenderTargets();
-#if defined( USE_SDL )
-	uint renderedWidth = request.m_nDrawableWidth;
-	uint renderedHeight = request.m_nDrawableHeight;
-	g_pLauncherMgr->RenderedSize( renderedWidth, renderedHeight, true ); // true = set
-#endif
+	ApplyWindowResize( g_config );
 
 	m_nWindowResizeCompletedWidth.store( request.m_nDrawableWidth, std::memory_order_relaxed );
 	m_nWindowResizeCompletedHeight.store( request.m_nDrawableHeight, std::memory_order_relaxed );
@@ -959,10 +945,32 @@ void CMaterialSystem::ExecuteWindowResizeRequest()
 	    static_cast<int>( m_nWindowResizeHeight.load( std::memory_order_relaxed ) );
 	config.SetFlag( MATSYS_VIDCFG_FLAGS_RESIZING, false );
 
+	m_nWindowResizeExecutingSerial.store( serial, std::memory_order_release );
+	ApplyWindowResize( config );
+}
+
+// Applies a drawable extent on the thread that owns the device: the main
+// thread without a render worker, the worker otherwise. Both paths need the
+// same work. Render targets sized from the frame buffer follow the new back
+// buffer; a D3D9 device reset only restores them at their old size, which left
+// every frame after a queued resize black. The launcher's rendered size is
+// what presentation and capture read.
+void CMaterialSystem::ApplyWindowResize( const MaterialSystem_Config_t &config )
+{
+	int oldWidth = 0, oldHeight = 0;
+	g_pShaderAPI->GetBackBufferDimensions( oldWidth, oldHeight );
 	ShaderDeviceInfo_t info;
 	ConvertModeStruct( &info, config );
-	m_nWindowResizeExecutingSerial.store( serial, std::memory_order_release );
 	g_pShaderAPI->ChangeVideoMode( info );
+	int newWidth = 0, newHeight = 0;
+	g_pShaderAPI->GetBackBufferDimensions( newWidth, newHeight );
+	if ( newWidth != oldWidth || newHeight != oldHeight )
+		TextureManager()->ReallocateRenderTargets();
+#if defined( USE_SDL )
+	uint renderedWidth = static_cast<uint>( config.m_VideoMode.m_Width );
+	uint renderedHeight = static_cast<uint>( config.m_VideoMode.m_Height );
+	g_pLauncherMgr->RenderedSize( renderedWidth, renderedHeight, true ); // true = set
+#endif
 }
 
 
@@ -1186,17 +1194,17 @@ bool CMaterialSystem::SelectRenderProfile()
 	const int nAdapter = ( m_nAdapter >= 0 && m_nAdapter < nAdapterCount ) ? m_nAdapter : 0;
 	render::RenderProfileError error;
 	if ( !render::SelectLegacyRenderProfile( m_SelectedShaderProvider, m_ShaderServices, nAdapter,
-			 m_RenderProfileRequest, &m_RenderProfile, &error ) )
+	         m_RenderProfileRequest, &m_RenderProfile, &error ) )
 	{
 		Warning( "Render profile selection failed for provider '%s' adapter %d (status %u): %s\n",
-			m_SelectedShaderProvider.id, nAdapter, (unsigned int)error.status, error.message );
+		    m_SelectedShaderProvider.id, nAdapter, (unsigned int)error.status, error.message );
 		return false;
 	}
 	m_bRenderProfileSelected = true;
 	char description[256];
 	render::DescribeRenderProfile( m_RenderProfile, description, sizeof( description ) );
-	Msg( "Render profile for provider '%s' adapter %d: %s\n", m_SelectedShaderProvider.id,
-		nAdapter, description );
+	Msg( "Render profile for provider '%s' adapter %d: %s\n", m_SelectedShaderProvider.id, nAdapter,
+	    description );
 	return true;
 }
 

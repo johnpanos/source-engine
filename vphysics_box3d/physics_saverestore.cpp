@@ -28,6 +28,7 @@
 #include "physics_fluid.h"
 #include "physics_material.h"
 #include "physics_object.h"
+#include "physics_vehicle.h"
 #include "utlmap.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -443,4 +444,56 @@ void CPhysicsEnvironmentBox3D::PostRestore()
 	s_enableCollisions.RemoveAll();
 	s_activateGroups.RemoveAll();
 	s_pointerMap.RemoveAll();
+}
+
+//-----------------------------------------------------------------------------
+// Vehicles: the controller state, then the surface names its material
+// indices refer to (restored by name, as IVP's MaterialIndexDataOps does).
+//-----------------------------------------------------------------------------
+bool CPhysicsEnvironmentBox3D::SaveVehicle( const physsaveparams_t &params )
+{
+	CVehicleControllerBox3D *pVehicle = static_cast<CVehicleControllerBox3D *>( (IPhysicsVehicleController *)params.pObject );
+	ISave *pSave = params.pSave;
+	WritePointer( pSave, params.pObject );
+	pSave->WriteInt( &kRecordVersion );
+	CVehicleStateBox3D state;
+	pVehicle->WriteState( state );
+	WriteBlock( pSave, state );
+	for ( int i = 0; i < VEHICLE_MAX_AXLE_COUNT; i++ )
+	{
+		const vehicle_wheelparams_t &wheels = state.vehicleData.axles[i].wheels;
+		WriteMaterial( pSave, wheels.materialIndex );
+		WriteMaterial( pSave, wheels.brakeMaterialIndex < 0 ? 0 : wheels.brakeMaterialIndex );
+		WriteMaterial( pSave, wheels.skidMaterialIndex < 0 ? 0 : wheels.skidMaterialIndex );
+	}
+	WriteMaterial( pSave, state.currentState.skidMaterial );
+	return true;
+}
+
+bool CPhysicsEnvironmentBox3D::RestoreVehicle( const physrestoreparams_t &params )
+{
+	IRestore *pRestore = params.pRestore;
+	CVehicleStateBox3D state;
+	ReadBlock( pRestore, state );
+	for ( int i = 0; i < VEHICLE_MAX_AXLE_COUNT; i++ )
+	{
+		vehicle_wheelparams_t &wheels = state.vehicleData.axles[i].wheels;
+		wheels.materialIndex = ReadMaterial( pRestore );
+		int brake = ReadMaterial( pRestore ), skid = ReadMaterial( pRestore );
+		wheels.brakeMaterialIndex = wheels.brakeMaterialIndex < 0 ? wheels.brakeMaterialIndex : brake;
+		wheels.skidMaterialIndex = wheels.skidMaterialIndex < 0 ? wheels.skidMaterialIndex : skid;
+	}
+	state.currentState.skidMaterial = ReadMaterial( pRestore );
+	state.pBody = (IPhysicsObject *)Remap( state.pBody );
+	for ( int i = 0; i < VEHICLE_MAX_WHEEL_COUNT; i++ )
+		state.pWheels[i] = (IPhysicsObject *)Remap( state.pWheels[i] );
+	if ( !state.pBody )
+	{
+		DevMsg( "Failed to restore vehicle body\n" );
+		return false;
+	}
+	CVehicleControllerBox3D *pVehicle = CVehicleControllerBox3D::CreateFromState( this, params.pGameTrace, state );
+	m_vehicles.AddToTail( pVehicle );
+	*params.ppObject = static_cast<IPhysicsVehicleController *>( pVehicle );
+	return true;
 }
