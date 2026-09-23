@@ -712,6 +712,7 @@
         "jobsystem/parallel_executor.cpp",
         "jobsystem/pooled_executor.cpp",
         "jobsystem/dynamic_scope.cpp",
+        "jobsystem/parallel_batch.cpp",
         "unittests/jobsystemtest/executorstresstest.cpp"
       ],
       "expect": "pass"

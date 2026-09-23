@@ -21,8 +21,6 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-static bool BadVec( const Vector &v ) { return !( fabsf( v.x ) < 1e20f && fabsf( v.y ) < 1e20f && fabsf( v.z ) < 1e20f ); }
-#define NANCHECK( v, what ) if ( BadVec( v ) ) Warning( "BOX3DNAN %s %s (%f %f %f)\n", m_name, what, (v).x, (v).y, (v).z );
 namespace
 {
 // IVP's default callback set for a new object (vphysics/physics_object.cpp).
@@ -347,14 +345,20 @@ void CPhysicsObjectBox3D::ComputeInitialInertia()
 
 void CPhysicsObjectBox3D::ApplyMassProperties()
 {
-	NANCHECK( m_inertia, "inertia" );
-	NANCHECK( m_massCenter, "masscenter" );
 	if ( m_isStatic || b3Body_GetType( m_body ) != b3_dynamicBody )
 		return;
 	b3MassData mass;
 	mass.mass = m_mass;
 	mass.center = ToB3( m_massCenter );
+	// IVP expresses "cannot rotate" as ~1e14 kg*m^2 (shadows, then scaled by
+	// their raised mass). Box3D inverts the tensor through its determinant,
+	// which overflows float for such values and turns the inverse into NaN,
+	// so the simulated inertia is capped at a value that is still effectively
+	// infinite; GetInertia keeps reporting IVP's value.
+	const float kMaxBox3DInertia = 1e12f;
 	Vector inertia = m_inertia * kInertiaToBox3D;
+	for ( int i = 0; i < 3; i++ )
+		inertia[i] = clamp( inertia[i], 1e-6f, kMaxBox3DInertia );
 	mass.inertia.cx = { inertia.x, 0, 0 };
 	mass.inertia.cy = { 0, inertia.y, 0 };
 	mass.inertia.cz = { 0, 0, inertia.z };
@@ -690,14 +694,11 @@ void CPhysicsObjectBox3D::ApplyDampingAndDrag( float dt, float airDensity )
 //-----------------------------------------------------------------------------
 void CPhysicsObjectBox3D::TeleportTo( const Vector &position, const QAngle &angles )
 {
-	NANCHECK( position, "TeleportTo" );
-	NANCHECK( Vector( angles.x, angles.y, angles.z ), "TeleportTo-angles" );
 	b3Body_SetTransform( m_body, ToB3( position ), ToB3( angles ) );
 }
 
 void CPhysicsObjectBox3D::SetPosition( const Vector &worldPosition, const QAngle &angles, bool isTeleport )
 {
-	NANCHECK( worldPosition, "SetPosition" );
 	// As IVP: moving a shadow-controlled object also retargets its shadow.
 	if ( m_pShadow )
 		UpdateShadow( worldPosition, angles, false, 0 );
@@ -715,8 +716,6 @@ void CPhysicsObjectBox3D::SetPositionMatrix( const matrix3x4_t &matrix, bool isT
 void CPhysicsObjectBox3D::GetPosition( Vector *worldPosition, QAngle *angles ) const
 {
 	b3WorldTransform xform = BodyTransform( m_body );
-	if ( BadVec( FromB3( xform.p ) ) || !( fabsf( xform.q.s ) <= 1.01f ) )
-		Warning( "BOX3DNAN GetPosition %s valid %d type %d static %d flags %x mass %f env %p pos (%f %f %f) q (%f %f %f %f)\n", m_name, b3Body_IsValid( m_body ), b3Body_IsValid( m_body ) ? (int)b3Body_GetType( m_body ) : -1, m_isStatic, m_callbackFlags, m_mass, (void*)m_pEnv, xform.p.x, xform.p.y, xform.p.z, xform.q.v.x, xform.q.v.y, xform.q.v.z, xform.q.s );
 	if ( worldPosition )
 		*worldPosition = FromB3( xform.p );
 	if ( angles )
@@ -755,8 +754,6 @@ void CPhysicsObjectBox3D::WorldToLocalVector( Vector *localVector, const Vector 
 //-----------------------------------------------------------------------------
 void CPhysicsObjectBox3D::SetWorldVelocity( const Vector &linear, const Vector &angularRadians )
 {
-	NANCHECK( angularRadians, "SetWorldVelocity-ang" );
-	NANCHECK( linear, "SetWorldVelocity" );
 	if ( b3Body_GetType( m_body ) == b3_staticBody )
 		return;
 	b3Body_SetLinearVelocity( m_body, ToB3( linear ) );
@@ -799,8 +796,6 @@ void CPhysicsObjectBox3D::ClampVelocity()
 
 void CPhysicsObjectBox3D::SetVelocity( const Vector *velocity, const AngularImpulse *angularVelocity )
 {
-	if ( velocity ) NANCHECK( *velocity, "SetVelocity" );
-	if ( angularVelocity ) NANCHECK( *angularVelocity, "SetVelocity-ang" );
 	if ( !IsMoveable() )
 		return;
 	Wake();
@@ -868,7 +863,6 @@ void CPhysicsObjectBox3D::GetImplicitVelocity( Vector *velocity, AngularImpulse 
 
 void CPhysicsObjectBox3D::ApplyForceCenter( const Vector &forceVector )
 {
-	NANCHECK( forceVector, "ApplyForceCenter" );
 	// VPhysics "forces" are impulses (kg * in/s).
 	if ( !IsMoveable() )
 		return;
@@ -878,7 +872,6 @@ void CPhysicsObjectBox3D::ApplyForceCenter( const Vector &forceVector )
 
 void CPhysicsObjectBox3D::ApplyForceOffset( const Vector &forceVector, const Vector &worldPosition )
 {
-	NANCHECK( forceVector, "ApplyForceOffset" );
 	if ( !IsMoveable() )
 		return;
 	b3Body_ApplyLinearImpulse( m_body, ToB3( forceVector ), ToB3( worldPosition ), true );
@@ -887,7 +880,6 @@ void CPhysicsObjectBox3D::ApplyForceOffset( const Vector &forceVector, const Vec
 
 void CPhysicsObjectBox3D::ApplyTorqueCenter( const AngularImpulse &torque )
 {
-	NANCHECK( torque, "ApplyTorqueCenter" );
 	// IVP takes a WORLD-space angular impulse in kg*m^2*degrees/s
 	// (IVP_Core::async_rot_push_core_multiple_ws).
 	if ( !IsMoveable() )
@@ -974,7 +966,6 @@ void CPhysicsObjectBox3D::SetShadow( float maxSpeed, float maxAngularSpeed, bool
 
 void CPhysicsObjectBox3D::UpdateShadow( const Vector &targetPosition, const QAngle &targetAngles, bool tempDisableGravity, float timeOffset )
 {
-	NANCHECK( targetPosition, "UpdateShadow" );
 	// IVP toggles gravity itself while the shadow asks for it (not for
 	// shadows that never translate, which have gravity off already).
 	if ( tempDisableGravity != m_shadowTempGravityDisable )

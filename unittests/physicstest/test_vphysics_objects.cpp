@@ -470,6 +470,30 @@ void TestObjectModes()
 		DestroyWorld( world );
 	}
 
+	// Game-animated props (doors, droppers) are shadows that neither
+	// translate nor rotate from physics: IVP gives them ~1e14 inertia and
+	// maximum mass. Driven by their animation, with a dynamic object
+	// landing on them, everything stays finite.
+	{
+		World_t world;
+		CreateWorld( world, NULL );
+		IPhysicsObject *pDoor = CreateCube( world, Vector( 0, 0, 100 ) );
+		pDoor->SetShadow( 1e4f, 1e4f, false, false );
+		IPhysicsObject *pCube = CreateCube( world, Vector( 0, 0, 200 ) );
+		for ( int i = 0; i < 60; i++ )
+		{
+			pDoor->UpdateShadow( Vector( 0, 0, 100 + i * 0.5f ), QAngle( 0, i * 3.0f, i * 1.0f ), false, kTick );
+			Step( world.pEnv, kTick );
+		}
+		Vector doorPosition = PositionOf( pDoor ), cubePosition = PositionOf( pCube );
+		QAngle doorAngles;
+		pDoor->GetPosition( NULL, &doorAngles );
+		Check( TIER_GAMEPLAY, "shadow.rigid-animated-finite", IsFiniteVec( doorPosition ) && IsFiniteVec( cubePosition ) &&
+			IsFiniteVec( VelocityOf( pCube ) ) && fabsf( doorAngles.y ) < 1e6f && cubePosition.z > 100.0f,
+			"door (%.2f %.2f %.2f) cube (%.2f %.2f %.2f)", doorPosition.x, doorPosition.y, doorPosition.z, cubePosition.x, cubePosition.y, cubePosition.z );
+		DestroyWorld( world );
+	}
+
 	// Shadow targets follow teleports.
 	{
 		World_t world;

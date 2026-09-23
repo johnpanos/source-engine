@@ -527,6 +527,34 @@ class ModelLightTest(unittest.TestCase):
         self.assertEqual(self.light.compare(changed, reference),
                          ["modellight inputs differ from the reference capture"])
 
+    def test_phong_specular_is_measured(self):
+        # A backend drawing $phong models with the vertex-lit shader (no
+        # specular): the model's boost 0 predicts that, and D3D9 disagrees.
+        report = self.only("phong")
+        report["materials"][report["cases"][0]["material"]]["$phongboost"] = "0"
+        self.assertTrue(self.disagreements(report))
+
+    def test_phong_normal_map_is_measured(self):
+        report = self.only("phong")
+        report["textures"]["conformance/modellight_normal"]["row"][0][:3] = [128, 128, 255]
+        self.assertTrue(self.disagreements(report))
+
+    def test_phong_lightwarp_is_measured(self):
+        report = self.only("phong_lightwarp")
+        del report["materials"][report["cases"][0]["material"]]["$lightwarptexture"]
+        self.assertTrue(self.disagreements(report))
+
+    def test_phong_directional_lights_follow_the_lighting_origin(self):
+        # CommitPixelShaderLighting places them 10000 units from the origin.
+        report = self.only("phong")
+        report["lighting_origin"] = [0, 0, 5000]
+        self.assertTrue(self.disagreements(report))
+
+    def test_phong_self_illumination_is_measured(self):
+        report = self.only("phong_selfillum")
+        del report["materials"][report["cases"][0]["material"]]["$selfillum"]
+        self.assertTrue(self.disagreements(report))
+
     def test_missing_cases_are_rejected(self):
         report = copy.deepcopy(self.references["none"])
         report["cases"].pop()

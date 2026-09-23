@@ -60,6 +60,10 @@ MODEL_TOLERANCE = 1
 PHONG_MODEL_TOLERANCE = 2
 # Agreement with the reference, and how many pixels may exceed it.
 PIXEL_TOLERANCE = 1
+# Per-pixel phong against the reference: native Vulkan and D3D9 differ by two
+# levels in specular peaks (single-precision pow at exponents up to 150), the
+# same places and amount as D3D9 against the model.
+PHONG_PIXEL_TOLERANCE = 2
 MAX_DIFFERING_PIXELS = 0
 PINNED_SAMPLING = {"aa_samples": 0}
 # D3D9 light type codes (vertexshaderdx8.h); SortLights orders by them.
@@ -514,20 +518,22 @@ def compare(report, reference):
     failures = []
     width = report["frame"][0]
     for case, ref in zip(report["cases"], reference["cases"]):
+        params = report.get("materials", {}).get(case.get("material"), {})
+        tolerance = PHONG_PIXEL_TOLERANCE if wants_skin_shader(params) else PIXEL_TOLERANCE
         rgb = material_pixel_frames.decode_frame(case, report["frame"])
         expected = material_pixel_frames.decode_frame(ref, reference["frame"])
         differing = []
         worst = 0
         for index in range(0, len(rgb), 3):
             delta = max(abs(rgb[index + k] - expected[index + k]) for k in range(3))
-            if delta > PIXEL_TOLERANCE:
+            if delta > tolerance:
                 differing.append(index // 3)
                 worst = max(worst, delta)
         if len(differing) > MAX_DIFFERING_PIXELS:
             first = differing[0]
             failures.append("%s: %d pixels differ from the reference by more than %d levels "
                             "(worst %d); first at (%d, %d): %s, reference %s"
-                            % (case["name"], len(differing), PIXEL_TOLERANCE, worst,
+                            % (case["name"], len(differing), tolerance, worst,
                                first % width, first // width,
                                list(rgb[first * 3:first * 3 + 3]),
                                list(expected[first * 3:first * 3 + 3])))

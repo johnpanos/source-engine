@@ -8,10 +8,29 @@
 
 #include <cstddef>
 #include <functional>
+#include <utility>
 #include <vector>
 
 namespace jobsystem
 {
+
+namespace
+{
+// A bounded id list over caller-provided storage.
+struct IdList
+{
+	uint32_t *data;
+	uint32_t count = 0;
+
+	void push_back( uint32_t id ) { data[count++] = id; }
+	void clear() { count = 0; }
+	bool empty() const { return count == 0; }
+	uint32_t size() const { return count; }
+	uint32_t operator[]( std::size_t i ) const { return data[i]; }
+	const uint32_t *begin() const { return data; }
+	const uint32_t *end() const { return data + count; }
+};
+} // namespace
 
 RunResult PooledExecutor::Execute( const SealedGraph &graph, const RunOptions &opts )
 {
@@ -59,8 +78,12 @@ RunResult PooledExecutor::Execute( const SealedGraph &graph, const RunOptions &o
 		return false;
 	};
 
-	std::vector<uint32_t> remaining( n );
-	std::vector<uint32_t> ready, compute, caller;
+	// Remaining counts and the four per-wave id lists share one allocation;
+	// each list holds at most n ids.
+	std::vector<uint32_t> arena( 5 * (std::size_t)n );
+	uint32_t *const remaining = arena.data();
+	IdList ready{ remaining + n }, next{ remaining + 2 * (std::size_t)n },
+	    compute{ remaining + 3 * (std::size_t)n }, caller{ remaining + 4 * (std::size_t)n };
 	for ( uint32_t i = 0; i < n; ++i )
 	{
 		remaining[i] = (uint32_t)graph.GetJob( i ).prereqs.size();
@@ -95,7 +118,6 @@ RunResult PooledExecutor::Execute( const SealedGraph &graph, const RunOptions &o
 		runJob( compute[(std::size_t)k] );
 	};
 
-	std::vector<uint32_t> next;
 	while ( !ready.empty() )
 	{
 		// Jobs ready in the same wave are mutually independent (none is an
@@ -161,7 +183,7 @@ RunResult PooledExecutor::Execute( const SealedGraph &graph, const RunOptions &o
 				if ( --remaining[d] == 0 )
 					next.push_back( d );
 		}
-		ready.swap( next );
+		std::swap( ready, next );
 	}
 
 	result.stalled = result.unresolved > 0;

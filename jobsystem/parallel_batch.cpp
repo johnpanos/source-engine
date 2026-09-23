@@ -10,6 +10,9 @@
 #include <algorithm>
 #include <atomic>
 #include <climits>
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace jobsystem
 {
@@ -39,8 +42,9 @@ public:
 private:
 	const BatchDesc &m_desc;
 };
-// Shared by every participant for this call; each job captures only a
-// pointer to it, which keeps the job functions allocation-free.
+
+// State shared by every participant of one call. Participant jobs capture
+// nothing; they find this through the run's frame context.
 struct BatchRun
 {
 	const BatchDesc &desc;
@@ -50,10 +54,10 @@ struct BatchRun
 	// the cursor. The cursor never passes count, so it cannot wrap.
 	std::atomic<uint64_t> next{ 0 };
 
-	// Guided self-scheduling: claim a contiguous range sized to a fraction
-	// of the remaining items per participant. Early claims are large (few
-	// contended cursor updates, no neighboring-item sharing between
-	// runners) and shrink to single items at the end for load balance.
+	// Guided self-scheduling: claim a contiguous range sized to a fraction of
+	// the remaining items per participant. Early claims are large (few
+	// contended cursor updates, no neighboring-item sharing between runners)
+	// and shrink to single items at the end for load balance.
 	bool Claim( unsigned &begin, unsigned &end )
 	{
 		uint64_t cursor = next.load( std::memory_order_relaxed );
@@ -97,6 +101,60 @@ struct BatchRun
 	}
 };
 
+void BatchParticipant( JobRunContext &ctx )
+{
+	static_cast<BatchRun *>( ctx.Frame().user )->Participate();
+}
+
+bool SealBatchGraph( const char *name, unsigned participants, SealedGraph &out )
+{
+	JobGraphBuilder builder;
+	JobDesc complete;
+	complete.name = "batch.complete";
+	const JobHandle join = builder.AddJob( complete );
+	JobDesc compute;
+	compute.name = name;
+	compute.function = &BatchParticipant;
+	for ( unsigned i = 0; i < participants; ++i )
+		builder.AddDependency( builder.AddJob( compute ), join );
+	auto graph = builder.Seal();
+	if ( !graph.HasValue() )
+		return false;
+	out = std::move( graph.Value() );
+	return true;
+}
+
+// A batch graph's shape depends only on its job name and participant count, so
+// each thread keeps the sealed graphs it has used. An entry owns a copy of the
+// name (the graph never points at caller memory) and is never evicted: a
+// nested batch may use or add entries while an outer batch on the same thread
+// still executes one. Past the cap, graphs are sealed per call instead.
+struct CachedGraph
+{
+	std::string name;
+	unsigned participants = 0;
+	SealedGraph graph;
+};
+
+const SealedGraph *BatchGraph( const char *name, unsigned participants, SealedGraph &uncached )
+{
+	constexpr size_t kMaxCachedGraphs = 32;
+	thread_local std::vector<std::unique_ptr<CachedGraph>> t_graphs;
+	for ( const auto &entry : t_graphs )
+	{
+		if ( entry->participants == participants && entry->name == name )
+			return &entry->graph;
+	}
+	if ( t_graphs.size() >= kMaxCachedGraphs )
+		return SealBatchGraph( name, participants, uncached ) ? &uncached : nullptr;
+	auto entry = std::make_unique<CachedGraph>();
+	entry->name = name;
+	entry->participants = participants;
+	if ( !SealBatchGraph( entry->name.c_str(), participants, entry->graph ) )
+		return nullptr;
+	t_graphs.push_back( std::move( entry ) );
+	return &t_graphs.back()->graph;
+}
 } // namespace
 
 bool ExecuteParallelBatch( const BatchDesc &desc, IWorkerBackend *backend, BatchMode mode )
@@ -118,18 +176,14 @@ bool ExecuteParallelBatch( const BatchDesc &desc, IWorkerBackend *backend, Batch
 		    { desc.count, desc.maxParticipants, capacity, static_cast<unsigned>( INT_MAX ) } );
 	}
 
-	BatchRun run{ desc, participants };
-	// The graph shape depends only on the participant count and the job name,
-	// so each thread keeps a few sealed graphs and reuses them. Their job
-	// functions capture nothing: each run finds its state through the frame
-	// context. A cached graph is immutable and may be executed re-entrantly by
-	// a nested batch on the same thread.
-	const SealedGraph *graph = CachedBatchGraph( desc.name, participants );
+	SealedGraph uncached;
+	const SealedGraph *graph = BatchGraph( desc.name, participants, uncached );
 	if ( !graph )
 		return false;
 
 	// A constructed batch contains only infallible Compute nodes and a join.
 	// There is no cancellation or affinity-dependent progress requirement.
+	BatchRun run{ desc, participants };
 	RunOptions options;
 	options.frame.user = &run;
 	if ( serial )

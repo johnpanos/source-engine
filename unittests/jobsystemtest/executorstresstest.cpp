@@ -9,13 +9,16 @@
 //          and from inside its own jobs (nested runs), plus copies, so worker
 //          reuse cannot leak state between runs. DynamicScope is stressed with
 //          children spawned concurrently from running children; outcomes are
-//          replayed from the recorded dependencies. Run under TSan as well.
+//          replayed from the recorded dependencies. Batch graphs reused per
+//          thread are exercised re-entrantly and past the cache cap. Run
+//          under TSan as well.
 //
 //=============================================================================//
 
 #include "jobsystem/dynamic_scope.h"
 #include "jobsystem/graph_executor.h"
 #include "jobsystem/job_graph.h"
+#include "jobsystem/parallel_batch.h"
 #include "jobsystem/parallel_executor.h"
 #include "jobsystem/pooled_executor.h"
 #include "jobsystem/worker_backend.h"
@@ -24,6 +27,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -494,6 +498,113 @@ void TestDynamicScopeStress()
 	}
 }
 
+
+// Batch graphs are reused per thread: a nested batch re-enters the graph its
+// outer batch is executing, names beyond the cache cap still work, and a name
+// buffer reused with new contents never aliases an older graph.
+struct BatchProbe
+{
+	std::vector<uint32_t> out;
+	std::atomic<int> begins{ 0 }, ends{ 0 };
+	BatchDesc inner;
+	bool nest = false;
+	bool innerOk = true;
+};
+
+void ProbeProcess( void *context, unsigned index )
+{
+	BatchProbe *p = static_cast<BatchProbe *>( context );
+	p->out[index] += index + 1;
+	if ( p->nest && index == 0 )
+	{
+		BatchProbe *q = static_cast<BatchProbe *>( p->inner.context );
+		// Same name as the outer batch: nested batches run serially with one
+		// participant, the same shape as a serial outer batch.
+		p->innerOk = ExecuteParallelBatch( p->inner, nullptr, BatchMode::Parallel ) && p->innerOk;
+		for ( unsigned i = 0; i < q->out.size(); ++i )
+			p->innerOk = p->innerOk && q->out[i] == i + 1;
+	}
+}
+
+void ProbeBegin( void *context ) { static_cast<BatchProbe *>( context )->begins.fetch_add( 1 ); }
+void ProbeEnd( void *context ) { static_cast<BatchProbe *>( context )->ends.fetch_add( 1 ); }
+
+BatchDesc ProbeDesc( BatchProbe &p, const char *name, unsigned count, unsigned limit )
+{
+	p.out.assign( count, 0 );
+	BatchDesc d;
+	d.name = name;
+	d.context = &p;
+	d.count = count;
+	d.process = &ProbeProcess;
+	d.begin = &ProbeBegin;
+	d.end = &ProbeEnd;
+	d.maxParticipants = limit;
+	return d;
+}
+
+bool ProbeOk( const BatchProbe &p )
+{
+	for ( unsigned i = 0; i < p.out.size(); ++i )
+		if ( p.out[i] != i + 1 )
+			return false;
+	return p.begins.load() == p.ends.load() && p.begins.load() >= 1;
+}
+
+void TestBatchGraphCache()
+{
+	PoolBackend backend( 3 );
+	for ( BatchMode mode : { BatchMode::Serial, BatchMode::Parallel } )
+	{
+		for ( int round = 0; round < 50; ++round )
+		{
+			BatchProbe outer, inner;
+			BatchDesc od = ProbeDesc( outer, "cache.same", 1 + round % 7, 1 + round % 4 );
+			outer.inner = ProbeDesc( inner, "cache.same", 5, 4 );
+			outer.nest = true;
+			CHECK( ExecuteParallelBatch( od, &backend, mode ) );
+			CHECK( ProbeOk( outer ) && ProbeOk( inner ) && outer.innerOk );
+		}
+	}
+
+	// More distinct shapes than the per-thread cache holds, from a reused and
+	// rewritten name buffer, interleaved with a revisited early name.
+	char name[32];
+	for ( int i = 0; i < 100; ++i )
+	{
+		std::snprintf( name, sizeof( name ), "cache.name.%d", i );
+		BatchProbe p;
+		BatchDesc d = ProbeDesc( p, name, 64, 1 + i % 4 );
+		CHECK( ExecuteParallelBatch( d, &backend, i % 2 ? BatchMode::Parallel : BatchMode::Serial ) );
+		CHECK( ProbeOk( p ) );
+		std::memset( name, 'x', sizeof( name ) - 1 ); // the batch kept no pointer to it
+		name[sizeof( name ) - 1] = '\0';
+		BatchProbe again;
+		BatchDesc e = ProbeDesc( again, "cache.name.0", 32, 3 );
+		CHECK( ExecuteParallelBatch( e, &backend, BatchMode::Parallel ) );
+		CHECK( ProbeOk( again ) );
+	}
+
+	// Several threads build their own caches concurrently.
+	std::vector<std::thread> threads;
+	for ( int t = 0; t < 4; ++t )
+	{
+		threads.emplace_back(
+		    [&backend, t]
+		    {
+			    for ( int i = 0; i < 200; ++i )
+			    {
+				    BatchProbe p;
+				    BatchDesc d = ProbeDesc( p, i % 3 ? "cache.shared" : "cache.other", 16 + t, 1 + i % 5 );
+				    CHECK( ExecuteParallelBatch( d, &backend, BatchMode::Serial ) );
+				    CHECK( ProbeOk( p ) );
+			    }
+		    } );
+	}
+	for ( std::thread &t : threads )
+		t.join();
+}
+
 } // namespace
 
 int main()
@@ -504,6 +615,7 @@ int main()
 	TestCopiesAndLifetime();
 	TestStallAndCancelReuse();
 	TestDynamicScopeStress();
+	TestBatchGraphCache();
 	std::printf( "%d checks, %d failures\n", g_checks.load(), g_failures.load() );
 	return g_failures.load() == 0 ? 0 : 1;
 }

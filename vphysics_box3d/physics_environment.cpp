@@ -117,7 +117,6 @@ CPhysicsEnvironmentBox3D::CPhysicsEnvironmentBox3D()
 	def.userData = this;
 	m_world = b3CreateWorld( &def );
 	b3World_SetCustomFilterCallback( m_world, CustomFilter, this );
-	Warning( "BOX3DNAN env created %p\n", (void*)this );
 }
 
 CPhysicsEnvironmentBox3D::~CPhysicsEnvironmentBox3D()
@@ -987,12 +986,6 @@ void CPhysicsEnvironmentBox3D::DispatchSleepWakeEvents()
 
 void CPhysicsEnvironmentBox3D::PostStep( float dt )
 {
-	for ( int i = 0; i < m_objects.Count(); i++ )
-	{
-		Vector p, v; m_objects[i]->GetPosition( &p, NULL ); v = FromB3( b3Body_GetLinearVelocity( ToBox3D( m_objects[i] )->GetBody() ) );
-		if ( !( fabsf( p.x ) < 1e20f && fabsf( p.z ) < 1e20f && fabsf( v.x ) < 1e20f ) )
-			Warning( "BOX3DNAN step %d object %s went bad (mass %f inertia %f %f %f)\n", m_stepCount, m_objects[i]->GetName(), m_objects[i]->GetMass(), m_objects[i]->GetInertia().x, m_objects[i]->GetInertia().y, m_objects[i]->GetInertia().z );
-	}
 	CheckConstraintBreaks( dt );
 	DispatchContactEvents( dt );
 	DispatchTouchEvents();
