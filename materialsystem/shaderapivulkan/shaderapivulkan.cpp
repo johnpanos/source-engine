@@ -2794,11 +2794,17 @@ void CEmptyMesh::EmitToNativeQueue()
 	}
 
 	std::vector<float> lightmapUv;
-	// Normal and tangent, only for the shader that reads them (PortalRefract);
-	// skinned normals and tangents are not blended.
-	const bool wantsTangents = g_CurrentPortalStage >= 0;
-	if ( wantsTangents && g_NumBoneWeights > 0 )
+	// Normal and tangent, only for the shaders that read them: PortalRefract
+	// (model space; skinned normals and tangents are not blended) and the skin
+	// shader (world space, below).
+	const bool skin = g_CurrentSkinCombos >= 0;
+	const bool wantsTangents = g_CurrentPortalStage >= 0 || skin;
+	if ( g_CurrentPortalStage >= 0 && g_NumBoneWeights > 0 )
 		NoteUnimplemented( "PortalRefract: skinned normal/tangent" );
+	// skin_vs20's per-vertex work: the lights' attenuation (GetVertexAttenForLight
+	// in SortLights order, 0 for the absent ones) and the world tangent frame.
+	VertexLightConstants skinLights[kMaxLocalLights];
+	const int skinLightCount = skin ? BuildVertexLightConstants( skinLights ) : 0;
 	std::vector<float> normalTangent;
 	std::vector<float> vertexAlpha;
 	// vertexlit_and_unlit_generic_vs20 lighting the vertices (not VERTEXCOLOR),
@@ -2855,6 +2861,15 @@ void CEmptyMesh::EmitToNativeQueue()
 			float nt[7];
 			memcpy( nt, base + kMeshNormalOffset, sizeof( float ) * 3 );
 			memcpy( nt + 3, base + kMeshUserDataOffset, sizeof( float ) * 4 );
+			if ( skin )
+			{
+				// SkinPositionNormalAndTangentSpace: normal and tangent S through
+				// the same rotation (unnormalized; skin.vert normalizes).
+				const float normal[3] = { nt[0], nt[1], nt[2] };
+				const float tangent[3] = { nt[3], nt[4], nt[5] };
+				WorldNormal( base, normal, nt );
+				WorldNormal( base, tangent, nt + 3 );
+			}
 			normalTangent.insert( normalTangent.end(), nt, nt + 7 );
 		}
 		// A D3DCOLOR, as CVertexBuilder::Color4ub stores it (no
@@ -2864,7 +2879,22 @@ void CEmptyMesh::EmitToNativeQueue()
 		out.push_back( pos[0] );
 		out.push_back( pos[1] );
 		out.push_back( pos[2] );
-		if ( vertexLighting )
+		if ( skin )
+		{
+			// World-space position (the push block holds only cViewProj), and the
+			// four lights' attenuation in the color slot and the alpha.
+			if ( g_NumBoneWeights <= 0 )
+				ModelToWorld( pos );
+			float atten[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+			for ( int i = 0; i < skinLightCount; ++i )
+				atten[i] = VertexAtten( skinLights[i], pos );
+			out[out.size() - 3] = pos[0];
+			out[out.size() - 2] = pos[1];
+			out[out.size() - 1] = pos[2];
+			out.insert( out.end(), atten, atten + 3 );
+			vertexAlpha.back() = atten[3];
+		}
+		else if ( vertexLighting )
 		{
 			float worldPos[3] = { pos[0], pos[1], pos[2] };
 			if ( g_NumBoneWeights <= 0 )
@@ -4789,9 +4819,14 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 	// directly) the snapshot's own pipeline selection stands.
 	// screenspace_general is one material shader over many pixel shaders; the
 	// pass is implemented when its pixel shader is (dev/lumcompare's).
+	// VertexLitGeneric's $phong path needs the skin pipeline, which a device
+	// without seven descriptor sets does not get.
+	const bool skinUnavailable =
+	    g_CurrentSkinCombos >= 0 && !g_VulkanContext.SkinPipelineSupported();
 	const bool implemented =
-	    !g_pBoundMaterial || NativePipelineImplementsShader( g_pBoundMaterial->GetShaderName() ) ||
-	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentLuminanceCompare );
+	    !skinUnavailable &&
+	    ( !g_pBoundMaterial || NativePipelineImplementsShader( g_pBoundMaterial->GetShaderName() ) ||
+	        ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentLuminanceCompare ) );
 	if ( !implemented )
 	{
 		DropDraw( "draw dropped: material shader not implemented by the native pipeline" );
