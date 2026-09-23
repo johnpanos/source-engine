@@ -207,7 +207,17 @@ int main( int argc, char *argv[] )
 		printf( "%s\n", strerror(errno) );
 	}
 	void *tier0 = dlopen( "libtier0" DLL_EXT_STRING, RTLD_NOW );
+	if ( !tier0 )
+	{
+		printf( "Failed to open tier0 (%s)\n", dlerror() );
+		return -1;
+	}
 	void *vstdlib = dlopen( "libvstdlib" DLL_EXT_STRING, RTLD_NOW );
+	if ( !vstdlib )
+	{
+		printf( "Failed to open vstdlib (%s)\n", dlerror() );
+		return -1;
+	}
 
 	const char *pBinaryName = "bin/dedicated" DLL_EXT_STRING;
 
@@ -230,8 +240,9 @@ int main( int argc, char *argv[] )
 	WaitForDebuggerConnect( argc, argv, 30 );
 
 	ret = dedicated_main( argc,argv );
-	dlclose( dedicated );
-	dlclose( vstdlib );
-	dlclose( tier0 );
+	// The app may still have background workers when its main loop returns.
+	// Keep these modules resident until process exit so their code and thread
+	// payload destructors remain valid throughout shutdown.
+	return ret;
 }
 #endif

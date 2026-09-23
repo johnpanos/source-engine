@@ -68,6 +68,9 @@ def build(bld):
 	# so linking several does not make them shadow each other.
 	if bld.env.DEDICATED:
 		libs += ['shaderapiempty']
+	elif bld.env.TOOLS:
+		libs += ['shaderapiempty', 'stdshader_dx9']
+		defines += ['LINKED_STANDARD_SHADERS']
 	else:
 		libs += ['stdshader_dx9']
 		defines += ['LINKED_STANDARD_SHADERS']

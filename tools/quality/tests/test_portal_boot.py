@@ -283,6 +283,20 @@ class StagingTests(unittest.TestCase):
             self.assertNotIn("bin/libclient.so", installed)
             self.assertNotIn("bin/libserver.so", installed)
 
+    def test_dedicated_launcher_uses_same_gamebin_staging(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build, stage = self.make_build(Path(directory))
+            (build / "launcher_main/hl2_launcher").unlink()
+            launcher = build / "dedicated_main/dedicated_launcher"
+            launcher.parent.mkdir(parents=True)
+            launcher.write_text("dedicated")
+            installed = boot.install_build(build, stage, launcher_name="dedicated_launcher")
+            self.assertEqual("dedicated", (stage / "dedicated_launcher").read_text())
+            self.assertIn("portal/bin/libserver.so", installed)
+            self.assertNotIn("bin/libserver.so", installed)
+            with self.assertRaisesRegex(ValueError, "hl2_launcher"):
+                boot.install_build(build, stage)
+
     def test_portal2_game_outputs_use_separate_gamebin(self):
         with tempfile.TemporaryDirectory() as directory:
             build, stage = self.make_build(Path(directory), "portal2")

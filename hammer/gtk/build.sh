@@ -13,6 +13,35 @@ CXX="${CXX:-g++}"
 
 PKGS="gtk4 libadwaita-1 epoxy"
 
+KTX_ENABLED=0
+if [ -n "${KTX_SOURCE_ROOT:-}" ] || [ -n "${KTX_BUILD_ROOT:-}" ]; then
+	if [ -z "${KTX_SOURCE_ROOT:-}" ] || [ -z "${KTX_BUILD_ROOT:-}" ]; then
+		echo "set both KTX_SOURCE_ROOT and KTX_BUILD_ROOT for KTX2 previews" >&2
+		exit 2
+	fi
+	KTX_SOURCE_ROOT=$( cd "$KTX_SOURCE_ROOT" && pwd -P )
+	KTX_BUILD_ROOT=$( cd "$KTX_BUILD_ROOT" && pwd -P )
+	EXPECTED_KTX_REVISION=$( python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["dependencies"]["ktx_software"]["revision"])' \
+		"$ROOT/quality/product_profiles/ktx2-linux-tools.json" )
+	ACTUAL_KTX_REVISION=$( git -C "$KTX_SOURCE_ROOT" rev-parse HEAD )
+	if [ "$ACTUAL_KTX_REVISION" != "$EXPECTED_KTX_REVISION" ]; then
+		echo "KTX source revision differs from the pinned profile" >&2
+		exit 2
+	fi
+	if [ -n "$( git -C "$KTX_SOURCE_ROOT" status --porcelain --untracked-files=no )" ]; then
+		echo "KTX source checkout has tracked changes" >&2
+		exit 2
+	fi
+	KTX_READER_ARCHIVE="$KTX_BUILD_ROOT/lib/libktx_read.a"
+	if [ ! -f "$KTX_READER_ARCHIVE" ] || \
+		! grep -Fqx "CMAKE_HOME_DIRECTORY:INTERNAL=$KTX_SOURCE_ROOT" "$KTX_BUILD_ROOT/CMakeCache.txt" || \
+		! grep -Fqx "CMAKE_BUILD_TYPE:STRING=Release" "$KTX_BUILD_ROOT/CMakeCache.txt"; then
+		echo "build the pinned ktx_read target before building Hammer" >&2
+		exit 2
+	fi
+	KTX_ENABLED=1
+fi
+
 # The editor core the shell links: the interaction authority (EditorController)
 # and the shared services it composes, plus the DiskFileStore adapter for file I/O.
 CORE="\
@@ -36,12 +65,21 @@ $ROOT/hammer/gtk/app.cpp \
 $ROOT/hammer/gtk/offscreen.cpp \
 $ROOT/hammer/gtk/renderer.cpp"
 
+# shellcheck disable=SC2046,SC2086
+set -- -std=c++20 -Wall -Wextra -Werror -O2 \
+	"-I$ROOT/public" "-I$ROOT" "-I$ROOT/hammer/gtk" \
+	$(pkg-config --cflags $PKGS) $HOST $CORE
+if [ "$KTX_ENABLED" -eq 1 ]; then
+	set -- "$@" -DHAMMER_KTX_PREVIEW \
+		"-I$KTX_SOURCE_ROOT/lib/include" "-I$KTX_SOURCE_ROOT/external/dfdutils" \
+		"$ROOT/hammer/adapters/source/ktx2_preview.cpp" \
+		"$ROOT/texturecontainer/ktx2_reader.cpp"
+fi
 # shellcheck disable=SC2046
-"$CXX" -std=c++20 -Wall -Wextra -Werror -O2 \
-	-I"$ROOT/public" -I"$ROOT" -I"$ROOT/hammer/gtk" \
-	$(pkg-config --cflags $PKGS) \
-	$HOST $CORE \
-	$(pkg-config --libs $PKGS) \
-	-o "$OUT"
+set -- "$@" $(pkg-config --libs $PKGS)
+if [ "$KTX_ENABLED" -eq 1 ]; then
+	set -- "$@" "$KTX_READER_ARCHIVE" -lz -lzstd
+fi
+"$CXX" "$@" -o "$OUT"
 
 echo "built $OUT"

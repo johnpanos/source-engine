@@ -1,0 +1,175 @@
+END-USER LICENSE AGREEMENT FOR VALVE SOURCE 'Plug-In' SOFTWARE
+
+
+IMPORTANT-READ CAREFULLY: This End-User License Agreement 
+("EULA") is a legal agreement between you (either an 
+individual or a single entity) and Valve Corporation 
+("Licensor"), for the software product identified above, which 
+consists of computer software and may include associated 
+media, printed materials, and "online" or electronic 
+documentation (collectively, the "SOFTWARE PRODUCT" or "SOFTWARE").
+
+By clicking on the "I ACCEPT" button and by downloading, 
+installing, copying, or otherwise using the SOFTWARE PRODUCT,
+you agree to be bound by all the terms and conditions set 
+forth below. You also agree that your consent given 
+electronically has the same value and carries the same 
+obligations as if signed by you. If you do not agree to 
+the terms of this EULA, click on the "I DECLINE" button 
+to stop the download or the install procedure.
+
+SOFTWARE PRODUCT LICENSE
+
+The SOFTWARE PRODUCT is protected by copyright laws and 
+international copyright treaties, as well as other 
+intellectual property laws and treaties. The SOFTWARE 
+PRODUCT is licensed, not sold.
+
+1.	GRANT OF LICENSE. This EULA grants you the 
+following rights:
+
+·	Installation and Use. You may install and use 
+one copy of the SOFTWARE PRODUCT, or in its place, any 
+prior version for the same operating system, on a 
+single workstation.
+
+ 	This SOFTWARE PRODUCT may only be used for 
+personal, non-commercial purposes as recognized by 
+Licensor. Licenses issued for personal, non-commercial 
+purposes may not be used in any business enterprise, 
+or for any commercial production, subcontracting, or 
+other for-profit use (including, but not limited to, 
+the sale or barter of animation, composited images, 
+exported scripts, file conversion, file output, models, 
+or rendered images), or for any other non-personal 
+purposes.  
+
+Furthermore, the SOFTWARE PRODUCT may only 
+be (a) used in the development of game modifications 
+designed to operate only in conjunction with 
+Half-Life 2 or other compatible Valve products 
+using the Source engine and 
+(b) redistributed solely to licensed end users of 
+Half-Life 2 or other compatible Valve products 
+using the Source engine, without charge. 
+
+2. DESCRIPTION OF OTHER RIGHTS AND LIMITATIONS.
+
+·	Limitations on Reverse Engineering, 
+Decompilation, and Disassembly. You may not reverse 
+engineer, decompile, or disassemble the SOFTWARE 
+PRODUCT, except and only to the extent that such 
+activity is expressly permitted by applicable law 
+notwithstanding this limitation.
+·	Rental. You may not rent or lease (including 
+via the Internet, an application service provider 
+(ASP), or a timeshare arrangement) the SOFTWARE 
+PRODUCT, or otherwise provide access to or use of the 
+SOFTWARE PRODUCT to any third parties without the 
+prior written approval of Licensor.
+·	Software Transfer. You may not transfer or 
+sell any of your rights under this EULA without the 
+Licensor's prior written consent. 
+·	Termination. Without prejudice to any other 
+rights, Licensor may terminate this EULA immediately 
+upon written (including email) notice to Licensee.  
+Additionally, this EULA will automatically terminate if 
+you fail to comply with the terms and conditions of this EULA. 
+In such event, you must destroy all copies of the 
+SOFTWARE PRODUCT and all of its component parts.
+
+3.	COPYRIGHT. All title and copyrights in and 
+to the SOFTWARE PRODUCT (including but not limited 
+to any images, photographs, animations, video, audio, 
+music, text, and "applets" incorporated into the 
+SOFTWARE PRODUCT), the accompanying printed materials, 
+and any copies of the SOFTWARE PRODUCT are owned by 
+Valve Corporation or its suppliers. The SOFTWARE 
+PRODUCT is protected by copyright laws and 
+international treaty provisions. Therefore, you must 
+treat the SOFTWARE PRODUCT like any other copyrighted 
+material except that you may either (a) make one copy 
+of the SOFTWARE PRODUCT solely for backup or archival 
+purposes or (b) install the SOFTWARE PRODUCT on a 
+single computer provided you keep the original solely 
+for backup or archival purposes. You may not copy the 
+printed materials accompanying the SOFTWARE PRODUCT.  
+You may not remove any proprietary notice or legend 
+from the SOFTWARE and must reproduce any such notices 
+and/or legends on any copies thereof.
+
+4.	DUAL-MEDIA SOFTWARE. You may receive the 
+SOFTWARE PRODUCT in more than one medium. Regardless 
+of the type or size of medium you receive, you may 
+use only one medium that is appropriate for your 
+single computer. You may not use or install the other 
+medium on another computer. You may not loan, rent, 
+lease, or otherwise transfer the other medium to 
+another user.
+
+5.	EXPORT RESTRICTIONS. You agree that the 
+SOFTWARE PRODUCT, any direct product thereof, or any 
+related documentation or technical data is not being 
+or will not be shipped, transferred or re-exported, 
+directly or indirectly, into any country prohibited 
+by either the United States Export Administration 
+Act and the regulations thereunder or the laws and 
+regulations of such other governmental entity as 
+may have jurisdiction over such shipment, transfer, 
+or export, or will be used for any purposes 
+prohibited by any such applicable law.
+
+6.	UNITED STATES GOVERNMENT RESTRICTED RIGHTS.  
+The SOFTWARE PRODUCT was developed at private expense 
+and with no government funds.  If this SOFTWARE PRODUCT 
+is acquired by or on behalf of a unit or agency of the 
+United States Government, the Government agrees that 
+such SOFTWARE PRODUCT is "commercial computer software" 
+or "commercial computer software documentation" and 
+that, absent a written agreement to the contrary, the 
+Government's rights with respect to such SOFTWARE 
+PRODUCT are limited by the terms of the this License 
+Agreement, pursuant to FAR §12.212(a) and/or DFARS 
+§227.7202-1(a), as applicable.  The SOFTWARE PRODUCT 
+is proprietary data, all rights of which are reserved 
+under the copyright laws of the United States.
+
+7.	DISCLAIMER OF WARRANTY.  THE SOFTWARE IS 
+PROVIDED TO YOU "AS IS" AND WITHOUT WARRANTY OF ANY 
+KIND.  THE ENTIRE RISK AS TO THE RESULTS AND 
+PERFORMANCE OF THE SOFTWARE IS ASSUMED BY YOU. 
+LICENSOR AND ITS SUPPLIERS DISCLAIM ALL WARRANTIES, 
+EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED 
+TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS 
+FOR A PARTICULAR PURPOSE, TITLE AND NONINFRINGEMENT, 
+WITH RESPECT TO THE SOFTWARE.
+
+8.	NO LIABILITY.  IN NO EVENT SHALL LICENSOR OR 
+ITS SUPPLIERS BE LIABLE FOR ANY DIRECT, CONSEQUENTIAL, 
+INDIRECT, INCIDENTAL, PUNITIVE, SPECIAL OR OTHER 
+DAMAGES WHATSOEVER, INCLUDING WITHOUT LIMITATION, 
+DAMAGES FOR LOSS OF BUSINESS PROFITS, BUSINESS 
+INTERRUPTION, LOSS OF BUSINESS INFORMATION, AND THE 
+LIKE, ARISING OUT OF THIS AGREEMENT OR THE USE OF OR 
+INABILITY TO USE THE SOFTWARE, EVEN IF LICENSOR HAS 
+BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+Because some states and jurisdictions do not allow 
+the exclusion or limitation of liability for 
+consequential or incidental damages, the above 
+limitations may not apply to you. 
+
+9.	MISCELLANEOUS.
+
+If you wish to contact the Licensor for any reason, 
+please write to Valve Corporation, located at 10500 
+NE 8th Street, Bellevue, WA  98004.
+
+If you acquired this Software in the United States, then 
+this EULA is governed by the laws of the State of 
+Washington excluding its conflicts of law rules. and 
+You hereby irrevocably agree to the jurisdiction and 
+venue of the courts in the State of Washington.
+
+
+(c) 2004 Valve Corporation.  All rights reserved.
+

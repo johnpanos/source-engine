@@ -38,12 +38,12 @@ has no display, GPU, or platform dependency.
     **arrow keys** nudge the selection one grid step, and **right-click** opens a
     context menu (a selection menu when a brush is selected, otherwise the default
     view menu). Like MFC, the 3D view has no menu.
-- **3D preview:** the camera view renders shaded, per-solid-coloured brushes; the
+- **3D preview:** the camera view renders shaded brushes with available base textures; the
   2D views render wireframe geometry over a Hammer-style power-of-two grid with
   coloured world axes; the selected/pending brush is tinted in every view.
 
 Not yet implemented (later RFC 0002 rows): entity/property editing, non-box brush
-editing, vertex/clip tools, real texture/material rendering, and displacements.
+editing, vertex/clip tools, full Source material fidelity, and displacements.
 The remaining tool-palette buttons, texture panel, and unimplemented menu items
 are laid out but inert.
 
@@ -98,6 +98,24 @@ compiler. From anywhere in the checkout:
 hammer/gtk/build.sh                 # builds hammer/gtk/hammer_gtk
 hammer/gtk/hammer_gtk --open hammer/gtk/samples/room.vmf
 ```
+
+To enable packaged KTX2 previews in the material browser and textured
+viewport, point the build at the source and CMake build of the revision pinned
+in `quality/product_profiles/ktx2-linux-tools.json`:
+
+```sh
+KTX_SOURCE_ROOT=/tmp/rfc0008-ktx-pin \
+KTX_BUILD_ROOT=/tmp/rfc0008-ktx-pin/build-rfc0008 \
+  hammer/gtk/build.sh /tmp/rfc0008-hammer-ktx-preview
+python3 tools/quality/hammer_ktx2_preview.py \
+  --binary /tmp/rfc0008-hammer-ktx-preview \
+  --out quality-results/rfc0008-f3-hammer-ktx-product.json
+```
+
+This preview accepts packaged RGBA8/BGRA8 2D KTX2 assets through the shared
+runtime reader. Present KTX2 assets take precedence over VTF and must decode;
+compressed KTX2 formats are not yet previewed. A build without the pinned
+reader keeps the legacy VTF preview path.
 
 ## Verify without a window server
 

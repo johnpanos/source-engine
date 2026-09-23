@@ -1,0 +1,44 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+def options(opt):
+	pass
+
+def configure(conf):
+	pass
+
+def build(bld):
+	if not bld.env.KTX_READ_ENABLED:
+		return
+	bld.program(
+		features='c cxx',
+		source=['test_ktx2_reader.cpp'],
+		target='ktx2_reader_conformance',
+		name='ktx2_reader_conformance',
+		includes=['../../public'],
+		use=['texturecontainer', 'KTXREAD'],
+		install_path=None)
+	bld.program(
+		features='c cxx',
+		source=['test_vtf_reader.cpp'],
+		target='vtf_texture_reader_conformance',
+		name='vtf_texture_reader_conformance',
+		includes=['../../public', '../../public/tier0', '../../public/tier1'],
+		use=['vtf_texture_reader', 'texturecontainer', 'KTXREAD', 'vtf',
+			'bitmap', 'mathlib', 'tier0', 'tier1', 'tier2'],
+		install_path=None)
+	bld.program(
+		features='c cxx',
+		source=[
+			'../hammertest/formats/test_ktx2_preview.cpp',
+			'../../hammer/adapters/source/ktx2_preview.cpp',
+			'../../hammer/core/formats/material_catalog.cpp',
+			'../../hammer/core/formats/material.cpp',
+			'../../hammer/core/formats/vtf_image.cpp',
+			'../../hammer/core/formats/keyvalues.cpp'
+		],
+		target='hammer_ktx2_preview_conformance',
+		name='hammer_ktx2_preview_conformance',
+		includes=['../..', '../../public', '../hammertest'],
+		use=['texturecontainer', 'KTXREAD'],
+		install_path=None)

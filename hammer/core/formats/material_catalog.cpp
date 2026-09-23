@@ -59,6 +59,14 @@ bool SafeMaterialPath( const std::string &name )
 	return false;
 }
 
+bool ValidPreviewImage( const VtfImage &image )
+{
+	constexpr int kMaxDimension = 16384;
+	return image.width > 0 && image.height > 0 && image.width <= kMaxDimension &&
+	       image.height <= kMaxDimension &&
+	       image.rgba.size() == std::size_t( image.width ) * image.height * 4;
+}
+
 } // namespace
 
 std::string CanonicalizeMaterialName( const std::string &name )
@@ -81,12 +89,16 @@ std::string CanonicalizeMaterialName( const std::string &name )
 		return str.size() >= suffix.size() &&
 		       str.compare( str.size() - suffix.size(), suffix.size(), suffix ) == 0;
 	};
-	if ( ends_with( s, ".vmt" ) || ends_with( s, ".vtf" ) )
+	if ( ends_with( s, ".ktx2" ) )
+		s.erase( s.size() - 5 );
+	else if ( ends_with( s, ".vmt" ) || ends_with( s, ".vtf" ) )
 		s.erase( s.size() - 4 );
 	return s;
 }
 
-MaterialCatalog::MaterialCatalog( const hammer::ports::IAssetSource &source ) : m_source( source )
+MaterialCatalog::MaterialCatalog(
+    const hammer::ports::IAssetSource &source, KtxPreviewDecoder ktxDecoder )
+    : m_source( source ), m_ktxDecoder( ktxDecoder )
 {
 }
 
@@ -158,6 +170,11 @@ std::string MaterialCatalog::ResolveBaseTexture( const std::string &name )
 	}
 
 	const std::string canonicalBase = CanonicalizeMaterialName( base );
+	if ( !SafeMaterialPath( canonicalBase ) )
+	{
+		m_baseTextureMisses.insert( canonical );
+		return std::string();
+	}
 	m_baseTextures.emplace( canonical, canonicalBase );
 	return canonicalBase;
 }
@@ -177,13 +194,30 @@ const VtfImage *MaterialCatalog::BaseTextureImage( const std::string &name )
 		return nullptr;
 	}
 
+	const std::string ktxPath = "materials/" + base + ".ktx2";
+	if ( m_source.HasAsset( ktxPath ) )
+	{
+		std::string bytes;
+		std::string error;
+		std::optional<VtfImage> image;
+		if ( m_ktxDecoder && m_source.ReadAsset( ktxPath, bytes ) )
+			image = m_ktxDecoder( bytes, error );
+		if ( !image || !ValidPreviewImage( *image ) )
+		{
+			m_images.emplace( canonical, nullptr );
+			return nullptr;
+		}
+		auto inserted =
+		    m_images.emplace( canonical, std::make_unique<VtfImage>( std::move( *image ) ) );
+		return inserted.first->second.get();
+	}
+
 	std::string vtf;
 	if ( !m_source.ReadAsset( "materials/" + base + ".vtf", vtf ) )
 	{
 		m_images.emplace( canonical, nullptr );
 		return nullptr;
 	}
-
 	std::string error;
 	std::optional<VtfImage> image = DecodeVtf( vtf, error );
 	if ( !image )

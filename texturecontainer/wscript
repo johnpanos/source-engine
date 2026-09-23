@@ -1,0 +1,31 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# RFC 0008 F3 read-only KTX2 adapter. The host KTX-Software build is selected
+# explicitly at configure time and checked against the profile revision.
+
+def options(opt):
+	pass
+
+def configure(conf):
+	pass
+
+def build(bld):
+	if not bld.env.KTX_READ_ENABLED:
+		return
+	bld.stlib(
+		features='c cxx',
+		source=['ktx2_reader.cpp'],
+		target='texturecontainer',
+		name='texturecontainer',
+		includes=['../public'] + bld.env.INCLUDES_KTXREAD + bld.env.INCLUDES_VULKAN,
+		use=['KTXREAD', 'VULKAN'],
+		install_path=None)
+	bld.stlib(
+		features='c cxx',
+		source=['vtf_reader.cpp'],
+		target='vtf_texture_reader',
+		name='vtf_texture_reader',
+		includes=['../public', '../public/tier0', '../public/tier1'],
+		use=['vtf', 'bitmap', 'tier0', 'tier1'],
+		install_path=None)

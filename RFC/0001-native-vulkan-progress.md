@@ -1530,11 +1530,14 @@ Evidence:
 - `material_pixel_conformance` built for both native Vulkan and DXVK. The three
   cable-specific quality tests pass.
 
-The remaining visual reports require scene verification for the monitor and sky
-material fixes, a capture of the changed HUD scale, and native support for
-refractive glass and the reported over-bright spheres. `Refract_DX90` remains
-outside the native shader list because its screen-copy normal distortion needs
-its own implementation.
+The later sections record scene captures for the sky, changed HUD, slideshow,
+and sphere sprites. Glass remains open: the frosted observation-window panels
+use `LightmappedGeneric` with `$envmap env_cubemap` and additive blending.
+Native submits their base texture but does not sample their cubemap reflection,
+so the pane stays clearer than DXVK. `Refract_DX90`, used by other glass and
+liquid-portal surfaces, remains outside the native shader list because its
+screen-copy normal distortion needs its own implementation. Real monitor render
+targets also still need a scene capture.
 
 ```sh
 python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime-native \
@@ -1558,6 +1561,14 @@ translated UV matrix; samples at the left and right must both read the intended
 top half. Fresh DXVK pixels match the independent equation, and native matches
 the DXVK fixture at all four samples. quality/fixtures/material-pixels/README.md
 records capture provenance and the reproduction command.
+An `escape_02` outdoor capture from `cmd setpos 0 0 1000` and
+`cmd setang -20 0 0` now shows the authored cloudy sky and trees in native
+Vulkan (`/tmp/portal-escape-sky-out/sky.png`); the Portal boot scene check
+passed. Reproduce it with `portal_boot.py --runtime run/runtime-native
+--build build-r03-portal-native --renderer native-vulkan --headless --map
+escape_02 --console-command 'cmd noclip' --console-command 'cmd setpos 0 0
+1000' --console-command 'cmd setang -20 0 0' --out OUT`. This is a native
+scene check, while the pixel fixture supplies the DXVK comparison.
 
 ## MonitorScreen_DX9 image and color controls (2026-09-23)
 
@@ -1576,3 +1587,25 @@ exercise the oracle and case validation. The DXVK reference and reproduction
 command are in quality/fixtures/material-pixels/README.md. Real in-game monitor
 render targets still need a scene capture to verify the full producer-to-screen
 path.
+
+## Portal slideshow screen and Sprite_DX9 tint (2026-09-23)
+
+The hanging GLaDOS screen in `escape_02` is a VGUI slideshow. Its first image
+panel was created hidden, while the screen assumed slide index zero had already
+been shown. Initializing the last index to -1 and the visibility state to false
+makes the first enabled slide visible; an in-game native Vulkan capture at
+`/tmp/portal-escape-native-slide-3/slide.png` shows the authored slideshow image.
+
+The cake-room white circles came from translucent `sprites/sphere_silhouette`,
+not from the sphere model's self-illumination. Sprite_DX9's VERTEXCOLOR combo
+multiplies the texture by the vertex RGB and alpha, but native Vulkan had been
+using the texture at full strength. The native fragment path now applies both
+channels, with vertex RGB gamma conversion matching the Sprite_DX9 SRGB combo.
+Three material-pixel cases cover a dim linear sprite, tinted alpha blending,
+and sRGB tinting. The native and DXVK captures match byte for byte; the DXVK
+reference and shader artifact requirements are recorded in
+`quality/fixtures/material-pixels/README.md`. The direct `escape_02` capture at
+`/tmp/portal-escape-native-sphere-fixed/spheres.png` shows the silhouettes
+darkened. The general Portal boot heuristic marks that particular near-black
+room screenshot incomplete, so it is visual evidence only; the sprite pixel
+conformance is the passing automated gate.

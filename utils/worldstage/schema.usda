@@ -1,0 +1,96 @@
+#usda 1.0
+(
+    "Source World Stage schema for geometry and lightmap ownership."
+    subLayers = [
+        @usd/schema.usda@
+    ]
+)
+
+over "GLOBAL" (
+    customData = {
+        string libraryName = "sourceWorld"
+        string libraryPath = "utils/worldstage"
+        string libraryPrefix = ""
+    }
+)
+{
+}
+
+class "SourceWorldAPI" (
+    inherits = </APISchemaBase>
+    doc = """Versioned Source world data authored on /World."""
+    customData = {
+        token apiSchemaType = "singleApply"
+    }
+)
+{
+    uniform int source:schemaVersion = 2 (
+        doc = "Version of the Source-specific World Stage properties."
+    )
+    uniform int source:lightmapAtlasWidth (
+        doc = "Width in texels of the geometry layer's lightmap atlas."
+    )
+    uniform int source:lightmapAtlasHeight (
+        doc = "Height in texels of the geometry layer's lightmap atlas."
+    )
+    int[] source:chartFaceIds (
+        doc = "BSP face index for each chart, ordered by chart id."
+    )
+    int4[] source:chartRects (
+        doc = "Per-chart atlas x, y, width, height in texels, excluding gutter."
+    )
+}
+
+class "SourceMeshAPI" (
+    inherits = </APISchemaBase>
+    doc = """Per-triangle Source mapping and lightmap chart identity.
+
+    These arrays have one element for each triangulated mesh face. The
+    lightmap coordinates themselves are the standard face-varying
+    primvars:lightmap:st authored by the geometry emitter."""
+    customData = {
+        token apiSchemaType = "singleApply"
+    }
+)
+{
+    int[] primvars:source:faceId (
+        customData = {
+            string apiName = "faceId"
+        }
+        doc = "Original BSP face index for each triangle."
+    )
+    uint[] primvars:source:smoothingGroup (
+        customData = {
+            string apiName = "smoothingGroup"
+        }
+        doc = "Source smoothing-group bitmask for each triangle."
+    )
+    int[] primvars:source:lightmapChartId (
+        customData = {
+            string apiName = "lightmapChartId"
+        }
+        doc = "Canonical lightmap chart index for each triangle."
+    )
+    string source:materialPath (
+        doc = "Source VMT path used by all triangles in this material batch."
+    )
+}
+
+class "SourceEntityAPI" (
+    inherits = </APISchemaBase>
+    doc = """One compiled BSP entity, including its ordered key/value records."""
+    customData = {
+        token apiSchemaType = "singleApply"
+    }
+)
+{
+    uniform int source:entityIndex (
+        doc = "Ordinal in the serialized BSP entity lump."
+    )
+    string[] source:keyNames (
+        doc = "Keys in serialized order, including duplicate keys."
+    )
+    string[] source:keyValues (
+        doc = "Values corresponding one-to-one with source:keyNames."
+    )
+}

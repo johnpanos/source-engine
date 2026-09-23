@@ -135,6 +135,38 @@
       "dialect": "cxx20",
       "rfc": "0008"
     },
+    "sourceWorld": {
+      "dialect": "cxx20",
+      "rfc": "0008"
+    },
+    "vbspworldstage": {
+      "dialect": "cxx20",
+      "rfc": "0008"
+    },
+    "texturecontainer": {
+      "dialect": "cxx20",
+      "rfc": "0008"
+    },
+    "vtf_texture_reader": {
+      "dialect": "cxx20",
+      "rfc": "0008"
+    },
+    "vulkan_texture_image": {
+      "dialect": "cxx20",
+      "rfc": "0008"
+    },
+    "ktx2_reader_conformance": {
+      "dialect": "cxx20",
+      "rfc": "0008"
+    },
+    "vtf_texture_reader_conformance": {
+      "dialect": "cxx20",
+      "rfc": "0008"
+    },
+    "hammer_ktx2_preview_conformance": {
+      "dialect": "cxx20",
+      "rfc": "0008"
+    },
     "bsp2tool": {
       "dialect": "cxx20",
       "rfc": "0008"

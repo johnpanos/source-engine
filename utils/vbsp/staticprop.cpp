@@ -11,14 +11,14 @@
 #include "utlvector.h"
 #include "bspfile.h"
 #include "gamebspfile.h"
-#include "VPhysics_Interface.h"
-#include "Studio.h"
+#include "vphysics_interface.h"
+#include "studio.h"
 #include "byteswap.h"
-#include "UtlBuffer.h"
-#include "CollisionUtils.h"
+#include "utlbuffer.h"
+#include "collisionutils.h"
 #include <float.h>
-#include "CModel.h"
-#include "PhysDll.h"
+#include "cmodel.h"
+#include "physdll.h"
 #include "utlsymbol.h"
 #include "tier1/strtools.h"
 #include "KeyValues.h"
@@ -182,10 +182,6 @@ bool LoadStudioModel( char const* pModelName, char const* pEntityType, CUtlBuffe
 		return false;
 	}
 
-	// ensure reset
-	pHdr->pVertexBase = NULL;
-	pHdr->pIndexBase  = NULL;
-
 	return true;
 }
 
@@ -247,7 +243,7 @@ static CPhysCollide* GetCollisionModel( char const* pModelName )
 	// Convert to a common string
 	char* pTemp = (char*)_alloca(strlen(pModelName) + 1);
 	strcpy( pTemp, pModelName );
-	_strlwr( pTemp );
+	strlwr( pTemp );
 
 	char* pSlash = strchr( pTemp, '\\' );
 	while( pSlash )
@@ -682,9 +678,11 @@ void EmitStaticProps()
 }
 
 static studiohdr_t *g_pActiveStudioHdr;
+static vertexFileHeader_t *g_pActiveVertexFile;
 static void SetCurrentModel( studiohdr_t *pStudioHdr )
 {
 	// track the correct model
+	Assert( !g_pActiveVertexFile );
 	g_pActiveStudioHdr = pStudioHdr;
 }
 
@@ -692,11 +690,12 @@ static void FreeCurrentModelVertexes()
 {
 	Assert( g_pActiveStudioHdr );
 
-	if ( g_pActiveStudioHdr->pVertexBase )
+	if ( g_pActiveVertexFile )
 	{
-		free( g_pActiveStudioHdr->pVertexBase );
-		g_pActiveStudioHdr->pVertexBase = NULL;
+		free( g_pActiveVertexFile );
+		g_pActiveVertexFile = NULL;
 	}
+	g_pActiveStudioHdr = NULL;
 }
 
 const vertexFileHeader_t * mstudiomodel_t::CacheVertexData( void * pModelData )
@@ -708,9 +707,9 @@ const vertexFileHeader_t * mstudiomodel_t::CacheVertexData( void * pModelData )
 	Assert( pModelData == NULL );
 	Assert( g_pActiveStudioHdr );
 
-	if ( g_pActiveStudioHdr->pVertexBase )
+	if ( g_pActiveVertexFile )
 	{
-		return (vertexFileHeader_t *)g_pActiveStudioHdr->pVertexBase;
+		return g_pActiveVertexFile;
 	}
 
 	// mandatory callback to make requested data resident
@@ -753,7 +752,6 @@ const vertexFileHeader_t * mstudiomodel_t::CacheVertexData( void * pModelData )
 		Error("Error Vertex File %s checksum %d should be %d\n", fileName, pVvdHdr->checksum, g_pActiveStudioHdr->checksum);
 	}
 
-	g_pActiveStudioHdr->pVertexBase = (void*)pVvdHdr;
+	g_pActiveVertexFile = pVvdHdr;
 	return pVvdHdr;
 }
-

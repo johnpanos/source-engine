@@ -63,6 +63,16 @@ public:
 		return BaseClass::AddSystem( system, interfaceName );
 	}
 
+	IAppSystem *AddSystem( AppModule_t module, const char *interfaceName )
+	{
+		return BaseClass::AddSystem( module, interfaceName );
+	}
+
+	AppModule_t LoadPhysicsModule( const char *moduleName )
+	{
+		return BaseClass::LoadModule( moduleName );
+	}
+
 	void *FindSystem( const char *pInterfaceName )
 	{
 		return CSteamAppSystemGroup::FindSystem( pInterfaceName );

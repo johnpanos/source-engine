@@ -77,8 +77,10 @@ def stage_runtime(runtime, stage, game="portal", content_only=False):
     return count
 
 
-def install_build(build, stage, game="portal"):
-    """Overlay Waf products, keeping Portal client/server modules in gamebin."""
+def install_build(build, stage, game="portal", launcher_name="hl2_launcher"):
+    """Overlay Waf products, keeping game modules in the selected gamebin."""
+    if launcher_name not in {"hl2_launcher", "dedicated_launcher"}:
+        raise ValueError("unsupported launcher: " + launcher_name)
     build, stage = Path(build).resolve(), Path(stage)
     if not build.is_dir():
         raise ValueError("build output directory is missing")
@@ -93,10 +95,10 @@ def install_build(build, stage, game="portal"):
 
     products = sorted(path for path in build.rglob("*.so")
                       if path.is_file() and belongs_to_active_build(path))
-    launchers = sorted(path for path in build.rglob("hl2_launcher")
+    launchers = sorted(path for path in build.rglob(launcher_name)
                        if path.is_file() and belongs_to_active_build(path))
     if not products or len(launchers) != 1:
-        raise ValueError("build must contain shared libraries and exactly one hl2_launcher")
+        raise ValueError("build must contain shared libraries and exactly one " + launcher_name)
     sources = {}
     # Waf gives single-game products an unqualified game/client output path.
     # Read only its literal game selection, never execute the Python cache.
@@ -134,7 +136,7 @@ def install_build(build, stage, game="portal"):
             sources["bin/" + library.name] = library
     for source in products + launchers:
         relative = source.relative_to(build)
-        if source.name == "hl2_launcher":
+        if source.name == launcher_name:
             destination = stage / source.name
         elif source.name in {"client.so", "libclient.so", "server.so", "libserver.so"}:
             if game not in relative.parts and not (

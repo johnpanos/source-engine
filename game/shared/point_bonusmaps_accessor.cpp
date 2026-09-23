@@ -39,7 +39,7 @@ public:
 private:
 	string_t	m_String_tFileName;
 	string_t	m_String_tMapName;
-	IGameUI		*m_pGameUI;
+	IGameUI *m_pGameUI = NULL;
 };
 
 BEGIN_DATADESC( CPointBonusMapsAccessor )
@@ -56,6 +56,8 @@ LINK_ENTITY_TO_CLASS( point_bonusmaps_accessor, CPointBonusMapsAccessor );
 void CPointBonusMapsAccessor::Activate( void )
 {
 	BaseClass::Activate();
+	if ( engine->IsDedicatedServer() )
+		return;
 
 	CreateInterfaceFn gameUIFactory = g_GameUI.GetFactory();
 	if ( gameUIFactory )
@@ -122,6 +124,10 @@ void BonusMapChallengeUpdate( const char *pchFileName, const char *pchMapName, c
 
 void BonusMapChallengeNames( char *pchFileName, char *pchMapName, char *pchChallengeName )
 {
+#ifndef CLIENT_DLL
+	if ( engine->IsDedicatedServer() )
+		return;
+#endif
 	CreateInterfaceFn gameUIFactory = g_GameUI.GetFactory();
 	if ( gameUIFactory )
 	{
@@ -135,6 +141,11 @@ void BonusMapChallengeNames( char *pchFileName, char *pchMapName, char *pchChall
 
 void BonusMapChallengeObjectives( int &iBronze, int &iSilver, int &iGold )
 {
+	iBronze = iSilver = iGold = 0;
+#ifndef CLIENT_DLL
+	if ( engine->IsDedicatedServer() )
+		return;
+#endif
 	CreateInterfaceFn gameUIFactory = g_GameUI.GetFactory();
 	if ( gameUIFactory )
 	{

@@ -1,0 +1,39 @@
+{
+  "schema": "source-host-tool-profile/v1",
+  "id": "ktx2-linux-x86_64-gcc16-v1",
+  "description": "RFC 0008 F3 pinned host encoder/transcoder and explicit package targets; device format support remains unverified.",
+  "target": {"product": "texture-tools", "os": "linux", "architecture": "x86_64"},
+  "toolchain": {"cxx": "g++", "family": "gcc", "version": "16.2.1", "cmake": "4.3.0", "build_type": "Release"},
+  "dependencies": {
+    "ktx_software": {
+      "repository": "https://github.com/KhronosGroup/KTX-Software.git",
+      "revision": "90967979cbb7e9401ee2401ff997f30b4b7507d6",
+      "license": "Apache-2.0; bundled dependencies retain their own licenses"
+    }
+  },
+  "build": {
+    "generator": "Ninja",
+    "cmake_options": {
+      "BUILD_SHARED_LIBS": "OFF",
+      "KTX_FEATURE_TOOLS": "ON",
+      "KTX_FEATURE_TESTS": "OFF",
+      "KTX_FEATURE_LOADTEST_APPS": "OFF"
+    },
+    "target": "ktxtools",
+    "binary": "Release/ktx",
+    "reader_library": "lib/libktx_read.a"
+  },
+  "texture_classes": {
+      "base-color": {"create_format": "R8G8B8A8_SRGB", "oracle_target": "rgba8", "formats": {"bc7": "VK_FORMAT_BC7_SRGB_BLOCK", "astc": "VK_FORMAT_ASTC_4x4_SRGB_BLOCK", "etc-rgba": "VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK"}},
+      "normal": {"create_format": "R8G8_UNORM", "oracle_target": "rg8", "formats": {"bc5": "VK_FORMAT_BC5_UNORM_BLOCK", "eac-rg11": "VK_FORMAT_EAC_R11G11_UNORM_BLOCK"}},
+      "mask": {"create_format": "R8_UNORM", "oracle_target": "r8", "formats": {"bc4": "VK_FORMAT_BC4_UNORM_BLOCK", "eac-r11": "VK_FORMAT_EAC_R11_UNORM_BLOCK"}},
+      "hdr": {"create_format": "R16G16B16A16_SFLOAT", "oracle_target": "rgba16f", "formats": {"bc6hu": "VK_FORMAT_BC6H_UFLOAT_BLOCK", "astc-hdr-4x4": "VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK", "rgb9e5": "VK_FORMAT_E5B9G9R9_UFLOAT_PACK32"}}
+    },
+  "fixture": {
+    "width": 8,
+    "height": 8,
+    "ldr_max_channel_error": 0,
+    "hdr_max_channel_error": 0.0
+  },
+  "evidence": {"status": "partial", "required_checks": ["exact source revision", "ktx validate", "LDR/HDR decoded pixel oracle", "target VkFormat", "malformed-container rejection", "packer format guard and atomic failure", "owned packaged-image reader", "reader-to-native-pixel upload"]}
+}

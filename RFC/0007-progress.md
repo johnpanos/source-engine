@@ -1,6 +1,6 @@
 # RFC 0007 progress
 
-Updated: 2026-09-22. The full physically based lighting pipeline is not yet
+Updated: 2026-09-23. The full physically based lighting pipeline is not yet
 implemented. This record separates installed evidence from the RFC's planned
 interfaces and phases.
 
@@ -313,10 +313,175 @@ before writing canonical SH L1 lighting. An L1 representation may still need a
 declared quality limit for sharp or grazing light; the fitting function alone
 does not satisfy the SH oracle in RFC 0007.
 
-The full R48–R52 gates remain open. In particular, vbsp/vvis/vrad are not
-ported to Waf, the Cycles provider is not built or pinned, and RFC 0008's
-World Stage and canonical lighting formats are prerequisite work for the later
-bake phases.
+The full R48–R52 gates remain open. VBSP has a Linux host-tool port and a
+synthetic smoke; vvis/vrad and the legacy-output comparator remain. The Cycles
+provider is not built or pinned, and RFC 0008's World Stage and canonical
+lighting formats are prerequisite work for the later bake phases.
+
+### R48 host compiler preparation (2026-09-23)
+
+The FGD parser library used by vbsp now has an isolated Waf static target in
+the host `--tools` product. `./waf configure -o
+build-rfc0008-tools-fgdlib --tools -T release` and `./waf build -o
+build-rfc0008-tools-fgdlib --targets=fgdlib -j4` built `libfgdlib.a` on
+Linux x86_64. The port fixes case-sensitive includes, dependent-base template
+lookup, integer formatting and a Windows-only file-existence check; the
+token reader remains the authority for opening the file. This is a compile
+and link check, not an FGD semantic corpus.
+
+Using the Waf `vtex.cpp` compile flags with vbsp's include paths and
+`MACRO_MATHLIB`, syntax checks pass for all 25 `utils/vbsp/*.cpp` files and
+47 of 49 sources listed in `utils/vbsp/vbsp.vpc`. The two remaining source
+failures are `utils/common/threads.cpp` and
+`utils/common/tools_minidump.cpp`, both Windows implementations. No native
+vbsp executable or byte-identical legacy-lump comparison is claimed. The
+vvis/vrad tool ports and baker conformance remain outstanding.
+
+An isolated Waf VBSP attempt compiles all 49 selected VBSP/common translation
+units after adding Linux host-tool implementations of the legacy thread and
+crash-handler entry points. The Linux thread implementation passes a standalone
+4-worker, 4096-item exactly-once smoke test. A `pthread_create` failure
+injected on the second worker reaches the error path with zero callbacks
+started. At that point, linking failed because this tree had
+declarations and callers for `EmitPhysCollision`,
+`EmitWaterVolumesForBSP`, and `DumpCollideToGlView`, but no implementation of
+those functions. Other unresolved host-tool dependencies included POSIX cmdlib
+helpers, filesystem find wrappers, LZMA, and static library ordering. The Waf
+VBSP target was kept out of the default `--tools` product at that point.
+
+The next compiler slice restores Valve's `ivp.cpp` and `disp_ivp.cpp` plus
+their headers from the pinned official Source SDK 2013 revision documented in
+[`utils/vbsp/UPSTREAM.md`](../utils/vbsp/UPSTREAM.md). Only local include paths
+and mechanical formatting changed. Both files pass the isolated Linux VBSP
+syntax check. A Waf build with VBSP temporarily registered compiles all 210
+tasks and reaches the link: the three previously missing collision symbols
+are resolved. The remaining unresolved symbols are POSIX cmdlib/file search,
+`ScratchPad3D_Create`, LZMA compression, shader-provider binding, and
+`ImageLoader` symbols caused by archive order. This was a compiler inventory,
+not Portal 2 semantic acceptance.
+
+The installed Linux host-tool composition now builds VBSP, filesystem_stdio,
+the null shader backend, standard material shader definitions, VPhysics, and
+their dependencies through Waf. The port adds POSIX cmdlib output/cleanup,
+links the existing filesystem search and LZMA sources, and repeats libbitmap
+after libvtf to resolve its archive dependency. Its material-system bridge
+supplies and owns the CVar registry alongside the filesystem factory. Optional
+scratchpad debug support is excluded from this Linux tool profile; other host
+tool products do not select the VBSP cohort. VBSP
+requires a loaded surface-property manifest with a `default` property and
+rejects missing data before map output.
+
+Local evidence (2026-09-23, isolated release tools build):
+
+```sh
+./waf configure -o build-rfc0008-tools-vbsp --tools -T release --prefix=/tmp/rfc0008-vbsp-install
+./waf build -o build-rfc0008-tools-vbsp -j4
+./waf install -o build-rfc0008-tools-vbsp --targets=vbsp,bsp2tool,filesystem_stdio,vphysics -j4
+python3 tools/quality/vbsp_host_smoke.py --vbsp /tmp/rfc0008-vbsp-install/vbsp --bsp2tool /tmp/rfc0008-vbsp-install/bsp2tool --out quality-results/rfc0008-vbsp-host-20260923/evidence.json
+```
+
+The full `--tools` build and installed-product smoke pass. The synthetic
+Hammer room compiles to VBSP v21 with a 2,929-byte physics lump; the independent
+BSP2 reader accepts its converted form, and export is byte-identical to the
+compiled BSP. Missing surface-property manifest and missing `default` both
+exit 1 before writing a BSP. The smoke records executable and output hashes
+in ignored local evidence. Its fixture lacks texture pixels and a skybox, so
+material warnings remain. R48 is partial: legacy executable
+comparisons, baker conformance, and native content/profile coverage are still
+required.
+
+The Linux `--tools` product now also builds and installs local, non-MPI VVIS.
+`tools/quality/vvis_host_smoke.py` compiles a sealed four-cluster room through
+VBSP and VVIS, checks all four cluster PVS entries with an independent BSP
+reader, compares one- and two-thread visibility bytes, rejects a missing portal
+file and `-mpi`, and verifies byte-exact BSP2 convert/export. The pinned local
+evidence is `quality-results/rfc0008-vvis-host-20260923/evidence.json`:
+44 visibility bytes and SHA-256
+`2c8c31960419645a5d58adac1f23fa7db2a7093c1f663dc8459197df7526b7d6`.
+Substituting `/usr/bin/true` for VVIS makes the runner fail on the empty
+visibility lump; the negative-control result is alongside the evidence.
+This synthetic result does not establish legacy-output equivalence or the
+serial/parallel job-graph gate.
+
+VRAD's VPC product is an executable linked to `vrad_dll`. A Linux Waf product
+now directly links that entry point and the original local solver, with a new
+Waf `raytrace` archive and the existing material, physics, and BSP dependencies.
+VMPI paths remain in Windows VPC builds; Linux rejects `-mpi` before mutation.
+The port adapts case-sensitive includes, Linux temporary-file and executable
+path handling, SIMD element access, and static-prop header/pointer use. The
+normal direct-light path on the sealed room yields 37,120 LDR lighting bytes,
+18,216 nonzero bytes, one world light, ambient data, and unchanged visibility
+and physics. One and two worker threads produce byte-identical lighting lumps.
+The installed-tool runner `tools/quality/vrad_host_smoke.py` also verifies a
+byte-exact BSP2 convert/export after baking. Its ignored evidence is
+`quality-results/rfc0008-vrad-host-20260923/evidence.json`; replacing VRAD
+with `/usr/bin/true` fails on the empty lighting lump. This synthetic smoke
+does not establish legacy executable identity, HDR, static-prop fidelity, or
+the shared light-baker contract.
+
+### R48 cross-version executable baseline (2026-09-23)
+
+Locally installed Portal 2 Community Edition compiler executables under
+`bin/win64` run in an isolated Wine 11 prefix. Their SHA-256 hashes are
+`d2e0f2c09e752448b526b9ecf8501dbfbf6e13e299ba84ef72696f1fec19740b`
+(VBSP), `3ed2fbd5e5441da695db58f16fba80af85802fb5ccc2a95130da259decdafa3a`
+(VVIS), and `45eaf9ad11c6b0f30e90ed9e0f5c4c53a2034b083d5c1399e134854849ad1b46`
+(VRAD). The installed Portal 2 executables also found locally are 32-bit but
+cannot start under Wine because their installation lacks `tier0.dll` and
+`vstdlib.dll`; no files were copied into the Steam installation.
+
+Community Edition emits BSP v25 while this fork emits v21 from the same
+`sealed_room.vmf` hash
+`bd381a8c6f5662cf9fb6ec22b837af473063c8c564d7054620ef2fe04537eeeb`.
+The independent
+`tools/quality/compiler_cross_version_compare.py` reads both results and
+requires byte-identical entities (336 bytes), visibility (44 bytes), HDR leaf
+ambient samples (112 bytes), and the first 24 bytes of the HDR world light
+(origin and intensity). Its local evidence is
+`quality-results/rfc0008-compiler-cross-version-20260923/evidence.json`.
+Five seeded changes to those promised fields and to HDR lighting all made the
+comparator fail. Reference and candidate HDR lightmaps differ in size (74,112
+versus 37,120 bytes), as do physics lumps (6,309 versus 2,537 bytes), so this
+comparison does not certify the R48 same-revision byte-identity gate. The
+Community Edition `-ldr` invocation still wrote HDR lighting on this fixture.
+
+The independent v21 `legacy_lighting_audit.py` now checks every face against
+its texinfo, style list, average-color prefix, luxel dimensions, and bumped
+basis count. It requires contiguous spans that exactly fill the lighting lump.
+The installed-tool smoke passes on the 16-face LDR room with 37,120 bytes and
+styles 0 and 32; the v21 HDR cross-version candidate passes the same layout
+check. Four unit tests cover a bumped, two-style face and reject wrong offsets,
+truncated lighting, missing basis data, and a style after the sentinel. A
+seeded offset change in the complete HDR BSP makes the cross-version comparator
+fail. Local evidence: `quality-results/rfc0008-vrad-layout-20260923.json` and
+`quality-results/rfc0008-compiler-cross-version-20260923/` (ignored). The audit
+checks v21 storage structure, not radiometric values or v25 face semantics.
+The pinned Portal 2 v21 inventory also passes this audit on all **106/106**
+maps: 259,620 lit faces, 183,075 bumped faces, and styles 0 and 32–37. All
+106 carry HDR lighting. The corpus runner rejects missing/extra maps and changed
+source hashes before checking faces; ignored evidence is
+`quality-results/rfc0008-v21-lighting-corpus-20260923.json`.
+
+```sh
+python3 tools/quality/legacy_lighting_audit.py \
+  --source-root "$PORTAL2_MAP_ROOT" \
+  --inventory quality/fixtures/bsp2-corpus-v21.json \
+  --out quality-results/rfc0008-v21-lighting-corpus-20260923.json
+```
+
+Both the Community Edition VRAD and the Linux port emit all-zero lightmap
+samples for this fixture in `-fast -bounce 0` mode; the Linux normal direct
+bake remains nonzero. This removes the suspected fast-mode port regression
+for this fixture, but does not prove fast-mode parity on the required corpus.
+
+The runner's negative control used `/usr/bin/true` as a false-success converter:
+it exited 1 and wrote `status: fail` evidence. The 72 archlint fixture tests
+pass, including a new check that private VBSP factory exceptions do not extend
+to sibling files. The reviewed manifest exception removes three old
+`utilmatlib.cpp` ARCH105 baseline entries. The global architecture check still
+reports 49 new and three stale occurrences elsewhere, and the loader inventory
+reports 12 uninstrumented native sites in this shared worktree. Changed-line
+stylelint reports one failure in the unrelated shader pixel conformance source.
 
 ## Portal 1 texture staging (supporting R47)
 

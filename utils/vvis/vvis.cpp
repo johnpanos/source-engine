@@ -7,17 +7,23 @@
 //=============================================================================//
 // vis.c
 
+#ifdef MPI
 #include <windows.h>
+#endif
 #include "vis.h"
 #include "threads.h"
 #include "stdlib.h"
 #include "pacifier.h"
+#ifdef MPI
 #include "vmpi.h"
 #include "mpivis.h"
+#endif
 #include "tier1/strtools.h"
 #include "collisionutils.h"
 #include "tier0/icommandline.h"
+#ifdef MPI
 #include "vmpi_tools_shared.h"
+#endif
 #include "tools_minidump.h"
 #include "loadcmdline.h"
 #include "byteswap.h"
@@ -78,13 +84,15 @@ NewWinding
 winding_t *NewWinding (int points)
 {
 	winding_t	*w;
-	int			size;
-	
-	if (points > MAX_POINTS_ON_WINDING)
-		Error ("NewWinding: %i points, max %d", points, MAX_POINTS_ON_WINDING);
-	
-	size = (int)(&((winding_t *)0)->points[points]);
-	w = (winding_t*)malloc (size);
+	size_t size;
+
+	if ( points < 3 || points > MAX_POINTS_ON_WINDING )
+		Error( "NewWinding: %i points, valid range 3 to %d", points, MAX_POINTS_ON_WINDING );
+
+	size = sizeof( winding_t );
+	if ( points > MAX_POINTS_ON_FIXED_WINDING )
+		size += ( points - MAX_POINTS_ON_FIXED_WINDING ) * sizeof( Vector );
+	w = (winding_t *)malloc( size );
 	memset (w, 0, size);
 	
 	return w;
@@ -300,14 +308,15 @@ void CalcPortalVis (void)
 		return;
 	}
 
-
-    if (g_bUseMPI) 
+#ifdef MPI
+	if ( g_bUseMPI )
 	{
- 		RunMPIPortalFlow();
+		RunMPIPortalFlow();
 	}
-	else 
+	else
+#endif
 	{
-		RunThreadsOnIndividual (g_numportals*2, true, PortalFlow);
+		RunThreadsOnIndividual( g_numportals * 2, true, PortalFlow );
 	}
 }
 
@@ -330,13 +339,15 @@ void CalcVis (void)
 {
 	int		i;
 
-	if (g_bUseMPI) 
+#ifdef MPI
+	if ( g_bUseMPI )
 	{
 		RunMPIBasePortalVis();
 	}
-	else 
+	else
+#endif
 	{
-	    RunThreadsOnIndividual (g_numportals*2, true, BasePortalVis);
+		RunThreadsOnIndividual( g_numportals * 2, true, BasePortalVis );
 	}
 
 	SortPortals ();
@@ -413,6 +424,7 @@ void LoadPortals (char *name)
 	FILE *f;
 
 	// Open the portal file.
+#ifdef MPI
 	if ( g_bUseMPI )
 	{
 		// If we're using MPI, copy off the file to a temporary first. This will download the file
@@ -447,6 +459,7 @@ void LoadPortals (char *name)
 		f = fopen( tempFile, "rSTD" ); // read only, sequential, temporary, delete on close
 	}
 	else
+#endif
 	{
 		f = fopen( name, "r" );
 	}
@@ -459,10 +472,12 @@ void LoadPortals (char *name)
 	if (stricmp(magic,PORTALFILE))
 		Error ("LoadPortals %s: not a portal file", name);
 
-	Msg ("%4i portalclusters\n", portalclusters);
-	Msg ("%4i numportals\n", g_numportals);
+	Msg( "%4i portalclusters\n", portalclusters );
+	Msg( "%4i numportals\n", g_numportals );
+	if ( portalclusters <= 0 || portalclusters > MAX_MAP_LEAFS || g_numportals < 0 )
+		Error( "LoadPortals: invalid cluster or portal count\n" );
 
-	if (g_numportals * 2 >= MAX_PORTALS)
+	if ( g_numportals * 2 >= MAX_PORTALS )
 	{
 		Error("The map overflows the max portal count (%d of max %d)!\n", g_numportals, MAX_PORTALS / 2 );
 	}
@@ -492,16 +507,15 @@ void LoadPortals (char *name)
 		
 	for (i=0, p=portals ; i<g_numportals ; i++)
 	{
-		if (fscanf (f, "%i %i %i ", &numpoints, &leafnums[0], &leafnums[1])
-			!= 3)
-			Error ("LoadPortals: reading portal %i", i);
-		if (numpoints > MAX_POINTS_ON_WINDING)
-			Error ("LoadPortals: portal %i has too many points", i);
-		if ( (unsigned)leafnums[0] > portalclusters
-		|| (unsigned)leafnums[1] > portalclusters)
-			Error ("LoadPortals: reading portal %i", i);
-		
-		w = p->winding = NewWinding (numpoints);
+		if ( fscanf( f, "%i %i %i ", &numpoints, &leafnums[0], &leafnums[1] ) != 3 )
+			Error( "LoadPortals: reading portal %i", i );
+		if ( numpoints < 3 || numpoints > MAX_POINTS_ON_WINDING )
+			Error( "LoadPortals: portal %i has invalid point count", i );
+		if ( (unsigned)leafnums[0] >= (unsigned)portalclusters ||
+		     (unsigned)leafnums[1] >= (unsigned)portalclusters )
+			Error( "LoadPortals: reading portal %i", i );
+
+		w = p->winding = NewWinding( numpoints );
 		w->original = true;
 		w->numpoints = numpoints;
 		
@@ -972,12 +986,16 @@ int ParseCommandLine( int argc, char **argv )
 		// argument was -mpi and the current argument was something valid like -game, it would skip it.
 		else if ( !Q_strncasecmp( argv[i], "-mpi", 4 ) || !Q_strncasecmp( argv[i-1], "-mpi", 4 ) )
 		{
+#ifdef MPI
 			if ( stricmp( argv[i], "-mpi" ) == 0 )
 				g_bUseMPI = true;
 		
 			// Any other args that start with -mpi are ok too.
 			if ( i == argc - 1 )
 				break;
+#else
+			Error( "VVIS: MPI is unavailable in this host-tool profile\n" );
+#endif
 		}
 		else if (argv[i][0] == '-')
 		{
@@ -1108,12 +1126,13 @@ int RunVVis( int argc, char **argv )
 
 	start = Plat_FloatTime();
 
-
-	if (!g_bUseMPI)
+#ifdef MPI
+	if ( !g_bUseMPI )
+#endif
 	{
 		// Setup the logfile.
 		char logFile[512];
-		_snprintf( logFile, sizeof(logFile), "%s.log", source );
+		Q_snprintf( logFile, sizeof( logFile ), "%s.log", source );
 		SetSpewFunctionLogFile( logFile );
 	}
 
@@ -1186,10 +1205,12 @@ int RunVVis( int argc, char **argv )
 		{
 			Error("Invalid cluster trace: %d to %d, valid range is 0 to %d\n", g_TraceClusterStart, g_TraceClusterStop, portalclusters-1 );
 		}
+#ifdef MPI
 		if ( g_bUseMPI )
 		{
 			Warning("Can't compile trace in MPI mode\n");
 		}
+#endif
 		CalcVisTrace ();
 		WritePortalTrace(source);
 	}
@@ -1220,12 +1241,13 @@ int main (int argc, char **argv)
 	InstallAllocationFunctions();
 	InstallSpewFunction();
 
-	VVIS_SetupMPI( argc, argv );
-
 	// Install an exception handler.
+#ifdef MPI
+	VVIS_SetupMPI( argc, argv );
 	if ( g_bUseMPI && !g_bMPIMaster )
 		SetupToolsMinidumpHandler( VMPI_ExceptionFilter );
 	else
+#endif
 		SetupDefaultToolsMinidumpHandler();
 
 	return RunVVis( argc, argv );

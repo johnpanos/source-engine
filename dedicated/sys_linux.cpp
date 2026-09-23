@@ -274,7 +274,7 @@ bool CSys::LoadModules( CDedicatedAppSystemGroup *pAppSystemGroup )
 	const char *pPhysicsModule = CommandLine()->ParmValue( "-physics", "vphysics" );
 	char physicsDLLName[MAX_PATH];
 	Q_snprintf( physicsDLLName, sizeof( physicsDLLName ), "%s" DLL_EXT_STRING, pPhysicsModule );
-	AppModule_t physicsAppModule = pAppSystemGroup->LoadModule( physicsDLLName );
+	AppModule_t physicsAppModule = pAppSystemGroup->LoadPhysicsModule( physicsDLLName );
 	if ( physicsAppModule == APP_MODULE_INVALID )
 	{
 		Warning( "Failed to load physics provider '%s'.\n", physicsDLLName );

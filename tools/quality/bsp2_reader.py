@@ -26,6 +26,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -209,7 +210,8 @@ class Bsp2File:
                     raise FormatError("content-hash-mismatch", entry["name"])
         self.legacy = None
         self.legacy_size = None
-        has_legacy = any(legacy_index(e["fourcc"]) is not None for e in self.entries)
+        has_legacy = any(legacy_index(e["fourcc"]) is not None or e["fourcc"] == LGAP
+                         for e in self.entries)
         if LHDR in self.by_id:
             payload = self.lump(self.by_id[LHDR])
             if blake128(payload) != self.by_id[LHDR]["hash"]:
@@ -229,6 +231,7 @@ class Bsp2File:
                     raise FormatError("legacy-lump-mismatch", "L%03d" % i)
         elif has_legacy:
             raise FormatError("missing-legacy-header")
+        self.gap_records = self._validate_gaps() if self.legacy is not None else []
 
     def lump(self, entry):
         return self.data[entry["offset"]:entry["offset"] + entry["size"]]
@@ -237,30 +240,47 @@ class Bsp2File:
         entry = self.by_id.get(legacy_fourcc(index))
         return self.lump(entry) if entry else b""
 
+    def _validate_gaps(self):
+        if LGAP not in self.by_id:
+            return []
+        covered = [(0, LEGACY_HEADER_SIZE)]
+        for ofs, length, _v, _u in self.legacy["lumps"]:
+            if length:
+                covered.append((ofs, ofs + length))
+        gap_records = []
+        gaps = self.lump(self.by_id[LGAP])
+        cursor = 0
+        previous_end = 0
+        while cursor < len(gaps):
+            if len(gaps) - cursor < 16:
+                raise FormatError("legacy-gaps-invalid")
+            offset, length = struct.unpack_from("<QQ", gaps, cursor)
+            cursor += 16
+            end = offset + length
+            if (not length or length > len(gaps) - cursor or end > self.legacy_size
+                    or offset < previous_end
+                    or any(offset < c_end and c_begin < end for c_begin, c_end in covered)):
+                raise FormatError("legacy-gaps-invalid")
+            next_cursor = (cursor + length + 7) & ~7
+            if next_cursor > len(gaps) or any(gaps[cursor + length:next_cursor]):
+                raise FormatError("legacy-gaps-invalid")
+            gap_records.append((offset, end, cursor))
+            previous_end = end
+            cursor = next_cursor
+        return gap_records
+
     def export_legacy(self):
         if self.legacy is None:
             raise FormatError("missing-legacy-header")
         out = bytearray(self.legacy_size)
         out[:LEGACY_HEADER_SIZE] = self.lump(self.by_id[LHDR])[8:]
-        covered = [(0, LEGACY_HEADER_SIZE)]
         for i, (ofs, length, _v, _u) in enumerate(self.legacy["lumps"]):
             if length:
                 out[ofs:ofs + length] = self.legacy_lump(i)
-                covered.append((ofs, ofs + length))
-        if LGAP in self.by_id:
+        if self.gap_records:
             gaps = self.lump(self.by_id[LGAP])
-            cursor = 0
-            while cursor < len(gaps):
-                if len(gaps) - cursor < 16:
-                    raise FormatError("legacy-gaps-invalid")
-                offset, length = struct.unpack_from("<QQ", gaps, cursor)
-                cursor += 16
-                end = offset + length
-                if (not length or length > len(gaps) - cursor or end > self.legacy_size
-                        or any(offset < c_end and c_begin < end for c_begin, c_end in covered)):
-                    raise FormatError("legacy-gaps-invalid")
-                out[offset:end] = gaps[cursor:cursor + length]
-                cursor = (cursor + length + 7) & ~7
+            for offset, end, data_cursor in self.gap_records:
+                out[offset:end] = gaps[data_cursor:data_cursor + end - offset]
         return bytes(out)
 
     def check_legacy_structures(self):
@@ -390,6 +410,49 @@ def collect_maps(paths):
     return sorted(maps)
 
 
+def load_expected_inventory(manifest_path):
+    try:
+        raw = read(manifest_path)
+        manifest = json.loads(raw)
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError("invalid expected corpus inventory: %s" % error) from error
+    entries = manifest.get("maps") if isinstance(manifest, dict) else None
+    if (not isinstance(manifest, dict) or manifest.get("schema") != "bsp2-corpus-inventory/v1" or
+            not isinstance(entries, list) or not entries):
+        raise ValueError("invalid expected corpus inventory schema or empty maps")
+    expected = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("invalid expected corpus inventory entry")
+        name, digest, version = entry.get("name"), entry.get("sha256"), entry.get("version")
+        if (not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_-]+\.bsp", name) or
+                name in expected or not isinstance(digest, str) or
+                not re.fullmatch(r"[0-9a-f]{64}", digest) or
+                isinstance(version, bool) or not isinstance(version, int) or version not in (19, 20, 21)):
+            raise ValueError("invalid or duplicate expected corpus map")
+        expected[name] = (digest, version)
+    return expected, {"path": os.path.abspath(manifest_path),
+                      "sha256": hashlib.sha256(raw).hexdigest(), "maps": len(expected)}
+
+
+def check_expected_inventory(maps, paths, manifest_path):
+    if len(paths) != 1 or not os.path.isdir(paths[0]):
+        raise ValueError("expected corpus inventory requires one directory root")
+    expected, info = load_expected_inventory(manifest_path)
+    actual = {os.path.basename(path): path for path in maps}
+    if len(actual) != len(maps) or set(actual) != set(expected):
+        missing = sorted(set(expected) - set(actual))
+        extra = sorted(set(actual) - set(expected))
+        raise ValueError("corpus inventory differs: missing=%s extra=%s" % (missing, extra))
+    for name, path in sorted(actual.items()):
+        data = read(path)
+        digest = hashlib.sha256(data).hexdigest()
+        version = int.from_bytes(data[4:8], "little", signed=True) if data[:4] == LEGACY_IDENT else None
+        if (digest, version) != expected[name]:
+            raise ValueError("corpus map hash or version differs: " + name)
+    return info
+
+
 def check_one(tool, path, scratch):
     original = read(path)
     if original[:4] != LEGACY_IDENT:
@@ -400,7 +463,8 @@ def check_one(tool, path, scratch):
     for leftover in (bsp2_path, export_path):
         if os.path.exists(leftover):
             os.remove(leftover)
-    run = subprocess.run([tool, "convert", path, bsp2_path], capture_output=True, text=True)
+    run = subprocess.run([tool, "convert", path, bsp2_path], capture_output=True, text=True,
+                         timeout=120)
     if run.returncode:
         return dict(record, outcome="fail", detail="C++ convert: " + run.stderr.strip())
     cxx_bsp2 = read(bsp2_path)
@@ -420,7 +484,8 @@ def check_one(tool, path, scratch):
                 return dict(record, outcome="fail", detail="lump %d differs" % i)
     except FormatError as error:
         return dict(record, outcome="fail", detail="Python reader: %s" % error)
-    run = subprocess.run([tool, "export", bsp2_path, export_path], capture_output=True, text=True)
+    run = subprocess.run([tool, "export", bsp2_path, export_path], capture_output=True, text=True,
+                         timeout=120)
     if run.returncode:
         return dict(record, outcome="fail", detail="C++ export: " + run.stderr.strip())
     if read(export_path) != original:
@@ -429,30 +494,51 @@ def check_one(tool, path, scratch):
 
 
 def cmd_corpus(args):
+    input_failures = []
     if not os.access(args.tool, os.X_OK):
-        print("FAIL bsp2tool not executable: %s" % args.tool)
-        return 2
+        input_failures.append("bsp2tool not executable: %s" % args.tool)
     try:
         maps = collect_maps(args.paths)
     except FileNotFoundError as missing:
-        print("FAIL missing corpus path: %s" % missing)
-        return 2
+        maps = []
+        input_failures.append("missing corpus path: %s" % missing)
+    if not maps and not input_failures:
+        input_failures.append("corpus contains zero BSP maps")
+    inventory = None
+    if args.expect_manifest and not input_failures:
+        try:
+            inventory = check_expected_inventory(maps, args.paths, args.expect_manifest)
+        except (OSError, ValueError) as error:
+            input_failures.append(str(error))
+    for failure in input_failures:
+        print("FAIL " + failure)
     results = []
-    with tempfile.TemporaryDirectory(prefix="bsp2-corpus-") as scratch:
-        for path in maps:
-            result = check_one(args.tool, path, scratch)
-            results.append(result)
-            print("%-5s %s%s" % (result["outcome"].split("-")[0], path,
-                                 (" -- " + result["detail"]) if "detail" in result else ""))
+    if not input_failures:
+        with tempfile.TemporaryDirectory(prefix="bsp2-corpus-") as scratch:
+            for path in maps:
+                try:
+                    result = check_one(args.tool, path, scratch)
+                except (OSError, FormatError, subprocess.TimeoutExpired) as error:
+                    result = {"map": path, "outcome": "fail", "detail": str(error)}
+                results.append(result)
+                print("%-5s %s%s" % (result["outcome"].split("-")[0], path,
+                                     (" -- " + result["detail"]) if "detail" in result else ""))
     passed = sum(r["outcome"] == "pass" for r in results)
-    failed = sum(r["outcome"] == "fail" for r in results)
-    ok = passed > 0 and failed == 0
+    failed = sum(r["outcome"] != "pass" for r in results)
+    ok = passed > 0 and failed == 0 and not input_failures
+    tool_sha256 = None
+    try:
+        if os.path.isfile(args.tool):
+            tool_sha256 = hashlib.sha256(read(args.tool)).hexdigest()
+    except OSError:
+        pass
     evidence = {
         "schema": "bsp2-corpus-evidence/v1",
         "rfc": "0008",
         "phase": "F1",
         "time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "tool": os.path.abspath(args.tool),
+        "tool_sha256": tool_sha256,
         "python": sys.version.split()[0],
         "paths": args.paths,
         "maps": len(results),
@@ -460,6 +546,8 @@ def cmd_corpus(args):
         "failed": failed,
         "outcome": "pass" if ok else "fail",
         "results": results,
+        "expected_inventory": inventory,
+        "failures": input_failures,
     }
     if args.out:
         os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
@@ -467,7 +555,7 @@ def cmd_corpus(args):
             json.dump(evidence, handle, indent=2)
             handle.write("\n")
     print("%d map(s): %d passed, %d failed -> %s" % (len(results), passed, failed, "PASS" if ok else "FAIL"))
-    return 0 if ok else 1
+    return 2 if input_failures else 0 if ok else 1
 
 
 def main(argv=None):
@@ -487,6 +575,7 @@ def main(argv=None):
     p = sub.add_parser("corpus")
     p.add_argument("--tool", required=True, help="bsp2tool executable")
     p.add_argument("--out", help="evidence JSON path")
+    p.add_argument("--expect-manifest", help="required exact map names, versions and SHA-256 digests")
     p.add_argument("paths", nargs="+")
     p.set_defaults(func=cmd_corpus)
     args = parser.parse_args(argv)

@@ -2,19 +2,22 @@
 //
 // Purpose: Material catalog for the editor (RFC 0002, hammer.formats). Builds on
 //			the VMT-definition parser (hammer::formats::ParseMaterial / Material)
-//			and the VTF decoder to answer the two questions an editor asks of game
+//			and image decoders to answer the two questions an editor asks of game
 //			assets: "what materials exist?" and "give me this material's base
 //			texture as an image". It enumerates materials/**.vmt in an IAssetSource,
 //			resolves a VMF-authored material name (any case, either slash) to its
 //			$basetexture -- following one level of the `patch` shader's `include`,
 //			which the material parser deliberately leaves unresolved -- and decodes
-//			that texture to RGBA, caching both. This is the clean-core replacement
+//			that texture to RGBA, caching both. Packaged KTX2 takes precedence when
+//			present; a callback keeps its library out of the strict core. This is the
+//			clean-core replacement
 //			for the legacy Hammer path that drove everything through the engine
 //			IMaterial / IMaterialSystem globals.
 //
 //			Ownership is layered and DRY: VMT syntax + parameters are owned by
 //			hammer::formats::Material (material.h); VTF bytes -> pixels by
-//			VtfImage (vtf_image.h); asset lookup by the IAssetSource port. This
+//			VtfImage (vtf_image.h), KTX2 bytes by the supplied decoder; asset lookup
+//			by the IAssetSource port. This
 //			catalog only composes them and caches results. Its PBR validation reads
 //			the versioned render schema and asks a caller-supplied shader catalog
 //			for compatibility capability. Strict-core: C++ stdlib, those contracts,
@@ -41,7 +44,7 @@ namespace hammer::formats
 
 // Normalizes a VMF-authored material or texture name (mixed case, back or forward
 // slashes, an optional leading slash, an optional "materials/" prefix, and an
-// optional ".vmt"/".vtf" suffix) to the catalog's canonical form: lower-case,
+// optional ".vmt"/".vtf"/".ktx2" suffix) to the catalog's canonical form: lower-case,
 // forward slashes, no prefix, no extension.
 std::string CanonicalizeMaterialName( const std::string &name );
 
@@ -81,12 +84,19 @@ struct PbrMaterialCheck
 // this check never guesses support from a hardcoded list or backend name.
 using SupportsPbrFallbackShader = bool ( * )( const std::string &shader, void *context );
 
+// A composition-supplied KTX2 preview decoder. It must return tightly packed,
+// top-to-bottom RGBA8 pixels or an error; the strict editor core stays free of
+// the pinned KTX library. The decoded image owns its bytes.
+using KtxPreviewDecoder = std::optional<VtfImage> ( * )(
+    const std::string &bytes, std::string &error );
+
 class MaterialCatalog
 {
 public:
 	// Reads through 'source' (which must outlive the catalog). Nothing is loaded
 	// until queried.
-	explicit MaterialCatalog( const hammer::ports::IAssetSource &source );
+	explicit MaterialCatalog(
+	    const hammer::ports::IAssetSource &source, KtxPreviewDecoder ktxDecoder = nullptr );
 
 	// Every material name found under materials/*.vmt, canonical, sorted, and
 	// de-duplicated. Built lazily on first call and cached.
@@ -110,8 +120,9 @@ public:
 
 private:
 	const hammer::ports::IAssetSource &m_source;
+	KtxPreviewDecoder m_ktxDecoder;
 	std::optional<std::vector<std::string>> m_names;
-	std::map<std::string, std::string> m_baseTextures; // canonical material -> canonical vtf name
+	std::map<std::string, std::string> m_baseTextures; // canonical material -> canonical image name
 	std::set<std::string> m_baseTextureMisses;
 	std::map<std::string, std::unique_ptr<VtfImage>>
 	    m_images; // canonical material -> image (null = miss)

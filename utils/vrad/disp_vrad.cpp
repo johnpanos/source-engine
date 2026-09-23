@@ -9,8 +9,7 @@
 #include "utllinkedlist.h"
 #include "utlvector.h"
 #include "iscratchpad3d.h"
-#include "scratchpadutils.h"
-
+#include "ScratchPadUtils.h"
 
 //#define USE_SCRATCHPAD
 #if defined( USE_SCRATCHPAD )
@@ -327,6 +326,3 @@ void SmoothNeighboringDispSurfNormals( CCoreDispInfo **ppListBase, int listSize 
 
 	BlendEdges( ppListBase, listSize );
 }
-
-
-

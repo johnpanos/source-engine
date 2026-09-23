@@ -34,6 +34,9 @@
 #include "hammer/formats/keyvalues.h"
 #include "hammer/formats/material_catalog.h"
 #include "hammer/formats/search_path_assets.h"
+#ifdef HAMMER_KTX_PREVIEW
+#include "hammer/adapters/source/ktx2_preview.h"
+#endif
 #include "hammer/formats/vpk_archive.h"
 
 #include <memory>
@@ -341,7 +344,12 @@ int RenderTexturedScreenshot( const std::string &vmfPath, const std::string &out
 			break;
 		start = comma + 1;
 	}
+#ifdef HAMMER_KTX_PREVIEW
+	hammer::formats::MaterialCatalog catalog(
+	    assets, &hammer::adapters::source::DecodeKtx2Preview );
+#else
 	hammer::formats::MaterialCatalog catalog( assets );
+#endif
 
 	EglContext egl = CreateEgl( width, height );
 	if ( !egl.ok )

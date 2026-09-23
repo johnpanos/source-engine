@@ -1,0 +1,25 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+PROJECT_NAME = 'raytrace'
+
+def options(opt):
+	return
+
+def configure(conf):
+	return
+
+def build(bld):
+	if bld.env.DEST_OS != 'linux':
+		bld.fatal('the raytrace host-tool profile is currently validated only on Linux')
+
+	bld.stlib(
+		source = [ 'raytrace.cpp', 'trace2.cpp', 'trace3.cpp' ],
+		target = PROJECT_NAME,
+		name = PROJECT_NAME,
+		features = 'cxx',
+		includes = [ '.', '../public', '../public/tier0', '../public/tier1',
+			'../utils/common' ],
+		use = [ 'mathlib', 'tier0', 'tier1' ],
+		idx = bld.get_taskgen_count()
+	)

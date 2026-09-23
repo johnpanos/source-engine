@@ -52,6 +52,20 @@ modules such as `engine.so.dbg` and `vphysics.so.dbg`, with no Portal 2
 `client.so.dbg` or `server.so.dbg`. The catalog indexes file paths and sizes;
 it is not evidence that a matching debug payload is installed locally.
 
+Steam2 depot `852` version `3` and depot `841` version `1` each include
+macOS client/server dSYM bundles. The extracted bundles match their companion
+Mach-O binaries by UUID. Their DWARF data contains source paths, function and
+type information, and line mappings, but not the original C++ file bodies.
+Across both builds, 94 of the 136 distinct selected missing `.cpp` paths
+appear in the debug metadata. The binaries and dSYM files are retained
+at `/home/john/Downloads/portal2-steam2-research` for source reconstruction;
+no missing gameplay `.cpp`
+has been recovered verbatim from these depots. The actual XSI tool source and
+historical script sources found in Steam2 are preserved under `external/`.
+Ghidra 12.0.4 generated [pseudocode references](../../../external/portal2_steam2_decompiled/README.md)
+for 50 client and 48 server paths in depot 841, and 46 client and 45 server
+paths in depot 852. These are not directly buildable implementations.
+
 ## Configured Linux source selection
 
 These `.cpp` paths are selected by the current `build-p2` Waf configuration

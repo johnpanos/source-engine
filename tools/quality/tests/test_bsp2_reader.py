@@ -2,6 +2,8 @@
 cross-implementation check against the C++ bsp2tool (RFC 0008 F1)."""
 
 from pathlib import Path
+import hashlib
+import json
 import shutil
 import struct
 import subprocess
@@ -55,6 +57,57 @@ def rehash(data):
 
 
 class Bsp2ReaderTests(unittest.TestCase):
+    def test_expected_corpus_inventory_rejects_missing_extra_and_changed_maps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "maps"
+            root.mkdir()
+            original = legacy_map()
+            map_path = root / "example.bsp"
+            map_path.write_bytes(original)
+            manifest_path = Path(directory) / "inventory.json"
+            manifest_path.write_text(json.dumps({
+                "schema": "bsp2-corpus-inventory/v1",
+                "maps": [{"name": "example.bsp", "version": 20,
+                          "sha256": hashlib.sha256(original).hexdigest()}]}))
+            self.assertEqual(br.check_expected_inventory([str(map_path)], [str(root)],
+                                                         manifest_path)["maps"], 1)
+            map_path.write_bytes(original + b"changed")
+            with self.assertRaisesRegex(ValueError, "hash or version differs"):
+                br.check_expected_inventory([str(map_path)], [str(root)], manifest_path)
+            map_path.write_bytes(original)
+            extra = root / "extra.bsp"
+            extra.write_bytes(original)
+            with self.assertRaisesRegex(ValueError, "extra="):
+                br.check_expected_inventory([str(map_path), str(extra)], [str(root)], manifest_path)
+            extra.unlink()
+            with self.assertRaisesRegex(ValueError, "missing="):
+                br.check_expected_inventory([], [str(root)], manifest_path)
+
+    def test_corpus_rejects_non_legacy_map_instead_of_skipping(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "other.bsp").write_bytes(b"not a VBSP file")
+            evidence_path = root / "evidence.json"
+            self.assertEqual(br.main(["corpus", "--tool", sys.executable, "--out",
+                                      str(evidence_path), str(root)]), 1)
+            evidence = json.loads(evidence_path.read_text())
+            self.assertEqual(evidence["outcome"], "fail")
+            self.assertEqual(evidence["failed"], 1)
+
+    def test_missing_required_corpus_writes_failure_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence_path = root / "evidence.json"
+            self.assertEqual(br.main(["corpus", "--tool", sys.executable, "--out",
+                                      str(evidence_path), str(root / "missing")]), 2)
+            evidence = json.loads(evidence_path.read_text())
+            self.assertEqual(evidence["outcome"], "fail")
+            self.assertIn("missing corpus path", evidence["failures"][0])
+            self.assertEqual(br.main(["corpus", "--tool", sys.executable, "--out",
+                                      str(evidence_path), str(root)]), 2)
+            evidence = json.loads(evidence_path.read_text())
+            self.assertIn("zero BSP maps", evidence["failures"][0])
+
     def test_round_trip(self):
         for gap in (True, False):
             original = legacy_map(gap)
@@ -65,6 +118,32 @@ class Bsp2ReaderTests(unittest.TestCase):
             self.assertEqual(br.LGAP in parsed.by_id, gap)
             for entry in parsed.entries:
                 self.assertEqual(entry["offset"] % 16, 0)
+
+    def test_export_rejects_overlapping_gap_records_and_padding(self):
+        original = legacy_map()
+        good = br.convert_legacy(original)
+        for variant in ("lump", "gap", "padding"):
+            with self.subTest(variant=variant):
+                data = bytearray(good)
+                entry = entry_at(data, "LGAP")
+                payload, size = struct.unpack_from("<QQ", data, entry + 16)
+                first_offset, first_length = struct.unpack_from("<QQ", data, payload)
+                first_end = payload + 16 + first_length
+                second = (first_end + 7) & ~7
+                self.assertLessEqual(second + 16, payload + size)
+                if variant == "lump":
+                    lump_offset = struct.unpack_from("<i", original, 8 + 16)[0]
+                    struct.pack_into("<Q", data, payload, lump_offset)
+                elif variant == "gap":
+                    struct.pack_into("<Q", data, second, first_offset)
+                else:
+                    self.assertLess(first_end, second)
+                    data[first_end] = 0x7F
+                data[entry + 48:entry + 64] = br.blake128(bytes(data[payload:payload + size]))
+                rehash(data)
+                with self.assertRaises(br.FormatError) as caught:
+                    br.Bsp2File(bytes(data))
+                self.assertEqual(caught.exception.code, "legacy-gaps-invalid")
 
     def test_negative_fixtures(self):
         good = bytearray(br.convert_legacy(legacy_map()))
@@ -146,6 +225,28 @@ class Bsp2ReaderTests(unittest.TestCase):
             run = subprocess.run([str(tool), "convert", str(legacy), str(cxx_out)], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stderr)
             self.assertEqual(cxx_out.read_bytes(), br.convert_legacy(legacy.read_bytes()))
+            bad_legacy = bytearray(legacy.read_bytes())
+            struct.pack_into("<i", bad_legacy, 8 + 16 * 1 + 4, len(bad_legacy))
+            bad_legacy_path = scratch / "bad-legacy.bsp"
+            bad_legacy_path.write_bytes(bad_legacy)
+            previous_output = cxx_out.read_bytes()
+            run = subprocess.run([str(tool), "convert", str(bad_legacy_path), str(cxx_out)],
+                                 capture_output=True, text=True)
+            self.assertEqual(run.returncode, 1)
+            self.assertIn("lump-out-of-bounds", run.stderr)
+            self.assertEqual(cxx_out.read_bytes(), previous_output)
+            self.assertFalse((scratch / "map.bsp2.tmp").exists())
+            exported = scratch / "exported.bsp"
+            run = subprocess.run([str(tool), "export", str(cxx_out), str(exported)],
+                                 capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual(exported.read_bytes(), legacy.read_bytes())
+            missing_parent = scratch / "missing-directory" / "out.bsp"
+            run = subprocess.run([str(tool), "export", str(cxx_out), str(missing_parent)],
+                                 capture_output=True, text=True)
+            self.assertEqual(run.returncode, 2)
+            self.assertIn("write-failed", run.stderr)
+            self.assertFalse(missing_parent.exists())
 
             # Both readers report the same error name for the same defect.
             bad = bytearray(cxx_out.read_bytes())
@@ -158,6 +259,58 @@ class Bsp2ReaderTests(unittest.TestCase):
             with self.assertRaises(br.FormatError) as caught:
                 br.Bsp2File(bytes(bad))
             self.assertEqual(caught.exception.code, "content-hash-mismatch")
+
+            # Move every payload and the directory past 4 GiB. The file is
+            # sparse, so this tests 64-bit seeks without allocating the gap.
+            original = cxx_out.read_bytes()
+            old_directory, count = directory(original)
+            shift = 1 << 32
+            header = bytearray(original[:br.HEADER_SIZE])
+            moved_directory = bytearray(original[old_directory:])
+            for index in range(count):
+                at = index * br.ENTRY_SIZE + 16
+                struct.pack_into("<Q", moved_directory, at,
+                                 struct.unpack_from("<Q", moved_directory, at)[0] + shift)
+            struct.pack_into("<Q", header, 24, old_directory + shift)
+            header[48:64] = br.blake128(moved_directory)
+            sparse = scratch / "sparse-above-4g.bsp2"
+            with sparse.open("wb") as stream:
+                stream.write(header)
+                stream.seek(shift + br.HEADER_SIZE)
+                stream.write(original[br.HEADER_SIZE:old_directory])
+                stream.write(moved_directory)
+            self.assertGreater(sparse.stat().st_size, shift)
+            for command in ("info", "verify"):
+                run = subprocess.run([str(tool), command, str(sparse)], capture_output=True,
+                                     text=True, timeout=30)
+                self.assertEqual(run.returncode, 0, run.stderr)
+                if command == "info":
+                    self.assertIn("offset=429", run.stdout)
+
+            sparse_export = scratch / "sparse-export.bsp"
+            run = subprocess.run([str(tool), "export", str(sparse), str(sparse_export)],
+                                 capture_output=True, text=True, timeout=30)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual(sparse_export.read_bytes(), legacy.read_bytes())
+            self.assertFalse((scratch / "sparse-export.bsp.tmp").exists())
+
+            payload_offset = struct.unpack_from("<Q", original, entry_at(original, "L040") + 16)[0]
+            with sparse.open("r+b") as stream:
+                stream.seek(shift + payload_offset)
+                original_byte = stream.read(1)
+                stream.seek(shift + payload_offset)
+                stream.write(bytes([original_byte[0] ^ 1]))
+            run = subprocess.run([str(tool), "verify", str(sparse)], capture_output=True,
+                                 text=True, timeout=30)
+            self.assertEqual(run.returncode, 1)
+            self.assertIn("content-hash-mismatch", run.stderr)
+            sparse_export.write_bytes(b"retain previous output")
+            run = subprocess.run([str(tool), "export", str(sparse), str(sparse_export)],
+                                 capture_output=True, text=True, timeout=30)
+            self.assertEqual(run.returncode, 1)
+            self.assertIn("content-hash-mismatch", run.stderr)
+            self.assertEqual(sparse_export.read_bytes(), b"retain previous output")
+            self.assertFalse((scratch / "sparse-export.bsp.tmp").exists())
 
 
 if __name__ == "__main__":

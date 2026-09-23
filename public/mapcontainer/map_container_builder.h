@@ -2,7 +2,7 @@
 //
 // Purpose: BSP2 writing and legacy conversion for tools (RFC 0008, phase F1).
 //
-// Strict C++20. Builders produce whole files in memory; callers own I/O.
+// Strict C++20. Builders support memory results and bounded source/sink I/O.
 // Legacy VBSP -> BSP2 -> legacy VBSP is byte-identical by construction: every
 // legacy lump, the legacy header and any nonzero gap bytes are carried.
 //
@@ -57,6 +57,18 @@ struct Bsp2LumpInput
 	std::span<const std::byte> data;
 };
 
+// A zero-initialized, random-access map output. ResetToZeroes must discard
+// previous contents; WriteAt must replace exactly the requested byte range.
+// Both operations must return failure instead of throwing.
+// The caller retains ownership and keeps the sink alive through export.
+class IMapByteSink
+{
+public:
+	virtual ~IMapByteSink() = default;
+	virtual bool ResetToZeroes( uint64_t size ) = 0;
+	virtual bool WriteAt( uint64_t offset, const void *pData, size_t size ) = 0;
+};
+
 // Writes a BSP2 container. Lumps are laid out in the given order; 4CCs must be
 // unique and alignments powers of two >= kBsp2MinAlignment.
 [[nodiscard]] foundation::Expected<std::vector<std::byte>, MapContainerStatus> WriteBsp2(
@@ -67,12 +79,22 @@ struct Bsp2LumpInput
 [[nodiscard]] foundation::Expected<std::vector<std::byte>, MapContainerStatus> ConvertLegacyToBsp2(
     std::span<const std::byte> legacyFile, std::span<const Bsp2LumpInput> extraLumps = {} );
 
+// Stream conversion through bounded source reads. The source must remain
+// unchanged throughout the call; the caller publishes the sink only on success.
+[[nodiscard]] MapContainerStatus ConvertLegacyToBsp2(
+    IMapByteSource &source, IMapByteSink &sink, std::span<const Bsp2LumpInput> extraLumps = {} );
+
 // BSP2 carrying a legacy payload -> the legacy VBSP file, byte-identical to
 // the one it was converted from. Verifies every content hash first. Lumps
 // outside the legacy payload are dropped, including required ones: the result
 // is a derived legacy artifact (RFC 0008 "legacy BSP v21 export").
 [[nodiscard]] foundation::Expected<std::vector<std::byte>, MapContainerStatus> ExportLegacyFromBsp2(
     std::span<const std::byte> bsp2File );
+
+// Stream a legacy export from an arbitrary BSP2 byte source. All readable
+// content hashes and LGAP records are checked before the sink is reset. The
+// caller publishes the sink only after success.
+[[nodiscard]] MapContainerStatus ExportLegacyFromBsp2( IMapByteSource &source, IMapByteSink &sink );
 
 using ContentHash = std::array<uint8_t, kBsp2HashSize>;
 [[nodiscard]] ContentHash HashContent( std::span<const std::byte> bytes ) noexcept;

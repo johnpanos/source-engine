@@ -6,6 +6,15 @@
   "intent": {
     "window_provider": "sdl3",
     "render_provider": "native-vulkan",
+    "texture_pipeline": {
+      "host_tool_profile": "quality/product_profiles/ktx2-linux-tools.json",
+      "format_preferences": {
+        "base-color": ["bc7", "astc", "etc-rgba"],
+        "normal": ["bc5", "eac-rg11"],
+        "mask": ["bc4", "eac-r11"],
+        "hdr": ["bc6hu", "astc-hdr-4x4", "rgb9e5"]
+      }
+    },
     "support_scope": "Native Linux Wayland pure Vulkan smoke; not four-platform or renderer parity acceptance",
     "packaging": "Waf-installed local Linux runtime with separately supplied licensed Portal content",
     "shader_pipeline": {
@@ -47,6 +56,8 @@
     "platform.dynamic_library",
     "platform.dynamic_library.sensitivity",
     "sdl3_launcher_conformance on native Wayland",
+    "KTX2 format selection and runtime device identity match",
+    "KTX2 native BC pixel conformance on the selected device",
     "Source architecture and changed-region style checks"
   ],
   "boot_check": {"map": "testchmb_a_00", "timeout_seconds": 180, "require": ["vulkan", "sdl3", "wayland"]},

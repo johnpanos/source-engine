@@ -25,6 +25,22 @@
 
 class CIncLight;
 
+// Keep the legacy recursive lock behavior in the Linux host tool.
+class CVRadCriticalSection
+{
+public:
+	CVRadCriticalSection();
+	~CVRadCriticalSection();
+	void Lock();
+	void Unlock();
+
+private:
+#ifdef _WIN32
+	CRITICAL_SECTION m_CS;
+#else
+	CThreadFastMutex m_CS;
+#endif
+};
 
 class CLightValue
 {
@@ -58,8 +74,7 @@ public:
 
 
 public:
-
-	CRITICAL_SECTION	m_CS;
+	CVRadCriticalSection m_CS;
 
 	// This is the light for which m_LightFaces was built.
 	dworldlight_t	m_Light;

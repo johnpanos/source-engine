@@ -1,0 +1,275 @@
+versioninfo
+{
+	"editorversion" "400"
+	"editorbuild" "5499"
+	"mapversion" "86"
+	"formatversion" "100"
+	"prefab" "0"
+}
+visgroups
+{
+}
+viewsettings
+{
+	"bSnapToGrid" "1"
+	"bShowGrid" "1"
+	"bShowLogicalGrid" "0"
+	"nGridSpacing" "16"
+	"bShow3DGrid" "0"
+}
+world
+{
+	"id" "1"
+	"mapversion" "86"
+	"classname" "worldspawn"
+	"detailmaterial" "detail/detailsprites"
+	"detailvbsp" "detail.vbsp"
+	"maxblobcount" "250"
+	"maxpropscreenwidth" "-1"
+	"skyname" "sky_day01_01"
+}
+entity
+{
+	"id" "708"
+	"classname" "logic_branch"
+	"InitialValue" "$start_enabled"
+	"targetname" "branch_toggle"
+	connections
+	{
+		"OnTrue" "sprayers_start_rlTrigger0-1"
+		"OnFalse" "sprayers_stop_rlTrigger0-1"
+	}
+	"origin" "32 -16 80"
+	editor
+	{
+		"color" "220 30 220"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 0]"
+	}
+}
+entity
+{
+	"id" "710"
+	"classname" "math_counter"
+	"max" "$connectioncount"
+	"targetname" "counter"
+	connections
+	{
+		"OnHitMax" "branch_toggleToggleTest0-1"
+		"OnChangedFromMax" "branch_toggleToggleTest0-1"
+	}
+	"origin" "32 16 80"
+	editor
+	{
+		"color" "220 30 220"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 0]"
+	}
+}
+entity
+{
+	"id" "778"
+	"classname" "logic_relay"
+	"targetname" "sprayers_start_rl"
+	connections
+	{
+		"OnTrigger" "sprayer_mainStart0-1"
+		"OnTrigger" "sprayer_angledStart0-1"
+	}
+	"origin" "0 -16 80"
+	editor
+	{
+		"color" "220 30 220"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 0]"
+	}
+}
+entity
+{
+	"id" "792"
+	"classname" "logic_relay"
+	"targetname" "sprayers_stop_rl"
+	connections
+	{
+		"OnTrigger" "sprayer_angledStop0-1"
+		"OnTrigger" "sprayer_mainStop0-1"
+	}
+	"origin" "0 16 80"
+	editor
+	{
+		"color" "220 30 220"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 0]"
+	}
+}
+entity
+{
+	"id" "611"
+	"classname" "info_paint_sprayer"
+	"AmbientSound" "2"
+	"angles" "-90 0 0"
+	"blob_spread_angle" "8"
+	"blob_spread_radius" "48"
+	"blob_streak_percentage" "100"
+	"blobs_per_second" "3"
+	"max_speed" "0"
+	"max_streak_speed_dampen" "200"
+	"max_streak_time" "0.5"
+	"maxblobcount" "150"
+	"min_speed" "0"
+	"min_streak_speed_dampen" "100"
+	"min_streak_time" "0.5"
+	"PaintType" "$paint_type"
+	"start_active" "$start_enabled"
+	"targetname" "sprayer_angled"
+	"origin" "-4.19629e-006 0 48"
+	editor
+	{
+		"color" "220 30 220"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 10500]"
+	}
+}
+entity
+{
+	"id" "380"
+	"classname" "func_instance_io_proxy"
+	"targetname" "proxy"
+	connections
+	{
+		"OnProxyRelay" "counterSubtract10-1"
+		"OnProxyRelay" "counterAdd10-1"
+	}
+	"origin" "-32 -16 80"
+	editor
+	{
+		"color" "220 30 220"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 0]"
+	}
+}
+entity
+{
+	"id" "2"
+	"classname" "info_paint_sprayer"
+	"AmbientSound" "2"
+	"angles" "-90 0 0"
+	"blob_spread_angle" "8"
+	"blob_spread_radius" "8"
+	"blob_streak_percentage" "100"
+	"blobs_per_second" "5"
+	"max_speed" "$max_blob_speed"
+	"max_streak_speed_dampen" "200"
+	"max_streak_time" "0.5"
+	"maxblobcount" "150"
+	"min_speed" "0"
+	"min_streak_speed_dampen" "100"
+	"min_streak_time" "0.5"
+	"PaintType" "$paint_type"
+	"RenderMode" "0"
+	"start_active" "$start_enabled"
+	"targetname" "sprayer_main"
+	"origin" "0 0 8"
+	editor
+	{
+		"color" "220 30 220"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 10500]"
+	}
+}
+entity
+{
+	"id" "4"
+	"classname" "prop_static"
+	"angles" "0 180 180"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props_underground/underground_paintdropper.mdl"
+	"renderamt" "255"
+	"rendercolor" "255 255 255"
+	"skin" "1"
+	"solid" "6"
+	"origin" "-0.456948 0 88.25"
+	editor
+	{
+		"color" "255 255 0"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 6000]"
+	}
+}
+entity
+{
+	"id" "8"
+	"classname" "prop_static"
+	"angles" "-90 180 0"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"model" "models/props_underground/tube_paint_64b.mdl"
+	"renderamt" "255"
+	"rendercolor" "255 106 0"
+	"skin" "0"
+	"solid" "6"
+	"origin" "-0.456934 0 -63.75"
+	editor
+	{
+		"color" "255 255 0"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 3000]"
+	}
+}
+entity
+{
+	"id" "312"
+	"classname" "func_instance_parms"
+	"parm1" "$connectioncount integer 0"
+	"parm2" "$paint_type integer 0"
+	"parm3" "$start_enabled boolean 0"
+	"parm4" "$max_blob_speed string"
+	"origin" "-32 16 80"
+	editor
+	{
+		"color" "220 30 220"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 0]"
+	}
+}
+entity
+{
+	"id" "360"
+	"classname" "prop_static"
+	"angles" "0 270 -90"
+	"fademindist" "-1"
+	"fadescale" "1"
+	"lightingorigin" "gel_pipe_interior_lighting_origin"
+	"model" "models/props_underground/tube_paint_intersect_t_cap.mdl"
+	"renderamt" "255"
+	"rendercolor" "0 165 255"
+	"skin" "0"
+	"solid" "0"
+	"origin" "5.59506e-006 -64 -64"
+	editor
+	{
+		"color" "255 255 0"
+		"visgroupshown" "1"
+		"visgroupautoshown" "1"
+		"logicalpos" "[0 3000]"
+	}
+}
+cameras
+{
+	"activecamera" "-1"
+}
+cordons
+{
+	"active" "0"
+}

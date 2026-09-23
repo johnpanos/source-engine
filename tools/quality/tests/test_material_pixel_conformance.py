@@ -19,7 +19,7 @@ REFERENCES = QUALITY.parents[1] / "quality" / "fixtures" / "material-pixels"
 
 def capture(hdr, family="lightmap"):
     """The versioned backend reference capture for a family and HDR mode."""
-    backend = "dxvk" if family in ("cable", "sky", "monitor") else "dx9"
+    backend = "dxvk" if family in ("cable", "sky", "monitor", "sprite") else "dx9"
     return json.loads((REFERENCES / ("%s-%s-%s.json" % (family, backend, hdr))).read_text())
 
 
@@ -129,6 +129,29 @@ class MonitorTest(unittest.TestCase):
 
     def test_missing_case_is_rejected(self):
         report = copy.deepcopy(capture("none", "monitor"))
+        report["cases"].pop()
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pixels.json"
+            path.write_text(json.dumps(report))
+            with self.assertRaises(oracle.PixelsError):
+                oracle.read_pixels(path)
+
+
+class SpriteTest(unittest.TestCase):
+    def test_dxvk_reference_matches_vertex_tint(self):
+        report = capture("none", "sprite")
+        self.assertEqual(report["renderer"], "vulkan-compat")
+        self.assertEqual(oracle.evaluate(report, "none", report), [])
+
+    def test_ignored_vertex_color_is_detected(self):
+        reference = capture("none", "sprite")
+        report = copy.deepcopy(reference)
+        report["cases"][0]["pixel"] = [192, 144, 96]
+        failures = oracle.evaluate(report, "none", reference)
+        self.assertTrue(any("dim_linear" in failure for failure in failures))
+
+    def test_missing_case_is_rejected(self):
+        report = copy.deepcopy(capture("none", "sprite"))
         report["cases"].pop()
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "pixels.json"

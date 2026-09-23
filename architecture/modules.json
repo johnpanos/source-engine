@@ -21,6 +21,79 @@
         ]
       },
       {
+        "id": "content.texture-contract",
+        "paths": [
+          "public/texturecontainer/"
+        ],
+        "allowedEdges": [
+          "foundation"
+        ]
+      },
+      {
+        "id": "content.ktx2-reader",
+        "kind": "backend",
+        "paths": [
+          "texturecontainer/ktx2_reader.cpp"
+        ],
+        "allowedEdges": [
+          "content.texture-contract"
+        ],
+        "externalHeaders": [
+          "ktx.h",
+          "vulkan/vulkan_core.h"
+        ]
+      },
+      {
+        "id": "content.vtf-reader",
+        "kind": "legacy-interop",
+        "paths": [
+          "texturecontainer/vtf_reader.cpp"
+        ],
+        "allowedEdges": [
+          "content.texture-contract"
+        ],
+        "legacyIncludes": [
+          "tier1/utlbuffer.h",
+          "vtf/vtf.h"
+        ]
+      },
+      {
+        "id": "content.hammer-ktx2-preview",
+        "kind": "legacy-interop",
+        "paths": [
+          "hammer/adapters/source/ktx2_preview.cpp",
+          "hammer/adapters/source/ktx2_preview.h"
+        ],
+        "allowedEdges": [
+          "content.texture-contract",
+          "content.ktx2-reader"
+        ],
+        "legacyIncludes": [
+          "hammer/formats/material_catalog.h"
+        ]
+      },
+      {
+        "id": "content.ktx2-native-tests",
+        "kind": "native-test",
+        "paths": [
+          "unittests/texturecontainertest/"
+        ],
+        "allowedEdges": [
+          "content.texture-contract",
+          "content.ktx2-reader",
+          "content.vtf-reader",
+          "testing.contracts"
+        ],
+        "externalHeaders": [
+          "fstream",
+          "iterator"
+        ],
+        "legacyIncludes": [
+          "tier1/utlbuffer.h",
+          "vtf/vtf.h"
+        ]
+      },
+      {
         "id": "platform.contracts",
         "paths": [
           "public/platform/contracts/"
@@ -174,6 +247,18 @@
         ]
       },
       {
+        "id": "render.bridge.texture-image-vulkan",
+        "kind": "backend",
+        "paths": [
+          "materialsystem/shaderapivulkan/vulkan_texture_image.h",
+          "materialsystem/shaderapivulkan/vulkan_texture_image.cpp"
+        ],
+        "allowedEdges": [
+          "content.texture-contract",
+          "render.vulkan.core"
+        ]
+      },
+      {
         "id": "platform.sdl3.render-surface",
         "kind": "backend",
         "paths": [
@@ -208,20 +293,26 @@
         "kind": "native-test",
         "paths": [
           "unittests/shaderapivulkantest/test_sdl3_vulkan_presentation.cpp",
-          "unittests/shaderapivulkantest/test_pbr_pixels.cpp"
+          "unittests/shaderapivulkantest/test_pbr_pixels.cpp",
+          "unittests/shaderapivulkantest/test_ktx2_pixels.cpp"
         ],
         "allowedEdges": [
+          "content.texture-contract",
           "render.contracts",
           "render.conformance-tests",
           "render.vulkan.core",
+          "render.bridge.texture-image-vulkan",
           "render.bridge.sdl3-vulkan",
-          "platform.sdl3.render-surface"
+          "platform.sdl3.render-surface",
+          "testing.contracts"
         ],
         "externalHeaders": [
           "SDL3/SDL.h",
           "vulkan/vulkan.h",
           "unistd.h",
-          "csignal"
+          "csignal",
+          "fstream",
+          "iterator"
         ]
       },
       {
@@ -384,7 +475,7 @@
   },
   "description": "RFC 0001 architectural manifest. Phase A currently freezes legacy dynamic-loader boundaries.",
   "legacyAbi": {
-    "description": "Preserved binary ABI declarations and exact private compatibility adapters/tests. Video provider runtime supplies the existing IVideoSubSystem::Connect factory without exposing it through the typed catalog.",
+    "description": "Preserved binary ABI declarations and exact private compatibility adapters/tests. Video provider runtime supplies the existing IVideoSubSystem::Connect factory without exposing it through the typed catalog. The Linux VBSP host tool keeps its material and physics factories in its private legacy compile-tool adapters.",
     "paths": [
       "video/provider_catalog_runtime.h",
       "video/provider_catalog_runtime.cpp",
@@ -397,7 +488,9 @@
       "unittests/legacymoduleclientfixture/legacy_loader_abi_2013.h",
       "unittests/legacymoduleclientfixture/legacymoduleclientfixture.cpp",
       "unittests/shaderextensiontest/test_shaderextension_host.cpp",
-      "unittests/shaderextensiontest/material_pixel_conformance.cpp"
+      "unittests/shaderextensiontest/material_pixel_conformance.cpp",
+      "utils/common/utilmatlib.cpp",
+      "utils/vbsp/ivp.cpp"
     ]
   },
   "loaderInventory": {

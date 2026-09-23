@@ -11,12 +11,18 @@
 #include "blake2b.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
+#include <limits>
 #include <new>
 #include <utility>
 
 namespace mapcontainer
 {
+
+static MapContainerStatus WalkLegacyGaps( IMapByteSource &source, const MapLumpInfo &gapInfo,
+    const std::array<std::pair<uint64_t, uint64_t>, kLegacyLumpCount + 1> &covered,
+    size_t coveredCount, uint64_t legacySize, IMapByteSink *pSink );
 
 namespace
 {
@@ -342,6 +348,10 @@ MapContainerStatus ReadLumpBytes(
 {
 	if ( info.storedSize > source.Size() )
 		return Fail( MapContainerError::LumpOutOfBounds, info.fourcc, info.offset );
+	if ( info.storedSize > std::numeric_limits<size_t>::max() )
+		return Fail( MapContainerError::OutOfMemory, info.fourcc, info.offset );
+	if ( info.storedSize > bytes.max_size() )
+		return Fail( MapContainerError::OutOfMemory, info.fourcc, info.offset );
 	try
 	{
 		bytes.resize( size_t( info.storedSize ) );
@@ -352,6 +362,26 @@ MapContainerStatus ReadLumpBytes(
 	}
 	const MapContainerStatus status = ReadExact( source, info.offset, bytes.data(), bytes.size() );
 	return status.Ok() ? status : Fail( status.code, info.fourcc, info.offset );
+}
+
+MapContainerStatus HashLump(
+    IMapByteSource &source, const MapLumpInfo &info, uint8_t *pDigest ) noexcept
+{
+	uint8_t bytes[64 * 1024];
+	detail::Blake2b hasher( kBsp2HashSize );
+	uint64_t consumed = 0;
+	while ( consumed < info.storedSize )
+	{
+		const size_t chunk =
+		    size_t( std::min<uint64_t>( sizeof( bytes ), info.storedSize - consumed ) );
+		const MapContainerStatus status = ReadExact( source, info.offset + consumed, bytes, chunk );
+		if ( !status.Ok() )
+			return Fail( status.code, info.fourcc, info.offset + consumed );
+		hasher.Update( bytes, chunk );
+		consumed += chunk;
+	}
+	hasher.Final( pDigest );
+	return kOk;
 }
 
 MapContainerStatus OpenBsp2( IMapByteSource &source, const MapContainerOpenOptions &options,
@@ -494,15 +524,13 @@ MapContainerStatus OpenBsp2( IMapByteSource &source, const MapContainerOpenOptio
 
 	if ( options.verifyContent )
 	{
-		std::vector<uint8_t> bytes;
 		for ( const MapLumpInfo &entry : entries )
 		{
 			if ( ( entry.flags & kBsp2CompressionMask ) != kBsp2CompressionNone )
 				continue; // unknown lump in an encoding we cannot read
-			status = ReadLumpBytes( source, entry, bytes );
+			status = HashLump( source, entry, digest );
 			if ( !status.Ok() )
 				return status;
-			Hash( bytes.data(), bytes.size(), digest );
 			if ( std::memcmp( digest, entry.hash, kBsp2HashSize ) != 0 )
 				return Fail( MapContainerError::ContentHashMismatch, entry.fourcc, entry.offset );
 		}
@@ -512,28 +540,33 @@ MapContainerStatus OpenBsp2( IMapByteSource &source, const MapContainerOpenOptio
 	if ( !pContainer )
 		return Fail( MapContainerError::OutOfMemory );
 
-	// Legacy payload: LHDR is mandatory whenever any Lnnn lump is carried, and
-	// the carried lumps must agree with it.
+	// Legacy payload: LHDR is mandatory whenever Lnnn or LGAP is carried, and
+	// the carried lumps and gaps must agree with it.
 	MapLumpInfo legacyHeaderInfo{};
 	bool bAnyLegacy = false;
 	for ( uint32_t i = 0; i < pContainer->LumpCount(); ++i )
 	{
 		MapLumpInfo entry{};
 		pContainer->LumpAt( i, &entry );
-		bAnyLegacy = bAnyLegacy || IsLegacyFourCC( entry.fourcc, nullptr );
+		bAnyLegacy = bAnyLegacy || IsLegacyFourCC( entry.fourcc, nullptr ) ||
+		             entry.fourcc == kLumpLegacyGaps;
 	}
 	if ( pContainer->FindLump( kLumpLegacyHeader, &legacyHeaderInfo ) )
 	{
+		if ( legacyHeaderInfo.storedSize != kLegacyHeaderLumpSize )
+		{
+			delete pContainer;
+			return Fail( MapContainerError::LegacyHeaderInvalid, kLumpLegacyHeader );
+		}
 		std::vector<uint8_t> bytes;
 		status = ReadLumpBytes( source, legacyHeaderInfo, bytes );
 		if ( status.Ok() )
 			status = pContainer->VerifyContent( legacyHeaderInfo, bytes.data(), bytes.size() );
-		if ( status.Ok() && bytes.size() != kLegacyHeaderLumpSize )
-			status = Fail( MapContainerError::LegacyHeaderInvalid, kLumpLegacyHeader );
 		LegacyHeader legacy;
+		uint64_t legacyFileSize = 0;
 		if ( status.Ok() )
 		{
-			const uint64_t legacyFileSize = Load64( bytes.data() );
+			legacyFileSize = Load64( bytes.data() );
 			legacy = DecodeLegacyHeader( bytes.data() + 8 );
 			status = ValidateLegacyHeader( legacy, legacyFileSize );
 			if ( !status.Ok() )
@@ -558,6 +591,27 @@ MapContainerStatus OpenBsp2( IMapByteSource &source, const MapContainerOpenOptio
 		{
 			delete pContainer;
 			return status;
+		}
+		MapLumpInfo gapInfo{};
+		if ( pContainer->FindLump( kLumpLegacyGaps, &gapInfo ) )
+		{
+			std::array<std::pair<uint64_t, uint64_t>, kLegacyLumpCount + 1> covered{};
+			size_t coveredCount = 0;
+			covered[coveredCount++] = { 0, kLegacyHeaderSize };
+			for ( int i = 0; i < kLegacyLumpCount; ++i )
+			{
+				const LegacyLumpRecord &lump = legacy.lumps[i];
+				if ( lump.filelen > 0 )
+					covered[coveredCount++] = { uint64_t( lump.fileofs ),
+					    uint64_t( lump.fileofs ) + uint64_t( lump.filelen ) };
+			}
+			status =
+			    WalkLegacyGaps( source, gapInfo, covered, coveredCount, legacyFileSize, nullptr );
+			if ( !status.Ok() )
+			{
+				delete pContainer;
+				return status;
+			}
 		}
 		pContainer->SetLegacy( legacy );
 	}
@@ -586,11 +640,6 @@ MapContainerStatus OpenLegacy( IMapByteSource &source, IMapContainer **ppContain
 		return Fail( MapContainerError::OutOfMemory );
 	*ppContainer = pContainer;
 	return kOk;
-}
-
-std::span<const uint8_t> AsBytes( std::span<const std::byte> bytes ) noexcept
-{
-	return { reinterpret_cast<const uint8_t *>( bytes.data() ), bytes.size() };
 }
 
 uint64_t AlignUp( uint64_t value, uint64_t alignment ) noexcept
@@ -658,6 +707,8 @@ const char *MapContainerErrorName( MapContainerError error )
 		return "out-of-memory";
 	case MapContainerError::InvalidArgument:
 		return "invalid-argument";
+	case MapContainerError::WriteFailed:
+		return "write-failed";
 	}
 	return "unknown";
 }
@@ -720,39 +771,122 @@ ContentHash HashContent( std::span<const std::byte> bytes ) noexcept
 	return digest;
 }
 
+namespace
+{
+struct LayoutLump
+{
+	uint32_t fourcc = 0;
+	uint32_t version = 0;
+	uint32_t flags = 0;
+	uint32_t alignment = kBsp2MinAlignment;
+	uint64_t size = 0;
+	uint64_t offset = 0;
+	uint8_t hash[kBsp2HashSize] = {};
+};
+
+MapContainerStatus PlaceLumps(
+    std::span<LayoutLump> lumps, uint64_t &directoryOffset, uint64_t &totalSize ) noexcept
+{
+	if ( lumps.size() > kBsp2MaxLumps )
+		return Fail( MapContainerError::TooManyLumps );
+	uint64_t cursor = kBsp2HeaderSize;
+	for ( size_t i = 0; i < lumps.size(); ++i )
+	{
+		LayoutLump &lump = lumps[i];
+		if ( !IsPowerOfTwo( lump.alignment ) || lump.alignment < kBsp2MinAlignment )
+			return Fail( MapContainerError::LumpMisaligned, lump.fourcc );
+		if ( lump.flags & ~kBsp2KnownFlags )
+			return Fail( MapContainerError::UnknownFlags, lump.fourcc );
+		if ( ( lump.flags & kBsp2CompressionMask ) != kBsp2CompressionNone )
+			return Fail( MapContainerError::UnsupportedCompression, lump.fourcc );
+		for ( size_t j = 0; j < i; ++j )
+		{
+			if ( lumps[j].fourcc == lump.fourcc )
+				return Fail( MapContainerError::DuplicateLump, lump.fourcc );
+		}
+		if ( cursor > std::numeric_limits<uint64_t>::max() - ( lump.alignment - 1 ) )
+			return Fail( MapContainerError::UnsupportedLayout, lump.fourcc );
+		cursor = AlignUp( cursor, lump.alignment );
+		lump.offset = cursor;
+		if ( lump.size > std::numeric_limits<uint64_t>::max() - cursor )
+			return Fail( MapContainerError::UnsupportedLayout, lump.fourcc );
+		cursor += lump.size;
+	}
+	if ( cursor > std::numeric_limits<uint64_t>::max() - ( kBsp2MinAlignment - 1 ) )
+		return Fail( MapContainerError::UnsupportedLayout );
+	directoryOffset = AlignUp( cursor, kBsp2MinAlignment );
+	const uint64_t directorySize = uint64_t( lumps.size() ) * kBsp2EntrySize;
+	if ( directorySize > std::numeric_limits<uint64_t>::max() - directoryOffset )
+		return Fail( MapContainerError::UnsupportedLayout );
+	totalSize = directoryOffset + directorySize;
+	return kOk;
+}
+
+void EncodeHeaderDirectory( int32_t mapRevision, std::span<const LayoutLump> lumps,
+    uint64_t directoryOffset, uint8_t *pHeader, uint8_t *pDirectory ) noexcept
+{
+	for ( size_t i = 0; i < lumps.size(); ++i )
+	{
+		const LayoutLump &lump = lumps[i];
+		uint8_t *p = pDirectory + i * kBsp2EntrySize;
+		Store32( p, lump.fourcc );
+		Store32( p + 4, lump.version );
+		Store32( p + 8, lump.flags );
+		Store32( p + 12, lump.alignment );
+		Store64( p + 16, lump.offset );
+		Store64( p + 24, lump.size );
+		Store64( p + 32, lump.size );
+		Store64( p + 40, 0 );
+		std::memcpy( p + 48, lump.hash, kBsp2HashSize );
+	}
+	std::memcpy( pHeader, kBsp2Magic, sizeof( kBsp2Magic ) );
+	Store32( pHeader + 8, kBsp2ContainerVersion );
+	Store32( pHeader + 12, 0 );
+	Store32( pHeader + 16, kBsp2HeaderSize );
+	Store32( pHeader + 20, kBsp2EntrySize );
+	Store64( pHeader + 24, directoryOffset );
+	Store32( pHeader + 32, uint32_t( lumps.size() ) );
+	Store32( pHeader + 36, kBsp2HashBlake2b128 );
+	Store32( pHeader + 40, uint32_t( mapRevision ) );
+	Store32( pHeader + 44, 0 );
+	Hash( pDirectory, lumps.size() * kBsp2EntrySize, pHeader + 48 );
+}
+} // namespace
+
 Expected<std::vector<std::byte>, MapContainerStatus> WriteBsp2(
     int32_t mapRevision, std::span<const Bsp2LumpInput> lumps )
 {
 	if ( lumps.size() > kBsp2MaxLumps )
 		return MakeUnexpected( Fail( MapContainerError::TooManyLumps ) );
-	for ( size_t i = 0; i < lumps.size(); ++i )
+	std::vector<LayoutLump> layout;
+	try
 	{
-		const Bsp2LumpInput &lump = lumps[i];
-		if ( !IsPowerOfTwo( lump.alignment ) || lump.alignment < kBsp2MinAlignment )
-			return MakeUnexpected( Fail( MapContainerError::LumpMisaligned, lump.fourcc ) );
-		if ( lump.flags & ~kBsp2KnownFlags )
-			return MakeUnexpected( Fail( MapContainerError::UnknownFlags, lump.fourcc ) );
-		if ( ( lump.flags & kBsp2CompressionMask ) != kBsp2CompressionNone )
-			return MakeUnexpected( Fail( MapContainerError::UnsupportedCompression, lump.fourcc ) );
-		for ( size_t j = 0; j < i; ++j )
+		layout.resize( lumps.size() );
+		for ( size_t i = 0; i < lumps.size(); ++i )
 		{
-			if ( lumps[j].fourcc == lump.fourcc )
-				return MakeUnexpected( Fail( MapContainerError::DuplicateLump, lump.fourcc ) );
+			const Bsp2LumpInput &lump = lumps[i];
+			layout[i].fourcc = lump.fourcc;
+			layout[i].version = lump.version;
+			layout[i].flags = lump.flags;
+			layout[i].alignment = lump.alignment;
+			layout[i].size = lump.data.size();
 		}
 	}
-
-	std::vector<uint64_t> offsets( lumps.size() );
-	uint64_t cursor = kBsp2HeaderSize;
-	for ( size_t i = 0; i < lumps.size(); ++i )
+	catch ( const std::bad_alloc & )
 	{
-		cursor = AlignUp( cursor, lumps[i].alignment );
-		offsets[i] = cursor;
-		cursor += lumps[i].data.size();
+		return MakeUnexpected( Fail( MapContainerError::OutOfMemory ) );
 	}
-	const uint64_t directoryOffset = AlignUp( cursor, kBsp2MinAlignment );
-	const uint64_t totalSize = directoryOffset + uint64_t( lumps.size() ) * kBsp2EntrySize;
+	uint64_t directoryOffset = 0;
+	uint64_t totalSize = 0;
+	const MapContainerStatus placed = PlaceLumps( layout, directoryOffset, totalSize );
+	if ( !placed.Ok() )
+		return MakeUnexpected( placed );
+	for ( size_t i = 0; i < lumps.size(); ++i )
+		Hash( lumps[i].data.data(), lumps[i].data.size(), layout[i].hash );
 
 	std::vector<std::byte> file;
+	if ( totalSize > file.max_size() )
+		return MakeUnexpected( Fail( MapContainerError::OutOfMemory ) );
 	try
 	{
 		file.assign( size_t( totalSize ), std::byte{ 0 } );
@@ -767,206 +901,432 @@ Expected<std::vector<std::byte>, MapContainerStatus> WriteBsp2(
 	{
 		const Bsp2LumpInput &lump = lumps[i];
 		if ( !lump.data.empty() )
-			std::memcpy( pFile + offsets[i], lump.data.data(), lump.data.size() );
-		uint8_t *p = pFile + directoryOffset + i * kBsp2EntrySize;
-		Store32( p, lump.fourcc );
-		Store32( p + 4, lump.version );
-		Store32( p + 8, lump.flags );
-		Store32( p + 12, lump.alignment );
-		Store64( p + 16, offsets[i] );
-		Store64( p + 24, lump.data.size() );
-		Store64( p + 32, lump.data.size() );
-		Store64( p + 40, 0 );
-		Hash( lump.data.data(), lump.data.size(), p + 48 );
+			std::memcpy( pFile + layout[i].offset, lump.data.data(), lump.data.size() );
 	}
-
-	std::memcpy( pFile, kBsp2Magic, sizeof( kBsp2Magic ) );
-	Store32( pFile + 8, kBsp2ContainerVersion );
-	Store32( pFile + 12, 0 );
-	Store32( pFile + 16, kBsp2HeaderSize );
-	Store32( pFile + 20, kBsp2EntrySize );
-	Store64( pFile + 24, directoryOffset );
-	Store32( pFile + 32, uint32_t( lumps.size() ) );
-	Store32( pFile + 36, kBsp2HashBlake2b128 );
-	Store32( pFile + 40, uint32_t( mapRevision ) );
-	Store32( pFile + 44, 0 );
-	Hash( pFile + directoryOffset, size_t( lumps.size() * kBsp2EntrySize ), pFile + 48 );
+	EncodeHeaderDirectory( mapRevision, layout, directoryOffset, pFile, pFile + directoryOffset );
 	return file;
 }
+
+namespace
+{
+class VectorByteSink final : public IMapByteSink
+{
+public:
+	bool ResetToZeroes( uint64_t size ) override
+	{
+		if ( size > m_Bytes.max_size() )
+			return false;
+		try
+		{
+			m_Bytes.assign( size_t( size ), std::byte{ 0 } );
+		}
+		catch ( const std::bad_alloc & )
+		{
+			return false;
+		}
+		return true;
+	}
+	bool WriteAt( uint64_t offset, const void *pData, size_t size ) override
+	{
+		if ( offset > m_Bytes.size() || size > m_Bytes.size() - offset )
+			return false;
+		if ( size )
+			std::memcpy( m_Bytes.data() + size_t( offset ), pData, size );
+		return true;
+	}
+	std::vector<std::byte> m_Bytes;
+};
+} // namespace
 
 Expected<std::vector<std::byte>, MapContainerStatus> ConvertLegacyToBsp2(
     std::span<const std::byte> legacyFile, std::span<const Bsp2LumpInput> extraLumps )
 {
-	const std::span<const uint8_t> bytes = AsBytes( legacyFile );
-	if ( bytes.size() < kLegacyHeaderSize )
-		return MakeUnexpected( Fail( MapContainerError::Truncated ) );
-	if ( IsBsp2Magic( bytes.data(), bytes.size() ) )
-		return MakeUnexpected( Fail( MapContainerError::InvalidArgument ) );
-	const LegacyHeader legacy = DecodeLegacyHeader( bytes.data() );
-	const MapContainerStatus valid = ValidateLegacyHeader( legacy, bytes.size() );
-	if ( !valid.Ok() )
-		return MakeUnexpected( valid );
+	MemoryByteSource source( legacyFile );
+	VectorByteSink sink;
+	MapContainerStatus status = ConvertLegacyToBsp2( source, sink, extraLumps );
+	if ( status.code == MapContainerError::WriteFailed )
+		status = Fail( MapContainerError::OutOfMemory, status.fourcc, status.offset );
+	if ( !status.Ok() )
+		return MakeUnexpected( status );
+	return std::move( sink.m_Bytes );
+}
 
-	// Coverage: the legacy header plus every nonempty lump. Anything else is a
-	// gap; nonzero gap bytes are carried in LGAP so export is byte-identical.
-	std::vector<std::pair<uint64_t, uint64_t>> covered;
-	covered.emplace_back( 0, kLegacyHeaderSize );
-	for ( const LegacyLumpRecord &lump : legacy.lumps )
+MapContainerStatus CopyToSink( IMapByteSource &source, IMapByteSink &sink, uint64_t sourceOffset,
+    uint64_t outputOffset, uint64_t size, uint32_t fourcc,
+    detail::Blake2b *pHasher = nullptr ) noexcept
+{
+	uint8_t bytes[64 * 1024];
+	uint64_t copied = 0;
+	while ( copied < size )
 	{
-		if ( lump.filelen > 0 )
-			covered.emplace_back(
-			    uint64_t( lump.fileofs ), uint64_t( lump.fileofs ) + uint64_t( lump.filelen ) );
+		const size_t chunk = size_t( std::min<uint64_t>( sizeof( bytes ), size - copied ) );
+		const MapContainerStatus status = ReadExact( source, sourceOffset + copied, bytes, chunk );
+		if ( !status.Ok() )
+			return Fail( status.code, fourcc, sourceOffset + copied );
+		if ( !sink.WriteAt( outputOffset + copied, bytes, chunk ) )
+			return Fail( MapContainerError::WriteFailed, fourcc, outputOffset + copied );
+		if ( pHasher )
+			pHasher->Update( bytes, chunk );
+		copied += chunk;
 	}
-	std::sort( covered.begin(), covered.end() );
-	std::vector<uint8_t> gaps;
-	auto recordGap = [&]( uint64_t begin, uint64_t end )
+	return kOk;
+}
+
+namespace
+{
+template <typename RunFn>
+MapContainerStatus ScanLegacyGapRuns( IMapByteSource &source,
+    std::span<const std::pair<uint64_t, uint64_t>> covered, uint64_t legacySize, RunFn &&onRun )
+{
+	uint8_t bytes[64 * 1024];
+	auto scanRange = [&]( uint64_t begin, uint64_t end ) -> MapContainerStatus
 	{
-		// Split the gap into maximal nonzero runs.
-		uint64_t i = begin;
-		while ( i < end )
+		bool inRun = false;
+		uint64_t runStart = 0;
+		for ( uint64_t cursor = begin; cursor < end; )
 		{
-			while ( i < end && bytes[i] == 0 )
-				++i;
-			uint64_t runEnd = i;
-			while ( runEnd < end && bytes[runEnd] != 0 )
-				++runEnd;
-			if ( runEnd > i )
+			const size_t chunk = size_t( std::min<uint64_t>( sizeof( bytes ), end - cursor ) );
+			const MapContainerStatus read = ReadExact( source, cursor, bytes, chunk );
+			if ( !read.Ok() )
+				return read;
+			for ( size_t i = 0; i < chunk; ++i )
 			{
-				uint8_t record[16];
-				Store64( record, i );
-				Store64( record + 8, runEnd - i );
-				gaps.insert( gaps.end(), record, record + 16 );
-				gaps.insert( gaps.end(), bytes.begin() + i, bytes.begin() + runEnd );
-				gaps.resize( AlignUp( gaps.size(), 8 ), 0 );
+				if ( bytes[i] != 0 && !inRun )
+				{
+					inRun = true;
+					runStart = cursor + i;
+				}
+				else if ( bytes[i] == 0 && inRun )
+				{
+					const MapContainerStatus status = onRun( runStart, cursor + i - runStart );
+					if ( !status.Ok() )
+						return status;
+					inRun = false;
+				}
 			}
-			i = runEnd;
+			cursor += chunk;
 		}
+		return inRun ? onRun( runStart, end - runStart ) : kOk;
 	};
+
 	uint64_t coveredEnd = 0;
 	for ( const auto &range : covered )
 	{
 		if ( range.first > coveredEnd )
-			recordGap( coveredEnd, range.first );
+		{
+			const MapContainerStatus status = scanRange( coveredEnd, range.first );
+			if ( !status.Ok() )
+				return status;
+		}
 		coveredEnd = std::max( coveredEnd, range.second );
 	}
-	if ( coveredEnd < bytes.size() )
-		recordGap( coveredEnd, bytes.size() );
+	return coveredEnd < legacySize ? scanRange( coveredEnd, legacySize ) : kOk;
+}
+} // namespace
 
-	std::vector<uint8_t> headerLump( kLegacyHeaderLumpSize );
-	Store64( headerLump.data(), bytes.size() );
-	std::memcpy( headerLump.data() + 8, bytes.data(), kLegacyHeaderSize );
+MapContainerStatus ConvertLegacyToBsp2(
+    IMapByteSource &source, IMapByteSink &sink, std::span<const Bsp2LumpInput> extraLumps )
+{
+	const uint64_t legacySize = source.Size();
+	if ( legacySize < kLegacyHeaderSize )
+		return Fail( MapContainerError::Truncated );
+	uint8_t header[kLegacyHeaderSize];
+	MapContainerStatus status = ReadExact( source, 0, header, sizeof( header ) );
+	if ( !status.Ok() )
+		return status;
+	if ( IsBsp2Magic( header, sizeof( header ) ) )
+		return Fail( MapContainerError::InvalidArgument );
+	const LegacyHeader legacy = DecodeLegacyHeader( header );
+	status = ValidateLegacyHeader( legacy, legacySize );
+	if ( !status.Ok() )
+		return status;
 
-	std::vector<Bsp2LumpInput> lumps;
-	lumps.reserve( kLegacyLumpCount + 2 + extraLumps.size() );
-	lumps.push_back( { kLumpLegacyHeader, 1, kBsp2FlagRequired, kBsp2MinAlignment,
-	    std::as_bytes( std::span<const uint8_t>( headerLump ) ) } );
-	if ( !gaps.empty() )
+	std::array<std::pair<uint64_t, uint64_t>, kLegacyLumpCount + 1> covered{};
+	size_t coveredCount = 0;
+	covered[coveredCount++] = { 0, kLegacyHeaderSize };
+	for ( const LegacyLumpRecord &lump : legacy.lumps )
 	{
-		lumps.push_back( { kLumpLegacyGaps, 1, kBsp2FlagRequired, kBsp2MinAlignment,
-		    std::as_bytes( std::span<const uint8_t>( gaps ) ) } );
+		if ( lump.filelen > 0 )
+			covered[coveredCount++] = {
+			    uint64_t( lump.fileofs ), uint64_t( lump.fileofs ) + uint64_t( lump.filelen ) };
+	}
+	std::sort( covered.begin(), covered.begin() + coveredCount );
+	const std::span<const std::pair<uint64_t, uint64_t>> ranges( covered.data(), coveredCount );
+	uint64_t gapSize = 0;
+	status = ScanLegacyGapRuns( source, ranges, legacySize,
+	    [&]( uint64_t, uint64_t length )
+	    {
+		    if ( length > std::numeric_limits<uint64_t>::max() - 7 )
+			    return Fail( MapContainerError::UnsupportedLayout, kLumpLegacyGaps );
+		    const uint64_t padded = AlignUp( length, 8 );
+		    if ( gapSize > std::numeric_limits<uint64_t>::max() - 16 ||
+		         padded > std::numeric_limits<uint64_t>::max() - gapSize - 16 )
+			    return Fail( MapContainerError::UnsupportedLayout, kLumpLegacyGaps );
+		    gapSize += 16 + padded;
+		    return kOk;
+	    } );
+	if ( !status.Ok() )
+		return status;
+
+	const size_t baseLumpCount = coveredCount + ( gapSize != 0 );
+	if ( extraLumps.size() > kBsp2MaxLumps - baseLumpCount )
+		return Fail( MapContainerError::TooManyLumps );
+	std::vector<LayoutLump> layout;
+	try
+	{
+		layout.reserve( baseLumpCount + extraLumps.size() );
+		layout.push_back(
+		    { kLumpLegacyHeader, 1, kBsp2FlagRequired, kBsp2MinAlignment, kLegacyHeaderLumpSize } );
+		if ( gapSize )
+			layout.push_back(
+			    { kLumpLegacyGaps, 1, kBsp2FlagRequired, kBsp2MinAlignment, gapSize } );
+		for ( int i = 0; i < kLegacyLumpCount; ++i )
+		{
+			const LegacyLumpRecord &lump = legacy.lumps[i];
+			if ( lump.filelen > 0 )
+				layout.push_back( { LegacyLumpFourCC( i ), uint32_t( lump.version ),
+				    kBsp2FlagRequired, kBsp2MinAlignment, uint64_t( lump.filelen ) } );
+		}
+		for ( const Bsp2LumpInput &extra : extraLumps )
+		{
+			if ( IsKnownFourCC(
+			         extra.fourcc, MapContainerOpenOptions{ false, nullptr, 0, false } ) )
+				return Fail( MapContainerError::DuplicateLump, extra.fourcc );
+			layout.push_back(
+			    { extra.fourcc, extra.version, extra.flags, extra.alignment, extra.data.size() } );
+		}
+	}
+	catch ( const std::bad_alloc & )
+	{
+		return Fail( MapContainerError::OutOfMemory );
+	}
+	uint64_t directoryOffset = 0;
+	uint64_t totalSize = 0;
+	status = PlaceLumps( layout, directoryOffset, totalSize );
+	if ( !status.Ok() )
+		return status;
+	std::vector<uint8_t> directory;
+	try
+	{
+		directory.resize( layout.size() * kBsp2EntrySize );
+	}
+	catch ( const std::bad_alloc & )
+	{
+		return Fail( MapContainerError::OutOfMemory );
+	}
+	if ( !sink.ResetToZeroes( totalSize ) )
+		return Fail( MapContainerError::WriteFailed );
+
+	uint8_t headerLump[kLegacyHeaderLumpSize];
+	Store64( headerLump, legacySize );
+	std::memcpy( headerLump + 8, header, sizeof( header ) );
+	if ( !sink.WriteAt( layout[0].offset, headerLump, sizeof( headerLump ) ) )
+		return Fail( MapContainerError::WriteFailed, kLumpLegacyHeader, layout[0].offset );
+	Hash( headerLump, sizeof( headerLump ), layout[0].hash );
+
+	size_t next = 1;
+	if ( gapSize )
+	{
+		LayoutLump &gap = layout[next++];
+		detail::Blake2b hasher( kBsp2HashSize );
+		uint64_t written = 0;
+		status = ScanLegacyGapRuns( source, ranges, legacySize,
+		    [&]( uint64_t origin, uint64_t length )
+		    {
+			    if ( written > gap.size || gap.size - written < 16 ||
+			         length > gap.size - written - 16 )
+				    return Fail( MapContainerError::LegacyGapsInvalid, kLumpLegacyGaps );
+			    uint8_t record[16];
+			    Store64( record, origin );
+			    Store64( record + 8, length );
+			    if ( !sink.WriteAt( gap.offset + written, record, sizeof( record ) ) )
+				    return Fail(
+				        MapContainerError::WriteFailed, kLumpLegacyGaps, gap.offset + written );
+			    hasher.Update( record, sizeof( record ) );
+			    written += sizeof( record );
+			    const MapContainerStatus copied = CopyToSink(
+			        source, sink, origin, gap.offset + written, length, kLumpLegacyGaps, &hasher );
+			    if ( !copied.Ok() )
+				    return copied;
+			    written += length;
+			    const uint8_t zeroes[7] = {};
+			    const size_t padding = size_t( AlignUp( written, 8 ) - written );
+			    if ( padding > gap.size - written )
+				    return Fail( MapContainerError::LegacyGapsInvalid, kLumpLegacyGaps );
+			    if ( padding && !sink.WriteAt( gap.offset + written, zeroes, padding ) )
+				    return Fail(
+				        MapContainerError::WriteFailed, kLumpLegacyGaps, gap.offset + written );
+			    hasher.Update( zeroes, padding );
+			    written += padding;
+			    return kOk;
+		    } );
+		if ( !status.Ok() )
+			return status;
+		if ( written != gap.size )
+			return Fail( MapContainerError::LegacyGapsInvalid, kLumpLegacyGaps );
+		hasher.Final( gap.hash );
 	}
 	for ( int i = 0; i < kLegacyLumpCount; ++i )
 	{
 		const LegacyLumpRecord &lump = legacy.lumps[i];
 		if ( lump.filelen == 0 )
 			continue;
-		lumps.push_back(
-		    { LegacyLumpFourCC( i ), uint32_t( lump.version ), kBsp2FlagRequired, kBsp2MinAlignment,
-		        legacyFile.subspan( size_t( lump.fileofs ), size_t( lump.filelen ) ) } );
+		LayoutLump &out = layout[next++];
+		detail::Blake2b hasher( kBsp2HashSize );
+		status = CopyToSink(
+		    source, sink, uint64_t( lump.fileofs ), out.offset, out.size, out.fourcc, &hasher );
+		if ( !status.Ok() )
+			return status;
+		hasher.Final( out.hash );
 	}
 	for ( const Bsp2LumpInput &extra : extraLumps )
 	{
-		if ( IsKnownFourCC( extra.fourcc, MapContainerOpenOptions{ false, nullptr, 0, false } ) )
-			return MakeUnexpected( Fail( MapContainerError::DuplicateLump, extra.fourcc ) );
-		lumps.push_back( extra );
+		LayoutLump &out = layout[next++];
+		const uint8_t *pData = reinterpret_cast<const uint8_t *>( extra.data.data() );
+		for ( size_t copied = 0; copied < extra.data.size(); )
+		{
+			const size_t chunk = std::min<size_t>( 64 * 1024, extra.data.size() - copied );
+			if ( !sink.WriteAt( out.offset + copied, pData + copied, chunk ) )
+				return Fail( MapContainerError::WriteFailed, out.fourcc, out.offset + copied );
+			copied += chunk;
+		}
+		Hash( pData, extra.data.size(), out.hash );
 	}
-	return WriteBsp2( legacy.mapRevision, lumps );
+	uint8_t bsp2Header[kBsp2HeaderSize] = {};
+	EncodeHeaderDirectory(
+	    legacy.mapRevision, layout, directoryOffset, bsp2Header, directory.data() );
+	if ( !sink.WriteAt( directoryOffset, directory.data(), directory.size() ) ||
+	     !sink.WriteAt( 0, bsp2Header, sizeof( bsp2Header ) ) )
+		return Fail( MapContainerError::WriteFailed );
+	return kOk;
+}
+
+static MapContainerStatus WalkLegacyGaps( IMapByteSource &source, const MapLumpInfo &gapInfo,
+    const std::array<std::pair<uint64_t, uint64_t>, kLegacyLumpCount + 1> &covered,
+    size_t coveredCount, uint64_t legacySize, IMapByteSink *pSink )
+{
+	uint64_t cursor = 0;
+	uint64_t previousEnd = 0;
+	while ( cursor < gapInfo.storedSize )
+	{
+		if ( gapInfo.storedSize - cursor < 16 )
+			return Fail( MapContainerError::LegacyGapsInvalid, kLumpLegacyGaps, cursor );
+		uint8_t record[16];
+		MapContainerStatus status =
+		    ReadExact( source, gapInfo.offset + cursor, record, sizeof( record ) );
+		if ( !status.Ok() )
+			return Fail( status.code, kLumpLegacyGaps, gapInfo.offset + cursor );
+		const uint64_t offset = Load64( record );
+		const uint64_t length = Load64( record + 8 );
+		cursor += sizeof( record );
+		if ( length == 0 || length > gapInfo.storedSize - cursor ||
+		     !FitsWithin( offset, length, legacySize ) || offset < previousEnd ||
+		     cursor + length > std::numeric_limits<uint64_t>::max() - 7 )
+			return Fail( MapContainerError::LegacyGapsInvalid, kLumpLegacyGaps, cursor );
+		for ( size_t i = 0; i < coveredCount; ++i )
+		{
+			if ( offset < covered[i].second && covered[i].first < offset + length )
+				return Fail( MapContainerError::LegacyGapsInvalid, kLumpLegacyGaps, cursor );
+		}
+		const uint64_t next = AlignUp( cursor + length, 8 );
+		if ( next > gapInfo.storedSize )
+			return Fail( MapContainerError::LegacyGapsInvalid, kLumpLegacyGaps, cursor );
+		uint8_t padding[7];
+		const size_t padSize = size_t( next - cursor - length );
+		status = ReadExact( source, gapInfo.offset + cursor + length, padding, padSize );
+		if ( !status.Ok() )
+			return Fail( status.code, kLumpLegacyGaps, gapInfo.offset + cursor + length );
+		if ( std::any_of( padding, padding + padSize,
+		         []( uint8_t byte )
+		         {
+			         return byte != 0;
+		         } ) )
+			return Fail( MapContainerError::LegacyGapsInvalid, kLumpLegacyGaps, cursor );
+		if ( pSink )
+		{
+			status = CopyToSink(
+			    source, *pSink, gapInfo.offset + cursor, offset, length, kLumpLegacyGaps );
+			if ( !status.Ok() )
+				return status;
+		}
+		previousEnd = offset + length;
+		cursor = next;
+	}
+	return kOk;
+}
+
+MapContainerStatus ExportLegacyFromBsp2( IMapByteSource &source, IMapByteSink &sink )
+{
+	IMapContainer *pRaw = nullptr;
+	// Only the legacy payload is exported; newer lumps are intentionally dropped.
+	const MapContainerOpenOptions options{ true, nullptr, 0, true };
+	MapContainerStatus status = OpenMapContainer( source, options, &pRaw );
+	if ( !status.Ok() )
+		return status;
+	const ContainerPtr container( pRaw );
+	if ( container->Kind() != MapContainerKind::Bsp2 )
+		return Fail( MapContainerError::InvalidArgument );
+
+	MapLumpInfo headerInfo{};
+	if ( !container->FindLump( kLumpLegacyHeader, &headerInfo ) )
+		return Fail( MapContainerError::MissingLegacyHeader, kLumpLegacyHeader );
+	uint8_t headerLump[kLegacyHeaderLumpSize];
+	status = ReadExact( source, headerInfo.offset, headerLump, sizeof( headerLump ) );
+	if ( !status.Ok() )
+		return Fail( status.code, kLumpLegacyHeader, headerInfo.offset );
+	const uint64_t legacySize = Load64( headerLump );
+
+	std::array<std::pair<uint64_t, uint64_t>, kLegacyLumpCount + 1> covered{};
+	size_t coveredCount = 0;
+	covered[coveredCount++] = { 0, kLegacyHeaderSize };
+	for ( int i = 0; i < kLegacyLumpCount; ++i )
+	{
+		MapLumpInfo info{};
+		container->FindLegacyLump( i, &info );
+		if ( info.storedSize == 0 )
+			continue;
+		// Open validated legacyOrigin + size against the legacy file size.
+		covered[coveredCount++] = { info.legacyOrigin, info.legacyOrigin + info.storedSize };
+	}
+
+	MapLumpInfo gapInfo{};
+	const bool hasGaps = container->FindLump( kLumpLegacyGaps, &gapInfo );
+	if ( hasGaps )
+	{
+		status = WalkLegacyGaps( source, gapInfo, covered, coveredCount, legacySize, nullptr );
+		if ( !status.Ok() )
+			return status;
+	}
+	if ( !sink.ResetToZeroes( legacySize ) ||
+	     !sink.WriteAt( 0, headerLump + 8, kLegacyHeaderSize ) )
+		return Fail( MapContainerError::WriteFailed, kLumpLegacyHeader );
+	for ( int i = 0; i < kLegacyLumpCount; ++i )
+	{
+		MapLumpInfo info{};
+		container->FindLegacyLump( i, &info );
+		if ( info.storedSize == 0 )
+			continue;
+		status = CopyToSink(
+		    source, sink, info.offset, info.legacyOrigin, info.storedSize, info.fourcc );
+		if ( !status.Ok() )
+			return status;
+	}
+	if ( hasGaps )
+		return WalkLegacyGaps( source, gapInfo, covered, coveredCount, legacySize, &sink );
+	return kOk;
 }
 
 Expected<std::vector<std::byte>, MapContainerStatus> ExportLegacyFromBsp2(
     std::span<const std::byte> bsp2File )
 {
 	MemoryByteSource source( bsp2File );
-	// Only the legacy payload is exported; newer lumps are intentionally dropped.
-	auto opened = OpenMemoryContainer( source, true, true );
-	if ( !opened )
-		return MakeUnexpected( opened.Error() );
-	const IMapContainer &container = *opened.Value();
-	if ( container.Kind() != MapContainerKind::Bsp2 )
-		return MakeUnexpected( Fail( MapContainerError::InvalidArgument ) );
-
-	MapLumpInfo headerInfo{};
-	if ( !container.FindLump( kLumpLegacyHeader, &headerInfo ) )
-		return MakeUnexpected( Fail( MapContainerError::MissingLegacyHeader, kLumpLegacyHeader ) );
-	const uint8_t *pFile = reinterpret_cast<const uint8_t *>( bsp2File.data() );
-	const uint8_t *pHeaderLump = pFile + headerInfo.offset;
-	const uint64_t legacySize = Load64( pHeaderLump );
-
-	std::vector<std::byte> legacy;
-	try
-	{
-		legacy.assign( size_t( legacySize ), std::byte{ 0 } );
-	}
-	catch ( const std::bad_alloc & )
-	{
-		return MakeUnexpected( Fail( MapContainerError::OutOfMemory ) );
-	}
-	uint8_t *pOut = reinterpret_cast<uint8_t *>( legacy.data() );
-	std::memcpy( pOut, pHeaderLump + 8, kLegacyHeaderSize );
-
-	for ( int i = 0; i < kLegacyLumpCount; ++i )
-	{
-		MapLumpInfo info{};
-		container.FindLegacyLump( i, &info );
-		if ( info.storedSize == 0 )
-			continue;
-		// Open validated legacyOrigin + size against the legacy file size.
-		std::memcpy( pOut + info.legacyOrigin, pFile + info.offset, size_t( info.storedSize ) );
-	}
-
-	// Gap records may only fill bytes outside the legacy header and lumps.
-	std::vector<std::pair<uint64_t, uint64_t>> covered;
-	covered.emplace_back( 0, kLegacyHeaderSize );
-	for ( int i = 0; i < kLegacyLumpCount; ++i )
-	{
-		MapLumpInfo info{};
-		container.FindLegacyLump( i, &info );
-		if ( info.storedSize )
-			covered.emplace_back( info.legacyOrigin, info.legacyOrigin + info.storedSize );
-	}
-	auto overlapsCovered = [&]( uint64_t begin, uint64_t end )
-	{
-		for ( const auto &range : covered )
-		{
-			if ( begin < range.second && range.first < end )
-				return true;
-		}
-		return false;
-	};
-
-	MapLumpInfo gapInfo{};
-	if ( container.FindLump( kLumpLegacyGaps, &gapInfo ) )
-	{
-		const uint8_t *p = pFile + gapInfo.offset;
-		uint64_t cursor = 0;
-		while ( cursor < gapInfo.storedSize )
-		{
-			if ( gapInfo.storedSize - cursor < 16 )
-				return MakeUnexpected(
-				    Fail( MapContainerError::LegacyGapsInvalid, kLumpLegacyGaps, cursor ) );
-			const uint64_t offset = Load64( p + cursor );
-			const uint64_t length = Load64( p + cursor + 8 );
-			cursor += 16;
-			if ( length == 0 || length > gapInfo.storedSize - cursor ||
-			     !FitsWithin( offset, length, legacySize ) ||
-			     overlapsCovered( offset, offset + length ) )
-				return MakeUnexpected(
-				    Fail( MapContainerError::LegacyGapsInvalid, kLumpLegacyGaps, cursor ) );
-			std::memcpy( pOut + offset, p + cursor, size_t( length ) );
-			cursor = AlignUp( cursor + length, 8 );
-		}
-	}
-	return legacy;
+	VectorByteSink sink;
+	MapContainerStatus status = ExportLegacyFromBsp2( source, sink );
+	if ( status.code == MapContainerError::WriteFailed )
+		status = Fail( MapContainerError::OutOfMemory, status.fourcc, status.offset );
+	if ( !status.Ok() )
+		return MakeUnexpected( status );
+	return std::move( sink.m_Bytes );
 }
 
 } // namespace mapcontainer

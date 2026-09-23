@@ -172,19 +172,36 @@ void CVRadDLL::GetBSPInfo( CBSPInfo *pInfo )
 
 bool CVRadDLL::DoIncrementalLight( char const *pVMFFile )
 {
+#ifdef _WIN32
 	char tempPath[MAX_PATH], tempFilename[MAX_PATH];
 	GetTempPath( sizeof( tempPath ), tempPath );
 	GetTempFileName( tempPath, "vmf_entities_", 0, tempFilename );
+#else
+	char tempFilename[] = "/tmp/vrad_entities_XXXXXX";
+	int fd = mkstemp( tempFilename );
+	if ( fd < 0 )
+		return false;
+	close( fd );
+#endif
 
 	FileHandle_t fp = g_pFileSystem->Open( tempFilename, "wb" );
 	if( !fp )
+	{
+#ifndef _WIN32
+		unlink( tempFilename );
+#endif
 		return false;
+	}
 
 	g_pFileSystem->Write( pVMFFile, strlen(pVMFFile)+1, fp );
 	g_pFileSystem->Close( fp );
 
 	// Parse the new entities.
-	if( !LoadEntsFromMapFile( tempFilename ) )
+	bool loaded = LoadEntsFromMapFile( tempFilename );
+#ifndef _WIN32
+	unlink( tempFilename );
+#endif
+	if ( !loaded )
 		return false;
 
 	// Create lights.

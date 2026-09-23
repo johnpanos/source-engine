@@ -3,7 +3,12 @@
 #include "map_shared.h"
 #include "fgdlib/fgdlib.h"
 #include "manifest.h"
-#include "windows.h"
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <pwd.h>
+#include <unistd.h>
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: default constructor
@@ -355,18 +360,31 @@ bool CManifest::LoadSubMaps( CMapFile *pMapFile, const char *pszFileName )
 //-----------------------------------------------------------------------------
 bool CManifest::LoadVMFManifestUserPrefs( const char *pszFileName )
 {
-	char		UserName[ MAX_PATH ], FileName[ MAX_PATH ], UserPrefsFileName[ MAX_PATH ];
-	DWORD		UserNameSize;
-
-	UserNameSize = sizeof( UserName );
-	if ( GetUserName( UserName, &UserNameSize ) == 0 )
+	char FileName[MAX_PATH], UserPrefsFileName[MAX_PATH];
+	const char *pUserName = NULL;
+#ifdef _WIN32
+	char UserName[MAX_PATH];
+	DWORD UserNameSize = sizeof( UserName );
+	if ( GetUserName( UserName, &UserNameSize ) != 0 )
+		pUserName = UserName;
+#else
+	struct passwd *pUser = getpwuid( geteuid() );
+	if ( pUser )
+		pUserName = pUser->pw_name;
+#endif
+	if ( !pUserName )
 	{
-		strcpy( UserPrefsFileName, "default" );
+		pUserName = "default";
 	}
 
-	sprintf( UserPrefsFileName, "\\%s.vmm_prefs", UserName );
+	int nPrefsName = snprintf( UserPrefsFileName, sizeof( UserPrefsFileName ), "%c%s.vmm_prefs",
+	    CORRECT_PATH_SEPARATOR, pUserName );
+	if ( nPrefsName < 0 || nPrefsName >= sizeof( UserPrefsFileName ) )
+		return false;
 	V_StripExtension( pszFileName, FileName, sizeof( FileName ) );
-	strcat( FileName, UserPrefsFileName );
+	if ( strlen( FileName ) + nPrefsName >= sizeof( FileName ) )
+		return false;
+	V_strncat( FileName, UserPrefsFileName, sizeof( FileName ) );
 
 	FILE *fp = fopen( FileName, "rb" );
 	if ( !fp )

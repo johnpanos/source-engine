@@ -1,0 +1,136 @@
+{
+  "schema": "bsp2-corpus-inventory/v1",
+  "description": "Portal v20 maps used for RFC 0008 F1 carriage; licensed map bytes remain external.",
+  "maps": [
+    {
+      "name": "background1.bsp",
+      "version": 20,
+      "sha256": "45c2738897564a6a7641a0257da5f3ebd63d5e83c831470c618a6d819128adf1"
+    },
+    {
+      "name": "background2.bsp",
+      "version": 20,
+      "sha256": "b90eaa22ab0d2178540bcc80caca65b0be567ecea1d2aeb65846c4ff66a4106e"
+    },
+    {
+      "name": "escape_00.bsp",
+      "version": 20,
+      "sha256": "9a5efe0856eb4a3e44b10bba12329c6cc664c5bac720f9a31d714c70ac08f7c8"
+    },
+    {
+      "name": "escape_01.bsp",
+      "version": 20,
+      "sha256": "ee68a19a90a4127d6334bdbc6aff9170ac93d431cd72bd08abcbd18930a5be6f"
+    },
+    {
+      "name": "escape_02.bsp",
+      "version": 20,
+      "sha256": "f56efc92cc0e5eeddb19ce078efe6e77f2f041c12c6c39fbb4db23fe918efd5f"
+    },
+    {
+      "name": "testchmb_a_00.bsp",
+      "version": 20,
+      "sha256": "9e1674866df01e6383a654eb4da7c770f9e788786e3bc5d412aece4f2432747e"
+    },
+    {
+      "name": "testchmb_a_01.bsp",
+      "version": 20,
+      "sha256": "a3a898490bd8b7622eeed1993fc8d18b483c4aa3e9c8bdd4656c59bfb29eb8e4"
+    },
+    {
+      "name": "testchmb_a_02.bsp",
+      "version": 20,
+      "sha256": "8be144cfbadeb52c34172aadd32f34b63401315bb2c6583b6b98e64d2ca33c79"
+    },
+    {
+      "name": "testchmb_a_03.bsp",
+      "version": 20,
+      "sha256": "eef64094b6fd96df876f89e6e53ced3d219cf5b10378be56decffa389f0cd620"
+    },
+    {
+      "name": "testchmb_a_04.bsp",
+      "version": 20,
+      "sha256": "f61e9f38cea1c572b08bd06b63f6b23c936c973ebe3fc0d69276ab10198b90dc"
+    },
+    {
+      "name": "testchmb_a_05.bsp",
+      "version": 20,
+      "sha256": "138b3f65aa5834de6f7dd2bb1d57d3706fce0df4df69fcb53e2ba88b784a7af1"
+    },
+    {
+      "name": "testchmb_a_06.bsp",
+      "version": 20,
+      "sha256": "d3ebc61e8f152673af840ea0754a3c27ead88cc52e183b1381e748b8fab71344"
+    },
+    {
+      "name": "testchmb_a_07.bsp",
+      "version": 20,
+      "sha256": "6932cd59312c534c35b408cbaaabafb61540d912fb9843f21bb71208f0974e1a"
+    },
+    {
+      "name": "testchmb_a_08.bsp",
+      "version": 20,
+      "sha256": "2cbff0e9a7586eadaa4c1c50d1416ef8691aa13802de1510aa1ae93a99329513"
+    },
+    {
+      "name": "testchmb_a_08_advanced.bsp",
+      "version": 20,
+      "sha256": "e651c68aa91e2cd30bcd29f13b3e9eceea4b2d73a67eb1bac786e275c2f61e7f"
+    },
+    {
+      "name": "testchmb_a_09.bsp",
+      "version": 20,
+      "sha256": "3dcb36b9abd379b482594cf78911ec6340b52eab0d67f4b65e5413e952fb1967"
+    },
+    {
+      "name": "testchmb_a_09_advanced.bsp",
+      "version": 20,
+      "sha256": "e7a0032dfef81120c6896c3278b9f71e01c8839f709ca03d5cb1db63b72dd945"
+    },
+    {
+      "name": "testchmb_a_10.bsp",
+      "version": 20,
+      "sha256": "3050d09854a3ae70aad8182ed510e293df4d7c80cab9bd10fd608d61157c93be"
+    },
+    {
+      "name": "testchmb_a_10_advanced.bsp",
+      "version": 20,
+      "sha256": "361f7f67d59cd02e34ca5c19729d9407acc86ae4c0acf7e097c9a3ae83d83d13"
+    },
+    {
+      "name": "testchmb_a_11.bsp",
+      "version": 20,
+      "sha256": "b47daca91350e1be789d3005316efa1c5087e86f4ecae762b15a55036b662522"
+    },
+    {
+      "name": "testchmb_a_11_advanced.bsp",
+      "version": 20,
+      "sha256": "51143a6b4cac538fae15a8081b34a5b96a56e69cda82a7dbaf641b4abb6aab75"
+    },
+    {
+      "name": "testchmb_a_13.bsp",
+      "version": 20,
+      "sha256": "bacdbfebf24160d0204e3d6770630282deb363fc1a336370618c63bc1d45b629"
+    },
+    {
+      "name": "testchmb_a_13_advanced.bsp",
+      "version": 20,
+      "sha256": "db283ec168503ca3ca80574f4518352e80413f46fc8858edd0a386f8f75dd636"
+    },
+    {
+      "name": "testchmb_a_14.bsp",
+      "version": 20,
+      "sha256": "27287b9897e465ec3aa5b5e44c36031e508ca14f90361263ee8e2c2391331979"
+    },
+    {
+      "name": "testchmb_a_14_advanced.bsp",
+      "version": 20,
+      "sha256": "fba6ebf14d5ce66f35195d4f9a90b1f7d5d3478d34c4f4bf67229afd679800c8"
+    },
+    {
+      "name": "testchmb_a_15.bsp",
+      "version": 20,
+      "sha256": "7d967c93e45b5dd113dbb452bb76bdf672045e3920d8c5cd9f53c452cf922fdb"
+    }
+  ]
+}

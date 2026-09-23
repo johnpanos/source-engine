@@ -230,6 +230,7 @@ private:
 	bool RunCableCases( FILE *out );
 	bool RunSkyCases( FILE *out );
 	bool RunMonitorCases( FILE *out );
+	bool RunSpriteCases( FILE *out );
 	bool RunPbrFallbackCases( FILE *out );
 	bool RenderCase( IMaterial *pMaterial, int sortId, const int offset[2], int lightmapPageId,
 	    const float ( *points )[2], int pointCount, unsigned char ( *pixels )[3],
@@ -315,15 +316,16 @@ int CMaterialPixelApp::Main()
 	const bool cable = !Q_stricmp( family, "cable" );
 	const bool sky = !Q_stricmp( family, "sky" );
 	const bool monitor = !Q_stricmp( family, "monitor" );
+	const bool sprite = !Q_stricmp( family, "sprite" );
 	const bool pbrFallback = !Q_stricmp( family, "pbr-fallback" );
 	if ( !outPath[0] || ( !integerHdr && Q_stricmp( hdr, "none" ) ) ||
-	     ( !exposure && !skinning && !portal && !modelLight && !cable && !sky && !monitor &&
+	     ( !exposure && !skinning && !portal && !modelLight && !cable && !sky && !monitor && !sprite &&
 	         !pbrFallback &&
 	         Q_stricmp( family, "lightmap" ) ) )
 	{
 		Warning(
 		    "material pixel conformance: need -out <file>, -hdr <none|integer> and "
-		    "-family <lightmap|exposure|skinning|portal|modellight|cable|sky|monitor|pbr-fallback>\n" );
+		    "-family <lightmap|exposure|skinning|portal|modellight|cable|sky|monitor|sprite|pbr-fallback>\n" );
 		return 2;
 	}
 
@@ -397,6 +399,7 @@ int CMaterialPixelApp::Main()
 	                : cable       ? RunCableCases( out )
 	                : sky         ? RunSkyCases( out )
 	                : monitor     ? RunMonitorCases( out )
+	                : sprite      ? RunSpriteCases( out )
 	                : pbrFallback ? RunPbrFallbackCases( out )
 	                : portal      ? RunPortalCases( out, outPath, WriteClearProbeThunk )
 	                : modelLight
@@ -921,6 +924,100 @@ bool CMaterialPixelApp::RunMonitorCases( FILE *out )
 	fprintf( out, "]}\n" );
 	for ( IMaterial *pMaterial : materials )
 		pMaterial->DecrementReferenceCount();
+	return ok;
+}
+
+bool CMaterialPixelApp::RunSpriteCases( FILE *out )
+{
+	struct SpriteCase
+	{
+		const char *name;
+		bool srgb;
+		unsigned char color[4];
+	};
+	static const SpriteCase cases[] = {
+	    { "dim_linear", false, { 16, 16, 16, 255 } },
+	    { "tinted_linear", false, { 96, 48, 24, 160 } },
+	    { "tinted_srgb", true, { 96, 48, 24, 160 } },
+	};
+	static CSolidColorRegenerator s_Regenerator;
+	const int textureFlags = TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD |
+	                         TEXTUREFLAGS_PROCEDURAL | TEXTUREFLAGS_SINGLECOPY;
+	ITexture *pTexture = g_pMaterialSystem->CreateProceduralTexture( "conformance/sprite_base",
+	    TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888, textureFlags );
+	if ( !pTexture )
+		return false;
+	s_Regenerator.m_Color[0] = 192;
+	s_Regenerator.m_Color[1] = 144;
+	s_Regenerator.m_Color[2] = 96;
+	s_Regenerator.m_Color[3] = 255;
+	pTexture->SetTextureRegenerator( &s_Regenerator );
+	pTexture->Download();
+
+	fprintf( out, "{\"schema\":\"source-material-pixels/v1\",\"family\":\"sprite\"," );
+	WriteClearProbe( out );
+	fprintf( out, "\"cases\":[" );
+	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+	bool ok = true;
+	for ( int i = 0; i < ARRAYSIZE( cases ); ++i )
+	{
+		const SpriteCase &c = cases[i];
+		KeyValues *pKeys = new KeyValues( "Sprite" );
+		pKeys->SetString( "$basetexture", "conformance/sprite_base" );
+		pKeys->SetInt( "$spriterendermode", 2 );
+		pKeys->SetInt( "$nosrgb", c.srgb ? 0 : 1 );
+		char name[64];
+		V_snprintf( name, sizeof( name ), "conformance/sprite_%s", c.name );
+		IMaterial *pMaterial = g_pMaterialSystem->CreateMaterial( name, pKeys );
+		if ( !pMaterial || pMaterial->IsErrorMaterial() )
+			return false;
+		pMaterial->IncrementReferenceCount();
+		g_pMaterialSystem->CacheUsedMaterials();
+		IMesh *pMesh = pRenderContext->CreateStaticMesh(
+		    pMaterial->GetVertexFormat(), TEXTURE_GROUP_STATIC_VERTEX_BUFFER_MODELS, pMaterial );
+		CMeshBuilder builder;
+		builder.Begin( pMesh, MATERIAL_TRIANGLES, 4, 6 );
+		const float corners[4][2] = {
+		    { -0.75f, 0.75f }, { 0.75f, 0.75f }, { 0.75f, -0.75f }, { -0.75f, -0.75f } };
+		for ( int v = 0; v < 4; ++v )
+		{
+			builder.Position3f( corners[v][0], corners[v][1], 0.5f );
+			builder.Color4ub( c.color[0], c.color[1], c.color[2], c.color[3] );
+			builder.TexCoord2f( 0, 0.5f, 0.5f );
+			builder.AdvanceVertex();
+		}
+		for ( unsigned short index : { 0, 1, 2, 0, 2, 3 } )
+			builder.FastIndex( index );
+		builder.End();
+
+		unsigned char pixel[3] = {};
+		g_pMaterialSystem->BeginFrame( 0 );
+		{
+			int width = 0, height = 0;
+			g_pMaterialSystem->GetBackBufferDimensions( width, height );
+			pRenderContext->Viewport( 0, 0, width, height );
+			pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
+			pRenderContext->ClearBuffers( true, true );
+			for ( int mode = MATERIAL_VIEW; mode <= MATERIAL_PROJECTION; ++mode )
+			{
+				pRenderContext->MatrixMode( static_cast<MaterialMatrixMode_t>( mode ) );
+				pRenderContext->LoadIdentity();
+			}
+			pRenderContext->Bind( pMaterial );
+			pMesh->Draw();
+			ok = ReadPixel( 0.5f, 0.5f, pixel ) && ok;
+		}
+		g_pMaterialSystem->EndFrame();
+		g_pMaterialSystem->SwapBuffers();
+		pRenderContext->DestroyStaticMesh( pMesh );
+		pMaterial->DecrementReferenceCount();
+		fprintf( out,
+		    "%s{\"name\":\"%s\",\"srgb\":%s,\"texture\":[192,144,96,255],"
+		    "\"color\":[%u,%u,%u,%u],\"pixel\":[%u,%u,%u]}",
+		    i ? "," : "", c.name, c.srgb ? "true" : "false", c.color[0], c.color[1],
+		    c.color[2], c.color[3], pixel[0], pixel[1], pixel[2] );
+	}
+	fprintf( out, "]}\n" );
 	return ok;
 }
 

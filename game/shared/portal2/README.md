@@ -19,6 +19,15 @@ missing files. [MISSING.md](MISSING.md) lists the current VPC and include gaps.
 Waf stops before compiling an incomplete Portal 2 client or server. The source
 target needs the remaining gameplay code, engine API adaptations, and
 game-specific conformance runs before it can be launched.
+Historical Steam2 source references are isolated under
+[`external/portal2_steam2_xsi`](../../../external/portal2_steam2_xsi/README.md),
+[`external/portal2_steam2_xsi_legacy`](../../../external/portal2_steam2_xsi_legacy/README.md),
+[`external/portal2_steam2_scripts`](../../../external/portal2_steam2_scripts/README.md),
+and [`external/portal2_steam2_maps`](../../../external/portal2_steam2_maps/README.md).
+The first two contain XSI tool source; the others contain VScript, Lua, FGD, and VMF
+variants. [Debug-symbol-guided pseudocode](../../../external/portal2_steam2_decompiled/README.md)
+is also retained as a reconstruction reference. None supplies buildable
+gameplay C++ or enters the current build.
 After moving every exact-path match from the local game drop, the other local
 source archive has no exact-path copy of a remaining VPC source except a
 PS3-specific `vjobutils.cpp`. Remaining gameplay sources need implementation;

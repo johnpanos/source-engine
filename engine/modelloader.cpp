@@ -57,6 +57,7 @@
 #include "optimize.h"
 #include "networkstringtable.h"
 #include "tier1/callqueue.h"
+#include <cstdlib>
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -2864,6 +2865,61 @@ CON_COMMAND( map_container_info, "Reports the loaded map's container and game lu
 			(char)( id >> 24 ), (char)( id >> 16 ), (char)( id >> 8 ), (char)id, entry.version,
 			entry.uncompressedSize, bLoaded ? 1 : 0, (unsigned int)crc );
 	}
+}
+
+// Exercises the server collision and visibility paths on a loaded map. The
+// output is container-neutral so a legacy/BSP2 pair can be compared exactly.
+CON_COMMAND( map_container_probe, "Probe world collision and PVS: x y z end_x end_y end_z" )
+{
+	if ( !g_GameLumpFilename[0] || args.ArgC() != 7 )
+	{
+		ConMsg( "map_container_probe: load a map, then give six coordinates\n" );
+		return;
+	}
+	if ( CM_NumClusters() <= 0 )
+	{
+		ConMsg( "map_container_probe: collision map is unavailable\n" );
+		return;
+	}
+
+	float coordinates[6];
+	for ( int i = 0; i < ARRAYSIZE( coordinates ); ++i )
+	{
+		char *pEnd = NULL;
+		coordinates[i] = std::strtof( args[i + 1], &pEnd );
+		if ( pEnd == args[i + 1] || *pEnd || !IsFinite( coordinates[i] ) ||
+		     coordinates[i] < -1000000.0f || coordinates[i] > 1000000.0f )
+		{
+			ConMsg( "map_container_probe: invalid coordinate %d\n", i + 1 );
+			return;
+		}
+	}
+
+	const Vector start( coordinates[0], coordinates[1], coordinates[2] );
+	const Vector end( coordinates[3], coordinates[4], coordinates[5] );
+	const int leaf = CM_PointLeafnum( start );
+	if ( leaf < 0 )
+	{
+		ConMsg( "map_container_probe: point is outside the collision BSP\n" );
+		return;
+	}
+	const int cluster = CM_LeafCluster( leaf );
+	const int pvsBytes = ( CM_NumClusters() + 7 ) / 8;
+	if ( pvsBytes < 0 || pvsBytes > CM_ClusterPVSSize() )
+	{
+		ConMsg( "map_container_probe: invalid PVS size\n" );
+		return;
+	}
+	const CRC32_t pvsCRC = CRC32_ProcessSingleBuffer( CM_ClusterPVS( cluster ), pvsBytes );
+
+	Ray_t ray;
+	ray.Init( start, end );
+	trace_t trace;
+	CM_BoxTrace( ray, 0, MASK_SOLID, true, trace );
+	ConMsg( "map_container_probe: leaf=%d cluster=%d contents=%x pvs_crc=%08x "
+	        "fraction=%.9g startsolid=%d allsolid=%d hit_contents=%x\n",
+	    leaf, cluster, CM_LeafContents( leaf ), (unsigned int)pvsCRC, trace.fraction,
+	    trace.startsolid ? 1 : 0, trace.allsolid ? 1 : 0, trace.contents );
 }
 
 //-----------------------------------------------------------------------------

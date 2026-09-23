@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
+#include <limits>
 
 namespace render_vulkan
 {
@@ -3324,14 +3325,16 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 		SetError( outError, "CreateManagedTexture with invalid size or context" );
 		return -1;
 	}
-	// Require the device to support sampling this format (block-compressed BC1/BC3
-	// are supported on desktop GPUs; fail loudly rather than create an unusable
-	// image).
+	// Managed textures are sampled after a buffer-to-image upload. Both uses
+	// must be supported by the selected device format.
 	VkFormatProperties fp = {};
 	vkGetPhysicalDeviceFormatProperties( m_physicalDevice, format, &fp );
-	if ( !( fp.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT ) )
+	if ( ( fp.optimalTilingFeatures &
+	         ( VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT ) ) !=
+	     ( VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT ) )
 	{
-		SetError( outError, "requested texture format is not sampleable on this device" );
+		SetError(
+		    outError, "requested texture format cannot be sampled and uploaded on this device" );
 		return -1;
 	}
 
@@ -3454,7 +3457,10 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	{
 		VkCommandBuffer cmd = VK_NULL_HANDLE;
 		if ( !BeginSingleTimeCommands( &cmd, outError ) )
+		{
+			ReleaseManagedTextureObjects( t );
 			return -1;
+		}
 		VkImageMemoryBarrier ready = {};
 		ready.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 		ready.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -3467,7 +3473,10 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
 		    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &ready );
 		if ( !EndSingleTimeCommands( cmd, outError ) )
+		{
+			ReleaseManagedTextureObjects( t );
 			return -1;
+		}
 	}
 
 	// Allocate this texture's own descriptor set (if the pool/layout are ready and
@@ -3792,7 +3801,7 @@ bool CVulkanContext::UploadManagedTexture(
 	    std::max( 1u, t.height >> level ), data, dataSize, outError, level );
 }
 
-static bool IsBlockCompressedFormat( VkFormat format )
+static size_t TextureBlockBytes( VkFormat format )
 {
 	switch ( format )
 	{
@@ -3800,13 +3809,23 @@ static bool IsBlockCompressedFormat( VkFormat format )
 	case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
 	case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
 	case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+	case VK_FORMAT_BC4_UNORM_BLOCK:
+	case VK_FORMAT_EAC_R11_UNORM_BLOCK:
+		return 8;
 	case VK_FORMAT_BC2_UNORM_BLOCK:
 	case VK_FORMAT_BC2_SRGB_BLOCK:
 	case VK_FORMAT_BC3_UNORM_BLOCK:
 	case VK_FORMAT_BC3_SRGB_BLOCK:
-		return true;
+	case VK_FORMAT_BC5_UNORM_BLOCK:
+	case VK_FORMAT_BC6H_UFLOAT_BLOCK:
+	case VK_FORMAT_BC7_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK:
+	case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+	case VK_FORMAT_EAC_R11G11_UNORM_BLOCK:
+		return 16;
 	default:
-		return false;
+		return 0;
 	}
 }
 
@@ -3841,12 +3860,25 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 	const bool whole = x == 0 && y == 0 && width == levelWidth && height == levelHeight;
 	// A block-compressed region must start on a 4x4 block and end on one or at
 	// the level's edge (vkCmdCopyBufferToImage's rule for compressed images).
-	const bool compressed = IsBlockCompressedFormat( t.format );
+	const size_t blockBytes = TextureBlockBytes( t.format );
+	const bool compressed = blockBytes != 0;
 	if ( compressed && ( x % 4 || y % 4 || ( ( x + width ) % 4 && x + width != levelWidth ) ||
 	                       ( ( y + height ) % 4 && y + height != levelHeight ) ) )
 	{
 		SetError( outError, "UploadManagedTexture: compressed region not block aligned" );
 		return false;
+	}
+	if ( compressed )
+	{
+		const size_t blocksX = ( static_cast<size_t>( width ) + 3 ) / 4;
+		const size_t blocksY = ( static_cast<size_t>( height ) + 3 ) / 4;
+		if ( blocksX > std::numeric_limits<size_t>::max() / blocksY / blockBytes ||
+		     dataSize != blocksX * blocksY * blockBytes )
+		{
+			SetError(
+			    outError, "UploadManagedTexture: compressed payload size differs from region" );
+			return false;
+		}
 	}
 	// A single-level image replaced whole discards its old contents. A level of a
 	// chain (made samplable at creation) and an image updated in part (VGUI's

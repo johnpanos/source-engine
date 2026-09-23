@@ -42,7 +42,8 @@ layout( push_constant ) uniform Constants
 		// (vertexlit_and_unlit_generic_ps2x with VERTEXCOLOR / g_fVertexAlpha;
 		// 512 is read by the vertex stage), 2048 its SELFILLUM (see main), 4096
 		// the Cable_DX9 normal-map half-Lambert term (sampler 0 normal, sampler 1
-		// sRGB base texture and fragVertexColor directional-light color), 16384
+		// sRGB base texture and fragVertexColor directional-light color), 65536
+		// Sprite_DX9 vertex alpha, 16384
 		// MonitorScreen_DX9 (contrast in alphaParams.x, saturation and tint in
 		// fragVertexColor), 32768 its optional second texture;
 	// w = linear output scale (FinalOutput's LINEAR_LIGHT_SCALE).

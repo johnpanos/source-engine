@@ -21,11 +21,13 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 #include <algorithm>
 #include <list>
 #include <vector>
 
 #include <assert.h>
+#include <limits.h>
 #ifdef _DEBUG
 #include <crtdbg.h>
 #endif
@@ -927,4 +929,3 @@ void ComputeVertexPermutation(int numstripindices, WORD* pstripindices,
     delete[] pSortTable;
     delete[] pInversePermutation;
 }
-

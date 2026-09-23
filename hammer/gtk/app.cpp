@@ -24,6 +24,9 @@
 #include "hammer/formats/material_catalog.h"
 #include "hammer/formats/search_path_assets.h"
 #include "hammer/formats/vpk_archive.h"
+#ifdef HAMMER_KTX_PREVIEW
+#include "hammer/adapters/source/ktx2_preview.h"
+#endif
 
 #include "renderer.h"
 
@@ -326,7 +329,12 @@ std::size_t MountAssets( AppState *st, const std::string &vpkList )
 		return 0;
 	}
 
+#ifdef HAMMER_KTX_PREVIEW
+	st->catalog = std::make_unique<hammer::formats::MaterialCatalog>(
+	    st->assets, &hammer::adapters::source::DecodeKtx2Preview );
+#else
 	st->catalog = std::make_unique<hammer::formats::MaterialCatalog>( st->assets );
+#endif
 	const std::size_t count = st->catalog->MaterialNames().size();
 
 	// Show the first resolvable material as a proof-of-life preview.

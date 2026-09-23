@@ -7,6 +7,9 @@
 //=============================================================================//
 
 #include "vbsp.h"
+#ifdef SOURCE_WORLD_STAGE
+#include "worldstage.h"
+#endif
 #include "disp_vbsp.h"
 #include "utlvector.h"
 #include "faces.h"
@@ -1289,6 +1292,11 @@ void EndBSPFile (void)
 	V_DefaultExtension( fileName, ".bsp", sizeof( fileName ) );
 	Msg ("Writing %s\n", fileName);
 	WriteBSPFile (fileName);
+#ifdef SOURCE_WORLD_STAGE
+	char stageError[256];
+	if ( !WriteWorldStageGeometry( fileName, stageError, sizeof( stageError ) ) )
+		Error( "World Stage geometry: %s\n", stageError );
+#endif
 }
 
 
@@ -1549,5 +1557,3 @@ void ComputeBoundsNoSkybox( )
 		}
 	}
 }
-
-

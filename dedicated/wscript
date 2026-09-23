@@ -62,7 +62,7 @@ def build(bld):
 
 	defines = []
 
-	libs = ['tier0','vpklib','tier1','tier2','tier3','vstdlib','steam_api','appframework','mathlib', 'EDIT']
+	libs = ['tier0','mapcontainer','vpklib','tier1','tier2','tier3','vstdlib','steam_api','appframework','mathlib', 'EDIT']
 	libs += ['engine', 'materialsystem', 'shaderapiempty', 'studiorender', 'datacache']
 
 	if bld.env.DEST_OS == 'win32':

@@ -1,0 +1,175 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+import subprocess
+
+top = '.'
+PROJECT_NAME = 'vbsp'
+
+def options(opt):
+	return
+
+def configure(conf):
+	return
+
+def build(bld):
+	if bld.env.DEST_OS != 'linux':
+		bld.fatal('the vbsp host-tool profile is currently validated only on Linux')
+
+	source = [
+		'boundbox.cpp',
+		'brushbsp.cpp',
+		'../../public/collisionutils.cpp',
+		'csg.cpp',
+		'cubemap.cpp',
+		'detail.cpp',
+		'detailobjects.cpp',
+		'disp_ivp.cpp',
+		'../../public/disp_common.cpp',
+		'../../public/disp_powerinfo.cpp',
+		'disp_vbsp.cpp',
+		'faces.cpp',
+		'glfile.cpp',
+		'ivp.cpp',
+		'leakfile.cpp',
+		'../../public/loadcmdline.cpp',
+		'../../public/lumpfiles.cpp',
+		'../../filesystem/linux_support.cpp',
+		'map.cpp',
+		'manifest.cpp',
+		'materialpatch.cpp',
+		'materialsub.cpp',
+		'../common/mstristrip.cpp',
+		'nodraw.cpp',
+		'normals.cpp',
+		'overlay.cpp',
+		'../common/physdll.cpp',
+		'portals.cpp',
+		'prtfile.cpp',
+		'staticprop.cpp',
+		'textures.cpp',
+		'tree.cpp',
+		'../common/utilmatlib.cpp',
+		'vbsp.cpp',
+		'worldvertextransitionfixup.cpp',
+		'writebsp.cpp',
+		'../../public/zip_utils.cpp',
+		'../lzma/lzma.cpp',
+		'../lzma/C/LzmaEnc.c',
+		'../lzma/C/LzFind.c',
+		'../common/bsplib.cpp',
+		'../../public/builddisp.cpp',
+		'../../public/chunkfile.cpp',
+		'../common/cmdlib.cpp',
+		'../common/cmdlib_linux.cpp',
+		'../../public/filesystem_helpers.cpp',
+		'../../public/filesystem_init.cpp',
+		'../common/filesystem_tools.cpp',
+		'../common/map_shared.cpp',
+		'../common/pacifier.cpp',
+		'../common/polylib.cpp',
+		'../common/scriplib.cpp',
+		'../common/threads_linux.cpp',
+		'../common/tools_minidump_linux.cpp',
+	]
+
+	bld(
+		source = source,
+		target = PROJECT_NAME,
+		name = PROJECT_NAME,
+		features = 'cxx cxxprogram',
+		includes = [ '.', '../../public', '../../public/tier0', '../../public/tier1',
+			'../common', '../vmpi', '../../common', '../../thirdparty' ],
+		defines = [ 'MACRO_MATHLIB', 'PROTECTED_THINGS_DISABLE',
+			'_LZMA_PROB32', '_7ZIP_ST' ],
+		use = [ 'materialsystem', 'shaderapiempty', 'fgdlib', 'mathlib',
+			'tier0', 'tier1', 'tier2', 'vstdlib', 'vtf', 'bitmap' ],
+		# libvtf refers to ImageLoader in libbitmap; Waf's transitive archive
+		# order places bitmap first, so repeat it after the other libraries.
+		ldflags = [ '-Wl,-Bstatic', '-Lbitmap', '-lbitmap', '-Wl,-Bdynamic' ],
+		rpath = [ '$ORIGIN/bin' ],
+		install_path = bld.env.BINDIR,
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx = bld.get_taskgen_count()
+	)
+
+	if not bld.env.WORLDSTAGE_ENABLED:
+		return
+
+	# OpenUSD uses the current libstdc++ string ABI. Keep it private to the
+	# generated schema and this adapter; vbsp2's legacy translation units keep
+	# their existing ABI and call the adapter through a C-compatible signature.
+	usd_env = bld.env.derive()
+	usd_env.DEFINES = [value for value in bld.env.DEFINES
+		if not value.startswith('_GLIBCXX_USE_CXX11_ABI=')]
+	usd_env.DEFINES += ['_GLIBCXX_USE_CXX11_ABI=1']
+	schema = bld.env.WORLDSTAGE_SCHEMA_DIR
+	generated_names = ('api.h', 'tokens.h', 'tokens.cpp', 'sourceWorldAPI.h',
+		'sourceWorldAPI.cpp', 'sourceMeshAPI.h', 'sourceMeshAPI.cpp',
+		'sourceEntityAPI.h', 'sourceEntityAPI.cpp',
+		'generatedSchema.usda', 'plugInfo.json', 'pluginRoot.json')
+	generated_nodes = [bld.bldnode.find_node('utils/worldstage/' + name)
+		for name in generated_names]
+	def regenerate_schema(task):
+		return subprocess.run(['python3', 'tools/worldstage/generate_schema.py',
+			'--openusd-source', bld.env.WORLDSTAGE_OPENUSD_SOURCE,
+			'--openusd-install', bld.env.WORLDSTAGE_OPENUSD_INSTALL,
+			'--onetbb-install', bld.env.WORLDSTAGE_TBB_INSTALL,
+			'--out', schema], cwd=bld.srcnode.abspath()).returncode
+	bld(rule=regenerate_schema, source='../../utils/worldstage/schema.usda',
+		target=generated_nodes, name='worldstage_schema',
+		idx=bld.get_taskgen_count())
+	# gccdeps reads the generated headers while computing compile signatures.
+	# Finish schema generation before posting its C++ consumers.
+	bld.add_group()
+	generated = [bld.bldnode.find_node('utils/worldstage/' + name) for name in
+		('sourceWorldAPI.cpp', 'sourceMeshAPI.cpp', 'sourceEntityAPI.cpp', 'tokens.cpp')]
+	bld.shlib(
+		source = generated,
+		target = 'sourceWorld',
+		name = 'sourceWorld',
+		features = 'cxx cxxshlib',
+		env = usd_env,
+		includes = [schema, '../../public'],
+		defines = ['SOURCEWORLD_EXPORTS'],
+		uselib = 'OPENUSD',
+		rpath = [bld.env.WORLDSTAGE_OPENUSD_LIBDIR, bld.env.WORLDSTAGE_TBB_LIBDIR],
+		install_path = bld.env.BINDIR,
+		idx = bld.get_taskgen_count()
+	)
+	bld.stlib(
+		source = ['worldstage.cpp'],
+		target = 'vbspworldstage',
+		name = 'vbspworldstage',
+		features = 'cxx cxxstlib',
+		env = usd_env,
+		includes = [ '.', '../../public', '../../public/tier0', '../../public/tier1',
+			'../common', '../../common', '../../thirdparty' ],
+		defines = [ 'MACRO_MATHLIB', 'PROTECTED_THINGS_DISABLE' ],
+		uselib = 'OPENUSD',
+		idx = bld.get_taskgen_count()
+	)
+	bld(
+		source = source,
+		target = 'vbsp2',
+		name = 'vbsp2',
+		features = 'cxx cxxprogram',
+		includes = [ '.', '../../public', '../../public/tier0', '../../public/tier1',
+			'../common', '../vmpi', '../../common', '../../thirdparty' ],
+		defines = [ 'MACRO_MATHLIB', 'PROTECTED_THINGS_DISABLE',
+			'_LZMA_PROB32', '_7ZIP_ST', 'SOURCE_WORLD_STAGE' ],
+		use = [ 'vbspworldstage', 'sourceWorld', 'materialsystem', 'shaderapiempty',
+			'fgdlib', 'mathlib', 'tier0', 'tier1', 'tier2', 'vstdlib', 'vtf', 'bitmap' ],
+		uselib = 'OPENUSD',
+		ldflags = [ '-Wl,-Bstatic', '-Lbitmap', '-lbitmap', '-Wl,-Bdynamic' ],
+		rpath = [ '$ORIGIN/bin', '$ORIGIN', bld.env.WORLDSTAGE_OPENUSD_LIBDIR,
+			bld.env.WORLDSTAGE_TBB_LIBDIR ],
+		install_path = bld.env.BINDIR,
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx = bld.get_taskgen_count()
+	)
+	bld.install_as( bld.env.PREFIX + '/share/sourceWorld/plugInfo.json',
+		bld.bldnode.find_node('utils/worldstage/pluginRoot.json') )
+	bld.install_files( bld.env.PREFIX + '/share/sourceWorld/resources',
+		[bld.bldnode.find_node('utils/worldstage/plugInfo.json'),
+		 bld.bldnode.find_node('utils/worldstage/generatedSchema.usda')] )

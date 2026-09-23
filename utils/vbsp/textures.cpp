@@ -692,14 +692,24 @@ void LoadSurfacePropFile( const char *pMaterialFilename )
 
 	if ( fp == FILESYSTEM_INVALID_HANDLE )
 	{
-		return;
+		Error( "Required surface properties file is missing: %s\n", pMaterialFilename );
 	}
 
 	int len = g_pFileSystem->Size( fp );
-
-	char *pText = new char[len];
-	g_pFileSystem->Read( pText, len, fp );
+	if ( len <= 0 )
+	{
+		g_pFileSystem->Close( fp );
+		Error( "Required surface properties file is empty: %s\n", pMaterialFilename );
+	}
+	char *pText = new char[static_cast<size_t>( len ) + 1];
+	int bytesRead = g_pFileSystem->Read( pText, len, fp );
 	g_pFileSystem->Close( fp );
+	if ( bytesRead != len )
+	{
+		delete[] pText;
+		Error( "Cannot read surface properties file: %s\n", pMaterialFilename );
+	}
+	pText[len] = '\0';
 
 	physprops->ParseSurfaceData( pMaterialFilename, pText );
 
@@ -712,9 +722,11 @@ void LoadSurfaceProperties( void )
 {
 	CreateInterfaceFn physicsFactory = GetPhysicsFactory();
 	if ( !physicsFactory )
-		return;
+		Error( "VBSP requires a physics provider for collision data\n" );
 
 	physprops = (IPhysicsSurfaceProps *)physicsFactory( VPHYSICS_SURFACEPROPS_INTERFACE_VERSION, NULL );
+	if ( !physprops )
+		Error( "VBSP requires physics surface properties\n" );
 
 	const char *SURFACEPROP_MANIFEST_FILE = "scripts/surfaceproperties_manifest.txt";
 	KeyValues *manifest = new KeyValues( SURFACEPROP_MANIFEST_FILE );
@@ -730,8 +742,12 @@ void LoadSurfaceProperties( void )
 			}
 		}
 	}
+	else
+	{
+		Error( "Required surface properties manifest is missing: %s\n", SURFACEPROP_MANIFEST_FILE );
+	}
 
 	manifest->deleteThis();
+	if ( physprops->GetSurfaceIndex( "default" ) < 0 )
+		Error( "Surface properties manifest does not define 'default'\n" );
 }
-
-

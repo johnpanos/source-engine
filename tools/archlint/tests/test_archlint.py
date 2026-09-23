@@ -94,6 +94,18 @@ class ArchlintTests(unittest.TestCase):
         current = archlint.scan(self.root, MANIFEST)
         self.assertEqual(["engine/new.h"], [item.path for item in current if item.rule == "ARCH105"])
 
+    def test_vbsp_private_factory_exceptions_do_not_cover_sibling_files(self) -> None:
+        repository = Path(__file__).resolve().parents[3]
+        manifest = archlint.load_manifest(repository)
+        allowed = manifest["legacyAbi"]["paths"]
+        self.assertIn("utils/common/utilmatlib.cpp", allowed)
+        self.assertIn("utils/vbsp/ivp.cpp", allowed)
+        for path in ("utils/common/utilmatlib.cpp", "utils/vbsp/ivp.cpp"):
+            self.write(path, "CreateInterfaceFn privateFactory;\n")
+        self.write("utils/vbsp/new.cpp", "CreateInterfaceFn leakedFactory;\n")
+        current = archlint.scan(self.root, manifest)
+        self.assertEqual(["utils/vbsp/new.cpp"], [item.path for item in current if item.rule == "ARCH105"])
+
     def test_factory_cannot_be_treated_as_an_app_system_module(self) -> None:
         cases = (
             "LoadModule( CreateInterfaceFn factory );",

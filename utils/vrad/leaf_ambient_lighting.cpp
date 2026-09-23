@@ -13,9 +13,11 @@
 #include "coordsize.h"
 #include "vstdlib/random.h"
 #include "bsptreedata.h"
+#ifdef MPI
 #include "messbuf.h"
 #include "vmpi.h"
 #include "vmpi_distribute_work.h"
+#endif
 
 static TableVector g_BoxDirections[6] = 
 {
@@ -584,6 +586,7 @@ static void ThreadComputeLeafAmbient( int iThread, void *pUserData )
 	}
 }
 
+#ifdef MPI
 void VMPI_ProcessLeafAmbient( int iThread, uint64 iLeaf, MessageBuffer *pBuf )
 {
 	CUtlVector<ambientsample_t> list;
@@ -616,6 +619,7 @@ void VMPI_ReceiveLeafAmbientResults( uint64 leafID, MessageBuffer *pBuf, int iWo
 	}
 }
 
+#endif
 
 void ComputePerLeafAmbientLighting()
 {
@@ -642,6 +646,7 @@ void ComputePerLeafAmbientLighting()
 
 	g_LeafAmbientSamples.SetCount(numleafs);
 
+#ifdef MPI
 	if ( g_bUseMPI )
 	{
 		// Distribute the work among the workers.
@@ -649,6 +654,7 @@ void ComputePerLeafAmbientLighting()
 		DistributeWork( numleafs, VMPI_DISTRIBUTEWORK_PACKETID, VMPI_ProcessLeafAmbient, VMPI_ReceiveLeafAmbientResults );
 	}
 	else
+#endif
 	{
 		RunThreadsOn(numleafs, true, ThreadComputeLeafAmbient);
 	}
@@ -705,4 +711,3 @@ void ComputePerLeafAmbientLighting()
 	}
 	Msg("done\n");
 }
-

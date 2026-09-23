@@ -17,6 +17,7 @@ real material system. The backend is identified by each filename and report.
 | `cable-dxvk-none.json` | cable | `HDR_TYPE_NONE` | Cable_DX9 normal-map half-Lambert captured through DXVK with front, side, back and diagonal normals |
 | `sky-dxvk-none.json` | sky | `HDR_TYPE_NONE` | Sky_DX9 texture and tint, with translated texture coordinates sampled on both sides |
 | `monitor-dxvk-none.json` | monitor | `HDR_TYPE_NONE` | MonitorScreen_DX9 base and second images, contrast, saturation, tint, and independent UV transforms |
+| `sprite-dxvk-none.json` | sprite | `HDR_TYPE_NONE` | Sprite_DX9 translucent mode with dim and tinted vertex colors, alpha blending, and both sRGB settings |
 
 `pbr-fallback-primary.vmt` and `pbr-fallback-legacy.vmt` are authored inputs
 for the `pbr-fallback` family. The driver copies them into a private runtime
@@ -109,6 +110,20 @@ profiles above:
 python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime-dxvk \
     --build build-r03-portal-dxvk --renderer vulkan-compat --hdr none \
     --family monitor --out OUT
+```
+
+Sprite pixels check `sprite_ps2x.fxc`'s vertex RGB and alpha modulation. The
+dim case reproduces the cake-room sphere silhouettes. Native and DXVK measured
+the same RGB bytes in all three cases. The DXVK run used source-matched
+`sprite_ps20b` static groups 8 and 104 and `sprite_vs20` groups 2 and 6 from
+`tools/quality/shader_artifacts.py`; the installed pack lacks those
+permutations. Capture and compare with:
+
+```sh
+python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime-native \
+    --build build-r03-portal-native --renderer native-vulkan --hdr none \
+    --family sprite --reference quality/fixtures/material-pixels/sprite-dxvk-none.json \
+    --out OUT
 ```
 
 Recapture only when the harness cases or the D3D9 path change, and review the

@@ -6,6 +6,8 @@ from __future__ import print_function
 from waflib import Logs, Context, Configure
 import sys
 import os
+import json
+import subprocess
 
 VERSION = '1.0'
 APPNAME = 'source-engine'
@@ -128,6 +130,7 @@ projects={
 		'utils/unittest'
 	],
 	'tools': [
+		'fgdlib',
 		'jobsystem',
 		'mapcontainer',
 		'tier0',
@@ -179,6 +182,25 @@ projects={
 		'stub_steam'
 	]
 }
+
+LINUX_COMPILER_TOOL_PROJECTS = [
+	'filesystem',
+	'ivp/havana',
+	'ivp/havana/havok/hk_base',
+	'ivp/havana/havok/hk_math',
+	'ivp/ivp_compact_builder',
+	'ivp/ivp_physics',
+	'materialsystem',
+	'materialsystem/shaderapiempty',
+	'materialsystem/shaderlib',
+	'materialsystem/stdshaders',
+	'vpklib',
+	'vphysics',
+	'raytrace',
+	'utils/vbsp',
+	'utils/vvis',
+	'utils/vrad',
+]
 
 @Configure.conf
 def check_pkg(conf, package, uselib_store, fragment, *k, **kw):
@@ -371,6 +393,15 @@ def options(opt):
 		help='pinned DXVK Native package prefix (contains include/dxvk and lib)')
 	grp.add_option('--product-profile', default='quality/product_profiles/portal-linux-wayland.json',
 		dest='PRODUCT_PROFILE', help='versioned profile for the Vulkan compatibility product')
+	grp.add_option('--ktx-source-root', default='', dest='KTX_SOURCE_ROOT',
+		help='explicit checkout of the pinned KTX-Software revision for texture reader tests')
+	grp.add_option('--ktx-build-root', default='', dest='KTX_BUILD_ROOT',
+		help='isolated KTX-Software build containing libktx_read.a')
+	for name in ('openusd-source', 'openusd-build', 'openusd-install',
+		'onetbb-source', 'onetbb-build', 'onetbb-install'):
+		grp.add_option('--' + name + '-root', default='',
+			dest=name.upper().replace('-', '_') + '_ROOT',
+			help='isolated pinned World Stage host-tool dependency path')
 
 	grp.add_option('--use-togl', action = 'store', dest = 'GL', type = 'int', default = sys.platform != 'win32',
 		help = 'build engine with ToGL [default: %default]')
@@ -728,6 +759,84 @@ def configure(conf):
 		conf.check_cc(lib='vulkan', header_name='vulkan/vulkan.h', uselib_store='VULKAN')
 	elif conf.env.NATIVE_VULKAN:
 		conf.check_cfg(package='vulkan', uselib_store='VULKAN', args=['--cflags', '--libs'])
+	if conf.options.KTX_SOURCE_ROOT or conf.options.KTX_BUILD_ROOT:
+		if not (conf.options.KTX_SOURCE_ROOT and conf.options.KTX_BUILD_ROOT):
+			conf.fatal('KTX reader tests require both --ktx-source-root and --ktx-build-root')
+		if not (conf.env.NATIVE_VULKAN and conf.env.DEST_OS == 'linux'):
+			conf.fatal('KTX reader profile requires a Linux native Vulkan client')
+		with open('quality/product_profiles/ktx2-linux-tools.json') as profile_file:
+			ktx_profile = json.load(profile_file)
+		ktx_source = os.path.abspath(conf.options.KTX_SOURCE_ROOT)
+		ktx_build = os.path.abspath(conf.options.KTX_BUILD_ROOT)
+		ktx_reader_library = os.path.join(ktx_build, ktx_profile['build']['reader_library'])
+		try:
+			ktx_revision = subprocess.check_output(
+				['git', '-C', ktx_source, 'rev-parse', 'HEAD'], text=True).strip()
+			ktx_dirty = subprocess.check_output(
+				['git', '-C', ktx_source, 'status', '--porcelain', '--untracked-files=no'],
+				text=True).strip()
+		except (OSError, subprocess.CalledProcessError) as error:
+			conf.fatal('Cannot verify KTX-Software source revision: %s' % error)
+		if ktx_revision != ktx_profile['dependencies']['ktx_software']['revision']:
+			conf.fatal('KTX-Software source revision differs from pinned profile')
+		if ktx_dirty:
+			conf.fatal('KTX-Software source checkout has tracked changes')
+		if not all(os.path.isfile(path) for path in [
+			os.path.join(ktx_source, 'lib/include/ktx.h'),
+			os.path.join(ktx_source, 'external/dfdutils/KHR/khr_df.h'),
+			ktx_reader_library,
+			os.path.join(ktx_build, 'CMakeCache.txt')]):
+			conf.fatal('Pinned KTX source headers or libktx_read.a are missing')
+		with open(os.path.join(ktx_build, 'CMakeCache.txt')) as cache_file:
+			ktx_cache = cache_file.read()
+		if ('CMAKE_HOME_DIRECTORY:INTERNAL=%s\n' % ktx_source) not in ktx_cache:
+			conf.fatal('KTX library build does not belong to the pinned source checkout')
+		if ('CMAKE_BUILD_TYPE:STRING=%s\n' % ktx_profile['toolchain']['build_type']) not in ktx_cache:
+			conf.fatal('KTX library build type differs from the pinned profile')
+		ktx_archive = os.path.basename(ktx_reader_library)
+		if not (ktx_archive.startswith('lib') and ktx_archive.endswith('.a')):
+			conf.fatal('KTX profile reader library must be a static archive')
+		conf.env.KTX_READ_ENABLED = True
+		conf.env.INCLUDES_KTXREAD = [os.path.join(ktx_source, 'lib/include'),
+			os.path.join(ktx_source, 'external/dfdutils')]
+		conf.env.STLIB_KTXREAD = [ktx_archive[3:-2]]
+		conf.env.STLIBPATH_KTXREAD = [os.path.dirname(ktx_reader_library)]
+		conf.env.LIB_KTXREAD = ['z', 'zstd']
+	worldstage_options = [conf.options.OPENUSD_SOURCE_ROOT, conf.options.OPENUSD_BUILD_ROOT,
+		conf.options.OPENUSD_INSTALL_ROOT, conf.options.ONETBB_SOURCE_ROOT,
+		conf.options.ONETBB_BUILD_ROOT, conf.options.ONETBB_INSTALL_ROOT]
+	if any(worldstage_options):
+		if not all(worldstage_options) or not (conf.options.TOOLS and conf.env.DEST_OS == 'linux'):
+			conf.fatal('World Stage tools require all six OpenUSD/oneTBB roots and Linux --tools')
+		worldstage_paths = [os.path.abspath(path) for path in worldstage_options]
+		stage_dir = os.path.join(conf.bldnode.abspath(), 'utils', 'worldstage')
+		probe = ['python3', 'tools/quality/openusd_host_probe.py',
+			'--openusd-source', worldstage_paths[0], '--openusd-build', worldstage_paths[1],
+			'--openusd-install', worldstage_paths[2], '--onetbb-source', worldstage_paths[3],
+			'--onetbb-build', worldstage_paths[4], '--onetbb-install', worldstage_paths[5],
+			'--out', os.path.join(conf.bldnode.abspath(), 'openusd-host-evidence.json')]
+		try:
+			subprocess.run(probe, check=True)
+			subprocess.run(['python3', 'tools/worldstage/generate_schema.py',
+				'--openusd-source', worldstage_paths[0],
+				'--openusd-install', worldstage_paths[2],
+				'--onetbb-install', worldstage_paths[5], '--out', stage_dir], check=True)
+		except (OSError, subprocess.CalledProcessError) as error:
+			conf.fatal('Pinned World Stage host toolchain failed: %s' % error)
+		conf.env.WORLDSTAGE_ENABLED = True
+		conf.env.WORLDSTAGE_SCHEMA_DIR = stage_dir
+		conf.env.WORLDSTAGE_OPENUSD_SOURCE = worldstage_paths[0]
+		conf.env.WORLDSTAGE_OPENUSD_INSTALL = worldstage_paths[2]
+		conf.env.WORLDSTAGE_TBB_INSTALL = worldstage_paths[5]
+		conf.env.WORLDSTAGE_OPENUSD_LIBDIR = os.path.join(worldstage_paths[2], 'lib')
+		conf.env.WORLDSTAGE_TBB_LIBDIR = os.path.join(worldstage_paths[5], 'lib64')
+		conf.env.INCLUDES_OPENUSD = [conf.bldnode.abspath(),
+			os.path.join(worldstage_paths[2], 'include'),
+			os.path.join(worldstage_paths[5], 'include'), '/usr/include/python3.12']
+		conf.env.LIBPATH_OPENUSD = [conf.env.WORLDSTAGE_OPENUSD_LIBDIR,
+			conf.env.WORLDSTAGE_TBB_LIBDIR]
+		conf.env.LIB_OPENUSD = ['usd_usdGeom', 'usd_usd', 'usd_sdf', 'usd_tf', 'usd_vt',
+			'usd_gf', 'usd_plug', 'usd_python', 'tbb', 'python3.12']
 	if conf.env.VIDEO_BINK:
 		for package, store in [('libavcodec', 'AVCODEC'), ('libavformat', 'AVFORMAT'), ('libavutil', 'AVUTIL')]:
 			conf.check_cfg(package=package, uselib_store=store, args=['--cflags', '--libs'])
@@ -773,7 +882,8 @@ def configure(conf):
 	if conf.options.TESTS:
 		conf.add_subproject(projects['tests'])
 	elif conf.options.TOOLS:
-		conf.add_subproject(projects['tools'])
+		tool_projects = projects['tools'] + (LINUX_COMPILER_TOOL_PROJECTS if conf.env.DEST_OS == 'linux' else [])
+		conf.add_subproject(tool_projects)
 	elif conf.options.DEDICATED:
 		conf.add_subproject(projects['dedicated'])
 	else:
@@ -787,6 +897,8 @@ def configure(conf):
 			projects['game'] += ['materialsystem/shaderapivulkan']
 			if not conf.env.ANDROID_SDL3:
 				projects['game'] += ['unittests/shaderapivulkantest']
+			if conf.env.KTX_READ_ENABLED:
+				projects['game'] += ['texturecontainer', 'unittests/texturecontainertest']
 		if not conf.env.ANDROID_SDL3:
 			projects['game'] += ['unittests/physicstest']
 		if conf.env.VIDEO_BINK:
@@ -819,7 +931,8 @@ def build(bld):
 	if bld.env.TESTS:
 		bld.add_subproject(projects['tests'])
 	elif bld.env.TOOLS:
-		bld.add_subproject(projects['tools'])
+		tool_projects = projects['tools'] + (LINUX_COMPILER_TOOL_PROJECTS if bld.env.DEST_OS == 'linux' else [])
+		bld.add_subproject(tool_projects)
 	elif bld.env.DEDICATED:
 		bld.add_subproject(projects['dedicated'])
 	else:
@@ -833,6 +946,8 @@ def build(bld):
 			projects['game'] += ['materialsystem/shaderapivulkan']
 			if not bld.env.ANDROID_SDL3:
 				projects['game'] += ['unittests/shaderapivulkantest']
+			if bld.env.KTX_READ_ENABLED:
+				projects['game'] += ['texturecontainer', 'unittests/texturecontainertest']
 		if not bld.env.ANDROID_SDL3:
 			projects['game'] += ['unittests/physicstest']
 		if bld.env.TOGLES:

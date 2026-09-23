@@ -1,0 +1,170 @@
+# AxisInterpBoxOp.spdl
+# XSI SDK example of a scripted operator written in jscript.
+# (c)2002 - Softimage Inc
+#
+# Instructions:
+# Install this spdl with "xsi -i AxisInterpBoxOp.spdl"
+#
+# Then start XSI and apply the operator to a frozen meshsurface primitive, 
+# for example using this vbscript code:
+#
+#dim oObj
+#set oObj = CreatePrim( "Grid", "MeshSurface" )
+#FreezeObj
+#applyop "AxisInterpBoxOp", oObj
+
+SPDL
+Version = "2.0.0.0";
+Reference = "{B11C01FA-E464-11D5-81B4-00A0C9AC19A9}";
+Name = "AxisInterpBoxOp";
+
+PropertySet "AxisInterpBoxOp_Params"
+{
+	Parameter "AxisInterpBoxOp"
+	{
+		GUID  = {B11C01FA-E464-11D5-81B4-00A0C9AC19A9};
+		Type  = VT_EMPTY;
+		Caps  = Persistable; /* 0x00000004 */
+	}
+
+	Parameter "CenterPivot" input
+	{
+		GUID  = {B11C01D5-E464-11D5-81B4-00A0C9AC19A9};
+		Name  = "CenterPivot";
+		Description = "CenterPivot";
+		Type  = VT_BOOL;
+		Caps  = Persistable, Animatable; /* 0x00000005 */
+		Class = 0x00008000; /* 0x00008000 */
+		Value = True;
+	}
+
+	Parameter "Length" input
+	{
+		GUID  = {B11C01D6-E464-11D5-81B4-00A0C9AC19A9};
+		Name  = "Length";
+		Description = "Length";
+		Type  = VT_R8;
+		Caps  = Persistable, Animatable; /* 0x00000005 */
+		Class = 0x00008000; /* 0x00008000 */
+		Value = 5;
+		Range = 0 To 1000;
+	}
+
+	Parameter "Width" input
+	{
+		GUID  = {B11C01D7-E464-11D5-81B4-00A0C9AC19A9};
+		Name  = "Width";
+		Description = "Width";
+		Type  = VT_R8;
+		Caps  = Persistable, Animatable; /* 0x00000005 */
+		Class = 0x00008000; /* 0x00008000 */
+		Value = 5;
+		Range = 0 To 1000;
+	}
+
+	Parameter "Height" input
+	{
+		GUID  = {B11C01EC-E464-11D5-81B4-00A0C9AC19A9};
+		Name  = "Height";
+		Description = "Height";
+		Type  = VT_R8;
+		Caps  = Persistable, Animatable; /* 0x00000005 */
+		Class = 0x00008000; /* 0x00008000 */
+		Value = 5;
+		Range = 0 To 1000;
+	}
+}
+
+PortSet "AxisInterpBoxOp_Ports"
+{
+	Group "Group_0"
+	{
+		Origin = Select;
+
+		Output "ogeom"
+		{
+			Major = {E80A1590-CA13-11CF-91B9-00AA00624C2D};
+			Minor = {3A9ECA60-4F91-11D0-AA46-00A0243E34C4};
+			Interface = {CDEA6775-415B-11D0-AA40-00A0243E34C4};
+			Attributes = 0x00000001;
+		}
+	}
+}
+
+Plugin = Scripted
+{
+	Language = "JScript";
+
+	Update =
+	BeginScript
+var g = Out.value.geometry;  
+  
+var center_pivot = (In_UpdateContext.Parameters.Item("CenterPivot").Value!=0);
+var length = In_UpdateContext.Parameters.Item("Length").Value;
+var width = In_UpdateContext.Parameters.Item("Width").Value;
+var height = In_UpdateContext.Parameters.Item("Height").Value;
+
+GenerateBox( g, center_pivot, length, width, height );
+ 
+	EndScript
+
+	Helpers =
+	BeginScript
+var i = 0;
+var f = new Array( 6 * 5 );
+
+f[i++] = 4; f[i++] = 0; ; f[i++] = 2; f[i++] = 3; f[i++] = 1; 
+f[i++] = 4; f[i++] = 0; ; f[i++] = 1; f[i++] = 5; f[i++] = 4; 
+f[i++] = 4; f[i++] = 0; ; f[i++] = 4; f[i++] = 6; f[i++] = 2; 
+f[i++] = 4; f[i++] = 1; ; f[i++] = 3; f[i++] = 7; f[i++] = 5; 
+f[i++] = 4; f[i++] = 2; ; f[i++] = 6; f[i++] = 7; f[i++] = 3; 
+f[i++] = 4; f[i++] = 4; ; f[i++] = 5; f[i++] = 7; f[i++] = 6; 
+
+//*********************************************************************************************
+// function		:	GenerateBox
+// description	:	generate box geometry from center_pivot, width, height, length
+//
+// return value	:	na
+//
+//*********************************************************************************************
+function GenerateBox( g, center_pivot, length, width, height )
+{
+	var pvtz = 0.0;
+	if ( center_pivot == true ) {
+		pvtz = ( length/2.0) * -1; 
+	}
+
+	var vsize = 8*3;
+	var v = new Array( vsize );
+ 
+	i=0;  
+	v[i++] = -width / 2; 
+	v[i++] = -height / 2; 
+	v[i++] = pvtz;
+
+	v[i++] = width / 2 ;
+	v[i++] = -height / 2;
+	v[i++] = pvtz;
+	 
+	v[i++] = -width / 2;
+	v[i++] = height / 2; 
+	v[i++] = pvtz;
+
+	v[i++] = width / 2; 
+	v[i++] = height / 2;
+	v[i++] = pvtz;
+
+	var offset = i;
+
+	for (; i<vsize; ) {
+		v[i] = v[i-offset]; i++;
+		v[i] = v[i-offset]; i++;
+		v[i] = v[i-offset] + length; i++;
+	} 
+	
+	g.set( v, f );
+}
+	EndScript
+
+}
+

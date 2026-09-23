@@ -8,7 +8,37 @@
 #include "incremental.h"
 #include "lightmap.h"
 
+CVRadCriticalSection::CVRadCriticalSection()
+{
+#ifdef _WIN32
+	InitializeCriticalSection( &m_CS );
+#endif
+}
 
+CVRadCriticalSection::~CVRadCriticalSection()
+{
+#ifdef _WIN32
+	DeleteCriticalSection( &m_CS );
+#endif
+}
+
+void CVRadCriticalSection::Lock()
+{
+#ifdef _WIN32
+	EnterCriticalSection( &m_CS );
+#else
+	m_CS.Lock();
+#endif
+}
+
+void CVRadCriticalSection::Unlock()
+{
+#ifdef _WIN32
+	LeaveCriticalSection( &m_CS );
+#else
+	m_CS.Unlock();
+#endif
+}
 
 static bool g_bFileError = false;
 
@@ -310,10 +340,10 @@ void CIncremental::AddLightToFace(
 	else
 	{
 		bool bNew;
-		
-		EnterCriticalSection( &pLight->m_CS );
-			pFace = pLight->FindOrCreateLightFace( iFace, lmSize, &bNew );
-		LeaveCriticalSection( &pLight->m_CS );
+
+		pLight->m_CS.Lock();
+		pFace = pLight->FindOrCreateLightFace( iFace, lmSize, &bNew );
+		pLight->m_CS.Unlock();
 
 		pLight->m_pCachedFaces[iThread] = pFace;
 
@@ -460,10 +490,10 @@ void CIncremental::FinishFace(
 		if( pFace->m_CompressedData.TellPut() == 0 )
 		{
 			// No contribution.. delete this face from the light.
-			EnterCriticalSection( &pLight->m_CS );
-				pLight->m_LightFaces.Remove( pFace->m_LightFacesIndex );
-				delete pFace;
-			LeaveCriticalSection( &pLight->m_CS );
+			pLight->m_CS.Lock();
+			pLight->m_LightFaces.Remove( pFace->m_LightFacesIndex );
+			delete pFace;
+			pLight->m_CS.Unlock();
 		}
 		else
 		{
@@ -718,15 +748,13 @@ void CIncremental::LinkLightsToFaces( CUtlVector<CFaceLightList> &faceLights )
 
 CIncLight::CIncLight()
 {
-	memset( m_pCachedFaces, 0, sizeof(m_pCachedFaces) );
-	InitializeCriticalSection( &m_CS );
+	memset( m_pCachedFaces, 0, sizeof( m_pCachedFaces ) );
 }
 
 
 CIncLight::~CIncLight()
 {
 	m_LightFaces.PurgeAndDeleteElements();
-	DeleteCriticalSection( &m_CS );
 }
 
 
@@ -762,5 +790,3 @@ CLightFace* CIncLight::FindOrCreateLightFace( int iFace, int lmSize, bool *bNew 
 
 	return pFace;
 }
-
-

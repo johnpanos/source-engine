@@ -1,6 +1,6 @@
 # RFC 0008: Canonical World Data and Runtime Formats
 
-- Status: Accepted for planning (2026-09-22); F1 prototype active ([progress](0008-progress.md))
+- Status: Accepted for planning (2026-09-22); F1 active, F2 partial ([progress](0008-progress.md))
 - Date: 2026-09-22
 - Scope: The compiled-world interchange stage, the runtime map container, world
   render data (mesh, lightmaps, probes, reflection probes), the texture container,
@@ -15,11 +15,13 @@
   [RFC 0003: Dependency-Aware Job System](0003-dependency-aware-job-system.md)
 - Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
 - Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
-- Evaluated dependencies (source inspected, not built or pinned): OpenUSD
-  `fc590b38e24770408e31b56442d31b8029729ee7` (Tomorrow Open Source Technology
-  License 1.0); KTX-Software `90967979cbb7e9401ee2401ff997f30b4b7507d6`
-  (Apache-2.0 for project files; bundled components carry their own compatible
-  licenses under `LICENSES/`); Cycles as recorded in RFC 0007.
+- Evaluated dependencies: OpenUSD v25.11, pinned and built for the Linux tools
+  slice in [the host profile](../quality/product_profiles/openusd-linux-tools.json)
+  (Tomorrow Open Source Technology License 1.0); KTX-Software (host-tool source revision, build options, and
+  toolchain pinned in [the F3 feasibility profile](../quality/product_profiles/ktx2-linux-tools.json);
+  Apache-2.0 for project files, with bundled component licenses under
+  `LICENSES/`); Cycles as recorded in RFC 0007. The KTX tool build is feasibility
+  evidence, not a runtime integration or platform support claim.
 
 ## Summary
 
@@ -273,7 +275,7 @@ never an input.
 
 KTX2 is the texture container for new content. Masters are encoded once to
 **UASTC** (LDR, or UASTC HDR for HDR data). The packer then transcodes each
-master to the profile's GPU format. KTX-Software at the inspected revision
+master to the profile's GPU format. KTX-Software at the pinned host-tool revision
 provides:
 
 - `ktx encode` with codecs `basis-lz`, `uastc`, `uastc-ldr-4x4`,

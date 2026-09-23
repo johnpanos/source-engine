@@ -1,0 +1,536 @@
+{
+  "schema": "bsp2-corpus-inventory/v1",
+  "description": "Portal 2 v21 maps used for RFC 0008 F1 carriage; licensed map bytes remain external.",
+  "maps": [
+    {
+      "name": "e1912.bsp",
+      "version": 21,
+      "sha256": "abc55e2f84e96b1da2e85152618ae70fcee040d6c9a261cc6e7c3e89cda08691"
+    },
+    {
+      "name": "mp_coop_catapult_1.bsp",
+      "version": 21,
+      "sha256": "1d6097878b64c9dd7a0e09ac083721e97a6af7f0501becbf176e3ad12db43487"
+    },
+    {
+      "name": "mp_coop_catapult_2.bsp",
+      "version": 21,
+      "sha256": "f23e40f05d1bea1ec9e9cc1373e177a7e95ac6bd8b4577075b84c8d75233af35"
+    },
+    {
+      "name": "mp_coop_catapult_wall_intro.bsp",
+      "version": 21,
+      "sha256": "04ab2c3f115280f04bbd36e7dd5ed711cd6ffc520022917f52db2f57f31b4795"
+    },
+    {
+      "name": "mp_coop_come_along.bsp",
+      "version": 21,
+      "sha256": "9f3355ed193d11caadf8f1b81f77ad363f20141bec642af08d8aded4f298014d"
+    },
+    {
+      "name": "mp_coop_credits.bsp",
+      "version": 21,
+      "sha256": "f6dd0726779797b0cc178f4db896718e330c45b5419b572dbeae875081167380"
+    },
+    {
+      "name": "mp_coop_doors.bsp",
+      "version": 21,
+      "sha256": "6a4c111f0005caa40641cb03e0ab7911aac324d54fea1ecdd142cb3499a3c545"
+    },
+    {
+      "name": "mp_coop_fan.bsp",
+      "version": 21,
+      "sha256": "3011b8d0735c53c58e94162542cc17b38ed663c6d59e0050a7523b4d29c8290d"
+    },
+    {
+      "name": "mp_coop_fling_1.bsp",
+      "version": 21,
+      "sha256": "908a956ff867de3c0b2fc533369200740e4925be8e0c5c0d7539dc2ed3143a18"
+    },
+    {
+      "name": "mp_coop_fling_3.bsp",
+      "version": 21,
+      "sha256": "7304863793655efdcc039621efa1b23452e4e2a8a55e3aad634b1aae7272e451"
+    },
+    {
+      "name": "mp_coop_fling_crushers.bsp",
+      "version": 21,
+      "sha256": "721f2dbb9d63ed5b90e1635f2d472eafbe741e81051831aa834aec1dbc50f94f"
+    },
+    {
+      "name": "mp_coop_infinifling_train.bsp",
+      "version": 21,
+      "sha256": "6aa60737109afbb20b784d04cba4ee9c52869a54ed4186e457bbe9780aab13f0"
+    },
+    {
+      "name": "mp_coop_laser_2.bsp",
+      "version": 21,
+      "sha256": "acb92a66464d1dbdafb67a193b48009cc8f267b08185a9ff3c2845a739c8da33"
+    },
+    {
+      "name": "mp_coop_laser_crusher.bsp",
+      "version": 21,
+      "sha256": "629ed34ae3ac0db3806a85a9d55a4fba7f6f39988cf27a84b91dc3b09f2734e1"
+    },
+    {
+      "name": "mp_coop_lobby_2.bsp",
+      "version": 21,
+      "sha256": "3bff988bb3e300fb9af809740242412394d63e0ef509fe617fc72a9e47350c88"
+    },
+    {
+      "name": "mp_coop_multifling_1.bsp",
+      "version": 21,
+      "sha256": "70958574a70eb14555fa9d31f76aeafda4b689afa2d1f01a460faed43d42a3e0"
+    },
+    {
+      "name": "mp_coop_paint_bridge.bsp",
+      "version": 21,
+      "sha256": "c77ead3b1e1b2c331261fb480c6f529a534d0716668c9428c2526d052cfa206e"
+    },
+    {
+      "name": "mp_coop_paint_come_along.bsp",
+      "version": 21,
+      "sha256": "069cdb3f1d4f517eec91c05940dbd7f273b5218c4c1d17e5f0a6825c3530e32c"
+    },
+    {
+      "name": "mp_coop_paint_longjump_intro.bsp",
+      "version": 21,
+      "sha256": "3654653a1e5e75a1d3a4979afaaeb35367b885e9be51524ae9177993fc02bd4f"
+    },
+    {
+      "name": "mp_coop_paint_red_racer.bsp",
+      "version": 21,
+      "sha256": "748dc8deb6ad604d9147c8abf3a15242242d311fb1723ee0c51699e75ea14e9f"
+    },
+    {
+      "name": "mp_coop_paint_redirect.bsp",
+      "version": 21,
+      "sha256": "f20e192f1447d64776ba6d8ff5a59fe4e56384fe000138bc275eda150b0cf658"
+    },
+    {
+      "name": "mp_coop_paint_speed_catch.bsp",
+      "version": 21,
+      "sha256": "76d0ec13d6b828bb91d0905b6691984be88b7ca1e8ea0adf104803af0cad5928"
+    },
+    {
+      "name": "mp_coop_paint_speed_fling.bsp",
+      "version": 21,
+      "sha256": "a3ed8b60dd0b474c71d4157ab1706cb54a1c247218b099a683b78824080a4952"
+    },
+    {
+      "name": "mp_coop_paint_walljumps.bsp",
+      "version": 21,
+      "sha256": "20a2c38408a6a3add7df43dcda10d11e6b210c3ef8cfa8951613e42b0eb77d59"
+    },
+    {
+      "name": "mp_coop_race_2.bsp",
+      "version": 21,
+      "sha256": "14a01198c77669f3b2c0fa1223e6ea08696ecb344ce62d69a9a6dfc059fd932f"
+    },
+    {
+      "name": "mp_coop_rat_maze.bsp",
+      "version": 21,
+      "sha256": "eec5fa86343d064fc448ae6ce132e4fd6f906227840aa0fa138b8533462cabca"
+    },
+    {
+      "name": "mp_coop_start.bsp",
+      "version": 21,
+      "sha256": "8ea502f8715f711c3b1baa54a6c1b8d5ec8c7d7271cb70bf69b3ffc0e7c7942c"
+    },
+    {
+      "name": "mp_coop_tbeam_catch_grind_1.bsp",
+      "version": 21,
+      "sha256": "3bf9034022acc0e737eeb7bf493f92e5e8bcdd0161da4112c3eb4122592d8f35"
+    },
+    {
+      "name": "mp_coop_tbeam_drill.bsp",
+      "version": 21,
+      "sha256": "d652cf86c8b4dd26a0eb076a477d9f24518ce39f421cc509ec6d7b1fbc068ddf"
+    },
+    {
+      "name": "mp_coop_tbeam_end.bsp",
+      "version": 21,
+      "sha256": "7055a57807891f12de3abcd638df0ea721100b11059aa3f923851721696ba6d6"
+    },
+    {
+      "name": "mp_coop_tbeam_laser_1.bsp",
+      "version": 21,
+      "sha256": "452abd3cbe016e07c3e6fc918f4ba8040eedf465829f1493f7655480cb40384b"
+    },
+    {
+      "name": "mp_coop_tbeam_maze.bsp",
+      "version": 21,
+      "sha256": "f1ac78aa8b39382e5a27f3065c8e013c233f22e4512e245e007b0a3fff2478cf"
+    },
+    {
+      "name": "mp_coop_tbeam_polarity.bsp",
+      "version": 21,
+      "sha256": "91eaf4f90ae6c6db884f1c3aa3274751950896d62b7b41e3d80abe172374d852"
+    },
+    {
+      "name": "mp_coop_tbeam_polarity2.bsp",
+      "version": 21,
+      "sha256": "dc591daa744efe6c940186e23721821d5c029692dc2326ca9f474d05db5310eb"
+    },
+    {
+      "name": "mp_coop_tbeam_polarity3.bsp",
+      "version": 21,
+      "sha256": "b5a889dd3bda4f63dd2e20c95977aa8d2f4fe4e6757ba19e10ce2f2ffbf3ed68"
+    },
+    {
+      "name": "mp_coop_tbeam_redirect.bsp",
+      "version": 21,
+      "sha256": "8e54dac8209e80005bc8513f19a3b974c58dc1a41600e2dce850b926f889b90b"
+    },
+    {
+      "name": "mp_coop_teambts.bsp",
+      "version": 21,
+      "sha256": "3d432f8b633abe8e2878b136d267278d0c404837818e56c2a1e69d73d35b97d0"
+    },
+    {
+      "name": "mp_coop_turret_ball.bsp",
+      "version": 21,
+      "sha256": "1466d079be940032436045cb6c425d008047a4e87a55ac1a3d0a634817be0252"
+    },
+    {
+      "name": "mp_coop_turret_walls.bsp",
+      "version": 21,
+      "sha256": "502c2ba6330b1a62f8aa347d82678975acc1de3fc03f3e2ed9f4767abc6e0515"
+    },
+    {
+      "name": "mp_coop_wall_2.bsp",
+      "version": 21,
+      "sha256": "96cb983d792aec25e136f0b5bed900af6b4b0cff913c221f4192fdc26e85c440"
+    },
+    {
+      "name": "mp_coop_wall_5.bsp",
+      "version": 21,
+      "sha256": "9df88eebaf9ab6df3dad8b730c274f68a98cfff0390375cbec43eaf73a1acfbb"
+    },
+    {
+      "name": "mp_coop_wall_block.bsp",
+      "version": 21,
+      "sha256": "fbfb5bca055f37b33e939e2e27d9d3b985259fca697e22a281b1eaff43f1c593"
+    },
+    {
+      "name": "mp_coop_wall_intro.bsp",
+      "version": 21,
+      "sha256": "0e5fa79e1a508e3b186ba6c9572a894a06e42f7131eb12f113ba4f3eaea957e6"
+    },
+    {
+      "name": "sp_a1_intro1.bsp",
+      "version": 21,
+      "sha256": "63d22b6c98315c77fd48d7bdcda885696b0f935bf1f3ae8b03d25754c150ff4c"
+    },
+    {
+      "name": "sp_a1_intro2.bsp",
+      "version": 21,
+      "sha256": "8cc68a538d5f0d044558bc834249b25b9e91b244edc86df6cb74e0c1cd4bdd05"
+    },
+    {
+      "name": "sp_a1_intro3.bsp",
+      "version": 21,
+      "sha256": "54cd20784038f528f9eba8593a8fd22ffec09aa0a0e16636b51d548e6ae36280"
+    },
+    {
+      "name": "sp_a1_intro4.bsp",
+      "version": 21,
+      "sha256": "96fcbb411c0e26263f58a713c5a73517f94fc19a6ee1c642356751bbe56257ff"
+    },
+    {
+      "name": "sp_a1_intro5.bsp",
+      "version": 21,
+      "sha256": "a872fdd3f3352de2837cab2b490f46265d0de1b609b3712ee82ee2ef245723b1"
+    },
+    {
+      "name": "sp_a1_intro6.bsp",
+      "version": 21,
+      "sha256": "23c2bb284f1aeb7bdbd501532d496ae99b5558a55ac9c1cc8e5bbba57c60af12"
+    },
+    {
+      "name": "sp_a1_intro7.bsp",
+      "version": 21,
+      "sha256": "ce18552dc28e59f0ec93b2963f0421efdfed1a02034943f67420fa599a59d0cb"
+    },
+    {
+      "name": "sp_a1_wakeup.bsp",
+      "version": 21,
+      "sha256": "8995c5e5d98fab0a946551f78131add9980fed29dd59b3175e8cea2fa96c86ba"
+    },
+    {
+      "name": "sp_a2_bridge_intro.bsp",
+      "version": 21,
+      "sha256": "530a5d22e1fca5e2d0adf1f5083c7de0cb654fbb45e10c16dde65b74f102221c"
+    },
+    {
+      "name": "sp_a2_bridge_the_gap.bsp",
+      "version": 21,
+      "sha256": "881eec9f4576bdaf513969de5104964182eddace93b684108d72fec12f18e684"
+    },
+    {
+      "name": "sp_a2_bts1.bsp",
+      "version": 21,
+      "sha256": "b3f1261abab086780f2b2eb9d8346fb4be5a9c6a4a324bd1c6f28058f193bd5f"
+    },
+    {
+      "name": "sp_a2_bts2.bsp",
+      "version": 21,
+      "sha256": "798460d81626b511b4227504a604df8d3778dfacf5e9644ced42aafcf85a7d55"
+    },
+    {
+      "name": "sp_a2_bts3.bsp",
+      "version": 21,
+      "sha256": "f454a2ae42c448d4d86e5cdbbf36a1ef487739343007f8a2a4fa6482ab76a0a2"
+    },
+    {
+      "name": "sp_a2_bts4.bsp",
+      "version": 21,
+      "sha256": "ab68c9014a952125d2963e8437d77e69855ca19a8f9e2d5e4404191de49c6f39"
+    },
+    {
+      "name": "sp_a2_bts5.bsp",
+      "version": 21,
+      "sha256": "957106d7185e5f82b4f0b954930b77d5485379fd00aaa2b9a039b10b183aca3f"
+    },
+    {
+      "name": "sp_a2_bts6.bsp",
+      "version": 21,
+      "sha256": "745fb99040ffc95c3734763fccbbe29bc2381b9a1224f98b1fa2006ded83ec55"
+    },
+    {
+      "name": "sp_a2_catapult_intro.bsp",
+      "version": 21,
+      "sha256": "97fcea52fdd329da265655e997aeac5ae748d2393ebf4a18a425c748de4720bb"
+    },
+    {
+      "name": "sp_a2_column_blocker.bsp",
+      "version": 21,
+      "sha256": "8c6865daa3792a23ac9fed57a2b1f3d86bb191777ae3eb5435e512703bd28a8d"
+    },
+    {
+      "name": "sp_a2_core.bsp",
+      "version": 21,
+      "sha256": "7d2de32283b91d14d88f182c28e7145d7307d02fd5e0314d5a2eb0a7d719a5cc"
+    },
+    {
+      "name": "sp_a2_dual_lasers.bsp",
+      "version": 21,
+      "sha256": "02f39041651992093a1389b273a47d2994f9fefc0f25d2cbcf5d5afa6506a0d4"
+    },
+    {
+      "name": "sp_a2_fizzler_intro.bsp",
+      "version": 21,
+      "sha256": "c1085db9ab091cb1a38d4d5afc59cf32a6f2ede1532d5a03ad73a1d429a8bdbe"
+    },
+    {
+      "name": "sp_a2_intro.bsp",
+      "version": 21,
+      "sha256": "4f7aad067b0ddea603d4def39d3c2d0284c46600119363ff5d2f926af3f997fd"
+    },
+    {
+      "name": "sp_a2_laser_chaining.bsp",
+      "version": 21,
+      "sha256": "22185294e89df333e62d6a8c622221a8c2bdfe3b03183b20cf9d760452eb8986"
+    },
+    {
+      "name": "sp_a2_laser_intro.bsp",
+      "version": 21,
+      "sha256": "f97bef1091351714da9363fce1ad6a1a30cdd173179b4348269870ad873ed23a"
+    },
+    {
+      "name": "sp_a2_laser_over_goo.bsp",
+      "version": 21,
+      "sha256": "ff6ed2b36040ca81a9c92c8f16463f01e51322efec8a5eaee02c4ef1d6b9f92e"
+    },
+    {
+      "name": "sp_a2_laser_relays.bsp",
+      "version": 21,
+      "sha256": "99da48e470e28173e6acac7ea2d6f4a01476bd66789cfc4f4e3180c8163e9e6f"
+    },
+    {
+      "name": "sp_a2_laser_stairs.bsp",
+      "version": 21,
+      "sha256": "428162464126bd1b96f81207dbb18928c2ff61c61e1f65fba52d9e82fe8b818a"
+    },
+    {
+      "name": "sp_a2_laser_vs_turret.bsp",
+      "version": 21,
+      "sha256": "c81cc2a0293911cc1dc7eb82a76d686b25b92a9109f148a0e818eeafd1c8eac8"
+    },
+    {
+      "name": "sp_a2_pit_flings.bsp",
+      "version": 21,
+      "sha256": "31df4b28e0bf26667e125d850f8d0c94df8af3ff09cdd4d046e0d24d181768ca"
+    },
+    {
+      "name": "sp_a2_pull_the_rug.bsp",
+      "version": 21,
+      "sha256": "7a932e64b7db4a7b9877bfbf5c5155f71ac46eb570b1e3a0e25ab75e4795efde"
+    },
+    {
+      "name": "sp_a2_ricochet.bsp",
+      "version": 21,
+      "sha256": "88242b330754f9b48f75b7ec1e1cbea1afe24beb7574ffb86a25c4a38de59238"
+    },
+    {
+      "name": "sp_a2_sphere_peek.bsp",
+      "version": 21,
+      "sha256": "b3270ea386cb05730656891f6d9315a1d2957cb2771311194842a380c66a72ab"
+    },
+    {
+      "name": "sp_a2_triple_laser.bsp",
+      "version": 21,
+      "sha256": "a287fcdf150db56dc4d68afa4deea0d88e774ac822fea57a5cf971b7eee7d15f"
+    },
+    {
+      "name": "sp_a2_trust_fling.bsp",
+      "version": 21,
+      "sha256": "88384c446d7353e009b1c14d01873c1e5e0844bc4cabc974ca2886717d771f48"
+    },
+    {
+      "name": "sp_a2_turret_blocker.bsp",
+      "version": 21,
+      "sha256": "93373c0aebc2740c887de9906428bd9c43508e9d162c5dacc02086a83d503b94"
+    },
+    {
+      "name": "sp_a2_turret_intro.bsp",
+      "version": 21,
+      "sha256": "28594e79cae0f2ae922645621e78560755d04c616d5a277dbd2b95ecc31d9b84"
+    },
+    {
+      "name": "sp_a3_00.bsp",
+      "version": 21,
+      "sha256": "e07bf941934942dcf45d898b97cbcf90dd6cb3417888657d72ff63b3f231c401"
+    },
+    {
+      "name": "sp_a3_01.bsp",
+      "version": 21,
+      "sha256": "47db89d6bce1627e7a4a94d8bab501412a0e6f0d1f9540b0629db06114a22c03"
+    },
+    {
+      "name": "sp_a3_03.bsp",
+      "version": 21,
+      "sha256": "d286ab1062a2301e1f54cd89f6fc193ff69fa093fb70d0d672bdc67070ee93a7"
+    },
+    {
+      "name": "sp_a3_bomb_flings.bsp",
+      "version": 21,
+      "sha256": "7409169ca57bf3b242688111d7b7df9cc3cda04ad76aa5231b9a4db7a575c0e6"
+    },
+    {
+      "name": "sp_a3_crazy_box.bsp",
+      "version": 21,
+      "sha256": "d320f0551d696ea5cce554e997908002cdd527e1042861d5eb461cfa8b725874"
+    },
+    {
+      "name": "sp_a3_end.bsp",
+      "version": 21,
+      "sha256": "930fd9aada33caa4c48dc57a18e7852ee10fe603533e99b8d755c04bdc52f05e"
+    },
+    {
+      "name": "sp_a3_jump_intro.bsp",
+      "version": 21,
+      "sha256": "c1d929bacb9bad245820584b80ac57906b88fc418d79ad31400b53558efdc17d"
+    },
+    {
+      "name": "sp_a3_portal_intro.bsp",
+      "version": 21,
+      "sha256": "b84c7a9cae3dba97761c8b496733bd0efe1c7d0799498ec0470b9694e0d203c6"
+    },
+    {
+      "name": "sp_a3_speed_flings.bsp",
+      "version": 21,
+      "sha256": "f98e7b863ee79a50b8591353efaa9ce0e6a13ce520636379ca19283c306f3130"
+    },
+    {
+      "name": "sp_a3_speed_ramp.bsp",
+      "version": 21,
+      "sha256": "86894174a22a5bd3d1afa3ca9bf794f226f77842403165ae977e71e14dd64b28"
+    },
+    {
+      "name": "sp_a3_transition01.bsp",
+      "version": 21,
+      "sha256": "5e9d3ab867bc70ecb3d9d9d6978fa6e9aea9a54b8557a1392c1dcf5f6ad7f4d7"
+    },
+    {
+      "name": "sp_a4_finale1.bsp",
+      "version": 21,
+      "sha256": "37ccd71e8ad01d4db0ddd26cc00315439fe026e62c119808edf7c10e7d883b49"
+    },
+    {
+      "name": "sp_a4_finale2.bsp",
+      "version": 21,
+      "sha256": "20c30f472bd48e59046f4ffa45572cec064f6136b5d18e39ab260bbc8b85c311"
+    },
+    {
+      "name": "sp_a4_finale3.bsp",
+      "version": 21,
+      "sha256": "4eaff51887993e7782153f7624dd14ec0cfcb909b0df6308ca945e3cb5bf11f1"
+    },
+    {
+      "name": "sp_a4_finale4.bsp",
+      "version": 21,
+      "sha256": "897f3907384afcd7b78a0a022bba3baf835ec94b560b6d6e7a8174b0a4c8a196"
+    },
+    {
+      "name": "sp_a4_intro.bsp",
+      "version": 21,
+      "sha256": "167bae34f6060e9db53cb91f6b50440db18db0346c95e04f02de79ebd193a90f"
+    },
+    {
+      "name": "sp_a4_jump_polarity.bsp",
+      "version": 21,
+      "sha256": "8bba1780b09e6f075773aa9a03a429fcdb0d04b7c8db1d7e1b24c9d2cc52ece8"
+    },
+    {
+      "name": "sp_a4_laser_catapult.bsp",
+      "version": 21,
+      "sha256": "83f49f285abcbed496e290fd997e4bc23dd64c5bb3cfee4c49c7e332925baec1"
+    },
+    {
+      "name": "sp_a4_laser_platform.bsp",
+      "version": 21,
+      "sha256": "6260c3b638b02020cae0205bbcc736571c5dae4f80811fff1ddb87982030bce8"
+    },
+    {
+      "name": "sp_a4_speed_tb_catch.bsp",
+      "version": 21,
+      "sha256": "9cd9a39e42712d7c345a34ac383978d0e423c8399f158c9823cff623b3170026"
+    },
+    {
+      "name": "sp_a4_stop_the_box.bsp",
+      "version": 21,
+      "sha256": "02463eb5897c3fd51191cc9f5be0ec13501e04e14e9e6d72dc5996789a8f7abd"
+    },
+    {
+      "name": "sp_a4_tb_catch.bsp",
+      "version": 21,
+      "sha256": "0f50c3212e4c3a7f804964d9dd8e873c02e907d422ee90894fc8bb0f8fd0e1bb"
+    },
+    {
+      "name": "sp_a4_tb_intro.bsp",
+      "version": 21,
+      "sha256": "40159907cd84e93009638d355670f5bedf0e17cd59ad5770b5f0c2871197634f"
+    },
+    {
+      "name": "sp_a4_tb_polarity.bsp",
+      "version": 21,
+      "sha256": "64e360d5041b708a465655082b90ec65831b1525869065703b1cb42abd0a178c"
+    },
+    {
+      "name": "sp_a4_tb_trust_drop.bsp",
+      "version": 21,
+      "sha256": "7d5515bc3f3a3b8adf8db9d69518d4da9ad9fa1ac5e63c99a3a7351908af7cd8"
+    },
+    {
+      "name": "sp_a4_tb_wall_button.bsp",
+      "version": 21,
+      "sha256": "4705353d936396d2dece4d6e3b6b3b2ff1a6c0cb4cbfdfc8a46bbe78a60289cf"
+    },
+    {
+      "name": "sp_a5_credits.bsp",
+      "version": 21,
+      "sha256": "1f421e804db08177b42190264e95690011965e49a27dbb46de3b1e9c461812fa"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+"default"
+{
+    "density" "2000"
+    "elasticity" "0.25"
+    "friction" "0.8"
+}

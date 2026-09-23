@@ -1,0 +1,188 @@
+SPDL
+Version = "2.0.0.1";
+Reference = "{F44E51E9-FAB3-4AC6-BE2C-809CB6482128}";
+Name = "AxisInterpOp";
+
+// major ids
+DEFINE_GUID(Property,					0x9e04fcee, 0x10f3, 0x11d0, 0x94, 0x3a, 0x0, 0xaa, 0x0, 0x6d, 0x31, 0x65);
+
+// minor ids
+DEFINE_GUID(LocalKinematicState,		0x4125b131, 0x86ef, 0x11d1, 0xb1, 0xab, 0x8, 0x0, 0x36, 0xb, 0xff, 0x2);
+DEFINE_GUID(GlobalKinematicState,		0xf75293a0, 0x5a6b, 0x11d0, 0x84, 0xc9, 0x0, 0xa0, 0x24, 0x3e, 0x35, 0x43);
+DEFINE_GUID(ChainBone,					0xf718e610, 0x6f5, 0x11d1, 0x84, 0xec, 0x0, 0xa0, 0x24, 0x3e, 0x35, 0x43);
+DEFINE_GUID(CustomPSet,					0x76332575, 0xd242, 0x11d0, 0xb6, 0x9c, 0x0, 0xaa, 0x0, 0x3b, 0x3e, 0xa6);
+
+// component ids
+DEFINE_GUID(LocalKinematicState_RotX,	0x6294289, 0xb94b, 0x11d2, 0xb8, 0x7f, 0x0, 0xa0, 0xc9, 0x24, 0x69, 0xbe);
+DEFINE_GUID(LocalKinematicState_RotY,	0x629428a, 0xb94b, 0x11d2, 0xb8, 0x7f, 0x0, 0xa0, 0xc9, 0x24, 0x69, 0xbe);
+DEFINE_GUID(LocalKinematicState_RotZ,	0x629428b, 0xb94b, 0x11d2, 0xb8, 0x7f, 0x0, 0xa0, 0xc9, 0x24, 0x69, 0xbe);
+DEFINE_GUID(LocalKinematicState_PosX,	0x6294283, 0xb94b, 0x11d2, 0xb8, 0x7f, 0x0, 0xa0, 0xc9, 0x24, 0x69, 0xbe);
+DEFINE_GUID(LocalKinematicState_PosY,	0x6294285, 0xb94b, 0x11d2, 0xb8, 0x7f, 0x0, 0xa0, 0xc9, 0x24, 0x69, 0xbe);
+DEFINE_GUID(LocalKinematicState_PosZ,	0x6294286, 0xb94b, 0x11d2, 0xb8, 0x7f, 0x0, 0xa0, 0xc9, 0x24, 0x69, 0xbe);
+
+DEFINE_GUID(GlobalKinematicState_RotX,	0xa35c9180, 0xc562, 0x11d0, 0x84, 0xdb, 0x0, 0xa0, 0x24, 0x3e, 0x35, 0x43);
+DEFINE_GUID(GlobalKinematicState_RotY,	0xa7c449e0, 0xc562, 0x11d0, 0x84, 0xdb, 0x0, 0xa0, 0x24, 0x3e, 0x35, 0x43);
+DEFINE_GUID(GlobalKinematicState_RotZ,	0xb3a52900, 0xc562, 0x11d0, 0x84, 0xdb, 0x0, 0xa0, 0x24, 0x3e, 0x35, 0x43);
+DEFINE_GUID(GlobalKinematicState_PosX,	0x4ee72a10, 0xc55d, 0x11d0, 0x84, 0xdb, 0x0, 0xa0, 0x24, 0x3e, 0x35, 0x43);
+DEFINE_GUID(GlobalKinematicState_PosY,	0x87b376a0, 0xc562, 0x11d0, 0x84, 0xdb, 0x0, 0xa0, 0x24, 0x3e, 0x35, 0x43);
+DEFINE_GUID(GlobalKinematicState_PosZ,	0x9e2e32c0, 0xc562, 0x11d0, 0x84, 0xdb, 0x0, 0xa0, 0x24, 0x3e, 0x35, 0x43);
+
+DEFINE_GUID(ChainBone_Length,			0x729aeaff, 0x7655, 0x11d2, 0x84, 0x18, 0x0, 0xa0, 0xc9, 0x61, 0x74, 0x7d);
+
+// interface
+DEFINE_GUID(IID_AnyInterface,			0x00000000, 0x0000, 0x0000, 0xC0, 0x00, 0x0, 0x00, 0x00, 0x00, 0x00, 0x46);
+
+PropertySet "AxisInterpOp_Params"
+{
+	Parameter "AxisInterpOp"
+	{
+		GUID  = {F44E51E9-FAB3-4AC6-BE2C-809CB6482128};
+		Type  = VT_EMPTY;
+		Caps  = Persistable; /* 0x00000004 */
+	}
+
+	Parameter "BoneDist" input
+	{
+		GUID  = {8E71253A-898F-4F06-8134-E54D93CB4CC6};
+		Name  = "BoneDist";
+		Description = "BoneDist";
+		Type  = VT_R8;
+		Caps  = Persistable, Animatable; /* 0x00000005 */
+		Class = 0x00008000; /* 0x00008000 */
+		Value = 50;
+		Range = 0 To 100;
+	}
+
+	Parameter "BasePoseX" input
+	{
+		GUID  = {4C58FCEC-1D16-4EFB-9B2C-3438E4E17315};
+		Name  = "BasePoseX";
+		Description = "BasePoseX";
+		Type  = VT_R8;
+		Caps  = Persistable, Animatable; /* 0x00000005 */
+		Class = 0x00008000; /* 0x00008000 */
+		Value = 0;
+		Range = -400 To 400;
+	}
+
+	Parameter "BasePoseY" input
+	{
+		GUID  = {6DDE6264-0875-45F5-9943-B482F0EEFA59};
+		Name  = "BasePoseY";
+		Description = "BasePoseY";
+		Type  = VT_R8;
+		Caps  = Persistable, Animatable; /* 0x00000005 */
+		Class = 0x00008000; /* 0x00008000 */
+		Value = 0;
+		Range = -400 To 400;
+	}
+
+	Parameter "BasePoseZ" input
+	{
+		GUID  = {EF04D928-1613-4366-9E27-60F7B4FE1FF6};
+		Name  = "BasePoseZ";
+		Description = "BasePoseZ";
+		Type  = VT_R8;
+		Caps  = Persistable, Animatable; /* 0x00000005 */
+		Class = 0x00008000; /* 0x00008000 */
+		Value = 0;
+		Range = -400 To 400;
+	}
+	Parameter "Triggers" input
+	{
+		Name	= "Trigger Array";
+		Description	= "";
+		Guid	= "{578308D4-4972-4b2a-991F-CA69B4E52860}";
+		Type	= VT_BSTR;
+		Caps  = Persistable;
+		Class	= Unknown;
+	}
+}
+
+BEGIN "{24810490-56FF-11d2-BF23-00A0C982CE5D}"
+Layout "Default"
+{
+	BoneDist;
+	row
+	{
+		BasePoseX;
+		BasePoseY;
+		BasePoseZ;
+	}
+}
+
+PortSet "AxisInterpOp_Ports"
+{
+	Group "HelperBoneGroup"
+	{
+		Origin = Select;
+
+		Output "globalkineport"
+		{
+			Major = Property;
+			Minor = GlobalKinematicState;
+			Interface = IID_AnyInterface;
+			Attributes = 0x00000001;
+		}
+	}
+
+	Group "RootBoneGroup"
+	{
+		Origin = Pick;
+		PickMessage = "Pick root bone";
+
+		Input "globalkineport"
+		{
+			Major = Property;
+			Minor = GlobalKinematicState;
+			Interface = IID_AnyInterface;
+		}
+	}
+
+	Group "ParentBoneGroup"
+	{
+		Origin = Pick;
+		PickMessage = "Pick parent bone";
+
+		Input "globalkineport"
+		{
+			Major = Property;
+			Minor = GlobalKinematicState;
+			Interface = IID_AnyInterface;
+		}
+
+		Input "bonelengthport"
+		{
+			Major = Property;
+			Minor = ChainBone;
+			Component = ChainBone_Length;
+			Attributes = 0x00001000;
+		}
+	}
+
+	Group "ChildBoneGroup"
+	{
+		Origin = Pick;
+		PickMessage = "Pick child";
+
+		Input "globalkineport"
+		{
+			Major = Property;
+			Minor = GlobalKinematicState;
+			Interface = IID_AnyInterface;
+		}
+	}
+}
+
+Plugin = Library
+{
+	api = cpp;
+	Filename = "AxisInterpOp";
+	EntryPoints
+	{
+		Init = "CppAxisInterpOp_Init";
+		Term = "CppAxisInterpOp_Term";
+		Update = "CppAxisInterpOp_Update";
+	}
+}
+

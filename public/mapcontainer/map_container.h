@@ -57,6 +57,7 @@ enum class MapContainerError
 	LegacyGapsInvalid,
 	OutOfMemory,
 	InvalidArgument,
+	WriteFailed,
 };
 
 // Structured failure: the error plus the lump and file offset it concerns

@@ -1,0 +1,80 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+PROJECT_NAME = 'vrad'
+
+def options(opt):
+	return
+
+def configure(conf):
+	return
+
+def build(bld):
+	if bld.env.DEST_OS != 'linux':
+		bld.fatal('the vrad host-tool profile is currently validated only on Linux')
+
+	bld(
+		source = [
+			'vrad_main.cpp',
+			'vraddll.cpp',
+			'vrad.cpp',
+			'disp_vrad.cpp',
+			'imagepacker.cpp',
+			'incremental.cpp',
+			'leaf_ambient_lighting.cpp',
+			'lightmap.cpp',
+			'macro_texture.cpp',
+			'radial.cpp',
+			'samplehash.cpp',
+			'trace.cpp',
+			'vismat.cpp',
+			'vrad_dispcoll.cpp',
+			'vraddetailprops.cpp',
+			'vraddisps.cpp',
+			'vradstaticprops.cpp',
+			'../../public/bsptreedata.cpp',
+			'../../public/disp_common.cpp',
+			'../../public/disp_powerinfo.cpp',
+			'../../public/loadcmdline.cpp',
+			'../../public/lumpfiles.cpp',
+			'../../public/zip_utils.cpp',
+			'../../public/builddisp.cpp',
+			'../../public/chunkfile.cpp',
+			'../../public/dispcoll_common.cpp',
+			'../../public/collisionutils.cpp',
+			'../../public/filesystem_helpers.cpp',
+			'../../public/filesystem_init.cpp',
+			'../../public/scratchpad3d.cpp',
+			'../../public/ScratchPadUtils.cpp',
+			'../../filesystem/linux_support.cpp',
+			'../lzma/lzma.cpp',
+			'../lzma/C/LzmaEnc.c',
+			'../lzma/C/LzFind.c',
+			'../common/bsplib.cpp',
+			'../common/cmdlib.cpp',
+			'../common/cmdlib_linux.cpp',
+			'../common/filesystem_tools.cpp',
+			'../common/map_shared.cpp',
+			'../common/pacifier.cpp',
+			'../common/physdll.cpp',
+			'../common/polylib.cpp',
+			'../common/scriplib.cpp',
+			'../common/threads_linux.cpp',
+			'../common/tools_minidump_linux.cpp',
+			'../common/utilmatlib.cpp',
+		],
+		target = PROJECT_NAME,
+		name = PROJECT_NAME,
+		features = 'cxx cxxprogram',
+		includes = [ '.', '../../public', '../../public/tier0', '../../public/tier1',
+			'../common', '../vmpi', '../../common', '../../thirdparty' ],
+		defines = [ 'MACRO_MATHLIB', 'PROTECTED_THINGS_DISABLE', 'VRAD',
+			'VRAD_TOOL_ENTRY_EXPORTS', '_LZMA_PROB32', '_7ZIP_ST' ],
+		use = [ 'materialsystem', 'shaderapiempty', 'mathlib', 'raytrace',
+			'tier0', 'tier1', 'tier2', 'vstdlib', 'vtf', 'bitmap' ],
+		ldflags = [ '-Wl,-Bstatic', '-Lbitmap', '-lbitmap', '-Wl,-Bdynamic' ],
+		rpath = [ '$ORIGIN/bin' ],
+		install_path = bld.env.BINDIR,
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx = bld.get_taskgen_count()
+	)

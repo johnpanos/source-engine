@@ -1,0 +1,48 @@
+{
+  "schema": "source-host-tool-profile/v1",
+  "id": "openusd-linux-x86_64-gcc16-v1",
+  "description": "RFC 0008 F2 World Stage authoring and validation tool profile; native product and Cycles checks are not yet certified.",
+  "target": {"product": "world-stage-tools", "os": "linux", "architecture": "x86_64"},
+  "toolchain": {"cxx": "g++", "family": "gcc", "version": "16.2.1", "standard_library": "libstdc++", "openusd_cxx_standard": "C++17", "first_party_cxx_standard": "C++20", "cmake": "4.3.0", "python": "3.12.14", "build_type": "Release"},
+  "dependencies": {
+    "openusd": {
+      "repository": "https://github.com/PixarAnimationStudios/OpenUSD.git",
+      "revision": "363a7c8da8d1937072a5f0989e91faf72eb1fa76",
+      "tag": "v25.11",
+      "license": "Tomorrow Open Source Technology License 1.0"
+    },
+    "onetbb": {
+      "repository": "https://github.com/oneapi-src/oneTBB.git",
+      "revision": "a00cc3b8b5fb4d8115e9de56bf713157073ed68c",
+      "tag": "v2021.9.0",
+      "license": "Apache-2.0"
+    },
+    "jinja2": {
+      "version": "3.1.6",
+      "license": "BSD-3-Clause",
+      "purpose": "usdGenSchema template engine"
+    }
+  },
+  "build": {
+    "generator": "Ninja",
+    "onetbb_cmake_options": {
+      "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+      "TBB_TEST": "OFF"
+    },
+    "cmake_options": {
+      "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+      "PXR_BUILD_IMAGING": "OFF",
+      "PXR_BUILD_USD_IMAGING": "OFF",
+      "PXR_ENABLE_PYTHON_SUPPORT": "ON",
+      "PXR_BUILD_TESTS": "OFF",
+      "PXR_BUILD_EXAMPLES": "OFF",
+      "PXR_BUILD_TUTORIALS": "OFF",
+      "PXR_BUILD_USD_TOOLS": "ON"
+    },
+    "required_tools": ["usdchecker", "usdcat", "usdGenSchema.py (pinned source via Python 3.12)"]
+  },
+  "evidence": {
+    "status": "partial",
+    "required_checks": ["exact source revisions", "clean C++ authoring build", "usdchecker positive and negative fixtures", "generated schema", "vbsp2 World Stage emitter", "Cycles standalone open", "semantic geometry comparison"]
+  }
+}

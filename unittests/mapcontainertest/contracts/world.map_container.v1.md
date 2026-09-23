@@ -60,13 +60,34 @@ negative fixture in the shared suite.
 - Compression other than none on a known or required lump
   (`unsupported-compression`, until zstd is pinned).
 - Legacy payload checks:
-  - any `Lnnn` requires `LHDR`;
+  - any `Lnnn` or `LGAP` requires `LHDR`;
   - `LHDR` must describe a valid legacy file;
   - the `LHDR` revision must equal the container revision;
   - every nonempty legacy lump must be carried with its legacy length and
-    version.
-- Export only: an `LGAP` record may not overlap the legacy header or any
-  legacy lump.
+    version;
+  - `LGAP` records are ordered by legacy offset, have zero padding and may
+    overlap neither the header, a lump nor each other.
+
+## Streaming export sink
+
+`IMapByteSink` is tool-side and never crosses a preserved engine ABI. It must
+reset to an exactly sized zero-filled output, replace precisely the requested
+range in `WriteAt`, and report failure without throwing. The exporter verifies
+all readable content hashes and `LGAP` records before resetting the sink, then copies legacy
+lumps and gap records in at most 64 KiB reads. A failed read or write returns
+a structured error; the caller must publish its output only after success.
+The shared suite runs memory and deliberately rejecting sinks, including a
+corrupted source that must fail before sink reset. The `bsp2tool` file sink
+writes a private temporary file and renames it only after successful export.
+
+Conversion uses the same sink contract. It reads the legacy header and scans
+uncovered bytes before resetting the sink, then writes `LHDR`, `LGAP`, and
+legacy lumps in bounded chunks. The source must remain unchanged during both
+gap scans and the payload copy. The memory converter delegates to this path,
+and the CLI publishes its temporary file only after a complete conversion.
+The suite checks a read failure before sink reset and a gap run spanning the
+64 KiB scan boundary. The independent reader compares C++ output against its
+own writer on pinned content.
 
 ## Lossless carriage
 

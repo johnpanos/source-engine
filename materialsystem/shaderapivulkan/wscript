@@ -18,6 +18,15 @@ def configure(conf):
 	])
 
 def build(bld):
+	bld.stlib(
+		features = 'c cxx',
+		source = [ 'vulkan_texture_image.cpp' ],
+		target = 'vulkan_texture_image',
+		name = 'vulkan_texture_image',
+		includes = [ '.', '../../public' ] + bld.env.INCLUDES_VULKAN,
+		use = [ 'VULKAN' ],
+		install_path = None)
+
 	source = [
 		'shaderapivulkan.cpp',
 		'vulkan_device.cpp',
@@ -37,7 +46,7 @@ def build(bld):
 
 	defines = []
 
-	libs = ['tier0','tier1','VULKAN','SDL3']
+	libs = ['tier0','tier1','VULKAN','SDL3','vulkan_texture_image']
 
 	install_path = bld.env.LIBDIR
 

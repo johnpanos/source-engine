@@ -217,6 +217,32 @@ reported, never counted as a pass, and a failure under `--strict`. Groups:
 The current results and their owners are recorded in
 [RFC 0005 progress](../../RFC/0005-progress.md#q0--r01-baseline-and-profile-inventory).
 
+## BSP2 F1 content and native checks
+
+`bsp2_f1_gate.py` runs the pinned Portal v20 and Portal 2 v21 corpora,
+client/server VBSP-versus-BSP2 collision and visibility comparisons, a
+SHA-pinned sparse file inspection/export above 4 GiB, and a clearly labeled
+synthetic v19-header route check. It requires licensed content,
+built Portal client and dedicated products, and `bsp2tool`. Missing inputs,
+missing or changed maps, incomplete probes, failed launches and absent players
+fail with evidence. Generated v19 and sparse Portal map copies are removed after
+their checks.
+
+```sh
+python3 tools/quality/bsp2_f1_gate.py \
+  --portal-runtime <portal-runtime> --portal2-runtime <portal2-runtime> \
+  --dedicated-build <dedicated-build> --client-build <client-build> \
+  --tool <bsp2tool> --out <fresh-evidence-directory>
+```
+
+The pinned map inventories are
+[`bsp2-corpus-v20.json`](../../quality/fixtures/bsp2-corpus-v20.json) and
+[`bsp2-corpus-v21.json`](../../quality/fixtures/bsp2-corpus-v21.json). The
+[RFC 0008 progress record](../../RFC/0008-progress.md) gives the exact local
+build commands, outcomes and remaining F1 gates. This command checks the Linux
+content/native slice; it does not establish Portal 2 gameplay support or the
+rest of RFC 0008.
+
 ## Native Portal product and render diagnostics
 
 The [Portal profile](../../quality/product_profiles/README.md) adds an isolated

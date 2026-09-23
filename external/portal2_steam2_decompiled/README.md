@@ -1,0 +1,28 @@
+# Steam2 Portal 2 decompiler references
+
+These files are **generated pseudocode**, not original Portal 2 C++ and not
+buildable source. Ghidra 12.0.4 decompiled historical macOS i386 client and
+server binaries with matching dSYM files from Steam2 depots `841` version `1`
+and `852` version `3`. DWARF line mappings associated recovered functions with
+configured missing Portal 2 source paths.
+
+| Depot | Client UUID | Server UUID | Client references | Server references |
+| --- | --- | --- | ---: | ---: |
+| `841_1` | `B9D2D13C-2E9D-8ABA-D69E-77A54EF38739` | `95C2286E-C382-3908-8808-98D0A5915195` | 50 files / 1,031 functions | 48 files / 1,382 functions |
+| `852_3` | `D839D9DB-7D46-74F4-6256-6E6CFD00A4ED` | `050EC6AC-5CCA-18C7-5FD4-A5D49D7A0DD7` | 46 files / 901 functions | 45 files / 1,292 functions |
+
+The exporter reported no decompiler failures in either pass.
+
+The file name records the historical source path; comments record the
+decompiled symbol and address. A function can appear in multiple files when
+line mappings span them. Type recovery and control flow are imperfect, and
+the 2010 binaries differ from the current retail game. Use these only as
+reference when implementing and testing missing gameplay code. They are not
+selected by Waf. The matching binaries and dSYM files are retained at
+`/home/john/Downloads/portal2-steam2-research`.
+
+[`coverage.csv`](coverage.csv) records which of the 136 distinct missing
+source paths appear in each historical dSYM. Presence in this table is a
+source-path observation, not proof that the original source was recovered.
+
+This material carries the repository's provenance and distribution warning.

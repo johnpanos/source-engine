@@ -8,6 +8,7 @@
 //  - Legacy -> BSP2 -> legacy byte identity on synthetic maps with zero-length
 //    lumps at arbitrary offsets, nonzero gaps and trailing bytes.
 //  - Negative fixtures: each malformation fails with its structured error.
+//  - Sparse 64-bit offsets and bounded full-content verification.
 //  - Seeded mutation fuzzing of raw bytes and of rehashed directory fields.
 //
 //=============================================================================//
@@ -16,8 +17,10 @@
 #include "mapcontainer/map_container_builder.h"
 #include "mapcontainer/blake2b.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -429,18 +432,20 @@ void TestBlake2b()
 
 void TestRoundTripAndContract()
 {
-	for ( int variant = 0; variant < 3; ++variant )
+	for ( int variant = 0; variant < 4; ++variant )
 	{
-		const Bytes legacy = variant == 0 ? StandardLegacyMap( true )
-		                     : variant == 1
-		                         ? StandardLegacyMap( false )
-		                         : MakeLegacyMap( 21, -5, {}, false, 0 ); // no lumps at all
+		const Bytes legacy = variant == 0   ? StandardLegacyMap( true )
+		                     : variant == 1 ? StandardLegacyMap( false )
+		                     : variant == 2
+		                         ? MakeLegacyMap( 21, -5, {}, false, 0 )
+		                         : MakeLegacyMap( 19, 7, {}, false, 0 ); // v19/21, no lumps
 		auto converted = ConvertLegacyToBsp2( legacy );
 		CHECK( !!converted );
 		if ( !converted )
 			continue;
 		const Bytes &bsp2 = converted.Value();
 		CHECK( IsBsp2Magic( bsp2.data(), bsp2.size() ) );
+		CHECK( std::memcmp( legacy.data(), bsp2.data(), 4 ) != 0 );
 		CHECK( TryOpen( bsp2, true ).Ok() );
 
 		auto exported = ExportLegacyFromBsp2( bsp2 );
@@ -528,6 +533,198 @@ void TestExtraLumps()
 	const Bsp2LumpInput shadow[] = { { LegacyLumpFourCC( 3 ), 0, 0, kBsp2MinAlignment, {} } };
 	auto bad = ConvertLegacyToBsp2( legacy, shadow );
 	CHECK( !bad && bad.Error().code == MapContainerError::DuplicateLump );
+}
+
+// A sparse source keeps the file logically above 4 GiB without allocating the
+// gap. It also refuses oversized reads, so full verification must stream.
+class SparseByteSource final : public IMapByteSource
+{
+public:
+	Bytes header;
+	Bytes payload;
+	Bytes directory;
+	uint64_t payloadOffset = 0;
+	uint64_t directoryOffset = 0;
+	size_t largestRead = 0;
+
+	uint64_t Size() const override { return directoryOffset + directory.size(); }
+	bool ReadAt( uint64_t offset, void *pDest, size_t size ) override
+	{
+		largestRead = std::max( largestRead, size );
+		if ( size > 64 * 1024 || offset > Size() || size > Size() - offset )
+			return false;
+		const auto copy = [&]( uint64_t base, const Bytes &segment )
+		{
+			if ( offset < base || offset - base > segment.size() ||
+			     size > segment.size() - size_t( offset - base ) )
+				return false;
+			std::memcpy( pDest, segment.data() + size_t( offset - base ), size );
+			return true;
+		};
+		return copy( 0, header ) || copy( payloadOffset, payload ) ||
+		       copy( directoryOffset, directory );
+	}
+};
+
+void TestSparse64BitOffsetAndBoundedVerification()
+{
+	const std::vector<uint8_t> data = Pattern( 200000, 29 );
+	const Bsp2LumpInput lump{ MakeFourCC( 'T', 'E', 'S', 'T' ), 1, 0, kBsp2BulkAlignment,
+	    std::as_bytes( std::span( data ) ) };
+	auto written = WriteBsp2( 17, std::span( &lump, 1 ) );
+	CHECK( !!written );
+	if ( !written )
+		return;
+	const Bytes &original = written.Value();
+	const size_t oldDirectory = DirectoryOffset( original );
+	SparseByteSource source;
+	source.header.assign( original.begin(), original.begin() + kBsp2HeaderSize );
+	source.payload.assign(
+	    std::as_bytes( std::span( data ) ).begin(), std::as_bytes( std::span( data ) ).end() );
+	source.directory.assign( original.begin() + oldDirectory, original.end() );
+	source.payloadOffset = ( uint64_t( 1 ) << 32 ) + kBsp2BulkAlignment;
+	source.directoryOffset =
+	    ( source.payloadOffset + source.payload.size() + kBsp2MinAlignment - 1 ) &
+	    ~( uint64_t( kBsp2MinAlignment ) - 1 );
+	Put64( source.header, 24, source.directoryOffset );
+	Put64( source.directory, 16, source.payloadOffset );
+	const ContentHash hash = HashContent( source.directory );
+	std::memcpy( source.header.data() + 48, hash.data(), hash.size() );
+
+	IMapContainer *pContainer = nullptr;
+	const MapContainerOpenOptions options{ true, nullptr, 0, false };
+	CHECK( OpenMapContainer( source, options, &pContainer ).Ok() );
+	if ( pContainer )
+	{
+		MapLumpInfo info{};
+		CHECK( pContainer->FindLump( lump.fourcc, &info ) && info.offset == source.payloadOffset &&
+		       info.storedSize == data.size() );
+		DestroyMapContainer( pContainer );
+	}
+	CHECK( source.largestRead <= 64 * 1024 );
+	source.payload[12345] ^= std::byte{ 1 };
+	pContainer = nullptr;
+	CHECK( OpenMapContainer( source, options, &pContainer ).code ==
+	       MapContainerError::ContentHashMismatch );
+	DestroyMapContainer( pContainer );
+}
+
+class TestByteSink final : public IMapByteSink
+{
+public:
+	bool failReset = false;
+	bool failWrite = false;
+	int resetCalls = 0;
+	Bytes bytes{ std::byte{ 0xA5 } };
+
+	bool ResetToZeroes( uint64_t size ) override
+	{
+		++resetCalls;
+		if ( failReset || size > bytes.max_size() )
+			return false;
+		try
+		{
+			bytes.assign( size_t( size ), std::byte{ 0 } );
+		}
+		catch ( const std::bad_alloc & )
+		{
+			return false;
+		}
+		return true;
+	}
+	bool WriteAt( uint64_t offset, const void *pData, size_t size ) override
+	{
+		if ( failWrite || offset > bytes.size() || size > bytes.size() - offset )
+			return false;
+		std::memcpy( bytes.data() + size_t( offset ), pData, size );
+		return true;
+	}
+};
+
+void TestStreamingLegacyExport()
+{
+	const Bytes legacy = StandardLegacyMap();
+	auto converted = ConvertLegacyToBsp2( legacy );
+	CHECK( !!converted );
+	if ( !converted )
+		return;
+	MemoryByteSource source( converted.Value() );
+	TestByteSink sink;
+	CHECK( ExportLegacyFromBsp2( source, sink ).Ok() && sink.bytes == legacy );
+	CHECK( sink.resetCalls == 1 );
+
+	sink.failReset = true;
+	CHECK( ExportLegacyFromBsp2( source, sink ).code == MapContainerError::WriteFailed );
+	CHECK( std::strcmp( MapContainerErrorName( MapContainerError::WriteFailed ), "write-failed" ) ==
+	       0 );
+	sink.failReset = false;
+	sink.failWrite = true;
+	CHECK( ExportLegacyFromBsp2( source, sink ).code == MapContainerError::WriteFailed );
+
+	Bytes bad = converted.Value();
+	bad[Get64( bad, EntryAt( bad, LegacyLumpFourCC( 1 ) ) + 16 )] ^= std::byte{ 1 };
+	MemoryByteSource badSource( bad );
+	TestByteSink untouched;
+	CHECK( ExportLegacyFromBsp2( badSource, untouched ).code ==
+	       MapContainerError::ContentHashMismatch );
+	CHECK( untouched.resetCalls == 0 && untouched.bytes == Bytes{ std::byte{ 0xA5 } } );
+}
+
+class BoundedLegacySource final : public IMapByteSource
+{
+public:
+	explicit BoundedLegacySource( const Bytes &bytes ) : m_Source( bytes ) {}
+	uint64_t Size() const override { return m_Source.Size(); }
+	bool ReadAt( uint64_t offset, void *pDest, size_t size ) override
+	{
+		largestRead = std::max( largestRead, size );
+		if ( size > 64 * 1024 || offset >= failAt )
+			return false;
+		return m_Source.ReadAt( offset, pDest, size );
+	}
+	size_t largestRead = 0;
+	uint64_t failAt = UINT64_MAX;
+
+private:
+	MemoryByteSource m_Source;
+};
+
+void TestStreamingLegacyConversion()
+{
+	for ( int variant = 0; variant < 3; ++variant )
+	{
+		Bytes legacy = StandardLegacyMap( variant != 1 );
+		if ( variant == 2 )
+			legacy.insert( legacy.end(), 140000, std::byte{ 0x5A } );
+		const std::vector<uint8_t> payload = Pattern( 200000, 37 );
+		const Bsp2LumpInput extra{ MakeFourCC( 'X', 'T', 'R', 'A' ), 1, 0, kBsp2BulkAlignment,
+		    std::as_bytes( std::span( payload ) ) };
+		const std::span<const Bsp2LumpInput> extras =
+		    variant == 2 ? std::span( &extra, 1 ) : std::span<const Bsp2LumpInput>{};
+		auto expected = ConvertLegacyToBsp2( legacy, extras );
+		CHECK( !!expected );
+		if ( !expected )
+			continue;
+		BoundedLegacySource source( legacy );
+		TestByteSink sink;
+		CHECK( ConvertLegacyToBsp2( source, sink, extras ).Ok() );
+		CHECK( sink.bytes == expected.Value() );
+		CHECK( source.largestRead <= 64 * 1024 );
+		CHECK( sink.resetCalls == 1 );
+	}
+
+	const Bytes legacy = StandardLegacyMap();
+	BoundedLegacySource failing( legacy );
+	failing.failAt = kLegacyHeaderSize;
+	TestByteSink untouched;
+	CHECK( ConvertLegacyToBsp2( failing, untouched ).code == MapContainerError::ReadFailed );
+	CHECK( untouched.resetCalls == 0 && untouched.bytes == Bytes{ std::byte{ 0xA5 } } );
+
+	Bytes invalid = legacy;
+	Put32( invalid, 8 + 16 * 1 + 4, uint32_t( invalid.size() ) );
+	BoundedLegacySource badHeader( invalid );
+	CHECK( ConvertLegacyToBsp2( badHeader, untouched ).code == MapContainerError::LumpOutOfBounds );
+	CHECK( untouched.resetCalls == 0 );
 }
 
 struct NegativeCase
@@ -791,10 +988,41 @@ void TestNegativeFixtures()
 			Put64( mutated, payload, Get32( legacy, 8 + 16 * 1 ) ); // into lump 1
 			RehashEntryContent( mutated, entry );
 			Rehash( mutated );
-			CHECK( TryOpen( mutated, true ).Ok() );
+			CHECK( TryOpen( mutated, true ).code == MapContainerError::LegacyGapsInvalid );
 			auto exported = ExportLegacyFromBsp2( mutated );
 			CHECK( !exported && exported.Error().code == MapContainerError::LegacyGapsInvalid );
+			MemoryByteSource source( mutated );
+			TestByteSink sink;
+			CHECK(
+			    ExportLegacyFromBsp2( source, sink ).code == MapContainerError::LegacyGapsInvalid );
+			CHECK( sink.resetCalls == 0 && sink.bytes == Bytes{ std::byte{ 0xA5 } } );
 		}
+	}
+
+	// Two gap records may not write the same legacy bytes; malformed padding
+	// also fails before the output sink is reset.
+	for ( int variant = 0; variant < 2; ++variant )
+	{
+		Bytes mutated = good;
+		const size_t entry = EntryAt( mutated, kLumpLegacyGaps );
+		const size_t payload = size_t( Get64( mutated, entry + 16 ) );
+		const size_t firstEnd = payload + 16 + size_t( Get64( mutated, payload + 8 ) );
+		const size_t second = ( firstEnd + 7 ) & ~size_t( 7 );
+		CHECK( second + 16 <= payload + Get64( mutated, entry + 24 ) );
+		if ( variant == 0 )
+			Put64( mutated, second, Get64( mutated, payload ) );
+		else
+		{
+			CHECK( firstEnd < second );
+			mutated[firstEnd] = std::byte{ 0x7F };
+		}
+		RehashEntryContent( mutated, entry );
+		Rehash( mutated );
+		CHECK( TryOpen( mutated, true ).code == MapContainerError::LegacyGapsInvalid );
+		MemoryByteSource source( mutated );
+		TestByteSink sink;
+		CHECK( ExportLegacyFromBsp2( source, sink ).code == MapContainerError::LegacyGapsInvalid );
+		CHECK( sink.resetCalls == 0 && sink.bytes == Bytes{ std::byte{ 0xA5 } } );
 	}
 
 	// Legacy reader negatives.
@@ -935,6 +1163,9 @@ int main()
 	TestBlake2b();
 	TestRoundTripAndContract();
 	TestExtraLumps();
+	TestSparse64BitOffsetAndBoundedVerification();
+	TestStreamingLegacyExport();
+	TestStreamingLegacyConversion();
 	TestNegativeFixtures();
 	TestMutationFuzz();
 	std::printf( "CONFORMANCE %d %d\n", g_Checks, g_Failures );

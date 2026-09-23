@@ -90,7 +90,7 @@ int CNormalList::FindOrAddNormal( Vector const &vNormal )
 	for( int iDim=0; iDim < 3; iDim++ )
 	{
 		gi[iDim] = (int)( ((vNormal[iDim] + 1.0f) * 0.5f) * NUM_SUBDIVS - 0.000001f );
-		gi[iDim] = min( gi[iDim], NUM_SUBDIVS );
+		gi[iDim] = min( gi[iDim], (int)NUM_SUBDIVS );
 		gi[iDim] = max( gi[iDim], 0 );
 	}
 
@@ -2533,8 +2533,9 @@ static void GatherSampleLightAt4Points( SSE_SampleInfo_t& info, int sampleIdx, i
 		{
 			if (info.m_WarnFace != info.m_FaceNum)
 			{
-				Warning ("\nWARNING: Too many light styles on a face at (%f, %f, %f)\n",
-					info.m_Points.x.m128_f32[0], info.m_Points.y.m128_f32[0], info.m_Points.z.m128_f32[0] );
+				Warning( "\nWARNING: Too many light styles on a face at (%f, %f, %f)\n",
+				    SubFloat( info.m_Points.x, 0 ), SubFloat( info.m_Points.y, 0 ),
+				    SubFloat( info.m_Points.z, 0 ) );
 				info.m_WarnFace = info.m_FaceNum;
 			}
 			continue;
@@ -3174,7 +3175,9 @@ void BuildFacelights (int iThread, int facenum)
 		}
 	}
 
-	if (!g_bUseMPI) 
+#ifdef MPI
+	if ( !g_bUseMPI )
+#endif
 	{
 		//
 		// This is done on the master node when MPI is used

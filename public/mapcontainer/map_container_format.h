@@ -36,7 +36,9 @@
 // "LHDR" holds the legacy file size (uint64) followed by the verbatim legacy
 // dheader_t, so legacy lump origins, versions and the legacy LZMA size field
 // are preserved. "LGAP" records any nonzero bytes between legacy lumps as
-// {uint64 offset, uint64 length, bytes, zero padding to 8}.
+// {uint64 offset, uint64 length, bytes, zero padding to 8}. Records are
+// ordered by legacy offset and never overlap the header, a lump, or another
+// gap record. Exporters validate all records before touching the output.
 //
 //=============================================================================//
 

@@ -1,0 +1,12 @@
+"GameInfo"
+{
+    "game" "RFC0008 VBSP fixture"
+    "FileSystem"
+    {
+        "SteamAppId" "0"
+        "SearchPaths"
+        {
+            "game" "|gameinfo_path|."
+        }
+    }
+}

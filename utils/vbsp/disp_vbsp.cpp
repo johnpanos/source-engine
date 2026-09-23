@@ -13,9 +13,28 @@
 #include "mstristrip.h"
 #include "writebsp.h"
 #include "pacifier.h"
-#include "disp_ivp.h"
 #include "builddisp.h"
+#include "disp_tesselate.h"
 #include "mathlib/vector.h"
+
+// Collect the same local triangle indices used by the runtime tessellator.
+// The node records are scratch state for its recursive traversal.
+class CVBSPTesselateHelper : public CBaseTesselateHelper
+{
+public:
+	void EndTriangle()
+	{
+		m_pIndices->AddToTail( m_TempIndices[0] );
+		m_pIndices->AddToTail( m_TempIndices[1] );
+		m_pIndices->AddToTail( m_TempIndices[2] );
+		m_nIndices += 3;
+	}
+
+	DispNodeInfo_t &GetNodeInfo( int iNodeBit ) { return m_NodeInfo[iNodeBit]; }
+
+	CUtlVector<unsigned short> *m_pIndices;
+	CUtlVector<DispNodeInfo_t> m_NodeInfo;
+};
 
 // map displacement info -- runs parallel to the dispinfos struct
 int              nummapdispinfo = 0;
@@ -443,6 +462,7 @@ void SnapRemainingVertsToSurface( CCoreDispInfo *pCoreDisp, ddispinfo_t *pDispIn
 	helper.m_pIndices = &indices;
 	helper.m_pActiveVerts = pCoreDisp->GetAllowedVerts().Base();
 	helper.m_pPowerInfo = pCoreDisp->GetPowerInfo();
+	helper.m_NodeInfo.SetSize( helper.m_pPowerInfo->m_NodeCount );
 	::TesselateDisplacement( &helper );
 
 	// Figure out which verts are actually referenced in the tesselation.

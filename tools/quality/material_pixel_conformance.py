@@ -77,7 +77,7 @@ DARK = 2  # a channel at or below this reads as zero
 LIGHTMAP_CASES = ("black_lightmap", "ramp_low", "ramp_mid", "ramp_high", "channels",
                   "base_gray", "base_color")
 FAMILIES = ("lightmap", "exposure", "skinning", "portal", "modellight", "cable",
-            "sky", "monitor", "pbr-fallback")
+            "sky", "monitor", "sprite", "pbr-fallback")
 # Families whose harness writes whole frames, and the oracle module of each
 # (validate, evaluate).
 FRAME_FAMILIES = {"portal": material_pixel_portal, "modellight": material_pixel_modellight}
@@ -91,6 +91,7 @@ CABLE_CASES = ("front_facing_normal", "side_facing_normal", "back_facing_normal"
                "diagonal_normal")
 SKY_CASES = ("untinted_sky", "colored_sky")
 MONITOR_CASES = ("base_image", "second_image", "processed_flat", "processed_transforms")
+SPRITE_CASES = ("dim_linear", "tinted_linear", "tinted_srgb")
 # The model material is unlit: a covered pixel is its base color up to output
 # rounding and filtering.
 SKIN_COLOR_TOLERANCE = 12
@@ -182,6 +183,16 @@ def read_pixels(path):
                     for pixel in case["pixels"])
                 for case in report.get("cases", [])):
             raise PixelsError("%s has incomplete monitor cases %s" % (path, names))
+        return report
+    if family == "sprite":
+        names = [case.get("name") for case in report.get("cases", [])]
+        if names != list(SPRITE_CASES) or any(
+                not isinstance(case.get("srgb"), bool) or
+                any(not isinstance(case.get(key), list) or len(case[key]) != length or
+                    any(not isinstance(v, int) or not 0 <= v <= 255 for v in case[key])
+                    for key, length in (("texture", 4), ("color", 4), ("pixel", 3)))
+                for case in report.get("cases", [])):
+            raise PixelsError("%s has incomplete sprite cases %s" % (path, names))
         return report
     if family in FRAME_FAMILIES:
         try:
@@ -504,6 +515,20 @@ def check_monitor(report):
     return failures
 
 
+def check_sprite(report):
+    """A dim sprite must preserve its vertex RGB and translucent alpha."""
+    failures = []
+    for case in report["cases"]:
+        if not case["srgb"]:
+            alpha = case["color"][3] / 255.0
+            expected = [round((tex * tint / 255.0) * alpha + clear * (1 - alpha))
+                        for tex, tint, clear in zip(case["texture"], case["color"], CLEAR)]
+            if not _close(case["pixel"], expected, 4):
+                failures.append("%s: got %s, expected vertex-colored sprite %s" %
+                                (case["name"], case["pixel"], expected))
+    return failures
+
+
 def check_pbr_fallback(report):
     """The runtime must select and draw the referenced legacy VMT."""
     failures = []
@@ -573,6 +598,17 @@ def compare_monitor(report, reference):
     return failures
 
 
+def compare_sprite(report, reference):
+    failures = []
+    for case, ref in zip(report["cases"], reference["cases"]):
+        if any(case[key] != ref[key] for key in ("name", "srgb", "texture", "color")):
+            failures.append("%s: sprite inputs differ from the DXVK reference" % case["name"])
+        elif not _close(case["pixel"], ref["pixel"], PIXEL_TOLERANCE):
+            failures.append("%s: got %s, DXVK reference %s" %
+                            (case["name"], case["pixel"], ref["pixel"]))
+    return failures
+
+
 def compare_skinning(report, reference):
     return ["%s third %d: %s, reference %s" % (case["name"], third, pixel, expected)
             for case, ref in zip(report["cases"], reference["cases"])
@@ -618,6 +654,11 @@ def evaluate(report, hdr, reference=None):
         failures = check_monitor(report)
         if reference is not None:
             failures += compare_monitor(report, reference)
+        return failures
+    if report["family"] == "sprite":
+        failures = check_sprite(report)
+        if reference is not None:
+            failures += compare_sprite(report, reference)
         return failures
     if report["family"] == "pbr-fallback":
         failures = check_pbr_fallback(report)

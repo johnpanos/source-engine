@@ -90,6 +90,21 @@ def build(bld):
 		includes=includes, use=['VULKAN', 'SDL3'],
 		install_path=None)
 
+	# RFC 0008 F3: real BC7 package blocks reach the Vulkan sampled-image path.
+	# Short and misaligned uploads must fail before a GPU copy is queued.
+	bld.program(
+		features='c cxx', env=test_env.derive(),
+		source=['test_ktx2_pixels.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
+		target='ktx2_native_pixel_conformance',
+		name='ktx2_native_pixel_conformance',
+		includes=includes,
+		use=['VULKAN', 'SDL3', 'vulkan_texture_image']
+			+ (['texturecontainer', 'KTXREAD'] if bld.env.KTX_READ_ENABLED else []),
+		defines=['RFC0008_KTX_READER'] if bld.env.KTX_READ_ENABLED else [],
+		install_path=None)
+
 	# Material-facing integration slice: drives the legacy IShaderAPI/IShaderDevice
 	# interfaces (as the material system does) through the linked native Vulkan
 	# backend and reads the presented frame back. Links the real backend library.

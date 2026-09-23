@@ -3839,13 +3839,6 @@
       "excerpt": "extern CreateInterfaceFn GetPhysicsFactory( void );"
     },
     {
-      "fingerprint": "c379ba0445a0f5da4e32",
-      "rule": "ARCH105",
-      "path": "utils/common/utilmatlib.cpp",
-      "line": 24,
-      "excerpt": "void LoadMaterialSystemInterface( CreateInterfaceFn fileSystemFactory )"
-    },
-    {
       "fingerprint": "9fe09f434a17fd60efc2",
       "rule": "ARCH103",
       "path": "utils/common/utilmatlib.cpp",
@@ -3858,20 +3851,6 @@
       "path": "utils/common/utilmatlib.cpp",
       "line": 39,
       "excerpt": "CreateInterfaceFn clientFactory = Sys_GetFactory( materialSystemDLLHInst );"
-    },
-    {
-      "fingerprint": "6a86b6cb60a45139c752",
-      "rule": "ARCH105",
-      "path": "utils/common/utilmatlib.cpp",
-      "line": 39,
-      "excerpt": "CreateInterfaceFn clientFactory = Sys_GetFactory( materialSystemDLLHInst );"
-    },
-    {
-      "fingerprint": "77b079453731e54c5bbf",
-      "rule": "ARCH105",
-      "path": "utils/common/utilmatlib.cpp",
-      "line": 61,
-      "excerpt": "void InitMaterialSystem( const char *materialBaseDirPath, CreateInterfaceFn fileSystemFactory )"
     },
     {
       "fingerprint": "c3a5c0a3111b27c0412f",
