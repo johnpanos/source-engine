@@ -1035,9 +1035,10 @@ Blender's USD preview-surface bridge dropped mesh emission, so the adapter
 restores source PBRT emitter radiance after USD import. PBRT `coateddiffuse`,
 conductor and dielectric materials are approximated by Cycles Principled
 shaders; this benchmark does not prove the production engine's PBR family or
-full USD material fidelity. The run used Blender 5.2.1 with a working OCIO
-configuration whose hash is recorded in the receipt; that configuration is
-still an external local dependency and needs a pinned product profile.
+full USD material fidelity. The run used Blender 5.2.1 with the checked-in
+[OCIO 2.4 fixture](../quality/fixtures/staircase2-ocio/config.ocio). The
+adapter converts PBRT Y-up geometry, emitters and camera to the stage's Z-up
+coordinates before export.
 
 The [reference comparator](../tools/quality/staircase2_compare.py) checks
 source/stage/render hashes and compares the 1024×1024 image with the supplied
@@ -1045,18 +1046,18 @@ Tungsten PNG and EXR. Blender Standard display produced 15.11 mean absolute
 RGB difference and 0.955 luminance SSIM. The supplied reference EXR/PNG pair
 reveals a Reinhard-power display curve: fitting it on 1/16 of reference pixels
 predicts held-out reference pixels within 0.60 RGB levels. Applying that
-reference-only curve to the Cycles EXR gives **9.96 mean RGB difference** and
+reference-only curve to the Cycles EXR gives **9.95 mean RGB difference** and
 **0.961 SSIM** against the supplied PNG. Linear EXR mean absolute difference
 is 0.061. A black-frame negative control fails both image thresholds. The
 [receipt](../quality-results/staircase2-parity-1024.json),
 [reference-display render](../quality-results/staircase2-cycles-reference-display-1024.png)
 and [USD stage](../quality-results/staircase2-reference-parity.usdc) are local
 ignored artifacts. This establishes a measured external visual target for
-high-resolution mapper materials. It has not made staircase2 a playable map;
-the Portal VMF remains the playable in-game pipeline proof.
+high-resolution mapper materials. The Portal VMF remains the primary playable
+in-game pipeline proof; the staircase2 slice below supplements it.
 
 ```sh
-OCIO=/home/john/src/chamber-sdk/chamber-lisp/out/reassembly/ocio/config.ocio \
+OCIO="$PWD/quality/fixtures/staircase2-ocio/config.ocio" \
   blender -b --factory-startup --python-exit-code 9 \
     --python tools/quality/staircase2_usd_cycles.py -- \
     --scene staircase2/scene-v4.pbrt \

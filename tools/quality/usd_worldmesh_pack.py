@@ -10,6 +10,8 @@ import argparse
 import json
 import math
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 from pxr import Gf, Usd, UsdGeom, UsdShade
@@ -153,11 +155,19 @@ def main():
     parser.add_argument("--material-prefix", required=True)
     parser.add_argument("--require-lightmap-uv", action="store_true")
     parser.add_argument("--include-emitters", action="store_true")
+    parser.add_argument("--lightmap-ktx2", type=Path)
+    parser.add_argument("--bsp2tool", type=Path)
+    parser.add_argument("--out-bsp2", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    pack_requested = (args.lightmap_ktx2, args.bsp2tool, args.out_bsp2)
+    if any(pack_requested) and not all(pack_requested):
+        parser.error("--lightmap-ktx2, --bsp2tool and --out-bsp2 are required together")
     receipt_path = Path(str(args.out) + ".json")
     if args.out.exists() or receipt_path.exists():
         parser.error("WMSH output or receipt already exists")
+    if args.out_bsp2 and args.out_bsp2.exists():
+        parser.error("BSP2 output already exists")
     if not re.fullmatch(r"[a-z0-9_]+(?:/[a-z0-9_]+)*", args.material_prefix):
         parser.error("material prefix must be a normalized relative path")
     stage = Usd.Stage.Open(str(args.stage))
@@ -180,6 +190,19 @@ def main():
                 "authored_lightmap_uv": args.require_lightmap_uv,
                 "emitter_meshes": sum(item["emitter"] for item in inventory),
                 "source_meshes": inventory, **counts}
+    if args.out_bsp2:
+        if not args.lightmap_ktx2.is_file() or not args.bsp2tool.is_file():
+            raise FileNotFoundError("lightmap KTX2 or BSP2 packer is missing")
+        subprocess.run([str(args.bsp2tool.resolve()), "pack-world-lit", str(args.bsp),
+                        str(args.out), str(args.lightmap_ktx2), str(args.out_bsp2)],
+                       check=True, capture_output=True, text=True, timeout=120)
+        subprocess.run([sys.executable,
+                        str(Path(__file__).with_name("bsp2_reader.py")),
+                        "validate", str(args.out_bsp2)], check=True, capture_output=True,
+                       text=True, timeout=120)
+        evidence.update(bsp2_sha256=sha256(args.out_bsp2),
+                        lightmap_ktx2_sha256=sha256(args.lightmap_ktx2),
+                        bsp2_path=str(args.out_bsp2))
     receipt_path.write_text(json.dumps(evidence, indent=2,
                                        sort_keys=True) + "\n")
     print(json.dumps(evidence, sort_keys=True))
