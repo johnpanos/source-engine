@@ -44,16 +44,14 @@ int main()
 			"resource.deferred_until_complete" },
 		{ "unorderedCompletion", []( NullBackendDefects &d ) { d.unorderedCompletion = true; },
 			"submit.ordered_completion" },
-		{ "resizeLosesDevice", []( NullBackendDefects &d ) { d.resizeLosesDevice = true; },
-			"present.resize_keeps_device" },
-		{ "fatalOnZeroSize", []( NullBackendDefects &d ) { d.fatalOnZeroSize = true; },
-			"present.zero_size_suspends" },
 		{ "leakResources", []( NullBackendDefects &d ) { d.leakResources = true; },
 			"resource.recycled_after_complete" },
 		{ "swallowRequiredFeature", []( NullBackendDefects &d ) { d.swallowRequiredFeature = true; },
 			"create.unsupported_required_feature" },
 		{ "lossSkipsLostState", []( NullBackendDefects &d ) { d.lossSkipsLostState = true; },
 			"loss.enters_lost_state" },
+		{ "disownDevices", []( NullBackendDefects &d ) { d.disownDevices = true; },
+			"lifetime.owns_device" },
 	};
 
 	int undetected = 0;

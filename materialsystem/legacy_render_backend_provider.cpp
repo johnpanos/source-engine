@@ -233,6 +233,12 @@ size_t LegacyRenderBackendProvider::GetLiveDeviceCount() const
 	return 0;
 }
 
+bool LegacyRenderBackendProvider::OwnsDevice( const IRenderDevice & ) const
+{
+	// Presentation stays on the legacy SetMode path; no device exists to own.
+	return false;
+}
+
 const RenderQuirk *LegacyRenderQuirks( size_t *count )
 {
 	if ( count )

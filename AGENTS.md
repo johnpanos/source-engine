@@ -463,6 +463,26 @@ Keep the table concise and link details below or from the domain progress file.
     open.
   - See the [render seam record](RFC/0001-render-seam-progress.md).
 
+- R01/R29-ANDROID-BUILD: `partial` (2026-09-22).
+  - [`build-android-apk.sh`](build-android-apk.sh) builds the SDL3/native
+    Vulkan Portal APK. Every input comes from pinned archives in the
+    [Android profile](quality/product_profiles/portal-android-native-vulkan.json):
+    NDK r30, SDL3, SDK platform and build-tools.
+  - The script ends with the independent APK verifier
+    [`android_apk.py`](tools/quality/android_apk.py). It checks the declared
+    modules and ABIs, ELF machine type and 16 KB alignment, `DT_NEEDED`
+    closure, the manifest, the touch assets, and `zipalign`/`apksigner`.
+  - The verifier has 31 negative/positive fixture tests, and there are 12
+    profile/manifest/touch-asset source guards. No NDK is needed; they run in
+    `composition.yml`.
+  - CI: [`android.yml`](.github/workflows/android.yml) builds every declared
+    ABI. It has not run on hosted CI yet.
+  - Clean-worktree builds of both ABIs pass locally.
+  - The arm64 APK ran on a Galaxy Z Fold7, including fold and rotation.
+  - Emulator smoke tests, surface recreation and store checks remain
+    unverified. See the
+    [profile record](quality/product_profiles/README.md#android-portal-sdl3native-vulkan-profile).
+
 - R04-STYLE: `done` for the bounded mechanical-style slice requested by the user:
   pinned formatter, Source configuration, incremental include-order check,
   read-only CLI, and PR/master workflow are installed. The

@@ -21,6 +21,8 @@ def build(bld):
 	source = [
 		'shaderapivulkan.cpp',
 		'vulkan_device.cpp',
+		# The SDL3-Vulkan pair bridge: the only source here that includes SDL.
+		'sdl3/sdl3_vulkan_surface_host.cpp',
 		'../../public/tier0/memoverride.cpp'
 	]
 

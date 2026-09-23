@@ -19,15 +19,6 @@ namespace conformance
 namespace
 {
 
-// C++11-compatible construction; RenderExtent has default member initializers.
-RenderExtent Extent( uint32_t width, uint32_t height )
-{
-	RenderExtent extent;
-	extent.width = width;
-	extent.height = height;
-	return extent;
-}
-
 // Picks a feature the given adapter does NOT advertise, so we can build an
 // unsatisfiable required-feature request. kNeverSupported is reserved for this.
 RenderFeature UnsupportedFeatureFor( const RenderAdapterInfo &adapter )
@@ -259,111 +250,6 @@ void CheckDeviceLoss( IRenderBackendProvider &provider, IRenderDevice &device, R
 	}
 }
 
-// A fixed-extent surface for presentation tests. Extent is mutated by the caller
-// to model surface/window resizes and orientation changes.
-class TestSurface : public IRenderSurface
-{
-public:
-	explicit TestSurface( RenderExtent extent ) : m_Extent( extent ) {}
-	RenderExtent GetDrawableExtent() const override { return m_Extent; }
-	void SetExtent( RenderExtent extent ) { m_Extent = extent; }
-
-private:
-	RenderExtent m_Extent;
-};
-
-void CheckPresentation( IRenderBackendProvider &provider, IRenderDevice &device, Report &report )
-{
-	IRenderDevice *const deviceBefore = &device;
-
-	TestSurface surface( Extent( 800, 600 ) );
-	RenderPresentationConfig config;
-	config.extent = Extent( 800, 600 );
-
-	RenderCreateError err;
-	IRenderPresentation *pres = device.CreatePresentation( surface, config, &err );
-	report.Record(
-	    "present.create", pres != nullptr, "presentation creation must succeed where advertised" );
-	if ( !pres )
-		return;
-
-	report.Record( "present.initial_extent", pres->GetExtent() == config.extent,
-	    "presentation must report its configured extent" );
-
-	// Runtime resize must not recreate the logical device.
-	const bool resized = pres->ResizeTo( Extent( 1024, 768 ) );
-	report.Record( "present.resize", resized && pres->GetExtent() == Extent( 1024, 768 ),
-	    "runtime resize must update the drawable extent" );
-	report.Record( "present.resize_keeps_device",
-	    &device == deviceBefore && device.GetState() == RenderDeviceState::kAvailable,
-	    "runtime resize must not recreate or lose the logical render device" );
-
-	// Orientation-style aspect change.
-	const bool rotated = pres->ResizeTo( Extent( 600, 800 ) );
-	report.Record( "present.orientation_change",
-	    rotated && pres->GetExtent() == Extent( 600, 800 ) &&
-	        device.GetState() == RenderDeviceState::kAvailable,
-	    "an aspect/orientation change must resize without losing the device" );
-
-	// Transient zero-sized state suspends non-fatally.
-	pres->ResizeTo( Extent( 0, 0 ) );
-	const RenderPresentStatus suspended = pres->Present();
-	report.Record( "present.zero_size_suspends",
-	    suspended == RenderPresentStatus::kSuspended &&
-	        device.GetState() != RenderDeviceState::kFatal,
-	    "a zero-sized surface must suspend presentation, not fail fatally" );
-
-	// Resume when presentable again.
-	pres->ResizeTo( Extent( 640, 480 ) );
-	const RenderPresentStatus resumed = pres->Present();
-	report.Record( "present.resume_after_suspend", resumed == RenderPresentStatus::kOk,
-	    "presentation must resume once the surface is presentable again" );
-
-	device.DestroyPresentation( pres );
-	report.Record( "present.destroy_keeps_device", device.GetState() != RenderDeviceState::kFatal,
-	    "destroying a presentation must not fault the device" );
-
-	// Multiple presentations, where advertised.
-	const RenderProviderCaps caps = provider.GetProviderCaps();
-	if ( caps.supportsMultiplePresentations )
-	{
-		std::vector<IRenderPresentation *> live;
-		std::vector<TestSurface *> surfaces;
-		bool allOk = true;
-		for ( uint32_t i = 0; i < caps.maxPresentations; ++i )
-		{
-			TestSurface *s = new TestSurface( Extent( 320, 240 ) );
-			surfaces.push_back( s );
-			RenderPresentationConfig cfg;
-			cfg.extent = Extent( 320, 240 );
-			IRenderPresentation *p = device.CreatePresentation( *s, cfg, nullptr );
-			if ( !p )
-				allOk = false;
-			else
-				live.push_back( p );
-		}
-		report.Record( "present.multiple_surfaces", allOk && live.size() == caps.maxPresentations,
-		    "a provider must support up to maxPresentations concurrent surfaces" );
-
-		// One beyond the limit must fail structurally.
-		TestSurface extra( Extent( 320, 240 ) );
-		RenderPresentationConfig cfg;
-		cfg.extent = Extent( 320, 240 );
-		RenderCreateError overErr;
-		IRenderPresentation *over = device.CreatePresentation( extra, cfg, &overErr );
-		report.Record( "present.over_limit_rejected",
-		    over == nullptr && overErr.status == RenderCreateStatus::kTooManyPresentations,
-		    "exceeding maxPresentations must fail with kTooManyPresentations" );
-		if ( over )
-			device.DestroyPresentation( over );
-
-		for ( IRenderPresentation *p : live )
-			device.DestroyPresentation( p );
-		for ( TestSurface *s : surfaces )
-			delete s;
-	}
-}
-
 } // namespace
 
 bool RunRenderBackendConformance( IRenderBackendProvider &provider, Report &report )
@@ -383,12 +269,11 @@ bool RunRenderBackendConformance( IRenderBackendProvider &provider, Report &repo
 		IRenderDevice *device = CreateOffscreenDevice( provider, report, adapter0 );
 		if ( device )
 		{
+			report.Record( "lifetime.owns_device", provider.OwnsDevice( *device ),
+				"a provider must recognize a live device it created" );
 			CheckImmutableCaps( *device, report );
 			CheckResourceLifetimeAndCompletion( *device, report );
 			CheckSubmissionOrdering( *device, report );
-
-			if ( caps.supportsPresentation )
-				CheckPresentation( provider, *device, report );
 
 			// Device loss last: it may transition the device to a terminal state.
 			CheckDeviceLoss( provider, *device, report );

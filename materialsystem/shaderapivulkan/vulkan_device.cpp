@@ -9,9 +9,6 @@
 #include "demo_triangle_spv.h"
 #include "material_spv.h"
 
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_vulkan.h>
-
 #include <algorithm>
 #include <cstdarg>
 #include <cstdio>
@@ -119,20 +116,15 @@ const std::vector<uint8_t> &CVulkanContext::GetCapturedPixels( int *outW, int *o
 }
 
 bool CVulkanContext::Init(
-    SDL_Window *window, const VulkanContextConfig &config, std::string *outError )
+    IVulkanSurfaceHost &host, const VulkanContextConfig &config, std::string *outError )
 {
 	if ( IsValid() )
 	{
 		SetError( outError, "Init called on an already-initialized context" );
 		return false;
 	}
-	if ( !window )
-	{
-		SetError( outError, "Init called with a null SDL window" );
-		return false;
-	}
 
-	m_window = window;
+	m_host = &host;
 	m_config = config;
 	m_framesInFlight =
 	    std::max<uint32_t>( 1, std::min<uint32_t>( config.framesInFlight, kMaxFramesInFlight ) );
@@ -157,16 +149,9 @@ bool CVulkanContext::Init(
 
 bool CVulkanContext::CreateInstance( std::string *outError )
 {
-	Uint32 sdlExtCount = 0;
-	char const *const *sdlExtensions = SDL_Vulkan_GetInstanceExtensions( &sdlExtCount );
-	if ( !sdlExtensions )
-	{
-		SetError(
-		    outError, std::string( "SDL_Vulkan_GetInstanceExtensions failed: " ) + SDL_GetError() );
+	std::vector<const char *> extensions;
+	if ( !m_host->GetInstanceExtensions( &extensions, outError ) )
 		return false;
-	}
-
-	std::vector<const char *> extensions( sdlExtensions, sdlExtensions + sdlExtCount );
 
 	// Decide whether validation can/should be enabled.
 	bool wantValidation = m_config.enableValidation || m_config.requireValidation;
@@ -273,48 +258,33 @@ bool CVulkanContext::SetupDebugMessenger( std::string *outError )
 
 bool CVulkanContext::CreateSurface( std::string *outError )
 {
-	// Read before creating: SDL builds the surface from the same native window.
-	void *nativeWindow = CurrentNativeWindow();
-	if ( !SDL_Vulkan_CreateSurface( m_window, m_instance, nullptr, &m_surface ) )
-	{
-		SetError( outError, std::string( "SDL_Vulkan_CreateSurface failed: " ) + SDL_GetError() );
+	// Read before creating: the surface is built from the same native surface.
+	const uint64_t generation = m_host->GetNativeSurfaceGeneration();
+	if ( !m_host->CreateSurface( m_instance, &m_surface, outError ) )
 		return false;
-	}
-	m_surfaceNativeWindow = nativeWindow;
+	m_surfaceGeneration = generation;
 	m_surfaceLost = false;
 	return true;
-}
-
-void *CVulkanContext::CurrentNativeWindow() const
-{
-#if defined( __ANDROID__ )
-	return SDL_GetPointerProperty(
-	    SDL_GetWindowProperties( m_window ), SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr );
-#else
-	return nullptr;
-#endif
 }
 
 bool CVulkanContext::EnsureSurfaceCurrent( bool *outReady, std::string *outError )
 {
 	*outReady = true;
-	void *nativeWindow = CurrentNativeWindow();
-	if ( !m_surfaceLost && nativeWindow == m_surfaceNativeWindow )
+	if ( !m_surfaceLost && m_host->GetNativeSurfaceGeneration() == m_surfaceGeneration )
 		return true;
-#if defined( __ANDROID__ )
-	if ( nativeWindow == nullptr )
+	if ( !m_host->IsNativeSurfaceAvailable() )
 	{
-		// No surface until the activity's next surfaceCreated; keep everything.
+		// No surface until the platform provides one again (Android's next
+		// surfaceCreated); keep everything.
 		*outReady = false;
 		return true;
 	}
-#endif
 	// Present nothing more to the old surface, then rebuild against the new one.
 	vkDeviceWaitIdle( m_device );
 	m_completedSerial = m_submitSerial;
 	RetireCompletedTextures();
 	DestroySwapchainObjects();
-	SDL_Vulkan_DestroySurface( m_instance, m_surface, nullptr );
+	m_host->DestroySurface( m_instance, m_surface );
 	m_surface = VK_NULL_HANDLE;
 	if ( !CreateSurface( outError ) )
 		return false;
@@ -622,7 +592,7 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 	}
 
 	// Extent: honor the surface's fixed extent, else clamp the drawable size.
-	SDL_GetWindowSizeInPixels( m_window, &m_presentDrawable[0], &m_presentDrawable[1] );
+	m_host->GetDrawableSize( &m_presentDrawable[0], &m_presentDrawable[1] );
 	if ( caps.currentExtent.width != UINT32_MAX )
 	{
 		m_presentExtent = caps.currentExtent;
@@ -630,7 +600,7 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 	else
 	{
 		int w = 0, h = 0;
-		SDL_GetWindowSizeInPixels( m_window, &w, &h );
+		m_host->GetDrawableSize( &w, &h );
 		VkExtent2D e = {
 		    static_cast<uint32_t>( std::max( 0, w ) ), static_cast<uint32_t>( std::max( 0, h ) ) };
 		e.width =
@@ -4364,7 +4334,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	// A back-buffer size requested while a frame was open applies now, and a
 	// drawable that changed size gets a swapchain of its new size.
 	int drawable[2] = { 0, 0 };
-	SDL_GetWindowSizeInPixels( m_window, &drawable[0], &drawable[1] );
+	m_host->GetDrawableSize( &drawable[0], &drawable[1] );
 	const bool drawableChanged =
 	    drawable[0] != m_presentDrawable[0] || drawable[1] != m_presentDrawable[1];
 	const bool backBufferPending = m_requestedBackBuffer.width > 0 &&
@@ -5465,7 +5435,7 @@ void CVulkanContext::Shutdown()
 
 	if ( m_surface != VK_NULL_HANDLE && m_instance != VK_NULL_HANDLE )
 	{
-		SDL_Vulkan_DestroySurface( m_instance, m_surface, nullptr );
+		m_host->DestroySurface( m_instance, m_surface );
 		m_surface = VK_NULL_HANDLE;
 	}
 
@@ -5486,6 +5456,7 @@ void CVulkanContext::Shutdown()
 	m_capturePending = false;
 	m_swapExtent = { 0, 0 };
 	m_presentExtent = { 0, 0 };
+	m_host = nullptr;
 }
 
 } // namespace render_vulkan

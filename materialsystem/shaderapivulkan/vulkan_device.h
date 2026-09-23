@@ -4,16 +4,18 @@
 //          shaderapivulkan backend (RFC 0001 rank 14/16, roadmap R28/R32).
 //
 //          This module owns the genuine native Vulkan objects: instance,
-//          physical-device selection, logical device and queues, the SDL3
-//          window surface, the swapchain and its render targets, per-frame
+//          physical-device selection, logical device and queues, the window
+//          surface, the swapchain and its render targets, per-frame
 //          command buffers and synchronization, and clean teardown. It clears
 //          and presents a real frame and can read the presented image back for
 //          outcome-driven verification.
 //
-//          It deliberately depends only on <vulkan/vulkan.h>, the SDL3 Vulkan
-//          surface entry points, and the C++ standard library so the same core
-//          is exercised by both the engine backend and the standalone native
-//          smoke test, with no ambient engine state.
+//          It deliberately depends only on <vulkan/vulkan.h> and the C++
+//          standard library so the same core is exercised by both the engine
+//          backend and the standalone native smoke test, with no ambient engine
+//          state. The window is reached only through IVulkanSurfaceHost, which a
+//          pair-specific bridge implements (RFC 0001 R16); this core includes no
+//          window-system header and never interprets a native window handle.
 //
 //===========================================================================//
 
@@ -24,6 +26,8 @@
 #pragma once
 #endif
 
+#include "vulkan_surface_host.h"
+
 #include <vulkan/vulkan.h>
 
 #include <cstdint>
@@ -31,8 +35,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-struct SDL_Window;
 
 namespace render_vulkan
 {
@@ -56,8 +58,8 @@ struct VulkanContextConfig
 	bool preferMailbox = false;
 };
 
-// A single, coherent native Vulkan presentation context bound to one SDL3
-// window. Not copyable; owns all its Vulkan handles and destroys them in
+// A single, coherent native Vulkan presentation context bound to one window
+// through its surface host. Not copyable; owns all its Vulkan handles and destroys them in
 // reverse dependency order at Shutdown()/destruction.
 class CVulkanContext
 {
@@ -68,10 +70,12 @@ public:
 	CVulkanContext( const CVulkanContext & ) = delete;
 	CVulkanContext &operator=( const CVulkanContext & ) = delete;
 
-	// Bring up every object needed to present to `window`. On failure returns
-	// false, fills *outError with a specific reason, and leaves the context
-	// fully torn down (safe to destroy, never partially live).
-	bool Init( SDL_Window *window, const VulkanContextConfig &config, std::string *outError );
+	// Bring up every object needed to present to the host's window. The host is
+	// borrowed and must outlive Shutdown(). On failure returns false, fills
+	// *outError with a specific reason, and leaves the context fully torn down
+	// (safe to destroy, never partially live).
+	bool Init(
+	    IVulkanSurfaceHost &host, const VulkanContextConfig &config, std::string *outError );
 
 	// Idempotent teardown. Waits for the device to go idle first.
 	void Shutdown();
@@ -611,9 +615,6 @@ private:
 	// Whether the surface's extent or transform differs from the ones the
 	// swapchain was built against; a SUBOPTIMAL result rebuilds only then.
 	bool SurfaceChangedSinceSwapchain();
-	// The platform surface the window currently presents to (Android's
-	// ANativeWindow), or null where the window keeps one surface for its life.
-	void *CurrentNativeWindow() const;
 	// Keep m_surface bound to the window's current native surface, replacing it
 	// (and the swapchain) when the platform swapped or lost it. `outReady` is
 	// false while the platform has no surface at all (a backgrounded activity).
@@ -641,7 +642,7 @@ private:
 	void DestroyDynamicMesh();
 	bool CreateDepthResources( std::string *outError );
 
-	SDL_Window *m_window = nullptr;
+	IVulkanSurfaceHost *m_host = nullptr;
 	VulkanContextConfig m_config;
 
 	VkInstance m_instance = VK_NULL_HANDLE;
@@ -673,10 +674,10 @@ private:
 	// is SUBOPTIMAL; only a change of these rebuilds, not every such frame.
 	VkExtent2D m_swapSurfaceExtent = { 0, 0 };
 	VkSurfaceTransformFlagBitsKHR m_swapSurfaceTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-	// The native window m_surface was created from. Android destroys and
-	// recreates it (backgrounding, some display swaps); SDL then publishes a
-	// new one, and a surface of the old one can no longer present.
-	void *m_surfaceNativeWindow = nullptr;
+	// The host's native-surface generation m_surface was created from. Android
+	// destroys and recreates the native window (backgrounding, some display
+	// swaps); a surface of the old one can no longer present.
+	uint64_t m_surfaceGeneration = 0;
 	bool m_surfaceLost = false;
 	VkExtent2D m_requestedBackBuffer = { 0, 0 };
 	VkFilter m_presentFilter = VK_FILTER_LINEAR;

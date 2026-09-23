@@ -16,11 +16,13 @@
 //===========================================================================//
 
 #include "vulkan_device.h"
+#include "sdl3/sdl3_vulkan_surface_host.h"
 
 #include <SDL3/SDL.h>
 
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #include <string>
 
 using render_vulkan::CVulkanContext;
@@ -109,9 +111,11 @@ int main( int argc, char **argv )
 	config.requireValidation = requireValidation;
 	config.framesInFlight = 2;
 
-	CVulkanContext ctx;
 	std::string err;
-	if ( !ctx.Init( window, config, &err ) )
+	std::unique_ptr<render_vulkan::IVulkanSurfaceHost> host =
+	    render_vulkan::MakeSdl3LegacySurfaceHost( window, &err );
+	CVulkanContext ctx;
+	if ( !host || !ctx.Init( *host, config, &err ) )
 	{
 		// A genuine device/driver failure is a skip only when there is no usable
 		// Vulkan device at all; any other Init failure is a real test failure.

@@ -2,12 +2,19 @@
   "schema": "source-android-product-profile/v1",
   "id": "portal-android-native-vulkan-v1",
   "description": "Android Portal client: SDL3 app integration and the native Vulkan renderer, packaged as a debug- or release-signed APK by build-android-apk.sh.",
-  "target": {"product": "portal-client", "os": "android", "abis": ["arm64-v8a", "x86_64"]},
+  "target": {
+    "product": "portal-client",
+    "os": "android",
+    "abis": [
+      "arm64-v8a",
+      "x86_64"
+    ]
+  },
   "intent": {
     "window_provider": "sdl3",
     "render_provider": "native-vulkan",
     "support_scope": "Android build and packaging slice (R01/R03 cross-build probe, R29 groundwork). Not platform acceptance: device lifecycle, texture-format, performance and store checks are open.",
-    "packaging": "APK from SDK build-tools (aapt2, d8, zipalign, apksigner); licensed Portal content is pushed separately to the app-specific external files directory",
+    "packaging": "APK from the pinned SDK build-tools (aapt2, d8, zipalign, apksigner); licensed Portal content is pushed separately to the app-specific external files directory",
     "display": "Windowed fullscreen (+mat_windowed_fullscreen 1): every orientation the user's rotation lock allows; rotation and foldable display swaps resize the back buffer"
   },
   "android": {
@@ -19,12 +26,88 @@
     "target_sdk": 36,
     "compile_platform": "android-36",
     "compile_platform_jar_sha256": "d9eb9da824d9e247a352f570f01e1169e725b2954bca9e283a71786c59b59f9a",
-    "build_tools": "36.0.0",
     "java_release": 11,
     "page_size_alignment": 16384,
     "manifest_template": "launcher_main/android/AndroidManifest.xml",
-    "waf_arch": {"arm64-v8a": "aarch64", "x86_64": "x86_64"},
-    "ndk_triple": {"arm64-v8a": "aarch64-linux-android", "x86_64": "x86_64-linux-android"}
+    "activity": "org.libsdl.app.SDLActivity",
+    "permissions": [
+      "android.permission.INTERNET"
+    ],
+    "required_features": [
+      "android.hardware.vulkan.version"
+    ],
+    "required_config_changes": [
+      "orientation",
+      "screenSize",
+      "smallestScreenSize",
+      "screenLayout",
+      "density"
+    ],
+    "native_entry": {
+      "library": "libmain.so",
+      "symbol": "SDL_main"
+    },
+    "touch_assets": "assets/touch/touch_icons.txt",
+    "waf_arch": {
+      "arm64-v8a": "aarch64",
+      "x86_64": "x86_64"
+    },
+    "ndk_triple": {
+      "arm64-v8a": "aarch64-linux-android",
+      "x86_64": "x86_64-linux-android"
+    },
+    "packaged_libraries": [
+      "libc++_shared.so",
+      "libclient.so",
+      "libdatacache.so",
+      "libengine.so",
+      "libfilesystem_stdio.so",
+      "libGameUI.so",
+      "libinputsystem.so",
+      "liblauncher.so",
+      "libmain.so",
+      "libmaterialsystem.so",
+      "libscenefilecache.so",
+      "libSDL3.so",
+      "libserver.so",
+      "libServerBrowser.so",
+      "libshaderapiempty.so",
+      "libshaderapivulkan.so",
+      "libsoundemittersystem.so",
+      "libstdshader_dx9.so",
+      "libsteam_api.so",
+      "libstudiorender.so",
+      "libtier0.so",
+      "libvaudio_minimp3.so",
+      "libvgui2.so",
+      "libvguimatsurface.so",
+      "libvideo_services.so",
+      "libvphysics.so",
+      "libvphysics_box3d.so",
+      "libvstdlib.so",
+      "libvtex_dll.so"
+    ],
+    "platform_libraries": [
+      "libc.so",
+      "libm.so",
+      "libdl.so",
+      "liblog.so",
+      "libandroid.so",
+      "libvulkan.so",
+      "libz.so",
+      "libEGL.so",
+      "libGLESv1_CM.so",
+      "libGLESv2.so",
+      "libGLESv3.so",
+      "libOpenSLES.so",
+      "libaaudio.so",
+      "libjnigraphics.so",
+      "libmediandk.so",
+      "libcamera2ndk.so",
+      "libnativewindow.so",
+      "libamidi.so",
+      "libsync.so"
+    ]
   },
   "dependencies": {
     "ndk": {
@@ -47,6 +130,28 @@
       "extracted_directory": "SDL3-3.4.16",
       "note": "Same SDL3 version as the Linux profile's pkg-config pin. Provides libSDL3.so and the SDLActivity Java sources."
     },
+    "sdk_platform": {
+      "version": "android-36 revision 2",
+      "url": "https://dl.google.com/android/repository/platform-36_r02.zip",
+      "sha1": "2c1a80dd4d9f7d0e6dd336ec603d9b5c55a6f576",
+      "sha256": "37607369a28c5b640b3a7998868d45898ebcb777565a0e85f9acf36f29631d2e",
+      "archive_bytes": 65878410,
+      "cache_archive": "platform-36_r02.zip",
+      "archive_directory": "android-36",
+      "extracted_directory": "sdk-platform-android-36-r02",
+      "note": "sha1 and size are Google's repository2-3.xml values; its android.jar is android.compile_platform_jar_sha256."
+    },
+    "sdk_build_tools": {
+      "version": "36.0.0",
+      "url": "https://dl.google.com/android/repository/build-tools_r36_linux.zip",
+      "sha1": "b0b6376977657e8ad9b969bacf4093601da2c6fb",
+      "sha256": "5d9ac77fb6ff43d9da518a337b4fcf8f9097113df531d99ccefe80ef7ce8250b",
+      "archive_bytes": 63737259,
+      "cache_archive": "build-tools_r36_linux.zip",
+      "archive_directory": "android-16",
+      "extracted_directory": "sdk-build-tools-36.0.0",
+      "note": "aapt2, d8, zipalign, apksigner. Google's archive names its top directory android-16."
+    },
     "vendored": {
       "source": "thirdparty submodule (revision pinned by the superproject)",
       "freetype": "2.11.0",
@@ -55,16 +160,26 @@
       "curl": "7.79.0 (HTTP only; no TLS backend)",
       "bzip2": "utils/bzip2 (in-tree Waf target)"
     },
-    "ndk_system_libraries": ["z", "vulkan", "log", "android", "c++_shared"]
+    "ndk_system_libraries": [
+      "z",
+      "vulkan",
+      "log",
+      "android",
+      "c++_shared"
+    ]
   },
-  "configure_options": {"platform_provider": "sdl3", "render_backend": "native-vulkan", "build_games": "portal"},
+  "configure_options": {
+    "platform_provider": "sdl3",
+    "render_backend": "native-vulkan",
+    "build_games": "portal"
+  },
   "content": {
     "location": "/sdcard/Android/data/<application_id>/files (SDL_GetAndroidExternalStoragePath)",
     "extra_arguments": "<content>/commandline.txt, whitespace-separated"
   },
   "required_checks": [
     "build-android-apk.sh for each declared ABI",
-    "apksigner verify and zipalign -c -P 16 on the produced APK",
+    "tools/quality/android_apk.py check (run by build-android-apk.sh): declared modules, ELF/16 KB alignment, DT_NEEDED closure, manifest, touch assets, zipalign -c -P 16 and apksigner verify",
     "installed-package smoke on an x86_64 emulator and an arm64 device",
     "rotation (adb emu rotate) and fold/unfold (adb emu fold/unfold) keep presenting at the new size",
     "background/foreground surface recreation"
@@ -74,6 +189,11 @@
     "known_blockers": [
       "Source DXT (BC) textures need BC support or transcoding; most phone GPUs lack BC (RFC 0008 R55/R58)",
       "Surface teardown on backgrounding is not yet synchronized with SDL's surfaceDestroyed callback"
+    ],
+    "observations": [
+      "2026-09-22 (local, not CI): arm64-v8a and x86_64 APKs built by build-android-apk.sh and passed tools/quality/android_apk.py",
+      "2026-09-22: arm64-v8a APK on a Galaxy Z Fold7 (SM-F971U1, Adreno 840, API 37): menu and test chambers render; the back buffer followed inner 2448x1848 -> cover landscape 1972x1248 -> cover portrait 1248x1972; touch controls usable",
+      "Not yet run: x86_64 emulator smoke, background/foreground surface recreation, hosted CI lane"
     ]
   }
 }

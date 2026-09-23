@@ -45,44 +45,6 @@ private:
 	std::vector<RenderResourceHandle> m_Used;
 };
 
-class NullDevice; // resize routes back to the owning device for one defect
-
-// ---------------------------------------------------------------------------
-// Presentation. Resize is reported back to the owning device so the
-// resizeLosesDevice defect can be surfaced; ResizeTo is defined out of line once
-// NullDevice is complete.
-// ---------------------------------------------------------------------------
-
-class NullPresentation : public IRenderPresentation
-{
-public:
-	NullPresentation( RenderExtent extent, NullDevice *owner, bool fatalOnZeroSize,
-		bool resizeLosesDevice )
-		: m_Extent( extent ), m_Owner( owner ), m_FatalOnZeroSize( fatalOnZeroSize ),
-		  m_ResizeLosesDevice( resizeLosesDevice )
-	{
-	}
-
-	RenderExtent GetExtent() const override { return m_Extent; }
-	bool ResizeTo( RenderExtent extent ) override; // out of line below
-
-	RenderPresentStatus Present() override
-	{
-		if ( !m_Extent.IsPresentable() )
-		{
-			// Correct: suspend, non-fatally. Defective: report a lost surface.
-			return m_FatalOnZeroSize ? RenderPresentStatus::kLost : RenderPresentStatus::kSuspended;
-		}
-		return RenderPresentStatus::kOk;
-	}
-
-private:
-	RenderExtent m_Extent;
-	NullDevice *m_Owner;
-	bool m_FatalOnZeroSize;
-	bool m_ResizeLosesDevice;
-};
-
 // ---------------------------------------------------------------------------
 // Device
 // ---------------------------------------------------------------------------
@@ -113,8 +75,6 @@ public:
 			delete t;
 		for ( NullCommandContext *c : m_Contexts )
 			delete c;
-		for ( NullPresentation *p : m_Presentations )
-			delete p;
 	}
 
 	const RenderDeviceCaps &GetCapabilities() const override
@@ -222,42 +182,6 @@ public:
 
 	uint64_t LastCompletedSubmission() const override { return m_LastCompleted; }
 
-	// -- Presentation --
-	IRenderPresentation *CreatePresentation( IRenderSurface &surface,
-		const RenderPresentationConfig &config, RenderCreateError *error ) override
-	{
-		if ( m_Presentations.size() >= m_MaxPresentations )
-		{
-			if ( error )
-			{
-				error->status = RenderCreateStatus::kTooManyPresentations;
-				std::snprintf( error->message, sizeof( error->message ),
-					"presentation limit %u reached", m_MaxPresentations );
-			}
-			return nullptr;
-		}
-		RenderExtent extent = config.extent;
-		if ( extent.width == 0 && extent.height == 0 )
-			extent = surface.GetDrawableExtent();
-		NullPresentation *pres = new NullPresentation( extent, this, m_Defects.fatalOnZeroSize,
-			m_Defects.resizeLosesDevice );
-		m_Presentations.push_back( pres );
-		return pres;
-	}
-
-	void DestroyPresentation( IRenderPresentation *presentation ) override
-	{
-		for ( size_t i = 0; i < m_Presentations.size(); ++i )
-		{
-			if ( m_Presentations[i] == presentation )
-			{
-				delete m_Presentations[i];
-				m_Presentations.erase( m_Presentations.begin() + static_cast<std::ptrdiff_t>( i ) );
-				return;
-			}
-		}
-	}
-
 	// -- Device loss --
 	bool SimulateDeviceLoss() override
 	{
@@ -281,11 +205,6 @@ public:
 		return false;
 	}
 
-	// Called by a presentation when it resizes; surfaces the resizeLosesDevice
-	// defect without leaking that policy into the contract.
-	void ForceDeviceLostOnResize() { m_State = RenderDeviceState::kDeviceLost; }
-
-	void SetMaxPresentations( uint32_t n ) { m_MaxPresentations = n; }
 	void SetSupportsRecovery( bool v ) { m_SupportsRecovery = v; }
 
 private:
@@ -317,18 +236,8 @@ private:
 	uint64_t m_LastCompleted = 0;
 	uint64_t m_FramesAdvanced = 0;
 
-	std::vector<NullPresentation *> m_Presentations;
-	uint32_t m_MaxPresentations = 1;
 	bool m_SupportsRecovery = true;
 };
-
-bool NullPresentation::ResizeTo( RenderExtent extent )
-{
-	m_Extent = extent;
-	if ( m_ResizeLosesDevice && m_Owner )
-		m_Owner->ForceDeviceLostOnResize();
-	return true;
-}
 
 // ---------------------------------------------------------------------------
 // Provider
@@ -369,9 +278,6 @@ public:
 	{
 		RenderProviderCaps caps;
 		caps.supportsOffscreenDevice = true;
-		caps.supportsPresentation = true;
-		caps.supportsMultiplePresentations = true;
-		caps.maxPresentations = 4;
 		caps.supportsDeviceLossRecovery = true;
 		caps.supportsRuntimeShaderCompile = false;
 		return caps;
@@ -425,7 +331,6 @@ public:
 
 		NullDevice *device = new NullDevice( caps, m_Defects );
 		const RenderProviderCaps pcaps = GetProviderCaps();
-		device->SetMaxPresentations( pcaps.maxPresentations );
 		device->SetSupportsRecovery( pcaps.supportsDeviceLossRecovery );
 		m_Devices.push_back( device );
 		return device;
@@ -445,6 +350,18 @@ public:
 	}
 
 	size_t GetLiveDeviceCount() const override { return m_Devices.size(); }
+
+	bool OwnsDevice( const IRenderDevice &device ) const override
+	{
+		if ( m_Defects.disownDevices )
+			return false;
+		for ( const NullDevice *d : m_Devices )
+		{
+			if ( d == &device )
+				return true;
+		}
+		return false;
+	}
 
 private:
 	RenderFeature FirstMissing( const RenderFeatureSet &required ) const

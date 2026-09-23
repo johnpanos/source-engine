@@ -5,12 +5,13 @@
 //
 //===========================================================================//
 
-#include "vulkan_render_backend.h"
+#include "vulkan_render_backend_native.h"
 
 #include <vulkan/vulkan.h>
 
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <vector>
 
 using namespace render;
@@ -140,41 +141,32 @@ struct Outstanding
 	VkCommandBuffer cmd;
 };
 
-// Surfaceless presentation object: models the contract's extent/resize/suspend
-// lifecycle. Real windowed presentation is CVulkanContext's swapchain, proven
-// separately; the render.contracts suite certifies lifecycle, not pixels.
-class VulkanPresentation : public IRenderPresentation
+// Native facts a bridge needs about a device, fixed at creation.
+struct VulkanDeviceSetup
 {
-public:
-	explicit VulkanPresentation( RenderExtent extent ) : m_Extent( extent ) {}
-	RenderExtent GetExtent() const override { return m_Extent; }
-	bool ResizeTo( RenderExtent extent ) override
-	{
-		m_Extent = extent; // resize never recreates/loses the logical device
-		return true;
-	}
-	RenderPresentStatus Present() override
-	{
-		return m_Extent.IsPresentable() ? RenderPresentStatus::kOk
-		                                : RenderPresentStatus::kSuspended;
-	}
-
-private:
-	RenderExtent m_Extent;
+	VkInstance instance;
+	VkPhysicalDevice phys;
+	VkDevice device;
+	VkQueue queue;
+	uint32_t queueFamily;
+	VkCommandPool pool;
+	bool swapchainEnabled;
+	VkSemaphore gate; // timeline semaphore for the completion-gate test hook, or null
 };
 
-class VulkanDevice : public IRenderDevice
+class VulkanDevice : public IRenderDevice, public VulkanDeviceEndpoint
 {
 public:
-	VulkanDevice( VkPhysicalDevice phys, VkDevice device, VkQueue queue, VkCommandPool pool,
-	    const RenderDeviceCaps &caps, uint32_t maxPresentations )
-	    : m_Phys( phys ), m_Device( device ), m_Queue( queue ), m_Pool( pool ), m_Caps( caps ),
-	      m_MaxPresentations( maxPresentations )
+	VulkanDevice( const VulkanDeviceSetup &setup, const RenderDeviceCaps &caps )
+	    : m_Instance( setup.instance ), m_Phys( setup.phys ), m_Device( setup.device ),
+	      m_Queue( setup.queue ), m_QueueFamily( setup.queueFamily ), m_Pool( setup.pool ),
+	      m_SwapchainEnabled( setup.swapchainEnabled ), m_Gate( setup.gate ), m_Caps( caps )
 	{
 	}
 
 	~VulkanDevice() override
 	{
+		ReleaseCompletion(); // never wait idle on work a test still holds
 		vkDeviceWaitIdle( m_Device );
 		for ( Outstanding &o : m_Outstanding )
 		{
@@ -188,8 +180,8 @@ public:
 			delete c;
 		for ( GpuResource &r : m_Resources )
 			DestroyResourceObjects( r );
-		for ( auto *p : m_Presentations )
-			delete p;
+		if ( m_Gate != VK_NULL_HANDLE )
+			vkDestroySemaphore( m_Device, m_Gate, nullptr );
 		vkDestroyCommandPool( m_Device, m_Pool, nullptr );
 		vkDestroyDevice( m_Device, nullptr );
 	}
@@ -315,6 +307,61 @@ public:
 
 	IRenderCompletionToken *Submit( IRenderCommandContext &context ) override
 	{
+		return SubmitWithSemaphores( context, VK_NULL_HANDLE, 0, VK_NULL_HANDLE );
+	}
+
+	// -- VulkanDeviceEndpoint (private, for presentation bridges) --
+	VkInstance Instance() const override { return m_Instance; }
+	VkPhysicalDevice PhysicalDevice() const override { return m_Phys; }
+	VkDevice Device() const override { return m_Device; }
+	VkQueue Queue() const override { return m_Queue; }
+	uint32_t QueueFamily() const override { return m_QueueFamily; }
+	bool SwapchainEnabled() const override { return m_SwapchainEnabled; }
+
+	RenderResourceHandle CreateImage(
+	    uint32_t width, uint32_t height, VkFormat format, VkImageUsageFlags usage ) override
+	{
+		GpuResource r;
+		r.type = RenderResourceType::kTexture;
+		VkImageCreateInfo ii = {};
+		ii.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		ii.imageType = VK_IMAGE_TYPE_2D;
+		ii.format = format;
+		ii.extent = { width, height, 1 };
+		ii.mipLevels = 1;
+		ii.arrayLayers = 1;
+		ii.samples = VK_SAMPLE_COUNT_1_BIT;
+		ii.tiling = VK_IMAGE_TILING_OPTIMAL;
+		ii.usage = usage;
+		if ( vkCreateImage( m_Device, &ii, nullptr, &r.image ) != VK_SUCCESS )
+			return kInvalidResource;
+		VkMemoryRequirements req = {};
+		vkGetImageMemoryRequirements( m_Device, r.image, &req );
+		if ( !AllocBind( req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &r.memory ) )
+		{
+			vkDestroyImage( m_Device, r.image, nullptr );
+			return kInvalidResource;
+		}
+		vkBindImageMemory( m_Device, r.image, r.memory, 0 );
+		r.live = true;
+		m_Resources.push_back( r );
+		return static_cast<RenderResourceHandle>( m_Resources.size() );
+	}
+
+	VkImage Image( RenderResourceHandle handle ) const override
+	{
+		const GpuResource *r = Slot( handle );
+		return ( r && r->live ) ? r->image : VK_NULL_HANDLE;
+	}
+
+	VkCommandBuffer CommandBuffer( IRenderCommandContext &context ) const override
+	{
+		return static_cast<VkCommandContextImpl &>( context ).Cmd();
+	}
+
+	IRenderCompletionToken *SubmitWithSemaphores( IRenderCommandContext &context,
+	    VkSemaphore wait, VkPipelineStageFlags waitStage, VkSemaphore signal ) override
+	{
 		VkCommandContextImpl &ctx = static_cast<VkCommandContextImpl &>( context );
 		VkCommandBuffer cmd = ctx.Cmd();
 		vkEndCommandBuffer( cmd );
@@ -324,10 +371,42 @@ public:
 		VkFence fence = VK_NULL_HANDLE;
 		vkCreateFence( m_Device, &fi, nullptr, &fence );
 
+		VkSemaphore waits[2];
+		VkPipelineStageFlags stages[2];
+		uint64_t waitValues[2] = { 0, 0 };
+		uint32_t waitCount = 0;
+		if ( wait != VK_NULL_HANDLE )
+		{
+			waits[waitCount] = wait;
+			stages[waitCount] = waitStage;
+			++waitCount;
+		}
+		if ( m_Held )
+		{
+			// Held: this work cannot start until the host signals the release value.
+			waits[waitCount] = m_Gate;
+			stages[waitCount] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+			waitValues[waitCount] = m_GateValue + 1;
+			++waitCount;
+		}
+		uint64_t signalValue = 0;
+		VkTimelineSemaphoreSubmitInfo timeline = {};
+		timeline.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+		timeline.waitSemaphoreValueCount = waitCount;
+		timeline.pWaitSemaphoreValues = waitValues;
+		timeline.signalSemaphoreValueCount = signal != VK_NULL_HANDLE ? 1 : 0;
+		timeline.pSignalSemaphoreValues = &signalValue;
+
 		VkSubmitInfo si = {};
 		si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		si.pNext = m_Held ? &timeline : nullptr;
+		si.waitSemaphoreCount = waitCount;
+		si.pWaitSemaphores = waits;
+		si.pWaitDstStageMask = stages;
 		si.commandBufferCount = 1;
 		si.pCommandBuffers = &cmd;
+		si.signalSemaphoreCount = signal != VK_NULL_HANDLE ? 1 : 0;
+		si.pSignalSemaphores = &signal;
 		vkQueueSubmit( m_Queue, 1, &si, fence );
 
 		const uint64_t id = ++m_NextSubmissionId;
@@ -357,10 +436,36 @@ public:
 
 	uint64_t LastCompletedSubmission() const override { return m_LastCompleted; }
 
-	// -- Presentation: surfaceless lifecycle model at the contract level --
-	IRenderPresentation *CreatePresentation( IRenderSurface &surface,
-	    const RenderPresentationConfig &config, RenderCreateError *error ) override;
-	void DestroyPresentation( IRenderPresentation *presentation ) override;
+	bool HoldCompletion() override
+	{
+		if ( m_Gate == VK_NULL_HANDLE )
+			return false;
+		m_Held = true;
+		return true;
+	}
+
+	void ReleaseCompletion() override
+	{
+		if ( !m_Held )
+			return;
+		auto signalSemaphore = reinterpret_cast<PFN_vkSignalSemaphore>(
+		    vkGetDeviceProcAddr( m_Device, "vkSignalSemaphore" ) );
+		VkSemaphoreSignalInfo info = {};
+		info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO;
+		info.semaphore = m_Gate;
+		info.value = ++m_GateValue;
+		if ( signalSemaphore )
+			signalSemaphore( m_Device, &info );
+		m_Held = false;
+	}
+
+	bool HasIncompleteGpuWork() const override
+	{
+		for ( const Outstanding &o : m_Outstanding )
+			if ( vkGetFenceStatus( m_Device, o.fence ) == VK_NOT_READY )
+				return true;
+		return false;
+	}
 
 	// -- Device loss: lifecycle state machine --
 	bool SimulateDeviceLoss() override
@@ -424,12 +529,17 @@ private:
 		return const_cast<GpuResource *>( static_cast<const VulkanDevice *>( this )->Slot( h ) );
 	}
 
+	VkInstance m_Instance;
 	VkPhysicalDevice m_Phys;
 	VkDevice m_Device;
 	VkQueue m_Queue;
+	uint32_t m_QueueFamily;
 	VkCommandPool m_Pool;
+	bool m_SwapchainEnabled;
+	VkSemaphore m_Gate;
+	uint64_t m_GateValue = 0;
+	bool m_Held = false;
 	RenderDeviceCaps m_Caps;
-	uint32_t m_MaxPresentations;
 	RenderDeviceState m_State = RenderDeviceState::kAvailable;
 
 	std::vector<GpuResource> m_Resources;
@@ -440,48 +550,44 @@ private:
 	uint64_t m_NextSubmissionId = 0;
 	uint64_t m_LastCompleted = 0;
 
-	std::vector<VulkanPresentation *> m_Presentations;
 };
-
-IRenderPresentation *VulkanDevice::CreatePresentation(
-    IRenderSurface &surface, const RenderPresentationConfig &config, RenderCreateError *error )
-{
-	if ( m_Presentations.size() >= m_MaxPresentations )
-	{
-		if ( error )
-		{
-			error->status = RenderCreateStatus::kTooManyPresentations;
-			std::snprintf( error->message, sizeof( error->message ),
-			    "presentation limit %u reached", m_MaxPresentations );
-		}
-		return nullptr;
-	}
-	RenderExtent extent = config.extent;
-	if ( extent.width == 0 && extent.height == 0 )
-		extent = surface.GetDrawableExtent();
-	VulkanPresentation *p = new VulkanPresentation( extent );
-	m_Presentations.push_back( p );
-	return p;
-}
-
-void VulkanDevice::DestroyPresentation( IRenderPresentation *presentation )
-{
-	for ( size_t i = 0; i < m_Presentations.size(); ++i )
-		if ( m_Presentations[i] == presentation )
-		{
-			delete m_Presentations[i];
-			m_Presentations.erase( m_Presentations.begin() + static_cast<std::ptrdiff_t>( i ) );
-			return;
-		}
-}
 
 // ---------------------------------------------------------------------------
 // Provider
 // ---------------------------------------------------------------------------
-class VulkanProvider : public IRenderBackendProvider
+bool DeviceHasExtension( VkPhysicalDevice phys, const char *name )
+{
+	uint32_t n = 0;
+	vkEnumerateDeviceExtensionProperties( phys, nullptr, &n, nullptr );
+	std::vector<VkExtensionProperties> exts( n );
+	if ( n )
+		vkEnumerateDeviceExtensionProperties( phys, nullptr, &n, exts.data() );
+	for ( const VkExtensionProperties &e : exts )
+		if ( std::strcmp( e.extensionName, name ) == 0 )
+			return true;
+	return false;
+}
+
+bool DeviceSupportsTimeline( VkPhysicalDevice phys )
+{
+	VkPhysicalDeviceProperties props = {};
+	vkGetPhysicalDeviceProperties( phys, &props );
+	if ( props.apiVersion < VK_API_VERSION_1_2 )
+		return false;
+	VkPhysicalDeviceTimelineSemaphoreFeatures timeline = {};
+	timeline.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
+	VkPhysicalDeviceFeatures2 features = {};
+	features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	features.pNext = &timeline;
+	vkGetPhysicalDeviceFeatures2( phys, &features );
+	return timeline.timelineSemaphore == VK_TRUE;
+}
+
+class VulkanProvider : public VulkanRenderBackend
 {
 public:
-	explicit VulkanProvider( VkInstance instance ) : m_Instance( instance )
+	VulkanProvider( VkInstance instance, const VulkanProviderOptions &options, bool api12 )
+	    : m_Instance( instance ), m_Options( options ), m_Api12( api12 )
 	{
 		uint32_t n = 0;
 		vkEnumeratePhysicalDevices( m_Instance, &n, nullptr );
@@ -532,9 +638,6 @@ public:
 	{
 		RenderProviderCaps caps;
 		caps.supportsOffscreenDevice = true;
-		caps.supportsPresentation = true;
-		caps.supportsMultiplePresentations = true;
-		caps.maxPresentations = 4;
 		caps.supportsDeviceLossRecovery = true;
 		caps.supportsRuntimeShaderCompile = false;
 		return caps;
@@ -602,6 +705,23 @@ public:
 		dci.queueCreateInfoCount = 1;
 		dci.pQueueCreateInfos = &qci;
 
+		// Presentation is not a device feature: a bridge presents from this device,
+		// so the provider only enables the swapchain extension it will need.
+		const char *swapchainExt = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+		const bool swapchain =
+		    m_Options.enableSwapchain && DeviceHasExtension( phys, swapchainExt );
+		if ( swapchain )
+		{
+			dci.enabledExtensionCount = 1;
+			dci.ppEnabledExtensionNames = &swapchainExt;
+		}
+		VkPhysicalDeviceTimelineSemaphoreFeatures timeline = {};
+		timeline.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
+		timeline.timelineSemaphore = VK_TRUE;
+		const bool gate = m_Options.enableCompletionGate && m_Api12 && DeviceSupportsTimeline( phys );
+		if ( gate )
+			dci.pNext = &timeline;
+
 		VkDevice device = VK_NULL_HANDLE;
 		if ( vkCreateDevice( phys, &dci, nullptr, &device ) != VK_SUCCESS )
 		{
@@ -644,9 +764,30 @@ public:
 		if ( error )
 			error->status = RenderCreateStatus::kOk;
 
-		const RenderProviderCaps pcaps = GetProviderCaps();
-		VulkanDevice *dev =
-		    new VulkanDevice( phys, device, queue, pool, caps, pcaps.maxPresentations );
+		VkSemaphore gateSemaphore = VK_NULL_HANDLE;
+		if ( gate )
+		{
+			VkSemaphoreTypeCreateInfo type = {};
+			type.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+			type.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+			type.initialValue = 0;
+			VkSemaphoreCreateInfo sci = {};
+			sci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+			sci.pNext = &type;
+			if ( vkCreateSemaphore( device, &sci, nullptr, &gateSemaphore ) != VK_SUCCESS )
+				gateSemaphore = VK_NULL_HANDLE;
+		}
+
+		VulkanDeviceSetup setup;
+		setup.instance = m_Instance;
+		setup.phys = phys;
+		setup.device = device;
+		setup.queue = queue;
+		setup.queueFamily = static_cast<uint32_t>( queueFamily );
+		setup.pool = pool;
+		setup.swapchainEnabled = swapchain;
+		setup.gate = gateSemaphore;
+		VulkanDevice *dev = new VulkanDevice( setup, caps );
 		m_Devices.push_back( dev );
 		return dev;
 	}
@@ -664,6 +805,24 @@ public:
 
 	size_t GetLiveDeviceCount() const override { return m_Devices.size(); }
 
+	bool OwnsDevice( const IRenderDevice &device ) const override
+	{
+		for ( const VulkanDevice *d : m_Devices )
+			if ( d == &device )
+				return true;
+		return false;
+	}
+
+	VkInstance Instance() const override { return m_Instance; }
+
+	VulkanDeviceEndpoint *FindDevice( IRenderDevice &device ) override
+	{
+		for ( VulkanDevice *d : m_Devices )
+			if ( d == &device )
+				return d;
+		return nullptr;
+	}
+
 private:
 	RenderFeature FirstMissing(
 	    const RenderAdapterInfo &adapter, const RenderFeatureSet &required ) const
@@ -678,6 +837,8 @@ private:
 	}
 
 	VkInstance m_Instance;
+	VulkanProviderOptions m_Options;
+	bool m_Api12;
 	std::vector<VkPhysicalDevice> m_Physical;
 	std::vector<RenderAdapterInfo> m_Adapters;
 	std::vector<VulkanDevice *> m_Devices;
@@ -685,23 +846,41 @@ private:
 
 } // namespace
 
-std::unique_ptr<IRenderBackendProvider> MakeVulkanRenderBackend( std::string *outError )
+std::unique_ptr<VulkanRenderBackend> MakeVulkanRenderBackend(
+    const VulkanProviderOptions &options, std::string *outError )
 {
+	// Vulkan 1.2 where the loader has it (timeline semaphores for the completion
+	// gate); 1.1 is enough otherwise.
+	uint32_t loaderVersion = VK_API_VERSION_1_1;
+	auto enumerateVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
+	    vkGetInstanceProcAddr( VK_NULL_HANDLE, "vkEnumerateInstanceVersion" ) );
+	if ( enumerateVersion )
+		enumerateVersion( &loaderVersion );
+	const bool api12 = loaderVersion >= VK_API_VERSION_1_2;
+
 	VkApplicationInfo app = {};
 	app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	app.pApplicationName = "Source Native Vulkan render-backend provider";
-	app.apiVersion = VK_API_VERSION_1_1;
+	app.apiVersion = api12 ? VK_API_VERSION_1_2 : VK_API_VERSION_1_1;
+
+	std::vector<const char *> extensions;
+	for ( const std::string &e : options.instanceExtensions )
+		extensions.push_back( e.c_str() );
 
 	VkInstanceCreateInfo ci = {};
 	ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	ci.pApplicationInfo = &app;
+	ci.enabledExtensionCount = static_cast<uint32_t>( extensions.size() );
+	ci.ppEnabledExtensionNames = extensions.empty() ? nullptr : extensions.data();
 
 	VkInstance instance = VK_NULL_HANDLE;
 	VkResult r = vkCreateInstance( &ci, nullptr, &instance );
 	if ( r != VK_SUCCESS )
 	{
 		if ( outError )
-			*outError = "vkCreateInstance failed (no usable Vulkan loader/driver)";
+			*outError = r == VK_ERROR_EXTENSION_NOT_PRESENT
+			                ? "a required Vulkan instance extension is unavailable"
+			                : "vkCreateInstance failed (no usable Vulkan loader/driver)";
 		return nullptr;
 	}
 
@@ -715,7 +894,12 @@ std::unique_ptr<IRenderBackendProvider> MakeVulkanRenderBackend( std::string *ou
 		return nullptr;
 	}
 
-	return std::unique_ptr<IRenderBackendProvider>( new VulkanProvider( instance ) );
+	return std::unique_ptr<VulkanRenderBackend>( new VulkanProvider( instance, options, api12 ) );
+}
+
+std::unique_ptr<IRenderBackendProvider> MakeVulkanRenderBackend( std::string *outError )
+{
+	return MakeVulkanRenderBackend( VulkanProviderOptions(), outError );
 }
 
 } // namespace render_vulkan

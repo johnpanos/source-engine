@@ -1,0 +1,72 @@
+name: Android
+
+# Cross-builds the Android client APK for every ABI the product profile
+# declares (quality/product_profiles/portal-android-native-vulkan.json) and
+# verifies the package against it. build-android-apk.sh fetches the pinned
+# NDK, SDL3, SDK platform and build-tools itself and runs
+# tools/quality/android_apk.py on the result; the verifier's own sensitivity
+# tests run with the other tools/quality tests (composition.yml).
+#
+# This proves the package builds and is well formed. Device lifecycle,
+# graphics and store checks are separate profile obligations.
+
+on: [push, pull_request]
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, x86_64]
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+
+    - name: Host tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq ninja-build cmake zip unzip pkg-config ccache
+
+    - name: The profile declares this ABI
+      run: |
+        jq -e --arg abi "${{ matrix.abi }}" '.target.abis | index($abi)' \
+          quality/product_profiles/portal-android-native-vulkan.json
+
+    # The archives are verified against the profile's SHA-256 on every use.
+    - name: Cache pinned archives
+      uses: actions/cache@v4
+      with:
+        path: |
+          dependencies/android/*.zip
+          dependencies/android/*.tar.gz
+        key: android-archives-${{ hashFiles('quality/product_profiles/portal-android-native-vulkan.json') }}
+
+    - name: Cache compiler output
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ccache
+        key: android-ccache-${{ matrix.abi }}-${{ github.sha }}
+        restore-keys: android-ccache-${{ matrix.abi }}-
+
+    - name: Build and verify the APK
+      run: ./build-android-apk.sh --abi ${{ matrix.abi }} --ccache
+
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: android-${{ matrix.abi }}
+        path: |
+          build-android/*.apk
+          build-android/*.apk.check.json
+          build-android/${{ matrix.abi }}/*.log
+          build-android/${{ matrix.abi }}/deps/build/*.log
+        if-no-files-found: warn

@@ -393,12 +393,17 @@ int main()
 	services.api->TexImage2D(
 	    0, 0, IMAGE_FORMAT_RGBA8888, 0, 2, 1, IMAGE_FORMAT_RGBA8888, false, atTexels );
 
-	auto drawAlphaTest = [&]( bool alphaTestOn, float fx, uint8_t out[4] ) -> bool
+	// A reference < 0 starts from the default shadow state and keeps its
+	// comparison and reference, as a material that sets none does.
+	auto drawAlphaTestWith = [&]( ShaderAPITextureHandle_t tex, bool alphaTestOn, float ref,
+	                             float fx, uint8_t out[4] ) -> bool
 	{
+		if ( ref < 0.0f )
+			services.shadow->SetDefaultState();
 		services.shadow->EnableBlending( false );
 		services.shadow->EnableAlphaTest( alphaTestOn );
-		if ( alphaTestOn )
-			services.shadow->AlphaFunc( SHADER_ALPHAFUNC_GEQUAL, 0.5f );
+		if ( alphaTestOn && ref >= 0.0f )
+			services.shadow->AlphaFunc( SHADER_ALPHAFUNC_GEQUAL, ref );
 		services.shadow->SetPixelShader( "unlitgeneric_ps20b", 0 );
 		const StateSnapshot_t snap = services.api->TakeSnapshot();
 		services.api->ClearColor4ub( 255, 0, 0, 255 );
@@ -408,7 +413,7 @@ int main()
 		services.api->SetVertexShaderConstant( kRegModulationColor, white4, 1, false );
 		const float idRows[8] = { 1, 0, 0, 0, 0, 1, 0, 0 };
 		services.api->SetVertexShaderConstant( kRegBaseTexTransform, idRows, 2, false );
-		services.api->BindTexture( SHADER_SAMPLER0, alphaTex );
+		services.api->BindTexture( SHADER_SAMPLER0, tex );
 		LockFullScreenQuad( mesh );
 		mesh->Draw();
 		ctx->RequestCapture();
@@ -425,6 +430,10 @@ int main()
 		out[3] = p[3];
 		return true;
 	};
+	auto drawAlphaTest = [&]( bool alphaTestOn, float fx, uint8_t out[4] ) -> bool
+	{
+		return drawAlphaTestWith( alphaTex, alphaTestOn, 0.5f, fx, out );
+	};
 
 	// Alpha test on: right (alpha 0) is discarded -> red clear shows through.
 	check( drawAlphaTest( true, 0.75f, c ) && c[0] >= 252 && c[1] <= 3 && c[2] <= 3,
@@ -435,6 +444,25 @@ int main()
 	// Control, alpha test off: right texel is NOT discarded -> yellow, not red.
 	check( drawAlphaTest( false, 0.75f, c ) && c[0] >= 252 && c[1] >= 252 && c[2] <= 3,
 	    "alpha-test-off control: right texel is kept (yellow, not the clear)" );
+
+	// $alphatest without $alphatestreference keeps the default shadow state's
+	// reference, which D3D9 sets to GEQUAL 0.7 (CShaderShadowDX8::SetDefaultState).
+	// Portal's sign icons (models/props_animsigns/awe_blank) are white with alpha
+	// near 0 and rely on it to vanish. Texels: alpha 1 kept, alpha 128/255 (below
+	// 0.7) discarded, alpha 191/255 (above 0.7) kept. A default of 0 keeps the
+	// middle texel; a default of 1 discards the right one.
+	ShaderAPITextureHandle_t defaultRefTex =
+	    services.api->CreateTexture( 3, 1, 1, IMAGE_FORMAT_RGBA8888, 1, 1, 0, "atdef", "atdef" );
+	services.api->ModifyTexture( defaultRefTex );
+	unsigned char defaultRefTexels[3 * 4] = { 0, 0, 255, 255, 255, 255, 0, 128, 0, 255, 0, 191 };
+	services.api->TexImage2D(
+	    0, 0, IMAGE_FORMAT_RGBA8888, 0, 3, 1, IMAGE_FORMAT_RGBA8888, false, defaultRefTexels );
+	check( drawAlphaTestWith( defaultRefTex, true, -1.0f, 0.5f, c ) && c[0] >= 252 && c[1] <= 3 &&
+	           c[2] <= 3,
+	    "$alphatest default reference: alpha 128/255 is below 0.7 and discarded (red clear)" );
+	check( drawAlphaTestWith( defaultRefTex, true, -1.0f, 5.0f / 6.0f, c ) && c[0] <= 3 &&
+	           c[1] >= 252 && c[2] <= 3,
+	    "$alphatest default reference: alpha 191/255 is above 0.7 and kept (green)" );
 
 	// --- 9. TexSubImage2D sub-rectangles (VGUI writes each font glyph into its
 	//         page this way). A 4x4 blue texture gets its right half replaced by

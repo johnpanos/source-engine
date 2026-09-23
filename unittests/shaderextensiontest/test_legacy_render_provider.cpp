@@ -149,9 +149,10 @@ void CheckRealProvider(
 	CHECK( strcmp( info.id, expectedId ) == 0 );
 	CHECK( strcmp( backend.GetBackendId().id, provider->id ) == 0 );
 
-	// The claims are narrow: no offscreen device, no presentation.
+	// The claims are narrow: no offscreen device, so nothing a presentation
+	// bridge could present from.
 	const render::RenderProviderCaps caps = backend.GetProviderCaps();
-	CHECK( !caps.supportsOffscreenDevice && !caps.supportsPresentation );
+	CHECK( !caps.supportsOffscreenDevice );
 	// Identity, adapters, structured failure and zero live devices.
 	CHECK( RunSharedSuite( backend, provider->id, true ) >= 9 );
 

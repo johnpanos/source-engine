@@ -7,15 +7,16 @@
 # owns every pin: NDK, SDL3, SDK platform/build-tools, SDK levels, ABIs and the
 # application id. This script only orchestrates:
 #
-#   1. fetch + verify the pinned NDK and SDL3 archives into dependencies/android/
+#   1. fetch + verify the pinned NDK, SDL3, SDK platform and build-tools
+#      archives into dependencies/android/
 #   2. cross-build the native dependencies per ABI with CMake (SDL3, freetype,
 #      libpng, libjpeg, curl from the thirdparty submodule)
 #   3. configure/build/install the engine with Waf under a private lock and
 #      out directory per ABI (the shared build/ tree is never touched)
-#   4. stage the .so files (unstripped copies kept for symbolization) and check
-#      every DT_NEEDED resolves inside the APK or to an Android system library
+#   4. stage the .so files (unstripped copies kept for symbolization)
 #   5. package with the SDK build-tools: aapt2, javac + d8 (SDLActivity),
-#      zipalign -P 16 (16 KB pages), apksigner
+#      zipalign -P 16 (16 KB pages), apksigner, then verify the APK against
+#      the profile (tools/quality/android_apk.py)
 #   6. optionally install, push game content and launch over adb
 #
 # Everything is written under build-android/ (gitignored).
@@ -64,7 +65,8 @@ Usage: $0 [options]
   -j N                parallel jobs (default: $JOBS)
   -h, --help          this help
 
-Environment: ANDROID_SDK_ROOT or ANDROID_HOME (default: ~/Android/Sdk).
+Needs a JDK (javac, keytool) and adb for --install/--run; the NDK, SDK
+platform and build-tools come from the profile's pinned archives.
 EOF
 }
 
@@ -107,7 +109,7 @@ MIN_SDK="$(p .android.min_sdk)"
 TARGET_SDK="$(p .android.target_sdk)"
 PLATFORM="$(p .android.compile_platform)"
 PLATFORM_JAR_SHA="$(p .android.compile_platform_jar_sha256)"
-BUILD_TOOLS="$(p .android.build_tools)"
+BUILD_TOOLS="$(p .dependencies.sdk_build_tools.version)"
 JAVA_RELEASE="$(p .android.java_release)"
 PAGE_ALIGN="$(p .android.page_size_alignment)"
 MANIFEST_TEMPLATE="$ROOT/$(p .android.manifest_template)"
@@ -135,12 +137,15 @@ mkdir -p "$OUT" "$CACHE"
 fetch_dependency()
 {
 	local name="$1"
-	local url sha size archive dir
+	local url sha size archive dir inner
 	url="$(p ".dependencies.$name.url")"
 	sha="$(p ".dependencies.$name.sha256")"
 	size="$(p ".dependencies.$name.archive_bytes")"
 	archive="$CACHE/$(p ".dependencies.$name.cache_archive")"
 	dir="$CACHE/$(p ".dependencies.$name.extracted_directory")"
+	# The archive's top directory, when it is not the extracted name.
+	inner="$(jq -r ".dependencies.$name.archive_directory // empty" "$PROFILE")"
+	inner="${inner:-$(basename "$dir")}"
 
 	if [ ! -f "$archive" ]; then
 		log "Fetching $name from $url"
@@ -163,8 +168,8 @@ fetch_dependency()
 		*.tar.gz) tar -xzf "$archive" -C "$tmp" ;;
 		*) die "unknown archive type: $archive" ;;
 		esac
-		[ -d "$tmp/$(basename "$dir")" ] || die "$name archive lacks $(basename "$dir")/"
-		mv "$tmp/$(basename "$dir")" "$dir"
+		[ -d "$tmp/$inner" ] || die "$name archive lacks $inner/"
+		mv "$tmp/$inner" "$dir"
 		rmdir "$tmp"
 	fi
 	printf '%s' "$dir"
@@ -172,25 +177,24 @@ fetch_dependency()
 
 NDK="$(fetch_dependency ndk)"
 SDL3_SRC="$(fetch_dependency sdl3)"
+SDK_PLATFORM="$(fetch_dependency sdk_platform)"
+BT="$(fetch_dependency sdk_build_tools)"
 grep -q "Pkg.Revision = $(p .dependencies.ndk.revision)" "$NDK/source.properties" ||
 	die "NDK at $NDK is not revision $(p .dependencies.ndk.revision)"
 [ "$FETCH_ONLY" = 1 ] && { log "Pinned archives verified"; exit 0; }
 
 # ---------------------------------------------------------------------------
-# SDK, JDK and signing inputs
+# SDK and JDK inputs (the pinned archives above; no installed SDK is used)
 # ---------------------------------------------------------------------------
-SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
-BT="$SDK/build-tools/$BUILD_TOOLS"
-ANDROID_JAR="$SDK/platforms/$PLATFORM/android.jar"
+ANDROID_JAR="$SDK_PLATFORM/android.jar"
 for tool in aapt2 d8 zipalign apksigner; do
-	[ -x "$BT/$tool" ] || die "missing $BT/$tool (install build-tools $BUILD_TOOLS)"
+	[ -x "$BT/$tool" ] || die "missing $BT/$tool (build-tools $BUILD_TOOLS archive)"
 done
-[ -f "$ANDROID_JAR" ] || die "missing $ANDROID_JAR (install platform $PLATFORM)"
+[ -f "$ANDROID_JAR" ] || die "missing $ANDROID_JAR ($PLATFORM archive)"
 echo "$PLATFORM_JAR_SHA  $ANDROID_JAR" | sha256sum -c --quiet - ||
 	die "$ANDROID_JAR does not match the profile's pinned digest"
 
 LLVM="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
-READELF="$LLVM/bin/llvm-readelf"
 STRIP="$LLVM/bin/llvm-strip"
 
 # ---------------------------------------------------------------------------
@@ -328,11 +332,6 @@ build_engine()
 # ---------------------------------------------------------------------------
 # 4. Stage native libraries
 # ---------------------------------------------------------------------------
-# Android system libraries an app may link against (NDK stable APIs).
-SYSTEM_LIBS="libc.so libm.so libdl.so liblog.so libandroid.so libvulkan.so libz.so \
-libEGL.so libGLESv1_CM.so libGLESv2.so libGLESv3.so libOpenSLES.so libaaudio.so \
-libjnigraphics.so libmediandk.so libcamera2ndk.so libnativewindow.so libamidi.so libsync.so"
-
 stage_libraries()
 {
 	local abi="$1"
@@ -353,18 +352,6 @@ stage_libraries()
 		"$STRIP" --strip-unneeded -o "$stage/$(basename "$lib")" "$lib"
 	done
 
-	# Every DT_NEEDED must be packaged or a system library: a missing one only
-	# shows up on the device as a load failure.
-	local missing=0 needed
-	for lib in "$stage"/*.so; do
-		for needed in $("$READELF" -d "$lib" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p'); do
-			if [ ! -f "$stage/$needed" ] && [[ " $SYSTEM_LIBS " != *" $needed "* ]]; then
-				echo "  $(basename "$lib") needs $needed, which is not packaged" >&2
-				missing=1
-			fi
-		done
-	done
-	[ "$missing" = 0 ] || die "unresolved native dependencies for $abi"
 	echo "  $(ls "$stage" | wc -l) libraries, $(du -sh "$stage" | cut -f1) stripped"
 }
 
@@ -434,9 +421,13 @@ package_apk()
 		sign=(--ks "$keystore" --ks-pass pass:android --ks-key-alias androiddebugkey)
 	fi
 	"$BT/apksigner" sign "${sign[@]}" --out "$APK" "$work/aligned.apk"
-	"$BT/apksigner" verify "$APK" || die "apksigner verification failed"
 	rm -f "$APK.idsig"
 	echo "  $(du -h "$APK" | cut -f1)  $APK"
+
+	# The profile's package facts (modules, ELF alignment, DT_NEEDED closure,
+	# manifest, assets, zipalign, signature), checked by an independent reader.
+	python3 "$ROOT/tools/quality/android_apk.py" check "$APK" --build-tools "$BT" \
+		--report "$APK.check.json" "${ABIS[@]/#/--abi=}" || die "APK verification failed"
 }
 
 # ---------------------------------------------------------------------------

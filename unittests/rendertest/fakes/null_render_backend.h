@@ -5,8 +5,8 @@
 //			in memory with no GPU: adapter enumeration, structured creation
 //			failure, immutable capabilities, child-resource lifetime with
 //			provider-owned completion tokens, ordered submission/completion,
-//			presentation resize/suspend, multiple surfaces, and device-loss
-//			recovery. It certifies only command and lifetime behavior -- never
+//			and device-loss recovery. Presentation is not a device concern; the
+//			headless bridge (headless_presentation_bridge.h) presents from it. It certifies only command and lifetime behavior -- never
 //			image fidelity -- exactly as RFC 0001 requires of a null provider.
 //
 //			The same implementation doubles as the sensitivity oracle: injecting
@@ -40,10 +40,6 @@ struct NullBackendDefects
 	bool recycleOnFrameAdvance = false;
 	// Submissions complete out of order (violates submit.ordered_completion).
 	bool unorderedCompletion = false;
-	// A runtime resize marks the device lost (violates present.resize_keeps_device).
-	bool resizeLosesDevice = false;
-	// A zero-sized surface is treated as fatal (violates present.zero_size_suspends).
-	bool fatalOnZeroSize = false;
 	// Destroyed resources are never recycled (violates resource.recycled_after_complete
 	// and lifetime accounting).
 	bool leakResources = false;
@@ -53,6 +49,9 @@ struct NullBackendDefects
 	// Device loss jumps straight to Available without entering kDeviceLost
 	// (violates loss.enters_lost_state).
 	bool lossSkipsLostState = false;
+	// The provider does not recognize devices it created, so a presentation bridge
+	// could not reject a foreign device (violates lifetime.owns_device).
+	bool disownDevices = false;
 };
 
 // Builds a null render backend provider. With the default (all-false) defects it

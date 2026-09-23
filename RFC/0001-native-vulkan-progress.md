@@ -1415,3 +1415,37 @@ Open:
   `CMaterialSystem::RequestWindowResize`).
 - Aspect ratio is stretched to the client area as D3D9 does, with no
   letterboxing.
+
+## Default alpha-test reference: chamber signs (2026-09-22)
+
+In testchmb_a_01, the chamber signs (`models/props_animsigns/signage_numNN`) drew
+their "off" state (skin 1) with flat, lit white rectangles where the digits and
+icons go. In that skin every glyph mesh uses `awe_blank`: VertexLitGeneric with
+`$alphatest` and no `$alphatestreference`, and a white texture whose alpha is
+about 0. The material therefore keeps the default shadow state's reference.
+D3D9 sets that default to GEQUAL 0.7 (`CShaderShadowDX8::SetDefaultState`), so
+every texel is discarded. Native set it to 0, so every texel passed.
+
+Native's `SetDefaultState` (and the member's initial value) now uses 0.7. The
+comparison and D3D9's truncation to 1/255 were already shared.
+
+Evidence:
+- `material_equivalence_vulkan_conformance` grows from 29 to 31 checks. Starting
+  from the default state, a 3-texel texture keeps alpha 255 and 191, and
+  discards 128. With the old default, the discard check fails (seeded, 1 failure).
+- Draw-state fixtures of sign_03 forced to skin 1 (`ent_fire sign_03 skin 1 4`,
+  after the trigger's on-animation) record `awe_blank` at alpha reference
+  0.698039 on both backends. The native frame is the blank dark panel, as on DXVK.
+
+Open: once the sign has animated on (skins 3–6), native draws the panel
+gray-blue where D3D9 draws it white. `newsignage_back01/02` are VertexLitGeneric
+`$selfillum`, and the non-phong vertexlit path does not implement the
+self-illumination combo yet.
+
+```sh
+SDL_VIDEODRIVER=offscreen WAYLAND_DISPLAY= DISPLAY= python3 tools/quality/portal_boot.py \
+    --runtime run/runtime --build build --renderer native-vulkan --headless \
+    --map testchmb_a_01 --draw-state-fixtures --console-command noclip \
+    --console-command "cmd setpos -590 64 640" --console-command "cmd setang 0 180 0" \
+    --console-command "ent_fire sign_03 skin 1 4" --out quality-results/sign
+```

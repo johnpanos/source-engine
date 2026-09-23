@@ -72,6 +72,7 @@ public:
 	    const RenderDeviceRequest &request, RenderCreateError *error ) override;
 	void DestroyDevice( IRenderDevice *device ) override;
 	size_t GetLiveDeviceCount() const override;
+	bool OwnsDevice( const IRenderDevice &device ) const override;
 
 private:
 	void Capture( const ILegacyAdapterSource *adapters, LegacyDescribeAdapterFn describe );

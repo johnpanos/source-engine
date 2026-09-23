@@ -770,6 +770,40 @@
       "expect": "pass"
     },
     {
+      "id": "render.presentation.headless",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "REND-PRESENT-001",
+      "contract": "unittests/rendertest/contracts/render.presentation.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/rendertest/conformance/render_backend_conformance.cpp",
+        "unittests/rendertest/conformance/render_presentation_conformance.cpp",
+        "unittests/rendertest/fakes/null_render_backend.cpp",
+        "unittests/rendertest/fakes/headless_presentation.cpp",
+        "unittests/rendertest/test_render_presentation.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.presentation.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "REND-PRESENT-001",
+      "contract": "unittests/rendertest/contracts/render.presentation.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/rendertest/conformance/render_backend_conformance.cpp",
+        "unittests/rendertest/conformance/render_presentation_conformance.cpp",
+        "unittests/rendertest/fakes/null_render_backend.cpp",
+        "unittests/rendertest/fakes/headless_presentation.cpp",
+        "unittests/rendertest/test_render_presentation_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.profile",
       "domain": "Q-PRESENTATION",
       "rfc": "0001",

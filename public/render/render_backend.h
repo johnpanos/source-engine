@@ -22,6 +22,11 @@
 //			completion tokens, deterministic device-loss states) are the normative
 //			part and are what the conformance suite pins.
 //
+//			Presentation is deliberately absent from the device: a pair-specific
+//			bridge (render_presentation.h) joins one window system to one render
+//			provider and creates presentations from a device and a surface, so no
+//			device ever interprets a window (RFC 0001 "Window and render interop").
+//
 //=============================================================================//
 
 #ifndef RENDER_RENDER_BACKEND_H
@@ -189,6 +194,12 @@ enum class RenderCreateStatus : uint32_t
 	kSurfaceIncompatible,
 	kTooManyPresentations,
 	kNotAdvertised,
+	// Presentation-bridge composition failures (render_presentation.h).
+	kUnsupportedPair,	// no bridge joins the requested window system and render backend
+	kForeignObject,		// the device or surface was not created by the bridge's providers
+	kSurfaceBusy,		// the surface already has a live presentation
+	kSurfaceLost,		// the surface's window is destroyed
+	kDeviceUnavailable,	// the device is lost/fatal and cannot present now
 };
 
 struct RenderCreateError
@@ -197,48 +208,6 @@ struct RenderCreateError
 	// Valid only when status == kUnsupportedRequiredFeature.
 	RenderFeature missingFeature = RenderFeature::kNeverSupported;
 	char message[128] = { 0 };
-};
-
-// ---------------------------------------------------------------------------
-// Presentation
-// ---------------------------------------------------------------------------
-
-// A drawable extent in pixels. A zero-area extent is legal but non-presentable
-// (a minimized or in-transition surface); presentation suspends rather than
-// failing fatally in that state.
-struct RenderExtent
-{
-	uint32_t width = 0;
-	uint32_t height = 0;
-
-	bool IsPresentable() const { return width > 0 && height > 0; }
-	bool operator==( const RenderExtent &o ) const { return width == o.width && height == o.height; }
-	bool operator!=( const RenderExtent &o ) const { return !( *this == o ); }
-};
-
-enum class RenderColorFormat : uint32_t
-{
-	kRGBA8Unorm = 0,
-	kRGBA8Srgb,
-	kBGRA8Unorm,
-};
-
-struct RenderPresentationConfig
-{
-	RenderExtent extent;
-	RenderColorFormat format = RenderColorFormat::kRGBA8Unorm;
-	bool vsync = true;
-};
-
-// Result of a Present. A non-presentable surface yields kSuspended, which is a
-// recoverable, non-fatal state; presentation resumes when the surface becomes
-// presentable again.
-enum class RenderPresentStatus : uint32_t
-{
-	kOk = 0,
-	kSuspended,		// surface not presentable (e.g. zero-sized/minimized); not fatal
-	kRecoverable,	// transient error; retry after handling
-	kLost,			// presentation surface lost; device may still be usable
 };
 
 // ---------------------------------------------------------------------------
@@ -291,37 +260,6 @@ public:
 	virtual void RecordUse( RenderResourceHandle handle ) = 0;
 };
 
-// A presentation surface supplied by the window system. Only its drawable extent
-// is exposed to portable render code; native handles stay inside the private
-// window/render interop bridge.
-class IRenderSurface
-{
-public:
-	virtual ~IRenderSurface() = default;
-	virtual RenderExtent GetDrawableExtent() const = 0;
-};
-
-// ---------------------------------------------------------------------------
-// Presentation object (child of a device and a surface)
-// ---------------------------------------------------------------------------
-
-class IRenderPresentation
-{
-public:
-	virtual ~IRenderPresentation() = default;
-
-	virtual RenderExtent GetExtent() const = 0;
-
-	// Recreates/resizes swapchain resources to a new drawable extent, including a
-	// zero-area extent, WITHOUT recreating the logical device. Returns false only
-	// on an unrecoverable presentation failure.
-	virtual bool ResizeTo( RenderExtent extent ) = 0;
-
-	// Presents the current back buffer. Suspends (non-fatally) when the surface is
-	// not presentable.
-	virtual RenderPresentStatus Present() = 0;
-};
-
 // ---------------------------------------------------------------------------
 // Render device
 // ---------------------------------------------------------------------------
@@ -363,11 +301,6 @@ public:
 	// Monotonic id of the most recently completed submission (0 before any).
 	virtual uint64_t LastCompletedSubmission() const = 0;
 
-	// -- Presentation (optional; only where the provider advertises it) --
-	virtual IRenderPresentation *CreatePresentation( IRenderSurface &surface,
-		const RenderPresentationConfig &config, RenderCreateError *error ) = 0;
-	virtual void DestroyPresentation( IRenderPresentation *presentation ) = 0;
-
 	// -- Device loss (only where advertised) --
 	// Transitions the device to kDeviceLost. Returns false if the provider cannot
 	// simulate loss.
@@ -390,9 +323,6 @@ public:
 struct RenderProviderCaps
 {
 	bool supportsOffscreenDevice = false;
-	bool supportsPresentation = false;
-	bool supportsMultiplePresentations = false;
-	uint32_t maxPresentations = 1;
 	bool supportsDeviceLossRecovery = false;
 	bool supportsRuntimeShaderCompile = false;
 };
@@ -427,6 +357,10 @@ public:
 	// Number of devices this provider still owns. Used to prove complete
 	// destruction before a backend module would be unloaded.
 	virtual size_t GetLiveDeviceCount() const = 0;
+
+	// True when 'device' is a live device this provider created. Presentation
+	// bridges use it to reject a device from another provider structurally.
+	virtual bool OwnsDevice( const IRenderDevice &device ) const = 0;
 };
 
 } // namespace render

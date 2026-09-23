@@ -1,6 +1,5 @@
 
 #include <vulkan/vulkan.h>
-#include <SDL3/SDL_vulkan.h>
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose:
@@ -24,6 +23,7 @@
 #include "materialsystem/deformations.h"
 #include "render/legacy_shader_provider.h"
 #include "vulkan_device.h"
+#include "sdl3/sdl3_vulkan_surface_host.h"
 #include "vtf/vtf.h"
 #include "pixelwriter.h"
 #include "shaderapi/commandbuffer.h"
@@ -42,7 +42,25 @@
 // the material path is still the empty stub (roadmap R32), this proves the
 // backend genuinely brings up native Vulkan in-process and presents a frame.
 //-----------------------------------------------------------------------------
+// The window side of the context, supplied by the SDL3-Vulkan bridge. Declared
+// first so it is destroyed after the context, which borrows it until Shutdown.
+static std::unique_ptr<render_vulkan::IVulkanSurfaceHost> g_VulkanSurfaceHost;
 static render_vulkan::CVulkanContext g_VulkanContext;
+
+// Brings the context up against the engine's window. The window reference is
+// handed to the pair-specific bridge untouched; nothing here interprets it.
+static bool InitVulkanContext(
+    void *legacyWindowRef, const render_vulkan::VulkanContextConfig &config, std::string *outError )
+{
+	std::unique_ptr<render_vulkan::IVulkanSurfaceHost> host =
+	    render_vulkan::MakeSdl3LegacySurfaceHost( legacyWindowRef, outError );
+	if ( !host )
+		return false;
+	if ( !g_VulkanContext.Init( *host, config, outError ) )
+		return false;
+	g_VulkanSurfaceHost = std::move( host );
+	return true;
+}
 
 //-----------------------------------------------------------------------------
 // Unimplemented-entry census.
@@ -729,8 +747,10 @@ public:
 	ShaderBlendFactor_t m_blendSrc = SHADER_BLEND_ONE;
 	ShaderBlendFactor_t m_blendDst = SHADER_BLEND_ZERO;
 	// $alphatest reference [0,1] and comparison recorded by AlphaFunc; applied
-	// only when EnableAlphaTest set m_IsAlphaTested. D3D9's default is GEQUAL.
-	float m_alphaRef = 0.0f;
+	// only when EnableAlphaTest set m_IsAlphaTested. D3D9's default is GEQUAL
+	// 0.7 (CShaderShadowDX8::SetDefaultState), which a material that enables
+	// the test without a reference ($alphatest, no $alphatestreference) keeps.
+	float m_alphaRef = 0.7f;
 	ShaderAlphaFunc_t m_alphaFunc = SHADER_ALPHAFUNC_GEQUAL;
 	// IShaderShadow::EnableColorWrites.
 	bool m_colorWrites = true;
@@ -950,7 +970,7 @@ public:
 	{
 		// This is the entry point the material system actually calls
 		// (CMaterialSystem::SetMode -> g_pShaderAPI->SetMode). Bring up the native
-		// Vulkan device/surface/swapchain against the engine's SDL window and the
+		// Vulkan device/surface/swapchain against the engine's window and the
 		// material-facing dynamic-mesh pipelines here.
 		// The back buffer is the video mode's size, as D3D9's BackBufferWidth/Height;
 		// Present scales it to the window's drawable.
@@ -966,7 +986,7 @@ public:
 		config.enableValidation = ( CommandLine()->FindParm( "-vkvalidate" ) != 0 );
 		config.framesInFlight = 2;
 
-		if ( !g_VulkanContext.Init( static_cast<SDL_Window *>( hwnd ), config, &error ) )
+		if ( !InitVulkanContext( hwnd, config, &error ) )
 		{
 			Warning( "[NativeVulkan] IShaderAPI::SetMode bring-up failed: %s\n", error.c_str() );
 			return false;
@@ -1936,6 +1956,7 @@ void CShaderDeviceMgrVulkan::Shutdown()
 	// (after SDL_Quit) crashes in the Wayland client -- do it now instead. The
 	// global context destructor is then a no-op (Shutdown is idempotent).
 	g_VulkanContext.Shutdown();
+	g_VulkanSurfaceHost.reset();
 }
 
 // Sets the adapter
@@ -1950,10 +1971,9 @@ CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode(
 {
 	Msg( "[NativeVulkan] Setting mode for adapter %d\n", nAdapter );
 
-	// hWnd is an SDL_Window* on this SDL3 build (see shaderapidx9/winutils.cpp,
-	// which casts the same handle to SDL_Window*). Bring up the real native
-	// Vulkan device/surface/swapchain against it, with a back buffer of the
-	// mode's size (0 x 0 follows the window).
+	// hWnd is the engine window; the SDL3-Vulkan bridge interprets it. Bring up
+	// the real native Vulkan device/surface/swapchain against it, with a back
+	// buffer of the mode's size (0 x 0 follows the window).
 	std::string sizeError;
 	if ( !g_VulkanContext.SetBackBufferSize(
 	         mode.m_DisplayMode.m_nWidth, mode.m_DisplayMode.m_nHeight, &sizeError ) )
@@ -1966,7 +1986,7 @@ CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode(
 		config.framesInFlight = 2;
 
 		std::string error;
-		if ( g_VulkanContext.Init( static_cast<SDL_Window *>( hWnd ), config, &error ) )
+		if ( InitVulkanContext( hWnd, config, &error ) )
 		{
 			int w = 0, h = 0;
 			g_VulkanContext.GetSwapchainExtent( w, h );
@@ -3111,7 +3131,7 @@ void CShaderShadowVulkan::SetDefaultState()
 	m_bUsesVertexAndPixelShaders = false;
 	m_blendSrc = SHADER_BLEND_ONE;
 	m_blendDst = SHADER_BLEND_ZERO;
-	m_alphaRef = 0.0f;
+	m_alphaRef = 0.7f;
 	m_alphaFunc = SHADER_ALPHAFUNC_GEQUAL;
 	m_colorWrites = true;
 	m_cullEnable = true;
