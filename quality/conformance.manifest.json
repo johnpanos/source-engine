@@ -679,6 +679,66 @@
       "expect": "pass"
     },
     {
+      "id": "jobsystem.sealequivalence",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "JOB-SCHED-001",
+      "contract": "RFC/0003-dependency-aware-job-system.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "unittests/jobsystemtest/sealequivalencetest.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "jobsystem.executorstress",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "JOB-SCHED-001",
+      "contract": "RFC/0003-dependency-aware-job-system.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/pooled_executor.cpp",
+        "jobsystem/dynamic_scope.cpp",
+        "unittests/jobsystemtest/executorstresstest.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "jobsystem.bench.smoke",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "JOB-SCHED-001",
+      "contract": "RFC/0003-dependency-aware-job-system.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_batch.cpp",
+        "jobsystem/dynamic_scope.cpp",
+        "unittests/jobsystemtest/jobsystembench.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.backend.null",
       "domain": "Q-PRESENTATION",
       "rfc": "0001",

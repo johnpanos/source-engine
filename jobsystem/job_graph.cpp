@@ -51,11 +51,11 @@ namespace
 // targets[offsets[i] .. offsets[i + 1]), in unique-edge order.
 struct Csr
 {
-	std::vector<uint32_t> offsets;
-	std::vector<uint32_t> targets;
+	uint32_t *offsets = nullptr;
+	uint32_t *targets = nullptr;
 
-	const uint32_t *begin( uint32_t i ) const { return targets.data() + offsets[i]; }
-	const uint32_t *end( uint32_t i ) const { return targets.data() + offsets[i + 1]; }
+	const uint32_t *begin( uint32_t i ) const { return targets + offsets[i]; }
+	const uint32_t *end( uint32_t i ) const { return targets + offsets[i + 1]; }
 };
 
 // Answers "is b reachable from a" for a validated DAG. A path can only move
@@ -177,33 +177,50 @@ Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 		}
 	}
 
-	// keep[k] marks the first occurrence of each (producer, consumer) pair; its
-	// kind absorbs any later duplicate. Sorting edge indices by (key, index)
-	// groups duplicates with the first occurrence leading each group.
+	// All per-seal scratch indices live in one allocation.
 	const uint32_t edgeCount = (uint32_t)edges.size();
-	std::vector<char> keep( edgeCount, 1 );
+	std::vector<uint32_t> arena( 3 * (size_t)edgeCount + 9 * (size_t)n + 2 );
+	uint32_t *next = arena.data();
+	auto carve = [&]( size_t count ) { uint32_t *p = next; next += count; return p; };
+	uint32_t *keep      = carve( edgeCount ); // 1 = first occurrence of its (producer, consumer)
+	uint32_t *byCons    = carve( edgeCount ); // edge indices grouped by consumer, stable
+	uint32_t *consOff   = carve( n + 1 );
+	uint32_t *seenFor   = carve( n );         // producer -> last consumer that saw it (+1)
+	uint32_t *firstEdge = carve( n );         // producer -> first edge index for that consumer
+	uint32_t *indeg     = carve( n );
+	uint32_t *work      = carve( n );         // fill cursor, then Kahn's remaining indegree
+	uint32_t *heap      = carve( n );
+	uint32_t *roots     = carve( n );
+	Csr succ;
+	succ.offsets = carve( n + 1 );
+	succ.targets = carve( edgeCount );
+
+	// Group edges by consumer with a stable counting sort. Within one consumer
+	// edges are visited in declaration order, so the first occurrence of each
+	// producer is kept and absorbs any later duplicate's kind.
+	for ( uint32_t k = 0; k < edgeCount; ++k )
+		consOff[edges[k].consumer + 1]++;
+	for ( uint32_t i = 0; i < n; ++i )
+		consOff[i + 1] += consOff[i];
+	std::copy( consOff, consOff + n, work );
+	for ( uint32_t k = 0; k < edgeCount; ++k )
+		byCons[work[edges[k].consumer]++] = k;
+	for ( uint32_t c = 0; c < n; ++c )
 	{
-		std::vector<uint32_t> byKey( edgeCount );
-		for ( uint32_t k = 0; k < edgeCount; ++k )
-			byKey[k] = k;
-		auto keyOf = [&]( uint32_t k ) -> uint64_t { return ( (uint64_t)edges[k].producer << 32 ) | edges[k].consumer; };
-		std::sort( byKey.begin(), byKey.end(),
-			[&]( uint32_t a, uint32_t b )
-			{
-				const uint64_t ka = keyOf( a ), kb = keyOf( b );
-				return ka != kb ? ka < kb : a < b;
-			} );
-		for ( uint32_t k = 1; k < edgeCount; ++k )
+		for ( uint32_t x = consOff[c]; x < consOff[c + 1]; ++x )
 		{
-			const uint32_t first = byKey[k - 1];
-			const uint32_t dup   = byKey[k];
-			if ( keyOf( first ) != keyOf( dup ) )
-				continue;
-			// Carry the group leader forward so every duplicate merges into it.
-			byKey[k] = first;
-			keep[dup] = 0;
-			if ( edges[dup].kind == DependencyKind::Success )
-				edges[first].kind = DependencyKind::Success;
+			const uint32_t k = byCons[x];
+			const uint32_t p = edges[k].producer;
+			if ( seenFor[p] != c + 1 )
+			{
+				seenFor[p] = c + 1;
+				firstEdge[p] = k;
+				keep[k] = 1;
+			}
+			else if ( edges[k].kind == DependencyKind::Success )
+			{
+				edges[firstEdge[p]].kind = DependencyKind::Success;
+			}
 		}
 	}
 
@@ -216,10 +233,7 @@ Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 		}
 	}
 
-	// (4) Build successor adjacency (unique-edge order) + indegree/outdegree.
-	std::vector<uint32_t> indeg( n, 0 );
-	Csr succ;
-	succ.offsets.assign( (size_t)n + 1, 0 );
+	// (4) Build successor adjacency (unique-edge order) + indegree.
 	for ( uint32_t k = 0; k < edgeCount; ++k )
 	{
 		if ( !keep[k] )
@@ -229,52 +243,56 @@ Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 	}
 	for ( uint32_t i = 0; i < n; ++i )
 		succ.offsets[i + 1] += succ.offsets[i];
-	succ.targets.resize( succ.offsets[n] );
+	std::copy( succ.offsets, succ.offsets + n, work );
+	for ( uint32_t k = 0; k < edgeCount; ++k )
 	{
-		std::vector<uint32_t> cursor( succ.offsets.begin(), succ.offsets.end() - 1 );
-		for ( uint32_t k = 0; k < edgeCount; ++k )
-		{
-			if ( keep[k] )
-				succ.targets[cursor[edges[k].producer]++] = edges[k].consumer;
-		}
+		if ( keep[k] )
+			succ.targets[work[edges[k].producer]++] = edges[k].consumer;
 	}
 
 	// (5) Kahn topological sort, always placing the lowest-index ready node next
-	//     (a min-heap) for a stable order. A cycle leaves nodes unplaced.
+	//     for a stable order. Initial roots are already ascending, so only nodes
+	//     released later need a min-heap; each step takes the smaller head. A
+	//     cycle leaves nodes unplaced.
 	std::vector<uint32_t> topo;
 	topo.reserve( n );
 	{
-		std::vector<uint32_t> work = indeg;
-		std::vector<uint32_t> heap;
+		std::copy( indeg, indeg + n, work );
+		uint32_t rootCount = 0, rootHead = 0, heapSize = 0;
 		for ( uint32_t i = 0; i < n; ++i )
 		{
 			if ( work[i] == 0 )
-				heap.push_back( i ); // ascending: already a valid min-heap
+				roots[rootCount++] = i;
 		}
 		const auto greater = std::greater<uint32_t>();
-		while ( !heap.empty() )
+		while ( rootHead < rootCount || heapSize > 0 )
 		{
-			std::pop_heap( heap.begin(), heap.end(), greater );
-			const uint32_t pick = heap.back();
-			heap.pop_back();
+			uint32_t pick;
+			if ( heapSize == 0 || ( rootHead < rootCount && roots[rootHead] < heap[0] ) )
+			{
+				pick = roots[rootHead++];
+			}
+			else
+			{
+				std::pop_heap( heap, heap + heapSize, greater );
+				pick = heap[--heapSize];
+			}
 			topo.push_back( pick );
 			for ( const uint32_t *c = succ.begin( pick ); c != succ.end( pick ); ++c )
 			{
 				if ( --work[*c] == 0 )
 				{
-					heap.push_back( *c );
-					std::push_heap( heap.begin(), heap.end(), greater );
+					heap[heapSize++] = *c;
+					std::push_heap( heap, heap + heapSize, greater );
 				}
 			}
 		}
 		if ( topo.size() < n )
 		{
-			// The lowest-index unplaced node is on (or behind) a cycle.
-			std::vector<char> placed( n, 0 );
-			for ( uint32_t id : topo )
-				placed[id] = 1;
+			// The lowest-index unplaced node is on (or behind) a cycle: exactly
+			// the unplaced nodes keep a nonzero remaining indegree.
 			uint32_t offender = JobHandle::kInvalid;
-			for ( uint32_t i = 0; i < n; ++i ) if ( !placed[i] ) { offender = i; break; }
+			for ( uint32_t i = 0; i < n; ++i ) if ( work[i] != 0 ) { offender = i; break; }
 			return MakeUnexpected( GraphError{ GraphErrorCode::Cycle, "graph contains an ordering cycle", offender, JobHandle::kInvalid } );
 		}
 	}

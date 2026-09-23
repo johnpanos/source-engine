@@ -38,6 +38,10 @@ def build(bld):
 		( 'jobsystemframetest',   'frametest.cpp',        ['jobsystem'] ),
 		( 'jobsystemdynamictest', 'dynamicscopetest.cpp', ['jobsystem'] ),
 		( 'jobsystemqjobstest',   'qjobstest.cpp',        ['jobsystem'] ),
+		( 'jobsystemsealeqtest',  'sealequivalencetest.cpp', ['jobsystem'] ),
+		( 'jobsystemstresstest',  'executorstresstest.cpp',  ['jobsystem'] ),
+		# Microbenchmarks: validated smoke run by default, --full for numbers.
+		( 'jobsystembench',       'jobsystembench.cpp',      ['jobsystem'] ),
 		( 'jobsystembridgetest',  'enginebridgetest.cpp', ['jobsystem', 'vstdlib', 'tier1', 'tier0'] + dl_log ),
 		# Portal carving: real mathlib clipping through the C++11 game-facing facade.
 		( 'jobsystemportalcarvetest', 'portalcarvetest.cpp', ['mathlib', 'vstdlib', 'tier1', 'tier0'] + dl_log ),

@@ -502,7 +502,7 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 	return true;
 }
 
-bool CVulkanContext::CreateSwapchain( std::string *outError )
+bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldSwapchain )
 {
 	VkSurfaceCapabilitiesKHR caps = {};
 	VkResult r = vkGetPhysicalDeviceSurfaceCapabilitiesKHR( m_physicalDevice, m_surface, &caps );
@@ -559,6 +559,7 @@ bool CVulkanContext::CreateSwapchain( std::string *outError )
 	}
 
 	// Extent: honor the surface's fixed extent, else clamp the drawable size.
+	SDL_GetWindowSizeInPixels( m_window, &m_presentDrawable[0], &m_presentDrawable[1] );
 	if ( caps.currentExtent.width != UINT32_MAX )
 	{
 		m_presentExtent = caps.currentExtent;
@@ -613,7 +614,7 @@ bool CVulkanContext::CreateSwapchain( std::string *outError )
 	info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 	info.presentMode = m_presentMode;
 	info.clipped = VK_TRUE;
-	info.oldSwapchain = VK_NULL_HANDLE;
+	info.oldSwapchain = oldSwapchain;
 
 	uint32_t families[2] = { m_graphicsQueueFamily, m_presentQueueFamily };
 	if ( m_graphicsQueueFamily != m_presentQueueFamily )
@@ -2604,6 +2605,8 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		ps.descriptorCount = kMaxManagedTexSets;
 		VkDescriptorPoolCreateInfo dp = {};
 		dp.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		// Deleted textures return their sets (DestroyManagedTexture).
+		dp.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 		dp.maxSets = kMaxManagedTexSets;
 		dp.poolSizeCount = 1;
 		dp.pPoolSizes = &ps;
@@ -2716,6 +2719,8 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 	}
 	if ( !InitPortalPipeline( outError ) )
 		return false;
+	if ( !InitSkinPipeline( outError ) )
+		return false;
 
 	Log( "dynamic mesh pipelines ready (4 material shaders incl. textured + blend variants)\n" );
 	return true;
@@ -2773,6 +2778,23 @@ VkPipeline CVulkanContext::PortalPipeline( const DynRasterState &state, bool srg
 		Log( "vkCreateGraphicsPipelines (PortalRefract, state %#llx) failed\n",
 		    static_cast<unsigned long long>( key ) );
 	m_portalPipelines[key] = pipeline;
+	return pipeline;
+}
+
+VkPipeline CVulkanContext::SkinPipeline( const DynRasterState &state, bool srgbPass )
+{
+	const uint64_t key = RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull );
+	const auto existing = m_skinPipelines.find( key );
+	if ( existing != m_skinPipelines.end() )
+		return existing->second;
+	if ( m_skinVert == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE;
+	VkPipeline pipeline = BuildMaterialPipeline( state, m_skinVert, m_skinFrag,
+	    m_skinPipelineLayout, &m_skinVin, srgbPass ? m_renderPassLoadSrgb : m_renderPass );
+	if ( pipeline == VK_NULL_HANDLE )
+		Log( "vkCreateGraphicsPipelines (skin, state %#llx) failed\n",
+		    static_cast<unsigned long long>( key ) );
+	m_skinPipelines[key] = pipeline;
 	return pipeline;
 }
 
@@ -2897,6 +2919,199 @@ bool CVulkanContext::InitPortalPipeline( std::string *outError )
 		return false;
 	}
 	return true;
+}
+
+// VertexLitGeneric's $phong path: its own shaders (a GLSL port of skin_vs20.fxc
+// and skin_ps20b.fxc), six sampler sets, the pixel shader constants in a
+// dynamic uniform buffer (set 6) and a push block with the vertex stage's
+// registers (see shaders/skin.frag). A device that cannot bind seven sets or
+// the block gets no pipeline, and the shader API declines the draws by name.
+bool CVulkanContext::InitSkinPipeline( std::string *outError )
+{
+	VkPhysicalDeviceProperties properties = {};
+	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
+	if ( !m_clipPlanesSupported || properties.limits.maxBoundDescriptorSets < 7 ||
+	     properties.limits.maxPushConstantsSize < kSkinPushBytes )
+	{
+		Log( "skin pipeline unavailable: descriptor sets, push constants or clip distances\n" );
+		return true;
+	}
+	m_uboAlignment = std::max<VkDeviceSize>( 16, properties.limits.minUniformBufferOffsetAlignment );
+
+	VkDescriptorSetLayoutBinding ubo = {};
+	ubo.binding = 0;
+	ubo.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	ubo.descriptorCount = 1;
+	ubo.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	VkDescriptorSetLayoutCreateInfo lb = {};
+	lb.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	lb.bindingCount = 1;
+	lb.pBindings = &ubo;
+	if ( vkCreateDescriptorSetLayout( m_device, &lb, nullptr, &m_skinUboLayout ) != VK_SUCCESS )
+	{
+		SetError( outError, "vkCreateDescriptorSetLayout (skin constants) failed" );
+		return false;
+	}
+	const uint32_t slots = std::max<uint32_t>( 1u, m_framesInFlight );
+	VkDescriptorPoolSize size = {};
+	size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	size.descriptorCount = slots;
+	VkDescriptorPoolCreateInfo pi = {};
+	pi.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pi.maxSets = slots;
+	pi.poolSizeCount = 1;
+	pi.pPoolSizes = &size;
+	if ( vkCreateDescriptorPool( m_device, &pi, nullptr, &m_skinUboPool ) != VK_SUCCESS )
+	{
+		SetError( outError, "vkCreateDescriptorPool (skin constants) failed" );
+		return false;
+	}
+	m_skinUbos.assign( slots, SkinUniformBuffer() );
+	for ( SkinUniformBuffer &slot : m_skinUbos )
+	{
+		VkDescriptorSetAllocateInfo da = {};
+		da.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		da.descriptorPool = m_skinUboPool;
+		da.descriptorSetCount = 1;
+		da.pSetLayouts = &m_skinUboLayout;
+		if ( vkAllocateDescriptorSets( m_device, &da, &slot.set ) != VK_SUCCESS )
+		{
+			SetError( outError, "vkAllocateDescriptorSets (skin constants) failed" );
+			return false;
+		}
+	}
+
+	VkPushConstantRange pc = {};
+	pc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+	pc.size = kSkinPushBytes;
+	const VkDescriptorSetLayout sets[7] = { m_dynTexDescLayout, m_dynTexDescLayout,
+		m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout,
+		m_skinUboLayout };
+	VkPipelineLayoutCreateInfo pl = {};
+	pl.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pl.setLayoutCount = 7;
+	pl.pSetLayouts = sets;
+	pl.pushConstantRangeCount = 1;
+	pl.pPushConstantRanges = &pc;
+	if ( vkCreatePipelineLayout( m_device, &pl, nullptr, &m_skinPipelineLayout ) != VK_SUCCESS )
+	{
+		SetError( outError, "vkCreatePipelineLayout (skin) failed" );
+		return false;
+	}
+	if ( !CreateShaderModule( g_skinVertSpv, sizeof( g_skinVertSpv ), &m_skinVert, outError ) ||
+	     !CreateShaderModule( g_skinFragSpv, sizeof( g_skinFragSpv ), &m_skinFrag, outError ) )
+		return false;
+	// Position, attenuation (the color slot) and uv as the textured stage reads
+	// them, then the normal, tangent and the fourth attenuation (the alpha slot).
+	std::memcpy( m_skinAttrs, m_texTemplate.attrs, sizeof( m_skinAttrs[0] ) * 4 );
+	m_skinAttrs[4].location = 4;
+	m_skinAttrs[4].format = VK_FORMAT_R32G32B32_SFLOAT;
+	m_skinAttrs[4].offset = sizeof( float ) * 10;
+	m_skinAttrs[5].location = 5;
+	m_skinAttrs[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	m_skinAttrs[5].offset = sizeof( float ) * 13;
+	m_skinAttrs[6].location = 6;
+	m_skinAttrs[6].format = VK_FORMAT_R32_SFLOAT;
+	m_skinAttrs[6].offset = sizeof( float ) * 17;
+	m_skinVin = m_texTemplate.vin;
+	m_skinVin.vertexAttributeDescriptionCount = 7;
+	m_skinVin.pVertexAttributeDescriptions = m_skinAttrs;
+	if ( SkinPipeline( DynRasterState() ) == VK_NULL_HANDLE )
+	{
+		SetError( outError, "vkCreateGraphicsPipelines (skin) failed" );
+		return false;
+	}
+	return true;
+}
+
+bool CVulkanContext::UploadSkinConstants( std::vector<uint32_t> *offsets )
+{
+	offsets->clear();
+	if ( m_dynSkinConstants.empty() || m_skinUbos.empty() )
+		return !m_dynSkinConstants.empty() ? false : true;
+	const VkDeviceSize block = sizeof( m_dynSkinConstants[0].ps );
+	const VkDeviceSize stride = ( block + m_uboAlignment - 1 ) / m_uboAlignment * m_uboAlignment;
+	const VkDeviceSize needed = stride * m_dynSkinConstants.size();
+	// This frame's slot: its fence was waited on when the frame began, so the
+	// GPU no longer reads it.
+	SkinUniformBuffer &slot = m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()];
+	if ( needed > slot.capacity )
+	{
+		if ( slot.mapped )
+			vkUnmapMemory( m_device, slot.memory );
+		if ( slot.buffer != VK_NULL_HANDLE )
+			vkDestroyBuffer( m_device, slot.buffer, nullptr );
+		if ( slot.memory != VK_NULL_HANDLE )
+			vkFreeMemory( m_device, slot.memory, nullptr );
+		slot.mapped = nullptr;
+		slot.buffer = VK_NULL_HANDLE;
+		slot.memory = VK_NULL_HANDLE;
+		slot.capacity = 0;
+		const VkDeviceSize capacity = needed + needed / 2 + stride * 16;
+		std::string error;
+		if ( !CreateBuffer( capacity, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		         &slot.buffer, &slot.memory, &error ) ||
+		     vkMapMemory( m_device, slot.memory, 0, capacity, 0, &slot.mapped ) != VK_SUCCESS )
+		{
+			Log( "skin constants buffer (%llu bytes) unavailable: %s\n",
+			    static_cast<unsigned long long>( capacity ), error.c_str() );
+			slot.mapped = nullptr;
+			return false;
+		}
+		slot.capacity = capacity;
+		VkDescriptorBufferInfo bi = {};
+		bi.buffer = slot.buffer;
+		bi.offset = 0;
+		bi.range = block;
+		VkWriteDescriptorSet wds = {};
+		wds.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		wds.dstSet = slot.set;
+		wds.dstBinding = 0;
+		wds.descriptorCount = 1;
+		wds.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		wds.pBufferInfo = &bi;
+		vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
+	}
+	for ( size_t i = 0; i < m_dynSkinConstants.size(); ++i )
+	{
+		std::memcpy( static_cast<unsigned char *>( slot.mapped ) + stride * i,
+		    m_dynSkinConstants[i].ps, block );
+		offsets->push_back( static_cast<uint32_t>( stride * i ) );
+	}
+	return true;
+}
+
+void CVulkanContext::DestroySkinPipeline()
+{
+	for ( const auto &entry : m_skinPipelines )
+		vkDestroyPipeline( m_device, entry.second, nullptr );
+	m_skinPipelines.clear();
+	for ( VkShaderModule *module : { &m_skinVert, &m_skinFrag } )
+	{
+		if ( *module != VK_NULL_HANDLE )
+			vkDestroyShaderModule( m_device, *module, nullptr );
+		*module = VK_NULL_HANDLE;
+	}
+	for ( SkinUniformBuffer &slot : m_skinUbos )
+	{
+		if ( slot.mapped )
+			vkUnmapMemory( m_device, slot.memory );
+		if ( slot.buffer != VK_NULL_HANDLE )
+			vkDestroyBuffer( m_device, slot.buffer, nullptr );
+		if ( slot.memory != VK_NULL_HANDLE )
+			vkFreeMemory( m_device, slot.memory, nullptr );
+	}
+	m_skinUbos.clear();
+	if ( m_skinPipelineLayout != VK_NULL_HANDLE )
+		vkDestroyPipelineLayout( m_device, m_skinPipelineLayout, nullptr );
+	m_skinPipelineLayout = VK_NULL_HANDLE;
+	if ( m_skinUboPool != VK_NULL_HANDLE )
+		vkDestroyDescriptorPool( m_device, m_skinUboPool, nullptr );
+	m_skinUboPool = VK_NULL_HANDLE;
+	if ( m_skinUboLayout != VK_NULL_HANDLE )
+		vkDestroyDescriptorSetLayout( m_device, m_skinUboLayout, nullptr );
+	m_skinUboLayout = VK_NULL_HANDLE;
 }
 
 void CVulkanContext::SetDynamicTransform( const float *m16 )
@@ -3063,7 +3278,7 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	// have room), so per-draw texture binding can point each draw at its texture.
 	// The sRGB view has a set of its own.
 	if ( m_dynTexDescLayout != VK_NULL_HANDLE && m_dynTexDescPool != VK_NULL_HANDLE &&
-	     2 * ( m_managedTextures.size() + 1 ) < kMaxManagedTexSets )
+	     m_liveTextureSets + 2 < kMaxManagedTexSets )
 	{
 		const auto allocateSet = [&]( VkImageView view, VkDescriptorSet *outSet )
 		{
@@ -3077,6 +3292,7 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 				*outSet = VK_NULL_HANDLE;
 				return;
 			}
+			++m_liveTextureSets;
 			VkDescriptorImageInfo dii = {};
 			dii.sampler = m_dynTexSampler;
 			dii.imageView = view;
@@ -3095,8 +3311,82 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 			allocateSet( t.srgbView, &t.descSetSrgb );
 	}
 
+	if ( !m_freeTextureHandles.empty() )
+	{
+		const int handle = m_freeTextureHandles.back();
+		m_freeTextureHandles.pop_back();
+		m_managedTextures[static_cast<size_t>( handle )] = t;
+		return handle;
+	}
 	m_managedTextures.push_back( t );
 	return static_cast<int>( m_managedTextures.size() - 1 );
+}
+
+void CVulkanContext::ReleaseManagedTextureObjects( ManagedTexture &t )
+{
+	VkDescriptorSet sets[2] = { t.descSet, t.descSetSrgb };
+	for ( VkDescriptorSet set : sets )
+	{
+		if ( set != VK_NULL_HANDLE && m_dynTexDescPool != VK_NULL_HANDLE )
+		{
+			vkFreeDescriptorSets( m_device, m_dynTexDescPool, 1, &set );
+			--m_liveTextureSets;
+		}
+	}
+	if ( t.framebuffer != VK_NULL_HANDLE )
+		vkDestroyFramebuffer( m_device, t.framebuffer, nullptr );
+	if ( t.framebufferSrgb != VK_NULL_HANDLE )
+		vkDestroyFramebuffer( m_device, t.framebufferSrgb, nullptr );
+	if ( t.srgbView != VK_NULL_HANDLE )
+		vkDestroyImageView( m_device, t.srgbView, nullptr );
+	if ( t.depthView != VK_NULL_HANDLE )
+		vkDestroyImageView( m_device, t.depthView, nullptr );
+	if ( t.depthImage != VK_NULL_HANDLE )
+		vkDestroyImage( m_device, t.depthImage, nullptr );
+	if ( t.depthMemory != VK_NULL_HANDLE )
+		vkFreeMemory( m_device, t.depthMemory, nullptr );
+	if ( t.view != VK_NULL_HANDLE )
+		vkDestroyImageView( m_device, t.view, nullptr );
+	if ( t.image != VK_NULL_HANDLE )
+		vkDestroyImage( m_device, t.image, nullptr );
+	if ( t.memory != VK_NULL_HANDLE )
+		vkFreeMemory( m_device, t.memory, nullptr );
+	t = ManagedTexture();
+}
+
+void CVulkanContext::DestroyManagedTexture( int handle )
+{
+	if ( !IsValid() || handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) ||
+	     m_managedTextures[static_cast<size_t>( handle )].image == VK_NULL_HANDLE )
+		return;
+	// Retired after the frame being recorded is submitted and complete: until
+	// then no record can see the handle reused.
+	ManagedTexture &slot = m_managedTextures[static_cast<size_t>( handle )];
+	m_retiredTextures.push_back( { slot, handle, m_submitSerial + 1 } );
+	slot = ManagedTexture();
+	if ( m_dynBoundTexHandle == handle )
+		m_dynBoundTexHandle = -1;
+	if ( m_dynLightmapHandle == handle )
+		m_dynLightmapHandle = -1;
+	if ( m_dynTarget == handle )
+		m_dynTarget = -1;
+	RetireCompletedTextures();
+}
+
+void CVulkanContext::RetireCompletedTextures()
+{
+	size_t kept = 0;
+	for ( RetiredTexture &r : m_retiredTextures )
+	{
+		if ( r.afterSerial <= m_completedSerial )
+		{
+			ReleaseManagedTextureObjects( r.texture );
+			m_freeTextureHandles.push_back( r.handle );
+		}
+		else
+			m_retiredTextures[kept++] = r;
+	}
+	m_retiredTextures.resize( kept );
 }
 
 int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::string *outError )
@@ -3640,6 +3930,11 @@ void CVulkanContext::QueueDynamicTriangles( const float *posColorInterleaved, ui
 	std::memcpy( d.clipPlanes, m_dynClipPlanes, sizeof( d.clipPlanes ) );
 	std::memcpy( d.samplerHandles, m_dynSamplerHandles, sizeof( d.samplerHandles ) );
 	d.portal = m_dynPortal;
+	if ( d.shaderIndex == kDynShaderSkin )
+	{
+		d.skin = static_cast<int>( m_dynSkinConstants.size() );
+		m_dynSkinConstants.push_back( m_dynSkin );
+	}
 	m_dynQueued.reserve(
 	    m_dynQueued.size() + static_cast<size_t>( vertexCount ) * kDynVertexFloats );
 	for ( uint32_t v = 0; v < vertexCount; ++v )
@@ -3885,6 +4180,7 @@ void CVulkanContext::DestroyDynamicMesh()
 	for ( const auto &entry : m_portalPipelines )
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_portalPipelines.clear();
+	DestroySkinPipeline();
 	for ( VkShaderModule *module : { &m_portalVert, &m_portalFrag } )
 	{
 		if ( *module != VK_NULL_HANDLE )
@@ -3940,28 +4236,15 @@ void CVulkanContext::DestroyDynamicMesh()
 		vkFreeMemory( m_device, m_dynTexMemory, nullptr );
 		m_dynTexMemory = VK_NULL_HANDLE;
 	}
+	// The device is idle here: every texture, deleted or not, can go.
 	for ( ManagedTexture &t : m_managedTextures )
-	{
-		if ( t.framebuffer != VK_NULL_HANDLE )
-			vkDestroyFramebuffer( m_device, t.framebuffer, nullptr );
-		if ( t.framebufferSrgb != VK_NULL_HANDLE )
-			vkDestroyFramebuffer( m_device, t.framebufferSrgb, nullptr );
-		if ( t.srgbView != VK_NULL_HANDLE )
-			vkDestroyImageView( m_device, t.srgbView, nullptr );
-		if ( t.depthView != VK_NULL_HANDLE )
-			vkDestroyImageView( m_device, t.depthView, nullptr );
-		if ( t.depthImage != VK_NULL_HANDLE )
-			vkDestroyImage( m_device, t.depthImage, nullptr );
-		if ( t.depthMemory != VK_NULL_HANDLE )
-			vkFreeMemory( m_device, t.depthMemory, nullptr );
-		if ( t.view != VK_NULL_HANDLE )
-			vkDestroyImageView( m_device, t.view, nullptr );
-		if ( t.image != VK_NULL_HANDLE )
-			vkDestroyImage( m_device, t.image, nullptr );
-		if ( t.memory != VK_NULL_HANDLE )
-			vkFreeMemory( m_device, t.memory, nullptr );
-	}
+		ReleaseManagedTextureObjects( t );
 	m_managedTextures.clear();
+	for ( RetiredTexture &r : m_retiredTextures )
+		ReleaseManagedTextureObjects( r.texture );
+	m_retiredTextures.clear();
+	m_freeTextureHandles.clear();
+	m_liveTextureSets = 0;
 	if ( m_dynPipelineLayout != VK_NULL_HANDLE )
 	{
 		vkDestroyPipelineLayout( m_device, m_dynPipelineLayout, nullptr );
@@ -4000,22 +4283,31 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		SetError( outError, "BeginFrame called while a frame is already open" );
 		return false;
 	}
+	// A back-buffer size requested while a frame was open applies now, and a
+	// drawable that changed size gets a swapchain of its new size.
+	int drawable[2] = { 0, 0 };
+	SDL_GetWindowSizeInPixels( m_window, &drawable[0], &drawable[1] );
+	const bool drawableChanged =
+	    drawable[0] != m_presentDrawable[0] || drawable[1] != m_presentDrawable[1];
+	const bool backBufferPending =
+	    m_requestedBackBuffer.width > 0 && m_requestedBackBuffer.height > 0 &&
+	    ( m_requestedBackBuffer.width != m_swapExtent.width ||
+	        m_requestedBackBuffer.height != m_swapExtent.height );
+	if ( ( drawableChanged || backBufferPending ) && !RecreateSwapchain( outError ) )
+		return false;
 	if ( m_swapchain == VK_NULL_HANDLE )
 	{
-		// Zero-size window: nothing to render this iteration.
+		// Zero-size (minimized) window: nothing to render this iteration.
 		if ( outSkip )
 			*outSkip = true;
 		return true;
 	}
 
-	// A back-buffer size requested while a frame was open applies now.
-	if ( m_requestedBackBuffer.width > 0 && m_requestedBackBuffer.height > 0 &&
-	     ( m_requestedBackBuffer.width != m_swapExtent.width ||
-	         m_requestedBackBuffer.height != m_swapExtent.height ) &&
-	     !RecreateSwapchain( outError ) )
-		return false;
-
 	vkWaitForFences( m_device, 1, &m_inFlight[m_currentFrame], VK_TRUE, UINT64_MAX );
+	// One queue completes submissions in order: this slot's is done, so are all
+	// before it.
+	m_completedSerial = std::max( m_completedSerial, m_slotSerial[m_currentFrame] );
+	RetireCompletedTextures();
 
 	uint32_t imageIndex = 0;
 	VkResult r = vkAcquireNextImageKHR( m_device, m_swapchain, UINT64_MAX,
@@ -4205,6 +4497,9 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		// issued against; a change of target closes the open pass and opens the
 		// new target's, so a portal view rendered into _rt_portal1 lands there and
 		// is finished before the main view samples it.
+		// The skin draws' pixel shader constants, in this frame's uniform buffer.
+		std::vector<uint32_t> skinOffsets;
+		const bool skinConstantsOk = UploadSkinConstants( &skinOffsets );
 		int openTarget = -1; // the swapchain pass opened above
 		bool openSrgb = false; // entered through the target's sRGB view
 		VkPipeline boundPipeline = VK_NULL_HANDLE;
@@ -4230,12 +4525,18 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		{
 			return m_srgbAttachments && r.kind == kRecordDraw &&
 			       ( r.shaderIndex == kDynShaderTextured ||
-			           r.shaderIndex == kDynShaderPortalRefract ) &&
+			           r.shaderIndex == kDynShaderPortalRefract ||
+			           r.shaderIndex == kDynShaderSkin ) &&
 			       ( r.colorFlags & kColorSrgbWrite );
 		};
 		for ( size_t recordIndex = 0; recordIndex < m_dynDrawRecords.size(); ++recordIndex )
 		{
 			const DynDraw &d = m_dynDrawRecords[recordIndex];
+			// A render target deleted after these records were issued: what was
+			// rendered into it is discarded, as it would be on D3D9.
+			if ( ( d.target >= 0 && !IsRenderTargetTexture( d.target ) ) ||
+			     ( d.kind == kRecordCopy && !IsRenderTargetTexture( d.copyDst ) ) )
+				continue;
 			if ( d.kind == kRecordCopy )
 			{
 				endActiveQuery( false );
@@ -4393,6 +4694,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			VkPipelineLayout selectedLayout = m_dynPipelineLayout;
 			bool textured = false;
 			bool portal = false;
+			bool skin = false;
 			// sRGB inputs decoded by the sampler and output encoded by the view,
 			// which the shader must then not apply itself.
 			int decodedFlags = openSrgb ? kColorSrgbWrite : 0;
@@ -4418,19 +4720,28 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				selectedLayout = m_portalPipelineLayout;
 				portal = true;
 			}
+			else if ( d.shaderIndex == kDynShaderSkin )
+			{
+				selected = SkinPipeline( d.raster, openSrgb );
+				if ( selected == VK_NULL_HANDLE || d.skin < 0 || !skinConstantsOk ||
+				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
+					continue;
+				selectedLayout = m_skinPipelineLayout;
+				skin = true;
+			}
 			if ( selected != boundPipeline )
 			{
 				vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, selected );
 				boundPipeline = selected;
 			}
-			if ( textured || portal )
+			if ( textured || portal || skin )
 			{
 				vkCmdSetStencilCompareMask(
 				    cmd, VK_STENCIL_FACE_FRONT_AND_BACK, d.stencilTestMask );
 				vkCmdSetStencilWriteMask( cmd, VK_STENCIL_FACE_FRONT_AND_BACK, d.stencilWriteMask );
 				vkCmdSetStencilReference( cmd, VK_STENCIL_FACE_FRONT_AND_BACK, d.stencilRef );
 			}
-			if ( textured || portal )
+			if ( textured || portal || skin )
 			{
 				// Bind this draw's own texture descriptor set (per-draw texture),
 				// falling back to the built-in set when the draw has no managed
@@ -4466,6 +4777,20 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 					    m_portalPipelineLayout, 0, 3, sets, 0, nullptr );
 				}
+				else if ( skin )
+				{
+					// s0 base (sRGB), s1 specular warp, s2 diffuse warp, s3 normal
+					// map, s7 exponent map, s14 self-illumination mask, then this
+					// draw's pixel shader constants.
+					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					    sampledSet( d.samplerHandles[1], 0 ), sampledSet( d.samplerHandles[2], 0 ),
+					    sampledSet( d.samplerHandles[3], 0 ), sampledSet( d.samplerHandles[7], 0 ),
+					    sampledSet( d.samplerHandles[14], 0 ),
+					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set };
+					const uint32_t offset = skinOffsets[static_cast<size_t>( d.skin )];
+					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+					    m_skinPipelineLayout, 0, 7, sets, 1, &offset );
+				}
 				else
 				{
 					const VkDescriptorSet sets[2] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
@@ -4485,7 +4810,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					for ( int k = 0; k < 4; ++k )
 						out[i * 4 + k] = i < d.clipPlaneCount ? d.clipPlanes[i][k] : 0.0f;
 			};
-			float pushData[kPortalPushBytes / sizeof( float )];
+			float pushData[std::max( kPortalPushBytes, kSkinPushBytes ) / sizeof( float )];
 			std::memcpy( pushData, d.transform, sizeof( d.transform ) );
 			uint32_t pushFloats;
 			if ( portal )
@@ -4506,6 +4831,23 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				pushData[47] = d.outputScale;
 				appendClipPlanes( pushData + 48 );
 				pushFloats = kPortalPushBytes / sizeof( float );
+			}
+			else if ( skin )
+			{
+				// shaders/skin.vert's block.
+				const SkinConstants &c = m_dynSkinConstants[static_cast<size_t>( d.skin )];
+				std::memcpy( pushData, c.viewProj, sizeof( c.viewProj ) );
+				std::memcpy( pushData + 16, c.texXform0, sizeof( c.texXform0 ) );
+				std::memcpy( pushData + 20, c.texXform1, sizeof( c.texXform1 ) );
+				std::memcpy( pushData + 24, c.eyePos, sizeof( c.eyePos ) );
+				pushData[28] = d.alphaRef;
+				pushData[29] = static_cast<float>( c.combos );
+				pushData[30] = static_cast<float>( d.colorFlags & ~decodedFlags );
+				pushData[31] = d.outputScale;
+				pushData[32] = static_cast<float>( c.numLights );
+				pushData[33] = pushData[34] = pushData[35] = 0.0f;
+				appendClipPlanes( pushData + 36 );
+				pushFloats = kSkinPushBytes / sizeof( float );
 			}
 			else if ( textured )
 			{
@@ -4649,6 +4991,9 @@ void CVulkanContext::RecordPresentBlit(
 	    static_cast<int32_t>( m_presentExtent.height ), 1 };
 	const bool sameSize = m_swapExtent.width == m_presentExtent.width &&
 	                      m_swapExtent.height == m_presentExtent.height;
+	++m_presentCount;
+	if ( !sameSize )
+		++m_scaledPresentCount;
 	vkCmdBlitImage( cmd, m_swapImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 	    m_presentImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
 	    sameSize ? VK_FILTER_NEAREST : m_presentFilter );
@@ -4740,6 +5085,8 @@ bool CVulkanContext::EndFrame( std::string *outError )
 
 	vkResetFences( m_device, 1, &m_inFlight[m_currentFrame] );
 	r = vkQueueSubmit( m_graphicsQueue, 1, &submit, m_inFlight[m_currentFrame] );
+	if ( r == VK_SUCCESS )
+		m_slotSerial[m_currentFrame] = ++m_submitSerial;
 	if ( r != VK_SUCCESS )
 	{
 		SetError( outError, std::string( "vkQueueSubmit failed: " ) + ResultString( r ) );
@@ -4904,9 +5251,17 @@ bool CVulkanContext::RecreateSwapchain( std::string *outError )
 		return false;
 	}
 	vkDeviceWaitIdle( m_device );
+	m_completedSerial = m_submitSerial;
+	RetireCompletedTextures();
+	// The old swapchain keeps presenting until the new one replaces it.
+	const VkSwapchainKHR oldSwapchain = m_swapchain;
+	m_swapchain = VK_NULL_HANDLE;
 	DestroySwapchainObjects();
 
-	if ( !CreateSwapchain( outError ) )
+	const bool created = CreateSwapchain( outError, oldSwapchain );
+	if ( oldSwapchain != VK_NULL_HANDLE )
+		vkDestroySwapchainKHR( m_device, oldSwapchain, nullptr );
+	if ( !created )
 		return false;
 	if ( m_swapchain == VK_NULL_HANDLE )
 		return true; // zero-size; retained without targets

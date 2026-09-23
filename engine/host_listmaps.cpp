@@ -10,6 +10,7 @@
 #include "host.h"
 #include "sys.h"
 #include "filesystem_engine.h"
+#include "map_container_file.h"
 #include "utldict.h"
 #include "demo.h"
 #ifndef SWDS
@@ -131,17 +132,23 @@ long CMapListItem::GetFSTimeStamp( char const *name )
 //-----------------------------------------------------------------------------
 int CMapListItem::CheckFSHeaderVersion( char const *name )
 {
-	dheader_t header;
-	memset( &header, 0, sizeof( header ) );
+	int nVersion = 0;
 
 	FileHandle_t fp = g_pFileSystem->Open ( name, "rb" );
 	if ( fp )
 	{
-		g_pFileSystem->Read( &header, sizeof( header ), fp );
+		// Legacy VBSP and BSP2 containers alike (RFC 0008).
+		CMapFileByteSource source;
+		mapcontainer::IMapContainer *pContainer = OpenMapContainerForFile( source, fp, name, true );
+		if ( pContainer )
+		{
+			nVersion = pContainer->LegacyVersion();
+			mapcontainer::DestroyMapContainer( pContainer );
+		}
 		g_pFileSystem->Close( fp );
 	}
 
-	return ( header.version >= MINBSPVERSION && header.version <= BSPVERSION ) ? VALID : INVALID;
+	return ( nVersion >= MINBSPVERSION && nVersion <= BSPVERSION ) ? VALID : INVALID;
 }
 
 // How often to check the filesystem for updated map info

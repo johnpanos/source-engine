@@ -32,7 +32,8 @@ std::optional<std::vector<std::byte>> ReadFile( const char *pPath )
 	std::ifstream in( pPath, std::ios::binary );
 	if ( !in )
 		return std::nullopt;
-	std::vector<char> raw( ( std::istreambuf_iterator<char>( in ) ), std::istreambuf_iterator<char>() );
+	std::vector<char> raw(
+	    ( std::istreambuf_iterator<char>( in ) ), std::istreambuf_iterator<char>() );
 	if ( in.bad() )
 		return std::nullopt;
 	std::vector<std::byte> bytes( raw.size() );
@@ -49,7 +50,8 @@ bool WriteFile( const char *pPath, const std::vector<std::byte> &bytes )
 		std::ofstream out( temp, std::ios::binary | std::ios::trunc );
 		if ( !out )
 			return false;
-		out.write( reinterpret_cast<const char *>( bytes.data() ), std::streamsize( bytes.size() ) );
+		out.write(
+		    reinterpret_cast<const char *>( bytes.data() ), std::streamsize( bytes.size() ) );
 		if ( !out )
 			return false;
 	}
@@ -69,8 +71,10 @@ std::string FourCCText( uint32_t fourcc )
 
 int ReportError( const char *pWhat, const MapContainerStatus &status )
 {
-	std::fprintf( stderr, "%s: %s (lump %s, offset %llu)\n", pWhat, MapContainerErrorName( status.code ),
-	              status.fourcc ? FourCCText( status.fourcc ).c_str() : "-", (unsigned long long)status.offset );
+	std::fprintf( stderr, "%s: %s (lump %s, offset %llu)\n", pWhat,
+	    MapContainerErrorName( status.code ),
+	    status.fourcc ? FourCCText( status.fourcc ).c_str() : "-",
+	    (unsigned long long)status.offset );
 	return 1;
 }
 
@@ -82,8 +86,8 @@ int Info( const std::vector<std::byte> &bytes, bool bVerify )
 		return ReportError( "open", container.Error() );
 	const IMapContainer &map = *container.Value();
 	std::printf( "kind %s\nlegacy-version %d\nrevision %d\nlumps %u\n",
-	             map.Kind() == MapContainerKind::Bsp2 ? "bsp2" : "legacy-vbsp", map.LegacyVersion(),
-	             map.MapRevision(), map.LumpCount() );
+	    map.Kind() == MapContainerKind::Bsp2 ? "bsp2" : "legacy-vbsp", map.LegacyVersion(),
+	    map.MapRevision(), map.LumpCount() );
 	if ( bVerify )
 		return 0;
 	for ( uint32_t i = 0; i < map.LumpCount(); ++i )
@@ -92,8 +96,9 @@ int Info( const std::vector<std::byte> &bytes, bool bVerify )
 		map.LumpAt( i, &info );
 		if ( map.Kind() == MapContainerKind::LegacyVbsp && info.storedSize == 0 )
 			continue;
-		std::printf( "%s v%u flags=0x%x align=%u offset=%llu size=%llu", FourCCText( info.fourcc ).c_str(), info.version,
-		             info.flags, info.alignment, (unsigned long long)info.offset, (unsigned long long)info.storedSize );
+		std::printf( "%s v%u flags=0x%x align=%u offset=%llu size=%llu",
+		    FourCCText( info.fourcc ).c_str(), info.version, info.flags, info.alignment,
+		    (unsigned long long)info.offset, (unsigned long long)info.storedSize );
 		if ( info.hasHash )
 		{
 			std::printf( " blake2b128=" );
@@ -135,7 +140,8 @@ int main( int argc, char **argv )
 	if ( !bTwoPaths )
 		return Info( *input, command == "verify" );
 
-	auto output = command == "convert" ? ConvertLegacyToBsp2( *input ) : ExportLegacyFromBsp2( *input );
+	auto output =
+	    command == "convert" ? ConvertLegacyToBsp2( *input ) : ExportLegacyFromBsp2( *input );
 	if ( !output )
 		return ReportError( command.c_str(), output.Error() );
 	if ( !WriteFile( argv[3], output.Value() ) )

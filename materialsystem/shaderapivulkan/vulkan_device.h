@@ -181,6 +181,7 @@ public:
 		FailUnsubmittedQueries();
 		m_dynQueued.clear();
 		m_dynDrawRecords.clear();
+		m_dynSkinConstants.clear();
 		m_dynFramePresented = false;
 	}
 	// Select which material-shader pipeline the queued geometry uses this frame
@@ -194,7 +195,10 @@ public:
 		kDynShaderTextured = 3,
 		// PortalRefract (portal_refract_vs20 / portal_refract_ps2x), all three
 		// stages; see shaders/portal_refract.{vert,frag}.
-		kDynShaderPortalRefract = 4
+		kDynShaderPortalRefract = 4,
+		// VertexLitGeneric's $phong path (skin_vs20 / skin_ps20b); see
+		// shaders/skin.{vert,frag}.
+		kDynShaderSkin = 5
 	};
 	void SelectDynamicShader( int shaderIndex ) { m_dynShaderIndex = shaderIndex; }
 	// Output-merger state of the queued geometry, in the terms of the D3D9 state a
@@ -257,7 +261,10 @@ public:
 		// Push-constant bytes of the textured pipeline with clip planes (its 32
 		// floats and the planes) and of PortalRefract (48 floats and the planes).
 		kTexturedPushBytes = ( 32 + 4 * kMaxClipPlanes ) * 4,
-		kPortalPushBytes = ( 48 + 4 * kMaxClipPlanes ) * 4
+		kPortalPushBytes = ( 48 + 4 * kMaxClipPlanes ) * 4,
+		// The skin shader: cViewProj, two texture transform rows, cEyePos and two
+		// parameter vectors (36 floats), then the planes.
+		kSkinPushBytes = ( 36 + 4 * kMaxClipPlanes ) * 4
 	};
 	// kMaxClipPlanes when the device can clip (shaderClipDistance and push
 	// constants wide enough for the planes), else 0.
@@ -323,6 +330,12 @@ public:
 	    VkFormat srgbAlias = VK_FORMAT_UNDEFINED );
 	bool UploadManagedTexture( int handle, const uint8_t *data, size_t dataSize,
 	    std::string *outError, uint32_t level = 0 );
+	// Releases a managed texture (IShaderAPI::DeleteTexture). The handle stops
+	// naming it at once: records still referencing it sample the built-in
+	// texture, and records rendering into it are dropped. Its Vulkan objects
+	// outlive every frame already submitted, which may still read them; the
+	// handle is reused only after that.
+	void DestroyManagedTexture( int handle );
 	// Fills the width x height rectangle at (x, y) of a level with tightly packed
 	// data in the image's format, keeping the texels outside it (IShaderAPI
 	// TexSubImage2D; VGUI writes its font pages a glyph at a time). A region of
@@ -342,11 +355,16 @@ public:
 	// TEXTURE_LIGHTMAP on sampler 1), sampled at the lightmap coordinates; -1
 	// draws without a lightmap.
 	void BindManagedLightmap( int handle ) { m_dynLightmapHandle = handle; }
-	// Textures on samplers 1 and 2 for shaders that read them as ordinary
-	// textures (PortalRefract's noise and color), -1 for none.
+	// Textures on samplers 1..15 for shaders that read them as ordinary
+	// textures (PortalRefract's noise and color, the skin shader's normal,
+	// exponent, warp and self-illumination maps), -1 for none.
+	enum
+	{
+		kMaxSamplers = 16
+	};
 	void BindManagedSampler( int sampler, int handle )
 	{
-		if ( sampler >= 1 && sampler <= 2 )
+		if ( sampler >= 1 && sampler < kMaxSamplers )
 			m_dynSamplerHandles[sampler] = handle;
 	}
 	// PortalRefract's constants, in its registers' terms (portal_refract_vs20.fxc
@@ -365,6 +383,24 @@ public:
 		int stage = 0;
 	};
 	void SetDynamicPortalConstants( const PortalConstants &constants ) { m_dynPortal = constants; }
+	// The skin shader's constants: the pixel shader registers c0..c31 as the
+	// material's dynamic state wrote them (skin_dx9_helper.cpp), and the vertex
+	// stage's cViewProj, cBaseTexCoordTransform and cEyePos. `combos` holds the
+	// skin_ps20b static combos as skin.frag's flags.
+	struct SkinConstants
+	{
+		float ps[32][4];
+		float viewProj[16];
+		float texXform0[4];
+		float texXform1[4];
+		float eyePos[4];
+		int combos = 0;
+		int numLights = 0;
+	};
+	void SetDynamicSkinConstants( const SkinConstants &constants ) { m_dynSkin = constants; }
+	// False when the device cannot bind the skin shader's seven descriptor sets
+	// or its push block; its draws are then declined.
+	bool SkinPipelineSupported() const { return m_skinPipelineLayout != VK_NULL_HANDLE; }
 	// False when the device's push constants cannot hold PortalRefract's block;
 	// its draws are then declined.
 	bool PortalPipelineSupported() const { return m_portalPipelineLayout != VK_NULL_HANDLE; }
@@ -541,6 +577,10 @@ public:
 	// the drawable. Before Init it only records the size; afterwards a changed
 	// size recreates the back buffers between frames.
 	bool SetBackBufferSize( int width, int height, std::string *outError );
+	// Frames presented, and how many of them the present blit had to scale
+	// because the back buffer and the drawable differed.
+	uint64_t PresentCount() const { return m_presentCount; }
+	uint64_t ScaledPresentCount() const { return m_scaledPresentCount; }
 
 	// Count of validation messages of severity WARNING or ERROR observed since
 	// Init(). Zero on a clean run when validation is enabled.
@@ -557,7 +597,9 @@ private:
 	bool CreateSurface( std::string *outError );
 	bool PickPhysicalDevice( std::string *outError );
 	bool CreateLogicalDevice( std::string *outError );
-	bool CreateSwapchain( std::string *outError );
+	// `oldSwapchain` hands the presentation over (VkSwapchainCreateInfoKHR), so a
+	// rebuild never leaves the window without a presentable image.
+	bool CreateSwapchain( std::string *outError, VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE );
 	bool CreateRenderPass( std::string *outError );
 	bool CreateFramebuffers( std::string *outError );
 	bool CreateCommandResources( std::string *outError );
@@ -613,9 +655,14 @@ private:
 	// receive the scaled back buffer at present.
 	VkExtent2D m_swapExtent = { 0, 0 };
 	VkExtent2D m_presentExtent = { 0, 0 };
+	// The window's drawable size when the swapchain was built; a different size
+	// at the next frame rebuilds it (Wayland reports no OUT_OF_DATE on resize).
+	int m_presentDrawable[2] = { 0, 0 };
 	VkExtent2D m_requestedBackBuffer = { 0, 0 };
 	VkFilter m_presentFilter = VK_FILTER_LINEAR;
 	bool m_capturePresented = false;
+	uint64_t m_presentCount = 0;
+	uint64_t m_scaledPresentCount = 0;
 	bool m_presentCapturable = false;
 	std::vector<VkImage> m_presentImages;
 	std::vector<VkDeviceMemory> m_backBufferMemories;
@@ -741,6 +788,34 @@ private:
 	std::map<uint64_t, VkPipeline> m_portalPipelines;
 	VkPipeline PortalPipeline( const DynRasterState &state, bool srgbPass = false );
 	VkPipelineLayout m_portalPipelineLayout = VK_NULL_HANDLE;
+	// The skin shader: six sampler sets (s0, s1, s2, s3, s7, s14) and its pixel
+	// shader constants in a uniform buffer per frame in flight, written only
+	// after that frame's fence has signaled, bound at a per-draw dynamic offset.
+	std::map<uint64_t, VkPipeline> m_skinPipelines;
+	VkPipeline SkinPipeline( const DynRasterState &state, bool srgbPass = false );
+	VkPipelineLayout m_skinPipelineLayout = VK_NULL_HANDLE;
+	VkDescriptorSetLayout m_skinUboLayout = VK_NULL_HANDLE;
+	VkDescriptorPool m_skinUboPool = VK_NULL_HANDLE;
+	VkShaderModule m_skinVert = VK_NULL_HANDLE;
+	VkShaderModule m_skinFrag = VK_NULL_HANDLE;
+	VkVertexInputAttributeDescription m_skinAttrs[7] = {};
+	VkPipelineVertexInputStateCreateInfo m_skinVin = {};
+	struct SkinUniformBuffer
+	{
+		VkBuffer buffer = VK_NULL_HANDLE;
+		VkDeviceMemory memory = VK_NULL_HANDLE;
+		void *mapped = nullptr;
+		VkDeviceSize capacity = 0;
+		VkDescriptorSet set = VK_NULL_HANDLE;
+	};
+	std::vector<SkinUniformBuffer> m_skinUbos; // one per frame in flight
+	VkDeviceSize m_uboAlignment = 256;
+	bool InitSkinPipeline( std::string *outError );
+	// Copies this frame's skin constants into the frame's uniform buffer (grown
+	// as needed) and returns each draw's offset in `offsets`; false when the
+	// buffer cannot be provided.
+	bool UploadSkinConstants( std::vector<uint32_t> *offsets );
+	void DestroySkinPipeline();
 	VkShaderModule m_portalVert = VK_NULL_HANDLE;
 	VkShaderModule m_portalFrag = VK_NULL_HANDLE;
 	bool m_portalPushSupported = false;
@@ -828,6 +903,24 @@ private:
 		VkDescriptorSet descSetSrgb = VK_NULL_HANDLE;
 	};
 	std::vector<ManagedTexture> m_managedTextures;
+	// Deleted textures awaiting the completion of the submission that may still
+	// use them (`afterSerial`, a value of m_submitSerial), and handles free again.
+	struct RetiredTexture
+	{
+		ManagedTexture texture;
+		int handle;
+		uint64_t afterSerial;
+	};
+	std::vector<RetiredTexture> m_retiredTextures;
+	std::vector<int> m_freeTextureHandles;
+	// Frame submissions: the count so far, the serial each frame slot last
+	// submitted, and the newest serial known complete.
+	uint64_t m_submitSerial = 0;
+	uint64_t m_slotSerial[kMaxFramesInFlight] = {};
+	uint64_t m_completedSerial = 0;
+	uint32_t m_liveTextureSets = 0;
+	void ReleaseManagedTextureObjects( ManagedTexture &t );
+	void RetireCompletedTextures();
 	// The managed texture currently bound (BindManagedTexture); captured per draw.
 	int m_dynBoundTexHandle = -1;
 	int m_dynLightmapHandle = -1;
@@ -838,8 +931,12 @@ private:
 	uint32_t m_dynStencilWriteMask = 0xFF;
 	int m_dynClipPlaneCount = 0;
 	float m_dynClipPlanes[kMaxClipPlanes][4] = {};
-	int m_dynSamplerHandles[3] = { -1, -1, -1 };
+	int m_dynSamplerHandles[kMaxSamplers] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+		-1, -1, -1, -1 };
 	PortalConstants m_dynPortal;
+	SkinConstants m_dynSkin;
+	// The skin constants of this frame's skin draws (DynDraw::skin indexes them).
+	std::vector<SkinConstants> m_dynSkinConstants;
 	// Column-major model->projection matrix; identity by default.
 	float m_dynTransform[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	VkBuffer m_dynVertexBuffer = VK_NULL_HANDLE;
@@ -902,8 +999,10 @@ private:
 		uint32_t stencilWriteMask = 0xFF;
 		int clipPlaneCount = 0;
 		float clipPlanes[kMaxClipPlanes][4] = {};
-		int samplerHandles[3] = { -1, -1, -1 }; // [1], [2]: samplers 1 and 2
+		int samplerHandles[kMaxSamplers] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+			-1, -1, -1 }; // samplers 1..15 ([0] unused)
 		PortalConstants portal;
+		int skin = -1; // index into m_dynSkinConstants
 	};
 	std::vector<DynDraw> m_dynDrawRecords;
 	// Target/viewport/scissor state captured by each record.

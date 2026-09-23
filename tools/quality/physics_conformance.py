@@ -74,6 +74,11 @@ FAULTS = {
     "vcollide-keyvalues": ["vcollide.load-keyvalues"],
     "sim-noop": ["sim.", "env.simulation-clock"],
     "constraint-inactive": ["constraint."],
+    "fluid-inert": ["fluid."],
+    "spring-inert": ["spring."],
+    "events-silent": ["events.", "trigger."],
+    "drag-off": ["drag."],
+    "save-dropped": ["save.", "restore."],
 }
 
 LINE_RE = re.compile(r"^(PASS|FAIL) (\S+) (\S+?)(?:: (.*))?$")

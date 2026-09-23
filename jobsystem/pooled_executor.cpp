@@ -7,6 +7,7 @@
 #include "jobsystem/pooled_executor.h"
 
 #include <cstddef>
+#include <functional>
 #include <vector>
 
 namespace jobsystem
@@ -59,7 +60,7 @@ RunResult PooledExecutor::Execute( const SealedGraph &graph, const RunOptions &o
 	};
 
 	std::vector<uint32_t> remaining( n );
-	std::vector<uint32_t> ready;
+	std::vector<uint32_t> ready, compute, caller;
 	for ( uint32_t i = 0; i < n; ++i )
 	{
 		remaining[i] = (uint32_t)graph.GetJob( i ).prereqs.size();
@@ -67,8 +68,12 @@ RunResult PooledExecutor::Execute( const SealedGraph &graph, const RunOptions &o
 			ready.push_back( i );
 	}
 
-	// Each invocation owns its state slot. The backend's join barrier publishes
-	// those writes and the job outputs before finalization or the next wave.
+	// Each invocation owns its state slot. The slot of an admitted job already
+	// holds Succeeded, so the common outcome writes nothing and workers do not
+	// contend on neighboring slots; only a failed or canceled job overwrites
+	// it. The slot is not read before this wave is finalized. The backend's
+	// join barrier publishes those writes and the job outputs before
+	// finalization or the next wave.
 	auto runJob = [&]( uint32_t id )
 	{
 		// Cancellation may arrive after a wave was admitted but before this
@@ -82,16 +87,23 @@ RunResult PooledExecutor::Execute( const SealedGraph &graph, const RunOptions &o
 		JobRunContext ctx( opts.frame, id );
 		if ( graph.GetJob( id ).function )
 			graph.GetJob( id ).function( ctx );
-		result.states[id] = ctx.Failed() ? JobState::Failed : JobState::Succeeded;
+		if ( ctx.Failed() )
+			result.states[id] = JobState::Failed;
+	};
+	const std::function<void( int )> runCompute = [&]( int k )
+	{
+		runJob( compute[(std::size_t)k] );
 	};
 
+	std::vector<uint32_t> next;
 	while ( !ready.empty() )
 	{
 		// Jobs ready in the same wave are mutually independent (none is an
 		// unfinished prerequisite of another), so running them concurrently is
 		// safe. Only Compute/Sequence jobs may enter the backend. In inline
 		// mode retain ready order while the caller services every lane.
-		std::vector<uint32_t> compute, caller;
+		compute.clear();
+		caller.clear();
 		for ( uint32_t id : ready )
 		{
 			if ( decideStall( id ) )
@@ -102,6 +114,7 @@ RunResult PooledExecutor::Execute( const SealedGraph &graph, const RunOptions &o
 				continue;
 			}
 			trace( id, JobState::Ready );
+			result.states[id] = JobState::Succeeded; // until the job reports otherwise
 			const ExecutorKind kind = graph.GetJob( id ).executor.kind;
 			// Empty compute nodes need no worker dispatch; their ordering edges
 			// still advance only after this wave's completion barrier.
@@ -113,19 +126,13 @@ RunResult PooledExecutor::Execute( const SealedGraph &graph, const RunOptions &o
 		}
 
 		if ( !compute.empty() )
-		{
-			m_backend->ParallelFor( (int)compute.size(),
-			    [&]( int k )
-			    {
-				    runJob( compute[(std::size_t)k] );
-			    } );
-		}
+			m_backend->ParallelFor( (int)compute.size(), runCompute );
 		for ( uint32_t id : caller )
 			runJob( id );
 
 		// Finalize this wave and advance readiness (single-threaded; the barrier
 		// above published all worker writes).
-		std::vector<uint32_t> next;
+		next.clear();
 		for ( uint32_t id : ready )
 		{
 			const JobState state = result.states[id];

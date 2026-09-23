@@ -15,8 +15,8 @@
 #ifndef MAPCONTAINER_MAP_CONTAINER_H
 #define MAPCONTAINER_MAP_CONTAINER_H
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
 #include "mapcontainer/map_container_format.h"
 
@@ -78,7 +78,7 @@ struct MapLumpInfo
 	uint32_t version;
 	uint32_t flags;
 	uint32_t alignment;
-	uint64_t offset;           // stored bytes start here in the container file
+	uint64_t offset; // stored bytes start here in the container file
 	uint64_t storedSize;
 	uint64_t uncompressedSize; // equals storedSize when uncompressed
 	// Legacy lumps only: the lump's offset in its legacy file (game lump
@@ -133,15 +133,15 @@ public:
 
 	// Checks bytes read for pInfo against the directory hash (no-op success
 	// for lumps without a hash, which includes every legacy VBSP lump).
-	virtual MapContainerStatus VerifyContent( const MapLumpInfo &info, const void *pData,
-	                                          uint64_t size ) const = 0;
+	virtual MapContainerStatus VerifyContent(
+	    const MapLumpInfo &info, const void *pData, uint64_t size ) const = 0;
 };
 
 // Detects the container kind from the file's first bytes and validates its
 // directory. On success *ppContainer is owned by the caller; release it with
 // DestroyMapContainer.
-MapContainerStatus OpenMapContainer( IMapByteSource &source, const MapContainerOpenOptions &options,
-                                     IMapContainer **ppContainer );
+MapContainerStatus OpenMapContainer(
+    IMapByteSource &source, const MapContainerOpenOptions &options, IMapContainer **ppContainer );
 void DestroyMapContainer( IMapContainer *pContainer );
 
 // True when the first bytes look like a BSP2 container (cheap sniffing for

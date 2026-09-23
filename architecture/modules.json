@@ -11,6 +11,16 @@
         "allowedEdges": []
       },
       {
+        "id": "world.map-container",
+        "paths": [
+          "public/mapcontainer/",
+          "mapcontainer/"
+        ],
+        "allowedEdges": [
+          "foundation"
+        ]
+      },
+      {
         "id": "platform.contracts",
         "paths": [
           "public/platform/contracts/"

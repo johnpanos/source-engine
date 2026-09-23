@@ -18,7 +18,7 @@ def build(bld):
 	# once per provider (never two in one process) and compares observations.
 	bld.program(
 		features='cxx',
-		source=['test_vphysics_conformance.cpp', 'test_vphysics_constraints.cpp', 'test_vphysics_objects.cpp'],
+		source=['test_vphysics_conformance.cpp', 'test_vphysics_constraints.cpp', 'test_vphysics_objects.cpp', 'test_vphysics_fluids.cpp', 'test_vphysics_saverestore.cpp'],
 		target='vphysics_conformance',
 		name='vphysics_conformance',
 		includes=['../../public', '../../public/tier0', '../../public/tier1'],

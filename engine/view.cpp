@@ -153,6 +153,10 @@ void V_RenderVGuiOnly_NoSwap()
 //-----------------------------------------------------------------------------
 void V_RenderVGuiOnly( void )
 {
+	// Loading frames follow the window's drawable too (SCR_UpdateScreen's check),
+	// so a window resized or maximized while a map loads is not scaled.
+	if ( !VideoMode_UpdateWindowSize() )
+		return;
 	materials->BeginFrame( host_frametime );
 	EngineVGui()->Simulate();
 

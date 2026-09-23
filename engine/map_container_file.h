@@ -35,7 +35,7 @@ private:
 
 // Opens a container over hFile (whole file from its current size). Reports
 // failures with the map name and structured error; returns NULL on failure.
-mapcontainer::IMapContainer *OpenMapContainerForFile( CMapFileByteSource &source, FileHandle_t hFile,
-                                                      const char *pMapName, bool bQuiet = false );
+mapcontainer::IMapContainer *OpenMapContainerForFile(
+    CMapFileByteSource &source, FileHandle_t hFile, const char *pMapName, bool bQuiet = false );
 
 #endif // MAP_CONTAINER_FILE_H

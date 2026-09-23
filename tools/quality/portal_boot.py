@@ -304,8 +304,22 @@ def evaluate(log, screenshots, returncode, timed_out, map_name, requirements, lo
     return failures
 
 
-def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD, trace_records=()):
-    """Require exact logical/drawable convergence and nonblocking full-frame presents."""
+# A continuous drag: one logical size per frame, as an interactive resize
+# delivers them. Only the synchronous mode resizes on every one of these frames.
+RESIZE_DRAG_WORKLOAD = tuple((800 + 20 * step, 600 + 10 * step) for step in range(24))
+
+# Main-thread cost of one resize request. Queued: publication only, the render
+# worker does the work. Sync: the resize itself, which must fit in one 60 Hz
+# frame for resizing to stay smooth.
+RESIZE_REQUEST_BUDGET_US = {"queued": 2000, "sync": 16667}
+
+
+def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD, trace_records=(), mode="queued",
+                   require_unscaled=False):
+    """Require exact logical/drawable convergence and nonblocking full-frame presents.
+
+    `require_unscaled` also requires the renderer's census to report that no
+    present scaled its back buffer to the window (`[vulkan] presents=N scaled=0`)."""
     observed = [(int(lw), int(lh), int(dw), int(dh)) for lw, lh, dw, dh in re.findall(
         r"RFC0001 resize observed: logical=(\d+)x(\d+) drawable=(\d+)x(\d+)", log)]
     queued = [(int(serial), int(width), int(height), int(micros))
@@ -336,8 +350,31 @@ def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD, trace_records=())
                   if (frame.get("width"), frame.get("height")) == drawable]
         if not frames or not all(frame.get("has_scene_detail", False) for frame in frames):
             failures.append("missing or blank resize image at drawable %dx%d" % drawable)
-    if queued and max(item[3] for item in queued) > 2000:
-        failures.append("main-thread resize publication exceeded 2000us")
+    if mode == "sync":
+        # Every drawable seen, the drag's included, is resized on its frame, and
+        # every image the run captured, the ones taken mid-drag included, is a
+        # complete frame of exactly a size the renderer switched to.
+        completed_sizes = {item[1:3] for item in completed}
+        for _lw, _lh, dw, dh in observed:
+            if (dw, dh) not in completed_sizes:
+                failures.append("renderer did not resize to observed drawable %dx%d" % (dw, dh))
+        for frame in screenshots:
+            size = (frame.get("width"), frame.get("height"))
+            if size not in completed_sizes or not frame.get("has_scene_detail", False):
+                failures.append("image %dx%d is blank or not a size the renderer resized to"
+                                % size)
+    budget = RESIZE_REQUEST_BUDGET_US[mode]
+    if queued and max(item[3] for item in queued) > budget:
+        failures.append("main-thread resize request exceeded %dus" % budget)
+    presents = re.findall(r"\[vulkan\] presents=(\d+) scaled=(\d+)", log)
+    scaled = None
+    if require_unscaled:
+        if not presents:
+            failures.append("renderer reported no present census")
+        else:
+            scaled = int(presents[-1][1])
+            if scaled:
+                failures.append("%d presents scaled the back buffer to the window" % scaled)
     if any(item[3] != 0 for item in completed):
         failures.append("main thread waited for a renderer resize")
     presents = [record for record in trace_records if record.get("event") == "present"]
@@ -346,27 +383,63 @@ def inspect_resize(log, screenshots, expected=RESIZE_WORKLOAD, trace_records=())
     if any(record.get("cropped") is not False for record in presents):
         failures.append("resize used cropped or unclassified presentation")
     return {"schema": "source-resize-evidence/v1", "status": "fail" if failures else "pass",
+            "mode": mode, "request_budget_us": budget, "scaled_presents": scaled,
             "requested_logical_sizes": list(expected), "observed_extents": observed,
             "queued_resizes": queued, "completed_resizes": completed, "failures": failures,
             "coverage": "SDL logical and drawable extents, lock-free main-thread publication, render-worker completion, exact nonblank backbuffers, and uncropped presentation."}
 
 
-def resize_commands(workload=RESIZE_WORKLOAD):
-    """Return one-line script commands so the engine command buffer honors `wait`."""
-    commands = ["mat_queue_mode 2", "wait 120"]
+def resize_commands(workload=RESIZE_WORKLOAD, mode="queued"):
+    """Return one-line script commands so the engine command buffer honors `wait`.
+
+    `mode` selects the material system's threading: "queued" resizes on the
+    render worker once the extent settles, "sync" on the frame it changes."""
+    commands = ["mat_queue_mode %d" % (2 if mode == "queued" else 0), "wait 120"]
     for width, height in workload:
         commands += ["mat_resizewindow %d %d" % (width, height),
                      "wait 12", "screenshot", "wait 1"]
+    if mode == "sync":
+        # Screenshots taken mid-drag are frames the window really presented.
+        for step, (width, height) in enumerate(RESIZE_DRAG_WORKLOAD):
+            commands += ["mat_resizewindow %d %d" % (width, height), "wait 1"]
+            if step % 4 == 3:
+                commands += ["screenshot"]
+        commands += ["wait 12", "screenshot"]
     return commands + ["wait 10", "quit"]
 
 
-def install_resize_script(stage, workload=RESIZE_WORKLOAD):
-    """Install one parsed script line, preserving delayed commands after `exec`."""
-    path = Path(stage) / "portal/cfg/rfc0001_resize_e2e.cfg"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    commands = resize_commands(workload)
-    path.write_text("; ".join(commands) + "\n")
-    return {"path": str(path.relative_to(stage)), "sha256": sha256(path),
+# `exec` reads a script line into com_token (1024 bytes); the rest of a longer
+# line would run at once as a separate line, `quit` included.
+RESIZE_SCRIPT_LINE_LIMIT = 900
+
+
+def install_resize_script(stage, workload=RESIZE_WORKLOAD, mode="queued"):
+    """Install one parsed script line, preserving delayed commands after `exec`.
+
+    A workload longer than one line continues in chained scripts, each line
+    ending in `exec` of the next, which runs only when its turn comes."""
+    directory = Path(stage) / "portal/cfg"
+    directory.mkdir(parents=True, exist_ok=True)
+    commands = resize_commands(workload, mode)
+    chunks, current = [], []
+    for command in commands:
+        candidate = current + [command, "exec rfc0001_resize_e2e_%d" % (len(chunks) + 1)]
+        if current and len("; ".join(candidate)) > RESIZE_SCRIPT_LINE_LIMIT:
+            chunks.append(current)
+            current = []
+        current.append(command)
+    chunks.append(current)
+    paths = []
+    for index, chunk in enumerate(chunks):
+        name = "rfc0001_resize_e2e" + ("_%d" % index if index else "")
+        if index + 1 < len(chunks):
+            chunk = chunk + ["exec rfc0001_resize_e2e_%d" % (index + 1)]
+        path = directory / (name + ".cfg")
+        path.write_text("; ".join(chunk) + "\n")
+        paths.append(path)
+    return {"path": str(paths[0].relative_to(stage)), "sha256": sha256(paths[0]),
+            "chained": [{"path": str(path.relative_to(stage)), "sha256": sha256(path)}
+                        for path in paths[1:]],
             "commands": commands}
 
 
@@ -456,6 +529,9 @@ def main(argv=None):
                              "to draw-state/ for cross-backend comparison")
     parser.add_argument("--resize-stress", action="store_true",
                         help="resize the actual native game window through a versioned workload")
+    parser.add_argument("--resize-mode", choices=("queued", "sync"), default="queued",
+                        help="material-system threading for --resize-stress: queued (render "
+                             "worker, settled resizes) or sync (resized on the frame it changes)")
     parser.add_argument("--require-gtk-decoration", action="store_true",
                         help="require the native libdecor GTK plugin mapped by the product")
     parser.add_argument("--require-provider-catalog", action="store_true",
@@ -542,7 +618,7 @@ def main(argv=None):
             # semicolon-delimited line is parsed as one delayed command sequence,
             # so later sizes remain queued behind each `wait`.
             tail = command.index("+wait", command.index("+developer"))
-            resize_script = install_resize_script(stage)
+            resize_script = install_resize_script(stage, mode=args.resize_mode)
             command = command[:tail] + ["-resizetelemetry", "+exec", "rfc0001_resize_e2e"]
             evidence["resize_workload"] = {"version": 1, "sizes": RESIZE_WORKLOAD,
                                            **resize_script}
@@ -593,7 +669,9 @@ def main(argv=None):
             trace_records = []
             if args.render_trace and trace.is_file():
                 trace_records = [json.loads(line) for line in trace.read_text().splitlines() if line]
-            evidence["resize"] = inspect_resize(log, screenshots, trace_records=trace_records)
+            evidence["resize"] = inspect_resize(
+                log, screenshots, trace_records=trace_records, mode=args.resize_mode,
+                require_unscaled=args.renderer == "native-vulkan")
             failures.extend(evidence["resize"]["failures"])
         if args.require_provider_catalog:
             evidence["provider_catalog"] = inspect_provider_catalog(log)

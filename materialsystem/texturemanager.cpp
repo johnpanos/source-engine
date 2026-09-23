@@ -647,6 +647,7 @@ public:
 	void ReleaseTextures( void );
 	void RestoreNonRenderTargetTextures( void );
 	void RestoreRenderTargets( void );
+	void ReallocateRenderTargets( void );
 
 	// Suspend or resume texture streaming requests
 	void SuspendTextureStreaming( void );
@@ -1888,6 +1889,23 @@ void CTextureManager::RestoreRenderTargets()
 	CacheExternalStandardRenderTargets();
 }
 
+
+//-----------------------------------------------------------------------------
+// Recreate the render targets at the current frame-buffer size. A shader API
+// that resizes its back buffer in place (no device reset, so every other
+// texture stays resident) leaves the frame-buffer-sized targets at the old
+// size; only they are released and restored.
+//-----------------------------------------------------------------------------
+void CTextureManager::ReallocateRenderTargets()
+{
+	g_pShaderAPI->SetFullScreenTextureHandle( INVALID_SHADERAPI_TEXTURE_HANDLE );
+	for ( int i = m_TextureList.First(); i != m_TextureList.InvalidIndex(); i = m_TextureList.Next( i ) )
+	{
+		if ( m_TextureList[i]->IsRenderTarget() )
+			m_TextureList[i]->ReleaseMemory();
+	}
+	RestoreRenderTargets();
+}
 
 //-----------------------------------------------------------------------------
 // Reloads all textures

@@ -59,13 +59,21 @@ public:
 			m_pDeleteInCallback = NULL;
 		}
 	}
+	// Sensitivity: "events-silent" models a provider that never reports
+	// touch, friction, trigger or wake events.
+	static bool Silent() { return FaultIs( "events-silent" ); }
+
 	virtual void Friction( IPhysicsObject *pObject, float energy, int surfaceProps, int surfacePropsHit, IPhysicsCollisionData *pData )
 	{
+		if ( Silent() )
+			return;
 		m_friction++;
 		m_frictionEnergy += energy;
 	}
 	virtual void StartTouch( IPhysicsObject *pObject1, IPhysicsObject *pObject2, IPhysicsCollisionData *pTouchData )
 	{
+		if ( Silent() )
+			return;
 		m_startTouch++;
 		if ( IsWatchedPair( pObject1, pObject2 ) )
 		{
@@ -75,6 +83,8 @@ public:
 	}
 	virtual void EndTouch( IPhysicsObject *pObject1, IPhysicsObject *pObject2, IPhysicsCollisionData *pTouchData )
 	{
+		if ( Silent() )
+			return;
 		m_endTouch++;
 		if ( IsWatchedPair( pObject1, pObject2 ) )
 			m_touchPairs--;
@@ -84,14 +94,24 @@ public:
 	virtual void PostSimulationFrame() { m_postFrame++; }
 	virtual void ObjectEnterTrigger( IPhysicsObject *pTrigger, IPhysicsObject *pObject )
 	{
+		if ( Silent() )
+			return;
 		m_enterTrigger++;
 		m_pTrigger = pTrigger;
 		m_pTriggered = pObject;
 	}
-	virtual void ObjectLeaveTrigger( IPhysicsObject *pTrigger, IPhysicsObject *pObject ) { m_leaveTrigger++; }
+	virtual void ObjectLeaveTrigger( IPhysicsObject *pTrigger, IPhysicsObject *pObject )
+	{
+		if ( !Silent() )
+			m_leaveTrigger++;
+	}
 
 	// IPhysicsObjectEvent
-	virtual void ObjectWake( IPhysicsObject *pObject ) { m_wake++; }
+	virtual void ObjectWake( IPhysicsObject *pObject )
+	{
+		if ( !Silent() )
+			m_wake++;
+	}
 	virtual void ObjectSleep( IPhysicsObject *pObject ) { m_sleep++; }
 
 	bool IsWatchedPair( IPhysicsObject *p0, IPhysicsObject *p1 ) const
@@ -204,6 +224,12 @@ void TestDrag()
 	CreateWorld( world, NULL );
 	IPhysicsEnvironment *pEnv = world.pEnv;
 	IPhysicsObject *pCube = CreateCube( world, Vector( 0, 0, 3000 ) );
+	// Sensitivity: "drag-off" models a provider without air drag.
+	if ( FaultIs( "drag-off" ) )
+	{
+		float none = 0.0f;
+		pCube->SetDragCoefficient( &none, &none );
+	}
 	Check( TIER_GAMEPLAY, "drag.enabled-by-coefficient", pCube->IsDragEnabled() );
 
 	objectparams_t params = DefaultParams( 50.0f, NULL );

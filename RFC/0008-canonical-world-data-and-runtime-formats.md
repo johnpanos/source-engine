@@ -1,6 +1,6 @@
 # RFC 0008: Canonical World Data and Runtime Formats
 
-- Status: Accepted for planning (2026-09-22); implementation not started
+- Status: Accepted for planning (2026-09-22); F1 prototype active ([progress](0008-progress.md))
 - Date: 2026-09-22
 - Scope: The compiled-world interchange stage, the runtime map container, world
   render data (mesh, lightmaps, probes, reflection probes), the texture container,
@@ -212,7 +212,11 @@ A typed schema (`SourceWorldAPI` and friends) is generated with
   new lump, not a new container version.
 - Legacy lumps are carried with their legacy structures and versions under
   reserved 4CCs (for example `L000`–`L063`, keeping the legacy index). Gameplay
-  code reads them through the same accessor it uses today.
+  code reads them through the same accessor it uses today. The F1 prototype
+  also carries the verbatim legacy header (`LHDR`) and any nonzero gap bytes
+  (`LGAP`), so legacy → BSP2 → legacy is byte-identical. Absolute offsets inside
+  legacy lumps (game lump dictionaries) are rebased with the lump's legacy
+  origin.
 - Lump override files (`public/lumpfiles.cpp`) keep working, keyed by 4CC.
 - The embedded zip pak lump remains for legacy overrides and loose assets. New
   binary assets (KTX2) go into an **asset table lump**: aligned, hashed, and
@@ -461,8 +465,11 @@ and the stage can emit MaterialX when needed.
 
 1. BSP2 magic and version numbering. Must not collide with Valve or other
    branch versions; recorded with a reader test for every known legacy version.
+   *F1 prototype:* `"SRCBSP2\x1A"`, container version 1 (see
+   [progress](0008-progress.md)).
 2. Hash (BLAKE3 vs XXH3-128) and compression (zstd) dependencies. Pin and
-   license records.
+   license records. *F1 prototype:* BLAKE2b-128 (RFC 7693, no new dependency,
+   algorithm id in the header) and no compression until zstd is pinned.
 3. Probe volume structure: adaptive grid vs tetrahedral (per-leaf) placement.
    Needs measured quality and memory on the corpus.
 4. SH L1 lightmap encoding (L0 in BC6H and L1 normalized in BC7, or

@@ -14,8 +14,14 @@ namespace mapcontainer::detail
 namespace
 {
 constexpr uint64_t kIv[8] = {
-    0x6A09E667F3BCC908ull, 0xBB67AE8584CAA73Bull, 0x3C6EF372FE94F82Bull, 0xA54FF53A5F1D36F1ull,
-    0x510E527FADE682D1ull, 0x9B05688C2B3E6C1Full, 0x1F83D9ABFB41BD6Bull, 0x5BE0CD19137E2179ull,
+    0x6A09E667F3BCC908ull,
+    0xBB67AE8584CAA73Bull,
+    0x3C6EF372FE94F82Bull,
+    0xA54FF53A5F1D36F1ull,
+    0x510E527FADE682D1ull,
+    0x9B05688C2B3E6C1Full,
+    0x1F83D9ABFB41BD6Bull,
+    0x5BE0CD19137E2179ull,
 };
 
 constexpr uint8_t kSigma[12][16] = {
@@ -59,7 +65,8 @@ inline void Mix( uint64_t *v, int a, int b, int c, int d, uint64_t x, uint64_t y
 }
 } // namespace
 
-Blake2b::Blake2b( std::size_t digestSize ) noexcept : m_Counter{ 0, 0 }, m_BlockUsed( 0 ), m_DigestSize( digestSize )
+Blake2b::Blake2b( std::size_t digestSize ) noexcept
+    : m_Counter{ 0, 0 }, m_BlockUsed( 0 ), m_DigestSize( digestSize )
 {
 	for ( int i = 0; i < 8; ++i )
 		m_State[i] = kIv[i];

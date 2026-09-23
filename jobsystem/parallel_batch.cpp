@@ -60,47 +60,74 @@ bool ExecuteParallelBatch( const BatchDesc &desc, IWorkerBackend *backend, Batch
 		    { desc.count, desc.maxParticipants, capacity, static_cast<unsigned>( INT_MAX ) } );
 	}
 
-	// Only index reservation uses this atomic. Input publication and completion
-	// visibility come from the backend's fork/join contract, not the cursor.
-	// Use a wider cursor so the final unsuccessful claims cannot wrap even
-	// when the descriptor contains UINT_MAX items. A reservation needs no CAS
-	// retry: every value before count belongs to exactly one participant.
-	std::atomic<uint64_t> next{ 0 };
-	auto claim = [&]( unsigned &index )
+	// Shared by every participant for this call; each job captures only a
+	// pointer to it, which keeps the job functions allocation-free.
+	struct Run
 	{
-		const uint64_t reserved = next.fetch_add( 1, std::memory_order_relaxed );
-		index = static_cast<unsigned>( reserved );
-		return reserved < desc.count;
-	};
+		const BatchDesc &desc;
+		unsigned participants;
+		// Only index reservation uses this atomic. Input publication and
+		// completion visibility come from the backend's fork/join contract, not
+		// the cursor. The cursor never passes count, so it cannot wrap.
+		std::atomic<uint64_t> next{ 0 };
+
+		// Guided self-scheduling: claim a contiguous range sized to a fraction
+		// of the remaining items per participant. Early claims are large (few
+		// contended cursor updates, no neighboring-item sharing between
+		// runners) and shrink to single items at the end for load balance.
+		bool Claim( unsigned &begin, unsigned &end )
+		{
+			uint64_t cursor = next.load( std::memory_order_relaxed );
+			for ( ;; )
+			{
+				if ( cursor >= desc.count )
+					return false;
+				const uint64_t remaining = desc.count - cursor;
+				const uint64_t chunk = std::max<uint64_t>( 1, remaining / ( 4ull * participants ) );
+				if ( next.compare_exchange_weak( cursor, cursor + chunk, std::memory_order_relaxed ) )
+				{
+					begin = static_cast<unsigned>( cursor );
+					end = static_cast<unsigned>( cursor + chunk );
+					return true;
+				}
+			}
+		}
+
+		void Participate()
+		{
+			// The descriptor is immutable for the call; keep its fields local.
+			void ( *const process )( void *, unsigned ) = desc.process;
+			void *const context = desc.context;
+			if ( participants == 1 )
+			{
+				ParticipantScope scope( desc );
+				const unsigned count = desc.count;
+				for ( unsigned index = 0; index < count; ++index )
+					process( context, index );
+				return;
+			}
+			unsigned begin, end;
+			if ( !Claim( begin, end ) )
+				return;
+			ParticipantScope scope( desc );
+			do
+			{
+				for ( unsigned index = begin; index < end; ++index )
+					process( context, index );
+			} while ( Claim( begin, end ) );
+		}
+	} run{ desc, participants };
+	Run *shared = &run;
 
 	JobGraphBuilder builder;
 	JobDesc complete;
 	complete.name = "batch.complete";
 	const JobHandle join = builder.AddJob( complete );
+	JobDesc compute;
+	compute.name = desc.name;
+	compute.function = [shared]( JobRunContext & ) { shared->Participate(); };
 	for ( unsigned i = 0; i < participants; ++i )
-	{
-		JobDesc compute;
-		compute.name = desc.name;
-		compute.function = [&]( JobRunContext & )
-		{
-			if ( participants == 1 )
-			{
-				ParticipantScope scope( desc );
-				for ( unsigned index = 0; index < desc.count; ++index )
-					desc.process( desc.context, index );
-				return;
-			}
-			unsigned index;
-			if ( !claim( index ) )
-				return;
-			ParticipantScope scope( desc );
-			do
-			{
-				desc.process( desc.context, index );
-			} while ( claim( index ) );
-		};
 		builder.AddDependency( builder.AddJob( compute ), join );
-	}
 	auto graph = builder.Seal();
 	if ( !graph.HasValue() )
 		return false;

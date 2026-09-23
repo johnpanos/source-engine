@@ -830,10 +830,13 @@ void *CMaterialSystem::QueryInterface( const char *pInterfaceName )
 bool CMaterialSystem::RequestWindowResize( const MaterialWindowResizeRequest_t &request )
 {
 	if ( !ThreadInMainThread() || request.m_nSerial == 0 || request.m_nDrawableWidth == 0 ||
-	     request.m_nDrawableHeight == 0 || m_ThreadMode != MATERIAL_QUEUED_THREADED )
+	     request.m_nDrawableHeight == 0 )
 	{
 		return false;
 	}
+	// Without a render worker the main thread owns the device: resize now.
+	if ( m_ThreadMode != MATERIAL_QUEUED_THREADED )
+		return ExecuteWindowResizeNow( request );
 
 	CMatCallQueue *queue = GetRenderCallQueue();
 	if ( !queue )
@@ -865,6 +868,45 @@ MaterialWindowResizeStatus_t CMaterialSystem::GetWindowResizeStatus() const
 	status.m_nDrawableHeight =
 	    m_nWindowResizeCompletedHeight.load( std::memory_order_relaxed );
 	return status;
+}
+
+// The synchronous (single-threaded) resize: the mode change is applied before
+// this returns, and completion is published at once. A shader API that resizes
+// its back buffer in place (the native Vulkan device) has kept every resident
+// texture, so only the render targets sized from the frame buffer are
+// recreated; one that defers to a device reset (D3D9) restores everything then.
+bool CMaterialSystem::ExecuteWindowResizeNow( const MaterialWindowResizeRequest_t &request )
+{
+	const uint64 requested = m_nWindowResizeRequestedSerial.load( std::memory_order_acquire );
+	if ( request.m_nSerial <= requested )
+		return request.m_nSerial == requested;
+
+	g_config.m_VideoMode.m_Width = static_cast<int>( request.m_nDrawableWidth );
+	g_config.m_VideoMode.m_Height = static_cast<int>( request.m_nDrawableHeight );
+	g_config.SetFlag( MATSYS_VIDCFG_FLAGS_RESIZING, false );
+	m_nWindowResizeWidth.store( request.m_nDrawableWidth, std::memory_order_relaxed );
+	m_nWindowResizeHeight.store( request.m_nDrawableHeight, std::memory_order_relaxed );
+	m_nWindowResizeRequestedSerial.store( request.m_nSerial, std::memory_order_release );
+
+	int oldWidth = 0, oldHeight = 0;
+	g_pShaderAPI->GetBackBufferDimensions( oldWidth, oldHeight );
+	ShaderDeviceInfo_t info;
+	ConvertModeStruct( &info, g_config );
+	g_pShaderAPI->ChangeVideoMode( info );
+	int newWidth = 0, newHeight = 0;
+	g_pShaderAPI->GetBackBufferDimensions( newWidth, newHeight );
+	if ( newWidth != oldWidth || newHeight != oldHeight )
+		TextureManager()->ReallocateRenderTargets();
+#if defined( USE_SDL )
+	uint renderedWidth = request.m_nDrawableWidth;
+	uint renderedHeight = request.m_nDrawableHeight;
+	g_pLauncherMgr->RenderedSize( renderedWidth, renderedHeight, true ); // true = set
+#endif
+
+	m_nWindowResizeCompletedWidth.store( request.m_nDrawableWidth, std::memory_order_relaxed );
+	m_nWindowResizeCompletedHeight.store( request.m_nDrawableHeight, std::memory_order_relaxed );
+	m_nWindowResizeCompletedSerial.store( request.m_nSerial, std::memory_order_release );
+	return true;
 }
 
 void CMaterialSystem::ExecuteWindowResizeRequest()

@@ -345,6 +345,10 @@ void CSDL3Mgr::SizeWindow( int width, int height )
 {
 	if ( !m_Window || width <= 0 || height <= 0 )
 		return;
+	// A maximized window keeps its size until it is restored; an explicit size
+	// request restores it first.
+	if ( SDL_GetWindowFlags( m_Window ) & SDL_WINDOW_MAXIMIZED )
+		SDL_RestoreWindow( m_Window );
 	if ( !SDL_SetWindowSize( m_Window, width, height ) )
 	{
 		Warning( "SDL3 window resize failed: %s\n", SDL_GetError() );

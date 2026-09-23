@@ -40,8 +40,8 @@ bool CMapFileByteSource::ReadAt( uint64_t offset, void *pDest, size_t size )
 	return g_pFileSystem->Read( pDest, (int)size, m_hFile ) == (int)size;
 }
 
-mapcontainer::IMapContainer *OpenMapContainerForFile( CMapFileByteSource &source, FileHandle_t hFile,
-                                                      const char *pMapName, bool bQuiet )
+mapcontainer::IMapContainer *OpenMapContainerForFile(
+    CMapFileByteSource &source, FileHandle_t hFile, const char *pMapName, bool bQuiet )
 {
 	const unsigned int nBase = g_pFileSystem->Tell( hFile );
 	const unsigned int nFileSize = g_pFileSystem->Size( hFile );
@@ -49,17 +49,18 @@ mapcontainer::IMapContainer *OpenMapContainerForFile( CMapFileByteSource &source
 
 	mapcontainer::MapContainerOpenOptions options = {};
 	mapcontainer::IMapContainer *pContainer = NULL;
-	const mapcontainer::MapContainerStatus status = mapcontainer::OpenMapContainer( source, options, &pContainer );
+	const mapcontainer::MapContainerStatus status =
+	    mapcontainer::OpenMapContainer( source, options, &pContainer );
 	if ( !status.Ok() )
 	{
 		if ( !bQuiet )
 		{
 			const uint32_t fourcc = status.fourcc;
 			const char name[5] = { (char)( fourcc & 0xFF ), (char)( ( fourcc >> 8 ) & 0xFF ),
-			                       (char)( ( fourcc >> 16 ) & 0xFF ), (char)( ( fourcc >> 24 ) & 0xFF ), 0 };
+			    (char)( ( fourcc >> 16 ) & 0xFF ), (char)( ( fourcc >> 24 ) & 0xFF ), 0 };
 			Warning( "Map %s: container error %s (lump %s, offset %llu)\n", pMapName,
-			         mapcontainer::MapContainerErrorName( status.code ), fourcc ? name : "-",
-			         (unsigned long long)status.offset );
+			    mapcontainer::MapContainerErrorName( status.code ), fourcc ? name : "-",
+			    (unsigned long long)status.offset );
 		}
 		source.Detach();
 		return NULL;

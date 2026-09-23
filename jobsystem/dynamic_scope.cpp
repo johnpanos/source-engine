@@ -31,13 +31,13 @@ DynamicScope::~DynamicScope()
 {
 	// If the owner never called Wait(), release the keepalive so workers can exit.
 	{
-		std::lock_guard<std::mutex> lk( m_mtx );
+		std::unique_lock<std::mutex> lk( m_mtx );
 		if ( !m_waitStarted )
 		{
 			m_waitStarted = true;
 			if ( m_outstanding > 0 )
 				--m_outstanding;
-			m_cv.notify_all();
+			WakeLocked( 0 );
 		}
 	}
 	for ( std::thread &t : m_workers )
@@ -45,8 +45,22 @@ DynamicScope::~DynamicScope()
 			t.join();
 }
 
-void DynamicScope::ResolveLocked( std::unique_lock<std::mutex> &lk, uint32_t id, JobState terminal )
+void DynamicScope::WakeLocked( uint32_t count )
 {
+	if ( m_outstanding == 0 )
+	{
+		m_cv.notify_all();
+		m_doneCv.notify_all();
+		return;
+	}
+	// Idle workers take ready work; waking more than that only adds contention.
+	for ( uint32_t i = 0; i < count && i < m_idleWorkers; ++i )
+		m_cv.notify_one();
+}
+
+uint32_t DynamicScope::ResolveLocked( std::unique_lock<std::mutex> &lk, uint32_t id, JobState terminal )
+{
+	uint32_t readied = 0;
 	m_children[id].state = terminal;
 	for ( uint32_t d : m_children[id].dependents )
 	{
@@ -54,12 +68,15 @@ void DynamicScope::ResolveLocked( std::unique_lock<std::mutex> &lk, uint32_t id,
 		if ( terminal != JobState::Succeeded )
 			m_children[d].willCancel = true;
 		if ( --m_children[d].remaining == 0 )
+		{
 			m_ready.push_back( d );
+			++readied;
+		}
 	}
 	if ( m_outstanding > 0 )
 		--m_outstanding;
 	(void)lk;
-	m_cv.notify_all();
+	return readied;
 }
 
 DynamicScope::ChildHandle DynamicScope::Spawn(
@@ -102,9 +119,10 @@ DynamicScope::ChildHandle DynamicScope::Spawn(
 	++m_outstanding; // this child now holds completion ownership
 
 	if ( m_children[id].remaining == 0 )
+	{
 		m_ready.push_back( id );
-
-	m_cv.notify_all();
+		WakeLocked( 1 );
+	}
 	return ChildHandle{ id };
 }
 
@@ -112,7 +130,25 @@ void DynamicScope::CancelPending()
 {
 	std::lock_guard<std::mutex> lk( m_mtx );
 	m_scopeCanceled = true;
-	m_cv.notify_all();
+}
+
+uint32_t DynamicScope::RunChildLocked( std::unique_lock<std::mutex> &lk, uint32_t id )
+{
+	JobState terminal = JobState::Canceled;
+	if ( !m_children[id].willCancel && !m_scopeCanceled )
+	{
+		// A child runs exactly once, so its function moves out of the slot (the
+		// children vector may grow while the lock is released).
+		JobEntry fn = std::move( m_children[id].fn );
+		lk.unlock();
+		JobRunContext ctx( m_frame, id );
+		if ( fn )
+			fn( ctx );
+		terminal = ctx.Failed() ? JobState::Failed : JobState::Succeeded;
+		fn = nullptr; // release captures before publishing completion
+		lk.lock();
+	}
+	return ResolveLocked( lk, id, terminal );
 }
 
 void DynamicScope::WorkerLoop()
@@ -120,38 +156,20 @@ void DynamicScope::WorkerLoop()
 	std::unique_lock<std::mutex> lk( m_mtx );
 	for ( ;; )
 	{
-		m_cv.wait( lk,
-		    [&]
-		    {
-			    return !m_ready.empty() || m_outstanding == 0;
-		    } );
-		if ( m_ready.empty() )
+		while ( m_ready.empty() && m_outstanding != 0 )
 		{
-			if ( m_outstanding == 0 )
-				return;
-			continue;
+			++m_idleWorkers;
+			m_cv.wait( lk );
+			--m_idleWorkers;
 		}
+		if ( m_ready.empty() )
+			return; // drained
 
 		const uint32_t id = m_ready.back();
 		m_ready.pop_back();
-
-		if ( m_children[id].willCancel || m_scopeCanceled )
-		{
-			ResolveLocked( lk, id, JobState::Canceled );
-			continue;
-		}
-
-		JobEntry fn = m_children[id].fn; // copy so the slot can be touched meanwhile
-		JobState terminal;
-		{
-			lk.unlock();
-			JobRunContext ctx( m_frame, id );
-			if ( fn )
-				fn( ctx );
-			terminal = ctx.Failed() ? JobState::Failed : JobState::Succeeded;
-			lk.lock();
-		}
-		ResolveLocked( lk, id, terminal );
+		// This worker takes one newly ready child itself on its next pass.
+		const uint32_t readied = RunChildLocked( lk, id );
+		WakeLocked( readied ? readied - 1 : 0 );
 	}
 }
 
@@ -166,7 +184,7 @@ void DynamicScope::Wait()
 	// once every admitted child is terminal.
 	if ( m_outstanding > 0 )
 		--m_outstanding;
-	m_cv.notify_all();
+	WakeLocked( 0 );
 
 	if ( m_nWorkers == 0 )
 	{
@@ -177,27 +195,12 @@ void DynamicScope::Wait()
 		{
 			const uint32_t id = m_ready.back();
 			m_ready.pop_back();
-			if ( m_children[id].willCancel || m_scopeCanceled )
-			{
-				ResolveLocked( lk, id, JobState::Canceled );
-				continue;
-			}
-			JobEntry fn = m_children[id].fn;
-			JobState terminal;
-			{
-				lk.unlock();
-				JobRunContext ctx( m_frame, id );
-				if ( fn )
-					fn( ctx );
-				terminal = ctx.Failed() ? JobState::Failed : JobState::Succeeded;
-				lk.lock();
-			}
-			ResolveLocked( lk, id, terminal );
+			RunChildLocked( lk, id );
 		}
 	}
 	else
 	{
-		m_cv.wait( lk,
+		m_doneCv.wait( lk,
 		    [&]
 		    {
 			    return m_outstanding == 0;

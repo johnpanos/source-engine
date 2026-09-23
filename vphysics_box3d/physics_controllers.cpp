@@ -7,6 +7,7 @@
 #include "physics_controllers.h"
 
 #include <math.h>
+#include <string.h>
 
 #include "box3d/box3d.h"
 #include "box3d_convert.h"
@@ -18,6 +19,9 @@
 
 namespace
 {
+// IVP's reserved shadow surface ($MATERIAL_INDEX_SHADOW).
+const int kMaterialIndexShadow = 0xF000;
+
 // IVP's ComputeController (vphysics/physics_shadow.cpp): accelerate toward the
 // scaled error within maxSpeed, and damp the current speed within maxDampSpeed.
 void ComputeController( Vector &currentSpeed, const Vector &delta, float maxSpeed, float maxDampSpeed,
@@ -122,32 +126,91 @@ float ComputeShadowControlBox3D( CPhysicsObjectBox3D *pObject, const hlshadowcon
 CShadowControllerBox3D::CShadowControllerBox3D( CPhysicsObjectBox3D *pObject, bool allowTranslation, bool allowRotation )
 	: m_pObject( pObject ), m_maxSpeed( 0.0f ), m_maxAngularSpeed( 0.0f ), m_teleportDistance( 0.0f ),
 	  m_secondsToArrival( 0.0f ), m_dampFactor( 1.0f ), m_savedMass( pObject->GetMass() ),
+	  m_savedInertia( pObject->GetInertia() ), m_savedMaterialIndex( pObject->GetMaterialIndex() ),
 	  m_allowTranslation( allowTranslation ), m_allowRotation( allowRotation ), m_physicallyControlled( false ),
-	  m_enabled( false ), m_tempDisableGravity( false )
+	  m_enabled( false )
 {
 	m_lastImpulse.Init();
 	pObject->GetPosition( &m_targetPosition, &m_targetAngles );
 
 	// Attach exactly as IVP's CShadowController::AttachObject does.
-	m_savedCallbackFlags = pObject->GetCallbackFlags();
-	unsigned short flags = m_savedCallbackFlags | CALLBACK_SHADOW_COLLISION;
-	flags &= ~( CALLBACK_GLOBAL_FRICTION | CALLBACK_GLOBAL_COLLIDE_STATIC );
-	pObject->SetCallbackFlags( flags );
-	pObject->EnableDrag( false );
+	pObject->GetDamping( NULL, &m_savedRotDamping );
+	UseShadowMaterial( true );
+	float rotDamping = 100.0f;
+	pObject->SetDamping( NULL, &rotDamping );
+	if ( !allowRotation )
+		pObject->SetInertia( Vector( 1e14f, 1e14f, 1e14f ) );
 	if ( !allowTranslation )
 	{
 		pObject->SetMass( VPHYSICS_MAX_MASS );
 		pObject->EnableGravity( false );
 	}
+	m_savedCallbackFlags = pObject->GetCallbackFlags();
+	unsigned short flags = m_savedCallbackFlags | CALLBACK_SHADOW_COLLISION;
+	flags &= ~( CALLBACK_GLOBAL_FRICTION | CALLBACK_GLOBAL_COLLIDE_STATIC );
+	pObject->SetCallbackFlags( flags );
+	pObject->EnableDrag( false );
+}
+
+CShadowControllerBox3D::CShadowControllerBox3D( CPhysicsObjectBox3D *pObject, const State_t &state )
+	: m_pObject( pObject ), m_targetPosition( state.targetPosition ), m_targetAngles( state.targetAngles ),
+	  m_lastImpulse( state.lastImpulse ), m_maxSpeed( state.maxSpeed ), m_maxAngularSpeed( state.maxAngularSpeed ),
+	  m_teleportDistance( state.teleportDistance ), m_secondsToArrival( state.secondsToArrival ), m_dampFactor( state.dampFactor ),
+	  m_savedCallbackFlags( (unsigned short)state.savedCallbackFlags ), m_savedMass( state.savedMass ),
+	  m_savedRotDamping( state.savedRotDamping ), m_savedInertia( state.savedInertia ), m_savedMaterialIndex( state.savedMaterialIndex ),
+	  m_allowTranslation( state.allowTranslation ), m_allowRotation( state.allowRotation ),
+	  m_physicallyControlled( state.physicallyControlled ), m_enabled( state.enabled )
+{
+}
+
+void CShadowControllerBox3D::WriteState( State_t &state ) const
+{
+	memset( &state, 0, sizeof( state ) );
+	state.targetPosition = m_targetPosition;
+	state.targetAngles = m_targetAngles;
+	state.lastImpulse = m_lastImpulse;
+	state.maxSpeed = m_maxSpeed;
+	state.maxAngularSpeed = m_maxAngularSpeed;
+	state.teleportDistance = m_teleportDistance;
+	state.secondsToArrival = m_secondsToArrival;
+	state.dampFactor = m_dampFactor;
+	state.savedCallbackFlags = m_savedCallbackFlags;
+	state.savedMass = m_savedMass;
+	state.savedRotDamping = m_savedRotDamping;
+	state.savedInertia = m_savedInertia;
+	state.savedMaterialIndex = m_savedMaterialIndex;
+	state.allowTranslation = m_allowTranslation;
+	state.allowRotation = m_allowRotation;
+	state.physicallyControlled = m_physicallyControlled;
+	state.enabled = m_enabled;
 }
 
 CShadowControllerBox3D::~CShadowControllerBox3D()
 {
+	// IVP's DetachObject: restore everything, unless the object is being
+	// deleted anyway.
+	if ( m_pObject->GetCallbackFlags() & CALLBACK_MARKED_FOR_DELETE )
+		return;
+	m_pObject->SetDamping( NULL, &m_savedRotDamping );
+	m_pObject->SetMass( m_savedMass );
 	m_pObject->SetCallbackFlags( m_savedCallbackFlags );
 	m_pObject->EnableDrag( true );
 	m_pObject->EnableGravity( true );
-	if ( !m_allowTranslation )
-		m_pObject->SetMass( m_savedMass );
+	UseShadowMaterial( false );
+	m_pObject->SetInertia( m_savedInertia );
+}
+
+void CShadowControllerBox3D::UseShadowMaterial( bool bUseShadowMaterial )
+{
+	// The reserved shadow surface ($MATERIAL_INDEX_SHADOW) while shadowed.
+	int current = m_pObject->GetMaterialIndex();
+	int target = bUseShadowMaterial ? kMaterialIndexShadow : m_savedMaterialIndex;
+	if ( target != current )
+	{
+		int saved = m_savedMaterialIndex;
+		m_pObject->SetMaterialIndex( target );
+		m_savedMaterialIndex = saved;
+	}
 }
 
 void CShadowControllerBox3D::Update( const Vector &position, const QAngle &angles, float timeOffset )
@@ -356,7 +419,8 @@ CFrictionSnapshotBox3D::CFrictionSnapshotBox3D( CPhysicsObjectBox3D *pObject ) :
 			}
 			entry.point = point / (float)manifold.pointCount;
 			entry.normalForce = stepTime > 0 ? impulse / stepTime : 0.0f;
-			entry.friction = sqrtf( pObject->GetFriction() * ( pOther ? pOther->GetFriction() : 1.0f ) );
+			// IVP's product rule (see the environment's mixing callbacks).
+			entry.friction = clamp( pObject->GetFriction() * ( pOther ? pOther->GetFriction() : 1.0f ), 0.0f, 1.0f );
 			m_entries.AddToTail( entry );
 		}
 	}

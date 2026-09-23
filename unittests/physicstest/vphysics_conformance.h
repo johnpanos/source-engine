@@ -75,5 +75,7 @@ Vector AxisOf( IPhysicsObject *pObject, int axis );
 // Clause families implemented in their own translation units.
 void TestConstraints();
 void TestObjectsAndEvents();
+void TestFluidsAndSprings();
+void TestSaveRestore();
 
 #endif // VPHYSICS_CONFORMANCE_H

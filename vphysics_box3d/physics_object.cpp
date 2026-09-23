@@ -1,10 +1,11 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: VPhysics object backed by a Box3D body (RFC 0004 B2/B5).
+// Purpose: VPhysics object backed by a Box3D body (RFC 0004 B2/B5/C6).
 //
 //=============================================================================//
 #include "physics_object.h"
 
+#include <math.h>
 #include <string.h>
 
 #include "box3d/box3d.h"
@@ -20,39 +21,67 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+static bool BadVec( const Vector &v ) { return !( fabsf( v.x ) < 1e20f && fabsf( v.y ) < 1e20f && fabsf( v.z ) < 1e20f ); }
+#define NANCHECK( v, what ) if ( BadVec( v ) ) Warning( "BOX3DNAN %s %s (%f %f %f)\n", m_name, what, (v).x, (v).y, (v).z );
 namespace
 {
 // IVP's default callback set for a new object (vphysics/physics_object.cpp).
 const unsigned short kDefaultCallbacks = CALLBACK_GLOBAL_COLLISION | CALLBACK_GLOBAL_FRICTION |
 	CALLBACK_FLUID_TOUCH | CALLBACK_GLOBAL_TOUCH | CALLBACK_GLOBAL_COLLIDE_STATIC | CALLBACK_DO_FLUID_SIMULATION;
 const int kMaxShapes = 256;
+const float kMetersPerInch = 0.0254f;
 
 b3WorldTransform BodyTransform( b3BodyId body )
 {
 	return b3Body_GetTransform( body );
+}
+
+// IVP's AngDragIntegral (vphysics/physics_object.cpp): the integral of each
+// differential drag area's torque over one pair of opposite OBB faces.
+float AngDragIntegral( float invInertia, float l, float w, float h )
+{
+	float w2 = w * w;
+	float l2 = l * l;
+	float h2 = h * h;
+	return invInertia * ( ( 1.f / 3.f ) * w2 * l * l2 + 0.5f * w2 * w2 * l + l * w2 * h2 );
 }
 }
 
 CPhysicsObjectBox3D::CPhysicsObjectBox3D( CPhysicsEnvironmentBox3D *pEnv, const CPhysCollide *pCollide, float sphereRadius,
 	int materialIndex, const Vector &position, const QAngle &angles, const objectparams_t *pParams, bool isStatic )
 	: m_pEnv( pEnv ), m_pCollide( pCollide ), m_body( b3_nullBodyId ), m_pShadow( NULL ), m_pPlayerController( NULL ),
-	  m_pGameData( pParams ? pParams->pGameData : NULL ), m_mass( pParams ? pParams->mass : 1.0f ),
-	  m_inertiaScale( pParams && pParams->inertia > 0.0f ? pParams->inertia : 1.0f ), m_sphereRadius( sphereRadius ),
-	  m_linearDamping( pParams ? pParams->damping : 0.0f ), m_angularDamping( pParams ? pParams->rotdamping : 0.0f ),
-	  m_friction( 0.8f ), m_restitution( 0.0f ), m_materialIndex( materialIndex ), m_hingeAxis( -1 ),
+	  m_pFluid( NULL ), m_pGameData( pParams ? pParams->pGameData : NULL ), m_sphereRadius( sphereRadius ),
+	  m_volume( 0.0f ), m_buoyancyRatio( 1.0f ), m_friction( 0.8f ), m_restitution( 0.0f ), m_hingeAxis( -1 ),
 	  m_contents( CONTENTS_SOLID ), m_callbackFlags( kDefaultCallbacks ), m_gameFlags( 0 ), m_gameIndex( 0 ),
 	  m_isStatic( isStatic ), m_isTrigger( false ), m_collisionEnabled( pParams ? pParams->enableCollisions : true ),
-	  m_gravityEnabled( !isStatic ), m_dragEnabled( !isStatic ), m_motionEnabled( !isStatic ), m_wasAwake( false ), m_reportPreStep( false )
+	  m_gravityEnabled( !isStatic ), m_dragEnabled( false ), m_motionEnabled( true ), m_shadowTempGravityDisable( false ),
+	  m_wasAwake( false ), m_reportPreStep( false ), m_hasTouchedDynamic( false ), m_asleepSinceCreation( true )
 {
+	objectparams_t defaults;
+	memset( &defaults, 0, sizeof( defaults ) );
+	defaults.mass = 1.0f;
+	defaults.inertia = 1.0f;
+	defaults.enableCollisions = true;
+	const objectparams_t &params = pParams ? *pParams : defaults;
+
 	m_preStepLinear.Init();
 	m_preStepAngular.Init();
-	V_strncpy( m_name, pParams && pParams->pName ? pParams->pName : "box3d_object", sizeof( m_name ) );
-	m_inertia.Init( 1, 1, 1 );
+	V_strncpy( m_name, params.pName ? params.pName : "box3d_object", sizeof( m_name ) );
+
+	// IVP's InitObjectTemplate.
+	m_mass = clamp( params.mass, VPHYSICS_MIN_MASS, VPHYSICS_MAX_MASS );
+	m_inertiaScale = params.inertia <= 0 ? 1.0f : MIN( params.inertia, 1e14f );
+	m_rotInertiaLimit = params.rotInertiaLimit;
+	m_speedDamping = params.damping;
+	m_rotDamping = params.rotdamping;
+	if ( materialIndex < 0 )
+		materialIndex = g_SurfaceDatabase.GetSurfaceIndex( "default" );
+	m_materialIndex = materialIndex;
 
 	const CPhysCollideBox3D *pBox = pCollide ? ToBox3D( pCollide ) : NULL;
 	m_massCenter = pBox ? pBox->massCenter : vec3_origin;
-	if ( pParams && pParams->massCenterOverride )
-		m_massCenter = *pParams->massCenterOverride;
+	if ( params.massCenterOverride )
+		m_massCenter = *params.massCenterOverride;
 
 	surfacedata_t *pSurface = g_SurfaceDatabase.GetSurfaceData( materialIndex );
 	if ( pSurface )
@@ -61,19 +90,28 @@ CPhysicsObjectBox3D::CPhysicsObjectBox3D( CPhysicsEnvironmentBox3D *pEnv, const 
 		m_restitution = pSurface->physics.elasticity;
 	}
 
-	b3BodyDef def = b3DefaultBodyDef();
-	def.type = isStatic ? b3_staticBody : b3_dynamicBody;
-	def.position = ToB3( position );
-	def.rotation = ToB3( angles );
-	def.linearDamping = m_linearDamping;
-	def.angularDamping = m_angularDamping;
-	def.userData = this;
-	def.name = m_name;
-	def.isAwake = false;
-	m_body = b3CreateBody( pEnv->GetWorld(), &def );
+	// Drag applies to non-static polygon objects with a drag coefficient;
+	// spheres never get drag (IVP's CreatePhysicsSphere).
+	bool dragCapable = !isStatic && pCollide != NULL;
+	m_dragCoefficient = dragCapable ? params.dragCoefficient : 0.0f;
+	m_angDragCoefficient = m_dragCoefficient;
+	m_dragBasis.Init();
+	m_angDragBasis.Init();
 
-	CreateShapes();
+	CreateBody( position, angles );
+	ComputeInitialInertia();
+
+	// IVP's SetVolume: buoyancy compares the object's density (mass over
+	// collision volume) with its material's.
+	float volume = params.volume;
+	if ( m_sphereRadius > 0.0f && volume <= 0.0f )
+		volume = 4.0f * M_PI_F * m_sphereRadius * m_sphereRadius * m_sphereRadius / 3.0f;
+	m_volume = volume;
+	UpdateBuoyancyRatio();
+
+	RecomputeDragBases();
 	ApplyMassProperties();
+	m_dragEnabled = dragCapable && params.dragCoefficient != 0.0f;
 	ApplyFilter();
 	m_wasAwake = b3Body_IsAwake( m_body );
 }
@@ -86,12 +124,167 @@ CPhysicsObjectBox3D::~CPhysicsObjectBox3D()
 		b3DestroyBody( m_body );
 }
 
+//-----------------------------------------------------------------------------
+// State capture: transfer, serialization, save/restore
+//-----------------------------------------------------------------------------
+void CPhysicsObjectBox3D::CreateBody( const Vector &position, const QAngle &angles )
+{
+	b3BodyDef def = b3DefaultBodyDef();
+	def.type = m_isStatic ? b3_staticBody : b3_dynamicBody;
+	def.position = ToB3( position );
+	def.rotation = ToB3( angles );
+	// IVP damping is applied by the environment each step.
+	def.linearDamping = 0.0f;
+	def.angularDamping = 0.0f;
+	def.userData = this;
+	def.name = m_name;
+	def.isAwake = false;
+	m_body = b3CreateBody( m_pEnv->GetWorld(), &def );
+	CreateShapes();
+}
+
+void CPhysicsObjectBox3D::WriteState( CPhysicsObjectStateBox3D &state ) const
+{
+	memset( &state, 0, sizeof( state ) );
+	state.version = kPhysicsObjectStateVersion;
+	state.pCollide = m_pCollide;
+	state.sphereRadius = m_sphereRadius;
+	state.isStatic = m_isStatic;
+	state.collisionEnabled = m_collisionEnabled;
+	state.gravityEnabled = m_gravityEnabled;
+	state.dragEnabled = m_dragEnabled;
+	state.motionEnabled = m_motionEnabled;
+	state.isAsleep = IsAsleep();
+	state.isTrigger = m_isTrigger;
+	state.asleepSinceCreation = m_asleepSinceCreation;
+	state.hasTouchedDynamic = m_hasTouchedDynamic;
+	state.materialIndex = m_materialIndex;
+	state.mass = m_mass;
+	state.inertia = m_inertia;
+	state.inertiaScale = m_inertiaScale;
+	state.rotInertiaLimit = m_rotInertiaLimit;
+	state.speedDamping = m_speedDamping;
+	state.rotDamping = m_rotDamping;
+	state.massCenter = m_massCenter;
+	state.callbacks = m_callbackFlags;
+	state.gameFlags = m_gameFlags;
+	state.gameIndex = m_gameIndex;
+	state.contents = m_contents;
+	state.volume = m_volume;
+	state.dragCoefficient = m_dragCoefficient;
+	state.angDragCoefficient = m_angDragCoefficient;
+	state.hingeAxis = m_hingeAxis;
+	GetPosition( &state.origin, &state.angles );
+	GetWorldVelocity( &state.velocity, &state.angularVelocity );
+	V_strncpy( state.name, m_name, sizeof( state.name ) );
+}
+
+// IVP's CPhysicsObject::InitFromTemplate order: authored properties, then
+// motion/trigger/gravity/collision state, then velocity or sleep.
+void CPhysicsObjectBox3D::ApplyState( const CPhysicsObjectStateBox3D &state, bool enableCollisions )
+{
+	m_mass = state.mass;
+	m_inertia = state.inertia;
+	m_inertiaScale = state.inertiaScale;
+	m_rotInertiaLimit = state.rotInertiaLimit;
+	m_speedDamping = state.speedDamping;
+	m_rotDamping = state.rotDamping;
+	m_massCenter = state.massCenter;
+	m_callbackFlags = (unsigned short)state.callbacks;
+	m_gameFlags = (unsigned short)state.gameFlags;
+	m_gameIndex = (unsigned short)state.gameIndex;
+	m_contents = state.contents;
+	m_volume = state.volume;
+	m_dragCoefficient = state.dragCoefficient;
+	m_angDragCoefficient = state.angDragCoefficient;
+	m_asleepSinceCreation = state.asleepSinceCreation;
+	m_hasTouchedDynamic = state.hasTouchedDynamic;
+	UpdateBuoyancyRatio();
+	RecomputeDragBases();
+	ApplyMassProperties();
+
+	m_dragEnabled = !m_isStatic && state.dragEnabled;
+	if ( !m_isStatic && !state.motionEnabled )
+	{
+		m_motionEnabled = false;
+		ApplyBodyType();
+	}
+	if ( state.isTrigger && !m_isTrigger )
+		BecomeTrigger();
+	m_gravityEnabled = !m_isStatic && state.gravityEnabled;
+	m_collisionEnabled = state.collisionEnabled && enableCollisions;
+	ApplyFilter();
+
+	if ( state.velocity.LengthSqr() != 0 || state.angularVelocity.LengthSqr() != 0 )
+	{
+		Wake();
+		SetWorldVelocity( state.velocity, state.angularVelocity );
+	}
+	else if ( !state.isAsleep && !m_isStatic )
+	{
+		Wake();
+	}
+	if ( state.isAsleep )
+		Sleep();
+	if ( state.hingeAxis >= 0 )
+		BecomeHinged( state.hingeAxis );
+	m_wasAwake = !IsAsleep();
+}
+
+CPhysicsObjectBox3D *CPhysicsObjectBox3D::CreateFromState( CPhysicsEnvironmentBox3D *pEnv, void *pGameData,
+	const CPhysicsObjectStateBox3D &state, bool enableCollisions )
+{
+	if ( state.version != kPhysicsObjectStateVersion )
+		return NULL;
+	objectparams_t params;
+	memset( &params, 0, sizeof( params ) );
+	params.mass = state.mass;
+	params.inertia = state.inertiaScale;
+	params.rotInertiaLimit = state.rotInertiaLimit;
+	params.damping = state.speedDamping;
+	params.rotdamping = state.rotDamping;
+	params.pName = state.name;
+	params.pGameData = pGameData;
+	params.volume = state.volume;
+	params.dragCoefficient = state.dragCoefficient;
+	params.enableCollisions = false;
+	Vector massCenter = state.massCenter;
+	params.massCenterOverride = &massCenter;
+	CPhysicsObjectBox3D *pObject = new CPhysicsObjectBox3D( pEnv, state.pCollide, state.sphereRadius, state.materialIndex,
+		state.origin, state.angles, &params, state.isStatic );
+	pObject->ApplyState( state, enableCollisions );
+	return pObject;
+}
+
+void CPhysicsObjectBox3D::MoveToEnvironment( CPhysicsEnvironmentBox3D *pDestination )
+{
+	CPhysicsObjectStateBox3D state;
+	WriteState( state );
+	bool trigger = m_isTrigger;
+	if ( b3Body_IsValid( m_body ) )
+		b3DestroyBody( m_body );
+	m_pEnv = pDestination;
+	// Rebuild with the same shape kind, then restore the state; the trigger
+	// is already reflected in the shapes.
+	m_isTrigger = trigger;
+	m_motionEnabled = true;
+	CreateBody( state.origin, state.angles );
+	ApplyState( state, true );
+}
+
+//-----------------------------------------------------------------------------
+// Shapes and mass properties
+//-----------------------------------------------------------------------------
 void CPhysicsObjectBox3D::CreateShapes()
 {
 	b3ShapeDef def = b3DefaultShapeDef();
 	def.userData = this;
 	def.enableCustomFiltering = true;
 	def.enableContactEvents = true;
+	def.enableHitEvents = true;
+	// Every shape is visible to triggers and fluids (Box3D sensors).
+	def.enableSensorEvents = true;
+	def.isSensor = m_isTrigger;
 	def.updateBodyMass = false;
 	def.density = 1.0f;
 	def.baseMaterial.friction = m_friction;
@@ -116,61 +309,56 @@ void CPhysicsObjectBox3D::CreateShapes()
 	}
 }
 
-float CPhysicsObjectBox3D::ComputeShapeVolume() const
+void CPhysicsObjectBox3D::DestroyShapes()
 {
+	b3ShapeId shapes[kMaxShapes];
+	int shapeCount = b3Body_GetShapes( m_body, shapes, kMaxShapes );
+	for ( int i = 0; i < shapeCount; i++ )
+		b3DestroyShape( shapes[i], false );
+}
+
+int CPhysicsObjectBox3D::GetShapes( b3ShapeId *pShapes, int capacity ) const
+{
+	return b3Body_GetShapes( m_body, pShapes, capacity );
+}
+
+// IVP_Real_Object's template: inertia = mass * per-mass inertia * scale,
+// clipped below at |I| * rotInertiaLimit.
+void CPhysicsObjectBox3D::ComputeInitialInertia()
+{
+	Vector perMass( 1, 1, 1 );
 	if ( m_sphereRadius > 0.0f )
-		return ( 4.0f / 3.0f ) * M_PI_F * m_sphereRadius * m_sphereRadius * m_sphereRadius;
-	const CPhysCollideBox3D *pBox = m_pCollide ? ToBox3D( m_pCollide ) : NULL;
-	return pBox ? pBox->volume : 0.0f;
+	{
+		float r = m_sphereRadius * kMetersPerInch;
+		perMass.Init( 0.4f * r * r, 0.4f * r * r, 0.4f * r * r );
+	}
+	else if ( m_pCollide )
+	{
+		perMass = ToBox3D( m_pCollide )->rotationInertia;
+	}
+	m_inertia = perMass * ( m_mass * m_inertiaScale );
+	if ( m_rotInertiaLimit != 0.0f )
+	{
+		float minimum = m_inertia.Length() * m_rotInertiaLimit;
+		for ( int i = 0; i < 3; i++ )
+			m_inertia[i] = MAX( m_inertia[i], minimum );
+	}
 }
 
 void CPhysicsObjectBox3D::ApplyMassProperties()
 {
+	NANCHECK( m_inertia, "inertia" );
+	NANCHECK( m_massCenter, "masscenter" );
 	if ( m_isStatic || b3Body_GetType( m_body ) != b3_dynamicBody )
 		return;
-
-	float volume = ComputeShapeVolume();
-	b3ShapeId shapes[kMaxShapes];
-	int shapeCount = b3Body_GetShapes( m_body, shapes, kMaxShapes );
 	b3MassData mass;
-	if ( volume > 0.0f && shapeCount > 0 )
-	{
-		// Uniform density that yields the authored mass, so Box3D computes a
-		// consistent inertia tensor for the actual geometry.
-		float density = m_mass / volume;
-		for ( int i = 0; i < shapeCount; i++ )
-			b3Shape_SetDensity( shapes[i], density, false );
-		b3Body_ApplyMassFromShapes( m_body );
-		mass = b3Body_GetMassData( m_body );
-		// Pieces covering a large convex overlap inside it, so the shape sum
-		// can exceed the authored mass; keep the inertia consistent with it.
-		if ( mass.mass > 0.0f )
-		{
-			float correction = m_mass / mass.mass;
-			mass.inertia.cx = b3MulSV( correction, mass.inertia.cx );
-			mass.inertia.cy = b3MulSV( correction, mass.inertia.cy );
-			mass.inertia.cz = b3MulSV( correction, mass.inertia.cz );
-		}
-	}
-	else
-	{
-		mass.center = b3Vec3_zero;
-		float inertia = m_mass * 16.0f;
-		mass.inertia.cx = { inertia, 0, 0 };
-		mass.inertia.cy = { 0, inertia, 0 };
-		mass.inertia.cz = { 0, 0, inertia };
-	}
 	mass.mass = m_mass;
 	mass.center = ToB3( m_massCenter );
-
-	float scale = m_inertiaScale;
-	if ( m_pShadow && !m_pShadow->AllowsRotation() )
-		scale *= 1e6f;	// IVP pins a non-rotating shadow with 1e14 inertia
-	mass.inertia.cx = b3MulSV( scale, mass.inertia.cx );
-	mass.inertia.cy = b3MulSV( scale, mass.inertia.cy );
-	mass.inertia.cz = b3MulSV( scale, mass.inertia.cz );
+	Vector inertia = m_inertia * kInertiaToBox3D;
+	mass.inertia.cx = { inertia.x, 0, 0 };
+	mass.inertia.cy = { 0, inertia.y, 0 };
+	mass.inertia.cz = { 0, 0, inertia.z };
 	b3Body_SetMassData( m_body, mass );
-	m_inertia.Init( mass.inertia.cx.x, mass.inertia.cy.y, mass.inertia.cz.z );
 }
 
 void CPhysicsObjectBox3D::ApplyBodyType()
@@ -195,18 +383,22 @@ void CPhysicsObjectBox3D::ApplyBodyType()
 
 void CPhysicsObjectBox3D::ApplyFilter()
 {
+	// Refiltering re-evaluates contacts, which wakes the body in Box3D; a
+	// filter change alone does not wake an IVP object.
+	bool asleep = !m_isStatic && IsAsleep();
 	b3ShapeId shapes[kMaxShapes];
 	int shapeCount = b3Body_GetShapes( m_body, shapes, kMaxShapes );
 	for ( int i = 0; i < shapeCount; i++ )
 	{
 		b3Filter filter = b3Shape_GetFilter( shapes[i] );
-		bool collides = m_collisionEnabled && !m_isTrigger;
-		filter.categoryBits = collides ? B3_DEFAULT_CATEGORY_BITS : 0;
-		filter.maskBits = collides ? B3_DEFAULT_MASK_BITS : 0;
+		filter.categoryBits = m_collisionEnabled ? B3_DEFAULT_CATEGORY_BITS : 0;
+		filter.maskBits = m_collisionEnabled ? B3_DEFAULT_MASK_BITS : 0;
 		b3Shape_SetFilter( shapes[i], filter, true );
 	}
 	if ( !m_isStatic )
 		b3Body_SetGravityScale( m_body, m_gravityEnabled ? 1.0f : 0.0f );
+	if ( asleep && !IsAsleep() )
+		b3Body_SetAwake( m_body, false );
 }
 
 bool CPhysicsObjectBox3D::IsAsleep() const
@@ -233,15 +425,26 @@ void CPhysicsObjectBox3D::EnableCollisions( bool enable )
 
 void CPhysicsObjectBox3D::EnableGravity( bool enable )
 {
+	if ( m_isStatic )
+		return;
 	m_gravityEnabled = enable;
-	if ( !m_isStatic )
-		b3Body_SetGravityScale( m_body, enable ? 1.0f : 0.0f );
+	b3Body_SetGravityScale( m_body, enable ? 1.0f : 0.0f );
 }
 
-void CPhysicsObjectBox3D::ApplyGravityScale( bool suppress )
+void CPhysicsObjectBox3D::EnableDrag( bool enable )
 {
-	if ( !m_isStatic )
-		b3Body_SetGravityScale( m_body, ( m_gravityEnabled && !suppress ) ? 1.0f : 0.0f );
+	if ( m_isStatic )
+		return;
+	m_dragEnabled = enable;
+}
+
+void CPhysicsObjectBox3D::SetDragCoefficient( float *pDrag, float *pAngularDrag )
+{
+	if ( pDrag )
+		m_dragCoefficient = *pDrag;
+	if ( pAngularDrag )
+		m_angDragCoefficient = *pAngularDrag;
+	EnableDrag( m_dragCoefficient != 0 || m_angDragCoefficient != 0 );
 }
 
 void CPhysicsObjectBox3D::EnableMotion( bool enable )
@@ -250,6 +453,9 @@ void CPhysicsObjectBox3D::EnableMotion( bool enable )
 		return;
 	m_motionEnabled = enable;
 	ApplyBodyType();
+	if ( enable && IsHinged() )
+		BecomeHinged( m_hingeAxis );
+	RecheckCollisionFilter();
 }
 
 void CPhysicsObjectBox3D::Wake( void )
@@ -266,20 +472,60 @@ void CPhysicsObjectBox3D::Sleep( void )
 
 void CPhysicsObjectBox3D::RecheckCollisionFilter( void )
 {
+	if ( IsMarkedForDelete() )
+		return;
 	// Re-running the filter makes Box3D re-evaluate existing pairs, which
 	// re-invokes the environment's custom filter (the game's collision rules).
 	ApplyFilter();
 }
 
+void CPhysicsObjectBox3D::RecheckContactPoints( void )
+{
+	RecheckCollisionFilter();
+}
+
+void CPhysicsObjectBox3D::UpdateBuoyancyRatio()
+{
+	// IVP's SetVolume (minimum 5 cubic inches for stability).
+	if ( m_volume != 0.0f )
+	{
+		float volume = MAX( m_volume, 5.0f ) * kMetersPerInch * kMetersPerInch * kMetersPerInch;
+		float density = m_mass / volume;
+		float matDensity = 1.0f;
+		g_SurfaceDatabase.GetPhysicsProperties( m_materialIndex, &matDensity, NULL, NULL, NULL );
+		m_buoyancyRatio = matDensity > 0.0f ? density / matDensity : 1.0f;
+	}
+	else
+	{
+		m_buoyancyRatio = 1.0f;
+	}
+}
+
 void CPhysicsObjectBox3D::SetMass( float mass )
 {
-	m_mass = mass > 0.0f ? mass : 1.0f;
+	// IVP clamps runtime mass changes to [1, max] and rescales the inertia
+	// (IVP_Core::set_mass).
+	mass = clamp( mass, 1.0f, VPHYSICS_MAX_MASS );
+	if ( m_mass > 0.0f )
+		m_inertia *= mass / m_mass;
+	m_mass = mass;
+	UpdateBuoyancyRatio();
+	RecomputeDragBases();
 	ApplyMassProperties();
+}
+
+float CPhysicsObjectBox3D::GetInvMass( void ) const
+{
+	// IVP reports the core's inverse mass: pinned cores have none, and a
+	// static core keeps its authored mass.
+	if ( !m_isStatic && !m_motionEnabled )
+		return 0.0f;
+	return m_mass > 0.0f ? 1.0f / m_mass : 0.0f;
 }
 
 Vector CPhysicsObjectBox3D::GetInvInertia( void ) const
 {
-	if ( !IsMoveable() )
+	if ( !m_isStatic && !m_motionEnabled )
 		return vec3_origin;
 	return Vector( m_inertia.x > 0 ? 1.0f / m_inertia.x : 0.0f, m_inertia.y > 0 ? 1.0f / m_inertia.y : 0.0f,
 		m_inertia.z > 0 ? 1.0f / m_inertia.z : 0.0f );
@@ -287,54 +533,55 @@ Vector CPhysicsObjectBox3D::GetInvInertia( void ) const
 
 void CPhysicsObjectBox3D::SetInertia( const Vector &inertia )
 {
-	if ( m_isStatic )
-		return;
-	b3MassData mass = b3Body_GetMassData( m_body );
-	mass.inertia.cx = { inertia.x, 0, 0 };
-	mass.inertia.cy = { 0, inertia.y, 0 };
-	mass.inertia.cz = { 0, 0, inertia.z };
-	b3Body_SetMassData( m_body, mass );
-	m_inertia = inertia;
+	m_inertia.Init( fabsf( inertia.x ), fabsf( inertia.y ), fabsf( inertia.z ) );
+	ApplyMassProperties();
 }
 
 void CPhysicsObjectBox3D::SetDamping( const float *speed, const float *rot )
 {
 	if ( speed )
-		m_linearDamping = *speed;
+		m_speedDamping = *speed;
 	if ( rot )
-		m_angularDamping = *rot;
-	b3Body_SetLinearDamping( m_body, m_linearDamping );
-	b3Body_SetAngularDamping( m_body, m_angularDamping );
+		m_rotDamping = *rot;
 }
 
 void CPhysicsObjectBox3D::GetDamping( float *speed, float *rot ) const
 {
 	if ( speed )
-		*speed = m_linearDamping;
+		*speed = m_speedDamping;
 	if ( rot )
-		*rot = m_angularDamping;
+		*rot = m_rotDamping;
 }
 
 void CPhysicsObjectBox3D::SetMaterialIndex( int materialIndex )
 {
+	if ( m_materialIndex == materialIndex )
+		return;
 	m_materialIndex = materialIndex;
 	surfacedata_t *pSurface = g_SurfaceDatabase.GetSurfaceData( materialIndex );
-	if ( !pSurface )
-		return;
-	m_friction = pSurface->physics.friction;
-	m_restitution = pSurface->physics.elasticity;
+	if ( pSurface )
+	{
+		m_friction = pSurface->physics.friction;
+		m_restitution = pSurface->physics.elasticity;
+	}
 	b3ShapeId shapes[kMaxShapes];
 	int shapeCount = b3Body_GetShapes( m_body, shapes, kMaxShapes );
 	for ( int i = 0; i < shapeCount; i++ )
 	{
-		b3Shape_SetFriction( shapes[i], m_friction );
-		b3Shape_SetRestitution( shapes[i], m_restitution );
+		b3SurfaceMaterial material = b3Shape_GetSurfaceMaterial( shapes[i] );
+		material.friction = m_friction;
+		material.restitution = m_restitution;
+		material.userMaterialId = (uint64_t)m_materialIndex;
+		b3Shape_SetSurfaceMaterial( shapes[i], material );
 	}
+	if ( m_pShadow )
+		m_pShadow->ObjectMaterialChanged( materialIndex );
 }
 
+// IVP: 1/2 m v^2 + 1/2 w.I.w in Havok units, converted to Source energy.
 float CPhysicsObjectBox3D::GetEnergy() const
 {
-	if ( !IsMoveable() )
+	if ( m_isStatic )
 		return 0.0f;
 	Vector linear, angular;
 	GetWorldVelocity( &linear, &angular );
@@ -342,7 +589,100 @@ float CPhysicsObjectBox3D::GetEnergy() const
 	WorldToLocalVector( &localAngular, angular );
 	float rotational = m_inertia.x * localAngular.x * localAngular.x + m_inertia.y * localAngular.y * localAngular.y +
 		m_inertia.z * localAngular.z * localAngular.z;
-	return 0.5f * ( m_mass * linear.LengthSqr() + rotational );
+	return 0.5f * ( m_mass * linear.LengthSqr() + rotational * kInertiaToBox3D );
+}
+
+//-----------------------------------------------------------------------------
+// Drag (IVP's CPhysicsObject::RecomputeDragBases / CDragController). The
+// bases are computed in IVP's axis order (x, -z, y) exactly as IVP does,
+// including its pairing of the y/z area fractions, then stored per Source
+// axis.
+//-----------------------------------------------------------------------------
+void CPhysicsObjectBox3D::RecomputeDragBases()
+{
+	if ( m_isStatic || !m_pCollide )
+		return;
+	const CPhysCollideBox3D *pBox = ToBox3D( m_pCollide );
+	Vector areaFractions = pBox->orthoAreas;
+	Vector delta = pBox->maxs - pBox->mins;
+	float dX = fabsf( delta.x ) * kMetersPerInch;
+	float dY = fabsf( delta.z ) * kMetersPerInch;	// IVP y is Source -z
+	float dZ = fabsf( delta.y ) * kMetersPerInch;	// IVP z is Source y
+	float invMass = m_mass > 0.0f ? 1.0f / m_mass : 0.0f;
+	float basisIvp[3] = { dY * dZ * areaFractions.x * invMass, dX * dZ * areaFractions.y * invMass,
+		dX * dY * areaFractions.z * invMass };
+	m_dragBasis.Init( basisIvp[0], basisIvp[2], basisIvp[1] );
+
+	float invInertiaIvp[3] = { m_inertia.x > 0 ? 1.0f / m_inertia.x : 0.0f, m_inertia.z > 0 ? 1.0f / m_inertia.z : 0.0f,
+		m_inertia.y > 0 ? 1.0f / m_inertia.y : 0.0f };
+	float hX = 0.5f * dX, hY = 0.5f * dY, hZ = 0.5f * dZ;
+	float angIvp[3];
+	angIvp[0] = areaFractions.z * AngDragIntegral( invInertiaIvp[0], hX, hY, hZ ) + areaFractions.y * AngDragIntegral( invInertiaIvp[0], hX, hZ, hY );
+	angIvp[1] = areaFractions.z * AngDragIntegral( invInertiaIvp[1], hY, hX, hZ ) + areaFractions.x * AngDragIntegral( invInertiaIvp[1], hY, hZ, hX );
+	angIvp[2] = areaFractions.y * AngDragIntegral( invInertiaIvp[2], hZ, hX, hY ) + areaFractions.x * AngDragIntegral( invInertiaIvp[2], hZ, hY, hX );
+	m_angDragBasis.Init( angIvp[0], angIvp[2], angIvp[1] );
+}
+
+// IVP's GetDragInDirection, velocity in Havok units (m/s), world space. Note
+// IVP applies the coefficient to the x term only (operator precedence in
+// the original); content is tuned against that, so it is kept.
+float CPhysicsObjectBox3D::GetDragInDirection( const Vector &worldVelocity ) const
+{
+	Vector local;
+	WorldToLocalVector( &local, worldVelocity );
+	return m_dragCoefficient * fabsf( local.x * m_dragBasis.x ) + fabsf( local.y * m_dragBasis.y ) + fabsf( local.z * m_dragBasis.z );
+}
+
+float CPhysicsObjectBox3D::GetAngularDragInDirection( const Vector &localAngularRadians ) const
+{
+	return m_angDragCoefficient * fabsf( localAngularRadians.x * m_angDragBasis.x ) + fabsf( localAngularRadians.y * m_angDragBasis.y ) +
+		fabsf( localAngularRadians.z * m_angDragBasis.z );
+}
+
+float CPhysicsObjectBox3D::CalculateLinearDrag( const Vector &unitDirection ) const
+{
+	return GetDragInDirection( unitDirection );
+}
+
+float CPhysicsObjectBox3D::CalculateAngularDrag( const Vector &objectSpaceRotationAxis ) const
+{
+	// Drag factor is per radian; convert to per degree.
+	return GetAngularDragInDirection( objectSpaceRotationAxis ) * DEG2RAD( 1.0f );
+}
+
+void CPhysicsObjectBox3D::ApplyDampingAndDrag( float dt, float airDensity )
+{
+	if ( !IsMoveable() || IsAsleep() || b3Body_GetType( m_body ) != b3_dynamicBody )
+		return;
+	Vector linear, angular;
+	GetWorldVelocity( &linear, &angular );
+
+	if ( IsDragEnabled() )
+	{
+		float dragForce = -0.5f * GetDragInDirection( linear * kMetersPerInch ) * airDensity * dt;
+		if ( dragForce < -1.0f )
+			dragForce = -1.0f;
+		if ( dragForce < 0 )
+			linear += linear * dragForce;
+		Vector localAngular;
+		WorldToLocalVector( &localAngular, angular );
+		float angDragForce = -GetAngularDragInDirection( localAngular ) * airDensity * dt;
+		if ( angDragForce < -1.0f )
+			angDragForce = -1.0f;
+		if ( angDragForce < 0 )
+			angular += angular * angDragForce;
+	}
+
+	// IVP_Core::damp_object: the rotational factor switches to exp() once
+	// the damping vector's squared length reaches 0.5, the linear one once
+	// the scaled factor reaches 0.25.
+	float rot = m_rotDamping * dt;
+	float rotFactor = 3.0f * rot * rot < 0.5f ? 1.0f - rot : expf( -rot );
+	float speed = m_speedDamping * dt;
+	float speedFactor = speed < 0.25f ? 1.0f - speed : expf( -speed );
+	linear *= speedFactor;
+	angular *= rotFactor;
+	SetWorldVelocity( linear, angular );
 }
 
 //-----------------------------------------------------------------------------
@@ -350,11 +690,17 @@ float CPhysicsObjectBox3D::GetEnergy() const
 //-----------------------------------------------------------------------------
 void CPhysicsObjectBox3D::TeleportTo( const Vector &position, const QAngle &angles )
 {
+	NANCHECK( position, "TeleportTo" );
+	NANCHECK( Vector( angles.x, angles.y, angles.z ), "TeleportTo-angles" );
 	b3Body_SetTransform( m_body, ToB3( position ), ToB3( angles ) );
 }
 
 void CPhysicsObjectBox3D::SetPosition( const Vector &worldPosition, const QAngle &angles, bool isTeleport )
 {
+	NANCHECK( worldPosition, "SetPosition" );
+	// As IVP: moving a shadow-controlled object also retargets its shadow.
+	if ( m_pShadow )
+		UpdateShadow( worldPosition, angles, false, 0 );
 	TeleportTo( worldPosition, angles );
 }
 
@@ -369,6 +715,8 @@ void CPhysicsObjectBox3D::SetPositionMatrix( const matrix3x4_t &matrix, bool isT
 void CPhysicsObjectBox3D::GetPosition( Vector *worldPosition, QAngle *angles ) const
 {
 	b3WorldTransform xform = BodyTransform( m_body );
+	if ( BadVec( FromB3( xform.p ) ) || !( fabsf( xform.q.s ) <= 1.01f ) )
+		Warning( "BOX3DNAN GetPosition %s valid %d type %d static %d flags %x mass %f env %p pos (%f %f %f) q (%f %f %f %f)\n", m_name, b3Body_IsValid( m_body ), b3Body_IsValid( m_body ) ? (int)b3Body_GetType( m_body ) : -1, m_isStatic, m_callbackFlags, m_mass, (void*)m_pEnv, xform.p.x, xform.p.y, xform.p.z, xform.q.v.x, xform.q.v.y, xform.q.v.z, xform.q.s );
 	if ( worldPosition )
 		*worldPosition = FromB3( xform.p );
 	if ( angles )
@@ -407,6 +755,8 @@ void CPhysicsObjectBox3D::WorldToLocalVector( Vector *localVector, const Vector 
 //-----------------------------------------------------------------------------
 void CPhysicsObjectBox3D::SetWorldVelocity( const Vector &linear, const Vector &angularRadians )
 {
+	NANCHECK( angularRadians, "SetWorldVelocity-ang" );
+	NANCHECK( linear, "SetWorldVelocity" );
 	if ( b3Body_GetType( m_body ) == b3_staticBody )
 		return;
 	b3Body_SetLinearVelocity( m_body, ToB3( linear ) );
@@ -421,16 +771,45 @@ void CPhysicsObjectBox3D::GetWorldVelocity( Vector *linear, Vector *angularRadia
 		*angularRadians = FromB3( b3Body_GetAngularVelocity( m_body ) );
 }
 
+// IVP's velocity limit (anomaly limits), not applied to shadow objects.
+void CPhysicsObjectBox3D::ClampVelocity()
+{
+	if ( m_pShadow )
+		return;
+	physics_performanceparams_t performance;
+	m_pEnv->GetPerformanceSettings( &performance );
+	Vector linear, angular;
+	GetWorldVelocity( &linear, &angular );
+	bool changed = false;
+	float speed = linear.Length();
+	if ( performance.maxVelocity > 0 && speed > performance.maxVelocity )
+	{
+		linear *= performance.maxVelocity / speed;
+		changed = true;
+	}
+	float angularSpeed = RAD2DEG( angular.Length() );
+	if ( performance.maxAngularVelocity > 0 && angularSpeed > performance.maxAngularVelocity )
+	{
+		angular *= performance.maxAngularVelocity / angularSpeed;
+		changed = true;
+	}
+	if ( changed )
+		SetWorldVelocity( linear, angular );
+}
+
 void CPhysicsObjectBox3D::SetVelocity( const Vector *velocity, const AngularImpulse *angularVelocity )
 {
+	if ( velocity ) NANCHECK( *velocity, "SetVelocity" );
+	if ( angularVelocity ) NANCHECK( *angularVelocity, "SetVelocity-ang" );
 	if ( !IsMoveable() )
 		return;
+	Wake();
 	b3Quat rotation = BodyTransform( m_body ).q;
 	if ( velocity )
 		b3Body_SetLinearVelocity( m_body, ToB3( *velocity ) );
 	if ( angularVelocity )
 		b3Body_SetAngularVelocity( m_body, AngularToB3( *angularVelocity, rotation ) );
-	Wake();
+	ClampVelocity();
 }
 
 void CPhysicsObjectBox3D::SetVelocityInstantaneous( const Vector *velocity, const AngularImpulse *angularVelocity )
@@ -463,6 +842,7 @@ void CPhysicsObjectBox3D::AddVelocity( const Vector *velocity, const AngularImpu
 {
 	if ( !IsMoveable() )
 		return;
+	Wake();
 	Vector linear;
 	AngularImpulse angular;
 	GetVelocity( &linear, &angular );
@@ -470,7 +850,10 @@ void CPhysicsObjectBox3D::AddVelocity( const Vector *velocity, const AngularImpu
 		linear += *velocity;
 	if ( angularVelocity )
 		angular += *angularVelocity;
-	SetVelocity( &linear, &angular );
+	b3Quat rotation = BodyTransform( m_body ).q;
+	b3Body_SetLinearVelocity( m_body, ToB3( linear ) );
+	b3Body_SetAngularVelocity( m_body, AngularToB3( angular, rotation ) );
+	ClampVelocity();
 }
 
 void CPhysicsObjectBox3D::GetVelocityAtPoint( const Vector &worldPosition, Vector *pVelocity ) const
@@ -485,23 +868,37 @@ void CPhysicsObjectBox3D::GetImplicitVelocity( Vector *velocity, AngularImpulse 
 
 void CPhysicsObjectBox3D::ApplyForceCenter( const Vector &forceVector )
 {
+	NANCHECK( forceVector, "ApplyForceCenter" );
 	// VPhysics "forces" are impulses (kg * in/s).
-	if ( IsMoveable() )
-		b3Body_ApplyLinearImpulseToCenter( m_body, ToB3( forceVector ), true );
+	if ( !IsMoveable() )
+		return;
+	b3Body_ApplyLinearImpulseToCenter( m_body, ToB3( forceVector ), true );
+	ClampVelocity();
 }
 
 void CPhysicsObjectBox3D::ApplyForceOffset( const Vector &forceVector, const Vector &worldPosition )
 {
-	if ( IsMoveable() )
-		b3Body_ApplyLinearImpulse( m_body, ToB3( forceVector ), ToB3( worldPosition ), true );
+	NANCHECK( forceVector, "ApplyForceOffset" );
+	if ( !IsMoveable() )
+		return;
+	b3Body_ApplyLinearImpulse( m_body, ToB3( forceVector ), ToB3( worldPosition ), true );
+	ClampVelocity();
 }
 
 void CPhysicsObjectBox3D::ApplyTorqueCenter( const AngularImpulse &torque )
 {
-	if ( IsMoveable() )
-		b3Body_ApplyAngularImpulse( m_body, AngularToB3( torque, BodyTransform( m_body ).q ), true );
+	NANCHECK( torque, "ApplyTorqueCenter" );
+	// IVP takes a WORLD-space angular impulse in kg*m^2*degrees/s
+	// (IVP_Core::async_rot_push_core_multiple_ws).
+	if ( !IsMoveable() )
+		return;
+	Vector radians( DEG2RAD( torque.x ), DEG2RAD( torque.y ), DEG2RAD( torque.z ) );
+	b3Body_ApplyAngularImpulse( m_body, ToB3( radians * kInertiaToBox3D ), true );
+	ClampVelocity();
 }
 
+// IVP: the torque about the mass center, returned in OBJECT space in Havok
+// units (kg*m^2*degrees/s), and the resulting local angular velocity.
 void CPhysicsObjectBox3D::CalculateForceOffset( const Vector &forceVector, const Vector &worldPosition, Vector *centerForce, AngularImpulse *centerTorque ) const
 {
 	Vector center = FromB3( b3Body_GetWorldCenter( m_body ) );
@@ -509,7 +906,7 @@ void CPhysicsObjectBox3D::CalculateForceOffset( const Vector &forceVector, const
 		*centerForce = forceVector;
 	if ( centerTorque )
 	{
-		Vector worldTorque = CrossProduct( worldPosition - center, forceVector );
+		Vector worldTorque = CrossProduct( worldPosition - center, forceVector ) * ( kMetersPerInch * kMetersPerInch );
 		Vector local;
 		WorldToLocalVector( &local, worldTorque );
 		*centerTorque = AngularImpulse( RAD2DEG( local.x ), RAD2DEG( local.y ), RAD2DEG( local.z ) );
@@ -521,11 +918,13 @@ void CPhysicsObjectBox3D::CalculateVelocityOffset( const Vector &forceVector, co
 	Vector force;
 	AngularImpulse torque;
 	CalculateForceOffset( forceVector, worldPosition, &force, &torque );
+	float invMass = m_mass > 0.0f ? 1.0f / m_mass : 0.0f;
 	if ( centerVelocity )
-		*centerVelocity = force * GetInvMass();
+		*centerVelocity = force * invMass;
 	if ( centerAngularVelocity )
 	{
-		Vector invInertia = GetInvInertia();
+		Vector invInertia( m_inertia.x > 0 ? 1.0f / m_inertia.x : 0.0f, m_inertia.y > 0 ? 1.0f / m_inertia.y : 0.0f,
+			m_inertia.z > 0 ? 1.0f / m_inertia.z : 0.0f );
 		*centerAngularVelocity = AngularImpulse( torque.x * invInertia.x, torque.y * invInertia.y, torque.z * invInertia.z );
 	}
 }
@@ -549,11 +948,23 @@ IPhysicsShadowController *CPhysicsObjectBox3D::EnsureShadowController( bool allo
 {
 	if ( !m_pShadow )
 	{
+		m_shadowTempGravityDisable = false;
 		m_pShadow = new CShadowControllerBox3D( this, allowTranslation, allowRotation );
-		ApplyMassProperties();
 		RecheckCollisionFilter();
 	}
 	return m_pShadow;
+}
+
+CShadowControllerBox3D *CPhysicsObjectBox3D::DetachShadowController()
+{
+	CShadowControllerBox3D *pShadow = m_pShadow;
+	m_pShadow = NULL;
+	return pShadow;
+}
+
+void CPhysicsObjectBox3D::AttachShadowController( CShadowControllerBox3D *pShadow )
+{
+	m_pShadow = pShadow;
 }
 
 void CPhysicsObjectBox3D::SetShadow( float maxSpeed, float maxAngularSpeed, bool allowPhysicsMovement, bool allowPhysicsRotation )
@@ -563,11 +974,17 @@ void CPhysicsObjectBox3D::SetShadow( float maxSpeed, float maxAngularSpeed, bool
 
 void CPhysicsObjectBox3D::UpdateShadow( const Vector &targetPosition, const QAngle &targetAngles, bool tempDisableGravity, float timeOffset )
 {
-	if ( m_pShadow )
+	NANCHECK( targetPosition, "UpdateShadow" );
+	// IVP toggles gravity itself while the shadow asks for it (not for
+	// shadows that never translate, which have gravity off already).
+	if ( tempDisableGravity != m_shadowTempGravityDisable )
 	{
-		m_pShadow->SetTempDisableGravity( tempDisableGravity );
-		m_pShadow->Update( targetPosition, targetAngles, timeOffset );
+		m_shadowTempGravityDisable = tempDisableGravity;
+		if ( !m_pShadow || m_pShadow->AllowsTranslation() )
+			EnableGravity( !m_shadowTempGravityDisable );
 	}
+	if ( m_pShadow )
+		m_pShadow->Update( targetPosition, targetAngles, timeOffset );
 }
 
 int CPhysicsObjectBox3D::GetShadowPosition( Vector *position, QAngle *angles ) const
@@ -585,7 +1002,6 @@ void CPhysicsObjectBox3D::RemoveShadowController()
 {
 	delete m_pShadow;
 	m_pShadow = NULL;
-	ApplyMassProperties();
 }
 
 float CPhysicsObjectBox3D::ComputeShadowControl( const hlshadowcontrol_params_t &params, float secondsToArrival, float dt )
@@ -600,22 +1016,41 @@ float CPhysicsObjectBox3D::ComputeShadowControl( const hlshadowcontrol_params_t 
 //-----------------------------------------------------------------------------
 void CPhysicsObjectBox3D::BecomeTrigger()
 {
+	if ( m_isTrigger )
+		return;
+	if ( m_pShadow )
+		m_pShadow->UseShadowMaterial( false );
+	EnableDrag( false );
+	EnableGravity( false );
+	// Box3D sensors cannot be toggled on a shape: rebuild the shapes as
+	// sensors. A trigger no longer collides, and reports the objects that
+	// overlap it (IVP's phantom).
 	m_isTrigger = true;
+	DestroyShapes();
+	CreateShapes();
 	ApplyFilter();
 }
 
 void CPhysicsObjectBox3D::RemoveTrigger()
 {
+	if ( !m_isTrigger )
+		return;
 	m_isTrigger = false;
+	m_pEnv->TriggerRemoved( this );
+	DestroyShapes();
+	CreateShapes();
 	ApplyFilter();
 }
 
 void CPhysicsObjectBox3D::BecomeHinged( int localAxis )
 {
-	if ( m_isStatic || localAxis < 0 || localAxis > 2 )
+	if ( localAxis < 0 || localAxis > 2 )
 		return;
 	m_hingeAxis = localAxis;
-	// Rotation is limited to the hinge axis; translation stays free, as in IVP.
+	if ( !IsMoveable() )
+		return;
+	// IVP gives the other two axes near-infinite inertia; locking them is the
+	// Box3D equivalent. Translation stays free.
 	b3MotionLocks locks;
 	memset( &locks, 0, sizeof( locks ) );
 	locks.angularX = localAxis != 0;
@@ -660,7 +1095,9 @@ void CPhysicsObjectBox3D::OutputDebugInfo() const
 	GetVelocity( &speed, &angSpeed );
 	Msg( "Velocity: %.2f, %.2f, %.2f \n", speed.x, speed.y, speed.z );
 	Msg( "Ang Velocity: %.2f, %.2f, %.2f \n", angSpeed.x, angSpeed.y, angSpeed.z );
-	Msg( "Damping %.3e linear, %.3e angular\n", m_linearDamping, m_angularDamping );
+	Msg( "Damping %.3e linear, %.3e angular\n", m_speedDamping, m_rotDamping );
+	Msg( "Linear Drag: %.2f, %.2f, %.2f (factor %.2f)\n", m_dragBasis.x, m_dragBasis.y, m_dragBasis.z, m_dragCoefficient );
+	Msg( "Angular Drag: %.2f, %.2f, %.2f (factor %.2f)\n", m_angDragBasis.x, m_angDragBasis.y, m_angDragBasis.z, m_angDragCoefficient );
 	if ( IsHinged() )
 	{
 		const char *pAxisNames[] = { "x", "y", "z" };

@@ -173,6 +173,10 @@ public:
 	byte				*LumpBase( void );
 	int					LumpSize( void );
 	int					LumpOffset( void );
+	// Offset this lump had in its legacy VBSP file. Equals LumpOffset() for
+	// legacy maps; differs for BSP2 containers (RFC 0008). Absolute offsets
+	// stored inside lumps (game lump dictionaries) are relative to it.
+	int					LumpLegacyOrigin() const;
 	int					LumpVersion() const;
 	const char			*GetMapName( void );
 	char				*GetLoadName( void );
@@ -198,6 +202,7 @@ public:
 private:
 	int					m_nLumpSize;
 	int					m_nLumpOffset;
+	int					m_nLumpLegacyOrigin;
 	int					m_nLumpVersion;
 	byte				*m_pRawData;
 	byte				*m_pData;

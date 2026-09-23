@@ -2430,10 +2430,12 @@ bool CVideoMode_MaterialSystem::SetMode( int nWidth, int nHeight, bool bWindowed
     return true;
 }
 
-// SDL publishes the newest drawable extent on the main thread. During a drag,
-// the compositor scales complete frames from the current backbuffer. Once the
-// extent settles, one device reset is queued ahead of the next rendered frame.
-// The main thread never waits for that reset or for GPU completion.
+// SDL publishes the newest drawable extent on the main thread. With a queued
+// render worker, the compositor scales complete frames from the current
+// backbuffer during a drag; once the extent settles, one device reset is queued
+// ahead of the next rendered frame, and the main thread never waits for that
+// reset or for GPU completion. Without a worker the material system applies the
+// new extent before the frame renders, on every frame the drawable changes.
 bool CVideoMode_MaterialSystem::UpdateWindowSize()
 {
 #if defined( USE_SDL3 )
@@ -2469,6 +2471,11 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 		return true;
 	}
 
+	// A queued render worker resets the device once the extent settles; until
+	// then the compositor scales the current frames. Without a worker the
+	// resize is applied before this returns, so the back buffer follows the
+	// drawable on the frame it changes and is never scaled.
+	const bool immediate = materials->GetThreadMode() != MATERIAL_QUEUED_THREADED;
 	if ( drawableWidth != m_nPendingDrawableWidth ||
 	     drawableHeight != m_nPendingDrawableHeight )
 	{
@@ -2483,11 +2490,12 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 			Msg( "RFC0001 resize observed: logical=%dx%d drawable=%ux%u\n", logicalWidth,
 			    logicalHeight, drawableWidth, drawableHeight );
 		}
-		return true;
+		if ( !immediate )
+			return true;
 	}
 
 	const double settleSeconds = 0.060;
-	if ( Plat_FloatTime() - m_flPendingDrawableSince < settleSeconds )
+	if ( !immediate && Plat_FloatTime() - m_flPendingDrawableSince < settleSeconds )
 		return true;
 
 	MaterialWindowResizeRequest_t request = {};
@@ -2515,7 +2523,9 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 	MarkClientViewRectDirty();
 	CMatRenderContextPtr context( materials );
 	context->Viewport( 0, 0, drawableWidth, drawableHeight );
+	const double tv0 = Plat_FloatTime(); // TEMPTIMING
 	vgui::surface()->OnScreenSizeChanged( oldUIWidth, oldUIHeight );
+	Msg( "TEMPTIMING renderer=%.1fms vgui=%.1fms\n", ( tv0 - requestStarted ) * 1000.0, ( Plat_FloatTime() - tv0 ) * 1000.0 ); // TEMPTIMING
 	m_nPendingDrawableWidth = m_nPendingDrawableHeight = 0;
 	if ( CommandLine()->FindParm( "-resizetelemetry" ) )
 	{

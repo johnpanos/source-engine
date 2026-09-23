@@ -375,7 +375,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 32 / R32 | Native Vulkan functional MVP; 0001 rank 16 | R10, R28 | Representative map renders opt-in; resource/pipeline/upload/sync/swapchain contracts pass; unsupported features fail explicitly | planned |
 | 33 / R47 | PBR material family core; 0007 A/D | R02, R15 | BRDF analytic and white-furnace tests; `pbr` pixel family matches Cycles references; negative controls fail; capability and validated fallback on D3D9/DXVK | planned |
 | 34 / R48 | Compile tools on Waf and bake seam; 0007 B, vvis track | R01, R02, R03 | vbsp/vvis/vrad build on a declared profile; byte-identical legacy lumps and PVS vs legacy executables; shared baker suite passes the legacy provider and rejects bad providers | planned |
-| 35 / R53 | BSP2 container and map-reader seam; 0008 F1 | R02, R04 | Legacy lumps carried byte-identically; client/server load both containers; independent reader, fuzzing and dedicated-server link evidence pass | planned |
+| 35 / R53 | BSP2 container and map-reader seam; 0008 F1 | R02, R04 | Legacy lumps carried byte-identically; client/server load both containers; independent reader, fuzzing and dedicated-server link evidence pass | active ([0008 progress](RFC/0008-progress.md)) |
 | 36 / R55 | KTX2 textures; 0008 F3 | R15, R53 | Container-neutral texture reader; UASTC encode and per-profile transcode; native Vulkan BC/ASTC/ETC2 formats; `ktx validate` and per-format pixel fixtures; missing required format fails composition | planned |
 | 37 / R54 | USD World Stage and lightmap charts; 0008 F2 | R48, R53 | vbsp2 emits the geometry layer with charts; `usdchecker` clean; stage renders in pinned Cycles; semantic comparator detects seeded loss | planned |
 | 38 / R49 | Cycles light baker; 0007 C/E | R05, R48, R54 | Feasibility decision recorded; SH L1/RNM, probe and reflection outputs pass analytic, comparative and negative oracles | planned |
@@ -433,8 +433,17 @@ Keep the table concise and link details below or from the domain progress file.
 - R47–R58 (RFC 0007/0008): added 2026-09-22 as `planned` at the user's direction,
   ranked after R32 so legacy-content fidelity on native Vulkan stays ahead. The user
   authorized upgrading the renderer, BSP and intermediate formats and chose OpenUSD for
-  the World Stage. Only source-inspection findings exist (see each RFC's findings
-  section); no build, runtime or harness evidence.
+  the World Stage. R53 (F1) is `active` as a bounded prototype (2026-09-22):
+  - Done: the container library, the engine/filesystem seam, the independent
+    Python reader, the `world.map-container` suite and a 54-map byte-identical
+    corpus.
+  - The Portal client and listen server load BSP2 maps. Game lumps and the pak
+    lump match legacy, and DXVK frames match within run-to-run noise.
+  - The dedicated-server runtime check is blocked by an existing HEAD compile
+    error in `dedicated/sys_linux.cpp`.
+  - No CI lane exists yet.
+  - See [RFC 0008 progress](RFC/0008-progress.md). R54–R58 have only
+    source-inspection findings.
 
 - R04-STYLE: `done` for the bounded mechanical-style slice requested by the user:
   pinned formatter, Source configuration, incremental include-order check,

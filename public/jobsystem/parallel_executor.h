@@ -36,6 +36,8 @@
 #pragma once
 #endif
 
+#include <memory>
+
 #include "jobsystem/graph_executor.h"
 
 namespace jobsystem
@@ -51,12 +53,24 @@ public:
 	// threads service BlockingIO work; when 0, the pumping main thread services it
 	// instead so compute workers never absorb a blocking wait.
 	explicit ParallelExecutor( int nComputeWorkers, int nBlockingWorkers = 0 );
+	~ParallelExecutor() override;
+
+	// A copy has the same configuration and its own (initially idle) workers.
+	ParallelExecutor( const ParallelExecutor &other );
+	ParallelExecutor &operator=( const ParallelExecutor &other );
 
 	RunResult Execute( const SealedGraph &graph, const RunOptions &opts ) override;
 
 private:
+	// Once an executor is reused, its worker threads persist and park between
+	// runs, so repeated runs do not pay thread creation. The first run, and a
+	// run that finds them busy (a concurrent or nested Execute), use transient
+	// workers instead; both paths share one scheduling implementation.
+	class WorkerPool;
+
 	int m_nWorkers;
 	int m_nBlocking;
+	std::unique_ptr<WorkerPool> m_pool;
 };
 
 } // namespace jobsystem

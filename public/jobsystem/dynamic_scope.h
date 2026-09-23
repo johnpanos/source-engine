@@ -104,13 +104,22 @@ private:
 	};
 
 	void WorkerLoop();
-	void ResolveLocked( std::unique_lock<std::mutex> &lk, uint32_t id, JobState terminal );
+	// Resolves a child; returns how many dependents it made ready.
+	uint32_t ResolveLocked( std::unique_lock<std::mutex> &lk, uint32_t id, JobState terminal );
+	// Wake idle workers for `count` newly ready children (and everyone when the
+	// scope has drained). Called with the lock held.
+	void WakeLocked( uint32_t count );
+	// Run one popped child, releasing the lock while its function executes.
+	// Returns how many dependents it made ready.
+	uint32_t RunChildLocked( std::unique_lock<std::mutex> &lk, uint32_t id );
 
 	const int m_nWorkers;
 	FrameContext m_frame;
 
 	mutable std::mutex m_mtx;
-	std::condition_variable m_cv;
+	std::condition_variable m_cv;      // workers: ready work or drained
+	std::condition_variable m_doneCv;  // owner in Wait(): drained
+	uint32_t m_idleWorkers = 0;        // workers blocked on m_cv
 
 	std::vector<Child> m_children;
 	std::vector<uint32_t> m_ready;

@@ -82,6 +82,9 @@ public:
 	virtual void ReleaseTextures( void ) = 0;
 	virtual void RestoreRenderTargets( void ) = 0;
 	virtual void RestoreNonRenderTargetTextures( void ) = 0;
+	// Recreates just the render targets, at the current frame-buffer size, when
+	// the back buffer was resized without a device reset.
+	virtual void ReallocateRenderTargets( void ) = 0;
 
 	// Suspend or resume texture streaming requests
 	virtual void SuspendTextureStreaming( void ) = 0;

@@ -15,6 +15,47 @@ struct CPhysCollideBox3D;
 // and torque in IVP's metric units (kg*m^2), so those convert at the API.
 const float kInertiaToBox3D = ( 1.0f / 0.0254f ) * ( 1.0f / 0.0254f );
 
+// Complete object state (IVP's vphysics_save_cphysicsobject_t equivalent):
+// what TransferObject, SerializeObjectToBuffer and save/restore carry.
+struct CPhysicsObjectStateBox3D
+{
+	int version;
+	const CPhysCollide *pCollide;
+	float sphereRadius;
+	bool isStatic;
+	bool collisionEnabled;
+	bool gravityEnabled;
+	bool dragEnabled;
+	bool motionEnabled;
+	bool isAsleep;
+	bool isTrigger;
+	bool asleepSinceCreation;
+	bool hasTouchedDynamic;
+	int materialIndex;
+	float mass;
+	Vector inertia;			// kg*m^2
+	float inertiaScale;
+	float rotInertiaLimit;
+	float speedDamping;
+	float rotDamping;
+	Vector massCenter;
+	unsigned int callbacks;
+	unsigned int gameFlags;
+	unsigned int gameIndex;
+	unsigned int contents;
+	float volume;
+	float dragCoefficient;
+	float angDragCoefficient;
+	int hingeAxis;
+	Vector origin;
+	QAngle angles;
+	Vector velocity;		// world
+	Vector angularVelocity;	// world, radians/s
+	char name[64];
+};
+
+const int kPhysicsObjectStateVersion = 1;
+
 // A VPhysics object backed by one Box3D body. The body origin is the object
 // origin (the collide's space), so shapes use collide-space geometry directly
 // and Box3D's mass data carries the center of mass.
@@ -35,6 +76,16 @@ public:
 	CPhysicsObjectBox3D( CPhysicsEnvironmentBox3D *pEnv, const CPhysCollide *pCollide, float sphereRadius,
 		int materialIndex, const Vector &position, const QAngle &angles, const objectparams_t *pParams, bool isStatic );
 	virtual ~CPhysicsObjectBox3D();
+
+	// Recreates an object from captured state (SerializeObjectToBuffer,
+	// save/restore); collisions are enabled only if both the state and the
+	// caller allow it.
+	static CPhysicsObjectBox3D *CreateFromState( CPhysicsEnvironmentBox3D *pEnv, void *pGameData,
+		const CPhysicsObjectStateBox3D &state, bool enableCollisions );
+	void WriteState( CPhysicsObjectStateBox3D &state ) const;
+	// Moves this object (same pointer) into another environment's world,
+	// preserving its state (TransferObject).
+	void MoveToEnvironment( CPhysicsEnvironmentBox3D *pDestination );
 
 	virtual bool IsStatic() const override { return m_isStatic; }
 	virtual bool IsAsleep() const override;
@@ -186,12 +237,15 @@ public:
 	int GetShapes( b3ShapeId *pShapes, int capacity ) const;
 
 private:
+	void CreateBody( const Vector &position, const QAngle &angles );
+	void ApplyState( const CPhysicsObjectStateBox3D &state, bool enableCollisions );
 	void CreateShapes();
 	void DestroyShapes();
 	void ComputeInitialInertia();
 	void ApplyMassProperties();
 	void ApplyBodyType();
 	void ApplyFilter();
+	void UpdateBuoyancyRatio();
 	void RecomputeDragBases();
 	float GetDragInDirection( const Vector &worldVelocity ) const;
 	float GetAngularDragInDirection( const Vector &localAngularRadians ) const;

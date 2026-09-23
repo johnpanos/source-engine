@@ -76,7 +76,7 @@ struct LegacyLumpSpec
 // Lumps are placed in the given order with 4-byte alignment, as vbsp does.
 // Every other legacy lump is zero-length at a nonzero, arbitrary offset.
 Bytes MakeLegacyMap( int version, int32_t revision, const std::vector<LegacyLumpSpec> &lumps,
-                     bool bNonzeroGap, size_t trailing )
+    bool bNonzeroGap, size_t trailing )
 {
 	Bytes file( kLegacyHeaderSize, std::byte{ 0 } );
 	Put32( file, 0, kLegacyIdent );
@@ -116,12 +116,12 @@ std::vector<uint8_t> Pattern( size_t size, uint8_t seed )
 Bytes StandardLegacyMap( bool bGap = true )
 {
 	return MakeLegacyMap( 20, 1234,
-	                      { { 0, 0, Pattern( 37, 1 ) },    // entities (odd size)
-	                        { 1, 0, Pattern( 200, 2 ) },   // planes
-	                        { 35, 0, Pattern( 64, 3 ) },   // game lumps
-	                        { 40, 1, Pattern( 513, 4 ) },  // pak
-	                        { 7, 0, Pattern( 1, 5 ) } },   // out-of-index-order placement
-	                      bGap, bGap ? 3 : 0 );
+	    { { 0, 0, Pattern( 37, 1 ) },     // entities (odd size)
+	        { 1, 0, Pattern( 200, 2 ) },  // planes
+	        { 35, 0, Pattern( 64, 3 ) },  // game lumps
+	        { 40, 1, Pattern( 513, 4 ) }, // pak
+	        { 7, 0, Pattern( 1, 5 ) } },  // out-of-index-order placement
+	    bGap, bGap ? 3 : 0 );
 }
 
 std::string Name( const MapContainerStatus &status )
@@ -129,7 +129,8 @@ std::string Name( const MapContainerStatus &status )
 	return MapContainerErrorName( status.code );
 }
 
-MapContainerStatus TryOpen( const Bytes &bytes, bool bVerify, const std::vector<uint32_t> &known = {} )
+MapContainerStatus TryOpen(
+    const Bytes &bytes, bool bVerify, const std::vector<uint32_t> &known = {} )
 {
 	MemoryByteSource source( bytes );
 	MapContainerOpenOptions options{ bVerify, known.data(), known.size(), false };
@@ -145,14 +146,19 @@ MapContainerStatus TryOpen( const Bytes &bytes, bool bVerify, const std::vector<
 // Shared IMapContainer contract. Returns the number of violations so a bad
 // provider can be shown to fail it without polluting the global counters.
 //-----------------------------------------------------------------------------
-int RunContainerContract( const IMapContainer &container, const Bytes &containerBytes, const Bytes &legacyReference )
+int RunContainerContract(
+    const IMapContainer &container, const Bytes &containerBytes, const Bytes &legacyReference )
 {
 	int violations = 0;
-	auto expect = [&]( bool condition ) { violations += condition ? 0 : 1; };
+	auto expect = [&]( bool condition )
+	{
+		violations += condition ? 0 : 1;
+	};
 
 	const uint8_t *pLegacy = reinterpret_cast<const uint8_t *>( legacyReference.data() );
 	const uint32_t referenceVersion = Get32( legacyReference, 4 );
-	const int32_t referenceRevision = int32_t( Get32( legacyReference, 8 + 16 * kLegacyLumpCount ) );
+	const int32_t referenceRevision =
+	    int32_t( Get32( legacyReference, 8 + 16 * kLegacyLumpCount ) );
 	expect( container.LegacyVersion() == int( referenceVersion ) );
 	expect( container.MapRevision() == referenceRevision );
 
@@ -178,7 +184,8 @@ int RunContainerContract( const IMapContainer &container, const Bytes &container
 		expect( info.storedSize == filelen );
 		if ( filelen == 0 )
 			continue;
-		const bool bInside = info.offset <= containerBytes.size() && info.storedSize <= containerBytes.size() - info.offset;
+		const bool bInside = info.offset <= containerBytes.size() &&
+		                     info.storedSize <= containerBytes.size() - info.offset;
 		expect( bInside );
 		if ( !bInside )
 			continue;
@@ -193,7 +200,7 @@ int RunContainerContract( const IMapContainer &container, const Bytes &container
 		if ( info.hasHash )
 		{
 			std::vector<uint8_t> altered( static_cast<const uint8_t *>( pStored ),
-			                              static_cast<const uint8_t *>( pStored ) + filelen );
+			    static_cast<const uint8_t *>( pStored ) + filelen );
 			altered[filelen / 2] ^= 0x01;
 			expect( container.VerifyContent( info, altered.data(), filelen ).code ==
 			        MapContainerError::ContentHashMismatch );
@@ -229,11 +236,21 @@ public:
 	MapContainerKind Kind() const override { return m_Inner.Kind(); }
 	int LegacyVersion() const override { return m_Inner.LegacyVersion(); }
 	int32_t MapRevision() const override { return m_Inner.MapRevision(); }
-	bool FindLegacyLump( int index, MapLumpInfo *pInfo ) const override { return m_Inner.FindLegacyLump( index, pInfo ); }
-	bool FindLump( uint32_t fourcc, MapLumpInfo *pInfo ) const override { return m_Inner.FindLump( fourcc, pInfo ); }
+	bool FindLegacyLump( int index, MapLumpInfo *pInfo ) const override
+	{
+		return m_Inner.FindLegacyLump( index, pInfo );
+	}
+	bool FindLump( uint32_t fourcc, MapLumpInfo *pInfo ) const override
+	{
+		return m_Inner.FindLump( fourcc, pInfo );
+	}
 	uint32_t LumpCount() const override { return m_Inner.LumpCount(); }
-	bool LumpAt( uint32_t index, MapLumpInfo *pInfo ) const override { return m_Inner.LumpAt( index, pInfo ); }
-	MapContainerStatus VerifyContent( const MapLumpInfo &info, const void *pData, uint64_t size ) const override
+	bool LumpAt( uint32_t index, MapLumpInfo *pInfo ) const override
+	{
+		return m_Inner.LumpAt( index, pInfo );
+	}
+	MapContainerStatus VerifyContent(
+	    const MapLumpInfo &info, const void *pData, uint64_t size ) const override
 	{
 		return m_Inner.VerifyContent( info, pData, size );
 	}
@@ -306,14 +323,14 @@ size_t EntryAt( const Bytes &b, uint32_t fourcc )
 void Rehash( Bytes &b )
 {
 	const size_t at = DirectoryOffset( b );
-	const ContentHash digest =
-	    HashContent( std::span<const std::byte>( b ).subspan( at, DirectoryCount( b ) * kBsp2EntrySize ) );
+	const ContentHash digest = HashContent(
+	    std::span<const std::byte>( b ).subspan( at, DirectoryCount( b ) * kBsp2EntrySize ) );
 	std::memcpy( b.data() + 48, digest.data(), digest.size() );
 }
 void RehashEntryContent( Bytes &b, size_t entry )
 {
-	const ContentHash digest = HashContent(
-	    std::span<const std::byte>( b ).subspan( size_t( Get64( b, entry + 16 ) ), size_t( Get64( b, entry + 24 ) ) ) );
+	const ContentHash digest = HashContent( std::span<const std::byte>( b ).subspan(
+	    size_t( Get64( b, entry + 16 ) ), size_t( Get64( b, entry + 24 ) ) ) );
 	std::memcpy( b.data() + entry + 48, digest.data(), digest.size() );
 }
 
@@ -324,10 +341,70 @@ void TestBlake2b()
 {
 	// RFC 7693 Appendix A: BLAKE2b-512("abc").
 	static const uint8_t kExpected[64] = {
-	    0xBA, 0x80, 0xA5, 0x3F, 0x98, 0x1C, 0x4D, 0x0D, 0x6A, 0x27, 0x97, 0xB6, 0x9F, 0x12, 0xF6, 0xE9,
-	    0x4C, 0x21, 0x2F, 0x14, 0x68, 0x5A, 0xC4, 0xB7, 0x4B, 0x12, 0xBB, 0x6F, 0xDB, 0xFF, 0xA2, 0xD1,
-	    0x7D, 0x87, 0xC5, 0x39, 0x2A, 0xAB, 0x79, 0x2D, 0xC2, 0x52, 0xD5, 0xDE, 0x45, 0x33, 0xCC, 0x95,
-	    0x18, 0xD3, 0x8A, 0xA8, 0xDB, 0xF1, 0x92, 0x5A, 0xB9, 0x23, 0x86, 0xED, 0xD4, 0x00, 0x99, 0x23,
+	    0xBA,
+	    0x80,
+	    0xA5,
+	    0x3F,
+	    0x98,
+	    0x1C,
+	    0x4D,
+	    0x0D,
+	    0x6A,
+	    0x27,
+	    0x97,
+	    0xB6,
+	    0x9F,
+	    0x12,
+	    0xF6,
+	    0xE9,
+	    0x4C,
+	    0x21,
+	    0x2F,
+	    0x14,
+	    0x68,
+	    0x5A,
+	    0xC4,
+	    0xB7,
+	    0x4B,
+	    0x12,
+	    0xBB,
+	    0x6F,
+	    0xDB,
+	    0xFF,
+	    0xA2,
+	    0xD1,
+	    0x7D,
+	    0x87,
+	    0xC5,
+	    0x39,
+	    0x2A,
+	    0xAB,
+	    0x79,
+	    0x2D,
+	    0xC2,
+	    0x52,
+	    0xD5,
+	    0xDE,
+	    0x45,
+	    0x33,
+	    0xCC,
+	    0x95,
+	    0x18,
+	    0xD3,
+	    0x8A,
+	    0xA8,
+	    0xDB,
+	    0xF1,
+	    0x92,
+	    0x5A,
+	    0xB9,
+	    0x23,
+	    0x86,
+	    0xED,
+	    0xD4,
+	    0x00,
+	    0x99,
+	    0x23,
 	};
 	detail::Blake2b hasher( 64 );
 	hasher.Update( "abc", 3 );
@@ -355,8 +432,9 @@ void TestRoundTripAndContract()
 	for ( int variant = 0; variant < 3; ++variant )
 	{
 		const Bytes legacy = variant == 0 ? StandardLegacyMap( true )
-		                   : variant == 1 ? StandardLegacyMap( false )
-		                                  : MakeLegacyMap( 21, -5, {}, false, 0 ); // no lumps at all
+		                     : variant == 1
+		                         ? StandardLegacyMap( false )
+		                         : MakeLegacyMap( 21, -5, {}, false, 0 ); // no lumps at all
 		auto converted = ConvertLegacyToBsp2( legacy );
 		CHECK( !!converted );
 		if ( !converted )
@@ -398,9 +476,12 @@ void TestRoundTripAndContract()
 		if ( variant == 0 )
 		{
 			// The contract suite detects each deliberately bad provider.
-			CHECK( RunContainerContract( LosesLegacyOrigin( *bsp2Container.Value() ), bsp2, legacy ) > 0 );
-			CHECK( RunContainerContract( DropsEmptyVersions( *bsp2Container.Value() ), bsp2, legacy ) > 0 );
-			CHECK( RunContainerContract( TrustsEverything( *bsp2Container.Value() ), bsp2, legacy ) > 0 );
+			CHECK( RunContainerContract(
+			           LosesLegacyOrigin( *bsp2Container.Value() ), bsp2, legacy ) > 0 );
+			CHECK( RunContainerContract(
+			           DropsEmptyVersions( *bsp2Container.Value() ), bsp2, legacy ) > 0 );
+			CHECK( RunContainerContract(
+			           TrustsEverything( *bsp2Container.Value() ), bsp2, legacy ) > 0 );
 		}
 	}
 }
@@ -410,8 +491,10 @@ void TestExtraLumps()
 	const Bytes legacy = StandardLegacyMap();
 	const std::vector<uint8_t> mesh = Pattern( 5000, 11 );
 	const Bsp2LumpInput extras[] = {
-	    { MakeFourCC( 'W', 'M', 'S', 'H' ), 1, kBsp2FlagRequired, kBsp2BulkAlignment, std::as_bytes( std::span( mesh ) ) },
-	    { MakeFourCC( 'X', 'O', 'P', 'T' ), 3, 0, kBsp2MinAlignment, std::as_bytes( std::span( mesh ).first( 10 ) ) },
+	    { MakeFourCC( 'W', 'M', 'S', 'H' ), 1, kBsp2FlagRequired, kBsp2BulkAlignment,
+	        std::as_bytes( std::span( mesh ) ) },
+	    { MakeFourCC( 'X', 'O', 'P', 'T' ), 3, 0, kBsp2MinAlignment,
+	        std::as_bytes( std::span( mesh ).first( 10 ) ) },
 	};
 	auto converted = ConvertLegacyToBsp2( legacy, extras );
 	CHECK( !!converted );
@@ -427,7 +510,8 @@ void TestExtraLumps()
 	MemoryByteSource source( bsp2 );
 	const uint32_t known[] = { MakeFourCC( 'W', 'M', 'S', 'H' ) };
 	IMapContainer *pContainer = nullptr;
-	CHECK( OpenMapContainer( source, MapContainerOpenOptions{ true, known, 1, false }, &pContainer ).Ok() );
+	CHECK( OpenMapContainer( source, MapContainerOpenOptions{ true, known, 1, false }, &pContainer )
+	        .Ok() );
 	if ( pContainer )
 	{
 		MapLumpInfo info{};
@@ -465,121 +549,183 @@ void TestNegativeFixtures()
 	CHECK( TryOpen( good, true ).Ok() );
 
 	static const NegativeCase kCases[] = {
-	    { "empty file", MapContainerError::Truncated, false, []( Bytes &b ) { b.clear(); } },
-	    { "bad magic", MapContainerError::BadMagic, false, []( Bytes &b ) { b[0] = std::byte{ 'X' }; } },
-	    { "truncated header", MapContainerError::Truncated, false, []( Bytes &b ) { b.resize( 40 ); } },
-	    { "truncated directory", MapContainerError::DirectoryOutOfBounds, false, []( Bytes &b ) { b.pop_back(); } },
+	    { "empty file", MapContainerError::Truncated, false,
+	        []( Bytes &b )
+	        {
+		        b.clear();
+	        } },
+	    { "bad magic", MapContainerError::BadMagic, false,
+	        []( Bytes &b )
+	        {
+		        b[0] = std::byte{ 'X' };
+	        } },
+	    { "truncated header", MapContainerError::Truncated, false,
+	        []( Bytes &b )
+	        {
+		        b.resize( 40 );
+	        } },
+	    { "truncated directory", MapContainerError::DirectoryOutOfBounds, false,
+	        []( Bytes &b )
+	        {
+		        b.pop_back();
+	        } },
 	    { "future container version", MapContainerError::UnsupportedContainerVersion, false,
-	      []( Bytes &b ) { Put32( b, 8, 2 ); } },
-	    { "header flags", MapContainerError::UnsupportedLayout, false, []( Bytes &b ) { Put32( b, 12, 1 ); } },
-	    { "entry size", MapContainerError::UnsupportedLayout, false, []( Bytes &b ) { Put32( b, 20, 72 ); } },
-	    { "hash algorithm", MapContainerError::UnsupportedHash, false, []( Bytes &b ) { Put32( b, 36, 2 ); } },
+	        []( Bytes &b )
+	        {
+		        Put32( b, 8, 2 );
+	        } },
+	    { "header flags", MapContainerError::UnsupportedLayout, false,
+	        []( Bytes &b )
+	        {
+		        Put32( b, 12, 1 );
+	        } },
+	    { "entry size", MapContainerError::UnsupportedLayout, false,
+	        []( Bytes &b )
+	        {
+		        Put32( b, 20, 72 );
+	        } },
+	    { "hash algorithm", MapContainerError::UnsupportedHash, false,
+	        []( Bytes &b )
+	        {
+		        Put32( b, 36, 2 );
+	        } },
 	    { "lump count cap", MapContainerError::TooManyLumps, false,
-	      []( Bytes &b ) { Put32( b, 32, kBsp2MaxLumps + 1 ); } },
-	    { "directory inside header", MapContainerError::DirectoryOutOfBounds, false, []( Bytes &b ) { Put64( b, 24, 8 ); } },
+	        []( Bytes &b )
+	        {
+		        Put32( b, 32, kBsp2MaxLumps + 1 );
+	        } },
+	    { "directory inside header", MapContainerError::DirectoryOutOfBounds, false,
+	        []( Bytes &b )
+	        {
+		        Put64( b, 24, 8 );
+	        } },
 	    { "directory offset overflow", MapContainerError::DirectoryOutOfBounds, false,
-	      []( Bytes &b ) { Put64( b, 24, ~uint64_t( 0 ) - 8 ); } },
+	        []( Bytes &b )
+	        {
+		        Put64( b, 24, ~uint64_t( 0 ) - 8 );
+	        } },
 	    { "stale directory hash", MapContainerError::DirectoryHashMismatch, false,
-	      []( Bytes &b ) { b[DirectoryOffset( b ) + 4] ^= std::byte{ 1 }; } },
+	        []( Bytes &b )
+	        {
+		        b[DirectoryOffset( b ) + 4] ^= std::byte{ 1 };
+	        } },
 	    { "stale content hash", MapContainerError::ContentHashMismatch, true,
-	      []( Bytes &b ) {
-		      const size_t entry = EntryAt( b, LegacyLumpFourCC( 1 ) );
-		      b[size_t( Get64( b, entry + 16 ) )] ^= std::byte{ 1 };
-	      } },
+	        []( Bytes &b )
+	        {
+		        const size_t entry = EntryAt( b, LegacyLumpFourCC( 1 ) );
+		        b[size_t( Get64( b, entry + 16 ) )] ^= std::byte{ 1 };
+	        } },
 	    { "misaligned lump", MapContainerError::LumpMisaligned, false,
-	      []( Bytes &b ) {
-		      const size_t entry = EntryAt( b, LegacyLumpFourCC( 1 ) );
-		      Put64( b, entry + 16, Get64( b, entry + 16 ) + 4 );
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        const size_t entry = EntryAt( b, LegacyLumpFourCC( 1 ) );
+		        Put64( b, entry + 16, Get64( b, entry + 16 ) + 4 );
+		        Rehash( b );
+	        } },
 	    { "non power of two alignment", MapContainerError::LumpMisaligned, false,
-	      []( Bytes &b ) {
-		      Put32( b, EntryAt( b, LegacyLumpFourCC( 1 ) ) + 12, 48 );
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        Put32( b, EntryAt( b, LegacyLumpFourCC( 1 ) ) + 12, 48 );
+		        Rehash( b );
+	        } },
 	    { "lump overlaps directory", MapContainerError::LumpOutOfBounds, false,
-	      []( Bytes &b ) {
-		      const size_t entry = EntryAt( b, LegacyLumpFourCC( 40 ) );
-		      Put64( b, entry + 24, Get64( b, entry + 24 ) + 4096 );
-		      Put64( b, entry + 32, Get64( b, entry + 32 ) + 4096 );
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        const size_t entry = EntryAt( b, LegacyLumpFourCC( 40 ) );
+		        Put64( b, entry + 24, Get64( b, entry + 24 ) + 4096 );
+		        Put64( b, entry + 32, Get64( b, entry + 32 ) + 4096 );
+		        Rehash( b );
+	        } },
 	    { "lump size overflow", MapContainerError::LumpOutOfBounds, false,
-	      []( Bytes &b ) {
-		      const size_t entry = EntryAt( b, LegacyLumpFourCC( 1 ) );
-		      Put64( b, entry + 24, ~uint64_t( 0 ) );
-		      Put64( b, entry + 32, ~uint64_t( 0 ) );
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        const size_t entry = EntryAt( b, LegacyLumpFourCC( 1 ) );
+		        Put64( b, entry + 24, ~uint64_t( 0 ) );
+		        Put64( b, entry + 32, ~uint64_t( 0 ) );
+		        Rehash( b );
+	        } },
 	    { "overlapping lumps", MapContainerError::LumpOverlap, false,
-	      []( Bytes &b ) {
-		      const size_t first = EntryAt( b, LegacyLumpFourCC( 0 ) );
-		      const size_t second = EntryAt( b, LegacyLumpFourCC( 1 ) );
-		      Put64( b, second + 16, Get64( b, first + 16 ) );
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        const size_t first = EntryAt( b, LegacyLumpFourCC( 0 ) );
+		        const size_t second = EntryAt( b, LegacyLumpFourCC( 1 ) );
+		        Put64( b, second + 16, Get64( b, first + 16 ) );
+		        Rehash( b );
+	        } },
 	    { "duplicate 4CC", MapContainerError::DuplicateLump, false,
-	      []( Bytes &b ) {
-		      Put32( b, EntryAt( b, LegacyLumpFourCC( 7 ) ), LegacyLumpFourCC( 1 ) );
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        Put32( b, EntryAt( b, LegacyLumpFourCC( 7 ) ), LegacyLumpFourCC( 1 ) );
+		        Rehash( b );
+	        } },
 	    { "unknown flag", MapContainerError::UnknownFlags, false,
-	      []( Bytes &b ) {
-		      Put32( b, EntryAt( b, LegacyLumpFourCC( 1 ) ) + 8, kBsp2FlagRequired | 0x10000 );
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        Put32( b, EntryAt( b, LegacyLumpFourCC( 1 ) ) + 8, kBsp2FlagRequired | 0x10000 );
+		        Rehash( b );
+	        } },
 	    { "compressed known lump", MapContainerError::UnsupportedCompression, false,
-	      []( Bytes &b ) {
-		      Put32( b, EntryAt( b, LegacyLumpFourCC( 1 ) ) + 8, kBsp2FlagRequired | kBsp2CompressionZstd );
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        Put32( b, EntryAt( b, LegacyLumpFourCC( 1 ) ) + 8,
+		            kBsp2FlagRequired | kBsp2CompressionZstd );
+		        Rehash( b );
+	        } },
 	    { "stored/uncompressed disagree", MapContainerError::SizeMismatch, false,
-	      []( Bytes &b ) {
-		      const size_t entry = EntryAt( b, LegacyLumpFourCC( 1 ) );
-		      Put64( b, entry + 32, Get64( b, entry + 32 ) + 1 );
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        const size_t entry = EntryAt( b, LegacyLumpFourCC( 1 ) );
+		        Put64( b, entry + 32, Get64( b, entry + 32 ) + 1 );
+		        Rehash( b );
+	        } },
 	    { "reserved entry field", MapContainerError::UnsupportedLayout, false,
-	      []( Bytes &b ) {
-		      Put64( b, EntryAt( b, LegacyLumpFourCC( 1 ) ) + 40, 1 );
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        Put64( b, EntryAt( b, LegacyLumpFourCC( 1 ) ) + 40, 1 );
+		        Rehash( b );
+	        } },
 	    { "unknown required lump", MapContainerError::UnknownRequiredLump, false,
-	      []( Bytes &b ) {
-		      Put32( b, EntryAt( b, LegacyLumpFourCC( 7 ) ), MakeFourCC( 'Z', 'Z', 'Z', 'Z' ) );
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        Put32( b, EntryAt( b, LegacyLumpFourCC( 7 ) ), MakeFourCC( 'Z', 'Z', 'Z', 'Z' ) );
+		        Rehash( b );
+	        } },
 	    { "missing legacy header", MapContainerError::MissingLegacyHeader, false,
-	      []( Bytes &b ) {
-		      const size_t entry = EntryAt( b, kLumpLegacyHeader );
-		      Put32( b, entry, MakeFourCC( 'O', 'P', 'T', '1' ) );
-		      Put32( b, entry + 8, 0 ); // optional, so only the missing LHDR fails
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        const size_t entry = EntryAt( b, kLumpLegacyHeader );
+		        Put32( b, entry, MakeFourCC( 'O', 'P', 'T', '1' ) );
+		        Put32( b, entry + 8, 0 ); // optional, so only the missing LHDR fails
+		        Rehash( b );
+	        } },
 	    { "legacy lump dropped", MapContainerError::LegacyLumpMismatch, false,
-	      []( Bytes &b ) {
-		      const size_t entry = EntryAt( b, LegacyLumpFourCC( 7 ) );
-		      Put32( b, entry, MakeFourCC( 'O', 'P', 'T', '2' ) );
-		      Put32( b, entry + 8, 0 );
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        const size_t entry = EntryAt( b, LegacyLumpFourCC( 7 ) );
+		        Put32( b, entry, MakeFourCC( 'O', 'P', 'T', '2' ) );
+		        Put32( b, entry + 8, 0 );
+		        Rehash( b );
+	        } },
 	    { "legacy version disagrees", MapContainerError::LegacyLumpMismatch, false,
-	      []( Bytes &b ) {
-		      Put32( b, EntryAt( b, LegacyLumpFourCC( 40 ) ) + 4, 9 );
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        Put32( b, EntryAt( b, LegacyLumpFourCC( 40 ) ) + 4, 9 );
+		        Rehash( b );
+	        } },
 	    { "legacy header lump out of legacy file", MapContainerError::LegacyHeaderInvalid, false,
-	      []( Bytes &b ) {
-		      const size_t entry = EntryAt( b, kLumpLegacyHeader );
-		      const size_t payload = size_t( Get64( b, entry + 16 ) );
-		      Put64( b, payload, 100 ); // legacy file size smaller than its lumps
-		      RehashEntryContent( b, entry );
-		      Rehash( b );
-	      } },
+	        []( Bytes &b )
+	        {
+		        const size_t entry = EntryAt( b, kLumpLegacyHeader );
+		        const size_t payload = size_t( Get64( b, entry + 16 ) );
+		        Put64( b, payload, 100 ); // legacy file size smaller than its lumps
+		        RehashEntryContent( b, entry );
+		        Rehash( b );
+	        } },
 	    { "legacy revision disagrees", MapContainerError::LegacyHeaderInvalid, false,
-	      []( Bytes &b ) {
-		      Put32( b, 40, 999 );
-	      } },
+	        []( Bytes &b )
+	        {
+		        Put32( b, 40, 999 );
+	        } },
 	};
 
 	for ( const NegativeCase &test : kCases )
@@ -590,8 +736,8 @@ void TestNegativeFixtures()
 		const bool bMatched = status.code == test.expected;
 		CHECK( bMatched );
 		if ( !bMatched )
-			std::printf( "  case '%s': expected %s, got %s\n", test.name, MapContainerErrorName( test.expected ),
-			             Name( status ).c_str() );
+			std::printf( "  case '%s': expected %s, got %s\n", test.name,
+			    MapContainerErrorName( test.expected ), Name( status ).c_str() );
 	}
 
 	// Stale content hash: accepted without eager verification, but the
@@ -608,8 +754,9 @@ void TestNegativeFixtures()
 		{
 			MapLumpInfo info{};
 			container.Value()->FindLegacyLump( 1, &info );
-			CHECK( container.Value()->VerifyContent( info, mutated.data() + payload, info.storedSize ).code ==
-			       MapContainerError::ContentHashMismatch );
+			CHECK( container.Value()
+			           ->VerifyContent( info, mutated.data() + payload, info.storedSize )
+			           .code == MapContainerError::ContentHashMismatch );
 		}
 		CHECK( !ExportLegacyFromBsp2( mutated ) );
 	}
@@ -617,14 +764,15 @@ void TestNegativeFixtures()
 	// An unknown optional lump in an unknown encoding is skipped.
 	{
 		const std::vector<uint8_t> blob = Pattern( 33, 3 );
-		const Bsp2LumpInput extras[] = { { MakeFourCC( 'O', 'P', 'T', 'Z' ), 1, 0, kBsp2MinAlignment,
-		                                   std::as_bytes( std::span( blob ) ) } };
+		const Bsp2LumpInput extras[] = { { MakeFourCC( 'O', 'P', 'T', 'Z' ), 1, 0,
+		    kBsp2MinAlignment, std::as_bytes( std::span( blob ) ) } };
 		auto withExtra = ConvertLegacyToBsp2( legacy, extras );
 		CHECK( !!withExtra );
 		if ( withExtra )
 		{
 			Bytes mutated = withExtra.Value();
-			Put32( mutated, EntryAt( mutated, MakeFourCC( 'O', 'P', 'T', 'Z' ) ) + 8, kBsp2CompressionZstd );
+			Put32( mutated, EntryAt( mutated, MakeFourCC( 'O', 'P', 'T', 'Z' ) ) + 8,
+			    kBsp2CompressionZstd );
 			Rehash( mutated );
 			CHECK( TryOpen( mutated, true ).Ok() );
 			auto exported = ExportLegacyFromBsp2( mutated );
@@ -681,7 +829,8 @@ void TestNegativeFixtures()
 		CHECK( !WriteBsp2( 0, duplicate ) );
 		const Bsp2LumpInput misaligned[] = { { MakeFourCC( 'A', 'A', 'A', 'A' ), 1, 0, 8, {} } };
 		CHECK( !WriteBsp2( 0, misaligned ) );
-		const Bsp2LumpInput compressed[] = { { MakeFourCC( 'A', 'A', 'A', 'A' ), 1, kBsp2CompressionZstd, 16, {} } };
+		const Bsp2LumpInput compressed[] = {
+		    { MakeFourCC( 'A', 'A', 'A', 'A' ), 1, kBsp2CompressionZstd, 16, {} } };
 		CHECK( !WriteBsp2( 0, compressed ) );
 	}
 }
@@ -700,7 +849,8 @@ void TestMutationFuzz()
 	const Bytes good = converted.Value();
 
 	uint64_t state = 0x9E3779B97F4A7C15ull;
-	auto next = [&]() {
+	auto next = [&]()
+	{
 		state ^= state << 13;
 		state ^= state >> 7;
 		state ^= state << 17;
@@ -731,11 +881,13 @@ void TestMutationFuzz()
 			// Directory field mutation with a valid directory hash, so the
 			// structural validation (not the hash) must catch it.
 			const uint32_t count = DirectoryCount( mutated );
-			const size_t entry = DirectoryOffset( mutated ) + size_t( next() % count ) * kBsp2EntrySize;
+			const size_t entry =
+			    DirectoryOffset( mutated ) + size_t( next() % count ) * kBsp2EntrySize;
 			const size_t field = size_t( next() % 6 );
 			const size_t fieldOffsets[] = { 0, 4, 8, 12, 16, 24 };
 			if ( field < 4 )
-				Put32( mutated, entry + fieldOffsets[field], uint32_t( next() ) >> ( next() % 32 ) );
+				Put32(
+				    mutated, entry + fieldOffsets[field], uint32_t( next() ) >> ( next() % 32 ) );
 			else
 				Put64( mutated, entry + fieldOffsets[field], next() >> ( next() % 64 ) );
 			const uint64_t offset = Get64( mutated, entry + 16 );
@@ -748,8 +900,8 @@ void TestMutationFuzz()
 		const bool bVerify = ( iteration & 1 ) != 0;
 		MemoryByteSource source( mutated );
 		IMapContainer *pContainer = nullptr;
-		const MapContainerStatus status =
-		    OpenMapContainer( source, MapContainerOpenOptions{ bVerify, nullptr, 0, false }, &pContainer );
+		const MapContainerStatus status = OpenMapContainer(
+		    source, MapContainerOpenOptions{ bVerify, nullptr, 0, false }, &pContainer );
 		if ( !status.Ok() )
 		{
 			++rejected;
@@ -773,8 +925,8 @@ void TestMutationFuzz()
 	}
 	CHECK( rejected > kIterations / 2 );
 	CHECK( accepted + rejected == kIterations );
-	std::printf( "fuzz: %d iterations, %d rejected, %d accepted, %d accepted exports identical\n", kIterations,
-	             rejected, accepted, exportsIdentical );
+	std::printf( "fuzz: %d iterations, %d rejected, %d accepted, %d accepted exports identical\n",
+	    kIterations, rejected, accepted, exportsIdentical );
 }
 } // namespace
 

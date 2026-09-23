@@ -46,6 +46,7 @@ Context.Context.line_just = 55 # should fit for everything on 80x26
 projects={
 	'game': [
 		'jobsystem',
+		'mapcontainer',
 		'appframework',
 		'bitmap',
 		'choreoobjects',
@@ -101,6 +102,7 @@ projects={
 	],
 	'tests': [
 		'platform',
+		'mapcontainer',
 		'appframework',
 		'tier0',
 		'tier1',
@@ -127,6 +129,7 @@ projects={
 	],
 	'tools': [
 		'jobsystem',
+		'mapcontainer',
 		'tier0',
 		'tier1',
 		'mathlib',
@@ -136,9 +139,11 @@ projects={
 		'vtf',
 		'utils/vtex',
 		'utils/vtexconv',
+		'utils/bsp2tool',
 	],
 	'dedicated': [
 		'jobsystem',
+		'mapcontainer',
 		'appframework',
 		'bitmap',
 		'choreoobjects',

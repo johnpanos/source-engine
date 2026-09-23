@@ -20,6 +20,12 @@ module judges the frames:
   sRGB-decoded base texture and the linear tone-mapping scale, and sRGB-encoded
   (vertexlit_and_unlit_generic_ps2x.fxc). Every pixel well inside a quad must
   match it; pixels well outside must be the clear color;
+* $phong materials (skin_vs20 / skin_ps20b) are evaluated per pixel: the
+  vertex light attenuation, eye vector and tangent frame interpolated, the
+  normal map's normal, PixelShaderDoLighting (always half-Lambert, optionally
+  through the lightwarp ramp), phong specular with the Fresnel ranges, the
+  exponent map and boost, self-illumination and rim light, all from the
+  procedural textures and material parameters the capture records;
 * the whole frame must agree with the D3D9 reference capture.
 """
 
@@ -31,7 +37,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import material_pixel_frames  # noqa: E402
 
 CASES = ("ambient_cube", "directional", "point", "spot", "four_lights", "half_lambert",
-         "static_vertex", "static_and_dynamic", "no_light", "model_transform", "skinned")
+         "static_vertex", "static_and_dynamic", "no_light", "model_transform", "skinned",
+         "phong", "phong_four_lights", "phong_lightwarp", "phong_selfillum", "phong_constant",
+         "phong_basealphamask", "phong_skinned")
+# CShaderAPIDx8::CommitPixelShaderLighting places a directional light this far
+# from the lighting origin, against its direction.
+DIRECTIONAL_DISTANCE = 10000.0
+# The camera (identity view): CShaderAPIDx8::CacheWorldSpaceCameraPosition.
+EYE_POSITION = (0.0, 0.0, 0.0)
 CLEAR = (255, 0, 255)
 # vertexlit_and_unlit_generic_vs20 gets four lights on ps_2_b hardware.
 MAX_LIGHTS = 4
@@ -41,6 +54,10 @@ EDGE_MARGIN = 1.5
 # The model evaluates in double precision what the GPU evaluates in single
 # precision and 8-bit texels; one level of output rounding either way.
 MODEL_TOLERANCE = 1
+# Per-pixel phong: D3D9 matches the model within one level except in the peaks
+# of the specular highlights, where the exponent amplifies single-precision
+# normalization and pow differences to two levels (measured).
+PHONG_MODEL_TOLERANCE = 2
 # Agreement with the reference, and how many pixels may exceed it.
 PIXEL_TOLERANCE = 1
 MAX_DIFFERING_PIXELS = 0
@@ -165,6 +182,199 @@ def vertex_lighting(case, world_pos, normal, static_color):
     return color
 
 
+def _vector(text):
+    return [float(x) for x in text.strip("[]").split()]
+
+
+def _lerp(a, b, t):
+    return a + (b - a) * t
+
+
+def _saturate(x):
+    return min(max(x, 0.0), 1.0)
+
+
+def _texel(report, name):
+    """A solid procedural texture's texel, 0..1 per channel."""
+    return [c / 255.0 for c in report["textures"][name]["row"][0]]
+
+
+def _sample_ramp(report, name, u):
+    """tex1D on a procedural ramp: bilinear, clamped, texel centers at (i + 0.5) / w."""
+    row = report["textures"][name]["row"]
+    x = min(max(u * len(row) - 0.5, 0.0), len(row) - 1.0)
+    i = int(math.floor(x))
+    j = min(i + 1, len(row) - 1)
+    f = x - i
+    return [_lerp(row[i][k], row[j][k], f) / 255.0 for k in range(3)]
+
+
+def _ambient_ps(cube, n):
+    """PixelShaderAmbientLight."""
+    color = [0.0, 0.0, 0.0]
+    for axis in range(3):
+        face = cube[2 * axis + (0 if n[axis] >= 0.0 else 1)]
+        for k in range(3):
+            color[k] += n[axis] * n[axis] * face[k]
+    return color
+
+
+def wants_skin_shader(params):
+    """vertexlitgeneric_dx9_helper.cpp WantsSkinShader: $phong with a lightwarp,
+    a bump map, or $basemapalphaphongmask 1; otherwise $phong is turned off."""
+    if params.get("$phong") != "1":
+        return False
+    if "$lightwarptexture" in params:
+        return True
+    return params.get("$basemapalphaphongmask") == "1" or "$bumpmap" in params
+
+
+class PhongMaterial:
+    """skin_dx9_helper.cpp's constants and combos for a $phong material. After
+    InitShaderParams, CShaderSystem::InitShaderParameters sets every numeric
+    parameter the material leaves out to zero, so at draw time the helper sees
+    them all defined: an unset $phongboost or $phongfresnelranges is 0 (no
+    specular), not the helper's fallback. InitParams defaults (such as
+    $selfillumtint) come first and survive."""
+
+    def __init__(self, report, params):
+        self.params = params
+        self.bump = "$bumpmap" in params
+        self.exponent_texture = params.get("$phongexponenttexture")
+        self.light_warp = params.get("$lightwarptexture")
+        self.self_illum = params.get("$selfillum") == "1"
+        self.rim = params.get("$rimlight") == "1"
+        self.base = _texel(report, params["$basetexture"])
+        self.normal = _texel(report, params["$bumpmap"]) if self.bump else None
+        # TEXTURE_WHITE when no exponent map is bound.
+        self.exponent_map = (_texel(report, self.exponent_texture) if self.exponent_texture
+                             else [1.0, 1.0, 1.0, 1.0])
+        # FASTPATH_NOBUMP: no bump, exponent map, tint map, warps, rim, detail,
+        # self-illum or tint blend, and an opaque base.
+        self.base_alpha_phong_mask = 1.0 if params.get("$basemapalphaphongmask") == "1" else 0.0
+        self.fast_path = (not self.bump and not self.exponent_texture and not self.rim and
+                          not self.self_illum and
+                          (self.base_alpha_phong_mask > 0.0 or self.base[3] >= 1.0))
+        exponent = float(params.get("$phongexponent", "0"))
+        self.constant_exponent = exponent if exponent > 0.0 else -1.0
+        tint = _vector(params.get("$phongtint", "[0 0 0]"))
+        # All zero: white (no $phongalbedotint map in these materials).
+        self.tint = tint if any(tint) else [1.0, 1.0, 1.0]
+        low, mid, high = _vector(params.get("$phongfresnelranges", "[0 0 0]"))
+        self.fresnel = ((mid - low) * 2.0, mid, (high - mid) * 2.0)
+        self.boost = float(params.get("$phongboost", "0"))
+        self.self_illum_tint = (_vector(params["$selfillumtint"])
+                                if "$selfillumtint" in params else [1.0, 1.0, 1.0])
+        self.rim_exponent = max(float(params.get("$rimlightexponent", "0")), 1.0)
+        self.rim_boost = float(params.get("$rimlightboost", "0"))
+        self.rim_mask_control = float(params.get("$rimmask", "0"))
+
+
+def _fresnel_ranges(n, e, ranges):
+    f = _saturate(1.0 - _dot(n, e))
+    f = f * f - 0.5
+    return ranges[1] + (ranges[2] if f >= 0.0 else ranges[0]) * f
+
+
+def _phong_vertex(case, report, world_pos, normal, tangent):
+    """skin_vs20: the vertex's attenuation of each light (in SortLights order),
+    and its world tangent frame."""
+    lights = [light_constants(light) for light in sorted_lights(case["lights"])]
+    atten = [_vertex_atten(c, world_pos) for c in lights]
+    atten += [0.0] * (MAX_LIGHTS - len(atten))
+    tangent_t = [(normal[1] * tangent[2] - normal[2] * tangent[1]) * tangent[3],
+                 (normal[2] * tangent[0] - normal[0] * tangent[2]) * tangent[3],
+                 (normal[0] * tangent[1] - normal[1] * tangent[0]) * tangent[3]]
+    eye = [e - w for e, w in zip(EYE_POSITION, world_pos)]
+    return {"pos": list(world_pos), "atten": atten, "n": _normalize(normal),
+            "s": _normalize(tangent[:3]), "t": _normalize(tangent_t), "eye": eye}
+
+
+def _phong_pixel(case, report, material, v, scale):
+    """skin_ps20b for one pixel's interpolated inputs; the linear color."""
+    cube = case["cube"]
+    ambient = any(value != 0.0 for face in cube for value in face)
+    ps_cube = cube if ambient else [[0.0] * 3] * 6
+    lights = sorted_lights(case["lights"])
+    origin = report["lighting_origin"]
+    ps_lights = []
+    for light in lights:
+        if light["type"] == "directional":
+            position = [o - d * DIRECTIONAL_DISTANCE for o, d in zip(origin, light["direction"])]
+        else:
+            position = light["position"]
+        ps_lights.append((light["color"], position))
+
+    base = [srgb_to_linear(c) for c in material.base[:3]]
+    base_alpha = material.base[3]
+    eye = _normalize(v["eye"])
+    if material.fast_path:
+        ts_normal = (0.0, 0.0, 1.0)
+        spec_mask = base_alpha
+    else:
+        # TEXTURE_NORMALMAP_FLAT without a bump map.
+        texel = material.normal if material.bump else [0.5, 0.5, 1.0, 1.0]
+        ts_normal = [_lerp(2.0 * texel[k] - 1.0, (0.0, 0.0, 1.0)[k],
+                           material.base_alpha_phong_mask) for k in range(3)]
+        spec_mask = _lerp(texel[3], base_alpha, material.base_alpha_phong_mask)
+    n = _normalize([v["s"][k] * ts_normal[0] + v["t"][k] * ts_normal[1] + v["n"][k] * ts_normal[2]
+                    for k in range(3)])
+    fresnel = _fresnel_ranges(n, eye, material.fresnel)
+    rim_fresnel = _saturate(1.0 - _dot(n, eye)) ** 4
+
+    # PixelShaderDoLighting( ..., bHalfLambert = true, lightwarp )
+    diffuse = _ambient_ps(ps_cube, n)
+    for i, (color, position) in enumerate(ps_lights):
+        light_dir = _normalize([p - w for p, w in zip(position, v["pos"])])
+        term = _saturate(_dot(n, light_dir) * 0.5 + 0.5)
+        if material.light_warp:
+            warp = [2.0 * c for c in _sample_ramp(report, material.light_warp, term)]
+        else:
+            warp = [term * term] * 3
+        for k in range(3):
+            diffuse[k] += color[k] * v["atten"][i] * warp[k]
+
+    exponent_map = material.exponent_map
+    if material.fast_path:
+        spec_exponent = max(material.constant_exponent, 0.0)
+        rim_mask = 0.0
+        spec_tint = [1.0, 1.0, 1.0]
+    else:
+        rim_mask = _lerp(1.0, exponent_map[3], material.rim_mask_control)
+        spec_exponent = (material.constant_exponent if material.constant_exponent >= 0.0
+                         else 1.0 + 149.0 * exponent_map[0])
+        spec_tint = material.tint
+
+    specular = [0.0, 0.0, 0.0]
+    rim = [0.0, 0.0, 0.0]
+    reflect = [2.0 * n[k] * _dot(n, eye) - eye[k] for k in range(3)]
+    for i, (color, position) in enumerate(ps_lights):
+        light_dir = _normalize([p - w for p, w in zip(position, v["pos"])])
+        l_dot_r = _saturate(_dot(reflect, light_dir))
+        n_dot_l = _saturate(_dot(n, light_dir))
+        for k in range(3):
+            specular[k] += (l_dot_r ** spec_exponent) * n_dot_l * color[k] * v["atten"][i]
+            if material.rim:
+                rim[k] += (l_dot_r ** material.rim_exponent) * n_dot_l * color[k] * v["atten"][i]
+    spec_mask *= fresnel
+    specular = [x * spec_mask * material.boost for x in specular]
+
+    albedo = base
+    diffuse_component = [albedo[k] * diffuse[k] for k in range(3)]
+    if material.self_illum:
+        diffuse_component = [max(0.0, _lerp(diffuse_component[k],
+                                            material.self_illum_tint[k] * albedo[k], base_alpha))
+                             for k in range(3)]
+    if material.rim:
+        multiply = rim_mask * rim_fresnel
+        rim = [x * multiply for x in rim]
+        specular = [max(specular[k], rim[k]) for k in range(3)]
+        rim_ambient = _ambient_ps(ps_cube, eye)
+        weight = _saturate(multiply * n[2])
+        specular = [specular[k] + rim_ambient[k] * material.rim_boost * weight for k in range(3)]
+    return [(specular[k] * spec_tint[k] + diffuse_component[k]) * scale for k in range(3)]
+
+
 class CaseModel:
     """The expected color of each pixel of one case."""
 
@@ -175,13 +385,22 @@ class CaseModel:
         self.scale = report["tone_scale"]
         self.base = [srgb_to_linear(c / 255.0) for c in report["base_color"]]
         self.quads = []
+        self.case = case
+        self.report = report
+        params = report.get("materials", {}).get(case.get("material"), {})
+        self.phong = PhongMaterial(report, params) if wants_skin_shader(params) else None
         matrix = case["model_matrix"]
         for quad in report["quads"]:
             world = [_transform(matrix, (x, y, report["quad_z"]), 1.0)
                      for x, y in quad["corners"]]
             normal = _transform(matrix, quad["normal"], 0.0)
-            lighting = [vertex_lighting(case, position, normal, quad["static_colors"][v])
-                        for v, position in enumerate(world)]
+            if self.phong:
+                tangent = _transform(matrix, quad["tangent"][:3], 0.0) + [quad["tangent"][3]]
+                lighting = [_phong_vertex(case, report, position, normal, tangent)
+                            for position in world]
+            else:
+                lighting = [vertex_lighting(case, position, normal, quad["static_colors"][v])
+                            for v, position in enumerate(world)]
             self.quads.append(([p[:2] for p in world], lighting))
 
     def _ndc(self, x, y):
@@ -211,6 +430,13 @@ class CaseModel:
                 weights = _barycentric(corners[a], corners[b], corners[c], (px, py))
                 if weights is None:
                     continue
+                if self.phong:
+                    inputs = {key: [sum(w * lighting[v][key][k] for w, v in
+                                        zip(weights, (a, b, c)))
+                                    for k in range(len(lighting[a][key]))]
+                              for key in lighting[a]}
+                    color = _phong_pixel(self.case, self.report, self.phong, inputs, self.scale)
+                    return tuple(round(linear_to_srgb(x) * 255.0) for x in color)
                 light = [sum(w * lighting[v][k] for w, v in zip(weights, (a, b, c)))
                          for k in range(3)]
                 return tuple(round(linear_to_srgb(self.base[k] * light[k] * self.scale) * 255.0)
@@ -252,6 +478,7 @@ def check_model(report):
     width, height = report["frame"]
     for case in report["cases"]:
         model = CaseModel(report, case)
+        tolerance = PHONG_MODEL_TOLERANCE if model.phong else MODEL_TOLERANCE
         rgb = material_pixel_frames.decode_frame(case, report["frame"])
         wrong = []
         judged = 0
@@ -262,7 +489,7 @@ def check_model(report):
                     continue
                 judged += 1
                 pixel = rgb[(y * width + x) * 3:(y * width + x) * 3 + 3]
-                if any(abs(p - e) > MODEL_TOLERANCE for p, e in zip(pixel, expected)):
+                if any(abs(p - e) > tolerance for p, e in zip(pixel, expected)):
                     wrong.append((x, y, list(pixel), list(expected)))
         if wrong:
             x, y, pixel, expected = wrong[0]

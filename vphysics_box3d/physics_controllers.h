@@ -35,6 +35,31 @@ class CShadowControllerBox3D : public IPhysicsShadowController
 {
 public:
 	CShadowControllerBox3D( CPhysicsObjectBox3D *pObject, bool allowTranslation, bool allowRotation );
+	// Saved controller state. The object's own saved state already carries
+	// the attachment's effects (mass, flags, material, damping, inertia).
+	struct State_t
+	{
+		Vector targetPosition;
+		QAngle targetAngles;
+		Vector lastImpulse;
+		float maxSpeed;
+		float maxAngularSpeed;
+		float teleportDistance;
+		float secondsToArrival;
+		float dampFactor;
+		unsigned int savedCallbackFlags;
+		float savedMass;
+		float savedRotDamping;
+		Vector savedInertia;
+		int savedMaterialIndex;
+		bool allowTranslation;
+		bool allowRotation;
+		bool physicallyControlled;
+		bool enabled;
+	};
+	// Restore: re-attaches without applying the attachment again.
+	CShadowControllerBox3D( CPhysicsObjectBox3D *pObject, const State_t &state );
+	void WriteState( State_t &state ) const;
 	virtual ~CShadowControllerBox3D();
 
 	virtual void Update( const Vector &position, const QAngle &angles, float timeOffset ) override;
@@ -50,8 +75,8 @@ public:
 	virtual void SetPhysicallyControlled( bool isPhysicallyControlled ) override { m_physicallyControlled = isPhysicallyControlled; }
 	virtual bool IsPhysicallyControlled() override { return m_physicallyControlled; }
 	virtual void GetLastImpulse( Vector *pOut ) override { *pOut = m_lastImpulse; }
-	virtual void UseShadowMaterial( bool bUseShadowMaterial ) override {}
-	virtual void ObjectMaterialChanged( int materialIndex ) override {}
+	virtual void UseShadowMaterial( bool bUseShadowMaterial ) override;
+	virtual void ObjectMaterialChanged( int materialIndex ) override { m_savedMaterialIndex = materialIndex; }
 	virtual float GetTargetPosition( Vector *pPositionOut, QAngle *pAnglesOut ) override
 	{
 		if ( pPositionOut )
@@ -71,8 +96,7 @@ public:
 
 	// Applies one step of control; called by the environment before stepping.
 	void Simulate( float dt );
-	bool TempDisablesGravity() const { return m_tempDisableGravity; }
-	void SetTempDisableGravity( bool disable ) { m_tempDisableGravity = disable; }
+	CPhysicsObjectBox3D *GetObject() const { return m_pObject; }
 
 private:
 	CPhysicsObjectBox3D *m_pObject;
@@ -86,11 +110,13 @@ private:
 	float m_dampFactor;
 	unsigned short m_savedCallbackFlags;
 	float m_savedMass;
+	float m_savedRotDamping;
+	Vector m_savedInertia;
+	int m_savedMaterialIndex;
 	bool m_allowTranslation;
 	bool m_allowRotation;
 	bool m_physicallyControlled;
 	bool m_enabled;
-	bool m_tempDisableGravity;
 };
 
 //-----------------------------------------------------------------------------
@@ -166,6 +192,7 @@ public:
 			m_objects[i]->Wake();
 	}
 	virtual void SetPriority( priority_t priority ) override { m_priority = priority; }
+	priority_t GetPriority() const { return m_priority; }
 
 	void Simulate( float dt );
 	// Drops a destroyed object so the controller never touches it again.

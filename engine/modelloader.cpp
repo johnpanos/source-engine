@@ -18,6 +18,7 @@
 #include "cmodel_engine.h"
 #include "cdll_engine_int.h"
 #include "iscratchpad3d.h"
+#include "map_container_file.h"
 #include "materialsystem/imaterialsystemhardwareconfig.h"
 #include "materialsystem/materialsystem_config.h"
 #include "gl_rsurf.h"
@@ -387,7 +388,10 @@ IModelLoader *modelloader = ( IModelLoader * )&g_ModelLoader;
 //-----------------------------------------------------------------------------
 // Globals used by the CMapLoadHelper
 //-----------------------------------------------------------------------------
-dheader_t		s_MapHeader;
+// The map's container (legacy VBSP or BSP2, RFC 0008) answers every lump
+// location query; lump bytes are still read through the filesystem handle.
+static mapcontainer::IMapContainer	*s_pMapContainer = NULL;
+static CMapFileByteSource	s_MapByteSource;
 
 static FileHandle_t		s_MapFileHandle = FILESYSTEM_INVALID_HANDLE;
 static char				s_szLoadName[128];
@@ -407,6 +411,47 @@ struct lumpfiles_t
 	lumpfileheader_t	header;
 };
 static lumpfiles_t s_MapLumpFiles[ HEADER_LUMPS ];
+
+// Container description of a legacy lump of the current map. Lump override
+// files are handled by the callers and take precedence.
+static mapcontainer::MapLumpInfo MapLegacyLump( int lumpId )
+{
+	mapcontainer::MapLumpInfo info;
+	V_memset( &info, 0, sizeof( info ) );
+	if ( s_pMapContainer )
+	{
+		s_pMapContainer->FindLegacyLump( lumpId, &info );
+	}
+	return info;
+}
+
+static void CloseMapContainer()
+{
+	mapcontainer::DestroyMapContainer( s_pMapContainer );
+	s_pMapContainer = NULL;
+	s_MapByteSource.Detach();
+}
+
+// Opens the container and applies the engine's legacy version policy.
+static bool OpenMapContainerChecked( FileHandle_t hFile )
+{
+	s_pMapContainer = OpenMapContainerForFile( s_MapByteSource, hFile, s_szMapName );
+	if ( !s_pMapContainer )
+	{
+		Host_Error( "CMapLoadHelper::Init, map %s is not a valid map container\n", s_szMapName );
+		return false;
+	}
+
+	const int nVersion = s_pMapContainer->LegacyVersion();
+	if ( nVersion < MINBSPVERSION || nVersion > BSPVERSION )
+	{
+		CloseMapContainer();
+		Host_Error( "CMapLoadHelper::Init, map %s has wrong version (%i when expecting %i)\n", s_szMapName,
+			nVersion, BSPVERSION );
+		return false;
+	}
+	return true;
+}
 
 CON_COMMAND( mem_vcollide, "Dumps the memory used by vcollides" )
 {
@@ -434,7 +479,7 @@ void CMapLoadHelper::Init( model_t *pMapModel, const char *loadname )
 	s_pMap = NULL;
 	s_szLoadName[ 0 ] = 0;
 	s_MapFileHandle = FILESYSTEM_INVALID_HANDLE;
-	V_memset( &s_MapHeader, 0, sizeof( s_MapHeader ) );
+	CloseMapContainer();
 	V_memset( &s_MapLumpFiles, 0, sizeof( s_MapLumpFiles ) );
 
 	if ( !pMapModel )
@@ -453,25 +498,14 @@ void CMapLoadHelper::Init( model_t *pMapModel, const char *loadname )
 		return;
 	}
 
-	g_pFileSystem->Read( &s_MapHeader, sizeof( dheader_t ), s_MapFileHandle );
-	if ( s_MapHeader.ident != IDBSPHEADER )
+	if ( !OpenMapContainerChecked( s_MapFileHandle ) )
 	{
 		g_pFileSystem->Close( s_MapFileHandle );
 		s_MapFileHandle = FILESYSTEM_INVALID_HANDLE;
-		Host_Error( "CMapLoadHelper::Init, map %s has wrong identifier\n", s_szMapName );
 		return;
 	}
 
-	if ( s_MapHeader.version < MINBSPVERSION || s_MapHeader.version > BSPVERSION )
-	{
-		g_pFileSystem->Close( s_MapFileHandle );
-		s_MapFileHandle = FILESYSTEM_INVALID_HANDLE;
-		Host_Error( "CMapLoadHelper::Init, map %s has wrong version (%i when expecting %i)\n", s_szMapName,
-			s_MapHeader.version, BSPVERSION );
-		return;
-	}
-
-	s_MapVersion = s_MapHeader.version;
+	s_MapVersion = s_pMapContainer->LegacyVersion();
 
 	V_strcpy_safe( s_szLoadName, loadname );
 
@@ -479,11 +513,11 @@ void CMapLoadHelper::Init( model_t *pMapModel, const char *loadname )
 	// is incremented whenever a Hammer to Engine session is established so resetting the global map version each time causes a problem.
 	if ( 0 == g_ServerGlobalVariables.mapversion )
 	{
-		g_ServerGlobalVariables.mapversion = s_MapHeader.mapRevision;
+		g_ServerGlobalVariables.mapversion = s_pMapContainer->MapRevision();
 	}
 
 #ifndef SWDS
-	InitDLightGlobals( s_MapHeader.version );
+	InitDLightGlobals( s_MapVersion );
 #endif
 
 	s_pMap = &g_ModelLoader.m_worldBrushData;
@@ -547,43 +581,10 @@ void CMapLoadHelper::InitFromMemory( model_t *pMapModel, const void *pData, int 
 	// 360 has reorganized bsp format and no external lump files
 	Assert( false && pData && nDataSize );
 
-	if ( ++s_nMapLoadRecursion > 1 )
-	{
-		return;
-	}
-
-	s_pMap = NULL;
-	s_MapFileHandle = FILESYSTEM_INVALID_HANDLE;
-	V_memset( &s_MapHeader, 0, sizeof( s_MapHeader ) );
-	V_memset( &s_MapLumpFiles, 0, sizeof( s_MapLumpFiles ) );
-
-	V_strcpy_safe( s_szMapName, pMapModel->strName );
-	V_FileBase( s_szMapName, s_szLoadName, sizeof( s_szLoadName ) );
-
-	s_MapBuffer.SetExternalBuffer( (void *)pData, nDataSize, nDataSize );
-
-	V_memcpy( &s_MapHeader, pData, sizeof( dheader_t ) );
-
-	if ( s_MapHeader.ident != IDBSPHEADER )
-	{
-		Host_Error( "CMapLoadHelper::Init, map %s has wrong identifier\n", s_szMapName );
-		return;
-	}
-
-	if ( s_MapHeader.version < MINBSPVERSION || s_MapHeader.version > BSPVERSION )
-	{
-		Host_Error( "CMapLoadHelper::Init, map %s has wrong version (%i when expecting %i)\n", s_szMapName, s_MapHeader.version, BSPVERSION );
-		return;
-	}
-
-	// Store map version
-	g_ServerGlobalVariables.mapversion = s_MapHeader.mapRevision;
-
-#ifndef SWDS
-	InitDLightGlobals( s_MapHeader.version );
-#endif
-
-	s_pMap = &g_ModelLoader.m_worldBrushData;
+	// In-memory maps have no container reader yet (the only caller was the
+	// removed console preload path). Fail explicitly instead of guessing.
+	Host_Error( "CMapLoadHelper::InitFromMemory, in-memory map %s is not supported\n",
+		pMapModel ? pMapModel->strName.String() : "<null>" );
 }
 
 //-----------------------------------------------------------------------------
@@ -616,7 +617,7 @@ void CMapLoadHelper::Shutdown( void )
 	}
 
 	s_szLoadName[ 0 ] = 0;
-	V_memset( &s_MapHeader, 0, sizeof( s_MapHeader ) );
+	CloseMapContainer();
 	s_pMap = NULL;
 
 	// discard from memory
@@ -648,17 +649,15 @@ int CMapLoadHelper::LumpSize( int lumpId )
 		return s_MapLumpFiles[lumpId].header.lumpLength;
 	}
 
-	lump_t *pLump = &s_MapHeader.lumps[ lumpId ];
-	Assert( pLump );
+	const mapcontainer::MapLumpInfo info = MapLegacyLump( lumpId );
 
 	// all knowledge of compression is private, they expect and get the original size
-	int originalSize = s_MapHeader.lumps[lumpId].uncompressedSize;
-	if ( originalSize != 0 )
+	if ( info.legacyUncompressedSize != 0 )
 	{
-		return originalSize;
+		return (int)info.legacyUncompressedSize;
 	}
 
-	return pLump->filelen;
+	return (int)info.storedSize;
 }
 
 //-----------------------------------------------------------------------------
@@ -673,10 +672,9 @@ int CMapLoadHelper::LumpOffset( int lumpID  )
 		return s_MapLumpFiles[lumpID].header.lumpOffset;
 	}
 
-	lump_t *pLump = &s_MapHeader.lumps[ lumpID ];
-	Assert( pLump );
-
-	return pLump->fileofs;
+	// Offset of the stored bytes in the map file (differs from the legacy
+	// offset for BSP2 containers).
+	return (int)MapLegacyLump( lumpID ).offset;
 }
 
 //-----------------------------------------------------------------------------
@@ -738,17 +736,20 @@ CMapLoadHelper::CMapLoadHelper( int lumpToLoad )
 	m_nLumpID = lumpToLoad;
 	m_nLumpSize = 0;
 	m_nLumpOffset = -1;
+	m_nLumpLegacyOrigin = -1;
 	m_pData = NULL;
 	m_pRawData = NULL;
 	m_pUncompressedData = NULL;
 	
 	// Load raw lump from disk
-	lump_t *lump = &s_MapHeader.lumps[ lumpToLoad ];
-	Assert( lump );
+	const mapcontainer::MapLumpInfo lump = MapLegacyLump( lumpToLoad );
+	bool bVerifyContainer = true;
+	unsigned int nLegacyUncompressedSize = lump.legacyUncompressedSize;
 
-	m_nLumpSize = lump->filelen;
-	m_nLumpOffset = lump->fileofs;
-	m_nLumpVersion = lump->version;	
+	m_nLumpSize = (int)lump.storedSize;
+	m_nLumpOffset = (int)lump.offset;
+	m_nLumpLegacyOrigin = (int)lump.legacyOrigin;
+	m_nLumpVersion = (int)lump.version;	
 
 	FileHandle_t fileToUse = s_MapFileHandle;
 
@@ -758,7 +759,11 @@ CMapLoadHelper::CMapLoadHelper( int lumpToLoad )
 		fileToUse = s_MapLumpFiles[lumpToLoad].file;
 		m_nLumpSize = s_MapLumpFiles[lumpToLoad].header.lumpLength;
 		m_nLumpOffset = s_MapLumpFiles[lumpToLoad].header.lumpOffset;
+		m_nLumpLegacyOrigin = m_nLumpOffset;
 		m_nLumpVersion = s_MapLumpFiles[lumpToLoad].header.lumpVersion;
+		// Override files replace the container's lump and its hash.
+		bVerifyContainer = false;
+		nLegacyUncompressedSize = 0;
 
 		// Store off the lump file name
 		GenerateLumpFileName( s_szLoadName, m_szLumpFilename, MAX_PATH, s_MapLumpFiles[lumpToLoad].lumpfileindex );
@@ -809,14 +814,28 @@ CMapLoadHelper::CMapLoadHelper( int lumpToLoad )
 		}
 	}
 
-	if ( lump->uncompressedSize != 0 )
+	if ( bVerifyContainer && s_pMapContainer )
+	{
+		const mapcontainer::MapContainerStatus status = s_pMapContainer->VerifyContent( lump, m_pData, m_nLumpSize );
+		if ( !status.Ok() )
+		{
+			const int nBadLumpSize = m_nLumpSize;
+			m_nLumpSize = 0;
+			m_pData = NULL;
+			Host_Error( "CMapLoadHelper: map %s lump %i failed verification (%s, %i bytes)\n", s_szMapName,
+				lumpToLoad, mapcontainer::MapContainerErrorName( status.code ), nBadLumpSize );
+			return;
+		}
+	}
+
+	if ( nLegacyUncompressedSize != 0 )
 	{
 		// Handle compressed lump -- users of the class see the uncompressed data
 		AssertMsg( CLZMA::IsCompressed( m_pData ),
 		           "Lump claims to be compressed but is not recognized as LZMA" );
 
 		m_nLumpSize = CLZMA::GetActualSize( m_pData );
-		AssertMsg( lump->uncompressedSize == m_nLumpSize,
+		AssertMsg( nLegacyUncompressedSize == (unsigned int)m_nLumpSize,
 		           "Lump header disagrees with lzma header for compressed lump" );
 
 		m_pUncompressedData = (unsigned char *)malloc( m_nLumpSize );
@@ -898,6 +917,11 @@ int CMapLoadHelper::LumpSize()
 int CMapLoadHelper::LumpOffset()
 {
 	return m_nLumpOffset;
+}
+
+int CMapLoadHelper::LumpLegacyOrigin() const
+{
+	return m_nLumpLegacyOrigin;
 }
 
 int	CMapLoadHelper::LumpVersion() const
@@ -997,7 +1021,7 @@ bool Map_CheckForHDR( model_t *pModel, const char *pLoadName )
 			CMapLoadHelper::LumpSize( LUMP_WORLDLIGHTS_HDR ) > 0;
 		//			 Mod_GameLumpSize( GAMELUMP_DETAIL_PROP_LIGHTING_HDR ) > 0  // fixme
 	}
-	if ( s_MapHeader.version >= 20 && CMapLoadHelper::LumpSize( LUMP_LEAF_AMBIENT_LIGHTING_HDR ) == 0 )
+	if ( s_MapVersion >= 20 && CMapLoadHelper::LumpSize( LUMP_LEAF_AMBIENT_LIGHTING_HDR ) == 0 )
 	{
 		// This lump only exists in version 20 and greater, so don't bother checking for it on earlier versions.
 		bHasHDR = false;
@@ -2799,6 +2823,50 @@ bool Mod_LoadGameLump( int lumpId, void *pOutBuffer, int size )
 }
 
 //-----------------------------------------------------------------------------
+// Reports the loaded map's container and reads every game lump back through
+// the dictionary. Legacy VBSP and BSP2 packages of the same map must print the
+// same game lump lines (RFC 0008: rebased dictionary offsets).
+//-----------------------------------------------------------------------------
+CON_COMMAND( map_container_info, "Reports the loaded map's container and game lump checksums" )
+{
+	if ( !g_GameLumpFilename[0] )
+	{
+		ConMsg( "map_container_info: no map loaded\n" );
+		return;
+	}
+
+	FileHandle_t hFile = g_pFileSystem->OpenEx( g_GameLumpFilename, "rb", 0, NULL );
+	if ( hFile == FILESYSTEM_INVALID_HANDLE )
+	{
+		ConMsg( "map_container_info: cannot open %s\n", g_GameLumpFilename );
+		return;
+	}
+	CMapFileByteSource source;
+	mapcontainer::IMapContainer *pContainer = OpenMapContainerForFile( source, hFile, g_GameLumpFilename );
+	if ( pContainer )
+	{
+		ConMsg( "map_container_info: %s kind=%s legacy_version=%d revision=%d lumps=%u\n", g_GameLumpFilename,
+			pContainer->Kind() == mapcontainer::MapContainerKind::Bsp2 ? "bsp2" : "legacy-vbsp",
+			pContainer->LegacyVersion(), pContainer->MapRevision(), pContainer->LumpCount() );
+		mapcontainer::DestroyMapContainer( pContainer );
+	}
+	g_pFileSystem->Close( hFile );
+
+	FOR_EACH_VEC( g_GameLumpDict, i )
+	{
+		const dgamelump_internal_t &entry = g_GameLumpDict[i];
+		CUtlVector< byte > data;
+		data.SetCount( Max( (int)entry.uncompressedSize, 1 ) );
+		const bool bLoaded = Mod_LoadGameLump( entry.id, data.Base(), data.Count() );
+		const CRC32_t crc = bLoaded ? CRC32_ProcessSingleBuffer( data.Base(), entry.uncompressedSize ) : 0;
+		const unsigned int id = (unsigned int)entry.id;
+		ConMsg( "map_container_info: gamelump %c%c%c%c v%u size=%u loaded=%d crc=%08x\n",
+			(char)( id >> 24 ), (char)( id >> 16 ), (char)( id >> 8 ), (char)id, entry.version,
+			entry.uncompressedSize, bLoaded ? 1 : 0, (unsigned int)crc );
+	}
+}
+
+//-----------------------------------------------------------------------------
 // Loads game lump dictionary
 //-----------------------------------------------------------------------------
 void Mod_LoadGameLumpDict( void )
@@ -2826,28 +2894,33 @@ void Mod_LoadGameLumpDict( void )
 		}
 		else
 		{
-			// Load in lumps
+			// Load in lumps. Dictionary offsets are absolute offsets in the
+			// legacy file; validate them against the lump's legacy origin and
+			// rebase them to where the lump is stored in this container.
+			const unsigned int nOrigin = (unsigned int)lh.LumpLegacyOrigin();
 			dgamelump_t* pGameLump = (dgamelump_t*)(pGameLumpHeader + 1);
 			for (int i = 0; i < pGameLumpHeader->lumpCount; ++i )
 			{
 				if ( pGameLump[i].fileofs >= 0 &&
-				     (unsigned int)pGameLump[i].fileofs >= (unsigned int)lh.LumpOffset() &&
-				     (unsigned int)pGameLump[i].fileofs < (unsigned int)lh.LumpOffset() + lhSize &&
+				     (unsigned int)pGameLump[i].fileofs >= nOrigin &&
+				     (unsigned int)pGameLump[i].fileofs < nOrigin + lhSize &&
 				     pGameLump[i].filelen > 0 )
 				{
 					unsigned int compressedSize = 0;
 					if ( i + 1 < pGameLumpHeader->lumpCount &&
 					     pGameLump[i+1].fileofs > pGameLump[i].fileofs &&
 					     pGameLump[i+1].fileofs >= 0 &&
-					     (unsigned int)pGameLump[i+1].fileofs <= (unsigned int)lh.LumpOffset() + lhSize )
+					     (unsigned int)pGameLump[i+1].fileofs <= nOrigin + lhSize )
 					{
 						compressedSize = (unsigned int)pGameLump[i+1].fileofs - (unsigned int)pGameLump[i].fileofs;
 					}
 					else
 					{
-						compressedSize = (unsigned int)lh.LumpOffset() + lhSize - (unsigned int)pGameLump[i].fileofs;
+						compressedSize = nOrigin + lhSize - (unsigned int)pGameLump[i].fileofs;
 					}
-					g_GameLumpDict.AddToTail( { pGameLump[i], compressedSize } );
+					dgamelump_internal_t entry( pGameLump[i], compressedSize );
+					entry.offset = entry.offset - nOrigin + (unsigned int)lh.LumpOffset();
+					g_GameLumpDict.AddToTail( entry );
 				}
 			}
 		}
@@ -5351,14 +5424,17 @@ bool CModelLoader::Map_IsValid( char const *pMapFile, bool bQuiet /* = false */ 
 	mapfile = g_pFileSystem->OpenEx( szMapFile, "rb",  0, "GAME" );
 	if ( mapfile != FILESYSTEM_INVALID_HANDLE )
 	{
-		dheader_t header;
-		memset( &header, 0, sizeof( header ) );
-		g_pFileSystem->Read( &header, sizeof( dheader_t ), mapfile );
+		// Legacy VBSP or BSP2 container (RFC 0008); the container's legacy
+		// version is the one the engine accepts or rejects.
+		CMapFileByteSource source;
+		mapcontainer::IMapContainer *pContainer = OpenMapContainerForFile( source, mapfile, szMapFile, true );
+		const int nVersion = pContainer ? pContainer->LegacyVersion() : 0;
+		mapcontainer::DestroyMapContainer( pContainer );
 		g_pFileSystem->Close( mapfile );
 
-		if ( header.ident == IDBSPHEADER )
+		if ( pContainer )
 		{
-			if ( header.version >= MINBSPVERSION && header.version <= BSPVERSION )
+			if ( nVersion >= MINBSPVERSION && nVersion <= BSPVERSION )
 			{
 				V_strncpy( s_szLastMapFile, szMapFile, sizeof( s_szLastMapFile ) );
 				return true;
@@ -5367,7 +5443,7 @@ bool CModelLoader::Map_IsValid( char const *pMapFile, bool bQuiet /* = false */ 
 			{
 				if ( !bQuiet )
 				{
-					Warning( "CModelLoader::Map_IsValid:  Map '%s' bsp version %i, expecting %i\n", szMapFile, header.version, BSPVERSION );
+					Warning( "CModelLoader::Map_IsValid:  Map '%s' bsp version %i, expecting %i\n", szMapFile, nVersion, BSPVERSION );
 				}
 
 			}

@@ -233,6 +233,9 @@ static float g_psConstants[32][4];
 // What the current pass's shader is, beyond the pipeline it selects: the
 // PortalRefract STAGE combo (-1 for other shaders).
 static int g_CurrentPortalStage = -1;
+// The skin_ps20b static combos of the pass as skin.frag's flags, -1 when the
+// pass is not VertexLitGeneric's $phong path.
+static int g_CurrentSkinCombos = -1;
 // IShaderAPI::CullMode, D3D9's default CCW.
 static MaterialCullMode_t g_DesiredCullMode = MATERIAL_CULLMODE_CCW;
 
@@ -256,6 +259,9 @@ enum
 static LightDesc_t g_LightDescs[kMaxLocalLights];
 static bool g_LightEnabled[kMaxLocalLights] = {};
 static float g_AmbientCube[6][4] = {};
+// SetLightingOrigin: the model's origin, from which the pixel-lit shaders place
+// directional lights (CommitPixelShaderLighting).
+static float g_LightingOrigin[3] = {};
 // The vertex shader's dynamic combo index (SetVertexShaderIndex), which selects
 // vertexlit_and_unlit_generic_vs20's DYNAMIC_LIGHT and STATIC_LIGHT.
 static int g_VertexShaderDynamicIndex = 0;
@@ -316,6 +322,9 @@ static void ReportUnimplementedEntries()
 	    static_cast<unsigned long long>( g_DrawsUnuploaded ),
 	    static_cast<unsigned long long>( g_DrawsUntextured ) );
 
+	fprintf( stderr, "[vulkan] presents=%llu scaled=%llu\n",
+	    static_cast<unsigned long long>( g_VulkanContext.PresentCount() ),
+	    static_cast<unsigned long long>( g_VulkanContext.ScaledPresentCount() ) );
 	fprintf( stderr,
 	    "[vulkan] render targets: draws=%llu switches=%llu copies=%llu copies-dropped=%llu\n",
 	    static_cast<unsigned long long>( g_DrawsIntoTargets ),
@@ -1040,7 +1049,7 @@ public:
 
 	// Render state for the ambient light cube (vertex shaders)
 	void SetVertexShaderStateAmbientLightCube();
-	void SetPixelShaderStateAmbientLightCube( int pshReg, bool bForceToBlack = false ) {}
+	void SetPixelShaderStateAmbientLightCube( int pshReg, bool bForceToBlack = false );
 
 	float GetAmbientLightCubeLuminance( void ) { return 0.0f; }
 
@@ -1383,7 +1392,7 @@ public:
 	virtual bool SupportsStaticPlusDynamicLighting() const { return false; }
 	virtual bool SupportsStreamOffset() const { return false; }
 	void SetDefaultDynamicState() {}
-	virtual void CommitPixelShaderLighting( int pshReg ) {}
+	virtual void CommitPixelShaderLighting( int pshReg );
 
 	// Occlusion queries are CVulkanContext query slots; the handle is the slot
 	// plus one, since 0 is INVALID_SHADERAPI_OCCLUSION_QUERY_HANDLE.
@@ -2654,6 +2663,28 @@ static float Saturate( float x )
 	return x < 0.0f ? 0.0f : ( x > 1.0f ? 1.0f : x );
 }
 
+// common_vs_fxc.h VertexAttenInternal: distance and spot attenuation, 1 for a
+// directional light. Also returns the normalized direction to the light.
+static float VertexAtten(
+    const VertexLightConstants &c, const float worldPos[3], float lightDir[3] = nullptr )
+{
+	float toLight[3] = { c.pos[0] - worldPos[0], c.pos[1] - worldPos[1], c.pos[2] - worldPos[2] };
+	const float distSq =
+	    toLight[0] * toLight[0] + toLight[1] * toLight[1] + toLight[2] * toLight[2];
+	const float ooDist = 1.0f / sqrtf( distSq );
+	float dir[3] = { toLight[0] * ooDist, toLight[1] * ooDist, toLight[2] * ooDist };
+	// dst( distSq, ooDist ) = ( 1, dist, distSq, ooDist ).
+	const float distanceAtten =
+	    1.0f / ( c.atten[0] + c.atten[1] * ( distSq * ooDist ) + c.atten[2] * distSq );
+	const float cosTheta = -( c.dir[0] * dir[0] + c.dir[1] * dir[1] + c.dir[2] * dir[2] );
+	float spotAtten = ( cosTheta - c.spot[2] ) * c.spot[3];
+	spotAtten = Saturate( powf( spotAtten > 0.0001f ? spotAtten : 0.0001f, c.spot[0] ) );
+	const float atten = distanceAtten + ( distanceAtten * spotAtten - distanceAtten ) * c.dir[3];
+	if ( lightDir )
+		memcpy( lightDir, dir, sizeof( dir ) );
+	return atten + ( 1.0f - atten ) * c.color[3];
+}
+
 // common_vs_fxc.h DoLighting for one vertex: the static color (STATIC_LIGHT),
 // then the local lights and the ambient cube (DYNAMIC_LIGHT), in linear light.
 static void ComputeVertexLighting( const float worldPos[3], const float normalIn[3],
@@ -2678,21 +2709,8 @@ static void ComputeVertexLighting( const float worldPos[3], const float normalIn
 	for ( int i = 0; i < lightCount; ++i )
 	{
 		const VertexLightConstants &c = lights[i];
-		float toLight[3] = { c.pos[0] - worldPos[0], c.pos[1] - worldPos[1],
-			c.pos[2] - worldPos[2] };
-		const float distSq =
-		    toLight[0] * toLight[0] + toLight[1] * toLight[1] + toLight[2] * toLight[2];
-		const float ooDist = 1.0f / sqrtf( distSq );
-		float lightDir[3] = { toLight[0] * ooDist, toLight[1] * ooDist, toLight[2] * ooDist };
-		// VertexAttenInternal: dst( distSq, ooDist ) = ( 1, dist, distSq, ooDist ).
-		const float distanceAtten =
-		    1.0f / ( c.atten[0] + c.atten[1] * ( distSq * ooDist ) + c.atten[2] * distSq );
-		const float cosTheta =
-		    -( c.dir[0] * lightDir[0] + c.dir[1] * lightDir[1] + c.dir[2] * lightDir[2] );
-		float spotAtten = ( cosTheta - c.spot[2] ) * c.spot[3];
-		spotAtten = Saturate( powf( spotAtten > 0.0001f ? spotAtten : 0.0001f, c.spot[0] ) );
-		float atten = distanceAtten + ( distanceAtten * spotAtten - distanceAtten ) * c.dir[3];
-		atten = atten + ( 1.0f - atten ) * c.color[3];
+		float lightDir[3];
+		const float atten = VertexAtten( c, worldPos, lightDir );
 		// CosineTermInternal: the direction to a point or spot light, or the
 		// directional light's.
 		for ( int k = 0; k < 3; ++k )
@@ -4150,7 +4168,58 @@ void CommitPortalConstants()
 	c.stage = g_CurrentPortalStage;
 	g_VulkanContext.SetDynamicPortalConstants( c );
 }
+
+// The skin shader's registers for the draw: the pixel constants c0..c31 as
+// skin_dx9_helper.cpp's dynamic state wrote them, and skin_vs20's cViewProj,
+// cBaseTexCoordTransform (SHADER_SPECIFIC_CONST_0/1) and cEyePos. The vertex
+// positions arrive in world space (EmitToNativeQueue).
+void CommitSkinConstants( const CShaderAPIVulkan &api )
+{
+	EnsureMatricesInit();
+	render_vulkan::CVulkanContext::SkinConstants c;
+	memcpy( c.ps, g_psConstants, sizeof( c.ps ) );
+	MatMul( g_matrices.mat[MATERIAL_VIEW], g_matrices.mat[MATERIAL_PROJECTION], c.viewProj );
+	memcpy( c.texXform0, g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_0],
+	    sizeof( c.texXform0 ) );
+	memcpy( c.texXform1, g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_0 + 1],
+	    sizeof( c.texXform1 ) );
+	c.eyePos[3] = 0.0f;
+	api.GetWorldSpaceCameraPosition( c.eyePos );
+	c.combos = g_CurrentSkinCombos;
+	c.numLights = 0;
+	for ( bool enabled : g_LightEnabled )
+		c.numLights += enabled ? 1 : 0;
+	g_VulkanContext.SetDynamicSkinConstants( c );
+}
 } // namespace
+
+// skin_ps20b's static combos (fxctmp9/skin_ps20b.inc) as skin.frag's flags, or
+// -1 when the pixel shader is not skin_ps20b. The combos skin.frag does not
+// implement are reported.
+static int SnapshotSkinCombos( const CShaderShadowVulkan &shadow )
+{
+	if ( V_stricmp( shadow.m_pixelShaderName, "skin_ps20b" ) )
+		return -1;
+	const int index = shadow.m_pixelShaderIndex;
+	const auto combo = [index]( int stride, int count ) { return ( index / stride ) % count != 0; };
+	int flags = 0;
+	flags |= combo( 860160, 2 ) ? 1 : 0;   // FASTPATH_NOBUMP
+	flags |= combo( 1280, 2 ) ? 2 : 0;     // LIGHTWARPTEXTURE
+	flags |= combo( 2560, 2 ) ? 4 : 0;     // PHONGWARPTEXTURE
+	flags |= combo( 160, 2 ) ? 8 : 0;      // SELFILLUM
+	flags |= combo( 320, 2 ) ? 16 : 0;     // SELFILLUMFRESNEL
+	flags |= combo( 143360, 2 ) ? 32 : 0;  // RIMLIGHT
+	flags |= combo( 1720320, 2 ) ? 64 : 0; // BLENDTINTBYBASEALPHA
+	if ( combo( 80, 2 ) )
+		NoteUnimplemented( "skin_ps20b: CUBEMAP (drawn without the environment map)" );
+	if ( combo( 640, 2 ) )
+		NoteUnimplemented( "skin_ps20b: FLASHLIGHT" );
+	if ( combo( 5120, 2 ) )
+		NoteUnimplemented( "skin_ps20b: WRINKLEMAP" );
+	if ( combo( 71680, 2 ) )
+		NoteUnimplemented( "skin_ps20b: DETAILTEXTURE" );
+	return flags;
+}
 
 // Returns the snapshot id for the shader state
 // The name BeginPass routes a snapshot by: its pixel shader, with the static
@@ -4159,6 +4228,9 @@ void CommitPortalConstants()
 // (WriteZ, a depth- or stencil-only BufferClearObeyStencil).
 static std::string SnapshotShaderRoute( const CShaderShadowVulkan &shadow )
 {
+	const int skinCombos = SnapshotSkinCombos( shadow );
+	if ( skinCombos >= 0 )
+		return "skin#" + std::to_string( skinCombos );
 	if ( !V_strnicmp( shadow.m_pixelShaderName, "portal_refract_ps20b", 20 ) )
 		return "portal_refract#" + std::to_string( ( shadow.m_pixelShaderIndex / 4 ) % 3 );
 	if ( !V_strnicmp( shadow.m_pixelShaderName, "portal_refract_ps20", 19 ) )
@@ -4401,7 +4473,54 @@ void CShaderAPIVulkan::SetLight( int lightNum, const LightDesc_t &desc )
 // Sets lighting origin for the current model
 void CShaderAPIVulkan::SetLightingOrigin( Vector vLightingOrigin )
 {
-	VK_UNIMPLEMENTED();
+	g_LightingOrigin[0] = vLightingOrigin.x;
+	g_LightingOrigin[1] = vLightingOrigin.y;
+	g_LightingOrigin[2] = vLightingOrigin.z;
+}
+
+// As CShaderAPIDx8::SetPixelShaderStateAmbientLightCube: the six cube faces
+// into pixel constants pshReg.., black when the shader forces it.
+void CShaderAPIVulkan::SetPixelShaderStateAmbientLightCube( int pshReg, bool bForceToBlack )
+{
+	float cube[6][4] = {};
+	if ( !bForceToBlack )
+		memcpy( cube, g_AmbientCube, sizeof( cube ) );
+	SetPixelShaderConstant( pshReg, cube[0], 6 );
+}
+
+// As CShaderAPIDx8::CommitPixelShaderLighting: the sorted lights' colors and
+// positions into pixel constants pshReg..pshReg+5, the fourth light spread over
+// the w components; a directional light becomes a point 10000 units from the
+// lighting origin, against its direction.
+void CShaderAPIVulkan::CommitPixelShaderLighting( int pshReg )
+{
+	const float kFarAway = 10000.0f;
+	VertexLightConstants lights[kMaxLocalLights];
+	const int count = BuildVertexLightConstants( lights );
+	float state[6][4] = {};
+	auto position = [&]( const VertexLightConstants &c, float out[3] )
+	{
+		for ( int k = 0; k < 3; ++k )
+			out[k] = c.color[3] > 0.5f ? g_LightingOrigin[k] - c.dir[k] * kFarAway : c.pos[k];
+	};
+	for ( int i = 0; i < count && i < 3; ++i )
+	{
+		for ( int k = 0; k < 3; ++k )
+			state[2 * i][k] = lights[i].color[k];
+		position( lights[i], state[2 * i + 1] );
+	}
+	if ( count > 3 )
+	{
+		float pos[3];
+		position( lights[3], pos );
+		state[0][3] = lights[3].color[0];
+		state[1][3] = lights[3].color[1];
+		state[2][3] = lights[3].color[2];
+		state[3][3] = pos[0];
+		state[4][3] = pos[1];
+		state[5][3] = pos[2];
+	}
+	SetPixelShaderConstant( pshReg, state[0], 6 );
 }
 
 void CShaderAPIVulkan::SetAmbientLight( float r, float g, float b )
@@ -4560,7 +4679,14 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 			shader = render_vulkan::CVulkanContext::kDynShaderPortalRefract;
 			g_CurrentPortalStage = atoi( name.c_str() + 15 );
 		}
-		g_SamplesBaseTexture = ( shader == render_vulkan::CVulkanContext::kDynShaderTextured );
+		g_CurrentSkinCombos = -1;
+		if ( !name.compare( 0, 5, "skin#" ) )
+		{
+			shader = render_vulkan::CVulkanContext::kDynShaderSkin;
+			g_CurrentSkinCombos = atoi( name.c_str() + 5 );
+		}
+		g_SamplesBaseTexture = ( shader == render_vulkan::CVulkanContext::kDynShaderTextured ||
+		                         shader == render_vulkan::CVulkanContext::kDynShaderSkin );
 		// Shaders that sample nothing on sampler 0: WriteZ and the quad clears draw
 		// depth, stencil or their vertex color; PortalRefract samples the frame
 		// copy only in stage 0.
@@ -4583,11 +4709,12 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	g_CurrentVertexLit = index < g_snapshotVertexLit.size() ? g_snapshotVertexLit[index]
 	                                                        : VertexLitCombo();
 	g_VulkanContext.SelectDynamicColorSpace( g_CurrentColorFlags );
-	// The lightmap and samplers 1-2 are bound per pass by the shader's dynamic state.
+	// The lightmap and samplers 1..15 are bound per pass by the shader's dynamic
+	// state.
 	g_boundLightmapHandle = -1;
 	g_VulkanContext.BindManagedLightmap( -1 );
-	g_VulkanContext.BindManagedSampler( 1, -1 );
-	g_VulkanContext.BindManagedSampler( 2, -1 );
+	for ( int sampler = 1; sampler < render_vulkan::CVulkanContext::kMaxSamplers; ++sampler )
+		g_VulkanContext.BindManagedSampler( sampler, -1 );
 	// Apply the $alphatest reference this snapshot recorded (< 0 = disabled).
 	if ( index < g_snapshotAlphaRef.size() )
 	{
@@ -4685,13 +4812,15 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		CommitUserClipPlanes();
 		if ( g_CurrentPortalStage >= 0 )
 			CommitPortalConstants();
+		if ( g_CurrentSkinCombos >= 0 )
+			CommitSkinConstants( *this );
 		const bool lightmapped = g_boundLightmapHandle >= 0;
 		// FinalOutput( ..., TONEMAP_SCALE_LINEAR ) also ends PortalRefract's
 		// stage 2 (the flames), its other stages not scaling, and every output of
 		// vertexlit_and_unlit_generic_ps2x (UnlitGeneric and VertexLitGeneric; only
 		// its LIGHTING_PREVIEW outputs do not scale).
-		const bool linearToneScale =
-		    lightmapped || g_CurrentPortalStage == 2 || g_CurrentModulationInPixelC1;
+		const bool linearToneScale = lightmapped || g_CurrentPortalStage == 2 ||
+		                             g_CurrentModulationInPixelC1 || g_CurrentSkinCombos >= 0;
 		g_VulkanContext.SetDynamicOutputScale( linearToneScale ? g_ToneMappingScale.x : 1.0f );
 		if ( !linearToneScale && CurrentHDRType() == HDR_TYPE_INTEGER &&
 		     g_ToneMappingScale.x != 1.0f )
@@ -5073,14 +5202,39 @@ void CShaderAPIVulkan::ExecuteCommandBuffer( uint8 *pCmdBuf )
 		}
 
 		case CBCMD_SETPIXELSHADERFOGPARAMS:
-		case CBCMD_STORE_EYE_POS_IN_PSCONST:
-		case CBCMD_COMMITPIXELSHADERLIGHTING:
-		case CBCMD_SETPIXELSHADERSTATEAMBIENTLIGHTCUBE:
-			// Fog, eye position and lighting constants: the native pipelines do
-			// not consume them yet.
-			NoteUnimplemented( "ExecuteCommandBuffer(fog/eye/lighting constant)" );
+			// Fog constants: the native pipelines do not apply fog yet.
+			NoteUnimplemented( "ExecuteCommandBuffer(fog constant)" );
 			pCmdBuf += 2 * sizeof( int );
 			break;
+
+		case CBCMD_STORE_EYE_POS_IN_PSCONST:
+		{
+			int nReg = 0;
+			ReadCommandField( pCmdBuf, sizeof( int ), &nReg );
+			float eye[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+			GetWorldSpaceCameraPosition( eye );
+			SetPixelShaderConstant( nReg, eye, 1 );
+			pCmdBuf += 2 * sizeof( int );
+			break;
+		}
+
+		case CBCMD_COMMITPIXELSHADERLIGHTING:
+		{
+			int nReg = 0;
+			ReadCommandField( pCmdBuf, sizeof( int ), &nReg );
+			CommitPixelShaderLighting( nReg );
+			pCmdBuf += 2 * sizeof( int );
+			break;
+		}
+
+		case CBCMD_SETPIXELSHADERSTATEAMBIENTLIGHTCUBE:
+		{
+			int nReg = 0;
+			ReadCommandField( pCmdBuf, sizeof( int ), &nReg );
+			SetPixelShaderStateAmbientLightCube( nReg );
+			pCmdBuf += 2 * sizeof( int );
+			break;
+		}
 
 		case CBCMD_SETAMBIENTCUBEDYNAMICSTATEVERTEXSHADER:
 			SetVertexShaderStateAmbientLightCube();
@@ -5355,9 +5509,9 @@ void CShaderAPIVulkan::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t te
 		g_VulkanContext.BindManagedLightmap( native );
 		return;
 	}
-	// Samplers 1 and 2 as ordinary textures, read only by shaders that sample
-	// them so (PortalRefract's noise and color ramp).
-	if ( stage == SHADER_SAMPLER1 || stage == SHADER_SAMPLER2 )
+	// Samplers 1..15 as ordinary textures, read only by shaders that sample
+	// them so (PortalRefract's noise and color ramp, the skin shader's maps).
+	if ( stage != SHADER_SAMPLER0 )
 		g_VulkanContext.BindManagedSampler( static_cast<int>( stage ), native );
 	if ( stage != SHADER_SAMPLER0 )
 		return;
@@ -5844,9 +5998,24 @@ ShaderAPITextureHandle_t CShaderAPIVulkan::CreateDepthTexture(
 	return 0;
 }
 
+// Deleting a texture frees its native image once the GPU is done with it
+// (CVulkanContext::DestroyManagedTexture). The material system deletes and
+// recreates its render targets whenever the back buffer changes size, so this
+// must not leak.
 void CShaderAPIVulkan::DeleteTexture( ShaderAPITextureHandle_t textureHandle )
 {
-	VK_UNIMPLEMENTED();
+	const int handle = static_cast<int>( textureHandle ) - 1;
+	if ( handle < 0 )
+		return;
+	g_VulkanContext.DestroyManagedTexture( handle );
+	if ( static_cast<size_t>( handle ) < g_TextureRecords.size() )
+		g_TextureRecords[static_cast<size_t>( handle )] = TextureRecord();
+	if ( g_boundTextureHandle == handle )
+		g_boundTextureHandle = -1;
+	if ( g_boundLightmapHandle == handle )
+		g_boundLightmapHandle = -1;
+	if ( g_currentModifyTexture == textureHandle )
+		g_currentModifyTexture = 0;
 }
 
 bool CShaderAPIVulkan::IsTexture( ShaderAPITextureHandle_t textureHandle )
@@ -6190,10 +6359,16 @@ double CShaderAPIVulkan::CurrentTime() const
 	return Sys_FloatTime();
 }
 
-// Get the current camera position in world space.
+// Get the current camera position in world space: as
+// CShaderAPIDx8::CacheWorldSpaceCameraPosition, from the view matrix (stored as
+// D3D9 holds it, rows for row vectors).
 void CShaderAPIVulkan::GetWorldSpaceCameraPosition( float *pPos ) const
 {
-	VK_UNIMPLEMENTED();
+	EnsureMatricesInit();
+	const float *view = g_matrices.mat[MATERIAL_VIEW];
+	for ( int i = 0; i < 3; ++i )
+		pPos[i] = -( view[12] * view[i * 4] + view[13] * view[i * 4 + 1] +
+		             view[14] * view[i * 4 + 2] );
 }
 
 void CShaderAPIVulkan::ForceHardwareSync( void )

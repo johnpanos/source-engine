@@ -43,7 +43,7 @@
 #ifndef MAPCONTAINER_MAP_CONTAINER_FORMAT_H
 #define MAPCONTAINER_MAP_CONTAINER_FORMAT_H
 
-#include <stdint.h>
+#include <cstdint>
 
 namespace mapcontainer
 {
@@ -58,7 +58,7 @@ inline uint32_t MakeFourCC( char a, char b, char c, char d )
 inline uint32_t LegacyLumpFourCC( int nLegacyIndex )
 {
 	return MakeFourCC( 'L', (char)( '0' + ( nLegacyIndex / 100 ) % 10 ),
-	                   (char)( '0' + ( nLegacyIndex / 10 ) % 10 ), (char)( '0' + nLegacyIndex % 10 ) );
+	    (char)( '0' + ( nLegacyIndex / 10 ) % 10 ), (char)( '0' + nLegacyIndex % 10 ) );
 }
 
 static const uint8_t kBsp2Magic[8] = { 'S', 'R', 'C', 'B', 'S', 'P', '2', 0x1A };

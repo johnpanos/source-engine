@@ -935,6 +935,71 @@ static void TestPhyFixture( PhyFixture_t &fixture, int fixtureIndex )
 		V_snprintf( key, sizeof( key ), "vcollide.%d.%d.player-hull-x", fixtureIndex, s );
 		ObsFloats( key, "a0.75", 1, &tr.endpos.x );
 	}
+
+	// Every solid as the game creates it (authored solid block: mass,
+	// inertia scale, damping, surface property), dropped onto the floor:
+	// its inertia follows the model, and it stays finite and comes to rest.
+	if ( fixture.loaded && vc.pKeyValues )
+	{
+		World_t world;
+		CreateWorld( world, NULL );
+		CUtlVector<IPhysicsObject *> objects;
+		objects.SetCount( vc.solidCount );
+		for ( int i = 0; i < vc.solidCount; i++ )
+			objects[i] = NULL;
+		IVPhysicsKeyParser *pParser = s_pCollision->VPhysicsKeyParserCreate( vc.pKeyValues );
+		while ( pParser && !pParser->Finished() )
+		{
+			if ( V_stricmp( pParser->GetCurrentBlockName(), "solid" ) )
+			{
+				pParser->SkipBlock();
+				continue;
+			}
+			solid_t solid;
+			memset( &solid, 0, sizeof( solid ) );
+			pParser->ParseSolid( &solid, NULL );
+			if ( solid.index < 0 || solid.index >= vc.solidCount || objects[solid.index] )
+				continue;
+			objectparams_t params = DefaultParams( solid.params.mass > 0 ? solid.params.mass : 1.0f, NULL );
+			params.inertia = solid.params.inertia > 0 ? solid.params.inertia : 1.0f;
+			params.damping = solid.params.damping;
+			params.rotdamping = solid.params.rotdamping;
+			params.volume = solid.params.volume;
+			int material = s_pProps->GetSurfaceIndex( solid.surfaceprop );
+			objects[solid.index] = world.pEnv->CreatePolyObject( vc.solids[solid.index], material >= 0 ? material : 0,
+				Vector( ( solid.index % 6 ) * 150.0f - 375.0f, ( solid.index / 6 ) * 150.0f - 225.0f, 200 ), QAngle( 10, 20, 5 ), &params );
+			if ( objects[solid.index] )
+				objects[solid.index]->Wake();
+		}
+		if ( pParser )
+			s_pCollision->VPhysicsKeyParserDestroy( pParser );
+
+		for ( int i = 0; i < vc.solidCount; i++ )
+		{
+			if ( !objects[i] )
+				continue;
+			V_snprintf( key, sizeof( key ), "vcollide.%d.%d.object-inertia", fixtureIndex, i );
+			ObsVector( key, "r0.1", objects[i]->GetInertia() );
+		}
+		Step( world.pEnv, 5.0f );
+		bool finite = true, rested = true;
+		int created = 0;
+		for ( int i = 0; i < vc.solidCount; i++ )
+		{
+			if ( !objects[i] )
+				continue;
+			created++;
+			Vector position = PositionOf( objects[i] );
+			finite &= IsFiniteVec( position ) && IsFiniteVec( VelocityOf( objects[i] ) );
+			// Loose ragdoll limbs may still roll; single models must settle.
+			bool restedHere = position.z > -1.0f && position.z < 150.0f &&
+				( vc.solidCount > 1 || VelocityOf( objects[i] ).Length() < 20.0f );
+			rested &= restedHere;
+		}
+		Check( TIER_GAMEPLAY, "vcollide.model-simulates", created == vc.solidCount && finite && rested,
+			"%s created %d finite %d rested %d", fixture.pPath, created, finite, rested );
+		DestroyWorld( world );
+	}
 	free( pData );
 }
 
@@ -1591,6 +1656,8 @@ int main( int argc, char **argv )
 		TestSimulation();
 		TestConstraints();
 		TestObjectsAndEvents();
+		TestFluidsAndSprings();
+		TestSaveRestore();
 		for ( int i = 0; i < fixtures.Count(); i++ )
 		{
 			if ( fixtures[i].collide.solids )

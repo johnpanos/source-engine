@@ -9,6 +9,7 @@
 #include "bspfile.h"
 #include "filesystem.h"
 #include "filesystem_engine.h"
+#include "map_container_file.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -137,159 +138,92 @@ bool CRC_MapFile(unsigned short *crcvalue, char *pszFileName)
   //FIXME make this work
  ==================
  */
-bool CRC_MapFile(CRC32_t *crcvalue, const char *pszFileName)
+// Feeds every lump except the entity lump, in legacy lump order, to pfnChunk.
+// Lumps are located through the map container (RFC 0008), so a BSP2 map
+// checksums identically to the legacy VBSP file it carries.
+typedef void ( *MapChecksumChunkFn )( void *pContext, const void *pData, int nSize );
+
+static bool ChecksumMapLumps( const char *pszFileName, MapChecksumChunkFn pfnChunk, void *pContext )
 {
 	FileHandle_t fp;
-	byte chunk[1024];
-	int i, l;
-	int nBytesRead;
-	dheader_t	header;
-	int nSize;
-	lump_t *curLump;
-	long startOfs;
-
-	nSize = COM_OpenFile(pszFileName, &fp);
+	int nSize = COM_OpenFile( pszFileName, &fp );
 	if ( !fp || ( nSize == -1 ) )
 		return false;
 
-	startOfs = g_pFileSystem->Tell(fp);
-
-	// Don't CRC the header.
-	if (g_pFileSystem->Read(&header, sizeof(dheader_t), fp) == 0)
+	CMapFileByteSource source;
+	mapcontainer::IMapContainer *pContainer = OpenMapContainerForFile( source, fp, pszFileName, true );
+	if ( !pContainer )
 	{
-		ConMsg("Could not read BSP header for map [%s].\n", pszFileName);
-		g_pFileSystem->Close(fp);
+		ConMsg( "Could not read BSP header for map [%s].\n", pszFileName );
+		g_pFileSystem->Close( fp );
 		return false;
 	}
 
-	i = header.version;
-	if ( i < MINBSPVERSION || i > BSPVERSION )
+	const int nVersion = pContainer->LegacyVersion();
+	if ( nVersion < MINBSPVERSION || nVersion > BSPVERSION )
 	{
-		g_pFileSystem->Close(fp);
-		ConMsg("Map [%s] has incorrect BSP version (%i should be %i).\n", pszFileName, i, BSPVERSION);
+		mapcontainer::DestroyMapContainer( pContainer );
+		g_pFileSystem->Close( fp );
+		ConMsg( "Map [%s] has incorrect BSP version (%i should be %i).\n", pszFileName, nVersion, BSPVERSION );
 		return false;
 	}
 
-	
-
-	// CRC across all lumps except for the Entities lump
-	for (l = 0; l < HEADER_LUMPS; l++)
+	bool bOk = true;
+	byte chunk[1024];
+	for ( int l = 0; bOk && l < HEADER_LUMPS; l++ )
 	{
-		if (l == LUMP_ENTITIES)
+		if ( l == LUMP_ENTITIES )
 			continue;
 
-		curLump = &header.lumps[l];
-		nSize = curLump->filelen;
+		mapcontainer::MapLumpInfo info;
+		if ( !pContainer->FindLegacyLump( l, &info ) )
+			continue;
 
-		g_pFileSystem->Seek( fp, startOfs + curLump->fileofs, FILESYSTEM_SEEK_HEAD );
-
-		// Now read in 1K chunks
-		while (nSize > 0)
+		uint64_t offset = info.offset;
+		uint64_t remaining = info.storedSize;
+		while ( remaining > 0 )
 		{
-			if (nSize > 1024)
-				nBytesRead = g_pFileSystem->Read(chunk, 1024, fp);
-			else
-				nBytesRead = g_pFileSystem->Read(chunk, nSize, fp);
-
-			// If any data was received, CRC it.
-			if (nBytesRead > 0)
-			{
-				nSize -= nBytesRead;
-				CRC32_ProcessBuffer(crcvalue, chunk, nBytesRead);
-			}
-
+			const int nChunk = remaining > sizeof( chunk ) ? (int)sizeof( chunk ) : (int)remaining;
 			// If there was a disk error, indicate failure.
-			if ( !g_pFileSystem->IsOk(fp) )
+			if ( !source.ReadAt( offset, chunk, nChunk ) )
 			{
-				if ( fp )
-					g_pFileSystem->Close(fp);
-				return false;
+				bOk = false;
+				break;
 			}
-		}	
+			pfnChunk( pContext, chunk, nChunk );
+			offset += nChunk;
+			remaining -= nChunk;
+		}
 	}
-	
-	if ( fp )
-		g_pFileSystem->Close(fp);
-	return true;
+
+	mapcontainer::DestroyMapContainer( pContainer );
+	g_pFileSystem->Close( fp );
+	return bOk;
+}
+
+static void CRC_MapChunk( void *pContext, const void *pData, int nSize )
+{
+	CRC32_ProcessBuffer( (CRC32_t *)pContext, pData, nSize );
+}
+
+static void MD5_MapChunk( void *pContext, const void *pData, int nSize )
+{
+	MD5Update( (MD5Context_t *)pContext, (const unsigned char *)pData, nSize );
+}
+
+bool CRC_MapFile(CRC32_t *crcvalue, const char *pszFileName)
+{
+	return ChecksumMapLumps( pszFileName, CRC_MapChunk, crcvalue );
 }
 
 bool MD5_MapFile(MD5Value_t *md5value, const char *pszFileName)
 {
-	FileHandle_t fp;
-	byte chunk[1024];
-	int i, l;
-	int nBytesRead;
-	dheader_t	header;
-	int nSize;
-	lump_t *curLump;
-	long startOfs;
-
-	nSize = COM_OpenFile(pszFileName, &fp);
-	if ( !fp || ( nSize == -1 ) )
-		return false;
-
 	MD5Context_t ctx;
 	V_memset( &ctx, 0, sizeof(MD5Context_t) );
 	MD5Init( &ctx );
 
-	startOfs = g_pFileSystem->Tell(fp);
-
-	// Don't MD5 the header.
-	if (g_pFileSystem->Read(&header, sizeof(dheader_t), fp) == 0)
-	{
-		ConMsg("Could not read BSP header for map [%s].\n", pszFileName);
-		g_pFileSystem->Close(fp);
+	if ( !ChecksumMapLumps( pszFileName, MD5_MapChunk, &ctx ) )
 		return false;
-	}
-
-	i = header.version;
-	if ( i < MINBSPVERSION || i > BSPVERSION )
-	{
-		g_pFileSystem->Close(fp);
-		ConMsg("Map [%s] has incorrect BSP version (%i should be %i).\n", pszFileName, i, BSPVERSION);
-		return false;
-	}
-
-	
-
-	// MD5 across all lumps except for the Entities lump
-	for (l = 0; l < HEADER_LUMPS; l++)
-	{
-		if (l == LUMP_ENTITIES)
-			continue;
-
-		curLump = &header.lumps[l];
-		nSize = curLump->filelen;
-
-		g_pFileSystem->Seek( fp, startOfs + curLump->fileofs, FILESYSTEM_SEEK_HEAD );
-
-		// Now read in 1K chunks
-		while (nSize > 0)
-		{
-			if (nSize > 1024)
-				nBytesRead = g_pFileSystem->Read(chunk, 1024, fp);
-			else
-				nBytesRead = g_pFileSystem->Read(chunk, nSize, fp);
-
-			// If any data was received, CRC it.
-			if (nBytesRead > 0)
-			{
-				nSize -= nBytesRead;
-				MD5Update( &ctx, chunk, nBytesRead );
-			}
-
-			// If there was a disk error, indicate failure.
-			if ( !g_pFileSystem->IsOk(fp) )
-			{
-				if ( fp )
-					g_pFileSystem->Close(fp);
-				return false;
-			}
-		}	
-	}
-
-	if ( fp )
-		g_pFileSystem->Close(fp);
 
 	MD5Final( md5value->bits, &ctx );
 

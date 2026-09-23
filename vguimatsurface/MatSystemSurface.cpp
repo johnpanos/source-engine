@@ -760,6 +760,8 @@ void CMatSystemSurface::FinishDrawing( void )
 //-----------------------------------------------------------------------------
 void CMatSystemSurface::RunFrame()
 {
+	RunPendingFontReset();
+
 	int nPollCount = g_pInputSystem->GetPollCount();
 	if ( m_nLastInputPollCount == nPollCount )
 		return;
@@ -2571,15 +2573,35 @@ void CMatSystemSurface::OnScreenSizeChanged( int nOldWidth, int nOldHeight )
 	// update the root panel size
 	ipanel()->SetSize(m_pEmbeddedPanel, iNewWidth, iNewHeight);
 
+	// Reloading the fonts at their new proportional sizes re-rasterizes every
+	// scheme font (well over 100 ms). A window being dragged changes size every
+	// frame, so the reload waits until the size has held still for a moment;
+	// until then text keeps its current glyphs while the layout already follows.
+	// Armed first, so the GUI frame below postpones a reload already due.
+	m_bFontResetPending = true;
+	m_flFontResetTime = Plat_FloatTime() + kFontResetSettleSeconds;
+
 	// notify every panel
 	VPANEL panel = GetEmbeddedPanel();
 	ivgui()->PostMessage(panel, new KeyValues("OnScreenSizeChanged", "oldwide", nOldWidth, "oldtall", nOldHeight), NULL);
 
 	// Run a frame of the GUI to notify all subwindows of the message size change
 	ivgui()->RunFrame();
+}
 
-	// clear font texture cache
+// Runs the font reload OnScreenSizeChanged deferred, once the screen size has
+// settled, and lays the panels out again with the new font metrics.
+void CMatSystemSurface::RunPendingFontReset()
+{
+	if ( !m_bFontResetPending || Plat_FloatTime() < m_flFontResetTime )
+		return;
+	m_bFontResetPending = false;
 	ResetFontCaches();
+	int wide, tall;
+	GetScreenSize( wide, tall );
+	ivgui()->PostMessage( GetEmbeddedPanel(),
+	    new KeyValues( "OnScreenSizeChanged", "oldwide", wide, "oldtall", tall ), NULL );
+	ivgui()->RunFrame();
 }
 
 // Causes fonts to get reloaded, etc.
@@ -2593,6 +2615,7 @@ void CMatSystemSurface::ResetFontCaches()
 	m_iBoundTexture = -1;
 
 	// reload fonts
+	m_bFontResetPending = false;
 	FontManager().ClearAllFonts();
 	scheme()->ReloadFonts();
 	

@@ -42,8 +42,6 @@
 namespace
 {
 
-// The base texture's color (sRGB bytes), decoded by the material's sRGB read.
-const unsigned char kBaseColor[3] = { 190, 150, 110 };
 // The quads' depth in clip space (identity transforms).
 const float kQuadZ = 0.5f;
 // Each quad covers its grid cell minus this margin (in clip-space units).
@@ -83,10 +81,23 @@ enum ModelPlacement
 	kSkinned
 };
 
+// The materials the cases draw with (kMaterials).
+enum ModelMaterial
+{
+	kLambert,
+	kHalfLambert,
+	kPhong,
+	kPhongLightWarp,
+	kPhongSelfIllum,
+	kPhongConstant,
+	kPhongBaseAlphaMask,
+	kMaterialCount
+};
+
 struct ModelLightCase
 {
 	const char *name;
-	bool halfLambert;
+	ModelMaterial material;
 	float cube[6][3]; // +x, -x, +y, -y, +z, -z
 	int numLights;
 	ModelLight lights[4];
@@ -118,34 +129,34 @@ const ModelLight kSpot = { MATERIAL_LIGHT_SPOT, { 1.1f, 0.9f, 1.3f }, { 0.25f, -
 
 const ModelLightCase kCases[] = {
     { "ambient_cube",
-        false,
+        kLambert,
         { { 0.6f, 0.08f, 0.05f }, { 0.07f, 0.5f, 0.06f }, { 0.05f, 0.08f, 0.55f },
             { 0.4f, 0.35f, 0.04f }, { 0.05f, 0.4f, 0.45f }, { 0.3f, 0.12f, 0.45f } },
         0,
         {},
         false },
-    { "directional", false, {}, 1, { kDirectional }, false },
-    { "point", false, {}, 1, { kPoint }, false },
-    { "spot", false, {}, 1, { kSpot }, false },
+    { "directional", kLambert, {}, 1, { kDirectional }, false },
+    { "point", kLambert, {}, 1, { kPoint }, false },
+    { "spot", kLambert, {}, 1, { kSpot }, false },
     { "four_lights",
-        false,
+        kLambert,
         { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
             { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
         4,
         { kSpot, kDirectional, kPoint, kDirectional2 },
         false },
-    { "half_lambert", true, {}, 1, { kDirectional }, false },
-    { "static_vertex", false, {}, 0, {}, true },
+    { "half_lambert", kHalfLambert, {}, 1, { kDirectional }, false },
+    { "static_vertex", kLambert, {}, 0, {}, true },
     { "static_and_dynamic",
-        false,
+        kLambert,
         { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
             { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
         1,
         { kDirectional2 },
         true },
-    { "no_light", false, {}, 0, {}, false },
+    { "no_light", kLambert, {}, 0, {}, false },
     { "model_transform",
-        false,
+        kLambert,
         { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
             { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
         2,
@@ -153,13 +164,105 @@ const ModelLightCase kCases[] = {
         false,
         kRigid },
     { "skinned",
-        false,
+        kLambert,
         { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
             { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
         2,
         { kDirectional, kPoint },
         false,
         kSkinned },
+    // VertexLitGeneric with $phong: skin_vs20 / skin_ps20b, lit per pixel.
+    { "phong", kPhong, { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
+        { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
+        2, { kDirectional, kPoint }, false },
+    { "phong_four_lights", kPhong, {}, 4, { kSpot, kDirectional, kPoint, kDirectional2 }, false },
+    { "phong_lightwarp", kPhongLightWarp, {}, 2, { kDirectional, kPoint }, false },
+    { "phong_selfillum", kPhongSelfIllum, {}, 2, { kDirectional, kPoint }, false },
+    // No rim-light case: the shipped skin_ps20b.vcs has no RIMLIGHT combo for
+    // ps_2_b (D3D9 draws those materials without a pixel shader), and Portal's
+    // content has no $rimlight material.
+    { "phong_constant", kPhongConstant, { { 0.2f, 0.1f, 0.05f }, { 0.05f, 0.2f, 0.1f },
+        { 0.1f, 0.05f, 0.2f }, { 0.15f, 0.15f, 0.05f }, { 0.05f, 0.15f, 0.15f },
+        { 0.15f, 0.05f, 0.15f } },
+        2, { kDirectional, kPoint }, false },
+    { "phong_basealphamask", kPhongBaseAlphaMask, {}, 2, { kDirectional, kPoint }, false },
+    { "phong_skinned", kPhong, {}, 2, { kDirectional, kPoint }, false, kSkinned },
+};
+
+// Procedural textures (sRGB-encoded where the material reads them as sRGB).
+struct ProceduralTexture
+{
+	const char *name;
+	int width;
+	int height;
+	unsigned char rgba[4];  // a solid texel, or with ramp: the value at x = 0
+	bool ramp;              // a lightwarp ramp across x (LightWarpTexel)
+};
+const ProceduralTexture kTextures[] = {
+    { "conformance/modellight_base", 4, 4, { 190, 150, 110, 255 }, false },
+    // Alpha is the $selfillum mask.
+    { "conformance/modellight_base_masked", 4, 4, { 190, 150, 110, 160 }, false },
+    // Tangent-space normal ( 0.24, -0.144, 0.96 ), specular mask in alpha.
+    { "conformance/modellight_normal", 4, 4, { 158, 109, 250, 200 }, false },
+    // $phongexponenttexture: r exponent (1 + 149 r), g albedo tint, a rim mask.
+    { "conformance/modellight_exponent", 4, 4, { 60, 100, 0, 180 }, false },
+    { "conformance/modellight_lightwarp", 32, 1, { 0, 0, 0, 255 }, true },
+};
+const int kTextureCount = sizeof( kTextures ) / sizeof( kTextures[0] );
+
+// The lightwarp texel at x of 32: distinct curves per channel, so a sample at
+// the wrong coordinate or channel shows.
+void LightWarpTexel( int x, unsigned char rgba[4] )
+{
+	const float t = x / 31.0f;
+	rgba[0] = static_cast<unsigned char>( 255.0f * powf( t, 0.7f ) + 0.5f );
+	rgba[1] = static_cast<unsigned char>( 255.0f * t + 0.5f );
+	rgba[2] = static_cast<unsigned char>( 255.0f * t * t + 0.5f );
+	rgba[3] = 255;
+}
+
+// The materials, as "$key" "value" pairs after VertexLitGeneric's $model 1.
+struct MaterialVariant
+{
+	const char *name;
+	const char *params[12][2];
+};
+const MaterialVariant kMaterials[kMaterialCount] = {
+    { "conformance/modellight", { { "$basetexture", "conformance/modellight_base" } } },
+    { "conformance/modellight_halflambert",
+        { { "$basetexture", "conformance/modellight_base" }, { "$halflambert", "1" } } },
+    { "conformance/modellight_phong",
+        { { "$basetexture", "conformance/modellight_base" },
+            { "$bumpmap", "conformance/modellight_normal" }, { "$phong", "1" },
+            { "$phongexponenttexture", "conformance/modellight_exponent" },
+            { "$phongboost", "2" }, { "$phongfresnelranges", "[0.2 0.6 1]" } } },
+    { "conformance/modellight_phong_lightwarp",
+        { { "$basetexture", "conformance/modellight_base" },
+            { "$bumpmap", "conformance/modellight_normal" }, { "$phong", "1" },
+            { "$phongexponenttexture", "conformance/modellight_exponent" },
+            { "$phongboost", "2" }, { "$phongfresnelranges", "[0.2 0.6 1]" },
+            { "$lightwarptexture", "conformance/modellight_lightwarp" } } },
+    { "conformance/modellight_phong_selfillum",
+        { { "$basetexture", "conformance/modellight_base_masked" },
+            { "$bumpmap", "conformance/modellight_normal" }, { "$phong", "1" },
+            { "$phongexponenttexture", "conformance/modellight_exponent" },
+            { "$phongboost", "2" }, { "$selfillum", "1" },
+            { "$selfillumtint", "[0.9 0.6 0.3]" } } },
+    // A constant exponent and tint override the exponent map's.
+    { "conformance/modellight_phong_constant",
+        { { "$basetexture", "conformance/modellight_base" },
+            { "$bumpmap", "conformance/modellight_normal" }, { "$phong", "1" },
+            { "$phongexponenttexture", "conformance/modellight_exponent" },
+            { "$phongexponent", "24" }, { "$phongtint", "[1 0.5 0.25]" },
+            { "$phongboost", "1.5" }, { "$phongfresnelranges", "[0.5 0.75 1]" } } },
+    // The phong mask in the base alpha, the normal map's normal ignored. (Without
+    // a bump map this is FASTPATH_NOBUMP, which the shipped skin_ps20b.vcs lacks.)
+    { "conformance/modellight_phong_basealphamask",
+        { { "$basetexture", "conformance/modellight_base_masked" },
+            { "$bumpmap", "conformance/modellight_normal" }, { "$phong", "1" },
+            { "$phongexponenttexture", "conformance/modellight_exponent" },
+            { "$basemapalphaphongmask", "1" }, { "$phongboost", "2" },
+            { "$phongfresnelranges", "[0.2 0.6 1]" } } },
 };
 
 // The static-prop color of a quad's corner (sRGB-like bytes, as vrad bakes them
@@ -185,9 +288,11 @@ void QuadCorners( int quad, float corners[4][2] )
 	memcpy( corners, c, sizeof( c ) );
 }
 
-class CBaseColorRegenerator : public ITextureRegenerator
+class CProceduralRegenerator : public ITextureRegenerator
 {
 public:
+	const ProceduralTexture *m_pSpec = nullptr;
+
 	void RegenerateTextureBits( ITexture *pTexture, IVTFTexture *pVTF, Rect_t *pRect ) override
 	{
 		// The backend picks the storage format, so write through the pixel writer.
@@ -202,12 +307,35 @@ public:
 			{
 				writer.Seek( 0, y );
 				for ( int x = 0; x < width; ++x )
-					writer.WritePixel( kBaseColor[0], kBaseColor[1], kBaseColor[2], 255 );
+				{
+					unsigned char rgba[4];
+					if ( m_pSpec->ramp )
+						LightWarpTexel( x, rgba );
+					else
+						memcpy( rgba, m_pSpec->rgba, sizeof( rgba ) );
+					writer.WritePixel( rgba[0], rgba[1], rgba[2], rgba[3] );
+				}
 			}
 		}
 	}
 	void Release() override {}
 };
+
+// A quad's tangent S, perpendicular to its normal; the binormal sign alternates
+// between quads (it is the vertex's TANGENT w).
+void QuadTangent( int quad, float tangent[4] )
+{
+	const float *n = kQuadNormals[quad];
+	const float helper[3] = { 0.0f, fabsf( n[1] ) > 0.9f ? 0.0f : 1.0f,
+		fabsf( n[1] ) > 0.9f ? 1.0f : 0.0f };
+	// cross( helper, n )
+	float t[3] = { helper[1] * n[2] - helper[2] * n[1], helper[2] * n[0] - helper[0] * n[2],
+		helper[0] * n[1] - helper[1] * n[0] };
+	const float length = sqrtf( t[0] * t[0] + t[1] * t[1] + t[2] * t[2] );
+	for ( int k = 0; k < 3; ++k )
+		tangent[k] = t[k] / length;
+	tangent[3] = ( quad % 2 ) ? -1.0f : 1.0f;
+}
 
 class CModelLightScene
 {
@@ -223,44 +351,49 @@ public:
 private:
 	void ApplyLighting( const ModelLightCase &c );
 
-	ITexture *m_pBase = nullptr;
-	IMaterial *m_pMaterials[2] = { nullptr, nullptr }; // Lambert, half-Lambert
-	IMesh *m_pMesh[2] = { nullptr, nullptr };
+	ITexture *m_pTextures[kTextureCount] = {};
+	IMaterial *m_pMaterials[kMaterialCount] = {};
+	IMesh *m_pMesh[kMaterialCount] = {};
 	IMesh *m_pColorMesh = nullptr;
 };
 
 bool CModelLightScene::Init()
 {
 	g_pMaterialSystem->GetBackBufferDimensions( m_Width, m_Height );
-	m_pBase = g_pMaterialSystem->CreateProceduralTexture( "conformance/modellight_base",
-	    TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888,
-	    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL |
-	        TEXTUREFLAGS_SINGLECOPY );
-	if ( !m_pBase )
-		return false;
-	// The texture lives until the material system shuts down, and calls its
-	// regenerator then, so the regenerator outlives this scene.
-	static CBaseColorRegenerator s_Regenerator;
-	m_pBase->SetTextureRegenerator( &s_Regenerator );
-	m_pBase->Download();
+	// The textures live until the material system shuts down, and call their
+	// regenerators then, so the regenerators outlive this scene.
+	static CProceduralRegenerator s_Regenerators[kTextureCount];
+	for ( int t = 0; t < kTextureCount; ++t )
+	{
+		const ProceduralTexture &spec = kTextures[t];
+		m_pTextures[t] = g_pMaterialSystem->CreateProceduralTexture( spec.name,
+		    TEXTURE_GROUP_OTHER, spec.width, spec.height, IMAGE_FORMAT_RGBA8888,
+		    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL |
+		        TEXTUREFLAGS_SINGLECOPY | TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT );
+		if ( !m_pTextures[t] )
+			return false;
+		s_Regenerators[t].m_pSpec = &spec;
+		m_pTextures[t]->SetTextureRegenerator( &s_Regenerators[t] );
+		m_pTextures[t]->Download();
+	}
 
-	for ( int m = 0; m < 2; ++m )
+	for ( int m = 0; m < kMaterialCount; ++m )
 	{
 		KeyValues *pKeys = new KeyValues( "VertexLitGeneric" );
-		pKeys->SetString( "$basetexture", "conformance/modellight_base" );
 		pKeys->SetInt( "$model", 1 );
-		if ( m == 1 )
-			pKeys->SetInt( "$halflambert", 1 );
-		m_pMaterials[m] = g_pMaterialSystem->CreateMaterial(
-		    m ? "conformance/modellight_halflambert" : "conformance/modellight", pKeys );
+		for ( const auto &param : kMaterials[m].params )
+		{
+			if ( param[0] )
+				pKeys->SetString( param[0], param[1] );
+		}
+		m_pMaterials[m] = g_pMaterialSystem->CreateMaterial( kMaterials[m].name, pKeys );
 		if ( !m_pMaterials[m] || m_pMaterials[m]->IsErrorMaterial() )
 			return false;
 		m_pMaterials[m]->IncrementReferenceCount();
 	}
 	g_pMaterialSystem->CacheUsedMaterials();
-
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
-	for ( int m = 0; m < 2; ++m )
+	for ( int m = 0; m < kMaterialCount; ++m )
 	{
 		if ( m_pMaterials[m]->GetVertexFormat() == 0 )
 		{
@@ -282,6 +415,8 @@ bool CModelLightScene::Init()
 		{
 			float corners[4][2];
 			QuadCorners( q, corners );
+			float tangent[4];
+			QuadTangent( q, tangent );
 			const float uv[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
 			for ( int v = 0; v < 4; ++v )
 			{
@@ -289,6 +424,7 @@ bool CModelLightScene::Init()
 				meshBuilder.Normal3fv( kQuadNormals[q] );
 				meshBuilder.Color4ub( 255, 255, 255, 255 );
 				meshBuilder.TexCoord2f( 0, uv[v][0], uv[v][1] );
+				meshBuilder.UserData( tangent );
 				meshBuilder.BoneWeight( 0, kSkinWeights[0] );
 				meshBuilder.BoneWeight( 1, kSkinWeights[1] );
 				for ( int b = 0; b < 3; ++b )
@@ -331,7 +467,7 @@ bool CModelLightScene::Init()
 void CModelLightScene::Shutdown()
 {
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
-	for ( int m = 0; m < 2; ++m )
+	for ( int m = 0; m < kMaterialCount; ++m )
 	{
 		if ( m_pMesh[m] )
 			pRenderContext->DestroyStaticMesh( m_pMesh[m] );
@@ -351,6 +487,9 @@ void CModelLightScene::ApplyLighting( const ModelLightCase &c )
 	for ( int f = 0; f < 6; ++f )
 		cube[f].Init( c.cube[f][0], c.cube[f][1], c.cube[f][2], 0.0f );
 	pRenderContext->SetAmbientLightCube( cube );
+	// studiorender lights a model about its origin; the per-pixel shaders place
+	// directional lights far from it along their direction.
+	pRenderContext->SetLightingOrigin( Vector( 0.0f, 0.0f, kQuadZ ) );
 	pRenderContext->DisableAllLocalLights();
 	for ( int i = 0; i < c.numLights; ++i )
 	{
@@ -380,7 +519,7 @@ void CModelLightScene::ApplyLighting( const ModelLightCase &c )
 bool CModelLightScene::RenderCase(
     const ModelLightCase &c, FILE *out, const char *framePath, bool first )
 {
-	const int m = c.halfLambert ? 1 : 0;
+	const int m = c.material;
 	std::vector<unsigned char> rgba( static_cast<size_t>( m_Width ) * m_Height * 4 );
 	g_pMaterialSystem->BeginFrame( 0 );
 	{
@@ -429,8 +568,9 @@ bool CModelLightScene::RenderCase(
 		fwrite( &rgba[i], 1, 3, frame );
 	fclose( frame );
 
-	fprintf( out, "%s{\"name\":\"%s\",\"half_lambert\":%s,\"static_color\":%s,",
-	    first ? "" : ",", c.name, c.halfLambert ? "true" : "false",
+	fprintf( out, "%s{\"name\":\"%s\",\"material\":\"%s\",\"half_lambert\":%s,"
+	              "\"static_color\":%s,",
+	    first ? "" : ",", c.name, kMaterials[c.material].name, c.material == kHalfLambert ? "true" : "false",
 	    c.staticColor ? "true" : "false" );
 	// The model-to-world transform, rows of a 3x4 column-vector matrix.
 	const matrix3x4_t &placement = c.placement == kIdentity
@@ -487,17 +627,54 @@ bool RunModelLightCases(
 	}
 	fprintf( out,
 	    "\"frame\":[%d,%d],\"tone_scale\":%.9g,\"aa_samples\":%d,\"max_lights\":%d,"
-	    "\"static_control_flow\":%s,\"base_color\":[%d,%d,%d],\"quad_z\":%.9g,\"quads\":[",
+	    "\"static_control_flow\":%s,\"base_color\":[%d,%d,%d],\"quad_z\":%.9g,"
+	    "\"lighting_origin\":[0,0,%.9g],",
 	    scene.m_Width, scene.m_Height, toneScale,
 	    g_pMaterialSystem->GetCurrentConfigForVideoCard().m_nAASamples,
 	    g_pMaterialSystemHardwareConfig->MaxNumLights(),
 	    g_pMaterialSystemHardwareConfig->SupportsStaticControlFlow() ? "true" : "false",
-	    kBaseColor[0], kBaseColor[1], kBaseColor[2], kQuadZ );
+	    kTextures[0].rgba[0], kTextures[0].rgba[1], kTextures[0].rgba[2], kQuadZ, kQuadZ );
+	// The procedural textures' texels, and the materials' parameters.
+	fprintf( out, "\"textures\":{" );
+	for ( int t = 0; t < kTextureCount; ++t )
+	{
+		const ProceduralTexture &spec = kTextures[t];
+		fprintf( out, "%s\"%s\":{\"size\":[%d,%d],\"row\":[", t ? "," : "", spec.name,
+		    spec.width, spec.height );
+		for ( int x = 0; x < spec.width; ++x )
+		{
+			unsigned char rgba[4];
+			if ( spec.ramp )
+				LightWarpTexel( x, rgba );
+			else
+				memcpy( rgba, spec.rgba, sizeof( rgba ) );
+			fprintf( out, "%s[%d,%d,%d,%d]", x ? "," : "", rgba[0], rgba[1], rgba[2], rgba[3] );
+		}
+		fprintf( out, "]}" );
+	}
+	fprintf( out, "},\"materials\":{" );
+	for ( int m = 0; m < kMaterialCount; ++m )
+	{
+		fprintf( out, "%s\"%s\":{", m ? "," : "", kMaterials[m].name );
+		bool firstParam = true;
+		for ( const auto &param : kMaterials[m].params )
+		{
+			if ( !param[0] )
+				continue;
+			fprintf( out, "%s\"%s\":\"%s\"", firstParam ? "" : ",", param[0], param[1] );
+			firstParam = false;
+		}
+		fprintf( out, "}" );
+	}
+	fprintf( out, "},\"quads\":[" );
 	for ( int q = 0; q < kGrid * kGrid; ++q )
 	{
 		float corners[4][2];
 		QuadCorners( q, corners );
-		fprintf( out, "%s{\"corners\":[", q ? "," : "" );
+		float tangent[4];
+		QuadTangent( q, tangent );
+		fprintf( out, "%s{\"tangent\":[%.9g,%.9g,%.9g,%.9g],\"corners\":[", q ? "," : "",
+		    tangent[0], tangent[1], tangent[2], tangent[3] );
 		for ( int v = 0; v < 4; ++v )
 			fprintf( out, "%s[%.9g,%.9g]", v ? "," : "", corners[v][0], corners[v][1] );
 		fprintf( out, "],\"normal\":[%.9g,%.9g,%.9g],\"static_colors\":[", kQuadNormals[q][0],

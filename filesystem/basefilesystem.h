@@ -692,6 +692,8 @@ public:
 	friend class			CBlockingFileItemList;
 	friend class			CAutoBlockReporter;
 #endif
+	// Locates the pak lump of legacy VBSP and BSP2 maps (RFC 0008).
+	friend class			CMapStdioByteSource;
 
 	CFileTracker2	m_FileTracker2;
 

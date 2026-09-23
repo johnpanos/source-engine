@@ -3,21 +3,27 @@
 
 #include "vphysics_interface.h"
 #include "vphysics/performance.h"
+#include "vphysics/constraints.h"
 #include "utlvector.h"
 #include "box3d/id.h"
 #include "physics_controllers.h"
-#include "vphysics/constraints.h"
 
 class CPhysicsObjectBox3D;
 class CConstraintBox3D;
 class CConstraintGroupBox3D;
+class CPhysicsFluidControllerBox3D;
+class CPhysicsSpringBox3D;
 
 // One VPhysics environment is one Box3D world, stepped on the caller's thread
 // with a single worker (RFC 0004 B: one-worker vertical slice). Simulate()
 // advances in fixed steps of the simulation timestep, as IVP does; each step
-// runs the controllers (PreStep), the Box3D step, then dispatches contact,
-// sleep and wake events to the game (PostStep) outside the Box3D step, so
-// game callbacks may create or destroy objects.
+// runs the controllers, springs, pulleys, fluids, damping and drag
+// (PreStep), the Box3D step, then dispatches constraint-break, contact,
+// touch, trigger, fluid, friction, sleep and wake events to the game
+// (PostStep) outside the Box3D step. The environment reports itself in
+// simulation for the whole step (as IVP runs these callbacks inside its
+// step), so objects destroyed from callbacks are queued and deleted once the
+// step completes.
 class CPhysicsEnvironmentBox3D : public IPhysicsEnvironment
 {
 public:
@@ -119,18 +125,53 @@ public:
 	b3WorldId GetWorld() const { return m_world; }
 	float GetStepTime() const { return m_timestep; }
 	int GetStepCount() const { return m_stepCount; }
+	bool ShouldQuickDelete() const { return m_quickDelete; }
+	IPhysicsCollisionEvent *GetCollisionEventHandler() const { return m_pCollisionEvents; }
+	// An object stopped being a trigger: its overlaps end silently.
+	void TriggerRemoved( CPhysicsObjectBox3D *pTrigger );
+	void WakeTriggerOverlaps( CPhysicsObjectBox3D *pTrigger );
+	// Object registration used by object creation from saved/serialized state.
+	IPhysicsObject *TrackObject( CPhysicsObjectBox3D *pObject );
+	void AddPlayerController( CPlayerControllerBox3D *pController );
+	void RemovePlayerController( CPlayerControllerBox3D *pController );
+	CPlayerControllerBox3D *FindPlayerController( IPhysicsObject *pObject ) const;
+	// Linked providers (restore): fluids, springs and constraints that a
+	// restored object's references resolve to.
+	CConstraintBox3D *TrackConstraint( IPhysicsObject *pReference, IPhysicsObject *pAttached,
+		IPhysicsConstraintGroup *pGroup, int type, const constraint_breakableparams_t &breakable );
 
 private:
 	static bool CustomFilter( b3ShapeId shapeIdA, b3ShapeId shapeIdB, void *pContext );
-	IPhysicsObject *TrackObject( CPhysicsObjectBox3D *pObject );
 	void Step( float dt );
 	void PreStep( float dt );
 	void PostStep( float dt );
 	void CheckConstraintBreaks( float dt );
-	class CConstraintBox3D *TrackConstraint( IPhysicsObject *pReference, IPhysicsObject *pAttached,
-		IPhysicsConstraintGroup *pGroup, int type, const constraint_breakableparams_t &breakable );
-	void DispatchContactEvents();
+	void DispatchContactEvents( float dt );
+	void DispatchTouchEvents();
+	void DispatchSensorEvents();
+	void DispatchFrictionEvents( float dt );
 	void DispatchSleepWakeEvents();
+	void ClearDeadObjects();
+	// Unlinks everything that references an object about to go away (or
+	// leave this environment).
+	void DetachObject( CPhysicsObjectBox3D *pObject, bool notifyConstraints );
+	bool IsLive( const IPhysicsObject *pObject ) const;
+	float PairDeltaTime( IPhysicsObject *pA, IPhysicsObject *pB );
+	bool SaveVehicle( const physsaveparams_t &params );
+	bool RestoreVehicle( const physrestoreparams_t &params );
+
+	struct TriggerOverlap_t
+	{
+		CPhysicsObjectBox3D *pTrigger;
+		CPhysicsObjectBox3D *pObject;
+		int shapeCount;
+	};
+	struct ImpactPair_t
+	{
+		IPhysicsObject *pA;
+		IPhysicsObject *pB;
+		float lastTime;
+	};
 
 	b3WorldId m_world;
 	Vector m_gravity;
@@ -140,18 +181,25 @@ private:
 	float m_simulationTime;
 	int m_stepCount;
 	bool m_inSimulation;
+	bool m_quickDelete;
+	bool m_queueDeleteObject;
+	bool m_enableConstraintNotify;
 	physics_performanceparams_t m_performance;
 	IPhysicsCollisionSolver *m_pSolver;
 	IPhysicsCollisionEvent *m_pCollisionEvents;
 	IPhysicsObjectEvent *m_pObjectEvents;
 	IPhysicsConstraintEvent *m_pConstraintEvents;
+	IVPhysicsDebugOverlay *m_pDebugOverlay;
 	CUtlVector<IPhysicsObject *> m_objects;
+	CUtlVector<IPhysicsObject *> m_deadObjects;
 	CUtlVector<CMotionControllerBox3D *> m_motionControllers;
 	CUtlVector<CPlayerControllerBox3D *> m_playerControllers;
 	CUtlVector<CConstraintBox3D *> m_constraints;
 	CUtlVector<CConstraintGroupBox3D *> m_constraintGroups;
-	bool m_quickDelete;
-	bool m_enableConstraintNotify;
+	CUtlVector<CPhysicsFluidControllerBox3D *> m_fluids;
+	CUtlVector<CPhysicsSpringBox3D *> m_springs;
+	CUtlVector<TriggerOverlap_t> m_triggerOverlaps;
+	CUtlVector<ImpactPair_t> m_impactPairs;
 };
 
 #endif // PHYSICS_ENVIRONMENT_H

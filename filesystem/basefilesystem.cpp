@@ -37,6 +37,8 @@
 
 #include <time.h>
 
+#include "mapcontainer/map_container.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -1017,6 +1019,40 @@ void CBaseFileSystem::RemoveAllMapSearchPaths( void )
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+// Map container byte source over a stdio handle, for locating the pak lump of
+// legacy VBSP and BSP2 maps (RFC 0008).
+//-----------------------------------------------------------------------------
+class CMapStdioByteSource : public mapcontainer::IMapByteSource
+{
+public:
+	CMapStdioByteSource( CBaseFileSystem *pFileSystem, FILE *fp ) : m_pFileSystem( pFileSystem ), m_fp( fp ), m_nSize( 0 )
+	{
+		m_pFileSystem->FS_fseek( m_fp, 0, FILESYSTEM_SEEK_TAIL );
+		const long nSize = m_pFileSystem->FS_ftell( m_fp );
+		m_nSize = nSize > 0 ? (uint64_t)nSize : 0;
+		m_pFileSystem->FS_fseek( m_fp, 0, FILESYSTEM_SEEK_HEAD );
+	}
+
+	virtual uint64_t Size() const { return m_nSize; }
+	virtual bool ReadAt( uint64_t offset, void *pDest, size_t size )
+	{
+		if ( offset > m_nSize || size > m_nSize - offset )
+			return false;
+		m_pFileSystem->FS_fseek( m_fp, (int64)offset, FILESYSTEM_SEEK_HEAD );
+		const size_t nRead = m_pFileSystem->FS_fread( pDest, size, m_fp );
+		m_pFileSystem->m_Stats.nBytesRead += nRead;
+		m_pFileSystem->m_Stats.nReads++;
+		return nRead == size;
+	}
+
+private:
+	CBaseFileSystem *m_pFileSystem;
+	FILE *m_fp;
+	uint64_t m_nSize;
+};
+
 void CBaseFileSystem::AddMapPackFile( const char *pPath, const char *pPathID, SearchPathAdd_t addType )
 {
 	char tempPathID[MAX_PATH];
@@ -1097,21 +1133,26 @@ void CBaseFileSystem::AddMapPackFile( const char *pPath, const char *pPathID, Se
 			return;
 		}
 	
-		// Get the .bsp file header
-		dheader_t header;
-		memset( &header, 0, sizeof(dheader_t) );
-		m_Stats.nBytesRead += FS_fread( &header, sizeof( header ), fp );
-		m_Stats.nReads++;
-	
-		if ( header.ident != IDBSPHEADER || header.version < MINBSPVERSION || header.version > BSPVERSION )
+		// Locate the pak lump through the map container (legacy VBSP or BSP2,
+		// RFC 0008). The zip is read in place at the lump's stored offset.
+		CMapStdioByteSource source( this, fp );
+		mapcontainer::MapContainerOpenOptions options = {};
+		mapcontainer::IMapContainer *pContainer = NULL;
+		mapcontainer::MapLumpInfo packfile;
+		memset( &packfile, 0, sizeof( packfile ) );
+		const bool bOpened = mapcontainer::OpenMapContainer( source, options, &pContainer ).Ok();
+		const bool bValid = bOpened && pContainer->LegacyVersion() >= MINBSPVERSION &&
+			pContainer->LegacyVersion() <= BSPVERSION && pContainer->FindLegacyLump( LUMP_PAKFILE, &packfile );
+		mapcontainer::DestroyMapContainer( pContainer );
+		if ( !bValid )
 		{
 			Trace_FClose( fp );
 			return;
 		}
 	
 		// Find the LUMP_PAKFILE offset
-		lump_t *packfile = &header.lumps[ LUMP_PAKFILE ];
-		if ( packfile->filelen <= sizeof( lump_t ) )
+		if ( packfile.storedSize <= sizeof( lump_t ) || packfile.offset > 0x7FFFFFFF ||
+			packfile.storedSize > 0x7FFFFFFF )
 		{
 			// It's empty or only contains a file header ( so there are no entries ), so don't add to search paths
 			Trace_FClose( fp );
@@ -1119,7 +1160,7 @@ void CBaseFileSystem::AddMapPackFile( const char *pPath, const char *pPathID, Se
 		}
 	
 		// Seek to correct position
-		FS_fseek( fp, packfile->fileofs, FILESYSTEM_SEEK_HEAD );
+		FS_fseek( fp, (int64)packfile.offset, FILESYSTEM_SEEK_HEAD );
 	
 		CPackFile *pf = new CZipPackFile( this );
 	
@@ -1129,7 +1170,7 @@ void CBaseFileSystem::AddMapPackFile( const char *pPath, const char *pPathID, Se
 		MEM_ALLOC_CREDIT();
 		pf->m_ZipName = fullpath;
 	
-		if ( pf->Prepare( packfile->filelen, packfile->fileofs ) )
+		if ( pf->Prepare( (int64)packfile.storedSize, (int64)packfile.offset ) )
 		{
 			int nIndex;
 			if ( addType == PATH_ADD_TO_TAIL )

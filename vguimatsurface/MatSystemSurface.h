@@ -473,6 +473,13 @@ private:
 	// The currently bound texture
 	int m_iBoundTexture;
 
+	// The font reload a screen size change deferred until the size settles
+	// (OnScreenSizeChanged, RunPendingFontReset).
+	void RunPendingFontReset();
+	static constexpr double kFontResetSettleSeconds = 0.25;
+	bool m_bFontResetPending = false;
+	double m_flFontResetTime = 0.0;
+
 	// font drawing batching code
 	enum { MAX_BATCHED_CHAR_VERTS = 4096 };
 	vgui::Vertex_t m_BatchedCharVerts[ MAX_BATCHED_CHAR_VERTS ];

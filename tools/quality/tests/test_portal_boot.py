@@ -102,6 +102,25 @@ class ResizeAcceptanceTests(unittest.TestCase):
             self.assertIn("wait 120; mat_resizewindow 641 479; wait 12", script.read_text())
             self.assertEqual(boot.sha256(script), result["sha256"])
 
+    def test_long_resize_workload_chains_scripts_below_the_line_limit(self):
+        with tempfile.TemporaryDirectory() as root:
+            stage = Path(root)
+            result = boot.install_resize_script(stage, boot.RESIZE_WORKLOAD, "sync")
+            files = [stage / result["path"]] + [stage / item["path"] for item in result["chained"]]
+            self.assertGreater(len(files), 1)
+            replayed = []
+            for index, path in enumerate(files):
+                lines = path.read_text().splitlines()
+                self.assertEqual(1, len(lines))
+                self.assertLessEqual(len(lines[0]), boot.RESIZE_SCRIPT_LINE_LIMIT)
+                commands = lines[0].split("; ")
+                if index + 1 < len(files):
+                    self.assertEqual("exec " + files[index + 1].stem, commands[-1])
+                    commands = commands[:-1]
+                replayed += commands
+            self.assertEqual(result["commands"], replayed)
+            self.assertEqual("quit", replayed[-1])
+
     def test_every_resize_needs_consumption_and_nonblank_matching_image(self):
         expected = ((641, 479), (1024, 768))
         log = "".join(
@@ -118,6 +137,56 @@ class ResizeAcceptanceTests(unittest.TestCase):
         self.assertEqual("fail", boot.inspect_resize("", images, expected, trace)["status"])
         images[0]["has_scene_detail"] = False
         self.assertEqual("fail", boot.inspect_resize(log, images, expected, trace)["status"])
+
+    def test_sync_resize_workload_runs_without_the_render_worker_and_drags(self):
+        commands = boot.resize_commands(((641, 479),), "sync")
+        self.assertEqual(["mat_queue_mode 0", "wait 120", "mat_resizewindow 641 479", "wait 12",
+                          "screenshot", "wait 1"], commands[:6])
+        drag = ["mat_resizewindow %d %d" % size for size in boot.RESIZE_DRAG_WORKLOAD]
+        self.assertEqual(drag, [c for c in commands[6:] if c.startswith("mat_resizewindow")])
+        # One size per frame, with frames captured mid-drag.
+        self.assertEqual("wait 1", commands[commands.index(drag[0]) + 1])
+        self.assertEqual(len(boot.RESIZE_DRAG_WORKLOAD) // 4 + 2, commands.count("screenshot"))
+        self.assertEqual(["wait 10", "quit"], commands[-2:])
+
+    def test_sync_resize_rejects_unresized_drawables_and_foreign_images(self):
+        log = ("RFC0001 resize observed: logical=641x479 drawable=1282x958\n"
+               "RFC0001 resize queued: serial=1 drawable=1282x958 request_us=9000\n"
+               "RFC0001 resize complete: serial=1 drawable=1282x958 main_wait_us=0\n"
+               "[vulkan] presents=40 scaled=0\n")
+        images = [{"width": 1282, "height": 958, "has_scene_detail": True}]
+        def status(text, frames):
+            return boot.inspect_resize(text, frames, ((641, 479),), mode="sync",
+                                       require_unscaled=True)["status"]
+        self.assertEqual("pass", status(log, images))
+        # A drawable seen mid-drag that was never resized to.
+        self.assertEqual("fail", status(
+            log + "RFC0001 resize observed: logical=700x500 drawable=1400x1000\n", images))
+        # A captured frame the renderer never resized to (a stretched or stale
+        # size), and a blank one.
+        self.assertEqual("fail", status(log, images + [{"width": 1300, "height": 958,
+                                                          "has_scene_detail": True}]))
+        self.assertEqual("fail", status(log, images + [{"width": 1282, "height": 958,
+                                                          "has_scene_detail": False}]))
+
+    def test_sync_resize_budget_is_one_frame_and_requires_unscaled_presents(self):
+        def log(request_us, census):
+            return ("RFC0001 resize observed: logical=641x479 drawable=1282x958\n"
+                    "RFC0001 resize queued: serial=1 drawable=1282x958 request_us=%d\n"
+                    "RFC0001 resize complete: serial=1 drawable=1282x958 main_wait_us=0\n%s"
+                    % ( request_us, census ))
+        images = [{"width": 1282, "height": 958, "has_scene_detail": True}]
+        unscaled = "[vulkan] presents=40 scaled=0\n"
+        def status(text, **kwargs):
+            return boot.inspect_resize(text, images, ((641, 479),), mode="sync", **kwargs)
+        # A synchronous resize may spend a frame; the queued 2 ms publication
+        # budget does not apply to it.
+        self.assertEqual("pass", status(log(9000, unscaled), require_unscaled=True)["status"])
+        self.assertEqual("fail", status(log(17000, unscaled), require_unscaled=True)["status"])
+        # A stretched present or a missing census fails.
+        self.assertEqual("fail", status(log(9000, "[vulkan] presents=40 scaled=1\n"),
+                                        require_unscaled=True)["status"])
+        self.assertEqual("fail", status(log(9000, ""), require_unscaled=True)["status"])
 
     def test_resize_rejects_main_thread_wait_budget_and_cropped_present(self):
         log = ("RFC0001 resize observed: logical=641x479 drawable=1282x958\n"

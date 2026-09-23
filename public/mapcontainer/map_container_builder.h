@@ -26,7 +26,10 @@ namespace mapcontainer
 
 struct ContainerDeleter
 {
-	void operator()( IMapContainer *pContainer ) const noexcept { DestroyMapContainer( pContainer ); }
+	void operator()( IMapContainer *pContainer ) const noexcept
+	{
+		DestroyMapContainer( pContainer );
+	}
 };
 using ContainerPtr = std::unique_ptr<IMapContainer, ContainerDeleter>;
 

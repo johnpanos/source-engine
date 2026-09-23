@@ -21,13 +21,16 @@ SHADERS = (
     ("g_materialTexFragSpv", "demo_dyn_tex.frag", []),
     ("g_portalRefractVertSpv", "portal_refract.vert", []),
     ("g_portalRefractFragSpv", "portal_refract.frag", []),
+    ("g_skinVertSpv", "skin.vert", []),
+    ("g_skinFragSpv", "skin.frag", []),
 )
 
 HEADER = """//========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Embedded SPIR-V of the native material shaders: the textured stages
-//          (with and without D3D9 user clip planes), and PortalRefract
-//          (a port of portal_refract_vs20.fxc / portal_refract_ps2x.fxc). GENERATED
+//          (with and without D3D9 user clip planes), PortalRefract (a port of
+//          portal_refract_vs20.fxc / portal_refract_ps2x.fxc) and VertexLitGeneric's
+//          $phong path (skin_vs20.fxc / skin_ps20b.fxc). GENERATED
 //          by shaders/regen_material_spv.py from the GLSL in shaders/; do not edit.
 //
 //===========================================================================//

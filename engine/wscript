@@ -84,6 +84,7 @@ def build(bld):
 		'l_studio.cpp',
 		'matsys_interface.cpp',
 		'modelloader.cpp',
+		'map_container_file.cpp',
 		'Overlay.cpp',
 		'r_decal.cpp',
 		'r_linefile.cpp',
@@ -384,7 +385,7 @@ def build(bld):
 
 	defines = []
 
-	libs = ['tier0','vgui_controls','dmxloader','tier1','tier2','tier3','bitmap','vstdlib','appframework','datamodel','vtf','mathlib','steam_api','matsys_controls','BZ2','SDL2','JPEG','ZLIB','OPENAL','CURL' ]
+	libs = ['tier0','mapcontainer','vgui_controls','dmxloader','tier1','tier2','tier3','bitmap','vstdlib','appframework','datamodel','vtf','mathlib','steam_api','matsys_controls','BZ2','SDL2','JPEG','ZLIB','OPENAL','CURL' ]
 
 	if not bld.env.DEDICATED:
 		libs += ['vaudio_minimp3']
