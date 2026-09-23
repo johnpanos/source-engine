@@ -895,6 +895,15 @@ bool CSourceAppSystemGroup::Create()
 		Warning( "Required render provider '%s' is not available in this product.\n", requested );
 		return false;
 	}
+	// The client's render requirements: it needs no semantic feature to run and
+	// uses every one the selected adapter offers. The material system selects the
+	// profile from these, the adapter's facts and the documented quirks in Init.
+	const render::RenderProfileRequest renderRequest = render::PreferAvailableRenderFeatures();
+	if ( !MaterialSystem_SetRenderProfileRequest( pMaterialSystem, &renderRequest ) )
+	{
+		Warning( "The material system rejected the render profile request.\n" );
+		return false;
+	}
 
 	const BuiltinShaderProvider *standardShaders = StandardShaderLibrary_Describe();
 	const char *requestedShaders =

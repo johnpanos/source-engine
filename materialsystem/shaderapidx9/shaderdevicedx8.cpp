@@ -60,6 +60,7 @@ static double s_rdtsc_to_ms;
 #endif
 
 #include "wmi.h"
+#include "render/render_backend.h"
 
 
 
@@ -1212,6 +1213,32 @@ int CShaderDeviceMgrDx8::GetAdapterCount() const
 	const_cast<CShaderDeviceMgrDx8*>( this )->InitAdapterInfo();
 
 	return m_Adapters.Count();
+}
+
+
+//-----------------------------------------------------------------------------
+// render.contracts adapter facts (see LegacyShaderServices::describeAdapter)
+//-----------------------------------------------------------------------------
+bool DescribeDx8Adapter( int nAdapter, render::RenderAdapterInfo *pInfo )
+{
+	if ( !pInfo || nAdapter < 0 || nAdapter >= g_ShaderDeviceMgrDx8.GetAdapterCount() )
+		return false;
+	const HardwareCaps_t &caps = g_ShaderDeviceMgrDx8.GetHardwareCaps( nAdapter );
+	*pInfo = render::RenderAdapterInfo();
+	if ( caps.m_SupportsSRGB )
+		pInfo->supportedFeatures.Add( render::RenderFeature::kSampledSrgb );
+	if ( caps.m_MaxSimultaneousRenderTargets >= 1 )
+		pInfo->supportedFeatures.Add( render::RenderFeature::kOffscreenRender );
+	// The API this module ultimately drives. IsOpenGL() includes -r_emulate_gl,
+	// which asks this backend to behave as its OpenGL translation would.
+#if defined( USE_DXVK )
+	const char *pDriverApi = "vulkan";
+#else
+	const char *pDriverApi = IsOpenGL() ? "opengl" : "d3d9";
+#endif
+	Q_strncpy( pInfo->driverApi, pDriverApi, sizeof( pInfo->driverApi ) );
+	pInfo->deviceMemoryBytes = caps.m_TextureMemorySize > 0 ? caps.m_TextureMemorySize : 0;
+	return true;
 }
 
 

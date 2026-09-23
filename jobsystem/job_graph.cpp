@@ -145,18 +145,26 @@ Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 		std::vector<Edge> &edges;
 		size_t declared;
 		bool sealed = false;
-		~RestoreOnFailure() { if ( !sealed ) edges.resize( declared ); }
+		~RestoreOnFailure()
+		{
+			if ( !sealed )
+				edges.resize( declared );
+		}
 	} restore{ edges, edges.size() };
 	if ( !m_sequenceMembers.empty() )
 	{
 		// Group sequence members by lane, preserving registration order.
 		std::stable_sort( m_sequenceMembers.begin(), m_sequenceMembers.end(),
-			[]( const auto &a, const auto &b ){ return a.first < b.first; } );
+		    []( const auto &a, const auto &b )
+		    {
+			    return a.first < b.first;
+		    } );
 		for ( size_t i = 1; i < m_sequenceMembers.size(); ++i )
 		{
 			if ( m_sequenceMembers[i].first == m_sequenceMembers[i - 1].first )
 			{
-				edges.push_back( Edge{ m_sequenceMembers[i - 1].second, m_sequenceMembers[i].second, DependencyKind::Terminal } );
+				edges.push_back( Edge{ m_sequenceMembers[i - 1].second, m_sequenceMembers[i].second,
+				    DependencyKind::Terminal } );
 			}
 		}
 	}
@@ -181,16 +189,21 @@ Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 	const uint32_t edgeCount = (uint32_t)edges.size();
 	std::vector<uint32_t> arena( 3 * (size_t)edgeCount + 9 * (size_t)n + 2 );
 	uint32_t *next = arena.data();
-	auto carve = [&]( size_t count ) { uint32_t *p = next; next += count; return p; };
-	uint32_t *keep      = carve( edgeCount ); // 1 = first occurrence of its (producer, consumer)
-	uint32_t *byCons    = carve( edgeCount ); // edge indices grouped by consumer, stable
-	uint32_t *consOff   = carve( n + 1 );
-	uint32_t *seenFor   = carve( n );         // producer -> last consumer that saw it (+1)
-	uint32_t *firstEdge = carve( n );         // producer -> first edge index for that consumer
-	uint32_t *indeg     = carve( n );
-	uint32_t *work      = carve( n );         // fill cursor, then Kahn's remaining indegree
-	uint32_t *heap      = carve( n );
-	uint32_t *roots     = carve( n );
+	auto carve = [&]( size_t count )
+	{
+		uint32_t *p = next;
+		next += count;
+		return p;
+	};
+	uint32_t *keep = carve( edgeCount );   // 1 = first occurrence of its (producer, consumer)
+	uint32_t *byCons = carve( edgeCount ); // edge indices grouped by consumer, stable
+	uint32_t *consOff = carve( n + 1 );
+	uint32_t *seenFor = carve( n );   // producer -> last consumer that saw it (+1)
+	uint32_t *firstEdge = carve( n ); // producer -> first edge index for that consumer
+	uint32_t *indeg = carve( n );
+	uint32_t *work = carve( n ); // fill cursor, then Kahn's remaining indegree
+	uint32_t *heap = carve( n );
+	uint32_t *roots = carve( n );
 	Csr succ;
 	succ.offsets = carve( n + 1 );
 	succ.targets = carve( edgeCount );
@@ -292,7 +305,12 @@ Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 			// The lowest-index unplaced node is on (or behind) a cycle: exactly
 			// the unplaced nodes keep a nonzero remaining indegree.
 			uint32_t offender = JobHandle::kInvalid;
-			for ( uint32_t i = 0; i < n; ++i ) if ( work[i] != 0 ) { offender = i; break; }
+			for ( uint32_t i = 0; i < n; ++i )
+				if ( work[i] != 0 )
+				{
+					offender = i;
+					break;
+				}
 			return MakeUnexpected( GraphError{ GraphErrorCode::Cycle, "graph contains an ordering cycle", offender, JobHandle::kInvalid } );
 		}
 	}
@@ -314,21 +332,24 @@ Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 		for ( uint32_t d = 0; d < declCount; ++d )
 			byVersion[d] = d;
 		std::sort( byVersion.begin(), byVersion.end(),
-			[&]( uint32_t a, uint32_t b )
-			{
-				const ResourceVersion &ra = m_resources[a].resource;
-				const ResourceVersion &rb = m_resources[b].resource;
-				if ( ResourceLess( ra, rb ) ) return true;
-				if ( ResourceLess( rb, ra ) ) return false;
-				return a < b;
-			} );
+		    [&]( uint32_t a, uint32_t b )
+		    {
+			    const ResourceVersion &ra = m_resources[a].resource;
+			    const ResourceVersion &rb = m_resources[b].resource;
+			    if ( ResourceLess( ra, rb ) )
+				    return true;
+			    if ( ResourceLess( rb, ra ) )
+				    return false;
+			    return a < b;
+		    } );
 
 		uint32_t bestA = JobHandle::kInvalid, bestB = JobHandle::kInvalid; // decl indices
 		std::vector<uint32_t> writers, members;
 		for ( uint32_t g = 0; g < declCount; )
 		{
 			uint32_t e = g + 1;
-			while ( e < declCount && m_resources[byVersion[e]].resource == m_resources[byVersion[g]].resource )
+			while ( e < declCount &&
+			        m_resources[byVersion[e]].resource == m_resources[byVersion[g]].resource )
 				++e;
 
 			// Fast exact test: a group is conflict-free iff its distinct writer
@@ -348,7 +369,10 @@ Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 			bool clean = true;
 			if ( !writers.empty() && members.size() > 1 )
 			{
-				auto byPos = [&]( uint32_t a, uint32_t b ) { return pos[a] < pos[b]; };
+				auto byPos = [&]( uint32_t a, uint32_t b )
+				{
+					return pos[a] < pos[b];
+				};
 				std::sort( writers.begin(), writers.end(), byPos );
 				writers.erase( std::unique( writers.begin(), writers.end() ), writers.end() );
 				for ( size_t w = 1; w < writers.size() && clean; ++w )
@@ -381,11 +405,14 @@ Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 						const uint32_t b = byVersion[y];
 						const ResourceDecl &ra = m_resources[a];
 						const ResourceDecl &rb = m_resources[b];
-						if ( ra.job == rb.job ) continue;
-						if ( !ra.write && !rb.write ) continue; // read/read on same version is fine
+						if ( ra.job == rb.job )
+							continue;
+						if ( !ra.write && !rb.write )
+							continue; // read/read on same version is fine
 						if ( !reach.Ordered( ra.job, rb.job ) )
 						{
-							if ( bestA == JobHandle::kInvalid || a < bestA || ( a == bestA && b < bestB ) )
+							if ( bestA == JobHandle::kInvalid || a < bestA ||
+							     ( a == bestA && b < bestB ) )
 							{
 								bestA = a;
 								bestB = b;
@@ -402,8 +429,9 @@ Expected<SealedGraph, GraphError> JobGraphBuilder::Seal()
 		}
 		if ( bestA != JobHandle::kInvalid )
 		{
-			return MakeUnexpected( GraphError{ GraphErrorCode::ResourceConflict, "unordered conflicting resource access",
-				m_resources[bestA].job, m_resources[bestB].job } );
+			return MakeUnexpected( GraphError{ GraphErrorCode::ResourceConflict,
+			    "unordered conflicting resource access", m_resources[bestA].job,
+			    m_resources[bestB].job } );
 		}
 	}
 

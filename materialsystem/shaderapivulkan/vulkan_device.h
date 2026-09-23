@@ -931,8 +931,8 @@ private:
 	uint32_t m_dynStencilWriteMask = 0xFF;
 	int m_dynClipPlaneCount = 0;
 	float m_dynClipPlanes[kMaxClipPlanes][4] = {};
-	int m_dynSamplerHandles[kMaxSamplers] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-		-1, -1, -1, -1 };
+	int m_dynSamplerHandles[kMaxSamplers] = {
+	    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
 	PortalConstants m_dynPortal;
 	SkinConstants m_dynSkin;
 	// The skin constants of this frame's skin draws (DynDraw::skin indexes them).
@@ -999,8 +999,8 @@ private:
 		uint32_t stencilWriteMask = 0xFF;
 		int clipPlaneCount = 0;
 		float clipPlanes[kMaxClipPlanes][4] = {};
-		int samplerHandles[kMaxSamplers] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-			-1, -1, -1 }; // samplers 1..15 ([0] unused)
+		int samplerHandles[kMaxSamplers] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+		    -1, -1 }; // samplers 1..15 ([0] unused)
 		PortalConstants portal;
 		int skin = -1; // index into m_dynSkinConstants
 	};

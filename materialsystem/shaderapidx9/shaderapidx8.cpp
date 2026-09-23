@@ -1779,6 +1779,7 @@ extern "C" DLL_EXPORT bool Dx9ShaderBackend_Create( render::LegacyShaderServices
 	services->shadow = g_pShaderShadowDx8;
 	services->hardware = g_pHardwareConfig;
 	services->debugTextures = &g_ShaderAPIDX8;
+	services->describeAdapter = DescribeDx8Adapter;
 	return services->IsComplete();
 }
 

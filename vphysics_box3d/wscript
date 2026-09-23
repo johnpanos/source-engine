@@ -17,14 +17,12 @@ def build_box3d(bld):
 	# Pinned upstream Box3D (submodule ../box3d at the commit RFC 0004 reviewed)
 	# compiled as a private C17 static library. It keeps upstream's settings:
 	# gnu17 with extensions, hidden visibility, no FMA contraction, and none of
-	# the engine's fast-math flags or engine-wide defines. The source list is
-	# the upstream src/*.c set (verified equal to box3d/src/CMakeLists.txt), so
-	# no second list is maintained here.
+	# the engine's fast-math flags -- the box3d-c17 dialect that
+	# quality/toolchain/policy.json applies to this target -- and none of the
+	# engine-wide defines. The source list is the upstream src/*.c set (verified
+	# equal to box3d/src/CMakeLists.txt), so no second list is maintained here.
 	box3d_env = bld.env.derive()
 	box3d_env.detach()
-	unsafe = ('-ffast-math', '-funsafe-math-optimizations')
-	box3d_env.CFLAGS = [flag for flag in bld.env.CFLAGS if flag not in unsafe] + \
-		['-std=gnu17', '-ffp-contract=off', '-fno-fast-math', '-fvisibility=hidden', '-fPIC']
 	box3d_env.DEFINES = [value for value in bld.env.DEFINES if value == 'NDEBUG']
 
 	root = bld.path.find_dir('../box3d')

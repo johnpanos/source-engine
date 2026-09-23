@@ -11,6 +11,8 @@
 #ifndef RENDER_LEGACY_SHADER_PROVIDER_H
 #define RENDER_LEGACY_SHADER_PROVIDER_H
 
+#include "render/render_profile.h"
+
 class IShaderDeviceMgr;
 class IShaderAPI;
 class IShaderDevice;
@@ -30,6 +32,13 @@ struct LegacyShaderServices
 	IShaderShadow *shadow = nullptr;
 	IMaterialSystemHardwareConfig *hardware = nullptr;
 	IDebugTextureInfo *debugTextures = nullptr;
+
+	// Optional. Backend-owned facts the legacy MaterialAdapterInfo_t cannot carry:
+	// semantic features, driverApi, memory and software status for an adapter the
+	// manager enumerates. Valid once the manager is connected; returns false for
+	// an index the manager does not enumerate. Without it an adapter reports no
+	// semantic features. See LegacyRenderBackendProvider.
+	bool ( *describeAdapter )( int adapter, RenderAdapterInfo *info ) = nullptr;
 
 	bool IsComplete() const
 	{
@@ -62,5 +71,16 @@ extern "C" bool NativeVulkanShaderBackend_Create( render::LegacyShaderServices *
 extern "C" const render::LegacyShaderProvider *NullShaderBackend_Describe();
 extern "C" bool MaterialSystem_BindShaderProvider(
 	IMaterialSystem *materialSystem, const render::LegacyShaderProvider *provider );
+
+// The composition root's feature requirements for the bound provider. Accepted
+// only before Connect; the material system selects the profile during Init from
+// the selected adapter's facts and the documented quirk table, and fails Init if
+// a required feature is unavailable. Roots that never call this get
+// render::PreferAvailableRenderFeatures() (the legacy tool default).
+extern "C" bool MaterialSystem_SetRenderProfileRequest(
+	IMaterialSystem *materialSystem, const render::RenderProfileRequest *request );
+// Copies the profile selected by Init. Returns false before selection.
+extern "C" bool MaterialSystem_GetRenderProfile(
+	IMaterialSystem *materialSystem, render::RenderFeatureProfile *profile );
 
 #endif // RENDER_LEGACY_SHADER_PROVIDER_H

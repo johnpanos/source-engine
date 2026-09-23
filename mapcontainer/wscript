@@ -2,10 +2,10 @@
 # encoding: utf-8
 
 # Map container seam (RFC 0008, phase F1): legacy VBSP and BSP2 readers, the
-# BSP2 writer and lossless legacy conversion. A self-contained strict C++20
-# static library with no tier0/tier1 dependency (RFC 0006), so it overrides the
-# tree-wide -std=c++11. Consumers include only the C++11-compatible
-# public/mapcontainer/map_container.h unless they are C++20 tools.
+# BSP2 writer and lossless legacy conversion. A self-contained C++20 static
+# library with no tier0/tier1 dependency; its dialect and C++11 legacy facades
+# are declared in quality/toolchain/policy.json (RFC 0006). Consumers include
+# only public/mapcontainer/map_container.h unless they are C++20 tools.
 
 top = '.'
 PROJECT_NAME = 'mapcontainer'
@@ -24,7 +24,6 @@ def build(bld):
 		features  = 'c cxx',
 		includes  = [ '../public' ],
 		defines   = [],
-		cxxflags  = ['-std=c++20'],
 		use       = [],
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()

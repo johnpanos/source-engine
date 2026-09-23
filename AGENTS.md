@@ -479,6 +479,10 @@ Keep the table concise and link details below or from the domain progress file.
   because pooled measured no faster. Full engine-pool TSan is **not clean**;
   semantic gameplay captures and frame/performance gates remain open. See the
   [scope, evidence, rollback and deferred consumers](RFC/0003-batch-migration-progress.md).
+  Contract-preserving scheduler optimizations are
+  [recorded with microbenchmarks and oracles](RFC/0003-scheduler-performance-progress.md).
+  Examples: real-pool 1-worker 2048-item dispatch 38.8→4.4 µs, and Seal up to 42×
+  faster. Q-JOBS is now 10/10. This sets no frame budget and closes no gate.
 
 Current RFC 0001 evidence (2026-09-22):
 

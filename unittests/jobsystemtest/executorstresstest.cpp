@@ -49,7 +49,7 @@ std::atomic<int> g_failures{ 0 };
 		if ( !( condition ) )                                                                      \
 		{                                                                                          \
 			g_failures.fetch_add( 1, std::memory_order_relaxed );                                  \
-			std::printf( "  FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition );                 \
+			std::printf( "  FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition );                   \
 		}                                                                                          \
 	} while ( 0 )
 
@@ -73,7 +73,11 @@ public:
 	explicit PoolBackend( int workers ) : m_workers( workers )
 	{
 		for ( int i = 0; i < m_workers; ++i )
-			m_threads.emplace_back( [this] { WorkerMain(); } );
+			m_threads.emplace_back(
+			    [this]
+			    {
+				    WorkerMain();
+			    } );
 	}
 
 	~PoolBackend() override
@@ -99,7 +103,11 @@ public:
 		++m_generation;
 		m_cv.notify_all();
 		Drain( lk );
-		m_done.wait( lk, [&] { return m_left == 0; } );
+		m_done.wait( lk,
+		    [&]
+		    {
+			    return m_left == 0;
+		    } );
 		m_body = nullptr;
 	}
 
@@ -124,7 +132,11 @@ private:
 		std::unique_lock<std::mutex> lk( m_mtx );
 		for ( ;; )
 		{
-			m_cv.wait( lk, [&] { return m_quit || m_generation != seen; } );
+			m_cv.wait( lk,
+			    [&]
+			    {
+				    return m_quit || m_generation != seen;
+			    } );
 			if ( m_quit )
 				return;
 			seen = m_generation;
@@ -155,7 +167,10 @@ struct Instance
 	std::atomic<int> violations{ 0 };
 	uint32_t n = 0;
 
-	explicit Instance( uint32_t count ) : value( count ), runs( count ), fails( count ), producers( count ), n( count ) {}
+	explicit Instance( uint32_t count )
+	    : value( count ), runs( count ), fails( count ), producers( count ), n( count )
+	{
+	}
 
 	void Reset()
 	{
@@ -182,7 +197,7 @@ std::unique_ptr<Instance> MakeInstance( uint64_t seed, bool affine )
 		const uint32_t lane = rng.Below( 20 );
 		if ( affine )
 		{
-			d.executor = lane == 0 ? Executor::MainThread()
+			d.executor = lane == 0   ? Executor::MainThread()
 			             : lane == 1 ? Executor::BlockingIO()
 			             : lane < 4  ? Executor::Sequence( (uint16_t)rng.Below( 2 ) )
 			                         : Executor::Compute();
@@ -392,7 +407,10 @@ void TestStallAndCancelReuse()
 		JobDesc d;
 		d.name = "chain";
 		if ( i == 0 )
-			d.function = [&]( JobRunContext & ) { cancel.store( true, std::memory_order_release ); };
+			d.function = [&]( JobRunContext & )
+			{
+				cancel.store( true, std::memory_order_release );
+			};
 		else
 			d.function = []( JobRunContext & ) {};
 		const JobHandle h = c.AddJob( d );
@@ -412,14 +430,16 @@ void TestStallAndCancelReuse()
 	}
 }
 
-
 // Children spawn further children (with dependencies on already-admitted ones)
 // while workers run. Afterwards the recorded dependencies are replayed in id
 // order: a child fails when its id says so, is canceled when any dependency
 // did not succeed, and otherwise succeeds. Every child that ran ran once.
 void TestDynamicScopeStress()
 {
-	auto failsById = []( uint32_t id ) { return ( id * 2654435761u ) % 11u == 0; };
+	auto failsById = []( uint32_t id )
+	{
+		return ( id * 2654435761u ) % 11u == 0;
+	};
 	for ( int workers : { 0, 1, 2, 4 } )
 	{
 		for ( uint64_t seed = 1; seed <= 40; ++seed )
@@ -446,7 +466,8 @@ void TestDynamicScopeStress()
 				if ( !recent.empty() && rng.Chance( 30 ) )
 					d.push_back( recent[rng.Below( (uint32_t)recent.size() )] );
 				const uint64_t childSeed = rng.Next();
-				const DynamicScope::ChildHandle h = scope.Spawn( "stress.child",
+				const DynamicScope::ChildHandle h = scope.Spawn(
+				    "stress.child",
 				    [&, childSeed]( JobRunContext &ctx )
 				    {
 					    runs[ctx.JobId()].fetch_add( 1 );
@@ -481,9 +502,10 @@ void TestDynamicScopeStress()
 				for ( uint32_t dep : deps[id] )
 				{
 					CHECK( dep < id );
-					cancel = cancel || scope.StateOf( DynamicScope::ChildHandle{ dep } ) != JobState::Succeeded;
+					cancel = cancel || scope.StateOf( DynamicScope::ChildHandle{ dep } ) !=
+					                       JobState::Succeeded;
 				}
-				const JobState expected = cancel ? JobState::Canceled
+				const JobState expected = cancel            ? JobState::Canceled
 				                          : failsById( id ) ? JobState::Failed
 				                                            : JobState::Succeeded;
 				CHECK( scope.StateOf( DynamicScope::ChildHandle{ id } ) == expected );
@@ -497,7 +519,6 @@ void TestDynamicScopeStress()
 		}
 	}
 }
-
 
 // Batch graphs are reused per thread: a nested batch re-enters the graph its
 // outer batch is executing, names beyond the cache cap still work, and a name
@@ -526,8 +547,14 @@ void ProbeProcess( void *context, unsigned index )
 	}
 }
 
-void ProbeBegin( void *context ) { static_cast<BatchProbe *>( context )->begins.fetch_add( 1 ); }
-void ProbeEnd( void *context ) { static_cast<BatchProbe *>( context )->ends.fetch_add( 1 ); }
+void ProbeBegin( void *context )
+{
+	static_cast<BatchProbe *>( context )->begins.fetch_add( 1 );
+}
+void ProbeEnd( void *context )
+{
+	static_cast<BatchProbe *>( context )->ends.fetch_add( 1 );
+}
 
 BatchDesc ProbeDesc( BatchProbe &p, const char *name, unsigned count, unsigned limit )
 {
@@ -575,7 +602,8 @@ void TestBatchGraphCache()
 		std::snprintf( name, sizeof( name ), "cache.name.%d", i );
 		BatchProbe p;
 		BatchDesc d = ProbeDesc( p, name, 64, 1 + i % 4 );
-		CHECK( ExecuteParallelBatch( d, &backend, i % 2 ? BatchMode::Parallel : BatchMode::Serial ) );
+		CHECK(
+		    ExecuteParallelBatch( d, &backend, i % 2 ? BatchMode::Parallel : BatchMode::Serial ) );
 		CHECK( ProbeOk( p ) );
 		std::memset( name, 'x', sizeof( name ) - 1 ); // the batch kept no pointer to it
 		name[sizeof( name ) - 1] = '\0';
@@ -595,7 +623,8 @@ void TestBatchGraphCache()
 			    for ( int i = 0; i < 200; ++i )
 			    {
 				    BatchProbe p;
-				    BatchDesc d = ProbeDesc( p, i % 3 ? "cache.shared" : "cache.other", 16 + t, 1 + i % 5 );
+				    BatchDesc d =
+				        ProbeDesc( p, i % 3 ? "cache.shared" : "cache.other", 16 + t, 1 + i % 5 );
 				    CHECK( ExecuteParallelBatch( d, &backend, BatchMode::Serial ) );
 				    CHECK( ProbeOk( p ) );
 			    }

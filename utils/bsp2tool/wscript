@@ -2,7 +2,8 @@
 # encoding: utf-8
 
 # bsp2tool (RFC 0008, phase F1): inspect, verify, convert legacy VBSP maps to
-# BSP2 and export them back. Host tool; strict C++20 over mapcontainer only.
+# BSP2 and export them back. Host tool; C++20 (quality/toolchain/policy.json)
+# over mapcontainer only.
 
 top = '.'
 PROJECT_NAME = 'bsp2tool'
@@ -21,7 +22,6 @@ def build(bld):
 		features     = 'c cxx cxxprogram',
 		includes     = [ '../../public' ],
 		defines      = [],
-		cxxflags     = ['-std=c++20'],
 		use          = [ 'mapcontainer' ],
 		install_path = bld.env.BINDIR,
 		subsystem    = bld.env.MSVC_SUBSYSTEM,

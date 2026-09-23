@@ -39,6 +39,7 @@ def build(bld):
 		'shadersystem.cpp',
 		'builtin_shader_catalog.cpp',
 		'shaderextension_compatibility_host.cpp',
+		'legacy_render_backend_provider.cpp',
 		'texturemanager.cpp',
 		'pch_materialsystem.cpp',
 		'cmaterialdict.cpp',

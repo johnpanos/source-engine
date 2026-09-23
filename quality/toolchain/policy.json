@@ -1,0 +1,116 @@
+{
+  "schema": "toolchain-policy/v1",
+  "description": "Authoritative per-target language-dialect policy (RFC 0006 M0 / roadmap R03). The Waf tool scripts/waifulib/toolchain_dialect.py applies or verifies it for every C/C++ task generator and records the final invocations; tools/quality/toolchain_boundary.py verifies those invocations, the C++11 facades of C++20 modules and the declared ABI combinations. Target wscripts do not pass -std flags. Include and link permissions are owned by architecture/modules.json, not here.",
+  "compiler_families": {
+    "gcc": "gnu",
+    "g++": "gnu",
+    "clang": "gnu",
+    "clang++": "gnu",
+    "msvc": "msvc"
+  },
+  "std_flag_prefixes": {
+    "gnu": ["-std="],
+    "msvc": ["/std:", "-std:"]
+  },
+  "defaults": {
+    "c++": "legacy-cxx11",
+    "c": "c-toolchain-default"
+  },
+  "dialects": {
+    "legacy-cxx11": {
+      "language": "c++",
+      "mode": "verify",
+      "description": "Established engine dialect. The root wscript supplies it; the tool only verifies it and never rewrites a legacy target, so unmigrated targets keep their exact flags.",
+      "gnu": { "std": "c++11", "required": ["-fpermissive"], "forbidden": [] },
+      "msvc": { "std": null, "required": [], "forbidden": [] },
+      "probe": "quality/toolchain/probes/legacy_cxx11.cpp"
+    },
+    "cxx20": {
+      "language": "c++",
+      "mode": "apply",
+      "description": "New and deliberately migrated first-party targets. Every inherited standard flag is removed and exactly one C++20 flag is applied, so the legacy global flag cannot win by ordering. Permissive compilation is removed.",
+      "gnu": { "std": "c++20", "required": [], "forbidden": ["-fpermissive"] },
+      "msvc": { "std": "/std:c++20", "required": ["/permissive-"], "forbidden": [] },
+      "probe": "quality/toolchain/probes/cxx20.cpp"
+    },
+    "c-toolchain-default": {
+      "language": "c",
+      "mode": "unconstrained",
+      "description": "Legacy C targets keep whatever the toolchain and their own configuration select; recorded in evidence, not constrained.",
+      "gnu": { "std": null, "required": [], "forbidden": [] },
+      "msvc": { "std": null, "required": [], "forbidden": [] }
+    },
+    "box3d-c17": {
+      "language": "c",
+      "mode": "apply",
+      "description": "Private pinned Box3D C17 library (RFC 0004/0006): gnu17 with upstream's floating-point, visibility and PIC settings and none of the engine's fast-math flags. No MSVC mapping is declared, so an MSVC Box3D build fails composition instead of guessing.",
+      "gnu": {
+        "std": "gnu17",
+        "required": ["-ffp-contract=off", "-fno-fast-math", "-fvisibility=hidden", "-fPIC"],
+        "forbidden": ["-ffast-math", "-funsafe-math-optimizations"]
+      },
+      "probe": "quality/toolchain/probes/box3d_c17.c"
+    }
+  },
+  "targets": {
+    "jobsystem": { "dialect": "cxx20", "rfc": "0003" },
+    "mapcontainer": { "dialect": "cxx20", "rfc": "0008" },
+    "bsp2tool": { "dialect": "cxx20", "rfc": "0008" },
+    "platform_composition": { "dialect": "cxx20", "rfc": "0001" },
+    "platform_tool_process": { "dialect": "cxx20", "rfc": "0001" },
+    "unittest": { "dialect": "cxx20", "rfc": "0001" },
+    "jobsystempooledtest": { "dialect": "cxx20", "rfc": "0003" },
+    "jobsystembatchtest": { "dialect": "cxx20", "rfc": "0003" },
+    "jobsystemtest": { "dialect": "cxx20", "rfc": "0003" },
+    "jobsystemframetest": { "dialect": "cxx20", "rfc": "0003" },
+    "jobsystemdynamictest": { "dialect": "cxx20", "rfc": "0003" },
+    "jobsystemqjobstest": { "dialect": "cxx20", "rfc": "0003" },
+    "jobsystemsealeqtest": { "dialect": "cxx20", "rfc": "0003" },
+    "jobsystemstresstest": { "dialect": "cxx20", "rfc": "0003" },
+    "jobsystembench": { "dialect": "cxx20", "rfc": "0003" },
+    "jobsystembridgetest": { "dialect": "cxx20", "rfc": "0003" },
+    "render_backend_vulkan_conformance": { "dialect": "cxx20", "rfc": "0001" },
+    "box3d_private": { "dialect": "box3d-c17", "rfc": "0004" }
+  },
+  "cxx20_header_sets": [
+    {
+      "id": "jobsystem",
+      "paths": ["public/jobsystem/"],
+      "legacy_facades": ["public/jobsystem/parallel_batch.h", "public/jobsystem/worker_backend.h"]
+    },
+    {
+      "id": "mapcontainer",
+      "paths": ["public/mapcontainer/", "mapcontainer/"],
+      "legacy_facades": ["public/mapcontainer/map_container.h", "public/mapcontainer/map_container_format.h"]
+    },
+    {
+      "id": "platform",
+      "paths": ["public/platform/", "platform/composition.cpp", "platform/tool_process_client.cpp", "platform/posix/"],
+      "legacy_facades": []
+    }
+  ],
+  "abi": {
+    "libstdcxx_dual_abi_define": "_GLIBCXX_USE_CXX11_ABI",
+    "libstdcxx_dual_abi_default": "1",
+    "rule": "Every C++ target linked into one binary resolves the same libstdc++ dual-ABI value. Engine products define _GLIBCXX_USE_CXX11_ABI=0 globally; strict-hygiene compositions (strict_cpp20_env) use the toolchain default and link only each other.",
+    "supported_combinations": [
+      {
+        "id": "same-toolchain-mixed-dialect",
+        "description": "A legacy-cxx11 consumer and a cxx20 provider built by the same compiler and libstdc++ in one configuration, sharing the product's dual-ABI value, communicating only through declared legacy facades (vtables, C++11 standard-layout values, std::function).",
+        "compilers": ["g++", "clang++"],
+        "suites": ["toolchain.abi.jobsystem-batch", "toolchain.abi.mapcontainer"]
+      },
+      {
+        "id": "strict-isolated-default-abi",
+        "description": "Strict-hygiene cxx20 targets built with the toolchain-default dual-ABI value, linked only with other targets of the same value.",
+        "compilers": ["g++", "clang++"],
+        "verified_by": "toolchain_boundary.py verify (link-closure ABI check)"
+      }
+    ],
+    "unsupported_combinations": [
+      "Different compilers or standard libraries within one product binary or loaded module set",
+      "Different _GLIBCXX_USE_CXX11_ABI values on either side of any linked boundary",
+      "Standard-library containers, smart pointers, Expected or exceptions across a legacy facade (RFC 0006)"
+    ]
+  }
+}

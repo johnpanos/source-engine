@@ -117,9 +117,9 @@ private:
 	FrameContext m_frame;
 
 	mutable std::mutex m_mtx;
-	std::condition_variable m_cv;      // workers: ready work or drained
-	std::condition_variable m_doneCv;  // owner in Wait(): drained
-	uint32_t m_idleWorkers = 0;        // workers blocked on m_cv
+	std::condition_variable m_cv;     // workers: ready work or drained
+	std::condition_variable m_doneCv; // owner in Wait(): drained
+	uint32_t m_idleWorkers = 0;       // workers blocked on m_cv
 
 	std::vector<Child> m_children;
 	std::vector<uint32_t> m_ready;

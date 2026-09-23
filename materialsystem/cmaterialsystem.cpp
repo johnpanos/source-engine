@@ -25,6 +25,7 @@
 #include "vstdlib/IKeyValuesSystem.h"
 #include "ctexturecompositor.h"
 #include "materialsystem/idebugtextureinfo.h"
+#include "legacy_render_backend_provider.h"
 
 
 // NOTE: This must be the last file included!!!
@@ -522,6 +523,8 @@ CMaterialSystem::CMaterialSystem()
 	m_pMaterialProxyFactory = NULL;
 	m_nAdapter = 0;
 	m_nAdapterFlags = 0;
+	m_RenderProfileRequest = render::PreferAvailableRenderFeatures();
+	m_bRenderProfileSelected = false;
 	m_bRequestedEditorMaterials = false;
 	m_bCanUseEditorMaterials = false;
 	m_StandardTexturesAllocated = false;
@@ -597,6 +600,37 @@ DLL_EXPORT bool MaterialSystem_BindShaderProvider(
 {
 	return materialSystem == &g_MaterialSystem && provider &&
 		g_MaterialSystem.BindShaderProvider( *provider );
+}
+
+DLL_EXPORT bool MaterialSystem_SetRenderProfileRequest(
+	IMaterialSystem *materialSystem, const render::RenderProfileRequest *request )
+{
+	return materialSystem == &g_MaterialSystem && request &&
+		g_MaterialSystem.SetRenderProfileRequest( *request );
+}
+
+DLL_EXPORT bool MaterialSystem_GetRenderProfile(
+	IMaterialSystem *materialSystem, render::RenderFeatureProfile *profile )
+{
+	return materialSystem == &g_MaterialSystem && profile &&
+		g_MaterialSystem.GetRenderProfile( profile );
+}
+
+bool CMaterialSystem::SetRenderProfileRequest( const render::RenderProfileRequest &request )
+{
+	// The request is composition input; it cannot change once Connect begins.
+	if ( m_bConnectStarted )
+		return false;
+	m_RenderProfileRequest = request;
+	return true;
+}
+
+bool CMaterialSystem::GetRenderProfile( render::RenderFeatureProfile *profile ) const
+{
+	if ( !m_bRenderProfileSelected )
+		return false;
+	*profile = m_RenderProfile;
+	return true;
 }
 
 DLL_EXPORT bool MaterialSystem_BindBuiltinShaderProvider(
@@ -972,8 +1006,15 @@ InitReturnVal_t CMaterialSystem::Init()
 		return INIT_FAILED;
 	}
 
+	if ( !SelectRenderProfile() )
+	{
+		g_pShaderDeviceMgr->Shutdown();
+		DestroyShaderAPI();
+		return INIT_FAILED;
+	}
+
 	// Texture manager...
-	TextureManager()->Init( m_nAdapterFlags );
+	TextureManager()->Init( m_nAdapterFlags, m_RenderProfile );
 
 	// Shader system!
 	ShaderSystem()->Init( m_bBuiltinShadersBound ? &m_BuiltinShaderProvider : NULL );
@@ -1121,7 +1162,42 @@ void CMaterialSystem::Shutdown( )
 		g_pShaderDeviceMgr->Shutdown();
 	}
 
+	m_RenderProfile = render::RenderFeatureProfile();
+	m_bRenderProfileSelected = false;
+
 	BaseClass::Shutdown();
+}
+
+//-----------------------------------------------------------------------------
+// Chooses the render feature profile for the adapter the manager now uses. The
+// composition root's request, the adapter's facts and the documented quirk table
+// decide it; an unavailable required feature fails Init instead of degrading.
+//-----------------------------------------------------------------------------
+bool CMaterialSystem::SelectRenderProfile()
+{
+	if ( !m_bShaderProviderSelected )
+	{
+		Warning( "No render provider is bound; cannot select a render profile.\n" );
+		return false;
+	}
+	// Managers fall back to adapter 0 for an out-of-range index (see
+	// CShaderDeviceMgrDx8::SetAdapter); the profile follows the adapter used.
+	const int nAdapterCount = g_pShaderDeviceMgr->GetAdapterCount();
+	const int nAdapter = ( m_nAdapter >= 0 && m_nAdapter < nAdapterCount ) ? m_nAdapter : 0;
+	render::RenderProfileError error;
+	if ( !render::SelectLegacyRenderProfile( m_SelectedShaderProvider, m_ShaderServices, nAdapter,
+			 m_RenderProfileRequest, &m_RenderProfile, &error ) )
+	{
+		Warning( "Render profile selection failed for provider '%s' adapter %d (status %u): %s\n",
+			m_SelectedShaderProvider.id, nAdapter, (unsigned int)error.status, error.message );
+		return false;
+	}
+	m_bRenderProfileSelected = true;
+	char description[256];
+	render::DescribeRenderProfile( m_RenderProfile, description, sizeof( description ) );
+	Msg( "Render profile for provider '%s' adapter %d: %s\n", m_SelectedShaderProvider.id,
+		nAdapter, description );
+	return true;
 }
 
 void CMaterialSystem::ModInit()

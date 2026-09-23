@@ -686,6 +686,10 @@ def configure(conf):
 	conf.env.append_unique('LINKFLAGS', linkflags)
 	conf.env.append_unique('INCLUDES', [os.path.abspath('common/')])
 
+	# Per-target dialects (RFC 0006 M0): probes each declared dialect with the
+	# flags above; targets select theirs in quality/toolchain/policy.json.
+	conf.load('toolchain_dialect')
+
 	check_deps( conf )
 
 	if conf.env.NATIVE_VULKAN:

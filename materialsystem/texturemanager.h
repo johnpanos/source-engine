@@ -14,6 +14,7 @@
 #endif
 
 #include "itextureinternal.h"
+#include "render/render_profile.h"
 class ITexture;
 class ITextureInternal;
 class IVTFTexture;
@@ -32,8 +33,9 @@ class CTextureCompositorTemplate;
 abstract_class ITextureManager
 {
 public:
-	// Initialization + shutdown
-	virtual void Init( int nFlags ) = 0;
+	// Initialization + shutdown. The profile is the one the material system
+	// selected for the active adapter; the manager reads its workarounds.
+	virtual void Init( int nFlags, const render::RenderFeatureProfile &profile ) = 0;
 	virtual void Shutdown() = 0;
 
 	// Allocate, free standard render target textures

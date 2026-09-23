@@ -591,7 +591,11 @@ public:
 		for ( int i = 0; i < count; ++i )
 		{
 			const Role role = i < m_nCompute ? Role::Compute : Role::Blocking;
-			m_threads.emplace_back( [this, role, &rs, generation] { ThreadMain( role, &rs, generation ); } );
+			m_threads.emplace_back(
+			    [this, role, &rs, generation]
+			    {
+				    ThreadMain( role, &rs, generation );
+			    } );
 		}
 	}
 
@@ -600,7 +604,11 @@ public:
 	void WaitForWorkers()
 	{
 		std::unique_lock<std::mutex> lk( m_mtx );
-		m_doneCv.wait( lk, [&] { return m_active == 0; } );
+		m_doneCv.wait( lk,
+		    [&]
+		    {
+			    return m_active == 0;
+		    } );
 		m_run = nullptr;
 	}
 
@@ -621,7 +629,11 @@ private:
 			std::unique_lock<std::mutex> lk( m_mtx );
 			if ( --m_active == 0 )
 				m_doneCv.notify_one();
-			m_cv.wait( lk, [&] { return m_quit || m_generation != seen; } );
+			m_cv.wait( lk,
+			    [&]
+			    {
+				    return m_quit || m_generation != seen;
+			    } );
 			if ( m_quit )
 				return;
 			seen = m_generation;
@@ -714,9 +726,17 @@ RunResult ParallelExecutor::Execute( const SealedGraph &graph, const RunOptions 
 	std::vector<std::thread> workers;
 	workers.reserve( (size_t)m_nWorkers + (size_t)m_nBlocking );
 	for ( int i = 0; i < m_nWorkers; ++i )
-		workers.emplace_back( [&rs] { ServiceLoop( rs, Role::Compute ); } );
+		workers.emplace_back(
+		    [&rs]
+		    {
+			    ServiceLoop( rs, Role::Compute );
+		    } );
 	for ( int i = 0; i < m_nBlocking; ++i )
-		workers.emplace_back( [&rs] { ServiceLoop( rs, Role::Blocking ); } );
+		workers.emplace_back(
+		    [&rs]
+		    {
+			    ServiceLoop( rs, Role::Blocking );
+		    } );
 	ServiceCaller( rs, opts.pumpMainThread );
 	for ( auto &t : workers )
 		t.join();

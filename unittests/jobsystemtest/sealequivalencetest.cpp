@@ -35,7 +35,7 @@ int g_failures = 0;
 		if ( !( condition ) )                                                                      \
 		{                                                                                          \
 			++g_failures;                                                                          \
-			std::printf( "  FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition );                 \
+			std::printf( "  FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition );                   \
 		}                                                                                          \
 	} while ( 0 )
 
@@ -55,7 +55,13 @@ struct Rng
 // One recorded builder call, replayed into both the real builder and the model.
 struct Op
 {
-	enum Kind { AddJob, Dep, Read, Write } kind = AddJob;
+	enum Kind
+	{
+		AddJob,
+		Dep,
+		Read,
+		Write
+	} kind = AddJob;
 	bool emptyName = false;
 	ExecutorToken exec;
 	uint32_t a = 0, b = 0;
@@ -92,8 +98,17 @@ struct Outcome
 //-----------------------------------------------------------------------------
 Outcome ReferenceSeal( const std::vector<Op> &ops )
 {
-	struct E { uint32_t p, c; DependencyKind k; };
-	struct R { uint32_t job; ResourceVersion res; bool write; };
+	struct E
+	{
+		uint32_t p, c;
+		DependencyKind k;
+	};
+	struct R
+	{
+		uint32_t job;
+		ResourceVersion res;
+		bool write;
+	};
 	std::vector<bool> emptyName;
 	std::vector<std::pair<uint16_t, uint32_t>> seq;
 	std::vector<E> edges;
@@ -296,7 +311,7 @@ std::vector<Op> RandomOps( Rng &rng, uint32_t maxJobs )
 		Op op = MakeOp( Op::AddJob );
 		op.emptyName = rng.Chance( 1 );
 		const uint32_t e = rng.Below( 10 );
-		op.exec = e < 6 ? Executor::Compute()
+		op.exec = e < 6   ? Executor::Compute()
 		          : e < 8 ? Executor::Sequence( (uint16_t)rng.Below( lanes ) )
 		          : e < 9 ? Executor::MainThread()
 		                  : Executor::BlockingIO();
@@ -347,7 +362,8 @@ void TestRandomEquivalence()
 		CHECK( real == ref );
 		if ( !( real == ref ) )
 		{
-			std::printf( "    seed=%llu real ok=%d code=%d a=%u b=%u / ref ok=%d code=%d a=%u b=%u\n",
+			std::printf(
+			    "    seed=%llu real ok=%d code=%d a=%u b=%u / ref ok=%d code=%d a=%u b=%u\n",
 			    (unsigned long long)seed, real.ok, (int)real.code, real.jobA, real.jobB, ref.ok,
 			    (int)ref.code, ref.jobA, ref.jobB );
 			continue;
@@ -361,8 +377,11 @@ void TestRandomEquivalence()
 
 		// A rejected builder keeps its declarations: add more and reseal.
 		std::vector<Op> more = ops;
-		const uint32_t jobs = (uint32_t)std::count_if(
-		    ops.begin(), ops.end(), []( const Op &op ) { return op.kind == Op::AddJob; } );
+		const uint32_t jobs = (uint32_t)std::count_if( ops.begin(), ops.end(),
+		    []( const Op &op )
+		    {
+			    return op.kind == Op::AddJob;
+		    } );
 		Op job = MakeOp( Op::AddJob );
 		job.exec = Executor::Sequence( 0 );
 		more.push_back( job );
@@ -398,7 +417,8 @@ void TestLargeShapes()
 			for ( uint32_t i = 0; i < n; ++i )
 			{
 				Op op = MakeOp( Op::AddJob );
-				op.exec = variant == 5 ? Executor::Sequence( (uint16_t)( i % 3 ) ) : Executor::Compute();
+				op.exec =
+				    variant == 5 ? Executor::Sequence( (uint16_t)( i % 3 ) ) : Executor::Compute();
 				ops.push_back( op );
 			}
 			for ( uint32_t i = 1; i < n; ++i )

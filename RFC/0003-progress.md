@@ -3,6 +3,12 @@
 Updated: 2026-09-22
 Source revision at assessment: `0649f377` (working tree; AGENTS.md portfolio row: R10)
 
+**Latest performance increment (2026-09-23):** [scheduler microbenchmarks and
+contract-preserving optimization](0003-scheduler-performance-progress.md) adds
+oracle-validated microbenchmarks, a differential seal oracle and an executor
+stress suite. It optimizes Seal, both graph executors, the batch facade and dynamic
+scopes without changing their contracts. It closes no gate.
+
 **Latest production-caller increment:** [bounded batch migrations and native
 Portal evidence](0003-batch-migration-progress.md) records the default-off
 particle, bone and entity-packing graph paths, borrowed engine-pool execution,

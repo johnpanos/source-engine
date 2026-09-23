@@ -12,6 +12,7 @@
 //
 //=============================================================================//
 #include "physics_collision.h"
+#include "vphysics/virtualmesh.h"
 
 #include <string.h>
 
@@ -543,7 +544,53 @@ CPhysCollide *CPhysicsCollisionBox3D::ConvertConvexToCollideParams( CPhysConvex 
 
 void CPhysicsCollisionBox3D::DestroyCollide( CPhysCollide *pCollide )
 {
+	for ( int i = 0; i < m_bboxCache.Count(); i++ )
+	{
+		if ( m_bboxCache[i].pCollide == pCollide )
+			return;
+	}
 	delete ToBox3D( pCollide );
+}
+
+namespace
+{
+void CollideToLegacy( const CPhysCollideBox3D *pCollide, LegacyCollide_t *pOut )
+{
+	pOut->massCenter = pCollide->massCenter;
+	pOut->orthoAreas = pCollide->orthoAreas;
+	pOut->rotationInertia = pCollide->rotationInertia;
+	for ( int i = 0; i < pCollide->convexes.Count(); i++ )
+	{
+		const CPhysConvexBox3D *pSource = pCollide->convexes[i];
+		LegacyConvex_t &convex = pOut->convexes[pOut->convexes.AddToTail()];
+		convex.points.CopyArray( pSource->points.Base(), pSource->points.Count() );
+		convex.triangles.CopyArray( pSource->triangles.Base(), pSource->triangles.Count() );
+		convex.triangleMaterials.CopyArray( pSource->triangleMaterials.Base(), pSource->triangleMaterials.Count() );
+		convex.gameData = pSource->gameData;
+	}
+}
+}
+
+// The serialized form is the legacy IVP compact surface, so .phy/BSP data
+// written through this provider stays loadable by either provider.
+int CPhysicsCollisionBox3D::CollideSize( CPhysCollide *pCollide )
+{
+	const CPhysCollideBox3D *pBox = ToBox3D( pCollide );
+	if ( !pBox )
+		return 0;
+	LegacyCollide_t legacy;
+	CollideToLegacy( pBox, &legacy );
+	return EncodeLegacyCollide( legacy, pBox->index, NULL, false );
+}
+
+int CPhysicsCollisionBox3D::CollideWrite( char *pDest, CPhysCollide *pCollide, bool bSwap )
+{
+	const CPhysCollideBox3D *pBox = ToBox3D( pCollide );
+	if ( !pBox || !pDest )
+		return 0;
+	LegacyCollide_t legacy;
+	CollideToLegacy( pBox, &legacy );
+	return EncodeLegacyCollide( legacy, pBox->index, pDest, bSwap );
 }
 
 CPhysCollide *CPhysicsCollisionBox3D::UnserializeCollide( char *pBuffer, int size, int index )
@@ -553,8 +600,180 @@ CPhysCollide *CPhysicsCollisionBox3D::UnserializeCollide( char *pBuffer, int siz
 
 CPhysCollide *CPhysicsCollisionBox3D::BBoxToCollide( const Vector &mins, const Vector &maxs )
 {
+	// Can't create a collision model for an empty box.
+	if ( mins == maxs )
+		return NULL;
+	for ( int i = 0; i < m_bboxCache.Count(); i++ )
+	{
+		if ( m_bboxCache[i].mins == mins && m_bboxCache[i].maxs == maxs )
+			return m_bboxCache[i].pCollide;
+	}
 	CPhysConvex *pConvex = BBoxToConvex( mins, maxs );
-	return pConvex ? ConvertConvexToCollide( &pConvex, 1 ) : NULL;
+	CPhysCollide *pCollide = pConvex ? ConvertConvexToCollide( &pConvex, 1 ) : NULL;
+	if ( pCollide )
+	{
+		BBoxCache_t entry = { mins, maxs, pCollide };
+		m_bboxCache.AddToTail( entry );
+	}
+	return pCollide;
+}
+
+bool CPhysicsCollisionBox3D::GetBBoxCacheSize( int *pCachedSize, int *pCachedCount )
+{
+	*pCachedCount = m_bboxCache.Count();
+	*pCachedSize = 0;
+	for ( int i = 0; i < m_bboxCache.Count(); i++ )
+		*pCachedSize += CollideSize( m_bboxCache[i].pCollide );
+	return true;
+}
+
+//-----------------------------------------------------------------------------
+// Triangle collides: polysoups and virtual meshes
+//-----------------------------------------------------------------------------
+CPhysCollideBox3D *CreateTriangleCollide( const Vector *pVertices, const int *pIndices, int triangleCount,
+	const unsigned char *pMaterials )
+{
+	CPhysCollideBox3D *pCollide = new CPhysCollideBox3D;
+	for ( int t = 0; t < triangleCount; t++ )
+	{
+		Vector points[3] = { pVertices[pIndices[t * 3]], pVertices[pIndices[t * 3 + 1]], pVertices[pIndices[t * 3 + 2]] };
+		if ( CrossProduct( points[1] - points[0], points[2] - points[0] ).LengthSqr() < 1e-8f )
+			continue;	// degenerate
+		CPhysConvexBox3D *pConvex = new CPhysConvexBox3D;
+		for ( int k = 0; k < 3; k++ )
+		{
+			pConvex->points.AddToTail( points[k] );
+			pConvex->triangles.AddToTail( (unsigned short)k );
+		}
+		pConvex->triangleMaterials.AddToTail( pMaterials ? pMaterials[t] : 0 );
+		BuildHulls( points, 3, pConvex->triangles.Base(), 3, pConvex );
+		pCollide->convexes.AddToTail( pConvex );
+	}
+	FinalizeCollide( pCollide, true );
+	return pCollide;
+}
+
+struct CPhysPolysoupBox3D
+{
+	CUtlVector<Vector> vertices;
+	CUtlVector<unsigned char> materials;
+};
+
+CPhysPolysoup *CPhysicsCollisionBox3D::PolysoupCreate( void )
+{
+	return reinterpret_cast<CPhysPolysoup *>( new CPhysPolysoupBox3D );
+}
+
+void CPhysicsCollisionBox3D::PolysoupDestroy( CPhysPolysoup *pSoup )
+{
+	delete reinterpret_cast<CPhysPolysoupBox3D *>( pSoup );
+}
+
+void CPhysicsCollisionBox3D::PolysoupAddTriangle( CPhysPolysoup *pSoup, const Vector &a, const Vector &b, const Vector &c, int materialIndex7bits )
+{
+	CPhysPolysoupBox3D *pBox = reinterpret_cast<CPhysPolysoupBox3D *>( pSoup );
+	if ( !pBox )
+		return;
+	pBox->vertices.AddToTail( a );
+	pBox->vertices.AddToTail( b );
+	pBox->vertices.AddToTail( c );
+	pBox->materials.AddToTail( (unsigned char)( materialIndex7bits & 0x7F ) );
+}
+
+CPhysCollide *CPhysicsCollisionBox3D::ConvertPolysoupToCollide( CPhysPolysoup *pSoup, bool useMOPP )
+{
+	CPhysPolysoupBox3D *pBox = reinterpret_cast<CPhysPolysoupBox3D *>( pSoup );
+	int triangleCount = pBox ? pBox->materials.Count() : 0;
+	if ( !triangleCount )
+		return NULL;
+	CUtlVector<int> indices;
+	for ( int i = 0; i < triangleCount * 3; i++ )
+		indices.AddToTail( i );
+	CPhysCollideBox3D *pCollide = CreateTriangleCollide( pBox->vertices.Base(), indices.Base(), triangleCount, pBox->materials.Base() );
+	if ( !pCollide->convexes.Count() )
+	{
+		delete pCollide;
+		return NULL;
+	}
+	return reinterpret_cast<CPhysCollide *>( pCollide );
+}
+
+// IVP builds the virtual mesh lazily from the handler; its whole triangle
+// list is available up front, so the collide is built once here.
+CPhysCollide *CPhysicsCollisionBox3D::CreateVirtualMesh( const virtualmeshparams_t &params )
+{
+	if ( !params.pMeshEventHandler )
+		return NULL;
+	virtualmeshlist_t *pList = new virtualmeshlist_t;
+	memset( pList, 0, sizeof( *pList ) );
+	params.pMeshEventHandler->GetVirtualMesh( params.userData, pList );
+	CPhysCollide *pResult = NULL;
+	if ( pList->pVerts && pList->triangleCount > 0 )
+	{
+		int triangleCount = MIN( pList->triangleCount, MAX_VIRTUAL_TRIANGLES );
+		CUtlVector<int> indices;
+		for ( int i = 0; i < triangleCount * 3; i++ )
+			indices.AddToTail( pList->indices[i] );
+		CPhysCollideBox3D *pCollide = CreateTriangleCollide( pList->pVerts, indices.Base(), triangleCount, NULL );
+		if ( pCollide->convexes.Count() )
+			pResult = reinterpret_cast<CPhysCollide *>( pCollide );
+		else
+			delete pCollide;
+	}
+	delete pList;
+	return pResult;
+}
+
+// IVP sweeps the box against the cone and reports a start-solid overlap;
+// the same question as a GJK distance between the box corners and the cone
+// (apex plus a fine polygon for its base rim).
+bool CPhysicsCollisionBox3D::IsBoxIntersectingCone( const Vector &boxAbsMins, const Vector &boxAbsMaxs, const truncatedcone_t &cone )
+{
+	const int kRimPoints = 32;
+	b3Vec3 box[8];
+	for ( int i = 0; i < 8; i++ )
+	{
+		Vector corner( ( i & 1 ) ? boxAbsMaxs.x : boxAbsMins.x, ( i & 2 ) ? boxAbsMaxs.y : boxAbsMins.y, ( i & 4 ) ? boxAbsMaxs.z : boxAbsMins.z );
+		box[i] = ToB3( corner );
+	}
+	Vector axis = cone.normal;
+	if ( VectorNormalize( axis ) < 1e-6f )
+		return false;
+	Vector right, up;
+	VectorVectors( axis, right, up );
+	float radius = cone.h * tanf( DEG2RAD( cone.theta ) );
+	Vector baseCenter = cone.origin + axis * cone.h;
+	b3Vec3 conePoints[kRimPoints + 1];
+	conePoints[0] = ToB3( cone.origin );
+	for ( int i = 0; i < kRimPoints; i++ )
+	{
+		float angle = 2.0f * M_PI_F * i / kRimPoints;
+		conePoints[i + 1] = ToB3( baseCenter + ( right * cosf( angle ) + up * sinf( angle ) ) * radius );
+	}
+	b3DistanceInput input;
+	memset( &input, 0, sizeof( input ) );
+	input.proxyA.points = box;
+	input.proxyA.count = 8;
+	input.proxyB.points = conePoints;
+	input.proxyB.count = kRimPoints + 1;
+	input.transform = b3Transform_identity;
+	input.useRadii = false;
+	b3SimplexCache cache;
+	memset( &cache, 0, sizeof( cache ) );
+	b3DistanceOutput output = b3ShapeDistance( &input, &cache, NULL, 0 );
+	return output.distance <= 1e-3f;
+}
+
+void CPhysicsCollisionBox3D::OutputDebugInfo( const CPhysCollide *pCollide )
+{
+	const CPhysCollideBox3D *pBox = ToBox3D( pCollide );
+	if ( !pBox )
+		return;
+	int hulls = 0;
+	for ( int i = 0; i < pBox->convexes.Count(); i++ )
+		hulls += pBox->convexes[i]->hulls.Count();
+	Msg( "Box3D collide: %d convexes (%d hulls), volume %.2f, bounds (%.2f %.2f %.2f)-(%.2f %.2f %.2f)\n", pBox->convexes.Count(), hulls,
+		pBox->volume, pBox->mins.x, pBox->mins.y, pBox->mins.z, pBox->maxs.x, pBox->maxs.y, pBox->maxs.z );
 }
 
 int CPhysicsCollisionBox3D::GetConvexesUsedInCollideable( const CPhysCollide *pCollideable, CPhysConvex **pOutputArray, int iOutputArrayLimit )

@@ -46,6 +46,8 @@ def build(bld):
 		# Portal carving: real mathlib clipping through the C++11 game-facing facade.
 		( 'jobsystemportalcarvetest', 'portalcarvetest.cpp', ['mathlib', 'vstdlib', 'tier1', 'tier0'] + dl_log ),
 	]
+	# Dialects are selected in quality/toolchain/policy.json: the C++20 tests are
+	# listed there; the legacy-facade tests keep the default C++11 dialect.
 	cxx11 = [ 'jobsystemlegacybatchtest', 'jobsystemportalcarvetest' ]
 
 	for target, src, use_libs in programs:
@@ -57,7 +59,6 @@ def build(bld):
 			includes     = includes + (['../../public/tier0'] if target in cxx11 else []) +
 				(['../..'] if target == 'jobsystemportalcarvetest' else []),
 			defines      = [],
-			cxxflags     = ['-std=c++11' if target in cxx11 else '-std=c++20'],
 			linkflags    = linkflags,
 			use          = use_libs,
 			install_path = bld.env.TESTDIR,

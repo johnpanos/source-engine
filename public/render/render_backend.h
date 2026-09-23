@@ -29,10 +29,28 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 
 namespace render
 {
+
+// String helpers local to the render contracts. Legacy material-system targets
+// forbid <cstring> by defining strncpy away, so these headers cannot include it.
+namespace contract_detail
+{
+
+inline bool EqualStrings( const char *a, const char *b, size_t limit )
+{
+	for ( size_t i = 0; i < limit; ++i )
+	{
+		if ( a[i] != b[i] )
+			return false;
+		if ( a[i] == '\0' )
+			return true;
+	}
+	return true;
+}
+
+} // namespace contract_detail
 
 // ---------------------------------------------------------------------------
 // Backend identity
@@ -96,11 +114,20 @@ struct RenderFeatureSet
 // A value description of an adapter. It is a pure value with fixed-size storage:
 // it MUST remain valid after the enumeration object that produced it is gone,
 // so no field may point into transient provider memory.
+//
+// vendorId, deviceId, driverVersion and driverApi are driver facts. Portable code
+// must not branch on them; they exist so documented quirks (render_profile.h)
+// can name the adapters and driver ranges they affect. driverApi names the API
+// the provider ultimately drives ("d3d9", "vulkan", "opengl", "none"), which can
+// differ from the provider's own identity when it translates.
 struct RenderAdapterInfo
 {
 	char id[64] = { 0 };
 	char name[64] = { 0 };
 	uint32_t vendorId = 0;
+	uint32_t deviceId = 0;
+	uint64_t driverVersion = 0;
+	char driverApi[16] = { 0 };
 	uint64_t deviceMemoryBytes = 0;
 	bool isSoftware = false;
 	RenderFeatureSet supportedFeatures;
@@ -109,8 +136,10 @@ struct RenderAdapterInfo
 	// captured copy compares equal to a re-query (and stays valid independently).
 	bool operator==( const RenderAdapterInfo &o ) const
 	{
-		return std::strncmp( id, o.id, sizeof( id ) ) == 0 &&
-			std::strncmp( name, o.name, sizeof( name ) ) == 0 && vendorId == o.vendorId &&
+		return contract_detail::EqualStrings( id, o.id, sizeof( id ) ) &&
+			contract_detail::EqualStrings( name, o.name, sizeof( name ) ) && vendorId == o.vendorId &&
+			deviceId == o.deviceId && driverVersion == o.driverVersion &&
+			contract_detail::EqualStrings( driverApi, o.driverApi, sizeof( driverApi ) ) &&
 			deviceMemoryBytes == o.deviceMemoryBytes && isSoftware == o.isSoftware &&
 			supportedFeatures == o.supportedFeatures;
 	}

@@ -1254,6 +1254,17 @@ private:
 static CShaderAPIEmpty g_ShaderAPIEmpty;
 static CShaderShadowEmpty g_ShaderShadow;
 
+// The null adapter renders nothing, so it claims no semantic feature.
+static bool DescribeNullAdapter( int adapter, render::RenderAdapterInfo *info )
+{
+	if ( adapter != 0 || !info )
+		return false;
+	*info = render::RenderAdapterInfo();
+	Q_strncpy( info->driverApi, "none", sizeof( info->driverApi ) );
+	info->isSoftware = true;
+	return true;
+}
+
 static bool CreateNullShaderBackend( render::LegacyShaderServices *services )
 {
 	if ( !services )
@@ -1264,6 +1275,7 @@ static bool CreateNullShaderBackend( render::LegacyShaderServices *services )
 	services->shadow = &g_ShaderShadow;
 	services->hardware = &g_ShaderAPIEmpty;
 	services->debugTextures = &g_ShaderAPIEmpty;
+	services->describeAdapter = DescribeNullAdapter;
 	return true;
 }
 
@@ -1368,9 +1380,11 @@ CreateInterfaceFn CShaderDeviceMgrEmpty::SetMode( void *hWnd, int nAdapter, cons
 }
 
 // Gets the number of adapters...
+// The null backend advertises one software adapter so the render.contracts
+// provider around this manager can describe it and select a profile for it.
 int	 CShaderDeviceMgrEmpty::GetAdapterCount() const
 {
-	return 0;
+	return 1;
 }
 
 bool CShaderDeviceMgrEmpty::GetRecommendedConfigurationInfo( int nAdapter, int nDXLevel, KeyValues *pKeyValues ) 
@@ -1382,6 +1396,7 @@ bool CShaderDeviceMgrEmpty::GetRecommendedConfigurationInfo( int nAdapter, int n
 void CShaderDeviceMgrEmpty::GetAdapterInfo( int adapter, MaterialAdapterInfo_t& info ) const
 {
 	memset( &info, 0, sizeof( info ) );
+	Q_strncpy( info.m_pDriverName, "Null (no GPU)", sizeof( info.m_pDriverName ) );
 	info.m_nDXSupportLevel = 90;
 }
 

@@ -120,60 +120,44 @@ const float kDirectionalDistance = 2.0e6f;
 // Linear light values, kept below saturation where the cases measure a sum.
 const ModelLight kDirectional = { MATERIAL_LIGHT_DIRECTIONAL, { 0.7f, 0.55f, 0.4f }, { 0, 0, 0 },
     { -0.48f, -0.6f, 0.64f }, { 1, 0, 0 }, 0, 0, 0 };
-const ModelLight kDirectional2 = { MATERIAL_LIGHT_DIRECTIONAL, { 0.1f, 0.2f, 0.35f },
-    { 0, 0, 0 }, { 0.8f, 0.0f, -0.6f }, { 1, 0, 0 }, 0, 0, 0 };
+const ModelLight kDirectional2 = { MATERIAL_LIGHT_DIRECTIONAL, { 0.1f, 0.2f, 0.35f }, { 0, 0, 0 },
+    { 0.8f, 0.0f, -0.6f }, { 1, 0, 0 }, 0, 0, 0 };
 const ModelLight kPoint = { MATERIAL_LIGHT_POINT, { 1.6f, 1.2f, 0.9f }, { -0.3f, 0.4f, -0.9f },
     { 0, 0, 1 }, { 0.2f, 0.3f, 0.5f }, 0, 0, 0 };
 const ModelLight kSpot = { MATERIAL_LIGHT_SPOT, { 1.1f, 0.9f, 1.3f }, { 0.25f, -0.2f, -1.2f },
     { -0.15f, 0.1f, 0.98f }, { 0.4f, 0.4f, 0.0f }, 0.7f, 1.6f, 2.0f };
 
 const ModelLightCase kCases[] = {
-    { "ambient_cube",
-        kLambert,
+    { "ambient_cube", kLambert,
         { { 0.6f, 0.08f, 0.05f }, { 0.07f, 0.5f, 0.06f }, { 0.05f, 0.08f, 0.55f },
             { 0.4f, 0.35f, 0.04f }, { 0.05f, 0.4f, 0.45f }, { 0.3f, 0.12f, 0.45f } },
-        0,
-        {},
-        false },
+        0, {}, false },
     { "directional", kLambert, {}, 1, { kDirectional }, false },
     { "point", kLambert, {}, 1, { kPoint }, false },
     { "spot", kLambert, {}, 1, { kSpot }, false },
-    { "four_lights",
-        kLambert,
+    { "four_lights", kLambert,
         { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
             { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
-        4,
-        { kSpot, kDirectional, kPoint, kDirectional2 },
-        false },
+        4, { kSpot, kDirectional, kPoint, kDirectional2 }, false },
     { "half_lambert", kHalfLambert, {}, 1, { kDirectional }, false },
     { "static_vertex", kLambert, {}, 0, {}, true },
-    { "static_and_dynamic",
-        kLambert,
+    { "static_and_dynamic", kLambert,
         { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
             { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
-        1,
-        { kDirectional2 },
-        true },
+        1, { kDirectional2 }, true },
     { "no_light", kLambert, {}, 0, {}, false },
-    { "model_transform",
-        kLambert,
+    { "model_transform", kLambert,
         { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
             { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
-        2,
-        { kDirectional, kPoint },
-        false,
-        kRigid },
-    { "skinned",
-        kLambert,
+        2, { kDirectional, kPoint }, false, kRigid },
+    { "skinned", kLambert,
         { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
             { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
-        2,
-        { kDirectional, kPoint },
-        false,
-        kSkinned },
+        2, { kDirectional, kPoint }, false, kSkinned },
     // VertexLitGeneric with $phong: skin_vs20 / skin_ps20b, lit per pixel.
-    { "phong", kPhong, { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
-        { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
+    { "phong", kPhong,
+        { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
+            { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
         2, { kDirectional, kPoint }, false },
     { "phong_four_lights", kPhong, {}, 4, { kSpot, kDirectional, kPoint, kDirectional2 }, false },
     { "phong_lightwarp", kPhongLightWarp, {}, 2, { kDirectional, kPoint }, false },
@@ -181,9 +165,9 @@ const ModelLightCase kCases[] = {
     // No rim-light case: the shipped skin_ps20b.vcs has no RIMLIGHT combo for
     // ps_2_b (D3D9 draws those materials without a pixel shader), and Portal's
     // content has no $rimlight material.
-    { "phong_constant", kPhongConstant, { { 0.2f, 0.1f, 0.05f }, { 0.05f, 0.2f, 0.1f },
-        { 0.1f, 0.05f, 0.2f }, { 0.15f, 0.15f, 0.05f }, { 0.05f, 0.15f, 0.15f },
-        { 0.15f, 0.05f, 0.15f } },
+    { "phong_constant", kPhongConstant,
+        { { 0.2f, 0.1f, 0.05f }, { 0.05f, 0.2f, 0.1f }, { 0.1f, 0.05f, 0.2f },
+            { 0.15f, 0.15f, 0.05f }, { 0.05f, 0.15f, 0.15f }, { 0.15f, 0.05f, 0.15f } },
         2, { kDirectional, kPoint }, false },
     { "phong_basealphamask", kPhongBaseAlphaMask, {}, 2, { kDirectional, kPoint }, false },
     { "phong_skinned", kPhong, {}, 2, { kDirectional, kPoint }, false, kSkinned },
@@ -195,8 +179,8 @@ struct ProceduralTexture
 	const char *name;
 	int width;
 	int height;
-	unsigned char rgba[4];  // a solid texel, or with ramp: the value at x = 0
-	bool ramp;              // a lightwarp ramp across x (LightWarpTexel)
+	unsigned char rgba[4]; // a solid texel, or with ramp: the value at x = 0
+	bool ramp;             // a lightwarp ramp across x (LightWarpTexel)
 };
 const ProceduralTexture kTextures[] = {
     { "conformance/modellight_base", 4, 4, { 190, 150, 110, 255 }, false },
@@ -234,27 +218,26 @@ const MaterialVariant kMaterials[kMaterialCount] = {
     { "conformance/modellight_phong",
         { { "$basetexture", "conformance/modellight_base" },
             { "$bumpmap", "conformance/modellight_normal" }, { "$phong", "1" },
-            { "$phongexponenttexture", "conformance/modellight_exponent" },
-            { "$phongboost", "2" }, { "$phongfresnelranges", "[0.2 0.6 1]" } } },
+            { "$phongexponenttexture", "conformance/modellight_exponent" }, { "$phongboost", "2" },
+            { "$phongfresnelranges", "[0.2 0.6 1]" } } },
     { "conformance/modellight_phong_lightwarp",
         { { "$basetexture", "conformance/modellight_base" },
             { "$bumpmap", "conformance/modellight_normal" }, { "$phong", "1" },
-            { "$phongexponenttexture", "conformance/modellight_exponent" },
-            { "$phongboost", "2" }, { "$phongfresnelranges", "[0.2 0.6 1]" },
+            { "$phongexponenttexture", "conformance/modellight_exponent" }, { "$phongboost", "2" },
+            { "$phongfresnelranges", "[0.2 0.6 1]" },
             { "$lightwarptexture", "conformance/modellight_lightwarp" } } },
     { "conformance/modellight_phong_selfillum",
         { { "$basetexture", "conformance/modellight_base_masked" },
             { "$bumpmap", "conformance/modellight_normal" }, { "$phong", "1" },
-            { "$phongexponenttexture", "conformance/modellight_exponent" },
-            { "$phongboost", "2" }, { "$selfillum", "1" },
-            { "$selfillumtint", "[0.9 0.6 0.3]" } } },
+            { "$phongexponenttexture", "conformance/modellight_exponent" }, { "$phongboost", "2" },
+            { "$selfillum", "1" }, { "$selfillumtint", "[0.9 0.6 0.3]" } } },
     // A constant exponent and tint override the exponent map's.
     { "conformance/modellight_phong_constant",
         { { "$basetexture", "conformance/modellight_base" },
             { "$bumpmap", "conformance/modellight_normal" }, { "$phong", "1" },
             { "$phongexponenttexture", "conformance/modellight_exponent" },
-            { "$phongexponent", "24" }, { "$phongtint", "[1 0.5 0.25]" },
-            { "$phongboost", "1.5" }, { "$phongfresnelranges", "[0.5 0.75 1]" } } },
+            { "$phongexponent", "24" }, { "$phongtint", "[1 0.5 0.25]" }, { "$phongboost", "1.5" },
+            { "$phongfresnelranges", "[0.5 0.75 1]" } } },
     // The phong mask in the base alpha, the normal map's normal ignored. (Without
     // a bump map this is FASTPATH_NOBUMP, which the shipped skin_ps20b.vcs lacks.)
     { "conformance/modellight_phong_basealphamask",
@@ -326,11 +309,11 @@ public:
 void QuadTangent( int quad, float tangent[4] )
 {
 	const float *n = kQuadNormals[quad];
-	const float helper[3] = { 0.0f, fabsf( n[1] ) > 0.9f ? 0.0f : 1.0f,
-		fabsf( n[1] ) > 0.9f ? 1.0f : 0.0f };
+	const float helper[3] = {
+	    0.0f, fabsf( n[1] ) > 0.9f ? 0.0f : 1.0f, fabsf( n[1] ) > 0.9f ? 1.0f : 0.0f };
 	// cross( helper, n )
 	float t[3] = { helper[1] * n[2] - helper[2] * n[1], helper[2] * n[0] - helper[0] * n[2],
-		helper[0] * n[1] - helper[1] * n[0] };
+	    helper[0] * n[1] - helper[1] * n[0] };
 	const float length = sqrtf( t[0] * t[0] + t[1] * t[1] + t[2] * t[2] );
 	for ( int k = 0; k < 3; ++k )
 		tangent[k] = t[k] / length;
@@ -366,8 +349,8 @@ bool CModelLightScene::Init()
 	for ( int t = 0; t < kTextureCount; ++t )
 	{
 		const ProceduralTexture &spec = kTextures[t];
-		m_pTextures[t] = g_pMaterialSystem->CreateProceduralTexture( spec.name,
-		    TEXTURE_GROUP_OTHER, spec.width, spec.height, IMAGE_FORMAT_RGBA8888,
+		m_pTextures[t] = g_pMaterialSystem->CreateProceduralTexture( spec.name, TEXTURE_GROUP_OTHER,
+		    spec.width, spec.height, IMAGE_FORMAT_RGBA8888,
 		    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL |
 		        TEXTUREFLAGS_SINGLECOPY | TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT );
 		if ( !m_pTextures[t] )
@@ -525,7 +508,8 @@ bool CModelLightScene::RenderCase(
 	{
 		CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
 		pRenderContext->Viewport( 0, 0, m_Width, m_Height );
-		pRenderContext->SetToneMappingScaleLinear( Vector( m_ToneScale, m_ToneScale, m_ToneScale ) );
+		pRenderContext->SetToneMappingScaleLinear(
+		    Vector( m_ToneScale, m_ToneScale, m_ToneScale ) );
 		pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
 		pRenderContext->ClearBuffers( true, true );
 		for ( int mode = MATERIAL_VIEW; mode <= MATERIAL_PROJECTION; ++mode )
@@ -568,23 +552,25 @@ bool CModelLightScene::RenderCase(
 		fwrite( &rgba[i], 1, 3, frame );
 	fclose( frame );
 
-	fprintf( out, "%s{\"name\":\"%s\",\"material\":\"%s\",\"half_lambert\":%s,"
-	              "\"static_color\":%s,",
-	    first ? "" : ",", c.name, kMaterials[c.material].name, c.material == kHalfLambert ? "true" : "false",
-	    c.staticColor ? "true" : "false" );
+	fprintf( out,
+	    "%s{\"name\":\"%s\",\"material\":\"%s\",\"half_lambert\":%s,"
+	    "\"static_color\":%s,",
+	    first ? "" : ",", c.name, kMaterials[c.material].name,
+	    c.material == kHalfLambert ? "true" : "false", c.staticColor ? "true" : "false" );
 	// The model-to-world transform, rows of a 3x4 column-vector matrix.
-	const matrix3x4_t &placement = c.placement == kIdentity
-	                                   ? matrix3x4_t( 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0 )
-	                                   : kTransform;
+	const matrix3x4_t &placement =
+	    c.placement == kIdentity ? matrix3x4_t( 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0 ) : kTransform;
 	fprintf( out, "\"placement\":\"%s\",\"model_matrix\":[",
-	    c.placement == kSkinned ? "skinned" : c.placement == kRigid ? "rigid" : "identity" );
+	    c.placement == kSkinned ? "skinned"
+	    : c.placement == kRigid ? "rigid"
+	                            : "identity" );
 	for ( int r = 0; r < 3; ++r )
 		fprintf( out, "%s[%.9g,%.9g,%.9g,%.9g]", r ? "," : "", placement[r][0], placement[r][1],
 		    placement[r][2], placement[r][3] );
 	fprintf( out, "],\"cube\":[" );
 	for ( int f = 0; f < 6; ++f )
-		fprintf( out, "%s[%.9g,%.9g,%.9g]", f ? "," : "", c.cube[f][0], c.cube[f][1],
-		    c.cube[f][2] );
+		fprintf(
+		    out, "%s[%.9g,%.9g,%.9g]", f ? "," : "", c.cube[f][0], c.cube[f][1], c.cube[f][2] );
 	fprintf( out, "],\"lights\":[" );
 	for ( int i = 0; i < c.numLights; ++i )
 	{
@@ -594,15 +580,15 @@ bool CModelLightScene::RenderCase(
 		for ( int k = 0; k < 3; ++k )
 			position[k] = directional ? l.direction[k] * kDirectionalDistance : l.position[k];
 		const char *type = l.type == MATERIAL_LIGHT_DIRECTIONAL ? "directional"
-		                   : l.type == MATERIAL_LIGHT_SPOT     ? "spot"
-		                                                       : "point";
+		                   : l.type == MATERIAL_LIGHT_SPOT      ? "spot"
+		                                                        : "point";
 		fprintf( out,
 		    "%s{\"type\":\"%s\",\"color\":[%.9g,%.9g,%.9g],\"position\":[%.9g,%.9g,%.9g],"
 		    "\"direction\":[%.9g,%.9g,%.9g],\"attenuation\":[%.9g,%.9g,%.9g],"
 		    "\"theta\":%.9g,\"phi\":%.9g,\"falloff\":%.9g}",
 		    i ? "," : "", type, l.color[0], l.color[1], l.color[2], position[0], position[1],
-		    position[2], l.direction[0], l.direction[1], l.direction[2],
-		    l.attenuation[0], l.attenuation[1], l.attenuation[2], l.theta, l.phi, l.falloff );
+		    position[2], l.direction[0], l.direction[1], l.direction[2], l.attenuation[0],
+		    l.attenuation[1], l.attenuation[2], l.theta, l.phi, l.falloff );
 	}
 	fprintf( out, "],\"frame_file\":\"%s\"}", V_UnqualifiedFileName( framePath ) );
 	return true;
@@ -639,8 +625,8 @@ bool RunModelLightCases(
 	for ( int t = 0; t < kTextureCount; ++t )
 	{
 		const ProceduralTexture &spec = kTextures[t];
-		fprintf( out, "%s\"%s\":{\"size\":[%d,%d],\"row\":[", t ? "," : "", spec.name,
-		    spec.width, spec.height );
+		fprintf( out, "%s\"%s\":{\"size\":[%d,%d],\"row\":[", t ? "," : "", spec.name, spec.width,
+		    spec.height );
 		for ( int x = 0; x < spec.width; ++x )
 		{
 			unsigned char rgba[4];

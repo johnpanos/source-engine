@@ -49,9 +49,9 @@ def build(bld):
 		name='render_backend_vulkan_conformance',
 		includes=['../rendertest', '../../materialsystem/shaderapivulkan', '../../public',
 			'../../public/tier0', '../../public/tier1'] + bld.env.INCLUDES_VULKAN,
-		# The render.contracts headers and shared suite use C++14+ aggregate
-		# initialization; build this target at C++17 as the conformance runner does.
-		cxxflags=['-std=c++17'],
+		# The render.contracts headers and shared suite need C++14+ aggregate
+		# initialization; the target is C++20 in quality/toolchain/policy.json,
+		# the same dialect the conformance runner uses.
 		use=['VULKAN'],
 		install_path=None)
 

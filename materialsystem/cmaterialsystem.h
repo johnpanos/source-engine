@@ -96,6 +96,9 @@ public:
 	void									ModInit();
 	void									ModShutdown();
 	bool BindShaderProvider( const render::LegacyShaderProvider &provider );
+	bool SetRenderProfileRequest( const render::RenderProfileRequest &request );
+	bool GetRenderProfile( render::RenderFeatureProfile *profile ) const;
+	bool SelectRenderProfile();
 	bool BindBuiltinShaderProvider( const BuiltinShaderProvider &provider );
 	bool RequestWindowResize( const MaterialWindowResizeRequest_t &request ) override;
 	MaterialWindowResizeStatus_t GetWindowResizeStatus() const override;
@@ -644,6 +647,11 @@ private:
 	render::LegacyShaderProvider m_SelectedShaderProvider;
 	bool m_bShaderProviderSelected;
 	render::LegacyShaderServices m_ShaderServices;
+	// The composition root's feature request (kept across Disconnect like the
+	// provider) and the profile Init selected from it; valid until Shutdown.
+	render::RenderProfileRequest m_RenderProfileRequest;
+	render::RenderFeatureProfile m_RenderProfile;
+	bool m_bRenderProfileSelected;
 	BuiltinShaderProvider m_BuiltinShaderProvider;
 	bool m_bBuiltinShadersBound;
 	bool m_bConnectStarted;

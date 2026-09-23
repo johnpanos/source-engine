@@ -58,7 +58,8 @@ void DynamicScope::WakeLocked( uint32_t count )
 		m_cv.notify_one();
 }
 
-uint32_t DynamicScope::ResolveLocked( std::unique_lock<std::mutex> &lk, uint32_t id, JobState terminal )
+uint32_t DynamicScope::ResolveLocked(
+    std::unique_lock<std::mutex> &lk, uint32_t id, JobState terminal )
 {
 	uint32_t readied = 0;
 	m_children[id].state = terminal;

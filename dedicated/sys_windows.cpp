@@ -299,6 +299,10 @@ bool CSys::LoadModules( CDedicatedAppSystemGroup *pAppSystemGroup )
 	}
 	if ( !MaterialSystem_BindShaderProvider( material, NullShaderBackend_Describe() ) )
 		return false;
+	// The dedicated server renders nothing and requires no render feature.
+	const render::RenderProfileRequest renderRequest = render::PreferAvailableRenderFeatures();
+	if ( !MaterialSystem_SetRenderProfileRequest( material, &renderRequest ) )
+		return false;
 	engine = server;
 	return true;
 }

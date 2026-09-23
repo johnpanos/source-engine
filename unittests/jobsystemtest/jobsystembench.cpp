@@ -58,7 +58,7 @@ long long g_checks = 0;
 		if ( !( condition ) )                                                                      \
 		{                                                                                          \
 			++g_failures;                                                                          \
-			std::printf( "  FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition );                 \
+			std::printf( "  FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition );                   \
 		}                                                                                          \
 	} while ( 0 )
 
@@ -74,7 +74,11 @@ public:
 	explicit PoolBackend( int workers ) : m_workers( workers < 0 ? 0 : workers )
 	{
 		for ( int i = 0; i < m_workers; ++i )
-			m_threads.emplace_back( [this] { WorkerMain(); } );
+			m_threads.emplace_back(
+			    [this]
+			    {
+				    WorkerMain();
+			    } );
 	}
 
 	~PoolBackend() override
@@ -135,7 +139,11 @@ private:
 		{
 			{
 				std::unique_lock<std::mutex> lk( m_mtx );
-				m_cv.wait( lk, [&] { return m_quit || m_generation != seen; } );
+				m_cv.wait( lk,
+				    [&]
+				    {
+					    return m_quit || m_generation != seen;
+				    } );
 				if ( m_quit )
 					return;
 				seen = m_generation;
@@ -186,8 +194,7 @@ bool Selected( const std::string &name )
 }
 
 // op() performs one operation and returns true iff its oracle passed.
-template <typename Op>
-void Bench( const std::string &name, Op &&op )
+template <typename Op> void Bench( const std::string &name, Op &&op )
 {
 	if ( !Selected( name ) )
 		return;
@@ -206,7 +213,8 @@ void Bench( const std::string &name, Op &&op )
 			const auto t0 = Clock::now();
 			for ( long long r = 0; r < reps; ++r )
 				BENCH_CHECK( op() );
-			const double us = std::chrono::duration<double, std::micro>( Clock::now() - t0 ).count();
+			const double us =
+			    std::chrono::duration<double, std::micro>( Clock::now() - t0 ).count();
 			if ( us >= g_config.minSampleUs || reps >= ( 1ll << 20 ) )
 				break;
 			reps *= 2;
@@ -292,7 +300,10 @@ SealedGraph BuildGraph( Shape shape, uint32_t n, GraphFixture &fx, bool withReso
 		d.name = "bench.job";
 		uint32_t *slot = &fx.out[i];
 		const uint32_t steps = fx.steps;
-		d.function = [slot, i, steps]( JobRunContext & ) { *slot = Spin( i, steps ) | 1u; };
+		d.function = [slot, i, steps]( JobRunContext & )
+		{
+			*slot = Spin( i, steps ) | 1u;
+		};
 		h.push_back( b.AddJob( d ) );
 	}
 
@@ -413,7 +424,8 @@ void BenchSeal()
 			    b.Write( h[0], ResourceVersion{ 6, 0, 0 } );
 			    b.Write( h[n - 1], ResourceVersion{ 6, 0, 0 } );
 			    auto sealed = b.Seal();
-			    return !sealed.HasValue() && sealed.Error().code == GraphErrorCode::ResourceConflict &&
+			    return !sealed.HasValue() &&
+			           sealed.Error().code == GraphErrorCode::ResourceConflict &&
 			           sealed.Error().jobA == 0 && sealed.Error().jobB == n - 1;
 		    } );
 	}
@@ -432,8 +444,8 @@ void BenchExecutor( const char *label, IGraphExecutor &ex, std::initializer_list
 				fx.steps = steps;
 				SealedGraph g = BuildGraph( shape, n, fx );
 				char name[96];
-				std::snprintf( name, sizeof( name ), "exec.%s.%s/%u/steps=%u", label, ShapeName( shape ),
-				    n, steps );
+				std::snprintf( name, sizeof( name ), "exec.%s.%s/%u/steps=%u", label,
+				    ShapeName( shape ), n, steps );
 				Bench( name,
 				    [&]
 				    {
@@ -494,12 +506,15 @@ void BenchExecutors()
 		{
 			JobDesc d;
 			d.name = "bench.lane";
-			d.executor = i % 8 == 0 ? Executor::MainThread()
+			d.executor = i % 8 == 0   ? Executor::MainThread()
 			             : i % 8 == 1 ? Executor::BlockingIO()
 			             : i % 8 == 2 ? Executor::Sequence( 1 )
 			                          : Executor::Compute();
 			uint32_t *slot = &out[i];
-			d.function = [slot, i]( JobRunContext & ) { *slot = i + 1; };
+			d.function = [slot, i]( JobRunContext & )
+			{
+				*slot = i + 1;
+			};
 			h.push_back( b.AddJob( d ) );
 			if ( i >= 8 )
 				b.AddDependency( h[i - 8], h[i] );
@@ -609,7 +624,11 @@ void BenchDynamic()
 				    for ( uint32_t i = 0; i < n; ++i )
 				    {
 					    uint32_t *slot = &out[i];
-					    scope.Spawn( "bench.child", [slot, i]( JobRunContext & ) { *slot = i + 1; } );
+					    scope.Spawn( "bench.child",
+					        [slot, i]( JobRunContext & )
+					        {
+						        *slot = i + 1;
+					        } );
 				    }
 				    scope.Wait();
 				    bool ok = scope.Succeeded() == n && scope.Admitted() == n;
@@ -634,14 +653,16 @@ void BenchDynamic()
 					    std::vector<DynamicScope::ChildHandle> deps;
 					    if ( prev.IsValid() )
 						    deps.push_back( prev );
-					    scope.Spawn( "bench.cont",
+					    scope.Spawn(
+					        "bench.cont",
 					        [&, remaining]( JobRunContext &ctx )
 					        {
 						        ran.fetch_add( 1, std::memory_order_relaxed );
 						        // A running child is admitted but not terminal, so its
 						        // continuation may depend on it.
 						        if ( remaining > 1 )
-							        spawnNext( remaining - 1, DynamicScope::ChildHandle{ ctx.JobId() } );
+							        spawnNext(
+							            remaining - 1, DynamicScope::ChildHandle{ ctx.JobId() } );
 					        },
 					        deps );
 				    };
@@ -662,7 +683,11 @@ void BenchExternalCompletion()
 		    ExternalCompletion token;
 		    int fired = 0;
 		    const bool first = token.Complete();
-		    token.OnComplete( [&]( CompletionResult r ) { fired += r == CompletionResult::Completed; } );
+		    token.OnComplete(
+		        [&]( CompletionResult r )
+		        {
+			        fired += r == CompletionResult::Completed;
+		        } );
 		    return first && fired == 1 && !token.Cancel();
 	    } );
 	Bench( "external.register_then_complete",
@@ -670,7 +695,11 @@ void BenchExternalCompletion()
 	    {
 		    ExternalCompletion token;
 		    int fired = 0;
-		    token.OnComplete( [&]( CompletionResult r ) { fired += r == CompletionResult::Completed; } );
+		    token.OnComplete(
+		        [&]( CompletionResult r )
+		        {
+			        fired += r == CompletionResult::Completed;
+		        } );
 		    const bool first = token.Complete();
 		    return first && fired == 1 && token.Poll() == CompletionResult::Completed;
 	    } );
@@ -685,9 +714,11 @@ void WriteJson( const char *path )
 		++g_failures;
 		return;
 	}
-	std::fprintf( f, "{\n  \"schema\": \"jobsystem-bench/v1\",\n  \"warmup\": %d,\n  \"samples\": %d,\n",
+	std::fprintf( f,
+	    "{\n  \"schema\": \"jobsystem-bench/v1\",\n  \"warmup\": %d,\n  \"samples\": %d,\n",
 	    g_config.warmup, g_config.samples );
-	std::fprintf( f, "  \"hardware_threads\": %u,\n  \"results\": [\n", std::thread::hardware_concurrency() );
+	std::fprintf(
+	    f, "  \"hardware_threads\": %u,\n  \"results\": [\n", std::thread::hardware_concurrency() );
 	for ( size_t i = 0; i < g_results.size(); ++i )
 	{
 		const Result &r = g_results[i];
@@ -721,7 +752,8 @@ int main( int argc, char **argv )
 			g_config.samples = std::max( 1, std::atoi( argv[++i] ) );
 		else
 		{
-			std::printf( "usage: %s [--full] [--samples N] [--filter substr] [--json path]\n", argv[0] );
+			std::printf(
+			    "usage: %s [--full] [--samples N] [--filter substr] [--json path]\n", argv[0] );
 			return 2;
 		}
 	}
@@ -739,6 +771,7 @@ int main( int argc, char **argv )
 	}
 	if ( g_config.jsonPath )
 		WriteJson( g_config.jsonPath );
-	std::printf( "%zu benchmarks, %lld checks, %d failures\n", g_results.size(), g_checks, g_failures );
+	std::printf(
+	    "%zu benchmarks, %lld checks, %d failures\n", g_results.size(), g_checks, g_failures );
 	return g_failures == 0 ? 0 : 1;
 }

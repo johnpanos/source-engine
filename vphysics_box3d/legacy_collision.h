@@ -37,4 +37,13 @@ struct LegacyCollide_t
 // unknown, byte-swapped, or malformed buffer; never reads outside the buffer.
 bool DecodeLegacyCollide( const char *pBuffer, int size, LegacyCollide_t *pOut );
 
+// Encodes a solid in the same format (header, compact surface, ledge tree,
+// terminal ledges with edge topology and pierce triangles) so tools and IVP
+// can read it back. Triangles are re-oriented to IVP's winding; a single
+// triangle becomes a two-sided flat ledge. Writes nothing when pDest is NULL
+// and returns the byte size either way; returns 0 if a convex is not a
+// closed triangle mesh or exceeds the format's limits. swap writes the
+// opposite byte order.
+int EncodeLegacyCollide( const LegacyCollide_t &collide, int vcollideIndex, char *pDest, bool swap );
+
 #endif // LEGACY_COLLISION_H

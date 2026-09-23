@@ -127,6 +127,15 @@ private:
 
 extern CShaderDeviceMgrDx8* g_pShaderDeviceMgrDx8;
 
+namespace render
+{
+struct RenderAdapterInfo;
+}
+
+// render.contracts facts for an adapter this manager enumerates, taken from the
+// adapter's actual caps rather than the DX-level-adjusted hardware config.
+bool DescribeDx8Adapter( int nAdapter, render::RenderAdapterInfo *pInfo );
+
 
 //-----------------------------------------------------------------------------
 // IDirect3D accessor

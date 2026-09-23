@@ -88,17 +88,17 @@ public:
 	virtual CPhysConvex *ConvexFromConvexPolyhedron( const CPolyhedron &ConvexPolyhedron ) override;
 	virtual void ConvexesFromConvexPolygon( const Vector &vPolyNormal, const Vector *pPoints, int iPointCount, CPhysConvex **pOutput ) override;
 
-	virtual CPhysPolysoup *PolysoupCreate( void ) override { return nullptr; }
-	virtual void PolysoupDestroy( CPhysPolysoup *pSoup ) override {}
-	virtual void PolysoupAddTriangle( CPhysPolysoup *pSoup, const Vector &a, const Vector &b, const Vector &c, int materialIndex7bits ) override {}
-	virtual CPhysCollide *ConvertPolysoupToCollide( CPhysPolysoup *pSoup, bool useMOPP ) override { return nullptr; }
+	virtual CPhysPolysoup *PolysoupCreate( void ) override;
+	virtual void PolysoupDestroy( CPhysPolysoup *pSoup ) override;
+	virtual void PolysoupAddTriangle( CPhysPolysoup *pSoup, const Vector &a, const Vector &b, const Vector &c, int materialIndex7bits ) override;
+	virtual CPhysCollide *ConvertPolysoupToCollide( CPhysPolysoup *pSoup, bool useMOPP ) override;
 
 	virtual CPhysCollide *ConvertConvexToCollide( CPhysConvex **pConvex, int convexCount ) override;
 	virtual CPhysCollide *ConvertConvexToCollideParams( CPhysConvex **pConvex, int convexCount, const convertconvexparams_t &convertParams ) override;
 	virtual void DestroyCollide( CPhysCollide *pCollide ) override;
 
-	virtual int CollideSize( CPhysCollide *pCollide ) override { return 0; }
-	virtual int CollideWrite( char *pDest, CPhysCollide *pCollide, bool bSwap = false ) override { return 0; }
+	virtual int CollideSize( CPhysCollide *pCollide ) override;
+	virtual int CollideWrite( char *pDest, CPhysCollide *pCollide, bool bSwap = false ) override;
 	virtual CPhysCollide *UnserializeCollide( char *pBuffer, int size, int index ) override;
 
 	virtual float CollideVolume( CPhysCollide *pCollide ) override;
@@ -125,7 +125,7 @@ public:
 	virtual void VCollideLoad( vcollide_t *pOutput, int solidCount, const char *pBuffer, int bufferSize, bool swap ) override;
 	virtual void VCollideUnload( vcollide_t *pVCollide ) override;
 
-	virtual bool IsBoxIntersectingCone( const Vector &boxAbsMins, const Vector &boxAbsMaxs, const truncatedcone_t &cone ) override { return false; }
+	virtual bool IsBoxIntersectingCone( const Vector &boxAbsMins, const Vector &boxAbsMaxs, const truncatedcone_t &cone ) override;
 	virtual IVPhysicsKeyParser *VPhysicsKeyParserCreate( const char *pKeyData ) override { return CreateVPhysicsKeyParser( pKeyData ); }
 	virtual void VPhysicsKeyParserDestroy( IVPhysicsKeyParser *pParser ) override { DestroyVPhysicsKeyParser( pParser ); }
 	virtual int CreateDebugMesh( CPhysCollide const *pCollisionModel, Vector **outVerts ) override;
@@ -134,13 +134,32 @@ public:
 	virtual void DestroyQueryModel( ICollisionQuery *pQuery ) override;
 	virtual IPhysicsCollision *ThreadContextCreate( void ) override { return this; }
 	virtual void ThreadContextDestroy( IPhysicsCollision *pThreadContex ) override {}
-	virtual CPhysCollide *CreateVirtualMesh( const virtualmeshparams_t &params ) override { return nullptr; }
-	virtual bool SupportsVirtualMesh() override { return false; }
-	virtual bool GetBBoxCacheSize( int *pCachedSize, int *pCachedCount ) override { return false; }
+	virtual CPhysCollide *CreateVirtualMesh( const virtualmeshparams_t &params ) override;
+	virtual bool SupportsVirtualMesh() override { return true; }
+	virtual bool GetBBoxCacheSize( int *pCachedSize, int *pCachedCount ) override;
 	virtual CPolyhedron *PolyhedronFromConvex( CPhysConvex * const pConvex, bool bUseTempPolyhedron ) override;
-	virtual void OutputDebugInfo( const CPhysCollide *pCollide ) override {}
+	virtual void OutputDebugInfo( const CPhysCollide *pCollide ) override;
+	// IVP reports no statistics either.
 	virtual unsigned int ReadStat( int statID ) override { return 0; }
+
+private:
+	// IVP shares one collide per distinct box (CPhysicsCollision's bbox
+	// cache): BBoxToCollide returns the cached collide and DestroyCollide
+	// leaves it alone. Game code relies on both.
+	struct BBoxCache_t
+	{
+		Vector mins;
+		Vector maxs;
+		CPhysCollide *pCollide;
+	};
+	CUtlVector<BBoxCache_t> m_bboxCache;
 };
+
+// A collide whose convex pieces are the given triangles, each a two-sided
+// flat piece (IVP builds polysoups and virtual meshes from two-sided
+// triangle ledges). pMaterials may be NULL.
+CPhysCollideBox3D *CreateTriangleCollide( const Vector *pVertices, const int *pIndices, int triangleCount,
+	const unsigned char *pMaterials );
 
 // Shared sweep used by IPhysicsCollision traces: sweeps a point set (world
 // space, at the start position) by delta against a collide at a pose.

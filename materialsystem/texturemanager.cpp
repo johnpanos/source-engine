@@ -622,7 +622,7 @@ public:
 	CTextureManager( void );
 
 	// Initialization + shutdown
-	virtual void Init( int nFlags ) OVERRIDE;
+	virtual void Init( int nFlags, const render::RenderFeatureProfile &profile ) OVERRIDE;
 	virtual void Shutdown();
 
 	virtual void AllocateStandardRenderTargets( );
@@ -1488,9 +1488,12 @@ CTextureManager::CTextureManager( void )
 //-----------------------------------------------------------------------------
 // Initialization + shutdown
 //-----------------------------------------------------------------------------
-void CTextureManager::Init( int nFlags )
+void CTextureManager::Init( int nFlags, const render::RenderFeatureProfile &profile )
 {
 	m_nFlags = nFlags;
+	// A documented quirk, not the backend identity, selects float cubemaps.
+	const bool bFloatNormalizationCubemaps =
+		profile.workarounds.Has( render::RenderWorkaround::kFloatNormalizationCubemaps );
 	color32 color, color2;
 	m_iNextTexID = 4096;
 
@@ -1535,7 +1538,8 @@ void CTextureManager::Init( int nFlags )
 
 	if ( HardwareConfig()->GetMaxDXSupportLevel() >= 80 )
 	{
-		ImageFormat fmt = IsOpenGL() ? IMAGE_FORMAT_RGBA16161616F : IMAGE_FORMAT_BGRX8888;
+		ImageFormat fmt =
+			bFloatNormalizationCubemaps ? IMAGE_FORMAT_RGBA16161616F : IMAGE_FORMAT_BGRX8888;
 
 		// Create a normalization cubemap
 		m_pNormalizationCubemap = CreateProceduralTexture( "normalize", TEXTURE_GROUP_CUBE_MAP,
@@ -1546,8 +1550,10 @@ void CTextureManager::Init( int nFlags )
 
 	if ( HardwareConfig()->GetMaxDXSupportLevel() >= 90 )
 	{
-		// In GL, we have poor format support, so we ask for signed float
-		ImageFormat fmt = IsOpenGL() ? IMAGE_FORMAT_RGBA16161616F : IMAGE_FORMAT_UVWQ8888;
+		// Some translation layers have poor signed-format support; the quirk
+		// that enables this workaround records which ones and why.
+		ImageFormat fmt =
+			bFloatNormalizationCubemaps ? IMAGE_FORMAT_RGBA16161616F : IMAGE_FORMAT_UVWQ8888;
 
 
 #ifdef OSX

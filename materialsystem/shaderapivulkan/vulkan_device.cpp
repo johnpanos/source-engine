@@ -2936,7 +2936,8 @@ bool CVulkanContext::InitSkinPipeline( std::string *outError )
 		Log( "skin pipeline unavailable: descriptor sets, push constants or clip distances\n" );
 		return true;
 	}
-	m_uboAlignment = std::max<VkDeviceSize>( 16, properties.limits.minUniformBufferOffsetAlignment );
+	m_uboAlignment =
+	    std::max<VkDeviceSize>( 16, properties.limits.minUniformBufferOffsetAlignment );
 
 	VkDescriptorSetLayoutBinding ubo = {};
 	ubo.binding = 0;
@@ -2985,8 +2986,8 @@ bool CVulkanContext::InitSkinPipeline( std::string *outError )
 	pc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	pc.size = kSkinPushBytes;
 	const VkDescriptorSetLayout sets[7] = { m_dynTexDescLayout, m_dynTexDescLayout,
-		m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout,
-		m_skinUboLayout };
+	    m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout,
+	    m_skinUboLayout };
 	VkPipelineLayoutCreateInfo pl = {};
 	pl.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pl.setLayoutCount = 7;
@@ -4289,10 +4290,10 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	SDL_GetWindowSizeInPixels( m_window, &drawable[0], &drawable[1] );
 	const bool drawableChanged =
 	    drawable[0] != m_presentDrawable[0] || drawable[1] != m_presentDrawable[1];
-	const bool backBufferPending =
-	    m_requestedBackBuffer.width > 0 && m_requestedBackBuffer.height > 0 &&
-	    ( m_requestedBackBuffer.width != m_swapExtent.width ||
-	        m_requestedBackBuffer.height != m_swapExtent.height );
+	const bool backBufferPending = m_requestedBackBuffer.width > 0 &&
+	                               m_requestedBackBuffer.height > 0 &&
+	                               ( m_requestedBackBuffer.width != m_swapExtent.width ||
+	                                   m_requestedBackBuffer.height != m_swapExtent.height );
 	if ( ( drawableChanged || backBufferPending ) && !RecreateSwapchain( outError ) )
 		return false;
 	if ( m_swapchain == VK_NULL_HANDLE )

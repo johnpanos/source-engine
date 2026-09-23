@@ -4,7 +4,7 @@
 # Dependency-aware job system (RFC 0003). A self-contained, portable C++20
 # static library over standard atomics/threads. It deliberately does not depend
 # on tier0/tier1 or the legacy jobthread pool; it is a deliberately migrated
-# strict C++20 target (RFC 0006), so it overrides the tree-wide -std=c++11.
+# C++20 target whose dialect is selected in quality/toolchain/policy.json.
 
 from waflib import Utils
 import os
@@ -41,7 +41,6 @@ def build(bld):
 		features  = 'c cxx',
 		includes  = includes,
 		defines   = [],
-		cxxflags  = ['-std=c++20'],
 		use       = [],
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()

@@ -1782,6 +1782,17 @@ static CShaderShadowVulkan g_ShaderShadow;
 // The null provider belongs to shaderapiempty. This module must not export a
 // second definition of it: a product links both, and duplicate C entry points
 // would leave the dynamic linker to pick one for every caller.
+// Vulkan guarantees formats such as sampled sRGB, but this backend claims a
+// semantic feature only once its own path implements and tests it (R32).
+static bool DescribeNativeVulkanAdapter( int adapter, render::RenderAdapterInfo *info )
+{
+	if ( adapter != 0 || !info )
+		return false;
+	*info = render::RenderAdapterInfo();
+	Q_strncpy( info->driverApi, "vulkan", sizeof( info->driverApi ) );
+	return true;
+}
+
 static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *services )
 {
 	if ( !services )
@@ -1792,6 +1803,7 @@ static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *servi
 	services->shadow = &g_ShaderShadow;
 	services->hardware = &g_ShaderAPIEmpty;
 	services->debugTextures = &g_ShaderAPIEmpty;
+	services->describeAdapter = DescribeNativeVulkanAdapter;
 	return true;
 }
 
@@ -2251,7 +2263,8 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 		// A static-prop color mesh: one D3DCOLOR per vertex, tightly packed, as
 		// D3D9's VERTEX_SPECULAR vertex buffer is. The engine copies baked colors
 		// straight to the specular pointer (CModelRender static prop colors).
-		nVertexCount = std::max( 0, std::min( nVertexCount, static_cast<int>( kMaxLockVertices ) ) );
+		nVertexCount =
+		    std::max( 0, std::min( nVertexCount, static_cast<int>( kMaxLockVertices ) ) );
 		m_numVerts = nVertexCount;
 		const size_t colorBytes = ( static_cast<size_t>( nVertexCount ) + 1 ) * 4;
 		if ( m_vertexData.size() < colorBytes )
@@ -2588,7 +2601,7 @@ struct VertexLightConstants
 	float color[4]; // w: 1 for a directional light
 	float dir[4];   // w: 1 for a spot light
 	float pos[3];
-	float spot[4];  // exponent, stopdot, stopdot2, 1 / ( stopdot - stopdot2 )
+	float spot[4]; // exponent, stopdot, stopdot2, 1 / ( stopdot - stopdot2 )
 	float atten[3];
 };
 
@@ -4231,7 +4244,10 @@ static int SnapshotSkinCombos( const CShaderShadowVulkan &shadow )
 	if ( V_stricmp( shadow.m_pixelShaderName, "skin_ps20b" ) )
 		return -1;
 	const int index = shadow.m_pixelShaderIndex;
-	const auto combo = [index]( int stride, int count ) { return ( index / stride ) % count != 0; };
+	const auto combo = [index]( int stride, int count )
+	{
+		return ( index / stride ) % count != 0;
+	};
 	int flags = 0;
 	flags |= combo( 860160, 2 ) ? 1 : 0;   // FASTPATH_NOBUMP
 	flags |= combo( 1280, 2 ) ? 2 : 0;     // LIGHTWARPTEXTURE
@@ -4581,7 +4597,9 @@ const LightDesc_t &CShaderAPIVulkan::GetLight( int lightNum ) const
 
 // Render state for the ambient light cube (vertex shaders): D3D9 loads c21..c26
 // here; the vertex lighting reads the cube where the draw is assembled.
-void CShaderAPIVulkan::SetVertexShaderStateAmbientLightCube() {}
+void CShaderAPIVulkan::SetVertexShaderStateAmbientLightCube()
+{
+}
 
 void CShaderAPIVulkan::SetSkinningMatrices()
 {
@@ -4736,8 +4754,8 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	g_CurrentColorFlags = index < g_snapshotColorFlags.size() ? g_snapshotColorFlags[index] : 0;
 	g_CurrentModulationInPixelC1 =
 	    index < g_snapshotModulationInPixelC1.size() && g_snapshotModulationInPixelC1[index];
-	g_CurrentVertexLit = index < g_snapshotVertexLit.size() ? g_snapshotVertexLit[index]
-	                                                        : VertexLitCombo();
+	g_CurrentVertexLit =
+	    index < g_snapshotVertexLit.size() ? g_snapshotVertexLit[index] : VertexLitCombo();
 	g_VulkanContext.SelectDynamicColorSpace( g_CurrentColorFlags );
 	// The lightmap and samplers 1..15 are bound per pass by the shader's dynamic
 	// state.
@@ -4825,7 +4843,8 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 	    g_CurrentSkinCombos >= 0 && !g_VulkanContext.SkinPipelineSupported();
 	const bool implemented =
 	    !skinUnavailable &&
-	    ( !g_pBoundMaterial || NativePipelineImplementsShader( g_pBoundMaterial->GetShaderName() ) ||
+	    ( !g_pBoundMaterial ||
+	        NativePipelineImplementsShader( g_pBoundMaterial->GetShaderName() ) ||
 	        ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentLuminanceCompare ) );
 	if ( !implemented )
 	{
@@ -6402,8 +6421,8 @@ void CShaderAPIVulkan::GetWorldSpaceCameraPosition( float *pPos ) const
 	EnsureMatricesInit();
 	const float *view = g_matrices.mat[MATERIAL_VIEW];
 	for ( int i = 0; i < 3; ++i )
-		pPos[i] = -( view[12] * view[i * 4] + view[13] * view[i * 4 + 1] +
-		             view[14] * view[i * 4 + 2] );
+		pPos[i] =
+		    -( view[12] * view[i * 4] + view[13] * view[i * 4 + 1] + view[14] * view[i * 4 + 2] );
 }
 
 void CShaderAPIVulkan::ForceHardwareSync( void )

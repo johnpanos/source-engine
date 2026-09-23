@@ -1302,11 +1302,64 @@ Twelve seeded oracle tests cover:
 All eight pixel families pass on native, and so do 56 oracle tests.
 `portal_boot.py` passes on testchmb_a_01 on both backends.
 
+**Phong models (per-pixel).** 75 of Portal's 233 VertexLitGeneric model
+materials use `$phong` or `$bumpmap`, the exit door among them; D3D9 draws
+them with `skin_vs20`/`skin_ps20b`. Native now has a skin pipeline:
+- `shaders/skin.{vert,frag}` port the non-flashlight path line for line:
+  - the tangent frame and normal map;
+  - PixelShaderDoLighting, always half-Lambert, with the lightwarp ramp;
+  - phong specular with the Fresnel ranges, the exponent map, tint and boost;
+  - `$basemapalphaphongmask`, self-illumination and rim light;
+  - FinalOutput's linear scale.
+- The static combos are decoded from `skin_ps20b.inc`.
+- The pixel constants c0–c31 reach the shader in a per-frame dynamic uniform
+  buffer, which is written only after that frame's fence has signaled.
+- The CPU does skin_vs20's per-vertex work, as for vertex lighting: world
+  position, world normal and tangent, and each light's attenuation.
+- Native gained what the helper's dynamic state needs:
+  - `CommitPixelShaderLighting` (D3D9's packing, directional lights 10000 units
+    from `SetLightingOrigin`'s origin);
+  - `SetPixelShaderStateAmbientLightCube` and `GetWorldSpaceCameraPosition`;
+  - the eye-position command, and samplers 1–15.
+- A device without seven descriptor sets gets no skin pipeline, and those
+  draws are declined by name.
+
+Seven more modellight cases:
+- phong;
+- four lights;
+- lightwarp;
+- self-illumination;
+- a constant exponent and tint;
+- base-alpha phong mask;
+- skinned phong.
+
+The oracle evaluates skin_ps20b per pixel. Things measured on the way:
+- After InitShaderParams, `CShaderSystem::InitShaderParameters` zeroes every
+  numeric parameter a material leaves out. An unset `$phongboost` or
+  `$phongfresnelranges` is therefore 0 (no specular), not the helper's fallback.
+- The shipped `skin_ps20b.vcs` lacks the RIMLIGHT and FASTPATH_NOBUMP combos.
+  D3D9 draws those materials with no pixel shader (white). Portal's content
+  uses neither, so the harness does not either.
+
+D3D9 matches the model within one level, and within two in specular peaks
+(single-precision `pow` at exponents up to 150). Native matches D3D9 within
+two levels in the same peaks and one level elsewhere, in both HDR modes. The
+oracle's phong tolerance is those two levels, with no pixel allowed beyond it.
+Five more seeded tests cover:
+- no specular;
+- a flat normal;
+- a missing lightwarp;
+- a moved lighting origin;
+- no self-illumination.
+
+All nine captures and 232 quality tests pass. The suites pass: bring-up 25/0,
+backend 33/0, facing 13/0, equivalence 29/0. In game, the exit door on
+testchmb_a_01 now shows its phong shading.
+
 Open:
-- **Bump and phong models** (`$bumpmap`, `$phong`): 79 of the 233 VertexLitGeneric
-  model materials in Portal's content, the exit door among them. D3D9 renders
-  them through `skin_vs20`/`skin_ps20b` (or the `_bump_` shaders) with per-pixel
-  lighting; native still draws them unlit.
+- `$envmap` on skin materials: 6 in Portal. The CUBEMAP combo is drawn without
+  the environment map, and this is reported.
+- The flashlight pass; detail and wrinkle maps.
 - A color mesh with bumped static lighting (three colors in the normal stream).
 - LIGHTING_PREVIEW.
 
