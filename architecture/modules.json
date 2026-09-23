@@ -109,7 +109,8 @@
         "paths": [
           "public/render/render_backend.h",
           "public/render/render_profile.h",
-          "public/render/render_presentation.h"
+          "public/render/render_presentation.h",
+          "public/render/pbr_brdf.h"
         ],
         "allowedEdges": []
       },
@@ -203,7 +204,8 @@
         "id": "render.bridge.sdl3-vulkan.native-tests",
         "kind": "native-test",
         "paths": [
-          "unittests/shaderapivulkantest/test_sdl3_vulkan_presentation.cpp"
+          "unittests/shaderapivulkantest/test_sdl3_vulkan_presentation.cpp",
+          "unittests/shaderapivulkantest/test_pbr_pixels.cpp"
         ],
         "allowedEdges": [
           "render.contracts",

@@ -34,7 +34,7 @@ jobs:
     - name: Host tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y jq ninja-build cmake zip unzip pkg-config ccache
+        sudo apt-get install -y jq ninja-build cmake zip unzip pkg-config ccache g++ clang
 
     - name: The profile declares this ABI
       run: |
@@ -68,5 +68,7 @@ jobs:
           build-android/*.apk
           build-android/*.apk.check.json
           build-android/${{ matrix.abi }}/*.log
+          build-android/${{ matrix.abi }}/toolchain.check.json
+          build-android/${{ matrix.abi }}/waf/toolchain-invocations.json
           build-android/${{ matrix.abi }}/deps/build/*.log
         if-no-files-found: warn

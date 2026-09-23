@@ -1,0 +1,42 @@
+{
+  "schema": "source-apple-toolchain-profiles/v1",
+  "description": "R03 C++20 toolchain probes only. These do not certify the macOS or iOS engine products or set their final deployment minima; R29 owns native product and package acceptance.",
+  "runner": "macos-15-arm64",
+  "xcode": {
+    "version": "26.3",
+    "build": "17C529",
+    "developer_dir": "/Applications/Xcode_26.3.app/Contents/Developer",
+    "source": "https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md"
+  },
+  "dialect_policy": "quality/toolchain/policy.json",
+  "standard_library": "libc++",
+  "profiles": [
+    {
+      "id": "macos-arm64-cxx20-v1",
+      "os": "macos",
+      "arch": "arm64",
+      "sdk": "macosx",
+      "sdk_version": "26.2",
+      "target": "arm64-apple-macos15.0",
+      "execute": true
+    },
+    {
+      "id": "ios-arm64-cxx20-v1",
+      "os": "ios",
+      "arch": "arm64",
+      "sdk": "iphoneos",
+      "sdk_version": "26.2",
+      "target": "arm64-apple-ios26.2",
+      "execute": false
+    },
+    {
+      "id": "ios-simulator-arm64-cxx20-v1",
+      "os": "ios-simulator",
+      "arch": "arm64",
+      "sdk": "iphonesimulator",
+      "sdk_version": "26.2",
+      "target": "arm64-apple-ios26.2-simulator",
+      "execute": false
+    }
+  ]
+}

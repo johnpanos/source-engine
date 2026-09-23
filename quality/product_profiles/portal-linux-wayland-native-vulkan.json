@@ -23,8 +23,7 @@
     "family": "gcc",
     "version": "16.2.1",
     "standard_library": "libstdc++",
-    "legacy_cxx_standard": "c++11",
-    "strict_cxx_standard": "c++20",
+    "dialect_policy": "quality/toolchain/policy.json",
     "glibcxx_cxx11_abi": 0,
     "build_type": "release"
   },

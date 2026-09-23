@@ -1,0 +1,50 @@
+name: C++ toolchain boundary
+
+on: [push, pull_request]
+
+jobs:
+  linux-targets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ clang libbz2-dev zlib1g-dev
+      - name: Check boundary sensitivity
+        run: python3 -m unittest tools/quality/tests/test_toolchain_boundary.py -v
+      - name: Configure and build the real test composition
+        run: |
+          if [ "${{ matrix.compiler }}" = clang ]; then
+            export CC=clang CXX=clang++
+          fi
+          WAFLOCK=.lock-waf-r03-ci ./waf configure --tests --use-sdl=0 --use-togl=0 \
+            --disable-warns -T release -o build-r03-ci --prefix="$PWD/build-r03-ci/install"
+          WAFLOCK=.lock-waf-r03-ci ./waf build -j4
+      - name: Verify final commands and frozen consumers
+        run: |
+          python3 tools/quality/toolchain_boundary.py check \
+            build-r03-ci/toolchain-invocations.json --artifacts build-r03-ci \
+            --out quality-results/r03-${{ matrix.compiler }}.json
+      - name: Exercise mixed ABI contracts and negative controls
+        run: |
+          if [ "${{ matrix.compiler }}" = clang ]; then CXX=clang++; else CXX=g++; fi
+          python3 tools/quality/conformance.py check --cxx "$CXX" \
+            --suite toolchain.abi.jobsystem-batch \
+            --suite toolchain.abi.mapcontainer \
+            --suite toolchain.abi.sensitivity-dialect-layout \
+            --suite toolchain.abi.sensitivity-dual-abi \
+            --out quality-results/r03-abi-${{ matrix.compiler }}.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r03-${{ matrix.compiler }}
+          path: |
+            build-r03-ci/toolchain-invocations.json
+            quality-results/
+          if-no-files-found: warn

@@ -77,6 +77,19 @@ def build(bld):
 		use=['VULKAN', 'SDL3'],
 		install_path=None)
 
+	# RFC 0007 R47: the native synthetic direct-light specular pipeline renders
+	# measured pixels and compares them with the headless BRDF model. A missing
+	# display/device is an explicit skip and does not certify the native gate.
+	bld.program(
+		features='c cxx', env=test_env.derive(),
+		source=['test_pbr_pixels.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
+		target='pbr_native_pixel_conformance',
+		name='pbr_native_pixel_conformance',
+		includes=includes, use=['VULKAN', 'SDL3'],
+		install_path=None)
+
 	# Material-facing integration slice: drives the legacy IShaderAPI/IShaderDevice
 	# interfaces (as the material system does) through the linked native Vulkan
 	# backend and reads the presented frame back. Links the real backend library.

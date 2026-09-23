@@ -341,8 +341,10 @@ public:
 	std::size_t ConnectedCount() const override { return m_Pads.size(); }
 
 	foundation::Expected<void, WindowError> Rumble(
-	    std::uint32_t instance, float, float, std::uint32_t ) override
+	    std::uint32_t instance, float low, float high, std::uint32_t ) override
 	{
+		if ( !( low >= 0.0f && low <= 1.0f && high >= 0.0f && high <= 1.0f ) )
+			return Fail( WindowStatus::InvalidArgument, WindowOperation::Rumble );
 		for ( std::uint32_t pad : m_Pads )
 			if ( pad == instance )
 				return {};
@@ -766,7 +768,21 @@ public:
 		return Push( std::move( n ) );
 	}
 
-	bool PadDevice( std::uint32_t instance, bool added ) override
+	bool AttachPad( std::uint32_t &instance ) override
+	{
+		instance = m_NextPad++;
+		return PadDevice( instance, true );
+	}
+
+	bool DetachPad( std::uint32_t instance ) override { return PadDevice( instance, false ); }
+
+	void AdvanceMs( std::uint32_t ms ) override { m_System.nowMs += ms; }
+	std::uint32_t SettleMs() const override { return 0; }
+	bool AutoDismissesMessages() const override { return true; }
+	std::string LastMessage() const override { return m_System.lastMessage; }
+
+private:
+	bool PadDevice( std::uint32_t instance, bool added )
 	{
 		Native n;
 		n.kind = Native::Kind::PadDevice;
@@ -775,12 +791,6 @@ public:
 		return Push( std::move( n ) );
 	}
 
-	void AdvanceMs( std::uint32_t ms ) override { m_System.nowMs += ms; }
-	std::uint32_t SettleMs() const override { return 0; }
-	bool AutoDismissesMessages() const override { return true; }
-	std::string LastMessage() const override { return m_System.lastMessage; }
-
-private:
 	bool Push( Native native )
 	{
 		m_System.ApplyDeferred();
@@ -789,6 +799,7 @@ private:
 	}
 
 	FakeWindowSystem &m_System;
+	std::uint32_t m_NextPad = 3;
 };
 
 } // namespace platformtest

@@ -2761,8 +2761,15 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		return false;
 	if ( !InitSkinPipeline( outError ) )
 		return false;
+	std::string pbrError;
+	if ( !InitPbrDirectPipeline( &pbrError ) )
+	{
+		Log( "PBR direct pipeline unavailable: %s\n", pbrError.c_str() );
+		DestroyPbrDirectPipeline();
+	}
 
-	Log( "dynamic mesh pipelines ready (4 material shaders incl. textured + blend variants)\n" );
+	Log( "dynamic mesh pipelines ready (PBR direct %s)\n",
+	    m_pbrDirectReady ? "available" : "unavailable" );
 	return true;
 }
 
@@ -2865,6 +2872,26 @@ VkPipeline CVulkanContext::SkinPipeline( const DynRasterState &state, bool srgbP
 	m_skinPipelines[key] = pipeline;
 	if ( pipeline != VK_NULL_HANDLE )
 		NotePipelineVariant( kPipelineSkin, key );
+	return pipeline;
+}
+
+VkPipeline CVulkanContext::PbrDirectPipeline( const DynRasterState &state, bool srgbPass )
+{
+	const uint64_t key = RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull );
+	const auto existing = m_pbrDirectPipelines.find( key );
+	if ( existing != m_pbrDirectPipelines.end() )
+		return existing->second;
+	if ( m_pbrDirectFrag == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE;
+	VkPipeline pipeline = BuildMaterialPipeline( state, m_texTemplate.stages[0].module,
+	    m_pbrDirectFrag, m_dynTexPipelineLayout, &m_texTemplate.vin,
+	    srgbPass ? m_renderPassLoadSrgb : m_renderPass );
+	if ( pipeline == VK_NULL_HANDLE )
+		Log( "vkCreateGraphicsPipelines (PBR direct, state %#llx) failed\n",
+		    static_cast<unsigned long long>( key ) );
+	m_pbrDirectPipelines[key] = pipeline;
+	if ( pipeline != VK_NULL_HANDLE )
+		NotePipelineVariant( kPipelinePbrDirect, key );
 	return pipeline;
 }
 
@@ -3094,6 +3121,36 @@ bool CVulkanContext::InitSkinPipeline( std::string *outError )
 		return false;
 	}
 	return true;
+}
+
+bool CVulkanContext::InitPbrDirectPipeline( std::string *outError )
+{
+	const uint32_t *words = m_clipPlanesSupported ? g_pbrDirectClipFragSpv : g_pbrDirectFragSpv;
+	const size_t bytes =
+	    m_clipPlanesSupported ? sizeof( g_pbrDirectClipFragSpv ) : sizeof( g_pbrDirectFragSpv );
+	if ( !CreateShaderModule( words, bytes, &m_pbrDirectFrag, outError ) )
+		return false;
+	if ( PbrDirectPipeline( DynRasterState() ) == VK_NULL_HANDLE )
+	{
+		SetError( outError, "vkCreateGraphicsPipelines (PBR direct) failed" );
+		return false;
+	}
+	m_pbrDirectReady = true;
+	return true;
+}
+
+void CVulkanContext::DestroyPbrDirectPipeline()
+{
+	for ( const auto &entry : m_pbrDirectPipelines )
+	{
+		if ( entry.second != VK_NULL_HANDLE )
+			vkDestroyPipeline( m_device, entry.second, nullptr );
+	}
+	m_pbrDirectPipelines.clear();
+	if ( m_pbrDirectFrag != VK_NULL_HANDLE )
+		vkDestroyShaderModule( m_device, m_pbrDirectFrag, nullptr );
+	m_pbrDirectFrag = VK_NULL_HANDLE;
+	m_pbrDirectReady = false;
 }
 
 bool CVulkanContext::UploadSkinConstants( std::vector<uint32_t> *offsets )
@@ -4078,6 +4135,7 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 	std::memcpy( d.modulation, m_dynModulation, sizeof( d.modulation ) );
 	std::memcpy( d.texXform0, m_dynTexXform0, sizeof( d.texXform0 ) );
 	std::memcpy( d.texXform1, m_dynTexXform1, sizeof( d.texXform1 ) );
+	std::memcpy( d.pbrAngles, m_dynPbrAngles, sizeof( d.pbrAngles ) );
 	d.raster = m_dynRaster;
 	d.alphaRef = m_dynAlphaRef;
 	d.texHandle = m_dynBoundTexHandle;
@@ -4438,6 +4496,7 @@ void CVulkanContext::DestroyDynamicMesh()
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_portalPipelines.clear();
 	DestroySkinPipeline();
+	DestroyPbrDirectPipeline();
 	for ( VkShaderModule *module : { &m_portalVert, &m_portalFrag } )
 	{
 		if ( *module != VK_NULL_HANDLE )
@@ -4834,7 +4893,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		const auto drawWantsSrgb = [&]( const DynDraw &r )
 		{
 			return m_srgbAttachments && r.kind == kRecordDraw &&
-			       ( r.shaderIndex == kDynShaderTextured ||
+			       ( r.shaderIndex == kDynShaderTextured || r.shaderIndex == kDynShaderPbrDirect ||
 			           r.shaderIndex == kDynShaderPortalRefract ||
 			           r.shaderIndex == kDynShaderSkin ) &&
 			       ( r.colorFlags & kColorSrgbWrite );
@@ -5003,6 +5062,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			VkPipeline selected = m_dynPipeline;
 			VkPipelineLayout selectedLayout = m_dynPipelineLayout;
 			bool textured = false;
+			bool pbrDirect = false;
 			bool portal = false;
 			bool skin = false;
 			// sRGB inputs decoded by the sampler and output encoded by the view,
@@ -5021,6 +5081,14 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					continue;
 				selectedLayout = m_dynTexPipelineLayout;
 				textured = true;
+			}
+			else if ( d.shaderIndex == kDynShaderPbrDirect )
+			{
+				selected = PbrDirectPipeline( d.raster, openSrgb );
+				if ( selected == VK_NULL_HANDLE )
+					continue;
+				selectedLayout = m_dynTexPipelineLayout;
+				pbrDirect = true;
 			}
 			else if ( d.shaderIndex == kDynShaderPortalRefract )
 			{
@@ -5044,14 +5112,14 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, selected );
 				boundPipeline = selected;
 			}
-			if ( textured || portal || skin )
+			if ( textured || pbrDirect || portal || skin )
 			{
 				vkCmdSetStencilCompareMask(
 				    cmd, VK_STENCIL_FACE_FRONT_AND_BACK, d.stencilTestMask );
 				vkCmdSetStencilWriteMask( cmd, VK_STENCIL_FACE_FRONT_AND_BACK, d.stencilWriteMask );
 				vkCmdSetStencilReference( cmd, VK_STENCIL_FACE_FRONT_AND_BACK, d.stencilRef );
 			}
-			if ( textured || portal || skin )
+			if ( textured || pbrDirect || portal || skin )
 			{
 				// Bind this draw's own texture descriptor set (per-draw texture),
 				// falling back to the built-in set when the draw has no managed
@@ -5100,6 +5168,13 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					const uint32_t offset = skinOffsets[static_cast<size_t>( d.skin )];
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 					    m_skinPipelineLayout, 0, 7, sets, 1, &offset );
+				}
+				else if ( pbrDirect )
+				{
+					const VkDescriptorSet sets[2] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					    sampledSet( d.samplerHandles[1], 0 ) };
+					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+					    m_dynTexPipelineLayout, 0, 2, sets, 0, nullptr );
 				}
 				else
 				{
@@ -5158,6 +5233,19 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				pushData[33] = pushData[34] = pushData[35] = 0.0f;
 				appendClipPlanes( pushData + 36 );
 				pushFloats = kSkinPushBytes / sizeof( float );
+			}
+			else if ( pbrDirect )
+			{
+				std::memcpy( pushData + 16, d.modulation, sizeof( d.modulation ) );
+				std::memcpy( pushData + 20, d.texXform0, sizeof( d.texXform0 ) );
+				std::memcpy( pushData + 24, d.texXform1, sizeof( d.texXform1 ) );
+				std::memcpy( pushData + 28, d.pbrAngles, sizeof( d.pbrAngles ) );
+				pushFloats = 32;
+				if ( m_clipPlanesSupported )
+				{
+					appendClipPlanes( pushData + 32 );
+					pushFloats = kTexturedPushBytes / sizeof( float );
+				}
 			}
 			else if ( textured )
 			{
@@ -5583,6 +5671,8 @@ int CVulkanContext::PrewarmPipelines()
 			pipeline = PortalPipeline( state, srgb );
 		else if ( family == kPipelineSkin )
 			pipeline = SkinPipeline( state, srgb );
+		else if ( family == kPipelinePbrDirect )
+			pipeline = PbrDirectPipeline( state, srgb );
 		if ( pipeline != VK_NULL_HANDLE )
 			++built;
 	}

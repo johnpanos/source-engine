@@ -683,10 +683,13 @@ def configure(conf):
 
 	# And here C++ flags starts to be treated separately
 	cxxflags = list(cflags)
-	if conf.env.DEST_OS != 'win32':
-		# TEMPORARY (R03 C++20 migration in progress): private builds opt in until the tree compiles.
-		cxxflags += ['-std=' + os.environ.get('R03_CXX_STD', 'c++11'),'-fpermissive']
-		conf.env.R03_LEGACY_CXX11 = os.environ.get('R03_CXX_STD', 'c++11') != 'c++20'
+	policy_path = os.path.join(conf.srcnode.abspath(), 'tools', 'quality')
+	if policy_path not in sys.path:
+		sys.path.insert(0, policy_path)
+	import toolchain_policy
+	policy = toolchain_policy.load_policy(conf.srcnode.abspath())
+	family = toolchain_policy.compiler_family(policy, conf.env.COMPILER_CXX)
+	cxxflags += toolchain_policy.dialect_flags(policy, policy['defaults']['c++'], family)
 
 	if conf.env.COMPILER_CC == 'gcc':
 		conf.define('COMPILER_GCC', 1)

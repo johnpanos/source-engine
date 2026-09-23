@@ -849,6 +849,54 @@
       "expect": "pass"
     },
     {
+      "id": "render.pbr-brdf",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0007",
+      "migration": "PBR-BRDF-001",
+      "contract": "unittests/rendertest/contracts/render.pbr-brdf.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_pbr_brdf.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.pbr-brdf.bad-ggx",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0007",
+      "migration": "PBR-BRDF-001",
+      "contract": "unittests/rendertest/contracts/render.pbr-brdf.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DPBR_SEEDED_BAD_GGX"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_pbr_brdf.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.pbr-brdf.no-fresnel",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0007",
+      "migration": "PBR-BRDF-001",
+      "contract": "unittests/rendertest/contracts/render.pbr-brdf.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DPBR_SEEDED_NO_FRESNEL"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_pbr_brdf.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.profile",
       "domain": "Q-PRESENTATION",
       "rfc": "0001",

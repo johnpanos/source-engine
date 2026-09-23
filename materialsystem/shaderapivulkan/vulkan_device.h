@@ -255,7 +255,9 @@ public:
 		kDynShaderPortalRefract = 4,
 		// VertexLitGeneric's $phong path (skin_vs20 / skin_ps20b); see
 		// shaders/skin.{vert,frag}.
-		kDynShaderSkin = 5
+		kDynShaderSkin = 5,
+		// RFC 0007 synthetic direct-light BRDF, tested against the headless model.
+		kDynShaderPbrDirect = 6
 	};
 	void SelectDynamicShader( int shaderIndex ) { m_dynShaderIndex = shaderIndex; }
 	// Output-merger state of the queued geometry, in the terms of the D3D9 state a
@@ -458,6 +460,14 @@ public:
 		int numLights = 0;
 	};
 	void SetDynamicSkinConstants( const SkinConstants &constants ) { m_dynSkin = constants; }
+	// Synthetic PBR test inputs: N.V, N.L, N.H and V.H. The real material
+	// receives these from geometry and lights when the PBR world path arrives.
+	void SetDynamicPbrAngles( const float *angles )
+	{
+		for ( int i = 0; i < 4; ++i )
+			m_dynPbrAngles[i] = angles[i];
+	}
+	bool PbrDirectPipelineSupported() const { return m_pbrDirectReady; }
 	// False when the device cannot bind the skin shader's seven descriptor sets
 	// or its push block; its draws are then declined.
 	bool SkinPipelineSupported() const { return m_skinPipelineLayout != VK_NULL_HANDLE; }
@@ -901,6 +911,7 @@ private:
 	float m_dynModulation[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	float m_dynTexXform0[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
 	float m_dynTexXform1[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
+	float m_dynPbrAngles[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	DynRasterState m_dynRaster;
 	float m_dynAlphaRef = -1.0f; // $alphatest reference; < 0 disables
 	// "$basetexture" material pipeline: a built-in 2-tone texture sampled at the
@@ -917,6 +928,7 @@ private:
 		kPipelineTextured = 0,
 		kPipelinePortal = 1,
 		kPipelineSkin = 2,
+		kPipelinePbrDirect = 3,
 		kPipelineFamilies
 	};
 	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
@@ -936,6 +948,12 @@ private:
 	// after that frame's fence has signaled, bound at a per-draw dynamic offset.
 	std::map<uint64_t, VkPipeline> m_skinPipelines;
 	VkPipeline SkinPipeline( const DynRasterState &state, bool srgbPass = false );
+	std::map<uint64_t, VkPipeline> m_pbrDirectPipelines;
+	VkPipeline PbrDirectPipeline( const DynRasterState &state, bool srgbPass = false );
+	VkShaderModule m_pbrDirectFrag = VK_NULL_HANDLE;
+	bool m_pbrDirectReady = false;
+	bool InitPbrDirectPipeline( std::string *outError );
+	void DestroyPbrDirectPipeline();
 	VkPipelineLayout m_skinPipelineLayout = VK_NULL_HANDLE;
 	VkDescriptorSetLayout m_skinUboLayout = VK_NULL_HANDLE;
 	VkDescriptorPool m_skinUboPool = VK_NULL_HANDLE;
@@ -1182,11 +1200,12 @@ private:
 		float modulation[4] = { 1, 1, 1, 1 };
 		float texXform0[4] = { 1, 0, 0, 0 };
 		float texXform1[4] = { 0, 1, 0, 0 };
+		float pbrAngles[4] = { 1, 1, 1, 1 };
 		DynRasterState raster;
-		float alphaRef = -1.0f; // $alphatest reference; < 0 disables
-		int texHandle = -1;     // managed texture bound at this draw (-1 = built-in)
-		int lightmapHandle = -1; // lightmap page multiplied in (-1 = none)
-		int colorFlags = 0;      // kColorSrgb* inputs/output encoding
+		float alphaRef = -1.0f;   // $alphatest reference; < 0 disables
+		int texHandle = -1;       // managed texture bound at this draw (-1 = built-in)
+		int lightmapHandle = -1;  // lightmap page multiplied in (-1 = none)
+		int colorFlags = 0;       // kColorSrgb* inputs/output encoding
 		float outputScale = 1.0f; // linear scale before the output encode
 		bool clearStencil = false;
 		uint32_t stencilRef = 0;

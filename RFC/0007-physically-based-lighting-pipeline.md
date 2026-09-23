@@ -1,6 +1,7 @@
 # RFC 0007: Physically Based Lighting Pipeline
 
-- Status: Accepted for planning (2026-09-22); implementation not started
+- Status: Accepted for planning (2026-09-22); implementation partial (see
+  [progress](0007-progress.md))
 - Date: 2026-09-22
 - Scope: Map compile tools (vbsp, vvis, vrad), a substitutable light baker with a
   Cycles provider, a PBR material family on the native Vulkan backend, image-based
@@ -141,8 +142,13 @@ Observed at the working tree of 2026-09-22 (branch `subsystem-refactor`):
   VisGroup filtering, cordon). It reads materials through
   `hammer/core/formats/material_catalog.cpp` and VTF/VPK readers in the same
   directory. There is no compile/run workflow in the GTK host yet (RFC 0002 H5).
-- The native Vulkan backend has **no PBR code**. Its shader work reproduces
-  legacy families against D3D9 oracles. The material pixel harness
+- At the initial 2026-09-22 baseline, the native Vulkan backend had no new PBR
+  material path. A synthetic direct-specular pixel path is now recorded in
+  [progress](0007-progress.md); the complete material family remains open. The
+  repository already has a separate `PBR` shader in
+  `materialsystem/stdshaders/pbr_dx9.cpp` and its FXC sources; its name and
+  existing content semantics must be preserved. The native shader work
+  reproduces legacy families against D3D9 oracles. The material pixel harness
   (`tools/quality/material_pixel_conformance.py`) defines families `lightmap`,
   `exposure`, `skinning`, and `portal`, captured on D3D9 and compared on native
   Vulkan. See [native Vulkan progress](0001-native-vulkan-progress.md).
@@ -524,8 +530,8 @@ approximate mode, is a separately versioned opt-in mode.
 
 ### Family definition
 
-A new shader family (working name `PBR`, final name decided before first
-content) with VMT parameters:
+A new shader family named `PBRMetalRough` (distinct from the existing D3D9
+`PBR` shader) with VMT parameters:
 
 | Parameter | Meaning | Encoding |
 | --- | --- | --- |
@@ -535,7 +541,7 @@ content) with VMT parameters:
 | `$emissiontexture`, `$emissionscale` | Emission | sRGB texture, linear scale |
 | `$alphatest`, `$alphatestreference`, `$translucent` | As legacy | Unchanged semantics |
 | `$envmap` | `env_cubemap` or explicit cubemap | Consumed through IBL prefilter |
-| `$fallback` (name TBD) | Legacy family + parameters used when a provider lacks the capability | Required |
+| Fallback declaration (syntax decided with the material-system integration) | Legacy family + parameters used when a provider lacks the capability | Required |
 
 The VMT schema, the parameter defaults, and the sRGB/linear classification of
 each slot have one owner: a versioned schema consumed by the material system,
@@ -853,8 +859,9 @@ exact legacy payload, produced by the same bake at no extra cost.
    kernel-patch alternative. Decided by the basis oracle and cost.
 3. Default mode for existing maps: parity-oriented quality vs vrad. Needs
    artist review of corpus comparisons.
-4. PBR family name, VMT parameter names, and fallback syntax. Must be
-   compatible with the existing material system parser and Hammer catalog.
+4. ~~PBR family name~~ *Resolved:* `PBRMetalRough` preserves the existing
+   D3D9 `PBR` shader. VMT parameter names and fallback syntax remain open;
+   they must be compatible with the material system and Hammer catalog.
 5. ~~VTF block-compression support~~ *Resolved:* BC4/BC5 exist as
    `ATI1N`/`ATI2N`; BC6H/BC7 do not. *Remaining work:* ATI2N in native Vulkan
    and the Hammer VTF reader, plus a Linux BC5 encoder (the in-tree path is

@@ -35,7 +35,7 @@
       },
       "msvc": {
         "std": "/std:c++20",
-        "required": [],
+        "required": ["/Zc:__cplusplus"],
         "forbidden": []
       },
       "probe": "quality/toolchain/probes/cxx20.cpp"
@@ -53,9 +53,7 @@
       },
       "msvc": {
         "std": "/std:c++20",
-        "required": [
-          "/permissive-"
-        ],
+        "required": ["/permissive-", "/Zc:__cplusplus"],
         "forbidden": []
       },
       "probe": "quality/toolchain/probes/cxx20.cpp"
@@ -74,7 +72,7 @@
       },
       "msvc": {
         "std": "/std:c++20",
-        "required": [],
+        "required": ["/Zc:__cplusplus"],
         "forbidden": []
       },
       "probe": "quality/toolchain/probes/cxx20.cpp"
@@ -82,17 +80,12 @@
     "legacy-cxx11": {
       "language": "c++",
       "mode": "verify",
-      "description": "Frozen external consumer dialect: C++11 code built outside this tree (mods, plugins, SDK users) that includes the declared legacy facades. Fixture units only; no in-tree target may select it.",
+      "description": "Frozen external consumer dialect: exact C++11 code built outside this tree (mods, plugins, SDK users) that includes the declared legacy facades. GNU-family fixture units only; MSVC cannot select exact C++11. No in-tree target may select it.",
       "gnu": {
         "std": "c++11",
         "required": [
           "-fpermissive"
         ],
-        "forbidden": []
-      },
-      "msvc": {
-        "std": null,
-        "required": [],
         "forbidden": []
       },
       "probe": "quality/toolchain/probes/legacy_cxx11.cpp",

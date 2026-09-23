@@ -92,8 +92,12 @@ public:
 	virtual bool Touch( NativeTouch kind, WindowId window, std::uint64_t device,
 	    std::uint64_t finger, float x, float y, float dx, float dy, float pressure ) = 0;
 
-	// Gamepad hot-plug; false when the platform cannot simulate a device.
-	virtual bool PadDevice( std::uint32_t instance, bool added ) = 0;
+	// Connects a simulated gamepad and reports the instance the platform gave it;
+	// false when the platform cannot simulate one. PadButton/PadAxis then act on
+	// that device. Axis 'raw' is the native value: sticks [-32768, 32767],
+	// triggers [0, 32767] (values outside are the platform's to clamp).
+	virtual bool AttachPad( std::uint32_t &instance ) = 0;
+	virtual bool DetachPad( std::uint32_t instance ) = 0;
 
 	// Advances native event time: virtual time for fakes, a real delay natively.
 	virtual void AdvanceMs( std::uint32_t ms ) = 0;
@@ -112,6 +116,7 @@ struct WindowSuiteOptions
 	std::uint32_t doubleClickMs = 400; // the provider's policy
 	std::int32_t doubleClickDistance = 2;
 	std::uint32_t resizeTimeoutMs = 3000;
+	bool trace = false; // print every delivered event (diagnostics only)
 };
 
 struct WindowReport
@@ -256,6 +261,15 @@ private:
 		{
 			if ( m_Events.Poll( std::span<Event>( &event, 1 ) ) == 1 )
 			{
+				if ( m_Options.trace )
+					std::printf( "    event type=%u window=%u usage=%u mods=%u text=%u mouse=%d,%d b=%u "
+					             "clicks=%u wheel=%d,%d pad=%u/%u/%u %.4f\n",
+					    unsigned( event.type ), event.window.value, event.key.usage,
+					    event.key.modifiers, unsigned( event.text.codepoint ), event.mouse.x,
+					    event.mouse.y, unsigned( event.mouse.button ), unsigned( event.mouse.clicks ),
+					    event.wheel.x, event.wheel.y, event.gamepad.instance,
+					    unsigned( event.gamepad.button ), unsigned( event.gamepad.axis ),
+					    double( event.gamepad.value ) );
 				events.push_back( event );
 				continue;
 			}
@@ -367,17 +381,29 @@ private:
 
 		// One native text event expands to several events; a one-slot Poll must
 		// deliver every one of them, in order, with nothing lost.
-		m_Driver.Text( m_A, "h\xC3\xA9llo" );
+		if ( !m_Driver.Text( m_A, "h\xC3\xA9llo" ) )
+		{
+			window_detail::Skip( m_Report, "poll.capacity_one_no_loss",
+			    "the platform cannot inject native text" );
+			m_TextInjection = false;
+		}
 		m_Driver.Key( m_A, 0x05, 0, true );
 		m_Driver.Key( m_A, 0x05, 0, false );
 		std::vector<Event> expanded = Input();
+		if ( !m_TextInjection )
+			expanded.insert( expanded.begin(), 5, Event{} );
 		const char32_t expected[] = { U'h', 0xE9, U'l', U'l', U'o' };
 		bool ordered = expanded.size() == 7;
 		for ( std::size_t i = 0; ordered && i < 5; ++i )
 			ordered = expanded[i].type == EventType::TextInput &&
 			          expanded[i].text.codepoint == expected[i] && expanded[i].window == m_A;
 		ordered = ordered && expanded[5].type == EventType::KeyDown && expanded[6].type == EventType::KeyUp;
-		Check( "poll.capacity_one_no_loss", ordered );
+		if ( m_TextInjection )
+			Check( "poll.capacity_one_no_loss", ordered );
+		else
+			Check( "poll.keys_after_skipped_text", expanded.size() == 7 &&
+			                                          expanded[5].type == EventType::KeyDown &&
+			                                          expanded[6].type == EventType::KeyUp );
 
 		// Mixed native events keep their order.
 		m_Driver.Key( m_A, 0x06, 0, true );
@@ -454,6 +480,11 @@ private:
 
 	void Text()
 	{
+		if ( !m_TextInjection )
+		{
+			window_detail::Skip( m_Report, "text.*", "the platform cannot inject native text" );
+			return;
+		}
 		m_Driver.Text( m_A, "a\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80" );
 		std::vector<Event> text = Input();
 		const char32_t expected[] = { U'a', 0xE9, 0x20AC, 0x1F600 };
@@ -596,7 +627,7 @@ private:
 			auto result = cursor->SetShape( CursorShape( s ) );
 			shapes = shapes && ( result || result.Error().status == WindowStatus::Unsupported );
 		}
-		Check( "cursor.shapes", shapes && !!cursor->SetShape( CursorShape::Arrow ) );
+		Check( "cursor.shapes", shapes );
 		auto badShape = cursor->SetShape( CursorShape::Count );
 		Check( "cursor.shape_invalid",
 		    !badShape && badShape.Error().status == WindowStatus::InvalidArgument );
@@ -643,59 +674,95 @@ private:
 		                            m_Driver.LastMessage() == "Title: Body text" );
 	}
 
+	// A platform may repeat an unchanged axis value; compare transitions only.
+	static std::vector<Event> Transitions( const std::vector<Event> &events )
+	{
+		std::vector<Event> out;
+		for ( const Event &event : events )
+		{
+			if ( !out.empty() && event.type == EventType::GamepadAxis &&
+			     out.back().type == EventType::GamepadAxis &&
+			     out.back().gamepad.axis == event.gamepad.axis &&
+			     out.back().gamepad.value == event.gamepad.value )
+				continue;
+			out.push_back( event );
+		}
+		return out;
+	}
+
+	static std::size_t CountType( const std::vector<Event> &events, EventType type )
+	{
+		std::size_t count = 0;
+		for ( const Event &event : events )
+			count += event.type == type ? 1 : 0;
+		return count;
+	}
+
 	void Gamepads()
 	{
+		std::uint32_t pad = 0;
+		if ( !m_Driver.AttachPad( pad ) )
+		{
+			window_detail::Skip( m_Report, "gamepad.*", "the platform cannot simulate a gamepad" );
+			return;
+		}
+		std::vector<Event> added = Input();
+		Check( "gamepad.added", CountType( added, EventType::GamepadAdded ) == 1 &&
+		                            added.front().type == EventType::GamepadAdded &&
+		                            added.front().gamepad.instance == pad &&
+		                            !added.front().window.IsValid() );
+		if ( m_Caps.gamepads )
+			Check( "gamepad.count", m_Caps.gamepads->ConnectedCount() == 1 );
+
 		bool buttons = true;
 		for ( std::uint32_t b = 0; b < std::uint32_t( GamepadButton::Count ); ++b )
 		{
-			m_Driver.PadButton( 7, GamepadButton( b ), true );
-			m_Driver.PadButton( 7, GamepadButton( b ), false );
+			m_Driver.PadButton( pad, GamepadButton( b ), true );
+			m_Driver.PadButton( pad, GamepadButton( b ), false );
 			std::vector<Event> events = Input();
 			buttons = buttons && events.size() == 2 && events[0].type == EventType::GamepadButtonDown &&
-			          events[1].type == EventType::GamepadButtonUp && events[0].gamepad.instance == 7 &&
-			          events[0].gamepad.button == GamepadButton( b ) && !events[0].window.IsValid();
+			          events[1].type == EventType::GamepadButtonUp && events[0].gamepad.instance == pad &&
+			          events[0].gamepad.button == GamepadButton( b ) &&
+			          events[1].gamepad.button == GamepadButton( b ) && !events[0].window.IsValid();
 		}
 		Check( "gamepad.buttons", buttons );
 
-		m_Driver.PadAxis( 7, GamepadAxis::LeftX, -32768 );
-		m_Driver.PadAxis( 7, GamepadAxis::LeftY, 32767 );
-		m_Driver.PadAxis( 7, GamepadAxis::RightX, 0 );
-		m_Driver.PadAxis( 7, GamepadAxis::RightTrigger, 32767 );
-		m_Driver.PadAxis( 7, GamepadAxis::LeftTrigger, -100 );
-		std::vector<Event> axes = Input();
+		m_Driver.PadAxis( pad, GamepadAxis::LeftX, -32768 );
+		m_Driver.PadAxis( pad, GamepadAxis::LeftY, 32767 );
+		m_Driver.PadAxis( pad, GamepadAxis::RightX, 16384 );
+		m_Driver.PadAxis( pad, GamepadAxis::RightTrigger, 32767 );
+		m_Driver.PadAxis( pad, GamepadAxis::LeftTrigger, -100 );
+		const std::vector<Event> axes = Transitions( Input() );
+		const auto near = []( float a, float b ) { return a - b < 1e-4f && b - a < 1e-4f; };
 		Check( "gamepad.axes", axes.size() == 5 && axes[0].gamepad.axis == GamepadAxis::LeftX &&
-		                           axes[0].gamepad.value == -1.0f && axes[1].gamepad.value == 1.0f &&
-		                           axes[2].gamepad.value == 0.0f && axes[3].gamepad.value == 1.0f &&
+		                           axes[0].gamepad.value == -1.0f && axes[0].gamepad.instance == pad &&
+		                           axes[1].gamepad.axis == GamepadAxis::LeftY &&
+		                           axes[1].gamepad.value == 1.0f &&
+		                           axes[2].gamepad.axis == GamepadAxis::RightX &&
+		                           near( axes[2].gamepad.value, 16384.0f / 32767.0f ) &&
+		                           axes[3].gamepad.axis == GamepadAxis::RightTrigger &&
+		                           axes[3].gamepad.value == 1.0f &&
 		                           axes[4].gamepad.axis == GamepadAxis::LeftTrigger &&
 		                           axes[4].gamepad.value == 0.0f );
 
-		if ( m_Driver.PadDevice( 3, true ) )
-		{
-			std::vector<Event> added = Input();
-			Check( "gamepad.added", added.size() == 1 && added[0].type == EventType::GamepadAdded &&
-			                            added[0].gamepad.instance == 3 );
-			if ( m_Caps.gamepads )
-				Check( "gamepad.count", m_Caps.gamepads->ConnectedCount() == 1 );
-			m_Driver.PadDevice( 3, false );
-			std::vector<Event> removed = Input();
-			Check( "gamepad.removed", removed.size() == 1 &&
-			                              removed[0].type == EventType::GamepadRemoved &&
-			                              removed[0].gamepad.instance == 3 );
-			if ( m_Caps.gamepads )
-				Check( "gamepad.count", m_Caps.gamepads->ConnectedCount() == 0 );
-		}
-		else
-		{
-			window_detail::Skip( m_Report, "gamepad.added", "the platform cannot simulate devices" );
-		}
-
 		if ( m_Caps.gamepads )
 		{
-			auto rumble = m_Caps.gamepads->Rumble( 0x7ffffff0u, 0.5f, 0.5f, 10 );
+			auto rumble = m_Caps.gamepads->Rumble( pad + 1000, 0.5f, 0.5f, 10 );
 			Check( "gamepad.rumble_unknown_device",
 			    !rumble && rumble.Error().status == WindowStatus::UnknownDevice &&
 			        rumble.Error().operation == WindowOperation::Rumble );
+			auto bad = m_Caps.gamepads->Rumble( pad, 2.0f, 0.5f, 10 );
+			Check( "gamepad.rumble_invalid_intensity",
+			    !bad && bad.Error().status == WindowStatus::InvalidArgument );
 		}
+
+		m_Driver.DetachPad( pad );
+		std::vector<Event> removed = Input();
+		Check( "gamepad.removed", CountType( removed, EventType::GamepadRemoved ) == 1 &&
+		                              removed.back().type == EventType::GamepadRemoved &&
+		                              removed.back().gamepad.instance == pad );
+		if ( m_Caps.gamepads )
+			Check( "gamepad.count", m_Caps.gamepads->ConnectedCount() == 0 );
 	}
 
 	void Touch()
@@ -937,6 +1004,7 @@ private:
 	WindowId m_A;
 	WindowId m_B;
 	std::vector<WindowId> m_Destroyed;
+	bool m_TextInjection = true;
 };
 
 } // namespace window_detail

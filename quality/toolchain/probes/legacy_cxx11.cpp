@@ -1,8 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Legacy dialect probe (RFC 0006 M0). Unmigrated targets keep exactly
-//          C++11; the lambda check is the one the tree's configure has always
-//          required.
+// Purpose: Frozen external-consumer dialect probe (RFC 0006 M0). GNU-family
+//          fixture consumers keep exact C++11; in-tree targets use C++20.
 //
 //=============================================================================//
 

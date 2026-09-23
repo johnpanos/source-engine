@@ -13,7 +13,8 @@
 #      libpng, libjpeg, curl from the thirdparty submodule)
 #   3. configure/build/install the engine with Waf under a private lock and
 #      out directory per ABI (the shared build/ tree is never touched)
-#   4. stage the .so files (unstripped copies kept for symbolization)
+#   4. verify final C/C++ commands and stage the .so files (unstripped copies
+#      kept for symbolization)
 #   5. package with the SDK build-tools: aapt2, javac + d8 (SDLActivity),
 #      zipalign -P 16 (16 KB pages), apksigner, then verify the APK against
 #      the profile (tools/quality/android_apk.py)
@@ -307,7 +308,9 @@ build_engine()
 	local scripts
 	scripts="$(cd "$ROOT" && { git ls-files -co --exclude-standard -- '*wscript' 'scripts/waifulib/*.py'; } |
 		sort | xargs cat | sha256sum | cut -d' ' -f1)"
-	local key="${configure[*]} deps=$(cat "$OUT/$abi/deps/stamp") scripts=$scripts"
+	local policy
+	policy="$(sha256sum "$ROOT/quality/toolchain/policy.json" | cut -d' ' -f1)"
+	local key="${configure[*]} deps=$(cat "$OUT/$abi/deps/stamp") scripts=$scripts policy=$policy"
 
 	export ANDROID_NDK_HOME="$NDK"
 	# Only the cross-built prefix is visible to pkg-config.
@@ -327,6 +330,13 @@ build_engine()
 	WAFLOCK="$lock" ./waf install -j "$JOBS" 2>&1 | tee "$OUT/$abi/build.log" |
 		grep -E "error|Error|warning: unused|^'install' |^Waf:" | grep -v "^Waf: Entering\|^Waf: Leaving" | tail -60
 	[ "${PIPESTATUS[0]}" = 0 ] || die "engine build failed ($OUT/$abi/build.log)"
+	# The compilation database is written by Waf's build context, not install.
+	# Capture actual final commands and fail the package build on a dialect or
+	# dual-ABI regression before staging native libraries.
+	WAFLOCK="$lock" ./waf build -j "$JOBS" >"$OUT/$abi/toolchain-build.log" 2>&1 ||
+		{ tail -40 "$OUT/$abi/toolchain-build.log"; die "toolchain capture failed"; }
+	python3 tools/quality/toolchain_boundary.py check "$out/toolchain-invocations.json" \
+		--out "$OUT/$abi/toolchain.check.json" || die "toolchain boundary failed"
 }
 
 # ---------------------------------------------------------------------------
@@ -466,6 +476,10 @@ for abi in "${ABIS[@]}"; do
 	if [ "$PACKAGE_ONLY" = 0 ]; then
 		build_dependencies "$abi"
 		build_engine "$abi"
+	else
+		python3 tools/quality/toolchain_boundary.py check \
+			"$OUT/$abi/waf/toolchain-invocations.json" \
+			--out "$OUT/$abi/toolchain.check.json" || die "toolchain boundary failed"
 	fi
 	stage_libraries "$abi"
 done

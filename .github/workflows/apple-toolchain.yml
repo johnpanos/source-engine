@@ -1,0 +1,20 @@
+name: Apple C++20 toolchains
+
+on: [push, pull_request]
+
+jobs:
+  probes:
+    runs-on: macos-15-arm64
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check probe sensitivity
+        run: python3 -m unittest tools/quality/tests/test_apple_toolchain.py -v
+      - name: Probe pinned macOS, iOS device and simulator toolchains
+        run: python3 tools/quality/apple_toolchain.py --out quality-results/apple-cxx20.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: apple-cxx20
+          path: quality-results/apple-cxx20.json
+          if-no-files-found: error

@@ -9,9 +9,8 @@ C++ standard. This tool:
   the configuration's real flags and defines (compile, link and, for native
   builds, run);
 * applies `apply`-mode dialects to each task generator after all inherited and
-  uselib flags are merged, so the legacy global -std=c++11 cannot win by
-  ordering, and verifies `verify`-mode (legacy) dialects without rewriting
-  them, so unmigrated targets keep their exact flags;
+  uselib flags are merged, so the global C++20 permissive flags cannot override
+  a strict target, and verifies `verify`-mode dialects without rewriting them;
 * rejects a target that passes its own standard flag instead of declaring its
   dialect in the policy;
 * writes <out>/toolchain-invocations.json next to compile_commands.json on each
@@ -83,9 +82,6 @@ def apply_toolchain_dialect(self):
 					'quality/toolchain/policy.json instead' % (name, ' '.join(
 					module.std_flags_in(policy, family, own)), attribute))
 			dialect = module.target_dialect(policy, name, language)
-			if self.env.R03_LEGACY_CXX11 and dialect == policy['defaults'][language]:
-				# TEMPORARY (R03 migration): shared trees stay C++11 until it compiles.
-				continue
 			flags = list(self.env[variable])
 			if policy['dialects'][dialect]['mode'] == 'apply':
 				normalized = module.normalize_flags(policy, dialect, family, flags)

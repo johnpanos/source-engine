@@ -23,6 +23,7 @@
 
 #include <SDL.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -100,6 +101,10 @@ public:
 
 	bool Text( WindowId window, std::string_view utf8 ) override
 	{
+		// sdl2-compat (SDL2 API over SDL3, versions 2.32.50 and later) crashes in
+		// SDL3's SDL_PushEvent for a pushed SDL_TEXTINPUT (seen with 2.32.72).
+		if ( IsSdl2Compat() )
+			return false;
 		SDL_Event e;
 		std::memset( &e, 0, sizeof( e ) );
 		e.type = SDL_TEXTINPUT;
@@ -145,6 +150,9 @@ public:
 		e.wheel.windowID = m_System.NativeWindowId( window );
 		e.wheel.x = x;
 		e.wheel.y = y;
+		// Real SDL2 events carry both; sdl2-compat forwards only the precise pair.
+		e.wheel.preciseX = float( x );
+		e.wheel.preciseY = float( y );
 		e.wheel.direction = SDL_MOUSEWHEEL_NORMAL;
 		return Push( e );
 	}
@@ -213,29 +221,56 @@ public:
 		return Push( e );
 	}
 
-	bool PadButton( std::uint32_t instance, GamepadButton button, bool pressed ) override
+	// Gamepads are SDL virtual joysticks of the game-controller type, so input
+	// travels SDL's real device path: the provider sees DEVICEADDED, opens the
+	// controller and receives mapped button and axis events.
+	bool AttachPad( std::uint32_t &instance ) override
 	{
-		SDL_Event e;
-		std::memset( &e, 0, sizeof( e ) );
-		e.type = pressed ? SDL_CONTROLLERBUTTONDOWN : SDL_CONTROLLERBUTTONUP;
-		e.cbutton.which = SDL_JoystickID( instance );
-		e.cbutton.button = Uint8( button ); // same order as SDL_GameControllerButton
-		e.cbutton.state = pressed ? SDL_PRESSED : SDL_RELEASED;
-		return Push( e );
+		const int index = SDL_JoystickAttachVirtual( SDL_JOYSTICK_TYPE_GAMECONTROLLER,
+		    SDL_CONTROLLER_AXIS_MAX, SDL_CONTROLLER_BUTTON_DPAD_RIGHT + 1, 0 );
+		if ( index < 0 )
+			return false;
+		m_Pad = SDL_JoystickOpen( index );
+		if ( !m_Pad )
+		{
+			SDL_JoystickDetachVirtual( index );
+			return false;
+		}
+		m_PadIndex = index;
+		instance = std::uint32_t( SDL_JoystickInstanceID( m_Pad ) );
+		return true;
 	}
 
-	bool PadAxis( std::uint32_t instance, GamepadAxis axis, std::int32_t raw ) override
+	bool DetachPad( std::uint32_t ) override
 	{
-		static const Uint8 kAxes[] = { SDL_CONTROLLER_AXIS_LEFTX, SDL_CONTROLLER_AXIS_LEFTY,
-			SDL_CONTROLLER_AXIS_RIGHTX, SDL_CONTROLLER_AXIS_RIGHTY, SDL_CONTROLLER_AXIS_TRIGGERLEFT,
-			SDL_CONTROLLER_AXIS_TRIGGERRIGHT };
-		SDL_Event e;
-		std::memset( &e, 0, sizeof( e ) );
-		e.type = SDL_CONTROLLERAXISMOTION;
-		e.caxis.which = SDL_JoystickID( instance );
-		e.caxis.axis = kAxes[std::size_t( axis )];
-		e.caxis.value = Sint16( raw );
-		return Push( e );
+		if ( !m_Pad )
+			return false;
+		SDL_JoystickClose( m_Pad );
+		m_Pad = nullptr;
+		return SDL_JoystickDetachVirtual( m_PadIndex ) == 0;
+	}
+
+	bool PadButton( std::uint32_t, GamepadButton button, bool pressed ) override
+	{
+		// The virtual controller maps button i to SDL_GameControllerButton i, the
+		// same order as GamepadButton.
+		if ( !m_Pad || SDL_JoystickSetVirtualButton( m_Pad, int( button ), pressed ? 1 : 0 ) != 0 )
+			return false;
+		SDL_JoystickUpdate();
+		return true;
+	}
+
+	bool PadAxis( std::uint32_t, GamepadAxis axis, std::int32_t raw ) override
+	{
+		// SDL maps a virtual trigger axis from the full range onto [0, 32767].
+		std::int32_t value = raw;
+		if ( axis == GamepadAxis::LeftTrigger || axis == GamepadAxis::RightTrigger )
+			value = raw * 2 - 32768;
+		value = std::clamp( value, -32768, 32767 );
+		if ( !m_Pad || SDL_JoystickSetVirtualAxis( m_Pad, int( axis ), Sint16( value ) ) != 0 )
+			return false;
+		SDL_JoystickUpdate();
+		return true;
 	}
 
 	bool Touch( NativeTouch kind, WindowId window, std::uint64_t device, std::uint64_t finger,
@@ -257,10 +292,6 @@ public:
 		return Push( e );
 	}
 
-	// SDL opens a controller from a device index; a pushed event names no real
-	// device, so hot-plug needs hardware.
-	bool PadDevice( std::uint32_t, bool ) override { return false; }
-
 	void AdvanceMs( std::uint32_t ms ) override { SDL_Delay( ms ); }
 	std::uint32_t SettleMs() const override { return m_SettleMs; }
 	bool AutoDismissesMessages() const override { return false; }
@@ -268,10 +299,19 @@ public:
 
 	std::uint32_t m_SettleMs = 150;
 
+	static bool IsSdl2Compat()
+	{
+		SDL_version version;
+		SDL_GetVersion( &version );
+		return version.major == 2 && version.minor >= 32 && version.patch >= 50;
+	}
+
 private:
 	static bool Push( SDL_Event &e ) { return SDL_PushEvent( &e ) == 1; }
 
 	Sdl2WindowSystem &m_System;
+	SDL_Joystick *m_Pad = nullptr;
+	int m_PadIndex = -1;
 };
 
 struct Observed
@@ -315,7 +355,9 @@ void RunInstance( ApplicationComposition &root, Observed &observed, int run )
 	Check( "sdl2.single_instance", !connected );
 
 	Sdl2Driver driver( *observed.system );
-	const WindowReport report = RunWindowConformance( caps, driver );
+	WindowSuiteOptions options;
+	options.trace = std::getenv( "PLATFORM_WINDOW_TRACE" ) != nullptr;
+	const WindowReport report = RunWindowConformance( caps, driver, options );
 	g_Checks += report.checks;
 	g_Failures += report.failures;
 	std::printf( "%s platform.window[sdl2 %s, run %d]: %d checks, %d failures, %d skips\n",
