@@ -29,6 +29,7 @@
 
 #include "bitmap/imageformat.h"
 #include "materialsystem/imesh.h"
+#include "materialsystem/imaterialsystemhardwareconfig.h"
 #include "render/legacy_shader_provider.h"
 #include "shaderapi/ishaderapi.h"
 #include "shaderapi/IShaderDevice.h"
@@ -37,6 +38,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 
@@ -94,6 +96,12 @@ int main()
 		return 77;
 	}
 	check( ctx->IsValid(), "SetMode brought up a valid native Vulkan device" );
+	const int reportedTextureLimit = static_cast<int>( ctx->MaxSampledTextureDimension() );
+	check( services.hardware->MaxTextureWidth() == std::min( reportedTextureLimit, 16384 ) &&
+	           services.hardware->MaxTextureHeight() == std::min( reportedTextureLimit, 16384 ),
+	    "material hardware config reports the selected device's bounded texture limit" );
+	check( services.hardware->MaximumAnisotropicLevel() == ctx->MaxAnisotropicLevel(),
+	    "material hardware config reports the selected device's anisotropic level" );
 
 	// Drive the material system's clear color and present through the legacy
 	// interfaces, capturing the presented frame.

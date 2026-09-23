@@ -2,10 +2,10 @@
 
 - Status: Accepted for planning (2026-09-22); F1 active, F2 partial ([progress](0008-progress.md))
 - Date: 2026-09-22
-- Scope: The compiled-world interchange stage, the runtime map container, world
-  render data (mesh, lightmaps, probes, reflection probes), the texture container,
-  PBR material parameter semantics, the native Vulkan world path that consumes
-  them, and incremental map builds
+- Scope: The compiled-world interchange stage, runtime map and model resources,
+  world render data (mesh, lightmaps, probes, reflection probes), the texture
+  container, PBR material parameter semantics, the native Vulkan world path,
+  modern visual capabilities, and incremental map builds
 - Related: [RFC 0007: Physically Based Lighting Pipeline](0007-physically-based-lighting-pipeline.md)
   (produces the lighting data defined here),
   [RFC 0009: USD-Native Map Authoring](0009-usd-native-map-authoring.md)
@@ -47,8 +47,9 @@ cached:
    USD layer, so rebaking never rewrites geometry.
 3. **Runtime package (BSP2):** a new map container with 64-bit offsets, a 4CC
    lump directory, per-lump versioning, compression and content hashes, and
-   GPU-ready alignment. It carries the legacy gameplay lumps with unchanged
-   semantics, plus new render lumps: a pre-batched world mesh, SH L1 lightmap
+   GPU-ready alignment. F1 carries legacy gameplay lumps with unchanged
+   semantics; F8 can add versioned native gameplay/spatial payloads. New render
+   lumps include a pre-batched world mesh, SH L1 lightmap
    atlases, an SH L2 probe volume, and prefiltered reflection probes. Textures
    use **KTX2**.
 4. **GPU-resident:** what the native Vulkan world path uploads. Render lumps are
@@ -100,24 +101,41 @@ conversions. This RFC removes the repeated work instead.
   physics, and the dedicated server see the same data as today.
 - Legacy content stays loadable, and legacy renderers can render new maps
   through a declared, derived compatibility payload.
+- Complete the USD-native map authoring path in RFC 0009: world solids and
+  placed models remain distinct while editing, and a native compiler produces
+  playable maps without a VMF or precompiled BSP input.
+- Evolve spatial, collision, visibility, and gameplay data where the old lump
+  layout limits native USD geometry or map scale. New versioned encodings must
+  preserve declared gameplay behavior; byte-identical carriage remains the
+  rule for legacy BSP inputs, not for newly authored USD maps.
+- Add a modern model asset path for static, dynamic, and physics props, including
+  source import, material and collision data, animation where required, and a
+  versioned compiled runtime resource. Keep existing MDL/VVD/VTX assets usable.
+- Deliver modern visual and editing results together: PBR materials, authored
+  lights, reflections, transparency, shadows, dense geometry, responsive
+  preview, and build iteration are assessed in the same representative scenes.
+  Real-time GI and virtualized or streamed geometry are explicit candidate
+  capabilities with measured quality, cost, and platform gates.
+- Support direct USD scene loading in a desktop development runtime for live
+  iteration. Evaluate it separately on mobile against package, memory, startup,
+  and lifecycle limits; the installed compiled package remains supported.
 
-## Non-goals
+## Compatibility and phase boundaries
 
-- Implementing RFC 0009's editable USD map schema, native USD compiler, or
-  editor migration in F1–F7. Those have separate gates; they are the intended
-  next source path, not excluded from the program.
-- Changing the encoding or meaning of gameplay lumps (planes, nodes, leafs,
-  brushes, areaportals, visibility, physics collision, entities, static-prop
-  placement). Existing compiled BSP lumps are carried into BSP2 byte-for-byte;
-  RFC 0009's native compiler produces semantically compatible lumps without a
-  legacy byte source.
-- Replacing the MDL/VVD/VTX model runtime format. Model modernization needs its
-  own RFC because animation, gameplay, and networking depend on `studio.h`.
-  This RFC only reads model geometry into the World Stage for baking and export.
-- Putting OpenUSD in engine products or on mobile. USD is a desktop tool and
-  compile dependency only.
-- Real-time GI, virtual geometry, or other rendering research beyond what the
-  new data requires.
+F1–F7 establish the container, compiled stage, textures, renderer, lighting,
+build graph, and mobile package path. RFC 0009 owns editable USD maps and the
+native map compiler. F8–F11 below own later runtime/content modernization.
+Their separate gates prevent an early BSP2 or lighting slice from claiming the
+complete visual and authoring outcome.
+
+Legacy BSP lumps and MDL/VVD/VTX resources retain their declared readers and
+compatibility behavior. New map and model encodings are versioned rather than
+reinterpreting those bytes. Direct USD loading is a development workflow; it
+does not make OpenUSD a mandatory dependency of clients, dedicated servers, or
+mobile packages. A measured mobile profile may opt in after native lifecycle
+and package evidence. Real-time GI and virtualized geometry must earn their
+place through visual and performance oracles; neither is assumed to require a
+particular API or algorithm.
 
 ## The four tiers
 
@@ -140,6 +158,7 @@ Every arrow above is one row. No other code performs these transformations.
 | --- | --- | --- |
 | VMF → compiled geometry layer + gameplay lumps | `vbsp2` compatibility producer (RFC 0007 Phase B) | VMF semantic hash, referenced asset hashes, tool version |
 | Authored USD → compiled geometry layer + gameplay data | Native USD map compiler (RFC 0009; planned) | Composed source-layer and referenced-asset hashes, schema/tool versions |
+| Authored model source → compiled model resource | Model asset compiler (F9; planned) | Composed source and dependency hashes, schema/tool/profile versions |
 | Portals → visibility | `vvis` | Portal lump hash, tool version |
 | Geometry layer → lighting/probe layers | `ILightBaker` providers (RFC 0007) | Geometry layer hash, light prims hash, material albedo/emission hashes, bake settings, provider version |
 | Texture master → KTX2 UASTC (LDR/HDR) | `TextureEncoder` | Source image hash, encode settings, encoder version |
@@ -147,6 +166,7 @@ Every arrow above is one row. No other code performs these transformations.
 | Stage layers → BSP2 render lumps | `WorldPacker` | Layer hashes, profile, packer version |
 | Canonical lighting → legacy lumps | `LegacyLightingExporter` | Lighting layer hash, exporter version |
 | BSP2 lumps → GPU resources | native Vulkan world path | None (direct upload) |
+| Authored USD → live development world | F11 provider using the same validator/compiler contracts | Source revision, dependency hashes, compiler/profile versions |
 
 Build steps are nodes in a dependency graph that uses the RFC 0003 job system
 inside tools. The input producer is part of each graph's cache key. Changing
@@ -154,6 +174,46 @@ only a light re-runs the bake and pack steps. Changing
 only a material parameter re-runs pack (and bake if albedo or emission changed).
 Changing only a texture re-runs encode, transcode, and pack. Geometry changes
 re-run the whole graph.
+
+### Later content and runtime boundaries
+
+F8 may add versioned spatial/gameplay payloads to BSP2 when USD-native meshes,
+larger maps, or prop placement cannot be represented faithfully in legacy
+lumps. The native producer owns those payloads; the runtime map reader selects
+their declared version. Collision, traces, PVS, areaportals, entities, save
+state, and dedicated-server behavior are checked against semantic fixtures.
+The legacy producer still carries its original lumps byte-for-byte. Neither
+producer silently changes gameplay to fit a render-only mesh.
+
+F9 treats a model as an authored asset with a compiled runtime resource.
+OpenUSD or another declared source import can carry geometry and composition;
+the model compiler owns material bindings, LOD, collision, rig and animation
+where the prop role requires them. The runtime resource has one versioned
+reader and profile-specific GPU payloads. Existing MDL/VVD/VTX readers remain
+for legacy content. Static, dynamic, and physics placements in RFC 0009 select
+the appropriate model capabilities through a validated reference, not filename
+or mesh inspection. A separate contract record is needed before implementation
+to pin animation, networking, persistence, and `studio.h` compatibility.
+
+F10 measures visual results on authored scenes that expose material response,
+glass/transmission, reflections, shadows, indirect light, and dense geometry.
+The implementation may choose the GI and dense-geometry algorithms after
+measuring quality and per-profile cost; hardware ray tracing and virtualized
+geometry are options, not assumed prerequisites. The gate requires a real-time
+indirect-light response to moving lights or objects on a declared desktop
+profile, a measured geometry-scaling method for dense scenes, and explicit
+fallbacks on profiles that lack those capabilities. An attractive static
+screenshot alone cannot close it. Reference images, interaction sequences,
+frame-time, memory, and load budgets are recorded before choosing a technique.
+
+F11 is an opt-in development composition. It loads and validates the authored
+stage, then invokes the same native compiler contracts into private runtime
+data for rapid edit/reload/play; it does not create another map document or
+fork gameplay semantics. The production package path remains the oracle.
+Desktop implementation is required. A mobile build is separately selected
+only after native memory, startup, lifecycle, static composition, and package
+checks; inability to fit OpenUSD on a declared mobile profile does not block
+its compiled-package support.
 
 ## World Stage (OpenUSD)
 
@@ -218,8 +278,10 @@ compile path, not an in-house format with a USD exporter. Consequences:
 
 - `vbsp2`, the bakers, the packer, the reference renderer, and Hammer's export
   and preview link the OpenUSD C++ API (`pxr/usd`, `usdGeom`, `usdLux`,
-  `usdShade`) on desktop tool profiles. Engine products, the dedicated server,
-  and mobile builds never link it; R12/R53 link evidence checks this.
+  `usdShade`) on desktop tool profiles. F1–F7 installed client/server and
+  mobile profiles read compiled packages without OpenUSD; R12/R53 link evidence
+  checks that boundary. F11 adds a separately declared development-runtime
+  provider and evaluates an optional mobile profile.
 - A single OpenUSD revision is pinned per tool profile with its license record
   (TOST 1.0). It must be 25.11 or newer to match the Cycles Hydra delegate's
   stated requirement, so one USD build serves both.
@@ -264,20 +326,22 @@ not become required authored fields. Fixtures use `.usda`; build caches use
 `CMapLoadHelper` (`engine/modelloader.cpp`) is already the single point through
 which the engine reads lumps. It becomes a container-neutral reader over a
 `IMapContainer` interface with two implementations: legacy BSP (v19–21) and
-BSP2. Gameplay, collision (`engine/cmodel*.cpp`), and the dedicated server keep
-calling it by lump identity. The dedicated server reads only gameplay lumps and
-must not link render or texture dependencies (checked by R12's link evidence).
+BSP2. For F1, gameplay, collision (`engine/cmodel*.cpp`), and the dedicated
+server keep calling it by legacy lump identity. F8 adds a typed versioned path
+for native spatial/gameplay payloads while preserving consumer behavior. The
+dedicated server reads only gameplay data and must not link render or texture
+dependencies (checked by R12's link evidence).
 
 ### New render lumps
 
 | 4CC (proposed) | Content | Replaces at runtime (for BSP2 maps on the new path) |
 | --- | --- | --- |
-| `WMSH` | World render mesh: vertex/index buffers in the GPU layout (position, octahedral normal/tangent, material UV, lightmap UV), meshlet clusters with bounds and normal cones, draw batches by material, per-leaf cluster ranges (PVS culling), triangle → face map | `WorldStaticMeshCreate` rebuild at load |
+| `WMSH` | World render mesh: vertex/index buffers in the GPU layout (position, octahedral normal/tangent, material UV, lightmap UV), meshlet clusters with bounds and normal cones, draw batches by material, per-leaf cluster ranges (PVS culling), triangle → canonical source surface map (optional legacy face map) | `WorldStaticMeshCreate` rebuild at load |
 | `LMAP` | Lightmap atlas pages: SH L1 irradiance (L0 HDR RGB + L1 directional), one layer per light style; KTX2 assets in the asset table | `ColorRGBExp32` lightmaps, CPU `R_BuildLightMap` compositing, lightmap page allocation at load |
 | `LSTY` | Light style table: style id → atlas layer, per-chart style masks | Per-surface `styles[MAXLIGHTMAPS]` compositing on the CPU |
 | `PRBV` | Probe volume: probe positions, SH L2 irradiance per probe (per style), leaf → probe tetrahedra/cell index, validity masks | Leaf ambient cubes |
 | `RPRB` | Reflection probes: position, influence and parallax boxes, blend priority, KTX2 prefiltered HDR cube (GGX roughness mips) | `env_cubemap` VTFs from `buildcubemaps` |
-| `MTBL` | Material table: VMT paths, family, shader capability requirement, hashes | `texdata` string table lookups for render batching |
+| `MTBL` | Material table: canonical material asset identity, optional legacy VMT path, family, shader capability requirement, hashes | `texdata` string table lookups for render batching |
 | `PKMF` | Package manifest: profile, formats chosen, source stage hashes, tool versions, derived-legacy flag | — |
 
 Light styles stay a gameplay feature (switchable lights). On the new path,
@@ -434,14 +498,18 @@ by a global switch.
 | F5 | `LMAP`/`LSTY`/`PRBV`/`RPRB` from RFC 0007 bakes, legacy exporter, light-style blending, clustered dynamic lights | Pixel oracles vs Cycles; legacy payload renders on D3D9/DXVK; style switching and dynamic light tests |
 | F6 | Incremental build graph and cache; Hammer compile and preview use it | Cache-hit traces per change class; cancellation leaves the previous package intact |
 | F7 | Mobile packaging: per-profile transcoding and packages for iOS/Android | Device format queries recorded; installed-package smoke tests on R29 runners |
+| F8 | Versioned native map spatial/gameplay data for USD geometry | Closed-world, collision, traces, portals/PVS, areaportals, entities and server behavior pass independent semantic and negative fixtures; legacy BSP carriage remains byte-identical |
+| F9 | Modern model asset compiler and runtime reader | Static/dynamic/physics roles use validated modern assets with materials, collision, LOD and required animation; MDL compatibility and client/server lifetime tests pass |
+| F10 | Modern visual parity and geometry scalability | Representative maps pass registered image and interaction oracles for material response, reflections, transparent surfaces, shadows and lighting; real-time GI and dense-geometry methods pass measured quality, memory, frame-time and fallback gates on declared profiles |
+| F11 | Direct USD development-runtime iteration | Desktop scene edit/reload/play loop uses the same validated source and compiled contracts without stale state; mobile opt-in decision records package, startup, memory and lifecycle evidence |
 
 F1 and F3 are independent of the lighting work and can start first.
 
 ## Roadmap
 
 Tracked in the AGENTS.md ranked roadmap (added 2026-09-22): F1 → R53, F2 → R54,
-F3 → R55, F4–F5 → R56, F6 → R57, F7 → R58. AGENTS.md owns their ranks and
-states.
+F3 → R55, F4–F5 → R56, F6 → R57, F7 → R58, F8 → R61, F9 → R62,
+F10 → R63, F11 → R64. AGENTS.md owns their ranks and states.
 
 ## Risks and mitigations
 
@@ -449,7 +517,7 @@ states.
 | --- | --- |
 | Two world paths in the engine for a long time | Selected per map by capability; each migrated cohort deletes its legacy branch for BSP2 maps; legacy path retained only for legacy content |
 | New maps unplayable on old engines/tools | Explicit, versioned decision; classic v21 export profile; legacy payload for legacy renderers |
-| USD dependency weight in the compile path | Decided: USD is used (see [USD decision](#usd-decision)). Tool and desktop-host profiles only; pinned revision and license record; never linked into engine products or mobile builds |
+| USD dependency weight in the compile path | Pin the revision and license record; keep F1–F7 installed products free of the dependency; F11 measures the isolated development loader and optional mobile profile before enabling either |
 | Decals/overlays/displacements regress on the new world path | Triangle → face map; per-cohort tests before enabling the path |
 | Mobile format support differs by device | Profile-declared formats, device queries, composition failure instead of silent fallback |
 | Hash/compression dependencies proliferate | One hash (BLAKE3 or XXH3-128) and one new compressor (zstd), each pinned; lzma kept for legacy lumps |

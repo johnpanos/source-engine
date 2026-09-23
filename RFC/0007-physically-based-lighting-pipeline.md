@@ -103,7 +103,9 @@ making Blender (GPL) a build or runtime dependency.
 - Replacing or "upgrading" legacy shader families (`LightmappedGeneric`,
   `VertexLitGeneric`, ...). Their fidelity is owned by RFC 0001 R32/R36 and
   defined by the D3D9 implementation.
-- Real-time global illumination or hardware ray-traced runtime lighting.
+- Implementing real-time GI or hardware ray-traced runtime lighting in the
+  baked-lighting phases. RFC 0008 F10 owns measured runtime visual capabilities;
+  this RFC's canonical bake and reference data remain comparison inputs.
 - Defining containers, encodings, or interchange schemas. RFC 0008 owns them;
   this RFC owns the values computed into them.
 - Replacing vbsp's BSP construction, or making vvis use Cycles.
@@ -816,7 +818,7 @@ R32, so legacy-content fidelity on native Vulkan stays ahead.
 | PBR content breaks on D3D9/DXVK or mobile | Capability negotiation; validated fallback; declared mobile tier |
 | Units/color drift between baker, runtime, and exporters | One `LightingPolicy`; seeded-duplicate detection test |
 | Cycles upstream churn | Pinned revision; provider-private dependency; upstream patches minimized and recorded |
-| Scope creep into runtime GI | Explicit non-goal; RFC 0008 defines exactly which lighting data exists |
+| Runtime GI work obscures the baker gate | Keep bake acceptance independent; RFC 0008 F10 owns runtime quality and performance gates |
 
 ## Alternatives considered
 

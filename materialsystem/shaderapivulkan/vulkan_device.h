@@ -102,6 +102,9 @@ public:
 	void Shutdown();
 
 	bool IsValid() const { return m_device != VK_NULL_HANDLE; }
+	uint32_t MaxSampledTextureDimension() const;
+	int MaxAnisotropicLevel() const { return m_maxAnisotropy; }
+	void SetAnisotropicLevel( int level );
 	// Upload the validated WMSH vertex/index sections once for this map. These
 	// buffers are independent of the frame stream and survive presentation resize.
 	// The old pair survives a failed replacement; Release waits for GPU readers.
@@ -401,6 +404,8 @@ public:
 	// `format` may be an uncompressed (R8G8B8A8/B8G8R8A8) or block-compressed
 	// (BC1/BC3, i.e. DXT1/DXT5) Vulkan format; upload data must match it.
 	// `mipLevels` is clamped to the full chain; each level is uploaded separately.
+	// The selected device's format/usage extent and mip limits are checked before
+	// any image or memory is allocated.
 	// `srgbAlias`, when set, is the sRGB twin of `format`: the image is created
 	// mutable between the two and also gets an sRGB view (render targets).
 	int CreateManagedTexture( int width, int height, VkFormat format, std::string *outError,
@@ -585,7 +590,8 @@ public:
 		// level 0 only (D3DTEXF_NONE).
 		kSamplerMipPoint = 8,
 		kSamplerMipLinear = 16,
-		kSamplerStates = 32
+		kSamplerAnisotropic = 32,
+		kSamplerStates = 64
 	};
 	void SetManagedTextureSamplerState( int handle, int samplerState );
 	int ManagedTextureSamplerState( int handle ) const
@@ -748,6 +754,7 @@ private:
 	bool CreateSurface( std::string *outError );
 	bool PickPhysicalDevice( std::string *outError );
 	bool CreateLogicalDevice( std::string *outError );
+	VkSampler CreateManagedSampler( int state, int anisotropy ) const;
 	// `oldSwapchain` hands the presentation over (VkSwapchainCreateInfoKHR), so a
 	// rebuild never leaves the window without a presentable image.
 	bool CreateSwapchain( std::string *outError, VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE );
@@ -1063,10 +1070,10 @@ private:
 	VkDeviceMemory m_dynTexMemory = VK_NULL_HANDLE;
 	VkImageView m_dynTexView = VK_NULL_HANDLE;
 	VkSampler m_dynTexSampler = VK_NULL_HANDLE;
-	// Sampler per addressing/filter combination (kSamplerClampU | kSamplerClampV |
-	// kSamplerLinear). D3D9 sampler state is per texture here, as Source sets it
-	// when each texture is created.
+	// Sampler per addressing/filter combination, including anisotropy.
 	VkSampler m_samplers[kSamplerStates] = {};
+	int m_maxAnisotropy = 1;
+	int m_anisotropyLevel = 1;
 	VkDescriptorSetLayout m_dynTexDescLayout = VK_NULL_HANDLE;
 	VkDescriptorPool m_dynTexDescPool = VK_NULL_HANDLE;
 	VkDescriptorSet m_dynTexDescSet = VK_NULL_HANDLE;

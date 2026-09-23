@@ -52,6 +52,10 @@ separates world solids, static props, dynamic props, physics props, and
 geometric entities by their editing and compile contracts. The document,
 transaction, and tool seams extracted here must not require a VMF key/value
 tree, BSP face ID, or one global active map in their public contracts.
+The USD workflow also needs role-aware block/mesh and prop tools, predictable
+selection/snapping/UV edits, material and lighting preview, and diagnostics
+linked to authored objects. RFC 0009 U3 owns that workflow gate; the early VMF
+slice must leave room for it rather than defining the final interaction model.
 
 ## Motivation and observed state
 

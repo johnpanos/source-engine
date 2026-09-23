@@ -4061,30 +4061,30 @@ bool CShaderAPIVulkan::SupportsVertexShaders_2_0() const
 
 int CShaderAPIVulkan::MaximumAnisotropicLevel() const
 {
-	return 0;
+	return g_VulkanContext.MaxAnisotropicLevel();
 }
 
 void CShaderAPIVulkan::SetAnisotropicLevel( int nAnisotropyLevel )
 {
-	VK_UNIMPLEMENTED();
+	g_VulkanContext.SetAnisotropicLevel( nAnisotropyLevel );
 }
 
 int CShaderAPIVulkan::MaxTextureWidth() const
 {
-	// Should be big enough to cover all cases
-	return 16384;
+	// Before SetMode there is no selected physical device. Keep the content
+	// ceiling for that query; after selection report the actual device limit.
+	const uint32_t deviceLimit = g_VulkanContext.MaxSampledTextureDimension();
+	return static_cast<int>( deviceLimit ? std::min( deviceLimit, 16384U ) : 16384U );
 }
 
 int CShaderAPIVulkan::MaxTextureHeight() const
 {
-	// Should be big enough to cover all cases
-	return 16384;
+	return MaxTextureWidth();
 }
 
 int CShaderAPIVulkan::MaxTextureAspectRatio() const
 {
-	// Should be big enough to cover all cases
-	return 16384;
+	return MaxTextureWidth();
 }
 
 int CShaderAPIVulkan::TextureMemorySize() const
@@ -6684,8 +6684,8 @@ static bool IsLinearFilter( ShaderTexFilterMode_t mode )
 }
 
 // As CShaderAPIDx8::TexMinFilter: the minification filter and the mip filter,
-// which is none for a texture of one level. Anisotropic filtering is sampled as
-// trilinear.
+// which is none for a texture of one level. Anisotropy uses the selected
+// device's supported sampler level.
 void CShaderAPIVulkan::TexMinFilter( ShaderTexFilterMode_t texFilterMode )
 {
 	using render_vulkan::CVulkanContext;
@@ -6706,7 +6706,6 @@ void CShaderAPIVulkan::TexMinFilter( ShaderTexFilterMode_t texFilterMode )
 		mip = CVulkanContext::kSamplerMipLinear;
 		break;
 	case SHADER_TEXFILTERMODE_ANISOTROPIC:
-		NoteUnimplemented( "anisotropic filtering (sampled trilinear)" );
 		mip = CVulkanContext::kSamplerMipLinear;
 		break;
 	default:
@@ -6714,8 +6713,12 @@ void CShaderAPIVulkan::TexMinFilter( ShaderTexFilterMode_t texFilterMode )
 	}
 	if ( g_VulkanContext.ManagedTextureMipLevels( handle ) <= 1 )
 		mip = 0;
-	UpdateModifiedTextureSampler(
-	    CVulkanContext::kSamplerMipPoint | CVulkanContext::kSamplerMipLinear, mip );
+	const int anisotropic =
+	    texFilterMode == SHADER_TEXFILTERMODE_ANISOTROPIC ? CVulkanContext::kSamplerAnisotropic : 0;
+	UpdateModifiedTextureSampler( CVulkanContext::kSamplerMipPoint |
+	                                  CVulkanContext::kSamplerMipLinear |
+	                                  CVulkanContext::kSamplerAnisotropic,
+	    mip | anisotropic );
 }
 
 void CShaderAPIVulkan::TexMagFilter( ShaderTexFilterMode_t texFilterMode )

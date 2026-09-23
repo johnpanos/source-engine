@@ -149,6 +149,17 @@ int main()
 			std::fprintf( stderr, "FAIL: %s\n", message );
 		}
 	};
+	const std::uint32_t maxDimension = context.MaxSampledTextureDimension();
+	check( maxDimension >= 4096, "selected device reports a usable 2D texture limit" );
+	check( context.MaxAnisotropicLevel() >= 1 && context.MaxAnisotropicLevel() <= 16,
+	    "selected device reports a bounded anisotropic filter level" );
+	if ( maxDimension < static_cast<std::uint32_t>( INT32_MAX ) )
+	{
+		const int oversized = context.CreateManagedTexture(
+		    static_cast<int>( maxDimension + 1 ), 1, VK_FORMAT_R8G8B8A8_UNORM, &error );
+		check( oversized < 0 && error.find( "2D image limit" ) != std::string::npos,
+		    "oversized texture fails before image allocation" );
+	}
 	const bool meshReady = context.InitDynamicMesh( &error );
 	check( meshReady, "native textured pipeline initializes" );
 	const int red = context.CreateManagedTexture( 8, 8, VK_FORMAT_BC7_SRGB_BLOCK, &error );
@@ -329,6 +340,19 @@ int main()
 				           std::abs( int( center[1] ) - int( kMipColors[level - 1][1] ) ) <= 5 &&
 				           std::abs( int( center[2] ) - int( kMipColors[level - 1][2] ) ) <= 5,
 				    "reader-to-bridge lower mip samples its authored pixels" );
+			}
+			if ( context.MaxAnisotropicLevel() > 1 )
+			{
+				context.SetManagedTextureSamplerState(
+				    packagedMipsHandle, render_vulkan::CVulkanContext::kSamplerLinear |
+				                            render_vulkan::CVulkanContext::kSamplerMipLinear |
+				                            render_vulkan::CVulkanContext::kSamplerAnisotropic );
+				context.SetAnisotropicLevel( context.MaxAnisotropicLevel() );
+				check( DrawAndCapture( context, packagedMipsHandle, center, corner, error ),
+				    "mipmapped KTX2 image samples with a device-supported anisotropic sampler" );
+				context.SetAnisotropicLevel( 1 );
+				check( DrawAndCapture( context, packagedMipsHandle, center, corner, error ),
+				    "sampler level can change after a submitted frame" );
 			}
 			context.DestroyManagedTexture( packagedMipsHandle );
 		}

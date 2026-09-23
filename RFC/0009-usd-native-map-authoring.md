@@ -16,9 +16,10 @@
 New maps are **authored in OpenUSD, without a VMF source document or a VMF
 round trip**. The authoring stage is the saved, editable authority. A map compiler
 consumes a validated snapshot of that stage and produces RFC 0008's compiled
-World Stage and BSP2 gameplay/render data. OpenUSD stays in desktop editor and
-host-tool profiles; engine clients, the dedicated server, and mobile products
-read compiled packages and do not link OpenUSD.
+World Stage and BSP2 gameplay/render data. OpenUSD starts in desktop editor and
+host-tool profiles. RFC 0008 F11 adds an opt-in development-runtime USD loader
+and evaluates mobile separately; installed clients and servers continue to
+read compiled packages.
 
 This is a new input and compiler boundary, not a request to change the current
 VMF-derived F2 prototype into an editor file. Existing VMF maps and their
@@ -68,12 +69,23 @@ gameplay behavior. The versioned Source authoring schema owns the role.
 `prop_static`, `prop_dynamic`, and `prop_physics` are distinct. The first native
 vertical slice need not implement every role, but unsupported required roles
 must fail validation before publication. Model references initially may point
-to existing MDL assets; replacing the MDL runtime format is outside this RFC.
+to existing MDL assets; RFC 0008 F9 adds a modern model asset path without
+blocking the first playable USD map.
 
 The editor can offer a block tool for a world solid while persisting it in USD.
 Whether a given solid stores parametric planes/CSG operations or editable mesh
 topology is an explicit schema capability. Flattening a parametric solid to a
 triangle mesh must not discard its promised editing operations on save/reopen.
+
+The authoring goal includes responsive, in-context work: create and reshape
+world solids or meshes, place and replace model references, edit materials and
+lights, inspect collision/visibility roles, and see the resulting scene in a
+material-and-lighting viewport. Selection, snapping, pivots, surface UVs,
+undo/redo, and asset browsing must retain their meaning across those roles.
+Compile progress and errors point back to stable authored objects; a changed
+light, material, or prop can be previewed without rebuilding unrelated world
+geometry. RFC 0002 owns the interaction rules; RFC 0008 F10/F11 own runtime
+visual parity and direct USD development preview.
 
 ## Authoring and compiled stages
 
@@ -173,6 +185,11 @@ Shared Q-EDITOR/Q-CONTENT/Q-PRODUCT evidence includes:
    profile, first divergence, and reproduction commands. Light-only and
    model-placement-only changes avoid rebuilding unaffected world geometry;
    geometry changes invalidate the dependent spatial and bake products.
+6. A representative authoring task covers block/mesh editing, separate prop
+   placement, material and light changes, object-linked diagnostics, viewport
+   preview, and playtesting. Capture interaction traces and edit-to-preview
+   latency on declared editor profiles; the viewport's material/lighting
+   differences from the installed runtime have named fixtures and tolerances.
 
 The first room is a vertical slice, not the full gate. Full native authoring
 requires the declared feature corpus and installed product checks on supported
@@ -185,7 +202,7 @@ profiles. Missing platform/native evidence remains unverified under AGENTS.md.
 | U0 | Authoring schema, role and geometry profile, source-to-compiled ID policy, USD fixture, independent validator | Positive and deliberately bad fixtures prove role, topology, reference and composition checks; no implementation status is inferred from RFC 0008's compiled schema |
 | U1 | Native USD compiler for one room, no VMF/BSP input | Client and dedicated-server installed BSP2 smoke, independent collision/visibility/entity/render checks, clean failure recovery |
 | U2 | Static, dynamic, physics and geometric-entity cohorts | Each role's distinct lifecycle, model, collision, bake and gameplay contract passes; unsupported classes fail explicitly |
-| U3 | Headless editor persistence and GTK workflow | USD is the saved authority; two-document edit/history/save/reopen/build passes without a VMF shadow |
+| U3 | Headless editor persistence and GTK workflow | USD is the saved authority; two-document edit/history/save/reopen/build, role-aware tools, object-linked diagnostics, viewport parity and edit-to-preview budgets pass without a VMF shadow |
 | U4 | VMF import, feature families and incremental build | Versioned semantic corpus, loss reports, cache traces, cancellation/recovery and supported product gates pass |
 
 U0–U2 are RFC 0009's compiler/content work (portfolio R59); U3–U4 are the

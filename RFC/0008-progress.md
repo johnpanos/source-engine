@@ -26,6 +26,9 @@ compiler and editor gates (R59–R60) are planned. F2's current VMF-derived
 World Stage is compiled interchange evidence, not native USD authoring; no
 RFC 0009 gate is complete. F2 must also validate a compiled-stage fixture with
 stable source surface/material identity and no BSP face IDs before closing.
+RFC 0008 F8–F11 (R61–R64) are planned modernization gates for native map
+spatial data, model assets, visual parity/scalability and direct USD development
+iteration. The current WMSH/LMAP preview does not pass those gates.
 
 ## Phase status
 
@@ -1079,6 +1082,79 @@ python3 tools/quality/staircase2_compare.py \
   --max-mae 10 --min-ssim 0.9 --negative-self-test
 ```
 
+### F2/F5 USD-to-BSP2 playable staircase slice (2026-09-23)
+
+The [collision producer](../tools/quality/staircase2_collision_vmf.py) derives
+a sealed Portal VMF from the Z-up USD geometry: six shell brushes, sixteen
+upper-flight tread brushes, a player start and a fallback light. The local
+`vbsp2`/`vvis`/`vrad` tool build produced the collision/PVS BSP. The
+[USD world packer](../tools/quality/usd_worldmesh_pack.py) reads the lighting
+stage with OpenUSD, preserves material and `lightmap_st` coordinates,
+triangulates the 13 emitter meshes, and packs WMSH with 30,733 visible
+triangles, 1,520 meshlets and nine material batches. Its `--out-bsp2` path
+invokes `bsp2tool pack-world-lit` and the independent BSP2 reader; repeating
+the integrated pack produced byte-identical WMSH and BSP2 outputs. The first
+visibility policy references every imported meshlet from every leaf, pending
+spatial association.
+
+The [Cycles lightmap bake](../tools/quality/staircase2_lightmap_bake.py)
+authored a shared UV layer in a second USD stage and baked a 2048², 64-sample
+diffuse atlas. Large architectural meshes own the atlas space; fixture and
+glass meshes use unlit/translucent preview materials. The stage passes
+`usdchecker`. The [KTX2 packager](../tools/quality/staircase2_lightmap_ktx2.py)
+validates a linear RGBA16F package with exact extracted half-float bytes. Its
+0.17 linear preview gain is recorded separately from the unmodified Cycles EXR
+as temporary Source display calibration, not canonical irradiance policy.
+
+`bsp2tool` carries that KTX2 page as a versioned `LMAP` lump. The engine
+verifies its BSP2 content hash before the native Vulkan provider parses and
+uploads it. World batches bind this map-scoped texture and release it with the
+world mesh. The [content bridge](../tools/quality/staircase2_playable_content.py)
+builds VTF/VMT base textures and an alpha-blended glass approximation from the
+original PBRT assets. The installed Portal client boot passed with an active
+player and a fresh [in-game frame](../quality-results/staircase2-playable-lit-boot-v6/staircase2-lit.png):
+the log reports `WMSH LMAP ready (2048 x 2048, linear RGBA16F)` and nine WMSH
+material batches. The pinned KTX reader was built as a PIC static archive for
+the Vulkan shared module in a separate Waf output profile. A wrong-format
+KTX2 fails packaging, and an altered BSP2 byte fails the independent hash
+checker. The native boot harness accepts the live native Vulkan provider
+marker and retains its negative fixture.
+
+The in-game capture is 1920×1080 despite a requested square mode, so no
+registered pixel parity score is claimed against the 1024² Cycles reference.
+The frame still lacks the reference's glass refraction, floor reflections,
+metal response and smooth lightmap filtering. Collision covers the sealed
+floor and upper tread flight, but an automated `+forward` input experiment did
+not move the headless player; traversal is not yet attested. This is a working
+USD → WMSH/LMAP → BSP2 → native Vulkan preview path, not F2/F5 acceptance or
+the requested high visual parity gate. The Portal VMF remains the primary map.
+
+```sh
+OCIO="$PWD/quality/fixtures/staircase2-ocio/config.ocio" \
+  blender -b -t 16 --python tools/quality/staircase2_lightmap_bake.py -- \
+    --stage quality-results/staircase2-reference-parity.usdc \
+    --scene staircase2/scene-v4.pbrt \
+    --out-stage quality-results/staircase2-lighting-arch-2048.usdc \
+    --out-exr quality-results/staircase2-lighting-arch-2048.exr \
+    --size 2048 --samples 64
+python3 tools/quality/staircase2_lightmap_ktx2.py \
+  --exr quality-results/staircase2-lighting-arch-2048.exr \
+  --bake-evidence quality-results/staircase2-lighting-arch-2048.exr.json \
+  --lighting-stage quality-results/staircase2-lighting-arch-2048.usdc \
+  --ktx-tool /tmp/rfc0008-ktx-pin/build-rfc0008/Release/ktx \
+  --preview-gain 0.17 \
+  --out quality-results/staircase2-lighting-arch-2048-gain017.ktx2
+PYTHONPATH=/tmp/rfc0008-openusd-install/lib/python /usr/bin/python3.12 \
+  tools/quality/usd_worldmesh_pack.py \
+  --stage quality-results/staircase2-lighting-arch-2048.usdc \
+  --bsp quality-results/staircase2-collision-v2/staircase2_collision.bsp \
+  --material-prefix staircase2 --require-lightmap-uv --include-emitters \
+  --lightmap-ktx2 quality-results/staircase2-lighting-arch-2048-gain017.ktx2 \
+  --bsp2tool build-rfc0008-tools-vbsp/utils/bsp2tool/bsp2tool \
+  --out quality-results/staircase2-integrated-v1.wmsh \
+  --out-bsp2 quality-results/staircase2-integrated-v1.bsp2
+```
+
 ## F1: what exists
 
 ### Format (prototype choices, recorded against open decisions 1 and 2)
@@ -1734,3 +1810,27 @@ The Hammer follow-up edits `public/hammer/formats/material_catalog.h`,
 and the catalog contract; it adds `hammer/adapters/source/ktx2_preview.{h,cpp}`,
 `unittests/hammertest/formats/test_ktx2_preview.cpp`, and
 `tools/quality/hammer_ktx2_preview.py`.
+
+### F3 native texture limits and filtering (2026-09-23)
+
+The native Vulkan material hardware config now reports the selected device's
+2D image limit, capped at the KTX2 reader's 16,384-pixel content limit. Managed
+texture creation checks both that device limit and the requested format, usage,
+extent, array layers, sample count, and mip count before allocating the image.
+Anisotropic texture requests now use device-supported Vulkan samplers up to
+16×; changing the configured level after a frame refreshes affected descriptors
+only after GPU completion. The selected RADV device reports a 16,384-pixel 2D
+limit and 16× anisotropy. The native KTX2 pixel suite passes 42 checks, including
+oversized-image rejection and an anisotropic sampler change after a submitted
+frame; the material-facing suite passes 15 checks, including the hardware
+config's live limit reports. Changed-line style and
+`git diff --check` pass.
+
+This is a 16K-capable GPU image boundary for supported compressed formats, not
+yet a 16K PBR world material. The gameplay material loader still selects VTF,
+and the BSP2 lightmap consumer currently requires one RGBA16F page. A 16K BC7
+full mip chain fits the reader's 512 MiB container bound; equivalent uncompressed
+RGBA8/HDR chains do not. Runtime KTX2 material selection, memory budgeting and
+large-texture load/pixel evidence remain F3 work. No numeric Source 2 texture
+ceiling has been verified from a Valve source; 16K is this profile's tested
+device capability and current content ceiling, not an asserted Source 2 fact.

@@ -484,6 +484,7 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 	vkGetPhysicalDeviceFeatures( m_physicalDevice, &supported );
 	VkPhysicalDeviceFeatures features = {};
 	features.occlusionQueryPrecise = supported.occlusionQueryPrecise;
+	features.samplerAnisotropy = supported.samplerAnisotropy;
 	m_preciseOcclusion = supported.occlusionQueryPrecise == VK_TRUE;
 	// D3D9 user clip planes are clip distances. The planes travel in the push
 	// constants, so a device must also hold the widest block that carries them
@@ -492,6 +493,12 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 	// user clip planes.
 	VkPhysicalDeviceProperties properties = {};
 	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
+	m_maxAnisotropy =
+	    supported.samplerAnisotropy
+	        ? std::max(
+	              1, std::min( 16, static_cast<int>( properties.limits.maxSamplerAnisotropy ) ) )
+	        : 1;
+	m_anisotropyLevel = std::min( 4, m_maxAnisotropy );
 	m_portalPushSupported = properties.limits.maxPushConstantsSize >= kPortalPushBytes;
 	m_clipPlanesSupported = supported.shaderClipDistance == VK_TRUE &&
 	                        properties.limits.maxClipDistances >= kMaxClipPlanes &&
@@ -2600,23 +2607,8 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		// textures that need it through TexWrap.
 		for ( int state = 0; state < kSamplerStates; ++state )
 		{
-			VkSamplerCreateInfo sc = {};
-			sc.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-			const VkFilter filter =
-			    ( state & kSamplerLinear ) ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
-			sc.magFilter = filter;
-			sc.minFilter = filter;
-			sc.mipmapMode = ( state & kSamplerMipLinear ) ? VK_SAMPLER_MIPMAP_MODE_LINEAR
-			                                              : VK_SAMPLER_MIPMAP_MODE_NEAREST;
-			sc.minLod = 0.0f;
-			sc.maxLod =
-			    ( state & ( kSamplerMipPoint | kSamplerMipLinear ) ) ? VK_LOD_CLAMP_NONE : 0.0f;
-			sc.addressModeU = ( state & kSamplerClampU ) ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
-			                                             : VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			sc.addressModeV = ( state & kSamplerClampV ) ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
-			                                             : VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			sc.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			if ( vkCreateSampler( m_device, &sc, nullptr, &m_samplers[state] ) != VK_SUCCESS )
+			m_samplers[state] = CreateManagedSampler( state, m_anisotropyLevel );
+			if ( m_samplers[state] == VK_NULL_HANDLE )
 			{
 				SetError( outError, "vkCreateSampler (dynamic texture) failed" );
 				return false;
@@ -3390,6 +3382,110 @@ void CVulkanContext::SetDynamicTransform( const float *m16 )
 		std::memcpy( m_dynTransform, m16, sizeof( m_dynTransform ) );
 }
 
+uint32_t CVulkanContext::MaxSampledTextureDimension() const
+{
+	if ( m_physicalDevice == VK_NULL_HANDLE )
+		return 0;
+	VkPhysicalDeviceProperties properties = {};
+	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
+	return properties.limits.maxImageDimension2D;
+}
+
+VkSampler CVulkanContext::CreateManagedSampler( int state, int anisotropy ) const
+{
+	VkSamplerCreateInfo info = {};
+	info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	const VkFilter filter = ( state & kSamplerLinear ) ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+	info.magFilter = filter;
+	info.minFilter = filter;
+	info.mipmapMode = ( state & kSamplerMipLinear ) ? VK_SAMPLER_MIPMAP_MODE_LINEAR
+	                                                : VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	info.minLod = 0.0f;
+	info.maxLod = ( state & ( kSamplerMipPoint | kSamplerMipLinear ) ) ? VK_LOD_CLAMP_NONE : 0.0f;
+	info.addressModeU = ( state & kSamplerClampU ) ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
+	                                               : VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	info.addressModeV = ( state & kSamplerClampV ) ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
+	                                               : VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	if ( ( state & kSamplerAnisotropic ) && anisotropy > 1 )
+	{
+		info.magFilter = VK_FILTER_LINEAR;
+		info.minFilter = VK_FILTER_LINEAR;
+		info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		info.anisotropyEnable = VK_TRUE;
+		info.maxAnisotropy = static_cast<float>( anisotropy );
+	}
+	VkSampler sampler = VK_NULL_HANDLE;
+	return vkCreateSampler( m_device, &info, nullptr, &sampler ) == VK_SUCCESS ? sampler
+	                                                                           : VK_NULL_HANDLE;
+}
+
+void CVulkanContext::SetAnisotropicLevel( int level )
+{
+	const int selected = std::clamp( level, 1, m_maxAnisotropy );
+	if ( selected == m_anisotropyLevel )
+		return;
+	if ( m_samplers[0] == VK_NULL_HANDLE )
+	{
+		m_anisotropyLevel = selected;
+		return;
+	}
+	VkSampler replacement[kSamplerStates / 2] = {};
+	for ( int state = kSamplerAnisotropic; state < kSamplerStates; ++state )
+	{
+		replacement[state - kSamplerAnisotropic] = CreateManagedSampler( state, selected );
+		if ( replacement[state - kSamplerAnisotropic] == VK_NULL_HANDLE )
+		{
+			for ( VkSampler sampler : replacement )
+				if ( sampler != VK_NULL_HANDLE )
+					vkDestroySampler( m_device, sampler, nullptr );
+			Log( "anisotropic sampler update failed; retaining previous level\n" );
+			return;
+		}
+	}
+	// Existing descriptor sets can be referenced by submitted frames. Replace
+	// their sampler bindings only after those frames have finished.
+	{
+		CFrameCostScope cost( m_frameCost, kCostDeviceWaitIdle );
+		if ( vkDeviceWaitIdle( m_device ) != VK_SUCCESS )
+		{
+			for ( VkSampler sampler : replacement )
+				vkDestroySampler( m_device, sampler, nullptr );
+			return;
+		}
+	}
+	for ( int state = kSamplerAnisotropic; state < kSamplerStates; ++state )
+	{
+		VkSampler old = m_samplers[state];
+		m_samplers[state] = replacement[state - kSamplerAnisotropic];
+		for ( const ManagedTexture &texture : m_managedTextures )
+		{
+			if ( texture.samplerState != state )
+				continue;
+			for ( int srgb = 0; srgb < 2; ++srgb )
+			{
+				const VkDescriptorSet set = srgb ? texture.descSetSrgb : texture.descSet;
+				if ( set == VK_NULL_HANDLE )
+					continue;
+				VkDescriptorImageInfo image = {};
+				image.sampler = m_samplers[state];
+				image.imageView = srgb ? texture.srgbView : texture.view;
+				image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				VkWriteDescriptorSet write = {};
+				write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				write.dstSet = set;
+				write.dstBinding = 0;
+				write.descriptorCount = 1;
+				write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+				write.pImageInfo = &image;
+				vkUpdateDescriptorSets( m_device, 1, &write, 0, nullptr );
+			}
+		}
+		vkDestroySampler( m_device, old, nullptr );
+	}
+	m_anisotropyLevel = selected;
+}
+
 int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format,
     std::string *outError, VkImageUsageFlags extraUsage, uint32_t mipLevels, VkFormat srgbAlias,
     bool cube )
@@ -3398,6 +3494,13 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	if ( !IsValid() || width <= 0 || height <= 0 || ( cube && width != height ) )
 	{
 		SetError( outError, "CreateManagedTexture with invalid size or context" );
+		return -1;
+	}
+	const uint32_t maxDimension = MaxSampledTextureDimension();
+	if ( static_cast<uint32_t>( width ) > maxDimension ||
+	     static_cast<uint32_t>( height ) > maxDimension )
+	{
+		SetError( outError, "requested texture exceeds the selected device's 2D image limit" );
 		return -1;
 	}
 	// Managed textures are sampled after a buffer-to-image upload. Both uses
@@ -3422,6 +3525,21 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	for ( uint32_t size = std::max( t.width, t.height ); size > 1; size >>= 1 )
 		++fullChain;
 	t.mipLevels = std::max( 1u, std::min( mipLevels, fullChain ) );
+	const VkImageUsageFlags usage =
+	    VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | extraUsage;
+	VkImageFormatProperties imageLimits = {};
+	const VkResult imageSupport = vkGetPhysicalDeviceImageFormatProperties( m_physicalDevice,
+	    format, VK_IMAGE_TYPE_2D, VK_IMAGE_TILING_OPTIMAL, usage,
+	    cube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0, &imageLimits );
+	if ( imageSupport != VK_SUCCESS || t.width > imageLimits.maxExtent.width ||
+	     t.height > imageLimits.maxExtent.height || t.mipLevels > imageLimits.maxMipLevels ||
+	     t.layers > imageLimits.maxArrayLayers ||
+	     !( imageLimits.sampleCounts & VK_SAMPLE_COUNT_1_BIT ) )
+	{
+		SetError( outError,
+		    "requested texture format, extent or mip chain is unsupported on this device" );
+		return -1;
+	}
 
 	VkImageCreateInfo ii = {};
 	ii.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -3432,7 +3550,7 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 	ii.arrayLayers = t.layers;
 	ii.samples = VK_SAMPLE_COUNT_1_BIT;
 	ii.tiling = VK_IMAGE_TILING_OPTIMAL;
-	ii.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | extraUsage;
+	ii.usage = usage;
 	ii.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	if ( cube )
