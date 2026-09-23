@@ -10,6 +10,7 @@ Needs glslc on PATH. The output is written in the layout clang-format keeps.
 
 import pathlib
 import subprocess
+import sys
 import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -54,6 +55,8 @@ def compile_words(source, extra):
 
 
 def main():
+    subprocess.run([sys.executable, str(HERE / "gen_pbr_split_sum.py"), "--check"],
+                   check=True)
     parts = [HEADER]
     for name, source, extra in SHADERS:
         words = compile_words(source, extra)

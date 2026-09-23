@@ -229,6 +229,7 @@ private:
 	bool RunSkinningCases( FILE *out );
 	bool RunCableCases( FILE *out );
 	bool RunSkyCases( FILE *out );
+	bool RunMonitorCases( FILE *out );
 	bool RunPbrFallbackCases( FILE *out );
 	bool RenderCase( IMaterial *pMaterial, int sortId, const int offset[2], int lightmapPageId,
 	    const float ( *points )[2], int pointCount, unsigned char ( *pixels )[3],
@@ -313,14 +314,16 @@ int CMaterialPixelApp::Main()
 	const bool modelLight = !Q_stricmp( family, "modellight" );
 	const bool cable = !Q_stricmp( family, "cable" );
 	const bool sky = !Q_stricmp( family, "sky" );
+	const bool monitor = !Q_stricmp( family, "monitor" );
 	const bool pbrFallback = !Q_stricmp( family, "pbr-fallback" );
 	if ( !outPath[0] || ( !integerHdr && Q_stricmp( hdr, "none" ) ) ||
-	     ( !exposure && !skinning && !portal && !modelLight && !cable && !sky && !pbrFallback &&
+	     ( !exposure && !skinning && !portal && !modelLight && !cable && !sky && !monitor &&
+	         !pbrFallback &&
 	         Q_stricmp( family, "lightmap" ) ) )
 	{
 		Warning(
 		    "material pixel conformance: need -out <file>, -hdr <none|integer> and "
-		    "-family <lightmap|exposure|skinning|portal|modellight|cable|sky|pbr-fallback>\n" );
+		    "-family <lightmap|exposure|skinning|portal|modellight|cable|sky|monitor|pbr-fallback>\n" );
 		return 2;
 	}
 
@@ -393,6 +396,7 @@ int CMaterialPixelApp::Main()
 	                : skinning    ? RunSkinningCases( out )
 	                : cable       ? RunCableCases( out )
 	                : sky         ? RunSkyCases( out )
+	                : monitor     ? RunMonitorCases( out )
 	                : pbrFallback ? RunPbrFallbackCases( out )
 	                : portal      ? RunPortalCases( out, outPath, WriteClearProbeThunk )
 	                : modelLight
@@ -483,22 +487,56 @@ bool CMaterialPixelApp::RunPbrFallbackCases( FILE *out )
 	    g_pMaterialSystem->FindMaterial( "conformance/pbr_traversal", TEXTURE_GROUP_OTHER, false );
 	IMaterial *pNestedTraversal = g_pMaterialSystem->FindMaterial(
 	    "conformance/pbr_nested_traversal", TEXTURE_GROUP_OTHER, false );
+	IMaterial *pValidPrimaryPatch = g_pMaterialSystem->FindMaterial(
+	    "conformance/pbr_primary_patch_valid", TEXTURE_GROUP_OTHER, false );
+	if ( pValidPrimaryPatch )
+		pValidPrimaryPatch->IncrementReferenceCount();
+	IMaterial *pPrimaryPatchTraversal = g_pMaterialSystem->FindMaterial(
+	    "conformance/pbr_primary_patch_traversal", TEXTURE_GROUP_OTHER, false );
+	IMaterial *pPrimaryPatchMissing = g_pMaterialSystem->FindMaterial(
+	    "conformance/pbr_primary_patch_missing", TEXTURE_GROUP_OTHER, false );
 	IMaterial *pUnsupported = g_pMaterialSystem->FindMaterial(
 	    "conformance/pbr_unsupported", TEXTURE_GROUP_OTHER, false );
 	IMaterial *pCycle =
 	    g_pMaterialSystem->FindMaterial( "conformance/pbr_cycle", TEXTURE_GROUP_OTHER, false );
 	IMaterial *pPbrTarget = g_pMaterialSystem->FindMaterial(
 	    "conformance/pbr_pbr_target_case", TEXTURE_GROUP_OTHER, false );
+	const char *pPrimaryPatchShader =
+	    pValidPrimaryPatch ? pValidPrimaryPatch->GetShaderName() : NULL;
+	const bool bPrimaryPatchResolved =
+	    pValidPrimaryPatch && !pValidPrimaryPatch->IsErrorMaterial() && pPrimaryPatchShader &&
+	    !Q_stricmp( pPrimaryPatchShader, "UnlitGeneric" );
+	unsigned char primaryPatchPixel[3] = {};
+	if ( bPrimaryPatchResolved )
+	{
+		g_pMaterialSystem->CacheUsedMaterials();
+		g_pMaterialSystem->BeginFrame( 0 );
+		int width = 0, height = 0;
+		g_pMaterialSystem->GetBackBufferDimensions( width, height );
+		pRenderContext->Viewport( 0, 0, width, height );
+		pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
+		pRenderContext->ClearBuffers( true, true );
+		pRenderContext->DrawScreenSpaceRectangle( pValidPrimaryPatch, width / 4, height / 4,
+		    width / 2, height / 2, 0, 0, 3, 3, 4, 4 );
+		ReadPixel( 0.5f, 0.5f, primaryPatchPixel );
+		g_pMaterialSystem->EndFrame();
+		g_pMaterialSystem->SwapBuffers();
+	}
 	fprintf( out,
-	    "\"shader\":\"%s\",\"error_material\":%s,\"pixels\":{\"center\":[%u,%u,%u],"
+	    "\"shader\":\"%s\",\"error_material\":%s,\"primary_patch_resolved\":%s,"
+	    "\"primary_patch_pixel\":[%u,%u,%u],"
+	    "\"pixels\":{\"center\":[%u,%u,%u],"
 	    "\"outside\":[%u,%u,%u]},\"invalid\":{\"missing_reference_rejected\":%s,"
 	    "\"missing_mrao_rejected\":%s,\"missing_base_rejected\":%s,"
 	    "\"missing_target_rejected\":%s,"
 	    "\"self_rejected\":%s,\"traversal_rejected\":%s,\"nested_traversal_rejected\":%s,"
+	    "\"primary_patch_traversal_rejected\":%s,\"primary_patch_missing_rejected\":%s,"
 	    "\"unsupported_rejected\":%s,\"cycle_rejected\":%s,"
 	    "\"pbr_target_rejected\":%s}}\n",
-	    shader, pMaterial->IsErrorMaterial() ? "true" : "false", center[0], center[1], center[2],
-	    outside[0], outside[1], outside[2],
+	    shader, pMaterial->IsErrorMaterial() ? "true" : "false",
+	    bPrimaryPatchResolved ? "true" : "false", primaryPatchPixel[0], primaryPatchPixel[1],
+	    primaryPatchPixel[2], center[0], center[1], center[2], outside[0],
+	    outside[1], outside[2],
 	    pMissingReference && pMissingReference->IsErrorMaterial() ? "true" : "false",
 	    pMissingMrao && pMissingMrao->IsErrorMaterial() ? "true" : "false",
 	    pMissingBase && pMissingBase->IsErrorMaterial() ? "true" : "false",
@@ -506,10 +544,14 @@ bool CMaterialPixelApp::RunPbrFallbackCases( FILE *out )
 	    pSelf && pSelf->IsErrorMaterial() ? "true" : "false",
 	    pTraversal && pTraversal->IsErrorMaterial() ? "true" : "false",
 	    pNestedTraversal && pNestedTraversal->IsErrorMaterial() ? "true" : "false",
+	    pPrimaryPatchTraversal && pPrimaryPatchTraversal->IsErrorMaterial() ? "true" : "false",
+	    pPrimaryPatchMissing && pPrimaryPatchMissing->IsErrorMaterial() ? "true" : "false",
 	    pUnsupported && pUnsupported->IsErrorMaterial() ? "true" : "false",
 	    pCycle && pCycle->IsErrorMaterial() ? "true" : "false",
 	    pPbrTarget && pPbrTarget->IsErrorMaterial() ? "true" : "false" );
 	pMaterial->DecrementReferenceCount();
+	if ( pValidPrimaryPatch )
+		pValidPrimaryPatch->DecrementReferenceCount();
 	return true;
 }
 
@@ -728,6 +770,153 @@ bool CMaterialPixelApp::RunSkyCases( FILE *out )
 		    i ? "," : "", c.name, c.baseTop[0], c.baseTop[1], c.baseTop[2], c.baseBottom[0],
 		    c.baseBottom[1], c.baseBottom[2], c.tint[0], c.tint[1], c.tint[2], pixels[0][0],
 		    pixels[0][1], pixels[0][2], pixels[1][0], pixels[1][1], pixels[1][2] );
+	}
+	fprintf( out, "]}\n" );
+	for ( IMaterial *pMaterial : materials )
+		pMaterial->DecrementReferenceCount();
+	return ok;
+}
+
+struct MonitorCase
+{
+	const char *name;
+	unsigned char baseTop[3];
+	unsigned char baseBottom[3];
+	unsigned char secondTop[3];
+	unsigned char secondBottom[3];
+	float contrast;
+	float saturation;
+	float tint[3];
+	float baseShift;
+	float secondShift;
+};
+
+static const MonitorCase kMonitorCases[] = {
+    { "base_image", { 192, 96, 48 }, { 32, 160, 224 }, { 255, 255, 255 },
+        { 255, 255, 255 }, 0.0f, 1.0f, { 1.0f, 1.0f, 1.0f }, 0.0f, 0.0f },
+    { "second_image", { 255, 255, 255 }, { 255, 255, 255 }, { 64, 208, 128 },
+        { 224, 80, 192 }, 0.0f, 1.0f, { 1.0f, 1.0f, 1.0f }, 0.0f, 0.0f },
+    { "processed_flat", { 160, 96, 64 }, { 160, 96, 64 }, { 192, 128, 255 },
+        { 192, 128, 255 }, 0.5f, 0.25f, { 0.75f, 0.5f, 1.0f }, 0.0f, 0.0f },
+    { "processed_transforms", { 208, 80, 64 }, { 32, 192, 224 }, { 48, 255, 96 },
+        { 192, 128, 255 }, 0.5f, 0.25f, { 0.75f, 0.5f, 1.0f }, -0.4f, 0.4f },
+};
+
+bool CMaterialPixelApp::RunMonitorCases( FILE *out )
+{
+	static CSolidColorRegenerator s_BaseRegenerator;
+	static CSolidColorRegenerator s_SecondRegenerator;
+	const int flags = TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL |
+	                  TEXTUREFLAGS_SINGLECOPY | TEXTUREFLAGS_CLAMPT;
+	ITexture *pBase = g_pMaterialSystem->CreateProceduralTexture( "conformance/monitor_base",
+	    TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888, flags );
+	ITexture *pSecond = g_pMaterialSystem->CreateProceduralTexture( "conformance/monitor_second",
+	    TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888, flags );
+	if ( !pBase || !pSecond )
+		return false;
+	s_BaseRegenerator.m_Split = s_SecondRegenerator.m_Split = true;
+	pBase->SetTextureRegenerator( &s_BaseRegenerator );
+	pSecond->SetTextureRegenerator( &s_SecondRegenerator );
+
+	IMaterial *materials[ARRAYSIZE( kMonitorCases )] = {};
+	for ( int i = 0; i < ARRAYSIZE( kMonitorCases ); ++i )
+	{
+		const MonitorCase &c = kMonitorCases[i];
+		KeyValues *pKeys = new KeyValues( "MonitorScreen" );
+		pKeys->SetString( "$basetexture", "conformance/monitor_base" );
+		pKeys->SetString( "$texture2", "conformance/monitor_second" );
+		pKeys->SetFloat( "$contrast", c.contrast );
+		pKeys->SetFloat( "$saturation", c.saturation );
+		char value[128];
+		V_snprintf( value, sizeof( value ), "[%.8f %.8f %.8f]", c.tint[0], c.tint[1], c.tint[2] );
+		pKeys->SetString( "$tint", value );
+		V_snprintf( value, sizeof( value ),
+		    "center .5 .5 scale 1 1 rotate 0 translate 0 %.4f", c.baseShift );
+		pKeys->SetString( "$basetexturetransform", value );
+		V_snprintf( value, sizeof( value ),
+		    "center .5 .5 scale 1 1 rotate 0 translate 0 %.4f", c.secondShift );
+		pKeys->SetString( "$texture2transform", value );
+		char name[64];
+		V_snprintf( name, sizeof( name ), "conformance/monitor_%s", c.name );
+		materials[i] = g_pMaterialSystem->CreateMaterial( name, pKeys );
+		if ( !materials[i] || materials[i]->IsErrorMaterial() )
+			return false;
+		materials[i]->IncrementReferenceCount();
+	}
+	g_pMaterialSystem->CacheUsedMaterials();
+	for ( IMaterial *pMaterial : materials )
+	{
+		if ( pMaterial->GetVertexFormat() == 0 )
+			return false;
+	}
+
+	fprintf( out, "{\"schema\":\"source-material-pixels/v1\",\"family\":\"monitor\"," );
+	WriteClearProbe( out );
+	fprintf( out, "\"cases\":[" );
+	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+	bool ok = true;
+	for ( int i = 0; i < ARRAYSIZE( kMonitorCases ); ++i )
+	{
+		const MonitorCase &c = kMonitorCases[i];
+		for ( int channel = 0; channel < 3; ++channel )
+		{
+			s_BaseRegenerator.m_Color[channel] = c.baseTop[channel];
+			s_BaseRegenerator.m_Bottom[channel] = c.baseBottom[channel];
+			s_SecondRegenerator.m_Color[channel] = c.secondTop[channel];
+			s_SecondRegenerator.m_Bottom[channel] = c.secondBottom[channel];
+		}
+		pBase->Download();
+		pSecond->Download();
+		IMaterial *pMaterial = materials[i];
+		IMesh *pMesh = pRenderContext->CreateStaticMesh(
+		    pMaterial->GetVertexFormat(), TEXTURE_GROUP_STATIC_VERTEX_BUFFER_MODELS, pMaterial );
+		CMeshBuilder meshBuilder;
+		meshBuilder.Begin( pMesh, MATERIAL_TRIANGLES, 4, 6 );
+		const float corners[4][2] = {
+		    { -0.75f, 0.75f }, { 0.75f, 0.75f }, { 0.75f, -0.75f }, { -0.75f, -0.75f } };
+		for ( int v = 0; v < 4; ++v )
+		{
+			meshBuilder.Position3f( corners[v][0], corners[v][1], 0.5f );
+			meshBuilder.Normal3f( 0.0f, 0.0f, 1.0f );
+			meshBuilder.TexCoord2f( 0, 0.5f, 0.5f * ( corners[v][0] / 0.75f + 1.0f ) );
+			meshBuilder.AdvanceVertex();
+		}
+		for ( unsigned short index : { 0, 1, 2, 0, 2, 3 } )
+			meshBuilder.FastIndex( index );
+		meshBuilder.End();
+
+		unsigned char pixels[2][3] = {};
+		g_pMaterialSystem->BeginFrame( 0 );
+		{
+			int width = 0, height = 0;
+			g_pMaterialSystem->GetBackBufferDimensions( width, height );
+			pRenderContext->Viewport( 0, 0, width, height );
+			pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
+			pRenderContext->ClearBuffers( true, true );
+			for ( int mode = MATERIAL_VIEW; mode <= MATERIAL_PROJECTION; ++mode )
+			{
+				pRenderContext->MatrixMode( static_cast<MaterialMatrixMode_t>( mode ) );
+				pRenderContext->LoadIdentity();
+			}
+			pRenderContext->Bind( pMaterial );
+			pMesh->Draw();
+			ok = ReadPixel( 0.25f, 0.5f, pixels[0] ) && ok;
+			ok = ReadPixel( 0.75f, 0.5f, pixels[1] ) && ok;
+		}
+		g_pMaterialSystem->EndFrame();
+		g_pMaterialSystem->SwapBuffers();
+		pRenderContext->DestroyStaticMesh( pMesh );
+		fprintf( out,
+		    "%s{\"name\":\"%s\",\"base_top\":[%u,%u,%u],\"base_bottom\":[%u,%u,%u],"
+		    "\"second_top\":[%u,%u,%u],\"second_bottom\":[%u,%u,%u],"
+		    "\"contrast\":%.4f,\"saturation\":%.4f,\"tint\":[%.4f,%.4f,%.4f],"
+		    "\"base_shift\":%.4f,\"second_shift\":%.4f,"
+		    "\"pixels\":[[%u,%u,%u],[%u,%u,%u]]}",
+		    i ? "," : "", c.name, c.baseTop[0], c.baseTop[1], c.baseTop[2], c.baseBottom[0],
+		    c.baseBottom[1], c.baseBottom[2], c.secondTop[0], c.secondTop[1], c.secondTop[2],
+		    c.secondBottom[0], c.secondBottom[1], c.secondBottom[2], c.contrast, c.saturation,
+		    c.tint[0], c.tint[1], c.tint[2], c.baseShift, c.secondShift, pixels[0][0], pixels[0][1],
+		    pixels[0][2], pixels[1][0], pixels[1][1], pixels[1][2] );
 	}
 	fprintf( out, "]}\n" );
 	for ( IMaterial *pMaterial : materials )

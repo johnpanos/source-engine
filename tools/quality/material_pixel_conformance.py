@@ -77,7 +77,7 @@ DARK = 2  # a channel at or below this reads as zero
 LIGHTMAP_CASES = ("black_lightmap", "ramp_low", "ramp_mid", "ramp_high", "channels",
                   "base_gray", "base_color")
 FAMILIES = ("lightmap", "exposure", "skinning", "portal", "modellight", "cable",
-            "sky", "pbr-fallback")
+            "sky", "monitor", "pbr-fallback")
 # Families whose harness writes whole frames, and the oracle module of each
 # (validate, evaluate).
 FRAME_FAMILIES = {"portal": material_pixel_portal, "modellight": material_pixel_modellight}
@@ -90,6 +90,7 @@ SKINNING_CASES = {"rigid_bone0": 0, "one_bone": 0, "implicit_third_weight": 1,
 CABLE_CASES = ("front_facing_normal", "side_facing_normal", "back_facing_normal",
                "diagonal_normal")
 SKY_CASES = ("untinted_sky", "colored_sky")
+MONITOR_CASES = ("base_image", "second_image", "processed_flat", "processed_transforms")
 # The model material is unlit: a covered pixel is its base color up to output
 # rounding and filtering.
 SKIN_COLOR_TOLERANCE = 12
@@ -119,7 +120,12 @@ def read_pixels(path):
     if family == "pbr-fallback":
         pixels = report.get("pixels", {})
         invalid = report.get("invalid", {})
-        if not isinstance(pixels, dict) or any(
+        primary_patch_pixel = report.get("primary_patch_pixel")
+        if not isinstance(report.get("primary_patch_resolved"), bool) or \
+                not isinstance(primary_patch_pixel, list) or len(primary_patch_pixel) != 3 or \
+                any(not isinstance(channel, int) or channel < 0 or channel > 255
+                    for channel in primary_patch_pixel) or \
+                not isinstance(pixels, dict) or any(
                 not isinstance(pixels.get(point), list) or len(pixels[point]) != 3 or
                 any(not isinstance(channel, int) or channel < 0 or channel > 255
                     for channel in pixels[point])
@@ -134,6 +140,8 @@ def read_pixels(path):
                                                               "self_rejected",
                                                               "traversal_rejected",
                                                               "nested_traversal_rejected",
+                                                              "primary_patch_traversal_rejected",
+                                                              "primary_patch_missing_rejected",
                                                               "unsupported_rejected",
                                                               "cycle_rejected",
                                                               "pbr_target_rejected")):
@@ -156,6 +164,24 @@ def read_pixels(path):
                 for case in report.get("cases", [])):
             raise PixelsError("%s has sky cases %s, expected %s"
                               % (path, names, list(SKY_CASES)))
+        return report
+    if family == "monitor":
+        names = [case.get("name") for case in report.get("cases", [])]
+        required_colors = ("base_top", "base_bottom", "second_top", "second_bottom")
+        required_numbers = ("contrast", "saturation", "base_shift", "second_shift")
+        if names != list(MONITOR_CASES) or any(
+                any(not isinstance(case.get(key), list) or len(case[key]) != 3 or
+                    any(not isinstance(v, int) or not 0 <= v <= 255 for v in case[key])
+                    for key in required_colors) or
+                any(not isinstance(case.get(key), (int, float)) for key in required_numbers) or
+                not isinstance(case.get("tint"), list) or len(case["tint"]) != 3 or
+                any(not isinstance(v, (int, float)) for v in case["tint"]) or
+                not isinstance(case.get("pixels"), list) or len(case["pixels"]) != 2 or
+                any(not isinstance(pixel, list) or len(pixel) != 3 or
+                    any(not isinstance(v, int) or not 0 <= v <= 255 for v in pixel)
+                    for pixel in case["pixels"])
+                for case in report.get("cases", [])):
+            raise PixelsError("%s has incomplete monitor cases %s" % (path, names))
         return report
     if family in FRAME_FAMILIES:
         try:
@@ -450,12 +476,45 @@ def check_sky(report):
     return failures
 
 
+def check_monitor(report):
+    """MonitorScreen_DX9's two sRGB textures, contrast, saturation and tint."""
+    failures = []
+    for case in report["cases"]:
+        if case["name"] == "processed_transforms":
+            # The translated 4x4 textures interpolate at the sample points.
+            # DXVK's measured pixels are the oracle for their filtering.
+            if case["pixels"][0] == case["pixels"][1]:
+                failures.append("processed transforms lost their left/right distinction")
+            continue
+        for side, uv, pixel in zip(("left", "right"), (0.25, 0.75), case["pixels"]):
+            base = case["base_bottom"] if uv + case["base_shift"] >= 0.5 else case["base_top"]
+            second = (case["second_bottom"] if uv + case["second_shift"] >= 0.5
+                      else case["second_top"])
+            linear = [_srgb_to_linear(a) * _srgb_to_linear(b)
+                      for a, b in zip(base, second)]
+            linear = [(1 - case["contrast"]) * c + case["contrast"] * c * c
+                      for c in linear]
+            grey = sum(linear) / 3.0
+            linear = [(grey * (1 - case["saturation"]) + c * case["saturation"]) * tint
+                      for c, tint in zip(linear, case["tint"])]
+            expected = [_linear_to_srgb(c) for c in linear]
+            if not _close(pixel, expected, 5):
+                failures.append("%s %s: got %s, expected monitor texture/controls %s"
+                                % (case["name"], side, pixel, expected))
+    return failures
+
+
 def check_pbr_fallback(report):
     """The runtime must select and draw the referenced legacy VMT."""
     failures = []
     if report["shader"] != "UnlitGeneric" or report["error_material"]:
         failures.append("PBR fallback resolved %s, error material %s; expected UnlitGeneric"
                         % (report["shader"], report["error_material"]))
+    if not report["primary_patch_resolved"]:
+        failures.append("valid PBR primary patch did not resolve its legacy fallback")
+    if not _close(report["primary_patch_pixel"], [0, 255, 0], PIXEL_TOLERANCE):
+        failures.append("PBR primary patch pixel %s, expected the green legacy texture"
+                        % report["primary_patch_pixel"])
     if not _close(report["pixels"]["center"], [0, 255, 0], PIXEL_TOLERANCE):
         failures.append("PBR fallback center pixel %s, expected the green legacy texture"
                         % report["pixels"]["center"])
@@ -466,6 +525,7 @@ def check_pbr_fallback(report):
                 "missing_base_rejected",
                 "missing_target_rejected", "self_rejected", "traversal_rejected",
                 "nested_traversal_rejected",
+                "primary_patch_traversal_rejected", "primary_patch_missing_rejected",
                 "unsupported_rejected", "cycle_rejected", "pbr_target_rejected"):
         if not report["invalid"][key]:
             failures.append("PBR material %s was accepted by the runtime loader" % key)
@@ -490,6 +550,21 @@ def compare_sky(report, reference):
         if case["name"] != ref["name"] or case["base_top"] != ref["base_top"] or \
                 case["base_bottom"] != ref["base_bottom"] or case["tint"] != ref["tint"]:
             failures.append("%s: sky inputs differ from the DXVK reference" % case["name"])
+        else:
+            for side, pixel, expected in zip(("left", "right"), case["pixels"], ref["pixels"]):
+                if not _close(pixel, expected, PIXEL_TOLERANCE):
+                    failures.append("%s %s: got %s, DXVK reference %s" %
+                                    (case["name"], side, pixel, expected))
+    return failures
+
+
+def compare_monitor(report, reference):
+    failures = []
+    inputs = ("name", "base_top", "base_bottom", "second_top", "second_bottom",
+              "contrast", "saturation", "tint", "base_shift", "second_shift")
+    for case, ref in zip(report["cases"], reference["cases"]):
+        if any(case[key] != ref[key] for key in inputs):
+            failures.append("%s: monitor inputs differ from the DXVK reference" % case["name"])
         else:
             for side, pixel, expected in zip(("left", "right"), case["pixels"], ref["pixels"]):
                 if not _close(pixel, expected, PIXEL_TOLERANCE):
@@ -539,6 +614,11 @@ def evaluate(report, hdr, reference=None):
         if reference is not None:
             failures += compare_sky(report, reference)
         return failures
+    if report["family"] == "monitor":
+        failures = check_monitor(report)
+        if reference is not None:
+            failures += compare_monitor(report, reference)
+        return failures
     if report["family"] == "pbr-fallback":
         failures = check_pbr_fallback(report)
         if reference is not None and report["pixels"] != reference["pixels"]:
@@ -581,6 +661,11 @@ def run(args):
         evidence["fixtures"] = {}
         for fixture, material in (("pbr-fallback-primary.vmt", "pbr_case.vmt"),
                                   ("pbr-fallback-legacy.vmt", "pbr_fallback.vmt"),
+                                  ("pbr-primary-patch-valid.vmt", "pbr_primary_patch_valid.vmt"),
+                                  ("pbr-primary-patch-traversal.vmt",
+                                   "pbr_primary_patch_traversal.vmt"),
+                                  ("pbr-primary-patch-missing.vmt",
+                                   "pbr_primary_patch_missing.vmt"),
                                   ("pbr-fallback-missing-reference.vmt",
                                    "pbr_missing_reference.vmt"),
                                   ("pbr-fallback-missing-mrao.vmt", "pbr_missing_mrao.vmt"),

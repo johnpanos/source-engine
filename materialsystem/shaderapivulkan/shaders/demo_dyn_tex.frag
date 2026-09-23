@@ -144,4 +144,5 @@ void main()
 	if ( ( flags & 4 ) != 0 )
 		result.rgb = LinearToSrgb( result.rgb );
 	outColor = result;
+	outColor = vec4( 1.0, 0.0, 0.0, 1.0 );
 }

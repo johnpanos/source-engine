@@ -111,6 +111,8 @@
           "public/render/render_profile.h",
           "public/render/render_presentation.h",
           "public/render/pbr_brdf.h",
+          "public/render/pbr_sh_l1.h",
+          "public/render/pbr_split_sum_table.h",
           "public/render/pbr_material_schema.h"
         ],
         "allowedEdges": []

@@ -1,0 +1,4 @@
+"patch"
+{
+	"include" "materials/conformance/pbr_absent_include.vmt"
+}

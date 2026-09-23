@@ -83,6 +83,60 @@ linear base sampling and sRGB decoding of metalness. The command is the native
 unavailable. This adds a texture-encoding oracle to the synthetic specular
 path, not runtime `PBRMetalRough` binding or the full PBR pixel gate.
 
+The next R47 shading slice generates one 32×32 split-sum table with 4096
+deterministic GGX importance samples per texel. The generator emits the C++
+coefficients, which the Vulkan provider uploads as a linearly filtered float
+texture; shader SPIR-V regeneration checks that the table matches the generator.
+`EvaluateLayeredDirect` and the native fragment
+shader now add Lambertian diffuse for the nonmetal fraction, weighted by
+`1 − E_spec(N·V)` from that table. The MRAO AO channel remains reserved for
+indirect light. This is a real BRDF term in the native draw path, while the
+lighting inputs are still supplied by the synthetic test.
+
+Local evidence (2026-09-22):
+
+```sh
+python3 materialsystem/shaderapivulkan/shaders/gen_pbr_split_sum.py --check
+python3 tools/quality/conformance.py check --rfc 0007 --config release
+python3 waf build -o build/pbr-native --targets=pbr_native_pixel_conformance -j4
+python3 waf build -o build/pbr-native --targets=shaderapivulkan -j4
+./build/pbr-native/unittests/shaderapivulkantest/pbr_native_pixel_conformance
+```
+
+All five release conformance suites passed. The positive BRDF suite passed 37
+checks, including split-sum coefficients against an independent hemisphere
+integral and layered white-furnace energy; the swapped-table negative control
+failed its intended oracle. The native Vulkan suite passed 31 checks across
+five material cases. Captured RGB matched headless predictions: white
+dielectric `(73,73,73)` versus `(72.8,72.8,72.8)`, half-rough metal
+`(160,160,160)` versus `(159.8,159.8,159.8)`, colored metal `(123,7,2)`
+versus `(122.5,6.7,2.1)`, half metal `(88,1,1)` versus `(88.3,0.8,0.8)`,
+and grazing dielectric `(91,91,91)` versus `(91.1,91.1,91.1)`. The native
+suite rejects omitted diffuse as well as its earlier roughness, Fresnel, and
+encoding defects. Vulkan validation remains unavailable on this runner. The
+table now occupies a 32×32 RGBA32F texture rather than shader code. Its
+interpolation error and startup cost still need evaluation against Cycles
+references and target device profiles before this becomes the production IBL
+representation.
+
+After moving the table to a GPU texture, the native pixel suite again passed
+all 31 checks with the same captured RGB values. The generated SPIR-V header
+shrank from 708,813 to 212,923 bytes, and the incremental native build finished
+in 10.5 seconds on this runner. The `shaderapivulkan` shared library also built
+in the isolated profile. A fresh clean-build comparison and native validation-layer
+run remain open. Architecture ownership now lists the generated table in the
+render contract module; the strict checker no longer reports that include.
+Repository-wide architecture checks still report 49 new and three stale legacy
+baseline occurrences, plus ten uninstrumented loader sites elsewhere in the
+shared tree. Changed-line style checking has no finding in this slice, but
+reports concurrently edited files outside it.
+
+The next R47 boundary is material-system selection of this shader for a real
+`PBRMetalRough` VMT. That path must provide scene-derived view/light inputs,
+bind the two authored textures, negotiate native capability, and preserve the
+validated legacy fallback. The synthetic draw fixture does not supply those
+runtime obligations.
+
 The third R47 slice introduces the version 1
 [`PBRMetalRough` parameter schema](../public/render/pbr_material_schema.h).
 It owns the VMT names, required fields, scalar defaults, and texture color
@@ -201,16 +255,68 @@ the native Vulkan and DXVK staged runs passed with all ten rejection flags;
 evidence is in `/tmp/rfc0007-pbr-nested-native-20260923a` and
 `/tmp/rfc0007-pbr-nested-dxvk-20260923a`. The focused five Python fallback
 oracle tests and the four RFC 0007 release conformance suites passed. This
-protects the fallback patch chain. A primary VMT patch can still be followed
-before its eventual PBR root is known; malformed-VMT syntax is not fully
-covered, and no installed package-level content gate runs the editor catalog
-against every shipped PBR material. Those cases and the full native material
-path remain before fallback and R47 acceptance.
+protects the fallback patch chain.
 
-R48–R52 have no implementation evidence yet. In particular, vbsp/vvis/vrad
-are not ported to Waf, the Cycles provider is not built or pinned, and RFC
-0008's World Stage and canonical lighting formats are prerequisite work for
-the later bake phases.
+A subsequent patch-resolution slice propagates primary patch failures to the
+material loader, rejects a still-patched root after the recursion limit, and
+records unsafe primary include paths during resolution. If the resulting root
+is `PBRMetalRough`, an unsafe path rejects that material. A valid primary
+patch remains accepted. The product harness now checks a valid primary patch,
+an unsafe primary patch include, and a missing primary include. Native Vulkan
+and DXVK staged runs passed with all 12 invalid-material flags. Both the
+direct PBR VMT and the valid primary patch rendered green `UnlitGeneric`
+pixels, with magenta clear color outside the draw (evidence:
+`/tmp/rfc0007-primary-patch-native-20260923c` and
+`/tmp/rfc0007-primary-patch-dxvk-20260923c`). The patch material is held by
+the harness and cached before its pixel draw. The full 80-test material-pixel
+Python oracle module passed, including seeded PBR patch defects. This check
+rejects a PBR primary
+patch after resolving its include chain; it does not prevent opening an unsafe
+primary include whose eventual shader was unknown. Malformed VMT syntax is not
+fully covered, and no installed package-level content gate runs the editor
+catalog against every shipped PBR material. Those cases and the full native
+material path remain before fallback and R47 acceptance.
+
+The shared RFC 0007 release conformance run matched all five suites (37
+positive BRDF checks, 26 schema checks, and three negative BRDF suites);
+evidence is `quality-results/conformance.20260923T063624Z.json`. The global
+architecture checker still reports the unrelated baseline drift above.
+
+## R49 preparation: four-sample SH L1 feasibility
+
+[`pbr_sh_l1.h`](../public/render/pbr_sh_l1.h) now fits each scalar irradiance
+channel to `E(n) = constant + x*n.x + y*n.y + z*n.z` from four caller-supplied
+directions. It has no copy of the production RNM basis or map layout; the
+headless fixture uses the flat normal and the three values from
+`mathlib/bumpvects.h`. The fit rejects singular and nonfinite inputs without
+publishing a partial result. The shared
+[`render.pbr-sh-l1`](../unittests/rendertest/contracts/render.pbr-sh-l1.v1.md)
+suite checks affine recovery, uniform irradiance, failure behavior, and a
+swapped-basis negative control.
+
+Local evidence (2026-09-22): both default and release RFC 0007 conformance
+runs passed all seven selected suites. The new positive suite passed 11 checks;
+the negative suite detected its seeded basis swap. Evidence is
+`quality-results/conformance.20260923T064643Z.json` (default) and
+`quality-results/conformance.20260923T064737Z.json` (release). Scoped style
+checking passed for the new header and test. Full archlint still reports the
+same 49 new and three stale occurrences in the shared tree; no occurrence is
+caused by this header after adding its owner to the module manifest.
+
+The analytic grazing-light fixture gives a decisive limitation of the proposed
+four-sample quality fit. A unit light along tangent X yields zero irradiance at
+the perpendicular horizon normal, but the fitted L1 function evaluates to
+`0.643950`. The suite records this as a measured approximation error, not a
+passing quality tolerance. R49 must set a per-map directional-error budget and
+test extra sampling or a least-squares fit against analytic lights and Cycles
+before writing canonical SH L1 lighting. An L1 representation may still need a
+declared quality limit for sharp or grazing light; the fitting function alone
+does not satisfy the SH oracle in RFC 0007.
+
+The full R48–R52 gates remain open. In particular, vbsp/vvis/vrad are not
+ported to Waf, the Cycles provider is not built or pinned, and RFC 0008's
+World Stage and canonical lighting formats are prerequisite work for the later
+bake phases.
 
 ## Portal 1 texture staging (supporting R47)
 

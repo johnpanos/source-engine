@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <initializer_list>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -58,7 +59,8 @@ void Check( bool condition, const char *description )
 	{
 		++g_failures;
 		g_failureDescriptions.emplace_back( description );
-#if !defined( PBR_SEEDED_BAD_GGX ) && !defined( PBR_SEEDED_NO_FRESNEL )
+#if !defined( PBR_SEEDED_BAD_GGX ) && !defined( PBR_SEEDED_NO_FRESNEL ) &&                         \
+    !defined( PBR_SEEDED_BAD_SPLIT_SUM )
 		std::fprintf( stderr, "FAIL: %s\n", description );
 #endif
 	}
@@ -85,7 +87,8 @@ double DistributionIntegral( float roughness, DistributionFunction distribution 
 
 // A white environment supplies unit radiance in every direction. The
 // reflected radiance is the BRDF's cosine-weighted hemisphere integral.
-double WhiteFurnace( float roughness, float normalDotView, SpecularFunction specular )
+double WhiteFurnace( float roughness, float normalDotView, SpecularFunction specular,
+    float reflectanceAtNormal = 1.0f )
 {
 	constexpr int kPolarSteps = 160;
 	constexpr int kAzimuthSteps = 512;
@@ -109,7 +112,8 @@ double WhiteFurnace( float roughness, float normalDotView, SpecularFunction spec
 			const float normalDotHalf = static_cast<float>( halfZ * inverseHalfLength );
 			const float viewDotHalf =
 			    static_cast<float>( ( viewX * halfX + viewZ * halfZ ) * inverseHalfLength );
-			const render::pbr::Color reflected = specular( { 1.0f, 1.0f, 1.0f }, normalDotView,
+			const render::pbr::Color reflected = specular(
+			    { reflectanceAtNormal, reflectanceAtNormal, reflectanceAtNormal }, normalDotView,
 			    static_cast<float>( lightZ ), normalDotHalf, viewDotHalf, roughness );
 			integral += reflected.red * lightZ;
 		}
@@ -155,6 +159,31 @@ int main()
 	}
 	Check( Near( WhiteFurnace( 1.0f, 1.0f, model.specular ), 1.0 - std::log( 2.0 ), 0.004 ),
 	    "roughness-one normal-incidence furnace matches analytic 1 - ln(2)" );
+	for ( float roughness : { 0.5f, 1.0f } )
+	{
+		for ( float normalDotView : { 0.3f, 0.65f, 1.0f } )
+		{
+			SplitSumCoefficients table = SampleSplitSum( normalDotView, roughness );
+#ifdef PBR_SEEDED_BAD_SPLIT_SUM
+			std::swap( table.a, table.b );
+#endif
+			const double grazing = WhiteFurnace( roughness, normalDotView, model.specular, 0.0f );
+			const double white = WhiteFurnace( roughness, normalDotView, model.specular );
+			Check( Near( table.a, white - grazing, 0.03 ) && Near( table.b, grazing, 0.03 ),
+			    "split-sum table matches an independent hemisphere BRDF integral" );
+			const double dielectricSpecular =
+			    WhiteFurnace( roughness, normalDotView, model.specular, 0.04f );
+			const double layeredWhite = dielectricSpecular + 1.0 - ( 0.04 * table.a + table.b );
+			Check( Near( layeredWhite, 1.0, 0.03 ),
+			    "layered white dielectric closes energy in a white furnace" );
+		}
+	}
+	const Color whiteDielectric =
+	    EvaluateLayeredDirect( { 1.0f, 1.0f, 1.0f }, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f );
+	const Color whiteMetal =
+	    EvaluateLayeredDirect( { 1.0f, 1.0f, 1.0f }, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f );
+	Check( whiteDielectric.red > whiteMetal.red && whiteMetal.red > 0.0f,
+	    "layered dielectric includes diffuse and pure metal does not" );
 
 	const Color dielectric =
 	    model.specular( { 0.04f, 0.04f, 0.04f }, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f );
@@ -179,9 +208,12 @@ int main()
 	Check( belowHorizon.red == 0.0f && belowHorizon.green == 0.0f && belowHorizon.blue == 0.0f,
 	    "light below the horizon contributes nothing" );
 
-#if defined( PBR_SEEDED_BAD_GGX ) || defined( PBR_SEEDED_NO_FRESNEL )
+#if defined( PBR_SEEDED_BAD_GGX ) || defined( PBR_SEEDED_NO_FRESNEL ) ||                           \
+    defined( PBR_SEEDED_BAD_SPLIT_SUM )
 #ifdef PBR_SEEDED_BAD_GGX
 	const char *expectedFailure = "GGX distribution integrates to one";
+#elif defined( PBR_SEEDED_BAD_SPLIT_SUM )
+	const char *expectedFailure = "split-sum table matches an independent hemisphere BRDF integral";
 #else
 	const char *expectedFailure = "dielectric normal-incidence BRDF anchor";
 #endif

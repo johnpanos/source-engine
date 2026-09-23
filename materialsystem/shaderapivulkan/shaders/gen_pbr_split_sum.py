@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the deterministic GGX split-sum table shared by CPU and GLSL.
+"""Generate the deterministic GGX split-sum table for CPU and GPU upload.
 
 The table stores A and B such that directional specular albedo for Schlick F0
 is F0*A+B. Importance samples use the same GGX alpha=roughness^2 and correlated
@@ -67,7 +67,7 @@ def literal(value, suffix=""):
 
 
 def cpp_text(table):
-    entries = "\n".join("\t{ %s, %s }," % (literal(a, "f"), literal(b, "f"))
+    entries = "\n".join("    { %s, %s }," % (literal(a, "f"), literal(b, "f"))
                         for a, b in table)
     return """//========= Copyright Valve Corporation, All rights reserved. ============//
 //
@@ -97,39 +97,13 @@ constexpr SplitSumCoefficients kSplitSumTable[kSplitSumSize * kSplitSumSize] = {
 """ % (SIZE, SAMPLES, entries)
 
 
-def glsl_text(table):
-    entries = "\n".join("    vec2( %s, %s )," % (literal(a), literal(b))
-                        for a, b in table)
-    return """// Generated RFC 0007 GGX split-sum table. Run gen_pbr_split_sum.py.
-const int kSplitSumSize = %d;
-const vec2 kSplitSumTable[kSplitSumSize * kSplitSumSize] = vec2[](
-%s
-);
-
-vec2 SampleSplitSum( float normalDotView, float roughness )
-{
-    vec2 position = clamp( vec2( normalDotView, roughness ), vec2( 0.0 ), vec2( 1.0 ) ) *
-                    float( kSplitSumSize ) - vec2( 0.5 );
-    ivec2 low = clamp( ivec2( floor( position ) ), ivec2( 0 ), ivec2( kSplitSumSize - 1 ) );
-    ivec2 high = min( low + ivec2( 1 ), ivec2( kSplitSumSize - 1 ) );
-    vec2 fraction = clamp( position - vec2( low ), vec2( 0.0 ), vec2( 1.0 ) );
-    vec2 bottom = mix( kSplitSumTable[low.y * kSplitSumSize + low.x],
-                       kSplitSumTable[low.y * kSplitSumSize + high.x], fraction.x );
-    vec2 top = mix( kSplitSumTable[high.y * kSplitSumSize + low.x],
-                    kSplitSumTable[high.y * kSplitSumSize + high.x], fraction.x );
-    return mix( bottom, top, fraction.y );
-}
-""" % (SIZE, entries)
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true",
                         help="fail when generated artifacts differ")
     args = parser.parse_args()
     table = values()
-    artifacts = ((ROOT / "public/render/pbr_split_sum_table.h", cpp_text(table)),
-                 (HERE / "pbr_split_sum.glsl", glsl_text(table)))
+    artifacts = ((ROOT / "public/render/pbr_split_sum_table.h", cpp_text(table)),)
     for path, content in artifacts:
         if args.check:
             if not path.is_file() or path.read_text() != content:

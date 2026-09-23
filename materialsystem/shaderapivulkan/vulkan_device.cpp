@@ -8,6 +8,7 @@
 #include "vulkan_device.h"
 #include "demo_triangle_spv.h"
 #include "material_spv.h"
+#include "render/pbr_split_sum_table.h"
 
 #include <algorithm>
 #include <cstdarg>
@@ -2884,7 +2885,7 @@ VkPipeline CVulkanContext::PbrDirectPipeline( const DynRasterState &state, bool 
 	if ( m_pbrDirectFrag == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE;
 	VkPipeline pipeline = BuildMaterialPipeline( state, m_texTemplate.stages[0].module,
-	    m_pbrDirectFrag, m_dynTexPipelineLayout, &m_texTemplate.vin,
+	    m_pbrDirectFrag, m_pbrDirectPipelineLayout, &m_texTemplate.vin,
 	    srgbPass ? m_renderPassLoadSrgb : m_renderPass );
 	if ( pipeline == VK_NULL_HANDLE )
 		Log( "vkCreateGraphicsPipelines (PBR direct, state %#llx) failed\n",
@@ -3125,6 +3126,64 @@ bool CVulkanContext::InitSkinPipeline( std::string *outError )
 
 bool CVulkanContext::InitPbrDirectPipeline( std::string *outError )
 {
+	VkPhysicalDeviceProperties properties = {};
+	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
+	if ( properties.limits.maxBoundDescriptorSets < 3 )
+	{
+		SetError( outError, "PBR direct requires three descriptor sets" );
+		return false;
+	}
+	VkFormatProperties formatProperties = {};
+	vkGetPhysicalDeviceFormatProperties(
+	    m_physicalDevice, VK_FORMAT_R32G32B32A32_SFLOAT, &formatProperties );
+	if ( !( formatProperties.optimalTilingFeatures &
+	         VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT ) )
+	{
+		SetError( outError, "PBR split-sum format lacks linear filtering" );
+		return false;
+	}
+	VkPushConstantRange pc = {};
+	pc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+	pc.size = m_clipPlanesSupported ? kTexturedPushBytes : sizeof( float ) * 32;
+	const VkDescriptorSetLayout sets[3] = {
+	    m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout };
+	VkPipelineLayoutCreateInfo pl = {};
+	pl.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pl.setLayoutCount = 3;
+	pl.pSetLayouts = sets;
+	pl.pushConstantRangeCount = 1;
+	pl.pPushConstantRanges = &pc;
+	if ( vkCreatePipelineLayout( m_device, &pl, nullptr, &m_pbrDirectPipelineLayout ) !=
+	     VK_SUCCESS )
+	{
+		SetError( outError, "vkCreatePipelineLayout (PBR direct) failed" );
+		return false;
+	}
+	using namespace render::pbr;
+	m_pbrSplitSumHandle = CreateManagedTexture(
+	    kSplitSumSize, kSplitSumSize, VK_FORMAT_R32G32B32A32_SFLOAT, outError );
+	if ( m_pbrSplitSumHandle < 0 )
+		return false;
+	std::vector<float> texels;
+	texels.reserve( kSplitSumSize * kSplitSumSize * 4 );
+	for ( const SplitSumCoefficients &coefficients : kSplitSumTable )
+	{
+		texels.push_back( coefficients.a );
+		texels.push_back( coefficients.b );
+		texels.push_back( 0.0f );
+		texels.push_back( 1.0f );
+	}
+	if ( !UploadManagedTexture( m_pbrSplitSumHandle,
+	         reinterpret_cast<const uint8_t *>( texels.data() ), texels.size() * sizeof( float ),
+	         outError ) )
+		return false;
+	SetManagedTextureSamplerState(
+	    m_pbrSplitSumHandle, kSamplerClampU | kSamplerClampV | kSamplerLinear );
+	if ( m_managedTextures[static_cast<size_t>( m_pbrSplitSumHandle )].descSet == VK_NULL_HANDLE )
+	{
+		SetError( outError, "PBR split-sum descriptor unavailable" );
+		return false;
+	}
 	const uint32_t *words = m_clipPlanesSupported ? g_pbrDirectClipFragSpv : g_pbrDirectFragSpv;
 	const size_t bytes =
 	    m_clipPlanesSupported ? sizeof( g_pbrDirectClipFragSpv ) : sizeof( g_pbrDirectFragSpv );
@@ -3150,6 +3209,12 @@ void CVulkanContext::DestroyPbrDirectPipeline()
 	if ( m_pbrDirectFrag != VK_NULL_HANDLE )
 		vkDestroyShaderModule( m_device, m_pbrDirectFrag, nullptr );
 	m_pbrDirectFrag = VK_NULL_HANDLE;
+	if ( m_pbrDirectPipelineLayout != VK_NULL_HANDLE )
+		vkDestroyPipelineLayout( m_device, m_pbrDirectPipelineLayout, nullptr );
+	m_pbrDirectPipelineLayout = VK_NULL_HANDLE;
+	if ( m_pbrSplitSumHandle >= 0 )
+		DestroyManagedTexture( m_pbrSplitSumHandle );
+	m_pbrSplitSumHandle = -1;
 	m_pbrDirectReady = false;
 }
 
@@ -3499,6 +3564,8 @@ void CVulkanContext::DestroyManagedTexture( int handle )
 		if ( upload.handle != handle )
 			m_pendingUploads[keptUploads++] = upload;
 	m_pendingUploads.resize( keptUploads );
+	if ( m_pendingUploads.empty() )
+		m_pendingUploadData.clear();
 	m_retiredTextures.push_back( { slot, handle, m_submitSerial + 1 } );
 	slot = ManagedTexture();
 	if ( m_dynBoundTexHandle == handle )
@@ -5088,7 +5155,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				selected = PbrDirectPipeline( d.raster, openSrgb );
 				if ( selected == VK_NULL_HANDLE )
 					continue;
-				selectedLayout = m_dynTexPipelineLayout;
+				selectedLayout = m_pbrDirectPipelineLayout;
 				pbrDirect = true;
 			}
 			else if ( d.shaderIndex == kDynShaderPortalRefract )
@@ -5172,10 +5239,11 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				}
 				else if ( pbrDirect )
 				{
-					const VkDescriptorSet sets[2] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
-					    sampledSet( d.samplerHandles[1], 0 ) };
+					const VkDescriptorSet sets[3] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					    sampledSet( d.samplerHandles[1], 0 ),
+					    m_managedTextures[static_cast<size_t>( m_pbrSplitSumHandle )].descSet };
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					    m_dynTexPipelineLayout, 0, 2, sets, 0, nullptr );
+					    m_pbrDirectPipelineLayout, 0, 3, sets, 0, nullptr );
 				}
 				else
 				{

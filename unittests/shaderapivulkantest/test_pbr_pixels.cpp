@@ -1,7 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: RFC 0007 synthetic direct-light pixel oracle. Draws the native
-//          PBR specular pipeline, captures a real Vulkan frame and compares
+//          layered PBR pipeline, captures a real Vulkan frame and compares
 //          its linear output with the headless BRDF model. Base color is sampled
 //          through an sRGB view while the packed MRAO texture stays linear.
 //          Requires a native Vulkan device and a display; exit 77 means the
@@ -59,6 +59,7 @@ struct PixelCase
 	bool fresnelControl;
 	bool baseColorControl;
 	bool mraoLinearControl;
+	bool diffuseControl;
 };
 
 float DecodeSrgb( uint8_t encoded )
@@ -112,8 +113,8 @@ bool RunCase( render_vulkan::CVulkanContext &context, int baseHandle, int mraoHa
 	const render::pbr::Color f0 = { 0.04f * ( 1.0f - metalness ) + base.red * metalness,
 	    0.04f * ( 1.0f - metalness ) + base.green * metalness,
 	    0.04f * ( 1.0f - metalness ) + base.blue * metalness };
-	const render::pbr::Color brdf = render::pbr::EvaluateSpecular( f0, testCase.angles[0],
-	    testCase.angles[1], testCase.angles[2], testCase.angles[3], roughness );
+	const render::pbr::Color brdf = render::pbr::EvaluateLayeredDirect( base, metalness,
+	    testCase.angles[0], testCase.angles[1], testCase.angles[2], testCase.angles[3], roughness );
 	const float expected[3] = { testCase.radiance[0] * brdf.red * testCase.angles[1],
 	    testCase.radiance[1] * brdf.green * testCase.angles[1],
 	    testCase.radiance[2] * brdf.blue * testCase.angles[1] };
@@ -143,10 +144,14 @@ bool RunCase( render_vulkan::CVulkanContext &context, int baseHandle, int mraoHa
 	{
 		// A constant F0 omits grazing Fresnel; the captured highlight must
 		// be separated from that seeded output by more than quantization noise.
+		const render::pbr::Color specular = render::pbr::EvaluateSpecular( f0, testCase.angles[0],
+		    testCase.angles[1], testCase.angles[2], testCase.angles[3], roughness );
 		const float wrongPixel =
-		    testCase.radiance[0] * f0.red *
-		    render::pbr::GgxDistribution( testCase.angles[2], roughness ) *
-		    render::pbr::SmithVisibility( testCase.angles[0], testCase.angles[1], roughness ) *
+		    testCase.radiance[0] *
+		    ( brdf.red - specular.red +
+		        f0.red * render::pbr::GgxDistribution( testCase.angles[2], roughness ) *
+		            render::pbr::SmithVisibility(
+		                testCase.angles[0], testCase.angles[1], roughness ) ) *
 		    testCase.angles[1] * 255.0f;
 		Check( std::abs( static_cast<float>( center[0] ) - wrongPixel ) > 20.0f,
 		    "pixel oracle rejects missing grazing Fresnel" );
@@ -155,11 +160,10 @@ bool RunCase( render_vulkan::CVulkanContext &context, int baseHandle, int mraoHa
 	{
 		// Sampling the sRGB base through the linear view would use its stored
 		// byte value as F0. The colored metal separates the two paths visibly.
-		const float encodedBase = testCase.base[0] / 255.0f;
-		const float wrongF0 = 0.04f * ( 1.0f - metalness ) + encodedBase * metalness;
+		const render::pbr::Color wrongBase = { testCase.base[0] / 255.0f, base.green, base.blue };
 		const float wrongPixel =
 		    testCase.radiance[0] *
-		    render::pbr::EvaluateSpecular( { wrongF0, wrongF0, wrongF0 }, testCase.angles[0],
+		    render::pbr::EvaluateLayeredDirect( wrongBase, metalness, testCase.angles[0],
 		        testCase.angles[1], testCase.angles[2], testCase.angles[3], roughness )
 		        .red *
 		    testCase.angles[1] * 255.0f;
@@ -171,15 +175,25 @@ bool RunCase( render_vulkan::CVulkanContext &context, int baseHandle, int mraoHa
 		// Metalness is data, not display color. Decoding the stored byte as
 		// sRGB changes F0 and must be visible in the captured red channel.
 		const float wrongMetalness = DecodeSrgb( testCase.mrao[0] );
-		const float wrongF0 = 0.04f * ( 1.0f - wrongMetalness ) + base.red * wrongMetalness;
 		const float wrongPixel =
 		    testCase.radiance[0] *
-		    render::pbr::EvaluateSpecular( { wrongF0, wrongF0, wrongF0 }, testCase.angles[0],
+		    render::pbr::EvaluateLayeredDirect( base, wrongMetalness, testCase.angles[0],
 		        testCase.angles[1], testCase.angles[2], testCase.angles[3], roughness )
 		        .red *
 		    testCase.angles[1] * 255.0f;
 		Check( std::abs( static_cast<float>( center[0] ) - wrongPixel ) > 20.0f,
 		    "pixel oracle rejects sRGB decoding of linear MRAO" );
+	}
+	if ( testCase.diffuseControl )
+	{
+		const float specularOnly =
+		    testCase.radiance[0] *
+		    render::pbr::EvaluateSpecular( f0, testCase.angles[0], testCase.angles[1],
+		        testCase.angles[2], testCase.angles[3], roughness )
+		        .red *
+		    testCase.angles[1] * 255.0f;
+		Check( std::abs( static_cast<float>( center[0] ) - specularOnly ) > 20.0f,
+		    "pixel oracle rejects omitted layered diffuse" );
 	}
 	Check( center[3] >= 252, "PBR pixel is opaque" );
 	return true;
@@ -228,13 +242,15 @@ int main()
 		{
 			const PixelCase cases[] = {
 			    { "dielectric-half-rough", { 255, 255, 255, 255 }, { 0, 128, 255, 255 },
-			        { 1, 1, 1, 1 }, { 10, 10, 10, 1 }, true, false, false, false },
+			        { 1, 1, 1, 1 }, { 0.8f, 0.8f, 0.8f, 1 }, false, false, false, false, true },
+			    { "metal-half-rough", { 255, 255, 255, 255 }, { 255, 128, 255, 255 },
+			        { 1, 1, 1, 1 }, { 0.5f, 0.5f, 0.5f, 1 }, true, false, false, false, false },
 			    { "colored-metal", { 204, 51, 26, 255 }, { 255, 255, 255, 255 }, { 1, 1, 1, 1 },
-			        { 10, 10, 10, 1 }, false, false, true, false },
+			        { 10, 10, 10, 1 }, false, false, true, false, false },
 			    { "half-metal", { 255, 0, 0, 255 }, { 128, 255, 128, 255 }, { 1, 1, 1, 1 },
-			        { 10, 10, 10, 1 }, false, false, false, true },
+			        { 2, 2, 2, 1 }, false, false, false, true, false },
 			    { "grazing-dielectric", { 255, 255, 255, 255 }, { 0, 255, 0, 255 },
-			        { 0.2f, 0.2f, 1, 0.2f }, { 10, 10, 10, 1 }, false, true, false, false },
+			        { 0.2f, 0.2f, 1, 0.2f }, { 4, 4, 4, 1 }, false, true, false, false, false },
 			};
 			for ( const PixelCase &testCase : cases )
 			{

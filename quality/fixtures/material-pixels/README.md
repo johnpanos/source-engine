@@ -16,14 +16,18 @@ real material system. The backend is identified by each filename and report.
 | `modellight-dx9-integer.json` | modellight | `HDR_TYPE_INTEGER` | as above, linear tone-mapping scale 0.75 |
 | `cable-dxvk-none.json` | cable | `HDR_TYPE_NONE` | Cable_DX9 normal-map half-Lambert captured through DXVK with front, side, back and diagonal normals |
 | `sky-dxvk-none.json` | sky | `HDR_TYPE_NONE` | Sky_DX9 texture and tint, with translated texture coordinates sampled on both sides |
+| `monitor-dxvk-none.json` | monitor | `HDR_TYPE_NONE` | MonitorScreen_DX9 base and second images, contrast, saturation, tint, and independent UV transforms |
 
 `pbr-fallback-primary.vmt` and `pbr-fallback-legacy.vmt` are authored inputs
 for the `pbr-fallback` family. The driver copies them into a private runtime
-as `conformance/pbr_case.vmt` and `conformance/pbr_fallback.vmt`. Ten more
-primary VMTs omit a required field, name an absent or self fallback, use a
-traversal path directly or through a nested patch, reference an
-unsupported/PBR shader, or reach a patch cycle.
-Its oracle checks the resolved legacy shader and green rendered pixel and
+as `conformance/pbr_case.vmt` and `conformance/pbr_fallback.vmt`. A valid
+primary patch must resolve through the same PBR root to the legacy fallback.
+Twelve invalid VMTs omit a required field, name an absent or self fallback,
+use a traversal path directly or through a nested fallback or primary patch,
+name a missing primary patch include, reference an unsupported/PBR shader,
+or reach a patch cycle.
+Its oracle checks the resolved legacy shader and green rendered pixels for
+both the direct PBR material and the valid primary patch, and
 requires the material loader to reject each invalid VMT. It does not use a
 D3D9 reference capture.
 
@@ -92,6 +96,19 @@ made 2026-09-23 UTC from source fe0aff17 plus the recorded dirty tree with DXVK
 python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime-dxvk \
     --build build-r03-portal-dxvk --renderer vulkan-compat --hdr none \
     --family sky --out OUT
+```
+
+Monitor pixels are checked against monitorscreen_ps2x.fxc's two sRGB inputs,
+contrast, saturation, and tint where the sample lies in a flat texel region.
+The translated UV case uses the DXVK reference because the 4x4 textures are
+filtered at those coordinates. Native and DXVK measured the same RGB bytes in
+all four cases. Captured 2026-09-23 UTC with the native and DXVK product
+profiles above:
+
+```sh
+python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime-dxvk \
+    --build build-r03-portal-dxvk --renderer vulkan-compat --hdr none \
+    --family monitor --out OUT
 ```
 
 Recapture only when the harness cases or the D3D9 path change, and review the

@@ -6,9 +6,13 @@ reports their union so no missing source is silently hidden by one host profile.
 """
 
 import argparse
+import ast
 import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
+
+import vpc_parser
 
 
 SOURCE_REF = re.compile(r'"([^"\n]+\.(?:cpp|c|h))"', re.IGNORECASE)
@@ -79,13 +83,45 @@ def inventory(root, include_econ=False):
     return records
 
 
+def selected_inventory(root, build):
+    """Read the source selection Waf will use for one configured build."""
+    root, build = Path(root).resolve(), Path(build).resolve()
+    records = []
+    for side in ('client', 'server'):
+        cache = build / 'c4che/game' / (side + '_cache.py')
+        defines = None
+        for line in cache.read_text().splitlines():
+            key, separator, literal = line.partition(' = ')
+            if separator and key == 'DEFINES':
+                defines = ast.literal_eval(literal)
+        if not isinstance(defines, list) or not all(isinstance(item, str) for item in defines):
+            raise ValueError('invalid Waf defines in ' + str(cache))
+        folder = root / 'game' / side
+        env = SimpleNamespace(SUBPROJECT_PATH=[str(folder)], DEFINES=defines)
+        projects = [f'{side}_base.vpc', f'{side}_portal_base.vpc', f'{side}_portal2.vpc']
+        sources = vpc_parser.parse_vpcs(env, projects, '../..')['sources']
+        for source in sources:
+            target = (folder / source).resolve()
+            records.append({
+                'side': side,
+                'project': ', '.join(str(folder / name) for name in projects),
+                'reference': source,
+                'path': str(target.relative_to(root)),
+                'present': target.is_file(),
+            })
+    return records
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument('--include-econ', action='store_true')
+    parser.add_argument('--selected-build', type=Path,
+                        help='report files selected by an existing Waf Portal 2 build')
     parser.add_argument('--json', action='store_true')
     args = parser.parse_args()
-    records = inventory(args.root, args.include_econ)
+    records = (selected_inventory(args.root, args.selected_build) if args.selected_build
+               else inventory(args.root, args.include_econ))
     missing = [record for record in records if not record['present']]
     if args.json:
         print(json.dumps({'references': len(records), 'missing': missing}, indent=2))

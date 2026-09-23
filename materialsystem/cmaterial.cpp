@@ -367,7 +367,8 @@ protected:
 static void ApplyPatchKeyValues( KeyValues &keyValues, KeyValues &patchKeyValues );
 static bool AccumulateRecursiveVmtPatches( KeyValues &patchKeyValuesOut,
     KeyValues **ppBaseKeyValuesOut, const KeyValues &keyValues, const char *pPathID,
-    CUtlVector<FileNameHandle_t> *pIncludes, bool bValidatePbrIncludes = false );
+    CUtlVector<FileNameHandle_t> *pIncludes, bool bValidatePbrIncludes = false,
+    bool *pInvalidPbrInclude = NULL );
 
 //-----------------------------------------------------------------------------
 // Parser utilities
@@ -3432,7 +3433,7 @@ static bool IsValidPbrPatchInclude( const char *pIncludeFileName )
 
 bool AccumulateRecursiveVmtPatches( KeyValues &patchKeyValuesOut, KeyValues **ppBaseKeyValuesOut,
     const KeyValues &keyValues, const char *pPathID, CUtlVector<FileNameHandle_t> *pIncludes,
-    bool bValidatePbrIncludes )
+    bool bValidatePbrIncludes, bool *pInvalidPbrInclude )
 {
 	if ( pIncludes )
 	{
@@ -3463,19 +3464,25 @@ bool AccumulateRecursiveVmtPatches( KeyValues &patchKeyValuesOut, KeyValues **pp
 		
 		// Load the included file
 		const char *pIncludeFileName = pCurrentKeyValues->GetString( "include" );
-		if ( bValidatePbrIncludes && !IsValidPbrPatchInclude( pIncludeFileName ) )
+		if ( ( bValidatePbrIncludes || pInvalidPbrInclude ) &&
+		     !IsValidPbrPatchInclude( pIncludeFileName ) )
 		{
-			Warning( "PBR fallback patch has an invalid include path\n" );
-			pCurrentKeyValues->deleteThis();
-			return false;
+			if ( pInvalidPbrInclude )
+				*pInvalidPbrInclude = true;
+			if ( bValidatePbrIncludes )
+			{
+				Warning( "PBR fallback patch has an invalid include path\n" );
+				pCurrentKeyValues->deleteThis();
+				return false;
+			}
 		}
 
 		if ( pIncludeFileName == NULL )
 		{
 			// A patch file without an include key? Not good...
 			Warning( "VMT patch file has no include key - invalid!\n" );
-			Assert( pIncludeFileName );
-			break;
+			pCurrentKeyValues->deleteThis();
+			return false;
 		}
 
 		CUtlString includeFileName( pIncludeFileName ); // copy off the string before we clear the keyvalues it lives in
@@ -3495,14 +3502,16 @@ bool AccumulateRecursiveVmtPatches( KeyValues &patchKeyValuesOut, KeyValues **pp
 #ifndef DEDICATED
 			Warning( "Failed to load $include VMT file (%s)\n", includeFileName.String() );
 #endif
-			if ( !HushAsserts() )
-			{
-				AssertMsg( false, "Failed to load $include VMT file (%s)", includeFileName.String() );
-			}
 			return false;
 		}
 
 		nCount++;
+	}
+	if ( V_stricmp( pCurrentKeyValues->GetName(), "patch" ) == 0 )
+	{
+		Warning( "Infinite recursion in patch file?\n" );
+		pCurrentKeyValues->deleteThis();
+		return false;
 	}
 
 	if ( ppBaseKeyValuesOut )
@@ -3514,17 +3523,14 @@ bool AccumulateRecursiveVmtPatches( KeyValues &patchKeyValuesOut, KeyValues **pp
 		pCurrentKeyValues->deleteThis();
 	}
 
-	if( nCount >= 10 )
-	{
-		Warning( "Infinite recursion in patch file?\n" );
-	}
 	return true;
 }
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 bool ExpandPatchFile( KeyValues &keyValues, KeyValues &patchKeyValues, const char *pPathID,
-    CUtlVector<FileNameHandle_t> *pIncludes, bool bValidatePbrIncludes = false )
+    CUtlVector<FileNameHandle_t> *pIncludes, bool bValidatePbrIncludes = false,
+    bool *pInvalidPbrInclude = NULL )
 {
 	KeyValues *pNonPatchKeyValues = NULL;
 	if ( !patchKeyValues.IsEmpty() )
@@ -3534,7 +3540,7 @@ bool ExpandPatchFile( KeyValues &keyValues, KeyValues &patchKeyValues, const cha
 	else
 	{
 		bool bSuccess = AccumulateRecursiveVmtPatches( patchKeyValues, &pNonPatchKeyValues,
-		    keyValues, pPathID, pIncludes, bValidatePbrIncludes );
+		    keyValues, pPathID, pIncludes, bValidatePbrIncludes, pInvalidPbrInclude );
 		if ( !bSuccess )
 		{
 			return false;
@@ -3578,9 +3584,17 @@ bool LoadVMTFile( KeyValues &vmtKeyValues, KeyValues &patchKeyValues, const char
 	{
 		return false;
 	}
-	ExpandPatchFile( vmtKeyValues, patchKeyValues, pPathID, pIncludes );
+	bool bInvalidPbrInclude = false;
+	if ( !ExpandPatchFile(
+	         vmtKeyValues, patchKeyValues, pPathID, pIncludes, false, &bInvalidPbrInclude ) )
+		return false;
 	const render::pbr::DefinitionResult pbrDefinition = render::pbr::ValidateDefinition(
 	    vmtKeyValues.GetName(), LookupPbrVmtParameter, &vmtKeyValues );
+	if ( pbrDefinition.status == render::pbr::DefinitionStatus::kValid && bInvalidPbrInclude )
+	{
+		Warning( "PBR material %s has an invalid primary patch include\n", pMaterialName );
+		return false;
+	}
 	if ( pbrDefinition.status == render::pbr::DefinitionStatus::kMissingRequiredParameter )
 	{
 		Warning( "PBR material %s is missing required parameter %s\n", pMaterialName,

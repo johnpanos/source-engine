@@ -10,6 +10,202 @@ will reveal further gaps.
 The imported source also names 95 quoted include paths whose basename is absent from this checkout.
 
 Regenerate the VPC portion with `python3 scripts/waifulib/portal2_source_inventory.py`.
+For the configured build, run
+`python3 scripts/waifulib/portal2_source_inventory.py --selected-build build-p2`.
+
+## Local source candidates checked
+
+- `game/client/portal2/gameui.rar` opens with the password in `gameui.txt`.
+  Its 287 files are byte-identical to the already imported `gameui` directory.
+- The installed Portal 2 Community Edition tree has no C/C++ sources, headers,
+  PDBs, or debug files. Its local installation now has 64-bit Linux client and
+  server modules as well as Windows DLLs and content. The Linux modules retain
+  symbol tables but refer to separate `.dbg` files that are not installed.
+  [The public P2:CE repository](https://github.com/StrataSource/Portal-2-Community-Edition)
+  is a task tracker and does not publish its game source.
+- The installed Portal 2 Linux client and server modules are 32-bit binaries.
+  They retain symbol tables and refer to separate `.dbg` files that are not
+  installed. Symbols and disassembly can inform behavior, but cannot supply
+  the original C++ source or satisfy the 64-bit source build.
+- The local F-Stop source zip has two filename matches among the selected
+  missing Portal 2 files: `hud_viewfinder.cpp` and
+  `info_placement_helper.cpp`. These implement F-Stop camera and placement
+  behavior, with different dependencies and contracts; neither is a direct
+  Portal 2 replacement.
+
+SteamCMD `app_info_print 620` and `app_info_print 440000` (2026-09-22) show
+no public debug-symbol depot. Portal 2 lists `public`, `beta`,
+`previous_release`, and `demo_viewer` binary manifests. P2:CE's
+Developer Content depot `440008` reports 0 bytes on the listed branches.
+An anonymous SteamCMD attempt to inspect Portal 2's older `demo_viewer`
+binary depot `624` failed with `missing license for depot (No subscription)`.
+The installed depot manifests and files have no `.dbg` or `.pdb` payloads.
+Older authenticated manifests and private branches remain unverified.
+
+The [Steam2 archive catalog](https://femtendo.github.io/steam2-catalog/)
+indexes historical Portal 2 depot file manifests. A path scan of depots
+`621`–`629`, `645`, `660`, `841`, `843`, and prototype depot `852` found none
+of the 136 distinct basenames in the configured missing `.cpp` list.
+[Depot 841's file history](https://femtendo.github.io/steam2-catalog/data/vfiles/841.json.gz)
+does list 21 Linux `.so.dbg` files in version `1`, but they are shared engine
+modules such as `engine.so.dbg` and `vphysics.so.dbg`, with no Portal 2
+`client.so.dbg` or `server.so.dbg`. The catalog indexes file paths and sizes;
+it is not evidence that a matching debug payload is installed locally.
+
+## Configured Linux source selection
+
+These `.cpp` paths are selected by the current `build-p2` Waf configuration
+after VPC platform conditions. They are the immediate source-presence build gate.
+
+### Client (78)
+
+- `game/client/portal/c_func_noportal_volume.cpp`
+- `game/client/portal/c_func_portal_bumper.cpp`
+- `game/client/portal/c_portal_gamestats.cpp`
+- `game/client/portal/c_trigger_portal_cleanser.cpp`
+- `game/client/portal2/c_baseprojectedentity.cpp`
+- `game/client/portal2/c_baseprojector.cpp`
+- `game/client/portal2/c_community_coop.cpp`
+- `game/client/portal2/c_env_portal_laser.cpp`
+- `game/client/portal2/c_fizzler_effects.cpp`
+- `game/client/portal2/c_fizzler_multiorigin_sound_player.cpp`
+- `game/client/portal2/c_hitbox_damaged_entity.cpp`
+- `game/client/portal2/c_indicator_panel.cpp`
+- `game/client/portal2/c_info_placement_helper.cpp`
+- `game/client/portal2/c_info_portal_score.cpp`
+- `game/client/portal2/c_item_photo.cpp`
+- `game/client/portal2/c_level_placard_display.cpp`
+- `game/client/portal2/c_mp_lobby_screen.cpp`
+- `game/client/portal2/c_npc_hover_turret.cpp`
+- `game/client/portal2/c_npc_personality_core.cpp`
+- `game/client/portal2/c_paint_input.cpp`
+- `game/client/portal2/c_paint_messages.cpp`
+- `game/client/portal2/c_paint_sprayer.cpp`
+- `game/client/portal2/c_paint_stream.cpp`
+- `game/client/portal2/c_paintblob.cpp`
+- `game/client/portal2/c_paintblob_render.cpp`
+- `game/client/portal2/c_perfmonitor.cpp`
+- `game/client/portal2/c_pointsurvey.cpp`
+- `game/client/portal2/c_portal2_lesson.cpp`
+- `game/client/portal2/c_portal_beam_helper.cpp`
+- `game/client/portal2/c_portal_mp_stats.cpp`
+- `game/client/portal2/c_portal_playerlocaldata.cpp`
+- `game/client/portal2/c_portal_pointpush.cpp`
+- `game/client/portal2/c_portal_race_checkpoint.cpp`
+- `game/client/portal2/c_projected_entity_ambient_sound_proxy.cpp`
+- `game/client/portal2/c_projectedwallentity.cpp`
+- `game/client/portal2/c_prop_linked_portal_door.cpp`
+- `game/client/portal2/c_prop_paint_bomb.cpp`
+- `game/client/portal2/c_prop_rockettripwire.cpp`
+- `game/client/portal2/c_prop_tractorbeam.cpp`
+- `game/client/portal2/c_trigger_catapult.cpp`
+- `game/client/portal2/c_trigger_paint_cleanser.cpp`
+- `game/client/portal2/c_trigger_tractorbeam.cpp`
+- `game/client/portal2/c_weapon_paintgun.cpp`
+- `game/client/portal2/hud_challenge_stats_panel.cpp`
+- `game/client/portal2/hud_coop_ping_indicator.cpp`
+- `game/client/portal2/hud_indicator.cpp`
+- `game/client/portal2/hud_multiplayerbasicinfo.cpp`
+- `game/client/portal2/hud_puzzlemaker_map_out_of_date.cpp`
+- `game/client/portal2/hud_puzzlemaker_saving.cpp`
+- `game/client/portal2/hud_taunt_earned.cpp`
+- `game/client/portal2/hud_viewfinder.cpp`
+- `game/client/portal2/hud_vs_score_panel.cpp`
+- `game/client/portal2/paint_hud_paint_ammo.cpp`
+- `game/client/portal2/polygonbutton.cpp`
+- `game/client/portal2/portal2_leaderboard.cpp`
+- `game/client/portal2/portal2_leaderboard_manager.cpp`
+- `game/client/portal2/radialbutton.cpp`
+- `game/client/portal2/radialmenu_taunt.cpp`
+- `game/client/portal2/vgui/portal_leaderboard_graph_panel.cpp`
+- `game/client/portal2/vgui/portalclientscoreboard.cpp`
+- `game/client/portal2/vgui/splinegraphpanel.cpp`
+- `game/client/portal2/vgui/surveypanel.cpp`
+- `game/client/portal2/vgui/vgui_base_progress_screen.cpp`
+- `game/client/portal2/vgui/vgui_indicator_panel.cpp`
+- `game/client/portal2/vgui/vgui_level_placard.cpp`
+- `game/client/portal2/vgui/vgui_mp_credits_screen.cpp`
+- `game/client/portal2/vgui/vgui_mp_lobby_screen.cpp`
+- `game/client/portal2/vgui/vgui_mp_progress_screen.cpp`
+- `game/client/portal2/vgui/vgui_sp_progress_screen.cpp`
+- `game/shared/portal2/damage_database.cpp`
+- `game/shared/portal2/hitbox_damaged_entity_shared.cpp`
+- `game/shared/portal2/material_index_data_ops_proxy.cpp`
+- `game/shared/portal2/paint_saverestore.cpp`
+- `game/shared/portal2/portal2_leaderboard_bucketizer.cpp`
+- `game/shared/portal2/portal_pointpush_shared.cpp`
+- `game/shared/portal2/trigger_catapult_shared.cpp`
+- `game/shared/portal2/weapon_item_base_shared.cpp`
+- `game/shared/portal2/weapon_promo_items_shared.cpp`
+
+### Server (66)
+
+- `game/server/portal2/baseprojectedentity.cpp`
+- `game/server/portal2/baseprojector.cpp`
+- `game/server/portal2/challenge_mode_end_node.cpp`
+- `game/server/portal2/cpaintblob.cpp`
+- `game/server/portal2/env_portal_laser.cpp`
+- `game/server/portal2/fizzler_effects.cpp`
+- `game/server/portal2/fizzler_multiorigin_sound_player.cpp`
+- `game/server/portal2/func_placement_clip.cpp`
+- `game/server/portal2/func_portalled.cpp`
+- `game/server/portal2/indicator_panel.cpp`
+- `game/server/portal2/info_coop_spawn.cpp`
+- `game/server/portal2/info_placement_helper.cpp`
+- `game/server/portal2/info_player_ping_detector.cpp`
+- `game/server/portal2/info_portal_score.cpp`
+- `game/server/portal2/item_nugget.cpp`
+- `game/server/portal2/item_paint_power_pickup.cpp`
+- `game/server/portal2/level_placard_display.cpp`
+- `game/server/portal2/logic_timescale.cpp`
+- `game/server/portal2/mp_lobby_screen.cpp`
+- `game/server/portal2/npc_hover_turret.cpp`
+- `game/server/portal2/npc_personality_core.cpp`
+- `game/server/portal2/npc_wheatley_boss.cpp`
+- `game/server/portal2/paint_bot_temp.cpp`
+- `game/server/portal2/paint_database.cpp`
+- `game/server/portal2/paint_sphere.cpp`
+- `game/server/portal2/paint_sprayer.cpp`
+- `game/server/portal2/paint_stream.cpp`
+- `game/server/portal2/paint_swap_guns.cpp`
+- `game/server/portal2/point_changelevel.cpp`
+- `game/server/portal2/point_futbol_shooter.cpp`
+- `game/server/portal2/point_laser_target.cpp`
+- `game/server/portal2/pointsurvey.cpp`
+- `game/server/portal2/portal2_research_data_tracker.cpp`
+- `game/server/portal2/portal_mp_stats.cpp`
+- `game/server/portal2/portal_playerlocaldata.cpp`
+- `game/server/portal2/portal_pointpush.cpp`
+- `game/server/portal2/portal_procedural_generator.cpp`
+- `game/server/portal2/portal_race_checkpoint.cpp`
+- `game/server/portal2/portal_ui_controller.cpp`
+- `game/server/portal2/projected_entity_ambient_sound_proxy.cpp`
+- `game/server/portal2/projectedwallentity.cpp`
+- `game/server/portal2/prop_exploding_futbol.cpp`
+- `game/server/portal2/prop_hot_potato.cpp`
+- `game/server/portal2/prop_monster_box.cpp`
+- `game/server/portal2/prop_paint_bomb.cpp`
+- `game/server/portal2/prop_personality_sphere.cpp`
+- `game/server/portal2/prop_physics_paintable.cpp`
+- `game/server/portal2/prop_rockettripwire.cpp`
+- `game/server/portal2/prop_tractorbeam.cpp`
+- `game/server/portal2/propglassfutbol.cpp`
+- `game/server/portal2/propwallprojector.cpp`
+- `game/server/portal2/rocketprojectile.cpp`
+- `game/server/portal2/trigger_catapult.cpp`
+- `game/server/portal2/trigger_paint_cleanser.cpp`
+- `game/server/portal2/trigger_ping_detector.cpp`
+- `game/server/portal2/trigger_playerteam.cpp`
+- `game/server/portal2/trigger_tractorbeam.cpp`
+- `game/server/portal2/weapon_paintgun.cpp`
+- `game/shared/portal2/damage_database.cpp`
+- `game/shared/portal2/hitbox_damaged_entity_shared.cpp`
+- `game/shared/portal2/material_index_data_ops_proxy.cpp`
+- `game/shared/portal2/paint_saverestore.cpp`
+- `game/shared/portal2/portal_pointpush_shared.cpp`
+- `game/shared/portal2/trigger_catapult_shared.cpp`
+- `game/shared/portal2/weapon_item_base_shared.cpp`
+- `game/shared/portal2/weapon_promo_items_shared.cpp`
 
 ## Client VPC paths (142)
 

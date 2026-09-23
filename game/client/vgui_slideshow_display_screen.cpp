@@ -55,10 +55,11 @@ DECLARE_VGUI_SCREEN_FACTORY( CSlideshowDisplayScreen, "slideshow_display_screen"
 // Constructor: 
 //-----------------------------------------------------------------------------
 CSlideshowDisplayScreen::CSlideshowDisplayScreen( vgui::Panel *parent, const char *panelName )
-	: BaseClass( parent, "CSlideshowDisplayScreen", vgui::scheme()->LoadSchemeFromFileEx( enginevgui->GetPanel( PANEL_CLIENTDLL ), "resource/SlideshowDisplayScreen.res", "SlideshowDisplayScreen" ) ) 
+	: BaseClass( parent, "CSlideshowDisplayScreen", vgui::scheme()->LoadSchemeFromFileEx( enginevgui->GetPanel( PANEL_CLIENTDLL ), "resource/SlideshowDisplayScreen.res", "SlideshowDisplayScreen" ) ),
+	  iLastSlideIndex( -1 ),
+	  bIsAlreadyVisible( false )
 {
 	m_pDisplayTextLabel = new vgui::Label( this, "NumberDisplay", "x" );
-	iLastSlideIndex = 0;
 }
 
 void CSlideshowDisplayScreen::ApplySchemeSettings( IScheme *pScheme )
@@ -164,10 +165,13 @@ void CSlideshowDisplayScreen::Update( C_SlideshowDisplay *pSlideshowDisplay )
 	}
 
 	int iCurrentSlideIndex = pSlideshowDisplay->CurrentSlideIndex();
+	if ( iCurrentSlideIndex < 0 || iCurrentSlideIndex >= m_pSlideshowImages.Count() )
+		return;
 
 	if ( iCurrentSlideIndex != iLastSlideIndex )
 	{
-		m_pSlideshowImages[ iLastSlideIndex ]->SetVisible( false );
+		if ( iLastSlideIndex >= 0 && iLastSlideIndex < m_pSlideshowImages.Count() )
+			m_pSlideshowImages[ iLastSlideIndex ]->SetVisible( false );
 		m_pSlideshowImages[ iCurrentSlideIndex ]->SetVisible( true );
 		iLastSlideIndex = iCurrentSlideIndex;
 	}

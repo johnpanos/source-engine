@@ -3,78 +3,69 @@
 import os
 import re
 
-token_list = [
-	re.compile(r'&&'),
-	re.compile(r'\|\|'),
-	re.compile(r'\!'),
-	re.compile(r'[a-zA-Z0-9_.]*')
-]
+condition_token = re.compile(r'\s*(&&|\|\||!|\(|\)|\$?[a-zA-Z0-9_.]+)')
 
 match_statement = re.compile(r'\[.*\]')
 
 def compute_statement( defines, statement ):
-	vars = {}
-	for define in defines:
-		d=define.split('=')[0]
-		vars.update({d:True})
+	enabled = {define.split('=')[0] for define in defines}
+	expression = statement.strip()
+	if not expression.startswith('[') or not expression.endswith(']'):
+		raise ValueError('invalid VPC condition: ' + statement)
+	expression = expression[1:-1]
+	tokens = []
+	position = 0
+	while position < len(expression):
+		if expression[position:].isspace():
+			break
+		match = condition_token.match(expression, position)
+		if match is None:
+			raise ValueError('invalid VPC condition: ' + statement)
+		tokens.append(match.group(1))
+		position = match.end()
+	index = 0
 
-	def t( op ):
-		if op == '1': return True
-		elif op == '0': return False
-		elif op not in vars: return False
+	def atom():
+		nonlocal index
+		if index >= len(tokens):
+			raise ValueError('incomplete VPC condition: ' + statement)
+		token = tokens[index]
+		index += 1
+		if token == '!':
+			return not atom()
+		if token == '(':
+			value = or_expression()
+			if index >= len(tokens) or tokens[index] != ')':
+				raise ValueError('unclosed VPC condition: ' + statement)
+			index += 1
+			return value
+		if token in (')', '&&', '||'):
+			raise ValueError('invalid VPC condition: ' + statement)
+		name = token.lstrip('$')
+		return name == '1' or (name != '0' and name in enabled)
 
-		return vars[op]
+	def and_expression():
+		nonlocal index
+		value = atom()
+		while index < len(tokens) and tokens[index] == '&&':
+			index += 1
+			right = atom()
+			value = value and right
+		return value
 
-	pos = 0
+	def or_expression():
+		nonlocal index
+		value = and_expression()
+		while index < len(tokens) and tokens[index] == '||':
+			index += 1
+			right = and_expression()
+			value = value or right
+		return value
 
-	statement = re.sub(r'\[|\]| |\$', '', statement)
-
-	l = []
-
-	final = True
-	final_init = False
-
-	while pos < len(statement):
-		for token in token_list:
-			r = token.search(statement, pos)
-			if r and r.start() == pos:
-				l += [r.group(0)]
-				pos = r.end()
-
-	k = 0
-	for i in range(len(l)):
-		j = i-k
-		if l[j] == '!' and j+1 < len(l):
-			df = l[j+1]
-			if df in vars:
-				vars[df] = not vars[df]
-			else: vars.update({df:True})
-			del l[j]
-			k += 1
-
-	k = 0
-	for i in range(len(l)):
-		j = i-k
-		if l[j] == '&&' and j+1 < len(l) and j-1 >= 0:
-			val = 0
-			if t(l[j-1]) and t(l[j+1]):
-				val = 1
-			del l[j+1], l[j], l[j-1]
-			l.insert(j, str(val))
-			k += 2
-
-	k = 0
-	for i in range(len(l)):
-		j = i-k
-		if l[j] == '||' and j+1 < len(l) and j-1 >= 0:
-			val = 0
-			if t(l[j-1]) or t(l[j+1]):
-				val = 1
-			del l[j+1], l[j], l[j-1]
-			l.insert(j, str(val))
-			k += 2
-
-	return t(l[0])
+	result = or_expression()
+	if index != len(tokens):
+		raise ValueError('invalid VPC condition: ' + statement)
+	return result
 
 def project_key(l):
 	for k in l.keys():
@@ -110,9 +101,9 @@ def parse_vpcs( env ,vpcs, basedir ):
 	includes = []
 
 	for vpc in vpcs:
-		f=open(vpc, 'r').read().replace('\\\n', ';')
+		with open(vpc, 'r') as stream:
+			f = stream.read().replace('\\\n', ';')
 
-		re.sub(r'//.*', '', f)
 		l = f.split('\n')
 
 		iBrackets = 0
@@ -120,23 +111,37 @@ def parse_vpcs( env ,vpcs, basedir ):
 		next_br = False
 		ret = {}
 		cur_key = ''
+		active_scopes = [True]
+		pending_scope = True
 
-		for i in l:
-			if i == '': continue
+		for line_number, i in enumerate(l):
+			stripped = i.strip()
+			if not stripped or stripped.startswith('//'):
+				continue
+			if stripped == '{':
+				iBrackets += 1
+				active_scopes.append(active_scopes[-1] and pending_scope)
+				pending_scope = True
+				continue
+			if stripped == '}':
+				iBrackets -= 1
+				active_scopes.pop()
+				continue
 
 			s = match_statement.search(i)
-			if s and not compute_statement(env.DEFINES+defines, s.group(0)):
+			selected = not s or compute_statement(env.DEFINES+defines, s.group(0))
+			for following in l[line_number + 1:]:
+				if following.strip() and not following.strip().startswith('//'):
+					if following.strip() == '{':
+						pending_scope = selected
+					break
+			if not active_scopes[-1] or not selected:
 				continue
 
 			if i.startswith('$') and iBrackets == 0:
 				ret.update({i:[]})
 				cur_key = i
 				next_br = True
-			elif i == '{':
-				iBrackets += 1
-				next_br = False
-			elif i == '}':
-				iBrackets -= 1
 			elif iBrackets > 0:
 				ret[cur_key].append(i)
 

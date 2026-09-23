@@ -1,17 +1,19 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: The scalar metal/roughness specular model for RFC 0007. Inputs are
-//          unit-vector dot products in [0, 1], and roughness is in (0, 1].
-//          A zero-roughness delta lobe has no finite BRDF value and is handled
-//          by the material's declared minimum roughness before calling here.
-//          These functions return linear radiometric values; they do not encode
-//          color or apply exposure.
+// Purpose: The metal/roughness direct BRDF for RFC 0007. Inputs are unit-vector
+//          dot products in [0, 1]. The layered evaluator clamps roughness to
+//          0.02 before evaluating the finite GGX lobe and weights Lambertian
+//          diffuse by the split-sum specular directional albedo. Results are
+//          linear radiometric values without color encoding or exposure.
 //
 //===========================================================================//
 
 #ifndef RENDER_PBR_BRDF_H
 #define RENDER_PBR_BRDF_H
 
+#include "render/pbr_split_sum_table.h"
+
+#include <algorithm>
 #include <cmath>
 
 namespace render::pbr
@@ -69,6 +71,54 @@ struct Color
 	return { FresnelSchlick( reflectanceAtNormal.red, viewDotHalf ) * distribution * visibility,
 	    FresnelSchlick( reflectanceAtNormal.green, viewDotHalf ) * distribution * visibility,
 	    FresnelSchlick( reflectanceAtNormal.blue, viewDotHalf ) * distribution * visibility };
+}
+
+[[nodiscard]] inline SplitSumCoefficients SampleSplitSum( float normalDotView, float roughness )
+{
+	const float view = std::fmax( 0.0f, std::fmin( normalDotView, 1.0f ) );
+	const float perceptualRoughness = std::fmax( 0.0f, std::fmin( roughness, 1.0f ) );
+	const float x = view * kSplitSumSize - 0.5f;
+	const float y = perceptualRoughness * kSplitSumSize - 0.5f;
+	const int lowX =
+	    std::max( 0, std::min( static_cast<int>( std::floor( x ) ), kSplitSumSize - 1 ) );
+	const int lowY =
+	    std::max( 0, std::min( static_cast<int>( std::floor( y ) ), kSplitSumSize - 1 ) );
+	const int highX = std::min( lowX + 1, kSplitSumSize - 1 );
+	const int highY = std::min( lowY + 1, kSplitSumSize - 1 );
+	const float fractionX = std::fmax( 0.0f, std::fmin( x - lowX, 1.0f ) );
+	const float fractionY = std::fmax( 0.0f, std::fmin( y - lowY, 1.0f ) );
+	const SplitSumCoefficients &bottomLeft = kSplitSumTable[lowY * kSplitSumSize + lowX];
+	const SplitSumCoefficients &bottomRight = kSplitSumTable[lowY * kSplitSumSize + highX];
+	const SplitSumCoefficients &topLeft = kSplitSumTable[highY * kSplitSumSize + lowX];
+	const SplitSumCoefficients &topRight = kSplitSumTable[highY * kSplitSumSize + highX];
+	const float bottomA = bottomLeft.a + ( bottomRight.a - bottomLeft.a ) * fractionX;
+	const float bottomB = bottomLeft.b + ( bottomRight.b - bottomLeft.b ) * fractionX;
+	const float topA = topLeft.a + ( topRight.a - topLeft.a ) * fractionX;
+	const float topB = topLeft.b + ( topRight.b - topLeft.b ) * fractionX;
+	return { bottomA + ( topA - bottomA ) * fractionY, bottomB + ( topB - bottomB ) * fractionY };
+}
+
+// Direct BRDF, before multiplying incident radiance and N.L. The diffuse layer
+// uses the view-direction specular albedo from the same split-sum table as IBL.
+[[nodiscard]] inline Color EvaluateLayeredDirect( Color base, float metalness, float normalDotView,
+    float normalDotLight, float normalDotHalf, float viewDotHalf, float perceptualRoughness )
+{
+	if ( normalDotView <= 0.0f || normalDotLight <= 0.0f )
+		return { 0.0f, 0.0f, 0.0f };
+	const float roughness = std::fmax( perceptualRoughness, 0.02f );
+	const Color f0 = { 0.04f * ( 1.0f - metalness ) + base.red * metalness,
+	    0.04f * ( 1.0f - metalness ) + base.green * metalness,
+	    0.04f * ( 1.0f - metalness ) + base.blue * metalness };
+	const Color specular = EvaluateSpecular(
+	    f0, normalDotView, normalDotLight, normalDotHalf, viewDotHalf, roughness );
+	const SplitSumCoefficients albedo = SampleSplitSum( normalDotView, roughness );
+	const float diffuseScale = ( 1.0f - metalness ) / kPi;
+	return { specular.red + base.red * diffuseScale *
+	                            ( 1.0f - std::fmin( 1.0f, f0.red * albedo.a + albedo.b ) ),
+	    specular.green + base.green * diffuseScale *
+	                         ( 1.0f - std::fmin( 1.0f, f0.green * albedo.a + albedo.b ) ),
+	    specular.blue + base.blue * diffuseScale *
+	                        ( 1.0f - std::fmin( 1.0f, f0.blue * albedo.a + albedo.b ) ) };
 }
 } // namespace render::pbr
 

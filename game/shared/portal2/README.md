@@ -19,6 +19,10 @@ missing files. [MISSING.md](MISSING.md) lists the current VPC and include gaps.
 Waf stops before compiling an incomplete Portal 2 client or server. The source
 target needs the remaining gameplay code, engine API adaptations, and
 game-specific conformance runs before it can be launched.
+After moving every exact-path match from the local game drop, the other local
+source archive has no exact-path copy of a remaining VPC source except a
+PS3-specific `vjobutils.cpp`. Remaining gameplay sources need implementation;
+same-named files from other games require semantic review before reuse.
 
 `./play_p2 --prepare` stages the installed Portal 2 VPKs by symlink into a
 private runtime. `./play_p2 --retail` starts the installed retail binary when

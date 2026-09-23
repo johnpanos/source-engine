@@ -1530,12 +1530,11 @@ Evidence:
 - `material_pixel_conformance` built for both native Vulkan and DXVK. The three
   cable-specific quality tests pass.
 
-Other visual reports in this task remain separate native-pipeline gaps pending
-their own material and scene captures: monitor-screen imagery, refractive glass,
-sky rendering, crosshair sizing, and the reported over-bright spheres. In
-particular, `MonitorScreen_DX9`, `Sky_DX9` and `Refract_DX90` are not currently
-claimed by `NativePipelineImplementsShader`; rendering them as generic base
-texture draws would not be a faithful fix.
+The remaining visual reports require scene verification for the monitor and sky
+material fixes, a capture of the changed HUD scale, and native support for
+refractive glass and the reported over-bright spheres. `Refract_DX90` remains
+outside the native shader list because its screen-copy normal distortion needs
+its own implementation.
 
 ```sh
 python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime-native \
@@ -1559,3 +1558,21 @@ translated UV matrix; samples at the left and right must both read the intended
 top half. Fresh DXVK pixels match the independent equation, and native matches
 the DXVK fixture at all four samples. quality/fixtures/material-pixels/README.md
 records capture provenance and the reproduction command.
+
+## MonitorScreen_DX9 image and color controls (2026-09-23)
+
+MonitorScreen_DX9 was dropped by the native material allowlist, leaving panels
+black. Native now samples the base texture and optional second texture from the
+material's sampler 1, uses the independent c48/c49 and c50/c51 UV matrices,
+then applies monitorscreen_ps2x.fxc's contrast, saturation, and tint. The
+second texture's alpha also multiplies the base alpha. The ordinary material
+blend state and sRGB reads/writes remain the source of raster and color policy.
+
+Evidence: four material-pixel cases cover the base image, second image,
+contrast/saturation/tint, and two translated texture coordinates. Native and
+DXVK produced identical RGB bytes at all eight samples. The flat-texel cases
+also satisfy an independent shader equation; five seeded negative fixtures
+exercise the oracle and case validation. The DXVK reference and reproduction
+command are in quality/fixtures/material-pixels/README.md. Real in-game monitor
+render targets still need a scene capture to verify the full producer-to-screen
+path.

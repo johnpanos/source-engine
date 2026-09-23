@@ -956,7 +956,9 @@ private:
 	VkPipeline SkinPipeline( const DynRasterState &state, bool srgbPass = false );
 	std::map<uint64_t, VkPipeline> m_pbrDirectPipelines;
 	VkPipeline PbrDirectPipeline( const DynRasterState &state, bool srgbPass = false );
+	VkPipelineLayout m_pbrDirectPipelineLayout = VK_NULL_HANDLE;
 	VkShaderModule m_pbrDirectFrag = VK_NULL_HANDLE;
+	int m_pbrSplitSumHandle = -1;
 	bool m_pbrDirectReady = false;
 	bool InitPbrDirectPipeline( std::string *outError );
 	void DestroyPbrDirectPipeline();

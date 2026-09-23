@@ -19,7 +19,7 @@ REFERENCES = QUALITY.parents[1] / "quality" / "fixtures" / "material-pixels"
 
 def capture(hdr, family="lightmap"):
     """The versioned backend reference capture for a family and HDR mode."""
-    backend = "dxvk" if family in ("cable", "sky") else "dx9"
+    backend = "dxvk" if family in ("cable", "sky", "monitor") else "dx9"
     return json.loads((REFERENCES / ("%s-%s-%s.json" % (family, backend, hdr))).read_text())
 
 
@@ -103,12 +103,47 @@ class SkyTest(unittest.TestCase):
         self.assertTrue(any("texture times tint" in failure for failure in failures))
 
 
+class MonitorTest(unittest.TestCase):
+    def test_dxvk_reference_matches_monitor_equation(self):
+        report = capture("none", "monitor")
+        self.assertEqual(report["renderer"], "vulkan-compat")
+        self.assertEqual(oracle.evaluate(report, "none", report), [])
+
+    def test_missing_second_texture_is_detected(self):
+        reference = capture("none", "monitor")
+        report = with_pixels(reference, "second_image", [[255, 255, 255]] * 2)
+        failures = oracle.evaluate(report, "none", reference)
+        self.assertTrue(any("second_image" in failure for failure in failures))
+
+    def test_ignored_color_controls_are_detected(self):
+        reference = capture("none", "monitor")
+        report = with_pixels(reference, "processed_flat", [[160, 96, 64]] * 2)
+        failures = oracle.evaluate(report, "none", reference)
+        self.assertTrue(any("processed_flat" in failure for failure in failures))
+
+    def test_ignored_texture_transform_is_detected(self):
+        reference = capture("none", "monitor")
+        report = with_pixels(reference, "processed_transforms", [[74, 46, 67]] * 2)
+        failures = oracle.evaluate(report, "none", reference)
+        self.assertTrue(any("processed transforms" in failure for failure in failures))
+
+    def test_missing_case_is_rejected(self):
+        report = copy.deepcopy(capture("none", "monitor"))
+        report["cases"].pop()
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pixels.json"
+            path.write_text(json.dumps(report))
+            with self.assertRaises(oracle.PixelsError):
+                oracle.read_pixels(path)
+
+
 class PbrFallbackTest(unittest.TestCase):
     def capture(self):
         return {"schema": oracle.SCHEMA, "family": "pbr-fallback",
                 "renderer": "vulkan-compat", "hdr_type": 0,
                 "clear_probe": {"clear": [255, 0, 255], "pixel": [255, 0, 255]},
                 "shader": "UnlitGeneric", "error_material": False,
+                "primary_patch_resolved": True, "primary_patch_pixel": [0, 255, 0],
                 "pixels": {"center": [0, 255, 0], "outside": [255, 0, 255]},
                 "invalid": {"missing_reference_rejected": True,
                             "missing_mrao_rejected": True,
@@ -117,6 +152,8 @@ class PbrFallbackTest(unittest.TestCase):
                             "self_rejected": True,
                             "traversal_rejected": True,
                             "nested_traversal_rejected": True,
+                            "primary_patch_traversal_rejected": True,
+                            "primary_patch_missing_rejected": True,
                             "unsupported_rejected": True,
                             "cycle_rejected": True,
                             "pbr_target_rejected": True}}
@@ -151,6 +188,20 @@ class PbrFallbackTest(unittest.TestCase):
         report = self.capture()
         report["invalid"]["nested_traversal_rejected"] = False
         self.assertTrue(any("nested_traversal" in failure
+                            for failure in oracle.evaluate(report, "none")))
+
+    def test_primary_patch_paths_are_required(self):
+        for key in ("primary_patch_traversal_rejected", "primary_patch_missing_rejected"):
+            report = self.capture()
+            report["invalid"][key] = False
+            self.assertTrue(any(key in failure for failure in oracle.evaluate(report, "none")))
+        report = self.capture()
+        report["primary_patch_resolved"] = False
+        self.assertTrue(any("valid PBR primary patch" in failure
+                            for failure in oracle.evaluate(report, "none")))
+        report = self.capture()
+        report["primary_patch_pixel"] = [255, 0, 0]
+        self.assertTrue(any("PBR primary patch pixel" in failure
                             for failure in oracle.evaluate(report, "none")))
 
 
