@@ -221,6 +221,8 @@ void CPhysicsEnvironmentBox3D::DetachObject( CPhysicsObjectBox3D *pObject, bool 
 	}
 	for ( int i = 0; i < m_motionControllers.Count(); i++ )
 		m_motionControllers[i]->ObjectDestroyed( pObject );
+	for ( int i = 0; i < m_playerControllers.Count(); i++ )
+		m_playerControllers[i]->ObjectDestroyed( pObject );
 	for ( int i = m_triggerOverlaps.Count() - 1; i >= 0; i-- )
 	{
 		if ( m_triggerOverlaps[i].pTrigger == pObject || m_triggerOverlaps[i].pObject == pObject )
@@ -613,8 +615,6 @@ void CPhysicsEnvironmentBox3D::PreStep( float dt )
 		if ( pShadow )
 			pShadow->Simulate( dt );
 	}
-	for ( int i = 0; i < m_playerControllers.Count(); i++ )
-		m_playerControllers[i]->Simulate( dt );
 	CUtlVector<CMotionControllerBox3D *> motion;
 	motion.CopyArray( m_motionControllers.Base(), m_motionControllers.Count() );
 	for ( int i = 0; i < motion.Count(); i++ )
@@ -622,6 +622,9 @@ void CPhysicsEnvironmentBox3D::PreStep( float dt )
 		if ( m_motionControllers.Find( motion[i] ) != m_motionControllers.InvalidIndex() )
 			motion[i]->Simulate( dt );
 	}
+	// IVP runs player controllers just after motion controllers.
+	for ( int i = 0; i < m_playerControllers.Count(); i++ )
+		m_playerControllers[i]->Simulate( dt );
 	for ( int i = 0; i < m_springs.Count(); i++ )
 		m_springs[i]->Simulate( dt );
 	for ( int i = 0; i < m_fluids.Count(); i++ )

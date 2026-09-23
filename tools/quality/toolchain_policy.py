@@ -67,6 +67,11 @@ def validate_policy(policy):
     for target, entry in policy.get("targets", {}).items():
         if entry.get("dialect") not in dialects:
             raise PolicyError("target %s names unknown dialect %r" % (target, entry.get("dialect")))
+        if dialects[entry["dialect"]].get("fixture_only"):
+            raise PolicyError("target %s selects fixture-only dialect %s" % (target, entry["dialect"]))
+    for language, name in policy.get("defaults", {}).items():
+        if dialects[name].get("fixture_only"):
+            raise PolicyError("default %s dialect %s is fixture-only" % (language, name))
     for header_set in policy.get("cxx20_header_sets", []):
         paths = header_set.get("paths", [])
         for facade in header_set.get("legacy_facades", []):

@@ -119,37 +119,42 @@ float TraceDown( CPhysCollide *pCollide, const Vector &origin, float x, float y 
 
 // Shared triangle-collide clauses for a polysoup and a virtual mesh built
 // from the same grid.
-void CheckTriangleCollide( const char *pFamily, CPhysCollide *pCollide )
+// IVP answers no bounds or trace queries on a virtual mesh (the engine
+// traces displacements itself), so those clauses apply to polysoups only.
+void CheckTriangleCollide( const char *pFamily, CPhysCollide *pCollide, bool queries )
 {
 	char name[128];
 	V_snprintf( name, sizeof( name ), "%s.create", pFamily );
 	if ( !Check( TIER_GAMEPLAY, name, pCollide != NULL ) )
 		return;
 
-	Vector mins, maxs;
-	s_pCollision->CollideGetAABB( &mins, &maxs, pCollide, kMeshOrigin, vec3_angle );
-	V_snprintf( name, sizeof( name ), "%s.aabb", pFamily );
-	// Flat pieces may carry a thin collision skin; the authored bounds hold.
-	Check( TIER_GAMEPLAY, name, NearVec( mins, kMeshOrigin + Vector( -256, -256, 0 ), 1.0f ) &&
-		NearVec( maxs, kMeshOrigin + Vector( 256, 256, kSpikeHeight ), 1.0f ),
-		"(%.2f %.2f %.2f)-(%.2f %.2f %.2f)", mins.x, mins.y, mins.z, maxs.x, maxs.y, maxs.z );
-	V_snprintf( name, sizeof( name ), "%s.aabb-mins", pFamily );
-	ObsVector( name, "a1", mins - kMeshOrigin );
-	V_snprintf( name, sizeof( name ), "%s.aabb-maxs", pFamily );
-	ObsVector( name, "a1", maxs - kMeshOrigin );
+	if ( queries )
+	{
+		Vector mins, maxs;
+		s_pCollision->CollideGetAABB( &mins, &maxs, pCollide, kMeshOrigin, vec3_angle );
+		V_snprintf( name, sizeof( name ), "%s.aabb", pFamily );
+		// Flat pieces may carry a thin collision skin; the authored bounds hold.
+		Check( TIER_GAMEPLAY, name, NearVec( mins, kMeshOrigin + Vector( -256, -256, 0 ), 1.0f ) &&
+			NearVec( maxs, kMeshOrigin + Vector( 256, 256, kSpikeHeight ), 1.0f ),
+			"(%.2f %.2f %.2f)-(%.2f %.2f %.2f)", mins.x, mins.y, mins.z, maxs.x, maxs.y, maxs.z );
+		V_snprintf( name, sizeof( name ), "%s.aabb-mins", pFamily );
+		ObsVector( name, "a1", mins - kMeshOrigin );
+		V_snprintf( name, sizeof( name ), "%s.aabb-maxs", pFamily );
+		ObsVector( name, "a1", maxs - kMeshOrigin );
 
-	// Traces meet the authored surface: flat, the spike and a slope.
-	float flat = TraceDown( pCollide, kMeshOrigin, -200, -200 );
-	float spike = TraceDown( pCollide, kMeshOrigin, 0.5f, 0.25f );
-	float slope = TraceDown( pCollide, kMeshOrigin, 64, 0 );
-	V_snprintf( name, sizeof( name ), "%s.trace-surface", pFamily );
-	Check( TIER_GAMEPLAY, name, Near( flat, 0.0f, 1.0f ) && Near( spike, kSpikeHeight, 1.5f ) && Near( slope, kSpikeHeight * 0.5f, 1.5f ),
-		"flat %.2f spike %.2f slope %.2f", flat, spike, slope );
-	float heights[3] = { flat, spike, slope };
-	V_snprintf( name, sizeof( name ), "%s.trace-heights", pFamily );
-	ObsFloats( name, "a1", 3, heights );
-	V_snprintf( name, sizeof( name ), "%s.trace-outside", pFamily );
-	Check( TIER_GAMEPLAY, name, TraceDown( pCollide, kMeshOrigin, 300, 0 ) < -999.0f );
+		// Traces meet the authored surface: flat, the spike and a slope.
+		float flat = TraceDown( pCollide, kMeshOrigin, -200, -200 );
+		float spike = TraceDown( pCollide, kMeshOrigin, 0.5f, 0.25f );
+		float slope = TraceDown( pCollide, kMeshOrigin, 64, 0 );
+		V_snprintf( name, sizeof( name ), "%s.trace-surface", pFamily );
+		Check( TIER_GAMEPLAY, name, Near( flat, 0.0f, 1.0f ) && Near( spike, kSpikeHeight, 1.5f ) && Near( slope, kSpikeHeight * 0.5f, 1.5f ),
+			"flat %.2f spike %.2f slope %.2f", flat, spike, slope );
+		float heights[3] = { flat, spike, slope };
+		V_snprintf( name, sizeof( name ), "%s.trace-heights", pFamily );
+		ObsFloats( name, "a1", 3, heights );
+		V_snprintf( name, sizeof( name ), "%s.trace-outside", pFamily );
+		Check( TIER_GAMEPLAY, name, TraceDown( pCollide, kMeshOrigin, 300, 0 ) < -999.0f );
+	}
 
 	// A static object of the mesh holds a cube resting on its flat corner.
 	World_t world;
@@ -184,7 +189,7 @@ void TestPolysoup()
 	}
 	CPhysCollide *pCollide = Soup( s_pCollision->ConvertPolysoupToCollide( pSoup, false ) );
 	s_pCollision->PolysoupDestroy( pSoup );
-	CheckTriangleCollide( "polysoup", pCollide );
+	CheckTriangleCollide( "polysoup", pCollide, true );
 	if ( !pCollide )
 		return;
 
@@ -225,7 +230,7 @@ void TestVirtualMesh()
 	params.buildOuterHull = true;
 	CPhysCollide *pCollide = Soup( s_pCollision->CreateVirtualMesh( params ) );
 	Check( TIER_GAMEPLAY, "virtualmesh.queries-handler", mesh.m_calls > 0 );
-	CheckTriangleCollide( "virtualmesh", pCollide );
+	CheckTriangleCollide( "virtualmesh", pCollide, false );
 	if ( pCollide )
 		s_pCollision->DestroyCollide( pCollide );
 }

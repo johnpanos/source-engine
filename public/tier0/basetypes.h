@@ -39,14 +39,6 @@
 #endif
 
 
-#if !defined(PLATFORM_GLIBC) && defined(LINUX) // fuck musl
-#ifdef nullptr
-#undef nullptr
-#endif
-#define nullptr 0
-#endif
-
-
 // stdio.h
 #if !defined( NULL ) || defined( PLATFORM_BSD )
 #undef NULL

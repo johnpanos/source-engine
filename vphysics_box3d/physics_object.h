@@ -196,6 +196,9 @@ public:
 	// Provider internals.
 	IPhysicsShadowController *EnsureShadowController( bool allowTranslation, bool allowRotation );
 	CShadowControllerBox3D *GetShadow() const { return m_pShadow; }
+	// Moved by game code rather than physics: a game-driven shadow or a
+	// player controller (IVP's CPhysicsObject::IsControlledByGame).
+	bool IsControlledByGame() const;
 	// Detaches the shadow controller without destroying it (TransferObject)
 	// and attaches an existing one.
 	CShadowControllerBox3D *DetachShadowController();

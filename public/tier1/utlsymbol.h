@@ -52,6 +52,10 @@ public:
 	// operator==
 	bool operator==( CUtlSymbol const& src ) const { return m_Id == src.m_Id; }
 	bool operator==( const char* pStr ) const;
+	// Exact match for raw ids: C++20 also considers the reversed and rewritten
+	// forms (id == sym, sym != id), which would otherwise be ambiguous with the
+	// built-in comparison through operator UtlSymId_t.
+	bool operator==( UtlSymId_t id ) const { return m_Id == id; }
 	
 	// Is valid?
 	bool IsValid() const { return m_Id != UTL_INVAL_SYMBOL; }

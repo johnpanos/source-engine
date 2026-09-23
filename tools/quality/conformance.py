@@ -31,6 +31,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import toolchain_policy  # noqa: E402
+
 MANIFEST_SCHEMA = "conformance-manifest/v1"
 PROFILE_SCHEMA = "conformance-profile/v1"
 EVIDENCE_SCHEMA = "conformance-evidence/v1"
@@ -96,7 +99,16 @@ def load_manifest(path):
         if sid in seen:
             raise ManifestError("duplicate suite id: %s" % sid)
         seen.add(sid)
-        if not s.get("sources"):
+        if s.get("units") is not None:
+            if s.get("sources"):
+                raise ManifestError("suite %s declares both sources and units" % sid)
+            units = s["units"]
+            if not isinstance(units, list) or not units:
+                raise ManifestError("suite %s declares no units" % sid)
+            for unit in units:
+                if not unit.get("id") or not unit.get("dialect") or not unit.get("sources"):
+                    raise ManifestError("suite %s has a unit without id, dialect or sources" % sid)
+        elif not s.get("sources"):
             raise ManifestError("suite %s declares no sources" % sid)
         expect = s.get("expect", OUTCOME_PASS)
         if expect not in VALID_EXPECT:
@@ -122,9 +134,26 @@ def load_profile(profiles_dir, profile_id):
         raise ManifestError(
             "profile %s has unsupported schema %r (expected %r)"
             % (profile_id, data.get("schema"), PROFILE_SCHEMA))
+    # Repository profiles name a dialect from quality/toolchain/policy.json, the
+    # single owner of standard selection; a literal cxx_std is accepted only
+    # for isolated self-test profiles and never together with a dialect.
+    if data.get("dialect"):
+        if data.get("cxx_std"):
+            raise ManifestError("profile %s declares both dialect and cxx_std" % profile_id)
+        try:
+            policy = toolchain_policy.load_policy(repo_root())
+            data["cxx_std"] = toolchain_policy.profile_std(policy, data["dialect"])
+        except toolchain_policy.PolicyError as e:
+            raise ManifestError("profile %s: %s" % (profile_id, e))
     if not data.get("cxx_std"):
-        raise ManifestError("profile %s declares no cxx_std" % profile_id)
+        raise ManifestError("profile %s declares no dialect or cxx_std" % profile_id)
     return data
+
+
+def suite_sources(suite):
+    if suite.get("units") is not None:
+        return [src for unit in suite["units"] for src in unit["sources"]]
+    return suite["sources"]
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +226,31 @@ def build_command(root, cxx, profile, suite, out_bin):
     return [cxx, *flags, *includes, *sources, "-o", out_bin]
 
 
+def unit_build_commands(root, cxx, profile, suite, out_bin):
+    """Mixed-dialect suites: each unit compiles its sources with its own policy
+    dialect (plus the profile's warnings and the suite's shared flags) into
+    objects, and one link step joins them. Returns the command list."""
+    policy = toolchain_policy.load_policy(root)
+    includes = []
+    for inc in profile.get("include_roots", []):
+        includes += ["-I", os.path.join(root, inc)]
+    commands, objects = [], []
+    for unit in suite["units"]:
+        try:
+            dialect = toolchain_policy.dialect_flags(policy, unit["dialect"])
+        except (KeyError, toolchain_policy.PolicyError) as e:
+            raise ManifestError("suite %s unit %s: unknown dialect %s (%s)"
+                                % (suite["id"], unit["id"], unit["dialect"], e))
+        for index, source in enumerate(unit["sources"]):
+            obj = "%s.%s.%d.o" % (out_bin, unit["id"], index)
+            objects.append(obj)
+            commands.append([cxx, *dialect, *profile.get("base_flags", []),
+                             *suite.get("extra_flags", []), *unit.get("flags", []), *includes,
+                             "-c", os.path.join(root, source), "-o", obj])
+    commands.append([cxx, *objects, *suite.get("link_flags", []), "-o", out_bin])
+    return commands
+
+
 def run_suite(root, cxx, profile, suite, out_dir):
     sid = suite["id"]
     expect = suite.get("expect", OUTCOME_PASS)
@@ -225,7 +279,7 @@ def run_suite(root, cxx, profile, suite, out_dir):
 
     # Missing sources are a runner-level failure: a suite that cannot be found
     # can never certify anything (RFC 0005: fail on missing fixtures).
-    missing = [s for s in suite["sources"] if not os.path.exists(os.path.join(root, s))]
+    missing = [s for s in suite_sources(suite) if not os.path.exists(os.path.join(root, s))]
     if missing:
         result["outcome"] = OUTCOME_MISSING_SOURCE
         result["detail"] = "missing source(s): " + ", ".join(missing)
@@ -233,10 +287,16 @@ def run_suite(root, cxx, profile, suite, out_dir):
         return result
 
     out_bin = os.path.join(out_dir, sid.replace("/", "_").replace(".", "_"))
-    cmd = build_command(root, cxx, profile, suite, out_bin)
-    result["repro"] = " ".join(cmd)
+    if suite.get("units") is not None:
+        commands = unit_build_commands(root, cxx, profile, suite, out_bin)
+    else:
+        commands = [build_command(root, cxx, profile, suite, out_bin)]
+    result["repro"] = " && ".join(" ".join(cmd) for cmd in commands)
 
-    build = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    for cmd in commands:
+        build = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if build.returncode != 0:
+            break
     if build.returncode != 0:
         result["build_ok"] = False
         result["outcome"] = OUTCOME_COMPILE_ERROR
@@ -436,6 +496,7 @@ def build_evidence(root, manifest_path, manifest, cxx, profiles, results,
         "identity": ident,
         "profiles": {
             pid: {
+                "dialect": p.get("dialect"),
                 "cxx_std": p.get("cxx_std"),
                 "base_flags": p.get("base_flags", []),
                 "include_roots": p.get("include_roots", []),

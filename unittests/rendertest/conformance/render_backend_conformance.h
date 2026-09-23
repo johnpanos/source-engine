@@ -27,7 +27,9 @@
 #include <string>
 #include <vector>
 
-namespace render::conformance
+namespace render
+{
+namespace conformance
 {
 
 // A single recorded check. 'id' is a stable identifier (e.g. "caps.immutable")
@@ -47,7 +49,11 @@ struct Report
 
 	void Record( const std::string &id, bool ok, const std::string &detail = "" )
 	{
-		checks.push_back( CheckResult{ id, ok, detail } );
+		CheckResult result;
+		result.id = id;
+		result.ok = ok;
+		result.detail = detail;
+		checks.push_back( result );
 	}
 
 	bool Passed() const
@@ -88,6 +94,7 @@ struct Report
 // 'report'. Does not abort; returns report.Passed() for convenience.
 bool RunRenderBackendConformance( render::IRenderBackendProvider &provider, Report &report );
 
-} // namespace render::conformance
+} // namespace conformance
+} // namespace render
 
 #endif // RENDERTEST_RENDER_BACKEND_CONFORMANCE_H

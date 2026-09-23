@@ -4,7 +4,7 @@
   "description": "Linux x86_64 headless core: C++20, no MFC, no tier0/platform.h, no display, no GPU. The initial portability target for RFC 0002 (D1) and the first profile a domain conformance suite must pass. See RFC/0002-progress.md.",
   "os": "linux",
   "arch": "x86_64",
-  "cxx_std": "c++20",
+  "dialect": "cxx20",
   "include_roots": [
     "public",
     ".",

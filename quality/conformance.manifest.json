@@ -770,6 +770,20 @@
       "expect": "pass"
     },
     {
+      "id": "render.profile",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "REND-PROFILE-001",
+      "contract": "unittests/rendertest/contracts/render.profile.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_render_profile.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "hammer.app.update_hint",
       "domain": "Q-EDITOR",
       "rfc": "0002",

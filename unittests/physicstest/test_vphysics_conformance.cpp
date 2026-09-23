@@ -1658,6 +1658,7 @@ int main( int argc, char **argv )
 		TestObjectsAndEvents();
 		TestFluidsAndSprings();
 		TestSaveRestore();
+		TestPlayerController();
 		TestCollideModels( fixtures.Count() && fixtures[0].loaded ? &fixtures[0].collide : NULL );
 		for ( int i = 0; i < fixtures.Count(); i++ )
 		{

@@ -658,7 +658,9 @@ def configure(conf):
 	# And here C++ flags starts to be treated separately
 	cxxflags = list(cflags)
 	if conf.env.DEST_OS != 'win32':
-		cxxflags += ['-std=c++11','-fpermissive']
+		# TEMPORARY (R03 C++20 migration in progress): private builds opt in until the tree compiles.
+		cxxflags += ['-std=' + os.environ.get('R03_CXX_STD', 'c++11'),'-fpermissive']
+		conf.env.R03_LEGACY_CXX11 = os.environ.get('R03_CXX_STD', 'c++11') != 'c++20'
 
 	if conf.env.COMPILER_CC == 'gcc':
 		conf.define('COMPILER_GCC', 1)

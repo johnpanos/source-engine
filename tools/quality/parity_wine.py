@@ -26,6 +26,9 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import conformance  # noqa: E402
+
 
 def repo_root():
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -103,12 +106,15 @@ def cmd_check(args):
     profile_cache = {}
     def profile_for(pid):
         if pid not in profile_cache:
-            profile_cache[pid] = load_json(os.path.join(profiles_dir, pid + ".json"))
+            profile_cache[pid] = conformance.load_profile(profiles_dir, pid)
         return profile_cache[pid]
 
+    # Mixed-dialect unit suites prove same-toolchain ABI combinations on their
+    # native profile; they are not Windows parity suites.
     suites = [
         s for s in manifest["suites"]
-        if (args.rfc is None or s.get("rfc") == args.rfc)
+        if s.get("units") is None
+        and (args.rfc is None or s.get("rfc") == args.rfc)
         and (args.domain is None or s.get("domain") == args.domain)
     ]
 

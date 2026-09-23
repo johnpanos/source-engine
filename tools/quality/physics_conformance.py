@@ -81,6 +81,7 @@ FAULTS = {
     "save-dropped": ["save.", "restore."],
     "soup-null": ["polysoup.", "virtualmesh."],
     "collide-write-stub": ["collide.write"],
+    "player-inert": ["player."],
 }
 
 LINE_RE = re.compile(r"^(PASS|FAIL) (\S+) (\S+?)(?:: (.*))?$")

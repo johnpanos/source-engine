@@ -19,7 +19,7 @@ def build(bld):
 	bld.program(
 		features='cxx',
 		source=['test_vphysics_conformance.cpp', 'test_vphysics_constraints.cpp', 'test_vphysics_objects.cpp', 'test_vphysics_fluids.cpp', 'test_vphysics_saverestore.cpp',
-		'test_vphysics_collide.cpp'],
+		'test_vphysics_collide.cpp', 'test_vphysics_player.cpp'],
 		target='vphysics_conformance',
 		name='vphysics_conformance',
 		includes=['../../public', '../../public/tier0', '../../public/tier1'],

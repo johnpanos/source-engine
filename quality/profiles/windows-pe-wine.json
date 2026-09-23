@@ -7,7 +7,7 @@
   "runtime": ["wine-11.0-staging", "GE-Proton11-5"],
   "cxx": "x86_64-w64-mingw32-g++",
   "cxx_version": "16.1.1",
-  "cxx_std": "c++20",
+  "dialect": "cxx20",
   "include_roots": [
     "public"
   ],

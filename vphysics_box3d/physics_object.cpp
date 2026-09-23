@@ -807,6 +807,13 @@ void CPhysicsObjectBox3D::SetVelocity( const Vector *velocity, const AngularImpu
 	ClampVelocity();
 }
 
+bool CPhysicsObjectBox3D::IsControlledByGame() const
+{
+	if ( m_pShadow && !m_pShadow->IsPhysicallyControlled() )
+		return true;
+	return ( m_callbackFlags & CALLBACK_IS_PLAYER_CONTROLLER ) != 0;
+}
+
 void CPhysicsObjectBox3D::SetVelocityInstantaneous( const Vector *velocity, const AngularImpulse *angularVelocity )
 {
 	SetVelocity( velocity, angularVelocity );

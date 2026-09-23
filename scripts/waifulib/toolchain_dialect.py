@@ -83,6 +83,9 @@ def apply_toolchain_dialect(self):
 					'quality/toolchain/policy.json instead' % (name, ' '.join(
 					module.std_flags_in(policy, family, own)), attribute))
 			dialect = module.target_dialect(policy, name, language)
+			if self.env.R03_LEGACY_CXX11 and dialect == policy['defaults'][language]:
+				# TEMPORARY (R03 migration): shared trees stay C++11 until it compiles.
+				continue
 			flags = list(self.env[variable])
 			if policy['dialects'][dialect]['mode'] == 'apply':
 				normalized = module.normalize_flags(policy, dialect, family, flags)
@@ -103,8 +106,9 @@ def probe_env(base, module, policy, dialect, language, family):
 	env = base.derive()
 	env.detach()
 	variable = 'CXXFLAGS' if language == 'c++' else 'CFLAGS'
-	if policy['dialects'][dialect]['mode'] == 'apply':
-		env[variable] = module.normalize_flags(policy, dialect, family, list(base[variable]))
+	# Normalizing is the identity for a conforming verify-mode dialect and
+	# selects the fixture-only external-consumer dialect explicitly.
+	env[variable] = module.normalize_flags(policy, dialect, family, list(base[variable]))
 	return env
 
 

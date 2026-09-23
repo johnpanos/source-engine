@@ -78,6 +78,7 @@ void TestObjectsAndEvents();
 void TestFluidsAndSprings();
 void TestSaveRestore();
 // pFixture: a loaded authored model (may be NULL when none loaded).
+void TestPlayerController();
 void TestCollideModels( const struct vcollide_t *pFixture );
 
 #endif // VPHYSICS_CONFORMANCE_H

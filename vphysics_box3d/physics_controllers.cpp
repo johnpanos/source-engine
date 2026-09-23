@@ -249,34 +249,124 @@ void CShadowControllerBox3D::Simulate( float dt )
 // Player controller
 //-----------------------------------------------------------------------------
 CPlayerControllerBox3D::CPlayerControllerBox3D( CPhysicsObjectBox3D *pObject )
-	: m_pObject( pObject ), m_pHandler( NULL ), m_secondsToArrival( 0.0f ), m_pushMassLimit( 1e4f ),
-	  m_pushSpeedLimit( 1e4f ), m_enabled( false )
+	: m_pObject( pObject ), m_pGround( NULL ), m_pHandler( NULL ), m_savedRotDamping( 0.0f ), m_maxDeltaPosition( 24.0f ),
+	  m_dampFactor( 1.0f ), m_secondsToArrival( 0.0f ), m_pushMassLimit( VPHYSICS_MAX_MASS ), m_pushSpeedLimit( 1e4f ),
+	  m_enabled( false ), m_forceTeleport( false ), m_updatedSinceLast( false )
 {
-	pObject->GetPosition( &m_targetPosition, NULL );
-	m_targetVelocity.Init();
+	m_targetPosition.Init();
+	m_groundPosition.Init();
+	m_maxSpeed.Init();
+	m_currentSpeed.Init();
 	m_lastImpulse.Init();
-	m_maxVelocity.Init( 1e4f, 1e4f, 1e4f );
-	pObject->SetPlayerController( this );
+	AttachObject();
+}
+
+CPlayerControllerBox3D::~CPlayerControllerBox3D()
+{
+	DetachObject();
+}
+
+// As IVP: no drag, heavy rotational damping, and the player-controller flag.
+void CPlayerControllerBox3D::AttachObject()
+{
+	m_pObject->EnableDrag( false );
+	float speed;
+	m_pObject->GetDamping( &speed, &m_savedRotDamping );
+	float rot = 100.0f;
+	m_pObject->SetDamping( NULL, &rot );
+	m_pObject->SetCallbackFlags( m_pObject->GetCallbackFlags() | CALLBACK_IS_PLAYER_CONTROLLER );
+	m_pObject->SetPlayerController( this );
+}
+
+void CPlayerControllerBox3D::DetachObject()
+{
+	if ( !m_pObject )
+		return;
+	m_pObject->SetDamping( NULL, &m_savedRotDamping );
+	m_pObject->SetCallbackFlags( m_pObject->GetCallbackFlags() & ~CALLBACK_IS_PLAYER_CONTROLLER );
+	m_pObject->SetPlayerController( NULL );
+	m_pObject = NULL;
+	m_pGround = NULL;
+}
+
+void CPlayerControllerBox3D::ObjectDestroyed( IPhysicsObject *pObject )
+{
+	if ( pObject == m_pGround )
+		m_pGround = NULL;
+}
+
+// Velocity of the ground under the target point.
+Vector CPlayerControllerBox3D::GroundVelocity() const
+{
+	Vector velocity( 0, 0, 0 );
+	if ( m_pGround )
+	{
+		Vector world;
+		m_pGround->LocalToWorld( &world, m_groundPosition );
+		m_pGround->GetVelocityAtPoint( world, &velocity );
+	}
+	return velocity;
 }
 
 void CPlayerControllerBox3D::Update( const Vector &position, const Vector &velocity, float secondsToArrival, bool onground, IPhysicsObject *ground )
 {
+	m_updatedSinceLast = true;
+	// Nothing changed: keep the plan (IVP compares in meters, 1e-6 m^2).
+	const float kSameSq = 1e-6f / ( 0.0254f * 0.0254f );
+	if ( velocity.DistToSqr( m_currentSpeed ) < kSameSq && position.DistToSqr( m_targetPosition ) < kSameSq )
+		return;
+
 	m_targetPosition = position;
-	m_targetVelocity = velocity;
 	m_secondsToArrival = secondsToArrival < 0 ? 0 : secondsToArrival;
-	m_enabled = true;
+	m_currentSpeed = velocity;
 	m_pObject->Wake();
+
+	m_enabled = true;
+	if ( velocity.LengthSqr() <= 0.1f )
+	{
+		// No input velocity: go where physics takes the object.
+		m_enabled = false;
+		ground = NULL;
+	}
+	else
+	{
+		MaxSpeed( velocity );
+	}
+	m_pGround = ground ? ToBox3D( ground ) : NULL;
+	if ( m_pGround )
+		m_pGround->WorldToLocal( &m_groundPosition, m_targetPosition );
+}
+
+// IVP removes the part of the requested velocity the object already has
+// along it. The product dot * length is formed in meters, as IVP does.
+void CPlayerControllerBox3D::MaxSpeed( const Vector &maxVelocity )
+{
+	const float kMeters = 0.0254f;
+	Vector requested = maxVelocity * kMeters;
+	Vector available = requested;
+	Vector direction = requested;
+	float length = VectorNormalize( direction );
+	Vector current;
+	m_pObject->GetVelocity( &current, NULL );
+	float dot = DotProduct( direction, current * kMeters );
+	if ( dot > 0 )
+		available -= direction * ( dot * length );
+	m_maxSpeed.Init( fabsf( available.x ), fabsf( available.y ), fabsf( available.z ) );
+	m_maxSpeed /= kMeters;
 }
 
 bool CPlayerControllerBox3D::IsInContact( void )
 {
+	if ( !m_pObject->IsCollisionEnabled() )
+		return false;
 	CFrictionSnapshotBox3D snapshot( m_pObject );
 	for ( ; snapshot.IsValid(); snapshot.NextFrictionData() )
 	{
 		CPhysicsObjectBox3D *pOther = ToBox3D( snapshot.GetObject( 1 ) );
-		// In contact with something physically simulated (not static, pinned,
-		// or itself game-controlled).
-		if ( pOther && pOther->IsMoveable() && !pOther->GetShadow() && !pOther->GetPlayerController() )
+		// In contact with something physically simulated: not static,
+		// pinned, or itself controlled by the game.
+		if ( pOther && pOther->IsCollisionEnabled() && !pOther->IsStatic() && pOther->IsMotionEnabled() &&
+			!pOther->IsControlledByGame() )
 			return true;
 	}
 	return false;
@@ -284,11 +374,12 @@ bool CPlayerControllerBox3D::IsInContact( void )
 
 void CPlayerControllerBox3D::SetObject( IPhysicsObject *pObject )
 {
-	if ( pObject == m_pObject )
+	CPhysicsObjectBox3D *pBox = ToBox3D( pObject );
+	if ( pBox == m_pObject )
 		return;
-	m_pObject->SetPlayerController( NULL );
-	m_pObject = ToBox3D( pObject );
-	m_pObject->SetPlayerController( this );
+	DetachObject();
+	m_pObject = pBox;
+	AttachObject();
 }
 
 int CPlayerControllerBox3D::GetShadowPosition( Vector *position, QAngle *angles )
@@ -299,12 +390,17 @@ int CPlayerControllerBox3D::GetShadowPosition( Vector *position, QAngle *angles 
 
 void CPlayerControllerBox3D::StepUp( float height )
 {
+	if ( height == 0.0f )
+		return;
 	TeleportUp( m_pObject, height );
 }
 
 void CPlayerControllerBox3D::GetShadowVelocity( Vector *velocity )
 {
-	m_pObject->GetWorldVelocity( velocity, NULL );
+	if ( !velocity )
+		return;
+	m_pObject->GetVelocity( velocity, NULL );
+	*velocity -= GroundVelocity();
 }
 
 IPhysicsObject *CPlayerControllerBox3D::GetObject()
@@ -312,22 +408,169 @@ IPhysicsObject *CPlayerControllerBox3D::GetObject()
 	return m_pObject;
 }
 
-void CPlayerControllerBox3D::Simulate( float dt )
+bool CPlayerControllerBox3D::TryTeleportObject()
 {
-	if ( !m_enabled )
-		return;
+	if ( m_pHandler && !m_forceTeleport && !m_pHandler->ShouldMoveTo( m_pObject, m_targetPosition ) )
+		return false;
 	QAngle angles;
 	m_pObject->GetPosition( NULL, &angles );
-	hlshadowcontrol_params_t params;
-	params.targetPosition = m_targetPosition + m_targetVelocity * m_secondsToArrival;
-	params.targetRotation = angles;
-	params.maxSpeed = m_maxVelocity.Length();
-	params.maxDampSpeed = params.maxSpeed;
-	params.maxAngular = 0.0f;
-	params.maxDampAngular = 0.0f;
-	params.dampFactor = 1.0f;
-	params.teleportDistance = 0.0f;
-	m_secondsToArrival = ComputeShadowControlBox3D( m_pObject, params, m_secondsToArrival, dt, &m_lastImpulse );
+	m_pObject->SetPosition( m_targetPosition, angles, true );
+	m_forceTeleport = false;
+	return true;
+}
+
+namespace
+{
+// IVP's per-axis clamped controller (ComputeController, vector limit form).
+Vector ComputePlayerImpulse( Vector &speed, const Vector &delta, const Vector &maxSpeed, float scaleDelta, float damping )
+{
+	const float kZeroSpeedSq = 1e-6f / ( 0.0254f * 0.0254f );
+	if ( speed.LengthSqr() < kZeroSpeedSq )
+		speed.Init();
+	Vector acceleration = delta * scaleDelta - speed * damping;
+	for ( int i = 2; i >= 0; i-- )
+	{
+		if ( fabsf( acceleration[i] ) >= maxSpeed[i] )
+			acceleration[i] = acceleration[i] < 0 ? -maxSpeed[i] : maxSpeed[i];
+	}
+	speed += acceleration;
+	return acceleration;
+}
+
+// The contact planes the player is pushing into harder than allowed.
+class CNormalList
+{
+public:
+	CNormalList() : m_count( 0 ) {}
+	void AddNormal( const Vector &normal )
+	{
+		if ( m_count == kMaxNormals )
+			return;
+		for ( int i = m_count; --i >= 0; )
+		{
+			if ( DotProduct( m_normals[i], normal ) > 0.99f )
+				return;
+		}
+		m_normals[m_count++] = normal;
+	}
+	Vector ClampVector( const Vector &in, float limitVel ) const
+	{
+		if ( m_count > 2 )
+		{
+			for ( int i = 0; i < m_count; i++ )
+			{
+				if ( DotProduct( in, m_normals[i] ) > 0 )
+					return vec3_origin;
+			}
+		}
+		else if ( m_count == 2 )
+		{
+			Vector crease = CrossProduct( m_normals[0], m_normals[1] );
+			return crease * DotProduct( in, crease );
+		}
+		else if ( m_count == 1 )
+		{
+			float dot = DotProduct( in, m_normals[0] );
+			if ( dot > limitVel )
+				return in + m_normals[0] * ( limitVel - dot );
+		}
+		return in;
+	}
+
+private:
+	static const int kMaxNormals = 8;
+	Vector m_normals[kMaxNormals];
+	int m_count;
+};
+}
+
+// IVP's CPlayerController::do_simulation_controller, in inches.
+void CPlayerControllerBox3D::Simulate( float dt )
+{
+	if ( !m_enabled || !m_pObject || !m_pObject->IsMoveable() || m_pObject->IsAsleep() || dt <= 0 )
+		return;
+
+	Vector speed;
+	m_pObject->GetWorldVelocity( &speed, NULL );
+	Vector baseVelocity( 0, 0, 0 );
+	if ( m_pGround )
+	{
+		// The target rides on the ground; work relative to its surface.
+		m_pGround->LocalToWorld( &m_targetPosition, m_groundPosition );
+		baseVelocity = GroundVelocity();
+		speed -= baseVelocity;
+	}
+
+	Vector position;
+	m_pObject->GetPosition( &position, NULL );
+	Vector delta = m_targetPosition - position;
+	if ( m_forceTeleport || delta.LengthSqr() > m_maxDeltaPosition * m_maxDeltaPosition )
+	{
+		if ( TryTeleportObject() )
+			return;
+	}
+
+	float fraction = 1.0f;
+	if ( m_secondsToArrival > 0 )
+		fraction = MIN( dt / m_secondsToArrival, 1.0f );
+	if ( !m_updatedSinceLast )
+	{
+		// No game update since the last step: limit to the last known good
+		// impulse, and keep it.
+		float length = m_lastImpulse.Length();
+		ComputePlayerImpulse( speed, delta, Vector( length, length, length ), fraction / dt, m_dampFactor );
+	}
+	else
+	{
+		m_lastImpulse = ComputePlayerImpulse( speed, delta, m_maxSpeed, fraction / dt, m_dampFactor );
+	}
+	speed += baseVelocity;
+	m_updatedSinceLast = false;
+
+	// Don't push into immovable, too heavy, or too fast-pushed contacts.
+	Vector pushVelocity = speed;
+	bool onGround = false;
+	float invMass = m_pObject->GetInvMass();
+	float limitVel = m_pushSpeedLimit;
+	CNormalList normals;
+	for ( CFrictionSnapshotBox3D snapshot( m_pObject ); snapshot.IsValid(); snapshot.NextFrictionData() )
+	{
+		Vector normal;
+		snapshot.GetSurfaceNormal( normal );
+		if ( normal.z < -0.7f )
+			onGround = true;
+		if ( normal.z > -0.99f )
+		{
+			IPhysicsObject *pOther = snapshot.GetObject( 1 );
+			if ( !pOther || !pOther->IsMoveable() || pOther->GetMass() > m_pushMassLimit )
+				limitVel = 0.0f;
+			float pushTotal = DotProduct( pushVelocity, normal ) + snapshot.GetNormalForce() * invMass;
+			if ( pushTotal > limitVel )
+				normals.AddNormal( normal );
+		}
+	}
+	Vector limit = normals.ClampVector( pushVelocity, limitVel ) - pushVelocity;
+	speed += limit;
+	m_lastImpulse += limit;
+
+	if ( onGround )
+	{
+		// Moving down: press down with full gravity and no more.
+		Vector gravity;
+		m_pObject->GetEnvironment()->GetGravity( &gravity );
+		float gravityDt = gravity.Length() * dt;
+		if ( m_lastImpulse.z <= 0 )
+		{
+			float change = -gravityDt - m_lastImpulse.z;
+			speed.z += change;
+			m_lastImpulse.z += change;
+		}
+	}
+	Vector current, angular;
+	m_pObject->GetWorldVelocity( &current, &angular );
+	m_pObject->SetWorldVelocity( speed, angular );
+
+	m_secondsToArrival = MAX( m_secondsToArrival - dt, 0.0f );
 }
 
 //-----------------------------------------------------------------------------

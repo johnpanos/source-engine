@@ -11,11 +11,22 @@
 
 #include <string>
 
-namespace render::conformance
+namespace render
+{
+namespace conformance
 {
 
 namespace
 {
+
+// C++11-compatible construction; RenderExtent has default member initializers.
+RenderExtent Extent( uint32_t width, uint32_t height )
+{
+	RenderExtent extent;
+	extent.width = width;
+	extent.height = height;
+	return extent;
+}
 
 // Picks a feature the given adapter does NOT advertise, so we can build an
 // unsatisfiable required-feature request. kNeverSupported is reserved for this.
@@ -265,9 +276,9 @@ void CheckPresentation( IRenderBackendProvider &provider, IRenderDevice &device,
 {
 	IRenderDevice *const deviceBefore = &device;
 
-	TestSurface surface( RenderExtent{ 800, 600 } );
+	TestSurface surface( Extent( 800, 600 ) );
 	RenderPresentationConfig config;
-	config.extent = RenderExtent{ 800, 600 };
+	config.extent = Extent( 800, 600 );
 
 	RenderCreateError err;
 	IRenderPresentation *pres = device.CreatePresentation( surface, config, &err );
@@ -280,22 +291,22 @@ void CheckPresentation( IRenderBackendProvider &provider, IRenderDevice &device,
 		"presentation must report its configured extent" );
 
 	// Runtime resize must not recreate the logical device.
-	const bool resized = pres->ResizeTo( RenderExtent{ 1024, 768 } );
-	report.Record( "present.resize", resized && pres->GetExtent() == RenderExtent{ 1024, 768 },
+	const bool resized = pres->ResizeTo( Extent( 1024, 768 ) );
+	report.Record( "present.resize", resized && pres->GetExtent() == Extent( 1024, 768 ),
 		"runtime resize must update the drawable extent" );
 	report.Record( "present.resize_keeps_device",
 		&device == deviceBefore && device.GetState() == RenderDeviceState::kAvailable,
 		"runtime resize must not recreate or lose the logical render device" );
 
 	// Orientation-style aspect change.
-	const bool rotated = pres->ResizeTo( RenderExtent{ 600, 800 } );
+	const bool rotated = pres->ResizeTo( Extent( 600, 800 ) );
 	report.Record( "present.orientation_change",
-		rotated && pres->GetExtent() == RenderExtent{ 600, 800 } &&
+		rotated && pres->GetExtent() == Extent( 600, 800 ) &&
 			device.GetState() == RenderDeviceState::kAvailable,
 		"an aspect/orientation change must resize without losing the device" );
 
 	// Transient zero-sized state suspends non-fatally.
-	pres->ResizeTo( RenderExtent{ 0, 0 } );
+	pres->ResizeTo( Extent( 0, 0 ) );
 	const RenderPresentStatus suspended = pres->Present();
 	report.Record( "present.zero_size_suspends",
 		suspended == RenderPresentStatus::kSuspended &&
@@ -303,7 +314,7 @@ void CheckPresentation( IRenderBackendProvider &provider, IRenderDevice &device,
 		"a zero-sized surface must suspend presentation, not fail fatally" );
 
 	// Resume when presentable again.
-	pres->ResizeTo( RenderExtent{ 640, 480 } );
+	pres->ResizeTo( Extent( 640, 480 ) );
 	const RenderPresentStatus resumed = pres->Present();
 	report.Record( "present.resume_after_suspend", resumed == RenderPresentStatus::kOk,
 		"presentation must resume once the surface is presentable again" );
@@ -322,10 +333,10 @@ void CheckPresentation( IRenderBackendProvider &provider, IRenderDevice &device,
 		bool allOk = true;
 		for ( uint32_t i = 0; i < caps.maxPresentations; ++i )
 		{
-			TestSurface *s = new TestSurface( RenderExtent{ 320, 240 } );
+			TestSurface *s = new TestSurface( Extent( 320, 240 ) );
 			surfaces.push_back( s );
 			RenderPresentationConfig cfg;
-			cfg.extent = RenderExtent{ 320, 240 };
+			cfg.extent = Extent( 320, 240 );
 			IRenderPresentation *p = device.CreatePresentation( *s, cfg, nullptr );
 			if ( !p )
 				allOk = false;
@@ -336,9 +347,9 @@ void CheckPresentation( IRenderBackendProvider &provider, IRenderDevice &device,
 			"a provider must support up to maxPresentations concurrent surfaces" );
 
 		// One beyond the limit must fail structurally.
-		TestSurface extra( RenderExtent{ 320, 240 } );
+		TestSurface extra( Extent( 320, 240 ) );
 		RenderPresentationConfig cfg;
-		cfg.extent = RenderExtent{ 320, 240 };
+		cfg.extent = Extent( 320, 240 );
 		RenderCreateError overErr;
 		IRenderPresentation *over = device.CreatePresentation( extra, cfg, &overErr );
 		report.Record( "present.over_limit_rejected",
@@ -395,4 +406,5 @@ bool RunRenderBackendConformance( IRenderBackendProvider &provider, Report &repo
 	return report.Passed();
 }
 
-} // namespace render::conformance
+} // namespace conformance
+} // namespace render

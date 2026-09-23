@@ -127,15 +127,16 @@ class CPlayerControllerBox3D : public IPhysicsPlayerController
 {
 public:
 	explicit CPlayerControllerBox3D( CPhysicsObjectBox3D *pObject );
-	virtual ~CPlayerControllerBox3D() {}
+	virtual ~CPlayerControllerBox3D();
 
 	virtual void Update( const Vector &position, const Vector &velocity, float secondsToArrival, bool onground, IPhysicsObject *ground ) override;
 	virtual void SetEventHandler( IPhysicsPlayerControllerEvent *handler ) override { m_pHandler = handler; }
 	virtual bool IsInContact( void ) override;
-	virtual void MaxSpeed( const Vector &maxVelocity ) override { m_maxVelocity = maxVelocity; }
+	virtual void MaxSpeed( const Vector &maxVelocity ) override;
 	virtual void SetObject( IPhysicsObject *pObject ) override;
 	virtual int GetShadowPosition( Vector *position, QAngle *angles ) override;
 	virtual void StepUp( float height ) override;
+	// IVP's jump handling is compiled out.
 	virtual void Jump() override {}
 	virtual void GetShadowVelocity( Vector *velocity ) override;
 	virtual IPhysicsObject *GetObject() override;
@@ -144,21 +145,38 @@ public:
 	virtual void SetPushSpeedLimit( float maxPushSpeed ) override { m_pushSpeedLimit = maxPushSpeed; }
 	virtual float GetPushMassLimit() override { return m_pushMassLimit; }
 	virtual float GetPushSpeedLimit() override { return m_pushSpeedLimit; }
+	// IVP reports its core's temporarily-unmovable state, which Box3D has no
+	// counterpart for.
 	virtual bool WasFrozen() override { return false; }
 
 	void Simulate( float dt );
+	// The environment reports deleted objects so a deleted ground is dropped
+	// (IVP's object listener).
+	void ObjectDestroyed( IPhysicsObject *pObject );
 
 private:
+	void AttachObject();
+	void DetachObject();
+	bool TryTeleportObject();
+	Vector GroundVelocity() const;
+
 	CPhysicsObjectBox3D *m_pObject;
+	CPhysicsObjectBox3D *m_pGround;
 	IPhysicsPlayerControllerEvent *m_pHandler;
-	Vector m_targetPosition;
-	Vector m_targetVelocity;
-	Vector m_lastImpulse;
-	Vector m_maxVelocity;
+	float m_savedRotDamping;
+	float m_maxDeltaPosition;
+	float m_dampFactor;
 	float m_secondsToArrival;
 	float m_pushMassLimit;
 	float m_pushSpeedLimit;
+	Vector m_targetPosition;
+	Vector m_groundPosition;	// target in the ground's local space
+	Vector m_maxSpeed;			// per-axis limit
+	Vector m_currentSpeed;		// last requested velocity
+	Vector m_lastImpulse;
 	bool m_enabled;
+	bool m_forceTeleport;
+	bool m_updatedSinceLast;
 };
 
 //-----------------------------------------------------------------------------
