@@ -1,0 +1,4 @@
+"patch"
+{
+	"include" "materials/conformance/../conformance/pbr_fallback.vmt"
+}

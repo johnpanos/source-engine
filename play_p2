@@ -6,17 +6,38 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 P2_STEAM_ROOT="${P2_STEAM_ROOT:-$HOME/.local/share/Steam/steamapps/common/Portal 2}"
 P2_RUNTIME="${P2_RUNTIME:-$ROOT/run/runtime-p2}"
 P2_BUILD_DIR="${P2_BUILD_DIR:-$ROOT/build-p2}"
+P2_WAFLOCK=.lock-waf-p2
 
 if [[ "${1:-}" == "--retail" ]]; then
     shift
     exec "$P2_STEAM_ROOT/portal2.sh" "$@"
 fi
 
-if [[ "${1:-}" == "--prepare" ]]; then
+mode="${1:-}"
+if [[ "$mode" == "--prepare" || "$mode" == "--configure-only" ]]; then
+    shift
+fi
+
+if [[ -d "$P2_BUILD_DIR/c4che" ]]; then
+    if ! grep -Eq "^GAMES = ['\"]portal2['\"]$" "$P2_BUILD_DIR"/c4che/*_cache.py; then
+        echo "play_p2: $P2_BUILD_DIR is configured for a different game" >&2
+        exit 1
+    fi
+else
+    echo "play_p2: configuring Portal 2 build in $P2_BUILD_DIR"
+    (cd "$ROOT" && WAFLOCK="$P2_WAFLOCK" python3 ./waf configure \
+        --platform-provider=sdl3 --render-backend=native-vulkan \
+        --build-games=portal2 --physics-backend=both --disable-warns \
+        -T release -o "$P2_BUILD_DIR" --prefix="$P2_BUILD_DIR/install")
+fi
+
+if [[ "$mode" == "--prepare" || "$mode" == "--configure-only" ]]; then
     python3 "$ROOT/tools/quality/stage_portal2_runtime.py" \
         --steam-root "$P2_STEAM_ROOT" --runtime "$P2_RUNTIME"
     exit 0
 fi
+
+(cd "$ROOT" && WAFLOCK="$P2_WAFLOCK" python3 ./waf build)
 
 python3 "$ROOT/tools/quality/stage_portal2_runtime.py" \
     --steam-root "$P2_STEAM_ROOT" --runtime "$P2_RUNTIME" --build "$P2_BUILD_DIR"

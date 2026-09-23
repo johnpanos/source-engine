@@ -13,6 +13,7 @@ games = {
 	'episodic':['server_base.vpc', 'server_episodic.vpc'],
 	'hl2mp': ['server_base.vpc', 'server_hl2mp.vpc'],
 	'portal': ['server_base.vpc', 'server_portal.vpc'],
+	'portal2': ['server_base.vpc', 'server_portal_base.vpc', 'server_portal2.vpc'],
 	'hl1': ['server_base.vpc', 'server_hl1.vpc'],
 	'hl1mp': ['server_base.vpc', 'server_hl1mp.vpc'],
 	'cstrike': ['server_base.vpc', 'server_cstrike.vpc', 'nav_mesh.vpc'],
@@ -39,6 +40,13 @@ def configure(conf):
 		conf.fatal("Couldn't find game: ", game)
 
 def build(bld):
+	if bld.env.GAMES == 'portal2':
+		from portal2_source_inventory import inventory
+		missing = [row for row in inventory(bld.srcnode.abspath())
+		           if row['side'] == 'server' and not row['present']]
+		if missing:
+			bld.fatal('Portal 2 server source is incomplete (%d missing VPC references): %s'
+			          % (len(missing), ', '.join(row['path'] for row in missing[:8])))
 	game = vpc_parser.parse_vpcs( bld.env, games[bld.env.GAMES], '../..' )
 
 	includes = [
@@ -81,4 +89,3 @@ def build(bld):
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx      = bld.get_taskgen_count()
 	)
-

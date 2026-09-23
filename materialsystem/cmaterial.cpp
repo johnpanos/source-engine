@@ -365,8 +365,9 @@ protected:
 
 // Forward decls of helper functions for dealing with patch vmts.
 static void ApplyPatchKeyValues( KeyValues &keyValues, KeyValues &patchKeyValues );
-static bool AccumulateRecursiveVmtPatches( KeyValues &patchKeyValuesOut, KeyValues **ppBaseKeyValuesOut,
-										   const KeyValues& keyValues, const char *pPathID, CUtlVector<FileNameHandle_t> *pIncludes );
+static bool AccumulateRecursiveVmtPatches( KeyValues &patchKeyValuesOut,
+    KeyValues **ppBaseKeyValuesOut, const KeyValues &keyValues, const char *pPathID,
+    CUtlVector<FileNameHandle_t> *pIncludes, bool bValidatePbrIncludes = false );
 
 //-----------------------------------------------------------------------------
 // Parser utilities
@@ -3409,7 +3410,29 @@ void AccumulatePatchKeyValues( KeyValues &srcKeyValues, KeyValues &patchKeyValue
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-bool AccumulateRecursiveVmtPatches( KeyValues &patchKeyValuesOut, KeyValues **ppBaseKeyValuesOut, const KeyValues& keyValues, const char *pPathID, CUtlVector<FileNameHandle_t> *pIncludes )
+static bool IsValidPbrPatchInclude( const char *pIncludeFileName )
+{
+	const char prefix[] = "materials/";
+	const char suffix[] = ".vmt";
+	const size_t prefixLength = sizeof( prefix ) - 1;
+	const size_t suffixLength = sizeof( suffix ) - 1;
+	if ( !pIncludeFileName )
+		return false;
+	const size_t length = strlen( pIncludeFileName );
+	if ( length <= prefixLength + suffixLength || length >= MAX_PATH ||
+	     V_strnicmp( pIncludeFileName, prefix, prefixLength ) ||
+	     V_stricmp( pIncludeFileName + length - suffixLength, suffix ) )
+		return false;
+	const size_t relativeLength = length - prefixLength - suffixLength;
+	char relative[MAX_PATH];
+	memcpy( relative, pIncludeFileName + prefixLength, relativeLength );
+	relative[relativeLength] = '\0';
+	return render::pbr::IsValidFallbackReference( relative );
+}
+
+bool AccumulateRecursiveVmtPatches( KeyValues &patchKeyValuesOut, KeyValues **ppBaseKeyValuesOut,
+    const KeyValues &keyValues, const char *pPathID, CUtlVector<FileNameHandle_t> *pIncludes,
+    bool bValidatePbrIncludes )
 {
 	if ( pIncludes )
 	{
@@ -3440,6 +3463,12 @@ bool AccumulateRecursiveVmtPatches( KeyValues &patchKeyValuesOut, KeyValues **pp
 		
 		// Load the included file
 		const char *pIncludeFileName = pCurrentKeyValues->GetString( "include" );
+		if ( bValidatePbrIncludes && !IsValidPbrPatchInclude( pIncludeFileName ) )
+		{
+			Warning( "PBR fallback patch has an invalid include path\n" );
+			pCurrentKeyValues->deleteThis();
+			return false;
+		}
 
 		if ( pIncludeFileName == NULL )
 		{
@@ -3494,7 +3523,8 @@ bool AccumulateRecursiveVmtPatches( KeyValues &patchKeyValuesOut, KeyValues **pp
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-void ExpandPatchFile( KeyValues& keyValues, KeyValues &patchKeyValues, const char *pPathID, CUtlVector<FileNameHandle_t> *pIncludes )
+bool ExpandPatchFile( KeyValues &keyValues, KeyValues &patchKeyValues, const char *pPathID,
+    CUtlVector<FileNameHandle_t> *pIncludes, bool bValidatePbrIncludes = false )
 {
 	KeyValues *pNonPatchKeyValues = NULL;
 	if ( !patchKeyValues.IsEmpty() )
@@ -3503,10 +3533,11 @@ void ExpandPatchFile( KeyValues& keyValues, KeyValues &patchKeyValues, const cha
 	}
 	else
 	{
-		bool bSuccess = AccumulateRecursiveVmtPatches( patchKeyValues, &pNonPatchKeyValues, keyValues, pPathID, pIncludes );
+		bool bSuccess = AccumulateRecursiveVmtPatches( patchKeyValues, &pNonPatchKeyValues,
+		    keyValues, pPathID, pIncludes, bValidatePbrIncludes );
 		if ( !bSuccess )
 		{
-			return;
+			return false;
 		}
 	}
 
@@ -3517,6 +3548,7 @@ void ExpandPatchFile( KeyValues& keyValues, KeyValues &patchKeyValues, const cha
 		keyValues = *pNonPatchKeyValues;
 		pNonPatchKeyValues->deleteThis();
 	}
+	return true;
 }
 
 static const char *LookupPbrVmtParameter( const char *pName, void *pContext )
@@ -3580,9 +3612,10 @@ bool LoadVMTFile( KeyValues &vmtKeyValues, KeyValues &patchKeyValues, const char
 		    pFallbackKeys->LoadFromFile( g_pFullFileSystem, pFallbackFileName, "GAME" );
 		if ( bValidFallback )
 		{
-			ExpandPatchFile( *pFallbackKeys, *pFallbackPatches, "GAME", NULL );
+			bValidFallback =
+			    ExpandPatchFile( *pFallbackKeys, *pFallbackPatches, "GAME", NULL, true );
 			const char *pFallbackShader = pFallbackKeys->GetName();
-			bValidFallback = V_stricmp( pFallbackShader, "patch" ) != 0 &&
+			bValidFallback = bValidFallback && V_stricmp( pFallbackShader, "patch" ) != 0 &&
 			                 !render::pbr::IsMetalRoughShader( pFallbackShader );
 			if ( bValidFallback && g_pShaderDevice->IsUsingGraphics() )
 				bValidFallback = ShaderSystem()->FindShader( pFallbackShader ) != NULL;

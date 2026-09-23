@@ -116,6 +116,7 @@ class PbrFallbackTest(unittest.TestCase):
                             "missing_target_rejected": True,
                             "self_rejected": True,
                             "traversal_rejected": True,
+                            "nested_traversal_rejected": True,
                             "unsupported_rejected": True,
                             "cycle_rejected": True,
                             "pbr_target_rejected": True}}
@@ -144,6 +145,12 @@ class PbrFallbackTest(unittest.TestCase):
         report = self.capture()
         report["invalid"]["missing_reference_rejected"] = False
         self.assertTrue(any("missing_reference" in failure
+                            for failure in oracle.evaluate(report, "none")))
+
+    def test_accepted_nested_patch_traversal_fails(self):
+        report = self.capture()
+        report["invalid"]["nested_traversal_rejected"] = False
+        self.assertTrue(any("nested_traversal" in failure
                             for failure in oracle.evaluate(report, "none")))
 
 

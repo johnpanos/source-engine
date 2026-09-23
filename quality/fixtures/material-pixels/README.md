@@ -19,9 +19,10 @@ real material system. The backend is identified by each filename and report.
 
 `pbr-fallback-primary.vmt` and `pbr-fallback-legacy.vmt` are authored inputs
 for the `pbr-fallback` family. The driver copies them into a private runtime
-as `conformance/pbr_case.vmt` and `conformance/pbr_fallback.vmt`. Nine more
+as `conformance/pbr_case.vmt` and `conformance/pbr_fallback.vmt`. Ten more
 primary VMTs omit a required field, name an absent or self fallback, use a
-traversal path, reference an unsupported/PBR shader, or reach a patch cycle.
+traversal path directly or through a nested patch, reference an
+unsupported/PBR shader, or reach a patch cycle.
 Its oracle checks the resolved legacy shader and green rendered pixel and
 requires the material loader to reject each invalid VMT. It does not use a
 D3D9 reference capture.

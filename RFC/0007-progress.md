@@ -175,14 +175,14 @@ VMT. It inspects the fallback through the existing patch resolver, rejects a
 remaining patch root or another PBR shader, and checks the selected shader
 catalog when graphics is active. `FindMaterial` then returns the engine error
 material instead of a PBR material that silently drops to wireframe. The
-material pixel harness stages nine invalid PBR VMTs alongside the valid case
-and requires all nine to be rejected. The positive fallback pixel remains part
+material pixel harness stages ten invalid PBR VMTs alongside the valid case
+and requires all ten to be rejected. The positive fallback pixel remains part
 of the same run.
 
 Local evidence (2026-09-22): both DXVK and native Vulkan profile builds of
 `material_pixel_conformance` succeeded. Staged `pbr-fallback` runs passed on
 both profiles, including shader `UnlitGeneric`, green center pixel, clear
-outside pixel, and all nine invalid-material rejection flags. The DXVK
+outside pixel, and the original nine invalid-material rejection flags. The DXVK
 capture is at `/tmp/rfc0007-pbr-validation-dxvk-20260923d` and the native
 capture at `/tmp/rfc0007-pbr-validation-native-20260923c`. The shared RFC 0007
 release conformance check passed four suites, including 26 schema checks; the
@@ -194,11 +194,18 @@ The full material-pixel Python test module currently also exercises a
 concurrently added `sky` family whose reference file is absent, so that
 module's complete run is not green.
 
-This runtime preflight uses the legacy patch resolver, which can still follow
-an unsafe nested `include` before the final root is checked. It has not proved
-all malformed-VMT syntax fails, and no installed package-level content gate
-runs the editor catalog against every shipped PBR material. Those cases and
-the full native material path remain before fallback and R47 acceptance.
+The fallback patch resolver now checks each `include` path before opening it.
+The tenth negative fixture points through `..` to an existing legacy VMT; the
+loader rejects that path while the valid fallback still renders green. Both
+the native Vulkan and DXVK staged runs passed with all ten rejection flags;
+evidence is in `/tmp/rfc0007-pbr-nested-native-20260923a` and
+`/tmp/rfc0007-pbr-nested-dxvk-20260923a`. The focused five Python fallback
+oracle tests and the four RFC 0007 release conformance suites passed. This
+protects the fallback patch chain. A primary VMT patch can still be followed
+before its eventual PBR root is known; malformed-VMT syntax is not fully
+covered, and no installed package-level content gate runs the editor catalog
+against every shipped PBR material. Those cases and the full native material
+path remain before fallback and R47 acceptance.
 
 R48–R52 have no implementation evidence yet. In particular, vbsp/vvis/vrad
 are not ported to Waf, the Cycles provider is not built or pinned, and RFC

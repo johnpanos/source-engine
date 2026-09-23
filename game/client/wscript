@@ -17,6 +17,7 @@ games = {
 	'hl1': ['client_base.vpc', 'client_hl1.vpc'],
 	'episodic': ['client_base.vpc', 'client_episodic.vpc'],
 	'portal': ['client_base.vpc', 'client_portal.vpc'],
+	'portal2': ['client_base.vpc', 'client_portal_base.vpc', 'client_portal2.vpc'],
 	'hl1mp': ['client_base.vpc', 'client_hl1mp.vpc'],
 	'cstrike': ['client_base.vpc', 'client_cstrike.vpc'],
 	'dod': ['client_base.vpc', 'client_dod.vpc']
@@ -32,6 +33,13 @@ def configure(conf):
 		conf.fatal("Couldn't find game: ", game)
 
 def build(bld):
+	if bld.env.GAMES == 'portal2':
+		from portal2_source_inventory import inventory
+		missing = [row for row in inventory(bld.srcnode.abspath())
+		           if row['side'] == 'client' and not row['present']]
+		if missing:
+			bld.fatal('Portal 2 client source is incomplete (%d missing VPC references): %s'
+			          % (len(missing), ', '.join(row['path'] for row in missing[:8])))
 	game = vpc_parser.parse_vpcs( bld.env, games[bld.env.GAMES], '../..' )
 
 	includes = [
@@ -91,4 +99,3 @@ def build(bld):
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx      = bld.get_taskgen_count()
 	)
-

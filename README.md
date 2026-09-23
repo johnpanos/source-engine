@@ -106,6 +106,14 @@ The [ranked roadmap](AGENTS.md#unified-ranked-roadmap) is authoritative. Legacy
 OpenGL adapters and DXVK experiments are migration tools, not the final render
 architecture; auxiliary features do not displace the platform infrastructure.
 
+# Portal 2 source target (in progress)
+
+`./play_p2 --configure-only` creates an isolated `build-p2` Waf configuration
+and stages VPKs from the installed Portal 2 game into `run/runtime-p2` as
+symlinks. `./play_p2` builds and launches this repository's Portal 2 target;
+it currently stops at the [missing source inventory](game/shared/portal2/MISSING.md).
+`./play_p2 --retail` launches the installed game directly.
+
 # How to Build
 
 The commands below build the existing configuration. They do not enable or

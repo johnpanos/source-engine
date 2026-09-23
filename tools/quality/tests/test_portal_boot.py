@@ -283,6 +283,14 @@ class StagingTests(unittest.TestCase):
             self.assertNotIn("bin/libclient.so", installed)
             self.assertNotIn("bin/libserver.so", installed)
 
+    def test_portal2_game_outputs_use_separate_gamebin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build, stage = self.make_build(Path(directory), "portal2")
+            installed = boot.install_build(build, stage, game="portal2")
+            self.assertIn("portal2/bin/libclient.so", installed)
+            self.assertIn("portal2/bin/libserver.so", installed)
+            self.assertNotIn("portal/bin/libclient.so", installed)
+
     def test_unqualified_game_outputs_require_unambiguous_portal_selection(self):
         for selection in (None, "hl2", "portal,hl2"):
             with self.subTest(selection=selection), tempfile.TemporaryDirectory() as directory:
@@ -391,6 +399,24 @@ class StagingTests(unittest.TestCase):
             self.assertTrue((stage / "portal/content.vpk").is_symlink())
             self.assertFalse((stage / "engine.log").exists())
             self.assertFalse((stage / "portal/screenshots").exists())
+
+    def test_portal2_content_only_stages_vpks_without_retail_binaries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime, stage = root / "retail", root / "staged"
+            (runtime / "portal2/bin").mkdir(parents=True)
+            (runtime / "bin").mkdir()
+            (runtime / "portal2/gameinfo.txt").write_text("gameinfo")
+            (runtime / "portal2/pak01_dir.vpk").write_bytes(b"vpk")
+            (runtime / "portal2/bin/client.so").write_bytes(b"retail")
+            (runtime / "bin/engine.so").write_bytes(b"retail")
+
+            boot.stage_runtime(runtime, stage, game="portal2", content_only=True)
+
+            self.assertTrue((stage / "portal2/pak01_dir.vpk").is_symlink())
+            self.assertTrue((stage / "portal2/gameinfo.txt").is_file())
+            self.assertFalse((stage / "portal2/bin/client.so").exists())
+            self.assertFalse((stage / "bin/engine.so").exists())
 
     def test_refuses_to_stage_inside_original_runtime(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -481,6 +481,8 @@ bool CMaterialPixelApp::RunPbrFallbackCases( FILE *out )
 	    g_pMaterialSystem->FindMaterial( "conformance/pbr_self", TEXTURE_GROUP_OTHER, false );
 	IMaterial *pTraversal =
 	    g_pMaterialSystem->FindMaterial( "conformance/pbr_traversal", TEXTURE_GROUP_OTHER, false );
+	IMaterial *pNestedTraversal = g_pMaterialSystem->FindMaterial(
+	    "conformance/pbr_nested_traversal", TEXTURE_GROUP_OTHER, false );
 	IMaterial *pUnsupported = g_pMaterialSystem->FindMaterial(
 	    "conformance/pbr_unsupported", TEXTURE_GROUP_OTHER, false );
 	IMaterial *pCycle =
@@ -492,7 +494,7 @@ bool CMaterialPixelApp::RunPbrFallbackCases( FILE *out )
 	    "\"outside\":[%u,%u,%u]},\"invalid\":{\"missing_reference_rejected\":%s,"
 	    "\"missing_mrao_rejected\":%s,\"missing_base_rejected\":%s,"
 	    "\"missing_target_rejected\":%s,"
-	    "\"self_rejected\":%s,\"traversal_rejected\":%s,"
+	    "\"self_rejected\":%s,\"traversal_rejected\":%s,\"nested_traversal_rejected\":%s,"
 	    "\"unsupported_rejected\":%s,\"cycle_rejected\":%s,"
 	    "\"pbr_target_rejected\":%s}}\n",
 	    shader, pMaterial->IsErrorMaterial() ? "true" : "false", center[0], center[1], center[2],
@@ -503,6 +505,7 @@ bool CMaterialPixelApp::RunPbrFallbackCases( FILE *out )
 	    pMissingTarget && pMissingTarget->IsErrorMaterial() ? "true" : "false",
 	    pSelf && pSelf->IsErrorMaterial() ? "true" : "false",
 	    pTraversal && pTraversal->IsErrorMaterial() ? "true" : "false",
+	    pNestedTraversal && pNestedTraversal->IsErrorMaterial() ? "true" : "false",
 	    pUnsupported && pUnsupported->IsErrorMaterial() ? "true" : "false",
 	    pCycle && pCycle->IsErrorMaterial() ? "true" : "false",
 	    pPbrTarget && pPbrTarget->IsErrorMaterial() ? "true" : "false" );

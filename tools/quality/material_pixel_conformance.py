@@ -133,6 +133,7 @@ def read_pixels(path):
                                                               "missing_target_rejected",
                                                               "self_rejected",
                                                               "traversal_rejected",
+                                                              "nested_traversal_rejected",
                                                               "unsupported_rejected",
                                                               "cycle_rejected",
                                                               "pbr_target_rejected")):
@@ -464,6 +465,7 @@ def check_pbr_fallback(report):
     for key in ("missing_reference_rejected", "missing_mrao_rejected",
                 "missing_base_rejected",
                 "missing_target_rejected", "self_rejected", "traversal_rejected",
+                "nested_traversal_rejected",
                 "unsupported_rejected", "cycle_rejected", "pbr_target_rejected"):
         if not report["invalid"][key]:
             failures.append("PBR material %s was accepted by the runtime loader" % key)
@@ -586,6 +588,10 @@ def run(args):
                                   ("pbr-fallback-missing-target.vmt", "pbr_missing_target.vmt"),
                                   ("pbr-fallback-self.vmt", "pbr_self.vmt"),
                                   ("pbr-fallback-traversal.vmt", "pbr_traversal.vmt"),
+                                  ("pbr-fallback-nested-traversal.vmt",
+                                   "pbr_nested_traversal.vmt"),
+                                  ("pbr-fallback-nested-traversal-target.vmt",
+                                   "pbr_nested_traversal_target.vmt"),
                                   ("pbr-fallback-unsupported.vmt", "pbr_unsupported.vmt"),
                                   ("pbr-fallback-unsupported-target.vmt",
                                    "pbr_unsupported_target.vmt"),
