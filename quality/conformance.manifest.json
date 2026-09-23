@@ -849,6 +849,24 @@
       "expect": "pass"
     },
     {
+      "id": "render.pbr-material-schema",
+      "domain": "Q-CONTENT",
+      "rfc": "0007",
+      "migration": "PBR-SCHEMA-001",
+      "contract": "unittests/rendertest/contracts/render.pbr-material-schema.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "hammer/core/formats/material_catalog.cpp",
+        "hammer/core/formats/material.cpp",
+        "hammer/core/formats/vtf_image.cpp",
+        "hammer/core/formats/keyvalues.cpp",
+        "unittests/hammertest/formats/test_pbr_material_schema.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.pbr-brdf",
       "domain": "Q-PRESENTATION",
       "rfc": "0007",

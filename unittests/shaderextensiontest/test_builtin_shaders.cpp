@@ -104,6 +104,8 @@ void Run()
 		CHECK( !shaders->GetShader( shaders->ShaderCount() ) );
 		bool foundLightmapped = false;
 		bool foundWireframe = false;
+		bool foundLegacyPbr = false;
+		bool foundPbrFallback = false;
 		for ( int i = 0; i < shaders->ShaderCount(); ++i )
 		{
 			IShader *shader = shaders->GetShader( i );
@@ -112,8 +114,14 @@ void Run()
 				continue;
 			foundLightmapped |= std::strcmp( shader->GetName(), "LightmappedGeneric" ) == 0;
 			foundWireframe |= std::strcmp( shader->GetName(), "Wireframe_DX9" ) == 0;
+			foundLegacyPbr |= std::strcmp( shader->GetName(), "PBR" ) == 0;
+			if ( std::strcmp( shader->GetName(), "PBRMetalRough" ) == 0 )
+			{
+				foundPbrFallback = true;
+				CHECK( std::strcmp( shader->GetFallbackShader( NULL ), "Wireframe_DX9" ) == 0 );
+			}
 		}
-		CHECK( foundLightmapped && foundWireframe );
+		CHECK( foundLightmapped && foundWireframe && foundLegacyPbr && foundPbrFallback );
 		ConVar *registered = cvars->FindVar( "mat_disable_lightwarp" );
 		CHECK( registered != NULL );
 		CHECK( !provider->connect( host ) );

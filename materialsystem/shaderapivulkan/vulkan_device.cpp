@@ -5178,8 +5178,10 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				}
 				else
 				{
+					const bool cable = ( d.colorFlags & kFragmentCable ) != 0;
+					const int secondTexture = cable ? d.samplerHandles[1] : d.lightmapHandle;
 					const VkDescriptorSet sets[2] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
-					    sampledSet( d.lightmapHandle, kColorSrgbReadLightmap ) };
+					    sampledSet( secondTexture, kColorSrgbReadLightmap ) };
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 					    m_dynTexPipelineLayout, 0, 2, sets, 0, nullptr );
 				}

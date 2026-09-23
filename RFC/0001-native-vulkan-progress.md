@@ -1509,3 +1509,36 @@ python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime \
     --build build --renderer native-vulkan --hdr none --family modellight \
     --reference quality/fixtures/material-pixels/modellight-dx9-none.json --out OUT
 ```
+
+## Cable_DX9 normal-map lighting (2026-09-23)
+
+The cable shader binds its normal map at sampler 0 and its authored cable color
+at sampler 1. Native treated sampler 0 as the base color and ignored the normal
+map lighting, producing the bright cyan/magenta strands shown in the reported
+frame. The native textured shader now evaluates `cable_ps2x.fxc`'s squared
+half-Lambert term from the tangent-space normal and multiplies the sRGB-decoded
+sampler-1 color and vertex lighting. The family is explicitly recognized as
+`Cable_DX9`, and its second descriptor uses the material's sampler-1 binding.
+
+Evidence:
+- A new `cable` material pixel family renders front, side, back and diagonal
+  normals. Its independent equation check and the DXVK 2.7.1 reference both
+  pass on native Vulkan; the negative test that ignores the normal map fails as
+  intended. The reference capture is documented in
+  `quality/fixtures/material-pixels/cable-dxvk-none.json`, documented in the
+  fixture README.
+- `material_pixel_conformance` built for both native Vulkan and DXVK. The three
+  cable-specific quality tests pass.
+
+Other visual reports in this task remain separate native-pipeline gaps pending
+their own material and scene captures: monitor-screen imagery, refractive glass,
+sky rendering, crosshair sizing, and the reported over-bright spheres. In
+particular, `MonitorScreen_DX9`, `Sky_DX9` and `Refract_DX90` are not currently
+claimed by `NativePipelineImplementsShader`; rendering them as generic base
+texture draws would not be a faithful fix.
+
+```sh
+python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime-native \
+    --build build-r03-portal-native --renderer native-vulkan --hdr none --family cable \
+    --reference quality/fixtures/material-pixels/cable-dxvk-none.json --out OUT
+```

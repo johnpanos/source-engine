@@ -110,7 +110,8 @@
           "public/render/render_backend.h",
           "public/render/render_profile.h",
           "public/render/render_presentation.h",
-          "public/render/pbr_brdf.h"
+          "public/render/pbr_brdf.h",
+          "public/render/pbr_material_schema.h"
         ],
         "allowedEdges": []
       },
@@ -512,7 +513,8 @@
         "allowedEdges": [
           "hammer.geometry",
           "hammer.scene",
-          "hammer.ports"
+          "hammer.ports",
+          "render.contracts"
         ]
       },
       {

@@ -4251,6 +4251,8 @@ static int SnapshotShaderFlags( const CShaderShadowVulkan &shadow )
 	// luminance_compare_ps20 and its ps20b build (screenspace_general picks it).
 	if ( !V_strnicmp( shadow.m_pixelShaderName, "luminance_compare_ps20", 22 ) )
 		flags |= CVulkanContext::kFragmentLuminanceCompare;
+	if ( !V_strnicmp( shadow.m_pixelShaderName, "cable_ps20", 10 ) )
+		flags |= CVulkanContext::kFragmentCable;
 	if ( !V_stricmp( shadow.m_vertexShaderName, "screenspaceeffect_vs20" ) )
 		flags |= CVulkanContext::kVertexScreenSpace;
 	// bufferclearobeystencil_vs20 passes clip-space positions and the vertex

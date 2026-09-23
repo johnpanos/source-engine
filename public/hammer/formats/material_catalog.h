@@ -15,8 +15,10 @@
 //			Ownership is layered and DRY: VMT syntax + parameters are owned by
 //			hammer::formats::Material (material.h); VTF bytes -> pixels by
 //			VtfImage (vtf_image.h); asset lookup by the IAssetSource port. This
-//			catalog only composes them and caches results. Strict-core: C++ stdlib,
-//			those three, and the keyvalues codec they use.
+//			catalog only composes them and caches results. Its PBR validation reads
+//			the versioned render schema and asks a caller-supplied shader catalog
+//			for compatibility capability. Strict-core: C++ stdlib, those contracts,
+//			and the keyvalues codec they use.
 //
 //=============================================================================//
 
@@ -43,6 +45,42 @@ namespace hammer::formats
 // forward slashes, no prefix, no extension.
 std::string CanonicalizeMaterialName( const std::string &name );
 
+enum class PbrMaterialStatus
+{
+	kValid,
+	kNotPbr,
+	kMaterialMissing,
+	kInvalidMaterialPath,
+	kMalformedMaterial,
+	kMaterialCycle,
+	kMaterialChainTooDeep,
+	kMissingParameter,
+	kInvalidFallbackPath,
+	kSelfFallback,
+	kFallbackMissing,
+	kFallbackMalformed,
+	kFallbackCycle,
+	kFallbackChainTooDeep,
+	kUnsupportedFallbackShader
+};
+
+struct PbrMaterialCheck
+{
+	PbrMaterialCheck( PbrMaterialStatus value, const char *missingParameter = nullptr,
+	    const std::string &shader = std::string() )
+	    : status( value ), parameter( missingParameter ), fallbackShader( shader )
+	{
+	}
+
+	PbrMaterialStatus status;
+	const char *parameter; // schema-owned name when a required value is missing
+	std::string fallbackShader;
+};
+
+// The caller supplies the compatibility provider's actual shader catalog;
+// this check never guesses support from a hardcoded list or backend name.
+using SupportsPbrFallbackShader = bool ( * )( const std::string &shader, void *context );
+
 class MaterialCatalog
 {
 public:
@@ -63,6 +101,12 @@ public:
 	// material, its base texture, or the decode is missing/invalid; the result
 	// (hit or miss) is cached and the pointer is stable for the catalog's lifetime.
 	const VtfImage *BaseTextureImage( const std::string &name );
+
+	// Validates the PBR VMT's required fields and follows its fallback material
+	// through bounded patch includes. A valid result means the supplied provider
+	// claims the resolved fallback shader; it does not render or validate pixels.
+	PbrMaterialCheck ValidatePbrMaterial(
+	    const std::string &name, SupportsPbrFallbackShader supportsShader, void *context ) const;
 
 private:
 	const hammer::ports::IAssetSource &m_source;

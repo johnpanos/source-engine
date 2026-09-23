@@ -39,8 +39,10 @@ layout( push_constant ) uniform Constants
 	// vertex color in place of the base texture (bufferclearobeystencil_ps2x:
 	// result = vColor, the clear color the quad's vertices carry), 256 times
 	// the vertex color and 1024 times the vertex alpha
-	// (vertexlit_and_unlit_generic_ps2x with VERTEXCOLOR / g_fVertexAlpha;
-	// 512 is read by the vertex stage), 2048 its SELFILLUM (see main);
+		// (vertexlit_and_unlit_generic_ps2x with VERTEXCOLOR / g_fVertexAlpha;
+		// 512 is read by the vertex stage), 2048 its SELFILLUM (see main), 4096
+		// the Cable_DX9 normal-map half-Lambert term (sampler 0 normal, sampler 1
+		// sRGB base texture and fragVertexColor directional-light color);
 	// w = linear output scale (FinalOutput's LINEAR_LIGHT_SCALE).
 	vec4 alphaParams;
 }
@@ -81,6 +83,19 @@ void main()
 		    fragModulation.a );
 		if ( ( flags & 1024 ) != 0 )
 			result.a *= fragVertexColor.a;
+	}
+	else if ( ( flags & 4096 ) != 0 )
+	{
+		// Cable_DX9's cable_ps2x.fxc decodes the normal-map texel from [0,1]
+		// to tangent-space [-1,1], then applies a squared half-Lambert from +Z.
+		// The cable shader binds its normal map at s0 and its authored color at
+		// s1; sampler 1 is supplied by the material pipeline's second descriptor.
+		vec3 normal = texture( baseTexture, fragUv ).xyz * 2.0 - 1.0;
+		float halfLambert = normal.z * 0.5 + 0.5;
+		float lighting = halfLambert * halfLambert;
+		vec4 cableBase = texture( lightmapTexture, fragLightmapUv );
+		result = vec4( cableBase.rgb * fragVertexColor.rgb * lighting,
+			cableBase.a * fragVertexColor.a );
 	}
 	else
 	{

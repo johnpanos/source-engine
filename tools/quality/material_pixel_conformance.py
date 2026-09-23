@@ -74,7 +74,8 @@ MODEL_TOLERANCE = 3
 DARK = 2  # a channel at or below this reads as zero
 LIGHTMAP_CASES = ("black_lightmap", "ramp_low", "ramp_mid", "ramp_high", "channels",
                   "base_gray", "base_color")
-FAMILIES = ("lightmap", "exposure", "skinning", "portal", "modellight")
+FAMILIES = ("lightmap", "exposure", "skinning", "portal", "modellight", "cable",
+            "pbr-fallback")
 # Families whose harness writes whole frames, and the oracle module of each
 # (validate, evaluate).
 FRAME_FAMILIES = {"portal": material_pixel_portal, "modellight": material_pixel_modellight}
@@ -84,6 +85,8 @@ FRAME_FAMILIES = {"portal": material_pixel_portal, "modellight": material_pixel_
 # None: the quad is back-facing and model materials cull it, so no third holds it.
 SKINNING_CASES = {"rigid_bone0": 0, "one_bone": 0, "implicit_third_weight": 1,
                   "blend_half": 1, "high_index": 2, "rigid_back_facing": None}
+CABLE_CASES = ("front_facing_normal", "side_facing_normal", "back_facing_normal",
+               "diagonal_normal")
 # The model material is unlit: a covered pixel is its base color up to output
 # rounding and filtering.
 SKIN_COLOR_TOLERANCE = 12
@@ -110,6 +113,24 @@ def read_pixels(path):
                           % (path, family, list(FAMILIES)))
     if family == "exposure":
         return _read_exposure(path, report)
+    if family == "pbr-fallback":
+        pixels = report.get("pixels", {})
+        if not isinstance(pixels, dict) or any(
+                not isinstance(pixels.get(point), list) or len(pixels[point]) != 3 or
+                any(not isinstance(channel, int) or channel < 0 or channel > 255
+                    for channel in pixels[point])
+                for point in ("center", "outside")) or not isinstance(
+                    report.get("shader"), str) or not isinstance(
+                        report.get("error_material"), bool):
+            raise PixelsError("%s has an incomplete PBR fallback capture" % path)
+        return report
+    if family == "cable":
+        names = [case.get("name") for case in report.get("cases", [])]
+        if names != list(CABLE_CASES) or any(len(case.get("pixels", [])) != 3
+                                             for case in report.get("cases", [])):
+            raise PixelsError("%s has cable cases %s, expected %s"
+                              % (path, names, list(CABLE_CASES)))
+        return report
     if family in FRAME_FAMILIES:
         try:
             return FRAME_FAMILIES[family].validate(path, report)
@@ -375,6 +396,48 @@ def check_skinning(report):
     return failures
 
 
+def check_cable(report):
+    """Cable_DX9's squared half-Lambert from the decoded tangent normal's Z."""
+    failures = []
+    for case in report["cases"]:
+        normal_z = case["normal"][2] / 127.5 - 1.0
+        half_lambert = normal_z * 0.5 + 0.5
+        lighting = half_lambert * half_lambert
+        expected = [_linear_to_srgb(_srgb_to_linear(channel) * lighting)
+                    for channel in case["base"]]
+        if not _close(case["pixels"], expected, 4):
+            failures.append("%s: got %s, expected cable half-Lambert %s"
+                            % (case["name"], case["pixels"], expected))
+    return failures
+
+
+def check_pbr_fallback(report):
+    """The runtime must select and draw the referenced legacy VMT."""
+    failures = []
+    if report["shader"] != "UnlitGeneric" or report["error_material"]:
+        failures.append("PBR fallback resolved %s, error material %s; expected UnlitGeneric"
+                        % (report["shader"], report["error_material"]))
+    if not _close(report["pixels"]["center"], [0, 255, 0], PIXEL_TOLERANCE):
+        failures.append("PBR fallback center pixel %s, expected the green legacy texture"
+                        % report["pixels"]["center"])
+    if not _close(report["pixels"]["outside"], CLEAR, PIXEL_TOLERANCE):
+        failures.append("PBR fallback outside pixel %s, expected untouched clear color"
+                        % report["pixels"]["outside"])
+    return failures
+
+
+def compare_cable(report, reference):
+    failures = []
+    for case, ref in zip(report["cases"], reference["cases"]):
+        if case["name"] != ref["name"] or case["normal"] != ref["normal"] or \
+                case["base"] != ref["base"]:
+            failures.append("%s: cable inputs differ from the DXVK reference" % case["name"])
+        elif not _close(case["pixels"], ref["pixels"], PIXEL_TOLERANCE):
+            failures.append("%s: got %s, DXVK reference %s" %
+                            (case["name"], case["pixels"], ref["pixels"]))
+    return failures
+
+
 def compare_skinning(report, reference):
     return ["%s third %d: %s, reference %s" % (case["name"], third, pixel, expected)
             for case, ref in zip(report["cases"], reference["cases"])
@@ -406,6 +469,16 @@ def evaluate(report, hdr, reference=None):
         if reference is not None:
             failures += compare_exposure(report, reference)
         return failures
+    if report["family"] == "cable":
+        failures = check_cable(report)
+        if reference is not None:
+            failures += compare_cable(report, reference)
+        return failures
+    if report["family"] == "pbr-fallback":
+        failures = check_pbr_fallback(report)
+        if reference is not None and report["pixels"] != reference["pixels"]:
+            failures.append("PBR fallback pixels differ from the reference capture")
+        return failures
     failures = check_orientation(report) + check_properties(report) + check_tone_scale(report)
     if report["hdr_type"] == HDR_TYPES["integer"]:
         failures += check_model(report)
@@ -436,6 +509,16 @@ def run(args):
     stage = output / "runtime"
     evidence["staging"] = portal_boot.stage_runtime(args.runtime, stage)
     evidence["build_overrides"] = portal_boot.install_build(args.build, stage)
+    if args.family == "pbr-fallback":
+        fixture_dir = Path(__file__).resolve().parents[2] / "quality/fixtures/material-pixels"
+        material_dir = stage / "portal/materials/conformance"
+        material_dir.mkdir(parents=True, exist_ok=True)
+        evidence["fixtures"] = {}
+        for fixture, material in (("pbr-fallback-primary.vmt", "pbr_case.vmt"),
+                                  ("pbr-fallback-legacy.vmt", "pbr_fallback.vmt")):
+            target = material_dir / material
+            shutil.copy2(fixture_dir / fixture, target)
+            evidence["fixtures"][material] = portal_boot.sha256(target)
     harness = stage / "material_pixel_conformance"
     shutil.copy2(find_harness(args.build), harness)
     evidence["harness_sha256"] = portal_boot.sha256(harness)

@@ -504,7 +504,8 @@ public:
 		// vertexlit_and_unlit_generic with SELFILLUM ($selfillum): the base alpha
 		// blends the vertex color (the diffuse term, times c1) toward the
 		// modulation (c1 times $selfillumtint); alpha is the modulation's.
-		kFragmentSelfIllum = 2048
+		kFragmentSelfIllum = 2048,
+		kFragmentCable = 4096
 	};
 	void SelectDynamicColorSpace( int flags ) { m_dynColorFlags = flags; }
 	// Linear scale applied to the textured pipeline's color before the sRGB

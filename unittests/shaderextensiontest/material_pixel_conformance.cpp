@@ -37,6 +37,9 @@
 //          modellight: VertexLitGeneric model lighting, the ambient cube, local
 //          lights and static vertex lighting (material_pixel_modellight.cpp).
 //
+//          pbr-fallback: a PBRMetalRough VMT follows $fallbackmaterial to a
+//          distinct UnlitGeneric VMT and draws its green procedural texture.
+//
 //          This program measures; it does not judge. It writes the inputs and
 //          the measured pixels as source-material-pixels/v1 JSON, and
 //          tools/quality/material_pixel_conformance.py applies the oracle:
@@ -223,6 +226,8 @@ private:
 	bool RunLightmapCases( FILE *out );
 	bool RunExposureCases( FILE *out );
 	bool RunSkinningCases( FILE *out );
+	bool RunCableCases( FILE *out );
+	bool RunPbrFallbackCases( FILE *out );
 	bool RenderCase( IMaterial *pMaterial, int sortId, const int offset[2], int lightmapPageId,
 	    const float ( *points )[2], int pointCount, unsigned char ( *pixels )[3],
 	    float toneScale = 1.0f );
@@ -304,11 +309,14 @@ int CMaterialPixelApp::Main()
 	const bool skinning = !Q_stricmp( family, "skinning" );
 	const bool portal = !Q_stricmp( family, "portal" );
 	const bool modelLight = !Q_stricmp( family, "modellight" );
+	const bool cable = !Q_stricmp( family, "cable" );
+	const bool pbrFallback = !Q_stricmp( family, "pbr-fallback" );
 	if ( !outPath[0] || ( !integerHdr && Q_stricmp( hdr, "none" ) ) ||
-	     ( !exposure && !skinning && !portal && !modelLight && Q_stricmp( family, "lightmap" ) ) )
+	     ( !exposure && !skinning && !portal && !modelLight && !cable && !pbrFallback &&
+	         Q_stricmp( family, "lightmap" ) ) )
 	{
 		Warning( "material pixel conformance: need -out <file>, -hdr <none|integer> and "
-		         "-family <lightmap|exposure|skinning|portal|modellight>\n" );
+		         "-family <lightmap|exposure|skinning|portal|modellight|cable|pbr-fallback>\n" );
 		return 2;
 	}
 
@@ -377,9 +385,11 @@ int CMaterialPixelApp::Main()
 		Warning( "material pixel conformance: cannot write %s\n", outPath );
 		return 2;
 	}
-	const bool ok = exposure   ? RunExposureCases( out )
-	                : skinning ? RunSkinningCases( out )
-	                : portal   ? RunPortalCases( out, outPath, WriteClearProbeThunk )
+	const bool ok = exposure      ? RunExposureCases( out )
+	                : skinning    ? RunSkinningCases( out )
+	                : cable       ? RunCableCases( out )
+	                : pbrFallback ? RunPbrFallbackCases( out )
+	                : portal      ? RunPortalCases( out, outPath, WriteClearProbeThunk )
 	                : modelLight
 	                    // Integer HDR scales FinalOutput's linear light (the game's
 	                    // tone-mapping scale); without HDR it is 1.
@@ -389,6 +399,179 @@ int CMaterialPixelApp::Main()
 	fclose( out );
 	pLauncher->DestroyGameWindow();
 	return ok ? 0 : 1;
+}
+
+struct CableCase
+{
+	const char *name;
+	unsigned char normal[3];
+	unsigned char base[3];
+};
+
+static const CableCase kCableCases[] = {
+    { "front_facing_normal", { 128, 128, 255 }, { 255, 128, 64 } },
+    { "side_facing_normal", { 255, 128, 128 }, { 255, 128, 64 } },
+    { "back_facing_normal", { 128, 128, 0 }, { 255, 128, 64 } },
+    { "diagonal_normal", { 128, 204, 230 }, { 64, 192, 255 } },
+};
+
+bool CMaterialPixelApp::RunPbrFallbackCases( FILE *out )
+{
+	static CSolidColorRegenerator s_Regenerators[3];
+	const char *textureNames[3] = { "conformance/pbr_primary_red", "conformance/pbr_primary_mrao",
+	    "conformance/pbr_fallback_green" };
+	const unsigned char colors[3][3] = { { 255, 0, 0 }, { 0, 255, 255 }, { 0, 255, 0 } };
+	for ( int i = 0; i < 3; ++i )
+	{
+		ITexture *pTexture = g_pMaterialSystem->CreateProceduralTexture( textureNames[i],
+		    TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888,
+		    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL |
+		        TEXTUREFLAGS_SINGLECOPY );
+		if ( !pTexture )
+			return false;
+		for ( int channel = 0; channel < 3; ++channel )
+			s_Regenerators[i].m_Color[channel] = colors[i][channel];
+		pTexture->SetTextureRegenerator( &s_Regenerators[i] );
+		pTexture->Download();
+	}
+
+	IMaterial *pMaterial =
+	    g_pMaterialSystem->FindMaterial( "conformance/pbr_case", TEXTURE_GROUP_OTHER );
+	if ( !pMaterial )
+		return false;
+	pMaterial->IncrementReferenceCount();
+	g_pMaterialSystem->CacheUsedMaterials();
+	const char *shader = pMaterial->GetShaderName();
+	if ( !shader )
+		shader = "";
+
+	fprintf( out, "{\"schema\":\"source-material-pixels/v1\",\"family\":\"pbr-fallback\"," );
+	WriteClearProbe( out );
+	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+	unsigned char center[3] = {};
+	unsigned char outside[3] = {};
+	g_pMaterialSystem->BeginFrame( 0 );
+	{
+		int width = 0, height = 0;
+		g_pMaterialSystem->GetBackBufferDimensions( width, height );
+		pRenderContext->Viewport( 0, 0, width, height );
+		pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
+		pRenderContext->ClearBuffers( true, true );
+		pRenderContext->DrawScreenSpaceRectangle(
+		    pMaterial, width / 4, height / 4, width / 2, height / 2, 0, 0, 3, 3, 4, 4 );
+		ReadPixel( 0.5f, 0.5f, center );
+		ReadPixel( 0.1f, 0.1f, outside );
+	}
+	g_pMaterialSystem->EndFrame();
+	g_pMaterialSystem->SwapBuffers();
+	fprintf( out,
+	    "\"shader\":\"%s\",\"error_material\":%s,\"pixels\":{\"center\":[%u,%u,%u],"
+	    "\"outside\":[%u,%u,%u]}}\n",
+	    shader, pMaterial->IsErrorMaterial() ? "true" : "false", center[0], center[1], center[2],
+	    outside[0], outside[1], outside[2] );
+	pMaterial->DecrementReferenceCount();
+	return true;
+}
+
+bool CMaterialPixelApp::RunCableCases( FILE *out )
+{
+	static CSolidColorRegenerator s_BaseRegenerator;
+	static CSolidColorRegenerator s_NormalRegenerator;
+	ITexture *pBase = g_pMaterialSystem->CreateProceduralTexture( "conformance/cable_base",
+	    TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888,
+	    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL |
+	        TEXTUREFLAGS_SINGLECOPY );
+	ITexture *pNormal = g_pMaterialSystem->CreateProceduralTexture( "conformance/cable_normal",
+	    TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888,
+	    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL |
+	        TEXTUREFLAGS_SINGLECOPY );
+	if ( !pBase || !pNormal )
+		return false;
+	pBase->SetTextureRegenerator( &s_BaseRegenerator );
+	pNormal->SetTextureRegenerator( &s_NormalRegenerator );
+
+	KeyValues *pKeys = new KeyValues( "Cable" );
+	pKeys->SetString( "$basetexture", "conformance/cable_base" );
+	pKeys->SetString( "$bumpmap", "conformance/cable_normal" );
+	IMaterial *pMaterial = g_pMaterialSystem->CreateMaterial( "conformance/cable", pKeys );
+	if ( !pMaterial || pMaterial->IsErrorMaterial() )
+		return false;
+	pMaterial->IncrementReferenceCount();
+	g_pMaterialSystem->CacheUsedMaterials();
+	if ( pMaterial->GetVertexFormat() == 0 )
+	{
+		Warning( "material pixel conformance: %s has no vertex format after precache\n",
+		    pMaterial->GetName() );
+		return false;
+	}
+
+	fprintf( out, "{\"schema\":\"source-material-pixels/v1\",\"family\":\"cable\"," );
+	WriteClearProbe( out );
+	fprintf( out, "\"cases\":[" );
+	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+	bool ok = true;
+	for ( int i = 0; i < ARRAYSIZE( kCableCases ); ++i )
+	{
+		const CableCase &c = kCableCases[i];
+		for ( int k = 0; k < 3; ++k )
+		{
+			s_BaseRegenerator.m_Color[k] = c.base[k];
+			s_NormalRegenerator.m_Color[k] = c.normal[k];
+		}
+		pBase->Download();
+		pNormal->Download();
+
+		IMesh *pMesh = pRenderContext->CreateStaticMesh(
+		    pMaterial->GetVertexFormat(), TEXTURE_GROUP_STATIC_VERTEX_BUFFER_MODELS, pMaterial );
+		CMeshBuilder meshBuilder;
+		meshBuilder.Begin( pMesh, MATERIAL_TRIANGLES, 4, 6 );
+		const float corners[4][2] = {
+		    { -0.75f, 0.75f }, { 0.75f, 0.75f }, { 0.75f, -0.75f }, { -0.75f, -0.75f } };
+		for ( int v = 0; v < 4; ++v )
+		{
+			meshBuilder.Position3f( corners[v][0], corners[v][1], 0.5f );
+			meshBuilder.Color4ub( 255, 255, 255, 255 );
+			meshBuilder.TexCoord2f( 0, 0.5f * ( corners[v][0] / 0.75f + 1.0f ),
+			    0.5f * ( 1.0f - corners[v][1] / 0.75f ) );
+			meshBuilder.TexCoord2f( 1, 0.5f * ( corners[v][0] / 0.75f + 1.0f ),
+			    0.5f * ( 1.0f - corners[v][1] / 0.75f ) );
+			meshBuilder.TangentS3f( 1.0f, 0.0f, 0.0f );
+			meshBuilder.TangentT3f( 0.0f, 1.0f, 0.0f );
+			meshBuilder.AdvanceVertex();
+		}
+		for ( unsigned short index : { 0, 1, 2, 0, 2, 3 } )
+			meshBuilder.FastIndex( index );
+		meshBuilder.End();
+
+		unsigned char pixel[3] = {};
+		g_pMaterialSystem->BeginFrame( 0 );
+		{
+			int width = 0, height = 0;
+			g_pMaterialSystem->GetBackBufferDimensions( width, height );
+			pRenderContext->Viewport( 0, 0, width, height );
+			pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
+			pRenderContext->ClearBuffers( true, true );
+			for ( int mode = MATERIAL_VIEW; mode <= MATERIAL_PROJECTION; ++mode )
+			{
+				pRenderContext->MatrixMode( static_cast<MaterialMatrixMode_t>( mode ) );
+				pRenderContext->LoadIdentity();
+			}
+			pRenderContext->Bind( pMaterial );
+			pMesh->Draw();
+			ok = ReadPixel( 0.5f, 0.5f, pixel ) && ok;
+		}
+		g_pMaterialSystem->EndFrame();
+		g_pMaterialSystem->SwapBuffers();
+		pRenderContext->DestroyStaticMesh( pMesh );
+		fprintf( out,
+		    "%s{\"name\":\"%s\",\"normal\":[%u,%u,%u],\"base\":[%u,%u,%u],"
+		    "\"pixels\":[%u,%u,%u]}",
+		    i ? "," : "", c.name, c.normal[0], c.normal[1], c.normal[2], c.base[0], c.base[1],
+		    c.base[2], pixel[0], pixel[1], pixel[2] );
+	}
+	fprintf( out, "]}\n" );
+	pMaterial->DecrementReferenceCount();
+	return ok;
 }
 
 void CMaterialPixelApp::DrawLightmappedQuad(

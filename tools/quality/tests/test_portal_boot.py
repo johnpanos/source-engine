@@ -316,6 +316,28 @@ class StagingTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "ambiguous"):
                 boot.install_build(build, stage)
 
+    def test_nested_waf_profile_outputs_are_not_staged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build, stage = self.make_build(Path(directory))
+            (build / "materialsystem/stdshaders").mkdir(parents=True)
+            (build / "materialsystem/stdshaders/libstdshader_dx9.so").write_text(
+                "active profile shader")
+            nested = build / "pbr-native"
+            (nested / "c4che").mkdir(parents=True)
+            (nested / "materialsystem/stdshaders").mkdir(parents=True)
+            (nested / "materialsystem/stdshaders/libstdshader_dx9.so").write_text(
+                "other profile shader")
+            (nested / "launcher_main/hl2_launcher").parent.mkdir(parents=True)
+            (nested / "launcher_main/hl2_launcher").write_text("other profile launcher")
+
+            installed = boot.install_build(build, stage)
+
+            self.assertEqual("engine/libengine.so", (stage / "bin/libengine.so").read_text())
+            self.assertEqual("active profile shader",
+                             (stage / "bin/libstdshader_dx9.so").read_text())
+            self.assertIn("bin/libstdshader_dx9.so", installed)
+            self.assertNotIn("pbr-native", installed["hl2_launcher"]["source"])
+
     def test_native_sonames_are_staged_as_independent_verified_files(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

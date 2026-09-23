@@ -541,13 +541,16 @@ A new shader family named `PBRMetalRough` (distinct from the existing D3D9
 | `$emissiontexture`, `$emissionscale` | Emission | sRGB texture, linear scale |
 | `$alphatest`, `$alphatestreference`, `$translucent` | As legacy | Unchanged semantics |
 | `$envmap` | `env_cubemap` or explicit cubemap | Consumed through IBL prefilter |
-| Fallback declaration (syntax decided with the material-system integration) | Legacy family + parameters used when a provider lacks the capability | Required |
+| `$fallbackmaterial` | Path to a legacy VMT used when a provider lacks the capability | Required material reference |
 
 The VMT schema, the parameter defaults, and the sRGB/linear classification of
-each slot have one owner: a versioned schema consumed by the material system,
-the Hammer `MaterialCatalog`, the baker (for albedo), and the exporters. New
-PBR textures are KTX2 (RFC 0008), which covers BC7, BC6H, and ASTC. VTF lacks
-BC6H/BC7 and its BC5 encoder is unavailable on Linux (see
+each slot have one owner: a versioned schema to be consumed by the material
+system, the Hammer `MaterialCatalog`, the baker (for albedo), and the exporters.
+The first schema, editor-side fallback validator, and temporary runtime shader
+registration are recorded in [progress](0007-progress.md); end-to-end material
+loading and fallback rendering remain to be tested. New PBR textures are KTX2
+(RFC 0008), which covers BC7, BC6H, and ASTC. VTF lacks BC6H/BC7 and its BC5
+encoder is unavailable on Linux (see
 [findings](#vtf-can-already-carry-bc4bc5-but-not-bc6hbc7)). PBR materials may
 still reference legacy VTFs, which load unchanged.
 

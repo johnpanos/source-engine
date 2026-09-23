@@ -9,15 +9,21 @@
 //=============================================================================//
 
 #include "hammer/formats/material_catalog.h"
+#include "render/pbr_material_schema.h"
 
 #include <algorithm>
 #include <cctype>
+#include <map>
+#include <utility>
+#include <vector>
 
 namespace hammer::formats
 {
 
 namespace
 {
+
+constexpr int kMaxPatchDepth = 10; // CMaterial::AccumulateRecursiveVmtPatches limit.
 
 std::string ToLower( std::string s )
 {
@@ -27,6 +33,30 @@ std::string ToLower( std::string s )
 		    return static_cast<char>( std::tolower( c ) );
 	    } );
 	return s;
+}
+
+bool SafeMaterialPath( const std::string &name )
+{
+	if ( name.empty() )
+		return false;
+	std::size_t start = 0;
+	while ( start < name.size() )
+	{
+		const std::size_t end = name.find( '/', start );
+		const std::size_t length = ( end == std::string::npos ? name.size() : end ) - start;
+		if ( length == 0 || ( length == 1 && name[start] == '.' ) ||
+		     ( length == 2 && name[start] == '.' && name[start + 1] == '.' ) )
+			return false;
+		for ( std::size_t i = start; i < start + length; ++i )
+		{
+			if ( static_cast<unsigned char>( name[i] ) < 32 || name[i] == ':' )
+				return false;
+		}
+		if ( end == std::string::npos )
+			return true;
+		start = end + 1;
+	}
+	return false;
 }
 
 } // namespace
@@ -165,6 +195,113 @@ const VtfImage *MaterialCatalog::BaseTextureImage( const std::string &name )
 	auto inserted =
 	    m_images.emplace( canonical, std::make_unique<VtfImage>( std::move( *image ) ) );
 	return inserted.first->second.get();
+}
+
+PbrMaterialCheck MaterialCatalog::ValidatePbrMaterial(
+    const std::string &name, SupportsPbrFallbackShader supportsShader, void *context ) const
+{
+	const std::string canonical = CanonicalizeMaterialName( name );
+	if ( !SafeMaterialPath( canonical ) )
+		return { PbrMaterialStatus::kInvalidMaterialPath };
+	std::string vmt;
+	std::set<std::string> materialVisited;
+	std::vector<Material> definitions;
+	std::string materialPath = canonical;
+	for ( int depth = 0; depth < kMaxPatchDepth; ++depth )
+	{
+		if ( !materialVisited.insert( materialPath ).second )
+			return { PbrMaterialStatus::kMaterialCycle };
+		if ( !m_source.ReadAsset( "materials/" + materialPath + ".vmt", vmt ) )
+			return { PbrMaterialStatus::kMaterialMissing };
+		std::optional<Material> parsed = ParseMaterial( vmt );
+		if ( !parsed )
+			return { PbrMaterialStatus::kMalformedMaterial };
+		const bool patch = parsed->IsPatch();
+		const std::string *include = patch ? parsed->Param( "include" ) : nullptr;
+		const std::string includeName = include ? *include : std::string();
+		definitions.push_back( std::move( *parsed ) );
+		if ( !patch )
+			break;
+		if ( !include )
+			return { PbrMaterialStatus::kMalformedMaterial };
+		materialPath = CanonicalizeMaterialName( includeName );
+		if ( !SafeMaterialPath( materialPath ) )
+			return { PbrMaterialStatus::kInvalidMaterialPath };
+	}
+	if ( definitions.empty() || definitions.back().IsPatch() )
+		return { PbrMaterialStatus::kMaterialChainTooDeep };
+	if ( !render::pbr::IsMetalRoughShader( definitions.back().shader.c_str() ) )
+		return { PbrMaterialStatus::kNotPbr };
+	// Match CMaterial::ApplyPatchKeyValues for scalar VMT parameters: nested
+	// patches accumulate outer to inner, with inner values winning; inserts
+	// overwrite, then replaces affect only keys that exist after insertion.
+	std::map<std::string, std::string> values;
+	for ( const KeyValue &parameter : definitions.back().parameters )
+		values[ToLower( parameter.key )] = parameter.value;
+	std::map<std::string, std::string> inserts;
+	std::map<std::string, std::string> replaces;
+	for ( std::size_t i = 0; i + 1 < definitions.size(); ++i )
+	{
+		for ( const KeyValue &parameter : definitions[i].patchInsert )
+			inserts[ToLower( parameter.key )] = parameter.value;
+		for ( const KeyValue &parameter : definitions[i].patchReplace )
+			replaces[ToLower( parameter.key )] = parameter.value;
+	}
+	for ( const auto &entry : inserts )
+		values[entry.first] = entry.second;
+	for ( const auto &entry : replaces )
+	{
+		auto found = values.find( entry.first );
+		if ( found != values.end() )
+			found->second = entry.second;
+	}
+
+	const auto lookup = []( const char *parameter, void *source ) -> const char *
+	{
+		const auto *parameters = static_cast<const std::map<std::string, std::string> *>( source );
+		const auto found = parameters->find( ToLower( parameter ) );
+		return found == parameters->end() ? nullptr : found->second.c_str();
+	};
+	const render::pbr::DefinitionResult definition =
+	    render::pbr::ValidateDefinition( definitions.back().shader.c_str(), lookup, &values );
+	if ( definition.status != render::pbr::DefinitionStatus::kValid )
+		return { PbrMaterialStatus::kMissingParameter, definition.parameter };
+
+	const std::string fallback = CanonicalizeMaterialName(
+	    lookup( render::pbr::Parameter( render::pbr::MaterialParameter::kFallbackMaterial ).name,
+	        &values ) );
+	if ( !SafeMaterialPath( fallback ) )
+		return { PbrMaterialStatus::kInvalidFallbackPath };
+	if ( fallback == canonical )
+		return { PbrMaterialStatus::kSelfFallback };
+
+	std::set<std::string> visited;
+	visited.insert( canonical );
+	std::string current = fallback;
+	for ( int depth = 0; depth < kMaxPatchDepth; ++depth )
+	{
+		if ( !visited.insert( current ).second )
+			return { PbrMaterialStatus::kFallbackCycle };
+		if ( !m_source.ReadAsset( "materials/" + current + ".vmt", vmt ) )
+			return { PbrMaterialStatus::kFallbackMissing };
+		std::optional<Material> target = ParseMaterial( vmt );
+		if ( !target )
+			return { PbrMaterialStatus::kFallbackMalformed };
+		if ( target->IsPatch() )
+		{
+			const std::string *include = target->Param( "include" );
+			if ( !include )
+				return { PbrMaterialStatus::kFallbackMalformed };
+			current = CanonicalizeMaterialName( *include );
+			if ( !SafeMaterialPath( current ) )
+				return { PbrMaterialStatus::kInvalidFallbackPath };
+			continue;
+		}
+		if ( !supportsShader || !supportsShader( target->shader, context ) )
+			return { PbrMaterialStatus::kUnsupportedFallbackShader, nullptr, target->shader };
+		return { PbrMaterialStatus::kValid, nullptr, target->shader };
+	}
+	return { PbrMaterialStatus::kFallbackChainTooDeep };
 }
 
 } // namespace hammer::formats

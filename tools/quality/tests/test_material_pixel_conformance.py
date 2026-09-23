@@ -18,8 +18,9 @@ REFERENCES = QUALITY.parents[1] / "quality" / "fixtures" / "material-pixels"
 
 
 def capture(hdr, family="lightmap"):
-    """The versioned D3D9 reference capture for an HDR mode."""
-    return json.loads((REFERENCES / ("%s-dx9-%s.json" % (family, hdr))).read_text())
+    """The versioned backend reference capture for a family and HDR mode."""
+    backend = "dxvk" if family == "cable" else "dx9"
+    return json.loads((REFERENCES / ("%s-%s-%s.json" % (family, backend, hdr))).read_text())
 
 
 def exposure(hdr="integer"):
@@ -54,6 +55,58 @@ class ReferenceCaptureTest(unittest.TestCase):
     def test_closed_form_is_not_claimed_for_ldr(self):
         # 8-bit LDR lightmaps quantize the dark end; LDR is held to the reference.
         self.assertNotEqual(oracle.check_model(capture("none")), [])
+
+
+class CableTest(unittest.TestCase):
+    def test_dxvk_reference_matches_cable_half_lambert(self):
+        report = capture("none", "cable")
+        self.assertEqual(report["renderer"], "vulkan-compat")
+        self.assertEqual(oracle.evaluate(report, "none", report), [])
+
+    def test_ignored_normal_map_is_detected(self):
+        report = copy.deepcopy(capture("none", "cable"))
+        for case in report["cases"]:
+            case["pixels"] = list(case["base"])
+        failures = oracle.evaluate(report, "none", capture("none", "cable"))
+        self.assertTrue(any("half-Lambert" in failure for failure in failures))
+
+    def test_missing_cable_cases_are_rejected(self):
+        report = copy.deepcopy(capture("none", "cable"))
+        report["cases"].pop()
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pixels.json"
+            path.write_text(json.dumps(report))
+            with self.assertRaises(oracle.PixelsError):
+                oracle.read_pixels(path)
+
+
+class PbrFallbackTest(unittest.TestCase):
+    def capture(self):
+        return {"schema": oracle.SCHEMA, "family": "pbr-fallback",
+                "renderer": "vulkan-compat", "hdr_type": 0,
+                "clear_probe": {"clear": [255, 0, 255], "pixel": [255, 0, 255]},
+                "shader": "UnlitGeneric", "error_material": False,
+                "pixels": {"center": [0, 255, 0], "outside": [255, 0, 255]}}
+
+    def test_valid_fallback_passes(self):
+        self.assertEqual(oracle.evaluate(self.capture(), "none"), [])
+
+    def test_missing_shader_selection_and_wrong_pixels_fail(self):
+        report = self.capture()
+        report["shader"] = "Wireframe_DX9"
+        report["pixels"]["center"] = [255, 0, 0]
+        failures = oracle.evaluate(report, "none")
+        self.assertTrue(any("resolved" in failure for failure in failures))
+        self.assertTrue(any("center pixel" in failure for failure in failures))
+
+    def test_missing_pixel_is_incomplete(self):
+        report = self.capture()
+        del report["pixels"]["center"]
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pixels.json"
+            path.write_text(json.dumps(report))
+            with self.assertRaises(oracle.PixelsError):
+                oracle.read_pixels(path)
 
 
 class SeededDefectTest(unittest.TestCase):

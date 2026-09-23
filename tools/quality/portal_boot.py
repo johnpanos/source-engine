@@ -76,8 +76,19 @@ def install_build(build, stage):
     build, stage = Path(build).resolve(), Path(stage)
     if not build.is_dir():
         raise ValueError("build output directory is missing")
-    products = sorted(path for path in build.rglob("*.so") if path.is_file())
-    launchers = sorted(path for path in build.rglob("hl2_launcher") if path.is_file())
+    # Some workflows keep independent Waf profiles below the primary output
+    # tree (for example build/pbr-native). Their products are not part of this
+    # build and must not participate in its staging plan.
+    nested_builds = {cache.parent for cache in build.rglob("c4che")
+                     if cache.is_dir() and cache.parent != build}
+
+    def belongs_to_active_build(path):
+        return not any(root in path.parents for root in nested_builds)
+
+    products = sorted(path for path in build.rglob("*.so")
+                      if path.is_file() and belongs_to_active_build(path))
+    launchers = sorted(path for path in build.rglob("hl2_launcher")
+                       if path.is_file() and belongs_to_active_build(path))
     if not products or len(launchers) != 1:
         raise ValueError("build must contain shared libraries and exactly one hl2_launcher")
     sources = {}

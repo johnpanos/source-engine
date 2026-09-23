@@ -1,9 +1,9 @@
 # Material pixel references (`source-material-pixels/v1`)
 
-D3D9 reference captures for `tools/quality/material_pixel_conformance.py`. Each
-file is the output of `material_pixel_conformance` (the harness in
+Backend reference captures for `tools/quality/material_pixel_conformance.py`.
+Each file is the output of `material_pixel_conformance` (the harness in
 `unittests/shaderextensiontest/`) rendering real Source materials through the
-real material system on the D3D9 backend.
+real material system. The backend is identified by each filename and report.
 
 | File | Family | HDR mode | Notes |
 | --- | --- | --- | --- |
@@ -14,6 +14,7 @@ real material system on the D3D9 backend.
 | `portal-dx9-none.json` | portal | `HDR_TYPE_NONE` | stencil portal recursion (`PortalRefract` stages 0-2, depth 2); three 256x256 frames |
 | `modellight-dx9-none.json` | modellight | `HDR_TYPE_NONE` | VertexLitGeneric lighting: ambient cube, point/spot/directional lights, half-Lambert, static color mesh, MODEL and skinned placement; eleven 256x256 frames |
 | `modellight-dx9-integer.json` | modellight | `HDR_TYPE_INTEGER` | as above, linear tone-mapping scale 0.75 |
+| `cable-dxvk-none.json` | cable | `HDR_TYPE_NONE` | Cable_DX9 normal-map half-Lambert captured through DXVK with front, side, back and diagonal normals |
 
 Lightmap pixels are held to these references within `PIXEL_TOLERANCE` (3 levels
 per channel). Exposure counts are exact: every luminance range must equal the
@@ -58,6 +59,17 @@ Model lighting frames are held to an independent evaluation of
 within one level everywhere it judges, and to these references within 1 level
 with no pixel beyond it. Captured 2026-09-22 from source `8c2c4268` plus a dirty
 tree, with the toolchain above (`--family modellight`, both HDR modes).
+
+Cable pixels are checked against the `cable_ps2x.fxc` half-Lambert equation
+and the observed DXVK capture within 3 levels per channel. The capture was made
+2026-09-23 UTC from source `fe0aff17` plus the recorded dirty tree, with DXVK
+2.7.1 on AMD Radeon 8060S (RADV 26.2.2):
+
+```sh
+python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime-dxvk \
+    --build build-r03-portal-dxvk --renderer vulkan-compat --hdr none \
+    --family cable --out OUT
+```
 
 Recapture only when the harness cases or the D3D9 path change, and review the
 differences before replacing a file. A reference that silently absorbs a D3D9
