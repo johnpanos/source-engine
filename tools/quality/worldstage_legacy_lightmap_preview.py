@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Put a Cycles World Stage bake into one legacy light style's flat luxels.
+"""Put Cycles World Stage bakes into one legacy light style's luxels.
 
 This is an inspection bridge for a private fixture, not the RFC 0007 baker or
-the RFC 0008 LMAP writer. Bumped basis samples and other styles stay as VRAD
-produced them. The source BSP must already have been lit by VRAD.
+the RFC 0008 LMAP writer. Other styles stay as VRAD produced them. The source
+BSP must already have been lit by VRAD.
 """
 
 import argparse
@@ -40,12 +40,17 @@ def rgbexp32(linear):
         [exponent & 255])
 
 
-def patch_bsp(source, manifest, pixels, style, gain):
+def patch_bsp(source, manifest, pixels, style, gain, basis_pixels=None,
+              update_style_average=False):
     kind, header = open_any(source)
     if kind != "legacy" or header["version"] != 21:
         raise ValueError("preview requires a legacy v21 VRAD BSP")
     if pixels.ndim != 3 or pixels.shape[2] < 3 or pixels.dtype != np.float32:
         raise ValueError("preview requires a float32 RGB EXR")
+    if basis_pixels is not None and (set(basis_pixels) != {"rnm0", "rnm1", "rnm2"} or
+                                     any(image.shape != pixels.shape or image.dtype != np.float32
+                                         for image in basis_pixels.values())):
+        raise ValueError("RNM preview requires three matching float32 EXRs")
     layout = manifest["lightmap_atlas"]
     width, height = layout["width"], layout["height"]
     if pixels.shape[1] % width or pixels.shape[0] % height:
@@ -68,6 +73,7 @@ def patch_bsp(source, manifest, pixels, style, gain):
     lighting_offset = header["lumps"][8][0]
     changed = 0
     bumped = 0
+    bumped_samples = 0
     for index in range(len(faces) // FACE_BYTES):
         face = faces[index * FACE_BYTES:(index + 1) * FACE_BYTES]
         texinfo = struct.unpack_from("<h", face, 10)[0]
@@ -86,6 +92,7 @@ def patch_bsp(source, manifest, pixels, style, gain):
         basis_count = 4 if flags & SURF_BUMPLIGHT else 1
         bumped += basis_count == 4
         first = lighting_offset + face_offset + 4 * style_index * basis_count * chart_w * chart_h
+        flat_samples = []
         for row in range(chart_h):
             # OpenEXR readers return top-first scanlines; USD charts use bottom-first V.
             top = pixels.shape[0] - (y + row + 1) * scale_y
@@ -99,12 +106,30 @@ def patch_bsp(source, manifest, pixels, style, gain):
                     raise ValueError(f"face {index} has non-finite light")
                 offset = first + 4 * (row * chart_w + column)
                 updated[offset:offset + 4] = rgbexp32(sample)
+                flat_samples.append(sample)
                 changed += 1
+                if basis_pixels is not None and basis_count == 4:
+                    for basis_index, name in enumerate(("rnm0", "rnm1", "rnm2"), start=1):
+                        basis_block = basis_pixels[name][top:top + scale_y,
+                                                         left:left + scale_x, :3]
+                        basis_sample = basis_block.mean(axis=(0, 1), dtype=np.float64) * gain
+                        basis_offset = offset + 4 * basis_index * chart_w * chart_h
+                        updated[basis_offset:basis_offset + 4] = rgbexp32(basis_sample)
+                        bumped_samples += 1
+        if basis_pixels is not None or update_style_average:
+            style_count = styles.index(255) if 255 in styles else 4
+            average = np.median(flat_samples, axis=0)
+            average_offset = lighting_offset + face_offset - 4 * style_count + 4 * style_index
+            updated[average_offset:average_offset + 4] = rgbexp32(average)
     audit_lighting_lumps(lump(7), lump(6), bytes(
         updated[lighting_offset:lighting_offset + len(lighting)]))
     return bytes(updated), {"faces": len(faces) // FACE_BYTES, "bumped_faces": bumped,
                             "style": style, "gain": gain, "flat_luxels": changed,
-                            "preserved_bump_bases": True, "preserved_other_styles": True}
+                            "rnm_luxels": bumped_samples,
+                            "preserved_bump_bases": basis_pixels is None,
+                            "updated_style_average": basis_pixels is not None or
+                            update_style_average,
+                            "preserved_other_styles": True}
 
 
 def main():
@@ -116,16 +141,28 @@ def main():
                         help="independent BSP/Stage comparison with compiled light styles")
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--exr", type=Path, required=True)
+    for basis in ("rnm0", "rnm1", "rnm2"):
+        parser.add_argument("--" + basis, type=Path)
+    parser.add_argument("--directional-comparison", type=Path,
+                        help="required with RNM EXRs; checks bases against compiled BSP")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--style", type=int,
                         help="select a style from the geometry comparison; inferred if unique")
     parser.add_argument("--gain", type=float, default=1.0)
+    parser.add_argument("--update-style-average", action="store_true",
+                        help="update the selected style's average while retaining VRAD RNM")
     args = parser.parse_args()
     if ((args.style is not None and not 0 <= args.style < 255) or
             not math.isfinite(args.gain) or args.gain <= 0):
         parser.error("style must be 0..254 and gain finite and positive")
     if args.out.resolve() == args.bsp.resolve():
         parser.error("output must differ from source BSP")
+    directional_paths = {name: getattr(args, name) for name in ("rnm0", "rnm1", "rnm2")}
+    directional = any(directional_paths.values())
+    if directional and (not all(directional_paths.values()) or not args.directional_comparison):
+        parser.error("RNM preview requires all three EXRs and --directional-comparison")
+    if args.directional_comparison and not directional:
+        parser.error("--directional-comparison requires all three RNM EXRs")
     manifest = json.loads(args.manifest.read_text())
     geometry_hash = sha256(args.geometry_stage)
     if manifest["stage_sha256"] != geometry_hash:
@@ -158,18 +195,36 @@ def main():
     if (set(chart_maxima) != set(manifest["lightmap_atlas"]["charts"]) or
             any(value <= 1e-5 for value in chart_maxima.values())):
         raise ValueError("Cycles bake did not light every required Stage chart")
+    if directional:
+        checked = json.loads(args.directional_comparison.read_text())
+        expected_hashes = {"flat": sha256(args.exr), **{name: sha256(path)
+                                                         for name, path in directional_paths.items()}}
+        if (checked["status"] != "pass" or
+                checked["scope"] != "cycles-rnm-preview-directions" or
+                checked["bsp_sha256"] != sha256(args.bsp) or
+                checked["stage_sha256"] != sha256(args.material_stage) or
+                checked["manifest_sha256"] != sha256(args.manifest) or
+                checked["exr_sha256"] != expected_hashes or
+                not checked["negative_wrong_direction_rejected"]):
+            raise ValueError("RNM bake comparison does not match BSP, Stage, and EXRs")
     pixels = iio.imread(args.exr)
+    basis_pixels = {name: iio.imread(path) for name, path in directional_paths.items()
+                    } if directional else None
     result, counts = patch_bsp(args.bsp.read_bytes(), manifest, pixels,
-                               style, args.gain)
+                               style, args.gain, basis_pixels,
+                               args.update_style_average)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_bytes(result)
-    evidence = {"status": "pass", "scope": "legacy-flat-style-preview",
+    evidence = {"status": "pass", "scope": "legacy-rnm-style-preview" if directional else
+                "legacy-flat-style-preview",
                 "source_bsp_sha256": sha256(args.bsp),
                 "geometry_stage_sha256": geometry_hash,
                 "geometry_comparison_sha256": sha256(args.geometry_comparison),
                 "material_stage_sha256": sha256(args.material_stage),
                 "portal_manifest_sha256": sha256(args.manifest),
                 "cycles_exr_sha256": sha256(args.exr),
+                "directional_comparison_sha256": sha256(args.directional_comparison) if
+                directional else None,
                 "output_bsp_sha256": sha256(args.out), **counts}
     args.out.with_suffix(".json").write_text(json.dumps(evidence, indent=2,
                                                         sort_keys=True) + "\n")

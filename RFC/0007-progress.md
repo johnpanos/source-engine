@@ -313,6 +313,30 @@ before writing canonical SH L1 lighting. An L1 representation may still need a
 declared quality limit for sharp or grazing light; the fitting function alone
 does not satisfy the SH oracle in RFC 0007.
 
+Local World Stage inspection evidence (2026-09-23): the Portal-remaster fixture
+was baked in Blender Cycles at the flat and three exact RNM directions plus
+eight versioned supplemental directions. The 12-direction least-squares SH L1
+fit improves an independent held-out Cycles direction's chart-pixel mean
+absolute error from 0.257 to 0.207 (19.5%) and the analytic direct-light
+worst error from 0.845 to 0.500. Both the four- and 12-direction fits fail the
+provisional 0.15 maximum analytic bound. Dense L1 least squares still has a
+0.385 worst error on that analytic grid, exposing representational loss beyond
+sample-count error. The exact RNM samples separately change pixels in the
+playable DXVK map. [RFC 0008 progress](0008-progress.md#f2-supplemental-cycles-sh-fit-2026-09-23)
+links the bake, independent BSP-direction checks, negative controls and
+in-game evidence. The Python fit is an unencoded inspection artifact; the
+R49 baker contract, C++ implementation, accepted quality tolerance, probes
+and native SH runtime remain open.
+
+A later RFC 0008 playable preview carries the same verified Cycles flat and
+RNM samples in BSP2 beside the USD-derived WMSH. With identical WMSH,
+upsampled Portal textures, client binaries and camera, changing only legacy
+lighting from VRAD to Cycles changes 99.68% of pixels in the native Vulkan
+WMSH view. A lightmap-UV-only negative map also changes the frame. The
+[RFC 0008 integration receipt](0008-progress.md#f4-world-stage-geometry-and-cycles-light-in-the-playable-wmsh-view-2026-09-23)
+establishes the compatibility bridge, not canonical SH/RNM lightmap assets or
+the R49 baker gate.
+
 The full R48–R52 gates remain open. VBSP has a Linux host-tool port and a
 synthetic smoke; vvis/vrad and the legacy-output comparator remain. The Cycles
 provider is not built or pinned, and RFC 0008's World Stage and canonical

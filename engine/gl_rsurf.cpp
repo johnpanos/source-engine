@@ -49,6 +49,7 @@
 #include "mempool.h"
 #ifndef SWDS
 #include "Overlay.h"
+#include "render/world_mesh_upload.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -59,6 +60,69 @@
 #define BRUSHMODEL_DECAL_SORT_GROUP		MAX_MAT_SORT_GROUPS
 const int MAX_VERTEX_FORMAT_CHANGES = 128;
 int g_MaxLeavesVisible = 512;
+
+#ifndef SWDS
+static ConVar r_worldmesh_draw( "r_worldmesh_draw", "0", FCVAR_CHEAT,
+    "WMSH comparison: 0 legacy, 1 overlay, 2 uploaded world batches" );
+
+static world_mesh_gpu::IWorldMeshUpload *WorldMeshDrawProvider()
+{
+	const worldbrushdata_t *pWorld = host_state.worldbrush;
+	if ( !r_worldmesh_draw.GetBool() || !pWorld || !pWorld->pWorldMeshBatches ||
+	     !pWorld->worldMeshBatchCount || !pWorld->pWorldMeshClusters ||
+	     !pWorld->pWorldMeshLeafRanges || !pWorld->pWorldMeshLeafReferences )
+		return NULL;
+	world_mesh_gpu::IWorldMeshUpload *uploader = static_cast<world_mesh_gpu::IWorldMeshUpload *>(
+	    materials->QueryInterface( world_mesh_gpu::kWorldMeshUploadInterface ) );
+	return uploader && uploader->IsResident() ? uploader : NULL;
+}
+
+static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
+    const unsigned short *pVisibleLeaves, int nVisibleLeaves, CUtlVector<unsigned char> &visible )
+{
+	world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshDrawProvider();
+	if ( !uploader )
+		return;
+	const worldbrushdata_t *pWorld = host_state.worldbrush;
+	visible.SetCount( pWorld->worldMeshClusterCount );
+	Q_memset( visible.Base(), 0, visible.Count() );
+	for ( int i = 0; i < nVisibleLeaves; ++i )
+	{
+		const int leafIndex = pVisibleLeaves[i];
+		if ( leafIndex < 0 || static_cast<unsigned int>( leafIndex ) >= pWorld->worldMeshLeafCount )
+			continue;
+		const worldmeshleafrange_t &leaf = pWorld->pWorldMeshLeafRanges[leafIndex];
+		for ( unsigned int j = 0; j < leaf.referenceCount; ++j )
+			visible[pWorld->pWorldMeshLeafReferences[leaf.firstReference + j]] = 1;
+	}
+	unsigned int submitted = 0;
+	for ( unsigned int i = 0; i < pWorld->worldMeshBatchCount; ++i )
+	{
+		const worldmeshbatch_t &batch = pWorld->pWorldMeshBatches[i];
+		pRenderContext->Bind( batch.material, NULL );
+		for ( unsigned int j = 0; j < batch.meshletCount; ++j )
+		{
+			const unsigned int meshletIndex = batch.firstMeshlet + j;
+			if ( !visible[meshletIndex] )
+				continue;
+			const worldmeshcluster_t &meshlet = pWorld->pWorldMeshClusters[meshletIndex];
+			if ( !uploader->DrawBatch( meshlet.firstIndex, meshlet.indexCount ) )
+			{
+				Warning( "WMSH draw rejected meshlet %u\n", meshletIndex );
+				return;
+			}
+			++submitted;
+		}
+	}
+	static bool s_reported = false;
+	if ( !s_reported )
+	{
+		Msg( "WMSH draw path active (%u material batches, %d visible leaves, %u queued meshlets)\n",
+		    pWorld->worldMeshBatchCount, nVisibleLeaves, submitted );
+		s_reported = true;
+	}
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // forward declarations
@@ -294,6 +358,7 @@ public:
 
 		m_VisibleLeaves.Purge();
 		m_VisibleLeafFogVolumes.Purge();
+		m_WorldMeshVisibility.Purge();
 		for ( int i = 0; i < MAX_MAT_SORT_GROUPS; i++ )
 		{
 			m_ShadowHandles[i].Purge();
@@ -324,6 +389,7 @@ public:
 		// We haven't found any visible leafs this frame
 		m_VisibleLeaves.RemoveAll();
 		m_VisibleLeafFogVolumes.RemoveAll();
+		m_WorldMeshVisibility.RemoveAll();
 
 		m_VisitedSurfs.ClearAll();
 	}
@@ -347,6 +413,7 @@ public:
 	//-------------------------------------------------------------------------
 	CUtlVector<LeafIndex_t>		m_VisibleLeaves;
 	CUtlVector<LeafFogVolume_t>	m_VisibleLeafFogVolumes;
+	CUtlVector<unsigned char> m_WorldMeshVisibility;
 
 	CVisitedSurfs m_VisitedSurfs;
 	bool						m_bSkyVisible;
@@ -2175,7 +2242,17 @@ static void Shader_WorldEnd( CWorldRenderList *pRenderList, unsigned long flags,
 
 		// Draws opaque non-displacement surfaces
 		// This also add shadows to pRenderList->m_ShadowHandles.
+#ifndef SWDS
+		const bool drawWorldMesh =
+		    nSortGroup == MAT_SORT_GROUP_STRICTLY_ABOVEWATER && WorldMeshDrawProvider() != NULL;
+		if ( !( drawWorldMesh && r_worldmesh_draw.GetInt() == 2 ) )
+			Shader_DrawChains( pRenderList, nSortGroup, false );
+		if ( drawWorldMesh )
+			Shader_DrawWorldMeshBatches( pRenderContext, pRenderList->m_VisibleLeaves.Base(),
+			    pRenderList->m_VisibleLeaves.Count(), pRenderList->m_WorldMeshVisibility );
+#else
 		Shader_DrawChains( pRenderList, nSortGroup, false );
+#endif
 		AddProjectedTextureDecalsToList( pRenderList, nSortGroup );
 
 		// Adds shadows to render lists
@@ -5218,4 +5295,3 @@ bool CEngineBSPTree::EnumerateLeavesAlongRay( Ray_t const& ray, ISpatialLeafEnum
 		return EnumerateLeavesAlongExtrudedRay_R( host_state.worldbrush->nodes, ray, 0.0f, 1.0f, pEnum, context );
 	}
 }
-

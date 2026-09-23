@@ -29,7 +29,7 @@ def normalized(vector):
     return vector / length
 
 
-def source_basis(obj, basis):
+def source_basis(obj, basis, local_direction=None):
     """Match GetBumpNormals using the Stage's face geometry and material UVs."""
     polygon = obj.data.polygons[0]
     loops = list(polygon.loop_indices[:3])
@@ -54,7 +54,7 @@ def source_basis(obj, basis):
     axis_x = normalized(np.cross(axis_y, normal))
     if np.dot(normal, np.cross(s_axis, t_axis)) < 0:
         axis_y = -axis_y
-    local = SOURCE_RNM_BASIS[int(basis[-1])]
+    local = local_direction if local_direction is not None else SOURCE_RNM_BASIS[int(basis[-1])]
     return normalized(local[0] * axis_x + local[1] * axis_y + local[2] * normal)
 
 
@@ -96,12 +96,22 @@ def main():
                         help="negative control: zero imported light energy")
     parser.add_argument("--basis", choices=("flat", "rnm0", "rnm1", "rnm2"),
                         help="force the Source flat or RNM normal on each world face")
+    parser.add_argument("--direction-id", help="identity for an additional SH fit direction")
+    parser.add_argument("--normal-local", nargs=3, type=float, metavar=("X", "Y", "Z"),
+                        help="additional normal in each face's Source tangent frame")
     args = parser.parse_args(arguments)
     if (not args.stage.is_file() or args.width < 64 or args.height < 64
             or args.samples < 1 or args.out.suffix.lower() != ".exr"):
         parser.error("valid stage, EXR output, dimensions and samples are required")
     if args.require_all_charts_lit and not args.manifest:
         parser.error("--require-all-charts-lit requires --manifest")
+    if bool(args.direction_id) != bool(args.normal_local) or (args.basis and args.normal_local):
+        parser.error("--direction-id and --normal-local are required together, without --basis")
+    local_direction = normalized(np.asarray(args.normal_local, dtype=np.float64)) if (
+        args.normal_local) else None
+    if local_direction is not None and local_direction[2] < 0:
+        parser.error("additional directions must be in the upper hemisphere")
+    direction_id = args.direction_id or args.basis
     manifest = json.loads(args.manifest.read_text()) if args.manifest else None
     if manifest:
         source = args.stage.read_text()
@@ -136,8 +146,8 @@ def main():
             raise RuntimeError("mesh lacks a lightmap chart or material: " + obj.name)
         if obj.data.materials[0] is None or not obj.data.materials[0].use_nodes:
             raise RuntimeError("mesh has no imported USD shader: " + obj.name)
-        if args.basis:
-            direction = source_basis(obj, args.basis)
+        if direction_id:
+            direction = source_basis(obj, args.basis, local_direction)
             override_face_normal(obj, direction)
             face_directions[obj.name] = [float(value) for value in direction]
         obj.data.uv_layers.active = obj.data.uv_layers["lightmap:st"]
@@ -214,7 +224,8 @@ def main():
         "mean_linear_rgb": [float(value) for value in rgb[lit].mean(axis=0)],
         "max_linear_rgb": [float(value) for value in rgb.max(axis=0)],
         "lighting_policy": "preview-v1; direct plus indirect diffuse, no color pass",
-        "source_basis": args.basis,
+        "source_basis": direction_id,
+        "source_local_direction": local_direction.tolist() if local_direction is not None else None,
         "source_face_directions": face_directions,
     }
     args.out.with_suffix(".json").write_text(json.dumps(evidence, indent=2,

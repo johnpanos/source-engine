@@ -19,6 +19,11 @@
 #include "cdll_engine_int.h"
 #include "iscratchpad3d.h"
 #include "map_container_file.h"
+#ifndef SWDS
+#include "mapcontainer/world_mesh.h"
+#include "mapcontainer/world_mesh_format.h"
+#include "render/world_mesh_upload.h"
+#endif
 #include "materialsystem/imaterialsystemhardwareconfig.h"
 #include "materialsystem/materialsystem_config.h"
 #include "gl_rsurf.h"
@@ -358,6 +363,15 @@ private:
 
 	bool				m_bMapRenderInfoLoaded;
 	bool				m_bMapHasHDRLighting;
+#ifndef SWDS
+	void Map_LoadWorldMesh();
+	void Map_ReleaseWorldMeshMaterials();
+	CUtlVector<byte> m_WorldMeshBytes;
+	CUtlVector<worldmeshbatch_t> m_WorldMeshBatches;
+	CUtlVector<worldmeshcluster_t> m_WorldMeshClusters;
+	CUtlVector<worldmeshleafrange_t> m_WorldMeshLeafRanges;
+	CUtlVector<unsigned int> m_WorldMeshLeafReferences;
+#endif
 
 	char				m_szActiveMapName[64];
 
@@ -4503,6 +4517,168 @@ static void MarkBrushModelWaterSurfaces( model_t* world,
 }
 
 int g_nMapLoadCount = 0;
+
+#ifndef SWDS
+static world_mesh_gpu::IWorldMeshUpload *WorldMeshUploader()
+{
+	return materials ? static_cast<world_mesh_gpu::IWorldMeshUpload *>(
+	                       materials->QueryInterface( world_mesh_gpu::kWorldMeshUploadInterface ) )
+	                 : NULL;
+}
+
+static uint32_t WorldMeshU32( const unsigned char *pBytes )
+{
+	return uint32_t( pBytes[0] ) | ( uint32_t( pBytes[1] ) << 8 ) |
+	       ( uint32_t( pBytes[2] ) << 16 ) | ( uint32_t( pBytes[3] ) << 24 );
+}
+
+void CModelLoader::Map_LoadWorldMesh()
+{
+	if ( !s_pMapContainer || s_pMapContainer->Kind() != mapcontainer::MapContainerKind::Bsp2 )
+		return;
+	mapcontainer::MapLumpInfo lump{};
+	if ( !s_pMapContainer->FindLump( mapcontainer::kLumpWorldMesh, &lump ) )
+		return;
+	const uint64_t kMaxWorldMeshBytes = 512ull * 1024 * 1024;
+	if ( lump.version != mapcontainer::kWorldMeshVersion || lump.flags != 0 ||
+	     lump.storedSize < mapcontainer::kWorldMeshHeaderSize ||
+	     lump.storedSize > kMaxWorldMeshBytes )
+	{
+		Warning( "Map %s: WMSH version, flags or size unsupported\n", s_szMapName );
+		return;
+	}
+	m_WorldMeshBytes.SetCount( (int)lump.storedSize );
+	if ( !s_MapByteSource.ReadAt( lump.offset, m_WorldMeshBytes.Base(), m_WorldMeshBytes.Count() ) )
+	{
+		Warning( "Map %s: WMSH read failed\n", s_szMapName );
+		m_WorldMeshBytes.Purge();
+		return;
+	}
+	const mapcontainer::MapContainerStatus hash =
+	    s_pMapContainer->VerifyContent( lump, m_WorldMeshBytes.Base(), m_WorldMeshBytes.Count() );
+	mapcontainer::WorldMeshSummary summary{};
+	const mapcontainer::WorldMeshError validation = mapcontainer::ValidateWorldMesh(
+	    m_WorldMeshBytes.Base(), m_WorldMeshBytes.Count(), &summary );
+	if ( !hash.Ok() || validation != mapcontainer::WorldMeshError::Ok )
+	{
+		Warning( "Map %s: WMSH rejected (%s, %s)\n", s_szMapName,
+		    mapcontainer::MapContainerErrorName( hash.code ),
+		    mapcontainer::WorldMeshErrorName( validation ) );
+		m_WorldMeshBytes.Purge();
+		return;
+	}
+	if ( summary.batchCount > 65536 || summary.meshletCount > 1048576 ||
+	     summary.leafCount > 1048576 || summary.leafReferenceCount > 16777216 )
+	{
+		Warning( "Map %s: WMSH draw table exceeds runtime limit\n", s_szMapName );
+		m_WorldMeshBytes.Purge();
+		return;
+	}
+	m_worldBrushData.pWorldMeshData = m_WorldMeshBytes.Base();
+	m_worldBrushData.worldMeshSize = m_WorldMeshBytes.Count();
+	Msg( "Map %s: WMSH ready (%u vertices, %u triangles, %u meshlets, %u leaves)\n", s_szMapName,
+	    summary.vertexCount, summary.triangleCount, summary.meshletCount, summary.leafCount );
+	world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshUploader();
+	bool uploaded = false;
+	if ( uploader )
+	{
+		world_mesh_gpu::WorldMeshUploadRequest request;
+		request.vertices = m_WorldMeshBytes.Base() + summary.sectionOffsets[0];
+		request.vertexBytes = size_t( summary.vertexCount ) * mapcontainer::kWorldMeshVertexSize;
+		request.indices = m_WorldMeshBytes.Base() + summary.sectionOffsets[1];
+		request.indexBytes = size_t( summary.indexCount ) * sizeof( uint32_t );
+		request.vertexCount = summary.vertexCount;
+		request.indexCount = summary.indexCount;
+		if ( uploader->Upload( request ) )
+		{
+			uploaded = true;
+			Msg( "Map %s: WMSH GPU buffers ready (%u vertices, %u indices)\n", s_szMapName,
+			    summary.vertexCount, summary.indexCount );
+		}
+		else
+			Warning( "Map %s: WMSH GPU upload unavailable\n", s_szMapName );
+	}
+	if ( !uploaded )
+		return;
+	// The validator established batch/material ordering, section bounds and
+	// UTF-8 paths. Resolve each path once while the map is loading; the world
+	// brush borrows the finished array until unload.
+	m_WorldMeshBatches.SetCount( summary.batchCount );
+	uint64_t materialCursor = summary.sectionOffsets[7];
+	for ( uint32_t i = 0; i < summary.batchCount; ++i )
+	{
+		const unsigned char *pMaterial = m_WorldMeshBytes.Base() + materialCursor;
+		const uint32_t length = WorldMeshU32( pMaterial );
+		if ( length >= 512 )
+		{
+			Warning( "Map %s: WMSH material path exceeds runtime limit\n", s_szMapName );
+			m_WorldMeshBatches.Purge();
+			return;
+		}
+		char name[512];
+		Q_memcpy( name, pMaterial + 4, length );
+		name[length] = 0;
+		IMaterial *pBoundMaterial = materials->FindMaterial( name, TEXTURE_GROUP_WORLD, true );
+		if ( !pBoundMaterial || IsErrorMaterial( pBoundMaterial ) )
+		{
+			Warning( "Map %s: WMSH material unavailable: %s\n", s_szMapName, name );
+			m_WorldMeshBatches.Purge();
+			return;
+		}
+		const unsigned char *pBatch = m_WorldMeshBytes.Base() + summary.sectionOffsets[3] +
+		                              uint64_t( i ) * mapcontainer::kWorldMeshBatchSize;
+		worldmeshbatch_t &batch = m_WorldMeshBatches[i];
+		batch.material = pBoundMaterial;
+		batch.firstIndex = WorldMeshU32( pBatch + 4 );
+		batch.indexCount = WorldMeshU32( pBatch + 8 );
+		batch.firstMeshlet = WorldMeshU32( pBatch + 12 );
+		batch.meshletCount = WorldMeshU32( pBatch + 16 );
+		materialCursor += ( uint64_t( 4 ) + length + 3 ) & ~uint64_t( 3 );
+	}
+	// Imported USD materials may have no corresponding legacy world face.
+	// Keep one map-owned reference per WMSH batch until every queued draw has
+	// been drained at map unload.
+	for ( int i = 0; i < m_WorldMeshBatches.Count(); ++i )
+		m_WorldMeshBatches[i].material->IncrementReferenceCount();
+	m_WorldMeshClusters.SetCount( summary.meshletCount );
+	for ( uint32_t i = 0; i < summary.meshletCount; ++i )
+	{
+		const unsigned char *pMeshlet = m_WorldMeshBytes.Base() + summary.sectionOffsets[4] +
+		                                uint64_t( i ) * mapcontainer::kWorldMeshMeshletSize;
+		m_WorldMeshClusters[i].firstIndex = WorldMeshU32( pMeshlet );
+		m_WorldMeshClusters[i].indexCount = WorldMeshU32( pMeshlet + 4 );
+	}
+	m_WorldMeshLeafRanges.SetCount( summary.leafCount );
+	for ( uint32_t i = 0; i < summary.leafCount; ++i )
+	{
+		const unsigned char *pLeaf = m_WorldMeshBytes.Base() + summary.sectionOffsets[5] +
+		                             uint64_t( i ) * mapcontainer::kWorldMeshLeafRangeSize;
+		m_WorldMeshLeafRanges[i].firstReference = WorldMeshU32( pLeaf );
+		m_WorldMeshLeafRanges[i].referenceCount = WorldMeshU32( pLeaf + 4 );
+	}
+	m_WorldMeshLeafReferences.SetCount( summary.leafReferenceCount );
+	for ( uint32_t i = 0; i < summary.leafReferenceCount; ++i )
+		m_WorldMeshLeafReferences[i] =
+		    WorldMeshU32( m_WorldMeshBytes.Base() + summary.sectionOffsets[6] + uint64_t( i ) * 4 );
+	m_worldBrushData.pWorldMeshBatches = m_WorldMeshBatches.Base();
+	m_worldBrushData.worldMeshBatchCount = m_WorldMeshBatches.Count();
+	m_worldBrushData.pWorldMeshClusters = m_WorldMeshClusters.Base();
+	m_worldBrushData.worldMeshClusterCount = m_WorldMeshClusters.Count();
+	m_worldBrushData.pWorldMeshLeafRanges = m_WorldMeshLeafRanges.Base();
+	m_worldBrushData.worldMeshLeafCount = m_WorldMeshLeafRanges.Count();
+	m_worldBrushData.pWorldMeshLeafReferences = m_WorldMeshLeafReferences.Base();
+	Msg( "Map %s: WMSH materials ready (%u batches)\n", s_szMapName,
+	    m_worldBrushData.worldMeshBatchCount );
+}
+
+void CModelLoader::Map_ReleaseWorldMeshMaterials()
+{
+	for ( int i = 0; i < m_WorldMeshBatches.Count(); ++i )
+		m_WorldMeshBatches[i].material->DecrementReferenceCount();
+	m_WorldMeshBatches.Purge();
+}
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 // Input  : *mod - 
@@ -4511,6 +4687,24 @@ int g_nMapLoadCount = 0;
 void CModelLoader::Map_LoadModel( model_t *mod )
 {
 	++g_nMapLoadCount;
+#ifndef SWDS
+	if ( world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshUploader() )
+		uploader->Release();
+	m_WorldMeshBytes.Purge();
+	Map_ReleaseWorldMeshMaterials();
+	m_WorldMeshClusters.Purge();
+	m_WorldMeshLeafRanges.Purge();
+	m_WorldMeshLeafReferences.Purge();
+	m_worldBrushData.pWorldMeshData = NULL;
+	m_worldBrushData.worldMeshSize = 0;
+	m_worldBrushData.pWorldMeshBatches = NULL;
+	m_worldBrushData.worldMeshBatchCount = 0;
+	m_worldBrushData.pWorldMeshClusters = NULL;
+	m_worldBrushData.worldMeshClusterCount = 0;
+	m_worldBrushData.pWorldMeshLeafRanges = NULL;
+	m_worldBrushData.worldMeshLeafCount = 0;
+	m_worldBrushData.pWorldMeshLeafReferences = NULL;
+#endif
 
 	MEM_ALLOC_CREDIT();
 
@@ -4544,6 +4738,9 @@ void CModelLoader::Map_LoadModel( model_t *mod )
 	mod->type = mod_brush;
 	mod->nLoadFlags |= FMODELLOADER_LOADED;
 	CMapLoadHelper::Init( mod, m_szLoadName );
+#ifndef SWDS
+	Map_LoadWorldMesh();
+#endif
 
 	COM_TimestampedLog( "  Mod_LoadVertices" );
 	Mod_LoadVertices();
@@ -4842,6 +5039,24 @@ void CModelLoader::Map_UnloadModel( model_t *mod )
 	}
 
 	MaterialSystem_DestroySortinfo();
+#ifndef SWDS
+	if ( world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshUploader() )
+		uploader->Release();
+	m_worldBrushData.pWorldMeshData = NULL;
+	m_worldBrushData.worldMeshSize = 0;
+	m_worldBrushData.pWorldMeshBatches = NULL;
+	m_worldBrushData.worldMeshBatchCount = 0;
+	m_worldBrushData.pWorldMeshClusters = NULL;
+	m_worldBrushData.worldMeshClusterCount = 0;
+	m_worldBrushData.pWorldMeshLeafRanges = NULL;
+	m_worldBrushData.worldMeshLeafCount = 0;
+	m_worldBrushData.pWorldMeshLeafReferences = NULL;
+	m_WorldMeshBytes.Purge();
+	Map_ReleaseWorldMeshMaterials();
+	m_WorldMeshClusters.Purge();
+	m_WorldMeshLeafRanges.Purge();
+	m_WorldMeshLeafReferences.Purge();
+#endif
 
 	// Don't store any reference to it here
 	ClearWorldModel();

@@ -19,6 +19,8 @@ OUTPUT = HERE.parent / "material_spv.h"
 SHADERS = (
     ("g_materialTexVertSpv", "demo_dyn_tex.vert", []),
     ("g_materialTexClipVertSpv", "demo_dyn_tex.vert", ["-DCLIP_PLANES"]),
+    ("g_worldMeshVertSpv", "world_mesh.vert", []),
+    ("g_worldMeshClipVertSpv", "world_mesh.vert", ["-DCLIP_PLANES"]),
     ("g_materialTexFragSpv", "demo_dyn_tex.frag", []),
     ("g_portalRefractVertSpv", "portal_refract.vert", []),
     ("g_portalRefractFragSpv", "portal_refract.frag", []),

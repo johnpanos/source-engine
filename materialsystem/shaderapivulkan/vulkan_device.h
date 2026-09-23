@@ -102,6 +102,20 @@ public:
 	void Shutdown();
 
 	bool IsValid() const { return m_device != VK_NULL_HANDLE; }
+	// Upload the validated WMSH vertex/index sections once for this map. These
+	// buffers are independent of the frame stream and survive presentation resize.
+	// The old pair survives a failed replacement; Release waits for GPU readers.
+	bool UploadWorldMesh( const void *vertices, size_t vertexBytes, const void *indices,
+	    size_t indexBytes, std::string *outError );
+	void ReleaseWorldMesh();
+	bool WorldMeshResident() const;
+	// Diagnostic readback for the native conformance test; synchronizes and
+	// copies the current device-local sections to caller-owned output storage.
+	bool ReadWorldMeshBytes( void *vertices, size_t vertexBytes, void *indices, size_t indexBytes,
+	    std::string *outError );
+	// Record one material batch using the uploaded WMSH buffers and the current
+	// material state. The first index/count are relative to the WMSH index section.
+	bool QueueWorldMeshBatch( uint32_t firstIndex, uint32_t indexCount );
 
 	// Begin recording a frame. Acquires the next swapchain image (recreating
 	// the swapchain on OUT_OF_DATE), begins the primary command buffer, and
@@ -939,6 +953,14 @@ private:
 	// Keyed by RasterStateKey, with bit 32 set for pipelines of the sRGB passes.
 	std::map<uint64_t, VkPipeline> m_dynTexPipelines;
 	VkPipeline TexturedPipeline( const DynRasterState &state, bool srgbPass = false );
+	std::map<uint64_t, VkPipeline> m_worldTexPipelines;
+	VkPipeline WorldTexturedPipeline( const DynRasterState &state, bool srgbPass = false );
+	std::map<uint64_t, VkPipeline> m_worldPbrPipelines;
+	VkPipeline WorldPbrPipeline( const DynRasterState &state, bool srgbPass = false );
+	VkShaderModule m_worldVert = VK_NULL_HANDLE;
+	VkVertexInputBindingDescription m_worldBinding = {};
+	VkVertexInputAttributeDescription m_worldAttrs[4] = {};
+	VkPipelineVertexInputStateCreateInfo m_worldVin = {};
 	// The pipeline store (OpenPipelineStore): the cache every material pipeline
 	// is built through, the variants built this session, and the files.
 	enum PipelineFamily
@@ -1135,6 +1157,11 @@ private:
 	};
 	StreamBuffer m_dynVertexStreams[kMaxFramesInFlight];
 	StreamBuffer m_dynIndexStreams[kMaxFramesInFlight];
+	StreamBuffer m_worldVertexBuffer;
+	StreamBuffer m_worldIndexBuffer;
+	uint32_t m_worldVertexCount = 0;
+	uint32_t m_worldIndexCount = 0;
+	uint64_t m_worldMeshRevision = 1;
 	// Texel uploads small enough to defer (a font glyph, a lightmap patch): the
 	// texels are copied here and the copy is recorded at the start of the next
 	// frame's command buffer, ahead of every draw that frame replays, instead of
@@ -1214,6 +1241,8 @@ private:
 		// Indexed draws only (indexCount > 0): the range of m_dynIndices drawn.
 		uint32_t firstIndex = 0;
 		uint32_t indexCount = 0;
+		bool worldMesh = false;
+		uint64_t worldMeshRevision = 0;
 		int shaderIndex = 0;
 		float transform[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 		float color[4] = { 1, 1, 1, 1 };

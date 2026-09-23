@@ -2755,6 +2755,27 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		t.vin.pVertexBindingDescriptions = &t.binding;
 		t.vin.vertexAttributeDescriptionCount = 7;
 		t.vin.pVertexAttributeDescriptions = t.attrs;
+		// WMSH v1 keeps the packer's 40-byte corner layout on the GPU. The
+		// dedicated vertex stage reads position, oct-normal and both UV sets;
+		// tangent/handedness remain available in the same record for later
+		// normal-map cohorts.
+		m_worldBinding.binding = 0;
+		m_worldBinding.stride = 40;
+		m_worldBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+		m_worldAttrs[0] = { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0 };
+		m_worldAttrs[1] = { 1, 0, VK_FORMAT_R16G16_SNORM, 12 };
+		m_worldAttrs[2] = { 2, 0, VK_FORMAT_R32G32_SFLOAT, 24 };
+		m_worldAttrs[3] = { 3, 0, VK_FORMAT_R32G32_SFLOAT, 32 };
+		m_worldVin = t.vin;
+		m_worldVin.pVertexBindingDescriptions = &m_worldBinding;
+		m_worldVin.vertexAttributeDescriptionCount = 4;
+		m_worldVin.pVertexAttributeDescriptions = m_worldAttrs;
+		if ( !( m_clipPlanesSupported
+		             ? CreateShaderModule( g_worldMeshClipVertSpv, sizeof( g_worldMeshClipVertSpv ),
+		                   &m_worldVert, outError )
+		             : CreateShaderModule( g_worldMeshVertSpv, sizeof( g_worldMeshVertSpv ),
+		                   &m_worldVert, outError ) ) )
+			return false;
 		t.ia = ia;
 		t.vp = vp;
 		t.rs = rs;
@@ -2854,6 +2875,40 @@ VkPipeline CVulkanContext::TexturedPipeline( const DynRasterState &state, bool s
 	m_dynTexPipelines[key] = pipeline;
 	if ( pipeline != VK_NULL_HANDLE )
 		NotePipelineVariant( kPipelineTextured, key );
+	return pipeline;
+}
+
+VkPipeline CVulkanContext::WorldTexturedPipeline( const DynRasterState &state, bool srgbPass )
+{
+	const uint64_t key = RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull );
+	const auto existing = m_worldTexPipelines.find( key );
+	if ( existing != m_worldTexPipelines.end() )
+		return existing->second;
+	if ( m_worldVert == VK_NULL_HANDLE || m_texTemplate.stages[1].module == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE;
+	VkPipeline pipeline = BuildMaterialPipeline( state, m_worldVert, m_texTemplate.stages[1].module,
+	    m_dynTexPipelineLayout, &m_worldVin, srgbPass ? m_renderPassLoadSrgb : m_renderPass );
+	if ( pipeline == VK_NULL_HANDLE )
+		Log( "vkCreateGraphicsPipelines (WMSH textured, state %#llx) failed\n",
+		    static_cast<unsigned long long>( key ) );
+	m_worldTexPipelines[key] = pipeline;
+	return pipeline;
+}
+
+VkPipeline CVulkanContext::WorldPbrPipeline( const DynRasterState &state, bool srgbPass )
+{
+	const uint64_t key = RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull );
+	const auto existing = m_worldPbrPipelines.find( key );
+	if ( existing != m_worldPbrPipelines.end() )
+		return existing->second;
+	if ( m_worldVert == VK_NULL_HANDLE || m_pbrDirectFrag == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE;
+	VkPipeline pipeline = BuildMaterialPipeline( state, m_worldVert, m_pbrDirectFrag,
+	    m_pbrDirectPipelineLayout, &m_worldVin, srgbPass ? m_renderPassLoadSrgb : m_renderPass );
+	if ( pipeline == VK_NULL_HANDLE )
+		Log( "vkCreateGraphicsPipelines (WMSH PBR, state %#llx) failed\n",
+		    static_cast<unsigned long long>( key ) );
+	m_worldPbrPipelines[key] = pipeline;
 	return pipeline;
 }
 
@@ -2968,7 +3023,8 @@ VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, V
 	gp.pViewportState = &t.vp;
 	VkPipelineRasterizationStateCreateInfo rs = t.rs;
 	rs.cullMode = state.cullMode;
-	rs.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	rs.frontFace =
+	    vertexInput == &m_worldVin ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
 	gp.pRasterizationState = &rs;
 	gp.pMultisampleState = &t.ms;
 	gp.pColorBlendState = &cb;
@@ -4617,6 +4673,17 @@ void CVulkanContext::DestroyDynamicMesh()
 	for ( const auto &entry : m_dynTexPipelines )
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_dynTexPipelines.clear();
+	for ( const auto &entry : m_worldTexPipelines )
+		vkDestroyPipeline( m_device, entry.second, nullptr );
+	m_worldTexPipelines.clear();
+	for ( const auto &entry : m_worldPbrPipelines )
+		vkDestroyPipeline( m_device, entry.second, nullptr );
+	m_worldPbrPipelines.clear();
+	if ( m_worldVert != VK_NULL_HANDLE )
+	{
+		vkDestroyShaderModule( m_device, m_worldVert, nullptr );
+		m_worldVert = VK_NULL_HANDLE;
+	}
 	for ( const auto &entry : m_portalPipelines )
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_portalPipelines.clear();
@@ -4737,6 +4804,209 @@ void CVulkanContext::DestroyStreamBuffer( StreamBuffer &stream )
 	if ( stream.memory != VK_NULL_HANDLE )
 		vkFreeMemory( m_device, stream.memory, nullptr );
 	stream = StreamBuffer();
+}
+
+bool CVulkanContext::UploadWorldMesh( const void *vertices, size_t vertexBytes, const void *indices,
+    size_t indexBytes, std::string *outError )
+{
+	if ( !IsValid() || !vertices || !indices || !vertexBytes || !indexBytes ||
+	     vertexBytes > 512ull * 1024 * 1024 || indexBytes > 512ull * 1024 * 1024 - vertexBytes )
+	{
+		SetError( outError, "invalid WMSH upload request or Vulkan device" );
+		return false;
+	}
+
+	StreamBuffer newVertices;
+	StreamBuffer newIndices;
+	StreamBuffer staging;
+	const size_t stagingBytes = vertexBytes + indexBytes;
+	if ( !CreateBuffer( vertexBytes,
+	         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+	             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+	         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &newVertices.buffer, &newVertices.memory,
+	         outError ) ||
+	     !CreateBuffer( indexBytes,
+	         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+	             VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+	         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &newIndices.buffer, &newIndices.memory,
+	         outError ) ||
+	     !CreateBuffer( stagingBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+	         &staging.buffer, &staging.memory, outError ) )
+	{
+		DestroyStreamBuffer( staging );
+		DestroyStreamBuffer( newIndices );
+		DestroyStreamBuffer( newVertices );
+		return false;
+	}
+	void *mapped = nullptr;
+	const VkResult mapResult = vkMapMemory( m_device, staging.memory, 0, stagingBytes, 0, &mapped );
+	if ( mapResult != VK_SUCCESS )
+	{
+		SetError(
+		    outError, std::string( "WMSH staging map failed: " ) + ResultString( mapResult ) );
+		DestroyStreamBuffer( staging );
+		DestroyStreamBuffer( newIndices );
+		DestroyStreamBuffer( newVertices );
+		return false;
+	}
+	staging.mapped = mapped;
+	std::memcpy( mapped, vertices, vertexBytes );
+	std::memcpy( static_cast<uint8_t *>( mapped ) + vertexBytes, indices, indexBytes );
+	VkCommandBuffer cmd = VK_NULL_HANDLE;
+	if ( !BeginSingleTimeCommands( &cmd, outError ) )
+	{
+		DestroyStreamBuffer( staging );
+		DestroyStreamBuffer( newIndices );
+		DestroyStreamBuffer( newVertices );
+		return false;
+	}
+	const VkBufferCopy vertexCopy = { 0, 0, vertexBytes };
+	const VkBufferCopy indexCopy = { vertexBytes, 0, indexBytes };
+	vkCmdCopyBuffer( cmd, staging.buffer, newVertices.buffer, 1, &vertexCopy );
+	vkCmdCopyBuffer( cmd, staging.buffer, newIndices.buffer, 1, &indexCopy );
+	VkBufferMemoryBarrier barriers[2] = {};
+	for ( int i = 0; i < 2; ++i )
+	{
+		barriers[i].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+		barriers[i].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barriers[i].dstAccessMask =
+		    i == 0 ? VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT : VK_ACCESS_INDEX_READ_BIT;
+		barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barriers[i].buffer = i == 0 ? newVertices.buffer : newIndices.buffer;
+		barriers[i].offset = 0;
+		barriers[i].size = VK_WHOLE_SIZE;
+	}
+	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+	    0, 0, nullptr, 2, barriers, 0, nullptr );
+	const bool uploaded = EndSingleTimeCommands( cmd, outError );
+	DestroyStreamBuffer( staging );
+	if ( !uploaded )
+	{
+		DestroyStreamBuffer( newIndices );
+		DestroyStreamBuffer( newVertices );
+		return false;
+	}
+
+	if ( WorldMeshResident() )
+	{
+		const VkResult idle = vkDeviceWaitIdle( m_device );
+		if ( idle != VK_SUCCESS )
+		{
+			SetError(
+			    outError, std::string( "WMSH replacement wait failed: " ) + ResultString( idle ) );
+			DestroyStreamBuffer( newIndices );
+			DestroyStreamBuffer( newVertices );
+			return false;
+		}
+	}
+	DestroyStreamBuffer( m_worldIndexBuffer );
+	DestroyStreamBuffer( m_worldVertexBuffer );
+	newVertices.capacity = vertexBytes;
+	newIndices.capacity = indexBytes;
+	m_worldVertexBuffer = newVertices;
+	m_worldIndexBuffer = newIndices;
+	m_worldVertexCount = static_cast<uint32_t>( vertexBytes / 40 );
+	m_worldIndexCount = static_cast<uint32_t>( indexBytes / sizeof( uint32_t ) );
+	++m_worldMeshRevision;
+	return true;
+}
+
+bool CVulkanContext::QueueWorldMeshBatch( uint32_t firstIndex, uint32_t indexCount )
+{
+	if ( !WorldMeshResident() || m_worldVert == VK_NULL_HANDLE || !indexCount ||
+	     firstIndex > m_worldIndexCount || indexCount > m_worldIndexCount - firstIndex ||
+	     ( m_dynShaderIndex != kDynShaderTextured && m_dynShaderIndex != kDynShaderPbrDirect ) )
+		return false;
+	DynDraw &draw = AppendDrawRecord();
+	draw.worldMesh = true;
+	draw.worldMeshRevision = m_worldMeshRevision;
+	draw.firstVertex = 0;
+	draw.vertexCount = m_worldVertexCount;
+	draw.firstIndex = firstIndex;
+	draw.indexCount = indexCount;
+	return true;
+}
+
+bool CVulkanContext::ReadWorldMeshBytes(
+    void *vertices, size_t vertexBytes, void *indices, size_t indexBytes, std::string *outError )
+{
+	if ( !IsValid() || !WorldMeshResident() || !vertices || !indices || !vertexBytes ||
+	     !indexBytes || vertexBytes != m_worldVertexBuffer.capacity ||
+	     indexBytes != m_worldIndexBuffer.capacity )
+	{
+		SetError( outError, "invalid WMSH readback request" );
+		return false;
+	}
+	StreamBuffer staging;
+	const size_t bytes = vertexBytes + indexBytes;
+	if ( !CreateBuffer( bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+	         &staging.buffer, &staging.memory, outError ) )
+	{
+		DestroyStreamBuffer( staging );
+		return false;
+	}
+	VkCommandBuffer cmd = VK_NULL_HANDLE;
+	if ( !BeginSingleTimeCommands( &cmd, outError ) )
+	{
+		DestroyStreamBuffer( staging );
+		return false;
+	}
+	const VkBufferCopy vertexCopy = { 0, 0, vertexBytes };
+	const VkBufferCopy indexCopy = { 0, vertexBytes, indexBytes };
+	vkCmdCopyBuffer( cmd, m_worldVertexBuffer.buffer, staging.buffer, 1, &vertexCopy );
+	vkCmdCopyBuffer( cmd, m_worldIndexBuffer.buffer, staging.buffer, 1, &indexCopy );
+	VkBufferMemoryBarrier hostRead = {};
+	hostRead.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+	hostRead.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	hostRead.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+	hostRead.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	hostRead.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	hostRead.buffer = staging.buffer;
+	hostRead.offset = 0;
+	hostRead.size = VK_WHOLE_SIZE;
+	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0,
+	    nullptr, 1, &hostRead, 0, nullptr );
+	if ( !EndSingleTimeCommands( cmd, outError ) )
+	{
+		DestroyStreamBuffer( staging );
+		return false;
+	}
+	void *mapped = nullptr;
+	const VkResult mapResult = vkMapMemory( m_device, staging.memory, 0, bytes, 0, &mapped );
+	if ( mapResult != VK_SUCCESS )
+	{
+		SetError(
+		    outError, std::string( "WMSH readback map failed: " ) + ResultString( mapResult ) );
+		DestroyStreamBuffer( staging );
+		return false;
+	}
+	staging.mapped = mapped;
+	std::memcpy( vertices, mapped, vertexBytes );
+	std::memcpy( indices, static_cast<uint8_t *>( mapped ) + vertexBytes, indexBytes );
+	DestroyStreamBuffer( staging );
+	return true;
+}
+
+void CVulkanContext::ReleaseWorldMesh()
+{
+	if ( m_device == VK_NULL_HANDLE )
+		return;
+	++m_worldMeshRevision;
+	if ( WorldMeshResident() )
+		vkDeviceWaitIdle( m_device );
+	DestroyStreamBuffer( m_worldIndexBuffer );
+	DestroyStreamBuffer( m_worldVertexBuffer );
+	m_worldVertexCount = 0;
+	m_worldIndexCount = 0;
+}
+
+bool CVulkanContext::WorldMeshResident() const
+{
+	return m_worldVertexBuffer.buffer != VK_NULL_HANDLE &&
+	       m_worldIndexBuffer.buffer != VK_NULL_HANDLE;
 }
 
 bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
@@ -4997,6 +5267,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		int openTarget = -1; // the swapchain pass opened above
 		bool openSrgb = false; // entered through the target's sRGB view
 		VkPipeline boundPipeline = VK_NULL_HANDLE;
+		bool worldBuffersBound = false;
 		// A query must begin and end inside one render pass, and only one
 		// occlusion query may be active at a time. One that would span a pass
 		// boundary is ended there and fails rather than report a partial count.
@@ -5158,7 +5429,10 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				continue;
 			}
 
-			if ( !geometryOk || d.vertexCount == 0 )
+			if ( d.worldMesh &&
+			     ( !WorldMeshResident() || d.worldMeshRevision != m_worldMeshRevision ) )
+				continue;
+			if ( ( !geometryOk && !d.worldMesh ) || d.vertexCount == 0 )
 				continue;
 			VkRect2D scissor = clampRect(
 			    0.0f, 0.0f, static_cast<float>( targetW ), static_cast<float>( targetH ) );
@@ -5201,7 +5475,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			else if ( d.shaderIndex == kDynShaderTextured )
 			{
 				// The textured pipeline built for this draw's blend/depth state.
-				selected = TexturedPipeline( d.raster, openSrgb );
+				selected = d.worldMesh ? WorldTexturedPipeline( d.raster, openSrgb )
+				                       : TexturedPipeline( d.raster, openSrgb );
 				if ( selected == VK_NULL_HANDLE )
 					continue;
 				selectedLayout = m_dynTexPipelineLayout;
@@ -5209,7 +5484,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			}
 			else if ( d.shaderIndex == kDynShaderPbrDirect )
 			{
-				selected = PbrDirectPipeline( d.raster, openSrgb );
+				selected = d.worldMesh ? WorldPbrPipeline( d.raster, openSrgb )
+				                       : PbrDirectPipeline( d.raster, openSrgb );
 				if ( selected == VK_NULL_HANDLE )
 					continue;
 				selectedLayout = m_pbrDirectPipelineLayout;
@@ -5418,14 +5694,39 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			vkCmdPushConstants( cmd, selectedLayout,
 			    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
 			    static_cast<uint32_t>( sizeof( float ) ) * pushFloats, pushData );
-			if ( d.indexCount > 0 )
+			if ( d.worldMesh )
 			{
+				if ( !worldBuffersBound )
+				{
+					VkDeviceSize offset = 0;
+					vkCmdBindVertexBuffers( cmd, 0, 1, &m_worldVertexBuffer.buffer, &offset );
+					vkCmdBindIndexBuffer( cmd, m_worldIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32 );
+					worldBuffersBound = true;
+				}
+				vkCmdDrawIndexed( cmd, d.indexCount, 1, d.firstIndex, 0, 0 );
+			}
+			else if ( d.indexCount > 0 )
+			{
+				if ( worldBuffersBound )
+				{
+					VkDeviceSize offset = 0;
+					vkCmdBindVertexBuffers( cmd, 0, 1, &vertexStream.buffer, &offset );
+					if ( indicesOk )
+						vkCmdBindIndexBuffer( cmd, indexStream.buffer, 0, VK_INDEX_TYPE_UINT32 );
+					worldBuffersBound = false;
+				}
 				if ( indicesOk )
 					vkCmdDrawIndexed( cmd, d.indexCount, 1, d.firstIndex,
 					    static_cast<int32_t>( d.firstVertex ), 0 );
 			}
 			else
 			{
+				if ( worldBuffersBound )
+				{
+					VkDeviceSize offset = 0;
+					vkCmdBindVertexBuffers( cmd, 0, 1, &vertexStream.buffer, &offset );
+					worldBuffersBound = false;
+				}
 				vkCmdDraw( cmd, d.vertexCount, 1, d.firstVertex, 0 );
 			}
 		}
@@ -6194,6 +6495,11 @@ void CVulkanContext::Shutdown()
 
 	if ( m_device != VK_NULL_HANDLE )
 	{
+		DestroyStreamBuffer( m_worldIndexBuffer );
+		DestroyStreamBuffer( m_worldVertexBuffer );
+		m_worldVertexCount = 0;
+		m_worldIndexCount = 0;
+		++m_worldMeshRevision;
 		DestroyDemoTriangle();
 		DestroyTexturedQuad();
 		DestroyIndexedUbo();

@@ -603,6 +603,8 @@ def main(argv=None):
                         help="physics provider module name (e.g. vphysics, vphysics_box3d)")
     parser.add_argument("--renderer", default=None,
                         help="render provider id (e.g. vulkan-compat, native-vulkan); engine default if unset")
+    parser.add_argument("--no-mouse", action="store_true",
+                        help="disable mouse input for repeatable windowed camera captures")
     parser.add_argument("--width", type=int, default=1024)
     parser.add_argument("--height", type=int, default=768)
     for name in ("vulkan", "sdl3", "wayland"):
@@ -664,6 +666,8 @@ def main(argv=None):
                    "+wait", "10", "+quit"]
         if args.renderer:
             command[1:1] = ["-renderer", args.renderer]
+        if args.no_mouse:
+            command[1:1] = ["-nomouse"]
         if args.draw_state_fixtures:
             fixture_dir = output / "draw-state"
             fixture_dir.mkdir()

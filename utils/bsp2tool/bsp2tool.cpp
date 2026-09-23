@@ -7,6 +7,7 @@
 //   bsp2tool verify  <map>                 full validation incl. every hash
 //   bsp2tool convert <legacy.bsp> <out>    legacy VBSP -> BSP2 (lossless)
 //   bsp2tool export  <bsp2> <out>          BSP2 -> byte-identical legacy VBSP
+//   bsp2tool pack-world <legacy.bsp> <world.wmsh> <out.bsp2>
 //
 // Exit status: 0 success, 1 container error, 2 usage or file I/O error.
 //
@@ -14,16 +15,57 @@
 
 #include "mapcontainer/map_container.h"
 #include "mapcontainer/map_container_builder.h"
+#include "mapcontainer/world_mesh.h"
+#include "mapcontainer/world_mesh_format.h"
 #include "../common/map_file_io.h"
 
+#include <array>
+#include <cstddef>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 using namespace mapcontainer;
 using namespace mapcontainer::tooling;
 
 namespace
 {
+uint32_t ReadU32( const std::byte *pBytes )
+{
+	uint32_t value = 0;
+	for ( int i = 3; i >= 0; --i )
+		value = ( value << 8 ) | std::to_integer<uint8_t>( pBytes[i] );
+	return value;
+}
+
+uint64_t ReadU64( const std::byte *pBytes )
+{
+	uint64_t value = 0;
+	for ( int i = 7; i >= 0; --i )
+		value = ( value << 8 ) | std::to_integer<uint8_t>( pBytes[i] );
+	return value;
+}
+
+bool ReadWorldMesh( const char *pPath, std::vector<std::byte> *pBytes )
+{
+	FileByteSource source( pPath );
+	constexpr uint64_t kMaxWorldMeshBytes = 512ull * 1024 * 1024;
+	if ( !source.IsOpen() || source.Size() < kWorldMeshHeaderSize ||
+	     source.Size() > kMaxWorldMeshBytes )
+		return false;
+	std::array<std::byte, kWorldMeshHeaderSize> header{};
+	if ( !source.ReadAt( 0, header.data(), header.size() ) )
+		return false;
+	const std::byte *pHeader = header.data();
+	if ( ReadU32( pHeader ) != kLumpWorldMesh || ReadU32( pHeader + 4 ) != kWorldMeshVersion ||
+	     ReadU32( pHeader + 8 ) != kWorldMeshHeaderSize || ReadU32( pHeader + 12 ) != 0 ||
+	     ReadU32( pHeader + 52 ) != 0 || ReadU64( pHeader + 120 ) != source.Size() )
+		return false;
+	pBytes->resize( size_t( source.Size() ) );
+	return source.ReadAt( 0, pBytes->data(), pBytes->size() ) &&
+	       ValidateWorldMesh( pBytes->data(), pBytes->size() ) == WorldMeshError::Ok;
+}
+
 std::string FourCCText( uint32_t fourcc )
 {
 	std::string text;
@@ -83,22 +125,24 @@ int main( int argc, char **argv )
 {
 	if ( argc < 3 )
 	{
-		std::fprintf( stderr, "usage: bsp2tool info|verify <map> | convert|export <in> <out>\n" );
+		std::fprintf( stderr, "usage: bsp2tool info|verify <map> | convert|export <in> <out> | "
+		                      "pack-world <legacy.bsp> <world.wmsh> <out.bsp2>\n" );
 		return 2;
 	}
 	const std::string command = argv[1];
 	const bool bTwoPaths = command == "convert" || command == "export";
-	if ( !bTwoPaths && command != "info" && command != "verify" )
+	const bool bPackWorld = command == "pack-world";
+	if ( !bTwoPaths && !bPackWorld && command != "info" && command != "verify" )
 	{
 		std::fprintf( stderr, "bsp2tool: unknown command '%s'\n", command.c_str() );
 		return 2;
 	}
-	if ( argc != ( bTwoPaths ? 4 : 3 ) )
+	if ( argc != ( bPackWorld ? 5 : bTwoPaths ? 4 : 3 ) )
 	{
 		std::fprintf( stderr, "bsp2tool: wrong argument count for '%s'\n", command.c_str() );
 		return 2;
 	}
-	if ( !bTwoPaths )
+	if ( !bTwoPaths && !bPackWorld )
 	{
 		FileByteSource source( argv[2] );
 		if ( !source.IsOpen() )
@@ -114,10 +158,21 @@ int main( int argc, char **argv )
 		std::fprintf( stderr, "bsp2tool: cannot read %s\n", argv[2] );
 		return 2;
 	}
-	const std::string temp = std::string( argv[3] ) + ".tmp";
+	std::vector<std::byte> worldMesh;
+	if ( bPackWorld && !ReadWorldMesh( argv[3], &worldMesh ) )
+	{
+		std::fprintf( stderr, "bsp2tool: invalid WMSH file %s\n", argv[3] );
+		return 2;
+	}
+	const char *pOutput = argv[bPackWorld ? 4 : 3];
+	const std::string temp = std::string( pOutput ) + ".tmp";
 	FileByteSink sink( temp );
-	const MapContainerStatus status = command == "export" ? ExportLegacyFromBsp2( source, sink )
-	                                                      : ConvertLegacyToBsp2( source, sink );
+	const Bsp2LumpInput worldLump{
+	    kLumpWorldMesh, kWorldMeshVersion, 0, kBsp2BulkAlignment, worldMesh };
+	const MapContainerStatus status =
+	    command == "export" ? ExportLegacyFromBsp2( source, sink )
+	    : bPackWorld        ? ConvertLegacyToBsp2( source, sink, std::span( &worldLump, 1 ) )
+	                        : ConvertLegacyToBsp2( source, sink );
 	if ( !status.Ok() )
 	{
 		sink.Finish();
@@ -125,10 +180,10 @@ int main( int argc, char **argv )
 		ReportError( command.c_str(), status );
 		return status.code == MapContainerError::WriteFailed ? 2 : 1;
 	}
-	if ( !sink.Finish() || std::rename( temp.c_str(), argv[3] ) != 0 )
+	if ( !sink.Finish() || std::rename( temp.c_str(), pOutput ) != 0 )
 	{
 		std::remove( temp.c_str() );
-		std::fprintf( stderr, "bsp2tool: cannot write %s\n", argv[3] );
+		std::fprintf( stderr, "bsp2tool: cannot write %s\n", pOutput );
 		return 2;
 	}
 	return 0;

@@ -26,6 +26,7 @@
 #include "ctexturecompositor.h"
 #include "materialsystem/idebugtextureinfo.h"
 #include "legacy_render_backend_provider.h"
+#include "render/world_mesh_upload.h"
 
 // NOTE: This must be the last file included!!!
 #include "tier0/memdbgon.h"
@@ -845,6 +846,9 @@ void *CMaterialSystem::QueryShaderAPI( const char *name )
 //-----------------------------------------------------------------------------
 void *CMaterialSystem::QueryInterface( const char *pInterfaceName )
 {
+	if ( pInterfaceName && !Q_strcmp( pInterfaceName, world_mesh_gpu::kWorldMeshUploadInterface ) )
+		return m_ShaderServices.worldMeshUpload;
+
 	if ( pInterfaceName &&
 	     !Q_strcmp( pInterfaceName, MATERIALSYSTEM_WINDOW_RESIZE_INTERFACE_VERSION ) )
 	{

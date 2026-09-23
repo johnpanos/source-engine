@@ -36,9 +36,10 @@ std::vector<std::byte> LoadFixture( const std::string &path )
 
 int main( int argc, char **argv )
 {
-	if ( argc != 2 )
+	if ( argc != 2 && argc != 4 )
 	{
-		std::fprintf( stderr, "usage: ktx2_reader_conformance FIXTURE_DIRECTORY\n" );
+		std::fprintf(
+		    stderr, "usage: ktx2_reader_conformance FIXTURE_DIRECTORY [HDR_KTX2 HDR_RAW]\n" );
 		return 2;
 	}
 	unsigned long checks = 0;
@@ -136,5 +137,30 @@ int main( int argc, char **argv )
 	const auto oversized = texturecontainer::ReadKtx2Image( damaged );
 	check( !oversized && oversized.Error() == texturecontainer::ReadError::TooLarge,
 	    "oversized declared mip fails before image data allocation" );
+	if ( argc == 4 )
+	{
+		std::vector<std::byte> atlasPackage = LoadFixture( argv[2] );
+		const std::vector<std::byte> atlasPixels = LoadFixture( argv[3] );
+		check( !atlasPackage.empty() && !atlasPixels.empty(),
+		    "HDR atlas package and independent raw extraction exist" );
+		if ( !atlasPackage.empty() && !atlasPixels.empty() )
+		{
+			const auto atlas = texturecontainer::ReadKtx2Image( atlasPackage );
+			check( atlas.HasValue(), "World Stage HDR atlas reads" );
+			if ( atlas )
+			{
+				check( atlas.Value().format == texturecontainer::PixelFormat::Rgba16Float &&
+				           atlas.Value().levels.size() == 1 &&
+				           atlas.Value().levels[0].width == 4096 &&
+				           atlas.Value().levels[0].height == 256,
+				    "World Stage atlas format, dimensions and mip count are exact" );
+				check( atlas.Value().levels[0].bytes == atlasPixels,
+				    "reader pixels match the independent KTX extraction exactly" );
+				std::fill( atlasPackage.begin(), atlasPackage.end(), std::byte{ 0 } );
+				check( atlas.Value().levels[0].bytes == atlasPixels,
+				    "HDR atlas pixels outlive encoded input" );
+			}
+		}
+	}
 	return testing::ReportConformance( checks, failures );
 }

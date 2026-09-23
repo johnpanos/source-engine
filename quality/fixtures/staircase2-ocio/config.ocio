@@ -1,0 +1,46 @@
+# Minimal OCIO 2.4 configuration for the staircase2 Cycles reference fixture.
+# PBRT texture images are sRGB; Cycles shading and EXR output use linear Rec.709.
+# The Standard display view applies the sRGB transfer function without a look.
+
+ocio_profile_version: 2.4
+search_path: ""
+strictparsing: true
+luma: [0.2126, 0.7152, 0.0722]
+
+roles:
+  reference: Linear Rec.709
+  scene_linear: Linear Rec.709
+  rendering: Linear Rec.709
+  default_byte: sRGB
+  default_float: Linear Rec.709
+  default_sequencer: sRGB
+  color_picking: sRGB
+  data: Non-Color
+  default: Linear Rec.709
+
+displays:
+  sRGB:
+    - !<View> {name: Standard, colorspace: sRGB}
+
+active_displays: [sRGB]
+active_views: [Standard]
+
+colorspaces:
+  - !<ColorSpace>
+    name: Linear Rec.709
+    family: Linear
+    bitdepth: 32f
+    isdata: false
+
+  - !<ColorSpace>
+    name: sRGB
+    family: Display
+    bitdepth: 32f
+    isdata: false
+    from_scene_reference: !<ExponentWithLinearTransform> {gamma: 2.4, offset: 0.055, direction: inverse}
+
+  - !<ColorSpace>
+    name: Non-Color
+    family: Data
+    bitdepth: 32f
+    isdata: true

@@ -226,6 +226,27 @@ typedef CCubeMap< LightShadowZBufferSample_t, SHADOW_ZBUF_RES> lightzbuffer_t;
 #define MODELFLAG_STUDIOHDR_AMBIENT_BOOST		0x0800	// persisted from studiohdr
 #define MODELFLAG_STUDIOHDR_DO_NOT_CAST_SHADOWS	0x1000	// persisted from studiohdr
 
+struct worldmeshbatch_t
+{
+	IMaterial *material;
+	unsigned int firstIndex;
+	unsigned int indexCount;
+	unsigned int firstMeshlet;
+	unsigned int meshletCount;
+};
+
+struct worldmeshcluster_t
+{
+	unsigned int firstIndex;
+	unsigned int indexCount;
+};
+
+struct worldmeshleafrange_t
+{
+	unsigned int firstReference;
+	unsigned int referenceCount;
+};
+
 struct worldbrushdata_t
 {
 	int			numsubmodels;
@@ -323,6 +344,17 @@ struct worldbrushdata_t
 
 	mleafambientindex_t		*m_pLeafAmbient;
 	mleafambientlighting_t	*m_pAmbientSamples;
+	// Borrowed from CModelLoader's map-scoped storage. A native world renderer
+	// may upload this only while the world model remains loaded.
+	const unsigned char *pWorldMeshData;
+	unsigned int worldMeshSize;
+	const worldmeshbatch_t *pWorldMeshBatches;
+	unsigned int worldMeshBatchCount;
+	const worldmeshcluster_t *pWorldMeshClusters;
+	unsigned int worldMeshClusterCount;
+	const worldmeshleafrange_t *pWorldMeshLeafRanges;
+	unsigned int worldMeshLeafCount;
+	const unsigned int *pWorldMeshLeafReferences;
 #if 0
 	int			numportals;
 	mportal_t	*portals;

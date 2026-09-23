@@ -22,6 +22,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <string>
 
@@ -132,6 +133,43 @@ int main( int argc, char **argv )
 
 	Check( ctx.IsValid(), "context is valid after Init" );
 	Check( ctx.DeviceName()[0] != '\0', "adapter reported a device name" );
+	// Exercise map-scoped WMSH buffer ownership on a real device. A failed
+	// replacement must leave the previous pair resident, while explicit release
+	// and context shutdown both retire them after GPU work completes.
+	uint8_t worldVertices[3 * 40] = {};
+	const uint32_t worldIndices[3] = { 0, 1, 2 };
+	for ( size_t i = 0; i < sizeof( worldVertices ); ++i )
+		worldVertices[i] = static_cast<uint8_t>( i * 37 + 11 );
+	uint8_t readVertices[sizeof( worldVertices )] = {};
+	uint32_t readIndices[3] = {};
+	Check( !ctx.WorldMeshResident(), "world mesh starts absent" );
+	Check( !ctx.UploadWorldMesh(
+	           nullptr, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
+	    "world mesh rejects a missing vertex section" );
+	Check( !ctx.WorldMeshResident(), "failed first upload leaves no world mesh" );
+	Check( ctx.UploadWorldMesh(
+	           worldVertices, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
+	    "world mesh uploads device-local vertex and index buffers" );
+	Check( ctx.WorldMeshResident(), "world mesh pair is resident after upload" );
+	Check( ctx.ReadWorldMeshBytes(
+	           readVertices, sizeof( readVertices ), readIndices, sizeof( readIndices ), &err ),
+	    "world mesh device buffers read back" );
+	Check( std::memcmp( readVertices, worldVertices, sizeof( readVertices ) ) == 0 &&
+	           std::memcmp( readIndices, worldIndices, sizeof( readIndices ) ) == 0,
+	    "world mesh GPU bytes match both authored sections" );
+	Check( readVertices[0] != 0, "readback oracle rejects a zero-filled vertex buffer" );
+	worldVertices[0] = 1;
+	Check( ctx.UploadWorldMesh(
+	           worldVertices, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
+	    "world mesh replacement uploads after prior GPU work" );
+	Check( !ctx.UploadWorldMesh(
+	           worldVertices, sizeof( worldVertices ), nullptr, sizeof( worldIndices ), &err ),
+	    "world mesh rejects a missing index section" );
+	Check( ctx.WorldMeshResident(), "failed replacement retains the prior world mesh" );
+	Check( ctx.ReadWorldMeshBytes(
+	           readVertices, sizeof( readVertices ), readIndices, sizeof( readIndices ), &err ) &&
+	           std::memcmp( readVertices, worldVertices, sizeof( readVertices ) ) == 0,
+	    "replacement bytes survive a failed upload" );
 
 	int sw = 0, sh = 0;
 	ctx.GetSwapchainExtent( sw, sh );
@@ -169,6 +207,7 @@ int main( int argc, char **argv )
 		std::fprintf( stderr, "resize failed: %s\n", err.c_str() );
 		++g_failures;
 	}
+	Check( ctx.WorldMeshResident(), "world mesh survives presentation resize" );
 	if ( !PresentAndCapture( ctx, 0.0f, 1.0f, 0.0f, &err ) )
 	{
 		std::fprintf( stderr, "present/capture (green) failed: %s\n", err.c_str() );
@@ -389,12 +428,65 @@ int main( int argc, char **argv )
 		}
 		ctx.SetDrawDemoDepth( false );
 	}
+	// Draw packed WMSH corners from the persistent device-local buffers, through
+	// the ordinary textured material fragment stage. This is an independent
+	// pixel oracle for the new vertex format and indexed draw command.
+	std::memset( worldVertices, 0, sizeof( worldVertices ) );
+	const float worldPositions[3][3] = {
+	    { -0.6f, -0.6f, 0.1f }, { 0.6f, -0.6f, 0.1f }, { 0.0f, 0.6f, 0.1f } };
+	for ( int vertex = 0; vertex < 3; ++vertex )
+	{
+		uint8_t *corner = worldVertices + vertex * 40;
+		std::memcpy( corner, worldPositions[vertex], sizeof( worldPositions[vertex] ) );
+		corner[20] = 1; // tangent handedness; normal oct zero is +Z
+	}
+	Check( ctx.UploadWorldMesh(
+	           worldVertices, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
+	    "packed world triangle uploads" );
+	Check( ctx.InitDynamicMesh( &err ), "world mesh material pipeline initializes" );
+	ctx.SelectDynamicShader( CVulkanContext::kDynShaderTextured );
+	ctx.SelectDynamicColorSpace( 0 );
+	const float magenta[4] = { 1.0f, 0.0f, 1.0f, 1.0f };
+	ctx.SetDynamicModulation( magenta );
+	ctx.BindManagedTexture( -1 );
+	Check( !ctx.QueueWorldMeshBatch( 1, 3 ), "world draw rejects an index range past the buffer" );
+	Check( ctx.QueueWorldMeshBatch( 0, 3 ), "world draw queues an indexed material batch" );
+	if ( PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
+	{
+		int cw = 0, ch = 0;
+		const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
+		if ( cw > 0 && ch > 0 && !px.empty() )
+		{
+			const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
+			const uint8_t *corner = &px[0];
+			Check( PixelClose( center, 255, 0, 255, 255, 3 ),
+			    "WMSH indexed draw colors the center magenta" );
+			Check( PixelClose( corner, 255, 0, 0, 255, 3 ),
+			    "WMSH indexed draw leaves the clear outside its triangle" );
+		}
+		else
+			Check( false, "WMSH draw captured a nonempty frame" );
+	}
+	else
+		Check( false, "WMSH draw submitted and captured" );
+	ctx.ClearDynamicQueue();
+	ctx.ReleaseWorldMesh();
+	Check( !ctx.WorldMeshResident(), "map unload releases world mesh buffers" );
+	Check( !ctx.ReadWorldMeshBytes(
+	           readVertices, sizeof( readVertices ), readIndices, sizeof( readIndices ), &err ),
+	    "released world mesh cannot be read back" );
+	ctx.ReleaseWorldMesh();
+	Check( !ctx.WorldMeshResident(), "world mesh release is idempotent" );
+	Check( ctx.UploadWorldMesh(
+	           worldVertices, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
+	    "world mesh can upload after release" );
 
 	if ( ctx.ValidationEnabled() )
 		Check( ctx.ValidationErrorCount() == 0, "no validation errors/warnings during the run" );
 
 	ctx.Shutdown();
 	Check( !ctx.IsValid(), "context is invalid after Shutdown" );
+	Check( !ctx.WorldMeshResident(), "device shutdown releases world mesh buffers" );
 
 	SDL_DestroyWindow( window );
 	SDL_Quit();

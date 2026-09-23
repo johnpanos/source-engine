@@ -22,6 +22,7 @@
 #include "materialsystem/idebugtextureinfo.h"
 #include "materialsystem/deformations.h"
 #include "render/legacy_shader_provider.h"
+#include "render/world_mesh_upload.h"
 #include "vulkan_device.h"
 #include "sdl3/sdl3_vulkan_surface_host.h"
 #include "vtf/vtf.h"
@@ -508,6 +509,14 @@ public:
 	// (GetDynamicMesh with a vertex override), and a batch reuses the indices
 	// just built into the dynamic mesh itself (the index override is the mesh).
 	void SetSources( IMesh *pVertexOverride, IMesh *pIndexOverride );
+	void SetWorldMeshBatch( uint32_t firstIndex, uint32_t indexCount )
+	{
+		m_worldMeshBatch = true;
+		m_worldFirstIndex = firstIndex;
+		m_worldIndexCount = indexCount;
+		m_worldDrawQueued = false;
+	}
+	bool WorldMeshDrawQueued() const { return m_worldDrawQueued; }
 
 	// Sets the primitive type
 	void SetPrimitiveType( MaterialPrimitiveType_t type );
@@ -595,6 +604,10 @@ private:
 	// Draw-time sources (SetSources); null means this mesh's own storage.
 	CEmptyMesh *m_pVertexSource = nullptr;
 	CEmptyMesh *m_pIndexSource = nullptr;
+	bool m_worldMeshBatch = false;
+	uint32_t m_worldFirstIndex = 0;
+	uint32_t m_worldIndexCount = 0;
+	bool m_worldDrawQueued = false;
 	// Vertices locked into m_vertexData as an interleaved position(vec3) +
 	// color(4 bytes) layout with stride kMeshVertexStride, so Draw() can forward
 	// real geometry to the native Vulkan dynamic-mesh path.
@@ -1873,6 +1886,40 @@ static bool DescribeNativeVulkanAdapter( int adapter, render::RenderAdapterInfo 
 	return true;
 }
 
+class CVulkanWorldMeshUpload final : public world_mesh_gpu::IWorldMeshUpload
+{
+public:
+	bool Upload( const world_mesh_gpu::WorldMeshUploadRequest &request ) override
+	{
+		if ( !request.vertexCount || !request.indexCount ||
+		     request.vertexBytes != size_t( request.vertexCount ) * 40 ||
+		     request.indexBytes != size_t( request.indexCount ) * sizeof( uint32_t ) )
+			return false;
+		std::string error;
+		if ( !g_VulkanContext.UploadWorldMesh( request.vertices, request.vertexBytes,
+		         request.indices, request.indexBytes, &error ) )
+		{
+			Warning( "[NativeVulkan] WMSH upload failed: %s\n", error.c_str() );
+			return false;
+		}
+		return true;
+	}
+	bool DrawBatch( uint32_t firstIndex, uint32_t indexCount ) override
+	{
+		if ( !g_VulkanContext.WorldMeshResident() || !indexCount )
+			return false;
+		CEmptyMesh mesh( false );
+		mesh.SetWorldMeshBatch( firstIndex, indexCount );
+		mesh.Draw( 0, static_cast<int>( indexCount ) );
+		return mesh.WorldMeshDrawQueued();
+	}
+
+	void Release() override { g_VulkanContext.ReleaseWorldMesh(); }
+	bool IsResident() const override { return g_VulkanContext.WorldMeshResident(); }
+};
+
+static CVulkanWorldMeshUpload g_WorldMeshUpload;
+
 static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *services )
 {
 	if ( !services )
@@ -1883,6 +1930,7 @@ static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *servi
 	services->shadow = &g_ShaderShadow;
 	services->hardware = &g_ShaderAPIEmpty;
 	services->debugTextures = &g_ShaderAPIEmpty;
+	services->worldMeshUpload = &g_WorldMeshUpload;
 	services->describeAdapter = DescribeNativeVulkanAdapter;
 	return true;
 }
@@ -2855,7 +2903,7 @@ void CEmptyMesh::Draw( int firstIndex, int numIndices )
 	const CEmptyMesh &vertices = m_pVertexSource ? *m_pVertexSource : *this;
 	const CEmptyMesh &indices = m_pIndexSource ? *m_pIndexSource : *this;
 	if ( !g_VulkanContext.IsValid() || !g_VulkanContext.DynamicMeshReady() ||
-	     vertices.m_numVerts <= 0 )
+	     ( !m_worldMeshBatch && vertices.m_numVerts <= 0 ) )
 		return;
 
 	render_vulkan::CFrameCostScope cost(
@@ -2967,6 +3015,14 @@ static const float *MonitorTexture2Rows();
 void CEmptyMesh::EmitToNativeQueue()
 {
 	render_vulkan::CFrameCostScope cost( g_VulkanContext.CurrentFrameCost(), render_vulkan::kCostEmit );
+	if ( m_worldMeshBatch )
+	{
+		if ( g_VulkanContext.QueueWorldMeshBatch( m_worldFirstIndex, m_worldIndexCount ) )
+			m_worldDrawQueued = true;
+		else
+			DropDraw( "draw dropped: WMSH batch unavailable" );
+		return;
+	}
 	const CEmptyMesh &vertices = m_pVertexSource ? *m_pVertexSource : *this;
 	const CEmptyMesh &indices = m_pIndexSource ? *m_pIndexSource : *this;
 	const int numVerts = vertices.m_numVerts;

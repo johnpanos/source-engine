@@ -3,7 +3,8 @@
 Updated: 2026-09-23
 Portfolio rows: R53 (F1) active; R54 (F2) partial with a compiled World Stage,
 Portal material layer and Cycles preview; R55 (F3) has host-tool, reader, native
-GPU and GTK preview evidence; R56–R58 are not started. F1 native-run evidence records the engine
+GPU and GTK preview evidence; R56 has an initial WMSH container slice; R57–R58
+are not started. F1 native-run evidence records the engine
 revision and working-tree digest; the F3 probe records the pinned KTX source
 revision and profile hash. This work overlaps other in-progress tree changes.
 
@@ -24,8 +25,9 @@ below regenerate it.
 | Phase | State | Summary |
 | --- | --- | --- |
 | F1 BSP2 container and map-reader seam | **active (prototype; gate incomplete)** | Container, seam, both readers, pinned v20/v21 lossless corpora, 64-bit sparse tool export, client boot, a 26-map Portal v20 dedicated comparison and five-map v21 client/dedicated engine-seam comparisons work. A derived v19-header map also loads in both products. Authored v19 content, native Portal 2 gameplay and the CI content lane remain (see [Remaining for the F1 gate](#remaining-for-the-f1-gate)) |
-| F2 World Stage | partial (world geometry, light and Portal material preview; gate incomplete) | Opt-in `vbsp2` emits BSP, lossless BSP2 and OpenUSD world faces, a lightmap chart table, ordered entities and a `UsdLuxSphereLight` with its compiled style ID. A private Portal-remaster VMF compiles; a separate `UsdPreviewSurface` layer binds two real PBR materials and renders in Blender Cycles at 2048×1152. A preview bridge places Cycles flat lightmap samples in a legacy lighting lump; the BSP2 map renders them in native Vulkan with Portal textures. Pinned standalone Cycles, a canonical baker, render lumps and native consumption of canonical Cycles lighting remain. |
-| F4–F7 | planned | Not started |
+| F2 World Stage | partial (world geometry, light and Portal material preview; gate incomplete) | Opt-in `vbsp2` emits BSP, lossless BSP2 and OpenUSD world faces, a lightmap chart table, ordered entities and a `UsdLuxSphereLight` with its compiled style ID. A private Portal-remaster VMF compiles; a separate `UsdPreviewSurface` layer binds two real PBR materials and renders in Blender Cycles at 2048×1152. A preview bridge places Cycles flat and three RNM lightmap samples in a legacy lighting lump. The BSP2 map carries them and renders the flat page in native Vulkan; a controlled legacy DXVK comparison shows the RNM samples change in-game pixels. Pinned standalone Cycles, a canonical baker, accepted SH L1, render lumps and native consumption of directional lighting remain. |
+| F4–F5 BSP2 world path | partial (diagnostic WMSH draw and Cycles preview; gate incomplete) | An independently checked WMSH v1 mesh payload from the Portal World Stage is carried in BSP2 beside byte-identical legacy data. The client validates and retains WMSH for the map lifetime; native Vulkan uploads its vertex and index sections once into device-local buffers. An opt-in diagnostic draw uses the engine's visible leaves, WMSH meshlet references, and Source material passes. A controlled playable comparison proves that this USD-derived mesh samples both real upsampled Portal base textures and Cycles-derived lighting carried by the legacy lightmap page. The Cycles flat atlas also packages as validated HDR KTX2 and passes the engine's image reader. Malformed optional WMSH is rejected while the legacy map stays playable. Canonical lightmap/probe data, automatic map-selected rendering, feature cohorts and load-cost gates remain. |
+| F6–F7 | planned | Not started |
 | F3 KTX2 textures | **partial (host packer, device selection, owned readers and native/GTK consumers)** | Pinned Linux tool builds; ten transcode targets validate, UASTC master decode pixels match fixtures, and the packer publishes validated packages from explicit or product-profile device selections. Strict KTX2 and VTF readers produce the same owned image description for a 2D caller cohort; BC7 feeds the native pixel test. Hammer's GTK material catalog previews packaged RGBA8/BGRA8 KTX2 through that reader. Material-system file selection, Hammer compressed-format preview, installed product device identity and ASTC/ETC2/EAC GPU pixels remain. |
 
 F2 requires the R48 host compile-tool gate. Its [current compiler preparation](0007-progress.md#r48-host-compiler-preparation-2026-09-23)
@@ -428,6 +430,645 @@ python3 tools/quality/worldstage_in_game_compare.py \
   --baseline-evidence quality-results/rfc0008-portal-room-native-final-20260923/evidence.json \
   --preview-evidence quality-results/rfc0008-portal-schema4-native-20260923/evidence.json \
   --out quality-results/rfc0008-portal-schema4-in-game-compare-20260923.json
+```
+
+### F2 directional Cycles inspection bake (2026-09-23)
+
+The same compiled Stage was baked four times in Blender Cycles 5.2.1: the
+geometric normal and Source's three RNM basis directions derived from each
+face's texture tangent frame. An analytic distant-light fixture exposed an
+important Cycles behavior: setting an unlinked shader normal produced identical
+flat and RNM output, and the default bump-map correction reduced the RNM0/flat
+ratio from the expected 1.732 to 1.557. Explicitly linking the normal and
+disabling that correction produced a measured ratio of 1.7320512. The
+[basis oracle](../tools/quality/worldstage_cycles_basis_oracle.py) records the
+passing result in `quality-results/rfc0008-cycles-basis-oracle-uncorrected-20260923.json`;
+its earlier failing run is retained as a negative feasibility result.
+
+The 4096×256, 64-sample flat/RNM0/RNM1/RNM2 EXRs have distinct hashes. An
+[independent BSP tangent comparator](../tools/quality/worldstage_directional_bake_compare.py)
+matched all 16 face directions, required each chart to be lit, and rejected a
+seeded wrong direction
+(`quality-results/rfc0008-portal-directional-4096-compare-20260923.json`).
+The [preview bridge](../tools/quality/worldstage_legacy_lightmap_preview.py)
+encoded those passes into style 32 of the original VRAD BSP: 4,624 flat
+luxels and 10,404 RNM luxels on 12 bumped faces. A flat-only companion uses
+the same Cycles flat samples and style averages. The
+[delta comparator](../tools/quality/worldstage_rnm_delta_compare.py) proved
+that the two BSPs differ only in the three RNM spans of style 32, with a
+negative control for a changed non-RNM lighting byte
+(`quality-results/rfc0008-portal-rnm-only-delta-20260923.json`). The RNM BSP
+round-tripped through BSP2 and booted as a playable Portal map in native
+Vulkan (`quality-results/rfc0008-portal-rnm-native-20260923/evidence.json`).
+This native path currently samples the flat lightmap page; it does not yet
+consume the three RNM pages.
+
+For the legacy renderer, the source-matched DXVK shader pack needed two new
+`LightmappedGeneric` static groups and three `sprite_ps20b` groups for this
+room. The first boot correctly failed its missing-permutation check. After
+rebuilding the pack from that demand log, a legacy BSP with flat Cycles data
+and a legacy BSP with the same flat data plus Cycles RNM both loaded. A first
+repeat showed mouse motion changed the camera; the boot harness now exposes
+`--no-mouse`, using Source's existing `-nomouse` switch. Two flat-map captures
+with that switch were byte identical. The
+[DXVK frame comparator](../tools/quality/worldstage_rnm_in_game_compare.py)
+then verified identical executables, shaders, 13 material assets, camera and
+display settings. The RNM-only BSP delta changed 7.87% of image pixels by
+more than five RGB levels (mean absolute RGB difference 1.56); see
+`quality-results/rfc0008-portal-rnm-dxvk-in-game-compare-20260923.json`.
+This demonstrates directional Cycles lighting reaches the existing
+`LightmappedGeneric` DXVK path for the playable map. It does not establish
+native Vulkan directional sampling or the new PBR shader family.
+
+An [unencoded SH L1 preview](../tools/quality/worldstage_sh_l1_preview.py)
+fits the four measured directions at each atlas pixel. Its four input
+directions reconstruct within numerical precision, but that is an interpolation
+check only. The [analytic held-out oracle](../tools/quality/worldstage_sh_l1_analytic_oracle.py)
+fails a provisional maximum error bound of 0.15: its worst direct-light error
+is 0.845 and its 95th percentile is 0.277. Even dense least squares into L1
+has worst error 0.385 for this analytic grid. See
+`quality-results/rfc0008-sh-l1-four-direction-analytic-20260923.json`.
+Additional-direction fitting and a declared acceptance tolerance are needed before
+encoding canonical LMAP data. The pinned standalone Cycles source was checked
+out at `a456b761034dda42c32eef9f4aae0fa5a5c9f604`, but its pinned LFS
+dependency bundle and required development libraries are not yet installed;
+these runs use Blender's integrated Cycles and are inspection evidence only.
+
+The directional preview can be reproduced from the schema 4 fixture above
+with fresh output paths:
+
+```sh
+for basis in flat rnm0 rnm1 rnm2; do
+  OCIO=/tmp/rfc0008-ocio24-clean3/config.ocio blender -b --factory-startup \
+    --python-exit-code 9 --python tools/quality/worldstage_cycles_bake_preview.py -- \
+    --stage /tmp/rfc0008-portal-room-schema4/portal-preview-schema4.usda \
+    --manifest /tmp/rfc0008-portal-room-schema4/material-manifest.json \
+    --basis "$basis" --require-all-charts-lit \
+    --out "quality-results/rfc0008-portal-${basis}-exact-4096.exr" \
+    --width 4096 --height 256 --samples 64
+done
+python3 tools/quality/worldstage_directional_bake_compare.py \
+  --bsp /tmp/rfc0008-portal-room-schema4/sealed_room.bsp \
+  --stage /tmp/rfc0008-portal-room-schema4/portal-preview-schema4.usda \
+  --manifest /tmp/rfc0008-portal-room-schema4/material-manifest.json \
+  --flat quality-results/rfc0008-portal-flat-exact-4096.exr \
+  --rnm0 quality-results/rfc0008-portal-rnm0-exact-4096.exr \
+  --rnm1 quality-results/rfc0008-portal-rnm1-exact-4096.exr \
+  --rnm2 quality-results/rfc0008-portal-rnm2-exact-4096.exr \
+  --negative-self-test \
+  --out quality-results/rfc0008-portal-directional-4096-compare-20260923.json
+python3 tools/quality/worldstage_sh_l1_analytic_oracle.py \
+  --out quality-results/rfc0008-sh-l1-four-direction-analytic-20260923.json
+```
+
+The last command is expected to exit nonzero while the four-direction fit
+fails its provisional analytic error bound. The checked DXVK artifact pack is
+`build-portal-vulkan/shaders/portal-source-matched-rfc0008/manifest.json`;
+its invocation and source hashes are recorded there. The three passing
+`--no-mouse` boots and their comparator inputs are named in the comparator
+evidence above.
+
+### F2 supplemental Cycles SH fit (2026-09-23)
+
+The [versioned direction plan](../quality/fixtures/rfc0008-sh-fit-directions-v1.json)
+adds eight normals across two tangent-frame elevations. The
+[Cycles batch runner](../tools/quality/worldstage_cycles_supplemental_bakes.py)
+baked all eight through the same Portal World Stage at 4096×256 and 64 samples,
+with hashes, inputs and commands in
+`quality-results/rfc0008-portal-sh12-4096-20260923/supplemental-bakes.json`.
+The SH preview now validates each authored normal against an independent
+compiled-BSP tangent frame, rejects a seeded wrong supplemental normal and
+fits all 12 irradiances by least squares. Its
+unencoded coefficients are in
+`quality-results/rfc0008-portal-sh-l1-12-preview-4096.npz`.
+
+For analytic clamped-cosine direct lighting, the 12-direction fit reduced the
+maximum error from **0.845 to 0.500** and the 95th percentile from **0.277 to
+0.194**. A separate Cycles bake at a direction excluded from both fits tested
+the actual stage. The [held-out comparator](../tools/quality/worldstage_sh_l1_heldout_compare.py)
+verified its direction against the BSP, rejected a seeded wrong direction,
+and found chart-pixel mean absolute error **0.257 → 0.207** (19.5% lower) and
+95th-percentile error **0.695 → 0.575**. Evidence is
+`quality-results/rfc0008-portal-sh-l1-heldout-20260923.json`. These are
+linear irradiance units, before encoding. The provisional analytic maximum
+bound of 0.15 still fails; dense least squares in L1 itself has a 0.385 worst
+error on this grid. More samples alone cannot certify the chosen SH L1 format.
+The pixel oracle, encoding decision, light-style layers and native runtime
+evaluation remain open.
+
+```sh
+OCIO=/tmp/rfc0008-ocio24-clean3/config.ocio \
+  python3 tools/quality/worldstage_cycles_supplemental_bakes.py \
+  --plan quality/fixtures/rfc0008-sh-fit-directions-v1.json \
+  --stage /tmp/rfc0008-portal-room-schema4/portal-preview-schema4.usda \
+  --manifest /tmp/rfc0008-portal-room-schema4/material-manifest.json \
+  --out-dir quality-results/rfc0008-portal-sh12-4096-20260923 \
+  --width 4096 --height 256 --samples 64
+python3 tools/quality/worldstage_sh_l1_analytic_oracle.py \
+  --direction-plan quality/fixtures/rfc0008-sh-fit-directions-v1.json \
+  --out quality-results/rfc0008-sh-l1-12-direction-analytic-20260923.json
+python3 tools/quality/worldstage_sh_l1_preview.py \
+  --comparison quality-results/rfc0008-portal-directional-4096-compare-20260923.json \
+  --geometry-comparison /tmp/rfc0008-portal-room-schema4/geometry-comparison.json \
+  --flat quality-results/rfc0008-portal-flat-exact-4096.exr \
+  --rnm0 quality-results/rfc0008-portal-rnm0-exact-4096.exr \
+  --rnm1 quality-results/rfc0008-portal-rnm1-exact-4096.exr \
+  --rnm2 quality-results/rfc0008-portal-rnm2-exact-4096.exr \
+  --out quality-results/rfc0008-portal-sh-l1-four-refit-4096.npz
+python3 tools/quality/worldstage_sh_l1_preview.py \
+  --comparison quality-results/rfc0008-portal-directional-4096-compare-20260923.json \
+  --geometry-comparison /tmp/rfc0008-portal-room-schema4/geometry-comparison.json \
+  --flat quality-results/rfc0008-portal-flat-exact-4096.exr \
+  --rnm0 quality-results/rfc0008-portal-rnm0-exact-4096.exr \
+  --rnm1 quality-results/rfc0008-portal-rnm1-exact-4096.exr \
+  --rnm2 quality-results/rfc0008-portal-rnm2-exact-4096.exr \
+  --direction-plan quality/fixtures/rfc0008-sh-fit-directions-v1.json \
+  --extra-dir quality-results/rfc0008-portal-sh12-4096-20260923 \
+  --bsp /tmp/rfc0008-portal-room-schema4/sealed_room.bsp \
+  --manifest /tmp/rfc0008-portal-room-schema4/material-manifest.json \
+  --negative-self-test \
+  --out quality-results/rfc0008-portal-sh-l1-12-preview-4096.npz
+OCIO=/tmp/rfc0008-ocio24-clean3/config.ocio blender -b --factory-startup \
+  --python-exit-code 9 --python tools/quality/worldstage_cycles_bake_preview.py -- \
+  --stage /tmp/rfc0008-portal-room-schema4/portal-preview-schema4.usda \
+  --manifest /tmp/rfc0008-portal-room-schema4/material-manifest.json \
+  --direction-id heldout0 \
+  --normal-local 0.6123724356957945 0.6123724356957945 0.5 \
+  --require-all-charts-lit \
+  --out quality-results/rfc0008-portal-sh-heldout0-4096.exr \
+  --width 4096 --height 256 --samples 64
+python3 tools/quality/worldstage_sh_l1_heldout_compare.py \
+  --bsp /tmp/rfc0008-portal-room-schema4/sealed_room.bsp \
+  --stage /tmp/rfc0008-portal-room-schema4/portal-preview-schema4.usda \
+  --manifest /tmp/rfc0008-portal-room-schema4/material-manifest.json \
+  --heldout quality-results/rfc0008-portal-sh-heldout0-4096.exr \
+  --four quality-results/rfc0008-portal-sh-l1-four-refit-4096.npz \
+  --twelve quality-results/rfc0008-portal-sh-l1-12-preview-4096.npz \
+  --negative-self-test \
+  --out quality-results/rfc0008-portal-sh-l1-heldout-20260923.json
+```
+
+Use fresh output paths for reruns. The analytic command exits nonzero because
+the provisional bound remains unmet. The adjacent JSON evidence files record
+the input hashes and outputs.
+
+## F4 WMSH container slice (2026-09-23)
+
+[WMSH v1](../public/mapcontainer/world_mesh_format.h) defines a little-endian
+world mesh payload with upload-ready corners and indices, material batches,
+bounded meshlets, BSP face IDs, and leaf-to-meshlet references. The
+[Stage packer](../tools/quality/worldstage_mesh_pack.py) requires the existing
+independent Stage/BSP geometry comparison with matching input hashes before it
+emits bytes. The [independent comparator](../tools/quality/worldstage_mesh_compare.py)
+parses those bytes separately and checks every triangle, material, UV, normal,
+face ID, batch, meshlet, and BSP leaf reference against the source artifacts. A
+seeded wrong face ID is rejected. The 16-face Portal room produced 96 corners,
+32 triangles, two material batches, 16 meshlets, 29 leaves and 16 leaf
+references; the payload is 5,688 bytes. Local evidence is
+`quality-results/rfc0008-portal-worldmesh-v1.json` and
+`quality-results/rfc0008-portal-worldmesh-v1-compare.json`. Three
+[payload contract tests](../tools/quality/tests/test_worldstage_mesh_payload.py)
+cover UTF-8 materials, leaf references, truncation, shifted sections, bad
+indices, and invalid leaf references.
+
+`bsp2tool pack-world` carries WMSH as an optional 4,096-byte-aligned lump
+beside the unmodified legacy v21 payload. The tool and client share the
+[map-scoped WMSH validator](../public/mapcontainer/world_mesh.h), which checks
+section bounds, finite vertex data by IEEE-754 bits (the profile uses fast-math),
+deindexed indices, material batches and paths, meshlet bounds/cones and leaf
+references without retaining or allocating from untrusted bytes. The twelve
+synthetic malformed cases fail before output. The
+independent reader verified WMSH byte equality inside BSP2, all container
+hashes, and byte-identical export of the Cycles RNM legacy BSP. Both readers
+validated the resulting container. The native Vulkan Portal client loaded it
+headlessly, reached the active map, and captured a detailed frame. Compared
+with the prior RNM BSP2 frame at the same camera, mean absolute RGB difference
+was 0.026 and 0.024% of pixels differed by more than five levels; this is
+compatibility evidence, not evidence of WMSH rendering. Boot evidence is
+`quality-results/rfc0008-portal-wmsh-native-20260923/evidence.json`.
+The [synthetic tool conformance](../tools/quality/worldstage_mesh_tool_conformance.py)
+reproduces the carriage and twelve malformed controls without licensed maps;
+evidence is `quality-results/rfc0008-worldmesh-tool-conformance-20260923.json`.
+
+The Portal client reads WMSH through the existing BSP2 map source while it is
+open, verifies the container hash and payload, then retains owned bytes in the
+world model loader. The world brush borrows them until map unload; the
+dedicated build neither loads this render lump nor links the validator object.
+Both isolated client and dedicated builds passed. The valid packaged room
+reported `WMSH ready (96 vertices, 32 triangles, 16 meshlets, 29 leaves)` in
+the playable native Vulkan client. A BSP2 package with only a WMSH vertex
+changed to NaN retained valid container hashes and identical legacy lumps;
+the client reported `WMSH rejected (ok, invalid-vertices)` and still rendered
+the legacy map. The [runtime comparator](../tools/quality/worldstage_mesh_runtime_compare.py)
+verified the same executable and material assets, both log outcomes, and a
+0.0242 mean absolute RGB difference between the two frames. Evidence is
+`quality-results/rfc0008-portal-wmsh-runtime-compare-v3-20260923.json`, with
+each boot under `quality-results/rfc0008-portal-wmsh-runtime-{valid,invalid}-v3-20260923/`.
+The refreshed client/dedicated toolchain boundary passes: two frozen consumers
+link, 24 facades compile and 18 probes run, with zero errors in
+`quality-results/rfc0008-worldmesh-toolchain-client-ded-20260923.json`. The
+separate host-tool invocation check still reports six LZMA C
+dialect records as `None` rather than `c-toolchain-default`; its evidence is
+`quality-results/rfc0008-worldmesh-toolchain-boundary-20260923.json`.
+
+```sh
+PYTHONPATH=/tmp/rfc0008-openusd-install/lib/python /usr/bin/python3.12 \
+  tools/quality/worldstage_mesh_pack.py \
+  --stage /tmp/rfc0008-portal-room-schema4/sealed_room.geometry.usda \
+  --bsp /tmp/rfc0008-portal-room-schema4/sealed_room.bsp \
+  --geometry-comparison /tmp/rfc0008-portal-room-schema4/geometry-comparison.json \
+  --out quality-results/rfc0008-portal-worldmesh-v1.wmsh
+./waf build --targets=bsp2tool
+python3 tools/quality/worldstage_mesh_tool_conformance.py \
+  --tool build-rfc0008-tools-vbsp/utils/bsp2tool/bsp2tool \
+  --out quality-results/rfc0008-worldmesh-tool-conformance-20260923.json
+build-rfc0008-tools-vbsp/utils/bsp2tool/bsp2tool pack-world \
+  /tmp/rfc0008-portal-room-schema4/sealed_room-cycles-rnm.bsp \
+  quality-results/rfc0008-portal-worldmesh-v1.wmsh \
+  /tmp/rfc0008-portal-room-schema4/sealed_room-cycles-rnm-wmsh.bsp2
+PYTHONPATH=/tmp/rfc0008-openusd-install/lib/python /usr/bin/python3.12 \
+  tools/quality/worldstage_mesh_compare.py \
+  --wmsh quality-results/rfc0008-portal-worldmesh-v1.wmsh \
+  --stage /tmp/rfc0008-portal-room-schema4/sealed_room.geometry.usda \
+  --bsp /tmp/rfc0008-portal-room-schema4/sealed_room.bsp \
+  --bsp2 /tmp/rfc0008-portal-room-schema4/sealed_room-cycles-rnm-wmsh.bsp2 \
+  --container-legacy /tmp/rfc0008-portal-room-schema4/sealed_room-cycles-rnm.bsp \
+  --negative-self-test \
+  --out quality-results/rfc0008-portal-worldmesh-v1-compare.json
+WAFLOCK=.lock-waf-rfc0008-client-current ./waf build -j8
+WAFLOCK=.lock-waf-rfc0008-worldmesh-ded ./waf configure \
+  --dedicated --build-games=portal --disable-warns -T release \
+  -o build-rfc0008-worldmesh-ded \
+  --prefix=/tmp/rfc0008-worldmesh-ded-install
+WAFLOCK=.lock-waf-rfc0008-worldmesh-ded ./waf build -j8
+python3 tools/quality/toolchain_boundary.py check \
+  --artifacts build-rfc0008-client-current \
+  build-rfc0008-client-current/toolchain-invocations.json \
+  build-rfc0008-worldmesh-ded/toolchain-invocations.json \
+  --out quality-results/rfc0008-worldmesh-toolchain-client-ded-20260923.json
+mkdir -p /tmp/rfc0008-portal-wmsh-playable/maps \
+  /tmp/rfc0008-portal-wmsh-playable/materials \
+  /tmp/rfc0008-portal-wmsh-bad-playable/maps \
+  /tmp/rfc0008-portal-wmsh-bad-playable/materials
+cp -a /tmp/rfc0008-portal-room-schema4/game/materials/. \
+  /tmp/rfc0008-portal-wmsh-playable/materials/
+cp -a /tmp/rfc0008-portal-room-schema4/game/materials/. \
+  /tmp/rfc0008-portal-wmsh-bad-playable/materials/
+cp /tmp/rfc0008-portal-room-schema4/sealed_room-cycles-rnm-wmsh.bsp2 \
+  /tmp/rfc0008-portal-wmsh-playable/maps/rfc0008_portal_room.bsp
+python3 tools/quality/worldstage_mesh_negative_map.py \
+  --bsp2 /tmp/rfc0008-portal-room-schema4/sealed_room-cycles-rnm-wmsh.bsp2 \
+  --out /tmp/rfc0008-portal-wmsh-bad-playable/maps/rfc0008_portal_room.bsp
+python3 tools/quality/portal_boot.py --runtime run/runtime-native \
+  --build build-rfc0008-client-current \
+  --content-root /tmp/rfc0008-portal-wmsh-playable \
+  --renderer native-vulkan --headless --map rfc0008_portal_room \
+  --console-command map_container_info \
+  --console-command 'cmd setpos -160 -160 92' \
+  --console-command 'cmd setang -10 45 0' \
+  --out quality-results/rfc0008-portal-wmsh-runtime-valid-v3-20260923
+python3 tools/quality/portal_boot.py --runtime run/runtime-native \
+  --build build-rfc0008-client-current \
+  --content-root /tmp/rfc0008-portal-wmsh-bad-playable \
+  --renderer native-vulkan --headless --map rfc0008_portal_room \
+  --console-command map_container_info \
+  --console-command 'cmd setpos -160 -160 92' \
+  --console-command 'cmd setang -10 45 0' \
+  --out quality-results/rfc0008-portal-wmsh-runtime-invalid-v3-20260923
+python3 tools/quality/worldstage_mesh_runtime_compare.py \
+  --valid-bsp2 /tmp/rfc0008-portal-room-schema4/sealed_room-cycles-rnm-wmsh.bsp2 \
+  --invalid-bsp2 /tmp/rfc0008-portal-wmsh-bad-playable/maps/rfc0008_portal_room.bsp \
+  --valid-boot quality-results/rfc0008-portal-wmsh-runtime-valid-v3-20260923/evidence.json \
+  --invalid-boot quality-results/rfc0008-portal-wmsh-runtime-invalid-v3-20260923/evidence.json \
+  --out quality-results/rfc0008-portal-wmsh-runtime-compare-v3-20260923.json
+```
+
+The current WMSH packer is a bounded world-brush slice. It rejects
+displacements and brush-entity meshes through the existing Stage compiler, and
+the host tool caps the in-memory WMSH input at 512 MiB. The native upload and
+draw experiments below use this payload; F4/F5 still need a map-selected path,
+canonical lighting, unsupported-feature decisions, and the full world feature
+and performance corpus. The optional flag will be revisited when the runtime
+requires WMSH.
+
+### F4 native Vulkan upload slice (2026-09-23)
+
+The client now queries a narrow upload capability from the selected material
+provider after validating WMSH. The native Vulkan implementation copies the
+vertex and index sections through a temporary staging buffer into two
+device-local buffers. A transfer-to-vertex-input barrier precedes use; upload
+completion is acknowledged before the staging buffer is retired. Replacement
+preserves the old pair on failure, and map unload/device shutdown wait for GPU
+work before freeing the pair. The dedicated product has no WMSH upload call.
+The temporary material adapter bridge is retired when the native world path
+receives the map-owned payload through the render-device contract.
+
+The actual Portal BSP2 boot reported `WMSH GPU buffers ready (96 vertices, 96
+indices)` after validation. The hash-valid map whose WMSH vertex is NaN
+reported `WMSH rejected (ok, invalid-vertices)` and reached a playable frame
+without uploading WMSH. The valid/corrupt runtime comparator passed with
+byte-identical legacy lumps and the same 13 material assets; its small frame
+difference is diagnostic noise while the legacy mesh still draws. Evidence:
+`quality-results/rfc0008-portal-wmsh-device-upload-{valid,invalid}-20260923/`
+and `quality-results/rfc0008-portal-wmsh-device-upload-compare-20260923.json`.
+
+The real-device native Vulkan conformance now performs exact vertex and index
+readback with a nonzero negative control, then checks replacement, failed
+replacement, resize, idempotent release, reupload and shutdown: 43 checks,
+zero failures on the AMD RADV offscreen profile. Its log is
+`quality-results/rfc0008-portal-wmsh-device-upload-valid-20260923/upload-conformance.log`.
+The required `VK_LAYER_KHRONOS_validation` was unavailable on this runner, so
+the validation-layer lane remains unverified. Both isolated client and
+dedicated Waf builds, stylelint, and stylelint's 38 fixtures passed. Changed
+archlint has zero new/stale occurrences but still reports eight existing
+CAP002 include violations. Two unchanged legacy `SetMode` signatures were
+reviewed and their stale ARCH105 fingerprints reconciled in the baseline;
+whole-tree baseline verification still reports 47 new and one stale unrelated
+legacy occurrence. This slice proves GPU upload and exact bytes, not WMSH
+drawing, PVS/meshlet culling, material binding, feature parity, or the F4 gate.
+
+```sh
+WAFLOCK=.lock-waf-rfc0008-client-current ./waf build -j8
+WAFLOCK=.lock-waf-rfc0008-worldmesh-ded ./waf build -j8
+SDL_VIDEODRIVER=offscreen \
+  build-rfc0008-client-current/unittests/shaderapivulkantest/native_vulkan_bringup_conformance
+python3 tools/quality/portal_boot.py --runtime run/runtime-native \
+  --build build-rfc0008-client-current \
+  --content-root /tmp/rfc0008-portal-wmsh-playable \
+  --renderer native-vulkan --headless --map rfc0008_portal_room \
+  --console-command map_container_info \
+  --console-command 'cmd setpos -160 -160 92' \
+  --console-command 'cmd setang -10 45 0' \
+  --out quality-results/rfc0008-portal-wmsh-device-upload-valid-20260923
+python3 tools/quality/portal_boot.py --runtime run/runtime-native \
+  --build build-rfc0008-client-current \
+  --content-root /tmp/rfc0008-portal-wmsh-bad-playable \
+  --renderer native-vulkan --headless --map rfc0008_portal_room \
+  --console-command map_container_info \
+  --console-command 'cmd setpos -160 -160 92' \
+  --console-command 'cmd setang -10 45 0' \
+  --out quality-results/rfc0008-portal-wmsh-device-upload-invalid-20260923
+```
+
+### F4 native Vulkan visible WMSH draw preview (2026-09-23)
+
+The native Vulkan client can now draw the already uploaded 40-byte WMSH
+vertices and uint32 indices through a dedicated vertex shader and the selected
+Source material pass. The draw record retains the map upload revision so a
+queued draw cannot use a released or replaced buffer. The WMSH pipeline uses
+the packed triangles' front-face convention; the legacy dynamic-mesh pipeline
+keeps its existing convention. The engine resolves material paths at map load,
+keeps owned batch/meshlet/leaf-reference arrays until unload, and intersects
+each view's visible leaf list with those references before queuing meshlets.
+The `r_worldmesh_draw` cheat setting is an explicit diagnostic control: `0`
+keeps the legacy draw, `1` overlays WMSH, and `2` substitutes it for the
+strictly-above-water opaque chain. It is not the final per-map render-policy
+boundary.
+
+The first Portal capture showed a large texture mismatch because native Vulkan
+selected the PBR material's legacy fallback VMT, whose base texture differs
+from the upsampled Portal texture used for the World Stage UVs. A controlled
+private content override made both modes use `LightmappedGeneric` VMTs with
+the actual upsampled `portal_pbr/.../basecolor.vtf` assets. The two playable
+1920×1080 captures then differed by 2.6333 mean absolute RGB and 35.26% of
+pixels by more than five channel values. The
+[draw comparator](../tools/quality/worldstage_mesh_draw_compare.py) requires
+the same executable hashes, map and material bytes, camera and launch options;
+it requires a nonempty visible WMSH queue and rejects a substituted old
+fallback-texture image as a negative control. The client log recorded four
+visible leaves and 16 queued meshlets for this room. Evidence is
+`quality-results/rfc0008-portal-wmsh-visual-{legacy,draw}-20260923/` and
+`quality-results/rfc0008-portal-wmsh-visual-compare-20260923.json`; the
+negative-control result is
+`quality-results/rfc0008-portal-wmsh-visual-negative-20260923.json`.
+
+Client and dedicated Waf builds passed after the draw change. The dedicated
+engine and material-system binaries export no WMSH symbols. The real-device
+native Vulkan bring-up test now covers a packed, indexed triangle through the
+world pipeline as well as upload/readback/lifetime behavior: 49 checks, zero
+failures on the AMD RADV offscreen runner. Changed stylelint passes 15 files
+with no failures. Changed archlint has zero new and zero stale occurrences but
+still reports eight existing CAP002 include violations; whole-tree archlint
+still reports unrelated baseline drift, and the loader inventory reports 12
+uninstrumented sites outside this slice. The validation layer was unavailable.
+
+This is a geometry and material-binding preview, not the F4/F5 acceptance
+gate. It still builds the legacy world on load, has no canonical `LMAP`/`LSTY`
+binding, does not prove directional Cycles lighting on WMSH, and cannot claim
+native PBR from the fallback material. Meshlet submission is currently one
+draw per visible meshlet; batching, feature cohorts, mobile profiles, and
+load-cost targets remain. The full path must select WMSH from the map and
+provider contract, fail clearly for unsupported required features, preserve
+decals/water/displacements/sky/fog/props, and consume canonical lighting.
+
+```sh
+WAFLOCK=.lock-waf-rfc0008-client-current ./waf build -j8
+WAFLOCK=.lock-waf-rfc0008-worldmesh-ded ./waf build -j8
+SDL_VIDEODRIVER=offscreen \
+  build-rfc0008-client-current/unittests/shaderapivulkantest/native_vulkan_bringup_conformance
+mkdir -p /tmp/rfc0008-portal-wmsh-upsampled/materials \
+  /tmp/rfc0008-portal-wmsh-upsampled/maps
+cp -a /tmp/rfc0008-portal-room-schema4/game/materials/. \
+  /tmp/rfc0008-portal-wmsh-upsampled/materials/
+cp /tmp/rfc0008-portal-room-schema4/sealed_room-cycles-rnm-wmsh.bsp2 \
+  /tmp/rfc0008-portal-wmsh-upsampled/maps/rfc0008_portal_room.bsp
+python3 - <<'PY'
+from pathlib import Path
+root = Path('/tmp/rfc0008-portal-wmsh-upsampled/materials/portal_pbr')
+for name in ('metal/metalwall_bts_006b', 'tile/observation_tilefloor001a'):
+    (root / (name + '.vmt')).write_text(
+        '"LightmappedGeneric"\n{\n "$basetexture" "portal_pbr/' +
+        name + '/basecolor"\n}\n')
+PY
+python3 tools/quality/portal_boot.py --runtime run/runtime-native \
+  --build build-rfc0008-client-current \
+  --content-root /tmp/rfc0008-portal-wmsh-upsampled \
+  --renderer native-vulkan --headless --map rfc0008_portal_room \
+  --console-command 'r_worldmesh_draw 0' \
+  --console-command 'cmd setpos -160 -160 92' \
+  --console-command 'cmd setang -10 45 0' \
+  --out quality-results/rfc0008-portal-wmsh-visual-legacy-20260923
+python3 tools/quality/portal_boot.py --runtime run/runtime-native \
+  --build build-rfc0008-client-current \
+  --content-root /tmp/rfc0008-portal-wmsh-upsampled \
+  --renderer native-vulkan --headless --map rfc0008_portal_room \
+  --console-command 'r_worldmesh_draw 2' \
+  --console-command 'cmd setpos -160 -160 92' \
+  --console-command 'cmd setang -10 45 0' \
+  --out quality-results/rfc0008-portal-wmsh-visual-draw-20260923
+python3 tools/quality/worldstage_mesh_draw_compare.py \
+  --legacy-boot quality-results/rfc0008-portal-wmsh-visual-legacy-20260923/evidence.json \
+  --world-boot quality-results/rfc0008-portal-wmsh-visual-draw-20260923/evidence.json \
+  --out quality-results/rfc0008-portal-wmsh-visual-compare-20260923.json
+```
+
+### F4 World Stage geometry and Cycles light in the playable WMSH view (2026-09-23)
+
+The independent [in-game lighting comparator](../tools/quality/worldstage_mesh_lighting_in_game_compare.py)
+ties the checked WMSH payload to the emitted USD geometry Stage, the Portal
+material Stage, the real upsampled PNGs and their VTEX-produced VTFs, and the
+Blender Cycles flat EXR. It verifies the preview bridge's input and output BSP
+hashes. A second BSP2 package carries the same WMSH and unchanged legacy
+lumps except `L008`: one map has VRAD lighting and the other has the
+Cycles-derived flat and RNM samples for the compiled style 32. The native
+Vulkan client booted both in `r_worldmesh_draw 2` with the same executable
+hashes, material bytes, camera, display settings, and 16 visible queued
+meshlets. The two frames differ by **76.04 mean absolute RGB**, with
+**99.68%** of pixels differing by more than five channel levels. Reusing the
+same frame fails the comparator's negative control.
+
+A separate hash-valid BSP2 negative map changes only the 96 WMSH vertices'
+lightmap UV fields to zero; all other WMSH bytes and every other lump remain
+identical to the Cycles map. Its playable capture differs from the original
+WMSH/Cycles capture by **71.63 mean absolute RGB** and **99.68%** of pixels.
+This proves the packed vertex stage's atlas UVs influence the material
+lightmap term. The [receipt](../quality-results/rfc0008-portal-wmsh-cycles-lighting-compare-20260923.json)
+records hashes for the stages, bake, WMSH, both map boots, real upsampled
+texture sources, and the controlled differences.
+
+For this fixture the path is **VMF → compiled OpenUSD World Stage → WMSH →
+native Vulkan playable world**, with **Portal-remaster upsampled base textures
+and Cycles lighting**. The Cycles light reaches WMSH through the legacy
+`L008`/Source lightmap page bridge. This is a positive integration preview,
+not native `LMAP`/`LSTY` consumption or a complete RFC 0008 renderer. The
+current material override uses `LightmappedGeneric` to select the upsampled
+base textures on native Vulkan; `PBRMetalRough` still selects its fallback.
+The next render boundary is an owned KTX2 lightmap asset with explicit
+map-scoped binding and style evaluation, so WMSH no longer depends on legacy
+lightmap allocation. The acceptance gate still requires RNM/SH quality,
+probes, feature cohorts, load cost, and the declared platform profiles.
+
+```sh
+build-rfc0008-tools-vbsp/utils/bsp2tool/bsp2tool pack-world \
+  /tmp/rfc0008-portal-room-schema4/sealed_room.bsp \
+  quality-results/rfc0008-portal-worldmesh-v1.wmsh \
+  /tmp/rfc0008-portal-wmsh-vrad.bsp2
+python3 tools/quality/worldstage_mesh_lighting_in_game_compare.py \
+  --vrad-bsp /tmp/rfc0008-portal-room-schema4/sealed_room.bsp \
+  --cycles-bsp /tmp/rfc0008-portal-room-schema4/sealed_room-cycles-rnm.bsp \
+  --vrad-bsp2 /tmp/rfc0008-portal-wmsh-vrad.bsp2 \
+  --cycles-bsp2 /tmp/rfc0008-portal-room-schema4/sealed_room-cycles-rnm-wmsh.bsp2 \
+  --wmsh quality-results/rfc0008-portal-worldmesh-v1.wmsh \
+  --bridge-evidence /tmp/rfc0008-portal-room-schema4/sealed_room-cycles-rnm.json \
+  --mesh-comparison quality-results/rfc0008-portal-worldmesh-v1-compare.json \
+  --geometry-stage /tmp/rfc0008-portal-room-schema4/sealed_room.geometry.usda \
+  --material-stage /tmp/rfc0008-portal-room-schema4/portal-preview-schema4.usda \
+  --cycles-exr quality-results/rfc0008-portal-flat-exact-4096.exr \
+  --cycles-bake-evidence quality-results/rfc0008-portal-flat-exact-4096.json \
+  --portal-manifest /tmp/rfc0008-portal-room-schema4/material-manifest.json \
+  --portal-variant /tmp/rfc0008-portal-room-schema4/variant.json \
+  --portal-assets /home/john/source-engine-portal-runtime/portal-pbr-remastered \
+  --vrad-boot quality-results/rfc0008-portal-wmsh-vrad-draw-20260923/evidence.json \
+  --cycles-boot quality-results/rfc0008-portal-wmsh-uvcontrol-draw-20260923/evidence.json \
+  --uvzero-bsp2 /tmp/rfc0008-portal-wmsh-uvzero.bsp2 \
+  --uvzero-boot quality-results/rfc0008-portal-wmsh-uvzero-draw-20260923/evidence.json \
+  --negative-self-test \
+  --out quality-results/rfc0008-portal-wmsh-cycles-lighting-compare-20260923.json
+```
+
+### F5 Cycles flat atlas as a checked KTX2 L0 asset (2026-09-23)
+
+The [packer](../tools/quality/worldstage_flat_l0_ktx2.py) checks the exact
+Cycles flat EXR against its bake receipt, material Stage, geometry Stage and
+World Stage chart manifest. It converts the 4× baked atlas to linear
+`R16G16B16A16_SFLOAT`, with opaque alpha and top-left KTX2 orientation; the
+scanline flip preserves the Stage's lightmap UV convention. The pinned KTX
+tool at revision `90967979cbb7e9401ee2401ff997f30b4b7507d6` validated
+the package and extracted **exactly the input half-float bytes**. The atlas
+is 4096×256, one mip, 16 charts and 8,388,888 package bytes. Maximum RGB
+half-float quantization error against the source EXR is 0.00390625. The
+[local receipt](../quality-results/rfc0008-portal-flat-l0-preview.json) records
+all source and output hashes.
+
+The pinned engine `ReadKtx2Image` also accepted this generated atlas in the
+extended Waf conformance executable: **20 checks, 0 failures**. It reported
+RGBA16F, the exact dimensions and one mip; its owned pixel bytes matched an
+independent `ktx extract --raw` output before and after the encoded input was
+cleared. A deliberately wrong EXR hash in the bake receipt was rejected before
+any package was published. This is an authored flat L0 asset and reader proof.
+The current playable WMSH view still takes Cycles light through legacy `L008`;
+it does not load this KTX2 or select it from a BSP2 asset table. SH L1 style layers,
+map-scoped binding, probes and shader evaluation remain F5 work.
+
+```sh
+python3 tools/quality/worldstage_flat_l0_ktx2.py \
+  --exr quality-results/rfc0008-portal-flat-exact-4096.exr \
+  --bake-evidence quality-results/rfc0008-portal-flat-exact-4096.json \
+  --manifest /tmp/rfc0008-portal-room-schema4/material-manifest.json \
+  --geometry-stage /tmp/rfc0008-portal-room-schema4/sealed_room.geometry.usda \
+  --material-stage /tmp/rfc0008-portal-room-schema4/portal-preview-schema4.usda \
+  --ktx-source /tmp/rfc0008-ktx-pin \
+  --ktx-build /tmp/rfc0008-ktx-pin/build-rfc0008 \
+  --out quality-results/rfc0008-portal-flat-l0-preview.ktx2
+/tmp/rfc0008-ktx-pin/build-rfc0008/Release/ktx extract --raw \
+  quality-results/rfc0008-portal-flat-l0-preview.ktx2 \
+  /tmp/rfc0008-portal-flat-l0-preview.rgba16f
+WAFLOCK=.lock-waf-rfc0008-ktx-reader ./waf build \
+  --targets=ktx2_reader_conformance -j8
+build-rfc0008-ktx-reader/unittests/texturecontainertest/ktx2_reader_conformance \
+  quality/fixtures/ktx2 \
+  quality-results/rfc0008-portal-flat-l0-preview.ktx2 \
+  /tmp/rfc0008-portal-flat-l0-preview.rgba16f
+```
+
+### F2/F5 visual reference fixture: staircase2 (2026-09-23)
+
+The user-supplied [`staircase2`](../staircase2/) is a PBRT/PLY scene, separate
+from the Portal VMF. Its `LICENSE.txt` credits *Modern Hall* by NewSee2l035
+under CC BY 3.0. The [fixture adapter](../tools/quality/staircase2_usd_cycles.py)
+checks the PBRT camera, all **19** named-material PLY meshes, three authored
+texture files and **13** mesh area emitters. It reconstructs their UVs from
+the PLY `u`/`v` properties, exports a USD stage, imports that stage in a fresh
+Blender scene, and renders the imported scene with Cycles. The stage passed
+`usdchecker`; independent USD text inspection found 19 source meshes, 13
+emitter meshes, one camera, and the three expected texture asset references.
+The exported texture copies were checked byte-for-byte against the fixture.
+
+Blender's USD preview-surface bridge dropped mesh emission, so the adapter
+restores source PBRT emitter radiance after USD import. PBRT `coateddiffuse`,
+conductor and dielectric materials are approximated by Cycles Principled
+shaders; this benchmark does not prove the production engine's PBR family or
+full USD material fidelity. The run used Blender 5.2.1 with a working OCIO
+configuration whose hash is recorded in the receipt; that configuration is
+still an external local dependency and needs a pinned product profile.
+
+The [reference comparator](../tools/quality/staircase2_compare.py) checks
+source/stage/render hashes and compares the 1024×1024 image with the supplied
+Tungsten PNG and EXR. Blender Standard display produced 15.11 mean absolute
+RGB difference and 0.955 luminance SSIM. The supplied reference EXR/PNG pair
+reveals a Reinhard-power display curve: fitting it on 1/16 of reference pixels
+predicts held-out reference pixels within 0.60 RGB levels. Applying that
+reference-only curve to the Cycles EXR gives **9.96 mean RGB difference** and
+**0.961 SSIM** against the supplied PNG. Linear EXR mean absolute difference
+is 0.061. A black-frame negative control fails both image thresholds. The
+[receipt](../quality-results/staircase2-parity-1024.json),
+[reference-display render](../quality-results/staircase2-cycles-reference-display-1024.png)
+and [USD stage](../quality-results/staircase2-reference-parity.usdc) are local
+ignored artifacts. This establishes a measured external visual target for
+high-resolution mapper materials. It has not made staircase2 a playable map;
+the Portal VMF remains the playable in-game pipeline proof.
+
+```sh
+OCIO=/home/john/src/chamber-sdk/chamber-lisp/out/reassembly/ocio/config.ocio \
+  blender -b --factory-startup --python-exit-code 9 \
+    --python tools/quality/staircase2_usd_cycles.py -- \
+    --scene staircase2/scene-v4.pbrt \
+    --stage quality-results/staircase2-reference-parity.usdc \
+    --out quality-results/staircase2-cycles-1024.png \
+    --size 1024 --samples 64
+/tmp/rfc0008-openusd-install/bin/usdchecker \
+  quality-results/staircase2-reference-parity.usdc
+python3 tools/quality/staircase2_compare.py \
+  --reference staircase2/TungstenRender.png \
+  --candidate quality-results/staircase2-cycles-1024.png \
+  --reference-exr staircase2/TungstenRender.exr \
+  --candidate-exr quality-results/staircase2-cycles-1024.exr \
+  --display-candidate quality-results/staircase2-cycles-reference-display-1024.png \
+  --evidence quality-results/staircase2-cycles-1024.json \
+  --scene staircase2/scene-v4.pbrt \
+  --stage quality-results/staircase2-reference-parity.usdc \
+  --out quality-results/staircase2-parity-1024.json \
+  --max-mae 10 --min-ssim 0.9 --negative-self-test
 ```
 
 ## F1: what exists

@@ -283,7 +283,9 @@
       ],
       "legacy_facades": [
         "public/mapcontainer/map_container.h",
-        "public/mapcontainer/map_container_format.h"
+        "public/mapcontainer/map_container_format.h",
+        "public/mapcontainer/world_mesh.h",
+        "public/mapcontainer/world_mesh_format.h"
       ]
     },
     {

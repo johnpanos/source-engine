@@ -31,7 +31,7 @@ def unit(vector):
     return vector / norm
 
 
-def expected_directions(bsp):
+def expected_directions(bsp, supplemental=()):
     data = bsp.read_bytes()
     kind, header = open_any(data)
     if kind != "legacy" or header["version"] != 21:
@@ -67,6 +67,10 @@ def expected_directions(bsp):
             **{"rnm" + str(index): unit(local[0] * axis_x + local[1] * axis_y +
                                          local[2] * normal)
                for index, local in enumerate(SOURCE_BASIS)},
+            **{entry["id"]: unit(entry["normal"][0] * axis_x +
+                                  entry["normal"][1] * axis_y +
+                                  entry["normal"][2] * normal)
+               for entry in supplemental},
         }
     return result
 

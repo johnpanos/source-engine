@@ -2194,11 +2194,11 @@
       "excerpt": "virtual bool Connect( CreateInterfaceFn factory );"
     },
     {
-      "fingerprint": "5356bb12457179e917d2",
+      "fingerprint": "889e4de569b089b75ee5",
       "rule": "ARCH105",
       "path": "materialsystem/shaderapivulkan/shaderapivulkan.cpp",
-      "line": 359,
-      "excerpt": "virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode );"
+      "line": 955,
+      "excerpt": "virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode );"
     },
     {
       "fingerprint": "b02a10919dfb5b4b3f22",
@@ -2208,11 +2208,11 @@
       "excerpt": "bool CShaderDeviceMgrVulkan::Connect( CreateInterfaceFn factory )"
     },
     {
-      "fingerprint": "bc0e3a8d62152d4ea15f",
+      "fingerprint": "8dfcf98868c9c56d994b",
       "rule": "ARCH105",
       "path": "materialsystem/shaderapivulkan/shaderapivulkan.cpp",
-      "line": 1381,
-      "excerpt": "CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode )"
+      "line": 2056,
+      "excerpt": "CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode("
     },
     {
       "fingerprint": "cda253b9ed1044df605e",

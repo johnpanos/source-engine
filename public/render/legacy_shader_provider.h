@@ -20,6 +20,10 @@ class IShaderShadow;
 class IMaterialSystemHardwareConfig;
 class IDebugTextureInfo;
 class IMaterialSystem;
+namespace world_mesh_gpu
+{
+class IWorldMeshUpload;
+}
 
 namespace render
 {
@@ -32,6 +36,9 @@ struct LegacyShaderServices
 	IShaderShadow *shadow = nullptr;
 	IMaterialSystemHardwareConfig *hardware = nullptr;
 	IDebugTextureInfo *debugTextures = nullptr;
+	// Optional map-scoped upload capability. Queried through the material adapter
+	// only while this selected provider remains bound.
+	world_mesh_gpu::IWorldMeshUpload *worldMeshUpload = nullptr;
 
 	// Optional. Backend-owned facts the legacy MaterialAdapterInfo_t cannot carry:
 	// semantic features, driverApi, memory and software status for an adapter the
