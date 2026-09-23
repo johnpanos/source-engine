@@ -328,6 +328,25 @@ void RetryAndIsolation()
 	}
 }
 
+void PhasedLifecycle()
+{
+	Fixture f;
+	ApplicationComposition root;
+	Populate( root, f );
+	Check( !root.Initialize(), "cannot initialize before connection" );
+	Check( !!root.Connect(), "connect providers through the product lifecycle phase" );
+	Check( !root.IsRunning() && root.Find<ISource>() && root.Find<IConsumer>(),
+	    "connected product exposes borrowed capabilities during host setup" );
+	Check( !!root.Initialize(), "connected product can initialize" );
+	root.Shutdown();
+	Check( !root.IsRunning() && f.borrowers == 1,
+	    "shutdown retains connected borrowers until disconnect" );
+	root.Disconnect();
+	Check( f.Clean(), "phased product teardown releases borrowers" );
+	Check( !!root.Start() && !!root.Stop() && f.Clean(),
+	    "same composition restarts after phased teardown" );
+}
+
 class Probe final : public IProviderLifecycle
 {
 public:
@@ -511,6 +530,7 @@ testing::TestResult RunCompositionConformance()
 	ValidateBeforeEffects();
 	EdgeCases();
 	NativeDrain();
+	PhasedLifecycle();
 	RetryAndIsolation();
 	Check(
 	    LifecycleOracle( Fault::None, "", true ), "ordered successful lifecycle and reentrancy" );

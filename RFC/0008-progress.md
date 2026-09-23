@@ -1,9 +1,9 @@
 # RFC 0008 progress: Canonical world data and runtime formats
 
 Updated: 2026-09-23
-Portfolio rows: R53 (F1) active; R55 (F3) has host-tool, reader, native GPU and
-GTK preview evidence;
-R54 has host-tool/schema preparation but no stage emitter; R56–R58 are not started. F1 native-run evidence records the engine
+Portfolio rows: R53 (F1) active; R54 (F2) partial with a compiled World Stage,
+Portal material layer and Cycles preview; R55 (F3) has host-tool, reader, native
+GPU and GTK preview evidence; R56–R58 are not started. F1 native-run evidence records the engine
 revision and working-tree digest; the F3 probe records the pinned KTX source
 revision and profile hash. This work overlaps other in-progress tree changes.
 
@@ -24,7 +24,7 @@ below regenerate it.
 | Phase | State | Summary |
 | --- | --- | --- |
 | F1 BSP2 container and map-reader seam | **active (prototype; gate incomplete)** | Container, seam, both readers, pinned v20/v21 lossless corpora, 64-bit sparse tool export, client boot, a 26-map Portal v20 dedicated comparison and five-map v21 client/dedicated engine-seam comparisons work. A derived v19-header map also loads in both products. Authored v19 content, native Portal 2 gameplay and the CI content lane remain (see [Remaining for the F1 gate](#remaining-for-the-f1-gate)) |
-| F2 World Stage | partial (world geometry and entity slices; gate incomplete) | Pinned OpenUSD/oneTBB host build and typed schema; opt-in `vbsp2` emits compiled world faces, one shared lightmap chart table and ordered BSP entity records. A sealed room passes `usdchecker` and an independent BSP comparator with missing-face and missing-entity controls. Brush entities, displacements, props, materials, UsdLux, Cycles and the full semantic corpus remain. |
+| F2 World Stage | partial (world geometry, light and Portal material preview; gate incomplete) | Opt-in `vbsp2` emits BSP, lossless BSP2 and OpenUSD world faces, a lightmap chart table, ordered entities and a `UsdLuxSphereLight` with its compiled style ID. A private Portal-remaster VMF compiles; a separate `UsdPreviewSurface` layer binds two real PBR materials and renders in Blender Cycles at 2048×1152. A preview bridge places Cycles flat lightmap samples in a legacy lighting lump; the BSP2 map renders them in native Vulkan with Portal textures. Pinned standalone Cycles, a canonical baker, render lumps and native consumption of canonical Cycles lighting remain. |
 | F4–F7 | planned | Not started |
 | F3 KTX2 textures | **partial (host packer, device selection, owned readers and native/GTK consumers)** | Pinned Linux tool builds; ten transcode targets validate, UASTC master decode pixels match fixtures, and the packer publishes validated packages from explicit or product-profile device selections. Strict KTX2 and VTF readers produce the same owned image description for a 2D caller cohort; BC7 feeds the native pixel test. Hammer's GTK material catalog previews packaged RGBA8/BGRA8 KTX2 through that reader. Material-system file selection, Hammer compressed-format preview, installed product device identity and ASTC/ETC2/EAC GPU pixels remain. |
 
@@ -67,15 +67,16 @@ The [build driver](../tools/worldstage/build_host.py) consumes the profile from
 exact-revision local checkouts, builds oneTBB first, then OpenUSD, and installs
 both into isolated roots. A repeat invocation completed successfully.
 
-The [schema source](../utils/worldstage/schema.usda) defines `SourceWorldAPI`
-and `SourceMeshAPI` as the owner of the version and Source face/chart mappings.
+The [schema source](../utils/worldstage/schema.usda) defines `SourceWorldAPI`,
+`SourceMeshAPI`, `SourceEntityAPI` and `SourceLightAPI` as the owner of the
+version and Source face/chart/entity/light mappings.
 The [minimal stage fixture](../quality/fixtures/worldstage/minimal.usda) has a
 Z-up, 0.0254-meter-per-unit world, one triangle, material/lightmap UVs, and
 Source face, smoothing-group, and chart IDs. The
 [host probe](../tools/quality/openusd_host_probe.py) verifies exact checkout
 revisions and CMake settings, runs `usdchecker` on the fixture and a `.usdc`
-round trip, requires a missing-up-axis mutation to fail, generates 14 schema
-artifacts, and compiles the three generated non-Python C++ sources in C++20
+round trip, requires a missing-up-axis mutation to fail, generates 20 schema
+artifacts, and compiles the five generated non-Python C++ sources in C++20
 syntax mode. It passed locally; ignored evidence is
 `quality-results/rfc0008-openusd-host-20260923.json`.
 
@@ -115,12 +116,13 @@ compiler writes `<map>.geometry.usda` after the BSP: one `UsdGeomMesh` per
 compiled world face, fan-triangulated face topology, Source face/smoothing/chart
 IDs, material path and UVs, Z-up Source units, and a single atlas chart table.
 `SourceEntityAPI` carries each compiled BSP entity's ordered keys and values,
-including duplicate keys, under `/World/Entities`. The emitted schema version
-is 2; the minimal reviewed stage fixture also exercises that API. The entity
+including duplicate keys, under `/World/Entities`. `SourceLightAPI` identifies
+the compiled point light under `/World/Lights`. The emitted schema version is 4;
+the minimal reviewed stage fixture exercises those APIs. The entity
 lump is the input after VBSP's own serialization, so compiler-added and edited
 keys are carried into the stage.
 It rejects brush-entity models, displacement faces, malformed references and
-an overflowing atlas explicitly. BSP and USD publication are not yet atomic.
+an overflowing atlas explicitly. BSP, USD and BSP2 publication are not yet atomic.
 
 The sealed room emitted 16 faces, 32 triangles, and three entities;
 `usdchecker` passed. Legacy `vbsp` and `vbsp2` produced byte-identical BSP
@@ -129,8 +131,11 @@ files from private copies of the same fixture. The
 reads the BSP face/edge/vertex/model lumps directly and checks every mesh's
 vertices, triangle indices, identity, material path, smoothing group, both UV
 sets, chart size and chart overlap. It independently parses the serialized BSP
-entity lump and checks record order and values. Removing a mesh or entity in
-memory makes that comparator fail. Local ignored evidence is
+entity lump and checks record order and values, and checks the point light
+against its entity. Deactivating a mesh, entity or light, or reversing a face
+normal in memory makes that
+comparator fail. The independent BSP2 reader verifies the direct `vbsp2`
+output and exports the original BSP byte for byte. Local ignored evidence is
 `quality-results/rfc0008-worldstage-room-20260923.json`. A second isolated
 Waf output and install prefix also passed a clean configure, full install, and
 the same smoke with matching BSP and stage hashes; its ignored evidence is
@@ -160,10 +165,270 @@ python3 tools/quality/worldstage_host_smoke.py \
 The [smoke runner](../tools/quality/worldstage_host_smoke.py) copies the game
 and VMF into temporary directories, compiles with both tools, compares the BSP
 bytes, runs `usdchecker` and the semantic comparator, and records content
-hashes. The full F2 gate still needs
-complete authored content semantics,
-versioned corpus, Cycles open/render, lightmap chart ownership across all
+hashes. The full F2 gate still needs complete authored content semantics, a
+versioned corpus, pinned standalone Cycles, lightmap chart ownership across all
 supported face types, failure recovery, and the R48 legacy compiler oracle.
+
+### F2 Portal material and playable BSP2 slice (2026-09-23)
+
+The [private fixture generator](../tools/quality/worldstage_render_fixture.py)
+places the point light inside the sealed room and replaces its two development
+materials with actual `portal_pbr/tile/observation_tilefloor001a` and
+`portal_pbr/metal/metalwall_bts_006b` VMTs from
+`/home/john/source-engine-portal-runtime/portal-pbr-remastered`. It copies the
+matching fallback VMTs and converts private copies of the 2048-pixel PNG masters
+to VTF with the installed VTEX. Licensed texture bytes stay in private/ignored
+outputs. The source asset tree is not modified by the generator.
+
+`vbsp2` compiled that VMF to BSP, BSP2 and `.geometry.usda`; VVIS and VRAD
+completed. The independent World Stage comparator passed all 16 faces,
+32 triangles, three entities and one point light, including four seeded missing
+prim/normal controls. The first Cycles bake exposed BSP face loops with winding
+opposite their plane normals. The emitter now orients triangles to the BSP
+plane, and the comparator checks normals and winding independently. The
+[Portal material resolver](../tools/quality/worldstage_portal_materials.py)
+reads the geometry layer and VMTs, then authors a separate composed USD layer
+with two `UsdPreviewSurface` bindings. It maps Source MRAO red to metalness,
+green to roughness and the authored bumpmap to a normal input, matching the
+engine PBR shader's texture set. Both geometry and composed
+layers pass `usdchecker`; the comparator also passes on the composed stage.
+
+The [Cycles inspection renderer](../tools/quality/worldstage_cycles_preview.py)
+imports that composed USD stage directly, including its `UsdLuxSphereLight`
+and material bindings. Blender Cycles 5.2.1 rendered 2048×1152 at 128 CPU
+samples. A 1024×576 light-disabled control has mean RGB approximately
+`[0.08, 0.08, 0.08]` versus `[88.28, 80.88, 65.33]` with the light enabled;
+the whole frame differs. The system Blender package pairs an OCIO 2.5 config
+with an OCIO 2.4.2 library, so the
+[private compatibility helper](../tools/quality/blender_ocio_compat.py) makes a
+preview-only OCIO 2.4 config. The generated USD light uses `preview-v1` raw
+Source intensity; it has not been calibrated against VRAD. Blender Cycles is
+inspection evidence, not the RFC 0007 pinned standalone Cycles gate.
+
+The [Cycles atlas prototype](../tools/quality/worldstage_cycles_bake_preview.py)
+bakes direct plus indirect diffuse light into a **4096×256 linear EXR**, four
+times the Stage chart resolution in each axis, at 64 samples. All 16 chart
+rectangles have nonzero light; the EXR has 73,920 nonzero texels. The old
+incorrect-winding stage fails this chart control, and disabling its one light
+fails with no lit atlas pixels. This is an unencoded preview
+of canonical lighting, with no style layers, SH/RNM, probes or runtime packing.
+
+After VRAD, `bsp2tool` converted the lit BSP; independent export matched its
+bytes. The [Portal boot runner](../tools/quality/portal_boot.py) now accepts a
+private `--content-root` and copies only map/material files into its staged
+runtime. The authored BSP2 map booted and rendered in the native Vulkan Portal
+client. `map_container_info` reported `kind=bsp2 legacy_version=21` and 39
+lumps; the 1920×1080 screenshot shows the Portal textures in the room. Local
+ignored evidence includes
+`quality-results/rfc0008-portal-usd-materials-cycles-2048.png` and its JSON,
+`quality-results/rfc0008-portal-cycles-lightmap-4096x256.exr` and its JSON,
+`quality-results/rfc0008-portal-cycles-lightmap-4096x256-preview.png` for visual
+inspection,
+`quality-results/rfc0008-portal-room-native-final-20260923/evidence.json` and
+its screenshot, and `quality-results/rfc0008-worldstage-clean3-20260923.json`.
+An isolated clean `--tools` Waf install and repeated host smoke passed.
+The Portal boot fixture suite passes 55 tests, including a preflight rejection
+that leaves staged content untouched. Pinned stylelint passes on the local
+changed files. The whole-tree architecture check still reports 49 new and
+three stale occurrences in other in-progress modules; none names this F2 slice.
+
+Reproduction from the repository root with the installed host profile (use
+fresh output paths when repeating the commands):
+
+```sh
+python3 tools/quality/worldstage_render_fixture.py \
+  --out-dir /tmp/rfc0008-portal-room-oriented \
+  --portal-assets /home/john/source-engine-portal-runtime/portal-pbr-remastered \
+  --vtex /tmp/rfc0008-worldstage-clean3-install/vtex
+PXR_PLUGINPATH_NAME=/tmp/rfc0008-worldstage-clean3-install/share/sourceWorld \
+  /tmp/rfc0008-worldstage-clean3-install/vbsp2 \
+  -game /tmp/rfc0008-portal-room-oriented/game \
+  /tmp/rfc0008-portal-room-oriented/sealed_room.vmf
+/tmp/rfc0008-worldstage-clean3-install/vvis -threads 1 \
+  -game /tmp/rfc0008-portal-room-oriented/game \
+  /tmp/rfc0008-portal-room-oriented/sealed_room.bsp
+/tmp/rfc0008-worldstage-clean3-install/vrad -bounce 0 -threads 2 \
+  -game /tmp/rfc0008-portal-room-oriented/game \
+  /tmp/rfc0008-portal-room-oriented/sealed_room.bsp
+PYTHONPATH=/tmp/rfc0008-openusd-install/lib/python \
+PXR_PLUGINPATH_NAME=/tmp/rfc0008-worldstage-clean3-install/share/sourceWorld \
+  /usr/bin/python3.12 tools/quality/worldstage_portal_materials.py \
+  --stage /tmp/rfc0008-portal-room-oriented/sealed_room.geometry.usda \
+  --portal-assets /home/john/source-engine-portal-runtime/portal-pbr-remastered \
+  --out /tmp/rfc0008-portal-room-oriented/material-manifest.json \
+  --composed-stage /tmp/rfc0008-portal-room-oriented/portal-preview-v3.usda
+PXR_PLUGINPATH_NAME=/tmp/rfc0008-worldstage-clean3-install/share/sourceWorld \
+  /tmp/rfc0008-openusd-install/bin/usdchecker \
+  /tmp/rfc0008-portal-room-oriented/portal-preview-v3.usda
+python3 tools/quality/blender_ocio_compat.py \
+  --source-dir /usr/share/blender/5.2/datafiles/colormanagement \
+  --out-dir /tmp/rfc0008-ocio24-clean3
+OCIO=/tmp/rfc0008-ocio24-clean3/config.ocio blender -b --factory-startup \
+  --python-exit-code 9 \
+  --python tools/quality/worldstage_cycles_preview.py -- \
+  --stage /tmp/rfc0008-portal-room-oriented/portal-preview-v3.usda \
+  --import-usd-materials \
+  --out quality-results/rfc0008-portal-usd-materials-cycles-2048.png \
+  --width 2048 --height 1152 --samples 128 --exposure -5
+OCIO=/tmp/rfc0008-ocio24-clean3/config.ocio blender -b --factory-startup \
+  --python-exit-code 9 \
+  --python tools/quality/worldstage_cycles_bake_preview.py -- \
+  --stage /tmp/rfc0008-portal-room-oriented/portal-preview-v3.usda \
+  --manifest /tmp/rfc0008-portal-room-oriented/material-manifest.json \
+  --require-all-charts-lit \
+  --out quality-results/rfc0008-portal-cycles-lightmap-4096x256.exr \
+  --width 4096 --height 256 --samples 64
+mkdir -p /tmp/rfc0008-portal-playable/maps /tmp/rfc0008-portal-playable/materials
+cp -a /tmp/rfc0008-portal-room-oriented/game/materials/. \
+  /tmp/rfc0008-portal-playable/materials/
+/tmp/rfc0008-worldstage-clean3-install/bsp2tool convert \
+  /tmp/rfc0008-portal-room-oriented/sealed_room.bsp \
+  /tmp/rfc0008-portal-playable/maps/rfc0008_portal_room.bsp
+python3 tools/quality/portal_boot.py --runtime run/runtime-native \
+  --content-root /tmp/rfc0008-portal-playable --renderer native-vulkan \
+  --headless --map rfc0008_portal_room \
+  --console-command map_container_info \
+  --console-command 'cmd setpos -160 -160 92' \
+  --console-command 'cmd setang -10 45 0' \
+  --out quality-results/rfc0008-portal-room-native-final-20260923
+```
+
+That baseline playable map uses VRAD's legacy lighting payload. The next
+inspection slice places some Cycles light into the game. The game does not read
+USD at runtime. F2/R54, R49 and R56 remain open until the canonical baker,
+packer and native world consumer close that path.
+
+### F2 Cycles flat-lightmap in-game preview (2026-09-23)
+
+The [preview bridge](../tools/quality/worldstage_legacy_lightmap_preview.py)
+checks the geometry Stage, composed Portal material Stage and Cycles EXR hashes
+against their manifests. It samples the 4× atlas in Source's 17×17 luxel
+charts, converts linear RGB into the legacy RGBExp32 representation and writes
+one compiled style's **flat** lighting samples into an already VRAD-lit v21
+BSP. It leaves bump basis samples, other styles, face records and all other
+lumps intact. The style comes from an independent BSP/Stage comparison. This
+fixture's named light is style 32; style 0 contains zero
+flat lighting. The bridge is deliberately labeled a preview. It is not the
+RFC 0007 directional RNM/SH baker, and the Source light-to-radiance scale is
+not calibrated.
+
+All 16 faces received 4,624 flat luxels. Twelve faces still carry VRAD bump
+bases. Only legacy lighting lump 8 changed (18,348 bytes). `bsp2tool` converted
+the preview to BSP2; the independent exporter recovered the exact modified
+BSP. The native Vulkan Portal client booted the BSP2 map with the same 13
+Portal material assets and executables as the VRAD baseline. The
+[in-game comparator](../tools/quality/worldstage_in_game_compare.py) checked
+those identities, the BSP lump difference and both recorded screenshot hashes.
+The 1920×1080 frame changed by more than five RGB levels in 99.65% of pixels;
+the mean absolute RGB difference is 69.47. Repeating the comparator on the
+same BSP/frame failed, as did requests for a missing style or incorrect chart.
+Ignored evidence is
+`quality-results/rfc0008-portal-cycles-flat-in-game-compare-20260923.json`,
+`quality-results/rfc0008-portal-room-cycles-flat-preview-20260923/evidence.json`
+and its screenshot. This demonstrates the path **VMF → vbsp2 World Stage →
+Portal material layer → Cycles bake → legacy flat-lightmap bridge → BSP2 →
+native Vulkan in-game frame** for this fixture. It does not demonstrate direct
+USD runtime loading, canonical SH lightmaps, exact bumped RNM, calibrated
+lighting, probes or the full RFC 0008 world mesh path.
+
+An additional `--gain 0.15` preview also booted, with the same identities and
+only lump 8 changed. Its frame differs from the baseline by 18.04 mean
+absolute RGB levels while avoiding the raw bake's strong overexposure. This
+gain is an inspection setting, not a measured `LightingPolicy` conversion;
+ignored evidence is
+`quality-results/rfc0008-portal-cycles-gain015-in-game-compare-20260923.json`.
+
+### F2 compiled light style in World Stage schema 4 (2026-09-23)
+
+The typed `SourceLightAPI` now carries `source:styleId` from the serialized
+VBSP entity (default 0, valid range 0–254). VBSP assigned the fixture's named
+light style 32. The independent comparator checks the Stage value against that
+compiled entity, rejects a seeded style change, and records both BSP and Stage
+hashes. The preview bridge verifies this comparison and infers style 32; a
+request for style 0 fails before output. This removes the manual style
+assignment from the USD → bake → BSP2 preview path. The clean schema 4 host
+smoke (`quality-results/rfc0008-worldstage-schema4-clean4-20260923.json`)
+also passed a byte-identical `vbsp`/`vbsp2` BSP comparison and BSP2 export,
+`usdchecker`, and the geometry/entity/light negative controls.
+
+A fresh private Portal fixture, VVIS/VRAD run, and 64-sample Cycles bake
+produced the same BSP and EXR bytes as the earlier fixture. The style-derived
+preview BSP matches the earlier in-game preview byte for byte. A new native
+Vulkan boot passed, and the in-game comparison
+(`quality-results/rfc0008-portal-schema4-in-game-compare-20260923.json`)
+again found only legacy lighting lump 8 changed, with identical executables,
+13 materials, and camera commands. These results establish the style mapping
+for this fixture; multiple-light and animated-style runtime behavior remain
+outside this preview.
+
+Reproduce with new private output directories if these paths already exist:
+
+```sh
+python3 tools/quality/worldstage_render_fixture.py \
+  --out-dir /tmp/rfc0008-portal-room-schema4 \
+  --portal-assets /home/john/source-engine-portal-runtime/portal-pbr-remastered \
+  --vtex /tmp/rfc0008-worldstage-clean4-install/vtex
+PXR_PLUGINPATH_NAME=/tmp/rfc0008-worldstage-clean4-install/share/sourceWorld \
+  /tmp/rfc0008-worldstage-clean4-install/vbsp2 \
+  -game /tmp/rfc0008-portal-room-schema4/game \
+  /tmp/rfc0008-portal-room-schema4/sealed_room.vmf
+/tmp/rfc0008-worldstage-clean4-install/vvis -threads 1 \
+  -game /tmp/rfc0008-portal-room-schema4/game \
+  /tmp/rfc0008-portal-room-schema4/sealed_room.bsp
+/tmp/rfc0008-worldstage-clean4-install/vrad -bounce 0 -threads 2 \
+  -game /tmp/rfc0008-portal-room-schema4/game \
+  /tmp/rfc0008-portal-room-schema4/sealed_room.bsp
+PYTHONPATH=/tmp/rfc0008-openusd-install/lib/python \
+PXR_PLUGINPATH_NAME=/tmp/rfc0008-worldstage-clean4-install/share/sourceWorld \
+  /usr/bin/python3.12 tools/quality/worldstage_geometry_compare.py \
+  --bsp /tmp/rfc0008-portal-room-schema4/sealed_room.bsp \
+  --stage /tmp/rfc0008-portal-room-schema4/sealed_room.geometry.usda \
+  --negative-self-test \
+  --out /tmp/rfc0008-portal-room-schema4/geometry-comparison.json
+PYTHONPATH=/tmp/rfc0008-openusd-install/lib/python \
+PXR_PLUGINPATH_NAME=/tmp/rfc0008-worldstage-clean4-install/share/sourceWorld \
+  /usr/bin/python3.12 tools/quality/worldstage_portal_materials.py \
+  --stage /tmp/rfc0008-portal-room-schema4/sealed_room.geometry.usda \
+  --portal-assets /home/john/source-engine-portal-runtime/portal-pbr-remastered \
+  --out /tmp/rfc0008-portal-room-schema4/material-manifest.json \
+  --composed-stage /tmp/rfc0008-portal-room-schema4/portal-preview-schema4.usda
+OCIO=/tmp/rfc0008-ocio24-clean3/config.ocio blender -b --factory-startup \
+  --python-exit-code 9 \
+  --python tools/quality/worldstage_cycles_bake_preview.py -- \
+  --stage /tmp/rfc0008-portal-room-schema4/portal-preview-schema4.usda \
+  --manifest /tmp/rfc0008-portal-room-schema4/material-manifest.json \
+  --require-all-charts-lit \
+  --out quality-results/rfc0008-portal-schema4-cycles-lightmap.exr \
+  --width 4096 --height 256 --samples 64
+python3 tools/quality/worldstage_legacy_lightmap_preview.py \
+  --bsp /tmp/rfc0008-portal-room-schema4/sealed_room.bsp \
+  --geometry-stage /tmp/rfc0008-portal-room-schema4/sealed_room.geometry.usda \
+  --material-stage /tmp/rfc0008-portal-room-schema4/portal-preview-schema4.usda \
+  --geometry-comparison /tmp/rfc0008-portal-room-schema4/geometry-comparison.json \
+  --manifest /tmp/rfc0008-portal-room-schema4/material-manifest.json \
+  --exr quality-results/rfc0008-portal-schema4-cycles-lightmap.exr \
+  --out /tmp/rfc0008-portal-room-schema4/sealed_room-cycles-style-derived.bsp
+mkdir -p /tmp/rfc0008-portal-schema4-playable/maps \
+  /tmp/rfc0008-portal-schema4-playable/materials
+cp -a /tmp/rfc0008-portal-room-schema4/game/materials/. \
+  /tmp/rfc0008-portal-schema4-playable/materials/
+/tmp/rfc0008-worldstage-clean4-install/bsp2tool convert \
+  /tmp/rfc0008-portal-room-schema4/sealed_room-cycles-style-derived.bsp \
+  /tmp/rfc0008-portal-schema4-playable/maps/rfc0008_portal_room.bsp
+python3 tools/quality/portal_boot.py --runtime run/runtime-native \
+  --content-root /tmp/rfc0008-portal-schema4-playable --renderer native-vulkan \
+  --headless --map rfc0008_portal_room \
+  --console-command map_container_info \
+  --console-command 'cmd setpos -160 -160 92' \
+  --console-command 'cmd setang -10 45 0' \
+  --out quality-results/rfc0008-portal-schema4-native-20260923
+python3 tools/quality/worldstage_in_game_compare.py \
+  --baseline-bsp /tmp/rfc0008-portal-room-schema4/sealed_room.bsp \
+  --preview-bsp /tmp/rfc0008-portal-room-schema4/sealed_room-cycles-style-derived.bsp \
+  --baseline-evidence quality-results/rfc0008-portal-room-native-final-20260923/evidence.json \
+  --preview-evidence quality-results/rfc0008-portal-schema4-native-20260923/evidence.json \
+  --out quality-results/rfc0008-portal-schema4-in-game-compare-20260923.json
+```
 
 ## F1: what exists
 

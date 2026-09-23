@@ -160,7 +160,7 @@ def build(bld):
 			'../common', '../vmpi', '../../common', '../../thirdparty' ],
 		defines = [ 'MACRO_MATHLIB', 'PROTECTED_THINGS_DISABLE',
 			'_LZMA_PROB32', '_7ZIP_ST', 'SOURCE_WORLD_STAGE' ],
-		use = [ 'vbspworldstage', 'sourceWorld', 'materialsystem', 'shaderapiempty',
+		use = [ 'vbspworldstage', 'mapcontainer', 'sourceWorld', 'materialsystem', 'shaderapiempty',
 			'fgdlib', 'mathlib', 'tier0', 'tier1', 'tier2', 'vstdlib', 'vtf', 'bitmap' ],
 		uselib = 'OPENUSD',
 		ldflags = [ '-Wl,-Bstatic', '-Lbitmap', '-lbitmap', '-Wl,-Bdynamic' ],

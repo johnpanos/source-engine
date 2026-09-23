@@ -2679,6 +2679,15 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		wds.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		wds.pImageInfo = &dii;
 		vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
+		m_whiteCubeHandle = CreateManagedTexture(
+		    1, 1, VK_FORMAT_R8G8B8A8_UNORM, outError, 0, 1, VK_FORMAT_UNDEFINED, true );
+		if ( m_whiteCubeHandle < 0 )
+			return false;
+		const uint8_t white[4] = { 255, 255, 255, 255 };
+		for ( uint32_t face = 0; face < 6; ++face )
+			if ( !UploadManagedTexture(
+			         m_whiteCubeHandle, white, sizeof( white ), outError, 0, face ) )
+				return false;
 
 		// The UnlitGeneric push block is larger than the color pipelines': it
 		// carries cModelViewProj (mat4), cModulationColor (vec4), and the two rows
@@ -2690,13 +2699,13 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		// + vec4 alphaParams (128 bytes), and the user clip planes when the device
 		// clips (demo_dyn_tex_clip.vert reads them after the block).
 		texPc.size = m_clipPlanesSupported ? kTexturedPushBytes : sizeof( float ) * 32;
-		// Set 0 is the base texture and set 1 the lightmap: both are one
-		// combined image sampler, so each managed texture's single set serves
-		// either role.
-		const VkDescriptorSetLayout texSetLayouts[2] = { m_dynTexDescLayout, m_dynTexDescLayout };
+		// Base, lightmap, cubemap and normal mask share the managed texture
+		// descriptor layout; each draw selects the corresponding texture set.
+		const VkDescriptorSetLayout texSetLayouts[4] = {
+		    m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout };
 		VkPipelineLayoutCreateInfo texPl = {};
 		texPl.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		texPl.setLayoutCount = 2;
+		texPl.setLayoutCount = 4;
 		texPl.pSetLayouts = texSetLayouts;
 		texPl.pushConstantRangeCount = 1;
 		texPl.pPushConstantRanges = &texPc;
@@ -2728,14 +2737,23 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		t.stages[1].module = texFrag;
 		t.binding = binding;
 		std::memcpy( t.attrs, attrs, sizeof( attrs ) );
+		// The textured stage reads the world reflection direction from the normal
+		// slot for a lightmapped cubemap pass.
+		t.attrs[4].location = 4;
+		t.attrs[4].format = VK_FORMAT_R32G32B32_SFLOAT;
+		t.attrs[4].offset = sizeof( float ) * 10;
+		// Refract carries its environment tint in the otherwise unused tangent slot.
+		t.attrs[5].location = 5;
+		t.attrs[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+		t.attrs[5].offset = sizeof( float ) * 13;
 		// The textured stage also reads the vertex color's alpha, which ends the
 		// record ($vertexalpha; demo_dyn_tex.vert location 6).
-		t.attrs[4].location = 6;
-		t.attrs[4].format = VK_FORMAT_R32_SFLOAT;
-		t.attrs[4].offset = sizeof( float ) * 17;
+		t.attrs[6].location = 6;
+		t.attrs[6].format = VK_FORMAT_R32_SFLOAT;
+		t.attrs[6].offset = sizeof( float ) * 17;
 		t.vin = vin;
 		t.vin.pVertexBindingDescriptions = &t.binding;
-		t.vin.vertexAttributeDescriptionCount = 5;
+		t.vin.vertexAttributeDescriptionCount = 7;
 		t.vin.pVertexAttributeDescriptions = t.attrs;
 		t.ia = ia;
 		t.vp = vp;
@@ -5287,13 +5305,23 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				else
 				{
 					const bool secondSampler =
-					    ( d.colorFlags & ( kFragmentCable | kFragmentMonitor ) ) != 0;
+					    ( d.colorFlags &
+					        ( kFragmentCable | kFragmentMonitor | kFragmentRefract ) ) != 0;
 					const int secondTexture =
 					    secondSampler ? d.samplerHandles[1] : d.lightmapHandle;
-					const VkDescriptorSet sets[2] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
-					    sampledSet( secondTexture, kColorSrgbReadLightmap ) };
+					const int cubeTexture =
+					    ( d.colorFlags & ( kFragmentLightmappedEnvmap | kFragmentRefract ) ) != 0
+					        ? d.samplerHandles[2]
+					        : m_whiteCubeHandle;
+					const int normalMaskTexture =
+					    ( d.colorFlags & kFragmentNormalAlphaEnvmapMask ) != 0 ? d.samplerHandles[4]
+					                                                           : -1;
+					const VkDescriptorSet sets[4] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					    sampledSet( secondTexture, kColorSrgbReadLightmap ),
+					    sampledSet( cubeTexture, kColorSrgbReadSampler2 ),
+					    sampledSet( normalMaskTexture, 0 ) };
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					    m_dynTexPipelineLayout, 0, 2, sets, 0, nullptr );
+					    m_dynTexPipelineLayout, 0, 4, sets, 0, nullptr );
 				}
 			}
 			// Push this draw's state. The textured (UnlitGeneric) pipeline reads

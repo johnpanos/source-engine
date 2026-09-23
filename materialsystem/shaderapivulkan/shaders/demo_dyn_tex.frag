@@ -23,9 +23,14 @@ layout( location = 0 ) in vec2 fragUv;
 layout( location = 1 ) in vec4 fragModulation;
 layout( location = 2 ) in vec2 fragLightmapUv;
 layout( location = 3 ) in vec4 fragVertexColor;
+layout( location = 4 ) in vec3 fragReflection;
+layout( location = 5 ) in vec2 fragScreenUv;
+layout( location = 6 ) in vec4 fragEnvTint;
 layout( location = 0 ) out vec4 outColor;
 layout( set = 0, binding = 0 ) uniform sampler2D baseTexture;
 layout( set = 1, binding = 0 ) uniform sampler2D lightmapTexture;
+layout( set = 2, binding = 0 ) uniform samplerCube envmapTexture;
+layout( set = 3, binding = 0 ) uniform sampler2D normalMaskTexture;
 layout( push_constant ) uniform Constants
 {
 	mat4 mvp;
@@ -63,6 +68,46 @@ vec3 LinearToSrgb( vec3 c )
 void main()
 {
 	const int flags = int( consts.alphaParams.z );
+	if ( ( flags & 262144 ) != 0 )
+	{
+		// refract_ps2x.fxc: sampler 0 is the completed frame copy, sampler 1
+		// is the normal map, and sampler 2 is the local cubemap. The authored
+		// glass uses BLUR=1, CUBEMAP=1 and no optional masks or second normal.
+		vec4 normal = texture( lightmapTexture, fragUv );
+		vec2 warped = fragScreenUv + ( normal.xy * 2.0 - 1.0 ) *
+		    ( normal.a * consts.modulation.a );
+		vec3 color;
+		if ( ( flags & 524288 ) != 0 )
+		{
+			color = vec3( 0.0 );
+			for ( int y = -1; y <= 1; ++y )
+				for ( int x = -1; x <= 1; ++x )
+					color += texture( baseTexture, warped + vec2( x, y ) / 512.0 ).rgb;
+			color /= 9.0;
+		}
+		else
+			color = texture( baseTexture, warped ).rgb;
+		if ( ( flags & 1 ) != 0 )
+			color = SrgbToLinear( color );
+		color *= consts.modulation.rgb;
+		vec3 worldNormal = normalize( fragReflection );
+		vec3 worldTangent = normalize( fragEnvTint.xyz );
+		vec3 worldBinormal = normalize( cross( worldNormal, worldTangent ) ) * fragEnvTint.w;
+		vec3 tangentNormal = normal.xyz * 2.0 - 1.0;
+		vec3 bumpedWorldNormal = tangentNormal.x * worldTangent +
+		    tangentNormal.y * worldBinormal + tangentNormal.z * worldNormal;
+		vec3 eyeTangent = fragVertexColor.rgb;
+		vec3 reflectDirection = 2.0 * dot( bumpedWorldNormal, eyeTangent ) *
+		    bumpedWorldNormal - dot( bumpedWorldNormal, bumpedWorldNormal ) * eyeTangent;
+		vec3 envTint = vec3( fragLightmapUv, fragVertexColor.a );
+		vec3 reflection = texture( envmapTexture, reflectDirection ).rgb * normal.a * envTint;
+		reflection = mix( reflection, reflection * reflection, consts.alphaParams.x );
+		color += reflection;
+		if ( ( flags & 4 ) != 0 )
+			color = LinearToSrgb( color );
+		outColor = vec4( color, normal.a );
+		return;
+	}
 	vec4 base = ( flags & 128 ) != 0 ? fragVertexColor : texture( baseTexture, fragUv );
 	if ( ( flags & 1 ) != 0 )
 		base.rgb = SrgbToLinear( base.rgb );
@@ -133,6 +178,22 @@ void main()
 			if ( ( flags & 2 ) != 0 )
 				lightmap = SrgbToLinear( lightmap );
 			result.rgb *= lightmap;
+		}
+		if ( ( flags & 131072 ) != 0 )
+		{
+			// lightmappedgeneric_ps2_3_x.h: base alpha masks the cubemap
+			// with its inverse, and is not also used as output alpha.
+			float specularFactor = ( flags & 1048576 ) != 0 ? 1.0 - base.a : 1.0;
+			if ( ( flags & 2097152 ) != 0 )
+				specularFactor *= texture( normalMaskTexture, fragUv ).a;
+			if ( ( flags & 1048576 ) != 0 )
+				result.a = fragModulation.a;
+			vec3 specular = texture( envmapTexture, fragReflection ).rgb *
+			    fragVertexColor.rgb * specularFactor;
+			specular = mix( specular, specular * specular, fragEnvTint.x );
+			float grey = dot( specular, vec3( 0.299, 0.587, 0.114 ) );
+			specular = mix( vec3( grey ), specular, fragEnvTint.y );
+			result.rgb += specular * fragEnvTint.z;
 		}
 	}
 	// The D3D9 fixed-function alpha test: GREATEREQUAL ($alphatest) or GREATER

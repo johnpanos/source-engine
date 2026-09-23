@@ -144,6 +144,12 @@ protected:
 	IAppSystem *AddSystem( AppModule_t module, const char *pInterfaceName );
 	IAppSystem *AddSystem( AppSystemFactory_t factory, const char *pInterfaceName );
 	IAppSystem *AddSystem( IAppSystem *pAppSystem, const char *pInterfaceName );
+	// Resolve an interface from a retained native module without registering a
+	// second lifecycle owner. A product composition may own its lifecycle.
+	IAppSystem *CreateSystem( AppModule_t module, const char *pInterfaceName );
+	// Transfer a module handle after its interfaces have been bound into a
+	// product composition. The group retains only the module name for cleanup.
+	CSysModule *ReleaseModule( AppModule_t module );
 
 	// Simpler method of doing the LoadModule/AddSystem thing.
 	// Make sure the last AppSystemInfo has a NULL module name

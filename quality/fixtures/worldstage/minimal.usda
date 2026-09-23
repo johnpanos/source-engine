@@ -9,7 +9,7 @@ def Xform "World" (
     prepend apiSchemas = ["SourceWorldAPI"]
 )
 {
-    uniform int source:schemaVersion = 3
+    uniform int source:schemaVersion = 4
     uniform int source:lightmapAtlasWidth = 64
     uniform int source:lightmapAtlasHeight = 64
     int[] source:chartFaceIds = [0]
@@ -80,6 +80,7 @@ def Xform "World" (
             double3 xformOp:translate = (0, 0, 32)
             uniform token[] xformOpOrder = ["xformOp:translate"]
             uniform int source:entityIndex = 1
+            uniform int source:styleId = 0
             uniform token source:lightingPolicy = "preview-v1"
         }
     }

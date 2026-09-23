@@ -175,6 +175,14 @@
       "dialect": "cxx20",
       "rfc": "0001"
     },
+    "platform_composition_legacyabi": {
+      "dialect": "cxx20",
+      "rfc": "0001"
+    },
+    "dedicated_composition_bridge": {
+      "dialect": "cxx20",
+      "rfc": "0001"
+    },
     "platform_tool_process": {
       "dialect": "cxx20",
       "rfc": "0001"

@@ -26,6 +26,7 @@
 #include "pxr/usd/usdLux/sphereLight.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -38,6 +39,7 @@
 #include <vector>
 
 #include "bsplib.h"
+#include "../common/map_file_io.h"
 #include "tier0/valve_minmax_off.h"
 
 namespace
@@ -58,6 +60,7 @@ struct FaceGeometry
 	std::vector<pxr::GfVec3f> points;
 	std::vector<pxr::GfVec2f> materialUV;
 	pxr::GfVec3f normal;
+	bool reverseWinding;
 };
 
 struct EntityRecord
@@ -218,9 +221,7 @@ bool GatherWorldFaces( std::vector<FaceGeometry> &faces, std::string &error )
 			return false;
 		}
 		const Vector &planeNormal = dplanes[face.planenum].normal;
-		const float side = face.side ? -1.0f : 1.0f;
-		geometry.normal =
-		    pxr::GfVec3f( planeNormal.x * side, planeNormal.y * side, planeNormal.z * side );
+		geometry.normal = pxr::GfVec3f( planeNormal.x, planeNormal.y, planeNormal.z );
 		for ( int edgeIndex = face.firstedge; edgeIndex < face.firstedge + face.numedges;
 		    ++edgeIndex )
 		{
@@ -242,6 +243,15 @@ bool GatherWorldFaces( std::vector<FaceGeometry> &faces, std::string &error )
 			    Project( point, texture.textureVecsTexelsPerWorldUnits[0] ) / material.width,
 			    Project( point, texture.textureVecsTexelsPerWorldUnits[1] ) / material.height );
 		}
+		const pxr::GfVec3f edgeA = geometry.points[1] - geometry.points[0];
+		const pxr::GfVec3f edgeB = geometry.points[2] - geometry.points[0];
+		const float alignment = pxr::GfDot( pxr::GfCross( edgeA, edgeB ), geometry.normal );
+		if ( !std::isfinite( alignment ) || std::abs( alignment ) < 1e-5f )
+		{
+			error = "world face has invalid winding or plane normal";
+			return false;
+		}
+		geometry.reverseWinding = alignment < 0.0f;
 		faces.push_back( std::move( geometry ) );
 	}
 	return true;
@@ -303,7 +313,8 @@ bool AuthorFace( const pxr::UsdStageRefPtr &stage, const FaceGeometry &geometry,
 		smoothingGroups.push_back( face.smoothingGroups );
 		chartIds.push_back( geometry.faceId );
 		normals.push_back( geometry.normal );
-		for ( int vertex : { 0, corner, corner + 1 } )
+		for ( int vertex : { 0, geometry.reverseWinding ? corner + 1 : corner,
+		          geometry.reverseWinding ? corner : corner + 1 } )
 		{
 			indices.push_back( vertex );
 			materialUV.push_back( geometry.materialUV[vertex] );
@@ -395,15 +406,34 @@ bool ParseLightValues( const std::string &value, float *numbers, int count )
 	return !( stream >> extra );
 }
 
+bool ParseCompiledLightStyle( const EntityRecord &record, int &style )
+{
+	style = 0;
+	bool found = false;
+	for ( std::size_t index = 0; index < record.keys.size(); ++index )
+	{
+		if ( record.keys[index] != "style" )
+			continue;
+		if ( found )
+			return false;
+		found = true;
+		const std::string &value = record.values[index];
+		const auto parsed = std::from_chars( value.data(), value.data() + value.size(), style );
+		if ( parsed.ec != std::errc() || parsed.ptr != value.data() + value.size() || style < 0 ||
+		     style >= 255 )
+			return false;
+	}
+	return true;
+}
+
 float SrgbChannelToLinear( float channel )
 {
 	channel /= 255.0f;
-	return channel <= 0.04045f ? channel / 12.92f :
-	                             std::pow( ( channel + 0.055f ) / 1.055f, 2.4f );
+	return channel <= 0.04045f ? channel / 12.92f : std::pow( ( channel + 0.055f ) / 1.055f, 2.4f );
 }
 
-bool AuthorLights( const pxr::UsdStageRefPtr &stage,
-    const std::vector<EntityRecord> &records, std::string &error )
+bool AuthorLights(
+    const pxr::UsdStageRefPtr &stage, const std::vector<EntityRecord> &records, std::string &error )
 {
 	if ( !pxr::UsdGeomScope::Define( stage, pxr::SdfPath( "/World/Lights" ) ) )
 	{
@@ -427,14 +457,15 @@ bool AuthorLights( const pxr::UsdStageRefPtr &stage,
 		}
 		std::string originValue;
 		std::string lightValue;
+		int style = 0;
 		float origin[3];
 		float sourceLight[4];
 		if ( !FindSingleEntityValue( records[index], "origin", originValue ) ||
 		     !FindSingleEntityValue( records[index], "_light", lightValue ) ||
+		     !ParseCompiledLightStyle( records[index], style ) ||
 		     !ParseLightValues( originValue, origin, 3 ) ||
-		     !ParseLightValues( lightValue, sourceLight, 4 ) ||
-		     sourceLight[0] < 0.0f || sourceLight[0] > 255.0f ||
-		     sourceLight[1] < 0.0f || sourceLight[1] > 255.0f ||
+		     !ParseLightValues( lightValue, sourceLight, 4 ) || sourceLight[0] < 0.0f ||
+		     sourceLight[0] > 255.0f || sourceLight[1] < 0.0f || sourceLight[1] > 255.0f ||
 		     sourceLight[2] < 0.0f || sourceLight[2] > 255.0f || sourceLight[3] < 0.0f )
 		{
 			error = "compiled point light has invalid origin or _light data";
@@ -448,16 +479,54 @@ bool AuthorLights( const pxr::UsdStageRefPtr &stage,
 		         pxr::GfVec3d( origin[0], origin[1], origin[2] ) ) ||
 		     !light.CreateRadiusAttr().Set( 8.0f ) ||
 		     !light.CreateIntensityAttr().Set( sourceLight[3] ) ||
-		     !light.CreateColorAttr().Set( pxr::GfVec3f(
-		         SrgbChannelToLinear( sourceLight[0] ),
-		         SrgbChannelToLinear( sourceLight[1] ),
-		         SrgbChannelToLinear( sourceLight[2] ) ) ) ||
+		     !light.CreateColorAttr().Set( pxr::GfVec3f( SrgbChannelToLinear( sourceLight[0] ),
+		         SrgbChannelToLinear( sourceLight[1] ), SrgbChannelToLinear( sourceLight[2] ) ) ) ||
 		     !source.CreateSourceEntityIndexAttr().Set( static_cast<int>( index ) ) ||
+		     !source.CreateSourceStyleIdAttr().Set( style ) ||
 		     !source.CreateSourceLightingPolicyAttr().Set( pxr::TfToken( "preview-v1" ) ) )
 		{
 			error = "OpenUSD could not author point light " + std::to_string( index );
 			return false;
 		}
+	}
+	return true;
+}
+
+bool PublishBsp2( const char *bspPath, std::string &error )
+{
+	mapcontainer::tooling::FileByteSource source( bspPath );
+	if ( !source.IsOpen() )
+	{
+		error = "World Stage packer could not reopen the compiled BSP";
+		return false;
+	}
+	std::filesystem::path output( bspPath );
+	output.replace_extension( ".bsp2" );
+	const std::filesystem::path temporary = output.string() + ".tmp";
+	mapcontainer::tooling::FileByteSink sink( temporary.string() );
+	const mapcontainer::MapContainerStatus status =
+	    mapcontainer::ConvertLegacyToBsp2( source, sink );
+	if ( !status.Ok() )
+	{
+		sink.Finish();
+		std::filesystem::remove( temporary );
+		error = std::string( "BSP2 conversion failed: " ) +
+		        mapcontainer::MapContainerErrorName( status.code );
+		return false;
+	}
+	if ( !sink.Finish() )
+	{
+		std::filesystem::remove( temporary );
+		error = "BSP2 conversion could not finish its output";
+		return false;
+	}
+	std::error_code renameError;
+	std::filesystem::rename( temporary, output, renameError );
+	if ( renameError )
+	{
+		std::filesystem::remove( temporary );
+		error = "BSP2 conversion could not publish its output: " + renameError.message();
+		return false;
 	}
 	return true;
 }
@@ -504,7 +573,7 @@ bool WriteWorldStageGeometryImpl( const char *bspPath, std::string &error )
 			return false;
 		}
 	}
-	if ( !source.CreateSourceSchemaVersionAttr().Set( 3 ) ||
+	if ( !source.CreateSourceSchemaVersionAttr().Set( 4 ) ||
 	     !source.CreateSourceLightmapAtlasWidthAttr().Set( kAtlasWidth ) ||
 	     !source.CreateSourceLightmapAtlasHeightAttr().Set( atlasHeight ) ||
 	     !source.CreateSourceChartFaceIdsAttr().Set( chartFaceIds ) ||
@@ -534,7 +603,7 @@ bool WriteWorldStageGeometryImpl( const char *bspPath, std::string &error )
 		std::filesystem::remove( temporary );
 		return false;
 	}
-	return true;
+	return PublishBsp2( bspPath, error );
 }
 
 } // namespace

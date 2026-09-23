@@ -413,6 +413,11 @@ public:
 		           ? m_managedTextures[static_cast<size_t>( handle )].mipLevels
 		           : 0;
 	}
+	bool ManagedTextureIsCube( int handle ) const
+	{
+		return handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) &&
+		       m_managedTextures[static_cast<size_t>( handle )].layers == 6;
+	}
 	void BindManagedTexture( int handle );
 	// The lightmap page the textured pipeline multiplies by (LightmappedGeneric's
 	// TEXTURE_LIGHTMAP on sampler 1), sampled at the lightmap coordinates; -1
@@ -511,7 +516,12 @@ public:
 		kFragmentMonitor = 16384,
 		kFragmentMonitorTexture2 = 32768,
 		// Sprite_DX9's VERTEXCOLOR combo multiplies both RGB and alpha directly.
-		kFragmentSpriteVertexAlpha = 65536
+		kFragmentSpriteVertexAlpha = 65536,
+		kFragmentLightmappedEnvmap = 131072,
+		kFragmentRefract = 262144,
+		kFragmentRefractBlur = 524288,
+		kFragmentBaseAlphaEnvmapMask = 1048576,
+		kFragmentNormalAlphaEnvmapMask = 2097152
 	};
 	void SelectDynamicColorSpace( int flags ) { m_dynColorFlags = flags; }
 	// Linear scale applied to the textured pipeline's color before the sRGB
@@ -1015,7 +1025,7 @@ private:
 	{
 		VkPipelineShaderStageCreateInfo stages[2];
 		VkVertexInputBindingDescription binding;
-		VkVertexInputAttributeDescription attrs[5];
+		VkVertexInputAttributeDescription attrs[7];
 		VkPipelineVertexInputStateCreateInfo vin;
 		VkPipelineInputAssemblyStateCreateInfo ia;
 		VkPipelineViewportStateCreateInfo vp;
@@ -1037,6 +1047,7 @@ private:
 	VkDescriptorSetLayout m_dynTexDescLayout = VK_NULL_HANDLE;
 	VkDescriptorPool m_dynTexDescPool = VK_NULL_HANDLE;
 	VkDescriptorSet m_dynTexDescSet = VK_NULL_HANDLE;
+	int m_whiteCubeHandle = -1;
 	// Material-supplied textures (IShaderAPI). The descriptor set points at the
 	// bound one, or the built-in 2-tone texture when none is bound.
 	enum

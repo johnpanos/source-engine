@@ -24,7 +24,7 @@ class "SourceWorldAPI" (
     }
 )
 {
-    uniform int source:schemaVersion = 3 (
+    uniform int source:schemaVersion = 4 (
         doc = "Version of the Source-specific World Stage properties."
     )
     uniform int source:lightmapAtlasWidth (
@@ -105,6 +105,9 @@ class "SourceLightAPI" (
 {
     uniform int source:entityIndex (
         doc = "Ordinal of the authoritative key/value record under /World/Entities."
+    )
+    uniform int source:styleId (
+        doc = "Compiled Source light style id; zero is the default style."
     )
     uniform token source:lightingPolicy (
         doc = "Conversion policy; preview-v1 is not calibrated to legacy vrad."

@@ -18,11 +18,16 @@ layout( location = 0 ) in vec3 inPos;
 layout( location = 1 ) in vec3 inColor; // vertex color (VERTEXCOLOR path)
 layout( location = 2 ) in vec2 inUv;
 layout( location = 3 ) in vec2 inLightmapUv; // TEXCOORD1: lightmap page coordinates
+layout( location = 4 ) in vec3 inReflection; // CPU-converted world reflection for cubemap
+layout( location = 5 ) in vec4 inEnvTint; // Refract's envmap tint and contrast
 layout( location = 6 ) in float inAlpha;     // vertex color alpha
 layout( location = 0 ) out vec2 fragUv;
 layout( location = 1 ) out vec4 fragModulation;
 layout( location = 2 ) out vec2 fragLightmapUv;
 layout( location = 3 ) out vec4 fragVertexColor; // read with flags 128, 256, 1024
+layout( location = 4 ) out vec3 fragReflection;
+layout( location = 5 ) out vec2 fragScreenUv;
+layout( location = 6 ) out vec4 fragEnvTint;
 layout( push_constant ) uniform Constants
 {
 	mat4 mvp;        // cModelViewProj
@@ -51,6 +56,8 @@ void main()
 {
 	fragModulation = consts.modulation;
 	fragLightmapUv = inLightmapUv;
+	fragReflection = inReflection;
+	fragEnvTint = inEnvTint;
 	// vertexlit_and_unlit_generic_vs20.fxc with VERTEXCOLOR: the vertex color
 	// is GammaToLinear'd (pow 2.2) unless DONT_GAMMA_CONVERT_VERTEX_COLOR (512).
 	const int flags = int( consts.alphaParams.z );
@@ -60,11 +67,13 @@ void main()
 	if ( ( flags & 32 ) != 0 )
 	{
 		gl_Position = vec4( inPos, 1.0 );
+		fragScreenUv = ( gl_Position.xy / gl_Position.w * vec2( 1.0, -1.0 ) + 1.0 ) * 0.5;
 		fragUv = inUv;
 		ApplyClipPlanes();
 		return;
 	}
 	gl_Position = consts.mvp * vec4( inPos, 1.0 );
+	fragScreenUv = ( gl_Position.xy / gl_Position.w * vec2( 1.0, -1.0 ) + 1.0 ) * 0.5;
 	ApplyClipPlanes();
 	// D3D9 fills a 2D texcoord to (u, v, 0, 1); the base-texture transform is a
 	// 2x4 affine matrix, so u' = dot(row0, uv4), v' = dot(row1, uv4). Identity

@@ -283,17 +283,24 @@ bool CSys::LoadModules( CDedicatedAppSystemGroup *pAppSystemGroup )
 		return false;
 	}
 
-	if ( !pAppSystemGroup->AddSystem( Engine_CreateCvarQuery(), CVAR_QUERY_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( InputSystem_Create(), INPUTSYSTEM_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( material, MATERIAL_SYSTEM_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( StudioRender_Create(), STUDIO_RENDER_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( physicsAppModule, VPHYSICS_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( DataCache_Create(), DATACACHE_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( MDLCache_Create(), MDLCACHE_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( StudioDataCache_Create(), STUDIO_DATA_CACHE_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( VGui_Create(), VGUI_IVGUI_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( server, VENGINE_HLDS_API_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( Dedicated_CreateQueuedLoader(), QUEUEDLOADER_INTERFACE_VERSION ) )
+	IInputSystem *input = InputSystem_Create();
+	if ( input )
+		input->SetSkipControllerInitialization( true );
+	if ( !pAppSystemGroup->AddComposedSystem(
+	         Engine_CreateCvarQuery(), CVAR_QUERY_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem( input, INPUTSYSTEM_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem( material, MATERIAL_SYSTEM_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem(
+	         StudioRender_Create(), STUDIO_RENDER_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem( physicsAppModule, VPHYSICS_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem( DataCache_Create(), DATACACHE_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem( MDLCache_Create(), MDLCACHE_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem(
+	         StudioDataCache_Create(), STUDIO_DATA_CACHE_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem( VGui_Create(), VGUI_IVGUI_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem( server, VENGINE_HLDS_API_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem(
+	         Dedicated_CreateQueuedLoader(), QUEUEDLOADER_INTERFACE_VERSION ) )
 	{
 		return false;
 	}

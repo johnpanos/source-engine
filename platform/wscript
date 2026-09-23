@@ -26,6 +26,21 @@ def build(bld):
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)
+	# Legacy dedicated modules use libstdc++'s old dual ABI. Compile the same
+	# authoritative kernel source for that ABI instead of mixing STL objects.
+	legacy_abi = [ '_GLIBCXX_USE_CXX11_ABI=0' ] if bld.env.DEST_OS == 'linux' else []
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ 'composition.cpp' ],
+		target    = 'platform_composition_legacyabi',
+		name      = 'platform_composition_legacyabi',
+		features  = 'cxx capability_strict',
+		includes  = [ '../public' ],
+		defines   = legacy_abi,
+		use       = [],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)
 	bld.stlib(
 		env       = bld.strict_cpp20_env(),
 		source    = [ 'tool_process_client.cpp' ],

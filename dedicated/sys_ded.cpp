@@ -10,6 +10,7 @@
 #include "isys.h"
 #include "console/conproc.h"
 #include "dedicated.h"
+#include "exports_service.h"
 #include "engine_hlds_api.h"
 #include "checksum_md5.h"
 #include "mathlib/mathlib.h"
@@ -223,22 +224,18 @@ bool CDedicatedAppSystemGroup::Create( )
 	// Hook the debug output stuff (override the spew func in the appframework)
 	SpewOutputFunc( DedicatedSpewOutputFunc );
 
-	// Add the linked dedicated exports system explicitly.
-	IAppSystem *pSystem = AddSystem( Dedicated_GetExports(), VENGINE_DEDICATEDEXPORTS_API_VERSION );
-	if ( !pSystem )
+	// The old group is a compatibility view of the canonical product graph.
+	m_Composition = DedicatedComposition_Create( GetFactory() );
+	if ( !m_Composition ||
+	     !AddSystem( DedicatedComposition_LegacyBridge( m_Composition ),
+	         "DedicatedCompositionBridge001" ) ||
+	     !DedicatedComposition_AddExports( m_Composition, Dedicated_GetExports(),
+	         VENGINE_DEDICATEDEXPORTS_API_VERSION, Dedicated_CreateExportsService,
+	         Dedicated_BindExportsService ) )
 		return false;
 
 	if ( sys->LoadModules( this ) )
 	{
-		// Find the input system and tell it to skip Steam Controller initialization (we have to set this flag before Init gets called on the
-		// input system). Dedicated server should skip controller initialization to avoid initializing Steam, because we don't want the user to be
-		// flagged as "playing" the game.
-		auto inputsystem = ( IInputSystem* )FindSystem( INPUTSYSTEM_INTERFACE_VERSION );
-		if ( inputsystem )
-		{
-			inputsystem->SetSkipControllerInitialization( true );
-		}
-
 		return true;
 	}
 	else
@@ -350,6 +347,8 @@ void CDedicatedAppSystemGroup::PostShutdown()
 //-----------------------------------------------------------------------------
 void CDedicatedAppSystemGroup::Destroy()
 {
+	DedicatedComposition_Destroy( m_Composition );
+	m_Composition = nullptr;
 }
 
 

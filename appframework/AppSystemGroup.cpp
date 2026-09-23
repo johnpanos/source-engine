@@ -117,6 +117,11 @@ void CAppSystemGroup::UnloadAllModules()
 //-----------------------------------------------------------------------------
 IAppSystem *CAppSystemGroup::AddSystem( AppModule_t module, const char *pInterfaceName )
 {
+	return AddSystem( CreateSystem( module, pInterfaceName ), pInterfaceName );
+}
+
+IAppSystem *CAppSystemGroup::CreateSystem( AppModule_t module, const char *pInterfaceName )
+{
 	if (module == APP_MODULE_INVALID)
 		return NULL;
 
@@ -131,14 +136,16 @@ IAppSystem *CAppSystemGroup::AddSystem( AppModule_t module, const char *pInterfa
 		return NULL;
 	}
 
-	IAppSystem *pAppSystem = static_cast<IAppSystem*>(pSystem);
-	
-	int sysIndex = m_Systems.AddToTail( pAppSystem );
+	return static_cast<IAppSystem *>( pSystem );
+}
 
-	// Inserting into the dict will help us do named lookup later
-	MEM_ALLOC_CREDIT();
-	m_SystemDict.Insert( pInterfaceName, sysIndex );
-	return pAppSystem;
+CSysModule *CAppSystemGroup::ReleaseModule( AppModule_t module )
+{
+	if ( module == APP_MODULE_INVALID || module < 0 || module >= m_Modules.Count() )
+		return NULL;
+	CSysModule *handle = m_Modules[module].m_pModule;
+	m_Modules[module].m_pModule = NULL;
+	return handle;
 }
 
 IAppSystem *CAppSystemGroup::AddSystem( AppSystemFactory_t factory, const char *pInterfaceName )
@@ -294,6 +301,8 @@ bool CAppSystemGroup::ConnectSystems()
 		if (!sys->Connect( GetFactory() ))
 		{
 			ReportStartupFailure( CONNECTION, i );
+			for ( int connected = i; connected >= 0; --connected )
+				m_Systems[connected]->Disconnect();
 			return false;
 		}
 	}
@@ -321,6 +330,8 @@ InitReturnVal_t CAppSystemGroup::InitSystems()
 		if ( nRetVal != INIT_OK )
 		{
 			ReportStartupFailure( INITIALIZATION, i );
+			for ( int initialized = i; initialized >= 0; --initialized )
+				m_Systems[initialized]->Shutdown();
 			return nRetVal;
 		}
 	}
@@ -382,8 +393,12 @@ int CAppSystemGroup::Run()
 
 	// Load, connect, init
 	int nRetVal = OnStartup();
- 	if ( m_nErrorStage != NONE )
+	if ( m_nErrorStage != NONE )
+	{
+		OnShutdown();
+		s_pCurrentAppSystem = GetParent();
 		return nRetVal;
+	}
 
 	// Main loop implemented by the application
 	// FIXME: HACK workaround to avoid vgui porting

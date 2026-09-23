@@ -7,7 +7,9 @@ World Stage content or Cycles acceptance test.
 """
 
 import argparse
+import hashlib
 import json
+import math
 import re
 import struct
 import sys
@@ -31,6 +33,7 @@ def source_faces(path):
     edges = lump(data, header, 12)
     surfedges = lump(data, header, 13)
     vertices = lump(data, header, 3)
+    planes = lump(data, header, 1)
     texinfo = lump(data, header, 6)
     texdata = lump(data, header, 2)
     string_table = lump(data, header, 44)
@@ -43,6 +46,10 @@ def source_faces(path):
     result = {}
     for face_id in range(first_face, first_face + face_count):
         offset = face_id * 56
+        plane_id = struct.unpack_from("<H", faces, offset)[0]
+        if plane_id >= len(planes) // 20:
+            raise ValueError("invalid BSP face plane")
+        normal = struct.unpack_from("<fff", planes, plane_id * 20)
         first_edge, count = struct.unpack_from("<ih", faces, offset + 4)
         chart_width, chart_height = struct.unpack_from("<ii", faces, offset + 36)
         texinfo_id = struct.unpack_from("<h", faces, offset + 10)[0]
@@ -83,6 +90,7 @@ def source_faces(path):
         result[face_id] = {
             "points": points, "chart": (chart_width + 1, chart_height + 1),
             "material": material_path, "smoothing": smoothing_group,
+            "normal": normal,
             "material_uv": [(project(point, vectors[0]) / image_width,
                              project(point, vectors[1]) / image_height) for point in points],
             "lightmap_uv_luxels": [(project(point, vectors[2]) - lightmap_mins[0],
@@ -131,8 +139,13 @@ def close_pair(actual, expected, tolerance=1e-5):
     return all(abs(a - b) <= tolerance for a, b in zip(actual, expected))
 
 
+def linear_channel(value):
+    channel = value / 255.0
+    return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+
+
 def compare(bsp_faces, bsp_entities, stage):
-    from pxr import UsdGeom
+    from pxr import UsdGeom, UsdLux
 
     world = stage.GetPrimAtPath("/World")
     if not world or not world.HasAPI("SourceWorldAPI"):
@@ -140,7 +153,7 @@ def compare(bsp_faces, bsp_entities, stage):
     if (stage.GetDefaultPrim() != world or
             UsdGeom.GetStageUpAxis(stage) != UsdGeom.Tokens.z or
             UsdGeom.GetStageMetersPerUnit(stage) != 0.0254 or
-            world.GetAttribute("source:schemaVersion").Get() != 2):
+            world.GetAttribute("source:schemaVersion").Get() != 4):
         raise ValueError("World Stage identity, units or schema version diverges")
     width = world.GetAttribute("source:lightmapAtlasWidth").Get()
     height = world.GetAttribute("source:lightmapAtlasHeight").Get()
@@ -183,10 +196,23 @@ def compare(bsp_faces, bsp_entities, stage):
             raise ValueError("world face points diverge from BSP")
         counts = list(mesh.GetFaceVertexCountsAttr().Get())
         indices = list(mesh.GetFaceVertexIndicesAttr().Get())
+        a, b, c = expected[:3]
+        edge_a = [b[i] - a[i] for i in range(3)]
+        edge_b = [c[i] - a[i] for i in range(3)]
+        cross = (edge_a[1] * edge_b[2] - edge_a[2] * edge_b[1],
+                 edge_a[2] * edge_b[0] - edge_a[0] * edge_b[2],
+                 edge_a[0] * edge_b[1] - edge_a[1] * edge_b[0])
+        normal = bsp_faces[face_id]["normal"]
+        alignment = sum(cross[i] * normal[i] for i in range(3))
+        if not math.isfinite(alignment) or abs(alignment) < 1e-5:
+            raise ValueError("BSP face has invalid winding or plane normal")
         expected_indices = [vertex for corner in range(1, len(expected) - 1)
-                            for vertex in (0, corner, corner + 1)]
+                            for vertex in ((0, corner + 1, corner) if alignment < 0
+                                           else (0, corner, corner + 1))]
         if counts != [3] * (len(expected) - 2) or indices != expected_indices:
             raise ValueError("world face triangulation diverges from BSP")
+        if [tuple(value) for value in mesh.GetNormalsAttr().Get()] != [normal] * len(counts):
+            raise ValueError("world face normal diverges from BSP plane")
         triangle_count += len(counts)
         for attr, value in (("primvars:source:faceId", face_id),
                             ("primvars:source:lightmapChartId", face_id)):
@@ -234,8 +260,48 @@ def compare(bsp_faces, bsp_entities, stage):
         values = prim.GetAttribute("source:keyValues").Get()
         if list(zip(keys, values)) != record:
             raise ValueError("World Stage entity records diverge from BSP")
+    light_root = stage.GetPrimAtPath("/World/Lights")
+    if not light_root:
+        raise ValueError("World Stage lacks its lights scope")
+    expected_lights = [(index, dict(record)) for index, record in enumerate(bsp_entities)
+                       if dict(record).get("classname") == "light"]
+    if len(list(light_root.GetChildren())) != len(expected_lights):
+        raise ValueError("World Stage dropped a BSP point light")
+    light_styles = {}
+    for index, record in expected_lights:
+        authored_styles = [value for key, value in bsp_entities[index] if key == "style"]
+        if (len(authored_styles) > 1 or
+                (authored_styles and not re.fullmatch(r"[0-9]+", authored_styles[0]))):
+            raise ValueError("invalid compiled BSP light style")
+        style = int(authored_styles[0]) if authored_styles else 0
+        if style >= 255:
+            raise ValueError("compiled BSP light style is out of range")
+        light_styles[str(index)] = style
+        prim = stage.GetPrimAtPath("/World/Lights/Light_" + str(index))
+        if (not prim or not prim.IsA(UsdLux.SphereLight) or
+                not prim.HasAPI("SourceLightAPI") or
+                prim.GetAttribute("source:entityIndex").Get() != index or
+                str(prim.GetAttribute("source:lightingPolicy").Get()) != "preview-v1"):
+            raise ValueError("World Stage point light identity diverges from BSP")
+        if prim.GetAttribute("source:styleId").Get() != style:
+            raise ValueError("World Stage point light style diverges from BSP")
+        origin = [float(value) for value in record["origin"].split()]
+        source_light = [float(value) for value in record["_light"].split()]
+        if len(origin) != 3 or len(source_light) != 4 or not all(
+                math.isfinite(value) for value in origin + source_light):
+            raise ValueError("invalid BSP light data")
+        sphere = UsdLux.SphereLight(prim)
+        operations = UsdGeom.Xformable(prim).GetOrderedXformOps()
+        if (len(operations) != 1 or not close_pair(operations[0].Get(), origin)
+                or abs(sphere.GetIntensityAttr().Get() - source_light[3]) > 1e-5
+                or abs(sphere.GetRadiusAttr().Get() - 8.0) > 1e-5
+                or not close_pair(sphere.GetColorAttr().Get(),
+                                  [linear_channel(value) for value in source_light[:3]])):
+            raise ValueError("World Stage point light values diverge from BSP")
     return {"faces": len(seen), "triangles": triangle_count,
-            "entities": len(bsp_entities), "atlas_width": width, "atlas_height": height}
+            "entities": len(bsp_entities), "point_lights": len(expected_lights),
+            "light_styles": light_styles,
+            "atlas_width": width, "atlas_height": height}
 
 
 def main():
@@ -245,7 +311,7 @@ def main():
     parser.add_argument("--negative-self-test", action="store_true")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
-    from pxr import Usd
+    from pxr import Gf, Usd
 
     try:
         stage = Usd.Stage.Open(str(args.stage))
@@ -255,7 +321,8 @@ def main():
         entities = source_entities(args.bsp)
         evidence = compare(faces, entities, stage)
         if args.negative_self_test:
-            stage.RemovePrim("/World/Geometry/WorldSpawn/Mesh_" + str(min(faces)))
+            stage.GetPrimAtPath("/World/Geometry/WorldSpawn/Mesh_" + str(min(faces))).SetActive(
+                False)
             try:
                 compare(faces, entities, stage)
             except ValueError as error:
@@ -266,7 +333,22 @@ def main():
                 raise ValueError("missing face negative control was accepted")
             stage.Reload()
             compare(faces, entities, stage)
-            stage.RemovePrim("/World/Entities/Entity_" + str(len(entities) - 1))
+            mesh = stage.GetPrimAtPath("/World/Geometry/WorldSpawn/Mesh_" + str(min(faces)))
+            normals = mesh.GetAttribute("normals")
+            normals.Set([Gf.Vec3f(-value[0], -value[1], -value[2])
+                         for value in normals.Get()])
+            try:
+                compare(faces, entities, stage)
+            except ValueError as error:
+                if "world face normal diverges" not in str(error):
+                    raise
+                evidence["negative_bad_normal_rejected"] = True
+            else:
+                raise ValueError("bad normal negative control was accepted")
+            stage.Reload()
+            compare(faces, entities, stage)
+            stage.GetPrimAtPath("/World/Entities/Entity_" + str(len(entities) - 1)).SetActive(
+                False)
             try:
                 compare(faces, entities, stage)
             except ValueError as error:
@@ -275,7 +357,37 @@ def main():
                 evidence["negative_missing_entity_rejected"] = True
             else:
                 raise ValueError("missing entity negative control was accepted")
+            stage.Reload()
+            compare(faces, entities, stage)
+            light_indices = [index for index, record in enumerate(entities)
+                             if dict(record).get("classname") == "light"]
+            if light_indices:
+                light = stage.GetPrimAtPath("/World/Lights/Light_" + str(light_indices[0]))
+                current_style = light.GetAttribute("source:styleId").Get()
+                light.GetAttribute("source:styleId").Set(0 if current_style else 32)
+                try:
+                    compare(faces, entities, stage)
+                except ValueError as error:
+                    if "point light style diverges" not in str(error):
+                        raise
+                    evidence["negative_bad_light_style_rejected"] = True
+                else:
+                    raise ValueError("bad light style negative control was accepted")
+                stage.Reload()
+                compare(faces, entities, stage)
+                stage.GetPrimAtPath("/World/Lights/Light_" + str(light_indices[0])).SetActive(
+                    False)
+                try:
+                    compare(faces, entities, stage)
+                except ValueError as error:
+                    if "dropped a BSP point light" not in str(error):
+                        raise
+                    evidence["negative_missing_light_rejected"] = True
+                else:
+                    raise ValueError("missing light negative control was accepted")
         evidence["status"] = "pass"
+        evidence["bsp_sha256"] = hashlib.sha256(args.bsp.read_bytes()).hexdigest()
+        evidence["stage_sha256"] = hashlib.sha256(args.stage.read_bytes()).hexdigest()
     except (OSError, ValueError) as error:
         evidence = {"status": "fail", "reason": str(error)}
     if args.out:

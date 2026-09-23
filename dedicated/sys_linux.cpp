@@ -281,16 +281,21 @@ bool CSys::LoadModules( CDedicatedAppSystemGroup *pAppSystemGroup )
 		return false;
 	}
 
-	if ( !pAppSystemGroup->AddSystem( Engine_CreateCvarQuery(), CVAR_QUERY_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( SoundEmitterSystem_Create(), SOUNDEMITTERSYSTEM_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( material, MATERIAL_SYSTEM_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( StudioRender_Create(), STUDIO_RENDER_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( physicsAppModule, VPHYSICS_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( DataCache_Create(), DATACACHE_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( MDLCache_Create(), MDLCACHE_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( StudioDataCache_Create(), STUDIO_DATA_CACHE_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( Dedicated_CreateQueuedLoader(), QUEUEDLOADER_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddSystem( server, VENGINE_HLDS_API_VERSION ) )
+	if ( !pAppSystemGroup->AddComposedSystem(
+	         Engine_CreateCvarQuery(), CVAR_QUERY_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem(
+	         SoundEmitterSystem_Create(), SOUNDEMITTERSYSTEM_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem( material, MATERIAL_SYSTEM_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem(
+	         StudioRender_Create(), STUDIO_RENDER_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem( physicsAppModule, VPHYSICS_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem( DataCache_Create(), DATACACHE_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem( MDLCache_Create(), MDLCACHE_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem(
+	         StudioDataCache_Create(), STUDIO_DATA_CACHE_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem(
+	         Dedicated_CreateQueuedLoader(), QUEUEDLOADER_INTERFACE_VERSION ) ||
+	     !pAppSystemGroup->AddComposedSystem( server, VENGINE_HLDS_API_VERSION ) )
 	{
 		return false;
 	}

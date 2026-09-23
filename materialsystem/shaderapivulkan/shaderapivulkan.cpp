@@ -179,6 +179,10 @@ static int g_boundTextureHandle = -1;
 // The lightmap page bound to sampler 1 for the current pass (-1 = none), and
 // whether a BindTexture call is resolving a lightmap standard texture.
 static int g_boundLightmapHandle = -1;
+static int g_boundEnvmapHandle = -1;
+static int g_boundRefractNormalHandle = -1;
+static int g_boundRefractCubeHandle = -1;
+static int g_boundNormalMaskHandle = -1;
 static bool g_BindingLightmap = false;
 static uint64_t g_DrawsTextured = 0;   // bound a handle whose pixels were uploaded
 static uint64_t g_DrawsUnuploaded = 0; // bound a handle that was never filled
@@ -1644,6 +1648,12 @@ public:
 		g_ToneMappingScale = scale;
 		if ( CurrentHDRType() == HDR_TYPE_NONE )
 			g_ToneMappingScale.x = 1.0f;
+		// D3D9 publishes this same state to c30. Material shaders use z for
+		// cubemap energy even when HDR is disabled.
+		g_psConstants[30][0] = g_ToneMappingScale.x;
+		g_psConstants[30][1] = GetLightMapScaleFactor();
+		g_psConstants[30][2] = CurrentHDRType() == HDR_TYPE_INTEGER ? 16.0f : 1.0f;
+		g_psConstants[30][3] = powf( g_ToneMappingScale.x, 1.0f / 2.2f );
 	}
 
 	const Vector &GetToneMappingScaleLinear( void ) const { return g_ToneMappingScale; }
@@ -2987,7 +2997,25 @@ void CEmptyMesh::EmitToNativeQueue()
 	// (model space; skinned normals and tangents are not blended) and the skin
 	// shader (world space, below).
 	const bool skin = g_CurrentSkinCombos >= 0;
-	const bool wantsTangents = g_CurrentPortalStage >= 0 || skin;
+	const bool envmap =
+	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentLightmappedEnvmap ) != 0;
+	const bool refract =
+	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentRefract ) != 0;
+	const bool wantsTangents = g_CurrentPortalStage >= 0 || skin || envmap || refract;
+	float envContrast = 0.0f, envSaturation = 1.0f, fresnelReflection = 1.0f;
+	if ( envmap && g_pBoundMaterial )
+	{
+		const auto materialFloat =
+		    []( IMaterialInternal *material, const char *name, float defaultValue )
+		{
+			bool found = false;
+			IMaterialVar *var = material->FindVar( name, &found, false );
+			return found && var ? var->GetFloatValue() : defaultValue;
+		};
+		envContrast = materialFloat( g_pBoundMaterial, "$envmapcontrast", 0.0f );
+		envSaturation = materialFloat( g_pBoundMaterial, "$envmapsaturation", 1.0f );
+		fresnelReflection = materialFloat( g_pBoundMaterial, "$fresnelreflection", 1.0f );
+	}
 	if ( g_CurrentPortalStage >= 0 && g_NumBoneWeights > 0 )
 		NoteUnimplemented( "PortalRefract: skinned normal/tangent" );
 	// skin_vs20's per-vertex work: the lights' attenuation (GetVertexAttenForLight
@@ -3070,6 +3098,66 @@ void CEmptyMesh::EmitToNativeQueue()
 				WorldNormal( base, normal, nt );
 				WorldNormal( base, tangent, nt + 3 );
 			}
+			else if ( envmap )
+			{
+				float worldPos[3] = { pos[0], pos[1], pos[2] };
+				ModelToWorld( worldPos );
+				float worldNormal[3];
+				WorldNormal( base, nt, worldNormal );
+				float eye[3], dotNE = 0.0f, dotNN = 0.0f;
+				float eyeLength2 = 0.0f;
+				for ( int k = 0; k < 3; ++k )
+				{
+					eye[k] = g_psConstants[10][k] - worldPos[k];
+					dotNE += worldNormal[k] * eye[k];
+					dotNN += worldNormal[k] * worldNormal[k];
+					eyeLength2 += eye[k] * eye[k];
+				}
+				for ( int k = 0; k < 3; ++k )
+					nt[k] = 2.0f * dotNE * worldNormal[k] - dotNN * eye[k];
+				const float eyeDotNormal = dotNE / sqrtf( std::max( eyeLength2 * dotNN, 1e-20f ) );
+				const float oneMinusCos = 1.0f - eyeDotNormal;
+				const float fresnel = powf( oneMinusCos, 5.0f );
+				out[13] = envContrast;
+				out[14] = envSaturation;
+				out[15] = fresnel * ( 1.0f - fresnelReflection ) + fresnelReflection;
+				out[16] = 0.0f;
+			}
+			else if ( refract )
+			{
+				float worldPos[3] = { pos[0], pos[1], pos[2] };
+				ModelToWorld( worldPos );
+				float worldNormal[3], worldTangent[3];
+				WorldNormal( base, nt, worldNormal );
+				WorldNormal( base, nt + 3, worldTangent );
+				float eye[3], eyeLength2 = 0.0f;
+				for ( int k = 0; k < 3; ++k )
+				{
+					eye[k] = g_psConstants[11][k] - worldPos[k];
+					eyeLength2 += eye[k] * eye[k];
+				}
+				const float invEyeLength = 1.0f / sqrtf( std::max( eyeLength2, 1e-20f ) );
+				for ( float &component : eye )
+					component *= invEyeLength;
+				const float sign = nt[6];
+				const float binormal[3] = {
+				    ( worldNormal[1] * worldTangent[2] - worldNormal[2] * worldTangent[1] ) * sign,
+				    ( worldNormal[2] * worldTangent[0] - worldNormal[0] * worldTangent[2] ) * sign,
+				    ( worldNormal[0] * worldTangent[1] - worldNormal[1] * worldTangent[0] ) *
+				        sign };
+				for ( int k = 0; k < 3; ++k )
+				{
+					nt[k] = worldNormal[k];
+					nt[3 + k] = worldTangent[k];
+				}
+				out[3] =
+				    eye[0] * worldTangent[0] + eye[1] * worldTangent[1] + eye[2] * worldTangent[2];
+				out[4] = eye[0] * binormal[0] + eye[1] * binormal[1] + eye[2] * binormal[2];
+				out[5] =
+				    eye[0] * worldNormal[0] + eye[1] * worldNormal[1] + eye[2] * worldNormal[2];
+				out[8] = g_psConstants[0][0];
+				out[9] = g_psConstants[0][1];
+			}
 		}
 		else
 		{
@@ -3097,6 +3185,16 @@ void CEmptyMesh::EmitToNativeQueue()
 			// vertex-color slots of this unlit material's native vertex record.
 			memcpy( out + 3, g_psConstants[3], 3 * sizeof( float ) );
 			out[17] = g_psConstants[2][0];
+		}
+		else if ( envmap )
+		{
+			// c0 is $envmaptint; c30.z is ENV_MAP_SCALE.
+			for ( int k = 0; k < 3; ++k )
+				out[3 + k] = g_psConstants[0][k] * g_psConstants[30][2];
+		}
+		else if ( refract )
+		{
+			out[17] = g_psConstants[0][2];
 		}
 		else if ( vertexLighting )
 		{
@@ -5176,6 +5274,10 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	// The lightmap and samplers 1..15 are bound per pass by the shader's dynamic
 	// state.
 	g_boundLightmapHandle = -1;
+	g_boundEnvmapHandle = -1;
+	g_boundRefractNormalHandle = -1;
+	g_boundRefractCubeHandle = -1;
+	g_boundNormalMaskHandle = -1;
 	g_VulkanContext.BindManagedLightmap( -1 );
 	for ( int sampler = 1; sampler < render_vulkan::CVulkanContext::kMaxSamplers; ++sampler )
 		g_VulkanContext.BindManagedSampler( sampler, -1 );
@@ -5260,6 +5362,7 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	    "Cable_DX9",
 	    "Shadow",
 	    "DecalModulate",
+	    "Refract_DX90",
 	    // Depth-only, and the stencil-obeying clears (ClearBuffersObeyStencil).
 	    "WriteZ_DX9",
 	    "BufferClearObeyStencil_DX9",
@@ -5274,6 +5377,40 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	if ( !V_stricmp( shaderName, "PortalRefract_dx9" ) )
 		return g_VulkanContext.PortalPipelineSupported();
 	return false;
+}
+
+static bool NativeRefractMaterialSupported( IMaterialInternal *material )
+{
+	if ( !material || V_stricmp( material->GetShaderName(), "Refract_DX90" ) )
+		return true;
+	const auto enabled = [material]( const char *name )
+	{
+		bool found = false;
+		IMaterialVar *var = material->FindVar( name, &found, false );
+		return found && var && var->GetIntValue() != 0;
+	};
+	const auto hasTexture = [material]( const char *name )
+	{
+		bool found = false;
+		IMaterialVar *var = material->FindVar( name, &found, false );
+		return found && var && var->IsTexture();
+	};
+	if ( enabled( "$masked" ) || enabled( "$fadeoutonsilhouette" ) ||
+	     enabled( "$vertexcolormodulate" ) || hasTexture( "$normalmap2" ) ||
+	     hasTexture( "$refracttinttexture" ) )
+		return false;
+	bool found = false;
+	IMaterialVar *saturation = material->FindVar( "$envmapsaturation", &found, false );
+	if ( found && saturation )
+	{
+		float rgb[3];
+		saturation->GetVecValue( rgb, 3 );
+		for ( float channel : rgb )
+			if ( fabsf( channel - 1.0f ) > 0.0001f )
+				return false;
+	}
+	return g_boundEnvmapHandle >= 0 && g_boundRefractNormalHandle >= 0 &&
+	       g_VulkanContext.ManagedTextureIsCube( g_boundRefractCubeHandle );
 }
 
 void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
@@ -5297,6 +5434,11 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		DropDraw( "draw dropped: material shader not implemented by the native pipeline" );
 		NoteDroppedMaterial();
 	}
+	else if ( !NativeRefractMaterialSupported( g_pBoundMaterial ) )
+	{
+		DropDraw( "draw dropped: Refract_DX90 material needs an unsupported feature or texture" );
+		NoteDroppedMaterial();
+	}
 	else if ( g_pRenderMesh )
 	{
 		// LightmappedGeneric ends in FinalOutput( ..., TONEMAP_SCALE_LINEAR ): its
@@ -5315,6 +5457,40 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		if ( g_CurrentSkinCombos >= 0 )
 			CommitSkinConstants( *this );
 		const bool lightmapped = g_boundLightmapHandle >= 0;
+		const bool refract =
+		    g_pBoundMaterial && !V_stricmp( g_pBoundMaterial->GetShaderName(), "Refract_DX90" );
+		if ( refract )
+		{
+			g_CurrentColorFlags |= render_vulkan::CVulkanContext::kFragmentRefract |
+			                       render_vulkan::CVulkanContext::kColorSrgbReadBase;
+			bool found = false;
+			IMaterialVar *blur = g_pBoundMaterial->FindVar( "$bluramount", &found, false );
+			if ( found && blur->GetIntValue() > 0 )
+				g_CurrentColorFlags |= render_vulkan::CVulkanContext::kFragmentRefractBlur;
+			g_VulkanContext.BindManagedTexture( g_boundEnvmapHandle );
+			g_VulkanContext.BindManagedSampler( 1, g_boundRefractNormalHandle );
+			g_VulkanContext.BindManagedSampler( 2, g_boundRefractCubeHandle );
+			g_VulkanContext.SetDynamicBaseTexTransform(
+			    g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_1],
+			    g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_2] );
+		}
+		if ( lightmapped && g_pBoundMaterial &&
+		     !V_stricmp( g_pBoundMaterial->GetShaderName(), "LightmappedGeneric" ) &&
+		     g_VulkanContext.ManagedTextureIsCube( g_boundEnvmapHandle ) )
+		{
+			const bool normalAlphaMask =
+			    g_pBoundMaterial->GetMaterialVarFlag( MATERIAL_VAR_NORMALMAPALPHAENVMAPMASK );
+			if ( !normalAlphaMask || g_boundNormalMaskHandle >= 0 )
+			{
+				g_CurrentColorFlags |= render_vulkan::CVulkanContext::kFragmentLightmappedEnvmap;
+				if ( g_pBoundMaterial->GetMaterialVarFlag( MATERIAL_VAR_BASEALPHAENVMAPMASK ) )
+					g_CurrentColorFlags |=
+					    render_vulkan::CVulkanContext::kFragmentBaseAlphaEnvmapMask;
+				if ( normalAlphaMask )
+					g_CurrentColorFlags |=
+					    render_vulkan::CVulkanContext::kFragmentNormalAlphaEnvmapMask;
+			}
+		}
 		// FinalOutput( ..., TONEMAP_SCALE_LINEAR ) also ends PortalRefract's
 		// stage 2 (the flames), its other stages not scaling, and every output of
 		// vertexlit_and_unlit_generic_ps2x (UnlitGeneric and VertexLitGeneric; only
@@ -5328,6 +5504,13 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		     g_ToneMappingScale.x != 1.0f )
 			NoteUnimplemented( "integer HDR: tone-mapping scale on other shaders" );
 		CommitPassPixelConstants();
+		if ( refract )
+		{
+			const float tintAndScale[4] = { g_psConstants[1][0], g_psConstants[1][1],
+			    g_psConstants[1][2], g_psConstants[5][0] };
+			g_VulkanContext.SetDynamicModulation( tintAndScale );
+			g_VulkanContext.SelectDynamicAlphaTest( g_psConstants[2][0] );
+		}
 		g_pRenderMesh->EmitToNativeQueue();
 	}
 	if ( drawstatefixture::Instance().Enabled() )
@@ -5398,20 +5581,41 @@ void CShaderAPIVulkan::RecordDrawStateFixture( int nPass, int nPassCount )
 	draw.depthRange[0] = viewport.m_flMinZ;
 	draw.depthRange[1] = viewport.m_flMaxZ;
 
-	// The native pipelines sample one texture, sampler 0, and only the textured
-	// pipeline samples it at all.
-	if ( g_SamplesBaseTexture )
+	// Record the actual inputs selected for the glass variants as well as the
+	// base texture used by the other textured materials.
+	const auto recordSampler = [&]( int stage, int handle )
 	{
-		const int state = g_VulkanContext.ManagedTextureSamplerState( g_boundTextureHandle );
+		const int state = g_VulkanContext.ManagedTextureSamplerState( handle );
 		drawstatefixture::Sampler &sampler = draw.samplers[draw.samplerCount++];
-		sampler.stage = 0;
-		sampler.texture = FixtureTextureName( g_boundTextureHandle );
+		sampler.stage = stage;
+		sampler.texture = FixtureTextureName( handle );
 		sampler.addressU =
 		    ( state & render_vulkan::CVulkanContext::kSamplerClampU ) ? "clamp" : "wrap";
 		sampler.addressV =
 		    ( state & render_vulkan::CVulkanContext::kSamplerClampV ) ? "clamp" : "wrap";
 		sampler.filter =
 		    ( state & render_vulkan::CVulkanContext::kSamplerLinear ) ? "linear" : "point";
+	};
+	if ( g_SamplesBaseTexture )
+	{
+		if ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentRefract )
+		{
+			recordSampler( 2, g_boundEnvmapHandle );
+			recordSampler( 3, g_boundRefractNormalHandle );
+			recordSampler( 4, g_boundRefractCubeHandle );
+		}
+		else
+		{
+			recordSampler( 0, g_boundTextureHandle );
+			if ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentLightmappedEnvmap )
+			{
+				recordSampler( 1, g_boundLightmapHandle );
+				recordSampler( 2, g_boundEnvmapHandle );
+				if ( g_CurrentColorFlags &
+				     render_vulkan::CVulkanContext::kFragmentNormalAlphaEnvmapMask )
+					recordSampler( 4, g_boundNormalMaskHandle );
+			}
+		}
 	}
 
 	// The blend and depth state of the pipeline actually bound. Only the textured
@@ -6015,6 +6219,15 @@ void CShaderAPIVulkan::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t te
 	// them so (PortalRefract's noise and color ramp, the skin shader's maps).
 	if ( stage != SHADER_SAMPLER0 )
 		g_VulkanContext.BindManagedSampler( static_cast<int>( stage ), native );
+	if ( stage == SHADER_SAMPLER2 )
+		g_boundEnvmapHandle = native;
+	if ( stage == SHADER_SAMPLER3 )
+		g_boundRefractNormalHandle = native;
+	if ( stage == SHADER_SAMPLER4 )
+	{
+		g_boundRefractCubeHandle = native;
+		g_boundNormalMaskHandle = native;
+	}
 	if ( stage != SHADER_SAMPLER0 )
 		return;
 	g_boundTextureHandle = native;
@@ -6276,23 +6489,30 @@ void CShaderAPIVulkan::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 	}
 	const uint32_t levels = g_VulkanContext.ManagedTextureMipLevels( handle );
 	const int faces = ( pVTF->Flags() & TEXTUREFLAGS_ENVMAP ) ? 6 : 1;
-	for ( int face = 0; face < faces; ++face )
-	for ( uint32_t level = 0;
-	    level < levels && firstMip + static_cast<int>( level ) < pVTF->MipCount(); ++level )
+	if ( pVTF->FaceCount() < faces )
 	{
-		const int mip = firstMip + static_cast<int>( level );
-		int mipWidth = 0, mipHeight = 0, mipDepth = 0;
-		pVTF->ComputeMipLevelDimensions( mip, &mipWidth, &mipHeight, &mipDepth );
-		const unsigned char *bits = pVTF->ImageData( iVTFFrame, face, mip );
-		if ( mipWidth <= 0 || mipHeight <= 0 || !bits )
-			return;
-		std::string error;
-		if ( !UploadTextureSurface(
-		         handle, mipWidth, mipHeight, pVTF->Format(), bits, 0, &error, level, 0, 0, face ) )
+		Warning( "[NativeVulkan] TexImageFromVTF: incomplete cubemap\n" );
+		return;
+	}
+	for ( int face = 0; face < faces; ++face )
+	{
+		for ( uint32_t level = 0;
+		    level < levels && firstMip + static_cast<int>( level ) < pVTF->MipCount(); ++level )
 		{
-			if ( !error.empty() )
-				Warning( "[NativeVulkan] TexImageFromVTF upload failed: %s\n", error.c_str() );
-			return;
+			const int mip = firstMip + static_cast<int>( level );
+			int mipWidth = 0, mipHeight = 0, mipDepth = 0;
+			pVTF->ComputeMipLevelDimensions( mip, &mipWidth, &mipHeight, &mipDepth );
+			const unsigned char *bits = pVTF->ImageData( iVTFFrame, face, mip );
+			if ( mipWidth <= 0 || mipHeight <= 0 || !bits )
+				return;
+			std::string error;
+			if ( !UploadTextureSurface( handle, mipWidth, mipHeight, pVTF->Format(), bits, 0,
+			         &error, level, 0, 0, face ) )
+			{
+				if ( !error.empty() )
+					Warning( "[NativeVulkan] TexImageFromVTF upload failed: %s\n", error.c_str() );
+				return;
+			}
 		}
 	}
 }

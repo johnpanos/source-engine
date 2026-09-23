@@ -463,6 +463,9 @@
       "platform_composition": {
         "allowedUse": []
       },
+      "platform_composition_legacyabi": {
+        "allowedUse": []
+      },
       "platform_tool_process": {
         "allowedUse": []
       },
@@ -485,6 +488,9 @@
       "external/vpc/public/tier1/interface.h",
       "external/vpc/tier1/interface.cpp",
       "unittests/appframeworktest/appsystemgrouptest.cpp",
+      "unittests/appframeworktest/dedicatedcompositiontest.cpp",
+      "public/appframework/dedicated_composition_bridge.h",
+      "dedicated/composition_bridge.cpp",
       "unittests/legacymoduleclientfixture/legacy_loader_abi_2013.h",
       "unittests/legacymoduleclientfixture/legacymoduleclientfixture.cpp",
       "unittests/shaderextensiontest/test_shaderextension_host.cpp",

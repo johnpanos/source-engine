@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include "isys.h"
 #include "dedicated.h"
+#include "exports_service.h"
 #include "engine_hlds_api.h"
 #include "filesystem.h"
 #include "tier0/vcrmode.h"
@@ -120,22 +121,37 @@ int ProcessConsoleInput(void)
 
 void RunServer( void );
 
+class CDedicatedExportsService final : public IDedicatedExportsService
+{
+public:
+	void Print( char *text ) override
+	{
+		if ( sys )
+			sys->Printf( "%s", text );
+	}
+
+	void RunServer() override { ::RunServer(); }
+};
+
 class CDedicatedExports : public CBaseAppSystem<IDedicatedExports>
 {
 public:
 	virtual void Sys_Printf( char *text )
 	{
-		if ( sys )
-		{
-			sys->Printf( "%s", text );
-		}
+		if ( m_Service )
+			m_Service->Print( text );
 	}
 
 	virtual void RunServer()
 	{
-		void RunServer( void );
-		::RunServer();
+		if ( m_Service )
+			m_Service->RunServer();
 	}
+
+	void Bind( IDedicatedExportsService *service ) { m_Service = service; }
+
+private:
+	IDedicatedExportsService *m_Service = nullptr;
 };
 
 static CDedicatedExports s_DedicatedExports;
@@ -145,6 +161,16 @@ EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CDedicatedExports, IDedicatedExports,
 IDedicatedExports *Dedicated_GetExports()
 {
 	return &s_DedicatedExports;
+}
+
+IDedicatedExportsService *Dedicated_CreateExportsService()
+{
+	return new CDedicatedExportsService;
+}
+
+void Dedicated_BindExportsService( IDedicatedExportsService *service )
+{
+	s_DedicatedExports.Bind( service );
 }
 
 static const char *get_consolelog_filename()

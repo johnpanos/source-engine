@@ -11,6 +11,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from bsp2_reader import Bsp2File, open_any
+
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "quality/fixtures/vbsp-host"
@@ -45,11 +47,18 @@ def check(args):
         shutil.copytree(FIXTURE / "game", folder / "game")
         shutil.copy2(FIXTURE / "sealed_room.vmf", folder / "sealed_room.vmf")
         bsp = folder / "sealed_room.bsp"
+        bsp2 = folder / "sealed_room.bsp2"
         stage = folder / "sealed_room.geometry.usda"
         invoke([str(args.vbsp2.resolve()), "-game", str(folder / "game"),
                 str(folder / "sealed_room.vmf")], environment)
-        if not bsp.is_file() or not stage.is_file():
-            raise RuntimeError("vbsp2 did not publish both BSP and World Stage geometry")
+        if not bsp.is_file() or not bsp2.is_file() or not stage.is_file():
+            raise RuntimeError("vbsp2 did not publish BSP, BSP2 and World Stage geometry")
+        kind, container = open_any(bsp2.read_bytes())
+        if kind != "bsp2" or not isinstance(container, Bsp2File):
+            raise RuntimeError("independent reader rejected the direct BSP2 output")
+        container.check_legacy_structures()
+        if container.export_legacy() != bsp.read_bytes():
+            raise RuntimeError("direct BSP2 export changed the compiled BSP")
         legacy = folder / "legacy"
         legacy.mkdir()
         shutil.copytree(FIXTURE / "game", legacy / "game")
@@ -68,12 +77,16 @@ def check(args):
         comparison = json.loads(comparator_output)
         if (comparison.get("status") != "pass" or not comparison.get(
                 "negative_missing_face_rejected") or not comparison.get(
-                    "negative_missing_entity_rejected")):
+                "negative_bad_normal_rejected") or not comparison.get(
+                    "negative_missing_entity_rejected") or not comparison.get(
+                        "negative_missing_light_rejected") or not comparison.get(
+                            "negative_bad_light_style_rejected")):
             raise RuntimeError("semantic comparator did not pass its negative control")
         return {
             "status": "pass", "fixture_sha256": digest(FIXTURE / "sealed_room.vmf"),
             "vbsp_sha256": digest(args.vbsp), "vbsp2_sha256": digest(args.vbsp2),
             "bsp_sha256": digest(bsp), "legacy_bsp_byte_exact": True,
+            "bsp2_sha256": digest(bsp2), "bsp2_export_byte_exact": True,
             "stage_sha256": digest(stage), "usdchecker_success": True,
             "comparison": comparison,
         }

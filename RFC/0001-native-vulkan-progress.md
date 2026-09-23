@@ -1531,13 +1531,15 @@ Evidence:
   cable-specific quality tests pass.
 
 The later sections record scene captures for the sky, changed HUD, slideshow,
-and sphere sprites. Glass remains open: the frosted observation-window panels
+and sphere sprites. At this capture, glass remained open: the frosted
+observation-window panels
 use `LightmappedGeneric` with `$envmap env_cubemap` and additive blending.
 Native submits their base texture but does not sample their cubemap reflection,
 so the pane stays clearer than DXVK. `Refract_DX90`, used by other glass and
-liquid-portal surfaces, remains outside the native shader list because its
-screen-copy normal distortion needs its own implementation. Real monitor render
-targets also still need a scene capture.
+liquid-portal surfaces, was outside the native shader list because its
+screen-copy normal distortion needed its own implementation. The glass section
+below records the subsequent implementation. Real monitor render targets still
+need a scene capture.
 
 ```sh
 python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime-native \
@@ -1609,3 +1611,34 @@ reference and shader artifact requirements are recorded in
 darkened. The general Portal boot heuristic marks that particular near-black
 room screenshot incomplete, so it is visual evidence only; the sprite pixel
 conformance is the passing automated gate.
+
+## Frosted and refractive glass; masked metal reflections (2026-09-23)
+
+The native material path now creates six-layer cubemap images, uploads every
+VTF face and mip, and binds the cubemap on the textured pipeline. The frosted
+`LightmappedGeneric` observation pane in `testchmb_a_01` now samples its local
+reflection instead of showing only the translucent base. `Refract_DX90` also
+has a bounded native path for the Portal window material: screen-copy sampling,
+normal distortion, blur, tint, and cubemap reflection. Materials requesting
+the unsupported optional second normal, tint texture, silhouette fade, mask,
+or vertex color modulation still fail explicitly.
+
+The cubemap change exposed excessive reflections on dark chamber panels.
+`metal_lift001` uses inverse base alpha as its reflection mask;
+`metalwall048b` uses bump-map alpha. The native path now applies both authored
+masks where selected, then the material's envmap contrast, saturation, and
+Fresnel response. The reflection direction for bumped walls still uses the
+geometric surface normal, so exact DXVK pixel parity is not yet claimed.
+
+Evidence: native Portal boots passed on `testchmb_a_01` and panel-heavy
+`testchmb_a_06` with draw-state fixtures. The latter recorded sampler 4 as
+`metal/metalwall048b_med_height-ssbump` on the panel draws. At the same fixed
+`testchmb_a_06` camera (`setpos 300 160 430`, `setang 0 90 0`), the bright
+panel reflection region's mean RGB intensity fell from 172 to 61 (8-bit
+channel scale) after the masks and contrast; the captures are
+`/tmp/portal-black-panels-upper-prior.png` and
+`/tmp/portal-black-panels-verified.png`. The 25-check native bring-up,
+31-check material equivalence, and 13-check material-facing suites passed.
+Vulkan validation was unavailable on this runner. A DXVK headless boot failed
+before scene capture, so the comparison is against Source shader equations and
+the earlier native capture, not a new DXVK frame.

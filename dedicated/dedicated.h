@@ -17,7 +17,7 @@
 #endif
 
 #include "appframework/tier3app.h"
-
+#include "appframework/dedicated_composition_bridge.h"
 
 //-----------------------------------------------------------------------------
 // Forward declarations 
@@ -57,15 +57,23 @@ public:
 	virtual void PostShutdown();
 	virtual void Destroy();
 
-	// The platform root registers linked, module-owned service instances.
-	IAppSystem *AddSystem( IAppSystem *system, const char *interfaceName )
+	// Only the compatibility bridge is registered with CAppSystemGroup. Product
+	// systems are registered with ApplicationComposition, which drives lifecycle.
+	bool AddComposedSystem( IAppSystem *system, const char *interfaceName )
 	{
-		return BaseClass::AddSystem( system, interfaceName );
+		return DedicatedComposition_AddSystem( m_Composition, system, interfaceName );
 	}
 
-	IAppSystem *AddSystem( AppModule_t module, const char *interfaceName )
+	bool AddComposedSystem( AppModule_t module, const char *interfaceName )
 	{
-		return BaseClass::AddSystem( module, interfaceName );
+		if ( !AddComposedSystem( BaseClass::CreateSystem( module, interfaceName ), interfaceName ) )
+			return false;
+		CSysModule *handle = BaseClass::ReleaseModule( module );
+		if ( DedicatedComposition_OwnModule( m_Composition, handle, Sys_UnloadModule ) )
+			return true;
+		if ( handle )
+			Sys_UnloadModule( handle );
+		return false;
 	}
 
 	AppModule_t LoadPhysicsModule( const char *moduleName )
@@ -77,6 +85,9 @@ public:
 	{
 		return CSteamAppSystemGroup::FindSystem( pInterfaceName );
 	}
+
+private:
+	DedicatedComposition *m_Composition = nullptr;
 };
 
 

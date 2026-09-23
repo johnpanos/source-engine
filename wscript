@@ -104,6 +104,7 @@ projects={
 	],
 	'tests': [
 		'platform',
+		'dedicated/composition',
 		'mapcontainer',
 		'appframework',
 		'tier0',
@@ -147,6 +148,8 @@ projects={
 	'dedicated': [
 		'jobsystem',
 		'mapcontainer',
+		'platform',
+		'dedicated/composition',
 		'appframework',
 		'bitmap',
 		'choreoobjects',

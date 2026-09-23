@@ -352,7 +352,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 9 / R09 | Physics A feasibility and IVP baseline; 0004, Q-PHYSICS | R01, R02, R05 | Method/profile inventory, units/assets and measurements; tested solution or explicit scope decision for impact state, contact mutation, ragdoll limits and hull/decoder blockers | planned ([0004 progress](RFC/0004-progress.md)) |
 | 10 / R10 | Runner/clock/sequence contracts and serial graph; 0001 rank 11, 0003 A–B | R05, R06 | Virtual time and independent graph model; validation/publication/affinity/failure tests; ordered serial host graph matches legacy captures | active ([0003 progress](RFC/0003-progress.md)) |
 | 11 / R11 | Paths and module resolution; 0001 rank 5 | R05, R07 | Native/virtual paths distinct; resolution/verification separate from opening; encoding/search/failure corpus passes | planned |
-| 12 / R12 | Dedicated-server composition; 0001 rank 6 | R06, R07, R11 | Installed startup/shutdown and partial failure pass; link/runtime evidence shows render and desktop UI absent | planned |
+| 12 / R12 | Dedicated-server composition; 0001 rank 6 | R06, R07, R11 | Installed startup/shutdown and partial failure pass; link/runtime evidence shows render and desktop UI absent | partial ([composition migration slice](RFC/0001-dedicated-composition-progress.md)) |
 | 13 / R13 | Hammer geometry and scene seams; 0002 H1 | R05, R08 | Strict headless targets; geometry/reference/reparent tests and independent documents pass; selected legacy callers route through shared owner | planned |
 | 14 / R14 | Window/input contracts and SDL2 adapter; 0001 rank 7 | R06 | Existing behavior captured and preserved; normalized events, optional behavior, surface ownership and input lifecycle conformance pass | planned |
 | 15 / R15 | Render seam, scoped legacy services and null provider; 0001 rank 8 | R06 | Explicit provider/caps/profile selection; null and legacy contract suites; material consumer tested without new shader globals | done ([render seam](RFC/0001-render-seam-progress.md)) |
@@ -439,11 +439,16 @@ Keep the table concise and link details below or from the domain progress file.
     corpus.
   - The Portal client and listen server load BSP2 maps. Game lumps and the pak
     lump match legacy, and DXVK frames match within run-to-run noise.
-  - The dedicated-server runtime check is blocked by an existing HEAD compile
-    error in `dedicated/sys_linux.cpp`.
-  - No CI lane exists yet.
-  - See [RFC 0008 progress](RFC/0008-progress.md). R54–R58 have only
-    source-inspection findings.
+  - The dedicated-server and broader content gates remain open; see the
+    current evidence and limitations in [RFC 0008 progress](RFC/0008-progress.md).
+  - R54 has a compiled World Stage, a Portal-material Cycles preview and a
+    4096×256 linear atlas prototype with all 16 fixture charts lit. A
+    BSP2 map boots in native Vulkan with Portal materials. A preview bridge
+    places the Cycles atlas in the legacy flat lightmap channel for the
+    compiled style 32, now carried by the Stage's typed light API; the in-game
+    frame changes while executable and material hashes stay fixed.
+    Canonical RNM/SH lighting and BSP2 render lumps remain open. R56–R58 remain
+    planned.
 
 - R16: `done` (2026-09-22) for the rank 9 scope:
   - Contract: `public/render/render_presentation.h` (`render.presentation.v1`).

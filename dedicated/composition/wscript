@@ -1,0 +1,32 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# The bridge consumes the C++20 composition API with its default STL ABI.
+# It exposes only IAppSystem pointers and C strings to the legacy target.
+
+top = '.'
+PROJECT_NAME = 'dedicated_composition_bridge'
+
+def options(opt):
+	return
+
+def configure(conf):
+	return
+
+def build(bld):
+	legacy_platform_defines = []
+	if bld.env.DEST_OS == 'linux':
+		legacy_platform_defines = [ 'LINUX', '_LINUX', 'POSIX', 'GNUC', 'COMPILER_GCC',
+			'_GLIBCXX_USE_CXX11_ABI=0' ]
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = [ '../composition_bridge.cpp' ],
+		target    = PROJECT_NAME,
+		name      = PROJECT_NAME,
+		features  = 'cxx',
+		includes  = [ '../../public' ],
+		defines   = legacy_platform_defines,
+		use       = [ 'platform_composition_legacyabi' ],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)

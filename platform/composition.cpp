@@ -163,6 +163,14 @@ ApplicationComposition::BuildStartOrder() const
 
 foundation::Expected<void, CompositionError> ApplicationComposition::Start()
 {
+	auto connected = Connect();
+	if ( !connected )
+		return connected;
+	return Initialize();
+}
+
+foundation::Expected<void, CompositionError> ApplicationComposition::Connect()
+{
 	if ( m_State != State::Stopped )
 		return foundation::MakeUnexpected(
 		    MakeError( m_State == State::Running ? CompositionErrorCode::AlreadyRunning
@@ -216,6 +224,14 @@ foundation::Expected<void, CompositionError> ApplicationComposition::Start()
 			    m_Descriptors[providerIndex].Name(), {}, error.detail ) );
 		}
 	}
+	m_State = State::Connected;
+	return {};
+}
+
+foundation::Expected<void, CompositionError> ApplicationComposition::Initialize()
+{
+	if ( m_State != State::Connected )
+		return foundation::MakeUnexpected( MakeError( CompositionErrorCode::Busy ) );
 
 	for ( std::size_t providerIndex : m_StartOrder )
 	{
@@ -242,8 +258,30 @@ foundation::Expected<void, CompositionError> ApplicationComposition::Stop() noex
 	if ( m_State == State::Stopped && m_Instances.empty() )
 		return {};
 
-	Rollback( m_InitializedCount, m_ConnectedCount );
+	Shutdown();
+	Disconnect();
 	return {};
+}
+
+void ApplicationComposition::Shutdown() noexcept
+{
+	if ( m_State != State::Running )
+		return;
+	m_State = State::Stopping;
+	while ( m_InitializedCount > 0 )
+	{
+		--m_InitializedCount;
+		m_Instances[m_StartOrder[m_InitializedCount]]->Lifecycle().Shutdown();
+	}
+	m_State = State::Connected;
+}
+
+void ApplicationComposition::Disconnect() noexcept
+{
+	if ( m_State == State::Running )
+		Shutdown();
+	if ( m_State == State::Connected )
+		Rollback( 0, m_ConnectedCount );
 }
 
 bool ApplicationComposition::IsRunning() const noexcept

@@ -77,6 +77,34 @@ def stage_runtime(runtime, stage, game="portal", content_only=False):
     return count
 
 
+def install_content(content_root, stage, game="portal"):
+    """Overlay a private compiled map and its materials into a staged game."""
+    source_root = Path(content_root).resolve()
+    if not source_root.is_dir():
+        raise ValueError("content root is missing")
+    plan = []
+    for source in sorted(source_root.rglob("*")):
+        if source.is_dir():
+            continue
+        relative = source.relative_to(source_root)
+        if (source.is_symlink() or not source.is_file()
+                or relative.parts[0] not in {"maps", "materials"}
+                or source.suffix.lower() not in {".bsp", ".vtf", ".vmt"}):
+            raise ValueError("content root has an unsupported file: " + str(relative))
+        target = stage / game / relative
+        if target.exists() or target.is_symlink():
+            raise ValueError("private content would replace installed content: " + str(relative))
+        plan.append((source, relative, target))
+    if not any(relative.parts[0] == "maps" for _, relative, _ in plan):
+        raise ValueError("content root has no map")
+    installed = {}
+    for source, relative, target in plan:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        installed[str(relative)] = {"source": str(source), "sha256": sha256(target)}
+    return installed
+
+
 def install_build(build, stage, game="portal", launcher_name="hl2_launcher"):
     """Overlay Waf products, keeping game modules in the selected gamebin."""
     if launcher_name not in {"hl2_launcher", "dedicated_launcher"}:
@@ -543,6 +571,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--build", type=Path)
+    parser.add_argument("--content-root", type=Path,
+                        help="private maps/ and materials/ files added to the staged game")
     parser.add_argument("--shader-artifacts", type=Path,
                         help="overlay source-matched shader artifacts into the private runtime")
     parser.add_argument("--render-trace", action="store_true",
@@ -599,6 +629,8 @@ def main(argv=None):
         stage = output / "runtime"
         evidence["staging"] = stage_runtime(args.runtime, stage)
         evidence["build_overrides"] = install_build(args.build, stage) if args.build else {}
+        if args.content_root:
+            evidence["content_overrides"] = install_content(args.content_root, stage)
         if args.shader_artifacts:
             evidence["shader_overrides"] = install_shader_artifacts(args.shader_artifacts, stage)
         executable = stage / "hl2_launcher"

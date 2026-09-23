@@ -278,12 +278,21 @@ public:
 
 	[[nodiscard]] foundation::Expected<void, CompositionError> Start();
 	[[nodiscard]] foundation::Expected<void, CompositionError> Stop() noexcept;
+	// Legacy application hosts place product setup between Connect and Initialize,
+	// and product cleanup between Shutdown and Disconnect. These phases retain the
+	// same ownership and rollback rules as Start/Stop.
+	[[nodiscard]] foundation::Expected<void, CompositionError> Connect();
+	[[nodiscard]] foundation::Expected<void, CompositionError> Initialize();
+	void Shutdown() noexcept;
+	void Disconnect() noexcept;
 
 	bool IsRunning() const noexcept;
 
 	template <CapabilityContract Contract> Contract *Find() const noexcept
 	{
-		if ( !IsRunning() )
+		// The host may borrow connected capabilities during its PreInit phase.
+		// Construction and connection remain private until Connect succeeds.
+		if ( m_State != State::Connected && m_State != State::Running )
 			return nullptr;
 		return static_cast<Contract *>( FindCapability( CapabilityKey::For<Contract>() ) );
 	}
@@ -293,6 +302,7 @@ private:
 	{
 		Stopped,
 		Starting,
+		Connected,
 		Running,
 		Stopping,
 	};

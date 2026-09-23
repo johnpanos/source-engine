@@ -440,6 +440,29 @@ class StagingTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 boot.stage_runtime(runtime, runtime / "output")
 
+    def test_private_content_is_validated_before_staging(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            content, stage = root / "content", root / "stage"
+            (content / "maps").mkdir(parents=True)
+            (content / "materials").mkdir()
+            (stage / "portal/materials").mkdir(parents=True)
+            (content / "maps/sample.bsp").write_bytes(b"bsp2")
+            (content / "materials/sample.vmt").write_bytes(b"vmt")
+            (content / "materials/unsupported.txt").write_bytes(b"bad")
+            with self.assertRaisesRegex(ValueError, "unsupported file"):
+                boot.install_content(content, stage)
+            self.assertFalse((stage / "portal/maps/sample.bsp").exists())
+            (content / "materials/unsupported.txt").unlink()
+            (stage / "portal/materials/sample.vmt").write_bytes(b"installed")
+            with self.assertRaisesRegex(ValueError, "replace installed content"):
+                boot.install_content(content, stage)
+            self.assertFalse((stage / "portal/maps/sample.bsp").exists())
+            (stage / "portal/materials/sample.vmt").unlink()
+            installed = boot.install_content(content, stage)
+            self.assertEqual({"maps/sample.bsp", "materials/sample.vmt"}, set(installed))
+            self.assertEqual(b"bsp2", (stage / "portal/maps/sample.bsp").read_bytes())
+
     def test_build_override_does_not_install_other_games(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
