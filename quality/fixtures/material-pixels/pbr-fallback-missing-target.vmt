@@ -1,0 +1,6 @@
+"PBRMetalRough"
+{
+	"$basetexture" "conformance/pbr_primary_red"
+	"$mraotexture" "conformance/pbr_primary_mrao"
+	"$fallbackmaterial" "conformance/pbr_no_such_target"
+}

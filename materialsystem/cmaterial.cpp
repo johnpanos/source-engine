@@ -39,6 +39,7 @@
 #include "ifilelist.h"
 #include "tier0/icommandline.h"
 #include "tier0/minidump.h"
+#include "render/pbr_material_schema.h"
 
 // #define PROXY_TRACK_NAMES
 
@@ -3518,6 +3519,11 @@ void ExpandPatchFile( KeyValues& keyValues, KeyValues &patchKeyValues, const cha
 	}
 }
 
+static const char *LookupPbrVmtParameter( const char *pName, void *pContext )
+{
+	return static_cast<KeyValues *>( pContext )->GetString( pName, "" );
+}
+
 bool LoadVMTFile( KeyValues &vmtKeyValues, KeyValues &patchKeyValues, const char *pMaterialName, bool bAbsolutePath, CUtlVector<FileNameHandle_t> *pIncludes )
 {
 	char pFileName[MAX_PATH];
@@ -3541,6 +3547,55 @@ bool LoadVMTFile( KeyValues &vmtKeyValues, KeyValues &patchKeyValues, const char
 		return false;
 	}
 	ExpandPatchFile( vmtKeyValues, patchKeyValues, pPathID, pIncludes );
+	const render::pbr::DefinitionResult pbrDefinition = render::pbr::ValidateDefinition(
+	    vmtKeyValues.GetName(), LookupPbrVmtParameter, &vmtKeyValues );
+	if ( pbrDefinition.status == render::pbr::DefinitionStatus::kMissingRequiredParameter )
+	{
+		Warning( "PBR material %s is missing required parameter %s\n", pMaterialName,
+		    pbrDefinition.parameter );
+		return false;
+	}
+	if ( pbrDefinition.status == render::pbr::DefinitionStatus::kValid )
+	{
+		const char *pFallback = vmtKeyValues.GetString(
+		    render::pbr::Parameter( render::pbr::MaterialParameter::kFallbackMaterial ).name );
+		if ( !render::pbr::IsValidFallbackReference( pFallback ) ||
+		     strlen( pFallback ) + sizeof( "materials/.vmt" ) >= MAX_PATH )
+		{
+			Warning( "PBR material %s has an invalid fallback reference\n", pMaterialName );
+			return false;
+		}
+		char pFallbackFileName[MAX_PATH];
+		Q_snprintf( pFallbackFileName, sizeof( pFallbackFileName ), "materials/%s.vmt", pFallback );
+		if ( !Q_stricmp( pFallbackFileName, pFileName ) ||
+		     !g_pFullFileSystem->FileExists( pFallbackFileName, "GAME" ) )
+		{
+			Warning(
+			    "PBR material %s has a missing or self fallback %s\n", pMaterialName, pFallback );
+			return false;
+		}
+		KeyValues *pFallbackKeys = new KeyValues( "pbr_fallback" );
+		KeyValues *pFallbackPatches = new KeyValues( "pbr_fallback_patches" );
+		bool bValidFallback =
+		    pFallbackKeys->LoadFromFile( g_pFullFileSystem, pFallbackFileName, "GAME" );
+		if ( bValidFallback )
+		{
+			ExpandPatchFile( *pFallbackKeys, *pFallbackPatches, "GAME", NULL );
+			const char *pFallbackShader = pFallbackKeys->GetName();
+			bValidFallback = V_stricmp( pFallbackShader, "patch" ) != 0 &&
+			                 !render::pbr::IsMetalRoughShader( pFallbackShader );
+			if ( bValidFallback && g_pShaderDevice->IsUsingGraphics() )
+				bValidFallback = ShaderSystem()->FindShader( pFallbackShader ) != NULL;
+		}
+		pFallbackPatches->deleteThis();
+		pFallbackKeys->deleteThis();
+		if ( !bValidFallback )
+		{
+			Warning( "PBR material %s has an invalid fallback VMT %s\n", pMaterialName,
+			    pFallbackFileName );
+			return false;
+		}
+	}
 
 	return true;
 }

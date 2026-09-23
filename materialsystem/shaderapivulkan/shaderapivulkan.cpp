@@ -2952,6 +2952,8 @@ static void NoteEmitReuseCheck( bool equal )
 		    static_cast<unsigned long long>( s_mismatched ) );
 }
 
+static const float *MonitorTexture2Rows();
+
 void CEmptyMesh::EmitToNativeQueue()
 {
 	render_vulkan::CFrameCostScope cost( g_VulkanContext.CurrentFrameCost(), render_vulkan::kCostEmit );
@@ -3004,6 +3006,10 @@ void CEmptyMesh::EmitToNativeQueue()
 	// the lighting (1 unlit), from the vertex color (demo_dyn_tex.frag).
 	const bool selfIllum =
 	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentSelfIllum ) != 0;
+	const bool monitor =
+	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentMonitor ) != 0;
+	const bool monitorTexture2 =
+	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentMonitorTexture2 ) != 0;
 	VertexLightConstants lights[kMaxLocalLights];
 	int lightCount = 0;
 	if ( vertexLighting )
@@ -3041,6 +3047,15 @@ void CEmptyMesh::EmitToNativeQueue()
 			SkinPosition( base, pos );
 		memcpy( uv, base + 16, sizeof( uv ) );
 		memcpy( out + 8, base + 24, 2 * sizeof( float ) ); // lightmap uv
+		if ( monitorTexture2 )
+		{
+			// unlittwotexture_vs20 derives both coordinates from TEXCOORD0.
+			// The monitor's second matrix is c50/c51, not the mesh's lightmap UV.
+			const float *row0 = MonitorTexture2Rows();
+			const float *row1 = row0 + 4;
+			out[8] = uv[0] * row0[0] + uv[1] * row0[1] + row0[3];
+			out[9] = uv[0] * row1[0] + uv[1] * row1[1] + row1[3];
+		}
 		if ( wantsTangents )
 		{
 			float *nt = out + 10;
@@ -3075,6 +3090,13 @@ void CEmptyMesh::EmitToNativeQueue()
 				atten[i] = VertexAtten( skinLights[i], pos );
 			memcpy( out + 3, atten, 3 * sizeof( float ) );
 			out[17] = atten[3];
+		}
+		else if ( monitor )
+		{
+			// Carry monitor_ps2x's c3 tint and c2 saturation in the unused
+			// vertex-color slots of this unlit material's native vertex record.
+			memcpy( out + 3, g_psConstants[3], 3 * sizeof( float ) );
+			out[17] = g_psConstants[2][0];
 		}
 		else if ( vertexLighting )
 		{
@@ -3281,7 +3303,8 @@ void CEmptyMesh::EmitToNativeQueue()
 		key.flags =
 		    ( skin ? 1u : 0u ) | ( wantsTangents ? 2u : 0u ) | ( vertexLighting ? 4u : 0u ) |
 		    ( selfIllum ? 8u : 0u ) | ( dynamicLight ? 16u : 0u ) | ( staticLight ? 32u : 0u ) |
-		    ( g_CurrentVertexLit.halfLambert ? 64u : 0u ) | ( g_NumBoneWeights > 0 ? 128u : 0u );
+		    ( g_CurrentVertexLit.halfLambert ? 64u : 0u ) | ( g_NumBoneWeights > 0 ? 128u : 0u ) |
+		    ( monitor ? 256u : 0u ) | ( monitorTexture2 ? 512u : 0u );
 		key.skinLightCount = skinLightCount;
 		key.lightCount = lightCount;
 		// The constants the conversion reads, beyond the bones.
@@ -3301,6 +3324,13 @@ void CEmptyMesh::EmitToNativeQueue()
 			inputs.insert( inputs.end(), &g_AmbientCube[0][0], &g_AmbientCube[0][0] + 6 * 4 );
 		if ( selfIllum )
 			inputs.insert( inputs.end(), g_psConstants[1], g_psConstants[1] + 3 );
+		if ( monitor )
+		{
+			inputs.push_back( g_psConstants[2][0] );
+			inputs.insert( inputs.end(), g_psConstants[3], g_psConstants[3] + 3 );
+			if ( monitorTexture2 )
+				inputs.insert( inputs.end(), MonitorTexture2Rows(), MonitorTexture2Rows() + 8 );
+		}
 		const auto candidates = s_emitReuseIndex.equal_range( key.Hash() );
 		for ( auto it = candidates.first; it != candidates.second; ++it )
 		{
@@ -4151,8 +4181,19 @@ void CommitDynamicVsConstants()
 	// that never set them, so the draw is modulated by white through an identity
 	// texture transform rather than by an unwritten (zero) register.
 	g_VulkanContext.SetDynamicModulation( &g_vsConstants.regs[kVsRegModulationColor][0] );
-	g_VulkanContext.SetDynamicBaseTexTransform( &g_vsConstants.regs[kVsRegBaseTexTransform][0],
-	    &g_vsConstants.regs[kVsRegBaseTexTransform + 1][0] );
+	if ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentSky )
+	{
+		// sky_vs20.fxc reserves SHADER_SPECIFIC_CONST_0 for texture-size values;
+		// its base-texture matrix is in SHADER_SPECIFIC_CONST_1/2 (c49/c50).
+		g_VulkanContext.SetDynamicBaseTexTransform(
+		    &g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_1][0],
+		    &g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_2][0] );
+	}
+	else
+	{
+		g_VulkanContext.SetDynamicBaseTexTransform( &g_vsConstants.regs[kVsRegBaseTexTransform][0],
+		    &g_vsConstants.regs[kVsRegBaseTexTransform + 1][0] );
+	}
 }
 
 // The native raster state of a shadow state: the blend factors and depth state
@@ -4253,6 +4294,17 @@ static int SnapshotShaderFlags( const CShaderShadowVulkan &shadow )
 		flags |= CVulkanContext::kFragmentLuminanceCompare;
 	if ( !V_strnicmp( shadow.m_pixelShaderName, "cable_ps20", 10 ) )
 		flags |= CVulkanContext::kFragmentCable;
+	if ( !V_strnicmp( shadow.m_pixelShaderName, "sky_ps20", 8 ) )
+		flags |= CVulkanContext::kFragmentSky;
+	if ( !V_strnicmp( shadow.m_pixelShaderName, "monitorscreen_ps20", 18 ) )
+	{
+		flags |= CVulkanContext::kFragmentMonitor;
+		const int texture2Stride = !V_stricmp( shadow.m_pixelShaderName, "monitorscreen_ps20b" )
+		                               ? 8
+		                               : 2;
+		if ( ( shadow.m_pixelShaderIndex / texture2Stride ) % 2 )
+			flags |= CVulkanContext::kFragmentMonitorTexture2;
+	}
 	if ( !V_stricmp( shadow.m_vertexShaderName, "screenspaceeffect_vs20" ) )
 		flags |= CVulkanContext::kVertexScreenSpace;
 	// bufferclearobeystencil_vs20 passes clip-space positions and the vertex
@@ -4583,6 +4635,11 @@ void CommitSkinConstants( const CShaderAPIVulkan &api )
 	g_VulkanContext.SetDynamicSkinConstants( c );
 }
 } // namespace
+
+static const float *MonitorTexture2Rows()
+{
+	return &g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_2][0];
+}
 
 // skin_ps20b's static combos (fxctmp9/skin_ps20b.inc) as skin.frag's flags, or
 // -1 when the pixel shader is not skin_ps20b. The combos skin.frag does not
@@ -5142,6 +5199,19 @@ static void CommitPassPixelConstants()
 	     g_psConstants[12][3] < 0.5f )
 		colorFlags &= ~render_vulkan::CVulkanContext::kFragmentModulateVertexAlpha;
 	g_VulkanContext.SelectDynamicColorSpace( colorFlags );
+	if ( colorFlags & render_vulkan::CVulkanContext::kFragmentSky )
+	{
+		// Sky_DX9's sky_ps2x.fxc reads $color from pixel constant c0.
+		g_VulkanContext.SetDynamicModulation( g_psConstants[0] );
+		return;
+	}
+	if ( colorFlags & render_vulkan::CVulkanContext::kFragmentMonitor )
+	{
+		// MonitorScreen's c1 contrast is a scalar material parameter. The
+		// saturation and tint in c2/c3 travel with the converted vertices.
+		g_VulkanContext.SetDynamicMonitorContrast( g_psConstants[1][0] );
+		return;
+	}
 	// Its albedo and alpha are scaled by g_DiffuseModulation (c1): $color and
 	// $alpha, and ColorModulate / AlphaModulate (screen fades), linear, written by
 	// every pass's dynamic state (SetModulationPixelShaderDynamicState_LinearColorSpace).
@@ -5167,6 +5237,8 @@ static void CommitPassPixelConstants()
 static bool NativePipelineImplementsShader( const char *shaderName )
 {
 	static const char *const kImplemented[] = {
+	    "Sky_DX9",
+	    "MonitorScreen_DX9",
 	    "LightmappedGeneric",
 	    "WorldVertexTransition",
 	    "VertexLitGeneric",
@@ -5236,8 +5308,10 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		// stage 2 (the flames), its other stages not scaling, and every output of
 		// vertexlit_and_unlit_generic_ps2x (UnlitGeneric and VertexLitGeneric; only
 		// its LIGHTING_PREVIEW outputs do not scale).
-		const bool linearToneScale = lightmapped || g_CurrentPortalStage == 2 ||
-		                             g_CurrentModulationInPixelC1 || g_CurrentSkinCombos >= 0;
+		const bool linearToneScale =
+		    lightmapped || g_CurrentPortalStage == 2 || g_CurrentModulationInPixelC1 ||
+		    g_CurrentSkinCombos >= 0 ||
+		    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentSky );
 		g_VulkanContext.SetDynamicOutputScale( linearToneScale ? g_ToneMappingScale.x : 1.0f );
 		if ( !linearToneScale && CurrentHDRType() == HDR_TYPE_INTEGER &&
 		     g_ToneMappingScale.x != 1.0f )

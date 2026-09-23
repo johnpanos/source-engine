@@ -1542,3 +1542,20 @@ python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime-na
     --build build-r03-portal-native --renderer native-vulkan --hdr none --family cable \
     --reference quality/fixtures/material-pixels/cable-dxvk-none.json --out OUT
 ```
+
+## Sky_DX9 textured sky (2026-09-23)
+
+Sky_DX9 was dropped by the native material allowlist, leaving the sky black.
+The material uses a normal textured draw with two shader-specific details:
+sky_ps2x.fxc reads its color multiplier from pixel constant c0, and
+sky_vs20.fxc puts the base UV matrix in c49/c50 because c48 carries texture
+size and pixel-coordinate scale. Native now accepts Sky_DX9, routes c0 into the
+textured modulation, selects the correct UV matrix, and applies the linear
+tone-map scale.
+
+Evidence: the new sky material-pixel family checks sRGB texture times $color on
+two materials. Each material uses a vertically split procedural texture and a
+translated UV matrix; samples at the left and right must both read the intended
+top half. Fresh DXVK pixels match the independent equation, and native matches
+the DXVK fixture at all four samples. quality/fixtures/material-pixels/README.md
+records capture provenance and the reproduction command.

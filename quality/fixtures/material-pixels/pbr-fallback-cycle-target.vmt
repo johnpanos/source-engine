@@ -1,0 +1,4 @@
+"patch"
+{
+	"include" "materials/conformance/pbr_cycle_target.vmt"
+}

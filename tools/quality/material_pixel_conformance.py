@@ -24,6 +24,8 @@ Families:
   and through hardware skinning (bone matrices, two stored weights plus the
   implicit third, bone index bytes). Each case must cover exactly the third of
   the frame its bones place it in, and a back-facing model quad must be culled.
+* pbr-fallback: a staged PBRMetalRough VMT resolves to its legacy UnlitGeneric
+  VMT and draws a green texture, distinct from the PBR VMT's red base texture.
 
 A backend that reports a different HDR mode than the run requested fails with
 that reason; it is never compared as if it supported the mode.
@@ -75,7 +77,7 @@ DARK = 2  # a channel at or below this reads as zero
 LIGHTMAP_CASES = ("black_lightmap", "ramp_low", "ramp_mid", "ramp_high", "channels",
                   "base_gray", "base_color")
 FAMILIES = ("lightmap", "exposure", "skinning", "portal", "modellight", "cable",
-            "pbr-fallback")
+            "sky", "pbr-fallback")
 # Families whose harness writes whole frames, and the oracle module of each
 # (validate, evaluate).
 FRAME_FAMILIES = {"portal": material_pixel_portal, "modellight": material_pixel_modellight}
@@ -87,6 +89,7 @@ SKINNING_CASES = {"rigid_bone0": 0, "one_bone": 0, "implicit_third_weight": 1,
                   "blend_half": 1, "high_index": 2, "rigid_back_facing": None}
 CABLE_CASES = ("front_facing_normal", "side_facing_normal", "back_facing_normal",
                "diagonal_normal")
+SKY_CASES = ("untinted_sky", "colored_sky")
 # The model material is unlit: a covered pixel is its base color up to output
 # rounding and filtering.
 SKIN_COLOR_TOLERANCE = 12
@@ -115,13 +118,24 @@ def read_pixels(path):
         return _read_exposure(path, report)
     if family == "pbr-fallback":
         pixels = report.get("pixels", {})
+        invalid = report.get("invalid", {})
         if not isinstance(pixels, dict) or any(
                 not isinstance(pixels.get(point), list) or len(pixels[point]) != 3 or
                 any(not isinstance(channel, int) or channel < 0 or channel > 255
                     for channel in pixels[point])
                 for point in ("center", "outside")) or not isinstance(
                     report.get("shader"), str) or not isinstance(
-                        report.get("error_material"), bool):
+                        report.get("error_material"), bool) or not isinstance(
+                            invalid, dict) or any(not isinstance(invalid.get(key), bool)
+                                                  for key in ("missing_reference_rejected",
+                                                              "missing_mrao_rejected",
+                                                              "missing_base_rejected",
+                                                              "missing_target_rejected",
+                                                              "self_rejected",
+                                                              "traversal_rejected",
+                                                              "unsupported_rejected",
+                                                              "cycle_rejected",
+                                                              "pbr_target_rejected")):
             raise PixelsError("%s has an incomplete PBR fallback capture" % path)
         return report
     if family == "cable":
@@ -130,6 +144,17 @@ def read_pixels(path):
                                              for case in report.get("cases", [])):
             raise PixelsError("%s has cable cases %s, expected %s"
                               % (path, names, list(CABLE_CASES)))
+        return report
+    if family == "sky":
+        names = [case.get("name") for case in report.get("cases", [])]
+        if names != list(SKY_CASES) or any(
+                any(not isinstance(case.get(key), list) or len(case[key]) != 3
+                    for key in ("base_top", "base_bottom", "tint")) or
+                not isinstance(case.get("pixels"), list) or len(case["pixels"]) != 2 or
+                any(not isinstance(pixel, list) or len(pixel) != 3 for pixel in case["pixels"])
+                for case in report.get("cases", [])):
+            raise PixelsError("%s has sky cases %s, expected %s"
+                              % (path, names, list(SKY_CASES)))
         return report
     if family in FRAME_FAMILIES:
         try:
@@ -411,6 +436,19 @@ def check_cable(report):
     return failures
 
 
+def check_sky(report):
+    """Sky_DX9 samples an sRGB base texture, multiplies $color, then encodes."""
+    failures = []
+    for case in report["cases"]:
+        expected = [_linear_to_srgb(_srgb_to_linear(base) * tint / 255.0)
+                    for base, tint in zip(case["base_top"], case["tint"])]
+        for side, pixel in zip(("left", "right"), case["pixels"]):
+            if not _close(pixel, expected, 4):
+                failures.append("%s %s: got %s, expected transformed sky texture times tint %s"
+                                % (case["name"], side, pixel, expected))
+    return failures
+
+
 def check_pbr_fallback(report):
     """The runtime must select and draw the referenced legacy VMT."""
     failures = []
@@ -423,6 +461,12 @@ def check_pbr_fallback(report):
     if not _close(report["pixels"]["outside"], CLEAR, PIXEL_TOLERANCE):
         failures.append("PBR fallback outside pixel %s, expected untouched clear color"
                         % report["pixels"]["outside"])
+    for key in ("missing_reference_rejected", "missing_mrao_rejected",
+                "missing_base_rejected",
+                "missing_target_rejected", "self_rejected", "traversal_rejected",
+                "unsupported_rejected", "cycle_rejected", "pbr_target_rejected"):
+        if not report["invalid"][key]:
+            failures.append("PBR material %s was accepted by the runtime loader" % key)
     return failures
 
 
@@ -435,6 +479,20 @@ def compare_cable(report, reference):
         elif not _close(case["pixels"], ref["pixels"], PIXEL_TOLERANCE):
             failures.append("%s: got %s, DXVK reference %s" %
                             (case["name"], case["pixels"], ref["pixels"]))
+    return failures
+
+
+def compare_sky(report, reference):
+    failures = []
+    for case, ref in zip(report["cases"], reference["cases"]):
+        if case["name"] != ref["name"] or case["base_top"] != ref["base_top"] or \
+                case["base_bottom"] != ref["base_bottom"] or case["tint"] != ref["tint"]:
+            failures.append("%s: sky inputs differ from the DXVK reference" % case["name"])
+        else:
+            for side, pixel, expected in zip(("left", "right"), case["pixels"], ref["pixels"]):
+                if not _close(pixel, expected, PIXEL_TOLERANCE):
+                    failures.append("%s %s: got %s, DXVK reference %s" %
+                                    (case["name"], side, pixel, expected))
     return failures
 
 
@@ -473,6 +531,11 @@ def evaluate(report, hdr, reference=None):
         failures = check_cable(report)
         if reference is not None:
             failures += compare_cable(report, reference)
+        return failures
+    if report["family"] == "sky":
+        failures = check_sky(report)
+        if reference is not None:
+            failures += compare_sky(report, reference)
         return failures
     if report["family"] == "pbr-fallback":
         failures = check_pbr_fallback(report)
@@ -515,7 +578,21 @@ def run(args):
         material_dir.mkdir(parents=True, exist_ok=True)
         evidence["fixtures"] = {}
         for fixture, material in (("pbr-fallback-primary.vmt", "pbr_case.vmt"),
-                                  ("pbr-fallback-legacy.vmt", "pbr_fallback.vmt")):
+                                  ("pbr-fallback-legacy.vmt", "pbr_fallback.vmt"),
+                                  ("pbr-fallback-missing-reference.vmt",
+                                   "pbr_missing_reference.vmt"),
+                                  ("pbr-fallback-missing-mrao.vmt", "pbr_missing_mrao.vmt"),
+                                  ("pbr-fallback-missing-base.vmt", "pbr_missing_base.vmt"),
+                                  ("pbr-fallback-missing-target.vmt", "pbr_missing_target.vmt"),
+                                  ("pbr-fallback-self.vmt", "pbr_self.vmt"),
+                                  ("pbr-fallback-traversal.vmt", "pbr_traversal.vmt"),
+                                  ("pbr-fallback-unsupported.vmt", "pbr_unsupported.vmt"),
+                                  ("pbr-fallback-unsupported-target.vmt",
+                                   "pbr_unsupported_target.vmt"),
+                                  ("pbr-fallback-cycle.vmt", "pbr_cycle.vmt"),
+                                  ("pbr-fallback-cycle-target.vmt", "pbr_cycle_target.vmt"),
+                                  ("pbr-fallback-pbr-primary.vmt", "pbr_pbr_target_case.vmt"),
+                                  ("pbr-fallback-pbr-target.vmt", "pbr_other_pbr.vmt")):
             target = material_dir / material
             shutil.copy2(fixture_dir / fixture, target)
             evidence["fixtures"][material] = portal_boot.sha256(target)

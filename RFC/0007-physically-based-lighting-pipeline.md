@@ -547,8 +547,13 @@ The VMT schema, the parameter defaults, and the sRGB/linear classification of
 each slot have one owner: a versioned schema to be consumed by the material
 system, the Hammer `MaterialCatalog`, the baker (for albedo), and the exporters.
 The first schema, editor-side fallback validator, and temporary runtime shader
-registration are recorded in [progress](0007-progress.md); end-to-end material
-loading and fallback rendering remain to be tested. New PBR textures are KTX2
+registration are recorded in [progress](0007-progress.md). The temporary
+fallback path has end-to-end VMT and pixel checks on DXVK and native Vulkan.
+Both loaders now reject missing required fields, absent or self fallbacks,
+traversal references, unsupported or PBR fallback shaders, and a patch cycle.
+Fallback patch-include path validation and malformed VMT syntax still need
+full runtime coverage.
+New PBR textures are KTX2
 (RFC 0008), which covers BC7, BC6H, and ASTC. VTF lacks BC6H/BC7 and its BC5
 encoder is unavailable on Linux (see
 [findings](#vtf-can-already-carry-bc4bc5-but-not-bc6hbc7)). PBR materials may

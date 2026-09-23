@@ -1,0 +1,5 @@
+"PBRMetalRough"
+{
+	"$mraotexture" "conformance/pbr_primary_mrao"
+	"$fallbackmaterial" "conformance/pbr_fallback"
+}

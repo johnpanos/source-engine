@@ -42,17 +42,23 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def stage_runtime(runtime, stage):
+def stage_runtime(runtime, stage, game="portal", content_only=False):
     """Only immutable asset files are shared; every writable directory is private."""
     runtime, stage = Path(runtime).resolve(), Path(stage).resolve()
-    if not runtime.is_dir() or not (runtime / "portal/gameinfo.txt").is_file():
-        raise ValueError("runtime must contain portal/gameinfo.txt")
+    if not runtime.is_dir() or not (runtime / game / "gameinfo.txt").is_file():
+        raise ValueError("runtime must contain %s/gameinfo.txt" % game)
     if stage == runtime or runtime in stage.parents:
         raise ValueError("staging directory must be outside the original runtime")
     stage.mkdir(parents=True, exist_ok=False)
     count = {"copied": 0, "shared_assets": 0}
     for directory, directories, filenames in os.walk(runtime, followlinks=False):
         relative = Path(directory).relative_to(runtime)
+        if content_only:
+            if relative == Path("."):
+                directories[:] = [name for name in directories if name in {game, "platform"}]
+                filenames = []
+            elif relative == Path(game):
+                directories[:] = [name for name in directories if name != "bin"]
         directories[:] = sorted(name for name in directories
                                 if name.lower() not in EXCLUDED_DIRECTORIES)
         destination = stage / relative
@@ -71,7 +77,7 @@ def stage_runtime(runtime, stage):
     return count
 
 
-def install_build(build, stage):
+def install_build(build, stage, game="portal"):
     """Overlay Waf products, keeping Portal client/server modules in gamebin."""
     build, stage = Path(build).resolve(), Path(stage)
     if not build.is_dir():
@@ -131,11 +137,11 @@ def install_build(build, stage):
         if source.name == "hl2_launcher":
             destination = stage / source.name
         elif source.name in {"client.so", "libclient.so", "server.so", "libserver.so"}:
-            if "portal" not in relative.parts and not (
+            if game not in relative.parts and not (
                     relative.parts[:2] in (("game", "client"), ("game", "server"))
-                    and len(relative.parts) == 3 and selected_games == {"portal"}):
+                    and len(relative.parts) == 3 and selected_games == {game}):
                 continue
-            destination = stage / "portal/bin" / source.name
+            destination = stage / game / "bin" / source.name
         else:
             destination = stage / "bin" / source.name
         key = str(destination.relative_to(stage))

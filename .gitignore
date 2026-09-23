@@ -32,6 +32,7 @@ game/server/*/server.lib
 .DS_Store
 build*/
 quality-results/
+run/runtime-p2/
 .cache/
 .ccache/
 waf3*/

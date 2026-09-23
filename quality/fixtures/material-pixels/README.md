@@ -15,6 +15,16 @@ real material system. The backend is identified by each filename and report.
 | `modellight-dx9-none.json` | modellight | `HDR_TYPE_NONE` | VertexLitGeneric lighting: ambient cube, point/spot/directional lights, half-Lambert, static color mesh, MODEL and skinned placement; eleven 256x256 frames |
 | `modellight-dx9-integer.json` | modellight | `HDR_TYPE_INTEGER` | as above, linear tone-mapping scale 0.75 |
 | `cable-dxvk-none.json` | cable | `HDR_TYPE_NONE` | Cable_DX9 normal-map half-Lambert captured through DXVK with front, side, back and diagonal normals |
+| `sky-dxvk-none.json` | sky | `HDR_TYPE_NONE` | Sky_DX9 texture and tint, with translated texture coordinates sampled on both sides |
+
+`pbr-fallback-primary.vmt` and `pbr-fallback-legacy.vmt` are authored inputs
+for the `pbr-fallback` family. The driver copies them into a private runtime
+as `conformance/pbr_case.vmt` and `conformance/pbr_fallback.vmt`. Nine more
+primary VMTs omit a required field, name an absent or self fallback, use a
+traversal path, reference an unsupported/PBR shader, or reach a patch cycle.
+Its oracle checks the resolved legacy shader and green rendered pixel and
+requires the material loader to reject each invalid VMT. It does not use a
+D3D9 reference capture.
 
 Lightmap pixels are held to these references within `PIXEL_TOLERANCE` (3 levels
 per channel). Exposure counts are exact: every luminance range must equal the
@@ -69,6 +79,18 @@ and the observed DXVK capture within 3 levels per channel. The capture was made
 python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime-dxvk \
     --build build-r03-portal-dxvk --renderer vulkan-compat --hdr none \
     --family cable --out OUT
+```
+
+Sky pixels are checked against sky_ps2x.fxc's sRGB texture, $color, and
+linear-output equation, and against the DXVK capture within 3 levels per channel.
+Two-sided samples detect wrong sky texture-transform registers. The capture was
+made 2026-09-23 UTC from source fe0aff17 plus the recorded dirty tree with DXVK
+2.7.1 on AMD Radeon 8060S (RADV 26.2.2):
+
+```sh
+python3 tools/quality/material_pixel_conformance.py run --runtime run/runtime-dxvk \
+    --build build-r03-portal-dxvk --renderer vulkan-compat --hdr none \
+    --family sky --out OUT
 ```
 
 Recapture only when the harness cases or the D3D9 path change, and review the

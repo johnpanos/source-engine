@@ -48,7 +48,8 @@
 //
 //          Run inside a staged game runtime (the driver stages one):
 //            material_pixel_conformance -game portal -renderer <id>
-//                -hdr <none|integer> [-family <lightmap|exposure|skinning|portal|modellight>]
+//                -hdr <none|integer> [-family <lightmap|exposure|skinning|portal|
+//                                         modellight|cable|pbr-fallback>]
 //                -out <file.json>
 //
 //=============================================================================//
@@ -227,6 +228,7 @@ private:
 	bool RunExposureCases( FILE *out );
 	bool RunSkinningCases( FILE *out );
 	bool RunCableCases( FILE *out );
+	bool RunSkyCases( FILE *out );
 	bool RunPbrFallbackCases( FILE *out );
 	bool RenderCase( IMaterial *pMaterial, int sortId, const int offset[2], int lightmapPageId,
 	    const float ( *points )[2], int pointCount, unsigned char ( *pixels )[3],
@@ -310,13 +312,15 @@ int CMaterialPixelApp::Main()
 	const bool portal = !Q_stricmp( family, "portal" );
 	const bool modelLight = !Q_stricmp( family, "modellight" );
 	const bool cable = !Q_stricmp( family, "cable" );
+	const bool sky = !Q_stricmp( family, "sky" );
 	const bool pbrFallback = !Q_stricmp( family, "pbr-fallback" );
 	if ( !outPath[0] || ( !integerHdr && Q_stricmp( hdr, "none" ) ) ||
-	     ( !exposure && !skinning && !portal && !modelLight && !cable && !pbrFallback &&
+	     ( !exposure && !skinning && !portal && !modelLight && !cable && !sky && !pbrFallback &&
 	         Q_stricmp( family, "lightmap" ) ) )
 	{
-		Warning( "material pixel conformance: need -out <file>, -hdr <none|integer> and "
-		         "-family <lightmap|exposure|skinning|portal|modellight|cable|pbr-fallback>\n" );
+		Warning(
+		    "material pixel conformance: need -out <file>, -hdr <none|integer> and "
+		    "-family <lightmap|exposure|skinning|portal|modellight|cable|sky|pbr-fallback>\n" );
 		return 2;
 	}
 
@@ -388,6 +392,7 @@ int CMaterialPixelApp::Main()
 	const bool ok = exposure      ? RunExposureCases( out )
 	                : skinning    ? RunSkinningCases( out )
 	                : cable       ? RunCableCases( out )
+	                : sky         ? RunSkyCases( out )
 	                : pbrFallback ? RunPbrFallbackCases( out )
 	                : portal      ? RunPortalCases( out, outPath, WriteClearProbeThunk )
 	                : modelLight
@@ -464,11 +469,43 @@ bool CMaterialPixelApp::RunPbrFallbackCases( FILE *out )
 	}
 	g_pMaterialSystem->EndFrame();
 	g_pMaterialSystem->SwapBuffers();
+	IMaterial *pMissingReference = g_pMaterialSystem->FindMaterial(
+	    "conformance/pbr_missing_reference", TEXTURE_GROUP_OTHER, false );
+	IMaterial *pMissingMrao = g_pMaterialSystem->FindMaterial(
+	    "conformance/pbr_missing_mrao", TEXTURE_GROUP_OTHER, false );
+	IMaterial *pMissingBase = g_pMaterialSystem->FindMaterial(
+	    "conformance/pbr_missing_base", TEXTURE_GROUP_OTHER, false );
+	IMaterial *pMissingTarget = g_pMaterialSystem->FindMaterial(
+	    "conformance/pbr_missing_target", TEXTURE_GROUP_OTHER, false );
+	IMaterial *pSelf =
+	    g_pMaterialSystem->FindMaterial( "conformance/pbr_self", TEXTURE_GROUP_OTHER, false );
+	IMaterial *pTraversal =
+	    g_pMaterialSystem->FindMaterial( "conformance/pbr_traversal", TEXTURE_GROUP_OTHER, false );
+	IMaterial *pUnsupported = g_pMaterialSystem->FindMaterial(
+	    "conformance/pbr_unsupported", TEXTURE_GROUP_OTHER, false );
+	IMaterial *pCycle =
+	    g_pMaterialSystem->FindMaterial( "conformance/pbr_cycle", TEXTURE_GROUP_OTHER, false );
+	IMaterial *pPbrTarget = g_pMaterialSystem->FindMaterial(
+	    "conformance/pbr_pbr_target_case", TEXTURE_GROUP_OTHER, false );
 	fprintf( out,
 	    "\"shader\":\"%s\",\"error_material\":%s,\"pixels\":{\"center\":[%u,%u,%u],"
-	    "\"outside\":[%u,%u,%u]}}\n",
+	    "\"outside\":[%u,%u,%u]},\"invalid\":{\"missing_reference_rejected\":%s,"
+	    "\"missing_mrao_rejected\":%s,\"missing_base_rejected\":%s,"
+	    "\"missing_target_rejected\":%s,"
+	    "\"self_rejected\":%s,\"traversal_rejected\":%s,"
+	    "\"unsupported_rejected\":%s,\"cycle_rejected\":%s,"
+	    "\"pbr_target_rejected\":%s}}\n",
 	    shader, pMaterial->IsErrorMaterial() ? "true" : "false", center[0], center[1], center[2],
-	    outside[0], outside[1], outside[2] );
+	    outside[0], outside[1], outside[2],
+	    pMissingReference && pMissingReference->IsErrorMaterial() ? "true" : "false",
+	    pMissingMrao && pMissingMrao->IsErrorMaterial() ? "true" : "false",
+	    pMissingBase && pMissingBase->IsErrorMaterial() ? "true" : "false",
+	    pMissingTarget && pMissingTarget->IsErrorMaterial() ? "true" : "false",
+	    pSelf && pSelf->IsErrorMaterial() ? "true" : "false",
+	    pTraversal && pTraversal->IsErrorMaterial() ? "true" : "false",
+	    pUnsupported && pUnsupported->IsErrorMaterial() ? "true" : "false",
+	    pCycle && pCycle->IsErrorMaterial() ? "true" : "false",
+	    pPbrTarget && pPbrTarget->IsErrorMaterial() ? "true" : "false" );
 	pMaterial->DecrementReferenceCount();
 	return true;
 }
@@ -571,6 +608,127 @@ bool CMaterialPixelApp::RunCableCases( FILE *out )
 	}
 	fprintf( out, "]}\n" );
 	pMaterial->DecrementReferenceCount();
+	return ok;
+}
+
+struct SkyCase
+{
+	const char *name;
+	unsigned char baseTop[3];
+	unsigned char baseBottom[3];
+	unsigned char tint[3];
+};
+
+static const SkyCase kSkyCases[] = {
+    { "untinted_sky", { 192, 128, 64 }, { 32, 160, 224 }, { 255, 255, 255 } },
+    { "colored_sky", { 64, 192, 255 }, { 255, 48, 80 }, { 128, 192, 64 } },
+};
+
+bool CMaterialPixelApp::RunSkyCases( FILE *out )
+{
+	static CSolidColorRegenerator s_BaseRegenerator;
+	ITexture *pBase = g_pMaterialSystem->CreateProceduralTexture( "conformance/sky_base",
+	    TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888,
+	    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL |
+	        TEXTUREFLAGS_SINGLECOPY );
+	if ( !pBase )
+		return false;
+	s_BaseRegenerator.m_Split = true;
+	pBase->SetTextureRegenerator( &s_BaseRegenerator );
+
+	IMaterial *materials[ARRAYSIZE( kSkyCases )] = {};
+	for ( int i = 0; i < ARRAYSIZE( kSkyCases ); ++i )
+	{
+		char tint[96];
+		V_snprintf( tint, sizeof( tint ), "[%.8f %.8f %.8f]", kSkyCases[i].tint[0] / 255.0f,
+		    kSkyCases[i].tint[1] / 255.0f, kSkyCases[i].tint[2] / 255.0f );
+		KeyValues *pKeys = new KeyValues( "Sky" );
+		pKeys->SetString( "$basetexture", "conformance/sky_base" );
+		pKeys->SetString( "$color", tint );
+		pKeys->SetString(
+		    "$basetexturetransform", "center .5 .5 scale 1 1 rotate 0 translate 0 -.25" );
+		char name[64];
+		V_snprintf( name, sizeof( name ), "conformance/sky_%s", kSkyCases[i].name );
+		materials[i] = g_pMaterialSystem->CreateMaterial( name, pKeys );
+		if ( !materials[i] || materials[i]->IsErrorMaterial() )
+			return false;
+		materials[i]->IncrementReferenceCount();
+	}
+	g_pMaterialSystem->CacheUsedMaterials();
+	for ( IMaterial *pMaterial : materials )
+	{
+		if ( pMaterial->GetVertexFormat() == 0 )
+		{
+			Warning( "material pixel conformance: %s has no vertex format after precache\n",
+			    pMaterial->GetName() );
+			return false;
+		}
+	}
+
+	fprintf( out, "{\"schema\":\"source-material-pixels/v1\",\"family\":\"sky\"," );
+	WriteClearProbe( out );
+	fprintf( out, "\"cases\":[" );
+	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+	bool ok = true;
+	for ( int i = 0; i < ARRAYSIZE( kSkyCases ); ++i )
+	{
+		const SkyCase &c = kSkyCases[i];
+		for ( int k = 0; k < 3; ++k )
+		{
+			s_BaseRegenerator.m_Color[k] = c.baseTop[k];
+			s_BaseRegenerator.m_Bottom[k] = c.baseBottom[k];
+		}
+		pBase->Download();
+		IMaterial *pMaterial = materials[i];
+		IMesh *pMesh = pRenderContext->CreateStaticMesh(
+		    pMaterial->GetVertexFormat(), TEXTURE_GROUP_STATIC_VERTEX_BUFFER_MODELS, pMaterial );
+		CMeshBuilder meshBuilder;
+		meshBuilder.Begin( pMesh, MATERIAL_TRIANGLES, 4, 6 );
+		const float corners[4][2] = {
+		    { -0.75f, 0.75f }, { 0.75f, 0.75f }, { 0.75f, -0.75f }, { -0.75f, -0.75f } };
+		for ( int v = 0; v < 4; ++v )
+		{
+			meshBuilder.Position3f( corners[v][0], corners[v][1], 0.5f );
+			meshBuilder.TexCoord2f( 0, 0.5f * ( corners[v][0] / 0.75f + 1.0f ),
+			    0.5f * ( 1.0f - corners[v][1] / 0.75f ) );
+			meshBuilder.AdvanceVertex();
+		}
+		for ( unsigned short index : { 0, 1, 2, 0, 2, 3 } )
+			meshBuilder.FastIndex( index );
+		meshBuilder.End();
+
+		unsigned char pixels[2][3] = {};
+		g_pMaterialSystem->BeginFrame( 0 );
+		{
+			int width = 0, height = 0;
+			g_pMaterialSystem->GetBackBufferDimensions( width, height );
+			pRenderContext->Viewport( 0, 0, width, height );
+			pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
+			pRenderContext->ClearBuffers( true, true );
+			for ( int mode = MATERIAL_VIEW; mode <= MATERIAL_PROJECTION; ++mode )
+			{
+				pRenderContext->MatrixMode( static_cast<MaterialMatrixMode_t>( mode ) );
+				pRenderContext->LoadIdentity();
+			}
+			pRenderContext->Bind( pMaterial );
+			pMesh->Draw();
+			ok = ReadPixel( 0.25f, 0.5f, pixels[0] ) && ok;
+			ok = ReadPixel( 0.75f, 0.5f, pixels[1] ) && ok;
+		}
+		g_pMaterialSystem->EndFrame();
+		g_pMaterialSystem->SwapBuffers();
+		pRenderContext->DestroyStaticMesh( pMesh );
+		fprintf( out,
+		    "%s{\"name\":\"%s\",\"base_top\":[%u,%u,%u],"
+		    "\"base_bottom\":[%u,%u,%u],\"tint\":[%u,%u,%u],"
+		    "\"pixels\":[[%u,%u,%u],[%u,%u,%u]]}",
+		    i ? "," : "", c.name, c.baseTop[0], c.baseTop[1], c.baseTop[2], c.baseBottom[0],
+		    c.baseBottom[1], c.baseBottom[2], c.tint[0], c.tint[1], c.tint[2], pixels[0][0],
+		    pixels[0][1], pixels[0][2], pixels[1][0], pixels[1][1], pixels[1][2] );
+	}
+	fprintf( out, "]}\n" );
+	for ( IMaterial *pMaterial : materials )
+		pMaterial->DecrementReferenceCount();
 	return ok;
 }
 

@@ -4133,6 +4133,7 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 	std::memcpy( d.transform, m_dynTransform, sizeof( d.transform ) );
 	std::memcpy( d.color, m_dynConstColor, sizeof( d.color ) );
 	std::memcpy( d.modulation, m_dynModulation, sizeof( d.modulation ) );
+	d.monitorContrast = m_dynMonitorContrast;
 	std::memcpy( d.texXform0, m_dynTexXform0, sizeof( d.texXform0 ) );
 	std::memcpy( d.texXform1, m_dynTexXform1, sizeof( d.texXform1 ) );
 	std::memcpy( d.pbrAngles, m_dynPbrAngles, sizeof( d.pbrAngles ) );
@@ -5178,8 +5179,10 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				}
 				else
 				{
-					const bool cable = ( d.colorFlags & kFragmentCable ) != 0;
-					const int secondTexture = cable ? d.samplerHandles[1] : d.lightmapHandle;
+					const bool secondSampler =
+					    ( d.colorFlags & ( kFragmentCable | kFragmentMonitor ) ) != 0;
+					const int secondTexture =
+					    secondSampler ? d.samplerHandles[1] : d.lightmapHandle;
 					const VkDescriptorSet sets[2] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
 					    sampledSet( secondTexture, kColorSrgbReadLightmap ) };
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -5258,7 +5261,9 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				std::memcpy( pushData + 16, modulation, sizeof( d.modulation ) );
 				std::memcpy( pushData + 20, d.texXform0, sizeof( d.texXform0 ) );
 				std::memcpy( pushData + 24, d.texXform1, sizeof( d.texXform1 ) );
-				pushData[28] = d.alphaRef; // alphaParams.x
+				pushData[28] = ( d.colorFlags & kFragmentMonitor )
+				                   ? d.monitorContrast
+				                   : d.alphaRef; // alphaParams.x
 				// alphaParams.y: multiply by the lightmap; .z: kColorSrgb* flags.
 				pushData[29] = d.lightmapHandle >= 0 ? 1.0f : 0.0f;
 				pushData[30] = static_cast<float>( d.colorFlags & ~decodedFlags );

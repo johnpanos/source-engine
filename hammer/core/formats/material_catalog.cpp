@@ -267,9 +267,11 @@ PbrMaterialCheck MaterialCatalog::ValidatePbrMaterial(
 	if ( definition.status != render::pbr::DefinitionStatus::kValid )
 		return { PbrMaterialStatus::kMissingParameter, definition.parameter };
 
-	const std::string fallback = CanonicalizeMaterialName(
-	    lookup( render::pbr::Parameter( render::pbr::MaterialParameter::kFallbackMaterial ).name,
-	        &values ) );
+	const char *fallbackReference = lookup(
+	    render::pbr::Parameter( render::pbr::MaterialParameter::kFallbackMaterial ).name, &values );
+	if ( !render::pbr::IsValidFallbackReference( fallbackReference ) )
+		return { PbrMaterialStatus::kInvalidFallbackPath };
+	const std::string fallback = CanonicalizeMaterialName( fallbackReference );
 	if ( !SafeMaterialPath( fallback ) )
 		return { PbrMaterialStatus::kInvalidFallbackPath };
 	if ( fallback == canonical )

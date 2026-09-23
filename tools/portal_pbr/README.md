@@ -122,3 +122,42 @@ skipped or needing review. The output occupies about 254 MB. ArmorPaint
 accepted 820 PNGs, wrote the `.arm` project, reopened it, and reported 820
 texture assets. These checks do not certify runtime rendering or fidelity to
 every legacy material effect.
+
+## High-resolution remaster
+
+`remaster.py` takes the staged output above and writes a separate high-resolution
+set. Its color pass uses the `realesrgan-x4plus` model from the official
+[Real-ESRGAN ncnn Vulkan release](https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.5.0).
+The tested Ubuntu archive is `realesrgan-ncnn-vulkan-20220424-ubuntu.zip`, with
+SHA-256 `e5aa6eb131234b87c0c51f82b89390f5e3e642b7b70f2b9bbe95b6a285a40c96`.
+Install that archive in a local tool directory and pass its executable and
+`models/` path explicitly. The host also needs a working Vulkan device and the
+dependencies listed above. No game assets or model weights are committed to
+this repository.
+
+```sh
+python3 tools/portal_pbr/remaster.py \
+  --source /path/to/portal-pbr-output \
+  --out /path/to/portal-pbr-remastered \
+  --upscaler /path/to/realesrgan-ncnn-vulkan \
+  --model-dir /path/to/models \
+  --import-armorpaint --new-armorpaint-project \
+  --armorpaint-project /path/to/portal-pbr-remastered/portal-pbr-remastered.arm
+```
+
+The default is a faithful 4× enlargement capped at 4096 pixels on the longest
+edge; sources larger than 1024 pixels on one edge use 2×. Distinct source
+images are sent to the color model only once. `remaster_channels.cpp` restores
+authored alpha from the source, normalizes interpolated tangent normals, and
+resizes MRAO as linear channel data. It does not invent roughness, metalness,
+AO, or normals where the original staging run had only placeholders. Each
+output set gets the candidate and original fallback VMT. The new manifest
+records source and output hashes, dimensions, scale, model hashes, review notes,
+and per-set QA. The script fails if an image is missing, has the wrong size, or
+fails its alpha check. `--limit 2` provides a small pilot run.
+
+These are editable high-resolution assets. A texture artist should inspect UV
+islands, labels, tiling seams, alpha edges, and legacy material effects before
+calling a particular material remastered. As with the lower-resolution output,
+the VMTs are candidates until the native PBR material runtime and texture path
+are implemented and validated.

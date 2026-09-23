@@ -360,6 +360,7 @@ public:
 		for ( int i = 0; i < 4; ++i )
 			m_dynModulation[i] = rgba[i];
 	}
+	void SetDynamicMonitorContrast( float contrast ) { m_dynMonitorContrast = contrast; }
 	// Set cBaseTextureTransform (the two float4 rows of the 2x4 affine UV
 	// transform, SHADER_SPECIFIC_CONST_0/1). Defaults to identity (row0 =
 	// 1,0,0,0 / row1 = 0,1,0,0), i.e. the texture coordinate passes through.
@@ -505,7 +506,10 @@ public:
 		// blends the vertex color (the diffuse term, times c1) toward the
 		// modulation (c1 times $selfillumtint); alpha is the modulation's.
 		kFragmentSelfIllum = 2048,
-		kFragmentCable = 4096
+		kFragmentCable = 4096,
+		kFragmentSky = 8192,
+		kFragmentMonitor = 16384,
+		kFragmentMonitorTexture2 = 32768
 	};
 	void SelectDynamicColorSpace( int flags ) { m_dynColorFlags = flags; }
 	// Linear scale applied to the textured pipeline's color before the sRGB
@@ -910,6 +914,7 @@ private:
 	// rows of cBaseTextureTransform. Defaults leave the material unmodulated and
 	// the UV coordinate untransformed.
 	float m_dynModulation[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	float m_dynMonitorContrast = 0.0f;
 	float m_dynTexXform0[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
 	float m_dynTexXform1[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
 	float m_dynPbrAngles[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -1202,6 +1207,7 @@ private:
 		float texXform0[4] = { 1, 0, 0, 0 };
 		float texXform1[4] = { 0, 1, 0, 0 };
 		float pbrAngles[4] = { 1, 1, 1, 1 };
+		float monitorContrast = 0.0f;
 		DynRasterState raster;
 		float alphaRef = -1.0f;   // $alphatest reference; < 0 disables
 		int texHandle = -1;       // managed texture bound at this draw (-1 = built-in)

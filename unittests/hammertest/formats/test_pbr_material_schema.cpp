@@ -101,6 +101,12 @@ int main()
 	           Parameter( MaterialParameter::kFallbackMaterial ).kind ==
 	               ParameterKind::kMaterialReference,
 	    "fallback is a required VMT reference" );
+	Check( IsValidFallbackReference( "compat/red" ) && !IsValidFallbackReference( "../outside" ) &&
+	           !IsValidFallbackReference( "compat//red" ) &&
+	           !IsValidFallbackReference( "compat\\red" ) &&
+	           !IsValidFallbackReference( "materials/compat/red" ) &&
+	           !IsValidFallbackReference( "compat/red.vmt" ),
+	    "PBR fallback references use relative virtual material paths" );
 
 	MemoryAssets source;
 	source.assets["materials/pbr/red.vmt"] = PbrVmt( "compat/red" );

@@ -2,8 +2,10 @@
 //
 // Purpose: RFC 0007 synthetic direct-light pixel oracle. Draws the native
 //          PBR specular pipeline, captures a real Vulkan frame and compares
-//          its linear output with the headless BRDF model. Requires a native
-//          Vulkan device and a display; exit 77 means the gate is unverified.
+//          its linear output with the headless BRDF model. Base color is sampled
+//          through an sRGB view while the packed MRAO texture stays linear.
+//          Requires a native Vulkan device and a display; exit 77 means the
+//          gate is unverified.
 //
 //===========================================================================//
 
@@ -55,7 +57,15 @@ struct PixelCase
 	float radiance[4];
 	bool roughnessControl;
 	bool fresnelControl;
+	bool baseColorControl;
+	bool mraoLinearControl;
 };
+
+float DecodeSrgb( uint8_t encoded )
+{
+	const float value = encoded / 255.0f;
+	return value <= 0.04045f ? value / 12.92f : std::pow( ( value + 0.055f ) / 1.055f, 2.4f );
+}
 
 bool RunCase( render_vulkan::CVulkanContext &context, int baseHandle, int mraoHandle,
     const PixelCase &testCase, std::string &error )
@@ -70,6 +80,7 @@ bool RunCase( render_vulkan::CVulkanContext &context, int baseHandle, int mraoHa
 	context.SelectDynamicShader( render_vulkan::CVulkanContext::kDynShaderPbrDirect );
 	context.BindManagedTexture( baseHandle );
 	context.BindManagedSampler( 1, mraoHandle );
+	context.SelectDynamicColorSpace( render_vulkan::CVulkanContext::kColorSrgbReadBase );
 	context.SetDynamicModulation( testCase.radiance );
 	context.SetDynamicPbrAngles( testCase.angles );
 	context.QueueDynamicTriangles( &kQuad[0][0], 6 );
@@ -94,8 +105,8 @@ bool RunCase( render_vulkan::CVulkanContext &context, int baseHandle, int mraoHa
 	Check( corner[0] <= 2 && corner[1] <= 2 && corner[2] <= 2,
 	    "frame corner retains the black clear" );
 
-	const render::pbr::Color base = {
-	    testCase.base[0] / 255.0f, testCase.base[1] / 255.0f, testCase.base[2] / 255.0f };
+	const render::pbr::Color base = { DecodeSrgb( testCase.base[0] ),
+	    DecodeSrgb( testCase.base[1] ), DecodeSrgb( testCase.base[2] ) };
 	const float metalness = testCase.mrao[0] / 255.0f;
 	const float roughness = std::max( 0.02f, testCase.mrao[1] / 255.0f );
 	const render::pbr::Color f0 = { 0.04f * ( 1.0f - metalness ) + base.red * metalness,
@@ -139,6 +150,36 @@ bool RunCase( render_vulkan::CVulkanContext &context, int baseHandle, int mraoHa
 		    testCase.angles[1] * 255.0f;
 		Check( std::abs( static_cast<float>( center[0] ) - wrongPixel ) > 20.0f,
 		    "pixel oracle rejects missing grazing Fresnel" );
+	}
+	if ( testCase.baseColorControl )
+	{
+		// Sampling the sRGB base through the linear view would use its stored
+		// byte value as F0. The colored metal separates the two paths visibly.
+		const float encodedBase = testCase.base[0] / 255.0f;
+		const float wrongF0 = 0.04f * ( 1.0f - metalness ) + encodedBase * metalness;
+		const float wrongPixel =
+		    testCase.radiance[0] *
+		    render::pbr::EvaluateSpecular( { wrongF0, wrongF0, wrongF0 }, testCase.angles[0],
+		        testCase.angles[1], testCase.angles[2], testCase.angles[3], roughness )
+		        .red *
+		    testCase.angles[1] * 255.0f;
+		Check( std::abs( static_cast<float>( center[0] ) - wrongPixel ) > 20.0f,
+		    "pixel oracle rejects linear sampling of the sRGB base" );
+	}
+	if ( testCase.mraoLinearControl )
+	{
+		// Metalness is data, not display color. Decoding the stored byte as
+		// sRGB changes F0 and must be visible in the captured red channel.
+		const float wrongMetalness = DecodeSrgb( testCase.mrao[0] );
+		const float wrongF0 = 0.04f * ( 1.0f - wrongMetalness ) + base.red * wrongMetalness;
+		const float wrongPixel =
+		    testCase.radiance[0] *
+		    render::pbr::EvaluateSpecular( { wrongF0, wrongF0, wrongF0 }, testCase.angles[0],
+		        testCase.angles[1], testCase.angles[2], testCase.angles[3], roughness )
+		        .red *
+		    testCase.angles[1] * 255.0f;
+		Check( std::abs( static_cast<float>( center[0] ) - wrongPixel ) > 20.0f,
+		    "pixel oracle rejects sRGB decoding of linear MRAO" );
 	}
 	Check( center[3] >= 252, "PBR pixel is opaque" );
 	return true;
@@ -187,11 +228,13 @@ int main()
 		{
 			const PixelCase cases[] = {
 			    { "dielectric-half-rough", { 255, 255, 255, 255 }, { 0, 128, 255, 255 },
-			        { 1, 1, 1, 1 }, { 10, 10, 10, 1 }, true, false },
+			        { 1, 1, 1, 1 }, { 10, 10, 10, 1 }, true, false, false, false },
 			    { "colored-metal", { 204, 51, 26, 255 }, { 255, 255, 255, 255 }, { 1, 1, 1, 1 },
-			        { 10, 10, 10, 1 }, false, false },
+			        { 10, 10, 10, 1 }, false, false, true, false },
+			    { "half-metal", { 255, 0, 0, 255 }, { 128, 255, 128, 255 }, { 1, 1, 1, 1 },
+			        { 10, 10, 10, 1 }, false, false, false, true },
 			    { "grazing-dielectric", { 255, 255, 255, 255 }, { 0, 255, 0, 255 },
-			        { 0.2f, 0.2f, 1, 0.2f }, { 10, 10, 10, 1 }, false, true },
+			        { 0.2f, 0.2f, 1, 0.2f }, { 10, 10, 10, 1 }, false, true, false, false },
 			};
 			for ( const PixelCase &testCase : cases )
 			{

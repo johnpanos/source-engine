@@ -99,6 +99,57 @@ inline bool IsMetalRoughShader( const char *name )
 	return false;
 }
 
+// The legacy material loader constructs materials/<reference>.vmt. PBR
+// fallbacks therefore use a relative, extensionless virtual material name.
+inline bool IsValidFallbackReference( const char *name )
+{
+	if ( !name || !name[0] )
+		return false;
+	std::size_t segmentStart = 0;
+	std::size_t length = 0;
+	for ( ; name[length]; ++length )
+	{
+		const char c = name[length];
+		if ( c == '\\' || c == ':' || static_cast<unsigned char>( c ) < 32 )
+			return false;
+		if ( c != '/' )
+			continue;
+		const std::size_t segmentLength = length - segmentStart;
+		if ( segmentLength == 0 || ( segmentLength == 1 && name[segmentStart] == '.' ) ||
+		     ( segmentLength == 2 && name[segmentStart] == '.' && name[segmentStart + 1] == '.' ) )
+			return false;
+		segmentStart = length + 1;
+	}
+	const std::size_t segmentLength = length - segmentStart;
+	if ( segmentLength == 0 || ( segmentLength == 1 && name[segmentStart] == '.' ) ||
+	     ( segmentLength == 2 && name[segmentStart] == '.' && name[segmentStart + 1] == '.' ) )
+		return false;
+	const char prefix[] = "materials/";
+	const char suffix[] = ".vmt";
+	auto same = []( char a, char b )
+	{
+		const char lower = a >= 'A' && a <= 'Z' ? static_cast<char>( a - 'A' + 'a' ) : a;
+		return lower == b;
+	};
+	if ( length >= sizeof( prefix ) - 1 )
+	{
+		bool hasPrefix = true;
+		for ( std::size_t i = 0; i < sizeof( prefix ) - 1; ++i )
+			hasPrefix &= same( name[i], prefix[i] );
+		if ( hasPrefix )
+			return false;
+	}
+	if ( length >= sizeof( suffix ) - 1 )
+	{
+		bool hasSuffix = true;
+		for ( std::size_t i = 0; i < sizeof( suffix ) - 1; ++i )
+			hasSuffix &= same( name[length - sizeof( suffix ) + 1 + i], suffix[i] );
+		if ( hasSuffix )
+			return false;
+	}
+	return true;
+}
+
 enum class DefinitionStatus
 {
 	kValid,

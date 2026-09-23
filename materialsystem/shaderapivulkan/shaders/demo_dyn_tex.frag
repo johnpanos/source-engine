@@ -42,7 +42,9 @@ layout( push_constant ) uniform Constants
 		// (vertexlit_and_unlit_generic_ps2x with VERTEXCOLOR / g_fVertexAlpha;
 		// 512 is read by the vertex stage), 2048 its SELFILLUM (see main), 4096
 		// the Cable_DX9 normal-map half-Lambert term (sampler 0 normal, sampler 1
-		// sRGB base texture and fragVertexColor directional-light color);
+		// sRGB base texture and fragVertexColor directional-light color), 16384
+		// MonitorScreen_DX9 (contrast in alphaParams.x, saturation and tint in
+		// fragVertexColor), 32768 its optional second texture;
 	// w = linear output scale (FinalOutput's LINEAR_LIGHT_SCALE).
 	vec4 alphaParams;
 }
@@ -97,6 +99,23 @@ void main()
 		result = vec4( cableBase.rgb * fragVertexColor.rgb * lighting,
 			cableBase.a * fragVertexColor.a );
 	}
+	else if ( ( flags & 16384 ) != 0 )
+	{
+		// monitorscreen_ps2x.fxc: base times cModulationColor and, when its
+		// TEXTURE2 combo is set, sampler 1; then contrast, saturation and tint.
+		result = base * fragModulation;
+		if ( ( flags & 32768 ) != 0 )
+		{
+			vec4 second = texture( lightmapTexture, fragLightmapUv );
+			if ( ( flags & 2 ) != 0 )
+				second.rgb = SrgbToLinear( second.rgb );
+			result *= second;
+		}
+		result.rgb = mix( result.rgb, result.rgb * result.rgb, consts.alphaParams.x );
+		float grey = dot( result.rgb, vec3( 0.33333 ) );
+		result.rgb = mix( vec3( grey ), result.rgb, fragVertexColor.a );
+		result.rgb *= fragVertexColor.rgb;
+	}
 	else
 	{
 		result = fragModulation * base;
@@ -117,7 +136,7 @@ void main()
 	}
 	// The D3D9 fixed-function alpha test: GREATEREQUAL ($alphatest) or GREATER
 	// (screenspace_general), against the reference. Disabled when < 0.
-	if ( consts.alphaParams.x >= 0.0 &&
+	if ( ( flags & 16384 ) == 0 && consts.alphaParams.x >= 0.0 &&
 	     ( ( flags & 8 ) != 0 ? result.a <= consts.alphaParams.x
 	                          : result.a < consts.alphaParams.x ) )
 		discard;

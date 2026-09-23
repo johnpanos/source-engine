@@ -19,7 +19,7 @@ REFERENCES = QUALITY.parents[1] / "quality" / "fixtures" / "material-pixels"
 
 def capture(hdr, family="lightmap"):
     """The versioned backend reference capture for a family and HDR mode."""
-    backend = "dxvk" if family == "cable" else "dx9"
+    backend = "dxvk" if family in ("cable", "sky") else "dx9"
     return json.loads((REFERENCES / ("%s-%s-%s.json" % (family, backend, hdr))).read_text())
 
 
@@ -80,13 +80,45 @@ class CableTest(unittest.TestCase):
                 oracle.read_pixels(path)
 
 
+class SkyTest(unittest.TestCase):
+    def test_dxvk_reference_matches_sky_texture_and_tint(self):
+        report = capture("none", "sky")
+        self.assertEqual(report["renderer"], "vulkan-compat")
+        self.assertEqual(oracle.evaluate(report, "none", report), [])
+
+    def test_missing_sky_cases_are_rejected(self):
+        report = copy.deepcopy(capture("none", "sky"))
+        report["cases"].pop()
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pixels.json"
+            path.write_text(json.dumps(report))
+            with self.assertRaises(oracle.PixelsError):
+                oracle.read_pixels(path)
+
+    def test_ignored_sky_tint_is_detected(self):
+        report = copy.deepcopy(capture("none", "sky"))
+        for case in report["cases"]:
+            case["pixels"] = [list(case["base_top"]), list(case["base_top"])]
+        failures = oracle.evaluate(report, "none", capture("none", "sky"))
+        self.assertTrue(any("texture times tint" in failure for failure in failures))
+
+
 class PbrFallbackTest(unittest.TestCase):
     def capture(self):
         return {"schema": oracle.SCHEMA, "family": "pbr-fallback",
                 "renderer": "vulkan-compat", "hdr_type": 0,
                 "clear_probe": {"clear": [255, 0, 255], "pixel": [255, 0, 255]},
                 "shader": "UnlitGeneric", "error_material": False,
-                "pixels": {"center": [0, 255, 0], "outside": [255, 0, 255]}}
+                "pixels": {"center": [0, 255, 0], "outside": [255, 0, 255]},
+                "invalid": {"missing_reference_rejected": True,
+                            "missing_mrao_rejected": True,
+                            "missing_base_rejected": True,
+                            "missing_target_rejected": True,
+                            "self_rejected": True,
+                            "traversal_rejected": True,
+                            "unsupported_rejected": True,
+                            "cycle_rejected": True,
+                            "pbr_target_rejected": True}}
 
     def test_valid_fallback_passes(self):
         self.assertEqual(oracle.evaluate(self.capture(), "none"), [])
@@ -107,6 +139,12 @@ class PbrFallbackTest(unittest.TestCase):
             path.write_text(json.dumps(report))
             with self.assertRaises(oracle.PixelsError):
                 oracle.read_pixels(path)
+
+    def test_accepted_invalid_material_fails(self):
+        report = self.capture()
+        report["invalid"]["missing_reference_rejected"] = False
+        self.assertTrue(any("missing_reference" in failure
+                            for failure in oracle.evaluate(report, "none")))
 
 
 class SeededDefectTest(unittest.TestCase):

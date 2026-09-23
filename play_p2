@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Launch the separate Portal 2 target with VPKs from the installed game.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+P2_STEAM_ROOT="${P2_STEAM_ROOT:-$HOME/.local/share/Steam/steamapps/common/Portal 2}"
+P2_RUNTIME="${P2_RUNTIME:-$ROOT/run/runtime-p2}"
+P2_BUILD_DIR="${P2_BUILD_DIR:-$ROOT/build-p2}"
+
+if [[ "${1:-}" == "--retail" ]]; then
+    shift
+    exec "$P2_STEAM_ROOT/portal2.sh" "$@"
+fi
+
+if [[ "${1:-}" == "--prepare" ]]; then
+    python3 "$ROOT/tools/quality/stage_portal2_runtime.py" \
+        --steam-root "$P2_STEAM_ROOT" --runtime "$P2_RUNTIME"
+    exit 0
+fi
+
+python3 "$ROOT/tools/quality/stage_portal2_runtime.py" \
+    --steam-root "$P2_STEAM_ROOT" --runtime "$P2_RUNTIME" --build "$P2_BUILD_DIR"
+
+cd "$P2_RUNTIME"
+export SteamAppId=620 SteamGameId=620
+export LD_LIBRARY_PATH="$PWD/bin:${LD_LIBRARY_PATH:-}"
+exec ./hl2_launcher -game portal2 "$@"

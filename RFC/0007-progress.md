@@ -34,7 +34,8 @@ those runs.
 
 The second R47 slice adds a native Vulkan direct-specular shader at
 [`pbr_direct.frag`](../materialsystem/shaderapivulkan/shaders/pbr_direct.frag).
-It consumes a linear base color texture and a metalness/roughness/AO texture;
+It samples an sRGB base color texture through the Vulkan sRGB view and a linear
+metalness/roughness/AO texture;
 the test supplies light/view angles and radiance directly. The native
 [`pbr_native_pixel_conformance`](../unittests/shaderapivulkantest/test_pbr_pixels.cpp)
 target renders three synthetic cases, captures actual pixels, compares them
@@ -70,6 +71,17 @@ D3D9/DXVK runtime fallback are still required.
 The native shader compiler is taken from the host path for this slice; the
 shader artifact and compiler revision must be pinned in a product profile
 before claiming reproducibility across machines.
+
+A subsequent native pixel check (2026-09-22, same Linux Wayland/RADV profile)
+exercises the declared texture encodings. The CPU oracle independently decodes
+the sRGB base texel; the GPU uses the sRGB image view. MRAO still uses its linear
+view. Four cases passed 25 checks: the colored-metal pixel was `(123,7,2)`
+against `(122.5,6.7,2.1)`, and the half-metal pixel was `(106,4,4)` against
+`(105.9,4.0,4.0)`. Captured pixels also rejected the seeded wrong choices of
+linear base sampling and sRGB decoding of metalness. The command is the native
+`pbr_native_pixel_conformance` invocation above; Vulkan validation remained
+unavailable. This adds a texture-encoding oracle to the synthetic specular
+path, not runtime `PBRMetalRough` binding or the full PBR pixel gate.
 
 The third R47 slice introduces the version 1
 [`PBRMetalRough` parameter schema](../public/render/pbr_material_schema.h).
@@ -120,10 +132,73 @@ checks its exact fallback name. The DXVK build used
 `WAFLOCK=.lock-waf_linux_build`; both targeted
 `builtin_shader_conformance`. Source review confirms the material loader's
 subsequent `$fallbackmaterial` branch.
-The test does not load a PBR VMT or render its fallback; D3D9/DXVK pixels and
-missing/invalid-fallback rejection remain unverified. The runtime material
-system does not yet consume the shared PBR schema, so the editor validator is
-the only installed content-validation caller.
+
+The fifth R47 slice adds a staged real-material pixel case to the shared
+`material_pixel_conformance` harness. The primary `PBRMetalRough` VMT names
+red primary data and a separate `UnlitGeneric` fallback VMT that names a green
+procedural texture. The harness calls `FindMaterial`, records the resolved
+shader, draws through the material system and DXVK, and samples the center and
+an undrawn pixel. The oracle requires `UnlitGeneric`, no error material, green
+at the center, and the unchanged magenta clear color outside. Seeded oracle
+tests reject wrong shader selection, wrong pixels, and an incomplete capture.
+
+Native evidence (2026-09-22, Linux headless surface, AMD Radeon 8060S / RADV):
+
+```sh
+WAFLOCK=.lock-waf-r03-portal-dxvk python3 waf build --targets=material_pixel_conformance -j4
+python3 tools/quality/material_pixel_conformance.py run \
+  --runtime run/runtime-dxvk --build build-r03-portal-dxvk \
+  --renderer vulkan-compat --hdr none --family pbr-fallback \
+  --out /tmp/rfc0007-pbr-fallback-dxvk-20260923a
+WAFLOCK=.lock-waf_linux_build python3 waf build --targets=material_pixel_conformance -j4
+WAFLOCK=.lock-waf_linux_build python3 waf build --targets=hl2_launcher -j4
+python3 tools/quality/material_pixel_conformance.py run \
+  --runtime run/runtime-native --build build/pbr-native \
+  --renderer native-vulkan --hdr none --family pbr-fallback \
+  --out /tmp/rfc0007-pbr-fallback-native-20260923b
+python3 -m unittest tools.quality.tests.test_material_pixel_conformance -v
+```
+
+Both backend captures passed with shader `UnlitGeneric`, center `(0,255,0)`,
+outside `(255,0,255)`, and a matching clear probe. The 69 Python oracle tests
+passed. This verifies the positive runtime fallback path on DXVK and native
+Vulkan; it does not certify invalid/missing-fallback rejection, D3D9 without
+DXVK, or native PBR shading. The runtime material system does not yet consume
+the shared PBR schema, so the editor validator is the only installed
+content-validation caller.
+
+The sixth R47 slice makes the runtime VMT loader consume the same required-field
+schema and fallback-reference syntax as the editor. Before returning a loaded
+PBR VMT, `LoadVMTFile` rejects a missing `$basetexture`, `$mraotexture`, or
+`$fallbackmaterial`, an unsafe path, a self reference, and an absent fallback
+VMT. It inspects the fallback through the existing patch resolver, rejects a
+remaining patch root or another PBR shader, and checks the selected shader
+catalog when graphics is active. `FindMaterial` then returns the engine error
+material instead of a PBR material that silently drops to wireframe. The
+material pixel harness stages nine invalid PBR VMTs alongside the valid case
+and requires all nine to be rejected. The positive fallback pixel remains part
+of the same run.
+
+Local evidence (2026-09-22): both DXVK and native Vulkan profile builds of
+`material_pixel_conformance` succeeded. Staged `pbr-fallback` runs passed on
+both profiles, including shader `UnlitGeneric`, green center pixel, clear
+outside pixel, and all nine invalid-material rejection flags. The DXVK
+capture is at `/tmp/rfc0007-pbr-validation-dxvk-20260923d` and the native
+capture at `/tmp/rfc0007-pbr-validation-native-20260923c`. The shared RFC 0007
+release conformance check passed four suites, including 26 schema checks; the
+73 material-pixel Python oracle tests passed, including four focused PBR
+fallback tests. The new schema header and test pass scoped style checking.
+The global changed-line style check is currently stopped by unrelated Portal
+client formatting and invalid UTF-8 in concurrently added Portal 2 source.
+The full material-pixel Python test module currently also exercises a
+concurrently added `sky` family whose reference file is absent, so that
+module's complete run is not green.
+
+This runtime preflight uses the legacy patch resolver, which can still follow
+an unsafe nested `include` before the final root is checked. It has not proved
+all malformed-VMT syntax fails, and no installed package-level content gate
+runs the editor catalog against every shipped PBR material. Those cases and
+the full native material path remain before fallback and R47 acceptance.
 
 R48–R52 have no implementation evidence yet. In particular, vbsp/vvis/vrad
 are not ported to Waf, the Cycles provider is not built or pinned, and RFC
