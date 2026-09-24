@@ -82,7 +82,7 @@ bool CBaseProjectedEntity::IsHittingPortal( Vector* pOutOrigin, QAngle* pOutAngl
 	trace_t worldTrace;
 	CTraceFilterSimpleClassnameList traceFilter( this, COLLISION_GROUP_NONE );
 	UTil_ProjectedEntity_Trace_Filter( &traceFilter );
-	UTIL_TraceRay( ray, MASK_SOLID_BRUSHONLY, &traceFilter, &worldTrace );
+	enginetrace->TraceRay( ray, MASK_SOLID_BRUSHONLY, &traceFilter, &worldTrace );
 	CPortal_Base2D* pHitPortal = UTIL_Portal_FirstAlongRay( ray, flPortalTraceFraction );
 
 	if ( pOutOrigin )
@@ -473,7 +473,7 @@ void CBaseProjectedEntity::FindProjectedEndpoints( void )
 	trace_t tr;
 	CTraceFilterSimpleClassnameList traceFilter( this, COLLISION_GROUP_NONE );
 	UTil_ProjectedEntity_Trace_Filter( &traceFilter );
-	UTIL_TraceRay( ray, MASK_SOLID_BRUSHONLY, &traceFilter, &tr );
+	enginetrace->TraceRay( ray, MASK_SOLID_BRUSHONLY, &traceFilter, &tr );
 
 	// Should up the max trace dist if this hits
 	Assert ( tr.DidHit() );
@@ -579,8 +579,7 @@ void CBaseProjectedEntity::TestForReflectPaint( void )
 	UTil_ProjectedEntity_Trace_Filter( &traceFilter );
 
 	trace_t tr;
-	UTIL_ClearTrace( tr );
-	UTIL_TraceRay( ray, MASK_SOLID_BRUSHONLY, &traceFilter, &tr );
+	enginetrace->TraceRay( ray, MASK_SOLID_BRUSHONLY, &traceFilter, &tr );
 
 	Vector vDir, vNewProjectedEntityOrigin;
 	if ( UTIL_Paint_Reflect( tr, vNewProjectedEntityOrigin, vDir ) )

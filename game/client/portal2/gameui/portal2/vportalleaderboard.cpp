@@ -31,6 +31,7 @@
 
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 using namespace vgui;
@@ -708,7 +709,7 @@ void CPortalLeaderboardPanel::ApplySchemeSettings( vgui::IScheme *pScheme )
 		m_nCurrentChapterNumber = 1;
 		if ( m_leaderboardState == STATE_END_OF_LEVEL || ( m_leaderboardState == STATE_PAUSE_MENU && !bInHub ) )
 		{
-			m_nCurrentChapterNumber = CBaseModPanel::GetSingleton().MapNameToChapter( engine->GetLevelNameShort(), m_bSinglePlayerMode );	
+			m_nCurrentChapterNumber = CBaseModPanel::GetSingleton().MapNameToChapter( Portal2Engine::GetLevelNameShort(), m_bSinglePlayerMode );	
 		}
 		m_pChapterListButton->SetCurrentSelectionIndex( m_nCurrentChapterNumber - 1 );
 		m_pChapterListButton->SetArrowsAlwaysVisible( true );
@@ -720,7 +721,7 @@ void CPortalLeaderboardPanel::ApplySchemeSettings( vgui::IScheme *pScheme )
 	if ( m_leaderboardState == STATE_END_OF_LEVEL || ( m_leaderboardState == STATE_PAUSE_MENU && !bInHub ) )
 	{
 		m_nMapIndex = GetIndexOfMap(  CBaseModPanel::GetSingleton().GetMapNumInChapter( m_nCurrentChapterNumber, 
-																	engine->GetLevelNameShort(), m_bSinglePlayerMode ) );
+																	Portal2Engine::GetLevelNameShort(), m_bSinglePlayerMode ) );
 		m_bNeedsMapItemSelect = true;
 	}
 	else
@@ -1224,7 +1225,7 @@ void CPortalLeaderboardPanel::OnThink()
 #endif // BUILD_GLOBAL_LEADERBOARD_STEAM_CONFIG
 
 					// display the improved leaderboard and force its stat update
-					if ( V_strcmp( engine->GetLevelNameShort(), m_pLeaderboard->GetMapName() ) == 0 && m_pLeaderboardListButton )
+					if ( V_strcmp( Portal2Engine::GetLevelNameShort(), m_pLeaderboard->GetMapName() ) == 0 && m_pLeaderboardListButton )
 					{
 						// If Glados is allowed to speak, and this is the end of the level, and cheats weren't detected
 						if( m_pLeaderboard->IsGladosAllowedToSpeak() && m_leaderboardState == STATE_END_OF_LEVEL && !m_bCheated )
@@ -1454,7 +1455,7 @@ void CPortalLeaderboardPanel::SetMapList()
 
 void CPortalLeaderboardPanel::SetNextMap()
 {
-	int nCurrentChapterNumber = CBaseModPanel::GetSingleton().MapNameToChapter( engine->GetLevelNameShort(), m_bSinglePlayerMode );
+	int nCurrentChapterNumber = CBaseModPanel::GetSingleton().MapNameToChapter( Portal2Engine::GetLevelNameShort(), m_bSinglePlayerMode );
 
 	KeyValues *pChallengeMapList = PortalLeaderboardManager()->GetChallengeMapsFromChapter( nCurrentChapterNumber, !m_bSinglePlayerMode );
 	if ( pChallengeMapList )
@@ -1463,7 +1464,7 @@ void CPortalLeaderboardPanel::SetNextMap()
 
 		for ( KeyValues *pCurrentMap = pChallengeMapList->GetFirstSubKey(); pCurrentMap != NULL; pCurrentMap = pCurrentMap->GetNextKey() )
 		{
-			if ( V_strcmp( engine->GetLevelNameShort(), pCurrentMap->GetString() ) != 0 )
+			if ( V_strcmp( Portal2Engine::GetLevelNameShort(), pCurrentMap->GetString() ) != 0 )
 			{
 				continue;
 			}
@@ -1528,7 +1529,7 @@ void CPortalLeaderboardPanel::SetNextMap()
 void CPortalLeaderboardPanel::ResetTempScoreUpdates( void )
 {
 	const char *pMap = CPortalLeaderboardManager::GetTempScoresMap();
-	if ( pMap && pMap[ 0 ] != '\0' && V_strcmp( pMap, engine->GetLevelNameShort() ) == 0 )
+	if ( pMap && pMap[ 0 ] != '\0' && V_strcmp( pMap, Portal2Engine::GetLevelNameShort() ) == 0 )
 	{
 		return;
 	}
@@ -1558,7 +1559,7 @@ static void __MsgFunc_ScoreboardTempUpdate( bf_read &msg )
 
 	g_nTimeScoreTempMostRecent = nTimeScore;
 
-	CPortalLeaderboardManager::SetTempScoresMap( engine->GetLevelNameShort() );
+	CPortalLeaderboardManager::SetTempScoresMap( Portal2Engine::GetLevelNameShort() );
 }
 USER_MESSAGE_REGISTER( ScoreboardTempUpdate );
 
@@ -1684,7 +1685,7 @@ void CPortalLeaderboardPanel::SetPanelStats()
 		int nSpecialScore = -1;
 		PortalLeaderboardItem_t tempUpdate;
 
-		if ( V_strcmp( engine->GetLevelNameShort(), m_pLeaderboard->GetMapName() ) == 0 )
+		if ( V_strcmp( Portal2Engine::GetLevelNameShort(), m_pLeaderboard->GetMapName() ) == 0 )
 		{
 			if ( g_nPortalScoreTempUpdate != -1 && m_CurrentLeaderboardType == LEADERBOARD_PORTAL )
 			{
@@ -2277,7 +2278,7 @@ bool CPortalLeaderboardPanel::IsMapLocked( int nChapterNumber, int nMapNumber, b
 
 bool CPortalLeaderboardPanel::IsInHub()
 {
-	return V_strcmp( engine->GetLevelNameShort(), "mp_coop_lobby_3" ) ? false : true;
+	return V_strcmp( Portal2Engine::GetLevelNameShort(), "mp_coop_lobby_3" ) ? false : true;
 }
 
 void CPortalLeaderboardPanel::OnMousePressed( vgui::MouseCode code )

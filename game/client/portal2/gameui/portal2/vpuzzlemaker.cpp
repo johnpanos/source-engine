@@ -22,6 +22,7 @@
 #include "engine/IEngineSound.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 
@@ -227,7 +228,7 @@ void CPuzzleMakerFrame::Paint( void )
 		int nSaveIndex = GET_ACTIVE_SPLITSCREEN_SLOT();
 		bool bSaveResolvable = engine->IsLocalPlayerResolvable();
 		engine->SetLocalPlayerIsResolvable( __FILE__, __LINE__, true );
-		engine->SetActiveSplitScreenPlayerSlot( 0 );
+		Portal2Engine::SetActiveSplitScreenPlayerSlot( 0 );
 		{
 			float flBlurFade = GetClientMode()->GetBlurFade();
 			if ( flBlurFade <= 0.0f )
@@ -241,7 +242,7 @@ void CPuzzleMakerFrame::Paint( void )
 				DoBlurFade( flBlurFade, 1.0f, 0, 0, viewSetup.width, viewSetup.height );
 			}
 		}
-		engine->SetActiveSplitScreenPlayerSlot( nSaveIndex );
+		Portal2Engine::SetActiveSplitScreenPlayerSlot( nSaveIndex );
 		engine->SetLocalPlayerIsResolvable( __FILE__, __LINE__, bSaveResolvable );
 	}
 }

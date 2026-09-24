@@ -711,6 +711,8 @@ public:
 	const char* GetNavDownName( void ) const { return m_sNavDownName.String(); }
 	const char* GetNavLeftName( void ) const { return m_sNavLeftName.String(); }
 	const char* GetNavRightName( void ) const { return m_sNavRightName.String(); }
+	void SetNavLeftName( const char *name ) { m_sNavLeftName = name; }
+	void SetNavRightName( const char *name ) { m_sNavRightName = name; }
 	const char* GetNavToRelayName( void ) const { return m_sNavToRelayName.String(); }
 	const char* GetNavActivateName( void ) const { return m_sNavActivateName.String(); }
 	const char* GetNavBackName( void ) const { return m_sNavBackName.String(); }

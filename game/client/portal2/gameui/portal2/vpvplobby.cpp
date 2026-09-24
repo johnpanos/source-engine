@@ -34,6 +34,7 @@ extern CGlobalVarsBase *gpGlobals;
 
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 using namespace vgui;
@@ -969,7 +970,7 @@ void PvpLobby::SetupLobbySettings( KeyValues *pSettings )
 
 	if ( IsPS3() )
 	{
-		// const AspectRatioInfo_t &aspectRatioInfo = materials->GetAspectRatioInfo();
+		// const AspectRatioInfo_t &aspectRatioInfo = Portal2_GetAspectRatioInfo();
 		// SetDialogTitle( NULL, L"", false, 0, 0, aspectRatioInfo.m_bIsWidescreen ? 10 : 10 );
 		SetDialogTitle( NULL, L"", false, 0, 0, 9 );
 	}

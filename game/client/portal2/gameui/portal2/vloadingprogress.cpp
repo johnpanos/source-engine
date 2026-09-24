@@ -20,6 +20,7 @@
 #include "filesystem.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 using namespace vgui;
@@ -46,6 +47,7 @@ LoadingProgress::LoadingProgress(Panel *parent, const char *panelName ):
 	m_flPeakProgress = 0.0f;
 
 	m_pWorkingAnim = NULL;
+	m_nWorkingAnimFrame = 0;
 	
 	// purposely not pre-caching the poster images
 	// as they do not appear in-game, and are 1MB each, we will demand load them and ALWAYS discard them
@@ -157,7 +159,7 @@ void LoadingProgress::UpdateWorkingAnim()
 		if ( ( m_flLastEngineTime + 0.1f ) < time )
 		{
 			m_flLastEngineTime = time;
-			m_pWorkingAnim->SetFrame( m_pWorkingAnim->GetFrame() + 1 );
+			m_pWorkingAnim->SetFrame( ++m_nWorkingAnimFrame );
 		}
 	}
 }
@@ -241,7 +243,7 @@ void LoadingProgress::PaintBackground()
 		int x, y, wide, tall;
 
 		m_pWorkingAnim->GetBounds( x, y, wide, tall );
-		m_pWorkingAnim->GetImage()->SetFrame( m_pWorkingAnim->GetFrame() );
+		m_pWorkingAnim->GetImage()->SetFrame( m_nWorkingAnimFrame );
 
 		surface()->DrawSetColor( Color( 255, 255, 255, 255 ) );
 		surface()->DrawSetTexture( m_pWorkingAnim->GetImage()->GetID() );
@@ -310,7 +312,7 @@ void LoadingProgress::SetupControlStates()
 		//Get the name of the current map
 		//For cases where pMapNameToLoad doesn't get the entire path of the map
 		//We need the entire path of the map to detect if we're loading a workshop or puzzlemaker map
-		const char *pszCurrentMapName = engine->GetLevelNameShort();
+		const char *pszCurrentMapName = Portal2Engine::GetLevelNameShort();
 		char szFixedCurrentMapName[MAX_PATH];
 		V_strncpy( szFixedCurrentMapName, pszCurrentMapName, ARRAYSIZE( szFixedCurrentMapName ) );
 		V_FixSlashes( szFixedCurrentMapName );
@@ -392,7 +394,7 @@ void LoadingProgress::SetupControlStates()
 		{
 			// coop
 			// the special coop movies allowed in commentary mode aren't supposed to transition, but exit to main menu
-			if ( !bTransitionFromMainMenu && !engine->IsInCommentaryMode() )
+			if ( !bTransitionFromMainMenu && !Portal2Engine::IsInCommentaryMode() )
 			{
 				// coop has a modal movie player, none of this presentation is desired
 				// prevent all the data load and rendering
@@ -434,12 +436,12 @@ void LoadingProgress::SetupControlStates()
 		{
 			// unrecognized portal2 map, default to single product screen
 			char startupImage[MAX_PATH];
-			engine->GetStartupImage( startupImage, sizeof( startupImage ) );
+			Portal2Engine::GetStartupImage( startupImage, sizeof( startupImage ) );
 			imageNames.AddToTail( startupImage );
 		}
 		else
 		{
-			const AspectRatioInfo_t &aspectRatioInfo = materials->GetAspectRatioInfo();
+			const AspectRatioInfo_t &aspectRatioInfo = Portal2_GetAspectRatioInfo();
 			// determine image sequence
 			CUtlString filename;
 			while ( 1 )
@@ -705,20 +707,15 @@ void LoadingProgress::DrawLoadingBar()
 	float flYellowDotS0 = 32.0f/64.0f;
 	float flDotWidth = 16.0f/64.0f;
 
-	DrawTexturedRectParms_t params;
-	params.y0 = m_nProgressY;
-	params.y1 = params.y0 + m_nProgressDotHeight;
+	int y0 = m_nProgressY;
+	int y1 = y0 + m_nProgressDotHeight;
 
 	// background
 	surface()->DrawSetColor( Color( 255, 255, 255, IsX360() ? 20 : 80 ) );
 	int dotX = m_nProgressX;
 	for ( int i = 0; i < m_nProgressNumDots; i++ )
 	{
-		params.x0 = dotX;
-		params.x1 = params.x0 + m_nProgressDotWidth;
-		params.s0 = flWhiteDotS0;
-		params.s1 = params.s0 + flDotWidth;
-		surface()->DrawTexturedRectEx( &params );
+		surface()->DrawTexturedSubRect( dotX, y0, dotX + m_nProgressDotWidth, y1, flWhiteDotS0, 0.0f, flWhiteDotS0 + flDotWidth, 1.0f );
 		dotX += m_nProgressDotWidth + m_nProgressDotGap;
 	}
 
@@ -728,11 +725,8 @@ void LoadingProgress::DrawLoadingBar()
 	dotX = m_nProgressX;
 	for ( int i = 0; i < nProgressDots; i++ )
 	{
-		params.x0 = dotX;
-		params.x1 = params.x0 + m_nProgressDotWidth;
-		params.s0 = ( nProgressDots == m_nProgressNumDots ) ? flYellowDotS0 : flBlueDotS0;
-		params.s1 = params.s0 + flDotWidth;
-		surface()->DrawTexturedRectEx( &params );
+		float texS = ( nProgressDots == m_nProgressNumDots ) ? flYellowDotS0 : flBlueDotS0;
+		surface()->DrawTexturedSubRect( dotX, y0, dotX + m_nProgressDotWidth, y1, texS, 0.0f, texS + flDotWidth, 1.0f );
 		dotX += m_nProgressDotWidth + m_nProgressDotGap;
 	}
 }

@@ -11,6 +11,8 @@
 
 namespace BaseModUI {
 
+extern int s_NavLock;
+
 class GenericPanelList;
 
 typedef bool __cdecl GPL_LHS_less_RHS(const vgui::Panel &item1, const vgui::Panel &item2);

@@ -74,6 +74,7 @@
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 
@@ -325,7 +326,7 @@ void CUIGameData::OnSetStorageDeviceId( int iController, uint nDeviceId )
 		m_pSelectStorageClient->OnDeviceFail( ISelectStorageDeviceClient::FAIL_NOT_SELECTED );
 		m_pSelectStorageClient = NULL;
 	}
-	else if ( IsX360() && xboxsystem && !xboxsystem->DeviceCapacityAdequate( iController, nDeviceId, engine->GetModDirectory() ) )
+	else if ( IsX360() && xboxsystem && !xboxsystem->DeviceCapacityAdequate( iController, nDeviceId, Portal2Engine::GetModDirectory() ) )
 	{
 		CloseWaitScreen( NULL, "ReportDeviceFull" );
 		m_pSelectStorageClient->OnDeviceFail( ISelectStorageDeviceClient::FAIL_FULL );
@@ -859,11 +860,11 @@ void CUIGameData::FinishPasswordUI( bool bOk )
 		{
 			char pw[ 256 ];
 			pwEntry->GetPassword( pw, sizeof( pw ) );
-			engine->SetConnectionPassword( pw );
+			Portal2Engine::SetConnectionPassword( pw );
 		}
 		else
 		{
-			engine->SetConnectionPassword( "" );
+			Portal2Engine::SetConnectionPassword( "" );
 		}
 	}
 }
@@ -2125,11 +2126,11 @@ void CUIGameData::OnEvent( KeyValues *pEvent )
 	else if ( !Q_stricmp( "OnSysInputDevicesChanged", szEvent ) )
 	{
 		unsigned int nInactivePlayers = 0;  // Number of users on the spectating team (ie. idle), or disconnected in this call
-		int iOldSlot = engine->GetActiveSplitScreenPlayerSlot();
+		int iOldSlot = Portal2Engine::GetActiveSplitScreenPlayerSlot();
 		int nDisconnectedDevices = pEvent->GetInt( "mask" );
 		for ( unsigned int nSlot = 0; nSlot < XBX_GetNumGameUsers(); ++nSlot, nDisconnectedDevices >>= 1 )
 		{
-			engine->SetActiveSplitScreenPlayerSlot( nSlot );
+			Portal2Engine::SetActiveSplitScreenPlayerSlot( nSlot );
 			
 			// See if this player is spectating (ie. idle)
 			bool bSpectator = IsActiveSplitScreenPlayerSpectating();
@@ -2149,7 +2150,7 @@ void CUIGameData::OnEvent( KeyValues *pEvent )
 				engine->ClientCmd( "go_away_from_keyboard" );
 			}
 		}
-		engine->SetActiveSplitScreenPlayerSlot( iOldSlot );
+		Portal2Engine::SetActiveSplitScreenPlayerSlot( iOldSlot );
 
 		// If all the spectators and all the disconnections account for all possible users, we need to pop a message
 		// Also, if the GameUI is up, always show the disconnection message
@@ -2183,7 +2184,7 @@ void CUIGameData::OnEvent( KeyValues *pEvent )
 				bShowDisconnectedMsgBox = false;
 		}
 
-		engine->HideLoadingPlaque(); // This may not go away unless we force it to hide
+		Portal2Engine::HideLoadingPlaque(); // This may not go away unless we force it to hide
 
 		// Go to the attract screen
 		CBaseModPanel::GetSingleton().CloseAllWindows( CBaseModPanel::CLOSE_POLICY_EVEN_MSGS );
@@ -2254,7 +2255,7 @@ void CUIGameData::OnEvent( KeyValues *pEvent )
 		//
 		// Go back to main menu and display the disconnection reason
 		//
-		engine->HideLoadingPlaque(); // This may not go away unless we force it to hide
+		Portal2Engine::HideLoadingPlaque(); // This may not go away unless we force it to hide
 
 		// Go to the main menu
 		CBaseModPanel::GetSingleton().CloseAllWindows( CBaseModPanel::CLOSE_POLICY_EVEN_MSGS );
@@ -2471,7 +2472,7 @@ void CUIGameData::OnEvent( KeyValues *pEvent )
 				return; // don't submit changelevel stats in coop, coop submits "session" stats
 		}
 
-		GameStats_ReportAction( engine->IsInCommentaryMode() ? "changelevelcomm" : "changelevel",
+		GameStats_ReportAction( Portal2Engine::IsInCommentaryMode() ? "changelevelcomm" : "changelevel",
 			pEvent->GetString( "map" ), pEvent->GetUint64( "elapsed" ) );
 	}
 	else if ( !Q_stricmp( "OnRequestMapRating", szEvent ) )

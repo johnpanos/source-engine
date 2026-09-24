@@ -153,7 +153,7 @@ void C_Trigger_TractorBeam::CreateParticles( void )
 	// Kill the old effect
 	if ( m_hCoreEffect )
 	{
-		ParticleProp()->StopEmission( m_hCoreEffect, false, false, false, true );
+		ParticleProp()->StopEmission( m_hCoreEffect, false, true );
 		m_hCoreEffect = NULL;
 	}
 
@@ -175,7 +175,7 @@ void C_Trigger_TractorBeam::CreateParticles( void )
 		m_hCoreEffect->SetControlPoint( 1, m_vEnd );
 		m_hCoreEffect->SetControlPointOrientation( 1, -vDir, vRight, vUp );
 
-		Vector vVelocity = Forward() * m_linearForce;
+		Vector vVelocity = vDir * m_linearForce;
 		m_hCoreEffect->SetControlPoint( 2, vVelocity );
 
 		// Reconstruction note: the direction colour is computed but the build passes the
@@ -212,7 +212,7 @@ void C_Trigger_TractorBeam::UpdateOnRemove( void )
 
 	if ( m_hCoreEffect )
 	{
-		ParticleProp()->StopEmission( m_hCoreEffect, false, false, false, true );
+		ParticleProp()->StopEmission( m_hCoreEffect, false, true );
 		m_hCoreEffect = NULL;
 	}
 
@@ -322,7 +322,6 @@ void C_Trigger_TractorBeam::StartTouch( C_BaseEntity *pOther )
 		C_BasePlayer *pPlayer = ToBasePlayer( pOther );
 		if ( pPlayer )
 		{
-			pPlayer->SetPhysicsFlag( PFLAG_VPHYSICS_MOTIONCONTROLLER, true );
 			pPlayer->m_Local.m_bSlowMovement = true;
 			pPlayer->SetGravity( FLT_MIN );
 		}
@@ -503,81 +502,12 @@ int C_Trigger_TractorBeam::DrawModel( int flags, const RenderableInstance_t &ins
 void C_Trigger_TractorBeam::GetToolRecordingState( KeyValues *msg )
 {
 	BaseClass::GetToolRecordingState( msg );
-
-	KeyValues *pKV = CIFM_EntityKeyValuesHandler_AutoRegister::FindOrCreateNonConformantKeyValues( msg );
-	pKV->SetString( CIFM_EntityKeyValuesHandler_AutoRegister::GetHandlerIDKeyString(), "C_Trigger_TractorBeam" );
-	pKV->SetInt( "entIndex", index );
-	pKV->SetFloat( "starttime", m_flStartTime );
-	pKV->SetInt( "reversed", m_bReversed );
-	pKV->SetFloat( "force", m_linearForce );
-
-	Vector vStart = GetStartPoint();
-	pKV->SetFloat( "sp_x", vStart.x );
-	pKV->SetFloat( "sp_y", vStart.y );
-	pKV->SetFloat( "sp_z", vStart.z );
-
-	Vector vEnd = GetEndPoint();
-	pKV->SetFloat( "ep_x", vEnd.x );
-	pKV->SetFloat( "ep_y", vEnd.y );
-	pKV->SetFloat( "ep_z", vEnd.z );
 }
 
-//-----------------------------------------------------------------------------
-// Purpose:
-//-----------------------------------------------------------------------------
 void C_Trigger_TractorBeam::RestoreToToolRecordedState( KeyValues *pKV )
 {
-	m_flStartTime = pKV->GetFloat( "starttime" );
-	m_bReversed = ( pKV->GetInt( "reversed" ) == 1 );
-	m_linearForce = pKV->GetFloat( "force" );
-	m_vStart.x = pKV->GetFloat( "sp_x" );
-	m_vStart.y = pKV->GetFloat( "sp_y" );
-	m_vStart.z = pKV->GetFloat( "sp_z" );
-	m_vEnd.x = pKV->GetFloat( "ep_x" );
-	m_vEnd.y = pKV->GetFloat( "ep_y" );
-	m_vEnd.z = pKV->GetFloat( "ep_z" );
-
-	SetSize( -Vector( 16384, 16384, 16384 ), Vector( 16384, 16384, 16384 ) );
-
-	m_pMaterial1 = materials->FindMaterial( "effects/tractor_beam", NULL, false );
-	m_pMaterial2 = materials->FindMaterial( "effects/tractor_beam2", NULL, false );
-	m_pMaterial3 = materials->FindMaterial( "effects/tractor_beam3", NULL, false );
+	(void)pKV;
 }
-
-class C_Trigger_TractorBeam_NonConformantDataHandler : public CIFM_EntityKeyValuesHandler_RecreateEntities
-{
-public:
-	C_Trigger_TractorBeam_NonConformantDataHandler( void )
-		: CIFM_EntityKeyValuesHandler_RecreateEntities( "C_Trigger_TractorBeam" )
-	{ }
-
-	virtual void *CreateInstance( void )
-	{
-		return new C_Trigger_TractorBeam;
-	}
-
-	virtual void DestroyInstance( void *pEntity )
-	{
-		C_Trigger_TractorBeam *pCastEntity = (C_Trigger_TractorBeam *)pEntity;
-		clienttools->RemoveClientRenderable( pCastEntity );
-		delete pCastEntity;
-	}
-
-	virtual void HandleInstance( void *pEntity, KeyValues *pKeyValues )
-	{
-		C_Trigger_TractorBeam *pCastEntity = (C_Trigger_TractorBeam *)pEntity;
-		pCastEntity->RestoreToToolRecordedState( pKeyValues );
-
-		if ( pCastEntity->RenderHandle() == INVALID_CLIENT_RENDER_HANDLE )
-		{
-			clienttools->AddClientRenderable( pCastEntity, false, RENDERABLE_IS_TRANSLUCENT );
-		}
-
-		clienttools->MarkClientRenderableDirty( pCastEntity );
-	}
-};
-
-static C_Trigger_TractorBeam_NonConformantDataHandler s_TractorBeamEntityIFMHandler;
 
 //-----------------------------------------------------------------------------
 // Purpose: The source effect aims at the end of the beam

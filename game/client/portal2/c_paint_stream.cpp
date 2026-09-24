@@ -21,6 +21,7 @@
 #include "viewrender.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 ConVar draw_paint_isosurface( "draw_paint_isosurface", "1", FCVAR_CHEAT );
@@ -166,7 +167,7 @@ void C_PaintStream::UpdateRenderBoundsAndOriginWorldspace()
 
 	m_iCachedWorldBoundsUpdateTick = gpGlobals->tickcount;
 
-	if ( engine->IsClientLocalToActiveServer() )
+	if ( Portal2Engine::IsClientLocalToActiveServer() )
 	{
 		// the listen server simulates the blobs, use its shared data
 		BlobDataVector_t blobData;
@@ -268,7 +269,7 @@ void C_PaintStream::DrawBlobs( IMaterial *pMaterial )
 	PortalMatrixList_t portalMatrixList;
 	BuildPortalMatrixListInAABB( m_vCachedRenderOrigin, 0.5f * ( m_vCachedWorldMaxs - m_vCachedWorldMins ), portalMatrixList );
 
-	if ( engine->IsClientLocalToActiveServer() )
+	if ( Portal2Engine::IsClientLocalToActiveServer() )
 	{
 		// the listen server simulates the blobs, draw its interpolated shared data
 		BlobDataVector_t blobData;
@@ -402,7 +403,7 @@ int C_PaintStream::DrawModel( int flags, const RenderableInstance_t &instance )
 	if ( !m_bReadyToDraw )
 		return 0;
 
-	if ( m_blobs.Count() == 0 && !engine->IsClientLocalToActiveServer() )
+	if ( m_blobs.Count() == 0 && !Portal2Engine::IsClientLocalToActiveServer() )
 		return 0;
 
 	IMaterial *pMaterial = materials->FindMaterial( PaintStreamManager.GetPaintMaterialName( m_nPaintType ), TEXTURE_GROUP_OTHER, true );
@@ -432,7 +433,7 @@ void C_PaintStream::Update()
 		return;
 
 	// the listen server simulates the blobs
-	if ( !engine->IsClientLocalToActiveServer() && m_blobs.Count() != 0 )
+	if ( !Portal2Engine::IsClientLocalToActiveServer() && m_blobs.Count() != 0 )
 	{
 		RemoveDeadBlobs();
 		DebugDrawBlobs();

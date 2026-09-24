@@ -151,5 +151,6 @@ public:
 };	
 
 extern IClientMode *g_pClientMode;
+IClientMode *GetClientMode();
 
 #endif

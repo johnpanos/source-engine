@@ -15,6 +15,7 @@
 
 #if defined( CLIENT_DLL )
 #include "c_portal_player.h"
+#include "portal2_engine_compat.h"
 #else
 #include "portal_player.h"
 #include "portal_physics_collisionevent.h"
@@ -25,7 +26,7 @@
 #include "prediction.h"
 #else
 #include "env_debughistory.h"
-#include "portal/weapon_physcannon.h"
+#include "portal_grabcontroller_shared.h"
 #include "physics_bone_follower.h"
 #include "projectedwallentity.h"
 #include "portal_physics_collisionevent.h"
@@ -47,7 +48,7 @@ void MobilePortalsUpdatedCallback( IConVar *var, const char *pOldValue, float fl
 	if ( !bCheatsAllowed )
 	{
 #ifdef CLIENT_DLL
-		if ( V_stricmp( engine->GetLevelNameShort(), "sp_a2_bts5" ) == 0 )
+		if ( V_stricmp( Portal2Engine::GetLevelNameShort(), "sp_a2_bts5" ) == 0 )
 #else
 		if ( V_stricmp( gpGlobals->mapname.ToCStr(), "sp_a2_bts5" ) == 0 )
 #endif

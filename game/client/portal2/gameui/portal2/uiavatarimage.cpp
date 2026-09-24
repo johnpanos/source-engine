@@ -134,7 +134,7 @@ void CGameUiAvatarImage::InitFromRGBA( const byte *rgba, int width, int height )
 	m_iTextureID = vgui::surface()->CreateNewTextureID( true );
 
 	if ( rgba )
-		vgui::surface()->DrawSetTextureRGBA( m_iTextureID, rgba, width, height );
+		vgui::surface()->DrawSetTextureRGBAEx( m_iTextureID, rgba, width, height, IMAGE_FORMAT_RGBA8888 );
 	else
 		vgui::surface()->DrawSetTextureFile( m_iTextureID, "icon_lobby", true, false );
 

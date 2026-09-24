@@ -19,6 +19,7 @@
 #include "vgenericconfirmation.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 using namespace vgui;
@@ -373,7 +374,7 @@ void ControllerOptionsButtons::OnKeyCodePressed(KeyCode code)
 					pPanel->NavigateFrom();
 				}
 
-				m_pCustomBindList->NavigateTo();
+				m_pCustomBindList->RequestFocus();
 				m_pCustomBindList->ResetToTop();
 				UpdateFooter();
 			}
@@ -657,12 +658,12 @@ void ControllerOptionsButtons::OnCommand( const char *pCommand )
 					joy_cfg_preset.SetValue( i + 1 );
 				}
 
-				int iOldSlot = engine->GetActiveSplitScreenPlayerSlot();
-				engine->SetActiveSplitScreenPlayerSlot( m_iActiveUserSlot );
+				int iOldSlot = Portal2Engine::GetActiveSplitScreenPlayerSlot();
+				Portal2Engine::SetActiveSplitScreenPlayerSlot( m_iActiveUserSlot );
 
 				engine->ExecuteClientCmd( pszButtonSettingConfigs[i] );
 
-				engine->SetActiveSplitScreenPlayerSlot( iOldSlot );
+				Portal2Engine::SetActiveSplitScreenPlayerSlot( iOldSlot );
 
 				m_nRecalculateLabelsTicks = 1; // used to delay polling the values until we've flushed the command buffer
 

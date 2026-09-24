@@ -448,7 +448,7 @@ void CTrigger_TractorBeam::CalculateFrameMovement( IPhysicsObject *pObject, CBas
 
 		float flAirControlMod = 1.0f;
 
-		const CUserCmd *ucmd = pPlayer->GetLastUserCommand();
+		const CUserCmd *ucmd = pPlayer->GetCurrentUserCommand();
 		if ( ucmd && !m_bDisablePlayerMove )
 		{
 			vSubDir = ( vForward * ucmd->forwardmove ) + ( vRight * ucmd->sidemove ) + ( vUp * ucmd->upmove );
@@ -489,7 +489,7 @@ void CTrigger_TractorBeam::CalculateFrameMovement( IPhysicsObject *pObject, CBas
 
 		if ( m_bDisablePlayerMove )
 		{
-			pPlayer->ForceButtons( IN_DUCK );
+			pPlayer->m_nButtons |= IN_DUCK;
 			pPlayer->SetGroundEntity( NULL );
 		}
 

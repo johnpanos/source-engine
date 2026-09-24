@@ -31,6 +31,7 @@
 #include "materialsystem/imesh.h"
 #include "materialsystem/imaterialsystemhardwareconfig.h"
 #include "render/legacy_shader_provider.h"
+#include "renderparm.h"
 #include "shaderapi/ishaderapi.h"
 #include "shaderapi/IShaderDevice.h"
 #include "shaderapi/ishadershadow.h"
@@ -39,6 +40,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
@@ -102,6 +104,43 @@ int main()
 	    "material hardware config reports the selected device's bounded texture limit" );
 	check( services.hardware->MaximumAnisotropicLevel() == ctx->MaxAnisotropicLevel(),
 	    "material hardware config reports the selected device's anisotropic level" );
+
+	// Shader helper code reads these parameters back within the same material
+	// pass. Keep the three register banks independent and reject invalid slots.
+	const int slot = INT_RENDERPARM_ENABLE_FIXED_LIGHTING;
+	check( services.api->GetFloatRenderingParameter( slot ) == 0.0f &&
+	           services.api->GetIntRenderingParameter( slot ) == 0 &&
+	           services.api->GetVectorRenderingParameter( slot ) == Vector( 0, 0, 0 ),
+	    "rendering parameters start at zero" );
+	services.api->SetFloatRenderingParameter( slot, 0.625f );
+	services.api->SetIntRenderingParameter( slot, ENABLE_FIXED_LIGHTING_BASICLIGHT );
+	services.api->SetVectorRenderingParameter( slot, Vector( 1.0f, 2.0f, 3.0f ) );
+	check( services.api->GetFloatRenderingParameter( slot ) == 0.625f &&
+	           services.api->GetIntRenderingParameter( slot ) == ENABLE_FIXED_LIGHTING_BASICLIGHT &&
+	           services.api->GetVectorRenderingParameter( slot ) == Vector( 1.0f, 2.0f, 3.0f ),
+	    "float, int, and vector rendering parameters retain independent values" );
+	services.api->SetFloatRenderingParameter( MAX_FLOAT_RENDER_PARMS - 1, 0.75f );
+	services.api->SetIntRenderingParameter( MAX_INT_RENDER_PARMS - 1, 9 );
+	services.api->SetVectorRenderingParameter(
+	    MAX_VECTOR_RENDER_PARMS - 1, Vector( 4.0f, 5.0f, 6.0f ) );
+	check( services.api->GetFloatRenderingParameter( MAX_FLOAT_RENDER_PARMS - 1 ) == 0.75f &&
+	           services.api->GetIntRenderingParameter( MAX_INT_RENDER_PARMS - 1 ) == 9 &&
+	           services.api->GetVectorRenderingParameter( MAX_VECTOR_RENDER_PARMS - 1 ) ==
+	               Vector( 4.0f, 5.0f, 6.0f ),
+	    "last valid rendering parameter slots work" );
+	services.api->SetFloatRenderingParameter( -1, 5.0f );
+	services.api->SetIntRenderingParameter( MAX_INT_RENDER_PARMS, 5 );
+	services.api->SetVectorRenderingParameter( -1, Vector( 9.0f, 9.0f, 9.0f ) );
+	check( services.api->GetFloatRenderingParameter( -1 ) == 0.0f &&
+	           services.api->GetIntRenderingParameter( MAX_INT_RENDER_PARMS ) == 0 &&
+	           services.api->GetVectorRenderingParameter( -1 ) == Vector( 0, 0, 0 ) &&
+	           services.api->GetFloatRenderingParameter( slot ) == 0.625f,
+	    "invalid rendering parameter slots do not alter valid state" );
+	check(
+	    std::abs( services.api->GammaToLinear_HardwareSpecific( 0.5f ) - 0.21404114f ) < 0.00001f &&
+	        std::abs( services.api->LinearToGamma_HardwareSpecific( 0.21404114f ) - 0.5f ) <
+	            0.00001f,
+	    "hardware-specific color conversions use the PC sRGB transfer curve" );
 
 	// render.display-modes.v1: modes come from the launcher's desktop display.
 	// This composition has no launcher, so the manager offers no modes and no

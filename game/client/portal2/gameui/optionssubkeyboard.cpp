@@ -33,6 +33,7 @@
 #include "gameui_util.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 using namespace vgui;
@@ -60,7 +61,7 @@ COptionsSubKeyboard::COptionsSubKeyboard(vgui::Panel *parent) : PropertyPage(par
 		}
 		else
 		{
-			m_nSplitScreenUser = MAX( 0, engine->GetActiveSplitScreenPlayerSlot() );
+			m_nSplitScreenUser = MAX( 0, Portal2Engine::GetActiveSplitScreenPlayerSlot() );
 		}
 	}
 

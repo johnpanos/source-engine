@@ -33,6 +33,7 @@
 #include "c_community_coop.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 //--------------------------------------------------------------------------------------------------------------
@@ -2132,7 +2133,7 @@ void CommunityMapDialog::ConfirmOverwriteSaveGame()
 	}
 	CUIGameData::Get()->GameStats_ReportAction(
 		m_SaveGameInfos.IsValidIndex( m_nSaveGameToOverwrite ) ? "saveover" : "savenew",
-		engine->GetLevelNameShort(), uiNumSaveGames );
+		Portal2Engine::GetLevelNameShort(), uiNumSaveGames );
 
 	if ( m_SaveGameInfos.IsValidIndex( m_nSaveGameToOverwrite ) )
 	{
@@ -2162,7 +2163,7 @@ void CommunityMapDialog::ConfirmOverwriteSaveGame()
 		char fullSaveFilename[MAX_PATH];
 		char comment[MAX_PATH];
 
-		m_bSaveInProgress = engine->SaveGame( 
+		m_bSaveInProgress = Portal2Engine::SaveGame( 
 			savename.Get(), 
 			IsX360(), 
 			fullSaveFilename, 

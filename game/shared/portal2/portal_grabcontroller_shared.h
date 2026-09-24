@@ -236,6 +236,7 @@ public:
 	EHANDLE m_hOriginal;
 	int m_nOldSkin;
 	bool m_bOnOppositeSideOfPortal;
+	bool m_bIsViewModel;
 
 	C_PlayerHeldObjectClone *m_pVMToFollow;
 	Vector m_vPlayerRelativeOrigin; //Interpolators causing too much grief, just store render origin relative to the player's eye origin/angles and reconstruct world position when asked

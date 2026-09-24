@@ -153,7 +153,8 @@ void C_NPC_Personality_Core::ClientThink( void )
 			m_pFlashlightEffect = ParticleProp()->Create( "flashlight_thirdperson", PATTACH_POINT_FOLLOW, iAttachment );
 			ParticleProp()->AddControlPoint( m_pFlashlightEffect, 1, this, PATTACH_CUSTOMORIGIN );
 			ParticleProp()->AddControlPoint( m_pFlashlightEffect, 2, this, PATTACH_CUSTOMORIGIN );
-			ParticleProp()->AddControlPoint( m_pFlashlightEffect, 3, C_BasePlayer::GetLocalPlayer(), PATTACH_EYES_FOLLOW );
+			ParticleProp()->AddControlPoint(
+			    m_pFlashlightEffect, 3, C_BasePlayer::GetLocalPlayer(), PATTACH_ABSORIGIN_FOLLOW );
 		}
 
 		if ( m_pFlashlightEffect )
@@ -174,7 +175,6 @@ void C_NPC_Personality_Core::ClientThink( void )
 			m_pELight->flags = DLIGHT_NO_WORLD_ILLUMINATION;
 			m_pELight->radius = 64.0f;
 			m_pELight->style = 0;
-			m_pELight->m_pExclusiveLightReceiver = this;
 			m_pELight->color.r = 225;
 			m_pELight->color.g = 225;
 			m_pELight->color.b = 255;

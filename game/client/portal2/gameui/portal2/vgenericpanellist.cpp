@@ -23,6 +23,8 @@
 using namespace vgui;
 using namespace BaseModUI;
 
+int BaseModUI::s_NavLock = 0;
+
 
 //just passes all navigation up to it's parent
 class Panel_PassNavigationToParent : public vgui::Panel

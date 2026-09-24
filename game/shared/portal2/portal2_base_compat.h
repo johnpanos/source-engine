@@ -21,6 +21,50 @@
 
 #include "tier0/platform.h"
 
+class IMatchFramework;
+extern IMatchFramework *g_pMatchFramework;
+
+#ifndef FCVAR_RELEASE
+#define FCVAR_RELEASE FCVAR_NONE
+#endif
+#ifndef PRI_WS_FOR_WS
+#define PRI_WS_FOR_WS L"%ls"
+#endif
+#ifndef Q_snwprintf
+#define Q_snwprintf V_snwprintf
+#endif
+#ifndef KEY_XBUTTON_INACTIVE_START
+#define KEY_XBUTTON_INACTIVE_START KEY_XBUTTON_START
+#endif
+#ifndef PATTACH_EYES_FOLLOW
+#define PATTACH_EYES_FOLLOW PATTACH_POINT_FOLLOW
+#endif
+#ifndef PLATFORM_EXT
+#define PLATFORM_EXT ".so"
+#endif
+#ifndef MAX_RICHPRESENCE_SIZE
+#define MAX_RICHPRESENCE_SIZE 256
+#endif
+#ifndef IsCert
+#define IsCert() false
+#endif
+#ifndef DOT_45DEGREE
+#define DOT_45DEGREE 0.70710678118f
+#endif
+#ifndef DOT_30DEGREE
+#define DOT_30DEGREE 0.86602540378f
+#endif
+
+template <typename TraceType>
+inline void UTIL_ClearTrace( TraceType &trace )
+{
+	memset( &trace, 0, sizeof( trace ) );
+	trace.fraction = 1.0f;
+}
+#ifndef EF_MARKED_FOR_FAST_REFLECTION
+#define EF_MARKED_FOR_FAST_REFLECTION 0
+#endif
+
 #ifndef TEMPLATE_STATIC
 #define TEMPLATE_STATIC
 #endif

@@ -36,7 +36,9 @@ private:
 
 public:
 	unsigned char m_iPortalLinkageGroupID; //which portal linkage group this gun is tied to, usually set by mapper, or inherited from owning player's index
-	
+	unsigned char GetLinkageGroupID( void ) const { return m_iPortalLinkageGroupID; }
+	void SetLinkageGroupID( unsigned char id ) { m_iPortalLinkageGroupID = id; }
+
 	// HACK HACK! Used to make the gun visually change when going through a cleanser!
 	CNetworkVar( float,	m_fEffectsMaxSize1 );
 	CNetworkVar( float,	m_fEffectsMaxSize2 );

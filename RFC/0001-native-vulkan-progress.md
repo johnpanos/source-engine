@@ -1,6 +1,6 @@
 # RFC 0001 native Vulkan backend progress
 
-Updated: 2026-09-22
+Updated: 2026-09-24
 
 This record tracks the *native* Vulkan material backend (`shaderapivulkan`),
 distinct from the DXVK compatibility waypoint documented in
@@ -1692,3 +1692,20 @@ Evidence:
 - Not covered: X11 content scale, macOS/iOS/Android display scales, the
   D3D9/DXVK tree (neither built nor run), and SDL2 (`sdlmgr.cpp` reports 1 and
   was not compiled in this profile).
+
+## Shader rendering parameters and PC color conversion (2026-09-24)
+
+The native `IShaderAPI` now retains the float, int, and vector rendering
+parameters in separate bounded arrays, with zero defaults and zero results for
+invalid indices. This matches the D3D9 state contract used by shader helpers
+for fixed lighting, morph offsets, and other per-pass decisions; previously
+every setter discarded the value and every getter returned zero. The
+hardware-specific gamma conversion entry points now use the same PC sRGB
+transfer functions as D3D9, rather than returning zero.
+
+The material-facing Vulkan suite exercises all three parameter banks, their
+last valid slots, invalid indices, and an sRGB midpoint round trip. It passed
+on the native GPU runner: 25 checks, 0 failures. The backend and suite built
+with the existing native Vulkan Waf profile. This slice establishes state
+round trips; it does not claim that fixed-lighting or morph shader variants
+render correctly yet.

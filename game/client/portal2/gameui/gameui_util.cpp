@@ -12,6 +12,7 @@
 #include "EngineInterface.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 using namespace vgui;
@@ -192,12 +193,12 @@ bool CGameUIConVarRef::IsValid() const
 
 CGameUiSetActiveSplitScreenPlayerGuard::CGameUiSetActiveSplitScreenPlayerGuard( int slot )
 {
-	m_nSaveSlot = engine->GetActiveSplitScreenPlayerSlot();
-	engine->SetActiveSplitScreenPlayerSlot( slot );
+	m_nSaveSlot = Portal2Engine::GetActiveSplitScreenPlayerSlot();
+	Portal2Engine::SetActiveSplitScreenPlayerSlot( slot );
 }
 
 CGameUiSetActiveSplitScreenPlayerGuard::~CGameUiSetActiveSplitScreenPlayerGuard()
 {
-	engine->SetActiveSplitScreenPlayerSlot( m_nSaveSlot );
+	Portal2Engine::SetActiveSplitScreenPlayerSlot( m_nSaveSlot );
 }
 

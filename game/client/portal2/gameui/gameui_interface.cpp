@@ -119,6 +119,7 @@ inline UI_BASEMOD_PANEL_CLASS & ConstructUiBaseModPanelClass() { return *BasePan
 #include "gameui_util.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 IEngineVGui *enginevguifuncs = NULL;
@@ -537,7 +538,7 @@ void CGameUI::ActivateGameUI()
 {
 	engine->ExecuteClientCmd("gameui_activate");
 	// Lock the UI to a particular player
-	SetGameUIActiveSplitScreenPlayerSlot( engine->GetActiveSplitScreenPlayerSlot() );
+	SetGameUIActiveSplitScreenPlayerSlot( Portal2Engine::GetActiveSplitScreenPlayerSlot() );
 }
 
 //-----------------------------------------------------------------------------
@@ -576,7 +577,7 @@ void CGameUI::OnGameUIActivated()
 	// Lock the UI to a particular player
 	if ( !bWasActive )
 	{
-		SetGameUIActiveSplitScreenPlayerSlot( engine->GetActiveSplitScreenPlayerSlot() );
+		SetGameUIActiveSplitScreenPlayerSlot( Portal2Engine::GetActiveSplitScreenPlayerSlot() );
 	}
 
 	// pause the server in case it is pausable

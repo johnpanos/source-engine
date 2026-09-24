@@ -128,6 +128,7 @@
 #endif // PORTAL2_PUZZLEMAKER
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 static LoggingFileHandle_t s_WorkshopLogHandle;
@@ -3006,7 +3007,7 @@ void CBaseModPanel::CalculateMovieParameters( BIKMaterial_t hBIKMaterial, bool b
 		return;
 	}
 
-	const AspectRatioInfo_t &aspectRatioInfo = materials->GetAspectRatioInfo();
+	const AspectRatioInfo_t &aspectRatioInfo = Portal2_GetAspectRatioInfo();
 	float flPhysicalFrameRatio = aspectRatioInfo.m_flFrameBuffertoPhysicalScalar * ( ( float ) GetWide() / ( float ) GetTall() );
 
 	// Assume that the video is authored for square pixels.
@@ -3565,7 +3566,7 @@ void CBaseModPanel::PostChildPaint()
 		// only the background images (first frame movie snap) that overlay the movies need to adjust their texcoords to match the movie
 		if ( m_iBackgroundImageID != -1 && m_iFadeOutOverlayImageID == m_iBackgroundImageID )
 		{
-			const AspectRatioInfo_t &aspectRatioInfo = materials->GetAspectRatioInfo();
+			const AspectRatioInfo_t &aspectRatioInfo = Portal2_GetAspectRatioInfo();
 			float sMin, tMin, sMax, tMax;
 
 			// needs to match image aspect ratio (known to be either 16:9 or 4:3), resolved in SelectBackgroundPresentation()
@@ -4150,7 +4151,7 @@ void CBaseModPanel::SelectBackgroundPresentation()
 	nAct = clamp( nAct, 1, nMaxActs );
 	m_nCurrentActPresentation = nAct;
 
-	const AspectRatioInfo_t &aspectRatioInfo = materials->GetAspectRatioInfo();
+	const AspectRatioInfo_t &aspectRatioInfo = Portal2_GetAspectRatioInfo();
 	bool bIsWidescreen = aspectRatioInfo.m_bIsWidescreen;
 
 	// get the substitute movie image, matched to the movie chosen
@@ -4943,7 +4944,7 @@ bool CBaseModPanel::QueueHistoryReady( void ) const
 	if( GetCommunityMapQueueMode() == QUEUEMODE_COOP_QUICK_PLAY )
 	{
 		// In community coop quickplay, we're only ready if we have BOTH histories
-		if ( engine->IsClientLocalToActiveServer() )
+		if ( Portal2Engine::IsClientLocalToActiveServer() )
 			return m_bQueueHistoryReady && g_CommunityCoopManager.HasPartnerHistory();
 		else
 			return m_bQueueHistoryReady;

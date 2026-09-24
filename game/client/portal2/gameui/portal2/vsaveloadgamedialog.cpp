@@ -23,6 +23,7 @@
 #include "cegclientwrapper.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 #if defined( _GAMECONSOLE )
@@ -1196,7 +1197,7 @@ void SaveLoadGameDialog::ScreenshotLoaded( const FileAsyncRequest_t &asyncReques
 				m_nSaveGameScreenshotId = vgui::surface()->CreateNewTextureID( true );
 			}
 
-			surface()->DrawSetTextureRGBALinear( m_nSaveGameScreenshotId, rawBuffer.Base(), nWidth, nHeight );
+			surface()->DrawSetTextureRGBAEx( m_nSaveGameScreenshotId, rawBuffer.Base(), nWidth, nHeight, IMAGE_FORMAT_RGBA8888 );
 			nSaveGameImageId = m_nSaveGameScreenshotId;
 		}
 	}
@@ -1675,7 +1676,7 @@ void SaveLoadGameDialog::ConfirmOverwriteSaveGame()
 	}
 	CUIGameData::Get()->GameStats_ReportAction(
 		m_SaveGameInfos.IsValidIndex( m_nSaveGameToOverwrite ) ? "saveover" : "savenew",
-		engine->GetLevelNameShort(), uiNumSaveGames );
+		Portal2Engine::GetLevelNameShort(), uiNumSaveGames );
 
 	if ( m_SaveGameInfos.IsValidIndex( m_nSaveGameToOverwrite ) )
 	{
@@ -1705,7 +1706,7 @@ void SaveLoadGameDialog::ConfirmOverwriteSaveGame()
 		char fullSaveFilename[MAX_PATH];
 		char comment[MAX_PATH];
 
-		m_bSaveInProgress = engine->SaveGame( 
+		m_bSaveInProgress = Portal2Engine::SaveGame( 
 			savename.Get(), 
 			IsX360(), 
 			fullSaveFilename, 
@@ -2017,7 +2018,7 @@ void SaveLoadGameDialog::DeleteAndCommit()
 			++ uiNumSaveGames;
 		}
 	}
-	CUIGameData::Get()->GameStats_ReportAction( "savedel", engine->GetLevelNameShort(), uiNumSaveGames );
+	CUIGameData::Get()->GameStats_ReportAction( "savedel", Portal2Engine::GetLevelNameShort(), uiNumSaveGames );
 
 	m_DeleteFilename = m_SaveGameInfos[m_nSaveGameToDelete].m_FullFilename.Get();
 	m_ScreenshotFilename = m_SaveGameInfos[m_nSaveGameToDelete].m_ScreenshotFilename.Get();

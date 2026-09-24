@@ -43,6 +43,7 @@
 #endif // PORTAL2_PUZZLEMAKER
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 using namespace vgui;
@@ -124,7 +125,7 @@ InGameMainMenu::InGameMainMenu( Panel *parent, const char *panelName ):
 	{
 		m_pResourceLoadConditions->SetInt( "?communitymap", 1 );
 
-		if( engine->IsClientLocalToActiveServer() )
+		if( Portal2Engine::IsClientLocalToActiveServer() )
 		{
 			if( BASEMODPANEL_SINGLETON.IsQuickplay() )
 			{
@@ -333,7 +334,7 @@ static void LoadLastSaveOkCallback()
 		}
 
 		const char *szMostRecentSave = engine->GetMostRecentSaveGame( true );
-		CUIGameData::Get()->GameStats_ReportAction( "loadlast", engine->GetLevelNameShort(), !!( szMostRecentSave && szMostRecentSave[0] ) );
+		CUIGameData::Get()->GameStats_ReportAction( "loadlast", Portal2Engine::GetLevelNameShort(), !!( szMostRecentSave && szMostRecentSave[0] ) );
 
 		engine->ExecuteClientCmd( "load_recent_checkpoint" );
 	}
@@ -706,7 +707,7 @@ void InGameMainMenu::OnCommand( const char *command )
 		// check if in the hub
 		bool bInHub = false;
 		bool bMultiplayer = GameRules() && GameRules()->IsMultiplayer();
-		if ( bMultiplayer && V_stricmp("mp_coop_lobby_3", engine->GetLevelNameShort() ) == 0 )
+		if ( bMultiplayer && V_stricmp("mp_coop_lobby_3", Portal2Engine::GetLevelNameShort() ) == 0 )
 		{
 			bInHub = true;
 		}
@@ -1371,7 +1372,7 @@ void InGameMainMenu::OnThink()
 	{
 		m_pResourceLoadConditions->SetInt( "?communitymap", 1 );
 
-		if( BASEMODPANEL_SINGLETON.IsQuickplay() && engine->IsClientLocalToActiveServer() )
+		if( BASEMODPANEL_SINGLETON.IsQuickplay() && Portal2Engine::IsClientLocalToActiveServer() )
 		{
 			int nPreValue = m_pResourceLoadConditions->GetInt( "?communitymap_hasnextmap" );
 
@@ -1589,9 +1590,9 @@ void InGameMainMenu::SetFooterState()
 void InGameMainMenu::UpdateSaveState()
 {
 	// save is disabled in commentary mode
-	bool bInCommentary = engine->IsInCommentaryMode();
+	bool bInCommentary = Portal2Engine::IsInCommentaryMode();
 	bool bNoSavesAllowed = bInCommentary || 
-		( V_stristr( engine->GetLevelNameShort(), "sp_a5_credits" ) != NULL );
+		( V_stristr( Portal2Engine::GetLevelNameShort(), "sp_a5_credits" ) != NULL );
 #if defined( _GAMECONSOLE )
 	if ( XBX_GetPrimaryUserIsGuest() )
 	{

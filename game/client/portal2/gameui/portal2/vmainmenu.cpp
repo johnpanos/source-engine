@@ -303,7 +303,7 @@ CEG_NOINLINE void MainMenu::OnCommand( const char *command )
 	{
 		m_szPreferredControlName = "BtnCoOp";
 
-		if ( !IsGameConsole() || g_pFullFileSystem->IsSpecificDLCPresent( 1 ) )
+		if ( !IsGameConsole() || false )
 		{
 			// They have the DLC!
 			MsgOpenCoopMode();

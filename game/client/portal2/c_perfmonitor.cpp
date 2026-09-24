@@ -16,6 +16,7 @@
 #include <time.h>
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 void cl_perfmon_frames_to_average_changed_f( IConVar *var, const char *pOldValue, float flOldValue );
@@ -127,7 +128,7 @@ void C_PerfMonitor::LevelShutdownPreEntity( void )
 
 	char strTemp[2048];
 	V_snprintf( strTemp, sizeof( strTemp ), "<MapEndNode map=\"%s\" timesubmitted=\"%llu\" totalframes=\"%i\" minframe=\"%f\" peakframe=\"%f\" avgframe=\"%f\"/>",
-		engine->GetLevelNameShort(), GetLocalTimeInSeconds(), m_uTotalFrames, m_fMinFrametime, m_fPeakFrametime,
+		Portal2Engine::GetLevelNameShort(), GetLocalTimeInSeconds(), m_uTotalFrames, m_fMinFrametime, m_fPeakFrametime,
 		(double)m_uTotalFrames / ( Plat_FloatTime() - m_fLevelStartTime ) );
 	SendPerfMsg( strTemp );
 }
@@ -191,7 +192,7 @@ void C_PerfMonitor::Update( float frametime )
 
 		char szLowFrameMsg[2048];
 		int iCurrChar = V_snprintf( szLowFrameMsg, sizeof( szLowFrameMsg ), "<LowFrameNode map=\"%s\" timesubmitted=\"%llu\" framerate=\"%f\" frame=\"%i\">\n",
-			engine->GetLevelNameShort(), GetLocalTimeInSeconds(), fSMAFramerate, m_uTotalFrames );
+			Portal2Engine::GetLevelNameShort(), GetLocalTimeInSeconds(), fSMAFramerate, m_uTotalFrames );
 
 		FOR_EACH_VALID_SPLITSCREEN_PLAYER( hh )
 		{

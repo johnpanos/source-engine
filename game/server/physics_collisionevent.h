@@ -115,6 +115,7 @@ public:
 	bool GetInflictorVelocity( IPhysicsObject *pInflictor, Vector &velocity, AngularImpulse &angVelocity );
 
 	void GetListOfPenetratingEntities( CBaseEntity *pSearch, CUtlVector<CBaseEntity *> &list );
+	void RemovePenetrationEvents( CBaseEntity *pEntity );
 	bool IsInCallback() { return m_inCallback > 0 ? true : false; }
 
 private:

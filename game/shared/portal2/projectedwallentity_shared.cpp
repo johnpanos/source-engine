@@ -9,6 +9,7 @@
 #include "c_projectedwallentity.h"
 #include "c_portal_player.h"
 #include "c_physicsprop.h"
+#include "portal2_engine_compat.h"
 #define CPhysicsProp C_PhysicsProp
 #else
 #include "projectedwallentity.h"
@@ -27,6 +28,27 @@ ConVar wall_debug_time("wall_debug_time", "5.f");
 ConVar wall_debug("wall_debug", "0");
 #endif
 
+class CTraceFilterOnlyHitThis : public CTraceFilter
+{
+public:
+	explicit CTraceFilterOnlyHitThis( const IHandleEntity *pTarget ) : m_pTarget( pTarget ) {}
+	bool ShouldHitEntity( IHandleEntity *pEntity, int ) { return pEntity == m_pTarget; }
+	TraceType_t GetTraceType() const { return TRACE_ENTITIES_ONLY; }
+
+private:
+	const IHandleEntity *m_pTarget;
+};
+
+static void Portal2_TeleportProjectedEntity(
+    CBaseEntity *pEntity, const Vector *pOrigin, const QAngle *pAngles, const Vector *pVelocity )
+{
+#if defined( CLIENT_DLL )
+	Portal2_ClientTeleport( pEntity, pOrigin, pAngles, pVelocity );
+#else
+	pEntity->Teleport( pOrigin, pAngles, pVelocity );
+#endif
+}
+
 ConVar debug_paintable_projected_wall("debug_paintable_projected_wall", "0", FCVAR_REPLICATED);
 ConVar sv_thinnerprojectedwalls( "sv_thinnerprojectedwalls", "0", FCVAR_CHEAT | FCVAR_REPLICATED );
 
@@ -34,7 +56,12 @@ void CProjectedWallEntity::Touch( CBaseEntity* pOther )
 {
 	//Check if the touched entity is a paint power user
 	IPaintPowerUser* pPowerUser = dynamic_cast< IPaintPowerUser* >( pOther );
-	if( engine->HasPaintmap() && pPowerUser )
+#if defined( CLIENT_DLL )
+	const bool bHasPaintmap = Portal2Engine::HasPaintmap();
+#else
+	const bool bHasPaintmap = false; // The SDK server has no paint map service.
+#endif
+	if ( bHasPaintmap && pPowerUser )
 	{
 		//Get the up vector of the wall
 		Vector vecWallUp;
@@ -207,7 +234,7 @@ void CProjectedWallEntity::DisplaceObstructingEntity( CBaseEntity *pEntity, bool
 
 	CTraceFilterOnlyHitThis filter( pEntity );
 	trace_t tr;
-	UTIL_TraceRay( ray, MASK_ALL, &filter, &tr );
+	enginetrace->TraceRay( ray, MASK_ALL, &filter, &tr );
 
 	if ( tr.DidHit() )
 	{
@@ -413,7 +440,7 @@ CEG_NOINLINE void CProjectedWallEntity::DisplaceObstructingEntity( CBaseEntity *
 		//EASY_DIFFPRINT( this, "CProjectedWallEntity::DisplaceObstructingEntities() teleport up" );
 		// TODO: Some smoothing of the player's view or effect when this happens?
 
-		pEntity->Teleport( &vNewPos, &vNewAngles, &vNewVel );
+		Portal2_TeleportProjectedEntity( pEntity, &vNewPos, &vNewAngles, &vNewVel );
 		return;
 	}
 	// the entity got stuck with horizontal bridge
@@ -434,7 +461,7 @@ CEG_NOINLINE void CProjectedWallEntity::DisplaceObstructingEntity( CBaseEntity *
 			{
 				//EASY_DIFFPRINT( this, "CProjectedWallEntity::DisplaceObstructingEntities() force duck up" );
 				pPlayer->ForceDuckThisFrame();
-				pPlayer->Teleport( &vNewPos, &vNewAngles, &vNewVel );
+				Portal2_TeleportProjectedEntity( pPlayer, &vNewPos, &vNewAngles, &vNewVel );
 
 #if defined( GAME_DLL )
 				if ( wall_debug.GetBool() )
@@ -455,7 +482,7 @@ CEG_NOINLINE void CProjectedWallEntity::DisplaceObstructingEntity( CBaseEntity *
 			if ( !stuckTrace.startsolid )
 			{
 				//EASY_DIFFPRINT( this, "CProjectedWallEntity::DisplaceObstructingEntities() teleport down" );
-				pPlayer->Teleport( &vNewPos, &vNewAngles, &vNewVel );
+				Portal2_TeleportProjectedEntity( pPlayer, &vNewPos, &vNewAngles, &vNewVel );
 
 #if defined( GAME_DLL )
 				if ( wall_debug.GetBool() )
@@ -474,7 +501,7 @@ CEG_NOINLINE void CProjectedWallEntity::DisplaceObstructingEntity( CBaseEntity *
 			{
 				//EASY_DIFFPRINT( this, "CProjectedWallEntity::DisplaceObstructingEntities() force duck down" );
 				pPlayer->ForceDuckThisFrame();
-				pPlayer->Teleport( &vNewPos, &vNewAngles, &vNewVel );
+				Portal2_TeleportProjectedEntity( pPlayer, &vNewPos, &vNewAngles, &vNewVel );
 
 #if defined( GAME_DLL )
 				if ( wall_debug.GetBool() )
@@ -493,7 +520,7 @@ CEG_NOINLINE void CProjectedWallEntity::DisplaceObstructingEntity( CBaseEntity *
 			{
 				//EASY_DIFFPRINT( this, "CProjectedWallEntity::DisplaceObstructingEntities() double duck down" );
 				pPlayer->ForceDuckThisFrame();
-				pPlayer->Teleport( &vNewPos, &vNewAngles, &vNewVel );
+				Portal2_TeleportProjectedEntity( pPlayer, &vNewPos, &vNewAngles, &vNewVel );
 
 #if defined( GAME_DLL )
 				if ( wall_debug.GetBool() )
@@ -510,12 +537,11 @@ CEG_NOINLINE void CProjectedWallEntity::DisplaceObstructingEntity( CBaseEntity *
 	else
 	{
 		vNewPos = pEntity->GetAbsOrigin() - flInvBumpAmount * vBumpAxis;
-		UTIL_ClearTrace( stuckTrace );
 		enginetrace->SweepCollideable( pEntity->GetCollideable(), vNewPos, vNewPos, vNewAngles, MASK_SOLID, &filter, &stuckTrace );
 
 		if ( !stuckTrace.startsolid || bIgnoreStuck )
 		{
-			pEntity->Teleport( &vNewPos, &vNewAngles, &vNewVel );
+			Portal2_TeleportProjectedEntity( pEntity, &vNewPos, &vNewAngles, &vNewVel );
 
 #if defined( GAME_DLL )
 			if ( wall_debug.GetBool() )

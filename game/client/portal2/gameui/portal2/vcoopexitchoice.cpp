@@ -16,6 +16,7 @@
 #include "vportalleaderboard.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 using namespace vgui;
@@ -29,7 +30,7 @@ static void LeaveGameOkCallback()
 {
 	COM_TimestampedLog( "Exit Game" );
 
-	CUIGameData::Get()->GameStats_ReportAction( "challenge_quit", engine->GetLevelNameShort(), g_nTimeScoreTempUpdate );
+	CUIGameData::Get()->GameStats_ReportAction( "challenge_quit", Portal2Engine::GetLevelNameShort(), g_nTimeScoreTempUpdate );
 
 	CPortalLeaderboardPanel* self = 
 		static_cast< CPortalLeaderboardPanel* >( CBaseModPanel::GetSingleton().GetWindow( WT_PORTALLEADERBOARDHUD ) );
@@ -163,7 +164,7 @@ void CCoopExitChoice::OnCommand(const char *command)
 	}
 	else if ( !V_stricmp( "BtnGoToHub", command ) )
 	{
-		CUIGameData::Get()->GameStats_ReportAction( "challenge_hub", engine->GetLevelNameShort(), g_nTimeScoreTempUpdate );
+		CUIGameData::Get()->GameStats_ReportAction( "challenge_hub", Portal2Engine::GetLevelNameShort(), g_nTimeScoreTempUpdate );
 		
 		GenericConfirmation* confirmation = 
 			static_cast< GenericConfirmation* >( CBaseModPanel::GetSingleton().OpenWindow( WT_GENERICCONFIRMATION, this, true ) );

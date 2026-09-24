@@ -460,13 +460,13 @@ void FlyoutMenu::LoadControlSettings( const char *dialogResourceName, const char
 			if( !button )
 				continue;
 
-			if ( button->m_sNavLeftName.IsEmpty() )
+			if ( !button->GetNavLeftName()[0] )
 			{
-				button->m_sNavLeftName = button->m_sNavUpName;
+				button->SetNavLeftName( button->GetNavUpName() );
 			}
-			if ( button->m_sNavRightName.IsEmpty() )
+			if ( !button->GetNavRightName()[0] )
 			{
-				button->m_sNavRightName = button->m_sNavDownName;
+				button->SetNavRightName( button->GetNavDownName() );
 			}
 		}
 	}

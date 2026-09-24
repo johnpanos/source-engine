@@ -15,6 +15,8 @@
 #include "portal_mp_gamerules.h"
 #include "tier0/stacktools.h"
 #include "portal_util_shared.h"
+#include "portal_grabcontroller_shared.h"
+#include "debugoverlay_shared.h"
 #include "iclient.h"
 
 #if defined( CLIENT_DLL )
@@ -22,19 +24,21 @@
 	#include "c_rumble.h"
 	#include "prediction.h"
 	#include "c_weapon_portalgun.h"
-	#include "c_projectedwallentity.h"
-	#define CRecipientFilter C_RecipientFilter
+#include "c_trigger_tractorbeam.h"
+#include "c_projectedwallentity.h"
+#define CRecipientFilter C_RecipientFilter
 #else
 	#include "portal_player.h"
-	#include "env_player_surface_trigger.h"
-	#include "portal_gamestats.h"
-	#include "physicsshadowclone.h"
-	#include "recipientfilter.h"
-	#include "SoundEmitterSystem/isoundemittersystembase.h"
-	#include "weapon_portalgun.h"
-	#include "projectedwallentity.h"
-	#include "paint_power_info.h"
-	#include "particle_parse.h"
+#include "trigger_tractorbeam.h"
+#include "env_player_surface_trigger.h"
+#include "portal_gamestats.h"
+#include "physicsshadowclone.h"
+#include "recipientfilter.h"
+#include "SoundEmitterSystem/isoundemittersystembase.h"
+#include "weapon_portalgun.h"
+#include "projectedwallentity.h"
+#include "paint_power_info.h"
+#include "particle_parse.h"
 #endif
 
 #include "coordsize.h" // for DIST_EPSILON
@@ -108,28 +112,17 @@ extern bool g_bMovementOptimizations;
 extern bool g_bAllowForcePortalTrace;
 extern bool g_bForcePortalTrace;
 
+#if defined( CLIENT_DLL )
+static void UTIL_ClearTrace( trace_t &trace )
+{
+	memset( &trace, 0, sizeof( trace ) );
+	trace.fraction = 1.0f;
+	static const csurface_t nullSurface = { "**empty**", 0, 0 };
+	trace.surface = nullSurface;
+}
+#endif
 
-// Unnamed namespace is the C++ way of specifying static at file scope.
-// It prevents this function from leaking out of this translation unit.
-namespace
-{		  
-
-	inline void DoTrace( ITraceListData *pTraceListData, const Ray_t &ray, uint32 fMask, ITraceFilter *filter, trace_t *ptr, int *counter )
-	{
-		++*counter;
-
-		if ( pTraceListData && pTraceListData->CanTraceRay(ray) )
-		{
-			enginetrace->TraceRayAgainstLeafAndEntityList( ray, pTraceListData, fMask, filter, ptr );
-		}
-		else
-		{
-			enginetrace->TraceRay( ray, fMask, filter, ptr );
-		}
-	}
-
-} // Unnamed namespace
-
+// Movement traces use the engine's ordinary TraceRay path on this SDK.
 
 #if defined( DEBUG_FLINGS )
 class CDebugCrouchOverlay : public CAutoGameSystemPerFrame
@@ -400,12 +393,12 @@ void CPortalGameMovement::ProcessMovement( CBasePlayer *pPlayer, CMoveData *pMov
 		gpGlobals->frametime *= pPlayer->GetLaggedMovementValue();
 
 		// Reset point contents for water check.
-		ResetGetWaterContentsForPointCache();
+		// This SDK computes water contents directly without a per-move cache.
 
 		// Cropping movement speed scales mv->m_fForwardSpeed etc. globally
 		// Once we crop, we don't want to recursively crop again, so we set the crop
 		// flag globally here once per usercmd cycle.
-		m_bSpeedCropped = false;
+		m_iSpeedCropped = SPEED_CROPPED_RESET;
 
 		m_bInPortalEnv = (((CPortal_Player *)pPlayer)->m_hPortalEnvironment != NULL);
 
@@ -549,7 +542,7 @@ bool CPortalGameMovement::CheckJumpButton()
 		return false;
 
 	// Still updating the eye position.
-	if ( player->m_Local.m_nDuckJumpTimeMsecs > 0 )
+	if ( player->m_Local.m_flDuckJumpTime > 0 )
 		return false;
 
 
@@ -609,7 +602,7 @@ bool CPortalGameMovement::CheckJumpButton()
 	// Set jump time.
 	if ( bSetDuckJump )
 	{
-		player->m_Local.m_nJumpTimeMsecs = GAMEMOVEMENT_JUMP_TIME;
+		player->m_Local.m_flJumpTime = GAMEMOVEMENT_JUMP_TIME;
 		player->m_Local.m_bInDuckJump = true;
 	}
 
@@ -2493,7 +2486,7 @@ void CPortalGameMovement::HandlePortalling( void )
 				{
 					//DevMsg( "HandlePortalling: Force Duck\n" );
 					player->m_Local.m_bInDuckJump = true;
-					player->m_Local.m_nDuckTimeMsecs = GAMEMOVEMENT_DUCK_TIME;
+					player->m_Local.m_flDucktime = GAMEMOVEMENT_DUCK_TIME;
 					FinishDuck(); //be ducked RIGHT NOW. Pulls feet up by delta between hull sizes.
 
 					Vector vNewOriginToCenter = (pPortalPlayer->GetDuckHullMaxs() + pPortalPlayer->GetDuckHullMins()) * 0.5f;
@@ -2832,7 +2825,7 @@ void CPortalGameMovement::HandlePortalling( void )
 // Input  : ducked - 
 // Output : const Vector
 //-----------------------------------------------------------------------------
-const Vector& CPortalGameMovement::GetPlayerMins( bool ducked ) const
+Vector CPortalGameMovement::GetPlayerMins( bool ducked ) const
 {
 	return ducked ? GetPortalPlayer()->GetDuckHullMins() : GetPortalPlayer()->GetStandHullMins();
 }
@@ -2842,7 +2835,7 @@ const Vector& CPortalGameMovement::GetPlayerMins( bool ducked ) const
 // Input  : ducked - 
 // Output : const Vector
 //-----------------------------------------------------------------------------
-const Vector& CPortalGameMovement::GetPlayerMaxs( bool ducked ) const
+Vector CPortalGameMovement::GetPlayerMaxs( bool ducked ) const
 {	
 	return ducked ? GetPortalPlayer()->GetDuckHullMaxs() : GetPortalPlayer()->GetStandHullMaxs();
 }
@@ -2852,7 +2845,7 @@ const Vector& CPortalGameMovement::GetPlayerMaxs( bool ducked ) const
 // Input  : 
 // Output : const Vector
 //-----------------------------------------------------------------------------
-const Vector& CPortalGameMovement::GetPlayerMins() const
+Vector CPortalGameMovement::GetPlayerMins() const
 {
 	return GetPlayerMins( GetPortalPlayer()->m_Local.m_bDucked );
 }
@@ -2862,7 +2855,7 @@ const Vector& CPortalGameMovement::GetPlayerMins() const
 // Input  : 
 // Output : const Vector
 //-----------------------------------------------------------------------------
-const Vector& CPortalGameMovement::GetPlayerMaxs() const
+Vector CPortalGameMovement::GetPlayerMaxs() const
 {	
 	return GetPlayerMaxs( GetPortalPlayer()->m_Local.m_bDucked );
 }
@@ -2872,7 +2865,7 @@ const Vector& CPortalGameMovement::GetPlayerMaxs() const
 // Input  : ducked - 
 // Output : const Vector
 //-----------------------------------------------------------------------------
-const Vector& CPortalGameMovement::GetPlayerViewOffset( bool ducked ) const
+Vector CPortalGameMovement::GetPlayerViewOffset( bool ducked ) const
 {
 	return ducked ? VEC_DUCK_VIEW : VEC_VIEW;
 }
@@ -3037,38 +3030,9 @@ void CPortalGameMovement::CheckParameters()
 // This allows gamemovement to optimize those traces
 void CPortalGameMovement::SetupMovementBounds( CMoveData *move )
 {
-	if ( m_pTraceListData )
-	{
-		m_pTraceListData->Reset();
-	}
-	else
-	{
-		m_pTraceListData = enginetrace->AllocTraceListData();
-	}
-	if ( !move->m_nPlayerHandle.IsValid() )
-	{
-		return;
-	}
-
-	CBasePlayer *pPlayer = (CBasePlayer *)move->m_nPlayerHandle.Get();
-	CPortal_Player *pPortalPlayer = assert_cast< CPortal_Player* >( pPlayer );
-
-	Vector moveMins, moveMaxs;
-	ClearBounds( moveMins, moveMaxs );
-	Vector start = move->GetAbsOrigin();
-	float radius = ((move->m_vecVelocity.Length() + move->m_flMaxSpeed) * gpGlobals->frametime) + 1.0f;
-	// NOTE: assumes the unducked bbox encloses the ducked bbox
-	Vector boxMins = pPortalPlayer->GetStandHullMins(); //GetPlayerMins(false);
-	Vector boxMaxs = pPortalPlayer->GetStandHullMaxs(); //GetPlayerMaxs(false);
-
-	// bloat by traveling the max velocity in all directions, plus the stepsize up/down
-	Vector bloat;
-	bloat.Init(radius, radius, radius);
-	bloat += pPlayer->m_Local.m_flStepSize * pPortalPlayer->GetPortalPlayerLocalData().m_StickNormal;
-	AddPointToBounds( start + boxMaxs + bloat, moveMins, moveMaxs );
-	AddPointToBounds( start + boxMins - bloat, moveMins, moveMaxs );
-	// now build an optimized trace within these bounds
-	enginetrace->SetupLeafAndEntityListBox( moveMins, moveMaxs, m_pTraceListData );
+	// The SDK trace API has no allocated trace-list cache. Movement traces remain valid
+	// through TraceRay, so this optional bounds cache has no work here.
+	(void)move;
 }
 
 
@@ -4514,7 +4478,7 @@ void CPortalGameMovement::FinishUnDuck()
 	player->m_Local.m_bDucking  = false;
 	player->m_Local.m_bInDuckJump  = false;
 	player->SetViewOffset( GetPlayerViewOffset( false ) );
-	player->m_Local.m_nDuckTimeMsecs = 0;
+	player->m_Local.m_flDucktime = 0;
 
 	mv->SetAbsOrigin( newOrigin );
 
@@ -4533,12 +4497,12 @@ void CPortalGameMovement::FinishUnDuck()
 //-----------------------------------------------------------------------------
 void CPortalGameMovement::UpdateDuckJumpEyeOffset()
 {
-	if ( player->m_Local.m_nDuckJumpTimeMsecs != 0 )
+	if ( player->m_Local.m_flDuckJumpTime != 0 )
 	{
-		int nDuckMilliseconds = MAX( 0, GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_nDuckJumpTimeMsecs );
+		int nDuckMilliseconds = MAX( 0, GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_flDuckJumpTime );
 		if ( nDuckMilliseconds > TIME_TO_UNDUCK_MSECS )
 		{
-			player->m_Local.m_nDuckJumpTimeMsecs = 0;
+			player->m_Local.m_flDuckJumpTime = 0;
 			SetDuckedEyeOffset( 0.0f );
 		}
 		else
@@ -4571,9 +4535,9 @@ void CPortalGameMovement::FinishUnDuckJump( trace_t &trace )
 	player->m_Local.m_bDucked = false;
 	player->m_Local.m_bDucking  = false;
 	player->m_Local.m_bInDuckJump = false;
-	player->m_Local.m_nDuckTimeMsecs = 0;
-	player->m_Local.m_nDuckJumpTimeMsecs = 0;
-	player->m_Local.m_nJumpTimeMsecs = 0;
+	player->m_Local.m_flDucktime = 0;
+	player->m_Local.m_flDuckJumpTime = 0;
+	player->m_Local.m_flJumpTime = 0;
 
 	Vector vecViewOffset = GetPlayerViewOffset( false );
 	vecViewOffset.z -= flDeltaZ;
@@ -4893,8 +4857,8 @@ void CPortalGameMovement::Duck()
 	bool bInAir = ( player->GetGroundEntity() == NULL );
 	bool bInDuck = ( player->GetFlags() & FL_DUCKING ) ? true : false;
 
-	bool bDuckJump = ( player->m_Local.m_nJumpTimeMsecs > 0 );
-	bool bDuckJumpTime = ( player->m_Local.m_nDuckJumpTimeMsecs > 0 );
+	bool bDuckJump = ( player->m_Local.m_flJumpTime > 0 );
+	bool bDuckJumpTime = ( player->m_Local.m_flDuckJumpTime > 0 );
 
 	if ( mv->m_nButtons & IN_DUCK )
 	{
@@ -4933,7 +4897,7 @@ void CPortalGameMovement::Duck()
 			// Have the duck button pressed, but the player currently isn't in the duck position.
 			if ( ( buttonsPressed & IN_DUCK ) && !bInDuck && !bDuckJump && !bDuckJumpTime )
 			{
-				player->m_Local.m_nDuckTimeMsecs = GAMEMOVEMENT_DUCK_TIME;
+				player->m_Local.m_flDucktime = GAMEMOVEMENT_DUCK_TIME;
 				player->m_Local.m_bDucking = true;
 				// set air ducking state
 				{
@@ -4945,7 +4909,8 @@ void CPortalGameMovement::Duck()
 			// The player is in duck transition and not duck-jumping.
 			if ( player->m_Local.m_bDucking && !bDuckJump && !bDuckJumpTime )
 			{
-				int nDuckMilliseconds = MAX( 0, GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_nDuckTimeMsecs );
+				int nDuckMilliseconds =
+				    MAX( 0, GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_flDucktime );
 
 				// Finish in duck transition when transition time is over, in "duck", in air.
 				if ( ( nDuckMilliseconds > TIME_TO_DUCK_MSECS ) || bInDuck /*|| bInAir*/ )
@@ -4976,7 +4941,10 @@ void CPortalGameMovement::Duck()
 						if ( CanUnDuckJump( trace ) )
 						{
 							FinishUnDuckJump( trace );
-							player->m_Local.m_nDuckJumpTimeMsecs = (int)( ( (float)GAMEMOVEMENT_TIME_TO_UNDUCK_MSECS * ( 1.0f - trace.fraction ) ) + (float)GAMEMOVEMENT_TIME_TO_UNDUCK_MSECS_INV );
+							player->m_Local.m_flDuckJumpTime =
+							    (int)( ( (float)GAMEMOVEMENT_TIME_TO_UNDUCK_MSECS *
+							               ( 1.0f - trace.fraction ) ) +
+							           (float)GAMEMOVEMENT_TIME_TO_UNDUCK_MSECS_INV );
 						}
 					}
 				}
@@ -4997,7 +4965,10 @@ void CPortalGameMovement::Duck()
 
 						if ( trace.fraction < 1.0f )
 						{
-							player->m_Local.m_nDuckJumpTimeMsecs = (int)( ( (float)GAMEMOVEMENT_TIME_TO_UNDUCK_MSECS * ( 1.0f - trace.fraction ) ) + (float)GAMEMOVEMENT_TIME_TO_UNDUCK_MSECS_INV );
+							player->m_Local.m_flDuckJumpTime =
+							    (int)( ( (float)GAMEMOVEMENT_TIME_TO_UNDUCK_MSECS *
+							               ( 1.0f - trace.fraction ) ) +
+							           (float)GAMEMOVEMENT_TIME_TO_UNDUCK_MSECS_INV );
 						}
 					}
 				}
@@ -5019,17 +4990,20 @@ void CPortalGameMovement::Duck()
 				{
 					if ( bInDuck && !bDuckJump )
 					{
-						player->m_Local.m_nDuckTimeMsecs = GAMEMOVEMENT_DUCK_TIME;
+						player->m_Local.m_flDucktime = GAMEMOVEMENT_DUCK_TIME;
 					}
 					else if ( player->m_Local.m_bDucking && !player->m_Local.m_bDucked )
 					{
 						// Invert time if release before fully ducked!!!
-						int elapsedMilliseconds = GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_nDuckTimeMsecs;
+						int elapsedMilliseconds =
+						    GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_flDucktime;
 
 						float fracDucked = FractionDucked( elapsedMilliseconds );
 						int remainingUnduckMilliseconds = (int)( fracDucked * TIME_TO_UNDUCK_MSECS );
 
-						player->m_Local.m_nDuckTimeMsecs = GAMEMOVEMENT_DUCK_TIME - TIME_TO_UNDUCK_MSECS + remainingUnduckMilliseconds;
+						player->m_Local.m_flDucktime = GAMEMOVEMENT_DUCK_TIME -
+						                               TIME_TO_UNDUCK_MSECS +
+						                               remainingUnduckMilliseconds;
 					}
 				}
 
@@ -5040,7 +5014,8 @@ void CPortalGameMovement::Duck()
 					// or unducking
 					if ( ( player->m_Local.m_bDucking || player->m_Local.m_bDucked ) )
 					{
-						int nDuckMilliseconds = MAX( 0, GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_nDuckTimeMsecs );
+						int nDuckMilliseconds =
+						    MAX( 0, GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_flDucktime );
 
 						// Finish ducking immediately if duck time is over or not on ground
 						if ( nDuckMilliseconds > TIME_TO_UNDUCK_MSECS /*|| ( bInAir && !bDuckJump )*/ )
@@ -5060,17 +5035,18 @@ void CPortalGameMovement::Duck()
 				{
 					// Still under something where we can't unduck, so make sure we reset this timer so
 					//  that we'll unduck once we exit the tunnel, etc.
-					if ( player->m_Local.m_nDuckTimeMsecs != GAMEMOVEMENT_DUCK_TIME )
+					if ( player->m_Local.m_flDucktime != GAMEMOVEMENT_DUCK_TIME )
 					{
 						SetDuckedEyeOffset(1.0f);
-						player->m_Local.m_nDuckTimeMsecs = GAMEMOVEMENT_DUCK_TIME;
+						player->m_Local.m_flDucktime = GAMEMOVEMENT_DUCK_TIME;
 						player->m_Local.m_bDucked = true;
 						player->m_Local.m_bDucking = false;
 						player->AddFlag( FL_DUCKING );
 					}
 					else
 					{
-						int nDuckMilliseconds = MAX( 0, GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_nDuckTimeMsecs );
+						int nDuckMilliseconds =
+						    MAX( 0, GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_flDucktime );
 
 						// Finish ducking immediately if duck time is over
 						if ( nDuckMilliseconds <= TIME_TO_UNDUCK_MSECS )
@@ -5096,7 +5072,8 @@ void CPortalGameMovement::Duck()
 	// his view height is at the standing height.
 	else if ( !IsDead() && !player->IsObserver() && !player->IsInAVehicle() )
 	{
-		if ( ( player->m_Local.m_nDuckJumpTimeMsecs == 0 ) && ( fabs(player->GetViewOffset().z - GetPlayerViewOffset( false ).z) > 0.1 ) )
+		if ( ( player->m_Local.m_flDuckJumpTime == 0 ) &&
+		     ( fabs( player->GetViewOffset().z - GetPlayerViewOffset( false ).z ) > 0.1 ) )
 		{
 			// we should rarely ever get here, so assert so a coder knows when it happens
 			AssertMsgOnce( 0, "Restoring player view height\n" );

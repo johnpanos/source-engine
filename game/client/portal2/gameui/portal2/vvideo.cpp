@@ -24,6 +24,7 @@
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 using namespace vgui;
@@ -113,7 +114,7 @@ void Video::ApplySchemeSettings( vgui::IScheme *pScheme )
 
 	if ( m_drpSplitScreenDirection )
 	{
-		const AspectRatioInfo_t &aspectRatioInfo = materials->GetAspectRatioInfo();
+		const AspectRatioInfo_t &aspectRatioInfo = Portal2_GetAspectRatioInfo();
 		bool bWidescreen = aspectRatioInfo.m_bIsWidescreen;
 
 		if ( !bWidescreen )

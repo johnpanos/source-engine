@@ -225,8 +225,14 @@ FORCEINLINE	int				XBX_GetPrimaryUserId() { return 0; }
 FORCEINLINE	void			XBX_SetPrimaryUserId( DWORD idx ) {}
 FORCEINLINE	int				XBX_GetStorageDeviceId() { return 0; }
 FORCEINLINE	void			XBX_SetStorageDeviceId( DWORD idx ) {}
+FORCEINLINE int XBX_GetUserId( int slot ) { return XBX_GetPrimaryUserId(); }
+FORCEINLINE int XBX_GetStorageDeviceId( int controller ) { return XBX_GetStorageDeviceId(); }
+FORCEINLINE void XBX_SetStorageDeviceId( int controller, DWORD idx ) { XBX_SetStorageDeviceId( idx ); }
+FORCEINLINE bool XBX_DescribeStorageDevice( DWORD idx ) { return false; }
 FORCEINLINE const char		*XBX_GetLanguageString() { return ""; }
 FORCEINLINE bool			XBX_IsLocalized() { return false; }
+FORCEINLINE bool XBX_IsAudioLocalized() { return false; }
+FORCEINLINE int XBX_GetNumGameUsers() { return 1; }
 
 #define XCONTENT_MAX_DISPLAYNAME_LENGTH	128
 #define XCONTENT_MAX_FILENAME_LENGTH	42

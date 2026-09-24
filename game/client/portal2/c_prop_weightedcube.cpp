@@ -23,7 +23,8 @@ extern void ComputePlayerMatrix( CBasePlayer *pPlayer, matrix3x4_t &out );
 QAngle C_PropWeightedCube::PreferredCarryAngles( void )
 {
 	static QAngle s_prefAngles;
-	s_prefAngles = (m_qPreferredPlayerCarryAngles.x < FLT_MAX) ? m_qPreferredPlayerCarryAngles : vec3_angle;
+	// This SDK does not replicate the preferred carry angles to client props.
+	s_prefAngles = vec3_angle;
 
 	CBasePlayer *pPlayer = GetPlayerHoldingEntity( this );
 	if ( pPlayer )

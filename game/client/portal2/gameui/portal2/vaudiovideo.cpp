@@ -18,6 +18,7 @@
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 using namespace vgui;
@@ -58,7 +59,7 @@ AudioVideo::~AudioVideo()
 	CGameUIConVarRef force_audio_english( "force_audio_english" );
 	if ( m_bOldForceEnglishAudio != force_audio_english.GetBool() )
 	{
-		engine->AudioLanguageChanged();
+		Portal2Engine::AudioLanguageChanged();
 	}
 }
 
@@ -264,7 +265,7 @@ void AudioVideo::ApplySchemeSettings( vgui::IScheme *pScheme )
 
 	if ( m_drpSplitScreenDirection )
 	{
-		const AspectRatioInfo_t &aspectRatioInfo = materials->GetAspectRatioInfo();
+		const AspectRatioInfo_t &aspectRatioInfo = Portal2_GetAspectRatioInfo();
 		bool bWidescreen = aspectRatioInfo.m_bIsWidescreen;
 
 		if ( !bWidescreen )

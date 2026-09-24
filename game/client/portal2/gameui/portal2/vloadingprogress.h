@@ -51,6 +51,7 @@ private:
 	void				ShowEmployeeBadge( bool bState );
 
 	vgui::ImagePanel	*m_pWorkingAnim;
+	int					m_nWorkingAnimFrame;
 
 	bool				m_bValid;
 

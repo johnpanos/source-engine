@@ -17,6 +17,7 @@
 #include "vcontrolleroptionsbuttons.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 using namespace vgui;
@@ -238,8 +239,8 @@ void ControllerOptionsResetDefaults_Confirm( void )
 
 void ControllerOptions::ResetToDefaults( void )
 {
-	int iOldSlot = engine->GetActiveSplitScreenPlayerSlot();
-	engine->SetActiveSplitScreenPlayerSlot( m_iActiveUserSlot );
+	int iOldSlot = Portal2Engine::GetActiveSplitScreenPlayerSlot();
+	Portal2Engine::SetActiveSplitScreenPlayerSlot( m_iActiveUserSlot );
 
 	if ( IsPC() )
 	{
@@ -271,7 +272,7 @@ void ControllerOptions::ResetToDefaults( void )
 	engine->ExecuteClientCmd( "joy_invertx 0" );
 #endif
 
-	engine->SetActiveSplitScreenPlayerSlot( iOldSlot );
+	Portal2Engine::SetActiveSplitScreenPlayerSlot( iOldSlot );
 
 	m_nResetControlValuesTicks = 1; // used to delay polling the values until we've flushed the command buffer 
 

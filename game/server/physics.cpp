@@ -834,6 +834,39 @@ void CCollisionEvent::GetListOfPenetratingEntities( CBaseEntity *pSearch, CUtlVe
 	}
 }
 
+void CCollisionEvent::RemovePenetrationEvents( CBaseEntity *pEntity )
+{
+	if ( !pEntity )
+		return;
+
+	for ( int i = m_penetrateEvents.Count() - 1; i >= 0; --i )
+	{
+		penetrateevent_t &event = m_penetrateEvents[i];
+		if ( event.hEntity0 != pEntity && event.hEntity1 != pEntity )
+			continue;
+
+		CBaseEntity *pOther =
+		    event.hEntity0 == pEntity ? event.hEntity1.Get() : event.hEntity0.Get();
+		m_penetrateEvents.FastRemove( i );
+		if ( pOther )
+		{
+			bool bStillPenetrating = false;
+			for ( int j = 0; j < m_penetrateEvents.Count(); ++j )
+			{
+				if ( m_penetrateEvents[j].hEntity0 == pOther ||
+				     m_penetrateEvents[j].hEntity1 == pOther )
+				{
+					bStillPenetrating = true;
+					break;
+				}
+			}
+			if ( !bStillPenetrating )
+				UpdateEntityPenetrationFlag( pOther, false );
+		}
+	}
+	UpdateEntityPenetrationFlag( pEntity, false );
+}
+
 void CCollisionEvent::UpdatePenetrateEvents( void )
 {
 	for ( int i = m_penetrateEvents.Count()-1; i >= 0; --i )
@@ -2930,4 +2963,3 @@ void DumpCollideToGlView( CPhysCollide *pCollide, const Vector &origin, const QA
 	physcollision->DestroyDebugMesh( vertCount, outVerts );
 }
 #endif
-

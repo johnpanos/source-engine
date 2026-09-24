@@ -25,6 +25,7 @@
 #include "c_portal_player.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 using namespace vgui;
@@ -45,7 +46,7 @@ static void LeaveGameOkCallback()
 {
 	COM_TimestampedLog( "Exit Game" );
 
-	CUIGameData::Get()->GameStats_ReportAction( "challenge_quit", engine->GetLevelNameShort(), g_nTimeScoreTempUpdate );
+	CUIGameData::Get()->GameStats_ReportAction( "challenge_quit", Portal2Engine::GetLevelNameShort(), g_nTimeScoreTempUpdate );
 
 	CPortalLeaderboardPanel* self = 
 		static_cast< CPortalLeaderboardPanel* >( CBaseModPanel::GetSingleton().GetWindow( WT_PORTALLEADERBOARDHUD ) );
@@ -329,7 +330,7 @@ void CPortalHUDLeaderboard::OnKeyCodePressed( KeyCode code )
 		}
 		else if ( m_leaderboardState == STATE_END_OF_LEVEL )
 		{
-			CUIGameData::Get()->GameStats_ReportAction( "challenge_continue", engine->GetLevelNameShort(), g_nTimeScoreTempUpdate );
+			CUIGameData::Get()->GameStats_ReportAction( "challenge_continue", Portal2Engine::GetLevelNameShort(), g_nTimeScoreTempUpdate );
 
 			if ( PortalMPGameRules() )
 			{
@@ -384,7 +385,7 @@ void CPortalHUDLeaderboard::OnKeyCodePressed( KeyCode code )
 	case KEY_XBUTTON_X:
 		if ( m_leaderboardState == STATE_END_OF_LEVEL )
 		{
-			CUIGameData::Get()->GameStats_ReportAction( "challenge_retry", engine->GetLevelNameShort(), g_nTimeScoreTempUpdate );
+			CUIGameData::Get()->GameStats_ReportAction( "challenge_retry", Portal2Engine::GetLevelNameShort(), g_nTimeScoreTempUpdate );
 
 			if ( PortalMPGameRules() )
 			{
@@ -414,7 +415,7 @@ void CPortalHUDLeaderboard::OnKeyCodePressed( KeyCode code )
 		}
 		else if ( GameRules() && GameRules()->IsMultiplayer() && m_leaderboardState == STATE_END_OF_LEVEL )
 		{
-			CUIGameData::Get()->GameStats_ReportAction( "challenge_hub", engine->GetLevelNameShort(), g_nTimeScoreTempUpdate );
+			CUIGameData::Get()->GameStats_ReportAction( "challenge_hub", Portal2Engine::GetLevelNameShort(), g_nTimeScoreTempUpdate );
 			GoToHub();
 
 			m_bCommittedAction = true;
@@ -490,7 +491,7 @@ void CPortalHUDLeaderboard::OnThink()
 
 			if ( m_pLeaderboard == NULL )
 			{
-				m_pLeaderboard = PortalLeaderboardManager()->GetLeaderboard( engine->GetLevelNameShort() );
+				m_pLeaderboard = PortalLeaderboardManager()->GetLeaderboard( Portal2Engine::GetLevelNameShort() );
 			}
 
 			if ( m_pLeaderboard )
@@ -761,7 +762,7 @@ void CPortalHUDLeaderboard::UpdateLeaderboard( LeaderboardType type )
 		int nSpecialScore = -1;
 		PortalLeaderboardItem_t tempUpdate;
 
-		if (  V_strcmp( engine->GetLevelNameShort(), m_pLeaderboard->GetMapName() ) == 0 )
+		if (  V_strcmp( Portal2Engine::GetLevelNameShort(), m_pLeaderboard->GetMapName() ) == 0 )
 		{
 			if ( g_nPortalScoreTempUpdate != -1 && type == LEADERBOARD_PORTAL )
 			{
@@ -1054,8 +1055,8 @@ void CPortalHUDLeaderboard::SetMapTitle()
 {
 	// set the map name
 	bool bInCoop = GameRules()->IsMultiplayer();
-	int nChapterNum = CBaseModPanel::GetSingleton().MapNameToChapter( engine->GetLevelNameShort(), !bInCoop );
-	int nMapNum = CBaseModPanel::GetSingleton().GetMapNumInChapter( nChapterNum, engine->GetLevelNameShort(), !bInCoop );
+	int nChapterNum = CBaseModPanel::GetSingleton().MapNameToChapter( Portal2Engine::GetLevelNameShort(), !bInCoop );
+	int nMapNum = CBaseModPanel::GetSingleton().GetMapNumInChapter( nChapterNum, Portal2Engine::GetLevelNameShort(), !bInCoop );
 
 	if ( nMapNum > 0 )
 	{
@@ -1104,7 +1105,7 @@ void CPortalHUDLeaderboard::SetMapTitle()
 void CPortalHUDLeaderboard::SetNextMap()
 {
 	bool bSinglePlayerMode = !GameRules()->IsMultiplayer();
-	int nCurrentChapterNumber = CBaseModPanel::GetSingleton().MapNameToChapter( engine->GetLevelNameShort(), bSinglePlayerMode );
+	int nCurrentChapterNumber = CBaseModPanel::GetSingleton().MapNameToChapter( Portal2Engine::GetLevelNameShort(), bSinglePlayerMode );
 
 	KeyValues *pChallengeMapList = PortalLeaderboardManager()->GetChallengeMapsFromChapter( nCurrentChapterNumber, !bSinglePlayerMode );
 	if ( pChallengeMapList )
@@ -1113,7 +1114,7 @@ void CPortalHUDLeaderboard::SetNextMap()
 
 		for ( KeyValues *pCurrentMap = pChallengeMapList->GetFirstSubKey(); pCurrentMap != NULL; pCurrentMap = pCurrentMap->GetNextKey() )
 		{
-			if ( V_strcmp( engine->GetLevelNameShort(), pCurrentMap->GetString() ) != 0 )
+			if ( V_strcmp( Portal2Engine::GetLevelNameShort(), pCurrentMap->GetString() ) != 0 )
 			{
 				continue;
 			}
@@ -1340,14 +1341,14 @@ void OpenPortalHUDLeaderboard( LeaderboardState_t leaderboardState = STATE_MAIN_
 	{
 		if ( GameRules()->IsMultiplayer() )
 		{
-			if ( PortalMPGameRules()->IsChallengeMode() && IsChallengeMap( engine->GetLevelNameShort() ) )
+			if ( PortalMPGameRules()->IsChallengeMode() && IsChallengeMap( Portal2Engine::GetLevelNameShort() ) )
 			{
 				bOpenHUD = true;
 			}
 		}
 		else
 		{
-			if ( PortalGameRules()->IsChallengeMode() && IsChallengeMap( engine->GetLevelNameShort() ) )
+			if ( PortalGameRules()->IsChallengeMode() && IsChallengeMap( Portal2Engine::GetLevelNameShort() ) )
 			{
 				bOpenHUD = true;
 			}

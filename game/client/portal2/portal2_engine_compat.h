@@ -137,6 +137,7 @@ struct model_t;
 
 // Portal 2's client input and interpolation extensions are absent in this SDK.
 // The target is single-player, so use the SDK interpolator unchanged.
+template <typename T> class CInterpolatedVar;
 template <typename T>
 using CDiscontinuousInterpolatedVar = CInterpolatedVar<T>;
 

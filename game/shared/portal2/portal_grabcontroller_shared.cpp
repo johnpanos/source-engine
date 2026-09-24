@@ -10,12 +10,15 @@
 #include "portal_player_shared.h"
 #include "vphysics/friction.h"
 #include "collisionutils.h"
+#include "debugoverlay_shared.h"
+#include "vcollide_parse.h"
 
 #if defined ( CLIENT_DLL )
 #include "c_portal_player.h"
 #include "prediction.h"
 #include "c_breakableprop.h"
 #include "c_npc_portal_turret_floor.h"
+#include "portal2_engine_compat.h"
 typedef C_NPC_Portal_FloorTurret CNPC_Portal_FloorTurret;
 #else
 #include "player_pickup.h"
@@ -848,7 +851,8 @@ void CGrabController::AttachEntity( CBasePlayer *pPlayer, CBaseEntity *pEntity, 
 	C_BreakableProp *pProp = dynamic_cast<C_BreakableProp *>(pEntity);
 	if( pProp )
 	{
-		m_bHasPreferredCarryAngles = (pProp->GetNetworkedPreferredPlayerCarryAngles().x < FLT_MAX);
+		// Client props in this SDK do not replicate the preferred angles.
+		m_bHasPreferredCarryAngles = false;
 		m_flDistanceOffset = 0;//pProp->GetCarryDistanceOffset();
 	}
 	else
@@ -1680,7 +1684,7 @@ bool CGrabController::UpdateObject( CBasePlayer *pPlayer, float flError, bool bI
 			// If the portal isn't linked we need to drop the object
 			if ( !pPortal->m_hLinkedPortal.Get() )
 			{
-				pPlayer->ForceDropOfCarriedPhysObjects();
+				pPortalPlayer->ForceDropOfCarriedPhysObjects( NULL );
 				return false;
 			}
 
@@ -1803,7 +1807,8 @@ bool CGrabController::UpdateObject( CBasePlayer *pPlayer, float flError, bool bI
 	Vector vecMins = -vecMaxs;
 	Vector vecEndPos = end - Vector(0,0,flHalfRadius+1);
 
-	UTIL_ClearTrace( tr );
+	memset( &tr, 0, sizeof( tr ) );
+	tr.fraction = 1.0f;
 
 	ray.Init( end + Vector(0,0,flHalfRadius+1), vecEndPos );
 	
@@ -1949,7 +1954,7 @@ bool CGrabController::UpdateObject( CBasePlayer *pPlayer, float flError, bool bI
 			}
 			else
 			{
-				pPlayer->ForceDropOfCarriedPhysObjects();
+				pPortalPlayer->ForceDropOfCarriedPhysObjects( NULL );
 			}
 		}
 		else
@@ -2633,7 +2638,11 @@ void CGrabController::AttachEntityVM( CBasePlayer *pPlayer, CBaseEntity *pEntity
 	if( pEntity->GetPredictable() )
 #endif
 	{
+#if defined( CLIENT_DLL )
 		Portal2_ClientTeleport( pEntity, &m_shadow.targetPosition, &m_shadow.targetRotation, NULL );
+#else
+		pEntity->Teleport( &m_shadow.targetPosition, &m_shadow.targetRotation, NULL );
+#endif
 	}
 
 #if !defined ( CLIENT_DLL )
@@ -3009,6 +3018,7 @@ bool C_PlayerHeldObjectClone::InitClone( C_BaseEntity *pObject, C_BasePlayer *pP
 	m_hPlayer = pPlayer;
 	m_hOriginal = pObject;
 	m_pVMToFollow = pVMToFollow;
+	m_bIsViewModel = bIsViewModel;
 
 	const char *pModelName = modelinfo->GetModelName( pObject->GetModel() );
 
@@ -3017,12 +3027,11 @@ bool C_PlayerHeldObjectClone::InitClone( C_BaseEntity *pObject, C_BasePlayer *pP
 	if ( !pModelName )	
 		return false;
 
-	if ( InitializeAsClientEntity( pModelName, bIsViewModel ) == false )
+	if ( InitializeAsClientEntity( pModelName,
+	         bIsViewModel ? RENDER_GROUP_VIEW_MODEL_OPAQUE : RENDER_GROUP_OPAQUE_ENTITY ) == false )
 	{
 		return false;
 	}
-
-	m_bCanUseFastPath = false;
 
 	SetAbsOrigin( pObject->GetAbsOrigin() );
 
@@ -3067,7 +3076,7 @@ bool C_PlayerHeldObjectClone::InitClone( C_BaseEntity *pObject, C_BasePlayer *pP
 	pObject->SnatchModelInstance( this );
 
 	m_nOldSkin = pObject->GetSkin();
-	SetSkin( m_nOldSkin );
+	m_nSkin = m_nOldSkin;
 
 	m_bOnOppositeSideOfPortal = false;
 	
@@ -3083,7 +3092,7 @@ void C_PlayerHeldObjectClone::ClientThink()
 		if ( m_nOldSkin != m_hOriginal->GetSkin() )
 		{
 			m_nOldSkin = m_hOriginal->GetSkin();
-			SetSkin( m_nOldSkin );
+			m_nSkin = m_nOldSkin;
 		}
 	}
 
@@ -3116,9 +3125,7 @@ void C_PlayerHeldObjectClone::ClientThink()
 			}
 			ray.Init( vStart + vForward * 20.f, GetAbsOrigin(), GetCollideable()->OBBMins(), GetCollideable()->OBBMaxs() );
 
-			CTraceFilterSkipTwoEntities filter;
-			filter.SetPassEntity( m_hPlayer );
-			filter.SetPassEntity2( m_hOriginal );
+			CTraceFilterSkipTwoEntities filter( m_hPlayer, m_hOriginal, COLLISION_GROUP_NONE );
 
 			trace_t tr;
 			UTIL_Portal_TraceRay_With( pPortal, ray, MASK_SOLID, &filter, &tr );
@@ -3186,7 +3193,7 @@ bool C_PlayerHeldObjectClone::OnInternalDrawModel( ClientModelRenderInfo_t *pInf
 
 int C_PlayerHeldObjectClone::DrawModel( int flags, const RenderableInstance_t &instance )
 {
-	if ( IsRenderingWithViewModels() )
+	if ( m_bIsViewModel )
 	{
 		if ( m_hPlayer.Get() && m_hPlayer.Get() == C_BasePlayer::GetLocalPlayer() )
 		{

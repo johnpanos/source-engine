@@ -11,6 +11,7 @@
 #include "c_baseanimating.h"
 #include "materialsystem/imaterialvar.h"
 #include "materialsystem/imesh.h"
+#include "portal2_engine_compat.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -73,7 +74,9 @@ int C_PortalRaceCheckpoint::DrawModel( int flags, const RenderableInstance_t &in
 	vecUp *= 60.0f;
 	vecRight *= 35.0f;
 
-	Color meshColor = m_bCheckpointActive ? cl_race_checkpoint_active_color.GetColor() : cl_race_checkpoint_inactive_color.GetColor();
+	int r = 0, g = 0, b = 0, a = 255;
+	sscanf( m_bCheckpointActive ? cl_race_checkpoint_active_color.GetString() : cl_race_checkpoint_inactive_color.GetString(), "%d %d %d %d", &r, &g, &b, &a );
+	Color meshColor( r, g, b, a );
 
 	float flColors[3] = { meshColor.r() / 255.0f, meshColor.g() / 255.0f, meshColor.b() / 255.0f };
 	m_pMyColor->SetVecValue( flColors, 3 );
@@ -130,7 +133,7 @@ int C_PortalRaceCheckpoint::DrawModel( int flags, const RenderableInstance_t &in
 	meshBuilder.End();
 	pMesh->Draw();
 
-	return BaseClass::DrawModel( flags, instance );
+	return BaseClass::DrawModel( flags );
 }
 
 bool C_PortalRaceCheckpoint::InitMaterials( void )

@@ -51,7 +51,7 @@ def build(bld):
 
 	defines = []
 
-	libs = ['tier0','tier1','vstdlib','VULKAN','SDL3','vulkan_texture_image']
+	libs = ['tier0','tier1','vstdlib','mathlib','VULKAN','SDL3','vulkan_texture_image']
 	if bld.env.KTX_READ_ENABLED:
 		libs += ['texturecontainer', 'KTXREAD']
 		defines += ['RFC0008_KTX_READER']

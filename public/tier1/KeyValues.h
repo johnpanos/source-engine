@@ -103,6 +103,11 @@ public:
 		KeyValues *m_pKeyValues;
 	};
 
+	static AutoDelete AutoDeleteInline( KeyValues *pKeyValues )
+	{
+		return AutoDelete( pKeyValues );
+	}
+
 	// Quick setup constructors
 	KeyValues( const char *setName, const char *firstKey, const char *firstValue );
 	KeyValues( const char *setName, const char *firstKey, const wchar_t *firstValue );
@@ -125,6 +130,7 @@ public:
 
 	// Read from a buffer...  Note that the buffer must be null terminated
 	bool LoadFromBuffer( char const *resourceName, const char *pBuffer, IBaseFileSystem* pFileSystem = NULL, const char *pPathID = NULL );
+	static KeyValues *FromString( const char *resourceName, const char *pBuffer );
 
 	// Read from a utlbuffer...
 	bool LoadFromBuffer( char const *resourceName, CUtlBuffer &buf, IBaseFileSystem* pFileSystem = NULL, const char *pPathID = NULL );
@@ -178,6 +184,7 @@ public:
 	void *GetPtr( const char *keyName = NULL, void *defaultValue = (void*)0 );
 	bool GetBool( const char *keyName = NULL, bool defaultValue = false, bool* optGotDefault = NULL );
 	Color GetColor( const char *keyName = NULL /* default value is all black */);
+	Color GetColor( const char *keyName, const Color &defaultValue );
 	bool  IsEmpty(const char *keyName = NULL);
 
 	// Data access
@@ -420,6 +427,23 @@ inline Color KeyValues::GetColor( int keySymbol )
 	Color defaultValue( 0, 0, 0, 0 );
 	KeyValues *dat = FindKey( keySymbol );
 	return dat ? dat->GetColor( ) : defaultValue;
+}
+
+inline Color KeyValues::GetColor( const char *keyName, const Color &defaultValue )
+{
+	KeyValues *dat = FindKey( keyName, false );
+	return dat ? dat->GetColor() : defaultValue;
+}
+
+inline KeyValues *KeyValues::FromString( const char *resourceName, const char *pBuffer )
+{
+	KeyValues *pKeyValues = new KeyValues( resourceName );
+	if ( !pKeyValues->LoadFromBuffer( resourceName, pBuffer ) )
+	{
+		pKeyValues->deleteThis();
+		return NULL;
+	}
+	return pKeyValues;
 }
 
 inline bool  KeyValues::IsEmpty( int keySymbol )

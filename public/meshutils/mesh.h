@@ -15,9 +15,9 @@
 #include "tier1/utllinkedlist.h"
 #include "mathlib/vector.h"
 #include "materialsystem/imaterial.h"
-#include "rendersystem/irenderdevice.h"
 #include "bitvec.h"
 
+struct RenderInputLayoutField_t;
 class CDmeModel;
 class CDmeMesh;
 
@@ -313,7 +313,7 @@ void BaryCentricVertices( float *pOutput, float *p0, float *p1, float *p2, float
 inline uint32 VertHashKey( int nV0, int nV1 )
 {
 	uint32 nHash = ((uint32(nV0) >> 16) | (uint32(nV0)<<16)) ^ uint32(nV1);
-	nHash = ieqsel( nHash, uint32(~0), uint32( 0 ), nHash ); // don't ever return ~0
+	nHash = ( nHash == uint32( ~0 ) ) ? uint32( 0 ) : nHash; // don't ever return ~0
 	return nHash;
 }
 

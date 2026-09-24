@@ -37,7 +37,7 @@ struct TitleData1
 		enum MapBits_t
 		{
 #define CFG( fieldname, ctx, idx, num ) fieldname,
-#define CFG_DISABLED( fieldname, ctx, idx, num ) CFG( fieldname )
+#define CFG_DISABLED( fieldname, ctx, idx, num ) CFG( fieldname, ctx, idx, num )
 #include "xlast_portal2/inc_coop_maps.inc"
 #undef CFG_DISABLED
 #undef CFG

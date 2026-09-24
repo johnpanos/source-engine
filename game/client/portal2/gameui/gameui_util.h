@@ -88,7 +88,7 @@ FORCEINLINE const char *CGameUIConVarRef::GetName() const
 
 FORCEINLINE const char *CGameUIConVarRef::GetBaseName() const
 {
-	return m_Info[ 0 ].m_pConVar->GetBaseName();
+	return m_Info[ 0 ].m_pConVar->GetName();
 }
 
 //-----------------------------------------------------------------------------
@@ -97,7 +97,7 @@ FORCEINLINE const char *CGameUIConVarRef::GetBaseName() const
 FORCEINLINE float CGameUIConVarRef::GetFloat() const
 {
 	int nSlot = GetActiveSplitScreenPlayerSlot();
-	return m_Info[ nSlot ].m_pConVarState->GetRawValue().m_fValue;
+	return m_Info[ nSlot ].m_pConVarState->GetFloat();
 }
 
 //-----------------------------------------------------------------------------
@@ -106,7 +106,7 @@ FORCEINLINE float CGameUIConVarRef::GetFloat() const
 FORCEINLINE int CGameUIConVarRef::GetInt() const 
 {
 	int nSlot = GetActiveSplitScreenPlayerSlot();
-	return m_Info[ nSlot ].m_pConVarState->GetRawValue().m_nValue;
+	return m_Info[ nSlot ].m_pConVarState->GetInt();
 }
 
 //-----------------------------------------------------------------------------
@@ -116,7 +116,7 @@ FORCEINLINE const char *CGameUIConVarRef::GetString() const
 {
 	Assert( !IsFlagSet( FCVAR_NEVER_AS_STRING ) );
 	int nSlot = GetActiveSplitScreenPlayerSlot();
-	return m_Info[ nSlot ].m_pConVarState->GetRawValue().m_pszString;
+	return m_Info[ nSlot ].m_pConVarState->GetString();
 }
 
 

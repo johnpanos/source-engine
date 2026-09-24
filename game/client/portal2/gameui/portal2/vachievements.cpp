@@ -145,7 +145,7 @@ void AchievementListItem::SetGamerScore(int score)
 	wchar_t num[5];
 
 	V_snwprintf( num, ARRAYSIZE(num), L"%d", m_GamerScore );
-	g_pVGuiLocalize->ConstructString( buffer, sizeof( buffer ), g_pVGuiLocalize->FindSafe( "#L4D360UI_Gamerscore_Progress" ), 1, num );
+	g_pVGuiLocalize->ConstructString( buffer, sizeof( buffer ), g_pVGuiLocalize->Find( "#L4D360UI_Gamerscore_Progress" ), 1, num );
 
 	m_LblGamerscore->SetText( buffer );
 	m_LblGamerscore->SetVisible( IsX360() && (score>0) );
@@ -223,9 +223,9 @@ void AchievementListItem::ApplySchemeSettings(IScheme *pScheme)
 			if ( !pLabel )
 				continue;
 
-			pLabel->ApplySettings( (i%2) == 0 ? pLeftTemplate : pRightTemplate );
+			(void)( (i%2) == 0 ? pLeftTemplate : pRightTemplate );
 			pLabel->SetName( CFmtStr( "comp%d", i ) );
-			pLabel->SetText( g_pVGuiLocalize->FindSafe( m_pAchievement->GetComponentDisplayString(i) ) );
+			pLabel->SetText( g_pVGuiLocalize->Find( m_pAchievement->GetComponentDisplayString(i) ) );
 			pLabel->SetVisible( false );	//start out hidden
 
 			pLabel->SetEnabled( ( iComponentBits & ((uint64) 1 << i) ) );

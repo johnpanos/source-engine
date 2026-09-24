@@ -16,6 +16,7 @@
 #include "gameconsole.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 using namespace BaseModUI;
@@ -98,7 +99,7 @@ void CBaseModTransitionPanel::BuildTiles()
 	int screenWide, screenTall;
 	surface()->GetScreenSize( screenWide, screenTall );
 
-	const AspectRatioInfo_t &aspectRatioInfo = materials->GetAspectRatioInfo();
+	const AspectRatioInfo_t &aspectRatioInfo = Portal2_GetAspectRatioInfo();
 	float flInverseAspect = 1.0f/aspectRatioInfo.m_flFrameBufferAspectRatio;
 
 	m_nNumColumns = ( screenWide + m_nTileWidth - 1 ) / m_nTileWidth;
@@ -626,7 +627,7 @@ void CBaseModTransitionPanel::StartPaint3D()
 	pRenderContext->PushMatrix();
 	pRenderContext->LoadIdentity();
 
-	const AspectRatioInfo_t &aspectRatioInfo = materials->GetAspectRatioInfo();
+	const AspectRatioInfo_t &aspectRatioInfo = Portal2_GetAspectRatioInfo();
 	pRenderContext->PerspectiveX( 90, aspectRatioInfo.m_flFrameBufferAspectRatio, TILE_NEAR_PLANE, TILE_FAR_PLANE );
 
 	pRenderContext->CullMode( MATERIAL_CULLMODE_CCW );

@@ -46,6 +46,7 @@
 #include "dt_utlvector_recv.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 // Don't alias here
@@ -1459,7 +1460,7 @@ void C_Portal_Player::MoveHeldObjectOutOfPlayerEyes( void )
 
 	// HACK: This level does some odd toggling of vm mode/physics mode during
 	// a scene where this behavior isn't needed or desired.
-	if ( V_strcmp( "sp_a1_wakeup", engine->GetLevelNameShort() ) == 0 )
+	if ( V_strcmp( "sp_a1_wakeup", Portal2Engine::GetLevelNameShort() ) == 0 )
 		return;	
 
 	Assert ( player_held_object_collide_with_player.GetBool() == false );
@@ -2039,7 +2040,7 @@ IRagdoll* C_Portal_Player::GetRepresentativeRagdoll() const
 
 void C_Portal_Player::PlayerPortalled( C_Portal_Base2D *pEnteredPortal, float fTime, bool bForcedDuck )
 {
-	//Warning( "C_Portal_Player::PlayerPortalled( %s ) ent:%i slot:%i\n", IsLocalPlayer() ? "local" : "nonlocal", entindex(), engine->GetActiveSplitScreenPlayerSlot() );
+	//Warning( "C_Portal_Player::PlayerPortalled( %s ) ent:%i slot:%i\n", IsLocalPlayer() ? "local" : "nonlocal", entindex(), Portal2Engine::GetActiveSplitScreenPlayerSlot() );
 #if ( PLAYERPORTALDEBUGSPEW == 1 )
 	Warning( "C_Portal_Player::PlayerPortalled( %f %f %f %i ) %i\n", fTime, engine->GetLastTimeStamp(), GetTimeBase(), prediction->GetLastAcknowledgedCommandNumber(), m_PredictedPortalTeleportations.Count() );
 #endif
@@ -3594,7 +3595,7 @@ void C_Portal_Player::ApplyUnpredictedPortalTeleportation( const C_Portal_Base2D
 
 	if( IsLocalPlayer() && (GET_ACTIVE_SPLITSCREEN_SLOT() == GetSplitScreenPlayerSlot()) )
 	{
-		//Warning( "C_Portal_Player::ApplyUnpredictedPortalTeleportation() ent:%i slot:%i\n", entindex(), engine->GetActiveSplitScreenPlayerSlot() );
+		//Warning( "C_Portal_Player::ApplyUnpredictedPortalTeleportation() ent:%i slot:%i\n", entindex(), Portal2Engine::GetActiveSplitScreenPlayerSlot() );
 		matrix3x4_t matAngleTransformIn, matAngleTransformOut; //temps for angle transformation
 		{
 			QAngle qEngineAngles;
@@ -3671,7 +3672,7 @@ void C_Portal_Player::ApplyPredictedPortalTeleportation( C_Portal_Base2D *pEnter
 		C_PortalGhostRenderable::CreateInversion( pGhost, pEnteredPortal, gpGlobals->curtime );
 	}
 
-	//Warning( "C_Portal_Player::ApplyPredictedPortalTeleportation() ent:%i slot:%i\n", entindex(), engine->GetActiveSplitScreenPlayerSlot() );
+	//Warning( "C_Portal_Player::ApplyPredictedPortalTeleportation() ent:%i slot:%i\n", entindex(), Portal2Engine::GetActiveSplitScreenPlayerSlot() );
 	ApplyTransformToInterpolators( pEnteredPortal->m_matrixThisToLinked, gpGlobals->curtime, false, bForcedDuck );
 
 	// straighten out velocity if going nearly straight up/down out of a floor/ceiling portal
@@ -3784,7 +3785,7 @@ void C_Portal_Player::UnrollPredictedTeleportations( int iCommandNumber )
 		if( IsLocalPlayer() )
 		{
 			engine->SetViewAngles( qEngineViewAngles );
-			//Warning( "C_Portal_Player::UnrollPredictedTeleportations() ent:%i slot:%i\n", entindex(), engine->GetActiveSplitScreenPlayerSlot() );
+			//Warning( "C_Portal_Player::UnrollPredictedTeleportations() ent:%i slot:%i\n", entindex(), Portal2Engine::GetActiveSplitScreenPlayerSlot() );
 		}
 		//player->pl.v_angle = qVAngles;
 	}

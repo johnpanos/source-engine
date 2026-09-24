@@ -36,6 +36,7 @@
 #include "pixelwriter.h"
 #include "shaderapi/commandbuffer.h"
 #include "drawstatefixture.h"
+#include "renderparm.h"
 #if defined( USE_SDL )
 #include "appframework/ilaunchermgr.h"
 #endif
@@ -1793,16 +1794,43 @@ public:
 	// Lets the shader know about the full-screen texture so it can
 	virtual void SetFullScreenTextureHandle( ShaderAPITextureHandle_t h ) {}
 
-	void SetFloatRenderingParameter( int parm_number, float value ) {}
+	void SetFloatRenderingParameter( int parm_number, float value )
+	{
+		if ( parm_number >= 0 && parm_number < MAX_FLOAT_RENDER_PARMS )
+			m_FloatRenderingParameters[parm_number] = value;
+	}
 
-	void SetIntRenderingParameter( int parm_number, int value ) {}
-	void SetVectorRenderingParameter( int parm_number, Vector const &value ) {}
+	void SetIntRenderingParameter( int parm_number, int value )
+	{
+		if ( parm_number >= 0 && parm_number < MAX_INT_RENDER_PARMS )
+			m_IntRenderingParameters[parm_number] = value;
+	}
+	void SetVectorRenderingParameter( int parm_number, Vector const &value )
+	{
+		if ( parm_number >= 0 && parm_number < MAX_VECTOR_RENDER_PARMS )
+			m_VectorRenderingParameters[parm_number] = value;
+	}
 
-	float GetFloatRenderingParameter( int parm_number ) const { return 0; }
+	float GetFloatRenderingParameter( int parm_number ) const
+	{
+		return parm_number >= 0 && parm_number < MAX_FLOAT_RENDER_PARMS
+		           ? m_FloatRenderingParameters[parm_number]
+		           : 0.0f;
+	}
 
-	int GetIntRenderingParameter( int parm_number ) const { return 0; }
+	int GetIntRenderingParameter( int parm_number ) const
+	{
+		return parm_number >= 0 && parm_number < MAX_INT_RENDER_PARMS
+		           ? m_IntRenderingParameters[parm_number]
+		           : 0;
+	}
 
-	Vector GetVectorRenderingParameter( int parm_number ) const { return Vector( 0, 0, 0 ); }
+	Vector GetVectorRenderingParameter( int parm_number ) const
+	{
+		return parm_number >= 0 && parm_number < MAX_VECTOR_RENDER_PARMS
+		           ? m_VectorRenderingParameters[parm_number]
+		           : Vector( 0, 0, 0 );
+	}
 
 	// Methods related to stencil
 	// D3DRS_STENCIL* render state: recorded here and applied to each draw at
@@ -1966,6 +1994,9 @@ private:
 	};
 
 	CEmptyMesh m_Mesh;
+	float m_FloatRenderingParameters[MAX_FLOAT_RENDER_PARMS];
+	int m_IntRenderingParameters[MAX_INT_RENDER_PARMS];
+	Vector m_VectorRenderingParameters[MAX_VECTOR_RENDER_PARMS];
 
 	void EnableAlphaToCoverage() {};
 	void DisableAlphaToCoverage() {};
@@ -4156,6 +4187,9 @@ void CShaderShadowVulkan::DrawFlags( unsigned int drawFlags )
 
 CShaderAPIVulkan::CShaderAPIVulkan() : m_Mesh( true )
 {
+	memset( m_FloatRenderingParameters, 0, sizeof( m_FloatRenderingParameters ) );
+	memset( m_IntRenderingParameters, 0, sizeof( m_IntRenderingParameters ) );
+	memset( m_VectorRenderingParameters, 0, sizeof( m_VectorRenderingParameters ) );
 }
 
 CShaderAPIVulkan::~CShaderAPIVulkan()
@@ -6519,12 +6553,12 @@ void CShaderAPIVulkan::InvalidateDelayedShaderConstants( void )
 
 float CShaderAPIVulkan::GammaToLinear_HardwareSpecific( float fGamma ) const
 {
-	return 0.0f;
+	return SrgbGammaToLinear( fGamma );
 }
 
 float CShaderAPIVulkan::LinearToGamma_HardwareSpecific( float fLinear ) const
 {
-	return 0.0f;
+	return SrgbLinearToGamma( fLinear );
 }
 
 void CShaderAPIVulkan::SetLinearToGammaConversionTextures(
