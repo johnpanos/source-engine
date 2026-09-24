@@ -87,7 +87,9 @@ def build(bld):
 			features='cxx', env=test_env.derive(),
 			source=['test_builtin_shaders.cpp', '../../materialsystem/builtin_shader_catalog.cpp'],
 			target='builtin_shader_conformance', name='builtin_shader_conformance',
-			includes=includes, use=['stdshader_dx9', 'tier1', 'tier0', 'vstdlib'],
+			includes=includes,
+			defines=['NATIVE_PBR_METALROUGH'] if bld.env.NATIVE_VULKAN else [],
+			use=['stdshader_dx9', 'tier1', 'tier0', 'vstdlib'],
 			install_path=None)
 	if bld.env.DXVK:
 		bld.program(

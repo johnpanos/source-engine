@@ -22,6 +22,7 @@
 #include "materialsystem/idebugtextureinfo.h"
 #include "materialsystem/deformations.h"
 #include "render/legacy_shader_provider.h"
+#include "render/pbr_material_schema.h"
 #include "vulkan_device.h"
 #include "vulkan_world_mesh_upload.h"
 #include "sdl3/sdl3_vulkan_surface_host.h"
@@ -2997,9 +2998,11 @@ void CEmptyMesh::EmitToNativeQueue()
 	render_vulkan::CFrameCostScope cost( g_VulkanContext.CurrentFrameCost(), render_vulkan::kCostEmit );
 	if ( m_worldMeshBatch )
 	{
-		if ( g_pBoundMaterial && !V_stricmp( g_pBoundMaterial->GetShaderName(), "PBR" ) )
+		if ( g_pBoundMaterial &&
+		     ( render::pbr::IsMetalRoughShader( g_pBoundMaterial->GetShaderName() ) ||
+		         !V_stricmp( g_pBoundMaterial->GetShaderName(), "PBR" ) ) )
 		{
-			// PBR's dynamic pass already bound its VTF base, MRAO (sampler 10)
+			// The material's dynamic pass bound its base, MRAO (sampler 10)
 			// and normal (sampler 1). The WMSH pipeline uses those same images at
 			// sets 0, 1 and 2, and the map-owned HDR LMAP at set 3.
 			float eye[3];
@@ -3017,10 +3020,10 @@ void CEmptyMesh::EmitToNativeQueue()
 				const char *maskName = mask >= 0 && size_t( mask ) < g_TextureRecords.size()
 				                           ? g_TextureRecords[size_t( mask )].name.c_str()
 				                           : "(none)";
-				Msg( "[NativeVulkan] WMSH PBR material %s: MRAO %s, alpha %.2f, "
+				Msg( "[NativeVulkan] WMSH PBR material %s shader %s: MRAO %s, alpha %.2f, "
 				     "eye %.1f %.1f %.1f\n",
-				    g_pBoundMaterial->GetName(), maskName, g_CurrentAlphaRef, eye[0], eye[1],
-				    eye[2] );
+				    g_pBoundMaterial->GetName(), g_pBoundMaterial->GetShaderName(), maskName,
+				    g_CurrentAlphaRef, eye[0], eye[1], eye[2] );
 				s_reportedPbrWorld = true;
 			}
 		}
@@ -5441,9 +5444,10 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	// device with too few push-constant bytes or clip distances does not get.
 	if ( !V_stricmp( shaderName, "PortalRefract_dx9" ) )
 		return g_VulkanContext.PortalPipelineSupported();
-	// The legacy PBR shader's sampler contract can feed WMSH tangents and the
-	// map-scoped HDR lightmap. Its ordinary dynamic meshes are not implemented.
-	if ( !V_stricmp( shaderName, "PBR" ) )
+	// Both the canonical native material and legacy PBR's sampler contract can
+	// feed WMSH tangents and the map-scoped HDR lightmap. Ordinary dynamic
+	// meshes still need their own PBR pipeline cohort.
+	if ( render::pbr::IsMetalRoughShader( shaderName ) || !V_stricmp( shaderName, "PBR" ) )
 		return g_pRenderMesh && g_pRenderMesh->IsWorldMeshBatch() &&
 		       g_VulkanContext.PbrWorldPipelineSupported();
 	return false;

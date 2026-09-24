@@ -1,0 +1,16 @@
+{
+  "schema": "pbrt-map-manifest/v1",
+  "map": "staircase2_pbrt",
+  "scene": "staircase2/scene-v4.pbrt",
+  "credit": "Modern Hall by NewSee2l035 (CC BY 3.0), pbrt-v4 conversion by Benedikt Bitterli",
+  "reference": {
+    "png": "staircase2/TungstenRender.png",
+    "exr": "staircase2/TungstenRender.exr"
+  },
+  "lightmap": {
+    "size": 2048,
+    "samples": 64,
+    "exclude_materials": ["SpotHolder"]
+  },
+  "collision": {}
+}

@@ -15,21 +15,24 @@ from pathlib import Path
 
 from PIL import Image
 
+from staircase2_materials import linear_to_srgb_byte, solid_linear_base_colors
+
 
 MATERIALS = {
-    "wall": ((228, 228, 228), None, 0, 255),
+    "wall": (None, None, 0, 255),
     "wood": (None, "wood5.tga", 0, 89),
     "floortiles": (None, "Tiles.tga", 0, 38),
     "wallpaper": (None, "Wallpaper.tga", 0, 255),
     "spotholder": ((255, 255, 255), None, 0, 255),
-    "metal": ((238, 215, 172), None, 255, 26),
-    "chrome": ((243, 233, 218), None, 255, 26),
+    "metal": (None, None, 255, 26),
+    "chrome": (None, None, 255, 26),
     "glass": ((215, 230, 230), None, 0, 13),
     "emitter": ((255, 255, 255), None, 0, 255),
 }
 EXPECTED_PBRT_MATERIALS = {
     "Wall", "Wood", "FloorTiles", "Wallpaper", "SpotHolder", "Metal", "Chrome", "Glass"
 }
+UNLIT_PREVIEW_MATERIALS = {"glass", "spotholder", "emitter"}
 
 
 def sha256(path):
@@ -81,9 +84,12 @@ def main():
     if args.out.exists():
         parser.error("output directory already exists: " + str(args.out))
     receipt = json.loads(args.render_evidence.read_text())
+    solid_colors = solid_linear_base_colors(args.scene.read_text())
     if (receipt.get("status") != "pass" or
             receipt.get("source_sha256") != sha256(args.scene) or
             receipt.get("stage_sha256") != sha256(args.stage) or
+            receipt.get("solid_linear_base_colors") !=
+            {name: list(values) for name, values in solid_colors.items()} or
             set(receipt.get("material_assignments", {}).values()) !=
             EXPECTED_PBRT_MATERIALS):
         raise ValueError("staircase2 material source does not match its USD render")
@@ -98,6 +104,8 @@ def main():
     shutil.copy2(args.bsp2, map_path)
     assets = {}
     for name, (color, image_name, metal, roughness) in sorted(MATERIALS.items()):
+        if name in solid_colors:
+            color = tuple(linear_to_srgb_byte(value) for value in solid_colors[name])
         directory = material_root / name
         directory.mkdir(parents=True)
         if image_name:
@@ -120,28 +128,30 @@ def main():
         mrao = Image.new("RGB", (4, 4), (metal, roughness, 255))
         mrao_hash = compile_texture(mrao, directory / "mrao", args.vtex.resolve())
         verify_solid_vtf(directory / "mrao.vtf", (metal, roughness, 255))
-        vmt = (f'"PBRMetalRough"\n{{\n'
-               f'\t"$basetexture" "staircase2/{name}/basecolor"\n'
-               f'\t"$mraotexture" "staircase2/{name}/mrao"\n'
-               f'\t"$fallbackmaterial" "staircase2_fallback/{name}"\n'
-               f'\t"$surfaceprop" "tile"\n}}\n')
-        (material_root / (name + ".vmt")).write_text(vmt)
         fallback_root.mkdir(parents=True, exist_ok=True)
-        fallback_shader = ("UnlitGeneric" if name in {"glass", "spotholder", "emitter"}
+        fallback_shader = ("UnlitGeneric" if name in UNLIT_PREVIEW_MATERIALS
                            else "LightmappedGeneric")
         glass_alpha = '\t"$translucent" "1"\n\t"$alpha" "0.13"\n' if name == "glass" else ""
         emitter_nocull = '\t"$nocull" "1"\n' if name == "emitter" else ""
-        (fallback_root / (name + ".vmt")).write_text(
+        fallback_vmt = (
             f'"{fallback_shader}"\n{{\n'
             f'\t"$basetexture" "staircase2/{name}/basecolor"\n'
             f'{glass_alpha}'
             f'{emitter_nocull}'
             f'\t"$surfaceprop" "tile"\n}}\n')
+        (fallback_root / (name + ".vmt")).write_text(fallback_vmt)
+        vmt = (fallback_vmt if name in UNLIT_PREVIEW_MATERIALS else
+               f'"PBRMetalRough"\n{{\n'
+               f'\t"$basetexture" "staircase2/{name}/basecolor"\n'
+               f'\t"$mraotexture" "staircase2/{name}/mrao"\n'
+               f'\t"$fallbackmaterial" "staircase2_fallback/{name}"\n'
+               f'\t"$surfaceprop" "tile"\n}}\n')
+        (material_root / (name + ".vmt")).write_text(vmt)
         pbr_vmt_hash = None
         if pbr_root:
             pbr_root.mkdir(parents=True, exist_ok=True)
-            if name in {"glass", "spotholder", "emitter"}:
-                preview_vmt = (fallback_root / (name + ".vmt")).read_text()
+            if name in UNLIT_PREVIEW_MATERIALS:
+                preview_vmt = fallback_vmt
             else:
                 preview_vmt = (f'"PBR"\n{{\n'
                                f'\t"$basetexture" "staircase2/{name}/basecolor"\n'
@@ -164,6 +174,7 @@ def main():
                 "render_evidence_sha256": sha256(args.render_evidence),
                 "bsp2_sha256": sha256(args.bsp2), "map_sha256": sha256(map_path),
                 "world_pbr_prefix": args.world_pbr_prefix,
+                "solid_linear_base_colors": solid_colors,
                 "materials": assets,
                 "transmission_limit": "glass uses alpha blending; refraction is pending",
                 "texture_container": "VTF preview bridge; KTX2 runtime binding pending"}

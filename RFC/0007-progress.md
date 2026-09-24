@@ -526,3 +526,33 @@ are documented placeholders where no authored PBR data exists. The converter
 does not establish runtime `PBRMetalRough` support, KTX2 loading, correct
 sRGB sampling, legacy fallback selection, or fidelity for the skipped shaders
 and effects; R47 and the downstream content gates remain open.
+
+## Canonical PBR material on native Vulkan WMSH (R47 slice, 2026-09-23)
+
+The native Vulkan standard-shader build now registers `PBRMetalRough` as a
+material shader. It loads the required base color and MRAO textures with their
+declared color encodings, binds optional normal data, requests sRGB output, and
+feeds the BSP2 WMSH PBR pipeline through the existing Source material pass.
+Missing required texture parameters issue a material warning; the shader and
+API refuse to queue an invalid WMSH draw. Emissive, env-map and translucent
+materials warn and decline the native draw until their feature paths exist.
+DX9/DXVK keeps its established
+`Wireframe_DX9` fallback registration and `$fallbackmaterial` behavior.
+Existing `PBR` content is unchanged.
+
+The canonical staircase package boots on native Vulkan with nine material
+batches and 1,520 meshlets; the log identifies `staircase2/chrome shader
+PBRMetalRough`. Native and DX9 built-in shader conformance each pass **302/0**;
+the native WMSH pixel suite passes **25/0**, and the DXVK fallback material
+pixel run passes. An unsupported env-map negative fixture warns once, drops
+only its material batch, and leaves 1,500 other meshlets queued. The corrected
+Cycles light bake,
+sRGB output and atlas filtering are recorded in
+[RFC 0008 progress](0008-progress.md#f4-canonical-native-pbr-material-and-linear-light-correction-2026-09-23).
+
+This implementation covers BSP2 world batches. The older native
+`pbr-fallback` screen-space fixture now fails because its expected legacy
+fallback is no longer selected; that failure is retained in the RFC 0008
+audit receipt. Dynamic meshes need a native PBR pass and a new positive pixel
+oracle before the material family is complete. Reflections, transmission,
+coat, KTX2 base textures, and cross-platform GPU evidence also remain open.

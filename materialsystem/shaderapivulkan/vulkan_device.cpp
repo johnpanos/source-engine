@@ -5420,6 +5420,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		{
 			return m_srgbAttachments && r.kind == kRecordDraw &&
 			       ( r.shaderIndex == kDynShaderTextured || r.shaderIndex == kDynShaderPbrDirect ||
+			           r.shaderIndex == kDynShaderPbrWorld ||
 			           r.shaderIndex == kDynShaderPortalRefract ||
 			           r.shaderIndex == kDynShaderSkin ) &&
 			       ( r.colorFlags & kColorSrgbWrite );

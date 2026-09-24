@@ -1,5 +1,5 @@
 #version 450
-// Scene-derived WMSH PBR: baked linear irradiance plus a directional specular
+// Scene-derived WMSH PBR: Cycles diffuse-light bake plus a directional specular
 // source. The native pixel fixture checks normal, metalness and roughness.
 layout( location = 0 ) in vec2 fragUv;
 layout( location = 1 ) in vec2 fragLightmapUv;
@@ -58,9 +58,12 @@ void main()
 	vec2 splitSum = texture( splitSumTexture,
 	    clamp( vec2( normalDotView, roughness ), vec2( 0.0 ), vec2( 1.0 ) ) ).rg;
 	vec3 directionalAlbedo = min( vec3( 1.0 ), f0 * splitSum.x + vec3( splitSum.y ) );
-	vec3 irradiance = texture( lightmapTexture, fragLightmapUv ).rgb;
+	// Cycles DIFFUSE DIRECT+INDIRECT with COLOR disabled already contains the
+	// Lambertian 1/pi factor. Multiplying this bake by albedo must not divide
+	// it by pi again.
+	vec3 bakedDiffuse = texture( lightmapTexture, fragLightmapUv ).rgb;
 	vec3 diffuse = base * ( 1.0 - metalness ) *
-	    ( vec3( 1.0 ) - directionalAlbedo ) * irradiance * occlusion / kPi;
+	    ( vec3( 1.0 ) - directionalAlbedo ) * bakedDiffuse * occlusion;
 	vec3 specular = vec3( 0.0 );
 	vec3 light = normalize( -consts.lightDirection.xyz );
 	float normalDotLight = max( dot( normal, light ), 0.0 );

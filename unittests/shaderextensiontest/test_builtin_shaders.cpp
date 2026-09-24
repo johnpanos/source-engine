@@ -105,7 +105,7 @@ void Run()
 		bool foundLightmapped = false;
 		bool foundWireframe = false;
 		bool foundLegacyPbr = false;
-		bool foundPbrFallback = false;
+		bool foundPbrMaterial = false;
 		for ( int i = 0; i < shaders->ShaderCount(); ++i )
 		{
 			IShader *shader = shaders->GetShader( i );
@@ -117,11 +117,15 @@ void Run()
 			foundLegacyPbr |= std::strcmp( shader->GetName(), "PBR" ) == 0;
 			if ( std::strcmp( shader->GetName(), "PBRMetalRough" ) == 0 )
 			{
-				foundPbrFallback = true;
+				foundPbrMaterial = true;
+#ifdef NATIVE_PBR_METALROUGH
+				CHECK( shader->GetFallbackShader( NULL ) == NULL );
+#else
 				CHECK( std::strcmp( shader->GetFallbackShader( NULL ), "Wireframe_DX9" ) == 0 );
+#endif
 			}
 		}
-		CHECK( foundLightmapped && foundWireframe && foundLegacyPbr && foundPbrFallback );
+		CHECK( foundLightmapped && foundWireframe && foundLegacyPbr && foundPbrMaterial );
 		ConVar *registered = cvars->FindVar( "mat_disable_lightwarp" );
 		CHECK( registered != NULL );
 		CHECK( !provider->connect( host ) );

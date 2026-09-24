@@ -1155,6 +1155,66 @@ PYTHONPATH=/tmp/rfc0008-openusd-install/lib/python /usr/bin/python3.12 \
   --out-bsp2 quality-results/staircase2-integrated-v1.bsp2
 ```
 
+### F2/F5 manifest-driven PBRT map pipeline: living-room (2026-09-23)
+
+The staircase2 scripts above hard-coded that scene's mesh, texture and emitter
+counts, floor and stair geometry, spawn and material table, so a second PBRT
+scene could not reuse them. One command now builds a playable BSP2 map from a
+PBRT-v4 scene and a short manifest; see the
+[pipeline guide](../quality/fixtures/pbrt-maps/README.md). A tokenizing PBRT
+reader owns the axis conversion, camera pose, PBRT-v4 equal-area sky
+resampling and one material translation policy. Its eleven unit tests include
+sky orientation checks.
+Generic steps cover the USD stage, reference render, lightmap bake, collision
+and content. The step runner caches by input digest and checks tool
+capabilities before running. The WMSH packer, compile tools and KTX2
+packager are reused; the packager gained `--expected-scope`.
+
+The living room ([*The Grey & White Room*](../living-room/LICENSE.txt), CC BY
+3.0) is lit only by an HDR sky. Its first bake came out black, then speckled.
+Fixes that apply to every scene:
+
+- **Sky lighting.** The sky comes from the scene's environment map.
+- **Atlas packing.** Area-normalized joint packing gives uniform texel density,
+  which the bake receipt now enforces.
+- **Atlas scope.** Fully metallic and transmissive materials are left out of
+  the atlas; the PBR shader never reads it for them.
+- **Denoising.** An OpenImageDenoise `RTLightmap` pass runs through the system
+  library. It must keep mean irradiance within 5%.
+- **Spawn.** A downward ray from the reference camera finds the floor.
+
+The same code built staircase2 from a 15-line manifest, deriving a spawn within
+8 units of the hand-coded one.
+
+Both maps pass the headless native Vulkan boot with an active player:
+
+| Map | Triangles | Meshlets | Batches | Lightmap | Cold build |
+| --- | --- | --- | --- | --- | --- |
+| living-room | 143,155 | 6,989 | 19 | 2048² linear RGBA16F, 256-sample Cycles bake | about 4 min |
+| staircase2 | 30,733 | 1,520 | 9 | 2048² linear RGBA16F | not recorded |
+
+Frames are in `quality-results/living-room-map/boot/living_room.png` and
+`quality-results/staircase2-pbrt-map/boot/staircase2_pbrt.png` (local, ignored).
+
+The Cycles reference render of the exported living-room stage differs from the
+supplied Tungsten image by a mean of 22.4 RGB levels under Blender Standard.
+Most of the difference is brightness and sun patches; no parity gate is
+claimed. In game, windows and the mirror render black: there is no sky pass
+and no reflection probes. Collision is axis-aligned boxes. Every leaf still
+references every meshlet. The toolchain is the same unpinned local set used
+above, and the Waf `bsp2tool` is required because the `/tmp` install lacks
+`pack-world-lit`. This is preview tooling, not F2/F5 acceptance. The staircase2
+scripts can be retired once their receipts are regenerated through the manifest
+path.
+
+```sh
+python3 -m unittest tools/quality/tests/test_pbrt_scene.py
+python3 tools/quality/pbrt_map_build.py \
+  --manifest quality/fixtures/pbrt-maps/living-room.json \
+  --toolchain quality-results/pbrt-toolchain.json \
+  --out quality-results/living-room-map --boot
+```
+
 ### F4 native world upload adapter extraction (2026-09-23)
 
 The WMSH service now lives in
@@ -1945,3 +2005,59 @@ run requested validation, but the validation layer was unavailable. Changed-line
 style, Python syntax and `git diff --check` pass. The current full architecture
 check reports eight CAP002 include violations and 47 baseline drift entries in
 unrelated legacy files; no new entry is in this WMSH material cohort.
+
+### F4 canonical native PBR material and linear-light correction (2026-09-23)
+
+The playable WMSH path now uses the canonical `PBRMetalRough` VMTs in
+`staircase2/*`. The native standard-shader source loads an sRGB base color,
+linear MRAO and optional normal map, sets the sampler and output color-space
+state, and declines to draw when required textures are absent. The shader API
+recognizes the canonical name when selecting its WMSH PBR pipeline. The
+native shader also warns and declines emissive, env-map and translucent VMTs
+until those feature cohorts have working pipelines. The
+profile's Waf source list keeps `pbr_metalrough_fallback.cpp` for DX9/DXVK and
+selects `pbr_metalrough_native.cpp` for native Vulkan. The older `PBR` WMSH
+alias remains accepted for existing preview fixtures, but new staircase
+content uses the canonical material namespace without an opt-in prefix.
+
+The Cycles diffuse-light bake already includes the Lambertian `1/pi` factor.
+The WMSH fragment shader no longer divides that baked contribution by pi a
+second time. Blender's generated-image `save()` transformed EXR texels; the
+baker now uses `save_render()` and checks sparse nontrivial EXR texels against
+the in-memory linear bake. A 512², eight-sample self-check compared 189 texels
+with zero maximum error. The native WMSH pipeline now requests sRGB attachment
+encoding for its linear output and filters the HDR lightmap linearly. These
+corrections replace the dark preview described above; the 2048² corrected
+atlas and playable package are in `quality-results/staircase2-lighting-linear-fix.*`
+and `quality-results/staircase2-content-canonical-linear`.
+
+The native `builtin_shader_conformance` passed **302/0** and
+`world_pbr_native_pixel_conformance` passed **25/0** on the Radeon 8060S. The
+GPU fixture checks sRGB output from a white bake and an sRGB base image. The
+[playable boot](../quality-results/staircase2-playable-canonical-pbr-final-v1/evidence.json)
+passed with nine batches and 1,520 queued meshlets; its log identifies
+`staircase2/chrome shader PBRMetalRough`. The prior DX9 profile's built-in
+shader suite passed **302/0** with its legacy fallback; the
+[DXVK fallback pixel run](../quality-results/pbr-material-dx9-fallback-confirm-v1/evidence.json)
+also passed. Changed-line style,
+`git diff --check`, and the linear EXR self-check pass. Vulkan validation was
+requested but the layer was unavailable on this runner.
+
+A negative content copy added `$envmap` to the chrome VMT. Its
+[native boot](../quality-results/staircase2-pbr-unsupported-envmap-probe-v4/evidence.json)
+logged one unsupported-feature warning, rejected the chrome batch, and queued
+the other 1,500 meshlets. The engine WMSH loop now continues to later material
+batches after a rejected batch and names the rejected material once, rather
+than blanking the whole world or flooding the log. Source still requires a
+shader snapshot for that material, so the dynamic-pass refusal occurs only
+after snapshot creation.
+
+The old native `pbr-fallback` material-pixel fixture is now stale: it expects
+`UnlitGeneric` and a green screen-space rectangle, while the primary shader
+resolves to `PBRMetalRough` and the unsupported dynamic draw leaves the clear
+color. Its [audit receipt](../quality-results/pbr-material-native-fallback-audit-v1/evidence.json)
+is a failure and is not counted as acceptance. A dynamic-mesh native PBR path
+and a replacement positive pixel oracle remain required. The playable frame
+also still lacks authored reflection probes, transmission and coat response,
+and a camera-aligned Cycles comparison. High visual parity and F4/F5 remain
+unverified.

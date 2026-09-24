@@ -170,6 +170,8 @@ int main()
 		context.SetWorldLightmapHandle( lightmap );
 #endif
 		context.BindManagedTexture( base );
+		context.SelectDynamicColorSpace( render_vulkan::CVulkanContext::kColorSrgbReadBase |
+		                                 render_vulkan::CVulkanContext::kColorSrgbWrite );
 		const float eye[3] = { 0.0f, 0.0f, 1.0f };
 		check( !context.SelectPbrWorldMaterial( base, normal, eye, -1.0f ),
 		    "WMSH material selection rejects an sRGB MRAO input" );
@@ -180,7 +182,11 @@ int main()
 		context.SetDynamicPbrWorldScene( scene );
 		std::uint8_t diffuse = 0;
 		check( DrawWorld( context, &diffuse, &error ), "dielectric world pixel renders" );
-		check( diffuse > 20, "baked light illuminates dielectric base color" );
+		// Cycles' color-free diffuse bake is the white Lambertian response,
+		// rather than incident irradiance. A second 1/pi would darken this
+		// base-200 texel below the expected sRGB range.
+		check( diffuse >= 175 && diffuse <= 210,
+		    "Cycles diffuse bake is multiplied by albedo without another 1/pi" );
 		render_vulkan::CVulkanContext::DynRasterState raster;
 		raster.cullMode = VK_CULL_MODE_BACK_BIT;
 		context.SelectDynamicRasterState( raster );

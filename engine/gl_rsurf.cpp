@@ -96,6 +96,7 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 			visible[pWorld->pWorldMeshLeafReferences[leaf.firstReference + j]] = 1;
 	}
 	unsigned int submitted = 0;
+	static bool s_reportedRejected = false;
 	for ( unsigned int i = 0; i < pWorld->worldMeshBatchCount; ++i )
 	{
 		const worldmeshbatch_t &batch = pWorld->pWorldMeshBatches[i];
@@ -108,8 +109,13 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 			const worldmeshcluster_t &meshlet = pWorld->pWorldMeshClusters[meshletIndex];
 			if ( !uploader->DrawBatch( meshlet.firstIndex, meshlet.indexCount ) )
 			{
-				Warning( "WMSH draw rejected meshlet %u\n", meshletIndex );
-				return;
+				if ( !s_reportedRejected )
+				{
+					Warning( "WMSH draw rejected material %s at meshlet %u\n",
+					    batch.material ? batch.material->GetName() : "(null)", meshletIndex );
+					s_reportedRejected = true;
+				}
+				break;
 			}
 			++submitted;
 		}

@@ -1,0 +1,39 @@
+{
+  "schema": "pbrt-map-manifest/v1",
+  "map": "living_room",
+  "scene": "living-room/scene-v4.pbrt",
+  "credit": "The Grey & White Room by Wig42 (CC BY 3.0), pbrt-v4 conversion by Benedikt Bitterli",
+  "reference": {
+    "png": "living-room/TungstenRender.png",
+    "exr": "living-room/TungstenRender.exr",
+    "render": {
+      "samples": 64,
+      "scale": 1.0
+    },
+    "gate": {
+      "max_mae": 10,
+      "min_ssim": 0.86,
+      "max_exposure_stops": 0.3
+    }
+  },
+  "lightmap": {
+    "size": 2048,
+    "samples": 256
+  },
+  "collision": {
+    "envelope_meshes": [
+      "Mesh059"
+    ],
+    "solid_materials": [
+      "Sofa",
+      "SofaLegs",
+      "PlantPot"
+    ],
+    "solid_meshes": [
+      "Mesh000",
+      "Mesh031",
+      "Mesh037",
+      "Mesh024"
+    ]
+  }
+}

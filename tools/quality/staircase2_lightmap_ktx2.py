@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Package a checked staircase2 Cycles diffuse atlas as linear RGBA16F KTX2."""
+"""Package a checked Cycles diffuse lightmap atlas as linear RGBA16F KTX2.
+
+Shared by staircase2 and the PBRT map pipeline; `--expected-scope` names the
+bake receipt producer this package trusts.
+"""
 
 import argparse
 import hashlib
@@ -29,11 +33,13 @@ def main():
     parser.add_argument("--ktx-tool", type=Path, required=True)
     parser.add_argument("--preview-gain", type=float, default=1.0,
                         help="linear lightmap gain for the Source preview renderer")
+    parser.add_argument("--expected-scope",
+                        default="staircase2-shared-lightmap-uv-and-cycles-bake",
+                        help="bake receipt scope, e.g. pbrt-shared-lightmap-uv-and-cycles-bake")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     evidence = json.loads(args.bake_evidence.read_text())
-    if (evidence.get("status") != "pass" or evidence.get("scope") !=
-            "staircase2-shared-lightmap-uv-and-cycles-bake" or
+    if (evidence.get("status") != "pass" or evidence.get("scope") != args.expected_scope or
             evidence.get("atlas_exr_sha256") != sha256(args.exr) or
             evidence.get("lighting_stage_sha256") != sha256(args.lighting_stage)):
         raise ValueError("Cycles atlas differs from its authored USD receipt")
@@ -47,7 +53,7 @@ def main():
     rgba[:, :, :3] = (pixels[::-1, :, :3] * args.preview_gain).astype("<f2")
     rgba[:, :, 3] = 1.0
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="staircase2-lmap-", dir=args.out.parent) as name:
+    with tempfile.TemporaryDirectory(prefix="lightmap-ktx2-", dir=args.out.parent) as name:
         temporary = Path(name)
         raw = temporary / "atlas.rgba16f"
         package = temporary / "atlas.ktx2"
@@ -63,7 +69,8 @@ def main():
         if extracted.read_bytes() != raw.read_bytes():
             raise ValueError("KTX2 changed the authored half-float texels")
         os.replace(package, args.out)
-    result = {"status": "pass", "scope": "staircase2-cycles-l0-ktx2",
+    result = {"status": "pass", "scope": "cycles-l0-ktx2",
+              "bake_scope": args.expected_scope,
               "atlas_exr_sha256": sha256(args.exr),
               "bake_evidence_sha256": sha256(args.bake_evidence),
               "lighting_stage_sha256": sha256(args.lighting_stage),

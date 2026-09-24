@@ -17,6 +17,9 @@ from pathlib import Path
 import bpy
 from mathutils import Matrix, Vector
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from staircase2_materials import solid_linear_base_colors
+
 PBRT_TO_USD = Matrix(((1.0, 0.0, 0.0, 0.0),
                       (0.0, 0.0, -1.0, 0.0),
                       (0.0, 1.0, 0.0, 0.0),
@@ -109,7 +112,7 @@ def parse_scene(source):
     return camera, fov[0], textures, assignments, lights
 
 
-def material(name, textures, root):
+def material(name, textures, root, solid_colors):
     result = bpy.data.materials.new(name)
     result.use_nodes = True
     shader = result.node_tree.nodes.get("Principled BSDF")
@@ -123,7 +126,7 @@ def material(name, textures, root):
         texture.image = image
         result.node_tree.links.new(texture.outputs["Color"], shader.inputs["Base Color"])
     elif name == "Wall":
-        shader.inputs["Base Color"].default_value = (0.893289,) * 3 + (1.0,)
+        shader.inputs["Base Color"].default_value = solid_colors["wall"] + (1.0,)
     elif name == "SpotHolder":
         shader.inputs["Base Color"].default_value = (1.0, 1.0, 1.0, 1.0)
     if name in {"Wood", "FloorTiles"}:
@@ -131,13 +134,7 @@ def material(name, textures, root):
         shader.inputs["Coat Weight"].default_value = 0.65
         shader.inputs["Coat Roughness"].default_value = 0.1 if name == "Wood" else 0.01
     elif name in {"Metal", "Chrome"}:
-        eta, k = ((1.65746, 0.880369, 0.521229),
-                  (9.223869, 6.269523, 4.837001)) if name == "Metal" else (
-                      (4.369683, 2.916703, 1.654701),
-                      (5.206434, 4.231365, 3.754947))
-        reflectance = tuple(((e - 1) ** 2 + c ** 2) /
-                            ((e + 1) ** 2 + c ** 2) for e, c in zip(eta, k))
-        shader.inputs["Base Color"].default_value = reflectance + (1.0,)
+        shader.inputs["Base Color"].default_value = solid_colors[name.lower()] + (1.0,)
         shader.inputs["Metallic"].default_value = 1.0
         shader.inputs["Roughness"].default_value = 0.1
     elif name == "Glass":
@@ -201,12 +198,13 @@ def main():
     root = args.scene.resolve().parent
     source = args.scene.read_text()
     camera_matrix, fov, textures, assignments, lights = parse_scene(source)
+    solid_colors = solid_linear_base_colors(source)
     for path in list(textures.values()) + [path for path, _ in assignments]:
         if not (root / path).is_file():
             raise FileNotFoundError(root / path)
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
-    materials = {name: material(name, textures, root)
+    materials = {name: material(name, textures, root, solid_colors)
                  for name in sorted({name for _, name in assignments})}
     model_hashes = {}
     for path, name in assignments:
@@ -307,6 +305,7 @@ def main():
                 "reference_exr_sha256": sha256(root / "TungstenRender.exr"),
                 "models": model_hashes,
                 "material_assignments": dict(assignments),
+                "solid_linear_base_colors": solid_colors,
                 "textures": {path: sha256(root / path) for path in textures.values()},
                 "material_policy": "PBRT named materials approximated by Blender Principled; "
                                    "mesh emitters restored from PBRT radiance after USD import",

@@ -8,6 +8,7 @@ data and adds one packed `lightmap_st` primvar to each source mesh.
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -128,11 +129,31 @@ def main():
         material.node_tree.nodes.active = node
     bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT"})
     args.out_exr.parent.mkdir(parents=True, exist_ok=True)
-    atlas.filepath_raw = str(args.out_exr.resolve())
-    atlas.file_format = "OPEN_EXR"
-    atlas.save()
+    # Image.save() applies the image display transform to this generated bake,
+    # even when the destination is EXR. save_render() writes scene-linear texels.
+    scene.render.image_settings.file_format = "OPEN_EXR"
+    scene.render.image_settings.color_depth = "32"
+    atlas.save_render(filepath=str(args.out_exr.resolve()), scene=scene)
     if not args.out_exr.is_file():
         raise RuntimeError("Cycles did not save the lightmap atlas")
+    # Catch a display transform entering EXR export. Compare sparse, nontrivial
+    # texels against Blender's in-memory scene-linear bake, not a PNG preview.
+    sampled = []
+    stride = max(1, args.size // 16)
+    for y in range(stride // 2, args.size, stride):
+        for x in range(stride // 2, args.size, stride):
+            offset = (y * args.size + x) * 4
+            rgb = tuple(atlas.pixels[offset + channel] for channel in range(3))
+            peak = max(rgb)
+            if all(math.isfinite(value) for value in rgb) and 0.05 < peak < 5 and abs(peak - 1) > 0.1:
+                sampled.append((offset, rgb))
+    if not sampled:
+        raise ValueError("Cycles lightmap has no nontrivial linear validation texels")
+    saved = bpy.data.images.load(str(args.out_exr.resolve()), check_existing=False)
+    max_sample_error = max(abs(saved.pixels[offset + channel] - rgb[channel])
+                           for offset, rgb in sampled for channel in range(3))
+    if max_sample_error > 1e-4:
+        raise ValueError("Cycles lightmap EXR differs from its linear bake buffer")
     evidence = {"status": "pass", "scope": "staircase2-shared-lightmap-uv-and-cycles-bake",
                 "source_stage_sha256": sha256(args.stage),
                 "lighting_stage_sha256": sha256(args.out_stage),
@@ -140,6 +161,8 @@ def main():
                 "size": args.size, "samples": args.samples,
                 "mesh_count": len(meshes), "baked_mesh_count": len(baked_meshes),
                 "emitter_count": len(lights),
+                "linear_exr_sample_count": len(sampled),
+                "linear_exr_max_sample_error": max_sample_error,
                 "uv_extents": uv_extents, "blender": bpy.app.version_string,
                 "ocio_configuration_sha256": sha256(Path(os.environ["OCIO"]))}
     args.out_exr.with_name(args.out_exr.name + ".json").write_text(

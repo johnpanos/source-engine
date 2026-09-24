@@ -1,0 +1,46 @@
+{
+  "schema": "source-host-tool-profile/v1",
+  "id": "pbrt-map-linux-x86_64-v1",
+  "description": "Host tools for tools/quality/pbrt_map_build.py (PBRT scene -> BSP2 preview map). Pins reuse the OpenUSD and KTX host profiles; this profile adds the pipeline's own tools and install layout. It certifies no RFC 0008 gate.",
+  "target": {"product": "pbrt-map-pipeline", "os": "linux", "architecture": "x86_64"},
+  "toolchain": {"usd_python": "/usr/bin/python3.12", "python": "3.12.14"},
+  "profiles": {
+    "openusd": "quality/product_profiles/openusd-linux-tools.json",
+    "ktx": "quality/product_profiles/ktx2-linux-tools.json"
+  },
+  "host_packages": {
+    "blender": {"executable": "blender", "version": "5.2.1",
+                "purpose": "USD import/export, Cycles reference render and lightmap bake"},
+    "openimagedenoise": {"library": "libOpenImageDenoise.so.2", "version": "2.4.0",
+                         "purpose": "RTLightmap atlas denoise"}
+  },
+  "fixtures": {
+    "ocio": {"path": "quality/fixtures/staircase2-ocio/config.ocio",
+             "purpose": "OCIO 2.4 config readable by the distro Blender build"}
+  },
+  "layout": {
+    "root": "build/toolchains",
+    "sources": "build/toolchains/src",
+    "openusd_install": "build/toolchains/openusd-25.11",
+    "onetbb_install": "build/toolchains/onetbb-2021.9.0",
+    "ktx_build": "build/toolchains/ktx-build",
+    "compile_tools": "build/toolchains/pbrt-map-tools",
+    "toolchain_file": "build/toolchains/pbrt-map-toolchain.json"
+  },
+  "compile_tools": {
+    "waf_output": "build-pbrt-map-tools",
+    "waf_lock": ".lock-waf-pbrt-map-tools",
+    "waf_options": ["--tools", "-T", "release"],
+    "required": ["vbsp2", "vvis", "vrad", "vtex", "bsp2tool", "share/sourceWorld"],
+    "bsp2tool_commands": ["pack-world-lit"]
+  },
+  "runtime": {
+    "runtime": "run/runtime-native",
+    "client_build": "build-rfc0008-staircase-lit-client",
+    "note": "The game runtime and client build are the native Vulkan Portal profile's outputs; they are inputs to --boot, not provisioned here."
+  },
+  "evidence": {
+    "status": "partial",
+    "required_checks": ["exact source revisions", "Blender and OIDN versions", "OpenUSD Python import and version", "KTX CLI revision", "bsp2tool pack-world-lit", "compile tools installed from this checkout", "pipeline builds and boots a manifest map"]
+  }
+}

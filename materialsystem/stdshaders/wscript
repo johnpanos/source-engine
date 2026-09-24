@@ -80,7 +80,6 @@ def build(bld):
 		'particlelitgeneric_dx9_helper.cpp',
 		'particlesphere_dx9.cpp',
 		'pbr_dx9.cpp',
-		'pbr_metalrough_fallback.cpp',
 		'portal.cpp',
 		'portalstaticoverlay.cpp',
 		'portal_refract.cpp',
@@ -139,6 +138,10 @@ def build(bld):
 #			'fillrate.cpp',
 
 	]
+	# The canonical shader binds Vulkan's native world pipeline. DX9 keeps the
+	# existing fallback material route in its independently built profile.
+	source.append('pbr_metalrough_native.cpp' if bld.env.NATIVE_VULKAN
+	              else 'pbr_metalrough_fallback.cpp')
 
 	includes = [
 		'.',
@@ -170,4 +173,3 @@ def build(bld):
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx      = bld.get_taskgen_count()
 	)
-

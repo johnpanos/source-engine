@@ -43,6 +43,9 @@ bool UploadWorldLightmapKtx2( CVulkanContext &context, const void *bytes, std::s
 			*error = upload.Error().detail;
 		return false;
 	}
+	context.SetManagedTextureSamplerState( upload.Value(), CVulkanContext::kSamplerClampU |
+	                                                           CVulkanContext::kSamplerClampV |
+	                                                           CVulkanContext::kSamplerLinear );
 	context.SetWorldLightmapHandle( upload.Value() );
 	if ( width )
 		*width = image.Value().levels[0].width;
