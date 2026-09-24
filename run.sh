@@ -55,11 +55,6 @@ python3 tools/quality/stage_runtime.py \
     --build "$BUILD_DIR" --runtime "$RUNTIME" \
     ${BASE_RUNTIME:+--base-runtime "$BASE_RUNTIME"}
 
-# Published PBRT maps (tools/quality/playable_maps.py) need console settings
-# to draw their world; other maps get none.
-mapfile -t map_args < <(python3 tools/quality/playable_maps.py launch-args "$MAP")
-[ ${#map_args[@]} -gt 0 ] && echo "run.sh: $MAP is a published PBRT map: ${map_args[*]}"
-
 # ---- Launch -----------------------------------------------------------------
 cd "$RUNTIME"
 export SDL_VIDEODRIVER="$SDL_VIDEODRIVER"
@@ -69,8 +64,7 @@ export SteamAppId=400 SteamGameId=400
 export LD_LIBRARY_PATH="$PWD/bin:${LD_LIBRARY_PATH:-}"
 
 cmd=(./hl2_launcher -game portal -w "$WIDTH" -h "$HEIGHT"
-     -renderer "$RENDERER" -physics "$PHYSICS" +fps_max "$FPS_MAX" "${map_args[@]}"
-     +map "$MAP")
+     -renderer "$RENDERER" -physics "$PHYSICS" +fps_max "$FPS_MAX" +map "$MAP")
 [ "$WINDOWED" = 1 ] && cmd+=(-windowed)
 # Headless (offscreen) runs have no one listening: mute them.
 [ "$SDL_VIDEODRIVER" = offscreen ] && cmd+=(+volume 0)

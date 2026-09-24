@@ -100,6 +100,9 @@ CPrediction::CPrediction( void )
 	m_nServerCommandsAcknowledged = 0;
 	m_bPreviousAckHadErrors = false;
 #endif
+#ifdef PORTAL2
+	m_nLastAcknowledgedCommand = 0;
+#endif
 }
 
 CPrediction::~CPrediction( void )
@@ -1609,6 +1612,9 @@ bool CPrediction::PerformPrediction( bool received_new_world_update, C_BasePlaye
 void CPrediction::Update( int startframe, bool validframe, 
 						 int incoming_acknowledged, int outgoing_command )
 {
+#ifdef PORTAL2
+	m_nLastAcknowledgedCommand = incoming_acknowledged;
+#endif
 #if !defined( NO_ENTITY_PREDICTION )
 	VPROF_BUDGET( "CPrediction::Update", VPROF_BUDGETGROUP_PREDICTION );
 

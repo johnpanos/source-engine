@@ -22,11 +22,11 @@
 #include "basemodpanel.h"
 #include "transitionpanel.h"
 #include "vhybridbutton.h"
-#include "EngineInterface.h"
+#include "engineinterface.h"
 
-#include "VFooterPanel.h"
-#include "VGenericConfirmation.h"
-#include "VFlyoutMenu.h"
+#include "vfooterpanel.h"
+#include "vgenericconfirmation.h"
+#include "vflyoutmenu.h"
 #include "IGameUIFuncs.h"
 
 // vgui controls
@@ -35,7 +35,7 @@
 #include "vgui/IInput.h"
 #include "vgui_controls/Tooltip.h"
 #include "vgui_controls/ImagePanel.h"
-#include "vgui/ilocalize.h"
+#include "vgui/ILocalize.h"
 
 #include "filesystem.h"
 #include "fmtstr.h"

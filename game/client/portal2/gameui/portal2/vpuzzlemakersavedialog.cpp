@@ -9,20 +9,20 @@
 
 #include "vpuzzlemakersavedialog.h"
 #include "vfooterpanel.h"
-#include "vgui_controls/textentry.h"
-#include "vgui/ilocalize.h"
+#include "vgui_controls/TextEntry.h"
+#include "vgui/ILocalize.h"
 #include "vgenericconfirmation.h"
-#include "vgui/isurface.h"
+#include "vgui/ISurface.h"
 #include "puzzlemaker/puzzlemaker.h"
-#include "vgui_controls/label.h"
+#include "vgui_controls/Label.h"
 #include "gameui/portal2/vdialoglistbutton.h"
-#include "vgui_controls/imagepanel.h"
+#include "vgui_controls/ImagePanel.h"
 #include "imageutils.h"
 #include "vpuzzlemakerpublishprogress.h"
 #include "vpuzzlemakermychambers.h"
 #include "vingamemainmenu.h"
 #include <vgui/IInput.h>
-#include "vgui_controls/checkbutton.h"
+#include "vgui_controls/CheckButton.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"

@@ -44,5 +44,9 @@ void PrecacheInstancedScene( char const *pszScene );
 char const *GetSceneFilename( CBaseEntity *ent );
 void ReloadSceneFromDisk( CBaseEntity *ent );
 
+#ifdef PORTAL2
+HSCRIPT ScriptCreateSceneEntity( char const *pszScene );
+#endif
+
 
 #endif // SCENEENTITY_H

@@ -387,6 +387,32 @@ void CBaseEntityOutput::AddEventAction( CEventAction *pEventAction )
 	m_ActionList = pEventAction;
 }
 
+// Unlinks pEventAction from this output's action list; the caller owns it afterwards.
+void CBaseEntityOutput::RemoveEventAction( CEventAction *pEventAction )
+{
+	CEventAction *pAction = GetFirstAction();
+	CEventAction *pPrevAction = NULL;
+	while ( pAction )
+	{
+		if ( pAction == pEventAction )
+		{
+			if ( !pPrevAction )
+			{
+				// Portal 2 port: the CS:GO version cleared the whole list here,
+				// dropping every later action along with the removed head.
+				m_ActionList = pAction->m_pNext;
+			}
+			else
+			{
+				pPrevAction->m_pNext = pAction->m_pNext;
+			}
+			return;
+		}
+		pPrevAction = pAction;
+		pAction = pAction->m_pNext;
+	}
+}
+
 
 // save data description for the event queue
 BEGIN_SIMPLE_DATADESC( CBaseEntityOutput )

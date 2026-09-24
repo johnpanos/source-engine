@@ -9,7 +9,7 @@
 
 #include "basemodui.h"
 #include "vgui_controls/ImagePanel.h"
-#include "VGenericPanelList.h"
+#include "vgenericpanellist.h"
 
 #define NUM_QUICKPLAY_ENUMERATION_TYPES	7
 

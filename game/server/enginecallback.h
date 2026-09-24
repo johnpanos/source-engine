@@ -45,6 +45,10 @@ extern IServerEngineTools		*serverenginetools;
 extern IXboxSystem				*xboxsystem; // 360 only
 extern CSteamAPIContext			*steamapicontext; // available on game clients
 extern CSteamGameServerAPIContext *steamgameserverapicontext; //available on game servers
+#ifdef PORTAL2
+class IScriptManager;
+extern IScriptManager			*scriptmanager; // NULL when no vscript module is available
+#endif
 
 
 

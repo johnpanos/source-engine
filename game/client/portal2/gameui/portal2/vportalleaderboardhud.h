@@ -10,7 +10,7 @@
 #include "basemodui.h"
 #include "portal2_leaderboard.h"
 #include "vportalleaderboard.h"
-#include "vgui_controls/imagepanel.h"
+#include "vgui_controls/ImagePanel.h"
 
 namespace BaseModUI
 {

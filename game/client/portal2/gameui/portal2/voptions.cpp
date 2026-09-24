@@ -6,10 +6,10 @@
 
 #include "cbase.h"
 
-#include "VOptions.h"
-#include "VFooterPanel.h"
-#include "VHybridButton.h"
-#include "VGenericConfirmation.h"
+#include "voptions.h"
+#include "vfooterpanel.h"
+#include "vhybridbutton.h"
+#include "vgenericconfirmation.h"
 #include "vgui_controls/Button.h"
 
 // memdbgon must be the last include file in a .cpp file!!!

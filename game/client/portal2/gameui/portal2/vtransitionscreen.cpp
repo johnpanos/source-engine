@@ -4,8 +4,8 @@
 //
 //=====================================================================================//
 
-#include "VTransitionScreen.h"
-#include "EngineInterface.h"
+#include "vtransitionscreen.h"
+#include "engineinterface.h"
 #include "vgui/ISurface.h"
 #include "vgui/ILocalize.h"
 // memdbgon must be the last include file in a .cpp file!!!

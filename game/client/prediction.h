@@ -64,6 +64,16 @@ public:
 		return m_flIdealPitch;
 	}
 
+#ifdef PORTAL2
+	// Last command the server acknowledged (the engine's command_ack), as
+	// passed to the most recent Update(); CS:GO exposed it through
+	// IVEngineClient::GetLastAcknowledgedCommand().
+	int				GetLastAcknowledgedCommand( void ) const
+	{
+		return m_nLastAcknowledgedCommand;
+	}
+#endif
+
 	// The engine needs to be able to access a few predicted values
 	virtual void	GetViewOrigin( Vector& org );
 	virtual void	SetViewOrigin( Vector& org );
@@ -143,6 +153,9 @@ private:
 
 #endif
 	float			m_flIdealPitch;
+#ifdef PORTAL2
+	int				m_nLastAcknowledgedCommand;
+#endif
 
 };
  

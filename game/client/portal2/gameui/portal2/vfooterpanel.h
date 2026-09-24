@@ -8,7 +8,7 @@
 #define __VFOOTERPANEL_H__
 
 #include "basemodui.h"
-#include "vgui_controls/button.h"
+#include "vgui_controls/Button.h"
 
 class CFooterBitmapButton;
 

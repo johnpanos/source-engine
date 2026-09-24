@@ -21,6 +21,15 @@
 #include "shareddefs.h"
 #include "engine/ivmodelinfo.h"
 
+#ifdef PORTAL2
+// Portal 2 port: the CS:GO-era base entity carries VScript scopes and portal
+// event notifications.
+#include "vscript/ivscript.h"
+#include "vscript_server.h"
+#include "portal_shareddefs.h"
+class CPortal_Base2D;
+#endif // PORTAL2
+
 class CDamageModifier;
 class CDmgAccumulator;
 
@@ -188,6 +197,46 @@ enum Class_T
 	NUM_AI_CLASSES
 };
 
+#elif defined( PORTAL2 )
+
+// Portal 2 port: the CS:GO-era shared entity classes (game/shared/shareddefs.h
+// there), which the Portal 2 build reuses for its HL2 turrets and NPCs.
+enum Class_T
+{
+	CLASS_NONE = 0,
+	CLASS_PLAYER,
+	CLASS_PLAYER_ALLY,
+	CLASS_PLAYER_ALLY_VITAL,
+	CLASS_ANTLION,
+	CLASS_BARNACLE,
+	CLASS_BLOB,
+	CLASS_BULLSEYE,
+	//CLASS_BULLSQUID,
+	CLASS_CITIZEN_PASSIVE,
+	CLASS_CITIZEN_REBEL,
+	CLASS_COMBINE,
+	CLASS_COMBINE_GUNSHIP,
+	CLASS_CONSCRIPT,
+	CLASS_HEADCRAB,
+	//CLASS_HOUNDEYE,
+	CLASS_MANHACK,
+	CLASS_METROPOLICE,
+	CLASS_MILITARY,
+	CLASS_SCANNER,
+	CLASS_STALKER,
+	CLASS_VORTIGAUNT,
+	CLASS_ZOMBIE,
+	CLASS_PROTOSNIPER,
+	CLASS_MISSILE,
+	CLASS_FLARE,
+	CLASS_EARTH_FAUNA,
+	CLASS_HACKED_ROLLERMINE,
+	CLASS_COMBINE_HUNTER,
+
+	LAST_SHARED_ENTITY_CLASS,
+	NUM_AI_CLASSES = LAST_SHARED_ENTITY_CLASS
+};
+
 #else
 
 enum Class_T
@@ -315,7 +364,12 @@ CBaseNetworkable *CreateNetworkableByName( const char *className );
 extern void SpawnEntityByName( const char *className, CEntityMapData *mapData = NULL );
 
 // calls the spawn functions for an entity
+#ifdef PORTAL2
+// Portal 2 port: CS:GO runs the entity's VScripts around Spawn().
+extern int DispatchSpawn( CBaseEntity *pEntity, bool bRunVScripts = true );
+#else
 extern int DispatchSpawn( CBaseEntity *pEntity );
+#endif
 
 inline CBaseEntity *GetContainingEntity( edict_t *pent );
 
@@ -628,6 +682,13 @@ public:
 	// capabilities
 	virtual int	ObjectCaps( void );
 
+#ifdef PORTAL2
+	// Portal 2 port: the use traces are on the client, so the server networks
+	// its current use capabilities down for validity checking.
+	CNetworkVar( int,			m_iObjectCapsCache );
+	void		UpdateObjectCapsCache();
+#endif // PORTAL2
+
 	// Verifies that the data description is valid in debug builds.
 	#ifdef _DEBUG
 	void ValidateDataDescription(void);
@@ -667,6 +728,15 @@ public:
 	void InputFireUser2( inputdata_t &inputdata );
 	void InputFireUser3( inputdata_t &inputdata );
 	void InputFireUser4( inputdata_t &inputdata );
+#ifdef PORTAL2
+	void InputRunScript( inputdata_t &inputdata );
+	void InputRunScriptFile( inputdata_t &inputdata );
+	void InputCallScriptFunction( inputdata_t &inputdata );
+	void InputRemovePaint( inputdata_t &inputdata );
+
+	bool RunScriptFile( const char *pScriptFile, bool bUseRootScope = false );
+	bool RunScript( const char *pScriptText, const char *pDebugFilename = "CBaseEntity::RunScript" );
+#endif // PORTAL2
 
 	// Returns the origin at which to play an inputted dispatcheffect 
 	virtual void GetInputDispatchEffectPosition( const char *sInputString, Vector &pOrigin, QAngle &pAngles );
@@ -982,6 +1052,12 @@ public:
 	virtual CBaseEntity		*GetEnemy( void ) { return NULL; }
 	virtual CBaseEntity		*GetEnemy( void ) const { return NULL; }
 
+#ifdef PORTAL2
+	// Paint helper
+	// Should never be called on anything that doesn't use PropPaintPowerUser, which overrides this.
+	virtual void UpdatePaintPowersFromContacts() { Assert(0); }
+#endif // PORTAL2
+
 
 	void	ViewPunch( const QAngle &angleOffset );
 	void	VelocityPunch( const Vector &vecForce );
@@ -1225,6 +1301,13 @@ public:
 	virtual Vector	BodyTarget( const Vector &posSrc, bool bNoisy = true);		// position to shoot at
 	virtual Vector	HeadTarget( const Vector &posSrc );
 	virtual void	GetVectors(Vector* forward, Vector* right, Vector* up) const;
+
+	// convenience functions for fishing out the vectors of this object
+	// equivalent to GetVectors(), but doesn't need an intermediate stack
+	// variable (which might cause an LHS anyway)
+	inline Vector	Forward() const; ///< get my forward (+x) vector
+	inline Vector	Left() const;    ///< get my left    (+y) vector
+	inline Vector	Up() const;      ///< get my up      (+z) vector
 
 	virtual const Vector &GetViewOffset() const;
 	virtual void SetViewOffset( const Vector &v );
@@ -1786,6 +1869,74 @@ private:
 	//  usercmd input.
 	static int						m_nPredictionRandomSeed;
 	static CBasePlayer				*m_pPredictionPlayer;
+
+#ifdef PORTAL2
+public:
+	// Portal 2 port: VScript support from the CS:GO-era base entity.
+	DECLARE_ENT_SCRIPTDESC();
+
+	HSCRIPT GetScriptInstance();
+	bool ValidateScriptScope();
+	virtual void RunVScripts();
+	bool CallScriptFunction( const char *pFunctionName, ScriptVariant_t *pFunctionReturn );
+	void ConnectOutputToScript( const char *pszOutput, const char *pszScriptFunc );
+	void DisconnectOutputFromScript( const char *pszOutput, const char *pszScriptFunc );
+	void ScriptThink();
+	const char *GetScriptId();
+	HSCRIPT GetScriptScope();
+	void RunPrecacheScripts( void );
+	void RunOnPostSpawnScripts( void );
+
+	HSCRIPT ScriptGetMoveParent( void );
+	HSCRIPT ScriptGetRootMoveParent();
+	HSCRIPT ScriptFirstMoveChild( void );
+	HSCRIPT ScriptNextMovePeer( void );
+
+	const char *ScriptGetModelName( void ) const { return STRING( GetModelName() ); }
+	const char *GetEntityNameAsCStr() { return STRING( GetEntityName() ); }
+	const Vector &ScriptEyePosition( void ) { static Vector vec; vec = EyePosition(); return vec; }
+	void ScriptSetAngles( float fPitch, float fYaw, float fRoll ) { QAngle angles( fPitch, fYaw, fRoll ); Teleport( NULL, &angles, NULL ); }
+	const Vector &ScriptGetAngles( void ) { static Vector vec; QAngle qa = GetAbsAngles(); vec.x = qa.x; vec.y = qa.y; vec.z = qa.z; return vec; }
+	void ScriptSetSize( const Vector &mins, const Vector &maxs );
+	void ScriptUtilRemove( void );
+	void ScriptSetOwner( HSCRIPT hEntity );
+	void ScriptSetOrigin( const Vector &v ) { Teleport( &v, NULL, NULL ); }
+	void ScriptSetForward( const Vector &v ) { QAngle angles; VectorAngles( v, angles ); Teleport( NULL, &angles, NULL ); }
+	const Vector &ScriptGetForward( void ) { static Vector vecForward; GetVectors( &vecForward, NULL, NULL ); return vecForward; }
+	const Vector &ScriptGetLeft( void ) { static Vector vecLeft; GetVectors( NULL, &vecLeft, NULL ); return vecLeft; }
+	const Vector &ScriptGetUp( void ) { static Vector vecUp; GetVectors( NULL, NULL, &vecUp ); return vecUp; }
+	const Vector &ScriptGetLocalAngularVelocity( void );
+	void ScriptSetLocalAngularVelocity( float pitchVel, float yawVel, float rollVel );
+	const Vector &ScriptGetBoundingMins( void );
+	const Vector &ScriptGetBoundingMaxs( void );
+	void ScriptEmitSound( const char *soundname );
+	void ScriptStopSound( const char *soundname );
+	float ScriptSoundDuration( const char *soundname, const char *actormodel );
+	void VScriptPrecacheScriptSound( const char *soundname );
+	HSCRIPT ScriptGetModelKeyValues( void );
+	void ScriptPrecacheModel( const char *name );
+	void ScriptPrecacheScriptSound( const char *name );
+	HSCRIPT GetScriptOwnerEntity();
+	void SetScriptOwnerEntity( HSCRIPT pOwner );
+	CBaseEntityOutput *FindNamedOutput( const char *pszOutput );
+	const char *GetPreTemplateName(); // Not threadsafe. Get the name stripped of template unique decoration
+	bool KeyValueFromString( const char *szKeyName, const char *szValue )		{ return KeyValue( szKeyName, szValue ); }
+	bool KeyValueFromFloat( const char *szKeyName, float flValue )				{ return KeyValue( szKeyName, flValue ); }
+	bool KeyValueFromInt( const char *szKeyName, int nValue )					{ char szValue[16]; Q_snprintf( szValue, sizeof( szValue ), "%d", nValue ); return KeyValue( szKeyName, szValue ); }
+	bool KeyValueFromVector( const char *szKeyName, const Vector &vecValue )	{ return KeyValue( szKeyName, vecValue ); }
+
+	string_t		m_iszVScripts;
+	string_t		m_iszScriptThinkFunction;
+	CScriptScope	m_ScriptScope;
+	HSCRIPT			m_hScriptInstance;
+	string_t		m_iszScriptId;
+	CScriptKeyValues *m_pScriptModelKeyValues;
+
+	// Portal 2 port: portal state changes notify registered listeners.
+	virtual void NotifyPortalEvent( PortalEvent_t nEventType, CPortal_Base2D *pNotifier ) { /*Do nothing*/ }
+
+private:
+#endif // PORTAL2
 
 	// FIXME: Make hierarchy a member of CBaseEntity
 	// or a contained private class...
@@ -2555,6 +2706,38 @@ inline RenderMode_t CBaseEntity::GetRenderMode() const
 //-----------------------------------------------------------------------------
 // Methods to cast away const
 //-----------------------------------------------------------------------------
+// convenience functions for fishing out the vectors of this object
+inline Vector CBaseEntity::Forward() const	///< get my forward (+x) vector
+{
+	const matrix3x4_t &mat = EntityToWorldTransform();
+	return Vector( mat[0][0], mat[1][0], mat[2][0] );
+}
+
+inline Vector CBaseEntity::Left() const		///< get my left    (+y) vector
+{
+	const matrix3x4_t &mat = EntityToWorldTransform();
+	return Vector( mat[0][1], mat[1][1], mat[2][1] );
+}
+
+inline Vector CBaseEntity::Up() const		///< get my up      (+z) vector
+{
+	const matrix3x4_t &mat = EntityToWorldTransform();
+	return Vector( mat[0][2], mat[1][2], mat[2][2] );
+}
+
+#ifdef PORTAL2
+inline HSCRIPT ToHScript( CBaseEntity *pEnt )
+{
+	return ( pEnt ) ? pEnt->GetScriptInstance() : NULL;
+}
+
+template <> ScriptClassDesc_t *GetScriptDesc<CBaseEntity>( CBaseEntity * );
+inline CBaseEntity *ToEnt( HSCRIPT hScript )
+{
+	return ( hScript ) ? (CBaseEntity *)g_pScriptVM->GetInstanceValue( hScript, GetScriptDescForClass( CBaseEntity ) ) : NULL;
+}
+#endif // PORTAL2
+
 inline Vector CBaseEntity::EyePosition( void ) const
 {
 	return const_cast<CBaseEntity*>(this)->EyePosition();

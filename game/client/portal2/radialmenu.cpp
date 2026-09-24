@@ -18,26 +18,26 @@
 #include "tier0/dbg.h"
 #include "cdll_int.h"
 #include "menu.h" // for chudmenu defs
-#include "keyvalues.h"
+#include "KeyValues.h"
 #include <filesystem.h>
 #include "c_team.h"
-#include "vgui/isurface.h"
+#include "vgui/ISurface.h"
 #include "iclientmode.h"
 #include "c_portal_player.h"
 #include "hud_locator_target.h"
 #include "c_user_message_register.h"
 #include "portal_placement.h"
 #include "glow_outline_effect.h"
-#include "soundemittersystem/isoundemittersystembase.h"
+#include "SoundEmitterSystem/isoundemittersystembase.h"
 #include "c_prop_portal.h"
 #include "c_trigger_tractorbeam.h"
 #include "c_projectedwallentity.h"
 #include "portal_mp_gamerules.h"
 
-#include "vgui/cursor.h"
+#include "vgui/Cursor.h"
 #include "fmtstr.h"
 #include "vgui_int.h"
-#include "vgui/IVgui.h"
+#include "vgui/IVGui.h"
 #include <game/client/iviewport.h>
 
 #include "radialmenu.h"

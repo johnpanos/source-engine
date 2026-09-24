@@ -6,14 +6,14 @@
 
 #include "cbase.h"
 #include "vpuzzlemakeruilistitem.h"
-#include "VFooterPanel.h"
-#include "VHybridButton.h"
-#include "EngineInterface.h"
+#include "vfooterpanel.h"
+#include "vhybridbutton.h"
+#include "engineinterface.h"
 #include "IGameUIFuncs.h"
 #include "gameui_util.h"
 #include "vgui/ISurface.h"
-#include "VGenericConfirmation.h"
-#include "VGenericPanelList.h"
+#include "vgenericconfirmation.h"
+#include "vgenericpanellist.h"
 #include "gameui/portal2/vdialoglistbutton.h"
 #include "vpuzzlemakermychambers.h" // CPuzzleMakerUIPanel
 

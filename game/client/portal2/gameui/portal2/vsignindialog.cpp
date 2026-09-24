@@ -4,9 +4,9 @@
 //
 //=====================================================================================//
 
-#include "VSignInDialog.h"
-#include "VAttractScreen.h"
-#include "VFooterPanel.h"
+#include "vsignindialog.h"
+#include "vattractscreen.h"
+#include "vfooterpanel.h"
 #include "tier1/KeyValues.h"
 #include "vgui_controls/Label.h"
 #include "vgui_controls/Button.h"

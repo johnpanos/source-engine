@@ -10,7 +10,7 @@
 #if defined( PORTAL2_PUZZLEMAKER )
 
 #include "basemodui.h"
-#include <vgui_controls/progressbar.h>
+#include <vgui_controls/ProgressBar.h>
 
 namespace BaseModUI
 {

@@ -774,25 +774,37 @@ def configure(conf):
 	if conf.options.KTX_SOURCE_ROOT or conf.options.KTX_BUILD_ROOT:
 		if not (conf.options.KTX_SOURCE_ROOT and conf.options.KTX_BUILD_ROOT):
 			conf.fatal('KTX reader tests require both --ktx-source-root and --ktx-build-root')
-		if not (conf.env.NATIVE_VULKAN and conf.env.DEST_OS == 'linux'):
-			conf.fatal('KTX reader profile requires a Linux native Vulkan client')
+		ktx_android = conf.env.DEST_OS == 'android'
+		if not (conf.env.NATIVE_VULKAN and conf.env.DEST_OS in ('linux', 'android')):
+			conf.fatal('KTX reader profile requires a Linux or Android native Vulkan client')
 		with open('quality/product_profiles/ktx2-linux-tools.json') as profile_file:
 			ktx_profile = json.load(profile_file)
+		ktx_pinned = ktx_profile['dependencies']['ktx_software']['revision']
 		ktx_source = os.path.abspath(conf.options.KTX_SOURCE_ROOT)
 		ktx_build = os.path.abspath(conf.options.KTX_BUILD_ROOT)
 		ktx_reader_library = os.path.join(ktx_build, ktx_profile['build']['reader_library'])
-		try:
-			ktx_revision = subprocess.check_output(
-				['git', '-C', ktx_source, 'rev-parse', 'HEAD'], text=True).strip()
-			ktx_dirty = subprocess.check_output(
-				['git', '-C', ktx_source, 'status', '--porcelain', '--untracked-files=no'],
-				text=True).strip()
-		except (OSError, subprocess.CalledProcessError) as error:
-			conf.fatal('Cannot verify KTX-Software source revision: %s' % error)
-		if ktx_revision != ktx_profile['dependencies']['ktx_software']['revision']:
-			conf.fatal('KTX-Software source revision differs from pinned profile')
-		if ktx_dirty:
-			conf.fatal('KTX-Software source checkout has tracked changes')
+		if ktx_android:
+			# build-android-apk.sh extracts the Android profile's archive of the
+			# same revision after verifying its SHA-256; it has no git metadata.
+			with open('quality/product_profiles/portal-android-native-vulkan.json') as profile_file:
+				ktx_archive_pin = json.load(profile_file)['dependencies']['ktx_software']
+			if ktx_archive_pin['revision'] != ktx_pinned:
+				conf.fatal('Android KTX-Software archive revision differs from pinned profile')
+			if os.path.basename(ktx_source) != ktx_archive_pin['extracted_directory']:
+				conf.fatal('KTX-Software source is not the pinned Android archive')
+		else:
+			try:
+				ktx_revision = subprocess.check_output(
+					['git', '-C', ktx_source, 'rev-parse', 'HEAD'], text=True).strip()
+				ktx_dirty = subprocess.check_output(
+					['git', '-C', ktx_source, 'status', '--porcelain', '--untracked-files=no'],
+					text=True).strip()
+			except (OSError, subprocess.CalledProcessError) as error:
+				conf.fatal('Cannot verify KTX-Software source revision: %s' % error)
+			if ktx_revision != ktx_pinned:
+				conf.fatal('KTX-Software source revision differs from pinned profile')
+			if ktx_dirty:
+				conf.fatal('KTX-Software source checkout has tracked changes')
 		if not all(os.path.isfile(path) for path in [
 			os.path.join(ktx_source, 'lib/include/ktx.h'),
 			os.path.join(ktx_source, 'external/dfdutils/KHR/khr_df.h'),
@@ -813,7 +825,8 @@ def configure(conf):
 			os.path.join(ktx_source, 'external/dfdutils')]
 		conf.env.STLIB_KTXREAD = [ktx_archive[3:-2]]
 		conf.env.STLIBPATH_KTXREAD = [os.path.dirname(ktx_reader_library)]
-		conf.env.LIB_KTXREAD = ['z', 'zstd']
+		# The Android archive's basisu build bundles zstd; zlib is the NDK's.
+		conf.env.LIB_KTXREAD = ['z'] if ktx_android else ['z', 'zstd']
 	worldstage_options = [conf.options.OPENUSD_SOURCE_ROOT, conf.options.OPENUSD_BUILD_ROOT,
 		conf.options.OPENUSD_INSTALL_ROOT, conf.options.ONETBB_SOURCE_ROOT,
 		conf.options.ONETBB_BUILD_ROOT, conf.options.ONETBB_INSTALL_ROOT]
@@ -938,7 +951,9 @@ def configure(conf):
 			if not conf.env.ANDROID_SDL3:
 				projects['game'] += ['unittests/shaderapivulkantest']
 			if conf.env.KTX_READ_ENABLED:
-				projects['game'] += ['texturecontainer', 'unittests/texturecontainertest']
+				projects['game'] += ['texturecontainer']
+				if not conf.env.ANDROID_SDL3:
+					projects['game'] += ['unittests/texturecontainertest']
 		if not conf.env.ANDROID_SDL3:
 			projects['game'] += ['unittests/physicstest']
 		if conf.env.VIDEO_BINK:
@@ -992,7 +1007,9 @@ def build(bld):
 			if not bld.env.ANDROID_SDL3:
 				projects['game'] += ['unittests/shaderapivulkantest']
 			if bld.env.KTX_READ_ENABLED:
-				projects['game'] += ['texturecontainer', 'unittests/texturecontainertest']
+				projects['game'] += ['texturecontainer']
+				if not bld.env.ANDROID_SDL3:
+					projects['game'] += ['unittests/texturecontainertest']
 		if not bld.env.ANDROID_SDL3:
 			projects['game'] += ['unittests/physicstest']
 		if bld.env.TOGLES:

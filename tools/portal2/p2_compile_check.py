@@ -22,6 +22,7 @@ import argparse
 import ast
 import re
 import concurrent.futures
+import json
 import os
 import shlex
 import subprocess
@@ -80,6 +81,8 @@ def project(build_dir, side):
 	includes = [os.path.normpath(game_dir / i) for i in BASE_INCLUDES[side] + game['includes'] + PORTAL2_INCLUDES]
 	includes += cache.get('INCLUDES', []) + cache.get('INCLUDES_SDL2', [])
 	flags = [f for f in cache['CXXFLAGS'] if f not in ('-MMD', '-w') and not f.startswith('-L')]
+	# Mirrors the Portal 2 force-include in game/{client,server}/wscript.
+	flags += ['-include', str(ROOT / 'game/shared/portal2/portal2_base_compat.h')]
 	sources = [os.path.normpath(game_dir / s) for s in game['sources']]
 	return cache['CXX'], flags, defines, includes, sources
 
@@ -110,7 +113,7 @@ def probe(cxx, flags, defines, includes, source, extra, shim_root, own):
 			break
 		header = fatal.group('hdr')
 		includer = os.path.normpath(fatal.group('src'))
-		if includer in own:
+		if own is not None and includer in own:
 			# A checked file names a header that does not exist: that is its own gap.
 			shims.append(f'{header} (included by checked file {os.path.relpath(includer, ROOT)})')
 		else:
@@ -124,7 +127,7 @@ def probe(cxx, flags, defines, includes, source, extra, shim_root, own):
 	diagnostics = []
 	for match in DIAGNOSTIC.finditer(output):
 		path = os.path.normpath(match.group('file'))
-		if path in own and match.group('kind') != 'warning':
+		if (own is None or path in own) and match.group('kind') != 'warning':
 			diagnostics.append((path, int(match.group('line')), int(match.group('col')), match.group('kind'),
 								match.group('msg')))
 	return shims, diagnostics, output
@@ -143,6 +146,8 @@ def main():
 	parser.add_argument('--probe', action='store_true', help='stub missing foreign headers; report own diagnostics')
 	parser.add_argument('--own', action='append', default=[], help='additional paths whose diagnostics count')
 	parser.add_argument('--show-shims', action='store_true', help='list stubbed headers per file in --probe')
+	parser.add_argument('--all-diagnostics', metavar='JSON',
+						help='with --probe: record every error in every file to JSON (whole-target census)')
 	args = parser.parse_args()
 
 	cxx, flags, defines, includes, sources = project(ROOT / args.build_dir, args.side)
@@ -164,6 +169,20 @@ def main():
 		shim_root = ROOT / args.build_dir / 'p2-probe-shims' / args.side
 		shim_root.mkdir(parents=True, exist_ok=True)
 		extra_own = [os.path.normpath(ROOT / p) for p in args.own]
+		if args.all_diagnostics:
+			def census(f):
+				shims, diagnostics, _output = probe(cxx, flags, defines, includes, f, extra, shim_root, None)
+				return os.path.relpath(f, ROOT), shims, [
+					(os.path.relpath(p, ROOT), line, kind, msg) for p, line, _col, kind, msg in diagnostics]
+			# Stub creation races are benign (identical content), so files run concurrently.
+			with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
+				results = list(pool.map(census, files))
+			with open(args.all_diagnostics, 'w') as handle:
+				json.dump([{'file': f, 'stubs': s, 'errors': e} for f, s, e in results], handle, indent=1)
+			clean = sum(1 for _f, _s, e in results if not e)
+			print(f'{clean}/{len(results)} files without errors; '
+				  f'{sum(len(e) for _f, _s, e in results)} errors recorded in {args.all_diagnostics}', file=sys.stderr)
+			return 0 if clean == len(results) else 1
 		failed = 0
 		for f in files:
 			shims, diagnostics, _output = probe(cxx, flags, defines, includes, f, extra, shim_root,

@@ -4,9 +4,9 @@
 //
 //=====================================================================================//
 
-#include "VDownloadCampaign.h"
+#include "vdownloadcampaign.h"
 
-#include "EngineInterface.h"
+#include "engineinterface.h"
 
 #include "ConfigManager.h"
 
@@ -16,7 +16,7 @@
 #include "vgui/ISurface.h"
 #include "vgui/ILocalize.h"
 
-#include "VHybridButton.h"
+#include "vhybridbutton.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"

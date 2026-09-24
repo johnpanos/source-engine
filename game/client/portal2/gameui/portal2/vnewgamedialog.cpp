@@ -5,12 +5,12 @@
 //=====================================================================================//
 
 #include "vnewgamedialog.h"
-#include "VFooterPanel.h"
-#include "VGenericPanelList.h"
+#include "vfooterpanel.h"
+#include "vgenericpanellist.h"
 #include "vgui_controls/ImagePanel.h"
 #include "vgui/ISurface.h"
 #include "vgui/IVGui.h"
-#include "vgui/ilocalize.h"
+#include "vgui/ILocalize.h"
 
 #include "cegclientwrapper.h"
 

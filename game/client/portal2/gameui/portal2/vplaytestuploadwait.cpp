@@ -7,14 +7,14 @@
 #if defined( PORTAL2_PUZZLEMAKER )
 
 #include "vplaytestuploadwait.h"
-#include "VFooterPanel.h"
-#include "VHybridButton.h"
-#include "EngineInterface.h"
+#include "vfooterpanel.h"
+#include "vhybridbutton.h"
+#include "engineinterface.h"
 #include "IGameUIFuncs.h"
 #include "gameui_util.h"
 #include "vgui/ISurface.h"
-#include "VGenericConfirmation.h"
-#include "vgui_controls/imagepanel.h"
+#include "vgenericconfirmation.h"
+#include "vgui_controls/ImagePanel.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"

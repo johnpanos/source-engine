@@ -6,19 +6,19 @@
 
 #include "cbase.h"
 
-#include "VInGameMainMenu.h"
-#include "VGenericConfirmation.h"
+#include "vingamemainmenu.h"
+#include "vgenericconfirmation.h"
 #include "vportalleaderboard.h"
-#include "VFooterPanel.h"
-#include "VFlyoutMenu.h"
-#include "VHybridButton.h"
-#include "EngineInterface.h"
+#include "vfooterpanel.h"
+#include "vflyoutmenu.h"
+#include "vhybridbutton.h"
+#include "engineinterface.h"
 #include "vpuzzlemakersavedialog.h"
 
 #include "fmtstr.h"
 
 #include "game/client/IGameClientExports.h"
-#include "GameUI_Interface.h"
+#include "gameui_interface.h"
 
 #include "vgui/ILocalize.h"
 #include "vgui_controls/Button.h"
@@ -26,7 +26,7 @@
 #include "vgui/ISurface.h"
 
 #include "vratemapdialog.h"
-#include "VGenericWaitScreen.h"
+#include "vgenericwaitscreen.h"
 
 #include "materialsystem/materialsystem_config.h"
 #include "portal_gamerules.h"

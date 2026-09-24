@@ -63,8 +63,10 @@ const int MAX_VERTEX_FORMAT_CHANGES = 128;
 int g_MaxLeavesVisible = 512;
 
 #ifndef SWDS
-static ConVar r_worldmesh_draw( "r_worldmesh_draw", "0", FCVAR_CHEAT,
-    "WMSH comparison: 0 legacy, 1 overlay, 2 uploaded world batches" );
+// Maps without a resident WMSH always draw the legacy surfaces.
+static ConVar r_worldmesh_draw( "r_worldmesh_draw", "2", 0,
+    "World drawing for maps with a WMSH: 2 uploaded world batches, 1 overlay on the legacy "
+    "surfaces, 0 legacy surfaces only (comparison)" );
 static ConVar r_worldmesh_cull( "r_worldmesh_cull", "1", FCVAR_CHEAT,
     "WMSH meshlet culling: 0 draw every meshlet, 1 visible leaves, view frustum, back faces and "
     "occlusion; negative controls that must change pixels: 2 half-size frustum spheres, "

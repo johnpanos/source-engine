@@ -250,6 +250,38 @@ struct matrix3x4_t
 	float m_flMatVal[3][4];
 };
 
+//-----------------------------------------------------------------------------
+// A 16-byte aligned matrix3x4_t (from the later Source base game). It adds no
+// members, so it converts to and from matrix3x4_t freely.
+//-----------------------------------------------------------------------------
+class ALIGN16 matrix3x4a_t : public matrix3x4_t
+{
+public:
+	matrix3x4a_t() {}
+	matrix3x4a_t( const matrix3x4_t &src ) { *this = src; }
+	matrix3x4a_t &operator=( const matrix3x4_t &src )
+	{
+		for ( int i = 0; i < 3; i++ )
+		{
+			for ( int j = 0; j < 4; j++ )
+			{
+				m_flMatVal[i][j] = src.m_flMatVal[i][j];
+			}
+		}
+		return *this;
+	}
+
+	matrix3x4a_t(
+		float m00, float m01, float m02, float m03,
+		float m10, float m11, float m12, float m13,
+		float m20, float m21, float m22, float m23 )
+		: matrix3x4_t( m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23 )
+	{
+	}
+
+	static inline bool TypeIsAlignedForSIMD( void ) { return true; }
+} ALIGN16_POST;
+
 
 #ifndef M_PI
 	#define M_PI		3.14159265358979323846	// matches value in gcc v2 math.h

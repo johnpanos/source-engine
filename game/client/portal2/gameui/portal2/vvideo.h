@@ -8,8 +8,8 @@
 #define __VVIDEO_H__
 
 #include "basemodui.h"
-#include "VFlyoutMenu.h"
-#include "OptionsSubVideo.h"
+#include "vflyoutmenu.h"
+#include "optionssubvideo.h"
 
 // Matched to number of entries in .RES file
 #define MAX_DYNAMIC_VIDEO_MODES 43

@@ -8,27 +8,27 @@
 #if defined( PORTAL2_PUZZLEMAKER )
 
 #include <time.h>
-#include "VFooterPanel.h"
-#include "VGenericPanelList.h"
+#include "vfooterpanel.h"
+#include "vgenericpanellist.h"
 #include "vgui_controls/ImagePanel.h"
 #include "vgui/ISurface.h"
 #include "vgui/IVGui.h"
-#include "vgui/ilocalize.h"
-#include "FileSystem.h"
-#include "VGenericConfirmation.h"
+#include "vgui/ILocalize.h"
+#include "filesystem.h"
+#include "vgenericconfirmation.h"
 #include "bitmap/tgaloader.h"
 #include "steamcloudsync.h"
 #ifdef _PS3
 #include "sysutil/sysutil_savedata.h"
 #endif
-#include "vgui_controls/scrollbar.h"
+#include "vgui_controls/ScrollBar.h"
 #include <vgui_controls/ImageList.h>
 #include "vgui_avatarimage.h"
 #include "transitionpanel.h"
 #include "econ_gcmessages.h"
 #include "gc_clientsystem.h"
 #include "imageutils.h"
-#include "vCommunityMapDialog.h"
+#include "vcommunitymapdialog.h"
 #include "portal_mp_gamerules.h"
 #include "c_community_coop.h"
 

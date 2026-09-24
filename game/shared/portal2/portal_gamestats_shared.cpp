@@ -7,7 +7,7 @@
 #include "cbase.h"
 #if !defined( _GAMECONSOLE ) && !defined( NO_STEAM )
 #ifdef GAME_DLL
-#include "GameStats.h"
+#include "gamestats.h"
 #endif
 #include "portal_gamestats_shared.h"
 #include "fmtstr.h"

@@ -12,7 +12,7 @@
 #pragma once
 #endif
 
-#include "materialsystem/IMaterial.h"
+#include "materialsystem/imaterial.h"
 #include "mathlib/mathlib.h"
 #include "portalrender.h"
 

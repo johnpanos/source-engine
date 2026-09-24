@@ -8,7 +8,7 @@
 #define __VCONTROLLEROPTIONSBUTTONS_H__
 
 #include "basemodui.h"
-#include "VFlyoutMenu.h"
+#include "vflyoutmenu.h"
 
 class VControlsListPanel;
 

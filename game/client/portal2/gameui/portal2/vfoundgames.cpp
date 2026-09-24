@@ -4,14 +4,14 @@
 //
 //=====================================================================================//
 
-#include "VFoundGames.h"
-#include "VGenericPanelList.h"
-#include "EngineInterface.h"
-#include "VFooterPanel.h"
-#include "VHybridButton.h"
-#include "VDropDownMenu.h"
-#include "VFlyoutMenu.h"
-#include "UIGameData.h"
+#include "vfoundgames.h"
+#include "vgenericpanellist.h"
+#include "engineinterface.h"
+#include "vfooterpanel.h"
+#include "vhybridbutton.h"
+#include "vdropdownmenu.h"
+#include "vflyoutmenu.h"
+#include "uigamedata.h"
 #include "vdownloadcampaign.h"
 #include "gameui_util.h"
 
@@ -21,8 +21,8 @@
 #include "vgui_controls/Button.h"
 #include "vgui_controls/ImagePanel.h"
 #include "vgui/ILocalize.h"
-#include "VGenericConfirmation.h"
-#include "VGameSettings.h"
+#include "vgenericconfirmation.h"
+#include "vgamesettings.h"
 #include "vgetlegacydata.h"
 
 #include "fmtstr.h"

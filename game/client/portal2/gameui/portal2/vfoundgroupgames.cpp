@@ -4,8 +4,8 @@
 //
 //=====================================================================================//
 
-#include "VFoundGroupGames.h"
-#include "EngineInterface.h"
+#include "vfoundgroupgames.h"
+#include "engineinterface.h"
 
 #include "fmtstr.h"
 

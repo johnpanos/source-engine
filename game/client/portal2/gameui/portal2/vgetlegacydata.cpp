@@ -8,8 +8,8 @@
 #include "windows.h"
 #endif
 #include "vgetlegacydata.h"
-#include "VGenericConfirmation.h"
-#include "EngineInterface.h"
+#include "vgenericconfirmation.h"
+#include "engineinterface.h"
 #include "ConfigManager.h"
 #include "vgui_controls/Label.h"
 #include "vgui/ISurface.h"

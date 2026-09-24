@@ -10,10 +10,10 @@
 #if defined( PORTAL2_PUZZLEMAKER )
 
 #include "basemodui.h"
-#include "vgui_controls/panellistpanel.h"
+#include "vgui_controls/PanelListPanel.h"
 #include "vpuzzlemakeruilistitem.h"
 #include "vpuzzlemakermychambers.h"
-#include "vgui_controls/imagepanel.h"
+#include "vgui_controls/ImagePanel.h"
 
 using namespace vgui;
 using namespace BaseModUI;

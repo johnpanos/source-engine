@@ -6,8 +6,8 @@
 //===========================================================================//
 
 #include "cbase.h"
-#include "C_PortalGhostRenderable.h"
-#include "PortalRender.h"
+#include "c_portalghostrenderable.h"
+#include "portalrender.h"
 #include "c_portal_player.h"
 #include "model_types.h"
 #include "c_basecombatweapon.h"
@@ -214,7 +214,7 @@ QAngle const& C_PortalGhostRenderable::GetRenderAngles( void )
 	return m_ReferencedReturns.qRenderAngle;
 }
 
-bool C_PortalGhostRenderable::SetupBones( matrix3x4a_t *pBoneToWorldOut, int nMaxBones, int boneMask, float currentTime )
+bool C_PortalGhostRenderable::SetupBones( matrix3x4_t *pBoneToWorldOut, int nMaxBones, int boneMask, float currentTime )
 {
 	C_BaseEntity *pGhostedRenderable = m_hGhostedRenderable;
 	if( pGhostedRenderable == NULL )
@@ -240,7 +240,8 @@ bool C_PortalGhostRenderable::SetupBones( matrix3x4a_t *pBoneToWorldOut, int nMa
 			nBoneCount = MIN( nMaxBones, nBoneCount );
 			for( int i = 0; i != nBoneCount; ++i )
 			{
-				ConcatTransforms_Aligned( matGhostTransform, pBoneToWorldOut[i], pBoneToWorldOut[i] );
+				// Portal 2 port: this engine's bone arrays are matrix3x4_t, not guaranteed 16-byte aligned.
+				ConcatTransforms( matGhostTransform, pBoneToWorldOut[i], pBoneToWorldOut[i] );
 			}
 		}
 
@@ -505,7 +506,8 @@ int C_PortalGhostRenderable::DrawModel( int flags, const RenderableInstance_t &i
 
 	if ( m_bSourceIsBaseAnimating )
 	{
-		return C_BaseAnimating::DrawModel( flags, instance );
+		// Portal 2 port: the SDK base has only DrawModel( int ); it reads GetFxBlend() itself.
+		return C_BaseAnimating::DrawModel( flags );
 	}
 	else
 	{
@@ -549,7 +551,8 @@ RenderableTranslucencyType_t C_PortalGhostRenderable::ComputeTranslucencyType( v
 	if ( m_hGhostedRenderable == NULL )
 		return RENDERABLE_IS_OPAQUE;
 
-	return m_hGhostedRenderable->ComputeTranslucencyType();
+	// Portal 2 port: the ghosted entity reports translucency through the SDK virtuals.
+	return Portal2_ComputeTranslucencyType( m_hGhostedRenderable.Get() );
 }
 
 int C_PortalGhostRenderable::GetRenderFlags()

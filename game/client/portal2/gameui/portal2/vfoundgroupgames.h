@@ -7,7 +7,7 @@
 #ifndef __VFOUND_GROUP_GAMES_H__
 #define __VFOUND_GROUP_GAMES_H__
 
-#include "VFoundGames.h"
+#include "vfoundgames.h"
 
 namespace BaseModUI {
 

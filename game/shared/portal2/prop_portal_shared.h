@@ -16,7 +16,7 @@
 #include "portal_base2d_shared.h"
 
 #ifdef CLIENT_DLL
-#include "C_Prop_Portal.h"
+#include "c_prop_portal.h"
 #else
 #include "prop_portal.h"
 #endif

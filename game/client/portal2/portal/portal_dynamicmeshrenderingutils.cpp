@@ -6,7 +6,7 @@
 //=============================================================================//
 
 #include "cbase.h"
-#include "Portal_DynamicMeshRenderingUtils.h"
+#include "portal_dynamicmeshrenderingutils.h"
 #include "iviewrender.h"
 
 extern ConVar mat_wireframe;

@@ -6,13 +6,13 @@
 
 #include "cbase.h"
 #include "vcoopexitchoice.h"
-#include "VFooterPanel.h"
-#include "VHybridButton.h"
-#include "EngineInterface.h"
+#include "vfooterpanel.h"
+#include "vhybridbutton.h"
+#include "engineinterface.h"
 #include "IGameUIFuncs.h"
 #include "gameui_util.h"
 #include "vgui/ISurface.h"
-#include "VGenericConfirmation.h"
+#include "vgenericconfirmation.h"
 #include "vportalleaderboard.h"
 
 // memdbgon must be the last include file in a .cpp file!!!

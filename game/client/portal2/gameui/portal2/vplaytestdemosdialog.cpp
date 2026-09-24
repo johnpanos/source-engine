@@ -9,21 +9,21 @@
 #if defined( PORTAL2_PUZZLEMAKER )
 
 #include "vplaytestdemosdialog.h"
-#include "VFooterPanel.h"
-#include "VHybridButton.h"
-#include "EngineInterface.h"
+#include "vfooterpanel.h"
+#include "vhybridbutton.h"
+#include "engineinterface.h"
 #include "IGameUIFuncs.h"
 #include "gameui_util.h"
 #include "vgui/ISurface.h"
-#include "VGenericConfirmation.h"
-#include "vgui/ilocalize.h"
-#include "vgui_controls/scrollbar.h"
-#include "vgui_controls/imagepanel.h"
+#include "vgenericconfirmation.h"
+#include "vgui/ILocalize.h"
+#include "vgui_controls/ScrollBar.h"
+#include "vgui_controls/ImagePanel.h"
 #include "gameui/portal2/vdialoglistbutton.h"
 #include "vpvplobby.h"
 #include "vgui/portal_leaderboard_graph_panel.h"
 #include "gameui/portal2/vportalchallengestatspanel.h"
-#include "GameUI_Interface.h"
+#include "gameui_interface.h"
 #include "c_user_message_register.h"
 #include "c_portal_player.h"
 #include "vgui/IInput.h"
@@ -33,7 +33,7 @@
 
 #include "demofile/demoformat.h"	 // demoheader_t
 
-#include "FileSystem.h"
+#include "filesystem.h"
 
 #include "gc_clientsystem.h"
 #include "econ_gcmessages.h"

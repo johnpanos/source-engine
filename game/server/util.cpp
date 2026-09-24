@@ -1869,7 +1869,11 @@ extern "C" void Sys_Error( char *error, ... )
 //			*mapData - pointer a block of entity map data
 // Output : -1 if the entity was not successfully created; 0 on success
 //-----------------------------------------------------------------------------
+#ifdef PORTAL2
+int DispatchSpawn( CBaseEntity *pEntity, bool bRunVScripts )
+#else
 int DispatchSpawn( CBaseEntity *pEntity )
+#endif
 {
 	if ( pEntity )
 	{
@@ -1878,6 +1882,15 @@ int DispatchSpawn( CBaseEntity *pEntity )
 		// keep a smart pointer that will now if the object gets deleted
 		EHANDLE pEntSafe;
 		pEntSafe = pEntity;
+
+#ifdef PORTAL2
+		// Portal 2 port: CS:GO runs the entity's VScripts before Spawn().
+		if ( bRunVScripts )
+		{
+			pEntity->RunVScripts();
+			pEntity->RunPrecacheScripts();
+		}
+#endif
 
 		// Initialize these or entities who don't link to the world won't have anything in here
 		// is this necessary?
@@ -1950,6 +1963,13 @@ int DispatchSpawn( CBaseEntity *pEntity )
 		}
 
 		gEntList.NotifySpawn( pEntity );
+
+#ifdef PORTAL2
+		if ( bRunVScripts )
+		{
+			pEntity->RunOnPostSpawnScripts();
+		}
+#endif
 	}
 
 	return 0;

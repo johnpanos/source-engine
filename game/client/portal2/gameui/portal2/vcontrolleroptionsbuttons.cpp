@@ -4,19 +4,19 @@
 //
 //=====================================================================================//
 
-#include "VControllerOptionsButtons.h"
-#include "VFooterPanel.h"
-#include "VSliderControl.h"
-#include "VDropDownMenu.h"
-#include "VFlyoutMenu.h"
-#include "EngineInterface.h"
+#include "vcontrolleroptionsbuttons.h"
+#include "vfooterpanel.h"
+#include "vslidercontrol.h"
+#include "vdropdownmenu.h"
+#include "vflyoutmenu.h"
+#include "engineinterface.h"
 #include "gameui_util.h"
 #include "vgui/ILocalize.h"
 #include "vhybridbutton.h"
-#include "VControlsListPanel.h"
+#include "vcontrolslistpanel.h"
 #include "inputsystem/iinputsystem.h"
 #include "vgui/IInput.h"
-#include "VGenericConfirmation.h"
+#include "vgenericconfirmation.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"

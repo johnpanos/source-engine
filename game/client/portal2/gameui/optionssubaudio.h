@@ -13,8 +13,8 @@
 
 #include "vgui_controls/PropertyPage.h"
 #include <language.h>
-#include "vgui_controls/frame.h"
-#include "vgui/keycode.h"
+#include "vgui_controls/Frame.h"
+#include "vgui/KeyCode.h"
 
 class CLabeledCommandComboBox;
 class CCvarSlider;

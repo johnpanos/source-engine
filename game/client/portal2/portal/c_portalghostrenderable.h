@@ -69,7 +69,8 @@ public:
 	// currentTime parameter will affect interpolation
 	// nMaxBones specifies how many matrices pBoneToWorldOut can hold. (Should be greater than or
 	// equal to studiohdr_t::numbones. Use MAXSTUDIOBONES to be safe.)
-	virtual bool	SetupBones( matrix3x4a_t *pBoneToWorldOut, int nMaxBones, int boneMask, float currentTime );
+	// Portal 2 port: this engine's IClientRenderable::SetupBones takes matrix3x4_t.
+	virtual bool	SetupBones( matrix3x4_t *pBoneToWorldOut, int nMaxBones, int boneMask, float currentTime );
 
 	virtual C_BaseAnimating *GetBoneSetupDependancy( void );
 
@@ -99,6 +100,8 @@ public:
 	virtual float *GetRenderClipPlane( void );
 
 	virtual IClientModelRenderable*	GetClientModelRenderable() { return NULL; }
+	// Portal 2 port: CS:GO renderable API bridged onto DrawModel( int ); see portal2_engine_compat.h.
+	PORTAL2_DRAWMODEL_BRIDGE();
 	virtual int	DrawModel( int flags, const RenderableInstance_t &instance );
 
 	// Get the model instance of the ghosted model so that decals will properly draw across portals
@@ -112,8 +115,12 @@ public:
 	//IClientRenderable - Trivial or redirection
 	//------------------------------------------
 	virtual IClientUnknown*			GetIClientUnknown() { return this; };
+	// Portal 2 port: translucency and render flags bridged onto IsTransparent()/IsTwoPass()
+	// and UsesPowerOfTwoFrameBufferTexture(), the virtuals this engine calls.
+	PORTAL2_TRANSLUCENCY_BRIDGE();
 	virtual RenderableTranslucencyType_t	ComputeTranslucencyType( void );
 	virtual int						GetRenderFlags();
+	virtual bool					UsesPowerOfTwoFrameBufferTexture() OVERRIDE { return ( GetRenderFlags() & ERENDERFLAGS_NEEDS_POWER_OF_TWO_FB ) != 0; }
 	//virtual ClientShadowHandle_t	GetShadowHandle() const { return m_hShadowHandle; };
 	//virtual ClientRenderHandle_t&	RenderHandle() { return m_hRenderHandle; };
 	//virtual const model_t*			GetModel( ) const;

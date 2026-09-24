@@ -118,6 +118,20 @@ $Project "Server (Portal 2)"
 {
 	$Folder	"Source Files"
 	{
+		$Folder	"CS:GO-era base game (tools/portal2/cs15_imports.txt)"
+		{
+			$File	"$SRCDIR\game\server\cvisibilitymonitor.cpp"
+			$File	"$SRCDIR\game\server\cvisibilitymonitor.h"
+			$File	"$SRCDIR\game\server\player_voice_listener.cpp"
+			$File	"$SRCDIR\game\server\player_voice_listener.h"
+			$File	"$SRCDIR\game\server\vscript_server.cpp"
+			$File	"$SRCDIR\game\server\vscript_server.h"
+			$File	"$SRCDIR\game\shared\vscript_shared.cpp"
+			$File	"$SRCDIR\game\shared\vscript_shared.h"
+			$File	"$SRCDIR\game\shared\game_timescale_shared.cpp"
+			$File	"$SRCDIR\game\shared\game_timescale_shared.h"
+		}
+
 		$File	"$SRCDIR\game\shared\predicted_viewmodel.cpp"
 		$File	"$SRCDIR\game\shared\predicted_viewmodel.h"
 		

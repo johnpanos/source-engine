@@ -9,9 +9,9 @@
 #if defined( PORTAL2_PUZZLEMAKER )
 
 #include "vpuzzlemakerexitconfirmation.h"
-#include "VFooterPanel.h"
+#include "vfooterpanel.h"
 #include "vgui_controls/Label.h"
-#include "vgui_controls/imagepanel.h"
+#include "vgui_controls/ImagePanel.h"
 #include "vgui/ISurface.h"
 #include "vpuzzlemakersavedialog.h"
 #include "vgenericconfirmation.h"

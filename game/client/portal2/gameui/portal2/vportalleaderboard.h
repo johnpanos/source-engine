@@ -8,7 +8,7 @@
 #define __VPORTALLEADERBOARD_H__
 
 #include "basemodui.h"
-#include "VGenericPanelList.h"
+#include "vgenericpanellist.h"
 #include "portal2_leaderboard_manager.h"
 
 using namespace vgui;

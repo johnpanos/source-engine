@@ -15,13 +15,13 @@
 #include "movevars_shared.h"
 
 #ifdef CLIENT_DLL
-#include "C_Portal_Player.h"
-#include "C_Weapon_Portalgun.h"
+#include "c_portal_player.h"
+#include "c_weapon_portalgun.h"
 #include "c_te_effect_dispatch.h"
 #include "particle_parse.h"
 #else
-#include "Portal_Player.h"
-#include "Weapon_Portalgun.h"
+#include "portal_player.h"
+#include "weapon_portalgun.h"
 #endif
 
 #define PORTAL_RUN_SPEED			320.0f

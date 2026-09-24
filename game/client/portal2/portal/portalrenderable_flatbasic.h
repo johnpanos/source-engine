@@ -71,6 +71,8 @@ public:
 
 	static IMesh *CreateMeshForPortals( IMatRenderContext *pRenderContext, int nPortalCount, CPortalRenderable **ppPortals, CUtlVector< ClampedPortalMeshRenderInfo_t > &clampedPortalMeshRenderInfos );
 
+	// Portal 2 port: CS:GO renderable API bridged onto DrawModel( int ); see portal2_engine_compat.h.
+	PORTAL2_DRAWMODEL_BRIDGE();
 	virtual int	DrawModel( int flags, const RenderableInstance_t &instance ) { return 0; }	// Prevent the model from rendering as a normal model
 	virtual IClientModelRenderable*	GetClientModelRenderable() { return NULL; }
 

@@ -118,8 +118,8 @@ code, external binaries, and separately supplied content.
 # Android Portal SDL3/native Vulkan profile
 
 `portal-android-native-vulkan.json` owns the Android client's facts:
-- The NDK, SDL3, SDK platform and build-tools archives, with sizes and
-  SHA-256 hashes.
+- The NDK, SDL3, KTX-Software, SDK platform and build-tools archives, with
+  sizes and SHA-256 hashes.
 - SDK levels and the declared ABIs.
 - The manifest requirements: permissions, the Vulkan feature, the activity,
   and the configuration changes that keep the activity alive across rotation
@@ -133,6 +133,13 @@ plus `adb` for `--install`/`--run`. It builds each ABI under its own Waf lock
 and `build-android/<abi>/` out directory, then packages and signs the APK.
 Finally it runs the independent verifier [`android_apk.py`](../../tools/quality/android_apk.py)
 on the result.
+
+The KTX-Software archive is the revision that
+[`ktx2-linux-tools.json`](ktx2-linux-tools.json) pins; Waf rejects the
+Android build if the two differ. The script builds its static `libktx_read.a`
+per ABI and links it into the native Vulkan renderer, which reads the baked
+lightmap (LMAP) of BSP2 world-mesh maps. Without the reader such a map drops
+its world mesh and draws the legacy compile brushes.
 
 The verifier reads the finished APK and fails on:
 - A dropped or undeclared module, or a wrong or missing ABI.

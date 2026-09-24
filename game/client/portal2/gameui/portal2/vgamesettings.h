@@ -8,7 +8,7 @@
 #define __VGAMESETTINGS_H__
 
 #include "basemodui.h"
-#include "VFlyoutMenu.h"
+#include "vflyoutmenu.h"
 
 namespace BaseModUI {
 

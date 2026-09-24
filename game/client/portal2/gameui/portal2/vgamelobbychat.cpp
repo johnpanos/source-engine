@@ -6,10 +6,10 @@
 
 #include "vgui_controls/ScrollBar.h"
 
-#include "IEngineVGUI.h"
-#include "EngineInterface.h"
-#include "VGameLobby.h"
-#include "VGameLobbyChat.h"
+#include "ienginevgui.h"
+#include "engineinterface.h"
+#include "vgamelobby.h"
+#include "vgamelobbychat.h"
 #include "vgui/IInput.h"
 #include "vgui/ILocalize.h"
 

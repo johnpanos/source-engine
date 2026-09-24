@@ -4,9 +4,9 @@
 //
 //=====================================================================================//
 
-#include "VOptionsCloud.h"
-#include "VFooterPanel.h"
-#include "VHybridButton.h"
+#include "voptionscloud.h"
+#include "vfooterpanel.h"
+#include "vhybridbutton.h"
 #include "vgui_controls/Button.h"
 #include "steamcloudsync.h"
 #include "fmtstr.h"

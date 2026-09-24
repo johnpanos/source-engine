@@ -6,7 +6,7 @@
 //=====================================================================================//
 
 #include "cbase.h"
-#include "StaticCollisionPolyhedronCache.h"
+#include "staticcollisionpolyhedroncache.h"
 #include "engine/IEngineTrace.h"
 #include "edict.h"
 

@@ -8,7 +8,7 @@
 #define __VFOUND_PUBLIC_GAMES_H__
 
 #include "basemodui.h"
-#include "VFoundGames.h"
+#include "vfoundgames.h"
 
 namespace BaseModUI {
 

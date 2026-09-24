@@ -125,6 +125,26 @@ $Project "Client (Portal 2)"
 {
 	$Folder	"Source Files"
 	{
+		$Folder	"CS:GO-era base game (tools/portal2/cs15_imports.txt)"
+		{
+			$File	"$SRCDIR\game\client\c_triggers.cpp"
+			$File	"$SRCDIR\game\client\c_triggers.h"
+			$File	"$SRCDIR\game\client\hud_locator_target.cpp"
+			$File	"$SRCDIR\game\client\hud_locator_target.h"
+			$File	"$SRCDIR\game\client\vscript_client.cpp"
+			$File	"$SRCDIR\game\client\vscript_client.h"
+			$File	"$SRCDIR\game\shared\vscript_shared.cpp"
+			$File	"$SRCDIR\game\shared\vscript_shared.h"
+			$File	"$SRCDIR\game\shared\game_timescale_shared.cpp"
+			$File	"$SRCDIR\game\shared\game_timescale_shared.h"
+		}
+
+		$Folder	"Portal 2 port adapters"
+		{
+			$File	"portal2\portal2_engine_compat.cpp"
+			$File	"portal2\portal2_engine_compat.h"
+		}
+
 		$File	"$SRCDIR\game\shared\predicted_viewmodel.cpp"
 		$File	"$SRCDIR\game\shared\predicted_viewmodel.h"
 		$File	"$SRCDIR\game\shared\cam_thirdperson.cpp"

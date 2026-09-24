@@ -4,21 +4,21 @@
 //
 //=====================================================================================//
 
-#include "VAudio.h"
-#include "VFooterPanel.h"
-#include "VDropDownMenu.h"
-#include "VSliderControl.h"
-#include "VHybridButton.h"
-#include "EngineInterface.h"
+#include "vaudio.h"
+#include "vfooterpanel.h"
+#include "vdropdownmenu.h"
+#include "vslidercontrol.h"
+#include "vhybridbutton.h"
+#include "engineinterface.h"
 #include "gameui_util.h"
 #include "vgui/ISurface.h"
-#include "VGenericConfirmation.h"
+#include "vgenericconfirmation.h"
 #include "ivoicetweak.h"
 #include "materialsystem/materialsystem_config.h"
 
 #include "vgui_controls/ImagePanel.h"
 
-#include "igameuifuncs.h"
+#include "IGameUIFuncs.h"
 #include "inputsystem/iinputsystem.h"
 
 #ifdef _X360

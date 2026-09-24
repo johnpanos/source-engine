@@ -5,7 +5,7 @@
 //=====================================================================================//
 
 #include "vendingsplitscreen.h"
-#include "VAttractScreen.h"
+#include "vattractscreen.h"
 #include "tier1/KeyValues.h"
 
 #include "vgui_controls/Label.h"

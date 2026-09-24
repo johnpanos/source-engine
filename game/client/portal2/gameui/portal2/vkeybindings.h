@@ -8,8 +8,8 @@
 #define __VKEYBINDINGS_H__
 
 #include "basemodui.h"
-#include "tier1/UtlVector.h"
-#include "tier1/UtlSymbol.h"
+#include "tier1/utlvector.h"
+#include "tier1/utlsymbol.h"
 
 class VControlsListPanel;
 

@@ -9,13 +9,13 @@
 #if defined( PORTAL2_PUZZLEMAKER )
 
 #include "vpuzzlemakermenu.h"
-#include "VFooterPanel.h"
-#include "VHybridButton.h"
-#include "EngineInterface.h"
+#include "vfooterpanel.h"
+#include "vhybridbutton.h"
+#include "engineinterface.h"
 #include "IGameUIFuncs.h"
 #include "gameui_util.h"
 #include "vgui/ISurface.h"
-#include "VGenericConfirmation.h"
+#include "vgenericconfirmation.h"
 #include "vpuzzlemakerbetatests.h"
 #include "transitionpanel.h"
 

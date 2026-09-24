@@ -8,11 +8,10 @@ the gameinfo's `portal/custom/*` search path loads at boot, so
 
     ./play living_room
 
-loads the newest build. The map's world is the WMSH/LMAP payload, which the
-engine draws only with the cheat `r_worldmesh_draw 2`; each record carries
-those console commands and run.sh adds them (`launch-args`) when MAP names a
-published map. Publishing replaces the old copy atomically; `remove`
-unpublishes a map and the next launch drops its mount. Existing builds can be
+loads the newest build. The engine draws the map's WMSH/LMAP world by default,
+so a map needs no launch settings and also draws when loaded from the console.
+Publishing replaces the old copy atomically; `remove` unpublishes a map and the
+next launch drops its mount. Existing builds can be
 published without rebuilding:
 
     python3 tools/quality/playable_maps.py publish quality-results/living-room-map
@@ -35,8 +34,6 @@ STORE = ROOT / "run" / "maps"
 RECORD = "published.json"
 SCHEMA = "pbrt-published-map/v1"
 MOUNT_PREFIX = "pbrt-"
-# Draw the uploaded world batches instead of the legacy compile brushes.
-CONSOLE_COMMANDS = ["sv_cheats 1", "r_worldmesh_draw 2"]
 
 
 def publish(build_summary, store=STORE):
@@ -56,7 +53,7 @@ def publish(build_summary, store=STORE):
               "failed_gates": build_summary.get("failed_gates", []),
               "bsp2_sha256": build_summary.get("bsp2_sha256"),
               "content_root": str(build_summary["content_root"]),
-              "files": len(files), "console_commands": CONSOLE_COMMANDS,
+              "files": len(files),
               "published": datetime.datetime.now(datetime.timezone.utc).isoformat(
                   timespec="seconds")}
     (staging / RECORD).write_text(json.dumps(record, indent=2) + "\n")
@@ -119,12 +116,6 @@ def mount(runtime, store=STORE, game="portal"):
     return mounted, skipped
 
 
-def launch_arguments(name, store=STORE):
-    """Game arguments that a published map needs; none for any other map."""
-    record = published(store).get(name)
-    return [] if record is None else ["+" + command for command in record["console_commands"]]
-
-
 def describe(record):
     status = record["status"]
     if record.get("failed_gates"):
@@ -140,9 +131,6 @@ def main():
     publish_command.add_argument("builds", type=Path, nargs="+",
                                  help="pbrt_map_build.py --out directories (with build.json)")
     commands.add_parser("list", help="list published maps")
-    launch_command = commands.add_parser(
-        "launch-args", help="print the game arguments a map needs (one per line)")
-    launch_command.add_argument("map")
     remove_command = commands.add_parser("remove", help="unpublish maps")
     remove_command.add_argument("maps", nargs="+")
     args = parser.parse_args()
@@ -150,9 +138,6 @@ def main():
         for build in args.builds:
             summary = json.loads((build / "build.json").read_text())
             print("published " + describe(publish(summary)))
-    elif args.command == "launch-args":
-        for argument in launch_arguments(args.map):
-            print(argument)
     elif args.command == "list":
         for record in published().values():
             print(describe(record))

@@ -4,8 +4,8 @@
 //
 //=====================================================================================//
 
-#include "VDownloads.h"
-#include "VFooterPanel.h"
+#include "vdownloads.h"
+#include "vfooterpanel.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"

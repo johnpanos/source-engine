@@ -12,7 +12,7 @@
 #pragma once
 #endif
 
-#include "ISpatialPartition.h"
+#include "ispatialpartition.h"
 
 //only enumerates entities in front of the associated portal and are solid (as in a player would get stuck in them)
 class CPortalCollideableEnumerator : public IPartitionEnumerator

@@ -132,6 +132,26 @@
       "extracted_directory": "SDL3-3.4.16",
       "note": "Same SDL3 version as the Linux profile's pkg-config pin. Provides libSDL3.so and the SDLActivity Java sources."
     },
+    "ktx_software": {
+      "revision": "90967979cbb7e9401ee2401ff997f30b4b7507d6",
+      "version": "v5.0.0-rc2",
+      "url": "https://github.com/KhronosGroup/KTX-Software/archive/90967979cbb7e9401ee2401ff997f30b4b7507d6.tar.gz",
+      "sha256": "5729336059b4e87ba3983409ff9862411a963fc112a31bc74efabc7e3af8b8ea",
+      "archive_bytes": 254276096,
+      "cache_archive": "KTX-Software-90967979cbb7e9401ee2401ff997f30b4b7507d6.tar.gz",
+      "extracted_directory": "KTX-Software-90967979cbb7e9401ee2401ff997f30b4b7507d6",
+      "cmake_options": {
+        "BUILD_SHARED_LIBS": "OFF",
+        "KTX_FEATURE_TOOLS": "OFF",
+        "KTX_FEATURE_TESTS": "OFF",
+        "KTX_FEATURE_LOADTEST_APPS": "OFF",
+        "KTX_FEATURE_JS": "OFF",
+        "KTX_FEATURE_DOC": "OFF",
+        "LIBKTX_FEATURE_GL_UPLOAD": "OFF",
+        "LIBKTX_FEATURE_VK_UPLOAD": "OFF"
+      },
+      "note": "Same revision as quality/product_profiles/ktx2-linux-tools.json (Waf rejects a mismatch). Builds the static read-only libktx_read.a per ABI for the BSP2 WMSH lightmap (LMAP); its zstd is bundled by basisu, zlib is the NDK system library. version is the release named by this revision's RELEASE_NOTES.md, passed as KTX_GIT_VERSION_FULL because a source archive has no git tags. sha256 and size were computed from the downloaded archive on 2026-09-23; the lib/ tree matches the pinned git checkout."
+    },
     "sdk_platform": {
       "version": "android-36 revision 2",
       "url": "https://dl.google.com/android/repository/platform-36_r02.zip",

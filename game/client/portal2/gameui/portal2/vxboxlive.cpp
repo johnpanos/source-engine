@@ -4,10 +4,10 @@
 //
 //=====================================================================================//
 
-#include "VXboxLIVE.h"
-#include "VFooterPanel.h"
-#include "VHybridButton.h"
-#include "VGenericConfirmation.h"
+#include "vxboxlive.h"
+#include "vfooterpanel.h"
+#include "vhybridbutton.h"
+#include "vgenericconfirmation.h"
 #include "vgui_controls/Button.h"
 #include "vgui/ILocalize.h"
 

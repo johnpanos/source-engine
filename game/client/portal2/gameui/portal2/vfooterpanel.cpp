@@ -4,12 +4,12 @@
 //
 //=====================================================================================//
 
-#include "VFooterPanel.h"
+#include "vfooterpanel.h"
 #include "vgui/IPanel.h"
 #include "vgui_controls/ImagePanel.h"
 #include "vgui_controls/Controls.h"
 #include "vgui/ISurface.h"
-#include "vgui/ilocalize.h"
+#include "vgui/ILocalize.h"
 #include "tier1/fmtstr.h"
 #include "transitionpanel.h"
 

@@ -8,9 +8,9 @@
 #define __VGAMELOBBY_H__
 
 #include "basemodui.h"
-#include "VFlyoutMenu.h"
-#include "VDropDownMenu.h"
-#include "VGameLobbyChat.h"
+#include "vflyoutmenu.h"
+#include "vdropdownmenu.h"
+#include "vgamelobbychat.h"
 
 namespace BaseModUI {
 

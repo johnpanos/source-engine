@@ -7,7 +7,7 @@
 //=============================================================================//
 
 #include "cbase.h"
-#include "PhysicsCloneArea.h"
+#include "physicsclonearea.h"
 #include "portal_base2d.h"
 #include "collisionutils.h"
 #include "env_debughistory.h"

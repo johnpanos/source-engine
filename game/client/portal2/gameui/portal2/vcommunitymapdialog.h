@@ -10,7 +10,7 @@
 
 #include "basemodui.h"
 #include "filesystem.h"
-#include "VGenericPanelList.h"
+#include "vgenericpanellist.h"
 #include "gameui/portal2/vdialoglistbutton.h"
 #include "vhybridbutton.h"
 

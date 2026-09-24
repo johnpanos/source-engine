@@ -4,14 +4,14 @@
 //
 //=====================================================================================//
 
-#include "VAttractScreen.h"
-#include "VSignInDialog.h"
-#include "EngineInterface.h"
+#include "vattractscreen.h"
+#include "vsignindialog.h"
+#include "engineinterface.h"
 #include "inputsystem/iinputsystem.h"
 #include "vgui_controls/Label.h"
-#include "vgui_controls/imagepanel.h"
-#include "VGenericConfirmation.h"
-#include "VFooterPanel.h"
+#include "vgui_controls/ImagePanel.h"
+#include "vgenericconfirmation.h"
+#include "vfooterpanel.h"
 #include "vgui/ISurface.h"
 #include "vgui/ILocalize.h"
 #include "gameui_util.h"

@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 # encoding: utf-8
 
-from waflib import Utils
+from waflib import Logs, Utils
 import os
 import vpc_parser
 
@@ -37,7 +37,12 @@ def build(bld):
 	if bld.env.GAMES == 'portal2':
 		missing = [source for source in game['sources']
 		           if not os.path.isfile(os.path.join(bld.path.abspath(), source))]
-		if missing:
+		if missing and os.environ.get('P2_ALLOW_INCOMPLETE') == '1':
+			# Developer opt-in while the target is reconstructed; never the default.
+			Logs.warn('Portal 2 client: building without %d missing sources (P2_ALLOW_INCOMPLETE=1)'
+			          % len(missing))
+			game['sources'] = [source for source in game['sources'] if source not in missing]
+		elif missing:
 			bld.fatal('Portal 2 client source is incomplete (%d selected files missing): %s'
 			          % (len(missing), ', '.join(missing[:8])))
 
@@ -82,9 +87,13 @@ def build(bld):
 
 	source += game["sources"] + ['../../public/tier0/memoverride.cpp']
 	includes += game["includes"]
+	cxxflags = []
 	if bld.env.GAMES == 'portal2':
 		# The imported Portal 2 sources spell some includes from the source root.
 		includes += ['../..']
+		# Base-game API the Portal 2 sources expect from their later base game.
+		# The VPC $ForceIncludes key is not read by vpc_parser, so apply it here.
+		cxxflags += ['-include', bld.path.find_node('../shared/portal2/portal2_base_compat.h').abspath()]
 	defines = game["defines"]
 
 	defines.remove('PROTECTED_THINGS_ENABLE')
@@ -95,6 +104,7 @@ def build(bld):
 		name     = PROJECT_NAME,
 		features = 'c cxx',
 		includes = includes,
+		cxxflags = cxxflags,
 		defines  = defines,
 		use      = libs,
 		install_path = install_path,

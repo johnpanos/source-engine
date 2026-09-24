@@ -4,19 +4,19 @@
 //
 //=====================================================================================//
 
-#include "VHybridButton.h"
+#include "vhybridbutton.h"
 #include "basemodpanel.h"
-#include "VFooterPanel.h"
-#include "VFlyoutMenu.h"
-#include "EngineInterface.h"
+#include "vfooterpanel.h"
+#include "vflyoutmenu.h"
+#include "engineinterface.h"
 #include "vgui/ISurface.h"
 #include "vgui_controls/Tooltip.h"
-#include "vgui/IVgui.h"
+#include "vgui/IVGui.h"
 #include "tier1/KeyValues.h"
-#include "vgui/ilocalize.h"
+#include "vgui/ILocalize.h"
 #include "vgui/IInput.h"
-#include "VDropDownMenu.h"
-#include "VSliderControl.h"
+#include "vdropdownmenu.h"
+#include "vslidercontrol.h"
 #include "gamemodes.h"
 
 #ifndef _X360

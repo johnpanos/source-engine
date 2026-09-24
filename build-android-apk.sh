@@ -7,10 +7,11 @@
 # owns every pin: NDK, SDL3, SDK platform/build-tools, SDK levels, ABIs and the
 # application id. This script only orchestrates:
 #
-#   1. fetch + verify the pinned NDK, SDL3, SDK platform and build-tools
-#      archives into dependencies/android/
-#   2. cross-build the native dependencies per ABI with CMake (SDL3, freetype,
-#      libpng, libjpeg, curl from the thirdparty submodule)
+#   1. fetch + verify the pinned NDK, SDL3, KTX-Software, SDK platform and
+#      build-tools archives into dependencies/android/
+#   2. cross-build the native dependencies per ABI with CMake (SDL3, the
+#      static KTX reader, freetype, libpng, libjpeg, curl from the thirdparty
+#      submodule)
 #   3. configure/build/install the engine with Waf under a private lock and
 #      out directory per ABI (the shared build/ tree is never touched)
 #   4. verify final C/C++ commands and stage the .so files (unstripped copies
@@ -29,7 +30,7 @@ PROFILE="$ROOT/quality/product_profiles/portal-android-native-vulkan.json"
 OUT="$ROOT/build-android"
 CACHE="$ROOT/dependencies/android"
 # Bump when a dependency recipe below changes, to force those rebuilds.
-DEPS_RECIPE=2
+DEPS_RECIPE=3
 
 ABIS=()
 INSTALL=0
@@ -221,6 +222,7 @@ fetch_dependency()
 
 NDK="$(fetch_dependency ndk)"
 SDL3_SRC="$(fetch_dependency sdl3)"
+KTX_SRC="$(fetch_dependency ktx_software)"
 SDK_PLATFORM="$(fetch_dependency sdk_platform)"
 BT="$(fetch_dependency sdk_build_tools)"
 grep -q "Pkg.Revision = $(p .dependencies.ndk.revision)" "$NDK/source.properties" ||
@@ -244,10 +246,18 @@ STRIP="$LLVM/bin/llvm-strip"
 # ---------------------------------------------------------------------------
 # 2. Native dependencies (per ABI)
 # ---------------------------------------------------------------------------
+# cmake_dependency ABI NAME SOURCE [--target TARGET] [CMAKE_ARGS...]
+# Builds and installs into the ABI's prefix, or with --target builds only that
+# target and leaves it in the build tree.
 cmake_dependency()
 {
 	local abi="$1" name="$2" source="$3"
 	shift 3
+	local target=""
+	if [ "${1:-}" = --target ]; then
+		target="$2"
+		shift 2
+	fi
 	local build="$OUT/$abi/deps/build/$name"
 	local prefix="$OUT/$abi/deps/prefix"
 	log "[$abi] Building $name"
@@ -263,8 +273,11 @@ cmake_dependency()
 		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
 		"$@" >"$build.configure.log" 2>&1 ||
 		{ tail -40 "$build.configure.log"; die "$name configure failed ($build.configure.log)"; }
-	cmake --build "$build" -j "$JOBS" >"$build.build.log" 2>&1 ||
+	cmake --build "$build" -j "$JOBS" ${target:+--target "$target"} >"$build.build.log" 2>&1 ||
 		{ tail -40 "$build.build.log"; die "$name build failed ($build.build.log)"; }
+	if [ -n "$target" ]; then
+		return
+	fi
 	cmake --install "$build" >"$build.install.log" 2>&1 ||
 		{ tail -40 "$build.install.log"; die "$name install failed ($build.install.log)"; }
 }
@@ -276,6 +289,7 @@ build_dependencies()
 	local stamp="$OUT/$abi/deps/stamp"
 	local key
 	key="recipe=$DEPS_RECIPE ndk=$(p .dependencies.ndk.sha256) sdl3=$(p .dependencies.sdl3.sha256) \
+ktx=$(p .dependencies.ktx_software.sha256) \
 thirdparty=$(git -C "$ROOT/thirdparty" rev-parse HEAD) api=$MIN_SDK"
 	if [ "$(cat "$stamp" 2>/dev/null)" = "$key" ]; then
 		log "[$abi] Native dependencies up to date"
@@ -287,6 +301,13 @@ thirdparty=$(git -C "$ROOT/thirdparty" rev-parse HEAD) api=$MIN_SDK"
 	cmake_dependency "$abi" sdl3 "$SDL3_SRC" \
 		-DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF \
 		-DSDL_EXAMPLES=OFF -DSDL_VULKAN=ON -DSDL_OPENGLES=ON
+	# The static read-only KTX library for BSP2 lightmaps. Waf links it from
+	# this build tree (--ktx-build-root) and checks it against the pinned source.
+	local ktx_options
+	mapfile -t ktx_options < <(jq -r \
+		'.dependencies.ktx_software.cmake_options | to_entries[] | "-D\(.key)=\(.value)"' "$PROFILE")
+	cmake_dependency "$abi" ktx "$KTX_SRC" --target ktx_read "${ktx_options[@]}" \
+		-DKTX_GIT_VERSION_FULL="$(p .dependencies.ktx_software.version)"
 	cmake_dependency "$abi" freetype "$ROOT/thirdparty/freetype" \
 		-DBUILD_SHARED_LIBS=OFF -DFT_DISABLE_ZLIB=ON -DFT_DISABLE_BZIP2=ON \
 		-DFT_DISABLE_PNG=ON -DFT_DISABLE_HARFBUZZ=ON -DFT_DISABLE_BROTLI=ON
@@ -344,7 +365,8 @@ build_engine()
 		--android="$waf_arch,clang,$MIN_SDK"
 		--platform-provider="$(p .configure_options.platform_provider)"
 		--render-backend="$(p .configure_options.render_backend)"
-		--build-games="$GAMES" --disable-warns)
+		--build-games="$GAMES" --disable-warns
+		--ktx-source-root="$KTX_SRC" --ktx-build-root="$OUT/$abi/deps/build/ktx")
 	[ "$CCACHE" = 1 ] && configure+=(--use-ccache)
 	# Reconfigure when a configure input changes: options, dependencies, or
 	# any wscript / Waf tool.

@@ -10,7 +10,7 @@
 #if defined( PORTAL2_PUZZLEMAKER )
 
 #include "basemodui.h"
-#include "vgui_controls/panellistpanel.h"
+#include "vgui_controls/PanelListPanel.h"
 #include "vpuzzlemakeruilistitem.h"
 #include "puzzlemaker/puzzlemaker.h"
 #include "vcommunitymapdialog.h"

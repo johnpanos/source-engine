@@ -8,7 +8,7 @@
 #define __VACHIEVEMENTS_H__
 
 #include "basemodui.h"
-#include "VGenericPanelList.h"
+#include "vgenericpanellist.h"
 
 class IAchievement;
 

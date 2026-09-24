@@ -20,7 +20,7 @@
 #include "world.h"
 #include "hierarchy.h"
 #include "physics_saverestore.h"
-#include "PhysicsCloneArea.h"
+#include "physicsclonearea.h"
 #include "portal_gamestats.h"
 #include "weapon_portalgun.h"
 #include "portal_placement.h"

@@ -4,8 +4,8 @@
 //
 //=====================================================================================//
 
-#include "VGenericWaitScreen.h"
-#include "EngineInterface.h"
+#include "vgenericwaitscreen.h"
+#include "engineinterface.h"
 #include "tier1/KeyValues.h"
 
 #include "vgui_controls/Label.h"

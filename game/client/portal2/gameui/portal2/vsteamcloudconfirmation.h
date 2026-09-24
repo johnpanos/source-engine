@@ -7,7 +7,7 @@
 #ifndef __VSTEAMCLOUDCONFIRMATION_H__
 #define __VSTEAMCLOUDCONFIRMATION_H__
 
-#include "vgui_controls/CvarToggleCheckButton.h"
+#include "vgui_controls/cvartogglecheckbutton.h"
 #include "gameui_util.h"
 
 #include "basemodui.h"

@@ -4,9 +4,9 @@
 //
 //=====================================================================================//
 
-#include "UIGameData.h"
-#include "UIAvatarImage.h"
-#include "EngineInterface.h"
+#include "uigamedata.h"
+#include "uiavatarimage.h"
+#include "engineinterface.h"
 #include "vgui/ISurface.h"
 
 #ifndef NO_STEAM

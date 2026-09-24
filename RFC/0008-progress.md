@@ -834,6 +834,11 @@ The `r_worldmesh_draw` cheat setting is an explicit diagnostic control: `0`
 keeps the legacy draw, `1` overlays WMSH, and `2` substitutes it for the
 strictly-above-water opaque chain. It is not the final per-map render-policy
 boundary.
+(2026-09-23: the default is now `2` and the setting is no longer a cheat, so
+maps loaded from the console or a menu, or after `sv_cheats 0` reverts cheat
+settings, draw their WMSH instead of the compile brushes. Maps without a
+resident WMSH, and renderers without the WMSH upload interface, still draw the
+legacy surfaces. The launcher no longer passes per-map console settings.)
 
 The first Portal capture showed a large texture mismatch because native Vulkan
 selected the PBR material's legacy fallback VMT, whose base texture differs

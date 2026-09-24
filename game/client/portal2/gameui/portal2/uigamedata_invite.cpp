@@ -6,11 +6,11 @@
 
 #include "basemodpanel.h"
 #include "basemodframe.h"
-#include "UIGameData.h"
+#include "uigamedata.h"
 
 
-#include "VGenericConfirmation.h"
-#include "VAttractScreen.h"
+#include "vgenericconfirmation.h"
+#include "vattractscreen.h"
 
 // vgui controls
 #include "vgui/ILocalize.h"

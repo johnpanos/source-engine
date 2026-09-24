@@ -82,12 +82,6 @@ class PlayableMapsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unmanaged"):
             playable_maps.mount(self.runtime, self.store)
 
-    def test_launch_arguments_only_for_published_maps(self):
-        playable_maps.publish(summary(content_root(self.root, "room"), "room"), self.store)
-        self.assertEqual(["+sv_cheats 1", "+r_worldmesh_draw 2"],
-                         playable_maps.launch_arguments("room", self.store))
-        self.assertEqual([], playable_maps.launch_arguments("testchmb_a_01", self.store))
-
     def test_invalid_record_is_rejected(self):
         playable_maps.publish(summary(content_root(self.root, "room"), "room"), self.store)
         record = self.store / "room" / playable_maps.RECORD

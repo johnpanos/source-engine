@@ -10,8 +10,8 @@
 #if defined( PORTAL2_PUZZLEMAKER )
 
 #include "basemodui.h"
-#include "vgui_controls/label.h"
-#include "vgui_controls/imagepanel.h"
+#include "vgui_controls/Label.h"
+#include "vgui_controls/ImagePanel.h"
 
 
 namespace BaseModUI {

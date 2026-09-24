@@ -10,7 +10,7 @@
 #include "basemodui.h"
 #include "tier1/utlstack.h"
 
-#include "VFlyoutMenu.h"
+#include "vflyoutmenu.h"
 
 #ifndef NO_STEAM
 #include "steam/isteamuserstats.h"

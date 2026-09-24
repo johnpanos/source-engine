@@ -10,7 +10,7 @@
 #include "vfooterpanel.h"
 #include "vgenericconfirmation.h"
 #include <time.h>
-#include "vgui/ilocalize.h"
+#include "vgui/ILocalize.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"

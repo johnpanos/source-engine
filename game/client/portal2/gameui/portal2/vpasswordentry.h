@@ -9,7 +9,7 @@
 
 #include "basemodui.h"
 #include "vgui_controls/TextEntry.h"
-#include "tier1/UtlString.h"
+#include "tier1/utlstring.h"
 
 namespace BaseModUI {
 

@@ -36,11 +36,11 @@ python3 tools/quality/playable_maps.py remove bedroom
 ```
 
 A build that failed a gate under `--keep-going` is still published, and
-`list` and `./play` show its failed gates. `--no-publish` skips publishing. A
-published map starts with `sv_cheats 1` and `r_worldmesh_draw 2`, because the
-engine draws the WMSH/LMAP world only through that opt-in path; otherwise you
-would see the compile brushes. A published map is not mounted when a
-shipped map has the same name.
+`list` and `./play` show its failed gates. `--no-publish` skips publishing. The
+engine draws a map's WMSH/LMAP world by default (`r_worldmesh_draw 2`, not a
+cheat), so a published map also draws correctly when loaded from the console or
+a menu; `r_worldmesh_draw 0` shows the legacy compile brushes for comparison. A
+published map is not mounted when a shipped map has the same name.
 
 The client must include the pinned KTX reader, or the log shows
 `WMSH LMAP rejected` and the world is unlit. Enable it once per client tree:

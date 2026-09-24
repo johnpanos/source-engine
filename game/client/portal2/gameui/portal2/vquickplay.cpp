@@ -7,10 +7,10 @@
 #include "cbase.h"
 
 #include "vquickplay.h"
-#include "VFooterPanel.h"
-#include "VHybridButton.h"
+#include "vfooterpanel.h"
+#include "vhybridbutton.h"
 #include "vgenericwaitscreen.h"
-#include "VGenericConfirmation.h"
+#include "vgenericconfirmation.h"
 #include "c_community_coop.h"
 #include "vgui/ISurface.h"
 

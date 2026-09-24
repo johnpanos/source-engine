@@ -4,10 +4,10 @@
 //
 //=====================================================================================//
 
-#include "EngineInterface.h"
-#include "VGenericPanelList.h"
+#include "engineinterface.h"
+#include "vgenericpanellist.h"
 #include "KeyValues.h"
-#include "VFooterPanel.h"
+#include "vfooterpanel.h"
 #include "fmtstr.h"
 
 #include "vgui/IBorder.h"
@@ -20,9 +20,9 @@
 #include "vgui_controls/Label.h"
 #include "vgui_controls/TextImage.h"
 
-#include "FileSystem.h"
+#include "filesystem.h"
 
-#include "VAchievements.h"
+#include "vachievements.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"

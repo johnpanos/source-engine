@@ -4,10 +4,10 @@
 //
 //=====================================================================================//
 
-#include "VGenericConfirmation.h"
-#include "VFooterPanel.h"
+#include "vgenericconfirmation.h"
+#include "vfooterpanel.h"
 #include "vgui_controls/Label.h"
-#include "vgui_controls/imagepanel.h"
+#include "vgui_controls/ImagePanel.h"
 #include "vgui/ISurface.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
