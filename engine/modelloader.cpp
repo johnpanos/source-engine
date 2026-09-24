@@ -365,6 +365,7 @@ private:
 	bool				m_bMapHasHDRLighting;
 #ifndef SWDS
 	void Map_LoadWorldMesh();
+	void BuildWorldMeshGroups();
 	void Map_ReleaseWorldMeshMaterials();
 	CUtlVector<byte> m_WorldMeshBytes;
 	CUtlVector<worldmeshbatch_t> m_WorldMeshBatches;
@@ -372,6 +373,7 @@ private:
 	CUtlVector<worldmeshleafrange_t> m_WorldMeshLeafRanges;
 	CUtlVector<unsigned int> m_WorldMeshLeafReferences;
 	CUtlVector<worldmeshoccluder_t> m_WorldMeshOccluders;
+	CUtlVector<worldmeshgroup_t> m_WorldMeshGroups;
 #endif
 
 	char				m_szActiveMapName[64];
@@ -4742,6 +4744,7 @@ void CModelLoader::Map_LoadWorldMesh()
 		}
 		cluster.occluderCount = m_WorldMeshOccluders.Count() - cluster.firstOccluder;
 	}
+	BuildWorldMeshGroups();
 	m_WorldMeshLeafRanges.SetCount( summary.leafCount );
 	for ( uint32_t i = 0; i < summary.leafCount; ++i )
 	{
@@ -4763,9 +4766,78 @@ void CModelLoader::Map_LoadWorldMesh()
 	m_worldBrushData.pWorldMeshLeafReferences = m_WorldMeshLeafReferences.Base();
 	m_worldBrushData.pWorldMeshOccluders = m_WorldMeshOccluders.Base();
 	m_worldBrushData.worldMeshOccluderCount = m_WorldMeshOccluders.Count();
+	m_worldBrushData.pWorldMeshGroups = m_WorldMeshGroups.Base();
+	m_worldBrushData.worldMeshGroupCount = m_WorldMeshGroups.Count();
 	Msg( "Map %s: WMSH materials ready (%u batches, %u occluder triangles, cones %s)\n",
 	    s_szMapName, m_worldBrushData.worldMeshBatchCount,
 	    m_worldBrushData.worldMeshOccluderCount, summary.version >= 2 ? "front-face" : "unused" );
+}
+
+// Tiles each batch's meshlets with groups of up to kGroupMeshlets, in the
+// payload's (spatially sorted) order.
+void CModelLoader::BuildWorldMeshGroups()
+{
+	const unsigned int kGroupMeshlets = 32;
+	m_WorldMeshGroups.RemoveAll();
+	for ( int b = 0; b < m_WorldMeshBatches.Count(); ++b )
+	{
+		worldmeshbatch_t &batch = m_WorldMeshBatches[b];
+		batch.firstGroup = m_WorldMeshGroups.Count();
+		for ( unsigned int first = batch.firstMeshlet;
+		      first < batch.firstMeshlet + batch.meshletCount; first += kGroupMeshlets )
+		{
+			worldmeshgroup_t &group = m_WorldMeshGroups[m_WorldMeshGroups.AddToTail()];
+			group.firstMeshlet = first;
+			group.meshletCount = MIN( kGroupMeshlets, batch.firstMeshlet + batch.meshletCount - first );
+			group.mins.Init( FLT_MAX, FLT_MAX, FLT_MAX );
+			group.maxs.Init( -FLT_MAX, -FLT_MAX, -FLT_MAX );
+			Vector axisSum( 0, 0, 0 );
+			bool coneUsable = true;
+			for ( unsigned int i = first; i < first + group.meshletCount; ++i )
+			{
+				const worldmeshcluster_t &meshlet = m_WorldMeshClusters[i];
+				const Vector extent( meshlet.radius, meshlet.radius, meshlet.radius );
+				VectorMin( group.mins, meshlet.center - extent, group.mins );
+				VectorMax( group.maxs, meshlet.center + extent, group.maxs );
+				axisSum += meshlet.coneAxis;
+				coneUsable = coneUsable && meshlet.coneCutoff > 0.0f;
+			}
+			group.center = 0.5f * ( group.mins + group.maxs );
+			group.radius = 0.0f;
+			for ( unsigned int i = first; i < first + group.meshletCount; ++i )
+			{
+				const worldmeshcluster_t &meshlet = m_WorldMeshClusters[i];
+				group.radius = MAX( group.radius, meshlet.center.DistTo( group.center ) + meshlet.radius );
+			}
+			group.mins.Init( FLT_MAX, FLT_MAX, FLT_MAX );
+			group.maxs.Init( -FLT_MAX, -FLT_MAX, -FLT_MAX );
+			for ( unsigned int i = first; i < first + group.meshletCount; ++i )
+			{
+				VectorMin( group.mins, m_WorldMeshClusters[i].mins, group.mins );
+				VectorMax( group.maxs, m_WorldMeshClusters[i].maxs, group.maxs );
+			}
+			// A cone of all members: each member's normals lie within its own
+			// half-angle of its axis, so within that plus the axes' angle of ours.
+			group.coneAxis.Init( 0, 0, 1 );
+			group.coneCutoff = -1.0f;
+			const float length = axisSum.Length();
+			if ( coneUsable && length > 1e-6f )
+			{
+				group.coneAxis = axisSum / length;
+				double cutoff = 1.0;
+				for ( unsigned int i = first; i < first + group.meshletCount; ++i )
+				{
+					const worldmeshcluster_t &meshlet = m_WorldMeshClusters[i];
+					const double spread = acos( clamp( DotProduct( group.coneAxis, meshlet.coneAxis ), -1.0f, 1.0f ) ) +
+					                      acos( double( meshlet.coneCutoff ) );
+					cutoff = MIN( cutoff, spread >= M_PI / 2 ? -1.0 : cos( spread ) );
+				}
+				// Float rounding of the axis and angles.
+				group.coneCutoff = cutoff > 1e-4 ? float( cutoff - 1e-4 ) : -1.0f;
+			}
+		}
+		batch.groupCount = m_WorldMeshGroups.Count() - batch.firstGroup;
+	}
 }
 
 void CModelLoader::Map_ReleaseWorldMeshMaterials()
@@ -4793,8 +4865,11 @@ void CModelLoader::Map_LoadModel( model_t *mod )
 	m_WorldMeshLeafRanges.Purge();
 	m_WorldMeshLeafReferences.Purge();
 	m_WorldMeshOccluders.Purge();
+	m_WorldMeshGroups.Purge();
 	m_worldBrushData.pWorldMeshOccluders = NULL;
 	m_worldBrushData.worldMeshOccluderCount = 0;
+	m_worldBrushData.pWorldMeshGroups = NULL;
+	m_worldBrushData.worldMeshGroupCount = 0;
 	m_worldBrushData.pWorldMeshData = NULL;
 	m_worldBrushData.worldMeshSize = 0;
 	m_worldBrushData.pWorldMeshBatches = NULL;

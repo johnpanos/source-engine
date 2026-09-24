@@ -71,7 +71,7 @@ void C_Paint_Input::ApplyMouse( int nSlot, QAngle &viewangles, CUserCmd *cmd, fl
 	}
 
 	// Yaw
-	if ( !( in_strafe.GetPerUser( nSlot ).state & 1 ) && !lookstrafe.GetInt() )
+	if ( !( in_strafe.state & 1 ) && !lookstrafe.GetInt() )
 	{
 		if ( CAM_IsThirdPerson() && pPlayer->IsTaunting() )
 		{
@@ -103,7 +103,7 @@ void C_Paint_Input::ApplyMouse( int nSlot, QAngle &viewangles, CUserCmd *cmd, fl
 	}
 
 	// Pitch
-	if ( !( in_strafe.GetPerUser( nSlot ).state & 1 ) )
+	if ( !( in_strafe.state & 1 ) )
 	{
 		if ( CAM_IsThirdPerson() && pPlayer->IsTaunting() )
 		{
@@ -151,8 +151,6 @@ void C_Paint_Input::ApplyMouse( int nSlot, QAngle &viewangles, CUserCmd *cmd, fl
 //-----------------------------------------------------------------------------
 void C_Paint_Input::JoyStickTurn( CUserCmd *cmd, float &yaw, float &pitch, float frametime, bool bAbsoluteYaw, bool bAbsolutePitch )
 {
-	CInput::JoyStickTurn( cmd, yaw, pitch, frametime, bAbsoluteYaw, bAbsolutePitch );
-
 	C_Portal_Player *pPlayer = C_Portal_Player::GetLocalPortalPlayer();
 	if ( pPlayer && CAM_IsThirdPerson() && pPlayer->IsTaunting() )
 	{

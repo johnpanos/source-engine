@@ -32,7 +32,6 @@ public:
 	virtual void OnPostPortalled( CBaseEntity *pOther, bool bDeparting );
 
 protected:
-
 	virtual void PortalPlacedInsideBounds( CProp_Portal *pPortal );
 
 	bool m_bFireOnPlayer;

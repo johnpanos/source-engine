@@ -72,9 +72,10 @@ void CPaintPowerPickup::Spawn()
 
 	BaseClass::Spawn();
 
-	// Reconstruction note: the 2010 binary sets bit 31 of m_fFlags, which is
-	// FL_UNBLOCKABLE_BY_PLAYER in the flag layout that build used.
-	AddFlag( FL_UNBLOCKABLE_BY_PLAYER );
+	// Reconstruction note: the 2010 binary sets bit 31 of m_fFlags. That build's
+	// CPropButton::Spawn sets the same bit where the imported prop_button.cpp uses
+	// FL_UNPAINTABLE, and CPaintDatabase::AddPaint skips entities with it.
+	AddFlag( FL_UNPAINTABLE );
 
 	// The pickup is a trigger only; it has no physics object.
 	VPhysicsDestroyObject();

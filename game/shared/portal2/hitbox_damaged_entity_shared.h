@@ -1,29 +1,31 @@
-//========= Copyright © 1996-2009, Valve Corporation, All rights reserved. ============//
+//========= Portal 2 reconstruction ============================================//
 //
-// Purpose: Shared helpers for hitbox damage effects.
+// Purpose: Hitbox damage effect code shared by the server and client damaged
+//			entity templates. Included INSIDE the template class body.
+//
+// Reconstructed from DWARF metadata and decompiler output of the Steam2 depot
+// 841/852 macOS builds (external/portal2_steam2_decompiled). Not original
+// Valve source; the repository's provenance and distribution warning applies.
 //
 //=============================================================================//
+// Reconstruction note: DWARF declares ApplyDamageEffectShared here as a member of HitBoxDamagedEntity<T>,
+// so this is a class-body fragment (no include guard); the class provides BaseClass and m_DamagedEntityType.
+protected:
+void ApplyDamageEffectShared( int damageEffectIndex, int particleEffectIndex )
+{
+	const DamageInfoVector &damageInfo =
+	    g_DamageDatabase.GetDamageInfoVector( m_DamagedEntityType );
+	if ( damageEffectIndex < 0 || damageEffectIndex >= damageInfo.Count() )
+	{
+		Warning( "Damage effect index %d is out of bounds.", damageEffectIndex );
+		return;
+	}
 
-#ifndef HITBOX_DAMAGED_ENTITY_SHARED_H
-#define HITBOX_DAMAGED_ENTITY_SHARED_H
+	// Swap to the damaged model
+	if ( damageInfo[damageEffectIndex].swapModelName[0] != '\0' )
+	{
+		BaseClass::SetModel( damageInfo[damageEffectIndex].swapModelName );
+	}
 
-#ifdef _WIN32
-#pragma once
-#endif
-
-#include "damage_database.h"
-
-#if defined( CLIENT_DLL )
-class C_BaseAnimating;
-typedef C_BaseAnimating CAnimatingForDamageEffects;
-#else
-class CBaseAnimating;
-typedef CBaseAnimating CAnimatingForDamageEffects;
-#endif
-
-void EmitParticles( CAnimatingForDamageEffects *pOwnerEntity, DamagedEntityType entityType,
-    int damageEffectIndex, int particleEffectIndex );
-void EmitGibs( CAnimatingForDamageEffects *pParentEntity, DamagedEntityType entityType,
-    int damageEffectIndex );
-
-#endif // HITBOX_DAMAGED_ENTITY_SHARED_H
+	EmitParticles( this, m_DamagedEntityType, damageEffectIndex, particleEffectIndex );
+}

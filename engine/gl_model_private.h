@@ -233,6 +233,8 @@ struct worldmeshbatch_t
 	unsigned int indexCount;
 	unsigned int firstMeshlet;
 	unsigned int meshletCount;
+	unsigned int firstGroup;
+	unsigned int groupCount;
 };
 
 struct worldmeshcluster_t
@@ -252,6 +254,20 @@ struct worldmeshcluster_t
 	// in worldbrushdata_t::pWorldMeshOccluders.
 	unsigned int firstOccluder;
 	unsigned int occluderCount;
+};
+
+// Consecutive meshlets of one batch, culled together before any member is
+// tested: bounds and a cone that hold every member's.
+struct worldmeshgroup_t
+{
+	unsigned int firstMeshlet;
+	unsigned int meshletCount;
+	Vector center;
+	float radius;
+	Vector mins;
+	Vector maxs;
+	Vector coneAxis;
+	float coneCutoff;
 };
 
 // A large WMSH triangle, a candidate occluder when its batch's material is
@@ -377,6 +393,9 @@ struct worldbrushdata_t
 	const unsigned int *pWorldMeshLeafReferences;
 	const worldmeshoccluder_t *pWorldMeshOccluders;
 	unsigned int worldMeshOccluderCount;
+	// Groups tile each batch's meshlets in order (worldmeshbatch_t::firstGroup).
+	const worldmeshgroup_t *pWorldMeshGroups;
+	unsigned int worldMeshGroupCount;
 #if 0
 	int			numportals;
 	mportal_t	*portals;

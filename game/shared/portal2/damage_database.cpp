@@ -1,381 +1,459 @@
-//========= Copyright 1996-2009, Valve Corporation, All rights reserved. =======//
+//========= Portal 2 reconstruction ============================================//
 //
-// Purpose: Load and query the Portal 2 hitbox damage effect database.
+// Purpose: Database of hitbox damage effects (wounds, gibs, particles) loaded
+//			from the scripts/damageinfo_* files
+//
+// Reconstructed from DWARF metadata and decompiler output of the Steam2 depot
+// 841/852 macOS builds (external/portal2_steam2_decompiled). Not original
+// Valve source; the repository's provenance and distribution warning applies.
 //
 //=============================================================================//
 
 #include "cbase.h"
 #include "damage_database.h"
 #include "gamerules.h"
-#include "particle_parse.h"
 #include "weapon_parse.h"
-#include "tier1/strtools.h"
+#include "particle_parse.h"
+#include "filesystem.h"
+#include "KeyValues.h"
 
-#include <stdlib.h>
-#include <string.h>
-
+// memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-ConVar max_hitbox_damage_effects_per_entity( "max_hitbox_damage_effects_per_entity", "4",
-    FCVAR_NONE, "Maximum hitbox damage effects selected for an entity." );
-ConVar hitbox_damage_enabled(
-    "hitbox_damage_enabled", "1", FCVAR_NONE, "Enable data-driven hitbox damage effects." );
+ConVar max_hitbox_damage_effects_per_entity( "max_hitbox_damage_effects_per_entity", "2",
+    FCVAR_REPLICATED | FCVAR_DEVELOPMENTONLY,
+    "Maximum number of damage effects an entity can have." );
+ConVar hitbox_damage_enabled( "hitbox_damage_enabled", "0",
+    FCVAR_REPLICATED | FCVAR_DEVELOPMENTONLY, "Enable/disable hitbox damage." );
+
+bool ReadDamageCutoutDataFromFile( DamageInfoVector &damageInfoArray, IFileSystem *filesystem,
+    const char *szCutoutDataFilename, const unsigned char *pICEKey );
+int ParseStringToIntArray( const char *pString, int *pIntArray, int nMaxArray );
+int ParseStringToExclusionArray( const char *pString, char ( *ppStringArray )[64], int nMaxArray );
+int ParseStringToGibArray(
+    const char *pString, const char *modelPath, char ( *ppStringArray )[64], int nMaxArray );
+int ParseStringToEffectArray(
+    const char *pString, char ( *ppEffectArray )[64], int *pChanceArray, int nMaxArray );
+void ParseStringToVector( const char *pString, Vector &vector );
 
 DamageDatabase g_DamageDatabase;
 
-namespace
-{
-const int kMaxHitboxes = 8;
-const int kMaxExclusions = 16;
-const int kMaxGibs = 16;
-const int kMaxParticleEffects = 8;
-
-void CopyString( char *pDest, int destSize, const char *pSource )
-{
-	if ( destSize > 0 )
-	{
-		V_strncpy( pDest, pSource ? pSource : "", destSize );
-	}
-}
-
-KeyValues *FindValue( KeyValues *pParent, const char *pName )
-{
-	return pParent ? pParent->FindKey( pName, false ) : NULL;
-}
-
-char *NextToken( char *&pCursor, const char *pSeparators )
-{
-	if ( !pCursor )
-	{
-		return NULL;
-	}
-	while ( *pCursor && strchr( pSeparators, *pCursor ) )
-	{
-		++pCursor;
-	}
-	if ( !*pCursor )
-	{
-		pCursor = NULL;
-		return NULL;
-	}
-	char *pToken = pCursor;
-	while ( *pCursor && !strchr( pSeparators, *pCursor ) )
-	{
-		++pCursor;
-	}
-	if ( *pCursor )
-	{
-		*pCursor++ = '\0';
-	}
-	else
-	{
-		pCursor = NULL;
-	}
-	return pToken;
-}
-
-const char *GetString( KeyValues *pParent, const char *pName, const char *pDefault = "" )
-{
-	KeyValues *pValue = FindValue( pParent, pName );
-	return pValue ? pValue->GetString( (const char *)NULL, pDefault ) : pDefault;
-}
-
-int ParseIntList( const char *pText, int *pValues, int maxValues )
-{
-	if ( !pText || !pValues || maxValues <= 0 )
-	{
-		return 0;
-	}
-
-	char buffer[1024];
-	CopyString( buffer, sizeof( buffer ), pText );
-	int count = 0;
-	char *pCursor = buffer;
-	for ( char *pToken = NextToken( pCursor, ",;| \t\r\n" ); pToken && count < maxValues;
-	    pToken = NextToken( pCursor, ",;| \t\r\n" ) )
-	{
-		pValues[count++] = V_atoi( pToken );
-	}
-	return count;
-}
-
-int ParseStringList(
-    const char *pText, char ( *pValues )[64], int maxValues, const char *pModelPath = NULL )
-{
-	if ( !pText || !pValues || maxValues <= 0 )
-	{
-		return 0;
-	}
-
-	char buffer[1024];
-	CopyString( buffer, sizeof( buffer ), pText );
-	int count = 0;
-	char *pCursor = buffer;
-	for ( char *pToken = NextToken( pCursor, ",;|\r\n" ); pToken && count < maxValues;
-	    pToken = NextToken( pCursor, ",;|\r\n" ) )
-	{
-		while ( *pToken == ' ' || *pToken == '\t' )
-		{
-			++pToken;
-		}
-		if ( pModelPath && *pModelPath && pToken[0] != '/' && !( pToken[0] && pToken[1] == ':' ) )
-		{
-			V_snprintf( pValues[count], sizeof( pValues[count] ), "%s%s", pModelPath, pToken );
-		}
-		else
-		{
-			CopyString( pValues[count], sizeof( pValues[count] ), pToken );
-		}
-		++count;
-	}
-	return count;
-}
-
-int ParseDamageType( const char *pText )
-{
-	static const struct DamageName
-	{
-		const char *name;
-		int bit;
-	} damageNames[] = {
-	    { "crush", DMG_CRUSH },
-	    { "slash", DMG_SLASH },
-	    { "burn", DMG_BURN },
-	    { "blast", DMG_BLAST },
-	    { "club", DMG_CLUB },
-	    { "shock", DMG_SHOCK },
-	    { "sonic", DMG_SONIC },
-	    { "poison", DMG_POISON },
-	    { "dissolve", DMG_DISSOLVE },
-	    { "blast_surface", DMG_BLAST_SURFACE },
-	    { "bullet", DMG_BULLET },
-	};
-	int result = 0;
-	char buffer[1024];
-	CopyString( buffer, sizeof( buffer ), pText );
-	for ( char *p = buffer; *p; ++p )
-	{
-		if ( *p == ',' || *p == ';' || *p == '|' )
-		{
-			*p = ' ';
-		}
-	}
-	char *pCursor = buffer;
-	for ( char *pToken = NextToken( pCursor, " \t\r\n" ); pToken;
-	    pToken = NextToken( pCursor, " \t\r\n" ) )
-	{
-		for ( int i = 0; i < ARRAYSIZE( damageNames ); ++i )
-		{
-			if ( !V_stricmp( pToken, damageNames[i].name ) )
-			{
-				result |= damageNames[i].bit;
-				break;
-			}
-		}
-	}
-	return result;
-}
-
-void ParseParticleEffects( const char *pText, DamageInfo &info )
-{
-	char buffer[1024];
-	CopyString( buffer, sizeof( buffer ), pText );
-	char *pCursor = buffer;
-	for ( char *pToken = NextToken( pCursor, ";|" );
-	    pToken && info.particleEffectCount < kMaxParticleEffects;
-	    pToken = NextToken( pCursor, ";|" ) )
-	{
-		while ( *pToken == ' ' || *pToken == '\t' )
-		{
-			++pToken;
-		}
-		char *pSeparator = strchr( pToken, ':' );
-		if ( !pSeparator )
-		{
-			pSeparator = strchr( pToken, ',' );
-		}
-		int index = info.particleEffectCount++;
-		if ( pSeparator )
-		{
-			*pSeparator++ = '\0';
-			info.particleEffectsChance[index] = MAX( 0, V_atoi( pSeparator ) );
-		}
-		else
-		{
-			info.particleEffectsChance[index] = 1;
-		}
-		CopyString( info.particleEffects[index], sizeof( info.particleEffects[index] ), pToken );
-		info.particleEffectTotalChance += info.particleEffectsChance[index];
-	}
-}
-
-void ParseDamageInfo( KeyValues *pKey, const char *pModelPath, DamageInfo &info )
-{
-	memset( &info, 0, sizeof( info ) );
-	for ( int i = 0; i < kMaxExclusions; ++i )
-	{
-		info.exclusionListIndices[i] = -1;
-	}
-	info.particleAttachmentHitbox = -1;
-	info.hitBoxCount =
-	    ParseIntList( GetString( pKey, "hitboxes" ), info.hitBoxIndices, kMaxHitboxes );
-	info.exclusionCount = ParseStringList(
-	    GetString( pKey, "exclusions" ), info.exclusionListStrings, kMaxExclusions );
-	CopyString( info.deathThroesAnimation, sizeof( info.deathThroesAnimation ),
-	    GetString( pKey, "deaththroes" ) );
-	info.damageType = ParseDamageType( GetString( pKey, "damagetype" ) );
-	info.gibCount =
-	    ParseStringList( GetString( pKey, "gibs" ), info.gibModels, kMaxGibs, pModelPath );
-	KeyValues *pValue = FindValue( pKey, "gibseparationspeed" );
-	info.gibSeparationSpeed = pValue ? pValue->GetFloat( (const char *)NULL, 0.0f ) : 0.0f;
-	pValue = FindValue( pKey, "giblifetime" );
-	info.gibLifeTime = pValue ? pValue->GetFloat( (const char *)NULL, 0.0f ) : 0.0f;
-	CopyString( info.particleAttachment, sizeof( info.particleAttachment ),
-	    GetString( pKey, "particleattachment" ) );
-	pValue = FindValue( pKey, "particleattachmenthitbox" );
-	info.particleAttachmentHitbox = pValue ? pValue->GetInt( (const char *)NULL, -1 ) : -1;
-	ParseParticleEffects( GetString( pKey, "particleeffects" ), info );
-	pValue = FindValue( pKey, "fatal" );
-	info.isFatalDamage = pValue ? pValue->GetBool( NULL, false ) : false;
-	CopyString( info.swapModelName, sizeof( info.swapModelName ), GetString( pKey, "swapmodel" ) );
-	CopyString( info.damageEffectName, sizeof( info.damageEffectName ), pKey->GetName() );
-}
-
-bool ReadDamageCutoutDataFromFile( DamageInfoVector &damageInfoArray, IFileSystem *pFileSystem,
-    const char *pFilename, const unsigned char *pICEKey )
-{
-	if ( damageInfoArray.Count() > 0 )
-	{
-		return true;
-	}
-
-	KeyValues *pRoot = ReadEncryptedKVFile( pFileSystem, pFilename, pICEKey );
-	if ( !pRoot )
-	{
-		return false;
-	}
-
-	const char *pModelPath = GetString( pRoot, "modelpath", "" );
-	for ( KeyValues *pKey = pRoot->GetFirstTrueSubKey(); pKey; pKey = pKey->GetNextTrueSubKey() )
-	{
-		DamageInfo info;
-		ParseDamageInfo( pKey, pModelPath, info );
-		damageInfoArray.AddToTail( info );
-	}
-
-	for ( int i = 0; i < damageInfoArray.Count(); ++i )
-	{
-		DamageInfo &info = damageInfoArray[i];
-		for ( int j = 0; j < info.exclusionCount; ++j )
-		{
-			for ( int k = 0; k < damageInfoArray.Count(); ++k )
-			{
-				if ( !V_stricmp(
-				         info.exclusionListStrings[j], damageInfoArray[k].damageEffectName ) )
-				{
-					info.exclusionListIndices[j] = k;
-					break;
-				}
-			}
-			if ( info.exclusionListIndices[j] < 0 )
-			{
-				Warning( "Damage effect '%s' excludes unknown effect '%s'.\n",
-				    info.damageEffectName, info.exclusionListStrings[j] );
-			}
-		}
-	}
-
-	pRoot->deleteThis();
-	return true;
-}
-}
+// One damage info file per damaged entity type
+static const char *s_pDamageInfoFileNames[DAMAGED_ENTITY_TYPE_COUNT] = {
+    "scripts/damageinfo_turret", // DAMAGED_TURRET
+};
 
 DamageDatabase::DamageDatabase() : CAutoGameSystem( "DamageDatabase" )
 {
 }
 
-DamageDatabase::~DamageDatabase()
-{
-}
-
 void DamageDatabase::LevelInitPreEntity()
 {
-	const unsigned char *pICEKey = g_pGameRules ? g_pGameRules->GetEncryptionKey() : NULL;
-	ReadDamageCutoutDataFromFile(
-	    m_DamageInfo[DAMAGED_TURRET], filesystem, "scripts/damage_cutouts", pICEKey );
+	for ( int i = 0; i < DAMAGED_ENTITY_TYPE_COUNT; ++i )
+	{
+		ReadDamageCutoutDataFromFile( m_DamageInfo[i], filesystem, s_pDamageInfoFileNames[i],
+		    g_pGameRules->GetEncryptionKey() );
+	}
+
+	// Reconstruction note: only the server binary precaches the gib models and
+	// particle systems; the client's LevelInitPreEntity only reads the file.
+#ifdef GAME_DLL
 	PrecacheAssets();
+#endif
 }
 
 const DamageInfoVector &DamageDatabase::GetDamageInfoVector( DamagedEntityType entityType ) const
 {
-	static const DamageInfoVector empty;
-	if ( entityType < 0 || entityType >= DAMAGED_ENTITY_TYPE_COUNT )
-	{
-		return empty;
-	}
 	return m_DamageInfo[entityType];
 }
 
+//-----------------------------------------------------------------------------
+// Purpose: Fills pPotentialDamageEffects with the indices of every damage effect
+//			that responds to damageType on the given hitbox (-1 = any hitbox).
+//			Returns the number of indices written.
+//-----------------------------------------------------------------------------
 int DamageDatabase::FindPotentialDamageEffects( int *pPotentialDamageEffects, int maxDamageEffects,
     DamagedEntityType entityType, int damageType, int hitbox ) const
 {
-	if ( !pPotentialDamageEffects || maxDamageEffects <= 0 || entityType < 0 ||
-	     entityType >= DAMAGED_ENTITY_TYPE_COUNT || !hitbox_damage_enabled.GetBool() )
-	{
-		return 0;
-	}
-
 	const DamageInfoVector &damageInfo = m_DamageInfo[entityType];
-	int count = 0;
-	for ( int damageIndex = 0; damageIndex < damageInfo.Count() && count < maxDamageEffects;
+
+	int potentialDamageEffectCount = 0;
+	for ( int damageIndex = 0;
+	    damageIndex < damageInfo.Count() && potentialDamageEffectCount < maxDamageEffects;
 	    ++damageIndex )
 	{
-		const DamageInfo &info = damageInfo[damageIndex];
-		if ( !( info.damageType & damageType ) )
+		if ( ( damageInfo[damageIndex].damageType & damageType ) == 0 )
+			continue;
+
+		if ( hitbox == -1 )
 		{
+			pPotentialDamageEffects[potentialDamageEffectCount++] = damageIndex;
 			continue;
 		}
 
-		bool matchesHitbox = hitbox == -1;
-		for ( int hitboxIndex = 0; !matchesHitbox && hitboxIndex < info.hitBoxCount; ++hitboxIndex )
+		for ( int hitboxIndex = 0; hitboxIndex < damageInfo[damageIndex].hitBoxCount &&
+		                           potentialDamageEffectCount < maxDamageEffects;
+		    ++hitboxIndex )
 		{
-			matchesHitbox =
-			    info.hitBoxIndices[hitboxIndex] < 0 || info.hitBoxIndices[hitboxIndex] == hitbox;
-		}
-		if ( matchesHitbox )
-		{
-			pPotentialDamageEffects[count++] = damageIndex;
+			const int nEffectHitbox = damageInfo[damageIndex].hitBoxIndices[hitboxIndex];
+			if ( nEffectHitbox >= 0 && nEffectHitbox == hitbox )
+			{
+				pPotentialDamageEffects[potentialDamageEffectCount++] = damageIndex;
+			}
 		}
 	}
-	return count;
+
+	return potentialDamageEffectCount;
 }
 
+#ifdef GAME_DLL
 void DamageDatabase::PrecacheAssets() const
 {
-	for ( int i = 0; i < DAMAGED_ENTITY_TYPE_COUNT; ++i )
+	for ( int damageInfoIndex = 0; damageInfoIndex < DAMAGED_ENTITY_TYPE_COUNT; ++damageInfoIndex )
 	{
-		const DamageInfoVector &damageInfo = m_DamageInfo[i];
-		for ( int j = 0; j < damageInfo.Count(); ++j )
+		const DamageInfoVector &damageInfo = m_DamageInfo[damageInfoIndex];
+		for ( int i = 0; i < damageInfo.Count(); ++i )
 		{
-			const DamageInfo &info = damageInfo[j];
-			if ( info.swapModelName[0] )
+			CBaseEntity::PrecacheModel( damageInfo[i].swapModelName );
+
+			// Gib models
+			for ( int j = 0; j < damageInfo[i].gibCount; ++j )
 			{
-				CBaseEntity::PrecacheModel( info.swapModelName );
+				CBaseEntity::PrecacheModel( damageInfo[i].gibModels[j] );
 			}
-			for ( int k = 0; k < info.gibCount; ++k )
+
+			// Particle effects
+			for ( int j = 0; j < damageInfo[i].particleEffectCount; ++j )
 			{
-				if ( info.gibModels[k][0] )
+				PrecacheParticleSystem( damageInfo[i].particleEffects[j] );
+			}
+		}
+	}
+}
+#endif // GAME_DLL
+
+//-----------------------------------------------------------------------------
+// Purpose: Reads a damage info (cutout) file into damageInfoArray. Does nothing
+//			if the array has already been filled.
+//-----------------------------------------------------------------------------
+bool ReadDamageCutoutDataFromFile( DamageInfoVector &damageInfoArray, IFileSystem *filesystem,
+    const char *szCutoutDataFilename, const unsigned char *pICEKey )
+{
+	if ( damageInfoArray.Count() > 0 )
+		return false;
+
+	KeyValues *pKV = ReadEncryptedKVFile( filesystem, szCutoutDataFilename, pICEKey );
+	if ( !pKV )
+		return false;
+
+	KeyValues *pModelPathKey = pKV->FindKey( "ModelPath" );
+	const char *modelPath = pModelPathKey ? pModelPathKey->GetString() : "";
+
+	for ( KeyValues *pMainDamageKeyValues = pKV->GetFirstTrueSubKey(); pMainDamageKeyValues;
+	    pMainDamageKeyValues = pMainDamageKeyValues->GetNextTrueSubKey() )
+	{
+		DamageInfo newInfo;
+
+		// Model to swap to once this damage is applied
+		KeyValues *pKey = pMainDamageKeyValues->FindKey( "SwapModel" );
+		if ( pKey )
+		{
+			V_snprintf( newInfo.swapModelName, sizeof( newInfo.swapModelName ), "%s/%s.mdl",
+			    modelPath, pKey->GetString() );
+		}
+		else
+		{
+			newInfo.swapModelName[0] = '\0';
+		}
+
+		// Hitboxes this damage applies to
+		pKey = pMainDamageKeyValues->FindKey( "HitBoxes" );
+		newInfo.hitBoxCount = pKey ? ParseStringToIntArray( pKey->GetString(),
+		                                 newInfo.hitBoxIndices, ARRAYSIZE( newInfo.hitBoxIndices ) )
+		                           : 0;
+
+		// Damage effects that can't be combined with this one
+		pKey = pMainDamageKeyValues->FindKey( "ExclusionList" );
+		newInfo.exclusionCount =
+		    pKey ? ParseStringToExclusionArray( pKey->GetString(), newInfo.exclusionListStrings,
+		               ARRAYSIZE( newInfo.exclusionListStrings ) )
+		         : 0;
+
+		// Death animation
+		newInfo.deathThroesAnimation[0] = '\0';
+		pKey = pMainDamageKeyValues->FindKey( "DeathThroes" );
+		if ( pKey )
+		{
+			V_strncpy( newInfo.deathThroesAnimation, pKey->GetString(),
+			    sizeof( newInfo.deathThroesAnimation ) );
+		}
+
+		// Reconstruction note: both binaries skip (and never store) an entry that
+		// has no "Type" key.
+		pKey = pMainDamageKeyValues->FindKey( "Type" );
+		if ( !pKey )
+			continue;
+
+		// Damage types that cause this effect
+		newInfo.damageType = 0;
+		if ( V_stristr( pKey->GetString(), "heat" ) )
+		{
+			newInfo.damageType |= DMG_BURN;
+		}
+		if ( V_stristr( pKey->GetString(), "explosion" ) )
+		{
+			newInfo.damageType |= DMG_BLAST;
+		}
+		if ( V_stristr( pKey->GetString(), "fizzler" ) )
+		{
+			newInfo.damageType |= DMG_DISSOLVE;
+		}
+		if ( V_stristr( pKey->GetString(), "corrosive" ) )
+		{
+			newInfo.damageType |= DMG_ACID;
+		}
+		if ( V_stristr( pKey->GetString(), "slice" ) )
+		{
+			newInfo.damageType |= DMG_SLASH;
+		}
+		if ( V_stristr( pKey->GetString(), "crush" ) )
+		{
+			newInfo.damageType |= DMG_CRUSH;
+		}
+		if ( V_stristr( pKey->GetString(), "impact" ) )
+		{
+			newInfo.damageType |= DMG_FALL;
+		}
+
+		pKey = pMainDamageKeyValues->FindKey( "Fatal" );
+		newInfo.isFatalDamage = pKey ? pKey->GetBool() : false;
+
+		// Gibs
+		pKey = pMainDamageKeyValues->FindKey( "Gibs" );
+		newInfo.gibCount = ParseStringToGibArray(
+		    pKey->GetString(), modelPath, newInfo.gibModels, ARRAYSIZE( newInfo.gibModels ) );
+
+		pKey = pMainDamageKeyValues->FindKey( "Gib Lifetime" );
+		newInfo.gibLifeTime = pKey ? pKey->GetFloat() : 0.0f;
+
+		pKey = pMainDamageKeyValues->FindKey( "Gib Speed" );
+		newInfo.gibSeparationSpeed = pKey ? pKey->GetFloat() : 0.0f;
+
+		// Particles
+		newInfo.particleAttachment[0] = '\0';
+		pKey = pMainDamageKeyValues->FindKey( "ParticleAttach" );
+		if ( pKey )
+		{
+			V_strncpy( newInfo.particleAttachment, pKey->GetString(),
+			    sizeof( newInfo.particleAttachment ) );
+		}
+
+		pKey = pMainDamageKeyValues->FindKey( "ParticleAttachHitbox" );
+		newInfo.particleAttachmentHitbox = pKey ? pKey->GetInt() : -1;
+
+		pKey = pMainDamageKeyValues->FindKey( "ParticleEffect" );
+		newInfo.particleEffectCount =
+		    ParseStringToEffectArray( pKey->GetString(), newInfo.particleEffects,
+		        newInfo.particleEffectsChance, ARRAYSIZE( newInfo.particleEffects ) );
+
+		newInfo.particleEffectTotalChance = 0;
+		for ( int j = 0; j < newInfo.particleEffectCount; ++j )
+		{
+			newInfo.particleEffectTotalChance += newInfo.particleEffectsChance[j];
+		}
+
+		// Reconstruction note: the binaries pass the key name as the format string.
+		V_snprintf( newInfo.damageEffectName, sizeof( newInfo.damageEffectName ), "%s",
+		    pMainDamageKeyValues->GetName() );
+
+		damageInfoArray.AddToTail( newInfo );
+	}
+
+	// Resolve the exclusion list names to damage effect indices
+	for ( int i = 0; i < damageInfoArray.Count(); ++i )
+	{
+		for ( int j = 0; j < damageInfoArray[i].exclusionCount; ++j )
+		{
+			damageInfoArray[i].exclusionListIndices[j] = -1;
+
+			for ( int k = 0; k < damageInfoArray.Count(); ++k )
+			{
+				if ( !V_stricmp( damageInfoArray[i].exclusionListStrings[j],
+				         damageInfoArray[k].damageEffectName ) )
 				{
-					CBaseEntity::PrecacheModel( info.gibModels[k] );
+					damageInfoArray[i].exclusionListIndices[j] = k;
+					break;
 				}
 			}
-			for ( int k = 0; k < info.particleEffectCount; ++k )
+
+			if ( damageInfoArray[i].exclusionListIndices[j] == -1 )
 			{
-				if ( info.particleEffects[k][0] )
-				{
-					PrecacheParticleSystem( info.particleEffects[k] );
-				}
+				Warning( "Unable to find exclusion %s for damage effect %s.\n",
+				    damageInfoArray[i].exclusionListStrings[j],
+				    damageInfoArray[i].damageEffectName );
 			}
+		}
+	}
+
+	pKV->deleteThis();
+	return true;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Parses a space separated list of integers
+//-----------------------------------------------------------------------------
+int ParseStringToIntArray( const char *pString, int *pIntArray, int nMaxArray )
+{
+	int nInts = 0;
+
+	char buffer[1024];
+	V_strncpy( buffer, pString, sizeof( buffer ) );
+
+	char *pBuffer = buffer;
+	char *pSpace = V_stristr( pBuffer, " " );
+	while ( pSpace && nInts < nMaxArray - 1 )
+	{
+		*pSpace = '\0';
+		pIntArray[nInts++] = V_atoi( pBuffer );
+
+		pBuffer = pSpace + 1;
+		pSpace = V_stristr( pBuffer, " " );
+	}
+
+	if ( *pBuffer )
+	{
+		pIntArray[nInts++] = V_atoi( pBuffer );
+	}
+
+	return nInts;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Parses a space separated list of damage effect names
+//-----------------------------------------------------------------------------
+int ParseStringToExclusionArray( const char *pString, char ( *ppStringArray )[64], int nMaxArray )
+{
+	int nStrings = 0;
+
+	if ( V_strlen( pString ) )
+	{
+		char buffer[1024];
+		V_strncpy( buffer, pString, sizeof( buffer ) );
+
+		char *pBuffer = buffer;
+		char *pSpace = V_stristr( pBuffer, " " );
+		while ( pSpace && nStrings < nMaxArray - 1 )
+		{
+			*pSpace = '\0';
+			V_strncpy( ppStringArray[nStrings++], pBuffer, 64 );
+
+			pBuffer = pSpace + 1;
+			pSpace = V_stristr( pBuffer, " " );
+		}
+
+		// Reconstruction note: the binaries use an unbounded strcpy for the last name.
+		V_strncpy( ppStringArray[nStrings++], pBuffer, 64 );
+	}
+
+	return nStrings;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Parses a space separated list of gib model names into model paths
+//-----------------------------------------------------------------------------
+int ParseStringToGibArray(
+    const char *pString, const char *modelPath, char ( *ppStringArray )[64], int nMaxArray )
+{
+	int nStrings = 0;
+
+	if ( V_strlen( pString ) )
+	{
+		char buffer[1024];
+		V_strncpy( buffer, pString, sizeof( buffer ) );
+
+		char *pBuffer = buffer;
+		char *pSpace = V_stristr( pBuffer, " " );
+		while ( pSpace && nStrings < nMaxArray - 1 )
+		{
+			*pSpace = '\0';
+			V_snprintf( ppStringArray[nStrings++], 64, "%s/%s.mdl", modelPath, pBuffer );
+
+			pBuffer = pSpace + 1;
+			pSpace = V_stristr( pBuffer, " " );
+		}
+
+		V_snprintf( ppStringArray[nStrings++], 64, "%s/%s.mdl", modelPath, pBuffer );
+	}
+
+	return nStrings;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Parses a space separated list of "effect chance" pairs
+//-----------------------------------------------------------------------------
+int ParseStringToEffectArray(
+    const char *pString, char ( *ppEffectArray )[64], int *pChanceArray, int nMaxArray )
+{
+	int nStrings = 0;
+
+	if ( V_strlen( pString ) )
+	{
+		char buffer[1024];
+		V_strncpy( buffer, pString, sizeof( buffer ) );
+
+		char *pBuffer = buffer;
+		char *pSpace = V_stristr( pBuffer, " " );
+		while ( pSpace && nStrings < nMaxArray - 1 )
+		{
+			// Effect name
+			*pSpace = '\0';
+			V_strncpy( ppEffectArray[nStrings], pBuffer, 64 );
+
+			pBuffer = pSpace + 1;
+			pSpace = V_stristr( pBuffer, " " );
+			if ( !pSpace )
+			{
+				// Last chance value
+				pChanceArray[nStrings++] = V_atoi( pBuffer );
+				break;
+			}
+
+			// Chance
+			*pSpace = '\0';
+			pChanceArray[nStrings++] = V_atoi( pBuffer );
+
+			pBuffer = pSpace + 1;
+			pSpace = V_stristr( pBuffer, " " );
+		}
+	}
+
+	return nStrings;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Parses "x y z"
+//-----------------------------------------------------------------------------
+void ParseStringToVector( const char *pString, Vector &vector )
+{
+	char buffer[1024];
+	V_strncpy( buffer, pString, sizeof( buffer ) );
+
+	char *pBuffer = buffer;
+	char *pSpace = V_stristr( pBuffer, " " );
+	if ( pSpace )
+	{
+		*pSpace = '\0';
+		vector.x = V_atof( pBuffer );
+
+		pBuffer = pSpace + 1;
+		pSpace = V_stristr( pBuffer, " " );
+		if ( pSpace )
+		{
+			*pSpace = '\0';
+			vector.y = V_atof( pBuffer );
+
+			pBuffer = pSpace + 1;
+			vector.z = V_atof( pBuffer );
 		}
 	}
 }

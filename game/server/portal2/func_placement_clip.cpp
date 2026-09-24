@@ -27,11 +27,12 @@ class CFuncPlacementClip : public CBaseEntity
 };
 
 BEGIN_DATADESC( CFuncPlacementClip )
-DEFINE_INPUTFUNC( FIELD_VOID, "Enable", InputEnable ),
-    DEFINE_INPUTFUNC( FIELD_VOID, "Disable", InputDisable ),
-    END_DATADESC()
+	DEFINE_INPUTFUNC( FIELD_VOID, "Enable", InputEnable ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "Disable", InputDisable ),
+END_DATADESC()
 
-        LINK_ENTITY_TO_CLASS( func_placement_clip, CFuncPlacementClip );
+LINK_ENTITY_TO_CLASS( func_placement_clip, CFuncPlacementClip );
+
 
 void CFuncPlacementClip::Spawn( void )
 {

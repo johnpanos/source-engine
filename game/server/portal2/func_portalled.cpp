@@ -10,7 +10,7 @@
 
 #include "cbase.h"
 #include "func_portalled.h"
-#include "prop_portal.h"
+#include "portal/prop_portal.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -18,20 +18,18 @@
 LINK_ENTITY_TO_CLASS( func_portalled, CFunc_Portalled );
 
 BEGIN_DATADESC( CFunc_Portalled )
-	DEFINE_KEYFIELD( m_bFireOnPlayer, FIELD_BOOLEAN, "FireOnPlayer" ),
-	DEFINE_KEYFIELD( m_bFireOnDeparture, FIELD_BOOLEAN, "FireOnDeparture" ),
-	DEFINE_KEYFIELD( m_bFireOnArrival, FIELD_BOOLEAN, "FireOnArrival" ),
+DEFINE_KEYFIELD( m_bFireOnPlayer, FIELD_BOOLEAN, "FireOnPlayer" ),
+    DEFINE_KEYFIELD( m_bFireOnDeparture, FIELD_BOOLEAN, "FireOnDeparture" ),
+    DEFINE_KEYFIELD( m_bFireOnArrival, FIELD_BOOLEAN, "FireOnArrival" ),
 
-	DEFINE_OUTPUT( m_OnEntityPrePortalled, "OnEntityPrePortalled" ),
-	DEFINE_OUTPUT( m_OnEntityPostPortalled, "OnEntityPostPortalled" ),
-END_DATADESC()
+    DEFINE_OUTPUT( m_OnEntityPrePortalled, "OnEntityPrePortalled" ),
+    DEFINE_OUTPUT( m_OnEntityPostPortalled, "OnEntityPostPortalled" ),
+    END_DATADESC()
 
-
-void CFunc_Portalled::PortalPlacedInsideBounds( CProp_Portal *pPortal )
+        void CFunc_Portalled::PortalPlacedInsideBounds( CProp_Portal *pPortal )
 {
 	pPortal->SetFuncPortalled( this );
 }
-
 
 void CFunc_Portalled::OnPrePortalled( CBaseEntity *pOther, bool bDeparting )
 {
@@ -53,7 +51,6 @@ void CFunc_Portalled::OnPrePortalled( CBaseEntity *pOther, bool bDeparting )
 		m_OnEntityPrePortalled.FireOutput( pOther, this );
 	}
 }
-
 
 void CFunc_Portalled::OnPostPortalled( CBaseEntity *pOther, bool bDeparting )
 {

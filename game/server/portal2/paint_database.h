@@ -56,7 +56,7 @@ public:
 	virtual ~CPaintDatabase();
 
 	// CAutoGameSystemPerFrame
-	virtual char const *Name() { return "CPaintDatabase"; }
+	virtual char const *Name() { return "PaintDatabase"; }
 	virtual void LevelInitPreEntity();
 	virtual void LevelInitPostEntity();
 	virtual void LevelShutdownPostEntity();

@@ -15,19 +15,15 @@
 #include "tier0/memdbgon.h"
 
 IMPLEMENT_CLIENTCLASS_DT( C_TriggerPaintCleanser, DT_TriggerPaintCleanser, CTriggerPaintCleanser )
-	RecvPropBool( RECVINFO( m_bDisabled ) ),
-END_RECV_TABLE()
+RecvPropBool( RECVINFO( m_bDisabled ) ), END_RECV_TABLE()
 
-
-C_TriggerPaintCleanser::C_TriggerPaintCleanser()
+                                             C_TriggerPaintCleanser::C_TriggerPaintCleanser()
 {
 }
-
 
 C_TriggerPaintCleanser::~C_TriggerPaintCleanser()
 {
 }
-
 
 void C_TriggerPaintCleanser::Spawn()
 {
@@ -36,7 +32,6 @@ void C_TriggerPaintCleanser::Spawn()
 	// Let the blobs know about this cleanser
 	PaintCleanserManager.AddPaintCleanser( this );
 }
-
 
 void C_TriggerPaintCleanser::UpdateOnRemove()
 {
