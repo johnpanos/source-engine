@@ -121,6 +121,8 @@ def main():
     parser.add_argument("--bake-evidence", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--oidn-library", default="libOpenImageDenoise.so.2")
+    parser.add_argument("--skip-denoise", action="store_true",
+                        help="fill UV gutters without filtering covered bake texels")
     args = parser.parse_args()
     evidence = json.loads(args.bake_evidence.read_text())
     if evidence.get("status") != "pass" or evidence.get("atlas_exr_sha256") != sha256(args.exr):
@@ -144,10 +146,11 @@ def main():
     _, (rows, columns) = ndimage.distance_transform_edt(~covered, return_indices=True)
     filled = pixels[rows, columns, :3]
     result = pixels.copy()
-    filtered = np.maximum(denoise(load_oidn(args.oidn_library), filled), 0.0)
+    filtered = (filled if args.skip_denoise else
+                np.maximum(denoise(load_oidn(args.oidn_library), filled), 0.0))
     result[:, :, :3] = extend_gutters(filtered, covered, rows, columns)
     if not np.isfinite(result).all():
-        raise ValueError("OIDN produced non-finite texels")
+        raise ValueError("lightmap processing produced non-finite texels")
     before = pixels[covered][:, :3]
     after = result[covered][:, :3]
     # High-frequency energy: mean absolute difference from a 3x3 box blur.
@@ -156,12 +159,14 @@ def main():
     args.out.parent.mkdir(parents=True, exist_ok=True)
     write_linear_exr(args.out, result)
     receipt = {key: evidence[key] for key in ("size", "lighting_stage_sha256", "scene_sha256",
-                                               "source_stage_sha256") if key in evidence}
-    receipt.update({"status": "pass", "scope": evidence["scope"] + "-denoised",
+                                               "source_stage_sha256", "reserved_rows",
+                                               "uv_extents") if key in evidence}
+    suffix = "-gutter-filled" if args.skip_denoise else "-denoised"
+    receipt.update({"status": "pass", "scope": evidence["scope"] + suffix,
                     "atlas_exr_sha256": sha256(args.out),
                     "source_atlas_exr_sha256": evidence["atlas_exr_sha256"],
                     "source_bake_evidence_sha256": sha256(args.bake_evidence),
-                    "denoiser": "OpenImageDenoise RTLightmap (CPU)",
+                    "denoiser": None if args.skip_denoise else "OpenImageDenoise RTLightmap (CPU)",
                     "covered_texels": int(covered.sum()),
                     "filled_gutter_texels": int((~covered).sum()),
                     "coverage_exr_sha256": evidence.get("coverage_exr_sha256"),
@@ -172,7 +177,7 @@ def main():
     # Denoising must remove noise without changing overall light level.
     drift = np.abs(after.mean(axis=0) - before.mean(axis=0)) / np.maximum(before.mean(axis=0), 1e-6)
     if (drift > 0.05).any():
-        raise ValueError("denoising changed mean irradiance by more than 5%%: %s" % drift)
+        raise ValueError("lightmap processing changed mean irradiance by more than 5%%: %s" % drift)
     args.out.with_name(args.out.name + ".json").write_text(
         json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     print(json.dumps({k: receipt[k] for k in ("status", "high_frequency_before",

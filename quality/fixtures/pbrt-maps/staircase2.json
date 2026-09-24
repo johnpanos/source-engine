@@ -25,7 +25,9 @@
     "device": "gpu"
   },
   "world_mesh": {
-    "weld_materials": ["wall"],
+    "weld_materials": [
+      "wall"
+    ],
     "weld_distance_source_units": 0.5
   },
   "collision": {
@@ -38,5 +40,10 @@
     "min_ssim": 0.74,
     "max_grain_ratio": 0.6,
     "max_mottle_ratio": 1.15
+  },
+  "reflection_probe": {
+    "width": 512,
+    "face_size": 256,
+    "samples": 512
   }
 }

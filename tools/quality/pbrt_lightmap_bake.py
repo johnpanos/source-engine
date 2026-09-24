@@ -146,6 +146,9 @@ def main():
     parser.add_argument("--samples", type=int, default=64)
     parser.add_argument("--exclude-material", action="append", default=[])
     parser.add_argument("--device", choices=("cpu", "gpu", "auto"), default="auto")
+    parser.add_argument("--reserve-rows", type=int, default=0,
+                        help="keep the atlas's first N texel rows (lightmap v < N/size) "
+                             "empty for a reflection probe band")
     parser.add_argument("--margin-texels", type=int, default=2,
                         help="gap between packed charts; bake dilation uses half")
     args = parser.parse_args(arguments)
@@ -177,14 +180,26 @@ def main():
             raise ValueError("source mesh lacks material UVs: " + obj.name)
         obj.data.uv_layers.active = obj.data.uv_layers.new(name="lightmap_st")
         if assignments[obj.name] in excluded:
+            # One texel at the far corner, away from a reflection probe band.
+            corner = 1.0 - 0.5 / args.size
             for loop in obj.data.uv_layers.active.data:
-                loop.uv = (0.0, 0.0)
+                loop.uv = (corner, corner)
         else:
             baked.append(obj)
     if not baked:
         raise ValueError("no meshes selected for baking")
     # Keep roughly four texels between charts at the requested atlas size.
     projected = pack_lightmap_uvs(baked, margin=args.margin_texels / args.size)
+    if args.reserve_rows:
+        # Atlas texel row r holds lightmap v = (r + 0.5) / size after the KTX2
+        # packager's row flip, so rows [0, N) are v < N / size. Squeeze every
+        # chart into v >= N / size; lightmap_ktx2 asserts those rows are empty.
+        reserved = (args.reserve_rows + args.margin_texels) / args.size
+        if not 0 < reserved < 0.5:
+            parser.error("reserved rows must be a small part of the atlas")
+        for obj in baked + [value["proxy"] for value in projected.values()]:
+            for loop in obj.data.uv_layers.get("lightmap_st").data:
+                loop.uv = (loop.uv[0], reserved + loop.uv[1] * (1.0 - reserved))
     extents = {}
     density = {}
     for obj in baked:
@@ -318,6 +333,7 @@ def main():
                 "scene_sha256": scene["source_sha256"], "atlas_exr_sha256": sha256(args.out_exr),
                 "environment_sha256": sha256(args.environment) if args.environment else None,
                 "size": args.size, "samples": args.samples, "device": device,
+                "reserved_rows": args.reserve_rows,
                 "mesh_count": len(meshes), "baked_mesh_count": len(baked),
                 "projected_meshes": {name: {"parts": value["parts"]}
                                      for name, value in projected.items()},

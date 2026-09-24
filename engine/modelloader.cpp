@@ -4532,6 +4532,14 @@ static uint32_t WorldMeshU32( const unsigned char *pBytes )
 	       ( uint32_t( pBytes[2] ) << 16 ) | ( uint32_t( pBytes[3] ) << 24 );
 }
 
+static float WorldMeshF32( const unsigned char *pBytes )
+{
+	const uint32_t bits = WorldMeshU32( pBytes );
+	float value;
+	memcpy( &value, &bits, sizeof( value ) );
+	return value;
+}
+
 void CModelLoader::Map_LoadWorldMesh()
 {
 	if ( !s_pMapContainer || s_pMapContainer->Kind() != mapcontainer::MapContainerKind::Bsp2 )
@@ -4685,6 +4693,9 @@ void CModelLoader::Map_LoadWorldMesh()
 		                                uint64_t( i ) * mapcontainer::kWorldMeshMeshletSize;
 		m_WorldMeshClusters[i].firstIndex = WorldMeshU32( pMeshlet );
 		m_WorldMeshClusters[i].indexCount = WorldMeshU32( pMeshlet + 4 );
+		m_WorldMeshClusters[i].center.Init( WorldMeshF32( pMeshlet + 16 ),
+		    WorldMeshF32( pMeshlet + 20 ), WorldMeshF32( pMeshlet + 24 ) );
+		m_WorldMeshClusters[i].radius = WorldMeshF32( pMeshlet + 28 );
 	}
 	m_WorldMeshLeafRanges.SetCount( summary.leafCount );
 	for ( uint32_t i = 0; i < summary.leafCount; ++i )

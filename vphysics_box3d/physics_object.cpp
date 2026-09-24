@@ -490,9 +490,11 @@ void CPhysicsObjectBox3D::RecheckCollisionFilter( void )
 {
 	if ( IsMarkedForDelete() )
 		return;
-	// Re-running the filter makes Box3D re-evaluate existing pairs, which
-	// re-invokes the environment's custom filter (the game's collision rules).
 	ApplyFilter();
+	// Unchanged filter bits leave Box3D's contacts as they are; the game's
+	// collision rules (portal environments) are re-run on the object's pairs.
+	if ( m_pEnv )
+		;//AB m_pEnv->RecheckPairs( this );
 }
 
 void CPhysicsObjectBox3D::RecheckContactPoints( void )

@@ -246,8 +246,8 @@ class _HTTPSRedirects(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(request, fp, code, message, headers, newurl)
 
 
-def fetch_dependency(profile, cache_dir):
-    dependency = profile["dependencies"]["dxvk_native"]
+def fetch_dependency(profile, cache_dir, name="dxvk_native"):
+    dependency = profile["dependencies"][name]
     cache = Path(cache_dir)
     cache.mkdir(parents=True, exist_ok=True)
     archive = cache / dependency["cache_archive"]
@@ -274,7 +274,7 @@ def fetch_dependency(profile, cache_dir):
     if not tree.exists():
         safe_extract(archive, tree)
     prefix = tree / dependency["prefix"]
-    verify_dependency(profile, "dxvk_native", prefix, archive)
+    verify_dependency(profile, name, prefix, archive)
     return prefix.resolve()
 
 

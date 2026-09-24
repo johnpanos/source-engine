@@ -80,13 +80,14 @@ def write_band(atlas, mips):
     """Write the chain and marker into the atlas's top rows (in place)."""
     rows = mips[0].shape[0]
     width = atlas.shape[1]
+    # Check before writing: numpy slicing would silently truncate a mip.
+    if sum(mip.shape[1] for mip in mips) >= width or rows > atlas.shape[0]:
+        raise ValueError("probe mip chain does not fit the atlas")
     x = 0
     for mip in mips:
         atlas[:mip.shape[0], x:x + mip.shape[1], :3] = mip
         atlas[:mip.shape[0], x:x + mip.shape[1], 3] = 1.0
         x += mip.shape[1]
-    if x >= width:
-        raise ValueError("probe mip chain does not fit the atlas width")
     atlas[0, width - 1] = (len(mips), mips[0].shape[1], rows, MARKER_ALPHA)
     return {"mips": len(mips), "mip0_width": mips[0].shape[1], "band_rows": rows,
             "marker_texel": [width - 1, 0]}

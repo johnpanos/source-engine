@@ -15,6 +15,10 @@ collision, a player spawn and a fallback compile light:
   stairwell) its upward-facing triangles are extruded into prism brushes, so
   openings in the floor stay open.
 
+The solids and floor prisms form one `func_detail`: they block the player but
+not vis, since the render mesh is not their hull, and the engine walks their
+leaves, so the world mesh inside them stays visible.
+
 A k-DOP is exact for box-like parts and conservative for curved ones.
 Run with the OpenUSD Python (`pxr`) on PYTHONPATH.
 """
@@ -408,10 +412,21 @@ def main():
              "visgroups", "{", "}", "world", "{", '\t"id" "1"', '\t"mapversion" "1"',
              '\t"classname" "worldspawn"', '\t"skyname" "sky_day01_01"']
     side = 1000
-    for index, (planes, vertices) in enumerate(brushes + solids):
+    for index, (planes, vertices) in enumerate(brushes):
         lines.append(brush_text(10 + index, side, planes, vertices))
         side += len(planes)
-    lines.extend(["}", "entity", "{", '\t"id" "2"', '\t"classname" "info_player_start"',
+    lines.append("}")
+    # Furniture and floor solids are func_detail: they collide like world
+    # brushes but do not split vis clusters or make the view see them as
+    # opaque (the render mesh is not their hull), and the engine walks their
+    # leaves, so WMSH meshlets inside them stay visible through them.
+    if solids:
+        lines.extend(["entity", "{", '\t"id" "4"', '\t"classname" "func_detail"'])
+        for index, (planes, vertices) in enumerate(solids):
+            lines.append(brush_text(10 + len(brushes) + index, side, planes, vertices))
+            side += len(planes)
+        lines.append("}")
+    lines.extend(["entity", "{", '\t"id" "2"', '\t"classname" "info_player_start"',
                   '\t"origin" "%d %d %d"' % tuple(spawn["origin"]),
                   '\t"angles" "0 %g 0"' % spawn["yaw"], "}",
                   "entity", "{", '\t"id" "3"', '\t"classname" "light"',
@@ -427,7 +442,9 @@ def main():
                "interior_source_units": interior, "shell_brush_count": len(brushes),
                "solid_meshes": solid_names, "solid_brush_count": len(solids),
                "skipped_outside_or_thin": skipped,
-               "spawn": spawn, "walkable_tops": tops, "policy": "18-DOP per connected component; floor triangles extruded"}
+               "spawn": spawn, "walkable_tops": tops,
+               "policy": "18-DOP per connected component; floor triangles extruded; "
+                         "solids are func_detail"}
     (args.out_dir / "collision-receipt.json").write_text(
         json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     print(json.dumps({k: receipt[k] for k in ("status", "solid_brush_count", "spawn")}))

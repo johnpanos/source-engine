@@ -239,6 +239,9 @@ struct worldmeshcluster_t
 {
 	unsigned int firstIndex;
 	unsigned int indexCount;
+	// Bounding sphere; the container validator checks it holds every vertex.
+	Vector center;
+	float radius;
 };
 
 struct worldmeshleafrange_t

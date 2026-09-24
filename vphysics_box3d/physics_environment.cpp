@@ -638,15 +638,12 @@ void CPhysicsEnvironmentBox3D::DeleteContactPair( CPhysicsObjectBox3D *pA, CPhys
 {
 	if ( !pA || !pB || pA == pB )
 		return;
-	for ( int i = 0; i < m_deletedPairs.Count(); i++ )
+	int index = FindDeletedPair( pA, pB );
+	if ( index >= 0 )
 	{
-		DeletedPair_t &pair = m_deletedPairs[i];
-		if ( ( pair.pA == pA && pair.pB == pB ) || ( pair.pA == pB && pair.pB == pA ) )
-		{
-			pair.fresh = true;
-			pair.disabled = true;
-			return;
-		}
+		m_deletedPairs[index].fresh = true;
+		m_deletedPairs[index].disabled = true;
+		return;
 	}
 	DeletedPair_t pair = { pA, pB, true, true };
 	m_deletedPairs.AddToTail( pair );
@@ -654,6 +651,153 @@ void CPhysicsEnvironmentBox3D::DeleteContactPair( CPhysicsObjectBox3D *pA, CPhys
 	// As IVP, only the partner is woken.
 	if ( wake && !pB->IsStatic() )
 		pB->Wake();
+}
+
+int CPhysicsEnvironmentBox3D::FindDeletedPair( const CPhysicsObjectBox3D *pA, const CPhysicsObjectBox3D *pB ) const
+{
+	for ( int i = 0; i < m_deletedPairs.Count(); i++ )
+	{
+		const DeletedPair_t &pair = m_deletedPairs[i];
+		if ( ( pair.pA == pA && pair.pB == pB ) || ( pair.pA == pB && pair.pB == pA ) )
+			return i;
+	}
+	return -1;
+}
+
+namespace
+{
+bool CollectShape( b3ShapeId shapeId, void *pContext )
+{
+	static_cast<CUtlVector<b3ShapeId> *>( pContext )->AddToTail( shapeId );
+	return true;
+}
+
+// Shapes that overlap one of a body's convex shapes where it is now.
+void OverlappingShapes( b3WorldId world, b3ShapeId shape, CUtlVector<b3ShapeId> &out )
+{
+	b3WorldTransform xform = b3Body_GetTransform( b3Shape_GetBody( shape ) );
+	b3Vec3 points[B3_MAX_SHAPE_CAST_POINTS];
+	b3ShapeProxy proxy;
+	memset( &proxy, 0, sizeof( proxy ) );
+	proxy.points = points;
+	switch ( b3Shape_GetType( shape ) )
+	{
+	case b3_hullShape:
+	{
+		const b3HullData *pHull = b3Shape_GetHull( shape );
+		const b3Vec3 *pPoints = b3GetHullPoints( pHull );
+		proxy.count = MIN( pHull->vertexCount, B3_MAX_SHAPE_CAST_POINTS );
+		for ( int i = 0; i < proxy.count; i++ )
+			points[i] = b3RotateVector( xform.q, pPoints[i] );
+		break;
+	}
+	case b3_sphereShape:
+	{
+		b3Sphere sphere = b3Shape_GetSphere( shape );
+		points[0] = b3RotateVector( xform.q, sphere.center );
+		proxy.count = 1;
+		proxy.radius = sphere.radius;
+		break;
+	}
+	default:
+		return;
+	}
+	b3World_OverlapShape( world, xform.p, &proxy, b3DefaultQueryFilter(), CollectShape, &out );
+}
+}
+
+// Box3D consults the collision rules only when a pair's contact is created;
+// IVP's recheck_collision_filter re-runs them on the object's pairs. A pair the
+// rules now reject is held off (pre-solve) until they allow it again, as a
+// deleted contact is. A dynamic object overlapping a partner the rules allow
+// but lacking a contact with it (the rules rejected the pair when it formed)
+// has its proxies re-paired; Box3D re-pairs a shape only by resetting its
+// contacts, so this is limited to that case.
+void CPhysicsEnvironmentBox3D::RecheckPairs( CPhysicsObjectBox3D *pObject )
+{
+	if ( !IsLive( pObject ) || !pObject->IsCollisionEnabled() )
+		return;
+	b3BodyId body = pObject->GetBody();
+
+	// Candidates: every shape whose fat bounds can overlap the object's, so any
+	// pair with a contact, touching or not.
+	const float margin = 2.0f * B3_MAX_AABB_MARGIN;
+	b3AABB bounds = b3AABB_Inflate( b3Body_ComputeAABB( body ), margin );
+	CUtlVector<b3ShapeId> candidates;
+	b3World_OverlapAABB( m_world, bounds, b3DefaultQueryFilter(), CollectShape, &candidates );
+
+	CUtlVector<CPhysicsObjectBox3D *> allowed;
+	for ( int i = 0; i < candidates.Count(); i++ )
+	{
+		CPhysicsObjectBox3D *pOther = ObjectOf( candidates[i] );
+		if ( !pOther || pOther == pObject || !IsLive( pOther ) || b3Shape_IsSensor( candidates[i] ) )
+			continue;
+		if ( ( pObject->IsStatic() && pOther->IsStatic() ) || !pOther->IsCollisionEnabled() )
+			continue;
+		if ( allowed.Find( pOther ) != allowed.InvalidIndex() )
+			continue;
+		int index = FindDeletedPair( pObject, pOther );
+		if ( PairAllowed( pObject, pOther ) )
+		{
+			allowed.AddToTail( pOther );
+			if ( index >= 0 && !m_deletedPairs[index].fresh )
+				m_deletedPairs.FastRemove( index );
+		}
+		else if ( index < 0 )
+		{
+			DeletedPair_t pair = { pObject, pOther, false, true };
+			m_deletedPairs.AddToTail( pair );
+		}
+		else
+		{
+			m_deletedPairs[index].disabled = true;
+		}
+	}
+
+	if ( pObject->IsStatic() || !allowed.Count() )
+		return;
+
+	CUtlVector<CPhysicsObjectBox3D *> touching;
+	int capacity = b3Body_GetContactCapacity( body );
+	if ( capacity > 0 )
+	{
+		CUtlVector<b3ContactData> contacts;
+		contacts.SetCount( capacity );
+		int count = b3Body_GetContactData( body, contacts.Base(), capacity );
+		for ( int c = 0; c < count; c++ )
+		{
+			CPhysicsObjectBox3D *pA = ObjectOf( contacts[c].shapeIdA );
+			touching.AddToTail( pA == pObject ? ObjectOf( contacts[c].shapeIdB ) : pA );
+		}
+	}
+
+	CUtlVector<b3ShapeId> shapes, overlapping;
+	shapes.SetCount( b3Body_GetShapeCount( body ) );
+	if ( shapes.Count() )
+		shapes.SetCount( b3Body_GetShapes( body, shapes.Base(), shapes.Count() ) );
+	for ( int s = 0; s < shapes.Count(); s++ )
+	{
+		overlapping.RemoveAll();
+		OverlappingShapes( m_world, shapes[s], overlapping );
+		bool repair = false;
+		for ( int i = 0; i < overlapping.Count() && !repair; i++ )
+		{
+			CPhysicsObjectBox3D *pOther = ObjectOf( overlapping[i] );
+			if ( allowed.Find( pOther ) == allowed.InvalidIndex() || touching.Find( pOther ) != touching.InvalidIndex() )
+				continue;
+			int index = FindDeletedPair( pObject, pOther );
+			repair = index < 0 || !m_deletedPairs[index].disabled;
+		}
+		if ( !repair )
+			continue;
+		// A filter change resets the shape's proxy, so the broadphase pairs it
+		// again under the current rules.
+		b3Filter filter = b3Shape_GetFilter( shapes[s] );
+		b3Filter toggled = filter;
+		toggled.groupIndex = filter.groupIndex == 0 ? 1 : 0;
+		b3Shape_SetFilter( shapes[s], toggled, true );
+		b3Shape_SetFilter( shapes[s], filter, true );
+	}
 }
 
 void CPhysicsEnvironmentBox3D::UpdateDeletedPairs()

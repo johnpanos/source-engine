@@ -139,7 +139,28 @@ def leaf_faces(bsp_path):
     return result
 
 
-def write_payload(faces, leaves):
+def leaf_volumes(bsp_path):
+    """Per BSP leaf: (contents, mins, maxs) from the v21 leaf lump (shorts)."""
+    data = bsp_path.read_bytes()
+    header = parse_legacy_header(data, len(data))
+    if header["version"] != 21 or header["lumps"][10][2] != 1:
+        raise ValueError("WMSH leaf volumes require a compiled v21 BSP")
+    offset, size, *_ = header["lumps"][10]
+    leaves = data[offset:offset + size]
+    if not leaves or len(leaves) % 32:
+        raise ValueError("BSP leaf layout is unsupported")
+    return [(struct.unpack_from("<i", leaves, index * 32)[0],
+             struct.unpack_from("<3h", leaves, index * 32 + 8),
+             struct.unpack_from("<3h", leaves, index * 32 + 14))
+            for index in range(len(leaves) // 32)]
+
+
+def write_payload(faces, leaves, meshlet_leaves=None):
+    """Serialize WMSH v1. `leaves` holds each BSP leaf's face IDs; a leaf
+    references the meshlets of its faces. With `meshlet_leaves`, a callable
+    taking the meshlet AABBs [(mins, maxs)] and returning each leaf's meshlet
+    indices, leaves reference meshlets spatially instead (`leaves` then only
+    supplies the leaf count)."""
     materials = sorted({face["material"] for face in faces.values()})
     if any(not material or material.endswith(".vmt") or "\\" in material or
            ":" in material or
@@ -153,6 +174,7 @@ def write_payload(faces, leaves):
     triangle_faces = []
     batches = []
     meshlets = []
+    meshlet_boxes = []
     face_meshlets = {face_id: [] for face_id in faces}
     for material in materials:
         first_index = len(indices)
@@ -182,17 +204,26 @@ def write_payload(faces, leaves):
                 radius = max(math.dist(center, point) for point in positions) + 1e-5
                 axis = unit(tuple(sum(normal[i] for normal in normals) for i in range(3)))
                 cutoff = min(dot(axis, normal) for normal in normals) - 1e-5
+                meshlet_boxes.append((tuple(min(point[axis] for point in positions)
+                                            for axis in range(3)),
+                                      tuple(max(point[axis] for point in positions)
+                                            for axis in range(3))))
                 meshlets.append((meshlet_first_index, len(indices) - meshlet_first_index,
                                  meshlet_first_vertex, len(positions), *center, radius,
                                  *axis, cutoff))
                 face_meshlets[face_id].append(len(meshlets) - 1)
         batches.append((material_ids[material], first_index, len(indices) - first_index,
                         first_meshlet, len(meshlets) - first_meshlet, 0))
+    if meshlet_leaves:
+        selections = [sorted(set(selected)) for selected in meshlet_leaves(meshlet_boxes)]
+        if len(selections) != len(leaves):
+            raise ValueError("meshlet leaf assignment must cover every BSP leaf")
+    else:
+        selections = [sorted({meshlet for face_id in leaf for meshlet in
+                              face_meshlets.get(face_id, ())}) for leaf in leaves]
     leaf_ranges = []
     leaf_refs = []
-    for leaf in leaves:
-        selected = sorted({meshlet for face_id in leaf for meshlet in
-                           face_meshlets.get(face_id, ())})
+    for selected in selections:
         leaf_ranges.append((len(leaf_refs), len(selected)))
         leaf_refs.extend(selected)
     if len(indices) != len(vertex_bytes) // VERTEX.size or len(indices) != 3 * len(triangle_faces):

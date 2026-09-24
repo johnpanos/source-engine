@@ -2,8 +2,10 @@
 """Pack bound USD meshes into a BSP2 WMSH preview alongside BSP gameplay data.
 
 The BSP supplies collision and leaves. Imported USD triangles use high-bit
-synthetic face IDs, which deliberately have no legacy decal association. Until
-spatial import is implemented, every leaf references every imported meshlet.
+synthetic face IDs, which deliberately have no legacy decal association.
+Triangles of each face group are ordered along a Z-order curve so meshlets
+are spatially compact, and each BSP leaf references the meshlets that can be
+seen through it (`worldmesh_leaf_visibility`).
 Every mesh prim is a source mesh (including instanced `<stem>_iN` placements
 and the optional `SkyDome` from `pbrt_sky_dome.py`) and must have a bound
 material; emitter meshes `LightQuadNN`/`LightDiskNN` are packed only with
@@ -20,7 +22,8 @@ from pathlib import Path
 
 from pxr import Gf, Usd, UsdGeom, UsdShade
 
-from worldstage_mesh_pack import cross, leaf_faces, sha256, tangent_frame, unit, write_payload
+from worldstage_mesh_pack import cross, leaf_volumes, sha256, tangent_frame, unit, write_payload
+import worldmesh_leaf_visibility
 from worldmesh_seam_weld import weld_material
 
 
@@ -192,18 +195,25 @@ def main():
     repairs = [weld_material(faces, args.material_prefix + "/" + material,
                              args.weld_distance_source_units)
                for material in sorted(set(args.weld_material))]
-    leaves = leaf_faces(args.bsp)
-    # Explicit first-slice visibility policy: every imported meshlet is visible
-    # in every BSP leaf. This preserves visibility while spatial association is
-    # still absent; the receipt exposes its cost.
-    all_face_ids = set(faces)
-    payload, counts = write_payload(faces, [all_face_ids for _ in leaves])
+    for face in faces.values():
+        centroids = [tuple(sum(point[axis] for point in triangle[0]) / 3 for axis in range(3))
+                     for triangle in face["triangles"]]
+        face["triangles"] = [face["triangles"][index] for index in
+                             worldmesh_leaf_visibility.morton_order(centroids)]
+    volumes = leaf_volumes(args.bsp)
+    visibility = {}
+
+    def meshlet_leaves(boxes):
+        references, summary = worldmesh_leaf_visibility.assign(boxes, volumes)
+        visibility.update(summary)
+        return references
+    payload, counts = write_payload(faces, volumes, meshlet_leaves)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_bytes(payload)
     evidence = {"status": "pass", "scope": "usd-imported-worldmesh-preview",
                 "stage_sha256": sha256(args.stage), "bsp_sha256": sha256(args.bsp),
                 "wmsh_sha256": sha256(args.out), "material_prefix": args.material_prefix,
-                "visibility_policy": "all imported meshlets in every leaf",
+                "visibility_policy": visibility,
                 "authored_lightmap_uv": args.require_lightmap_uv,
                 "seam_welds": repairs,
                 "emitter_meshes": sum(item["emitter"] for item in inventory),

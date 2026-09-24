@@ -42,5 +42,15 @@
     "min_ssim": 0.65,
     "max_grain_ratio": 0.6,
     "max_mottle_ratio": 1.15
+  },
+  "reflection_probe": {
+    "width": 512,
+    "face_size": 256,
+    "samples": 512,
+    "position": [
+      2.3,
+      1.5,
+      1.4
+    ]
   }
 }

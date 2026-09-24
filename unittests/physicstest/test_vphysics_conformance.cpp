@@ -1575,6 +1575,70 @@ static void TestSimulation()
 		DestroyWorld( world );
 	}
 
+	// A rule change reaches existing contacts only through a recheck. A portal
+	// opening under a resting prop runs CollisionRulesChanged (recheck), Wake
+	// and RecheckContactPoints; the prop must then fall through the floor.
+	{
+		CFilterSolver solver;
+		World_t world;
+		CreateWorld( world, &solver );
+		IPhysicsObject *pResting = CreateCube( world, Vector( 0, 0, 16 ) );
+		IPhysicsObject *pNear = CreateCube( world, Vector( 200, 0, 18 ) );
+		IPhysicsObject *pKept = CreateCube( world, Vector( -200, 0, 16 ) );
+		pNear->EnableGravity( false );
+		Step( world.pEnv, 2.0f );
+		float restZ = PositionOf( pResting ).z;
+		float nearZ = PositionOf( pNear ).z;
+
+		solver.m_pIgnoreA = pResting;
+		solver.m_pIgnoreB = world.pFloor;
+		pResting->RecheckCollisionFilter();
+		pResting->Wake();
+		pResting->RecheckContactPoints();
+		pKept->RecheckCollisionFilter();
+		pKept->Wake();
+		Step( world.pEnv, 1.5f );
+		float z = PositionOf( pResting ).z;
+		Check( TIER_GAMEPLAY, "rules.recheck-drops-resting-contact", Near( restZ, 16.0f, 1.0f ) && z < -100.0f,
+			"rest %.2f z %.2f", restZ, z );
+		float keptZ = PositionOf( pKept ).z;
+		Check( TIER_GAMEPLAY, "rules.recheck-keeps-allowed-contact", Near( keptZ, 16.0f, 1.0f ), "z %.2f", keptZ );
+
+		// A pair near enough to have a pending (not yet touching) contact.
+		solver.m_pIgnoreA = pNear;
+		pNear->RecheckCollisionFilter();
+		pNear->EnableGravity( true );
+		pNear->Wake();
+		Step( world.pEnv, 1.5f );
+		z = PositionOf( pNear ).z;
+		Check( TIER_GAMEPLAY, "rules.recheck-drops-near-pair", Near( nearZ, 18.0f, 1.0f ) && z < -100.0f,
+			"hover %.2f z %.2f", nearZ, z );
+		DestroyWorld( world );
+	}
+
+	// The recheck also restores a pair the rules allow again (a portal closing
+	// on a prop embedded in its wall): the prop is pushed out of the floor.
+	{
+		CFilterSolver solver;
+		World_t world;
+		CreateWorld( world, &solver );
+		IPhysicsObject *pEmbedded = CreateCube( world, Vector( 0, 0, 10 ) );
+		pEmbedded->EnableGravity( false );
+		solver.m_pIgnoreA = pEmbedded;
+		solver.m_pIgnoreB = world.pFloor;
+		Step( world.pEnv, 0.5f );
+		float embeddedZ = PositionOf( pEmbedded ).z;
+		solver.m_pIgnoreA = NULL;
+		pEmbedded->RecheckCollisionFilter();
+		pEmbedded->Wake();
+		pEmbedded->RecheckContactPoints();
+		Step( world.pEnv, 1.0f );
+		float z = PositionOf( pEmbedded ).z;
+		Check( TIER_GAMEPLAY, "rules.recheck-restores-pair", Near( embeddedZ, 10.0f, 0.5f ) && z > 15.0f,
+			"embedded %.2f z %.2f", embeddedZ, z );
+		DestroyWorld( world );
+	}
+
 	// Velocity, impulses, shadow following, constraints, motion controllers.
 	{
 		World_t world;

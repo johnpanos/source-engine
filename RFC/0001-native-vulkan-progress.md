@@ -1642,3 +1642,49 @@ channel scale) after the masks and contrast; the captures are
 Vulkan validation was unavailable on this runner. A DXVK headless boot failed
 before scene capture, so the comparison is against Source shader equations and
 the earlier native capture, not a new DXVK frame.
+
+## VGUI and HUD follow the SDL3 display scale (2026-09-23)
+
+The VGUI surface now lays out, paints and exchanges cursor positions in UI
+units. The UI scale is the number of viewport pixels per unit. Before this,
+fixed-pixel UI (menus, dialogs, console, HUD icons such as the Portal
+crosshair) shrank on a 150% display whenever the back buffer matched the
+window's pixels.
+
+- Policy: `vguimatsurface/UIScale.{h,cpp}`. The scale is the display scale
+  (`ILauncherMgr::GetWindowDisplayScale`, i.e. `SDL_GetWindowDisplayScale`) or
+  the user's `ui_scale`. It is multiplied by viewport height / window pixel
+  height, so a magnified back buffer is not scaled twice. Scales are limited to
+  0.5–4 and never leave fewer than 640x480 units. `ui_scale` is an archived
+  engine ConVar (0 = automatic) and appears as "UI scale" in Options > Video.
+- Surface (`CMatSystemSurface`): the 2D projection spans the viewport in
+  units. Fonts rasterize at their pixel size, report metrics in units, and
+  place glyph quads on the pixel grid, so text stays sharp. The surface records
+  the size the panels last laid out at. It re-notifies whenever the screen in
+  units differs from that size, including scale changes between video modes.
+- Proportional layouts (the HUD's `hudlayout.res`) are already a fraction of
+  the screen height; the scale reaches them only through font raster size.
+- Root sizes: the engine root panels always fill the screen in units
+  (`GetRootPanelSize`), including the per-paint resize in
+  `CEngineVGui::Paint`. The client's per-view HUD root in
+  `CViewRender::RenderView` uses the pushed viewport in units. Before this, both
+  reset the HUD root to pixels every frame, which put the crosshair at the
+  bottom right.
+- The Portal quickinfo crosshair's `ScreenHeight()/2160` workaround is
+  reverted. The brackets draw at the artwork's size in UI units.
+- The SDL3 provider's `SetCursorPosition` now maps back-buffer pixels to
+  window coordinates, the inverse of its mouse event mapping.
+
+Evidence:
+
+- `vgui.ui_scale` (28 checks) and `vgui.ui_scale.sensitivity` (6 checks; five
+  broken policies rejected) pass through `tools/quality/conformance.py`.
+- Isolated headless sway output at 2880x1620, scale 1.5, native Vulkan:
+  - A 1920x1080 back buffer selects 1.0.
+  - A 2816x1620 back buffer selects 1.5 (1878x1080 units). Menu, dialog and
+    console text match the magnified path's size and are sharp.
+  - A virtual pointer click selects the Video tab.
+  - The in-game crosshair is centered at `ui_scale` 0 (auto 1.5) and 2.
+- Not covered: X11 content scale, macOS/iOS/Android display scales, the
+  D3D9/DXVK tree (neither built nor run), and SDL2 (`sdlmgr.cpp` reports 1 and
+  was not compiled in this profile).

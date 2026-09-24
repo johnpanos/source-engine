@@ -64,6 +64,20 @@ int g_MaxLeavesVisible = 512;
 #ifndef SWDS
 static ConVar r_worldmesh_draw( "r_worldmesh_draw", "0", FCVAR_CHEAT,
     "WMSH comparison: 0 legacy, 1 overlay, 2 uploaded world batches" );
+static ConVar r_worldmesh_cull( "r_worldmesh_cull", "1", FCVAR_CHEAT,
+    "WMSH meshlet visibility: 0 draw every meshlet, 1 visible leaves and view frustum" );
+
+// A meshlet is outside when its bounding sphere lies behind any frustum plane.
+static bool WorldMeshMeshletOutside( const Frustum_t &frustum, const worldmeshcluster_t &meshlet )
+{
+	for ( int i = 0; i < FRUSTUM_NUMPLANES; ++i )
+	{
+		const cplane_t *pPlane = frustum.GetPlane( i );
+		if ( DotProduct( pPlane->normal, meshlet.center ) - pPlane->dist < -meshlet.radius )
+			return true;
+	}
+	return false;
+}
 
 static world_mesh_gpu::IWorldMeshUpload *WorldMeshDrawProvider()
 {
@@ -77,8 +91,11 @@ static world_mesh_gpu::IWorldMeshUpload *WorldMeshDrawProvider()
 	return uploader && uploader->IsResident() ? uploader : NULL;
 }
 
+// pFrustum is the frustum the visible leaves were culled with, or NULL when
+// the list was built without frustum culling.
 static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
-    const unsigned short *pVisibleLeaves, int nVisibleLeaves, CUtlVector<unsigned char> &visible )
+    const unsigned short *pVisibleLeaves, int nVisibleLeaves, CUtlVector<unsigned char> &visible,
+    const Frustum_t *pFrustum )
 {
 	world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshDrawProvider();
 	if ( !uploader )
@@ -91,7 +108,14 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 	// keeps the byte stores from forcing a reload of the vector's base.
 	unsigned char *pVisible = visible.Base();
 	const unsigned int clusterCount = pWorld->worldMeshClusterCount;
+	const bool bCull = r_worldmesh_cull.GetBool();
 	unsigned int marked = 0;
+	if ( !bCull )
+	{
+		Q_memset( pVisible, 1, clusterCount );
+		marked = clusterCount;
+		pFrustum = NULL;
+	}
 	for ( int i = 0; i < nVisibleLeaves && marked < clusterCount; ++i )
 	{
 		const int leafIndex = pVisibleLeaves[i];
@@ -123,8 +147,12 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 		for ( unsigned int j = 0; j <= batch.meshletCount && !rejected; ++j )
 		{
 			const worldmeshcluster_t *meshlet = NULL;
-			if ( j < batch.meshletCount && visible[batch.firstMeshlet + j] )
+			if ( j < batch.meshletCount && pVisible[batch.firstMeshlet + j] )
+			{
 				meshlet = &pWorld->pWorldMeshClusters[batch.firstMeshlet + j];
+				if ( pFrustum && WorldMeshMeshletOutside( *pFrustum, *meshlet ) )
+					meshlet = NULL;
+			}
 			if ( meshlet && runCount && meshlet->firstIndex == runFirst + runCount )
 			{
 				runCount += meshlet->indexCount;
@@ -339,7 +367,7 @@ int SortInfoToLightmapPage( int sortID )
 class CWorldRenderList : public CRefCounted1<IWorldRenderList>
 {
 public:
-	CWorldRenderList()
+	CWorldRenderList() : m_bWorldMeshFrustumValid( false )
 	{
 	}
 
@@ -390,6 +418,7 @@ public:
 		m_DispAlphaSortList.Init( g_MaxLeavesVisible, 32 );
 		m_VisitedSurfs.Resize( nSurfaces );
 		m_bSkyVisible = false;
+		m_bWorldMeshFrustumValid = false;
 	}
 
 	void Purge()
@@ -419,6 +448,7 @@ public:
 		m_DispAlphaSortList.Reset();
 
 		m_bSkyVisible = false;
+		m_bWorldMeshFrustumValid = false;
 		for (int j = 0; j < MAX_MAT_SORT_GROUPS; ++j)
 		{
 			//Assert(pRenderList->m_ShadowHandles[j].Count() == 0 );
@@ -454,6 +484,9 @@ public:
 	CUtlVector<LeafIndex_t>		m_VisibleLeaves;
 	CUtlVector<LeafFogVolume_t>	m_VisibleLeafFogVolumes;
 	CUtlVector<unsigned char> m_WorldMeshVisibility;
+	// The frustum m_VisibleLeaves was culled with, for WMSH meshlet culling.
+	Frustum_t m_WorldMeshFrustum;
+	bool m_bWorldMeshFrustumValid;
 
 	CVisitedSurfs m_VisitedSurfs;
 	bool						m_bSkyVisible;
@@ -2289,7 +2322,8 @@ static void Shader_WorldEnd( CWorldRenderList *pRenderList, unsigned long flags,
 			Shader_DrawChains( pRenderList, nSortGroup, false );
 		if ( drawWorldMesh )
 			Shader_DrawWorldMeshBatches( pRenderContext, pRenderList->m_VisibleLeaves.Base(),
-			    pRenderList->m_VisibleLeaves.Count(), pRenderList->m_WorldMeshVisibility );
+			    pRenderList->m_VisibleLeaves.Count(), pRenderList->m_WorldMeshVisibility,
+			    pRenderList->m_bWorldMeshFrustumValid ? &pRenderList->m_WorldMeshFrustum : NULL );
 #else
 		Shader_DrawChains( pRenderList, nSortGroup, false );
 #endif
@@ -3121,6 +3155,9 @@ void R_BuildWorldLists( IWorldRenderList *pRenderListIn, WorldListInfo_t* pInfo,
 
 	Shader_WorldBegin( pRenderList );
 
+	pRenderList->m_WorldMeshFrustum = g_Frustum;
+	pRenderList->m_bWorldMeshFrustumValid =
+	    !r_drawtopview && !bShadowDepth && r_frustumcullworld.GetBool();
 	if ( !r_drawtopview )
 	{
 		R_SetupAreaBits( iForceViewLeaf, pVisData, pWaterReflectionHeight );

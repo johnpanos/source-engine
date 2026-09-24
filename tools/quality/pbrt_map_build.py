@@ -17,6 +17,8 @@ pinned tools under build/toolchains/ and writes the default toolchain file;
     reference-gate  Cycles render vs the scene's reference image (manifest reference.gate)
     bake         shared lightmap UVs + Cycles diffuse irradiance atlas
     denoise      OpenImageDenoise RTLightmap filter (manifest lightmap.denoise, default on)
+    probe        optional reflection probe (manifest reflection_probe): six Cycles cube
+                 faces, stored as roughness mips in rows the bake reserved in the LMAP
     ktx2         atlas -> linear RGBA16F KTX2 (LMAP payload)
     sky          render stage = lighting stage + SkyDome for window views (scenes with a sky)
     collision    shell/solids/spawn VMF
@@ -54,7 +56,7 @@ import pbrt_scene  # noqa: E402
 import pbrt_traversal  # noqa: E402
 import reference_compare  # noqa: E402
 
-STEPS = ("environment", "stage", "reference-gate", "bake", "denoise", "ktx2", "sky",
+STEPS = ("environment", "stage", "reference-gate", "bake", "denoise", "probe", "ktx2", "sky",
          "collision", "compile", "pack", "content", "boot", "camera-boot", "runtime-gate",
          "traversal-boot", "traversal")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
@@ -121,6 +123,7 @@ class Pipeline:
             "denoised": self.out / "lighting" / "atlas-denoised.exr",
             "denoised_receipt": self.out / "lighting" / "atlas-denoised.exr.json",
             "ktx2": self.out / "lighting" / "atlas.ktx2",
+            "probe": self.out / "lighting" / "probe",
             "sky_texture": self.out / "sky.png",
             "render_stage": self.out / "lighting" / (self.map + "_render.usda"),
             "collision": self.out / "collision",
@@ -251,7 +254,10 @@ class Pipeline:
                       lambda: self.run("reference-gate", [sys.executable,
                                                           HERE / "reference_compare.py"] +
                                        gate_args))
-        bake_args = ["--scene", scene, "--stage", p["stage"], "--out-stage", p["lighting_stage"],
+        probe = self.manifest.get("reflection_probe")
+        probe_width = probe.get("width", 512) if probe else 0
+        bake_args = ["--reserve-rows", str(probe_width // 2),
+                     "--scene", scene, "--stage", p["stage"], "--out-stage", p["lighting_stage"],
                      "--out-exr", p["atlas"], "--out-coverage-exr", p["coverage"],
                      "--size", str(self.lightmap["size"]),
                      "--samples", str(self.lightmap["samples"]),
@@ -259,30 +265,48 @@ class Pipeline:
         for material in self.lightmap["exclude_materials"]:
             bake_args += ["--exclude-material", material]
         self.step("bake", [p["stage"]] + ([environment] if environment else []),
-                  {k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
-                                                 "device")},
+                  dict({k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
+                                                      "device")},
+                       reserve_rows=probe_width // 2),
                   ["pbrt_scene.py", "pbrt_blender.py", "pbrt_lightmap_bake.py"],
                   [p["lighting_stage"], p["atlas"], p["coverage"], p["atlas_receipt"]],
                   lambda: self.blender("bake", "pbrt_lightmap_bake.py", bake_args))
         atlas, atlas_receipt, scope = p["atlas"], p["atlas_receipt"], BAKE_SCOPE
-        if self.lightmap["denoise"]:
-            self.step("denoise", [p["atlas"], p["coverage"], p["atlas_receipt"]],
-                      {"uv_coverage": True},
-                      ["lightmap_denoise.py"], [p["denoised"], p["denoised_receipt"]],
-                      lambda: self.run("denoise", [sys.executable, HERE / "lightmap_denoise.py",
-                                                   "--exr", p["atlas"], "--bake-evidence",
-                                                   p["atlas_receipt"], "--coverage-exr",
-                                                   p["coverage"], "--out", p["denoised"]]))
-            atlas, atlas_receipt, scope = p["denoised"], p["denoised_receipt"], BAKE_SCOPE + "-denoised"
-        self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"]],
-                  {"preview_gain": self.lightmap["preview_gain"], "scope": scope},
-                  ["lightmap_ktx2.py"], [p["ktx2"]],
+        self.step("denoise", [p["atlas"], p["coverage"], p["atlas_receipt"]],
+                  {"uv_coverage": True, "denoise": self.lightmap["denoise"]},
+                  ["lightmap_denoise.py"], [p["denoised"], p["denoised_receipt"]],
+                  lambda: self.run("denoise", [sys.executable, HERE / "lightmap_denoise.py",
+                                               "--exr", p["atlas"], "--bake-evidence",
+                                               p["atlas_receipt"], "--coverage-exr",
+                                               p["coverage"], "--out", p["denoised"]] +
+                                   ([] if self.lightmap["denoise"] else ["--skip-denoise"])))
+        atlas, atlas_receipt = p["denoised"], p["denoised_receipt"]
+        scope = BAKE_SCOPE + ("-denoised" if self.lightmap["denoise"] else "-gutter-filled")
+        probe_args = []
+        if probe:
+            face_args = ["--scene", scene, "--stage", p["lighting_stage"], "--out-dir", p["probe"],
+                         "--face-size", str(probe.get("face_size", 256)),
+                         "--samples", str(probe.get("samples", 512)),
+                         "--device", self.lightmap["device"]] + env_args
+            if probe.get("position"):
+                face_args += ["--position"] + [str(value) for value in probe["position"]]
+            self.step("probe", [p["lighting_stage"]] + ([environment] if environment else []),
+                      probe, ["pbrt_reflection_probe.py", "reflection_probe.py",
+                              "pbrt_blender.py"], [p["probe"]],
+                      lambda: self.blender("probe", "pbrt_reflection_probe.py", face_args))
+            probe_args = ["--probe-dir", p["probe"], "--probe-width", str(probe_width)]
+        self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"]] +
+                  ([p["probe"] / "probe.json"] if probe else []),
+                  {"preview_gain": self.lightmap["preview_gain"], "scope": scope,
+                   "probe_width": probe_width},
+                  ["lightmap_ktx2.py", "reflection_probe.py"], [p["ktx2"]],
                   lambda: self.run("ktx2", [sys.executable, HERE / "lightmap_ktx2.py",
                                             "--exr", atlas, "--bake-evidence", atlas_receipt,
                                             "--lighting-stage", p["lighting_stage"],
                                             "--ktx-tool", self.tools["ktx"],
                                             "--preview-gain", str(self.lightmap["preview_gain"]),
-                                            "--expected-scope", scope, "--out", p["ktx2"]]))
+                                            "--expected-scope", scope, "--out", p["ktx2"]] +
+                                           probe_args))
         pack_stage = p["lighting_stage"]
         if environment:
             pack_stage = p["render_stage"]

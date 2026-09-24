@@ -1,0 +1,56 @@
+{
+  "schema": "source-host-tool-profile/v1",
+  "id": "protobuf-linux-x86_64-gcc16-abi0-v1",
+  "description": "Pinned protobuf/abseil sources for the engine debug API (source.debug.v1). Built statically with the engine's _GLIBCXX_USE_CXX11_ABI=0 by tools/debugapi/build_deps.py; also provides the host protoc used for C++ and Python code generation. Desktop development only: store/mobile profiles must not enable the debug API.",
+  "target": {"product": "debug-api", "os": "linux", "architecture": "x86_64"},
+  "toolchain": {"cxx": "g++", "family": "gcc", "version": "16.2.1", "cmake": "4.3.0", "build_type": "Release"},
+  "dependencies": {
+    "protobuf": {
+      "url": "https://github.com/protocolbuffers/protobuf/releases/download/v36.2/protobuf-36.2.tar.gz",
+      "sha256": "3d9642a662d10e68ebae5e53f14dcce5105684212d5078f8e0d47d1ab3ae6b64",
+      "archive_bytes": 7339736,
+      "cache_archive": "protobuf-36.2.tar.gz",
+      "extracted_directory": "protobuf-36.2-src",
+      "prefix": "protobuf-36.2",
+      "required_files": ["CMakeLists.txt", "src/google/protobuf/util/json_util.h", "version.json"],
+      "license": "BSD-3-Clause",
+      "python_runtime": "protobuf==7.36.2"
+    },
+    "abseil": {
+      "url": "https://github.com/abseil/abseil-cpp/releases/download/20250512.1/abseil-cpp-20250512.1.tar.gz",
+      "sha256": "9b7a064305e9fd94d124ffa6cc358592eb42b5da588fb4e07d09254aa40086db",
+      "archive_bytes": 2221441,
+      "cache_archive": "abseil-cpp-20250512.1.tar.gz",
+      "extracted_directory": "abseil-cpp-20250512.1-src",
+      "prefix": "abseil-cpp-20250512.1",
+      "required_files": ["CMakeLists.txt", "absl/base/config.h"],
+      "license": "Apache-2.0"
+    }
+  },
+  "build": {
+    "recipe": 1,
+    "generator": "Ninja",
+    "cxx_flags": ["-D_GLIBCXX_USE_CXX11_ABI=0", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-march=core2", "-mfpmath=sse"],
+    "cmake_options": {
+      "CMAKE_BUILD_TYPE": "Release",
+      "CMAKE_CXX_STANDARD": "20",
+      "CMAKE_POSITION_INDEPENDENT_CODE": "ON",
+      "CMAKE_INSTALL_LIBDIR": "lib",
+      "BUILD_SHARED_LIBS": "OFF",
+      "ABSL_PROPAGATE_CXX_STD": "ON",
+      "ABSL_ENABLE_INSTALL": "ON",
+      "ABSL_BUILD_TESTING": "OFF",
+      "protobuf_ABSL_PROVIDER": "module",
+      "protobuf_BUILD_TESTS": "OFF",
+      "protobuf_BUILD_CONFORMANCE": "OFF",
+      "protobuf_BUILD_EXAMPLES": "OFF",
+      "protobuf_BUILD_LIBUPB": "OFF",
+      "protobuf_BUILD_PROTOC_BINARIES": "ON",
+      "protobuf_BUILD_SHARED_LIBS": "OFF",
+      "protobuf_INSTALL": "ON",
+      "protobuf_WITH_ZLIB": "OFF"
+    },
+    "required_outputs": ["bin/protoc", "include/google/protobuf/util/json_util.h", "lib/libprotobuf.a"]
+  },
+  "evidence": {"status": "partial", "required_checks": ["archive sha256 and full-tree verification", "ABI=0 JSON round-trip probe", "no exported google::protobuf/absl symbols from engine modules", "C++/Python golden NDJSON agreement"]}
+}

@@ -140,6 +140,9 @@ public:
 	// Drops the contact between two objects (IPhysicsFrictionSnapshot::
 	// DeleteAllMarkedContacts).
 	void DeleteContactPair( CPhysicsObjectBox3D *pA, CPhysicsObjectBox3D *pB, bool wake );
+	// Re-runs the collision rules on the object's existing and nearby pairs
+	// (IVP's recheck_collision_filter).
+	void RecheckPairs( CPhysicsObjectBox3D *pObject );
 	void RemovePlayerController( CPlayerControllerBox3D *pController );
 	CPlayerControllerBox3D *FindPlayerController( IPhysicsObject *pObject ) const;
 	// Linked providers (restore): fluids, springs and constraints that a
@@ -218,6 +221,8 @@ private:
 		bool fresh;		// deleted since the last step: off for one step
 		bool disabled;
 	};
+	int FindDeletedPair( const CPhysicsObjectBox3D *pA, const CPhysicsObjectBox3D *pB ) const;
+	// Also holds pairs a recheck found the rules now reject (never fresh).
 	CUtlVector<DeletedPair_t> m_deletedPairs;
 	float m_contactRecycleDistance;		// Box3D's, restored when none are pending
 	// Counters since ClearStats (IVP's statistic manager).

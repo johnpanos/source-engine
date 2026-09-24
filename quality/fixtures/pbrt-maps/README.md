@@ -52,7 +52,7 @@ tail.
 | `lightmap.size` / `samples` | atlas edge and Cycles samples (2048 / 64 default; the shipped manifests use 4096 samples) |
 | `lightmap.device` | `auto` (default: GPU when Cycles finds HIP/CUDA/OptiX/oneAPI/Metal), `gpu` (fail without one) or `cpu`; the bake receipt records the device |
 | `lightmap.exclude_materials` | extra materials that get no atlas space (transmissive and fully metallic ones never read the atlas and are always excluded) |
-| `lightmap.denoise` | OpenImageDenoise `RTLightmap` pass on the atlas (default `true`; needs `libOpenImageDenoise.so.2`) |
+| `lightmap.denoise` | OpenImageDenoise `RTLightmap` pass on the atlas (default `true`; needs `libOpenImageDenoise.so.2`); the UV gutter fill still runs when this is `false` |
 | `lightmap.preview_gain` | temporary display gain for the Source preview (default 1) |
 | `world_mesh.weld_materials` / `weld_distance_source_units` | selected imported material names and a bounded Source-unit vertex weld to close measured near-coincident mesh seams (default: disabled); the pack receipt records affected corners and maximum movement |
 | `collision.envelope_meshes` | meshes whose bounds form the sealed shell (default: all meshes) |

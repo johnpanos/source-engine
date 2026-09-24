@@ -80,3 +80,44 @@ class TraversalTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReflectionProbeTest(unittest.TestCase):
+    def faces(self, size=32):
+        """Each face texel stores its own world direction."""
+        import reflection_probe
+        result = {}
+        for name in reflection_probe.FACES:
+            forward, up, right = reflection_probe.face_basis(name)
+            t = (np.arange(size) + 0.5) / size * 2 - 1
+            x, y = np.meshgrid(t, -t)
+            directions = forward + x[..., None] * right + y[..., None] * up
+            result[name] = directions / np.linalg.norm(directions, axis=2, keepdims=True)
+        return result
+
+    def test_cube_faces_resample_to_their_directions(self):
+        import reflection_probe
+        equirect = reflection_probe.cube_to_equirect(self.faces(), 128)
+        expected = reflection_probe.equirect_directions(128)
+        cosine = np.sum(equirect * expected, axis=2) / np.linalg.norm(equirect, axis=2)
+        self.assertGreater(cosine.min(), np.cos(np.radians(4)))
+
+    def test_band_layout_matches_the_shader(self):
+        import reflection_probe
+        mips = reflection_probe.mip_chain(np.ones((64, 128, 3)))
+        atlas = np.zeros((512, 512, 4))
+        layout = reflection_probe.write_band(atlas, mips)
+        self.assertEqual(tuple(atlas[0, 511]), (len(mips), 128, 64, -1.0))
+        # world_pbr.frag: mip `level` starts at x = 2 * W0 * (1 - 2^-level).
+        x = 0
+        for level, mip in enumerate(mips):
+            self.assertEqual(x, 2 * 128 * (1 - 2.0 ** -level))
+            x += mip.shape[1]
+        self.assertEqual(layout["band_rows"], 64)
+        self.assertTrue(np.all(atlas[64:, :, 3] == 0))
+
+    def test_chain_too_wide_for_atlas_fails(self):
+        import reflection_probe
+        with self.assertRaises(ValueError):
+            reflection_probe.write_band(np.zeros((256, 200, 4)),
+                                        reflection_probe.mip_chain(np.ones((64, 128, 3))))

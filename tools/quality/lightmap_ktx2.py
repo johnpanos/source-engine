@@ -36,6 +36,10 @@ def main():
                         help="linear lightmap gain for the Source preview renderer")
     parser.add_argument("--expected-scope", required=True,
                         help="bake receipt scope, e.g. pbrt-shared-lightmap-uv-and-cycles-bake")
+    parser.add_argument("--probe-dir", type=Path,
+                        help="reflection probe faces from pbrt_reflection_probe.py")
+    parser.add_argument("--probe-width", type=int, default=512,
+                        help="equirect width of probe mip 0; the band is half as tall")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     evidence = json.loads(args.bake_evidence.read_text())
@@ -52,6 +56,36 @@ def main():
     rgba = np.empty(pixels.shape, dtype="<f2")
     rgba[:, :, :3] = (pixels[::-1, :, :3] * args.preview_gain).astype("<f2")
     rgba[:, :, 3] = 1.0
+    probe = None
+    band = 0
+    if args.probe_dir:
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import reflection_probe
+        receipt = json.loads((args.probe_dir / "probe.json").read_text())
+        faces = {}
+        for name in reflection_probe.FACES:
+            path = args.probe_dir / (name + ".exr")
+            if receipt.get("status") != "pass" or receipt["faces"].get(name) != sha256(path):
+                raise ValueError("probe face differs from its receipt: " + name)
+            faces[name] = iio.imread(path)[:, :, :3].astype(np.float64)
+        band = args.probe_width // 2
+        if evidence.get("reserved_rows", 0) < band:
+            raise ValueError("bake did not reserve the probe band's atlas rows")
+        # KTX row r holds lightmap v = (r + 0.5) / size; every baked chart
+        # (a mesh with UV area) must start above the band. Alpha is not a
+        # reliable coverage mask, so check the receipt's UV extents.
+        low = band / evidence["size"]
+        charts = {name: extent for name, extent in evidence.get("uv_extents", {}).items()
+                  if extent[2] > extent[0] and extent[3] > extent[1]}
+        if not charts or any(extent[1] < low for extent in charts.values()):
+            raise ValueError("probe band rows overlap baked lightmap charts")
+        mips = reflection_probe.mip_chain(
+            reflection_probe.cube_to_equirect(faces, args.probe_width))
+        staging = np.zeros(rgba.shape, dtype=np.float64)
+        probe = reflection_probe.write_band(staging, [mip * args.preview_gain for mip in mips])
+        rgba[:band] = staging[:band].astype("<f2")
+        probe["receipt_sha256"] = sha256(args.probe_dir / "probe.json")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="lightmap-ktx2-", dir=args.out.parent) as name:
         temporary = Path(name)
@@ -77,9 +111,11 @@ def main():
               "ktx2_sha256": sha256(args.out), "format": "R16G16B16A16_SFLOAT",
               "orientation": "top-left", "width": evidence["size"],
               "height": evidence["size"], "preview_gain": args.preview_gain,
+              # Lightmap rows only; the probe band replaces the reserved rows.
               "max_half_quantization_error": float(np.max(np.abs(
-                  rgba[::-1, :, :3].astype(np.float32) -
-                  pixels[:, :, :3] * args.preview_gain)))}
+                  rgba[::-1][:rgba.shape[0] - band, :, :3].astype(np.float32) -
+                  pixels[:pixels.shape[0] - band, :, :3] * args.preview_gain))),
+              "reflection_probe": probe}
     args.out.with_name(args.out.name + ".json").write_text(
         json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps(result, sort_keys=True))
