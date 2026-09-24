@@ -1,3 +1,4 @@
+#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Copyright � 1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
@@ -459,3 +460,5 @@ void UTIL_ClipPunchAngleOffset( QAngle &in, const QAngle &punch, const QAngle &c
 
 #endif
 
+
+#endif

@@ -1,3 +1,4 @@
+#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Copyright (c) 1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: The Half-Life 2 game rules, such as the relationship tables and ammo
@@ -3063,4 +3064,6 @@ bool ClientIsCrossplayingWithConsole( void )
 
 	return false;
 }
+#endif
+
 #endif

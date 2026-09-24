@@ -1,3 +1,4 @@
+#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Copyright  Valve Corporation, All rights reserved. ============//
 //
 // Utility helper functions for dealing with UGC files
@@ -1093,3 +1094,5 @@ void CUGCFileRequest::GetLocalDirectory( char *pDest, size_t strSize )
 		V_strncpy( pDest, m_szTargetDirectory, strSize );
 	}
 }
+
+#endif

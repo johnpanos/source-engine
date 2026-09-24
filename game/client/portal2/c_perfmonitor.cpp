@@ -1,3 +1,4 @@
+#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Portal 2 reconstruction ============================================//
 //
 // Purpose: Playtest performance monitor: logs low-framerate moments and a
@@ -260,3 +261,5 @@ void cl_perfmon_frames_to_average_changed_f( IConVar *var, const char *pOldValue
 {
 	s_pPerfMonitor->UpdateFramesToAverage();
 }
+
+#endif

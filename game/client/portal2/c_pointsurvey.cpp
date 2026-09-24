@@ -1,3 +1,4 @@
+#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Portal 2 reconstruction ============================================//
 //
 // Purpose: Client side of point_survey: opens the survey panel on request.
@@ -93,3 +94,5 @@ class C_PointSurveyHelper : public CAutoGameSystem
 };
 
 static C_PointSurveyHelper s_PointSurveyHelper;
+
+#endif

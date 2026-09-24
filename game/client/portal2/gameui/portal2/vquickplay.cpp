@@ -1,3 +1,4 @@
+#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Copyright (c) Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
@@ -920,3 +921,5 @@ void CQuickPlay::LaunchQuickPlayMap( PublishedFileId_t unFileID )
 
 	m_eState = IDLE;
 }
+
+#endif

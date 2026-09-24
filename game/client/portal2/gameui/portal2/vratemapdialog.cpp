@@ -1,3 +1,4 @@
+#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Copyright � Valve Corporation, All rights reserved. ============//
 //
 //
@@ -1360,3 +1361,5 @@ public:
 GC_REG_JOB( GCSDK::CGCClient, CGCIsFollowingAuthorResponse, "CGCIsFollowingAuthorResponse", k_EMsgGCCommunityMapIsFollowingAuthorResponse, GCSDK::k_EServerTypeGCClient );
 
 #endif // PORTAL2_PUZZLEMAKER
+
+#endif

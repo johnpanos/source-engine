@@ -1,3 +1,4 @@
+#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //===== Copyright  Valve Corporation, All rights reserved. ======//
 //
 //  Radial, context-sensitive menu for co-op communication
@@ -2854,3 +2855,5 @@ static void __MsgFunc_AddLocator( bf_read &msg )
 }
 
 USER_MESSAGE_REGISTER( AddLocator );
+
+#endif

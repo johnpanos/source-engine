@@ -1,3 +1,4 @@
+#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Copyright © 1996-2008, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
@@ -1940,3 +1941,5 @@ void BaseModUI::CBaseModFrame::SetDialogSubTitle( const char *pMajor, const wcha
 		m_nTitleTilesWide = nTitleTilesWide;
 	}
 }
+
+#endif

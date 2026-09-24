@@ -1,3 +1,4 @@
+#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Copyright © 1996-2008, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
@@ -1562,3 +1563,5 @@ static void ShowGameSettings()
 }
 
 ConCommand showGameSettings( "showGameSettings", ShowGameSettings );
+
+#endif

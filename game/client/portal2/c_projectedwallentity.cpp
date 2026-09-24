@@ -1,3 +1,4 @@
+#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Portal 2 reconstruction ============================================//
 //
 // Purpose: Client side of the projected light bridge (hard light wall): the
@@ -1162,3 +1163,5 @@ BEGIN_RECV_TABLE_NOBASE( C_TEWallPaintedEvent, DT_TEWallPaintedEvent )
 	RecvPropInt( RECVINFO( m_colorIndex ) ),
 	RecvPropInt( RECVINFO( m_nSegment ) ),
 END_RECV_TABLE()
+
+#endif

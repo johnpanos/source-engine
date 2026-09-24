@@ -1,3 +1,4 @@
+#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Portal 2 reconstruction ============================================//
 //
 // Purpose: Client photograph item and its material proxies.
@@ -157,3 +158,5 @@ void CPlacementPhotoMaterialProxy::OnBind( C_BaseEntity *pC_BaseEntity )
 }
 
 EXPOSE_MATERIAL_PROXY( CPlacementPhotoMaterialProxy, PlacementPhoto );
+
+#endif
