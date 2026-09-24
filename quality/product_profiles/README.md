@@ -198,6 +198,34 @@ the profile's device evidence: installed-package smoke tests, rotation and
 fold, and surface recreation stay `unverified` until they run on the declared
 hardware.
 
+## Android Portal 2 profile
+
+`portal2-android-native-vulkan.json` `extends` the Portal profile. It keeps
+the pins, SDK levels, ABIs and manifest, and states only what differs: the
+`portal2` game, the application id `org.sourceengine.portal2`, the packaged
+modules (adding `libvscript.so`), the `build-android-p2/` out directory and
+the content directories. `android_apk.py` owns the merge rule: objects merge
+key by key, and any other value replaces the base's. `android_apk.py resolve`
+prints the result.
+
+`build-android-portal2-apk.sh` runs `build-android-apk.sh --profile` with this
+profile. With `--install`, `--run` or `--content-only`, it first stages the
+retail content from the Steam installation (`--steam-root`, default
+`$P2_STEAM_ROOT` or the Steam library path) with `stage_portal2_runtime.py
+--mount-custom` into `build-android-p2-content/`. That is the same search-path
+order as `./play_p2`, plus `portal2/custom/*` for the app's touch icons. The
+push follows the stage's symlinks and sends only files that are missing on the
+device or whose size or modification time differs. The first sync is about
+11.5 GB; later ones send only what changed.
+
+```sh
+./build-android-portal2-apk.sh --run --serial SERIAL  # build, install, sync, launch
+./build-android-portal2-apk.sh --content-only         # sync content only
+```
+
+The profile's device evidence is `unverified`. The Portal profile's
+observations do not carry over.
+
 ## Gyro aiming
 
 The client aims with the device gyroscope (`touch_gyro`, set on the Touch

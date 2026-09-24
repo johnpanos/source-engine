@@ -288,6 +288,10 @@ def define_platform(conf):
 	if conf.options.TOGLES:
 		conf.env.append_unique('DEFINES', ['TOGLES'])
 
+	# Retail Portal 2 models have up to 248 bones (public/studio.h).
+	if conf.options.GAMES == 'portal2':
+		conf.define('STUDIO_MAX_BONES_256', 1)
+
 	if conf.options.TESTS:
 		conf.define('UNITTESTS', 1)
 

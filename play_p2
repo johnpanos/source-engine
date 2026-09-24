@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Launch the separate Portal 2 target with VPKs from the installed game.
+# Physics runs on Box3D (vphysics_box3d), as in ./play; PHYSICS=vphysics ./play_p2
+# uses IVP, and an explicit -physics argument wins.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -7,6 +9,7 @@ P2_STEAM_ROOT="${P2_STEAM_ROOT:-$HOME/.local/share/Steam/steamapps/common/Portal
 P2_RUNTIME="${P2_RUNTIME:-$ROOT/run/runtime-p2}"
 P2_BUILD_DIR="${P2_BUILD_DIR:-$ROOT/build-p2}"
 P2_WAFLOCK=.lock-waf-p2
+PHYSICS="${PHYSICS:-vphysics_box3d}"
 
 if [[ "${1:-}" == "--retail" ]]; then
     shift
@@ -45,4 +48,10 @@ python3 "$ROOT/tools/quality/stage_portal2_runtime.py" \
 cd "$P2_RUNTIME"
 export SteamAppId=620 SteamGameId=620
 export LD_LIBRARY_PATH="$PWD/bin:${LD_LIBRARY_PATH:-}"
-exec ./hl2_launcher -game portal2 "$@"
+physics_args=(-physics "$PHYSICS")
+for arg in "$@"; do
+    if [[ "$arg" == "-physics" ]]; then
+        physics_args=()
+    fi
+done
+exec ./hl2_launcher -game portal2 "${physics_args[@]}" "$@"

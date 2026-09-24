@@ -129,23 +129,28 @@ public:
 
 	// CPortalSimulator is intentionally non-assignable because it owns a reference.
 	// Preserve embedded network notifications without the macro CopyFrom assignment.
+	// As in CNetworkVarEmbedded, the offset and owner type are bound here: inside the
+	// nested class, ThisClass names CPortalSimulator's own typedef.
+	class NetworkVar_m_PortalSimulator;
+	friend class NetworkVar_m_PortalSimulator;
+	static inline int GetOffset_m_PortalSimulator()
+	{
+		return MyOffsetOf( ThisClass, m_PortalSimulator );
+	}
+	typedef ThisClass ThisClass_m_PortalSimulator;
 	class NetworkVar_m_PortalSimulator : public CPortalSimulator
 	{
-		static inline int GetOffset_m_PortalSimulator()
-		{
-			return 0;
-		}
-
 	public:
-		virtual void NetworkStateChanged()
-		{
-			DispatchNetworkStateChanged(
-			    (ThisClass *)( ( (char *)this ) - GetOffset_m_PortalSimulator() ) );
-		}
+		virtual void NetworkStateChanged() { DispatchNetworkStateChanged( GetOwner() ); }
 		virtual void NetworkStateChanged( void *pProp )
 		{
-			DispatchNetworkStateChanged(
-			    (ThisClass *)( ( (char *)this ) - GetOffset_m_PortalSimulator() ), pProp );
+			DispatchNetworkStateChanged( GetOwner(), pProp );
+		}
+
+	private:
+		ThisClass_m_PortalSimulator *GetOwner()
+		{
+			return (ThisClass_m_PortalSimulator *)( (char *)this - GetOffset_m_PortalSimulator() );
 		}
 	};
 	NetworkVar_m_PortalSimulator m_PortalSimulator;

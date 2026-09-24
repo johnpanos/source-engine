@@ -17,7 +17,6 @@
 #include "baseanimating.h"
 #include "utlvector.h"
 
-class CBeam;
 class CSprite;
 class CSoundPatch;
 class CInfoPlacementHelper;
@@ -74,8 +73,6 @@ private:
 	void StrikeThink();
 	void BeamDamage( trace_t *ptr );
 
-	void HideBeam();
-	void ShowBeam();
 	void UpdateSoundPosition( const Vector &vecStart, const Vector &vecEnd );
 	bool StrikeEntitiesAlongLaser( const Vector &vecStart, const Vector &vecEnd, Vector *pVecOut );
 
@@ -104,16 +101,19 @@ private:
 	int m_iLaserAttachment;
 	string_t m_ModelName;
 	bool m_bStartOff;
-	bool m_bIsLethal;
 	bool m_bFromReflectedCube;
 
-	EHANDLE m_hReflector;
-
-	CNetworkVector( m_vecLaserEndPos );
-	CNetworkVector( m_vecLaserImpactNormal );
+	// The client draws the beam: it traces from m_vStartPoint towards
+	// m_vEndPoint through portals, or from the reflector when there is one.
+	CNetworkHandle( CBaseEntity, m_hReflector );
+	CNetworkVector( m_vStartPoint );
+	CNetworkVector( m_vEndPoint );
+	CNetworkVar( bool, m_bLaserOn );
+	CNetworkVar( bool, m_bIsLethal );
+	CNetworkVar( bool, m_bIsAutoAiming );
 	CNetworkVar( bool, m_bShouldSpark );
-
-	CBeam *m_pBeam;
+	CNetworkVar( bool, m_bUseParentDir );
+	CNetworkQAngle( m_angParentAngles );
 };
 
 #endif // ENV_PORTAL_LASER_H

@@ -3,9 +3,10 @@
 #
 #   ./build-android-apk.sh [options]
 #
-# The product profile (quality/product_profiles/portal-android-native-vulkan.json)
-# owns every pin: NDK, SDL3, SDK platform/build-tools, SDK levels, ABIs and the
-# application id. This script only orchestrates:
+# The product profile (default quality/product_profiles/portal-android-native-vulkan.json;
+# another game's profile "extends" it, e.g. build-android-portal2-apk.sh) owns every
+# pin: NDK, SDL3, SDK platform/build-tools, SDK levels, ABIs, the application id,
+# the game and the out directory. This script only orchestrates:
 #
 #   1. fetch + verify the pinned NDK, SDL3, KTX-Software, SDK platform and
 #      build-tools archives into dependencies/android/
@@ -19,15 +20,16 @@
 #   5. package with the SDK build-tools: aapt2, javac + d8 (SDLActivity),
 #      zipalign -P 16 (16 KB pages), apksigner, then verify the APK against
 #      the profile (tools/quality/android_apk.py)
-#   6. optionally install, push game content and launch over adb
+#   6. optionally install, push game content (only files missing or changed on
+#      the device) and launch over adb
 #
-# Everything is written under build-android/ (gitignored).
+# Everything is written under the profile's build directory (build-android/,
+# gitignored).
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROFILE="$ROOT/quality/product_profiles/portal-android-native-vulkan.json"
-OUT="$ROOT/build-android"
 CACHE="$ROOT/dependencies/android"
 # Bump when a dependency recipe below changes, to force those rebuilds.
 DEPS_RECIPE=3
@@ -39,6 +41,7 @@ CLEAN=0
 RELEASE=0
 NEW_RELEASE_KEY=0
 PACKAGE_ONLY=0
+CONTENT_ONLY=0
 FETCH_ONLY=0
 CONTENT=""
 SERIAL="${ANDROID_SERIAL:-}"
@@ -50,6 +53,7 @@ usage()
 	cat <<EOF
 Usage: $0 [options]
 
+  --profile FILE      product profile (default: the Portal profile)
   --abi ABI           arm64-v8a or x86_64; repeatable (default: arm64-v8a)
   --all-abis          every ABI the profile declares
   --release           build a release APK: not debuggable, signed with the
@@ -57,12 +61,15 @@ Usage: $0 [options]
   --new-release-key   create the release keystore (refuses to replace one),
                       then build as --release
   --install           adb install the APK (see --serial)
-  --content DIR       push game content from DIR (containing hl2/, portal/,
-                      platform/) to the app's external files directory; bin/
-                      directories (desktop modules) are skipped
+  --content DIR       push game content from DIR (the profile's content
+                      directories, e.g. hl2/, portal/, platform/) to the app's
+                      external files directory; symlinks are followed, bin/
+                      directories (desktop modules) are skipped, and only files
+                      whose size or modification time differ are pushed
   --run               launch the app after installing
   --serial SERIAL     adb device (default: \$ANDROID_SERIAL or the only device)
   --package-only      repackage from existing native builds
+  --content-only      only push --content (and --install/--run the last APK)
   --fetch-only        only fetch and verify pinned archives
   --clean             remove build-android/ first
   --ccache            compile the engine through ccache
@@ -87,6 +94,7 @@ EOF
 
 while [ $# -gt 0 ]; do
 	case "$1" in
+	--profile) PROFILE="$(realpath "$2")"; shift ;;
 	--abi) ABIS+=("$2"); shift ;;
 	--all-abis) ABIS=(ALL) ;;
 	--release) RELEASE=1 ;;
@@ -96,6 +104,7 @@ while [ $# -gt 0 ]; do
 	--run) RUN=1; INSTALL=1 ;;
 	--serial) SERIAL="$2"; shift ;;
 	--package-only) PACKAGE_ONLY=1 ;;
+	--content-only) CONTENT_ONLY=1 ;;
 	--fetch-only) FETCH_ONLY=1 ;;
 	--clean) CLEAN=1 ;;
 	--ccache) CCACHE=1 ;;
@@ -115,6 +124,12 @@ for tool in jq curl sha256sum unzip tar cmake ninja python3 javac zip pkg-config
 	need "$tool"
 done
 [ -f "$PROFILE" ] || die "missing profile $PROFILE"
+# The profile with its "extends" chain resolved; android_apk.py owns the rule.
+PROFILE_SOURCE="$PROFILE"
+PROFILE="$(mktemp)"
+trap 'rm -f "$PROFILE"' EXIT
+python3 "$ROOT/tools/quality/android_apk.py" resolve "$PROFILE_SOURCE" > "$PROFILE" ||
+	die "cannot resolve profile $PROFILE_SOURCE"
 p() { jq -er "$1" "$PROFILE"; }
 
 APP_ID="$(p .android.application_id)"
@@ -130,6 +145,9 @@ JAVA_RELEASE="$(p .android.java_release)"
 PAGE_ALIGN="$(p .android.page_size_alignment)"
 MANIFEST_TEMPLATE="$ROOT/$(p .android.manifest_template)"
 GAMES="$(p .configure_options.build_games)"
+BUILD_DIRECTORY="$(p .android.build_directory)"
+OUT="$ROOT/$BUILD_DIRECTORY"
+mapfile -t CONTENT_DIRS < <(p '.content.directories[]')
 
 if [ ${#ABIS[@]} -eq 0 ]; then
 	ABIS=(arm64-v8a)
@@ -360,7 +378,7 @@ build_engine()
 	local prefix="$OUT/$abi/deps/prefix"
 	local out="$OUT/$abi/waf"
 	local install="$OUT/$abi/install"
-	local lock=".lock-waf-android-$abi"
+	local lock=".lock-waf-${BUILD_DIRECTORY#build-}-$abi"
 	local configure=(./waf configure -T release -o "$out" --prefix="$install"
 		--android="$waf_arch,clang,$MIN_SDK"
 		--platform-provider="$(p .configure_options.platform_provider)"
@@ -433,14 +451,14 @@ stage_libraries()
 # ---------------------------------------------------------------------------
 # 5. Package
 # ---------------------------------------------------------------------------
+KIND=debug
+[ "$RELEASE" = 1 ] && KIND=release
+APK="$OUT/$GAMES-$VERSION_NAME-$(IFS=+; echo "${ABIS[*]}")-$KIND.apk"
+
 package_apk()
 {
 	local work="$OUT/apk"
-	local abis_label
-	abis_label="$(IFS=+; echo "${ABIS[*]}")"
-	local kind=debug
-	[ "$RELEASE" = 1 ] && kind=release
-	APK="$OUT/portal-$VERSION_NAME-$abis_label-$kind.apk"
+	local kind="$KIND"
 
 	log "Packaging $APK"
 	rm -rf "$work/classes" "$work/dex" "$work/manifest"
@@ -502,7 +520,8 @@ package_apk()
 	# manifest, assets, zipalign, signature, debug/release variant), checked by
 	# an independent reader.
 	python3 "$ROOT/tools/quality/android_apk.py" check "$APK" --build-tools "$BT" \
-		--variant "$kind" --report "$APK.check.json" "${ABIS[@]/#/--abi=}" ||
+		--profile "$PROFILE_SOURCE" --variant "$kind" --report "$APK.check.json" \
+		"${ABIS[@]/#/--abi=}" ||
 		die "APK verification failed"
 }
 
@@ -519,25 +538,69 @@ push_content()
 	local source="$1"
 	local dest="/sdcard/Android/data/$APP_ID/files"
 	[ -d "$source" ] || die "content directory $source does not exist"
-	log "Pushing content from $source to $dest"
-	local top entry
-	for top in platform "$GAMES" hl2; do
+	log "Syncing content from $source to $dest"
+	local plan="$OUT/content-push"
+	rm -rf "$plan"
+	mkdir -p "$plan"
+
+	# What the device has: "<bytes> <mtime> <path>" relative to $dest.
+	adb_cmd shell mkdir -p "$dest"
+	adb_cmd shell "cd '$dest' && find . -type f -exec stat -c '%s %Y %n' {} +" |
+		tr -d '\r' | sed 's| \./| |' | sort -k3 > "$plan/device.txt" ||
+		die "cannot list $dest on the device"
+
+	local top
+	for top in "${CONTENT_DIRS[@]}"; do
 		[ -d "$source/$top" ] || { echo "  (no $top/ in $source)"; continue; }
-		adb_cmd shell mkdir -p "$dest/$top"
-		for entry in "$source/$top"/*; do
-			# Desktop game modules; the APK carries this device's.
-			[ "$(basename "$entry")" = bin ] && continue
-			adb_cmd push --sync "$entry" "$dest/$top/" >/dev/null
-		done
+		# Symlinks are followed (a staged tree links immutable assets), since
+		# adb would recreate them as links. Desktop game modules (bin/) are
+		# left out; the APK carries this device's.
+		(cd "$source" && find -L "$top" -path "$top/bin" -prune -o -type f \
+			-printf '%s %Ts %p\n') | sed 's|^\([0-9]*\) \([0-9]*\)\.[0-9]* |\1 \2 |'
+	done | sort -k3 > "$plan/host.txt"
+
+	# Files whose size or modification time differ; adb push keeps the host
+	# modification time, so a pushed file matches on the next run.
+	awk 'NR == FNR { have[substr($0, index($0, $3))] = $1 " " $2; next }
+		{ path = substr($0, index($0, $3));
+		  if (have[path] != $1 " " $2) { print path; bytes += $1 } }
+		END { printf "%d\n", bytes > "/dev/stderr" }' \
+		"$plan/device.txt" "$plan/host.txt" > "$plan/needed.txt" 2> "$plan/needed.bytes"
+	local count bytes
+	count="$(wc -l < "$plan/needed.txt")"
+	bytes="$(cat "$plan/needed.bytes")"
+	echo "  $(wc -l < "$plan/host.txt") files, $count to push ($(numfmt --to=iec "$bytes")B)"
+
+	# One adb push per destination directory, with every file for it.
+	local dir file
+	local -a files
+	while IFS= read -r dir; do
+		files=()
+		while IFS= read -r file; do
+			files+=("$source/$file")
+		done < <(awk -v d="$dir" '{ p = $0; sub("/[^/]*$", "", p); if (p == d) print }' \
+			"$plan/needed.txt")
+		adb_cmd shell mkdir -p "'$dest/$dir'"
+		adb_cmd push "${files[@]}" "$dest/$dir/" >/dev/null ||
+			die "adb push to $dest/$dir failed"
+		echo "  $dir/ (${#files[@]})"
+	done < <(sed 's|/[^/]*$||' "$plan/needed.txt" | sort -u)
+
+	for top in "${CONTENT_DIRS[@]}"; do
+		[ -d "$source/$top" ] || continue
 		# adb creates these as shell:ext_data_rw 0770, which the app's own uid
 		# cannot enter; the game also writes configs, saves and stats here.
 		# Android/data/<package> is visible to this app only.
-		adb_cmd shell chmod -R a+rwX "$dest/$top"
-		echo "  $top/ synced"
+		adb_cmd shell chmod -R a+rwX "'$dest/$top'"
 	done
+	echo "  content in sync"
 }
 
 # ---------------------------------------------------------------------------
+if [ "$CONTENT_ONLY" = 1 ]; then
+	[ -n "$CONTENT" ] || [ "$INSTALL" = 1 ] || die "--content-only needs --content or --install"
+	[ "$INSTALL" = 0 ] || [ -f "$APK" ] || die "no APK at $APK to install"
+else
 for abi in "${ABIS[@]}"; do
 	if [ "$PACKAGE_ONLY" = 0 ]; then
 		build_dependencies "$abi"
@@ -550,6 +613,7 @@ for abi in "${ABIS[@]}"; do
 	stage_libraries "$abi"
 done
 package_apk
+fi
 
 if [ "$INSTALL" = 1 ]; then
 	need adb

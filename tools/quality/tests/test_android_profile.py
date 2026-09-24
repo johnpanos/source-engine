@@ -60,6 +60,45 @@ class ProfileTests(unittest.TestCase):
             self.assertIn(name, android_apk.CONFIG_CHANGES)
 
 
+class DerivedProfileTests(unittest.TestCase):
+    """Another game's profile extends the Portal profile instead of copying its pins."""
+
+    PORTAL2 = ROOT / "quality/product_profiles/portal2-android-native-vulkan.json"
+
+    def setUp(self):
+        self.base = android_apk.load_profile(android_apk.DEFAULT_PROFILE)
+        self.derived = android_apk.load_profile(self.PORTAL2)
+
+    def test_pins_come_from_the_base(self):
+        self.assertNotIn("dependencies", json.loads(self.PORTAL2.read_text()))
+        self.assertEqual(self.derived["dependencies"], self.base["dependencies"])
+        self.assertNotIn("extends", self.derived)
+        for key in ("min_sdk", "target_sdk", "compile_platform", "waf_arch", "ndk_triple",
+                    "permissions", "manifest_template"):
+            self.assertEqual(self.derived["android"][key], self.base["android"][key], key)
+
+    def test_products_do_not_collide(self):
+        for key in ("application_id", "build_directory"):
+            self.assertNotEqual(self.derived["android"][key], self.base["android"][key], key)
+        self.assertEqual(self.derived["configure_options"]["build_games"], "portal2")
+        self.assertIn("portal2", self.derived["content"]["directories"])
+        self.assertIn("libvscript.so", self.derived["android"]["packaged_libraries"])
+        self.assertEqual(sorted(set(self.derived["android"]["packaged_libraries"]) -
+                                set(self.base["android"]["packaged_libraries"])),
+                         ["libvscript.so"])
+
+    def test_merge_rules(self):
+        merged = android_apk.merge_profile({"a": {"x": 1, "y": [1]}, "b": 2},
+                                           {"a": {"y": [2]}, "c": 3})
+        self.assertEqual(merged, {"a": {"x": 1, "y": [2]}, "b": 2, "c": 3})
+
+    def test_resolve_command_matches_loader(self):
+        output = subprocess.run([sys.executable, str(ROOT / "tools/quality/android_apk.py"),
+                                 "resolve", str(self.PORTAL2)],
+                                check=True, capture_output=True, text=True).stdout
+        self.assertEqual(json.loads(output), self.derived)
+
+
 class ManifestTemplateTests(unittest.TestCase):
     """The source manifest must satisfy what the verifier requires of the packaged one."""
 
@@ -141,7 +180,13 @@ class TouchIconTests(unittest.TestCase):
 
 class BuildScriptTests(unittest.TestCase):
     def test_script_parses(self):
-        subprocess.run(["bash", "-n", str(ROOT / "build-android-apk.sh")], check=True)
+        for script in ("build-android-apk.sh", "build-android-portal2-apk.sh"):
+            subprocess.run(["bash", "-n", str(ROOT / script)], check=True)
+
+    def test_portal2_script_uses_its_profile(self):
+        script = (ROOT / "build-android-portal2-apk.sh").read_text()
+        self.assertIn("portal2-android-native-vulkan.json", script)
+        self.assertIn("stage_portal2_runtime.py\" --mount-custom", script)
 
     def test_script_verifies_the_package(self):
         script = (ROOT / "build-android-apk.sh").read_text()

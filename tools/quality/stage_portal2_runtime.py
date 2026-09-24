@@ -17,8 +17,12 @@ import portal_boot
 RETAIL_OVERLAY_DIRS = ("update", "portal2_dlc2", "portal2_dlc1")
 
 
-def retail_search_paths(contents):
+def retail_search_paths(contents, mount_custom=False):
     lines = ["\t\tSearchPaths", "\t\t{"]
+    if mount_custom:
+        # Ahead of retail content, as in the Portal gameinfo: the Android app
+        # installs its touch-control icons into <game>/custom/android_touch.
+        lines.append("\t\t\tgame+mod\t\t\t|gameinfo_path|custom/*")
     for name in RETAIL_OVERLAY_DIRS:
         lines.append("\t\t\tgame+mod\t\t\t|gameinfo_path|../%s/pak01_dir.vpk" % name)
         lines.append("\t\t\tgame+mod\t\t\t|gameinfo_path|../%s" % name)
@@ -38,7 +42,7 @@ def retail_search_paths(contents):
     return contents[:start] + "\n".join(lines) + contents[close_brace + 1:]
 
 
-def stage_content(steam_root, runtime):
+def stage_content(steam_root, runtime, mount_custom=False):
     steam_root, runtime = Path(steam_root).resolve(), Path(runtime).resolve()
     source_vpk = steam_root / "portal2/pak01_dir.vpk"
     if not source_vpk.is_file():
@@ -61,7 +65,7 @@ def stage_content(steam_root, runtime):
             raise ValueError("staged %s is not a link to the selected Steam installation" % link.name)
         link.symlink_to(source, target_is_directory=True)
     gameinfo = runtime / "portal2/gameinfo.txt"
-    gameinfo.write_text(retail_search_paths(gameinfo.read_text()))
+    gameinfo.write_text(retail_search_paths(gameinfo.read_text(), mount_custom))
 
     # The old GameUI expects this legacy name, while Portal 2 ships the same
     # menu artwork under portal2_product_1_widescreen.vtf in its VPK.
@@ -97,9 +101,11 @@ def main(argv=None):
     parser.add_argument("--steam-root", type=Path, required=True)
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--build", type=Path)
+    parser.add_argument("--mount-custom", action="store_true",
+                        help="also mount <game>/custom/* (the Android app's touch icons)")
     args = parser.parse_args(argv)
     try:
-        vpk = stage_content(args.steam_root, args.runtime)
+        vpk = stage_content(args.steam_root, args.runtime, args.mount_custom)
         print("Portal 2 content: " + str(vpk.resolve()))
         if args.build:
             launcher = install_source_build(args.build, args.runtime)

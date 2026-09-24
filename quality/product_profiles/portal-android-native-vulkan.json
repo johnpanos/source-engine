@@ -29,6 +29,7 @@
     "java_release": 11,
     "page_size_alignment": 16384,
     "manifest_template": "launcher_main/android/AndroidManifest.xml",
+    "build_directory": "build-android",
     "activity": "org.libsdl.app.SDLActivity",
     "permissions": [
       "android.permission.INTERNET",
@@ -197,6 +198,11 @@
   },
   "content": {
     "location": "/sdcard/Android/data/<application_id>/files (SDL_GetAndroidExternalStoragePath)",
+    "directories": [
+      "platform",
+      "portal",
+      "hl2"
+    ],
     "extra_arguments": "<content>/commandline.txt, whitespace-separated"
   },
   "required_checks": [

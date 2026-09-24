@@ -11,7 +11,6 @@
 
 #include "cbase.h"
 #include "env_portal_laser.h"
-#include "beam_shared.h"
 #include "Sprite.h"
 #include "soundenvelope.h"
 #include "info_placement_helper.h"
@@ -46,11 +45,17 @@ const char *g_pLaserGlowSpriteName = "decals/redglowfade.vmt";
 int g_nTotalLaser = 0;
 
 IMPLEMENT_SERVERCLASS_ST( CPortalLaser, DT_PortalLaser )
-	// Reconstruction note: the binary passes 2 (SPROP_COORD) in the nBits slot and
-	// keeps the default SPROP_NOSCALE flags, so the value is sent as a full float.
-	SendPropVector( SENDINFO( m_vecLaserEndPos ), SPROP_COORD ),
-	SendPropVector( SENDINFO( m_vecLaserImpactNormal ) ),
+	SendPropEHandle( SENDINFO( m_hReflector ) ),
+	// Reconstruction note: retail passes 2 (SPROP_COORD) in the nBits slot and
+	// keeps the default SPROP_NOSCALE flags, so the points are sent as full floats.
+	SendPropVector( SENDINFO( m_vStartPoint ), SPROP_COORD ),
+	SendPropVector( SENDINFO( m_vEndPoint ), SPROP_COORD ),
+	SendPropBool( SENDINFO( m_bLaserOn ) ),
+	SendPropBool( SENDINFO( m_bIsLethal ) ),
+	SendPropBool( SENDINFO( m_bIsAutoAiming ) ),
 	SendPropBool( SENDINFO( m_bShouldSpark ) ),
+	SendPropBool( SENDINFO( m_bUseParentDir ) ),
+	SendPropQAngles( SENDINFO( m_angParentAngles ) ),
 END_SEND_TABLE()
 
 LINK_ENTITY_TO_CLASS( env_portal_laser, CPortalLaser );
@@ -64,7 +69,7 @@ BEGIN_DATADESC( CPortalLaser )
 	DEFINE_FIELD( m_pChildLaser, FIELD_CLASSPTR ),
 	DEFINE_AUTO_ARRAY( m_pSoundProxy, FIELD_CLASSPTR ),
 	DEFINE_FIELD( m_pPlacementHelper, FIELD_CLASSPTR ),
-	DEFINE_FIELD( m_pBeam, FIELD_CLASSPTR ),
+	DEFINE_FIELD( m_bLaserOn, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_iLaserAttachment, FIELD_INTEGER ),
 	DEFINE_FIELD( m_pLaserGlow, FIELD_CLASSPTR ),
 
@@ -94,10 +99,13 @@ CPortalLaser::CPortalLaser()
 	m_pChildLaser = NULL;
 	m_bFromReflectedCube = false;
 	m_hReflector = NULL;
-	m_vecLaserEndPos = vec3_origin;
-	m_vecLaserImpactNormal = vec3_origin;
+	m_vStartPoint = vec3_origin;
+	m_vEndPoint = vec3_origin;
+	m_bLaserOn = false;
+	m_bIsAutoAiming = false;
 	m_bShouldSpark = false;
-	m_pBeam = NULL;
+	m_bUseParentDir = false;
+	m_angParentAngles = vec3_angle;
 
 	++g_nTotalLaser;
 }
@@ -160,33 +168,16 @@ void CPortalLaser::Spawn()
 //-----------------------------------------------------------------------------
 int CPortalLaser::UpdateTransmitState()
 {
-	return SetTransmitState( FL_EDICT_PVSCHECK );
+	// The client draws the whole beam, which can leave the emitter's PVS
+	// through portals
+	return SetTransmitState( FL_EDICT_ALWAYS );
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Create the beam and the portal placement helper at its end
+// Purpose: Create the portal placement helper at the end of the beam
 //-----------------------------------------------------------------------------
 void CPortalLaser::CreateHelperEntities()
 {
-	if ( m_pBeam == NULL )
-	{
-		m_pBeam = CBeam::BeamCreate( m_bIsLethal ? "sprites/laserbeam.vmt" : "sprites/purplelaser1.vmt", 2.0f );
-
-		if ( m_bIsLethal )
-		{
-			m_pBeam->SetColor( 100, 255, 100 );
-			m_pBeam->SetWidth( 2.0f );
-			m_pBeam->SetEndWidth( 2.0f );
-		}
-		else
-		{
-			m_pBeam->SetWidth( 32.0f );
-			m_pBeam->SetEndWidth( 32.0f );
-		}
-
-		DispatchSpawn( m_pBeam );
-	}
-
 	if ( m_pPlacementHelper == NULL )
 	{
 		m_pPlacementHelper = static_cast< CInfoPlacementHelper* >( CreateEntityByName( "info_placement_helper" ) );
@@ -259,9 +250,6 @@ void CPortalLaser::UpdateOnRemove()
 	{
 		UTIL_Remove( m_pPlacementHelper );
 	}
-
-	UTIL_Remove( m_pBeam );
-	m_pBeam = NULL;
 
 	TurnOff();
 
@@ -358,11 +346,10 @@ void CPortalLaser::InputToggle( inputdata_t &inputdata )
 //-----------------------------------------------------------------------------
 void CPortalLaser::TurnOff()
 {
+	m_bLaserOn = false;
 	m_bShouldSpark = false;
 
 	RemoveChildLaser();
-
-	HideBeam();
 
 	TurnOffGlow();
 
@@ -377,6 +364,8 @@ void CPortalLaser::TurnOff()
 //-----------------------------------------------------------------------------
 void CPortalLaser::TurnOn()
 {
+	m_bLaserOn = true;
+
 	if ( IsOn() )
 		return;
 
@@ -499,38 +488,12 @@ void CPortalLaser::FireAtPoint( trace_t &tr, bool bImpact )
 
 	if ( bImpact )
 	{
-		// Sparks at the impact point (client effect)
+		// The client places the sparks at the end of its own trace
 		m_bShouldSpark = true;
-		m_vecLaserEndPos = tr.endpos;
-		m_vecLaserImpactNormal = tr.plane.normal.Normalized();
 	}
 	else
 	{
 		m_bShouldSpark = false;
-	}
-}
-
-//-----------------------------------------------------------------------------
-// Purpose:
-//-----------------------------------------------------------------------------
-void CPortalLaser::HideBeam()
-{
-	// CBeam::TurnOn sets EF_NODRAW
-	if ( m_pBeam )
-	{
-		m_pBeam->TurnOn();
-	}
-}
-
-//-----------------------------------------------------------------------------
-// Purpose:
-//-----------------------------------------------------------------------------
-void CPortalLaser::ShowBeam()
-{
-	// CBeam::TurnOff clears EF_NODRAW
-	if ( m_pBeam )
-	{
-		m_pBeam->TurnOff();
 	}
 }
 
@@ -1244,9 +1207,6 @@ bool CPortalLaser::ReflectLaserFromEntity( CBaseEntity *pEntity )
 //-----------------------------------------------------------------------------
 void CPortalLaser::FireLaser( const Vector &vecStart, const Vector &vecDirection, CBaseEntity *pParent )
 {
-	if ( m_pBeam == NULL )
-		return;
-
 	if ( new_portal_laser.GetBool() )
 	{
 		float flTotalBeamLength;
@@ -1299,18 +1259,10 @@ void CPortalLaser::FireLaser( const Vector &vecStart, const Vector &vecDirection
 			DamageEntitiesAlongLaser( secondInfoList, false );
 		}
 
-		if ( m_bFromReflectedCube && pParent )
-		{
-			m_pBeam->PointEntInit( vecStart + vDir * flTotalBeamLength, pParent );
-			m_pBeam->SetEndAttachment( 1 );
-		}
-		else
-		{
-			m_pBeam->PointsInit( vecStart, vecStart + vDir * flTotalBeamLength );
-			m_pBeam->SetAbsOrigin( vecStart );
-		}
-
-		// The endpoint already reflects auto aim; this SDK has no beam auto-aim flag.
+		// The client re-traces this line through portals to draw it
+		m_vStartPoint = vecStart;
+		m_vEndPoint = vecStart + vDir * flTotalBeamLength;
+		m_bIsAutoAiming = bAutoAimSuccess;
 
 		// Targets stop the beam (retail skips the test when nothing was hit)
 		if ( pHitTarget && FClassnameIs( pHitTarget, "point_laser_target" ) )
@@ -1349,13 +1301,13 @@ void CPortalLaser::FireLaser( const Vector &vecStart, const Vector &vecDirection
 			Vector vecNewTermPoint;
 			if ( StrikeEntitiesAlongLaser( tr.startpos, tr.endpos, &vecNewTermPoint ) )
 			{
-				m_pBeam->PointsInit( vecStart, vecNewTermPoint );
-				m_pBeam->SetAbsOrigin( vecStart );
+				m_vStartPoint = vecStart;
+				m_vEndPoint = vecNewTermPoint;
 			}
 			else
 			{
-				m_pBeam->PointsInit( vecStart, tr.endpos );
-				m_pBeam->SetAbsOrigin( vecStart );
+				m_vStartPoint = vecStart;
+				m_vEndPoint = tr.endpos;
 
 				FireAtPoint( tr, false );
 
@@ -1375,23 +1327,15 @@ void CPortalLaser::FireLaser( const Vector &vecStart, const Vector &vecDirection
 		else
 		{
 			Vector vecNewTermPoint;
+			m_vStartPoint = vecStart;
+
 			if ( StrikeEntitiesAlongLaser( tr.startpos, tr.endpos, &vecNewTermPoint ) )
 			{
-				m_pBeam->PointsInit( vecStart, vecNewTermPoint );
-				m_pBeam->SetAbsOrigin( vecStart );
+				m_vEndPoint = vecNewTermPoint;
 			}
 			else
 			{
-				if ( pParent )
-				{
-					m_pBeam->PointEntInit( tr.endpos, pParent );
-					m_pBeam->SetEndAttachment( 1 );
-				}
-				else
-				{
-					m_pBeam->PointsInit( vecStart, tr.endpos );
-					m_pBeam->SetAbsOrigin( vecStart );
-				}
+				m_vEndPoint = tr.endpos;
 
 				if ( tr.m_pEnt )
 				{
@@ -1425,12 +1369,27 @@ void CPortalLaser::StrikeThink()
 
 	Vector vecDir;
 	Vector vecOrigin;
-	CBaseEntity *pParent = GetParent();
+	CBaseEntity *pParent = m_hReflector.Get();
 	if ( pParent && m_bFromReflectedCube )
 	{
-		// Reflected lasers come out of the center of the cube
-		vecOrigin = pParent->WorldSpaceCenter();
+		// Reflected lasers come out of the front of the cube. The client
+		// computes the same start point (C_PortalLaser::ClientThink).
+		m_bUseParentDir = false;
 		AngleVectors( pParent->GetAbsAngles(), &vecDir );
+		vecOrigin = pParent->WorldSpaceCenter() + vecDir * 22.0f;
+
+		// A cube sticking out of a portal emits from the other side
+		CPortalSimulator *pSimulator = CPortalSimulator::GetSimulatorThatOwnsEntity( pParent );
+		if ( pSimulator && pSimulator->EntityIsInPortalHole( pParent ) )
+		{
+			const VPlane &portalPlane = pSimulator->GetInternalData().Placement.PortalPlane;
+			if ( portalPlane.DistTo( vecOrigin ) < 0.0f && portalPlane.DistTo( pParent->WorldSpaceCenter() ) > 0.0f )
+			{
+				const VMatrix &matThisToLinked = pSimulator->GetInternalData().Placement.matThisToLinked;
+				vecOrigin = matThisToLinked * vecOrigin;
+				vecDir = matThisToLinked.ApplyRotation( vecDir );
+			}
+		}
 
 		SetNextThink( gpGlobals->curtime + portal_laser_high_precision_update.GetFloat() );
 	}
@@ -1455,8 +1414,6 @@ void CPortalLaser::StrikeThink()
 		}
 	}
 
-	ShowBeam();
-
 	if ( sv_debug_laser.GetBool() )
 	{
 		engine->Con_NPrintf( 0, "num lasers = %d", g_nTotalLaser );
@@ -1471,10 +1428,7 @@ Vector CPortalLaser::ClosestPointOnLineSegment( const Vector &vPos )
 	// Reconstruction note: not present in the 2010 binaries. The retail
 	// consumer uses it to measure a cube's distance to the beam, so this
 	// measures against the beam's current start and end points.
-	if ( m_pBeam == NULL )
-		return GetAbsOrigin();
-
 	Vector vClosest;
-	CalcClosestPointOnLineSegment( vPos, m_pBeam->GetAbsStartPos(), m_pBeam->GetAbsEndPos(), vClosest );
+	CalcClosestPointOnLineSegment( vPos, m_vStartPoint, m_vEndPoint, vClosest );
 	return vClosest;
 }

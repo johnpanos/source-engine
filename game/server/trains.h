@@ -199,9 +199,9 @@ private:
 	TrainVelocityType_t m_eVelocityType;
 	bool		m_bSoundPlaying;
 
-	COutputEvent m_OnStart,m_OnNext; 
+	COutputEvent m_OnStart, m_OnNext;
 	COutputEvent m_OnArrivedAtDestinationNode;
-	string_t	m_strPathTarget;			// Destination node of MoveToPathNode/TeleportToPathNode
+	string_t m_strPathTarget; // Destination node of MoveToPathNode/TeleportToPathNode
 
 	bool		m_bManualSpeedChanges;		// set when we want to send entity IO to govern speed and obey our TrainVelocityType_t
 	float		m_flDesiredSpeed;			// target speed, when m_bManualSpeedChanges is set

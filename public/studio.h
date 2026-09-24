@@ -79,14 +79,24 @@ Studio models are position independent, so the cache manager can move them.
 #define	MAXSTUDIOFLEXVERTS	5000
 #endif
 #define MAXSTUDIOSKINS		32		// total textures
+// The Portal 2 product loads models with up to 248 bones and, like the later
+// branches, allows 256. Other products keep the SDK 2013 limit and protocol.
+#ifdef STUDIO_MAX_BONES_256
+#define MAXSTUDIOBONES		256
+#else
 #define MAXSTUDIOBONES		128		// total bones actually used
+#endif
 #define MAXSTUDIOFLEXDESC	1024	// maximum number of low level flexes (actual morph targets)
 #define MAXSTUDIOFLEXCTRL	96		// maximum number of flexcontrollers (input sliders)
 #define MAXSTUDIOPOSEPARAM	24
 #define MAXSTUDIOBONECTRLS	5
 #define MAXSTUDIOANIMBLOCKS 256
 
+#ifdef STUDIO_MAX_BONES_256
+#define MAXSTUDIOBONEBITS	8
+#else
 #define MAXSTUDIOBONEBITS	7		// NOTE: MUST MATCH MAXSTUDIOBONES
+#endif
 
 // NOTE!!! : Changing this number also changes the vtx file format!!!!!
 #define MAX_NUM_BONES_PER_VERT 3

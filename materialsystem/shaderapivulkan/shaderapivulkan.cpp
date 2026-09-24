@@ -4766,6 +4766,8 @@ render_vulkan::CVulkanContext::DynRasterState SnapshotRasterState(
 	return state;
 }
 
+} // namespace
+
 // D3D9 applies the configured slope and normalized constant bias at the draw,
 // not when the shadow snapshot is made. Convert the constant term to Vulkan's
 // depth-buffer units; keep the actual factors on the queued draw so later
@@ -4798,6 +4800,9 @@ void CShaderAPIVulkan::ApplyDepthBiasState( render_vulkan::CVulkanContext::DynRa
 	raster.depthBiasEnable = slope != 0.0f || normalized != 0.0f;
 	g_VulkanContext.SetDynamicDepthBias( normalized * g_VulkanContext.DepthBiasUnitScale(), slope );
 }
+
+namespace
+{
 
 // The textured pipeline variant a snapshot selects, beyond its sRGB flags: the
 // alpha-test comparison, and the D3D9 shaders it reproduces other than the base

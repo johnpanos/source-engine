@@ -44,5 +44,24 @@ The installed Linux `portal2_linux` and game modules are 32-bit, while this
 branch's configured Linux target is 64-bit, so the retail modules cannot fill
 the missing source target.
 
+`./play_p2` runs on Box3D (`vphysics_box3d`), as `./play` does;
+`PHYSICS=vphysics ./play_p2` or an explicit `-physics` argument selects IVP.
+On 2026-09-24, player movement and noclip were compared headless against IVP on
+`sp_a2_triple_laser` and `sp_a1_intro3`. The check covered falling, walking,
+friction, jumping, crouching, pushing a cube, noclip in all directions, and the
+arrival-elevator start. Client-view positions (`getpos`) matched on both
+backends. That needed three base fixes:
+- Single-player local transfer now carries the origin z that Portal 2 sends
+  separately from XY (`engine/dt_localtransfer.cpp`); before, the view froze
+  vertically.
+- `func_tracktrain` gained Portal 2's `MoveToPathNode`, `TeleportToPathNode` and
+  `SetMaxSpeed` inputs and `OnArrivedAtDestinationNode` output.
+- A train stopped at a destination node coasts only the 0.1 s look-ahead
+  (`game/server/trains.cpp`). Otherwise it pushed against the player every tick
+  and held walking near 26 u/s.
+
+Known gap: `sp_a1_intro3` hangs in `LevelShutdown` on quit, in
+`CPSCollisionEntity::UpdateOnRemove`. That map has pre-placed portals.
+
 The repository's provenance and distribution warning in the root README also
 applies to this import.

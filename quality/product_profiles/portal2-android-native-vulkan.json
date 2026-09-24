@@ -1,0 +1,72 @@
+{
+  "schema": "source-android-product-profile/v1",
+  "id": "portal2-android-native-vulkan-v1",
+  "extends": "portal-android-native-vulkan.json",
+  "description": "Android Portal 2 client: the Portal profile's SDL3 app shell, pins and native Vulkan renderer with the portal2 game target, packaged by build-android-portal2-apk.sh.",
+  "target": {
+    "product": "portal2-client"
+  },
+  "intent": {
+    "support_scope": "Android build and packaging slice for the separate Portal 2 target. Not platform acceptance: nothing about the Portal profile's device evidence carries over.",
+    "packaging": "APK from the Portal profile's pinned SDK build-tools; licensed retail Portal 2 content (VPKs, loose maps and materials) is staged from a Steam installation and pushed separately to the app-specific external files directory"
+  },
+  "android": {
+    "application_id": "org.sourceengine.portal2",
+    "application_label": "Portal 2 (Source Engine)",
+    "build_directory": "build-android-p2",
+    "packaged_libraries": [
+      "libc++_shared.so",
+      "libclient.so",
+      "libdatacache.so",
+      "libengine.so",
+      "libfilesystem_stdio.so",
+      "libGameUI.so",
+      "libinputsystem.so",
+      "liblauncher.so",
+      "libmain.so",
+      "libmaterialsystem.so",
+      "libscenefilecache.so",
+      "libSDL3.so",
+      "libserver.so",
+      "libServerBrowser.so",
+      "libshaderapiempty.so",
+      "libshaderapivulkan.so",
+      "libsoundemittersystem.so",
+      "libstdshader_dx9.so",
+      "libsteam_api.so",
+      "libstudiorender.so",
+      "libtier0.so",
+      "libvaudio_minimp3.so",
+      "libvgui2.so",
+      "libvguimatsurface.so",
+      "libvideo_services.so",
+      "libvphysics.so",
+      "libvphysics_box3d.so",
+      "libvscript.so",
+      "libvstdlib.so",
+      "libvtex_dll.so"
+    ]
+  },
+  "configure_options": {
+    "build_games": "portal2"
+  },
+  "content": {
+    "staging": "tools/quality/stage_portal2_runtime.py --mount-custom: the retail search-path order spelled out in portal2/gameinfo.txt, plus <game>/custom/* for the APK's touch icons",
+    "directories": [
+      "platform",
+      "retail_platform",
+      "update",
+      "portal2_dlc2",
+      "portal2_dlc1",
+      "portal2"
+    ]
+  },
+  "evidence": {
+    "status": "unverified",
+    "known_blockers": [
+      "Everything in the Portal profile's known_blockers (BC textures, surface teardown)",
+      "Retail Portal 2 content is about 11.5 GB on the device"
+    ],
+    "observations": []
+  }
+}

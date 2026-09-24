@@ -1662,7 +1662,8 @@ void CFuncTrackTrain::InputTeleportToPathNode( inputdata_t &inputdata )
 {
 	m_strPathTarget = MAKE_STRING( inputdata.value.String() );
 
-	CPathTrack *pTrack = dynamic_cast<CPathTrack *>( gEntList.FindEntityByName( NULL, inputdata.value.StringID() ) );
+	CPathTrack *pTrack =
+	    dynamic_cast<CPathTrack *>( gEntList.FindEntityByName( NULL, inputdata.value.StringID() ) );
 	if ( pTrack )
 	{
 		m_ppath = pTrack;
@@ -2027,7 +2028,6 @@ void CFuncTrackTrain::ArriveAtNode( CPathTrack *pNode )
 			return;
 		}
 	}
-	
 	//
 	// Don't override the train speed if it's under user control.
 	//

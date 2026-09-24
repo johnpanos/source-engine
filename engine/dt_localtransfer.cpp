@@ -365,7 +365,8 @@ inline int MapPropOffsetsToIndices(
 				// the local client keeps a stale z.
 				if ( pPrecalc->m_Props[propIndex]->GetType() == DPT_VectorXY )
 				{
-					index = pPrecalc->m_PropOffsetToIndexMap.Find( pOffsets[i] + 2 * sizeof( float ) );
+					index =
+					    pPrecalc->m_PropOffsetToIndexMap.Find( pOffsets[i] + 2 * sizeof( float ) );
 					if ( index != pPrecalc->m_PropOffsetToIndexMap.InvalidIndex() )
 					{
 						unsigned short zIndex = pPrecalc->m_PropOffsetToIndexMap[index];
