@@ -863,10 +863,9 @@ bool CBugUIPanel::Init()
 
 		int w = GetWide();
 		int h = GetTall();
-	
+
 		int x = ( EngineVGui_ScreenWide() - w ) / 2;
 		int y = ( EngineVGui_ScreenTall() - h ) / 2;
-
 
 		SetPos( x, y );
 	}

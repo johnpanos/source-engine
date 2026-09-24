@@ -276,8 +276,8 @@ class Pipeline:
             atlas, atlas_receipt, scope = p["denoised"], p["denoised_receipt"], BAKE_SCOPE + "-denoised"
         self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"]],
                   {"preview_gain": self.lightmap["preview_gain"], "scope": scope},
-                  ["staircase2_lightmap_ktx2.py"], [p["ktx2"]],
-                  lambda: self.run("ktx2", [sys.executable, HERE / "staircase2_lightmap_ktx2.py",
+                  ["lightmap_ktx2.py"], [p["ktx2"]],
+                  lambda: self.run("ktx2", [sys.executable, HERE / "lightmap_ktx2.py",
                                             "--exr", atlas, "--bake-evidence", atlas_receipt,
                                             "--lighting-stage", p["lighting_stage"],
                                             "--ktx-tool", self.tools["ktx"],

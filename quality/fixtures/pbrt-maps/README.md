@@ -48,7 +48,7 @@ tail.
 | `scene` | PBRT file, repository-relative |
 | `reference.render` | optional Cycles render of the exported stage (`samples`, `scale`, `device`) for visual comparison with the scene's reference image |
 | `reference.gate` | `max_mae`, `min_ssim`, `max_exposure_stops` for that render against the supplied image (scored through the reference's own fitted display curve) |
-| `runtime_gate` | `max_mae`, `min_ssim`, `max_grain_ratio`, `max_mottle_ratio` for the camera-matched game frame against the Cycles render; grain and mottle are measured where the reference is smooth, so lightmap noise is gated |
+| `runtime_gate` | `max_mae`, `min_ssim`, `max_grain_ratio`, `max_mottle_ratio`, optional `min_edge_f1` and `min_fine_edge_precision` for the camera-matched game frame against the Cycles render; the receipt always records orientation-aware structural and fine edge parity |
 | `lightmap.size` / `samples` | atlas edge and Cycles samples (2048 / 64 default; the shipped manifests use 4096 samples) |
 | `lightmap.device` | `auto` (default: GPU when Cycles finds HIP/CUDA/OptiX/oneAPI/Metal), `gpu` (fail without one) or `cpu`; the bake receipt records the device |
 | `lightmap.exclude_materials` | extra materials that get no atlas space (transmissive and fully metallic ones never read the atlas and are always excluded) |

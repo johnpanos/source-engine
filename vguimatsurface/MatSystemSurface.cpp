@@ -1789,8 +1789,8 @@ void CMatSystemSurface::GetGlyphQuad( float flPenX, float flPenY, int nPixelOffs
 {
 	float flLeft = flPenX + nPixelOffsetX / flFontScale;
 	float flTop = flPenY;
-	const bool bOnPixelGrid = !m_bDrawingIn3DWorld && !m_ScreenSizeOverride.m_bActive &&
-	                          flFontScale == m_flUIScale;
+	const bool bOnPixelGrid =
+	    !m_bDrawingIn3DWorld && !m_ScreenSizeOverride.m_bActive && flFontScale == m_flUIScale;
 	if ( bOnPixelGrid )
 	{
 		flLeft = ( floorf( flPenX * flFontScale + 0.5f ) + nPixelOffsetX ) / flFontScale;
@@ -1816,7 +1816,8 @@ bool CMatSystemSurface::SetBitmapFontGlyphSet(HFont font, const char *windowsFon
 //-----------------------------------------------------------------------------
 int CMatSystemSurface::GetFontTall(HFont font)
 {
-	return uiscale::PixelsToUnitsRounded( FontManager().GetFontTall(font), FontRasterScale( font ) );
+	return uiscale::PixelsToUnitsRounded(
+	    FontManager().GetFontTall( font ), FontRasterScale( font ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -1825,7 +1826,7 @@ int CMatSystemSurface::GetFontTall(HFont font)
 int CMatSystemSurface::GetFontTallRequested(HFont font)
 {
 	return uiscale::PixelsToUnitsRounded(
-	    FontManager().GetFontTallRequested(font), FontRasterScale( font ) );
+	    FontManager().GetFontTallRequested( font ), FontRasterScale( font ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -1834,7 +1835,7 @@ int CMatSystemSurface::GetFontTallRequested(HFont font)
 int CMatSystemSurface::GetFontAscent(HFont font, wchar_t wch)
 {
 	return uiscale::PixelsToUnitsRounded(
-	    FontManager().GetFontAscent(font,wch), FontRasterScale( font ) );
+	    FontManager().GetFontAscent( font, wch ), FontRasterScale( font ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -1869,7 +1870,7 @@ void CMatSystemSurface::GetCharABCwide(HFont font, int ch, int &a, int &b, int &
 int CMatSystemSurface::GetCharacterWidth(HFont font, int ch)
 {
 	return uiscale::PixelsToUnitsRounded(
-	    FontManager().GetCharacterWidth(font, ch), FontRasterScale( font ) );
+	    FontManager().GetCharacterWidth( font, ch ), FontRasterScale( font ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -1895,7 +1896,7 @@ void CMatSystemSurface::GetTextSize(HFont font, const wchar_t *text, int &wide, 
 	if ( flScale == 1.0f )
 		return;
 	// The text is some number of lines of the font's height.
-	const int nLineTall = FontManager().GetFontTall(font);
+	const int nLineTall = FontManager().GetFontTall( font );
 	const int nLines = nLineTall > 0 ? tall / nLineTall : 0;
 	wide = uiscale::UnitsCoveringPixels( wide, flScale );
 	tall = nLines * GetFontTall( font );
@@ -2631,8 +2632,8 @@ void CMatSystemSurface::GetScreenPixelSize( int &iWide, int &iTall )
 {
 	if ( m_ScreenSizeOverride.m_bActive )
 	{
-		iWide = m_ScreenSizeOverride.m_nValue[ 0 ];
-		iTall = m_ScreenSizeOverride.m_nValue[ 1 ];
+		iWide = m_ScreenSizeOverride.m_nValue[0];
+		iTall = m_ScreenSizeOverride.m_nValue[1];
 		return;
 	}
 
@@ -2720,15 +2721,15 @@ void CMatSystemSurface::UpdateUIScale()
 
 	// A resize in progress can briefly change the presentation ratio; report
 	// those changes to developers only.
-	const bool bInputsChanged = inputs.displayScale != m_flLoggedDisplayScale ||
-	                            inputs.userScale != m_flLoggedUserScale;
+	const bool bInputsChanged =
+	    inputs.displayScale != m_flLoggedDisplayScale || inputs.userScale != m_flLoggedUserScale;
 	m_flLoggedDisplayScale = inputs.displayScale;
 	m_flLoggedUserScale = inputs.userScale;
 	char szReport[256];
 	V_snprintf( szReport, sizeof( szReport ),
-	    "VGUI UI scale %.2f (display %.2f, ui_scale %.2f, viewport %dx%d, window %dx%d)\n",
-	    flScale, inputs.displayScale, inputs.userScale, inputs.backBufferWide,
-	    inputs.backBufferTall, inputs.drawableWide, inputs.drawableTall );
+	    "VGUI UI scale %.2f (display %.2f, ui_scale %.2f, viewport %dx%d, window %dx%d)\n", flScale,
+	    inputs.displayScale, inputs.userScale, inputs.backBufferWide, inputs.backBufferTall,
+	    inputs.drawableWide, inputs.drawableTall );
 	if ( bInputsChanged )
 		Msg( "%s", szReport );
 	else
@@ -2837,7 +2838,8 @@ void CMatSystemSurface::NotifyScreenSizeChanged( int nOldWidth, int nOldHeight )
 
 	// notify every panel
 	VPANEL panel = GetEmbeddedPanel();
-	ivgui()->PostMessage(panel, new KeyValues("OnScreenSizeChanged", "oldwide", nOldWidth, "oldtall", nOldHeight), NULL);
+	ivgui()->PostMessage( panel,
+	    new KeyValues( "OnScreenSizeChanged", "oldwide", nOldWidth, "oldtall", nOldHeight ), NULL );
 }
 
 // Runs the font reload OnScreenSizeChanged deferred, once the screen size has
@@ -4764,8 +4766,8 @@ void CMatSystemSurface::PushFullscreenViewport()
 	const float flScale = ScreenUIScale();
 	const float flOffsetX = g_flPixelOffsetX / flScale;
 	const float flOffsetY = g_flPixelOffsetY / flScale;
-	pRenderContext->Ortho( flOffsetX, flOffsetY, vw / flScale + flOffsetX,
-	    vh / flScale + flOffsetY, -1.0f, 1.0f );
+	pRenderContext->Ortho(
+	    flOffsetX, flOffsetY, vw / flScale + flOffsetX, vh / flScale + flOffsetY, -1.0f, 1.0f );
 
 	DisableClipping( true );
 }

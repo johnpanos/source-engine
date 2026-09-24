@@ -144,6 +144,9 @@ The verifier reads the finished APK and fails on:
 - Manifest drift (package, version, SDK levels, exact permissions, required
   features, native code, `extractNativeLibs`, required `configChanges`).
 - Failure of `zipalign -c -P 16` or `apksigner verify`.
+- The wrong build variant (`--variant`, default `debug`): a debug package that
+  is not debuggable, or a release package that is debuggable, unsigned, or
+  signed with the Android debug certificate.
 
 When a module is intentionally added or removed, update
 `android.packaged_libraries` in the same change.
@@ -153,6 +156,23 @@ When a module is intentionally added or removed, update
 python3 tools/quality/android_apk.py check build-android/portal-0.1.0-arm64-v8a-debug.apk \
   --abi arm64-v8a --report /tmp/apk-check.json
 python3 -m unittest discover -s tools/quality/tests -p 'test_android_*.py' -v
+```
+
+`--release` builds a release APK. It is not debuggable, and it is signed
+with a key kept outside the repository. The default key is
+`~/.android/source-engine-release.keystore` with the alias `source-engine`.
+`ANDROID_KEYSTORE`, `ANDROID_KEY_ALIAS`, `ANDROID_KEYSTORE_PASS` and
+`ANDROID_KEY_PASS` override these. Without a password variable, apksigner
+prompts for it. The script checks the signing inputs before it builds
+anything. `--new-release-key` creates the keystore once with `keytool`, and it
+refuses to replace an existing one. Back up the key: updates to an installed or
+published app must be signed with the same key. Distribution through a store
+is still unverified. This produces an APK, not an Android App Bundle.
+
+```sh
+./build-android-apk.sh --new-release-key --all-abis   # first release build
+./build-android-apk.sh --release --all-abis           # later release builds
+./build-android-apk.sh --release --package-only       # re-sign existing native builds
 ```
 
 The unit tests need no NDK or SDK. They build synthetic APKs and ELF files

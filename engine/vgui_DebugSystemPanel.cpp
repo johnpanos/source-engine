@@ -294,7 +294,7 @@ public:
 		}
 	
 		GetPropertySheet()->SetTabWidth(72);
-		SetPos( EngineVGui_ScreenWide() - GetWide() - 10 , 10 );
+		SetPos( EngineVGui_ScreenWide() - GetWide() - 10, 10 );
 		SetVisible( true );
 
 		if ( g_pFullFileSystem->FileExists( "resource/DebugOptionsPanel.res" ) )

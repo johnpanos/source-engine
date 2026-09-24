@@ -503,14 +503,14 @@ private:
 	float m_flLoggedDisplayScale = -1.0f;
 	float m_flLoggedUserScale = -1.0f;
 	// The engine's ui_scale setting, looked up once the engine registers it.
-	ConVarRef m_UIScaleSetting = ConVarRef( static_cast< IConVar * >( NULL ) );
+	ConVarRef m_UIScaleSetting = ConVarRef( static_cast<IConVar *>( NULL ) );
 
 	// Fonts rasterize at their size in pixels (their UI size times the UI scale
 	// when they were created) and report metrics in UI units.
 	float FontRasterScale( vgui::HFont font ) const;
 	void GetGlyphQuad( float flPenX, float flPenY, int nPixelOffsetX, int nPixelsWide,
 	    int nPixelsTall, float flFontScale, vgui::Vertex_t &ul, vgui::Vertex_t &lr ) const;
-	CUtlVector< float > m_FontRasterScales;
+	CUtlVector<float> m_FontRasterScales;
 
 	// font drawing batching code
 	enum { MAX_BATCHED_CHAR_VERTS = 4096 };

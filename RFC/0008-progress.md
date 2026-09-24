@@ -2111,37 +2111,45 @@ and luminance SSIM rises from 0.572 to 0.738, recorded in the
 The denoised content root passes the
 [playable native boot](../quality-results/staircase2-camera-grain-denoised-64-v1/evidence.json).
 
-The reusable PBRT map pipeline runs this denoise step by default. For the
-manual staircase2 path, run `lightmap_denoise.py` between the Cycles bake and
-`staircase2_lightmap_ktx2.py`, passing
-`--expected-scope staircase2-shared-lightmap-uv-and-cycles-bake-denoised`
-to the packager. The test fixture commands are:
+The reusable PBRT map pipeline runs denoising and KTX2 packaging by default.
+The older manual staircase2 commands and receipts above record the original
+grain experiment; the current packager is `tools/quality/lightmap_ktx2.py`.
 
-```sh
-python3 tools/quality/lightmap_denoise.py \
-  --exr quality-results/staircase2-lighting-linear-fix.exr \
-  --bake-evidence quality-results/staircase2-lighting-linear-fix.exr.json \
-  --out quality-results/staircase2-grain-64-denoised.exr
-python3 tools/quality/staircase2_lightmap_ktx2.py \
-  --exr quality-results/staircase2-grain-64-denoised.exr \
-  --bake-evidence quality-results/staircase2-grain-64-denoised.exr.json \
-  --lighting-stage quality-results/staircase2-lighting-linear-fix.usdc \
-  --ktx-tool /tmp/rfc0008-ktx-pin/build-rfc0008/Release/ktx \
-  --expected-scope staircase2-shared-lightmap-uv-and-cycles-bake-denoised \
-  --out quality-results/staircase2-grain-64-denoised.ktx2
-build-rfc0008-tools-vbsp/utils/bsp2tool/bsp2tool pack-world-lit \
-  quality-results/staircase2-collision-v2/staircase2_collision.bsp \
-  quality-results/staircase2-canonical-linear.wmsh \
-  quality-results/staircase2-grain-64-denoised.ktx2 \
-  quality-results/staircase2-grain-64-denoised.bsp2
-python3 tools/quality/staircase2_grain_repro.py \
-  --before-bsp2 quality-results/staircase2-canonical-linear.bsp2 \
-  --after-bsp2 quality-results/staircase2-grain-64-denoised.bsp2 \
-  --before-boot quality-results/staircase2-camera-material-parity-v2/evidence.json \
-  --after-boot quality-results/staircase2-camera-grain-denoised-64-v1/evidence.json \
-  --out quality-results/staircase2-grain-repro-v1.json
-```
+### F4 staircase2 dark edge and vertex seam reproduction (2026-09-23)
 
-The remaining thin wall seams and missing reflection/transmission features
-still need separate visual-parity work; the grain gate covers a flat wall
-patch, not the full F4/F5 scene.
+The camera-matched frame had two independently reproduced defects. In the
+Cycles atlas, chart gutter pixels such as `(180, 607)` and `(180, 608)` were
+black despite EXR alpha 1. A separate white-lightmap ablation retained the
+black dots across the ceiling seam, proving that those dots were geometry
+cracks rather than irradiance. The edge gap between two ceiling triangles in
+the wall material reached 0.356 Source units at one endpoint; their other
+endpoint matched exactly. Disabling material culling did not change the white
+frame. The [white before](../quality-results/staircase2-white-probe-crop.png),
+[white after](../quality-results/staircase2-wall-weld-white-full.png), and
+[combined playable frame](../quality-results/staircase2-combined-seam-parity.png)
+retain the visual reproduction.
+
+The PBRT baker now emits a receipt-bound, undilated white-emission UV coverage
+atlas. The denoiser uses that coverage to fill only non-chart texels before
+OIDN; a mismatched coverage atlas fails. This replaces the experimental
+brightness-based dropout repair. The USD WMSH packer now supports a bounded,
+explicit per-material weld. The staircase2 manifest applies a 0.5 Source-unit
+weld to its wall material; its [pack receipt](../quality-results/staircase2-seam-production-probe/world.wmsh.json)
+records 10,119 corners in 180 clusters, 9,963 moved corners, and a maximum
+movement of 0.481 Source units. Other materials and maps retain their authored
+positions. The weld leaves source USD and legacy BSP bytes intact.
+
+A 1-sample production-shaped [bake receipt](../quality-results/staircase2-seam-production-probe/atlas.exr.json)
+records the coverage hash. Its denoise, KTX2 validation, welded WMSH pack and
+independent BSP2 validation passed. The wrong-mask negative run failed before
+writing an output EXR. On the 64-sample playable comparison, fine wall edge
+precision rose from 0.637 to 0.767; ceiling precision rose from 0.637 to
+0.783. The white-map weld changed 320 pixels by more than 20 levels, removing
+the visible dotted crack while preserving the rest of the frame closely
+(mean absolute RGB change 0.032). The unit suites for coverage, weld and edge
+comparators passed 17 tests. The active runtime comparison now records
+structural and fine orientation-aware edge parity with optional thresholds.
+
+This fixes the reproduced black dotted edge failure in the selected playable
+camera. Reflection/transmission parity and other viewpoints still require
+their own F4/F5 acceptance evidence.

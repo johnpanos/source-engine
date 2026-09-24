@@ -108,3 +108,31 @@ glyph uploads each submit and `vkQueueWaitIdle`.
   this scenario).
 - The relative hitch threshold penalises a faster build; per-profile absolute
   budgets (`max_frame_ms`) are the gate to set once device budgets exist.
+
+## WMSH world draw submission (2026-09-23)
+
+User report: the PBRT bedroom map (`quality/fixtures/pbrt-maps/bedroom.json`,
+1.5 M triangles, 71,600 meshlets in 32 material batches) ran at ~15 FPS on
+native Vulkan. Scenario `quality/workloads/bedroom-frame-pacing-v1.json`, run
+with the new `frame_pacing.py --content-root <out>/content`.
+
+Root causes (warm frame, 61 ms, CPU-bound; Radeon 8060S / RADV, 1280x720):
+
+1. Per-meshlet submission: `Shader_DrawWorldMeshBatches` issued one material
+   pass and draw per visible meshlet (71,629 per frame): engine `mesh_draw`
+   38.2 ms, backend `record` 13.5 ms, GPU 18.2 ms of per-draw overhead.
+   Visible meshlets whose index ranges are adjacent now go out as one range in
+   the same primitive order: 32 draws.
+2. Leaf visibility marking (found with `perf`: 72 % of samples after fix 1):
+   every leaf references every meshlet (the packer's all-visible policy), so
+   76 leaves wrote 5.4 M flags per frame, reloading the vector base each
+   store. The loop now stops once every meshlet is marked, through a local
+   pointer.
+
+Interleaved A/B, 3 rounds each (`/tmp/claude-1000/fpr/bed-ab1`, `bed-ab2`):
+HEAD 61-129 ms median -> coalescing 3.7-8.4 ms -> both fixes 2.1-2.4 ms
+(CPU 1.2-1.7 ms; now GPU-bound, GPU median 2.0 ms). Oracle: camera-matched
+1920x1080 frames from HEAD and the fixed engine, overlays off, are
+byte-identical (sha256 `fcdcf2fc...`). Open: the packer still writes a full
+reference list per leaf (~31 MB of the 272 MB bedroom BSP2); identical lists
+should share one range, and real spatial visibility is still absent.

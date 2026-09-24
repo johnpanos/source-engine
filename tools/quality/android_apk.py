@@ -18,9 +18,11 @@ it against those facts without reusing the build script's logic:
     extractNativeLibs and the configuration changes that keep the activity
     alive across rotation and foldable display swaps
   * zipalign -c and apksigner verify
+  * the build variant: a debug package is debuggable; a release package is
+    not debuggable and is not signed with the Android debug certificate
 
     python3 tools/quality/android_apk.py check APK --abi arm64-v8a [--abi x86_64]
-        [--build-tools DIR] [--report FILE]
+        [--variant debug|release] [--build-tools DIR] [--report FILE]
 
 Every failure is reported; the exit status is nonzero when any check fails.
 """
@@ -53,6 +55,11 @@ CONFIG_CHANGES = {
     "colorMode": 0x4000, "grammaticalGender": 0x8000,
     "fontWeightAdjustment": 0x10000000, "fontScale": 0x40000000,
 }
+
+# The subject of the SDK's generated debug keystore (~/.android/debug.keystore).
+DEBUG_CERTIFICATE_DN = "CN=Android Debug, O=Android, C=US"
+
+VARIANTS = ("debug", "release")
 
 # public/vtf/vtf.h: IMAGE_FORMAT_RGBA8888 and its bytes per pixel.
 VTF_RGBA8888 = 0
@@ -267,10 +274,12 @@ def check_contents(apk_path, profile, abis, failures):
 # ---------------------------------------------------------------------------
 
 def parse_badging(text):
-    facts = {"permissions": [], "features": [], "native_code": []}
+    facts = {"permissions": [], "features": [], "native_code": [], "debuggable": False}
     for line in text.splitlines():
         key, _, rest = line.strip().partition(":")
-        if key == "package":
+        if key == "application-debuggable":
+            facts["debuggable"] = True
+        elif key == "package":
             for field in rest.split():
                 name, _, value = field.partition("=")
                 facts[name] = value.strip("'")
@@ -299,6 +308,36 @@ def parse_manifest_tree(text):
             name = attribute.rsplit(":", 1)[-1].split("(", 1)[0]
             facts["%s.%s" % (element, name)] = value.split(" (Raw", 1)[0].strip('"')
     return facts
+
+
+def parse_signer_dns(text):
+    """Signer certificate subjects from `apksigner verify --print-certs`."""
+    return [line.split("certificate DN:", 1)[1].strip()
+            for line in text.splitlines() if "certificate DN:" in line]
+
+
+def dn_components(dn):
+    """A certificate subject's attributes, independent of the tool's RDN order."""
+    return frozenset(part.strip() for part in dn.split(","))
+
+
+def is_debug_certificate(dn):
+    return dn_components(dn) == dn_components(DEBUG_CERTIFICATE_DN)
+
+
+def check_variant(badging, tree, signer_dns, variant, failures):
+    """A debug package allows run-as and native debugging; a release package
+    must allow neither and must carry a real signing key."""
+    debuggable = badging["debuggable"] or tree.get("application.debuggable") == "true"
+    if variant == "release":
+        if debuggable:
+            failures.add("release package is debuggable")
+        if not signer_dns:
+            failures.add("release package reports no signer certificate")
+        if any(is_debug_certificate(dn) for dn in signer_dns):
+            failures.add("release package is signed with the Android debug certificate")
+    elif not debuggable:
+        failures.add("debug package is not debuggable (no run-as or native debugging)")
 
 
 def check_manifest(badging, tree, profile, abis, failures):
@@ -353,7 +392,7 @@ def run_tool(args):
     return result.returncode, result.stdout
 
 
-def check_with_sdk(apk_path, build_tools, profile, abis, failures):
+def check_with_sdk(apk_path, build_tools, profile, abis, failures, variant="debug"):
     for tool in ("aapt2", "zipalign", "apksigner"):
         if not (build_tools / tool).is_file():
             failures.add("missing %s (build-tools %s)" % (
@@ -362,24 +401,30 @@ def check_with_sdk(apk_path, build_tools, profile, abis, failures):
     code, badging = run_tool([str(build_tools / "aapt2"), "dump", "badging", str(apk_path)])
     code_tree, tree = run_tool([str(build_tools / "aapt2"), "dump", "xmltree",
                                 "--file", "AndroidManifest.xml", str(apk_path)])
-    if code or code_tree:
-        failures.add("aapt2 cannot read the manifest:\n%s%s" % (badging, tree))
+    manifest_ok = not (code or code_tree)
+    if manifest_ok:
+        badging, tree = parse_badging(badging), parse_manifest_tree(tree)
+        check_manifest(badging, tree, profile, abis, failures)
     else:
-        check_manifest(parse_badging(badging), parse_manifest_tree(tree), profile, abis, failures)
+        failures.add("aapt2 cannot read the manifest:\n%s%s" % (badging, tree))
 
     page_kb = str(profile["android"]["page_size_alignment"] // 1024)
     code, output = run_tool([str(build_tools / "zipalign"), "-c", "-P", page_kb, "4", str(apk_path)])
     if code:
         failures.add("zipalign -c -P %s failed:\n%s" % (page_kb, output))
-    code, output = run_tool([str(build_tools / "apksigner"), "verify", str(apk_path)])
+    code, output = run_tool([str(build_tools / "apksigner"), "verify", "--print-certs",
+                             str(apk_path)])
     if code:
         failures.add("apksigner verify failed:\n%s" % output)
+    elif manifest_ok:
+        check_variant(badging, tree, parse_signer_dns(output), variant, failures)
 
 
-def check(apk_path, profile, abis, build_tools):
+def check(apk_path, profile, abis, build_tools, variant="debug"):
     failures = Failures()
     facts = check_contents(apk_path, profile, abis, failures)
-    check_with_sdk(apk_path, build_tools, profile, abis, failures)
+    facts["variant"] = variant
+    check_with_sdk(apk_path, build_tools, profile, abis, failures, variant)
     return failures, facts
 
 
@@ -389,6 +434,8 @@ def main(argv=None):
     cmd = sub.add_parser("check", help="verify a built APK against the product profile")
     cmd.add_argument("apk", type=Path)
     cmd.add_argument("--abi", action="append", required=True, help="an ABI the APK must carry")
+    cmd.add_argument("--variant", choices=VARIANTS, default="debug",
+                     help="the build variant the package must be (default: debug)")
     cmd.add_argument("--profile", type=Path, default=DEFAULT_PROFILE)
     cmd.add_argument("--build-tools", type=Path, help="SDK build-tools directory "
                      "(default: the profile's pinned build-tools under dependencies/android)")
@@ -397,7 +444,7 @@ def main(argv=None):
 
     profile = json.loads(args.profile.read_text())
     build_tools = args.build_tools or default_build_tools(profile)
-    failures, facts = check(args.apk, profile, args.abi, build_tools)
+    failures, facts = check(args.apk, profile, args.abi, build_tools, args.variant)
     report = {
         "schema": "android-apk-check/v1",
         "profile": profile["id"],
@@ -412,8 +459,8 @@ def main(argv=None):
     for item in failures.items:
         print("FAIL: %s" % item, file=sys.stderr)
     counts = ", ".join("%s %d libraries" % (abi, f["libraries"]) for abi, f in facts["abis"].items())
-    print("android_apk: %s: %s (%s; %s touch icons)" % (
-        report["result"], args.apk.name, counts, facts.get("touch_icons", 0)))
+    print("android_apk: %s: %s (%s; %s; %s touch icons)" % (
+        report["result"], args.apk.name, args.variant, counts, facts.get("touch_icons", 0)))
     return 1 if failures else 0
 
 

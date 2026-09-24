@@ -300,6 +300,64 @@ class ManifestTests(unittest.TestCase):
         self.assertTrue(any("lacks smallestScreenSize" in item for item in items), items)
 
 
+class VariantTests(unittest.TestCase):
+    RELEASE_DN = "CN=Source Engine Release"
+
+    def setUp(self):
+        self.badging = (FIXTURES / "badging.txt").read_text()
+        self.tree = (FIXTURES / "manifest_tree.txt").read_text()
+        # The recorded package is a debug build; strip its debuggable flags.
+        self.release_badging = self.badging.replace("application-debuggable\n", "")
+        self.release_tree = "\n".join(line for line in self.tree.splitlines()
+                                      if "debuggable" not in line)
+
+    def failures(self, variant, badging, tree, dns):
+        failures = android_apk.Failures()
+        android_apk.check_variant(android_apk.parse_badging(badging),
+                                  android_apk.parse_manifest_tree(tree), dns, variant, failures)
+        return failures.items
+
+    def test_recorded_debug_package_passes_as_debug(self):
+        dns = [android_apk.DEBUG_CERTIFICATE_DN]
+        self.assertEqual(self.failures("debug", self.badging, self.tree, dns), [])
+
+    def test_release_package_passes(self):
+        items = self.failures("release", self.release_badging, self.release_tree, [self.RELEASE_DN])
+        self.assertEqual(items, [])
+
+    def test_debuggable_release_is_reported(self):
+        items = self.failures("release", self.badging, self.tree, [self.RELEASE_DN])
+        self.assertTrue(any("is debuggable" in item for item in items), items)
+        # Either manifest view alone is enough to reject it.
+        items = self.failures("release", self.release_badging, self.tree, [self.RELEASE_DN])
+        self.assertTrue(any("is debuggable" in item for item in items), items)
+
+    def test_debug_signed_release_is_reported(self):
+        items = self.failures("release", self.release_badging, self.release_tree,
+                              [android_apk.DEBUG_CERTIFICATE_DN])
+        self.assertTrue(any("debug certificate" in item for item in items), items)
+
+    def test_debug_certificate_matches_in_either_rdn_order(self):
+        # apksigner prints the subject most-significant attribute first.
+        items = self.failures("release", self.release_badging, self.release_tree,
+                              ["C=US, O=Android, CN=Android Debug"])
+        self.assertTrue(any("debug certificate" in item for item in items), items)
+
+    def test_unsigned_release_is_reported(self):
+        items = self.failures("release", self.release_badging, self.release_tree, [])
+        self.assertTrue(any("no signer" in item for item in items), items)
+
+    def test_non_debuggable_debug_package_is_reported(self):
+        items = self.failures("debug", self.release_badging, self.release_tree,
+                              [android_apk.DEBUG_CERTIFICATE_DN])
+        self.assertTrue(any("not debuggable" in item for item in items), items)
+
+    def test_signer_subjects_are_read_from_apksigner(self):
+        output = ("Signer #1 certificate DN: C=US, O=Android, CN=Android Debug\n"
+                  "Signer #1 certificate SHA-256 digest: 00\n")
+        self.assertEqual(android_apk.parse_signer_dns(output), ["C=US, O=Android, CN=Android Debug"])
+
+
 class SdkToolTests(unittest.TestCase):
     def test_missing_build_tools_fail_rather_than_skip(self):
         profile = json.loads(android_apk.DEFAULT_PROFILE.read_text())

@@ -26,6 +26,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from edge_parity import edge_parity
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pbrt_scene  # noqa: E402
 
@@ -261,6 +263,9 @@ def compare_runtime(args):
         Image.fromarray(candidate.astype(np.uint8)).save(args.matched_frame)
     metrics = score(reference, candidate)
     metrics["grain"] = grain(reference, candidate)
+    structural, _, _ = edge_parity(reference, candidate, sigma=1.5, threshold=10.0)
+    fine, _, _ = edge_parity(reference, candidate, sigma=0.7, threshold=3.0)
+    metrics["edges"] = {"structural": structural, "fine": fine}
     result = {"scope": "pbrt-runtime-camera-comparison", "reference_sha256": sha256(args.reference),
               "boot_evidence_sha256": sha256(args.boot_evidence),
               "capture_sha256": shots[0]["sha256"], "capture_size": list(capture.size),
@@ -272,6 +277,10 @@ def compare_runtime(args):
         passed = passed and metrics["grain"]["ratio"] <= gate["max_grain_ratio"]
     if gate.get("max_mottle_ratio") is not None:
         passed = passed and metrics["grain"]["mottle_ratio"] <= gate["max_mottle_ratio"]
+    if gate.get("min_edge_f1") is not None:
+        passed = passed and structural["whole_frame"]["f1"] >= gate["min_edge_f1"]
+    if gate.get("min_fine_edge_precision") is not None:
+        passed = passed and fine["whole_frame"]["precision"] >= gate["min_fine_edge_precision"]
     return result, passed
 
 

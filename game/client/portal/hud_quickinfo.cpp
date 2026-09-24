@@ -216,8 +216,8 @@ void CHUDQuickInfo::Paint()
 	{
 		// no quickinfo or we can't fire either portal, just draw the small versions of the crosshairs
 		clrNormal[3] = 196;
-		m_icon_lbnone->DrawSelf(xCenter - (m_icon_lbnone->Width() * 2), yCenter, clrNormal);
-		m_icon_rbnone->DrawSelf(xCenter + m_icon_rbnone->Width(), yCenter, clrNormal);
+		m_icon_lbnone->DrawSelf( xCenter - ( m_icon_lbnone->Width() * 2 ), yCenter, clrNormal );
+		m_icon_rbnone->DrawSelf( xCenter + m_icon_rbnone->Width(), yCenter, clrNormal );
 		return;
 	}
 
@@ -320,34 +320,46 @@ void CHUDQuickInfo::Paint()
 	if ( !hud_quickinfo_swap.GetBool() )
 	{
 		if ( bPortalPlacability[0] )
-			m_icon_lb->DrawSelf(xCenter - (m_icon_lb->Width() * 0.64f ), yCenter - ( m_icon_rb->Height() * 0.17f ), portal1Color);
+			m_icon_lb->DrawSelf( xCenter - ( m_icon_lb->Width() * 0.64f ),
+			    yCenter - ( m_icon_rb->Height() * 0.17f ), portal1Color );
 		else
-			m_icon_lbn->DrawSelf(xCenter - (m_icon_lbn->Width() * 0.64f ), yCenter - ( m_icon_rb->Height() * 0.17f ), portal1Color);
+			m_icon_lbn->DrawSelf( xCenter - ( m_icon_lbn->Width() * 0.64f ),
+			    yCenter - ( m_icon_rb->Height() * 0.17f ), portal1Color );
 
 		if ( bPortalPlacability[1] )
-			m_icon_rb->DrawSelf(xCenter + ( m_icon_rb->Width() * -0.35f ), yCenter + ( m_icon_rb->Height() * 0.17f ), portal2Color);
+			m_icon_rb->DrawSelf( xCenter + ( m_icon_rb->Width() * -0.35f ),
+			    yCenter + ( m_icon_rb->Height() * 0.17f ), portal2Color );
 		else
-			m_icon_rbn->DrawSelf(xCenter + ( m_icon_rbn->Width() * -0.35f ), yCenter + ( m_icon_rb->Height() * 0.17f ), portal2Color);
+			m_icon_rbn->DrawSelf( xCenter + ( m_icon_rbn->Width() * -0.35f ),
+			    yCenter + ( m_icon_rb->Height() * 0.17f ), portal2Color );
 
 		//last placed portal indicator
-		m_icon_lbe->DrawSelf( xCenter - (m_icon_lbe->Width() * 1.85f), yCenter, lastPlaced1Color );
-		m_icon_rbe->DrawSelf( xCenter + (m_icon_rbe->Width() * 0.75f), yCenter, lastPlaced2Color );
+		m_icon_lbe->DrawSelf(
+		    xCenter - ( m_icon_lbe->Width() * 1.85f ), yCenter, lastPlaced1Color );
+		m_icon_rbe->DrawSelf(
+		    xCenter + ( m_icon_rbe->Width() * 0.75f ), yCenter, lastPlaced2Color );
 	}
 	else
 	{
 		if ( bPortalPlacability[1] )
-			m_icon_lb->DrawSelf(xCenter - (m_icon_lb->Width() * 0.64f ), yCenter - ( m_icon_rb->Height() * 0.17f ), portal2Color);
+			m_icon_lb->DrawSelf( xCenter - ( m_icon_lb->Width() * 0.64f ),
+			    yCenter - ( m_icon_rb->Height() * 0.17f ), portal2Color );
 		else
-			m_icon_lbn->DrawSelf(xCenter - (m_icon_lbn->Width() * 0.64f ), yCenter - ( m_icon_rb->Height() * 0.17f ), portal2Color);
+			m_icon_lbn->DrawSelf( xCenter - ( m_icon_lbn->Width() * 0.64f ),
+			    yCenter - ( m_icon_rb->Height() * 0.17f ), portal2Color );
 
 		if ( bPortalPlacability[0] )
-			m_icon_rb->DrawSelf(xCenter + ( m_icon_rb->Width() * -0.35f ), yCenter + ( m_icon_rb->Height() * 0.17f ), portal1Color);
+			m_icon_rb->DrawSelf( xCenter + ( m_icon_rb->Width() * -0.35f ),
+			    yCenter + ( m_icon_rb->Height() * 0.17f ), portal1Color );
 		else
-			m_icon_rbn->DrawSelf(xCenter + ( m_icon_rbn->Width() * -0.35f ), yCenter + ( m_icon_rb->Height() * 0.17f ), portal1Color);
+			m_icon_rbn->DrawSelf( xCenter + ( m_icon_rbn->Width() * -0.35f ),
+			    yCenter + ( m_icon_rb->Height() * 0.17f ), portal1Color );
 
 		//last placed portal indicator
-		m_icon_lbe->DrawSelf( xCenter - (m_icon_lbe->Width() * 1.85f), yCenter, lastPlaced2Color );
-		m_icon_rbe->DrawSelf( xCenter + (m_icon_rbe->Width() * 0.75f), yCenter, lastPlaced1Color );
+		m_icon_lbe->DrawSelf(
+		    xCenter - ( m_icon_lbe->Width() * 1.85f ), yCenter, lastPlaced2Color );
+		m_icon_rbe->DrawSelf(
+		    xCenter + ( m_icon_rbe->Width() * 0.75f ), yCenter, lastPlaced1Color );
 	}
 }
 
@@ -370,4 +382,3 @@ bool CHUDQuickInfo::EventTimeElapsed( void )
 
 	return false;
 }
-

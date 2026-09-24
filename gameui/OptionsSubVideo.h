@@ -51,9 +51,9 @@ private:
 	void		PrepareResolutionList();
 
 	// UI scale (ui_scale): 0 follows the display's scale.
-	void		PlaceUIScaleControls();
-	void		SelectUIScaleItem( float flScale );
-	float		GetSelectedUIScale();
+	void PlaceUIScaleControls();
+	void SelectUIScaleItem( float flScale );
+	float GetSelectedUIScale();
 
 	bool		BUseHDContent();
 	void		SetUseHDContent( bool bUse );
@@ -66,8 +66,8 @@ private:
 	vgui::ComboBox		*m_pWindowed;
 	vgui::ComboBox		*m_pAspectRatio;
 	vgui::ComboBox		*m_pVRMode;
-	vgui::ComboBox		*m_pUIScale;
-	vgui::Label			*m_pUIScaleLabel;
+	vgui::ComboBox *m_pUIScale;
+	vgui::Label *m_pUIScaleLabel;
 	vgui::Button		*m_pGammaButton;
 	vgui::Button		*m_pAdvanced;
 	vgui::Button		*m_pBenchmark;

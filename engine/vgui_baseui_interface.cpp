@@ -704,7 +704,7 @@ void CEngineVGui::Init()
 	int nRootWide, nRootTall;
 	GetRootPanelSize( nRootWide, nRootTall );
 
-	staticPanel = new CStaticPanel( NULL, "staticPanel" );	
+	staticPanel = new CStaticPanel( NULL, "staticPanel" );
 	staticPanel->SetBounds( 0, 0, nRootWide, nRootTall );
 	staticPanel->SetPaintBorderEnabled(false);
 	staticPanel->SetPaintBackgroundEnabled(false);
@@ -2129,8 +2129,7 @@ bool CFocusOverlayPanel::DrawFocusPanelList( void )
 
 		int nRootWide, nRootTall;
 		GetRootPanelSize( nRootWide, nRootTall );
-		if ( (x1 - x) == nRootWide && 
-			 (y1 - y) == nRootTall )
+		if ( ( x1 - x ) == nRootWide && ( y1 - y ) == nRootTall )
 		{
 			x += fullscreeninset;
 			y += fullscreeninset;

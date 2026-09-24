@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Package a checked Cycles diffuse lightmap atlas as linear RGBA16F KTX2.
 
-Shared by staircase2 and the PBRT map pipeline; `--expected-scope` names the
-bake receipt producer this package trusts.
+Used by the PBRT map pipeline's ktx2 step; `--expected-scope` names the bake
+receipt producer this package trusts (for example
+`pbrt-shared-lightmap-uv-and-cycles-bake-denoised`).
 """
 
 import argparse
@@ -33,8 +34,7 @@ def main():
     parser.add_argument("--ktx-tool", type=Path, required=True)
     parser.add_argument("--preview-gain", type=float, default=1.0,
                         help="linear lightmap gain for the Source preview renderer")
-    parser.add_argument("--expected-scope",
-                        default="staircase2-shared-lightmap-uv-and-cycles-bake",
+    parser.add_argument("--expected-scope", required=True,
                         help="bake receipt scope, e.g. pbrt-shared-lightmap-uv-and-cycles-bake")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()

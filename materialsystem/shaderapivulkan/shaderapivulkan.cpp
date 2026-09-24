@@ -18,6 +18,7 @@
 #include "materialsystem/imesh.h"
 #include "tier0/dbg.h"
 #include "tier0/icommandline.h"
+#include "tier0/threadtools.h"
 #include "tier1/tier1.h"
 #include "materialsystem/idebugtextureinfo.h"
 #include "materialsystem/deformations.h"
@@ -54,6 +55,13 @@
 // first so it is destroyed after the context, which borrows it until Shutdown.
 static std::unique_ptr<render_vulkan::IVulkanSurfaceHost> g_VulkanSurfaceHost;
 static render_vulkan::CVulkanContext g_VulkanContext;
+
+// A video mode applied by ChangeVideoMode whose mode-change callbacks (the
+// engine's window and UI adjustment) have not run yet. As on D3D9
+// (CShaderDeviceDx8::ResizeWindow), they run at the next Present on the main
+// thread; a resize applied on the render worker commits its UI itself.
+static bool g_bPendingModeChangeCallbacks = false;
+static void InvokePendingModeChangeCallbacks();
 
 // Brings the context up against the engine's window. The window reference is
 // handed to the pair-specific bridge untouched; nothing here interprets it.
@@ -872,6 +880,7 @@ public:
 		// textures and the full shader library remain to be wired (roadmap R32).
 		if ( !g_VulkanContext.IsValid() )
 			return;
+		InvokePendingModeChangeCallbacks();
 		std::string error;
 		bool skip = false;
 		if ( g_VulkanContext.BeginFrame( &skip, &error ) )
@@ -984,10 +993,12 @@ public:
 	virtual void GetCurrentModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter ) const;
 	virtual bool SetAdapter( int nAdapter, int nFlags );
 	virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode );
-	virtual void AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func ) {}
-	virtual void RemoveModeChangeCallback( ShaderModeChangeCallbackFunc_t func ) {}
+	virtual void AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func );
+	virtual void RemoveModeChangeCallback( ShaderModeChangeCallbackFunc_t func );
+	void InvokeModeChangeCallbacks();
 
 private:
+	CUtlVector<ShaderModeChangeCallbackFunc_t> m_ModeChangeCallbacks;
 	// The desktop of the display the launcher selected (sdl_displayindex). The
 	// launcher owns display selection; false when there is none (tools, tests).
 	bool QueryDesktopDisplay( render::DisplayModeFacts *pDesktop ) const;
@@ -1113,6 +1124,8 @@ public:
 		         info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight, &error ) )
 			Warning( "[NativeVulkan] ChangeVideoMode: %s\n", error.c_str() );
 		g_VulkanContext.RequestVSync( info.m_bWaitForVSync );
+		if ( !info.m_bResizing )
+			g_bPendingModeChangeCallbacks = true;
 	}
 
 	// Called when the dx support level has changed
@@ -2173,6 +2186,32 @@ void CShaderDeviceMgrVulkan::GetAdapterInfo( int adapter, MaterialAdapterInfo_t 
 	info.m_nDriverVersionLow = 0;
 }
 
+void CShaderDeviceMgrVulkan::AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func )
+{
+	Assert( func && m_ModeChangeCallbacks.Find( func ) < 0 );
+	m_ModeChangeCallbacks.AddToTail( func );
+}
+
+void CShaderDeviceMgrVulkan::RemoveModeChangeCallback( ShaderModeChangeCallbackFunc_t func )
+{
+	m_ModeChangeCallbacks.FindAndRemove( func );
+}
+
+void CShaderDeviceMgrVulkan::InvokeModeChangeCallbacks()
+{
+	for ( int i = 0; i < m_ModeChangeCallbacks.Count(); ++i )
+		m_ModeChangeCallbacks[i]();
+}
+
+static void InvokePendingModeChangeCallbacks()
+{
+	if ( !g_bPendingModeChangeCallbacks )
+		return;
+	g_bPendingModeChangeCallbacks = false;
+	if ( ThreadInMainThread() )
+		s_ShaderDeviceMgrEmpty.InvokeModeChangeCallbacks();
+}
+
 bool CShaderDeviceMgrVulkan::QueryDesktopDisplay( render::DisplayModeFacts *pDesktop ) const
 {
 	*pDesktop = render::DisplayModeFacts();
@@ -2203,8 +2242,17 @@ bool CShaderDeviceMgrVulkan::QueryDesktopDisplay( render::DisplayModeFacts *pDes
 void CShaderDeviceMgrVulkan::RefreshModeList() const
 {
 	render::DisplayModeFacts desktop;
-	m_Modes = QueryDesktopDisplay( &desktop ) ? render::BuildBackBufferModeList( desktop )
-	                                          : std::vector<render::DisplayModeFacts>();
+	std::vector<render::DisplayModeFacts> modes = QueryDesktopDisplay( &desktop )
+	                                                  ? render::BuildBackBufferModeList( desktop )
+	                                                  : std::vector<render::DisplayModeFacts>();
+	if ( !modes.empty() && ( modes.size() != m_Modes.size() ||
+	                           modes.back().width != m_Modes.back().width ||
+	                           modes.back().height != m_Modes.back().height ) )
+		Msg( "[NativeVulkan] %d video modes for desktop %dx%d@%d (%dx%d .. %dx%d)\n",
+		    static_cast<int>( modes.size() ), desktop.width, desktop.height,
+		    desktop.refreshNumerator, modes.front().width, modes.front().height,
+		    modes.back().width, modes.back().height );
+	m_Modes = std::move( modes );
 }
 
 void CShaderDeviceMgrVulkan::ToShaderDisplayMode(

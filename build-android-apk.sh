@@ -36,6 +36,7 @@ INSTALL=0
 RUN=0
 CLEAN=0
 RELEASE=0
+NEW_RELEASE_KEY=0
 PACKAGE_ONLY=0
 FETCH_ONLY=0
 CONTENT=""
@@ -50,9 +51,10 @@ Usage: $0 [options]
 
   --abi ABI           arm64-v8a or x86_64; repeatable (default: arm64-v8a)
   --all-abis          every ABI the profile declares
-  --release           sign with ANDROID_KEYSTORE / ANDROID_KEYSTORE_PASS /
-                      ANDROID_KEY_ALIAS [/ ANDROID_KEY_PASS] instead of the
-                      debug keystore
+  --release           build a release APK: not debuggable, signed with the
+                      release key instead of the debug keystore (see below)
+  --new-release-key   create the release keystore (refuses to replace one),
+                      then build as --release
   --install           adb install the APK (see --serial)
   --content DIR       push game content from DIR (containing hl2/, portal/,
                       platform/) to the app's external files directory; bin/
@@ -68,6 +70,17 @@ Usage: $0 [options]
 
 Needs a JDK (javac, keytool) and adb for --install/--run; the NDK, SDK
 platform and build-tools come from the profile's pinned archives.
+
+Release signing (the key stays outside the repository; back it up, since
+updates to an installed or published app must be signed with the same key):
+  ANDROID_KEYSTORE       keystore (default: \$HOME/.android/source-engine-release.keystore)
+  ANDROID_KEY_ALIAS      key alias (default: source-engine)
+  ANDROID_KEYSTORE_PASS  keystore password (default: prompt)
+  ANDROID_KEY_PASS       key password (default: the keystore password)
+
+  $0 --new-release-key         # once: create the key, then build
+  $0 --release --all-abis      # later release builds
+  $0 --release --package-only  # re-sign the existing native builds
 EOF
 }
 
@@ -76,6 +89,7 @@ while [ $# -gt 0 ]; do
 	--abi) ABIS+=("$2"); shift ;;
 	--all-abis) ABIS=(ALL) ;;
 	--release) RELEASE=1 ;;
+	--new-release-key) NEW_RELEASE_KEY=1; RELEASE=1 ;;
 	--install) INSTALL=1 ;;
 	--content) CONTENT="$2"; shift ;;
 	--run) RUN=1; INSTALL=1 ;;
@@ -125,6 +139,35 @@ for abi in "${ABIS[@]}"; do
 	jq -e --arg a "$abi" '.target.abis | index($a)' "$PROFILE" >/dev/null ||
 		die "ABI $abi is not declared by the profile"
 done
+
+# ---------------------------------------------------------------------------
+# Release signing inputs, checked before any long build step
+# ---------------------------------------------------------------------------
+RELEASE_KEYSTORE="${ANDROID_KEYSTORE:-$HOME/.android/source-engine-release.keystore}"
+RELEASE_KEY_ALIAS="${ANDROID_KEY_ALIAS:-source-engine}"
+if [ "$NEW_RELEASE_KEY" = 1 ]; then
+	need keytool
+	[ -e "$RELEASE_KEYSTORE" ] && die "$RELEASE_KEYSTORE already exists; not replacing a release key"
+	case "$RELEASE_KEYSTORE" in
+	"$ROOT"/*) die "keep the release keystore outside the repository ($RELEASE_KEYSTORE)" ;;
+	esac
+	log "Creating release keystore $RELEASE_KEYSTORE (alias $RELEASE_KEY_ALIAS)"
+	mkdir -p "$(dirname "$RELEASE_KEYSTORE")"
+	store_pass=()
+	[ -n "${ANDROID_KEYSTORE_PASS:-}" ] && store_pass=(-storepass:env ANDROID_KEYSTORE_PASS)
+	# PKCS12 keeps one password for the store and the key. keytool prompts
+	# for the password and the certificate's name when they are not given.
+	(umask 077 && keytool -genkeypair -keystore "$RELEASE_KEYSTORE" -storetype PKCS12 \
+		-alias "$RELEASE_KEY_ALIAS" -keyalg RSA -keysize 4096 -validity 10000 \
+		"${store_pass[@]}") || { rm -f "$RELEASE_KEYSTORE"; die "keytool failed"; }
+	echo "  created $RELEASE_KEYSTORE; back it up and keep its password"
+fi
+if [ "$RELEASE" = 1 ]; then
+	[ -f "$RELEASE_KEYSTORE" ] ||
+		die "no release keystore at $RELEASE_KEYSTORE (set ANDROID_KEYSTORE or run --new-release-key)"
+	[ -n "${ANDROID_KEYSTORE_PASS:-}" ] || [ -t 0 ] ||
+		die "set ANDROID_KEYSTORE_PASS: apksigner cannot prompt without a terminal"
+fi
 
 if [ "$CLEAN" = 1 ]; then
 	log "Removing $OUT"
@@ -413,11 +456,10 @@ package_apk()
 
 	local sign=()
 	if [ "$RELEASE" = 1 ]; then
-		: "${ANDROID_KEYSTORE:?set ANDROID_KEYSTORE for --release}"
-		: "${ANDROID_KEYSTORE_PASS:?set ANDROID_KEYSTORE_PASS for --release}"
-		: "${ANDROID_KEY_ALIAS:?set ANDROID_KEY_ALIAS for --release}"
-		sign=(--ks "$ANDROID_KEYSTORE" --ks-pass env:ANDROID_KEYSTORE_PASS
-			--ks-key-alias "$ANDROID_KEY_ALIAS")
+		log "Signing with $RELEASE_KEYSTORE (alias $RELEASE_KEY_ALIAS)"
+		sign=(--ks "$RELEASE_KEYSTORE" --ks-key-alias "$RELEASE_KEY_ALIAS")
+		# Without a password variable apksigner prompts on the terminal.
+		[ -n "${ANDROID_KEYSTORE_PASS:-}" ] && sign+=(--ks-pass env:ANDROID_KEYSTORE_PASS)
 		[ -n "${ANDROID_KEY_PASS:-}" ] && sign+=(--key-pass env:ANDROID_KEY_PASS)
 	else
 		local keystore="$HOME/.android/debug.keystore"
@@ -435,9 +477,11 @@ package_apk()
 	echo "  $(du -h "$APK" | cut -f1)  $APK"
 
 	# The profile's package facts (modules, ELF alignment, DT_NEEDED closure,
-	# manifest, assets, zipalign, signature), checked by an independent reader.
+	# manifest, assets, zipalign, signature, debug/release variant), checked by
+	# an independent reader.
 	python3 "$ROOT/tools/quality/android_apk.py" check "$APK" --build-tools "$BT" \
-		--report "$APK.check.json" "${ABIS[@]/#/--abi=}" || die "APK verification failed"
+		--variant "$kind" --report "$APK.check.json" "${ABIS[@]/#/--abi=}" ||
+		die "APK verification failed"
 }
 
 # ---------------------------------------------------------------------------

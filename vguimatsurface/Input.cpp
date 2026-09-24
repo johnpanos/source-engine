@@ -348,6 +348,14 @@ static vgui::MouseCode ButtonCodeToMouseCode( ButtonCode_t buttonCode )
 	return ( vgui::MouseCode )buttonCode;
 }
 
+//-----------------------------------------------------------------------------
+// The input system reports back buffer pixels; the panels use UI units
+//-----------------------------------------------------------------------------
+static bool CursorMovedToPixel( int x, int y )
+{
+	g_MatSystemSurface.PixelToUIUnits( x, y );
+	return g_pIInput->InternalCursorMoved( x, y );
+}
 
 //-----------------------------------------------------------------------------
 // Handles an input event, returns true if the event should be filtered
@@ -355,6 +363,9 @@ static vgui::MouseCode ButtonCodeToMouseCode( ButtonCode_t buttonCode )
 //-----------------------------------------------------------------------------
 bool InputHandleInputEvent( const InputEvent_t &event )
 {
+	if ( event.m_nType == IE_AnalogValueChanged && event.m_nData == MOUSE_XY )
+		return CursorMovedToPixel( event.m_nData2, event.m_nData3 );
+
 	switch( event.m_nType )
 	{
 	case IE_ButtonPressed:
@@ -454,13 +465,6 @@ bool InputHandleInputEvent( const InputEvent_t &event )
 		{
 			if ( event.m_nData == MOUSE_WHEEL )
 				return g_pIInput->InternalMouseWheeled( event.m_nData3 );
-			if ( event.m_nData == MOUSE_XY )
-			{
-				// The input system reports back buffer pixels; panels use UI units.
-				int x = event.m_nData2, y = event.m_nData3;
-				g_MatSystemSurface.PixelToUIUnits( x, y );
-				return g_pIInput->InternalCursorMoved( x, y );
-			}
 		}
 		break;
 
@@ -500,11 +504,7 @@ bool InputHandleInputEvent( const InputEvent_t &event )
 		return true;
 
 	case IE_LocateMouseClick:
-		{
-			int x = event.m_nData, y = event.m_nData2;
-			g_MatSystemSurface.PixelToUIUnits( x, y );
-			g_pIInput->InternalCursorMoved( x, y );
-		}
+		CursorMovedToPixel( event.m_nData, event.m_nData2 );
 		return true;
 
 	case IE_InputLanguageChanged:

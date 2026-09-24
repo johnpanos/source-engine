@@ -145,7 +145,7 @@ static ConCommand vprof_child		("vprof_child",		  IN_VProfChild);
 //-----------------------------------------------------------------------------
 CVProfGraphPanel::CVProfGraphPanel( vgui::VPANEL parent ) : BaseClass( NULL, "CVProfGraphPanel" )
 {
-	SetParent( parent ); 
+	SetParent( parent );
 	SetSize( EngineVGui_ScreenWide(), EngineVGui_ScreenTall() );
 	SetPos( 0, 0 );
 	SetVisible( false );
@@ -235,7 +235,7 @@ void CVProfGraphPanel::Paint()
 	// Get screen rectangle
 	vrect.x		 = 0;
 	vrect.y		 = 0;
-	vrect.width	 = EngineVGui_ScreenWide();
+	vrect.width = EngineVGui_ScreenWide();
 	vrect.height = EngineVGui_ScreenTall();
 
 	// Determine graph width
