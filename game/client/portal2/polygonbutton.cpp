@@ -9,7 +9,7 @@
 //=============================================================================//
 
 #include "cbase.h"
-#include <KeyValues.h>
+#include <keyvalues.h>
 #include "polygonbutton.h"
 
 // memdbgon must be the last include file in a .cpp file!!!

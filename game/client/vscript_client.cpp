@@ -4,7 +4,6 @@
 //
 //=============================================================================
 
-#if 0
 #include "cbase.h"
 #include "vscript_client.h"
 #include "icommandline.h"
@@ -116,10 +115,9 @@ bool VScriptClientInit()
 				ScriptRegisterFunction( g_pScriptVM, DoIncludeScript, "Execute a script (internal)" );
 				ScriptRegisterFunction( g_pScriptVM, GetDeveloperLevel, "Gets the level of 'develoer'" );
 				
-				if ( GameRules() )
-				{
-					GameRules()->RegisterScriptFunctions();
-				}
+				// Portal 2 port: only the server game rules register script functions
+				// (CS:GO's CGameRules::RegisterScriptFunctions() is empty on the client
+				// and this base has no such virtual), so there is nothing to call here.
 
 				//g_pScriptVM->RegisterInstance( &g_ScriptEntityIterator, "Entities" );
 
@@ -208,21 +206,21 @@ void __MsgFunc_SetMixLayerTriggerFactor( bf_read &msg )
 	char buf[MAX_PATH];
 
 	msg.ReadString( buf, ARRAYSIZE( buf ), false );
-	int iLayerID = engine->GetMixLayerIndex( buf );
+	int iLayerID = Portal2Engine::GetMixLayerIndex( buf );
 	if ( iLayerID < 0 )
 	{
 		Warning( "Invalid mix layer passed to SetMixLayerTriggerFactor: '%s'\n", buf ); 
 		return;
 	}
 	msg.ReadString( buf, ARRAYSIZE( buf ), false );
-	int iGroupID = engine->GetMixGroupIndex( buf );
+	int iGroupID = Portal2Engine::GetMixGroupIndex( buf );
 	if ( iGroupID < 0 )
 	{
 		Warning( "Invalid mix group passed to SetMixLayerTriggerFactor: '%s'\n", buf ); 
 		return;
 	}
 
-	engine->SetMixLayerTriggerFactor( iLayerID, iGroupID, msg.ReadFloat() );
+	Portal2Engine::SetMixLayerTriggerFactor( iLayerID, iGroupID, msg.ReadFloat() );
 }
 
 class CSetMixLayerTriggerHelper : public CAutoGameSystem 
@@ -239,5 +237,4 @@ class CSetMixLayerTriggerHelper : public CAutoGameSystem
 };
 
 static CSetMixLayerTriggerHelper g_SetMixLayerTriggerHelper;
-#endif
 #endif

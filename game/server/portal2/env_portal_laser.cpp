@@ -998,7 +998,9 @@ CBaseEntity *CPortalLaser::GetEntitiesAlongLaser( const Vector &vecStart, const 
 //-----------------------------------------------------------------------------
 bool CPortalLaser::ShouldAutoAim( CBaseEntity *pEntity )
 {
-	if ( !FClassnameIs( pEntity, "point_laser_target" ) )
+	// Retail (852 decompile) answers false for no entity; TraceLaser passes
+	// NULL when the beam hit nothing it should aim at.
+	if ( !pEntity || !FClassnameIs( pEntity, "point_laser_target" ) )
 		return false;
 
 	CPortalLaserTarget *pLaserTarget = dynamic_cast< CPortalLaserTarget* >( pEntity );
@@ -1308,10 +1310,10 @@ void CPortalLaser::FireLaser( const Vector &vecStart, const Vector &vecDirection
 			m_pBeam->SetAbsOrigin( vecStart );
 		}
 
-		m_pBeam->SetAutoAim( bAutoAimSuccess );
+		// The endpoint already reflects auto aim; this SDK has no beam auto-aim flag.
 
-		// Targets stop the beam
-		if ( FClassnameIs( pHitTarget, "point_laser_target" ) )
+		// Targets stop the beam (retail skips the test when nothing was hit)
+		if ( pHitTarget && FClassnameIs( pHitTarget, "point_laser_target" ) )
 			return;
 
 		if ( tr.m_pEnt )

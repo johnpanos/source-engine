@@ -40,11 +40,14 @@ public:
 	virtual void	LevelShutdown( void );
 	virtual void	SetBlurFade( float scale );
 	virtual float	GetBlurFade( void ) { return m_BlurFadeScale; }
-	virtual void	OnColorCorrectionWeightsReset( void );
+	// Portal 2 port: CS:GO's OnColorCorrectionWeightsReset() selected the local
+	// player's active color_correction entity. This SDK's client has no such
+	// hook or per-player selection: C_ColorCorrection entities weight themselves
+	// by distance (c_colorcorrection.cpp).
 	virtual float	GetColorCorrectionScale( void ) const { return 1.0f; }
 	virtual void	InitWeaponSelectionHudElement( void ) { return; } // don't init this hud
 	virtual bool	ShouldDrawCrosshair( void );
-	virtual void	DoPostScreenSpaceEffects( const CViewSetup *pSetup );
+	virtual bool	DoPostScreenSpaceEffects( const CViewSetup *pSetup );
 
 	virtual int		HudElementKeyInput( int down, ButtonCode_t keynum, const char *pszCurrentBinding );
 	void InitRadialMenuHudElement( void );
@@ -57,8 +60,6 @@ private:
 	//	void	UpdateSpectatorMode( void );
 	// ClientCCHandle_t	m_CCDeathHandle;	// handle to death cc effect
 	// float				m_flDeathCCWeight;	// for fading in cc effect
-
-	CHandle<C_ColorCorrection>	m_hCurrentColorCorrection;
 
 	float m_BlurFadeScale;
 

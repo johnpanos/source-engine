@@ -28,7 +28,9 @@
 #include "IEffects.h"
 #include "ai_basenpc.h"
 #include "ai_behavior_functank.h"
+#ifndef PORTAL2
 #include "weapon_rpg.h"
+#endif
 #include "effects.h"
 #include "iservervehicle.h"
 #include "soundenvelope.h"
@@ -2742,6 +2744,7 @@ void CFuncTankLaser::Fire( int bulletCount, const Vector &barrelEnd, const Vecto
 	}
 }
 
+#ifndef PORTAL2 // Portal 2 has no rocket, airboat or APC rocket tanks (they need HL2 weapons).
 class CFuncTankRocket : public CFuncTank
 {
 public:
@@ -3254,6 +3257,8 @@ void CFuncTankAPCRocket::InputDeathVolley( inputdata_t &inputdata )
 	}
 }
 
+
+#endif // !PORTAL2
 
 //-----------------------------------------------------------------------------
 // Mortar shell

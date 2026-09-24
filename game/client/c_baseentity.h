@@ -237,6 +237,18 @@ public:
 
 	// Called by the CLIENTCLASS macros.
 	virtual bool					Init( int entnum, int iSerialNum );
+#ifdef PORTAL2
+	// Shared variables (sharedvar.h) attach to their engine shared memory here.
+	virtual void					InitSharedVars( void ) {}
+
+	// Spawn flags, received by networked classes that need them (C_BaseTrigger).
+	bool							HasSpawnFlags( int nFlags ) const { return ( m_spawnflags & nFlags ) != 0; }
+	int								m_spawnflags;
+
+	// The +use bits of the server entity's ObjectCaps() (DT_BaseEntity).
+	int								GetServerObjectCaps() const { return m_iObjectCapsCache; }
+	int								m_iObjectCapsCache;
+#endif
 
 	// Called in the destructor to shutdown everything.
 	void							Term();
@@ -458,6 +470,12 @@ public:
 
 	virtual const Vector&			GetAbsOrigin( void ) const;
 	virtual const QAngle&			GetAbsAngles( void ) const;
+#ifdef PORTAL2
+	// Axes of EntityToWorldTransform() (later base game).
+	inline Vector			Forward() const;	///< get my forward (+x) vector
+	inline Vector			Left() const;		///< get my left    (+y) vector
+	inline Vector			Up() const;			///< get my up      (+z) vector
+#endif
 
 	const Vector&					GetNetworkOrigin() const;
 	const QAngle&					GetNetworkAngles() const;
@@ -812,6 +830,11 @@ public:
 	void							PreEntityPacketReceived( int commands_acknowledged );
 	void							PostEntityPacketReceived( void );
 	bool							PostNetworkDataReceived( int commands_acknowledged );
+#ifdef PORTAL2
+	// Called on every predicted entity after an acknowledgement with prediction
+	// errors; bErrorInThisEntity is false when only other entities had errors.
+	virtual void					HandlePredictionError( bool bErrorInThisEntity ) {}
+#endif
 	bool							GetPredictionEligible( void ) const;
 	void							SetPredictionEligible( bool canpredict );
 
@@ -1368,8 +1391,22 @@ public:
 	virtual C_BaseEntity 			*GetShadowUseOtherEntity( void ) const;
 	virtual void					SetShadowUseOtherEntity( C_BaseEntity *pEntity );
 
+#ifdef PORTAL2
+	// Portal teleports insert discontinuities into these (later base game).
+	CDiscontinuousInterpolatedVar< QAngle >& GetRotationInterpolator();
+	CDiscontinuousInterpolatedVar< Vector >& GetOriginInterpolator();
+
+	// Later (CS:GO-era) base-entity API used by the Portal 2 client.
+	// The time the interpolators sample at for currentTime (predicted and
+	// client-created entities interpolate on the predicted clock).
+	float							GetEffectiveInterpolationCurTime( float currentTime );
+	// Draw with the view models (RENDER_GROUP_VIEW_MODEL_*) instead of the world.
+	void							RenderWithViewModels( bool bEnable );
+	bool							IsRenderingWithViewModels() const { return m_bRenderWithViewModels; }
+#else
 	CInterpolatedVar< QAngle >& GetRotationInterpolator();
 	CInterpolatedVar< Vector >& GetOriginInterpolator();
+#endif
 	virtual bool					AddRagdollToFadeQueue( void ) { return true; }
 
 	// Dirty bits
@@ -1591,9 +1628,15 @@ private:
 	QAngle							m_vecOldAngRotation;
 
 	Vector							m_vecOrigin;
-	CInterpolatedVar< Vector >		m_iv_vecOrigin;
 	QAngle							m_angRotation;
+#ifdef PORTAL2
+	CDiscontinuousInterpolatedVar< Vector >	m_iv_vecOrigin;
+	CDiscontinuousInterpolatedVar< QAngle >	m_iv_angRotation;
+	bool							m_bRenderWithViewModels;
+#else
+	CInterpolatedVar< Vector >		m_iv_vecOrigin;
 	CInterpolatedVar< QAngle >		m_iv_angRotation;
+#endif
 
 	// Specifies the entity-to-world transform
 	matrix3x4_t						m_rgflCoordinateFrame;

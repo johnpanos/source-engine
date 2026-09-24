@@ -41,6 +41,9 @@ void CollisionBSPData_LoadLeafs( CCollisionBSPData *pBSPData );
 void CollisionBSPData_LoadLeafBrushes( CCollisionBSPData *pBSPData );
 void CollisionBSPData_LoadPlanes( CCollisionBSPData *pBSPData );
 void CollisionBSPData_LoadBrushes( CCollisionBSPData *pBSPData );
+// Legacy BSP version of the map being loaded (modelloader.cpp).
+extern int s_MapVersion;
+
 void CollisionBSPData_LoadBrushSides( CCollisionBSPData *pBSPData, CUtlVector<unsigned short> &map_texinfo );
 void CollisionBSPData_LoadSubmodels( CCollisionBSPData *pBSPData );
 void CollisionBSPData_LoadNodes( CCollisionBSPData *pBSPData );
@@ -812,7 +815,16 @@ void CollisionBSPData_LoadBrushSides( CCollisionBSPData *pBSPData, CUtlVector<un
 
 				// BUGBUG: Why is vbsp writing out -1 as the texinfo id?  (TEXINFO_NODE ?)
 				pSide->surfaceIndex = (t < 0) ? SURFACE_INDEX_INVALID : map_texinfo[t];
-				pSide->bBevel = pInputSide->bevel ? true : false;
+				// BSP 21 (Portal 2 and later) splits the old 16-bit bevel field into
+				// a bevel byte and a "thin side" byte. Only the low byte means bevel;
+				// counting thin sides as bevels drops those planes from ray traces,
+				// so their brushes swallow nearby traces.
+				int nBevel = pInputSide->bevel;
+				if ( s_MapVersion >= 21 )
+				{
+					nBevel &= 0xff;
+				}
+				pSide->bBevel = nBevel ? true : false;
 				outBrushSide++;
 			}
 		}

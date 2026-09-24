@@ -42,6 +42,10 @@ enum
 class CBaseTrigger : public CBaseToggle
 {
 	DECLARE_CLASS( CBaseTrigger, CBaseToggle );
+#ifdef PORTAL2
+	// The Portal 2 client predicts some triggers (c_triggers.cpp).
+	DECLARE_SERVERCLASS();
+#endif
 public:
 	CBaseTrigger();
 	
@@ -79,7 +83,15 @@ public:
 
 	bool PointIsWithin( const Vector &vecPoint );
 
+#ifdef PORTAL2
+	// Networked for the Portal 2 client's trigger prediction (CS:GO base).
+	CNetworkVarForDerived( bool, m_bDisabled );
+#else
 	bool		m_bDisabled;
+#endif
+#ifdef PORTAL2
+	CNetworkVar( bool, m_bClientSidePredicted );	// the client runs this trigger's touch logic too
+#endif
 	string_t	m_iFilterName;
 	CHandle<class CBaseFilter>	m_hFilter;
 
@@ -133,6 +145,9 @@ extern CUtlVector< CHandle<CTriggerMultiple> >	g_hWeaponFireTriggers;
 class CBaseVPhysicsTrigger : public CBaseEntity
 {
 	DECLARE_CLASS( CBaseVPhysicsTrigger , CBaseEntity );
+#ifdef PORTAL2
+	DECLARE_SERVERCLASS();
+#endif
 
 public:
 	DECLARE_DATADESC();
@@ -155,7 +170,11 @@ public:
 	
 
 protected:
+#ifdef PORTAL2
+	CNetworkVarForDerived( bool, m_bDisabled );
+#else
 	bool						m_bDisabled;
+#endif
 	string_t					m_iFilterName;
 	CHandle<class CBaseFilter>	m_hFilter;
 };

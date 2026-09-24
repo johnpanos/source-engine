@@ -15,7 +15,12 @@
 #include "vgui_controls/Panel.h"
 #include "vgui/ISurface.h"
 #include "c_portal_player.h"
+#ifdef PORTAL2
+// The Portal 2 gun; a same-directory lookup would find the Portal 1 header.
+#include "portal2/portal/c_weapon_portalgun.h"
+#else
 #include "c_weapon_portalgun.h"
+#endif
 #include "IGameUIFuncs.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -208,8 +213,15 @@ void CHUDQuickInfo::Paint()
 
 	if ( pPortalgun )
 	{
+#ifdef PORTAL2
+		// The Portal 2 gun does not test surfaces ahead of time; its crosshair
+		// shows which portals the gun can fire.
+		bPortalPlacability[0] = pPortalgun->CanFirePortal1();
+		bPortalPlacability[1] = pPortalgun->CanFirePortal2();
+#else
 		bPortalPlacability[0] = pPortalgun->GetPortal1Placablity() > 0.5f;
 		bPortalPlacability[1] = pPortalgun->GetPortal2Placablity() > 0.5f;
+#endif
 	}
 
 	if ( !hud_quickinfo.GetInt() || !pPortalgun || ( !pPortalgun->CanFirePortal1() && !pPortalgun->CanFirePortal2() ) )

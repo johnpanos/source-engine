@@ -10,7 +10,7 @@
 #include "materialsystem/imaterial.h"
 #include "portalrenderable_flatbasic.h"
 #include "c_prop_portal.h"
-#include <KeyValues.h>
+#include <keyvalues.h>
 
 #include "imaterialproxydict.h"
 // memdbgon must be the last include file in a .cpp file!!!

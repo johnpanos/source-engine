@@ -5,7 +5,6 @@
 // $NoKeywords: $
 //===========================================================================//
 
-#if 0
 #include "cbase.h"
 #include "portalrenderable_flatbasic.h"
 #include "precache_register.h"
@@ -22,6 +21,8 @@
 #include "view_scene.h"
 #include "tier0/vprof.h"
 #include "materialsystem/imaterialvar.h"
+#include "engine/ivdebugoverlay.h"
+#include "portal2_frustum_util.h"
 
 
 extern ConVar r_portal_fastpath;
@@ -306,7 +307,9 @@ bool CPortalRenderable_FlatBasic::CalcFrustumThroughPolygon( const Vector *pPoly
 	return true;
 }
 
-static void DrawFrustum( Frustum_t &frustum )
+// Portal 2 port: this mathlib's Frustum_t stores cplane_t planes without a
+// (normal, dist) getter, so the debug drawing reads the VPlane frustum directly.
+static void DrawFrustum( const VPlane *pFrustumPlanes )
 {
 	const int maxPoints = 8;
 	int i;
@@ -316,7 +319,7 @@ static void DrawFrustum( Frustum_t &frustum )
 		Vector points2[maxPoints];
 		Vector normal;
 		float dist;
-		frustum.GetPlane( i, &normal, &dist );
+		normal = pFrustumPlanes[i].m_Normal; dist = pFrustumPlanes[i].m_Dist;
 		int numPoints = PolyFromPlane( points, normal, dist );
 		Assert( numPoints <= maxPoints );
 		Vector *in, *out;
@@ -329,7 +332,7 @@ static void DrawFrustum( Frustum_t &frustum )
 			{
 				continue;
 			}
-			frustum.GetPlane( j, &normal, &dist );
+			normal = pFrustumPlanes[j].m_Normal; dist = pFrustumPlanes[j].m_Dist;
 			numPoints = ClipPolyToPlane( in, numPoints, out, normal, dist );
 			Assert( numPoints <= maxPoints );
 			V_swap( in, out );
@@ -364,10 +367,10 @@ void CPortalRenderable_FlatBasic::RenderPortalViewToBackBuffer( CViewRender *pVi
 
 	if ( r_drawportalfrustum.GetBool() )
 	{
-		static Frustum_t tmpFrustum;
+		static Frustum tmpFrustum;
 		if ( !r_lockportalfrustum.GetBool() )
 		{
-			tmpFrustum.SetPlanes( seeThroughFrustum );
+			memcpy( tmpFrustum, seeThroughFrustum, sizeof( Frustum ) );
 		}
 		if ( bUseSeeThroughFrustum )
 		{
@@ -396,9 +399,10 @@ void CPortalRenderable_FlatBasic::RenderPortalViewToBackBuffer( CViewRender *pVi
 	portalView.angles = qPOVAngles;
 
 	VMatrix matCurrentView;
-	if( cameraView.m_bCustomViewMatrix )
+	matrix3x4_t matCameraCustomView;
+	if( Portal2_GetCustomViewMatrix( cameraView, matCameraCustomView ) )
 	{
-		matCurrentView.CopyFrom3x4( cameraView.m_matCustomViewMatrix );
+		matCurrentView.CopyFrom3x4( matCameraCustomView );
 	}
 	else
 	{
@@ -412,8 +416,9 @@ void CPortalRenderable_FlatBasic::RenderPortalViewToBackBuffer( CViewRender *pVi
 	}
 
 	VMatrix matTemp = matCurrentView * m_pLinkedPortal->m_matrixThisToLinked;
-	portalView.m_matCustomViewMatrix = matTemp.As3x4();
-	portalView.m_bCustomViewMatrix = true;
+	// Portal 2 port: CS:GO set m_matCustomViewMatrix/m_bCustomViewMatrix. The
+	// portal transform is rigid, so the adapter expresses it as origin/angles.
+	Portal2_SetCustomViewMatrix( portalView, matTemp.As3x4() );
 
 	CopyToCurrentView( pViewRender, portalView );
 
@@ -455,14 +460,14 @@ void CPortalRenderable_FlatBasic::RenderPortalViewToBackBuffer( CViewRender *pVi
 		ms_clipPlaneStack.Push( Vector4D( vCustomClipPlane ) );
 	}
 
-	shadowmgr->PushFlashlightScissorBounds();
+	Portal2_PushFlashlightScissorBounds();
 
 
 	{
 		ViewCustomVisibility_t customVisibility;
 		m_pLinkedPortal->AddToVisAsExitPortal( &customVisibility );
 		CMatRenderContextPtr pRenderContext( materials );
-		render->Push3DView( pRenderContext, portalView, 0, NULL, pViewRender->GetFrustum() );		
+		render->Push3DView( portalView, 0, NULL, pViewRender->GetFrustum() );		
 		{
 			if( bUseSeeThroughFrustum)
 				memcpy( pViewRender->GetFrustum(), seeThroughFrustum, sizeof( Frustum ) );
@@ -492,14 +497,14 @@ void CPortalRenderable_FlatBasic::RenderPortalViewToBackBuffer( CViewRender *pVi
 
 			SetViewRecursionLevel( g_pPortalRender->GetViewRecursionLevel() - 1 );
 		}
-		render->PopView( pRenderContext, pViewRender->GetFrustum() );
+		render->PopView( pViewRender->GetFrustum() );
 
 		//restore old frustum
 		memcpy( pViewRender->GetFrustum(), FrustumBackup, sizeof( Frustum ) );
 		render->OverrideViewFrustum( FrustumBackup );
 	}
 
-	shadowmgr->PopFlashlightScissorBounds();
+	Portal2_PopFlashlightScissorBounds();
 
 	pRenderContext->PopCustomClipPlane();
 	ms_clipPlaneStack.Pop();	// This pops my own clip plane
@@ -578,7 +583,7 @@ void CPortalRenderable_FlatBasic::RenderPortalViewToTexture( CViewRender *pViewR
 	pRenderContext->PushCustomClipPlane( fCustomClipPlane );
 
 	{
-		render->Push3DView( pRenderContext, portalView, VIEW_CLEAR_DEPTH, pRenderTarget, pViewRender->GetFrustum() );
+		render->Push3DView( portalView, VIEW_CLEAR_DEPTH, pRenderTarget, pViewRender->GetFrustum() );
 
 		{
 			ViewCustomVisibility_t customVisibility;
@@ -618,7 +623,7 @@ void CPortalRenderable_FlatBasic::RenderPortalViewToTexture( CViewRender *pViewR
 			render->OverrideViewFrustum( pViewRender->GetFrustum() );
 		}
 
-		render->PopView( pRenderContext, pViewRender->GetFrustum() );
+		render->PopView( pViewRender->GetFrustum() );
 	}
 
 	pRenderContext->PopCustomClipPlane();
@@ -927,8 +932,24 @@ inline float ComputePointToPortalDistance( const Vector &vPt, const CPortalRende
 	return ( vPtPortalSpace - vClamped ).Length();
 }
 
+void CPortalRenderable_FlatBasic::CaptureMeshViewInputs( IMatRenderContext *pRenderContext, MeshViewInputs_t &inputs )
+{
+	inputs.vCameraPos = view->GetViewSetup()->origin;
+	V_memcpy( inputs.nearPlaneFrustum, view->GetFrustum(), 5 * sizeof( VPlane ) );
+	pRenderContext->GetMatrix( MATERIAL_VIEW, &inputs.matView );
+	pRenderContext->GetMatrix( MATERIAL_PROJECTION, &inputs.matProj );
+}
+
 IMesh *CPortalRenderable_FlatBasic::CreateMeshForPortals( IMatRenderContext *pRenderContext, int nPortalCount, CPortalRenderable **ppPortals, 
 														  CUtlVector< ClampedPortalMeshRenderInfo_t > &clampedPortalMeshRenderInfos )
+{
+	MeshViewInputs_t inputs;
+	CaptureMeshViewInputs( pRenderContext, inputs );
+	return CreateMeshForPortals( pRenderContext, nPortalCount, ppPortals, clampedPortalMeshRenderInfos, inputs );
+}
+
+IMesh *CPortalRenderable_FlatBasic::CreateMeshForPortals( IMatRenderContext *pRenderContext, int nPortalCount, CPortalRenderable **ppPortals, 
+														  CUtlVector< ClampedPortalMeshRenderInfo_t > &clampedPortalMeshRenderInfos, const MeshViewInputs_t &inputs )
 {
 	VPROF_BUDGET( "CreateMeshForPortals", "CreateMeshForPortals" );
 
@@ -946,7 +967,7 @@ IMesh *CPortalRenderable_FlatBasic::CreateMeshForPortals( IMatRenderContext *pRe
 	float *pMaxDecalOffsets = (float*)stackalloc( nPortalCount * sizeof( float ) );
 	Vector vecDeltaRight, vecDeltaUp;
 	float vTangent[4];
-	const Vector vCameraPos( view->GetViewSetup()->origin );
+	const Vector vCameraPos( inputs.vCameraPos );
 
 	int nStartVertex = 0;
 
@@ -1023,7 +1044,13 @@ IMesh *CPortalRenderable_FlatBasic::CreateMeshForPortals( IMatRenderContext *pRe
 		meshBuilder.UserData( vTangent );
 		meshBuilder.AdvanceVertex();
 
-		meshBuilder.FastQuad( nStartVertex );
+		// Portal 2 port: CMeshBuilder has no FastQuad() here; the same two triangles.
+		meshBuilder.FastIndex( nStartVertex );
+		meshBuilder.FastIndex( nStartVertex + 1 );
+		meshBuilder.FastIndex( nStartVertex + 2 );
+		meshBuilder.FastIndex( nStartVertex );
+		meshBuilder.FastIndex( nStartVertex + 2 );
+		meshBuilder.FastIndex( nStartVertex + 3 );
 		nStartVertex += 4;
 	}
 
@@ -1034,7 +1061,7 @@ IMesh *CPortalRenderable_FlatBasic::CreateMeshForPortals( IMatRenderContext *pRe
 
 	// Make a frustum enclosing the pyramid between the camera position and the near plane.
 	VPlane nearPlaneFrustum[5];
-	V_memcpy( nearPlaneFrustum, view->GetFrustum(), 5 * sizeof( VPlane ) );
+	V_memcpy( nearPlaneFrustum, inputs.nearPlaneFrustum, 5 * sizeof( VPlane ) );
 	// flip near plane
 	nearPlaneFrustum[ FRUSTUM_NEARZ ].m_Normal = -nearPlaneFrustum[ FRUSTUM_NEARZ ].m_Normal;
 	nearPlaneFrustum[ FRUSTUM_NEARZ ].m_Dist = -nearPlaneFrustum[ FRUSTUM_NEARZ ].m_Dist;
@@ -1044,10 +1071,8 @@ IMesh *CPortalRenderable_FlatBasic::CreateMeshForPortals( IMatRenderContext *pRe
 	int nStartIndex = 6 * nPortalCount;
 
 	// Compute inverse view-projectio matrix
-	VMatrix matView;
-	VMatrix matProj;
-	pRenderContext->GetMatrix( MATERIAL_VIEW, &matView );
-	pRenderContext->GetMatrix( MATERIAL_PROJECTION, &matProj );
+	const VMatrix &matView = inputs.matView;
+	const VMatrix &matProj = inputs.matProj;
 
 	VMatrix matViewProj;
 	MatrixMultiply( matProj, matView, matViewProj );
@@ -1454,9 +1479,9 @@ void CPortalRenderable_FlatBasic::Internal_DrawRenderFixMesh( IMatRenderContext 
 	}
 
 	ProjectPortalPolyToPlane( clippedVerts, nClippedVertCount, nearPlaneFrustum[ FRUSTUM_NEARZ ].m_Normal, nearPlaneFrustum[ FRUSTUM_NEARZ ].m_Dist - PROJECT_NEARPLANE_OFFSET, vCameraPos );
-	pRenderContext->OverrideDepthEnable( true, true, false );
+	Portal2_OverrideDepthEnable( pRenderContext, true, true, false );
 	RenderPortalMeshConvexPolygon( clippedVerts, nClippedVertCount, pMaterial, this );
-	pRenderContext->OverrideDepthEnable( false, true, true );
+	Portal2_OverrideDepthEnable( pRenderContext, false, true, true );
 
 	pRenderContext->MatrixMode( MATERIAL_MODEL );
 	pRenderContext->PopMatrix();
@@ -1668,8 +1693,8 @@ bool CPortalRenderable_FlatBasic::DoesExitViewIntersectWaterPlane( float waterZ,
 	vMins = vMaxs = m_InternallyMaintainedData.m_ptCorners[0];
 	for( int i = 1; i != 4; ++i )
 	{
-		vMins = VectorMin( vMins, m_InternallyMaintainedData.m_ptCorners[i] );
-		vMaxs = VectorMax( vMaxs, m_InternallyMaintainedData.m_ptCorners[i] );
+		VectorMin( vMins, m_InternallyMaintainedData.m_ptCorners[i], vMins );
+		VectorMax( vMaxs, m_InternallyMaintainedData.m_ptCorners[i], vMaxs );
 	}
 
 	return render->DoesBoxIntersectWaterVolume( vMins, vMaxs, leafWaterDataID );
@@ -1746,4 +1771,3 @@ CPortalRenderable *CreatePortal_FlatBasic_Fn( void )
 }
 
 static CPortalRenderableCreator_AutoRegister CreatePortal_FlatBasic( "Flat Basic", CreatePortal_FlatBasic_Fn );
-#endif

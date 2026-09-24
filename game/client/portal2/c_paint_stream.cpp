@@ -7,7 +7,6 @@
 // Valve source; the repository's provenance and distribution warning applies.
 //
 //=============================================================================//
-#if 0
 #include "cbase.h"
 #include "c_paint_stream.h"
 #include "c_paintblob.h"
@@ -67,7 +66,8 @@ C_PaintStream::~C_PaintStream()
 
 void C_PaintStream::Spawn()
 {
-	m_bCanUseFastPath = false;
+	// Portal 2 port: CS:GO's m_bCanUseFastPath = false. This engine has no fast
+	// model path; it always draws through DrawModel().
 
 	memset( m_lightingBoxColors, 0, sizeof( m_lightingBoxColors ) );
 
@@ -575,7 +575,9 @@ void C_PaintStream::GetCurrentBlobData( BlobDataVector_t& blobData )
 {
 	// Reconstruction note: the 2010 client read the shared data without a lock;
 	// the imported server rewrites it under m_sharedBlobDataMutex.
-	AUTO_LOCK( m_sharedBlobDataMutex.GetForModify() );
+	// Portal 2 port: the shared variable exposes only const access on the client,
+	// but locking the server-owned mutex is how this reader stays consistent.
+	AUTO_LOCK( const_cast< CThreadFastMutex & >( m_sharedBlobDataMutex.Get() ) );
 
 	int nTotalFrame = m_sharedBlobData.Count();
 	if ( nTotalFrame == 0 )
@@ -617,4 +619,3 @@ void C_PaintStream::GetCurrentBlobData( BlobDataVector_t& blobData )
 		InterpolateBlobData( flPercent, dataA, dataB, blobData );
 	}
 }
-#endif

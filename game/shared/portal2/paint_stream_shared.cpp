@@ -1,7 +1,6 @@
 //========= Copyright © 1996-2009, Valve Corporation, All rights reserved. ============//
 //
 //=============================================================================//
-#if 0
 #include "cbase.h"
 
 #include "paint_stream_shared.h"
@@ -115,7 +114,7 @@ void CPaintStream::QueuePaintEffect()
 		return;
 #else
 	// if we are listen server, don't do anything on client
-	if ( engine->IsClientLocalToActiveServer() )
+	if ( Portal2Engine::IsClientLocalToActiveServer() )
 		return;
 #endif
 
@@ -231,4 +230,3 @@ void CPaintStream::ResetBlobsTeleportedThisFrame()
 		m_blobs[i]->SetBlobTeleportedThisFrame( false );
 	}
 }
-#endif

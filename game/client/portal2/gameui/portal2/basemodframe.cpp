@@ -485,15 +485,18 @@ void CBaseModFrame::Activate()
 {
 	BaseClass::Activate();
 
+	// Portal 2 port: Portal 2 ships no virtual UI (.vui) settings, so
+	// m_pVuiSettings is NULL; retail relied on CS:GO-era KeyValues accessors
+	// tolerating a NULL object, which this tier1 does not.
 	// Navigate to default entity
-	if ( char const *szDefaultEntity = m_pVuiSettings->GetString( "default/entity", NULL ) )
+	if ( char const *szDefaultEntity = m_pVuiSettings ? m_pVuiSettings->GetString( "default/entity", NULL ) : NULL )
 	{
 		char chEntityName[256];
 		ResolveEntityName( szDefaultEntity, chEntityName );
 		g_BackgroundMapActiveControlManager.NavigateToEntity( chEntityName );
 	}
 
-	if ( char const *szDefaultControl = m_pVuiSettings->GetString( "default/control", NULL ) )
+	if ( char const *szDefaultControl = m_pVuiSettings ? m_pVuiSettings->GetString( "default/control", NULL ) : NULL )
 	{
 		char const *szControlName = m_pVuiSettings->GetString( CFmtStr( "controls/%s/name", szDefaultControl ), szDefaultControl );
 		if ( vgui::Panel *pDefault = FindChildByName( szControlName ) )

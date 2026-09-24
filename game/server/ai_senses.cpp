@@ -16,6 +16,9 @@
 
 #ifdef PORTAL
 	#include "portal_util_shared.h"
+#ifdef PORTAL2
+	#include "portal2/portal/prop_portal.h"
+#endif
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -174,7 +177,7 @@ bool CAI_Senses::CanSeeEntity( CBaseEntity *pSightEnt )
 }
 
 #ifdef PORTAL
-bool CAI_Senses::CanSeeEntityThroughPortal( const CProp_Portal *pPortal, CBaseEntity *pSightEnt )
+bool CAI_Senses::CanSeeEntityThroughPortal( const CSightPortal *pPortal, CBaseEntity *pSightEnt )
 {
 	return GetOuter()->FVisibleThroughPortal( pPortal, pSightEnt );
 }
@@ -373,7 +376,7 @@ bool CAI_Senses::Look( CBaseEntity *pSightEnt )
 }
 
 #ifdef PORTAL
-bool CAI_Senses::LookThroughPortal( const CProp_Portal *pPortal, CBaseEntity *pSightEnt )
+bool CAI_Senses::LookThroughPortal( const CSightPortal *pPortal, CBaseEntity *pSightEnt )
 {
 	if ( WaitingUntilSeen( pSightEnt ) )
 		return false;
@@ -415,7 +418,7 @@ int CAI_Senses::LookForHighPriorityEntities( int iDistance )
 #ifdef PORTAL
 				else
 				{
-					CProp_Portal *pPortal = GetOuter()->FInViewConeThroughPortal( pPlayer );
+					CSightPortal *pPortal = GetOuter()->FInViewConeThroughPortal( pPlayer );
 					if ( pPortal && UTIL_Portal_DistanceThroughPortalSqr( pPortal, origin, pPlayer->GetAbsOrigin() ) < distSq && LookThroughPortal( pPortal, pPlayer ) )
 					{
 						nSeen++;

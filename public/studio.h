@@ -688,6 +688,33 @@ struct mstudioanim_t
 	inline mstudioanim_t	*pNext( void ) const { if (nextoffset != 0) return  (mstudioanim_t *)(((byte *)this) + nextoffset); else return NULL; };
 } ALIGN16;
 
+// Portal 2 port: frame x bone animation data (STUDIO_FRAMEANIM), written by the
+// Portal 2 era studiomdl and decoded in bone_setup.cpp. Layout from the CS:GO
+// studio.h. The per-bone flags below say where each bone's rotation and
+// position live: in the constant block (same for every frame) or in each frame.
+#define STUDIO_FRAME_CONST_POS	0x01 // Vector48 in constants
+#define STUDIO_FRAME_CONST_ROT	0x02 // Quaternion48 in constants
+#define STUDIO_FRAME_ANIM_POS	0x04 // Vector48 in framedata
+#define STUDIO_FRAME_ANIM_ROT	0x08 // Quaternion48 in framedata
+#define STUDIO_FRAME_ANIM_POS2	0x10 // Vector in framedata
+#define STUDIO_FRAME_CONST_POS2	0x20 // Vector in constants
+#define STUDIO_FRAME_CONST_ROT2	0x40 // Quaternion48S in constants
+#define STUDIO_FRAME_ANIM_ROT2	0x80 // Quaternion48S in framedata
+
+struct mstudio_frame_anim_t
+{
+	inline byte		*pBoneFlags( void ) const { return (((byte *)this) + sizeof( struct mstudio_frame_anim_t )); };
+
+	int				constantsoffset;
+	inline byte		*pConstantData( void ) const { return (((byte *)this) + constantsoffset); };
+
+	int				frameoffset;
+	int 			framelength;
+	inline byte		*pFrameData( int iFrame  ) const { return (((byte *)this) + frameoffset + iFrame * framelength); };
+
+	int				unused[3];
+};
+
 struct mstudiomovement_t
 {
 	DECLARE_BYTESWAP_DATADESC();
@@ -3069,7 +3096,7 @@ inline const mstudioflexcontroller_t *mstudioflexcontrollerui_t::pController( in
 #define STUDIO_AUTOPLAY	0x0008		// temporary flag that forces the sequence to always play
 #define STUDIO_POST		0x0010		// 
 #define STUDIO_ALLZEROS	0x0020		// this animation/sequence has no real animation data
-//						0x0040
+#define STUDIO_FRAMEANIM 0x0040		// animation is encoded as frame x bone (mstudio_frame_anim_t) instead of RLE bone x frame
 #define STUDIO_CYCLEPOSE 0x0080		// cycle index is taken from a pose parameter index
 #define STUDIO_REALTIME	0x0100		// cycle index is taken from a real-time clock, not the animations cycle index
 #define STUDIO_LOCAL	0x0200		// sequence has a local context sequence

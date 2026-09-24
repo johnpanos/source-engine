@@ -592,6 +592,7 @@ bool CNPC_FloorTurret::OnAttemptPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGu
 //-----------------------------------------------------------------------------
 bool CNPC_FloorTurret::HandleInteraction(int interactionType, void *data, CBaseCombatCharacter *sourceEnt)
 {
+#ifndef PORTAL2 // Portal 2 port: Portal 2 has no Combine soldiers to bash turrets.
 	if ( interactionType == g_interactionCombineBash )
 	{
 		// We've been bashed by a combine soldier. Remember who it was, if we haven't got an active kicker
@@ -612,6 +613,7 @@ bool CNPC_FloorTurret::HandleInteraction(int interactionType, void *data, CBaseC
 		EmitSound( "NPC_Combine.WeaponBash" );
 		return true;
 	}
+#endif
 
 	return BaseClass::HandleInteraction( interactionType, data, sourceEnt );
 }

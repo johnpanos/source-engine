@@ -3244,3 +3244,219 @@ bool CKeyValuesDumpContextAsDevMsg::KvWriteText( char const *szText )
 	}
 	return true;
 }
+
+//
+// Portal 2 port: KeyValues merge operations, as in the CS:GO-era tier1
+// (see KeyValues::MergeKeyValuesOp_t). Removed keys are released with
+// deleteThis(), this tier1's KeyValues release path.
+//
+
+void KeyValues::MergeFrom( KeyValues *kvMerge, MergeKeyValuesOp_t eOp /* = MERGE_KV_ALL */ )
+{
+	if ( !kvMerge )
+		return;
+
+	switch ( eOp )
+	{
+	case MERGE_KV_ALL:
+		MergeFrom( kvMerge->FindKey( "update" ), MERGE_KV_UPDATE );
+		MergeFrom( kvMerge->FindKey( "delete" ), MERGE_KV_DELETE );
+		MergeFrom( kvMerge->FindKey( "borrow" ), MERGE_KV_BORROW );
+		return;
+
+	case MERGE_KV_UPDATE:
+		{
+			for ( KeyValues *sub = kvMerge->GetFirstTrueSubKey(); sub; sub = sub->GetNextTrueSubKey() )
+			{
+				char const *szName = sub->GetName();
+
+				KeyValues *subStorage = this->FindKey( szName, false );
+				if ( !subStorage )
+				{
+					AddSubKey( sub->MakeCopy() );
+				}
+				else
+				{
+					subStorage->MergeFrom( sub, eOp );
+				}
+			}
+			for ( KeyValues *val = kvMerge->GetFirstValue(); val; val = val->GetNextValue() )
+			{
+				char const *szName = val->GetName();
+
+				if ( KeyValues *valStorage = this->FindKey( szName, false ) )
+				{
+					this->RemoveSubKey( valStorage );
+					valStorage->deleteThis();
+				}
+				this->AddSubKey( val->MakeCopy() );
+			}
+		}
+		return;
+
+	case MERGE_KV_BORROW:
+		{
+			for ( KeyValues *sub = kvMerge->GetFirstTrueSubKey(); sub; sub = sub->GetNextTrueSubKey() )
+			{
+				char const *szName = sub->GetName();
+
+				KeyValues *subStorage = this->FindKey( szName, false );
+				if ( !subStorage )
+					continue;
+
+				subStorage->MergeFrom( sub, eOp );
+			}
+			for ( KeyValues *val = kvMerge->GetFirstValue(); val; val = val->GetNextValue() )
+			{
+				char const *szName = val->GetName();
+
+				if ( KeyValues *valStorage = this->FindKey( szName, false ) )
+				{
+					this->RemoveSubKey( valStorage );
+					valStorage->deleteThis();
+				}
+				else
+					continue;
+
+				this->AddSubKey( val->MakeCopy() );
+			}
+		}
+		return;
+
+	case MERGE_KV_DELETE:
+		{
+			for ( KeyValues *sub = kvMerge->GetFirstTrueSubKey(); sub; sub = sub->GetNextTrueSubKey() )
+			{
+				char const *szName = sub->GetName();
+				if ( KeyValues *subStorage = this->FindKey( szName, false ) )
+				{
+					subStorage->MergeFrom( sub, eOp );
+				}
+			}
+			for ( KeyValues *val = kvMerge->GetFirstValue(); val; val = val->GetNextValue() )
+			{
+				char const *szName = val->GetName();
+
+				if ( KeyValues *valStorage = this->FindKey( szName, false ) )
+				{
+					this->RemoveSubKey( valStorage );
+					valStorage->deleteThis();
+				}
+			}
+		}
+		return;
+	}
+}
+
+//
+// Portal 2 port: KeyValues from the CS:GO-era string syntax
+// (see KeyValues::FromString).
+//
+
+static char const * ParseStringToken( char const *szStringVal, char const **ppEndOfParse )
+{
+	// Eat whitespace
+	while ( V_isspace( *szStringVal ) )
+		++ szStringVal;
+
+	char const *pszResult = szStringVal;
+
+	while ( *szStringVal && !V_isspace( *szStringVal ) )
+		++ szStringVal;
+
+	if ( ppEndOfParse )
+	{
+		*ppEndOfParse = szStringVal;
+	}
+
+	return pszResult;
+}
+
+KeyValues * KeyValues::FromString( char const *szName, char const *szStringVal, char const **ppEndOfParse )
+{
+	if ( !szName )
+		szName = "";
+
+	if ( !szStringVal )
+		szStringVal = "";
+
+	KeyValues *kv = new KeyValues( szName );
+	if ( !kv )
+		return NULL;
+
+	char chName[256] = {0};
+	char chValue[1024] = {0};
+
+	for ( ; ; )
+	{
+		char const *szEnd;
+
+		char const *szVarValue = NULL;
+		char const *szVarName = ParseStringToken( szStringVal, &szEnd );
+		if ( !*szVarName )
+			break;
+		if ( *szVarName == '}' )
+		{
+			szStringVal = szVarName + 1;
+			break;
+		}
+		V_strncpy( chName, szVarName, ( int )MIN( sizeof( chName ), szEnd - szVarName + 1 ) );
+		szVarName = chName;
+		szStringVal = szEnd;
+
+		if ( *szVarName == '{' )
+		{
+			szVarName = "";
+			goto do_sub_key;
+		}
+
+		szVarValue = ParseStringToken( szStringVal, &szEnd );
+		if ( *szVarValue == '}' )
+		{
+			szStringVal = szVarValue + 1;
+			kv->SetString( szVarName, "" );
+			break;
+		}
+		V_strncpy( chValue, szVarValue, ( int )MIN( sizeof( chValue ), szEnd - szVarValue + 1 ) );
+		szVarValue = chValue;
+		szStringVal = szEnd;
+
+		if ( *szVarValue == '{' )
+		{
+			goto do_sub_key;
+		}
+
+		// Try to recognize some known types
+		if ( char const *szInt = StringAfterPrefix( szVarValue, "#int#" ) )
+		{
+			kv->SetInt( szVarName, atoi( szInt ) );
+		}
+		else if ( !V_stricmp( szVarValue, "#empty#" ) )
+		{
+			kv->SetString( szVarName, "" );
+		}
+		else
+		{
+			kv->SetString( szVarName, szVarValue );
+		}
+		continue;
+
+do_sub_key:
+		{
+			KeyValues *pSubKey = KeyValues::FromString( szVarName, szStringVal, &szEnd );
+			if ( pSubKey )
+			{
+				kv->AddSubKey( pSubKey );
+			}
+			szStringVal = szEnd;
+			continue;
+		}
+	}
+
+	if ( ppEndOfParse )
+	{
+		*ppEndOfParse = szStringVal;
+	}
+
+	return kv;
+}

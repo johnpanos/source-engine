@@ -71,6 +71,20 @@ public:
 
 	static IMesh *CreateMeshForPortals( IMatRenderContext *pRenderContext, int nPortalCount, CPortalRenderable **ppPortals, CUtlVector< ClampedPortalMeshRenderInfo_t > &clampedPortalMeshRenderInfos );
 
+	// Portal 2 port: the view state CreateMeshForPortals() reads. CS:GO cached the
+	// finished dynamic mesh (IMesh::GetCachedPerFrameMeshData) to redraw it in
+	// recursive portal views; this engine cannot, so CPortalRender captures these
+	// inputs with the mesh and rebuilds the identical mesh from them.
+	struct MeshViewInputs_t
+	{
+		Vector vCameraPos;
+		VPlane nearPlaneFrustum[5];		// view frustum, near plane not yet flipped
+		VMatrix matView;
+		VMatrix matProj;
+	};
+	static void CaptureMeshViewInputs( IMatRenderContext *pRenderContext, MeshViewInputs_t &inputs );
+	static IMesh *CreateMeshForPortals( IMatRenderContext *pRenderContext, int nPortalCount, CPortalRenderable **ppPortals, CUtlVector< ClampedPortalMeshRenderInfo_t > &clampedPortalMeshRenderInfos, const MeshViewInputs_t &inputs );
+
 	// Portal 2 port: CS:GO renderable API bridged onto DrawModel( int ); see portal2_engine_compat.h.
 	PORTAL2_DRAWMODEL_BRIDGE();
 	virtual int	DrawModel( int flags, const RenderableInstance_t &instance ) { return 0; }	// Prevent the model from rendering as a normal model
@@ -91,7 +105,7 @@ protected:
 	{
 		VPlane				m_BoundingPlanes[PORTALRENDERFIXMESH_OUTERBOUNDPLANES + 2]; // +2 for front and back
 
-		VisOverrideData_t	m_VisData; // a data to use for visibility calculations (to override area portal culling)
+		Portal2VisOverrideData_t	m_VisData; // a data to use for visibility calculations (to override area portal culling)
 		int					m_iViewLeaf; // leaf to start in for area portal flowing through calculations
 
 		VMatrix				m_DepthDoublerTextureView[MAX_SPLITSCREEN_CLIENTS]; //cached version of view matrix at depth 1 for use when drawing the depth doubler mesh

@@ -123,7 +123,7 @@ void CPaintDatabase::PaintEntity( CBaseEntity *pPaintedEntity, PaintPowerType ne
 	}
 	else
 	{
-		const color24 otherColor = pPaintedEntity->GetRenderColor();
+		const color32 otherColor = pPaintedEntity->GetRenderColor();
 		const Color paintedColor( otherColor.r, otherColor.g, otherColor.b );
 		paintedPowerType = MapColorToPower( paintedColor );
 	}
@@ -200,7 +200,7 @@ void CPaintDatabase::RemoveAllPaint()
 
 	ClearPaintData();
 
-	engine->RemoveAllPaint();
+	// This engine has no BSP paintmap service; entity paint is cleared above.
 
 	CBroadcastRecipientFilter filter;
 	filter.MakeReliable();
@@ -389,8 +389,8 @@ struct CChangedPaintBoundsCache
 };
 
 
-// Finds the entities that care about paint in the changed boxes. Each one is
-// listed once: the flag is cleared here and restored when it is updated.
+// Find each entity touching changed paint once. Entity flags have no spare bit
+// in this profile, so keep the per-update membership in this temporary list.
 struct CPaintAffectedEntityList : public IEntityEnumerator
 {
 	virtual bool EnumEntity( IHandleEntity *pHandleEntity )
@@ -402,11 +402,8 @@ struct CPaintAffectedEntityList : public IEntityEnumerator
 		if ( !pEntity )
 			return true;
 
-		if ( !( pEntity->GetFlags() & FL_AFFECTED_BY_PAINT ) )
-			return true;
-
-		pEntity->RemoveFlag( FL_AFFECTED_BY_PAINT );
-		m_EntitiesToUpdate.AddToTail( pEntity );
+		if ( m_EntitiesToUpdate.Find( pEntity ) == m_EntitiesToUpdate.InvalidIndex() )
+			m_EntitiesToUpdate.AddToTail( pEntity );
 
 		return true;
 	}
@@ -461,7 +458,6 @@ void CPaintDatabase::PreClientUpdate()
 	for ( int i = 0; i < paintEnum.m_EntitiesToUpdate.Count(); ++i )
 	{
 		CBaseEntity *pEntity = paintEnum.m_EntitiesToUpdate[i];
-		pEntity->AddFlag( FL_AFFECTED_BY_PAINT );
 		pEntity->UpdatePaintPowersFromContacts();
 	}
 
@@ -601,7 +597,7 @@ void RLEEncodeSave( ISave *pSave, T *pArray, int count )
 void CPaintDatabase::SavePaintmapData( ISave *pSave )
 {
 	CUtlVector< CUtlVector< uint8 > > data;
-	engine->GetPaintmapData( data );
+	// No BSP paintmap data is available from this engine.
 	int nPaintData = data.Count();
 	pSave->WriteInt( &nPaintData );
 
@@ -617,7 +613,7 @@ void CPaintDatabase::SavePaintmapData( ISave *pSave )
 	}
 
 	CVarBitVec paintSurfBits;
-	engine->GetPaintSurfBits( paintSurfBits );
+	// An empty bitset records that the engine has no painted BSP surfaces.
 
 	pSave->StartBlock();
 	int numBits = paintSurfBits.GetNumBits();
@@ -681,7 +677,7 @@ void CPaintDatabase::RestorePaintmapData( IRestore *pRestore )
 	}
 	pRestore->EndBlock();
 
-	engine->LoadPaintSurfBits( paintSurfBits );
+	// The engine has no BSP paintmap service to restore these bits into.
 }
 
 
@@ -690,7 +686,7 @@ void CPaintDatabase::SendPaintDataTo( CBasePlayer *pPlayer )
 	if ( pPlayer->IsConnected() )
 	{
 		CUtlVector< CUtlVector< uint8 > > data;
-		engine->GetPaintmapData( data );
+		// No BSP paintmap data is available to send to the client.
 
 		CSingleUserRecipientFilter filter( pPlayer );
 		filter.MakeReliable();
@@ -752,7 +748,7 @@ void CPaintDatabase::SendPaintDataTo( CBasePlayer *pPlayer )
 		}
 
 		CVarBitVec paintSurfBits;
-		engine->GetPaintSurfBits( paintSurfBits );
+		// Send an empty surface bitset for this engine profile.
 		int numBits = paintSurfBits.GetNumBits();
 
 		UserMessageBegin( filter, "LoadPaintmapBits" );
@@ -770,7 +766,7 @@ void CPaintDatabase::SendPaintDataToEngine()
 {
 	for ( int i = 0; i < m_Paintmaps.Count(); ++i )
 	{
-		engine->LoadPaintmapData( m_Paintmaps[i], i );
+		// BSP paintmap loading is unavailable in this engine profile.
 	}
 
 	m_Paintmaps.Purge();
@@ -781,7 +777,7 @@ void CC_PaintAllSurfaces( const CCommand &args )
 {
 	PaintPowerType power = ( args.ArgC() == 2 ) ? static_cast< PaintPowerType >( atoi( args[1] ) ) : SPEED_POWER;
 
-	engine->PaintAllSurfaces( power );
+	// BSP paintmaps are unavailable in this engine profile.
 
 	CBroadcastRecipientFilter filter;
 	filter.MakeReliable();

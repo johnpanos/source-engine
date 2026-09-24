@@ -24,12 +24,14 @@ class CPortal_Player;
 #include "func_liquidportal.h"
 #include "ai_speech.h"			// For expresser host
 
+#ifndef PORTAL2
 struct PortalPlayerStatistics_t
 {
 	int iNumPortalsPlaced;
 	int iNumStepsTaken;
 	float fNumSecondsTaken;
 };
+#endif
 
 //=============================================================================
 // >> Portal_Player

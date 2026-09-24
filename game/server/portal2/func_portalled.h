@@ -30,6 +30,7 @@ public:
 
 	virtual void OnPrePortalled( CBaseEntity *pOther, bool bDeparting );
 	virtual void OnPostPortalled( CBaseEntity *pOther, bool bDeparting );
+	bool IsPortalTouchingDetector( CProp_Portal *pPortal );
 
 protected:
 	virtual void PortalPlacedInsideBounds( CProp_Portal *pPortal );

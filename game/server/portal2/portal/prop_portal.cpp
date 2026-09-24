@@ -13,6 +13,7 @@
 #include "envmicrophone.h"
 #include "env_speaker.h"
 #include "func_portal_detector.h"
+#include "func_portalled.h"
 #include "model_types.h"
 #include "te_effect_dispatch.h"
 #include "collisionutils.h"
@@ -85,9 +86,7 @@ CProp_Portal::CProp_Portal( void )
 	if( !ms_DefaultPortalSizeInitialized )
 	{
 		ms_DefaultPortalSizeInitialized = true; // for CEG protection
-		CEG_GCV_PRE();
-		ms_DefaultPortalHalfHeight = CEG_GET_CONSTANT_VALUE( DefaultPortalHalfHeight ); // only protecting one to reduce the cost of first-portal check
-		CEG_GCV_POST();
+		// The shared portal source initializes the default size in this build.
 	}
 	m_FizzleEffect = PORTAL_FIZZLE_KILLED;
 	CProp_Portal_Shared::AllPortals.AddToTail( this );
@@ -463,7 +462,7 @@ void CProp_Portal::CreatePortalEffect( CBasePlayer* pPlayer, int iEffect, Vector
 
 	// remove the player who shot it because we handle this in 
 	// the client code and don't need to send a message
-	if ( pPlayer->m_bPredictionEnabled )
+	if ( pPlayer->IsPredictingWeapons() )
 	{
 		filter.RemoveRecipient( pPlayer );
 	}
@@ -525,20 +524,31 @@ void CProp_Portal::Activate( void )
 //			Rather than addressing that directly, portal detectors look for portals with an explicit OBB check.
 //			
 //-----------------------------------------------------------------------------
+static void UpdatePortalDetectorClass( CProp_Portal *pPortal, const char *pClassName )
+{
+	CBaseEntity *pEntity = NULL;
+	while ( ( pEntity = gEntList.FindEntityByClassname( pEntity, pClassName ) ) != NULL )
+	{
+		CFuncPortalDetector *pDetector = dynamic_cast<CFuncPortalDetector *>( pEntity );
+		if ( !pDetector || !pDetector->IsActive() )
+			continue;
+
+		pDetector->OnActivate();
+		CFunc_Portalled *pPortalled = dynamic_cast<CFunc_Portalled *>( pDetector );
+		if ( pPortalled && pPortalled->IsPortalTouchingDetector( pPortal ) )
+			pPortal->SetFuncPortalled( pPortalled );
+	}
+}
+
 void CProp_Portal::UpdatePortalDetectorsOnPortalMoved( void )
 {
-	for ( CFuncPortalDetector *pDetector = GetPortalDetectorList(); pDetector != NULL; pDetector = pDetector->m_pNext )
-	{
-		pDetector->UpdateOnPortalMoved( this );
-	}
+	UpdatePortalDetectorClass( this, "func_portal_detector" );
+	UpdatePortalDetectorClass( this, "func_portalled" );
 }
 
 void CProp_Portal::UpdatePortalDetectorsOnPortalActivated( void )
 {
-	for ( CFuncPortalDetector *pDetector = GetPortalDetectorList(); pDetector != NULL; pDetector = pDetector->m_pNext )
-	{
-		pDetector->UpdateOnPortalActivated( this );
-	}
+	UpdatePortalDetectorsOnPortalMoved();
 }
 
 void CProp_Portal::UpdatePortalLinkage( void )
@@ -626,9 +636,8 @@ void CProp_Portal::DispatchPortalPlacementParticles( bool bIsSecondaryPortal )
 	CBasePlayer *pFiringPlayer = ToBasePlayer( m_hFiredByPlayer.Get() );
 	if ( pFiringPlayer )
 	{
-		CSingleUserRecipientFilter localFilter( pFiringPlayer );
-		localFilter.MakeReliable();
-		DispatchParticleEffect( ( ( bIsSecondaryPortal ) ? ( "portal_2_edge" ) : ( "portal_1_edge" ) ), PATTACH_POINT_FOLLOW, this, "particles", true, -1, &localFilter );
+		DispatchParticleEffect( bIsSecondaryPortal ? "portal_2_edge" : "portal_1_edge",
+			PATTACH_POINT_FOLLOW, this, "particles", true );
 	}
 }
 

@@ -17,7 +17,12 @@
 #include "te_effect_dispatch.h"
 #include "soundenvelope.h"			// for looping sound effects
 #include "portal_gamerules.h"		// for difficulty settings
+#ifdef PORTAL2
+// Portal 2 moved the projectile to its own unit (portal2/rocketprojectile.cpp).
+#include "portal2/rocketprojectile.h"
+#else
 #include "weapon_rpg.h"
+#endif
 #include "explode.h"
 #include "smoke_trail.h"			// smoke trailers on the rocket
 #include "physics_bone_follower.h"	// For bone follower manager
@@ -275,6 +280,7 @@ LINK_ENTITY_TO_CLASS( npc_rocket_turret, CNPC_RocketTurret );
 
 
 // Projectile class for this weapon, a rocket
+#ifndef PORTAL2
 class CRocket_Turret_Projectile : public CMissile
 {
 	DECLARE_CLASS( CRocket_Turret_Projectile, CMissile );
@@ -309,6 +315,7 @@ BEGIN_DATADESC( CRocket_Turret_Projectile )
 END_DATADESC()
 
 LINK_ENTITY_TO_CLASS( rocket_turret_projectile, CRocket_Turret_Projectile );
+#endif // !PORTAL2
 
 
 //-----------------------------------------------------------------------------
@@ -707,7 +714,11 @@ void CNPC_RocketTurret::FiringThink( void )
 		// If this rocket has been out too long, detonate it and launch a new one
 		if ( (gpGlobals->curtime - m_flTimeLastFired) > ROCKET_PROJECTILE_DEFAULT_LIFE )
 		{
+#ifdef PORTAL2
+			pRocket->Explode();
+#else
 			pRocket->ShotDown();
+#endif
 			m_flTimeLastFired = gpGlobals->curtime;
 			SetThink( &CNPC_RocketTurret::FollowThink );
 		}
@@ -1215,6 +1226,7 @@ void CNPC_RocketTurret::InputDestroy( inputdata_t &inputdata )
 }
 
 
+#ifndef PORTAL2 // Portal 2: portal2/rocketprojectile.cpp
 //-----------------------------------------------------------------------------
 // Projectile methods
 //-----------------------------------------------------------------------------
@@ -1411,3 +1423,4 @@ static void fire_rocket_projectile_f( void )
 }
 
 ConCommand fire_rocket_projectile( "fire_rocket_projectile", fire_rocket_projectile_f, "Fires a rocket turret projectile from the player's eyes for testing.", FCVAR_CHEAT );
+#endif // !PORTAL2

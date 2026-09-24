@@ -670,6 +670,9 @@ C_BaseAnimating::C_BaseAnimating() :
 {
 	m_vecForce.Init();
 	m_nForceBone = -1;
+#ifdef PORTAL2
+	m_vecRenderOriginOverride = vec3_invalid;
+#endif
 	
 	m_ClientSideAnimationListHandle = INVALID_CLIENTSIDEANIMATION_LIST_HANDLE;
 
@@ -4390,11 +4393,37 @@ const Vector& C_BaseAnimating::GetRenderOrigin( void )
 	{
 		return m_pRagdoll->GetRagdollOrigin();
 	}
+#ifdef PORTAL2
+	else if ( m_vecRenderOriginOverride != vec3_invalid )
+	{
+		return m_vecRenderOriginOverride;
+	}
+#endif
 	else
 	{
 		return BaseClass::GetRenderOrigin();	
 	}
 }
+
+#ifdef PORTAL2
+void C_BaseAnimating::SetRenderOriginOverride( const Vector &vec )
+{
+	if ( m_vecRenderOriginOverride != vec )
+	{
+		InvalidateBoneCache();
+	}
+	m_vecRenderOriginOverride = vec;
+}
+
+void C_BaseAnimating::DisableRenderOriginOverride( void )
+{
+	if ( m_vecRenderOriginOverride != vec3_invalid )
+	{
+		InvalidateBoneCache();
+	}
+	m_vecRenderOriginOverride = vec3_invalid;
+}
+#endif
 
 const QAngle& C_BaseAnimating::GetRenderAngles( void )
 {

@@ -8,14 +8,14 @@
 
 #include <stdio.h>
 
-#include "GameConsole.h"
-#include "GameConsoleDialog.h"
-#include "LoadingDialog.h"
+#include "gameconsole.h"
+#include "gameconsoledialog.h"
+#include "loadingdialog.h"
 #include "vgui/ISurface.h"
 
-#include "KeyValues.h"
+#include "keyvalues.h"
 #include "vgui/VGUI.h"
-#include "vgui/IVGUI.h"
+#include "vgui/IVGui.h"
 #include "vgui_controls/Panel.h"
 #include "convar.h"
 
@@ -126,7 +126,7 @@ void CGameConsole::ActivateDelayed(float time)
 	m_pConsole->PostMessage(m_pConsole, new KeyValues("Activate"), time);
 }
 
-void CGameConsole::SetParent( int parent )
+void CGameConsole::SetParent( intp parent )
 {	
 	if (!m_bInitialized)
 		return;

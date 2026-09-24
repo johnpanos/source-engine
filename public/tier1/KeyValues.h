@@ -130,7 +130,21 @@ public:
 
 	// Read from a buffer...  Note that the buffer must be null terminated
 	bool LoadFromBuffer( char const *resourceName, const char *pBuffer, IBaseFileSystem* pFileSystem = NULL, const char *pPathID = NULL );
-	static KeyValues *FromString( const char *resourceName, const char *pBuffer );
+	// Portal 2 port: CS:GO-era KeyValues string syntax used by the matchmaking
+	// framework and its callers: "name value name { ... }" pairs parsed into
+	// this key's children, with "#int#N" for integers and "#empty#" for "".
+	// It is not the resource-file format read by LoadFromBuffer.
+	static KeyValues *FromString( char const *szName, char const *szStringVal, char const **ppEndOfParse = NULL );
+
+	// Portal 2 port: CS:GO-era merge operations describing how two keyvalues can be combined
+	enum MergeKeyValuesOp_t
+	{
+		MERGE_KV_ALL,
+		MERGE_KV_UPDATE,	// update values are copied into storage, adding new keys to storage or updating existing ones
+		MERGE_KV_DELETE,	// update values specify keys that get deleted from storage
+		MERGE_KV_BORROW,	// update values only update existing keys in storage, keys in update that do not exist in storage are discarded
+	};
+	void MergeFrom( KeyValues *kvMerge, MergeKeyValuesOp_t eOp = MERGE_KV_ALL );
 
 	// Read from a utlbuffer...
 	bool LoadFromBuffer( char const *resourceName, CUtlBuffer &buf, IBaseFileSystem* pFileSystem = NULL, const char *pPathID = NULL );
@@ -433,17 +447,6 @@ inline Color KeyValues::GetColor( const char *keyName, const Color &defaultValue
 {
 	KeyValues *dat = FindKey( keyName, false );
 	return dat ? dat->GetColor() : defaultValue;
-}
-
-inline KeyValues *KeyValues::FromString( const char *resourceName, const char *pBuffer )
-{
-	KeyValues *pKeyValues = new KeyValues( resourceName );
-	if ( !pKeyValues->LoadFromBuffer( resourceName, pBuffer ) )
-	{
-		pKeyValues->deleteThis();
-		return NULL;
-	}
-	return pKeyValues;
 }
 
 inline bool  KeyValues::IsEmpty( int keySymbol )

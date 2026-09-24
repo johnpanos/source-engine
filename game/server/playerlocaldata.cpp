@@ -185,6 +185,9 @@ CPlayerLocalData::CPlayerLocalData()
 	m_audio.ent.Set( NULL );
 	m_pOldSkyCamera = NULL;
 	m_bDrawViewmodel = true;
+#ifdef PORTAL2
+	m_fTBeamEndTime = 0.0f;
+#endif
 }
 
 

@@ -13,6 +13,17 @@
 #include "dmxserializationdictionary.h"
 #include "tier1/memstack.h"
 
+// Binary encoding versions. This library writes version 2; Portal 2 and later
+// (the CS:GO-era datamodel) write up to 5, which it also reads.
+//  3: attribute type slots 7/25 (object id) hold DmeTime_t (inferred from the
+//     CS:GO type table; encoding 3 is not otherwise documented in the leak)
+//  4: 32-bit string count; element names and string values are table symbols
+//  5: table symbols are 32-bit
+#define DMX_BINARY_VER_STRINGTABLE				2
+#define DMX_BINARY_VER_TIME						3
+#define DMX_BINARY_VER_GLOBAL_STRINGTABLE		4
+#define DMX_BINARY_VER_STRINGTABLE_LARGESYMBOLS	5
+
 
 //-----------------------------------------------------------------------------
 // DMX elements/attributes can only be accessed inside a dmx context
@@ -98,7 +109,16 @@ private:
 	CDmxElement* UnserializeElementIndex( CUtlBuffer &buf, CUtlVector<CDmxElement*> &elementList );
 	void UnserializeElementAttribute( CUtlBuffer &buf, CDmxAttribute *pAttribute, CUtlVector<CDmxElement*> &elementList );
 	void UnserializeElementArrayAttribute( CUtlBuffer &buf, CDmxAttribute *pAttribute, CUtlVector<CDmxElement*> &elementList );
-	bool UnserializeAttributes( CUtlBuffer &buf, CDmxElement *pElement, CUtlVector<CDmxElement*> &elementList, int nStrings, int *offsetTable, char *stringTable );
+	bool UnserializeAttributes( CUtlBuffer &buf, CDmxElement *pElement, CUtlVector<CDmxElement*> &elementList, int nStrings, int *offsetTable, char *stringTable, int nEncodingVersion );
+
+	// Portal 2 port: string table symbols are 16-bit before encoding 5, 32-bit from 5.
+	static const char *GetStringFromTable( CUtlBuffer &buf, bool bLargeSymbols, int nStrings, int *offsetTable, char *stringTable )
+	{
+		int nSymbol = bLargeSymbols ? buf.GetInt() : buf.GetShort();
+		if ( nSymbol < 0 || nSymbol >= nStrings )
+			return NULL;
+		return stringTable + offsetTable[ nSymbol ];
+	}
 	int GetStringOffsetTable( CUtlBuffer &buf, int *offsetTable, int nStrings );
 };
 
@@ -333,10 +353,11 @@ void CDmxSerializer::UnserializeElementArrayAttribute( CUtlBuffer &buf, CDmxAttr
 //-----------------------------------------------------------------------------
 // Reads a single element
 //-----------------------------------------------------------------------------
-bool CDmxSerializer::UnserializeAttributes( CUtlBuffer &buf, CDmxElement *pElement, CUtlVector<CDmxElement*> &elementList, int nStrings, int *offsetTable, char *stringTable )
+bool CDmxSerializer::UnserializeAttributes( CUtlBuffer &buf, CDmxElement *pElement, CUtlVector<CDmxElement*> &elementList, int nStrings, int *offsetTable, char *stringTable, int nEncodingVersion )
 {
 	CDmxElementModifyScope modify( pElement );
 
+	bool bLargeSymbols = nEncodingVersion >= DMX_BINARY_VER_STRINGTABLE_LARGESYMBOLS;
 	char nameBuf[ 1024 ];
 	int nAttributeCount = buf.GetInt();
 	for ( int i = 0; i < nAttributeCount; ++i )
@@ -344,10 +365,9 @@ bool CDmxSerializer::UnserializeAttributes( CUtlBuffer &buf, CDmxElement *pEleme
 		const char *pName = NULL;
 		if ( stringTable )
 		{
-			int si = buf.GetShort();
-			if ( si >= nStrings )
+			pName = GetStringFromTable( buf, bLargeSymbols, nStrings, offsetTable, stringTable );
+			if ( !pName )
 				return false;
-			pName = stringTable + offsetTable[ si ];
 		}
 		else
 		{
@@ -372,6 +392,31 @@ bool CDmxSerializer::UnserializeAttributes( CUtlBuffer &buf, CDmxElement *pEleme
 
 		case AT_ELEMENT_ARRAY:
 			UnserializeElementArrayAttribute( buf, pAttribute, elementList );
+			break;
+
+		// Portal 2 port: later encodings (Portal 2/CS:GO datamodel) reuse the
+		// object-id type slots for DmeTime_t, an int tick count. It is kept as
+		// an int here; this library has no time type.
+		case AT_OBJECTID:
+			pAttribute->Unserialize( nEncodingVersion >= DMX_BINARY_VER_TIME ? AT_INT : AT_OBJECTID, buf );
+			break;
+
+		case AT_OBJECTID_ARRAY:
+			pAttribute->Unserialize( nEncodingVersion >= DMX_BINARY_VER_TIME ? AT_INT_ARRAY : AT_OBJECTID_ARRAY, buf );
+			break;
+
+		case AT_STRING:
+			if ( stringTable && nEncodingVersion >= DMX_BINARY_VER_GLOBAL_STRINGTABLE )
+			{
+				const char *pValue = GetStringFromTable( buf, bLargeSymbols, nStrings, offsetTable, stringTable );
+				if ( !pValue )
+					return false;
+				pAttribute->SetValue( pValue );
+			}
+			else
+			{
+				pAttribute->Unserialize( nAttributeType, buf );
+			}
 			break;
 		}
 	}
@@ -412,10 +457,11 @@ int CDmxSerializer::GetStringOffsetTable( CUtlBuffer &buf, int *offsetTable, int
 //-----------------------------------------------------------------------------
 bool CDmxSerializer::Unserialize( CUtlBuffer &buf, int nEncodingVersion, CDmxElement **ppRoot )
 {
-	if ( nEncodingVersion < 0 || nEncodingVersion > 2 )
+	if ( nEncodingVersion < 0 || nEncodingVersion > DMX_BINARY_VER_STRINGTABLE_LARGESYMBOLS )
 		return false;
 
-	bool bReadStringTable = nEncodingVersion >= 2;
+	bool bReadStringTable = nEncodingVersion >= DMX_BINARY_VER_STRINGTABLE;
+	bool bLargeSymbols = nEncodingVersion >= DMX_BINARY_VER_STRINGTABLE_LARGESYMBOLS;
 
 	// Keep reading until we read a NULL terminator
 	while( buf.GetChar() != 0 )
@@ -430,7 +476,7 @@ bool CDmxSerializer::Unserialize( CUtlBuffer &buf, int nEncodingVersion, CDmxEle
 	char *stringTable = NULL;
 	if ( bReadStringTable )
 	{
-		nStrings = buf.GetShort();
+		nStrings = nEncodingVersion >= DMX_BINARY_VER_GLOBAL_STRINGTABLE ? buf.GetInt() : buf.GetShort();
 		if ( nStrings > 0 )
 		{
 			offsetTable = ( int* )stackalloc( nStrings * sizeof( int ) );
@@ -467,17 +513,26 @@ bool CDmxSerializer::Unserialize( CUtlBuffer &buf, int nEncodingVersion, CDmxEle
 		const char *pType = NULL;
 		if ( stringTable )
 		{
-			int si = buf.GetShort();
-			if ( si >= nStrings )
+			pType = GetStringFromTable( buf, bLargeSymbols, nStrings, offsetTable, stringTable );
+			if ( !pType )
 				return false;
-			pType = stringTable + offsetTable[ si ];
 		}
 		else
 		{
 			buf.GetString( pTypeBuf );
 			pType = pTypeBuf;
 		}
-		buf.GetString( pName );
+		if ( stringTable && nEncodingVersion >= DMX_BINARY_VER_GLOBAL_STRINGTABLE )
+		{
+			const char *pTableName = GetStringFromTable( buf, bLargeSymbols, nStrings, offsetTable, stringTable );
+			if ( !pTableName )
+				return false;
+			V_strncpy( pName, pTableName, sizeof( pName ) );
+		}
+		else
+		{
+			buf.GetString( pName );
+		}
 		buf.Get( &id, sizeof(DmObjectId_t) );
 
 		CDmxElement *pElement = new CDmxElement( pType );
@@ -496,7 +551,8 @@ bool CDmxSerializer::Unserialize( CUtlBuffer &buf, int nEncodingVersion, CDmxEle
 	// Now read all attributes
 	for ( int i = 0; i < nElementCount; ++i )
 	{
-		UnserializeAttributes( buf, elementList[ i ], elementList, nStrings, offsetTable, stringTable );
+		if ( !UnserializeAttributes( buf, elementList[ i ], elementList, nStrings, offsetTable, stringTable, nEncodingVersion ) )
+			return false;
 	}
 
 	return buf.IsValid();

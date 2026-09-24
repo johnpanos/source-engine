@@ -5,7 +5,6 @@
 // $NoKeywords: $
 //===========================================================================//
 
-#if 0
 #include "cbase.h"
 #include "c_prop_portal.h"
 #include "portal_shareddefs.h"
@@ -178,6 +177,9 @@ void __MsgFunc_PortalFX_Surface(bf_read &msg)
 }
 
 USER_MESSAGE_REGISTER( PortalFX_Surface );
+
+// Portal 2 port: CEG constant accessor read through CEG_GET_CONSTANT_VALUE (no CEG in this build).
+static inline float DefaultPortalHalfHeight() { return DEFAULT_PORTAL_HALF_HEIGHT; }
 
 C_Prop_Portal::C_Prop_Portal( void )
 :	m_fStaticAmount( 0.0f ),
@@ -354,20 +356,20 @@ void C_Prop_Portal::CreateFizzleEffect( C_BaseEntity *pOwner, int iEffect, Vecto
 	{
 	case PORTAL_FIZZLE_SUCCESS:
 		{
-			pEffect = CNewParticleEffect::CreateOrAggregate( NULL, "portal_success", vecOrigin, NULL );
+			pEffect = Portal2_CreateOrAggregateParticleEffect( NULL, "portal_success", vecOrigin, NULL );
 			bCreated = true;
 		}
 		break;
 
 	case PORTAL_FIZZLE_BAD_SURFACE:
 		{
-			pEffect = CNewParticleEffect::CreateOrAggregate( NULL, "portal_badsurface", vecOrigin, NULL );
+			pEffect = Portal2_CreateOrAggregateParticleEffect( NULL, "portal_badsurface", vecOrigin, NULL );
 		}
 		break;
 
 	case PORTAL_FIZZLE_CLOSE:
 		{
-			pEffect = CNewParticleEffect::CreateOrAggregate( NULL, "portal_close", vecOrigin, NULL );
+			pEffect = Portal2_CreateOrAggregateParticleEffect( NULL, "portal_close", vecOrigin, NULL );
 		}
 		break;
 	}
@@ -539,7 +541,8 @@ void C_Prop_Portal::DestroyAttachedParticles( void )
 	// Shut down our effect if we have it
 	if ( m_hEffect && m_hEffect.IsValid() )
 	{
-		ParticleProp()->StopEmission( m_hEffect, false, true, false, true );
+		// Portal 2 port: this particle system has no instant-removal or end-cap stop options.
+		ParticleProp()->StopEmission( m_hEffect, false, true );
 		m_hEffect = NULL;
 	}
 }
@@ -1187,7 +1190,7 @@ bool C_Prop_Portal::ShouldPredict( void )
 			if ( m_hFiredByPlayer == pLocalPlayer )
 				return true;
 
-			CWeaponPortalgun *pPortalGun = dynamic_cast<CWeaponPortalgun*>( pLocalPlayer->Weapon_OwnsThisType( "weapon_portalgun" ) );
+			C_WeaponPortalgun *pPortalGun = dynamic_cast<C_WeaponPortalgun*>( pLocalPlayer->Weapon_OwnsThisType( "weapon_portalgun" ) );
 			if ( pPortalGun && ((pPortalGun->GetAssociatedPortal( false ) == this) || (pPortalGun->GetAssociatedPortal( true ) == this)) )
 				return true;
 		}
@@ -1207,7 +1210,7 @@ C_BasePlayer *C_Prop_Portal::GetPredictionOwner( void )
 
 		if ( pLocalPlayer )
 		{
-			CWeaponPortalgun *pPortalGun = dynamic_cast<CWeaponPortalgun*>( pLocalPlayer->Weapon_OwnsThisType( "weapon_portalgun" ) );
+			C_WeaponPortalgun *pPortalGun = dynamic_cast<C_WeaponPortalgun*>( pLocalPlayer->Weapon_OwnsThisType( "weapon_portalgun" ) );
 			if ( pPortalGun && ((pPortalGun->GetAssociatedPortal( false ) == this) || (pPortalGun->GetAssociatedPortal( true ) == this)) )
 			{
 				m_hFiredByPlayer = pLocalPlayer;	// probably portal_place made this portal don't keep doing this
@@ -1370,5 +1373,4 @@ CPortalRenderable *CreateProp_Portal_Fn( void )
 }
 
 static CPortalRenderableCreator_AutoRegister CreateProp_Portal( "Prop_Portal", CreateProp_Portal_Fn );
-#endif
 

@@ -629,3 +629,63 @@ BEGIN_DATADESC( CFilterEnemy )
 	DEFINE_FIELD( m_iszPlayerName, FIELD_STRING ),
 
 END_DATADESC()
+
+#ifdef PORTAL2
+// Portal 2 port: filter_activator_model and filter_player_held, used by the
+// retail Portal 2 maps. From the CS:GO source drop (filters.cpp); the
+// repository's provenance and distribution warning applies.
+
+// ###################################################################
+//	> FilterModel
+// ###################################################################
+class CFilterModel : public CBaseFilter
+{
+	DECLARE_CLASS( CFilterModel, CBaseFilter );
+	DECLARE_DATADESC();
+
+public:
+	string_t m_iFilterModel;
+
+	bool PassesFilterImpl( CBaseEntity *pCaller, CBaseEntity *pEntity )
+	{
+		return ( FStrEq( STRING( m_iFilterModel ), STRING( pEntity->GetModelName() ) ) );
+
+	}
+};
+
+LINK_ENTITY_TO_CLASS( filter_activator_model, CFilterModel );
+
+BEGIN_DATADESC( CFilterModel )
+
+	// Keyfields
+	DEFINE_KEYFIELD( m_iFilterModel,	FIELD_STRING,	"model" ),
+
+END_DATADESC()
+
+// ###################################################################
+//	> FilterPlayerHeld
+// ###################################################################
+
+class CFilterPlayerHeld : public CBaseFilter
+{
+	DECLARE_CLASS( CFilterPlayerHeld, CBaseFilter );
+	DECLARE_DATADESC();
+
+public:
+	bool PassesFilterImpl( CBaseEntity *pCaller, CBaseEntity *pEntity )
+	{
+		IPhysicsObject *pPhys = pEntity->VPhysicsGetObject();
+		if( (pPhys != NULL) && (pPhys->GetGameFlags() & FVPHYSICS_PLAYER_HELD) )
+		{
+			return true;
+		}
+		return false;
+	}
+};
+
+LINK_ENTITY_TO_CLASS( filter_player_held, CFilterPlayerHeld );
+
+BEGIN_DATADESC( CFilterPlayerHeld )
+END_DATADESC()
+
+#endif // PORTAL2

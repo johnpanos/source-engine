@@ -615,16 +615,30 @@ bool CEngineVGui::SetVGUIDirectories()
 //-----------------------------------------------------------------------------
 void CEngineVGui::Init()
 {
-	COM_TimestampedLog( "Loading gameui.dll" );
-
-	// load the GameUI dll
+	// A game client may compose its own GameUI (the CS:GO-era Portal 2 client
+	// embeds it). When the loaded client exports the GameUI interface, use the
+	// client's GameUI and console; otherwise load the GameUI module.
+	extern CreateInterfaceFn g_ClientFactory;
 	const char *szDllName = "GameUI";
-	m_hStaticGameUIModule = Sys_LoadModuleFromFileSystem(
-		g_pFileSystem, szDllName, "EXECUTABLE_PATH", true ); // Does a GetLocalCopy() call.
-	m_GameUIFactory = Sys_GetFactory(m_hStaticGameUIModule);
-	if ( !m_GameUIFactory )
+	if ( g_ClientFactory && g_ClientFactory( GAMEUI_INTERFACE_VERSION, NULL ) )
 	{
-		Error( "Could not load: %s\n", szDllName );
+		COM_TimestampedLog( "Using the client's embedded GameUI" );
+		szDllName = "client";
+		m_hStaticGameUIModule = NULL;
+		m_GameUIFactory = g_ClientFactory;
+	}
+	else
+	{
+		COM_TimestampedLog( "Loading gameui.dll" );
+
+		// load the GameUI dll
+		m_hStaticGameUIModule = Sys_LoadModuleFromFileSystem(
+			g_pFileSystem, szDllName, "EXECUTABLE_PATH", true ); // Does a GetLocalCopy() call.
+		m_GameUIFactory = Sys_GetFactory(m_hStaticGameUIModule);
+		if ( !m_GameUIFactory )
+		{
+			Error( "Could not load: %s\n", szDllName );
+		}
 	}
 	
 	// get the initialization func

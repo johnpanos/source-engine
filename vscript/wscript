@@ -1,0 +1,114 @@
+#! /usr/bin/env python
+# encoding: utf-8
+#
+# VScript Squirrel provider imported from the CS:GO 2017 source leak; see
+# README.md. The source list follows the POSIX selection of vscript.vpc.
+
+import os
+
+top = '.'
+PROJECT_NAME = 'vscript'
+
+SQUIRREL = 'languages/squirrel/'
+
+def options(opt):
+	return
+
+def configure(conf):
+	return
+
+def embed_text_array(source_path, symbol):
+	# Same output as the original devtools/bin/texttoarray.pl build step.
+	with open(source_path, 'rb') as stream:
+		data = stream.read()
+	lines = ['static unsigned char %s[] = {\n    ' % symbol]
+	for index, byte in enumerate(data):
+		lines.append('0x%02x,' % byte)
+		if index % 20 == 19:
+			lines.append('\n    ')
+	lines.append('0x00\n};\n')
+	return ''.join(lines)
+
+def write_if_changed(path, text):
+	try:
+		with open(path, 'r', newline='') as stream:
+			if stream.read() == text:
+				return
+	except OSError:
+		pass
+	os.makedirs(os.path.dirname(path), exist_ok=True)
+	with open(path, 'w', newline='') as stream:
+		stream.write(text)
+
+def build(bld):
+	# init.nut is compiled into the module as g_Script_init. It is generated
+	# while the build script runs so every compile sees it (gccdeps records
+	# header dependencies only after a first compile).
+	# The node is declared so gccdeps can resolve the recorded dependency.
+	init_nut = bld.path.find_or_declare('generated/init_nut.h')
+	write_if_changed(init_nut.abspath(),
+		embed_text_array(bld.path.find_node(SQUIRREL + 'vsquirrel/init.nut').abspath(), 'g_Script_init'))
+	generated = init_nut.parent
+
+	source = [
+		'vscript.cpp',
+		SQUIRREL + 'vsquirrel/vsquirrel.cpp',
+		SQUIRREL + 'squirrel/sqapi.cpp',
+		SQUIRREL + 'squirrel/sqbaselib.cpp',
+		SQUIRREL + 'squirrel/sqclass.cpp',
+		SQUIRREL + 'squirrel/sqcompiler.cpp',
+		SQUIRREL + 'squirrel/sqdebug.cpp',
+		SQUIRREL + 'squirrel/sqfuncstate.cpp',
+		SQUIRREL + 'squirrel/sqlexer.cpp',
+		SQUIRREL + 'squirrel/sqmem.cpp',
+		SQUIRREL + 'squirrel/sqobject.cpp',
+		SQUIRREL + 'squirrel/sqstate.cpp',
+		SQUIRREL + 'squirrel/sqtable.cpp',
+		SQUIRREL + 'squirrel/sqvm.cpp',
+		SQUIRREL + 'sqdbg/sqrdbg.cpp',
+		SQUIRREL + 'sqdbg/sqdbgserver.cpp',
+		SQUIRREL + 'sqstdlib/sqstdaux.cpp',
+		SQUIRREL + 'sqstdlib/sqstdblob.cpp',
+		SQUIRREL + 'sqstdlib/sqstdmath.cpp',
+		SQUIRREL + 'sqstdlib/sqstdrex.cpp',
+		SQUIRREL + 'sqstdlib/sqstdstream.cpp',
+		SQUIRREL + 'sqstdlib/sqstdstring.cpp',
+		SQUIRREL + 'sqplus/SqPlus.cpp',
+		SQUIRREL + 'sqplus/SquirrelBindingsUtils.cpp',
+		SQUIRREL + 'sqplus/SquirrelObject.cpp',
+		SQUIRREL + 'sqplus/SquirrelVM.cpp',
+		'../public/tier0/memoverride.cpp'
+	]
+
+	includes = [
+		'.',
+		SQUIRREL + 'include',
+		SQUIRREL + 'sqplus',
+		SQUIRREL + 'squirrel',
+		SQUIRREL + 'sqdbg',
+		generated,
+		'../public',
+		'../public/tier0',
+		'../public/tier1',
+		'../common'
+	]
+
+	defines = ['VSCRIPT_DLL_EXPORT', 'PROTECTED_THINGS_DISABLE']
+
+	libs = ['tier0', 'tier1', 'mathlib', 'vstdlib']
+
+	if bld.env.DEST_OS == 'android':
+		libs += ['ANDROID_SUPPORT']
+
+	bld.shlib(
+		source   = source,
+		target   = PROJECT_NAME,
+		name     = PROJECT_NAME,
+		features = 'c cxx',
+		includes = includes,
+		defines  = defines,
+		use      = libs,
+		install_path = bld.env.LIBDIR,
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx      = bld.get_taskgen_count()
+	)

@@ -538,6 +538,15 @@ private:
 class CountdownTimer
 {
 public:
+#ifdef PORTAL2
+	// Portal 2 networks some timers (DT_CountdownTimer, CS:GO base).
+#ifdef CLIENT_DLL
+	DECLARE_PREDICTABLE();
+#endif
+	DECLARE_CLASS_NOBASE( CountdownTimer );
+	DECLARE_EMBEDDED_NETWORKVAR();
+#endif
+
 	CountdownTimer( void )
 	{
 		m_timestamp = -1.0f;
@@ -587,8 +596,13 @@ public:
 	}
 
 private:
+#ifdef PORTAL2
+	CNetworkVar( float, m_duration );
+	CNetworkVar( float, m_timestamp );
+#else
 	float m_duration;
 	float m_timestamp;
+#endif
 	float Now( void ) const;		// work-around since client header doesn't like inlined gpGlobals->curtime
 };
 

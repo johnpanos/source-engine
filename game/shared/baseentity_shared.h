@@ -307,4 +307,25 @@ inline bool IsEntityQAngleVelReasonable( const QAngle &q )
 
 extern bool CheckEmitReasonablePhysicsSpew();
 
+#if defined( PORTAL2 ) && defined( CLIENT_DLL )
+// The server entity already has these (baseentity.h).
+inline Vector CBaseEntity::Forward() const
+{
+	const matrix3x4_t &mat = EntityToWorldTransform();
+	return Vector( mat[0][0], mat[1][0], mat[2][0] );
+}
+
+inline Vector CBaseEntity::Left() const
+{
+	const matrix3x4_t &mat = EntityToWorldTransform();
+	return Vector( mat[0][1], mat[1][1], mat[2][1] );
+}
+
+inline Vector CBaseEntity::Up() const
+{
+	const matrix3x4_t &mat = EntityToWorldTransform();
+	return Vector( mat[0][2], mat[1][2], mat[2][2] );
+}
+#endif // PORTAL2
+
 #endif // BASEENTITY_SHARED_H

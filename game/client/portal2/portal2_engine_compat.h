@@ -129,17 +129,15 @@
 #include "tier1/utlvector.h"
 #include "tier1/bitvec.h"
 #include "mathlib/vector.h"
+#include "ivrenderview.h"
 
 class IMesh;
 class C_BaseEntity;
 class C_BasePlayer;
 struct model_t;
 
-// Portal 2's client input and interpolation extensions are absent in this SDK.
-// The target is single-player, so use the SDK interpolator unchanged.
-template <typename T> class CInterpolatedVar;
-template <typename T>
-using CDiscontinuousInterpolatedVar = CInterpolatedVar<T>;
+// CDiscontinuousInterpolatedVar (the CS:GO-era interpolator that jumps through
+// portal teleports) is defined in game/client/interpolatedvar.h under PORTAL2.
 
 // CS:GO player render mode; this engine always renders the player the same way.
 enum PlayerRenderMode_t
@@ -276,6 +274,9 @@ struct ShaderStencilState_t
 		m_nReferenceValue = 0;
 		m_nTestMask = m_nWriteMask = 0xFFFFFFFF;
 	}
+
+	// The SDK glow effect's helper: apply all eight fields to a render context.
+	void SetStencilState( IMatRenderContext *pRenderContext ) const;
 };
 
 // CS:GO IMatRenderContext::SetStencilState, applied through this engine's
@@ -434,10 +435,144 @@ namespace Portal2Engine
 }
 
 //-----------------------------------------------------------------------------
+// Views
+//-----------------------------------------------------------------------------
+class CViewSetup;
+struct matrix3x4_t;
+
+// CS:GO VisOverrideData_t added portal-corner frustum trimming fields. This
+// engine's vis override reads only the leading SDK fields (vis origin and area
+// portal tolerance), so the portal keeps the CS:GO fields here and the engine
+// does not trim the visibility frustum to the portal corners: area portal
+// culling through a portal is less aggressive than retail, never incorrect.
+struct Portal2VisOverrideData_t : public VisOverrideData_t
+{
+	bool		m_bTrimFrustumToPortalCorners;
+	Vector		m_vPortalCorners[4];
+	Vector		m_vPortalOrigin;
+	Vector		m_vPortalForward;
+	float		m_flPortalRadius;
+};
+
+// CS:GO CViewSetup::m_bCustomViewMatrix/m_matCustomViewMatrix. This engine's
+// CViewSetup has only origin and angles and derives the view matrix from them.
+// - Portal2_GetCustomViewMatrix(): false; no view here carries a custom matrix.
+// - Portal2_SetCustomViewMatrix(): a rigid world-to-view matrix (rotation plus
+//   translation, e.g. a camera seen through a portal) is stored exactly as the
+//   equivalent origin and angles and returns true. A matrix with a reflection
+//   or scale (mirrors) cannot be expressed: the view is left unchanged, the
+//   feature is reported once as unsupported and the result is false.
+bool Portal2_GetCustomViewMatrix( const CViewSetup &view, matrix3x4_t &matWorldToView );
+bool Portal2_SetCustomViewMatrix( CViewSetup &view, const matrix3x4_t &matWorldToView );
+
+//-----------------------------------------------------------------------------
+// Client entities (CS:GO c_baseentity.h / cdll_util.h)
+//-----------------------------------------------------------------------------
+
+// CS:GO's client UTIL_Remove(): C_BaseEntity::Remove(), which releases the
+// entity (client-created and predicted entities are marked EFL_KILLME first).
+void UTIL_Remove( C_BaseEntity *pEntity );
+
+// CS:GO UTIL_RenderablesInBox(): the entities in the client leaf system whose
+// world-space render bounds intersect the box. This leaf system has no box
+// query, so the client entity list is scanned; returns the number written.
+int UTIL_RenderablesInBox( C_BaseEntity **pList, int listMax, const Vector &mins, const Vector &maxs );
+
+// CS:GO IClientRenderable::GetRenderFlags() for a renderable of this engine,
+// from the SDK virtuals: UsesPowerOfTwoFrameBufferTexture() maps to
+// ERENDERFLAGS_NEEDS_POWER_OF_TWO_FB. The SDK has no refract-once flag.
+int Portal2_GetRenderFlags( IClientRenderable *pRenderable );
+
+// CS:GO IClientLeafSystem::DisableCachedRenderBounds(). This leaf system reads
+// a renderable's bounds when RenderableChanged() is called and keeps no other
+// bounds cache, so disabling the cache means refreshing the bounds whenever
+// they may change: the call refreshes them now, and callers that disable the
+// cache must call RenderableChanged() when they move the renderable (the
+// Portal 2 ghost renderables do so every frame).
+void Portal2_DisableCachedRenderBounds( ClientRenderHandle_t handle, bool bDisable );
+
+//-----------------------------------------------------------------------------
+// Client mode / screen effects
+//-----------------------------------------------------------------------------
+class IViewEffects;
+extern IViewEffects *vieweffects;
+
+// CS:GO GetViewEffects(): this client's single IViewEffects.
+inline IViewEffects *GetViewEffects() { return vieweffects; }
+
+// CS:GO DoBlurFade() (viewpostprocess.h) draws the Portal 2 dev/fade_blur
+// material, a screenspace_general material with the fade_blur_ps20 pixel
+// shader. This shader library has neither, so for any strength above zero the
+// blur is reported once as unsupported and the view is left unblurred.
+void Portal2_DoBlurFade( float flStrength, float flDesaturate, int x, int y, int w, int h );
+
+//-----------------------------------------------------------------------------
+// Tool recording (CS:GO toolframework_client.h)
+//-----------------------------------------------------------------------------
+class KeyValues;
+
+// Registry of handlers for entity data recorded outside the conformant tool
+// recording state ("non-conformant" key values). Recording works as in CS:GO:
+// entities write a "gamekeyvalues" sub-key tagged with their handler ID into
+// their tool recording message. Playback is unsupported: this engine's tool
+// interface never delivers recorded game key values to the client, so
+// Portal2_HandleGameEntityKeyValues() (CS:GO HandleGameEntityKeyValues) has no
+// caller and the registered handlers are not invoked.
+class CIFM_EntityKeyValuesHandler_AutoRegister
+{
+public:
+	explicit CIFM_EntityKeyValuesHandler_AutoRegister( const char *szHandlerID );
+
+	virtual void HandleData_PreUpdate( void ) {}	// called once before any received data is distributed to its handlers
+	virtual void HandleData( KeyValues *pKeyValues ) = 0;
+	virtual void HandleData_PostUpdate( void ) {}	// called once after all received data is distributed to its handlers
+	virtual void HandleData_RemoveAll( void ) {}
+
+	static void AllHandlers_PreUpdate( void );
+	static void FindAndCallHandler( const char *szHandlerID, KeyValues *pKeyValues );
+	static void AllHandlers_PostUpdate( void );
+	static void AllHandlers_RemoveAll( void );
+
+	static const char *GetGameKeyValuesKeyString( void );
+	static const char *GetHandlerIDKeyString( void );
+	static KeyValues *FindOrCreateNonConformantKeyValues( KeyValues *pParentKV );
+
+private:
+	const char *m_szHandlerID;
+	CIFM_EntityKeyValuesHandler_AutoRegister *m_pNext;
+	static CIFM_EntityKeyValuesHandler_AutoRegister *s_pRegisteredHandlers;
+};
+
+// Distributes recorded game key values to the registered handlers.
+void Portal2_HandleGameEntityKeyValues( KeyValues *pKeyValues );
+
+//-----------------------------------------------------------------------------
+// Particles
+//-----------------------------------------------------------------------------
+class CNewParticleEffect;
+
+// CS:GO CParticleSystemDefinition::SetDrawThroughLeafSystem( false ) for one
+// effect: removes the effect's renderable from the client leaf system so only
+// the owner's explicit DrawModel() call draws it. The particle manager's later
+// RemoveRenderable() on the cleared handle is a no-op.
+void Portal2_DrawParticleEffectManually( CNewParticleEffect *pEffect );
+
+// CS:GO CNewParticleEffect::CreateOrAggregate(). CS:GO merged an ownerless
+// effect into a nearby live effect of the same definition when that definition
+// had an aggregation radius. This particle system's definitions have no
+// aggregation radius, so this always creates a new effect, which is CS:GO's
+// result for such definitions. The particle manager owns the effect; it is
+// removed when it finishes.
+class C_BaseEntity;
+CNewParticleEffect *Portal2_CreateOrAggregateParticleEffect( C_BaseEntity *pOwner, const char *pParticleSystemName,
+															 const Vector &vecAggregatePosition, const char *pDebugName = NULL );
+
+//-----------------------------------------------------------------------------
 // Split-screen helpers (single local player)
 //-----------------------------------------------------------------------------
 class C_BasePlayer;
 C_BasePlayer *GetSplitScreenViewPlayer( int nSlot = -1 );	// the local player
 inline bool IsLocalSplitScreenPlayer( int nSlot ) { return nSlot == 0; }
+inline bool VGui_IsSplitScreenPIP() { return false; }	// no picture-in-picture split screen
 
 #endif // PORTAL2_ENGINE_COMPAT_H

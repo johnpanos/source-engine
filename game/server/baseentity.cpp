@@ -511,6 +511,10 @@ void CBaseEntity::PostConstructor( const char *szClassname )
 			if ( edict() )
 				edict()->m_pNetworkable = NetworkProp();
 		}
+
+#ifdef PORTAL2
+		InitSharedVars();
+#endif
 	}
 
 	CheckHasThinkFunction( false );
@@ -7570,17 +7574,7 @@ void CBaseEntity::UpdateObjectCapsCache( void )
 //-----------------------------------------------------------------------------
 void CBaseEntity::InputRemovePaint( inputdata_t &inputdata )
 {
-	// Portal 2 port: paint maps go through the adapter; this engine has none.
-	if ( Portal2_HasPaintmap() && IsBSPModel() )
-	{
-		Portal2_RemovePaint( GetModel() );
-
-		CBroadcastRecipientFilter filter;
-		filter.MakeReliable();
-		UserMessageBegin( filter, "RemovePaint" );
-		WRITE_EHANDLE( this );
-		MessageEnd();
-	}
+	// This engine does not provide BSP paint maps.
 }
 
 const char *CBaseEntity::GetPreTemplateName()

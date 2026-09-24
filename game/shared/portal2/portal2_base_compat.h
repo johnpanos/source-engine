@@ -92,6 +92,17 @@ extern IMatchFramework *g_pMatchFramework;
 #define DOT_30DEGREE 0.86602540378f
 #endif
 
+// CS:GO prediction diff printing (util_shared.h); compiled out as in CS:GO
+// builds without the prediction-debugging option.
+#ifndef EASY_DIFFPRINT
+#define EASY_DIFFPRINT( entity, szFormatString, ... )
+#define EASY_DIFFPRINT_CONDITIONAL( conditions, entity, szFormatString, ... )
+#endif
+
+// CEG constant accessor for the speed paint power, read through
+// CEG_GET_CONSTANT_VALUE( PaintSpeedPower ) (see SurfNoPaintFlag()).
+#define PaintSpeedPower() SPEED_POWER
+
 #ifndef GLOWS_ENABLE
 #define GLOWS_ENABLE
 #endif

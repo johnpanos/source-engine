@@ -15,6 +15,9 @@
 #include "sceneentity.h"		// for exposing scene precache function
 #include "isaverestore.h"
 #include "gamerules.h"
+#ifdef PORTAL2
+#include "portal_gamerules.h"
+#endif
 #include "particle_parse.h"
 #if defined( _WIN32 ) || defined( POSIX )
 #include "vscript_server_nut.h"
@@ -250,7 +253,7 @@ static float FrameTime()
 
 static void SendToConsole( const char *pszCommand )
 {
-	CBasePlayer *pPlayer = UTIL_GetLocalPlayerOrListenServerHost();
+	CBasePlayer *pPlayer = UTIL_GetListenServerHost();
 	if ( !pPlayer )
 	{
 		DevMsg ("Cannot execute \"%s\", no player\n", pszCommand );
@@ -351,7 +354,9 @@ static void DoRecordAchievementEvent( const char *pszAchievementname, int iPlaye
 			return;
 		}
 	}
-	UTIL_RecordAchievementEvent( pszAchievementname, pPlayer );
+	// Legacy achievement event routing is unavailable in this engine.
+	NOTE_UNUSED( pszAchievementname );
+	NOTE_UNUSED( pPlayer );
 }
 
 
@@ -522,7 +527,9 @@ bool VScriptServerInit()
 				
 				if ( GameRules() )
 				{
-					GameRules()->RegisterScriptFunctions();
+#ifdef PORTAL2
+					PortalGameRules()->RegisterScriptFunctions();
+#endif
 				}
 
 				g_pScriptVM->RegisterInstance( &g_ScriptEntityIterator, "Entities" );

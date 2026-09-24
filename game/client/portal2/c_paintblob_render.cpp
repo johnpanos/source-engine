@@ -7,7 +7,6 @@
 // Valve source; the repository's provenance and distribution warning applies.
 //
 //=============================================================================//
-#if 0
 #include "cbase.h"
 #include "c_paintblob_render.h"
 #include "paint_sprayer_shared.h"
@@ -335,7 +334,8 @@ void Paintblob_DrawSpheres( IMaterial *pMaterial, float flRadius )
 void Paintblob_SafeLightCubeUpdate( const Vector &vecRenderOrigin, Vector4D *cachedCubeColours )
 {
 	Vector boxColors[6];
-	engine->ComputeLightingCube( vecRenderOrigin, false, boxColors );
+	// Portal 2 port: IVEngineClient has no ComputeLightingCube here; see portal2_engine_compat.h.
+	Portal2Engine::ComputeLightingCube( vecRenderOrigin, false, boxColors );
 
 	bool invalidOrigin = enginetrace->PointOutsideWorld( vecRenderOrigin );
 	const char *pOutsideWorldMsg = invalidOrigin ? "(lighting origin is !OUTSIDE! the world)\n" : "";
@@ -788,4 +788,3 @@ void Paintblob_Draw( int renderMode, IClientRenderable *pClientRenderable, const
 }
 
 } // namespace NPaintRenderer
-#endif

@@ -9479,7 +9479,7 @@ Vector CAI_BaseNPC::GetShootEnemyDir( const Vector &shootOrigin, bool bNoisy )
 		// Translate the enemy's position across the portals if it's only seen in the portal view cone
 		if ( !FInViewCone( vecEnemyLKP ) || !FVisible( vecEnemyLKP ) )
 		{
-			CProp_Portal *pPortal = FInViewConeThroughPortal( vecEnemyLKP );
+			CSightPortal *pPortal = FInViewConeThroughPortal( vecEnemyLKP );
 			if ( pPortal )
 			{
 				UTIL_Portal_VectorTransform( pPortal->m_hLinkedPortal->MatrixThisToLinked(), vecEnemyOffset, vecEnemyOffset );
@@ -9560,7 +9560,7 @@ Vector CAI_BaseNPC::GetActualShootPosition( const Vector &shootOrigin )
 
 #ifdef PORTAL
 	// Check if it's also visible through portals
-	CProp_Portal *pPortal = FInViewConeThroughPortal( vecEnemyLKP );
+	CSightPortal *pPortal = FInViewConeThroughPortal( vecEnemyLKP );
 	if ( pPortal )
 	{
 		// Get the target's position through portals

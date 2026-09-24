@@ -384,6 +384,10 @@ struct ScriptedNPCInteraction_t
 		bValidOnCurrentEnemy = false;
 		flDelay = 5.0;
 		flDistSqr = (DSS_MAX_DIST * DSS_MAX_DIST);
+#ifdef PORTAL2
+		flCameraDistance = 0.0f;
+		angCameraAngles.Init();
+#endif
 		flNextAttemptTime = 0;
 		iszMyWeapon = NULL_STRING;
 		iszTheirWeapon = NULL_STRING;
@@ -402,7 +406,11 @@ struct ScriptedNPCInteraction_t
 	int			iLoopBreakTriggerMethod;
 	Vector		vecRelativeOrigin;			// (forward, right, up)
 	QAngle		angRelativeAngles;				
-	Vector		vecRelativeVelocity;		// Desired relative velocity of the other NPC
+	Vector		vecRelativeVelocity;
+#ifdef PORTAL2
+	float		flCameraDistance;
+	QAngle		angCameraAngles;
+#endif		// Desired relative velocity of the other NPC
 	float		flDelay;					// Delay before interaction can be used again
 	float		flDistSqr;					// Max distance sqr from the relative origin the NPC is allowed to be to trigger
 	string_t	iszMyWeapon;				// Classname of the weapon I'm holding, if any

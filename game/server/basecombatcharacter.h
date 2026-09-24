@@ -32,8 +32,14 @@
 
 class CNavArea;
 class CScriptedTarget;
-#ifdef PORTAL
+#if defined( PORTAL2 )
+class CPortal_Base2D;
+// The portal type the portal-aware sight tests use. Every Portal 2 portal
+// (placed portals and mirrors alike) derives from CPortal_Base2D.
+typedef CPortal_Base2D CSightPortal;
+#elif defined( PORTAL )
 class CProp_Portal;
+typedef CProp_Portal CSightPortal;
 #endif
 typedef CHandle<CBaseCombatWeapon> CBaseCombatWeaponHandle;
 
@@ -140,15 +146,15 @@ public:
 	static void			ResetVisibilityCache( CBaseCombatCharacter *pBCC = NULL );
 
 #ifdef PORTAL
-	virtual	bool		FVisibleThroughPortal( const CProp_Portal *pPortal, CBaseEntity *pEntity, int traceMask = MASK_BLOCKLOS, CBaseEntity **ppBlocker = NULL );
+	virtual	bool		FVisibleThroughPortal( const CSightPortal *pPortal, CBaseEntity *pEntity, int traceMask = MASK_BLOCKLOS, CBaseEntity **ppBlocker = NULL );
 #endif
 
 	virtual bool		FInViewCone( CBaseEntity *pEntity );
 	virtual bool		FInViewCone( const Vector &vecSpot );
 
 #ifdef PORTAL
-	virtual CProp_Portal*	FInViewConeThroughPortal( CBaseEntity *pEntity );
-	virtual CProp_Portal*	FInViewConeThroughPortal( const Vector &vecSpot );
+	virtual CSightPortal*	FInViewConeThroughPortal( CBaseEntity *pEntity );
+	virtual CSightPortal*	FInViewConeThroughPortal( const Vector &vecSpot );
 #endif
 
 	virtual bool		FInAimCone( CBaseEntity *pEntity );

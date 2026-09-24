@@ -53,6 +53,8 @@ private:
 	COutputEvent	m_OnDissolve;
 	COutputEvent	m_OnFizzle;
 	COutputEvent	m_OnDissolveBox;
+
+	float			m_flLastPortalShotTime;	// gpGlobals->curtime of the last portal shot this cleanser stopped
 };
 
 #endif // TRIGGER_PORTAL_CLEANSER_H

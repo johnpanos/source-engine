@@ -16,6 +16,7 @@
 #endif
 
 #include "portal_util_shared.h"
+#include "portal2_shared_compat.h"
 #include "portal_base2d_shared.h"
 
 #include "paint_power_user.h"
@@ -158,7 +159,7 @@ void PropPaintPowerUser<BasePropType>::Spawn()
 		m_nOriginalMaterialIndex = pPhysObject->GetMaterialIndex();
 	}
 
-	this->AddFlag( FL_AFFECTED_BY_PAINT );
+	// Paint updates enumerate affected entities without reserving an entity flag.
 	if( m_PrePaintedPower != NO_POWER )
 	{
 		this->Paint( (PaintPowerType)m_PrePaintedPower, vec3_origin );
@@ -169,7 +170,7 @@ void PropPaintPowerUser<BasePropType>::Spawn()
 template< typename BasePropType >
 void PropPaintPowerUser<BasePropType>::VPhysicsCollision( int index, gamevcollisionevent_t *pEvent )
 {
-	if( engine->HasPaintmap() )
+	if( Portal2_HasPaintmap() )
 	{
 		CBaseEntity* pOther = pEvent->pEntities[!index];
 
@@ -195,7 +196,7 @@ void PropPaintPowerUser<BasePropType>::VPhysicsCollision( int index, gamevcollis
 template< typename BasePropType >
 void PropPaintPowerUser<BasePropType>::VPhysicsUpdate( IPhysicsObject *pPhysics )
 {
-	if( engine->HasPaintmap() )
+	if( Portal2_HasPaintmap() )
 	{
 		UpdatePaintPowersFromContacts();
 	}

@@ -565,9 +565,17 @@ void C_VGuiScreen::DrawScreenOverlay()
 int	C_VGuiScreen::DrawModel( int flags )
 {
 	vgui::Panel *pPanel = m_PanelWrapper.GetPanel();
+#ifdef PORTAL2
+	// Portal 2 port: panels see the screen's active state as their enabled
+	// state; the lightboards flicker on when it changes.
+	if ( pPanel )
+	{
+		pPanel->SetEnabled( IsActive() );
+	}
+#endif
 	if (!pPanel || !IsActive())
 		return 0;
-	
+
 	// Don't bother drawing stuff not visible to me...
 	C_BasePlayer *pLocalPlayer = C_BasePlayer::GetLocalPlayer();
 	if (!pLocalPlayer || !IsVisibleToTeam(pLocalPlayer->GetTeamNumber()) )

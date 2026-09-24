@@ -15,7 +15,7 @@
 #include "weapon_parse.h"
 #include "particle_parse.h"
 #include "filesystem.h"
-#include "KeyValues.h"
+#include "keyvalues.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"

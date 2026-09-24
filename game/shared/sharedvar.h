@@ -13,6 +13,13 @@
 
 #include "convar.h"
 #include "ispsharedmemory.h"
+
+// Portal 2 port: the CS:GO-era engine returned these spaces from
+// IVEngineClient/IVEngineServer::GetSinglePlayerSharedMemorySpace(). This
+// engine exposes its registry as ISPSharedMemoryManager, which each game module
+// connects at startup (portal2_shared_compat.cpp).
+ISPSharedMemory *Portal2_GetSinglePlayerSharedMemorySpace( const char *szName, int nEntNum );
+
 #include "basehandle.h"
 #include "isaverestore.h"
 
@@ -189,7 +196,7 @@ public:
 	{
 		Assert( !m_pSharedMemory && !m_pValue );
 
-		m_pSharedMemory = engine->GetSinglePlayerSharedMemorySpace( pchName, iEntNum );
+		m_pSharedMemory = Portal2_GetSinglePlayerSharedMemorySpace( pchName, iEntNum );
 		m_pSharedMemory->Init( sizeof( Type ) );
 		m_pValue = (Type*)m_pSharedMemory->Base();
 	}
@@ -626,7 +633,7 @@ public:
 	{
 		Assert( !this->m_pSharedMemory && !this->m_pValue );
 
-		this->m_pSharedMemory = engine->GetSinglePlayerSharedMemorySpace( pchName, iEntNum );
+		this->m_pSharedMemory = Portal2_GetSinglePlayerSharedMemorySpace( pchName, iEntNum );
 		this->m_pSharedMemory->Init( sizeof( EHANDLE ) + sizeof( int ) );		// Also allocate memory for the int that converts to a Client handle
 		this->m_pValue = (EHANDLE*)this->m_pSharedMemory->Base();
 		m_piClientIndex = (int*)((void*)(this->m_pValue + 1));
@@ -749,7 +756,7 @@ public:
 		Assert( !this->m_pSharedMemory && !(CSharedArrayBase<Type,Changer>::m_pValue) && iCount > 0 );
 
 		m_iCount = iCount;
-		this->m_pSharedMemory = engine->GetSinglePlayerSharedMemorySpace( pchName, iEntNum );
+		this->m_pSharedMemory = Portal2_GetSinglePlayerSharedMemorySpace( pchName, iEntNum );
 		this->m_pSharedMemory->Init( sizeof( Type ) * m_iCount );
 		CSharedArrayBase<Type,Changer>::m_pValue = (Type*)this->m_pSharedMemory->Base();
 	}
@@ -833,7 +840,7 @@ public:
 		Assert( !this->m_pSharedMemory && !(CSharedHandleArrayBase<Type,Changer>::m_pValue) && iCount > 0 );
 
 		this->m_iCount = iCount;
-		this->m_pSharedMemory = engine->GetSinglePlayerSharedMemorySpace( pchName, iEntNum );
+		this->m_pSharedMemory = Portal2_GetSinglePlayerSharedMemorySpace( pchName, iEntNum );
 		this->m_pSharedMemory->Init( sizeof( EHANDLE ) * this->m_iCount + sizeof( int ) * this->m_iCount );	// Also allocate memory for the ints that convert to Client handles
 		this->m_pValue = (EHANDLE*)this->m_pSharedMemory->Base();
 		m_piClientIndex = (int*)((void*)(CSharedHandleArrayBase<Type,Changer>::m_pValue + this->m_iCount));
@@ -945,7 +952,7 @@ public:
 	{
 		Assert( !this->m_pSharedMemory && !(CSharedUtlVectorBase<Type,Changer>::m_pValue) );
 
-		this->m_pSharedMemory = engine->GetSinglePlayerSharedMemorySpace( pchName, iEntNum );
+		this->m_pSharedMemory = Portal2_GetSinglePlayerSharedMemorySpace( pchName, iEntNum );
 		this->m_pSharedMemory->Init( sizeof( CUtlVector<Type> ) );
 		CSharedUtlVectorBase<Type,Changer>::m_pValue = (CUtlVector<Type>*)this->m_pSharedMemory->Base();
 	}

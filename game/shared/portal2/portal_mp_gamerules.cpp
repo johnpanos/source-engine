@@ -9,7 +9,7 @@
 #include "portal_mp_gamerules.h"
 #include "viewport_panel_names.h"
 #include "gameeventdefs.h"
-#include <KeyValues.h>
+#include <keyvalues.h>
 #include "ammodef.h"
 #include "tier1/fmtstr.h"
 #include "hl2_shareddefs.h"
@@ -1500,7 +1500,7 @@ void CPortalMPGameRules::InitDefaultAIRelationships()
 	// --------------------------------------------------------------
 	// First initialize table so we can report missing relationships
 	// --------------------------------------------------------------
-	int iNumClasses = GameRules() ? GameRules()->NumEntityClasses() : LAST_SHARED_ENTITY_CLASS;
+	int iNumClasses = LAST_SHARED_ENTITY_CLASS;
 	for (i=0;i<iNumClasses;i++)
 	{
 		for (j=0;j<iNumClasses;j++)
@@ -1576,23 +1576,10 @@ void CPortalMPGameRules::StartPlayerTransitionThinks( void )
 			pToPlayer->SetThink( &CPortal_Player::PlayerTransitionCompleteThink );
 			pToPlayer->SetNextThink( gpGlobals->curtime + 1.0f );
 
-			if ( !pToPlayer->HasAttachedSplitScreenPlayers() && !pToPlayer->IsSplitScreenPlayer() )
-			{
-				CBasePlayer *pOtherPlayer = UTIL_OtherPlayer( pToPlayer );
-				if ( pOtherPlayer )
-				{
-					pOtherPlayer->AddPictureInPicturePlayer( pToPlayer );
-					pToPlayer->AddPictureInPicturePlayer( pOtherPlayer );
-				}
-			}
-			else if ( IsPC() && ( pToPlayer->HasAttachedSplitScreenPlayers() || pToPlayer->IsSplitScreenPlayer() ) )
-			{
-				SetAllMapsComplete();
-			}
+			// This SDK has no split-screen or picture-in-picture players.
 		}
 	}
 
-	ResetAllPlayersStats();
 	g_portal_ui_controller.OnLevelStart();
 }
 
@@ -2185,7 +2172,7 @@ CEG_NOINLINE void CPortalMPGameRules::PlayerWinRPS( CBasePlayer* pWinnerPlayer )
 
 	if ( m_nRPSWinCount[ nWinnerSlot ] == 3 )
 	{
-		UTIL_RecordAchievementEvent( "ACH.ROCK_CRUSHES_ROBOT", pWinnerPlayer );
+		// Steam achievements are unavailable in this build.
 	}
 }
 
@@ -2864,22 +2851,7 @@ void AddGladosSpokenFlags( int nBatch, int nFlags )
 
 bool IsLocalSplitScreen( void )
 {
-	CPortalMPGameRules *pRules = PortalMPGameRules();
-	if ( !pRules )
-		return 0;
-
-	CPortal_Player *pPlayer = NULL;
-
-	for( int i = 1; i <= gpGlobals->maxClients; ++i )
-	{
-		pPlayer = ToPortalPlayer( UTIL_PlayerByIndex( i ) );
-
-		//If the other player does not exist or if the other player is the local player
-		if ( pPlayer )
-			return pPlayer->GetSplitScreenPlayers().Count() > 0;
-	}
-
-	return 0;
+	return false; // The current client profile has one local player.
 }
 
 int GetNumPlayersConnected( void )
@@ -2947,7 +2919,13 @@ void NotifySpeedRunSuccess( int iRunLength, const char* mapname )
 {
 	KeyValues *kvNotifySpeedRunCoop = new KeyValues( "OnSpeedRunCoopEvent" );
 	kvNotifySpeedRunCoop->SetString( "map", mapname );
-	UTIL_SendClientCommandKVToPlayer( kvNotifySpeedRunCoop );
+	for ( int i = 1; i <= gpGlobals->maxClients; ++i )
+	{
+		CBasePlayer *pPlayer = UTIL_PlayerByIndex( i );
+		if ( pPlayer )
+			engine->ClientCommandKeyValues( pPlayer->edict(), kvNotifySpeedRunCoop->MakeCopy() );
+	}
+	kvNotifySpeedRunCoop->deleteThis();
 }
 
 void CoopSetCameFromLastDLCMap( bool bComingFromLastDLCMap )
@@ -2957,15 +2935,15 @@ void CoopSetCameFromLastDLCMap( bool bComingFromLastDLCMap )
 		return;
 	
 	if( bComingFromLastDLCMap )
-		GlobalEntity_SetFlags( "came_from_last_dlc_map", 1 );
+		GlobalEntity_SetFlags( MAKE_STRING( "came_from_last_dlc_map" ), 1 );
 	else
-		GlobalEntity_SetFlags( "came_from_last_dlc_map", 0 );
+		GlobalEntity_SetFlags( MAKE_STRING( "came_from_last_dlc_map" ), 0 );
 }
 
 bool GetCameFromLastDLCMap()
 {
 
-	if( (GlobalEntity_GetFlags( "came_from_last_dlc_map" ) & 1) != 0 )
+	if( (GlobalEntity_GetFlags( MAKE_STRING( "came_from_last_dlc_map" ) ) & 1) != 0 )
 		return true;
 
 	return false;
@@ -2977,12 +2955,12 @@ void SetHaveSeenDLCTubesReveal( void )
 	if ( !pRules )
 		return;
 	
-	GlobalEntity_SetFlags( "have_seen_dlc_tubes_reveal", 1 );
+	GlobalEntity_SetFlags( MAKE_STRING( "have_seen_dlc_tubes_reveal" ), 1 );
 }
 
 bool GetHaveSeenDLCTubesReveal()
 {
-	if( (GlobalEntity_GetFlags( "have_seen_dlc_tubes_reveal" ) & 1) != 0 )
+	if( (GlobalEntity_GetFlags( MAKE_STRING( "have_seen_dlc_tubes_reveal" ) ) & 1) != 0 )
 		return true;
 
 	 return false;
@@ -3048,6 +3026,11 @@ void CPortalMPGameRules::RegisterScriptFunctions( void )
 	ScriptRegisterFunction( g_pScriptVM, AddGladosSpokenFlags, "Adds bit flags for specific lines that we want to track per session." );
 	ScriptRegisterFunction( g_pScriptVM, IsLocalSplitScreen, "Are these players playing in Splitscreen?" );
 	ScriptRegisterFunction( g_pScriptVM, GetNumPlayersConnected, "Returns how many players are connected" );
+	// Portal 2 port: defined in portal_gamerules.cpp
+	extern int GetMapIndexInPlayOrder( void );
+	extern int GetNumMapsPlayed( void );
+	ScriptRegisterFunction( g_pScriptVM, GetMapIndexInPlayOrder, "Determines which index (by order played) this map is. Returns -1 if entry is not found. -2 if this is not a known community map." );
+	ScriptRegisterFunction( g_pScriptVM, GetNumMapsPlayed, "Returns how many maps the player has played through." );
 	ScriptRegisterFunction( g_pScriptVM, AddCoopCreditsName, "Adds a name to the coop credit's list." );
 	ScriptRegisterFunction( g_pScriptVM, CoopGladosBlowUpBots, "Call this to blow up both robots and prevent respawning!" );
 	ScriptRegisterFunction( g_pScriptVM, CoopGetNumPortalsPlaced, "Returns the number of portals the players have placed so far." );

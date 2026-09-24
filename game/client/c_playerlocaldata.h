@@ -33,6 +33,9 @@ public:
 		m_iv_vecPunchAngle.Setup( &m_vecPunchAngle.m_Value, LATCH_SIMULATION_VAR );
 		m_iv_vecPunchAngleVel.Setup( &m_vecPunchAngleVel.m_Value, LATCH_SIMULATION_VAR );
 		m_flFOVRate = 0;
+#ifdef PORTAL2
+		m_fTBeamEndTime = 0.0f;
+#endif
 	}
 
 	unsigned char			m_chAreaBits[MAX_AREA_STATE_BYTES];				// Area visibility flags.
@@ -64,6 +67,10 @@ public:
 	bool					m_bWearingSuit;
 	bool					m_bPoisoned;
 	float					m_flStepSize;
+#ifdef PORTAL2
+	// Tractor beam exit time (CS:GO-era player data; not networked there either).
+	float					m_fTBeamEndTime;
+#endif
 	bool					m_bAllowAutoMovement;
 
 	// 3d skybox

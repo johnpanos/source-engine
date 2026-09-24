@@ -21,6 +21,7 @@
 #include "mathlib/vector.h"
 #include "tier1/utlvector.h"
 #include "cmodel.h"
+#include "engine/IEngineTrace.h"
 
 struct model_t;
 struct Ray_t;
@@ -36,6 +37,13 @@ struct virtualmeshlist_t;
 // every map behaves as a map without a paint map: nothing can be painted and
 // every surface reports no paint.
 //-----------------------------------------------------------------------------
+
+// The surface flag Portal 2 tests for "no paint" (bspflags.h in the Portal 2
+// engine), and the CEG constant accessor its paint code reads it through.
+#ifndef SURF_NOPAINT
+#define SURF_NOPAINT SURF_NODECALS
+#endif
+inline unsigned short SurfNoPaintFlag() { return SURF_NOPAINT; }
 
 // Replaces engine->HasPaintmap(). Always false.
 bool Portal2_HasPaintmap();
@@ -157,5 +165,87 @@ bool Portal2_TraceBoxAA( const Ray_t &ray, const CPhysCollide *pCollide, trace_t
 // Replaces physcollision->CollideGetRadius(): the radius of a sphere around the
 // collide's origin that encloses it, from the collide's local bounding box.
 float Portal2_CollideGetRadius( const CPhysCollide *pCollide );
+
+
+//-----------------------------------------------------------------------------
+// UTIL_FindClosestPassableSpace with trace adapters (later Portal 2 base
+// game util_shared.h). The 2010 retail build took a trace filter and mask; the
+// retained Portal 2 source routes every trace and world test through the
+// adapter so portal-aware callers can substitute UTIL_Portal_TraceRay. The
+// search is the 2010 algorithm (also Portal 1's FindClosestPassableSpace):
+// grow a box from the center, score the eight corners by how far each can
+// see the others, and move toward the free corners.
+//-----------------------------------------------------------------------------
+struct FindClosestPassableSpace_TraceAdapter_t;
+typedef void ( *FN_RayTraceAdapterFunc )( const Ray_t &ray, trace_t *pResult, FindClosestPassableSpace_TraceAdapter_t *pTraceAdapter );
+typedef bool ( *FN_PointIsOutsideWorld )( const Vector &vTest, FindClosestPassableSpace_TraceAdapter_t *pTraceAdapter );
+
+struct FindClosestPassableSpace_TraceAdapter_t
+{
+	FN_RayTraceAdapterFunc pTraceFunc;
+	FN_PointIsOutsideWorld pPointOutsideWorldFunc;
+	ITraceFilter *pTraceFilter;
+	unsigned int fMask;
+};
+
+// Axis restriction flags: a set bit forbids moving the center along that
+// signed axis direction.
+enum
+{
+	FL_AXIS_DIRECTION_NONE = 0,
+	FL_AXIS_DIRECTION_X = ( 1 << 0 ),
+	FL_AXIS_DIRECTION_NX = ( 1 << 1 ),
+	FL_AXIS_DIRECTION_Y = ( 1 << 2 ),
+	FL_AXIS_DIRECTION_NY = ( 1 << 3 ),
+	FL_AXIS_DIRECTION_Z = ( 1 << 4 ),
+	FL_AXIS_DIRECTION_NZ = ( 1 << 5 ),
+};
+
+// Finds the closest space where a box of half-size vExtents centered near
+// vCenter is not solid according to the adapter. Returns false after
+// iIterations failed attempts (vCenterOut then holds the last candidate).
+bool UTIL_FindClosestPassableSpace( const Vector &vCenter, const Vector &vExtents, const Vector &vIndecisivePush,
+									unsigned int iIterations, Vector &vCenterOut, int nAxisRestrictionFlags,
+									FindClosestPassableSpace_TraceAdapter_t *pTraceAdapter );
+
+// The same search with enginetrace->TraceRay() and PointOutsideWorld().
+bool UTIL_FindClosestPassableSpace( const Vector &vCenter, const Vector &vExtents, const Vector &vIndecisivePush,
+									ITraceFilter *pTraceFilter, unsigned int fMask, unsigned int iIterations,
+									Vector &vCenterOut, int nAxisRestrictionFlags = FL_AXIS_DIRECTION_NONE );
+
+//-----------------------------------------------------------------------------
+// Engine extensions Portal 2 requires that the frozen engine interfaces lack:
+// the single-player shared memory registry (sharedvar.h) and the game time
+// scale. A module that cannot connect both fails its init.
+//-----------------------------------------------------------------------------
+typedef void *( *CreateInterfaceFn )( const char *pName, int *pReturnCode );
+bool Portal2_ConnectEngineInterfaces( CreateInterfaceFn engineFactory );
+
+#ifdef CLIENT_DLL
+// Borrows the matchmaking framework the server module published through the
+// engine's IMatchFrameworkHost and sets g_pMatchFramework. The engine
+// initializes the server module before its GameUI and the client, so the
+// GameUI (CGameUI::Initialize) and the client's Init both connect here; a
+// module that cannot connect fails its init. Idempotent.
+bool Portal2_ConnectMatchFramework( CreateInterfaceFn engineFactory );
+// Stops borrowing the framework (client shutdown; the server outlives it).
+void Portal2_DisconnectMatchFramework();
+// Once per client frame: reports signon changes to the framework and runs it.
+void Portal2_MatchFrameworkClientFrame();
+#endif
+
+// Replace engine->GetTimescale()/SetTimescale() (IEngineGameTimescale). The
+// scale is engine-wide: client and server of one process share it.
+float Portal2_GetTimescale();
+void Portal2_SetTimescale( float flTimescale );
+
+#ifdef GAME_DLL
+// Replaces physenv->DestroyCollideOnDeadObjectFlush(). Objects destroyed during
+// a simulation step stay queued in this engine until the step ends, and may
+// still reference the collide, so a collide released while the environment is
+// simulating is destroyed after the step (at the next server frame). Outside a
+// simulation step it is destroyed immediately.
+void Portal2_DestroyCollideOnDeadObjectFlush( CPhysCollide *pCollide );
+#endif
 
 #endif // PORTAL2_SHARED_COMPAT_H

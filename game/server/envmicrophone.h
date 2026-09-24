@@ -50,6 +50,11 @@ public:
 
 	void SetSensitivity( float flSensitivity );
 	void SetSpeakerName( string_t iszSpeakerName );
+#ifdef PORTAL2
+	// Later base-game setters used by Portal 2's portal microphones.
+	void SetMaxRange( float flMaxRange );
+	void SetSpeaker( string_t iszSpeakerName, EHANDLE hSpeaker ); // skips the speaker name lookup
+#endif
 
 	void InputEnable( inputdata_t &inputdata );
 	void InputDisable( inputdata_t &inputdata );

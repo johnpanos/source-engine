@@ -4,7 +4,6 @@
 //
 //==========================================================================//
 
-#if 0
 #include "cbase.h"
 #include "ugc_utils.h"
 #include "logging.h"
@@ -772,6 +771,9 @@ UGCFileRequestStatus_t CUGCFileRequest::Update( void )
 	}
 }
 
+// Portal 2 port: CUGCFileRequest exists only with Steam (ugc_request_manager.h),
+// so its methods share that guard; this NO_STEAM build has no Workshop downloads.
+#if !defined( NO_STEAM ) && !defined ( _PS3 )
 //-----------------------------------------------------------------------------
 // Purpose: Get the local file name on disk, accounting for target directories and filenames
 //-----------------------------------------------------------------------------
@@ -1094,4 +1096,4 @@ void CUGCFileRequest::GetLocalDirectory( char *pDest, size_t strSize )
 		V_strncpy( pDest, m_szTargetDirectory, strSize );
 	}
 }
-#endif
+#endif // !NO_STEAM

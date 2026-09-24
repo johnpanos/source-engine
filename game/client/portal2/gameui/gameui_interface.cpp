@@ -21,28 +21,28 @@
 #undef SendMessage
 #endif
 																
-#include "FileSystem.h"
-#include "GameUI_Interface.h"
-#include "Sys_Utils.h"
+#include "filesystem.h"
+#include "gameui_interface.h"
+#include "sys_utils.h"
 #include "string.h"
 #include "tier0/icommandline.h"
 
 // interface to engine
-#include "EngineInterface.h"
+#include "engineinterface.h"
 
-#include "VGuiSystemModuleLoader.h"
-#include "bitmap/TGALoader.h"
+#include "vguisystemmoduleloader.h"
+#include "bitmap/tgaloader.h"
 
-#include "GameConsole.h"
-#include "LoadingDialog.h"
-#include "CDKeyEntryDialog.h"
-#include "ModInfo.h"
+#include "gameconsole.h"
+#include "loadingdialog.h"
+#include "cdkeyentrydialog.h"
+#include "modinfo.h"
 #include "game/client/IGameClientExports.h"
 #include "materialsystem/imaterialsystem.h"
 #include "matchmaking/imatchframework.h"
 #include "ixboxsystem.h"
 #include "IGameUIFuncs.h"
-#include "IEngineVGUI.h"
+#include "ienginevgui.h"
 
 // vgui2 interface
 // note that GameUI project uses ..\vgui2\include, not ..\utils\vgui\include
@@ -80,6 +80,7 @@ class IMatchExtSwarm *g_pMatchExt = NULL;
 
 #include "portal2/basemodpanel.h"
 #include "portal2/basemodui.h"
+#include "portal2/vgenericconfirmation.h"
 typedef BaseModUI::CBaseModPanel UI_BASEMOD_PANEL_CLASS;
 inline UI_BASEMOD_PANEL_CLASS & GetUiBaseModPanelClass() { return UI_BASEMOD_PANEL_CLASS::GetSingleton(); }
 inline UI_BASEMOD_PANEL_CLASS & ConstructUiBaseModPanelClass() { return * new UI_BASEMOD_PANEL_CLASS(); }
@@ -97,7 +98,7 @@ class IMatchExtPortal2 *g_pMatchExtPortal2 = &g_MatchExtPortal2;
 
 #else
 
-#include "BasePanel.h"
+#include "basepanel.h"
 typedef CBasePanel UI_BASEMOD_PANEL_CLASS;
 inline UI_BASEMOD_PANEL_CLASS & GetUiBaseModPanelClass() { return *BasePanel(); }
 inline UI_BASEMOD_PANEL_CLASS & ConstructUiBaseModPanelClass() { return *BasePanelSingleton(); }
@@ -117,6 +118,11 @@ inline UI_BASEMOD_PANEL_CLASS & ConstructUiBaseModPanelClass() { return *BasePan
 #include "tier0/dbg.h"
 #include "engine/IEngineSound.h"
 #include "gameui_util.h"
+
+#ifdef PORTAL2
+// Portal 2 port: game/shared/portal2/portal2_shared_compat.h (not included by the GameUI sources).
+bool Portal2_ConnectMatchFramework( CreateInterfaceFn engineFactory );
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "portal2_engine_compat.h"
@@ -139,8 +145,30 @@ vgui::VPANEL g_hLoadingBackgroundDialog = NULL;
 
 static CGameUI g_GameUI;
 
-extern void VGui_ClearTransitionVideoPanels();
-extern bool VGui_IsPlayingFullScreenVideo();
+// Portal 2 port: transition movies are tracked by portal2_video_panels.cpp,
+// which implements CS:GO's VGui_ClearTransitionVideoPanels.
+void Portal2_ClearTransitionVideoPanels();
+
+static void VGui_ClearTransitionVideoPanels()
+{
+	Portal2_ClearTransitionVideoPanels();
+}
+
+static bool VGui_IsPlayingFullScreenVideo()
+{
+	if ( !enginevguifuncs )
+		return false;
+
+	vgui::VPANEL root = enginevguifuncs->GetPanel( PANEL_GAMEUIDLL );
+	int nChildCount = vgui::ipanel()->GetChildCount( root );
+	for ( int i = 0; i < nChildCount; ++i )
+	{
+		vgui::VPANEL child = vgui::ipanel()->GetChild( root, i );
+		if ( vgui::ipanel()->IsVisible( child ) && !V_strcmp( vgui::ipanel()->GetName( child ), "VideoPanel" ) )
+			return true;
+	}
+	return false;
+}
 
 static IGameClientExports *g_pGameClientExports = NULL;
 IGameClientExports *GameClientExports()
@@ -208,7 +236,8 @@ void CGameUI::Initialize( CreateInterfaceFn factory )
 
 	enginesound = (IEngineSound *)factory(IENGINESOUND_CLIENT_INTERFACE_VERSION, NULL);
 	engine = (IVEngineClient *)factory( VENGINE_CLIENT_INTERFACE_VERSION, NULL );
-	bik = (IBik*)factory( BIK_INTERFACE_VERSION, NULL );
+	// Portal 2 port: this engine exports no IBik; the GameUI plays movies
+	// through g_pBIK (portal2_bik.cpp) on IVideoServices.
 #ifdef _PS3
 	ps3saveuiapi = (IPS3SaveRestoreToUI*)factory( IPS3SAVEUIAPI_VERSION_STRING, NULL );
 #endif
@@ -248,6 +277,11 @@ void CGameUI::Initialize( CreateInterfaceFn factory )
 #endif
 #ifdef SWARM_DLL
 	g_pMatchExt = ( IMatchExtSwarm * ) factory( IMATCHEXT_SWARM_INTERFACE, NULL );
+#endif
+#ifdef PORTAL2
+	// Portal 2 port: borrow the matchmaking framework the server module
+	// published through the engine (portal2_shared_compat.h).
+	Portal2_ConnectMatchFramework( factory );
 #endif
 	bFailed = !enginesurfacefuncs || !gameuifuncs || !enginevguifuncs ||
 		!xboxsystem ||
@@ -572,7 +606,7 @@ void CGameUI::OnGameUIActivated()
 {
 	bool bWasActive = m_bActivatedUI;
 	m_bActivatedUI = true;
-	materials->OnDebugEvent( "CGameUI::OnGameUIActivated" );
+	// Portal 2 port: this IMaterialSystem has no OnDebugEvent marker.
 
 	// Lock the UI to a particular player
 	if ( !bWasActive )
@@ -789,6 +823,13 @@ void CGameUI::OnLevelLoadingStarted( const char *levelName, bool bShowProgressDi
 {
 	g_VModuleLoader.PostMessageToAllModules( new KeyValues( "LoadingStarted" ) );
 
+#ifdef PORTAL2
+	// Portal 2 port: the CS:GO engine broadcast this matchmaking event when it
+	// started the loading plaque (gl_screen.cpp); this engine tells the GameUI.
+	if ( g_pMatchFramework )
+		g_pMatchFramework->GetEventsSubscription()->BroadcastEvent( new KeyValues( "OnEngineLevelLoadingStarted", "name", levelName ? levelName : "" ) );
+#endif
+
 	GetUiBaseModPanelClass().OnLevelLoadingStarted( levelName, bShowProgressDialog );
 	ShowLoadingBackgroundDialog();
 
@@ -807,6 +848,21 @@ void CGameUI::OnLevelLoadingStarted( const char *levelName, bool bShowProgressDi
 void CGameUI::OnLevelLoadingFinished(bool bError, const char *failureReason, const char *extendedReason)
 {
 	StopProgressBar( bError, failureReason, extendedReason );
+
+#ifdef PORTAL2
+	// Portal 2 port: the CS:GO engine broadcast this when it ended the loading
+	// plaque (gl_screen.cpp SCR_EndLoadingPlaque); this engine tells the GameUI.
+	if ( g_pMatchFramework )
+	{
+		KeyValues *kv = new KeyValues( "OnEngineLevelLoadingFinished" );
+		if ( bError )
+		{
+			kv->SetInt( "error", 1 );
+			kv->SetString( "reason", failureReason ? failureReason : "" );
+		}
+		g_pMatchFramework->GetEventsSubscription()->BroadcastEvent( kv );
+	}
+#endif
 
 	// notify all the modules
 	g_VModuleLoader.PostMessageToAllModules( new KeyValues( "LoadingFinished" ) );
@@ -1079,4 +1135,182 @@ bool CGameUI::IsPlayingFullScreenVideo()
 bool CGameUI::IsTransitionEffectEnabled()
 {
 	return GetUiBaseModPanelClass().IsTransitionEffectEnabled();
+}
+
+//-----------------------------------------------------------------------------
+// IGameUI (GameUI011) entry points. The CS:GO-era Portal 2 GameUI removed these
+// from its interface; this engine still calls them through IGameUI.
+//-----------------------------------------------------------------------------
+
+// One-time report of an IGameUI feature Portal 2's GameUI does not provide.
+#define GAMEUI_UNSUPPORTED( feature ) \
+	do \
+	{ \
+		static bool s_bWarned = false; \
+		if ( !s_bWarned ) \
+		{ \
+			s_bWarned = true; \
+			DevWarning( "Portal 2 GameUI: " feature " is not supported\n" ); \
+		} \
+	} while ( 0 )
+
+void CGameUI::OnLevelLoadingStarted( bool bShowProgressDialog )
+{
+	// Portal 2 port: this engine starts the loading plaque without a level name.
+	// The BaseModUI loading screen accepts a NULL name and uses its default art.
+	OnLevelLoadingStarted( NULL, bShowProgressDialog );
+}
+
+void CGameUI::ShowNewGameDialog( int chapter )
+{
+	// Portal 2 port: the engine opens the new game dialog after the final
+	// chapter; Portal 2's chapter list is BaseModUI's new game window, which
+	// keeps its own chapter selection.
+	GetUiBaseModPanelClass().OpenWindow( BaseModUI::WT_NEWGAME, NULL );
+}
+
+void CGameUI::SessionNotification( const int notification, const int param )
+{
+	// Portal 2 port: Xbox 360 session callbacks. Portal 2 sessions belong to
+	// the match framework, which this engine does not provide.
+	GAMEUI_UNSUPPORTED( "Xbox 360 session notifications" );
+}
+
+void CGameUI::SystemNotification( const int notification )
+{
+	GAMEUI_UNSUPPORTED( "Xbox 360 system notifications" );
+}
+
+void CGameUI::ShowMessageDialog( const uint nType, vgui::Panel *pOwner )
+{
+	GAMEUI_UNSUPPORTED( "Xbox 360 matchmaking message dialogs" );
+}
+
+void CGameUI::UpdatePlayerInfo( uint64 nPlayerId, const char *pName, int nTeam, byte cVoiceState, int nPlayersNeeded, bool bHost )
+{
+	GAMEUI_UNSUPPORTED( "Xbox 360 session player info" );
+}
+
+void CGameUI::SessionSearchResult( int searchIdx, void *pHostData, XSESSION_SEARCHRESULT *pResult, int ping )
+{
+	GAMEUI_UNSUPPORTED( "Xbox 360 session search results" );
+}
+
+void CGameUI::OnCreditsFinished( void )
+{
+	// Portal 2 port: the Xbox 360 credits exit to the app chooser. Retail
+	// BaseModUI declares CBaseModPanel::OnCreditsFinished but never defines it,
+	// and the PC credits return to the menu through the client credits code.
+	GAMEUI_UNSUPPORTED( "the Xbox 360 credits exit" );
+}
+
+// Portal 2 has no bonus map database (an Episode Two/Portal 1 feature); the
+// engine's bonus map commands report no maps, challenges or medals.
+void CGameUI::BonusMapUnlock( const char *pchFileName, const char *pchMapName )
+{
+	GAMEUI_UNSUPPORTED( "the bonus map database" );
+}
+
+void CGameUI::BonusMapComplete( const char *pchFileName, const char *pchMapName )
+{
+	GAMEUI_UNSUPPORTED( "the bonus map database" );
+}
+
+void CGameUI::BonusMapChallengeUpdate( const char *pchFileName, const char *pchMapName, const char *pchChallengeName, int iBest )
+{
+	GAMEUI_UNSUPPORTED( "the bonus map database" );
+}
+
+void CGameUI::BonusMapChallengeNames( char *pchFileName, char *pchMapName, char *pchChallengeName )
+{
+	GAMEUI_UNSUPPORTED( "the bonus map database" );
+	if ( pchFileName )
+		pchFileName[ 0 ] = '\0';
+	if ( pchMapName )
+		pchMapName[ 0 ] = '\0';
+	if ( pchChallengeName )
+		pchChallengeName[ 0 ] = '\0';
+}
+
+void CGameUI::BonusMapChallengeObjectives( int &iBronze, int &iSilver, int &iGold )
+{
+	GAMEUI_UNSUPPORTED( "the bonus map database" );
+	iBronze = iSilver = iGold = 0;
+}
+
+void CGameUI::BonusMapDatabaseSave( void )
+{
+	// Nothing to save: there is no bonus map database.
+}
+
+int CGameUI::BonusMapNumAdvancedCompleted( void )
+{
+	return 0;
+}
+
+void CGameUI::BonusMapNumMedals( int piNumMedals[ 3 ] )
+{
+	piNumMedals[ 0 ] = piNumMedals[ 1 ] = piNumMedals[ 2 ] = 0;
+}
+
+bool CGameUI::ValidateStorageDevice( int *pStorageDeviceValidated )
+{
+	// PC saves need no storage device selection.
+	if ( pStorageDeviceValidated )
+		*pStorageDeviceValidated = 1;
+	return true;
+}
+
+static void GameUI_AcceptQuitCallback()
+{
+	engine->ClientCmd_Unrestricted( "quit\n" );
+}
+
+void CGameUI::OnConfirmQuit( void )
+{
+	// Portal 2 port: "quit prompt" asks the GameUI to confirm. The retail main
+	// menu's confirmation callback needs the main menu window, which is absent
+	// in game, so open the same generic confirmation from here.
+	BaseModUI::GenericConfirmation *pConfirmation = static_cast< BaseModUI::GenericConfirmation * >(
+		GetUiBaseModPanelClass().OpenWindow( BaseModUI::WT_GENERICCONFIRMATION, NULL, false ) );
+	if ( !pConfirmation )
+	{
+		engine->ClientCmd_Unrestricted( "quit\n" );
+		return;
+	}
+
+	BaseModUI::GenericConfirmation::Data_t data;
+	data.pWindowTitle = "#L4D360UI_MainMenu_Quit_Confirm";
+	data.pMessageText = "#L4D360UI_MainMenu_Quit_ConfirmMsg";
+	data.bOkButtonEnabled = true;
+	data.pfnOkCallback = &GameUI_AcceptQuitCallback;
+	data.pOkButtonText = "#PORTAL2_ButtonAction_Quit";
+	data.bCancelButtonEnabled = true;
+	pConfirmation->SetUsageData( data );
+}
+
+bool CGameUI::IsMainMenuVisible( void )
+{
+	UI_BASEMOD_PANEL_CLASS &panel = GetUiBaseModPanelClass();
+	return panel.IsVisible() && panel.GetActiveWindowType() == BaseModUI::WT_MAINMENU;
+}
+
+void CGameUI::SetMainMenuOverride( vgui::VPANEL panel )
+{
+	// Portal 2 port: BaseModUI owns the main menu; a client-supplied
+	// replacement panel is not supported.
+	GAMEUI_UNSUPPORTED( "main menu override panels" );
+}
+
+void CGameUI::SendMainMenuCommand( const char *pszCommand )
+{
+	vgui::Panel *pMainMenu = GetUiBaseModPanelClass().GetWindow( BaseModUI::WT_MAINMENU );
+	if ( pMainMenu )
+	{
+		pMainMenu->OnCommand( pszCommand );
+	}
+	else
+	{
+		static_cast< vgui::Panel & >( GetUiBaseModPanelClass() ).OnCommand( pszCommand );
+	}
 }

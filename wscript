@@ -958,6 +958,9 @@ def configure(conf):
 			projects['game'] += ['unittests/physicstest']
 		if conf.env.VIDEO_BINK:
 			projects['game'] += ['video/video_bink']
+		# The Squirrel VScript provider is needed only by the Portal 2 game DLLs.
+		if conf.options.GAMES == 'portal2':
+			projects['game'] += ['vscript']
 		if conf.env.DEBUGAPI:
 			projects['game'].insert(0, 'debugapi')
 		conf.add_subproject(projects['game'])
@@ -1019,6 +1022,9 @@ def build(bld):
 
 		if bld.env.VIDEO_BINK:
 			projects['game'] += ['video/video_bink']
+		# Configured only for --build-games=portal2 (see configure).
+		if 'vscript' in bld.all_envs:
+			projects['game'] += ['vscript']
 		# First: its protoc rule ends a build group that its consumers follow.
 		if bld.env.DEBUGAPI:
 			projects['game'].insert(0, 'debugapi')

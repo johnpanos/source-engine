@@ -5,6 +5,13 @@
 // $NoKeywords: $
 //=============================================================================//
 
+#ifdef PORTAL2
+// Portal 2 port: the Portal 2 build compiles some Portal 1 sources whose quoted
+// include of "c_prop_portal.h" finds this directory first. Both headers use
+// the same include guard, so forward to the Portal 2 class instead.
+#include "portal2/portal/c_prop_portal.h"
+#else
+
 #ifndef C_PROP_PORTAL_H
 #define C_PROP_PORTAL_H
 
@@ -94,3 +101,5 @@ private:
 typedef C_Prop_Portal CProp_Portal;
 
 #endif //#ifndef C_PROP_PORTAL_H
+
+#endif // PORTAL2

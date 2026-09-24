@@ -2082,3 +2082,26 @@ bool fogparams_t::operator !=( const fogparams_t& other ) const
 	return false;
 }
 
+
+#ifdef PORTAL2
+//-----------------------------------------------------------------------------
+// Later (CS:GO-era) base-player API used by the Portal 2 player.
+//-----------------------------------------------------------------------------
+float CBasePlayer::GetAirTime( void )
+{
+	return m_flTimeLastTouchedGround == 0.0f ? 0.0f : gpGlobals->curtime - m_flTimeLastTouchedGround;
+}
+
+#ifdef CLIENT_DLL
+// The server versions predate Portal 2 (player.cpp).
+void CBasePlayer::ForceButtons( int nButtons )
+{
+	m_afButtonForced |= nButtons;
+}
+
+void CBasePlayer::UnforceButtons( int nButtons )
+{
+	m_afButtonForced &= ~nButtons;
+}
+#endif // CLIENT_DLL
+#endif // PORTAL2

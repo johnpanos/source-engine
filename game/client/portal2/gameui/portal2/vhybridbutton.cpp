@@ -29,6 +29,31 @@
 using namespace BaseModUI;
 using namespace vgui;
 
+// Portal 2 port: this tree's Panel.h leaves out the body of this template
+// because the header only forward-declares KeyValues. CS:GO defines it inline;
+// define it here, the only user, where KeyValues is complete.
+template< class S >
+void vgui::Panel::PostMessageToAllSiblingsOfType( KeyValues *msg, float delaySeconds /*= 0.0f*/ )
+{
+	Panel *parent = GetParent();
+	if ( parent )
+	{
+		int nChildCount = parent->GetChildCount();
+		for ( int i = 0; i < nChildCount; ++i )
+		{
+			Panel *sibling = parent->GetChild( i );
+			if ( sibling == this )
+				continue;
+			if ( dynamic_cast< S * >( sibling ) )
+			{
+				PostMessage( sibling->GetVPanel(), msg->MakeCopy(), delaySeconds );
+			}
+		}
+	}
+
+	msg->deleteThis();
+}
+
 ConVar ui_virtualnav_render( "ui_virtualnav_render", "0", FCVAR_DEVELOPMENTONLY );
 
 DECLARE_BUILD_FACTORY_DEFAULT_TEXT( BaseModHybridButton, HybridButton );

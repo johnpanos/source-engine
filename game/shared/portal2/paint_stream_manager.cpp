@@ -1,7 +1,6 @@
 //========= Copyright © 1996-2009, Valve Corporation, All rights reserved. ============//
 //
 //=============================================================================//
-#if 0
 #include "cbase.h"
 
 #include <numeric>
@@ -100,7 +99,7 @@ void CPaintStreamManager::AllocatePaintBlobPool( int nMaxBlobs )
 #ifdef GAME_DLL
 		m_pBlobPool = new CClassMemoryPool< CPaintBlob >( nMaxCount, CUtlMemoryPool::GROW_NONE );
 #else
-		if ( !engine->IsClientLocalToActiveServer() )
+		if ( !Portal2Engine::IsClientLocalToActiveServer() )
 		{
 			m_pBlobPool = new CClassMemoryPool< CPaintBlob >( nMaxCount, CUtlMemoryPool::GROW_NONE );
 		}
@@ -222,7 +221,7 @@ void CPaintStreamManager::PaintStreamUpdate()
 #ifdef CLIENT_DLL
 	// if the client is local to server, only update render bounds
 	// let the server do all the work.
-	if ( engine->IsClientLocalToActiveServer() )
+	if ( Portal2Engine::IsClientLocalToActiveServer() )
 	{
 		for ( int i = 0; i < IPaintStreamAutoList::AutoList().Count(); ++i )
 		{
@@ -562,4 +561,3 @@ float CPaintStreamManager::PlayPaintImpactSound( const EmitSound_t& emitParams )
 	CBaseEntity::EmitSound( filter, 0, emitParams );
 	return CBaseEntity::GetSoundDuration( emitParams.m_pSoundName, NULL ); // This will generate a "should use game_sounds.txt" warning, but the sound name comes from game_sounds.txt. The warning is benign.
 }
-#endif

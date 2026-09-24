@@ -16,12 +16,25 @@
 #include "rope_shared.h"
 #include "prop_portal_shared.h"
 #include "Sprite.h"
+#ifdef PORTAL2
+// Portal 2 reconstruction: the class is declared in npc_portal_turret_floor.h,
+// which the other Portal 2 units include.
+#include "npc_portal_turret_floor.h"
+#include "explode.h"
+#include "portal_player.h"
+#include "paint_color_manager.h"
+#include "portal_grabcontroller_shared.h"
+#endif
 
 #define SF_FLOOR_TURRET_AUTOACTIVATE		0x00000020
 #define SF_FLOOR_TURRET_STARTINACTIVE		0x00000040
 #define SF_FLOOR_TURRET_OUT_OF_AMMO			0x00000100
 
+#ifdef PORTAL2
+#define	FLOOR_TURRET_PORTAL_MODEL	"models/npcs/turret/turret.mdl"
+#else
 #define	FLOOR_TURRET_PORTAL_MODEL	"models/props/Turret_01.mdl"
+#endif
 #define FLOOR_TURRET_GLOW_SPRITE	"sprites/glow1.vmt"
 #define FLOOR_TURRET_BC_YAW			"aim_yaw"
 #define FLOOR_TURRET_BC_PITCH		"aim_pitch"
@@ -36,7 +49,16 @@
 #define TURRET_FLOOR_BULLET_FORCE_MULTIPLIER 0.4f
 #define TURRET_FLOOR_PHYSICAL_FORCE_MULTIPLIER 135.0f
 
+#ifndef PORTAL_FLOOR_TURRET_NUM_ROPES
 #define PORTAL_FLOOR_TURRET_NUM_ROPES 4
+#endif
+
+// Turret speech. Portal 2 turrets can be gagged (EnableGagging input).
+#ifdef PORTAL2
+#define TURRET_TALK( soundname ) TryEmitSound( soundname )
+#else
+#define TURRET_TALK( soundname ) EmitSound( soundname )
+#endif
 
 //Turret states
 enum portalTurretState_e
@@ -93,6 +115,7 @@ const char* GetTurretTalkName( int iState )
 }
 
 
+#ifndef PORTAL2 // Portal 2 declares the class in npc_portal_turret_floor.h
 class CNPC_Portal_FloorTurret : public CNPC_FloorTurret
 {
 	DECLARE_CLASS( CNPC_Portal_FloorTurret, CNPC_FloorTurret );
@@ -173,6 +196,7 @@ private:
 	bool			m_bDelayTippedTalk;
 
 };
+#endif // !PORTAL2
 
 
 LINK_ENTITY_TO_CLASS( npc_portal_turret_floor, CNPC_Portal_FloorTurret );
@@ -211,6 +235,27 @@ BEGIN_DATADESC( CNPC_Portal_FloorTurret )
 	// Inputs
 	DEFINE_INPUTFUNC( FIELD_STRING, "FireBullet", InputFireBullet ),
 
+#ifdef PORTAL2
+	DEFINE_FIELD( m_bIsDead, FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_flPreviousVelocity, FIELD_FLOAT ),
+	DEFINE_FIELD( m_flBurnExplodeTime, FIELD_TIME ),
+	DEFINE_FIELD( m_bInTractorBeam, FIELD_BOOLEAN ),
+	DEFINE_KEYFIELD( m_bUsedAsActor, FIELD_BOOLEAN, "UsedAsActor" ),
+	DEFINE_KEYFIELD( m_bGagged, FIELD_BOOLEAN, "Gagged" ),
+	DEFINE_KEYFIELD( m_bPickupEnabled, FIELD_BOOLEAN, "PickupEnabled" ),
+
+	DEFINE_THINKFUNC( DieThink ),
+	DEFINE_THINKFUNC( BurnThink ),
+	DEFINE_THINKFUNC( TractorBeamThink ),
+
+	DEFINE_INPUTFUNC( FIELD_VOID, "EnableGagging", InputEnableGagging ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "DisableGagging", InputDisableGagging ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "EnablePickup", InputEnablePickup ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "DisablePickup", InputDisablePickup ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "SelfDestructImmediately", InputSelfDestructImmediately ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "SetAsBouncePainted", InputSetAsBouncePainted ),
+#endif
+
 END_DATADESC()
 
 IMPLEMENT_SERVERCLASS_ST(CNPC_Portal_FloorTurret, DT_NPC_Portal_FloorTurret)
@@ -223,11 +268,29 @@ END_SEND_TABLE()
 
 
 CNPC_Portal_FloorTurret::CNPC_Portal_FloorTurret( void )
+#ifdef PORTAL2
+	: BaseClass( DAMAGED_TURRET )
+#endif
 {
 	CNPC_FloorTurret::fMaxTipControllerVelocity = 100.0f * 100.0f;
 	CNPC_FloorTurret::fMaxTipControllerAngularVelocity = 30.0f * 30.0f;
 
+#ifdef PORTAL2
+	// Retail Portal 2 defaults (2010 constructor): no damage force unless the
+	// DamageForce keyvalue asks for it, pickup allowed.
+	m_bDamageForce = false;
+	m_bPickupEnabled = true;
+	m_flPreviousVelocity = 0.0f;
+	m_bInTractorBeam = false;
+	m_bIsDead = false;
+	m_bGagged = false;
+	m_bUsedAsActor = false;
+	m_bShootAtMovingObjects = false;
+	m_bSeeEnemyThroughPortal = false;
+	m_flBurnExplodeTime = 0.0f;
+#else
 	m_bDamageForce = true;
+#endif
 }
 
 void CNPC_Portal_FloorTurret::Precache( void )
@@ -313,7 +376,7 @@ void CNPC_Portal_FloorTurret::Activate( void )
 void CNPC_Portal_FloorTurret::UpdateOnRemove( void )
 {
 	if ( IsDissolving() )
-		EmitSound( GetTurretTalkName( PORTAL_TURRET_DISSOLVED ) );
+		TURRET_TALK( GetTurretTalkName( PORTAL_TURRET_DISSOLVED ) );
 
 	LaserOff();
 	RopesOff();
@@ -330,10 +393,18 @@ int CNPC_Portal_FloorTurret::OnTakeDamage( const CTakeDamageInfo &info )
 	{
 		if ( gpGlobals->curtime > m_fNextTalk )
 		{
-			EmitSound( GetTurretTalkName( PORTAL_TURRET_SHOTAT ) );
+			TURRET_TALK( GetTurretTalkName( PORTAL_TURRET_SHOTAT ) );
 			m_fNextTalk = gpGlobals->curtime + 3.0f;
 		}
 	}
+
+#ifdef PORTAL2
+	// Portal 2 port: fire sets a living turret burning (see StartBurning()).
+	if ( m_lifeState == LIFE_ALIVE && ( info.GetDamageType() & DMG_BURN ) && m_flBurnExplodeTime == 0.0f )
+	{
+		StartBurning();
+	}
+#endif
 
 	return BaseClass::OnTakeDamage( info );
 }
@@ -448,7 +519,7 @@ bool CNPC_Portal_FloorTurret::PreThink( turretState_e state )
 				break;
 
 			case PORTAL_TURRET_PICKUP:
-				EmitSound( GetTurretTalkName( PORTAL_TURRET_PICKUP ) );
+				TURRET_TALK( GetTurretTalkName( PORTAL_TURRET_PICKUP ) );
 				m_fNextTalk = gpGlobals->curtime + 2.25f;
 				break;
 
@@ -477,7 +548,7 @@ void CNPC_Portal_FloorTurret::Shoot( const Vector &vecSrc, const Vector &vecDirT
 	CBaseEntity *pEnemy = GetEnemy();
 	if( !bStrict && (pEnemy && pEnemy->IsPlayer()) )
 	{
-		Vector vecDir = GetActualShootTrajectory( vecSrc );
+		Vector vecDir = vecDirToEnemy;
 
 		info.m_vecSrc = vecSrc;
 		info.m_vecDirShooting = vecDir;
@@ -559,7 +630,7 @@ void CNPC_Portal_FloorTurret::Shoot( const Vector &vecSrc, const Vector &vecDirT
 
 	if ( m_iLastState == TURRET_ACTIVE && gpGlobals->curtime > m_fNextTalk )
 	{
-		EmitSound( GetTurretTalkName( m_iLastState ) );
+		TURRET_TALK( GetTurretTalkName( m_iLastState ) );
 		m_fNextTalk = gpGlobals->curtime + 2.5f;
 	}
 }
@@ -752,7 +823,7 @@ void CNPC_Portal_FloorTurret::ActiveThink( void )
 	m_flDistToEnemy = VectorNormalize( vecDirToEnemy );
 
 	// If the enemy isn't in the normal fov, check the fov through portals
-	CProp_Portal *pPortal = NULL;
+	CSightPortal *pPortal = NULL;
 	if ( pEnemy->IsAlive() )
 	{
 		pPortal = FInViewConeThroughPortal( pEnemy );
@@ -987,7 +1058,7 @@ void CNPC_Portal_FloorTurret::SearchThink( void )
 		m_flDistToEnemy = VectorNormalize( vecDirToEnemy );
 
 		// If the enemy isn't in the normal fov, check the fov through portals
-		CProp_Portal *pPortal = NULL;
+		CSightPortal *pPortal = NULL;
 		pPortal = FInViewConeThroughPortal( pEnemy );
 
 		if ( pPortal && FVisibleThroughPortal( pPortal, pEnemy ) )
@@ -1131,7 +1202,7 @@ void CNPC_Portal_FloorTurret::TippedThink( void )
 			{
 				//Make any last death noises and anims
 				EmitSound( "NPC_FloorTurret.Die" );
-				EmitSound( GetTurretTalkName( PORTAL_TURRET_DISABLED ) );
+				TURRET_TALK( GetTurretTalkName( PORTAL_TURRET_DISABLED ) );
 				SpinDown();
 
 				SetActivity( (Activity) ACT_FLOOR_TURRET_CLOSE );
@@ -1386,7 +1457,7 @@ void CNPC_Portal_FloorTurret::StartTouch( CBaseEntity *pOther )
 				if ( vOtherVelocity.LengthSqr() > vTurretVelocity.LengthSqr() )
 				{
 					// Make the turret falling onto this one talk
-					pPortalFloor->EmitSound( GetTurretTalkName( PORTAL_TURRET_COLLIDE ) );
+					pPortalFloor->TURRET_TALK( GetTurretTalkName( PORTAL_TURRET_COLLIDE ) );
 					pPortalFloor->m_fNextTalk = gpGlobals->curtime + 1.2f;
 					pPortalFloor->m_bDelayTippedTalk = true;
 
@@ -1530,3 +1601,218 @@ void CNPC_Portal_FloorTurret::InputFireBullet( inputdata_t &inputdata )
 {
 	FireBullet( inputdata.value.String() );
 }
+
+#ifdef PORTAL2
+//=============================================================================
+// Portal 2 reconstruction: members of the Portal 2 class that the Portal 1
+// turret lacks. Bodies follow the Steam2 depot 852 decompile unless marked
+// "Portal 2 port:".
+//=============================================================================
+
+ConVar sv_portal_turret_min_burn_time( "sv_portal_turret_min_burn_time", "1.0", FCVAR_CHEAT, "The min time that the turret will burn for." );
+ConVar sv_portal_turret_max_burn_time( "sv_portal_turret_max_burn_time", "3.0", FCVAR_CHEAT, "The max time that the turret will burn for." );
+// Portal 2 port: the retail default is not recoverable; 15 degrees is inferred.
+ConVar sv_portal_turret_fire_cone_z_tolerance( "sv_portal_turret_fire_cone_z_tolerance", "15.0", FCVAR_CHEAT, "The max height of the turrets firing view cone (in degrees)" );
+
+#define PORTAL_TURRET_TALK_BURNING			"NPC_FloorTurret.TalkBurned"
+#define PORTAL_TURRET_TALK_START_BURNING	"NPC_FloorTurret.TalkStartBurning"
+
+// Talking is suppressed while the turret is gagged.
+void CNPC_Portal_FloorTurret::TryEmitSound( const char *soundname )
+{
+	if ( !m_bGagged )
+	{
+		EmitSound( soundname );
+	}
+}
+
+float CNPC_Portal_FloorTurret::GetFireConeZTolerance( void )
+{
+	return sv_portal_turret_fire_cone_z_tolerance.GetFloat();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Portal 2 port: starts the burn countdown. The retail entry point is
+//			not in the 2010 build; fire damage starts it here.
+//-----------------------------------------------------------------------------
+void CNPC_Portal_FloorTurret::StartBurning( void )
+{
+	float flMin = sv_portal_turret_min_burn_time.GetFloat();
+	float flMax = MAX( flMin, sv_portal_turret_max_burn_time.GetFloat() );
+	m_flBurnExplodeTime = gpGlobals->curtime + RandomFloat( flMin, flMax );
+
+	TryEmitSound( PORTAL_TURRET_TALK_START_BURNING );
+	m_fNextTalk = gpGlobals->curtime + RandomFloat( 0.5f, 0.75f );
+
+	SetThink( &CNPC_Portal_FloorTurret::BurnThink );
+	SetNextThink( gpGlobals->curtime );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Screams while burning, then explodes and breaks apart.
+//-----------------------------------------------------------------------------
+void CNPC_Portal_FloorTurret::BurnThink( void )
+{
+	if ( gpGlobals->curtime > m_flBurnExplodeTime )
+	{
+		ExplosionCreate( WorldSpaceCenter(), GetAbsAngles(), this, 1000, 500,
+			SF_ENVEXPLOSION_NODAMAGE | SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSMOKE | SF_ENVEXPLOSION_SURFACEONLY,
+			0.0f, NULL, -1, NULL, CLASS_NONE );
+		UTIL_ScreenShake( WorldSpaceCenter(), 20.0f, 150.0f, 0.75f, 750.0f, SHAKE_START );
+
+		SetThink( &CNPC_FloorTurret::BreakThink );
+		SetNextThink( gpGlobals->curtime + 0.05f );
+		StopSound( PORTAL_TURRET_TALK_BURNING );
+		return;
+	}
+
+	if ( gpGlobals->curtime > m_fNextTalk )
+	{
+		TryEmitSound( PORTAL_TURRET_TALK_BURNING );
+		m_fNextTalk = gpGlobals->curtime + RandomFloat( 0.5f, 0.75f );
+	}
+
+	SetThink( &CNPC_Portal_FloorTurret::BurnThink );
+	SetNextThink( gpGlobals->curtime + 0.05f );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Portal 2 port: the dead turret state (DieThink is a retail 2011 think
+//			without a 2010 body). The turret shuts down for good.
+//-----------------------------------------------------------------------------
+void CNPC_Portal_FloorTurret::DieThink( void )
+{
+	m_bIsDead = true;
+	m_lifeState = LIFE_DEAD;
+
+	LaserOff();
+	RopesOff();
+	SetEyeState( TURRET_EYE_DEAD );
+	SetActivity( (Activity) ACT_FLOOR_TURRET_CLOSED_IDLE );
+
+	SetThink( &CNPC_Portal_FloorTurret::InactiveThink );
+	SetNextThink( gpGlobals->curtime + 0.1f );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: The player picks the turret up with +use when pickup is enabled.
+//-----------------------------------------------------------------------------
+void CNPC_Portal_FloorTurret::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
+{
+	if ( m_bPickupEnabled && pActivator && pActivator->IsPlayer() )
+	{
+		static_cast< CBasePlayer * >( pActivator )->PickupObject( this );
+	}
+}
+
+void CNPC_Portal_FloorTurret::InputEnableGagging( inputdata_t &inputdata )
+{
+	m_bGagged = true;
+}
+
+void CNPC_Portal_FloorTurret::InputDisableGagging( inputdata_t &inputdata )
+{
+	m_bGagged = false;
+}
+
+void CNPC_Portal_FloorTurret::InputEnablePickup( inputdata_t &inputdata )
+{
+	m_bPickupEnabled = true;
+}
+
+void CNPC_Portal_FloorTurret::InputDisablePickup( inputdata_t &inputdata )
+{
+	m_bPickupEnabled = false;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Breaks apart immediately. Portal 2 port: this base has no fizzle
+//			effect handle to clean up (the retail base removed one here).
+//-----------------------------------------------------------------------------
+void CNPC_Portal_FloorTurret::InputSelfDestructImmediately( inputdata_t &inputdata )
+{
+	SetThink( &CNPC_FloorTurret::BreakThink );
+	SetNextThink( gpGlobals->curtime );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Covers the turret in repulsion (bounce) gel.
+//-----------------------------------------------------------------------------
+void CNPC_Portal_FloorTurret::InputSetAsBouncePainted( inputdata_t &inputdata )
+{
+	Paint( BOUNCE_POWER, WorldSpaceCenter() );
+}
+#endif // PORTAL2
+
+#ifdef PORTAL2
+//-----------------------------------------------------------------------------
+// Portal 2: excursion funnels (trigger_tractorbeam) carry turrets. While one
+// does, the turret thrashes and dry fires the way it does when carried, then
+// resumes its normal think when the beam lets go.
+//-----------------------------------------------------------------------------
+void CNPC_Portal_FloorTurret::OnEnteredTractorBeam( void )
+{
+	m_bInTractorBeam = true;
+	SetThink( &CNPC_Portal_FloorTurret::TractorBeamThink );
+	SetNextThink( gpGlobals->curtime );
+}
+
+void CNPC_Portal_FloorTurret::OnExitedTractorBeam( void )
+{
+	m_bInTractorBeam = false;
+}
+
+void CNPC_Portal_FloorTurret::TractorBeamThink( void )
+{
+	if ( !m_bInTractorBeam )
+	{
+		m_fNextTalk = gpGlobals->curtime + 1.25f;
+
+		if ( m_lifeState == LIFE_ALIVE )
+			SetThink( &CNPC_FloorTurret::ActiveThink );
+		else
+			SetThink( &CNPC_FloorTurret::InactiveThink );
+
+		SetNextThink( gpGlobals->curtime );
+		return;
+	}
+
+	PreThink( (turretState_e)PORTAL_TURRET_PICKUP );
+
+	SetNextThink( gpGlobals->curtime + 0.05f );
+	SetEnemy( NULL );
+
+	StudioFrameAdvance();
+
+	LaserOn();
+	RopesOn();
+
+	if ( !IsDissolving() && m_flShotTime < gpGlobals->curtime )
+	{
+		SetActivity( (Activity) ACT_FLOOR_TURRET_OPEN_IDLE );
+
+		DryFire();
+
+		m_flShotTime = gpGlobals->curtime + RandomFloat( 0.25f, 0.75f );
+
+		m_vecGoalAngles.x = GetAbsAngles().x + RandomFloat( -15, 15 );
+		m_vecGoalAngles.y = GetAbsAngles().y + RandomFloat( -40, 40 );
+	}
+
+	UpdateFacing();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Is a hard light bridge (projected_wall_entity) between this turret's
+//			eye and the player's eye?
+//-----------------------------------------------------------------------------
+bool CNPC_Portal_FloorTurret::IsProjectedWallBlockingTurretFromPlayer( CPortal_Player *pPlayer )
+{
+	if ( !pPlayer )
+		return false;
+
+	trace_t tr;
+	UTIL_TraceLine( EyePosition(), pPlayer->EyePosition(), MASK_SHOT, this, COLLISION_GROUP_NONE, &tr );
+	return tr.m_pEnt && FClassnameIs( tr.m_pEnt, "projected_wall_entity" );
+}
+#endif // PORTAL2

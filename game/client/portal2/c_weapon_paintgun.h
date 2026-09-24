@@ -67,6 +67,8 @@ public:
 
 	// Paint ammo (implemented in weapon_paintgun_shared.cpp)
 	bool			HasPaintAmmo( unsigned paintType ) const;
+	// Portal 2 port: the retail CHUDPaintAmmo reads this count directly.
+	int				GetPaintAmmo() const { return m_nPaintAmmo; }
 	void			DecrementPaintAmmo( unsigned paintType );
 	void			ResetAmmo();
 

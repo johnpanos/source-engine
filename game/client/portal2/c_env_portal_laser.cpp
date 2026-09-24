@@ -155,7 +155,11 @@ void C_PortalLaser::CreateSparkEffect()
 	if ( !m_pSparkEffect.IsValid() )
 	{
 		m_pSparkEffect = ParticleProp()->Create( LASER_SPARK_EFFECT_NAME, PATTACH_CUSTOMORIGIN, -1, vec3_origin );
-		m_pSparkEffect->StopEmission();
+		// Create returns NULL when the particle system is not loaded.
+		if ( m_pSparkEffect.IsValid() )
+		{
+			m_pSparkEffect->StopEmission();
+		}
 	}
 
 	UpdateSparkEffect();

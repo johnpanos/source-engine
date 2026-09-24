@@ -5,7 +5,7 @@
 //=====================================================================================//
 
 #include "vgamelobby.h"
-#include "KeyValues.h"
+#include "keyvalues.h"
 #include "vgenericconfirmation.h"
 #include "vgenericpanellist.h"
 #include "vfooterpanel.h"

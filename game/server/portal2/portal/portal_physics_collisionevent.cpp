@@ -7,6 +7,7 @@
 
 #include "cbase.h"
 #include "portal_physics_collisionevent.h"
+#include "tier1/utlstack.h"
 #include "physicsshadowclone.h"
 #include "prop_combine_ball.h"
 #include "portal_player.h"

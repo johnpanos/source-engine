@@ -6890,7 +6890,9 @@ static void S_Say( const CCommand &args )
 // see scripts/soundmixers.txt for data format
 //------------------------------------------------------------------------------
 
-#define CMXRGROUPMAX		64					// up to n mixgroups
+// Portal 2 port: 128 as in the CS:GO-era engine; Portal 2's scripts/soundmixers.txt
+// names more than 64 mix groups, which overran g_mapMixgroupidToGrouprulesid.
+#define CMXRGROUPMAX		128					// up to n mixgroups
 #define CMXRGROUPRULESMAX	(CMXRGROUPMAX + 16)	// max number of group rules
 #define	CMXRSOUNDMIXERSMAX	32					// up to n sound mixers per project
 
@@ -7723,6 +7725,13 @@ void MXR_AssignGroupIds( void )
 
 		if (mixgroupid == -1)
 		{
+			// Portal 2 port: never write past the mix group tables.
+			if ( cmixgroupid >= CMXRGROUPMAX )
+			{
+				Warning( "MXR_AssignGroupIds: more than %d mix groups, ignoring '%s'\n", CMXRGROUPMAX, g_grouprules[i].szmixgroup );
+				continue;
+			}
+
 			// groupname is not yet assigned, provide a unique mixgroupid.
 
 			g_grouprules[i].mixgroupid = cmixgroupid;

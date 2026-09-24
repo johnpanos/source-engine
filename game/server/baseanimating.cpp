@@ -3596,3 +3596,35 @@ CStudioHdr *CBaseAnimating::OnNewModel()
 
 	return hdr;
 }
+
+#ifdef PORTAL2
+//-----------------------------------------------------------------------------
+// VScript (CS:GO base). GetObjectScaleLevel is not exposed: this base has no
+// object scaling.
+//-----------------------------------------------------------------------------
+BEGIN_ENT_SCRIPTDESC( CBaseAnimating, CBaseEntity, "Animating models" )
+	DEFINE_SCRIPTFUNC( LookupAttachment, "Get the named attachement id" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAttachmentOrigin, "GetAttachmentOrigin", "Get the attachement id's origin vector" )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetAttachmentAngles, "GetAttachmentAngles", "Get the attachement id's angles as a p,y,r vector" )
+	DEFINE_SCRIPTFUNC( IsSequenceFinished, "Ask whether the main sequence is done playing" )
+	DEFINE_SCRIPTFUNC( SetBodygroup, "Sets a bodygroup" )
+END_SCRIPTDESC();
+
+Vector CBaseAnimating::ScriptGetAttachmentOrigin( int iAttachment )
+{
+	Vector vecOrigin;
+	QAngle angAngles;
+	if ( !GetAttachment( iAttachment, vecOrigin, angAngles ) )
+		vecOrigin.Init();
+	return vecOrigin;
+}
+
+Vector CBaseAnimating::ScriptGetAttachmentAngles( int iAttachment )
+{
+	Vector vecOrigin;
+	QAngle angAngles;
+	if ( !GetAttachment( iAttachment, vecOrigin, angAngles ) )
+		angAngles.Init();
+	return Vector( angAngles.x, angAngles.y, angAngles.z );
+}
+#endif // PORTAL2

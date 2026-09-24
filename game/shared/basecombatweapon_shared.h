@@ -635,4 +635,14 @@ protected:
 #endif // End Client .dll only
 };
 
+#ifdef PORTAL2
+// Later (CS:GO-era) base-game helper.
+inline CBaseCombatWeapon *ToBaseCombatWeapon( CBaseEntity *pEntity )
+{
+	if ( !pEntity )
+		return NULL;
+	return pEntity->MyCombatWeaponPointer();
+}
+#endif
+
 #endif // COMBATWEAPON_SHARED_H

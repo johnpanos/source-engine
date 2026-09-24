@@ -97,6 +97,8 @@ def build(bld):
 		'sv_uploadgamestats.cpp',
 		'vengineserver_impl.cpp',
 		'sv_main.cpp',
+		'singleplayersharedmemory.cpp',
+		'matchframeworkhost.cpp',
 		'sv_client.cpp',
 		'sv_ents_write.cpp',
 		'sv_filter.cpp',

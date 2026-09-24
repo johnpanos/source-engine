@@ -15,6 +15,10 @@ class CBaseMultiplayerPlayer : public CAI_ExpresserHost<CBasePlayer>
 {
 
 	DECLARE_CLASS( CBaseMultiplayerPlayer, CAI_ExpresserHost<CBasePlayer> );
+#ifdef PORTAL2
+	// Portal 2 port: VScript access (CS:GO base).
+	DECLARE_ENT_SCRIPTDESC();
+#endif
 
 public:
 

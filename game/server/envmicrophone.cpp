@@ -558,3 +558,17 @@ bool CEnvMicrophone::OnSoundPlayed( int entindex, const char *soundname, soundle
 
 	return bSwallowed;
 }
+
+#ifdef PORTAL2
+void CEnvMicrophone::SetMaxRange( float flMaxRange )
+{
+	m_flMaxRange = flMaxRange;
+}
+
+void CEnvMicrophone::SetSpeaker( string_t iszSpeakerName, EHANDLE hSpeaker )
+{
+	m_iszSpeakerName = iszSpeakerName;
+	m_hSpeaker = hSpeaker;
+	ActivateSpeaker();
+}
+#endif // PORTAL2

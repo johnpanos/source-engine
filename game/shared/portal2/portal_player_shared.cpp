@@ -5,8 +5,8 @@
 // $NoKeywords: $
 //
 //=============================================================================//
-#if 0
 #include "cbase.h"
+#include "portal2_ssemath_compat.h"
 #include <functional>
 #include "portal_player_shared.h"
 //#include "portal_playeranimstate.h"
@@ -302,7 +302,7 @@ void CPortal_Player::PlayStepSound( Vector &vecOrigin, surfacedata_t *psurface, 
 
 	// Play the paint step sound if applicable
 	bool shouldPlayPaintStepSound = false;
-	if( engine->HasPaintmap() )
+	if( Portal2_HasPaintmap() )
 	{
 		CBaseEntity const* pGroundEntity = GetGroundEntity();
 		for( unsigned i = 0; i < PAINT_POWER_TYPE_COUNT; ++i )
@@ -323,7 +323,8 @@ void CPortal_Player::PlayStepSound( Vector &vecOrigin, surfacedata_t *psurface, 
 
 		if( pPaintedSurface )
 		{
-			unsigned short const paintStepSoundIndex = side != 0 ? pPaintedSurface->sounds.runStepLeft : pPaintedSurface->sounds.runStepRight;
+			// Portal 2 port: this vphysics surface table has no run step sounds; use the step sounds.
+			unsigned short const paintStepSoundIndex = side != 0 ? pPaintedSurface->sounds.stepleft : pPaintedSurface->sounds.stepright;
 			CSoundParameters soundParams;
 			if( paintStepSoundIndex != 0 &&
 				GetParametersForSound( physprops->GetString( paintStepSoundIndex ), soundParams, NULL ) )
@@ -456,7 +457,7 @@ bool CPortal_Player::TestHitboxes( const Ray_t &ray, unsigned int fContentsMask,
 		mstudiobone_t *pBone = pStudioHdr->pBone(pbox->bone);
 		tr.surface.name = "**studio**";
 		tr.surface.flags = SURF_HITBOX;
-		tr.surface.surfaceProps = pBone->GetSurfaceProp();
+		tr.surface.surfaceProps = physprops->GetSurfaceIndex( pBone->pszSurfaceProp() );
 	}
 
 	return true;
@@ -494,7 +495,8 @@ void CPortal_Player::ForceDuckThisFrame( void )
 		AddFlag( FL_DUCKING );
 		SetCollisionBounds( VEC_DUCK_HULL_MIN, VEC_DUCK_HULL_MAX );
 		SetViewOffset( VEC_DUCK_VIEW );
-//#if defined( GAME_DLL )
+// Portal 2 port: only the server player has a physics shadow in this base game.
+#if defined( GAME_DLL )
 		SetVCollisionState( GetAbsOrigin() + Vector( 0.0f, 0.0f, 18.0f ), GetAbsVelocity(), VPHYS_CROUCH ); //+18 on z to maintain centered state
 		if( m_pPhysicsController )
 		{
@@ -502,7 +504,7 @@ void CPortal_Player::ForceDuckThisFrame( void )
 			m_pPhysicsController->Jump();
 		}
 		SetTouchedPhysics( true );
-//#endif
+#endif
 	}
 }
 
@@ -1676,7 +1678,9 @@ void CPortal_Player::UpdatePaintedPower()
 				if( m_PaintScreenSpaceEffect.IsValid() )
 				{
 					// Make sure the particle system isn't automatically drawn with the viewmodel
-					m_PaintScreenSpaceEffect->m_pDef->SetDrawThroughLeafSystem( false );
+					// Portal 2 port: CS:GO's SetDrawThroughLeafSystem( false ). C_Portal_Player
+					// draws this effect itself, so take it out of the client leaf system.
+					Portal2_DrawParticleEffectManually( m_PaintScreenSpaceEffect );
 					m_PaintScreenSpaceEffect->m_pDef->m_nMaxParticles = 512;
 
 					// Set the control points
@@ -1862,7 +1866,8 @@ void CPortal_Player::Paint( PaintPowerType type, const Vector& worldContactPt )
 			// Restart paint screen space effect
 			if( m_PaintScreenSpaceEffect.IsValid() )
 			{
-				m_PaintScreenSpaceEffect->Restart( RESTART_RESET_AND_MAKE_SURE_EMITS_HAPPEN );
+				// Portal 2 port: this particle system's Restart() always resets the emitters.
+				m_PaintScreenSpaceEffect->Restart();
 			}
 
 			// commenting out the 3rd person drop effect
@@ -4209,7 +4214,7 @@ void ComputeAABBContactsWithBrushEntity_Old( ContactVector& contacts, const cpla
 	// Get the indices of all the colliding brushes
 	//BrushIndexVector brushIndices;
 	CBrushQuery brushQuery;
-	enginetrace->GetBrushesInAABB( queryBoxMin, queryBoxMax, brushQuery, contentsMask, cmodelIndex );
+	Portal2_GetBrushesInAABB( queryBoxMin, queryBoxMax, brushQuery, contentsMask, cmodelIndex );
 
 	// Find the contact regions
 	//BrushSideInfoVector brushSides;
@@ -4220,7 +4225,7 @@ void ComputeAABBContactsWithBrushEntity_Old( ContactVector& contacts, const cpla
 	{
 		// Get the brush side info
 		int iBrushContents;
-		int iNumBrushSides = enginetrace->GetBrushInfo( brushQuery[i], iBrushContents, brushSides, brushQuery.MaxBrushSides() );
+		int iNumBrushSides = Portal2_GetBrushInfo( brushQuery[i], iBrushContents, brushSides, brushQuery.MaxBrushSides() );
 		Assert( iNumBrushSides > 0 );
 		if( iNumBrushSides <= 0 )
 			continue;
@@ -4327,7 +4332,7 @@ void ComputeAABBContactsWithBrushEntity_SIMD( ContactVector& contacts, const cpl
 	// Get the indices of all the colliding brushes
 	//BrushIndexVector brushIndices;
 	CBrushQuery brushQuery;
-	enginetrace->GetBrushesInAABB( queryBoxMin, queryBoxMax, brushQuery, contentsMask, cmodelIndex );
+	Portal2_GetBrushesInAABB( queryBoxMin, queryBoxMax, brushQuery, contentsMask, cmodelIndex );
 
 	// Find the contact regions
 	//BrushSideInfoVector brushSides;
@@ -4345,7 +4350,7 @@ void ComputeAABBContactsWithBrushEntity_SIMD( ContactVector& contacts, const cpl
 	{
 		// Get the brush side info
 		int iBrushContents;
-		int iNumBrushSides = enginetrace->GetBrushInfo( brushQuery[i], iBrushContents, brushSides, brushQuery.MaxBrushSides() );
+		int iNumBrushSides = Portal2_GetBrushInfo( brushQuery[i], iBrushContents, brushSides, brushQuery.MaxBrushSides() );
 		Assert( iNumBrushSides > 0 );
 		if( iNumBrushSides <= 0 )
 			continue;
@@ -4610,7 +4615,7 @@ void CPortal_Player::ItemPostFrame()
 	BaseClass::ItemPostFrame();
 
 	CBaseCombatWeapon* pActiveWeapon = GetActiveWeapon();
-	if( m_hUseEntity != NULL &&
+	if( GetUseEntity() != NULL &&
 		paintgun_ammo_type != PAINT_AMMO_NONE &&
 		pActiveWeapon != NULL &&
 		FClassnameIs( pActiveWeapon, "weapon_paintgun" ) )
@@ -5226,4 +5231,3 @@ bool CPortal_Player::IsTaunting()
 			 m_Shared.InCond( PORTAL_COND_DEATH_CRUSH ) ||
 		 m_Shared.InCond( PORTAL_COND_DEATH_GIB ) );
 }
-#endif

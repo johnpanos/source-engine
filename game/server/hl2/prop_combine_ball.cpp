@@ -584,12 +584,14 @@ void CPropCombineBall::InputSocketed( inputdata_t &inputdata )
 		SetOwnerEntity( NULL );
 	}
 
+#ifndef PORTAL2 // Portal 2 port: the Portal 2 player is not an HL2 player.
 	// if our owner is a player, tell them we were socketed
 	CHL2_Player *pPlayer = dynamic_cast<CHL2_Player *>( pOwner );
 	if ( pPlayer )
 	{
 		pPlayer->CombineBallSocketed( this );
 	}
+#endif
 
 	UTIL_Remove( this );
 
@@ -1116,12 +1118,14 @@ void CPropCombineBall::DoExplosion( )
 	
 	if( !m_bStruckEntity && hl2_episodic.GetBool() && GetOwnerEntity() != NULL )
 	{
+#ifndef PORTAL2 // Portal 2 port: the Portal 2 player is not an HL2 player.
 		// Notify the player proxy that this combine ball missed so that it can fire an output.
 		CHL2_Player *pPlayer = dynamic_cast<CHL2_Player *>( GetOwnerEntity() );
 		if ( pPlayer )
 		{
 			pPlayer->MissedAR2AltFire();
 		}
+#endif
 	}
 
 	SetContextThink( &CPropCombineBall::SUB_Remove, gpGlobals->curtime + 0.5f, s_pRemoveContext );

@@ -239,6 +239,24 @@ public:
 	virtual void	ClientThink( void );
 	virtual void	OnDataChanged( DataUpdateType_t updateType );
 
+#if defined( PORTAL2 )
+	// Portal 2 port: env_sprite_clientside. The server removes these; the client
+	// spawns them from the map's entity lump (CS:GO c_sprite.cpp).
+	virtual ~CSprite();
+
+	bool IsClientOnly() const { return m_bClientOnly; }
+
+	static void RecreateAllClientside();
+	static void DestroyAllClientside();
+	static void ParseAllClientsideEntities( const char *pMapData );
+	static const char *ParseClientsideEntity( const char *pEntData );
+
+	bool InitializeClientside();
+
+	virtual bool KeyValue( const char *szKeyName, const char *szValue );
+	using BaseClass::KeyValue;
+#endif // PORTAL2
+
 #endif
 public:
 	CNetworkHandle( CBaseEntity, m_hAttachedToEntity );
@@ -272,6 +290,10 @@ private:
 	int			m_nStartBrightness;
 	int			m_nDestBrightness;		//Destination brightness
 	float		m_flBrightnessTimeStart;//Real time for brightness
+
+#if defined( CLIENT_DLL ) && defined( PORTAL2 )
+	bool		m_bClientOnly;
+#endif
 };
 
 

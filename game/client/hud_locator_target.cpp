@@ -5,7 +5,6 @@
 // $NoKeywords: $
 //=============================================================================//
 
-#if 0
 #include "cbase.h"
 #include "hud_locator_target.h"
 #include "iclientmode.h"
@@ -28,6 +27,252 @@
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
+//-----------------------------------------------------------------------------
+// Portal 2 port: CS:GO base-game helpers this locator uses, expressed with
+// this engine's client, vgui and HUD API.
+//-----------------------------------------------------------------------------
+
+// CS:GO ClientModeShared::GetPanelFromViewport(): finds a viewport descendant by
+// a "name/child,instance/..." path (",N" picks the Nth same-named sibling;
+// anything after ';' is ignored).
+static vgui::Panel *Locator_GetPanelFromViewport( const char *pchNamePath )
+{
+	vgui::Panel *pPanel = GetClientMode() ? GetClientMode()->GetViewport() : NULL;
+	if ( !pPanel )
+		return NULL;
+
+	char szTargetName[ 256 ];
+	Q_strncpy( szTargetName, pchNamePath, sizeof( szTargetName ) );
+
+	char *pchEndToken = strchr( szTargetName, ';' );
+	if ( pchEndToken )
+		*pchEndToken = '\0';
+
+	char *pchName = szTargetName;
+	while ( pPanel && pchName && pchName[ 0 ] != '\0' )
+	{
+		char *pchNextName = strchr( pchName, '/' );
+		if ( pchNextName )
+		{
+			*pchNextName = '\0';
+			pchNextName++;
+		}
+
+		int nInstance = 0;
+		char *pchInstancePos = strchr( pchName, ',' );
+		if ( pchInstancePos )
+		{
+			*pchInstancePos = '\0';
+			nInstance = atoi( pchInstancePos + 1 );
+		}
+
+		int nCurrentInstance = 0;
+		vgui::Panel *pNextPanel = NULL;
+		for ( int i = 0; i < pPanel->GetChildCount(); i++ )
+		{
+			vgui::Panel *pChild = pPanel->GetChild( i );
+			if ( pChild && stricmp( pChild->GetName(), pchName ) == 0 && ++nCurrentInstance > nInstance )
+			{
+				pNextPanel = pChild;
+				break;
+			}
+		}
+
+		pPanel = pNextPanel;
+		pchName = pchNextName;
+	}
+
+	return pPanel;
+}
+
+// CS:GO ConVar::GetColor() for an "r g b a" color convar.
+static Color Locator_ConVarColor( const ConVar &var )
+{
+	color32 rgba = { 255, 255, 255, 255 };
+	UTIL_StringToColor32( &rgba, var.GetString() );
+	return Color( rgba.r, rgba.g, rgba.b, rgba.a );
+}
+
+// CS:GO vgui::Panel::LookupElementBounds(). The base returned false and no
+// Portal 2 panel overrides it, so a named sub-element is never found and the
+// whole target panel is used.
+static bool Locator_LookupElementBounds( vgui::Panel *pPanel, const char *pchElementName, int &x, int &y, int &wide, int &tall )
+{
+	return false;
+}
+
+// CS:GO ISurface::DrawWordBubble(): a filled box with a bevelled border and an
+// optional pointer toward ( nPointerX, nPointerY ). Polygons are drawn without
+// vertex clipping so the pointer can leave the panel, as CS:GO opened the
+// clip rectangle for it; this surface has no clip rectangle accessors.
+static void Locator_DrawWordBubble( int x0, int y0, int x1, int y1, int nBorderThickness, Color rgbaBackground, Color rgbaBorder, bool bPointer, int nPointerX, int nPointerY, int nPointerBaseThickness )
+{
+	static int s_nWhiteTexture = -1;
+	if ( s_nWhiteTexture == -1 )
+	{
+		s_nWhiteTexture = vgui::surface()->DrawGetTextureId( "vgui/white" );
+		if ( s_nWhiteTexture == -1 )
+		{
+			s_nWhiteTexture = vgui::surface()->CreateNewTextureID();
+			vgui::surface()->DrawSetTextureFile( s_nWhiteTexture, "vgui/white", true, true );
+		}
+	}
+
+	int nBackgroundWide = x1 - x0;
+	int nBackgroundTall = y1 - y0;
+
+	vgui::surface()->DrawSetColor( rgbaBackground );
+	vgui::surface()->DrawFilledRect( x0, y0, x1, y1 );
+
+	vgui::surface()->DrawSetTexture( s_nWhiteTexture );
+	Vector2D vecZero( 0.0f, 0.0f );
+
+	// Pointing at something beside the bubble needs no pointer
+	if ( nPointerY >= y0 && nPointerY < y0 + nBackgroundTall )
+		bPointer = false;
+
+	int nHalfPointerBaseTopWide, nHalfPointerBaseBottomWide;
+	if ( bPointer )
+	{
+		if ( nPointerY < y0 )
+		{
+			// Pointing at something above the bubble
+			nHalfPointerBaseTopWide = nPointerBaseThickness / 2;
+			nHalfPointerBaseBottomWide = nPointerBaseThickness;
+
+			vgui::Vertex_t pointerVerts[ 3 ] =
+			{
+				vgui::Vertex_t( Vector2D( x0 + nHalfPointerBaseTopWide, y0 ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX, nPointerY ), vecZero ),
+				vgui::Vertex_t( Vector2D( x0 + nPointerBaseThickness, y0 ), vecZero )
+			};
+			vgui::surface()->DrawTexturedPolygon( 3, pointerVerts, false );
+		}
+		else
+		{
+			// Pointing at something below the bubble
+			nHalfPointerBaseTopWide = nPointerBaseThickness;
+			nHalfPointerBaseBottomWide = nPointerBaseThickness / 2;
+
+			vgui::Vertex_t pointerVerts[ 3 ] =
+			{
+				vgui::Vertex_t( Vector2D( x0 + nPointerBaseThickness, y0 + nBackgroundTall ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX, nPointerY ), vecZero ),
+				vgui::Vertex_t( Vector2D( x0 + nHalfPointerBaseBottomWide, y0 + nBackgroundTall ), vecZero )
+			};
+			vgui::surface()->DrawTexturedPolygon( 3, pointerVerts, false );
+		}
+	}
+	else
+	{
+		// No pointer so the top and bottom separations are both closed
+		nHalfPointerBaseTopWide = nPointerBaseThickness;
+		nHalfPointerBaseBottomWide = nPointerBaseThickness;
+	}
+
+	// Border
+	vgui::surface()->DrawSetColor( rgbaBorder );
+
+	vgui::surface()->DrawFilledRect( x0, y0 - nBorderThickness, x0 + nHalfPointerBaseTopWide, y0 );
+	vgui::surface()->DrawFilledRect( x0 + nPointerBaseThickness, y0 - nBorderThickness, x0 + nBackgroundWide, y0 );
+	vgui::surface()->DrawFilledRect( x0 - nBorderThickness, y0, x0, y0 + nBackgroundTall );
+	vgui::surface()->DrawFilledRect( x0 + nBackgroundWide, y0, x0 + nBackgroundWide + nBorderThickness, y0 + nBackgroundTall );
+	vgui::surface()->DrawFilledRect( x0, y0 + nBackgroundTall, x0 + nHalfPointerBaseBottomWide, y0 + nBackgroundTall + nBorderThickness );
+	vgui::surface()->DrawFilledRect( x0 + nPointerBaseThickness, y0 + nBackgroundTall, x0 + nBackgroundWide, y0 + nBackgroundTall + nBorderThickness );
+
+	const int nNumCornerTris = 4;
+	vgui::Vertex_t cornerVerts[ nNumCornerTris * 3 ] =
+	{
+		// Corner TL
+		vgui::Vertex_t( Vector2D( x0, y0 - nBorderThickness ), vecZero ),
+		vgui::Vertex_t( Vector2D( x0, y0 ), vecZero ),
+		vgui::Vertex_t( Vector2D( x0 - nBorderThickness, y0 ), vecZero ),
+
+		// Corner TR
+		vgui::Vertex_t( Vector2D( x0 + nBackgroundWide, y0 - nBorderThickness ), vecZero ),
+		vgui::Vertex_t( Vector2D( x0 + nBackgroundWide + nBorderThickness, y0 ), vecZero ),
+		vgui::Vertex_t( Vector2D( x0 + nBackgroundWide, y0 ), vecZero ),
+
+		// Corner BL
+		vgui::Vertex_t( Vector2D( x0 - nBorderThickness, y0 + nBackgroundTall ), vecZero ),
+		vgui::Vertex_t( Vector2D( x0, y0 + nBackgroundTall ), vecZero ),
+		vgui::Vertex_t( Vector2D( x0, y0 + nBackgroundTall + nBorderThickness ), vecZero ),
+
+		// Corner BR
+		vgui::Vertex_t( Vector2D( x0 + nBackgroundWide, y0 + nBackgroundTall ), vecZero ),
+		vgui::Vertex_t( Vector2D( x0 + nBackgroundWide + nBorderThickness, y0 + nBackgroundTall ), vecZero ),
+		vgui::Vertex_t( Vector2D( x0 + nBackgroundWide, y0 + nBackgroundTall + nBorderThickness ), vecZero )
+	};
+
+	for ( int nTri = 0; nTri < nNumCornerTris; ++nTri )
+	{
+		vgui::surface()->DrawTexturedPolygon( 3, cornerVerts + nTri * 3, false );
+	}
+
+	if ( bPointer )
+	{
+		const int nNumPointerQuads = 3;
+		if ( nPointerY < y0 )
+		{
+			// Up pointer border
+			vgui::Vertex_t pointerVerts[ nNumPointerQuads * 4 ] =
+			{
+				// Pointer left
+				vgui::Vertex_t( Vector2D( x0 + nHalfPointerBaseTopWide, y0 ), vecZero ),
+				vgui::Vertex_t( Vector2D( x0 + nHalfPointerBaseTopWide, y0 - nBorderThickness ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX - nBorderThickness, nPointerY - nBorderThickness ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX, nPointerY ), vecZero ),
+
+				// Pointer right
+				vgui::Vertex_t( Vector2D( x0 + nPointerBaseThickness, y0 - nBorderThickness ), vecZero ),
+				vgui::Vertex_t( Vector2D( x0 + nPointerBaseThickness, y0 ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX, nPointerY ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX + nBorderThickness, nPointerY - nBorderThickness ), vecZero ),
+
+				// Pointer tip
+				vgui::Vertex_t( Vector2D( nPointerX, nPointerY - nBorderThickness * 2 ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX + nBorderThickness, nPointerY - nBorderThickness ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX, nPointerY ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX - nBorderThickness, nPointerY - nBorderThickness ), vecZero )
+			};
+
+			for ( int nQuad = 0; nQuad < nNumPointerQuads; ++nQuad )
+			{
+				vgui::surface()->DrawTexturedPolygon( 4, pointerVerts + nQuad * 4, false );
+			}
+		}
+		else
+		{
+			// Down pointer border
+			vgui::Vertex_t pointerVerts[ nNumPointerQuads * 4 ] =
+			{
+				// Pointer left
+				vgui::Vertex_t( Vector2D( x0 + nHalfPointerBaseBottomWide, y0 + nBackgroundTall + nBorderThickness ), vecZero ),
+				vgui::Vertex_t( Vector2D( x0 + nHalfPointerBaseBottomWide, y0 + nBackgroundTall ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX, nPointerY ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX - nBorderThickness, nPointerY + nBorderThickness ), vecZero ),
+
+				// Pointer right
+				vgui::Vertex_t( Vector2D( x0 + nPointerBaseThickness, y0 + nBackgroundTall + nBorderThickness ), vecZero ),
+				vgui::Vertex_t( Vector2D( x0 + nPointerBaseThickness, y0 + nBackgroundTall ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX + nBorderThickness, nPointerY + nBorderThickness ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX, nPointerY ), vecZero ),
+
+				// Pointer tip
+				vgui::Vertex_t( Vector2D( nPointerX, nPointerY ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX + nBorderThickness, nPointerY + nBorderThickness ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX, nPointerY + nBorderThickness * 2 ), vecZero ),
+				vgui::Vertex_t( Vector2D( nPointerX - nBorderThickness, nPointerY + nBorderThickness ), vecZero )
+			};
+
+			for ( int nQuad = 0; nQuad < nNumPointerQuads; ++nQuad )
+			{
+				vgui::surface()->DrawTexturedPolygon( 4, pointerVerts + nQuad * 4, false );
+			}
+		}
+	}
+}
 
 
 #define ICON_SIZE			0.04f	// Icons are ScreenWidth() * ICON_SIZE wide.
@@ -493,7 +738,7 @@ void CLocatorTarget::UpdateVguiTarget( void )
 		}
 	}
 
-	m_hVguiTarget = GetClientMode()->GetPanelFromViewport( pchVguiTargetName );
+	m_hVguiTarget = Locator_GetPanelFromViewport( pchVguiTargetName );
 }
 
 void CLocatorTarget::SetVguiTargetName( const char *pchVguiTargetName )
@@ -558,7 +803,7 @@ void CLocatorTarget::SetBinding( const char *pszBinding )
 		if ( g_pInputSystem->IsSteamControllerActive() )
 			nBindingLookupFlags = BINDINGLOOKUP_STEAMCONTROLLER_ONLY;
 		else
-			nBindingLookupFlags = input->ControllerModeActive() ? BINDINGLOOKUP_JOYSTICK_ONLY : BINDINGLOOKUP_KEYBOARD_ONLY;
+			nBindingLookupFlags = input->EnableJoystickMode() ? BINDINGLOOKUP_JOYSTICK_ONLY : BINDINGLOOKUP_KEYBOARD_ONLY;
 	}
 
 	bool bIsControllerNow = ( nBindingLookupFlags != 0 );
@@ -595,8 +840,9 @@ void CLocatorTarget::SetBinding( const char *pszBinding )
 	pchToken = nexttoken( szToken, pchToken, ';' );
 
 	// Get our steam controller handles ready
-	uint64 nSteamControllerHandles[STEAM_CONTROLLER_MAX_COUNT];
 	int nSteamControllerCount = 0;
+#if !defined( NO_STEAM )
+	uint64 nSteamControllerHandles[STEAM_CONTROLLER_MAX_COUNT];
 	if ( nBindingLookupFlags == BINDINGLOOKUP_STEAMCONTROLLER_ONLY )
 	{
 		if ( steamapicontext && steamapicontext->SteamController() )
@@ -604,6 +850,10 @@ void CLocatorTarget::SetBinding( const char *pszBinding )
 			nSteamControllerCount = steamapicontext->SteamController()->GetConnectedControllers( nSteamControllerHandles );
 		}
 	}
+#else
+	// Portal 2 port: NO_STEAM builds have no Steam Controller API, so bindings
+	// always come from the keyboard and joystick binding tables below.
+#endif
 
 // 	Msg("    m_bWasControllerLast     : %s\n", m_bWasControllerLast ? "TRUE" : "FALSE" );
 // 	Msg("    m_bWasSteamControllerLast: %s\n", m_bWasSteamControllerLast ? "TRUE" : "FALSE" );
@@ -611,6 +861,7 @@ void CLocatorTarget::SetBinding( const char *pszBinding )
 
 	while ( pchToken )
 	{
+#if !defined( NO_STEAM )
 		if ( nBindingLookupFlags == BINDINGLOOKUP_STEAMCONTROLLER_ONLY && nSteamControllerCount > 0 )
 		{
 			// What to do if they have multiple controllers connected?
@@ -631,7 +882,7 @@ void CLocatorTarget::SetBinding( const char *pszBinding )
 				EControllerActionOrigin eOrigins[STEAM_CONTROLLER_MAX_ORIGINS];
 				memset( eOrigins, k_EControllerActionOrigin_None, sizeof( eOrigins ) );
 				steamapicontext->SteamController()->GetDigitalActionOrigins( nController, handleActionSet, hDigitalAction, eOrigins );
-				SetSteamControllerBindingToOrigin( eOrigins, nOriginalToken, pszSearchToken );
+				SetSteamControllerBindingToOrigin( (int *)eOrigins, nOriginalToken, pszSearchToken );
 			}
 			else
 			{
@@ -641,15 +892,16 @@ void CLocatorTarget::SetBinding( const char *pszBinding )
 					EControllerActionOrigin eOrigins[STEAM_CONTROLLER_MAX_ORIGINS];
 					memset( eOrigins, k_EControllerActionOrigin_None, sizeof( eOrigins ) );
 					steamapicontext->SteamController()->GetDigitalActionOrigins( nController, handleActionSet, hAnalogAction, eOrigins );
-					SetSteamControllerBindingToOrigin( eOrigins, nOriginalToken, pszSearchToken );
+					SetSteamControllerBindingToOrigin( (int *)eOrigins, nOriginalToken, pszSearchToken );
 				}
 			}
 		}
 		else
+#endif // !NO_STEAM
 		{
 			// Get the first parameter
 			int iTokenBindingCount = 0;
-			const char *pchBinding = engine->Key_LookupBindingEx( szToken, nSlot, iTokenBindingCount, nBindingLookupFlags );
+			const char *pchBinding = Portal2Engine::Key_LookupBindingEx( szToken, nSlot, iTokenBindingCount, nBindingLookupFlags );
 
 			while ( m_iBindingChoicesCount < MAX_LOCATOR_BINDINGS_SHOWN && pchBinding )
 			{
@@ -658,7 +910,7 @@ void CLocatorTarget::SetBinding( const char *pszBinding )
 				++m_iBindingChoicesCount;
 				++iTokenBindingCount;
 
-				pchBinding = engine->Key_LookupBindingEx( szToken, nSlot, iTokenBindingCount, nBindingLookupFlags );
+				pchBinding = Portal2Engine::Key_LookupBindingEx( szToken, nSlot, iTokenBindingCount, nBindingLookupFlags );
 			}
 		}
 
@@ -722,7 +974,7 @@ char *g_szControllerOrigins[] =
 #endif
 
 //------------------------------------
-void CLocatorTarget::SetSteamControllerBindingToOrigin( EControllerActionOrigin *pOrigins, int nOriginalToken, const char *pszActionName )
+void CLocatorTarget::SetSteamControllerBindingToOrigin( int *pOrigins, int nOriginalToken, const char *pszActionName )
 {
 #ifdef DEBUG
 	if ( sc_debug_origins.GetBool() )
@@ -801,7 +1053,7 @@ const char *CLocatorTarget::UseBindingImage( char *pchIconTextureName, size_t bu
 
 	//icon_blank_wide
 	/*
-	if ( input->ControllerModeActive() && 
+	if ( input->EnableJoystickMode() && 
 		 ( Q_strcmp( pchBinding, "A_BUTTON" ) == 0 || 
 		   Q_strcmp( pchBinding, "B_BUTTON" ) == 0 || 
 		   Q_strcmp( pchBinding, "X_BUTTON" ) == 0 || 
@@ -1002,7 +1254,7 @@ static CLocatorPanel *s_pLocatorPanel[ MAX_SPLITSCREEN_PLAYERS ];
 inline CLocatorPanel *GetPlayerLocatorPanel()
 {
 	ASSERT_LOCAL_PLAYER_RESOLVABLE();
-	if ( !engine->IsLocalPlayerResolvable() )
+	if ( !Portal2Engine::IsLocalPlayerResolvable() )
 		return NULL;
 
 	int nSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
@@ -1147,8 +1399,8 @@ void CLocatorPanel::GetTargetPosition( const Vector &vecDelta, float flRadius, f
 	int nSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
 
 	// Player Data
-	Vector playerPosition = MainViewOrigin(nSlot);
-	QAngle playerAngles = MainViewAngles(nSlot);
+	Vector playerPosition = MainViewOrigin();
+	QAngle playerAngles = MainViewAngles();
 
 	Vector forward, right, up(0,0,1);
 	AngleVectors (playerAngles, &forward, NULL, NULL );
@@ -1567,7 +1819,7 @@ bool CLocatorPanel::ValidateTargetTextures( CLocatorTarget *pTarget )
 		}
 		else
 		{
-			pTarget->m_pIcon_onscreen = HudIcons().GetIcon( szIconTextureName );
+			pTarget->m_pIcon_onscreen = gHUD.GetIcon( szIconTextureName );
 			if ( pTarget->m_pIcon_onscreen )
 			{
 				pTarget->m_widthScale_onscreen = static_cast< float >( pTarget->m_pIcon_onscreen->Width() ) / pTarget->m_pIcon_onscreen->Height();
@@ -1608,7 +1860,7 @@ bool CLocatorPanel::ValidateTargetTextures( CLocatorTarget *pTarget )
 		}
 		else
 		{
-			pTarget->m_pIcon_offscreen = HudIcons().GetIcon( szIconTextureName );
+			pTarget->m_pIcon_offscreen = gHUD.GetIcon( szIconTextureName );
 		}
 
 		return true;
@@ -1629,7 +1881,7 @@ void CLocatorPanel::ComputeTargetIconPosition( CLocatorTarget *pTarget, bool bSe
 
 	// Measure the delta and the dist from this player to this target.
 	Vector vecTarget = pTarget->m_vecOrigin;
-	Vector vecDelta = vecTarget - MainViewOrigin(nSlot);
+	Vector vecDelta = vecTarget - MainViewOrigin();
 
 	if ( pTarget->m_bOriginInScreenspace )
 	{
@@ -1678,11 +1930,11 @@ void CLocatorPanel::ComputeTargetIconPosition( CLocatorTarget *pTarget, bool bSe
 		pTarget->m_bDrawArrow = true;
 
 		// Figure out the arrow angle
-		Vector vOffsetNormal = pTarget->m_vecOrigin - MainViewOrigin(nSlot);
+		Vector vOffsetNormal = pTarget->m_vecOrigin - MainViewOrigin();
 		VectorNormalize( vOffsetNormal );
 
-		float fRightDot = MainViewRight(nSlot).Dot( vOffsetNormal );
-		float fUpDot = MainViewUp(nSlot).Dot( vOffsetNormal );
+		float fRightDot = MainViewRight().Dot( vOffsetNormal );
+		float fUpDot = MainViewUp().Dot( vOffsetNormal );
 
 		pTarget->m_fDrawArrowAngle = RemapVal( fUpDot, -1.0f, 1.0f, 0.0f, 180.0f ) * ( fRightDot > 0 ? 1.0f : -1.0f );
 	}
@@ -1740,7 +1992,7 @@ void CLocatorPanel::CalculateOcclusion( CLocatorTarget *pTarget )
 			return;
 
 		trace_t	tr;
-		UTIL_TraceLine( pTarget->m_vecOrigin, MainViewOrigin(nSlot), (CONTENTS_SOLID|CONTENTS_MOVEABLE), NULL, COLLISION_GROUP_NONE, &tr );
+		UTIL_TraceLine( pTarget->m_vecOrigin, MainViewOrigin(), (CONTENTS_SOLID|CONTENTS_MOVEABLE), NULL, COLLISION_GROUP_NONE, &tr );
 		if ( tr.fraction < 1.0f )
 		{
 			pTarget->m_bOccluded = true;
@@ -1850,13 +2102,13 @@ void CLocatorPanel::DrawPointerBackground( CLocatorTarget *pTarget, int nPointer
 
 	float fAlpha = static_cast<float>( pTarget->m_alpha ) / 255.0f;
 
-	Color rgbaBackground = locator_background_color.GetColor();
+	Color rgbaBackground = Locator_ConVarColor( locator_background_color );
 	rgbaBackground[ 3 ] *= fAlpha;
 
-	Color rgbaBorder = locator_background_border_color.GetColor();
+	Color rgbaBorder = Locator_ConVarColor( locator_background_border_color );
 	rgbaBorder[ 3 ] *= fAlpha;
 
-	vgui::surface()->DrawWordBubble( nPosX, nPosY, nPosX + nBackgroundWide, nPosY + nBackgroundTall, locator_background_border_thickness.GetInt(), 
+	Locator_DrawWordBubble( nPosX, nPosY, nPosX + nBackgroundWide, nPosY + nBackgroundTall, locator_background_border_thickness.GetInt(), 
 									 rgbaBackground, rgbaBorder, bPointer, nPointerX, nPointerY, ScreenWidth() * ICON_SIZE );
 }
 
@@ -1866,7 +2118,8 @@ void CLocatorPanel::DrawPointerBackground( CLocatorTarget *pTarget, int nPointer
 void CLocatorPanel::DrawStaticIcon( CLocatorTarget *pTarget )
 {
 	float flApparentZ = 15.0f;
-	vgui::surface()->DrawSetApparentDepth( flApparentZ );
+	// Portal 2 port: apparent depth only matters for stereo rendering, which this
+	// engine does not do, so flApparentZ is unused.
 
 	int centerX = ScreenWidth() / 2;
 	int centerY = ScreenHeight() / 2;
@@ -1932,7 +2185,7 @@ void CLocatorPanel::DrawStaticIcon( CLocatorTarget *pTarget )
 		if ( pchLookup[ 0 ] != '\0' )
 		{
 			bool bLookupSuccess = false;
-			bLookupSuccess = pVguiTarget->LookupElementBounds( pchLookup, nPanelX, nPanelY, nWide, nTall );
+			bLookupSuccess = Locator_LookupElementBounds( pVguiTarget, pchLookup, nPanelX, nPanelY, nWide, nTall );
 
 			Assert( bLookupSuccess );
 		}
@@ -1979,7 +2232,7 @@ void CLocatorPanel::DrawStaticIcon( CLocatorTarget *pTarget )
 			// Don't draw the icon if we're on 360 and have a binding to draw
 			Color colorIcon = pTarget->GetIconColor();
 			colorIcon[ 3 ] = pTarget->m_alpha * static_cast< float >( colorIcon[ 3 ] ) / 255.0f;
-			pTarget->m_pIcon_onscreen->DrawSelf( pTarget->GetIconX(), pTarget->GetIconY(), iconWide, iconTall, colorIcon, flApparentZ );
+			pTarget->m_pIcon_onscreen->DrawSelf( pTarget->GetIconX(), pTarget->GetIconY(), iconWide, iconTall, colorIcon );
 		}
 	}
 
@@ -2006,7 +2259,7 @@ void CLocatorPanel::DrawStaticIcon( CLocatorTarget *pTarget )
 		m_staticIconPosition += (iconTall>>2);
 	}
 
-	vgui::surface()->DrawClearApparentDepth();
+	// Portal 2 port: no stereo apparent depth to clear.
 }
 
 //-----------------------------------------------------------------------------
@@ -2026,9 +2279,10 @@ void CLocatorPanel::DrawDynamicIcon( CLocatorTarget *pTarget, bool bDrawCaption,
 	}
 
 	// Use the distance to target for stereo depth
-	Vector vOffsetNormal = pTarget->m_vecOrigin - MainViewOrigin( GET_ACTIVE_SPLITSCREEN_SLOT() );
+	Vector vOffsetNormal = pTarget->m_vecOrigin - MainViewOrigin();
 	float flApparentZ = vOffsetNormal.Length() * 0.75f; // Set the depth to 75% of the distance to center of object
-	vgui::surface()->DrawSetApparentDepth( flApparentZ );
+	// Portal 2 port: apparent depth only matters for stereo rendering, which this
+	// engine does not do, so flApparentZ is unused.
 
 	// Draw the icon!
 	vgui::surface()->DrawSetColor( 255, 255, 255, alpha );
@@ -2085,7 +2339,7 @@ void CLocatorPanel::DrawDynamicIcon( CLocatorTarget *pTarget, bool bDrawCaption,
 		if ( pchLookup[ 0 ] != '\0' )
 		{
 			bool bLookupSuccess = false;
-			bLookupSuccess = pVguiTarget->LookupElementBounds( pchLookup, nTargetX, nTargetY, nWide, nTall );
+			bLookupSuccess = Locator_LookupElementBounds( pVguiTarget, pchLookup, nTargetX, nTargetY, nWide, nTall );
 			Assert( bLookupSuccess );
 		}
 
@@ -2144,7 +2398,7 @@ void CLocatorPanel::DrawDynamicIcon( CLocatorTarget *pTarget, bool bDrawCaption,
 		{
 			Color colorIcon = pTarget->GetIconColor();
 			colorIcon[ 3 ] = pTarget->m_alpha * static_cast< float >( colorIcon[ 3 ] ) / 255.0f;
-			pTarget->m_pIcon_onscreen->DrawSelf( pTarget->GetIconX(), pTarget->GetIconY(), iWide, pTarget->m_tall, colorIcon, flApparentZ );
+			pTarget->m_pIcon_onscreen->DrawSelf( pTarget->GetIconX(), pTarget->GetIconY(), iWide, pTarget->m_tall, colorIcon );
 			//Msg( "WIDE = %i\n", iWide );
 		}
 	}
@@ -2154,7 +2408,7 @@ void CLocatorPanel::DrawDynamicIcon( CLocatorTarget *pTarget, bool bDrawCaption,
 		{
 			Color colorIcon = pTarget->GetIconColor();
 			colorIcon[ 3 ] = pTarget->m_alpha * static_cast< float >( colorIcon[ 3 ] ) / 255.0f;
-			pTarget->m_pIcon_offscreen->DrawSelf( pTarget->GetIconX(), pTarget->GetIconY(), iWide, pTarget->m_tall, colorIcon, flApparentZ );
+			pTarget->m_pIcon_offscreen->DrawSelf( pTarget->GetIconX(), pTarget->GetIconY(), iWide, pTarget->m_tall, colorIcon );
 		}
 	}
 
@@ -2186,7 +2440,7 @@ void CLocatorPanel::DrawDynamicIcon( CLocatorTarget *pTarget, bool bDrawCaption,
 		}
 	}
 
-	vgui::surface()->DrawClearApparentDepth();
+	// Portal 2 port: no stereo apparent depth to clear.
 }
 
 //-----------------------------------------------------------------------------
@@ -2453,4 +2707,3 @@ void CLocatorPanel::RemoveTarget( int hTarget )
 		pTarget->Deactivate();
 	}
 }
-#endif

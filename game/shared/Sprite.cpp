@@ -32,6 +32,10 @@ LINK_ENTITY_TO_CLASS( env_sprite, CSprite );
 LINK_ENTITY_TO_CLASS( env_sprite_oriented, CSpriteOriented );
 #if !defined( CLIENT_DLL )
 LINK_ENTITY_TO_CLASS( env_glow, CSprite ); // For backwards compatibility, remove when no longer needed.
+#if defined( PORTAL2 )
+// Portal 2 port: removed again in Spawn(); the client creates its own copy.
+LINK_ENTITY_TO_CLASS( env_sprite_clientside, CSprite );
+#endif
 #endif
 
 #if !defined( CLIENT_DLL )
@@ -174,6 +178,10 @@ BEGIN_NETWORK_TABLE( CSprite, DT_Sprite )
 END_NETWORK_TABLE()
 
 
+#if defined( CLIENT_DLL ) && defined( PORTAL2 )
+extern CUtlVector< CSprite * > g_ClientsideSprites;
+#endif
+
 CSprite::CSprite() : BaseClass()
 {
 	m_flGlowProxySize = 2.0f;
@@ -183,7 +191,20 @@ CSprite::CSprite() : BaseClass()
 	m_bDrawInMainRender = true;
 	m_bDrawInPortalRender = true;
 #endif
+#if defined( CLIENT_DLL ) && defined( PORTAL2 )
+	m_bClientOnly = false;
+#endif
 }
+
+#if defined( CLIENT_DLL ) && defined( PORTAL2 )
+CSprite::~CSprite()
+{
+	if ( m_bClientOnly )
+	{
+		g_ClientsideSprites.FindAndFastRemove( this );
+	}
+}
+#endif
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -246,6 +267,14 @@ void CSprite::Spawn( void )
 	m_nStartBrightness = m_nDestBrightness = m_nBrightness;
 #endif
 
+#if !defined( CLIENT_DLL ) && defined( PORTAL2 )
+	// Portal 2 port: the server has no use for client-only sprites. Spawn has
+	// precached the model, so the client finds it in the model table.
+	if ( FClassnameIs( this, "env_sprite_clientside" ) )
+	{
+		UTIL_Remove( this );
+	}
+#endif
 }
 
 

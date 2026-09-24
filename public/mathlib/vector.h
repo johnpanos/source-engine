@@ -143,6 +143,23 @@ public:
 				z > -tolerance && z < tolerance);
 	}
 
+	// return true if this vector is exactly (0,0,0)
+	inline bool IsZeroFast() const
+	{
+		return x == 0.0f && y == 0.0f && z == 0.0f;
+	}
+
+	// index of the component with the largest magnitude
+	inline int LargestComponent() const
+	{
+		float flAbsx = fabsf( x );
+		float flAbsy = fabsf( y );
+		float flAbsz = fabsf( z );
+		if ( flAbsx > flAbsy )
+			return ( flAbsx > flAbsz ) ? X_INDEX : Z_INDEX;
+		return ( flAbsy > flAbsz ) ? Y_INDEX : Z_INDEX;
+	}
+
 	vec_t	NormalizeInPlace();
 	Vector	Normalized() const;
 	bool	IsLengthGreaterThan( float val ) const;

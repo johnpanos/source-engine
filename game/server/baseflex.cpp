@@ -97,6 +97,38 @@ END_DATADESC()
 
 
 
+#ifdef PORTAL2
+BEGIN_ENT_SCRIPTDESC( CBaseFlex, CBaseAnimating, "Animated characters who have vertex flex capability." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetOldestScene, "GetCurrentScene", "Returns the instance of the oldest active scene entity (if any)." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptGetSceneByIndex, "GetSceneByIndex", "Returns the instance of the scene entity at the specified index." )
+END_SCRIPTDESC();
+
+//-----------------------------------------------------------------------------
+// Returns the script instance of the oldest active scene, or null
+//-----------------------------------------------------------------------------
+HSCRIPT CBaseFlex::ScriptGetOldestScene( void )
+{
+	if ( m_SceneEvents.Count() > 0 )
+	{
+		return ToHScript( m_SceneEvents[ 0 ].m_hSceneEntity.Get() );
+	}
+	return NULL;
+}
+
+//-----------------------------------------------------------------------------
+// Returns the script instance of the scene at the specified index, or null if index >= count
+//-----------------------------------------------------------------------------
+HSCRIPT CBaseFlex::ScriptGetSceneByIndex( int index )
+{
+	if ( m_SceneEvents.IsValidIndex( index ) )
+	{
+		return ToHScript( m_SceneEvents[ index ].m_hSceneEntity.Get() );
+	}
+	return NULL;
+}
+#endif
+
+
 LINK_ENTITY_TO_CLASS( funCBaseFlex, CBaseFlex ); // meaningless independant class!!
 
 CBaseFlex::CBaseFlex( void ) : 
@@ -394,7 +426,11 @@ bool CBaseFlex::ClearSceneEvent( CSceneEventInfo *info, bool fastKill, bool canc
 //			expression - 
 //			duration - 
 //-----------------------------------------------------------------------------
+#ifdef PORTAL2
+void CBaseFlex::AddSceneEvent( CChoreoScene *scene, CChoreoEvent *event, CBaseEntity *pTarget, CBaseEntity *pSceneEntity )
+#else
 void CBaseFlex::AddSceneEvent( CChoreoScene *scene, CChoreoEvent *event, CBaseEntity *pTarget )
+#endif
 {
 	if ( !scene || !event )
 	{
@@ -418,6 +454,9 @@ void CBaseFlex::AddSceneEvent( CChoreoScene *scene, CChoreoEvent *event, CBaseEn
 	info.m_pScene		= scene;
 	info.m_hTarget		= pTarget;
 	info.m_bStarted	= false;
+#ifdef PORTAL2
+	info.m_hSceneEntity = pSceneEntity;
+#endif
 
 	if (StartSceneEvent( &info, scene, event, actor, pTarget ))
 	{

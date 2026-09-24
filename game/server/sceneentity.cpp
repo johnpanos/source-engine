@@ -1445,7 +1445,11 @@ void CSceneEntity::DispatchEndInterrupt( CChoreoScene *scene, CChoreoEvent *even
 //-----------------------------------------------------------------------------
 void CSceneEntity::DispatchStartExpression( CChoreoScene *scene, CBaseFlex *actor, CChoreoEvent *event )
 {
+#ifdef PORTAL2
+	actor->AddSceneEvent( scene, event, NULL, this );
+#else
 	actor->AddSceneEvent( scene, event );
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -1465,7 +1469,11 @@ void CSceneEntity::DispatchEndExpression( CChoreoScene *scene, CBaseFlex *actor,
 //-----------------------------------------------------------------------------
 void CSceneEntity::DispatchStartFlexAnimation( CChoreoScene *scene, CBaseFlex *actor, CChoreoEvent *event )
 {
+#ifdef PORTAL2
+	actor->AddSceneEvent( scene, event, NULL, this );
+#else
 	actor->AddSceneEvent( scene, event );
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -1489,7 +1497,11 @@ void CSceneEntity::DispatchStartGesture( CChoreoScene *scene, CBaseFlex *actor, 
 	if ( !Q_stricmp( event->GetName(), "NULL" ) )
 		return;
 
+#ifdef PORTAL2
+	actor->AddSceneEvent( scene, event, NULL, this );
+#else
 	actor->AddSceneEvent( scene, event); 
+#endif
 }
 
 
@@ -1515,7 +1527,11 @@ void CSceneEntity::DispatchEndGesture( CChoreoScene *scene, CBaseFlex *actor, CC
 void CSceneEntity::DispatchStartGeneric( CChoreoScene *scene, CBaseFlex *actor, CChoreoEvent *event )
 {
 	CBaseEntity *pTarget = FindNamedEntity( event->GetParameters2( ) );
+#ifdef PORTAL2
+	actor->AddSceneEvent( scene, event, pTarget, this );
+#else
 	actor->AddSceneEvent( scene, event, pTarget );
+#endif
 }
 
 
@@ -1536,7 +1552,11 @@ void CSceneEntity::DispatchEndGeneric( CChoreoScene *scene, CBaseFlex *actor, CC
 //-----------------------------------------------------------------------------
 void CSceneEntity::DispatchStartLookAt( CChoreoScene *scene, CBaseFlex *actor, CBaseEntity *actor2, CChoreoEvent *event )
 {
+#ifdef PORTAL2
+	actor->AddSceneEvent( scene, event, actor2, this );
+#else
 	actor->AddSceneEvent( scene, event, actor2 );
+#endif
 }
 
 
@@ -1555,7 +1575,11 @@ void CSceneEntity::DispatchEndLookAt( CChoreoScene *scene, CBaseFlex *actor, CCh
 //-----------------------------------------------------------------------------
 void CSceneEntity::DispatchStartMoveTo( CChoreoScene *scene, CBaseFlex *actor, CBaseEntity *actor2, CChoreoEvent *event )
 {
+#ifdef PORTAL2
+	actor->AddSceneEvent( scene, event, actor2, this );
+#else
 	actor->AddSceneEvent( scene, event, actor2 );
+#endif
 }
 
 
@@ -1804,7 +1828,11 @@ void CSceneEntity::DispatchStartSpeak( CChoreoScene *scene, CBaseFlex *actor, CC
 			}
 
 			EmitSound( filter2, actor->entindex(), es );
+#ifdef PORTAL2
+			actor->AddSceneEvent( scene, event, NULL, this );
+#else
 			actor->AddSceneEvent( scene, event );
+#endif
 		}
 	
 		// Close captioning only on master token no matter what...
@@ -1900,7 +1928,11 @@ void CSceneEntity::DispatchEndSpeak( CChoreoScene *scene, CBaseFlex *actor, CCho
 //-----------------------------------------------------------------------------
 void CSceneEntity::DispatchStartFace( CChoreoScene *scene, CBaseFlex *actor, CBaseEntity *actor2, CChoreoEvent *event )
 {
+#ifdef PORTAL2
+	actor->AddSceneEvent( scene, event, actor2, this );
+#else
 	actor->AddSceneEvent( scene, event, actor2 );
+#endif
 }
 
 
@@ -1923,7 +1955,11 @@ void CSceneEntity::DispatchEndFace( CChoreoScene *scene, CBaseFlex *actor, CChor
 //-----------------------------------------------------------------------------
 void CSceneEntity::DispatchStartSequence( CChoreoScene *scene, CBaseFlex *actor, CChoreoEvent *event )
 {
+#ifdef PORTAL2
+	actor->AddSceneEvent( scene, event, NULL, this );
+#else
 	actor->AddSceneEvent( scene, event );
+#endif
 }
 
 
@@ -3441,7 +3477,7 @@ bool CSceneEntity::ScriptLoadSceneFromString( const char * pszFilename, const ch
 		m_pScene = pScene;
 		if ( GetSceneManager() )
 		{
-			GetSceneManager()->ActivateScene( this );
+			GetSceneManager()->AddSceneEntity( this );
 		}
 		return true;
 	}

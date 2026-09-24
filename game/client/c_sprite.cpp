@@ -20,6 +20,11 @@
 #include "tier1/KeyValues.h"
 #include "toolframework/itoolframework.h"
 #include "toolframework_client.h"
+#ifdef PORTAL2
+#include "mapentities_shared.h"
+#include "tier1/utlsymbol.h"
+#include "datacache/imdlcache.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -498,3 +503,207 @@ void CSprite::GetToolRecordingState( KeyValues *msg )
 
 	msg->SetPtr( "sprite", &state );
 }
+
+
+#ifdef PORTAL2
+//-----------------------------------------------------------------------------
+// Portal 2 port: env_sprite_clientside. The retail Portal 2 maps place
+// thousands of decorative sprites the server never networks; the client
+// spawns them from the map's entity lump after the level loads and removes them
+// at shutdown. From the CS:GO source drop (c_sprite.cpp, cdll_client_int.cpp);
+// the repository's provenance and distribution warning applies.
+//-----------------------------------------------------------------------------
+CUtlVector< CSprite * > g_ClientsideSprites;
+
+void CSprite::RecreateAllClientside()
+{
+	DestroyAllClientside();
+	ParseAllClientsideEntities( engine->GetMapEntitiesString() );
+}
+
+void CSprite::DestroyAllClientside()
+{
+	// This only gets called during LevelInitPostEntity and LevelShutdown so we're going to use
+	// Release() instead of Remove() or UTIL_Remove
+	while ( g_ClientsideSprites.Count() > 0 )
+	{
+		CSprite *p = g_ClientsideSprites[0];
+
+		// ~CSprite (Sprite.cpp) removes the sprite from the array
+		p->Release();
+	}
+}
+
+bool CSprite::InitializeClientside()
+{
+	// Portal 2 port: CS:GO passed bRenderWithViewModels = false; sprites render
+	// in the translucent entity group here.
+	if ( InitializeAsClientEntity( STRING( GetModelName() ), RENDER_GROUP_TRANSLUCENT_ENTITY ) == false )
+	{
+		return false;
+	}
+
+	m_bClientOnly = true;
+	g_ClientsideSprites.AddToTail( this );
+
+	Spawn();
+
+	const model_t *mod = GetModel();
+	if ( mod )
+	{
+		Vector mins, maxs;
+		modelinfo->GetModelBounds( mod, mins, maxs );
+		SetCollisionBounds( mins, maxs );
+	}
+
+	SetBlocksLOS( false ); // this should be a small object
+	SetNextClientThink( CLIENT_THINK_NEVER );
+
+	return true;
+}
+
+const char *CSprite::ParseClientsideEntity( const char *pEntData )
+{
+	CEntityMapData entData( (char*)pEntData );
+	char className[MAPKEY_MAXLENGTH];
+
+	MDLCACHE_CRITICAL_SECTION();
+
+	if ( !entData.ExtractValue( "classname", className ) )
+	{
+		Error( "classname missing from entity!\n" );
+	}
+
+	if ( !Q_strcmp( className, "env_sprite_clientside" ) )
+	{
+		// always force clientside entities placed in maps
+		CSprite *pEntity = new CSprite();
+
+		if ( pEntity )
+		{
+			// Set up keyvalues.
+			pEntity->ParseMapData( &entData );
+
+			if ( !pEntity->InitializeClientside() )
+				pEntity->Release();
+
+			return entData.CurrentBufferPosition();
+		}
+	}
+
+	// Just skip past all the keys.
+	char keyName[MAPKEY_MAXLENGTH];
+	char value[MAPKEY_MAXLENGTH];
+	if ( entData.GetFirstKey( keyName, value ) )
+	{
+		do
+		{
+		}
+		while ( entData.GetNextKey( keyName, value ) );
+	}
+
+	//
+	// Return the current parser position in the data block
+	//
+	return entData.CurrentBufferPosition();
+}
+
+bool CSprite::KeyValue( const char *szKeyName, const char *szValue )
+{
+	if ( FStrEq( szKeyName, "scale" ) )
+	{
+		m_flSpriteScale = atof( szValue );
+	}
+	else if ( FStrEq( szKeyName, "framerate" ) )
+	{
+		m_flSpriteFramerate = atof( szValue );
+	}
+	else if ( FStrEq( szKeyName, "GlowProxySize" ) )
+	{
+		m_flGlowProxySize = atof( szValue );
+	}
+	else if ( FStrEq( szKeyName, "frame" ) )
+	{
+		m_flFrame = atof( szValue );
+	}
+	else if ( FStrEq( szKeyName, "HDRColorScale" ) )
+	{
+		m_flHDRColorScale = atof( szValue );
+	}
+	else if ( FStrEq( szKeyName, "rendermode" ) )
+	{
+		SetRenderMode( (RenderMode_t) atoi( szValue ) );
+	}
+	else if ( FStrEq( szKeyName, "model" ) )
+	{
+		// Portal 2 port: the client has no AllocPooledString; keep the name in a
+		// level-independent symbol table so the string_t stays valid.
+		static CUtlSymbolTable s_ModelNames( 0, 32, true );
+		SetModelName( MAKE_STRING( s_ModelNames.String( s_ModelNames.AddString( szValue ) ) ) );
+	}
+	else
+	{
+		return BaseClass::KeyValue( szKeyName, szValue );
+	}
+
+	return true;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Only called on BSP load. Parses and spawns all the entities in the BSP.
+// Input  : pMapData - Pointer to the entity data block to parse.
+//-----------------------------------------------------------------------------
+void CSprite::ParseAllClientsideEntities( const char *pMapData )
+{
+	char szTokenBuffer[MAPKEY_MAXLENGTH];
+
+	//
+	//  Loop through all entities in the map data, creating each.
+	//
+	for ( ; true; pMapData = MapEntity_SkipToNextEntity( pMapData, szTokenBuffer ) )
+	{
+		//
+		// Parse the opening brace.
+		//
+		char token[MAPKEY_MAXLENGTH];
+		pMapData = MapEntity_ParseToken( pMapData, token );
+
+		//
+		// Check to see if we've finished or not.
+		//
+		if ( !pMapData )
+			break;
+
+		if ( token[0] != '{' )
+		{
+			Error( "CSprite::ParseAllEntities: found %s when expecting {", token );
+			continue;
+		}
+
+		//
+		// Parse the entity and add it to the spawn list.
+		//
+		pMapData = ParseClientsideEntity( pMapData );
+	}
+}
+
+// Portal 2 port: CS:GO calls these from CHLClient::LevelInitPostEntity and
+// LevelShutdown; a game system keeps cdll_client_int.cpp unchanged.
+class CClientsideSpriteSystem : public CAutoGameSystem
+{
+public:
+	CClientsideSpriteSystem() : CAutoGameSystem( "CClientsideSpriteSystem" ) {}
+
+	virtual void LevelInitPostEntity()
+	{
+		CSprite::RecreateAllClientside();
+	}
+
+	virtual void LevelShutdownPreEntity()
+	{
+		CSprite::DestroyAllClientside();
+	}
+};
+
+static CClientsideSpriteSystem s_ClientsideSpriteSystem;
+#endif // PORTAL2

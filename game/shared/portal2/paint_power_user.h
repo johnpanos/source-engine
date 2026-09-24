@@ -12,6 +12,7 @@
 #include "paint_power_user_interface.h"
 #include "portal_player_shared.h"
 #include "paint_power_info.h"
+#include "portal2_shared_compat.h"
 
 extern ConVar sv_enable_paint_power_user_debug;
 
@@ -196,8 +197,9 @@ private:
 
 // OMFG HACK: A macro to individually add embedded types from arrays because the current macros don't handle arrays of embedded types properly
 // OMFG TODO: Write a generic macro to work with templatized classes.
+// Portal 2 port: this engine's typedescription_t has packed/normal offsets and a size.
 #define DEFINE_EMBEDDED_ARRAY_ELEMENT( elementType, arrayName, arrayIndex )						\
-	{ FIELD_EMBEDDED, #arrayName"["#arrayIndex"]", offsetof(classNameTypedef, arrayName[arrayIndex]), 1, FTYPEDESC_SAVE | FTYPEDESC_KEY, NULL, NULL, NULL, &elementType::m_PredMap }
+	{ FIELD_EMBEDDED, #arrayName"["#arrayIndex"]", { _offsetof(classNameTypedef, arrayName[arrayIndex]), 0 }, 1, FTYPEDESC_SAVE | FTYPEDESC_KEY, NULL, NULL, NULL, &elementType::m_PredMap, sizeof( elementType ), NULL, 0, 0.0f }
 
 
 // OMFG HACK: Define the prediction table. The current macros don't work with templatized classes.
@@ -289,7 +291,7 @@ const PaintPowerInfo_t* PaintPowerUser<BaseEntityType>::FindHighestPriorityActiv
 template< typename BaseEntityType >
 void PaintPowerUser<BaseEntityType>::AddSurfacePaintPowerInfo( const PaintPowerInfo_t& contact, char const* context )
 {
-	if ( !engine->HasPaintmap() )
+	if ( !Portal2_HasPaintmap() )
 	{
 		Warning( "MEMORY LEAK: adding surface paint powers in a level with no paintmaps.\n" );
 		return;

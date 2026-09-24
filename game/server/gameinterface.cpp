@@ -129,6 +129,11 @@ extern ConVar tf_mm_servermode;
 #include "replay/ireplaysystem.h"
 #endif
 
+#ifdef PORTAL2
+#include "portal2/portal2_vscript_module.h"
+#include "portal2/portal2_matchmaking.h"
+#endif
+
 extern IToolFrameworkServer *g_pToolFrameworkServer;
 extern IParticleSystemQuery *g_pParticleSystemQuery;
 
@@ -220,6 +225,13 @@ static ConVar *g_pcv_hideServer = NULL;
 // String tables
 INetworkStringTable *g_pStringTableParticleEffectNames = NULL;
 INetworkStringTable *g_pStringTableEffectDispatch = NULL;
+#ifdef PORTAL2
+// Portal 2 port: movie names precached by map scripts and movie screens
+// (CS:GO-era server; 16 entries as in its networkstringtable_gamedll.h).
+#define MAX_MOVIE_STRING_BITS	4
+#define MAX_MOVIE_STRINGS		( 1 << MAX_MOVIE_STRING_BITS )
+INetworkStringTable *g_pStringTableMovies = NULL;
+#endif
 INetworkStringTable *g_pStringTableVguiScreen = NULL;
 INetworkStringTable *g_pStringTableMaterials = NULL;
 INetworkStringTable *g_pStringTableInfoPanel = NULL;
@@ -583,6 +595,12 @@ bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,
 	if ( cvar == NULL )
 		return false;
 
+#ifdef PORTAL2
+	// Portal 2 shared variables require the engine's single-player shared memory.
+	if ( !Portal2_ConnectEngineInterfaces( appSystemFactory ) )
+		return false;
+#endif
+
 #ifndef NO_STEAM
 	s_SteamAPIContext.Init();
 	s_SteamGameServerAPIContext.Init();
@@ -626,14 +644,11 @@ bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,
 	if ( (scenefilecache = (ISceneFileCache *)appSystemFactory( SCENE_FILE_CACHE_INTERFACE_VERSION, NULL )) == NULL )
 		return false;
 #ifdef PORTAL2
-	// Portal 2 port: the VScript VM is optional. It comes only from an engine
-	// that exposes the script manager interface; otherwise scripting stays
-	// disabled and entity scripts report that they cannot run.
-	scriptmanager = (IScriptManager *)appSystemFactory( VSCRIPT_INTERFACE_VERSION, NULL );
-	if ( !scriptmanager )
-	{
-		DevWarning( "Portal 2: VScript is not supported by this engine\n" );
-	}
+	// Portal 2 port: the VScript VM is optional. It comes from the engine when
+	// it exposes the script manager interface, else from the vscript module;
+	// without either, scripting stays disabled and entity scripts report that
+	// they cannot run.
+	scriptmanager = Portal2_ConnectScriptManager( appSystemFactory );
 #endif
 	
 	
@@ -680,6 +695,13 @@ bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,
 	sv_cheats = g_pCVar->FindVar( "sv_cheats" );
 	if ( !sv_cheats )
 		return false;
+
+#ifdef PORTAL2
+	// Portal 2 port: this module owns the process's matchmaking framework; it
+	// must exist before the engine initializes the GameUI and the client.
+	if ( !Portal2_InitMatchFramework( appSystemFactory, this ) )
+		return false;
+#endif
 
 	g_pcv_commentary = g_pCVar->FindVar( "commentary" );
 	g_pcv_ThreadMode = g_pCVar->FindVar( "host_thread_mode" );
@@ -819,6 +841,14 @@ void CServerGameDLL::DLLShutdown( void )
 #endif
 
 	gameeventmanager = NULL;
+
+#ifdef PORTAL2
+	scriptmanager = NULL;
+	Portal2_DisconnectScriptManager();
+
+	// Portal 2 port: the client and GameUI have shut down; retire the framework.
+	Portal2_ShutdownMatchFramework();
+#endif
 	
 	DisconnectTier3Libraries();
 	DisconnectTier2Libraries();
@@ -1196,6 +1226,10 @@ void CServerGameDLL::GameFrame( bool simulating )
 {
 	VPROF( "CServerGameDLL::GameFrame" );
 
+#ifdef PORTAL2
+	Portal2_MatchFrameworkServerFrame();
+#endif
+
 	// Don't run frames until fully restored
 	if ( g_InRestore )
 		return;
@@ -1438,6 +1472,10 @@ void CServerGameDLL::CreateNetworkStringTables( void )
 	g_pStringTableInfoPanel = networkstringtable->CreateStringTable( "InfoPanel", MAX_INFOPANEL_STRINGS );
 	g_pStringTableClientSideChoreoScenes = networkstringtable->CreateStringTable( "Scenes", MAX_CHOREO_SCENES_STRINGS );
 	g_pStringTableServerMapCycle = networkstringtable->CreateStringTable( "ServerMapCycle", 128 );
+#ifdef PORTAL2
+	g_pStringTableMovies = networkstringtable->CreateStringTable( "Movies", MAX_MOVIE_STRINGS );
+	Assert( g_pStringTableMovies );
+#endif
 
 #ifdef TF_DLL
 	g_pStringTableServerPopFiles = networkstringtable->CreateStringTable( "ServerPopFiles", 128 );
@@ -2249,6 +2287,24 @@ void UpdateRichPresence ( void )
 //-----------------------------------------------------------------------------
 // Precaches a vgui screen overlay material
 //-----------------------------------------------------------------------------
+#ifdef PORTAL2
+//-----------------------------------------------------------------------------
+// Precaches a movie (CS:GO-era server). The table carries the names to the
+// client; this client opens movies on demand, so it does not preload them.
+//-----------------------------------------------------------------------------
+void PrecacheMovie( const char *pMovieName )
+{
+	Assert( CBaseEntity::IsPrecacheAllowed() );
+	if ( !pMovieName || !pMovieName[0] || !g_pStringTableMovies )
+		return;
+
+	if ( g_pStringTableMovies->AddString( CBaseEntity::IsServer(), pMovieName ) == INVALID_STRING_INDEX )
+	{
+		DevWarning( "PrecacheMovie: movie table full, %s not precached\n", pMovieName );
+	}
+}
+#endif
+
 void PrecacheMaterial( const char *pMaterialName )
 {
 	Assert( pMaterialName && pMaterialName[0] );

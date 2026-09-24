@@ -4,7 +4,6 @@
 //
 //=============================================================================//
 
-#if 0
 #include "cbase.h"
 #include "weapon_portalgun_shared.h"
 #include "portal_mp_gamerules.h"
@@ -157,7 +156,8 @@ void CWeaponPortalgun::Precache()
 	PrecacheParticleSystem( "portal_2_charge" );
 #endif
 
-	PrecacheEffect( "PortalBlast" );
+	// Portal 2 port: this engine's client dispatch effects ("PortalBlast") are
+	// registered statically and need no server precache.
 	
 	UTIL_PrecacheOther( "prop_portal" );
 #endif
@@ -374,19 +374,9 @@ void CWeaponPortalgun::PostAttack( void )
 	if ( !prediction->InPrediction() || prediction->IsFirstTimePredicted() )
 #endif
 	{
-		if ( ( pPlayer->IsSplitScreenPlayer() || pPlayer->HasAttachedSplitScreenPlayers() ) && nSplitScreenSlot != -1 )
-		{
-#if defined( CLIENT_DLL )
-			if ( pModelView )
-			{
-				CUtlReference<CNewParticleEffect> m_hPortalGunMuzzle = pModelView->ParticleProp()->Create( "portalgun_muzzleflash_FP", PATTACH_POINT_FOLLOW, "muzzle" );
-				m_hPortalGunMuzzle->SetDrawOnlyForSplitScreenUser( nSplitScreenSlot );
-				m_hPortalGunMuzzle = NULL;
-			}
-			DispatchParticleEffect( "portalgun_muzzleflash", PATTACH_POINT_FOLLOW, this, "muzzle");
-#endif
-		}
-		else
+		// Portal 2 port: this engine has one local player per client, so there is no
+		// split-screen partner whose view needs its own muzzle flash.
+		UNREFERENCED_PARAMETER( nSplitScreenSlot );
 		{
 			if ( pModelView )
 				DispatchParticleEffect( "portalgun_muzzleflash_FP", PATTACH_POINT_FOLLOW, pModelView, "muzzle" );
@@ -1595,7 +1585,8 @@ bool CWeaponPortalgun::AttemptStealCoopPortal( TracePortalPlacementInfo_t &place
 		placementInfo.ePlacementResult	= PORTAL_PLACEMENT_SUCCESS;
 
 #if defined( CLIENT_DLL )
-		if( C_BasePlayer::IsLocalPlayer( pFiredBy ) )
+		// Portal 2 port: this base game has only the member IsLocalPlayer().
+		if( pFiredBy->IsLocalPlayer() )
 #endif
 		{
 			pHitPortal->DoFizzleEffect( PORTAL_FIZZLE_CLEANSER );
@@ -1753,4 +1744,3 @@ CProp_Portal *CWeaponPortalgun::GetAssociatedPortal( bool bPortal2 )
 
 	return pRetVal;
 }
-#endif

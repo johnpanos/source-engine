@@ -238,6 +238,11 @@ class CBasePlayer : public CBaseCombatCharacter
 {
 public:
 	DECLARE_CLASS( CBasePlayer, CBaseCombatCharacter );
+#ifdef PORTAL2
+	// Portal 2 port: VScript access to players (CS:GO base).
+	DECLARE_ENT_SCRIPTDESC();
+	bool ScriptIsPlayerNoclipping( void ) { return GetMoveType() == MOVETYPE_NOCLIP; }
+#endif
 protected:
 	// HACK FOR BOTS
 	friend class CBotManager;
@@ -759,6 +764,14 @@ public:
 	void	EnableButtons( int nButtons );
 	void	ForceButtons( int nButtons );
 	void	UnforceButtons( int nButtons );
+
+#ifdef PORTAL2
+	// Later (CS:GO-era) base-player API used by the Portal 2 player. This
+	// engine has one player per client, so the split-screen slot is always 0.
+	float	GetAirTime( void );
+	float	m_flTimeLastTouchedGround;
+	int		GetSplitScreenPlayerSlot() const { return 0; }
+#endif
 
 	//---------------------------------
 	// Inputs

@@ -6,7 +6,7 @@
 
 #include "vcustomcampaigns.h"
 #include "vgenericpanellist.h"
-#include "KeyValues.h"
+#include "keyvalues.h"
 #include "vfooterpanel.h"
 #include "vhybridbutton.h"
 #include "engineinterface.h"

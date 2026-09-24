@@ -124,6 +124,23 @@ CEG_NOINLINE void InitSurfNoPortalFlag()
 	CEG_GCV_POST();
 }
 
+// Portal 2 port: retail builds had Steam CEG populate the two values above when
+// the module loaded; until then portals fit nowhere and paint never counts as
+// portal paint. Without CEG, set them when the game systems initialize.
+class CPortalPlacementValueInit : public CAutoGameSystem
+{
+public:
+	CPortalPlacementValueInit() : CAutoGameSystem( "CPortalPlacementValueInit" ) {}
+
+	virtual bool Init()
+	{
+		InitPortalPaintPowerValue();
+		InitSurfNoPortalFlag();
+		return true;
+	}
+};
+static CPortalPlacementValueInit s_PortalPlacementValueInit;
+
 CEG_NOINLINE PortalSurfaceType_t PortalSurfaceType( const trace_t& tr )
 {
 	//Note: this is for placing portal on paint
@@ -204,11 +221,13 @@ void TracePortals( const CProp_Portal *pIgnorePortal, const Vector &vForward, co
 
 int AllEdictsAlongRay( CBaseEntity **pList, int listMax, const Ray_t &ray, int flagMask )
 {
-	(void)pList;
-	(void)listMax;
-	(void)ray;
-	(void)flagMask;
-	return 0;
+	// Portal 2 port: the same partitions as the original, through this base
+	// game's ray enumeration helpers.
+#if defined( GAME_DLL )
+	return UTIL_EntitiesAlongRay( pList, listMax, ray, flagMask );
+#else
+	return UTIL_EntitiesAlongRay( pList, listMax, ray, flagMask, PARTITION_ALL_CLIENT_EDICTS );
+#endif
 }
 
 bool TraceBumpingEntities( const Vector &vStart, const Vector &vEnd, trace_t &tr )
@@ -354,6 +373,14 @@ bool TracePortalCorner( const CProp_Portal *pIgnorePortal, const Vector &vOrigin
 	// Check for enclosing wall
 	trace_t trEnclosingWall;
 	UTIL_TraceLine( vOrigin + vForward, vCorner + vForward, MASK_SOLID_BRUSHONLY|CONTENTS_MONSTER|CONTENTS_WATER|CONTENTS_SLIME, pTraceFilterPortalShot, &trEnclosingWall );
+	// Portal 2 port: level 2 placement debugging reports what encloses the corner.
+	if ( sv_portal_placement_debug.GetInt() >= 2 && ( trEnclosingWall.fraction < 1.0f || trEnclosingWall.startsolid ) )
+	{
+		DevMsg( "  enclosing wall to (%.2f %.2f %.2f): surface '%s' frac %.3f startsolid %d allsolid %d contents 0x%x ent %s hitbox %d\n",
+			vCorner.x, vCorner.y, vCorner.z, trEnclosingWall.surface.name ? trEnclosingWall.surface.name : "(null)",
+			trEnclosingWall.fraction, trEnclosingWall.startsolid ? 1 : 0, trEnclosingWall.allsolid ? 1 : 0,
+			trEnclosingWall.contents, trEnclosingWall.m_pEnt ? trEnclosingWall.m_pEnt->GetClassname() : "none", trEnclosingWall.hitbox );
+	}
 
 	if ( trSurfaceEdge.fraction < trEnclosingWall.fraction )
 	{
@@ -376,6 +403,14 @@ bool TracePortalCorner( const CProp_Portal *pIgnorePortal, const Vector &vOrigin
 		//check for a surface change between center and corner so we can bump when we partially overlap a non-portal surface		
 		trace_t cornerTrace;
 		UTIL_TraceLine( vCorner, vCorner - vForward, MASK_SHOT_PORTAL, pTraceFilterPortalShot, &cornerTrace );
+		// Portal 2 port: level 2 placement debugging reports the corner surface.
+		if ( sv_portal_placement_debug.GetInt() >= 2 )
+		{
+			DevMsg( "  corner (%.2f %.2f %.2f) surface '%s' flags 0x%x frac %.3f startsolid %d allsolid %d contents 0x%x\n",
+				vCorner.x, vCorner.y, vCorner.z, cornerTrace.surface.name ? cornerTrace.surface.name : "(null)",
+				cornerTrace.surface.flags, cornerTrace.fraction, cornerTrace.startsolid ? 1 : 0, cornerTrace.allsolid ? 1 : 0,
+				cornerTrace.contents );
+		}
 		if( cornerTrace.DidHit() && IsNoPortalMaterial( cornerTrace ) )
 		{
 			//a bump is in order, try to determine where we transition to the no portal material with a binary search
@@ -695,6 +730,22 @@ bool FitPortalOnSurface( const CProp_Portal *pIgnorePortal, Vector &vOrigin, con
 				// We shouldn't be intersecting with any old corners
 				sFitData[ iIntersection ].trCornerTrace.fraction = 1.0f;
 			}
+		}
+	}
+
+	// Portal 2 port: level 2 placement debugging reports each corner's fit trace.
+	if ( sv_portal_placement_debug.GetInt() >= 2 )
+	{
+		DevMsg( "  fit %d origin (%.2f %.2f %.2f) forward (%.2f %.2f %.2f) contents above 0x%x below 0x%x\n",
+			iRecursions, vOrigin.x, vOrigin.y, vOrigin.z, vForward.x, vForward.y, vForward.z,
+			enginetrace->GetPointContents( vOrigin + vForward ), enginetrace->GetPointContents( vOrigin - vForward ) );
+		for ( int iCorner = 0; iCorner < 4; ++iCorner )
+		{
+			const trace_t &trCorner = sFitData[ iCorner ].trCornerTrace;
+			DevMsg( "  fit %d corner %d: hit %d frac %.3f normal (%.2f %.2f %.2f) ent %s startsolid %d\n",
+				iRecursions, iCorner, sFitData[ iCorner ].bCornerIntersection ? 1 : 0, trCorner.fraction,
+				trCorner.plane.normal.x, trCorner.plane.normal.y, trCorner.plane.normal.z,
+				trCorner.m_pEnt ? trCorner.m_pEnt->GetClassname() : "none", trCorner.startsolid ? 1 : 0 );
 		}
 	}
 
@@ -1496,6 +1547,11 @@ PortalPlacementResult_t VerifyPortalPlacement( const CProp_Portal *pIgnorePortal
 		{
 			UTIL_Portal_NDebugOverlay( vOrigin, qAngles, fHalfWidth, fHalfHeight, 0, 0, 255, 128, false, 0.5f );
 			DevMsg( "Portal placed on a no portal material.\n" );
+			// Portal 2 port: say which rule rejected the surface.
+			const surfacedata_t *pSurfaceData = physprops->GetSurfaceData( tr.surface.surfaceProps );
+			DevMsg( "  surface '%s' flags 0x%x surfaceprop %d (game material '%c') entity %s\n",
+				tr.surface.name ? tr.surface.name : "", tr.surface.flags, tr.surface.surfaceProps,
+				pSurfaceData ? pSurfaceData->game.material : '?', tr.m_pEnt ? tr.m_pEnt->GetClassname() : "none" );
 		}
 
 		return PORTAL_PLACEMENT_INVALID_SURFACE;

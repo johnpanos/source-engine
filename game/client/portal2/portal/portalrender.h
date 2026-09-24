@@ -221,6 +221,12 @@ public:
 	void AddPortal( CPortalRenderable *pPortal );
 	void RemovePortal( CPortalRenderable *pPortal ); 
 
+	// Portal 2 port: CS:GO redrew the frame's portal quad mesh from cached mesh
+	// data (IMesh::ReconstructFromCachedPerFrameMeshData). This engine rebuilds
+	// the same mesh from the portals and view inputs captured when it was made.
+	IMesh *RebuildCachedPortalQuadMesh( IMatRenderContext *pRenderContext );
+	void InvalidateCachedPortalQuadMesh( CPortalRenderable *pPortal );
+
 	// Methods to query about the exit portal associated with the currently rendering portal
 	void ShiftFogForExitPortalView() const;
 	float GetCurrentPortalDistanceBias() const;
@@ -274,7 +280,7 @@ private:
 	// Data that's only valid while inside DrawPortalsUsingStencil()
 	CUtlStack<int>				m_stencilValueStack;
 	CUtlStack<int>				m_parentPortalIdStack;
-	ICachedPerFrameMeshData		*m_pCachedPortalQuadMeshData;
+	ICachedPerFrameMeshData		*m_pCachedPortalQuadMeshData;	// Portal 2 port: a CPortalQuadMeshReplayData (portalrender.cpp)
 	VertexFormat_t				m_portalQuadMeshVertexFmt;
 	CUtlVector< ClampedPortalMeshRenderInfo_t > m_clampedPortalMeshRenderInfos;
 	CUtlVector< bool >			m_portalIsOpening;

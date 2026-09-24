@@ -25,6 +25,7 @@
 #include "ammodef.h"
 #include "iservervehicle.h"
 #include "movevars_shared.h"
+#include "triggers_shared.h"
 #include "physics_prop_ragdoll.h"
 #include "props.h"
 #include "RagdollBoogie.h"
@@ -36,6 +37,9 @@
 
 #ifdef HL2_DLL
 #include "hl2_player.h"
+#endif
+#ifdef PORTAL2
+#include "portal_player.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -124,10 +128,20 @@ END_DATADESC()
 
 LINK_ENTITY_TO_CLASS( trigger, CBaseTrigger );
 
+#ifdef PORTAL2
+IMPLEMENT_SERVERCLASS_ST( CBaseTrigger, DT_BaseTrigger )
+	SendPropBool( SENDINFO( m_bClientSidePredicted ) ),
+	SendPropInt( SENDINFO( m_spawnflags ), -1, SPROP_NOSCALE ),
+END_SEND_TABLE()
+#endif
+
 
 CBaseTrigger::CBaseTrigger()
 {
 	AddEFlags( EFL_USE_PARTITION_WHEN_NOT_SOLID );
+#ifdef PORTAL2
+	m_bClientSidePredicted = false;
+#endif
 }
 
 //------------------------------------------------------------------------------
@@ -4146,12 +4160,14 @@ int CTriggerImpact::DrawDebugTextOverlays(void)
 // Purpose: Disables auto movement on players that touch it
 //-----------------------------------------------------------------------------
 
-const int SF_TRIGGER_MOVE_AUTODISABLE				= 0x80;		// disable auto movement
-const int SF_TRIGGER_AUTO_DUCK						= 0x800;	// Duck automatically
+// SF_TRIGGER_MOVE_AUTODISABLE, SF_TRIGGER_AUTO_DUCK and SF_TRIGGER_AUTO_WALK are in triggers_shared.h.
 
 class CTriggerPlayerMovement : public CBaseTrigger
 {
 	DECLARE_CLASS( CTriggerPlayerMovement, CBaseTrigger );
+#ifdef PORTAL2
+	DECLARE_SERVERCLASS();
+#endif
 public:
 
 	void Spawn( void );
@@ -4169,6 +4185,11 @@ END_DATADESC()
 
 LINK_ENTITY_TO_CLASS( trigger_playermovement, CTriggerPlayerMovement );
 
+#ifdef PORTAL2
+IMPLEMENT_SERVERCLASS_ST( CTriggerPlayerMovement, DT_TriggerPlayerMovement )
+END_SEND_TABLE()
+#endif
+
 
 //-----------------------------------------------------------------------------
 // Purpose: Called when spawning, after keyvalues have been handled.
@@ -4185,6 +4206,15 @@ void CTriggerPlayerMovement::Spawn( void )
 	BaseClass::Spawn();
 
 	InitTrigger();
+
+#ifdef PORTAL2
+	// Make auto duck and walk available on the client for prediction.
+	if ( HasSpawnFlags( SF_TRIGGER_AUTO_DUCK ) || HasSpawnFlags( SF_TRIGGER_AUTO_WALK ) )
+	{
+		m_bClientSidePredicted = true;
+		SetTransmitState( FL_EDICT_PVSCHECK );
+	}
+#endif
 }
 
 
@@ -4204,6 +4234,13 @@ void CTriggerPlayerMovement::StartTouch( CBaseEntity *pOther )
 	{
 		pPlayer->ForceButtons( IN_DUCK );
 	}
+
+#ifdef PORTAL2
+	if ( HasSpawnFlags( SF_TRIGGER_AUTO_WALK ) )
+	{
+		pPlayer->ForceButtons( IN_SPEED );
+	}
+#endif
 
 	// UNDONE: Currently this is the only operation this trigger can do
 	if ( HasSpawnFlags(SF_TRIGGER_MOVE_AUTODISABLE) )
@@ -4227,6 +4264,13 @@ void CTriggerPlayerMovement::EndTouch( CBaseEntity *pOther )
 		pPlayer->UnforceButtons( IN_DUCK );
 	}
 
+#ifdef PORTAL2
+	if ( HasSpawnFlags( SF_TRIGGER_AUTO_WALK ) )
+	{
+		pPlayer->UnforceButtons( IN_SPEED );
+	}
+#endif
+
 	if ( HasSpawnFlags(SF_TRIGGER_MOVE_AUTODISABLE) )
 	{
 		pPlayer->m_Local.m_bAllowAutoMovement = true;
@@ -4239,6 +4283,11 @@ void CTriggerPlayerMovement::EndTouch( CBaseEntity *pOther )
 //------------------------------------------------------------------------------
 // Save/load
 //------------------------------------------------------------------------------
+#ifdef PORTAL2
+IMPLEMENT_SERVERCLASS_ST( CBaseVPhysicsTrigger, DT_BaseVPhysicsTrigger )
+END_SEND_TABLE()
+#endif
+
 BEGIN_DATADESC( CBaseVPhysicsTrigger )
 	DEFINE_KEYFIELD( m_bDisabled,		FIELD_BOOLEAN,	"StartDisabled" ),
 	DEFINE_KEYFIELD( m_iFilterName,	FIELD_STRING,	"filtername" ),
@@ -4905,3 +4954,959 @@ bool IsTriggerClass( CBaseEntity *pEntity )
 	
 	return false;
 }
+
+
+#ifdef PORTAL2
+//-----------------------------------------------------------------------------
+// Portal 2 port: point_viewcontrol_multiplayer and point_viewproxy, used by the
+// retail Portal 2 maps. From the CS:GO source drop (triggers.cpp/.h); the
+// repository's provenance and distribution warning applies.
+//-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+class CTriggerViewProxy : public CBaseEntity
+{
+public:
+	DECLARE_CLASS( CTriggerViewProxy, CBaseEntity );
+
+	CTriggerViewProxy();
+	void Spawn( void );
+	bool KeyValue( const char *szKeyName, const char *szValue );
+	void Enable( void );
+	void Disable( void );
+	void SetPlayer( CBaseEntity *pPlayer );
+	void TranslateViewToProxy( void );
+	void Move( void );
+
+	Vector GetPlayerOffset();
+
+	// Always transmit to clients so they know where to move the view to
+	virtual int UpdateTransmitState();
+
+	DECLARE_DATADESC();
+
+	// Input handlers
+	void InputEnable( inputdata_t &inputdata );
+	void InputDisable( inputdata_t &inputdata );
+
+	void InputTeleportPlayerToProxy( inputdata_t &inputdata );
+
+
+private:
+	EHANDLE m_hPlayer;
+
+	CBaseEntity *m_pProxy;
+	string_t m_sProxy;
+	string_t m_sProxyAttachment;
+	int m_nParentAttachment;
+	int	m_state;
+	int	m_nOffsetType;
+	Vector m_vecInitialPosition;
+	Vector m_vecLastPosition;
+	Vector m_vecLastVelocity;
+	Vector m_vecInitialOffset;
+
+	float m_flTiltFraction;
+	float m_flStartTime;
+
+	bool m_bUseFakeAcceleration;
+	bool m_bSkewAccelerationForward;
+	float m_flAccelerationScalar;
+
+	bool m_bEaseAnglesToCamera;
+
+	int m_nPlayerButtons;
+	int m_nOldTakeDamage;
+};
+
+
+#define SF_CAMERA_MULTIPLAYER_DISABLE_ON_MOVEEND	1
+#define SF_CAMERA_MULTIPLAYER_PLAYER_SETFOV			2
+
+
+//-----------------------------------------------------------------------------
+class CMoveableCamera : public CBaseEntity
+{
+public:
+	DECLARE_CLASS( CMoveableCamera, CBaseEntity );
+
+	CMoveableCamera();
+
+	virtual void Spawn( void );
+
+	virtual void Enable( void );
+	virtual void Disable( void );
+	virtual Vector GetEndPos( EHANDLE hTarget );
+	virtual float MoveTime( float flTime );
+	void SetTarget( EHANDLE hTarget );
+
+	void StartMovement( void );
+	void FollowTarget( void );
+	void Move( void );
+
+	bool  m_bEnabled;
+	bool  m_bDisableOnMoveEnd;
+	bool  m_bMovementStarted;
+
+	// these are interpolation vars used for interpolating the camera over time
+	Vector m_vStartPos;
+	QAngle m_vStartAngles;
+	float m_flInterpStartTime;
+	float m_flInterpTime;
+
+	EHANDLE m_hTargetEnt;
+};
+
+//-----------------------------------------------------------------------------
+CMoveableCamera::CMoveableCamera()
+{
+	m_flInterpTime = 1.f;
+}
+
+//-----------------------------------------------------------------------------
+void CMoveableCamera::Spawn( void )
+{
+	BaseClass::Spawn();
+
+	SetMoveType( MOVETYPE_NOCLIP );
+	SetSolid( SOLID_NONE );								// Remove model & collisions
+	SetRenderColorA( 0 );								// The engine won't draw this model if this is set to 0 and blending is on
+	m_nRenderMode = kRenderTransTexture;
+
+	m_bEnabled = false;
+	m_bMovementStarted = false;
+
+	m_bDisableOnMoveEnd = HasSpawnFlags( SF_CAMERA_MULTIPLAYER_DISABLE_ON_MOVEEND );
+
+	DispatchUpdateTransmitState();
+}
+
+//------------------------------------------------------------------------------
+void CMoveableCamera::SetTarget( EHANDLE hTarget )
+{
+	m_hTargetEnt = hTarget;
+}
+
+//------------------------------------------------------------------------------
+Vector CMoveableCamera::GetEndPos( EHANDLE hTarget )
+{
+	return m_hTargetEnt->GetAbsOrigin();
+}
+
+//------------------------------------------------------------------------------
+void CMoveableCamera::StartMovement( void )
+{
+	if ( m_hTargetEnt == NULL )
+	{
+		Disable();
+		return;
+	}
+
+	// Detach us before moving
+	SetParent( NULL );
+	SetMoveType( MOVETYPE_NOCLIP );
+
+	// initialize the values we'll spline between
+	m_vStartPos = GetAbsOrigin();
+	m_vStartAngles = GetLocalAngles();
+
+	m_bMovementStarted = true;
+	SetThink( &CMoveableCamera::FollowTarget );
+	m_flInterpStartTime = gpGlobals->curtime;
+	FollowTarget();
+}
+
+//-----------------------------------------------------------------------------
+void CMoveableCamera::Enable( void )
+{
+	m_bEnabled = true;
+
+	SetAbsVelocity( vec3_origin );
+
+	if ( m_bMovementStarted )
+	{
+		SetThink( &CMoveableCamera::FollowTarget );
+	}
+}
+
+//-----------------------------------------------------------------------------
+void CMoveableCamera::Disable( void )
+{
+	m_bEnabled = false;
+
+	SetThink( NULL );
+
+	SetLocalAngularVelocity( vec3_angle );
+}
+
+//-----------------------------------------------------------------------------
+float CMoveableCamera::MoveTime( float flTime )
+{
+	// default is no change
+	return flTime;
+}
+
+//-----------------------------------------------------------------------------
+void CMoveableCamera::FollowTarget( void )
+{
+	QAngle vecGoal = m_hTargetEnt->GetAbsAngles();
+	QAngle angles = m_vStartAngles;
+
+	float dx = vecGoal.x - angles.x;
+	float dy = vecGoal.y - angles.y;
+	float dz = vecGoal.z - angles.z;
+
+	if (dx < -180) 
+		dx += 360;
+	if (dx > 180) 
+		dx = dx - 360;
+
+	if (dy < -180) 
+		dy += 360;
+	if (dy > 180) 
+		dy = dy - 360;
+
+	if (dz < -180) 
+		dz += 360;
+	if (dz > 180) 
+		dz = dz - 360;
+
+	float tt = (gpGlobals->curtime - m_flInterpStartTime) / m_flInterpTime;
+
+	QAngle nextAngle = Lerp( tt, angles, vecGoal );
+	SetAbsAngles( nextAngle );
+
+	SetNextThink( gpGlobals->curtime );
+
+	Move();
+}
+
+//-----------------------------------------------------------------------------
+void CMoveableCamera::Move( void )
+{
+	Vector vEndPos = GetEndPos( m_hTargetEnt );
+
+	// get the interpolation parameter [0..1]
+	float tt = (gpGlobals->curtime - m_flInterpStartTime) / m_flInterpTime;
+	if ( tt >= 1.0f )
+	{
+		// we're there, we're done
+		UTIL_SetOrigin( this, vEndPos );
+		SetAbsAngles( m_hTargetEnt->GetLocalAngles() );
+		SetAbsVelocity( vec3_origin );
+
+		if ( m_bDisableOnMoveEnd )
+		{
+			Disable();
+		}
+
+		m_bMovementStarted = false;
+	}
+	else
+	{
+		Assert( tt >= 0 );
+
+		Vector nextPos = ( (vEndPos - m_vStartPos) * MoveTime(tt) ) + m_vStartPos;
+
+		// rather than stomping origin, set the velocity so that we get there in the proper time
+		Vector desiredVel = (nextPos - GetAbsOrigin()) * (1.0f / gpGlobals->frametime);
+		SetAbsVelocity( desiredVel );
+	}
+}
+
+
+//--------------------------------------------------------------------------------------------------------
+class CTriggerCameraMultiplayer : public CMoveableCamera
+{
+public:
+	DECLARE_CLASS( CTriggerCameraMultiplayer, CMoveableCamera );
+
+	CTriggerCameraMultiplayer()
+	{
+		m_fov = 90;
+		m_fovSpeed = 1;
+		m_nTeamNum = -1;
+	}
+
+	void Spawn( void );
+	void Enable( void );
+	void Disable( void );
+	void AddPlayer( CBasePlayer *player );
+	void RemovePlayer( CBasePlayer *player );
+	float MoveTime( float flTime );
+
+	// Always transmit to clients so they know where to move the view to
+	virtual int UpdateTransmitState();
+
+	DECLARE_DATADESC();
+
+	// Input handlers
+	void InputEnable( inputdata_t &inputdata );
+	void InputDisable( inputdata_t &inputdata );
+	void InputAddPlayer( inputdata_t &inputdata );
+	void InputRemovePlayer( inputdata_t &inputdata );
+	void InputStartMovement( inputdata_t &inputdata );
+
+private:
+	CUtlVector< EHANDLE > m_players;
+	float m_fov;
+	float m_fovSpeed;
+	float m_fMoveTime;
+	string_t m_targetEntName;
+	int m_nTeamNum;
+};
+
+
+//--------------------------------------------------------------------------------------------------------
+LINK_ENTITY_TO_CLASS( point_viewcontrol_multiplayer, CTriggerCameraMultiplayer );
+
+
+//--------------------------------------------------------------------------------------------------------
+BEGIN_DATADESC( CTriggerCameraMultiplayer )
+
+// Inputs
+DEFINE_INPUTFUNC( FIELD_VOID, "Enable", InputEnable ),
+DEFINE_INPUTFUNC( FIELD_VOID, "Disable", InputDisable ),
+DEFINE_INPUTFUNC( FIELD_VOID, "AddPlayer", InputAddPlayer ),
+DEFINE_INPUTFUNC( FIELD_VOID, "RemovePlayer", InputRemovePlayer ),
+DEFINE_INPUTFUNC( FIELD_VOID, "StartMovement", InputStartMovement ),
+
+DEFINE_KEYFIELD( m_fov, FIELD_FLOAT, "fov" ),
+DEFINE_KEYFIELD( m_fovSpeed, FIELD_FLOAT, "fov_rate" ),
+DEFINE_KEYFIELD( m_targetEntName, FIELD_STRING, "target_entity"),
+DEFINE_KEYFIELD( m_flInterpTime, FIELD_FLOAT, "interp_time"),
+DEFINE_KEYFIELD( m_nTeamNum, FIELD_INTEGER, "target_team"),
+END_DATADESC()
+
+
+//--------------------------------------------------------------------------------------------------------
+void CTriggerCameraMultiplayer::Spawn( void )
+{
+	BaseClass::Spawn();
+
+	DispatchUpdateTransmitState();
+}
+
+
+//--------------------------------------------------------------------------------------------------------
+int CTriggerCameraMultiplayer::UpdateTransmitState( void )
+{
+	// always transmit if currently used by a monitor
+	if ( m_bEnabled )
+	{
+		return SetTransmitState( FL_EDICT_ALWAYS );
+	}
+	else
+	{
+		return SetTransmitState( FL_EDICT_DONTSEND );
+	}
+}
+
+
+//--------------------------------------------------------------------------------------------------------
+void CTriggerCameraMultiplayer::InputEnable( inputdata_t &inputdata )
+{ 
+	CBaseEntity *pTargetEnt = gEntList.FindEntityByName( NULL, m_targetEntName );
+	SetTarget( pTargetEnt );
+
+	Enable();
+}
+
+
+//--------------------------------------------------------------------------------------------------------
+void CTriggerCameraMultiplayer::InputDisable( inputdata_t &inputdata )
+{ 
+	Disable();
+}
+
+
+//------------------------------------------------------------------------------
+// Purpose: Input handler to starting camera movement.
+//------------------------------------------------------------------------------
+void CTriggerCameraMultiplayer::InputStartMovement( inputdata_t &inputdata )
+{ 
+	StartMovement();
+}
+
+
+//--------------------------------------------------------------------------------------------------------
+void CTriggerCameraMultiplayer::InputAddPlayer( inputdata_t &inputdata )
+{ 
+	CBasePlayer *pPlayer = ToBasePlayer( inputdata.pActivator );
+	if ( pPlayer )
+	{
+		AddPlayer( pPlayer );
+	}
+}
+
+
+//--------------------------------------------------------------------------------------------------------
+void CTriggerCameraMultiplayer::InputRemovePlayer( inputdata_t &inputdata )
+{ 
+	CBasePlayer *pPlayer = ToBasePlayer( inputdata.pActivator );
+	if ( pPlayer )
+	{
+		RemovePlayer( pPlayer );
+		m_players.FindAndFastRemove( pPlayer );
+	}	
+}
+
+
+//--------------------------------------------------------------------------------------------------------
+void CTriggerCameraMultiplayer::AddPlayer( CBasePlayer *player )
+{
+	if ( m_players.HasElement( player ) )
+		return;
+
+	m_players.AddToTail( player );
+
+	player->EnableControl( false );
+	player->m_Local.m_bDrawViewmodel = false;
+	// Portal 2 port: CS:GO's SetViewEntity( this ) also drew the player while
+	// viewing through this camera. This engine's player has no such flag, so the
+	// local player stays hidden in first person as with any view entity.
+	static bool s_bWarned = false;
+	if ( !s_bWarned )
+	{
+		s_bWarned = true;
+		DevWarning( "Portal 2: drawing the local player through point_viewcontrol_multiplayer is not supported by this engine\n" );
+	}
+	player->SetViewEntity( this );
+
+	CBaseEntity *pFOVOwner = player->GetFOVOwner();
+
+	if ( pFOVOwner && ( ( pFOVOwner == player ) ||
+		FClassnameIs( pFOVOwner, "point_viewcontrol_multiplayer" ) ||
+		FClassnameIs( pFOVOwner, "point_viewcontrol_survivor" ) ) )
+	{
+		player->ClearZoomOwner();
+	}
+	player->SetFOV( this, m_fov, m_fovSpeed );
+}
+
+
+//--------------------------------------------------------------------------------------------------------
+void CTriggerCameraMultiplayer::RemovePlayer( CBasePlayer *player )
+{
+	player->EnableControl( true );
+	player->m_Local.m_bDrawViewmodel = true;
+	player->SetViewEntity( NULL );
+
+	player->SetFOV( this, 0, m_fovSpeed );
+	player->ClearZoomOwner();
+}
+
+
+//--------------------------------------------------------------------------------------------------------
+void CTriggerCameraMultiplayer::Enable( void )
+{
+	BaseClass::Enable();
+
+#if defined( PORTAL2 ) || defined( CSTRIKE15 )
+	for( int i = 1; i <= gpGlobals->maxClients; ++i )
+	{
+		CBasePlayer *pPlayer = ToBasePlayer( UTIL_PlayerByIndex( i ) );
+
+		if( pPlayer == NULL )
+			continue;
+
+		if( !pPlayer->IsConnected() )
+			continue;
+
+		if ( m_nTeamNum == -1 || m_nTeamNum == pPlayer->GetTeamNumber() )
+			AddPlayer( pPlayer );
+	}
+#endif // PORTAL2
+
+	DispatchUpdateTransmitState();
+}
+
+
+//--------------------------------------------------------------------------------------------------------
+void CTriggerCameraMultiplayer::Disable( void )
+{
+	BaseClass::Disable();
+
+	for ( int i = 0; i < m_players.Count(); ++i )
+	{
+		CBasePlayer *player = ToBasePlayer( m_players[i] );
+		if ( !player )
+			continue;
+
+		RemovePlayer( player );
+	}
+
+	m_players.RemoveAll();
+
+	DispatchUpdateTransmitState();
+}
+
+//-----------------------------------------------------------------------------
+float CTriggerCameraMultiplayer::MoveTime( float flTime )
+{
+	return SmoothCurve( flTime );
+}
+
+
+enum ViewProxyOffsetType_e
+{
+	VIEW_PROXY_SNAP_TO_CAMERA = 0,
+	VIEW_PROXY_EASE_TO_CAMERA,
+	VIEW_PROXY_KEEP_OFFSET,
+};
+
+LINK_ENTITY_TO_CLASS( point_viewproxy, CTriggerViewProxy );
+
+BEGIN_DATADESC( CTriggerViewProxy )
+
+	DEFINE_FIELD( m_hPlayer, FIELD_EHANDLE ),
+	DEFINE_FIELD( m_pProxy, FIELD_CLASSPTR ),
+	
+	DEFINE_KEYFIELD(m_nOffsetType, FIELD_INTEGER, "offsettype"),	
+	DEFINE_FIELD( m_vecInitialOffset, FIELD_VECTOR ),
+	DEFINE_FIELD( m_flStartTime, FIELD_FLOAT ),
+
+	DEFINE_KEYFIELD( m_sProxy, FIELD_STRING, "proxy" ),
+	DEFINE_KEYFIELD( m_sProxyAttachment, FIELD_STRING, "proxyattachment" ),
+	DEFINE_KEYFIELD( m_flTiltFraction, FIELD_FLOAT, "tiltfraction" ),	
+
+	DEFINE_KEYFIELD( m_bUseFakeAcceleration, FIELD_BOOLEAN, "usefakeacceleration" ),	
+	DEFINE_KEYFIELD( m_bSkewAccelerationForward, FIELD_BOOLEAN, "skewaccelerationforward" ),	
+	DEFINE_KEYFIELD( m_flAccelerationScalar, FIELD_FLOAT, "accelerationscalar" ),	
+
+	DEFINE_KEYFIELD( m_bEaseAnglesToCamera, FIELD_BOOLEAN, "easeanglestocamera" ),	
+
+	DEFINE_FIELD( m_nParentAttachment, FIELD_INTEGER ),
+
+	DEFINE_FIELD( m_state, FIELD_INTEGER ),
+	DEFINE_FIELD( m_vecInitialPosition, FIELD_VECTOR ),
+
+	DEFINE_FIELD( m_nPlayerButtons, FIELD_INTEGER ),
+	DEFINE_FIELD( m_nOldTakeDamage, FIELD_INTEGER ),
+
+	// Inputs
+	DEFINE_INPUTFUNC( FIELD_VOID, "Enable", InputEnable ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "Disable", InputDisable ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "TeleportPlayerToProxy", InputTeleportPlayerToProxy ),
+
+	DEFINE_FUNCTION( TranslateViewToProxy ),
+
+END_DATADESC()
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+CTriggerViewProxy::CTriggerViewProxy()
+{
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CTriggerViewProxy::Spawn( void )
+{
+	BaseClass::Spawn();
+
+	SetMoveType( MOVETYPE_NOCLIP );
+	SetSolid( SOLID_NONE );								// Remove model & collisions
+	SetRenderColorA( 0 );								// The engine won't draw this model if this is set to 0 and blending is on
+	m_nRenderMode = kRenderTransTexture;
+
+	m_vecInitialPosition = GetAbsOrigin();
+	m_pProxy = gEntList.FindEntityByName( NULL, m_sProxy );
+
+	m_state = USE_OFF;
+	m_flTiltFraction = clamp( m_flTiltFraction, 0.f, 1.f );
+
+	DispatchUpdateTransmitState();
+
+	m_vecInitialOffset = vec3_origin;
+
+	if( m_pProxy )
+	{
+		m_vecLastPosition = m_pProxy->GetAbsOrigin();
+	}
+}
+
+int CTriggerViewProxy::UpdateTransmitState()
+{
+	// always tranmit if currently used by a monitor
+	if ( m_state == USE_ON )
+	{
+		return SetTransmitState( FL_EDICT_ALWAYS );
+	}
+	else
+	{
+		return SetTransmitState( FL_EDICT_DONTSEND );
+	}
+}
+
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+bool CTriggerViewProxy::KeyValue( const char *szKeyName, const char *szValue )
+{
+	return BaseClass::KeyValue( szKeyName, szValue );
+}
+
+//------------------------------------------------------------------------------
+// Purpose: Input handler to turn on this trigger.
+//------------------------------------------------------------------------------
+void CTriggerViewProxy::InputEnable( inputdata_t &inputdata )
+{ 
+	m_hPlayer = UTIL_GetLocalPlayer();
+	m_flStartTime = gpGlobals->curtime;
+	if ( m_pProxy &&
+		m_hPlayer &&
+		m_nOffsetType != VIEW_PROXY_KEEP_OFFSET )
+	{
+		m_vecInitialOffset = m_hPlayer->EyePosition() - m_pProxy->GetAbsOrigin();
+	}
+	Enable();
+}
+
+
+//------------------------------------------------------------------------------
+// Purpose: Input handler to turn off this trigger.
+//------------------------------------------------------------------------------
+void CTriggerViewProxy::InputDisable( inputdata_t &inputdata )
+{ 
+	Disable();
+}
+
+//------------------------------------------------------------------------------
+// Purpose: Input handler to turn off the proxy and teleport the player to the end position
+//------------------------------------------------------------------------------
+void CTriggerViewProxy::InputTeleportPlayerToProxy( inputdata_t &inputdata )
+{ 
+#if defined ( PORTAL2 )
+	if( m_hPlayer )
+	{
+		CPortal_Player *pBasePlayer = (CPortal_Player *)m_hPlayer.Get();
+		
+		QAngle vecPlayerView = GetAbsAngles();
+		Vector vecEyeOffset = pBasePlayer->EyePosition() - pBasePlayer->GetAbsOrigin();
+		Vector vecTeleportPosition = GetAbsOrigin() - vecEyeOffset;
+		
+		// try to find a position on the ground - this will prevent a pop
+		trace_t tr;
+		UTIL_TraceLine( GetAbsOrigin(), GetAbsOrigin() - 1.02f*vecEyeOffset, MASK_SOLID, pBasePlayer, COLLISION_GROUP_NONE, &tr );
+		if( tr.fraction != 1.0 )
+		{
+			vecTeleportPosition = tr.endpos;
+		}
+
+		pBasePlayer->SetGroundEntity( NULL );		
+		pBasePlayer->Teleport( &vecTeleportPosition, &vecPlayerView, NULL );
+	}
+	Disable();
+#endif // defined ( PORTAL2 )
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CTriggerViewProxy::Enable( void )
+{
+	if( m_pProxy )
+	{
+		m_nParentAttachment = -1;
+		if( m_sProxyAttachment != NULL_STRING && m_pProxy->GetParent() )
+		{
+			CBaseAnimating *pAnimating = (CBaseAnimating *) m_pProxy->GetParent();
+			if( pAnimating )
+			{
+				m_nParentAttachment = pAnimating->LookupAttachment( STRING( m_sProxyAttachment ) );
+			}
+		}
+	}
+	
+	m_state = USE_ON;
+
+	if ( !m_hPlayer || !m_hPlayer->IsPlayer() )
+	{
+		m_hPlayer = UTIL_GetLocalPlayer();
+	}
+
+	if ( !m_hPlayer )
+	{
+		DispatchUpdateTransmitState();
+		return;
+	}
+
+	Assert( m_hPlayer->IsPlayer() );
+	CBasePlayer *pPlayer = NULL;
+
+	if ( m_hPlayer->IsPlayer() )
+	{
+		pPlayer = ((CBasePlayer*)m_hPlayer.Get());
+	}
+	else
+	{
+		Warning("CTriggerViewProxy could not find a player!\n");
+		return;
+	}
+
+	m_nPlayerButtons = pPlayer->m_nButtons;
+	// Portal 2 port: CS:GO's SetDuckEnabled( false ) strips IN_DUCK from the
+	// player's commands; the SDK 2013 player does that through its button mask.
+	pPlayer->DisableButtons( IN_DUCK );
+
+#if defined ( PORTAL2 )
+	CPortal_Player* pPortalPlayer = ToPortalPlayer( pPlayer );
+	if ( pPortalPlayer && pPortalPlayer->IsZoomed() )
+	{
+		pPortalPlayer->ZoomOut();
+	}
+#endif
+
+	// Make the player invulnerable while under control of the camera.  This will prevent situations where the player dies while under camera control but cannot restart their game due to disabled player inputs.
+	m_nOldTakeDamage = m_hPlayer->m_takedamage;
+	m_hPlayer->m_takedamage = DAMAGE_NO;
+	
+	if ( HasSpawnFlags( SF_CAMERA_PLAYER_NOT_SOLID ) )
+	{
+		m_hPlayer->AddSolidFlags( FSOLID_NOT_SOLID );
+	}
+	
+	if (HasSpawnFlags(SF_CAMERA_PLAYER_TAKECONTROL ) )
+	{
+		((CBasePlayer*)m_hPlayer.Get())->AddFlag( FL_ATCONTROLS );//EnableControl(FALSE);
+	}
+	
+	SetAbsVelocity( vec3_origin );
+	// Portal 2 port: SetViewEntity( this, false ) in CS:GO; the local player is
+	// never drawn through a view entity in first person here.
+	pPlayer->SetViewEntity( this );
+
+	// Hide the player's viewmodel
+	if ( pPlayer->GetActiveWeapon() )
+	{
+		pPlayer->GetActiveWeapon()->AddEffects( EF_NODRAW );
+	}
+
+	// follow the player down
+	SetThink( &CTriggerViewProxy::TranslateViewToProxy );
+	SetNextThink( gpGlobals->curtime );
+
+	// do this once to get things set up correctly.
+	Move();
+	TranslateViewToProxy();
+
+	m_hPlayer->SetBaseVelocity( vec3_origin );
+
+	DispatchUpdateTransmitState();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CTriggerViewProxy::Disable( void )
+{
+	if ( m_hPlayer )
+	{
+		CBasePlayer *pBasePlayer = (CBasePlayer*)m_hPlayer.Get();
+
+		if ( pBasePlayer->IsAlive() )
+		{
+			if ( HasSpawnFlags( SF_CAMERA_PLAYER_NOT_SOLID ) )
+			{
+				pBasePlayer->RemoveSolidFlags( FSOLID_NOT_SOLID );
+			}
+
+			pBasePlayer->SetViewEntity( NULL );
+			pBasePlayer->EnableControl(TRUE);
+			((CBasePlayer*)m_hPlayer.Get())->RemoveFlag( FL_ATCONTROLS );
+			pBasePlayer->m_Local.m_bDrawViewmodel = true;
+		}
+
+		//return the player to previous takedamage state
+		m_hPlayer->m_takedamage = m_nOldTakeDamage;
+		pBasePlayer->EnableButtons( IN_DUCK );
+	}
+
+	m_state = USE_OFF;
+	SetThink( NULL );
+
+	SetLocalAngularVelocity( vec3_angle );
+
+	DispatchUpdateTransmitState();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CTriggerViewProxy::TranslateViewToProxy( )
+{
+	if (m_hPlayer == NULL || m_pProxy == NULL )
+		return;
+
+	QAngle qGoal, qProxyAngles;
+
+	qProxyAngles = m_pProxy->GetAbsAngles();
+	
+	if( m_nParentAttachment != -1 )
+	{
+		CBaseAnimating *pAnimating = (CBaseAnimating *) m_pProxy->GetParent();
+
+		if( pAnimating )
+		{
+			Vector vOrigin;
+
+			pAnimating->StudioFrameAdvance();
+			pAnimating->InvalidateBoneCache();
+			pAnimating->GetAttachment( m_nParentAttachment, vOrigin, qProxyAngles );
+		}
+	}
+	
+#ifdef PORTAL2
+	CPortal_Player *pOtherAsPlayer = (CPortal_Player *)(m_hPlayer.Get());
+	if ( m_bEaseAnglesToCamera )
+	{
+		QAngle playerAngles = pOtherAsPlayer->pl.v_angle;
+
+		float dx = qProxyAngles.x - playerAngles.x;
+		float dy = qProxyAngles.y - playerAngles.y;
+
+		if (dx < -180) 
+			dx += 360;
+		if (dx > 180) 
+			dx = dx - 360;
+		
+		if (dy < -180) 
+			dy += 360;
+		if (dy > 180) 
+			dy = dy - 360;
+
+		dx *= 0.15f;
+		dy *= 0.15f;
+
+		playerAngles.x += dx;
+		playerAngles.y += dy;
+
+		pOtherAsPlayer->Teleport( NULL, &playerAngles, NULL );
+
+		qProxyAngles = QAngle(0, 0, 0);
+	}
+
+	qProxyAngles[PITCH] *= m_flTiltFraction;
+	qProxyAngles[ROLL] *= m_flTiltFraction;
+	
+	VMatrix matRotate;
+	matRotate.SetupMatrixOrgAngles( vec3_origin, qProxyAngles );
+	
+	QAngle qTransformedEyeAngles = TransformAnglesToWorldSpace( pOtherAsPlayer->pl.v_angle, matRotate.As3x4() );
+
+	qGoal = qTransformedEyeAngles;
+	SetAbsAngles( qGoal );
+#endif // PORTAL2
+
+	SetNextThink( gpGlobals->curtime );
+
+	Move();
+}
+
+Vector CTriggerViewProxy::GetPlayerOffset()
+{
+	Vector vecOffset = vec3_origin;
+	if ( m_hPlayer && m_pProxy )
+	{
+		vecOffset = m_hPlayer->GetAbsOrigin() + Vector( 0,0,64.f) - m_vecInitialPosition;
+	
+		QAngle qProxyAngles = m_pProxy->GetAbsAngles();
+
+		if( m_nParentAttachment != -1 )
+		{
+			CBaseAnimating *pAnimating = (CBaseAnimating *) m_pProxy->GetParent();
+			Vector vOrigin;
+			pAnimating->GetAttachment( m_nParentAttachment, vOrigin, qProxyAngles );
+		}
+
+		VMatrix matRotate;
+		matRotate.SetupMatrixOrgAngles( vec3_origin, qProxyAngles );
+
+		// move out player's offset into the space of the proxy
+		vecOffset = matRotate * vecOffset;
+	}
+	return vecOffset;
+}
+
+void CTriggerViewProxy::Move()
+{
+	if ( m_hPlayer && m_pProxy )
+	{
+		Vector vecPlayerAdd = vec3_origin;
+		
+		if ( m_nOffsetType == VIEW_PROXY_EASE_TO_CAMERA )
+		{
+			float flRatio = clamp( gpGlobals->curtime - m_flStartTime, 0.0f, 1.0f );
+			flRatio = SimpleSpline( flRatio );
+			vecPlayerAdd = (1.0f - flRatio)*m_vecInitialOffset;
+		}
+		else if ( m_nOffsetType == VIEW_PROXY_KEEP_OFFSET )
+		{
+			vecPlayerAdd = GetPlayerOffset();
+		}
+		
+		Vector vOrigin = m_pProxy->GetAbsOrigin();//vec3_origin;
+
+		UTIL_SetOrigin( this, vOrigin + vecPlayerAdd );
+	
+		if( m_bUseFakeAcceleration && gpGlobals->frametime > 0.0f )
+		{
+			Vector vecNewVelocity = (vOrigin - m_vecLastPosition)/gpGlobals->frametime;
+
+			Vector vecAccel = vecNewVelocity - m_vecLastVelocity;
+			m_vecLastVelocity = vecNewVelocity;	
+			m_vecLastPosition = vOrigin;
+
+			SetAbsVelocity( vecNewVelocity );
+
+			// decay our movement based on our time - this is a slow decay - most is taken off linearly
+			float decay = 1.0f - 0.25f*gpGlobals->frametime;
+			if( decay < 0.f )
+			{
+				decay = 0.f;
+			}
+
+			if( vecAccel.LengthSqr() < 20.0f || vecAccel.LengthSqr() > 10000.f )
+			{
+				vecAccel = vec3_origin;
+			}
+					
+			if( m_bSkewAccelerationForward )
+			{
+				Vector vecForward, vecNormalizedAccel;
+				AngleVectors( m_pProxy->GetAbsAngles(), &vecForward );
+				vecNormalizedAccel = vecAccel.Normalized();
+				vecAccel *= (0.75f - 0.35f*vecForward.Dot( vecNormalizedAccel ) );
+			}
+
+			if( gpGlobals->frametime > 0.0f )
+			{
+				Vector vecBase = m_hPlayer->GetBaseVelocity();
+				float flLength = vecBase.Length();
+				
+				// this is going to be the bulk of our decay - we want small scale movement to get 
+				float flLinearDecrease = 100.0f*gpGlobals->frametime;
+				if( flLength < flLinearDecrease )
+				{
+					vecBase = vec3_origin;
+				}
+				else
+				{
+					vecBase = vecBase*((flLength - flLinearDecrease)/flLength);
+				}
+
+				m_hPlayer->SetBaseVelocity( decay*vecBase - 3.0f*vecAccel*m_flAccelerationScalar );
+				m_hPlayer->AddFlag( FL_BASEVELOCITY );
+			}
+		}
+	}
+	return;
+}
+
+#endif // PORTAL2

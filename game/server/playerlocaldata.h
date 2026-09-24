@@ -73,6 +73,10 @@ public:
 	CNetworkVar( bool, m_bWearingSuit );
 	CNetworkVar( bool, m_bPoisoned );
 	CNetworkVar( float, m_flStepSize );
+#ifdef PORTAL2
+	// Tractor beam exit time (CS:GO-era player data; not networked there either).
+	CNetworkVar( float, m_fTBeamEndTime );
+#endif
 	CNetworkVar( bool, m_bAllowAutoMovement );
 
 	// 3d skybox

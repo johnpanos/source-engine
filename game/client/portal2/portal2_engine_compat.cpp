@@ -16,6 +16,9 @@
 #include "engine/ishadowmgr.h"
 #include "tier0/icommandline.h"
 #include "tier1/fmtstr.h"
+#include "particles_new.h"
+#include "clientleafsystem.h"
+#include "collisionutils.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -35,6 +38,37 @@ extern bool IsInCommentaryMode( void );
 			DevWarning( "Portal 2: " feature " is not supported by this engine\n" ); \
 		} \
 	} while ( 0 )
+
+//-----------------------------------------------------------------------------
+// Split-screen picture-in-picture (CS:GO vgui_int.cpp). This engine has one
+// local view, so remote player views are never enabled; the co-op player code
+// still sets these while taunting through a remote view.
+//-----------------------------------------------------------------------------
+static void Portal2_RemoteSplitscreenChanged( IConVar *pConVar, const char *pOldValue, float flOldValue )
+{
+	ConVarRef var( pConVar );
+	if ( var.GetBool() )
+	{
+		PORTAL2_UNSUPPORTED( "remote split-screen views" );
+	}
+}
+ConVar cl_enable_remote_splitscreen( "cl_enable_remote_splitscreen", "0", 0, "Allows viewing of nonlocal players in a split screen fashion (not supported by this engine)", Portal2_RemoteSplitscreenChanged );
+bool g_bSuppressConfigSystemLevelDueToPIPTransitions = false;
+
+void Portal2_DrawParticleEffectManually( CNewParticleEffect *pEffect )
+{
+	if ( pEffect && pEffect->RenderHandle() != INVALID_CLIENT_RENDER_HANDLE )
+	{
+		ClientLeafSystem()->RemoveRenderable( pEffect->RenderHandle() );
+	}
+}
+
+CNewParticleEffect *Portal2_CreateOrAggregateParticleEffect( C_BaseEntity *pOwner, const char *pParticleSystemName,
+															 const Vector &vecAggregatePosition, const char *pDebugName )
+{
+	CSmartPtr<CNewParticleEffect> pEffect = CNewParticleEffect::Create( pOwner, pParticleSystemName, pDebugName );
+	return pEffect.GetObject();
+}
 
 void Portal2_ClientTeleport( C_BaseEntity *pEntity, const Vector *pOrigin,
 							 const QAngle *pAngles, const Vector *pVelocity )
@@ -70,6 +104,11 @@ void Portal2_ClientForceDropOfCarriedPhysObjects( C_BasePlayer *pPlayer )
 //-----------------------------------------------------------------------------
 // Stencil state
 //-----------------------------------------------------------------------------
+void ShaderStencilState_t::SetStencilState( IMatRenderContext *pRenderContext ) const
+{
+	Portal2_SetStencilState( pRenderContext, *this );
+}
+
 void Portal2_SetStencilState( IMatRenderContext *pRenderContext, const ShaderStencilState_t &state )
 {
 	pRenderContext->SetStencilEnable( state.m_bEnable );
@@ -154,6 +193,188 @@ void Portal2_PushFlashlightScissorBounds()
 void Portal2_PopFlashlightScissorBounds()
 {
 	PORTAL2_UNSUPPORTED( "IShadowMgr::PopFlashlightScissorBounds" );
+}
+
+//-----------------------------------------------------------------------------
+// Client entities
+//-----------------------------------------------------------------------------
+void UTIL_Remove( C_BaseEntity *pEntity )
+{
+	pEntity->Remove();
+}
+
+int UTIL_RenderablesInBox( C_BaseEntity **pList, int listMax, const Vector &mins, const Vector &maxs )
+{
+	int nCount = 0;
+	for ( C_BaseEntity *pEntity = ClientEntityList().FirstBaseEntity(); pEntity && ( nCount < listMax ); pEntity = ClientEntityList().NextBaseEntity( pEntity ) )
+	{
+		if ( pEntity->GetRenderHandle() == INVALID_CLIENT_RENDER_HANDLE )
+			continue;
+
+		Vector vecRenderMins, vecRenderMaxs;
+		pEntity->GetRenderBoundsWorldspace( vecRenderMins, vecRenderMaxs );
+		if ( IsBoxIntersectingBox( vecRenderMins, vecRenderMaxs, mins, maxs ) )
+		{
+			pList[nCount++] = pEntity;
+		}
+	}
+	return nCount;
+}
+
+int Portal2_GetRenderFlags( IClientRenderable *pRenderable )
+{
+	return pRenderable->UsesPowerOfTwoFrameBufferTexture() ? ERENDERFLAGS_NEEDS_POWER_OF_TWO_FB : 0;
+}
+
+void Portal2_DisableCachedRenderBounds( ClientRenderHandle_t handle, bool bDisable )
+{
+	if ( bDisable && handle != INVALID_CLIENT_RENDER_HANDLE )
+	{
+		ClientLeafSystem()->RenderableChanged( handle );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Screen effects
+//-----------------------------------------------------------------------------
+void Portal2_DoBlurFade( float flStrength, float flDesaturate, int x, int y, int w, int h )
+{
+	if ( flStrength < 0.0001f )
+		return;
+
+	PORTAL2_UNSUPPORTED( "the dev/fade_blur screen blur (no screenspace_general fade_blur_ps20 shader)" );
+}
+
+//-----------------------------------------------------------------------------
+// Tool recording: non-conformant entity key values
+//-----------------------------------------------------------------------------
+CIFM_EntityKeyValuesHandler_AutoRegister *CIFM_EntityKeyValuesHandler_AutoRegister::s_pRegisteredHandlers = NULL;
+
+CIFM_EntityKeyValuesHandler_AutoRegister::CIFM_EntityKeyValuesHandler_AutoRegister( const char *szHandlerID )
+	: m_szHandlerID( szHandlerID )
+{
+#if defined( DBGFLAG_ASSERT )
+	for ( const CIFM_EntityKeyValuesHandler_AutoRegister *pWalk = s_pRegisteredHandlers; pWalk; pWalk = pWalk->m_pNext )
+	{
+		AssertMsg( V_strcmp( szHandlerID, pWalk->m_szHandlerID ) != 0, "Handler already registered for this ID" );
+	}
+#endif
+	m_pNext = s_pRegisteredHandlers;
+	s_pRegisteredHandlers = this;
+}
+
+void CIFM_EntityKeyValuesHandler_AutoRegister::AllHandlers_PreUpdate( void )
+{
+	for ( CIFM_EntityKeyValuesHandler_AutoRegister *pWalk = s_pRegisteredHandlers; pWalk; pWalk = pWalk->m_pNext )
+		pWalk->HandleData_PreUpdate();
+}
+
+void CIFM_EntityKeyValuesHandler_AutoRegister::FindAndCallHandler( const char *szHandlerID, KeyValues *pKeyValues )
+{
+	for ( CIFM_EntityKeyValuesHandler_AutoRegister *pWalk = s_pRegisteredHandlers; pWalk; pWalk = pWalk->m_pNext )
+	{
+		if ( V_strcmp( szHandlerID, pWalk->m_szHandlerID ) == 0 )
+		{
+			pWalk->HandleData( pKeyValues );
+			return;
+		}
+	}
+
+	AssertMsg( false, "Unhandled NonConformantData update" );
+}
+
+void CIFM_EntityKeyValuesHandler_AutoRegister::AllHandlers_PostUpdate( void )
+{
+	for ( CIFM_EntityKeyValuesHandler_AutoRegister *pWalk = s_pRegisteredHandlers; pWalk; pWalk = pWalk->m_pNext )
+		pWalk->HandleData_PostUpdate();
+}
+
+void CIFM_EntityKeyValuesHandler_AutoRegister::AllHandlers_RemoveAll( void )
+{
+	for ( CIFM_EntityKeyValuesHandler_AutoRegister *pWalk = s_pRegisteredHandlers; pWalk; pWalk = pWalk->m_pNext )
+		pWalk->HandleData_RemoveAll();
+}
+
+const char *CIFM_EntityKeyValuesHandler_AutoRegister::GetGameKeyValuesKeyString( void )
+{
+	return "gamekeyvalues";
+}
+
+const char *CIFM_EntityKeyValuesHandler_AutoRegister::GetHandlerIDKeyString( void )
+{
+	return "handlerID";
+}
+
+KeyValues *CIFM_EntityKeyValuesHandler_AutoRegister::FindOrCreateNonConformantKeyValues( KeyValues *pParentKV )
+{
+	return pParentKV->FindKey( GetGameKeyValuesKeyString(), true );
+}
+
+void Portal2_HandleGameEntityKeyValues( KeyValues *pKeyValues )
+{
+	if ( pKeyValues->GetBool( "RemoveAll", false ) )
+	{
+		CIFM_EntityKeyValuesHandler_AutoRegister::AllHandlers_RemoveAll();
+		return;
+	}
+
+	const char *szHandlerIDKey = CIFM_EntityKeyValuesHandler_AutoRegister::GetHandlerIDKeyString();
+	CIFM_EntityKeyValuesHandler_AutoRegister::AllHandlers_PreUpdate();
+	for ( KeyValues *pCurr = pKeyValues->GetFirstTrueSubKey(); pCurr; pCurr = pCurr->GetNextTrueSubKey() )
+	{
+		CIFM_EntityKeyValuesHandler_AutoRegister::FindAndCallHandler( pCurr->GetString( szHandlerIDKey, "" ), pCurr );
+	}
+	CIFM_EntityKeyValuesHandler_AutoRegister::AllHandlers_PostUpdate();
+}
+
+//-----------------------------------------------------------------------------
+// Custom view matrices
+//-----------------------------------------------------------------------------
+bool Portal2_GetCustomViewMatrix( const CViewSetup &view, matrix3x4_t &matWorldToView )
+{
+	return false;
+}
+
+bool Portal2_SetCustomViewMatrix( CViewSetup &view, const matrix3x4_t &matWorldToView )
+{
+	// The matrix maps world to view axes: p_view = R^T ( p - origin ), where R is
+	// the camera's orientation (AngleMatrix of its angles). Recover R and origin.
+	matrix3x4_t matOrientation;
+	for ( int i = 0; i < 3; ++i )
+	{
+		for ( int j = 0; j < 3; ++j )
+		{
+			matOrientation[i][j] = matWorldToView[j][i];
+		}
+		matOrientation[i][3] = 0.0f;
+	}
+
+	Vector vColumns[3];
+	MatrixGetColumn( matOrientation, 0, vColumns[0] );
+	MatrixGetColumn( matOrientation, 1, vColumns[1] );
+	MatrixGetColumn( matOrientation, 2, vColumns[2] );
+
+	const float flTolerance = 1e-3f;
+	bool bRigid = true;
+	for ( int i = 0; i < 3; ++i )
+	{
+		bRigid = bRigid && fabsf( vColumns[i].LengthSqr() - 1.0f ) < flTolerance;
+		bRigid = bRigid && fabsf( vColumns[i].Dot( vColumns[( i + 1 ) % 3] ) ) < flTolerance;
+	}
+	bRigid = bRigid && vColumns[0].Cross( vColumns[1] ).Dot( vColumns[2] ) > 0.0f; // no reflection
+	if ( !bRigid )
+	{
+		PORTAL2_UNSUPPORTED( "CViewSetup custom view matrices with reflection or scale (mirrors)" );
+		return false;
+	}
+
+	Vector vTranslation( matWorldToView[0][3], matWorldToView[1][3], matWorldToView[2][3] );
+	Vector vOrigin;
+	VectorRotate( -vTranslation, matOrientation, vOrigin ); // origin = -R t
+
+	view.origin = vOrigin;
+	MatrixAngles( matOrientation, view.angles );
+	return true;
 }
 
 //-----------------------------------------------------------------------------

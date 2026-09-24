@@ -1,0 +1,67 @@
+#! /usr/bin/env python
+# encoding: utf-8
+#
+# Portal 2 port: the CS:GO 2017 matchmaking framework plus the Portal 2 title
+# (see README.md), built as objects linked into the Portal 2 server game
+# module, which owns the process's framework. Not a Waf subproject of its own:
+# game/server/wscript recurses here for --build-games=portal2.
+
+top = '.'
+
+def options(opt):
+	return
+
+def configure(conf):
+	return
+
+def build(bld):
+	source = [
+		'main.cpp',
+		'datacenter.cpp',
+		'extkeyvalues.cpp',
+		'leaderboards.cpp',
+		'matchmakingqos.cpp',
+		'matchsystem.cpp',
+		'mm_dlc.cpp',
+		'mm_events.cpp',
+		'mm_extensions.cpp',
+		'mm_framework.cpp',
+		'mm_netmsgcontroller.cpp',
+		'mm_portal2_compat.cpp',
+		'mm_session.cpp',
+		'mm_session_offline_custom.cpp',
+		'mm_voice.cpp',
+		'player.cpp',
+		'playermanager.cpp',
+		'servermanager.cpp',
+		'steam_apihook.cpp',
+		'portal2/mm_title.cpp',
+		'portal2/mm_title_gamesettingsmgr.cpp',
+		'portal2/mm_title_main.cpp',
+		'portal2/mm_title_richpresence.cpp',
+		'portal2/mm_title_titledata.cpp',
+	]
+
+	includes = [
+		'.',
+		'portal2',
+		'../public',
+		'../public/tier0',
+		'../public/tier1',
+		'../common',
+		'../common/xlast_portal2',
+	]
+
+	# This engine has no Steam matchmaking services (see mm_portal2_compat.h).
+	defines = ['NO_STEAM', 'PORTAL2']
+
+	bld.objects(
+		source   = source,
+		target   = 'matchmaking_portal2',
+		name     = 'matchmaking_portal2',
+		features = 'cxx',
+		includes = includes,
+		defines  = defines,
+		use      = ['tier0', 'tier1', 'tier2', 'tier3', 'mathlib', 'vstdlib'],
+		idx      = bld.get_taskgen_count()
+	)

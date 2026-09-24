@@ -347,3 +347,7 @@ void CBaseMultiplayerPlayer::StopScoringEscortPoints( void )
 	SetContextThink( NULL, 0, ESCORT_SCORE_CONTEXT );
 }
 
+#ifdef PORTAL2
+BEGIN_ENT_SCRIPTDESC( CBaseMultiplayerPlayer, CBasePlayer, "Player" )
+END_SCRIPTDESC();
+#endif // PORTAL2

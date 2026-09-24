@@ -52,6 +52,10 @@ enum RenderParamInt_t
 
 	INT_RENDERPARM_BACK_BUFFER_INDEX,
 
+	// Portal view recursion depth while drawing portal stencil views (Portal 2
+	// portal shaders). Appended in an unused slot; the array size is unchanged.
+	INT_RENDERPARM_PORTAL_RECURSION_DEPTH,
+
 	MAX_INT_RENDER_PARMS = 20
 };
 

@@ -34,6 +34,10 @@ int HudTransform( const Vector& point, Vector& screen );
 
 extern ConVar r_updaterefracttexture;
 extern int g_viewscene_refractUpdateFrame;
+#ifdef PORTAL2
+extern int g_nCurrentPortalRender;			// incremented once per portal render
+extern int g_nRefractUpdatePortalRender;	// g_nCurrentPortalRender at the last refract texture update
+#endif
 extern bool g_bAllowMultipleRefractUpdatesPerScenePerFrame;
 bool DrawingShadowDepthView( void );
 bool DrawingMainView();
@@ -47,7 +51,12 @@ inline void UpdateRefractTexture( int x, int y, int w, int h, bool bForceUpdate 
 
 	CMatRenderContextPtr pRenderContext( materials );
 	ITexture *pTexture = GetPowerOfTwoFrameBufferTexture();
+#ifdef PORTAL2
+	// Portal renders invalidate the refract texture.
+	if ( IsPC() || bForceUpdate || g_bAllowMultipleRefractUpdatesPerScenePerFrame || (gpGlobals->framecount != g_viewscene_refractUpdateFrame) || ( g_nRefractUpdatePortalRender != g_nCurrentPortalRender ) )
+#else
 	if ( IsPC() || bForceUpdate || g_bAllowMultipleRefractUpdatesPerScenePerFrame || (gpGlobals->framecount != g_viewscene_refractUpdateFrame) )
+#endif
 	{
 		// forced or only once per frame 
 		Rect_t rect;
@@ -57,6 +66,9 @@ inline void UpdateRefractTexture( int x, int y, int w, int h, bool bForceUpdate 
 		rect.height = h;
 		pRenderContext->CopyRenderTargetToTextureEx( pTexture, 0, &rect, NULL );
 
+#ifdef PORTAL2
+		g_nRefractUpdatePortalRender = g_nCurrentPortalRender;
+#endif
 		g_viewscene_refractUpdateFrame = gpGlobals->framecount;
 	}
 	pRenderContext->SetFrameBufferCopyTexture( pTexture );

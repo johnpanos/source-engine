@@ -17,6 +17,7 @@
 #include "c_portal_player.h"
 #include "prediction.h"
 #include "c_breakableprop.h"
+#include "c_physicsprop.h"
 #include "c_npc_portal_turret_floor.h"
 #include "portal2_engine_compat.h"
 typedef C_NPC_Portal_FloorTurret CNPC_Portal_FloorTurret;
@@ -3276,3 +3277,71 @@ QAngle C_PlayerHeldObjectClone::PreferredCarryAngles( void )
 #endif
 
 
+
+#if defined( CLIENT_DLL )
+//-----------------------------------------------------------------------------
+// Portal 2 port: the client player's use-entity API (CS:GO baseplayer_shared.cpp
+// under PORTAL2), declared in c_baseplayer.h. It lives here because it drives
+// the Portal 2 pickup controller.
+//-----------------------------------------------------------------------------
+bool C_BasePlayer::ClearUseEntity()
+{
+	if ( GetUseEntity() != NULL )
+	{
+		// Stop controlling the object
+		CPlayerPickupController *pPickup = (CPlayerPickupController *)GetUseEntity();
+		if ( pPickup && pPickup->UsePickupController( this, this, USE_OFF, 0 ) )
+		{
+			SetUseEntity( NULL );
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool C_BasePlayer::CanPickupObject( C_BaseEntity *pObject, float massLimit, float sizeLimit )
+{
+	// Must be valid and move with physics
+	if ( pObject == NULL || pObject->GetMoveType() != MOVETYPE_VPHYSICS )
+		return false;
+
+	IPhysicsObject *pList[VPHYSICS_MAX_OBJECT_LIST_COUNT];
+	int count = pObject->VPhysicsGetObjectList( pList, ARRAYSIZE( pList ) );
+
+	// Must have a physics object
+	if ( !count )
+		return false;
+
+	float objectMass = 0;
+	bool checkEnable = false;
+	for ( int i = 0; i < count; i++ )
+	{
+		objectMass += pList[i]->GetMass();
+		if ( !pList[i]->IsMoveable() )
+			checkEnable = true;
+		if ( pList[i]->GetGameFlags() & FVPHYSICS_NO_PLAYER_PICKUP )
+			return false;
+		if ( pList[i]->IsHinged() )
+			return false;
+	}
+
+	// Must be under our threshold weight
+	if ( massLimit > 0 && objectMass > massLimit )
+		return false;
+
+	// Motion-disabled objects can only be physics props here; the server
+	// decides whether pickup enables their motion.
+	if ( checkEnable && !dynamic_cast<C_PhysicsProp *>( pObject ) )
+		return false;
+
+	if ( sizeLimit > 0 )
+	{
+		const Vector &size = pObject->CollisionProp()->OBBSize();
+		if ( size.x > sizeLimit || size.y > sizeLimit || size.z > sizeLimit )
+			return false;
+	}
+
+	return true;
+}
+#endif // CLIENT_DLL

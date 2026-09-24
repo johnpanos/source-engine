@@ -60,9 +60,10 @@ public:
 		m_AppliedDamageEffects.RemoveAll();
 	}
 
-	virtual void TraceAttack( const CTakeDamageInfo &info, const Vector &direction, trace_t *pTrace )
+	// Portal 2 port: this SDK's TraceAttack also takes the damage accumulator.
+	virtual void TraceAttack( const CTakeDamageInfo &info, const Vector &direction, trace_t *pTrace, CDmgAccumulator *pAccumulator )
 	{
-		BaseClass::TraceAttack( info, direction, pTrace );
+		BaseClass::TraceAttack( info, direction, pTrace, pAccumulator );
 
 		if ( hitbox_damage_enabled.GetBool() )
 		{

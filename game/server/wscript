@@ -81,6 +81,10 @@ def build(bld):
 	if bld.env.GAMES == 'portal2':
 		# The imported Portal 2 sources spell some includes from the source root.
 		includes += ['../..']
+		# Portal 2 port: the server owns the process's matchmaking framework
+		# (it initializes before the client and its GameUI; see matchmaking/wscript).
+		bld.recurse('../../matchmaking')
+		libs += ['matchmaking_portal2']
 		# Base-game API the Portal 2 sources expect from their later base game.
 		# The VPC $ForceIncludes key is not read by vpc_parser, so apply it here.
 		cxxflags += ['-include', bld.path.find_node('../shared/portal2/portal2_base_compat.h').abspath()]

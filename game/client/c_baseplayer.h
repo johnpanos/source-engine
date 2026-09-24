@@ -299,6 +299,25 @@ public:
 
 	C_BaseEntity				*GetUseEntity();
 
+#ifdef PORTAL2
+	// Later (CS:GO-era) base-player API used by the Portal 2 player. This
+	// engine has one local player, so every split-screen slot is slot 0.
+	void						ForceButtons( int nButtons );
+	void						UnforceButtons( int nButtons );
+	int							m_afButtonForced;	// These are forced onto the player's inputs
+	float						GetAirTime( void );
+	float						m_flTimeLastTouchedGround;
+	int							GetSplitScreenPlayerSlot() const { return 0; }
+	static C_BasePlayer			*GetLocalPlayer( int nSlot ) { return GetLocalPlayer(); }
+	// Implemented with the Portal 2 pickup controller (portal_grabcontroller_shared.cpp).
+	bool						ClearUseEntity();
+	virtual bool				CanPickupObject( C_BaseEntity *pObject, float massLimit, float sizeLimit );
+	// No split-screen partners: this player is never one, and has none.
+	bool						IsSplitScreenPlayer() const { return false; }
+	CUtlVector< CHandle< C_BasePlayer > > &GetSplitScreenPlayers() { static CUtlVector< CHandle< C_BasePlayer > > s_NoPlayers; Assert( s_NoPlayers.Count() == 0 ); return s_NoPlayers; }
+	void						SetUseEntity( C_BaseEntity *pUseEntity ) { m_hUseEntity = pUseEntity; }
+#endif
+
 	// Vehicles...
 	IClientVehicle			*GetVehicle();
 
@@ -503,7 +522,15 @@ private:
 	int				m_iBonusProgress;
 	int				m_iBonusChallenge;
 
+#ifdef PORTAL2
+protected:
+	// Portal 2 port: the Portal 2 player moves view offset history across
+	// portals (CS:GO base: a discontinuous, protected interpolator).
+	CDiscontinuousInterpolatedVar< Vector >	m_iv_vecViewOffset;
+private:
+#else
 	CInterpolatedVar< Vector >	m_iv_vecViewOffset;
+#endif
 
 	// Not replicated
 	Vector			m_vecWaterJumpVel;
@@ -513,7 +540,13 @@ private:
 	float			m_flSwimSoundTime;
 	Vector			m_vecLadderNormal;
 	
+#ifdef PORTAL2
+protected:
+	QAngle			m_vecOldViewAngles;	// Portal 2 port: protected as in the CS:GO base
+private:
+#else
 	QAngle			m_vecOldViewAngles;
+#endif
 
 	bool			m_bWasFrozen;
 	int				m_flPhysics;

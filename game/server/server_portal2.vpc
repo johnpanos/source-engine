@@ -118,10 +118,26 @@ $Project "Server (Portal 2)"
 {
 	$Folder	"Source Files"
 	{
+		$Folder	"Portal 2 port adapters"
+		{
+			$File	"$SRCDIR\game\shared\portal2\portal2_shared_compat.cpp"
+			$File	"$SRCDIR\game\shared\portal2\portal2_shared_compat.h"
+			// Portal 2 port: the server owns the matchmaking framework (matchmaking/)
+			$File	"portal2\portal2_matchmaking.cpp"
+			$File	"portal2\portal2_matchmaking.h"
+			// CS:GO meshutils (convex hulls for the Portal 2 player's paint contact planes)
+			$File	"$SRCDIR\meshutils\mesh.cpp"
+			$File	"$SRCDIR\meshutils\convexhull.cpp"
+			$File	"$SRCDIR\meshutils\vertexops.cpp"
+			$File	"$SRCDIR\game\shared\portal2\portal2_frustum_util.cpp"
+			$File	"$SRCDIR\game\shared\portal2\portal2_frustum_util.h"
+		}
+
 		$Folder	"CS:GO-era base game (tools/portal2/cs15_imports.txt)"
 		{
 			$File	"$SRCDIR\game\server\cvisibilitymonitor.cpp"
 			$File	"$SRCDIR\game\server\cvisibilitymonitor.h"
+			$File	"$SRCDIR\game\server\env_instructor_hint.cpp"
 			$File	"$SRCDIR\game\server\player_voice_listener.cpp"
 			$File	"$SRCDIR\game\server\player_voice_listener.h"
 			$File	"$SRCDIR\game\server\vscript_server.cpp"
@@ -130,6 +146,24 @@ $Project "Server (Portal 2)"
 			$File	"$SRCDIR\game\shared\vscript_shared.h"
 			$File	"$SRCDIR\game\shared\game_timescale_shared.cpp"
 			$File	"$SRCDIR\game\shared\game_timescale_shared.h"
+		}
+
+		// Portal 2 port: CS:GO-era base entities the retail Portal 2 maps use.
+		$Folder	"CS:GO-era base entities"
+		{
+			$File	"$SRCDIR\game\server\func_instance_io_proxy.cpp"
+			$File	"$SRCDIR\game\server\beamspotlight.cpp"
+			$File	"$SRCDIR\game\server\fogvolume.cpp"
+			$File	"$SRCDIR\game\server\fogvolume.h"
+			$File	"$SRCDIR\game\server\logic_eventlistener.cpp"
+			$File	"$SRCDIR\game\server\logic_eventlistener.h"
+			$File	"$SRCDIR\game\server\logic_playmovie.cpp"
+			$File	"$SRCDIR\game\server\logic_random_outputs.cpp"
+			$File	"$SRCDIR\game\server\logic_random_outputs.h"
+			$File	"$SRCDIR\game\server\movie_display.cpp"
+			$File	"$SRCDIR\game\server\postprocesscontroller.cpp"
+			$File	"$SRCDIR\game\server\postprocesscontroller.h"
+			$File	"$SRCDIR\game\shared\postprocess_shared.h"
 		}
 
 		$File	"$SRCDIR\game\shared\predicted_viewmodel.cpp"
@@ -257,6 +291,8 @@ $Project "Server (Portal 2)"
 				$File	"$SRCDIR\game\shared\portal2\portal_grabcontroller_shared.cpp"
 				$File	"$SRCDIR\game\shared\portal2\player_pickup.h"
 				$File	"$SRCDIR\game\shared\portal2\player_pickup.cpp"
+				// Portal 2 port: the shared Portal 2 version replaces the base server one.
+				-$File	"player_pickup.cpp"
 				$File	"$SRCDIR\game\shared\portal2\portal_pointpush_shared.cpp"
 				
 				$File	"$SRCDIR\game\shared\portal2\weapon_item_base_shared.h"

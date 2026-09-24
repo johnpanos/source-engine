@@ -176,9 +176,48 @@ int CAudioSourceWave::GetType( void )
 	return AUDIO_SOURCE_WAV;
 }
 
+//-----------------------------------------------------------------------------
+// Portal 2 ships most voice lines as MP3 data under .wav names (a Portal 2
+// disc-space measure the CS:GO engine keeps). Returns the file size when the
+// file starts with an ID3 tag or an MPEG audio frame instead of RIFF, else 0.
+//-----------------------------------------------------------------------------
+static int Audio_GetMP3DataInWaveSize( const char *pName )
+{
+	intp file = g_pSndIO->open( pName );
+	if ( !file )
+		return 0;
+
+	unsigned char header[3] = { 0, 0, 0 };
+	int nRead = g_pSndIO->read( header, sizeof( header ), file );
+	int nSize = g_pSndIO->size( file );
+	g_pSndIO->close( file );
+
+	if ( nRead != sizeof( header ) )
+		return 0;
+	bool bID3 = header[0] == 'I' && header[1] == 'D' && header[2] == '3';
+	bool bFrameSync = header[0] == 0xFF && ( header[1] & 0xE0 ) == 0xE0;
+	return ( bID3 || bFrameSync ) ? nSize : 0;
+}
+
 void CAudioSourceWave::GetCacheData( CAudioSourceCachedInfo *info )
 {
 	Assert( info->Type() == CAudioSource::AUDIO_SOURCE_WAV );
+
+	// Record MP3 data in a .wav as an MP3 source, as the CS:GO engine's sound
+	// cache does; the wave factories below then create an MP3 source for it.
+	int nMP3Size = Audio_GetMP3DataInWaveSize( m_pSfx->GetFileName() );
+	if ( nMP3Size > 0 )
+	{
+		info->SetBits( 8 );
+		info->SetChannels( 1 );
+		info->SetSampleRate( 44100 );
+		info->SetLoopStart( -1 );
+		info->SetSampleCount( nMP3Size );
+		info->SetDataSize( nMP3Size );
+		info->SetDataStart( 0 );
+		info->SetType( CAudioSource::AUDIO_SOURCE_MP3 );
+		return;
+	}
 
 	byte tempbuf[ 32768 ];
 	int datalen = 0;
@@ -1684,10 +1723,18 @@ CAudioSource *CreateWave( CSfxTable *pSfx, bool bStreaming )
 //-----------------------------------------------------------------------------
 // Purpose: Wrapper for CreateWave()
 //-----------------------------------------------------------------------------
+static bool Audio_IsMP3DataInWave( CSfxTable *pSfx )
+{
+	// AUDIO_SOURCE_WAV keeps the cache keyed as a wave; GetCacheData above
+	// changes the recorded type when the data is MP3.
+	CAudioSourceCachedInfo *pInfo = audiosourcecache->GetInfo( CAudioSource::AUDIO_SOURCE_WAV, pSfx->IsPrecachedSound(), pSfx );
+	return pInfo && pInfo->Type() == CAudioSource::AUDIO_SOURCE_MP3;
+}
+
 CAudioSource *Audio_CreateStreamedWave( CSfxTable *pSfx )
 {
 #if defined( MP3_SUPPORT )
-	if ( Audio_IsMP3( pSfx->GetFileName() ) )
+	if ( Audio_IsMP3( pSfx->GetFileName() ) || Audio_IsMP3DataInWave( pSfx ) )
 	{
 		return Audio_CreateMemoryMP3(pSfx); // TOSUCK: Dont work with streamed mp3, idk why
 	}
@@ -1703,7 +1750,7 @@ CAudioSource *Audio_CreateStreamedWave( CSfxTable *pSfx )
 CAudioSource *Audio_CreateMemoryWave( CSfxTable *pSfx )
 {
 #if defined( MP3_SUPPORT )
-	if ( Audio_IsMP3( pSfx->GetFileName() ) )
+	if ( Audio_IsMP3( pSfx->GetFileName() ) || Audio_IsMP3DataInWave( pSfx ) )
 	{
 		return Audio_CreateMemoryMP3( pSfx );
 	}

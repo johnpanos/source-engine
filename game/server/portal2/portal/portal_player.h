@@ -90,6 +90,7 @@ public:
 	DECLARE_DATADESC();
 	DECLARE_ENT_SCRIPTDESC();
 
+	void FirePlayerProxyOutput( const char *pszOutputName, variant_t variant, CBaseEntity *pActivator, CBaseEntity *pCaller );
 	virtual void Precache( void );
 	virtual void CreateSounds( void );
 	virtual void StopLoopingSounds( void );
@@ -449,6 +450,7 @@ private:
 
 	// In multiplayer, last time we used a coop ping to draw our partner's attention
 	float						m_flLastPingTime;
+	float						m_flTBeamEndTime;
 
 	// When a portal is placed in the same cluster as us, we flip this on
 	// to signal the updating of the g_ClientCheck's cached PVS bits.

@@ -140,7 +140,11 @@ static	kbutton_t	in_alt1;
 static	kbutton_t	in_alt2;
 static	kbutton_t	in_score;
 static	kbutton_t	in_break;
+#ifdef PORTAL2
+kbutton_t	in_zoom;	// the Portal 2 player releases zoom while taunting or moving
+#else
 static	kbutton_t	in_zoom;
+#endif
 static  kbutton_t   in_grenade1;
 static  kbutton_t   in_grenade2;
 static	kbutton_t	in_attack3;

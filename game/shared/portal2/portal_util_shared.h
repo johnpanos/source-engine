@@ -12,6 +12,7 @@
 
 #include "engine/IEngineTrace.h"
 #include "paint_color_manager.h"
+#include "portal2_shared_compat.h"
 
 extern bool g_bBulletPortalTrace;
 

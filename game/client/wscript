@@ -89,6 +89,8 @@ def build(bld):
 	includes += game["includes"]
 	cxxflags = []
 	if bld.env.GAMES == 'portal2':
+		# The Portal 2 add-ons menu reads VPKs and JPEG thumbnails (client_portal2.vpc links vpklib and jpeglib).
+		libs += ['vpklib', 'JPEG']
 		# The imported Portal 2 sources spell some includes from the source root.
 		includes += ['../..']
 		# Base-game API the Portal 2 sources expect from their later base game.

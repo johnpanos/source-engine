@@ -6,21 +6,21 @@
 
 #include <stdio.h>
 
-#include "VGuiSystemModuleLoader.h"
-#include "Sys_Utils.h"
-#include "IVGuiModule.h"
+#include "vguisystemmoduleloader.h"
+#include "sys_utils.h"
+#include "IVguiModule.h"
 #include "ServerBrowser/IServerBrowser.h"
 
 #include <vgui/IPanel.h>
 #include <vgui/ISystem.h>
 #include <vgui/IVGui.h>
 #include <vgui/ILocalize.h>
-#include <KeyValues.h>
+#include <keyvalues.h>
 
 #include <vgui_controls/Controls.h>
 #include <vgui_controls/Panel.h>
 
-#include "FileSystem.h"
+#include "filesystem.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"

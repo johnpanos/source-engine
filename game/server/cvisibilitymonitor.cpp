@@ -251,7 +251,7 @@ bool CVisibilityMonitor::EntityIsVisibleToPlayer( const visibility_target_t &tar
 		return false;
 	}
 
-	CBaseCombatCharacter *pEyeEntity = pPlayer->ActivePlayerCombatCharacter();
+	CBaseCombatCharacter *pEyeEntity = pPlayer;
 
 	Vector vecTargetOrigin = target.entity->WorldSpaceCenter();
 	Vector vecPlayerOrigin = pEyeEntity->EyePosition();

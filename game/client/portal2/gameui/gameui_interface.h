@@ -93,6 +93,30 @@ public:
 
 	virtual bool IsTransitionEffectEnabled();
 
+	// IGameUI (GameUI011) methods this engine calls. The CS:GO-era Portal 2
+	// GameUI dropped them; see gameui_interface.cpp for each mapping.
+	virtual void OnLevelLoadingStarted( bool bShowProgressDialog );
+	virtual void ShowNewGameDialog( int chapter );
+	virtual void SessionNotification( const int notification, const int param = 0 );
+	virtual void SystemNotification( const int notification );
+	virtual void ShowMessageDialog( const uint nType, vgui::Panel *pOwner );
+	virtual void UpdatePlayerInfo( uint64 nPlayerId, const char *pName, int nTeam, byte cVoiceState, int nPlayersNeeded, bool bHost );
+	virtual void SessionSearchResult( int searchIdx, void *pHostData, XSESSION_SEARCHRESULT *pResult, int ping );
+	virtual void OnCreditsFinished( void );
+	virtual void BonusMapUnlock( const char *pchFileName = NULL, const char *pchMapName = NULL );
+	virtual void BonusMapComplete( const char *pchFileName = NULL, const char *pchMapName = NULL );
+	virtual void BonusMapChallengeUpdate( const char *pchFileName, const char *pchMapName, const char *pchChallengeName, int iBest );
+	virtual void BonusMapChallengeNames( char *pchFileName, char *pchMapName, char *pchChallengeName );
+	virtual void BonusMapChallengeObjectives( int &iBronze, int &iSilver, int &iGold );
+	virtual void BonusMapDatabaseSave( void );
+	virtual int BonusMapNumAdvancedCompleted( void );
+	virtual void BonusMapNumMedals( int piNumMedals[ 3 ] );
+	virtual bool ValidateStorageDevice( int *pStorageDeviceValidated );
+	virtual void OnConfirmQuit( void );
+	virtual bool IsMainMenuVisible( void );
+	virtual void SetMainMenuOverride( vgui::VPANEL panel );
+	virtual void SendMainMenuCommand( const char *pszCommand );
+
 private:
 	void SendConnectedToGameMessage();
 

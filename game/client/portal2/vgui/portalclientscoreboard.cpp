@@ -16,7 +16,7 @@
 #include "c_portal_player.h"
 #include "portal_mp_gamerules.h"
 
-#include <KeyValues.h>
+#include <keyvalues.h>
 
 #include <vgui/IScheme.h>
 #include <vgui/ILocalize.h>

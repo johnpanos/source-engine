@@ -9,17 +9,33 @@
 
 #include "cbase.h"
 #include "triggers.h"
+#ifdef PORTAL2
+#include "trigger_portal_cleanser.h"
+#endif
 #include "portal_player.h"
+#ifdef PORTAL2
+// The Portal 2 gun; a same-directory lookup would find the Portal 1 header.
+#include "portal2/portal/weapon_portalgun.h"
+#else
 #include "weapon_portalgun.h"
+#endif
 #include "prop_portal_shared.h"
 #include "portal_shareddefs.h"
 #include "physobj.h"
 #include "portal/weapon_physcannon.h"
+#ifdef PORTAL2
+#include "portal_grabcontroller_shared.h"
+#endif
 #include "model_types.h"
 #include "rumble_shared.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
+#ifdef PORTAL2
+// Portal 2 names the delayed portal placement think context on the class.
+#define s_pDelayedPlacementContext CProp_Portal::s_szDelayedPlacementThinkContext
+#endif
 
 static char *g_pszPortalNonCleansable[] = 
 { 
@@ -33,6 +49,25 @@ static char *g_pszPortalNonCleansable[] =
 	NULL,
 };
 
+#ifdef PORTAL2
+// The class is declared in trigger_portal_cleanser.h: Portal 2 networks it
+// (DT_TriggerPortalCleanser) and other entities call its fizzle helpers.
+BEGIN_DATADESC( CTriggerPortalCleanser )
+
+	DEFINE_INPUTFUNC( FIELD_VOID, "FizzleTouchingPortals", InputFizzleTouchingPortals ),
+
+	// Outputs
+	DEFINE_OUTPUT( m_OnDissolve, "OnDissolve" ),
+	DEFINE_OUTPUT( m_OnFizzle, "OnFizzle" ),
+	DEFINE_OUTPUT( m_OnDissolveBox, "OnDissolveBox" ),
+
+END_DATADESC()
+
+IMPLEMENT_SERVERCLASS_ST( CTriggerPortalCleanser, DT_TriggerPortalCleanser )
+	SendPropBool( SENDINFO( m_bDisabled ) ),
+END_SEND_TABLE()
+
+#else
 //-----------------------------------------------------------------------------
 // Purpose: Removes anything that touches it. If the trigger has a targetname,
 //			firing it will toggle state.
@@ -63,6 +98,8 @@ DEFINE_OUTPUT( m_OnDissolveBox, "OnDissolveBox" ),
 END_DATADESC()
 
 
+#endif // PORTAL2
+
 LINK_ENTITY_TO_CLASS( trigger_portal_cleanser, CTriggerPortalCleanser );
 
 
@@ -72,6 +109,10 @@ LINK_ENTITY_TO_CLASS( trigger_portal_cleanser, CTriggerPortalCleanser );
 void CTriggerPortalCleanser::Spawn( void )
 {	
 	BaseClass::Spawn();
+#ifdef PORTAL2
+	// The client predicts portal fizzling (c_trigger_portal_cleanser.cpp).
+	m_bClientSidePredicted = true;
+#endif
 	InitTrigger();
 }
 
@@ -122,7 +163,7 @@ void CTriggerPortalCleanser::Touch( CBaseEntity *pOther )
 
 				if ( pPortalgun->CanFirePortal1() )
 				{
-					CProp_Portal *pPortal = CProp_Portal::FindPortal( pPortalgun->m_iPortalLinkageGroupID, false );
+					CProp_Portal *pPortal = CProp_Portal::FindPortal( pPortalgun->GetLinkageGroupID(), false );
 
 					if ( pPortal && pPortal->m_bActivated )
 					{
@@ -145,7 +186,7 @@ void CTriggerPortalCleanser::Touch( CBaseEntity *pOther )
 
 				if ( pPortalgun->CanFirePortal2() )
 				{
-					CProp_Portal *pPortal = CProp_Portal::FindPortal( pPortalgun->m_iPortalLinkageGroupID, true );
+					CProp_Portal *pPortal = CProp_Portal::FindPortal( pPortalgun->GetLinkageGroupID(), true );
 
 					if ( pPortal && pPortal->m_bActivated )
 					{
@@ -180,7 +221,20 @@ void CTriggerPortalCleanser::Touch( CBaseEntity *pOther )
 	}
 
 	CBaseAnimating *pBaseAnimating = dynamic_cast<CBaseAnimating*>( pOther );
+	if ( pBaseAnimating )
+	{
+		FizzleBaseAnimating( this, pBaseAnimating );
+	}
+}
 
+
+//-----------------------------------------------------------------------------
+// Purpose: Dissolves an object as a cleanser does. pFizzler, when not NULL, is
+//			the cleanser whose outputs fire; Portal 2 also fizzles cubes this way
+//			without a cleanser (for example when a cube is replaced).
+//-----------------------------------------------------------------------------
+void CTriggerPortalCleanser::FizzleBaseAnimating( CTriggerPortalCleanser *pFizzler, CBaseAnimating *pBaseAnimating )
+{
 	if ( pBaseAnimating && !pBaseAnimating->IsDissolving() )
 	{
 		int i = 0;
@@ -200,7 +254,8 @@ void CTriggerPortalCleanser::Touch( CBaseEntity *pOther )
 		// always being 'box'. We use special logic when the cleanser dissolves a box so this is a special output for it.
 		if ( pBaseAnimating->NameMatches( "box" ) )
 		{
-			m_OnDissolveBox.FireOutput( pOther, this );
+			if ( pFizzler )
+				pFizzler->m_OnDissolveBox.FireOutput( pBaseAnimating, pFizzler );
 		}
 
 		if ( FClassnameIs( pBaseAnimating, "updateitem2" ) )
@@ -264,6 +319,60 @@ void CTriggerPortalCleanser::Touch( CBaseEntity *pOther )
 			pDisolvingAnimating->Dissolve( "", gpGlobals->curtime, false, ENTITY_DISSOLVE_NORMAL );
 		}
 
-		m_OnDissolve.FireOutput( pOther, this );
+		if ( pFizzler )
+			pFizzler->m_OnDissolve.FireOutput( pBaseAnimating, pFizzler );
 	}
 }
+
+//-----------------------------------------------------------------------------
+// Purpose: A portal shot was stopped by this cleanser.
+//-----------------------------------------------------------------------------
+void CTriggerPortalCleanser::SetPortalShot( void )
+{
+	// Portal 2 port: the retail client flashes the fizzler field where a portal
+	// shot hits it. That effect is not reconstructed, so the server only keeps
+	// the time of the last shot and reports the missing effect once.
+	m_flLastPortalShotTime = gpGlobals->curtime;
+
+	static bool s_bWarned = false;
+	if ( !s_bWarned )
+	{
+		s_bWarned = true;
+		DevWarning( "Portal 2: the fizzler portal shot effect is not supported by this engine\n" );
+	}
+}
+
+#ifdef PORTAL2
+//-----------------------------------------------------------------------------
+// Purpose: Fizzles every portal inside the cleanser volume.
+//-----------------------------------------------------------------------------
+void CTriggerPortalCleanser::FizzleTouchingPortals( void )
+{
+	Vector vMin, vMax;
+	CollisionProp()->WorldSpaceAABB( &vMin, &vMax );
+
+	Vector vBoxCenter = ( vMin + vMax ) * 0.5f;
+	Vector vBoxExtents = ( vMax - vMin ) * 0.5f;
+
+	int iPortalCount = CProp_Portal_Shared::AllPortals.Count();
+	CProp_Portal **pPortals = CProp_Portal_Shared::AllPortals.Base();
+	for ( int i = 0; i != iPortalCount; ++i )
+	{
+		CProp_Portal *pTempPortal = pPortals[i];
+		if ( UTIL_IsBoxIntersectingPortal( vBoxCenter, vBoxExtents, pTempPortal, 0.0f ) )
+		{
+			pTempPortal->DoFizzleEffect( PORTAL_FIZZLE_KILLED, true );
+			pTempPortal->Fizzle();
+		}
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Turning a cleanser on fizzles the portals already inside it.
+//-----------------------------------------------------------------------------
+void CTriggerPortalCleanser::Enable( void )
+{
+	BaseClass::Enable();
+	FizzleTouchingPortals();
+}
+#endif // PORTAL2

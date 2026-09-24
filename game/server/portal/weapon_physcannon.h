@@ -28,7 +28,12 @@ float PhysCannonGetHeldObjectMass( CBaseCombatWeapon *pActiveWeapon, IPhysicsObj
 
 CBaseEntity *PhysCannonGetHeldEntity( CBaseCombatWeapon *pActiveWeapon );
 CBaseEntity *GetPlayerHeldEntity( CBasePlayer *pPlayer );
+#ifdef PORTAL2
+// Portal 2: defined with the pickup controller (portal_grabcontroller_shared.cpp).
+CBasePlayer *GetPlayerHoldingEntity( const CBaseEntity *pEntity );
+#else
 CBasePlayer *GetPlayerHoldingEntity( CBaseEntity *pEntity );
+#endif
 
 CGrabController *GetGrabControllerForPlayer( CBasePlayer *pPlayer );
 CGrabController *GetGrabControllerForPhysCannon( CBaseCombatWeapon *pActiveWeapon );

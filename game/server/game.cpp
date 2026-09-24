@@ -24,6 +24,10 @@ void MapCycleFileChangedCallback( IConVar *var, const char *pOldString, float fl
 	}
 }
 
+#ifdef PORTAL2
+// Portal 2: VScript asks whether single-player maps should loop (CS:GO base game.cpp).
+ConVar	loopsingleplayermaps( "loopsingleplayermaps", "0", FCVAR_REPLICATED | FCVAR_CHEAT );
+#endif
 ConVar	displaysoundlist( "displaysoundlist","0" );
 ConVar  mapcyclefile( "mapcyclefile", "mapcycle.txt", FCVAR_NONE, "Name of the .txt file used to cycle the maps on multiplayer servers ", MapCycleFileChangedCallback );
 ConVar  servercfgfile( "servercfgfile","server.cfg" );

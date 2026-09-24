@@ -5,21 +5,23 @@
 //=============================================================================//
 
 
-#include "BaseSaveGameDialog.h"
-#include "FileSystem.h"
+#include "basesavegamedialog.h"
+#include "filesystem.h"
 #include "savegame_version.h"
 #include "vgui_controls/PanelListPanel.h"
 #include "vgui_controls/Label.h"
 #include "vgui_controls/ImagePanel.h"
 #include "vgui_controls/Button.h"
-#include "vgui_controls/tgaimagepanel.h"
+#include "tgaimagepanel.h"
 #include "tier1/utlbuffer.h"
-#include "tier2/resourceprecacher.h"
+// Portal 2 port: this engine has no resource precacher; the autosave icon
+// loads on first use (portal2_base_compat.h drops PRECACHE_REGISTER).
+#include "portal2_base_compat.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include "FileSystem.h"
+#include "filesystem.h"
 
-#include "MouseMessageForwardingPanel.h"
+#include "mousemessageforwardingpanel.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"

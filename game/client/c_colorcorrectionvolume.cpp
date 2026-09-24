@@ -10,6 +10,9 @@
 #include "cdll_client_int.h"
 #include "materialsystem/MaterialSystemUtil.h"
 #include "colorcorrectionmgr.h"
+#ifdef PORTAL2
+#include "c_triggers.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -22,10 +25,18 @@
 //------------------------------------------------------------------------------
 // Purpose : Shadow control entity
 //------------------------------------------------------------------------------
+#ifdef PORTAL2
+// The server volume is a networked CBaseTrigger in Portal 2 (DT_BaseTrigger).
+class C_ColorCorrectionVolume : public C_BaseTrigger
+{
+public:
+	DECLARE_CLASS( C_ColorCorrectionVolume, C_BaseTrigger );
+#else
 class C_ColorCorrectionVolume : public C_BaseEntity
 {
 public:
 	DECLARE_CLASS( C_ColorCorrectionVolume, C_BaseEntity );
+#endif
 
 	DECLARE_CLIENTCLASS();
 	DECLARE_PREDICTABLE();

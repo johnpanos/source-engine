@@ -53,6 +53,12 @@
 	#include "prop_portal_shared.h"
 	#include "portal_shareddefs.h"
 #endif
+#if defined( PORTAL2 )
+	#include "portal_base2d_shared.h"
+	#define SIGHT_PORTAL_LIST CPortal_Base2D_Shared::AllPortals
+#elif defined( PORTAL )
+	#define SIGHT_PORTAL_LIST CProp_Portal_Shared::AllPortals
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -442,7 +448,7 @@ void CBaseCombatCharacter::ResetVisibilityCache( CBaseCombatCharacter *pBCC )
 }
 
 #ifdef PORTAL
-bool CBaseCombatCharacter::FVisibleThroughPortal( const CProp_Portal *pPortal, CBaseEntity *pEntity, int traceMask, CBaseEntity **ppBlocker )
+bool CBaseCombatCharacter::FVisibleThroughPortal( const CSightPortal *pPortal, CBaseEntity *pEntity, int traceMask, CBaseEntity **ppBlocker )
 {
 	VPROF( "CBaseCombatCharacter::FVisible" );
 
@@ -545,7 +551,7 @@ bool CBaseCombatCharacter::FInViewCone( const Vector &vecSpot )
 // the caller's forward view cone. The dot product is performed
 // in 2d, making the view cone infinitely tall. 
 //=========================================================
-CProp_Portal* CBaseCombatCharacter::FInViewConeThroughPortal( CBaseEntity *pEntity )
+CSightPortal* CBaseCombatCharacter::FInViewConeThroughPortal( CBaseEntity *pEntity )
 {
 	return FInViewConeThroughPortal( pEntity->WorldSpaceCenter() );
 }
@@ -555,23 +561,23 @@ CProp_Portal* CBaseCombatCharacter::FInViewConeThroughPortal( CBaseEntity *pEnti
 // the caller's forward view cone. The dot product is performed
 // in 2d, making the view cone infinitely tall. 
 //=========================================================
-CProp_Portal* CBaseCombatCharacter::FInViewConeThroughPortal( const Vector &vecSpot )
+CSightPortal* CBaseCombatCharacter::FInViewConeThroughPortal( const Vector &vecSpot )
 {
-	int iPortalCount = CProp_Portal_Shared::AllPortals.Count();
+	int iPortalCount = SIGHT_PORTAL_LIST.Count();
 	if( iPortalCount == 0 )
 		return NULL;
 
 	const Vector ptEyePosition = EyePosition();
 
 	float fDistToBeat = 1e20; //arbitrarily high number
-	CProp_Portal *pBestPortal = NULL;
+	CSightPortal *pBestPortal = NULL;
 
-	CProp_Portal **pPortals = CProp_Portal_Shared::AllPortals.Base();
+	CSightPortal **pPortals = SIGHT_PORTAL_LIST.Base();
 
 	// Check through both portals
 	for ( int iPortal = 0; iPortal < iPortalCount; ++iPortal )
 	{
-		CProp_Portal *pPortal = pPortals[iPortal];
+		CSightPortal *pPortal = pPortals[iPortal];
 
 		// Check if this portal is active, linked, and in the view cone
 		if( pPortal->IsActivedAndLinked() && FInViewCone( pPortal ) )

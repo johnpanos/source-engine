@@ -20,6 +20,9 @@ class CFuncNoPortalVolume : public CBaseEntity
 {
 public:
 	DECLARE_CLASS( CFuncNoPortalVolume, CBaseEntity );
+#ifdef PORTAL2
+	DECLARE_SERVERCLASS();
+#endif
 
 	CFuncNoPortalVolume();
 	~CFuncNoPortalVolume();
@@ -43,7 +46,11 @@ public:
 	DECLARE_DATADESC();
 
 private:
+#ifdef PORTAL2
+	CNetworkVar( bool, m_bActive );		// are we currently blocking portals
+#else
 	bool					m_bActive;			// are we currently blocking portals
+#endif
 	unsigned int			m_iListIndex;		// what is my index into the global noportal_volume list
 	
 	

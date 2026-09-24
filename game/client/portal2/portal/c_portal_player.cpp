@@ -6,7 +6,6 @@
 
 #include "cbase.h"
 #include "vcollide_parse.h"
-#if 0
 #include "c_portal_player.h"
 #include "view.h"
 #include "c_basetempentity.h"
@@ -46,6 +45,9 @@
 
 #include "vgui_int.h"
 #include "dt_utlvector_recv.h"
+#include "eventlist.h"
+
+extern kbutton_t in_zoom;
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "portal2_engine_compat.h"
@@ -303,7 +305,9 @@ void C_PortalRagdoll::CreatePortalRagdoll()
 
 		SetModelIndex( m_nModelIndex );	
 		// Make us a ragdoll..
-		m_bClientSideRagdoll = true;
+		// Portal 2 port: this base marks client ragdolls with kRenderFxRagdoll
+		// (CS:GO's m_bClientSideRagdoll).
+		m_nRenderFX = kRenderFxRagdoll;
 
 		matrix3x4a_t boneDelta0[MAXSTUDIOBONES];
 		matrix3x4a_t boneDelta1[MAXSTUDIOBONES];
@@ -351,8 +355,10 @@ END_RECV_TABLE()
 
 // specific to the local player
 BEGIN_RECV_TABLE_NOBASE( C_Portal_Player, DT_PortalLocalPlayerExclusive )
-	RecvPropVectorXY( RECVINFO_NAME( m_vecNetworkOrigin, m_vecOrigin ), 0, C_BasePlayer::RecvProxy_LocalOriginXY ),
-	RecvPropFloat( RECVINFO_NAME( m_vecNetworkOrigin[2], m_vecOrigin[2] ), 0, C_BasePlayer::RecvProxy_LocalOriginZ ),
+	// Portal 2 port: the server sends plain XY/Z origin props (SendProxy_OriginXY/Z),
+	// so the default receive proxies apply.
+	RecvPropVectorXY( RECVINFO_NAME( m_vecNetworkOrigin, m_vecOrigin ) ),
+	RecvPropFloat( RECVINFO_NAME( m_vecNetworkOrigin[2], m_vecOrigin[2] ) ),
 	RecvPropVector( RECVINFO( m_vecViewOffset ) ),
 
 	RecvPropQAngles( RECVINFO( m_vecCarriedObjectAngles ) ),
@@ -365,13 +371,21 @@ END_RECV_TABLE()
 
 // all players except the local player
 BEGIN_RECV_TABLE_NOBASE( C_Portal_Player, DT_PortalNonLocalPlayerExclusive )
-	RecvPropVectorXY( RECVINFO_NAME( m_vecNetworkOrigin, m_vecOrigin ), 0, C_BasePlayer::RecvProxy_NonLocalCellOriginXY ),
-	RecvPropFloat( RECVINFO_NAME( m_vecNetworkOrigin[2], m_vecOrigin[2] ), 0, C_BasePlayer::RecvProxy_NonLocalCellOriginZ ),
+	// Portal 2 port: this engine has no cell origin encoding; see the server table.
+	RecvPropVectorXY( RECVINFO_NAME( m_vecNetworkOrigin, m_vecOrigin ) ),
+	RecvPropFloat( RECVINFO_NAME( m_vecNetworkOrigin[2], m_vecOrigin[2] ) ),
 	RecvPropFloat( RECVINFO( m_vecViewOffset[0] ) ),
 	RecvPropFloat( RECVINFO( m_vecViewOffset[1] ) ),
 	RecvPropFloat( RECVINFO( m_vecViewOffset[2] ) ),
 END_RECV_TABLE()
 
+
+BEGIN_RECV_TABLE_NOBASE( PortalPlayerStatistics_t, DT_PortalPlayerStatistics )
+	RecvPropInt( RECVINFO( iNumPortalsPlaced ) ),
+	RecvPropInt( RECVINFO( iNumStepsTaken ) ),
+	RecvPropFloat( RECVINFO( fNumSecondsTaken ) ),
+	RecvPropFloat( RECVINFO( fDistanceTaken ) ),
+END_RECV_TABLE()
 
 BEGIN_RECV_TABLE_NOBASE( CPortalPlayerShared, DT_PortalPlayerShared )
 	RecvPropInt( RECVINFO( m_nPlayerCond ) ),
@@ -1141,7 +1155,7 @@ bool C_Portal_Player::CreateMove( float flInputSampleTime, CUserCmd *pCmd )
 	pCmd->player_held_entity = ( m_hUseEntToSend ) ? ( m_hUseEntToSend->entindex() ) : ( 0 );
 	pCmd->held_entity_was_grabbed_through_portal = ( m_hUseEntThroughPortal ) ? ( m_hUseEntThroughPortal->entindex() ) : ( 0 );
 	
-	pCmd->command_acknowledgements_pending = pCmd->command_number - engine->GetLastAcknowledgedCommand();
+	pCmd->command_acknowledgements_pending = pCmd->command_number - Portal2Engine::GetLastAcknowledgedCommand();
 	pCmd->predictedPortalTeleportations = 0;
 	for( int i = 0; i != m_PredictedPortalTeleportations.Count(); ++i )
 	{
@@ -2045,7 +2059,7 @@ void C_Portal_Player::PlayerPortalled( C_Portal_Base2D *pEnteredPortal, float fT
 {
 	//Warning( "C_Portal_Player::PlayerPortalled( %s ) ent:%i slot:%i\n", IsLocalPlayer() ? "local" : "nonlocal", entindex(), Portal2Engine::GetActiveSplitScreenPlayerSlot() );
 #if ( PLAYERPORTALDEBUGSPEW == 1 )
-	Warning( "C_Portal_Player::PlayerPortalled( %f %f %f %i ) %i\n", fTime, engine->GetLastTimeStamp(), GetTimeBase(), prediction->GetLastAcknowledgedCommandNumber(), m_PredictedPortalTeleportations.Count() );
+	Warning( "C_Portal_Player::PlayerPortalled( %f %f %f %i ) %i\n", fTime, engine->GetLastTimeStamp(), GetTimeBase(), prediction->GetLastAcknowledgedCommand(), m_PredictedPortalTeleportations.Count() );
 #endif
 	ACTIVE_SPLITSCREEN_PLAYER_GUARD_ENT( this );
 
@@ -2316,7 +2330,7 @@ void C_Portal_Player::OnDataChanged( DataUpdateType_t type )
 #if ( PLAYERPORTALDEBUGSPEW == 1 )
 	if( entindex() == 1 && cl_spewplayerpackets.GetBool() )
 	{
-		Msg( "C_Portal_Player::OnDataChanged( %f %f %f %i )\n", GetTimeBase(), gpGlobals->curtime, engine->GetLastTimeStamp(), prediction->GetLastAcknowledgedCommandNumber() );
+		Msg( "C_Portal_Player::OnDataChanged( %f %f %f %i )\n", GetTimeBase(), gpGlobals->curtime, engine->GetLastTimeStamp(), prediction->GetLastAcknowledgedCommand() );
 	}
 #endif
 
@@ -2331,7 +2345,7 @@ void C_Portal_Player::OnDataChanged( DataUpdateType_t type )
 		{
 			//The server has acknowledged that it processed the command that we predicted this happened on. But we didn't get a teleportation notification. It must not have happened on the server
 #if ( PLAYERPORTALDEBUGSPEW == 1 )
-			Warning( "======================OnDataChanged removing a teleportation that didn't happen!!!! %f %i -=- %f %f %i======================\n", m_PredictedPortalTeleportations[0].flTime, m_PredictedPortalTeleportations[0].iCommandNumber, GetTimeBase(), engine->GetLastTimeStamp(), prediction->GetLastAcknowledgedCommandNumber() );
+			Warning( "======================OnDataChanged removing a teleportation that didn't happen!!!! %f %i -=- %f %f %i======================\n", m_PredictedPortalTeleportations[0].flTime, m_PredictedPortalTeleportations[0].iCommandNumber, GetTimeBase(), engine->GetLastTimeStamp(), prediction->GetLastAcknowledgedCommand() );
 #endif
 			UnrollPredictedTeleportations( m_PredictedPortalTeleportations[0].iCommandNumber );
 		}
@@ -2402,13 +2416,13 @@ void C_Portal_Player::PostDataUpdate( DataUpdateType_t updateType )
 #if ( PLAYERPORTALDEBUGSPEW == 1 )
 	if( entindex() == 1 && cl_spewplayerpackets.GetBool() )
 	{
-		Msg( "C_Portal_Player::PostDataUpdate( %f %f %f %i )\n", GetTimeBase(), gpGlobals->curtime, engine->GetLastTimeStamp(), prediction->GetLastAcknowledgedCommandNumber() );
+		Msg( "C_Portal_Player::PostDataUpdate( %f %f %f %i )\n", GetTimeBase(), gpGlobals->curtime, engine->GetLastTimeStamp(), prediction->GetLastAcknowledgedCommand() );
 	}
 #endif
 
-	if( GetPredictable() && (m_PredictedPortalTeleportations.Count() != 0) && (m_PredictedPortalTeleportations[0].iCommandNumber < prediction->GetLastAcknowledgedCommandNumber()) )
+	if( GetPredictable() && (m_PredictedPortalTeleportations.Count() != 0) && (m_PredictedPortalTeleportations[0].iCommandNumber < prediction->GetLastAcknowledgedCommand()) )
 	{
-		int iAcknowledgedCommand = prediction->GetLastAcknowledgedCommandNumber();
+		int iAcknowledgedCommand = prediction->GetLastAcknowledgedCommand();
 		
 		for( int i = 0; i != m_PredictedPortalTeleportations.Count(); ++i )
 		{
@@ -2655,7 +2669,7 @@ void C_Portal_Player::CreatePingPointer( Vector vecDestintaion )
 
 		if ( m_PointLaser )
 		{
-			m_PointLaser->SetDrawOnlyForSplitScreenUser( GetSplitScreenPlayerSlot() );
+			// Portal 2 port: one local player, so no per-split-screen-user drawing.
 			m_PointLaser->SetControlPoint( 1, vecDestintaion );
 			int nTeam = GetTeamNumber();
 			Color color( 255, 255, 255 );
@@ -2796,7 +2810,7 @@ void C_Portal_Player::CalcView( Vector &eyeOrigin, QAngle &eyeAngles, float &zNe
 		
 		Vector ptTargetPosition = EyePosition();
 		
-		CTraceFilterSkipTwoEntities filter( NULL, NULL );
+		CTraceFilterSkipTwoEntities filter( NULL, NULL, COLLISION_GROUP_NONE );
 		for( int i = 1; i <= gpGlobals->maxClients; ++i )
 		{
 			C_Portal_Player *pPlayer = ToPortalPlayer( UTIL_PlayerByIndex( i ) );
@@ -2952,17 +2966,9 @@ void C_Portal_Player::CalcPortalView( Vector &eyeOrigin, QAngle &eyeAngles, floa
 		view->DriftPitch();
 	}
 
-	// TrackIR
-	if ( IsHeadTrackingEnabled() )
-	{
-		VectorCopy( EyePosition() + GetEyeOffset(), eyeOrigin );
-		VectorCopy( EyeAngles() + GetEyeAngleOffset(), eyeAngles );
-	}
-	else
-	{
-		VectorCopy( EyePosition(), eyeOrigin );
-		VectorCopy( EyeAngles(), eyeAngles );
-	}
+	// Portal 2 port: this engine has no TrackIR head tracking.
+	VectorCopy( EyePosition(), eyeOrigin );
+	VectorCopy( EyeAngles(), eyeAngles );
 
 	Vector vRenderOrigin = GetRenderOrigin();
 
@@ -3070,17 +3076,13 @@ void C_Portal_Player::GetToolRecordingState( KeyValues *msg )
 	{
 		BaseEntityRecordingState_t dummyState;
 		BaseEntityRecordingState_t *pState = (BaseEntityRecordingState_t *)msg->GetPtr( "baseentity", &dummyState );
-		pState->m_fEffects |= EF_NOINTERP; //If we interpolate, we'll be traversing an arbitrary line through the level at an undefined speed. That would be bad
+		pState->m_nEffects |= EF_NOINTERP; //If we interpolate, we'll be traversing an arbitrary line through the level at an undefined speed. That would be bad
 	}
 
 	m_bToolMode_EyeHasPortalled_LastRecord = m_bEyePositionIsTransformedByPortal;
 
-	//record if the eye is on the opposite side of the portal from the body
-	{
-		CameraRecordingState_t dummyState;
-		CameraRecordingState_t *pState = (CameraRecordingState_t *)msg->GetPtr( "camera", &dummyState );
-		pState->m_bPlayerEyeIsPortalled = m_bEyePositionIsTransformedByPortal;
-	}
+	// Portal 2 port: this engine's CameraRecordingState_t has no field for an eye
+	// that is on the opposite side of a portal from the body, so it is not recorded.
 }
 
 void C_Portal_Player::SetAnimation( PLAYER_ANIM playerAnim )
@@ -4214,4 +4216,3 @@ void C_Portal_Player::RemoveClientsideWearables( void )
 }
 
 #endif //!defined( NO_STEAM ) && !defined( NO_STEAM_GAMECOORDINATOR )
-#endif

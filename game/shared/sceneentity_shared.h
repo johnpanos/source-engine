@@ -63,6 +63,12 @@ public:
 	// Current actor
 	CChoreoActor	*m_pActor;
 
+#if defined( PORTAL2 ) && defined( GAME_DLL )
+	// Portal 2 port: the scene entity playing this event (CS:GO base), for
+	// the GetCurrentScene/GetSceneByIndex script functions.
+	EHANDLE			m_hSceneEntity;
+#endif
+
 	// Set after the first time the event has been configured ( allows
 	//  bumping markov index only at start of event playback, not every frame )
 	bool			m_bStarted;

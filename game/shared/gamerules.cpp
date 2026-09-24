@@ -112,6 +112,12 @@ void CGameRulesProxy::NotifyNetworkStateChanged()
 
 
 
+#ifdef PORTAL2
+// Portal 2 port: the number of players the session was started for; set by
+// CServerGameDLL::ApplyGameSettings (portal2_matchmaking.cpp) as in retail Portal 2.
+ConVar sv_portal_players( "sv_portal_players", "1", FCVAR_REPLICATED | FCVAR_DEVELOPMENTONLY | FCVAR_HIDDEN );
+#endif
+
 ConVar	old_radius_damage( "old_radiusdamage", "0.0", FCVAR_REPLICATED );
 
 #ifdef CLIENT_DLL //{

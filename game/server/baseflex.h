@@ -45,6 +45,12 @@ class CBaseFlex : public CBaseAnimatingOverlay
 public:
 	DECLARE_SERVERCLASS();
 	DECLARE_DATADESC();
+#ifdef PORTAL2
+	// Portal 2 port: VScript access to a character's scenes (CS:GO base).
+	DECLARE_ENT_SCRIPTDESC();
+	HSCRIPT ScriptGetOldestScene( void );
+	HSCRIPT ScriptGetSceneByIndex( int index );
+#endif
 	DECLARE_PREDICTABLE();
 
 	// Construction
@@ -91,7 +97,11 @@ public:
 	virtual	bool		ClearSceneEvent( CSceneEventInfo *info, bool fastKill, bool canceled );
 
 	// Add the event to the queue for this actor
+#ifdef PORTAL2
+	void				AddSceneEvent( CChoreoScene *scene, CChoreoEvent *event, CBaseEntity *pTarget = NULL, CBaseEntity *pSceneEntity = NULL );
+#else
 	void				AddSceneEvent( CChoreoScene *scene, CChoreoEvent *event, CBaseEntity *pTarget = NULL );
+#endif
 
 	// Remove the event from the queue for this actor
 	void				RemoveSceneEvent( CChoreoScene *scene, CChoreoEvent *event, bool fastKill );

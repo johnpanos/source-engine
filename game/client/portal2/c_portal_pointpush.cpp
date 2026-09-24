@@ -14,6 +14,9 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+// Portal 2 port: the header aliases CPortal_PointPush to the client class for
+// the shared code; the network name must stay the server class name.
+#undef CPortal_PointPush
 IMPLEMENT_CLIENTCLASS_DT( C_Portal_PointPush, DT_PortalPointPush, CPortal_PointPush )
 	RecvPropBool( RECVINFO( m_bEnabled ) ),
 	RecvPropFloat( RECVINFO( m_flMagnitude ) ),

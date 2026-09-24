@@ -465,6 +465,9 @@ BEGIN_RECV_TABLE_NOBASE(C_BaseEntity, DT_BaseEntity)
 	RecvPropDataTable( RECVINFO_DT( m_Collision ), 0, &REFERENCE_RECV_TABLE(DT_CollisionProperty) ),
 	
 	RecvPropInt( RECVINFO ( m_iTextureFrameIndex ) ),
+#ifdef PORTAL2
+	RecvPropInt( RECVINFO( m_iObjectCapsCache ) ),
+#endif
 #if !defined( NO_ENTITY_PREDICTION )
 	RecvPropDataTable( "predictable_id", 0, 0, &REFERENCE_RECV_TABLE( DT_PredictableId ) ),
 #endif
@@ -894,6 +897,9 @@ C_BaseEntity::C_BaseEntity() :
 {
 	AddVar( &m_vecOrigin, &m_iv_vecOrigin, LATCH_SIMULATION_VAR );
 	AddVar( &m_angRotation, &m_iv_angRotation, LATCH_SIMULATION_VAR );
+#ifdef PORTAL2
+	m_bRenderWithViewModels = false;
+#endif
 	// Removing this until we figure out why velocity introduces view hitching.
 	// One possible fix is removing the player->ResetLatched() call in CGameMovement::FinishDuck(), 
 	// but that re-introduces a third-person hitching bug.  One possible cause is the abrupt change
@@ -903,6 +909,10 @@ C_BaseEntity::C_BaseEntity() :
 
 	m_DataChangeEventRef = -1;
 	m_EntClientFlags = 0;
+#ifdef PORTAL2
+	m_spawnflags = 0;
+	m_iObjectCapsCache = 0;
+#endif
 	m_bEnableRenderingClipPlane = false;
 
 	m_iParentAttachment = 0;
@@ -1087,6 +1097,10 @@ bool C_BaseEntity::Init( int entnum, int iSerialNum )
 	cl_entitylist->AddNetworkableEntity( GetIClientUnknown(), entnum, iSerialNum );
 
 	CollisionProp()->CreatePartitionHandle();
+
+#ifdef PORTAL2
+	InitSharedVars();
+#endif
 
 	Interp_SetupMappings( GetVarMapping() );
 
@@ -1515,6 +1529,43 @@ void C_BaseEntity::SetShadowUseOtherEntity( C_BaseEntity *pEntity )
 	m_ShadowDirUseOtherEntity = pEntity;
 }
 
+#ifdef PORTAL2
+CDiscontinuousInterpolatedVar< QAngle >& C_BaseEntity::GetRotationInterpolator()
+{
+	return m_iv_angRotation;
+}
+
+CDiscontinuousInterpolatedVar< Vector >& C_BaseEntity::GetOriginInterpolator()
+{
+	return m_iv_vecOrigin;
+}
+
+float C_BaseEntity::GetEffectiveInterpolationCurTime( float currentTime )
+{
+	// Same adjustment as Interpolate() for predicted and client-created entities.
+	if ( GetPredictable() || IsClientCreated() )
+	{
+		C_BasePlayer *localplayer = C_BasePlayer::GetLocalPlayer();
+		if ( localplayer )
+		{
+			currentTime = localplayer->GetFinalPredictedTime();
+			currentTime -= TICK_INTERVAL;
+			currentTime += ( gpGlobals->interpolation_amount * TICK_INTERVAL );
+		}
+	}
+
+	return currentTime;
+}
+
+void C_BaseEntity::RenderWithViewModels( bool bEnable )
+{
+	m_bRenderWithViewModels = bEnable;
+	if ( GetRenderHandle() != INVALID_CLIENT_RENDER_HANDLE )
+	{
+		ClientLeafSystem()->SetRenderGroup( GetRenderHandle(), GetRenderGroup() );
+	}
+}
+#else
 CInterpolatedVar< QAngle >& C_BaseEntity::GetRotationInterpolator()
 {
 	return m_iv_angRotation;
@@ -1524,6 +1575,7 @@ CInterpolatedVar< Vector >& C_BaseEntity::GetOriginInterpolator()
 {
 	return m_iv_vecOrigin;
 }
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: Return a per-entity shadow cast direction
@@ -5661,6 +5713,14 @@ RenderGroup_t C_BaseEntity::GetRenderGroup()
 	{
 		renderGroup = RENDER_GROUP_TWOPASS;
 	}
+
+#ifdef PORTAL2
+	if ( m_bRenderWithViewModels )
+	{
+		bool bOpaque = ( renderGroup == RENDER_GROUP_OPAQUE_ENTITY ) || ( renderGroup == RENDER_GROUP_OPAQUE_BRUSH );
+		return bOpaque ? RENDER_GROUP_VIEW_MODEL_OPAQUE : RENDER_GROUP_VIEW_MODEL_TRANSLUCENT;
+	}
+#endif
 
 	return renderGroup;
 }

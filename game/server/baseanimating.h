@@ -30,6 +30,12 @@ class CBaseAnimating : public CBaseEntity
 {
 public:
 	DECLARE_CLASS( CBaseAnimating, CBaseEntity );
+#ifdef PORTAL2
+	// Portal 2 port: VScript access to animating models (CS:GO base).
+	DECLARE_ENT_SCRIPTDESC();
+	Vector ScriptGetAttachmentOrigin( int iAttachment );
+	Vector ScriptGetAttachmentAngles( int iAttachment );
+#endif
 
 	CBaseAnimating();
 	~CBaseAnimating();

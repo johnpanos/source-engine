@@ -5,27 +5,27 @@
 // $NoKeywords: $
 //=======================================================================================//
 
-#include "OptionsSubVideo.h"
-#include "CvarSlider.h"
-#include "EngineInterface.h"
-#include "BasePanel.h"
-#include "igameuifuncs.h"
+#include "optionssubvideo.h"
+#include "cvarslider.h"
+#include "engineinterface.h"
+#include "basepanel.h"
+#include "IGameUIFuncs.h"
 #include "modes.h"
 #include "materialsystem/materialsystem_config.h"
 #include "filesystem.h"
-#include "GameUI_Interface.h"
+#include "gameui_interface.h"
 #include "vgui_controls/CheckButton.h"
 #include "vgui_controls/ComboBox.h"
 #include "vgui_controls/Frame.h"
 #include "vgui_controls/QueryBox.h"
-#include "CvarToggleCheckButton.h"
+#include "cvartogglecheckbutton.h"
 #include "tier1/KeyValues.h"
 #include "vgui/IInput.h"
 #include "vgui/ILocalize.h"
 #include "vgui/ISystem.h"
-#include "tier0/ICommandLine.h"
+#include "tier0/icommandline.h"
 #include "tier1/convar.h"
-#include "ModInfo.h"
+#include "modinfo.h"
 
 #include "inetchannelinfo.h"
 
@@ -367,7 +367,8 @@ public:
 		m_pShadowDetail = new ComboBox( this, "ShadowDetail", 6, false );
 		m_pShadowDetail->AddItem("#gameui_low", NULL);
 		m_pShadowDetail->AddItem("#gameui_medium", NULL);
-		if ( g_pMaterialSystemHardwareConfig->SupportsShadowDepthTextures() )
+		// Portal 2 port: this engine reports shadow depth support on IMaterialSystem.
+		if ( materials->SupportsShadowDepthTextures() )
 		{
 			m_pShadowDetail->AddItem("#gameui_high", NULL);
 		}

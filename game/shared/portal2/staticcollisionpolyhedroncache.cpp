@@ -5,7 +5,6 @@
 // $NoKeywords: $
 //=====================================================================================//
 
-#if 0
 #include "cbase.h"
 #include "staticcollisionpolyhedroncache.h"
 #include "engine/IEngineTrace.h"
@@ -119,7 +118,7 @@ void CStaticCollisionPolyhedronCache::Clear( void )
 static CPolyhedron *ConvertBrushToPolyhedron( int iBrushNumber, int iContentsMask, bool bTempPolyhedron )
 {
 	int iBrushContents = 0;
-	int iPlanesNeeded = -enginetrace->GetBrushInfo( iBrushNumber, iBrushContents, NULL, 0 );
+	int iPlanesNeeded = -Portal2_GetBrushInfo( iBrushNumber, iBrushContents, NULL, 0 );
 	if( (iPlanesNeeded == 0) || ((iContentsMask & iBrushContents) == 0) )
 		return NULL;
 
@@ -144,7 +143,7 @@ static CPolyhedron *ConvertBrushToPolyhedron( int iBrushNumber, int iContentsMas
 
 	fStackPlanes = (float *)pMemory;
 	brushSides = (BrushSideInfo_t *)(pMemory + (iPlanesNeeded * (sizeof( float ) * 4)));
-	int iPlaneCount = enginetrace->GetBrushInfo( iBrushNumber, iBrushContents, brushSides, iPlanesNeeded );
+	int iPlaneCount = Portal2_GetBrushInfo( iBrushNumber, iBrushContents, brushSides, iPlanesNeeded );
 
 	CPolyhedron *pRetVal = NULL;
 	Assert( iPlaneCount == iPlanesNeeded );
@@ -201,7 +200,7 @@ void CStaticCollisionPolyhedronCache::Update( void )
 
 		CPolyhedron *pTempPolyhedron = ConvertBrushToPolyhedron( iBrush, MASK_SOLID | CONTENTS_PLAYERCLIP | CONTENTS_MONSTERCLIP, true );
 
-		while( (pTempPolyhedron != NULL) || (enginetrace->GetBrushInfo( iBrush, iBrushContents, NULL, 0 ) != 0) )
+		while( (pTempPolyhedron != NULL) || (Portal2_GetBrushInfo( iBrush, iBrushContents, NULL, 0 ) != 0) )
 		{
 			if( pTempPolyhedron )
 			{
@@ -582,7 +581,6 @@ void CStaticCollisionPolyhedronCache::ReleaseStaticPropPolyhedrons( ICollideable
 	}
 }
 
-#endif
 
 
 

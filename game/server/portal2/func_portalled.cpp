@@ -11,6 +11,7 @@
 #include "cbase.h"
 #include "func_portalled.h"
 #include "portal/prop_portal.h"
+#include "portal_util_shared.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -30,6 +31,17 @@ END_DATADESC()
 void CFunc_Portalled::PortalPlacedInsideBounds( CProp_Portal *pPortal )
 {
 	pPortal->SetFuncPortalled( this );
+}
+
+bool CFunc_Portalled::IsPortalTouchingDetector( CProp_Portal *pPortal )
+{
+	if ( !pPortal || !IsActive() || pPortal->GetLinkageGroup() != GetLinkageGroupID() )
+		return false;
+
+	Vector mins, maxs;
+	CollisionProp()->WorldSpaceAABB( &mins, &maxs );
+	return UTIL_IsBoxIntersectingPortal( ( mins + maxs ) * 0.5f,
+		( maxs - mins ) * 0.5f, pPortal );
 }
 
 void CFunc_Portalled::OnPrePortalled( CBaseEntity *pOther, bool bDeparting )

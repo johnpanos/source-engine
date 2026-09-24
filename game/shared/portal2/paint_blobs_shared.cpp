@@ -4,8 +4,8 @@
 //
 //============================================================================//
 
-#if 0
 #include "cbase.h"
+#include "portal2_ssemath_compat.h"
 #include <algorithm>
 #include <functional>
 #include "paint_blobs_shared.h"
@@ -1577,7 +1577,7 @@ private:
 			// vortex, depending on where the blob is a long the beam
 			FourVectors v4VecPointOnline;
 			fltx4 f4DistOnLine;
-			FourVectors::CalcClosestPointOnLineSIMD( v4EndPos, v4BeamStart, v4BeamEnd, v4VecPointOnline, &f4DistOnLine );
+			Portal2_CalcClosestPointOnLineSIMD( v4EndPos, v4BeamStart, v4BeamEnd, v4VecPointOnline, &f4DistOnLine );
 			f4DistOnLine = MulSIMD( f4BeamLength, f4DistOnLine );
 
 			// compute circulation, if endpos is within the vortex distance, we should vortex at a faster rate (going through portal)
@@ -1664,13 +1664,13 @@ private:
 			m_data[i+3].m_flCurrentVortexSpeed = SubFloat( f4CurrentVortexSpeed, 3 );
 
 			// output velocity
-			v4EndVelocity.StoreUnalignedVector3SIMD( &m_data[i].m_vVelocity,
+			Portal2_StoreUnalignedVector3SIMD( v4EndVelocity, &m_data[i].m_vVelocity,
 													&m_data[i+1].m_vVelocity,
 													&m_data[i+2].m_vVelocity,
 													&m_data[i+3].m_vVelocity );
 
 			// output position
-			v4NewPos.StoreUnalignedVector3SIMD( &m_data[i].m_vPosition,
+			Portal2_StoreUnalignedVector3SIMD( v4NewPos, &m_data[i].m_vPosition,
 												&m_data[i+1].m_vPosition,
 												&m_data[i+2].m_vPosition,
 												&m_data[i+3].m_vPosition );
@@ -2299,4 +2299,3 @@ bool CBasePaintBlob::ShouldPlayEffect() const
 {
 	return m_bShouldPlayEffect && !m_bDrawOnly;
 }
-#endif

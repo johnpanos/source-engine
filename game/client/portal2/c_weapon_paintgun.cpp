@@ -46,6 +46,9 @@ static inline void ChangePaintColor( PaintPowerType power )
 }
 
 
+// Portal 2 port: the header aliases CWeaponPaintGun to the client class for
+// the shared code; the network name must stay the server class name.
+#undef CWeaponPaintGun
 IMPLEMENT_CLIENTCLASS_DT( C_WeaponPaintGun, DT_WeaponPaintGun, CWeaponPaintGun )
 	RecvPropArray3( RECVINFO_ARRAY( m_bHasPaint ), RecvPropBool( RECVINFO( m_bHasPaint[0] ) ) ),
 	RecvPropArray3( RECVINFO_ARRAY( m_hPaintStream ), RecvPropEHandle( RECVINFO( m_hPaintStream[0] ) ) ),

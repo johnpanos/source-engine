@@ -9,7 +9,8 @@
 #include <stdarg.h>
 #include "gameui_util.h"
 #include "strtools.h"
-#include "EngineInterface.h"
+#include "engineinterface.h"
+#include "vgui/VGUI.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "portal2_engine_compat.h"

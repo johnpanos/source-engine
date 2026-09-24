@@ -1,5 +1,4 @@
 //============ Copyright (c) Valve Corporation, All rights reserved. ============
-#if 0
 #include "cbase.h"
 #include "game_timescale_shared.h"
 #include "usermessages.h"
@@ -61,7 +60,7 @@ void CGameTimescale::LevelShutdownPostEntity()
 
 void CGameTimescale::SetCurrentTimescale( float flTimescale )
 {
-	if ( m_flCurrentTimescale == flTimescale && m_flCurrentTimescale == engine->GetTimescale() )
+	if ( m_flCurrentTimescale == flTimescale && m_flCurrentTimescale == Portal2_GetTimescale() )
 		return;
 
 	// No ramp in/out, just set it!
@@ -75,13 +74,13 @@ void CGameTimescale::SetCurrentTimescale( float flTimescale )
 	m_flStartBlendRealtime = 0.0f;
 
 #ifndef CLIENT_DLL
-	engine->SetTimescale( m_flCurrentTimescale );
+	Portal2_SetTimescale( m_flCurrentTimescale );
 
 	// Pass the change info to the client so it can do prediction
 	CReliableBroadcastRecipientFilter filter;
-	CCSUsrMsg_CurrentTimescale msg;
-	msg.set_cur_timescale( m_flCurrentTimescale );
-	SendUserMessage( filter, CS_UM_CurrentTimescale, msg );
+	UserMessageBegin( filter, "CurrentTimescale" );
+		WRITE_FLOAT( m_flCurrentTimescale );
+	MessageEnd();
 #endif
 }
 
@@ -115,12 +114,12 @@ void CGameTimescale::SetDesiredTimescale( float flDesiredTimescale, float flDura
 #ifndef CLIENT_DLL
 	// Pass the change info to the client so it can do prediction
 	CReliableBroadcastRecipientFilter filter;
-	CCSUsrMsg_DesiredTimescale msg;
-	msg.set_desired_timescale( m_flDesiredTimescale );
-	msg.set_duration_realtime_sec( m_flDurationRealTimeSeconds );
-	msg.set_interpolator_type( m_nInterpolatorType );
-	msg.set_start_blend_time( m_flStartBlendTime );
-	SendUserMessage( filter, CS_UM_DesiredTimescale, msg );
+	UserMessageBegin( filter, "DesiredTimescale" );
+		WRITE_FLOAT( m_flDesiredTimescale );
+		WRITE_FLOAT( m_flDurationRealTimeSeconds );
+		WRITE_BYTE( m_nInterpolatorType );
+		WRITE_FLOAT( m_flStartBlendTime );
+	MessageEnd();
 #endif
 }
 
@@ -165,9 +164,9 @@ void CGameTimescale::UpdateTimescale( void )
 		}
 	}
 
-	if ( m_flCurrentTimescale != engine->GetTimescale() )
+	if ( m_flCurrentTimescale != Portal2_GetTimescale() )
 	{
-		engine->SetTimescale( m_flCurrentTimescale );
+		Portal2_SetTimescale( m_flCurrentTimescale );
 	}
 }
 
@@ -182,32 +181,29 @@ void CGameTimescale::ResetTimescale( void )
 	m_flStartBlendTime = 0.0f;
 	m_flStartBlendRealtime = 0.0f;
 
-	engine->SetTimescale( 1.0f );
+	Portal2_SetTimescale( 1.0f );
 }
 
 
 #ifdef CLIENT_DLL
 
-bool __MsgFunc_CurrentTimescale( const CCSUsrMsg_CurrentTimescale &msg )
+// Portal 2 port: bf_read user messages (registered in portal_usermessages.cpp)
+// in place of CS:GO's protobuf messages.
+void __MsgFunc_CurrentTimescale( bf_read &msg )
 {
-	GameTimescale()->SetCurrentTimescale( msg.cur_timescale() );
-
-	return true;
+	GameTimescale()->SetCurrentTimescale( msg.ReadFloat() );
 }
 USER_MESSAGE_REGISTER( CurrentTimescale );
 
-bool __MsgFunc_DesiredTimescale( const CCSUsrMsg_DesiredTimescale &msg )
+void __MsgFunc_DesiredTimescale( bf_read &msg )
 {
-	float flDesiredTimescale = msg.desired_timescale();
-	float flDurationRealTimeSeconds = msg.duration_realtime_sec();
-	CGameTimescale::Interpolators_e nInterpolatorType = static_cast< CGameTimescale::Interpolators_e >( msg.interpolator_type() );
-	float flStartBlendTime = msg.start_blend_time();
+	float flDesiredTimescale = msg.ReadFloat();
+	float flDurationRealTimeSeconds = msg.ReadFloat();
+	CGameTimescale::Interpolators_e nInterpolatorType = static_cast< CGameTimescale::Interpolators_e >( msg.ReadByte() );
+	float flStartBlendTime = msg.ReadFloat();
 
 	GameTimescale()->SetDesiredTimescaleAtTime( flDesiredTimescale, flDurationRealTimeSeconds, nInterpolatorType, flStartBlendTime );
-
-	return true;
 }
 USER_MESSAGE_REGISTER( DesiredTimescale );
 
 #endif //#ifdef CLIENT_DLL
-#endif

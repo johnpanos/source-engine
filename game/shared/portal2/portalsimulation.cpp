@@ -6,7 +6,6 @@
 //=====================================================================================//
 
 
-#if 0
 #include "cbase.h"
 #include "portalsimulation.h"
 #include "vphysics_interface.h"
@@ -33,6 +32,7 @@
 #else
 
 #include "c_world.h"
+#include "debugoverlay_shared.h"
 
 #endif
 
@@ -514,7 +514,7 @@ CEG_NOINLINE void CPortalSimulator::MovedOrResized( const Vector &ptCenter, cons
 			convertconvexparams_t params;
 			params.Defaults();
 			params.buildOptimizedTraceTables = true;
-			params.bUseFastApproximateInertiaTensor = true;
+			// Portal 2 port: this vphysics always computes the exact inertia tensor.
 			m_InternalData.Placement.pHoleShapeCollideable = physcollision->ConvertConvexToCollideParams( &pConvex, 1, params );
 		}
 
@@ -675,7 +675,7 @@ CEG_NOINLINE void CPortalSimulator::MovedOrResized( const Vector &ptCenter, cons
 			convertconvexparams_t params;
 			params.Defaults();
 			params.buildOptimizedTraceTables = true;
-			params.bUseFastApproximateInertiaTensor = true;
+			// Portal 2 port: this vphysics always computes the exact inertia tensor.
 			m_InternalData.Placement.pInvHoleShapeCollideable = physcollision->ConvertConvexToCollideParams( pInvHoleConvexes, 4, params );
 		
 			//m_InternalData.Placement.pAABBAngleTransformCollideable = physcollision->ConvertConvexToCollide( pAABBTransformConvexes, 4 );
@@ -1165,8 +1165,8 @@ static void CarveEntity( PS_PlacementData_t &PlacementData, PS_SD_Dynamic_Carved
 	else if( solidType == SOLID_BSP )
 	{
 		CBrushQuery brushQuery;
-		//enginetrace->GetBrushesInAABB( vAABBMins, vAABBMaxs, WorldBrushes, MASK_SOLID_BRUSHONLY|CONTENTS_PLAYERCLIP|CONTENTS_MONSTERCLIP );
-		enginetrace->GetBrushesInCollideable( pProp, brushQuery );
+		//Portal2_GetBrushesInAABB( vAABBMins, vAABBMaxs, WorldBrushes, MASK_SOLID_BRUSHONLY|CONTENTS_PLAYERCLIP|CONTENTS_MONSTERCLIP );
+		Portal2_GetBrushesInCollideable( pProp, brushQuery );
 
 		//create locally clipped polyhedrons for the world
 		{
@@ -1243,7 +1243,7 @@ static void DestroyCollideable( CPhysCollide **ppCollide )
 	if ( *ppCollide )
 	{
 #if defined( GAME_DLL )
-		physenv->DestroyCollideOnDeadObjectFlush( *ppCollide );
+		Portal2_DestroyCollideOnDeadObjectFlush( *ppCollide );
 #else
 		physcollision->DestroyCollide( *ppCollide );
 #endif
@@ -1292,7 +1292,7 @@ void CPortalSimulator::AddCarvedEntity( CBaseEntity *pEntity )
 	convertconvexparams_t params;
 	params.Defaults();
 	params.buildOptimizedTraceTables = true;
-	params.bUseFastApproximateInertiaTensor = true;
+	// Portal 2 port: this vphysics always computes the exact inertia tensor.
 	//some immediate setup may be required
 	if( IsCollisionGenerationEnabled() && m_InternalData.Simulation.Dynamic.CarvedEntities.bCollisionExists )
 	{
@@ -2928,7 +2928,7 @@ void CPortalSimulator::CreateLocalCollision( void )
 		Assert( m_InternalData.Simulation.Static.World.Displacements.pCollideable == NULL );
 		virtualmeshlist_t DisplacementMeshes[32];
 
-		int iMeshes = enginetrace->GetMeshesFromDisplacementsInAABB( m_InternalData.Placement.vecCurAABBMins, m_InternalData.Placement.vecCurAABBMaxs, DisplacementMeshes, ARRAYSIZE(DisplacementMeshes) );
+		int iMeshes = Portal2_GetMeshesFromDisplacementsInAABB( m_InternalData.Placement.vecCurAABBMins, m_InternalData.Placement.vecCurAABBMaxs, DisplacementMeshes, ARRAYSIZE(DisplacementMeshes) );
 		if( iMeshes > 0 )
 		{
 			CPhysPolysoup *pDispCollideSoup = physcollision->PolysoupCreate();
@@ -3413,7 +3413,7 @@ void CPortalSimulator::CreatePolyhedrons( void )
 
 			//CUtlVector<int> WorldBrushes;
 			CBrushQuery WorldBrushes;
-			enginetrace->GetBrushesInAABB( vAABBMins, vAABBMaxs, WorldBrushes, m_InternalData.Simulation.Static.World.Brushes.BrushSets[iBrushSet].iSolidMask );
+			Portal2_GetBrushesInAABB( vAABBMins, vAABBMaxs, WorldBrushes, m_InternalData.Simulation.Static.World.Brushes.BrushSets[iBrushSet].iSolidMask );
 
 			//create locally clipped polyhedrons for the world
 			{
@@ -3501,7 +3501,7 @@ void CPortalSimulator::CreatePolyhedrons( void )
 						studiohdr_t *pStudioHdr = modelinfo->GetStudiomodel( pModel );
 						Assert( pStudioHdr != NULL );
 						NewEntry.iTraceContents = pStudioHdr->contents;						
-						NewEntry.iTraceSurfaceProps = pStudioHdr->GetSurfaceProp();
+						NewEntry.iTraceSurfaceProps = physprops->GetSurfaceIndex( pStudioHdr->pszSurfaceProp() );
 					}
 					else
 					{
@@ -3617,7 +3617,7 @@ void CPortalSimulator::CreatePolyhedrons( void )
 			//CUtlVector<int> WallBrushes;
 			CBrushQuery WallBrushes;
 			
-			enginetrace->GetBrushesInAABB( vAABBMins, vAABBMaxs, WallBrushes, m_InternalData.Simulation.Static.Wall.Local.Brushes.BrushSets[iBrushSet].iSolidMask );
+			Portal2_GetBrushesInAABB( vAABBMins, vAABBMaxs, WallBrushes, m_InternalData.Simulation.Static.Wall.Local.Brushes.BrushSets[iBrushSet].iSolidMask );
 
 			if( WallBrushes.Count() != 0 )
 				ConvertBrushListToClippedPolyhedronList( WallBrushes.Base(), WallBrushes.Count(), (float *)collisionClip, ARRAYSIZE( collisionClip ), PORTAL_POLYHEDRON_CUT_EPSILON, &WallBrushPolyhedrons_ClippedToWall );
@@ -3685,7 +3685,7 @@ void CPortalSimulator::CreatePolyhedrons( void )
 							else if( solidType == SOLID_BSP )
 							{
 								CBrushQuery brushQuery;
-								enginetrace->GetBrushesInCollideable( pProp, brushQuery );
+								Portal2_GetBrushesInCollideable( pProp, brushQuery );
 
 								if( brushQuery.Count() != 0 )
 									ConvertBrushListToClippedPolyhedronList( brushQuery.Base(), brushQuery.Count(), (float *)collisionClip, ARRAYSIZE( collisionClip ), PORTAL_POLYHEDRON_CUT_EPSILON, &WallBrushPolyhedrons_ClippedToWall );
@@ -4508,8 +4508,8 @@ static CPhysCollide *ConvertPolyhedronsToCollideable( CPolyhedron **pPolyhedrons
 		convertconvexparams_t params;
 		params.Defaults();
 		params.buildOptimizedTraceTables = true;
-		params.bUseFastApproximateInertiaTensor = true;
-		params.bBuildAABBTree = true;
+		// Portal 2 port: this vphysics always computes the exact inertia tensor.
+		// Portal 2 port: this vphysics has no optional AABB tree for collides.
 		pReturn = physcollision->ConvertConvexToCollideParams( pConvexes, iConvexCount, params );
 		STOPDEBUGTIMER( collideTimer );
 		DEBUGTIMERONLY( DevMsg( 2, "[PSDT:%d] %sCollideable Generation:%fms\n", s_iPortalSimulatorGUID, TABSPACING, collideTimer.GetDuration().GetMillisecondsF() ); );
@@ -4913,7 +4913,7 @@ bool CPSCollisionEntity::IsPortalSimulatorCollisionEntity( const CBaseEntity *pE
 void CPSCollisionEntity::UpdatePartitionListEntry() //make this trigger touchable on the client
 {
 	partition->RemoveAndInsert( 
-		PARTITION_CLIENT_RESPONSIVE_EDICTS | PARTITION_CLIENT_NON_STATIC_EDICTS | PARTITION_CLIENT_TRIGGER_ENTITIES | PARTITION_CLIENT_IK_ATTACHMENT,  // remove
+		PARTITION_CLIENT_RESPONSIVE_EDICTS | PARTITION_CLIENT_NON_STATIC_EDICTS | PARTITION_CLIENT_TRIGGER_ENTITIES,  // remove
 		PARTITION_CLIENT_SOLID_EDICTS | PARTITION_CLIENT_STATIC_PROPS,  // add
 		CollisionProp()->GetPartitionHandle() );
 }
@@ -5283,7 +5283,6 @@ static void PortalSimulatorDumps_DumpOBBoxToGlView( const Vector &ptOrigin, cons
 
 
 
-#endif
 
 
 

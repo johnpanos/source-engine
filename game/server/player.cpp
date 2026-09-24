@@ -82,6 +82,10 @@
 #include "weapon_physcannon.h"
 #endif
 
+#ifdef PORTAL2
+#include "props.h"
+#endif
+
 ConVar autoaim_max_dist( "autoaim_max_dist", "2160" ); // 2160 = 180 feet
 ConVar autoaim_max_deflect( "autoaim_max_deflect", "0.99" );
 
@@ -96,6 +100,11 @@ ConVar	spec_freeze_traveltime( "spec_freeze_traveltime", "0.4", FCVAR_CHEAT | FC
 ConVar sv_bonus_challenge( "sv_bonus_challenge", "0", FCVAR_REPLICATED, "Set to values other than 0 to select a bonus map challenge type." );
 
 static ConVar sv_maxusrcmdprocessticks( "sv_maxusrcmdprocessticks", "24", FCVAR_NOTIFY, "Maximum number of client-issued usrcmd ticks that can be replayed in packet loss conditions, 0 to allow no restrictions" );
+
+#ifdef PORTAL2
+#include "vscript/ivscript.h"
+extern IScriptVM *g_pScriptVM;
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -623,6 +632,9 @@ CBasePlayer::CBasePlayer( )
 	// Used to mask off buttons
 	m_afButtonDisabled = 0;
 	m_afButtonForced = 0;
+#ifdef PORTAL2
+	m_flTimeLastTouchedGround = 0.0f;
+#endif
 
 	m_nBodyPitchPoseParam = -1;
 	m_flForwardMove = 0;
@@ -649,6 +661,15 @@ CBasePlayer::~CBasePlayer( )
 //-----------------------------------------------------------------------------
 void CBasePlayer::UpdateOnRemove( void )
 {
+#ifdef PORTAL2
+	// Portal 2 port: single-player scripts reach the player through the
+	// "player" global (CS:GO-era base player).
+	if ( !g_pGameRules->IsMultiplayer() && g_pScriptVM )
+	{
+		g_pScriptVM->SetValue( "player", SCRIPT_VARIANT_NULL );
+	}
+#endif
+
 	VPhysicsDestroyObject();
 
 	// Remove him from his current team
@@ -2799,7 +2820,7 @@ bool CBasePlayer::IsUseableEntity( CBaseEntity *pEntity, unsigned int requiredCa
 bool CBasePlayer::CanPickupObject( CBaseEntity *pObject, float massLimit, float sizeLimit )
 {
 	// UNDONE: Make this virtual and move to HL2 player
-#ifdef HL2_DLL
+#if defined( HL2_DLL ) || defined( PORTAL2 )
 	//Must be valid
 	if ( pObject == NULL )
 		return false;
@@ -2839,10 +2860,12 @@ bool CBasePlayer::CanPickupObject( CBaseEntity *pObject, float massLimit, float 
 
 	if ( checkEnable )
 	{
+#ifdef HL2_DLL
 		// Allowing picking up of bouncebombs.
 		CBounceBomb *pBomb = dynamic_cast<CBounceBomb*>(pObject);
 		if( pBomb )
 			return true;
+#endif
 
 		// Allow pickup of phys props that are motion enabled on player pickup
 		CPhysicsProp *pProp = dynamic_cast<CPhysicsProp*>(pObject);
@@ -4616,6 +4639,13 @@ void CBasePlayer::PostThink()
 		VPROF_SCOPE_END();
 	}
 
+#ifdef PORTAL2
+	if ( GetGroundEntity() )
+	{
+		m_flTimeLastTouchedGround = gpGlobals->curtime;
+	}
+#endif
+
 #if !defined( NO_ENTITY_PREDICTION )
 	// Even if dead simulate entities
 	SimulatePlayerSimulatedEntities();
@@ -5049,6 +5079,13 @@ void CBasePlayer::Spawn( void )
 	// track where we are in the nav mesh
 	UpdateLastKnownArea();
 
+#ifdef PORTAL2
+	if ( !g_pGameRules->IsMultiplayer() && g_pScriptVM )
+	{
+		g_pScriptVM->SetValue( "player", GetScriptInstance() );
+	}
+#endif
+
 	m_weaponFiredTimer.Invalidate();
 }
 
@@ -5240,6 +5277,15 @@ void CBasePlayer::OnRestore( void )
 	m_nVehicleViewSavedFrame = 0;
 
 	m_nBodyPitchPoseParam = LookupPoseParameter( "body_pitch" );
+
+#ifdef PORTAL2
+	// A player carried across a level transition does not spawn, so publish
+	// its script instance here (CS:GO-era base player).
+	if ( gpGlobals->eLoadType == MapLoad_Transition && !g_pGameRules->IsMultiplayer() && g_pScriptVM )
+	{
+		g_pScriptVM->SetValue( "player", GetScriptInstance() );
+	}
+#endif
 }
 
 /* void CBasePlayer::SetTeamName( const char *pTeamName )
@@ -9369,3 +9415,9 @@ uint64 CBasePlayer::GetSteamIDAsUInt64( void )
 	return 0;
 }
 #endif // NO_STEAM
+
+#ifdef PORTAL2
+BEGIN_ENT_SCRIPTDESC( CBasePlayer, CBaseAnimating, "The player entity." )
+	DEFINE_SCRIPTFUNC_NAMED( ScriptIsPlayerNoclipping, "IsNoclipping", "Returns true if the player is in noclip mode." )
+END_SCRIPTDESC();
+#endif // PORTAL2

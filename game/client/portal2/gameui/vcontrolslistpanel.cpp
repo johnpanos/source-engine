@@ -6,17 +6,17 @@
 //=============================================================================//
 
 #include "vcontrolslistpanel.h"
-#include "GameUI_Interface.h"
-#include "EngineInterface.h"
+#include "gameui_interface.h"
+#include "engineinterface.h"
 
 #include <vgui/IInput.h>
 #include <vgui/IScheme.h>
 #include <vgui/ISurface.h>
 #include <vgui/IVGui.h>
 #include <vgui/Cursor.h>
-#include <KeyValues.h>
+#include <keyvalues.h>
 #include "vgui_controls/Label.h"
-#include "vgui_controls/scrollbar.h"
+#include "vgui_controls/ScrollBar.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include <tier0/memdbgon.h>

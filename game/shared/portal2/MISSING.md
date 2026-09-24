@@ -167,6 +167,52 @@ Portal 1 `func_noportal_volume`, `func_portal_bumper`, `trigger_portal_cleanser`
 networking and methods declared by the new headers need Portal 2 versions of
 those files, and no Portal 2 `weapon_portalgun.h` exists yet.
 
+## Reconstructed from the retail Linux client (2026-09-24)
+
+These client paths have no leaked source and no Steam2 pseudocode, because the
+features shipped after 2010. They were reconstructed from the retail
+`portal2/bin/linux32/client.so`: RTTI names, vtables, strings, constants and
+Ghidra 12.0.4 decompiler output (project `portal2_retail_linux_client` under
+`/tmp/codex-portal2-ghidra`), plus the retail `.res` and script files in the
+installed VPKs. Each file has a `Portal 2 reconstruction` header.
+
+- `paint_hud_paint_ammo.cpp`: `CHUDPaintAmmo`. Retail `ShouldDraw()` returns
+  false, and no `resource/ui/hud_paint_ammo.res` ships.
+- `hud_challenge_stats_panel.cpp`: `CHUDChallengeStats`, plus the
+  `hud_set_challenge_font_color`, `+leaderboard` and `-leaderboard` commands.
+- `hud_vs_score_panel.cpp` and `.h`: `CHUDVSScorePanel`. `C_InfoPortalScore`
+  (`c_info_portal_score.cpp`) drives it as retail does. No `.res` ships.
+- `vgui/vgui_base_progress_screen.cpp` and `.h`, `vgui_sp_progress_screen.cpp`
+  and `vgui_mp_progress_screen.cpp`: the elevator and co-op lightboards
+  (`sp_progress_sign`, `mp_progress_sign`). The 2010 `mp_progress_sign` class
+  was removed from `vgui_mp_lobby_screen.cpp`. The flicker trigger needs the
+  panel's enabled state to follow the screen's active state, which
+  `c_vguiscreen.cpp` now does under `PORTAL2`. Community-map lightboards (icons
+  from Workshop tags) are unsupported.
+- `vgui/vgui_mp_credits_screen.cpp`: `CVGUI_MP_CreditsScreen`
+  (`mp_coop_credits_screen`).
+- `portal2_leaderboard.cpp` and `.h`, `portal2_leaderboard_manager.cpp` and
+  `.h`, and `game/shared/portal2/portal2_leaderboard_bucketizer.cpp` and `.h`:
+  challenge mode leaderboards. The Steam UserStats and Web API requests compile
+  only without `NO_STEAM`. This build defines `NO_STEAM`, so
+  `GetLeaderboard()` returns NULL with a one-time DevWarning. The challenge map
+  list and the GLaDOS reaction logic work without Steam.
+- `c_community_coop.cpp` and `.h`: `C_CommunityCoopManager`. It compiles only
+  with `PORTAL2_PUZZLEMAKER` and without `NO_STEAM`, like all of its BaseModUI
+  callers. The Linux VPC configuration enables neither, so the unit is empty
+  here.
+
+Two listed paths have no retail counterpart and stay intentionally empty:
+
+- `c_portal2_lesson.cpp`: the retail lesson classes (`CBaseLesson`,
+  `CTextLesson`, `CIconLesson`, `CScriptedIconLesson`) all come from
+  `c_baselesson.cpp`, and the binary records that source path. No other lesson
+  class, string or RTTI name exists.
+- `c_portal_beam_helper.cpp`: the retail client and server have no RTTI name,
+  string or source path for a beam helper, and nothing includes
+  `c_portal_beam_helper.h`. A non-polymorphic helper would leave no RTTI, so
+  this is absence of evidence rather than proof.
+
 ## Configured Linux source selection
 
 On 2026-09-24, `./play_p2` still fails source-presence preflight with **23

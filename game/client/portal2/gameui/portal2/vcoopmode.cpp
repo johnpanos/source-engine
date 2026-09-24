@@ -8,7 +8,7 @@
 #include "vfooterpanel.h"
 #include "vhybridbutton.h"
 #include "vgui_controls/Button.h"
-#include "KeyValues.h"
+#include "keyvalues.h"
 #include "vgenericconfirmation.h"
 #include "filesystem.h"
 #include "vportalleaderboard.h"

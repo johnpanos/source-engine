@@ -148,4 +148,9 @@ class CSound;
 #include "ndebugoverlay.h"
 #include "recipientfilter.h"
 
+#ifdef PORTAL2
+// Later base-game API used across the imported Portal 2 sources.
+#include "portal2_util_compat.h"
+#endif
+
 #endif // CBASE_H

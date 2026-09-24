@@ -119,6 +119,7 @@ bool CBaseHLCombatWeapon::Deploy( void )
 {
 	// If we should be lowered, deploy in the lowered position
 	// We have to ask the player if the last time it checked, the weapon was lowered
+#ifndef PORTAL2 // Portal 2 port: the Portal 2 player is not an HL2 player and never lowers weapons.
 	if ( GetOwner() && GetOwner()->IsPlayer() )
 	{
 		CHL2_Player *pPlayer = assert_cast<CHL2_Player*>( GetOwner() );
@@ -139,6 +140,7 @@ bool CBaseHLCombatWeapon::Deploy( void )
 			}
 		}
 	}
+#endif
 
 	m_bLowered = false;
 	return BaseClass::Deploy();
@@ -192,12 +194,16 @@ void CBaseHLCombatWeapon::WeaponIdle( void )
 	if ( WeaponShouldBeLowered() )
 	{
 #if !defined( CLIENT_DLL )
+#ifndef PORTAL2
 		CHL2_Player *pPlayer = dynamic_cast<CHL2_Player*>(GetOwner());
+#endif
 
+#ifndef PORTAL2 // Portal 2 port: the Portal 2 player is not an HL2 player.
 		if( pPlayer )
 		{
 			pPlayer->Weapon_Lower();
 		}
+#endif
 #endif
 
 		// Move to lowered position if we're not there yet

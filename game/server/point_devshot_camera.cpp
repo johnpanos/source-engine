@@ -56,6 +56,7 @@ LINK_ENTITY_TO_CLASS( point_devshot_camera, CPointDevShotCamera );
 //-----------------------------------------------------------------------------
 // Purpose: Convenience function so we don't have to make this check all over
 //-----------------------------------------------------------------------------
+#ifndef PORTAL2 // Portal 2 has the same helper in portal2_util_compat.h (CS:GO util.h).
 static CBasePlayer * UTIL_GetLocalPlayerOrListenServerHost( void )
 {
 	if ( gpGlobals->maxClients > 1 )
@@ -70,6 +71,7 @@ static CBasePlayer * UTIL_GetLocalPlayerOrListenServerHost( void )
 
 	return UTIL_GetLocalPlayer();
 }
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: 

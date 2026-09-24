@@ -458,9 +458,17 @@ void CPrediction::PostNetworkDataReceived( int commands_acknowledged )
 		// Transfer intermediate data from other predictables
 		int c = predictables->GetPredictableCount();
 		int i;
+#ifdef PORTAL2
+		CUtlVector< bool > bHadErrors;
+		bHadErrors.SetCount( c );
+		bool bAnyErrors = false;
+#endif
 		for ( i = 0; i < c; i++ )
 		{
 			C_BaseEntity *ent = predictables->GetPredictable( i );
+#ifdef PORTAL2
+			bHadErrors[i] = false;
+#endif
 			if ( !ent )
 				continue;
 
@@ -469,6 +477,10 @@ void CPrediction::PostNetworkDataReceived( int commands_acknowledged )
 				if ( ent->PostNetworkDataReceived( m_nServerCommandsAcknowledged ) )
 				{
 					m_bPreviousAckHadErrors = true;
+#ifdef PORTAL2
+					bHadErrors[i] = true;
+					bAnyErrors = true;
+#endif
 				}
 			}
 
@@ -552,6 +564,22 @@ void CPrediction::PostNetworkDataReceived( int commands_acknowledged )
 		{
 			CheckError( m_nServerCommandsAcknowledged );
 		}
+
+#ifdef PORTAL2
+		// Let every predicted entity react to an acknowledgement with errors
+		// (later base game; portals re-derive their placement from the update).
+		if ( bAnyErrors )
+		{
+			for ( i = 0; i < c; i++ )
+			{
+				C_BaseEntity *ent = predictables->GetPredictable( i );
+				if ( ent && ent->GetPredictable() )
+				{
+					ent->HandlePredictionError( bHadErrors[i] );
+				}
+			}
+		}
+#endif
 	}
 
 	// Can also look at regular entities
@@ -854,6 +882,10 @@ void CPrediction::RunCommand( C_BasePlayer *player, CUserCmd *ucmd, IMoveHelper 
 			player->SelectItem( weapon->GetName(), ucmd->weaponsubtype );
 		}
 	}
+
+#ifdef PORTAL2
+	ucmd->buttons |= player->m_afButtonForced;
+#endif
 
 	// Latch in impulse.
 	IClientVehicle *pVehicle = player->GetVehicle();

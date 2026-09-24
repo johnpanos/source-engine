@@ -775,15 +775,27 @@ int CVoteController::GetWinningVoteOption( void )
 //-----------------------------------------------------------------------------
 // Purpose: Store steamIDs for every player that calls a vote
 //-----------------------------------------------------------------------------
+static uint64 VoteCallerID( CBasePlayer *pPlayer )
+{
+#if !defined( NO_STEAM )
+	CSteamID steamID;
+	if ( pPlayer->GetSteamID( &steamID ) )
+		return steamID.ConvertToUint64();
+#endif
+
+	// Local builds have no Steam account ID. A user ID is stable for the
+	// connection and keeps one player's vote cooldown separate from another's.
+	const int userID = pPlayer->GetUserID();
+	return userID > 0 ? (uint64)userID : (uint64)pPlayer->entindex();
+}
+
 void CVoteController::TrackVoteCaller( CBasePlayer *pPlayer )
 {
 	if ( !pPlayer )
 		return;
 
-	CSteamID steamID;
-	pPlayer->GetSteamID( &steamID );
-
-	int iIdx = m_VoteCallers.Find( steamID.ConvertToUint64() );
+	const uint64 callerID = VoteCallerID( pPlayer );
+	int iIdx = m_VoteCallers.Find( callerID );
 	if ( iIdx != m_VoteCallers.InvalidIndex() )
 	{
 		// Already being tracked - update timer
@@ -791,7 +803,7 @@ void CVoteController::TrackVoteCaller( CBasePlayer *pPlayer )
 		return;
 	}
 
-	m_VoteCallers.Insert( steamID.ConvertToUint64(), gpGlobals->curtime + sv_vote_creation_timer.GetInt() );
+	m_VoteCallers.Insert( callerID, gpGlobals->curtime + sv_vote_creation_timer.GetInt() );
 };
 
 //-----------------------------------------------------------------------------
@@ -802,11 +814,8 @@ bool CVoteController::CanEntityCallVote( CBasePlayer *pPlayer, int &nCooldown )
 	if ( !pPlayer )
 		return false;
 	
-	CSteamID steamID;
-	pPlayer->GetSteamID( &steamID );
-
 	// Has this SteamID tried to call a vote recently?
-	int iIdx = m_VoteCallers.Find( steamID.ConvertToUint64() );
+	int iIdx = m_VoteCallers.Find( VoteCallerID( pPlayer ) );
 	if ( iIdx != m_VoteCallers.InvalidIndex() )
 	{
 		// Timer elapsed?
@@ -1097,4 +1106,3 @@ public:
 };
 
 CVoteControllerSystem VoteControllerSystem( "CVoteControllerSystem" );
-

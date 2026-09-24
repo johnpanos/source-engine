@@ -55,6 +55,12 @@ public:
 		mousedy = 0;
 
 		hasbeenpredicted = false;
+#if defined( PORTAL2 )
+		player_held_entity = 0;
+		held_entity_was_grabbed_through_portal = 0;
+		command_acknowledgements_pending = 0;
+		predictedPortalTeleportations = 0;
+#endif // PORTAL2
 #if defined( HL2_DLL ) || defined( HL2_CLIENT_DLL )
 		entitygroundcontact.RemoveAll();
 #endif
@@ -80,6 +86,12 @@ public:
 		mousedy				= src.mousedy;
 
 		hasbeenpredicted	= src.hasbeenpredicted;
+#if defined( PORTAL2 )
+		player_held_entity	= src.player_held_entity;
+		held_entity_was_grabbed_through_portal = src.held_entity_was_grabbed_through_portal;
+		command_acknowledgements_pending = src.command_acknowledgements_pending;
+		predictedPortalTeleportations = src.predictedPortalTeleportations;
+#endif // PORTAL2
 
 #if defined( HL2_DLL ) || defined( HL2_CLIENT_DLL )
 		entitygroundcontact			= src.entitygroundcontact;
@@ -111,6 +123,12 @@ public:
 		CRC32_ProcessBuffer( &crc, &random_seed, sizeof( random_seed ) );
 		CRC32_ProcessBuffer( &crc, &mousedx, sizeof( mousedx ) );
 		CRC32_ProcessBuffer( &crc, &mousedy, sizeof( mousedy ) );
+#if defined( PORTAL2 )
+		CRC32_ProcessBuffer( &crc, &player_held_entity, sizeof( player_held_entity ) );
+		CRC32_ProcessBuffer( &crc, &held_entity_was_grabbed_through_portal, sizeof( held_entity_was_grabbed_through_portal ) );
+		CRC32_ProcessBuffer( &crc, &command_acknowledgements_pending, sizeof( command_acknowledgements_pending ) );
+		CRC32_ProcessBuffer( &crc, &predictedPortalTeleportations, sizeof( predictedPortalTeleportations ) );
+#endif // PORTAL2
 		CRC32_Final( &crc );
 
 		return crc;
@@ -157,6 +175,17 @@ public:
 
 	// Client only, tracks whether we've predicted this command at least once
 	bool	hasbeenpredicted;
+
+#if defined( PORTAL2 )
+	// Portal 2's grab code is on the client to support multiplayer
+	short player_held_entity;
+	// Some server code needs to know if the held entity was grabbed through a portal.
+	short held_entity_was_grabbed_through_portal;
+	// How many command acknowledgements the client is still waiting on, so the
+	// server can sync portal teleportation angle changes.
+	unsigned short command_acknowledgements_pending;
+	uint8 predictedPortalTeleportations;
+#endif // PORTAL2
 
 	// Back channel to communicate IK state
 #if defined( HL2_DLL ) || defined( HL2_CLIENT_DLL )

@@ -15,6 +15,9 @@
 #include "hl2/hl2_player.h"
 #include "soundenvelope.h"
 #include "explode.h"
+#ifdef PORTAL2
+#include "portal_base2d.h"
+#endif
 #include "IEffects.h"
 #include "animation.h"
 #include "props.h"
@@ -29,6 +32,11 @@
 #include "world.h"
 #include "ai_baseactor.h"		// for Glados ent playing VCDs
 #include "sceneentity.h"		// precacheing vcds
+#ifdef PORTAL2
+// Portal 2 reconstruction: the class is declared in npc_security_camera.h,
+// which the Portal 2 player code includes.
+#include "npc_security_camera.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -65,6 +73,11 @@
 
 #define SECURITY_CAMERA_TOTAL_TO_KNOCK_DOWN 33
 
+#ifdef PORTAL2
+// The Portal 2 header shares the floor turret's turretState_e; the camera's
+// extra dead state follows its last value (PreThink ignores the state).
+#define TURRET_DEAD ( (turretState_e)TURRET_STATE_TOTAL )
+#else
 //Turret states
 enum turretState_e
 {
@@ -75,6 +88,7 @@ enum turretState_e
 	TURRET_RETIRING,
 	TURRET_DEAD,
 };
+#endif
 
 // Forces glados actor to play reaction scenes when player dismounts camera.
 void PlayDismountSounds( void );
@@ -84,6 +98,7 @@ void PlayDismountSounds( void );
 // Security Camera
 //
 
+#ifndef PORTAL2 // Portal 2 declares the class in npc_security_camera.h
 class CNPC_SecurityCamera : public CNPCBaseInteractive<CAI_BaseNPC>, public CDefaultPlayerPickupVPhysics
 {
 	DECLARE_CLASS( CNPC_SecurityCamera, CNPCBaseInteractive<CAI_BaseNPC> );
@@ -191,6 +206,7 @@ private:
 
 	DECLARE_DATADESC();
 };
+#endif // !PORTAL2
 
 //Datatable
 BEGIN_DATADESC( CNPC_SecurityCamera )
@@ -225,6 +241,10 @@ BEGIN_DATADESC( CNPC_SecurityCamera )
 
 	DEFINE_OUTPUT( m_OnDeploy, "OnDeploy" ),
 	DEFINE_OUTPUT( m_OnRetire, "OnRetire" ),
+
+#ifdef PORTAL2
+	DEFINE_FIELD( m_hTauntingPlayer, FIELD_EHANDLE ),
+#endif
 
 END_DATADESC()
 
@@ -626,6 +646,38 @@ bool CNPC_SecurityCamera::FVisible( CBaseEntity *pEntity, int traceMask, CBaseEn
 }
 
 //-----------------------------------------------------------------------------
+// Purpose: The camera's aim (pitch from straight down, yaw relative to its
+//			right vector) that points the lens along vecDir (normalized).
+//			flFallbackYaw is used when vecDir is along the camera's up axis.
+//-----------------------------------------------------------------------------
+static QAngle SecurityCameraAnglesToDirection( CBaseEntity *pCamera, const Vector &vecDir, float flFallbackYaw )
+{
+	QAngle vecAngles;
+	VectorAngles( vecDir, vecAngles );
+
+	Vector vForward, vRight, vUp;
+	pCamera->GetVectors( &vForward, &vRight, &vUp );
+
+	vecAngles.x = acosf( vecDir.Dot( -vUp ) ) * ( 180.0f / M_PI );
+
+	Vector vProjectedDir = vecDir - vecDir.Dot( vUp ) * vUp;
+	VectorNormalize( vProjectedDir );
+
+	if ( vProjectedDir.IsZero() )
+		vecAngles.y = flFallbackYaw;
+	else
+	{
+		if ( vProjectedDir.Dot( vForward ) > 0.0f )
+			vecAngles.y = acosf( vProjectedDir.Dot( vRight ) ) * ( 180.0f / M_PI ) - 90.0f;
+		else
+			vecAngles.y = -acosf( vProjectedDir.Dot( vRight ) ) * ( 180.0f / M_PI ) - 90.0f;
+	}
+
+	vecAngles.y = AngleNormalize( vecAngles.y );
+	return vecAngles;
+}
+
+//-----------------------------------------------------------------------------
 // Purpose: Allows the turret to fire on targets if they're visible
 //-----------------------------------------------------------------------------
 void CNPC_SecurityCamera::ActiveThink( void )
@@ -663,7 +715,7 @@ void CNPC_SecurityCamera::ActiveThink( void )
 	Vector	vecDirToEnemy = vecMidEnemy - vecMid;	
 	float	flDistToEnemy = VectorNormalize( vecDirToEnemy );
 
-	CProp_Portal *pPortal = NULL;
+	CSightPortal *pPortal = NULL;
 
 	if ( pEnemy->IsAlive() )
 	{
@@ -721,28 +773,7 @@ void CNPC_SecurityCamera::ActiveThink( void )
 	Vector	vecDirToEnemyEyes = ( vEnemyEyes + m_vNoisePos ) - vecMid;
 	VectorNormalize( vecDirToEnemyEyes );
 
-	QAngle vecAnglesToEnemy;
-	VectorAngles( vecDirToEnemyEyes, vecAnglesToEnemy );
-
-	Vector vForward, vRight, vUp;
-	GetVectors( &vForward, &vRight, &vUp );
-
-	vecAnglesToEnemy.x = acosf( vecDirToEnemyEyes.Dot( -vUp ) ) * ( 180.0f / M_PI );
-
-	Vector vProjectedDirToEnemyEyes = vecDirToEnemyEyes - vecDirToEnemyEyes.Dot( vUp ) * vUp;
-	VectorNormalize( vProjectedDirToEnemyEyes );
-
-	if ( vProjectedDirToEnemyEyes.IsZero() )
-		vecAnglesToEnemy.y = m_vecGoalAngles.y;
-	else
-	{
-		if ( vProjectedDirToEnemyEyes.Dot( vForward ) > 0.0f )
-			vecAnglesToEnemy.y = acosf( vProjectedDirToEnemyEyes.Dot( vRight ) ) * ( 180.0f / M_PI ) - 90.0f;
-		else
-			vecAnglesToEnemy.y = -acosf( vProjectedDirToEnemyEyes.Dot( vRight ) ) * ( 180.0f / M_PI ) - 90.0f;
-	}
-
-	vecAnglesToEnemy.y = AngleNormalize( vecAnglesToEnemy.y );
+	QAngle vecAnglesToEnemy = SecurityCameraAnglesToDirection( this, vecDirToEnemyEyes, m_vecGoalAngles.y );
 
 	//Current enemy is not visible
 	if ( ( bEnemyVisible == false ) || ( flDistToEnemy > SECURITY_CAMERA_RANGE ) )
@@ -819,7 +850,7 @@ void CNPC_SecurityCamera::SearchThink( void )
 				}
 				else
 				{
-					CProp_Portal *pPortal = FInViewConeThroughPortal( pPlayer );
+					CSightPortal *pPortal = FInViewConeThroughPortal( pPlayer );
 					if ( pPortal && FVisibleThroughPortal( pPortal, pPlayer ) )
 					{
 						pEnemy = pPlayer;
@@ -872,6 +903,28 @@ bool CNPC_SecurityCamera::PreThink( turretState_e state )
 
 	//Animate
 	StudioFrameAdvance();
+
+#ifdef PORTAL2
+	// While a co-op player taunts through the lens, hold on that player.
+	CPortal_Player *pTaunter = m_hTauntingPlayer.Get();
+	if ( pTaunter )
+	{
+		if ( !pTaunter->IsAlive() || !m_bActive )
+		{
+			m_hTauntingPlayer = NULL;
+		}
+		else
+		{
+			Vector vecDir = pTaunter->WorldSpaceCenter() - EyePosition();
+			VectorNormalize( vecDir );
+			m_vecGoalAngles = SecurityCameraAnglesToDirection( this, vecDir, m_vecGoalAngles.y );
+			UpdateFacing();
+
+			SetNextThink( gpGlobals->curtime + 0.1f );
+			return true;	// don't let the normal think retarget the camera
+		}
+	}
+#endif
 
 	//Do not interrupt current think function
 	return false;
@@ -1165,3 +1218,42 @@ void PlayDismountSounds()
 		}
 	}
 }
+
+#ifdef PORTAL2
+//-----------------------------------------------------------------------------
+// Portal 2 port: neither 2010 depot has these. A co-op player taunting near an
+// active camera views the taunt through its lens
+// (CPortal_Player::FindRemoteTauntViewpoint), so the camera turns to that
+// player, pings once, and holds it until the taunt ends.
+//-----------------------------------------------------------------------------
+void CNPC_SecurityCamera::TauntedByPlayer( CPortal_Player *pPlayer )
+{
+	if ( !pPlayer || !m_bActive )
+		return;
+
+	m_hTauntingPlayer = pPlayer;
+	m_flPingTime = 0.0f;
+	Ping();
+	SetNextThink( gpGlobals->curtime );
+}
+
+void CNPC_SecurityCamera::TauntedByPlayerFinished( CPortal_Player *pPlayer )
+{
+	if ( m_hTauntingPlayer.Get() == pPlayer )
+	{
+		m_hTauntingPlayer = NULL;
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Enabled cameras side with the Combine-like facility enemies so the
+//			player's allies treat them as hostile (Portal 1 behavior).
+//-----------------------------------------------------------------------------
+Class_T CNPC_SecurityCamera::Classify( void )
+{
+	if ( m_bEnabled )
+		return CLASS_COMBINE;
+
+	return CLASS_NONE;
+}
+#endif // PORTAL2

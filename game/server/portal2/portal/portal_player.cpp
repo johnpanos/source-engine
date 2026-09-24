@@ -5,7 +5,10 @@
 //=============================================================================//
 
 #include "cbase.h"
+#include "portal2/portal/prop_portal.h"
 #include "portal_player.h"
+#include "portal2_shared_compat.h"
+#include "tier0/icommandline.h"
 #include "globalstate.h"
 #include "game_timescale_shared.h"
 #include "trains.h"
@@ -17,7 +20,7 @@
 #include "portal_mp_gamerules.h"
 #include "weapon_portalgun.h"
 #include "portal/weapon_physcannon.h"
-#include "KeyValues.h"
+#include "keyvalues.h"
 #include "team.h"
 #include "eventqueue.h"
 #include "weapon_portalbase.h"
@@ -55,6 +58,7 @@
 #include "portal_mp_stats.h"
 #include "inetchannelinfo.h"
 #include "trigger_catapult.h"
+#include "trigger_tractorbeam.h"
 #include "portal_gamestats.h"
 #include "portal_ui_controller.h"
 #include "matchmaking/imatchframework.h"
@@ -261,11 +265,22 @@ END_SEND_TABLE()
 
 extern void SendProxy_Origin( const SendProp *pProp, const void *pStruct, const void *pData, DVariant *pOut, int iElement, int objectID );
 
+static void *PortalSendProxy_NonLocalPlayer( const SendProp *, const void *, const void *pData,
+	CSendProxyRecipients *pRecipients, int objectID )
+{
+	pRecipients->SetAllRecipients();
+	pRecipients->ClearRecipient( objectID - 1 );
+	return const_cast<void *>( pData );
+}
+REGISTER_SEND_PROXY_NON_MODIFIED_POINTER( PortalSendProxy_NonLocalPlayer );
+
+
+
 // specific to the local player
 BEGIN_SEND_TABLE_NOBASE( CPortal_Player, DT_PortalLocalPlayerExclusive )
 	// send a hi-res origin and view offset to the local player for use in prediction
-	SendPropVectorXY(SENDINFO(m_vecOrigin),               -1, SPROP_NOSCALE, 0.0f, HIGH_DEFAULT, SendProxy_OriginXY, SENDPROP_LOCALPLAYER_ORIGINXY_PRIORITY ),
-	SendPropFloat   (SENDINFO_VECTORELEM(m_vecOrigin, 2), -1, SPROP_NOSCALE, 0.0f, HIGH_DEFAULT, SendProxy_OriginZ, SENDPROP_LOCALPLAYER_ORIGINZ_PRIORITY ),
+	SendPropVectorXY(SENDINFO(m_vecOrigin),               -1, SPROP_NOSCALE, 0.0f, HIGH_DEFAULT, SendProxy_OriginXY ),
+	SendPropFloat   (SENDINFO_VECTORELEM(m_vecOrigin, 2), -1, SPROP_NOSCALE, 0.0f, HIGH_DEFAULT, SendProxy_OriginZ ),
 	SendPropVector	(SENDINFO(m_vecViewOffset), -1, SPROP_NOSCALE, 0.0f, HIGH_DEFAULT ),
 
 	SendPropQAngles( SENDINFO( m_vecCarriedObjectAngles ) ),
@@ -280,11 +295,25 @@ END_SEND_TABLE()
 BEGIN_SEND_TABLE_NOBASE( CPortal_Player, DT_PortalNonLocalPlayerExclusive )
 	// send a lo-res origin and view offset to other players
 	// send a lo-res origin to other players
-	SendPropVectorXY( SENDINFO( m_vecOrigin ), 				 CELL_BASEENTITY_ORIGIN_CELL_BITS, SPROP_CELL_COORD_LOWPRECISION, 0.0f, HIGH_DEFAULT, CBaseEntity::SendProxy_CellOriginXY, SENDPROP_NONLOCALPLAYER_ORIGINXY_PRIORITY ),
-	SendPropFloat   ( SENDINFO_VECTORELEM( m_vecOrigin, 2 ), CELL_BASEENTITY_ORIGIN_CELL_BITS, SPROP_CELL_COORD_LOWPRECISION, 0.0f, HIGH_DEFAULT, CBaseEntity::SendProxy_CellOriginZ, SENDPROP_NONLOCALPLAYER_ORIGINZ_PRIORITY ),
+	SendPropVectorXY( SENDINFO( m_vecOrigin ), 				 -1, SPROP_COORD_MP_LOWPRECISION, 0.0f, HIGH_DEFAULT, SendProxy_OriginXY ),
+	SendPropFloat   ( SENDINFO_VECTORELEM( m_vecOrigin, 2 ), -1, SPROP_COORD_MP_LOWPRECISION, 0.0f, HIGH_DEFAULT, SendProxy_OriginZ ),
 	SendPropFloat	(SENDINFO_VECTORELEM(m_vecViewOffset, 0), 10, SPROP_CHANGES_OFTEN, -128.0, 128.0f),
 	SendPropFloat	(SENDINFO_VECTORELEM(m_vecViewOffset, 1), 10, SPROP_CHANGES_OFTEN, -128.0, 128.0f),
 	SendPropFloat	(SENDINFO_VECTORELEM(m_vecViewOffset, 2), 10, SPROP_CHANGES_OFTEN, -128.0, 128.0f),
+END_SEND_TABLE()
+
+BEGIN_SIMPLE_DATADESC( PortalPlayerStatistics_t )
+	DEFINE_FIELD( iNumPortalsPlaced, FIELD_INTEGER ),
+	DEFINE_FIELD( iNumStepsTaken, FIELD_INTEGER ),
+	DEFINE_FIELD( fNumSecondsTaken, FIELD_FLOAT ),
+	DEFINE_FIELD( fDistanceTaken, FIELD_FLOAT ),
+END_DATADESC()
+
+BEGIN_SEND_TABLE_NOBASE( PortalPlayerStatistics_t, DT_PortalPlayerStatistics )
+	SendPropInt( SENDINFO( iNumPortalsPlaced ) ),
+	SendPropInt( SENDINFO( iNumStepsTaken ) ),
+	SendPropFloat( SENDINFO( fNumSecondsTaken ) ),
+	SendPropFloat( SENDINFO( fDistanceTaken ) ),
 END_SEND_TABLE()
 
 BEGIN_SEND_TABLE_NOBASE( CPortalPlayerShared, DT_PortalPlayerShared )
@@ -350,7 +379,7 @@ IMPLEMENT_SERVERCLASS_ST(CPortal_Player, DT_Portal_Player)
 	SendPropDataTable( "portallocaldata", 0, &REFERENCE_SEND_TABLE(DT_PortalLocalPlayerExclusive), SendProxy_SendLocalDataTable ),
 
 	// Data that gets sent to all other players
-	SendPropDataTable( "portalnonlocaldata", 0, &REFERENCE_SEND_TABLE(DT_PortalNonLocalPlayerExclusive), SendProxy_SendNonLocalDataTable ),
+	SendPropDataTable( "portalnonlocaldata", 0, &REFERENCE_SEND_TABLE(DT_PortalNonLocalPlayerExclusive), PortalSendProxy_NonLocalPlayer ),
 
 	SendPropBool( SENDINFO( m_bWantsToSwapGuns ) ),
 
@@ -422,7 +451,6 @@ BEGIN_DATADESC( CPortal_Player )
 	DEFINE_FIELD( m_hAttachedObject, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_ForcedGrabController, FIELD_INTEGER ),
 
-	DEFINE_FIELD( m_flTimeLastTouchedGround, FIELD_TIME ),
 	DEFINE_FIELD( m_nPortalsEnteredInAirFlags, FIELD_INTEGER ),
 	DEFINE_FIELD( m_nAirTauntCount, FIELD_INTEGER ),
 	DEFINE_FIELD( m_nWheatleyMonitorDestructionCount, FIELD_INTEGER ),
@@ -460,51 +488,7 @@ const char* g_pszBallBotAnimations = "models/ballbot_animations.mdl";
 const char* g_pszEggBotAnimations = "models/eggbot_animations.mdl";
 
 
-class CPortalPlayerModelPrecacher : public CBaseResourcePrecacher
-{
-public:
-	CPortalPlayerModelPrecacher() : CBaseResourcePrecacher( GLOBAL, "CPortalPlayerModelPrecacher" ) {}
-
-	virtual void Cache( IPrecacheHandler *pPrecacheHandler, bool bPrecache, ResourceList_t hResourceList, bool bIgnoreConditionals )
-	{
-		bool bIsMultiplayer;
-		if( bPrecache )
-		{
-			bIsMultiplayer = g_pGameRules ? g_pGameRules->IsMultiplayer() : (Q_strnicmp( gpGlobals->mapname.ToCStr(), "mp", 2 ) == 0); //either gamerules says it's multiplayer, or the map name implies it
-			m_bPreCacheWasMultiplayer = bIsMultiplayer;
-		}
-		else
-		{
-			bIsMultiplayer = m_bPreCacheWasMultiplayer;
-		}
-
-		if( bIsMultiplayer || bIgnoreConditionals )
-		{
-			int iModelIndex;
-			pPrecacheHandler->CacheResource( MODEL, GetBallBotModel(), bPrecache, hResourceList, &iModelIndex );
-			pPrecacheHandler->CacheResource( MODEL, g_pszBallBotAnimations, bPrecache, hResourceList, NULL );
-			PrecacheGibsForModel( iModelIndex );
-
-			pPrecacheHandler->CacheResource( MODEL, GetEggBotModel(), bPrecache, hResourceList, &iModelIndex );
-			pPrecacheHandler->CacheResource( MODEL, g_pszEggBotAnimations, bPrecache, hResourceList, NULL );
-			PrecacheGibsForModel( iModelIndex );
-
-			pPrecacheHandler->CacheResource( MODEL, g_pszBallBotHelmetModel, bPrecache, hResourceList, NULL );
-			pPrecacheHandler->CacheResource( MODEL, g_pszEggBotHelmetModel, bPrecache, hResourceList, NULL );
-			pPrecacheHandler->CacheResource( MODEL, g_pszBallBotAntennaModel, bPrecache, hResourceList, NULL );
-			pPrecacheHandler->CacheResource( MODEL, g_pszEggBotAntennaModel, bPrecache, hResourceList, NULL );
-		}
-
-		if( !bIsMultiplayer || bIgnoreConditionals )
-		{
-			pPrecacheHandler->CacheResource( MODEL, g_pszPlayerModel, bPrecache, hResourceList, NULL );
-			pPrecacheHandler->CacheResource( MODEL, g_pszPlayerAnimations, bPrecache, hResourceList, NULL );
-		}
-	}
-
-	bool m_bPreCacheWasMultiplayer; //just being a little paranoid that precaches and uncaches sync up consistently
-};
-CPortalPlayerModelPrecacher s_PortalModelPrecacher;
+// Player models are precached in CPortal_Player::Precache below.
 
 
 #define MAX_COMBINE_MODELS 4
@@ -547,7 +531,6 @@ CPortal_Player::CPortal_Player()
 	m_flPredictedJumpTime( 0.f ),
 	m_flUsePostTeleportationBoxTime( 0.0f ),
 	m_bJumpWasPressedWhenForced( false ),
-	m_bWantsToSwapGuns( false ),
 	m_bSendSwapProximityFailEvent( false ),
 	m_PlayerGunType( PLAYER_NO_GUN ),
 	m_bSpawnFromDeath( false ),
@@ -558,11 +541,12 @@ CPortal_Player::CPortal_Player()
 	m_pGrabSound( NULL ),
 	m_nAirTauntCount( 0 ),
 	m_nWheatleyMonitorDestructionCount( 0 ),
-	m_bPotatos( true ),
-	m_flMotionBlurAmount( -1.0f ),
 	m_bIsBendy( false )
 {
 	// Taunt code
+	m_bWantsToSwapGuns = false;
+	m_bPotatos = true;
+	m_flMotionBlurAmount = -1.0f;
 	m_Shared.Init( this );
 	m_Shared.m_flTauntRemoveTime = 0.0f;
 
@@ -603,6 +587,7 @@ CPortal_Player::CPortal_Player()
 	m_flTimeSinceLastTouchedPower[1] = FLT_MAX;
 	m_flTimeSinceLastTouchedPower[2] = FLT_MAX;
 
+	m_flTBeamEndTime = 0.0f;
 	m_flHullHeight = GetHullHeight();
 
 	m_EntityPortalledNetworkMessages.SetCount( MAX_ENTITY_PORTALLED_NETWORK_MESSAGES );
@@ -611,18 +596,20 @@ CPortal_Player::CPortal_Player()
 	m_bReadyForDLCItemUpdates = false;
 }
 
+void CPortal_Player::FirePlayerProxyOutput( const char *pszOutputName, variant_t variant,
+	CBaseEntity *pActivator, CBaseEntity *pCaller )
+{
+	CBaseEntity *pProxy = gEntList.FindEntityByClassname( NULL, "logic_playerproxy" );
+	if ( pProxy )
+	{
+		pProxy->FireNamedOutput( pszOutputName, variant, pActivator, pCaller );
+	}
+}
+
 CPortal_Player::~CPortal_Player( void )
 {
-#ifdef PORTAL2
-	if ( GameRules() && GameRules()->IsMultiplayer() && !IsSplitScreenPlayer() )
-	{
-		CPortal_Player *pOtherPlayer = ToPortalPlayer( UTIL_OtherPlayer( this ) );
-		if ( pOtherPlayer )
-		{
-			pOtherPlayer->RemovePictureInPicturePlayer( this );
-		}
-	}
-#endif
+// This profile has no split-screen picture-in-picture player.
+
 
 	ClearSceneEvents( NULL, true );
 
@@ -1075,7 +1062,7 @@ void CPortal_Player::Spawn(void)
 		}
 		else if ( !PortalMPGameRules()->IsPlayerDataReceived( 0 ) || !PortalMPGameRules()->IsPlayerDataReceived( 1 ) )
 		{
-			if ( !engine->GetSplitScreenPlayerAttachToEdict( 1 ) && !engine->GetSplitScreenPlayerAttachToEdict( 2 ) )
+			if ( true )
 			{
 				if ( bIsBlue )
 				{
@@ -1091,7 +1078,6 @@ void CPortal_Player::Spawn(void)
 
 	// Want to render the player models in the world imposter views and water views.
 	AddEffects( EF_MARKED_FOR_FAST_REFLECTION );
-	AddEffects( EF_SHADOWDEPTH_NOCACHE );
 
 	// reset was dropped state
 	m_bWasDroppedByOtherPlayerWhileTaunting = false;
@@ -1158,7 +1144,6 @@ void CPortal_Player::OnFullyConnected()
 		SetMoveType( MOVETYPE_NONE );
 
 		// Set any splitscreen players associated as waiting too
-		Assert( GetSplitScreenPlayers().Count() == 0 || GetSplitScreenPlayers().Count() == 1 );
 
 		// Respawn
 		SetThink( &CPortal_Player::PlayerTransitionCompleteThink );
@@ -1175,15 +1160,6 @@ void CPortal_Player::OnFullyConnected()
 			SetContextThink( &CPortal_Player::PlayerCatchPatnerNotConnectingThink, gpGlobals->curtime + flNotConnectingTimeout, CATCHPATNERNOTCONNECTING_THINK_CONTEXT );
 		}
 
-		// Self is not in this list. With 1 splitscreen partner this list has 1 player
-		for ( int i = 0; i < GetSplitScreenPlayers().Count(); ++i )
-		{
-			CPortal_Player *pPlayer = static_cast< CPortal_Player* >( GetSplitScreenPlayers()[ i ].Get() );
-			if ( pPlayer )
-			{
-				pPlayer->OnFullyConnected();
-			}
-		}
 	}
 	else
 	{
@@ -1193,7 +1169,7 @@ void CPortal_Player::OnFullyConnected()
 		Q_snprintf( szClientCmd, sizeof(szClientCmd), "%s %f\n", szVideoCommand, 1.5f );
 		engine->ClientCommand( edict(), szClientCmd );
 
-		ChallengePlayersReady();
+		// The legacy engine has no challenge-ready handshake.
 	}
 
 	m_bIsFullyConnected = true;
@@ -1353,20 +1329,6 @@ void CPortal_Player::ParseScriptedInteractions( void )
 				}
 
 				// Camera Distance
-				sInteraction.flCameraDistance = pkvNode->GetFloat( "distance_camera", portal_tauntcam_dist.GetFloat() );
-
-				// Camera Angles
-				pszKeyString = pkvNode->GetString( "angles_camera", NULL );
-				if ( pszKeyString )
-				{
-					UTIL_StringToVector( sInteraction.angCameraAngles.Base(), pszKeyString );
-				}
-				else
-				{
-					sInteraction.angCameraAngles[ PITCH ] = 20.0f;
-					sInteraction.angCameraAngles[ YAW ] = 160.0f;
-					sInteraction.angCameraAngles[ ROLL ] = 0.0f;
-				}
 
 				// Entry Sequence
 				pszKeyString = pkvNode->GetString( "entry_sequence", NULL );
@@ -1617,49 +1579,42 @@ float CPortal_Player::PlayScene( const char *pszScene, float flDelay, AI_Respons
 	if ( GameRules()->IsMultiplayer() )
 	{
 		CPortalMPStats *pStats = GetPortalMPStats();
-		if ( response && response->m_szMatchingRule && pStats )
+		if ( response && response->GetMatchingRule() && pStats )
 		{
 			bool bHelmetOpener = false;
 
 			// These match the exact name of the rule we want to fire achievements based on minus ballbot/eggbot prefix
-			if ( V_strstr( response->m_szMatchingRule, "teamgesturehighfive_success") != NULL )
+			if ( V_strstr( response->GetMatchingRule(), "teamgesturehighfive_success") != NULL )
 			{
-				UTIL_RecordAchievementEvent( "ACH.TAUNTS[1]", this );
 				pStats->IncrementPlayerTauntsUsedMap( this, TAUNT_HIGHFIVE );
 			}
-			else if ( V_strstr( response->m_szMatchingRule, "gesturesmallwave") != NULL ||
-					V_strstr( response->m_szMatchingRule, "gestureportalgunsmallwave") != NULL )
+			else if ( V_strstr( response->GetMatchingRule(), "gesturesmallwave") != NULL ||
+					V_strstr( response->GetMatchingRule(), "gestureportalgunsmallwave") != NULL )
 			{
-				UTIL_RecordAchievementEvent( "ACH.TAUNTS[2]", this );
 				pStats->IncrementPlayerTauntsUsedMap( this, TAUNT_WAVE );
 			}
-			else if ( V_strstr( response->m_szMatchingRule, "teamgesturerps_success") != NULL )
+			else if ( V_strstr( response->GetMatchingRule(), "teamgesturerps_success") != NULL )
 			{
-				UTIL_RecordAchievementEvent( "ACH.TAUNTS[3]", this );
 				pStats->IncrementPlayerTauntsUsedMap( this, TAUNT_RPS );
 			}
-			else if ( V_strstr( response->m_szMatchingRule, "gesturelaugh") != NULL )
+			else if ( V_strstr( response->GetMatchingRule(), "gesturelaugh") != NULL )
 			{
-				UTIL_RecordAchievementEvent( "ACH.TAUNTS[4]", this );
 				pStats->IncrementPlayerTauntsUsedMap( this, TAUNT_LAUGH );
 			}
-			else if ( V_strstr( response->m_szMatchingRule, "gesturerobotdance") != NULL )
+			else if ( V_strstr( response->GetMatchingRule(), "gesturerobotdance") != NULL )
 			{
-				UTIL_RecordAchievementEvent( "ACH.TAUNTS[5]", this );
 				pStats->IncrementPlayerTauntsUsedMap( this, TAUNT_ROBOTDANCE );
 			}
-			else if ( V_strstr( response->m_szMatchingRule, "teamgestureteamhug_success") != NULL )
+			else if ( V_strstr( response->GetMatchingRule(), "teamgestureteamhug_success") != NULL )
 			{
-				UTIL_RecordAchievementEvent( "ACH.TAUNTS[7]", this );
 				pStats->IncrementPlayerTauntsUsedMap( this, TAUNT_HUG );
 			}
-			else if ( V_strstr( response->m_szMatchingRule, "gesturetrickfire") != NULL )
+			else if ( V_strstr( response->GetMatchingRule(), "gesturetrickfire") != NULL )
 			{
-				UTIL_RecordAchievementEvent( "ACH.TAUNTS[8]", this );
 				m_bTrickFire = true;
 				pStats->IncrementPlayerTauntsUsedMap( this, TAUNT_TRICKFIRE );
 			}
-			else if ( V_strstr( response->m_szMatchingRule, "gesturebasketball") != NULL )
+			else if ( V_strstr( response->GetMatchingRule(), "gesturebasketball") != NULL )
 			{
 				if ( GetTeamNumber() == TEAM_BLUE )
 				{
@@ -1668,11 +1623,10 @@ float CPortal_Player::PlayScene( const char *pszScene, float flDelay, AI_Respons
 			}
 			else
 			{
-				bool bEggTease = ( V_strstr( response->m_szMatchingRule, "teamgestureteameggtease_success") != NULL );
-				bool bBallTease = ( V_strstr( response->m_szMatchingRule, "teamgestureteamballtease_success") != NULL );
+				bool bEggTease = ( V_strstr( response->GetMatchingRule(), "teamgestureteameggtease_success") != NULL );
+				bool bBallTease = ( V_strstr( response->GetMatchingRule(), "teamgestureteamballtease_success") != NULL );
 				if ( bEggTease || bBallTease )
 				{
-					UTIL_RecordAchievementEvent( "ACH.TAUNTS[6]", this );
 					pStats->IncrementPlayerTauntsUsedMap( this, TAUNT_CORETEASE );
 
 					if ( bEggTease && GetTeamNumber() == TEAM_BLUE )
@@ -1886,7 +1840,7 @@ void CPortal_Player::PreThink( void )
 		}
 	}
 
-	if ( m_Local.m_bSlowMovement && m_Local.m_fTBeamEndTime != 0.0f && gpGlobals->curtime > m_Local.m_fTBeamEndTime + 1.0f )
+	if ( m_Local.m_bSlowMovement && m_flTBeamEndTime != 0.0f && gpGlobals->curtime > m_flTBeamEndTime + 1.0f )
 	{
 		m_Local.m_bSlowMovement = false;
 		SetGravity( 1.0f );
@@ -1991,7 +1945,7 @@ void CPortal_Player::PreThink( void )
 	if ( GameRules()->IsMultiplayer() )
 	{
 		// Send a ping
-		if ( m_afButtonPressed & IN_COOP_PING )
+		if ( false )
 		{
 			if ( ( m_flLastPingTime + sv_portal_coop_ping_cooldown_time.GetFloat() ) < gpGlobals->curtime )
 			{
@@ -2054,7 +2008,7 @@ void CPortal_Player::PreThink( void )
 	SetLocalAngles( vOldAngles );
 
 	// Cache the velocity before impact
-	if( engine->HasPaintmap() )
+	if( Portal2_HasPaintmap() )
 		m_PortalLocal.m_vPreUpdateVelocity = GetAbsVelocity();
 
 	// Update the painted power
@@ -2236,7 +2190,6 @@ void CPortal_Player::RespawnPlayer( void )
 			CPortal_Player *pOtherPlayer = ToPortalPlayer( UTIL_OtherConnectedPlayer( this ) );
 			if ( pOtherPlayer )
 			{
-				UTIL_RecordAchievementEvent( "ACH.PARTNER_DROP", pOtherPlayer );
 			}
 		}
 	}
@@ -2274,7 +2227,7 @@ void CPortal_Player::PlayerTransitionCompleteThink( void )
 		}
 	}
 
-	ChallengePlayersReady();
+	// The legacy engine has no challenge-ready handshake.
 
 	// Respawn other players who were waiting
 	SetThink( &CBasePlayer::PlayerDeathThink );
@@ -2668,7 +2621,7 @@ void CPortal_Player::Teleport( const Vector *newPosition, const QAngle *newAngle
 {
 	Vector oldOrigin = GetLocalOrigin();
 	QAngle oldAngles = GetLocalAngles();
-	BaseClass::Teleport( newPosition, newAngles, newVelocity, bUseSlowHighAccuracyContacts );
+	BaseClass::Teleport( newPosition, newAngles, newVelocity );
 	m_angEyeAngles = pl.v_angle;
 
 	m_PlayerAnimState->Teleport( newPosition, newAngles, this );
@@ -2791,7 +2744,7 @@ void CPortal_Player::PlayerUse( void )
 		CWeaponPortalgun *pWeapon = dynamic_cast<CWeaponPortalgun *>(GetActivePortalWeapon());
 		if ( pWeapon )
 		{
-			pWeapon->UseDeny();
+			EmitSound( "PortalPlayer.UseDeny" );
 		}
 	}
 }
@@ -2816,7 +2769,9 @@ void CPortal_Player::PlayerRunCommand(CUserCmd *ucmd, IMoveHelper *moveHelper)
 				x = 0;
 				y = ucmd->mousedy * sv_holdrotationsensitivity.GetFloat();
 			}
-			RotatePlayerHeldObject( this, x, y, true );
+			// Held-object rotation needs client command support in this engine.
+			NOTE_UNUSED( x );
+			NOTE_UNUSED( y );
 		}
 	}
 
@@ -2826,42 +2781,8 @@ void CPortal_Player::PlayerRunCommand(CUserCmd *ucmd, IMoveHelper *moveHelper)
 		ucmd->buttons &= ~IN_USE;
 	}
 
-	m_hGrabbedEntity = ucmd->player_held_entity > 0 ? CBaseEntity::Instance ( ucmd->player_held_entity ) : NULL;
-	m_hPortalThroughWhichGrabOccured = ucmd->held_entity_was_grabbed_through_portal > 0 ? CBaseEntity::Instance ( ucmd->held_entity_was_grabbed_through_portal ) : NULL;
-
-	//============================================================================
-	// Fix the eye angles after portalling. The client may have sent commands with
-	// the old view angles before it knew about the teleportation.
-
-	//sorry for crappy name, the client sent us a command, we acknowledged it, and they are now telling us the latest one they received an acknowledgement for in this brand new command
-	int iLastCommandAcknowledgementReceivedOnClientForThisCommand = ucmd->command_number - ucmd->command_acknowledgements_pending;
-	while( (m_PendingPortalTransforms.Count() > 0) && (iLastCommandAcknowledgementReceivedOnClientForThisCommand >= m_PendingPortalTransforms[0].command_number) )
-	{
-		m_PendingPortalTransforms.Remove( 0 );
-	}
-
-	// The server changed the angles, and the user command was created after the teleportation, but before the client knew they teleported. Need to fix up the angles into the new space
-	if( m_PendingPortalTransforms.Count() > ucmd->predictedPortalTeleportations )
-	{
-		matrix3x4_t matComputeFinalTransform[2];
-		int iFlip = 0;
-
-		//most common case will be exactly 1 transform
-		matComputeFinalTransform[0] = m_PendingPortalTransforms[ucmd->predictedPortalTeleportations].matTransform;
-
-		for( int i = ucmd->predictedPortalTeleportations + 1; i < m_PendingPortalTransforms.Count(); ++i )
-		{
-			ConcatTransforms( m_PendingPortalTransforms[i].matTransform, matComputeFinalTransform[iFlip], matComputeFinalTransform[1-iFlip] );
-			iFlip = 1 - iFlip;
-		}
-
-		//apply the final transform
-		matrix3x4_t matAngleTransformIn, matAngleTransformOut;
-		AngleMatrix( ucmd->viewangles, matAngleTransformIn );
-		ConcatTransforms( matComputeFinalTransform[iFlip], matAngleTransformIn, matAngleTransformOut );
-		MatrixAngles( matAngleTransformOut, ucmd->viewangles );
-	}
-
+	// This engine user command lacks Portal 2 held-entity and teleport acknowledgements.
+	// The server remains authoritative until the command format is extended.
 	PreventCrouchJump( ucmd );
 
 	if ( m_PortalLocal.m_bZoomedIn )
@@ -3031,7 +2952,7 @@ bool CPortal_Player::ClientCommand( const CCommand &args )
 		for( int i = 1; i <= gpGlobals->maxClients; ++i )
 		{
 			CBasePlayer *pToPlayer = UTIL_PlayerByIndex( i );
-			if ( pToPlayer && !pToPlayer->IsSplitScreenPlayer() )
+			if ( pToPlayer != NULL )
 			{
 				engine->ClientCommand( pToPlayer->edict(), "stopvideos" );
 				engine->ClientCommand( pToPlayer->edict(), "playvideo_end_level_transition coop_bots_load 1" );
@@ -3176,7 +3097,7 @@ bool CPortal_Player::ClientCommand( const CCommand &args )
 		for( int i = 1; i <= gpGlobals->maxClients; ++i )
 		{
 			CBasePlayer *pToPlayer = UTIL_PlayerByIndex( i );
-			if ( pToPlayer && !pToPlayer->IsSplitScreenPlayer() )
+			if ( pToPlayer != NULL )
 			{
 				engine->ClientCommand( pToPlayer->edict(), "stopvideos" );
 				engine->ClientCommand( pToPlayer->edict(), "playvideo_end_level_transition coop_bots_load_wave 1" );
@@ -4135,7 +4056,7 @@ void CPortal_Player::SetupVisibility( CBaseEntity *pViewEntity, unsigned char *p
 
 	if ( m_bClientCheckPVSDirty )
 	{
-		UTIL_SetClientCheckPVS( edict(), pvs, pvssize );
+		// PortalSetupVisibility already writes the PVS buffer above.
 		m_bClientCheckPVSDirty = false;
 	}
 }
@@ -4241,7 +4162,7 @@ void CPortal_Player::Taunt( const char *pchTauntForce /*=NULL*/, bool bAuto /*= 
 			{
 				if ( bTease )
 				{
-					if ( GetDistanceToEntity( pOtherPlayer ) < 150.0f )
+					if ( ( GetAbsOrigin() - pOtherPlayer->GetAbsOrigin() ).Length() < 150.0f )
 					{
 						V_strncpy( pOtherPlayer->m_szTauntForce.GetForModify(), GetTeamNumber() == TEAM_BLUE ? "TeamBallTease" : "TeamEggTease", PORTAL2_MP_TEAM_TAUNT_FORCE_LENGTH );
 						bTeamAccept = true;
@@ -4278,7 +4199,7 @@ void CPortal_Player::Taunt( const char *pchTauntForce /*=NULL*/, bool bAuto /*= 
 						// On server notify all players that team taunt happened
 						KeyValues *kvNotifyTaunt = new KeyValues( "OnCoopBotTaunt" );
 						kvNotifyTaunt->SetString( "taunt", m_szTauntForce.Get() );
-						UTIL_SendClientCommandKVToPlayer( kvNotifyTaunt );
+						engine->ClientCommandKeyValues( edict(), kvNotifyTaunt );
 
 						// Track multiplayer stats for successful team taunts
 						if( GetPortalMPStats() )
@@ -4452,7 +4373,7 @@ bool CPortal_Player::ValidateTeamTaunt( CPortal_Player *pInitiator, Vector &vIni
 
 		// Make sure position touches floor
 		trace_t tr;
-		CTraceFilterSkipTwoEntities filter( this, pInitiator );
+		CTraceFilterSkipTwoEntities filter( this, pInitiator, COLLISION_GROUP_NONE );
 		Ray_t ray;
 		ray.Init( vAcceptorPos + Vector( 0.0f, 0.0f, 1.0f ), vAcceptorPos + Vector( 0.0f, 0.0f, -ALLOWED_TEAM_TAUNT_Z_DIST ), GetPlayerMins(), GetPlayerMaxs() );
 		UTIL_TraceRay( ray, MASK_PLAYERSOLID, &filter, &tr );
@@ -4527,8 +4448,6 @@ void CPortal_Player::StartTaunt( void )
 				int nTeam = GetTeamNumber();
 				pEntity->RunScript( UTIL_VarArgs( "PlayerTauntCamera(%i,\"%s\")", (nTeam == TEAM_BLUE) ? 2 : 1, m_szTauntForce.Get() ), "StartTaunt" );
 			}
-
-			UTIL_RecordAchievementEvent( UTIL_VarArgs( "ACH.TAUNT_CAMERA[%i]", PortalMPGameRules()->GetCoopSection() ), this );
 		}
 		else
 		{
@@ -4576,7 +4495,6 @@ void CPortal_Player::StartTaunt( void )
 				Assert ( pTurret );
 				if ( pTurret && pTurret->IsProjectedWallBlockingTurretFromPlayer( this ) )
 				{
-					UTIL_RecordAchievementEvent( "ACH.YOU_MONSTER", this );
 				}
 			}
 		}
@@ -4904,7 +4822,6 @@ void CPortal_Player::ApplyPortalTeleportation( const CPortal_Base2D *pEnteredPor
 	int nAllPortals = ( PORTAL_COLOR_FLAG_BLUE | PORTAL_COLOR_FLAG_PURPLE | PORTAL_COLOR_FLAG_ORANGE | PORTAL_COLOR_FLAG_RED );
 	if ( ( m_nPortalsEnteredInAirFlags & nAllPortals ) == nAllPortals )
 	{
-		UTIL_RecordAchievementEvent( "ACH.FOUR_PORTALS", this );
 	}
 
 #if !defined( _GAMECONSOLE ) && !defined( NO_STEAM )
@@ -5113,11 +5030,11 @@ void CPortal_Player::ModifyOrAppendCriteria( AI_CriteriaSet& criteriaSet )
 		criteriaSet.AppendCriteria( "facing_partner", ( bFacingPartner ) ? 1 : 0 );
 
 		float flDistToPartner = ( GetAbsOrigin() - pPartner->GetAbsOrigin() ).Length();
-		criteriaSet.AppendCriteria( "dist_to_partner", flDistToPartner );
+		criteriaSet.AppendCriteria( "dist_to_partner", CFmtStr( "%f", flDistToPartner ) );
 	}
 	else
 	{
-		criteriaSet.AppendCriteria( "dist_to_partner", 0.0f );
+		criteriaSet.AppendCriteria( "dist_to_partner", "0" );
 	}
 
 	criteriaSet.AppendCriteria( "rps_outcome", PortalMPGameRules() ? PortalMPGameRules()->GetRPSOutcome() : 0 );
@@ -5642,13 +5559,13 @@ Vector CPortal_Player::BodyTarget( const Vector &posSrc, bool bNoisy )
 
 void CPortal_Player::SetFogController( CFogController *pFogController )
 {
-	BaseClass::SetFogController( pFogController );
+	m_Local.m_PlayerFog.m_hCtrl.Set( pFogController );
 
 	// In portal multiplayer we need to for the master to be whatever the player was last set to
 	// so when they respawn they still obey the master
 	if ( GameRules() && GameRules()->IsMultiplayer() )
 	{
-		FogSystem()->SetMasterController( pFogController );
+		// The master fog controller belongs to the map fog system.
 	}
 }
 

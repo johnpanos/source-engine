@@ -131,6 +131,11 @@ $Project "Client (Portal 2)"
 			$File	"$SRCDIR\game\client\c_triggers.h"
 			$File	"$SRCDIR\game\client\hud_locator_target.cpp"
 			$File	"$SRCDIR\game\client\hud_locator_target.h"
+			$File	"$SRCDIR\game\client\c_baselesson.cpp"
+			$File	"$SRCDIR\game\client\c_baselesson.h"
+			$File	"$SRCDIR\game\client\c_gameinstructor.cpp"
+			$File	"$SRCDIR\game\client\c_gameinstructor.h"
+			$File	"$SRCDIR\game\client\c_mod_lesson_stubs.cpp"
 			$File	"$SRCDIR\game\client\vscript_client.cpp"
 			$File	"$SRCDIR\game\client\vscript_client.h"
 			$File	"$SRCDIR\game\shared\vscript_shared.cpp"
@@ -139,10 +144,31 @@ $Project "Client (Portal 2)"
 			$File	"$SRCDIR\game\shared\game_timescale_shared.h"
 		}
 
+		// Portal 2 port: client halves of the CS:GO-era base entities the retail Portal 2 maps use.
+		$Folder	"CS:GO-era base entities"
+		{
+			$File	"$SRCDIR\game\client\c_beamspotlight.cpp"
+			$File	"$SRCDIR\game\client\c_movie_display.cpp"
+			$File	"$SRCDIR\game\client\c_movie_display.h"
+			$File	"$SRCDIR\game\client\vgui_movie_display.cpp"
+			$File	"$SRCDIR\game\client\c_postprocesscontroller.cpp"
+			$File	"$SRCDIR\game\client\c_postprocesscontroller.h"
+			$File	"$SRCDIR\game\shared\postprocess_shared.h"
+			$File	"portal2\portal2_video_panels.cpp"
+		}
+
 		$Folder	"Portal 2 port adapters"
 		{
 			$File	"portal2\portal2_engine_compat.cpp"
 			$File	"portal2\portal2_engine_compat.h"
+			$File	"$SRCDIR\game\shared\portal2\portal2_shared_compat.cpp"
+			$File	"$SRCDIR\game\shared\portal2\portal2_shared_compat.h"
+			// CS:GO meshutils (convex hulls for the Portal 2 player's paint contact planes)
+			$File	"$SRCDIR\meshutils\mesh.cpp"
+			$File	"$SRCDIR\meshutils\convexhull.cpp"
+			$File	"$SRCDIR\meshutils\vertexops.cpp"
+			$File	"$SRCDIR\game\shared\portal2\portal2_frustum_util.cpp"
+			$File	"$SRCDIR\game\shared\portal2\portal2_frustum_util.h"
 		}
 
 		$File	"$SRCDIR\game\shared\predicted_viewmodel.cpp"
@@ -161,7 +187,7 @@ $Project "Client (Portal 2)"
 		-$File	"hud_hintdisplay.cpp"
 		-$File	"hud_numericdisplay.cpp"
 		-$File	"hud_vehicle.cpp"
-		-$File	"c_mod_lesson_stubs.cpp"
+		// Portal 2 port: c_mod_lesson_stubs.cpp supplies the mod lesson hooks (portal2\c_portal2_lesson.cpp is a placeholder).
 		
 		$Folder "Workshop"
 		{
@@ -263,6 +289,7 @@ $Project "Client (Portal 2)"
 						$File	"portal2\gameui\backgroundmenubutton.h" \
 								"portal2\gameui\basepanel.h" \
 								"portal2\gameui\basesavegamedialog.h" \
+								"portal2\gameui\tgaimagepanel.h" \
 								"portal2\gameui\bitmapimagepanel.h" \
 								"portal2\gameui\commandcheckbutton.h" \
 								"portal2\gameui\contentcontroldialog.h" \
@@ -310,6 +337,7 @@ $Project "Client (Portal 2)"
 					
 					$File	"portal2\gameui\backgroundmenubutton.cpp" \
 							"portal2\gameui\basesavegamedialog.cpp" \
+							"portal2\gameui\tgaimagepanel.cpp" \
 							"portal2\gameui\bitmapimagepanel.cpp" \
 							"portal2\gameui\commandcheckbutton.cpp" \
 							"portal2\gameui\contentcontroldialog.cpp" \
@@ -453,6 +481,7 @@ $Project "Client (Portal 2)"
 								"portal2\gameui\portal2\vplaytestdemosdialog.h" \								
 								"portal2\gameui\portal2\vratemapdialog.h" \								
 								"portal2\gameui\portal2\vmovieplayer.h" \
+								"portal2\gameui\portal2\portal2_bik.h" \
 								"portal2\gameui\portal2\transitionpanel.h" \
 								"portal2\gameui\portal2\vautosavenotice.h" \
 								"portal2\gameui\portal2\vfadeoutstartgame.h" \
@@ -570,6 +599,8 @@ $Project "Client (Portal 2)"
 							"portal2\gameui\portal2\vvoteoptions.cpp" \
 							"portal2\gameui\portal2\vsaveloadgamedialog.cpp" \
 							"portal2\gameui\portal2\vmovieplayer.cpp" \
+							"portal2\gameui\portal2\portal2_bik.cpp" \
+							"portal2\gameui\portal2\portal2_videocfg.cpp" \
 							"portal2\gameui\portal2\transitionpanel.cpp" \
 							"portal2\gameui\portal2\vautosavenotice.cpp" \
 							"portal2\gameui\portal2\vfadeoutstartgame.cpp" \
@@ -791,6 +822,7 @@ $Project "Client (Portal 2)"
 				$File	"portal2\c_prop_paint_bomb.cpp"
 				$File	"portal2\c_paintblob_render.h"
 				$File	"portal2\c_paintblob_render.cpp"
+				$File	"portal2\blobulator\ImpTiler.cpp"
 				$File	"portal2\c_paintblob.h"
 				$File	"portal2\c_paintblob.cpp"
 				$File	"portal2\c_paint_stream.h"
@@ -828,7 +860,7 @@ $Project "Client (Portal 2)"
 		$Lib	"$LIBPUBLIC\game_controls"			[ $IFDEF_GAMEUI_UISYSTEM2_ENABLED]
 		$Lib 	"$LIBCOMMON\jpeglib"				[ $WIN32 ||  $POSIX  ]
 		$Lib 	"$LIBPUBLIC\vpklib"					[ $WIN32 ||  $POSIX  ]
-		$Lib	"$LIBCOMMON\blobulator"
+		// Portal 2 port: the blobulator library is built from source (portal2\blobulator).
 		$Lib	"$LIBCOMMON\fileextd"				[ $WIN32 && !$NO_CEG ]
 
 		// The PuzzleMaker is loaded as a DLL during development (on WIN32), but for public builds it is linked as a static LIB:

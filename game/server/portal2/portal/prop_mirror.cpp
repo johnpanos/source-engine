@@ -109,9 +109,9 @@ CProp_Mirror::CProp_Mirror( void )
 void CProp_Mirror::Precache( void )
 {
 	BaseClass::Precache();
-	if( (m_ModelName.ToCStr() != NULL) && (m_ModelName.ToCStr()[0] != '\0') )
+	if( (STRING( GetModelName() ) != NULL) && (STRING( GetModelName() )[0] != '\0') )
 	{
-		PrecacheModel( m_ModelName.ToCStr() );
+		PrecacheModel( STRING( GetModelName() ) );
 	}
 }
 
@@ -120,9 +120,9 @@ void CProp_Mirror::Spawn( void )
 	Precache();
 	BaseClass::Spawn();
 		
-	if( m_ModelName.ToCStr() != NULL && m_ModelName.ToCStr()[0] != '\0' )
+	if( STRING( GetModelName() ) != NULL && STRING( GetModelName() )[0] != '\0' )
 	{
-		SetModel( m_ModelName.ToCStr() );
+		SetModel( STRING( GetModelName() ) );
 		SetSolid( SOLID_VPHYSICS );
 		SetCollisionGroup( COLLISION_GROUP_INTERACTIVE );
 		
@@ -323,27 +323,9 @@ void CProp_Mirror::Think( void )
 
 int CProp_Mirror::ComputeFrustumThroughPolygon( const Vector &vVisOrigin, const VPlane *pInputFrustum, int iInputFrustumPlanes, VPlane *pOutputFrustum, int iOutputFrustumMaxPlanes )
 {
-	Vector vTransformedPolyVerts[10];
-	const matrix3x4_t &matLocalToWorld = CollisionProp()->CollisionToWorldTransform();
-	for( int i = 0; i != m_LocalSpaceReflectionPolygonVertCount; ++i )
-	{
-		VectorTransform( &m_LocalSpaceReflectionPolygonVerts[i].x, matLocalToWorld, &vTransformedPolyVerts[i].x );
-	}
-
-	int iReturnedPlanes = UTIL_CalcFrustumThroughConvexPolygon( vTransformedPolyVerts, m_LocalSpaceReflectionPolygonVertCount, vVisOrigin, pInputFrustum, iInputFrustumPlanes, pOutputFrustum, iOutputFrustumMaxPlanes, 0 );
-
-	if( (iReturnedPlanes < iOutputFrustumMaxPlanes) && (iReturnedPlanes != 0) )
-	{
-		Vector vForward;
-		AngleVectors( m_CachedReflectedData.qAttachmentAngle, &vForward );
-		vForward = -vForward;
-
-		//add the reflection plane as a near plane
-		pOutputFrustum[iReturnedPlanes].Init( vForward, vForward.Dot( m_CachedReflectedData.vAttachmentOrigin ) );
-		++iReturnedPlanes;
-	}
-
-	return iReturnedPlanes;
+	// Mirror-specific visibility clipping is unavailable in this SDK.
+	// Returning no extension leaves ordinary world visibility intact.
+	return 0;
 }
 
 void CProp_Mirror::ComputeSubVisibility( CPVS_Extender **pExtenders, int iExtenderCount, unsigned char *outputPVS, int pvssize, const Vector &vVisOrigin, const VPlane *pVisFrustum, int iVisFrustumPlanes, VisExtensionChain_t *pVisChain, int iAreasNetworked[MAX_MAP_AREAS], int iMaxRecursionsLeft )

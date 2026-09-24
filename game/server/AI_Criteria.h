@@ -182,6 +182,7 @@ public:
 
 	void			GetName( char *buf, size_t buflen ) const;
 	void			GetResponse( char *buf, size_t buflen ) const;
+	const char *GetMatchingRule() const { return m_szMatchingRule; }
 	const AI_ResponseParams *GetParams() const { return &m_Params; }
 	ResponseType_t	GetType() const { return (ResponseType_t)m_Type; }
 	soundlevel_t	GetSoundLevel() const;

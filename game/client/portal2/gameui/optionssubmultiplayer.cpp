@@ -12,12 +12,14 @@
 #endif
 
 #if defined( POSIX ) && !defined( _PS3 )
+#ifdef OSX
 #include <copyfile.h>
+#endif
 #define DeleteFile unlink
 #endif
 
-#include "OptionsSubMultiplayer.h"
-#include "MultiplayerAdvancedDialog.h"
+#include "optionssubmultiplayer.h"
+#include "multiplayeradvanceddialog.h"
 #include <stdio.h>
 
 #include <vgui_controls/Button.h>
@@ -32,25 +34,25 @@
 #include <vgui_controls/ImagePanel.h>
 #include <vgui_controls/FileOpenDialog.h>
 #include <vgui_controls/MessageBox.h>
-#include <vgui/IVgui.h>
+#include <vgui/IVGui.h>
 #include <vgui/ILocalize.h>
 #include <vgui/IPanel.h>
 #include <vgui_controls/MessageBox.h>
 
-#include "CvarTextEntry.h"
-#include "CvarToggleCheckButton.h"
-#include "CvarSlider.h"
-#include "LabeledCommandComboBox.h"
-#include "FileSystem.h"
-#include "EngineInterface.h"
-#include "BitmapImagePanel.h"
-#include "UtlBuffer.h"
-#include "ModInfo.h"
+#include "cvartextentry.h"
+#include "cvartogglecheckbutton.h"
+#include "cvarslider.h"
+#include "labeledcommandcombobox.h"
+#include "filesystem.h"
+#include "engineinterface.h"
+#include "bitmapimagepanel.h"
+#include "utlbuffer.h"
+#include "modinfo.h"
 #include "tier1/convar.h"
 
 
-#include "materialsystem/IMaterial.h"
-#include "materialsystem/IMesh.h"
+#include "materialsystem/imaterial.h"
+#include "materialsystem/imesh.h"
 #include "materialsystem/imaterialvar.h"
 
 // use the JPEGLIB_USE_STDIO define so that we can read in jpeg's from outside the game directory tree.  For Spray Import.
@@ -900,6 +902,15 @@ void COptionsSubMultiplayer::OnFileSelected(const char *fullpath)
 			// copy vtf file to the final location.
 #ifdef OSX
 			copyfile( vtfPath, finalPath, 0, 0 );
+#elif defined( POSIX )
+			// Portal 2 port: copyfile() is macOS-only; copy through the filesystem.
+			{
+				CUtlBuffer vtfData;
+				if ( g_pFullFileSystem->ReadFile( vtfPath, NULL, vtfData ) )
+				{
+					g_pFullFileSystem->WriteFile( finalPath, NULL, vtfData );
+				}
+			}
 #else
 			CopyFile(vtfPath, finalPath, true);
 #endif

@@ -25,6 +25,10 @@ ConVar r_depthoverlay( "r_depthoverlay", "0", FCVAR_CHEAT, "Replaces opaque obje
 
 
 int g_viewscene_refractUpdateFrame = 0;
+#ifdef PORTAL2
+int g_nCurrentPortalRender = 0;
+int g_nRefractUpdatePortalRender = 0;
+#endif
 bool g_bAllowMultipleRefractUpdatesPerScenePerFrame = false;
 
 

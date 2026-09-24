@@ -4,7 +4,6 @@
 //
 //=============================================================================//
 
-#if 0
 #include "cbase.h"
 #include "paint_color_manager.h"
 #include "shot_manipulator.h"
@@ -486,4 +485,3 @@ void CWeaponPaintGun::SprayPaint( float flDeltaTime, int paintType )
 		DecrementPaintAmmo( paintType );
 	}
 }
-#endif

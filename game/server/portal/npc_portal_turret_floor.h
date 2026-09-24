@@ -40,7 +40,6 @@ public:
 	virtual void	Precache( void );
 	virtual void	Spawn( void );
 	virtual void	Activate( void );
-	virtual void	OnRestore( void );
 	virtual void	UpdateOnRemove( void );
 	virtual int		OnTakeDamage( const CTakeDamageInfo &info );
 
@@ -58,13 +57,9 @@ public:
 	void			TryEmitSound( const char *soundname );
 
 	virtual bool	OnSide( void );
-	void			EnableTipController( bool bEnabled );
 
 	virtual float	GetAttackDamageScale( CBaseEntity *pVictim );
 	virtual Vector	GetAttackSpread( CBaseCombatWeapon *pWeapon, CBaseEntity *pTarget );
-
-	virtual bool	HasPreferredCarryAnglesForPlayer( CBasePlayer *pPlayer );
-	virtual QAngle	PreferredCarryAngles( void );
 
 	// Think functions
 	virtual void	Retire( void );
@@ -84,6 +79,7 @@ public:
 	void			OnEnteredTractorBeam( void );
 	void			OnExitedTractorBeam( void );
 	void			TractorBeamThink( void );
+	bool			m_bInTractorBeam;	// between OnEnteredTractorBeam() and OnExitedTractorBeam()
 
 	virtual void	StartTouch( CBaseEntity *pOther );
 
@@ -113,10 +109,10 @@ protected:
 	virtual float	GetFireConeZTolerance( void );
 
 private:
-	bool			IsMovingSuddenly( void );
-	bool			IsEnemyBehindGlass( CPortal_Base2D *pPortal, CBaseEntity *pEnemy, const Vector &vecMuzzle, const Vector &vecEnemyTarget, float flDistToEnemy );
-
-	virtual bool	AllowedToIgnite( void );
+	// Portal 2 port: turrets can burn (fire damage starts BurnThink, which blows
+	// them up after sv_portal_turret_min/max_burn_time).
+	virtual bool	AllowedToIgnite( void ) { return true; }
+	void			StartBurning( void );
 
 	CHandle<CRopeKeyframe>	m_hRopes[ PORTAL_FLOOR_TURRET_NUM_ROPES ];
 

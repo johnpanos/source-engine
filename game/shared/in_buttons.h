@@ -37,5 +37,8 @@
 #define IN_GRENADE1		(1 << 23)	// grenade 1
 #define IN_GRENADE2		(1 << 24)	// grenade 2
 #define	IN_ATTACK3		(1 << 25)
+#ifdef PORTAL2
+#define IN_REMOTE_VIEW	(1 << 28)	// Portal 2 co-op remote view
+#endif
 
 #endif // IN_BUTTONS_H

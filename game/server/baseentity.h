@@ -611,6 +611,10 @@ protected:
 
 public:
 	virtual void PostConstructor( const char *szClassname );
+#ifdef PORTAL2
+	// Shared variables (sharedvar.h) attach to their engine shared memory here.
+	virtual void InitSharedVars( void ) {}
+#endif
 	virtual void PostClientActive( void );
 	virtual void ParseMapData( CEntityMapData *mapData );
 	virtual bool KeyValue( const char *szKeyName, const char *szValue );

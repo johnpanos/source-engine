@@ -131,25 +131,8 @@
 #include "portal2_engine_compat.h"
 #include "logging.h"
 
-class Portal2BikStub
-{
-public:
-	BIKMaterial_t CreateMaterial( const char *, const char *, const char *, int ) { return BIKHANDLE_INVALID; }
-	void DestroyMaterial( BIKMaterial_t ) {}
-	bool Update( BIKMaterial_t ) { return false; }
-	bool ReadyForSwap( BIKMaterial_t ) { return false; }
-	bool IsMovieResidentInMemory( BIKMaterial_t ) { return false; }
-	IMaterial *GetMaterial( BIKMaterial_t ) { return NULL; }
-	void GetTexCoordRange( BIKMaterial_t, float *pU, float *pV ) { *pU = *pV = 0.0f; }
-	void GetFrameSize( BIKMaterial_t, int *pWidth, int *pHeight ) { *pWidth = *pHeight = 0; }
-};
-
-static Portal2BikStub *g_pBIK = NULL;
-
-#ifndef BIK_LOOP
-#define BIK_LOOP 0
-#define BIK_PRELOAD 0
-#endif
+// Portal 2 port: g_pBIK plays movies through the engine video services.
+#include "portal2_bik.h"
 
 #include "tier0/memdbgon.h"
 

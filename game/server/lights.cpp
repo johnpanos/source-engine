@@ -231,6 +231,11 @@ void CLight::FadeThink(void)
 //
 LINK_ENTITY_TO_CLASS( light_spot, CLight );
 LINK_ENTITY_TO_CLASS( light_glspot, CLight );
+#ifdef PORTAL2
+// Portal 2 port: compile-time sun light the retail Portal 2 maps keep in their
+// entity lumps (as in the CS:GO lights.cpp).
+LINK_ENTITY_TO_CLASS( light_directional, CLight );
+#endif // PORTAL2
 
 
 class CEnvLight : public CLight

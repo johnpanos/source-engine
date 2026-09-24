@@ -180,7 +180,8 @@ bool CPortalGameRules::AllowDamage( CBaseEntity *pVictim, const CTakeDamageInfo 
 
 bool CPortalGameRules::IsSavingAllowed( void )
 {
-	if ( UTIL_GetLocalPlayerOrListenServerHost()->GetBonusChallenge() > 0 )
+	CPortal_Player *pPlayer = ToPortalPlayer( UTIL_PlayerByIndex( 1 ) );
+	if ( pPlayer && pPlayer->GetBonusChallenge() > 0 )
 	{
 		return false;
 	}
@@ -414,7 +415,7 @@ void UpgradePlayerPotatogun( void )
 			{
 				pPortalGun->SetCanFirePortal1();
 				pPortalGun->SetCanFirePortal2();
-				pPortalGun->SetPotatosOnPortalgun( true );
+				pPlayer->TurnOnPotatos();
 			}
 			else
 			{
@@ -424,6 +425,22 @@ void UpgradePlayerPotatogun( void )
 	}
 }
 
+
+// Portal 2 port: later retail builds register these for the elevator video
+// scripts (videos/video_splitter.nut). For a community (workshop) map they give
+// its position in the player's play order; -2 means an official map, where the
+// scripts use their per-map video table. This build has no community-map
+// support, so every map is official.
+int GetMapIndexInPlayOrder( void )
+{
+	return -2;
+}
+
+int GetNumMapsPlayed( void )
+{
+	// Only consulted for community maps (see above).
+	return 0;
+}
 
 HSCRIPT GetPlayer( void )
 {
@@ -444,6 +461,9 @@ void CPortalGameRules::RegisterScriptFunctions( void )
 	ScriptRegisterFunction( g_pScriptVM, IsLevelComplete, "Returns true if the level in the specified branch is completed by either player." );
 	ScriptRegisterFunction( g_pScriptVM, IsPlayerLevelComplete, "Returns true if the level in the specified branch is completed by a specific player." );
 	ScriptRegisterFunction( g_pScriptVM, GetPlayer, "Returns the player (SP Only)." );
+	ScriptRegisterFunction( g_pScriptVM, GetMapIndexInPlayOrder, "Determines which index (by order played) this map is. Returns -1 if entry is not found. -2 if this is not a known community map." );
+	ScriptRegisterFunction( g_pScriptVM, GetNumMapsPlayed, "Returns how many maps the player has played through." );
+	extern void PrecacheMovie( const char *pMovieName );	// gameinterface.cpp
 	ScriptRegisterFunction( g_pScriptVM, PrecacheMovie, "Precaches a named movie. Only valid to call within the entity's 'Precache' function called on mapspawn." );
 	ScriptRegisterFunction( g_pScriptVM, AddCoopCreditsName, "Adds a name to the coop credit's list." );
 	ScriptRegisterFunction( g_pScriptVM, ScriptSteamShowURL, "Bring up the steam overlay and shows the specified URL.  (Full address with protocol type is required, e.g. http://www.steamgames.com/)" );

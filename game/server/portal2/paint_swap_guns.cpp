@@ -10,10 +10,10 @@
 
 #include "cbase.h"
 #include "paint_swap_guns.h"
-#include "portal_player.h"
+#include "portal2/portal/portal_player.h"
+#include "portal2/portal/prop_portal.h"
 #include "weapon_paintgun.h"
 #include "weapon_portalgun.h"
-#include "prop_portal.h"
 #include "portal_util_shared.h"
 #include "debugoverlay_shared.h"
 

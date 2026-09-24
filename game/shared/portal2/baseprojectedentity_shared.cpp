@@ -257,7 +257,7 @@ void CBaseProjectedEntity::RecursiveProjection( bool bShouldSpawn, CBaseProjecto
 			}
 		}
 		// FIXME: Bring this back for DLC2
-		//else if ( engine->HasPaintmap() )
+		//else if ( Portal2_HasPaintmap() )
 		//{
 		//	//TestForReflectPaint();
 		//}
@@ -336,7 +336,7 @@ void CBaseProjectedEntity::TestForProjectionChanges( void )
 
 		// FIXME: Bring this back for DLC2
 		// check for reflect paint
-		/*if ( engine->HasPaintmap() )
+		/*if ( Portal2_HasPaintmap() )
 		{
 			TestForReflectPaint();
 		}*/

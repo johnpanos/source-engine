@@ -404,6 +404,10 @@ LINK_ENTITY_TO_CLASS( player, C_BasePlayer );
 C_BasePlayer::C_BasePlayer() : m_iv_vecViewOffset( "C_BasePlayer::m_iv_vecViewOffset" )
 {
 	AddVar( &m_vecViewOffset, &m_iv_vecViewOffset, LATCH_SIMULATION_VAR );
+#ifdef PORTAL2
+	m_afButtonForced = 0;
+	m_flTimeLastTouchedGround = 0.0f;
+#endif
 	
 #ifdef _DEBUG																
 	m_vecLadderNormal.Init();
@@ -2044,6 +2048,12 @@ void C_BasePlayer::PostThink( void )
 
 	// Even if dead simulate entities
 	SimulatePlayerSimulatedEntities();
+#endif
+#ifdef PORTAL2
+	if ( GetGroundEntity() )
+	{
+		m_flTimeLastTouchedGround = gpGlobals->curtime;
+	}
 #endif
 }
 

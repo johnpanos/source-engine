@@ -4,7 +4,6 @@
 //
 //=============================================================================
 
-#if 0
 #include "cbase.h"
 #include "tier0/vprof.h"
 #include "animation.h"
@@ -23,6 +22,7 @@
 #else
 #include "portal_player.h"
 #include "weapon_portalgun.h"
+#include "trigger_tractorbeam.h"
 #endif
 
 #define PORTAL_RUN_SPEED			320.0f
@@ -154,7 +154,7 @@ Activity CPortalPlayerAnimState::TranslateActivity( Activity actDesired )
 
 	if ( GetPortalPlayer()->GetActiveWeapon() )
 	{
-		translateActivity = GetPortalPlayer()->GetActiveWeapon()->ActivityOverride( translateActivity, false );
+		translateActivity = GetPortalPlayer()->GetActiveWeapon()->ActivityOverride( translateActivity, NULL );
 	}
 
 	return translateActivity;
@@ -376,7 +376,7 @@ bool CPortalPlayerAnimState::HandleMoving( Activity &idealActivity )
 		bool bHasSpeedPower = pPortalPlayer->GetPaintPower( CEG_SPEED_POWER ).m_State == ACTIVE_PAINT_POWER;
 
 #ifdef CLIENT_DLL
-		if ( engine->HasPaintmap() && !bHasSpeedPower && !pPortalPlayer->IsLocalPlayer() )
+		if ( Portal2_HasPaintmap() && !bHasSpeedPower && !pPortalPlayer->IsLocalPlayer() )
 		{
 			// FIXME: Is this doing extra work in splitscreen?
 			// Non-local players don't update paint powers on the client because this has to happen in gamemovement!
@@ -688,4 +688,3 @@ void CPortalPlayerAnimState::IncreaseDamageStage()
 		//m_nDamageStage++;
 	}
 }
-#endif

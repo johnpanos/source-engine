@@ -255,6 +255,14 @@ public:
 	// implements these so ragdolls can handle frustum culling & leaf visibility
 	virtual void					GetRenderBounds( Vector& theMins, Vector& theMaxs );
 	virtual const Vector&			GetRenderOrigin( void );
+#ifdef PORTAL2
+	// Render at a position other than the entity origin (later base game; the
+	// Portal 2 player draws a held object out of the eye this way).
+	void							SetRenderOriginOverride( const Vector &vec );
+	void							DisableRenderOriginOverride( void );
+	bool							IsUsingRenderOriginOverride( void ) { return m_vecRenderOriginOverride != vec3_invalid; }
+	Vector							m_vecRenderOriginOverride;
+#endif
 	virtual const QAngle&			GetRenderAngles( void );
 
 	virtual bool					GetSoundSpatialization( SpatializationInfo_t& info );
@@ -290,6 +298,10 @@ public:
 	bool							IsAboutToRagdoll() const;
 	virtual C_BaseAnimating			*BecomeRagdollOnClient();
 	C_BaseAnimating					*CreateRagdollCopy();
+#ifdef PORTAL2
+	// Copy the pending sequence blends of another model (CS:GO base).
+	void							CopySequenceTransitions( C_BaseAnimating *pCopyFrom ) { m_SequenceTransitioner.m_animationQueue = pCopyFrom->m_SequenceTransitioner.m_animationQueue; }
+#endif
 	bool							InitAsClientRagdoll( const matrix3x4_t *pDeltaBones0, const matrix3x4_t *pDeltaBones1, const matrix3x4_t *pCurrentBonePosition, float boneDt, bool bFixedConstraints=false );
 	void							IgniteRagdoll( C_BaseAnimating *pSource );
 	void							TransferDissolveFrom( C_BaseAnimating *pSource );
@@ -304,6 +316,12 @@ public:
 	// For shadows rendering the correct body + sequence...
 	virtual int GetBody()			{ return m_nBody; }
 	virtual int GetSkin()			{ return m_nSkin; }
+#ifdef PORTAL2
+	// Later base game. This engine recomputes translucency when the render
+	// group is next evaluated, so no translucency notification is needed.
+	void SetBody( int iBody )		{ m_nBody = iBody; }
+	void SetSkin( int iSkin )		{ m_nSkin = iSkin; }
+#endif
 
 	bool IsOnFire() { return ( (GetFlags() & FL_ONFIRE) != 0 ); }
 

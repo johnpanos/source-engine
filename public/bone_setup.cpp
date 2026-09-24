@@ -573,6 +573,141 @@ inline void CalcBonePosition( int frame, float s,
 
 
 
+//-----------------------------------------------------------------------------
+// Portal 2 port: decoding of frame x bone animation data (STUDIO_FRAMEANIM),
+// from the CS:GO bonesetup/bone_decode.cpp PC path. Each bone has a flag byte;
+// its rotation and position come from the per-frame data, from the constant
+// block, or (neither flag set) from the caller's default (bind pose, or
+// identity for delta animations).
+//-----------------------------------------------------------------------------
+
+// Quaternion48S: three 15-bit components plus the index and sign of the
+// largest one, which is rebuilt from the unit length (CS:GO compressed_vector.h).
+static void DecodeQuaternion48S( const byte *pData, Quaternion &q )
+{
+	unsigned short nPacked[3];
+	V_memcpy( nPacked, pData, sizeof( nPacked ) );
+	const float flScale = 1.0f / 23168.0f;	// SCALE48S: 2*sqrt(0.5) in 15 bits
+	const int nShift = 16384;				// SHIFT48S
+	int a = nPacked[0] & 0x7fff, offsetH = nPacked[0] >> 15;
+	int b = nPacked[1] & 0x7fff, offsetL = nPacked[1] >> 15;
+	int c = nPacked[2] & 0x7fff, dneg = nPacked[2] >> 15;
+
+	float *pq = &q.x;
+	int ia = offsetL + offsetH * 2;
+	int ib = ( ia + 1 ) % 4;
+	int ic = ( ia + 2 ) % 4;
+	int id = ( ia + 3 ) % 4;
+	pq[ia] = ( a - nShift ) * flScale;
+	pq[ib] = ( b - nShift ) * flScale;
+	pq[ic] = ( c - nShift ) * flScale;
+	pq[id] = sqrt( MAX( 0.0f, 1.0f - pq[ia] * pq[ia] - pq[ib] * pq[ib] - pq[ic] * pq[ic] ) );
+	if ( dneg )
+		pq[id] = -pq[id];
+}
+
+static void DecodeFrameQuaternion( byte flags, const byte *pData, Quaternion &q )
+{
+	if ( flags & ( STUDIO_FRAME_ANIM_ROT2 | STUDIO_FRAME_CONST_ROT2 ) )
+	{
+		DecodeQuaternion48S( pData, q );
+	}
+	else
+	{
+		Quaternion48 q48;
+		V_memcpy( &q48, pData, sizeof( q48 ) );
+		q = q48;
+	}
+}
+
+static void DecodeFramePosition( byte flags, const byte *pData, Vector &pos )
+{
+	if ( flags & ( STUDIO_FRAME_ANIM_POS2 | STUDIO_FRAME_CONST_POS2 ) )
+	{
+		V_memcpy( &pos, pData, sizeof( Vector ) );
+	}
+	else
+	{
+		Vector48 v48;
+		V_memcpy( &v48, pData, sizeof( v48 ) );
+		pos = v48;
+	}
+}
+
+static int FrameRotationSize( byte flags )
+{
+	// Quaternion48S is 6 bytes, like Quaternion48.
+	return ( flags & ( STUDIO_FRAME_ANIM_ROT2 | STUDIO_FRAME_CONST_ROT2 ) ) ? 6 : sizeof( Quaternion48 );
+}
+
+static int FramePositionSize( byte flags )
+{
+	return ( flags & ( STUDIO_FRAME_ANIM_POS2 | STUDIO_FRAME_CONST_POS2 ) ) ? sizeof( Vector ) : sizeof( Vector48 );
+}
+
+// Decodes one bone at frame fraction s (0 reads a single frame) and advances
+// the frame and constant cursors.
+static byte *ExtractFrameAnimBone( byte flags, float s, byte *pFrameData, byte *&pConstantData, int framelength,
+	Quaternion &q, Vector &pos, const Quaternion &qDefault, const Vector &posDefault )
+{
+	if ( flags & ( STUDIO_FRAME_ANIM_ROT | STUDIO_FRAME_ANIM_ROT2 ) )
+	{
+		DecodeFrameQuaternion( flags, pFrameData, q );
+		if ( s > 0.0f )
+		{
+			Quaternion q2;
+			DecodeFrameQuaternion( flags, pFrameData + framelength, q2 );
+			QuaternionBlend( q, q2, s, q );
+		}
+		pFrameData += FrameRotationSize( flags );
+	}
+	else if ( flags & ( STUDIO_FRAME_CONST_ROT | STUDIO_FRAME_CONST_ROT2 ) )
+	{
+		DecodeFrameQuaternion( flags, pConstantData, q );
+		pConstantData += FrameRotationSize( flags );
+	}
+	else
+	{
+		q = qDefault;
+	}
+
+	if ( flags & ( STUDIO_FRAME_ANIM_POS | STUDIO_FRAME_ANIM_POS2 ) )
+	{
+		DecodeFramePosition( flags, pFrameData, pos );
+		if ( s > 0.0f )
+		{
+			Vector pos2;
+			DecodeFramePosition( flags, pFrameData + framelength, pos2 );
+			pos = pos * ( 1.0f - s ) + pos2 * s;
+		}
+		pFrameData += FramePositionSize( flags );
+	}
+	else if ( flags & ( STUDIO_FRAME_CONST_POS | STUDIO_FRAME_CONST_POS2 ) )
+	{
+		DecodeFramePosition( flags, pConstantData, pos );
+		pConstantData += FramePositionSize( flags );
+	}
+	else
+	{
+		pos = posDefault;
+	}
+	return pFrameData;
+}
+
+static byte *SkipFrameAnimBone( byte flags, byte *pFrameData, byte *&pConstantData )
+{
+	if ( flags & ( STUDIO_FRAME_ANIM_ROT | STUDIO_FRAME_ANIM_ROT2 ) )
+		pFrameData += FrameRotationSize( flags );
+	else if ( flags & ( STUDIO_FRAME_CONST_ROT | STUDIO_FRAME_CONST_ROT2 ) )
+		pConstantData += FrameRotationSize( flags );
+
+	if ( flags & ( STUDIO_FRAME_ANIM_POS | STUDIO_FRAME_ANIM_POS2 ) )
+		pFrameData += FramePositionSize( flags );
+	else if ( flags & ( STUDIO_FRAME_CONST_POS | STUDIO_FRAME_CONST_POS2 ) )
+		pConstantData += FramePositionSize( flags );
+	return pFrameData;
+}
+
 void SetupSingleBoneMatrix( 
 	CStudioHdr *pOwnerHdr, 
 	int nSequence, 
@@ -583,7 +718,9 @@ void SetupSingleBoneMatrix(
 	mstudioseqdesc_t &seqdesc = pOwnerHdr->pSeqdesc( nSequence );
 	mstudioanimdesc_t &animdesc = pOwnerHdr->pAnimdesc( seqdesc.anim( 0, 0 ) );
 	int iLocalFrame = iFrame;
-	mstudioanim_t *panim = animdesc.pAnim( &iLocalFrame );
+	// Portal 2 port: frame x bone data is not RLE; like CS:GO, this helper
+	// leaves such bones at their defaults.
+	mstudioanim_t *panim = ( animdesc.flags & STUDIO_FRAMEANIM ) ? NULL : animdesc.pAnim( &iLocalFrame );
 	float s = 0;
 	mstudiobone_t *pbone = pOwnerHdr->pBone( iBone );
 
@@ -930,7 +1067,17 @@ static void CalcVirtualAnimation( virtualmodel_t *pVModel, const CStudioHdr *pSt
 
 	int iLocalFrame = iFrame;
 	float flStall;
-	panim = animdesc.pAnim( &iLocalFrame, flStall );
+	// Portal 2 port: STUDIO_FRAMEANIM data is frame x bone, not RLE
+	mstudio_frame_anim_t *pFrameanim = NULL;
+	if ( animdesc.flags & STUDIO_FRAMEANIM )
+	{
+		pFrameanim = (mstudio_frame_anim_t *)animdesc.pAnim( &iLocalFrame, flStall );
+		panim = NULL;
+	}
+	else
+	{
+		panim = animdesc.pAnim( &iLocalFrame, flStall );
+	}
 
 	float *pweight = seqdesc.pBoneweight( 0 );
 	pbone = pStudioHdr->pBone( 0 );
@@ -965,10 +1112,33 @@ static void CalcVirtualAnimation( virtualmodel_t *pVModel, const CStudioHdr *pSt
 	}
 
 	// if the animation isn't available, look for the zero frame cache
-	if (!panim)
+	if (!panim && !pFrameanim)
 	{
 		CalcZeroframeData( ((CStudioHdr *)pStudioHdr), pAnimStudioHdr, pAnimGroup, pAnimbone, animdesc, fFrame, pos, q, boneMask, 1.0 );
 		return;
+	}
+
+	if ( pFrameanim )
+	{
+		byte *pBoneFlags = pFrameanim->pBoneFlags();
+		byte *pConstantData = pFrameanim->pConstantData();
+		byte *pFrameData = pFrameanim->pFrameData( iLocalFrame );
+		int framelength = pFrameanim->framelength;
+		for ( int iAnimBone = 0; iAnimBone < pAnimStudioHdr->numbones; iAnimBone++, pBoneFlags++ )
+		{
+			int j = pAnimGroup->masterBone[iAnimBone];
+			if ( j >= 0 && ( pStudioHdr->boneFlags(j) & boneMask ) )
+			{
+				// bones without data keep the pose initialized above
+				Quaternion qDefault = q[j];
+				Vector posDefault = pos[j];
+				pFrameData = ExtractFrameAnimBone( *pBoneFlags, s, pFrameData, pConstantData, framelength, q[j], pos[j], qDefault, posDefault );
+			}
+			else
+			{
+				pFrameData = SkipFrameAnimBone( *pBoneFlags, pFrameData, pConstantData );
+			}
+		}
 	}
 
 	// FIXME: change encoding so that bone -1 is never the case
@@ -1071,12 +1241,22 @@ static void CalcAnimation( const CStudioHdr *pStudioHdr,	Vector *pos, Quaternion
 
 	int iLocalFrame = iFrame;
 	float flStall;
-	mstudioanim_t *panim = animdesc.pAnim( &iLocalFrame, flStall );
+	// Portal 2 port: STUDIO_FRAMEANIM data is frame x bone, not RLE
+	mstudioanim_t *panim = NULL;
+	mstudio_frame_anim_t *pFrameanim = NULL;
+	if ( animdesc.flags & STUDIO_FRAMEANIM )
+	{
+		pFrameanim = (mstudio_frame_anim_t *)animdesc.pAnim( &iLocalFrame, flStall );
+	}
+	else
+	{
+		panim = animdesc.pAnim( &iLocalFrame, flStall );
+	}
 
 	float *pweight = seqdesc.pBoneweight( 0 );
 
 	// if the animation isn't available, look for the zero frame cache
-	if (!panim)
+	if (!panim && !pFrameanim)
 	{
 		// Msg("zeroframe %s\n", animdesc.pszName() );
 		// pre initialize
@@ -1102,6 +1282,28 @@ static void CalcAnimation( const CStudioHdr *pStudioHdr,	Vector *pos, Quaternion
 		return;
 	}
 
+	if ( pFrameanim )
+	{
+		byte *pBoneFlags = pFrameanim->pBoneFlags();
+		byte *pConstantData = pFrameanim->pConstantData();
+		byte *pFrameData = pFrameanim->pFrameData( iLocalFrame );
+		int framelength = pFrameanim->framelength;
+		bool bIsDelta = ( animdesc.flags & STUDIO_DELTA ) != 0;
+		const Quaternion qIdentity( 0.0f, 0.0f, 0.0f, 1.0f );
+		for ( int i = 0; i < pStudioHdr->numbones(); i++, pBoneFlags++ )
+		{
+			if ( pweight[i] > 0 && ( pStudioHdr->boneFlags(i) & boneMask ) )
+			{
+				pFrameData = ExtractFrameAnimBone( *pBoneFlags, s, pFrameData, pConstantData, framelength, q[i], pos[i],
+					bIsDelta ? qIdentity : pbone[i].quat, bIsDelta ? vec3_origin : pbone[i].pos );
+			}
+			else
+			{
+				pFrameData = SkipFrameAnimBone( *pBoneFlags, pFrameData, pConstantData );
+			}
+		}
+	}
+	else
 	// BUGBUG: the sequence, the anim, and the model can have all different bone mappings.
 	for (int i = 0; i < pStudioHdr->numbones(); i++, pbone++, pweight++)
 	{

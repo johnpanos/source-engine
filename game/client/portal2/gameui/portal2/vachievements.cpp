@@ -6,7 +6,7 @@
 
 #include "engineinterface.h"
 #include "vgenericpanellist.h"
-#include "KeyValues.h"
+#include "keyvalues.h"
 #include "vfooterpanel.h"
 #include "fmtstr.h"
 

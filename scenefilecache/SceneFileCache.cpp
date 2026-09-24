@@ -28,6 +28,36 @@ bool IsBufferBinaryVCD( char *pBuffer, int bufferSize )
 	return false;
 }
 
+// Portal 2 port: the version 3 summary inserts lastspeech_msecs after msecs.
+#define SCENE_IMAGE_VERSION_LASTSPEECH	3
+
+struct SceneImageSummaryV3_t
+{
+	unsigned int	msecs;
+	unsigned int	lastspeech_msecs;
+	int				numSounds;
+	int				soundStrings[1];	// has numSounds
+};
+
+static void GetSceneImageSummary( const SceneImageHeader_t *pHeader, int nSummaryOffset,
+	unsigned int *pMsecs, int *pNumSounds, const int **ppSoundStrings )
+{
+	const byte *pSummary = (const byte *)pHeader + nSummaryOffset;
+	if ( pHeader->nVersion == SCENE_IMAGE_VERSION_LASTSPEECH )
+	{
+		const SceneImageSummaryV3_t *pV3 = (const SceneImageSummaryV3_t *)pSummary;
+		*pMsecs = pV3->msecs;
+		*pNumSounds = pV3->numSounds;
+		*ppSoundStrings = pV3->soundStrings;
+		return;
+	}
+
+	const SceneImageSummary_t *pV2 = (const SceneImageSummary_t *)pSummary;
+	*pMsecs = pV2->msecs;
+	*pNumSounds = pV2->numSounds;
+	*ppSoundStrings = pV2->soundStrings;
+}
+
 class CSceneFileCache : public CBaseAppSystem< ISceneFileCache >
 {
 public:
@@ -84,8 +114,11 @@ InitReturnVal_t CSceneFileCache::Init()
 		if ( filesystem->ReadFile( pSceneImageName, "GAME", m_SceneImageFile ) )
 		{
 			SceneImageHeader_t *pHeader = (SceneImageHeader_t *)m_SceneImageFile.Base();
+			// Portal 2 port: version 3 images (Portal 2 and later) add a
+			// last-speech time to each summary; both versions are read.
 			if ( pHeader->nId != SCENE_IMAGE_ID || 
-				pHeader->nVersion != SCENE_IMAGE_VERSION )
+				( pHeader->nVersion != SCENE_IMAGE_VERSION &&
+				  pHeader->nVersion != SCENE_IMAGE_VERSION_LASTSPEECH ) )
 			{
 				Error( "CSceneFileCache: Bad scene image file %s\n", pSceneImageName );
 			}
@@ -156,11 +189,14 @@ bool CSceneFileCache::GetSceneCachedData( char const *pFilename, SceneCachedData
 
 	// get scene summary
 	SceneImageEntry_t *pEntries = (SceneImageEntry_t *)( (byte *)pHeader + pHeader->nSceneEntryOffset );
-	SceneImageSummary_t *pSummary = (SceneImageSummary_t *)( (byte *)pHeader + pEntries[iScene].nSceneSummaryOffset );
+	unsigned int msecs;
+	int numSounds;
+	const int *pSoundStrings;
+	GetSceneImageSummary( pHeader, pEntries[iScene].nSceneSummaryOffset, &msecs, &numSounds, &pSoundStrings );
 	
 	pData->sceneId = iScene;
-	pData->msecs = pSummary->msecs;
-	pData->numSounds = pSummary->numSounds;
+	pData->msecs = msecs;
+	pData->numSounds = numSounds;
 
 	return true;
 }
@@ -175,15 +211,18 @@ short CSceneFileCache::GetSceneCachedSound( int iScene, int iSound )
 	}
 
 	SceneImageEntry_t *pEntries = (SceneImageEntry_t *)( (byte *)pHeader + pHeader->nSceneEntryOffset );
-	SceneImageSummary_t *pSummary = (SceneImageSummary_t *)( (byte *)pHeader + pEntries[iScene].nSceneSummaryOffset );
-	if ( iSound < 0 || iSound >= pSummary->numSounds )
+	unsigned int msecs;
+	int numSounds;
+	const int *pSoundStrings;
+	GetSceneImageSummary( pHeader, pEntries[iScene].nSceneSummaryOffset, &msecs, &numSounds, &pSoundStrings );
+	if ( iSound < 0 || iSound >= numSounds )
 	{
 		// bad index
 		Assert( 0 );
 		return -1;
 	}
 
-	return pSummary->soundStrings[iSound];
+	return pSoundStrings[iSound];
 }
 
 const char *CSceneFileCache::GetSceneString( short stringId )

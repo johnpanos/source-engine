@@ -141,6 +141,10 @@ private:
 	COutputEvent m_OnDeploy;
 	COutputEvent m_OnRetire;
 
+	// Portal 2 port: the co-op player taunting through this camera (see
+	// TauntedByPlayer); the camera keeps its lens on that player until the taunt ends.
+	CHandle<CPortal_Player>	m_hTauntingPlayer;
+
 	DECLARE_DATADESC();
 };
 

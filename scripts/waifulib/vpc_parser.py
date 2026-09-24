@@ -129,6 +129,10 @@ def parse_vpcs( env ,vpcs, basedir ):
 				continue
 
 			s = match_statement.search(i)
+			# A continued $File group ("a" \ "b" [cond] \ ...) is joined with ';'.
+			# Its conditions belong to single entries and are applied per entry below.
+			if '$File' in i and ';' in i:
+				s = None
 			selected = not s or compute_statement(env.DEFINES+defines, s.group(0))
 			for following in l[line_number + 1:]:
 				if following.strip() and not following.strip().startswith('//'):
@@ -164,9 +168,16 @@ def parse_vpcs( env ,vpcs, basedir ):
 
 			elif '$File' in i and '.h"' not in i:
 				for j in i.split(';'):
+					if '"' not in j:
+						continue
+					entry_condition = match_statement.search(j)
+					if entry_condition and not compute_statement(env.DEFINES+defines, entry_condition.group(0)):
+						continue
 					j = j.replace('$SRCDIR', basedir)
 					s = fix_dos_path(j.split('"')[1])
-					sources.append(s)
+					# A file listed by two included VPCs is still one source.
+					if s not in sources:
+						sources.append(s)
 
 		for i in ret['$Configuration']:
 			if '$PreprocessorDefinitions' in i:

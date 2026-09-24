@@ -207,4 +207,22 @@ private:
 	CUtlVector<ScreenHandle_t>	m_hScreens;
 };
 
+#if defined( PORTAL2 ) && defined( CLIENT_DLL )
+// Later (CS:GO-era) base-game helpers (client only: the server's CBaseAnimating
+// has no IsViewModel()).
+inline CBaseViewModel *ToBaseViewModel( CBaseAnimating *pAnim )
+{
+	if ( pAnim && pAnim->IsViewModel() )
+		return assert_cast<CBaseViewModel *>( pAnim );
+	return NULL;
+}
+
+inline CBaseViewModel *ToBaseViewModel( CBaseEntity *pEntity )
+{
+	if ( !pEntity )
+		return NULL;
+	return ToBaseViewModel( pEntity->GetBaseAnimating() );
+}
+#endif
+
 #endif // BASEVIEWMODEL_SHARED_H

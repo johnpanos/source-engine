@@ -5,7 +5,6 @@
 // $NoKeywords: $
 //
 //=============================================================================//
-#if 0
 #include "cbase.h"
 #include "ivmodemanager.h"
 #include "clientmode_hlnormal.h"
@@ -44,11 +43,13 @@ ConVar cl_finale_completed( "cl_finale_completed", "0", FCVAR_HIDDEN );
 
 
 // The current client mode. Always ClientModeNormal in HL.
-static IClientMode *g_pClientMode[ MAX_SPLITSCREEN_PLAYERS ];
+// Portal 2 port: this SDK's client has the single g_pClientMode (iclientmode.h)
+// rather than one client mode per split-screen slot.
+IClientMode *g_pClientMode = NULL;
 IClientMode *GetClientMode()
 {
 	ASSERT_LOCAL_PLAYER_RESOLVABLE();
-	return g_pClientMode[ GET_ACTIVE_SPLITSCREEN_SLOT() ];
+	return g_pClientMode;
 }
 //extern EHANDLE g_eKillTarget1;
 //extern EHANDLE g_eKillTarget2;
@@ -116,7 +117,7 @@ protected:
 	{
 		BaseClass::ApplySchemeSettings( pScheme );
 
-		GetHud().InitColors( pScheme );
+		gHUD.InitColors( pScheme );
 
 		SetPaintBackgroundEnabled( false );
 	}
@@ -175,7 +176,7 @@ void CHLModeManager::Init( void )
 	for( int i = 0; i < MAX_SPLITSCREEN_PLAYERS; ++i )
 	{
 		ACTIVE_SPLITSCREEN_PLAYER_GUARD( i );
-		g_pClientMode[ i ] = GetClientModeNormal();
+		g_pClientMode = GetClientModeNormal();
 	}
 	PanelMetaClassMgr()->LoadMetaClassDefinitionFile( SCREEN_FILE );
 }
@@ -269,8 +270,6 @@ CEG_NOINLINE void ClientModePortalNormal::LevelInit( const char *newmap )
 	m_flDeathCCWeight = 0.0f;
 	*/
 
-	m_hCurrentColorCorrection = NULL;
-		
 	m_BlurFadeScale = 0;
 
 	return BaseClass::LevelInit( newmap );
@@ -281,61 +280,6 @@ void ClientModePortalNormal::LevelShutdown( void )
 	// g_pColorCorrectionMgr->RemoveColorCorrection( m_CCDeathHandle );
 	// m_CCDeathHandle = INVALID_CLIENT_CCHANDLE;
 	return BaseClass::LevelShutdown();
-}
-
-void ClientModePortalNormal::OnColorCorrectionWeightsReset( void )
-{
-	BaseClass::OnColorCorrectionWeightsReset();
-
-	C_Portal_Player *pPlayer = C_Portal_Player::GetLocalPortalPlayer();
-	
-	/*
-	// if the player is dead, fade in the death color correction
-	if ( m_CCDeathHandle != INVALID_CLIENT_CCHANDLE && ( pPlayer != NULL ) )
-	{
-		if ( pPlayer->m_lifeState != LIFE_ALIVE )
-		{
-			if ( m_flDeathCCWeight < 1.0f )
-			{
-				m_flDeathCCWeight += DEATH_CC_FADE_SPEED;
-				clamp( m_flDeathCCWeight, 0.0f, 1.0f );
-			}
-
-			// Player is dead, fade out the environmental color correction
-			if ( m_hCurrentColorCorrection )
-			{
-				m_hCurrentColorCorrection->EnableOnClient( false );
-				m_hCurrentColorCorrection = NULL;
-			}
-		}
-		else 
-		{
-			m_flDeathCCWeight = 0.0f;
-		}
-
-		g_pColorCorrectionMgr->SetColorCorrectionWeight( m_CCDeathHandle, m_flDeathCCWeight );
-	}
-
-	// Only blend between environmental color corrections if there is no death-induced color correction
-	if ( m_flDeathCCWeight == 0.0f )
-	*/
-	{
-		C_ColorCorrection *pNewColorCorrection = pPlayer ? pPlayer->GetActiveColorCorrection() : NULL;
-		C_ColorCorrection *pOldColorCorrection = m_hCurrentColorCorrection;
-
-		if ( pNewColorCorrection != pOldColorCorrection )
-		{
-			if ( pOldColorCorrection )
-			{
-				pOldColorCorrection->EnableOnClient( false );
-			}
-			if ( pNewColorCorrection )
-			{
-				pNewColorCorrection->EnableOnClient( true, pOldColorCorrection == NULL );
-			}
-			m_hCurrentColorCorrection = pNewColorCorrection;
-		}
-	}
 }
 
 //-----------------------------------------------------------------------------
@@ -382,14 +326,14 @@ void ClientModePortalNormal::StartTransitionFade( float flFadeTime )
 }
 
 extern ConVar building_cubemaps;
-void ClientModePortalNormal::DoPostScreenSpaceEffects( const CViewSetup *pSetup )
+bool ClientModePortalNormal::DoPostScreenSpaceEffects( const CViewSetup *pSetup )
 {
 	if ( building_cubemaps.GetBool() )
-		return;
+		return false;
 
 	MDLCACHE_CRITICAL_SECTION();
 
-	g_GlowObjectManager.RenderGlowEffects( pSetup, GetSplitScreenPlayerSlot() );
+	g_GlowObjectManager.RenderGlowEffects( pSetup, GET_ACTIVE_SPLITSCREEN_SLOT() );
 
 	if ( m_BlurFadeScale )
 	{
@@ -398,8 +342,10 @@ void ClientModePortalNormal::DoPostScreenSpaceEffects( const CViewSetup *pSetup 
 		int xl, yl, dest_width, dest_height;
 		pRenderContext->GetViewport( xl, yl, dest_width, dest_height );
 
-		DoBlurFade( m_BlurFadeScale, 1.0f, xl, yl, dest_width, dest_height );
+		Portal2_DoBlurFade( m_BlurFadeScale, 1.0f, xl, yl, dest_width, dest_height );
 	}
+
+	return true;
 }
 
 
@@ -443,36 +389,13 @@ IClientMode *GetClientModeNormal()
 }
 
 //--------------------------------------------------------------------------------------------------------
-class FullscreenPortalViewport : public CHudViewport
-{
-private:
-	DECLARE_CLASS_SIMPLE( FullscreenPortalViewport, CHudViewport );
-
-private:
-	virtual void InitViewportSingletons( void )
-	{
-		SetAsFullscreenViewportInterface();
-	}
-};
-
-class ClientModePortalNormalFullscreen : public	ClientModePortalNormal
-{
-	DECLARE_CLASS_SIMPLE( ClientModePortalNormalFullscreen, ClientModePortalNormal );
-public:
-	virtual void InitViewport()
-	{
-		// Skip over BaseClass!!!
-		BaseClass::ClientModeShared::InitViewport();
-		m_pViewport = new FullscreenPortalViewport();
-		m_pViewport->Start( gameuifuncs, gameeventmanager );
-	}
-};
-
-//--------------------------------------------------------------------------------------------------------
-static ClientModePortalNormalFullscreen g_FullscreenClientMode;
+// Portal 2 port: CS:GO also had a full-screen client mode whose viewport spans
+// every split-screen player (CBaseViewport::SetAsFullscreenViewportInterface).
+// This client has one local player and no full-screen viewport singleton, so
+// the full-screen client mode is the normal one.
 IClientMode *GetFullscreenClientMode( void )
 {
-	return &g_FullscreenClientMode;
+	return GetClientModeNormal();
 }
 
 ClientModePortalNormal* GetClientModePortalNormal()
@@ -485,5 +408,4 @@ ClientModePortalNormal* GetClientModePortalNormal()
 
 static CHLModeManager g_HLModeManager;
 IVModeManager *modemanager = &g_HLModeManager;
-#endif
 

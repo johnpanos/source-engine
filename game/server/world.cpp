@@ -31,6 +31,9 @@
 #include "engine/IStaticPropMgr.h"
 #include "particle_parse.h"
 #include "globalstate.h"
+#ifdef PORTAL2
+#include "cvisibilitymonitor.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -42,6 +45,122 @@ extern void ActivityList_Free( void );
 extern CUtlMemoryPool g_EntityListPool;
 
 #define SF_DECAL_NOTINDEATHMATCH		2048
+
+#ifdef PORTAL2
+// Portal 2 port: info_game_event_proxy (instructor hint events in the retail
+// Portal 2 maps). From the CS:GO source drop (world.cpp); the repository's
+// provenance and distribution warning applies.
+#define SF_GAME_EVENT_PROXY_AUTO_VISIBILITY		1
+
+//=========================================================
+// Allows level designers to generate certain game events 
+// from entity i/o.
+//=========================================================
+class CInfoGameEventProxy : public CPointEntity
+{
+private:
+	string_t	m_iszEventName;
+	float		m_flRange;
+	bool		m_bDisabled;
+
+public:
+	DECLARE_CLASS( CInfoGameEventProxy, CPointEntity );
+
+	void Spawn();
+	int UpdateTransmitState();
+	void InputGenerateGameEvent( inputdata_t &inputdata );
+
+	void InputEnable( inputdata_t &inputdata ) { m_bDisabled = false; }
+	void InputDisable( inputdata_t &inputdata ) { m_bDisabled = true; }
+
+	static bool GameEventProxyCallback( CBaseEntity *pProxy, CBasePlayer *pViewingPlayer );
+	static bool GameEventProxyEvaluator( CBaseEntity *pProxy, CBasePlayer *pViewingPlayer );
+
+	DECLARE_DATADESC();
+};
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CInfoGameEventProxy::Spawn()
+{
+	BaseClass::Spawn();
+
+	if( GetSpawnFlags() & SF_GAME_EVENT_PROXY_AUTO_VISIBILITY )
+	{
+		VisibilityMonitor_AddEntity( this, m_flRange, &CInfoGameEventProxy::GameEventProxyCallback, &CInfoGameEventProxy::GameEventProxyEvaluator );
+	}
+
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Always transmitted to clients
+//-----------------------------------------------------------------------------
+int CInfoGameEventProxy::UpdateTransmitState()
+{
+	return SetTransmitState( FL_EDICT_ALWAYS );
+}
+
+//---------------------------------------------------------
+//---------------------------------------------------------
+void CInfoGameEventProxy::InputGenerateGameEvent( inputdata_t &inputdata )
+{
+	CBasePlayer *pActivator = ToBasePlayer( inputdata.pActivator );
+
+	IGameEvent *event = gameeventmanager->CreateEvent( m_iszEventName.ToCStr() );
+	if ( event )
+	{
+		if ( pActivator )
+		{
+			event->SetInt( "userid", pActivator->GetUserID() );
+		}
+		event->SetInt( "subject", entindex() );
+		gameeventmanager->FireEvent( event );
+	}
+}
+
+//---------------------------------------------------------
+// Callback for the visibility monitor.
+//---------------------------------------------------------
+bool CInfoGameEventProxy::GameEventProxyCallback( CBaseEntity *pProxy, CBasePlayer *pViewingPlayer )
+{
+	CInfoGameEventProxy *pProxyPtr = assert_cast <CInfoGameEventProxy *>(pProxy);
+
+	if( !pProxyPtr )
+		return true;
+
+	IGameEvent * event = gameeventmanager->CreateEvent( pProxyPtr->m_iszEventName.ToCStr() );
+	if ( event )
+	{
+		event->SetInt( "userid", pViewingPlayer->GetUserID() );
+		event->SetInt( "subject", pProxyPtr->entindex() );
+		gameeventmanager->FireEvent( event );
+	}
+
+	return false;
+}
+
+bool CInfoGameEventProxy::GameEventProxyEvaluator( CBaseEntity *pProxy, CBasePlayer *pViewingPlayer )
+{
+	CInfoGameEventProxy *pProxyPtr = assert_cast <CInfoGameEventProxy *>(pProxy);
+
+	if( !pProxyPtr )
+		return false;
+
+	return !pProxyPtr->m_bDisabled;
+}
+
+
+LINK_ENTITY_TO_CLASS( info_game_event_proxy, CInfoGameEventProxy );
+
+BEGIN_DATADESC( CInfoGameEventProxy )
+	DEFINE_KEYFIELD( m_iszEventName, FIELD_STRING, "event_name" ),
+	DEFINE_KEYFIELD( m_flRange, FIELD_FLOAT, "range" ),
+	DEFINE_KEYFIELD( m_bDisabled, FIELD_BOOLEAN, "StartDisabled" ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "GenerateGameEvent", InputGenerateGameEvent ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "Enable", InputEnable ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "Disable", InputDisable ),
+END_DATADESC()
+#endif // PORTAL2
 
 class CDecal : public CPointEntity
 {

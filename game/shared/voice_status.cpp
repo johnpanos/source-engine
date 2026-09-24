@@ -44,6 +44,11 @@ extern int cam_thirdperson;
 
 ConVar voice_modenable( "voice_modenable", "1", FCVAR_ARCHIVE | FCVAR_CLIENTCMD_CAN_EXECUTE, "Enable/disable voice in this mod." );
 ConVar voice_clientdebug( "voice_clientdebug", "0" );
+#ifdef PORTAL2
+// Portal 2 co-op asks for particle voice icons. Portal 2 port: this voice
+// status draws the classic head labels either way.
+ConVar voice_icons_use_particles( "voice_icons_use_particles", "0", FCVAR_NONE, "Draw voice icons as particles (classic head labels in this port)" );
+#endif
 
 // ---------------------------------------------------------------------- //
 // The voice manager for the client.

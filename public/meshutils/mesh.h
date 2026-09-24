@@ -13,6 +13,7 @@
 
 #include "tier1/utlvector.h"
 #include "tier1/utllinkedlist.h"
+#include "tier1/utlstring.h"
 #include "mathlib/vector.h"
 #include "materialsystem/imaterial.h"
 #include "bitvec.h"

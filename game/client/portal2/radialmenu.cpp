@@ -18,7 +18,7 @@
 #include "tier0/dbg.h"
 #include "cdll_int.h"
 #include "menu.h" // for chudmenu defs
-#include "KeyValues.h"
+#include "keyvalues.h"
 #include <filesystem.h>
 #include "c_team.h"
 #include "vgui/ISurface.h"

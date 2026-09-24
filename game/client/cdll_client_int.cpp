@@ -171,6 +171,13 @@ extern vgui::IInputInternal *g_InputInternal;
 #include "sixense/in_sixense.h"
 #endif
 
+#ifdef PORTAL2
+#include "portal2/portal2_vscript_module.h"
+
+// Client VScript manager (vscript_client.cpp); NULL when scripting is unavailable.
+IScriptManager *scriptmanager = NULL;
+#endif
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -881,6 +888,14 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 	// please don't collapse this into one monolithic boolean expression (impossible to debug)
 	if ( (engine = (IVEngineClient *)appSystemFactory( VENGINE_CLIENT_INTERFACE_VERSION, NULL )) == NULL )
 		return false;
+#ifdef PORTAL2
+	// Portal 2 shared variables require the engine's single-player shared memory.
+	if ( !Portal2_ConnectEngineInterfaces( appSystemFactory ) )
+		return false;
+	// Portal 2 port: the matchmaking framework the server module owns.
+	if ( !Portal2_ConnectMatchFramework( appSystemFactory ) )
+		return false;
+#endif
 	if ( (modelrender = (IVModelRender *)appSystemFactory( VENGINE_HUDMODEL_INTERFACE_VERSION, NULL )) == NULL )
 		return false;
 	if ( (effects = (IVEfx *)appSystemFactory( VENGINE_EFFECTS_INTERFACE_VERSION, NULL )) == NULL )
@@ -923,6 +938,10 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 		return false;
 	if ( (scenefilecache = (ISceneFileCache *)appSystemFactory( SCENE_FILE_CACHE_INTERFACE_VERSION, NULL )) == NULL )
 		return false;
+#ifdef PORTAL2
+	// Optional, as on the server: without a manager client scripts do not run.
+	scriptmanager = Portal2_ConnectScriptManager( appSystemFactory );
+#endif
 	
 	
 #ifndef _XBOX
@@ -1211,6 +1230,12 @@ void CHLClient::Shutdown( void )
 	ShutdownFbx();
 #endif
 	
+#ifdef PORTAL2
+	scriptmanager = NULL;
+	Portal2_DisconnectScriptManager();
+	Portal2_DisconnectMatchFramework();
+#endif
+
 	// This call disconnects the VGui libraries which we rely on later in the shutdown path, so don't do it
 //	DisconnectTier3Libraries( );
 	DisconnectTier2Libraries( );
@@ -1281,6 +1306,12 @@ void CHLClient::HudUpdate( bool bActive )
 	// I don't think this is necessary any longer, but I will leave it until
 	// I can check into this further.
 	C_BaseTempEntity::CheckDynamicTempEnts();
+
+#ifdef PORTAL2
+	// Portal 2 port: run the matchmaking framework (an engine app system in
+	// CS:GO, run by the engine's frame) and report signon changes to it.
+	Portal2_MatchFrameworkClientFrame();
+#endif
 
 #ifdef SIXENSE
 	// If we're not connected, update sixense so we can move the mouse cursor when in the menus
