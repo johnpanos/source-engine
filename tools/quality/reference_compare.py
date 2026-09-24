@@ -67,7 +67,7 @@ def grain(reference, candidate):
     ref = np.tensordot(reference, weights, axes=1)
     cand = np.tensordot(candidate, weights, axes=1)
     gradient = gaussian_gradient_magnitude(ref, 2.0)
-    mask = (gradient < np.percentile(gradient, 30)) & (ref > 20) & (ref < 235)
+    mask = (gradient <= np.percentile(gradient, 30)) & (ref > 20) & (ref < 235)
     mask = binary_erosion(mask, iterations=4)
     if mask.sum() < 1000:
         raise ValueError("reference has too few smooth pixels to measure grain")
@@ -80,11 +80,14 @@ def grain(reference, candidate):
         return float(np.abs(gaussian_filter(image, 2.0) - gaussian_filter(image, 8.0))[mask].mean())
     candidate_grain, reference_grain = energy(cand), energy(ref)
     candidate_mottle, reference_mottle = mottle(cand), mottle(ref)
+    # A 0.05-level floor (well below one 8-bit step) keeps ratios meaningful
+    # when the converged reference is almost perfectly smooth.
+    floor = 0.05
     return {"smooth_pixels": int(mask.sum()), "candidate": candidate_grain,
             "reference": reference_grain,
-            "ratio": candidate_grain / max(reference_grain, 1e-6),
+            "ratio": (candidate_grain + floor) / (reference_grain + floor),
             "mottle_candidate": candidate_mottle, "mottle_reference": reference_mottle,
-            "mottle_ratio": candidate_mottle / max(reference_mottle, 1e-6)}
+            "mottle_ratio": (candidate_mottle + floor) / (reference_mottle + floor)}
 
 
 def score(reference, candidate):

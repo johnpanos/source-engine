@@ -86,45 +86,79 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 	const worldbrushdata_t *pWorld = host_state.worldbrush;
 	visible.SetCount( pWorld->worldMeshClusterCount );
 	Q_memset( visible.Base(), 0, visible.Count() );
-	for ( int i = 0; i < nVisibleLeaves; ++i )
+	// Leaves often reference the same meshlets (today every leaf references
+	// all of them), so stop once every meshlet is marked. The local pointer
+	// keeps the byte stores from forcing a reload of the vector's base.
+	unsigned char *pVisible = visible.Base();
+	const unsigned int clusterCount = pWorld->worldMeshClusterCount;
+	unsigned int marked = 0;
+	for ( int i = 0; i < nVisibleLeaves && marked < clusterCount; ++i )
 	{
 		const int leafIndex = pVisibleLeaves[i];
 		if ( leafIndex < 0 || static_cast<unsigned int>( leafIndex ) >= pWorld->worldMeshLeafCount )
 			continue;
 		const worldmeshleafrange_t &leaf = pWorld->pWorldMeshLeafRanges[leafIndex];
+		const unsigned int *pReferences = pWorld->pWorldMeshLeafReferences + leaf.firstReference;
 		for ( unsigned int j = 0; j < leaf.referenceCount; ++j )
-			visible[pWorld->pWorldMeshLeafReferences[leaf.firstReference + j]] = 1;
+		{
+			unsigned char &flag = pVisible[pReferences[j]];
+			marked += !flag;
+			flag = 1;
+		}
 	}
 	unsigned int submitted = 0;
+	unsigned int draws = 0;
 	static bool s_reportedRejected = false;
 	for ( unsigned int i = 0; i < pWorld->worldMeshBatchCount; ++i )
 	{
 		const worldmeshbatch_t &batch = pWorld->pWorldMeshBatches[i];
 		pRenderContext->Bind( batch.material, NULL );
-		for ( unsigned int j = 0; j < batch.meshletCount; ++j )
+		// Meshlets are the visibility unit, not the draw unit: visible meshlets
+		// whose index ranges are adjacent go out as one range, in the same
+		// primitive order, so the material pass runs once per run.
+		unsigned int runFirst = 0;
+		unsigned int runCount = 0;
+		unsigned int runMeshlets = 0;
+		bool rejected = false;
+		for ( unsigned int j = 0; j <= batch.meshletCount && !rejected; ++j )
 		{
-			const unsigned int meshletIndex = batch.firstMeshlet + j;
-			if ( !visible[meshletIndex] )
-				continue;
-			const worldmeshcluster_t &meshlet = pWorld->pWorldMeshClusters[meshletIndex];
-			if ( !uploader->DrawBatch( meshlet.firstIndex, meshlet.indexCount ) )
+			const worldmeshcluster_t *meshlet = NULL;
+			if ( j < batch.meshletCount && visible[batch.firstMeshlet + j] )
+				meshlet = &pWorld->pWorldMeshClusters[batch.firstMeshlet + j];
+			if ( meshlet && runCount && meshlet->firstIndex == runFirst + runCount )
 			{
-				if ( !s_reportedRejected )
-				{
-					Warning( "WMSH draw rejected material %s at meshlet %u\n",
-					    batch.material ? batch.material->GetName() : "(null)", meshletIndex );
-					s_reportedRejected = true;
-				}
-				break;
+				runCount += meshlet->indexCount;
+				++runMeshlets;
+				continue;
 			}
-			++submitted;
+			if ( runCount )
+			{
+				if ( !uploader->DrawBatch( runFirst, runCount ) )
+				{
+					if ( !s_reportedRejected )
+					{
+						Warning( "WMSH draw rejected material %s at meshlet %u\n",
+						    batch.material ? batch.material->GetName() : "(null)",
+						    batch.firstMeshlet + j - runMeshlets );
+						s_reportedRejected = true;
+					}
+					rejected = true;
+					break;
+				}
+				submitted += runMeshlets;
+				++draws;
+			}
+			runFirst = meshlet ? meshlet->firstIndex : 0;
+			runCount = meshlet ? meshlet->indexCount : 0;
+			runMeshlets = meshlet ? 1 : 0;
 		}
 	}
 	static bool s_reported = false;
 	if ( !s_reported )
 	{
-		Msg( "WMSH draw path active (%u material batches, %d visible leaves, %u queued meshlets)\n",
-		    pWorld->worldMeshBatchCount, nVisibleLeaves, submitted );
+		Msg( "WMSH draw path active (%u material batches, %d visible leaves, %u queued meshlets "
+		     "in %u draws)\n",
+		    pWorld->worldMeshBatchCount, nVisibleLeaves, submitted, draws );
 		s_reported = true;
 	}
 }

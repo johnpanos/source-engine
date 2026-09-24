@@ -26,15 +26,18 @@
 #pragma once
 #endif
 
+#include "render/render_gamma_ramp.h"
 #include "vulkan_frame_stats.h"
 #include "vulkan_surface_host.h"
 
 #include <vulkan/vulkan.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <string>
 #include <utility>
@@ -716,6 +719,15 @@ public:
 	uint64_t PresentCount() const { return m_presentCount; }
 	uint64_t ScaledPresentCount() const { return m_scaledPresentCount; }
 
+	// The monitor gamma ramp (render.gamma-ramp.v1), applied to the presented
+	// image as D3D9's hardware ramp is; back-buffer reads (captures, ReadPixels)
+	// stay unchanged. Callable from any thread: the next frame to present picks
+	// the newest ramp up. An 8-bit identity ramp presents by plain blit.
+	void PublishGammaRamp( const render::GammaRamp16 &ramp );
+	// Whether presents currently apply a ramp, and how many frames did.
+	bool GammaPresentActive() const { return m_gammaActive; }
+	uint64_t GammaPresentCount() const { return m_gammaPresentCount; }
+
 	// Count of validation messages of severity WARNING or ERROR observed since
 	// Init(). Zero on a clean run when validation is enabled.
 	uint32_t ValidationErrorCount() const { return m_validationErrorCount; }
@@ -802,6 +814,22 @@ private:
 	// swapchain image and leave that image ready to present.
 	void RecordPresentBlit(
 	    VkCommandBuffer cmd, uint32_t imageIndex, VkImageLayout backBufferLayout, bool capture );
+	// The same, drawing the back buffer through the gamma ramp instead of
+	// blitting it. False (nothing recorded) when the pass is unavailable.
+	bool RecordPresentGamma(
+	    VkCommandBuffer cmd, uint32_t imageIndex, VkImageLayout backBufferLayout, bool capture );
+	// Copies the presented swapchain image (in `layout`, last written at
+	// `srcStage`/`srcAccess`) for capture if requested, then transitions it to
+	// PRESENT_SRC.
+	void RecordPresentedCaptureAndRelease( VkCommandBuffer cmd, uint32_t imageIndex,
+	    VkImageLayout layout, VkPipelineStageFlags srcStage, VkAccessFlags srcAccess, bool capture );
+	// Picks up a newly published ramp (frame thread).
+	void ApplyPublishedGammaRamp();
+	// Device-lifetime and swapchain-lifetime objects of the gamma pass.
+	bool EnsurePresentGamma( std::string *outError );
+	bool EnsurePresentGammaTargets( std::string *outError );
+	void DestroyPresentGammaTargets();
+	void DestroyPresentGamma();
 	bool ResolveCapturedPixels( std::string *outError );
 
 	uint32_t FindMemoryType( uint32_t typeBits, VkMemoryPropertyFlags props, bool *found ) const;
@@ -867,6 +895,32 @@ private:
 	uint64_t m_scaledPresentCount = 0;
 	bool m_presentCapturable = false;
 	std::vector<VkImage> m_presentImages;
+
+	// Monitor gamma. PublishGammaRamp writes m_publishedRamp under the mutex and
+	// then bumps the revision (release); the frame thread compares it (acquire)
+	// and copies the ramp under the mutex.
+	std::mutex m_gammaMutex;
+	render::GammaRamp16 m_publishedRamp = {};
+	std::atomic<uint64_t> m_publishedRampRevision{ 0 };
+	uint64_t m_appliedRampRevision = 0;
+	render::GammaRamp16 m_activeRamp = {};
+	bool m_gammaActive = false;
+	bool m_gammaUnavailable = false; // the pass failed to build; presents blit
+	uint64_t m_gammaPresentCount = 0;
+	VkFormat m_gammaFormat = VK_FORMAT_UNDEFINED; // what the pass was built for
+	VkRenderPass m_gammaRenderPass = VK_NULL_HANDLE;
+	VkDescriptorSetLayout m_gammaSetLayout = VK_NULL_HANDLE;
+	VkPipelineLayout m_gammaPipelineLayout = VK_NULL_HANDLE;
+	VkPipeline m_gammaPipeline = VK_NULL_HANDLE;
+	VkSampler m_gammaSamplerNearest = VK_NULL_HANDLE;
+	VkSampler m_gammaSamplerLinear = VK_NULL_HANDLE;
+	VkDescriptorPool m_gammaDescriptorPool = VK_NULL_HANDLE;
+	VkDescriptorSet m_gammaSets[kMaxFramesInFlight] = {};
+	VkBuffer m_gammaRampBuffers[kMaxFramesInFlight] = {};
+	VkDeviceMemory m_gammaRampMemories[kMaxFramesInFlight] = {};
+	float *m_gammaRampMapped[kMaxFramesInFlight] = {};
+	std::vector<VkImageView> m_presentImageViews;
+	std::vector<VkFramebuffer> m_presentFramebuffers;
 	std::vector<VkDeviceMemory> m_backBufferMemories;
 	std::vector<VkImage> m_swapImages;
 	std::vector<VkImageView> m_swapImageViews;

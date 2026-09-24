@@ -104,8 +104,11 @@ class Pipeline:
                          "preview_gain": lightmap.get("preview_gain", 1.0),
                          "denoise": lightmap.get("denoise", True),
                          "device": lightmap.get("device", "auto"),
-                         "repair_narrow_dropouts": lightmap.get("repair_narrow_dropouts", False),
                          "exclude_materials": lightmap.get("exclude_materials", [])}
+        world_mesh = manifest.get("world_mesh", {})
+        self.world_mesh = {"weld_materials": world_mesh.get("weld_materials", []),
+                           "weld_distance_source_units":
+                               world_mesh.get("weld_distance_source_units", 0.0)}
         self.paths = {
             "environment": self.out / "environment.exr",
             "stage": self.out / "stage" / (self.map + ".usdc"),
@@ -113,6 +116,7 @@ class Pipeline:
             "reference": self.out / "reference" / "cycles.png",
             "lighting_stage": self.out / "lighting" / (self.map + "_lighting.usdc"),
             "atlas": self.out / "lighting" / "atlas.exr",
+            "coverage": self.out / "lighting" / "uv-coverage.exr",
             "atlas_receipt": self.out / "lighting" / "atlas.exr.json",
             "denoised": self.out / "lighting" / "atlas-denoised.exr",
             "denoised_receipt": self.out / "lighting" / "atlas-denoised.exr.json",
@@ -248,7 +252,8 @@ class Pipeline:
                                                           HERE / "reference_compare.py"] +
                                        gate_args))
         bake_args = ["--scene", scene, "--stage", p["stage"], "--out-stage", p["lighting_stage"],
-                     "--out-exr", p["atlas"], "--size", str(self.lightmap["size"]),
+                     "--out-exr", p["atlas"], "--out-coverage-exr", p["coverage"],
+                     "--size", str(self.lightmap["size"]),
                      "--samples", str(self.lightmap["samples"]),
                      "--device", self.lightmap["device"]] + env_args
         for material in self.lightmap["exclude_materials"]:
@@ -257,18 +262,17 @@ class Pipeline:
                   {k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
                                                  "device")},
                   ["pbrt_scene.py", "pbrt_blender.py", "pbrt_lightmap_bake.py"],
-                  [p["lighting_stage"], p["atlas"], p["atlas_receipt"]],
+                  [p["lighting_stage"], p["atlas"], p["coverage"], p["atlas_receipt"]],
                   lambda: self.blender("bake", "pbrt_lightmap_bake.py", bake_args))
         atlas, atlas_receipt, scope = p["atlas"], p["atlas_receipt"], BAKE_SCOPE
         if self.lightmap["denoise"]:
-            repair = self.lightmap["repair_narrow_dropouts"]
-            self.step("denoise", [p["atlas"], p["atlas_receipt"]],
-                      {"repair_narrow_dropouts": repair},
+            self.step("denoise", [p["atlas"], p["coverage"], p["atlas_receipt"]],
+                      {"uv_coverage": True},
                       ["lightmap_denoise.py"], [p["denoised"], p["denoised_receipt"]],
                       lambda: self.run("denoise", [sys.executable, HERE / "lightmap_denoise.py",
                                                    "--exr", p["atlas"], "--bake-evidence",
-                                                   p["atlas_receipt"], "--out", p["denoised"]] +
-                                       (["--repair-narrow-dropouts"] if repair else [])))
+                                                   p["atlas_receipt"], "--coverage-exr",
+                                                   p["coverage"], "--out", p["denoised"]]))
             atlas, atlas_receipt, scope = p["denoised"], p["denoised_receipt"], BAKE_SCOPE + "-denoised"
         self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"]],
                   {"preview_gain": self.lightmap["preview_gain"], "scope": scope},
@@ -313,15 +317,20 @@ class Pipeline:
             return seconds
         self.step("compile", [vmf], {"tools": str(tools)}, [], [p["bsp"]], compile_map)
         self.step("pack", [pack_stage, p["lighting_stage"], p["bsp"], p["ktx2"]],
-                  {"prefix": self.map},
-                  ["usd_worldmesh_pack.py"],
+                  {"prefix": self.map, **self.world_mesh},
+                  ["usd_worldmesh_pack.py", "worldmesh_seam_weld.py"],
                   [p["wmsh"], p["wmsh"].with_name(p["wmsh"].name + ".json"), p["bsp2"]],
                   lambda: self.usd_python("pack", "usd_worldmesh_pack.py", [
                       "--stage", pack_stage, "--bsp", p["bsp"], "--material-prefix",
                       self.map, "--require-lightmap-uv"] +
                       (["--include-emitters"] if self.scene["emitters"] else []) + [
                       "--lightmap-ktx2", p["ktx2"], "--bsp2tool", self.tools["bsp2tool"],
-                      "--out", p["wmsh"], "--out-bsp2", p["bsp2"]]))
+                      "--out", p["wmsh"], "--out-bsp2", p["bsp2"]] +
+                      (["--weld-distance-source-units",
+                        str(self.world_mesh["weld_distance_source_units"])]
+                       if self.world_mesh["weld_materials"] else []) +
+                      [item for material in self.world_mesh["weld_materials"]
+                       for item in ("--weld-material", material)]))
         sky_args = ["--sky-texture", p["sky_texture"]] if environment else []
         self.step("content", [scene, p["stage_receipt"], p["bsp2"]] +
                   ([p["sky_texture"]] if environment else []), {},

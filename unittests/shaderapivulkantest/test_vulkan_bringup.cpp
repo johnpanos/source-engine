@@ -17,6 +17,7 @@
 
 #include "vulkan_device.h"
 #include "sdl3/sdl3_vulkan_surface_host.h"
+#include "render/render_gamma_ramp.h"
 
 #include <SDL3/SDL.h>
 
@@ -367,6 +368,120 @@ int main( int argc, char **argv )
 		Check( ctx.SwapchainGeneration() == offGeneration + 1 &&
 		           ctx.PresentMode() == VK_PRESENT_MODE_FIFO_KHR,
 		    "vsync on rebuilds once and returns to FIFO" );
+	}
+
+	// Monitor gamma (render.gamma-ramp.v1) applied at present: the presented
+	// image is the back buffer through the ramp; back-buffer reads (ReadPixels)
+	// are unchanged; an 8-bit identity ramp keeps the plain blit.
+	{
+		ctx.RequestVSync( true );
+		const auto centerOf = []( const std::vector<uint8_t> &px, int cw, int ch ) {
+			return &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
+		};
+		const auto rampOf = []( float gamma, bool tv ) {
+			render::GammaRampParams params;
+			params.gamma = gamma;
+			params.tvEnabled = tv;
+			render::GammaRamp16 ramp;
+			render::BuildGammaRamp16( params, ramp );
+			return ramp;
+		};
+		struct Case
+		{
+			float gamma;
+			bool tv;
+			const char *name;
+		};
+		const Case cases[] = { { 1.6f, false, "gamma 1.6" }, { 2.6f, false, "gamma 2.6" },
+			{ 2.2f, true, "TV range" } };
+		for ( const Case &c : cases )
+		{
+			const render::GammaRamp16 ramp = rampOf( c.gamma, c.tv );
+			ctx.PublishGammaRamp( ramp );
+			uint8_t stored[3] = {};
+			bool haveStored = false;
+			if ( PresentAndCapture( ctx, 0.5f, 0.25f, 0.75f, &err ) )
+			{
+				int cw = 0, ch = 0;
+				const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
+				if ( cw > 0 && ch > 0 && !px.empty() )
+				{
+					std::memcpy( stored, centerOf( px, cw, ch ), 3 );
+					haveStored = true;
+				}
+			}
+			Check( haveStored && std::abs( int( stored[0] ) - 128 ) <= 1 &&
+			           std::abs( int( stored[1] ) - 64 ) <= 1 &&
+			           std::abs( int( stored[2] ) - 191 ) <= 1,
+			    "back-buffer reads stay pre-gamma (hardware-ramp semantics)" );
+			const uint64_t gammaPresents = ctx.GammaPresentCount();
+			if ( haveStored && PresentAndCapture( ctx, 0.5f, 0.25f, 0.75f, &err, true ) )
+			{
+				int cw = 0, ch = 0;
+				const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
+				if ( cw == 0 && ch == 0 )
+					std::fprintf( stderr, "note: this surface cannot read its presented images\n" );
+				else
+				{
+					const uint8_t *p = centerOf( px, cw, ch );
+					bool matches = true, identityMatches = true;
+					for ( int channel = 0; channel < 3; ++channel )
+					{
+						const int expected = render::GammaRampEntryTo8Bit( ramp[stored[channel]] );
+						matches = matches && std::abs( int( p[channel] ) - expected ) <= 1;
+						identityMatches =
+						    identityMatches && std::abs( int( p[channel] ) - stored[channel] ) <= 1;
+					}
+					std::fprintf( stderr, "%s: stored %d %d %d presented %d %d %d\n", c.name,
+					    stored[0], stored[1], stored[2], p[0], p[1], p[2] );
+					Check( ctx.GammaPresentActive() && ctx.GammaPresentCount() > gammaPresents,
+					    "a non-identity ramp presents through the gamma pass" );
+					Check( matches, "presented pixels are the back buffer through the ramp" );
+					Check( !identityMatches,
+					    "negative control: the presented pixels differ from an unramped present" );
+				}
+			}
+			else
+			{
+				std::fprintf( stderr, "present/capture (%s) failed: %s\n", c.name, err.c_str() );
+				++g_failures;
+			}
+		}
+
+		// Scaled present through the ramp: a half-size back buffer covers the
+		// drawable, every pixel ramped.
+		int dw = 0, dh = 0;
+		ctx.GetPresentExtent( dw, dh );
+		const render::GammaRamp16 ramp = rampOf( 1.6f, false );
+		ctx.PublishGammaRamp( ramp );
+		if ( ctx.SetBackBufferSize( dw / 2, dh / 2, &err ) &&
+		     PresentAndCapture( ctx, 0.5f, 0.5f, 0.5f, &err, true ) )
+		{
+			int cw = 0, ch = 0;
+			const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
+			if ( cw == dw && ch == dh && !px.empty() )
+			{
+				const int expected = render::GammaRampEntryTo8Bit( ramp[128] );
+				const uint8_t *far = &px[( size_t( ch - 2 ) * cw + ( cw - 2 ) ) * 4];
+				Check( std::abs( int( centerOf( px, cw, ch )[0] ) - expected ) <= 1 &&
+				           std::abs( int( far[0] ) - expected ) <= 1,
+				    "a scaled present applies the ramp over the whole drawable" );
+			}
+		}
+		else
+		{
+			std::fprintf( stderr, "scaled gamma present failed: %s\n", err.c_str() );
+			++g_failures;
+		}
+		ctx.SetBackBufferSize( 0, 0, &err );
+
+		// The default gamma is an 8-bit identity: the plain blit presents.
+		ctx.PublishGammaRamp( rampOf( 2.2f, false ) );
+		const uint64_t gammaPresents = ctx.GammaPresentCount();
+		if ( !PresentAndCapture( ctx, 0.5f, 0.25f, 0.75f, &err ) )
+			++g_failures;
+		Check( !ctx.GammaPresentActive() && ctx.GammaPresentCount() == gammaPresents,
+		    "the identity ramp (gamma 2.2) presents by blit" );
 	}
 
 	// Texturing: upload a distinctive magenta texture through a staging buffer,

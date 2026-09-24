@@ -9,20 +9,34 @@
     "render": {
       "samples": 64,
       "scale": 1.0
+    },
+    "gate": {
+      "max_mae": 9.5,
+      "min_ssim": 0.96,
+      "max_exposure_stops": 0.35
     }
   },
   "lightmap": {
     "size": 2048,
-    "samples": 1024,
-    "repair_narrow_dropouts": true,
+    "samples": 4096,
     "exclude_materials": [
       "SpotHolder"
     ],
-    "device": "auto"
+    "device": "gpu"
+  },
+  "world_mesh": {
+    "weld_materials": ["wall"],
+    "weld_distance_source_units": 0.5
   },
   "collision": {
     "solid_meshes": [
       "Mesh001"
     ]
+  },
+  "runtime_gate": {
+    "max_mae": 21,
+    "min_ssim": 0.74,
+    "max_grain_ratio": 0.6,
+    "max_mottle_ratio": 1.15
   }
 }

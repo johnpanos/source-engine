@@ -65,7 +65,8 @@ bool OracleRejects( const char *name, const uiscaletest::Policy &policy )
 int main()
 {
 	unsigned long checks = 0, failures = 0;
-	const auto expect = [&]( bool condition, const char *what ) {
+	const auto expect = [&]( bool condition, const char *what )
+	{
 		++checks;
 		if ( !condition )
 		{
@@ -84,13 +85,11 @@ int main()
 
 	broken = real;
 	broken.computeScale = ScaleIgnoringOverride;
-	expect( OracleRejects( "ignores ui_scale", broken ),
-	    "a policy ignoring ui_scale is rejected" );
+	expect( OracleRejects( "ignores ui_scale", broken ), "a policy ignoring ui_scale is rejected" );
 
 	broken = real;
 	broken.unitsCoveringPixels = TruncatedExtent;
-	expect( OracleRejects( "truncated extent", broken ),
-	    "a truncated screen extent is rejected" );
+	expect( OracleRejects( "truncated extent", broken ), "a truncated screen extent is rejected" );
 
 	broken = real;
 	broken.pixelAtUnit = NearestPixelAtUnit;

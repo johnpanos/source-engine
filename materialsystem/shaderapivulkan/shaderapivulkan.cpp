@@ -919,10 +919,21 @@ public:
 	virtual IVertexBuffer *GetDynamicVertexBuffer(
 	    int streamID, VertexFormat_t vertexFormat, bool bBuffered );
 	virtual IIndexBuffer *GetDynamicIndexBuffer( MaterialIndexFormat_t fmt, bool bBuffered );
+	// mat_monitorgamma: SDL3 has no window gamma ramp, so the ramp D3D9 hands to
+	// the hardware (render.gamma-ramp.v1) is applied when presenting. Any thread
+	// may call this; the next presented frame picks the ramp up.
 	virtual void SetHardwareGammaRamp( float fGamma, float fGammaTVRangeMin, float fGammaTVRangeMax,
 	    float fGammaTVExponent, bool bTVEnabled )
 	{
-		VK_UNIMPLEMENTED();
+		render::GammaRampParams params;
+		params.gamma = fGamma;
+		params.tvRangeMin = fGammaTVRangeMin;
+		params.tvRangeMax = fGammaTVRangeMax;
+		params.tvExponent = fGammaTVExponent;
+		params.tvEnabled = bTVEnabled;
+		render::GammaRamp16 ramp;
+		render::BuildGammaRamp16( params, ramp );
+		g_VulkanContext.PublishGammaRamp( ramp );
 	}
 	virtual void EnableNonInteractiveMode(
 	    MaterialNonInteractiveMode_t mode, ShaderNonInteractiveInfo_t *pInfo )

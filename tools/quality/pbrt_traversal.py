@@ -19,7 +19,9 @@ from pathlib import Path
 
 EYE_HEIGHT = 64.0
 DROP_HEIGHT = 12.0
-SETTLE_FRAMES = 240
+SETTLE_FRAMES = 100
+# portal_boot quits about 600 frames after running the probe line.
+FRAME_BUDGET = 560
 PROBES = 3
 TOLERANCE = 2.0
 
@@ -36,7 +38,9 @@ def probes(receipt, count=PROBES):
 
 
 def commands(receipt):
-    parts = ["r_worldmesh_draw 2", "wait 60"]
+    parts = ["r_worldmesh_draw 2", "wait 30"]
+    if 30 + len(probes(receipt)) * SETTLE_FRAMES > FRAME_BUDGET:
+        raise ValueError("drop probes exceed the boot's frame budget")
     for probe in probes(receipt):
         parts += ["cmd setpos %.2f %.2f %.2f" % (probe["x"], probe["y"], probe["z"] + DROP_HEIGHT),
                   "wait %d" % SETTLE_FRAMES, "getpos"]
@@ -58,7 +62,8 @@ def evaluate(console, receipt):
         rested = abs(feet - probe["z"]) <= TOLERANCE
         results.append({**probe, "resting_feet_z": round(feet, 2), "horizontal_match": near,
                         "rested_on_top": rested and near})
-    passed = len(results) == len(expected) and all(item["rested_on_top"] for item in results)
+    passed = (len(positions) >= len(expected) and len(results) == len(expected) and
+              all(item["rested_on_top"] for item in results))
     return {"scope": "pbrt-collision-drop-test", "status": "pass" if passed else "fail",
             "probes": results, "getpos_lines": len(positions)}
 

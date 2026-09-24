@@ -2,9 +2,10 @@
 """Denoise a baked irradiance atlas with OpenImageDenoise's RTLightmap filter.
 
 Path-traced bakes of sky-lit interiors are dominated by noisy indirect light.
-OIDN's lightmap filter removes that noise without a higher sample count. Empty
-atlas texels are first filled from the nearest chart texel so the filter never
-pulls black gutters into chart edges; coverage (alpha) is restored afterwards.
+OIDN's lightmap filter removes that noise without a higher sample count. An
+undilated white-emission UV bake identifies real chart coverage: Cycles can mark
+black gutter texels alpha=1, so irradiance alpha is not a reliable mask. Empty
+atlas texels are filled from the nearest covered texel before filtering.
 
 The input receipt must be a passing bake receipt for the EXR. The output
 receipt copies its identity fields, records the source atlas hash and uses
@@ -83,22 +84,11 @@ def extend_gutters(color, covered, rows, columns):
     return result
 
 
-def repair_narrow_dropouts(color):
-    """Fill subtexel black stripes between otherwise lit bake texels.
-
-    A candidate must be much darker than its 5x5 neighborhood and the local
-    neighborhood must contain real light. The two-texel distance limit leaves
-    wide dark regions and unlit charts alone.
-    """
-    peak = np.max(color, axis=2)
-    neighborhood = ndimage.maximum_filter(peak, size=5)
-    dropout = (peak < 0.15 * neighborhood) & (neighborhood > 0.2)
-    distance, (rows, columns) = ndimage.distance_transform_edt(
-        dropout, return_indices=True)
-    fill = dropout & (distance <= 2)
-    repaired = color.copy()
-    repaired[fill] = color[rows[fill], columns[fill]]
-    return repaired, int(fill.sum())
+def uv_coverage_mask(coverage, pixels):
+    if (coverage.shape != pixels.shape or not np.isfinite(coverage).all() or
+            np.max(coverage[:, :, :3]) < 0.9):
+        raise ValueError("UV coverage bake is invalid")
+    return np.min(coverage[:, :, :3], axis=2) > 0.5
 
 
 def write_linear_exr(path, pixels):
@@ -126,11 +116,11 @@ def write_linear_exr(path, pixels):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--exr", type=Path, required=True)
+    parser.add_argument("--coverage-exr", type=Path,
+                        help="undilated white-emission bake named by the bake receipt")
     parser.add_argument("--bake-evidence", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--oidn-library", default="libOpenImageDenoise.so.2")
-    parser.add_argument("--repair-narrow-dropouts", action="store_true",
-                        help="fill one- and two-texel black bake stripes")
     args = parser.parse_args()
     evidence = json.loads(args.bake_evidence.read_text())
     if evidence.get("status") != "pass" or evidence.get("atlas_exr_sha256") != sha256(args.exr):
@@ -138,7 +128,16 @@ def main():
     pixels = iio.imread(args.exr).astype(np.float32)
     if pixels.ndim != 3 or pixels.shape[2] != 4 or not np.isfinite(pixels).all():
         raise ValueError("bake atlas must be finite RGBA")
-    covered = pixels[:, :, 3] > 0
+    if evidence.get("coverage_exr_sha256"):
+        if (not args.coverage_exr or
+                sha256(args.coverage_exr) != evidence["coverage_exr_sha256"]):
+            raise ValueError("UV coverage differs from the passing bake receipt")
+        coverage = iio.imread(args.coverage_exr).astype(np.float32)
+        covered = uv_coverage_mask(coverage, pixels)
+    else:
+        if args.coverage_exr:
+            raise ValueError("bake receipt does not identify a UV coverage atlas")
+        covered = pixels[:, :, 3] > 0
     if not covered.any():
         raise ValueError("bake atlas has no covered texels")
     # Fill gutters from the nearest covered texel before filtering.
@@ -147,11 +146,6 @@ def main():
     result = pixels.copy()
     filtered = np.maximum(denoise(load_oidn(args.oidn_library), filled), 0.0)
     result[:, :, :3] = extend_gutters(filtered, covered, rows, columns)
-    repaired_texels = 0
-    if args.repair_narrow_dropouts:
-        result[:, :, :3], repaired_texels = repair_narrow_dropouts(result[:, :, :3])
-        if repaired_texels > result.shape[0] * result.shape[1] // 10:
-            raise ValueError("dropout repair touched more than 10% of the atlas")
     if not np.isfinite(result).all():
         raise ValueError("OIDN produced non-finite texels")
     before = pixels[covered][:, :3]
@@ -170,7 +164,7 @@ def main():
                     "denoiser": "OpenImageDenoise RTLightmap (CPU)",
                     "covered_texels": int(covered.sum()),
                     "filled_gutter_texels": int((~covered).sum()),
-                    "repaired_dropout_texels": repaired_texels,
+                    "coverage_exr_sha256": evidence.get("coverage_exr_sha256"),
                     "mean_rgb_before": before.mean(axis=0).tolist(),
                     "mean_rgb_after": after.mean(axis=0).tolist(),
                     "high_frequency_before": roughness(pixels[:, :, :3]),

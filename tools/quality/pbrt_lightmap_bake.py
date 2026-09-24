@@ -140,6 +140,8 @@ def main():
     parser.add_argument("--environment", type=Path)
     parser.add_argument("--out-stage", type=Path, required=True)
     parser.add_argument("--out-exr", type=Path, required=True)
+    parser.add_argument("--out-coverage-exr", type=Path,
+                        help="undilated white UV footprint for safe gutter filling")
     parser.add_argument("--size", type=int, default=2048)
     parser.add_argument("--samples", type=int, default=64)
     parser.add_argument("--exclude-material", action="append", default=[])
@@ -270,6 +272,29 @@ def main():
     atlas.save_render(filepath=str(args.out_exr.resolve()), scene=render)
     if not args.out_exr.is_file():
         raise RuntimeError("Cycles did not save the lightmap atlas")
+    if args.out_coverage_exr:
+        coverage = bpy.data.images.new("PbrtUvCoverage", width=args.size, height=args.size,
+                                       alpha=True, float_buffer=True)
+        material = bpy.data.materials.new("PbrtUvCoverageWhite")
+        material.use_nodes = True
+        nodes = material.node_tree.nodes
+        nodes.clear()
+        output = nodes.new("ShaderNodeOutputMaterial")
+        emission = nodes.new("ShaderNodeEmission")
+        emission.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+        material.node_tree.links.new(emission.outputs[0], output.inputs[0])
+        target = nodes.new("ShaderNodeTexImage")
+        target.image = coverage
+        nodes.active = target
+        merged.data.materials.clear()
+        merged.data.materials.append(material)
+        render.render.bake.margin = 0
+        if bpy.ops.object.bake(type="EMIT") != {"FINISHED"}:
+            raise RuntimeError("Cycles could not bake the UV footprint")
+        args.out_coverage_exr.parent.mkdir(parents=True, exist_ok=True)
+        coverage.save_render(filepath=str(args.out_coverage_exr.resolve()), scene=render)
+        if not args.out_coverage_exr.is_file():
+            raise RuntimeError("Cycles did not save the UV footprint")
     pixels = list(atlas.pixels)
     sampled = []
     stride = max(1, args.size // 16)
@@ -299,6 +324,8 @@ def main():
                 "excluded_materials": sorted(excluded),
                 "emitter_count": len(scene["emitters"]),
                 "atlas_coverage_estimate": covered,
+                "coverage_exr_sha256": sha256(args.out_coverage_exr)
+                if args.out_coverage_exr else None,
                 "texels_per_square_meter": {"min": min(density.values()),
                                             "max": max(density.values())},
                 "linear_exr_sample_count": len(sampled), "linear_exr_max_sample_error": error,

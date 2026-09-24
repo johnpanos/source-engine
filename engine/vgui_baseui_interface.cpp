@@ -1752,11 +1752,11 @@ void CEngineVGui::Paint( PaintMode_t mode )
 	// draw from the main panel down
 	vgui::Panel *panel = staticPanel;
 
-	// Force engine's root panel (staticPanel) to be full screen size
+	// Force engine's root panel (staticPanel) to be full screen size, in UI
+	// units (the viewport's pixels divided by the UI scale)
 	{
-		int x, y, w, h;
-		CMatRenderContextPtr pRenderContext( materials );
-		pRenderContext->GetViewport( x, y, w, h );
+		int w, h;
+		GetRootPanelSize( w, h );
 		panel->SetBounds(0, 0, w, h); // ignore x and y here because the viewport takes care of that
 	}
 

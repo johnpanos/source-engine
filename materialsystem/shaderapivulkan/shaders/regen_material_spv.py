@@ -32,6 +32,8 @@ SHADERS = (
     ("g_skinFragSpv", "skin.frag", []),
     ("g_pbrDirectFragSpv", "pbr_direct.frag", []),
     ("g_pbrDirectClipFragSpv", "pbr_direct.frag", ["-DCLIP_PLANES"]),
+    ("g_presentGammaVertSpv", "present_gamma.vert", []),
+    ("g_presentGammaFragSpv", "present_gamma.frag", []),
 )
 
 HEADER = """//========= Copyright Valve Corporation, All rights reserved. ============//
@@ -40,7 +42,8 @@ HEADER = """//========= Copyright Valve Corporation, All rights reserved. ======
 //          (with and without D3D9 user clip planes), PortalRefract (a port of
 //          portal_refract_vs20.fxc / portal_refract_ps2x.fxc) and VertexLitGeneric's
 //          $phong path (skin_vs20.fxc / skin_ps20b.fxc), and the RFC 0007
-//          synthetic PBR direct-light pixel stage. GENERATED
+//          synthetic PBR direct-light pixel stage, and the present-time
+//          monitor gamma pass. GENERATED
 //          by shaders/regen_material_spv.py from the GLSL in shaders/; do not edit.
 //
 //===========================================================================//

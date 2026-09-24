@@ -21,6 +21,7 @@ from pathlib import Path
 from pxr import Gf, Usd, UsdGeom, UsdShade
 
 from worldstage_mesh_pack import cross, leaf_faces, sha256, tangent_frame, unit, write_payload
+from worldmesh_seam_weld import weld_material
 
 
 SOURCE_UNITS_PER_METER = 39.37007874015748
@@ -160,6 +161,9 @@ def main():
     parser.add_argument("--material-prefix", required=True)
     parser.add_argument("--require-lightmap-uv", action="store_true")
     parser.add_argument("--include-emitters", action="store_true")
+    parser.add_argument("--weld-material", action="append", default=[],
+                        help="material name whose near-coincident WMSH vertices are welded")
+    parser.add_argument("--weld-distance-source-units", type=float, default=0.0)
     parser.add_argument("--lightmap-ktx2", type=Path)
     parser.add_argument("--bsp2tool", type=Path)
     parser.add_argument("--out-bsp2", type=Path)
@@ -180,6 +184,14 @@ def main():
         raise ValueError("could not open USD stage")
     faces, inventory = source_triangles(stage, args.material_prefix,
                                         args.require_lightmap_uv, args.include_emitters)
+    if args.weld_material and (not math.isfinite(args.weld_distance_source_units) or
+                               args.weld_distance_source_units <= 0):
+        parser.error("--weld-material requires a positive finite weld distance")
+    if args.weld_distance_source_units and not args.weld_material:
+        parser.error("weld distance requires at least one --weld-material")
+    repairs = [weld_material(faces, args.material_prefix + "/" + material,
+                             args.weld_distance_source_units)
+               for material in sorted(set(args.weld_material))]
     leaves = leaf_faces(args.bsp)
     # Explicit first-slice visibility policy: every imported meshlet is visible
     # in every BSP leaf. This preserves visibility while spatial association is
@@ -193,6 +205,7 @@ def main():
                 "wmsh_sha256": sha256(args.out), "material_prefix": args.material_prefix,
                 "visibility_policy": "all imported meshlets in every leaf",
                 "authored_lightmap_uv": args.require_lightmap_uv,
+                "seam_welds": repairs,
                 "emitter_meshes": sum(item["emitter"] for item in inventory),
                 "source_meshes": inventory, **counts}
     if args.out_bsp2:

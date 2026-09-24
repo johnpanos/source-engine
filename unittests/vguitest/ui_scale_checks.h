@@ -67,7 +67,8 @@ inline bool Near( float a, float b )
 // back buffer at another size, the limits and the minimum UI extent.
 inline void CheckScaleSelection( const Policy &policy, Tally &tally )
 {
-	const auto scale = [&]( float display, float user, int bbw, int bbt, int dw, int dt ) {
+	const auto scale = [&]( float display, float user, int bbw, int bbt, int dw, int dt )
+	{
 		return policy.computeScale( MakeInputs( display, user, bbw, bbt, dw, dt ) );
 	};
 	tally.Check( Near( scale( 1.0f, 0.0f, 1920, 1080, 1920, 1080 ), 1.0f ),
@@ -117,8 +118,8 @@ inline void CheckExtents( const Policy &policy, Tally &tally )
 	                 policy.unitsCoveringPixels( 1620, 1.5f ) == 1080,
 	    "a 2880x1620 screen at 1.5 is exactly 1920x1080 UI units" );
 
-	static const float kScales[] = { 0.5f, 0.75f, 1.0f, 1.1f, 1.25f, 1.33f, 1.5f, 1.75f, 2.0f,
-		2.25f, 2.5f, 3.0f, 4.0f };
+	static const float kScales[] = {
+	    0.5f, 0.75f, 1.0f, 1.1f, 1.25f, 1.33f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f, 3.0f, 4.0f };
 	bool covers = true, tight = true, exact = true;
 	for ( float s : kScales )
 	{
@@ -143,8 +144,8 @@ inline void CheckExtents( const Policy &policy, Tally &tally )
 // a unit lands on a pixel inside it.
 inline void CheckCoordinates( const Policy &policy, Tally &tally )
 {
-	static const float kScales[] = { 1.0f, 1.1f, 1.25f, 1.33f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f,
-		4.0f };
+	static const float kScales[] = {
+	    1.0f, 1.1f, 1.25f, 1.33f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f, 4.0f };
 	bool contains = true, roundTrip = true, identity = true;
 	for ( float s : kScales )
 	{

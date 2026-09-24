@@ -732,6 +732,9 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 		img.samples = VK_SAMPLE_COUNT_1_BIT;
 		img.tiling = VK_IMAGE_TILING_OPTIMAL;
 		img.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		// The present-time gamma pass samples the back buffer.
+		if ( swapFeatures.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT )
+			img.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 		img.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		img.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		if ( m_srgbAttachments )
@@ -6027,22 +6030,37 @@ void CVulkanContext::RecordPresentBlit(
 	    m_presentImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
 	    sameSize ? VK_FILTER_NEAREST : m_presentFilter );
 
-	VkImageMemoryBarrier toPresent = pre[1];
-	toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	RecordPresentedCaptureAndRelease( cmd, imageIndex, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+	    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, capture );
+}
+
+void CVulkanContext::RecordPresentedCaptureAndRelease( VkCommandBuffer cmd, uint32_t imageIndex,
+    VkImageLayout layout, VkPipelineStageFlags srcStage, VkAccessFlags srcAccess, bool capture )
+{
+	VkImageMemoryBarrier toPresent = {};
+	toPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	toPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	toPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	toPresent.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	toPresent.image = m_presentImages[imageIndex];
+	toPresent.oldLayout = layout;
 	toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-	toPresent.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	toPresent.srcAccessMask = srcAccess;
 	toPresent.dstAccessMask = 0;
+	VkPipelineStageFlags presentSrcStage = srcStage;
 	if ( capture )
 	{
-		// What the window shows: the swapchain image after the blit.
-		VkImageMemoryBarrier copyIn[2] = { pre[1], pre[1] };
-		copyIn[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		// What the window shows: the swapchain image as presented.
+		VkImageMemoryBarrier copyIn[2] = { toPresent, toPresent };
 		copyIn[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-		copyIn[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 		copyIn[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 		copyIn[1].image = m_captureImage;
-		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-		    0, 0, nullptr, 0, nullptr, 2, copyIn );
+		copyIn[1].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		copyIn[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		copyIn[1].srcAccessMask = 0;
+		copyIn[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		vkCmdPipelineBarrier( cmd, srcStage, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
+		    nullptr, 2, copyIn );
 		VkImageCopy copy = {};
 		copy.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
 		copy.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
@@ -6058,9 +6076,428 @@ void CVulkanContext::RecordPresentBlit(
 		    nullptr, 0, nullptr, 1, &capGeneral );
 		toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 		toPresent.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		presentSrcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 	}
-	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-	    0, 0, nullptr, 0, nullptr, 1, &toPresent );
+	vkCmdPipelineBarrier( cmd, presentSrcStage, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr,
+	    0, nullptr, 1, &toPresent );
+}
+
+//-----------------------------------------------------------------------------
+// Monitor gamma at present time (render.gamma-ramp.v1)
+//-----------------------------------------------------------------------------
+void CVulkanContext::PublishGammaRamp( const render::GammaRamp16 &ramp )
+{
+	std::lock_guard<std::mutex> lock( m_gammaMutex );
+	m_publishedRamp = ramp;
+	m_publishedRampRevision.fetch_add( 1, std::memory_order_release );
+}
+
+void CVulkanContext::ApplyPublishedGammaRamp()
+{
+	const uint64_t revision = m_publishedRampRevision.load( std::memory_order_acquire );
+	if ( revision == m_appliedRampRevision )
+		return;
+	{
+		std::lock_guard<std::mutex> lock( m_gammaMutex );
+		m_activeRamp = m_publishedRamp;
+		m_appliedRampRevision = m_publishedRampRevision.load( std::memory_order_relaxed );
+	}
+	const bool active = !render::IsIdentityAt8Bit( m_activeRamp );
+	if ( active != m_gammaActive )
+		Log( "monitor gamma %s\n", active ? "applied at present" : "identity (plain present)" );
+	m_gammaActive = active;
+}
+
+bool CVulkanContext::EnsurePresentGamma( std::string *outError )
+{
+	if ( m_gammaPipeline != VK_NULL_HANDLE && m_gammaFormat == m_swapFormat )
+		return true;
+	DestroyPresentGamma();
+
+	VkFormatProperties features = {};
+	vkGetPhysicalDeviceFormatProperties( m_physicalDevice, m_swapFormat, &features );
+	if ( !( features.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT ) ||
+	     !( features.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT ) )
+	{
+		SetError( outError, "the swapchain format cannot be sampled or rendered for gamma" );
+		return false;
+	}
+
+	// The swapchain image's previous contents are not needed; the pass leaves it
+	// as a color attachment for the explicit capture/present transition. The
+	// external dependency chains to the acquire semaphore's wait stage.
+	VkAttachmentDescription color = {};
+	color.format = m_swapFormat;
+	color.samples = VK_SAMPLE_COUNT_1_BIT;
+	color.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	color.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	color.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	color.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	color.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	VkAttachmentReference colorRef = { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+	VkSubpassDescription subpass = {};
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments = &colorRef;
+	VkSubpassDependency dependency = {};
+	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependency.dstSubpass = 0;
+	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency.srcAccessMask = 0;
+	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	VkRenderPassCreateInfo rp = {};
+	rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	rp.attachmentCount = 1;
+	rp.pAttachments = &color;
+	rp.subpassCount = 1;
+	rp.pSubpasses = &subpass;
+	rp.dependencyCount = 1;
+	rp.pDependencies = &dependency;
+	if ( vkCreateRenderPass( m_device, &rp, nullptr, &m_gammaRenderPass ) != VK_SUCCESS )
+	{
+		SetError( outError, "vkCreateRenderPass (gamma present) failed" );
+		DestroyPresentGamma();
+		return false;
+	}
+
+	VkDescriptorSetLayoutBinding bindings[2] = {};
+	bindings[0].binding = 0;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[0].descriptorCount = 1;
+	bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	bindings[1].binding = 1;
+	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	bindings[1].descriptorCount = 1;
+	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	VkDescriptorSetLayoutCreateInfo dl = {};
+	dl.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	dl.bindingCount = 2;
+	dl.pBindings = bindings;
+	VkPipelineLayoutCreateInfo pl = {};
+	pl.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pl.setLayoutCount = 1;
+	pl.pSetLayouts = &m_gammaSetLayout;
+	if ( vkCreateDescriptorSetLayout( m_device, &dl, nullptr, &m_gammaSetLayout ) != VK_SUCCESS ||
+	     vkCreatePipelineLayout( m_device, &pl, nullptr, &m_gammaPipelineLayout ) != VK_SUCCESS )
+	{
+		SetError( outError, "gamma present layouts could not be created" );
+		DestroyPresentGamma();
+		return false;
+	}
+
+	VkSamplerCreateInfo sc = {};
+	sc.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	sc.magFilter = sc.minFilter = VK_FILTER_NEAREST;
+	sc.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	sc.addressModeU = sc.addressModeV = sc.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	if ( vkCreateSampler( m_device, &sc, nullptr, &m_gammaSamplerNearest ) != VK_SUCCESS )
+	{
+		SetError( outError, "gamma present sampler could not be created" );
+		DestroyPresentGamma();
+		return false;
+	}
+	// Scaling filters as the blit would (m_presentFilter).
+	sc.magFilter = sc.minFilter = m_presentFilter;
+	if ( vkCreateSampler( m_device, &sc, nullptr, &m_gammaSamplerLinear ) != VK_SUCCESS )
+	{
+		SetError( outError, "gamma present sampler could not be created" );
+		DestroyPresentGamma();
+		return false;
+	}
+
+	VkDescriptorPoolSize sizes[2] = {};
+	sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	sizes[0].descriptorCount = kMaxFramesInFlight;
+	sizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	sizes[1].descriptorCount = kMaxFramesInFlight;
+	VkDescriptorPoolCreateInfo dp = {};
+	dp.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	dp.maxSets = kMaxFramesInFlight;
+	dp.poolSizeCount = 2;
+	dp.pPoolSizes = sizes;
+	VkDescriptorSetLayout layouts[kMaxFramesInFlight];
+	for ( VkDescriptorSetLayout &layout : layouts )
+		layout = m_gammaSetLayout;
+	VkDescriptorSetAllocateInfo da = {};
+	da.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	da.descriptorSetCount = kMaxFramesInFlight;
+	da.pSetLayouts = layouts;
+	if ( vkCreateDescriptorPool( m_device, &dp, nullptr, &m_gammaDescriptorPool ) != VK_SUCCESS ||
+	     ( da.descriptorPool = m_gammaDescriptorPool,
+	         vkAllocateDescriptorSets( m_device, &da, m_gammaSets ) != VK_SUCCESS ) )
+	{
+		SetError( outError, "gamma present descriptors could not be allocated" );
+		DestroyPresentGamma();
+		return false;
+	}
+
+	// One ramp buffer per frame slot, written only after that slot's fence.
+	const VkDeviceSize rampBytes = sizeof( float ) * 256;
+	for ( int slot = 0; slot < kMaxFramesInFlight; ++slot )
+	{
+		void *mapped = nullptr;
+		if ( !CreateBuffer( rampBytes, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		         &m_gammaRampBuffers[slot], &m_gammaRampMemories[slot], outError ) ||
+		     vkMapMemory( m_device, m_gammaRampMemories[slot], 0, rampBytes, 0, &mapped ) !=
+		         VK_SUCCESS )
+		{
+			SetError( outError, "gamma ramp buffer could not be created" );
+			DestroyPresentGamma();
+			return false;
+		}
+		m_gammaRampMapped[slot] = static_cast<float *>( mapped );
+	}
+
+	VkShaderModule vert = VK_NULL_HANDLE, frag = VK_NULL_HANDLE;
+	if ( !CreateShaderModule(
+	         g_presentGammaVertSpv, sizeof( g_presentGammaVertSpv ), &vert, outError ) ||
+	     !CreateShaderModule(
+	         g_presentGammaFragSpv, sizeof( g_presentGammaFragSpv ), &frag, outError ) )
+	{
+		if ( vert != VK_NULL_HANDLE )
+			vkDestroyShaderModule( m_device, vert, nullptr );
+		DestroyPresentGamma();
+		return false;
+	}
+	VkPipelineShaderStageCreateInfo stages[2] = {};
+	for ( VkPipelineShaderStageCreateInfo &stage : stages )
+	{
+		stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		stage.pName = "main";
+	}
+	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	stages[0].module = vert;
+	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	stages[1].module = frag;
+	VkPipelineVertexInputStateCreateInfo vin = {};
+	vin.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	VkPipelineInputAssemblyStateCreateInfo ia = {};
+	ia.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	VkPipelineViewportStateCreateInfo vp = {};
+	vp.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	vp.viewportCount = 1;
+	vp.scissorCount = 1;
+	VkPipelineRasterizationStateCreateInfo rs = {};
+	rs.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rs.polygonMode = VK_POLYGON_MODE_FILL;
+	rs.cullMode = VK_CULL_MODE_NONE;
+	rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rs.lineWidth = 1.0f;
+	VkPipelineMultisampleStateCreateInfo ms = {};
+	ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	VkPipelineColorBlendAttachmentState blendAttachment = {};
+	blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+	                                 VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	VkPipelineColorBlendStateCreateInfo blend = {};
+	blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	blend.attachmentCount = 1;
+	blend.pAttachments = &blendAttachment;
+	const VkDynamicState dynamicStates[2] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo dyn = {};
+	dyn.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dyn.dynamicStateCount = 2;
+	dyn.pDynamicStates = dynamicStates;
+	VkGraphicsPipelineCreateInfo gp = {};
+	gp.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	gp.stageCount = 2;
+	gp.pStages = stages;
+	gp.pVertexInputState = &vin;
+	gp.pInputAssemblyState = &ia;
+	gp.pViewportState = &vp;
+	gp.pRasterizationState = &rs;
+	gp.pMultisampleState = &ms;
+	gp.pColorBlendState = &blend;
+	gp.pDynamicState = &dyn;
+	gp.layout = m_gammaPipelineLayout;
+	gp.renderPass = m_gammaRenderPass;
+	const VkResult r =
+	    vkCreateGraphicsPipelines( m_device, VK_NULL_HANDLE, 1, &gp, nullptr, &m_gammaPipeline );
+	vkDestroyShaderModule( m_device, vert, nullptr );
+	vkDestroyShaderModule( m_device, frag, nullptr );
+	if ( r != VK_SUCCESS )
+	{
+		SetError( outError, std::string( "gamma present pipeline failed: " ) + ResultString( r ) );
+		DestroyPresentGamma();
+		return false;
+	}
+	m_gammaFormat = m_swapFormat;
+	return true;
+}
+
+bool CVulkanContext::EnsurePresentGammaTargets( std::string *outError )
+{
+	if ( m_presentFramebuffers.size() == m_presentImages.size() )
+		return true;
+	DestroyPresentGammaTargets();
+	m_presentImageViews.assign( m_presentImages.size(), VK_NULL_HANDLE );
+	m_presentFramebuffers.assign( m_presentImages.size(), VK_NULL_HANDLE );
+	for ( size_t i = 0; i < m_presentImages.size(); ++i )
+	{
+		VkImageViewCreateInfo iv = {};
+		iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		iv.image = m_presentImages[i];
+		iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		iv.format = m_swapFormat;
+		iv.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+		VkFramebufferCreateInfo fb = {};
+		fb.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+		fb.renderPass = m_gammaRenderPass;
+		fb.attachmentCount = 1;
+		fb.width = m_presentExtent.width;
+		fb.height = m_presentExtent.height;
+		fb.layers = 1;
+		if ( vkCreateImageView( m_device, &iv, nullptr, &m_presentImageViews[i] ) != VK_SUCCESS ||
+		     ( fb.pAttachments = &m_presentImageViews[i],
+		         vkCreateFramebuffer( m_device, &fb, nullptr, &m_presentFramebuffers[i] ) !=
+		             VK_SUCCESS ) )
+		{
+			SetError( outError, "gamma present framebuffers could not be created" );
+			DestroyPresentGammaTargets();
+			return false;
+		}
+	}
+	return true;
+}
+
+void CVulkanContext::DestroyPresentGammaTargets()
+{
+	for ( VkFramebuffer fb : m_presentFramebuffers )
+		if ( fb != VK_NULL_HANDLE )
+			vkDestroyFramebuffer( m_device, fb, nullptr );
+	m_presentFramebuffers.clear();
+	for ( VkImageView view : m_presentImageViews )
+		if ( view != VK_NULL_HANDLE )
+			vkDestroyImageView( m_device, view, nullptr );
+	m_presentImageViews.clear();
+}
+
+void CVulkanContext::DestroyPresentGamma()
+{
+	DestroyPresentGammaTargets();
+	if ( m_device == VK_NULL_HANDLE )
+		return;
+	if ( m_gammaPipeline != VK_NULL_HANDLE )
+		vkDestroyPipeline( m_device, m_gammaPipeline, nullptr );
+	if ( m_gammaPipelineLayout != VK_NULL_HANDLE )
+		vkDestroyPipelineLayout( m_device, m_gammaPipelineLayout, nullptr );
+	if ( m_gammaSetLayout != VK_NULL_HANDLE )
+		vkDestroyDescriptorSetLayout( m_device, m_gammaSetLayout, nullptr );
+	if ( m_gammaDescriptorPool != VK_NULL_HANDLE )
+		vkDestroyDescriptorPool( m_device, m_gammaDescriptorPool, nullptr );
+	if ( m_gammaSamplerNearest != VK_NULL_HANDLE )
+		vkDestroySampler( m_device, m_gammaSamplerNearest, nullptr );
+	if ( m_gammaSamplerLinear != VK_NULL_HANDLE )
+		vkDestroySampler( m_device, m_gammaSamplerLinear, nullptr );
+	if ( m_gammaRenderPass != VK_NULL_HANDLE )
+		vkDestroyRenderPass( m_device, m_gammaRenderPass, nullptr );
+	for ( int slot = 0; slot < kMaxFramesInFlight; ++slot )
+	{
+		if ( m_gammaRampBuffers[slot] != VK_NULL_HANDLE )
+			vkDestroyBuffer( m_device, m_gammaRampBuffers[slot], nullptr );
+		if ( m_gammaRampMemories[slot] != VK_NULL_HANDLE )
+			vkFreeMemory( m_device, m_gammaRampMemories[slot], nullptr );
+		m_gammaRampBuffers[slot] = VK_NULL_HANDLE;
+		m_gammaRampMemories[slot] = VK_NULL_HANDLE;
+		m_gammaRampMapped[slot] = nullptr;
+		m_gammaSets[slot] = VK_NULL_HANDLE;
+	}
+	m_gammaPipeline = VK_NULL_HANDLE;
+	m_gammaPipelineLayout = VK_NULL_HANDLE;
+	m_gammaSetLayout = VK_NULL_HANDLE;
+	m_gammaDescriptorPool = VK_NULL_HANDLE;
+	m_gammaSamplerNearest = m_gammaSamplerLinear = VK_NULL_HANDLE;
+	m_gammaRenderPass = VK_NULL_HANDLE;
+	m_gammaFormat = VK_FORMAT_UNDEFINED;
+}
+
+bool CVulkanContext::RecordPresentGamma(
+    VkCommandBuffer cmd, uint32_t imageIndex, VkImageLayout backBufferLayout, bool capture )
+{
+	if ( m_gammaUnavailable )
+		return false;
+	std::string error;
+	if ( !EnsurePresentGamma( &error ) || !EnsurePresentGammaTargets( &error ) )
+	{
+		// Explicitly degraded, once: presents fall back to the unramped blit.
+		Log( "monitor gamma unavailable, presenting without it: %s\n", error.c_str() );
+		m_gammaUnavailable = true;
+		return false;
+	}
+
+	// This slot's fence was waited in BeginFrame, so its ramp buffer is free.
+	float *entries = m_gammaRampMapped[m_currentFrame];
+	for ( int i = 0; i < 256; ++i )
+		entries[i] = float( m_activeRamp[i] ) / 65535.0f;
+	const bool sameSize = m_swapExtent.width == m_presentExtent.width &&
+	                      m_swapExtent.height == m_presentExtent.height;
+	VkDescriptorImageInfo image = {};
+	image.sampler = sameSize ? m_gammaSamplerNearest : m_gammaSamplerLinear;
+	image.imageView = m_swapImageViews[imageIndex];
+	image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	VkDescriptorBufferInfo ramp = { m_gammaRampBuffers[m_currentFrame], 0, sizeof( float ) * 256 };
+	VkWriteDescriptorSet writes[2] = {};
+	for ( VkWriteDescriptorSet &write : writes )
+	{
+		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		write.dstSet = m_gammaSets[m_currentFrame];
+		write.descriptorCount = 1;
+	}
+	writes[0].dstBinding = 0;
+	writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	writes[0].pImageInfo = &image;
+	writes[1].dstBinding = 1;
+	writes[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	writes[1].pBufferInfo = &ramp;
+	vkUpdateDescriptorSets( m_device, 2, writes, 0, nullptr );
+
+	// The back buffer: its color writes (or the capture's read) done, sampled.
+	// The next frame's first pass discards it (initial layout UNDEFINED).
+	VkImageMemoryBarrier toRead = {};
+	toRead.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	toRead.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	toRead.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	toRead.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	toRead.image = m_swapImages[imageIndex];
+	toRead.oldLayout = backBufferLayout;
+	toRead.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	toRead.srcAccessMask = backBufferLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+	                           ? VK_ACCESS_TRANSFER_READ_BIT
+	                           : VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	toRead.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	vkCmdPipelineBarrier( cmd,
+	    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+	    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toRead );
+
+	VkRenderPassBeginInfo begin = {};
+	begin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	begin.renderPass = m_gammaRenderPass;
+	begin.framebuffer = m_presentFramebuffers[imageIndex];
+	begin.renderArea.extent = m_presentExtent;
+	vkCmdBeginRenderPass( cmd, &begin, VK_SUBPASS_CONTENTS_INLINE );
+	vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_gammaPipeline );
+	vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_gammaPipelineLayout, 0, 1,
+	    &m_gammaSets[m_currentFrame], 0, nullptr );
+	const VkViewport viewport = { 0.0f, 0.0f, float( m_presentExtent.width ),
+		float( m_presentExtent.height ), 0.0f, 1.0f };
+	const VkRect2D scissor = { { 0, 0 }, m_presentExtent };
+	vkCmdSetViewport( cmd, 0, 1, &viewport );
+	vkCmdSetScissor( cmd, 0, 1, &scissor );
+	vkCmdDraw( cmd, 3, 1, 0, 0 );
+	vkCmdEndRenderPass( cmd );
+
+	++m_presentCount;
+	++m_gammaPresentCount;
+	if ( !sameSize )
+		++m_scaledPresentCount;
+	RecordPresentedCaptureAndRelease( cmd, imageIndex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+	    capture );
+	return true;
 }
 
 bool CVulkanContext::EndFrame( std::string *outError )
@@ -6086,10 +6523,13 @@ bool CVulkanContext::EndFrame( std::string *outError )
 		return false;
 	if ( captureBackBuffer && !RecordCapture( cmd, imageIndex ) )
 		return false;
-	RecordPresentBlit( cmd, imageIndex,
-	    captureBackBuffer ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-	                      : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-	    capturePresented );
+	const VkImageLayout backBufferLayout = captureBackBuffer
+	                                           ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+	                                           : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	ApplyPublishedGammaRamp();
+	if ( !m_gammaActive ||
+	     !RecordPresentGamma( cmd, imageIndex, backBufferLayout, capturePresented ) )
+		RecordPresentBlit( cmd, imageIndex, backBufferLayout, capturePresented );
 	m_captureRequested = m_capturePresented = false;
 
 	if ( m_timestampPool != VK_NULL_HANDLE )
@@ -6103,9 +6543,11 @@ bool CVulkanContext::EndFrame( std::string *outError )
 		return false;
 	}
 
-	// Only the present blit touches the acquired swapchain image; rendering into
-	// the back buffer need not wait for the acquire.
-	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	// Only the present (a blit, or the gamma pass's color writes) touches the
+	// acquired swapchain image; rendering into the back buffer need not wait
+	// for the acquire.
+	VkPipelineStageFlags waitStage =
+	    VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	VkSubmitInfo submit = {};
 	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submit.waitSemaphoreCount = 1;
@@ -6552,6 +6994,7 @@ bool CVulkanContext::ResolveCapturedPixels( std::string *outError )
 
 void CVulkanContext::DestroySwapchainObjects()
 {
+	DestroyPresentGammaTargets();
 	for ( VkFramebuffer fb : m_framebuffers )
 		if ( fb != VK_NULL_HANDLE )
 			vkDestroyFramebuffer( m_device, fb, nullptr );
@@ -6692,6 +7135,7 @@ void CVulkanContext::Shutdown()
 		DestroyDemoDepth();
 		DestroyDynamicMesh();
 		DestroySwapchainObjects();
+		DestroyPresentGamma();
 		if ( m_queryPool != VK_NULL_HANDLE )
 		{
 			vkDestroyQueryPool( m_device, m_queryPool, nullptr );

@@ -2257,17 +2257,24 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 		// paint the vgui screen
 		VGui_PreRender();
 
-		// Make sure the client .dll root panel is at the proper point before doing the "SolveTraverse" calls
+		// Make sure the client .dll root panel is at the proper point before doing the "SolveTraverse" calls.
+		// Panels lay out in UI units: the view's viewport (just pushed) divided by the UI scale.
+		// The in-world VR HUD texture keeps the screen size it was given above.
+		int nRootWide = viewWidth, nRootTall = viewHeight;
+		if ( !pTexture )
+		{
+			vgui::surface()->GetScreenSize( nRootWide, nRootTall );
+		}
 		vgui::VPANEL root = enginevgui->GetPanel( PANEL_CLIENTDLL );
 		if ( root != 0 )
 		{
-			vgui::ipanel()->SetSize( root, viewWidth, viewHeight );
+			vgui::ipanel()->SetSize( root, nRootWide, nRootTall );
 		}
 		// Same for client .dll tools
 		root = enginevgui->GetPanel( PANEL_CLIENTDLL_TOOLS );
 		if ( root != 0 )
 		{
-			vgui::ipanel()->SetSize( root, viewWidth, viewHeight );
+			vgui::ipanel()->SetSize( root, nRootWide, nRootTall );
 		}
 
 		// The crosshair, etc. needs to get at the current setup stuff
