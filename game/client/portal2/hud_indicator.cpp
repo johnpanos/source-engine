@@ -57,7 +57,7 @@ DECLARE_HUD_MESSAGE( CHudIndicator, IndicatorFlash );
 //-----------------------------------------------------------------------------
 CHudIndicator::CHudIndicator( const char *pElementName ) : BaseClass( NULL, "HudIndicator" ), CHudElement( pElementName )
 {
-	vgui::Panel *pParent = GetClientMode()->GetViewport();
+	vgui::Panel *pParent = g_pClientMode->GetViewport();
 	SetParent( pParent );
 
 	SetHiddenBits( HIDEHUD_PLAYERDEAD );
@@ -232,7 +232,7 @@ DECLARE_HUD_MESSAGE( CHudControlHelper, ControlHelperAnimate );
 //-----------------------------------------------------------------------------
 CHudControlHelper::CHudControlHelper( const char *pElementName ) : BaseClass( NULL, "HudControlHelper" ), CHudElement( pElementName )
 {
-	vgui::Panel *pParent = GetClientMode()->GetViewport();
+	vgui::Panel *pParent = g_pClientMode->GetViewport();
 	SetParent( pParent );
 
 	SetHiddenBits( HIDEHUD_PLAYERDEAD );

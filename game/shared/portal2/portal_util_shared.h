@@ -16,13 +16,13 @@
 extern bool g_bBulletPortalTrace;
 
 #ifdef CLIENT_DLL
-	#include "client_class.h"
-	#include "tier1/interpolatedvar.h"
-	class CPortalRenderable_FlatBasic;
-	class C_Portal_Base2D;
-	#define CPortal_Base2D C_Portal_Base2D
-	class C_BasePlayer;
-	typedef C_BasePlayer CBasePlayer;
+#include "client_class.h"
+#include "interpolatedvar.h"
+class CPortalRenderable_FlatBasic;
+class C_Portal_Base2D;
+#define CPortal_Base2D C_Portal_Base2D
+class C_BasePlayer;
+typedef C_BasePlayer CBasePlayer;
 #else
 	class CPortal_Base2D;
 	class CBasePlayer;

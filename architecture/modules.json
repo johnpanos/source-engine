@@ -206,6 +206,30 @@
         ]
       },
       {
+        "id": "render.dxsupport-keyvalues",
+        "kind": "legacy-interop",
+        "paths": [
+          "materialsystem/dxsupport_keyvalues.h",
+          "materialsystem/dxsupport_keyvalues.cpp"
+        ],
+        "allowedEdges": [
+          "render.contracts"
+        ],
+        "legacyIncludes": [
+          "filesystem.h",
+          "tier0/dbg.h",
+          "tier0/icommandline.h",
+          "tier0/platform.h",
+          "tier1/KeyValues.h",
+          "tier1/strtools.h",
+          "tier1/utlbuffer.h",
+          "tier0/memdbgon.h"
+        ],
+        "externalHeaders": [
+          "windows.h"
+        ]
+      },
+      {
         "id": "render.legacy-backend-provider",
         "kind": "legacy-interop",
         "paths": [

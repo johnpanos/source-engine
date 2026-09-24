@@ -10,8 +10,8 @@
 
 #include "cbase.h"
 #include "prop_exploding_futbol.h"
-#include "portal2/portal/portal_player.h"
-#include "portal2/portal/portal_base2d.h"
+#include "portal_player.h"
+#include "portal_base2d.h"
 #include "portal_util_shared.h"
 #include "portal_grabcontroller_shared.h"
 #include "indicator_panel.h"
@@ -28,51 +28,37 @@ const char *g_szExplodingFutbolAnimThinkContext = "ExplodingFutbolAnimateThinkCo
 const char *g_szExplodingFutbolTimerThinkContext = "ExplodingFutbolTimerThinkContext";
 const char *g_szExplodingFutbolKillThinkContext = "ExplodingFutbolKillThinkContext";
 
-ConVar exploding_futbol_explosion_debug( "exploding_futbol_explosion_debug", "0", FCVAR_CHEAT,
-    "Debug the explosion of the exploding futbol." );
-ConVar exploding_futbol_use_cooldown_time( "exploding_futbol_use_cooldown_time", "0.7f",
-    FCVAR_CHEAT, "The cooldown time for the use key after the player picks up the futbol." );
-ConVar exploding_futbol_explosion_radius( "exploding_futbol_explosion_radius", "200", FCVAR_CHEAT,
-    "The radius of the explosion for the exploding futbol." );
-ConVar exploding_futbol_explosion_magnitude( "exploding_futbol_explosion_magnitude", "0",
-    FCVAR_CHEAT, "The magnitude of the explosion for the exploding futbol." );
-ConVar exploding_futbol_explosion_damage( "exploding_futbol_explosion_damage", "250.0f",
-    FCVAR_CHEAT, "The damage of the explosion for the exploding futbol." );
-ConVar exploding_futbol_explosion_damage_falloff( "exploding_futbol_explosion_damage_falloff",
-    "0.75f", FCVAR_CHEAT, "The percentage of damage taken at the edge of the explosion." );
-ConVar exploding_futbol_start_color( "exploding_futbol_start_color", "255 255 255 255", FCVAR_CHEAT,
-    "The starting color of the exploding futbol." );
-ConVar exploding_futbol_end_color( "exploding_futbol_end_color", "255 106 0 255", FCVAR_CHEAT,
-    "The ending color of the exploding futbol, before it starts the final explode sequence." );
-ConVar exploding_futbol_flash_start_color( "exploding_futbol_flash_start_color", "255 255 0 255",
-    FCVAR_CHEAT, "The start color for the futbol flashing before it explodes." );
-ConVar exploding_futbol_flash_end_color( "exploding_futbol_flash_end_color", "255 0 0 255",
-    FCVAR_CHEAT, "The final color of the exploding futbol, right before it explodes." );
-ConVar exploding_futbol_flash_start_time( "exploding_futbol_flash_start_time", "3.0f", FCVAR_CHEAT,
-    "The time before the futbol explodes when it start to flash." );
-ConVar exploding_futbol_flash_duration( "exploding_futbol_flash_duration", "1.0f", FCVAR_CHEAT,
-    "The flash duration of the exploding futbol, right before it explodes." );
-ConVar exploding_futbol_hit_breakables( "exploding_futbol_hit_breakables", "1", FCVAR_CHEAT,
-    "If the exploding futbol should hit breakable entities." );
-ConVar exploding_futbol_explode_on_fizzle( "exploding_futbol_explode_on_fizzle", "0", FCVAR_CHEAT,
-    "If the exploding futbol should explode when it fizzles." );
-ConVar sv_futbol_funnel_max_correct( "sv_futbol_funnel_max_correct", "128.f", FCVAR_DEVELOPMENTONLY,
-    "Max distance to move our hit-target if there's a portal nearby it" );
+ConVar exploding_futbol_explosion_debug( "exploding_futbol_explosion_debug", "0", FCVAR_CHEAT, "Debug the explosion of the exploding futbol." );
+ConVar exploding_futbol_use_cooldown_time( "exploding_futbol_use_cooldown_time", "0.7f", FCVAR_CHEAT, "The cooldown time for the use key after the player picks up the futbol." );
+ConVar exploding_futbol_explosion_radius( "exploding_futbol_explosion_radius", "200", FCVAR_CHEAT, "The radius of the explosion for the exploding futbol." );
+ConVar exploding_futbol_explosion_magnitude( "exploding_futbol_explosion_magnitude", "0", FCVAR_CHEAT, "The magnitude of the explosion for the exploding futbol." );
+ConVar exploding_futbol_explosion_damage( "exploding_futbol_explosion_damage", "250.0f", FCVAR_CHEAT, "The damage of the explosion for the exploding futbol." );
+ConVar exploding_futbol_explosion_damage_falloff( "exploding_futbol_explosion_damage_falloff", "0.75f", FCVAR_CHEAT, "The percentage of damage taken at the edge of the explosion." );
+ConVar exploding_futbol_start_color( "exploding_futbol_start_color", "255 255 255 255", FCVAR_CHEAT, "The starting color of the exploding futbol." );
+ConVar exploding_futbol_end_color( "exploding_futbol_end_color", "255 106 0 255", FCVAR_CHEAT, "The ending color of the exploding futbol, before it starts the final explode sequence." );
+ConVar exploding_futbol_flash_start_color( "exploding_futbol_flash_start_color", "255 255 0 255", FCVAR_CHEAT, "The start color for the futbol flashing before it explodes." );
+ConVar exploding_futbol_flash_end_color( "exploding_futbol_flash_end_color", "255 0 0 255", FCVAR_CHEAT, "The final color of the exploding futbol, right before it explodes." );
+ConVar exploding_futbol_flash_start_time( "exploding_futbol_flash_start_time", "3.0f", FCVAR_CHEAT, "The time before the futbol explodes when it start to flash." );
+ConVar exploding_futbol_flash_duration( "exploding_futbol_flash_duration", "1.0f", FCVAR_CHEAT, "The flash duration of the exploding futbol, right before it explodes." );
+ConVar exploding_futbol_hit_breakables( "exploding_futbol_hit_breakables", "1", FCVAR_CHEAT, "If the exploding futbol should hit breakable entities." );
+ConVar exploding_futbol_explode_on_fizzle( "exploding_futbol_explode_on_fizzle", "0", FCVAR_CHEAT, "If the exploding futbol should explode when it fizzles." );
+ConVar sv_futbol_funnel_max_correct( "sv_futbol_funnel_max_correct", "128.f", FCVAR_DEVELOPMENTONLY, "Max distance to move our hit-target if there's a portal nearby it" );
 
 // Entities the explosion is allowed to damage (NULL terminated)
-static const char *g_psxExplodableEntities[] = { "npc_portal_turret_floor", "prop_weighted_cube",
-    "prop_physics", "func_breakable", "player", NULL };
-
-#define EXPLODING_FUTBOL_MODEL "models/props/futbol.mdl"
-#define EXPLODING_FUTBOL_SPAWNER_MODEL "models/props/futbol_dispenser.mdl"
-#define EXPLODING_FUTBOL_SOCKET_MODEL "models/props/futbol_socket.mdl"
-
-static Color FutbolColor( const ConVar &colorVar )
+static const char *g_psxExplodableEntities[] =
 {
-	color32 parsedColor;
-	UTIL_StringToColor32( &parsedColor, colorVar.GetString() );
-	return Color( parsedColor.r, parsedColor.g, parsedColor.b, parsedColor.a );
-}
+	"npc_portal_turret_floor",
+	"prop_weighted_cube",
+	"prop_physics",
+	"func_breakable",
+	"player",
+	NULL
+};
+
+#define EXPLODING_FUTBOL_MODEL			"models/props/futbol.mdl"
+#define EXPLODING_FUTBOL_SPAWNER_MODEL	"models/props/futbol_dispenser.mdl"
+#define EXPLODING_FUTBOL_SOCKET_MODEL	"models/props/futbol_socket.mdl"
+
 
 //-----------------------------------------------------------------------------
 // Purpose: Trace filter that only hits exploding futbols
@@ -89,8 +75,12 @@ public:
 		return ( pEntity && FClassnameIs( pEntity, "prop_exploding_futbol" ) );
 	}
 
-	virtual TraceType_t GetTraceType() const { return TRACE_ENTITIES_ONLY; }
+	virtual TraceType_t GetTraceType() const
+	{
+		return TRACE_ENTITIES_ONLY;
+	}
 };
+
 
 //-----------------------------------------------------------------------------
 // Purpose: Holds an exploding futbol that enters its catch box
@@ -128,19 +118,22 @@ protected:
 
 BEGIN_DATADESC( CExplodingFutbolCatcher )
 
-DEFINE_FIELD( m_hCaughtFutbol, FIELD_EHANDLE ), DEFINE_FIELD( m_vecCatcherBoxMins, FIELD_VECTOR ),
-    DEFINE_FIELD( m_vecCatcherBoxMaxs, FIELD_VECTOR ),
-    DEFINE_FIELD( m_vecCatcherBoxOrigin, FIELD_VECTOR ),
-    DEFINE_FIELD( m_bDisableRecaptureOnPlayerGrab, FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_hCaughtFutbol, FIELD_EHANDLE ),
+	DEFINE_FIELD( m_vecCatcherBoxMins, FIELD_VECTOR ),
+	DEFINE_FIELD( m_vecCatcherBoxMaxs, FIELD_VECTOR ),
+	DEFINE_FIELD( m_vecCatcherBoxOrigin, FIELD_VECTOR ),
+	DEFINE_FIELD( m_bDisableRecaptureOnPlayerGrab, FIELD_BOOLEAN ),
 
-    DEFINE_OUTPUT( m_OnFutbolReleased, "OnFutbolReleased" ),
-    DEFINE_OUTPUT( m_OnFutbolCaught, "OnFutbolCaught" ),
+	DEFINE_OUTPUT( m_OnFutbolReleased, "OnFutbolReleased" ),
+	DEFINE_OUTPUT( m_OnFutbolCaught, "OnFutbolCaught" ),
 
-    DEFINE_THINKFUNC( CatchThink ), DEFINE_THINKFUNC( CaptureThink ),
+	DEFINE_THINKFUNC( CatchThink ),
+	DEFINE_THINKFUNC( CaptureThink ),
 
-    END_DATADESC()
+END_DATADESC()
 
-        LINK_ENTITY_TO_CLASS( exploding_futbol_catcher, CExplodingFutbolCatcher );
+LINK_ENTITY_TO_CLASS( exploding_futbol_catcher, CExplodingFutbolCatcher );
+
 
 //-----------------------------------------------------------------------------
 // Purpose: Dispenses exploding futbols and respawns them when they are destroyed
@@ -177,19 +170,20 @@ private:
 
 BEGIN_DATADESC( CPropExplodingFutbolSpawner )
 
-DEFINE_KEYFIELD( m_bHasFutbol, FIELD_BOOLEAN, "StartWithFutbol" ),
-    DEFINE_KEYFIELD( m_bIsTimed, FIELD_BOOLEAN, "IsTimed" ),
-    DEFINE_KEYFIELD( m_flTimer, FIELD_FLOAT, "Timer" ),
-    DEFINE_KEYFIELD( m_strTimerIndicator, FIELD_STRING, "TimerIndicatorName" ),
+	DEFINE_KEYFIELD( m_bHasFutbol, FIELD_BOOLEAN, "StartWithFutbol" ),
+	DEFINE_KEYFIELD( m_bIsTimed, FIELD_BOOLEAN, "IsTimed" ),
+	DEFINE_KEYFIELD( m_flTimer, FIELD_FLOAT, "Timer" ),
+	DEFINE_KEYFIELD( m_strTimerIndicator, FIELD_STRING, "TimerIndicatorName" ),
 
-    DEFINE_INPUTFUNC( FIELD_VOID, "ForceSpawn", InputForceSpawn ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "ForceSpawn", InputForceSpawn ),
 
-    DEFINE_OUTPUT( m_OnFutbolSpawned, "OnFutbolSpawned" ),
-    DEFINE_OUTPUT( m_OnFutbolGrabbed, "OnFutbolGrabbed" ),
+	DEFINE_OUTPUT( m_OnFutbolSpawned, "OnFutbolSpawned" ),
+	DEFINE_OUTPUT( m_OnFutbolGrabbed, "OnFutbolGrabbed" ),
 
-    END_DATADESC()
+END_DATADESC()
 
-        LINK_ENTITY_TO_CLASS( prop_exploding_futbol_spawner, CPropExplodingFutbolSpawner );
+LINK_ENTITY_TO_CLASS( prop_exploding_futbol_spawner, CPropExplodingFutbolSpawner );
+
 
 //-----------------------------------------------------------------------------
 // Purpose: Socket that accepts an exploding futbol
@@ -209,37 +203,49 @@ public:
 
 LINK_ENTITY_TO_CLASS( prop_exploding_futbol_socket, CPropExplodingFutbolSocket );
 
+
 //-----------------------------------------------------------------------------
 // Exploding futbol
 //-----------------------------------------------------------------------------
 BEGIN_DATADESC( CPropExplodingFutbol )
 
-DEFINE_KEYFIELD( m_strSpawnerName, FIELD_STRING, "SpawnerName" ),
-    DEFINE_KEYFIELD( m_bShouldRespawn, FIELD_BOOLEAN, "ShouldRespawn" ),
-    DEFINE_KEYFIELD( m_bExplodeOnTouch, FIELD_BOOLEAN, "ExplodeOnTouch" ),
+	DEFINE_KEYFIELD( m_strSpawnerName, FIELD_STRING, "SpawnerName" ),
+	DEFINE_KEYFIELD( m_bShouldRespawn, FIELD_BOOLEAN, "ShouldRespawn" ),
+	DEFINE_KEYFIELD( m_bExplodeOnTouch, FIELD_BOOLEAN, "ExplodeOnTouch" ),
 
-    DEFINE_FIELD( m_hSpawner, FIELD_EHANDLE ), DEFINE_FIELD( m_Holder, FIELD_INTEGER ),
-    DEFINE_FIELD( m_hLastHeldByPlayer, FIELD_EHANDLE ),
-    DEFINE_FIELD( m_bTimerActive, FIELD_BOOLEAN ), DEFINE_FIELD( m_flExplosionTimer, FIELD_FLOAT ),
-    DEFINE_FIELD( m_flTotalTimer, FIELD_FLOAT ), DEFINE_FIELD( m_flLastTickTime, FIELD_FLOAT ),
-    DEFINE_FIELD( m_flLastTimerSoundTime, FIELD_FLOAT ),
-    DEFINE_FIELD( m_flLastFlashTime, FIELD_FLOAT ),
+	DEFINE_FIELD( m_hSpawner, FIELD_EHANDLE ),
+	DEFINE_FIELD( m_Holder, FIELD_INTEGER ),
+	DEFINE_FIELD( m_hLastHeldByPlayer, FIELD_EHANDLE ),
+	DEFINE_FIELD( m_bTimerActive, FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_flExplosionTimer, FIELD_FLOAT ),
+	DEFINE_FIELD( m_flTotalTimer, FIELD_FLOAT ),
+	DEFINE_FIELD( m_flLastTickTime, FIELD_FLOAT ),
+	DEFINE_FIELD( m_flLastTimerSoundTime, FIELD_FLOAT ),
+	DEFINE_FIELD( m_flLastFlashTime, FIELD_FLOAT ),
 
-    DEFINE_THINKFUNC( AnimThink ), DEFINE_THINKFUNC( TimerThink ), DEFINE_THINKFUNC( KillThink ),
+	DEFINE_THINKFUNC( AnimThink ),
+	DEFINE_THINKFUNC( TimerThink ),
+	DEFINE_THINKFUNC( KillThink ),
 
-    DEFINE_INPUTFUNC( FIELD_VOID, "Explode", InputExplode ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "Explode", InputExplode ),
 
-    END_DATADESC()
+END_DATADESC()
 
-        LINK_ENTITY_TO_CLASS( prop_exploding_futbol, CPropExplodingFutbol );
+LINK_ENTITY_TO_CLASS( prop_exploding_futbol, CPropExplodingFutbol );
 
 CPropExplodingFutbol::CPropExplodingFutbol()
-    : m_Holder( EXPLODING_FUTBOL_HELD_BY_NONE ), m_strSpawnerName( NULL_STRING ),
-      m_bTimerActive( false ), m_bExplodeOnTouch( true ), m_flExplosionTimer( 0.0f ),
-      m_flTotalTimer( 0.0f ), m_flLastTickTime( 0.0f ), m_flLastTimerSoundTime( 0.0f ),
-      m_flLastFlashTime( 0.0f )
+	: m_Holder( EXPLODING_FUTBOL_HELD_BY_NONE ),
+	m_strSpawnerName( NULL_STRING ),
+	m_bTimerActive( false ),
+	m_bExplodeOnTouch( true ),
+	m_flExplosionTimer( 0.0f ),
+	m_flTotalTimer( 0.0f ),
+	m_flLastTickTime( 0.0f ),
+	m_flLastTimerSoundTime( 0.0f ),
+	m_flLastFlashTime( 0.0f )
 {
 }
+
 
 void CPropExplodingFutbol::Precache( void )
 {
@@ -251,6 +257,7 @@ void CPropExplodingFutbol::Precache( void )
 	PrecacheScriptSound( "Portal.room1_TickTock" );
 	PrecacheScriptSound( "EnergyBall.Explosion" );
 }
+
 
 void CPropExplodingFutbol::Spawn( void )
 {
@@ -267,8 +274,7 @@ void CPropExplodingFutbol::Spawn( void )
 				CBaseEntity *pEnt = gEntList.FindEntityByName( NULL, m_strSpawnerName );
 				if ( pEnt )
 				{
-					CPropExplodingFutbolSpawner *pSpawner =
-					    dynamic_cast<CPropExplodingFutbolSpawner *>( pEnt );
+					CPropExplodingFutbolSpawner *pSpawner = dynamic_cast<CPropExplodingFutbolSpawner*>( pEnt );
 					if ( pSpawner )
 					{
 						m_hSpawner = pSpawner;
@@ -277,9 +283,7 @@ void CPropExplodingFutbol::Spawn( void )
 					{
 						// Reconstruction note: the 2010 build formats this warning through
 						// the failed (NULL) cast result; the entity that was found is used instead.
-						Warning( "prop_exploding_futbol has an invalid spawner set (%s: %s). It "
-						         "will not respawn.\n",
-						    pEnt->GetClassname(), pEnt->GetDebugName() );
+						Warning( "prop_exploding_futbol has an invalid spawner set (%s: %s). It will not respawn.\n", pEnt->GetClassname(), pEnt->GetDebugName() );
 					}
 				}
 			}
@@ -293,11 +297,11 @@ void CPropExplodingFutbol::Spawn( void )
 	BaseClass::Spawn();
 
 	ResetSequence( LookupSequence( "rot" ) );
-	SetContextThink( &CPropExplodingFutbol::AnimThink, gpGlobals->curtime + 0.1f,
-	    g_szExplodingFutbolAnimThinkContext );
+	SetContextThink( &CPropExplodingFutbol::AnimThink, gpGlobals->curtime + 0.1f, g_szExplodingFutbolAnimThinkContext );
 
 	AddSpawnFlags( SF_PHYSPROP_ENABLE_ON_PHYSCANNON | SF_PHYSPROP_ENABLE_PICKUP_OUTPUT );
 }
+
 
 //-----------------------------------------------------------------------------
 // Purpose: Funnel falling futbols into floor portals below them
@@ -327,7 +331,8 @@ void CPropExplodingFutbol::VPhysicsUpdate( IPhysicsObject *pPhysics )
 			for ( int i = 0; i != iPortalCount; ++i )
 			{
 				CPortal_Base2D *pTempPortal = pPortals[i];
-				if ( pTempPortal->IsActivedAndLinked() && pTempPortal->IsFloorPortal() )
+				if ( pTempPortal->IsActivedAndLinked() &&
+					 pTempPortal->m_PortalSimulator.GetInternalData().Placement.vForward.z >= 0.8f )
 				{
 					const Vector vPropToPortal = pTempPortal->GetAbsOrigin() - vPropOrigin;
 
@@ -353,8 +358,7 @@ void CPropExplodingFutbol::VPhysicsUpdate( IPhysicsObject *pPhysics )
 
 				// Solve when we hit
 				float flRoot1, flRoot2;
-				SolveQuadratic(
-				    -flGravity, 2.f * flVerticalSpeed, 2.f * flHeightFromPortal, flRoot1, flRoot2 );
+				SolveQuadratic( -flGravity, 2.f * flVerticalSpeed, 2.f * flHeightFromPortal, flRoot1, flRoot2 );
 
 				float flTimeToPortal = flRoot1 > 0.f ? flRoot1 : flRoot2;
 				if ( flRoot2 < flRoot1 && flRoot2 >= 0.f && flRoot1 >= 0.f )
@@ -367,7 +371,8 @@ void CPropExplodingFutbol::VPhysicsUpdate( IPhysicsObject *pPhysics )
 				// Reconstruction note: the 2010 build reads m_fNetworkHalfWidth directly;
 				// the imported portal header exposes it through GetHalfWidth().
 				if ( flMissDist > pFunnelInto->GetHalfWidth() &&
-				     flMissDist < sv_futbol_funnel_max_correct.GetFloat() && flTimeToPortal > 0.f )
+					 flMissDist < sv_futbol_funnel_max_correct.GetFloat() &&
+					 flTimeToPortal > 0.f )
 				{
 					// Correct the horizontal velocity so we land in the portal
 					Vector vVelocityToHitPortal = vPropToFunnelPortal / flTimeToPortal;
@@ -379,20 +384,24 @@ void CPropExplodingFutbol::VPhysicsUpdate( IPhysicsObject *pPhysics )
 	}
 }
 
+
 ExplodingFutbolHolderType_t CPropExplodingFutbol::GetHolder( void )
 {
 	return m_Holder;
 }
+
 
 void CPropExplodingFutbol::SetHolder( ExplodingFutbolHolderType_t holder )
 {
 	m_Holder = holder;
 }
 
+
 CPortal_Player *CPropExplodingFutbol::GetLastPlayerToHold( void )
 {
 	return m_hLastHeldByPlayer.Get();
 }
+
 
 void CPropExplodingFutbol::SetSpawner( CPropExplodingFutbolSpawner *pSpawner )
 {
@@ -403,25 +412,27 @@ void CPropExplodingFutbol::SetSpawner( CPropExplodingFutbolSpawner *pSpawner )
 	m_bExplodeOnTouch = true;
 }
 
+
 CPropExplodingFutbolSpawner *CPropExplodingFutbol::GetSpawner( void )
 {
 	return m_hSpawner;
 }
+
 
 void CPropExplodingFutbol::InputExplode( inputdata_t &in )
 {
 	KillFutbol();
 }
 
+
 void CPropExplodingFutbol::KillFutbol( void )
 {
 	CTakeDamageInfo info( this, this, GetHealth(), DMG_BLAST );
 	info.SetDamagePosition( GetAbsOrigin() );
-	Vector forward;
-	GetVectors( &forward, NULL, NULL );
-	info.SetDamageForce( forward * 500.0f );
+	info.SetDamageForce( Forward() * 500.0f );
 	Event_Killed( info );
 }
+
 
 void CPropExplodingFutbol::DestroyFutbol( bool bExplode )
 {
@@ -436,6 +447,7 @@ void CPropExplodingFutbol::DestroyFutbol( bool bExplode )
 	}
 }
 
+
 void CPropExplodingFutbol::Event_Killed( const CTakeDamageInfo &info )
 {
 	BaseClass::Event_Killed( info );
@@ -443,30 +455,27 @@ void CPropExplodingFutbol::Event_Killed( const CTakeDamageInfo &info )
 	DestroyFutbol( true );
 }
 
+
 void CPropExplodingFutbol::ExplodeFutbol( void )
 {
 	float flExplosionRadius = exploding_futbol_explosion_radius.GetFloat();
 
 	m_ExplodedEntities.RemoveAll();
 
-	ExplosionCreate( GetAbsOrigin(), GetAbsAngles(), GetOwnerEntity(),
-	    exploding_futbol_explosion_magnitude.GetInt(), flExplosionRadius,
-	    SF_ENVEXPLOSION_NOSMOKE | SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NODLIGHTS,
-	    exploding_futbol_explosion_damage.GetFloat(), this );
+	ExplosionCreate( GetAbsOrigin(), GetAbsAngles(), GetOwnerEntity(), exploding_futbol_explosion_magnitude.GetInt(), flExplosionRadius,
+					 SF_ENVEXPLOSION_NOSMOKE | SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NODLIGHTS, exploding_futbol_explosion_damage.GetFloat(), this );
 
 	// Explode through any portals within the radius
 	PortalRadiusExtensionVector portalRadiusExtensions;
-	ExtendRadiusThroughPortals(
-	    GetAbsOrigin(), GetAbsAngles(), flExplosionRadius, portalRadiusExtensions );
+	ExtendRadiusThroughPortals( GetAbsOrigin(), GetAbsAngles(), flExplosionRadius, portalRadiusExtensions );
 	for ( int i = 0; i < portalRadiusExtensions.Count(); ++i )
 	{
-		DoExplosion( portalRadiusExtensions[i].vecOrigin, flExplosionRadius,
-		    portalRadiusExtensions[i].pPortalTo );
+		DoExplosion( portalRadiusExtensions[i].vecOrigin, flExplosionRadius, portalRadiusExtensions[i].pPortalTo );
 	}
 }
 
-void CPropExplodingFutbol::DamageEntity(
-    CBaseEntity *pEntity, const Vector &vecCenter, const Vector &vecForward )
+
+void CPropExplodingFutbol::DamageEntity( CBaseEntity *pEntity, const Vector &vecCenter, const Vector &vecForward )
 {
 	Vector vecDamagePos = vecCenter - vecForward * 5.0f;
 
@@ -476,8 +485,7 @@ void CPropExplodingFutbol::DamageEntity(
 		float flDist = vecCenter.DistTo( pEntity->GetAbsOrigin() );
 		float flBaseDamage = exploding_futbol_explosion_damage.GetFloat();
 		float flPercent = flDist / exploding_futbol_explosion_radius.GetFloat();
-		float flDamage = Lerp( flPercent, flBaseDamage,
-		    flBaseDamage * exploding_futbol_explosion_damage_falloff.GetFloat() );
+		float flDamage = Lerp( flPercent, flBaseDamage, flBaseDamage * exploding_futbol_explosion_damage_falloff.GetFloat() );
 
 		if ( exploding_futbol_explosion_debug.GetBool() )
 		{
@@ -490,8 +498,7 @@ void CPropExplodingFutbol::DamageEntity(
 		info.SetDamagePosition( vecDamagePos );
 		pEntity->TakeDamage( info );
 	}
-	else if ( exploding_futbol_hit_breakables.GetBool() &&
-	          FClassnameIs( pEntity, "func_breakable" ) )
+	else if ( exploding_futbol_hit_breakables.GetBool() && FClassnameIs( pEntity, "func_breakable" ) )
 	{
 		// Always break breakables
 		CTakeDamageInfo info( this, this, pEntity->GetHealth(), DMG_BLAST );
@@ -503,14 +510,13 @@ void CPropExplodingFutbol::DamageEntity(
 	{
 		CTakeDamageInfo info( this, this, exploding_futbol_explosion_damage.GetFloat(), DMG_BLAST );
 		info.SetDamagePosition( vecDamagePos );
-		CalculateExplosiveDamageForce(
-		    &info, pEntity->GetAbsOrigin() - vecDamagePos, vecDamagePos );
+		CalculateExplosiveDamageForce( &info, pEntity->GetAbsOrigin() - vecDamagePos, vecDamagePos );
 		pEntity->VPhysicsTakeDamage( info );
 	}
 }
 
-void CPropExplodingFutbol::DoExplosion(
-    const Vector &vecCenter, float flExplosionRadius, CPortal_Base2D *pPortal )
+
+void CPropExplodingFutbol::DoExplosion( const Vector &vecCenter, float flExplosionRadius, CPortal_Base2D *pPortal )
 {
 	bool bDebugging = exploding_futbol_explosion_debug.GetBool();
 	Color debugColor( 0, 255, 255 );
@@ -520,8 +526,7 @@ void CPropExplodingFutbol::DoExplosion(
 	}
 
 	CBaseEntity *pEnts[128];
-	int nNumFound =
-	    UTIL_EntitiesInSphere( pEnts, ARRAYSIZE( pEnts ), vecCenter, flExplosionRadius, 0 );
+	int nNumFound = UTIL_EntitiesInSphere( pEnts, ARRAYSIZE( pEnts ), vecCenter, flExplosionRadius, 0 );
 	for ( int i = 0; i < nNumFound; ++i )
 	{
 		if ( pEnts[i] == NULL )
@@ -573,13 +578,11 @@ void CPropExplodingFutbol::DoExplosion(
 			entRay.Init( vecRayStart, vecRayEnd );
 
 			trace_t trace;
-			enginetrace->TraceRay( entRay, MASK_SHOT, &traceFilter, &trace );
+			UTIL_TraceRay( entRay, MASK_SHOT, &traceFilter, &trace );
 
 			if ( trace.m_pEnt != GetWorldEntity() )
 			{
-				Vector forward;
-				GetVectors( &forward, NULL, NULL );
-				DamageEntity( pEnts[i], vecCenter, forward );
+				DamageEntity( pEnts[i], vecCenter, Forward() );
 				bSuccess = true;
 			}
 		}
@@ -594,12 +597,10 @@ void CPropExplodingFutbol::DoExplosion(
 			portalRay.Init( GetAbsOrigin(), vecEndPos );
 
 			trace_t trace;
-			bool bPortalTrace = UTIL_Portal_TraceRay_Bullets(
-			    pInPortal, portalRay, MASK_SHOT, &traceFilter, &trace, true );
+			bool bPortalTrace = UTIL_Portal_TraceRay_Bullets( pInPortal, portalRay, MASK_SHOT, &traceFilter, &trace, true );
 			if ( bPortalTrace )
 			{
-				UTIL_Portal_PointTransform(
-				    pInPortal->m_matrixThisToLinked, GetAbsOrigin(), vecRayStart );
+				UTIL_Portal_PointTransform( pInPortal->m_matrixThisToLinked, GetAbsOrigin(), vecRayStart );
 
 				Vector vecForward = pEnts[i]->GetAbsOrigin() - vecRayStart;
 				VectorNormalize( vecForward );
@@ -624,8 +625,7 @@ void CPropExplodingFutbol::DoExplosion(
 			}
 
 			NDebugOverlay::Sphere( vecRayStart, 2.0f, 255, 255, 0, false, 10.0f );
-			NDebugOverlay::Line(
-			    vecRayStart, vecRayEnd, lineColor.r(), lineColor.g(), lineColor.b(), false, 10.0f );
+			NDebugOverlay::Line( vecRayStart, vecRayEnd, lineColor.r(), lineColor.g(), lineColor.b(), false, 10.0f );
 			NDebugOverlay::Sphere( vecRayEnd, 2.0f, 0, 0, 255, false, 10.0f );
 		}
 
@@ -634,12 +634,11 @@ void CPropExplodingFutbol::DoExplosion(
 
 	if ( bDebugging )
 	{
-		NDebugOverlay::Sphere( vecCenter, flExplosionRadius, debugColor.r(), debugColor.g(),
-		    debugColor.b(), false, 10.0f );
-		NDebugOverlay::Sphere(
-		    vecCenter, 2.0f, debugColor.r(), debugColor.g(), debugColor.b(), false, 10.0f );
+		NDebugOverlay::Sphere( vecCenter, flExplosionRadius, debugColor.r(), debugColor.g(), debugColor.b(), false, 10.0f );
+		NDebugOverlay::Sphere( vecCenter, 2.0f, debugColor.r(), debugColor.g(), debugColor.b(), false, 10.0f );
 	}
 }
+
 
 void CPropExplodingFutbol::ActivateFutbolTimer( float flTimer )
 {
@@ -653,22 +652,22 @@ void CPropExplodingFutbol::ActivateFutbolTimer( float flTimer )
 		m_flLastTimerSoundTime = gpGlobals->curtime - 1.0f;
 		m_flLastFlashTime = gpGlobals->curtime;
 
-		Color futbolColor = FutbolColor( exploding_futbol_start_color );
+		Color futbolColor = exploding_futbol_start_color.GetColor();
 		SetRenderColor( futbolColor.r(), futbolColor.g(), futbolColor.b() );
 
-		SetContextThink( &CPropExplodingFutbol::TimerThink,
-		    gpGlobals->curtime + gpGlobals->interval_per_tick,
-		    g_szExplodingFutbolTimerThinkContext );
+		SetContextThink( &CPropExplodingFutbol::TimerThink, gpGlobals->curtime + gpGlobals->interval_per_tick, g_szExplodingFutbolTimerThinkContext );
 	}
 }
+
 
 void CPropExplodingFutbol::StopFutbolTimer( void )
 {
 	m_bTimerActive = false;
 
-	Color futbolColor = FutbolColor( exploding_futbol_start_color );
+	Color futbolColor = exploding_futbol_start_color.GetColor();
 	SetRenderColor( futbolColor.r(), futbolColor.g(), futbolColor.b() );
 }
+
 
 void CPropExplodingFutbol::OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPickup_t reason )
 {
@@ -687,8 +686,7 @@ void CPropExplodingFutbol::OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPi
 	}
 
 	// Picking the ball back up after dropping it doesn't count as a new grab
-	bool bSamePlayer =
-	    ( pHoldingPlayer == GetLastPlayerToHold() && m_Holder == EXPLODING_FUTBOL_HELD_BY_NONE );
+	bool bSamePlayer = ( pHoldingPlayer == GetLastPlayerToHold() && m_Holder == EXPLODING_FUTBOL_HELD_BY_NONE );
 
 	if ( m_hSpawner.Get() )
 	{
@@ -710,6 +708,7 @@ void CPropExplodingFutbol::OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPi
 	m_Holder = EXPLODING_FUTBOL_HELD_BY_PLAYER;
 }
 
+
 void CPropExplodingFutbol::OnPhysGunDrop( CBasePlayer *pPhysGunUser, PhysGunDrop_t reason )
 {
 	if ( pPhysGunUser == NULL )
@@ -723,11 +722,11 @@ void CPropExplodingFutbol::OnPhysGunDrop( CBasePlayer *pPhysGunUser, PhysGunDrop
 	}
 }
 
+
 int CPropExplodingFutbol::OnTakeDamage( const CTakeDamageInfo &info )
 {
 	// Can't be damaged while sitting in a spawner or catcher
-	if ( m_bExplodeOnTouch && m_Holder != EXPLODING_FUTBOL_HELD_BY_SPAWNER &&
-	     m_Holder != EXPLODING_FUTBOL_HELD_BY_CATCHER )
+	if ( m_bExplodeOnTouch && m_Holder != EXPLODING_FUTBOL_HELD_BY_SPAWNER && m_Holder != EXPLODING_FUTBOL_HELD_BY_CATCHER )
 	{
 		return BaseClass::OnTakeDamage( info );
 	}
@@ -735,35 +734,39 @@ int CPropExplodingFutbol::OnTakeDamage( const CTakeDamageInfo &info )
 	return 0;
 }
 
+
 void CPropExplodingFutbol::OnFizzled( void )
 {
+	BaseClass::OnFizzled();
+
 	DestroyFutbol( exploding_futbol_explode_on_fizzle.GetBool() );
 }
+
 
 void CPropExplodingFutbol::VPhysicsCollision( int index, gamevcollisionevent_t *pEvent )
 {
 	// Blow up on the next tick if we hit anything while loose
 	if ( m_bExplodeOnTouch && m_Holder == EXPLODING_FUTBOL_HELD_BY_NONE )
 	{
-		SetContextThink( &CPropExplodingFutbol::KillThink,
-		    gpGlobals->curtime + gpGlobals->interval_per_tick,
-		    g_szExplodingFutbolKillThinkContext );
+		SetContextThink( &CPropExplodingFutbol::KillThink, gpGlobals->curtime + gpGlobals->interval_per_tick, g_szExplodingFutbolKillThinkContext );
 	}
 
 	BaseClass::VPhysicsCollision( index, pEvent );
 }
+
 
 void CPropExplodingFutbol::KillThink( void )
 {
 	KillFutbol();
 }
 
+
 void CPropExplodingFutbol::AnimThink( void )
 {
 	StudioFrameAdvance();
-	SetNextThink(
-	    gpGlobals->curtime + gpGlobals->interval_per_tick, g_szExplodingFutbolAnimThinkContext );
+	SetNextThink( gpGlobals->curtime + gpGlobals->interval_per_tick, g_szExplodingFutbolAnimThinkContext );
 }
+
 
 Color ColorLerp( float flPercent, const Color &startColor, const Color &endColor )
 {
@@ -774,6 +777,7 @@ Color ColorLerp( float flPercent, const Color &startColor, const Color &endColor
 
 	return Color( (int)r, (int)g, (int)b, (int)a );
 }
+
 
 void CPropExplodingFutbol::TimerThink( void )
 {
@@ -803,14 +807,14 @@ void CPropExplodingFutbol::TimerThink( void )
 			flCurrentFlashDuration = 0.0f;
 		}
 
-		startColor = FutbolColor( exploding_futbol_flash_start_color );
-		endColor = FutbolColor( exploding_futbol_flash_end_color );
+		startColor = exploding_futbol_flash_start_color.GetColor();
+		endColor = exploding_futbol_flash_end_color.GetColor();
 		flPercent = flCurrentFlashDuration / exploding_futbol_flash_duration.GetFloat();
 	}
 	else
 	{
-		startColor = FutbolColor( exploding_futbol_start_color );
-		endColor = FutbolColor( exploding_futbol_end_color );
+		startColor = exploding_futbol_start_color.GetColor();
+		endColor = exploding_futbol_end_color.GetColor();
 		flPercent = ( m_flTotalTimer - m_flExplosionTimer ) / m_flTotalTimer;
 	}
 
@@ -832,20 +836,23 @@ void CPropExplodingFutbol::TimerThink( void )
 
 	if ( m_bTimerActive )
 	{
-		SetNextThink( gpGlobals->curtime + gpGlobals->interval_per_tick,
-		    g_szExplodingFutbolTimerThinkContext );
+		SetNextThink( gpGlobals->curtime + gpGlobals->interval_per_tick, g_szExplodingFutbolTimerThinkContext );
 	}
 }
+
 
 //-----------------------------------------------------------------------------
 // Exploding futbol catcher
 //-----------------------------------------------------------------------------
 CExplodingFutbolCatcher::CExplodingFutbolCatcher()
-    : m_bDisableRecaptureOnPlayerGrab( false ), m_vecCatcherBoxMins( vec3_origin ),
-      m_vecCatcherBoxMaxs( vec3_origin ), m_vecCatcherBoxOrigin( vec3_origin ),
-      m_vecCatcherBoxHalfDiagonal( 25.0f, 25.0f, 25.0f )
+	: m_bDisableRecaptureOnPlayerGrab( false ),
+	m_vecCatcherBoxMins( vec3_origin ),
+	m_vecCatcherBoxMaxs( vec3_origin ),
+	m_vecCatcherBoxOrigin( vec3_origin ),
+	m_vecCatcherBoxHalfDiagonal( 25.0f, 25.0f, 25.0f )
 {
 }
+
 
 void CExplodingFutbolCatcher::Spawn( void )
 {
@@ -859,28 +866,27 @@ void CExplodingFutbolCatcher::Spawn( void )
 	SetNextThink( gpGlobals->curtime + gpGlobals->interval_per_tick );
 }
 
+
 void CExplodingFutbolCatcher::DrawDebugGeometryOverlays( void )
 {
 	BaseClass::DrawDebugGeometryOverlays();
 
-	NDebugOverlay::Box(
-	    m_vecCatcherBoxOrigin, m_vecCatcherBoxMins, m_vecCatcherBoxMaxs, 255, 0, 0, 100, 0.0f );
+	NDebugOverlay::Box( m_vecCatcherBoxOrigin, m_vecCatcherBoxMins, m_vecCatcherBoxMaxs, 255, 0, 0, 100, 0.0f );
 }
+
 
 void CExplodingFutbolCatcher::CatchThink( void )
 {
 	Ray_t ray;
-	ray.Init(
-	    m_vecCatcherBoxOrigin, m_vecCatcherBoxOrigin, m_vecCatcherBoxMins, m_vecCatcherBoxMaxs );
+	ray.Init( m_vecCatcherBoxOrigin, m_vecCatcherBoxOrigin, m_vecCatcherBoxMins, m_vecCatcherBoxMaxs );
 	CFilterOnlyExplodingFutbol filter;
 	trace_t trace;
-	enginetrace->TraceRay( ray, MASK_SOLID, &filter, &trace );
+	UTIL_TraceRay( ray, MASK_SOLID, &filter, &trace );
 
 	if ( trace.m_pEnt && trace.m_pEnt != GetWorldEntity() && !m_bDisableRecaptureOnPlayerGrab )
 	{
-		CPropExplodingFutbol *pFutbol = dynamic_cast<CPropExplodingFutbol *>( trace.m_pEnt );
-		if ( pFutbol && ( pFutbol->GetHolder() == EXPLODING_FUTBOL_HELD_BY_NONE ||
-		                    pFutbol->GetHolder() == EXPLODING_FUTBOL_HELD_BY_PLAYER ) )
+		CPropExplodingFutbol *pFutbol = dynamic_cast<CPropExplodingFutbol*>( trace.m_pEnt );
+		if ( pFutbol && ( pFutbol->GetHolder() == EXPLODING_FUTBOL_HELD_BY_NONE || pFutbol->GetHolder() == EXPLODING_FUTBOL_HELD_BY_PLAYER ) )
 		{
 			CaptureFutbol( pFutbol );
 		}
@@ -894,6 +900,7 @@ void CExplodingFutbolCatcher::CatchThink( void )
 
 	SetNextThink( gpGlobals->curtime + gpGlobals->interval_per_tick );
 }
+
 
 void CExplodingFutbolCatcher::CaptureFutbol( CPropExplodingFutbol *pFutbol )
 {
@@ -929,10 +936,11 @@ void CExplodingFutbolCatcher::CaptureFutbol( CPropExplodingFutbol *pFutbol )
 	SetThink( &CExplodingFutbolCatcher::CaptureThink );
 }
 
+
 void CExplodingFutbolCatcher::CaptureThink( void )
 {
 	// Go back to catching once the futbol has been taken away
-	CPropExplodingFutbol *pFutbol = static_cast<CPropExplodingFutbol *>( m_hCaughtFutbol.Get() );
+	CPropExplodingFutbol *pFutbol = static_cast<CPropExplodingFutbol*>( m_hCaughtFutbol.Get() );
 	if ( pFutbol == NULL || pFutbol->GetHolder() != EXPLODING_FUTBOL_HELD_BY_CATCHER )
 	{
 		SetThink( &CExplodingFutbolCatcher::CatchThink );
@@ -944,15 +952,19 @@ void CExplodingFutbolCatcher::CaptureThink( void )
 	SetNextThink( gpGlobals->curtime + gpGlobals->interval_per_tick );
 }
 
+
 //-----------------------------------------------------------------------------
 // Exploding futbol spawner
 //-----------------------------------------------------------------------------
 CPropExplodingFutbolSpawner::CPropExplodingFutbolSpawner()
-    : m_bHasFutbol( false ), m_bIsTimed( false ), m_flTimer( 0.0f ),
-      m_strTimerIndicator( NULL_STRING )
+	: m_bHasFutbol( false ),
+	m_bIsTimed( false ),
+	m_flTimer( 0.0f ),
+	m_strTimerIndicator( NULL_STRING )
 {
 	m_vecCatcherBoxHalfDiagonal = Vector( 20.0f, 20.0f, 20.0f );
 }
+
 
 void CPropExplodingFutbolSpawner::Precache( void )
 {
@@ -961,6 +973,7 @@ void CPropExplodingFutbolSpawner::Precache( void )
 	PrecacheModel( EXPLODING_FUTBOL_SPAWNER_MODEL );
 	PrecacheScriptSound( "Portal.button_down" );
 }
+
 
 void CPropExplodingFutbolSpawner::Spawn( void )
 {
@@ -976,6 +989,7 @@ void CPropExplodingFutbolSpawner::Spawn( void )
 	}
 }
 
+
 void CPropExplodingFutbolSpawner::FutbolDestroyed( void )
 {
 	CPropIndicatorPanel *pTimerPanel = GetTimerPanel();
@@ -986,6 +1000,7 @@ void CPropExplodingFutbolSpawner::FutbolDestroyed( void )
 
 	SpawnFutbol();
 }
+
 
 void CPropExplodingFutbolSpawner::FutbolGrabbed( CPropExplodingFutbol *pFutbol, bool bSamePlayer )
 {
@@ -1014,6 +1029,7 @@ void CPropExplodingFutbolSpawner::FutbolGrabbed( CPropExplodingFutbol *pFutbol, 
 	m_bHasFutbol = false;
 }
 
+
 CPropIndicatorPanel *CPropExplodingFutbolSpawner::GetTimerPanel( void )
 {
 	if ( m_bIsTimed && m_strTimerIndicator != NULL_STRING )
@@ -1021,25 +1037,23 @@ CPropIndicatorPanel *CPropExplodingFutbolSpawner::GetTimerPanel( void )
 		CBaseEntity *pEnt = gEntList.FindEntityByName( NULL, m_strTimerIndicator );
 		if ( pEnt )
 		{
-			CPropIndicatorPanel *pTimerPanel = dynamic_cast<CPropIndicatorPanel *>( pEnt );
+			CPropIndicatorPanel *pTimerPanel = dynamic_cast<CPropIndicatorPanel*>( pEnt );
 			if ( pTimerPanel )
 				return pTimerPanel;
 
 			// Reconstruction note: the 2010 build formats this warning through the
 			// failed (NULL) cast result; the entity that was found is used instead.
-			Warning( "prop_exploding_futbol_spawner has an invalid timer set (%s: %s). It will not "
-			         "respawn.\n",
-			    pEnt->GetClassname(), pEnt->GetDebugName() );
+			Warning( "prop_exploding_futbol_spawner has an invalid timer set (%s: %s). It will not respawn.\n", pEnt->GetClassname(), pEnt->GetDebugName() );
 		}
 	}
 
 	return NULL;
 }
 
+
 void CPropExplodingFutbolSpawner::SpawnFutbol( void )
 {
-	CPropExplodingFutbol *pFutbol =
-	    static_cast<CPropExplodingFutbol *>( CreateEntityByName( "prop_exploding_futbol" ) );
+	CPropExplodingFutbol *pFutbol = static_cast<CPropExplodingFutbol*>( CreateEntityByName( "prop_exploding_futbol" ) );
 	if ( pFutbol )
 	{
 		m_OnFutbolSpawned.FireOutput( this, this );
@@ -1053,14 +1067,18 @@ void CPropExplodingFutbolSpawner::SpawnFutbol( void )
 		m_bHasFutbol = true;
 
 		DispatchSpawn( pFutbol );
+		pFutbol->UpdateObjectCapsCache();
+
 		CaptureFutbol( pFutbol );
 	}
 }
+
 
 void CPropExplodingFutbolSpawner::InputForceSpawn( inputdata_t &data )
 {
 	SpawnFutbol();
 }
+
 
 //-----------------------------------------------------------------------------
 // Exploding futbol socket
@@ -1073,6 +1091,7 @@ void CPropExplodingFutbolSocket::Precache( void )
 	PrecacheScriptSound( "Portal.elevator_ding" );
 }
 
+
 void CPropExplodingFutbolSocket::Spawn( void )
 {
 	Precache();
@@ -1084,6 +1103,7 @@ void CPropExplodingFutbolSocket::Spawn( void )
 
 	BaseClass::Spawn();
 }
+
 
 void CPropExplodingFutbolSocket::CaptureFutbol( CPropExplodingFutbol *pFutbol )
 {

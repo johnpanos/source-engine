@@ -18,8 +18,6 @@
 #include "paint_color_manager.h"
 #include "paint_stream.h"
 
-class CSoundPatch;
-
 // Reconstruction note: only PAINT_SPRAYER_SOUND_DRIP is named by the imported
 // shared code; the other names follow the FGD "AmbientSound" choices.
 enum PaintSprayerAmbientSound_t
@@ -99,10 +97,9 @@ private:
 
 	CNetworkHandle( CPaintStream, m_hPaintStream );
 
-	CSoundPatch *m_pFlowSoundLoop;
-
+	// Reconstruction note: not in the 2010 build; the retail stream takes its blob
+	// light position from this named entity (FGD "light_position_name").
 	string_t m_strLightPositionName;
-	EHANDLE m_hLightPositionEntity;
 };
 
 #endif // PAINT_SPRAYER_H

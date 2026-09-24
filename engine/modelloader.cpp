@@ -4745,6 +4745,12 @@ void CModelLoader::Map_LoadWorldMesh()
 				occluder.radius = 0.0f;
 				for ( int k = 0; k < 3; ++k )
 					occluder.radius = MAX( occluder.radius, occluder.center.DistTo( points[k] ) );
+				const float perimeter = points[0].DistTo( points[1] ) +
+				                        points[1].DistTo( points[2] ) +
+				                        points[2].DistTo( points[0] );
+				occluder.inradius =
+				    CrossProduct( points[1] - points[0], points[2] - points[0] ).Length() /
+				    perimeter;
 			}
 		}
 		cluster.occluderCount = m_WorldMeshOccluders.Count() - cluster.firstOccluder;
@@ -4819,6 +4825,30 @@ void CModelLoader::BuildWorldMeshGroups()
 			worldmeshgroup_t &group = m_WorldMeshGroups[m_WorldMeshGroups.AddToTail()];
 			group.firstMeshlet = first;
 			group.meshletCount = MIN( kGroupMeshlets, batch.firstMeshlet + batch.meshletCount - first );
+			const worldmeshcluster_t &last = m_WorldMeshClusters[first + group.meshletCount - 1];
+			group.firstIndex = m_WorldMeshClusters[first].firstIndex;
+			group.indexCount = last.firstIndex + last.indexCount - group.firstIndex;
+			group.firstOccluder = m_WorldMeshClusters[first].firstOccluder;
+			group.occluderCount = last.firstOccluder + last.occluderCount - group.firstOccluder;
+			Vector occluderMins( FLT_MAX, FLT_MAX, FLT_MAX );
+			Vector occluderMaxs( -FLT_MAX, -FLT_MAX, -FLT_MAX );
+			group.occluderInradius = 0.0f;
+			for ( unsigned int k = 0; k < group.occluderCount; ++k )
+			{
+				const worldmeshoccluder_t &occluder = m_WorldMeshOccluders[group.firstOccluder + k];
+				const Vector extent( occluder.radius, occluder.radius, occluder.radius );
+				VectorMin( occluderMins, occluder.center - extent, occluderMins );
+				VectorMax( occluderMaxs, occluder.center + extent, occluderMaxs );
+				group.occluderInradius = MAX( group.occluderInradius, occluder.inradius );
+			}
+			group.occluderCenter = 0.5f * ( occluderMins + occluderMaxs );
+			group.occluderRadius = 0.0f;
+			for ( unsigned int k = 0; k < group.occluderCount; ++k )
+			{
+				const worldmeshoccluder_t &occluder = m_WorldMeshOccluders[group.firstOccluder + k];
+				group.occluderRadius = MAX( group.occluderRadius,
+				    occluder.center.DistTo( group.occluderCenter ) + occluder.radius );
+			}
 			group.mins.Init( FLT_MAX, FLT_MAX, FLT_MAX );
 			group.maxs.Init( -FLT_MAX, -FLT_MAX, -FLT_MAX );
 			Vector axisSum( 0, 0, 0 );

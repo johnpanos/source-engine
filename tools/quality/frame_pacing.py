@@ -341,7 +341,11 @@ def run_once(args, scenario, passes, build, output):
                    "-novid", "-insecure", "-console", "-condebug", "-dev", "-physics", args.physics,
                    "-vkframestats", str(stats_path)] + (
                    ["-vkpipelinecache", str(store)] if args.pipeline_store else []) + args.extra_arg + [
-                   "+sv_cheats", "1", "+mat_queue_mode", "0", "+fps_max", str(args.fps_max),
+                   # Presentation pinned: no vsync wait (a real mat_vsync would cap the
+                   # measured intervals) and no MSAA (a recommended configuration can
+                   # enable it), so runs stay comparable with earlier baselines.
+                   "+sv_cheats", "1", "+mat_queue_mode", "0", "+mat_vsync", "0", "+mat_antialias", "0",
+                   "+fps_max", str(args.fps_max),
                    "+host_framerate", str(scenario["host_framerate"]),
                    "+volume", "0", "+map", scenario["map"],
                    "+wait", "120", "+exec", next(iter(cfgs))]

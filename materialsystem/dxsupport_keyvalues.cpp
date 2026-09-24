@@ -15,8 +15,6 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#else
-#include <strings.h>
 #endif
 
 #include "filesystem.h"
@@ -80,7 +78,7 @@ void OverrideValues_R( KeyValues *pDest, KeyValues *pSrc )
 {
 	// Any same-named values get overridden in pDest.
 	for ( KeyValues *pSrcValue = pSrc->GetFirstValue(); pSrcValue;
-	      pSrcValue = pSrcValue->GetNextValue() )
+	    pSrcValue = pSrcValue->GetNextValue() )
 	{
 		// Shouldn't be a container for more keys.
 		Assert( pSrcValue->GetDataType() != KeyValues::TYPE_NONE );
@@ -89,7 +87,7 @@ void OverrideValues_R( KeyValues *pDest, KeyValues *pSrc )
 
 	// Recurse.
 	for ( KeyValues *pSrcDir = pSrc->GetFirstTrueSubKey(); pSrcDir;
-	      pSrcDir = pSrcDir->GetNextTrueSubKey() )
+	    pSrcDir = pSrcDir->GetNextTrueSubKey() )
 	{
 		Assert( pSrcDir->GetDataType() == KeyValues::TYPE_NONE );
 
@@ -110,7 +108,7 @@ KeyValues *FindMatchingGroup( KeyValues *pSrc, KeyValues *pMatch )
 
 	KeyValues *pSrcGroup = NULL;
 	for ( pSrcGroup = pSrc->GetFirstTrueSubKey(); pSrcGroup;
-	      pSrcGroup = pSrcGroup->GetNextTrueSubKey() )
+	    pSrcGroup = pSrcGroup->GetNextTrueSubKey() )
 	{
 		if ( name )
 		{
@@ -147,7 +145,7 @@ KeyValues *FindMatchingGroup( KeyValues *pSrc, KeyValues *pMatch )
 void OverrideKeyValues( KeyValues *pDst, KeyValues *pSrc )
 {
 	for ( KeyValues *pSrcGroup = pSrc->GetFirstTrueSubKey(); pSrcGroup;
-	      pSrcGroup = pSrcGroup->GetNextTrueSubKey() )
+	    pSrcGroup = pSrcGroup->GetNextTrueSubKey() )
 	{
 		// Match each group in pSrc to one in pDst containing the same "name" value:
 		KeyValues *pDstGroup = FindMatchingGroup( pDst, pSrcGroup );
@@ -193,7 +191,7 @@ int SystemRamMegabytes()
 		const size_t keyLength = strlen( pKey );
 		while ( fgets( line, sizeof( line ), pMemInfo ) )
 		{
-			if ( !strncasecmp( pKey, line, keyLength ) )
+			if ( !V_strnicmp( pKey, line, keyLength ) )
 			{
 				totalMB = strtoul( line + keyLength, NULL, 10 ) / 1024;
 				break;
@@ -212,7 +210,8 @@ int SystemRamMegabytes()
 }
 } // namespace
 
-KeyValues *ReadConfig( IFileSystem *pFileSystem, const char *pConfigFile, const char *pOverrideFile )
+KeyValues *ReadConfig(
+    IFileSystem *pFileSystem, const char *pConfigFile, const char *pOverrideFile )
 {
 	if ( CommandLine()->CheckParm( "-ignoredxsupportcfg" ) || !pFileSystem )
 		return NULL;
@@ -225,7 +224,8 @@ KeyValues *ReadConfig( IFileSystem *pFileSystem, const char *pConfigFile, const 
 	}
 
 	char pTempPath[1024];
-	if ( pOverrideFile && pFileSystem->GetSearchPath( "GAME", false, pTempPath, sizeof( pTempPath ) ) > 1 )
+	if ( pOverrideFile &&
+	     pFileSystem->GetSearchPath( "GAME", false, pTempPath, sizeof( pTempPath ) ) > 1 )
 	{
 		// Is there a mod-specific override file?
 		KeyValues *pOverride = new KeyValues( "dxsupport_override" );
@@ -273,7 +273,8 @@ KeyValues *FindCardGroup( KeyValues *pConfig, int nVendorID, int nDeviceID )
 	return card ? groups[*card] : NULL;
 }
 
-std::vector<KeyValues *> DeviceGroups( KeyValues *pConfig, int nDxLevel, int nVendorID, int nDeviceID )
+std::vector<KeyValues *> DeviceGroups(
+    KeyValues *pConfig, int nDxLevel, int nVendorID, int nDeviceID )
 {
 	std::vector<render::DxSupportGroupFacts> facts;
 	std::vector<KeyValues *> groups;

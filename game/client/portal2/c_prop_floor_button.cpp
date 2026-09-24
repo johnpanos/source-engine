@@ -1,13 +1,12 @@
-//===== Copyright © Valve Corporation, All rights reserved. ======//
+//===== Copyright Â© Valve Corporation, All rights reserved. ======//
 //
-// Purpose: 
+// Purpose:
 //
 //================================================================//
 
 #include "cbase.h"
 #include "c_props.h"
 #include "functionproxy.h"
-#include "imaterialproxydict.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -62,14 +61,7 @@ void CLightedFloorButtonProxy::OnBind( void *pC_BaseEntity )
 
 	if ( button )
 	{
-		if ( button->IsPressed() )
-		{
-			SetFloatResult( 1.0f );
-		}
-		else
-		{
-			SetFloatResult( 1.0f );
-		}
+		SetFloatResult( 1.0f );
 	}
 	else
 	{
@@ -78,7 +70,8 @@ void CLightedFloorButtonProxy::OnBind( void *pC_BaseEntity )
 }
 
 //--------------------------------------------------------------------------------------------------------
-EXPOSE_MATERIAL_PROXY( CLightedFloorButtonProxy, LightedFloorButton );
+EXPOSE_INTERFACE( CLightedFloorButtonProxy, IMaterialProxy,
+    "LightedFloorButton" IMATERIAL_PROXY_INTERFACE_VERSION );
 
 //--------------------------------------------------------------------------------------------------------
 void RecvProxy_ButtonStateChange( const CRecvProxyData *pData, void *pStruct, void *pOut )
@@ -92,4 +85,4 @@ IMPLEMENT_CLIENTCLASS_DT( C_PropFloorButton, DT_PropFloorButton, CPropFloorButto
 
 RecvPropInt( RECVINFO( m_bButtonState ), 0, RecvProxy_ButtonStateChange ),
 
-END_RECV_TABLE()
+    END_RECV_TABLE()

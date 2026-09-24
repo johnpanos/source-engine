@@ -9,6 +9,10 @@ translates the retained D3D9 material implementation to Vulkan; this work is the
 ground-up native path (roadmap R28 bootstrap, then R32 functional MVP). The two
 are separate providers and separate evidence.
 
+The Video options on this backend (display modes, vsync, brightness, DirectX 95
+caps, recommended configuration, MSAA, and the pending flashlight shadow depth)
+are tracked in [the video options record](0001-native-vulkan-video-options-progress.md).
+
 ## Correction (2026-09-22): Portal does NOT yet render a real scene
 
 An earlier version of this document claimed `portal_boot.py` "passes" and Portal

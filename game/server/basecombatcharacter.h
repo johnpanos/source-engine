@@ -32,6 +32,9 @@
 
 class CNavArea;
 class CScriptedTarget;
+#ifdef PORTAL
+class CProp_Portal;
+#endif
 typedef CHandle<CBaseCombatWeapon> CBaseCombatWeaponHandle;
 
 // -------------------------------------

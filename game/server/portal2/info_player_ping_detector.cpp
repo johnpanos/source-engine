@@ -56,22 +56,22 @@ private:
 
 BEGIN_DATADESC( CInfo_Player_Ping_Detector )
 
-DEFINE_OUTPUT( m_OnPingDetected, "OnPingDetected" ),
+	DEFINE_OUTPUT( m_OnPingDetected, "OnPingDetected" ),
 
-    DEFINE_FIELD( m_vecPingLocation, FIELD_VECTOR ),
+	DEFINE_FIELD( m_vecPingLocation, FIELD_VECTOR ),
 
-    DEFINE_KEYFIELD( m_bEnabled, FIELD_BOOLEAN, "Enabled" ),
-    DEFINE_KEYFIELD( m_iszFuncTankName, FIELD_STRING, "FuncTankName" ),
-    DEFINE_KEYFIELD( m_bLookAtPlayerPings, FIELD_BOOLEAN, "LookAtPlayerPings" ),
-    DEFINE_KEYFIELD( m_nTeamToLookAt, FIELD_INTEGER, "TeamToLookAt" ),
+	DEFINE_KEYFIELD( m_bEnabled, FIELD_BOOLEAN, "Enabled" ),
+	DEFINE_KEYFIELD( m_iszFuncTankName, FIELD_STRING, "FuncTankName" ),
+	DEFINE_KEYFIELD( m_bLookAtPlayerPings, FIELD_BOOLEAN, "LookAtPlayerPings" ),
+	DEFINE_KEYFIELD( m_nTeamToLookAt, FIELD_INTEGER, "TeamToLookAt" ),
 
-    DEFINE_INPUTFUNC( FIELD_VOID, "Toggle", InputToggle ),
-    DEFINE_INPUTFUNC( FIELD_VOID, "Enable", InputEnable ),
-    DEFINE_INPUTFUNC( FIELD_VOID, "Disable", InputDisable ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "Toggle", InputToggle ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "Enable", InputEnable ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "Disable", InputDisable ),
 
-    END_DATADESC()
+END_DATADESC()
 
-        LINK_ENTITY_TO_CLASS( info_player_ping_detector, CInfo_Player_Ping_Detector );
+LINK_ENTITY_TO_CLASS( info_player_ping_detector, CInfo_Player_Ping_Detector );
 
 CInfo_Player_Ping_Detector::CInfo_Player_Ping_Detector()
 {

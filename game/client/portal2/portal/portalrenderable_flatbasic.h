@@ -12,7 +12,7 @@
 #pragma once
 #endif
 
-#include "PortalRender.h"
+#include "portalrender.h"
 
 struct PortalMeshPoint_t;
 #define PORTALRENDERFIXMESH_OUTERBOUNDPLANES 12

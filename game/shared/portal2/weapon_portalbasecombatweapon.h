@@ -4,12 +4,6 @@
 //
 //=============================================================================//
 
-#ifdef CLIENT_DLL
-	#include "c_portal_player.h"
-#else
-	#include "portal_player.h"
-#endif
-
 #include "weapon_portalbase.h"
 
 #ifndef WEAPON_BASEPORTALCOMBATWEAPON_SHARED_H

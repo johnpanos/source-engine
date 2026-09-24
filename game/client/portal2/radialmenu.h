@@ -8,7 +8,7 @@
 #endif
 
 #include "viewport_panel_names.h"
-#include <vgui_controls/frame.h>
+#include <vgui_controls/Frame.h>
 #include <game/client/iviewport.h>
 #include <vgui_controls/EditablePanel.h>
 #include "hudelement.h"

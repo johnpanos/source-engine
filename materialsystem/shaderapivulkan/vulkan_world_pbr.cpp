@@ -34,16 +34,20 @@ void WorldPbrError( std::string *outError, const std::string &message )
 
 } // namespace
 
-VkPipeline CVulkanContext::WorldPbrPipeline( const DynRasterState &state, bool srgbPass )
+VkPipeline CVulkanContext::WorldPbrPipeline(
+    const DynRasterState &state, bool srgbPass, int samples )
 {
-	const uint64_t key = RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull );
+	const uint64_t key = PipelineKey( state, srgbPass, samples );
+	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
 	const auto existing = m_worldPbrPipelines.find( key );
 	if ( existing != m_worldPbrPipelines.end() )
 		return existing->second;
+	if ( pass == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE; // no pass of this sample count exists now
 	if ( m_worldPbrVert == VK_NULL_HANDLE || m_worldPbrFrag == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE;
 	VkPipeline pipeline = BuildMaterialPipeline( state, m_worldPbrVert, m_worldPbrFrag,
-	    m_worldPbrPipelineLayout, &m_worldPbrVin, srgbPass ? m_renderPassLoadSrgb : m_renderPass );
+	    m_worldPbrPipelineLayout, &m_worldPbrVin, pass, samples );
 	if ( pipeline == VK_NULL_HANDLE )
 		WorldPbrLog( "vkCreateGraphicsPipelines (WMSH PBR, state %#llx) failed\n",
 		    static_cast<unsigned long long>( key ) );

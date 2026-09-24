@@ -24,9 +24,9 @@ namespace worldmesh_cull
 bool ConeFacesAway( const float eye[3], const float center[3], float radius, const float axis[3],
     float cutoff, float margin );
 
-// A low-resolution depth buffer of drawn occluders, stored as the farthest
-// view depth each cell is certain to be covered by, and a max hierarchy over
-// it. Occluders only lower a cell; a box is occluded when its nearest depth
+// A low-resolution depth buffer of drawn occluders, stored as the nearness
+// (1 / view depth) of the farthest point each cell is certain to be covered
+// by, and a min hierarchy over it. Occluders only lower a cell; a box is occluded when its nearest depth
 // is behind the farthest occluder depth everywhere its projection can reach.
 class OcclusionBuffer
 {
@@ -42,9 +42,10 @@ public:
 	// this view. A one-sided triangle occludes only while its front face,
 	// cross(b - a, c - a), faces the eye.
 	void AddOccluder( const float a[3], const float b[3], const float c[3], bool twoSided );
-	// False when a triangle in the sphere is too small on screen to cover a
-	// whole cell, so AddOccluder would record nothing. Skipping is always safe.
-	bool MayCoverCell( const float center[3], float radius ) const;
+	// False when a triangle in the sphere (center, radius) with this inscribed
+	// circle radius cannot contain a whole cell on screen, so AddOccluder
+	// would record nothing. Skipping is always safe.
+	bool MayCoverCell( const float center[3], float radius, float inradius ) const;
 	// Builds the hierarchy; boxes may be tested until the next Begin.
 	void Finish();
 	// True when every point of the box is farther, by a depth-precision
@@ -66,8 +67,8 @@ private:
 	double m_eye[3] = {};
 	double m_zNear = 1;
 	double m_zFar = 1;
-	// Smallest world radius at unit depth that spans a cell, per screen axis.
-	float m_cellRadius = 0;
+	// Largest magnification from world units at unit depth to cells.
+	float m_cellScale = 0;
 	int m_rasterized = 0;
 	bool m_finished = false;
 	std::vector<float> m_levels[8];

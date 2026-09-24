@@ -10,7 +10,7 @@
 #include "cbase.h"
 #include "c_trigger_portal_cleanser.h"
 #include "c_portal_player.h"
-#include "c_weapon_portalgun.h"
+#include "weapon_portalgun_shared.h"
 #include "prop_portal_shared.h"
 #include "ispatialpartition.h"
 
@@ -40,8 +40,8 @@ void C_TriggerPortalCleanser::Touch( C_BaseEntity *pOther )
 
 		if ( pPlayer || bIsPortalGun )
 		{
-			CWeaponPortalgun *pPortalgun = pPlayer ? dynamic_cast<CWeaponPortalgun*>( pPlayer->Weapon_OwnsThisType( "weapon_portalgun" ) )
-												   : dynamic_cast<CWeaponPortalgun*>( pOther );
+			C_WeaponPortalgun *pPortalgun = pPlayer ? dynamic_cast<C_WeaponPortalgun*>( pPlayer->Weapon_OwnsThisType( "weapon_portalgun" ) )
+													: dynamic_cast<C_WeaponPortalgun*>( pOther );
 
 			if ( pPortalgun )
 			{

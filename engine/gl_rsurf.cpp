@@ -68,11 +68,12 @@ static ConVar r_worldmesh_draw( "r_worldmesh_draw", "0", FCVAR_CHEAT,
 static ConVar r_worldmesh_cull( "r_worldmesh_cull", "1", FCVAR_CHEAT,
     "WMSH meshlet culling: 0 draw every meshlet, 1 visible leaves, view frustum, back faces and "
     "occlusion; negative controls that must change pixels: 2 half-size frustum spheres, "
-    "3 back faces ignoring meshlet extent, 4 occlusion tested at meshlet centers" );
+    "3 back faces with the winding convention flipped, 4 occlusion tested at group centers" );
 static ConVar r_worldmesh_cull_backface( "r_worldmesh_cull_backface", "1", FCVAR_CHEAT,
     "WMSH normal-cone back-face culling while r_worldmesh_cull is on" );
 static ConVar r_worldmesh_cull_occlusion( "r_worldmesh_cull_occlusion", "1", FCVAR_CHEAT,
-    "WMSH software occlusion culling while r_worldmesh_cull is on" );
+    "WMSH software occlusion while r_worldmesh_cull is on: 0 off, 1 while it saves more GPU "
+    "time than it costs (re-probed periodically), 2 every frame" );
 static ConVar r_worldmesh_cull_bridge( "r_worldmesh_cull_bridge", "2048", FCVAR_CHEAT,
     "WMSH: culled gaps of at most this many triangles inside a draw run are drawn anyway, "
     "which costs less than another draw (0 draws exactly the visible meshlets)" );
@@ -81,6 +82,13 @@ static ConVar r_worldmesh_cull_report( "r_worldmesh_cull_report", "0", FCVAR_CHE
 
 // Faces within this sine of edge-on are never cone-culled.
 static const float kWorldMeshConeMargin = 1e-3f;
+// Adaptive occlusion: a pass pays when the triangles it rejects cost the GPU
+// more than the pass costs the CPU. Desktop RDNA 3.5 draws the bedroom's
+// 1.3 M carpet triangles in 1.5 to 3 ms, about 1 ns each. A pass that does
+// not pay is skipped for the next kWorldMeshOcclusionProbe - 1 eligible views.
+static const double kWorldMeshTrianglesPerMs = 1.0e6;
+static const int kWorldMeshOcclusionProbe = 16;
+static int s_nWorldMeshOcclusionSkip = 0;
 
 // Per-view WMSH culling inputs, captured when the list's leaves are culled.
 struct WorldMeshCullView_t
@@ -198,7 +206,8 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 	     s_WorldMeshBatchDraw.Count() != int( pWorld->worldMeshBatchCount ) )
 	{
 		s_WorldMeshBatchDraw.SetCount( pWorld->worldMeshBatchCount );
-		Q_memset( s_WorldMeshBatchDraw.Base(), WORLDMESH_BATCH_UNKNOWN, s_WorldMeshBatchDraw.Count() );
+		Q_memset(
+		    s_WorldMeshBatchDraw.Base(), WORLDMESH_BATCH_UNKNOWN, s_WorldMeshBatchDraw.Count() );
 		s_nWorldMeshBatchDrawMap = g_nMapLoadCount;
 	}
 	visible.SetCount( pWorld->worldMeshClusterCount );
@@ -236,20 +245,28 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 	const bool backface = frustum && pView->backfaceValid && r_worldmesh_cull_backface.GetBool();
 	// Views where occluders may not reach the depth buffer as drawn: water
 	// passes, height clipping, and debug modes that replace or blend materials.
-	const bool occlusion = frustum && pView->occlusionValid &&
-	                       r_worldmesh_cull_occlusion.GetBool() &&
-	                       !( flags & ( DRAWWORLDLISTS_DRAW_REFRACTION | DRAWWORLDLISTS_DRAW_REFLECTION ) ) &&
-	                       pRenderContext->GetHeightClipMode() == MATERIAL_HEIGHTCLIPMODE_DISABLE &&
-	                       !ShouldDrawInWireFrameMode() && !g_pMaterialSystemConfig->bMeasureFillRate &&
-	                       !g_pMaterialSystemConfig->bVisualizeFillRate && pWorld->pWorldMeshOccluders;
-	const float coneRadiusScale = cullMode == 3 ? 0.0f : 1.0f;
-	const float coneMargin = cullMode == 3 ? 0.0f : kWorldMeshConeMargin;
+	// Negative control 4 and r_worldmesh_cull_occlusion 2 run every eligible view.
+	const bool occlusionEveryView = cullMode == 4 || r_worldmesh_cull_occlusion.GetInt() == 2;
+	bool occlusion =
+	    frustum && pView->occlusionValid && r_worldmesh_cull_occlusion.GetBool() &&
+	    !( flags & ( DRAWWORLDLISTS_DRAW_REFRACTION | DRAWWORLDLISTS_DRAW_REFLECTION ) ) &&
+	    pRenderContext->GetHeightClipMode() == MATERIAL_HEIGHTCLIPMODE_DISABLE &&
+	    !ShouldDrawInWireFrameMode() && !g_pMaterialSystemConfig->bMeasureFillRate &&
+	    !g_pMaterialSystemConfig->bVisualizeFillRate && pWorld->pWorldMeshOccluders;
+	if ( occlusion && !occlusionEveryView && s_nWorldMeshOcclusionSkip > 0 )
+	{
+		--s_nWorldMeshOcclusionSkip;
+		occlusion = false;
+	}
+	// Negative control 3 culls the faces that point at the eye instead.
+	const float coneSign = cullMode == 3 ? -1.0f : 1.0f;
 	const unsigned int batchCount = pWorld->worldMeshBatchCount;
-	WorldMeshBatchCull_t *pBatchCull =
-	    static_cast<WorldMeshBatchCull_t *>( stackalloc( batchCount * sizeof( WorldMeshBatchCull_t ) ) );
+	WorldMeshBatchCull_t *pBatchCull = static_cast<WorldMeshBatchCull_t *>(
+	    stackalloc( batchCount * sizeof( WorldMeshBatchCull_t ) ) );
 	unsigned int frustumCulled = 0;
 	unsigned int backfaceCulled = 0;
 	unsigned int occluded = 0;
+	unsigned int occludedIndices = 0;
 	if ( r_worldmesh_cull_report.GetBool() && marked < clusterCount )
 	{
 		marked = 0;
@@ -288,10 +305,10 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 			}
 			bool rejected = outside;
 			unsigned int *pCounter = &frustumCulled;
+			const Vector coneAxis = group.coneAxis * coneSign;
 			if ( !rejected && batchBackface &&
-			     worldmesh_cull::ConeFacesAway( pView->eye, group.center.Base(),
-			         group.radius * coneRadiusScale, group.coneAxis.Base(), group.coneCutoff,
-			         coneMargin ) )
+			     worldmesh_cull::ConeFacesAway( pView->eye, group.center.Base(), group.radius,
+			         coneAxis.Base(), group.coneCutoff, kWorldMeshConeMargin ) )
 			{
 				rejected = true;
 				pCounter = &backfaceCulled;
@@ -306,9 +323,9 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 			{
 				for ( unsigned int j = 0; j < group.meshletCount; ++j )
 				{
-					if ( pMarks[j] && WorldMeshMeshletOutside( pView->frustum,
-					                      pWorld->pWorldMeshClusters[group.firstMeshlet + j],
-					                      radiusScale ) )
+					if ( pMarks[j] &&
+					     WorldMeshMeshletOutside( pView->frustum,
+					         pWorld->pWorldMeshClusters[group.firstMeshlet + j], radiusScale ) )
 					{
 						pMarks[j] = 0;
 						++frustumCulled;
@@ -318,48 +335,61 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 			survivors.AddToTail( g );
 		}
 	}
+	const double groupTime = Plat_FloatTime();
+	double rasterTime = groupTime;
 	// Any drawn occluder is nearer than or equal to what the reference frame
 	// shows at its pixels, so occluders from every surviving meshlet are sound.
 	if ( occlusion )
 	{
 		s_WorldMeshOcclusion.Begin( pView->worldToClip, pView->eye, pView->zNear, pView->zFar );
+		// Every member of a surviving group may occlude, culled or not: the
+		// reference frame draws them all.
 		for ( int s = 0; s < survivors.Count(); ++s )
 		{
 			const worldmeshgroup_t &group = pWorld->pWorldMeshGroups[survivors[s]];
-			const WorldMeshBatchCull_t &cull = pBatchCull[WorldMeshGroupBatch( pWorld, survivors[s] )];
+			if ( !group.occluderCount ||
+			     !s_WorldMeshOcclusion.MayCoverCell( group.occluderCenter.Base(),
+			         group.occluderRadius, group.occluderInradius ) )
+				continue;
+			const WorldMeshBatchCull_t &cull =
+			    pBatchCull[WorldMeshGroupBatch( pWorld, survivors[s] )];
 			if ( !cull.occluder )
 				continue;
-			for ( unsigned int j = group.firstMeshlet; j < group.firstMeshlet + group.meshletCount; ++j )
+			const worldmeshoccluder_t *pOccluder =
+			    pWorld->pWorldMeshOccluders + group.firstOccluder;
+			for ( unsigned int k = 0; k < group.occluderCount; ++k )
 			{
-				const worldmeshcluster_t &meshlet = pWorld->pWorldMeshClusters[j];
-				if ( !pVisible[j] || !meshlet.occluderCount )
-					continue;
-				const worldmeshoccluder_t *pOccluder = pWorld->pWorldMeshOccluders + meshlet.firstOccluder;
-				for ( unsigned int k = 0; k < meshlet.occluderCount; ++k )
-				{
-					if ( s_WorldMeshOcclusion.MayCoverCell( pOccluder[k].center.Base(), pOccluder[k].radius ) )
-						s_WorldMeshOcclusion.AddOccluder( pOccluder[k].corners[0].Base(),
-						    pOccluder[k].corners[1].Base(), pOccluder[k].corners[2].Base(),
-						    cull.twoSided );
-				}
+				if ( s_WorldMeshOcclusion.MayCoverCell(
+				         pOccluder[k].center.Base(), pOccluder[k].radius, pOccluder[k].inradius ) )
+					s_WorldMeshOcclusion.AddOccluder( pOccluder[k].corners[0].Base(),
+					    pOccluder[k].corners[1].Base(), pOccluder[k].corners[2].Base(),
+					    cull.twoSided );
 			}
 		}
 		s_WorldMeshOcclusion.Finish();
+		rasterTime = Plat_FloatTime();
 		for ( int s = 0; s < survivors.Count(); ++s )
 		{
 			const worldmeshgroup_t &group = pWorld->pWorldMeshGroups[survivors[s]];
 			if ( !pBatchCull[WorldMeshGroupBatch( pWorld, survivors[s] )].occludee )
 				continue;
-			const bool hidden = cullMode == 4
-			                        ? s_WorldMeshOcclusion.IsBoxOccluded( group.center.Base(), group.center.Base() )
-			                        : s_WorldMeshOcclusion.IsBoxOccluded( group.mins.Base(), group.maxs.Base() );
+			const bool hidden =
+			    cullMode == 4
+			        ? s_WorldMeshOcclusion.IsBoxOccluded( group.center.Base(), group.center.Base() )
+			        : s_WorldMeshOcclusion.IsBoxOccluded( group.mins.Base(), group.maxs.Base() );
 			if ( !hidden )
 				continue;
 			unsigned char *pMarks = pVisible + group.firstMeshlet;
 			for ( unsigned int j = 0; j < group.meshletCount; ++j )
+			{
 				occluded += pMarks[j];
+				occludedIndices += pMarks[j] ? pWorld->pWorldMeshClusters[group.firstMeshlet + j].indexCount : 0;
+			}
 			Q_memset( pMarks, 0, group.meshletCount );
 		}
+		const double occlusionMs = 1000.0 * ( Plat_FloatTime() - groupTime );
+		if ( !occlusionEveryView && occludedIndices / 3 < occlusionMs * kWorldMeshTrianglesPerMs )
+			s_nWorldMeshOcclusionSkip = kWorldMeshOcclusionProbe - 1;
 	}
 	const double cullTime = Plat_FloatTime();
 
@@ -377,7 +407,8 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 		pRenderContext->Bind( batch.material, NULL );
 		// Meshlets are the visibility unit, not the draw unit: visible meshlets
 		// whose index ranges are adjacent go out as one range, in the same
-		// primitive order, so the material pass runs once per run.
+		// primitive order, so the material pass runs once per run. Spans of
+		// whole groups are handled without touching their meshlets.
 		unsigned int runFirst = 0;
 		unsigned int runCount = 0;
 		unsigned int runMeshlets = 0;
@@ -385,34 +416,18 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 		unsigned int gapMeshlets = 0;
 		bool rejected = false;
 		bool drew = false;
-		for ( unsigned int j = 0; j <= batch.meshletCount && !rejected; ++j )
+		auto flush = [&]()
 		{
-			const worldmeshcluster_t *meshlet = NULL;
-			if ( j < batch.meshletCount )
+			if ( runCount && !rejected )
 			{
-				const worldmeshcluster_t &candidate = pWorld->pWorldMeshClusters[batch.firstMeshlet + j];
-				if ( pVisible[batch.firstMeshlet + j] )
-					meshlet = &candidate;
-				else if ( runCount )
+				if ( uploader->DrawBatch( runFirst, runCount ) )
 				{
-					gapCount += candidate.indexCount;
-					++gapMeshlets;
-					if ( gapCount <= bridgeIndices )
-						continue;
+					drew = true;
+					submitted += runMeshlets;
+					triangles += runCount / 3;
+					++draws;
 				}
-			}
-			if ( meshlet && runCount && gapCount <= bridgeIndices &&
-			     meshlet->firstIndex == runFirst + runCount + gapCount )
-			{
-				runCount += gapCount + meshlet->indexCount;
-				bridged += gapMeshlets;
-				runMeshlets += gapMeshlets + 1;
-				gapCount = gapMeshlets = 0;
-				continue;
-			}
-			if ( runCount )
-			{
-				if ( !uploader->DrawBatch( runFirst, runCount ) )
+				else
 				{
 					if ( !s_reportedRejected )
 					{
@@ -421,18 +436,60 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 						s_reportedRejected = true;
 					}
 					rejected = true;
-					break;
 				}
-				drew = true;
-				submitted += runMeshlets;
-				triangles += runCount / 3;
-				++draws;
 			}
-			gapCount = gapMeshlets = 0;
-			runFirst = meshlet ? meshlet->firstIndex : 0;
-			runCount = meshlet ? meshlet->indexCount : 0;
-			runMeshlets = meshlet ? 1 : 0;
+			runCount = runMeshlets = gapCount = gapMeshlets = 0;
+		};
+		auto visibleSpan = [&]( unsigned int first, unsigned int count, unsigned int meshlets )
+		{
+			if ( runCount && gapCount <= bridgeIndices && first == runFirst + runCount + gapCount )
+			{
+				runCount += gapCount + count;
+				runMeshlets += gapMeshlets + meshlets;
+				bridged += gapMeshlets;
+				gapCount = gapMeshlets = 0;
+				return;
+			}
+			flush();
+			runFirst = first;
+			runCount = count;
+			runMeshlets = meshlets;
+		};
+		auto culledSpan = [&]( unsigned int count, unsigned int meshlets )
+		{
+			if ( !runCount )
+				return;
+			gapCount += count;
+			gapMeshlets += meshlets;
+			if ( gapCount > bridgeIndices )
+				flush();
+		};
+		for ( unsigned int g = batch.firstGroup;
+		    g < batch.firstGroup + batch.groupCount && !rejected; ++g )
+		{
+			const worldmeshgroup_t &group = pWorld->pWorldMeshGroups[g];
+			const unsigned char *pMarks = pVisible + group.firstMeshlet;
+			unsigned int live = 0;
+			for ( unsigned int j = 0; j < group.meshletCount; ++j )
+				live += pMarks[j];
+			if ( live == group.meshletCount )
+				visibleSpan( group.firstIndex, group.indexCount, group.meshletCount );
+			else if ( !live )
+				culledSpan( group.indexCount, group.meshletCount );
+			else
+			{
+				for ( unsigned int j = 0; j < group.meshletCount; ++j )
+				{
+					const worldmeshcluster_t &meshlet =
+					    pWorld->pWorldMeshClusters[group.firstMeshlet + j];
+					if ( pMarks[j] )
+						visibleSpan( meshlet.firstIndex, meshlet.indexCount, 1 );
+					else
+						culledSpan( meshlet.indexCount, 1 );
+				}
+			}
 		}
+		flush();
 		// A rejection is final for the map; a batch occludes once it has drawn.
 		if ( rejected )
 			s_WorldMeshBatchDraw[i] = WORLDMESH_BATCH_REJECTED;
@@ -450,12 +507,13 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 	if ( r_worldmesh_cull_report.GetBool() )
 	{
 		Msg( "WMSH cull: %u leaf-visible, %u frustum, %u back-face, %u occluded, %u drawn "
-		     "(%u bridged, %u triangles, %u draws); %d occluders, %d cells; cull %.3f ms, "
-		     "total %.3f ms\n",
+		     "(%u bridged, %u triangles, %u draws); %d occluders, %d cells; cull %.3f ms "
+		     "(groups %.3f, occluders %.3f, occludees %.3f), total %.3f ms\n",
 		    marked, frustumCulled, backfaceCulled, occluded, submitted, bridged, triangles, draws,
 		    occlusion ? s_WorldMeshOcclusion.RasterizedOccluders() : 0,
 		    occlusion ? s_WorldMeshOcclusion.CoveredCells() : 0, 1000.0 * ( cullTime - startTime ),
-		    1000.0 * ( Plat_FloatTime() - startTime ) );
+		    1000.0 * ( groupTime - startTime ), 1000.0 * ( rasterTime - groupTime ),
+		    1000.0 * ( cullTime - rasterTime ), 1000.0 * ( Plat_FloatTime() - startTime ) );
 	}
 }
 #endif
@@ -3391,7 +3449,8 @@ static float WorldMeshClipHandedness( const VMatrix &worldToClip )
 	return DotProduct( CrossProduct( x, y ), w );
 }
 
-static void CaptureWorldMeshCullView( WorldMeshCullView_t &view, bool frustumValid, bool noOverride )
+static void CaptureWorldMeshCullView(
+    WorldMeshCullView_t &view, bool frustumValid, bool noOverride )
 {
 	static float s_standardHandedness = 0.0f;
 	if ( s_standardHandedness == 0.0f )

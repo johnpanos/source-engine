@@ -321,7 +321,8 @@ int main( int argc, char **argv )
 	// when the surface offers it, then mailbox, then FIFO; with vsync it is FIFO.
 	{
 		const std::vector<VkPresentModeKHR> &offered = ctx.SurfacePresentModes();
-		const auto offers = [&]( VkPresentModeKHR mode ) {
+		const auto offers = [&]( VkPresentModeKHR mode )
+		{
 			return std::find( offered.begin(), offered.end(), mode ) != offered.end();
 		};
 		std::fprintf( stderr, "surface present modes:" );
@@ -332,19 +333,20 @@ int main( int argc, char **argv )
 		Check( ctx.VSyncRequested() && ctx.PresentMode() == VK_PRESENT_MODE_FIFO_KHR,
 		    "the default request is vsync, presented FIFO" );
 
-		const VkPresentModeKHR expectedOff = offers( VK_PRESENT_MODE_IMMEDIATE_KHR )
-		                                         ? VK_PRESENT_MODE_IMMEDIATE_KHR
-		                                     : offers( VK_PRESENT_MODE_MAILBOX_KHR )
-		                                         ? VK_PRESENT_MODE_MAILBOX_KHR
-		                                         : VK_PRESENT_MODE_FIFO_KHR;
+		const VkPresentModeKHR expectedOff =
+		    offers( VK_PRESENT_MODE_IMMEDIATE_KHR ) ? VK_PRESENT_MODE_IMMEDIATE_KHR
+		    : offers( VK_PRESENT_MODE_MAILBOX_KHR ) ? VK_PRESENT_MODE_MAILBOX_KHR
+		                                            : VK_PRESENT_MODE_FIFO_KHR;
 		const uint64_t generation = ctx.SwapchainGeneration();
 		ctx.RequestVSync( false );
-		Check( ctx.SwapchainGeneration() == generation, "a vsync request waits for the next frame" );
+		Check(
+		    ctx.SwapchainGeneration() == generation, "a vsync request waits for the next frame" );
 		if ( PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
 		{
 			Check( ctx.SwapchainGeneration() == generation + 1,
 			    "vsync off rebuilt the swapchain exactly once" );
-			Check( ctx.PresentMode() == expectedOff, "vsync off selects the policy's present mode" );
+			Check(
+			    ctx.PresentMode() == expectedOff, "vsync off selects the policy's present mode" );
 			int cw = 0, ch = 0;
 			const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
 			Check( cw > 0 && ch > 0 && !px.empty() &&
@@ -375,10 +377,12 @@ int main( int argc, char **argv )
 	// are unchanged; an 8-bit identity ramp keeps the plain blit.
 	{
 		ctx.RequestVSync( true );
-		const auto centerOf = []( const std::vector<uint8_t> &px, int cw, int ch ) {
+		const auto centerOf = []( const std::vector<uint8_t> &px, int cw, int ch )
+		{
 			return &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
 		};
-		const auto rampOf = []( float gamma, bool tv ) {
+		const auto rampOf = []( float gamma, bool tv )
+		{
 			render::GammaRampParams params;
 			params.gamma = gamma;
 			params.tvEnabled = tv;
@@ -393,7 +397,7 @@ int main( int argc, char **argv )
 			const char *name;
 		};
 		const Case cases[] = { { 1.6f, false, "gamma 1.6" }, { 2.6f, false, "gamma 2.6" },
-			{ 2.2f, true, "TV range" } };
+		    { 2.2f, true, "TV range" } };
 		for ( const Case &c : cases )
 		{
 			const render::GammaRamp16 ramp = rampOf( c.gamma, c.tv );
@@ -640,6 +644,80 @@ int main( int argc, char **argv )
 	}
 	else
 		Check( false, "WMSH draw submitted and captured" );
+
+	// Multisampling (render.sample-count.v1): the magenta triangle's slanted
+	// edges over the red clear. Single-sampled, every pixel is fully one or the
+	// other (the negative control); multisampled, edge pixels blend, resolved
+	// into the back buffer that captures and presents read.
+	{
+		const auto blendedPixels = []( const std::vector<uint8_t> &px )
+		{
+			int blended = 0;
+			for ( size_t i = 0; i + 3 < px.size(); i += 4 )
+				blended += px[i] >= 250 && px[i + 1] <= 5 && px[i + 2] >= 16 && px[i + 2] <= 239;
+			return blended;
+		};
+		int singleBlended = -1;
+		if ( PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
+			singleBlended = blendedPixels( ctx.GetCapturedPixels( nullptr, nullptr ) );
+		Check( ctx.ActiveSampleCount() == 1 && singleBlended == 0,
+		    "single-sampled edges are hard (no blended pixel)" );
+		const uint32_t mask = ctx.AdapterCaps().backBufferSampleMask;
+		Check( ( mask & VK_SAMPLE_COUNT_1_BIT ) != 0, "the back buffer sample mask includes 1" );
+		if ( mask & VK_SAMPLE_COUNT_4_BIT )
+		{
+			const uint64_t resolves = ctx.ResolveCount();
+			ctx.RequestSampleCount( 4 );
+			Check(
+			    ctx.ActiveSampleCount() == 1, "a sample-count request waits for the next frame" );
+			int msBlended = 0;
+			bool centerOk = false, cornerOk = false;
+			if ( PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
+			{
+				int cw = 0, ch = 0;
+				const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
+				msBlended = blendedPixels( px );
+				if ( cw > 0 && ch > 0 && !px.empty() )
+				{
+					centerOk = PixelClose(
+					    &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4], 255, 0, 255, 255, 3 );
+					cornerOk = PixelClose( &px[0], 255, 0, 0, 255, 3 );
+				}
+			}
+			std::fprintf( stderr, "MSAA edge pixels: 1x %d, 4x %d\n", singleBlended, msBlended );
+			Check( ctx.ActiveSampleCount() == 4, "4x multisampling applies at the next frame" );
+			Check( ctx.ResolveCount() > resolves, "multisampled frames resolve the back buffer" );
+			Check( centerOk && cornerOk, "4x keeps the interior and the clear" );
+			Check( msBlended > 0, "4x blends the triangle's edge pixels" );
+			bool presentedOk = false;
+			if ( PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err, true ) )
+			{
+				int cw = 0, ch = 0;
+				const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
+				presentedOk = ( cw == 0 && ch == 0 ) ||
+				              ( !px.empty() && blendedPixels( px ) > 0 &&
+				                  PixelClose( &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4], 255, 0,
+				                      255, 255, 3 ) );
+			}
+			Check( presentedOk, "the presented image is the resolved back buffer" );
+			ctx.RequestSampleCount( 64 );
+			if ( !PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
+				++g_failures;
+			int largest = 1;
+			for ( int samples = 2; samples <= 64; samples *= 2 )
+				largest = ( mask & static_cast<uint32_t>( samples ) ) ? samples : largest;
+			Check( ctx.ActiveSampleCount() == largest,
+			    "an unsupported request clamps to the largest supported count" );
+			ctx.RequestSampleCount( 0 );
+			if ( !PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
+				++g_failures;
+			Check( ctx.ActiveSampleCount() == 1 &&
+			           blendedPixels( ctx.GetCapturedPixels( nullptr, nullptr ) ) == 0,
+			    "AA off returns to hard single-sampled edges" );
+		}
+		else
+			std::fprintf( stderr, "note: this device cannot multisample the back buffer 4x\n" );
+	}
 	ctx.ClearDynamicQueue();
 	ctx.ReleaseWorldMesh();
 	Check( !ctx.WorldMeshResident(), "map unload releases world mesh buffers" );
@@ -725,7 +803,8 @@ int main( int argc, char **argv )
 			if ( merge )
 			{
 				// The clearing pass (in the sRGB view) and the pass after the copy.
-				Check( passes == 2, "masked draws, depth/stencil clears and queries break no pass" );
+				Check(
+				    passes == 2, "masked draws, depth/stencil clears and queries break no pass" );
 				Check( copies == 1, "a repeated copy with nothing drawn since is made once" );
 			}
 			else

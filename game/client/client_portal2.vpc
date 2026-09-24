@@ -16,6 +16,7 @@ $Configuration
 	{
 		$AdditionalIncludeDirectories	".\hl2;.\hl2\elements;$SRCDIR\game\shared\hl2;$SRCDIR\game\shared\episodic;..\..\public;;$SRCDIR\game\shared\multiplayer;$SRCDIR\game\shared\portal2;$SRCDIR\game\shared\portal;;.\portal2\portal;.\portal;.\portal2;$BASE;$SRCDIR\public\meshutils;$SRCDIR\game\client\portal2\gameui;$SRCDIR\game\shared\portal2"
 		$PreprocessorDefinitions		"$BASE;PORTAL2;PORTAL;GAMEUI_EMBEDDED;GAMEUI_EXPORTS;VERSION_SAFE_STEAM_API_INTERFACES"
+		$PreprocessorDefinitions		"$BASE;NO_STEAM"								[ $DISABLE_STEAM ]
 		$PreprocessorDefinitions		"$BASE;USE_CEG"								[ $WIN32 && !$NO_CEG ]		
 		$ForceIncludes					"tier0\platform.h"							[ $WIN32 ||  $POSIX  ]
 
@@ -654,6 +655,8 @@ $Project "Client (Portal 2)"
 				$File	"portal2\radialmenu.h"
 				$File	"portal2\radialmenu_taunt.cpp"
 				$File	"portal2\radialmenu_taunt.h"
+				$File	"$SRCDIR\game\client\c_keyvalue_saver.cpp"
+				$File	"$SRCDIR\game\client\c_keyvalue_saver.h"
 				$File	"portal2\polygonbutton.cpp"
 				$File	"portal2\polygonbutton.h"
 				$File	"portal2\c_level_placard_display.cpp"

@@ -48,4 +48,11 @@ cases. Two deliberately unsound cullers, the cone test without the sphere
 radius and an occlusion test of the box center, are run against the same
 references, and each must be caught. Fixed cases cover walls seen from the
 front and behind, boxes in front of a wall, across it or reaching the near
-plane, and one- and two-sided occluders.
+plane, and one- and two-sided occluders. The occluder size prefilter
+(`MayCoverCell`) must never drop a triangle that would record a cell.
+
+In the engine, [`worldmesh_visibility_oracle.py`](../../../tools/quality/worldmesh_visibility_oracle.py)
+checks the same obligations on real maps: frames with culling are
+byte-identical to frames drawing every meshlet, and per-stage negative
+controls (half-size frustum spheres, a flipped winding convention, occlusion
+at group centers) must change frames.

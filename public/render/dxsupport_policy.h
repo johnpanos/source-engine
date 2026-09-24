@@ -16,7 +16,6 @@
 #ifndef RENDER_DXSUPPORT_POLICY_H
 #define RENDER_DXSUPPORT_POLICY_H
 
-#include <cctype>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -85,6 +84,11 @@ struct DxSupportPlan
 
 namespace dxsupport_detail
 {
+inline char AsciiLower( char c )
+{
+	return ( c >= 'A' && c <= 'Z' ) ? static_cast<char>( c - 'A' + 'a' ) : c;
+}
+
 inline bool ContainsNoCase( const std::string &haystack, const char *needle )
 {
 	const std::string::size_type length = std::char_traits<char>::length( needle );
@@ -93,8 +97,7 @@ inline bool ContainsNoCase( const std::string &haystack, const char *needle )
 	for ( std::string::size_type start = 0; start + length <= haystack.size(); ++start )
 	{
 		std::string::size_type i = 0;
-		while ( i < length && std::tolower( static_cast<unsigned char>( haystack[start + i] ) ) ==
-		                          std::tolower( static_cast<unsigned char>( needle[i] ) ) )
+		while ( i < length && AsciiLower( haystack[start + i] ) == AsciiLower( needle[i] ) )
 			++i;
 		if ( i == length )
 			return true;

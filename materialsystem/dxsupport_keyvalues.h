@@ -22,7 +22,8 @@ namespace dxsupport
 // Loads pConfigFile from EXECUTABLE_PATH and merges pOverrideFile from GAME
 // when the game has its own search path. The caller owns the result
 // (deleteThis). NULL when the file is missing or -ignoredxsupportcfg is set.
-KeyValues *ReadConfig( IFileSystem *pFileSystem, const char *pConfigFile, const char *pOverrideFile );
+KeyValues *ReadConfig(
+    IFileSystem *pFileSystem, const char *pConfigFile, const char *pOverrideFile );
 
 // The facts the policy reads from each top-level group, in file order, and
 // the groups themselves at the same indices.
@@ -33,7 +34,8 @@ void DescribeGroups( KeyValues *pConfig, std::vector<render::DxSupportGroupFacts
 KeyValues *FindCardGroup( KeyValues *pConfig, int nVendorID, int nDeviceID );
 
 // The groups whose hardware caps apply, in order (render::ResolveDeviceGroupOrder).
-std::vector<KeyValues *> DeviceGroups( KeyValues *pConfig, int nDxLevel, int nVendorID, int nDeviceID );
+std::vector<KeyValues *> DeviceGroups(
+    KeyValues *pConfig, int nDxLevel, int nVendorID, int nDeviceID );
 
 // The host's CPU speed and vendor and its system RAM, as the D3D9 device has
 // always measured them for dxsupport.cfg (RAM through MEMORYSTATUS: at least

@@ -10,6 +10,7 @@
 #include "material_spv.h"
 #include "vulkan_present_mode.h"
 #include "render/pbr_split_sum_table.h"
+#include "render/render_sample_count.h"
 
 #include <algorithm>
 #include <cstdarg>
@@ -145,6 +146,11 @@ bool CVulkanContext::Init(
 	}
 	CreateTimestampPool();
 	QueryVulkanAdapterCaps( m_physicalDevice, m_swapFormat, &m_adapterCaps );
+	if ( !ApplySampleCount( outError ) )
+	{
+		Shutdown();
+		return false;
+	}
 
 	Log( "device '%s' vendor=0x%04x %s validation=%s %ux%u images=%zu\n", m_deviceName.c_str(),
 	    m_vendorId, m_isDiscrete ? "discrete" : "integrated/other",
@@ -721,7 +727,9 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 		img.arrayLayers = 1;
 		img.samples = VK_SAMPLE_COUNT_1_BIT;
 		img.tiling = VK_IMAGE_TILING_OPTIMAL;
-		img.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		// A multisampled frame resolves into the back buffer (TRANSFER_DST).
+		img.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+		            VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 		// The present-time gamma pass samples the back buffer.
 		if ( swapFeatures.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT )
 			img.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -853,6 +861,99 @@ bool CVulkanContext::CreateDepthResources( std::string *outError )
 	return true;
 }
 
+bool CVulkanContext::CreateAttachmentPass( VkAttachmentLoadOp loadOp, VkImageLayout colorInitial,
+    VkImageLayout colorFinal, VkImageLayout depthInitial, VkRenderPass *outPass,
+    VkFormat colorFormat, VkSampleCountFlagBits samples, std::string *outError )
+{
+	VkAttachmentDescription color = {};
+	color.format = colorFormat;
+	color.samples = samples;
+	color.loadOp = loadOp;
+	color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	color.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	color.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	color.initialLayout = colorInitial;
+	color.finalLayout = colorFinal;
+
+	VkAttachmentReference colorRef = {};
+	colorRef.attachment = 0;
+	colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	// Depth is stored, not discarded: a frame leaves the swapchain image for
+	// a render-target pass and comes back to it with its depth intact.
+	VkAttachmentDescription depth = {};
+	depth.format = m_depthFormat;
+	depth.samples = samples;
+	depth.loadOp = loadOp;
+	depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	// Stencil persists like depth: portal recursion spans render passes.
+	depth.stencilLoadOp = loadOp;
+	depth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+	depth.initialLayout = depthInitial;
+	depth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference depthRef = {};
+	depthRef.attachment = 1;
+	depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription subpass = {};
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments = &colorRef;
+	subpass.pDepthStencilAttachment = &depthRef;
+
+	// In: earlier attachment writes, copies, and shader reads of a render
+	// target (write-after-read) finish before this pass writes. Out: this
+	// pass's writes are visible to later sampling, copies and passes.
+	VkSubpassDependency deps[2] = {};
+	deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	deps[0].dstSubpass = 0;
+	deps[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+	                       VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+	                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
+	                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+	deps[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+	                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+	                        VK_ACCESS_TRANSFER_WRITE_BIT;
+	deps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+	                       VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+	                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	deps[0].dstAccessMask =
+	    VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+	    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	deps[1].srcSubpass = 0;
+	deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+	deps[1].srcStageMask =
+	    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	deps[1].srcAccessMask =
+	    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	deps[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT |
+	                       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+	                       VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+	deps[1].dstAccessMask =
+	    VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT |
+	    VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+	    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+	VkAttachmentDescription attachments[] = { color, depth };
+	VkRenderPassCreateInfo rp = {};
+	rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	rp.attachmentCount = 2;
+	rp.pAttachments = attachments;
+	rp.subpassCount = 1;
+	rp.pSubpasses = &subpass;
+	rp.dependencyCount = 2;
+	rp.pDependencies = deps;
+
+	VkResult r = vkCreateRenderPass( m_device, &rp, nullptr, outPass );
+	if ( r != VK_SUCCESS )
+	{
+		SetError( outError, std::string( "vkCreateRenderPass failed: " ) + ResultString( r ) );
+		return false;
+	}
+	return true;
+}
+
 bool CVulkanContext::CreateRenderPass( std::string *outError )
 {
 	if ( m_renderPass != VK_NULL_HANDLE )
@@ -866,96 +967,8 @@ bool CVulkanContext::CreateRenderPass( std::string *outError )
 	                    VkImageLayout colorFinal, VkImageLayout depthInitial, VkRenderPass *outPass,
 	                    VkFormat colorFormat ) -> bool
 	{
-		VkAttachmentDescription color = {};
-		color.format = colorFormat;
-		color.samples = VK_SAMPLE_COUNT_1_BIT;
-		color.loadOp = loadOp;
-		color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		color.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		color.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		color.initialLayout = colorInitial;
-		color.finalLayout = colorFinal;
-
-		VkAttachmentReference colorRef = {};
-		colorRef.attachment = 0;
-		colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-		// Depth is stored, not discarded: a frame leaves the swapchain image for
-		// a render-target pass and comes back to it with its depth intact.
-		VkAttachmentDescription depth = {};
-		depth.format = m_depthFormat;
-		depth.samples = VK_SAMPLE_COUNT_1_BIT;
-		depth.loadOp = loadOp;
-		depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		// Stencil persists like depth: portal recursion spans render passes.
-		depth.stencilLoadOp = loadOp;
-		depth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
-		depth.initialLayout = depthInitial;
-		depth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-		VkAttachmentReference depthRef = {};
-		depthRef.attachment = 1;
-		depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-		VkSubpassDescription subpass = {};
-		subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-		subpass.colorAttachmentCount = 1;
-		subpass.pColorAttachments = &colorRef;
-		subpass.pDepthStencilAttachment = &depthRef;
-
-		// In: earlier attachment writes, copies, and shader reads of a render
-		// target (write-after-read) finish before this pass writes. Out: this
-		// pass's writes are visible to later sampling, copies and passes.
-		VkSubpassDependency deps[2] = {};
-		deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-		deps[0].dstSubpass = 0;
-		deps[0].srcStageMask =
-		    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
-		    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
-		    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
-		deps[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
-		                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
-		                        VK_ACCESS_TRANSFER_WRITE_BIT;
-		deps[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
-		                       VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-		                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-		deps[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
-		                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
-		                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-		                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-		deps[1].srcSubpass = 0;
-		deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-		deps[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
-		                       VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-		deps[1].srcAccessMask =
-		    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-		deps[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
-		                       VK_PIPELINE_STAGE_TRANSFER_BIT |
-		                       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
-		                       VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-		deps[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT |
-		                        VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
-		                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
-		                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-		                        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-		VkAttachmentDescription attachments[] = { color, depth };
-		VkRenderPassCreateInfo rp = {};
-		rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-		rp.attachmentCount = 2;
-		rp.pAttachments = attachments;
-		rp.subpassCount = 1;
-		rp.pSubpasses = &subpass;
-		rp.dependencyCount = 2;
-		rp.pDependencies = deps;
-
-		VkResult r = vkCreateRenderPass( m_device, &rp, nullptr, outPass );
-		if ( r != VK_SUCCESS )
-		{
-			SetError( outError, std::string( "vkCreateRenderPass failed: " ) + ResultString( r ) );
-			return false;
-		}
-		return true;
+		return CreateAttachmentPass( loadOp, colorInitial, colorFinal, depthInitial, outPass,
+		    colorFormat, VK_SAMPLE_COUNT_1_BIT, outError );
 	};
 
 	// The frame's first pass clears the swapchain image and leaves it in a
@@ -2834,7 +2847,7 @@ uint32_t CVulkanContext::RasterStateKey( const DynRasterState &state )
 	               : 0u );
 }
 
-// The inverse of RasterStateKey (bit 32, the sRGB pass, is the caller's).
+// The inverse of RasterStateKey (bits 32 and up, the pass, are PipelineKey's).
 CVulkanContext::DynRasterState CVulkanContext::RasterStateFromKey( uint64_t key )
 {
 	const uint32_t k = static_cast<uint32_t>( key );
@@ -2858,17 +2871,42 @@ CVulkanContext::DynRasterState CVulkanContext::RasterStateFromKey( uint64_t key 
 	return state;
 }
 
-VkPipeline CVulkanContext::TexturedPipeline( const DynRasterState &state, bool srgbPass )
+uint64_t CVulkanContext::PipelineKey( const DynRasterState &state, bool srgbPass, int samples )
 {
-	const uint64_t key = RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull );
+	uint64_t log2Samples = 0;
+	while ( ( 1 << ( log2Samples + 1 ) ) <= samples && log2Samples < 6 )
+		++log2Samples;
+	return RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull ) | log2Samples << 33;
+}
+
+int CVulkanContext::PipelineKeySamples( uint64_t key )
+{
+	return 1 << static_cast<int>( ( key >> 33 ) & 7u );
+}
+
+VkRenderPass CVulkanContext::PipelineRenderPass( bool srgbPass, int samples ) const
+{
+	if ( samples <= 1 )
+		return srgbPass ? m_renderPassLoadSrgb : m_renderPass;
+	if ( samples != m_activeSamples )
+		return VK_NULL_HANDLE;
+	return srgbPass ? m_msPassLoadSrgb : m_msPassLoad;
+}
+
+VkPipeline CVulkanContext::TexturedPipeline(
+    const DynRasterState &state, bool srgbPass, int samples )
+{
+	const uint64_t key = PipelineKey( state, srgbPass, samples );
+	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
 	const auto existing = m_dynTexPipelines.find( key );
 	if ( existing != m_dynTexPipelines.end() )
 		return existing->second;
+	if ( pass == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE; // no pass of this sample count exists now
 	if ( m_texTemplate.stages[0].module == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE;
 	VkPipeline pipeline = BuildMaterialPipeline( state, m_texTemplate.stages[0].module,
-	    m_texTemplate.stages[1].module, m_dynTexPipelineLayout, &m_texTemplate.vin,
-	    srgbPass ? m_renderPassLoadSrgb : m_renderPass );
+	    m_texTemplate.stages[1].module, m_dynTexPipelineLayout, &m_texTemplate.vin, pass, samples );
 	if ( pipeline == VK_NULL_HANDLE )
 		Log( "vkCreateGraphicsPipelines (textured, state %#llx) failed\n",
 		    static_cast<unsigned long long>( key ) );
@@ -2879,16 +2917,20 @@ VkPipeline CVulkanContext::TexturedPipeline( const DynRasterState &state, bool s
 	return pipeline;
 }
 
-VkPipeline CVulkanContext::WorldTexturedPipeline( const DynRasterState &state, bool srgbPass )
+VkPipeline CVulkanContext::WorldTexturedPipeline(
+    const DynRasterState &state, bool srgbPass, int samples )
 {
-	const uint64_t key = RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull );
+	const uint64_t key = PipelineKey( state, srgbPass, samples );
+	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
 	const auto existing = m_worldTexPipelines.find( key );
 	if ( existing != m_worldTexPipelines.end() )
 		return existing->second;
+	if ( pass == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE; // no pass of this sample count exists now
 	if ( m_worldVert == VK_NULL_HANDLE || m_texTemplate.stages[1].module == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE;
 	VkPipeline pipeline = BuildMaterialPipeline( state, m_worldVert, m_texTemplate.stages[1].module,
-	    m_dynTexPipelineLayout, &m_worldVin, srgbPass ? m_renderPassLoadSrgb : m_renderPass );
+	    m_dynTexPipelineLayout, &m_worldVin, pass, samples );
 	if ( pipeline == VK_NULL_HANDLE )
 		Log( "vkCreateGraphicsPipelines (WMSH textured, state %#llx) failed\n",
 		    static_cast<unsigned long long>( key ) );
@@ -2896,16 +2938,19 @@ VkPipeline CVulkanContext::WorldTexturedPipeline( const DynRasterState &state, b
 	return pipeline;
 }
 
-VkPipeline CVulkanContext::PortalPipeline( const DynRasterState &state, bool srgbPass )
+VkPipeline CVulkanContext::PortalPipeline( const DynRasterState &state, bool srgbPass, int samples )
 {
-	const uint64_t key = RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull );
+	const uint64_t key = PipelineKey( state, srgbPass, samples );
+	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
 	const auto existing = m_portalPipelines.find( key );
 	if ( existing != m_portalPipelines.end() )
 		return existing->second;
+	if ( pass == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE; // no pass of this sample count exists now
 	if ( m_portalVert == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE;
-	VkPipeline pipeline = BuildMaterialPipeline( state, m_portalVert, m_portalFrag,
-	    m_portalPipelineLayout, &m_portalVin, srgbPass ? m_renderPassLoadSrgb : m_renderPass );
+	VkPipeline pipeline = BuildMaterialPipeline(
+	    state, m_portalVert, m_portalFrag, m_portalPipelineLayout, &m_portalVin, pass, samples );
 	if ( pipeline == VK_NULL_HANDLE )
 		Log( "vkCreateGraphicsPipelines (PortalRefract, state %#llx) failed\n",
 		    static_cast<unsigned long long>( key ) );
@@ -2915,16 +2960,19 @@ VkPipeline CVulkanContext::PortalPipeline( const DynRasterState &state, bool srg
 	return pipeline;
 }
 
-VkPipeline CVulkanContext::SkinPipeline( const DynRasterState &state, bool srgbPass )
+VkPipeline CVulkanContext::SkinPipeline( const DynRasterState &state, bool srgbPass, int samples )
 {
-	const uint64_t key = RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull );
+	const uint64_t key = PipelineKey( state, srgbPass, samples );
+	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
 	const auto existing = m_skinPipelines.find( key );
 	if ( existing != m_skinPipelines.end() )
 		return existing->second;
+	if ( pass == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE; // no pass of this sample count exists now
 	if ( m_skinVert == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE;
-	VkPipeline pipeline = BuildMaterialPipeline( state, m_skinVert, m_skinFrag,
-	    m_skinPipelineLayout, &m_skinVin, srgbPass ? m_renderPassLoadSrgb : m_renderPass );
+	VkPipeline pipeline = BuildMaterialPipeline(
+	    state, m_skinVert, m_skinFrag, m_skinPipelineLayout, &m_skinVin, pass, samples );
 	if ( pipeline == VK_NULL_HANDLE )
 		Log( "vkCreateGraphicsPipelines (skin, state %#llx) failed\n",
 		    static_cast<unsigned long long>( key ) );
@@ -2934,17 +2982,20 @@ VkPipeline CVulkanContext::SkinPipeline( const DynRasterState &state, bool srgbP
 	return pipeline;
 }
 
-VkPipeline CVulkanContext::PbrDirectPipeline( const DynRasterState &state, bool srgbPass )
+VkPipeline CVulkanContext::PbrDirectPipeline(
+    const DynRasterState &state, bool srgbPass, int samples )
 {
-	const uint64_t key = RasterStateKey( state ) | ( srgbPass ? 1ull << 32 : 0ull );
+	const uint64_t key = PipelineKey( state, srgbPass, samples );
+	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
 	const auto existing = m_pbrDirectPipelines.find( key );
 	if ( existing != m_pbrDirectPipelines.end() )
 		return existing->second;
+	if ( pass == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE; // no pass of this sample count exists now
 	if ( m_pbrDirectFrag == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE;
 	VkPipeline pipeline = BuildMaterialPipeline( state, m_texTemplate.stages[0].module,
-	    m_pbrDirectFrag, m_pbrDirectPipelineLayout, &m_texTemplate.vin,
-	    srgbPass ? m_renderPassLoadSrgb : m_renderPass );
+	    m_pbrDirectFrag, m_pbrDirectPipelineLayout, &m_texTemplate.vin, pass, samples );
 	if ( pipeline == VK_NULL_HANDLE )
 		Log( "vkCreateGraphicsPipelines (PBR direct, state %#llx) failed\n",
 		    static_cast<unsigned long long>( key ) );
@@ -2967,7 +3018,7 @@ static VkStencilOpState StencilFaceState( const CVulkanContext::DynRasterState &
 
 VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, VkShaderModule vert,
     VkShaderModule frag, VkPipelineLayout layout,
-    const VkPipelineVertexInputStateCreateInfo *vertexInput, VkRenderPass renderPass )
+    const VkPipelineVertexInputStateCreateInfo *vertexInput, VkRenderPass renderPass, int samples )
 {
 	CFrameCostScope cost( m_frameCost, kCostPipelineCreate );
 	VkPipelineColorBlendAttachmentState att = {};
@@ -3011,13 +3062,16 @@ VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, V
 	                   ? VK_FRONT_FACE_COUNTER_CLOCKWISE
 	                   : VK_FRONT_FACE_CLOCKWISE;
 	gp.pRasterizationState = &rs;
-	gp.pMultisampleState = &t.ms;
+	VkPipelineMultisampleStateCreateInfo ms = t.ms;
+	ms.rasterizationSamples = static_cast<VkSampleCountFlagBits>( samples );
+	gp.pMultisampleState = &ms;
 	gp.pColorBlendState = &cb;
 	gp.pDynamicState = &t.dyn;
 	gp.pDepthStencilState = &ds;
 	gp.layout = layout;
 	// The swapchain and render-target passes are render-pass compatible, and so
-	// are the two sRGB passes with each other.
+	// are the two sRGB passes with each other; a multisampled back buffer's
+	// passes form their own class (PipelineRenderPass).
 	gp.renderPass = renderPass;
 	gp.subpass = 0;
 	VkPipeline pipeline = VK_NULL_HANDLE;
@@ -4683,6 +4737,11 @@ void CVulkanContext::BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb
 		rp.renderPass = srgb ? m_renderPassTargetSrgb : m_renderPassTarget;
 		rp.framebuffer = srgb ? t.framebufferSrgb : t.framebuffer;
 	}
+	else if ( m_activeSamples > 1 )
+	{
+		rp.renderPass = srgb ? m_msPassLoadSrgb : m_msPassLoad;
+		rp.framebuffer = srgb ? m_msFramebufferSrgb : m_msFramebuffer;
+	}
 	else
 	{
 		rp.renderPass = srgb ? m_renderPassLoadSrgb : m_renderPassLoad;
@@ -5238,11 +5297,12 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	                               ( m_requestedBackBuffer.width != m_swapExtent.width ||
 	                                   m_requestedBackBuffer.height != m_swapExtent.height );
 	const bool presentModePending = m_requestedVSync != m_swapchainVSync;
-	if ( ( drawableChanged || backBufferPending || presentModePending ||
-	         m_acquireTimedOut ) &&
+	if ( ( drawableChanged || backBufferPending || presentModePending || m_acquireTimedOut ) &&
 	     !RecreateSwapchain( outError ) )
 		return false;
 	m_acquireTimedOut = false;
+	if ( m_swapchain != VK_NULL_HANDLE && !ApplySampleCount( outError ) )
+		return false;
 	if ( m_swapchain == VK_NULL_HANDLE )
 	{
 		// Zero-size (minimized) window: nothing to render this iteration.
@@ -5361,8 +5421,17 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	const bool firstPassSrgb = FirstPassWantsSrgb();
 	VkRenderPassBeginInfo rp = {};
 	rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	rp.renderPass = firstPassSrgb ? m_renderPassClearSrgb : m_renderPass;
-	rp.framebuffer = firstPassSrgb ? m_framebuffersSrgb[imageIndex] : m_framebuffers[imageIndex];
+	if ( m_activeSamples > 1 )
+	{
+		rp.renderPass = firstPassSrgb ? m_msPassClearSrgb : m_msPassClear;
+		rp.framebuffer = firstPassSrgb ? m_msFramebufferSrgb : m_msFramebuffer;
+	}
+	else
+	{
+		rp.renderPass = firstPassSrgb ? m_renderPassClearSrgb : m_renderPass;
+		rp.framebuffer =
+		    firstPassSrgb ? m_framebuffersSrgb[imageIndex] : m_framebuffers[imageIndex];
+	}
 	rp.renderArea.offset = { 0, 0 };
 	rp.renderArea.extent = m_swapExtent;
 	rp.clearValueCount = 2;
@@ -5370,7 +5439,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	vkCmdBeginRenderPass( cmd, &rp, VK_SUBPASS_CONTENTS_INLINE );
 	m_frameCost.Add( kCostRenderPass, 0 );
 
-	if ( m_drawDemoTriangle && m_demoPipeline != VK_NULL_HANDLE )
+	if ( m_drawDemoTriangle && m_demoPipeline != VK_NULL_HANDLE && m_activeSamples == 1 )
 	{
 		VkViewport viewport = {};
 		viewport.x = 0.0f;
@@ -5391,7 +5460,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		vkCmdDraw( cmd, m_demoVertexCount, 1, 0, 0 );
 	}
 
-	if ( m_drawTexturedQuad && m_texQuadPipeline != VK_NULL_HANDLE )
+	if ( m_drawTexturedQuad && m_texQuadPipeline != VK_NULL_HANDLE && m_activeSamples == 1 )
 	{
 		VkViewport viewport = {};
 		viewport.width = static_cast<float>( m_swapExtent.width );
@@ -5410,7 +5479,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		vkCmdDraw( cmd, m_texQuadVertexCount, 1, 0, 0 );
 	}
 
-	if ( m_drawIndexedUbo && m_indexedUboPipeline != VK_NULL_HANDLE )
+	if ( m_drawIndexedUbo && m_indexedUboPipeline != VK_NULL_HANDLE && m_activeSamples == 1 )
 	{
 		VkViewport viewport = {};
 		viewport.width = static_cast<float>( m_swapExtent.width );
@@ -5430,7 +5499,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		vkCmdDrawIndexed( cmd, m_iuIndexCount, 1, 0, 0, 0 );
 	}
 
-	if ( m_drawDemoDepth && m_demoDepthPipeline != VK_NULL_HANDLE )
+	if ( m_drawDemoDepth && m_demoDepthPipeline != VK_NULL_HANDLE && m_activeSamples == 1 )
 	{
 		VkViewport viewport = {};
 		viewport.width = static_cast<float>( m_swapExtent.width );
@@ -5542,7 +5611,11 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				                    std::memcmp( lastCopy->copyDstRect, d.copyDstRect,
 				                        sizeof( d.copyDstRect ) ) == 0;
 				if ( !repeat )
+				{
+					if ( openTarget == -1 && m_activeSamples > 1 )
+						ResolveBackBuffer( cmd, m_acquiredImage );
 					RecordTargetCopy( cmd, openTarget, d );
+				}
 				lastCopy = &d;
 				if ( !m_passMerging )
 				{
@@ -5686,7 +5759,10 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			vkCmdSetViewport( cmd, 0, 1, &d3dViewport );
 			vkCmdSetScissor( cmd, 0, 1, &scissor );
 
-			VkPipeline selected = m_dynPipeline;
+			// The multisampled back buffer's passes take pipelines of its sample
+			// count; render targets stay single-sampled.
+			const int passSamples = openTarget == -1 ? m_activeSamples : 1;
+			VkPipeline selected = passSamples == 1 ? m_dynPipeline : VK_NULL_HANDLE;
 			VkPipelineLayout selectedLayout = m_dynPipelineLayout;
 			bool textured = false;
 			bool pbrDirect = false;
@@ -5696,16 +5772,18 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			// sRGB inputs decoded by the sampler and output encoded by the view,
 			// which the shader must then not apply itself.
 			int decodedFlags = openSrgb ? kColorSrgbWrite : 0;
+			// The test-catalog pipelines (greenify, constant color, passthrough)
+			// are single-sampled; under multisampling their draws are declined.
 			if ( d.shaderIndex == kDynShaderGreenify && m_dynPipelineGreen != VK_NULL_HANDLE )
-				selected = m_dynPipelineGreen;
+				selected = passSamples == 1 ? m_dynPipelineGreen : VK_NULL_HANDLE;
 			else if ( d.shaderIndex == kDynShaderConstColor &&
 			          m_dynPipelineConst != VK_NULL_HANDLE )
-				selected = m_dynPipelineConst;
+				selected = passSamples == 1 ? m_dynPipelineConst : VK_NULL_HANDLE;
 			else if ( d.shaderIndex == kDynShaderTextured )
 			{
 				// The textured pipeline built for this draw's blend/depth state.
-				selected = d.worldMesh ? WorldTexturedPipeline( d.raster, openSrgb )
-				                       : TexturedPipeline( d.raster, openSrgb );
+				selected = d.worldMesh ? WorldTexturedPipeline( d.raster, openSrgb, passSamples )
+				                       : TexturedPipeline( d.raster, openSrgb, passSamples );
 				if ( selected == VK_NULL_HANDLE )
 					continue;
 				selectedLayout = m_dynTexPipelineLayout;
@@ -5713,7 +5791,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			}
 			else if ( d.shaderIndex == kDynShaderPbrDirect )
 			{
-				selected = d.worldMesh ? VK_NULL_HANDLE : PbrDirectPipeline( d.raster, openSrgb );
+				selected = d.worldMesh ? VK_NULL_HANDLE
+				                       : PbrDirectPipeline( d.raster, openSrgb, passSamples );
 				if ( selected == VK_NULL_HANDLE )
 					continue;
 				selectedLayout = m_pbrDirectPipelineLayout;
@@ -5725,7 +5804,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				         d.pbrWorld.material[1] >= 0.5f,
 				         ( d.colorFlags & kColorSrgbReadBase ) != 0 ) )
 					continue;
-				selected = d.worldMesh ? WorldPbrPipeline( d.raster, openSrgb ) : VK_NULL_HANDLE;
+				selected = d.worldMesh ? WorldPbrPipeline( d.raster, openSrgb, passSamples )
+				                       : VK_NULL_HANDLE;
 				if ( selected == VK_NULL_HANDLE )
 					continue;
 				selectedLayout = m_worldPbrPipelineLayout;
@@ -5733,7 +5813,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			}
 			else if ( d.shaderIndex == kDynShaderPortalRefract )
 			{
-				selected = PortalPipeline( d.raster, openSrgb );
+				selected = PortalPipeline( d.raster, openSrgb, passSamples );
 				if ( selected == VK_NULL_HANDLE )
 					continue;
 				selectedLayout = m_portalPipelineLayout;
@@ -5741,13 +5821,15 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			}
 			else if ( d.shaderIndex == kDynShaderSkin )
 			{
-				selected = SkinPipeline( d.raster, openSrgb );
+				selected = SkinPipeline( d.raster, openSrgb, passSamples );
 				if ( selected == VK_NULL_HANDLE || d.skin < 0 || !skinConstantsOk ||
 				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
 					continue;
 				selectedLayout = m_skinPipelineLayout;
 				skin = true;
 			}
+			if ( selected == VK_NULL_HANDLE )
+				continue;
 			if ( selected != boundPipeline )
 			{
 				vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, selected );
@@ -6146,8 +6228,8 @@ void CVulkanContext::RecordPresentedCaptureAndRelease( VkCommandBuffer cmd, uint
 		copyIn[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 		copyIn[1].srcAccessMask = 0;
 		copyIn[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-		vkCmdPipelineBarrier( cmd, srcStage, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
-		    nullptr, 2, copyIn );
+		vkCmdPipelineBarrier(
+		    cmd, srcStage, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2, copyIn );
 		VkImageCopy copy = {};
 		copy.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
 		copy.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
@@ -6167,6 +6249,255 @@ void CVulkanContext::RecordPresentedCaptureAndRelease( VkCommandBuffer cmd, uint
 	}
 	vkCmdPipelineBarrier( cmd, presentSrcStage, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr,
 	    0, nullptr, 1, &toPresent );
+}
+
+//-----------------------------------------------------------------------------
+// Multisampled back buffer (mat_antialias, render.sample-count.v1)
+//-----------------------------------------------------------------------------
+bool CVulkanContext::ApplySampleCount( std::string *outError )
+{
+	const int wanted =
+	    render::ClampSampleCount( m_requestedSamples, m_adapterCaps.backBufferSampleMask );
+	const bool targetsCurrent = m_msColor != VK_NULL_HANDLE &&
+	                            m_msExtent.width == m_swapExtent.width &&
+	                            m_msExtent.height == m_swapExtent.height;
+	if ( wanted == m_activeSamples && ( wanted == 1 || targetsCurrent ) )
+		return true;
+	if ( m_frameOpen )
+		return true; // applies at the next frame boundary
+	vkDeviceWaitIdle( m_device );
+	DestroyMsaaTargets();
+	const int previous = m_activeSamples;
+	m_activeSamples = 1;
+	if ( wanted > 1 )
+	{
+		std::string error;
+		if ( !CreateMsaaTargets( wanted, &error ) )
+		{
+			// Explicitly single-sampled: the back buffer always exists.
+			DestroyMsaaTargets();
+			Log( "%dx multisampling unavailable, single-sampled: %s\n", wanted, error.c_str() );
+			return true;
+		}
+		m_activeSamples = wanted;
+	}
+	if ( m_activeSamples != previous )
+		Log(
+		    "back buffer multisampling %dx (requested %d)\n", m_activeSamples, m_requestedSamples );
+	(void)outError;
+	return true;
+}
+
+bool CVulkanContext::CreateMsaaTargets( int samples, std::string *outError )
+{
+	const VkSampleCountFlagBits sampleBits = static_cast<VkSampleCountFlagBits>( samples );
+	if ( m_msPassSamples != samples )
+	{
+		DestroyMsaaPasses();
+		const bool built =
+		    CreateAttachmentPass( VK_ATTACHMENT_LOAD_OP_CLEAR, VK_IMAGE_LAYOUT_UNDEFINED,
+		        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED, &m_msPassClear,
+		        m_swapFormat, sampleBits, outError ) &&
+		    CreateAttachmentPass( VK_ATTACHMENT_LOAD_OP_LOAD,
+		        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, &m_msPassLoad, m_swapFormat,
+		        sampleBits, outError ) &&
+		    ( !m_srgbAttachments ||
+		        ( CreateAttachmentPass( VK_ATTACHMENT_LOAD_OP_CLEAR, VK_IMAGE_LAYOUT_UNDEFINED,
+		              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED,
+		              &m_msPassClearSrgb, m_swapFormatSrgb, sampleBits, outError ) &&
+		            CreateAttachmentPass( VK_ATTACHMENT_LOAD_OP_LOAD,
+		                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, &m_msPassLoadSrgb,
+		                m_swapFormatSrgb, sampleBits, outError ) ) );
+		if ( !built )
+		{
+			DestroyMsaaPasses();
+			return false;
+		}
+		m_msPassSamples = samples;
+	}
+
+	const auto createImage = [&]( VkFormat format, VkImageUsageFlags usage, bool mutableSrgb,
+	                             VkImage *outImage, VkDeviceMemory *outMemory ) -> bool
+	{
+		const VkFormat viewFormats[2] = { m_swapFormat, m_swapFormatSrgb };
+		VkImageFormatListCreateInfo formatList = {};
+		formatList.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO;
+		formatList.viewFormatCount = 2;
+		formatList.pViewFormats = viewFormats;
+		VkImageCreateInfo img = {};
+		img.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		img.imageType = VK_IMAGE_TYPE_2D;
+		img.format = format;
+		img.extent = { m_swapExtent.width, m_swapExtent.height, 1 };
+		img.mipLevels = 1;
+		img.arrayLayers = 1;
+		img.samples = sampleBits;
+		img.tiling = VK_IMAGE_TILING_OPTIMAL;
+		img.usage = usage;
+		img.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		img.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		if ( mutableSrgb )
+		{
+			img.flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+			img.pNext = &formatList;
+		}
+		if ( vkCreateImage( m_device, &img, nullptr, outImage ) != VK_SUCCESS )
+			return false;
+		VkMemoryRequirements req = {};
+		vkGetImageMemoryRequirements( m_device, *outImage, &req );
+		bool found = false;
+		VkMemoryAllocateInfo ai = {};
+		ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		ai.allocationSize = req.size;
+		ai.memoryTypeIndex =
+		    FindMemoryType( req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &found );
+		return found && vkAllocateMemory( m_device, &ai, nullptr, outMemory ) == VK_SUCCESS &&
+		       vkBindImageMemory( m_device, *outImage, *outMemory, 0 ) == VK_SUCCESS;
+	};
+	const auto createView = [&]( VkImage image, VkFormat format, VkImageAspectFlags aspects,
+	                            VkImageView *outView ) -> bool
+	{
+		VkImageViewCreateInfo iv = {};
+		iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		iv.image = image;
+		iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		iv.format = format;
+		iv.subresourceRange = { aspects, 0, 1, 0, 1 };
+		return vkCreateImageView( m_device, &iv, nullptr, outView ) == VK_SUCCESS;
+	};
+	const auto createFramebuffer = [&]( VkRenderPass pass, VkImageView color,
+	                                   VkFramebuffer *outFramebuffer ) -> bool
+	{
+		VkImageView attachments[] = { color, m_msDepthView };
+		VkFramebufferCreateInfo fb = {};
+		fb.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+		fb.renderPass = pass;
+		fb.attachmentCount = 2;
+		fb.pAttachments = attachments;
+		fb.width = m_swapExtent.width;
+		fb.height = m_swapExtent.height;
+		fb.layers = 1;
+		return vkCreateFramebuffer( m_device, &fb, nullptr, outFramebuffer ) == VK_SUCCESS;
+	};
+	const bool created =
+	    createImage( m_swapFormat,
+	        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+	        m_srgbAttachments, &m_msColor, &m_msColorMemory ) &&
+	    createImage( m_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, false, &m_msDepth,
+	        &m_msDepthMemory ) &&
+	    createView( m_msColor, m_swapFormat, VK_IMAGE_ASPECT_COLOR_BIT, &m_msColorView ) &&
+	    ( !m_srgbAttachments || createView( m_msColor, m_swapFormatSrgb, VK_IMAGE_ASPECT_COLOR_BIT,
+	                                &m_msColorViewSrgb ) ) &&
+	    createView( m_msDepth, m_depthFormat, m_depthAspects, &m_msDepthView ) &&
+	    createFramebuffer( m_msPassClear, m_msColorView, &m_msFramebuffer ) &&
+	    ( !m_srgbAttachments ||
+	        createFramebuffer( m_msPassClearSrgb, m_msColorViewSrgb, &m_msFramebufferSrgb ) );
+	if ( !created )
+	{
+		SetError( outError, "multisampled back buffer could not be created" );
+		return false;
+	}
+	m_msExtent = m_swapExtent;
+	return true;
+}
+
+void CVulkanContext::DestroyMsaaTargets()
+{
+	if ( m_device == VK_NULL_HANDLE )
+		return;
+	for ( VkFramebuffer *fb : { &m_msFramebuffer, &m_msFramebufferSrgb } )
+	{
+		if ( *fb != VK_NULL_HANDLE )
+			vkDestroyFramebuffer( m_device, *fb, nullptr );
+		*fb = VK_NULL_HANDLE;
+	}
+	for ( VkImageView *view : { &m_msColorView, &m_msColorViewSrgb, &m_msDepthView } )
+	{
+		if ( *view != VK_NULL_HANDLE )
+			vkDestroyImageView( m_device, *view, nullptr );
+		*view = VK_NULL_HANDLE;
+	}
+	for ( VkImage *image : { &m_msColor, &m_msDepth } )
+	{
+		if ( *image != VK_NULL_HANDLE )
+			vkDestroyImage( m_device, *image, nullptr );
+		*image = VK_NULL_HANDLE;
+	}
+	for ( VkDeviceMemory *memory : { &m_msColorMemory, &m_msDepthMemory } )
+	{
+		if ( *memory != VK_NULL_HANDLE )
+			vkFreeMemory( m_device, *memory, nullptr );
+		*memory = VK_NULL_HANDLE;
+	}
+	m_msExtent = { 0, 0 };
+}
+
+void CVulkanContext::DestroyMsaaPasses()
+{
+	if ( m_device == VK_NULL_HANDLE )
+		return;
+	for ( VkRenderPass *pass :
+	    { &m_msPassClear, &m_msPassLoad, &m_msPassClearSrgb, &m_msPassLoadSrgb } )
+	{
+		if ( *pass != VK_NULL_HANDLE )
+			vkDestroyRenderPass( m_device, *pass, nullptr );
+		*pass = VK_NULL_HANDLE;
+	}
+	m_msPassSamples = 0;
+}
+
+void CVulkanContext::ResolveBackBuffer( VkCommandBuffer cmd, uint32_t imageIndex )
+{
+	VkImageMemoryBarrier in[2] = {};
+	for ( VkImageMemoryBarrier &b : in )
+	{
+		b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		b.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+	}
+	// The multisampled color, written by the passes before this.
+	in[0].image = m_msColor;
+	in[0].oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	in[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	in[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	in[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	// The back buffer is replaced whole; earlier reads of it (copies) finish first.
+	in[1].image = m_swapImages[imageIndex];
+	in[1].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	in[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	in[1].srcAccessMask = 0;
+	in[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	vkCmdPipelineBarrier( cmd,
+	    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+	    VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2, in );
+
+	VkImageResolve region = {};
+	region.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+	region.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+	region.extent = { m_swapExtent.width, m_swapExtent.height, 1 };
+	vkCmdResolveImage( cmd, m_msColor, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+	    m_swapImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region );
+	++m_resolveCount;
+
+	VkImageMemoryBarrier out[2] = { in[0], in[1] };
+	out[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	out[0].newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	out[0].srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	out[0].dstAccessMask =
+	    VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	out[1].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	out[1].newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	out[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	out[1].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT |
+	                       VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+	    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT |
+	        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+	    0, 0, nullptr, 0, nullptr, 2, out );
 }
 
 //-----------------------------------------------------------------------------
@@ -6569,8 +6900,8 @@ bool CVulkanContext::RecordPresentGamma(
 	vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_gammaPipeline );
 	vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_gammaPipelineLayout, 0, 1,
 	    &m_gammaSets[m_currentFrame], 0, nullptr );
-	const VkViewport viewport = { 0.0f, 0.0f, float( m_presentExtent.width ),
-		float( m_presentExtent.height ), 0.0f, 1.0f };
+	const VkViewport viewport = {
+	    0.0f, 0.0f, float( m_presentExtent.width ), float( m_presentExtent.height ), 0.0f, 1.0f };
 	const VkRect2D scissor = { { 0, 0 }, m_presentExtent };
 	vkCmdSetViewport( cmd, 0, 1, &viewport );
 	vkCmdSetScissor( cmd, 0, 1, &scissor );
@@ -6599,6 +6930,9 @@ bool CVulkanContext::EndFrame( std::string *outError )
 	uint32_t imageIndex = m_acquiredImage;
 
 	vkCmdEndRenderPass( cmd );
+	// Everything after this reads the single-sampled back buffer.
+	if ( m_activeSamples > 1 )
+		ResolveBackBuffer( cmd, imageIndex );
 
 	// The back buffer is captured (what ReadPixels reads), or on request the
 	// swapchain image the window presents.
@@ -6813,17 +7147,21 @@ int CVulkanContext::PrewarmPipelines()
 			continue;
 		const DynRasterState state = RasterStateFromKey( key );
 		const bool srgb = ( key >> 32 ) & 1u;
+		// Multisampled variants build only for the active sample count.
+		const int samples = PipelineKeySamples( key );
+		if ( samples != 1 && samples != m_activeSamples )
+			continue;
 		// A key from another build can name a variant this device cannot make;
 		// it fails here, once, and is not written back.
 		VkPipeline pipeline = VK_NULL_HANDLE;
 		if ( family == kPipelineTextured )
-			pipeline = TexturedPipeline( state, srgb );
+			pipeline = TexturedPipeline( state, srgb, samples );
 		else if ( family == kPipelinePortal )
-			pipeline = PortalPipeline( state, srgb );
+			pipeline = PortalPipeline( state, srgb, samples );
 		else if ( family == kPipelineSkin )
-			pipeline = SkinPipeline( state, srgb );
+			pipeline = SkinPipeline( state, srgb, samples );
 		else if ( family == kPipelinePbrDirect )
-			pipeline = PbrDirectPipeline( state, srgb );
+			pipeline = PbrDirectPipeline( state, srgb, samples );
 		if ( pipeline != VK_NULL_HANDLE )
 			++built;
 	}
@@ -7223,6 +7561,8 @@ void CVulkanContext::Shutdown()
 		DestroyDemoDepth();
 		DestroyDynamicMesh();
 		DestroySwapchainObjects();
+		DestroyMsaaTargets();
+		DestroyMsaaPasses();
 		DestroyPresentGamma();
 		if ( m_queryPool != VK_NULL_HANDLE )
 		{

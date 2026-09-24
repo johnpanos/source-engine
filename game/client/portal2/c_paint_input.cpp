@@ -35,14 +35,12 @@ ConVar debug_mouse( "debug_mouse", "20.f", 0 );
 ConVar debug_pitch_limit( "debug_pitch_limit", "0.f", 0 );
 
 // Progress of the stick camera reorientation below which vertical mouse input is suppressed.
-ConVar stick_cam_input_suppression_threshhold(
-    "stick_cam_input_suppression_threshhold", "0.8f", FCVAR_DEVELOPMENTONLY );
+ConVar stick_cam_input_suppression_threshhold( "stick_cam_input_suppression_threshhold", "0.8f", FCVAR_DEVELOPMENTONLY );
 
 //-----------------------------------------------------------------------------
 // Purpose: Applies mouse deltas relative to the player's current up vector
 //-----------------------------------------------------------------------------
-void C_Paint_Input::ApplyMouse(
-    int nSlot, QAngle &viewangles, CUserCmd *cmd, float mouse_x, float mouse_y )
+void C_Paint_Input::ApplyMouse( int nSlot, QAngle &viewangles, CUserCmd *cmd, float mouse_x, float mouse_y )
 {
 	C_Portal_Player *pPlayer = C_Portal_Player::GetLocalPortalPlayer();
 	if ( !pPlayer )
@@ -54,9 +52,8 @@ void C_Paint_Input::ApplyMouse(
 	AngleVectors( viewangles, &vForward, &vRight, &vUp );
 
 	// Damp the vertical input while the camera is reorienting to a new surface
-	bool bShouldDampInput =
-	    !pPlayer->IsDoneReorienting() &&
-	    pPlayer->GetPortalPlayerLocalData().m_nStickCameraState == STICK_CAMERA_SURFACE_TRANSITION;
+	bool bShouldDampInput = !pPlayer->IsDoneReorienting() &&
+							pPlayer->GetPortalPlayerLocalData().m_nStickCameraState == STICK_CAMERA_SURFACE_TRANSITION;
 	if ( bShouldDampInput )
 	{
 		float flProgress = pPlayer->GetReorientationProgress();
@@ -74,7 +71,7 @@ void C_Paint_Input::ApplyMouse(
 	}
 
 	// Yaw
-	if ( !( in_strafe.state & 1 ) && !lookstrafe.GetInt() )
+	if ( !( in_strafe.GetPerUser( nSlot ).state & 1 ) && !lookstrafe.GetInt() )
 	{
 		if ( CAM_IsThirdPerson() && pPlayer->IsTaunting() )
 		{
@@ -82,10 +79,10 @@ void C_Paint_Input::ApplyMouse(
 			if ( mouse_x != 0.0f && !pPlayer->IsInterpolatingTauntAngles() )
 			{
 				Vector vAngle = g_ThirdPersonManager.GetCameraOffsetAngles();
-				vAngle[YAW] -= mouse_x * m_yaw.GetFloat();
+				vAngle[ YAW ] -= mouse_x * m_yaw.GetFloat();
 				g_ThirdPersonManager.SetCameraOffsetAngles( vAngle );
 
-				if ( fabs( vAngle[YAW] - pPlayer->GetTauntCamTargetYaw() ) > 30.0f )
+				if ( fabs( vAngle[ YAW ] - pPlayer->GetTauntCamTargetYaw() ) > 30.0f )
 				{
 					pPlayer->SetFaceTauntCameraEndAngles( true );
 				}
@@ -106,30 +103,25 @@ void C_Paint_Input::ApplyMouse(
 	}
 
 	// Pitch
-	if ( !( in_strafe.state & 1 ) )
+	if ( !( in_strafe.GetPerUser( nSlot ).state & 1 ) )
 	{
 		if ( CAM_IsThirdPerson() && pPlayer->IsTaunting() )
 		{
 			if ( mouse_y != 0.0f && !pPlayer->IsInterpolatingTauntAngles() )
 			{
 				Vector vAngle = g_ThirdPersonManager.GetCameraOffsetAngles();
-				float flPitchLimitDown =
-				    pPlayer->m_Shared.InCond( PORTAL_COND_DROWNING ) ? 5.0f : -15.0f;
+				float flPitchLimitDown = pPlayer->m_Shared.InCond( PORTAL_COND_DROWNING ) ? 5.0f : -15.0f;
 				float flPitchLimitUp = 55.0f;
 
-				vAngle[PITCH] = clamp( vAngle[PITCH] + m_pitch->GetFloat() * mouse_y,
-				    flPitchLimitDown, flPitchLimitUp );
+				vAngle[ PITCH ] = clamp( vAngle[ PITCH ] + m_pitch->GetFloat() * mouse_y, flPitchLimitDown, flPitchLimitUp );
 				g_ThirdPersonManager.SetCameraOffsetAngles( vAngle );
 			}
 		}
 		else
 		{
 			// Pitch is measured from the plane perpendicular to the player's up vector
-			float pitch =
-			    90.0f - RAD2DEG( acos( clamp( DotProduct( vForward, vPlayerUp ), -1.0f, 1.0f ) ) ) -
-			    m_pitch->GetFloat() * mouse_y;
-			pitch = clamp( pitch, debug_pitch_limit.GetFloat() - cl_pitchup.GetFloat(),
-			    cl_pitchdown.GetFloat() - debug_pitch_limit.GetFloat() );
+			float pitch = 90.0f - RAD2DEG( acos( clamp( DotProduct( vForward, vPlayerUp ), -1.0f, 1.0f ) ) ) - m_pitch->GetFloat() * mouse_y;
+			pitch = clamp( pitch, debug_pitch_limit.GetFloat() - cl_pitchup.GetFloat(), cl_pitchdown.GetFloat() - debug_pitch_limit.GetFloat() );
 
 			VMatrix rotMatrix;
 			MatrixBuildRotationAboutAxis( rotMatrix, vRight, pitch );
@@ -153,22 +145,24 @@ void C_Paint_Input::ApplyMouse(
 	cmd->mousedy = (int)mouse_y;
 }
 
+
 //-----------------------------------------------------------------------------
 // Purpose: Joystick turning also drives the taunt camera
 //-----------------------------------------------------------------------------
-void C_Paint_Input::JoyStickTurn( CUserCmd *cmd, float &yaw, float &pitch, float frametime,
-    bool bAbsoluteYaw, bool bAbsolutePitch )
+void C_Paint_Input::JoyStickTurn( CUserCmd *cmd, float &yaw, float &pitch, float frametime, bool bAbsoluteYaw, bool bAbsolutePitch )
 {
+	CInput::JoyStickTurn( cmd, yaw, pitch, frametime, bAbsoluteYaw, bAbsolutePitch );
+
 	C_Portal_Player *pPlayer = C_Portal_Player::GetLocalPortalPlayer();
 	if ( pPlayer && CAM_IsThirdPerson() && pPlayer->IsTaunting() )
 	{
 		if ( yaw != 0.0f && !pPlayer->IsInterpolatingTauntAngles() )
 		{
 			Vector vAngle = g_ThirdPersonManager.GetCameraOffsetAngles();
-			vAngle[YAW] -= yaw;
+			vAngle[ YAW ] -= yaw;
 			g_ThirdPersonManager.SetCameraOffsetAngles( vAngle );
 
-			if ( fabs( vAngle[YAW] - pPlayer->GetTauntCamTargetYaw() ) > 30.0f )
+			if ( fabs( vAngle[ YAW ] - pPlayer->GetTauntCamTargetYaw() ) > 30.0f )
 			{
 				pPlayer->SetFaceTauntCameraEndAngles( true );
 			}
@@ -177,11 +171,10 @@ void C_Paint_Input::JoyStickTurn( CUserCmd *cmd, float &yaw, float &pitch, float
 		if ( pitch != 0.0f && !pPlayer->IsInterpolatingTauntAngles() )
 		{
 			Vector vAngle = g_ThirdPersonManager.GetCameraOffsetAngles();
-			float flPitchLimitDown =
-			    pPlayer->m_Shared.InCond( PORTAL_COND_DROWNING ) ? 5.0f : -15.0f;
+			float flPitchLimitDown = pPlayer->m_Shared.InCond( PORTAL_COND_DROWNING ) ? 5.0f : -15.0f;
 			float flPitchLimitUp = 55.0f;
 
-			vAngle[PITCH] = clamp( vAngle[PITCH] + pitch, flPitchLimitDown, flPitchLimitUp );
+			vAngle[ PITCH ] = clamp( vAngle[ PITCH ] + pitch, flPitchLimitDown, flPitchLimitUp );
 			g_ThirdPersonManager.SetCameraOffsetAngles( vAngle );
 		}
 	}

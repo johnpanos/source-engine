@@ -22,7 +22,6 @@
 #include "winutils.h"
 #include "dxsupport_keyvalues.h"
 
-
 //-----------------------------------------------------------------------------
 // Globals
 //-----------------------------------------------------------------------------
@@ -235,7 +234,8 @@ KeyValues *CShaderDeviceMgrBase::ReadDXSupportKeyValues()
 		return NULL;
 
 	if ( !m_pDXSupport )
-		m_pDXSupport = dxsupport::ReadConfig( g_pFullFileSystem, SUPPORT_CFG_FILE, SUPPORT_CFG_OVERRIDE_FILE );
+		m_pDXSupport =
+		    dxsupport::ReadConfig( g_pFullFileSystem, SUPPORT_CFG_FILE, SUPPORT_CFG_OVERRIDE_FILE );
 	return m_pDXSupport;
 }
 
@@ -251,7 +251,8 @@ void CShaderDeviceMgrBase::ReadDXSupportLevels( HardwareCaps_t &caps )
 	if ( !pCfg )
 		return;
 
-	KeyValues *pDeviceKeyValues = dxsupport::FindCardGroup( pCfg, caps.m_VendorID, caps.m_DeviceID );
+	KeyValues *pDeviceKeyValues =
+	    dxsupport::FindCardGroup( pCfg, caps.m_VendorID, caps.m_DeviceID );
 	if ( pDeviceKeyValues )
 	{
 		// First, set the max dx level
@@ -321,7 +322,8 @@ void CShaderDeviceMgrBase::ReadHardwareCaps( HardwareCaps_t &caps, int nDxLevel 
 	if ( !pCfg )
 		return;
 
-	for ( KeyValues *pGroup : dxsupport::DeviceGroups( pCfg, nDxLevel, caps.m_VendorID, caps.m_DeviceID ) )
+	for ( KeyValues *pGroup :
+	    dxsupport::DeviceGroups( pCfg, nDxLevel, caps.m_VendorID, caps.m_DeviceID ) )
 		LoadHardwareCaps( pGroup, caps );
 }
 

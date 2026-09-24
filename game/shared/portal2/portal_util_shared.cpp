@@ -28,7 +28,7 @@
 	#include "materialsystem/imaterialvar.h"
 	#include "c_world.h"
 #endif
-#include "PortalSimulation.h"
+#include "portalsimulation.h"
 #include "CegClientWrapper.h"
 
 bool g_bAllowForcePortalTrace = false;

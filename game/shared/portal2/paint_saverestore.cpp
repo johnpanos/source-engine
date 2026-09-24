@@ -14,7 +14,7 @@
 
 #if !defined( CLIENT_DLL )
 #include "paint_database.h"
-#include "paint_stream_manager.h"
+#include "paint_stream.h"
 #include "projectedwallentity.h"
 #include "portal_base2d.h"
 #endif
@@ -24,6 +24,34 @@
 
 #if !defined( CLIENT_DLL )
 ConVar save_paintblob( "save_paintblob", "0", FCVAR_DEVELOPMENTONLY );
+
+// Reconstruction note: the 2010 CPaintStreamManager had SavePaintBlobState() and
+// RestorePaintBlobState(), each looping over every paint stream. The imported
+// manager dropped them and tracks streams with IPaintStreamAutoList, so the
+// same loops live here.
+static void SavePaintBlobState( ISave *pSave )
+{
+	for ( int i = 0; i < IPaintStreamAutoList::AutoList().Count(); ++i )
+	{
+		CPaintStream *pStream = static_cast< CPaintStream* >( IPaintStreamAutoList::AutoList()[i] );
+		if ( pStream )
+		{
+			pStream->SavePaintBlobState( pSave );
+		}
+	}
+}
+
+static void RestorePaintBlobState( IRestore *pRestore )
+{
+	for ( int i = 0; i < IPaintStreamAutoList::AutoList().Count(); ++i )
+	{
+		CPaintStream *pStream = static_cast< CPaintStream* >( IPaintStreamAutoList::AutoList()[i] );
+		if ( pStream )
+		{
+			pStream->RestorePaintBlobState( pRestore );
+		}
+	}
+}
 #endif
 
 
@@ -41,7 +69,7 @@ class CPaintSaveRestoreBlockHandler : public CDefSaveRestoreBlockHandler
 #if !defined( CLIENT_DLL )
 		if ( save_paintblob.GetBool() )
 		{
-			PaintStreamManager.SavePaintBlobState( pSave );
+			SavePaintBlobState( pSave );
 		}
 
 		PaintDatabase.SavePaintmapData( pSave );
@@ -130,7 +158,7 @@ class CPaintSaveRestoreBlockHandler : public CDefSaveRestoreBlockHandler
 #if !defined( CLIENT_DLL )
 		if ( save_paintblob.GetBool() )
 		{
-			PaintStreamManager.RestorePaintBlobState( pRestore );
+			RestorePaintBlobState( pRestore );
 		}
 
 		PaintDatabase.RestorePaintmapData( pRestore );

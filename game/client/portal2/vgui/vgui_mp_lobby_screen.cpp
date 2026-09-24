@@ -159,6 +159,7 @@ void CObjectControlPanel::OnTickActive( C_BaseEntity *pObj, C_Portal_Player *pLo
 //-----------------------------------------------------------------------------
 vgui::Panel *CObjectControlPanel::TickCurrentPanel()
 {
+	HACK_GETLOCALPLAYER_GUARD( "CObjectControlPanel::TickCurrentPanel" );
 	C_Portal_Player *pLocalPlayer = C_Portal_Player::GetLocalPortalPlayer();
 	C_BaseEntity *pObj = GetOwningObject();
 

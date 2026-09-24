@@ -17,6 +17,7 @@
 #include "sharedvar.h"
 #include "paint_blobs_shared.h"
 #include "paint_stream_manager.h"
+#include "paint_sprayer_shared.h"
 
 DECLARE_AUTO_LIST( IPaintStreamAutoList );
 

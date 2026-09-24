@@ -129,6 +129,29 @@ LINK_ENTITY_TO_CLASS( info_particle_system, CParticleSystem );
 CParticleSystem::CParticleSystem()
 {
 	m_bWeatherEffect = false;
+	m_bDisableSaveRestore = false;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Controls whether this particle entity participates in save/restore.
+//-----------------------------------------------------------------------------
+void CParticleSystem::DisableSaveRestore( bool bDisable )
+{
+	m_bDisableSaveRestore = bDisable;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Excludes transient particle systems from save/restore when requested.
+//-----------------------------------------------------------------------------
+int CParticleSystem::ObjectCaps( void )
+{
+	int nCaps = BaseClass::ObjectCaps();
+	if ( m_bDisableSaveRestore )
+	{
+		nCaps |= FCAP_DONT_SAVE;
+	}
+
+	return nCaps;
 }
 
 //-----------------------------------------------------------------------------

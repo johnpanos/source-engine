@@ -48,7 +48,8 @@ namespace render_vulkan
 [[nodiscard]] inline VkPresentModeKHR SelectVulkanPresentMode(
     bool vsync, const VkPresentModeKHR *modes, uint32_t count )
 {
-	return ToVkPresentMode( render::SelectPresentMode( vsync, VulkanPresentModeSupport( modes, count ) ) );
+	return ToVkPresentMode(
+	    render::SelectPresentMode( vsync, VulkanPresentModeSupport( modes, count ) ) );
 }
 
 [[nodiscard]] constexpr const char *VulkanPresentModeName( VkPresentModeKHR mode )

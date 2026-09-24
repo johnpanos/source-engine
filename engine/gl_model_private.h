@@ -262,6 +262,16 @@ struct worldmeshgroup_t
 {
 	unsigned int firstMeshlet;
 	unsigned int meshletCount;
+	// The members' contiguous index and occluder ranges.
+	unsigned int firstIndex;
+	unsigned int indexCount;
+	unsigned int firstOccluder;
+	unsigned int occluderCount;
+	// Sphere around the members' occluders and their largest inradius: when
+	// these cannot cover a cell, no member occluder can.
+	Vector occluderCenter;
+	float occluderRadius;
+	float occluderInradius;
 	Vector center;
 	float radius;
 	Vector mins;
@@ -275,9 +285,11 @@ struct worldmeshgroup_t
 struct worldmeshoccluder_t
 {
 	Vector corners[3];
-	// Bounding sphere, to skip triangles too small on screen to cover a cell.
+	// Bounding sphere and inscribed-circle radius, to skip triangles that
+	// cannot cover a whole occlusion cell on screen.
 	Vector center;
 	float radius;
+	float inradius;
 };
 
 // Consecutive meshlets [firstMeshlet, firstMeshlet + meshletCount) a leaf references.

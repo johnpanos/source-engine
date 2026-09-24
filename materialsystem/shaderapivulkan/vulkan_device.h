@@ -722,8 +722,17 @@ public:
 	// created since Init (each resize, mode or present-mode change adds one).
 	VkPresentModeKHR PresentMode() const { return m_presentMode; }
 	// The present modes the surface offered when the swapchain was created.
-	const std::vector<VkPresentModeKHR> &SurfacePresentModes() const { return m_surfacePresentModes; }
+	const std::vector<VkPresentModeKHR> &SurfacePresentModes() const
+	{
+		return m_surfacePresentModes;
+	}
 	uint64_t SwapchainGeneration() const { return m_swapchainGeneration; }
+	// mat_antialias: a sample count for the back buffer, applied by the next
+	// BeginFrame, clamped to what the device supports (render.sample-count.v1);
+	// 0 and 1 mean no multisampling. Call it on the thread that owns the device.
+	void RequestSampleCount( int samples ) { m_requestedSamples = samples; }
+	int ActiveSampleCount() const { return m_activeSamples; }
+	uint64_t ResolveCount() const { return m_resolveCount; }
 	// Acquires that timed out (kAcquireTimeoutNs) and made the next frame
 	// replace the swapchain.
 	uint64_t AcquireTimeouts() const { return m_acquireTimeouts; }
@@ -808,6 +817,21 @@ private:
 	// rebuild never leaves the window without a presentable image.
 	bool CreateSwapchain( std::string *outError, VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE );
 	bool CreateRenderPass( std::string *outError );
+	bool CreateAttachmentPass( VkAttachmentLoadOp loadOp, VkImageLayout colorInitial,
+	    VkImageLayout colorFinal, VkImageLayout depthInitial, VkRenderPass *outPass,
+	    VkFormat colorFormat, VkSampleCountFlagBits samples, std::string *outError );
+	// Multisampled back buffer (mat_antialias): one color and one depth/stencil
+	// image of m_activeSamples samples at the back buffer's size, drawn through
+	// their own passes and resolved into the frame's back buffer (m_swapImages)
+	// before anything reads it. Render targets stay single-sampled, as on D3D9.
+	bool ApplySampleCount( std::string *outError );
+	bool CreateMsaaTargets( int samples, std::string *outError );
+	void DestroyMsaaTargets();
+	void DestroyMsaaPasses();
+	// Resolves the multisampled color into m_swapImages[imageIndex] and leaves
+	// that image in COLOR_ATTACHMENT_OPTIMAL (the layout a single-sampled back
+	// buffer rests in between passes). Outside any render pass.
+	void ResolveBackBuffer( VkCommandBuffer cmd, uint32_t imageIndex );
 	bool CreateFramebuffers( std::string *outError );
 	bool CreateCommandResources( std::string *outError );
 	bool CreateSyncObjects( std::string *outError );
@@ -836,7 +860,8 @@ private:
 	// `srcStage`/`srcAccess`) for capture if requested, then transitions it to
 	// PRESENT_SRC.
 	void RecordPresentedCaptureAndRelease( VkCommandBuffer cmd, uint32_t imageIndex,
-	    VkImageLayout layout, VkPipelineStageFlags srcStage, VkAccessFlags srcAccess, bool capture );
+	    VkImageLayout layout, VkPipelineStageFlags srcStage, VkAccessFlags srcAccess,
+	    bool capture );
 	// Picks up a newly published ramp (frame thread).
 	void ApplyPublishedGammaRamp();
 	// Device-lifetime and swapchain-lifetime objects of the gamma pass.
@@ -880,6 +905,24 @@ private:
 	VkColorSpaceKHR m_swapColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 	VkPresentModeKHR m_presentMode = VK_PRESENT_MODE_FIFO_KHR;
 	VulkanAdapterCaps m_adapterCaps;
+	int m_requestedSamples = 1;
+	int m_activeSamples = 1;
+	uint64_t m_resolveCount = 0;
+	VkImage m_msColor = VK_NULL_HANDLE;
+	VkImage m_msDepth = VK_NULL_HANDLE;
+	VkDeviceMemory m_msColorMemory = VK_NULL_HANDLE;
+	VkDeviceMemory m_msDepthMemory = VK_NULL_HANDLE;
+	VkImageView m_msColorView = VK_NULL_HANDLE;
+	VkImageView m_msColorViewSrgb = VK_NULL_HANDLE;
+	VkImageView m_msDepthView = VK_NULL_HANDLE;
+	VkFramebuffer m_msFramebuffer = VK_NULL_HANDLE;
+	VkFramebuffer m_msFramebufferSrgb = VK_NULL_HANDLE;
+	VkRenderPass m_msPassClear = VK_NULL_HANDLE;
+	VkRenderPass m_msPassLoad = VK_NULL_HANDLE;
+	VkRenderPass m_msPassClearSrgb = VK_NULL_HANDLE;
+	VkRenderPass m_msPassLoadSrgb = VK_NULL_HANDLE;
+	int m_msPassSamples = 0; // the sample count the m_msPass* objects were built for
+	VkExtent2D m_msExtent = { 0, 0 };
 	bool m_requestedVSync = true;
 	std::vector<VkPresentModeKHR> m_surfacePresentModes;
 	bool m_swapchainVSync = true; // the vsync request m_presentMode was selected for
@@ -1059,11 +1102,14 @@ private:
 	// built from m_texTemplate when a draw first needs it.
 	// Keyed by RasterStateKey, with bit 32 set for pipelines of the sRGB passes.
 	std::map<uint64_t, VkPipeline> m_dynTexPipelines;
-	VkPipeline TexturedPipeline( const DynRasterState &state, bool srgbPass = false );
+	VkPipeline TexturedPipeline(
+	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
 	std::map<uint64_t, VkPipeline> m_worldTexPipelines;
-	VkPipeline WorldTexturedPipeline( const DynRasterState &state, bool srgbPass = false );
+	VkPipeline WorldTexturedPipeline(
+	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
 	std::map<uint64_t, VkPipeline> m_worldPbrPipelines;
-	VkPipeline WorldPbrPipeline( const DynRasterState &state, bool srgbPass = false );
+	VkPipeline WorldPbrPipeline(
+	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
 	bool PbrWorldTexturesReady(
 	    int base, int mrao, int normal, bool useNormal, bool baseReadSrgb ) const;
 	bool PbrWorldNormalReady( int handle ) const;
@@ -1097,15 +1143,17 @@ private:
 
 	// PortalRefract pipelines, one per raster state, built on first use.
 	std::map<uint64_t, VkPipeline> m_portalPipelines;
-	VkPipeline PortalPipeline( const DynRasterState &state, bool srgbPass = false );
+	VkPipeline PortalPipeline(
+	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
 	VkPipelineLayout m_portalPipelineLayout = VK_NULL_HANDLE;
 	// The skin shader: six sampler sets (s0, s1, s2, s3, s7, s14) and its pixel
 	// shader constants in a uniform buffer per frame in flight, written only
 	// after that frame's fence has signaled, bound at a per-draw dynamic offset.
 	std::map<uint64_t, VkPipeline> m_skinPipelines;
-	VkPipeline SkinPipeline( const DynRasterState &state, bool srgbPass = false );
+	VkPipeline SkinPipeline( const DynRasterState &state, bool srgbPass = false, int samples = 1 );
 	std::map<uint64_t, VkPipeline> m_pbrDirectPipelines;
-	VkPipeline PbrDirectPipeline( const DynRasterState &state, bool srgbPass = false );
+	VkPipeline PbrDirectPipeline(
+	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
 	VkPipelineLayout m_pbrDirectPipelineLayout = VK_NULL_HANDLE;
 	VkShaderModule m_pbrDirectFrag = VK_NULL_HANDLE;
 	int m_pbrSplitSumHandle = -1;
@@ -1143,7 +1191,16 @@ private:
 	bool InitPortalPipeline( std::string *outError );
 	VkPipeline BuildMaterialPipeline( const DynRasterState &state, VkShaderModule vert,
 	    VkShaderModule frag, VkPipelineLayout layout,
-	    const VkPipelineVertexInputStateCreateInfo *vertexInput, VkRenderPass renderPass );
+	    const VkPipelineVertexInputStateCreateInfo *vertexInput, VkRenderPass renderPass,
+	    int samples = 1 );
+	// Pipeline caches key on the raster state, the sRGB pass (bit 32) and
+	// log2 of the sample count (bits 33-35); one owner for that layout.
+	static uint64_t PipelineKey( const DynRasterState &state, bool srgbPass, int samples );
+	static int PipelineKeySamples( uint64_t key );
+	// The pass a pipeline for (sRGB, samples) is built against: the ordinary
+	// back-buffer/render-target class, or the multisampled back buffer's (only
+	// while that sample count is active; otherwise VK_NULL_HANDLE).
+	VkRenderPass PipelineRenderPass( bool srgbPass, int samples ) const;
 	// D3D9 blends a draw that writes sRGB (SRGBWRITEENABLE) in linear space: the
 	// destination is decoded, blended and encoded again. Such draws render
 	// through sRGB-format views of the same attachments (mutable-format swapchain

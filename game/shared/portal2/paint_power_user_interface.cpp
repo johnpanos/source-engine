@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2009, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2009, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Implements the interface class for all paint power users.
 //
@@ -8,6 +8,7 @@
 
 #include "paint_power_user_interface.h"
 #include "paintable_entity.h"
+#include "debugoverlay_shared.h"
 
 #ifdef GAME_DLL
 #include "world.h"
@@ -18,13 +19,18 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-ConVar sv_enable_paint_power_user_debug("sv_enable_paint_power_user_debug", "0", FCVAR_REPLICATED | FCVAR_CHEAT,"Enable debug spew for paint power users.");
+ConVar sv_enable_paint_power_user_debug( "sv_enable_paint_power_user_debug", "0",
+    FCVAR_REPLICATED | FCVAR_CHEAT, "Enable debug spew for paint power users." );
 extern ConVar sv_debug_draw_contacts;
 
+static PaintPowerType MapRenderColorToPower( const color32 &renderColor )
+{
+	return MapColorToPower( Color( renderColor.r, renderColor.g, renderColor.b, renderColor.a ) );
+}
+
 IPaintPowerUser::~IPaintPowerUser()
-{}
-
-
+{
+}
 void MapSurfaceToPower( PaintPowerInfo_t& info )
 {
 	IHandleEntity* pEntityHandle = info.m_HandleToOther.Get();
@@ -42,7 +48,7 @@ void MapSurfaceToPower( PaintPowerInfo_t& info )
 			pEnt = GetClientWorldEntity();
 #endif
 		}
-				
+
 		// If this is a world entity
 		if( pEnt->IsBSPModel() )
 		{
@@ -82,12 +88,13 @@ void MapSurfaceToPower( PaintPowerInfo_t& info )
 
 					if( pBoneOwner )
 					{
-						info.m_PaintPowerType = MapColorToPower( pBoneOwner->GetRenderColor() );
+						info.m_PaintPowerType =
+						    MapRenderColorToPower( pBoneOwner->GetRenderColor() );
 					}
 				}
 				else //Use the render color of this entity
 				{
-					info.m_PaintPowerType = MapColorToPower( pEnt->GetRenderColor() );
+					info.m_PaintPowerType = MapRenderColorToPower( pEnt->GetRenderColor() );
 				}
 
 				if( sv_enable_paint_power_user_debug.GetBool() )
@@ -105,4 +112,3 @@ void MapSurfaceToPower( PaintPowerInfo_t& info )
 		NDebugOverlay::Line( info.m_ContactPoint, info.m_ContactPoint + 20.0f * info.m_SurfaceNormal, color.r(), color.g(), color.b(), true, 0 );
 	}
 }
-

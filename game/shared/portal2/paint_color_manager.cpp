@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2009, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2009, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Implements the paint color manager class.
 //
@@ -6,6 +6,7 @@
 
 #include "cbase.h"
 #include "paint_color_manager.h"
+#include "util_shared.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -81,7 +82,12 @@ PaintPowerType MapColorToPower( const CUtlVector<BYTE>& colors )
 
 	return power;
 }
-
+static Color GetPaintColor( const ConVar &colorVar )
+{
+	color32 color;
+	UTIL_StringToColor32( &color, colorVar.GetString() );
+	return Color( color.r, color.g, color.b, color.a );
+}
 
 Color MapPowerToColor( int paintPowerType )
 {
@@ -91,15 +97,16 @@ Color MapPowerToColor( int paintPowerType )
 	switch ( paintPowerType )
 	{
 	case BOUNCE_POWER:
-		return bounce_paint_color.GetColor();
+		return GetPaintColor( bounce_paint_color );
 	case SPEED_POWER:
-		return speed_paint_color.GetColor();
+		return GetPaintColor( speed_paint_color );
 	case REFLECT_POWER:
-		return speed_paint_color.GetColor();// FIXME: Bring this back for DLC2 reflect_paint_color.GetColor();
+		return GetPaintColor(
+		    speed_paint_color ); // FIXME: Bring this back for DLC2 reflect_paint_color.GetColor();
 	case PORTAL_POWER:
-		return portal_paint_color.GetColor();
+		return GetPaintColor( portal_paint_color );
 	default:
-		return erase_color.GetColor();
+		return GetPaintColor( erase_color );
 	}
 }
 
@@ -107,7 +114,7 @@ Color MapPowerToVisualColor( int paintPowerType )
 {
 	if( paintPowerType == NO_POWER )
 	{
-		return erase_visual_color.GetColor();
+		return GetPaintColor( erase_visual_color );
 	}
 	else
 	{

@@ -80,8 +80,8 @@ void QueryVulkanAdapterCaps(
 	    ( limits &
 	        ImageSampleCounts( device, colorFormat,
 	            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT ) &
-	        ImageSampleCounts( device, caps.depthFormat,
-	            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT ) ) |
+	        ImageSampleCounts(
+	            device, caps.depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT ) ) |
 	    VK_SAMPLE_COUNT_1_BIT;
 
 	if ( caps.depthFormat != VK_FORMAT_UNDEFINED )
@@ -103,13 +103,17 @@ static bool HasGraphicsQueueAndSwapchain( VkPhysicalDevice device )
 	std::vector<VkQueueFamilyProperties> families( count );
 	vkGetPhysicalDeviceQueueFamilyProperties( device, &count, families.data() );
 	const bool graphics = std::any_of( families.begin(), families.end(),
-	    []( const VkQueueFamilyProperties &f ) { return ( f.queueFlags & VK_QUEUE_GRAPHICS_BIT ) != 0; } );
+	    []( const VkQueueFamilyProperties &f )
+	    {
+		    return ( f.queueFlags & VK_QUEUE_GRAPHICS_BIT ) != 0;
+	    } );
 	uint32_t extCount = 0;
 	vkEnumerateDeviceExtensionProperties( device, nullptr, &extCount, nullptr );
 	std::vector<VkExtensionProperties> extensions( extCount );
 	vkEnumerateDeviceExtensionProperties( device, nullptr, &extCount, extensions.data() );
 	const bool swapchain = std::any_of( extensions.begin(), extensions.end(),
-	    []( const VkExtensionProperties &e ) {
+	    []( const VkExtensionProperties &e )
+	    {
 		    return std::strcmp( e.extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME ) == 0;
 	    } );
 	return graphics && swapchain;

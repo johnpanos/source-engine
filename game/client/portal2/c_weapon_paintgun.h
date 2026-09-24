@@ -20,6 +20,9 @@
 
 class CNewParticleEffect;
 
+// The shared paint gun code uses the server class name
+#define CWeaponPaintGun C_WeaponPaintGun
+
 class C_WeaponPaintGun : public C_BasePortalCombatWeapon
 {
 public:

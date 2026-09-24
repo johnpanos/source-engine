@@ -14,11 +14,15 @@ The existing `portal` target selects `game/shared/portal` explicitly through
 selection must remain independent of these files.
 
 The separate Portal 2 Waf configuration is available through `./play_p2
---configure-only`. The imported client and server VPC source maps still name
-missing files. [MISSING.md](MISSING.md) lists the current VPC and include gaps.
-Waf stops before compiling an incomplete Portal 2 client or server. The source
-target needs the remaining gameplay code, engine API adaptations, and
-game-specific conformance runs before it can be launched.
+--configure-only`. The 94 selected gameplay sources that have Steam2
+pseudocode, with their headers, have been reconstructed from it; every such
+file carries a `Portal 2 reconstruction` header and is not original Valve
+source. The VPC source maps still name 42 selected sources without pseudocode.
+[MISSING.md](MISSING.md) lists them, the remaining include gaps and the
+probe-compile status of the reconstructed files. Waf stops before compiling an
+incomplete Portal 2 client or server. The source target needs those files, the
+Source SDK 2013 base-game and engine API adaptations the Portal 2 code expects,
+and game-specific conformance runs before it can be launched.
 Historical Steam2 source references are isolated under
 [`external/portal2_steam2_xsi`](../../../external/portal2_steam2_xsi/README.md),
 [`external/portal2_steam2_xsi_legacy`](../../../external/portal2_steam2_xsi_legacy/README.md),

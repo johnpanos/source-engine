@@ -12,6 +12,7 @@
 #include "cbase.h"
 #include "trigger_tractorbeam_shared.h"
 #include "soundenvelope.h"
+#include "particle_parse.h"
 #include "portal_player.h"
 #include "npc_portal_turret_floor.h"
 #include "prop_weightedcube.h"

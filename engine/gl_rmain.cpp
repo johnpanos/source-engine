@@ -369,7 +369,6 @@ bool R_IsOutermostSceneView()
 	return gRender.IsOutermostSceneView();
 }
 
-
 //-----------------------------------------------------------------------------
 // Called when the engine is about to begin rendering for any reason
 //-----------------------------------------------------------------------------

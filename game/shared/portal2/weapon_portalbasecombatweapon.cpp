@@ -1,6 +1,6 @@
-//========= Copyright © 1996-2005, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2005, Valve Corporation, All rights reserved. ============//
 //
-// Purpose: 
+// Purpose:
 //
 //=============================================================================//
 
@@ -13,15 +13,16 @@
 #if defined( CLIENT_DLL )
 	#include "c_portal_player.h"
 #else
-	#include "vphysics/constraints.h"
-	#include "gameweaponmanager.h"
+#include "portal2/portal/portal_player.h"
+#include "vphysics/constraints.h"
+#include "gameweaponmanager.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
 IMPLEMENT_NETWORKCLASS_ALIASED( BasePortalCombatWeapon , DT_BasePortalCombatWeapon )
-LINK_ENTITY_TO_CLASS_ALIASED( baseportalcombatweapon, BasePortalCombatWeapon );
+LINK_ENTITY_TO_CLASS( baseportalcombatweapon, CBasePortalCombatWeapon );
 
 BEGIN_NETWORK_TABLE( CBasePortalCombatWeapon , DT_BasePortalCombatWeapon )
 #if !defined( CLIENT_DLL )

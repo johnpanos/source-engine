@@ -14,14 +14,12 @@
 #pragma once
 #endif
 
-#include "c_baseentity.h"
+#include "c_triggers.h"
 
-// The historical client trigger only uses C_BaseEntity behavior.  The imported
-// client tree has no C_BaseTrigger implementation to inherit from.
-class C_TriggerPaintCleanser : public C_BaseEntity
+class C_TriggerPaintCleanser : public C_BaseTrigger
 {
 public:
-	DECLARE_CLASS( C_TriggerPaintCleanser, C_BaseEntity );
+	DECLARE_CLASS( C_TriggerPaintCleanser, C_BaseTrigger );
 	DECLARE_CLIENTCLASS();
 
 	C_TriggerPaintCleanser();

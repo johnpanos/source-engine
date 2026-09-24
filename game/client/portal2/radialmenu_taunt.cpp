@@ -29,18 +29,33 @@
 char g_szPositions[NUM_TAUNT_POSITIONS][16] = {
     "North", "South", "West", "East", "NorthWest", "NorthEast", "SouthWest", "SouthEast" };
 
-static ClientMenuManagerTaunt TheClientMenuManagerTaunt[MAX_SPLITSCREEN_PLAYERS];
+// This branch's engine has no split-screen client implementation (see
+// CBaseClient::IsSplitScreenUser). Keep one manager for its supported local
+// player instead of indexing an unavailable active-slot API.
+static ClientMenuManagerTaunt TheClientMenuManagerTaunt;
+
+static void BuildTauntSaveData( KeyValues *pRoot )
+{
+	if ( KeyValues *pPreviousTaunts = pRoot->FindKey( "taunts" ) )
+	{
+		pRoot->RemoveSubKey( pPreviousTaunts );
+		pPreviousTaunts->deleteThis();
+	}
+
+	KeyValues *pTaunts = new KeyValues( "taunts" );
+	GetClientMenuManagerTaunt().KeyValueBuilder( pTaunts );
+	pRoot->AddSubKey( pTaunts );
+}
 
 ClientMenuManagerTaunt &GetClientMenuManagerTaunt( int nSlot )
 {
-	if ( nSlot < 0 )
+	if ( nSlot > 0 )
 	{
-		ASSERT_LOCAL_PLAYER_RESOLVABLE();
-		nSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
+		Error(
+		    "Portal 2 taunt manager: split-screen slot %d is unsupported by this engine\n", nSlot );
 	}
 
-	Assert( nSlot < MAX_SPLITSCREEN_PLAYERS );
-	return TheClientMenuManagerTaunt[nSlot];
+	return TheClientMenuManagerTaunt;
 }
 
 void ClientMenuManagerTaunt::ClearTauntStatusData( void )
@@ -69,6 +84,7 @@ void ClientMenuManagerTaunt::Flush( void )
 {
 	Reset();
 	AddMenuFile( "scripts/RadialMenuTaunt.txt" );
+	KeyValueSaver().InitKeyValues( PORTAL2_MP_SAVE_FILE, &BuildTauntSaveData );
 
 	ClearTauntStatusData();
 

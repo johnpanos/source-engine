@@ -28,6 +28,9 @@ public:
 	virtual void Spawn( void );
 	virtual void Activate( void );
 	virtual int  UpdateTransmitState(void);
+	virtual int ObjectCaps( void );
+
+	void DisableSaveRestore( bool bDisable );
 
 	void		StartParticleSystem( void );
 	void		StopParticleSystem( void );
@@ -44,6 +47,7 @@ protected:
 	void ReadControlPointEnts( void );
 
 	bool				m_bStartActive;
+	bool m_bDisableSaveRestore;
 	string_t			m_iszEffectName;
 	
 	CNetworkVar( bool,	m_bActive );

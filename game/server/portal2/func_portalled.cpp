@@ -18,15 +18,16 @@
 LINK_ENTITY_TO_CLASS( func_portalled, CFunc_Portalled );
 
 BEGIN_DATADESC( CFunc_Portalled )
-DEFINE_KEYFIELD( m_bFireOnPlayer, FIELD_BOOLEAN, "FireOnPlayer" ),
-    DEFINE_KEYFIELD( m_bFireOnDeparture, FIELD_BOOLEAN, "FireOnDeparture" ),
-    DEFINE_KEYFIELD( m_bFireOnArrival, FIELD_BOOLEAN, "FireOnArrival" ),
+	DEFINE_KEYFIELD( m_bFireOnPlayer, FIELD_BOOLEAN, "FireOnPlayer" ),
+	DEFINE_KEYFIELD( m_bFireOnDeparture, FIELD_BOOLEAN, "FireOnDeparture" ),
+	DEFINE_KEYFIELD( m_bFireOnArrival, FIELD_BOOLEAN, "FireOnArrival" ),
 
-    DEFINE_OUTPUT( m_OnEntityPrePortalled, "OnEntityPrePortalled" ),
-    DEFINE_OUTPUT( m_OnEntityPostPortalled, "OnEntityPostPortalled" ),
-    END_DATADESC()
+	DEFINE_OUTPUT( m_OnEntityPrePortalled, "OnEntityPrePortalled" ),
+	DEFINE_OUTPUT( m_OnEntityPostPortalled, "OnEntityPostPortalled" ),
+END_DATADESC()
 
-        void CFunc_Portalled::PortalPlacedInsideBounds( CProp_Portal *pPortal )
+
+void CFunc_Portalled::PortalPlacedInsideBounds( CProp_Portal *pPortal )
 {
 	pPortal->SetFuncPortalled( this );
 }

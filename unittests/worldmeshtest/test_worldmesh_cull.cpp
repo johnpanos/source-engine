@@ -46,22 +46,40 @@ struct Vec
 {
 	double x, y, z;
 };
-Vec operator+( Vec a, Vec b ) { return { a.x + b.x, a.y + b.y, a.z + b.z }; }
-Vec operator-( Vec a, Vec b ) { return { a.x - b.x, a.y - b.y, a.z - b.z }; }
-Vec operator*( Vec a, double s ) { return { a.x * s, a.y * s, a.z * s }; }
-double Dot( Vec a, Vec b ) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+Vec operator+( Vec a, Vec b )
+{
+	return { a.x + b.x, a.y + b.y, a.z + b.z };
+}
+Vec operator-( Vec a, Vec b )
+{
+	return { a.x - b.x, a.y - b.y, a.z - b.z };
+}
+Vec operator*( Vec a, double s )
+{
+	return { a.x * s, a.y * s, a.z * s };
+}
+double Dot( Vec a, Vec b )
+{
+	return a.x * b.x + a.y * b.y + a.z * b.z;
+}
 Vec Cross( Vec a, Vec b )
 {
 	return { a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x };
 }
-Vec Unit( Vec a ) { return a * ( 1.0 / std::sqrt( Dot( a, a ) ) ); }
+Vec Unit( Vec a )
+{
+	return a * ( 1.0 / std::sqrt( Dot( a, a ) ) );
+}
 void Store( Vec a, float out[3] )
 {
 	out[0] = float( a.x );
 	out[1] = float( a.y );
 	out[2] = float( a.z );
 }
-Vec Load( const float in[3] ) { return { in[0], in[1], in[2] }; }
+Vec Load( const float in[3] )
+{
+	return { in[0], in[1], in[2] };
+}
 
 struct Random
 {
@@ -106,8 +124,8 @@ struct Meshlet
 Meshlet MakeMeshlet( Random &random, double spread )
 {
 	Meshlet meshlet;
-	const Vec center = { random.Range( -200, 200 ), random.Range( -200, 200 ),
-		random.Range( -200, 200 ) };
+	const Vec center = {
+	    random.Range( -200, 200 ), random.Range( -200, 200 ), random.Range( -200, 200 ) };
 	const Vec axis = random.Direction();
 	const double size = random.Range( 1, 40 );
 	Vec sum = { 0, 0, 0 };
@@ -126,8 +144,8 @@ Meshlet MakeMeshlet( Random &random, double spread )
 		triangle.twoSided = false;
 		meshlet.triangles.push_back( triangle );
 		// The stored float corners decide the front face, as in the packer.
-		const Vec n = Cross( Load( triangle.b ) - Load( triangle.a ),
-		    Load( triangle.c ) - Load( triangle.a ) );
+		const Vec n = Cross(
+		    Load( triangle.b ) - Load( triangle.a ), Load( triangle.c ) - Load( triangle.a ) );
 		if ( Dot( n, n ) > 1e-24 )
 		{
 			normals.push_back( Unit( n ) );
@@ -138,7 +156,8 @@ Meshlet MakeMeshlet( Random &random, double spread )
 	for ( const Triangle &triangle : meshlet.triangles )
 	{
 		for ( const float *corner : { triangle.a, triangle.b, triangle.c } )
-			radius = std::fmax( radius, std::sqrt( Dot( Load( corner ) - center, Load( corner ) - center ) ) );
+			radius = std::fmax(
+			    radius, std::sqrt( Dot( Load( corner ) - center, Load( corner ) - center ) ) );
 	}
 	Store( center, meshlet.center );
 	meshlet.radius = float( radius + 1e-3 );
@@ -156,8 +175,8 @@ bool AnyTriangleFacesEye( const Meshlet &meshlet, Vec eye )
 {
 	for ( const Triangle &triangle : meshlet.triangles )
 	{
-		const Vec n = Cross( Load( triangle.b ) - Load( triangle.a ),
-		    Load( triangle.c ) - Load( triangle.a ) );
+		const Vec n = Cross(
+		    Load( triangle.b ) - Load( triangle.a ), Load( triangle.c ) - Load( triangle.a ) );
 		for ( const float *corner : { triangle.a, triangle.b, triangle.c } )
 		{
 			if ( Dot( n, eye - Load( corner ) ) >= 0.0 )
@@ -177,13 +196,13 @@ void TestCone()
 	for ( int trial = 0; trial < 20000; ++trial )
 	{
 		const Meshlet meshlet = MakeMeshlet( random, random.Range( 0.0, 0.8 ) );
-		const Vec eye = { random.Range( -400, 400 ), random.Range( -400, 400 ),
-			random.Range( -400, 400 ) };
+		const Vec eye = {
+		    random.Range( -400, 400 ), random.Range( -400, 400 ), random.Range( -400, 400 ) };
 		float eyeF[3];
 		Store( eye, eyeF );
 		const bool faces = AnyTriangleFacesEye( meshlet, eye );
-		if ( ConeFacesAway( eyeF, meshlet.center, meshlet.radius, meshlet.axis, meshlet.cutoff,
-		         1e-3f ) )
+		if ( ConeFacesAway(
+		         eyeF, meshlet.center, meshlet.radius, meshlet.axis, meshlet.cutoff, 1e-3f ) )
 		{
 			++culled;
 			unsound += faces;
@@ -287,8 +306,8 @@ bool BoxVisible( const View &view, const std::vector<Triangle> &occluders, const
 			for ( int k = 0; k <= steps; ++k )
 			{
 				const Vec point = { mins[0] + ( maxs[0] - mins[0] ) * i / steps,
-					mins[1] + ( maxs[1] - mins[1] ) * j / steps,
-					mins[2] + ( maxs[2] - mins[2] ) * k / steps };
+				    mins[1] + ( maxs[1] - mins[1] ) * j / steps,
+				    mins[2] + ( maxs[2] - mins[2] ) * k / steps };
 				if ( view.OnScreen( point ) && !Hidden( view, occluders, point ) )
 					return true;
 			}
@@ -306,6 +325,9 @@ void TestOcclusion()
 	int badCulled = 0;
 	int badCaught = 0;
 	int backFaceIgnored = 0;
+	int prefilterTested = 0;
+	int prefilterSkipped = 0;
+	int prefilterWrong = 0;
 	OcclusionBuffer buffer;
 	for ( int scene = 0; scene < 300; ++scene )
 	{
@@ -326,9 +348,10 @@ void TestOcclusion()
 			const Vec normal = Unit( view.forward * -1.0 + random.Direction() * 0.6 );
 			const Vec tangent = Unit( Cross( normal, random.Direction() ) );
 			const Vec bitangent = Cross( normal, tangent );
-			const Vec middle = view.eye + view.forward * depth +
-			                   ( view.right * random.Range( -1, 1 ) + view.up * random.Range( -1, 1 ) ) *
-			                       depth * 0.5;
+			const Vec middle =
+			    view.eye + view.forward * depth +
+			    ( view.right * random.Range( -1, 1 ) + view.up * random.Range( -1, 1 ) ) * depth *
+			        0.5;
 			const double size = depth * random.Range( 0.3, 2.0 );
 			Triangle triangle;
 			Store( middle - tangent * size - bitangent * size, triangle.a );
@@ -336,12 +359,36 @@ void TestOcclusion()
 			Store( middle - tangent * size + bitangent * size * 2.0, triangle.c );
 			triangle.twoSided = random.Next() < 0.3;
 			// Wound to face the eye unless this wall is deliberately turned away.
-			const Vec n = Cross( Load( triangle.b ) - Load( triangle.a ),
-			    Load( triangle.c ) - Load( triangle.a ) );
+			const Vec n = Cross(
+			    Load( triangle.b ) - Load( triangle.a ), Load( triangle.c ) - Load( triangle.a ) );
 			const bool away = random.Next() < 0.25;
 			if ( ( Dot( n, view.eye - Load( triangle.a ) ) > 0 ) == away )
 				std::swap( triangle.b, triangle.c );
 			occluders.push_back( triangle );
+		}
+		// The size prefilter never drops a triangle that would cover a cell.
+		for ( const Triangle &triangle : occluders )
+		{
+			const Vec a = Load( triangle.a ), b = Load( triangle.b ), c = Load( triangle.c );
+			const Vec middle = ( a + b + c ) * ( 1.0 / 3.0 );
+			const double radius = std::fmax( std::sqrt( Dot( a - middle, a - middle ) ),
+			    std::fmax( std::sqrt( Dot( b - middle, b - middle ) ),
+			        std::sqrt( Dot( c - middle, c - middle ) ) ) );
+			const double perimeter = std::sqrt( Dot( b - a, b - a ) ) +
+			                         std::sqrt( Dot( c - b, c - b ) ) +
+			                         std::sqrt( Dot( a - c, a - c ) );
+			const double inradius =
+			    std::sqrt( Dot( Cross( b - a, c - a ), Cross( b - a, c - a ) ) ) / perimeter;
+			float center[3];
+			Store( middle, center );
+			buffer.Begin( view.matrix, view.eyeF, view.zNear, view.zFar );
+			buffer.AddOccluder( triangle.a, triangle.b, triangle.c, true );
+			++prefilterTested;
+			if ( !buffer.MayCoverCell( center, float( radius ), float( inradius ) ) )
+			{
+				++prefilterSkipped;
+				prefilterWrong += buffer.RasterizedOccluders() != 0;
+			}
 		}
 		buffer.Begin( view.matrix, view.eyeF, view.zNear, view.zFar );
 		for ( const Triangle &triangle : occluders )
@@ -350,12 +397,12 @@ void TestOcclusion()
 		for ( int i = 0; i < 60; ++i )
 		{
 			const double depth = random.Range( 1, 600 );
-			const Vec middle = view.eye + view.forward * depth +
-			                   ( view.right * random.Range( -1.2, 1.2 ) +
-			                       view.up * random.Range( -1.2, 1.2 ) ) *
-			                       ( depth / view.focal );
-			const Vec half = { random.Range( 0.1, 20 ), random.Range( 0.1, 20 ),
-				random.Range( 0.1, 20 ) };
+			const Vec middle =
+			    view.eye + view.forward * depth +
+			    ( view.right * random.Range( -1.2, 1.2 ) + view.up * random.Range( -1.2, 1.2 ) ) *
+			        ( depth / view.focal );
+			const Vec half = {
+			    random.Range( 0.1, 20 ), random.Range( 0.1, 20 ), random.Range( 0.1, 20 ) };
 			float mins[3], maxs[3];
 			Store( middle - half, mins );
 			Store( middle + half, maxs );
@@ -377,8 +424,8 @@ void TestOcclusion()
 		buffer.Begin( view.matrix, view.eyeF, view.zNear, view.zFar );
 		for ( Triangle triangle : occluders )
 		{
-			const Vec n = Cross( Load( triangle.b ) - Load( triangle.a ),
-			    Load( triangle.c ) - Load( triangle.a ) );
+			const Vec n = Cross(
+			    Load( triangle.b ) - Load( triangle.a ), Load( triangle.c ) - Load( triangle.a ) );
 			if ( Dot( n, view.eye - Load( triangle.a ) ) > 0 )
 				std::swap( triangle.b, triangle.c );
 			buffer.AddOccluder( triangle.a, triangle.b, triangle.c, false );
@@ -386,13 +433,63 @@ void TestOcclusion()
 		buffer.Finish();
 		backFaceIgnored += buffer.RasterizedOccluders() == 0;
 	}
-	std::printf( "occlusion: %d of %d boxes culled, %d unsound; center culler %d culled, %d caught; "
-	             "%d of 300 back-facing scenes rasterized nothing\n",
+	std::printf(
+	    "occlusion: %d of %d boxes culled, %d unsound; center culler %d culled, %d caught; "
+	    "%d of 300 back-facing scenes rasterized nothing\n",
 	    culled, tested, unsound, badCulled, badCaught, backFaceIgnored );
 	CHECK( unsound == 0 );
 	CHECK( culled > tested / 20 );
 	CHECK( badCaught > 0 );
 	CHECK( backFaceIgnored == 300 );
+	// Random triangles of every size and shape, near and far.
+	for ( int trial = 0; trial < 20000; ++trial )
+	{
+		View view;
+		view.eye = { 0, 0, 0 };
+		view.forward = random.Direction();
+		view.right = Unit( Cross( view.forward, random.Direction() ) );
+		view.up = Cross( view.right, view.forward );
+		view.focal = random.Range( 0.8, 3.0 );
+		view.Build();
+		const double size = std::exp( random.Range( std::log( 0.05 ), std::log( 200.0 ) ) );
+		const Vec middle =
+		    view.forward * random.Range( 1, 400 ) +
+		    ( view.right * random.Range( -1, 1 ) + view.up * random.Range( -1, 1 ) ) * 30.0;
+		const Vec a = middle + random.Direction() * size;
+		const Vec b = middle + random.Direction() * size;
+		const Vec c = middle + random.Direction() * ( size * random.Range( 0.01, 1.0 ) );
+		Triangle triangle;
+		Store( a, triangle.a );
+		Store( b, triangle.b );
+		Store( c, triangle.c );
+		const Vec center =
+		    ( Load( triangle.a ) + Load( triangle.b ) + Load( triangle.c ) ) * ( 1.0 / 3.0 );
+		double radius = 0;
+		for ( const float *corner : { triangle.a, triangle.b, triangle.c } )
+			radius = std::fmax(
+			    radius, std::sqrt( Dot( Load( corner ) - center, Load( corner ) - center ) ) );
+		const Vec ab = Load( triangle.b ) - Load( triangle.a ),
+		          bc = Load( triangle.c ) - Load( triangle.b ),
+		          ca = Load( triangle.a ) - Load( triangle.c );
+		const double perimeter =
+		    std::sqrt( Dot( ab, ab ) ) + std::sqrt( Dot( bc, bc ) ) + std::sqrt( Dot( ca, ca ) );
+		const double inradius =
+		    std::sqrt( Dot( Cross( ab, ca * -1.0 ), Cross( ab, ca * -1.0 ) ) ) / perimeter;
+		float centerF[3];
+		Store( center, centerF );
+		buffer.Begin( view.matrix, view.eyeF, view.zNear, view.zFar );
+		buffer.AddOccluder( triangle.a, triangle.b, triangle.c, true );
+		++prefilterTested;
+		if ( !buffer.MayCoverCell( centerF, float( radius ), float( inradius ) ) )
+		{
+			++prefilterSkipped;
+			prefilterWrong += buffer.RasterizedOccluders() != 0;
+		}
+	}
+	std::printf( "prefilter: skipped %d of %d triangles, %d of them would have covered a cell\n",
+	    prefilterSkipped, prefilterTested, prefilterWrong );
+	CHECK( prefilterWrong == 0 );
+	CHECK( prefilterSkipped > prefilterTested / 4 );
 
 	// Fixed case: a wall facing the eye hides a box behind it but not one in
 	// front of it, and not a box that reaches the near plane.
@@ -420,8 +517,10 @@ void TestOcclusion()
 	CHECK( buffer.RasterizedOccluders() == 1 );
 	// The size prefilter keeps the wall and drops a speck far away.
 	const float wallCenter[3] = { 100, 0, -333 }, speckCenter[3] = { 3000, 0, 0 };
-	CHECK( buffer.MayCoverCell( wallCenter, 1500 ) );
-	CHECK( !buffer.MayCoverCell( speckCenter, 0.5f ) );
+	CHECK( buffer.MayCoverCell( wallCenter, 1500, 500 ) );
+	CHECK( !buffer.MayCoverCell( speckCenter, 0.5f, 0.2f ) );
+	// A long sliver near the eye cannot contain a cell either.
+	CHECK( !buffer.MayCoverCell( wallCenter, 1500, 0.01f ) );
 	CHECK( buffer.CoveredCells() > OcclusionBuffer::kWidth * OcclusionBuffer::kHeight / 2 );
 	CHECK( buffer.IsBoxOccluded( behindMin, behindMax ) );
 	CHECK( !buffer.IsBoxOccluded( frontMin, frontMax ) );

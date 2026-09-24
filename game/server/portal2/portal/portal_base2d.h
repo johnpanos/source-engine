@@ -12,7 +12,7 @@
 #endif
 
 #include "baseanimating.h"
-#include "PortalSimulation.h"
+#include "portalsimulation.h"
 #include "pvs_extender.h"
 #include "portal_base2d_shared.h"
 
@@ -127,7 +127,28 @@ public:
 	// The four corners of the portal in worldspace, updated on placement. The four points will be coplanar on the portal plane.
 	Vector m_vPortalCorners[4];
 
-	CNetworkVarEmbedded( CPortalSimulator, m_PortalSimulator );
+	// CPortalSimulator is intentionally non-assignable because it owns a reference.
+	// Preserve embedded network notifications without the macro CopyFrom assignment.
+	class NetworkVar_m_PortalSimulator : public CPortalSimulator
+	{
+		static inline int GetOffset_m_PortalSimulator()
+		{
+			return MyOffsetOf( ThisClass, m_PortalSimulator );
+		}
+
+	public:
+		virtual void NetworkStateChanged()
+		{
+			DispatchNetworkStateChanged(
+			    (ThisClass *)( ( (char *)this ) - GetOffset_m_PortalSimulator() ) );
+		}
+		virtual void NetworkStateChanged( void *pProp )
+		{
+			DispatchNetworkStateChanged(
+			    (ThisClass *)( ( (char *)this ) - GetOffset_m_PortalSimulator() ), pProp );
+		}
+	};
+	NetworkVar_m_PortalSimulator m_PortalSimulator;
 
 	//virtual bool			CreateVPhysics( void );
 	//virtual void			VPhysicsDestroyObject( void );

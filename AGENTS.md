@@ -380,7 +380,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 29 / R29 | Four-platform architecture proof; 0001 rank 15 expanded to Linux/macOS/iOS/Android | R12, R18, R26, R28 | Each target passes foundation and SDL3/Vulkan native lifecycle smoke; Apple portability, iOS static composition and mobile packaging demonstrated; headless roles tested where declared | planned |
 | 30 / R30 | Existing parallel kernels; 0003 E | R21 | Each bones/query-cache/entity-packing/leaf/shadow cohort independently passes three-mode, ownership, latency/performance and rollback gates | partial ([batch migration](RFC/0003-batch-migration-progress.md)) |
 | 31 / R31 | Physics core compatibility; 0004 C | R19 | Required traces, filters, events, materials, constraints/ragdolls, controllers and persistence pass client/dedicated gameplay corpus | planned |
-| 32 / R32 | Native Vulkan functional MVP; 0001 rank 16 | R10, R28 | Representative map renders opt-in; resource/pipeline/upload/sync/swapchain contracts pass; unsupported features fail explicitly | planned |
+| 32 / R32 | Native Vulkan functional MVP; 0001 rank 16 | R10, R28 | Representative map renders opt-in; resource/pipeline/upload/sync/swapchain contracts pass; unsupported features fail explicitly | active ([video options](RFC/0001-native-vulkan-video-options-progress.md)) |
 | 33 / R47 | PBR material family core; 0007 A/D | R02, R15 | BRDF analytic and white-furnace tests; `pbr` pixel family matches Cycles references; negative controls fail; capability and validated fallback on D3D9/DXVK | active ([0007 progress](RFC/0007-progress.md)) |
 | 34 / R48 | Compile tools on Waf and bake seam; 0007 B, vvis track | R01, R02, R03 | vbsp/vvis/vrad build on a declared profile; byte-identical legacy lumps and PVS vs legacy executables; shared baker suite passes the legacy provider and rejects bad providers | partial ([Linux compiler host smoke](RFC/0007-progress.md#r48-host-compiler-preparation-2026-09-23)) |
 | 35 / R53 | BSP2 container and map-reader seam; 0008 F1 | R02, R04 | Legacy lumps carried byte-identically; client/server load both containers; independent reader, fuzzing and dedicated-server link evidence pass | active ([0008 progress](RFC/0008-progress.md)) |
@@ -609,6 +609,21 @@ Keep the table concise and link details below or from the domain progress file.
   [recorded with microbenchmarks and oracles](RFC/0003-scheduler-performance-progress.md).
   Examples: real-pool 1-worker 2048-item dispatch 38.8→4.4 µs, and Seal up to 42×
   faster. Q-JOBS is now 10/10. This sets no frame budget and closes no gate.
+
+- R32-VIDEO-OPTIONS: `partial` (2026-09-23). The Video options take effect on
+  native Vulkan: real display modes and mode-change callbacks, vsync through
+  `render.present-policy.v1`, brightness applied at present, DirectX 95 caps,
+  real adapter identity with `dxsupport.cfg` recommendations shared with D3D9
+  (0 mismatches over 676k cases), and MSAA with resolves. There are five new
+  `render.contracts` owners with sensitivity rows. The GPU suites, the full
+  pixel oracle at level 95, and DXVK regression boots pass.
+  - Flashlight shadow depth (P7) is not started and stays reported unsupported.
+  - Wayland FIFO under headless mutter can stall acquires. That predates this
+    work; native now recovers through a 1 s acquire timeout, but it is
+    unverified on a real session.
+  - Native now honors the saved `mat_vsync 0` (no longer always FIFO), and
+    re-autoconfigures once because the saved adapter IDs were 0.
+  - See the [video options record](RFC/0001-native-vulkan-video-options-progress.md).
 
 - R32-FRAME-PACING: `partial` (2026-09-22). The Android portal stutter is
   reproduced on Linux by [`frame_pacing.py`](tools/quality/frame_pacing.py) with

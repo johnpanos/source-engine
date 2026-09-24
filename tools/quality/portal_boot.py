@@ -676,7 +676,9 @@ def main(argv=None):
                    # by) a game the user is running.
                    "-multirun",
                    "-novid", "-insecure", "-console", "-condebug", "-dev", "-physics", args.physics,
-                   "+sv_cheats", "1", "+mat_queue_mode", "0", "+fps_max", "60", "+map", args.map,
+                   # mat_vsync 0: a real present-mode wait must not stretch the boot.
+                   "+sv_cheats", "1", "+mat_queue_mode", "0", "+mat_vsync", "0", "+fps_max", "60",
+                   "+map", args.map,
                    "+wait", "180", "+status", "+hideconsole", "+developer", "0"]
         # Extra console commands run once the map has loaded, before the capture
         # (e.g. "setpos X Y Z" / "setang P Y R" to frame the same view on every

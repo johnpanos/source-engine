@@ -14,7 +14,7 @@
 #include "model_types.h"
 #include "portal/weapon_physcannon.h" //grab controllers
 
-#include "PortalSimulation.h"
+#include "portalsimulation.h"
 
 #define MAX_SHADOW_CLONE_COUNT 200
 

@@ -54,13 +54,13 @@ private:
 
 BEGIN_DATADESC( CPointChangelevel )
 
-DEFINE_INPUTFUNC( FIELD_STRING, "ChangeLevel", InputChangeLevel ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "ChangeLevel", InputChangeLevel ),
 
-    DEFINE_OUTPUT( m_OnChangeLevel, "OnChangeLevel" ),
+	DEFINE_OUTPUT( m_OnChangeLevel, "OnChangeLevel" ),
 
-    END_DATADESC()
+END_DATADESC()
 
-        LINK_ENTITY_TO_CLASS( point_changelevel, CPointChangelevel );
+LINK_ENTITY_TO_CLASS( point_changelevel, CPointChangelevel );
 
 //-----------------------------------------------------------------------------
 // Purpose:

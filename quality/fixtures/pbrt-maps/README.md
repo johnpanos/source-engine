@@ -142,12 +142,17 @@ runs one render job per object and re-syncs the scene each time.
 - Collision is one convex 18-DOP per connected part plus extruded floor
   triangles: exact for treads and boxes, conservative for curved furniture.
 - Visibility is conservative: each BSP leaf references the meshlets that can
-  be seen through it (`tools/quality/worldmesh_leaf_visibility.py`) and the
-  engine culls meshlet spheres to the view frustum. Furniture collision is
-  nodraw `func_detail`, so a single-room scene is one vis cluster: PVS culls
-  nothing there, and frustum culling does the work. Check a map with
-  `tools/quality/worldmesh_visibility_oracle.py` (culled frames must be
-  byte-identical to drawing every meshlet).
+  be seen through it (`tools/quality/worldmesh_leaf_visibility.py`). The
+  engine culls groups of 32 meshlets to the view frustum, by WMSH v2
+  front-face cones (materials without `$nocull`), and by software occlusion
+  against the map's large opaque triangles (`engine/worldmesh_cull.h`).
+  Furniture collision is nodraw `func_detail` (collision is not render
+  geometry), so a single-room scene is one vis cluster: PVS culls nothing
+  there. Finely tessellated furniture (cloth, carpet) has no triangle large
+  enough to occlude, so occlusion mostly comes from walls, floors and flat
+  furniture. Check a map with `tools/quality/worldmesh_visibility_oracle.py`:
+  culled frames must be byte-identical to drawing every meshlet, and each
+  stage's negative control must change a frame.
 - Windows show the scene's sky through an unlit `SkyDome` (display-mapped,
   not HDR). One reflection probe per map feeds mirrors and glossy floors:
   blurry mips rather than a GGX prefilter, and no parallax correction, so

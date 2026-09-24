@@ -20,9 +20,7 @@
 
 ConVar cl_erase_stream_color( "cl_erase_stream_color", "255 255 255 0", FCVAR_CHEAT, "Change the appearance of the erase particle stream." );
 
-// Reconstruction note: both 2010 builds register this with the erase stream
-// help text above.
-ConVar draw_paint_particle_stream( "draw_paint_particle_stream", "0", 0, "Change the appearance of the erase particle stream." );
+ConVar draw_paint_particle_stream( "draw_paint_particle_stream", "0", 0 );
 
 // Reconstruction note: the 2010 builds read ConVar paintgun_blobs_per_second.
 // The retail weapon_paintgun_shared.cpp replaced that ConVar with this constant.

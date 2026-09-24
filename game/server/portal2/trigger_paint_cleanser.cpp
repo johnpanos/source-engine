@@ -22,10 +22,10 @@ BEGIN_DATADESC( CTriggerPaintCleanser )
 END_DATADESC()
 
 IMPLEMENT_SERVERCLASS_ST( CTriggerPaintCleanser, DT_TriggerPaintCleanser )
-SendPropBool( SENDINFO_NOCHECK( m_bDisabled ) ),
-    END_SEND_TABLE()
+	SendPropBool( SENDINFO_NOCHECK( m_bDisabled ) ),
+END_SEND_TABLE()
 
-        LINK_ENTITY_TO_CLASS( trigger_paint_cleanser, CTriggerPaintCleanser );
+LINK_ENTITY_TO_CLASS( trigger_paint_cleanser, CTriggerPaintCleanser );
 
 CTriggerPaintCleanser::CTriggerPaintCleanser()
 {

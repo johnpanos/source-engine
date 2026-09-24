@@ -10,8 +10,12 @@
 #pragma once
 
 #include "studio.h"
+#include "mathlib/ssemath.h"
 #include "paint_color_manager.h"
-#include "cegclientwrapper.h"
+
+// The later Steam2 852_3 client and server use all contents for paint-contact
+// brush queries. The earlier 841_1 build used 0x40000 for these calls.
+constexpr int CONTENTS_BRUSH_PAINT = -1;
 
 #define PORTAL_PUSHAWAY_THINK_INTERVAL		(1.0f / 20.0f)
 
@@ -333,11 +337,9 @@ struct PortalPlayerStatistics_t
 	CNetworkVar( float, fDistanceTaken );
 };
 
-
 #if defined( CLIENT_DLL )
 #define CPortal_Player C_Portal_Player
 #define CPortalPlayerLocalData C_PortalPlayerLocalData
 #endif
-
 
 #endif //PORTAL_PLAYER_SHARED_h

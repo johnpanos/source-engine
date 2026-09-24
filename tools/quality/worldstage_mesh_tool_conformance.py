@@ -56,12 +56,22 @@ def main():
         container_bytes = output_path.read_bytes()
         container = Bsp2File(container_bytes, known=(fourcc("WMSH"),))
         entry = container.by_id[fourcc("WMSH")]
-        if (entry["version"] != 1 or entry["flags"] or entry["alignment"] != 4096 or
+        if (entry["version"] != 2 or entry["flags"] or entry["alignment"] != 4096 or
                 container.lump(entry) != wmsh or container.export_legacy() != legacy or
                 read_payload(container.lump(entry))["faces"] != (7,)):
             raise ValueError("WMSH carriage or legacy export differs")
+        # A version 1 payload (cone over vertex normals) is still carried, as
+        # version 1; the engine does not cull with its cone.
+        version1 = wmsh[:4] + struct.pack("<I", 1) + wmsh[8:]
+        wmsh_path.write_bytes(version1)
+        output_path.unlink()
+        completed = run(tool, legacy_path, wmsh_path, output_path)
+        entry1 = (Bsp2File(output_path.read_bytes(), known=(fourcc("WMSH"),)).by_id[fourcc("WMSH")]
+                  if not completed.returncode and output_path.exists() else None)
+        if entry1 is None or entry1["version"] != 1:
+            raise ValueError("pack-world did not carry a version 1 WMSH as version 1")
         mutations = {"truncated": wmsh[:-1], "bad_magic": b"BAD!" + wmsh[4:],
-                     "bad_version": wmsh[:4] + struct.pack("<I", 2) + wmsh[8:],
+                     "bad_version": wmsh[:4] + struct.pack("<I", 3) + wmsh[8:],
                      "bad_section_offset": wmsh[:56] + struct.pack("<Q", 144) + wmsh[64:]}
         for name, section_field, replacement in (
                 ("bad_index", 64, struct.pack("<I", 9)),
@@ -70,6 +80,7 @@ def main():
                 ("bad_tangent", 56, b"\0\0\0\0"),
                 ("bad_meshlet_count", 88, struct.pack("<I", 66)),
                 ("bad_meshlet_bound", 88, struct.pack("<f", 100.0)),
+                ("cone_excludes_front_face", 88, struct.pack("<4f", 0.0, 0.0, -1.0, 0.5)),
                 ("bad_material_path", 112, b"/"),
                 ("bad_material_utf8", 112, b"\xff")):
             changed = bytearray(wmsh)
@@ -78,6 +89,8 @@ def main():
                 offset += 4
             elif name == "bad_meshlet_bound":
                 offset += 16
+            elif name == "cone_excludes_front_face":
+                offset += 32
             elif name == "bad_material_path":
                 offset += 4
             elif name == "bad_material_utf8":
@@ -92,11 +105,12 @@ def main():
             completed = run(tool, legacy_path, wmsh_path, output_path)
             if completed.returncode != 2 or output_path.exists():
                 raise ValueError("pack-world accepted malformed " + name)
-    evidence = {"status": "pass", "scope": "worldmesh-wmsh-v1-tool-carriage",
+    evidence = {"status": "pass", "scope": "worldmesh-wmsh-v2-tool-carriage",
                 "tool_sha256": sha256(tool.read_bytes()),
                 "legacy_sha256": sha256(legacy), "wmsh_sha256": sha256(wmsh),
                 "container_sha256": sha256(container_bytes),
                 "legacy_export_byte_identical": True, "wmsh_byte_identical": True,
+                "version1_carried": True,
                 "malformed_rejected": sorted(mutations)}
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")

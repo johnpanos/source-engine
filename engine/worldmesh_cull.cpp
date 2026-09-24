@@ -54,8 +54,8 @@ bool ConeFacesAway( const float eye[3], const float center[3], float radius, con
 	// Faces spanning a hemisphere or more always include one that faces the eye.
 	if ( !( cutoff > 0.0f ) )
 		return false;
-	double toCenter[3] = { double( center[0] ) - eye[0], double( center[1] ) - eye[1],
-		double( center[2] ) - eye[2] };
+	double toCenter[3] = {
+	    double( center[0] ) - eye[0], double( center[1] ) - eye[1], double( center[2] ) - eye[2] };
 	const double distance = std::sqrt( Dot( toCenter, toCenter ) );
 	if ( !( distance > radius ) )
 		return false;
@@ -76,8 +76,8 @@ OcclusionBuffer::ClipVertex OcclusionBuffer::Transform( const double point[3] ) 
 {
 	const double *m = m_matrix;
 	return { m[0] * point[0] + m[1] * point[1] + m[2] * point[2] + m[3],
-		m[4] * point[0] + m[5] * point[1] + m[6] * point[2] + m[7],
-		m[12] * point[0] + m[13] * point[1] + m[14] * point[2] + m[15] };
+	    m[4] * point[0] + m[5] * point[1] + m[6] * point[2] + m[7],
+	    m[12] * point[0] + m[13] * point[1] + m[14] * point[2] + m[15] };
 }
 
 void OcclusionBuffer::Begin(
@@ -88,14 +88,13 @@ void OcclusionBuffer::Begin(
 	Load( eye, m_eye );
 	m_zNear = zNear;
 	m_zFar = zFar;
-	// A triangle covering a cell has a circumradius of at least half the
-	// cell's smaller side: 1 / size NDC, or that over the axis scale in world
-	// units at unit depth.
-	const double scaleX = std::sqrt( m_matrix[0] * m_matrix[0] + m_matrix[1] * m_matrix[1] +
-	                                 m_matrix[2] * m_matrix[2] );
-	const double scaleY = std::sqrt( m_matrix[4] * m_matrix[4] + m_matrix[5] * m_matrix[5] +
-	                                 m_matrix[6] * m_matrix[6] );
-	m_cellRadius = float( std::min( 1.0 / ( kWidth * scaleX ), 1.0 / ( kHeight * scaleY ) ) );
+	// Cell units per world unit at depth 1, the larger of the two axes: no
+	// projection magnifies a length more at that depth.
+	const double scaleX = std::sqrt(
+	    m_matrix[0] * m_matrix[0] + m_matrix[1] * m_matrix[1] + m_matrix[2] * m_matrix[2] );
+	const double scaleY = std::sqrt(
+	    m_matrix[4] * m_matrix[4] + m_matrix[5] * m_matrix[5] + m_matrix[6] * m_matrix[6] );
+	m_cellScale = float( std::max( 0.5 * kWidth * scaleX, 0.5 * kHeight * scaleY ) );
 	m_rasterized = 0;
 	m_finished = false;
 	m_levelCount = 0;
@@ -105,7 +104,7 @@ void OcclusionBuffer::Begin(
 	{
 		m_levelWidth[m_levelCount] = width;
 		m_levelHeight[m_levelCount] = height;
-		m_levels[m_levelCount].assign( size_t( width ) * height, FLT_MAX );
+		m_levels[m_levelCount].assign( size_t( width ) * height, 0.0f );
 		++m_levelCount;
 		if ( ( width == 1 && height == 1 ) || m_levelCount == 8 )
 			break;
@@ -114,13 +113,17 @@ void OcclusionBuffer::Begin(
 	}
 }
 
-bool OcclusionBuffer::MayCoverCell( const float center[3], float radius ) const
+bool OcclusionBuffer::MayCoverCell( const float center[3], float radius, float inradius ) const
 {
 	const double *m = m_matrix;
 	const double w = m[12] * center[0] + m[13] * center[1] + m[14] * center[2] + m[15];
-	// Nearer points of the sphere only magnify it; take the nearest depth.
+	if ( w + radius < m_zNear )
+		return false;
+	// A triangle containing a unit cell contains its inscribed circle, so its
+	// projected inradius is at least half a cell; projection magnifies no
+	// length by more than m_cellScale over the nearest depth.
 	const double nearest = std::max( w - radius, m_zNear );
-	return radius >= m_cellRadius * nearest && w + radius >= m_zNear;
+	return inradius * m_cellScale >= 0.5 * nearest;
 }
 
 void OcclusionBuffer::AddOccluder(
@@ -146,8 +149,8 @@ void OcclusionBuffer::AddOccluder(
 		return;
 
 	// Keep the part the GPU draws, zNear <= w <= zFar (Sutherland-Hodgman).
-	ClipVertex polygon[8] = { Transform( corner[0] ), Transform( corner[1] ),
-		Transform( corner[2] ) };
+	ClipVertex polygon[8] = {
+	    Transform( corner[0] ), Transform( corner[1] ), Transform( corner[2] ) };
 	int count = 3;
 	for ( int plane = 0; plane < 2 && count; ++plane )
 	{
@@ -165,7 +168,7 @@ void OcclusionBuffer::AddOccluder(
 			{
 				const double t = fromSide / ( fromSide - toSide );
 				clipped[kept++] = { from.x + ( to.x - from.x ) * t, from.y + ( to.y - from.y ) * t,
-					from.w + ( to.w - from.w ) * t };
+				    from.w + ( to.w - from.w ) * t };
 			}
 		}
 		count = kept;
@@ -200,7 +203,8 @@ void OcclusionBuffer::AddOccluder(
 	int best = 1;
 	for ( int i = 1; i + 1 < count; ++i )
 	{
-		const double fan = ( u[i] - u[0] ) * ( v[i + 1] - v[0] ) - ( u[i + 1] - u[0] ) * ( v[i] - v[0] );
+		const double fan =
+		    ( u[i] - u[0] ) * ( v[i + 1] - v[0] ) - ( u[i + 1] - u[0] ) * ( v[i] - v[0] );
 		if ( std::fabs( fan ) > std::fabs( area ) )
 		{
 			area = fan;
@@ -236,7 +240,8 @@ void OcclusionBuffer::AddOccluder(
 		edgeC[i] = -( edgeU[i] * u[i] + edgeV[i] * v[i] );
 	}
 	// The covered interval of a corner row: every edge >= kCoverMargin.
-	auto interval = [&]( int row, double *low, double *high ) {
+	auto interval = [&]( int row, double *low, double *high )
+	{
 		*low = -DBL_MAX;
 		*high = DBL_MAX;
 		for ( int i = 0; i < count; ++i )
@@ -250,7 +255,9 @@ void OcclusionBuffer::AddOccluder(
 				*high = -DBL_MAX;
 		}
 	};
-	std::vector<float> &depth = m_levels[0];
+	// Cells hold 1 / w, the nearness of the farthest covering point: 0 is
+	// uncovered, larger is nearer. It is affine across a row, so no division.
+	std::vector<float> &nearness = m_levels[0];
 	double low0, high0;
 	interval( row0, &low0, &high0 );
 	bool wrote = false;
@@ -261,15 +268,16 @@ void OcclusionBuffer::AddOccluder(
 		const int first = std::max( column0, int( std::ceil( std::max( low0, low1 ) ) ) );
 		const int last = std::min( column1, int( std::floor( std::min( high0, high1 ) ) ) );
 		// The farthest point of a cell: q is smallest at one corner.
-		const double cornerV = row + ( qv < 0.0 ? 1.0 : 0.0 );
+		const double rowQ = q0 + qv * ( row + ( qv < 0.0 ? 1.0 : 0.0 ) ) + ( qu < 0.0 ? qu : 0.0 );
+		float *pRow = nearness.data() + size_t( row ) * kWidth;
 		for ( int column = first; column < last; ++column )
 		{
-			const double nearest = q0 + qu * ( column + ( qu < 0.0 ? 1.0 : 0.0 ) ) + qv * cornerV;
-			if ( !( nearest > 0.0 ) )
-				continue;
-			float &cell = depth[size_t( row ) * kWidth + column];
-			cell = std::min( cell, float( 1.0 / nearest ) );
-			wrote = true;
+			const float farthest = float( rowQ + qu * column );
+			if ( farthest > pRow[column] )
+			{
+				pRow[column] = farthest;
+				wrote = true;
+			}
 		}
 		low0 = low1;
 		high0 = high1;
@@ -288,11 +296,11 @@ void OcclusionBuffer::Finish()
 		{
 			for ( int x = 0; x < m_levelWidth[level]; ++x )
 			{
-				float value = 0.0f;
+				float value = FLT_MAX;
 				for ( int cy = 2 * y; cy < std::min( 2 * y + 2, childHeight ); ++cy )
 				{
 					for ( int cx = 2 * x; cx < std::min( 2 * x + 2, childWidth ); ++cx )
-						value = std::max( value, child[size_t( cy ) * childWidth + cx] );
+						value = std::min( value, child[size_t( cy ) * childWidth + cx] );
 				}
 				m_levels[level][size_t( y ) * m_levelWidth[level] + x] = value;
 			}
@@ -310,7 +318,7 @@ int OcclusionBuffer::CoveredCells() const
 {
 	int covered = 0;
 	for ( float cell : m_levels[0] )
-		covered += cell != FLT_MAX;
+		covered += cell > 0.0f;
 	return covered;
 }
 
@@ -320,17 +328,17 @@ bool OcclusionBuffer::IsBoxOccluded( const float mins[3], const float maxs[3] ) 
 		return false;
 	// Clip-space intervals of the box from its center and half extents.
 	const double center[3] = { 0.5 * ( double( mins[0] ) + maxs[0] ),
-		0.5 * ( double( mins[1] ) + maxs[1] ), 0.5 * ( double( mins[2] ) + maxs[2] ) };
+	    0.5 * ( double( mins[1] ) + maxs[1] ), 0.5 * ( double( mins[2] ) + maxs[2] ) };
 	const double half[3] = { 0.5 * ( double( maxs[0] ) - mins[0] ),
-		0.5 * ( double( maxs[1] ) - mins[1] ), 0.5 * ( double( maxs[2] ) - mins[2] ) };
+	    0.5 * ( double( maxs[1] ) - mins[1] ), 0.5 * ( double( maxs[2] ) - mins[2] ) };
 	double mid[3], extent[3];
 	const int rows[3] = { 0, 1, 3 };
 	for ( int i = 0; i < 3; ++i )
 	{
 		const double *m = m_matrix + 4 * rows[i];
 		mid[i] = m[0] * center[0] + m[1] * center[1] + m[2] * center[2] + m[3];
-		extent[i] = std::fabs( m[0] ) * half[0] + std::fabs( m[1] ) * half[1] +
-		            std::fabs( m[2] ) * half[2];
+		extent[i] =
+		    std::fabs( m[0] ) * half[0] + std::fabs( m[1] ) * half[1] + std::fabs( m[2] ) * half[2];
 	}
 	const double nearest = mid[2] - extent[2];
 	const double farthest = mid[2] + extent[2];
@@ -357,22 +365,24 @@ bool OcclusionBuffer::IsBoxOccluded( const float mins[3], const float maxs[3] ) 
 	int y1 = std::min( kHeight - 1, int( std::floor( cell[1][1] ) ) );
 	// The level where the rectangle spans at most two texels per axis.
 	int level = 0;
-	while ( level + 1 < m_levelCount && ( ( x1 >> level ) - ( x0 >> level ) > 1 ||
-	                                        ( y1 >> level ) - ( y0 >> level ) > 1 ) )
+	while ( level + 1 < m_levelCount &&
+	        ( ( x1 >> level ) - ( x0 >> level ) > 1 || ( y1 >> level ) - ( y0 >> level ) > 1 ) )
 		++level;
 	x0 >>= level;
 	x1 >>= level;
 	y0 >>= level;
 	y1 >>= level;
-	float occluder = 0.0f;
+	float occluder = FLT_MAX;
 	for ( int y = y0; y <= y1; ++y )
 	{
 		for ( int x = x0; x <= x1; ++x )
-			occluder = std::max( occluder, Hierarchy( level, x, y ) );
+			occluder = std::min( occluder, Hierarchy( level, x, y ) );
 	}
-	if ( occluder == FLT_MAX )
+	// An uncovered cell, or an occluder at or behind the far plane rounding.
+	if ( !( occluder > 0.0f ) )
 		return false;
-	const double far = occluder;
+	// Float storage of 1 / w rounds by at most a relative 2^-24.
+	const double far = ( 1.0 + 1e-6 ) / occluder;
 	const double margin =
 	    far * kDepthRelative + kDepthAbsolute + far * far * kDepthQuantization / m_zNear;
 	return nearest > far + margin;

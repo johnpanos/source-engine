@@ -74,8 +74,7 @@ static void InvokePendingModeChangeCallbacks();
 // combos the native ports implement. -vkdxlevel 90 restores the earlier caps.
 static int NativeCapsDxLevel()
 {
-	static const int s_nLevel =
-	    CommandLine()->ParmValue( "-vkdxlevel", 95 ) == 90 ? 90 : 95;
+	static const int s_nLevel = CommandLine()->ParmValue( "-vkdxlevel", 95 ) == 90 ? 90 : 95;
 	return s_nLevel;
 }
 
@@ -84,10 +83,22 @@ static int NativeCapsDxLevel()
 // Init, before any window exists). The probe runs once.
 static const render_vulkan::VulkanAdapterCaps &CurrentAdapterCaps()
 {
-	if ( g_VulkanContext.IsValid() )
-		return g_VulkanContext.AdapterCaps();
 	static render_vulkan::VulkanAdapterCaps s_Probe;
 	static bool s_bProbed = false;
+	if ( g_VulkanContext.IsValid() )
+	{
+		// A probe that chose another device (one that cannot present to the
+		// window) described a different adapter to dxsupport.cfg.
+		const render_vulkan::VulkanAdapterCaps &live = g_VulkanContext.AdapterCaps();
+		static bool s_bCompared = false;
+		if ( s_bProbed && !s_bCompared && s_Probe.valid &&
+		     ( s_Probe.vendorId != live.vendorId || s_Probe.deviceId != live.deviceId ) )
+			Warning( "[NativeVulkan] the pre-window adapter probe chose '%s', the device is '%s'; "
+			         "recommended settings described the probed adapter\n",
+			    s_Probe.name.c_str(), live.name.c_str() );
+		s_bCompared = true;
+		return live;
+	}
 	if ( !s_bProbed )
 	{
 		s_bProbed = true;
@@ -908,7 +919,7 @@ public:
 	virtual ImageFormat GetBackBufferFormat() const { return IMAGE_FORMAT_RGB888; }
 	virtual void GetBackBufferDimensions( int &width, int &height ) const;
 	virtual int StencilBufferBits() const { return g_VulkanContext.StencilBits(); }
-	virtual bool IsAAEnabled() const { return false; }
+	virtual bool IsAAEnabled() const { return g_VulkanContext.ActiveSampleCount() > 1; }
 	virtual void Present()
 	{
 		// Present a real native Vulkan frame: the clear, any material-facing mesh
@@ -1045,7 +1056,8 @@ private:
 	// launcher owns display selection; false when there is none (tools, tests).
 	bool QueryDesktopDisplay( render::DisplayModeFacts *pDesktop ) const;
 	void RefreshModeList() const;
-	static void ToShaderDisplayMode( const render::DisplayModeFacts &mode, ShaderDisplayMode_t *pInfo );
+	static void ToShaderDisplayMode(
+	    const render::DisplayModeFacts &mode, ShaderDisplayMode_t *pInfo );
 
 #if defined( USE_SDL )
 	ILauncherMgr *m_pLauncherMgr = NULL;
@@ -1130,6 +1142,7 @@ public:
 		         info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight, &error ) )
 			Warning( "[NativeVulkan] back buffer resize failed: %s\n", error.c_str() );
 		g_VulkanContext.RequestVSync( info.m_bWaitForVSync );
+		g_VulkanContext.RequestSampleCount( info.m_nAASamples );
 		if ( g_VulkanContext.IsValid() )
 			return true;
 
@@ -1166,6 +1179,7 @@ public:
 		         info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight, &error ) )
 			Warning( "[NativeVulkan] ChangeVideoMode: %s\n", error.c_str() );
 		g_VulkanContext.RequestVSync( info.m_bWaitForVSync );
+		g_VulkanContext.RequestSampleCount( info.m_nAASamples );
 		if ( !info.m_bResizing )
 			g_bPendingModeChangeCallbacks = true;
 	}
@@ -1724,7 +1738,7 @@ public:
 
 	virtual void PurgeUnusedVertexAndPixelShaders() {}
 
-	virtual bool IsAAEnabled() const { return false; }
+	virtual bool IsAAEnabled() const { return g_VulkanContext.ActiveSampleCount() > 1; }
 
 	virtual int GetVertexTextureCount() const { return 0; }
 
@@ -1830,7 +1844,11 @@ public:
 			enabled = false;
 	}
 
-	virtual bool SupportsMSAAMode( int nMSAAMode ) { return false; }
+	// mat_antialias modes the device can honour exactly (render.sample-count.v1).
+	virtual bool SupportsMSAAMode( int nMSAAMode )
+	{
+		return render::IsMsaaModeSupported( nMSAAMode, CurrentAdapterCaps().backBufferSampleMask );
+	}
 
 	virtual bool SupportsCSAAMode( int nNumSamples, int nQualityLevel ) { return false; }
 
@@ -2170,6 +2188,7 @@ CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode(
 	         mode.m_DisplayMode.m_nWidth, mode.m_DisplayMode.m_nHeight, &sizeError ) )
 		Warning( "[NativeVulkan] back buffer resize failed: %s\n", sizeError.c_str() );
 	g_VulkanContext.RequestVSync( mode.m_bWaitForVSync );
+	g_VulkanContext.RequestSampleCount( mode.m_nAASamples );
 	if ( !g_VulkanContext.IsValid() )
 	{
 		render_vulkan::VulkanContextConfig config;
@@ -2233,7 +2252,8 @@ bool CShaderDeviceMgrVulkan::GetRecommendedConfigurationInfo(
 	if ( !m_pDXSupport && !m_bDXSupportRead )
 	{
 		m_bDXSupportRead = true;
-		m_pDXSupport = dxsupport::ReadConfig( m_pFileSystem, "dxsupport.cfg", "dxsupport_override.cfg" );
+		m_pDXSupport =
+		    dxsupport::ReadConfig( m_pFileSystem, "dxsupport.cfg", "dxsupport_override.cfg" );
 	}
 	if ( !m_pDXSupport )
 		return true;
@@ -2351,13 +2371,13 @@ void CShaderDeviceMgrVulkan::RefreshModeList() const
 	std::vector<render::DisplayModeFacts> modes = QueryDesktopDisplay( &desktop )
 	                                                  ? render::BuildBackBufferModeList( desktop )
 	                                                  : std::vector<render::DisplayModeFacts>();
-	if ( !modes.empty() && ( modes.size() != m_Modes.size() ||
-	                           modes.back().width != m_Modes.back().width ||
-	                           modes.back().height != m_Modes.back().height ) )
+	if ( !modes.empty() &&
+	     ( modes.size() != m_Modes.size() || modes.back().width != m_Modes.back().width ||
+	         modes.back().height != m_Modes.back().height ) )
 		Msg( "[NativeVulkan] %d video modes for desktop %dx%d@%d (%dx%d .. %dx%d)\n",
 		    static_cast<int>( modes.size() ), desktop.width, desktop.height,
-		    desktop.refreshNumerator, modes.front().width, modes.front().height,
-		    modes.back().width, modes.back().height );
+		    desktop.refreshNumerator, modes.front().width, modes.front().height, modes.back().width,
+		    modes.back().height );
 	m_Modes = std::move( modes );
 }
 

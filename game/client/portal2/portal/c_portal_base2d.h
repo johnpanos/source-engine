@@ -16,8 +16,8 @@
 #include "iviewrender.h"
 #include "view_shared.h"
 #include "viewrender.h"
-#include "PortalSimulation.h"
-#include "C_PortalGhostRenderable.h" 
+#include "portalsimulation.h"
+#include "c_portalghostrenderable.h"
 #include "portal_base2d_shared.h"
 #include "portal_player_shared.h"
 
