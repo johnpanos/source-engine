@@ -369,14 +369,18 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
 
 
-def map_manifest(name, scene, solid_meshes=(), envelope=()):
+def map_manifest(name, scene, solid_meshes=(), envelope=(), probe_bounds=None):
     """The fixture's baked state as a playable map, in the `gi-fixture` export
-    profile (quality/map_export_profiles/gi-fixture.json)."""
+    profile (quality/map_export_profiles/gi-fixture.json). `probe_bounds`
+    (meters, min xyz then max xyz) replaces the probe grid's default bounds,
+    the world meshes' own, for an open scene."""
     manifest = {"schema": "pbrt-map-manifest/v1", "map": name, "scene": scene,
                 "quality": "gi-fixture",
                 "collision": {"solid_meshes": list(solid_meshes)}}
     if envelope:
         manifest["collision"]["envelope_meshes"] = list(envelope)
+    if probe_bounds:
+        manifest["probe_volume"] = {"bounds_m": list(probe_bounds)}
     return manifest
 
 
@@ -659,16 +663,21 @@ def probe_grid(out):
             "probes_m": probes, "albedo": rho, "sky_radiance": sky,
             "sun": {"to_sun": to_sun, "irradiance": sun_irradiance,
                     "elevation_degrees": elevation},
-            "note": "Floor treated as infinite (a 40 m square at <= 2 m height misses < 1% "
-                    "of the cosine-weighted lower hemisphere). Irradiance / pi (diffuse light "
-                    "units) on a probe normal n with elevation cosine nz: sky state "
-                    "total = sky * (1 + nz) / 2 + rho * sky * (1 - nz) / 2, indirect = the "
-                    "floor term; sun state direct = E_sun * max(0, n . l) / pi, indirect = "
-                    "rho * E_sun * sin(elevation) / pi * (1 - nz) / 2.",
+            "floor_half_extent_m": half,
+            "note": "Irradiance / pi (diffuse light units) on a probe normal n: the sky "
+                    "(uniform over the whole sphere) where a ray misses the floor square, "
+                    "and the floor's radiance, rho * sky (sky state) or rho * E_sun * "
+                    "sin(elevation) / pi (sun state), where it hits; the sun state adds "
+                    "the direct term E_sun * max(0, n . l) / pi. Floor-hit light is the "
+                    "indirect layer. gi_probes.py integrates this over the finite square: "
+                    "from 1-2 m up, the sky below the horizon past the floor's edge carries "
+                    "about 6% of a horizontal normal's cosine weight, which an infinite-"
+                    "floor formula leaves out.",
             "visibility_note": "probe mean hit distance downward = probe height; upward = "
                                "no hit (sky)"}}))
     write_json(directory / "map.json", map_manifest(
-        "gi_probe_grid", "quality/fixtures/gi/probe-grid/probe-grid.usda"))
+        "gi_probe_grid", "quality/fixtures/gi/probe-grid/probe-grid.usda",
+        probe_bounds=(-5.0, -5.0, 0.25, 5.0, 5.0, 2.75)))
 
 
 def portal_view(out):
@@ -715,12 +724,17 @@ def generate(out):
     write_json(out / "index.json", index)
 
 
+OTHER_WRITERS = {"prbv"}
+
+
 def compare_trees(expected, actual):
     differences = []
     names = {p.relative_to(expected) for p in expected.rglob("*") if p.is_file()} | \
         {p.relative_to(actual) for p in actual.rglob("*") if p.is_file()}
     for name in sorted(names):
-        if "references" in name.parts:
+        # Rendered references (gi_reference.py) and the probe-volume fixtures
+        # (probe_volume.py fixture) have their own writers and checks.
+        if "references" in name.parts or name.parts[0] in OTHER_WRITERS:
             continue
         a, b = expected / name, actual / name
         if not a.is_file() or not b.is_file() or not filecmp.cmp(a, b, shallow=False):

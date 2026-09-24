@@ -337,6 +337,10 @@ def main():
     parser.add_argument("--solid-material", action="append", default=[])
     parser.add_argument("--solid-mesh", action="append", default=[])
     parser.add_argument("--out-dir", type=Path, required=True)
+    parser.add_argument("--no-fallback-light", action="store_true",
+                        help="omit the fallback light entity: the map's probe volume "
+                             "(RFC 0011 PRBV) lights models and derives the leaf ambient, "
+                             "so vrad must add no light of its own")
     args = parser.parse_args()
     if args.out_dir.exists():
         parser.error("output directory already exists: " + str(args.out_dir))
@@ -441,8 +445,9 @@ def main():
     lines.extend(["entity", "{", '\t"id" "2"', '\t"classname" "info_player_start"',
                   '\t"origin" "%d %d %d"' % tuple(spawn["origin"]),
                   '\t"angles" "0 %g 0"' % spawn["yaw"], "}",
+                  ] + ([] if args.no_fallback_light else [
                   "entity", "{", '\t"id" "3"', '\t"classname" "light"',
-                  '\t"origin" "%g %g %g"' % tuple(light), '\t"_light" "255 255 240 300"', "}"])
+                  '\t"origin" "%g %g %g"' % tuple(light), '\t"_light" "255 255 240 300"', "}"]))
     placed = []
     for index, prop in enumerate(map_scene.props(scene)):
         origin = [value * SOURCE_UNITS_PER_METER for value in prop["origin_m"]]
@@ -469,6 +474,7 @@ def main():
                "solid_meshes": solid_names, "solid_brush_count": len(solids),
                "skipped_outside_or_thin": skipped,
                "spawn": spawn, "walkable_tops": tops, "dynamic_models": placed,
+               "fallback_light": not args.no_fallback_light,
                "policy": "18-DOP per connected component; floor triangles extruded; "
                          "solids are func_detail"}
     (args.out_dir / "collision-receipt.json").write_text(

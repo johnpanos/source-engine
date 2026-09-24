@@ -8,6 +8,9 @@
 //   bsp2tool convert <legacy.bsp> <out>    legacy VBSP -> BSP2 (lossless)
 //   bsp2tool export  <bsp2> <out>          BSP2 -> byte-identical legacy VBSP
 //   bsp2tool pack-world <legacy.bsp> <world.wmsh> <out.bsp2>
+//   bsp2tool pack-world-lit <legacy.bsp> <world.wmsh> <atlas.ktx2> <out.bsp2>
+//   bsp2tool pack-world-probed <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv>
+//            <out.bsp2>                   also carries the RFC 0011 probe volume
 //
 // Exit status: 0 success, 1 container error, 2 usage or file I/O error.
 //
@@ -15,6 +18,7 @@
 
 #include "mapcontainer/map_container.h"
 #include "mapcontainer/map_container_builder.h"
+#include "mapcontainer/probe_volume.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh.h"
 #include "mapcontainer/world_mesh_format.h"
@@ -92,6 +96,25 @@ bool ReadWorldLightmap( const char *pPath, std::vector<std::byte> *pBytes, uint3
 	return true;
 }
 
+// A PRBV probe volume (probe_volume.h owns the encoding), fully validated.
+bool ReadProbeVolume( const char *pPath, std::vector<std::byte> *pBytes )
+{
+	FileByteSource source( pPath );
+	if ( !source.IsOpen() || source.Size() < kProbeVolumeHeaderBytes ||
+	     source.Size() > kProbeVolumeMaxBytes )
+		return false;
+	pBytes->resize( size_t( source.Size() ) );
+	if ( !source.ReadAt( 0, pBytes->data(), pBytes->size() ) )
+		return false;
+	const ProbeVolumeError error = ValidateProbeVolume( pBytes->data(), pBytes->size() );
+	if ( error != ProbeVolumeError::Ok )
+	{
+		std::fprintf( stderr, "bsp2tool: PRBV %s\n", ProbeVolumeErrorName( error ) );
+		return false;
+	}
+	return true;
+}
+
 std::string FourCCText( uint32_t fourcc )
 {
 	std::string text;
@@ -154,19 +177,22 @@ int main( int argc, char **argv )
 		std::fprintf( stderr,
 		    "usage: bsp2tool info|verify <map> | convert|export <in> <out> | "
 		    "pack-world <legacy.bsp> <world.wmsh> <out.bsp2> | "
-		    "pack-world-lit <legacy.bsp> <world.wmsh> <atlas.ktx2> <out.bsp2>\n" );
+		    "pack-world-lit <legacy.bsp> <world.wmsh> <atlas.ktx2> <out.bsp2> | "
+		    "pack-world-probed <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv> "
+		    "<out.bsp2>\n" );
 		return 2;
 	}
 	const std::string command = argv[1];
 	const bool bTwoPaths = command == "convert" || command == "export";
 	const bool bPackWorld = command == "pack-world";
-	const bool bPackWorldLit = command == "pack-world-lit";
+	const bool bPackWorldProbed = command == "pack-world-probed";
+	const bool bPackWorldLit = command == "pack-world-lit" || bPackWorldProbed;
 	if ( !bTwoPaths && !bPackWorld && !bPackWorldLit && command != "info" && command != "verify" )
 	{
 		std::fprintf( stderr, "bsp2tool: unknown command '%s'\n", command.c_str() );
 		return 2;
 	}
-	if ( argc != ( bPackWorldLit ? 6 : bPackWorld ? 5 : bTwoPaths ? 4 : 3 ) )
+	if ( argc != ( bPackWorldProbed ? 7 : bPackWorldLit ? 6 : bPackWorld ? 5 : bTwoPaths ? 4 : 3 ) )
 	{
 		std::fprintf( stderr, "bsp2tool: wrong argument count for '%s'\n", command.c_str() );
 		return 2;
@@ -200,7 +226,13 @@ int main( int argc, char **argv )
 		std::fprintf( stderr, "bsp2tool: invalid LMAP (linear RGBA16F KTX2) file %s\n", argv[4] );
 		return 2;
 	}
-	const char *pOutput = argv[bPackWorldLit ? 5 : bPackWorld ? 4 : 3];
+	std::vector<std::byte> probeVolume;
+	if ( bPackWorldProbed && !ReadProbeVolume( argv[5], &probeVolume ) )
+	{
+		std::fprintf( stderr, "bsp2tool: invalid PRBV file %s\n", argv[5] );
+		return 2;
+	}
+	const char *pOutput = argv[bPackWorldProbed ? 6 : bPackWorldLit ? 5 : bPackWorld ? 4 : 3];
 	const std::string temp = std::string( pOutput ) + ".tmp";
 	FileByteSink sink( temp );
 	// The lump version repeats the validated payload's own version.
@@ -210,7 +242,10 @@ int main( int argc, char **argv )
 	    kLumpWorldMesh, worldMeshVersion, 0, kBsp2BulkAlignment, worldMesh };
 	const Bsp2LumpInput lightmapLump{
 	    kLumpWorldLightmap, lightmapVersion, 0, kBsp2BulkAlignment, lightmap };
-	const std::array<Bsp2LumpInput, 2> litLumps = { worldLump, lightmapLump };
+	const Bsp2LumpInput probeLump{
+	    kLumpProbeVolume, kProbeVolumeVersion, 0, kBsp2BulkAlignment, probeVolume };
+	const std::array<Bsp2LumpInput, 3> probedLumps = { worldLump, lightmapLump, probeLump };
+	const std::span<const Bsp2LumpInput> litLumps( probedLumps.data(), bPackWorldProbed ? 3 : 2 );
 	const MapContainerStatus status =
 	    command == "export" ? ExportLegacyFromBsp2( source, sink )
 	    : bPackWorldLit     ? ConvertLegacyToBsp2( source, sink, litLumps )

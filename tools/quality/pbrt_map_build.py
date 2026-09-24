@@ -23,11 +23,15 @@ pinned tools under build/toolchains/ and writes the default toolchain file;
     denoise      OpenImageDenoise RTLightmap filter (manifest lightmap.denoise, default on)
     probe        optional reflection probe (manifest reflection_probe): six Cycles cube
                  faces, stored as roughness mips in rows the bake reserved in the LMAP
+    probe-volume optional RFC 0011 PRBV (profile/manifest probe_volume): Cycles-baked
+                 irradiance and ray-traced visibility per probe (probe_volume_bake.py);
+                 the map then has no vrad fallback light, and its leaf ambient is
+                 derived from the volume (leaf_ambient_from_prbv.py) in `pack`
     ktx2         atlas -> linear RGBA16F KTX2 (LMAP payload)
     sky          render stage = lighting stage + SkyDome for window views (scenes with a sky)
     collision    shell/solids/spawn VMF
     compile      vbsp2 / vvis / vrad -> collision + PVS BSP
-    pack         USD triangles -> WMSH + LMAP inside BSP2
+    pack         USD triangles -> WMSH + LMAP (+ PRBV) inside BSP2
     content      VTF/VMT materials + maps/<map>.bsp content root
     boot         (with --boot) headless native Vulkan boot and screenshot at the spawn
     camera-boot  (with --boot) second boot with the camera at the PBRT reference eye
@@ -64,7 +68,7 @@ import playable_maps  # noqa: E402
 import reference_compare  # noqa: E402
 
 STEPS = ("scene", "environment", "stage", "reference-gate", "bake", "denoise", "directional",
-         "probe", "ktx2", "sky",
+         "probe", "probe-volume", "ktx2", "sky",
          "collision", "compile", "pack", "content", "boot", "camera-boot", "runtime-gate",
          "traversal-boot", "traversal", "audit")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
@@ -156,6 +160,7 @@ class Pipeline:
                          "layers": list(lightmap.get("layers", [])),
                          "exclude_materials": lightmap.get("exclude_materials", [])}
         self.probe = with_defaults(manifest, self.profile, "reflection_probe")
+        self.probe_volume = with_defaults(manifest, self.profile, "probe_volume")
         reference = dict(self.profile.get("reference") or {}, **manifest.get("reference", {}))
         self.reference_render = reference.get("render")
         self.runtime_gate = with_defaults(manifest, self.profile, "runtime_gate")
@@ -181,6 +186,9 @@ class Pipeline:
             "audit": self.out / "audit.json",
             "ktx2": self.out / "lighting" / "atlas.ktx2",
             "probe": self.out / "lighting" / "probe",
+            "prbv": self.out / "lighting" / "probe_volume.prbv",
+            "prbv_work": self.out / "lighting" / "probe_volume",
+            "bsp_ambient": self.out / (self.map + "_leaf_ambient.bsp"),
             "sky_texture": self.out / "sky.png",
             "render_stage": self.out / "lighting" / (self.map + "_render.usda"),
             "collision": self.out / "collision",
@@ -417,6 +425,22 @@ class Pipeline:
                       [p["probe"]],
                       lambda: self.blender("probe", "pbrt_reflection_probe.py", face_args))
             probe_args = ["--probe-dir", p["probe"], "--probe-width", str(probe_width)]
+        volume = self.probe_volume
+        if volume:
+            volume_args = ["--scene", scene, "--stage", p["stage"],
+                           "--spacing", str(volume["spacing_m"]),
+                           "--samples", str(volume.get("samples", 4096)),
+                           "--device", self.lightmap["device"],
+                           "--light-paths", self.lightmap["light_paths"],
+                           "--out", p["prbv"], "--work", p["prbv_work"]] + env_args
+            if volume.get("bounds_m"):
+                volume_args += ["--bounds"] + [str(value) for value in volume["bounds_m"]]
+            self.step("probe-volume", [p["stage"]] + ([environment] if environment else []),
+                      dict(volume, light_paths=self.lightmap["light_paths"]),
+                      SCENE_SCRIPTS + ["probe_volume_bake.py", "probe_volume.py",
+                                       "pbrt_blender.py"],
+                      [p["prbv"], p["prbv_work"]],
+                      lambda: self.blender("probe-volume", "probe_volume_bake.py", volume_args))
         # A scene sun: baked visibility + marker texels for dynamic specular.
         sun_args = []
         if self.scene.get("distant_lights") and probe:
@@ -451,12 +475,15 @@ class Pipeline:
         collision = self.manifest.get("collision", {})
         collision_args = ["--scene", scene, "--stage", p["lighting_stage"], "--map-name",
                           self.map, "--out-dir", p["collision"]]
+        if volume:
+            collision_args.append("--no-fallback-light")
         for flag, key in (("--envelope-mesh", "envelope_meshes"),
                           ("--solid-material", "solid_materials"),
                           ("--solid-mesh", "solid_meshes")):
             for value in collision.get(key, []):
                 collision_args += [flag, value]
-        self.step("collision", [scene, p["lighting_stage"]], collision,
+        self.step("collision", [scene, p["lighting_stage"]],
+                  dict(collision, **({"fallback_light": False} if volume else {})),
                   SCENE_SCRIPTS + ["pbrt_collision_vmf.py"], [p["collision"]],
                   lambda: self.usd_python("collision", "pbrt_collision_vmf.py", collision_args))
         vmf = p["collision"] / (self.map + "_collision.vmf")
@@ -472,12 +499,18 @@ class Pipeline:
                                             "-game", game, p["bsp"]])
             return seconds
         self.step("compile", [vmf], {"tools": str(tools)}, [], [p["bsp"]], compile_map)
-        self.step("pack", [pack_stage, p["lighting_stage"], p["bsp"], p["ktx2"]],
-                  {"prefix": self.map, **self.world_mesh},
-                  ["usd_worldmesh_pack.py", "worldmesh_seam_weld.py"],
-                  [p["wmsh"], p["wmsh"].with_name(p["wmsh"].name + ".json"), p["bsp2"]],
-                  lambda: self.usd_python("pack", "usd_worldmesh_pack.py", [
-                      "--stage", pack_stage, "--bsp", p["bsp"], "--material-prefix",
+        pack_bsp = p["bsp_ambient"] if volume else p["bsp"]
+
+        def pack():
+            seconds = 0.0
+            if volume:
+                seconds += self.run("pack", [sys.executable, HERE / "leaf_ambient_from_prbv.py",
+                                             "--bsp", p["bsp"], "--prbv", p["prbv"],
+                                             "--out", p["bsp_ambient"], "--receipt",
+                                             p["bsp_ambient"].with_suffix(".json")])
+            return seconds + self.usd_python("pack", "usd_worldmesh_pack.py", pack_args)
+        pack_args = ([
+                      "--stage", pack_stage, "--bsp", pack_bsp, "--material-prefix",
                       self.map, "--require-lightmap-uv"] +
                       (["--include-emitters"] if self.scene["emitters"] else []) + [
                       "--lightmap-ktx2", p["ktx2"], "--bsp2tool", self.tools["bsp2tool"],
@@ -489,7 +522,17 @@ class Pipeline:
                        for item in ("--weld-material", material)] +
                       # Dynamic models are placed as entities, not world mesh.
                       [item for name in sorted(map_scene.prop_shape_names(self.scene))
-                       for item in ("--exclude-mesh", name)]))
+                       for item in ("--exclude-mesh", name)] +
+                      (["--probe-volume", p["prbv"]] if volume else []))
+        self.step("pack", [pack_stage, p["lighting_stage"], p["bsp"], p["ktx2"]] +
+                  ([p["prbv"]] if volume else []),
+                  dict({"prefix": self.map, **self.world_mesh},
+                       **({"probe_volume": True} if volume else {})),
+                  ["usd_worldmesh_pack.py", "worldmesh_seam_weld.py"] +
+                  (["leaf_ambient_from_prbv.py", "probe_volume.py"] if volume else []),
+                  [p["wmsh"], p["wmsh"].with_name(p["wmsh"].name + ".json"), p["bsp2"]] +
+                  ([p["bsp_ambient"], p["bsp_ambient"].with_suffix(".json")] if volume else []),
+                  pack)
         sky_args = ["--sky-texture", p["sky_texture"]] if environment else []
         self.step("content", [scene, p["stage_receipt"], p["bsp2"]] +
                   ([p["sky_texture"]] if environment else []), {},

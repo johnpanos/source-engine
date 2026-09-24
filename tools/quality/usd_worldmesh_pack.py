@@ -185,6 +185,8 @@ def main():
     parser.add_argument("--lightmap-ktx2", type=Path)
     parser.add_argument("--bsp2tool", type=Path)
     parser.add_argument("--out-bsp2", type=Path)
+    parser.add_argument("--probe-volume", type=Path,
+                        help="PRBV probe volume to carry in the BSP2 (RFC 0011)")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     pack_requested = (args.lightmap_ktx2, args.bsp2tool, args.out_bsp2)
@@ -236,15 +238,22 @@ def main():
     if args.out_bsp2:
         if not args.lightmap_ktx2.is_file() or not args.bsp2tool.is_file():
             raise FileNotFoundError("lightmap KTX2 or BSP2 packer is missing")
-        subprocess.run([str(args.bsp2tool.resolve()), "pack-world-lit", str(args.bsp),
-                        str(args.out), str(args.lightmap_ktx2), str(args.out_bsp2)],
-                       check=True, capture_output=True, text=True, timeout=120)
+        if args.probe_volume:
+            command = [str(args.bsp2tool.resolve()), "pack-world-probed", str(args.bsp),
+                       str(args.out), str(args.lightmap_ktx2), str(args.probe_volume),
+                       str(args.out_bsp2)]
+        else:
+            command = [str(args.bsp2tool.resolve()), "pack-world-lit", str(args.bsp),
+                       str(args.out), str(args.lightmap_ktx2), str(args.out_bsp2)]
+        subprocess.run(command, check=True, capture_output=True, text=True, timeout=120)
         subprocess.run([sys.executable,
                         str(Path(__file__).with_name("bsp2_reader.py")),
                         "validate", str(args.out_bsp2)], check=True, capture_output=True,
                        text=True, timeout=120)
         evidence.update(bsp2_sha256=sha256(args.out_bsp2),
                         lightmap_ktx2_sha256=sha256(args.lightmap_ktx2),
+                        probe_volume_sha256=sha256(args.probe_volume)
+                        if args.probe_volume else None,
                         bsp2_path=str(args.out_bsp2))
     receipt_path.write_text(json.dumps(evidence, indent=2,
                                        sort_keys=True) + "\n")

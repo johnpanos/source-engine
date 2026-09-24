@@ -1,7 +1,8 @@
 {
   "analytic": {
     "albedo": 0.5,
-    "note": "Floor treated as infinite (a 40 m square at <= 2 m height misses < 1% of the cosine-weighted lower hemisphere). Irradiance / pi (diffuse light units) on a probe normal n with elevation cosine nz: sky state total = sky * (1 + nz) / 2 + rho * sky * (1 - nz) / 2, indirect = the floor term; sun state direct = E_sun * max(0, n . l) / pi, indirect = rho * E_sun * sin(elevation) / pi * (1 - nz) / 2.",
+    "floor_half_extent_m": 20.0,
+    "note": "Irradiance / pi (diffuse light units) on a probe normal n: the sky (uniform over the whole sphere) where a ray misses the floor square, and the floor's radiance, rho * sky (sky state) or rho * E_sun * sin(elevation) / pi (sun state), where it hits; the sun state adds the direct term E_sun * max(0, n . l) / pi. Floor-hit light is the indirect layer. gi_probes.py integrates this over the finite square: from 1-2 m up, the sky below the horizon past the floor's edge carries about 6% of a horizontal normal's cosine weight, which an infinite-floor formula leaves out.",
     "probes_m": [
       [
         0.0,
