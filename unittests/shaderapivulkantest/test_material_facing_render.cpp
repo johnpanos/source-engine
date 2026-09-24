@@ -103,6 +103,37 @@ int main()
 	check( services.hardware->MaximumAnisotropicLevel() == ctx->MaxAnisotropicLevel(),
 	    "material hardware config reports the selected device's anisotropic level" );
 
+	// render.display-modes.v1: modes come from the launcher's desktop display.
+	// This composition has no launcher, so the manager offers no modes and no
+	// current mode rather than inventing a size.
+	check( services.manager->GetModeCount( 0 ) == 0,
+	    "without a launcher the device manager offers no video modes" );
+	{
+		ShaderDisplayMode_t current;
+		current.m_nWidth = current.m_nHeight = -1;
+		services.manager->GetCurrentModeInfo( &current, 0 );
+		check( current.m_nWidth == 0 && current.m_nHeight == 0 &&
+		           current.m_nRefreshRateDenominator == 0,
+		    "without a launcher the current mode is empty" );
+		ShaderDisplayMode_t missing;
+		missing.m_nWidth = -1;
+		services.manager->GetModeInfo( &missing, 0, 0 );
+		check( missing.m_nWidth == 0 && missing.m_nRefreshRateDenominator == 0,
+		    "an out-of-range mode index yields an empty mode" );
+	}
+
+	// render.present-policy.v1 through the legacy entry point: the mode's
+	// m_bWaitForVSync reaches the context and applies at the next frame.
+	{
+		ShaderDeviceInfo_t vsyncOn = mode;
+		vsyncOn.m_bWaitForVSync = true;
+		services.api->ChangeVideoMode( vsyncOn );
+		check( ctx->VSyncRequested(), "ChangeVideoMode forwards m_bWaitForVSync" );
+		services.device->Present();
+		check( ctx->PresentMode() == VK_PRESENT_MODE_FIFO_KHR,
+		    "vsync on presents FIFO after the next frame" );
+	}
+
 	// Drive the material system's clear color and present through the legacy
 	// interfaces, capturing the presented frame.
 	services.api->ClearColor4ub( 0, 0, 255, 255 ); // blue, via IShaderAPI

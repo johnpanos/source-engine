@@ -769,7 +769,8 @@ void CMatSystemSurface::FinishDrawing( void )
 void CMatSystemSurface::RunFrame()
 {
 	// A display scale or ui_scale change relays out like a screen size change.
-	UpdateUIScale( true );
+	UpdateUIScale();
+	FollowScreenSize();
 	RunPendingFontReset();
 
 	int nPollCount = g_pInputSystem->GetPollCount();
@@ -2649,7 +2650,7 @@ void CMatSystemSurface::GetScreenPixelSize( int &iWide, int &iTall )
 float CMatSystemSurface::UIScale()
 {
 	if ( !m_bUIScaleEvaluated )
-		UpdateUIScale( false );
+		UpdateUIScale();
 	return m_flUIScale;
 }
 
@@ -2677,9 +2678,9 @@ void CMatSystemSurface::PixelToUIUnits( int &x, int &y )
 }
 
 // Re-evaluates the UI scale from the window's display scale, the ui_scale
-// setting and how the back buffer is presented. With bNotifyChange, a changed
-// scale relays out the panels as a screen size change does.
-void CMatSystemSurface::UpdateUIScale( bool bNotifyChange )
+// setting and how the viewport the UI draws into is presented in the window.
+// A new scale reloads the fonts once it settles; FollowScreenSize relays out.
+void CMatSystemSurface::UpdateUIScale()
 {
 	if ( !m_UIScaleSetting.IsValid() )
 		m_UIScaleSetting.Init( "ui_scale", true );
@@ -2697,21 +2698,26 @@ void CMatSystemSurface::UpdateUIScale( bool bNotifyChange )
 		inputs.drawableTall = static_cast<int>( nDrawableTall );
 	}
 #endif
-	g_pMaterialSystem->GetBackBufferDimensions( inputs.backBufferWide, inputs.backBufferTall );
+	// The viewport, not the reported back buffer: a device reset can lag the
+	// mode, and the UI draws into the viewport.
+	int nViewportX, nViewportY;
+	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+	pRenderContext->GetViewport(
+	    nViewportX, nViewportY, inputs.backBufferWide, inputs.backBufferTall );
 
 	const float flScale = uiscale::ComputeScale( inputs );
 	if ( m_bUIScaleEvaluated && flScale == m_flUIScale )
 		return;
 
-	// The root panel's size under the previous scale.
-	int nOldX, nOldY, nOldWide, nOldTall;
-	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
-	pRenderContext->GetViewport( nOldX, nOldY, nOldWide, nOldTall );
-	nOldWide = uiscale::UnitsCoveringPixels( nOldWide, m_flUIScale );
-	nOldTall = uiscale::UnitsCoveringPixels( nOldTall, m_flUIScale );
 	const bool bFirst = !m_bUIScaleEvaluated;
 	m_bUIScaleEvaluated = true;
 	m_flUIScale = flScale;
+	if ( !bFirst )
+	{
+		m_bFontResetPending = true;
+		m_flFontResetTime = Plat_FloatTime() + kFontResetSettleSeconds;
+	}
+
 	// A resize in progress can briefly change the presentation ratio; report
 	// those changes to developers only.
 	const bool bInputsChanged = inputs.displayScale != m_flLoggedDisplayScale ||
@@ -2720,15 +2726,30 @@ void CMatSystemSurface::UpdateUIScale( bool bNotifyChange )
 	m_flLoggedUserScale = inputs.userScale;
 	char szReport[256];
 	V_snprintf( szReport, sizeof( szReport ),
-	    "VGUI UI scale %.2f (display %.2f, ui_scale %.2f, back buffer %dx%d, window %dx%d)\n",
+	    "VGUI UI scale %.2f (display %.2f, ui_scale %.2f, viewport %dx%d, window %dx%d)\n",
 	    flScale, inputs.displayScale, inputs.userScale, inputs.backBufferWide,
 	    inputs.backBufferTall, inputs.drawableWide, inputs.drawableTall );
 	if ( bInputsChanged )
 		Msg( "%s", szReport );
 	else
 		DevMsg( "%s", szReport );
-	if ( bNotifyChange && !bFirst )
-		NotifyScreenSizeChanged( nOldWide, nOldTall );
+}
+
+// Relays out the panels whenever the screen in UI units differs from the size
+// they last followed: a UI scale change, or a viewport change nobody announced.
+void CMatSystemSurface::FollowScreenSize()
+{
+	int nWide, nTall;
+	GetScreenSize( nWide, nTall );
+	if ( m_nLaidOutWide < 0 )
+	{
+		// The panels created so far were sized to the screen as it is now.
+		m_nLaidOutWide = nWide;
+		m_nLaidOutTall = nTall;
+		return;
+	}
+	if ( nWide != m_nLaidOutWide || nTall != m_nLaidOutTall )
+		NotifyScreenSizeChanged( m_nLaidOutWide, m_nLaidOutTall );
 }
 
 bool CMatSystemSurface::ForceScreenSizeOverride( bool bState, int wide, int tall )
@@ -2776,12 +2797,16 @@ bool CMatSystemSurface::IsScreenPosOverrideActive( void )
 //-----------------------------------------------------------------------------
 void CMatSystemSurface::OnScreenSizeChanged( int nOldWidth, int nOldHeight )
 {
-	// The caller reports the old size in pixels; the panels were laid out in UI
-	// units under the scale in effect then. The new mode can change the scale.
+	// The caller reports the old mode in pixels. The panels follow the size they
+	// last laid out at, which a UI scale change between modes can make differ.
 	const float flOldScale = UIScale();
-	UpdateUIScale( false );
-	NotifyScreenSizeChanged( uiscale::UnitsCoveringPixels( nOldWidth, flOldScale ),
-	    uiscale::UnitsCoveringPixels( nOldHeight, flOldScale ) );
+	if ( m_nLaidOutWide < 0 )
+	{
+		m_nLaidOutWide = uiscale::UnitsCoveringPixels( nOldWidth, flOldScale );
+		m_nLaidOutTall = uiscale::UnitsCoveringPixels( nOldHeight, flOldScale );
+	}
+	UpdateUIScale();
+	NotifyScreenSizeChanged( m_nLaidOutWide, m_nLaidOutTall );
 
 	// Run a frame of the GUI to notify all subwindows of the message size change
 	ivgui()->RunFrame();
@@ -2793,6 +2818,8 @@ void CMatSystemSurface::NotifyScreenSizeChanged( int nOldWidth, int nOldHeight )
 {
 	int iNewWidth, iNewHeight;
 	GetScreenSize( iNewWidth, iNewHeight );
+	m_nLaidOutWide = iNewWidth;
+	m_nLaidOutTall = iNewHeight;
 
 	Msg( "Changing resolutions from (%d, %d) -> (%d, %d)\n", nOldWidth, nOldHeight, iNewWidth, iNewHeight );
 

@@ -1,0 +1,30 @@
+{
+  "schema": "frame-pacing-scenario/v1",
+  "id": "bedroom-frame-pacing-v1",
+  "description": "PBRT bedroom map (quality/fixtures/pbrt-maps/bedroom.json, run with --content-root <out>/content) drawn through the WMSH path: stand at the spawn by the door and hold four views, the reference view of the bed, the window wall, the dresser and mirror wall and the door. Frames come from the native Vulkan renderer (-vkframestats); the last pass is the warm one.",
+  "map": "bedroom",
+  "passes": 2,
+  "host_framerate": 60,
+  "setup": [
+    "r_worldmesh_draw 2",
+    "notarget",
+    "wait 120"
+  ],
+  "body": [
+    "setpos 136 -130 4",
+    "setang 5 139 0",
+    "wait 60",
+    "vk_frame_mark view_bed",
+    "wait 180",
+    "setang 5 90 0",
+    "vk_frame_mark view_windows",
+    "wait 180",
+    "setang 5 180 0",
+    "vk_frame_mark view_dresser",
+    "wait 180",
+    "setang 5 300 0",
+    "vk_frame_mark view_door",
+    "wait 180"
+  ],
+  "budgets": {}
+}

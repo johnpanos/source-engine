@@ -245,6 +245,16 @@ public:
 		SetKeyBoardInputEnabled( state );
 	}
 
+	// The root panels always cover the screen. A UI scale change can arrive
+	// between video mode changes, so the size they had is not a reliable test.
+	virtual void OnScreenSizeChanged( int nOldWide, int nOldTall )
+	{
+		BaseClass::OnScreenSizeChanged( nOldWide, nOldTall );
+		int nWide, nTall;
+		GetRootPanelSize( nWide, nTall );
+		SetBounds( 0, 0, nWide, nTall );
+	}
+
 /*	virtual vgui::VPANEL IsWithinTraverse(int x, int y, bool traversePopups)
 	{
 		if ( !m_bCanFocus )
@@ -274,6 +284,15 @@ public:
 		SetCursor( vgui::dc_none );
 		SetKeyBoardInputEnabled( false );
 		SetMouseInputEnabled( false );
+	}
+
+	// Always covers the screen (see CEnginePanel::OnScreenSizeChanged).
+	virtual void OnScreenSizeChanged( int nOldWide, int nOldTall )
+	{
+		BaseClass::OnScreenSizeChanged( nOldWide, nOldTall );
+		int nWide, nTall;
+		GetRootPanelSize( nWide, nTall );
+		SetBounds( 0, 0, nWide, nTall );
 	}
 };
 

@@ -37,6 +37,9 @@ done
 
 # ---- Build (incremental; waf itself is the staleness check) ------------------
 if [ "$BUILD" = 1 ]; then
+    # Replay the tree's own configure options if a wscript, Waf tool, toolchain
+    # policy or profile changed since it was configured.
+    python3 tools/quality/ensure_configured.py --build "$BUILD_DIR"
     echo "run.sh: building $BUILD_DIR (waf, incremental) ..."
     # Each configured tree keeps its own Waf lock file, so build from inside it.
     (cd "$BUILD_DIR" && python3 "$ROOT/waf" build)

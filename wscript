@@ -3,7 +3,7 @@
 # nillerusr
 
 from __future__ import print_function
-from waflib import Logs, Context, Configure
+from waflib import Logs, Context, Configure, Options
 import sys
 import os
 import json
@@ -572,6 +572,11 @@ def check_deps(conf):
 
 def configure(conf):
 	conf.load('fwgslib reconfigure compiler_optimizations')
+	# --rebuild-cache/--reconfigure replace conf.options with the options stored
+	# when the tree was configured; options added since then keep their defaults.
+	for name, value in vars(Options.options).items():
+		if not hasattr(conf.options, name):
+			setattr(conf.options, name, value)
 
 	# Force XP compability, all build targets should add
 	# subsystem=bld.env.MSVC_SUBSYSTEM

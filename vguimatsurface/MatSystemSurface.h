@@ -489,13 +489,17 @@ private:
 	// UI scale (UIScale.h): back buffer pixels per UI unit. The surface lays out,
 	// paints and exchanges cursor positions in UI units; a screen size override
 	// (a panel rendered to a texture) is already in UI units and is unscaled.
-	void UpdateUIScale( bool bNotifyChange );
+	void UpdateUIScale();
+	void FollowScreenSize();
 	float UIScale();
 	float ScreenUIScale();
 	void GetScreenPixelSize( int &wide, int &tall );
 	void NotifyScreenSizeChanged( int nOldWide, int nOldTall );
 	float m_flUIScale = 1.0f;
 	bool m_bUIScaleEvaluated = false;
+	// The screen size in UI units the panels last laid out at (-1 before the first frame).
+	int m_nLaidOutWide = -1;
+	int m_nLaidOutTall = -1;
 	float m_flLoggedDisplayScale = -1.0f;
 	float m_flLoggedUserScale = -1.0f;
 	// The engine's ui_scale setting, looked up once the engine registers it.

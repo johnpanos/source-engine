@@ -319,6 +319,9 @@ def run_once(args, scenario, passes, build, output):
         stage = output / "runtime"
         evidence["staging"] = portal_boot.stage_runtime(args.runtime, stage)
         evidence["build_overrides"] = portal_boot.install_build(build, stage)
+        if args.content_root:
+            # A map built outside the runtime (e.g. pbrt_map_build.py content/).
+            evidence["content_overrides"] = portal_boot.install_content(args.content_root, stage)
         (stage / "portal/cfg").mkdir(parents=True, exist_ok=True)
         cfgs = scenario_cfgs(scenario_commands(scenario, passes))
         for name, text in cfgs.items():
@@ -437,6 +440,8 @@ def main(argv=None):
     parser.add_argument("--scenario", type=Path,
                         default=Path(conformance.repo_root()) / "quality/workloads/portal-frame-pacing-v1.json")
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--content-root", type=Path,
+                        help="extra game content (maps/, materials/) installed into the stage")
     parser.add_argument("--renderer", default="native-vulkan")
     parser.add_argument("--physics", default="vphysics")
     parser.add_argument("--passes", type=int, help="override the scenario's pass count")

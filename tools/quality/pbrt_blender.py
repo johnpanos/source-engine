@@ -222,6 +222,12 @@ def add_camera(scene, name):
     camera.matrix_world = PBRT_TO_USD @ world_from_camera
     data.type = "PERSP"
     film = scene["film"]
+    # Blender's USD export derives the camera apertures from the scene's render
+    # resolution, so it must be the film's before export; the default 16:9
+    # turned a square 70-degree camera into a 102-degree one after re-import.
+    render = bpy.context.scene.render
+    render.resolution_x, render.resolution_y = film["width"], film["height"]
+    render.resolution_percentage = 100
     # PBRT's fov spans the shorter image axis.
     data.sensor_fit = "VERTICAL" if film["width"] >= film["height"] else "HORIZONTAL"
     if data.sensor_fit == "VERTICAL":

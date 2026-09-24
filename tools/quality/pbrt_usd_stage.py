@@ -11,6 +11,7 @@ render re-imports the written stage, so it measures what was exported.
 import argparse
 import hashlib
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -87,6 +88,18 @@ def render_reference(scene, stage, environment, out, samples, scale, device):
     camera = bpy.data.objects.get(CAMERA_NAME)
     if not camera:
         raise ValueError("USD round trip lost the reference camera")
+    render_settings = bpy.context.scene.render
+    film = scene["film"]
+    render_settings.resolution_x, render_settings.resolution_y = film["width"], film["height"]
+    # The exported camera must reproduce PBRT's fov on the shorter axis;
+    # measure it from Blender's projection at the film resolution.
+    projection = camera.calc_matrix_camera(bpy.context.evaluated_depsgraph_get(),
+                                           x=film["width"], y=film["height"])
+    shorter = 2 * math.atan(1.0 / (projection[1][1] if film["width"] >= film["height"]
+                                   else projection[0][0]))
+    if abs(math.degrees(shorter) - scene["camera"]["fov_degrees"]) > 0.1:
+        raise ValueError("USD camera fov %.2f differs from PBRT %.2f" %
+                         (math.degrees(shorter), scene["camera"]["fov_degrees"]))
     render = bpy.context.scene
     render.camera = camera
     used = pbrt_blender.configure_cycles(samples, device)
