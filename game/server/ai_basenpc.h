@@ -2119,6 +2119,12 @@ public:
 	CNetworkVar( int,   m_iSpeedModRadius );
 	CNetworkVar( int,   m_iSpeedModSpeed );
 	CNetworkVar( float, m_flTimePingEffect );			// Display the pinged effect until this time
+#ifdef PORTAL2
+	// Retail Portal 2 networks entity names; its client finds the NPC that
+	// speaks for PotatOS (@glados or @actor_potatos) by name.
+	enum { NETWORKED_NAME_LENGTH = 64 };
+	CNetworkString( m_szNetworkedName, NETWORKED_NAME_LENGTH );
+#endif
 
 	void				InputActivateSpeedModifier( inputdata_t &inputdata ) { m_bSpeedModActive = true; }
 	void				InputDisableSpeedModifier( inputdata_t &inputdata ) { m_bSpeedModActive = false; }

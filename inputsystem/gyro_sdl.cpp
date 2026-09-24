@@ -160,8 +160,8 @@ void CInputSystem::CheckGyroSamples()
 	}
 	else if ( !m_bGyroStallReported && flNow - m_flGyroLastSampleTime > kSilentSeconds )
 	{
-		Warning( "Gyro: the gyroscope is on but has delivered no samples for %.0f s\n",
-		    kSilentSeconds );
+		Warning(
+		    "Gyro: the gyroscope is on but has delivered no samples for %.0f s\n", kSilentSeconds );
 		m_bGyroStallReported = true;
 	}
 	m_flGyroLastPollTime = flNow;

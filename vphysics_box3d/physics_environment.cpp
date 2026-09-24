@@ -77,9 +77,13 @@ float MixFriction( float frictionA, uint64_t, float frictionB, uint64_t )
 	return clamp( frictionA * frictionB, 0.0f, 1.0f );
 }
 
+// The elasticity product is the fraction of normal-speed *energy* an impact
+// keeps (IVP_Impact_Solver::do_impact gives back speed * sqrt(conservation)),
+// so the velocity restitution is its square root: metal on concrete is
+// sqrt(0.2 * 0.2) = 0.2, not 0.04.
 float MixRestitution( float restitutionA, uint64_t, float restitutionB, uint64_t )
 {
-	return clamp( restitutionA * restitutionB, 0.0f, 1.0f );
+	return sqrtf( clamp( restitutionA * restitutionB, 0.0f, 1.0f ) );
 }
 
 // World-space contact point and normal (A to B) of a Box3D contact.

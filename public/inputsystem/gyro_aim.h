@@ -33,10 +33,10 @@ namespace gyroaim
 // Values of touch_gyro_axis.
 enum ETurnAxis
 {
-	TURN_YAW = 0,		   // turn the device about screen-up
-	TURN_ROLL,			   // steer it like a wheel
-	TURN_YAW_AND_ROLL,	   // both, added
-	TURN_PLAYER_SPACE,	   // about world up (the default)
+	TURN_YAW = 0,      // turn the device about screen-up
+	TURN_ROLL,         // steer it like a wheel
+	TURN_YAW_AND_ROLL, // both, added
+	TURN_PLAYER_SPACE, // about world up (the default)
 	TURN_AXIS_COUNT
 };
 
@@ -58,8 +58,7 @@ inline float Turn( int nAxis, const float rotation[3], const float *up )
 		return rotation[1] + rotation[2];
 	case TURN_PLAYER_SPACE:
 	{
-		const float flUpLength =
-		    up ? sqrtf( up[0] * up[0] + up[1] * up[1] + up[2] * up[2] ) : 0.f;
+		const float flUpLength = up ? sqrtf( up[0] * up[0] + up[1] * up[1] + up[2] * up[2] ) : 0.f;
 		if ( !( flUpLength > 1e-6f ) )
 			return rotation[1];
 		// Rotation about world up, leaving pitch out: pitching the device

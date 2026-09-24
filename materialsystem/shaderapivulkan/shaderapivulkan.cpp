@@ -643,6 +643,9 @@ static void ReportUnimplementedEntries()
 	    static_cast<unsigned long long>( g_DrawsUntextured ) );
 
 	fprintf( stderr, "[vulkan] snapshots=%zu of %zu\n", SnapshotCount(), SnapshotCapacity() );
+	fprintf( stderr, "[vulkan] fog: scene mode=%d color=%d,%d,%d start=%.1f end=%.1f z=%.1f max=%.2f\n",
+	    static_cast<int>( g_Fog.sceneMode ), g_Fog.sceneColor[0], g_Fog.sceneColor[1],
+	    g_Fog.sceneColor[2], g_Fog.start, g_Fog.end, g_Fog.fogZ, g_Fog.maxDensity );
 	fprintf( stderr, "[vulkan] presents=%llu scaled=%llu\n",
 	    static_cast<unsigned long long>( g_VulkanContext.PresentCount() ),
 	    static_cast<unsigned long long>( g_VulkanContext.ScaledPresentCount() ) );
@@ -2182,7 +2185,12 @@ public:
 	virtual bool SupportsFetch4() { return false; }
 
 	virtual int NeedsShaderSRGBConversion( void ) const { return 0; }
-	virtual bool UsesSRGBCorrectBlending() const { return false; }
+	// D3D9 reports DX10-style blending (sRGB writes blended in linear space) on
+	// every current GPU; this backend blends so whenever its attachments are sRGB.
+	virtual bool UsesSRGBCorrectBlending() const
+	{
+		return g_VulkanContext.LinearSpaceSrgbBlending();
+	}
 
 	virtual bool HasFastVertexTextures() const { return false; }
 

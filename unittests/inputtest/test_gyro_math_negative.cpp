@@ -68,8 +68,8 @@ void IntegrateAcrossGaps( const gyrotest::Sample *samples, int count, double rot
 }
 
 // A fixed weight per sample: the smoothing then depends on the sample rate.
-void FilterUpPerSample(
-    double flTimeConstant, const double *seconds, const float ( *samples )[3], int count, float up[3] )
+void FilterUpPerSample( double flTimeConstant, const double *seconds, const float ( *samples )[3],
+    int count, float up[3] )
 {
 	bool bHave = false;
 	for ( int i = 0; i < count; ++i )

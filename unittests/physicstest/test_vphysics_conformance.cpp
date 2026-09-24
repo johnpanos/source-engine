@@ -1015,12 +1015,18 @@ static void TestPhyFixture( PhyFixture_t &fixture, int fixtureIndex )
 		Step( world.pEnv, 5.0f );
 		bool finite = true, rested = true;
 		int created = 0;
+		float worstZ = 0.0f, worstSpeed = 0.0f;
 		for ( int i = 0; i < vc.solidCount; i++ )
 		{
 			if ( !objects[i] )
 				continue;
 			created++;
 			Vector position = PositionOf( objects[i] );
+			if ( VelocityOf( objects[i] ).Length() >= worstSpeed )
+			{
+				worstSpeed = VelocityOf( objects[i] ).Length();
+				worstZ = position.z;
+			}
 			finite &= IsFiniteVec( position ) && IsFiniteVec( VelocityOf( objects[i] ) );
 			// Loose ragdoll limbs may still roll; single models must settle.
 			bool restedHere = position.z > -1.0f && position.z < 150.0f &&
@@ -1028,7 +1034,8 @@ static void TestPhyFixture( PhyFixture_t &fixture, int fixtureIndex )
 			rested &= restedHere;
 		}
 		Check( TIER_GAMEPLAY, "vcollide.model-simulates", created == vc.solidCount && finite && rested,
-			"%s created %d finite %d rested %d", fixture.pPath, created, finite, rested );
+			"%s created %d finite %d rested %d (fastest: z %.2f speed %.2f)", fixture.pPath, created, finite, rested,
+			worstZ, worstSpeed );
 		DestroyWorld( world );
 	}
 	free( pData );

@@ -40,8 +40,8 @@ struct Policy
 	void ( *tighten )( float &, float &, float, float );
 };
 
-inline void FilterUpReal(
-    double flTimeConstant, const double *seconds, const float ( *samples )[3], int count, float up[3] )
+inline void FilterUpReal( double flTimeConstant, const double *seconds, const float ( *samples )[3],
+    int count, float up[3] )
 {
 	gyro::CUpFilter filter( flTimeConstant );
 	for ( int i = 0; i < count; ++i )
@@ -52,7 +52,8 @@ inline void FilterUpReal(
 			filter.Reset();
 			continue;
 		}
-		filter.AddSample( static_cast<int64_t>( std::llround( seconds[i] * 1e9 ) ), samples[i], up );
+		filter.AddSample(
+		    static_cast<int64_t>( std::llround( seconds[i] * 1e9 ) ), samples[i], up );
 	}
 }
 
@@ -329,7 +330,7 @@ inline void CheckTurn( const Policy &policy, Tally &tally )
 {
 	const float kHalf = 0.70710678f;
 	const float upright[3] = { 0.f, 9.81f, 0.f };  // screen vertical, as held at eye level
-	const float flat[3] = { 0.f, 0.f, 9.81f };	   // lying face up
+	const float flat[3] = { 0.f, 0.f, 9.81f };     // lying face up
 	const float tilted[3] = { 0.f, kHalf, kHalf }; // top edge tilted 45 degrees back
 	const int P = gyroaim::TURN_PLAYER_SPACE;
 
@@ -370,7 +371,7 @@ inline void CheckTurn( const Policy &policy, Tally &tally )
 	const float pitchUp[3] = { 0.6f, 0.f, 0.f };
 	const float sideways[3] = { 9.81f, 0.f, 0.f };
 	tally.Check( NearF( policy.turn( P, pitchUp, tilted ), 0.f ) &&
-	        NearF( policy.turn( P, pitchUp, sideways ), 0.f ),
+	                 NearF( policy.turn( P, pitchUp, sideways ), 0.f ),
 	    "player space: pitching the device does not turn" );
 
 	// A device tilted sideways reduces the world-up share of its yaw.
@@ -380,19 +381,22 @@ inline void CheckTurn( const Policy &policy, Tally &tally )
 
 	// Only the direction of up matters.
 	const float tiltedLong[3] = { 0.f, 9.81f * kHalf, 9.81f * kHalf };
-	tally.Check( NearF( policy.turn( P, bodyLeft, tiltedLong ), policy.turn( P, bodyLeft, tilted ) ),
+	tally.Check(
+	    NearF( policy.turn( P, bodyLeft, tiltedLong ), policy.turn( P, bodyLeft, tilted ) ),
 	    "player space does not depend on the length of up" );
 
 	// Without a known up, player space turns like yaw mode.
 	const float zero[3] = { 0.f, 0.f, 0.f };
 	tally.Check( NearF( policy.turn( P, bodyLeft, NULL ), 0.4f * kHalf ) &&
-	        NearF( policy.turn( P, bodyLeft, zero ), 0.4f * kHalf ),
+	                 NearF( policy.turn( P, bodyLeft, zero ), 0.4f * kHalf ),
 	    "player space without up falls back to yaw" );
 
 	// The other modes.
 	const float both[3] = { 0.1f, 0.2f, 0.3f };
-	tally.Check( NearF( policy.turn( gyroaim::TURN_YAW, both, flat ), 0.2f ), "yaw mode turns by yaw" );
-	tally.Check( NearF( policy.turn( gyroaim::TURN_ROLL, both, flat ), 0.3f ), "roll mode turns by roll" );
+	tally.Check(
+	    NearF( policy.turn( gyroaim::TURN_YAW, both, flat ), 0.2f ), "yaw mode turns by yaw" );
+	tally.Check(
+	    NearF( policy.turn( gyroaim::TURN_ROLL, both, flat ), 0.3f ), "roll mode turns by roll" );
 	tally.Check( NearF( policy.turn( gyroaim::TURN_YAW_AND_ROLL, both, flat ), 0.5f ),
 	    "yaw-and-roll mode adds them" );
 	tally.Check( NearF( policy.turn( 99, both, flat ), 0.2f ), "an unknown mode turns by yaw" );
@@ -415,7 +419,7 @@ inline void CheckTighten( const Policy &policy, Tally &tally )
 	turn = 0.6f * 0.5f * kThreshold * kFrame, pitch = 0.8f * 0.5f * kThreshold * kFrame;
 	policy.tighten( turn, pitch, kFrame, kThreshold );
 	tally.Check( NearF( turn, 0.6f * 0.25f * kThreshold * kFrame, 1e-10f ) &&
-	        NearF( pitch, 0.8f * 0.25f * kThreshold * kFrame, 1e-10f ),
+	                 NearF( pitch, 0.8f * 0.25f * kThreshold * kFrame, 1e-10f ),
 	    "half the threshold speed moves a quarter as far, in the same direction" );
 
 	// The speed is of turn and pitch together: a fast turn keeps a slow pitch.
@@ -427,7 +431,8 @@ inline void CheckTighten( const Policy &policy, Tally &tally )
 	// No step at the threshold.
 	turn = 0.999f * kThreshold * kFrame, pitch = 0.f;
 	policy.tighten( turn, pitch, kFrame, kThreshold );
-	tally.Check( turn > 0.99f * kThreshold * kFrame, "just below the threshold is nearly unchanged" );
+	tally.Check(
+	    turn > 0.99f * kThreshold * kFrame, "just below the threshold is nearly unchanged" );
 
 	// Speed, not angle: the same angle over a shorter interval is faster.
 	turn = 0.5f * kThreshold * kFrame, pitch = 0.f;

@@ -389,8 +389,8 @@ struct TouchGyroDebug_t
 };
 static TouchGyroDebug_t s_GyroDebug;
 
-static void TouchGyroDebugFrame( bool read, bool engaged, const float rotation[3], float turn,
-    float pitch, const float *up )
+static void TouchGyroDebugFrame(
+    bool read, bool engaged, const float rotation[3], float turn, float pitch, const float *up )
 {
 	TouchGyroDebug_t &d = s_GyroDebug;
 	if ( read )
@@ -423,8 +423,8 @@ void CTouchControls::GetGyroDelta( float *dx, float *dy )
 	*dx = *dy = 0.f;
 
 	float rotation[3];
-	const bool read = inputsystem &&
-	    inputsystem->GetGyroAccumulators( rotation[0], rotation[1], rotation[2] );
+	const bool read =
+	    inputsystem && inputsystem->GetGyroAccumulators( rotation[0], rotation[1], rotation[2] );
 	if ( !read )
 	{
 		if ( touch_gyro_debug.GetBool() )
@@ -450,8 +450,8 @@ void CTouchControls::GetGyroDelta( float *dx, float *dy )
 		    turn, pitch, (float)seconds, DEG2RAD( touch_gyro_tightening.GetFloat() ) );
 
 		// Positive turn is to the left and positive pitch looks up.
-		const float scale = RAD2DEG( 1.f ) * touch_gyro_sensitivity.GetFloat() *
-		                    gHUD.GetFOVSensitivityAdjust();
+		const float scale =
+		    RAD2DEG( 1.f ) * touch_gyro_sensitivity.GetFloat() * gHUD.GetFOVSensitivityAdjust();
 		*dx = -turn * scale;
 		*dy = -pitch * scale * ( touch_gyro_invert_pitch.GetBool() ? -1.f : 1.f );
 	}

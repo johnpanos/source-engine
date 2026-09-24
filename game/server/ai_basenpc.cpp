@@ -6781,6 +6781,10 @@ void CAI_BaseNPC::NPCInit ( void )
 		return;
 	}
 
+#ifdef PORTAL2
+	V_strncpy( m_szNetworkedName.GetForModify(), STRING( GetEntityName() ), NETWORKED_NAME_LENGTH );
+#endif
+
 	if( IsWaitingToRappel() )
 	{
 		// If this guy's supposed to rappel, keep him from
@@ -10793,6 +10797,9 @@ IMPLEMENT_SERVERCLASS_ST( CAI_BaseNPC, DT_AI_BaseNPC )
 	SendPropInt( SENDINFO( m_iSpeedModSpeed ) ),
 	SendPropBool( SENDINFO( m_bImportanRagdoll ) ),
 	SendPropFloat( SENDINFO( m_flTimePingEffect ) ),
+#ifdef PORTAL2
+	SendPropString( SENDINFO( m_szNetworkedName ) ),
+#endif
 END_SEND_TABLE()
 
 //-------------------------------------

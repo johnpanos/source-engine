@@ -228,31 +228,97 @@ observations do not carry over.
 
 ## Gyro aiming
 
-The client aims with the device gyroscope (`touch_gyro`, set on the Touch
-options page):
+The client aims with the device gyroscope. It is meant to behave like Steam
+Input's gyro camera on a Steam Deck. The settings are on the Touch options
+page.
+
+`touch_gyro` controls when the gyro aims:
 - `0`: off.
-- `1`, the default: while a finger rests on the look area. This works like the
-  Steam Deck's gyro that turns on when the right trackpad is touched.
+- `1`, the default: while a finger rests on the look area, or on a button
+  inside it. This is the Steam Deck's "gyro while the right trackpad is
+  touched". Lifting the finger lets the device move freely, so a player can
+  re-center without moving the view.
 - `2`: always.
+
+`touch_gyro_axis` controls what turns the view:
+- `3`, the default: player space. The direction of a turn comes from rotation
+  about world up (the gravity sensor, or a filtered accelerometer where there
+  is none). The amount comes from the device's yaw and roll together, allowing
+  45 degrees of slack. Turning your body or the device turns the view the same
+  amount, however far the screen is tilted back.
+- `0`: yaw only.
+- `1`: roll only (steering like a wheel).
+- `2`: yaw and roll added.
+
+The other settings:
+- `touch_gyro_sensitivity`: view degrees per device degree. The default 1.0 is
+  a 1:1 mapping.
+- `touch_gyro_tightening`: device rotation slower than this, in degrees per
+  second (default 1), is scaled down smoothly. This steadies hand tremor and
+  sensor noise without a deadzone step.
+- `touch_gyro_invert_pitch`: inverts up/down aiming.
+
+Pitch always follows the tilt about screen-right. The gyro adds to touch look,
+and it is off while the game UI is showing. `touch_gyro_debug 1` prints the
+gyro's input and output once a second. The aiming policy is
+`public/inputsystem/gyro_aim.h`.
 
 `inputsystem/gyro_sensor.cpp` reads the NDK sensor queue on its own thread
 because SDL3's Android sensor backend is fixed at 60 Hz. It samples at twice
 the display refresh rate, for example 240 Hz on a 120 Hz panel. It integrates
-each sample by its hardware timestamp. The main thread only reads atomic totals.
-Android 12 and later cap sensors at 200 Hz without
+each sample by its hardware timestamp, and the main thread only reads atomic
+totals. Android 12 and later cap sensors at 200 Hz without
 `HIGH_SAMPLING_RATE_SENSORS`, so the profile declares that permission. It is an
 install-time permission and shows no prompt. The sensor is off while the app is
 in the background and while gyro aiming is off.
 
-The rate policy, the display-rotation axis remap and the integrator are tested
-by the `input.gyro` conformance suite (37 checks). Its sensitivity twin,
-`input.gyro.sensitivity`, confirms that six plausible defects are caught. Aim
-feel, orientation signs on hardware and the achieved sensor rate are
-`unverified` until they are measured on a device.
+**Field failure, fixed 2026-09-24.** Gyro aiming did nothing on the Fold7. The
+sensor thread prepared its looper with `ALooper_prepare(0)`, but it polls the
+queue by ident without a callback. A looper accepts that only with
+`ALOOPER_PREPARE_ALLOW_NON_CALLBACKS`. Otherwise `addFd` refuses and only logs
+`Invalid attempt to set NULL callback but not allowed for this looper`. The
+thread then slept forever while SensorService cached the unread events
+(`dumpsys sensorservice`: `cache size 3537`), and every rotation total stayed
+exactly zero. An enabled gyroscope that delivers no samples for 1 s is now
+reported once in the log.
+
+Host tests:
+- `input.gyro` (68 checks) covers the rate policy, the display-rotation axis
+  remap, the integrator, the up filter, player-space turning and tightening.
+  The turning cases are derived from how the device is held.
+- `input.gyro.sensitivity` confirms that 13 plausible defects are caught.
+  Among them: player space ignoring up, missing the relax or its cap,
+  tightening as a deadzone, per axis or by angle, and an up filter tied to the
+  sample rate.
 
 ```sh
 python3 tools/quality/conformance.py check --suite input.gyro --suite input.gyro.sensitivity
 ```
+
+The device test drives the real sensor thread from `adb shell`. It needs no
+APK and no screen, so a locked device works. It checks:
+- that samples reach the totals at about the requested rate;
+- that up is measured;
+- suspend, resume, turning off, a prompt `Shutdown` and a second lifetime.
+
+With the looper bug restored, it fails 8 of its 32 checks (0 Hz, exactly zero
+rotation).
+
+```sh
+tools/quality/android_gyro_device_test.sh --serial <device>
+```
+
+Evidence (Galaxy Z Fold7, 2026-09-24):
+- Device test: 32/32; 230 Hz achieved for 240 Hz asked; up from the
+  `gravity` sensor, |up| 9.807.
+- Portal 2 with `touch_gyro_debug 1`: an in-game session showed device and
+  view rotation agreeing while the look area was held, for example 30.7
+  degrees of device yaw giving 29.7 degrees of view turn. Nothing moved when
+  the finger lifted, and SensorService's cache for the connection stayed at 0.
+- The screen-axis remap was confirmed on the cover display: held upright, up
+  read about (0, 9.7, 1.2) in screen axes.
+- `unverified`: the inner display's landscape-natural remap on hardware,
+  tightening and sensitivity feel, and devices without a gravity sensor.
 
 ## Device rumble
 

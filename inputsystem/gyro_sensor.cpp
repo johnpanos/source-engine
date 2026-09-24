@@ -166,8 +166,8 @@ void CGyroSensor::State::Run()
 				else
 					Warning( "Gyro: could not enable the gyroscope at %d us\n", nWantedUs );
 				// Without it, turning falls back to the device's own axes.
-				if ( m_pUpSensor &&
-				     ASensorEventQueue_registerSensor( pQueue, m_pUpSensor, m_nUpPeriodUs, 0 ) == 0 )
+				if ( m_pUpSensor && ASensorEventQueue_registerSensor(
+				                        pQueue, m_pUpSensor, m_nUpPeriodUs, 0 ) == 0 )
 					bUpActive = true;
 			}
 		}
@@ -255,7 +255,8 @@ bool CGyroSensor::Init()
 	pState->m_pUpSensor = ASensorManager_getDefaultSensor( pManager, ASENSOR_TYPE_GRAVITY );
 	if ( !pState->m_pUpSensor )
 	{
-		pState->m_pUpSensor = ASensorManager_getDefaultSensor( pManager, ASENSOR_TYPE_ACCELEROMETER );
+		pState->m_pUpSensor =
+		    ASensorManager_getDefaultSensor( pManager, ASENSOR_TYPE_ACCELEROMETER );
 		pState->m_flUpTimeConstant = kAccelerometerUpSeconds;
 	}
 	if ( pState->m_pUpSensor )

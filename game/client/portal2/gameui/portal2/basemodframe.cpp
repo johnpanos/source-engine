@@ -773,7 +773,11 @@ void CBaseModFrame::OnNavigateTo( const char* panelName )
 		{						
 			m_ActiveControl = child;
 
-			if ( BaseModHybridButton *pButton = dynamic_cast< BaseModHybridButton * >( m_ActiveControl ) )
+			// List buttons (DialogListButton style, e.g. KeyboardMouse's
+			// DrpDeveloperConsole) have no action message; retail tolerated
+			// the resulting NULL KeyValues, this tier1 does not.
+			BaseModHybridButton *pButton = dynamic_cast< BaseModHybridButton * >( m_ActiveControl );
+			if ( pButton && pButton->GetCommand() )
 			{
 				char const *szCommand = pButton->GetCommand()->GetString( "command" );
 				if ( char const *szControlId = StringAfterPrefix( szCommand, VIRTUAL_UI_COMMAND_PREFIX ) )
