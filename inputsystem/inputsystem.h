@@ -251,6 +251,8 @@ public:
 	void InitializeGyro( void );
 	void ShutdownGyro( void );
 	void UpdateGyroSamplePeriod( void );
+	int GyroDisplayRotation( void );
+	void CheckGyroSamples( void );
 
 	// The device's own vibrator (vibrator_sdl.cpp)
 	void InitializeDeviceVibrator( void );
@@ -385,6 +387,7 @@ public:
 
 	virtual bool EnableGyro( bool bEnable );
 	virtual bool GetGyroAccumulators( float &pitch, float &yaw, float &roll );
+	virtual bool GetGyroUp( float &right, float &up, float &out );
 
 #if defined( USE_SDL )
 	void PollInputState_Platform();
@@ -420,6 +423,11 @@ public:
 	bool m_bGyroWatchInstalled;
 	bool m_bGyroEnabled;
 	CGyroSensor m_GyroSensor;
+	// Detects an enabled gyroscope that delivers nothing (CheckGyroSamples).
+	uint32 m_nGyroSamplesSeen;
+	double m_flGyroLastSampleTime;
+	double m_flGyroLastPollTime;
+	bool m_bGyroStallReported;
 	bool m_bVibratorWatchInstalled;
 	CDeviceVibrator m_DeviceVibrator;
 	vibrator::CRumbleStream m_VibratorStream;

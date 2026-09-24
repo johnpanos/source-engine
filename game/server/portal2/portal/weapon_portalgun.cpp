@@ -26,6 +26,9 @@ const char *CWeaponPortalgun::s_szTogglePotatosThinkContext = "TogglePotatosThin
 
 IMPLEMENT_NETWORKCLASS_ALIASED( WeaponPortalgun, DT_WeaponPortalgun )
 
+// Source network table and datadesc macros require their declaration layout.
+// clang-format off
+
 BEGIN_NETWORK_TABLE( CWeaponPortalgun, DT_WeaponPortalgun )
 	SendPropBool( SENDINFO( m_bCanFirePortal1 ) ),
 	SendPropBool( SENDINFO( m_bCanFirePortal2 ) ),
@@ -45,6 +48,7 @@ BEGIN_DATADESC( CWeaponPortalgun )
 	DEFINE_KEYFIELD( m_bCanFirePortal1, FIELD_BOOLEAN, "CanFirePortal1" ),
 	DEFINE_KEYFIELD( m_bCanFirePortal2, FIELD_BOOLEAN, "CanFirePortal2" ),
 	DEFINE_KEYFIELD( m_bShowingPotatos, FIELD_BOOLEAN, "ShowingPotatos" ),
+	DEFINE_KEYFIELD( m_nStartingTeamNum, FIELD_INTEGER, "StartingTeamNum" ),
 	DEFINE_FIELD( m_iLastFiredPortal, FIELD_INTEGER ),
 	DEFINE_FIELD( m_bOpenProngs, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_fEffectsMaxSize1, FIELD_FLOAT ),
@@ -75,6 +79,7 @@ BEGIN_DATADESC( CWeaponPortalgun )
 END_DATADESC()
 
 LINK_ENTITY_TO_CLASS( weapon_portalgun, CWeaponPortalgun );
+// clang-format on
 PRECACHE_WEAPON_REGISTER( weapon_portalgun );
 
 
@@ -98,6 +103,9 @@ void CWeaponPortalgun::Spawn( void )
 			m_hSecondaryPortal = CProp_Portal::FindPortal( m_iPortalLinkageGroupID, true, true );
 		}
 	}
+
+	// Mapper-placed co-op guns start on their player's team (retail server.so).
+	ChangeTeam( m_nStartingTeamNum );
 }
 
 void CWeaponPortalgun::Activate( void )
@@ -123,6 +131,8 @@ void CWeaponPortalgun::Activate( void )
 		}
 	}
 
+	ClearInactivePortalPositions();
+
 	// HACK HACK! Used to make the gun visually change when going through a cleanser!
 	m_fEffectsMaxSize1 = 4.0f;
 	m_fEffectsMaxSize2 = 4.0f;
@@ -143,6 +153,8 @@ void CWeaponPortalgun::OnPickedUp( CBaseCombatCharacter *pNewOwner )
 	{
 		ChangeTeam( pNewOwner->GetTeamNumber() );
 	}
+
+	EmitSound( "Portal.PortalgunActivate" );
 
 	BaseClass::OnPickedUp( pNewOwner );
 }
@@ -179,6 +191,35 @@ void CWeaponPortalgun::ClearPortalPositions( void )
 {
 	m_vecBluePortalPos = vec3_invalid;
 	m_vecOrangePortalPos = vec3_invalid;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Forgets the placement of each portal that no longer exists (after a
+//          level change or load), so the gun's last-fired glow and the HUD do
+//          not point at a portal that is gone. Follows the retail server.so,
+//          which does this from Activate.
+//-----------------------------------------------------------------------------
+void CWeaponPortalgun::ClearInactivePortalPositions( void )
+{
+	CProp_Portal *pPortal = CProp_Portal::FindPortal( m_iPortalLinkageGroupID, false );
+	if ( !pPortal || !pPortal->IsActive() )
+	{
+		m_vecBluePortalPos = vec3_invalid;
+		if ( m_iLastFiredPortal == 1 )
+		{
+			m_iLastFiredPortal = 0;
+		}
+	}
+
+	pPortal = CProp_Portal::FindPortal( m_iPortalLinkageGroupID, true );
+	if ( !pPortal || !pPortal->IsActive() )
+	{
+		m_vecOrangePortalPos = vec3_invalid;
+		if ( m_iLastFiredPortal == 2 )
+		{
+			m_iLastFiredPortal = 0;
+		}
+	}
 }
 
 void CWeaponPortalgun::PortalPlaced( void )
@@ -391,6 +432,15 @@ void CWeaponPortalgun::DoEffectNone( void )
 	}
 }
 
+void CC_GivePortalGun( void )
+{
+	CPortal_Player *pPlayer = ToPortalPlayer( UTIL_GetCommandClient() );
+	if ( pPlayer == NULL )
+		return;
+
+	pPlayer->GivePlayerPortalGun( false, true );
+}
+
 void CC_UpgradePortalGun( void )
 {
 	CPortal_Player *pPlayer = ToPortalPlayer( UTIL_GetCommandClient() );
@@ -400,11 +450,11 @@ void CC_UpgradePortalGun( void )
 	CWeaponPortalgun *pPortalGun = static_cast<CWeaponPortalgun *>( pPlayer->Weapon_OwnsThisType( "weapon_portalgun" ) );
 	if ( pPortalGun == NULL )
 	{
-		Msg( "Portalgun upgrade failed! Player not holding a portalgun.\n" );
+		DevMsg( "Portalgun upgrade failed! Player not holding a portalgun.\n" );
 		return;
 	}
 
-	Msg( "Upgrading Portalgun\n" );
+	DevMsg( "Upgrading Portalgun\n" );
 	pPortalGun->SetCanFirePortal1();
 	pPortalGun->SetCanFirePortal2();
 }
@@ -418,17 +468,20 @@ void CC_UpgradePotatoGun( void )
 	CWeaponPortalgun *pPortalGun = static_cast<CWeaponPortalgun *>( pPlayer->Weapon_OwnsThisType( "weapon_portalgun" ) );
 	if ( pPortalGun == NULL )
 	{
-		Msg( "Potatogun upgrade failed! Player not holding a portalgun.\n" );
+		DevMsg( "Potatogun upgrade failed! Player not holding a portalgun.\n" );
 		return;
 	}
 
-	Msg( "Upgrading Portalgun with Potato\n" );
+	DevMsg( "Upgrading Portalgun with Potato\n" );
 	pPortalGun->SetCanFirePortal1();
 	pPortalGun->SetCanFirePortal2();
 	pPortalGun->SetPotatosOnPortalgun( true );
 }
 
-static ConCommand upgrade_portal( "upgrade_portalgun", CC_UpgradePortalGun, "Equips the player with a single portal portalgun. Use twice for a dual portal portalgun.\n\tArguments:   	none ", FCVAR_CHEAT );
+static ConCommand give_portalgun( "give_portalgun", CC_GivePortalGun,
+    "Equips the player with a single portal portalgun.\n\tArguments:   \tnone ", FCVAR_CHEAT );
+static ConCommand upgrade_portal( "upgrade_portalgun", CC_UpgradePortalGun,
+    "Upgrades the portalgun to a dual portalgun.\n\tArguments:   \tnone ", FCVAR_CHEAT );
 static ConCommand upgrade_potatogun( "upgrade_potatogun", CC_UpgradePotatoGun, "Upgrades to the portalgun to the dual portalgun with potatos attached", FCVAR_CHEAT );
 
 static void change_portalgun_linkage_id_f( const CCommand &args )
@@ -479,11 +532,16 @@ ConCommand change_portalgun_linkage_id( "change_portalgun_linkage_id", change_po
 
 void CWeaponPortalgun::SetPotatosOnPortalgun( bool bShowPotatos )
 {
+	if ( m_bShowingPotatos == bShowPotatos )
+		return;
+
 	m_bShowingPotatos = bShowPotatos;
 
-	// The view model body group is switched on the next think, after the gun
-	// has been deployed.
-	SetContextThink( &CWeaponPortalgun::TogglePotatosThink, gpGlobals->curtime + 0.1f, s_szTogglePotatosThinkContext );
+	// As in the retail server.so, the gun is lowered while PotatOS is put on or
+	// taken off; TogglePotatosThink switches the body group and raises it again.
+	Holster( NULL );
+	SetContextThink( &CWeaponPortalgun::TogglePotatosThink, gpGlobals->curtime + 2.0f,
+	    s_szTogglePotatosThinkContext );
 }
 
 void CWeaponPortalgun::TogglePotatosThink( void )
@@ -499,5 +557,10 @@ void CWeaponPortalgun::TogglePotatosThink( void )
 		return;
 
 	int iBodyGroup = pViewModel->FindBodygroupByName( "potatos_vmodel" );
-	pViewModel->SetBodygroup( iBodyGroup, m_bShowingPotatos );
+	if ( iBodyGroup >= 0 )
+	{
+		pViewModel->SetBodygroup( iBodyGroup, m_bShowingPotatos );
+	}
+
+	Deploy();
 }

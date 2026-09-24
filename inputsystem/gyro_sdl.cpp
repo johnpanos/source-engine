@@ -5,13 +5,15 @@
 // CGyroSensor reports rotation about the device's natural axes on its own
 // thread. This file ties it to the display: it samples at twice the display
 // refresh rate, remaps the axes to the screen as currently rotated, and turns
-// the sensor off while the application is in the background.
+// the sensor off while the application is in the background. It also reports,
+// once, a running gyroscope that delivers no samples.
 //
 //===========================================================================//
 
 #include "inputsystem.h"
 #include "gyro_math.h"
 #include "tier0/icommandline.h"
+#include "tier0/platform.h"
 #if defined( USE_SDL3 )
 #include "SDL.h"
 #endif
@@ -46,7 +48,7 @@ static SDL_DisplayID GyroDisplay( ILauncherMgr *pLauncherMgr )
 }
 
 // Degrees the displayed image is rotated from the display's natural orientation.
-static int GyroDisplayRotation( SDL_DisplayID display )
+static int GyroDisplayRotationSDL( SDL_DisplayID display )
 {
 	int nDegreesFromPortrait;
 	switch ( SDL_GetCurrentDisplayOrientation( display ) )
@@ -122,9 +124,47 @@ void CInputSystem::UpdateGyroSamplePeriod()
 
 bool CInputSystem::EnableGyro( bool bEnable )
 {
+	const bool bWasEnabled = m_bGyroEnabled;
 	m_bGyroEnabled = bEnable && m_GyroSensor.IsAvailable();
+	if ( m_bGyroEnabled && !bWasEnabled )
+	{
+		m_flGyroLastPollTime = 0.0;
+		m_bGyroStallReported = false;
+	}
 	UpdateGyroSamplePeriod();
 	return m_GyroSensor.IsAvailable();
+}
+
+int CInputSystem::GyroDisplayRotation()
+{
+#if defined( USE_SDL3 )
+	return GyroDisplayRotationSDL( GyroDisplay( m_pLauncherMgr ) );
+#else
+	return 0;
+#endif
+}
+
+// A sensor that is on but silent would otherwise just look like a device held
+// still. Polling pauses (menus, level loads, the background) restart the wait.
+void CInputSystem::CheckGyroSamples()
+{
+	const double kSilentSeconds = 1.0;
+	const double kPollGapSeconds = 0.25;
+
+	const double flNow = Plat_FloatTime();
+	const uint32 nSamples = m_GyroSensor.SampleCount();
+	if ( nSamples != m_nGyroSamplesSeen || flNow - m_flGyroLastPollTime > kPollGapSeconds )
+	{
+		m_nGyroSamplesSeen = nSamples;
+		m_flGyroLastSampleTime = flNow;
+	}
+	else if ( !m_bGyroStallReported && flNow - m_flGyroLastSampleTime > kSilentSeconds )
+	{
+		Warning( "Gyro: the gyroscope is on but has delivered no samples for %.0f s\n",
+		    kSilentSeconds );
+		m_bGyroStallReported = true;
+	}
+	m_flGyroLastPollTime = flNow;
 }
 
 bool CInputSystem::GetGyroAccumulators( float &pitch, float &yaw, float &roll )
@@ -134,18 +174,31 @@ bool CInputSystem::GetGyroAccumulators( float &pitch, float &yaw, float &roll )
 		return false;
 
 	UpdateGyroSamplePeriod();
+	CheckGyroSamples();
 
 	float device[3];
 	m_GyroSensor.ConsumeRotation( device );
 
-	int nRotation = 0;
-#if defined( USE_SDL3 )
-	nRotation = GyroDisplayRotation( GyroDisplay( m_pLauncherMgr ) );
-#endif
 	float screen[3];
-	gyro::DeviceToScreen( device, nRotation, screen );
+	gyro::DeviceToScreen( device, GyroDisplayRotation(), screen );
 	pitch = screen[0];
 	yaw = screen[1];
 	roll = screen[2];
+	return true;
+}
+
+bool CInputSystem::GetGyroUp( float &right, float &up, float &out )
+{
+	right = up = out = 0.f;
+	float device[3];
+	if ( !m_bGyroEnabled || !m_GyroSensor.GetUp( device ) )
+		return false;
+
+	// A direction remaps like a rotation axis.
+	float screen[3];
+	gyro::DeviceToScreen( device, GyroDisplayRotation(), screen );
+	right = screen[0];
+	up = screen[1];
+	out = screen[2];
 	return true;
 }

@@ -798,7 +798,9 @@ void CMatchTitle::FireGameEvent( IGameEvent *pIGameEvent )
 		return;
 
 	// Also don't run on the client when there's a host
-	char const *szSessionType = pMatchSession->GetSessionSystemData()->GetString( "type", NULL );
+	// Offline sessions have no system data and are never clients.
+	KeyValues *pSystemData = pMatchSession->GetSessionSystemData();
+	char const *szSessionType = pSystemData ? pSystemData->GetString( "type", NULL ) : NULL;
 	if ( szSessionType && !Q_stricmp( szSessionType, "client" ) )
 		return;
 

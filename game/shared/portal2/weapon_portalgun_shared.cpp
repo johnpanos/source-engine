@@ -107,6 +107,9 @@ CWeaponPortalgun::CWeaponPortalgun( void )
 	m_EffectState.Set( EFFECT_NONE );
 
 #ifndef CLIENT_DLL
+	m_bShowingPotatos = false;
+	m_nStartingTeamNum = TEAM_UNASSIGNED;
+
 	ClearPortalPositions();
 #endif // !CLIENT_DLL
 }

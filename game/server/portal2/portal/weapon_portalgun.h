@@ -110,6 +110,7 @@ public:
 	void FirePortalDirection1( inputdata_t &inputdata );
 	void FirePortalDirection2( inputdata_t &inputdata );
 	void ClearPortalPositions( void );
+	void ClearInactivePortalPositions( void );
 
 	bool TraceFirePortal( const Vector &vTraceStart, const Vector &vDirection, bool bPortal2, PortalPlacedBy_t ePlacedBy, TracePortalPlacementInfo_t &placementInfo );
 	PortalPlacementResult_t FirePortal( bool bPortal2, Vector *pVector = NULL );
@@ -141,6 +142,8 @@ public:
 	void TogglePotatosThink( void );
 	static const char *s_szTogglePotatosThinkContext;
 	bool m_bShowingPotatos;
+
+	int m_nStartingTeamNum; // Team the gun takes at spawn (mapper-set "StartingTeamNum")
 
 protected:
 	void PostAttack( void );

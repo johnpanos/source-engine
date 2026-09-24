@@ -28,6 +28,10 @@
 #endif
 #include "model_types.h"
 #include "rumble_shared.h"
+#ifdef PORTAL2
+#include "fizzler_multiorigin_sound_player.h"
+#include "ispatialpartition.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -52,7 +56,33 @@ static char *g_pszPortalNonCleansable[] =
 #ifdef PORTAL2
 // The class is declared in trigger_portal_cleanser.h: Portal 2 networks it
 // (DT_TriggerPortalCleanser) and other entities call its fizzle helpers.
+ConVar sv_portal_cleanser_think_rate( "sv_portal_cleanser_think_rate", "0.25f", FCVAR_CHEAT,
+    "How often, in seconds should the portal cleanser think." );
+ConVar sv_portal_cleanser_vortex_distance( "sv_portal_cleanser_vortex_distance", "96", FCVAR_CHEAT,
+    "The distance from the fizzler at which an object is within range to create a vortex." );
+ConVar debug_portal_cleanser_search_box( "debug_portal_cleanser_search_box", "0", FCVAR_CHEAT );
+
+static const char s_szPlayerPassesTriggerFiltersThinkContext[] =
+    "CTriggerPortalCleanser::PlayerPassesTriggerFiltersThink";
+
+// The one looping fizzler sound, spatialized by the client at the nearest
+// enabled cleanser (FizzlerMultiOriginSoundPlayer).
+static EHANDLE s_hFizzlerSoundPlayer;
+
+// clang-format off
 BEGIN_DATADESC( CTriggerPortalCleanser )
+
+	DEFINE_KEYFIELD( m_bVisible, FIELD_BOOLEAN, "Visible" ),
+	DEFINE_KEYFIELD( m_bUseScanline, FIELD_BOOLEAN, "UseScanline" ),
+	DEFINE_FIELD( m_flPortalShotTime, FIELD_TIME ),
+	DEFINE_FIELD( m_bObject1InRange, FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_bObject2InRange, FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_hObject1, FIELD_EHANDLE ),
+	DEFINE_FIELD( m_hObject2, FIELD_EHANDLE ),
+	DEFINE_FIELD( m_bPlayersPassTriggerFilters, FIELD_BOOLEAN ),
+
+	DEFINE_THINKFUNC( SearchThink ),
+	DEFINE_THINKFUNC( PlayerPassesTriggerFiltersThink ),
 
 	DEFINE_INPUTFUNC( FIELD_VOID, "FizzleTouchingPortals", InputFizzleTouchingPortals ),
 
@@ -65,6 +95,14 @@ END_DATADESC()
 
 IMPLEMENT_SERVERCLASS_ST( CTriggerPortalCleanser, DT_TriggerPortalCleanser )
 	SendPropBool( SENDINFO( m_bDisabled ) ),
+	SendPropBool( SENDINFO( m_bVisible ) ),
+	SendPropFloat( SENDINFO( m_flPortalShotTime ), 0, SPROP_NOSCALE ),
+	SendPropBool( SENDINFO( m_bObject1InRange ) ),
+	SendPropBool( SENDINFO( m_bObject2InRange ) ),
+	SendPropEHandle( SENDINFO( m_hObject1 ) ),
+	SendPropEHandle( SENDINFO( m_hObject2 ) ),
+	SendPropBool( SENDINFO( m_bUseScanline ) ),
+	SendPropBool( SENDINFO( m_bPlayersPassTriggerFilters ) ),
 END_SEND_TABLE()
 
 #else
@@ -104,7 +142,7 @@ END_DATADESC()
 #endif // PORTAL2
 
 LINK_ENTITY_TO_CLASS( trigger_portal_cleanser, CTriggerPortalCleanser );
-
+// clang-format on
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -113,10 +151,31 @@ void CTriggerPortalCleanser::Spawn( void )
 {	
 	BaseClass::Spawn();
 #ifdef PORTAL2
+	Precache();
 	// The client predicts portal fizzling (c_trigger_portal_cleanser.cpp).
 	m_bClientSidePredicted = true;
 #endif
 	InitTrigger();
+#ifdef PORTAL2
+	if ( !s_hFizzlerSoundPlayer )
+	{
+		CReliableBroadcastRecipientFilter filter;
+		s_hFizzlerSoundPlayer = FizzlerMultiOriginSoundPlayer::Create( filter, "VFX.FizzlerLp" );
+	}
+
+	if ( m_bVisible )
+	{
+		// The field is the trigger's own brush model (effects/fizzler).
+		RemoveEffects( EF_NODRAW );
+		SetThink( &CTriggerPortalCleanser::SearchThink );
+		SetNextThink( gpGlobals->curtime + sv_portal_cleanser_think_rate.GetFloat() );
+		if ( !m_bDisabled )
+			PlayActivateSound();
+	}
+
+	SetContextThink( &CTriggerPortalCleanser::PlayerPassesTriggerFiltersThink,
+	    gpGlobals->curtime + 1.0f, s_szPlayerPassesTriggerFiltersThinkContext );
+#endif
 }
 
 // Creates a base entity with model/physics matching the parameter ent.
@@ -333,17 +392,8 @@ void CTriggerPortalCleanser::FizzleBaseAnimating( CTriggerPortalCleanser *pFizzl
 //-----------------------------------------------------------------------------
 void CTriggerPortalCleanser::SetPortalShot( void )
 {
-	// Portal 2 port: the retail client flashes the fizzler field where a portal
-	// shot hits it. That effect is not reconstructed, so the server only keeps
-	// the time of the last shot and reports the missing effect once.
-	m_flLastPortalShotTime = gpGlobals->curtime;
-
-	static bool s_bWarned = false;
-	if ( !s_bWarned )
-	{
-		s_bWarned = true;
-		DevWarning( "Portal 2: the fizzler portal shot effect is not supported by this engine\n" );
-	}
+	// The client pulses the field's intensity (cl_portal_cleanser_shot_pulse_*).
+	m_flPortalShotTime = gpGlobals->curtime;
 }
 
 //-----------------------------------------------------------------------------
@@ -377,5 +427,192 @@ void CTriggerPortalCleanser::Enable( void )
 {
 	BaseClass::Enable();
 	FizzleTouchingPortals();
+	if ( m_bVisible )
+		PlayActivateSound();
+}
+
+void CTriggerPortalCleanser::Disable( void )
+{
+	BaseClass::Disable();
+	if ( m_bVisible )
+		PlayDeactivateSound();
+}
+
+void CTriggerPortalCleanser::InputEnable( inputdata_t &inputdata )
+{
+	Enable();
+}
+
+void CTriggerPortalCleanser::InputDisable( inputdata_t &inputdata )
+{
+	Disable();
+}
+
+void CTriggerPortalCleanser::InputToggle( inputdata_t &inputdata )
+{
+	if ( m_bDisabled )
+		Enable();
+	else
+		Disable();
+}
+
+void CTriggerPortalCleanser::Precache( void )
+{
+	BaseClass::Precache();
+	PrecacheScriptSound( "VFX.FizzlerLp" );
+	PrecacheScriptSound( "VFX.FizzlerStart" );
+	PrecacheScriptSound( "VFX.FizzlerDestroy" );
+	PrecacheParticleSystem( "cleanser_scanline" );
+}
+
+void CTriggerPortalCleanser::Activate( void )
+{
+	BaseClass::Activate();
+	if ( m_bVisible && !m_bDisabled )
+		PlayActivateSound();
+}
+
+void CTriggerPortalCleanser::PlayActivateSound( void )
+{
+	CPASAttenuationFilter filter( this );
+	EmitSound( filter, entindex(), "VFX.FizzlerStart", &GetAbsOrigin() );
+}
+
+void CTriggerPortalCleanser::PlayDeactivateSound( void )
+{
+	CPASAttenuationFilter filter( this );
+	EmitSound( filter, entindex(), "VFX.FizzlerDestroy", &GetAbsOrigin() );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Collects the vortex objects near a cleanser (retail CleanserVortexTraceEnum).
+//-----------------------------------------------------------------------------
+class CleanserVortexTraceEnum : public IPartitionEnumerator
+{
+public:
+	CleanserVortexTraceEnum( CBaseEntity **pList, int nMaxCount, CTriggerPortalCleanser *pCleanser )
+	    : m_pList( pList ), m_nMaxCount( nMaxCount ), m_nCount( 0 ), m_pCleanser( pCleanser )
+	{
+	}
+
+	virtual IterationRetval_t EnumElement( IHandleEntity *pHandleEntity )
+	{
+		if ( staticpropmgr->IsStaticProp( pHandleEntity ) )
+			return ITERATION_CONTINUE;
+
+		CBaseEntity *pEntity = gEntList.GetBaseEntity( pHandleEntity->GetRefEHandle() );
+		if ( !pEntity || pEntity == m_pCleanser )
+			return ITERATION_CONTINUE;
+		if ( m_pCleanser && !m_pCleanser->PassesTriggerFilters( pEntity ) )
+			return ITERATION_CONTINUE;
+
+		static const char *const s_pszVortexClasses[] = {
+		    "prop_weighted_cube",
+		    "npc_portal_turret_floor",
+		    "simple_physics_prop",
+		    "prop_monster_box",
+		    "hot_potato",
+		};
+		for ( int i = 0; i < ARRAYSIZE( s_pszVortexClasses ); ++i )
+		{
+			if ( FClassnameIs( pEntity, s_pszVortexClasses[i] ) )
+			{
+				if ( m_nCount >= m_nMaxCount )
+					return ITERATION_STOP;
+				m_pList[m_nCount++] = pEntity;
+				return ITERATION_CONTINUE;
+			}
+		}
+		return ITERATION_CONTINUE;
+	}
+
+	int GetCount( void ) const { return m_nCount; }
+
+private:
+	CBaseEntity **m_pList;
+	int m_nMaxCount;
+	int m_nCount;
+	CTriggerPortalCleanser *m_pCleanser;
+};
+
+//-----------------------------------------------------------------------------
+// Purpose: Networks the two nearest vortex objects the field bends around.
+//-----------------------------------------------------------------------------
+void CTriggerPortalCleanser::SearchThink( void )
+{
+	const float flRange = sv_portal_cleanser_vortex_distance.GetFloat();
+	Vector vMins, vMaxs;
+	CollisionProp()->WorldSpaceAABB( &vMins, &vMaxs );
+	vMins -= Vector( flRange, flRange, flRange );
+	vMaxs += Vector( flRange, flRange, flRange );
+
+	CBaseEntity *pObjects[32];
+	CleanserVortexTraceEnum enumerator( pObjects, ARRAYSIZE( pObjects ), this );
+	partition->EnumerateElementsInBox(
+	    PARTITION_ENGINE_NON_STATIC_EDICTS, vMins, vMaxs, false, &enumerator );
+
+	// The nearest two by squared distance from the cleanser's bounds.
+	float flDist[2] = { FLT_MAX, FLT_MAX };
+	CBaseEntity *pNearest[2] = { NULL, NULL };
+	for ( int i = 0; i < enumerator.GetCount(); ++i )
+	{
+		const float flDistance =
+		    CollisionProp()->CalcDistanceFromPoint( pObjects[i]->WorldSpaceCenter() );
+		const float flSqr = flDistance * flDistance;
+		if ( flSqr < flDist[0] )
+		{
+			flDist[1] = flDist[0];
+			pNearest[1] = pNearest[0];
+			flDist[0] = flSqr;
+			pNearest[0] = pObjects[i];
+		}
+		else if ( flSqr < flDist[1] )
+		{
+			flDist[1] = flSqr;
+			pNearest[1] = pObjects[i];
+		}
+	}
+
+	const float flRangeSqr = flRange * flRange;
+	m_bObject1InRange = flDist[0] < flRangeSqr;
+	if ( m_bObject1InRange && m_hObject1.Get() != pNearest[0] )
+		m_hObject1 = pNearest[0];
+	m_bObject2InRange = flDist[1] < flRangeSqr;
+	if ( m_bObject2InRange && m_hObject2.Get() != pNearest[1] )
+		m_hObject2 = pNearest[1];
+
+	if ( debug_portal_cleanser_search_box.GetBool() )
+	{
+		const float flDuration = sv_portal_cleanser_think_rate.GetFloat();
+		NDebugOverlay::Box( vec3_origin, vMins, vMaxs, 255, 0, 0, 64, flDuration );
+		if ( m_bObject1InRange && m_hObject1 )
+			NDebugOverlay::Line(
+			    WorldSpaceCenter(), m_hObject1->WorldSpaceCenter(), 0, 255, 0, true, flDuration );
+		if ( m_bObject2InRange && m_hObject2 )
+			NDebugOverlay::Line(
+			    WorldSpaceCenter(), m_hObject2->WorldSpaceCenter(), 0, 0, 255, true, flDuration );
+	}
+
+	SetNextThink( gpGlobals->curtime + sv_portal_cleanser_think_rate.GetFloat() );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Tells the client's prediction whether players pass this trigger's filters.
+//-----------------------------------------------------------------------------
+void CTriggerPortalCleanser::PlayerPassesTriggerFiltersThink( void )
+{
+	// The first living player decides; until one exists, check again later.
+	for ( int i = 1; i <= gpGlobals->maxClients; ++i )
+	{
+		CBasePlayer *pPlayer = UTIL_PlayerByIndex( i );
+		if ( pPlayer && pPlayer->IsAlive() )
+		{
+			m_bPlayersPassTriggerFilters = PassesTriggerFilters( pPlayer );
+			SetContextThink( NULL, TICK_NEVER_THINK, s_szPlayerPassesTriggerFiltersThinkContext );
+			return;
+		}
+	}
+	SetContextThink( &CTriggerPortalCleanser::PlayerPassesTriggerFiltersThink,
+	    gpGlobals->curtime + 1.0f, s_szPlayerPassesTriggerFiltersThinkContext );
 }
 #endif // PORTAL2

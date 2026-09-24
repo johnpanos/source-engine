@@ -2180,7 +2180,9 @@ void CAudioSourceCachedInfo::Rebuild( char const *filename )
 //   3: The before time
 //   4: Changed MP3 caching to ensure we store proper sample rate, removed hack to not cache vo/
 //   5: Fixed bug that could result in incorrect mp3 datasizes in the sound cache
-#define AUDIOSOURCE_CACHE_VERSION	 5
+//   6: MP3 data under .wav names (Portal 2 VO) is recorded as AUDIO_SOURCE_MP3;
+//      version 5 caches recorded it as a wave, so those sounds never loaded
+#define AUDIOSOURCE_CACHE_VERSION 6
 class CAudioSourceCache : public IAudioSourceCache
 {
 public:

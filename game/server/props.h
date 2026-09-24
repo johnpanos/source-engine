@@ -288,6 +288,7 @@ public:
 
 	// Input handlers
 	void InputSetAnimation( inputdata_t &inputdata );
+	void InputSetAnimationNoReset( inputdata_t &inputdata );
 	void InputSetDefaultAnimation( inputdata_t &inputdata );
 	void InputTurnOn( inputdata_t &inputdata );
 	void InputTurnOff( inputdata_t &inputdata );
@@ -309,6 +310,8 @@ public:
 	float				m_flMinRandAnimTime;
 	float				m_flMaxRandAnimTime;
 	short				m_nPendingSequence;
+	bool				m_bAnimationDone;
+	bool				m_bHoldAnimation;
 
 	bool				m_bStartDisabled;
 	bool				m_bDisableBoneFollowers;

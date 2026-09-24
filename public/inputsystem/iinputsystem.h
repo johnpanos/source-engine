@@ -167,8 +167,12 @@ public:
 	// toward the player, i.e. looks up), yaw about screen-up (positive turns
 	// left) and roll about the axis out of the screen (positive is
 	// counter-clockwise). It returns false while no gyroscope is running.
+	// GetGyroUp returns the direction away from gravity in the same screen
+	// axes (screen-right, screen-up, out of the screen), not normalized, or
+	// false while it is unknown.
 	virtual bool EnableGyro( bool bEnable ) = 0;
 	virtual bool GetGyroAccumulators( float &pitch, float &yaw, float &roll ) = 0;
+	virtual bool GetGyroUp( float &right, float &up, float &out ) = 0;
 };
 
 

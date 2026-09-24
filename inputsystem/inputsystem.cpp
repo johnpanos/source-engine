@@ -86,6 +86,10 @@ CInputSystem::CInputSystem()
 	m_bTouchInitialized = false;
 	m_bGyroWatchInstalled = false;
 	m_bGyroEnabled = false;
+	m_nGyroSamplesSeen = 0;
+	m_flGyroLastSampleTime = 0.0;
+	m_flGyroLastPollTime = 0.0;
+	m_bGyroStallReported = false;
 	m_bVibratorWatchInstalled = false;
 	m_nPollCount = 0;
 	m_PrimaryUserId = INVALID_USER_ID;

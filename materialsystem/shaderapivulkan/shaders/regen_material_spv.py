@@ -30,6 +30,8 @@ SHADERS = (
     ("g_portalRefractFragSpv", "portal_refract.frag", []),
     ("g_skinVertSpv", "skin.vert", []),
     ("g_skinFragSpv", "skin.frag", []),
+    ("g_solidEnergyVertSpv", "solidenergy.vert", []),
+    ("g_solidEnergyFragSpv", "solidenergy.frag", []),
     ("g_pbrDirectFragSpv", "pbr_direct.frag", []),
     ("g_pbrDirectClipFragSpv", "pbr_direct.frag", ["-DCLIP_PLANES"]),
     ("g_presentGammaVertSpv", "present_gamma.vert", []),
@@ -41,7 +43,8 @@ HEADER = """//========= Copyright Valve Corporation, All rights reserved. ======
 // Purpose: Embedded SPIR-V of the native material shaders: the textured stages
 //          (with and without D3D9 user clip planes), PortalRefract (a port of
 //          portal_refract_vs20.fxc / portal_refract_ps2x.fxc) and VertexLitGeneric's
-//          $phong path (skin_vs20.fxc / skin_ps20b.fxc), and the RFC 0007
+//          $phong path (skin_vs20.fxc / skin_ps20b.fxc), SolidEnergy
+//          (solidenergy_vs20.fxc / solidenergy_ps20b.fxc), and the RFC 0007
 //          synthetic PBR direct-light pixel stage, and the present-time
 //          monitor gamma pass. GENERATED
 //          by shaders/regen_material_spv.py from the GLSL in shaders/; do not edit.

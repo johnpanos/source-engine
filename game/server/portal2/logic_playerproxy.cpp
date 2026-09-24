@@ -205,25 +205,23 @@ void CLogicPlayerProxy::InputRemovePotatosFromPortalgun( inputdata_t &inputdata 
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: The player flag drives the world model and the gun the view model.
+// Purpose: Puts PotatOS on the held portal gun or takes it off. As in the
+//          retail server.so, only the active gun changes; the player's
+//          PotatOS light (TurnOnPotatos/TurnOffPotatos) is left to scripts.
 //-----------------------------------------------------------------------------
 void CLogicPlayerProxy::SetPotatos( bool bShowPotatos )
 {
+	if ( GameRules()->IsMultiplayer() )
+	{
+		Warning( "Can't use logic player proxy in multiplayer!\n" );
+		return;
+	}
+
 	CPortal_Player *pPlayer = GetPlayer();
 	if ( !pPlayer )
 		return;
 
-	if ( bShowPotatos )
-	{
-		pPlayer->TurnOnPotatos();
-	}
-	else
-	{
-		pPlayer->TurnOffPotatos();
-	}
-
-	CWeaponPortalgun *pPortalGun =
-	    static_cast<CWeaponPortalgun *>( pPlayer->Weapon_OwnsThisType( "weapon_portalgun" ) );
+	CWeaponPortalgun *pPortalGun = dynamic_cast<CWeaponPortalgun *>( pPlayer->GetActiveWeapon() );
 	if ( pPortalGun )
 	{
 		pPortalGun->SetPotatosOnPortalgun( bShowPotatos );

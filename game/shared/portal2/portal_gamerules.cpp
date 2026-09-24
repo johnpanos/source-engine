@@ -415,7 +415,7 @@ void UpgradePlayerPotatogun( void )
 			{
 				pPortalGun->SetCanFirePortal1();
 				pPortalGun->SetCanFirePortal2();
-				pPlayer->TurnOnPotatos();
+				pPortalGun->SetPotatosOnPortalgun( true );
 			}
 			else
 			{

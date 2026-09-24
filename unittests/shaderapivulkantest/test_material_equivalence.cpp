@@ -35,6 +35,9 @@
 
 #include "bitmap/imageformat.h"
 #include "materialsystem/imesh.h"
+#include "tier1/KeyValues.h"
+// After KeyValues.h, which brings the platform macros this header needs.
+#include "materialsystem/idebugtextureinfo.h"
 #include "materialsystem/ishadersystem_declarations.h"
 #include "render/legacy_shader_provider.h"
 #include "shaderapi/ishaderapi.h"
@@ -63,8 +66,8 @@ constexpr int kRegBaseTexTransform = VERTEX_SHADER_SHADER_SPECIFIC_CONST_0; // c
 const float kIdentity4x4[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 
 // A full-screen quad with UV 0..1 across it, so the left quarter samples u~0.25
-// and the right quarter samples u~0.75.
-void LockFullScreenQuad( IMesh *mesh )
+// and the right quarter samples u~0.75. z is its clip-space depth.
+void LockFullScreenQuad( IMesh *mesh, float z = 0.5f )
 {
 	MeshDesc_t desc;
 	mesh->LockMesh( 6, 0, desc );
@@ -84,7 +87,7 @@ void LockFullScreenQuad( IMesh *mesh )
 		                               static_cast<size_t>( i ) * desc.m_VertexSize_Position );
 		p[0] = quad[i][0];
 		p[1] = quad[i][1];
-		p[2] = quad[i][2];
+		p[2] = z;
 		float *uv =
 		    reinterpret_cast<float *>( reinterpret_cast<unsigned char *>( desc.m_pTexCoord[0] ) +
 		                               static_cast<size_t>( i ) * desc.m_VertexSize_TexCoord[0] );
@@ -679,6 +682,210 @@ int main()
 	    "zero shadow depth-bias factors leave coplanar depth unchanged" );
 	check( gotShadowNegative && shadowNegative[0] >= 252 && shadowNegative[2] <= 3,
 	    "SetShadowDepthBiasFactors changes the shadow-bias draw without rebuilding its snapshot" );
+
+	// OverrideDepthEnable( true, false ), as DrawPanelIn3DSpace uses it for VGUI
+	// screens in the world: D3D9 forces the Z test on for $ignorez materials and
+	// the Z write to the given value (TransitionTable PerformShadowStateOverrides).
+	// A near blue quad writes depth; a farther $ignorez red quad follows. Then a
+	// farther blue LESS draw shows whether the override wrote depth.
+	services.shadow->SetDefaultState();
+	services.shadow->DepthFunc( SHADER_DEPTHFUNC_NEARER );
+	services.shadow->SetPixelShader( "unlitgeneric_ps20b", 0 );
+	const StateSnapshot_t depthTested = services.api->TakeSnapshot();
+	services.shadow->EnableDepthTest( false );
+	services.shadow->EnableDepthWrites( false );
+	const StateSnapshot_t ignoreZ = services.api->TakeSnapshot();
+	auto drawQuad = [&]( StateSnapshot_t snap, float z, const float mod[4] )
+	{
+		LockFullScreenQuad( mesh, z );
+		services.api->BeginPass( snap );
+		services.api->SetVertexShaderConstant( kRegModelViewProj, kIdentity4x4, 4, false );
+		services.api->SetVertexShaderConstant( kRegModulationColor, mod, 1, false );
+		services.api->BindTexture( SHADER_SAMPLER0, whiteTex );
+		mesh->Draw();
+	};
+	auto captureCenter = [&]( uint8_t out[4] ) -> bool
+	{
+		ctx->RequestCapture();
+		services.device->Present();
+		int width = 0, height = 0;
+		const std::vector<uint8_t> &pixels = ctx->GetCapturedPixels( &width, &height );
+		if ( width <= 0 || height <= 0 || pixels.empty() )
+			return false;
+		memcpy( out, &pixels[( static_cast<size_t>( height / 2 ) * width + width / 2 ) * 4], 4 );
+		return true;
+	};
+	auto drawOccludedIgnoreZ = [&]( bool bOverride, uint8_t out[4] ) -> bool
+	{
+		services.api->ClearColor4ub( 0, 0, 0, 255 );
+		services.api->ClearBuffers( true, true, true, -1, -1 );
+		drawQuad( depthTested, 0.25f, modBlue );
+		services.api->OverrideDepthEnable( bOverride, false );
+		drawQuad( ignoreZ, 0.5f, modRed );
+		services.api->OverrideDepthEnable( false, true );
+		return captureCenter( out );
+	};
+	uint8_t ignoreZPlain[4] = {}, ignoreZForced[4] = {};
+	check( drawOccludedIgnoreZ( false, ignoreZPlain ) && ignoreZPlain[0] >= 252 &&
+	           ignoreZPlain[2] <= 3,
+	    "control: an $ignorez draw shows through nearer depth" );
+	check( drawOccludedIgnoreZ( true, ignoreZForced ) && ignoreZForced[0] <= 3 &&
+	           ignoreZForced[2] >= 252,
+	    "OverrideDepthEnable( true, false ) depth-tests an $ignorez draw" );
+	auto drawBehindOverride = [&]( bool bOverrideWrite, uint8_t out[4] ) -> bool
+	{
+		services.api->ClearColor4ub( 0, 0, 0, 255 );
+		services.api->ClearBuffers( true, true, true, -1, -1 );
+		services.api->OverrideDepthEnable( true, bOverrideWrite );
+		drawQuad( ignoreZ, 0.25f, modRed );
+		services.api->OverrideDepthEnable( false, true );
+		drawQuad( depthTested, 0.5f, modBlue );
+		return captureCenter( out );
+	};
+	uint8_t overrideNoWrite[4] = {}, overrideWrite[4] = {};
+	check( drawBehindOverride( false, overrideNoWrite ) && overrideNoWrite[0] <= 3 &&
+	           overrideNoWrite[2] >= 252,
+	    "OverrideDepthEnable( true, false ) leaves the depth buffer unwritten" );
+	check( drawBehindOverride( true, overrideWrite ) && overrideWrite[0] >= 252 &&
+	           overrideWrite[2] <= 3,
+	    "control: OverrideDepthEnable( true, true ) writes depth for an $ignorez draw" );
+
+	// ForceDepthFuncEquals: D3D9 forces D3DCMP_EQUAL for every draw and keeps each
+	// snapshot's Z enable and write (TransitionTable PerformShadowStateOverrides).
+	// A near blue quad writes depth 0.25; a red ALWAYS quad then draws over it,
+	// unless the comparison is forced to EQUAL and its depth differs.
+	services.shadow->SetDefaultState();
+	services.shadow->DepthFunc( SHADER_DEPTHFUNC_ALWAYS );
+	services.shadow->EnableDepthWrites( false );
+	services.shadow->SetPixelShader( "unlitgeneric_ps20b", 0 );
+	const StateSnapshot_t alwaysDepth = services.api->TakeSnapshot();
+	auto drawForcedEquals = [&]( bool bForce, float z, uint8_t out[4] ) -> bool
+	{
+		services.api->ClearColor4ub( 0, 0, 0, 255 );
+		services.api->ClearBuffers( true, true, true, -1, -1 );
+		drawQuad( depthTested, 0.25f, modBlue );
+		services.api->ForceDepthFuncEquals( bForce );
+		drawQuad( alwaysDepth, z, modRed );
+		services.api->ForceDepthFuncEquals( false );
+		return captureCenter( out );
+	};
+	uint8_t equalsOff[4] = {}, equalsFar[4] = {}, equalsSame[4] = {};
+	check( drawForcedEquals( false, 0.5f, equalsOff ) && equalsOff[0] >= 252 && equalsOff[2] <= 3,
+	    "control: a depth-ALWAYS draw shows over nearer depth" );
+	check( drawForcedEquals( true, 0.5f, equalsFar ) && equalsFar[0] <= 3 && equalsFar[2] >= 252,
+	    "ForceDepthFuncEquals rejects a draw at another depth" );
+	check( drawForcedEquals( true, 0.25f, equalsSame ) && equalsSame[0] >= 252 &&
+	           equalsSame[2] <= 3,
+	    "ForceDepthFuncEquals passes a draw at the stored depth" );
+
+	// OverrideColorWriteEnable / OverrideAlphaWriteEnable force RGB or alpha writes
+	// whatever the snapshot enabled (TransitionTable). Red over a blue clear whose
+	// alpha is 64; the snapshot writes RGB and not alpha (the D3D9 default).
+	auto drawWriteOverride = [&]( int which, bool bOverride, bool bValue, uint8_t out[4] ) -> bool
+	{
+		services.api->ClearColor4ub( 0, 0, 255, 64 );
+		services.api->ClearBuffers( true, true, true, -1, -1 );
+		if ( which == 0 )
+			services.api->OverrideColorWriteEnable( bOverride, bValue );
+		else
+			services.api->OverrideAlphaWriteEnable( bOverride, bValue );
+		drawQuad( alwaysDepth, 0.5f, modRed );
+		services.api->OverrideColorWriteEnable( false, true );
+		services.api->OverrideAlphaWriteEnable( false, true );
+		return captureCenter( out );
+	};
+	uint8_t colorPlain[4] = {}, colorOff[4] = {}, alphaPlain[4] = {}, alphaOn[4] = {};
+	check( drawWriteOverride( 0, false, false, colorPlain ) && colorPlain[0] >= 252 &&
+	           colorPlain[2] <= 3,
+	    "control: the snapshot writes RGB" );
+	check( drawWriteOverride( 0, true, false, colorOff ) && colorOff[0] <= 3 && colorOff[2] >= 252,
+	    "OverrideColorWriteEnable( true, false ) keeps the target's RGB" );
+	check( drawWriteOverride( 1, false, false, alphaPlain ) && alphaPlain[3] >= 60 &&
+	           alphaPlain[3] <= 68,
+	    "control: the snapshot keeps the target's alpha" );
+	check( drawWriteOverride( 1, true, true, alphaOn ) && alphaOn[3] >= 252 && alphaOn[0] >= 252,
+	    "OverrideAlphaWriteEnable( true, true ) writes alpha with RGB" );
+
+	// Fog state round trips as CShaderAPIDx8 keeps it; on this platform every
+	// fog mode is pixel fog, so the PIXELFOGTYPE combo follows the scene mode.
+	services.api->SceneFogMode( MATERIAL_FOG_LINEAR );
+	services.api->SceneFogColor3ub( 10, 20, 30 );
+	services.api->FogStart( 100.0f );
+	services.api->FogEnd( 900.0f );
+	services.api->SetFogZ( -64.0f );
+	unsigned char fogColor[3] = {};
+	services.api->GetSceneFogColor( fogColor );
+	float fogStart = 0.0f, fogEnd = 0.0f, fogZ = 0.0f;
+	services.api->GetFogDistances( &fogStart, &fogEnd, &fogZ );
+	check( services.api->GetSceneFogMode() == MATERIAL_FOG_LINEAR &&
+	           services.api->GetPixelFogCombo() == 0 && fogColor[0] == 10 && fogColor[1] == 20 &&
+	           fogColor[2] == 30 && fogStart == 100.0f && fogEnd == 900.0f && fogZ == -64.0f,
+	    "scene fog mode, color and range round trip" );
+	services.api->SceneFogMode( MATERIAL_FOG_LINEAR_BELOW_FOG_Z );
+	check( services.api->GetPixelFogCombo() == 1, "height fog selects PIXELFOGTYPE 1" );
+	services.api->SceneFogMode( MATERIAL_FOG_NONE );
+	check( services.api->GetPixelFogCombo() == MATERIAL_FOG_NONE, "no fog selects no combo" );
+
+	// ClearSnapshots empties the table; the material system retakes every
+	// snapshot after it, so the ids start again.
+	// A state no earlier check took, so it is appended after them.
+	auto takeFreshState = [&]()
+	{
+		services.shadow->SetDefaultState();
+		services.shadow->SetPixelShader( "unlitgeneric_ps20b", 0 );
+		services.shadow->DepthFunc( SHADER_DEPTHFUNC_NEVER );
+		services.shadow->EnableCulling( false );
+		return services.api->TakeSnapshot();
+	};
+	const StateSnapshot_t beforeClear = takeFreshState();
+	services.api->ClearSnapshots();
+	const StateSnapshot_t afterClear = takeFreshState();
+	check( ( beforeClear >> 4 ) > 0 && ( afterClear >> 4 ) == 0,
+	    "ClearSnapshots restarts the snapshot table" );
+
+	// The matrix helpers apply the render context's VMatrix operations to the
+	// transposed matrices this API stores (TestMatrixSync compares the two).
+	float matrix[16] = {};
+	services.api->MatrixMode( MATERIAL_MODEL );
+	services.api->LoadIdentity();
+	services.api->Translate( 1.0f, 2.0f, 3.0f );
+	services.api->Scale( 2.0f, 3.0f, 4.0f );
+	services.api->GetMatrix( MATERIAL_MODEL, matrix );
+	check( matrix[0] == 2.0f && matrix[5] == 3.0f && matrix[10] == 4.0f && matrix[12] == 1.0f &&
+	           matrix[13] == 2.0f && matrix[14] == 3.0f && matrix[15] == 1.0f,
+	    "Translate then Scale compose as the render context's VMatrix operations" );
+	services.api->LoadIdentity();
+	float view[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 6, 7, 1 };
+	services.api->MatrixMode( MATERIAL_VIEW );
+	services.api->LoadMatrix( view );
+	services.api->MatrixMode( MATERIAL_MODEL );
+	services.api->LoadCameraToWorld();
+	services.api->GetMatrix( MATERIAL_MODEL, matrix );
+	check( matrix[0] == 1.0f && matrix[5] == 1.0f && matrix[10] == 1.0f && matrix[12] == 0.0f &&
+	           matrix[13] == 0.0f && matrix[14] == 0.0f,
+	    "LoadCameraToWorld inverts the view without its translation" );
+	const float identity[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+	services.api->MatrixMode( MATERIAL_VIEW );
+	services.api->LoadMatrix( const_cast<float *>( identity ) );
+	services.api->MatrixMode( MATERIAL_MODEL );
+	services.api->LoadIdentity();
+
+	// mat_texture_list: the textures bound this frame, with their size.
+	services.debugTextures->EnableDebugTextureList( true );
+	services.api->BeginFrame();
+	services.api->BindTexture( SHADER_SAMPLER0, whiteTex );
+	services.api->EndFrame();
+	KeyValues *textureList = services.debugTextures->GetDebugTextureList();
+	bool listedWhite = false;
+	for ( KeyValues *entry = textureList ? textureList->GetFirstSubKey() : nullptr; entry;
+	      entry = entry->GetNextKey() )
+		listedWhite = listedWhite || ( !strcmp( entry->GetString( "Name" ), "white" ) &&
+		                                 entry->GetInt( "Size" ) == 4 && entry->GetInt( "BindsFrame" ) == 1 );
+	check( listedWhite && services.debugTextures->IsDebugTextureListFresh() &&
+	           services.debugTextures->GetTextureMemoryUsed(
+	               IDebugTextureInfo::MEMORY_BOUND_LAST_FRAME ) == 4,
+	    "the texture list reports the texture bound this frame and its bytes" );
+	services.debugTextures->EnableDebugTextureList( false );
 
 	services.device->DestroyStaticMesh( mesh );
 	ctx->Shutdown();

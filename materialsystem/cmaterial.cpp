@@ -1185,6 +1185,15 @@ bool CMaterial::ShouldSkipVar( KeyValues *pVar, bool *pWasConditional )
 		{
 			bShouldSkip = ( !HardwareConfig()->UsesSRGBCorrectBlending() );
 		}
+		else if ( !stricmp( pCond, "srgb_pc" ) )
+		{
+			// Portal 2 era: sRGB-correct blending on a PC (not a console).
+			bShouldSkip = ( !HardwareConfig()->UsesSRGBCorrectBlending() );
+		}
+		else if ( !stricmp( pCond, "sonyps3" ) )
+		{
+			bShouldSkip = true;
+		}
 		else if ( ! stricmp( pCond, "ldr" ) )
 		{
 			bShouldSkip = ( HardwareConfig()->GetHDRType() != HDR_TYPE_NONE );

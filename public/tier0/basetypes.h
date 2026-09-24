@@ -198,7 +198,14 @@ inline vec_t BitsToFloat( unsigned int i )
 
 inline bool IsFinite( vec_t f )
 {
-	return ((FloatBits(f) & 0x7F800000) != 0x7F800000);
+	unsigned int bits = FloatBits( f );
+#if defined( __clang__ ) && defined( __FINITE_MATH_ONLY__ ) && __FINITE_MATH_ONLY__
+	// Under -ffast-math clang recognizes this exponent test as a finiteness
+	// check and folds it to true, but NaN sentinels (Vector::Invalidate) must
+	// still be detected. The empty asm hides the bits from that fold.
+	__asm__( "" : "+r"( bits ) );
+#endif
+	return ( ( bits & 0x7F800000 ) != 0x7F800000 );
 }
 
 inline unsigned int FloatAbsBits( vec_t f )

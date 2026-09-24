@@ -1815,9 +1815,12 @@ BEGIN_DATADESC( CDynamicProp )
 	DEFINE_KEYFIELD( m_bDisableBoneFollowers, FIELD_BOOLEAN, "DisableBoneFollowers" ),
 	DEFINE_FIELD(	 m_bUseHitboxesForRenderBox, FIELD_BOOLEAN ),
 	DEFINE_FIELD(	m_nPendingSequence, FIELD_SHORT ),
+	DEFINE_FIELD(	m_bAnimationDone, FIELD_BOOLEAN ),
+	DEFINE_KEYFIELD( m_bHoldAnimation, FIELD_BOOLEAN, "HoldAnimation" ),
 		
 	// Inputs
 	DEFINE_INPUTFUNC( FIELD_STRING,	"SetAnimation",	InputSetAnimation ),
+	DEFINE_INPUTFUNC( FIELD_STRING,	"SetAnimationNoReset",	InputSetAnimationNoReset ),
 	DEFINE_INPUTFUNC( FIELD_STRING,	"SetDefaultAnimation",	InputSetDefaultAnimation ),
 	DEFINE_INPUTFUNC( FIELD_VOID,		"TurnOn",		InputTurnOn ),
 	DEFINE_INPUTFUNC( FIELD_VOID,		"TurnOff",		InputTurnOff ),
@@ -1853,6 +1856,8 @@ CDynamicProp::CDynamicProp()
 		UseClientSideAnimation();
 	}
 	m_iGoalSequence = -1;
+	m_bAnimationDone = false;
+	m_bHoldAnimation = false;
 }
 
 
@@ -2163,17 +2168,24 @@ void CDynamicProp::AnimThink( void )
 		m_flNextRandAnim = gpGlobals->curtime + random->RandomFloat( m_flMinRandAnimTime, m_flMaxRandAnimTime );
 	}
 
-	if ( ((m_iTransitionDirection > 0 && GetCycle() >= 0.999f) || (m_iTransitionDirection < 0 && GetCycle() <= 0.0f)) && !SequenceLoops() )
+	bool bPropFinished = ((m_iTransitionDirection > 0 && GetCycle() >= 0.999f) || (m_iTransitionDirection < 0 && GetCycle() <= 0.0f)) && !SequenceLoops();
+
+	if ( bPropFinished )
 	{
 		Assert( m_iGoalSequence >= 0 );
 		if (GetSequence() != m_iGoalSequence)
 		{
 			PropSetSequence( m_iGoalSequence );
+			bPropFinished = false;
 		}
 		else
 		{
-			// Fire output
-			m_pOutputAnimOver.FireOutput(NULL,this);
+			// Fire output once per completed animation; a held prop keeps thinking
+			if ( !m_bAnimationDone )
+			{
+				m_bAnimationDone = true;
+				m_pOutputAnimOver.FireOutput(NULL,this);
+			}
 
 			// If I'm a random animator, think again when it's time to change sequence
 			if ( m_bRandomAnimator )
@@ -2182,17 +2194,30 @@ void CDynamicProp::AnimThink( void )
 			}
 			else 
 			{
-				if (m_iszDefaultAnim != NULL_STRING)
+				// HoldAnimation keeps the last frame instead of reverting to the default animation
+				if ( m_iszDefaultAnim != NULL_STRING && !m_bHoldAnimation )
 				{
 					PropSetAnim( STRING( m_iszDefaultAnim ) );
-				}	
+					bPropFinished = false;
+				}
+
+				// Keep thinking so a later animation change is picked up
+				if ( m_bHoldAnimation )
+				{
+					SetNextThink( gpGlobals->curtime + 0.1f );
+				}
 			}
 		}
 	}
 	else
 	{
+		m_bAnimationDone = false;
 		SetNextThink( gpGlobals->curtime + 0.1f );
 	}
+
+	// Nothing left to animate while holding the final frame
+	if ( bPropFinished && m_nPendingSequence == -1 && IsSequenceFinished() )
+		return;
 
 	StudioFrameAdvance();
 	DispatchAnimEvents(this);
@@ -2233,6 +2258,17 @@ void CDynamicProp::PropSetAnim( const char *szAnim )
 void CDynamicProp::InputSetAnimation( inputdata_t &inputdata )
 {
 	PropSetAnim( inputdata.value.String() );
+}
+
+//------------------------------------------------------------------------------
+// Purpose: Set the animation unless the prop is already playing it
+//------------------------------------------------------------------------------
+void CDynamicProp::InputSetAnimationNoReset( inputdata_t &inputdata )
+{
+	if ( GetSequence() != LookupSequence( inputdata.value.String() ) )
+	{
+		PropSetAnim( inputdata.value.String() );
+	}
 }
 
 //------------------------------------------------------------------------------

@@ -102,6 +102,8 @@ def build(bld):
 		'skin_dx9_helper.cpp',
 		'sky_dx9.cpp',
 		'sky_hdr_dx9.cpp',
+		'solidenergy_dx9.cpp',
+		'solidenergy_dx9_helper.cpp',
 		'sprite_dx9.cpp',
 		'spritecard.cpp',
 		'teeth.cpp',

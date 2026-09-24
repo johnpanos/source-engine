@@ -93,5 +93,7 @@ void TestVehicles( const VehicleFixture_t *pFixtures, int count );
 // pFixture: a loaded authored model (NULL when none); pBsp: a map whose
 // world collision is checked.
 void TestCollideModels( const struct vcollide_t *pFixture, const char *pBsp );
+// Gameplay dynamics scenes with the authored cube (pCubeFixture: metal_box.phy).
+void TestDynamics( const struct vcollide_t *pCubeFixture );
 
 #endif // VPHYSICS_CONFORMANCE_H

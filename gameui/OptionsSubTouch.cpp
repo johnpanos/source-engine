@@ -98,6 +98,7 @@ COptionsSubTouch::COptionsSubTouch(vgui::Panel *parent) : PropertyPage(parent, N
 	m_pGyroAxisCombo->AddItem( "Turn the device", "touch_gyro_axis 0" );
 	m_pGyroAxisCombo->AddItem( "Steer like a wheel", "touch_gyro_axis 1" );
 	m_pGyroAxisCombo->AddItem( "Turn and steer", "touch_gyro_axis 2" );
+	m_pGyroAxisCombo->AddItem( "Player space (recommended)", "touch_gyro_axis 3" );
 	m_pGyroAxisCombo->AddActionSignalTarget( this );
 
 	m_pGyroSensitivityPreLabel = new Label( this, "GyroSensitivityPreLabel", "Gyro sensitivity" );
@@ -203,7 +204,7 @@ void COptionsSubTouch::OnResetData()
 	ConVarRef touch_gyro( "touch_gyro" );
 	ConVarRef touch_gyro_axis( "touch_gyro_axis" );
 	m_pGyroModeCombo->SetInitialItem( clamp( touch_gyro.GetInt(), 0, 2 ) );
-	m_pGyroAxisCombo->SetInitialItem( clamp( touch_gyro_axis.GetInt(), 0, 2 ) );
+	m_pGyroAxisCombo->SetInitialItem( clamp( touch_gyro_axis.GetInt(), 0, 3 ) );
 	m_pGyroSensitivitySlider->Reset();
 	m_pGyroInvertPitchCheckBox->Reset();
 	UpdateLabel( m_pGyroSensitivitySlider, m_pGyroSensitivityLabel );

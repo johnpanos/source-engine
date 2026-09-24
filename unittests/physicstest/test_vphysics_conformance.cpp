@@ -1775,6 +1775,8 @@ int main( int argc, char **argv )
 		TestSaveRestore();
 		TestPlayerController();
 		TestVehicles( vehicles.Base(), vehicles.Count() );
+		// Before the serialization clauses, which rewrite the fixture's solids.
+		TestDynamics( fixtures.Count() && fixtures[0].loaded ? &fixtures[0].collide : NULL );
 		TestCollideModels( fixtures.Count() && fixtures[0].loaded ? &fixtures[0].collide : NULL, pBsp );
 		for ( int i = 0; i < fixtures.Count(); i++ )
 		{

@@ -15,6 +15,7 @@
 #include "hud.h"
 #include "cdll_client_int.h"
 #include "inputsystem/iinputsystem.h"
+#include "inputsystem/gyro_aim.h"
 
 #define STB_RECT_PACK_IMPLEMENTATION
 #include "stb_rect_pack.h"
@@ -61,11 +62,19 @@ ConVar touch_gyro( "touch_gyro", TOUCH_DEFAULT, FCVAR_ARCHIVE,
     TouchGyroChanged );
 ConVar touch_gyro_sensitivity( "touch_gyro_sensitivity", "1.0", FCVAR_ARCHIVE,
     "Degrees the view turns per degree the device turns" );
-ConVar touch_gyro_axis( "touch_gyro_axis", "0", FCVAR_ARCHIVE,
-    "Gyro turning: 0 turn the device (yaw), 1 steer it like a wheel (roll), 2 both", true, 0, true,
-    2 );
+// Player space is the default: see public/inputsystem/gyro_aim.h.
+ConVar touch_gyro_axis( "touch_gyro_axis", "3", FCVAR_ARCHIVE,
+    "Gyro turning: 0 turn the device (yaw), 1 steer it like a wheel (roll), 2 both, "
+    "3 player space (turn about world up)",
+    true, 0, true, gyroaim::TURN_AXIS_COUNT - 1 );
 ConVar touch_gyro_invert_pitch(
     "touch_gyro_invert_pitch", "0", FCVAR_ARCHIVE, "Invert gyro up/down aiming" );
+ConVar touch_gyro_tightening( "touch_gyro_tightening", "1.0", FCVAR_ARCHIVE,
+    "Device speed, in degrees per second, below which gyro aiming is scaled down smoothly "
+    "to steady hand tremor; 0 turns it off",
+    true, 0, true, 10 );
+ConVar touch_gyro_debug(
+    "touch_gyro_debug", "0", 0, "Print gyro aiming input and output once a second" );
 
 // Rotation made while nothing read the gyro (menus, pauses, level loads) is
 // discarded instead of arriving as one jump.
@@ -368,40 +377,87 @@ bool CTouchControls::IsGyroEngaged()
 	}
 }
 
+// Once a second while touch_gyro_debug is set: how often the gyro was read and
+// engaged, the device rotation it reported and the view rotation it produced.
+struct TouchGyroDebug_t
+{
+	double next;
+	int reads, engaged;
+	float device[3], turn, pitch;
+	bool haveUp;
+	float up[3];
+};
+static TouchGyroDebug_t s_GyroDebug;
+
+static void TouchGyroDebugFrame( bool read, bool engaged, const float rotation[3], float turn,
+    float pitch, const float *up )
+{
+	TouchGyroDebug_t &d = s_GyroDebug;
+	if ( read )
+	{
+		++d.reads;
+		d.engaged += engaged;
+		for ( int i = 0; i < 3; ++i )
+			d.device[i] += RAD2DEG( rotation[i] );
+		d.turn += turn;
+		d.pitch += pitch;
+		d.haveUp = up != NULL;
+		for ( int i = 0; i < 3; ++i )
+			d.up[i] = up ? up[i] : 0.f;
+	}
+
+	const double now = Plat_FloatTime();
+	if ( now < d.next )
+		return;
+	Msg( "touch_gyro_debug: %d reads, %d engaged; device pitch %.2f yaw %.2f roll %.2f deg; "
+	     "view turn %.2f pitch %.2f deg; up %s(%.2f %.2f %.2f)\n",
+	    d.reads, d.engaged, d.device[0], d.device[1], d.device[2], d.turn, d.pitch,
+	    d.haveUp ? "" : "unknown ", d.up[0], d.up[1], d.up[2] );
+	d = TouchGyroDebug_t();
+	d.next = now + 1.0;
+}
+
 // View deltas from the gyro, in the look zone's convention (yaw -= dx, pitch += dy).
 void CTouchControls::GetGyroDelta( float *dx, float *dy )
 {
 	*dx = *dy = 0.f;
 
-	float pitch, yaw, roll;
-	if ( !inputsystem || !inputsystem->GetGyroAccumulators( pitch, yaw, roll ) )
-		return;
-
-	const double now = Plat_FloatTime();
-	const bool fresh = now - m_flLastGyroRead < GYRO_MAX_READ_GAP;
-	m_flLastGyroRead = now;
-	if ( !fresh || !IsGyroEngaged() )
-		return;
-
-	// yaw and roll are counter-clockwise positive: both turn the view left.
-	float turn;
-	switch ( touch_gyro_axis.GetInt() )
+	float rotation[3];
+	const bool read = inputsystem &&
+	    inputsystem->GetGyroAccumulators( rotation[0], rotation[1], rotation[2] );
+	if ( !read )
 	{
-	case 1:
-		turn = roll;
-		break;
-	case 2:
-		turn = yaw + roll;
-		break;
-	default:
-		turn = yaw;
-		break;
+		if ( touch_gyro_debug.GetBool() )
+			TouchGyroDebugFrame( false, false, NULL, 0.f, 0.f, NULL );
+		return;
 	}
 
-	const float scale =
-	    RAD2DEG( 1.f ) * touch_gyro_sensitivity.GetFloat() * gHUD.GetFOVSensitivityAdjust();
-	*dx = -turn * scale;
-	*dy = -pitch * scale * ( touch_gyro_invert_pitch.GetBool() ? -1.f : 1.f );
+	float up[3];
+	const bool haveUp = inputsystem->GetGyroUp( up[0], up[1], up[2] );
+
+	// Rotation made while nothing read the gyro is dropped (GYRO_MAX_READ_GAP).
+	const double now = Plat_FloatTime();
+	const double seconds = now - m_flLastGyroRead;
+	m_flLastGyroRead = now;
+	const bool engaged = seconds < GYRO_MAX_READ_GAP && IsGyroEngaged();
+
+	float turn = 0.f, pitch = 0.f;
+	if ( engaged )
+	{
+		turn = gyroaim::Turn( touch_gyro_axis.GetInt(), rotation, haveUp ? up : NULL );
+		pitch = rotation[0];
+		gyroaim::Tighten(
+		    turn, pitch, (float)seconds, DEG2RAD( touch_gyro_tightening.GetFloat() ) );
+
+		// Positive turn is to the left and positive pitch looks up.
+		const float scale = RAD2DEG( 1.f ) * touch_gyro_sensitivity.GetFloat() *
+		                    gHUD.GetFOVSensitivityAdjust();
+		*dx = -turn * scale;
+		*dy = -pitch * scale * ( touch_gyro_invert_pitch.GetBool() ? -1.f : 1.f );
+	}
+
+	if ( touch_gyro_debug.GetBool() )
+		TouchGyroDebugFrame( true, engaged, rotation, -*dx, -*dy, haveUp ? up : NULL );
 }
 
 // The built-in layout, used until the player saves their own (touch.cfg) and

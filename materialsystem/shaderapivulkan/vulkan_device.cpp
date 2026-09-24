@@ -2987,6 +2987,29 @@ VkPipeline CVulkanContext::SkinPipeline( const DynRasterState &state, bool srgbP
 	return pipeline;
 }
 
+VkPipeline CVulkanContext::SolidEnergyPipeline(
+    const DynRasterState &state, bool srgbPass, int samples )
+{
+	const uint64_t key = PipelineKey( state, srgbPass, samples );
+	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
+	const auto existing = m_solidEnergyPipelines.find( key );
+	if ( existing != m_solidEnergyPipelines.end() )
+		return existing->second;
+	if ( pass == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE; // no pass of this sample count exists now
+	if ( m_solidEnergyVert == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE;
+	VkPipeline pipeline = BuildMaterialPipeline( state, m_solidEnergyVert, m_solidEnergyFrag,
+	    m_skinPipelineLayout, &m_skinVin, pass, samples );
+	if ( pipeline == VK_NULL_HANDLE )
+		Log( "vkCreateGraphicsPipelines (SolidEnergy, state %#llx) failed\n",
+		    static_cast<unsigned long long>( key ) );
+	m_solidEnergyPipelines[key] = pipeline;
+	if ( pipeline != VK_NULL_HANDLE )
+		NotePipelineVariant( kPipelineSolidEnergy, key );
+	return pipeline;
+}
+
 VkPipeline CVulkanContext::PbrDirectPipeline(
     const DynRasterState &state, bool srgbPass, int samples )
 {
@@ -3243,6 +3266,22 @@ bool CVulkanContext::InitSkinPipeline( std::string *outError )
 		SetError( outError, "vkCreateGraphicsPipelines (skin) failed" );
 		return false;
 	}
+	// SolidEnergy's stages on the same layout and vertex input. Without them
+	// its draws are declined by name; the skin shader is unaffected.
+	std::string solidEnergyError;
+	if ( !CreateShaderModule( g_solidEnergyVertSpv, sizeof( g_solidEnergyVertSpv ),
+	         &m_solidEnergyVert, &solidEnergyError ) ||
+	     !CreateShaderModule( g_solidEnergyFragSpv, sizeof( g_solidEnergyFragSpv ),
+	         &m_solidEnergyFrag, &solidEnergyError ) )
+	{
+		Log( "SolidEnergy pipeline unavailable: %s\n", solidEnergyError.c_str() );
+		for ( VkShaderModule *module : { &m_solidEnergyVert, &m_solidEnergyFrag } )
+		{
+			if ( *module != VK_NULL_HANDLE )
+				vkDestroyShaderModule( m_device, *module, nullptr );
+			*module = VK_NULL_HANDLE;
+		}
+	}
 	return true;
 }
 
@@ -3404,7 +3443,11 @@ void CVulkanContext::DestroySkinPipeline()
 	for ( const auto &entry : m_skinPipelines )
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_skinPipelines.clear();
-	for ( VkShaderModule *module : { &m_skinVert, &m_skinFrag } )
+	for ( const auto &entry : m_solidEnergyPipelines )
+		vkDestroyPipeline( m_device, entry.second, nullptr );
+	m_solidEnergyPipelines.clear();
+	for ( VkShaderModule *module :
+	    { &m_skinVert, &m_skinFrag, &m_solidEnergyVert, &m_solidEnergyFrag } )
 	{
 		if ( *module != VK_NULL_HANDLE )
 			vkDestroyShaderModule( m_device, *module, nullptr );
@@ -4509,7 +4552,7 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 	std::memcpy( d.clipPlanes, m_dynClipPlanes, sizeof( d.clipPlanes ) );
 	std::memcpy( d.samplerHandles, m_dynSamplerHandles, sizeof( d.samplerHandles ) );
 	d.portal = m_dynPortal;
-	if ( d.shaderIndex == kDynShaderSkin )
+	if ( d.shaderIndex == kDynShaderSkin || d.shaderIndex == kDynShaderSolidEnergy )
 	{
 		d.skin = static_cast<int>( m_dynSkinConstants.size() );
 		m_dynSkinConstants.push_back( m_dynSkin );
@@ -4555,7 +4598,8 @@ void CVulkanContext::EndDynamicDraw( uint32_t vertexCount, uint32_t indexCount )
 		// Withdraw the draw and everything it reserved.
 		m_dynQueued.resize( static_cast<size_t>( d.firstVertex ) * kDynVertexFloats );
 		m_dynIndices.resize( d.firstIndex );
-		if ( d.skin >= 0 && d.shaderIndex == kDynShaderSkin )
+		if ( d.skin >= 0 &&
+		     ( d.shaderIndex == kDynShaderSkin || d.shaderIndex == kDynShaderSolidEnergy ) )
 			m_dynSkinConstants.pop_back();
 		m_dynDrawRecords.pop_back();
 		return;
@@ -4773,7 +4817,8 @@ static bool SrgbCapableShader( int shaderIndex )
 	       shaderIndex == CVulkanContext::kDynShaderPbrDirect ||
 	       shaderIndex == CVulkanContext::kDynShaderPbrWorld ||
 	       shaderIndex == CVulkanContext::kDynShaderPortalRefract ||
-	       shaderIndex == CVulkanContext::kDynShaderSkin;
+	       shaderIndex == CVulkanContext::kDynShaderSkin ||
+	       shaderIndex == CVulkanContext::kDynShaderSolidEnergy;
 }
 
 bool CVulkanContext::RecordWantsSrgb( const DynDraw &r ) const
@@ -5269,6 +5314,28 @@ bool CVulkanContext::WorldMeshResident() const
 {
 	return m_worldVertexBuffer.buffer != VK_NULL_HANDLE &&
 	       m_worldIndexBuffer.buffer != VK_NULL_HANDLE;
+}
+
+bool CVulkanContext::WaitForSubmittedFrame( uint64_t serial, uint64_t timeoutNs )
+{
+	if ( m_device == VK_NULL_HANDLE || serial == 0 || serial > m_submitSerial )
+		return false;
+	if ( serial <= m_completedSerial )
+		return true;
+	// A slot's fence is reset only just before that slot submits again, after
+	// BeginFrame waited for it; so a submission not yet known complete still
+	// owns its slot's fence.
+	for ( uint32_t slot = 0; slot < m_framesInFlight; ++slot )
+	{
+		if ( m_slotSerial[slot] != serial )
+			continue;
+		if ( vkWaitForFences( m_device, 1, &m_inFlight[slot], VK_TRUE, timeoutNs ) != VK_SUCCESS )
+			return false;
+		// One queue completes submissions in order.
+		m_completedSerial = std::max( m_completedSerial, serial );
+		return true;
+	}
+	return false;
 }
 
 bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
@@ -5779,6 +5846,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			bool pbrWorld = false;
 			bool portal = false;
 			bool skin = false;
+			bool solidEnergy = false;
 			// sRGB inputs decoded by the sampler and output encoded by the view,
 			// which the shader must then not apply itself.
 			int decodedFlags = openSrgb ? kColorSrgbWrite : 0;
@@ -5838,6 +5906,17 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				selectedLayout = m_skinPipelineLayout;
 				skin = true;
 			}
+			else if ( d.shaderIndex == kDynShaderSolidEnergy )
+			{
+				selected = SolidEnergyPipeline( d.raster, openSrgb, passSamples );
+				if ( selected == VK_NULL_HANDLE || d.skin < 0 || !skinConstantsOk ||
+				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
+					continue;
+				selectedLayout = m_skinPipelineLayout;
+				// The skin layout, push block and constants; its own samplers.
+				skin = true;
+				solidEnergy = true;
+			}
 			if ( selected == VK_NULL_HANDLE )
 				continue;
 			if ( selected != boundPipeline )
@@ -5888,6 +5967,20 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					    sampledSet( d.samplerHandles[2], kColorSrgbReadSampler2 ) };
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 					    m_portalPipelineLayout, 0, 3, sets, 0, nullptr );
+				}
+				else if ( solidEnergy )
+				{
+					// s0 base (sRGB), s1 detail 1 and s4 detail 2 (sRGB, decoded
+					// by solidenergy.frag), s5 flow map, s6 flow noise, s7 flow
+					// bounds, then this draw's constants.
+					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					    sampledSet( d.samplerHandles[1], 0 ), sampledSet( d.samplerHandles[4], 0 ),
+					    sampledSet( d.samplerHandles[5], 0 ), sampledSet( d.samplerHandles[6], 0 ),
+					    sampledSet( d.samplerHandles[7], 0 ),
+					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set };
+					const uint32_t offset = skinOffsets[static_cast<size_t>( d.skin )];
+					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+					    m_skinPipelineLayout, 0, 7, sets, 1, &offset );
 				}
 				else if ( skin )
 				{
@@ -7171,6 +7264,8 @@ int CVulkanContext::PrewarmPipelines()
 			pipeline = PortalPipeline( state, srgb, samples );
 		else if ( family == kPipelineSkin )
 			pipeline = SkinPipeline( state, srgb, samples );
+		else if ( family == kPipelineSolidEnergy )
+			pipeline = SolidEnergyPipeline( state, srgb, samples );
 		else if ( family == kPipelinePbrDirect )
 			pipeline = PbrDirectPipeline( state, srgb, samples );
 		if ( pipeline != VK_NULL_HANDLE )

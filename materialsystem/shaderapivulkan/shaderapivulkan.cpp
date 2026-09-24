@@ -267,11 +267,19 @@ static uint64_t g_TargetCopiesDropped = 0;
 struct TextureRecord
 {
 	std::string name;
+	std::string group; // texture budget group (pTextureGroupName)
 	ImageFormat format = IMAGE_FORMAT_UNKNOWN;
 	uint64_t bindsWhileEmpty = 0;
 	uint64_t rejectedAsTarget = 0;
+	int priority = 0; // TexSetPriority
 	int width = 0;
 	int height = 0;
+	// What mat_texture_list reports (IDebugTextureInfo), as D3D9's Texture_t
+	// keeps it: the bytes of every level and face, and the binds per frame.
+	int sizeBytes = 0;
+	int lastBoundFrame = -1;
+	int timesBoundThisFrame = 0;
+	int timesBoundMax = 0;
 	// CPU copy of mip 0 that TexLock hands to the material system's pixel writer
 	// (lightmap pages are written this way, a sub-rectangle at a time); TexUnlock
 	// uploads it. Allocated on first lock.
@@ -279,18 +287,157 @@ struct TextureRecord
 };
 static std::vector<TextureRecord> g_TextureRecords;
 
-static void NoteTextureCreated(
-    int handle, const char *debugName, ImageFormat format, int width, int height )
+static void NoteTextureCreated( int handle, const char *debugName, ImageFormat format, int width,
+    int height, const char *group = nullptr, int mipLevels = 1, bool cube = false )
 {
 	if ( handle < 0 )
 		return;
 	if ( static_cast<size_t>( handle ) >= g_TextureRecords.size() )
 		g_TextureRecords.resize( static_cast<size_t>( handle ) + 1 );
-	g_TextureRecords[static_cast<size_t>( handle )].name = debugName ? debugName : "(unnamed)";
-	g_TextureRecords[static_cast<size_t>( handle )].format = format;
-	g_TextureRecords[static_cast<size_t>( handle )].width = width;
-	g_TextureRecords[static_cast<size_t>( handle )].height = height;
-	g_TextureRecords[static_cast<size_t>( handle )].lockSurface.clear();
+	TextureRecord &record = g_TextureRecords[static_cast<size_t>( handle )];
+	record = TextureRecord();
+	record.name = debugName ? debugName : "(unnamed)";
+	record.group = group ? group : "";
+	record.format = format;
+	record.width = width;
+	record.height = height;
+	// D3D9 sums ImageLoader::GetMemRequired over every level (and cube face).
+	for ( int level = 0; level < std::max( 1, mipLevels ); ++level )
+	{
+		record.sizeBytes += ImageLoader::GetMemRequired(
+		    std::max( 1, width >> level ), std::max( 1, height >> level ), 1, format, false );
+	}
+	if ( cube )
+		record.sizeBytes *= 6;
+}
+
+// IDebugTextureInfo (mat_texture_list, mat_texture_limit): the frame counter
+// BeginFrame advances, the bytes of the distinct textures bound this frame, and
+// the list EndFrame exports while enabled. As in CShaderAPIDx8.
+static int g_CurrentFrameNumber = 0;
+static int g_TextureMemoryUsedLastFrame = 0;
+static int g_TextureMemoryUsedTotal = 0;
+static int g_TextureMemoryUsedPicMip1 = 0;
+static int g_TextureMemoryUsedPicMip2 = 0;
+static bool g_bEnableDebugTextureList = false;
+static bool g_bDebugGetAllTextures = false;
+static bool g_bDebugTexturesRendering = false;
+static KeyValues *g_pDebugTextureList = nullptr;
+static int g_nDebugDataExportFrame = -1;
+static ConVar mat_texture_limit( "mat_texture_limit", "-1", 0,
+    "If this value is not -1, the material system will limit the amount of texture memory it "
+    "uses in a frame. Useful for identifying performance cliffs. The value is in kilobytes." );
+
+// CShaderAPIDx8::WouldBeOverTextureLimit: binding this texture would take the
+// frame past mat_texture_limit (then it is not set, as on D3D9).
+static bool WouldBeOverTextureLimit( int handle )
+{
+	if ( mat_texture_limit.GetInt() < 0 || handle < 0 ||
+	     static_cast<size_t>( handle ) >= g_TextureRecords.size() )
+		return false;
+	const TextureRecord &record = g_TextureRecords[static_cast<size_t>( handle )];
+	if ( record.lastBoundFrame == g_CurrentFrameNumber )
+		return false;
+	return g_TextureMemoryUsedLastFrame + record.sizeBytes > mat_texture_limit.GetInt() * 1024;
+}
+
+// The per-frame bind accounting CShaderAPIDx8::SetTextureState does.
+static void NoteTextureBound( int handle )
+{
+	if ( handle < 0 || static_cast<size_t>( handle ) >= g_TextureRecords.size() )
+		return;
+	TextureRecord &record = g_TextureRecords[static_cast<size_t>( handle )];
+	if ( record.lastBoundFrame != g_CurrentFrameNumber )
+	{
+		record.lastBoundFrame = g_CurrentFrameNumber;
+		record.timesBoundThisFrame = 0;
+		g_TextureMemoryUsedLastFrame += record.sizeBytes;
+	}
+	if ( !g_bDebugTexturesRendering )
+		++record.timesBoundThisFrame;
+	record.timesBoundMax = std::max( record.timesBoundMax, record.timesBoundThisFrame );
+}
+
+static void AddBufferToTextureList( const char *name, int width, int height )
+{
+	KeyValues *pSubKey = g_pDebugTextureList->CreateNewKey();
+	pSubKey->SetString( "Name", name );
+	pSubKey->SetString( "TexGroup", TEXTURE_GROUP_RENDER_TARGET );
+	pSubKey->SetInt( "Size", 4 * width * height );
+	pSubKey->SetString( "Format", "32 bit buffer (hack)" );
+	pSubKey->SetInt( "Width", width );
+	pSubKey->SetInt( "Height", height );
+	pSubKey->SetInt( "BindsMax", 1 );
+	pSubKey->SetInt( "BindsFrame", 1 );
+}
+
+// CShaderAPIDx8::ExportTextureList: the live textures' memory totals and, for
+// the ones bound this frame (all with EnableGetAllTextures), one key each.
+static void ExportTextureList()
+{
+	if ( !g_bEnableDebugTextureList || !g_VulkanContext.IsValid() )
+		return;
+	g_nDebugDataExportFrame = g_CurrentFrameNumber;
+	if ( g_pDebugTextureList )
+		g_pDebugTextureList->deleteThis();
+	g_pDebugTextureList = new KeyValues( "TextureList" );
+	g_TextureMemoryUsedTotal = 0;
+	g_TextureMemoryUsedPicMip1 = 0;
+	g_TextureMemoryUsedPicMip2 = 0;
+	for ( size_t handle = 0; handle < g_TextureRecords.size(); ++handle )
+	{
+		TextureRecord &tex = g_TextureRecords[handle];
+		if ( tex.name.empty() || !g_VulkanContext.ManagedTextureMipLevels( static_cast<int>( handle ) ) )
+			continue;
+		g_TextureMemoryUsedTotal += tex.sizeBytes;
+		const int levels = static_cast<int>(
+		    g_VulkanContext.ManagedTextureMipLevels( static_cast<int>( handle ) ) );
+		int numBytes = tex.sizeBytes;
+		if ( levels > 1 )
+		{
+			if ( tex.width > 4 || tex.height > 4 )
+			{
+				const int topMipSize =
+				    ImageLoader::GetMemRequired( tex.width, tex.height, 1, tex.format, false );
+				numBytes -= topMipSize;
+				g_TextureMemoryUsedPicMip1 += numBytes;
+				if ( tex.width > 8 || tex.height > 8 )
+				{
+					const int ratio = ( tex.width > 8 ? 2 : 1 ) * ( tex.height > 8 ? 2 : 1 );
+					numBytes -= topMipSize / ratio;
+				}
+				g_TextureMemoryUsedPicMip1 += numBytes;
+			}
+			else
+			{
+				g_TextureMemoryUsedPicMip1 += numBytes;
+				g_TextureMemoryUsedPicMip2 += numBytes;
+			}
+		}
+		else
+		{
+			g_TextureMemoryUsedPicMip1 += numBytes;
+			g_TextureMemoryUsedPicMip2 += numBytes;
+		}
+		if ( !g_bDebugGetAllTextures && tex.lastBoundFrame != g_CurrentFrameNumber )
+			continue;
+		if ( tex.lastBoundFrame != g_CurrentFrameNumber )
+			tex.timesBoundThisFrame = 0;
+		KeyValues *pSubKey = g_pDebugTextureList->CreateNewKey();
+		pSubKey->SetString( "Name", tex.name.c_str() );
+		pSubKey->SetString( "TexGroup", tex.group.c_str() );
+		pSubKey->SetInt( "Size", tex.sizeBytes );
+		pSubKey->SetString( "Format", ImageLoader::GetName( tex.format ) );
+		pSubKey->SetInt( "Width", tex.width );
+		pSubKey->SetInt( "Height", tex.height );
+		pSubKey->SetInt( "BindsMax", tex.timesBoundMax );
+		pSubKey->SetInt( "BindsFrame", tex.timesBoundThisFrame );
+	}
+	int width = 0, height = 0;
+	g_VulkanContext.GetSwapchainExtent( width, height );
+	AddBufferToTextureList( "BACKBUFFER", width, height );
+	AddBufferToTextureList( "FRONTBUFFER", width, height );
+	AddBufferToTextureList( "DEPTHBUFFER", width, height );
 }
 
 // True when the draw about to be emitted samples real material pixels. Both the
@@ -363,6 +510,9 @@ static int g_CurrentPortalStage = -1;
 // The skin_ps20b static combos of the pass as skin.frag's flags, -1 when the
 // pass is not VertexLitGeneric's $phong path.
 static int g_CurrentSkinCombos = -1;
+// Whether the pass is SolidEnergy's (solidenergy_ps20b), which reads its combos
+// from its own constants c10/c11 (solidenergy_dx9_helper.cpp).
+static bool g_CurrentSolidEnergy = false;
 // IShaderAPI::CullMode, D3D9's default CCW.
 static MaterialCullMode_t g_DesiredCullMode = MATERIAL_CULLMODE_CCW;
 
@@ -392,10 +542,50 @@ static float g_LightingOrigin[3] = {};
 // The vertex shader's dynamic combo index (SetVertexShaderIndex), which selects
 // vertexlit_and_unlit_generic_vs20's DYNAMIC_LIGHT and STATIC_LIGHT.
 static int g_VertexShaderDynamicIndex = 0;
+// The pixel shader's dynamic combo index (SetPixelShaderIndex), as D3D9's shader
+// manager keeps it. -1 is the default state's "no index".
+static int g_PixelShaderDynamicIndex = 0;
+// Fixed-function dynamic state D3D9 keeps in m_DynamicState: the constant color
+// (D3DRS_TEXTUREFACTOR, a D3DCOLOR set by Color*), the shade mode and the
+// ambient light (D3DRS_AMBIENT). No DX9 shader reads them; they are held so the
+// interface reports what was set.
+static unsigned int g_ConstantColor = 0xFFFFFFFF;
+static ShaderShadeMode_t g_ShadeMode = SHADER_SMOOTH;
+static unsigned int g_AmbientLightColor = 0;
+// Fog, as CShaderAPIDx8 keeps it: the scene's mode and color (SceneFogMode,
+// SceneFogColor3ub), the mode in effect for the current pass (FogMode, which
+// ApplyFogMode derives from the snapshot's IShaderShadow::FogMode), the fog
+// range, and the register the pass's shader asked its fog parameters in
+// (SetPixelShaderFogParams; D3D9's m_DelayedShaderConstants).
+struct FogRenderState
+{
+	MaterialFogMode_t sceneMode = MATERIAL_FOG_NONE;
+	unsigned char sceneColor[3] = { 0, 0, 0 };
+	MaterialFogMode_t currentMode = MATERIAL_FOG_NONE;
+	float start = 0.0f;
+	float end = 0.0f;
+	float fogZ = 0.0f;
+	float maxDensity = 1.0f;
+	// ApplyFogMode's color for the pass (0..1, gamma space) and whether the pass
+	// asked for it without gamma correction.
+	float pixelColor[3] = { 0.0f, 0.0f, 0.0f };
+	bool gammaCorrectionDisabled = false;
+	bool srgbWrite = false;
+	int delayedParamsRegister = -1;
+	// m_DestAlphaDepthRange: 192 without float HDR.
+	float destAlphaDepthRange = 192.0f;
+};
+static FogRenderState g_Fog;
+// The shadow state's fog mode and fog gamma correction of the pass being drawn
+// (BeginPass), which SetPixelShaderFogParams and ApplyFogMode read.
+static ShaderFogMode_t g_CurrentShadowFogMode = SHADER_FOGMODE_DISABLED;
+static bool g_CurrentDisableFogGammaCorrection = false;
 namespace
 {
 void CommitModelViewProj();
 void CommitViewProj();
+// Loads identity into the fixed-function texture matrices (MATERIAL_TEXTURE0..).
+void ResetTextureMatrices( int count );
 // The MODEL matrix of the matrix stack (stored transposed, for row vectors).
 const float *ModelMatrix();
 } // namespace
@@ -431,6 +621,9 @@ static void NotePrimitiveType( MaterialPrimitiveType_t type )
 		++g_PrimitiveTypeCounts[index];
 }
 
+static size_t SnapshotCount();
+static size_t SnapshotCapacity();
+
 static void ReportUnimplementedEntries()
 {
 	static const char *const kPrimitiveNames[] = { "POINTS", "LINES", "TRIANGLES", "TRIANGLE_STRIP",
@@ -449,6 +642,7 @@ static void ReportUnimplementedEntries()
 	    static_cast<unsigned long long>( g_DrawsUnuploaded ),
 	    static_cast<unsigned long long>( g_DrawsUntextured ) );
 
+	fprintf( stderr, "[vulkan] snapshots=%zu of %zu\n", SnapshotCount(), SnapshotCapacity() );
 	fprintf( stderr, "[vulkan] presents=%llu scaled=%llu\n",
 	    static_cast<unsigned long long>( g_VulkanContext.PresentCount() ),
 	    static_cast<unsigned long long>( g_VulkanContext.ScaledPresentCount() ) );
@@ -556,6 +750,19 @@ public:
 	virtual void EndCastBuffer() {}
 	virtual int GetRoomRemaining() const { return 0; }
 	virtual MaterialIndexFormat_t IndexFormat() const { return MATERIAL_INDEX_FORMAT_UNKNOWN; }
+
+	// Frees the lock storage (dynamic buffers across level transitions and
+	// device resource releases); the next lock allocates it again.
+	void ReleaseStorage()
+	{
+		NoteWrite();
+		std::vector<unsigned char>().swap( m_vertexData );
+		std::vector<unsigned short>().swap( m_indexData );
+		m_numVerts = 0;
+		m_numIndices = 0;
+		m_drawFirst = 0;
+		m_drawCount = 0;
+	}
 
 	void LockMesh( int numVerts, int numIndices, MeshDesc_t &desc );
 	void UnlockMesh( int numVerts, int numIndices, MeshDesc_t &desc );
@@ -697,14 +904,17 @@ private:
 public:
 	// 12 bytes position + 4 bytes color + 8 bytes texcoord0 + 8 bytes texcoord1
 	// + 8 bytes bone weights (two floats) + 4 bytes bone indices + 12 bytes
-	// normal + 16 bytes user data (the TANGENT stream, binormal sign in w).
+	// normal + 16 bytes user data (the TANGENT stream, binormal sign in w)
+	// + 12 bytes each of tangent S and tangent T (brush formats' tangent frame).
 	enum
 	{
-		kMeshVertexStride = 72,
+		kMeshVertexStride = 96,
 		kMeshBoneWeightOffset = 32,
 		kMeshBoneIndexOffset = 40,
 		kMeshNormalOffset = 44,
-		kMeshUserDataOffset = 56
+		kMeshUserDataOffset = 56,
+		kMeshTangentSOffset = 72,
+		kMeshTangentTOffset = 84
 	};
 };
 
@@ -841,13 +1051,22 @@ public:
 
 	void EnableSRGBRead( Sampler_t stage, bool bEnable );
 
-	virtual void FogMode( ShaderFogMode_t fogMode ) {}
+	// The pass's fog, as CShaderShadowDX8 records it; ApplyFogMode turns it into
+	// the fog color and parameters when the pass begins.
+	virtual void FogMode( ShaderFogMode_t fogMode ) { m_fogMode = fogMode; }
 
-	virtual void DisableFogGammaCorrection( bool bDisable ) {}
+	virtual void DisableFogGammaCorrection( bool bDisable )
+	{
+		m_disableFogGammaCorrection = bDisable;
+	}
 
-	virtual void SetDiffuseMaterialSource( ShaderMaterialSource_t materialSource ) {}
+	// Fixed-function lighting's diffuse source (D3DRS_DIFFUSEMATERIALSOURCE).
+	virtual void SetDiffuseMaterialSource( ShaderMaterialSource_t materialSource )
+	{
+		m_diffuseMaterialSource = materialSource;
+	}
 
-	virtual void SetMorphFormat( MorphFormat_t flags ) {}
+	virtual void SetMorphFormat( MorphFormat_t flags ) { m_morphFormat = flags; }
 
 	virtual void EnableStencil( bool bEnable ) {}
 	virtual void StencilFunc( ShaderStencilFunc_t stencilFunc ) {}
@@ -904,6 +1123,36 @@ public:
 	int m_vertexShaderIndex = 0; // the vertex shader's static combo index
 	// Selected vertex shader; screenspaceeffect_vs20 positions in clip space.
 	char m_vertexShaderName[64] = { 0 };
+	ShaderFogMode_t m_fogMode = SHADER_FOGMODE_DISABLED;
+	bool m_disableFogGammaCorrection = false;
+	// Samplers the pass enabled (EnableTexture), one bit each. D3D9 sets no
+	// texture on a sampler its pass did not enable.
+	unsigned int m_enabledSamplers = 0;
+	// Fixed-function state, recorded as CShaderShadowDX8 records it. It applies
+	// only to a pass with no vertex and pixel shader, which the native
+	// pipelines do not draw (RenderPass reports such passes).
+	bool m_alphaPipe = false;
+	bool m_constantAlpha = false;
+	bool m_vertexAlpha = false;
+	unsigned int m_textureAlphaStages = 0;
+	bool m_constantColor = false;
+	bool m_lighting = false;
+	bool m_specular = false;
+	bool m_vertexBlend = false;
+	enum
+	{
+		kFixedFunctionStages = 8 // SHADER_TEXTURE_STAGE0..7
+	};
+	float m_overbright[kFixedFunctionStages] = {};
+	bool m_customPixelPipe = false;
+	int m_customStageCount = 0;
+	ShaderTexOp_t m_texOp[kFixedFunctionStages][2] = {};
+	ShaderTexArg_t m_texArg[kFixedFunctionStages][2][2] = {};
+	unsigned int m_texGenStages = 0;
+	ShaderTexGenParam_t m_texGen[kFixedFunctionStages] = {};
+	unsigned int m_drawFlags = 0;
+	ShaderMaterialSource_t m_diffuseMaterialSource = SHADER_MATERIALSOURCE_MATERIAL;
+	MorphFormat_t m_morphFormat = 0;
 };
 
 //-----------------------------------------------------------------------------
@@ -1011,9 +1260,17 @@ public:
 
 	virtual char *GetDisplayDeviceName() OVERRIDE { return ""; }
 
+	void ReleaseDynamicStorage()
+	{
+		m_Mesh.ReleaseStorage();
+		m_DynamicMesh.ReleaseStorage();
+	}
+
 private:
 	CEmptyMesh m_Mesh;
 	CEmptyMesh m_DynamicMesh;
+	// ReleaseResources / ReacquireResources pairs; only the outermost pair acts.
+	int m_releaseResourcesRefCount = 0;
 };
 
 static CShaderDeviceVulkan s_ShaderDeviceEmpty;
@@ -1087,14 +1344,38 @@ public:
 	CShaderAPIVulkan();
 	virtual ~CShaderAPIVulkan();
 
-	// IDebugTextureInfo implementation.
+	// IDebugTextureInfo implementation (CShaderAPIDx8's; see ExportTextureList).
 public:
-	virtual bool IsDebugTextureListFresh( int numFramesAllowed = 1 ) { return false; }
-	virtual bool SetDebugTextureRendering( bool bEnable ) { return false; }
-	virtual void EnableDebugTextureList( bool bEnable ) {}
-	virtual void EnableGetAllTextures( bool bEnable ) {}
-	virtual KeyValues *GetDebugTextureList() { return NULL; }
-	virtual int GetTextureMemoryUsed( TextureMemoryType eTextureMemory ) { return 0; }
+	virtual bool IsDebugTextureListFresh( int numFramesAllowed = 1 )
+	{
+		return g_nDebugDataExportFrame <= g_CurrentFrameNumber &&
+		       g_nDebugDataExportFrame >= g_CurrentFrameNumber - numFramesAllowed;
+	}
+	virtual bool SetDebugTextureRendering( bool bEnable )
+	{
+		const bool previous = g_bDebugTexturesRendering;
+		g_bDebugTexturesRendering = bEnable;
+		return previous;
+	}
+	virtual void EnableDebugTextureList( bool bEnable ) { g_bEnableDebugTextureList = bEnable; }
+	virtual void EnableGetAllTextures( bool bEnable ) { g_bDebugGetAllTextures = bEnable; }
+	virtual KeyValues *GetDebugTextureList() { return g_pDebugTextureList; }
+	virtual int GetTextureMemoryUsed( TextureMemoryType eTextureMemory )
+	{
+		switch ( eTextureMemory )
+		{
+		case MEMORY_BOUND_LAST_FRAME:
+			return g_TextureMemoryUsedLastFrame;
+		case MEMORY_TOTAL_LOADED:
+			return g_TextureMemoryUsedTotal;
+		case MEMORY_ESTIMATE_PICMIP_1:
+			return g_TextureMemoryUsedPicMip1;
+		case MEMORY_ESTIMATE_PICMIP_2:
+			return g_TextureMemoryUsedPicMip2;
+		default:
+			return 0;
+		}
+	}
 
 	// Methods of IShaderDynamicAPI
 	virtual void GetBackBufferDimensions( int &width, int &height ) const
@@ -1121,10 +1402,20 @@ public:
 	virtual void BindGeometryShader( GeometryShaderHandle_t hGeometryShader ) {}
 	virtual void BindPixelShader( PixelShaderHandle_t hPixelShader ) {}
 	virtual void SetRasterState( const ShaderRasterState_t &state ) {}
+	// As CMeshMgr::MarkUnusedVertexFields: the vertex fields and texture
+	// coordinates the next draws' shader reads but their mesh need not supply,
+	// which D3D9 feeds from a zero stream. The native vertex records hold zeros
+	// for every such field (texture coordinates past the second included).
 	virtual void MarkUnusedVertexFields(
 	    unsigned int nFlags, int nTexCoordCount, bool *pUnusedTexCoords )
 	{
-		VK_UNIMPLEMENTED();
+		m_nUnusedVertexFields = nFlags;
+		m_nUnusedTextureCoords = 0;
+		for ( int i = 0; pUnusedTexCoords && i < nTexCoordCount && i < 32; ++i )
+		{
+			if ( pUnusedTexCoords[i] )
+				m_nUnusedTextureCoords |= 1u << i;
+		}
 	}
 	virtual bool OwnGPUResources( bool bEnable ) { return false; }
 
@@ -1216,9 +1507,6 @@ public:
 	// Begins a rendering pass that uses a state snapshot
 	void BeginPass( StateSnapshot_t snapshot );
 
-	// Uses a state snapshot
-	void UseSnapshot( StateSnapshot_t snapshot );
-
 	// Use this to get the mesh builder that allows us to modify vertex data
 	CMeshBuilder *GetVertexModifyBuilder();
 
@@ -1252,15 +1540,6 @@ public:
 
 	void SetSkinningMatrices();
 
-	// Lightmap texture binding
-	void BindLightmap( TextureStage_t stage );
-	void BindLightmapAlpha( TextureStage_t stage ) {}
-	void BindBumpLightmap( TextureStage_t stage );
-	void BindFullbrightLightmap( TextureStage_t stage );
-	void BindWhite( TextureStage_t stage );
-	void BindBlack( TextureStage_t stage );
-	void BindGrey( TextureStage_t stage );
-	void BindFBTexture( TextureStage_t stage, int textureIdex );
 	void CopyRenderTargetToTexture( ShaderAPITextureHandle_t texID )
 	{
 		CopyRenderTargetToTextureEx( texID, 0, nullptr, nullptr );
@@ -1274,11 +1553,6 @@ public:
 	{
 		VK_UNIMPLEMENTED();
 	}
-
-	// Special system flat normal map binding.
-	void BindFlatNormalMap( TextureStage_t stage );
-	void BindNormalizationCubeMap( TextureStage_t stage );
-	void BindSignedNormalizationCubeMap( TextureStage_t stage );
 
 	// Set the number of bone weights
 	void SetNumBoneWeights( int numBones );
@@ -1311,6 +1585,8 @@ public:
 	void MultMatrix( float *m );
 	void MultMatrixLocal( float *m );
 	void GetMatrix( MaterialMatrixMode_t matrixMode, float *dst );
+	// The matrix of the current matrix mode, as stored (transposed).
+	void GetCurrentMatrix( float *dst );
 	void LoadIdentity( void );
 	void LoadCameraToWorld( void );
 	void Ortho( double left, double top, double right, double bottom, double zNear, double zFar );
@@ -1330,10 +1606,6 @@ public:
 	void SetFogZ( float fogZ );
 	void FogMaxDensity( float flMaxDensity );
 	void GetFogDistances( float *fStart, float *fEnd, float *fFogZ );
-	void FogColor3f( float r, float g, float b );
-	void FogColor3fv( float const *rgb );
-	void FogColor3ub( unsigned char r, unsigned char g, unsigned char b );
-	void FogColor3ubv( unsigned char const *rgb );
 
 	virtual void SceneFogColor3ub( unsigned char r, unsigned char g, unsigned char b );
 	virtual void SceneFogMode( MaterialFogMode_t fogMode );
@@ -1657,7 +1929,17 @@ public:
 
 	virtual void SetDepthFeatheringPixelShaderConstant( int iConstant, float fDepthBlendScale ) {}
 
-	void SetPixelShaderFogParams( int reg ) {}
+	// As CShaderAPIDx8: the pass's fog parameters into pixel constant reg
+	// (cFogEndOverFogRange, water height, max density, 1 / range), remembered so
+	// a later ApplyFogMode rewrites them.
+	void SetPixelShaderFogParams( int reg );
+	void SetPixelShaderFogParams( int reg, ShaderFogMode_t fogMode );
+	// CShaderAPIDx8::ApplyFogMode: the pass's fog color (c29) and parameters from
+	// its shadow fog mode and the scene fog.
+	void ApplyFogMode( ShaderFogMode_t fogMode, bool bSRGBWritesEnabled, bool bDisableFogGammaCorrection );
+	void UpdatePixelFogColorConstant();
+	MaterialFogMode_t GetPixelFogMode() const;
+	void UpdateVertexShaderFogParams();
 
 	virtual bool InFlashlightMode() const { return false; }
 
@@ -2002,6 +2284,44 @@ private:
 	float m_shadowSlopeScaleDepthBias = 0.0f;
 	float m_shadowDepthBias = 0.0f;
 	void ApplyDepthBiasState( render_vulkan::CVulkanContext::DynRasterState &raster );
+	// OverrideDepthEnable: D3D9 forces the Z test on and the Z write to the given
+	// value for every draw until the override ends (TransitionTable's
+	// PerformShadowStateOverrides). VGUI screens in the world use it to depth-test
+	// their $ignorez materials.
+	bool m_bOverrideDepthEnable = false;
+	bool m_bOverrideDepthWrite = false;
+	bool m_bForceDepthFuncEquals = false;
+	bool m_bOverrideAlphaWrite = false;
+	bool m_bOverriddenAlphaWrite = false;
+	bool m_bOverrideColorWrite = false;
+	bool m_bOverriddenColorWrite = false;
+	unsigned int m_nUnusedVertexFields = 0;
+	unsigned int m_nUnusedTextureCoords = 0;
+	// SetBooleanVertexShaderConstant and the other non-float banks, as D3D9's
+	// m_DesiredState holds them (16 registers each on shader model 3 hardware).
+	enum
+	{
+		kShaderBoolIntRegisters = 16
+	};
+	BOOL m_vsBoolConstants[kShaderBoolIntRegisters] = {};
+	int m_vsIntConstants[kShaderBoolIntRegisters][4] = {};
+	BOOL m_psBoolConstants[kShaderBoolIntRegisters] = {};
+	int m_psIntConstants[kShaderBoolIntRegisters][4] = {};
+	// SetLinearToGammaConversionTextures: the tables D3D9 binds to sampler 15 for
+	// shaders that convert to sRGB themselves (NeedsShaderSRGBConversion, which
+	// this backend reports false).
+	ShaderAPITextureHandle_t m_hLinearToGammaTableTexture = INVALID_SHADERAPI_TEXTURE_HANDLE;
+	ShaderAPITextureHandle_t m_hLinearToGammaTableIdentityTexture = INVALID_SHADERAPI_TEXTURE_HANDLE;
+	bool m_bHWMorphingEnabled = false;
+	// Fixed-function texture stage state (SetTextureTransformDimension,
+	// SetBumpEnvMatrix), identity by default.
+	struct TextureStageState
+	{
+		int transformFlags = 0;
+		float bumpEnv[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
+	};
+	TextureStageState m_TextureStages[8];
+	void ApplyShadowStateOverrides( render_vulkan::CVulkanContext::DynRasterState &raster ) const;
 	float m_FloatRenderingParameters[MAX_FLOAT_RENDER_PARMS];
 	int m_IntRenderingParameters[MAX_INT_RENDER_PARMS];
 	Vector m_VectorRenderingParameters[MAX_VECTOR_RENDER_PARMS];
@@ -2525,14 +2845,35 @@ void CShaderDeviceVulkan::SetView( void *hwnd )
 	VK_UNIMPLEMENTED();
 }
 
+// As CShaderDeviceDx8: the material system releases everything it created
+// through this API (textures, render targets, lightmap pages, standard textures)
+// and the dynamic buffers are freed; ReacquireResources has it recreate them in
+// the configuration current then (a changed HDR mode reformats the lightmap
+// pages). A Vulkan device is never lost, so nothing else is reset. Only the
+// outermost of nested pairs acts.
 void CShaderDeviceVulkan::ReleaseResources()
 {
-	VK_UNIMPLEMENTED();
+	if ( m_releaseResourcesRefCount++ != 0 )
+	{
+		Warning( "ReleaseResources has no effect, now at level %d.\n", m_releaseResourcesRefCount );
+		return;
+	}
+	if ( g_pShaderUtil )
+		g_pShaderUtil->ReleaseShaderObjects();
+	ReleaseDynamicStorage();
 }
 
 void CShaderDeviceVulkan::ReacquireResources()
 {
-	VK_UNIMPLEMENTED();
+	if ( --m_releaseResourcesRefCount != 0 )
+	{
+		Warning( "ReacquireResources has no effect, now at level %d.\n", m_releaseResourcesRefCount );
+		if ( m_releaseResourcesRefCount < 0 )
+			m_releaseResourcesRefCount = 0;
+		return;
+	}
+	if ( g_pShaderUtil )
+		g_pShaderUtil->RestoreShaderObjects( ShaderInterfaceFactory );
 }
 
 // Creates/destroys Mesh
@@ -2752,6 +3093,7 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 		memcpy( vertex + kMeshBoneWeightOffset, weights, sizeof( weights ) );
 		memset( vertex + kMeshBoneIndexOffset, 0, 4 );
 		memset( vertex + kMeshNormalOffset, 0, 28 );
+		memset( vertex + kMeshTangentSOffset, 0, 24 );
 	}
 
 	desc.m_pPosition = (float *)( vertexMemory );
@@ -2782,16 +3124,16 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 	// Bone weights and indices: what hardware skinning blends (SkinPosition).
 	desc.m_pBoneWeight = (float *)( vertexMemory + kMeshBoneWeightOffset );
 	desc.m_pBoneMatrixIndex = vertexMemory + kMeshBoneIndexOffset;
-	desc.m_pTangentS = (float *)m_dummyComponent;
-	desc.m_pTangentT = (float *)m_dummyComponent;
+	desc.m_pTangentS = (float *)( vertexMemory + kMeshTangentSOffset );
+	desc.m_pTangentT = (float *)( vertexMemory + kMeshTangentTOffset );
 	desc.m_pUserData = (float *)( vertexMemory + kMeshUserDataOffset );
 	desc.m_NumBoneWeights = 2;
 
 	desc.m_VertexSize_BoneWeight = kMeshVertexStride;
 	desc.m_VertexSize_BoneMatrixIndex = kMeshVertexStride;
 	desc.m_VertexSize_Normal = kMeshVertexStride;
-	desc.m_VertexSize_TangentS = 0;
-	desc.m_VertexSize_TangentT = 0;
+	desc.m_VertexSize_TangentS = kMeshVertexStride;
+	desc.m_VertexSize_TangentT = kMeshVertexStride;
 	desc.m_VertexSize_UserData = kMeshVertexStride;
 	desc.m_ActualVertexSize = kMeshVertexStride;
 
@@ -2857,6 +3199,10 @@ void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, i
 		vdesc.m_VertexSize_Normal = 0;
 		vdesc.m_pUserData = (float *)m_dummyComponent;
 		vdesc.m_VertexSize_UserData = 0;
+		vdesc.m_pTangentS = (float *)m_dummyComponent;
+		vdesc.m_VertexSize_TangentS = 0;
+		vdesc.m_pTangentT = (float *)m_dummyComponent;
+		vdesc.m_VertexSize_TangentT = 0;
 	}
 	else
 	{
@@ -2872,6 +3218,8 @@ void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, i
 		vdesc.m_pBoneMatrixIndex = base + kMeshBoneIndexOffset;
 		vdesc.m_pNormal = (float *)( base + kMeshNormalOffset );
 		vdesc.m_pUserData = (float *)( base + kMeshUserDataOffset );
+		vdesc.m_pTangentS = (float *)( base + kMeshTangentSOffset );
+		vdesc.m_pTangentT = (float *)( base + kMeshTangentTOffset );
 	}
 	ModifyBegin( bReadOnly, firstIndex, numIndices, *static_cast<IndexDesc_t *>( &desc ) );
 }
@@ -2994,6 +3342,13 @@ static void SkinPosition( const unsigned char *vertex, float pos[3] )
 	pos[0] = world[0];
 	pos[1] = world[1];
 	pos[2] = world[2];
+}
+
+static void CrossProduct3( const float *a, const float *b, float *out )
+{
+	out[0] = a[1] * b[2] - a[2] * b[1];
+	out[1] = a[2] * b[0] - a[0] * b[2];
+	out[2] = a[0] * b[1] - a[1] * b[0];
 }
 
 // common_vs_fxc.h SkinPositionAndNormal's normal: blended through the bones'
@@ -3380,7 +3735,12 @@ void CEmptyMesh::EmitToNativeQueue()
 	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentLightmappedEnvmap ) != 0;
 	const bool refract =
 	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentRefract ) != 0;
-	const bool wantsTangents = g_CurrentPortalStage >= 0 || skin || envmap || refract;
+	// SolidEnergy: world-space positions and tangent frame, like the skin shader.
+	const bool solidEnergy = g_CurrentSolidEnergy;
+	const bool solidEnergyModel =
+	    solidEnergy && ( static_cast<int>( g_psConstants[11][0] ) & 256 ) != 0; // MODELFORMAT
+	const bool wantsTangents =
+	    g_CurrentPortalStage >= 0 || skin || envmap || refract || solidEnergy;
 	float envContrast = 0.0f, envSaturation = 1.0f, fresnelReflection = 1.0f;
 	if ( envmap && g_pBoundMaterial )
 	{
@@ -3468,7 +3828,38 @@ void CEmptyMesh::EmitToNativeQueue()
 			float *nt = out + 10;
 			memcpy( nt, base + kMeshNormalOffset, sizeof( float ) * 3 );
 			memcpy( nt + 3, base + kMeshUserDataOffset, sizeof( float ) * 4 );
-			if ( skin )
+			if ( solidEnergy )
+			{
+				// solidenergy_vs20's frame: a brush's tangent S and T streams, or a
+				// model's normal and TANGENT (T, with S = cross( N, T ) * w). The
+				// record keeps N, S and the sign making T = cross( N, S ) * sign.
+				float normal[3], tangentS[3], tangentT[3];
+				WorldNormal( base, nt, normal );
+				if ( solidEnergyModel )
+				{
+					WorldNormal( base, nt + 3, tangentT );
+					const float w = nt[6] < 0.0f ? -1.0f : 1.0f;
+					CrossProduct3( normal, tangentT, tangentS );
+					for ( float &component : tangentS )
+						component *= w;
+				}
+				else
+				{
+					float objectS[3], objectT[3];
+					memcpy( objectS, base + kMeshTangentSOffset, sizeof( objectS ) );
+					memcpy( objectT, base + kMeshTangentTOffset, sizeof( objectT ) );
+					WorldNormal( base, objectS, tangentS );
+					WorldNormal( base, objectT, tangentT );
+				}
+				float crossNS[3];
+				CrossProduct3( normal, tangentS, crossNS );
+				const float handedness =
+				    crossNS[0] * tangentT[0] + crossNS[1] * tangentT[1] + crossNS[2] * tangentT[2];
+				memcpy( nt, normal, sizeof( normal ) );
+				memcpy( nt + 3, tangentS, sizeof( tangentS ) );
+				nt[6] = handedness < 0.0f ? -1.0f : 1.0f;
+			}
+			else if ( skin )
 			{
 				// SkinPositionNormalAndTangentSpace: normal and tangent S through
 				// the same rotation (unnormalized; skin.vert normalizes).
@@ -3546,7 +3937,17 @@ void CEmptyMesh::EmitToNativeQueue()
 		// OPENGL_SWAP_COLORS): bytes B, G, R, A.
 		const unsigned char *col = base + 12;
 		out[17] = col[3] / 255.0f;
-		if ( skin )
+		if ( solidEnergy )
+		{
+			// World-space position (the push block holds only cViewProj) and the
+			// vertex color ($vertexcolor / $vertexalpha).
+			if ( g_NumBoneWeights <= 0 )
+				ModelToWorld( pos );
+			out[3] = col[2] / 255.0f;
+			out[4] = col[1] / 255.0f;
+			out[5] = col[0] / 255.0f;
+		}
+		else if ( skin )
 		{
 			// World-space position (the push block holds only cViewProj), and the
 			// four lights' attenuation in the color slot and the alpha.
@@ -3781,11 +4182,12 @@ void CEmptyMesh::EmitToNativeQueue()
 		    ( skin ? 1u : 0u ) | ( wantsTangents ? 2u : 0u ) | ( vertexLighting ? 4u : 0u ) |
 		    ( selfIllum ? 8u : 0u ) | ( dynamicLight ? 16u : 0u ) | ( staticLight ? 32u : 0u ) |
 		    ( g_CurrentVertexLit.halfLambert ? 64u : 0u ) | ( g_NumBoneWeights > 0 ? 128u : 0u ) |
-		    ( monitor ? 256u : 0u ) | ( monitorTexture2 ? 512u : 0u );
+		    ( monitor ? 256u : 0u ) | ( monitorTexture2 ? 512u : 0u ) |
+		    ( solidEnergy ? 1024u : 0u ) | ( solidEnergyModel ? 2048u : 0u );
 		key.skinLightCount = skinLightCount;
 		key.lightCount = lightCount;
 		// The constants the conversion reads, beyond the bones.
-		if ( g_NumBoneWeights <= 0 && ( skin || vertexLighting ) )
+		if ( g_NumBoneWeights <= 0 && ( skin || vertexLighting || solidEnergy ) )
 			inputs.insert( inputs.end(), ModelMatrix(), ModelMatrix() + 16 );
 		for ( int i = 0; i < skinLightCount; ++i )
 		{
@@ -3955,6 +4357,27 @@ void CShaderShadowVulkan::SetDefaultState()
 	m_pixelShaderName[0] = '\0';
 	m_pixelShaderIndex = 0;
 	m_vertexShaderIndex = 0;
+	m_fogMode = SHADER_FOGMODE_DISABLED;
+	m_disableFogGammaCorrection = false;
+	m_enabledSamplers = 0;
+	m_alphaPipe = false;
+	m_constantAlpha = false;
+	m_vertexAlpha = false;
+	m_textureAlphaStages = 0;
+	m_constantColor = false;
+	m_lighting = false;
+	m_specular = false;
+	m_vertexBlend = false;
+	for ( float &overbright : m_overbright )
+		overbright = 1.0f;
+	m_customPixelPipe = false;
+	m_customStageCount = 0;
+	m_texGenStages = 0;
+	for ( ShaderTexGenParam_t &texGen : m_texGen )
+		texGen = SHADER_TEXGENPARAM_OBJECT_LINEAR;
+	m_drawFlags = 0;
+	m_diffuseMaterialSource = SHADER_MATERIALSOURCE_MATERIAL;
+	m_morphFormat = 0;
 }
 
 // sRGB decode on the samplers the textured pipeline reads (base on sampler 0,
@@ -4030,25 +4453,30 @@ void CShaderShadowVulkan::BlendFunc( ShaderBlendFactor_t srcFactor, ShaderBlendF
 	m_blendDst = dstFactor;
 }
 
-// A simpler method of dealing with alpha modulation
+// A simpler method of dealing with alpha modulation (fixed-function state)
 void CShaderShadowVulkan::EnableAlphaPipe( bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_alphaPipe = bEnable;
 }
 
 void CShaderShadowVulkan::EnableConstantAlpha( bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_constantAlpha = bEnable;
 }
 
 void CShaderShadowVulkan::EnableVertexAlpha( bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_vertexAlpha = bEnable;
 }
 
 void CShaderShadowVulkan::EnableTextureAlpha( TextureStage_t stage, bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	if ( stage < 0 || stage >= kFixedFunctionStages )
+		return;
+	if ( bEnable )
+		m_textureAlphaStages |= 1u << stage;
+	else
+		m_textureAlphaStages &= ~( 1u << stage );
 }
 
 // Alpha testing
@@ -4081,10 +4509,10 @@ void CShaderShadowVulkan::EnableAlphaToCoverage( bool bEnable )
 	VK_UNIMPLEMENTED();
 }
 
-// constant color + transparency
+// constant color + transparency (fixed-function state)
 void CShaderShadowVulkan::EnableConstantColor( bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_constantColor = bEnable;
 }
 
 // Indicates the vertex format for use with a vertex shader
@@ -4101,58 +4529,80 @@ void CShaderShadowVulkan::VertexShaderVertexFormat(
 	    NativeVertexFormat( nFlags, nTexCoordCount, pTexCoordDimensions, 0, nUserDataSize );
 }
 
-// Indicates we're going to light the model
+// Indicates we're going to light the model (fixed-function state)
 void CShaderShadowVulkan::EnableLighting( bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_lighting = bEnable;
 }
 
 void CShaderShadowVulkan::EnableSpecular( bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_specular = bEnable;
 }
 
-// Activate/deactivate skinning
+// Activate/deactivate fixed-function skinning. Shader passes skin from the
+// bone count (SetNumBoneWeights), as on D3D9.
 void CShaderShadowVulkan::EnableVertexBlend( bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_vertexBlend = bEnable;
 }
 
-// per texture unit stuff
+// per texture unit stuff. As CShaderShadowDX8, the overbright factor is kept
+// only on hardware that reports overbright support, which this backend does not.
 void CShaderShadowVulkan::OverbrightValue( TextureStage_t stage, float value )
 {
-	VK_UNIMPLEMENTED();
+	if ( stage >= 0 && stage < kFixedFunctionStages && g_ShaderAPIEmpty.SupportsOverbright() )
+		m_overbright[stage] = value;
 }
 
+// The samplers a pass reads. Part of the snapshot: D3D9 sets no texture on a
+// sampler its current pass did not enable (CShaderAPIDx8::ApplyTextureEnable).
 void CShaderShadowVulkan::EnableTexture( Sampler_t stage, bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	if ( stage < 0 || stage >= 32 )
+		return;
+	if ( bEnable )
+		m_enabledSamplers |= 1u << stage;
+	else
+		m_enabledSamplers &= ~( 1u << stage );
 }
 
 void CShaderShadowVulkan::EnableCustomPixelPipe( bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_customPixelPipe = bEnable;
 }
 
 void CShaderShadowVulkan::CustomTextureStages( int stageCount )
 {
-	VK_UNIMPLEMENTED();
+	m_customStageCount = std::max( 0, std::min( stageCount, static_cast<int>( kFixedFunctionStages ) ) );
 }
 
+// Fixed-function texture stage operations. They apply only to passes without
+// shaders; the stage count bounds them as on D3D9.
 void CShaderShadowVulkan::CustomTextureOperation( TextureStage_t stage, ShaderTexChannel_t channel,
     ShaderTexOp_t op, ShaderTexArg_t arg1, ShaderTexArg_t arg2 )
 {
-	VK_UNIMPLEMENTED();
+	if ( stage < 0 || stage >= kFixedFunctionStages || channel < 0 || channel > 1 )
+		return;
+	m_texOp[stage][channel] = op;
+	m_texArg[stage][channel][0] = arg1;
+	m_texArg[stage][channel][1] = arg2;
 }
 
 void CShaderShadowVulkan::EnableTexGen( TextureStage_t stage, bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	if ( stage < 0 || stage >= kFixedFunctionStages )
+		return;
+	if ( bEnable )
+		m_texGenStages |= 1u << stage;
+	else
+		m_texGenStages &= ~( 1u << stage );
 }
 
 void CShaderShadowVulkan::TexGen( TextureStage_t stage, ShaderTexGenParam_t param )
 {
-	VK_UNIMPLEMENTED();
+	if ( stage >= 0 && stage < kFixedFunctionStages )
+		m_texGen[stage] = param;
 }
 
 // Sets the vertex and pixel shaders
@@ -4166,6 +4616,12 @@ void CShaderShadowVulkan::SetVertexShader( const char *pShaderName, int vshIndex
 void CShaderShadowVulkan::EnableBlendingSeparateAlpha( bool bEnable )
 {
 	VK_UNIMPLEMENTED();
+}
+
+void CShaderShadowVulkan::DrawFlags( unsigned int drawFlags )
+{
+	// As CShaderShadowDX8: the vertex components a fixed-function pass reads.
+	m_drawFlags = drawFlags;
 }
 void CShaderShadowVulkan::SetPixelShader( const char *pShaderName, int pshIndex )
 {
@@ -4183,11 +4639,6 @@ void CShaderShadowVulkan::SetPixelShader( const char *pShaderName, int pshIndex 
 
 void CShaderShadowVulkan::BlendFuncSeparateAlpha(
     ShaderBlendFactor_t srcFactor, ShaderBlendFactor_t dstFactor )
-{
-	VK_UNIMPLEMENTED();
-}
-// indicates what per-vertex data we're providing
-void CShaderShadowVulkan::DrawFlags( unsigned int drawFlags )
 {
 	VK_UNIMPLEMENTED();
 }
@@ -4227,10 +4678,14 @@ bool CShaderAPIVulkan::CanDownloadTextures() const
 	return g_VulkanContext.IsValid();
 }
 
-// Used to clear the transition table when we know it's become invalid.
+static void ClearSnapshotTables();
+
+// Used to clear the transition table when we know it's become invalid. The
+// material system recomputes every live material's snapshots right after, as
+// on D3D9 (CTransitionTable::Reset), so the ids start again from zero.
 void CShaderAPIVulkan::ClearSnapshots()
 {
-	VK_UNIMPLEMENTED();
+	ClearSnapshotTables();
 }
 
 // Members of IMaterialSystemHardwareConfig
@@ -4545,10 +5000,22 @@ const char *CShaderAPIVulkan::GetHWSpecificShaderDLLName() const
 	return 0;
 }
 
-// Sets the default *dynamic* state
+// Sets the default *dynamic* state before each pass, as
+// CShaderAPIDx8::SetDefaultState: identity texture transforms for the first four
+// fixed-function stages, the MODEL matrix mode, a white constant color, smooth
+// shading, the default shader indices and no unused vertex fields.
 void CShaderAPIVulkan::SetDefaultState()
 {
-	VK_UNIMPLEMENTED();
+	const int stages = std::min( GetTextureStageCount(), 4 );
+	ResetTextureMatrices( stages );
+	for ( int i = 0; i < stages; ++i )
+		m_TextureStages[i].transformFlags = 0;
+	MatrixMode( MATERIAL_MODEL );
+	Color4ub( 255, 255, 255, 255 );
+	ShadeMode( SHADER_SMOOTH );
+	SetVertexShaderIndex( -1 );
+	SetPixelShaderIndex( 0 );
+	MarkUnusedVertexFields( 0, 0, NULL );
 }
 
 // Snapshot -> selected pixel shader name, so BeginPass can bind the matching
@@ -4569,6 +5036,24 @@ static std::vector<VertexFormat_t> g_snapshotVertexUsage;
 static std::vector<int> g_snapshotColorFlags;
 static std::vector<bool> g_snapshotModulationInPixelC1;
 static std::vector<VertexLitCombo> g_snapshotVertexLit;
+// Parallel to g_snapshotShaders: the fog each snapshot's pass applies
+// (IShaderShadow::FogMode, DisableFogGammaCorrection) and the samplers it enabled.
+struct SnapshotFogState
+{
+	ShaderFogMode_t mode;
+	bool disableGammaCorrection;
+};
+static std::vector<SnapshotFogState> g_snapshotFog;
+static std::vector<unsigned int> g_snapshotEnabledSamplers;
+// Parallel to g_snapshotShaders: SnapshotToneMapType of each snapshot's pass.
+static std::vector<int> g_snapshotToneMap;
+static int g_CurrentToneMap = 0;
+// Parallel to g_snapshotShaders: sprite_ps2x's CONSTANTCOLOR (bit 0) and HDRTYPE
+// (bits 1..2) static combos, -1 for other pixel shaders.
+static std::vector<int> g_snapshotSpriteCombos;
+static int g_CurrentSpriteCombos = -1;
+// The samplers the pass being drawn enabled (all when no snapshot is current).
+static unsigned int g_CurrentEnabledSamplers = ~0u;
 
 // vertexlit_and_unlit_generic_vs20's static combos (fxctmp9/
 // vertexlit_and_unlit_generic_vs20.inc): VERTEXCOLOR at stride 192, HALFLAMBERT
@@ -4591,6 +5076,33 @@ static VertexLitCombo SnapshotVertexLitCombo( const CShaderShadowVulkan &shadow 
 // other materials' blend state.
 static const size_t kMaxSnapshots = 0x800;
 static std::map<std::string, StateSnapshot_t> g_snapshotIds;
+
+static size_t SnapshotCount()
+{
+	return g_snapshotShaders.size();
+}
+
+static size_t SnapshotCapacity()
+{
+	return kMaxSnapshots;
+}
+
+static void ClearSnapshotTables()
+{
+	g_snapshotIds.clear();
+	g_snapshotShaders.clear();
+	g_snapshotRaster.clear();
+	g_snapshotPolyOffset.clear();
+	g_snapshotAlphaRef.clear();
+	g_snapshotVertexUsage.clear();
+	g_snapshotColorFlags.clear();
+	g_snapshotModulationInPixelC1.clear();
+	g_snapshotVertexLit.clear();
+	g_snapshotFog.clear();
+	g_snapshotEnabledSamplers.clear();
+	g_snapshotToneMap.clear();
+	g_snapshotSpriteCombos.clear();
+}
 
 // Faithful vertex-shader constant register file. The material system commits its
 // standard and shader-specific constants to fixed registers (see
@@ -4966,13 +5478,92 @@ float *CurrentMatrix()
 	return g_matrices.mat[g_matrices.mode];
 }
 
+void ResetTextureMatrices( int count )
+{
+	EnsureMatricesInit();
+	for ( int i = 0; i < count && MATERIAL_TEXTURE0 + i < NUM_MATRIX_MODES; ++i )
+		MatSetIdentity( g_matrices.mat[MATERIAL_TEXTURE0 + i] );
+}
+
+bool MatInvert( const float *m, float *out );
+
+// Fast clipping (EnableFastClip / SetFastClipPlane, and the height clip that
+// drives them): the plane arrives as Ax+By+Cz=D and is kept as D3D9 keeps it
+// (d negated). While enabled, draws use an oblique projection whose near plane
+// is the clip plane (CShaderAPIDx8::CommitFastClipPlane).
+struct FastClipState
+{
+	bool enabled = false;
+	float plane[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+	float heightClipZ = 0.0f;
+	MaterialHeightClipMode_t heightClipMode = MATERIAL_HEIGHTCLIPMODE_DISABLE;
+};
+FastClipState g_FastClip;
+
+// The projection the vertex stage draws with: MATERIAL_PROJECTION, or with fast
+// clipping on the oblique projection CShaderAPIDx8::CommitFastClipPlane builds.
+// User clip planes stay relative to MATERIAL_PROJECTION, as on D3D9.
+const float *DrawProjection()
+{
+	EnsureMatricesInit();
+	if ( !g_FastClip.enabled )
+		return g_matrices.mat[MATERIAL_PROJECTION];
+	static float s_oblique[16];
+	float viewToProj[16];
+	memcpy( viewToProj, g_matrices.mat[MATERIAL_PROJECTION], sizeof( viewToProj ) );
+	// Pull in zNear: the shear moves it out (looking down at water clips).
+	viewToProj[3 * 4 + 2] *= 0.5f;
+	const float *worldToView =
+	    g_UserClipTransformOverride ? g_UserClipTransform : g_matrices.mat[MATERIAL_VIEW];
+	float worldToViewInv[16], viewToProjInv[16];
+	if ( !MatInvert( worldToView, worldToViewInv ) || !MatInvert( viewToProj, viewToProjInv ) )
+	{
+		memcpy( s_oblique, viewToProj, sizeof( s_oblique ) );
+		return s_oblique;
+	}
+	// D3DXPlaneNormalize, then the plane through the inverse transposes (row
+	// vector times (M^-1)^T).
+	float plane[4];
+	const float length = sqrtf( g_FastClip.plane[0] * g_FastClip.plane[0] +
+	                            g_FastClip.plane[1] * g_FastClip.plane[1] +
+	                            g_FastClip.plane[2] * g_FastClip.plane[2] );
+	for ( int k = 0; k < 4; ++k )
+		plane[k] = length > 0.0f ? g_FastClip.plane[k] / length : g_FastClip.plane[k];
+	const auto transformInvTrans = []( const float in[4], const float *inverse, float out[4] )
+	{
+		for ( int j = 0; j < 4; ++j )
+		{
+			float sum = 0.0f;
+			for ( int k = 0; k < 4; ++k )
+				sum += in[k] * inverse[j * 4 + k];
+			out[j] = sum;
+		}
+	};
+	float viewPlane[4], clipPlane[4];
+	transformInvTrans( plane, worldToViewInv, viewPlane );
+	transformInvTrans( viewPlane, viewToProjInv, clipPlane );
+	float shear[16];
+	MatSetIdentity( shear );
+	// A plane with z * w > -0.4 here is behind the camera; D3D9 discards it.
+	if ( clipPlane[2] * clipPlane[3] <= -0.4f )
+	{
+		const float clipLength =
+		    sqrtf( clipPlane[0] * clipPlane[0] + clipPlane[1] * clipPlane[1] +
+		           clipPlane[2] * clipPlane[2] + clipPlane[3] * clipPlane[3] );
+		for ( int row = 0; row < 4; ++row )
+			shear[row * 4 + 2] = clipPlane[row] / clipLength;
+	}
+	MatMul( viewToProj, shear, s_oblique );
+	return s_oblique;
+}
+
 // Compose model * view * proj and hand it to the dynamic draw path as the MVP.
 void CommitModelViewProj()
 {
 	EnsureMatricesInit();
 	float mv[16], mvp[16];
 	MatMul( g_matrices.mat[MATERIAL_MODEL], g_matrices.mat[MATERIAL_VIEW], mv );
-	MatMul( mv, g_matrices.mat[MATERIAL_PROJECTION], mvp );
+	MatMul( mv, DrawProjection(), mvp );
 	g_VulkanContext.SetDynamicTransform( mvp );
 }
 
@@ -4987,7 +5578,7 @@ void CommitViewProj()
 {
 	EnsureMatricesInit();
 	float vp[16];
-	MatMul( g_matrices.mat[MATERIAL_VIEW], g_matrices.mat[MATERIAL_PROJECTION], vp );
+	MatMul( g_matrices.mat[MATERIAL_VIEW], DrawProjection(), vp );
 	g_VulkanContext.SetDynamicTransform( vp );
 }
 
@@ -5140,7 +5731,7 @@ void CommitPortalConstants()
 	EnsureMatricesInit();
 	render_vulkan::CVulkanContext::PortalConstants c;
 	memcpy( c.model, g_matrices.mat[MATERIAL_MODEL], sizeof( c.model ) );
-	MatMul( g_matrices.mat[MATERIAL_VIEW], g_matrices.mat[MATERIAL_PROJECTION], c.viewProj );
+	MatMul( g_matrices.mat[MATERIAL_VIEW], DrawProjection(), c.viewProj );
 	memcpy( c.texXform0, g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_1],
 	    sizeof( c.texXform0 ) );
 	memcpy( c.texXform1, g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_2],
@@ -5162,7 +5753,7 @@ void CommitSkinConstants( const CShaderAPIVulkan &api )
 	EnsureMatricesInit();
 	render_vulkan::CVulkanContext::SkinConstants c;
 	memcpy( c.ps, g_psConstants, sizeof( c.ps ) );
-	MatMul( g_matrices.mat[MATERIAL_VIEW], g_matrices.mat[MATERIAL_PROJECTION], c.viewProj );
+	MatMul( g_matrices.mat[MATERIAL_VIEW], DrawProjection(), c.viewProj );
 	memcpy( c.texXform0, g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_0],
 	    sizeof( c.texXform0 ) );
 	memcpy( c.texXform1, g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_0 + 1],
@@ -5176,6 +5767,41 @@ void CommitSkinConstants( const CShaderAPIVulkan &api )
 	g_VulkanContext.SetDynamicSkinConstants( c );
 }
 } // namespace
+
+// SolidEnergy's registers for the draw (solidenergy_dx9_helper.cpp's dynamic
+// state): its pixel constants c0..c11, c30 (the light scale), and the vertex
+// stage's registers the native stages read from the same block: c12/c13 the
+// detail 1 transform (SHADER_SPECIFIC_CONST_2/3), c14/c15 the detail 2
+// transform (SHADER_SPECIFIC_CONST_6/7), c16 the first vortex and noise scale
+// (SHADER_SPECIFIC_CONST_9), c17 the second vortex and normal UV scale
+// (SHADER_SPECIFIC_CONST_10). The push block takes cViewProj, the base
+// texture transform (SHADER_SPECIFIC_CONST_0/1) and the eye position.
+static void CommitSolidEnergyConstants( const CShaderAPIVulkan &api )
+{
+	EnsureMatricesInit();
+	render_vulkan::CVulkanContext::SkinConstants c;
+	memcpy( c.ps, g_psConstants, sizeof( c.ps ) );
+	const auto copyVs = [&c]( int ps, int vs )
+	{
+		memcpy( c.ps[ps], g_vsConstants.regs[vs], sizeof( c.ps[ps] ) );
+	};
+	copyVs( 12, VERTEX_SHADER_SHADER_SPECIFIC_CONST_2 );
+	copyVs( 13, VERTEX_SHADER_SHADER_SPECIFIC_CONST_3 );
+	copyVs( 14, VERTEX_SHADER_SHADER_SPECIFIC_CONST_6 );
+	copyVs( 15, VERTEX_SHADER_SHADER_SPECIFIC_CONST_7 );
+	copyVs( 16, VERTEX_SHADER_SHADER_SPECIFIC_CONST_9 );
+	copyVs( 17, VERTEX_SHADER_SHADER_SPECIFIC_CONST_10 );
+	MatMul( g_matrices.mat[MATERIAL_VIEW], DrawProjection(), c.viewProj );
+	memcpy( c.texXform0, g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_0],
+	    sizeof( c.texXform0 ) );
+	memcpy( c.texXform1, g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_1],
+	    sizeof( c.texXform1 ) );
+	c.eyePos[3] = 0.0f;
+	api.GetWorldSpaceCameraPosition( c.eyePos );
+	c.combos = static_cast<int>( g_psConstants[11][0] );
+	c.numLights = 0;
+	g_VulkanContext.SetDynamicSkinConstants( c );
+}
 
 static const float *MonitorTexture2Rows()
 {
@@ -5223,6 +5849,8 @@ static std::string SnapshotShaderRoute( const CShaderShadowVulkan &shadow )
 	const int skinCombos = SnapshotSkinCombos( shadow );
 	if ( skinCombos >= 0 )
 		return "skin#" + std::to_string( skinCombos );
+	if ( !V_stricmp( shadow.m_pixelShaderName, "solidenergy_ps20b" ) )
+		return "solidenergy";
 	if ( !V_strnicmp( shadow.m_pixelShaderName, "portal_refract_ps20b", 20 ) )
 		return "portal_refract#" + std::to_string( ( shadow.m_pixelShaderIndex / 4 ) % 3 );
 	if ( !V_strnicmp( shadow.m_pixelShaderName, "portal_refract_ps20", 19 ) )
@@ -5230,6 +5858,57 @@ static std::string SnapshotShaderRoute( const CShaderShadowVulkan &shadow )
 	if ( !shadow.m_pixelShaderName[0] )
 		return std::string( "vs:" ) + shadow.m_vertexShaderName;
 	return shadow.m_pixelShaderName;
+}
+
+// The tone-mapping scale type a pass's pixel shader ends in (common_ps_fxc.h
+// FinalOutput's iTONEMAP_SCALE_TYPE): LINEAR multiplies by cLightScale.x (the
+// tone-mapping scale in integer HDR), GAMMA by its 1/2.2 power, NONE by 1.
+enum SnapshotToneMap
+{
+	kToneMapUnknown = 0,
+	kToneMapNone,
+	kToneMapLinear,
+	kToneMapGamma
+};
+
+// sprite_ps2x.fxc's CONSTANTCOLOR and HDRTYPE static combos (fxctmp9
+// sprite_ps20b.inc strides 16 and 32; sprite_ps20.inc 8 and 16), packed as
+// CONSTANTCOLOR | HDRTYPE << 1; -1 for other pixel shaders.
+static int SnapshotSpriteCombos( const CShaderShadowVulkan &shadow )
+{
+	const int index = shadow.m_pixelShaderIndex;
+	if ( !V_stricmp( shadow.m_pixelShaderName, "sprite_ps20b" ) )
+		return ( ( index / 16 ) % 2 ) | ( ( ( index / 32 ) % 3 ) << 1 );
+	if ( !V_stricmp( shadow.m_pixelShaderName, "sprite_ps20" ) )
+		return ( ( index / 8 ) % 2 ) | ( ( ( index / 16 ) % 3 ) << 1 );
+	return -1;
+}
+
+static int SnapshotToneMapType( const CShaderShadowVulkan &shadow )
+{
+	const char *ps = shadow.m_pixelShaderName;
+	const auto is = [ps]( const char *prefix ) { return !V_strnicmp( ps, prefix, strlen( prefix ) ); };
+	if ( !ps[0] || is( "white_ps2" ) || is( "bufferclearobeystencil_ps2" ) ||
+	     is( "luminance_compare_ps2" ) )
+		return kToneMapNone; // no color, a clear color, or a coverage count
+	if ( is( "lightmappedgeneric_ps2" ) || is( "vertexlit_and_unlit_generic_" ) ||
+	     is( "skin_ps2" ) || is( "sky_ps2" ) || is( "spritecard_ps2" ) || is( "cable_ps2" ) ||
+	     is( "unlittwotexture_ps2" ) )
+		return kToneMapLinear;
+	if ( is( "shadow_ps2" ) || is( "decalmodulate_ps2" ) || is( "refract_ps2" ) ||
+	     is( "monitorscreen_ps2" ) )
+		return kToneMapNone;
+	// PortalRefract: only stage 2 (the flames) scales; RenderPass knows the stage.
+	// SolidEnergy clamps the scale; RenderPass applies it.
+	if ( is( "portal_refract_ps2" ) || is( "solidenergy_ps2" ) )
+		return kToneMapNone;
+	// sprite_ps2x: LINEAR with its SRGB combo, GAMMA without (stride 96 in the
+	// ps20b build, 48 in ps20).
+	if ( !V_stricmp( ps, "sprite_ps20b" ) )
+		return ( shadow.m_pixelShaderIndex / 96 ) % 2 ? kToneMapLinear : kToneMapGamma;
+	if ( !V_stricmp( ps, "sprite_ps20" ) )
+		return ( shadow.m_pixelShaderIndex / 48 ) % 2 ? kToneMapLinear : kToneMapGamma;
+	return kToneMapUnknown;
 }
 
 StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
@@ -5254,12 +5933,17 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	        ? static_cast<int>( g_ShaderShadow.m_alphaRef * 255 ) / 255.0f
 	        : -1.0f;
 	const int shaderFlags = SnapshotShaderFlags( g_ShaderShadow );
-	char key[128];
-	V_snprintf( key, sizeof( key ), "|%d|%llx|%d|%.6g|%llx|%d|%d", static_cast<int>( id ),
+	const int toneMap = SnapshotToneMapType( g_ShaderShadow );
+	const int spriteCombos = SnapshotSpriteCombos( g_ShaderShadow );
+	char key[176];
+	V_snprintf( key, sizeof( key ), "|%d|%llx|%d|%.6g|%llx|%d|%d|%d|%d|%x|%d|%d",
+	    static_cast<int>( id ),
 	    static_cast<unsigned long long>( render_vulkan::CVulkanContext::RasterStateKey( raster ) ),
 	    static_cast<int>( g_ShaderShadow.m_polyOffset ), alphaRef,
 	    static_cast<unsigned long long>( g_ShaderShadow.m_vertexUsage ), shaderFlags,
-	    g_ShaderShadow.m_vertexShaderIndex );
+	    g_ShaderShadow.m_vertexShaderIndex, static_cast<int>( g_ShaderShadow.m_fogMode ),
+	    g_ShaderShadow.m_disableFogGammaCorrection ? 1 : 0, g_ShaderShadow.m_enabledSamplers,
+	    toneMap, spriteCombos );
 	const std::string stateKey = SnapshotShaderRoute( g_ShaderShadow ) + key;
 	const auto existing = g_snapshotIds.find( stateKey );
 	if ( existing != g_snapshotIds.end() )
@@ -5283,6 +5967,11 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	g_snapshotModulationInPixelC1.push_back(
 	    !V_strnicmp( g_ShaderShadow.m_pixelShaderName, "vertexlit_and_unlit_generic_", 28 ) );
 	g_snapshotVertexLit.push_back( SnapshotVertexLitCombo( g_ShaderShadow ) );
+	g_snapshotFog.push_back(
+	    { g_ShaderShadow.m_fogMode, g_ShaderShadow.m_disableFogGammaCorrection } );
+	g_snapshotEnabledSamplers.push_back( g_ShaderShadow.m_enabledSamplers );
+	g_snapshotToneMap.push_back( toneMap );
+	g_snapshotSpriteCombos.push_back( spriteCombos );
 	// Flags occupy bits 0..3; the index fits the remaining 11 bits of the short.
 	id = static_cast<StateSnapshot_t>( id | static_cast<int>( index << 4 ) );
 	g_snapshotIds[stateKey] = id;
@@ -5342,59 +6031,66 @@ VertexFormat_t CShaderAPIVulkan::ComputeVertexUsage( int numSnapshots, StateSnap
 	    flags, VERTEX_MAX_TEXTURE_COORDINATES, texCoordSize, numBones, userDataSize );
 }
 
-// Uses a state snapshot
-void CShaderAPIVulkan::UseSnapshot( StateSnapshot_t snapshot )
+// The constant color, as CShaderAPIDx8 keeps it: a D3DCOLOR (D3DRS_TEXTUREFACTOR)
+// with float channels truncated to 0..255. Fixed-function stages read it.
+static unsigned int PackConstantColor( int r, int g, int b, int a )
 {
-	VK_UNIMPLEMENTED();
+	const auto clampByte = []( int v )
+	{
+		return static_cast<unsigned int>( v < 0 ? 0 : ( v > 255 ? 255 : v ) );
+	};
+	return ( clampByte( a ) << 24 ) | ( clampByte( r ) << 16 ) | ( clampByte( g ) << 8 ) |
+	       clampByte( b );
 }
 
-// Sets the color to modulate by
 void CShaderAPIVulkan::Color3f( float r, float g, float b )
 {
-	VK_UNIMPLEMENTED();
+	g_ConstantColor = PackConstantColor(
+	    static_cast<int>( r * 255 ), static_cast<int>( g * 255 ), static_cast<int>( b * 255 ), 255 );
 }
 
 void CShaderAPIVulkan::Color3fv( float const *pColor )
 {
-	VK_UNIMPLEMENTED();
+	Color3f( pColor[0], pColor[1], pColor[2] );
 }
 
 void CShaderAPIVulkan::Color4f( float r, float g, float b, float a )
 {
-	VK_UNIMPLEMENTED();
+	g_ConstantColor = PackConstantColor( static_cast<int>( r * 255 ), static_cast<int>( g * 255 ),
+	    static_cast<int>( b * 255 ), static_cast<int>( a * 255 ) );
 }
 
 void CShaderAPIVulkan::Color4fv( float const *pColor )
 {
-	VK_UNIMPLEMENTED();
+	Color4f( pColor[0], pColor[1], pColor[2], pColor[3] );
 }
 
-// Faster versions of color
 void CShaderAPIVulkan::Color3ub( unsigned char r, unsigned char g, unsigned char b )
 {
-	VK_UNIMPLEMENTED();
+	g_ConstantColor = PackConstantColor( r, g, b, 255 );
 }
 
 void CShaderAPIVulkan::Color3ubv( unsigned char const *rgb )
 {
-	VK_UNIMPLEMENTED();
+	Color3ub( rgb[0], rgb[1], rgb[2] );
 }
 
-void CShaderAPIVulkan::Color4ub(
-    unsigned char r, unsigned char g, unsigned char b, unsigned char a )
+void CShaderAPIVulkan::Color4ub( unsigned char r, unsigned char g, unsigned char b, unsigned char a )
 {
-	VK_UNIMPLEMENTED();
+	g_ConstantColor = PackConstantColor( r, g, b, a );
 }
 
 void CShaderAPIVulkan::Color4ubv( unsigned char const *rgba )
 {
-	VK_UNIMPLEMENTED();
+	Color4ub( rgba[0], rgba[1], rgba[2], rgba[3] );
 }
 
-// The shade mode
+// D3DRS_SHADEMODE. The material system selects flat shading for $flat materials;
+// D3D9 then takes each triangle's vertex colors from its first vertex. The
+// native pipelines interpolate them (RenderPass reports such draws).
 void CShaderAPIVulkan::ShadeMode( ShaderShadeMode_t mode )
 {
-	VK_UNIMPLEMENTED();
+	g_ShadeMode = mode;
 }
 
 // Binds a particular material to render with
@@ -5420,36 +6116,96 @@ void CShaderAPIVulkan::CullMode( MaterialCullMode_t cullMode )
 	g_DesiredCullMode = cullMode;
 }
 
+// Forces the Z comparison to EQUAL for every draw until disabled, keeping each
+// snapshot's Z enable and write (CTransitionTable::ForceDepthFuncEquals). It is
+// applied where a pass selects its raster state (ApplyShadowStateOverrides).
 void CShaderAPIVulkan::ForceDepthFuncEquals( bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_bForceDepthFuncEquals = bEnable;
 }
 
-// Forces Z buffering on or off
+// Forces Z buffering on or off. BeginPass and RenderPass apply the override
+// when they select a pass's raster state, so it needs no flush. The snapshot
+// keeps its compare function, as in D3D9.
 void CShaderAPIVulkan::OverrideDepthEnable( bool bEnable, bool bDepthEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_bOverrideDepthEnable = bEnable;
+	m_bOverrideDepthWrite = bDepthEnable;
 }
 
+void CShaderAPIVulkan::ApplyShadowStateOverrides(
+    render_vulkan::CVulkanContext::DynRasterState &raster ) const
+{
+	if ( m_bForceDepthFuncEquals )
+		raster.depthCompare = VK_COMPARE_OP_EQUAL;
+	if ( m_bOverrideDepthEnable )
+	{
+		raster.depthTest = true;
+		raster.depthWrite = m_bOverrideDepthWrite;
+	}
+	if ( m_bOverrideAlphaWrite )
+		raster.alphaWrite = m_bOverriddenAlphaWrite;
+	if ( m_bOverrideColorWrite )
+		raster.colorWrite = m_bOverriddenColorWrite;
+}
+
+// Force alpha (or RGB) writes on or off for every draw until the override ends,
+// whatever each snapshot enabled (CTransitionTable::OverrideAlphaWriteEnable and
+// OverrideColorWriteEnable). Applied with the other shadow-state overrides.
 void CShaderAPIVulkan::OverrideAlphaWriteEnable( bool bOverrideEnable, bool bAlphaWriteEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_bOverrideAlphaWrite = bOverrideEnable;
+	m_bOverriddenAlphaWrite = bAlphaWriteEnable;
 }
 
 void CShaderAPIVulkan::OverrideColorWriteEnable( bool bOverrideEnable, bool bColorWriteEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_bOverrideColorWrite = bOverrideEnable;
+	m_bOverriddenColorWrite = bColorWriteEnable;
 }
 
-//legacy fast clipping linkage
+// Height clipping (water reflection and refraction views): a fast-clip plane at
+// the height, facing up or down (CShaderAPIDx8::UpdateFastClipUserClipPlane).
+static void UpdateHeightClipPlane( CShaderAPIVulkan &api )
+{
+	switch ( g_FastClip.heightClipMode )
+	{
+	case MATERIAL_HEIGHTCLIPMODE_RENDER_ABOVE_HEIGHT:
+	{
+		const float plane[4] = { 0.0f, 0.0f, 1.0f, g_FastClip.heightClipZ };
+		api.EnableFastClip( true );
+		api.SetFastClipPlane( plane );
+		break;
+	}
+	case MATERIAL_HEIGHTCLIPMODE_RENDER_BELOW_HEIGHT:
+	{
+		const float plane[4] = { 0.0f, 0.0f, -1.0f, -g_FastClip.heightClipZ };
+		api.EnableFastClip( true );
+		api.SetFastClipPlane( plane );
+		break;
+	}
+	default:
+		api.EnableFastClip( false );
+		break;
+	}
+}
+
 void CShaderAPIVulkan::SetHeightClipZ( float z )
 {
-	VK_UNIMPLEMENTED();
+	if ( z == g_FastClip.heightClipZ )
+		return;
+	g_FastClip.heightClipZ = z;
+	UpdateVertexShaderFogParams();
+	UpdateHeightClipPlane( *this );
 }
 
 void CShaderAPIVulkan::SetHeightClipMode( enum MaterialHeightClipMode_t heightClipMode )
 {
-	VK_UNIMPLEMENTED();
+	if ( heightClipMode == g_FastClip.heightClipMode )
+		return;
+	g_FastClip.heightClipMode = heightClipMode;
+	UpdateVertexShaderFogParams();
+	UpdateHeightClipPlane( *this );
 }
 
 // Sets the lights. As CShaderAPIDx8::SetLight: a light of an unknown type or
@@ -5517,9 +6273,12 @@ void CShaderAPIVulkan::CommitPixelShaderLighting( int pshReg )
 	SetPixelShaderConstant( pshReg, state[0], 6 );
 }
 
+// D3DRS_AMBIENT, the fixed-function ambient term, kept as D3D9 keeps it. Shader
+// passes light from the ambient cube (SetAmbientLightCube).
 void CShaderAPIVulkan::SetAmbientLight( float r, float g, float b )
 {
-	VK_UNIMPLEMENTED();
+	g_AmbientLightColor = PackConstantColor( static_cast<int>( r * 255 ),
+	    static_cast<int>( g * 255 ), static_cast<int>( b * 255 ), 255 );
 }
 
 void CShaderAPIVulkan::SetAmbientLightCube( Vector4D cube[6] )
@@ -5549,40 +6308,11 @@ void CShaderAPIVulkan::SetVertexShaderStateAmbientLightCube()
 {
 }
 
+// D3D9 loads the bone palette into cModel[] here for the vertex shader. This
+// backend skins where it assembles the draw's vertices (SkinPosition), reading
+// the palette LoadBoneMatrix keeps, so the matrices are already in place.
 void CShaderAPIVulkan::SetSkinningMatrices()
 {
-	VK_UNIMPLEMENTED();
-}
-
-// Lightmap texture binding
-void CShaderAPIVulkan::BindLightmap( TextureStage_t stage )
-{
-	VK_UNIMPLEMENTED();
-}
-
-void CShaderAPIVulkan::BindBumpLightmap( TextureStage_t stage )
-{
-	VK_UNIMPLEMENTED();
-}
-
-void CShaderAPIVulkan::BindFullbrightLightmap( TextureStage_t stage )
-{
-	VK_UNIMPLEMENTED();
-}
-
-void CShaderAPIVulkan::BindWhite( TextureStage_t stage )
-{
-	VK_UNIMPLEMENTED();
-}
-
-void CShaderAPIVulkan::BindBlack( TextureStage_t stage )
-{
-	VK_UNIMPLEMENTED();
-}
-
-void CShaderAPIVulkan::BindGrey( TextureStage_t stage )
-{
-	VK_UNIMPLEMENTED();
 }
 
 // Gets the lightmap dimensions
@@ -5591,31 +6321,14 @@ void CShaderAPIVulkan::GetLightmapDimensions( int *w, int *h )
 	g_pShaderUtil->GetLightmapDimensions( w, h );
 }
 
-// Special system flat normal map binding.
-void CShaderAPIVulkan::BindFlatNormalMap( TextureStage_t stage )
-{
-	VK_UNIMPLEMENTED();
-}
-
-void CShaderAPIVulkan::BindNormalizationCubeMap( TextureStage_t stage )
-{
-	VK_UNIMPLEMENTED();
-}
-
-void CShaderAPIVulkan::BindSignedNormalizationCubeMap( TextureStage_t stage )
-{
-	VK_UNIMPLEMENTED();
-}
-
-void CShaderAPIVulkan::BindFBTexture( TextureStage_t stage, int textureIndex )
-{
-	VK_UNIMPLEMENTED();
-}
-
-// Flushes any primitives that are buffered
+// Flushes any primitives that are buffered. Every draw is recorded into the
+// frame stream as it is made, so there is nothing buffered here; what remains of
+// CShaderAPIDx8::FlushBufferedPrimitives is the render context's hook, which
+// synchronizes its lazily committed matrices with this API.
 void CShaderAPIVulkan::FlushBufferedPrimitives()
 {
-	VK_UNIMPLEMENTED();
+	if ( ShaderUtil() )
+		ShaderUtil()->OnFlushBufferedPrimitives();
 }
 
 // Gets the dynamic mesh; note that you've got to render the mesh
@@ -5681,8 +6394,12 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 			shader = render_vulkan::CVulkanContext::kDynShaderSkin;
 			g_CurrentSkinCombos = atoi( name.c_str() + 5 );
 		}
+		g_CurrentSolidEnergy = name == "solidenergy";
+		if ( g_CurrentSolidEnergy )
+			shader = render_vulkan::CVulkanContext::kDynShaderSolidEnergy;
 		g_SamplesBaseTexture = ( shader == render_vulkan::CVulkanContext::kDynShaderTextured ||
-		                         shader == render_vulkan::CVulkanContext::kDynShaderSkin );
+		                         shader == render_vulkan::CVulkanContext::kDynShaderSkin ||
+		                         shader == render_vulkan::CVulkanContext::kDynShaderSolidEnergy );
 		// Shaders that sample nothing on sampler 0: WriteZ and the quad clears draw
 		// depth, stencil or their vertex color; PortalRefract samples the frame
 		// copy only in stage 0.
@@ -5699,7 +6416,9 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 		g_CurrentRaster = g_snapshotRaster[index];
 		g_CurrentPolyOffset = g_snapshotPolyOffset[index];
 		ApplyDepthBiasState( g_CurrentRaster );
-		g_VulkanContext.SelectDynamicRasterState( g_CurrentRaster );
+		render_vulkan::CVulkanContext::DynRasterState raster = g_CurrentRaster;
+		ApplyShadowStateOverrides( raster );
+		g_VulkanContext.SelectDynamicRasterState( raster );
 	}
 	g_CurrentColorFlags = index < g_snapshotColorFlags.size() ? g_snapshotColorFlags[index] : 0;
 	g_CurrentModulationInPixelC1 =
@@ -5725,6 +6444,21 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 		g_CurrentAlphaRef = g_snapshotAlphaRef[index];
 		g_VulkanContext.SelectDynamicAlphaTest( g_snapshotAlphaRef[index] );
 	}
+	// The pass's fog (CTransitionTable applies it with the shadow state) and the
+	// samplers it enabled.
+	g_CurrentEnabledSamplers =
+	    index < g_snapshotEnabledSamplers.size() ? g_snapshotEnabledSamplers[index] : ~0u;
+	g_CurrentToneMap = index < g_snapshotToneMap.size() ? g_snapshotToneMap[index] : 0;
+	g_CurrentSpriteCombos =
+	    index < g_snapshotSpriteCombos.size() ? g_snapshotSpriteCombos[index] : -1;
+	if ( index < g_snapshotFog.size() )
+	{
+		g_CurrentShadowFogMode = g_snapshotFog[index].mode;
+		g_CurrentDisableFogGammaCorrection = g_snapshotFog[index].disableGammaCorrection;
+	}
+	ApplyFogMode( g_CurrentShadowFogMode,
+	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kColorSrgbWrite ) != 0,
+	    g_CurrentDisableFogGammaCorrection );
 }
 
 // Renders a single pass of a material. The material's shader has, by now, run
@@ -5754,6 +6488,21 @@ static void CommitPassPixelConstants()
 	{
 		// Sky_DX9's sky_ps2x.fxc reads $color from pixel constant c0.
 		g_VulkanContext.SetDynamicModulation( g_psConstants[0] );
+		return;
+	}
+	if ( g_CurrentSpriteCombos >= 0 )
+	{
+		// sprite_ps2x.fxc: sample *= g_Color (c0) with CONSTANTCOLOR, and its RGB
+		// *= g_HDRColorScale (c1.x) with HDRTYPE and the dynamic HDRENABLED.
+		float modulation[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+		if ( g_CurrentSpriteCombos & 1 )
+			memcpy( modulation, g_psConstants[0], sizeof( modulation ) );
+		if ( ( g_CurrentSpriteCombos >> 1 ) != 0 && ( g_PixelShaderDynamicIndex & 1 ) )
+		{
+			for ( int k = 0; k < 3; ++k )
+				modulation[k] *= g_psConstants[1][0];
+		}
+		g_VulkanContext.SetDynamicModulation( modulation );
 		return;
 	}
 	if ( colorFlags & render_vulkan::CVulkanContext::kFragmentMonitor )
@@ -5803,6 +6552,9 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	    "Refract_DX90",
 	    // Depth-only, and the stencil-obeying clears (ClearBuffersObeyStencil).
 	    "WriteZ_DX9",
+	    // Pixel visibility's occlusion-query proxy: writez_vs20 with color, alpha
+	    // and depth writes off, counted by the query around it.
+	    "Occlusion_DX9",
 	    "BufferClearObeyStencil_DX9",
 	};
 	for ( const char *name : kImplemented )
@@ -5814,6 +6566,10 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	// device with too few push-constant bytes or clip distances does not get.
 	if ( !V_stricmp( shaderName, "PortalRefract_dx9" ) )
 		return g_VulkanContext.PortalPipelineSupported();
+	// SolidEnergy (Portal 2's fizzlers, bridges, beams) has its own shaders on
+	// the skin pipeline's layout (shaders/solidenergy.*).
+	if ( !V_stricmp( shaderName, "SolidEnergy_dx9" ) )
+		return g_VulkanContext.SolidEnergyPipelineSupported();
 	// Both the canonical native material and legacy PBR's sampler contract can
 	// feed WMSH tangents and the map-scoped HDR lightmap. Ordinary dynamic
 	// meshes still need their own PBR pipeline cohort.
@@ -5885,6 +6641,8 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 	}
 	else if ( g_pRenderMesh )
 	{
+		if ( g_ShadeMode == SHADER_FLAT )
+			NoteUnimplemented( "ShadeMode(SHADER_FLAT): vertex colors interpolated smoothly" );
 		// LightmappedGeneric ends in FinalOutput( ..., TONEMAP_SCALE_LINEAR ): its
 		// color is scaled by the tone-mapping scale, which is 1 without HDR. Other
 		// shaders choose their tone-map type per combo (below).
@@ -5895,12 +6653,15 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 			raster.cullMode = g_DesiredCullMode == MATERIAL_CULLMODE_CW ? VK_CULL_MODE_FRONT_BIT
 			                                                            : VK_CULL_MODE_BACK_BIT;
 		ApplyStencilState( raster );
+		ApplyShadowStateOverrides( raster );
 		g_VulkanContext.SelectDynamicRasterState( raster );
 		CommitUserClipPlanes();
 		if ( g_CurrentPortalStage >= 0 )
 			CommitPortalConstants();
 		if ( g_CurrentSkinCombos >= 0 )
 			CommitSkinConstants( *this );
+		if ( g_CurrentSolidEnergy )
+			CommitSolidEnergyConstants( *this );
 		const bool lightmapped = g_boundLightmapHandle >= 0;
 		const bool refract =
 		    g_pBoundMaterial && !V_stricmp( g_pBoundMaterial->GetShaderName(), "Refract_DX90" );
@@ -5940,14 +6701,26 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		// stage 2 (the flames), its other stages not scaling, and every output of
 		// vertexlit_and_unlit_generic_ps2x (UnlitGeneric and VertexLitGeneric; only
 		// its LIGHTING_PREVIEW outputs do not scale).
+		// Other shaders scale as their FinalOutput's tone-map type says
+		// (SnapshotToneMapType): GAMMA by GAMMA_LIGHT_SCALE, c30.w.
 		const bool linearToneScale =
 		    lightmapped || g_CurrentPortalStage == 2 || g_CurrentModulationInPixelC1 ||
 		    g_CurrentSkinCombos >= 0 ||
-		    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentSky );
-		g_VulkanContext.SetDynamicOutputScale( linearToneScale ? g_ToneMappingScale.x : 1.0f );
-		if ( !linearToneScale && CurrentHDRType() == HDR_TYPE_INTEGER &&
-		     g_ToneMappingScale.x != 1.0f )
-			NoteUnimplemented( "integer HDR: tone-mapping scale on other shaders" );
+		    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentSky ) ||
+		    g_CurrentToneMap == kToneMapLinear;
+		float outputScale = 1.0f;
+		if ( linearToneScale )
+			outputScale = g_ToneMappingScale.x;
+		else if ( g_CurrentToneMap == kToneMapGamma )
+			outputScale = g_psConstants[30][3];
+		g_VulkanContext.SetDynamicOutputScale( outputScale );
+		// solidenergy_ps20b scales by saturate( LINEAR_LIGHT_SCALE ).
+		if ( g_CurrentSolidEnergy )
+			g_VulkanContext.SetDynamicOutputScale( clamp( g_ToneMappingScale.x, 0.0f, 1.0f ) );
+		if ( !linearToneScale && g_CurrentToneMap == kToneMapUnknown &&
+		     CurrentHDRType() == HDR_TYPE_INTEGER && g_ToneMappingScale.x != 1.0f &&
+		     ( raster.colorWrite || raster.alphaWrite ) )
+			NoteUnimplemented( "integer HDR: tone-mapping scale of an unclassified pixel shader" );
 		CommitPassPixelConstants();
 		if ( refract )
 		{
@@ -6158,144 +6931,347 @@ void CShaderAPIVulkan::LoadIdentity( void )
 	CommitModelViewProj();
 }
 
+// The fixed-function matrix helpers. The render context forwards them here only
+// while it validates its matrices (mat_debug matrix validation), then compares
+// this API's matrix with its own (TestMatrixSync). Its matrices are VMatrix
+// (column vectors); this API keeps their transposes, as LoadMatrix receives
+// them. So each helper applies the render context's own VMatrix operation to
+// the transpose of the current matrix.
+static void TransformCurrentMatrix( CShaderAPIVulkan &api, const std::function<void( VMatrix & )> &op )
+{
+	float stored[16];
+	api.GetCurrentMatrix( stored );
+	VMatrix matrix;
+	for ( int row = 0; row < 4; ++row )
+		for ( int col = 0; col < 4; ++col )
+			matrix.m[row][col] = stored[col * 4 + row];
+	op( matrix );
+	for ( int row = 0; row < 4; ++row )
+		for ( int col = 0; col < 4; ++col )
+			stored[col * 4 + row] = matrix.m[row][col];
+	api.LoadMatrix( stored );
+}
+
+void CShaderAPIVulkan::GetCurrentMatrix( float *dst )
+{
+	memcpy( dst, CurrentMatrix(), 16 * sizeof( float ) );
+}
+
+// As CShaderAPIDx8::LoadCameraToWorld: the inverse of the view matrix with its
+// translation removed.
 void CShaderAPIVulkan::LoadCameraToWorld( void )
 {
-	VK_UNIMPLEMENTED();
+	EnsureMatricesInit();
+	float inverse[16];
+	if ( !MatInvert( g_matrices.mat[MATERIAL_VIEW], inverse ) )
+		MatSetIdentity( inverse );
+	inverse[12] = inverse[13] = inverse[14] = 0.0f;
+	LoadMatrix( inverse );
 }
 
 void CShaderAPIVulkan::Ortho(
     double left, double top, double right, double bottom, double zNear, double zFar )
 {
-	// Build a D3D-style orthographic matrix (stored transposed to match the
-	// convention LoadMatrix receives) and post-multiply it onto the current matrix.
-	const float rl = static_cast<float>( right - left );
-	const float tb = static_cast<float>( top - bottom );
-	const float fn = static_cast<float>( zFar - zNear );
-	if ( rl == 0.0f || tb == 0.0f || fn == 0.0f )
-		return;
-	float o[16];
-	MatSetIdentity( o );
-	o[0] = 2.0f / rl;
-	o[5] = 2.0f / tb;
-	o[10] = 1.0f / fn;
-	o[3] = static_cast<float>( -( right + left ) / ( right - left ) );
-	o[7] = static_cast<float>( -( top + bottom ) / ( top - bottom ) );
-	o[11] = static_cast<float>( -zNear / ( zFar - zNear ) );
-	float *cur = CurrentMatrix();
-	MatMul( cur, o, cur );
-	CommitModelViewProj();
+	TransformCurrentMatrix( *this, [&]( VMatrix &m )
+	    { MatrixOrtho( m, left, top, right, bottom, zNear, zFar ); } );
 }
 
 void CShaderAPIVulkan::PerspectiveX( double fovx, double aspect, double zNear, double zFar )
 {
-	VK_UNIMPLEMENTED();
+	TransformCurrentMatrix(
+	    *this, [&]( VMatrix &m ) { MatrixPerspectiveX( m, fovx, aspect, zNear, zFar ); } );
 }
 
 void CShaderAPIVulkan::PerspectiveOffCenterX( double fovx, double aspect, double zNear, double zFar,
     double bottom, double top, double left, double right )
 {
-	VK_UNIMPLEMENTED();
+	TransformCurrentMatrix( *this, [&]( VMatrix &m )
+	    { MatrixPerspectiveOffCenterX( m, fovx, aspect, zNear, zFar, bottom, top, left, right ); } );
 }
 
+// Maps the pick rectangle of the current viewport to the whole projection.
 void CShaderAPIVulkan::PickMatrix( int x, int y, int width, int height )
 {
-	VK_UNIMPLEMENTED();
+	ShaderViewport_t viewport;
+	GetViewports( &viewport, 1 );
+	if ( viewport.m_nWidth <= 0 || viewport.m_nHeight <= 0 || width <= 0 || height <= 0 )
+		return;
+	const float px = 2.0f * static_cast<float>( x - viewport.m_nTopLeftX ) / viewport.m_nWidth - 1;
+	const float py = 2.0f * static_cast<float>( y - viewport.m_nTopLeftY ) / viewport.m_nHeight - 1;
+	const float pw = 2.0f * static_cast<float>( width ) / viewport.m_nWidth;
+	const float ph = 2.0f * static_cast<float>( height ) / viewport.m_nHeight;
+	VMatrix pick;
+	MatrixSetIdentity( pick );
+	pick.m[0][0] = 2.0f / pw;
+	pick.m[1][1] = 2.0f / ph;
+	pick.m[0][3] = -2.0f * px / pw;
+	pick.m[1][3] = -2.0f * py / ph;
+	TransformCurrentMatrix( *this, [&]( VMatrix &m )
+	    {
+		    VMatrix result;
+		    MatrixMultiply( m, pick, result );
+		    m = result;
+	    } );
 }
 
 void CShaderAPIVulkan::Rotate( float angle, float x, float y, float z )
 {
-	VK_UNIMPLEMENTED();
+	TransformCurrentMatrix(
+	    *this, [&]( VMatrix &m ) { MatrixRotate( m, Vector( x, y, z ), angle ); } );
 }
 
 void CShaderAPIVulkan::Translate( float x, float y, float z )
 {
-	VK_UNIMPLEMENTED();
+	TransformCurrentMatrix( *this, [&]( VMatrix &m ) { MatrixTranslate( m, Vector( x, y, z ) ); } );
 }
 
 void CShaderAPIVulkan::Scale( float x, float y, float z )
 {
-	VK_UNIMPLEMENTED();
+	TransformCurrentMatrix( *this, [&]( VMatrix &m )
+	    {
+		    VMatrix scale, result;
+		    MatrixBuildScale( scale, x, y, z );
+		    MatrixMultiply( m, scale, result );
+		    m = result;
+	    } );
 }
 
 void CShaderAPIVulkan::ScaleXY( float x, float y )
 {
-	VK_UNIMPLEMENTED();
+	Scale( x, y, 1.0f );
 }
 
-// Fog methods...
+// Fog methods, as CShaderAPIDx8 implements them. Every pass fogs in its pixel
+// shader on this platform (ShouldUsePixelFogForMode is always true on POSIX):
+// the pass's fog color is pixel constant c29 (g_LinearFogColor) and its range
+// parameters the register its shader names (SetPixelShaderFogParams).
+enum
+{
+	kVsRegCameraPos = 2, // cEyePosWaterZ (common_vs_fxc.h)
+	kVsRegFogParams = 16, // cFogParams
+	kPsRegLinearFogColor = 29 // g_LinearFogColor (common_ps_fxc.h)
+};
+
+// The fog mode in effect (m_DynamicState.m_SceneFog), which ApplyFogMode sets
+// from the pass's shadow fog mode and the scene fog.
 void CShaderAPIVulkan::FogMode( MaterialFogMode_t fogMode )
 {
-	VK_UNIMPLEMENTED();
+	g_Fog.currentMode = fogMode;
 }
 
 void CShaderAPIVulkan::FogStart( float fStart )
 {
-	VK_UNIMPLEMENTED();
+	if ( fStart == g_Fog.start )
+		return;
+	g_Fog.start = fStart;
+	UpdateVertexShaderFogParams();
 }
 
 void CShaderAPIVulkan::FogEnd( float fEnd )
 {
-	VK_UNIMPLEMENTED();
+	if ( fEnd == g_Fog.end )
+		return;
+	g_Fog.end = fEnd;
+	UpdateVertexShaderFogParams();
 }
 
+// The water height for height fog.
 void CShaderAPIVulkan::SetFogZ( float fogZ )
 {
-	VK_UNIMPLEMENTED();
+	if ( fogZ == g_Fog.fogZ )
+		return;
+	g_Fog.fogZ = fogZ;
+	UpdateVertexShaderFogParams();
 }
 
 void CShaderAPIVulkan::FogMaxDensity( float flMaxDensity )
 {
-	VK_UNIMPLEMENTED();
+	if ( flMaxDensity == g_Fog.maxDensity )
+		return;
+	g_Fog.maxDensity = flMaxDensity;
+	UpdateVertexShaderFogParams();
 }
 
 void CShaderAPIVulkan::GetFogDistances( float *fStart, float *fEnd, float *fFogZ )
 {
-	VK_UNIMPLEMENTED();
+	if ( fStart )
+		*fStart = g_Fog.start;
+	if ( fEnd )
+		*fEnd = g_Fog.end;
+	if ( fFogZ )
+		*fFogZ = g_Fog.fogZ;
 }
 
 void CShaderAPIVulkan::SceneFogColor3ub( unsigned char r, unsigned char g, unsigned char b )
 {
-	VK_UNIMPLEMENTED();
+	if ( g_Fog.sceneColor[0] == r && g_Fog.sceneColor[1] == g && g_Fog.sceneColor[2] == b )
+		return;
+	g_Fog.sceneColor[0] = r;
+	g_Fog.sceneColor[1] = g;
+	g_Fog.sceneColor[2] = b;
+	ApplyFogMode( g_CurrentShadowFogMode, g_Fog.srgbWrite, g_CurrentDisableFogGammaCorrection );
 }
 
 void CShaderAPIVulkan::SceneFogMode( MaterialFogMode_t fogMode )
 {
-	VK_UNIMPLEMENTED();
+	if ( g_Fog.sceneMode == fogMode )
+		return;
+	g_Fog.sceneMode = fogMode;
+	// The pass's fog depends on the scene fog mode.
+	ApplyFogMode( g_CurrentShadowFogMode, g_Fog.srgbWrite, g_CurrentDisableFogGammaCorrection );
 }
 
 void CShaderAPIVulkan::GetSceneFogColor( unsigned char *rgb )
 {
-	VK_UNIMPLEMENTED();
+	rgb[0] = g_Fog.sceneColor[0];
+	rgb[1] = g_Fog.sceneColor[1];
+	rgb[2] = g_Fog.sceneColor[2];
 }
 
 MaterialFogMode_t CShaderAPIVulkan::GetSceneFogMode()
 {
+	return g_Fog.sceneMode;
+}
+
+// The mode the pixel shaders fog in: the scene's (pixel fog for every mode).
+MaterialFogMode_t CShaderAPIVulkan::GetPixelFogMode() const
+{
+	return g_Fog.sceneMode;
+}
+
+// PIXELFOGTYPE: 0 is range fog (or none, through rigged parameters), 1 height.
+int CShaderAPIVulkan::GetPixelFogCombo()
+{
+	if ( g_Fog.sceneMode != MATERIAL_FOG_NONE )
+		return g_Fog.sceneMode - 1;
 	return MATERIAL_FOG_NONE;
 }
 
-int CShaderAPIVulkan::GetPixelFogCombo()
+// cFogParams and cEyePosWaterZ, which the vertex shaders read.
+void CShaderAPIVulkan::UpdateVertexShaderFogParams()
 {
-	return 0;
+	const float ooFogRange = g_Fog.end != g_Fog.start ? 1.0f / ( g_Fog.end - g_Fog.start ) : 1.0f;
+	const float fogParams[4] = { ooFogRange * g_Fog.end, 1.0f,
+	    1.0f - clamp( g_Fog.maxDensity, 0.0f, 1.0f ), ooFogRange };
+	float cameraPos[4];
+	GetWorldSpaceCameraPosition( cameraPos );
+	cameraPos[3] = g_Fog.fogZ;
+	SetVertexShaderConstant( kVsRegFogParams, fogParams, 1 );
+	SetVertexShaderConstant( kVsRegCameraPos, cameraPos, 1 );
 }
 
-void CShaderAPIVulkan::FogColor3f( float r, float g, float b )
+void CShaderAPIVulkan::SetPixelShaderFogParams( int reg )
 {
-	VK_UNIMPLEMENTED();
+	SetPixelShaderFogParams( reg, g_CurrentShadowFogMode );
 }
 
-void CShaderAPIVulkan::FogColor3fv( float const *rgb )
+// CShaderAPIDx8::SetPixelShaderFogParams: fog start over range, water height,
+// max density and 1 / range; with fog off, parameters that make the range fog
+// factor 0 (no fog combo is needed for that case).
+void CShaderAPIVulkan::SetPixelShaderFogParams( int reg, ShaderFogMode_t fogMode )
 {
-	VK_UNIMPLEMENTED();
+	g_Fog.delayedParamsRegister = reg;
+	float fogParams[4];
+	if ( GetPixelFogMode() != MATERIAL_FOG_NONE && fogMode != SHADER_FOGMODE_DISABLED )
+	{
+		const float ooFogRange = g_Fog.end != g_Fog.start ? 1.0f / ( g_Fog.end - g_Fog.start ) : 1.0f;
+		fogParams[0] = g_Fog.start * ooFogRange;
+		fogParams[1] = g_Fog.fogZ;
+		fogParams[2] = clamp( g_Fog.maxDensity, 0.0f, 1.0f );
+		fogParams[3] = ooFogRange;
+		if ( GetPixelFogMode() == MATERIAL_FOG_LINEAR_BELOW_FOG_Z )
+		{
+			// Unused by height fog; 1 keeps the pixel shader math unified.
+			fogParams[0] = 0.0f;
+			fogParams[2] = 1.0f;
+		}
+	}
+	else
+	{
+		fogParams[0] = 0.0f;
+		fogParams[1] = g_Fog.fogZ;
+		fogParams[2] = 1.0f;
+		fogParams[3] = 0.0f;
+	}
+	SetPixelShaderConstant( reg, fogParams, 1 );
 }
 
-void CShaderAPIVulkan::FogColor3ub( unsigned char r, unsigned char g, unsigned char b )
+// CShaderAPIDx8::UpdatePixelFogColorConstant: the fog color in the space the
+// pass writes (decoded to linear when it writes sRGB), scaled by the tone-mapping
+// scale in integer HDR; w is 1 / the dest-alpha depth range.
+void CShaderAPIVulkan::UpdatePixelFogColorConstant()
 {
-	VK_UNIMPLEMENTED();
+	float fogColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+	switch ( GetPixelFogMode() )
+	{
+	case MATERIAL_FOG_LINEAR:
+		for ( int i = 0; i < 3; ++i )
+		{
+			fogColor[i] = g_Fog.pixelColor[i];
+			if ( g_Fog.srgbWrite )
+				fogColor[i] = GammaToLinear_HardwareSpecific( fogColor[i] );
+		}
+		break;
+	case MATERIAL_FOG_LINEAR_BELOW_FOG_Z:
+		// Water fog has always been in linear space and never sRGB-dependent.
+		for ( int i = 0; i < 3; ++i )
+			fogColor[i] = GammaToLinear_HardwareSpecific( g_Fog.pixelColor[i] );
+		break;
+	default:
+		break;
+	}
+	if ( GetPixelFogMode() != MATERIAL_FOG_NONE && !g_Fog.gammaCorrectionDisabled &&
+	     CurrentHDRType() == HDR_TYPE_INTEGER )
+	{
+		for ( int i = 0; i < 3; ++i )
+			fogColor[i] *= g_ToneMappingScale.x;
+	}
+	fogColor[3] = 1.0f / g_Fog.destAlphaDepthRange;
+	SetPixelShaderConstant( kPsRegLinearFogColor, fogColor, 1 );
 }
 
-void CShaderAPIVulkan::FogColor3ubv( unsigned char const *rgb )
+// CShaderAPIDx8::ApplyFogMode, run when a pass begins and when the scene fog
+// changes: the fog mode in effect, the pass's parameters if its shader asked
+// for them, and its fog color (the scene's, or black, grey or white for decals).
+void CShaderAPIVulkan::ApplyFogMode(
+    ShaderFogMode_t fogMode, bool bSRGBWritesEnabled, bool bDisableFogGammaCorrection )
 {
-	VK_UNIMPLEMENTED();
+	g_Fog.srgbWrite = bSRGBWritesEnabled;
+	if ( fogMode == SHADER_FOGMODE_DISABLED )
+	{
+		FogMode( MATERIAL_FOG_NONE );
+		if ( g_Fog.delayedParamsRegister != -1 )
+			SetPixelShaderFogParams( g_Fog.delayedParamsRegister, fogMode );
+		return;
+	}
+	FogMode( g_Fog.sceneMode );
+	if ( g_Fog.delayedParamsRegister != -1 )
+		SetPixelShaderFogParams( g_Fog.delayedParamsRegister, fogMode );
+	bool bShouldGammaCorrect = true;
+	unsigned char rgb[3] = { 0, 0, 0 };
+	switch ( fogMode )
+	{
+	case SHADER_FOGMODE_BLACK: // additive decals
+		bShouldGammaCorrect = false;
+		break;
+	case SHADER_FOGMODE_OO_OVERBRIGHT:
+	case SHADER_FOGMODE_GREY: // mod2x decals
+		rgb[0] = rgb[1] = rgb[2] = 128;
+		break;
+	case SHADER_FOGMODE_WHITE: // multiplicative decals
+		rgb[0] = rgb[1] = rgb[2] = 255;
+		bShouldGammaCorrect = false;
+		break;
+	case SHADER_FOGMODE_FOGCOLOR:
+		GetSceneFogColor( rgb );
+		break;
+	default:
+		break;
+	}
+	g_Fog.gammaCorrectionDisabled = !( bShouldGammaCorrect && !bDisableFogGammaCorrection );
+	for ( int i = 0; i < 3; ++i )
+		g_Fog.pixelColor[i] = rgb[i] / 255.0f;
+	UpdatePixelFogColorConstant();
 }
 
 // Shaders that precompute their per-draw state (LightmappedGeneric, the world's
@@ -6353,10 +7329,13 @@ void CShaderAPIVulkan::ExecuteCommandBuffer( uint8 *pCmdBuf )
 		}
 
 		case CBCMD_SETPIXELSHADERFOGPARAMS:
-			// Fog constants: the native pipelines do not apply fog yet.
-			NoteUnimplemented( "ExecuteCommandBuffer(fog constant)" );
+		{
+			int nReg = 0;
+			ReadCommandField( pCmdBuf, sizeof( int ), &nReg );
+			SetPixelShaderFogParams( nReg );
 			pCmdBuf += 2 * sizeof( int );
 			break;
+		}
 
 		case CBCMD_STORE_EYE_POS_IN_PSCONST:
 		{
@@ -6420,10 +7399,13 @@ void CShaderAPIVulkan::ExecuteCommandBuffer( uint8 *pCmdBuf )
 		}
 
 		case CBCMD_SET_PSHINDEX:
-			// The pixel shader's dynamic combos change nothing the native pipelines
-			// compute yet.
+		{
+			int nIndex = 0;
+			ReadCommandField( pCmdBuf, sizeof( int ), &nIndex );
+			SetPixelShaderIndex( nIndex );
 			pCmdBuf += 2 * sizeof( int );
 			break;
+		}
 
 		case CBCMD_SET_VSHINDEX:
 		{
@@ -6471,11 +7453,15 @@ int CShaderAPIVulkan::GetViewports( ShaderViewport_t *pViewports, int nMax ) con
 void CShaderAPIVulkan::SetRenderTargetEx( int nRenderTargetID,
     ShaderAPITextureHandle_t colorTextureHandle, ShaderAPITextureHandle_t depthTextureHandle )
 {
-	// Only render target 0 exists; multiple simultaneous render targets need
-	// pipelines with more than one color attachment.
+	// Render targets 1..3 are extra color outputs (MRT). The render context
+	// disables them on every target change by passing the back buffer, which
+	// D3D9 turns into SetRenderTarget( id, NULL ); nothing is drawn to them then.
+	// Binding a texture there needs pipelines with more color attachments.
 	if ( nRenderTargetID != 0 )
 	{
-		VK_UNIMPLEMENTED();
+		if ( colorTextureHandle != SHADER_RENDERTARGET_BACKBUFFER &&
+		     colorTextureHandle != SHADER_RENDERTARGET_NONE )
+			NoteUnimplemented( "SetRenderTargetEx: a texture on render target 1..3 (MRT)" );
 		return;
 	}
 	// Each render-target texture carries its own depth buffer, and the back
@@ -6539,7 +7525,7 @@ void CShaderAPIVulkan::SetVertexShaderIndex( int vshIndex )
 
 void CShaderAPIVulkan::SetPixelShaderIndex( int pshIndex )
 {
-	VK_UNIMPLEMENTED();
+	g_PixelShaderDynamicIndex = pshIndex;
 }
 
 // Sets the constant registers for vertex and pixel shaders
@@ -6566,16 +7552,23 @@ void CShaderAPIVulkan::SetVertexShaderConstant(
 	CommitDynamicVsConstants();
 }
 
+// The boolean and integer constant banks, held as D3D9 holds them. The native
+// pipelines evaluate the shader model 3 static control flow that reads them
+// from the same inputs directly (lights, bone counts), so no stage reads them.
 void CShaderAPIVulkan::SetBooleanVertexShaderConstant(
     int var, BOOL const *pVec, int numConst, bool bForce )
 {
-	VK_UNIMPLEMENTED();
+	for ( int i = 0; pVec && i < numConst; ++i )
+		if ( var + i >= 0 && var + i < kShaderBoolIntRegisters )
+			m_vsBoolConstants[var + i] = pVec[i];
 }
 
 void CShaderAPIVulkan::SetIntegerVertexShaderConstant(
     int var, int const *pVec, int numConst, bool bForce )
 {
-	VK_UNIMPLEMENTED();
+	for ( int i = 0; pVec && i < numConst; ++i )
+		if ( var + i >= 0 && var + i < kShaderBoolIntRegisters )
+			memcpy( m_vsIntConstants[var + i], pVec + i * 4, sizeof( m_vsIntConstants[0] ) );
 }
 
 void CShaderAPIVulkan::SetPixelShaderConstant(
@@ -6599,18 +7592,25 @@ void CShaderAPIVulkan::SetPixelShaderConstant(
 void CShaderAPIVulkan::SetBooleanPixelShaderConstant(
     int var, BOOL const *pVec, int numBools, bool bForce )
 {
-	VK_UNIMPLEMENTED();
+	for ( int i = 0; pVec && i < numBools; ++i )
+		if ( var + i >= 0 && var + i < kShaderBoolIntRegisters )
+			m_psBoolConstants[var + i] = pVec[i];
 }
 
 void CShaderAPIVulkan::SetIntegerPixelShaderConstant(
     int var, int const *pVec, int numIntVecs, bool bForce )
 {
-	VK_UNIMPLEMENTED();
+	for ( int i = 0; pVec && i < numIntVecs; ++i )
+		if ( var + i >= 0 && var + i < kShaderBoolIntRegisters )
+			memcpy( m_psIntConstants[var + i], pVec + i * 4, sizeof( m_psIntConstants[0] ) );
 }
 
+// Forgets the register a pass asked its fog parameters in (D3D9's
+// m_DelayedShaderConstants.Invalidate), so a later ApplyFogMode does not
+// rewrite that register for a pass that no longer uses it.
 void CShaderAPIVulkan::InvalidateDelayedShaderConstants( void )
 {
-	VK_UNIMPLEMENTED();
+	g_Fog.delayedParamsRegister = -1;
 }
 
 float CShaderAPIVulkan::GammaToLinear_HardwareSpecific( float fGamma ) const
@@ -6626,7 +7626,8 @@ float CShaderAPIVulkan::LinearToGamma_HardwareSpecific( float fLinear ) const
 void CShaderAPIVulkan::SetLinearToGammaConversionTextures(
     ShaderAPITextureHandle_t hSRGBWriteEnabledTexture, ShaderAPITextureHandle_t hIdentityTexture )
 {
-	VK_UNIMPLEMENTED();
+	m_hLinearToGammaTableTexture = hSRGBWriteEnabledTexture;
+	m_hLinearToGammaTableIdentityTexture = hIdentityTexture;
 }
 
 // Returns the nearest supported format
@@ -6650,7 +7651,15 @@ static ShaderAPITextureHandle_t g_currentModifyTexture = 0;
 void CShaderAPIVulkan::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t textureHandle )
 {
 	// 1-based handle; 0 restores the built-in.
-	const int native = static_cast<int>( textureHandle ) - 1;
+	int native = static_cast<int>( textureHandle ) - 1;
+	// mat_texture_limit: past the frame's budget D3D9 sets no texture.
+	if ( native >= 0 && WouldBeOverTextureLimit( native ) )
+		native = -1;
+	NoteTextureBound( native );
+	// D3D9 sets no texture on a sampler the current pass did not enable
+	// (ApplyTextureEnable); measured here before this backend follows it.
+	if ( native >= 0 && stage >= 0 && stage < 32 && !( g_CurrentEnabledSamplers & ( 1u << stage ) ) )
+		NoteUnimplemented( "BindTexture: sampler the pass did not enable (D3D9 sets no texture)" );
 	// Sampler 1 is sampled only when it holds a lightmap page (BindStandardTexture
 	// says so); bump, env and detail stages are not sampled yet, so they must not
 	// overwrite the base texture either.
@@ -7102,9 +8111,14 @@ void CShaderAPIVulkan::TexWrap( ShaderTexCoordComponent_t coord, ShaderTexWrapMo
 		UpdateModifiedTextureSampler( 0, bit );
 }
 
+// A residency hint for D3D9's managed pool. Native textures are created in
+// device-local memory and stay resident until DeleteTexture, so the hint is
+// recorded with the texture and changes nothing.
 void CShaderAPIVulkan::TexSetPriority( int priority )
 {
-	VK_UNIMPLEMENTED();
+	const int handle = static_cast<int>( g_currentModifyTexture ) - 1;
+	if ( handle >= 0 && static_cast<size_t>( handle ) < g_TextureRecords.size() )
+		g_TextureRecords[static_cast<size_t>( handle )].priority = priority;
 }
 
 ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height, int depth,
@@ -7152,7 +8166,9 @@ ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height,
 		Warning( "[NativeVulkan] CreateTexture failed: %s\n", error.c_str() );
 		return 0;
 	}
-	NoteTextureCreated( native, pDebugName, dstImageFormat, width, height );
+	NoteTextureCreated( native, pDebugName, dstImageFormat, width, height, pTextureGroupName,
+	    static_cast<int>( g_VulkanContext.ManagedTextureMipLevels( native ) ),
+	    ( flags & TEXTURE_CREATE_CUBEMAP ) != 0 );
 	return static_cast<ShaderAPITextureHandle_t>( native + 1 ); // 1-based handle
 }
 
@@ -7443,14 +8459,77 @@ void CShaderAPIVulkan::ReadPixels(
 	}
 }
 
+// As CShaderAPIDx8::FlushHardware: flush what is buffered, then wait for the
+// GPU as the frame sync does. D3D9 also ends and restarts its scene; the native
+// frame is recorded and submitted at Present.
 void CShaderAPIVulkan::FlushHardware()
 {
-	VK_UNIMPLEMENTED();
+	FlushBufferedPrimitives();
+	ForceHardwareSync();
 }
 
+// CShaderAPIDx8::ResetRenderState: return every piece of dynamic render state to
+// its default, as after device creation. A full reset also clears the shader
+// constants, bones, view and projection; a partial one keeps them.
 void CShaderAPIVulkan::ResetRenderState( bool bFullReset )
 {
-	VK_UNIMPLEMENTED();
+	// Scene fog and the fog state.
+	g_Fog = FogRenderState();
+	g_CurrentShadowFogMode = SHADER_FOGMODE_DISABLED;
+	g_CurrentDisableFogGammaCorrection = false;
+	FogStart( 0.0f );
+	FogEnd( 0.0f );
+	FogMaxDensity( 1.0f );
+	// Constant color, ambient, cull and shade mode, morphing and skinning.
+	g_ConstantColor = 0xFFFFFFFF;
+	g_AmbientLightColor = 0;
+	g_DesiredCullMode = MATERIAL_CULLMODE_CCW;
+	g_ShadeMode = SHADER_SMOOTH;
+	m_bHWMorphingEnabled = false;
+	g_NumBoneWeights = 0;
+	if ( bFullReset )
+		SetAnisotropicLevel( 1 );
+	for ( TextureStageState &stage : m_TextureStages )
+		stage = TextureStageState();
+	// No textures bound, no lights.
+	g_boundTextureHandle = -1;
+	g_VulkanContext.BindManagedTexture( -1 );
+	g_boundLightmapHandle = -1;
+	g_VulkanContext.BindManagedLightmap( -1 );
+	for ( int sampler = 1; sampler < render_vulkan::CVulkanContext::kMaxSamplers; ++sampler )
+		g_VulkanContext.BindManagedSampler( sampler, -1 );
+	DisableAllLocalLights();
+	// Overrides, stencil, scissor, fast and user clipping.
+	m_bOverrideDepthEnable = false;
+	m_bForceDepthFuncEquals = false;
+	m_bOverrideAlphaWrite = false;
+	m_bOverrideColorWrite = false;
+	g_Stencil = StencilRenderState();
+	SetScissorRect( -1, -1, -1, -1, false );
+	EnableFastClip( false );
+	g_ClipPlanesEnabled = 0;
+	g_UserClipTransformOverride = false;
+	// The default pass state and dynamic state.
+	SetDefaultState();
+	if ( bFullReset )
+	{
+		memset( g_psConstants, 0, sizeof( g_psConstants ) );
+		for ( int bone = 0; bone < kMaxBoneMatrices; ++bone )
+		{
+			memset( g_BoneMatrices[bone], 0, sizeof( g_BoneMatrices[bone] ) );
+			g_BoneMatrices[bone][0] = g_BoneMatrices[bone][5] = g_BoneMatrices[bone][10] = 1.0f;
+		}
+		MatrixMode( MATERIAL_VIEW );
+		LoadIdentity();
+		MatrixMode( MATERIAL_PROJECTION );
+		LoadIdentity();
+		MatrixMode( MATERIAL_MODEL );
+	}
+	// The viewport follows the whole target again.
+	g_Viewport = ShaderViewport_t();
+	g_Viewport.m_nWidth = 0;
+	g_Viewport.m_nHeight = 0;
+	g_VulkanContext.SetViewport( 0, 0, 0, 0, 0.0f, 1.0f );
 }
 
 // Set the number of bone weights
@@ -7479,9 +8558,12 @@ void CShaderAPIVulkan::LoadBoneMatrix( int boneIndex, const float *m )
 	}
 }
 
+// As CShaderAPIDx8: the flag shaders read back (IsHWMorphingEnabled). The
+// material system enables it only on hardware reporting morph batches, which
+// this backend does not (MaxHWMorphBatchCount).
 void CShaderAPIVulkan::EnableHWMorphing( bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_bHWMorphingEnabled = bEnable;
 }
 
 // Selection mode methods
@@ -7524,11 +8606,14 @@ void CShaderAPIVulkan::BeginFrame()
 {
 	drawstatefixture::Instance().Configure( "vulkan-native" );
 	drawstatefixture::Instance().BeginFrame();
+	++g_CurrentFrameNumber;
+	g_TextureMemoryUsedLastFrame = 0;
 }
 
+// As CShaderAPIDx8::EndFrame: export the frame's texture list (mat_texture_list).
 void CShaderAPIVulkan::EndFrame()
 {
-	VK_UNIMPLEMENTED();
+	ExportTextureList();
 }
 
 // returns the current time in seconds....
@@ -7549,9 +8634,19 @@ void CShaderAPIVulkan::GetWorldSpaceCameraPosition( float *pPos ) const
 		    -( view[12] * view[i * 4] + view[13] * view[i * 4 + 1] + view[14] * view[i * 4 + 2] );
 }
 
+// D3D9's frame sync (mat_frame_sync_enable): at the start of a frame, wait until
+// the GPU has finished everything submitted before the previous frame, at most
+// 200 ms, so the CPU runs no more than one frame ahead. Frames are submitted at
+// Present, so that is the second most recent submission.
+static ConVar mat_frame_sync_enable( "mat_frame_sync_enable", "1", FCVAR_CHEAT );
+
 void CShaderAPIVulkan::ForceHardwareSync( void )
 {
-	VK_UNIMPLEMENTED();
+	if ( !mat_frame_sync_enable.GetInt() || !g_VulkanContext.IsValid() )
+		return;
+	const uint64_t submitted = g_VulkanContext.SubmittedFrameSerial();
+	if ( submitted >= 2 )
+		g_VulkanContext.WaitForSubmittedFrame( submitted - 1, 200ull * 1000 * 1000 );
 }
 
 // The plane arrives in world space as Ax+By+Cz=D and is kept as D3D9 keeps it
@@ -7589,14 +8684,25 @@ void CShaderAPIVulkan::UserClipTransform( const VMatrix &worldToView )
 			g_UserClipTransform[row * 4 + col] = worldToView.m[col][row];
 }
 
+// The fast-clip plane, Ax+By+Cz=D, kept as D3D9 keeps it (d negated); the
+// projection draws use follows it (DrawProjection).
 void CShaderAPIVulkan::SetFastClipPlane( const float *pPlane )
 {
-	VK_UNIMPLEMENTED();
+	if ( !pPlane )
+		return;
+	g_FastClip.plane[0] = pPlane[0];
+	g_FastClip.plane[1] = pPlane[1];
+	g_FastClip.plane[2] = pPlane[2];
+	g_FastClip.plane[3] = -pPlane[3];
+	CommitModelViewProj();
 }
 
 void CShaderAPIVulkan::EnableFastClip( bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	if ( g_FastClip.enabled == bEnable )
+		return;
+	g_FastClip.enabled = bEnable;
+	CommitModelViewProj();
 }
 
 int CShaderAPIVulkan::GetCurrentNumBones( void ) const
@@ -7606,7 +8712,7 @@ int CShaderAPIVulkan::GetCurrentNumBones( void ) const
 
 bool CShaderAPIVulkan::IsHWMorphingEnabled( void ) const
 {
-	return false;
+	return m_bHWMorphingEnabled;
 }
 
 int CShaderAPIVulkan::GetCurrentLightCombo( void ) const
@@ -7664,29 +8770,48 @@ int CShaderAPIVulkan::GetCurrentDynamicVBSize( void )
 	return 0;
 }
 
+// D3D9 frees its dynamic vertex and index buffers across level transitions.
+// Here those are the dynamic meshes' CPU storage (the frame stream regrows on
+// its own); a later lock allocates what it needs again.
 void CShaderAPIVulkan::DestroyVertexBuffers( bool bExitingLevel )
 {
-	VK_UNIMPLEMENTED();
+	m_Mesh.ReleaseStorage();
+	s_ShaderDeviceEmpty.ReleaseDynamicStorage();
 }
 
+// D3D9 drops its managed pool from video memory so it is reloaded on demand.
+// Native textures have no managed pool: each lives in device-local memory with
+// no system copy to reload from, and leaves only through DeleteTexture.
 void CShaderAPIVulkan::EvictManagedResources()
 {
-	VK_UNIMPLEMENTED();
 }
 
+// Fixed-function texture coordinate transforms (D3DTSS_TEXTURETRANSFORMFLAGS)
+// and bump-environment matrices, recorded per stage as D3D9 records them.
 void CShaderAPIVulkan::SetTextureTransformDimension(
     TextureStage_t textureStage, int dimension, bool projected )
 {
-	VK_UNIMPLEMENTED();
+	if ( textureStage < 0 || textureStage >= static_cast<int>( ARRAYSIZE( m_TextureStages ) ) )
+		return;
+	m_TextureStages[textureStage].transformFlags = dimension | ( projected ? 256 : 0 );
 }
 
 void CShaderAPIVulkan::SetBumpEnvMatrix(
     TextureStage_t textureStage, float m00, float m01, float m10, float m11 )
 {
-	VK_UNIMPLEMENTED();
+	if ( textureStage < 0 || textureStage >= static_cast<int>( ARRAYSIZE( m_TextureStages ) ) )
+		return;
+	float *m = m_TextureStages[textureStage].bumpEnv;
+	m[0] = m00;
+	m[1] = m01;
+	m[2] = m10;
+	m[3] = m11;
 }
 
+// D3D9 writes the token into its recorded command stream. Here it labels the
+// frame being built in the -vkframestats stream, which is that stream.
 void CShaderAPIVulkan::SyncToken( const char *pToken )
 {
-	VK_UNIMPLEMENTED();
+	if ( pToken )
+		g_VulkanContext.MarkFrame( pToken );
 }

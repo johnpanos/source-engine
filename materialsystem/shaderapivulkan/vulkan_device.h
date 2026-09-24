@@ -283,7 +283,12 @@ public:
 		kDynShaderSkin = 5,
 		// RFC 0007 synthetic direct-light BRDF, tested against the headless model.
 		kDynShaderPbrDirect = 6,
-		kDynShaderPbrWorld = 7
+		kDynShaderPbrWorld = 7,
+		// SolidEnergy (solidenergy_vs20 / solidenergy_ps20b): Portal 2's
+		// fizzlers, bridges and beams, on the skin pipeline's layout (its
+		// constants arrive through SetDynamicSkinConstants); see
+		// shaders/solidenergy.{vert,frag}.
+		kDynShaderSolidEnergy = 8
 	};
 	void SelectDynamicShader( int shaderIndex ) { m_dynShaderIndex = shaderIndex; }
 	// Output-merger state of the queued geometry, in the terms of the D3D9 state a
@@ -534,6 +539,10 @@ public:
 	// False when the device cannot bind the skin shader's seven descriptor sets
 	// or its push block; its draws are then declined.
 	bool SkinPipelineSupported() const { return m_skinPipelineLayout != VK_NULL_HANDLE; }
+	bool SolidEnergyPipelineSupported() const
+	{
+		return m_skinPipelineLayout != VK_NULL_HANDLE && m_solidEnergyVert != VK_NULL_HANDLE;
+	}
 	// False when the device's push constants cannot hold PortalRefract's block;
 	// its draws are then declined.
 	bool PortalPipelineSupported() const { return m_portalPipelineLayout != VK_NULL_HANDLE; }
@@ -750,6 +759,13 @@ public:
 	// replace the swapchain.
 	uint64_t AcquireTimeouts() const { return m_acquireTimeouts; }
 	static constexpr uint64_t kAcquireTimeoutNs = 1000000000ull;
+	// Frame submissions so far (each EndFrame that submitted adds one), and a
+	// wait of at most timeoutNs for the submission with that serial to complete
+	// on the GPU: D3D9's frame sync query (IShaderAPI::ForceHardwareSync). True
+	// once it has completed, including one that completed long ago; false on a
+	// timeout, a serial not yet submitted, or no device.
+	uint64_t SubmittedFrameSerial() const { return m_submitSerial; }
+	bool WaitForSubmittedFrame( uint64_t serial, uint64_t timeoutNs );
 	// Frames presented, and how many of them the present blit had to scale
 	// because the back buffer and the drawable differed.
 	uint64_t PresentCount() const { return m_presentCount; }
@@ -1146,6 +1162,7 @@ private:
 		kPipelinePortal = 1,
 		kPipelineSkin = 2,
 		kPipelinePbrDirect = 3,
+		kPipelineSolidEnergy = 4,
 		kPipelineFamilies
 	};
 	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
@@ -1166,6 +1183,13 @@ private:
 	// after that frame's fence has signaled, bound at a per-draw dynamic offset.
 	std::map<uint64_t, VkPipeline> m_skinPipelines;
 	VkPipeline SkinPipeline( const DynRasterState &state, bool srgbPass = false, int samples = 1 );
+	// SolidEnergy shares the skin layout: six sampler sets (s0, s1, s4, s5, s6,
+	// s7) and the constants uniform buffer.
+	std::map<uint64_t, VkPipeline> m_solidEnergyPipelines;
+	VkPipeline SolidEnergyPipeline(
+	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
+	VkShaderModule m_solidEnergyVert = VK_NULL_HANDLE;
+	VkShaderModule m_solidEnergyFrag = VK_NULL_HANDLE;
 	std::map<uint64_t, VkPipeline> m_pbrDirectPipelines;
 	VkPipeline PbrDirectPipeline(
 	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );

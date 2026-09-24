@@ -100,7 +100,7 @@ $Project
 			$File	"$SRCDIR\game\shared\portal2\env_lightrail_endpoint_shared.h"
 			$File	"$SRCDIR\game\shared\portal2\env_portal_path_track_shared.h"
 			$File	"portal\fx_portal.cpp"
-			$File	"portal\hud_quickinfo.cpp"
+			$File	"portal2\portal\hud_quickinfo.cpp"
 			$File	"portal2\portal\MaterialProxy_Portal_PickAlphaMask.cpp"
 			$File	"portal2\portal\materialproxy_portalstatic.cpp"
 			$File	"$SRCDIR\game\shared\Multiplayer\multiplayer_animstate.cpp"

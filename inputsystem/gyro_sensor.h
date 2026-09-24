@@ -3,9 +3,11 @@
 // Purpose: The device gyroscope, sampled on its own thread (Android NDK).
 //
 // The sensor thread owns every NDK sensor object and integrates each sample
-// into running rotation totals using the samples' own timestamps. The owner
-// thread only stores requests into atomics and reads the totals, so it never
-// waits on the sensor thread except when Shutdown joins it.
+// into running rotation totals using the samples' own timestamps. It also
+// tracks which way is up (the gravity sensor, or the accelerometer where there
+// is none) for turning in player space. The owner thread only stores requests
+// into atomics and reads the results, so it never waits on the sensor thread
+// except when Shutdown joins it.
 //
 //===========================================================================//
 
@@ -14,6 +16,8 @@
 #ifdef _WIN32
 #pragma once
 #endif
+
+#include <stdint.h>
 
 class CGyroSensor
 {
@@ -38,6 +42,11 @@ public:
 	// device's natural orientation (x right, y up, z out of the screen;
 	// counter-clockwise positive). Owner thread only.
 	void ConsumeRotation( float rotation[3] );
+	// The direction away from gravity in the same axes, not normalized. False
+	// until the sensor has measured it since it was last turned on. Any thread.
+	bool GetUp( float up[3] ) const;
+	// Gyroscope samples received since Init. Any thread.
+	uint32_t SampleCount() const;
 
 private:
 	struct State;

@@ -40,6 +40,26 @@ private:
 	float m_flPreviousRate[3];
 };
 
+// Smooths gravity or accelerometer samples (the direction away from gravity,
+// in any units) with a first-order low-pass timed by the samples' timestamps.
+// A time constant of 0 passes samples through. The first sample, and the first
+// after Reset or a gap longer than kMaxSampleGapSeconds, is taken as is.
+class CUpFilter
+{
+public:
+	explicit CUpFilter( double flTimeConstantSeconds );
+
+	void Reset();
+	// Adds a sample and returns the filtered direction in up[3].
+	void AddSample( int64_t nTimestampNs, const float sample[3], float up[3] );
+
+private:
+	double m_flTimeConstant;
+	bool m_bHavePrevious;
+	int64_t m_nPreviousTimestampNs;
+	float m_flUp[3];
+};
+
 // The sampling period, in microseconds, for a display refreshing at
 // flRefreshHz: two samples per refresh (240 Hz on a 120 Hz panel), so each
 // frame integrates fresh rotation. An unknown rate (<= 0) is taken as 60 Hz.

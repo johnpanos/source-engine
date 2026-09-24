@@ -8638,6 +8638,13 @@ int ComputeWide(Panel* pPanel, unsigned int& nBuildFlags, KeyValues *inResourceD
 	const char *wstr = inResourceData->GetString("wide", NULL);
 	if (wstr)
 	{
+		if ( wstr[0] == '%' )
+		{
+			// Later branches (Portal 2's DLC hudlayout.res): a percentage of the
+			// size that "f" fills, never proportionally scaled.
+			return (int)( nParentWide * ( atof( wstr + 1 ) / 100.0f ) );
+		}
+
 		if (wstr[0] == 'f' || wstr[0] == 'F')
 		{
 			nBuildFlags |= Panel::BUILDMODE_SAVE_WIDE_FULL;
@@ -8721,6 +8728,12 @@ int ComputeTall(Panel* pPanel, unsigned int& nBuildFlags, KeyValues *inResourceD
 	const char *tstr = inResourceData->GetString("tall", NULL);
 	if (tstr)
 	{
+		if ( tstr[0] == '%' )
+		{
+			// A percentage of the size that "f" fills; see ComputeWide.
+			return (int)( nParentTall * ( atof( tstr + 1 ) / 100.0f ) );
+		}
+
 		if (tstr[0] == 'f' || tstr[0] == 'F')
 		{
 			nBuildFlags |= Panel::BUILDMODE_SAVE_TALL_FULL;

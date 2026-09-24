@@ -2805,6 +2805,7 @@ public:
 	// Input handlers
 	void InputEnable( inputdata_t &inputdata );
 	void InputDisable( inputdata_t &inputdata );
+	void InputTeleportToView( inputdata_t &inputdata );
 
 private:
 	EHANDLE m_hPlayer;
@@ -2883,6 +2884,7 @@ BEGIN_DATADESC( CTriggerCamera )
 	// Inputs
 	DEFINE_INPUTFUNC( FIELD_VOID, "Enable", InputEnable ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "Disable", InputDisable ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "TeleportToView", InputTeleportToView ),
 
 	// Function Pointers
 	DEFINE_FUNCTION( FollowTarget ),
@@ -2971,6 +2973,37 @@ void CTriggerCamera::InputEnable( inputdata_t &inputdata )
 //------------------------------------------------------------------------------
 void CTriggerCamera::InputDisable( inputdata_t &inputdata )
 { 
+	Disable();
+}
+
+//------------------------------------------------------------------------------
+// Purpose: Moves the player so their eyes are at the camera, facing its view,
+//          then hands control back. Portal 2 maps end falls and ride-alongs
+//          with this (e.g. the sp_a2_intro incinerator drop).
+//------------------------------------------------------------------------------
+void CTriggerCamera::InputTeleportToView( inputdata_t &inputdata )
+{
+	CBasePlayer *pPlayer = ToBasePlayer( m_hPlayer );
+	if ( pPlayer )
+	{
+		const Vector vecEyeOffset = pPlayer->EyePosition() - pPlayer->GetAbsOrigin();
+		const Vector vecCamera = GetAbsOrigin();
+		Vector vecOrigin = vecCamera - vecEyeOffset;
+
+		// Keep the feet out of anything solid below the camera
+		trace_t tr;
+		UTIL_TraceLine( vecCamera, vecCamera - vecEyeOffset * 1.02f, MASK_SOLID, pPlayer,
+			COLLISION_GROUP_NONE, &tr );
+		if ( tr.fraction != 1.0f )
+		{
+			vecOrigin = tr.endpos;
+		}
+
+		const QAngle angView = GetAbsAngles();
+		pPlayer->SetGroundEntity( NULL );
+		pPlayer->Teleport( &vecOrigin, &angView, NULL );
+	}
+
 	Disable();
 }
 

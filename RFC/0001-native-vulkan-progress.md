@@ -1758,3 +1758,33 @@ the second forward, using the same snapshot. Results: material equivalence
 installed headless Portal boot on `testchmb_a_01` passed with the rebuilt
 backend (`/tmp/portal-native-polyoffset-20260924/evidence.json`); its
 1024x768 capture was visually inspected as a recognizable chamber.
+
+## Forced depth test for VGUI screens in the world (2026-09-24)
+
+In Portal 2, the `vgui_movie_display` sign rings around the elevator shafts
+(for example, `@arrival_sign_*` in `sp_a2_laser_intro`) drew over the elevator
+car's posts and control panel. `CMatSystemSurface::DrawPanelIn3DSpace` draws a
+panel's `$ignorez` VGUI materials under `OverrideDepthEnable( true, false )`.
+On D3D9, that override forces the Z test on and the Z write off for every draw
+(TransitionTable `PerformShadowStateOverrides`). Native's `OverrideDepthEnable`
+was `VK_UNIMPLEMENTED`, so the panels had no depth test.
+
+Native now keeps the override on the shader API and applies it when
+`BeginPass` and `RenderPass` select a pass's raster state. It sets the Z test
+on and the Z write to the override value, and keeps the snapshot's compare
+function, as D3D9 does. The draw-state fixture still records the snapshot's
+depth state, which is what the D3D9 fixture records.
+`ForceDepthFuncEquals` and the alpha/color write overrides remain unimplemented.
+
+Evidence:
+- `material_equivalence_vulkan_conformance` grows from 42 to 46 checks, with
+  0 failures (build-p2, RADV). An `$ignorez` quad behind nearer depth shows
+  without the override (control) and is hidden with it. `( true, false )`
+  leaves the depth buffer unwritten, and `( true, true )` writes it (control).
+  With the override seeded as a no-op, 2 checks fail.
+- In-game A/B in a private staged runtime (`SDL_VIDEODRIVER=offscreen`), with
+  the same one-line cfg: `+map sp_a2_laser_intro`, then turn with `+left`
+  during the arrival ride and take screenshots. With the old library, the
+  white sign panels cover the car's post and call panel. With the fix, the
+  post hides them. The movies themselves draw white because no video provider
+  opens `media/entry_emergency.bik`, which is a separate gap.

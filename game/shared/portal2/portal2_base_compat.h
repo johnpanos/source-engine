@@ -103,6 +103,11 @@ extern IMatchFramework *g_pMatchFramework;
 // CEG_GET_CONSTANT_VALUE( PaintSpeedPower ) (see SurfNoPaintFlag()).
 #define PaintSpeedPower() SPEED_POWER
 
+// CEG constant accessors for portal placement (portal_placement.cpp): the paint
+// power that makes a surface portalable and the "no portal" surface flag.
+#define PaintPortalPower() PORTAL_POWER
+#define SurfNoPortalFlag() SURF_NOPORTAL
+
 #ifndef GLOWS_ENABLE
 #define GLOWS_ENABLE
 #endif

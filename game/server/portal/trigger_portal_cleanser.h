@@ -23,9 +23,18 @@ public:
 	DECLARE_DATADESC();
 
 	virtual void	Spawn( void );
+	virtual void Precache( void );
+	virtual void Activate( void );
 	virtual void	Touch( CBaseEntity *pOther );
 
 	virtual void	Enable( void );
+	virtual void Disable( void );
+
+	// CBaseTrigger's Enable and Disable are not virtual here; the inputs route
+	// through these so the cleanser's own state changes run.
+	virtual void InputEnable( inputdata_t &inputdata );
+	virtual void InputDisable( inputdata_t &inputdata );
+	virtual void InputToggle( inputdata_t &inputdata );
 
 	virtual int		UpdateTransmitState( void )
 	{
@@ -49,12 +58,27 @@ private:
 	void			FizzleTouchingPortals( void );
 	void			InputFizzleTouchingPortals( inputdata_t &data ) { FizzleTouchingPortals(); }
 
+	// Retail: finds the two nearest vortex objects (cubes, turrets...) within
+	// sv_portal_cleanser_vortex_distance; the client bends the field around them.
+	void SearchThink( void );
+	void PlayerPassesTriggerFiltersThink( void );
+	void PlayActivateSound( void );
+	void PlayDeactivateSound( void );
+
 	// Outputs
 	COutputEvent	m_OnDissolve;
 	COutputEvent	m_OnFizzle;
 	COutputEvent	m_OnDissolveBox;
 
-	float			m_flLastPortalShotTime;	// gpGlobals->curtime of the last portal shot this cleanser stopped
+	CNetworkVar( bool, m_bVisible );     // "Visible": draw the field (effects/fizzler)
+	CNetworkVar( bool, m_bUseScanline ); // "UseScanline": the client's cleanser_scanline particle
+	CNetworkVar(
+	    float, m_flPortalShotTime ); // curtime of the last portal shot this cleanser stopped
+	CNetworkVar( bool, m_bObject1InRange );
+	CNetworkVar( bool, m_bObject2InRange );
+	CNetworkHandle( CBaseEntity, m_hObject1 ); // nearest vortex object
+	CNetworkHandle( CBaseEntity, m_hObject2 ); // second nearest
+	CNetworkVar( bool, m_bPlayersPassTriggerFilters );
 };
 
 #endif // TRIGGER_PORTAL_CLEANSER_H

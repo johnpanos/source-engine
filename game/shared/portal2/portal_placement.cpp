@@ -78,7 +78,7 @@ static int CEG_PORTAL_POWER = 0xffffffff; // no paint power until correctly init
 CEG_NOINLINE void InitPortalPaintPowerValue()
 {
 	CEG_GCV_PRE();
-	CEG_PORTAL_POWER = NO_POWER;
+	CEG_PORTAL_POWER = CEG_GET_CONSTANT_VALUE( PaintPortalPower );
 	CEG_GCV_POST();
 }
 
@@ -120,7 +120,7 @@ static unsigned short CEG_SURF_NO_PORTAL_FLAG = 0xffff; // portals can't be plac
 CEG_NOINLINE void InitSurfNoPortalFlag()
 {
 	CEG_GCV_PRE();
-	CEG_SURF_NO_PORTAL_FLAG = SURF_NOPORTAL;
+	CEG_SURF_NO_PORTAL_FLAG = CEG_GET_CONSTANT_VALUE( SurfNoPortalFlag );
 	CEG_GCV_POST();
 }
 

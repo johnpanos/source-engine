@@ -105,9 +105,18 @@ inline ScriptFunctionBindingStorageType_t ScriptConvertFreeFuncPtrToVoid( FUNCPT
 		FuncPtrConvertMI convert;
 		convert.fn8.iToc = 0;
 		convert.pFunc = pFunc;
+#if defined( __aarch64__ )
+		// The ARM C++ ABI keeps the virtual flag in bit 0 of the adjustment word
+		// (adj = 2 * this-adjustment + virtual) and puts the vtable offset in the
+		// pointer word. Code addresses are 4-aligned and vtable offsets 8-aligned,
+		// so fold the flag into bit 0 of the stored value; FromVoid undoes it.
+		if ( !( convert.fn8.iToc >> 1 ) )
+			return (ScriptFunctionBindingStorageType_t)( (uintptr_t)convert.fn8.stype | ( convert.fn8.iToc & 1 ) );
+#else
 		if ( !convert.fn8.iToc )
 			return convert.fn8.stype;
-		
+#endif
+
 		Assert( 0 );
 		DebuggerBreak();
 		return 0;
@@ -150,8 +159,13 @@ inline FUNCPTR_TYPE ScriptConvertFreeFuncPtrFromVoid( ScriptFunctionBindingStora
 
 		FuncPtrConvertMI convert;
 		convert.pFunc = 0;
+#if defined( __aarch64__ )
+		convert.fn8.stype = (ScriptFunctionBindingStorageType_t)( (uintptr_t)p & ~(uintptr_t)1 );
+		convert.fn8.iToc = (uintptr_t)p & 1;
+#else
 		convert.fn8.stype = p;
 		convert.fn8.iToc = 0;
+#endif
 		return convert.pFunc;
 	}
 

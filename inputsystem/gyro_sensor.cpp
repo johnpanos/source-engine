@@ -6,7 +6,8 @@
 // the poll time rather than the sensor time, and delivers them as SDL events
 // whose watchers run under SDL's global watcher lock. Gyro aiming wants a rate
 // tied to the display and exact sample times, so this reads the NDK sensor
-// queue directly.
+// queue directly. The same queue carries the gravity sensor (or, on devices
+// without one, the accelerometer) that player-space turning needs.
 //
 //===========================================================================//
 
@@ -33,6 +34,11 @@ namespace
 {
 const int kLooperIdent = 1;
 const int kEventBatch = 16;
+// Which way is up changes slowly; 100 Hz is ample for player-space turning.
+const int kUpPeriodUs = 10000;
+// Low-pass time constant for the raw accelerometer, which also measures the
+// hand's own acceleration. The gravity sensor is already filtered.
+const double kAccelerometerUpSeconds = 0.15;
 
 // ASensorManager is per package; an app process is named after its package.
 void GetPackageName( char *pName, size_t nSize )
@@ -54,6 +60,10 @@ struct CGyroSensor::State
 	ASensorManager *m_pManager = nullptr;
 	const ASensor *m_pSensor = nullptr;
 	int m_nMinDelayUs = 0;
+	// Gravity (or accelerometer) sensor; null when the device has neither.
+	const ASensor *m_pUpSensor = nullptr;
+	int m_nUpPeriodUs = 0;
+	double m_flUpTimeConstant = 0.0;
 
 	pthread_t m_Thread;
 	bool m_bThreadStarted = false;
@@ -72,6 +82,11 @@ struct CGyroSensor::State
 	std::atomic<double> m_Total[3];
 	// The owner thread's read position.
 	double m_Consumed[3];
+	std::atomic<uint32_t> m_nSamples;
+	// The latest filtered up direction; m_bHaveUp once it is valid. Axes may
+	// come from neighbouring samples, which differ by a tiny rotation.
+	std::atomic<float> m_Up[3];
+	std::atomic<bool> m_bHaveUp;
 
 	State()
 	{
@@ -79,10 +94,13 @@ struct CGyroSensor::State
 		m_bSuspended.store( false );
 		m_nPeriodUs.store( 0 );
 		m_pLooper.store( nullptr );
+		m_nSamples.store( 0 );
+		m_bHaveUp.store( false );
 		for ( int i = 0; i < 3; ++i )
 		{
 			m_Total[i].store( 0.0 );
 			m_Consumed[i] = 0.0;
+			m_Up[i].store( 0.f );
 		}
 	}
 
@@ -106,7 +124,10 @@ void CGyroSensor::State::Run()
 {
 	pthread_setname_np( pthread_self(), "GyroSensor" );
 
-	ALooper *pLooper = ALooper_prepare( 0 );
+	// The queue is polled by ident, without a callback, which a looper accepts
+	// only when prepared for it; otherwise the queue is silently left out of
+	// the poll and no sample is ever read.
+	ALooper *pLooper = ALooper_prepare( ALOOPER_PREPARE_ALLOW_NON_CALLBACKS );
 	ALooper_acquire( pLooper );
 	ASensorEventQueue *pQueue =
 	    ASensorManager_createEventQueue( m_pManager, pLooper, kLooperIdent, nullptr, nullptr );
@@ -116,7 +137,9 @@ void CGyroSensor::State::Run()
 		Warning( "Gyro: could not create a sensor event queue\n" );
 
 	int nActivePeriodUs = 0;
+	bool bUpActive = false;
 	gyro::CRateIntegrator integrator;
+	gyro::CUpFilter upFilter( m_flUpTimeConstant );
 	ASensorEvent events[kEventBatch];
 
 	while ( m_bRunning.load() )
@@ -128,8 +151,13 @@ void CGyroSensor::State::Run()
 		{
 			if ( nActivePeriodUs > 0 )
 				ASensorEventQueue_disableSensor( pQueue, m_pSensor );
+			if ( bUpActive )
+				ASensorEventQueue_disableSensor( pQueue, m_pUpSensor );
 			nActivePeriodUs = 0;
+			bUpActive = false;
 			integrator.Reset();
+			upFilter.Reset();
+			m_bHaveUp.store( false );
 			if ( nWantedUs > 0 )
 			{
 				// No batching: each sample is reported as soon as it is taken.
@@ -137,6 +165,10 @@ void CGyroSensor::State::Run()
 					nActivePeriodUs = nWantedUs;
 				else
 					Warning( "Gyro: could not enable the gyroscope at %d us\n", nWantedUs );
+				// Without it, turning falls back to the device's own axes.
+				if ( m_pUpSensor &&
+				     ASensorEventQueue_registerSensor( pQueue, m_pUpSensor, m_nUpPeriodUs, 0 ) == 0 )
+					bUpActive = true;
 			}
 		}
 
@@ -149,16 +181,34 @@ void CGyroSensor::State::Run()
 		while ( ( nEvents = ASensorEventQueue_getEvents( pQueue, events, kEventBatch ) ) > 0 )
 		{
 			double rotation[3] = { 0.0, 0.0, 0.0 };
+			uint32_t nGyroSamples = 0;
+			bool bUpChanged = false;
+			float up[3];
 			for ( ssize_t e = 0; e < nEvents; ++e )
 			{
 				// Timed by the sensor's own timestamps, not by arrival.
 				if ( events[e].type == ASENSOR_TYPE_GYROSCOPE )
+				{
 					integrator.AddSample( events[e].timestamp, events[e].data, rotation );
+					++nGyroSamples;
+				}
+				else if ( m_pUpSensor && events[e].type == ASensor_getType( m_pUpSensor ) )
+				{
+					upFilter.AddSample( events[e].timestamp, events[e].data, up );
+					bUpChanged = true;
+				}
 			}
 			for ( int i = 0; i < 3; ++i )
 			{
 				m_Total[i].store( m_Total[i].load( std::memory_order_relaxed ) + rotation[i],
 				    std::memory_order_relaxed );
+			}
+			m_nSamples.fetch_add( nGyroSamples, std::memory_order_relaxed );
+			if ( bUpChanged )
+			{
+				for ( int i = 0; i < 3; ++i )
+					m_Up[i].store( up[i], std::memory_order_relaxed );
+				m_bHaveUp.store( true );
 			}
 		}
 	}
@@ -167,6 +217,8 @@ void CGyroSensor::State::Run()
 	{
 		if ( nActivePeriodUs > 0 )
 			ASensorEventQueue_disableSensor( pQueue, m_pSensor );
+		if ( bUpActive )
+			ASensorEventQueue_disableSensor( pQueue, m_pUpSensor );
 		ASensorManager_destroyEventQueue( m_pManager, pQueue );
 	}
 }
@@ -200,6 +252,17 @@ bool CGyroSensor::Init()
 	pState->m_pManager = pManager;
 	pState->m_pSensor = pSensor;
 	pState->m_nMinDelayUs = ASensor_getMinDelay( pSensor );
+	pState->m_pUpSensor = ASensorManager_getDefaultSensor( pManager, ASENSOR_TYPE_GRAVITY );
+	if ( !pState->m_pUpSensor )
+	{
+		pState->m_pUpSensor = ASensorManager_getDefaultSensor( pManager, ASENSOR_TYPE_ACCELEROMETER );
+		pState->m_flUpTimeConstant = kAccelerometerUpSeconds;
+	}
+	if ( pState->m_pUpSensor )
+	{
+		const int nUpMinDelayUs = ASensor_getMinDelay( pState->m_pUpSensor );
+		pState->m_nUpPeriodUs = nUpMinDelayUs > kUpPeriodUs ? nUpMinDelayUs : kUpPeriodUs;
+	}
 	pState->m_bRunning.store( true );
 	if ( pthread_create( &pState->m_Thread, nullptr, &State::ThreadMain, pState ) != 0 )
 	{
@@ -210,8 +273,9 @@ bool CGyroSensor::Init()
 	pState->m_bThreadStarted = true;
 	m_pState = pState;
 
-	Msg( "Gyro: %s (%s), fastest sample period %d us\n", ASensor_getName( pSensor ),
-	    ASensor_getVendor( pSensor ), pState->m_nMinDelayUs );
+	Msg( "Gyro: %s (%s), fastest sample period %d us; up from %s\n", ASensor_getName( pSensor ),
+	    ASensor_getVendor( pSensor ), pState->m_nMinDelayUs,
+	    pState->m_pUpSensor ? ASensor_getName( pState->m_pUpSensor ) : "nothing" );
 	return true;
 }
 
@@ -264,6 +328,21 @@ void CGyroSensor::ConsumeRotation( float rotation[3] )
 	}
 }
 
+bool CGyroSensor::GetUp( float up[3] ) const
+{
+	up[0] = up[1] = up[2] = 0.f;
+	if ( !m_pState || !m_pState->m_bHaveUp.load() )
+		return false;
+	for ( int i = 0; i < 3; ++i )
+		up[i] = m_pState->m_Up[i].load( std::memory_order_relaxed );
+	return true;
+}
+
+uint32_t CGyroSensor::SampleCount() const
+{
+	return m_pState ? m_pState->m_nSamples.load( std::memory_order_relaxed ) : 0;
+}
+
 #else // !( ANDROID && USE_SDL3 )
 
 // No gyroscope backend on this platform.
@@ -304,6 +383,17 @@ void CGyroSensor::SetSuspended( bool )
 void CGyroSensor::ConsumeRotation( float rotation[3] )
 {
 	rotation[0] = rotation[1] = rotation[2] = 0.f;
+}
+
+bool CGyroSensor::GetUp( float up[3] ) const
+{
+	up[0] = up[1] = up[2] = 0.f;
+	return false;
+}
+
+uint32_t CGyroSensor::SampleCount() const
+{
+	return 0;
 }
 
 #endif // ANDROID && USE_SDL3
