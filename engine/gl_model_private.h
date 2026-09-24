@@ -275,12 +275,25 @@ struct worldmeshgroup_t
 struct worldmeshoccluder_t
 {
 	Vector corners[3];
+	// Bounding sphere, to skip triangles too small on screen to cover a cell.
+	Vector center;
+	float radius;
+};
+
+// Consecutive meshlets [firstMeshlet, firstMeshlet + meshletCount) a leaf references.
+struct worldmeshleafrun_t
+{
+	unsigned int firstMeshlet;
+	unsigned int meshletCount;
 };
 
 struct worldmeshleafrange_t
 {
 	unsigned int firstReference;
 	unsigned int referenceCount;
+	// The same references as runs in worldbrushdata_t::pWorldMeshLeafRuns.
+	unsigned int firstRun;
+	unsigned int runCount;
 };
 
 struct worldbrushdata_t
@@ -396,6 +409,7 @@ struct worldbrushdata_t
 	// Groups tile each batch's meshlets in order (worldmeshbatch_t::firstGroup).
 	const worldmeshgroup_t *pWorldMeshGroups;
 	unsigned int worldMeshGroupCount;
+	const worldmeshleafrun_t *pWorldMeshLeafRuns;
 #if 0
 	int			numportals;
 	mportal_t	*portals;

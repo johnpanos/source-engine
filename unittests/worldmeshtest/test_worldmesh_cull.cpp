@@ -418,6 +418,10 @@ void TestOcclusion()
 	const float nearMin[3] = { 1, -1, -1 }, nearMax[3] = { 200, 1, 1 };
 	const float straddleMin[3] = { 90, -10, -10 }, straddleMax[3] = { 110, 10, 10 };
 	CHECK( buffer.RasterizedOccluders() == 1 );
+	// The size prefilter keeps the wall and drops a speck far away.
+	const float wallCenter[3] = { 100, 0, -333 }, speckCenter[3] = { 3000, 0, 0 };
+	CHECK( buffer.MayCoverCell( wallCenter, 1500 ) );
+	CHECK( !buffer.MayCoverCell( speckCenter, 0.5f ) );
 	CHECK( buffer.CoveredCells() > OcclusionBuffer::kWidth * OcclusionBuffer::kHeight / 2 );
 	CHECK( buffer.IsBoxOccluded( behindMin, behindMax ) );
 	CHECK( !buffer.IsBoxOccluded( frontMin, frontMax ) );

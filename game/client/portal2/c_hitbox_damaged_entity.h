@@ -24,7 +24,9 @@ public:
 #include "damage_database.h"
 
 // Defined in hitbox_damaged_entity_shared.cpp
-void EmitParticles( C_BaseAnimating *pOwnerEntity, DamagedEntityType entityType, int damageEffectIndex, int particleEffectIndex );
-void EmitGibs( C_BaseAnimating *pParentEntity, DamagedEntityType entityType, int damageEffectIndex );
+void EmitParticles( C_BaseAnimating *pOwnerEntity, DamagedEntityType entityType,
+    int damageEffectIndex, int particleEffectIndex );
+void EmitGibs(
+    C_BaseAnimating *pParentEntity, DamagedEntityType entityType, int damageEffectIndex );
 
 #endif // C_HITBOX_DAMAGED_ENTITY_H

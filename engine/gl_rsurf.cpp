@@ -217,19 +217,19 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 		marked = clusterCount;
 		pView = NULL;
 	}
+	// Leaves reference runs of consecutive meshlets (spatially sorted).
 	for ( int i = 0; i < nVisibleLeaves && marked < clusterCount; ++i )
 	{
 		const int leafIndex = pVisibleLeaves[i];
 		if ( leafIndex < 0 || static_cast<unsigned int>( leafIndex ) >= pWorld->worldMeshLeafCount )
 			continue;
 		const worldmeshleafrange_t &leaf = pWorld->pWorldMeshLeafRanges[leafIndex];
-		const unsigned int *pReferences = pWorld->pWorldMeshLeafReferences + leaf.firstReference;
-		for ( unsigned int j = 0; j < leaf.referenceCount; ++j )
-		{
-			unsigned char &flag = pVisible[pReferences[j]];
-			marked += !flag;
-			flag = 1;
-		}
+		const worldmeshleafrun_t *pRuns = pWorld->pWorldMeshLeafRuns + leaf.firstRun;
+		for ( unsigned int j = 0; j < leaf.runCount; ++j )
+			Q_memset( pVisible + pRuns[j].firstMeshlet, 1, pRuns[j].meshletCount );
+		// A leaf holding every meshlet ends the walk.
+		if ( leaf.referenceCount == clusterCount )
+			marked = clusterCount;
 	}
 
 	const bool frustum = pView && pView->frustumValid;
@@ -250,6 +250,12 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 	unsigned int frustumCulled = 0;
 	unsigned int backfaceCulled = 0;
 	unsigned int occluded = 0;
+	if ( r_worldmesh_cull_report.GetBool() && marked < clusterCount )
+	{
+		marked = 0;
+		for ( unsigned int j = 0; j < clusterCount; ++j )
+			marked += pVisible[j];
+	}
 	// Groups a later pass may still reject by occlusion.
 	CUtlVector<unsigned int> &survivors = s_WorldMeshSurvivingGroups;
 	survivors.RemoveAll();
@@ -330,9 +336,12 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 					continue;
 				const worldmeshoccluder_t *pOccluder = pWorld->pWorldMeshOccluders + meshlet.firstOccluder;
 				for ( unsigned int k = 0; k < meshlet.occluderCount; ++k )
-					s_WorldMeshOcclusion.AddOccluder( pOccluder[k].corners[0].Base(),
-					    pOccluder[k].corners[1].Base(), pOccluder[k].corners[2].Base(),
-					    cull.twoSided );
+				{
+					if ( s_WorldMeshOcclusion.MayCoverCell( pOccluder[k].center.Base(), pOccluder[k].radius ) )
+						s_WorldMeshOcclusion.AddOccluder( pOccluder[k].corners[0].Base(),
+						    pOccluder[k].corners[1].Base(), pOccluder[k].corners[2].Base(),
+						    cull.twoSided );
+				}
 			}
 		}
 		s_WorldMeshOcclusion.Finish();

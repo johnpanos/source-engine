@@ -88,6 +88,14 @@ void OcclusionBuffer::Begin(
 	Load( eye, m_eye );
 	m_zNear = zNear;
 	m_zFar = zFar;
+	// A triangle covering a cell has a circumradius of at least half the
+	// cell's smaller side: 1 / size NDC, or that over the axis scale in world
+	// units at unit depth.
+	const double scaleX = std::sqrt( m_matrix[0] * m_matrix[0] + m_matrix[1] * m_matrix[1] +
+	                                 m_matrix[2] * m_matrix[2] );
+	const double scaleY = std::sqrt( m_matrix[4] * m_matrix[4] + m_matrix[5] * m_matrix[5] +
+	                                 m_matrix[6] * m_matrix[6] );
+	m_cellRadius = float( std::min( 1.0 / ( kWidth * scaleX ), 1.0 / ( kHeight * scaleY ) ) );
 	m_rasterized = 0;
 	m_finished = false;
 	m_levelCount = 0;
@@ -104,6 +112,15 @@ void OcclusionBuffer::Begin(
 		width = std::max( 1, width / 2 );
 		height = std::max( 1, height / 2 );
 	}
+}
+
+bool OcclusionBuffer::MayCoverCell( const float center[3], float radius ) const
+{
+	const double *m = m_matrix;
+	const double w = m[12] * center[0] + m[13] * center[1] + m[14] * center[2] + m[15];
+	// Nearer points of the sphere only magnify it; take the nearest depth.
+	const double nearest = std::max( w - radius, m_zNear );
+	return radius >= m_cellRadius * nearest && w + radius >= m_zNear;
 }
 
 void OcclusionBuffer::AddOccluder(

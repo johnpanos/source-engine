@@ -20,7 +20,8 @@ IClientHitboxDamagedEntity::~IClientHitboxDamagedEntity()
 void __MsgFunc_ApplyHitBoxDamageEffect( bf_read &msg )
 {
 	const CBaseHandle hEntity( msg.ReadLong() );
-	IClientHitboxDamagedEntity *pDamagedEntity = dynamic_cast< IClientHitboxDamagedEntity* >( cl_entitylist->GetBaseEntityFromHandle( hEntity ) );
+	IClientHitboxDamagedEntity *pDamagedEntity = dynamic_cast<IClientHitboxDamagedEntity *>(
+	    cl_entitylist->GetBaseEntityFromHandle( hEntity ) );
 	if ( pDamagedEntity )
 	{
 		const int damageEffectIndex = msg.ReadByte();
@@ -28,7 +29,6 @@ void __MsgFunc_ApplyHitBoxDamageEffect( bf_read &msg )
 		pDamagedEntity->ApplyDamageEffect( damageEffectIndex, particleEffectIndex );
 	}
 }
-
 
 class C_HitBoxDamageInitHelper : public CAutoGameSystem
 {

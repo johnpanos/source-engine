@@ -374,6 +374,7 @@ private:
 	CUtlVector<unsigned int> m_WorldMeshLeafReferences;
 	CUtlVector<worldmeshoccluder_t> m_WorldMeshOccluders;
 	CUtlVector<worldmeshgroup_t> m_WorldMeshGroups;
+	CUtlVector<worldmeshleafrun_t> m_WorldMeshLeafRuns;
 #endif
 
 	char				m_szActiveMapName[64];
@@ -4740,6 +4741,10 @@ void CModelLoader::Map_LoadWorldMesh()
 				worldmeshoccluder_t &occluder = m_WorldMeshOccluders[m_WorldMeshOccluders.AddToTail()];
 				for ( int k = 0; k < 3; ++k )
 					occluder.corners[k] = points[k];
+				occluder.center = ( points[0] + points[1] + points[2] ) / 3.0f;
+				occluder.radius = 0.0f;
+				for ( int k = 0; k < 3; ++k )
+					occluder.radius = MAX( occluder.radius, occluder.center.DistTo( points[k] ) );
 			}
 		}
 		cluster.occluderCount = m_WorldMeshOccluders.Count() - cluster.firstOccluder;
@@ -4757,6 +4762,30 @@ void CModelLoader::Map_LoadWorldMesh()
 	for ( uint32_t i = 0; i < summary.leafReferenceCount; ++i )
 		m_WorldMeshLeafReferences[i] =
 		    WorldMeshU32( m_WorldMeshBytes.Base() + summary.sectionOffsets[6] + uint64_t( i ) * 4 );
+	// The validator established that each leaf's references ascend.
+	m_WorldMeshLeafRuns.RemoveAll();
+	for ( uint32_t i = 0; i < summary.leafCount; ++i )
+	{
+		worldmeshleafrange_t &leaf = m_WorldMeshLeafRanges[i];
+		leaf.firstRun = m_WorldMeshLeafRuns.Count();
+		for ( unsigned int j = 0; j < leaf.referenceCount; ++j )
+		{
+			const unsigned int meshlet = m_WorldMeshLeafReferences[leaf.firstReference + j];
+			if ( m_WorldMeshLeafRuns.Count() > int( leaf.firstRun ) )
+			{
+				worldmeshleafrun_t &last = m_WorldMeshLeafRuns.Tail();
+				if ( last.firstMeshlet + last.meshletCount == meshlet )
+				{
+					++last.meshletCount;
+					continue;
+				}
+			}
+			worldmeshleafrun_t &run = m_WorldMeshLeafRuns[m_WorldMeshLeafRuns.AddToTail()];
+			run.firstMeshlet = meshlet;
+			run.meshletCount = 1;
+		}
+		leaf.runCount = m_WorldMeshLeafRuns.Count() - leaf.firstRun;
+	}
 	m_worldBrushData.pWorldMeshBatches = m_WorldMeshBatches.Base();
 	m_worldBrushData.worldMeshBatchCount = m_WorldMeshBatches.Count();
 	m_worldBrushData.pWorldMeshClusters = m_WorldMeshClusters.Base();
@@ -4768,6 +4797,7 @@ void CModelLoader::Map_LoadWorldMesh()
 	m_worldBrushData.worldMeshOccluderCount = m_WorldMeshOccluders.Count();
 	m_worldBrushData.pWorldMeshGroups = m_WorldMeshGroups.Base();
 	m_worldBrushData.worldMeshGroupCount = m_WorldMeshGroups.Count();
+	m_worldBrushData.pWorldMeshLeafRuns = m_WorldMeshLeafRuns.Base();
 	Msg( "Map %s: WMSH materials ready (%u batches, %u occluder triangles, cones %s)\n",
 	    s_szMapName, m_worldBrushData.worldMeshBatchCount,
 	    m_worldBrushData.worldMeshOccluderCount, summary.version >= 2 ? "front-face" : "unused" );
@@ -4866,6 +4896,8 @@ void CModelLoader::Map_LoadModel( model_t *mod )
 	m_WorldMeshLeafReferences.Purge();
 	m_WorldMeshOccluders.Purge();
 	m_WorldMeshGroups.Purge();
+	m_WorldMeshLeafRuns.Purge();
+	m_worldBrushData.pWorldMeshLeafRuns = NULL;
 	m_worldBrushData.pWorldMeshOccluders = NULL;
 	m_worldBrushData.worldMeshOccluderCount = 0;
 	m_worldBrushData.pWorldMeshGroups = NULL;
