@@ -2059,5 +2059,89 @@ color. Its [audit receipt](../quality-results/pbr-material-native-fallback-audit
 is a failure and is not counted as acceptance. A dynamic-mesh native PBR path
 and a replacement positive pixel oracle remain required. The playable frame
 also still lacks authored reflection probes, transmission and coat response,
-and a camera-aligned Cycles comparison. High visual parity and F4/F5 remain
-unverified.
+so high visual parity and F4/F5 remain unverified.
+
+### F4 camera-aligned Cycles material comparison (2026-09-23)
+
+The headless display captured 1920×1080 even with a requested square window.
+A centered 1080² crop with an 86° Source 4:3 FOV matches the 70° square
+Cycles camera projection. The [runtime comparator](../tools/quality/staircase2_runtime_compare.py)
+checks the native provider, camera commands, screenshot and source receipts.
+The original staircase2 content bridge encoded wall, metal and chrome solid
+colors without applying the PBRT/Cycles linear-to-sRGB transfer. A shared
+[material parser](../tools/quality/staircase2_materials.py) now derives those
+colors from the PBRT reflectance and conductor eta/k values. The new Cycles
+render is pixel-identical to the earlier reference, and the
+[stage-equivalence comparator](../tools/quality/staircase2_stage_equivalence.py)
+finds every prim value and relationship equal between the original and new
+World Stages; a seeded roughness change fails that comparator.
+
+The material-only game ablation changes exactly three base-color VTFs and
+keeps the BSP2, camera and native Vulkan build fixed. Against the Cycles image,
+overall mean absolute RGB error falls from 23.20 to 19.36; wall error falls
+from 15.27 to 8.17. The reversed ablation fails its improvement gate. This
+aligns source colors but does not resolve the remaining lighting noise,
+reflections, transmission or exposure differences.
+
+### F4 staircase2 grain reproduction and lightmap fix (2026-09-23)
+
+The camera-aligned native Vulkan frame exposed strong speckling on the flat
+wall and ceiling. The wall's base-color and MRAO VTFs are constant 4×4 images,
+so their texels cannot explain the spatial variation. A 64-sample Cycles
+diffuse bake was packaged as the 2048² `LMAP`. We passed that exact EXR
+through OpenImageDenoise's `RTLightmap` filter and repackaged it at gain 1.0.
+The denoise receipt reports atlas high-frequency energy falling from 0.04564
+to 0.01741, with mean irradiance preserved within its 5% limit.
+
+The [minimal runtime ablation](../tools/quality/staircase2_grain_repro.py)
+keeps the same WMSH, collision/PVS BSP, material files, native Vulkan build,
+camera and capture crop. The independent BSP2 reader confirms all 43 lump
+payloads and metadata match except `LMAP`. In a flat right-wall patch,
+high-frequency mean absolute RGB variation falls from 4.080 to 0.698
+(ratio 0.171); mean brightness moves only 0.038%. The
+[before/after image](../quality-results/staircase2-grain-ablation-side-by-side.png)
+shows the change, and the
+[positive receipt](../quality-results/staircase2-grain-repro-v1.json) records
+the exact map and capture hashes. A reversed image pair produces a failing
+[negative receipt](../quality-results/staircase2-grain-repro-negative-v1.json)
+with noise ratio 5.84; the unit suite also rejects a changed WMSH lump.
+Against the same Cycles reference, whole-frame MAE falls from 19.36 to 17.70
+and luminance SSIM rises from 0.572 to 0.738, recorded in the
+[denoised comparison](../quality-results/staircase2-grain-denoised-cycles-compare-v1.json).
+The denoised content root passes the
+[playable native boot](../quality-results/staircase2-camera-grain-denoised-64-v1/evidence.json).
+
+The reusable PBRT map pipeline runs this denoise step by default. For the
+manual staircase2 path, run `lightmap_denoise.py` between the Cycles bake and
+`staircase2_lightmap_ktx2.py`, passing
+`--expected-scope staircase2-shared-lightmap-uv-and-cycles-bake-denoised`
+to the packager. The test fixture commands are:
+
+```sh
+python3 tools/quality/lightmap_denoise.py \
+  --exr quality-results/staircase2-lighting-linear-fix.exr \
+  --bake-evidence quality-results/staircase2-lighting-linear-fix.exr.json \
+  --out quality-results/staircase2-grain-64-denoised.exr
+python3 tools/quality/staircase2_lightmap_ktx2.py \
+  --exr quality-results/staircase2-grain-64-denoised.exr \
+  --bake-evidence quality-results/staircase2-grain-64-denoised.exr.json \
+  --lighting-stage quality-results/staircase2-lighting-linear-fix.usdc \
+  --ktx-tool /tmp/rfc0008-ktx-pin/build-rfc0008/Release/ktx \
+  --expected-scope staircase2-shared-lightmap-uv-and-cycles-bake-denoised \
+  --out quality-results/staircase2-grain-64-denoised.ktx2
+build-rfc0008-tools-vbsp/utils/bsp2tool/bsp2tool pack-world-lit \
+  quality-results/staircase2-collision-v2/staircase2_collision.bsp \
+  quality-results/staircase2-canonical-linear.wmsh \
+  quality-results/staircase2-grain-64-denoised.ktx2 \
+  quality-results/staircase2-grain-64-denoised.bsp2
+python3 tools/quality/staircase2_grain_repro.py \
+  --before-bsp2 quality-results/staircase2-canonical-linear.bsp2 \
+  --after-bsp2 quality-results/staircase2-grain-64-denoised.bsp2 \
+  --before-boot quality-results/staircase2-camera-material-parity-v2/evidence.json \
+  --after-boot quality-results/staircase2-camera-grain-denoised-64-v1/evidence.json \
+  --out quality-results/staircase2-grain-repro-v1.json
+```
+
+The remaining thin wall seams and missing reflection/transmission features
+still need separate visual-parity work; the grain gate covers a flat wall
+patch, not the full F4/F5 scene.

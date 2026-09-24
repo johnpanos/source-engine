@@ -162,9 +162,12 @@ def camera_commands(scene):
         math.tan(fov / 2) * film["height"] / film["width"])
     source_fov = round(math.degrees(2 * math.atan(math.tan(vertical / 2) * 4 / 3)))
     captured_vertical = 2 * math.atan(math.tan(math.radians(source_fov) / 2) * 3 / 4)
-    commands = ["r_worldmesh_draw 2", "cmd noclip", "cmd fov %d" % source_fov,
-                "cmd setpos %.3f %.3f %.3f" % (eye[0], eye[1], eye[2] - EYE_HEIGHT),
-                "cmd setang %.4f %.4f 0" % (pitch, yaw)]
+    place = ["cmd setpos %.3f %.3f %.3f" % (eye[0], eye[1], eye[2] - EYE_HEIGHT),
+             "cmd setang %.4f %.4f 0" % (pitch, yaw)]
+    # noclip must be active before the eye moves below standing height, or the
+    # server unsticks the player back onto the floor; place twice under load.
+    commands = (["r_worldmesh_draw 2", "cmd noclip", "cmd fov %d" % source_fov, "wait 60"] +
+                place + ["wait 120"] + place + ["wait 60"])
     return commands, {"reference_vertical_fov_degrees": math.degrees(vertical),
                       "capture_vertical_fov_degrees": math.degrees(captured_vertical),
                       "source_fov": source_fov}
@@ -196,6 +199,10 @@ def compare_runtime(args):
     config = args.boot_evidence.parent / "runtime/portal/cfg/portal_boot_commands.cfg"
     if config.read_text().splitlines() != commands:
         raise ValueError("runtime camera commands differ from the PBRT reference camera")
+    console = (args.boot_evidence.parent / "runtime/portal/console.log").read_text(
+        errors="replace")
+    if console.count("noclip ON") != 1 or "noclip OFF" in console:
+        raise ValueError("runtime camera requires noclip to stay on exactly once")
     shots = boot.get("screenshots", [])
     if len(shots) != 1 or sha256(shots[0]["path"]) != shots[0]["sha256"]:
         raise ValueError("runtime boot must record exactly one verified screenshot")

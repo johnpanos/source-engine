@@ -20,6 +20,7 @@ from pathlib import Path
 
 import imageio.v3 as iio
 import numpy as np
+import OpenImageIO as oiio
 from scipy import ndimage
 
 OIDN_DEVICE_TYPE_CPU = 1
@@ -75,6 +76,35 @@ def denoise(library, color):
     return output
 
 
+def extend_gutters(color, covered, rows, columns):
+    """Give linear sampling a nearest-chart color outside authored coverage."""
+    result = color.copy()
+    result[~covered] = color[rows[~covered], columns[~covered]]
+    return result
+
+
+def write_linear_exr(path, pixels):
+    """Write named RGBA channels and verify that HDR and alpha survive."""
+    height, width, channels = pixels.shape
+    if channels != 4 or pixels.dtype != np.float32:
+        raise ValueError("linear EXR requires float32 RGBA pixels")
+    spec = oiio.ImageSpec(width, height, 4, oiio.FLOAT)
+    spec.channelnames = ["R", "G", "B", "A"]
+    spec.alpha_channel = 3
+    output = oiio.ImageOutput.create(str(path))
+    if not output or not output.open(str(path), spec):
+        raise OSError("could not open denoised EXR for writing")
+    try:
+        if not output.write_image(pixels):
+            raise OSError("could not write denoised EXR: " + output.geterror())
+    finally:
+        if not output.close():
+            raise OSError("could not close denoised EXR: " + output.geterror())
+    saved = iio.imread(path)
+    if saved.shape != pixels.shape or not np.array_equal(saved, pixels):
+        raise ValueError("denoised EXR readback changed RGB or alpha channels")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--exr", type=Path, required=True)
@@ -95,9 +125,8 @@ def main():
     _, (rows, columns) = ndimage.distance_transform_edt(~covered, return_indices=True)
     filled = pixels[rows, columns, :3]
     result = pixels.copy()
-    result[:, :, :3] = np.where(covered[:, :, None],
-                                denoise(load_oidn(args.oidn_library), filled), 0.0)
-    result[:, :, :3] = np.maximum(result[:, :, :3], 0.0)
+    filtered = np.maximum(denoise(load_oidn(args.oidn_library), filled), 0.0)
+    result[:, :, :3] = extend_gutters(filtered, covered, rows, columns)
     if not np.isfinite(result).all():
         raise ValueError("OIDN produced non-finite texels")
     before = pixels[covered][:, :3]
@@ -106,7 +135,7 @@ def main():
     def roughness(image):
         return float(np.abs(image - ndimage.uniform_filter(image, size=(3, 3, 1)))[covered].mean())
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    iio.imwrite(args.out, result)
+    write_linear_exr(args.out, result)
     receipt = {key: evidence[key] for key in ("size", "lighting_stage_sha256", "scene_sha256",
                                                "source_stage_sha256") if key in evidence}
     receipt.update({"status": "pass", "scope": evidence["scope"] + "-denoised",
@@ -115,6 +144,7 @@ def main():
                     "source_bake_evidence_sha256": sha256(args.bake_evidence),
                     "denoiser": "OpenImageDenoise RTLightmap (CPU)",
                     "covered_texels": int(covered.sum()),
+                    "filled_gutter_texels": int((~covered).sum()),
                     "mean_rgb_before": before.mean(axis=0).tolist(),
                     "mean_rgb_after": after.mean(axis=0).tolist(),
                     "high_frequency_before": roughness(pixels[:, :, :3]),

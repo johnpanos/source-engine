@@ -243,9 +243,16 @@ bool GatherWorldFaces( std::vector<FaceGeometry> &faces, std::string &error )
 			    Project( point, texture.textureVecsTexelsPerWorldUnits[0] ) / material.width,
 			    Project( point, texture.textureVecsTexelsPerWorldUnits[1] ) / material.height );
 		}
-		const pxr::GfVec3f edgeA = geometry.points[1] - geometry.points[0];
-		const pxr::GfVec3f edgeB = geometry.points[2] - geometry.points[0];
-		const float alignment = pxr::GfDot( pxr::GfCross( edgeA, edgeB ), geometry.normal );
+		// Newell's polygon normal; FixTjuncs can make the first three points
+		// collinear, so a single-corner cross product is not a valid winding test.
+		pxr::GfVec3f newell( 0.0f );
+		for ( size_t point = 0; point < geometry.points.size(); ++point )
+		{
+			const pxr::GfVec3f &current = geometry.points[point];
+			const pxr::GfVec3f &next = geometry.points[( point + 1 ) % geometry.points.size()];
+			newell += pxr::GfCross( current, next );
+		}
+		const float alignment = pxr::GfDot( newell, geometry.normal );
 		if ( !std::isfinite( alignment ) || std::abs( alignment ) < 1e-5f )
 		{
 			error = "world face has invalid winding or plane normal";

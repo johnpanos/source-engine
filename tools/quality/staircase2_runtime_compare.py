@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from edge_parity import edge_overlay, edge_parity
 from staircase2_compare import ssim
 
 
@@ -92,6 +93,8 @@ def main():
     parser.add_argument("--candidate-receipt", type=Path, required=True)
     parser.add_argument("--before-receipt", type=Path)
     parser.add_argument("--minimum-improvement", type=float, default=0.0)
+    parser.add_argument("--min-edge-f1", type=float,
+                        help="optional structural edge parity gate")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     render = json.loads(args.reference_receipt.read_text())
@@ -107,6 +110,9 @@ def main():
     candidate_receipt, capture, candidate, crop = validated_frame(
         args.candidate_receipt, 1024)
     after = metrics(reference, candidate)
+    after_edges, reference_edge_map, candidate_edge_map = edge_parity(
+        reference, candidate, REGIONS)
+    after["edge_parity"] = after_edges
     result = {"status": "pass", "scope": "staircase2-native-pbr-cycles-camera-comparison",
               "reference_sha256": sha256(args.reference),
               "reference_receipt_sha256": sha256(args.reference_receipt),
@@ -129,6 +135,7 @@ def main():
         if changed != EXPECTED_MATERIAL_CHANGES:
             raise ValueError("material ablation changed unexpected content: " + str(sorted(changed)))
         old = metrics(reference, before)
+        old["edge_parity"] = edge_parity(reference, before, REGIONS)[0]
         improvement = old["mean_absolute_rgb"] - after["mean_absolute_rgb"]
         result["before_boot_sha256"] = sha256(args.before_receipt)
         result["before_capture_sha256"] = sha256(old_capture)
@@ -137,12 +144,22 @@ def main():
         result["changed_content"] = sorted(changed)
         if improvement < args.minimum_improvement:
             result["status"] = "fail"
+    if args.min_edge_f1 is not None:
+        if not 0 <= args.min_edge_f1 <= 1:
+            parser.error("--min-edge-f1 must be in [0, 1]")
+        result["min_edge_f1"] = args.min_edge_f1
+        if after_edges["whole_frame"]["f1"] < args.min_edge_f1:
+            result["status"] = "fail"
     args.out.parent.mkdir(parents=True, exist_ok=True)
     candidate.save(args.out.with_suffix(".png"))
+    edge_path = args.out.with_name(args.out.stem + "-edges.png")
+    edge_overlay(reference, reference_edge_map, candidate_edge_map).save(edge_path)
     result["candidate_square_sha256"] = sha256(args.out.with_suffix(".png"))
+    result["edge_overlay_sha256"] = sha256(edge_path)
     args.out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps({"status": result["status"], "after_mae": after["mean_absolute_rgb"],
                       "after_ssim": after["luminance_ssim"],
+                      "after_edge_f1": after_edges["whole_frame"]["f1"],
                       "improvement": result.get("mean_absolute_rgb_improvement")},
                      sort_keys=True))
     if result["status"] != "pass":

@@ -5,14 +5,17 @@ The USD meshes remain the visible WMSH authority; this VMF owns only gameplay
 collision, a player spawn and a fallback compile light:
 
 * a six-brush shell around the envelope meshes (all meshes by default);
-* one axis-aligned solid per selected mesh (`--solid-material`,
-  `--solid-mesh`), clipped to the shell interior;
+* one convex 18-DOP brush (axes plus the six edge diagonals) per connected
+  component of each selected mesh (`--solid-material`, `--solid-mesh`),
+  clipped to the shell interior, so separate stair treads or cushions become
+  separate brushes;
 * `info_player_start` on the first surface straight below the PBRT reference
   camera, facing its view and pushed clear of the shell and solids by the
-  player hull; that surface's mesh also gets a floor slab when it stands
-  above the shell floor (for example a hall above a stairwell).
+  player hull; when that surface stands above the shell floor (a hall over a
+  stairwell) its upward-facing triangles are extruded into prism brushes, so
+  openings in the floor stay open.
 
-Axis-aligned boxes are coarse on purpose; convex decomposition is future work.
+A k-DOP is exact for box-like parts and conservative for curved ones.
 Run with the OpenUSD Python (`pxr`) on PYTHONPATH.
 """
 
@@ -37,29 +40,140 @@ PLAYER_HALF_WIDTH = 16
 PLAYER_HEIGHT = 72
 MIN_SOLID_THICKNESS = 4
 FLOOR_SLAB = 8
+MAX_COMPONENTS = 512
 
 
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def box_text(box_id, side_id, bounds):
+KDOP_DIRECTIONS = [(1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0), (1, -1, 0), (1, 0, 1),
+                   (1, 0, -1), (0, 1, 1), (0, 1, -1)]
+
+
+def box_planes(bounds):
     xmin, ymin, zmin, xmax, ymax, zmax = bounds
     if any(not math.isfinite(v) for v in bounds) or not (
             xmin < xmax and ymin < ymax and zmin < zmax):
         raise ValueError("collision brush has invalid bounds: " + str(bounds))
-    a, b, c, d = (xmin, ymin, zmin), (xmax, ymin, zmin), (xmax, ymax, zmin), (xmin, ymax, zmin)
-    e, f, g, h = (xmin, ymin, zmax), (xmax, ymin, zmax), (xmax, ymax, zmax), (xmin, ymax, zmax)
-    planes = ((h, g, f), (a, b, c), (b, f, g), (d, h, e), (c, g, h), (a, e, f))
-    result = ["\tsolid", "\t{", f'\t\t"id" "{box_id}"']
-    for index, plane in enumerate(planes):
-        text = " ".join("(%g %g %g)" % point for point in plane)
+    return [((1, 0, 0), xmax), ((-1, 0, 0), -xmin), ((0, 1, 0), ymax),
+            ((0, -1, 0), -ymin), ((0, 0, 1), zmax), ((0, 0, -1), -zmin)]
+
+
+def kdop_planes(points):
+    import numpy as np
+    planes = []
+    for direction in KDOP_DIRECTIONS:
+        normal = np.asarray(direction, dtype=np.float64)
+        normal /= np.linalg.norm(normal)
+        extent = points @ normal
+        planes += [(tuple(normal), float(extent.max())), (tuple(-normal), float(-extent.min()))]
+    return planes
+
+
+def convex_brush(planes, minimum_radius):
+    """Trim a half-space set (n.x <= d) to the planes that bound faces.
+
+    Returns (planes, vertices), or None when the solid is thinner than
+    2 * minimum_radius; vbsp rejects slivers and faceless sides.
+    """
+    import numpy as np
+    from scipy.optimize import linprog
+    from scipy.spatial import HalfspaceIntersection
+    normals = np.array([plane[0] for plane in planes], dtype=np.float64)
+    offsets = np.array([plane[1] for plane in planes], dtype=np.float64)
+    norms = np.linalg.norm(normals, axis=1)
+    normals, offsets = normals / norms[:, None], offsets / norms
+    # Chebyshev center: the deepest interior point and its inscribed radius.
+    program = linprog(np.r_[np.zeros(3), -1.0], A_ub=np.c_[normals, np.ones(len(planes))],
+                      b_ub=offsets, bounds=[(None, None)] * 3 + [(0, None)])
+    if not program.success or program.x[3] < minimum_radius:
+        return None
+    hull = HalfspaceIntersection(np.c_[normals, -offsets], program.x[:3])
+    vertices = hull.intersections
+    kept = []
+    for normal, offset in zip(normals, offsets):
+        on_plane = vertices[np.abs(vertices @ normal - offset) < 1e-3]
+        if len(on_plane) >= 3 and np.linalg.matrix_rank(on_plane - on_plane[0], tol=1e-3) >= 2:
+            if not any(np.allclose(normal, other) for other, _ in kept):
+                kept.append((normal, float(offset)))
+    return kept, vertices
+
+
+def brush_text(brush_id, side_id, planes, vertices):
+    """VMF solid; vbsp's plane normal is cross(p0 - p1, p2 - p1), outward."""
+    import numpy as np
+    result = ["\tsolid", "\t{", f'\t\t"id" "{brush_id}"']
+    for index, (normal, offset) in enumerate(planes):
+        on_plane = vertices[np.abs(vertices @ normal - offset) < 1e-3]
+        center = on_plane.mean(axis=0)
+        center += normal * (offset - center @ normal)
+        helper = np.array((0.0, 0.0, 1.0)) if abs(normal[2]) < 0.9 else np.array((1.0, 0.0, 0.0))
+        u = np.cross(helper, normal)
+        u /= np.linalg.norm(u)
+        v = np.cross(normal, u)
+        points = (center + 64 * u, center, center + 64 * v)
+        text = " ".join("(%.4f %.4f %.4f)" % tuple(point) for point in points)
         result.extend(("\t\tside", "\t\t{", f'\t\t\t"id" "{side_id + index}"',
                        f'\t\t\t"plane" "{text}"', f'\t\t\t"material" "{MATERIAL}"',
                        '\t\t\t"uaxis" "[1 0 0 0] 0.25"', '\t\t\t"vaxis" "[0 -1 0 0] 0.25"',
                        '\t\t\t"rotation" "0"', '\t\t\t"lightmapscale" "16"',
                        '\t\t\t"smoothing_groups" "0"', "\t\t}"))
     return "\n".join(result + ["\t}"])
+
+
+def components(points, triangles, weld=0.05):
+    """Triangle groups connected through welded vertex positions."""
+    import numpy as np
+    keys = np.round(np.asarray(points) / weld).astype(np.int64)
+    _, welded = np.unique(keys, axis=0, return_inverse=True)
+    welded = welded.ravel()
+    parent = list(range(int(welded.max()) + 1))
+
+    def find(item):
+        while parent[item] != item:
+            parent[item] = parent[parent[item]]
+            item = parent[item]
+        return item
+    for triangle in triangles:
+        roots = [find(int(welded[index])) for index in triangle]
+        for root in roots[1:]:
+            parent[root] = roots[0]
+    groups = {}
+    for triangle in triangles:
+        groups.setdefault(find(int(welded[triangle[0]])), []).append(triangle)
+    return list(groups.values())
+
+
+def floor_prisms(points, triangles, thickness):
+    """One prism brush per upward-facing triangle, extruded downward."""
+    import numpy as np
+    points = np.asarray(points, dtype=np.float64)
+    prisms = []
+    for triangle in triangles:
+        a, b, c = points[list(triangle)]
+        normal = np.cross(b - a, c - a)
+        if np.linalg.norm(normal) < 1e-6:
+            continue
+        normal /= np.linalg.norm(normal)
+        if normal[2] < 0:
+            normal = -normal
+        if normal[2] < 0.7:
+            continue
+        planes = [(tuple(normal), float(normal @ a)),
+                  ((0.0, 0.0, -1.0), -(min(a[2], b[2], c[2]) - thickness))]
+        centroid = (a + b + c) / 3
+        for p, q in ((a, b), (b, c), (c, a)):
+            side = np.cross(q - p, (0.0, 0.0, 1.0))
+            if np.linalg.norm(side) < 1e-6:
+                break
+            side /= np.linalg.norm(side)
+            if side @ (centroid - p) > 0:
+                side = -side
+            planes.append((tuple(side), float(side @ p)))
+        else:
+            prisms.append(planes)
+    return prisms
 
 
 def mesh_bounds(stage, scale):
@@ -97,6 +211,10 @@ def mesh_bounds(stage, scale):
     if not result:
         raise ValueError("USD stage has no meshes")
     return result
+
+
+def aabb(vertices):
+    return [float(v) for v in vertices.min(axis=0)] + [float(v) for v in vertices.max(axis=0)]
 
 
 def union(boxes):
@@ -196,42 +314,54 @@ def main():
     interior = [math.floor(envelope[0]), math.floor(envelope[1]), math.floor(envelope[2]),
                 math.ceil(envelope[3]), math.ceil(envelope[4]), math.ceil(envelope[5])]
     x0, y0, z0, x1, y1, z1 = interior
-    boxes = [(x0 - WALL, y0 - WALL, z0 - WALL, x1 + WALL, y1 + WALL, z0),
+    shell = [(x0 - WALL, y0 - WALL, z0 - WALL, x1 + WALL, y1 + WALL, z0),
              (x0 - WALL, y0 - WALL, z1, x1 + WALL, y1 + WALL, z1 + WALL),
              (x0 - WALL, y0 - WALL, z0, x0, y1 + WALL, z1),
              (x1, y0 - WALL, z0, x1 + WALL, y1 + WALL, z1),
              (x0, y0 - WALL, z0, x1, y0, z1),
              (x0, y1, z0, x1, y1 + WALL, z1)]
+    brushes = [convex_brush(box_planes(bounds), 0.5) for bounds in shell]
+    clip = box_planes(interior)
     solids = []
     skipped = []
     solid_names = sorted({name for name, mesh in meshes.items()
                           if mesh["material"] in args.solid_material} | set(args.solid_mesh))
+    import numpy as np
     for name in solid_names:
-        bounds = meshes[name]["bounds"]
-        clipped = [max(math.floor(bounds[a]), interior[a]) for a in range(3)] + [
-            min(math.ceil(bounds[a + 3]), interior[a + 3]) for a in range(3)]
-        # Slivers left by clipping produce degenerate compile faces.
-        if any(clipped[a + 3] - clipped[a] < MIN_SOLID_THICKNESS for a in range(3)):
+        mesh = meshes[name]
+        points = np.asarray(mesh["points"], dtype=np.float64)
+        groups = components(points, mesh["triangles"])
+        if len(groups) > MAX_COMPONENTS:
+            groups = [mesh["triangles"]]
+        made = 0
+        for group in groups:
+            used = points[sorted({index for triangle in group for index in triangle})]
+            brush = convex_brush(kdop_planes(used) + clip, MIN_SOLID_THICKNESS / 2)
+            if brush:
+                solids.append(brush)
+                made += 1
+        if not made:
             skipped.append(name)
-            continue
-        solids.append(tuple(clipped))
-    spawn = choose_spawn(scene, meshes, interior, solids, SOURCE_UNITS_PER_METER, stage_scale)
+    spawn = choose_spawn(scene, meshes, interior,
+                         [aabb(vertices) for _, vertices in solids],
+                         SOURCE_UNITS_PER_METER, stage_scale)
     if spawn["floor_mesh"] and spawn["floor_z"] - FLOOR_SLAB >= interior[2] + MIN_SOLID_THICKNESS:
-        # The standing surface floats above the shell floor; give it collision.
-        bounds = meshes[spawn["floor_mesh"]]["bounds"]
-        top = round(spawn["floor_z"])
-        slab = (max(math.floor(bounds[0]), interior[0]), max(math.floor(bounds[1]), interior[1]),
-                top - FLOOR_SLAB, min(math.ceil(bounds[3]), interior[3]),
-                min(math.ceil(bounds[4]), interior[4]), top)
-        solids.append(slab)
-        spawn["floor_slab"] = list(slab)
+        # The standing surface floats above the shell floor; give it real collision.
+        floor = meshes[spawn["floor_mesh"]]
+        prisms = [convex_brush(planes + clip, 0.25)
+                  for planes in floor_prisms(floor["points"], floor["triangles"], FLOOR_SLAB)]
+        prisms = [prism for prism in prisms if prism]
+        solids += prisms
+        spawn["floor_prisms"] = len(prisms)
     light = [(x0 + x1) / 2, (y0 + y1) / 2, z1 - 8]
     lines = ["versioninfo", "{", '\t"editorversion" "400"', '\t"editorbuild" "8000"',
              '\t"mapversion" "1"', '\t"formatversion" "100"', '\t"prefab" "0"', "}",
              "visgroups", "{", "}", "world", "{", '\t"id" "1"', '\t"mapversion" "1"',
              '\t"classname" "worldspawn"', '\t"skyname" "sky_day01_01"']
-    for index, bounds in enumerate(boxes + solids):
-        lines.append(box_text(10 + index, 1000 + index * 6, bounds))
+    side = 1000
+    for index, (planes, vertices) in enumerate(brushes + solids):
+        lines.append(brush_text(10 + index, side, planes, vertices))
+        side += len(planes)
     lines.extend(["}", "entity", "{", '\t"id" "2"', '\t"classname" "info_player_start"',
                   '\t"origin" "%d %d %d"' % tuple(spawn["origin"]),
                   '\t"angles" "0 %g 0"' % spawn["yaw"], "}",
@@ -245,10 +375,10 @@ def main():
     receipt = {"status": "pass", "scope": "pbrt-usd-collision-vmf",
                "stage_sha256": sha256(args.stage), "scene_sha256": scene["source_sha256"],
                "vmf": vmf.name, "vmf_sha256": sha256(vmf),
-               "interior_source_units": interior, "shell_brush_count": len(boxes),
+               "interior_source_units": interior, "shell_brush_count": len(brushes),
                "solid_meshes": solid_names, "solid_brush_count": len(solids),
                "skipped_outside_or_thin": skipped,
-               "spawn": spawn, "policy": "axis-aligned mesh bounds; no convex decomposition"}
+               "spawn": spawn, "policy": "18-DOP per connected component; floor triangles extruded"}
     (args.out_dir / "collision-receipt.json").write_text(
         json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     print(json.dumps({k: receipt[k] for k in ("status", "solid_brush_count", "spawn")}))
