@@ -1,6 +1,11 @@
 # RFC 0008: Canonical World Data and Runtime Formats
 
 - Status: Accepted for planning (2026-09-22); F1 active, F2 partial ([progress](0008-progress.md))
+- Amended: 2026-09-24 by [RFC 0011](0011-runtime-indirect-lighting.md)
+  (proposed): `PRBV` becomes a grid-addressable probe volume with visibility
+  (resolving open decision 3), `LMAP` may carry separated direct/indirect
+  layers, a new `RTRN` radiosity transfer lump, and runtime indirect light for
+  F10 follows RFC 0011's producers. Amended passages say so inline
 - Date: 2026-09-22
 - Scope: The compiled-world interchange stage, runtime map and model resources,
   world render data (mesh, lightmaps, probes, reflection probes), the texture
@@ -50,7 +55,8 @@ cached:
    GPU-ready alignment. F1 carries legacy gameplay lumps with unchanged
    semantics; F8 can add versioned native gameplay/spatial payloads. New render
    lumps include a pre-batched world mesh, SH L1 lightmap
-   atlases, an SH L2 probe volume, and prefiltered reflection probes. Textures
+   atlases, a grid-addressable probe volume with visibility (RFC 0011), and
+   prefiltered reflection probes. Textures
    use **KTX2**.
 4. **GPU-resident:** what the native Vulkan world path uploads. Render lumps are
    laid out so that loading is a copy, not a rebuild.
@@ -199,7 +205,10 @@ F10 measures visual results on authored scenes that expose material response,
 glass/transmission, reflections, shadows, indirect light, and dense geometry.
 The implementation may choose the GI and dense-geometry algorithms after
 measuring quality and per-profile cost; hardware ray tracing and virtualized
-geometry are options, not assumed prerequisites. The gate requires a real-time
+geometry are options, not assumed prerequisites. [RFC 0011](0011-runtime-indirect-lighting.md)
+defines the runtime indirect-light architecture: one probe-volume contract with
+substitutable producers (baked, precomputed radiosity, SDF-traced, ray query),
+still chosen per profile by measurement. The gate requires a real-time
 indirect-light response to moving lights or objects on a declared desktop
 profile, a measured geometry-scaling method for dense scenes, and explicit
 fallbacks on profiles that lack those capabilities. An attractive static
@@ -239,7 +248,7 @@ sublayer without rewriting geometry. The inspected revision includes the
   /Materials/<vmt path>              (UsdShade Material + source: attributes)
   /Probes
     /ReflectionProbes/<id>           (position, influence box, parallax box)
-    /ProbeVolume                     (probe positions, leaf association)
+    /ProbeVolume                     (probe grids: origin, spacing, dimensions, relocation offsets)
   /Entities/<id>                     (non-geometric entities as typeless prims + key-values)
 ```
 
@@ -337,9 +346,10 @@ dependencies (checked by R12's link evidence).
 | 4CC (proposed) | Content | Replaces at runtime (for BSP2 maps on the new path) |
 | --- | --- | --- |
 | `WMSH` | World render mesh: vertex/index buffers in the GPU layout (position, octahedral normal/tangent, material UV, lightmap UV), meshlet clusters with bounds and normal cones, draw batches by material, per-leaf cluster ranges (PVS culling), triangle → canonical source surface map (optional legacy face map) | `WorldStaticMeshCreate` rebuild at load |
-| `LMAP` | Lightmap atlas pages: SH L1 irradiance (L0 HDR RGB + L1 directional), one layer per light style; KTX2 assets in the asset table | `ColorRGBExp32` lightmaps, CPU `R_BuildLightMap` compositing, lightmap page allocation at load |
+| `LMAP` | Lightmap atlas pages: SH L1 irradiance (L0 HDR RGB + L1 directional), one layer per light style; optionally *(RFC 0011)* separate direct and indirect layers for the `RuntimeIndirect` policy; KTX2 assets in the asset table | `ColorRGBExp32` lightmaps, CPU `R_BuildLightMap` compositing, lightmap page allocation at load |
 | `LSTY` | Light style table: style id → atlas layer, per-chart style masks | Per-surface `styles[MAXLIGHTMAPS]` compositing on the CPU |
-| `PRBV` | Probe volume: probe positions, SH L2 irradiance per probe (per style), leaf → probe tetrahedra/cell index, validity masks | Leaf ambient cubes |
+| `PRBV` | Probe volume *(amended by RFC 0011)*: one or more axis-aligned probe grids (origin, spacing, dimensions); per probe an octahedral irradiance tile and an octahedral visibility tile (hit-distance mean and mean²), an active mask and a bounded relocation offset; style layers; stored as 2D atlases in the `render.probe-volume.v1` encoding so load is a copy | Leaf ambient cubes |
+| `RTRN` | Radiance transfer *(RFC 0011 G4, optional)*: surface patches mapped to lightmap charts, sparse visibility-weighted form factors, probe gather weights, per-patch visibility of each baked light | — (new capability: runtime radiosity) |
 | `RPRB` | Reflection probes: position, influence and parallax boxes, blend priority, KTX2 prefiltered HDR cube (GGX roughness mips) | `env_cubemap` VTFs from `buildcubemaps` |
 | `MTBL` | Material table: canonical material asset identity, optional legacy VMT path, family, shader capability requirement, hashes | `texdata` string table lookups for render batching |
 | `PKMF` | Package manifest: profile, formats chosen, source stage hashes, tool versions, derived-legacy flag | — |
@@ -356,7 +366,9 @@ the legacy lumps (`LUMP_LIGHTING[_HDR]`, face lightmap offsets and styles,
 
 - RNM basis irradiance from the baker's direct RNM output (RFC 0007 bakes it
   exactly), not re-derived from SH;
-- ambient cubes by evaluating SH L2 irradiance along the six axes;
+- leaf ambient samples by evaluating the `PRBV` volume's irradiance along the
+  six axes at each sample position *(amended by RFC 0011)*, so legacy renderers
+  light models from the same bake as the world;
 - the legacy per-face luxel layout by resampling the atlas along each face's
   derived lightmap vectors.
 
@@ -447,7 +459,12 @@ For BSP2 maps on the native Vulkan provider:
   per-batch descriptor sets otherwise. Both paths are one capability with
   shared tests.
 - **Static lighting:** SH L1 atlas layers blended by style scalars in the shader.
-- **Dynamic objects:** SH L2 probe volume interpolation replaces ambient cubes.
+- **Dynamic objects:** per-pixel probe-volume sampling with visibility
+  replaces ambient cubes (RFC 0011 `render.probe-volume.v1`).
+- **Indirect light:** the RFC 0011 producer selected by the profile and the
+  user's setting publishes the volume (and optionally a surface indirect atlas)
+  under one declared indirect-light policy; the baked producer is the default
+  and the fallback.
 - **Dynamic lights:** clustered forward lighting evaluated with the PBR BRDF.
   This replaces CPU lightmap re-compositing for dynamic lights (`dlight_t` in
   `R_BuildLightMap`).
@@ -486,6 +503,9 @@ by a global switch.
 - **Negative fixtures:** wrong alignment, a stale hash, an unknown required lump,
   sRGB/linear mismatch, a wrong style layer mapping, a lightmap UV off by half a
   texel, and a missing legacy payload on a legacy-only provider must each fail.
+  RFC 0011 adds: a `PRBV` probe index outside its grid, a relocation offset
+  beyond its bound, a missing visibility tile, and an `RTRN` source index out of
+  range.
 
 ## Delivery plan
 
@@ -495,12 +515,12 @@ by a global switch.
 | F2 | Compiled World Stage schema and VMF `vbsp2` geometry-layer emitter (with RFC 0007 Phase B), lightmap chart packer | `usdchecker` clean; stage opens in Cycles standalone; semantic comparator vs BSP faces; seeded loss detected; face-ID-free compiled fixture validates with stable surface/material provenance; native USD source is a separate RFC 0009 gate |
 | F3 | KTX2: container-neutral texture reader, UASTC encode/transcode in the packer, native Vulkan BC/ASTC/ETC2 formats, Hammer reader | `ktx validate`; per-format pixel fixtures; profile format negotiation fails correctly when a format is missing |
 | F4 | `WMSH` + native Vulkan world path using legacy-equivalent lighting data | Legacy feature cohorts (decals, overlays, displacements, water, areaportals, fog, sky, props) each pass; load cost measured |
-| F5 | `LMAP`/`LSTY`/`PRBV`/`RPRB` from RFC 0007 bakes, legacy exporter, light-style blending, clustered dynamic lights | Pixel oracles vs Cycles; legacy payload renders on D3D9/DXVK; style switching and dynamic light tests |
+| F5 | `LMAP`/`LSTY`/`PRBV`/`RPRB` from RFC 0007 bakes, legacy exporter, light-style blending, clustered dynamic lights | Pixel oracles vs Cycles; legacy payload renders on D3D9/DXVK; style switching and dynamic light tests; `PRBV` passes RFC 0011 G1 |
 | F6 | Incremental build graph and cache; Hammer compile and preview use it | Cache-hit traces per change class; cancellation leaves the previous package intact |
 | F7 | Mobile packaging: per-profile transcoding and packages for iOS/Android | Device format queries recorded; installed-package smoke tests on R29 runners |
 | F8 | Versioned native map spatial/gameplay data for USD geometry | Closed-world, collision, traces, portals/PVS, areaportals, entities and server behavior pass independent semantic and negative fixtures; legacy BSP carriage remains byte-identical |
 | F9 | Modern model asset compiler and runtime reader | Static/dynamic/physics roles use validated modern assets with materials, collision, LOD and required animation; MDL compatibility and client/server lifetime tests pass |
-| F10 | Modern visual parity and geometry scalability | Representative maps pass registered image and interaction oracles for material response, reflections, transparent surfaces, shadows and lighting; real-time GI and dense-geometry methods pass measured quality, memory, frame-time and fallback gates on declared profiles |
+| F10 | Modern visual parity and geometry scalability | Representative maps pass registered image and interaction oracles for material response, reflections, transparent surfaces, shadows and lighting; real-time GI (RFC 0011 G4 plus G6 or G7) and dense-geometry methods pass measured quality, memory, frame-time and fallback gates on declared profiles |
 | F11 | Direct USD development-runtime iteration | Desktop scene edit/reload/play loop uses the same validated source and compiled contracts without stale state; mobile opt-in decision records package, startup, memory and lifecycle evidence |
 
 F1 and F3 are independent of the lighting work and can start first.
@@ -575,8 +595,12 @@ and the stage can emit MaterialX when needed.
 2. Hash (BLAKE3 vs XXH3-128) and compression (zstd) dependencies. Pin and
    license records. *F1 prototype:* BLAKE2b-128 (RFC 7693, no new dependency,
    algorithm id in the header) and no compression until zstd is pinned.
-3. Probe volume structure: adaptive grid vs tetrahedral (per-leaf) placement.
-   Needs measured quality and memory on the corpus.
+3. ~~Probe volume structure: adaptive grid vs tetrahedral (per-leaf) placement.~~
+   *Resolved 2026-09-24 by RFC 0011 (proposed):* grid-addressable probe grids
+   with visibility, because runtime producers write probes by index and leak
+   control needs visibility. Uniform grids versus camera clipmaps and the
+   irradiance encoding remain RFC 0011 open decisions 1–2, decided by corpus
+   measurement in its G1.
 4. SH L1 lightmap encoding (L0 in BC6H and L1 normalized in BC7, or
    alternatives), decided by pixel-oracle error and memory.
 5. Whether BSP2 packages carry the legacy payload by default during migration

@@ -22,6 +22,7 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0008](RFC/0008-canonical-world-data-and-runtime-formats.md) | Compiled USD World Stage, BSP2/KTX2, modern map and model resources, visual capabilities, incremental builds and live USD development loading |
 | [0009](RFC/0009-usd-native-map-authoring.md) | Editable USD map source, world/prop role separation, native map compiler and editor workflow without VMF |
 | [0010](RFC/0010-portable-vgui-surface.md) | VGUI beneath its frozen API: UI draw list, UI scale, portable fonts, text input, optional HTML, composition |
+| [0011](RFC/0011-runtime-indirect-lighting.md) | Runtime indirect light: probe volume with visibility, indirect policy, runtime light set, substitutable baked/radiosity/SDF/ray-query producers switchable at runtime (proposed) |
 
 RFC status and implementation status are separate. A proposed interface, tool,
 directory, or command is not installed infrastructure. Read the relevant RFC
