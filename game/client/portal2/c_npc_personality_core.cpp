@@ -16,6 +16,8 @@
 #include "view.h"
 #include "functionproxy.h"
 #include "imaterialproxydict.h"
+#include "c_portal_player.h"
+#include "mouthinfo.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -193,7 +195,9 @@ IMPLEMENT_CLIENTCLASS_DT( C_NPC_Personality_Core, DT_NPC_Personality_Core, CNPC_
 END_RECV_TABLE()
 
 //-----------------------------------------------------------------------------
-// Purpose: Material proxy that lights the core's mouth while it talks.
+// Purpose: Material proxy that lights the core's mouth while it talks. On
+//          anything else (PotatOS on the portal gun) the light follows the
+//          mouth of the actor that voices her, as in the retail client.
 //-----------------------------------------------------------------------------
 class CLightedMouthProxy : public CResultProxy
 {
@@ -207,6 +211,39 @@ bool CLightedMouthProxy::Init( IMaterial *pMaterial, KeyValues *pKeyValues )
 	return CResultProxy::Init( pMaterial, pKeyValues );
 }
 
+// Speech level last seen from PotatOS's speaker, shared by every bind.
+static float s_flPotatosSpeech = 0.0f;
+
+//-----------------------------------------------------------------------------
+// Purpose: PotatOS's light from the speaker's mouth opening (0-255): lit by
+//          the opening while she talks, and back to flIdleLight as the recent
+//          speech level decays after she stops.
+//-----------------------------------------------------------------------------
+static float PotatosMouthLight( float flMouthOpen, float flIdleLight )
+{
+	float flOpen = flMouthOpen * ( 1.0f / 64.0f );
+	float flSpeech = 0.0f;
+	float flLight = 0.0f;
+	if ( flMouthOpen > 64.0f )
+	{
+		flSpeech = 1.0f;
+		flLight = 1.0f;
+	}
+	else if ( flMouthOpen >= 12.8f )
+	{
+		flSpeech = ( flMouthOpen < 64.0f / 3.0f ) ? 3.0f * flOpen : 1.0f;
+		flLight = flOpen;
+	}
+
+	if ( flSpeech <= s_flPotatosSpeech )
+	{
+		flSpeech = s_flPotatosSpeech * expf( -0.61220264f * gpGlobals->frametime );
+	}
+	s_flPotatosSpeech = flSpeech;
+
+	return MAX( flLight, ( 1.0f - flSpeech ) * flIdleLight );
+}
+
 void CLightedMouthProxy::OnBind( void *pC_BaseEntity )
 {
 	if ( !pC_BaseEntity )
@@ -217,13 +254,24 @@ void CLightedMouthProxy::OnBind( void *pC_BaseEntity )
 	C_NPC_Personality_Core *core = dynamic_cast<C_NPC_Personality_Core *>( pEntity );
 	if ( core )
 	{
-		float amt = core->GetMouthAmount();
-		SetFloatResult( amt );
+		SetFloatResult( core->GetMouthAmount() );
+		return;
 	}
-	else
+
+	C_BaseEntity *pSpeaker = GetPotatosSpeaker();
+	if ( !pSpeaker )
 	{
 		SetFloatResult( 1.0f );
+		return;
 	}
+
+	// The player's PotatOS light (TurnOnPotatos/TurnOffPotatos) sets the idle glow.
+	C_Portal_Player *pPlayer = C_Portal_Player::GetLocalPortalPlayer();
+	float flIdleLight = ( !pPlayer || pPlayer->IsPotatosOn() ) ? 0.2f : 0.0f;
+
+	CMouthInfo *pMouth = pSpeaker->GetMouth();
+	float flMouthOpen = pMouth ? pMouth->mouthopen : 0.0f;
+	SetFloatResult( PotatosMouthLight( flMouthOpen, flIdleLight ) );
 }
 
 EXPOSE_MATERIAL_PROXY( CLightedMouthProxy, LightedMouth );

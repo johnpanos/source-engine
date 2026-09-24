@@ -997,8 +997,12 @@ static void TestPhyFixture( PhyFixture_t &fixture, int fixtureIndex )
 			params.rotdamping = solid.params.rotdamping;
 			params.volume = solid.params.volume;
 			int material = s_pProps->GetSurfaceIndex( solid.surfaceprop );
+			// Ragdoll limbs spread over a grid; a single model drops at the
+			// floor's center so a tumble cannot carry it off the slab's edge.
+			Vector drop = vc.solidCount > 1 ? Vector( ( solid.index % 6 ) * 150.0f - 375.0f, ( solid.index / 6 ) * 150.0f - 225.0f, 200 )
+											: Vector( 0, 0, 200 );
 			objects[solid.index] = world.pEnv->CreatePolyObject( vc.solids[solid.index], material >= 0 ? material : 0,
-				Vector( ( solid.index % 6 ) * 150.0f - 375.0f, ( solid.index / 6 ) * 150.0f - 225.0f, 200 ), QAngle( 10, 20, 5 ), &params );
+				drop, QAngle( 10, 20, 5 ), &params );
 			if ( objects[solid.index] )
 				objects[solid.index]->Wake();
 		}

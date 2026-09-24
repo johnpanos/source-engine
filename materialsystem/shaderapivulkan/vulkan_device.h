@@ -36,6 +36,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -518,6 +519,27 @@ public:
 		int numLights = 0;
 	};
 	void SetDynamicSkinConstants( const SkinConstants &constants ) { m_dynSkin = constants; }
+	// A draw's pixel fog (common_ps_fxc.h FinalOutput's BlendPixelFog), in the
+	// D3D9 registers' terms: the fog color (g_LinearFogColor, c29) with the pixel
+	// fog type in w (0 range, 1 height, -1 the shader does not fog); the pass's
+	// fog parameters (fog start over range, water height, max density, 1 / range);
+	// the row giving a vertex's world z from its record position (dot with
+	// (x, y, z, 1)); and the eye's world z in misc.x, with misc.y 1 for
+	// DecalModulate's pow( factor, 0.4 ). The textured and world pipelines read it
+	// from an instance-rate vertex stream (vertex binding 1), so it takes no
+	// push-constant space.
+	struct DrawFog
+	{
+		float color[4] = { 0.0f, 0.0f, 0.0f, -1.0f };
+		float params[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
+		float worldZ[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
+		float misc[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+		bool operator==( const DrawFog &other ) const
+		{
+			return std::memcmp( this, &other, sizeof( DrawFog ) ) == 0;
+		}
+	};
+	void SetDynamicFog( const DrawFog &fog ) { m_dynFog = fog; }
 	// Synthetic PBR test inputs: N.V, N.L, N.H and V.H. The real material
 	// receives these from geometry and lights when the PBR world path arrives.
 	void SetDynamicPbrAngles( const float *angles )
@@ -1126,6 +1148,7 @@ private:
 	DynRasterState m_dynRaster;
 	float m_dynDepthBiasConstant = 0.0f;
 	float m_dynDepthBiasSlope = 0.0f;
+	DrawFog m_dynFog;
 	float m_dynAlphaRef = -1.0f; // $alphatest reference; < 0 disables
 	// "$basetexture" material pipeline: a built-in 2-tone texture sampled at the
 	// mesh UVs, bound through a descriptor set (its own layout adds the sampler).
@@ -1145,8 +1168,9 @@ private:
 	    int base, int mrao, int normal, bool useNormal, bool baseReadSrgb ) const;
 	bool PbrWorldNormalReady( int handle ) const;
 	VkShaderModule m_worldVert = VK_NULL_HANDLE;
-	VkVertexInputBindingDescription m_worldBinding = {};
-	VkVertexInputAttributeDescription m_worldAttrs[4] = {};
+	// Binding 0 is the WMSH corner stream, binding 1 the per-draw fog stream.
+	VkVertexInputBindingDescription m_worldBindings[2] = {};
+	VkVertexInputAttributeDescription m_worldAttrs[8] = {};
 	VkVertexInputAttributeDescription m_worldPbrAttrs[6] = {};
 	VkPipelineVertexInputStateCreateInfo m_worldPbrVin = {};
 	VkShaderModule m_worldPbrVert = VK_NULL_HANDLE;
@@ -1263,8 +1287,10 @@ private:
 	struct TexturedPipelineTemplate
 	{
 		VkPipelineShaderStageCreateInfo stages[2];
-		VkVertexInputBindingDescription binding;
-		VkVertexInputAttributeDescription attrs[7];
+		// Binding 0 is the frame's vertex stream; binding 1 the per-draw fog
+		// stream (DrawFog, one record per instance), locations 7..10.
+		VkVertexInputBindingDescription bindings[2];
+		VkVertexInputAttributeDescription attrs[11];
 		VkPipelineVertexInputStateCreateInfo vin;
 		VkPipelineInputAssemblyStateCreateInfo ia;
 		VkPipelineViewportStateCreateInfo vp;
@@ -1375,6 +1401,8 @@ private:
 	};
 	StreamBuffer m_dynVertexStreams[kMaxFramesInFlight];
 	StreamBuffer m_dynIndexStreams[kMaxFramesInFlight];
+	// The frame's distinct DrawFog records (vertex binding 1, per instance).
+	StreamBuffer m_dynFogStreams[kMaxFramesInFlight];
 	StreamBuffer m_worldVertexBuffer;
 	StreamBuffer m_worldIndexBuffer;
 	uint32_t m_worldVertexCount = 0;
@@ -1490,6 +1518,7 @@ private:
 		    -1, -1 }; // samplers 1..15 ([0] unused)
 		PortalConstants portal;
 		int skin = -1; // index into m_dynSkinConstants
+		DrawFog fog;
 	};
 	// A draw record carrying the state current now, before its geometry.
 	DynDraw &AppendDrawRecord();

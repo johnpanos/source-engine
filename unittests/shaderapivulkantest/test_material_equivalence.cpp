@@ -826,6 +826,55 @@ int main()
 	services.api->SceneFogMode( MATERIAL_FOG_NONE );
 	check( services.api->GetPixelFogCombo() == MATERIAL_FOG_NONE, "no fog selects no combo" );
 
+	// Pixel fog (common_ps_fxc.h). A red LightmappedGeneric pass at clip z 0.5
+	// (world z 0.5 under an identity model) reads g_FogParams from c11 and its eye
+	// from c10, as lightmappedgeneric_ps2_3_x.h declares them. Range fog with
+	// start 0 and end 1: factor saturate( min( 1, 0.5 * 1 - 0 ) ) = 0.5, squared
+	// by BlendPixelFog: 0.25 of the blue fog color. Height fog with the water at
+	// z 10 and the eye at z 20: saturate( 9.5 / 19.5 ) * 0.5 = 0.2436, unsquared.
+	auto drawFogged = [&]( ShaderFogMode_t shadowFog, MaterialFogMode_t sceneFog, uint8_t out[4] )
+	{
+		services.shadow->SetDefaultState();
+		services.shadow->SetPixelShader( "lightmappedgeneric_ps20b", 0 );
+		services.shadow->FogMode( shadowFog );
+		const StateSnapshot_t fogged = services.api->TakeSnapshot();
+		services.api->SceneFogMode( sceneFog );
+		services.api->SceneFogColor3ub( 0, 0, 255 );
+		services.api->FogStart( 0.0f );
+		services.api->FogEnd( 1.0f );
+		services.api->FogMaxDensity( 1.0f );
+		services.api->SetFogZ( 10.0f );
+		services.api->ClearColor4ub( 0, 0, 0, 255 );
+		services.api->ClearBuffers( true, true, true, -1, -1 );
+		LockFullScreenQuad( mesh, 0.5f );
+		services.api->BeginPass( fogged );
+		services.api->SetVertexShaderConstant( kRegModelViewProj, kIdentity4x4, 4, false );
+		services.api->SetVertexShaderConstant( kRegModulationColor, modRed, 1, false );
+		services.api->BindTexture( SHADER_SAMPLER0, whiteTex );
+		// The shader's dynamic state: its fog parameters and eye position.
+		services.api->SetPixelShaderFogParams( 11 );
+		const float eye[4] = { 0.0f, 0.0f, 20.0f, 0.0f };
+		services.api->SetPixelShaderConstant( 10, eye, 1 );
+		mesh->Draw();
+		const bool captured = captureCenter( out );
+		services.api->SceneFogMode( MATERIAL_FOG_NONE );
+		return captured;
+	};
+	auto near = []( int value, int expected ) { return value >= expected - 3 && value <= expected + 3; };
+	uint8_t rangeFog[4] = {}, heightFog[4] = {}, fogDisabled[4] = {}, sceneNoFog[4] = {};
+	check( drawFogged( SHADER_FOGMODE_FOGCOLOR, MATERIAL_FOG_LINEAR, rangeFog ) &&
+	           near( rangeFog[0], 191 ) && rangeFog[1] <= 3 && near( rangeFog[2], 64 ),
+	    "range fog blends the squared factor toward the fog color (c29)" );
+	check( drawFogged( SHADER_FOGMODE_FOGCOLOR, MATERIAL_FOG_LINEAR_BELOW_FOG_Z, heightFog ) &&
+	           near( heightFog[0], 193 ) && heightFog[1] <= 3 && near( heightFog[2], 62 ),
+	    "height fog blends by the depth below the water" );
+	check( drawFogged( SHADER_FOGMODE_DISABLED, MATERIAL_FOG_LINEAR, fogDisabled ) &&
+	           fogDisabled[0] >= 252 && fogDisabled[2] <= 3,
+	    "control: a pass with fog disabled gets the rigged no-fog parameters" );
+	check( drawFogged( SHADER_FOGMODE_FOGCOLOR, MATERIAL_FOG_NONE, sceneNoFog ) &&
+	           sceneNoFog[0] >= 252 && sceneNoFog[2] <= 3,
+	    "control: no scene fog leaves the color unchanged" );
+
 	// ClearSnapshots empties the table; the material system retakes every
 	// snapshot after it, so the ids start again.
 	// A state no earlier check took, so it is appended after them.

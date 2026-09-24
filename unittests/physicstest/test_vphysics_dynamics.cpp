@@ -30,6 +30,7 @@
 #include "vcollide_parse.h"
 #include "vphysics/friction.h"
 #include "vphysics/performance.h"
+#include "vphysics/player_controller.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -129,6 +130,16 @@ public:
 		if ( pEvent->collisionSpeed > 70.0f )
 			m_loudImpacts++;
 		m_maxImpactSpeed = MAX( m_maxImpactSpeed, pEvent->collisionSpeed );
+		if ( TraceEnabled() )
+		{
+			Vector speed, normal, v0, v1;
+			pEvent->pInternalData->GetContactSpeed( speed );
+			pEvent->pInternalData->GetSurfaceNormal( normal );
+			pEvent->pObjects[0]->GetVelocity( &v0, NULL );
+			pEvent->pObjects[1]->GetVelocity( &v1, NULL );
+			Trace( "DYN impact speed %.3f contact-speed %.3f %.3f %.3f normal %.3f %.3f %.3f v0 %.3f %.3f %.3f v1 %.3f %.3f %.3f\n",
+				pEvent->collisionSpeed, speed.x, speed.y, speed.z, normal.x, normal.y, normal.z, v0.x, v0.y, v0.z, v1.x, v1.y, v1.z );
+		}
 	}
 	virtual void Friction( IPhysicsObject *, float energy, int, int, IPhysicsCollisionData * )
 	{
@@ -965,6 +976,61 @@ void TestImpacts( const CubeModel_t &model )
 		DestroyFeelWorld( world );
 	}
 }
+
+//-----------------------------------------------------------------------------
+// The player walks into the cube and keeps walking: the player controller
+// (CBasePlayer::SetupVPhysicsShadow: 85 kg "player" hull, push limits 350 kg
+// and 50 in/s) pushes it along the floor.
+//-----------------------------------------------------------------------------
+void TestPlayerPush( const CubeModel_t &model )
+{
+	FeelWorld_t world;
+	CreateFeelWorld( world );
+	IPhysicsObject *pCube = SettledCube( world, model, Vector( 0, 0, 0 ) );
+	CPhysCollide *pHull = s_pCollision->BBoxToCollide( Vector( -16, -16, 0 ), Vector( 16, 16, 72 ) );
+	world.collides.AddToTail( pHull );
+	objectparams_t params = DefaultParams( 85.0f, NULL );
+	params.inertia = 1e24f;
+	params.dragCoefficient = 0;
+	int playerMaterial = s_pProps->GetSurfaceIndex( "player" );
+	Vector start( model.mins.x - 16.0f - 24.0f, 0, 0.25f );
+	IPhysicsObject *pPlayer = world.pEnv->CreatePolyObject( pHull, playerMaterial >= 0 ? playerMaterial : 0, start, vec3_angle, &params );
+	pPlayer->SetCallbackFlags( CALLBACK_GLOBAL_COLLISION | CALLBACK_SHADOW_COLLISION );
+	IPhysicsPlayerController *pController = world.pEnv->CreatePlayerController( pPlayer );
+	pController->SetPushMassLimit( 350.0f );
+	pController->SetPushSpeedLimit( 50.0f );
+	Vector cubeStart = PositionOf( pCube );
+	const Vector walk( 175, 0, 0 );
+	Vector target = start;
+	int contactTick = -1;
+	float speedSum = 0.0f;
+	int speedSamples = 0;
+	for ( int i = 0; i < 90; i++ )
+	{
+		target += walk * kDynTick;
+		if ( !FaultIs( "player-inert" ) )
+			pController->Update( target, walk, kDynTick, true, world.pFloor );
+		Tick( world.pEnv );
+		if ( contactTick < 0 && PositionOf( pCube ).x > cubeStart.x + 0.5f )
+			contactTick = i;
+		if ( contactTick >= 0 && i >= contactTick + 30 )
+		{
+			speedSum += VelocityOf( pCube ).x;
+			speedSamples++;
+		}
+		Trace( "DYN player-push %d player %.3f cube %.3f vx %.3f tilt %.3f\n", i, PositionOf( pPlayer ).x,
+			PositionOf( pCube ).x, VelocityOf( pCube ).x, TiltFromFlat( pCube ) );
+	}
+	float pushed = PositionOf( pCube ).x - cubeStart.x;
+	float cubeSpeed = speedSum / MAX( speedSamples, 1 );
+	Check( TIER_GAMEPLAY, "dynamics.player-push-moves", contactTick >= 0 && pushed > 16.0f, "contact tick %d pushed %.3f",
+		contactTick, pushed );
+	Check( TIER_GAMEPLAY, "dynamics.player-push-upright", TiltFromFlat( pCube ) < 10.0f, "tilt %.3f", TiltFromFlat( pCube ) );
+	Obs1( "dynamics.player-push.distance", "a8", pushed );
+	Obs1( "dynamics.player-push.cube-speed", "a15", cubeSpeed );
+	world.pEnv->DestroyPlayerController( pController );
+	DestroyFeelWorld( world );
+}
 }
 
 void TestDynamics( const vcollide_t *pCubeFixture )
@@ -981,4 +1047,5 @@ void TestDynamics( const vcollide_t *pCubeFixture )
 	TestStack( model );
 	TestHeld( model );
 	TestImpacts( model );
+	TestPlayerPush( model );
 }

@@ -576,6 +576,13 @@ struct FogRenderState
 	float destAlphaDepthRange = 192.0f;
 };
 static FogRenderState g_Fog;
+// The registers fog reaches the shaders through.
+enum
+{
+	kVsRegCameraPos = 2,      // cEyePosWaterZ (common_vs_fxc.h)
+	kVsRegFogParams = 16,     // cFogParams
+	kPsRegLinearFogColor = 29 // g_LinearFogColor (common_ps_fxc.h)
+};
 // The shadow state's fog mode and fog gamma correction of the pass being drawn
 // (BeginPass), which SetPixelShaderFogParams and ApplyFogMode read.
 static ShaderFogMode_t g_CurrentShadowFogMode = SHADER_FOGMODE_DISABLED;
@@ -5060,6 +5067,24 @@ static int g_CurrentToneMap = 0;
 // (bits 1..2) static combos, -1 for other pixel shaders.
 static std::vector<int> g_snapshotSpriteCombos;
 static int g_CurrentSpriteCombos = -1;
+// Parallel to g_snapshotShaders: how each snapshot's pixel shader fogs
+// (common_ps_fxc.h CalcPixelFogFactor / FinalOutput) and the registers it reads
+// its fog parameters and eye position from.
+enum PixelFogMode
+{
+	kPixelFogNone = 0,     // PIXEL_FOG_TYPE_NONE, or a shader without fog
+	kPixelFogCombo,        // the PIXELFOGTYPE dynamic combo (GetPixelFogCombo)
+	kPixelFogConstantType, // the type in g_ShaderControls.x (c12.x; ps2b and up)
+	kPixelFogDecal         // PIXELFOGTYPE, factor raised to 0.4 (DecalModulate)
+};
+struct PixelFogInputs
+{
+	int mode = kPixelFogNone;
+	int paramsRegister = 0;
+	int eyeRegister = 0;
+};
+static std::vector<PixelFogInputs> g_snapshotPixelFog;
+static PixelFogInputs g_CurrentPixelFog;
 // The samplers the pass being drawn enabled (all when no snapshot is current).
 static unsigned int g_CurrentEnabledSamplers = ~0u;
 
@@ -5110,6 +5135,7 @@ static void ClearSnapshotTables()
 	g_snapshotEnabledSamplers.clear();
 	g_snapshotToneMap.clear();
 	g_snapshotSpriteCombos.clear();
+	g_snapshotPixelFog.clear();
 }
 
 // Faithful vertex-shader constant register file. The material system commits its
@@ -5892,6 +5918,43 @@ static int SnapshotSpriteCombos( const CShaderShadowVulkan &shadow )
 	return -1;
 }
 
+// Which pixel shaders fog, and from which registers (each shader's own
+// declarations: g_FogParams and g_EyePos / g_EyePos_SpecExponent).
+static PixelFogInputs SnapshotPixelFog( const CShaderShadowVulkan &shadow )
+{
+	const char *ps = shadow.m_pixelShaderName;
+	const auto is = [ps]( const char *prefix ) { return !V_strnicmp( ps, prefix, strlen( prefix ) ); };
+	PixelFogInputs fog;
+	if ( is( "lightmappedgeneric_ps2" ) )
+	{
+		fog.mode = kPixelFogCombo;
+		fog.paramsRegister = 11;
+		fog.eyeRegister = 10;
+	}
+	else if ( is( "vertexlit_and_unlit_generic_" ) )
+	{
+		// ps20 selects the type with a combo; ps20b and ps30 read it from c12.x.
+		fog.mode = V_stristr( ps, "_ps20b" ) || V_stristr( ps, "_ps30" ) ? kPixelFogConstantType
+		                                                                  : kPixelFogCombo;
+		fog.paramsRegister = 21;
+		fog.eyeRegister = 20;
+	}
+	else if ( is( "cable_ps2" ) || is( "monitorscreen_ps2" ) || is( "refract_ps2" ) ||
+	          is( "unlittwotexture_ps2" ) || is( "sprite_ps2" ) )
+	{
+		fog.mode = kPixelFogCombo;
+		fog.paramsRegister = 12; // PSREG_FOG_PARAMS
+		fog.eyeRegister = 11;    // PSREG_EYEPOS_SPEC_EXPONENT
+	}
+	else if ( is( "decalmodulate_ps2" ) )
+	{
+		fog.mode = kPixelFogDecal;
+		fog.paramsRegister = 12;
+		fog.eyeRegister = 11;
+	}
+	return fog;
+}
+
 static int SnapshotToneMapType( const CShaderShadowVulkan &shadow )
 {
 	const char *ps = shadow.m_pixelShaderName;
@@ -5980,6 +6043,7 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	g_snapshotEnabledSamplers.push_back( g_ShaderShadow.m_enabledSamplers );
 	g_snapshotToneMap.push_back( toneMap );
 	g_snapshotSpriteCombos.push_back( spriteCombos );
+	g_snapshotPixelFog.push_back( SnapshotPixelFog( g_ShaderShadow ) );
 	// Flags occupy bits 0..3; the index fits the remaining 11 bits of the short.
 	id = static_cast<StateSnapshot_t>( id | static_cast<int>( index << 4 ) );
 	g_snapshotIds[stateKey] = id;
@@ -6459,6 +6523,8 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	g_CurrentToneMap = index < g_snapshotToneMap.size() ? g_snapshotToneMap[index] : 0;
 	g_CurrentSpriteCombos =
 	    index < g_snapshotSpriteCombos.size() ? g_snapshotSpriteCombos[index] : -1;
+	g_CurrentPixelFog =
+	    index < g_snapshotPixelFog.size() ? g_snapshotPixelFog[index] : PixelFogInputs();
 	if ( index < g_snapshotFog.size() )
 	{
 		g_CurrentShadowFogMode = g_snapshotFog[index].mode;
@@ -6483,8 +6549,39 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 // name instead (census, dropped-material report and draw-state fixture).
 // The pass's pixel-shader constants the native pipeline takes as draw state,
 // once the shader's dynamic state has written them (just before emitting).
+// The pass's pixel fog as its shader computes it (CVulkanContext::DrawFog): the
+// fog color from c29, the type from the combo the pass selected or its c12.x,
+// the parameters and eye z from the registers the shader declares, and the row
+// that takes this draw's vertex positions to world z (skinned positions are
+// already in world space).
+static void CommitPassFog()
+{
+	render_vulkan::CVulkanContext::DrawFog fog;
+	if ( g_CurrentPixelFog.mode != kPixelFogNone )
+	{
+		const float fogType = g_CurrentPixelFog.mode == kPixelFogConstantType
+		                          ? g_psConstants[12][0]
+		                          : ( g_Fog.sceneMode == MATERIAL_FOG_LINEAR_BELOW_FOG_Z ? 1.0f : 0.0f );
+		memcpy( fog.color, g_psConstants[kPsRegLinearFogColor], 3 * sizeof( float ) );
+		fog.color[3] = fogType;
+		memcpy( fog.params, g_psConstants[g_CurrentPixelFog.paramsRegister], sizeof( fog.params ) );
+		fog.misc[0] = g_psConstants[g_CurrentPixelFog.eyeRegister][2];
+		fog.misc[1] = g_CurrentPixelFog.mode == kPixelFogDecal ? 1.0f : 0.0f;
+		if ( g_NumBoneWeights <= 0 )
+		{
+			const float *model = ModelMatrix();
+			fog.worldZ[0] = model[2];
+			fog.worldZ[1] = model[6];
+			fog.worldZ[2] = model[10];
+			fog.worldZ[3] = model[14];
+		}
+	}
+	g_VulkanContext.SetDynamicFog( fog );
+}
+
 static void CommitPassPixelConstants()
 {
+	CommitPassFog();
 	// vertexlit_and_unlit_generic's alpha = lerp( alpha, alpha * i.color.a,
 	// g_fVertexAlpha ), where g_fVertexAlpha is c12.w ($vertexalpha, 0 or 1).
 	int colorFlags = g_CurrentColorFlags;
@@ -7053,13 +7150,6 @@ void CShaderAPIVulkan::ScaleXY( float x, float y )
 // shader on this platform (ShouldUsePixelFogForMode is always true on POSIX):
 // the pass's fog color is pixel constant c29 (g_LinearFogColor) and its range
 // parameters the register its shader names (SetPixelShaderFogParams).
-enum
-{
-	kVsRegCameraPos = 2, // cEyePosWaterZ (common_vs_fxc.h)
-	kVsRegFogParams = 16, // cFogParams
-	kPsRegLinearFogColor = 29 // g_LinearFogColor (common_ps_fxc.h)
-};
-
 // The fog mode in effect (m_DynamicState.m_SceneFog), which ApplyFogMode sets
 // from the pass's shadow fog mode and the scene fog.
 void CShaderAPIVulkan::FogMode( MaterialFogMode_t fogMode )

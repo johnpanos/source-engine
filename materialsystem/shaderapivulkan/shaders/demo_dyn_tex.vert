@@ -21,6 +21,12 @@ layout( location = 3 ) in vec2 inLightmapUv; // TEXCOORD1: lightmap page coordin
 layout( location = 4 ) in vec3 inReflection; // CPU-converted world reflection for cubemap
 layout( location = 5 ) in vec4 inEnvTint; // Refract's envmap tint and contrast
 layout( location = 6 ) in float inAlpha;     // vertex color alpha
+// The draw's pixel fog (CVulkanContext::DrawFog), one record per instance:
+// color and fog type, parameters, world-z row, eye z and flags.
+layout( location = 7 ) in vec4 inFogColor;
+layout( location = 8 ) in vec4 inFogParams;
+layout( location = 9 ) in vec4 inFogWorldZ;
+layout( location = 10 ) in vec4 inFogMisc;
 layout( location = 0 ) out vec2 fragUv;
 layout( location = 1 ) out vec4 fragModulation;
 layout( location = 2 ) out vec2 fragLightmapUv;
@@ -28,6 +34,11 @@ layout( location = 3 ) out vec4 fragVertexColor; // read with flags 128, 256, 10
 layout( location = 4 ) out vec3 fragReflection;
 layout( location = 5 ) out vec2 fragScreenUv;
 layout( location = 6 ) out vec4 fragEnvTint;
+layout( location = 7 ) flat out vec4 fragFogColor;
+layout( location = 8 ) flat out vec4 fragFogParams;
+layout( location = 9 ) flat out vec4 fragFogMisc;
+// The vertex's projected z (worldPos_projPosZ.w / projPos.z) and world z.
+layout( location = 10 ) out vec2 fragFogDepth;
 layout( push_constant ) uniform Constants
 {
 	mat4 mvp;        // cModelViewProj
@@ -52,6 +63,13 @@ void ApplyClipPlanes()
 {
 }
 #endif
+void PassFog()
+{
+	fragFogColor = inFogColor;
+	fragFogParams = inFogParams;
+	fragFogMisc = inFogMisc;
+	fragFogDepth = vec2( gl_Position.z, dot( inFogWorldZ, vec4( inPos, 1.0 ) ) );
+}
 void main()
 {
 	fragModulation = consts.modulation;
@@ -70,11 +88,13 @@ void main()
 		fragScreenUv = ( gl_Position.xy / gl_Position.w * vec2( 1.0, -1.0 ) + 1.0 ) * 0.5;
 		fragUv = inUv;
 		ApplyClipPlanes();
+		PassFog();
 		return;
 	}
 	gl_Position = consts.mvp * vec4( inPos, 1.0 );
 	fragScreenUv = ( gl_Position.xy / gl_Position.w * vec2( 1.0, -1.0 ) + 1.0 ) * 0.5;
 	ApplyClipPlanes();
+	PassFog();
 	// D3D9 fills a 2D texcoord to (u, v, 0, 1); the base-texture transform is a
 	// 2x4 affine matrix, so u' = dot(row0, uv4), v' = dot(row1, uv4). Identity
 	// (row0 = 1,0,0,0 / row1 = 0,1,0,0) passes the coordinate through unchanged.

@@ -1788,3 +1788,114 @@ Evidence:
   white sign panels cover the car's post and call panel. With the fix, the
   post hides them. The movies themselves draw white because no video provider
   opens `media/entry_emergency.bik`, which is a separate gap.
+
+## Unimplemented-entry burn-down: dynamic state, overrides, fog (2026-09-24)
+
+Scope (owner: session source-engine-59): replace the `VK_UNIMPLEMENTED` bodies
+of the native shader API with the D3D9 behavior each one stands for, driven by
+the Portal census. Before this slice, a headless `testchmb_a_01` boot reported
+33 distinct unimplemented entries. After it, the same boot reports 7:
+`SetRenderTargetEx` for MRT slots (since fixed; see below), the post-process
+shader families, depth feathering, `PolyMode`, `EnableAlphaToCoverage`, and
+skin's cubemap combo. Evidence is in `quality-results/vk59-a/stdout.log`.
+
+What changed, each against its `shaderapidx8.cpp` / `TransitionTable.cpp`
+counterpart:
+- **Overrides.** `ForceDepthFuncEquals`, `OverrideAlphaWriteEnable` and
+  `OverrideColorWriteEnable` join `OverrideDepthEnable` in
+  `ApplyShadowStateOverrides` (PerformShadowStateOverrides).
+- **Dynamic default state.** `SetDefaultState` resets the texture matrices, the
+  matrix mode, constant color, shade mode and shader indices, as D3D9 does
+  before every pass. `SetPixelShaderIndex` and `CBCMD_SET_PSHINDEX` now record
+  the dynamic combo index. That lets Sprite_DX9's HDRENABLED combo apply
+  `g_HDRColorScale` (c1). Sprite_DX9's `$color` (c0, CONSTANTCOLOR) is now
+  applied as well.
+- **Fog.** The whole fog state machine is implemented: `SceneFogMode`/`Color`,
+  `FogStart`/`End`/`MaxDensity`/`SetFogZ`, `GetPixelFogCombo`,
+  `SetPixelShaderFogParams` (including the rigged no-fog parameters), and
+  `ApplyFogMode` at `BeginPass` with the shadow state's `FogMode` and
+  `DisableFogGammaCorrection`. It writes c29 and the vertex fog constants.
+  The textured and WMSH pipelines apply `common_ps_fxc.h`'s pixel fog. They
+  apply range fog (squared factor) and height fog, plus DecalModulate's
+  pow( f, 0.4 ). Each shader reads its fog parameters and eye position from the
+  registers it declares: c11/c10 for LightmappedGeneric, c21/c20 with the c12.x
+  type for VertexLitGeneric ps2b, and c12/c11 otherwise.
+  - The push block is full, so the per-draw fog is a 64-byte `DrawFog` record in
+    an instance-rate vertex stream (binding 1). Draws select it with their
+    first instance, and consecutive draws that share fog share a record.
+  - Skin, PortalRefract's flame stage and SolidEnergy do not fog yet.
+- **Tone mapping.** Each snapshot records its pixel shader's `FinalOutput`
+  tone-map type. That is LINEAR for Spritecard, Cable, UnlitTwoTexture and sRGB
+  sprites, GAMMA (c30.w) for the other sprites, and NONE for Shadow,
+  DecalModulate, Refract and MonitorScreen. Only unclassified shaders are
+  reported now.
+- **Occlusion_DX9** (`engine/occlusionproxy`, pixel visibility for glows): no
+  longer declined. It is writez_vs20 with color, alpha and depth writes off.
+  That removed 2,070 dropped draws per boot.
+- **Fast/height clip.** `SetHeightClipZ/Mode`, `SetFastClipPlane` and
+  `EnableFastClip` build D3D9's oblique projection (`CommitFastClipPlane`) for
+  every draw projection. User clip planes stay relative to MATERIAL_PROJECTION,
+  as on D3D9.
+- **Matrix helpers.** `Rotate`, `Translate`, `Scale`, `ScaleXY`, `PerspectiveX`,
+  `PerspectiveOffCenterX`, `PickMatrix` and `Ortho` apply the render context's
+  own `VMatrix` operations. The render context calls them only under matrix
+  validation, which compares the two. `Ortho` was previously a different
+  matrix. `LoadCameraToWorld` is D3D9's inverse view without translation.
+- **Frame and resources.**
+  - `ForceHardwareSync` waits (at most 200 ms, `mat_frame_sync_enable`) for the
+    second-most-recent submission, D3D9's one-frame latency bound. It uses a
+    new `CVulkanContext::WaitForSubmittedFrame`.
+  - `FlushBufferedPrimitives` runs the render context's
+    `OnFlushBufferedPrimitives` matrix sync.
+  - `ReleaseResources`/`ReacquireResources` now drive the material system's
+    `ReleaseShaderObjects`/`RestoreShaderObjects` with D3D9's nesting count.
+    Portal runs this once per map load, and it reformats lightmap pages when
+    the HDR mode changes.
+  - `ClearSnapshots` empties the snapshot table; the material system retakes
+    every snapshot right after.
+  - `ResetRenderState`, `FlushHardware`, `DestroyVertexBuffers` and
+    `SyncToken` (a `-vkframestats` mark) are implemented.
+- **mat_texture_list.** `IDebugTextureInfo` and `EndFrame`'s texture-list
+  export follow D3D9: per-frame bind counts, memory totals, picmip estimates,
+  and `mat_texture_limit`. The backend now links `bitmap` for `ImageLoader`, as
+  shaderapidx9 does.
+- **Recorded fixed-function state.** Colors, shade mode, ambient light, texture
+  stage transforms, bump-env matrices, the boolean and integer constant banks,
+  and the IShaderShadow fixed-function setters are recorded as D3D9 records
+  them. No DX9 pass reads them. `$flat` draws, which D3D9 shades flat, are
+  reported rather than claimed.
+- **MRT slots.** The render context disables render targets 1..3 on every
+  target change (`SetRenderTargetEx( id )` with the back buffer), which D3D9
+  maps to `SetRenderTarget( id, NULL )`. That is now honored. A texture bound
+  there is still reported, since the pipelines have one color attachment.
+- **Dead code.** Sixteen stubs copied from `shaderapiempty` were not on any
+  interface and are removed: the `Bind*` standard-texture helpers,
+  `UseSnapshot` and `FogColor*`.
+
+`EnableTexture` is recorded per snapshot. Real shaders were measured binding a
+disabled sampler 0 times in the Portal census, so D3D9's "no texture on a
+disabled sampler" rule has no visible effect there. The census keeps
+measuring it.
+
+Evidence (RADV, private tree `build-vk59`, `SDL_VIDEODRIVER=offscreen`):
+- `material_equivalence_vulkan_conformance` 64 checks, 0 failures. New checks:
+  - ForceDepthFuncEquals (control, reject, pass);
+  - color and alpha write overrides (two controls, two overrides);
+  - fog state round trips;
+  - range and height pixel fog against `common_ps_fxc.h` values (191/0/64 and
+    193/0/62 ±3), with fog-disabled and no-scene-fog controls;
+  - ClearSnapshots;
+  - Translate/Scale/LoadCameraToWorld;
+  - the texture list.
+
+  Each positive check has a paired control that a backend ignoring the feature
+  would fail.
+- `material_facing_vulkan_conformance` 25/0; `native_vulkan_bringup_conformance`
+  98/0.
+- `material_pixel_conformance.py` passes all 13 native families against their
+  D3D9 references: lightmap, exposure, skinning, modellight (none and integer
+  HDR), portal, cable, sky, monitor and sprite (`quality-results/vk59-mpc-*`).
+- Installed headless boots pass: `testchmb_a_01`, `testchmb_a_08` and
+  `escape_00`. Their captures were inspected. An escape_00 A/B against the
+  DXVK tree agrees except for bloom, whose post-process chain native still
+  declines.

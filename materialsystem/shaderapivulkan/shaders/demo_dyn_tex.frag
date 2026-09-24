@@ -26,6 +26,11 @@ layout( location = 3 ) in vec4 fragVertexColor;
 layout( location = 4 ) in vec3 fragReflection;
 layout( location = 5 ) in vec2 fragScreenUv;
 layout( location = 6 ) in vec4 fragEnvTint;
+// The draw's pixel fog (CVulkanContext::DrawFog; see ApplyPixelFog).
+layout( location = 7 ) flat in vec4 fragFogColor;
+layout( location = 8 ) flat in vec4 fragFogParams;
+layout( location = 9 ) flat in vec4 fragFogMisc;
+layout( location = 10 ) in vec2 fragFogDepth;
 layout( location = 0 ) out vec4 outColor;
 layout( set = 0, binding = 0 ) uniform sampler2D baseTexture;
 layout( set = 1, binding = 0 ) uniform sampler2D lightmapTexture;
@@ -65,6 +70,36 @@ vec3 LinearToSrgb( vec3 c )
 	c = clamp( c, 0.0, 1.0 );
 	return mix( c * 12.92, 1.055 * pow( c, vec3( 1.0 / 2.4 ) ) - 0.055, step( 0.0031308, c ) );
 }
+// common_ps_fxc.h's pixel fog, which FinalOutput applies after the tone-mapping
+// scale and before the sRGB encode: CalcPixelFogFactor (CalcRangeFog for range
+// fog, CalcWaterFogAlpha for height fog) with the pass's g_FogParams, then
+// BlendPixelFog toward g_LinearFogColor, squaring a range factor. Fog type -1
+// is a shader that does not fog. DecalModulate raises the factor to the 0.4.
+vec3 ApplyPixelFog( vec3 color )
+{
+	const float fogType = fragFogColor.w;
+	if ( fogType < -0.5 )
+		return color;
+	const float projZ = fragFogDepth.x;
+	float factor;
+	if ( fogType < 0.5 )
+	{
+		factor = clamp( min( fragFogParams.z, projZ * fragFogParams.w - fragFogParams.x ), 0.0, 1.0 );
+	}
+	else
+	{
+		const float worldZ = fragFogDepth.y;
+		const float depthFromWater = fragFogParams.y - worldZ;
+		const float depthFromEye = fragFogMisc.x - worldZ;
+		const float f = clamp( depthFromWater * ( 1.0 / depthFromEye ), 0.0, 1.0 );
+		factor = clamp( f * projZ * fragFogParams.w, 0.0, 1.0 );
+	}
+	if ( fragFogMisc.y > 0.5 )
+		factor = pow( factor, 0.4 );
+	if ( fogType < 0.5 )
+		factor *= factor;
+	return mix( color, fragFogColor.rgb, factor );
+}
 void main()
 {
 	const int flags = int( consts.alphaParams.z );
@@ -103,6 +138,7 @@ void main()
 		vec3 reflection = texture( envmapTexture, reflectDirection ).rgb * normal.a * envTint;
 		reflection = mix( reflection, reflection * reflection, consts.alphaParams.x );
 		color += reflection;
+		color = ApplyPixelFog( color );
 		if ( ( flags & 4 ) != 0 )
 			color = LinearToSrgb( color );
 		outColor = vec4( color, normal.a );
@@ -203,6 +239,7 @@ void main()
 	                          : result.a < consts.alphaParams.x ) )
 		discard;
 	result.rgb *= consts.alphaParams.w;
+	result.rgb = ApplyPixelFog( result.rgb );
 	if ( ( flags & 4 ) != 0 )
 		result.rgb = LinearToSrgb( result.rgb );
 	outColor = result;

@@ -1418,6 +1418,15 @@ CON_COMMAND( host_writeconfig, "Store current settings to config.cfg (or specifi
 	}
 }
 
+// Portal 2 BaseModUI option dialogs (Keyboard/Mouse, Audio, Video,
+// Controller, Multiplayer) save through the splitscreen engine's per-slot
+// command. This engine has a single local user, whose settings are config.cfg.
+CON_COMMAND( host_writeconfig_ss,
+    "Store current settings to config.cfg; the splitscreen slot argument is ignored." )
+{
+	Host_WriteConfiguration( NULL, true );
+}
+
 #endif
 
 //-----------------------------------------------------------------------------

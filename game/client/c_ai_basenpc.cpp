@@ -31,7 +31,19 @@ IMPLEMENT_CLIENTCLASS_DT( C_AI_BaseNPC, DT_AI_BaseNPC, CAI_BaseNPC )
 	RecvPropInt( RECVINFO( m_bSpeedModActive ) ),
 	RecvPropBool( RECVINFO( m_bImportanRagdoll ) ),
 	RecvPropFloat( RECVINFO( m_flTimePingEffect ) ),
+#ifdef PORTAL2
+	RecvPropString( RECVINFO( m_szNetworkedName ) ),
+#endif
 END_RECV_TABLE()
+
+#ifdef PORTAL2
+static CHandle<C_BaseEntity> s_hPotatosSpeaker;
+
+C_BaseEntity *GetPotatosSpeaker( void )
+{
+	return s_hPotatosSpeaker.Get();
+}
+#endif
 
 extern ConVar cl_npc_speedmod_intime;
 
@@ -146,6 +158,15 @@ void C_AI_BaseNPC::ClientThink( void )
 void C_AI_BaseNPC::OnDataChanged( DataUpdateType_t type )
 {
 	BaseClass::OnDataChanged( type );
+
+#ifdef PORTAL2
+	// As in the retail client, PotatOS's light follows the actor that voices her.
+	if ( type == DATA_UPDATE_CREATED &&
+		 ( !V_stricmp( m_szNetworkedName, "@glados" ) || !V_stricmp( m_szNetworkedName, "@actor_potatos" ) ) )
+	{
+		s_hPotatosSpeaker = this;
+	}
+#endif
 
 	if ( ( ShouldModifyPlayerSpeed() == true ) || ( m_flTimePingEffect > gpGlobals->curtime ) )
 	{

@@ -44,6 +44,9 @@ public:
 private:
 	C_AI_BaseNPC( const C_AI_BaseNPC & ); // not defined, not accessible
 	float m_flTimePingEffect;
+#ifdef PORTAL2
+	char m_szNetworkedName[64];
+#endif
 	int  m_iDeathPose;
 	int	 m_iDeathFrame;
 
@@ -57,5 +60,11 @@ private:
 	bool m_bImportanRagdoll;
 };
 
+
+#ifdef PORTAL2
+// The NPC that speaks for PotatOS (@glados or @actor_potatos), whose mouth
+// drives the LightedMouth material proxy; NULL until one is networked.
+C_BaseEntity *GetPotatosSpeaker( void );
+#endif
 
 #endif // C_AI_BASENPC_H

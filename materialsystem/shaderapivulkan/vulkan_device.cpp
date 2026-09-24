@@ -2743,8 +2743,20 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		t.stages[1] = stages[1];
 		t.stages[0].module = texVert;
 		t.stages[1].module = texFrag;
-		t.binding = binding;
+		t.bindings[0] = binding;
+		// The per-draw fog stream (DrawFog): one record per instance, the draw's
+		// first instance selecting it.
+		t.bindings[1].binding = 1;
+		t.bindings[1].stride = sizeof( DrawFog );
+		t.bindings[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
 		std::memcpy( t.attrs, attrs, sizeof( attrs ) );
+		for ( uint32_t i = 0; i < 4; ++i )
+		{
+			t.attrs[7 + i].location = 7 + i;
+			t.attrs[7 + i].binding = 1;
+			t.attrs[7 + i].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+			t.attrs[7 + i].offset = static_cast<uint32_t>( sizeof( float ) * 4 * i );
+		}
 		// The textured stage reads the world reflection direction from the normal
 		// slot for a lightmapped cubemap pass.
 		t.attrs[4].location = 4;
@@ -2760,23 +2772,28 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		t.attrs[6].format = VK_FORMAT_R32_SFLOAT;
 		t.attrs[6].offset = sizeof( float ) * 17;
 		t.vin = vin;
-		t.vin.pVertexBindingDescriptions = &t.binding;
-		t.vin.vertexAttributeDescriptionCount = 7;
+		t.vin.vertexBindingDescriptionCount = 2;
+		t.vin.pVertexBindingDescriptions = t.bindings;
+		t.vin.vertexAttributeDescriptionCount = 11;
 		t.vin.pVertexAttributeDescriptions = t.attrs;
 		// WMSH v1 keeps the packer's 40-byte corner layout on the GPU. The
 		// dedicated vertex stage reads position, oct-normal and both UV sets;
 		// tangent/handedness remain available in the same record for later
 		// normal-map cohorts.
-		m_worldBinding.binding = 0;
-		m_worldBinding.stride = 40;
-		m_worldBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+		m_worldBindings[0].binding = 0;
+		m_worldBindings[0].stride = 40;
+		m_worldBindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+		m_worldBindings[1] = t.bindings[1];
 		m_worldAttrs[0] = { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0 };
 		m_worldAttrs[1] = { 1, 0, VK_FORMAT_R16G16_SNORM, 12 };
 		m_worldAttrs[2] = { 2, 0, VK_FORMAT_R32G32_SFLOAT, 24 };
 		m_worldAttrs[3] = { 3, 0, VK_FORMAT_R32G32_SFLOAT, 32 };
+		for ( uint32_t i = 0; i < 4; ++i )
+			m_worldAttrs[4 + i] = t.attrs[7 + i];
 		m_worldVin = t.vin;
-		m_worldVin.pVertexBindingDescriptions = &m_worldBinding;
-		m_worldVin.vertexAttributeDescriptionCount = 4;
+		m_worldVin.vertexBindingDescriptionCount = 2;
+		m_worldVin.pVertexBindingDescriptions = m_worldBindings;
+		m_worldVin.vertexAttributeDescriptionCount = 8;
 		m_worldVin.pVertexAttributeDescriptions = m_worldAttrs;
 		if ( !( m_clipPlanesSupported
 		             ? CreateShaderModule( g_worldMeshClipVertSpv, sizeof( g_worldMeshClipVertSpv ),
@@ -4552,6 +4569,7 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 	std::memcpy( d.clipPlanes, m_dynClipPlanes, sizeof( d.clipPlanes ) );
 	std::memcpy( d.samplerHandles, m_dynSamplerHandles, sizeof( d.samplerHandles ) );
 	d.portal = m_dynPortal;
+	d.fog = m_dynFog;
 	if ( d.shaderIndex == kDynShaderSkin || d.shaderIndex == kDynShaderSolidEnergy )
 	{
 		d.skin = static_cast<int>( m_dynSkinConstants.size() );
@@ -5049,6 +5067,7 @@ void CVulkanContext::DestroyDynamicMesh()
 	{
 		DestroyStreamBuffer( m_dynVertexStreams[slot] );
 		DestroyStreamBuffer( m_dynIndexStreams[slot] );
+		DestroyStreamBuffer( m_dynFogStreams[slot] );
 		DestroyStreamBuffer( m_uploadStreams[slot] );
 	}
 	m_pendingUploads.clear();
@@ -5620,6 +5639,32 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		// issued against; a change of target closes the open pass and opens the
 		// new target's, so a portal view rendered into _rt_portal1 lands there and
 		// is finished before the main view samples it.
+		// The draws' fog, one record per run of draws that share it, in this
+		// frame's instance stream (vertex binding 1 of the textured and world
+		// pipelines); each draw's first instance selects its record.
+		std::vector<uint32_t> fogIndex( m_dynDrawRecords.size(), 0 );
+		{
+			std::vector<DrawFog> fogRecords( 1 ); // record 0: no fog
+			for ( size_t i = 0; i < m_dynDrawRecords.size(); ++i )
+			{
+				const DynDraw &r = m_dynDrawRecords[i];
+				if ( r.kind != kRecordDraw || r.fog.color[3] < 0.0f )
+					continue;
+				if ( !( r.fog == fogRecords.back() ) )
+					fogRecords.push_back( r.fog );
+				fogIndex[i] = static_cast<uint32_t>( fogRecords.size() - 1 );
+			}
+			StreamBuffer &fogStream = m_dynFogStreams[m_currentFrame];
+			const VkDeviceSize fogBytes = fogRecords.size() * sizeof( DrawFog );
+			if ( EnsureStreamBuffer( fogStream, fogBytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT ) )
+			{
+				std::memcpy( fogStream.mapped, fogRecords.data(), fogBytes );
+				VkDeviceSize offset = 0;
+				vkCmdBindVertexBuffers( cmd, 1, 1, &fogStream.buffer, &offset );
+			}
+			else
+				std::fill( fogIndex.begin(), fogIndex.end(), 0u );
+		}
 		// The skin draws' pixel shader constants, in this frame's uniform buffer.
 		std::vector<uint32_t> skinOffsets;
 		const bool skinConstantsOk = UploadSkinConstants( &skinOffsets );
@@ -6156,7 +6201,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					vkCmdBindIndexBuffer( cmd, m_worldIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32 );
 					worldBuffersBound = true;
 				}
-				vkCmdDrawIndexed( cmd, d.indexCount, 1, d.firstIndex, 0, 0 );
+				vkCmdDrawIndexed( cmd, d.indexCount, 1, d.firstIndex, 0, fogIndex[recordIndex] );
 			}
 			else if ( d.indexCount > 0 )
 			{
@@ -6170,7 +6215,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				}
 				if ( indicesOk )
 					vkCmdDrawIndexed( cmd, d.indexCount, 1, d.firstIndex,
-					    static_cast<int32_t>( d.firstVertex ), 0 );
+					    static_cast<int32_t>( d.firstVertex ), fogIndex[recordIndex] );
 			}
 			else
 			{
@@ -6180,7 +6225,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					vkCmdBindVertexBuffers( cmd, 0, 1, &vertexStream.buffer, &offset );
 					worldBuffersBound = false;
 				}
-				vkCmdDraw( cmd, d.vertexCount, 1, d.firstVertex, 0 );
+				vkCmdDraw( cmd, d.vertexCount, 1, d.firstVertex, fogIndex[recordIndex] );
 			}
 		}
 		endActiveQuery( false );
