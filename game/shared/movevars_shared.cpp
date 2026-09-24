@@ -16,7 +16,9 @@
 #include "tier0/memdbgon.h"
 
 // some cvars used by player movement system
-#if defined( HL2_DLL ) || defined( HL2_CLIENT_DLL )
+// Portal 2 is not an HL2_DLL build, but its retail server and client both
+// register sv_gravity as "600"; trigger_catapult arcs and jump height assume it.
+#if defined( HL2_DLL ) || defined( HL2_CLIENT_DLL ) || defined( PORTAL2 )
 #define DEFAULT_GRAVITY_STRING	"600"
 #else
 #define DEFAULT_GRAVITY_STRING	"800"

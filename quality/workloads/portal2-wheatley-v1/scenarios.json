@@ -4,6 +4,51 @@
   "driver": "qa_driver.nut",
   "scenarios": [
     {
+      "name": "sp_a1_intro2",
+      "map": "sp_a1_intro2",
+      "script": "sp_a1_intro2.nut",
+      "timeout_seconds": 180,
+      "required_checks": [
+        "cube.at_rest",
+        "cube.picked_up",
+        "cube.held",
+        "cube.follows_turn",
+        "cube.follows_after_idle",
+        "cube.carried_across",
+        "cube.still_held_at_button",
+        "cube.dropped",
+        "button.pressed"
+      ]
+    },
+    {
+      "name": "sp_a1_intro7",
+      "map": "sp_a1_intro7",
+      "script": "sp_a1_intro7.nut",
+      "timeout_seconds": 360,
+      "required_checks": [
+        "rail.attached",
+        "rail.catch_scene",
+        "rail.fell",
+        "floor.at_rest",
+        "floor.picked_up",
+        "carry.held",
+        "carry.follows_turn",
+        "carry.drop_locked",
+        "socket.opened",
+        "socket.waits_for_carry",
+        "socket.trigger_fired",
+        "socket.parented",
+        "socket.panel_opens",
+        "socket.released_by_player",
+        "panel.looked_away",
+        "panel.looked_back",
+        "eject.released",
+        "eject.picked_up_again",
+        "exit.find_elevator",
+        "exit.still_held"
+      ]
+    },
+    {
       "name": "sp_a1_wakeup",
       "map": "sp_a1_wakeup",
       "script": "sp_a1_wakeup.nut",
@@ -26,6 +71,26 @@
         "socket.parented",
         "socket.breakers_start",
         "socket.released_by_player"
+      ]
+    },
+    {
+      "name": "sp_a2_core",
+      "map": "sp_a2_core",
+      "script": "sp_a2_core.nut",
+      "timeout_seconds": 240,
+      "required_checks": [
+        "tube.attached",
+        "floor.landed",
+        "receptacle.deployed",
+        "floor.picked_up",
+        "carry.held",
+        "carry.follows_turn",
+        "carry.drop_locked",
+        "receptacle.waits_for_carry",
+        "receptacle.trigger_fired",
+        "receptacle.parented",
+        "receptacle.core_socketed",
+        "receptacle.released_by_player"
       ]
     }
   ]

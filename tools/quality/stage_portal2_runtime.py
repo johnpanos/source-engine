@@ -65,7 +65,10 @@ def stage_content(steam_root, runtime, mount_custom=False):
             raise ValueError("staged %s is not a link to the selected Steam installation" % link.name)
         link.symlink_to(source, target_is_directory=True)
     gameinfo = runtime / "portal2/gameinfo.txt"
-    gameinfo.write_text(retail_search_paths(gameinfo.read_text(), mount_custom))
+    contents = gameinfo.read_text()
+    staged = retail_search_paths(contents, mount_custom)
+    if staged != contents:  # keep the modification time a device sync compares
+        gameinfo.write_text(staged)
 
     # The old GameUI expects these legacy names, while Portal 2 ships the same
     # menu artwork as portal2_product_1{,_widescreen}.vtf in its VPK. The

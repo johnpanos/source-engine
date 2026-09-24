@@ -1133,6 +1133,29 @@ void CBaseEntity::TransformStepData_WorldToParent( CBaseEntity *pParent )
 //			from the parent entity and will then follow the parent entity.
 // Input  : pParentEntity - This entity's new parent in the movement hierarchy.
 //-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+// Purpose: A physically simulated entity that leaves a hierarchy continues from
+//			where the hierarchy put it. While parented, VPhysicsUpdate ignores
+//			its physics object, which keeps simulating on its own without
+//			collisions (Portal 2 parents personality cores to rails and
+//			sockets) and may have drifted away or gone to sleep.
+//-----------------------------------------------------------------------------
+static void ResumePhysicsAfterHierarchy( CBaseEntity *pEntity )
+{
+	IPhysicsObject *pPhysics = pEntity->VPhysicsGetObject();
+	if ( pEntity->GetMoveType() != MOVETYPE_VPHYSICS || !pPhysics || pPhysics->IsStatic() )
+		return;
+
+	pPhysics->SetPosition( pEntity->GetAbsOrigin(), pEntity->GetAbsAngles(), true );
+	if ( pPhysics->IsMotionEnabled() )
+	{
+		Vector vecVelocity = pEntity->GetAbsVelocity();
+		AngularImpulse angImpulse( 0, 0, 0 );
+		pPhysics->SetVelocity( &vecVelocity, &angImpulse );
+		pPhysics->Wake();
+	}
+}
+
 void CBaseEntity::SetParent( CBaseEntity *pParentEntity, int iAttachment )
 {
 	// If they didn't specify an attachment, use our current
@@ -1163,6 +1186,11 @@ void CBaseEntity::SetParent( CBaseEntity *pParentEntity, int iAttachment )
 
 		// Transform step data from parent to worldspace
 		TransformStepData_ParentToWorld( pOldParent );
+
+		if ( pOldParent )
+		{
+			ResumePhysicsAfterHierarchy( this );
+		}
 		return;
 	}
 

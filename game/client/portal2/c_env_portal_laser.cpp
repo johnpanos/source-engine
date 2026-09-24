@@ -44,8 +44,8 @@ private:
 	void StopSparkEffect();
 
 	C_PortalBeamHelper m_beamHelper;
-	CHandle< C_BaseEntity > m_hReflector;
-	CUtlReference< CNewParticleEffect > m_pSparkEffect;
+	CHandle<C_BaseEntity> m_hReflector;
+	CUtlReference<CNewParticleEffect> m_pSparkEffect;
 	Vector m_vStartPoint;
 	Vector m_vEndPoint;
 	bool m_bLaserOn;
@@ -57,21 +57,17 @@ private:
 };
 
 IMPLEMENT_CLIENTCLASS_DT( C_PortalLaser, DT_PortalLaser, CPortalLaser )
-	RecvPropEHandle( RECVINFO( m_hReflector ) ),
-	RecvPropVector( RECVINFO( m_vStartPoint ) ),
-	RecvPropVector( RECVINFO( m_vEndPoint ) ),
-	RecvPropBool( RECVINFO( m_bLaserOn ) ),
-	RecvPropBool( RECVINFO( m_bIsLethal ) ),
-	RecvPropBool( RECVINFO( m_bIsAutoAiming ) ),
-	RecvPropBool( RECVINFO( m_bShouldSpark ) ),
-	RecvPropBool( RECVINFO( m_bUseParentDir ) ),
-	RecvPropQAngles( RECVINFO( m_angParentAngles ) ),
-END_RECV_TABLE()
+RecvPropEHandle( RECVINFO( m_hReflector ) ), RecvPropVector( RECVINFO( m_vStartPoint ) ),
+    RecvPropVector( RECVINFO( m_vEndPoint ) ), RecvPropBool( RECVINFO( m_bLaserOn ) ),
+    RecvPropBool( RECVINFO( m_bIsLethal ) ), RecvPropBool( RECVINFO( m_bIsAutoAiming ) ),
+    RecvPropBool( RECVINFO( m_bShouldSpark ) ), RecvPropBool( RECVINFO( m_bUseParentDir ) ),
+    RecvPropQAngles( RECVINFO( m_angParentAngles ) ),
+    END_RECV_TABLE()
 
-//-----------------------------------------------------------------------------
-// Purpose:
-//-----------------------------------------------------------------------------
-C_PortalLaser::C_PortalLaser()
+    //-----------------------------------------------------------------------------
+    // Purpose:
+    //-----------------------------------------------------------------------------
+    C_PortalLaser::C_PortalLaser()
 {
 	m_pSparkEffect = NULL;
 	m_vStartPoint = vec3_origin;
@@ -172,7 +168,8 @@ void C_PortalLaser::ClientThink()
 	trace_t tr;
 	if ( pReflector == NULL )
 	{
-		m_beamHelper.UpdatePoints( m_vStartPoint, m_vEndPoint, MASK_SHOT & ~CONTENTS_WINDOW, &traceFilter, &tr );
+		m_beamHelper.UpdatePoints(
+		    m_vStartPoint, m_vEndPoint, MASK_SHOT & ~CONTENTS_WINDOW, &traceFilter, &tr );
 	}
 	else
 	{
@@ -194,9 +191,11 @@ void C_PortalLaser::ClientThink()
 		if ( pSimulator && pSimulator->EntityIsInPortalHole( pReflector ) )
 		{
 			const VPlane &portalPlane = pSimulator->GetInternalData().Placement.PortalPlane;
-			if ( portalPlane.DistTo( vStart ) < 0.0f && portalPlane.DistTo( pReflector->WorldSpaceCenter() ) > 0.0f )
+			if ( portalPlane.DistTo( vStart ) < 0.0f &&
+			     portalPlane.DistTo( pReflector->WorldSpaceCenter() ) > 0.0f )
 			{
-				const VMatrix &matThisToLinked = pSimulator->GetInternalData().Placement.matThisToLinked;
+				const VMatrix &matThisToLinked =
+				    pSimulator->GetInternalData().Placement.matThisToLinked;
 				vStart = matThisToLinked * vStart;
 				vDir = matThisToLinked.ApplyRotation( vDir );
 			}
@@ -213,7 +212,8 @@ void C_PortalLaser::ClientThink()
 			UTIL_Portal_Laser_Prevent_Tilting( vDir );
 		}
 
-		m_beamHelper.UpdatePointDirection( vStart, vDir, MASK_SHOT & ~CONTENTS_WINDOW, &traceFilter, &tr );
+		m_beamHelper.UpdatePointDirection(
+		    vStart, vDir, MASK_SHOT & ~CONTENTS_WINDOW, &traceFilter, &tr );
 	}
 
 	// Sparks at the end of the last segment, facing along the surface normal
@@ -234,7 +234,8 @@ void C_PortalLaser::ClientThink()
 //-----------------------------------------------------------------------------
 void C_PortalLaser::CreateSparkEffect()
 {
-	m_pSparkEffect = ParticleProp()->Create( LASER_SPARK_EFFECT_NAME, PATTACH_CUSTOMORIGIN, -1, vec3_origin );
+	m_pSparkEffect =
+	    ParticleProp()->Create( LASER_SPARK_EFFECT_NAME, PATTACH_CUSTOMORIGIN, -1, vec3_origin );
 }
 
 //-----------------------------------------------------------------------------

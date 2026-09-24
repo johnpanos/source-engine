@@ -195,12 +195,11 @@ QA_WaitFor( "socket.breakers_start", function()
 	return QA_Fired( "basement_breakers_start", "OnTrigger" ) == 1
 }, 4.0 )
 
-// Once socketed he belongs to the socket: stepping back and turning away
-// must leave him there instead of dragging him along.
+// Once socketed he belongs to the socket: after the player steps back and
+// turns, he must not be where a held core would be.
 QA_Do( "step back", function()
 {
 	local p = QA_Player()
-	::QA.marks.eyeDistance <- QA_Dist( QA_Ent( "@sphere" ).GetCenter(), p.EyePosition() )
 	local back = QA_Basis( 0.0, p.GetAngles().y ).forward
 	QA_PlaceEye( p.EyePosition() - QA_Scale( back, 64.0 ), 0.0, p.GetAngles().y + 90.0 )
 }, 1.5 )
@@ -208,9 +207,9 @@ QA_Do( "step back", function()
 QA_Expect( "socket.released_by_player", function()
 {
 	local s = QA_Ent( "@sphere" )
-	local d = QA_Dist( s.GetCenter(), QA_Player().EyePosition() )
-	QA_Detail( format( "eye distance %.1f -> %.1f", ::QA.marks.eyeDistance, d ) + " parent=" + QA_ParentName( s ) )
-	return QA_ParentName( s ) == "core_receptacle_socket" && d > ::QA.marks.eyeDistance + 40.0
+	local held = QA_HeldAt( s, "carry", 20.0 )
+	QA_Detail( ::QA.detail + " parent=" + QA_ParentName( s ) )
+	return QA_ParentName( s ) == "core_receptacle_socket" && !held
 } )
 
 QA_Start( "sp_a1_wakeup" )

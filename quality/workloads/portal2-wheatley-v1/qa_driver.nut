@@ -294,8 +294,9 @@ function QA_LookAt( target )
 	QA_SetView( angles.pitch, angles.yaw )
 }
 
-// Stand <distance> units from <target> along the horizontal line to <from>
-// and look at it; used to reach an object before +use.
+// Stand, at the player's current height, <distance> units (horizontally)
+// from <target> on the side of <from>, and look at it: how a player reaches
+// an object before +use.
 function QA_Approach( target, from, distance )
 {
 	local d = from - target
@@ -306,9 +307,32 @@ function QA_Approach( target, from, distance )
 	else
 		d = QA_Scale( d, 1.0 / length )
 	local eye = target + QA_Scale( d, distance )
-	eye.z = target.z + 8.0
+	eye.z = QA_Player().EyePosition().z
 	local angles = QA_AnglesTo( eye, target )
 	QA_PlaceEye( eye, angles.pitch, angles.yaw )
+}
+
+// Puts the player's feet on the floor of a brush trigger's volume.
+function QA_StandIn( trigger, yaw )
+{
+	local center = trigger.GetCenter()
+	local floor = trigger.GetOrigin().z + trigger.GetBoundingMins().z
+	local player = QA_Player()
+	player.SetVelocity( Vector( 0, 0, 0 ) )
+	player.SetOrigin( Vector( center.x, center.y, floor + 2.0 ) )
+	QA_SetView( 0.0, yaw )
+}
+
+// One +use attempt per second on <name>, approached from the player's side;
+// use as the body of a QA_WaitFor that checks the pickup output.
+function QA_TryPickup( name, distance )
+{
+	if ( ( "nextUse" in ::QA.marks ) && Time() < ::QA.marks.nextUse )
+		return
+	local ent = QA_Ent( name )
+	QA_Approach( ent.GetCenter(), QA_Player().EyePosition(), distance )
+	QA_Press( "use", 0.1 )
+	::QA.marks.nextUse <- Time() + 1.0
 }
 
 // Where the held object sits in view space (forward, right, up) right now.

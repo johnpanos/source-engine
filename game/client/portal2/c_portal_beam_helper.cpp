@@ -77,7 +77,8 @@ void C_PortalBeamHelper::TurnOff()
 //-----------------------------------------------------------------------------
 C_Beam *C_PortalBeamHelper::CreateBeam()
 {
-	C_Beam *pBeam = C_Beam::BeamCreate( STRING( m_pBeamTemplate->GetModelName() ), m_pBeamTemplate->GetWidth() );
+	C_Beam *pBeam = C_Beam::BeamCreate(
+	    STRING( m_pBeamTemplate->GetModelName() ), m_pBeamTemplate->GetWidth() );
 
 	pBeam->SetType( m_pBeamTemplate->GetType() );
 	pBeam->SetBeamFlags( m_pBeamTemplate->GetBeamFlags() );
@@ -100,7 +101,8 @@ C_Beam *C_PortalBeamHelper::CreateBeam()
 //-----------------------------------------------------------------------------
 // Purpose: Places one beam per segment of the trace through portals
 //-----------------------------------------------------------------------------
-void C_PortalBeamHelper::UpdatePoints( const Vector &vStartPoint, const Vector &vEndPoint, unsigned int fMask, ITraceFilter *pTraceFilter, trace_t *pTrace )
+void C_PortalBeamHelper::UpdatePoints( const Vector &vStartPoint, const Vector &vEndPoint,
+    unsigned int fMask, ITraceFilter *pTraceFilter, trace_t *pTrace )
 {
 	Vector vStart = vStartPoint;
 	Vector vDir = vEndPoint - vStartPoint;
@@ -134,7 +136,8 @@ void C_PortalBeamHelper::UpdatePoints( const Vector &vStartPoint, const Vector &
 		++nBeams;
 
 		C_Portal_Base2D *pPortal = NULL;
-		if ( UTIL_DidTraceTouchPortals( ray, tr, &pPortal ) && pPortal && pPortal->IsActivedAndLinked() )
+		if ( UTIL_DidTraceTouchPortals( ray, tr, &pPortal ) && pPortal &&
+		     pPortal->IsActivedAndLinked() )
 		{
 			// Nothing to draw at the end that enters the portal
 			pBeam->SetHaloTexture( 0 );
@@ -179,7 +182,9 @@ void C_PortalBeamHelper::UpdatePoints( const Vector &vStartPoint, const Vector &
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
-void C_PortalBeamHelper::UpdatePointDirection( const Vector &vStartPoint, const Vector &vDirection, unsigned int fMask, ITraceFilter *pTraceFilter, trace_t *pTrace )
+void C_PortalBeamHelper::UpdatePointDirection( const Vector &vStartPoint, const Vector &vDirection,
+    unsigned int fMask, ITraceFilter *pTraceFilter, trace_t *pTrace )
 {
-	UpdatePoints( vStartPoint, vStartPoint + vDirection * MAX_TRACE_LENGTH, fMask, pTraceFilter, pTrace );
+	UpdatePoints(
+	    vStartPoint, vStartPoint + vDirection * MAX_TRACE_LENGTH, fMask, pTraceFilter, pTrace );
 }

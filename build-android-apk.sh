@@ -582,8 +582,8 @@ push_content()
 		done < <(awk -v d="$dir" '{ p = $0; sub("/[^/]*$", "", p); if (p == d) print }' \
 			"$plan/needed.txt")
 		adb_cmd shell mkdir -p "'$dest/$dir'" </dev/null
-		adb_cmd push "${files[@]}" "$dest/$dir/" </dev/null >/dev/null ||
-			die "adb push to $dest/$dir failed"
+		adb_cmd push "${files[@]}" "$dest/$dir/" </dev/null >"$plan/push.log" 2>&1 ||
+			{ tail -5 "$plan/push.log"; die "adb push to $dest/$dir failed"; }
 		echo "  $dir/ (${#files[@]})"
 	done < <(sed 's|/[^/]*$||' "$plan/needed.txt" | sort -u)
 

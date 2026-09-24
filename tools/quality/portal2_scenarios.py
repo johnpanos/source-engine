@@ -58,6 +58,15 @@ def load_workload(path):
     driver = workload.get("driver")
     if not isinstance(driver, str) or not (path.parent / driver).is_file():
         raise ScenarioError("%s: driver script is missing" % path)
+    includes = workload.get("includes", [])
+    if not isinstance(includes, list) or not all(
+            isinstance(script, str) and script.endswith(".nut") and (path.parent / script).is_file()
+            for script in includes):
+        raise ScenarioError("%s: an included script is missing" % path)
+    installed = [Path(script).name for script in [driver] + includes] + \
+        [Path(str(scenario.get("script", ""))).name for scenario in workload.get("scenarios", [])]
+    if len(set(installed)) != len(installed):
+        raise ScenarioError("%s: scripts must have distinct file names" % path)
     scenarios = workload.get("scenarios")
     if not isinstance(scenarios, list) or not scenarios:
         raise ScenarioError("%s: no scenarios" % path)
@@ -161,9 +170,12 @@ def install_scripts(workload_path, workload, runtime):
     if vscripts.exists():
         shutil.rmtree(vscripts)
     vscripts.mkdir(parents=True)
-    scripts = [workload["driver"]] + [scenario["script"] for scenario in workload["scenarios"]]
+    scripts = [workload["driver"]] + workload.get("includes", []) + \
+        [scenario["script"] for scenario in workload["scenarios"]]
     for script in scripts:
-        shutil.copy2(source / script, vscripts / script)
+        # A workload may share another workload's driver; scripts install flat
+        # under qa/, so scenarios include them as qa/<name>.
+        shutil.copy2(source / script, vscripts / Path(script).name)
     config = Path(runtime) / "portal2/cfg"
     for scenario in workload["scenarios"]:
         # Only a single-line config honours wait; this one only starts the driver.

@@ -202,16 +202,19 @@ installed VPKs. Each file has a `Portal 2 reconstruction` header.
   callers. The Linux VPC configuration enables neither, so the unit is empty
   here.
 
-Two listed paths have no retail counterpart and stay intentionally empty:
+One listed path has no retail counterpart and stays intentionally empty:
 
 - `c_portal2_lesson.cpp`: the retail lesson classes (`CBaseLesson`,
   `CTextLesson`, `CIconLesson`, `CScriptedIconLesson`) all come from
   `c_baselesson.cpp`, and the binary records that source path. No other lesson
   class, string or RTTI name exists.
-- `c_portal_beam_helper.cpp`: the retail client and server have no RTTI name,
-  string or source path for a beam helper, and nothing includes
-  `c_portal_beam_helper.h`. A non-polymorphic helper would leave no RTTI, so
-  this is absence of evidence rather than proof.
+
+`c_portal_beam_helper.cpp` and `.h` were first kept empty for lack of an RTTI
+name. On 2026-09-24 they were reconstructed from the retail Linux `client.so`
+(2014), where the non-polymorphic `C_PortalBeamHelper` is called from
+`C_PortalLaser` and `C_NPC_Portal_FloorTurret`: it re-traces a beam through up to
+ten portal hops each frame and places one client `C_Beam` per segment. The 2010
+Steam2 builds predate it and drew the laser as one server beam.
 
 ## Configured Linux source selection
 

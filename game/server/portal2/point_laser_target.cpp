@@ -34,19 +34,6 @@ END_DATADESC()
 
 
 //-----------------------------------------------------------------------------
-// Purpose:
-//-----------------------------------------------------------------------------
-CPortalLaserTarget::CPortalLaserTarget()
-{
-	// Reconstruction note: the Portal 2 base entity constructor sets this flag
-	// for every entity; this SDK does not. Without it the non-solid target never
-	// enters the spatial partition, so UTIL_EntitiesAlongRay cannot find it. It
-	// must be set before the partition handle is created (catchers move their
-	// target before spawning it).
-	AddEFlags( EFL_USE_PARTITION_WHEN_NOT_SOLID );
-}
-
-//-----------------------------------------------------------------------------
 // Purpose: Laser targets are tiny invisible boxes that lasers can find
 //-----------------------------------------------------------------------------
 void CPortalLaserTarget::Spawn()
@@ -59,6 +46,19 @@ void CPortalLaserTarget::Spawn()
 	UTIL_SetSize( this, -Vector( flWidth, flWidth, flWidth ), Vector( flWidth, flWidth, flWidth ) );
 
 	BaseClass::Spawn();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose:
+//-----------------------------------------------------------------------------
+CPortalLaserTarget::CPortalLaserTarget()
+{
+	// Reconstruction note: the Portal 2 base entity constructor sets this flag
+	// for every entity; this SDK does not. Without it the non-solid target never
+	// enters the spatial partition, so UTIL_EntitiesAlongRay cannot find it. It
+	// must be set before the partition handle is created (catchers move their
+	// target before spawning it).
+	AddEFlags( EFL_USE_PARTITION_WHEN_NOT_SOLID );
 }
 
 //-----------------------------------------------------------------------------

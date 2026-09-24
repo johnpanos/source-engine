@@ -1,0 +1,35 @@
+{
+  "schema": "portal2-scenarios/v1",
+  "description": "trigger_catapult (aerial faith plate) scenarios on retail Portal 2 maps: targeted plates must land the player on their info_target along retail's sv_gravity 600 arc, mid-air threshold catapults must correct only in-tolerance flights, and physics plates must fling cubes. Run by tools/quality/portal2_scenarios.py.",
+  "driver": "../portal2-wheatley-v1/qa_driver.nut",
+  "scenarios": [
+    {
+      "name": "sp_a2_catapult_intro",
+      "map": "sp_a2_catapult_intro",
+      "script": "sp_a2_catapult_intro.nut",
+      "timeout_seconds": 180,
+      "required_checks": [
+        "plate2a.launched",
+        "plate2a.landed",
+        "plate2a.gravity",
+        "plate2a.touchdown",
+        "plate2a.rest",
+        "plate2b.launched",
+        "plate2b.landed",
+        "plate2b.gravity",
+        "plate2b.touchdown",
+        "plate2b.rest",
+        "plate2c.launched",
+        "plate2c.landed",
+        "plate2c.gravity",
+        "plate2c.touchdown",
+        "plate2c.rest",
+        "plate2c.cube_plate_ignores_player",
+        "cube.launched_up"
+      ]
+    }
+  ],
+  "includes": [
+    "qa_catapult.nut"
+  ]
+}

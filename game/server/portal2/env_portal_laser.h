@@ -17,7 +17,6 @@
 #include "baseanimating.h"
 #include "utlvector.h"
 
-class CSprite;
 class CSoundPatch;
 class CInfoPlacementHelper;
 
@@ -97,7 +96,7 @@ private:
 	CBaseEntity *m_pSoundProxy[ MAX_PLAYERS ];
 	CSoundPatch *m_pAmbientSound[ MAX_PLAYERS ];
 	CInfoPlacementHelper *m_pPlacementHelper;
-	CSprite *m_pLaserGlow;
+	bool m_bGlowInitialized;
 	int m_iLaserAttachment;
 	string_t m_ModelName;
 	bool m_bStartOff;

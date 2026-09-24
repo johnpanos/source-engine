@@ -11,7 +11,7 @@
 
 #include "cbase.h"
 #include "env_portal_laser.h"
-#include "Sprite.h"
+#include "particle_parse.h"
 #include "soundenvelope.h"
 #include "info_placement_helper.h"
 #include "point_laser_target.h"
@@ -36,14 +36,15 @@ ConVar sv_player_collide_with_laser( "sv_player_collide_with_laser", "1", FCVAR_
 
 ConVar new_portal_laser( "new_portal_laser", "1", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
 ConVar portal_laser_normal_update( "portal_laser_normal_update", "0.05f", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
-ConVar portal_laser_high_precision_update( "portal_laser_high_precision_update", "0.03f", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
+ConVar portal_laser_high_precision_update(
+    "portal_laser_high_precision_update", "0.03f", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
 ConVar sv_debug_laser( "sv_debug_laser", "0", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
 ConVar sv_laser_cube_autoaim( "sv_laser_cube_autoaim", "0", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
 
-const char *g_pLaserGlowSpriteName = "decals/redglowfade.vmt";
-
 int g_nTotalLaser = 0;
 
+// Source send-table and data-description macros require their declaration layout.
+// clang-format off
 IMPLEMENT_SERVERCLASS_ST( CPortalLaser, DT_PortalLaser )
 	SendPropEHandle( SENDINFO( m_hReflector ) ),
 	// Reconstruction note: retail passes 2 (SPROP_COORD) in the nBits slot and
@@ -71,7 +72,6 @@ BEGIN_DATADESC( CPortalLaser )
 	DEFINE_FIELD( m_pPlacementHelper, FIELD_CLASSPTR ),
 	DEFINE_FIELD( m_bLaserOn, FIELD_BOOLEAN ),
 	DEFINE_FIELD( m_iLaserAttachment, FIELD_INTEGER ),
-	DEFINE_FIELD( m_pLaserGlow, FIELD_CLASSPTR ),
 
 	DEFINE_KEYFIELD( m_ModelName, FIELD_MODELNAME, "model" ),
 	DEFINE_KEYFIELD( m_bStartOff, FIELD_BOOLEAN, "StartState" ),
@@ -84,6 +84,7 @@ BEGIN_DATADESC( CPortalLaser )
 END_DATADESC()
 
 IMPLEMENT_AUTO_LIST( IPortalLaserAutoList );
+// clang-format on
 
 static const char LASER_LOOPING_SOUND[] = "Laser.BeamLoop";
 static const char LETHAL_LASER_LOOPING_SOUND[] = "LaserGreen.BeamLoop";
@@ -106,6 +107,7 @@ CPortalLaser::CPortalLaser()
 	m_bShouldSpark = false;
 	m_bUseParentDir = false;
 	m_angParentAngles = vec3_angle;
+	m_bGlowInitialized = false;
 
 	++g_nTotalLaser;
 }
@@ -272,7 +274,8 @@ void CPortalLaser::Precache()
 
 	PrecacheScriptSound( LASER_BURN_SOUND );
 
-	PrecacheModel( g_pLaserGlowSpriteName );
+	PrecacheParticleSystem( "laser_start_glow" );
+	PrecacheParticleSystem( "reflector_start_glow" );
 
 	if ( m_bFromReflectedCube )
 		return;
@@ -376,8 +379,6 @@ void CPortalLaser::TurnOn()
 	// opposite selection. Both are kept as found.
 	float flNextUpdate = m_bFromReflectedCube ? portal_laser_normal_update.GetFloat() : portal_laser_high_precision_update.GetFloat();
 	SetNextThink( gpGlobals->curtime + flNextUpdate );
-
-	TurnOnGlow();
 }
 
 //-----------------------------------------------------------------------------
@@ -441,14 +442,22 @@ void CPortalLaser::BeamDamage( trace_t *ptr )
 //-----------------------------------------------------------------------------
 void CPortalLaser::TurnOnGlow()
 {
-	if ( m_bFromReflectedCube || m_pLaserGlow )
+	m_bGlowInitialized = true;
+
+	CBaseEntity *pReflector = m_hReflector.Get();
+	if ( UTIL_IsSchrodinger( pReflector ) )
 		return;
 
-	m_pLaserGlow = CSprite::SpriteCreate( g_pLaserGlowSpriteName, GetLocalOrigin(), false );
-	m_pLaserGlow->SetAttachment( this, m_iLaserAttachment );
-	m_pLaserGlow->FollowEntity( this );
-	m_pLaserGlow->SetBrightness( 128, 0.1f );
-	m_pLaserGlow->SetScale( 2.0f, 0.1f );
+	if ( m_bFromReflectedCube )
+	{
+		DispatchParticleEffect(
+		    "reflector_start_glow", PATTACH_ABSORIGIN_FOLLOW, pReflector, 0, true );
+	}
+	else
+	{
+		DispatchParticleEffect(
+		    "laser_start_glow", PATTACH_POINT_FOLLOW, this, m_iLaserAttachment, true );
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -456,10 +465,12 @@ void CPortalLaser::TurnOnGlow()
 //-----------------------------------------------------------------------------
 void CPortalLaser::TurnOffGlow()
 {
-	if ( m_pLaserGlow )
+	m_bGlowInitialized = false;
+
+	CBaseEntity *pGlowEntity = m_bFromReflectedCube ? m_hReflector.Get() : this;
+	if ( pGlowEntity )
 	{
-		m_pLaserGlow->FadeAndDie( 1.0f );
-		m_pLaserGlow = NULL;
+		StopParticleEffects( pGlowEntity );
 	}
 }
 
@@ -1383,9 +1394,11 @@ void CPortalLaser::StrikeThink()
 		if ( pSimulator && pSimulator->EntityIsInPortalHole( pParent ) )
 		{
 			const VPlane &portalPlane = pSimulator->GetInternalData().Placement.PortalPlane;
-			if ( portalPlane.DistTo( vecOrigin ) < 0.0f && portalPlane.DistTo( pParent->WorldSpaceCenter() ) > 0.0f )
+			if ( portalPlane.DistTo( vecOrigin ) < 0.0f &&
+			     portalPlane.DistTo( pParent->WorldSpaceCenter() ) > 0.0f )
 			{
-				const VMatrix &matThisToLinked = pSimulator->GetInternalData().Placement.matThisToLinked;
+				const VMatrix &matThisToLinked =
+				    pSimulator->GetInternalData().Placement.matThisToLinked;
 				vecOrigin = matThisToLinked * vecOrigin;
 				vecDir = matThisToLinked.ApplyRotation( vecDir );
 			}
@@ -1401,6 +1414,12 @@ void CPortalLaser::StrikeThink()
 	}
 
 	UTIL_Portal_Laser_Prevent_Tilting( vecDir );
+
+	// The glow starts once the first beam fires
+	if ( !m_bGlowInitialized )
+	{
+		TurnOnGlow();
+	}
 
 	FireLaser( vecOrigin, vecDir, pParent );
 

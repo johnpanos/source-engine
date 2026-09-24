@@ -41,8 +41,10 @@ public:
 
 	// Traces from vStartPoint towards vEndPoint through any portals, placing one
 	// beam per segment. pTrace receives the final segment's trace.
-	void UpdatePoints( const Vector &vStartPoint, const Vector &vEndPoint, unsigned int fMask, ITraceFilter *pTraceFilter, trace_t *pTrace );
-	void UpdatePointDirection( const Vector &vStartPoint, const Vector &vDirection, unsigned int fMask, ITraceFilter *pTraceFilter, trace_t *pTrace );
+	void UpdatePoints( const Vector &vStartPoint, const Vector &vEndPoint, unsigned int fMask,
+	    ITraceFilter *pTraceFilter, trace_t *pTrace );
+	void UpdatePointDirection( const Vector &vStartPoint, const Vector &vDirection,
+	    unsigned int fMask, ITraceFilter *pTraceFilter, trace_t *pTrace );
 
 	int BeamCount() const { return m_beams.Count(); }
 	C_Beam *GetBeam( int i ) const { return m_beams[i]; }
@@ -53,7 +55,7 @@ private:
 	C_Beam *CreateBeam();
 
 	C_Beam *m_pBeamTemplate;
-	CUtlVector< C_Beam* > m_beams;
+	CUtlVector<C_Beam *> m_beams;
 };
 
 #endif // C_PORTAL_BEAM_HELPER_H
