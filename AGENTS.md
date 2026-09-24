@@ -619,9 +619,10 @@ Keep the table concise and link details below or from the domain progress file.
   texel uploads. Interleaved A/B warm median 18.4 -> 6.1 ms; material-pixel
   captures byte-identical. Android not measured. Mobile GPU cost (2026-09-23):
   sRGB/UNORM view breaks around color-masked draws are merged, so a linked-portal
-  frame uses 32 -> 7 render passes and modeled tiled-GPU attachment traffic falls
-  about 5x. All material-pixel families are byte-identical; this is not measured
-  on a device. See the
+  frame uses 32 -> 7 render passes, and all material-pixel families are
+  byte-identical. On the Fold7 (Adreno 840, native 2448x1848) passes fall
+  31 -> 5 but GPU time does not (7.6 vs 7.3 ms, within noise), so the modeled
+  traffic saving does not hold for that driver. See the
   [frame pacing record](RFC/0001-native-vulkan-frame-pacing-progress.md#mobile-gpu-cost-render-pass-breaks-2026-09-23).
 
 Current RFC 0001 evidence (2026-09-22):

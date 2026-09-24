@@ -232,15 +232,13 @@ enum ScreenshotMode
 	SCREENSHOT_MODE_UNSPECIFIED = 0;
 	// Write a TGA through the engine's screenshot path; return its local path.
 	SCREENSHOT_MODE_PATH = 1;
-	// Return JPEG bytes inline.
-	SCREENSHOT_MODE_INLINE_JPEG = 2;
+	// Return the frame inline as an uncompressed 24-bit TGA (lossless).
+	SCREENSHOT_MODE_INLINE_TGA = 2;
 }
 
 message ScreenshotRequest
 {
 	ScreenshotMode mode = 1;
-	// INLINE_JPEG only, 1..100; 0 selects 90.
-	uint32 jpeg_quality = 2;
 }
 
 message ScreenshotResult
@@ -248,7 +246,7 @@ message ScreenshotResult
 	uint32 width = 1;
 	uint32 height = 2;
 	string path = 3;
-	bytes jpeg = 4;
+	bytes tga = 4;
 	uint32 host_frame = 5;
 }
 

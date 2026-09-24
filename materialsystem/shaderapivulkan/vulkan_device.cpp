@@ -15,7 +15,6 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
-#include <cstdlib>
 #include <initializer_list>
 #include <limits>
 
@@ -734,7 +733,7 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 		img.tiling = VK_IMAGE_TILING_OPTIMAL;
 		img.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 		// The present-time gamma pass samples the back buffer.
-		if ( ( swapFeatures.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT ) && !getenv( "VO_EXP_NO_SAMPLED" ) ) // VO_EXP
+		if ( swapFeatures.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT )
 			img.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 		img.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		img.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -6646,7 +6645,6 @@ bool CVulkanContext::EndFrame( std::string *outError )
 	// for the acquire.
 	VkPipelineStageFlags waitStage =
 	    VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	if ( getenv( "VO_EXP_OLD_WAIT" ) ) waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT; // VO_EXP
 	VkSubmitInfo submit = {};
 	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submit.waitSemaphoreCount = 1;

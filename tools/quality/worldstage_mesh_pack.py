@@ -16,6 +16,9 @@ VERTEX = struct.Struct("<fffhhhhb3xffff")
 BATCH = struct.Struct("<IIIIII")
 MESHLET = struct.Struct("<IIIIffffffff")
 MAX_MESHLET_TRIANGLES = 21  # Deindexed corners stay within 64 vertices.
+VERSION = 2
+DEGENERATE_CROSS = 1e-12  # kWorldMeshDegenerateCross
+FLOAT32 = struct.Struct("<3f")
 
 
 def sha256(path):
@@ -37,6 +40,26 @@ def cross(left, right):
     return (left[1] * right[2] - left[2] * right[1],
             left[2] * right[0] - left[0] * right[2],
             left[0] * right[1] - left[1] * right[0])
+
+
+def front_face_cone(triangles):
+    """WMSH v2 normal cone (axis, cutoff) bounding the front-face normals
+    cross(b - a, c - a) of `triangles` [(a, b, c)], computed from the float32
+    positions the payload stores, as the validator recomputes them. A cone
+    wider than a hemisphere, or of only degenerate triangles, cannot cull and
+    stores cutoff -1."""
+    normals = []
+    for corners in triangles:
+        a, b, c = (FLOAT32.unpack(FLOAT32.pack(*point)) for point in corners)
+        normal = cross(tuple(b[i] - a[i] for i in range(3)), tuple(c[i] - a[i] for i in range(3)))
+        length = math.sqrt(dot(normal, normal))
+        if length > DEGENERATE_CROSS:
+            normals.append(tuple(value / length for value in normal))
+    total = tuple(sum(normal[i] for normal in normals) for i in range(3))
+    if not normals or math.sqrt(dot(total, total)) < 1e-6 * len(normals):
+        return (0.0, 0.0, 1.0), -1.0
+    axis = unit(total)
+    return axis, max(-1.0, min(dot(axis, normal) for normal in normals) - 1e-5)
 
 
 def oct16(vector):
@@ -223,7 +246,6 @@ def write_payload(faces, leaves, meshlet_leaves=None):
                 meshlet_first_index = len(indices)
                 meshlet_first_vertex = len(vertex_bytes) // VERTEX.size
                 positions = []
-                normals = []
                 for points, texture, lightmap, normal, tangent, sign in chunk:
                     for point, uv, chart_uv in zip(points, texture, lightmap):
                         if not all(math.isfinite(value) for value in (*point, *uv, *chart_uv)):
@@ -232,13 +254,11 @@ def write_payload(faces, leaves, meshlet_leaves=None):
                                                         *oct16(tangent), sign, *uv, *chart_uv))
                         indices.append(len(indices))
                         positions.append(point)
-                        normals.append(normal)
                     triangle_faces.append(face_id)
                 center = tuple(sum(point[axis] for point in positions) / len(positions)
                                for axis in range(3))
                 radius = max(math.dist(center, point) for point in positions) + 1e-5
-                axis = unit(tuple(sum(normal[i] for normal in normals) for i in range(3)))
-                cutoff = min(dot(axis, normal) for normal in normals) - 1e-5
+                axis, cutoff = front_face_cone([triangle[0] for triangle in chunk])
                 meshlet_boxes.append((tuple(min(point[axis] for point in positions)
                                             for axis in range(3)),
                                       tuple(max(point[axis] for point in positions)
@@ -281,7 +301,7 @@ def write_payload(faces, leaves, meshlet_leaves=None):
     if any(count > 0xFFFFFFFF for count in (len(indices), len(triangle_faces),
                                             len(meshlets), len(leaf_refs))):
         raise ValueError("WMSH exceeds v1 count range")
-    struct.pack_into("<4s13I", payload, 0, b"WMSH", 1, HEADER, 0,
+    struct.pack_into("<4s13I", payload, 0, b"WMSH", VERSION, HEADER, 0,
                      len(vertex_bytes) // VERTEX.size, len(indices), len(triangle_faces),
                      len(batches), len(meshlets), len(leaves), len(leaf_refs),
                      len(materials), len(sections[-1]), 0)

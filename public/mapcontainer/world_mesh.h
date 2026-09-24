@@ -33,6 +33,7 @@ enum class WorldMeshError
 
 struct WorldMeshSummary
 {
+	uint32_t version;
 	uint32_t vertexCount;
 	uint32_t indexCount;
 	uint32_t triangleCount;

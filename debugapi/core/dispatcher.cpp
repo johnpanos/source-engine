@@ -280,15 +280,12 @@ std::optional<CallOutcome> Dispatcher::Screenshot(
 	case pb::SCREENSHOT_MODE_PATH:
 		spec.kind = ScreenshotKind::TgaPath;
 		break;
-	case pb::SCREENSHOT_MODE_INLINE_JPEG:
-		spec.kind = ScreenshotKind::InlineJpeg;
+	case pb::SCREENSHOT_MODE_INLINE_TGA:
+		spec.kind = ScreenshotKind::InlineTga;
 		break;
 	default:
 		return Fail( pb::ERROR_CODE_INVALID_PARAMS, "mode is required" );
 	}
-	if ( request.jpeg_quality() > 100 )
-		return Fail( pb::ERROR_CODE_INVALID_PARAMS, "jpegQuality must be 0..100" );
-	spec.jpegQuality = request.jpeg_quality() == 0 ? 90 : static_cast<int>( request.jpeg_quality() );
 
 	HostResult<ScreenshotTicket> ticket = m_Host.RequestScreenshot( spec );
 	if ( !ticket )
@@ -357,7 +354,7 @@ std::optional<CallOutcome> Dispatcher::Advance( Deferred &deferred, bool newFram
 			result->set_width( value.width );
 			result->set_height( value.height );
 			result->set_path( SanitizeUtf8( value.path ) );
-			result->set_jpeg( value.jpeg );
+			result->set_tga( value.tga );
 			result->set_host_frame( value.hostFrame );
 			return Succeed( std::move( result ) );
 		}

@@ -1,6 +1,6 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: RFC 0008 WMSH version 1 payload layout.
+// Purpose: RFC 0008 WMSH version 1 and 2 payload layout.
 //
 // This header describes bytes; readers must decode little-endian fields and
 // must not cast untrusted file storage to C++ structs. Version 1 is the first
@@ -9,7 +9,7 @@
 // reader does not imply that its renderer consumes this payload.
 //
 // Header, 128 bytes:
-//   0 magic "WMSH"; 4 version 1; 8 header size 128; 12 flags 0
+//   0 magic "WMSH"; 4 version 1 or 2; 8 header size 128; 12 flags 0
 //  16 vertex count; 20 index count; 24 triangle count; 28 batch count
 //  32 meshlet count; 36 leaf count; 40 leaf reference count
 //  44 material count; 48 material byte count; 52 reserved 0
@@ -31,6 +31,12 @@
 // Meshlet, 48 bytes: first index, index count, first vertex, vertex count
 // (uint32); bounding sphere center float3 and radius float; normal cone axis
 // float3 and minimum dot cutoff float. Limits: 64 vertices, 126 triangles.
+// Version 1's cone bounds the vertex (shading) normals. Version 2's cone bounds
+// the front-face normals normalize(cross(b - a, c - a)) of the meshlet's
+// triangles a b c whose cross product is longer than 1e-12 (computed in
+// double from the stored float positions), so a renderer may use it to
+// skip meshlets that face away from the eye; vertex normals are unconstrained.
+// Everything else is identical.
 // Leaf range, 8 bytes: first reference and reference count (uint32).
 // Leaf references are uint32 meshlet indices. Materials are consecutive
 // uint32 byte length + UTF-8 bytes, padded to four bytes each. Paths are
@@ -50,7 +56,10 @@ namespace mapcontainer
 static const uint32_t kLumpWorldMesh = 0x48534D57u; // "WMSH"
 static const uint32_t kLumpWorldLightmap = 0x50414D4Cu; // "LMAP"
 static const uint32_t kWorldLightmapVersion = 1;
-static const uint32_t kWorldMeshVersion = 1;
+static const uint32_t kWorldMeshVersion = 2;
+static const uint32_t kWorldMeshMinVersion = 1;
+// Version 2 cones skip triangles whose front-face cross product is this short.
+static const double kWorldMeshDegenerateCross = 1e-12;
 static const uint32_t kWorldMeshHeaderSize = 128;
 static const uint32_t kWorldMeshVertexSize = 40;
 static const uint32_t kWorldMeshBatchSize = 24;

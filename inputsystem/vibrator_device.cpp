@@ -52,9 +52,9 @@ jclass FindGlobalClass( JNIEnv *env, const char *pName )
 
 struct CDeviceVibrator::State
 {
-	jobject m_Vibrator = NULL;			// android.os.Vibrator
-	jobject m_Attributes = NULL;		// VibrationAttributes or AudioAttributes
-	jclass m_EffectClass = NULL;		// android.os.VibrationEffect
+	jobject m_Vibrator = NULL;   // android.os.Vibrator
+	jobject m_Attributes = NULL; // VibrationAttributes or AudioAttributes
+	jclass m_EffectClass = NULL; // android.os.VibrationEffect
 	jmethodID m_CreateOneShot = NULL;
 	jmethodID m_Vibrate = NULL;
 	jmethodID m_Cancel = NULL;
@@ -89,17 +89,17 @@ static jobject CreateAttributes( JNIEnv *env, jclass vibratorClass, jmethodID *p
 			return NULL;
 		jfieldID usageMedia = env->GetStaticFieldID( attributesClass, "USAGE_MEDIA", "I" );
 		jmethodID createForUsage = env->GetStaticMethodID(
-			attributesClass, "createForUsage", "(I)Landroid/os/VibrationAttributes;" );
+		    attributesClass, "createForUsage", "(I)Landroid/os/VibrationAttributes;" );
 		if ( !TakeException( env, "VibrationAttributes lookup" ) && usageMedia && createForUsage )
 		{
 			attributes = env->CallStaticObjectMethod( attributesClass, createForUsage,
-				env->GetStaticIntField( attributesClass, usageMedia ) );
+			    env->GetStaticIntField( attributesClass, usageMedia ) );
 			if ( TakeException( env, "VibrationAttributes.createForUsage" ) )
 				attributes = NULL;
 		}
 		env->DeleteLocalRef( attributesClass );
 		*pVibrate = env->GetMethodID( vibratorClass, "vibrate",
-			"(Landroid/os/VibrationEffect;Landroid/os/VibrationAttributes;)V" );
+		    "(Landroid/os/VibrationEffect;Landroid/os/VibrationAttributes;)V" );
 	}
 	else
 	{
@@ -110,15 +110,17 @@ static jobject CreateAttributes( JNIEnv *env, jclass vibratorClass, jmethodID *p
 			jfieldID usageGame = env->GetStaticFieldID( audioClass, "USAGE_GAME", "I" );
 			jmethodID init = env->GetMethodID( builderClass, "<init>", "()V" );
 			jmethodID setUsage = env->GetMethodID(
-				builderClass, "setUsage", "(I)Landroid/media/AudioAttributes$Builder;" );
-			jmethodID build = env->GetMethodID( builderClass, "build", "()Landroid/media/AudioAttributes;" );
-			if ( !TakeException( env, "AudioAttributes lookup" ) && usageGame && init && setUsage && build )
+			    builderClass, "setUsage", "(I)Landroid/media/AudioAttributes$Builder;" );
+			jmethodID build =
+			    env->GetMethodID( builderClass, "build", "()Landroid/media/AudioAttributes;" );
+			if ( !TakeException( env, "AudioAttributes lookup" ) && usageGame && init && setUsage &&
+			     build )
 			{
 				jobject builder = env->NewObject( builderClass, init );
 				if ( !TakeException( env, "AudioAttributes.Builder" ) && builder )
 				{
 					jobject sameBuilder = env->CallObjectMethod(
-						builder, setUsage, env->GetStaticIntField( audioClass, usageGame ) );
+					    builder, setUsage, env->GetStaticIntField( audioClass, usageGame ) );
 					if ( sameBuilder )
 						env->DeleteLocalRef( sameBuilder );
 					if ( !TakeException( env, "AudioAttributes.Builder.setUsage" ) )
@@ -136,7 +138,7 @@ static jobject CreateAttributes( JNIEnv *env, jclass vibratorClass, jmethodID *p
 		if ( builderClass )
 			env->DeleteLocalRef( builderClass );
 		*pVibrate = env->GetMethodID( vibratorClass, "vibrate",
-			"(Landroid/os/VibrationEffect;Landroid/media/AudioAttributes;)V" );
+		    "(Landroid/os/VibrationEffect;Landroid/media/AudioAttributes;)V" );
 	}
 
 	if ( TakeException( env, "Vibrator.vibrate lookup" ) || !*pVibrate )
@@ -159,10 +161,10 @@ static jobject GetSystemVibrator( JNIEnv *env )
 	jclass contextClass = env->FindClass( "android/content/Context" );
 	if ( !TakeException( env, "Context" ) && contextClass )
 	{
-		jfieldID serviceName = env->GetStaticFieldID(
-			contextClass, "VIBRATOR_SERVICE", "Ljava/lang/String;" );
+		jfieldID serviceName =
+		    env->GetStaticFieldID( contextClass, "VIBRATOR_SERVICE", "Ljava/lang/String;" );
 		jmethodID getSystemService = env->GetMethodID(
-			contextClass, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;" );
+		    contextClass, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;" );
 		if ( !TakeException( env, "Context lookup" ) && serviceName && getSystemService )
 		{
 			jobject name = env->GetStaticObjectField( contextClass, serviceName );
@@ -205,30 +207,35 @@ bool CDeviceVibrator::Init()
 	if ( !TakeException( env, "Vibrator" ) && vibratorClass )
 	{
 		jmethodID hasVibrator = env->GetMethodID( vibratorClass, "hasVibrator", "()Z" );
-		jmethodID hasAmplitudeControl = env->GetMethodID( vibratorClass, "hasAmplitudeControl", "()Z" );
+		jmethodID hasAmplitudeControl =
+		    env->GetMethodID( vibratorClass, "hasAmplitudeControl", "()Z" );
 		pState->m_Cancel = env->GetMethodID( vibratorClass, "cancel", "()V" );
-		if ( !TakeException( env, "Vibrator lookup" ) && hasVibrator && hasAmplitudeControl
-			&& pState->m_Cancel )
+		if ( !TakeException( env, "Vibrator lookup" ) && hasVibrator && hasAmplitudeControl &&
+		     pState->m_Cancel )
 		{
 			bool bHasVibrator = env->CallBooleanMethod( vibrator, hasVibrator );
-			bool bAmplitude = bHasVibrator && env->CallBooleanMethod( vibrator, hasAmplitudeControl );
+			bool bAmplitude =
+			    bHasVibrator && env->CallBooleanMethod( vibrator, hasAmplitudeControl );
 			if ( TakeException( env, "Vibrator capabilities" ) )
 				bHasVibrator = bAmplitude = false;
 
 			if ( !bHasVibrator )
 				Msg( "Device vibrator: none.\n" );
 			else if ( !bAmplitude )
-				Msg( "Device vibrator: on/off only (no amplitude control); not used for rumble.\n" );
+				Msg(
+				    "Device vibrator: on/off only (no amplitude control); not used for rumble.\n" );
 			else
 				bUsable = true;
 		}
 
-		jobject attributes = bUsable ? CreateAttributes( env, vibratorClass, &pState->m_Vibrate ) : NULL;
-		pState->m_EffectClass = bUsable ? FindGlobalClass( env, "android/os/VibrationEffect" ) : NULL;
+		jobject attributes =
+		    bUsable ? CreateAttributes( env, vibratorClass, &pState->m_Vibrate ) : NULL;
+		pState->m_EffectClass =
+		    bUsable ? FindGlobalClass( env, "android/os/VibrationEffect" ) : NULL;
 		if ( pState->m_EffectClass )
 		{
 			pState->m_CreateOneShot = env->GetStaticMethodID(
-				pState->m_EffectClass, "createOneShot", "(JI)Landroid/os/VibrationEffect;" );
+			    pState->m_EffectClass, "createOneShot", "(JI)Landroid/os/VibrationEffect;" );
 			TakeException( env, "VibrationEffect.createOneShot lookup" );
 		}
 		bUsable = bUsable && attributes && pState->m_CreateOneShot;
@@ -252,7 +259,7 @@ bool CDeviceVibrator::Init()
 
 	m_pState = pState;
 	Msg( "Device vibrator: amplitude control; rumble plays on the device (API %d).\n",
-		SDL_GetAndroidSDKVersion() );
+	    SDL_GetAndroidSDKVersion() );
 	return true;
 }
 
@@ -287,12 +294,14 @@ void CDeviceVibrator::Play( int nAmplitude, int nDurationMs )
 	if ( !env )
 		return;
 
-	jobject effect = env->CallStaticObjectMethod( m_pState->m_EffectClass,
-		m_pState->m_CreateOneShot, static_cast<jlong>( nDurationMs ), static_cast<jint>( nAmplitude ) );
+	jobject effect =
+	    env->CallStaticObjectMethod( m_pState->m_EffectClass, m_pState->m_CreateOneShot,
+	        static_cast<jlong>( nDurationMs ), static_cast<jint>( nAmplitude ) );
 	bool bFailed = TakeException( env, "VibrationEffect.createOneShot" ) || !effect;
 	if ( !bFailed )
 	{
-		env->CallVoidMethod( m_pState->m_Vibrator, m_pState->m_Vibrate, effect, m_pState->m_Attributes );
+		env->CallVoidMethod(
+		    m_pState->m_Vibrator, m_pState->m_Vibrate, effect, m_pState->m_Attributes );
 		bFailed = TakeException( env, "Vibrator.vibrate" );
 	}
 	if ( effect )

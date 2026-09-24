@@ -25,11 +25,11 @@ namespace vibratortest
 {
 
 // The contract every stream is judged against (vibrator_policy.h).
-const int kMaxLeaseMs = 1000;		// a stalled caller stops vibrating within this
-const int kMinLeaseAheadMs = 200;	// a frame hitch shorter than this leaves no gap
-const int kMinIntervalMs = 20;		// no more than one command per 20 ms of changes
-const int kMaxSmallChangeMs = 100;	// a persistent small change is applied within this
-const int kMaxTrackingError = 8;	// levels, while a signal changes gradually
+const int kMaxLeaseMs = 1000;      // a stalled caller stops vibrating within this
+const int kMinLeaseAheadMs = 200;  // a frame hitch shorter than this leaves no gap
+const int kMinIntervalMs = 20;     // no more than one command per 20 ms of changes
+const int kMaxSmallChangeMs = 100; // a persistent small change is applied within this
+const int kMaxTrackingError = 8;   // levels, while a signal changes gradually
 
 class Stream
 {
@@ -149,9 +149,12 @@ inline void CheckMixMotors( const Policy &policy, Tally &tally )
 	const float nan = std::numeric_limits<float>::quiet_NaN();
 	const float inf = std::numeric_limits<float>::infinity();
 	tally.Check( policy.mixMotors( 0.f, 0.f ) == 0.f, "no motors mix to 0" );
-	tally.Check( Near( policy.mixMotors( 0.3f, 0.f ), 0.3f ), "the left motor alone keeps its strength" );
-	tally.Check( Near( policy.mixMotors( 0.f, 0.3f ), 0.3f ), "the right motor alone keeps its strength" );
-	tally.Check( Near( policy.mixMotors( 0.3f, 0.4f ), 0.5f ), "0.3 and 0.4 mix to 0.5 (energy sum)" );
+	tally.Check(
+	    Near( policy.mixMotors( 0.3f, 0.f ), 0.3f ), "the left motor alone keeps its strength" );
+	tally.Check(
+	    Near( policy.mixMotors( 0.f, 0.3f ), 0.3f ), "the right motor alone keeps its strength" );
+	tally.Check(
+	    Near( policy.mixMotors( 0.3f, 0.4f ), 0.5f ), "0.3 and 0.4 mix to 0.5 (energy sum)" );
 	tally.Check( Near( policy.mixMotors( 0.6f, 0.6f ), 0.848528f ), "0.6 and 0.6 mix to 0.85" );
 	tally.Check( policy.mixMotors( 1.f, 1.f ) == 1.f, "both motors full clamp to 1" );
 	tally.Check( policy.mixMotors( 2.f, 0.f ) == 1.f, "an overdriven motor clamps to 1" );
@@ -173,7 +176,7 @@ inline void CheckAmplitudeLevel( const Policy &policy, Tally &tally )
 	tally.Check( policy.amplitudeLevel( 1.5f ) == 255, "intensity above 1 is amplitude 255" );
 	tally.Check( policy.amplitudeLevel( -0.1f ) == 0, "a negative intensity is off" );
 	tally.Check( policy.amplitudeLevel( std::numeric_limits<float>::quiet_NaN() ) == 0,
-		"a NaN intensity is off" );
+	    "a NaN intensity is off" );
 }
 
 inline void CheckOnsetAndStop( const Policy &policy, Tally &tally )
@@ -181,9 +184,9 @@ inline void CheckOnsetAndStop( const Policy &policy, Tally &tally )
 	Rig rig( policy );
 	vibrator::Command command = rig.Send( 0.5f, 0.f, 1000 );
 	tally.Check( command.m_Kind == vibrator::Command::PLAY && command.m_nAmplitude == 128,
-		"the first nonzero request plays at once, at its amplitude" );
+	    "the first nonzero request plays at once, at its amplitude" );
 	tally.Check( command.m_nDurationMs > kMinLeaseAheadMs && command.m_nDurationMs <= kMaxLeaseMs,
-		"a play is a bounded one-shot" );
+	    "a play is a bounded one-shot" );
 
 	rig.Send( 0.5f, 0.f, 1016 );
 	command = rig.Send( 0.f, 0.f, 1032 );
@@ -199,7 +202,7 @@ inline void CheckOnsetAndStop( const Policy &policy, Tally &tally )
 	// A short effect restarts cleanly after a stop.
 	command = rig.Send( 0.f, 0.3f, 3000 );
 	tally.Check( command.m_Kind == vibrator::Command::PLAY && command.m_nAmplitude == 77,
-		"a new effect after a stop plays at once" );
+	    "a new effect after a stop plays at once" );
 }
 
 inline void CheckSustained( const Policy &policy, Tally &tally )
@@ -236,7 +239,7 @@ inline void CheckRamp( const Policy &policy, Tally &tally )
 	}
 	tally.Check( bTracks, "a decaying shake is tracked within 8 levels" );
 	tally.Check( rig.vibrator.plays <= 2000 / kMinIntervalMs + 1,
-		"a ramp sends no more than one command per 20 ms" );
+	    "a ramp sends no more than one command per 20 ms" );
 	tally.Check( rig.vibrator.plays >= 10, "a full-range ramp updates the amplitude" );
 	tally.Check( rig.vibrator.AmplitudeAt( 2000 ) == 0, "the ramp ends with the vibrator off" );
 	if ( worst > kMaxTrackingError && tally.verbose )
@@ -253,9 +256,9 @@ inline void CheckChanges( const Policy &policy, Tally &tally )
 		rig.Send( 0.8f, 0.f, 16 );
 		rig.Send( 0.8f, 0.f, 24 );
 		tally.Check( early.m_Kind == vibrator::Command::NONE,
-			"a change within 20 ms of the last send waits" );
+		    "a change within 20 ms of the last send waits" );
 		tally.Check( rig.vibrator.AmplitudeAt( 24 ) == 204,
-			"a large change is applied on the first frame after 20 ms" );
+		    "a large change is applied on the first frame after 20 ms" );
 	}
 
 	// A small persistent change is applied once it settles.
@@ -266,7 +269,7 @@ inline void CheckChanges( const Policy &policy, Tally &tally )
 		for ( int64_t t = 16; t <= 16 + kMaxSmallChangeMs + 16; t += 16 )
 			rig.Send( flSlightlyMore, 0.f, t );
 		tally.Check( rig.vibrator.AmplitudeAt( 16 + kMaxSmallChangeMs + 16 ) == 131,
-			"a persistent 3-level change is applied within 100 ms" );
+		    "a persistent 3-level change is applied within 100 ms" );
 	}
 
 	// Small flicker around the playing level does not restart the actuator.
@@ -289,10 +292,10 @@ inline void CheckStallAndReset( const Policy &policy, Tally &tally )
 			rig.Send( 0.6f, 0.f, t );
 		tally.Check( rig.vibrator.longestMs <= kMaxLeaseMs, "no one-shot is longer than 1 s" );
 		tally.Check( rig.vibrator.AmplitudeAt( 3000 + kMaxLeaseMs ) == 0,
-			"a stalled caller's vibration ends within 1 s" );
+		    "a stalled caller's vibration ends within 1 s" );
 		rig.Send( 0.6f, 0.f, 6000 );
 		tally.Check( rig.vibrator.AmplitudeAt( 6000 ) == 153,
-			"the first request after a stall plays again" );
+		    "the first request after a stall plays again" );
 	}
 
 	// Something else cancelled the vibrator (suspend): after Reset the same
@@ -304,7 +307,8 @@ inline void CheckStallAndReset( const Policy &policy, Tally &tally )
 		rig.stream->Reset();
 		rig.vibrator.Apply( vibrator::Command{ vibrator::Command::STOP, 0, 0 }, 20 );
 		rig.Send( 0.6f, 0.f, 32 );
-		tally.Check( rig.vibrator.AmplitudeAt( 32 ) == 153, "a reset stream replays the current request" );
+		tally.Check(
+		    rig.vibrator.AmplitudeAt( 32 ) == 153, "a reset stream replays the current request" );
 	}
 
 	// The clock went backwards: the lease end is unknown, so play again.
@@ -313,7 +317,8 @@ inline void CheckStallAndReset( const Policy &policy, Tally &tally )
 		rig.Send( 0.6f, 0.f, 10000 );
 		rig.vibrator.Apply( vibrator::Command{ vibrator::Command::STOP, 0, 0 }, 10000 );
 		vibrator::Command command = rig.Send( 0.6f, 0.f, 9000 );
-		tally.Check( command.m_Kind == vibrator::Command::PLAY, "a backwards clock restarts the lease" );
+		tally.Check(
+		    command.m_Kind == vibrator::Command::PLAY, "a backwards clock restarts the lease" );
 	}
 }
 

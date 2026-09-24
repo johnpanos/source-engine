@@ -32,7 +32,8 @@
     "activity": "org.libsdl.app.SDLActivity",
     "permissions": [
       "android.permission.INTERNET",
-      "android.permission.HIGH_SAMPLING_RATE_SENSORS"
+      "android.permission.HIGH_SAMPLING_RATE_SENSORS",
+      "android.permission.VIBRATE"
     ],
     "required_features": [
       "android.hardware.vulkan.version"

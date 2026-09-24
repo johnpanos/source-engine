@@ -25,6 +25,10 @@
          install-time permission (inputsystem/gyro_sensor.cpp). -->
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
 
+    <!-- Rumble on the device's own vibrator when it has amplitude control
+         (inputsystem/vibrator_device.cpp). Normal, install-time permission. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- extractNativeLibs: the engine loads its modules by path from the native
          library directory (APP_LIB_PATH), so they must exist as files. -->
     <application android:label="@APP_LABEL@"

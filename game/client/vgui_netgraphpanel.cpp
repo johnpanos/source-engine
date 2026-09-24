@@ -490,7 +490,10 @@ void CNetGraphPanel::DrawTimes( vrect_t vrect, cmdinfo_t *cmdinfo, int x, int w,
 	for (a=0 ; a<w ; a++)
 	{
 		i = ( m_OutgoingSequence - a ) & ( TIMINGS - 1 );
-		h = MIN( ( cmdinfo[i].cmd_lerp / 3.0 ) * LERP_HEIGHT, LERP_HEIGHT );
+		// The interpolation amount can be negative (a long frame, e.g. the first
+		// frames of a heavy map). Unclamped, the bar below draws billions of rows
+		// and indexes colors[] out of bounds.
+		h = clamp( ( cmdinfo[i].cmd_lerp / 3.0 ) * LERP_HEIGHT, 0, LERP_HEIGHT );
 
 		rcFill.x		= x + w -a - 1;
 		rcFill.width	= 1;

@@ -218,3 +218,47 @@ feel, orientation signs on hardware and the achieved sensor rate are
 ```sh
 python3 tools/quality/conformance.py check --suite input.gyro --suite input.gyro.sensitivity
 ```
+
+## Device rumble
+
+Rumble (`IInputSystem::SetRumble`, fed by the client's rumble mixer and
+screen shake) also plays on the phone's own vibrator when the vibrator has
+amplitude control and no rumble-capable gamepad is active. Vibrators that can
+only switch on and off are not used. `in_device_rumble 0` or `-nodevicerumble`
+turns it off. `cl_rumblescale` and Android's media vibration intensity setting
+both scale it.
+
+`inputsystem/vibrator_device.cpp` drives `android.os.Vibrator` through JNI.
+SDL3's haptic device for the phone is not used, because it plays without
+vibration attributes and cannot report amplitude control. Each vibration is
+tagged as media (`VibrationAttributes.USAGE_MEDIA` on Android 13 and later,
+`AudioAttributes.USAGE_GAME` before that), which is the usage Android documents
+for games. The profile declares `VIBRATE`, a normal install-time permission.
+
+`inputsystem/vibrator_policy.cpp` turns the per-frame two-motor request into
+commands:
+- The two motors are mixed by energy, `sqrt(left² + right²)`, and quantized to
+  the 1–255 amplitude range.
+- Changes are sent at most every 20 ms. A change of 8 or more levels is sent
+  as soon as that allows; a smaller one is sent after it has lasted 100 ms.
+  Idle frames send nothing.
+- Every vibration is a 1 s one-shot, renewed while less than 250 ms is left.
+  A stalled game stops vibrating within 1 s. The vibrator is also cancelled
+  when the app goes to the background.
+
+The policy is tested by the `input.vibrator` conformance suite (43 checks). It
+plays each command sequence on a model vibrator and checks onset and stop
+latency, tracking error, command rate, the lease and reset. Its sensitivity
+twin, `input.vibrator.sensitivity`, confirms that 12 plausible defects are
+caught.
+
+```sh
+python3 tools/quality/conformance.py check --suite input.vibrator --suite input.vibrator.sensitivity
+```
+
+The Galaxy Z Fold7 (API 37) reports `AMPLITUDE_CONTROL` and `COMPOSE_EFFECTS`
+(primitives CLICK, THUD, SPIN, QUICK_RISE, SLOW_RISE, QUICK_FALL, TICK and
+LOW_TICK), with no frequency or envelope control. Only amplitude control is
+used. Feel, latency and the cost of each JNI call are `unverified` until they
+are measured on a device. Gamepads on Android get no rumble yet. SDL3 gives
+them no `SDL_Haptic`, and `joystick_sdl.cpp` does not use `SDL_RumbleGamepad`.

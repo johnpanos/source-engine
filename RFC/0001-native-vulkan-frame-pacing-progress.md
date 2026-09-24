@@ -219,3 +219,40 @@ Not verified / next:
   that is a larger design decision.
 - Excluded because they change pixels: a lower render scale, reduced
   precision, and lower anisotropy.
+
+### Device result: Galaxy Z Fold7, Adreno 840 (2026-09-23)
+
+The same APK was run with `-vkpassmerge 1` and `0` (arm64 debug build of the
+working tree, which also contained other sessions' uncommitted backend edits;
+both modes use the same binary). Settings: native 2448x1848, `fps_max 1000`,
+`host_framerate 60`, portal scenario with 2 passes, the warm pass measured, and
+3 runs per mode in ABBA order. The runner was an investigation script, not
+installed tooling.
+
+| Warm pass (median) | Merge on | Merge off |
+| --- | --- | --- |
+| Render passes per frame | 5 | 31 |
+| Copies per frame | 5 | 6 |
+| GPU ms (per run) | 7.62, 7.21, 7.61 | 7.30, 7.04, 7.65 |
+| Frame interval ms | 8.58 | 8.47 |
+| GPU busy (kgsl) | 85-88 % | 84-87 % |
+
+The pass count falls as designed, but GPU time does not: the difference is
+within run-to-run spread. The tiled-traffic model above does not describe this
+driver. Adreno evidently does not store and reload the target at every pass
+boundary (direct rendering and driver-side pass merging are both plausible;
+neither was measured). One phase goes the other way: during the portal opening
+(`fire_orange`) all three merged runs (8.3-10.2 ms) were slower than all three
+unmerged runs (7.4-7.7 ms). The sample is small and the device was thermally
+warm (status 2), so this is unconfirmed.
+
+Consequences:
+
+- This change is not a GPU saving on the Adreno 840. Pixels are unchanged, and
+  it fixes occlusion queries that were split and failed around color-masked
+  draws.
+- GPU cost attribution on the device needs a GPU profiler (Android GPU
+  Inspector or Snapdragon Profiler: per-pass time, binning or direct mode,
+  bandwidth counters) before more backend changes are aimed at it.
+- The working tree at the time started the game at 640x480 and then about
+  931x703, not the panel size. `-w 2448 -h 1848` was passed for these runs.

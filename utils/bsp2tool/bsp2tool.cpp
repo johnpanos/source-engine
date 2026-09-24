@@ -58,7 +58,9 @@ bool ReadWorldMesh( const char *pPath, std::vector<std::byte> *pBytes )
 	if ( !source.ReadAt( 0, header.data(), header.size() ) )
 		return false;
 	const std::byte *pHeader = header.data();
-	if ( ReadU32( pHeader ) != kLumpWorldMesh || ReadU32( pHeader + 4 ) != kWorldMeshVersion ||
+	const uint32_t version = ReadU32( pHeader + 4 );
+	if ( ReadU32( pHeader ) != kLumpWorldMesh || version < kWorldMeshMinVersion ||
+	     version > kWorldMeshVersion ||
 	     ReadU32( pHeader + 8 ) != kWorldMeshHeaderSize || ReadU32( pHeader + 12 ) != 0 ||
 	     ReadU32( pHeader + 52 ) != 0 || ReadU64( pHeader + 120 ) != source.Size() )
 		return false;
@@ -198,8 +200,11 @@ int main( int argc, char **argv )
 	const char *pOutput = argv[bPackWorldLit ? 5 : bPackWorld ? 4 : 3];
 	const std::string temp = std::string( pOutput ) + ".tmp";
 	FileByteSink sink( temp );
+	// The lump version repeats the validated payload's own version.
+	const uint32_t worldMeshVersion =
+	    worldMesh.empty() ? kWorldMeshVersion : ReadU32( worldMesh.data() + 4 );
 	const Bsp2LumpInput worldLump{
-	    kLumpWorldMesh, kWorldMeshVersion, 0, kBsp2BulkAlignment, worldMesh };
+	    kLumpWorldMesh, worldMeshVersion, 0, kBsp2BulkAlignment, worldMesh };
 	const Bsp2LumpInput lightmapLump{
 	    kLumpWorldLightmap, kWorldLightmapVersion, 0, kBsp2BulkAlignment, lightmap };
 	const std::array<Bsp2LumpInput, 2> litLumps = { worldLump, lightmapLump };

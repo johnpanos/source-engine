@@ -20,8 +20,8 @@
 #include "tier0/memdbgon.h"
 
 static ConVar in_device_rumble( "in_device_rumble", "1", FCVAR_ARCHIVE,
-	"Play rumble on the device's own vibrator when it has amplitude control and no "
-	"rumble-capable gamepad is active (Android)." );
+    "Play rumble on the device's own vibrator when it has amplitude control and no "
+    "rumble-capable gamepad is active (Android)." );
 
 #if defined( USE_SDL3 )
 static bool SDLCALL VibratorSDLWatcher( void *userInfo, SDL_Event *event )

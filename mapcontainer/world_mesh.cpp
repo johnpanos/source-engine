@@ -147,13 +147,15 @@ WorldMeshError ValidateWorldMesh(
 	const uint8_t *pBytes = static_cast<const uint8_t *>( pData );
 	if ( std::memcmp( pBytes, "WMSH", 4 ) != 0 )
 		return WorldMeshError::BadMagic;
-	if ( ReadU32( pBytes + 4 ) != kWorldMeshVersion )
+	const uint32_t version = ReadU32( pBytes + 4 );
+	if ( version < kWorldMeshMinVersion || version > kWorldMeshVersion )
 		return WorldMeshError::UnsupportedVersion;
 	if ( ReadU32( pBytes + 8 ) != kWorldMeshHeaderSize || ReadU32( pBytes + 12 ) != 0 ||
 	     ReadU32( pBytes + 52 ) != 0 || ReadU64( pBytes + 120 ) != size )
 		return WorldMeshError::InvalidLayout;
 
 	WorldMeshSummary summary{};
+	summary.version = version;
 	summary.vertexCount = ReadU32( pBytes + 16 );
 	summary.indexCount = ReadU32( pBytes + 20 );
 	summary.triangleCount = ReadU32( pBytes + 24 );
@@ -275,9 +277,31 @@ WorldMeshError ValidateWorldMesh(
 			float normal[3];
 			if ( dx * dx + dy * dy + dz * dz > radius * radius ||
 			     !DecodeOct( pVertex + 12, normal ) ||
-			     normal[0] * axisX + normal[1] * axisY + normal[2] * axisZ < cutoff ||
+			     ( version == 1 &&
+			         normal[0] * axisX + normal[1] * axisY + normal[2] * axisZ < cutoff ) ||
 			     ReadU32( pBytes + summary.sectionOffsets[2] + ( indexCursor + j ) / 3 * 4 ) !=
 			         face )
+				return WorldMeshError::InvalidMeshlets;
+		}
+		// Version 2: the cone holds every non-degenerate front-face normal,
+		// computed in double from the stored float positions.
+		for ( uint32_t j = 0; version >= 2 && j < count; j += 3 )
+		{
+			const uint8_t *pA = pBytes + summary.sectionOffsets[0] + uint64_t( indexCursor + j ) * 40;
+			double edge[2][3];
+			for ( int k = 0; k < 2; ++k )
+			{
+				for ( int axis = 0; axis < 3; ++axis )
+					edge[k][axis] = double( ReadF32( pA + 40 * ( k + 1 ) + 4 * axis ) ) -
+					                double( ReadF32( pA + 4 * axis ) );
+			}
+			const double cross[3] = { edge[0][1] * edge[1][2] - edge[0][2] * edge[1][1],
+			    edge[0][2] * edge[1][0] - edge[0][0] * edge[1][2],
+			    edge[0][0] * edge[1][1] - edge[0][1] * edge[1][0] };
+			const double length =
+			    std::sqrt( cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2] );
+			if ( length > kWorldMeshDegenerateCross &&
+			     ( cross[0] * axisX + cross[1] * axisY + cross[2] * axisZ ) / length < cutoff )
 				return WorldMeshError::InvalidMeshlets;
 		}
 		indexCursor += count;

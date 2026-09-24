@@ -535,7 +535,7 @@
    ]
   },
   {
-   "name": "screenshot-inline-jpeg",
+   "name": "screenshot-inline-tga",
    "steps": [
     {
      "send": {
@@ -543,8 +543,7 @@
       "id": 17,
       "method": "screenshot",
       "params": {
-       "mode": "SCREENSHOT_MODE_INLINE_JPEG",
-       "jpegQuality": 80
+       "mode": "SCREENSHOT_MODE_INLINE_TGA"
       }
      },
      "pumps": 3,
@@ -556,7 +555,7 @@
         "width": 640,
         "height": 480,
         "path": "",
-        "jpeg": "/9hmaXh0dXJl/9k=",
+        "tga": "AAACZml4dHVyZS10Z2E=",
         "hostFrame": 42
        }
       }
@@ -585,7 +584,7 @@
         "width": 640,
         "height": 480,
         "path": "/game/portal/screenshots/debugapi_0001.tga",
-        "jpeg": "",
+        "tga": "",
         "hostFrame": 42
        }
       }

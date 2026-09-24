@@ -47,8 +47,7 @@ Timing DefaultTiming()
 	return timing;
 }
 
-CRumbleStream::CRumbleStream( const Timing &timing )
-	: m_Timing( timing )
+CRumbleStream::CRumbleStream( const Timing &timing ) : m_Timing( timing )
 {
 	Reset();
 }
@@ -95,8 +94,7 @@ Command CRumbleStream::Update( float flLeft, float flRight, int64_t nNowMs )
 
 	// Start, renew before the lease runs out, and restart if the clock went
 	// backwards (the lease end can no longer be trusted).
-	if ( !m_bPlaying || nNowMs < m_nSentMs
-		|| m_nLeaseEndMs - nNowMs <= m_Timing.m_nRenewMarginMs )
+	if ( !m_bPlaying || nNowMs < m_nSentMs || m_nLeaseEndMs - nNowMs <= m_Timing.m_nRenewMarginMs )
 		return Play( nLevel, nNowMs );
 
 	if ( nLevel == m_nLevel )
@@ -112,8 +110,8 @@ Command CRumbleStream::Update( float flLeft, float flRight, int64_t nNowMs )
 
 	if ( nNowMs - m_nSentMs < m_Timing.m_nMinIntervalMs )
 		return none;
-	if ( abs( nLevel - m_nLevel ) >= m_Timing.m_nMinStep
-		|| nNowMs - m_nDivergedMs >= m_Timing.m_nSettleMs )
+	if ( abs( nLevel - m_nLevel ) >= m_Timing.m_nMinStep ||
+	     nNowMs - m_nDivergedMs >= m_Timing.m_nSettleMs )
 		return Play( nLevel, nNowMs );
 	return none;
 }

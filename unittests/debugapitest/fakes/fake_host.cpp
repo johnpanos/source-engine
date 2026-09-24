@@ -130,8 +130,8 @@ std::optional<debugapi::HostResult<debugapi::ScreenshotCapture>> FakeHost::PollS
 	capture.width = 640;
 	capture.height = 480;
 	capture.hostFrame = status.hostFrame;
-	if ( it->second.spec.kind == debugapi::ScreenshotKind::InlineJpeg )
-		capture.jpeg = std::string( "\xFF\xD8" "fixture" "\xFF\xD9", 11 );
+	if ( it->second.spec.kind == debugapi::ScreenshotKind::InlineTga )
+		capture.tga = std::string( "\x00\x00\x02" "fixture-tga", 14 );
 	else
 		capture.path = "/game/portal/screenshots/debugapi_0001.tga";
 	m_Captures.erase( it );

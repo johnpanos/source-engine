@@ -2018,6 +2018,32 @@
         "unittests/inputtest/test_gyro_math_negative.cpp"
       ],
       "expect": "pass"
+    },
+    {
+      "id": "input.vibrator",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "inputsystem/vibrator_policy.cpp",
+        "unittests/inputtest/test_vibrator_policy.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "input.vibrator.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "inputsystem/vibrator_policy.cpp",
+        "unittests/inputtest/test_vibrator_policy_negative.cpp"
+      ],
+      "expect": "pass"
     }
   ]
 }

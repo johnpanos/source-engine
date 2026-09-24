@@ -115,13 +115,12 @@ struct CvarInfo
 enum class ScreenshotKind
 {
 	TgaPath,
-	InlineJpeg,
+	InlineTga,
 };
 
 struct ScreenshotSpec
 {
 	ScreenshotKind kind = ScreenshotKind::TgaPath;
-	int jpegQuality = 90;
 };
 
 struct ScreenshotCapture
@@ -129,7 +128,7 @@ struct ScreenshotCapture
 	uint32_t width = 0;
 	uint32_t height = 0;
 	std::string path;
-	std::string jpeg;
+	std::string tga;
 	uint32_t hostFrame = 0;
 };
 

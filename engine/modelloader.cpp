@@ -4548,7 +4548,8 @@ void CModelLoader::Map_LoadWorldMesh()
 	if ( !s_pMapContainer->FindLump( mapcontainer::kLumpWorldMesh, &lump ) )
 		return;
 	const uint64_t kMaxWorldMeshBytes = 512ull * 1024 * 1024;
-	if ( lump.version != mapcontainer::kWorldMeshVersion || lump.flags != 0 ||
+	if ( lump.version < mapcontainer::kWorldMeshMinVersion ||
+	     lump.version > mapcontainer::kWorldMeshVersion || lump.flags != 0 ||
 	     lump.storedSize < mapcontainer::kWorldMeshHeaderSize ||
 	     lump.storedSize > kMaxWorldMeshBytes )
 	{
@@ -4567,6 +4568,14 @@ void CModelLoader::Map_LoadWorldMesh()
 	mapcontainer::WorldMeshSummary summary{};
 	const mapcontainer::WorldMeshError validation = mapcontainer::ValidateWorldMesh(
 	    m_WorldMeshBytes.Base(), m_WorldMeshBytes.Count(), &summary );
+	if ( hash.Ok() && validation == mapcontainer::WorldMeshError::Ok &&
+	     summary.version != lump.version )
+	{
+		Warning( "Map %s: WMSH payload version %u differs from its lump version %u\n",
+		    s_szMapName, summary.version, lump.version );
+		m_WorldMeshBytes.Purge();
+		return;
+	}
 	if ( !hash.Ok() || validation != mapcontainer::WorldMeshError::Ok )
 	{
 		Warning( "Map %s: WMSH rejected (%s, %s)\n", s_szMapName,

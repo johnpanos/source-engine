@@ -80,11 +80,11 @@ private:
 
 	Timing m_Timing;
 	bool m_bPlaying;
-	int m_nLevel;			// the amplitude last sent
-	int64_t m_nSentMs;		// when it was sent
-	int64_t m_nLeaseEndMs;	// when that one-shot ends by itself
-	bool m_bDiverged;		// the request has differed from m_nLevel...
-	int64_t m_nDivergedMs;	// ...since this time
+	int m_nLevel;          // the amplitude last sent
+	int64_t m_nSentMs;     // when it was sent
+	int64_t m_nLeaseEndMs; // when that one-shot ends by itself
+	bool m_bDiverged;      // the request has differed from m_nLevel...
+	int64_t m_nDivergedMs; // ...since this time
 };
 
 } // namespace vibrator

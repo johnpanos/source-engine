@@ -2221,7 +2221,7 @@ static void InvokePendingModeChangeCallbacks()
 	if ( !g_bPendingModeChangeCallbacks )
 		return;
 	g_bPendingModeChangeCallbacks = false;
-	if ( ThreadInMainThread() && !getenv( "VO_EXP_NO_CALLBACKS" ) ) // VO_EXP temporary
+	if ( ThreadInMainThread() )
 		s_ShaderDeviceMgrEmpty.InvokeModeChangeCallbacks();
 }
 
@@ -2281,7 +2281,6 @@ void CShaderDeviceMgrVulkan::ToShaderDisplayMode(
 // Returns the number of modes
 int CShaderDeviceMgrVulkan::GetModeCount( int nAdapter ) const
 {
-	if ( getenv( "VO_EXP_OLD_MODES" ) || getenv( "VO_EXP_OLD_LIST" ) ) { m_Modes.assign( 1, render::DisplayModeFacts{ 1920, 1080, 60, 1 } ); return 1; } // VO_EXP
 	RefreshModeList();
 	return static_cast<int>( m_Modes.size() );
 }
@@ -2310,7 +2309,6 @@ void CShaderDeviceMgrVulkan::GetCurrentModeInfo( ShaderDisplayMode_t *pInfo, int
 {
 	if ( !pInfo )
 		return;
-	if ( getenv( "VO_EXP_OLD_MODES" ) || getenv( "VO_EXP_OLD_CURRENT" ) ) return; // VO_EXP
 	render::DisplayModeFacts desktop;
 	QueryDesktopDisplay( &desktop );
 	ToShaderDisplayMode( desktop, pInfo );
