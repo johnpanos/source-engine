@@ -17,7 +17,7 @@ static TitleDataFieldsDescription_t const * PrepareTitleDataStorageDescription()
 {
 #define TD_ENTRY( szName, nTD, eDataType, numBytesOffset ) \
 	{ \
-		TitleDataFieldsDescription_t aTDFD = { szName, TitleDataFieldsDescription_t::nTD, TitleDataFieldsDescription_t::eDataType, numBytesOffset }; \
+		TitleDataFieldsDescription_t aTDFD = { szName, TitleDataFieldsDescription_t::nTD, TitleDataFieldsDescription_t::eDataType, int( numBytesOffset ) }; \
 		s_tdfd.AddToTail( aTDFD ); \
 	}
 
@@ -193,7 +193,7 @@ TitleDlcDescription_t const * CMatchTitle::DescribeTitleDlcs()
 {
 	static TitleDlcDescription_t tdlcs[] =
 	{
-		{ PORTAL2_DLCID_RETAIL_DLC1,		0x80000001,							0x80000001,							"DLC.0x01" },
+		{ PORTAL2_DLCID_RETAIL_DLC1,		(int)0x80000001,							(int)0x80000001,							"DLC.0x01" },
 		{ PORTAL2_DLCID_COOP_BOT_SKINS,		PORTAL2_DLC_APPID_COOP_BOT_SKINS,	PORTAL2_DLC_PKGID_COOP_BOT_SKINS,	"DLC.0x12" },
 		{ PORTAL2_DLCID_COOP_BOT_HELMETS,	PORTAL2_DLC_APPID_COOP_BOT_HELMETS,	PORTAL2_DLC_PKGID_COOP_BOT_HELMETS,	"DLC.0x13" },
 		{ PORTAL2_DLCID_COOP_BOT_ANTENNA,	PORTAL2_DLC_APPID_COOP_BOT_ANTENNA,	PORTAL2_DLC_PKGID_COOP_BOT_ANTENNA,	"DLC.0x14" },

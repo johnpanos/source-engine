@@ -194,8 +194,8 @@ function QA_Fired( name, output )
 
 function QA_ParentName( ent )
 {
-	local parent = ent.GetMoveParent()
-	return parent == null ? "<none>" : parent.GetName()
+	local owner = ent.GetMoveParent()
+	return owner == null ? "<none>" : owner.GetName()
 }
 
 // --- View-space geometry -----------------------------------------------------

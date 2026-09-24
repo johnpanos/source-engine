@@ -641,7 +641,7 @@ void CNPC_RocketTurret::FollowThink( void )
 	CTraceFilterSimple subfilter( this, COLLISION_GROUP_NONE );
 	CTraceFilterTranslateClones filter ( &subfilter );
 	float flRequiredParameter = 2.0f;
-	CProp_Portal* pFirstPortal = UTIL_Portal_FirstAlongRay( rayDmg, flRequiredParameter );
+	auto *pFirstPortal = UTIL_Portal_FirstAlongRay( rayDmg, flRequiredParameter );
 	UTIL_Portal_TraceRay_Bullets( pFirstPortal, rayDmg, MASK_VISIBLE_AND_NPCS, &filter, &traceDmg, false );
 
 	if ( traceDmg.m_pEnt )
@@ -1069,7 +1069,7 @@ bool CNPC_RocketTurret::FindAimPointThroughPortal( const CProp_Portal* pPortal, 
 { 
 	if ( pPortal && pPortal->m_bActivated )
 	{
-		CProp_Portal* pLinked = pPortal->m_hLinkedPortal.Get(); 
+		auto *pLinked = pPortal->m_hLinkedPortal.Get(); 
 		CBaseEntity*  pTarget = GetEnemy();
 
 		// Require that the portal is facing towards the beam to test through it

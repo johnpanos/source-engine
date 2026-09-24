@@ -625,7 +625,10 @@ void CGameUI::OnGameUIActivated()
 
 	UI_BASEMOD_PANEL_CLASS &ui = GetUiBaseModPanelClass();
 	bool bNeedActivation = true;
-	if ( ui.IsVisible() )
+	// A disconnect (e.g. the console command) leaves the in-game menu up; activating
+	// the panel then replaces it with the front screen.
+	bool bInGameMenuUp = ui.GetWindow( BaseModUI::WT_INGAMEMAINMENU ) != NULL;
+	if ( ui.IsVisible() && !bInGameMenuUp )
 	{
 		// Already visible, maybe don't need activation
 		if ( ( !IsInLevel() && IsInBackgroundLevel() ) || ( !IsGameConsole() && !IsInLevel() ) )

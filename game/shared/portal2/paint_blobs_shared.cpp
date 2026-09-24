@@ -1294,7 +1294,7 @@ void CBasePaintBlob::PlayEffect( const Vector& vPosition, const Vector& vNormal 
 }
 
 
-struct BlobInBeam_t : std::unary_function< CPaintBlob*, bool >
+struct BlobInBeam_t
 {
 	inline bool operator()( const CPaintBlob* pBlob ) const
 	{
@@ -1303,7 +1303,7 @@ struct BlobInBeam_t : std::unary_function< CPaintBlob*, bool >
 };
 
 
-struct BlobInAir_t : std::unary_function< CPaintBlob*, bool >
+struct BlobInAir_t
 {
 	inline bool operator()( const CPaintBlob* pBlob ) const
 	{

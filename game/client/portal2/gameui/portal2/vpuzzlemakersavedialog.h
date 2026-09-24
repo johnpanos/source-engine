@@ -16,10 +16,13 @@ class CDialogListButton;
 namespace BaseModUI
 {
 
-class vgui::TextEntry;
-class vgui::ImagePanel;
-class vgui::CheckButton;
-class vgui::Label;
+namespace vgui
+{
+	class TextEntry;
+	class ImagePanel;
+	class CheckButton;
+	class Label;
+}
 
 enum PuzzleMakerSaveDialogReason_t
 {

@@ -1209,7 +1209,7 @@ void SaveLoadGameDialog::ScreenshotLoaded( const FileAsyncRequest_t &asyncReques
 
 void ScreenshotLoaded( const FileAsyncRequest_t &asyncRequest, int numReadBytes, FSAsyncStatus_t err )
 {
-	WINDOW_TYPE wt = (int)asyncRequest.pContext ? WT_SAVEGAME : WT_LOADGAME;
+	WINDOW_TYPE wt = (intp)asyncRequest.pContext ? WT_SAVEGAME : WT_LOADGAME;
 	SaveLoadGameDialog *pDialog = static_cast< SaveLoadGameDialog* >( CBaseModPanel::GetSingleton().GetWindow( wt ) );
 	if ( pDialog )
 	{
@@ -1682,7 +1682,7 @@ void SaveLoadGameDialog::ConfirmOverwriteSaveGame()
 	{
 		// saves have multiple .x.y extensions, need the basename
 		savename = m_SaveGameInfos[m_nSaveGameToOverwrite].m_Filename.Get();		
-		char *pExtension = V_stristr( savename.Get(), PLATFORM_EXT ".sav" );
+		char *pExtension = V_stristr( savename.GetForModify(), PLATFORM_EXT ".sav" );
 		if ( pExtension )
 		{
 			*pExtension = '\0';

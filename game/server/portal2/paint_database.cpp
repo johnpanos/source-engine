@@ -329,7 +329,7 @@ static void RemoveRepeatedPaintData( PaintLocationVector_t &dataList )
 
 // Predicate: true for the first paint location that doesn't belong in the same
 // PaintWorld message as the given brush entity and power.
-struct PaingDatabase_PreClientUpdate_DifferentType_t : public std::unary_function< const PaintLocationData_t&, bool >
+struct PaingDatabase_PreClientUpdate_DifferentType_t
 {
 	PaintPowerType m_PowerType;
 	CBaseEntity *m_pBrushEntity;

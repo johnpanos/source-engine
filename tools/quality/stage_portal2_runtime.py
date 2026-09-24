@@ -67,14 +67,19 @@ def stage_content(steam_root, runtime, mount_custom=False):
     gameinfo = runtime / "portal2/gameinfo.txt"
     gameinfo.write_text(retail_search_paths(gameinfo.read_text(), mount_custom))
 
-    # The old GameUI expects this legacy name, while Portal 2 ships the same
-    # menu artwork under portal2_product_1_widescreen.vtf in its VPK.
-    background = runtime / "portal2/materials/console/background_menu_widescreen.vtf"
-    if not background.is_file():
+    # The old GameUI expects these legacy names, while Portal 2 ships the same
+    # menu artwork as portal2_product_1{,_widescreen}.vtf in its VPK. The
+    # startup graphic is chosen by the display's aspect ratio and a missing
+    # image is fatal, so both are required (a 4:3 display uses the plain one).
+    for suffix in ("_widescreen", ""):
+        background = runtime / ("portal2/materials/console/background_menu%s.vtf" % suffix)
+        if background.is_file():
+            continue
         background.parent.mkdir(parents=True, exist_ok=True)
         with background.open("wb") as output:
             result = subprocess.run(
-                ["vpk", "--pipe", "--filter", "materials/console/portal2_product_1_widescreen.vtf", str(source_vpk)],
+                ["vpk", "--pipe", "--filter",
+                 "materials/console/portal2_product_1%s.vtf" % suffix, str(source_vpk)],
                 stdout=output, stderr=subprocess.PIPE, check=False)
         if result.returncode or background.stat().st_size < 4:
             background.unlink(missing_ok=True)

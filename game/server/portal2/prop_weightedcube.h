@@ -72,7 +72,6 @@ class CPropWeightedCube : public PlayerPickupPaintPowerUser< CPhysicsProp >, pub
 public:
 	DECLARE_CLASS( CPropWeightedCube, PlayerPickupPaintPowerUser< CPhysicsProp > );
 	DECLARE_SERVERCLASS();
-	IMPLEMENT_AUTO_LIST_GET();
 
 	CPropWeightedCube();
 

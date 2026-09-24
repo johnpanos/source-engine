@@ -1,0 +1,25 @@
+{
+  "schema": "portal2-scenarios/v1",
+  "description": "Scripted Portal 2 gameplay scenarios for carried objects: Wheatley's pickups and sockets from sp_a1_intro7 through sp_a2_core, and a weighted cube on a floor button. Run by tools/quality/portal2_scenarios.py; each scenario must print every required check as PASS and then QA_DONE.",
+  "driver": "qa_driver.nut",
+  "scenarios": [
+    {
+      "name": "sp_a1_wakeup",
+      "map": "sp_a1_wakeup",
+      "script": "sp_a1_wakeup.nut",
+      "timeout_seconds": 240,
+      "required_checks": [
+        "spawn.held",
+        "spawn.follows_turn",
+        "spawn.follows_after_idle",
+        "spawn.drop_locked",
+        "stairwell.still_held",
+        "elevator.landed_holding",
+        "socket.trigger_fired",
+        "socket.parented",
+        "socket.breakers_start",
+        "socket.released_by_player"
+      ]
+    }
+  ]
+}

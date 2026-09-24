@@ -11,7 +11,10 @@
 #include "vfoundgames.h"
 #include "matchmaking/imatchframework.h"
 
-class vgui::Label;
+namespace vgui
+{
+	class Label;
+}
 
 namespace BaseModUI {
 

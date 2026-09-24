@@ -1191,7 +1191,7 @@ bool CNPC_FloorTurret::IsValidEnemy( CBaseEntity *pEnemy )
 #ifdef PORTAL
 	if ( !FInViewCone( pEnemy ) || !FVisible( pEnemy ) )
 	{
-		CProp_Portal *pPortal = FInViewConeThroughPortal( pEnemy );
+		auto *pPortal = FInViewConeThroughPortal( pEnemy );
 
 		if ( pPortal )
 		{

@@ -1729,7 +1729,12 @@ void CBaseEntity::FireBullets( const FireBulletsInfo_t &info )
 		vecEnd = info.m_vecSrc + vecDir * info.m_flDistance;
 
 #ifdef PORTAL
+#ifdef PORTAL2
+		// Bullets pass through any linked portal, including Portal 2 portal doors.
+		CPortal_Base2D *pShootThroughPortal = NULL;
+#else
 		CProp_Portal *pShootThroughPortal = NULL;
+#endif
 		float fPortalFraction = 2.0f;
 #endif
 

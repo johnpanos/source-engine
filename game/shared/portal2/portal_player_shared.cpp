@@ -4340,7 +4340,7 @@ void ComputeAABBContactsWithBrushEntity_SIMD( ContactVector& contacts, const cpl
 	//PlaneVector planes;
 	const int NUMBER_OF_FLTX4 = brushQuery.MaxBrushSides() + 6 /*bbox*/ + iClipPlaneCount;
 	fltx4 *planes = (fltx4 *)stackalloc( sizeof( fltx4 ) * ( NUMBER_OF_FLTX4 + 1 ) );		// +1 for VMX alignment
-	planes = (fltx4*)ALIGN_VALUE( (int)planes, sizeof(fltx4) );
+	planes = (fltx4*)ALIGN_VALUE( (intp)planes, sizeof(fltx4) );
 
 	fltx4 f4BoxMin = LoadUnalignedSIMD( &boxMin.x );
 	fltx4 f4BoxMax = LoadUnalignedSIMD( &boxMax.x );

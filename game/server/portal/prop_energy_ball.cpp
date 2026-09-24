@@ -44,7 +44,12 @@ public:
 	virtual void StartTouch( CBaseEntity *pOther );
 	virtual void NotifySystemEvent( CBaseEntity *pNotify, notify_system_event_t eventType, const notify_system_event_params_t &params );
 
+#ifdef PORTAL2
+	// Any linked portal the ball passes, including Portal 2 portal doors.
+	CHandle<CPortal_Base2D>	m_hTouchedPortal;	// Pointer to the portal we are touched most recently
+#else
 	CHandle<CProp_Portal>		m_hTouchedPortal;	// Pointer to the portal we are touched most recently
+#endif
 	bool						m_bTouchingPortal1;	// Are we touching portal 1
 	bool						m_bTouchingPortal2;	// Are we touching portal 2
 
@@ -185,7 +190,7 @@ void CPropEnergyBall::VPhysicsCollision( int index, gamevcollisionevent_t *pEven
 	if ( (m_bTouchingPortal2 || m_bTouchingPortal1) && m_hTouchedPortal.Get() )
 	{
 		// Force our velocity to be either towards or away from the portal, no bouncing at odd angles allowed
-		CProp_Portal* pPortal = m_hTouchedPortal.Get();
+		auto *pPortal = m_hTouchedPortal.Get();
 
 		// Only lock to the portal's forward axis if we're in it's world bounds
 		// We use a tolerance of four, because the render bounds thickness for a portal is 4, and this function

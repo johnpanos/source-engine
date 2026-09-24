@@ -70,7 +70,7 @@ CPaintBlob* CPaintStream::GetBlob( int id )
 }
 
 
-struct ShouldNotDeleteBlob_t : std::unary_function< CPaintBlob*, bool >
+struct ShouldNotDeleteBlob_t
 {
 	inline bool operator()( const CPaintBlob* pBlob ) const
 	{
@@ -94,7 +94,7 @@ void CPaintStream::RemoveDeadBlobs()
 }
 
 
-struct TimeElapsed : public std::unary_function<TimeStamp, bool>
+struct TimeElapsed
 {
 	TimeStamp m_CurrentTime;
 
@@ -183,7 +183,7 @@ const Vector& CPaintStream::WorldAlignMaxs() const
 }
 
 
-struct TeleportedThisFrameBlob_t : std::unary_function< CPaintBlob*, bool >
+struct TeleportedThisFrameBlob_t
 {
 	TeleportedThisFrameBlob_t( int nMaxTeleportationCount ) : m_nMaxTeleportationCount( nMaxTeleportationCount )
 	{

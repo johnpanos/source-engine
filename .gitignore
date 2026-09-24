@@ -33,6 +33,8 @@ game/server/*/server.lib
 build*/
 quality-results/
 run/runtime-p2/
+# Private runtime of tools/quality/portal2_scenarios.py.
+run/runtime-p2-scenarios/
 # PBRT maps published for ./play (tools/quality/playable_maps.py) and their mounts.
 run/maps/
 run/runtime*/portal/custom/pbrt-*

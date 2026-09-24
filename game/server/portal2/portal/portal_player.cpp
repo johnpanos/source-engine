@@ -5002,7 +5002,7 @@ void CPortal_Player::ModifyOrAppendCriteria( AI_CriteriaSet& criteriaSet )
 	BaseClass::ModifyOrAppendCriteria( criteriaSet );
 
 	// Determine if we're in the air
-	criteriaSet.AppendCriteria( "in_air", ( GetGroundEntity() == NULL || m_PortalLocal.m_hTractorBeam.Get() ) ? 1 : 0 );
+	criteriaSet.AppendCriteria( "in_air", ( GetGroundEntity() == NULL || m_PortalLocal.m_hTractorBeam.Get() ) ? "1" : "0" );
 
 	// Determine if we're standing on something special
 	CBaseEntity *pGroundEnt = GetGroundEntity();
@@ -5036,7 +5036,7 @@ void CPortal_Player::ModifyOrAppendCriteria( AI_CriteriaSet& criteriaSet )
 		float flDot = DotProduct( vecOurForward, vecPartnerForward );
 
 		bool bFacingPartner = ( flDot < -DOT_20DEGREE );
-		criteriaSet.AppendCriteria( "facing_partner", ( bFacingPartner ) ? 1 : 0 );
+		criteriaSet.AppendCriteria( "facing_partner", ( bFacingPartner ) ? "1" : "0" );
 
 		float flDistToPartner = ( GetAbsOrigin() - pPartner->GetAbsOrigin() ).Length();
 		criteriaSet.AppendCriteria( "dist_to_partner", CFmtStr( "%f", flDistToPartner ) );
@@ -5046,7 +5046,7 @@ void CPortal_Player::ModifyOrAppendCriteria( AI_CriteriaSet& criteriaSet )
 		criteriaSet.AppendCriteria( "dist_to_partner", "0" );
 	}
 
-	criteriaSet.AppendCriteria( "rps_outcome", PortalMPGameRules() ? PortalMPGameRules()->GetRPSOutcome() : 0 );
+	criteriaSet.AppendCriteria( "rps_outcome", CFmtStr( "%d", PortalMPGameRules() ? PortalMPGameRules()->GetRPSOutcome() : 0 ) );
 
 	if ( m_szTauntForce[ 0 ] == '\0' )
 	{
@@ -5057,9 +5057,9 @@ void CPortal_Player::ModifyOrAppendCriteria( AI_CriteriaSet& criteriaSet )
 		criteriaSet.AppendCriteria( "force_taunt", m_szTauntForce.Get() );
 	}
 
-	criteriaSet.AppendCriteria( "taunt_partner", ( m_nTeamTauntState == TEAM_TAUNT_SUCCESS ) ? 1 : 0 );
+	criteriaSet.AppendCriteria( "taunt_partner", ( m_nTeamTauntState == TEAM_TAUNT_SUCCESS ) ? "1" : "0" );
 
-	criteriaSet.AppendCriteria( "no_portalgun", ( !Weapon_OwnsThisType( "weapon_portalgun" ) ) ? 1 : 0 );
+	criteriaSet.AppendCriteria( "no_portalgun", ( !Weapon_OwnsThisType( "weapon_portalgun" ) ) ? "1" : "0" );
 
 	// Check for if the player is ballbot or eggbot
 	if ( g_pGameRules->IsMultiplayer() )
@@ -5067,10 +5067,10 @@ void CPortal_Player::ModifyOrAppendCriteria( AI_CriteriaSet& criteriaSet )
 		switch ( GetTeamNumber() )
 		{
 		case TEAM_RED:
-			criteriaSet.AppendCriteria( "is_eggbot", 1 );
+			criteriaSet.AppendCriteria( "is_eggbot", "1" );
 			break;
 		case TEAM_BLUE:
-			criteriaSet.AppendCriteria( "is_ballbot", 1 );
+			criteriaSet.AppendCriteria( "is_ballbot", "1" );
 			break;
 		}
 	}

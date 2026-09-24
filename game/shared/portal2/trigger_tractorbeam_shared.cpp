@@ -559,7 +559,7 @@ float CTrigger_TractorBeam::GetLinearLimit()
 }
 
 
-struct ShouldDeleteBlob_t : std::unary_function< CPaintBlob*, bool >
+struct ShouldDeleteBlob_t
 {
 	inline bool operator()( const CPaintBlob* pBlob ) const
 	{
@@ -582,7 +582,7 @@ void CTrigger_TractorBeam::RemoveDeadBlobs()
 }
 
 
-struct IsBlobInSameBeam_t : std::unary_function< CPaintBlob*, bool >
+struct IsBlobInSameBeam_t
 {
 	IsBlobInSameBeam_t( CTrigger_TractorBeam* pBeam ) : m_pBeam( pBeam )
 	{

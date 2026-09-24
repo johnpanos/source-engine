@@ -52,7 +52,13 @@ public:
 private:
 
 	Vector FindTargetAimPoint( void );
-	Vector FindAimPointThroughPortal ( const CProp_Portal* pPortal );
+#ifdef PORTAL2
+	// Portal 2 aims through any linked portal, including portal doors.
+	typedef CPortal_Base2D AimPortal_t;
+#else
+	typedef CProp_Portal AimPortal_t;
+#endif
+	Vector FindAimPointThroughPortal ( const AimPortal_t* pPortal );
 	
 	bool m_bEnabled;
 	bool m_bCanSeeTarget;
@@ -310,7 +316,7 @@ Vector CPropTelescopicArm::FindTargetAimPoint( void )
 		Vector vAimPoint = pTarget->GetAbsOrigin() + ( pTarget->WorldAlignMins() + pTarget->WorldAlignMaxs() ) * 0.5f;
 		//float  fDistToPoint = vFrontPoint.DistToSqr( vAimPoint );
 
-		CProp_Portal *pShortestDistPortal = NULL;
+		AimPortal_t *pShortestDistPortal = NULL;
 		UTIL_Portal_ShortestDistance( vFrontPoint, vAimPoint, &pShortestDistPortal, true );
 
 		Vector ptShortestAimPoint;
@@ -334,11 +340,11 @@ Vector CPropTelescopicArm::FindTargetAimPoint( void )
 // Input  : pPortal - The portal to look through
 // Output : Vector& output point in world space where the target *appears* to be as seen through the portal
 //-----------------------------------------------------------------------------
-Vector CPropTelescopicArm::FindAimPointThroughPortal( const CProp_Portal* pPortal )
+Vector CPropTelescopicArm::FindAimPointThroughPortal( const AimPortal_t* pPortal )
 { 
 	if ( pPortal && pPortal->m_bActivated )
 	{
-		CProp_Portal* pLinked = pPortal->m_hLinkedPortal.Get();
+		auto *pLinked = pPortal->m_hLinkedPortal.Get();
 		CBaseEntity*  pTarget = m_hAimTarget.Get();
 
 		if ( pLinked && pLinked->m_bActivated && pTarget )

@@ -373,7 +373,7 @@ void CHudControlHelper::Paint( void )
 	float flMoveScale = flGlobalAlpha;
 
 	int nBaseOffset = iconCenterX - 24.0f;
-	int xOffset[3] = { nBaseOffset + ( -68.0f * flMoveScale ), nBaseOffset, nBaseOffset + ( 68.0f * flMoveScale ) };
+	int xOffset[3] = { (int)( nBaseOffset + ( -68.0f * flMoveScale ) ), nBaseOffset, (int)( nBaseOffset + ( 68.0f * flMoveScale ) ) };
 
 	// Draw the front icon last so it's on top
 	int nCurIcon = ( m_nFrontIcon + 1 ) % ARRAYSIZE( m_nTexture );

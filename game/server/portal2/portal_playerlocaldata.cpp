@@ -11,6 +11,7 @@
 #include "cbase.h"
 #include "portal_playerlocaldata.h"
 #include "gamerules.h"
+#include "trigger_tractorbeam.h" // m_hTractorBeam = NULL compares against the complete type
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
