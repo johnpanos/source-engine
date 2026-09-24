@@ -16,6 +16,7 @@
 #endif
 
 #include <KeyValues.h>
+#include "tier1/kvconditional.h"
 #include "filesystem.h"
 #include <vstdlib/IKeyValuesSystem.h>
 #include "tier0/icommandline.h"
@@ -580,6 +581,10 @@ const char *KeyValues::ReadToken( CUtlBuffer &buf, bool &wasQuoted, bool &wasCon
 	// read in the token until we hit a whitespace or a control character
 	bool bReportedError = false;
 	bool bConditionalStart = false;
+	// A token that opens with '[' is a conditional expression, which may contain
+	// spaces up to its ']' (e.g. [$WIN32 && !$OSX]); it never spans lines.
+	const bool bConditionalToken = ( *c == '[' );
+	bool bInConditional = bConditionalToken;
 	int nCount = 0;
 	while ( ( c = (const char*)buf.PeekGet( sizeof(char), 0 ) ) )
 	{
@@ -597,10 +602,11 @@ const char *KeyValues::ReadToken( CUtlBuffer &buf, bool &wasQuoted, bool &wasCon
 		if ( *c == ']' && bConditionalStart )
 		{
 			wasConditional = true;
+			bInConditional = false;
 		}
 
 		// break on whitespace
-		if ( isspace(*c) )
+		if ( isspace(*c) && ( !bInConditional || *c == '\n' || *c == '\r' ) )
 			break;
 
 		if (nCount < (KEYVALUES_TOKEN_SIZE-1) )
@@ -2208,43 +2214,47 @@ bool IsSteamDeck()
 }
 
 //-----------------------------------------------------------------------------
-// Returns whether a keyvalues conditional evaluates to true or false
-// Needs more flexibility with conditionals, checking convars would be nice.
+// Symbol values for conditional expressions such as [$WIN32 && !$OSX].
+// Symbols are matched whole and case-insensitively.
+//-----------------------------------------------------------------------------
+static bool GetConditionalSymbolValue( const char *pName, void *pContext )
+{
+	// Values kept from the SDK 2013 evaluator, so its content keeps its meaning.
+	if ( !Q_stricmp( pName, "DECK" ) )
+		return IsSteamDeck();
+	if ( !Q_stricmp( pName, "X360" ) )
+		return false;
+	if ( !Q_stricmp( pName, "WIN32" ) )
+		return IsPC(); // hack hack - for now WIN32 really means IsPC
+	if ( !Q_stricmp( pName, "WINDOWS" ) )
+		return IsWindows();
+	if ( !Q_stricmp( pName, "OSX" ) )
+		return false;
+	if ( !Q_stricmp( pName, "LINUX" ) )
+		return IsLinux() || IsBSD() || IsOSX();
+	if ( !Q_stricmp( pName, "POSIX" ) )
+		return IsPosix();
+
+	// Later branches' console symbols; this engine runs on no console.
+	if ( !Q_stricmp( pName, "PS3" ) || !Q_stricmp( pName, "GAMECONSOLE" ) )
+		return false;
+
+	// Everything else (language, WIN32WIDE, ...) is installed at run time.
+	return KeyValuesSystem()->GetKeyValuesExpressionSymbol( pName );
+}
+
+//-----------------------------------------------------------------------------
+// Returns whether a keyvalues conditional evaluates to true or false.
+// A malformed expression is rejected, as SDK 2013 rejected unknown text.
 //-----------------------------------------------------------------------------
 bool EvaluateConditional( const char *str )
 {
-	if ( !str )
-		return false;
-
-	if ( *str == '[' )
-		str++;
-
-	bool bNot = false; // should we negate this command?
-	if ( *str == '!' )
-		bNot = true;
-
-	if ( Q_stristr( str, "$DECK" ) )
-		return IsSteamDeck() ^ bNot;
-
-	if ( Q_stristr( str, "$X360" ) )
-		return false ^ bNot;
-
-	if ( Q_stristr( str, "$WIN32" ) )
-		return IsPC() ^ bNot; // hack hack - for now WIN32 really means IsPC
-
-	if ( Q_stristr( str, "$WINDOWS" ) )
-		return IsWindows() ^ bNot;
-
-	if ( Q_stristr( str, "$OSX" ) )
-		return bNot;
-
-	if ( Q_stristr( str, "$LINUX" ) )
-		return ( IsLinux() || IsBSD() || IsOSX() ) ^ bNot;
-
-	if ( Q_stristr( str, "$POSIX" ) )
-		return IsPosix() ^ bNot;
-
-	return false;
+	bool bResult = false;
+	if ( str && !EvaluateKVConditionalExpression( str, GetConditionalSymbolValue, NULL, bResult ) )
+	{
+		g_KeyValuesErrorStack.ReportError( "bad conditional expression" );
+	}
+	return bResult;
 }
 
 

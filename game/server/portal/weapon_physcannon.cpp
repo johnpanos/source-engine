@@ -5,7 +5,9 @@
 //=============================================================================//
 
 #include "cbase.h"
+#ifdef PORTAL2
 #include "portal2/portal/prop_portal.h"
+#endif
 #include "player.h"
 #ifdef PORTAL2
 // The Portal 2 gun; a same-directory lookup would find the Portal 1 header.

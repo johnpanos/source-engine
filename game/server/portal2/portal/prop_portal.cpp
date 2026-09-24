@@ -86,7 +86,9 @@ CProp_Portal::CProp_Portal( void )
 	if( !ms_DefaultPortalSizeInitialized )
 	{
 		ms_DefaultPortalSizeInitialized = true; // for CEG protection
-		// The shared portal source initializes the default size in this build.
+		CEG_GCV_PRE();
+		ms_DefaultPortalHalfHeight = CEG_GET_CONSTANT_VALUE( DefaultPortalHalfHeight ); // only protecting one to reduce the cost of first-portal check
+		CEG_GCV_POST();
 	}
 	m_FizzleEffect = PORTAL_FIZZLE_KILLED;
 	CProp_Portal_Shared::AllPortals.AddToTail( this );

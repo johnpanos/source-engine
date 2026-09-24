@@ -110,7 +110,11 @@ public:
 	virtual float GetFireRate( void ) { return 0.7; };
 	void WeaponIdle( void );
 
+#ifdef PORTAL2
 	int GetWeaponID( void ) const { return WEAPON_PORTALGUN; }
+#else
+	PortalWeaponID GetWeaponID( void ) const { return WEAPON_PORTALGUN; }
+#endif
 
 protected:
 

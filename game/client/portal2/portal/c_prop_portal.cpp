@@ -178,9 +178,6 @@ void __MsgFunc_PortalFX_Surface(bf_read &msg)
 
 USER_MESSAGE_REGISTER( PortalFX_Surface );
 
-// Portal 2 port: CEG constant accessor read through CEG_GET_CONSTANT_VALUE (no CEG in this build).
-static inline float DefaultPortalHalfHeight() { return DEFAULT_PORTAL_HALF_HEIGHT; }
-
 C_Prop_Portal::C_Prop_Portal( void )
 :	m_fStaticAmount( 0.0f ),
 	m_fSecondaryStaticAmount( 0.0f ),

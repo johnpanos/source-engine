@@ -60,6 +60,7 @@ typedef void *HDC;
 #if !defined(NO_STEAM)
 #include "cl_steamauth.h"
 #endif
+#include "vstdlib/IKeyValuesSystem.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -131,6 +132,7 @@ protected:
     void                SetInitialized( bool init );
     void                AdjustWindow( int nWidth, int nHeight, int nBPP, bool bWindowed );
     void                ResetCurrentModeForNewResolution( int width, int height, bool bWindowed );
+    void                PublishModeExpressionSymbols( int nWidth, int nHeight );
     int                 GetModeBPP( ) const { return 32; }
     void                DrawStartupVideo();
     void                ComputeStartupGraphicName( char *pBuf, int nBufLen );
@@ -571,6 +573,24 @@ void CVideoMode_Common::ResetCurrentModeForNewResolution( int nWidth, int nHeigh
 		// screen because that would show up on the HMD
 		m_bWindowed = true;
 	}
+
+	PublishModeExpressionSymbols( m_nModeWidth, m_nModeHeight );
+}
+
+//-----------------------------------------------------------------------------
+// Resource files select layouts with [$WIN32WIDE], [$WIN32HIDEF] and
+// [$WIN32LODEF]; the thresholds are the later-branch PC ones.
+//-----------------------------------------------------------------------------
+void CVideoMode_Common::PublishModeExpressionSymbols( int nWidth, int nHeight )
+{
+	if ( nWidth <= 0 || nHeight <= 0 )
+		return;
+
+	const bool bWidescreen = (float)nWidth / (float)nHeight >= 1.5999f;
+	const bool bHidef = nHeight >= 720;
+	KeyValuesSystem()->SetKeyValuesExpressionSymbol( "WIN32WIDE", bWidescreen );
+	KeyValuesSystem()->SetKeyValuesExpressionSymbol( "WIN32HIDEF", bHidef );
+	KeyValuesSystem()->SetKeyValuesExpressionSymbol( "WIN32LODEF", !bHidef );
 }
 
 

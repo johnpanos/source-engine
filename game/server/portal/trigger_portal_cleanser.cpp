@@ -80,6 +80,9 @@ public:
 	void Spawn( void );
 	void Touch( CBaseEntity *pOther );
 
+	static void FizzleBaseAnimating(
+	    CTriggerPortalCleanser *pFizzler, CBaseAnimating *pBaseAnimating );
+
 	DECLARE_DATADESC();
 
 	// Outputs
@@ -324,6 +327,7 @@ void CTriggerPortalCleanser::FizzleBaseAnimating( CTriggerPortalCleanser *pFizzl
 	}
 }
 
+#ifdef PORTAL2
 //-----------------------------------------------------------------------------
 // Purpose: A portal shot was stopped by this cleanser.
 //-----------------------------------------------------------------------------
@@ -342,7 +346,6 @@ void CTriggerPortalCleanser::SetPortalShot( void )
 	}
 }
 
-#ifdef PORTAL2
 //-----------------------------------------------------------------------------
 // Purpose: Fizzles every portal inside the cleanser volume.
 //-----------------------------------------------------------------------------

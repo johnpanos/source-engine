@@ -1574,7 +1574,12 @@ void CHudCloseCaption::Process( const wchar_t *stream, float duration, const cha
 
 void CHudCloseCaption::CreateFonts( void )
 {
+#if defined( PORTAL2 )
+	// Portal 2 defines the caption fonts in the BaseModUI scheme, not ClientScheme.
+	vgui::IScheme *pScheme = vgui::scheme()->GetIScheme( vgui::scheme()->GetScheme( "basemodui_scheme" ) );
+#else
 	vgui::IScheme *pScheme = vgui::scheme()->GetIScheme( GetScheme() );
+#endif
 
 	m_hFonts[CCFONT_NORMAL] = pScheme->GetFont( "CloseCaption_Normal", true );
 

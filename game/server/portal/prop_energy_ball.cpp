@@ -5,8 +5,10 @@
 //
 //=====================================================================================//
 
-#include "cbase.h"
-#include "portal2/portal/prop_portal.h"					// for pch
+#include "cbase.h" // for pch
+#ifdef PORTAL2
+#include "portal2/portal/prop_portal.h"
+#endif
 #include "prop_combine_ball.h"		// for base class
 #include "te_effect_dispatch.h"		// for the explosion/impact effects
 #include "prop_portal.h"			// Special case code for passing through portals. We need the class definition.

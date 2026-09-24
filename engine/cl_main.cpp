@@ -71,6 +71,7 @@
 
 #include "language.h"
 #include "igame.h"
+#include "vstdlib/IKeyValuesSystem.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -2683,8 +2684,45 @@ void CL_SetSteamCrashComment()
 //
 static ConCommand startupmenu( "startupmenu", &CL_CheckToDisplayStartupMenus, "Opens initial menu screen and loads the background bsp, but only if no other level is being loaded, and we're not in developer mode." );
 
-ConVar cl_language( "cl_language", "english", FCVAR_USERINFO, "Language (from HKCU\\Software\\Valve\\Steam\\Language)" );
+//-----------------------------------------------------------------------------
+// Resource files select text with language symbols, e.g. [$WIN32 && !$ENGLISH].
+//-----------------------------------------------------------------------------
+static void CL_SetLanguageExpressionSymbols( const char *pLanguage, bool bValue )
+{
+	if ( !pLanguage || !pLanguage[0] )
+		return;
+
+	char symbol[64];
+	Q_strncpy( symbol, pLanguage, sizeof( symbol ) );
+	Q_strupr( symbol );
+	KeyValuesSystem()->SetKeyValuesExpressionSymbol( symbol, bValue );
+
+	// Steam's Korean language name differs from the content symbol.
+	if ( !Q_stricmp( pLanguage, "koreana" ) )
+	{
+		KeyValuesSystem()->SetKeyValuesExpressionSymbol( "KOREAN", bValue );
+	}
+}
+
+static void CL_LanguageChanged( IConVar *pConVar, const char *pOldValue, float flOldValue );
+ConVar cl_language( "cl_language", "english", FCVAR_USERINFO, "Language (from HKCU\\Software\\Valve\\Steam\\Language)", CL_LanguageChanged );
+
+static void CL_LanguageChanged( IConVar *pConVar, const char *pOldValue, float flOldValue )
+{
+	CL_SetLanguageExpressionSymbols( pOldValue, false );
+	CL_SetLanguageExpressionSymbols( cl_language.GetString(), true );
+}
+
+static void CL_SelectLanguage();
 void CL_InitLanguageCvar()
+{
+	CL_SelectLanguage();
+
+	// The change callback does not run when the selection equals the default.
+	CL_SetLanguageExpressionSymbols( cl_language.GetString(), true );
+}
+
+static void CL_SelectLanguage()
 {
 	Msg("CL_InitLanguageCvar\n");
 	if ( Steam3Client().SteamApps() )

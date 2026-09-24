@@ -605,6 +605,7 @@ private:
 	static CUtlDict< font_entry, unsigned short > m_FontData;
 
 	static void *FontDataHelper( const char *pchFontName, int &size, const char *fontFileName );
+	static void AddFontDataName( const char *pchFontName, const font_entry &entry );
 #endif
 };
 

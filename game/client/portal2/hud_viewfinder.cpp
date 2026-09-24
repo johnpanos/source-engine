@@ -435,8 +435,7 @@ void CHudViewfinder::Paint( void )
 	vgui::surface()->DrawFilledRect( screenWide - ( flRegisterOffset + flRegisterWeight ), screenTall - ( flRegisterOffset + flRegisterLength ), screenWide - flRegisterOffset, screenTall - flRegisterOffset );
 
 	// Blinking "REC" inside the lower right registration mark
-	vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
-	vgui::HFont hTFont = vgui::scheme()->GetIScheme( scheme )->GetFont( "InstructorTitle", true );
+	vgui::HFont hTFont = GetClientSchemeFont( "InstructorTitle", true );
 
 	int nAlpha = 0;
 	float flAlpha = sinf( gpGlobals->curtime * 8.0f );

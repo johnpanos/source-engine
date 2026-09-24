@@ -486,9 +486,41 @@ void CHud::InitColors( vgui::IScheme *scheme )
 //-----------------------------------------------------------------------------
 void CHud::InitFonts()
 {
-	vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
-	vgui::IScheme *pScheme = vgui::scheme()->GetIScheme( scheme );
-	g_hFontTrebuchet24 = pScheme->GetFont("CenterPrintText", true);
+	g_hFontTrebuchet24 = GetClientSchemeFont( "CenterPrintText", true );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Finds a font for text the client draws outside a scheme'd panel.
+//			Portal 2 defines several of these (CenterPrintText, CommentaryDefault,
+//			InstructorTitle, CreditsOutroText) in its BaseModUI scheme rather than
+//			ClientScheme. Returns 0 when no scheme defines the font.
+//-----------------------------------------------------------------------------
+vgui::HFont GetClientSchemeFont( const char *pchFontName, bool bProportional )
+{
+	vgui::IScheme *pScheme = vgui::scheme()->GetIScheme( vgui::scheme()->GetScheme( "ClientScheme" ) );
+	vgui::HFont hFont = pScheme ? pScheme->GetFont( pchFontName, bProportional ) : vgui::INVALID_FONT;
+
+#if defined( PORTAL2 )
+	if ( !hFont )
+	{
+		// GetScheme answers the default scheme for an unloaded tag. The HUD can
+		// initialize before BaseModPanel, so load the same file and tag it uses;
+		// only do so once, since loading an existing scheme reloads its glyphs.
+		vgui::HScheme hBaseMod = vgui::scheme()->GetScheme( "basemodui_scheme" );
+		if ( hBaseMod == vgui::scheme()->GetDefaultScheme() )
+		{
+			hBaseMod = vgui::scheme()->LoadSchemeFromFile( "resource/basemodui_scheme.res", "basemodui_scheme" );
+		}
+
+		vgui::IScheme *pBaseMod = vgui::scheme()->GetIScheme( hBaseMod );
+		if ( pBaseMod )
+		{
+			hFont = pBaseMod->GetFont( pchFontName, bProportional );
+		}
+	}
+#endif
+
+	return hFont;
 }
 
 //-----------------------------------------------------------------------------

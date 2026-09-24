@@ -38,6 +38,7 @@ ILauncherMgr *g_pLauncherMgr = NULL;
 #include <vgui/IHTML.h>
 #include <vgui/IVGui.h>
 #include "vgui_surfacelib/FontManager.h"
+#include "vgui_surfacelib/ValveFont.h"
 #include "FontTextureCache.h"
 #include "MatSystemSurface.h"
 #include "UIScale.h"
@@ -2015,8 +2016,21 @@ void *CMatSystemSurface::FontDataHelper( const char *pchFontName, int &size, con
 			return NULL;
 		}
 
+		int nFontBytes = buf.TellPut();
+		const ValveFont::DecodeResult_t decode =
+			ValveFont::DecodeFont( (unsigned char *)buf.Base(), buf.TellPut(), nFontBytes );
+		if ( decode == ValveFont::DECODE_MALFORMED )
+		{
+			Msg( "Malformed custom font file '%s'\n", fontFileName );
+			return NULL;
+		}
+		if ( decode == ValveFont::DECODE_NOT_ENCODED )
+		{
+			nFontBytes = buf.TellPut();
+		}
+
 		FT_Face face;
-		const FT_Error error = FT_New_Memory_Face( FontManager().GetFontLibraryHandle(), (FT_Byte *)buf.Base(), buf.TellPut(), 0, &face );
+		const FT_Error error = FT_New_Memory_Face( FontManager().GetFontLibraryHandle(), (FT_Byte *)buf.Base(), nFontBytes, 0, &face );
 
 		if ( error  ) 
 		{
@@ -2025,25 +2039,22 @@ void *CMatSystemSurface::FontDataHelper( const char *pchFontName, int &size, con
 			return NULL;
 		}
 
-		if( !pchFontName )
-		{
-			// If we weren't passed a font name for this thing, then use the one from the face.
-			pchFontName = face->family_name;
-			if ( !pchFontName || !pchFontName[ 0 ] )
-			{
-				pchFontName = FT_Get_Postscript_Name( face );
-			}
-		}
-
-		// Replace spaces and dashes with underscores.
-		CUtlString strFontName( pchFontName );
-		RemoveSpaces( strFontName );
-
 		font_entry entry;
-		entry.size = buf.TellPut();
+		entry.size = nFontBytes;
 		entry.data = malloc( entry.size );
 		memcpy( entry.data, buf.Base(), entry.size );
-		m_FontData.Insert( strFontName.Get(), entry );
+
+		if( pchFontName )
+		{
+			AddFontDataName( pchFontName, entry );
+		}
+		else
+		{
+			// Schemes name custom fonts by family ("HalfLife2") or, for faces of one
+			// family, by PostScript name ("UniversLTStd-BoldCn"); register both.
+			AddFontDataName( face->family_name, entry );
+			AddFontDataName( FT_Get_Postscript_Name( face ), entry );
+		}
 
 		FT_Done_Face( face );
 
@@ -2065,6 +2076,26 @@ void *CMatSystemSurface::FontDataHelper( const char *pchFontName, int &size, con
 	}
 
 	return NULL;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Registers font data under a lookup name. The first registration of
+//			a name wins, as lookups have always returned the first match. Font
+//			data lives for the process, so several names may share one buffer.
+//-----------------------------------------------------------------------------
+void CMatSystemSurface::AddFontDataName( const char *pchFontName, const font_entry &entry )
+{
+	if ( !pchFontName || !pchFontName[0] )
+		return;
+
+	// Replace spaces and dashes with underscores.
+	CUtlString strFontName( pchFontName );
+	RemoveSpaces( strFontName );
+
+	if ( m_FontData.Find( strFontName.Get() ) == m_FontData.InvalidIndex() )
+	{
+		m_FontData.Insert( strFontName.Get(), entry );
+	}
 }
 
 #endif // LINUX

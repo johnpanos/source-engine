@@ -358,6 +358,21 @@ inline int MapPropOffsetsToIndices(
 			else
 			{
 				pOut[iOut++] = propIndex;
+
+				// A vector sent as an XY prop plus a separate z element (SendPropVectorXY with
+				// SENDINFO_VECTORELEM( var, 2 ), as the Portal 2 player's origin is) changes
+				// through the vector's base offset only. Transfer the z element with it, or
+				// the local client keeps a stale z.
+				if ( pPrecalc->m_Props[propIndex]->GetType() == DPT_VectorXY )
+				{
+					index = pPrecalc->m_PropOffsetToIndexMap.Find( pOffsets[i] + 2 * sizeof( float ) );
+					if ( index != pPrecalc->m_PropOffsetToIndexMap.InvalidIndex() )
+					{
+						unsigned short zIndex = pPrecalc->m_PropOffsetToIndexMap[index];
+						if ( zIndex & PROP_INDEX_VECTOR_ELEM_MARKER )
+							pOut[iOut++] = ( zIndex & ~PROP_INDEX_VECTOR_ELEM_MARKER );
+					}
+				}
 			}
 		}
 	}

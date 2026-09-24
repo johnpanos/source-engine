@@ -2012,6 +2012,44 @@
       "expect": "pass"
     },
     {
+      "id": "vgui.valvefont",
+      "domain": "Q-CONTENT",
+      "rfc": "0010",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/vguitest/test_valvefont.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "tier1.kv_conditional",
+      "domain": "Q-CONTENT",
+      "rfc": "0010",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "tier1/kvconditional.cpp",
+        "unittests/tier1test/test_kv_conditional.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "tier1.kv_conditional.sensitivity",
+      "domain": "Q-CONTENT",
+      "rfc": "0010",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "tier1/kvconditional.cpp",
+        "unittests/tier1test/test_kv_conditional_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "input.gyro",
       "domain": "Q-FOUNDATION",
       "rfc": "0001",

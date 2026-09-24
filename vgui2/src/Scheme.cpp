@@ -817,6 +817,12 @@ void CScheme::ReloadFontGlyphs()
 		// walk through creating adding the first matching glyph set to the font
 		for (KeyValues *fontdata = kv->GetFirstSubKey(); fontdata != NULL; fontdata = fontdata->GetNextKey())
 		{
+			// Later schemes (Portal 2) declare "isproportional" "only"/"no" beside
+			// the glyph sets. It is not a glyph set; both variants are still created
+			// so callers written for either proportionality keep a usable font.
+			if ( !Q_stricmp( fontdata->GetName(), "isproportional" ) )
+				continue;
+
 			// skip over fonts not meant for this resolution
 			int fontYResMin = 0, fontYResMax = 0;
 			sscanf(fontdata->GetString("yres", ""), "%d %d", &fontYResMin, &fontYResMax);

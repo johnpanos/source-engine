@@ -332,8 +332,7 @@ void CHudPortalCredits::ReadLyrics( KeyValues *pKeyValue )
 	{
 		bNoY = false;
 		portalcreditname_t Credits;
-		vgui::HScheme scheme = vgui::scheme()->GetScheme( "ClientScheme" );
-		vgui::HFont m_hTFont = vgui::scheme()->GetIScheme(scheme)->GetFont( "CreditsOutroText", true );
+		vgui::HFont m_hTFont = GetClientSchemeFont( "CreditsOutroText", true );
 		V_strcpy_safe( Credits.szCreditName, pKVNames->GetName());
 		V_strcpy_safe( Credits.szFontName, pKeyValue->GetString( Credits.szCreditName, "Default" ) );
 

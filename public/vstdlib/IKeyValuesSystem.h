@@ -48,6 +48,13 @@ public:
 	virtual bool LoadFileKeyValuesFromCache( KeyValues* _outKv, const char *resourceName, const char *pathID, IBaseFileSystem *filesystem ) const = 0;
 	virtual void InvalidateCache( ) = 0;
 	virtual void InvalidateCacheForFile( const char *resourceName, const char *pathID ) = 0;
+
+	// Run-time symbols for conditional expressions such as [$WIN32WIDE && !$ENGLISH].
+	// Appended after the SDK 2013 methods so existing callers keep their vtable slots.
+	// An unset symbol is false. Changing a value evicts the file cache, whose entries
+	// were parsed with the previous value; call it from the thread that loads files.
+	virtual void SetKeyValuesExpressionSymbol( const char *name, bool bValue ) = 0;
+	virtual bool GetKeyValuesExpressionSymbol( const char *name ) = 0;
 };
 
 VSTDLIB_INTERFACE IKeyValuesSystem *KeyValuesSystem();

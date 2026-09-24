@@ -14,6 +14,7 @@
 #include "tier1/utlmap.h"
 #include "tier1/utlstring.h"
 #include "tier1/fmtstr.h"
+#include "tier1/utldict.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include <tier0/memdbgon.h>
@@ -58,6 +59,9 @@ public:
 	virtual void InvalidateCache();
 	virtual void InvalidateCacheForFile( const char *resourceName, const char *pathID );
 
+	virtual void SetKeyValuesExpressionSymbol( const char *name, bool bValue );
+	virtual bool GetKeyValuesExpressionSymbol( const char *name );
+
 private:
 #ifdef KEYVALUES_USE_POOL
 	CUtlMemoryPool *m_pMemPool;
@@ -91,6 +95,10 @@ private:
 	CThreadFastMutex m_mutex;
 
 	CUtlMap<CUtlString, KeyValues*> m_KeyValueCache;
+
+	// Values are read by any thread that parses KeyValues (e.g. material loading).
+	CThreadFastMutex m_ExpressionSymbolMutex;
+	CUtlDict< bool, int > m_ExpressionSymbols;
 };
 
 // EXPOSE_SINGLE_INTERFACE(CKeyValuesSystem, IKeyValuesSystem, KEYVALUES_INTERFACE_VERSION);
@@ -373,6 +381,55 @@ bool CKeyValuesSystem::LoadFileKeyValuesFromCache(KeyValues* outKv, const char *
 void CKeyValuesSystem::InvalidateCache()
 {
 	DoInvalidateCache();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Sets a run-time conditional symbol. Symbol names are case-insensitive
+//			and are stored without the leading '$'.
+//-----------------------------------------------------------------------------
+void CKeyValuesSystem::SetKeyValuesExpressionSymbol( const char *name, bool bValue )
+{
+	if ( !name || !name[0] )
+		return;
+	if ( name[0] == '$' )
+		++name;
+
+	bool bChanged;
+	{
+		AUTO_LOCK( m_ExpressionSymbolMutex );
+		int i = m_ExpressionSymbols.Find( name );
+		if ( i == m_ExpressionSymbols.InvalidIndex() )
+		{
+			// Unset symbols already read as false.
+			bChanged = bValue;
+			m_ExpressionSymbols.Insert( name, bValue );
+		}
+		else
+		{
+			bChanged = m_ExpressionSymbols[i] != bValue;
+			m_ExpressionSymbols[i] = bValue;
+		}
+	}
+
+	if ( bChanged )
+	{
+		DoInvalidateCache();
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Returns a run-time conditional symbol; unset symbols are false.
+//-----------------------------------------------------------------------------
+bool CKeyValuesSystem::GetKeyValuesExpressionSymbol( const char *name )
+{
+	if ( !name || !name[0] )
+		return false;
+	if ( name[0] == '$' )
+		++name;
+
+	AUTO_LOCK( m_ExpressionSymbolMutex );
+	int i = m_ExpressionSymbols.Find( name );
+	return i != m_ExpressionSymbols.InvalidIndex() && m_ExpressionSymbols[i];
 }
 
 //-----------------------------------------------------------------------------

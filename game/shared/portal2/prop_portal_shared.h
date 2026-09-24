@@ -24,6 +24,10 @@
 #define DEFAULT_PORTAL_HALF_WIDTH	32.0f
 #define DEFAULT_PORTAL_HALF_HEIGHT	56.0f
 
+// Portal 2 port: retail CEG generated this constant accessor for CEG_GET_CONSTANT_VALUE;
+// without CEG it returns the constant directly.
+inline float DefaultPortalHalfHeight() { return DEFAULT_PORTAL_HALF_HEIGHT; }
+
 class CProp_Portal_Shared  //defined as a class to make intellisense more intelligent
 {
 public:

@@ -32,6 +32,7 @@ def build(bld):
 		'interface.cpp',
 		'KeyValues.cpp',
 		'keyvaluesjson.cpp',
+		'kvconditional.cpp',
 		'kvpacker.cpp',
 		'lzmaDecoder.cpp',
 		'lzss.cpp', # [!$SOURCESDK]
