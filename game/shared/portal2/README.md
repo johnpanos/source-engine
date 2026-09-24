@@ -60,8 +60,13 @@ backends. That needed three base fixes:
   (`game/server/trains.cpp`). Otherwise it pushed against the player every tick
   and held walking near 26 u/s.
 
-Known gap: `sp_a1_intro3` hangs in `LevelShutdown` on quit, in
-`CPSCollisionEntity::UpdateOnRemove`. That map has pre-placed portals.
+Box3D now also matches IVP when noclip is turned off inside geometry: its
+player controller's speed budget ignores velocity the game set since the last
+step, as IVP's does (see [RFC 0004 progress](../../../RFC/0004-progress.md)).
+Quitting `sp_a1_intro3`, which has pre-placed portals, used to hang in
+`CPSCollisionEntity::UpdateOnRemove`. The portal's embedded simulator reported
+network changes to a wrong owner address until the `portal_base2d.h` fix, and it
+now exits cleanly on both backends.
 
 The repository's provenance and distribution warning in the root README also
 applies to this import.

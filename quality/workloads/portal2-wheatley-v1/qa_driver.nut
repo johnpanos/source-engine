@@ -360,6 +360,28 @@ function QA_CarryTo( mark, target, from )
 	QA_Log( "carry to " + QA_Vec( target ) + " eye " + QA_Vec( eye ) )
 }
 
+// Logs <name>'s position and the player's eye every 0.1 s for <seconds>,
+// for reading a failure's lead-up in the console log.
+function QA_Trace( name, seconds )
+{
+	::QA.marks.traceName <- name
+	::QA.marks.traceUntil <- Time() + seconds
+	QA_TraceTick()
+}
+
+function QA_TraceTick()
+{
+	local ent = Entities.FindByName( null, ::QA.marks.traceName )
+	local player = GetPlayer()
+	if ( ent != null && player != null )
+	{
+		QA_Log( "trace " + ::QA.marks.traceName + " " + QA_Vec( ent.GetCenter() ) + " eye " +
+		        QA_Vec( player.EyePosition() ) + " parent=" + QA_ParentName( ent ) )
+	}
+	if ( Time() < ::QA.marks.traceUntil )
+		EntFireByHandle( ::QA.driver, "RunScriptCode", "QA_TraceTick()", 0.1, null, null )
+}
+
 // Holds a +command button for <seconds> of server time; the client runs it.
 // Keeps the player's standing height and finds the pitch and horizontal
 // distance at which an object held at view offset <mark> reaches <target>,

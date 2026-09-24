@@ -304,7 +304,7 @@ private:
 	bool m_asleepSinceCreation;
 	Vector m_preStepLinear;
 	Vector m_preStepAngular;	// world, radians/second
-	Vector m_uncommittedLinear;	// world; game velocity changes since the last step
+	Vector m_uncommittedLinear; // world; game velocity changes since the last step
 };
 
 inline CPhysicsObjectBox3D *ToBox3D( IPhysicsObject *pObject ) { return static_cast<CPhysicsObjectBox3D *>( pObject ); }

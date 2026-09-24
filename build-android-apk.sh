@@ -561,7 +561,7 @@ push_content()
 
 	# Files whose size or modification time differ; adb push keeps the host
 	# modification time, so a pushed file matches on the next run.
-	awk 'NR == FNR { have[substr($0, index($0, $3))] = $1 " " $2; next }
+	awk 'FILENAME == ARGV[1] { have[substr($0, index($0, $3))] = $1 " " $2; next }
 		{ path = substr($0, index($0, $3));
 		  if (have[path] != $1 " " $2) { print path; bytes += $1 } }
 		END { printf "%d\n", bytes > "/dev/stderr" }' \
@@ -571,7 +571,8 @@ push_content()
 	bytes="$(cat "$plan/needed.bytes")"
 	echo "  $(wc -l < "$plan/host.txt") files, $count to push ($(numfmt --to=iec "$bytes")B)"
 
-	# One adb push per destination directory, with every file for it.
+	# One adb push per destination directory, with every file for it. adb reads
+	# stdin, so it gets /dev/null instead of the directory list.
 	local dir file
 	local -a files
 	while IFS= read -r dir; do
@@ -580,8 +581,8 @@ push_content()
 			files+=("$source/$file")
 		done < <(awk -v d="$dir" '{ p = $0; sub("/[^/]*$", "", p); if (p == d) print }' \
 			"$plan/needed.txt")
-		adb_cmd shell mkdir -p "'$dest/$dir'"
-		adb_cmd push "${files[@]}" "$dest/$dir/" >/dev/null ||
+		adb_cmd shell mkdir -p "'$dest/$dir'" </dev/null
+		adb_cmd push "${files[@]}" "$dest/$dir/" </dev/null >/dev/null ||
 			die "adb push to $dest/$dir failed"
 		echo "  $dir/ (${#files[@]})"
 	done < <(sed 's|/[^/]*$||' "$plan/needed.txt" | sort -u)
@@ -591,7 +592,7 @@ push_content()
 		# adb creates these as shell:ext_data_rw 0770, which the app's own uid
 		# cannot enter; the game also writes configs, saves and stats here.
 		# Android/data/<package> is visible to this app only.
-		adb_cmd shell chmod -R a+rwX "'$dest/$top'"
+		adb_cmd shell "[ ! -d '$dest/$top' ] || chmod -R a+rwX '$dest/$top'"
 	done
 	echo "  content in sync"
 }

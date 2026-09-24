@@ -255,9 +255,10 @@ void TestCollisionStateVelocity()
 	Vector moved = PositionOf( player.pObject ) - at;
 	Vector shadowVelocity;
 	player.pController->GetShadowVelocity( &shadowVelocity );
-	Check( TIER_GAMEPLAY, "player.set-velocity-budget", NearVec( shadowVelocity, kept, 20.0f ) &&
-		NearVec( moved, kept * kTick, 1.0f ), "moved (%.2f %.2f %.2f) velocity (%.2f %.2f %.2f)", moved.x, moved.y,
-		moved.z, shadowVelocity.x, shadowVelocity.y, shadowVelocity.z );
+	Check( TIER_GAMEPLAY, "player.set-velocity-budget",
+	    NearVec( shadowVelocity, kept, 20.0f ) && NearVec( moved, kept * kTick, 1.0f ),
+	    "moved (%.2f %.2f %.2f) velocity (%.2f %.2f %.2f)", moved.x, moved.y, moved.z,
+	    shadowVelocity.x, shadowVelocity.y, shadowVelocity.z );
 	ObsVector( "player.set-velocity-step", "a1", moved );
 	DestroyPlayer( world, player );
 	DestroyWorld( world );

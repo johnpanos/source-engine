@@ -7,8 +7,8 @@ This file is the human-readable, durable progress record for RFC 0004. It tracks
 
 ## Status
 
-Evidence (2026-09-23): `python3 tools/quality/physics_conformance.py --out <dir>`
-passes. IVP and Box3D each pass 558 checks (149 boot, 409 gameplay); 12,372
+Evidence (2026-09-24): `python3 tools/quality/physics_conformance.py --out <dir>`
+passes. IVP and Box3D each pass 559 checks (149 boot, 410 gameplay); 12,373
 observations agree; all 17 sensitivity faults are detected. The contract and its
 known gaps are in
 [`vphysics.provider.v1`](../unittests/physicstest/contracts/vphysics.provider.v1.md).
@@ -79,6 +79,38 @@ Evidence:
   under it with `NewLocation`, and logged the result with
   `sv_portal_debug_touch`. IVP and the fixed Box3D teleport the cube; the pre-fix
   Box3D never does. The repro is not installed as a tool.
+
+Player speed budget after a game-set velocity (2026-09-24): in Portal 2, turning
+noclip off inside geometry left the player about 9 units lower on Box3D than on
+IVP. `CBasePlayer::SetVCollisionState` teleports the shadow and sets its
+velocity, then `Update` passes the movement speed as the controller's per-axis
+budget. IVP's `SetVelocity` zeroes the core's speed and holds the new velocity in
+`speed_change` until the next step, and `MaxSpeed` reads only the core's speed.
+So IVP removes at most the offered speed per axis, and the shadow keeps the rest
+for that step. Box3D's `MaxSpeed` read the full new velocity, got a budget larger
+than it, and stopped the shadow. The stuck check then pulled the player back to
+the shadow for several ticks.
+
+Box3D objects now record the velocity the game set or added since the last step
+(`SetVelocity`, `AddVelocity`, `ApplyForceCenter`/`ApplyForceOffset`;
+`SetVelocityInstantaneous` records none, as in IVP). `PreStep` commits it, and
+`MaxSpeed` budgets against the committed velocity. The same path runs on every
+collision-state change: noclip off, ducking and portal teleports.
+
+Evidence:
+
+- New `player.set-velocity-budget` check and `player.set-velocity-step`
+  observation. IVP passes; the pre-fix Box3D module fails, stopping the shadow
+  instead of keeping (325, -425, 525).
+- Headless `sp_a2_triple_laser` noclip-off in geometry: after the fix, Box3D
+  follows IVP within 0.15 units. Before, it ended about 9 units lower. The 0.15
+  is Box3D applying gravity after the controller. Fall, walk, stop, jump and
+  noclip runs match IVP within 0.09 units.
+- A cube push on that map varies from run to run in this harness. IVP's sampled
+  path varies, but its endpoint repeats. In three runs each, the fixed Box3D
+  ended at IVP's endpoint twice and 1.1 units off once. The pre-fix module ended
+  there once and up to 14 units off otherwise. The source of Box3D's endpoint
+  variance was not found; the world uses one worker.
 
 | Work item | Phase | Status | Evidence |
 | --- | --- | --- | --- |

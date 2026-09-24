@@ -111,7 +111,27 @@ QA_Do( "face the cage", function()
 	QA_PlaceEye( Vector( 8976, 1300, p.EyePosition().z ), 0.0, 270.0 )
 }, 1.0 )
 
-QA_Do( "walk into the cage", function() { QA_Press( "forward", 1.6 ) }, 2.5 )
+// He has to stay low under the door header and then rise above the socket,
+// which comes up out of the hatch as he passes the entry trigger. Looking up
+// before the eye is through the door would put the header between eye and
+// core, which the grab controller treats as an obstruction and lets go.
+QA_Do( "walk into the cage", function()
+{
+	QA_Trace( "@sphere", 3.0 )
+	QA_Press( "forward", 1.6 )
+}, 0.05 )
+
+QA_WaitFor( "breaker.through_door", function()
+{
+	local eye = QA_Player().EyePosition()
+	QA_Detail( "eye " + QA_Vec( eye ) + " drops=" + QA_Fired( "@sphere", "OnPlayerDrop" ) )
+	if ( eye.y > 1176.0 )
+		return false
+	QA_SetView( -40.0, 270.0 )
+	return QA_Fired( "@sphere", "OnPlayerDrop" ) == 0
+}, 3.0 )
+
+QA_Sleep( 2.0 )
 
 QA_WaitFor( "breaker.entered_holding", function()
 {
