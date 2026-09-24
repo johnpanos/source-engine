@@ -41,8 +41,8 @@ int main()
 
 	WorldLightmapLayout layout{};
 	const std::vector<char> three = lmap_cases::MakeLmap( 8, 4, 3 );
-	check( ValidateWorldLightmap( three.data(), three.size(), 2, &layout ) ==
-	           WorldLightmapError::Ok,
+	check(
+	    ValidateWorldLightmap( three.data(), three.size(), 2, &layout ) == WorldLightmapError::Ok,
 	    "three-layer page validates" );
 	check( WorldLightmapLayerIndex( layout, WorldLightmapLayer::Total ) == 0 &&
 	           WorldLightmapLayerIndex( layout, WorldLightmapLayer::Direct ) == 1 &&
@@ -86,8 +86,8 @@ int main()
 			bounded = bounded && fuzzed.layerCount >= 1 && fuzzed.layerCount <= 3;
 		}
 	}
-	std::printf( "fuzz: %d of 20000 mutations accepted (a flip may leave a valid page)\n",
-	    accepted );
+	std::printf(
+	    "fuzz: %d of 20000 mutations accepted (a flip may leave a valid page)\n", accepted );
 	check( bounded, "every accepted mutation's layers stay inside its bytes" );
 	return testing::ReportConformance( checks, failures );
 }

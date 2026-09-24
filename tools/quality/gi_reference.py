@@ -356,7 +356,7 @@ def write_references(fixture, results):
     for state, (receipt, scene, render_dir) in sorted(results.items()):
         renders[state] = {key: receipt[key] for key in (
             "blender", "cycles_device", "samples", "seed", "denoising", "light_paths",
-            "renderer_sha256")}
+            "normal_maps", "renderer_sha256")}
         renders[state]["composed_stage_sha256"] = scene["source_sha256"]
         renders[state]["stage_layers"] = {
             (str(Path(path).relative_to(ROOT)) if Path(path).is_relative_to(ROOT)

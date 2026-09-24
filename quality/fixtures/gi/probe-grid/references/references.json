@@ -3,13 +3,13 @@
     {
       "check": "probe-grid sky: floor radiance = rho * sky",
       "expected": 0.4,
-      "observed": 0.3999102754712105,
+      "observed": 0.3999102477014065,
       "ok": true
     },
     {
       "check": "probe-grid sun: floor radiance = rho E sin(e) / pi",
       "expected": 0.36575927925139085,
-      "observed": 0.3658680319786072,
+      "observed": 0.3658680085122585,
       "ok": true
     }
   ],
@@ -32,7 +32,8 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "renderer_sha256": "cab92a707ca5dc396bf91875d464519a356654802f00285de94b0463808db677",
+      "normal_maps": false,
+      "renderer_sha256": "3b3909f19d37eb007b4f31ff46c3f0a3df7dfba91e2f290604d4b52e4234ccde",
       "samples": 2048,
       "seed": 20260924,
       "stage_layers": {
@@ -53,7 +54,8 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "renderer_sha256": "cab92a707ca5dc396bf91875d464519a356654802f00285de94b0463808db677",
+      "normal_maps": false,
+      "renderer_sha256": "3b3909f19d37eb007b4f31ff46c3f0a3df7dfba91e2f290604d4b52e4234ccde",
       "samples": 2048,
       "seed": 20260924,
       "stage_layers": {
@@ -78,7 +80,7 @@
         },
         "total": {
           "file": "sky.floor.total.exr",
-          "sha256": "1b6fb05e44f46b48cf9ef343d31de25b5ae5f1850ea5d99ef6ebd3de9fe90035"
+          "sha256": "5812892c5b9f1b78ff167e7e6f18df622be9cf01684b34ab3843eb0fe6f2c9e6"
         }
       },
       "glossy_max": 0.0,
@@ -93,9 +95,9 @@
             0.5
           ],
           "direct": [
-            0.7998207211494446,
-            0.7998207211494446,
-            0.7998207211494446
+            0.7998204231262207,
+            0.7998203635215759,
+            0.7998204231262207
           ],
           "emission": [
             0.0,
@@ -128,8 +130,8 @@
           "pixels": 31494,
           "total": [
             0.3999102711677551,
-            0.3999102711677551,
-            0.3999103307723999
+            0.39991024136543274,
+            0.39991024136543274
           ]
         }
       },
@@ -165,7 +167,7 @@
           "direct": [
             0.7317360639572144,
             0.7317360639572144,
-            0.7317360639572144
+            0.7317360043525696
           ],
           "emission": [
             0.0,
@@ -198,8 +200,8 @@
           "pixels": 31494,
           "total": [
             0.3658680319786072,
-            0.3658680319786072,
-            0.3658680319786072
+            0.3658680021762848,
+            0.3658680021762848
           ]
         }
       },

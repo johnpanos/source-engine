@@ -40,8 +40,8 @@ bool CVulkanWorldMeshUpload::UploadLightmap(
 		Warning( "[NativeVulkan] WMSH LMAP rejected: %s\n", error.c_str() );
 		return false;
 	}
-	Msg( "[NativeVulkan] WMSH LMAP ready (%u x %u, linear RGBA16F, %u layer%s)\n",
-	    request.width, request.height, request.layerCount, request.layerCount == 1 ? "" : "s" );
+	Msg( "[NativeVulkan] WMSH LMAP ready (%u x %u, linear RGBA16F, %u layer%s)\n", request.width,
+	    request.height, request.layerCount, request.layerCount == 1 ? "" : "s" );
 	return true;
 }
 

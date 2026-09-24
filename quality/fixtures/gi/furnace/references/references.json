@@ -73,7 +73,8 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "renderer_sha256": "cab92a707ca5dc396bf91875d464519a356654802f00285de94b0463808db677",
+      "normal_maps": false,
+      "renderer_sha256": "3b3909f19d37eb007b4f31ff46c3f0a3df7dfba91e2f290604d4b52e4234ccde",
       "samples": 2048,
       "seed": 20260924,
       "stage_layers": {

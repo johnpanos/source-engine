@@ -54,7 +54,9 @@ VkPipeline CVulkanContext::PbrModelPipeline(
 	    m_skinPipelineLayout, &m_skinVin, pass, samples );
 	if ( pipeline == VK_NULL_HANDLE )
 		ModelPbrLog( "vkCreateGraphicsPipelines (model PBR%s, state %#llx) failed\n",
-		    variant == 2 ? " indirect view" : envCube ? " envmap" : "",
+		    variant == 2 ? " indirect view"
+		    : envCube    ? " envmap"
+		                 : "",
 		    static_cast<unsigned long long>( key ) );
 	pipelines[key] = pipeline;
 	if ( pipeline != VK_NULL_HANDLE && variant != 2 )
@@ -79,8 +81,8 @@ bool CVulkanContext::InitPbrModelPipeline( std::string *outError )
 	}
 	if ( !CreateShaderModule(
 	         g_modelPbrFragSpv, sizeof( g_modelPbrFragSpv ), &m_pbrModelFrag[0], outError ) ||
-	     !CreateShaderModule( g_modelPbrEnvFragSpv, sizeof( g_modelPbrEnvFragSpv ),
-	         &m_pbrModelFrag[1], outError ) ||
+	     !CreateShaderModule(
+	         g_modelPbrEnvFragSpv, sizeof( g_modelPbrEnvFragSpv ), &m_pbrModelFrag[1], outError ) ||
 	     !CreateShaderModule( g_modelPbrIndirectFragSpv, sizeof( g_modelPbrIndirectFragSpv ),
 	         &m_pbrModelFrag[2], outError ) )
 		return false;

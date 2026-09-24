@@ -62,7 +62,7 @@ enum class WorldLightmapError
 
 struct WorldLightmapLayout
 {
-	uint32_t version;    // 1 or 2, derived from the KTX2 layer count
+	uint32_t version; // 1 or 2, derived from the KTX2 layer count
 	uint32_t width;
 	uint32_t height;
 	uint32_t layerCount; // 1 for version 1
@@ -74,8 +74,8 @@ struct WorldLightmapLayout
 // Validates complete LMAP bytes without retaining them or allocating.
 // `expectedVersion` is the lump's version, or 0 for a tool deriving it. The
 // caller keeps the bytes alive while it uses the layer offsets.
-WorldLightmapError ValidateWorldLightmap( const void *pData, size_t size,
-    uint32_t expectedVersion, WorldLightmapLayout *pLayout = nullptr ) noexcept;
+WorldLightmapError ValidateWorldLightmap( const void *pData, size_t size, uint32_t expectedVersion,
+    WorldLightmapLayout *pLayout = nullptr ) noexcept;
 
 // Index of `role` in a validated layout, or -1 when the map does not carry it.
 int WorldLightmapLayerIndex( const WorldLightmapLayout &layout, WorldLightmapLayer role ) noexcept;

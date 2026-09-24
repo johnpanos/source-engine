@@ -349,7 +349,7 @@ def tonemap_scale(log):
 
 
 def evaluate(log, screenshots, returncode, timed_out, map_name, requirements, loaded,
-             renderer=None, expect_dark=False):
+             renderer=None):
     failures = []
     if timed_out:
         failures.append("product timed out")
@@ -361,11 +361,6 @@ def evaluate(log, screenshots, returncode, timed_out, map_name, requirements, lo
         failures.append("no fully active player in engine status output")
     if not screenshots:
         failures.append("no fresh complete engine screenshot")
-    elif expect_dark:
-        # A legitimately dark view (an unlit room) cannot show scene detail;
-        # the engine must instead attest that it drew the world mesh.
-        if not re.search(r"WMSH draw path active \([1-9][0-9]* material batches", log):
-            failures.append("dark capture has no WMSH draw attestation")
     elif not any(frame.get("has_scene_detail", False) for frame in screenshots):
         failures.append("engine capture lacks scene detail (blank or almost entirely black/white)")
     if re.search(r"Couldn't load (?:combo|vertex shader|pixel shader)|Using invalid shader combo", log):
@@ -628,9 +623,6 @@ def main(argv=None):
                         help="require initialized profile providers and no first-party backend loading")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=180)
-    parser.add_argument("--expect-dark-frame", action="store_true",
-                        help="the view is expected to be dark: instead of requiring scene "
-                             "detail in the capture, require the engine's WMSH draw attestation")
     parser.add_argument("--capture-wait", type=int, default=600,
                         help="frames between the console commands and the final screenshot and "
                              "quit (a longer cfg sequence, e.g. several screenshots, needs more)")
@@ -764,7 +756,7 @@ def main(argv=None):
         screenshots = [info for path in sorted(stage.rglob("screenshots/*.tga"))
                        if (info := screenshot_info(path))]
         failures = evaluate(log, screenshots, code, timed_out, args.map, requirements, loaded,
-                            args.renderer, args.expect_dark_frame)
+                            args.renderer)
         if args.require_gtk_decoration:
             decorated = any(Path(path).name == "libdecor-gtk.so" for path in loaded)
             evidence["gtk_decoration"] = {"plugin_mapped": decorated, "gdk_backend": environment.get("GDK_BACKEND")}

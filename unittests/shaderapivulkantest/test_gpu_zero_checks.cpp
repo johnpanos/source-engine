@@ -50,7 +50,8 @@ int main()
 	bool skip = false;
 	context.SetClearColor( 0, 0, 0, 1 );
 	context.RequestCapture();
-	const bool rendered = context.BeginFrame( &skip, &error ) && ( skip || context.EndFrame( &error ) );
+	const bool rendered =
+	    context.BeginFrame( &skip, &error ) && ( skip || context.EndFrame( &error ) );
 	std::printf( "rendered one frame: %s\n", rendered ? "yes" : error.c_str() );
 	context.Shutdown();
 	host.reset();

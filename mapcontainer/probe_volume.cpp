@@ -121,9 +121,9 @@ ProbeVolumeError ValidateProbeVolume(
 	ProbeVolumeLayout layout = {};
 	layout.gridCount = U32( p + 12 );
 	layout.layerCount = U32( p + 16 );
-	if ( layout.gridCount < 1 || layout.gridCount > kProbeVolumeMaxGrids ||
-	     layout.layerCount < 1 || layout.layerCount > kProbeVolumeMaxLayers ||
-	     U32( p + 20 ) != kProbeIrradianceTile || U32( p + 24 ) != kProbeVisibilityTile )
+	if ( layout.gridCount < 1 || layout.gridCount > kProbeVolumeMaxGrids || layout.layerCount < 1 ||
+	     layout.layerCount > kProbeVolumeMaxLayers || U32( p + 20 ) != kProbeIrradianceTile ||
+	     U32( p + 24 ) != kProbeVisibilityTile )
 		return ProbeVolumeError::InvalidCounts;
 	layout.atlasWidth = U32( p + 28 );
 	layout.atlasHeight = U32( p + 32 );
@@ -133,8 +133,8 @@ ProbeVolumeError ValidateProbeVolume(
 	     layout.atlasHeight < 1 || layout.atlasHeight > kProbeVolumeMaxAtlas ||
 	     layout.atlasBytes != uint64_t( layout.atlasWidth ) * layout.atlasHeight * 8 ||
 	     layout.atlasOffset % 16 != 0 ||
-	     layout.atlasOffset < kProbeVolumeHeaderBytes +
-	                              uint64_t( kProbeVolumeGridBytes ) * layout.gridCount ||
+	     layout.atlasOffset <
+	         kProbeVolumeHeaderBytes + uint64_t( kProbeVolumeGridBytes ) * layout.gridCount ||
 	     layout.atlasOffset + layout.atlasBytes != size )
 		return ProbeVolumeError::InvalidAtlas;
 	const unsigned char *atlas = p + layout.atlasOffset;
@@ -304,7 +304,8 @@ void ProbeVolumeView::Bilinear( float x, float y, float out[4] ) const noexcept
 	Texel( x0, y1, c );
 	Texel( x1, y1, d );
 	for ( int i = 0; i < 4; ++i )
-		out[i] = ( a[i] * ( 1 - fx ) + b[i] * fx ) * ( 1 - fy ) + ( c[i] * ( 1 - fx ) + d[i] * fx ) * fy;
+		out[i] =
+		    ( a[i] * ( 1 - fx ) + b[i] * fx ) * ( 1 - fy ) + ( c[i] * ( 1 - fx ) + d[i] * fx ) * fy;
 }
 
 void ProbeVolumeView::TileSample( const uint32_t origin[2], uint32_t tile, uint32_t probe,
@@ -359,8 +360,8 @@ bool ProbeVolumeView::SampleGrid( const ProbeGridLayout &grid, const float posit
 		    uint32_t( index3[0] ) +
 		    grid.dims[0] * ( uint32_t( index3[1] ) + grid.dims[1] * uint32_t( index3[2] ) );
 		float state[4];
-		Texel( grid.stateOrigin[0] + probe % stateRow, grid.stateOrigin[1] + probe / stateRow,
-		    state );
+		Texel(
+		    grid.stateOrigin[0] + probe % stateRow, grid.stateOrigin[1] + probe / stateRow, state );
 		if ( state[3] < 0.5f )
 			continue;
 		float probePosition[3], toProbe[3];
@@ -374,8 +375,9 @@ bool ProbeVolumeView::SampleGrid( const ProbeGridLayout &grid, const float posit
 		const float length = std::sqrt( length2 );
 		float dotDirection = 1.0f;
 		if ( length > 1.0e-9f )
-			dotDirection = ( toProbe[0] * normal[0] + toProbe[1] * normal[1] + toProbe[2] * normal[2] ) /
-			               length;
+			dotDirection =
+			    ( toProbe[0] * normal[0] + toProbe[1] * normal[1] + toProbe[2] * normal[2] ) /
+			    length;
 		const float half = ( dotDirection + 1.0f ) * 0.5f;
 		float weight = half * half + 0.2f;
 		if ( useVisibility )
@@ -390,8 +392,8 @@ bool ProbeVolumeView::SampleGrid( const ProbeGridLayout &grid, const float posit
 			const float distance = std::sqrt( distance2 );
 			if ( distance > 1.0e-9f )
 			{
-				const float direction[3] = { toPoint[0] / distance, toPoint[1] / distance,
-				    toPoint[2] / distance };
+				const float direction[3] = {
+				    toPoint[0] / distance, toPoint[1] / distance, toPoint[2] / distance };
 				float moments[4];
 				TileSample( grid.visibilityOrigin, kProbeVisibilityTile, probe, grid.tilesPerRow,
 				    direction, moments );

@@ -16,6 +16,15 @@ lit by the world, but invisible to diffuse, glossy, transmission and shadow
 rays, so they neither occlude nor bounce light onto the world. That is the
 light a baked or radiosity world gives a dynamic object (RFC 0011), and what
 the pipeline's bake, which leaves them out, can reproduce.
+
+Normal maps are not applied. Every runtime indirect-light representation
+RFC 0011 compares against these references (the non-directional lightmap
+layers and the probe volume) holds irradiance at the smooth surface normal,
+as the bake computes it (`pbrt_blender.build_material(normal_maps=False)`);
+normal-map detail is a separate, directional-lightmap concern. Rendering the
+references with normal maps changes the regional means they are judged by:
+with them, the room-states regions' indirect light read 16-48% below the
+smooth-normal irradiance the bake produces, and matched within 5% without them.
 """
 
 import argparse
@@ -88,7 +97,7 @@ def main():
     meshes = pbrt_blender.source_meshes()
     if sorted(obj.name for obj in meshes) != sorted(s["name"] for s in scene["shapes"]):
         raise ValueError("normalized stage meshes differ from the scene model")
-    pbrt_blender.rebind_materials(scene)
+    pbrt_blender.rebind_materials(scene, normal_maps=False)
     pbrt_blender.restore_emitters(scene)
     pbrt_blender.apply_environment(scene, args.environment)
     receivers = sorted(map_scene.prop_shape_names(scene))
@@ -142,6 +151,7 @@ def main():
                "blender": bpy.app.version_string,
                "cycles_device": device, "samples": args.samples, "seed": args.seed,
                "denoising": False, "adaptive_sampling": False, "light_paths": light_paths,
+               "normal_maps": False,
                "film": film, "horizontal_fov_degrees": views["horizontal_fov_degrees"],
                "scene_sha256": scene["source_sha256"], "stage_sha256": sha256(args.stage),
                "environment_sha256": sha256(args.environment) if args.environment else None,

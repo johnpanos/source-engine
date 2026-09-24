@@ -2796,7 +2796,7 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		// + vec4 alphaParams (128 bytes), and the user clip planes when the device
 		// clips (demo_dyn_tex_clip.vert reads them after the block).
 		texPc.size = m_clipPlanesSupported ? static_cast<uint32_t>( kTexturedPushBytes )
-		                                    : sizeof( float ) * 32;
+		                                   : sizeof( float ) * 32;
 		// Base, lightmap, cubemap and normal mask share the managed texture
 		// descriptor layout; each draw selects the corresponding texture set.
 		const VkDescriptorSetLayout texSetLayouts[4] = {
@@ -3428,8 +3428,8 @@ bool CVulkanContext::InitPbrDirectPipeline( std::string *outError )
 	}
 	VkPushConstantRange pc = {};
 	pc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-	pc.size = m_clipPlanesSupported ? static_cast<uint32_t>( kTexturedPushBytes )
-	                                 : sizeof( float ) * 32;
+	pc.size =
+	    m_clipPlanesSupported ? static_cast<uint32_t>( kTexturedPushBytes ) : sizeof( float ) * 32;
 	const VkDescriptorSetLayout sets[3] = {
 	    m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout };
 	VkPipelineLayoutCreateInfo pl = {};
@@ -5377,8 +5377,8 @@ void CVulkanContext::SetWorldLightmapHandle( int handle )
 
 void CVulkanContext::SetWorldLightmapHandles( int total, int direct, int indirect )
 {
-	int *const slots[3] = { &m_worldLightmapHandle, &m_worldLightmapDirectHandle,
-	    &m_worldLightmapIndirectHandle };
+	int *const slots[3] = {
+	    &m_worldLightmapHandle, &m_worldLightmapDirectHandle, &m_worldLightmapIndirectHandle };
 	const int values[3] = { total, direct, indirect };
 	for ( int i = 0; i < 3; ++i )
 	{
@@ -6174,8 +6174,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				        ? &m_dynSkinConstants[static_cast<size_t>( d.skin )]
 				        : nullptr;
 				// The indirect view never reads the $envmap cube (set 5 stays 2D).
-				pbrModelEnv =
-				    m_indirectViewMode == 0 && c && ( c->combos & kPbrModelEnvMap ) != 0;
+				pbrModelEnv = m_indirectViewMode == 0 && c && ( c->combos & kPbrModelEnvMap ) != 0;
 				selected = PbrModelPipeline( d.raster, pbrModelEnv, openSrgb, passSamples );
 				if ( selected == VK_NULL_HANDLE || !c || !skinConstantsOk ||
 				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
@@ -6325,8 +6324,9 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					    glass ? ( sceneColor.descSetSrgb != VK_NULL_HANDLE ? sceneColor.descSetSrgb
 					                                                       : sceneColor.descSet )
 					          : sampledSet( d.samplerHandles[kPbrWorldEmissionSampler], 0 ),
-					    glass ? sampledSet( m_sceneDepthHandle, 0 )
-					          : sampledSet( environment >= 0 ? environment : m_whiteCubeHandle, 0 ) };
+					    glass
+					        ? sampledSet( m_sceneDepthHandle, 0 )
+					        : sampledSet( environment >= 0 ? environment : m_whiteCubeHandle, 0 ) };
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 					    glass ? m_worldGlassPipelineLayout : m_worldPbrPipelineLayout, 0, 7, sets,
 					    0, nullptr );

@@ -37,8 +37,8 @@ bool RangeInside( uint64_t offset, uint64_t length, uint64_t size )
 
 } // namespace
 
-WorldLightmapError ValidateWorldLightmap( const void *pData, size_t size,
-    uint32_t expectedVersion, WorldLightmapLayout *pLayout ) noexcept
+WorldLightmapError ValidateWorldLightmap( const void *pData, size_t size, uint32_t expectedVersion,
+    WorldLightmapLayout *pLayout ) noexcept
 {
 	if ( !pData || size < kKtx2HeaderBytes + kKtx2LevelIndexBytes )
 		return WorldLightmapError::Truncated;
@@ -88,25 +88,25 @@ WorldLightmapError ValidateWorldLightmap( const void *pData, size_t size,
 	const uint64_t sgdOffset = U64( p + 64 );
 	const uint64_t sgdLength = U64( p + 72 );
 	if ( dfdLength < 4 || !RangeInside( dfdOffset, dfdLength, size ) ||
-	     dfdOffset < kKtx2HeaderBytes + kKtx2LevelIndexBytes ||
-	     U32( p + dfdOffset ) != dfdLength || !RangeInside( kvdOffset, kvdLength, size ) ||
-	     sgdOffset != 0 || sgdLength != 0 )
+	     dfdOffset < kKtx2HeaderBytes + kKtx2LevelIndexBytes || U32( p + dfdOffset ) != dfdLength ||
+	     !RangeInside( kvdOffset, kvdLength, size ) || sgdOffset != 0 || sgdLength != 0 )
 		return WorldLightmapError::InvalidDescriptor;
 	const uint64_t levelOffset = U64( p + kKtx2HeaderBytes );
 	const uint64_t levelLength = U64( p + kKtx2HeaderBytes + 8 );
 	const uint64_t levelUncompressed = U64( p + kKtx2HeaderBytes + 16 );
 	const uint64_t layerBytes = uint64_t( width ) * height * kWorldLightmapTexelBytes;
-	if ( levelOffset % kWorldLightmapTexelBytes != 0 ||
-	     levelLength != layerBytes * layerCount || levelUncompressed != levelLength ||
-	     !RangeInside( levelOffset, levelLength, size ) ||
+	if ( levelOffset % kWorldLightmapTexelBytes != 0 || levelLength != layerBytes * layerCount ||
+	     levelUncompressed != levelLength || !RangeInside( levelOffset, levelLength, size ) ||
 	     levelOffset < dfdOffset + dfdLength )
 		return WorldLightmapError::InvalidLevelIndex;
 	if ( pLayout )
 	{
-		static const WorldLightmapLayer kRoles[kWorldLightmapMaxLayers + 1][kWorldLightmapMaxLayers] = {
-		    {}, { WorldLightmapLayer::Total },
-		    { WorldLightmapLayer::Total, WorldLightmapLayer::Indirect },
-		    { WorldLightmapLayer::Total, WorldLightmapLayer::Direct, WorldLightmapLayer::Indirect } };
+		static const WorldLightmapLayer
+		    kRoles[kWorldLightmapMaxLayers + 1][kWorldLightmapMaxLayers] = { {},
+		        { WorldLightmapLayer::Total },
+		        { WorldLightmapLayer::Total, WorldLightmapLayer::Indirect },
+		        { WorldLightmapLayer::Total, WorldLightmapLayer::Direct,
+		            WorldLightmapLayer::Indirect } };
 		WorldLightmapLayout layout = {};
 		layout.version = version;
 		layout.width = width;

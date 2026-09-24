@@ -176,9 +176,8 @@ int main()
 			check( mapcontainer::ValidateWorldLightmap( damaged.data(), damaged.size(), 1 ) ==
 			           mapcontainer::WorldLightmapError::BadIdentifier,
 			    "corrupt BSP2 lightmap package is rejected" );
-			check( mapcontainer::ValidateWorldLightmap(
-			           packageBytes.data(), packageBytes.size(), 2 ) ==
-			           mapcontainer::WorldLightmapError::VersionMismatch,
+			check( mapcontainer::ValidateWorldLightmap( packageBytes.data(), packageBytes.size(),
+			           2 ) == mapcontainer::WorldLightmapError::VersionMismatch,
 			    "a single page is not accepted as a layered (v2) lump" );
 			error.clear();
 			check( UploadLmap( context, packageBytes, 1, &error ),
@@ -208,9 +207,9 @@ int main()
 		{
 			const auto srgbByte = []( float linear )
 			{
-				const float encoded =
-				    linear <= 0.0031308f ? linear * 12.92f
-				                         : 1.055f * std::pow( linear, 1.0f / 2.4f ) - 0.055f;
+				const float encoded = linear <= 0.0031308f
+				                          ? linear * 12.92f
+				                          : 1.055f * std::pow( linear, 1.0f / 2.4f ) - 0.055f;
 				return encoded * 255.0f;
 			};
 			std::uint8_t viewed = 0;
@@ -232,8 +231,8 @@ int main()
 			           context.WorldLightmapIndirectHandle() >= 0,
 			    "LMAP v2 total and indirect layers upload" );
 			check( DrawWorld( context, &viewed, &error ), "indirect light view renders" );
-			std::fprintf( stderr, "indirect light view red %u (expected %.1f)\n", viewed,
-			    srgbByte( 0.25f ) );
+			std::fprintf(
+			    stderr, "indirect light view red %u (expected %.1f)\n", viewed, srgbByte( 0.25f ) );
 			check( std::abs( viewed - srgbByte( 0.25f ) ) <= 1.5f,
 			    "view 1 writes the indirect layer's diffuse light, without albedo" );
 			// View 2: times the linear base (sRGB 200) with metal 0, occlusion 1.

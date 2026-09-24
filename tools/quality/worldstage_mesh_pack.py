@@ -257,7 +257,10 @@ def write_payload(faces, leaves, meshlet_leaves=None):
                     triangle_faces.append(face_id)
                 center = tuple(sum(point[axis] for point in positions) / len(positions)
                                for axis in range(3))
-                radius = max(math.dist(center, point) for point in positions) + 1e-5
+                # The reader tests containment in float32 (squared distances),
+                # where one rounding step of a 2000-unit meshlet exceeds a fixed
+                # slack; the relative pad covers it at any size.
+                radius = max(math.dist(center, point) for point in positions) * (1 + 1e-6) + 1e-5
                 axis, cutoff = front_face_cone([triangle[0] for triangle in chunk])
                 meshlet_boxes.append((tuple(min(point[axis] for point in positions)
                                             for axis in range(3)),

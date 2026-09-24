@@ -18,21 +18,23 @@ namespace
 {
 
 // Accepts anything the real validator rejects only for its layer count.
-WorldLightmapError AnyLayerCount( const void *p, size_t size, uint32_t version,
-    WorldLightmapLayout *layout )
+WorldLightmapError AnyLayerCount(
+    const void *p, size_t size, uint32_t version, WorldLightmapLayout *layout )
 {
 	const WorldLightmapError error = ValidateWorldLightmap( p, size, version, layout );
 	return error == WorldLightmapError::InvalidLayerCount ? WorldLightmapError::Ok : error;
 }
 
 // Ignores the lump version (a v1 lump may carry layers, and the reverse).
-WorldLightmapError IgnoresVersion( const void *p, size_t size, uint32_t, WorldLightmapLayout *layout )
+WorldLightmapError IgnoresVersion(
+    const void *p, size_t size, uint32_t, WorldLightmapLayout *layout )
 {
 	return ValidateWorldLightmap( p, size, 0, layout );
 }
 
 // Checks only the identifier: truncated, compressed or 3D data passes.
-WorldLightmapError IdentifierOnly( const void *p, size_t size, uint32_t, WorldLightmapLayout *layout )
+WorldLightmapError IdentifierOnly(
+    const void *p, size_t size, uint32_t, WorldLightmapLayout *layout )
 {
 	const WorldLightmapError error = ValidateWorldLightmap( p, size, 0, layout );
 	return error == WorldLightmapError::BadIdentifier || error == WorldLightmapError::Truncated
@@ -41,8 +43,8 @@ WorldLightmapError IdentifierOnly( const void *p, size_t size, uint32_t, WorldLi
 }
 
 // Validates but reports every layer as the total page.
-WorldLightmapError AllTotal( const void *p, size_t size, uint32_t version,
-    WorldLightmapLayout *layout )
+WorldLightmapError AllTotal(
+    const void *p, size_t size, uint32_t version, WorldLightmapLayout *layout )
 {
 	const WorldLightmapError error = ValidateWorldLightmap( p, size, version, layout );
 	if ( error == WorldLightmapError::Ok && layout )
@@ -70,13 +72,13 @@ int main()
 	{
 		const lmap_cases::CaseResult result = lmap_cases::RunLmapCases( validator.validate, false );
 		++checks;
-		std::printf( "%-30s wrong on %d of %d cases\n", validator.name, result.wrong,
-		    result.cases );
+		std::printf(
+		    "%-30s wrong on %d of %d cases\n", validator.name, result.wrong, result.cases );
 		if ( result.wrong == 0 )
 		{
 			++failures;
-			std::printf( "FAIL the case table does not detect a validator that %s\n",
-			    validator.name );
+			std::printf(
+			    "FAIL the case table does not detect a validator that %s\n", validator.name );
 		}
 	}
 	return testing::ReportConformance( checks, failures );

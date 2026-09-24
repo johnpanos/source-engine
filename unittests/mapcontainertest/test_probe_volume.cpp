@@ -50,8 +50,8 @@ const char *kFixtures = "quality/fixtures/gi/prbv/";
 std::vector<char> Load( const std::string &name )
 {
 	std::ifstream file( kFixtures + name, std::ios::binary );
-	return std::vector<char>( std::istreambuf_iterator<char>{ file },
-	    std::istreambuf_iterator<char>{} );
+	return std::vector<char>(
+	    std::istreambuf_iterator<char>{ file }, std::istreambuf_iterator<char>{} );
 }
 
 void PutU32( std::vector<char> &bytes, size_t offset, uint32_t value )
@@ -75,7 +75,8 @@ void PutHalf( std::vector<char> &bytes, size_t offset, uint16_t half )
 
 size_t TexelOffset( const ProbeVolumeLayout &layout, uint32_t x, uint32_t y, int channel )
 {
-	return size_t( layout.atlasOffset + ( uint64_t( y ) * layout.atlasWidth + x ) * 8 + 2 * channel );
+	return size_t(
+	    layout.atlasOffset + ( uint64_t( y ) * layout.atlasWidth + x ) * 8 + 2 * channel );
 }
 
 void SamplesMatchPython( const std::map<std::string, std::vector<char>> &files )
@@ -103,8 +104,8 @@ void SamplesMatchPython( const std::map<std::string, std::vector<char>> &files )
 		ValidateProbeVolume( found->second.data(), found->second.size(), &layout );
 		const ProbeVolumeView view( found->second.data(), layout );
 		float value[3];
-		const bool inside = view.Sample( position, normal, ProbeVolumeLayer( layer ),
-		    visibility != 0, value );
+		const bool inside =
+		    view.Sample( position, normal, ProbeVolumeLayer( layer ), visibility != 0, value );
 		if ( first == "none" )
 		{
 			Check( !inside, "outside sample stays outside: " + line );
@@ -115,10 +116,11 @@ void SamplesMatchPython( const std::map<std::string, std::vector<char>> &files )
 		in >> expected[1] >> expected[2];
 		bool close = inside;
 		for ( int c = 0; c < 3 && close; ++c )
-			close = std::fabs( value[c] - expected[c] ) <= 1.0e-4f + 1.0e-3f * std::fabs( expected[c] );
+			close =
+			    std::fabs( value[c] - expected[c] ) <= 1.0e-4f + 1.0e-3f * std::fabs( expected[c] );
 		if ( !close )
-			std::printf( "  C++ %.6f %.6f %.6f vs Python %s\n", value[0], value[1], value[2],
-			    line.c_str() );
+			std::printf(
+			    "  C++ %.6f %.6f %.6f vs Python %s\n", value[0], value[1], value[2], line.c_str() );
 		Check( close, "C++ sampler matches the Python sampler: " + line );
 		++compared;
 	}
@@ -129,8 +131,8 @@ void SamplesMatchPython( const std::map<std::string, std::vector<char>> &files )
 
 int main()
 {
-	std::map<std::string, std::vector<char>> files = { { "leak.prbv", Load( "leak.prbv" ) },
-	    { "analytic.prbv", Load( "analytic.prbv" ) } };
+	std::map<std::string, std::vector<char>> files = {
+	    { "leak.prbv", Load( "leak.prbv" ) }, { "analytic.prbv", Load( "analytic.prbv" ) } };
 	for ( const auto &entry : files )
 	{
 		ProbeVolumeLayout layout{};
@@ -172,7 +174,8 @@ int main()
 
 	// Malformations, each with its structured error.
 	const std::vector<char> &good = files["analytic.prbv"];
-	const auto expect = [&]( const char *name, const std::vector<char> &bytes, ProbeVolumeError wanted )
+	const auto expect =
+	    [&]( const char *name, const std::vector<char> &bytes, ProbeVolumeError wanted )
 	{
 		const ProbeVolumeError got = ValidateProbeVolume( bytes.data(), bytes.size() );
 		Check( got == wanted, std::string( name ) + ": got " + ProbeVolumeErrorName( got ) +
@@ -228,11 +231,13 @@ int main()
 		    0x5400 ); // 64 units > the 16-unit bound
 		expect( "relocation past its bound", bytes, ProbeVolumeError::RelocationOutOfBounds );
 		bytes = good;
-		PutHalf( bytes, TexelOffset( layout, g.irradianceOrigin[1][0] + 3, g.irradianceOrigin[1][1] + 3, 1 ),
+		PutHalf( bytes,
+		    TexelOffset( layout, g.irradianceOrigin[1][0] + 3, g.irradianceOrigin[1][1] + 3, 1 ),
 		    0x7E00 ); // NaN in the indirect layer
 		expect( "NaN irradiance", bytes, ProbeVolumeError::InvalidIrradiance );
 		bytes = good;
-		PutHalf( bytes, TexelOffset( layout, g.visibilityOrigin[0] + 5, g.visibilityOrigin[1] + 5, 0 ),
+		PutHalf( bytes,
+		    TexelOffset( layout, g.visibilityOrigin[0] + 5, g.visibilityOrigin[1] + 5, 0 ),
 		    0xBC00 ); // -1
 		expect( "negative distance moment", bytes, ProbeVolumeError::InvalidVisibility );
 	}

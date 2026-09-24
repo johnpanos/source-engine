@@ -39,8 +39,8 @@ bool UploadWorldLightmapLayers( CVulkanContext &context,
 		     handles[role] >= 0 ||
 		     ( handle = context.CreateManagedTexture( int( request.width ), int( request.height ),
 		           VK_FORMAT_R16G16B16A16_SFLOAT, &detail ) ) < 0 ||
-		     !context.UploadManagedTexture( handle,
-		         static_cast<const uint8_t *>( request.layers[i] ), bytes, &detail ) )
+		     !context.UploadManagedTexture(
+		         handle, static_cast<const uint8_t *>( request.layers[i] ), bytes, &detail ) )
 		{
 			if ( handle >= 0 )
 				context.DestroyManagedTexture( handle );

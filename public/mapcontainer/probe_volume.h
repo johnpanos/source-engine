@@ -36,7 +36,7 @@ static const uint32_t kProbeVolumeMaxAtlas = 16384;
 static const uint32_t kProbeVolumeMaxProbes = 1u << 20;
 static const uint64_t kProbeVolumeMaxBytes = 512ull * 1024 * 1024;
 // Sampling constants shared with probe_volume.py and probe_volume.glsl.
-static const float kProbeNormalBias = 0.1f;   // times the smallest spacing
+static const float kProbeNormalBias = 0.1f; // times the smallest spacing
 static const float kProbeCrushThreshold = 0.2f;
 
 enum class ProbeVolumeLayer : uint32_t

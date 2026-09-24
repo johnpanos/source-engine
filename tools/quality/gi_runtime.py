@@ -79,17 +79,22 @@ def camera_scene(fixture, camera):
                        "pose": fixture["cameras"][camera]}}
 
 
-def dark_view(fixture, camera):
-    """True when the Cycles total light of every state seen by `camera` is
-    dark (mean luminance < 0.02), so no capture of it can show scene detail."""
+# Cycles total luminance below which no light reaches a view at all.
+UNLIT_LUMINANCE = 1e-4
+
+
+def dark_view(fixture, state, camera):
+    """True when no light reaches `camera` in `state` (every region's Cycles
+    total is below UNLIT_LUMINANCE), so no capture of it can show scene
+    detail: the unlit room of thin-wall."""
     path = fixture["directory"] / "references" / "references.json"
     if not path.is_file():
         return False
     record = json.loads(path.read_text())
     means = [gi_reference.luminance(region["total"]) for view in record["views"].values()
-             if view["camera"] == camera for region in view["regions"].values()
-             if region.get("total")]
-    return bool(means) and max(means) < 0.02
+             if view["camera"] == camera and view["state"] == state
+             for region in view["regions"].values() if region.get("total")]
+    return bool(means) and max(means) < UNLIT_LUMINANCE
 
 
 def capture(args):
@@ -108,23 +113,36 @@ def capture(args):
     for camera in cameras:
         commands, fovs = reference_compare.camera_commands(camera_scene(fixture, camera))
         # r_drawvgui 0 hides every VGUI panel (a player's archived net_graph
-        # included) without changing archived settings. The shaded frame is
+        # included) without changing archived settings. A shaded frame is
         # screenshot first, so the boot proves a rendered scene even when the
-        # scored indirect view is legitimately dark (the unlit side of
-        # thin-wall); portal_boot's final screenshot is the scored one.
-        view = ["screenshot", "wait 5", "mat_indirect_view %d" % args.view,
+        # scored indirect view is legitimately dark; portal_boot's final
+        # screenshot is the scored one. A camera whose Cycles total light is
+        # dark too (the unlit side of thin-wall) takes that proof frame from
+        # a lit camera of the fixture, then moves (noclip stays on) to its own.
+        dark = dark_view(fixture, fixture["baked_state"], camera)
+        proof = next((other for other in sorted(fixture["cameras"])
+                      if not dark_view(fixture, fixture["baked_state"], other)),
+                     None) if dark else camera
+        if proof is None:
+            raise ValueError("%s: every camera is dark; nothing can prove a rendered frame"
+                             % args.fixture)
+        if proof == camera:
+            prelude = commands
+        else:
+            prelude, _ = reference_compare.camera_commands(camera_scene(fixture, proof))
+            commands = [c for c in commands if c != "cmd noclip"]
+        view = ["mat_indirect_view %d" % args.view,
                 "mat_indirect_view_scale %g" % args.scale] + list(args.console_command)
+        steps = prelude + ["screenshot", "wait 5"] + (commands if proof != camera else []) + view
         # One line: `wait` applies only within a single script line.
-        line = "; ".join(["r_drawvgui 0"] + commands + view)
-        dark = dark_view(fixture, camera)
+        line = "; ".join(["r_drawvgui 0"] + steps)
         boot = out / camera
         result = subprocess.run(
             [sys.executable, HERE / "portal_boot.py", "--runtime", runtime, "--build", build,
              "--content-root", content, "--renderer", "native-vulkan", "--headless",
              "--map", manifest["map"], "--width", str(CAPTURE_WIDTH),
              "--height", str(CAPTURE_HEIGHT), "--capture-wait", str(CAPTURE_WAIT),
-             "--console-command", line, "--out", boot] +
-            (["--expect-dark-frame"] if dark else []),
+             "--console-command", line, "--out", boot],
             cwd=ROOT, capture_output=True, text=True)
         evidence = json.loads((boot / "evidence.json").read_text()) \
             if (boot / "evidence.json").is_file() else {}
@@ -141,7 +159,7 @@ def capture(args):
                            "screenshot": shots[-1]["path"] if shots else None,
                            "screenshot_sha256": shots[-1]["sha256"] if shots else None,
                            "source_fov": fovs["source_fov"], "commands": line,
-                           "expected_dark": dark,
+                           "expected_dark": dark, "proof_camera": proof,
                            "returncode": result.returncode}
         print("[%s/%s] boot %s" % (args.fixture, camera, evidence.get("status")), flush=True)
     record = {"schema": CAPTURE_SCHEMA, "fixture": args.fixture, "map": manifest["map"],
@@ -275,6 +293,12 @@ def compare(args):
 def indirect_view(args):
     """G0 oracle: the view passes at scale 1; a doubled seeded view fails."""
     out = Path(args.out)
+    fixture = gi_reference.load_fixture(args.fixture)
+    if reference_level(fixture, args.state) < UNLIT_LUMINANCE:
+        # A doubled zero is zero: the seeded control cannot fail, so the
+        # oracle has no power here (probe-grid's single floor under the sky).
+        raise SystemExit("indirect-view oracle: %s/%s has no reference indirect light; "
+                         "the view cannot be judged" % (args.fixture, args.state))
     runs = {}
     for name, scale in (("view", 1.0), ("seeded-double", 2.0)):
         capture_args = argparse.Namespace(**vars(args))

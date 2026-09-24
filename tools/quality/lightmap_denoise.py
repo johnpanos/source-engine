@@ -152,7 +152,12 @@ def main():
     _, (rows, columns) = ndimage.distance_transform_edt(~covered, return_indices=True)
     filled = pixels[rows, columns, :3]
     result = pixels.copy()
-    filtered = (filled if args.skip_denoise else
+    # A layer with no light at all (the indirect layer of a scene where no
+    # surface sees another) has no noise to remove, and the denoiser does not
+    # map zero to zero; it passes through unfiltered.
+    unlit = not pixels[covered][:, :3].any()
+    skip = args.skip_denoise or unlit
+    filtered = (filled if skip else
                 np.maximum(denoise(load_oidn(args.oidn_library), filled), 0.0))
     result[:, :, :3] = extend_gutters(filtered, covered, rows, columns)
     if not np.isfinite(result).all():
@@ -173,7 +178,8 @@ def main():
                     "source_atlas_exr_sha256": expected,
                     "layer": args.layer or "total",
                     "source_bake_evidence_sha256": sha256(args.bake_evidence),
-                    "denoiser": None if args.skip_denoise else "OpenImageDenoise RTLightmap (CPU)",
+                    "denoiser": None if skip else "OpenImageDenoise RTLightmap (CPU)",
+                    "unlit_layer": unlit,
                     "covered_texels": int(covered.sum()),
                     "filled_gutter_texels": int((~covered).sum()),
                     "coverage_exr_sha256": evidence.get("coverage_exr_sha256"),

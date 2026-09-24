@@ -360,6 +360,11 @@ def main():
                       (args.envelope_mesh or sorted(meshes))])
     interior = [math.floor(envelope[0]), math.floor(envelope[1]), math.floor(envelope[2]),
                 math.ceil(envelope[3]), math.ceil(envelope[4]), math.ceil(envelope[5])]
+    # An open world (a floor under the sky) has no enclosing geometry; its
+    # shell still needs a player's headroom, or the top and bottom brushes
+    # coincide.
+    headroom_raised = interior[5] < interior[2] + 2 * PLAYER_HEIGHT
+    interior[5] = max(interior[5], interior[2] + 2 * PLAYER_HEIGHT)
     x0, y0, z0, x1, y1, z1 = interior
     shell = [(x0 - WALL, y0 - WALL, z0 - WALL, x1 + WALL, y1 + WALL, z0),
              (x0 - WALL, y0 - WALL, z1, x1 + WALL, y1 + WALL, z1 + WALL),
@@ -460,6 +465,7 @@ def main():
                "stage_sha256": sha256(args.stage), "scene_sha256": scene["source_sha256"],
                "vmf": vmf.name, "vmf_sha256": sha256(vmf),
                "interior_source_units": interior, "shell_brush_count": len(brushes),
+               "shell_raised_to_headroom": headroom_raised,
                "solid_meshes": solid_names, "solid_brush_count": len(solids),
                "skipped_outside_or_thin": skipped,
                "spawn": spawn, "walkable_tops": tops, "dynamic_models": placed,

@@ -50,8 +50,8 @@ inline std::vector<char> MakeLmap( uint32_t width, uint32_t height, uint32_t lay
 	const unsigned char identifier[12] = {
 	    0xAB, 'K', 'T', 'X', ' ', '2', '0', 0xBB, 0x0D, 0x0A, 0x1A, 0x0A };
 	std::memcpy( bytes.data(), identifier, sizeof( identifier ) );
-	const uint32_t header[] = { 97, 2, width, height, 0, layers, 1, 1, 0, dfdOffset, dfdLength,
-	    0, 0 };
+	const uint32_t header[] = {
+	    97, 2, width, height, 0, layers, 1, 1, 0, dfdOffset, dfdLength, 0, 0 };
 	for ( size_t i = 0; i < sizeof( header ) / sizeof( header[0] ); ++i )
 		PutU32( bytes, 12 + 4 * i, header[i] );
 	PutU64( bytes, 80, dataOffset );
@@ -64,8 +64,8 @@ inline std::vector<char> MakeLmap( uint32_t width, uint32_t height, uint32_t lay
 	return bytes;
 }
 
-using Validator = mapcontainer::WorldLightmapError ( * )( const void *, size_t, uint32_t,
-    mapcontainer::WorldLightmapLayout * );
+using Validator = mapcontainer::WorldLightmapError ( * )(
+    const void *, size_t, uint32_t, mapcontainer::WorldLightmapLayout * );
 
 struct CaseResult
 {
@@ -91,8 +91,8 @@ inline CaseResult RunLmapCases( Validator validate, bool verbose )
 		bool ok = got == wanted;
 		if ( ok && wanted == WorldLightmapError::Ok )
 		{
-			ok = layout.layerCount == layers && layout.layerBytes == uint64_t( layout.width ) *
-			                                                           layout.height * 8;
+			ok = layout.layerCount == layers &&
+			     layout.layerBytes == uint64_t( layout.width ) * layout.height * 8;
 			for ( uint32_t i = 0; ok && i < layers; ++i )
 				ok = layout.roles[i] == roles[i] &&
 				     layout.layerOffset[i] + layout.layerBytes <= bytes.size();
@@ -108,8 +108,8 @@ inline CaseResult RunLmapCases( Validator validate, bool verbose )
 	};
 	const WorldLightmapLayer total[] = { WorldLightmapLayer::Total };
 	const WorldLightmapLayer two[] = { WorldLightmapLayer::Total, WorldLightmapLayer::Indirect };
-	const WorldLightmapLayer three[] = { WorldLightmapLayer::Total, WorldLightmapLayer::Direct,
-	    WorldLightmapLayer::Indirect };
+	const WorldLightmapLayer three[] = {
+	    WorldLightmapLayer::Total, WorldLightmapLayer::Direct, WorldLightmapLayer::Indirect };
 	const std::vector<char> single = MakeLmap( 4, 2, 0 );
 	const std::vector<char> layered = MakeLmap( 4, 2, 2 );
 	expect( "v1 page", single, 1, WorldLightmapError::Ok, 1, total );
@@ -141,8 +141,8 @@ inline CaseResult RunLmapCases( Validator validate, bool verbose )
 	expect( "no levels", mutate( 40, 0 ), 2, WorldLightmapError::UnsupportedTopology );
 	expect( "two levels", mutate( 40, 2 ), 2, WorldLightmapError::UnsupportedTopology );
 	expect( "supercompressed", mutate( 44, 1 ), 2, WorldLightmapError::UnsupportedTopology );
-	expect( "descriptor length word", mutate( 80 + 24, 8 ), 2,
-	    WorldLightmapError::InvalidDescriptor );
+	expect(
+	    "descriptor length word", mutate( 80 + 24, 8 ), 2, WorldLightmapError::InvalidDescriptor );
 	expect( "descriptor past the end", mutate( 48, 1u << 30 ), 2,
 	    WorldLightmapError::InvalidDescriptor );
 	expect( "supercompression global data", mutate( 72, 16, true ), 2,

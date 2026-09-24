@@ -443,8 +443,8 @@ int main()
 			{
 				linear = std::min( 1.0f, std::max( 0.0f, linear ) );
 				return 255.0f * ( linear <= 0.0031308f
-				                      ? linear * 12.92f
-				                      : 1.055f * std::pow( linear, 1.0f / 2.4f ) - 0.055f );
+				                        ? linear * 12.92f
+				                        : 1.055f * std::pow( linear, 1.0f / 2.4f ) - 0.055f );
 			};
 			context.SetIndirectLightView( 1, 1.0f );
 			Check( Draw( context, handles, ambient, &pixel, &error ), "indirect view renders" );
