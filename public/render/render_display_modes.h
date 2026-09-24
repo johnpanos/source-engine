@@ -36,11 +36,25 @@ struct StandardModeSize
 	int height;
 };
 inline constexpr StandardModeSize kStandardModeSizes[] = {
-	{ 640, 480 }, { 800, 600 }, { 1024, 768 }, { 1152, 864 }, { 1280, 960 },
-	{ 1600, 1200 }, { 1920, 1440 }, { 2048, 1536 },
-	{ 1280, 720 }, { 1366, 768 }, { 1600, 900 }, { 1920, 1080 }, { 2560, 1440 },
-	{ 3840, 2160 },
-	{ 720, 480 }, { 1280, 800 }, { 1680, 1050 }, { 1920, 1200 }, { 2560, 1600 },
+    { 640, 480 },
+    { 800, 600 },
+    { 1024, 768 },
+    { 1152, 864 },
+    { 1280, 960 },
+    { 1600, 1200 },
+    { 1920, 1440 },
+    { 2048, 1536 },
+    { 1280, 720 },
+    { 1366, 768 },
+    { 1600, 900 },
+    { 1920, 1080 },
+    { 2560, 1440 },
+    { 3840, 2160 },
+    { 720, 480 },
+    { 1280, 800 },
+    { 1680, 1050 },
+    { 1920, 1200 },
+    { 2560, 1600 },
 };
 
 // Every size is at most the desktop in both dimensions and carries the desktop
@@ -55,7 +69,8 @@ inline constexpr StandardModeSize kStandardModeSizes[] = {
 	if ( desktop.width <= 0 || desktop.height <= 0 )
 		return modes;
 
-	const auto add = [&]( int width, int height ) {
+	const auto add = [&]( int width, int height )
+	{
 		if ( width <= 0 || height <= 0 || width > desktop.width || height > desktop.height )
 			return;
 		DisplayModeFacts mode = desktop;
@@ -76,11 +91,14 @@ inline constexpr StandardModeSize kStandardModeSizes[] = {
 	}
 	add( desktop.width / 2, desktop.height / 2 );
 
-	std::sort( modes.begin(), modes.end(), []( const DisplayModeFacts &a, const DisplayModeFacts &b ) {
-		return a.width != b.width ? a.width < b.width : a.height < b.height;
-	} );
+	std::sort( modes.begin(), modes.end(),
+	    []( const DisplayModeFacts &a, const DisplayModeFacts &b )
+	    {
+		    return a.width != b.width ? a.width < b.width : a.height < b.height;
+	    } );
 	modes.erase( std::unique( modes.begin(), modes.end(),
-	                 []( const DisplayModeFacts &a, const DisplayModeFacts &b ) {
+	                 []( const DisplayModeFacts &a, const DisplayModeFacts &b )
+	                 {
 		                 return a.width == b.width && a.height == b.height;
 	                 } ),
 	    modes.end() );

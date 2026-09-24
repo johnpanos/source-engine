@@ -38,7 +38,9 @@ MATERIAL = "DEV/DEV_MEASUREWALL01A"
 WALL = 16
 PLAYER_HALF_WIDTH = 16
 PLAYER_HEIGHT = 72
-MIN_SOLID_THICKNESS = 4
+# Thinner solids are skipped. vbsp2 handles thin brushes; earlier "sliver"
+# compile failures were its first-three-points winding test (now Newell).
+MIN_SOLID_THICKNESS = 1
 FLOOR_SLAB = 8
 MAX_COMPONENTS = 512
 

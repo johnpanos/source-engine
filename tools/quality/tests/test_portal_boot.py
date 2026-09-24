@@ -370,6 +370,40 @@ class StagingTests(unittest.TestCase):
             self.assertIn("bin/libstdshader_dx9.so", installed)
             self.assertNotIn("pbr-native", installed["hl2_launcher"]["source"])
 
+    def test_host_tool_installs_below_build_are_not_staged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build, stage = self.make_build(Path(directory))
+            tools = build / "toolchains"
+            for relative in ("onetbb/lib64/libtbb.so", "onetbb-build/release/libtbb.so",
+                             "openusd/lib/libusd_ms.so"):
+                (tools / relative).parent.mkdir(parents=True, exist_ok=True)
+                (tools / relative).write_text("host tool")
+            with self.assertRaisesRegex(ValueError, "ambiguous"):
+                boot.install_build(build, stage, tool_roots=set())
+
+            installed = boot.install_build(build, stage, tool_roots={tools})
+
+            self.assertIn("bin/libengine.so", installed)
+            self.assertFalse(any("toolchains" in item["source"] for item in installed.values()))
+            self.assertFalse((stage / "bin/libtbb.so").exists())
+
+    def test_declared_host_tool_roots_come_from_host_tool_profiles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profiles = root / "quality/product_profiles"
+            profiles.mkdir(parents=True)
+            (profiles / "tools.json").write_text(json.dumps(
+                {"schema": "source-host-tool-profile/v1", "layout": {"root": "build/toolchains"}}))
+            (profiles / "product.json").write_text(json.dumps(
+                {"schema": "source-product-profile/v1", "layout": {"root": "build"}}))
+            self.assertEqual({(root / "build/toolchains").resolve()},
+                             boot.host_tool_roots(root))
+            (profiles / "bad.json").write_text(json.dumps(
+                {"schema": "source-host-tool-profile/v1", "layout": {"root": "/abs"}}))
+            with self.assertRaisesRegex(ValueError, "repository-relative"):
+                boot.host_tool_roots(root)
+        self.assertIn(QUALITY.parents[1].resolve() / "build/toolchains", boot.host_tool_roots())
+
     def test_native_sonames_are_staged_as_independent_verified_files(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

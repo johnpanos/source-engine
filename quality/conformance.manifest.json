@@ -898,6 +898,161 @@
       "expect": "pass"
     },
     {
+      "id": "render.display-modes",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "RENDER-VIDEO-MODES-001",
+      "contract": "unittests/rendertest/contracts/render.display-modes.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_display_modes.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.display-modes.keep-oversize",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "RENDER-VIDEO-MODES-001",
+      "contract": "unittests/rendertest/contracts/render.display-modes.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DDISPLAY_MODES_SEEDED_KEEP_OVERSIZE"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_display_modes.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.gamma-ramp",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "RENDER-VIDEO-GAMMA-001",
+      "contract": "unittests/rendertest/contracts/render.gamma-ramp.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_gamma_ramp.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.gamma-ramp.inverted-exponent",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "RENDER-VIDEO-GAMMA-001",
+      "contract": "unittests/rendertest/contracts/render.gamma-ramp.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DGAMMA_SEEDED_INVERTED_EXPONENT"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_gamma_ramp.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.present-policy",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "RENDER-VIDEO-VSYNC-001",
+      "contract": "unittests/rendertest/contracts/render.present-policy.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_present_policy.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.present-policy.mailbox-first",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "RENDER-VIDEO-VSYNC-001",
+      "contract": "unittests/rendertest/contracts/render.present-policy.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DPRESENT_POLICY_SEEDED_MAILBOX_FIRST"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_present_policy.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.sample-count",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "RENDER-VIDEO-MSAA-001",
+      "contract": "unittests/rendertest/contracts/render.sample-count.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_sample_count.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.sample-count.round-up",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "RENDER-VIDEO-MSAA-001",
+      "contract": "unittests/rendertest/contracts/render.sample-count.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DSAMPLE_COUNT_SEEDED_ROUND_UP"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_sample_count.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.dxsupport-policy",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "RENDER-VIDEO-DXSUPPORT-001",
+      "contract": "unittests/rendertest/contracts/render.dxsupport-policy.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_dxsupport_policy.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.dxsupport-policy.catch-all-order",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "migration": "RENDER-VIDEO-DXSUPPORT-001",
+      "contract": "unittests/rendertest/contracts/render.dxsupport-policy.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DDXSUPPORT_SEEDED_CATCH_ALL_ORDER"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_dxsupport_policy.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.pbr-brdf",
       "domain": "Q-PRESENTATION",
       "rfc": "0007",

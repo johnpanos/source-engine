@@ -8,6 +8,7 @@
 #include "vulkan_device.h"
 #include "demo_triangle_spv.h"
 #include "material_spv.h"
+#include "vulkan_present_mode.h"
 #include "render/pbr_split_sum_table.h"
 
 #include <algorithm>
@@ -128,6 +129,7 @@ bool CVulkanContext::Init(
 
 	m_host = &host;
 	m_config = config;
+	m_requestedVSync = config.vsync;
 	m_framesInFlight =
 	    std::max<uint32_t>( 1, std::min<uint32_t>( config.framesInFlight, kMaxFramesInFlight ) );
 	m_validationErrorCount = 0;
@@ -587,18 +589,22 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 			m_srgbAttachments = false;
 	}
 
-	// Present mode: mailbox when requested and available, else guaranteed FIFO.
-	m_presentMode = VK_PRESENT_MODE_FIFO_KHR;
-	if ( m_config.preferMailbox )
+	// Present mode: render.present-policy.v1 over what the surface offers.
 	{
 		uint32_t pmCount = 0;
 		vkGetPhysicalDeviceSurfacePresentModesKHR( m_physicalDevice, m_surface, &pmCount, nullptr );
 		std::vector<VkPresentModeKHR> modes( pmCount );
-		vkGetPhysicalDeviceSurfacePresentModesKHR(
-		    m_physicalDevice, m_surface, &pmCount, modes.data() );
-		for ( VkPresentModeKHR m : modes )
-			if ( m == VK_PRESENT_MODE_MAILBOX_KHR )
-				m_presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+		if ( pmCount )
+			vkGetPhysicalDeviceSurfacePresentModesKHR(
+			    m_physicalDevice, m_surface, &pmCount, modes.data() );
+		const VkPresentModeKHR previous = m_presentMode;
+		const bool firstSwapchain = m_swapchainGeneration == 0;
+		m_presentMode = SelectVulkanPresentMode( m_requestedVSync, modes.data(), pmCount );
+		m_surfacePresentModes.assign( modes.begin(), modes.begin() + pmCount );
+		m_swapchainVSync = m_requestedVSync;
+		if ( firstSwapchain || previous != m_presentMode )
+			Log( "present mode %s (vsync %s)\n", VulkanPresentModeName( m_presentMode ),
+			    m_requestedVSync ? "on" : "off" );
 	}
 
 	// Extent: honor the surface's fixed extent, else clamp the drawable size.
@@ -682,6 +688,7 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 		SetError( outError, std::string( "vkCreateSwapchainKHR failed: " ) + ResultString( r ) );
 		return false;
 	}
+	++m_swapchainGeneration;
 
 	uint32_t actual = 0;
 	vkGetSwapchainImagesKHR( m_device, m_swapchain, &actual, nullptr );
@@ -5174,7 +5181,9 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	                               m_requestedBackBuffer.height > 0 &&
 	                               ( m_requestedBackBuffer.width != m_swapExtent.width ||
 	                                   m_requestedBackBuffer.height != m_swapExtent.height );
-	if ( ( drawableChanged || backBufferPending ) && !RecreateSwapchain( outError ) )
+	const bool presentModePending = m_requestedVSync != m_swapchainVSync;
+	if ( ( drawableChanged || backBufferPending || presentModePending ) &&
+	     !RecreateSwapchain( outError ) )
 		return false;
 	if ( m_swapchain == VK_NULL_HANDLE )
 	{
@@ -6395,6 +6404,7 @@ bool CVulkanContext::OpenFrameStats( const char *path, std::string *outError )
 	    "\"gpu_timestamps\":%s,\"present_mode\":%d}\n",
 	    m_deviceName.c_str(), m_framesInFlight, m_timestampPool ? "true" : "false",
 	    static_cast<int>( m_presentMode ) );
+	m_statsPresentMode = static_cast<int>( m_presentMode );
 	return true;
 }
 
@@ -6460,6 +6470,12 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 			std::fprintf( m_frameStatsFile, ",\"gpu\":[%llu,%llu]",
 			    static_cast<unsigned long long>( m_gpuResultFrame ),
 			    static_cast<unsigned long long>( m_gpuResultUs ) );
+		// The present mode, whenever it differs from the last one recorded.
+		if ( static_cast<int>( m_presentMode ) != m_statsPresentMode )
+		{
+			m_statsPresentMode = static_cast<int>( m_presentMode );
+			std::fprintf( m_frameStatsFile, ",\"present_mode\":%d", m_statsPresentMode );
+		}
 		if ( !m_frameMarks.empty() )
 			std::fprintf( m_frameStatsFile, ",\"mark\":\"%s\"", m_frameMarks.c_str() );
 		std::fputs( "}\n", m_frameStatsFile );

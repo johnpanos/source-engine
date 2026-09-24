@@ -105,7 +105,23 @@ def install_content(content_root, stage, game="portal"):
     return installed
 
 
-def install_build(build, stage, game="portal", launcher_name="hl2_launcher"):
+def host_tool_roots(source_root=None):
+    """Install roots that host-tool profiles declare; they hold no game products."""
+    source_root = Path(source_root or conformance.repo_root()).resolve()
+    roots = set()
+    for path in sorted((source_root / "quality/product_profiles").glob("*.json")):
+        profile = json.loads(path.read_text())
+        if profile.get("schema") != "source-host-tool-profile/v1":
+            continue
+        root = profile.get("layout", {}).get("root")
+        if root is not None:
+            if not isinstance(root, str) or Path(root).is_absolute():
+                raise ValueError("host-tool layout root must be repository-relative: " + path.name)
+            roots.add((source_root / root).resolve())
+    return roots
+
+
+def install_build(build, stage, game="portal", launcher_name="hl2_launcher", tool_roots=None):
     """Overlay Waf products, keeping game modules in the selected gamebin."""
     if launcher_name not in {"hl2_launcher", "dedicated_launcher"}:
         raise ValueError("unsupported launcher: " + launcher_name)
@@ -113,13 +129,16 @@ def install_build(build, stage, game="portal", launcher_name="hl2_launcher"):
     if not build.is_dir():
         raise ValueError("build output directory is missing")
     # Some workflows keep independent Waf profiles below the primary output
-    # tree (for example build/pbr-native). Their products are not part of this
-    # build and must not participate in its staging plan.
-    nested_builds = {cache.parent for cache in build.rglob("c4che")
-                     if cache.is_dir() and cache.parent != build}
+    # tree (for example build/pbr-native), and host-tool profiles may install
+    # below it (build/toolchains). Neither holds products of this build, so
+    # neither may participate in its staging plan.
+    excluded = {cache.parent for cache in build.rglob("c4che")
+                if cache.is_dir() and cache.parent != build}
+    excluded |= {Path(root).resolve() for root in
+                 (host_tool_roots() if tool_roots is None else tool_roots)}
 
     def belongs_to_active_build(path):
-        return not any(root in path.parents for root in nested_builds)
+        return not any(root in path.parents for root in excluded)
 
     products = sorted(path for path in build.rglob("*.so")
                       if path.is_file() and belongs_to_active_build(path))

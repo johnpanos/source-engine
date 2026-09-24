@@ -23,6 +23,7 @@
 #include "materialsystem/deformations.h"
 #include "render/legacy_shader_provider.h"
 #include "render/pbr_material_schema.h"
+#include "render/render_display_modes.h"
 #include "vulkan_device.h"
 #include "vulkan_world_mesh_upload.h"
 #include "sdl3/sdl3_vulkan_surface_host.h"
@@ -30,6 +31,9 @@
 #include "pixelwriter.h"
 #include "shaderapi/commandbuffer.h"
 #include "drawstatefixture.h"
+#if defined( USE_SDL )
+#include "appframework/ilaunchermgr.h"
+#endif
 
 #include <algorithm>
 #include <array>
@@ -971,6 +975,20 @@ public:
 	virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode );
 	virtual void AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func ) {}
 	virtual void RemoveModeChangeCallback( ShaderModeChangeCallbackFunc_t func ) {}
+
+private:
+	// The desktop of the display the launcher selected (sdl_displayindex). The
+	// launcher owns display selection; false when there is none (tools, tests).
+	bool QueryDesktopDisplay( render::DisplayModeFacts *pDesktop ) const;
+	void RefreshModeList() const;
+	static void ToShaderDisplayMode( const render::DisplayModeFacts &mode, ShaderDisplayMode_t *pInfo );
+
+#if defined( USE_SDL )
+	ILauncherMgr *m_pLauncherMgr = NULL;
+#endif
+	// Rebuilt by GetModeCount, which the engine calls before GetModeInfo.
+	mutable std::vector<render::DisplayModeFacts> m_Modes;
+	mutable bool m_bWarnedNoDisplay = false;
 };
 
 static CShaderDeviceMgrVulkan s_ShaderDeviceMgrEmpty;
@@ -1047,6 +1065,7 @@ public:
 		if ( !g_VulkanContext.SetBackBufferSize(
 		         info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight, &error ) )
 			Warning( "[NativeVulkan] back buffer resize failed: %s\n", error.c_str() );
+		g_VulkanContext.RequestVSync( info.m_bWaitForVSync );
 		if ( g_VulkanContext.IsValid() )
 			return true;
 
@@ -1054,6 +1073,7 @@ public:
 		config.appName = "Source Engine Native Vulkan";
 		config.enableValidation = ( CommandLine()->FindParm( "-vkvalidate" ) != 0 );
 		config.framesInFlight = 2;
+		config.vsync = info.m_bWaitForVSync;
 
 		if ( !InitVulkanContext( hwnd, config, &error ) )
 		{
@@ -1081,6 +1101,7 @@ public:
 		if ( !g_VulkanContext.SetBackBufferSize(
 		         info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight, &error ) )
 			Warning( "[NativeVulkan] ChangeVideoMode: %s\n", error.c_str() );
+		g_VulkanContext.RequestVSync( info.m_bWaitForVSync );
 	}
 
 	// Called when the dx support level has changed
@@ -2013,12 +2034,20 @@ bool CShaderDeviceMgrVulkan::Connect( CreateInterfaceFn factory )
 	// So others can access it
 	g_pShaderUtil = (IShaderUtil *)factory( SHADER_UTIL_INTERFACE_VERSION, NULL );
 
+#if defined( USE_SDL )
+	// Optional: application roots without a launcher (tools, tests) get no modes.
+	m_pLauncherMgr = (ILauncherMgr *)factory( SDLMGR_INTERFACE_VERSION, NULL );
+#endif
 	return true;
 }
 
 void CShaderDeviceMgrVulkan::Disconnect()
 {
 	g_pShaderUtil = NULL;
+#if defined( USE_SDL )
+	m_pLauncherMgr = NULL;
+#endif
+	m_Modes.clear();
 	ConVar_Unregister();
 	DisconnectTier1Libraries();
 }
@@ -2067,12 +2096,14 @@ CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode(
 	if ( !g_VulkanContext.SetBackBufferSize(
 	         mode.m_DisplayMode.m_nWidth, mode.m_DisplayMode.m_nHeight, &sizeError ) )
 		Warning( "[NativeVulkan] back buffer resize failed: %s\n", sizeError.c_str() );
+	g_VulkanContext.RequestVSync( mode.m_bWaitForVSync );
 	if ( !g_VulkanContext.IsValid() )
 	{
 		render_vulkan::VulkanContextConfig config;
 		config.appName = "Source Engine Native Vulkan";
 		config.enableValidation = ( CommandLine()->FindParm( "-vkvalidate" ) != 0 );
 		config.framesInFlight = 2;
+		config.vsync = mode.m_bWaitForVSync;
 
 		std::string error;
 		if ( InitVulkanContext( hWnd, config, &error ) )
@@ -2131,10 +2162,55 @@ void CShaderDeviceMgrVulkan::GetAdapterInfo( int adapter, MaterialAdapterInfo_t 
 	info.m_nDriverVersionLow = 0;
 }
 
+bool CShaderDeviceMgrVulkan::QueryDesktopDisplay( render::DisplayModeFacts *pDesktop ) const
+{
+	*pDesktop = render::DisplayModeFacts();
+#if defined( USE_SDL )
+	if ( m_pLauncherMgr )
+	{
+		uint width = 0, height = 0, refreshHz = 0;
+		m_pLauncherMgr->GetNativeDisplayInfo( -1, width, height, refreshHz );
+		pDesktop->width = static_cast<int>( width );
+		pDesktop->height = static_cast<int>( height );
+		pDesktop->refreshNumerator = static_cast<int>( refreshHz );
+		pDesktop->refreshDenominator = 1;
+	}
+#endif
+	if ( pDesktop->width > 0 && pDesktop->height > 0 )
+		return true;
+	if ( !m_bWarnedNoDisplay )
+	{
+		Warning( "[NativeVulkan] no desktop display to enumerate video modes from\n" );
+		m_bWarnedNoDisplay = true;
+	}
+	return false;
+}
+
+// SDL3 fullscreen covers the desktop and presentation scales the back buffer
+// to it, so the modes are back-buffer sizes that fit the desktop
+// (render.display-modes.v1), all at the desktop refresh rate.
+void CShaderDeviceMgrVulkan::RefreshModeList() const
+{
+	render::DisplayModeFacts desktop;
+	m_Modes = QueryDesktopDisplay( &desktop ) ? render::BuildBackBufferModeList( desktop )
+	                                          : std::vector<render::DisplayModeFacts>();
+}
+
+void CShaderDeviceMgrVulkan::ToShaderDisplayMode(
+    const render::DisplayModeFacts &mode, ShaderDisplayMode_t *pInfo )
+{
+	pInfo->m_nWidth = mode.width;
+	pInfo->m_nHeight = mode.height;
+	pInfo->m_Format = IMAGE_FORMAT_BGRA8888;
+	pInfo->m_nRefreshRateNumerator = mode.refreshNumerator;
+	pInfo->m_nRefreshRateDenominator = mode.refreshDenominator;
+}
+
 // Returns the number of modes
 int CShaderDeviceMgrVulkan::GetModeCount( int nAdapter ) const
 {
-	return 1;
+	RefreshModeList();
+	return static_cast<int>( m_Modes.size() );
 }
 
 // Returns mode information..
@@ -2143,16 +2219,29 @@ void CShaderDeviceMgrVulkan::GetModeInfo(
 {
 	if ( !pInfo )
 		return;
-	pInfo->m_nWidth = 1920;
-	pInfo->m_nHeight = 1080;
-	pInfo->m_Format = IMAGE_FORMAT_BGRA8888;
-	pInfo->m_nRefreshRateNumerator = 60;
-	pInfo->m_nRefreshRateDenominator = 1;
+	if ( m_Modes.empty() )
+		RefreshModeList();
+	if ( nMode < 0 || nMode >= static_cast<int>( m_Modes.size() ) )
+	{
+		Warning( "[NativeVulkan] GetModeInfo: mode %d of %d requested\n", nMode,
+		    static_cast<int>( m_Modes.size() ) );
+		ToShaderDisplayMode( render::DisplayModeFacts(), pInfo );
+		pInfo->m_nRefreshRateDenominator = 0;
+		return;
+	}
+	ToShaderDisplayMode( m_Modes[nMode], pInfo );
 }
 
+// The display's current mode is the desktop's: fullscreen never changes it.
 void CShaderDeviceMgrVulkan::GetCurrentModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter ) const
 {
-	VK_UNIMPLEMENTED();
+	if ( !pInfo )
+		return;
+	render::DisplayModeFacts desktop;
+	QueryDesktopDisplay( &desktop );
+	ToShaderDisplayMode( desktop, pInfo );
+	if ( desktop.width <= 0 )
+		pInfo->m_nRefreshRateDenominator = 0;
 }
 
 //-----------------------------------------------------------------------------

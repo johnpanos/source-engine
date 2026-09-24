@@ -1457,8 +1457,11 @@ void COptionsSubVideo::PlaceUIScaleControls()
 	}
 
 	// The layouts space a label 20 below the control above and its control 26 below it.
+	// A page resize moves children to their pin offsets, so the offsets hold the place.
 	m_pUIScaleLabel->SetBounds( nColumnX, nBottom + 20, nColumnWide, nColumnTall );
+	m_pUIScaleLabel->SetPinCorner( PIN_TOPLEFT, nColumnX, nBottom + 20 );
 	m_pUIScale->SetBounds( nColumnX, nBottom + 46, nColumnWide, nColumnTall );
+	m_pUIScale->SetPinCorner( PIN_TOPLEFT, nColumnX, nBottom + 46 );
 }
 
 //-----------------------------------------------------------------------------

@@ -6,6 +6,7 @@
 
 #include "sdl3_vulkan_presentation.h"
 
+#include "../vulkan_present_mode.h"
 #include "../vulkan_render_backend_native.h"
 #include "../../../platform/sdl3/render_surface/sdl3_render_surfaces.h"
 
@@ -649,18 +650,14 @@ private:
 		if ( !( fp.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_DST_BIT ) )
 			return false;
 
-		VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR;
-		if ( !m_Config.vsync )
-		{
-			uint32_t n = 0;
-			vkGetPhysicalDeviceSurfacePresentModesKHR( phys, m_VkSurface, &n, nullptr );
-			std::vector<VkPresentModeKHR> modes( n );
-			if ( n )
-				vkGetPhysicalDeviceSurfacePresentModesKHR( phys, m_VkSurface, &n, modes.data() );
-			for ( VkPresentModeKHR m : modes )
-				if ( m == VK_PRESENT_MODE_MAILBOX_KHR )
-					mode = m;
-		}
+		// render.present-policy.v1, shared with the legacy context.
+		uint32_t n = 0;
+		vkGetPhysicalDeviceSurfacePresentModesKHR( phys, m_VkSurface, &n, nullptr );
+		std::vector<VkPresentModeKHR> modes( n );
+		if ( n )
+			vkGetPhysicalDeviceSurfacePresentModesKHR( phys, m_VkSurface, &n, modes.data() );
+		const VkPresentModeKHR mode =
+		    render_vulkan::SelectVulkanPresentMode( m_Config.vsync, modes.data(), n );
 
 		uint32_t imageCount = caps.minImageCount + 1;
 		if ( caps.maxImageCount > 0 && imageCount > caps.maxImageCount )

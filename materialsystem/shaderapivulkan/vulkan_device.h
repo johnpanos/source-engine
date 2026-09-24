@@ -75,9 +75,9 @@ struct VulkanContextConfig
 	// Number of frames that may be recorded/submitted before the oldest must
 	// complete. Clamped to [1, kMaxFramesInFlight].
 	uint32_t framesInFlight = 2;
-	// Prefer mailbox (low-latency) present; falls back to FIFO (always
-	// supported) when mailbox is unavailable.
-	bool preferMailbox = false;
+	// Wait for vertical blank when presenting. The present mode for either
+	// setting is chosen by render.present-policy.v1; RequestVSync changes it.
+	bool vsync = true;
 };
 
 // A single, coherent native Vulkan presentation context bound to one window
@@ -700,6 +700,17 @@ public:
 	// the drawable. Before Init it only records the size; afterwards a changed
 	// size recreates the back buffers between frames.
 	bool SetBackBufferSize( int width, int height, std::string *outError );
+	// mat_vsync. Recorded here and applied by the next BeginFrame, which
+	// recreates the swapchain when the selected present mode changes; call it
+	// on the thread that owns the device.
+	void RequestVSync( bool vsync ) { m_requestedVSync = vsync; }
+	bool VSyncRequested() const { return m_requestedVSync; }
+	// The present mode of the current swapchain, and a count of swapchains
+	// created since Init (each resize, mode or present-mode change adds one).
+	VkPresentModeKHR PresentMode() const { return m_presentMode; }
+	// The present modes the surface offered when the swapchain was created.
+	const std::vector<VkPresentModeKHR> &SurfacePresentModes() const { return m_surfacePresentModes; }
+	uint64_t SwapchainGeneration() const { return m_swapchainGeneration; }
 	// Frames presented, and how many of them the present blit had to scale
 	// because the back buffer and the drawable differed.
 	uint64_t PresentCount() const { return m_presentCount; }
@@ -743,6 +754,7 @@ private:
 	FrameCost m_frameCost;
 	FILE *m_frameStatsFile = nullptr;
 	uint64_t m_statsFrame = 0;
+	int m_statsPresentMode = -1; // the present mode the stream last recorded
 	uint64_t m_frameBeginUs = 0;
 	uint64_t m_prevFrameBeginUs = 0;
 	uint64_t m_prevFrameEndUs = 0;
@@ -825,6 +837,10 @@ private:
 	VkFormat m_swapFormat = VK_FORMAT_UNDEFINED;
 	VkColorSpaceKHR m_swapColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 	VkPresentModeKHR m_presentMode = VK_PRESENT_MODE_FIFO_KHR;
+	bool m_requestedVSync = true;
+	std::vector<VkPresentModeKHR> m_surfacePresentModes;
+	bool m_swapchainVSync = true; // the vsync request m_presentMode was selected for
+	uint64_t m_swapchainGeneration = 0;
 	// m_swapImages are the back buffers the engine renders into, one per
 	// swapchain image, at m_swapExtent (the video mode's size). The swapchain's
 	// own images (m_presentImages, at the drawable's m_presentExtent) only

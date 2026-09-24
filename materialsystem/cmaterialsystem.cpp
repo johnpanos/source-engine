@@ -2692,8 +2692,10 @@ bool CMaterialSystem::OverrideConfig( const MaterialSystem_Config_t &_config, bo
 
 	// toggle wait for vsync
 	// In GL, we just check this and it's just a function call--no need for device shenanigans.
+	// Windowed toggles also reach the device: a presenter that owns its present
+	// mode (native Vulkan) honours vsync in a window.
 #if !defined( DX_TO_GL_ABSTRACTION )
-	if ( (false || !config.Windowed()) && (config.WaitForVSync() != g_config.WaitForVSync()) )
+	if ( config.WaitForVSync() != g_config.WaitForVSync() )
 	{
 		{
 			if ( mat_debugalttab.GetBool() )

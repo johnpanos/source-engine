@@ -61,6 +61,7 @@ static double s_rdtsc_to_ms;
 
 #include "wmi.h"
 #include "render/render_backend.h"
+#include "render/render_gamma_ramp.h"
 
 //#define DX8_COMPATABILITY_MODE
 
@@ -3115,49 +3116,23 @@ void CShaderDeviceDx8::SetHardwareGammaRamp( float fGamma, float fGammaTVRangeMi
 	if( !Dx9Device() )
 		return;
 
+	// The curve has one owner (render.gamma-ramp.v1), shared with providers that
+	// apply it at present time.
+	render::GammaRampParams params;
+	params.gamma = fGamma;
+	params.tvRangeMin = fGammaTVRangeMin;
+	params.tvRangeMax = fGammaTVRangeMax;
+	params.tvExponent = fGammaTVExponent;
+	params.tvEnabled = bTVEnabled;
+	render::GammaRamp16 ramp;
+	render::BuildGammaRamp16( params, ramp );
+
 	D3DGAMMARAMP gammaRamp;
 	for ( int i = 0; i < 256; i++ )
 	{
-		float flInputValue = float( i ) / 255.0f;
-
-		// Since the 360's sRGB read/write is a piecewise linear approximation, we need to correct for the difference in gamma space here
-		float flSrgbGammaValue;
-		if ( false ) // Should we also do this for the PS3?
-		{
-			// First undo the 360 broken sRGB curve by bringing the value back into linear space
-			float flLinearValue = X360GammaToLinear( flInputValue );
-			flLinearValue = clamp( flLinearValue, 0.0f, 1.0f );
-
-			// Now apply a true sRGB curve to mimic PC hardware
-			flSrgbGammaValue = SrgbLinearToGamma( flLinearValue ); // ( flLinearValue <= 0.0031308f ) ? ( flLinearValue * 12.92f ) : ( 1.055f * powf( flLinearValue, ( 1.0f / 2.4f ) ) ) - 0.055f;
-			flSrgbGammaValue = clamp( flSrgbGammaValue, 0.0f, 1.0f );
-		}
-		else
-		{
-			flSrgbGammaValue = flInputValue;
-		}
-
-		// Apply the user controlled exponent curve
-		float flCorrection = pow( flSrgbGammaValue, ( fGamma / 2.2f ) );
-		flCorrection = clamp( flCorrection, 0.0f, 1.0f );
-
-		// TV adjustment - Apply an exp and a scale and bias
-		if ( bTVEnabled )
-		{
-			// Adjust for TV gamma of 2.5 by applying an exponent of 2.2 / 2.5 = 0.88
-			flCorrection = pow( flCorrection, 2.2f / fGammaTVExponent );
-			flCorrection = clamp( flCorrection, 0.0f, 1.0f );
-
-			// Scale and bias to fit into the 16-235 range for TV's
-			flCorrection = ( flCorrection * ( fGammaTVRangeMax - fGammaTVRangeMin ) / 255.0f ) + ( fGammaTVRangeMin / 255.0f );
-			flCorrection = clamp( flCorrection, 0.0f, 1.0f );
-		}
-
-		// Generate final int value
-		unsigned int val = ( int )( flCorrection * 65535.0f );
-		gammaRamp.red[i] = val;
-		gammaRamp.green[i] = val;
-		gammaRamp.blue[i] = val;
+		gammaRamp.red[i] = ramp[i];
+		gammaRamp.green[i] = ramp[i];
+		gammaRamp.blue[i] = ramp[i];
 	}
 
 	Dx9Device()->SetGammaRamp( 0, D3DSGR_NO_CALIBRATION, &gammaRamp );

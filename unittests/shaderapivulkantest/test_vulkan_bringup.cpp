@@ -20,11 +20,13 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
+#include <vector>
 
 using render_vulkan::CVulkanContext;
 using render_vulkan::VulkanContextConfig;
@@ -311,6 +313,60 @@ int main( int argc, char **argv )
 		ctx.GetSwapchainExtent( bw, bh );
 		Check( bw == dw && bh == dh, "a 0 x 0 back buffer follows the drawable again" );
 		ctx.SetDrawDemoTriangle( false );
+	}
+
+	// Vsync (render.present-policy.v1): the request applies at the next frame
+	// with exactly one swapchain rebuild. Without vsync the mode is immediate
+	// when the surface offers it, then mailbox, then FIFO; with vsync it is FIFO.
+	{
+		const std::vector<VkPresentModeKHR> &offered = ctx.SurfacePresentModes();
+		const auto offers = [&]( VkPresentModeKHR mode ) {
+			return std::find( offered.begin(), offered.end(), mode ) != offered.end();
+		};
+		std::fprintf( stderr, "surface present modes:" );
+		for ( VkPresentModeKHR mode : offered )
+			std::fprintf( stderr, " %d", static_cast<int>( mode ) );
+		std::fprintf( stderr, "\n" );
+		Check( offers( VK_PRESENT_MODE_FIFO_KHR ), "the surface offers FIFO (Vulkan guarantee)" );
+		Check( ctx.VSyncRequested() && ctx.PresentMode() == VK_PRESENT_MODE_FIFO_KHR,
+		    "the default request is vsync, presented FIFO" );
+
+		const VkPresentModeKHR expectedOff = offers( VK_PRESENT_MODE_IMMEDIATE_KHR )
+		                                         ? VK_PRESENT_MODE_IMMEDIATE_KHR
+		                                     : offers( VK_PRESENT_MODE_MAILBOX_KHR )
+		                                         ? VK_PRESENT_MODE_MAILBOX_KHR
+		                                         : VK_PRESENT_MODE_FIFO_KHR;
+		const uint64_t generation = ctx.SwapchainGeneration();
+		ctx.RequestVSync( false );
+		Check( ctx.SwapchainGeneration() == generation, "a vsync request waits for the next frame" );
+		if ( PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
+		{
+			Check( ctx.SwapchainGeneration() == generation + 1,
+			    "vsync off rebuilt the swapchain exactly once" );
+			Check( ctx.PresentMode() == expectedOff, "vsync off selects the policy's present mode" );
+			int cw = 0, ch = 0;
+			const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
+			Check( cw > 0 && ch > 0 && !px.empty() &&
+			           PixelClose( &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4], 255, 0, 0, 255, 2 ),
+			    "frames render after the present-mode change" );
+		}
+		else
+		{
+			std::fprintf( stderr, "present (vsync off) failed: %s\n", err.c_str() );
+			++g_failures;
+		}
+		ctx.RequestVSync( false );
+		const uint64_t offGeneration = ctx.SwapchainGeneration();
+		if ( !PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
+			++g_failures;
+		Check( ctx.SwapchainGeneration() == offGeneration,
+		    "repeating the same vsync request does not rebuild the swapchain" );
+		ctx.RequestVSync( true );
+		if ( !PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
+			++g_failures;
+		Check( ctx.SwapchainGeneration() == offGeneration + 1 &&
+		           ctx.PresentMode() == VK_PRESENT_MODE_FIFO_KHR,
+		    "vsync on rebuilds once and returns to FIFO" );
 	}
 
 	// Texturing: upload a distinctive magenta texture through a staging buffer,

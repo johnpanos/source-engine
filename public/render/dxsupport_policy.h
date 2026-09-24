@@ -29,9 +29,9 @@ namespace render
 struct DxSupportGroupFacts
 {
 	bool hasName = false;
-	std::string name;    // "name" as a string, for CPU-vendor matching
-	int nameAsInt = 0;   // "name" as an integer (atoi; 0 when not numeric)
-	int vendorId = -1;   // "VendorID"
+	std::string name;     // "name" as a string, for CPU-vendor matching
+	int nameAsInt = 0;    // "name" as an integer (atoi; 0 when not numeric)
+	int vendorId = -1;    // "VendorID"
 	int minDeviceId = -1; // "MinDeviceID"
 	int maxDeviceId = -1; // "MaxDeviceID"
 	int minMegahertz = -1;
@@ -45,8 +45,8 @@ struct DxSupportGroupFacts
 
 struct DxSupportQuery
 {
-	int dxLevel = 0;         // already an actual level (see ClosestActualDxLevel)
-	int maxDxLevel = 0;      // the adapter's maximum
+	int dxLevel = 0;    // already an actual level (see ClosestActualDxLevel)
+	int maxDxLevel = 0; // the adapter's maximum
 	int vendorId = 0;
 	int deviceId = 0;
 	int cpuMegahertz = 0;
@@ -132,47 +132,61 @@ std::optional<size_t> FindFirst( const std::vector<DxSupportGroupFacts> &groups,
 	DxSupportPlan plan;
 	plan.dxLevel = query.dxLevel;
 
-	const std::optional<size_t> dxLevelGroup =
-	    FindFirst( groups, [&]( const DxSupportGroupFacts &g ) { return g.nameAsInt == query.dxLevel; } );
-	const std::optional<size_t> dxLevelVendorGroup =
-	    FindFirst( groups, [&]( const DxSupportGroupFacts &g ) {
+	const std::optional<size_t> dxLevelGroup = FindFirst( groups,
+	    [&]( const DxSupportGroupFacts &g )
+	    {
+		    return g.nameAsInt == query.dxLevel;
+	    } );
+	const std::optional<size_t> dxLevelVendorGroup = FindFirst( groups,
+	    [&]( const DxSupportGroupFacts &g )
+	    {
 		    return g.nameAsInt == query.dxLevel && g.vendorId == query.vendorId;
 	    } );
-	const std::optional<size_t> cardGroup = FindFirst( groups, [&]( const DxSupportGroupFacts &g ) {
-		return g.vendorId == query.vendorId && query.deviceId >= g.minDeviceId &&
-		       query.deviceId <= g.maxDeviceId;
-	} );
+	const std::optional<size_t> cardGroup = FindFirst( groups,
+	    [&]( const DxSupportGroupFacts &g )
+	    {
+		    return g.vendorId == query.vendorId && query.deviceId >= g.minDeviceId &&
+		           query.deviceId <= g.maxDeviceId;
+	    } );
 
-	const auto apply = [&]( const std::optional<size_t> &group ) {
+	const auto apply = [&]( const std::optional<size_t> &group )
+	{
 		if ( group )
 			plan.applyOrder.push_back( *group );
 	};
-	const bool cardIsCatchAll =
-	    cardGroup && groups[*cardGroup].minDeviceId == 0 && groups[*cardGroup].maxDeviceId == 0xffff;
+	const bool cardIsCatchAll = cardGroup && groups[*cardGroup].minDeviceId == 0 &&
+	                            groups[*cardGroup].maxDeviceId == 0xffff;
 	apply( dxLevelGroup );
 	apply( cardGroup );
 	if ( cardIsCatchAll )
 		apply( dxLevelVendorGroup );
 
-	apply( FindFirst( groups, [&]( const DxSupportGroupFacts &g ) {
-		if ( !g.hasName )
-			return false;
-		const bool vendorMatches = query.cpuIsAmd ? dxsupport_detail::ContainsNoCase( g.name, "AMD" )
-		                                          : dxsupport_detail::ContainsNoCase( g.name, "Intel" );
-		return vendorMatches && g.minMegahertz != -1 && g.maxMegahertz != -1 &&
-		       g.minMegahertz <= query.cpuMegahertz && query.cpuMegahertz < g.maxMegahertz;
-	} ) );
-	apply( FindFirst( groups, [&]( const DxSupportGroupFacts &g ) {
-		return g.minMegabytes != -1 && g.maxMegabytes != -1 &&
-		       g.minMegabytes <= query.systemRamMegabytes &&
-		       query.systemRamMegabytes < g.maxMegabytes;
-	} ) );
+	apply( FindFirst( groups,
+	    [&]( const DxSupportGroupFacts &g )
+	    {
+		    if ( !g.hasName )
+			    return false;
+		    const bool vendorMatches = query.cpuIsAmd
+		                                   ? dxsupport_detail::ContainsNoCase( g.name, "AMD" )
+		                                   : dxsupport_detail::ContainsNoCase( g.name, "Intel" );
+		    return vendorMatches && g.minMegahertz != -1 && g.maxMegahertz != -1 &&
+		           g.minMegahertz <= query.cpuMegahertz && query.cpuMegahertz < g.maxMegahertz;
+	    } ) );
+	apply( FindFirst( groups,
+	    [&]( const DxSupportGroupFacts &g )
+	    {
+		    return g.minMegabytes != -1 && g.maxMegabytes != -1 &&
+		           g.minMegabytes <= query.systemRamMegabytes &&
+		           query.systemRamMegabytes < g.maxMegabytes;
+	    } ) );
 
 	const int videoMemoryMegabytes = query.videoMemoryBytes / ( 1024 * 1024 );
-	const std::optional<size_t> videoMemoryGroup =
-	    FindFirst( groups, [&]( const DxSupportGroupFacts &g ) {
+	const std::optional<size_t> videoMemoryGroup = FindFirst( groups,
+	    [&]( const DxSupportGroupFacts &g )
+	    {
 		    return g.minMegatexels != -1 && g.maxMegatexels != -1 &&
-		           g.minMegatexels <= videoMemoryMegabytes && videoMemoryMegabytes < g.maxMegatexels;
+		           g.minMegatexels <= videoMemoryMegabytes &&
+		           videoMemoryMegabytes < g.maxMegatexels;
 	    } );
 	if ( videoMemoryGroup && query.videoMemoryBytes > 0 && groups[*videoMemoryGroup].picmip &&
 	     ( query.dxLevel == query.maxDxLevel || videoMemoryMegabytes < 100 ) )
