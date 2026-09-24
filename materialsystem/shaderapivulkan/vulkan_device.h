@@ -336,6 +336,12 @@ public:
 	int StencilBits() const { return m_stencilBits; }
 	// True when blended sRGB-write draws blend in linear space, as on D3D9.
 	bool LinearSpaceSrgbBlending() const { return m_srgbAttachments; }
+	// Render-pass merging (on by default): records whose result is the same
+	// through either view of a target stay in the open pass, and the frame's
+	// first pass opens in the view its first color draw needs. Off restores the
+	// earlier pass per view change (-vkpassmerge 0), for A/B runs and rollback.
+	void SetPassMerging( bool enable ) { m_passMerging = enable; }
+	bool PassMerging() const { return m_passMerging; }
 	// User clip planes of the draws that follow, in D3D clip space (D3D9's
 	// SetClipPlane under a vertex shader): a vertex is kept where
 	// dot( plane, position ) >= 0. At most kMaxClipPlanes; 0 disables clipping.
@@ -714,6 +720,10 @@ public:
 	// The present modes the surface offered when the swapchain was created.
 	const std::vector<VkPresentModeKHR> &SurfacePresentModes() const { return m_surfacePresentModes; }
 	uint64_t SwapchainGeneration() const { return m_swapchainGeneration; }
+	// Acquires that timed out (kAcquireTimeoutNs) and made the next frame
+	// replace the swapchain.
+	uint64_t AcquireTimeouts() const { return m_acquireTimeouts; }
+	static constexpr uint64_t kAcquireTimeoutNs = 1000000000ull;
 	// Frames presented, and how many of them the present blit had to scale
 	// because the back buffer and the drawable differed.
 	uint64_t PresentCount() const { return m_presentCount; }
@@ -869,6 +879,8 @@ private:
 	std::vector<VkPresentModeKHR> m_surfacePresentModes;
 	bool m_swapchainVSync = true; // the vsync request m_presentMode was selected for
 	uint64_t m_swapchainGeneration = 0;
+	uint64_t m_acquireTimeouts = 0;
+	bool m_acquireTimedOut = false;
 	// m_swapImages are the back buffers the engine renders into, one per
 	// swapchain image, at m_swapExtent (the video mode's size). The swapchain's
 	// own images (m_presentImages, at the drawable's m_presentExtent) only
@@ -1139,6 +1151,9 @@ private:
 	std::vector<VkFramebuffer> m_framebuffersSrgb;
 	VkRenderPass m_renderPassLoadSrgb = VK_NULL_HANDLE;
 	VkRenderPass m_renderPassTargetSrgb = VK_NULL_HANDLE;
+	// The frame's clearing pass over the sRGB view (m_passMerging).
+	VkRenderPass m_renderPassClearSrgb = VK_NULL_HANDLE;
+	bool m_passMerging = true;
 	// PortalRefract's vertex input: the textured one plus normal and tangent.
 	VkVertexInputAttributeDescription m_portalAttrs[6] = {};
 	VkPipelineVertexInputStateCreateInfo m_portalVin = {};
@@ -1405,6 +1420,9 @@ private:
 	void GetTargetExtent( int target, uint32_t *outW, uint32_t *outH ) const;
 	void BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb = false );
 	void RecordTargetCopy( VkCommandBuffer cmd, int srcTarget, const DynDraw &copy );
+	bool RecordWantsSrgb( const DynDraw &r ) const;
+	bool RecordViewAgnostic( const DynDraw &r ) const;
+	bool FirstPassWantsSrgb() const;
 
 	// Per-frame acquisition state, valid between BeginFrame and EndFrame.
 	uint32_t m_acquiredImage = 0;

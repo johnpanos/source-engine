@@ -617,8 +617,12 @@ Keep the table concise and link details below or from the domain progress file.
   indexed draws, per-slot stream buffers (a real frame-overlap race), within-frame
   geometry reuse with a shadow verifier, a prewarmed pipeline store, and deferred
   texel uploads. Interleaved A/B warm median 18.4 -> 6.1 ms; material-pixel
-  captures byte-identical. Android not measured. See the
-  [frame pacing record](RFC/0001-native-vulkan-frame-pacing-progress.md).
+  captures byte-identical. Android not measured. Mobile GPU cost (2026-09-23):
+  sRGB/UNORM view breaks around color-masked draws are merged, so a linked-portal
+  frame uses 32 -> 7 render passes and modeled tiled-GPU attachment traffic falls
+  about 5x. All material-pixel families are byte-identical; this is not measured
+  on a device. See the
+  [frame pacing record](RFC/0001-native-vulkan-frame-pacing-progress.md#mobile-gpu-cost-render-pass-breaks-2026-09-23).
 
 Current RFC 0001 evidence (2026-09-22):
 

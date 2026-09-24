@@ -1599,10 +1599,11 @@ static void TestSimulation()
 		pKept->Wake();
 		Step( world.pEnv, 1.5f );
 		float z = PositionOf( pResting ).z;
-		Check( TIER_GAMEPLAY, "rules.recheck-drops-resting-contact", Near( restZ, 16.0f, 1.0f ) && z < -100.0f,
-			"rest %.2f z %.2f", restZ, z );
+		Check( TIER_GAMEPLAY, "rules.recheck-drops-resting-contact",
+		    Near( restZ, 16.0f, 1.0f ) && z < -100.0f, "rest %.2f z %.2f", restZ, z );
 		float keptZ = PositionOf( pKept ).z;
-		Check( TIER_GAMEPLAY, "rules.recheck-keeps-allowed-contact", Near( keptZ, 16.0f, 1.0f ), "z %.2f", keptZ );
+		Check( TIER_GAMEPLAY, "rules.recheck-keeps-allowed-contact", Near( keptZ, 16.0f, 1.0f ),
+		    "z %.2f", keptZ );
 
 		// A pair near enough to have a pending (not yet touching) contact.
 		solver.m_pIgnoreA = pNear;
@@ -1611,8 +1612,8 @@ static void TestSimulation()
 		pNear->Wake();
 		Step( world.pEnv, 1.5f );
 		z = PositionOf( pNear ).z;
-		Check( TIER_GAMEPLAY, "rules.recheck-drops-near-pair", Near( nearZ, 18.0f, 1.0f ) && z < -100.0f,
-			"hover %.2f z %.2f", nearZ, z );
+		Check( TIER_GAMEPLAY, "rules.recheck-drops-near-pair",
+		    Near( nearZ, 18.0f, 1.0f ) && z < -100.0f, "hover %.2f z %.2f", nearZ, z );
 		DestroyWorld( world );
 	}
 
@@ -1634,8 +1635,8 @@ static void TestSimulation()
 		pEmbedded->RecheckContactPoints();
 		Step( world.pEnv, 1.0f );
 		float z = PositionOf( pEmbedded ).z;
-		Check( TIER_GAMEPLAY, "rules.recheck-restores-pair", Near( embeddedZ, 10.0f, 0.5f ) && z > 15.0f,
-			"embedded %.2f z %.2f", embeddedZ, z );
+		Check( TIER_GAMEPLAY, "rules.recheck-restores-pair",
+		    Near( embeddedZ, 10.0f, 0.5f ) && z > 15.0f, "embedded %.2f z %.2f", embeddedZ, z );
 		DestroyWorld( world );
 	}
 

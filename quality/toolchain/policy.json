@@ -135,6 +135,10 @@
       "dialect": "cxx20",
       "rfc": "0008"
     },
+    "debugapi_core": {
+      "dialect": "cxx20",
+      "rfc": "0005"
+    },
     "sourceWorld": {
       "dialect": "cxx20",
       "rfc": "0008"

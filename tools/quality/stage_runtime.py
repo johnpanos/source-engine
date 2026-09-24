@@ -14,6 +14,7 @@ import argparse
 from pathlib import Path
 import sys
 
+import playable_maps
 import portal_boot
 
 
@@ -60,6 +61,11 @@ def stage(build, runtime, base_runtime=None):
     removed = sanitize(runtime)
     print("run.sh: overlaid %d build products; removed %d dead 32-bit .so"
           % (len(installed), len(removed)))
+    mounted, skipped = playable_maps.mount(runtime)
+    for record in mounted.values():
+        print("run.sh: PBRT map " + playable_maps.describe(record))
+    for name, reason in skipped.items():
+        print("run.sh: PBRT map %s not mounted: %s" % (name, reason))
     return installed, removed
 
 

@@ -15,6 +15,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <initializer_list>
 #include <limits>
 
@@ -733,7 +734,7 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 		img.tiling = VK_IMAGE_TILING_OPTIMAL;
 		img.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 		// The present-time gamma pass samples the back buffer.
-		if ( swapFeatures.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT )
+		if ( ( swapFeatures.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT ) && !getenv( "VO_EXP_NO_SAMPLED" ) ) // VO_EXP
 			img.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 		img.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		img.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -991,7 +992,10 @@ bool CVulkanContext::CreateRenderPass( std::string *outError )
 	               makePass( VK_ATTACHMENT_LOAD_OP_LOAD, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	                   VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, &m_renderPassTargetSrgb,
-	                   m_swapFormatSrgb ) ) );
+	                   m_swapFormatSrgb ) &&
+	               makePass( VK_ATTACHMENT_LOAD_OP_CLEAR, VK_IMAGE_LAYOUT_UNDEFINED,
+	                   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_UNDEFINED,
+	                   &m_renderPassClearSrgb, m_swapFormatSrgb ) ) );
 }
 
 bool CVulkanContext::CreateFramebuffers( std::string *outError )
@@ -4698,6 +4702,65 @@ void CVulkanContext::BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb
 	}
 	GetTargetExtent( target, &rp.renderArea.extent.width, &rp.renderArea.extent.height );
 	vkCmdBeginRenderPass( cmd, &rp, VK_SUBPASS_CONTENTS_INLINE );
+	m_frameCost.Add( kCostRenderPass, 0 );
+}
+
+// D3D9 (SRGBWRITEENABLE) encodes an sRGB-writing draw in hardware and blends it
+// in linear space; such a draw is drawn through the target's sRGB view (the
+// hardware decodes, blends and encodes, rounding as D3D9 does). Everything else,
+// color clears above all, uses the UNORM view, which stores what it is given.
+static bool SrgbCapableShader( int shaderIndex )
+{
+	return shaderIndex == CVulkanContext::kDynShaderTextured ||
+	       shaderIndex == CVulkanContext::kDynShaderPbrDirect ||
+	       shaderIndex == CVulkanContext::kDynShaderPbrWorld ||
+	       shaderIndex == CVulkanContext::kDynShaderPortalRefract ||
+	       shaderIndex == CVulkanContext::kDynShaderSkin;
+}
+
+bool CVulkanContext::RecordWantsSrgb( const DynDraw &r ) const
+{
+	return m_srgbAttachments && r.kind == kRecordDraw && SrgbCapableShader( r.shaderIndex ) &&
+	       ( r.colorFlags & kColorSrgbWrite );
+}
+
+// Records whose result is the same through either view: queries, clears of
+// depth/stencil alone, and draws that write no color (the view only changes how
+// color is stored; these shaders' alpha test precedes their sRGB encode, and
+// each has a pipeline for either view). With merging they stay in the open
+// pass, since on a tiled GPU every pass break stores and reloads the target.
+bool CVulkanContext::RecordViewAgnostic( const DynDraw &r ) const
+{
+	if ( r.kind == kRecordQueryBegin || r.kind == kRecordQueryEnd )
+		return true;
+	if ( !m_passMerging )
+		return false;
+	if ( r.kind == kRecordClear )
+		return !r.clearColor;
+	return r.kind == kRecordDraw && !r.raster.colorWrite && SrgbCapableShader( r.shaderIndex );
+}
+
+// Whether the frame's clearing pass opens through the back buffer's sRGB view:
+// its first color draw writes sRGB, and the clear stores the same bytes through
+// either view (each component 0 or 1, which sRGB encoding leaves unchanged).
+// The demo draws recorded into that pass have UNORM-only pipelines.
+bool CVulkanContext::FirstPassWantsSrgb() const
+{
+	if ( !m_passMerging || m_renderPassClearSrgb == VK_NULL_HANDLE ||
+	     m_dynPipeline == VK_NULL_HANDLE || m_drawDemoTriangle || m_drawTexturedQuad ||
+	     m_drawIndexedUbo || m_drawDemoDepth )
+		return false;
+	for ( float component : m_clearColor.float32 )
+		if ( component != 0.0f && component != 1.0f )
+			return false;
+	for ( const DynDraw &r : m_dynDrawRecords )
+	{
+		if ( r.target != -1 || r.kind == kRecordCopy )
+			return false;
+		if ( !RecordViewAgnostic( r ) )
+			return RecordWantsSrgb( r );
+	}
+	return false;
 }
 
 void CVulkanContext::RecordTargetCopy( VkCommandBuffer cmd, int srcTarget, const DynDraw &copy )
@@ -4735,6 +4798,7 @@ void CVulkanContext::RecordTargetCopy( VkCommandBuffer cmd, int srcTarget, const
 	if ( !toBlitRegion( copy.copySrcRect, srcW, srcH, blit.srcOffsets ) ||
 	     !toBlitRegion( copy.copyDstRect, dst.width, dst.height, blit.dstOffsets ) )
 		return;
+	m_frameCost.Add( kCostTargetCopy, 0 );
 
 	VkImageMemoryBarrier toTransfer[2] = {};
 	for ( VkImageMemoryBarrier &b : toTransfer )
@@ -5185,9 +5249,11 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	                               ( m_requestedBackBuffer.width != m_swapExtent.width ||
 	                                   m_requestedBackBuffer.height != m_swapExtent.height );
 	const bool presentModePending = m_requestedVSync != m_swapchainVSync;
-	if ( ( drawableChanged || backBufferPending || presentModePending ) &&
+	if ( ( drawableChanged || backBufferPending || presentModePending ||
+	         m_acquireTimedOut ) &&
 	     !RecreateSwapchain( outError ) )
 		return false;
+	m_acquireTimedOut = false;
 	if ( m_swapchain == VK_NULL_HANDLE )
 	{
 		// Zero-size (minimized) window: nothing to render this iteration.
@@ -5210,8 +5276,22 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	VkResult r;
 	{
 		CFrameCostScope acquire( m_frameCost, kCostAcquire );
-		r = vkAcquireNextImageKHR( m_device, m_swapchain, UINT64_MAX,
+		r = vkAcquireNextImageKHR( m_device, m_swapchain, kAcquireTimeoutNs,
 		    m_imageAvailable[m_currentFrame], VK_NULL_HANDLE, &imageIndex );
+	}
+	if ( r == VK_TIMEOUT || r == VK_NOT_READY )
+	{
+		// The window system kept every image (a Wayland compositor can hold a
+		// FIFO swapchain's buffers indefinitely around a resize). Skip this frame
+		// and replace the swapchain, which returns its buffers, instead of
+		// blocking forever.
+		++m_acquireTimeouts;
+		Log( "swapchain image not released within %llu ms; recreating the swapchain\n",
+		    static_cast<unsigned long long>( kAcquireTimeoutNs / 1000000 ) );
+		m_acquireTimedOut = true;
+		if ( outSkip )
+			*outSkip = true;
+		return true;
 	}
 	if ( r == VK_ERROR_SURFACE_LOST_KHR )
 	{
@@ -5289,15 +5369,17 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	clears[0].color = m_clearColor;
 	clears[1].depthStencil = { 1.0f, 0 };
 
+	const bool firstPassSrgb = FirstPassWantsSrgb();
 	VkRenderPassBeginInfo rp = {};
 	rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	rp.renderPass = m_renderPass;
-	rp.framebuffer = m_framebuffers[imageIndex];
+	rp.renderPass = firstPassSrgb ? m_renderPassClearSrgb : m_renderPass;
+	rp.framebuffer = firstPassSrgb ? m_framebuffersSrgb[imageIndex] : m_framebuffers[imageIndex];
 	rp.renderArea.offset = { 0, 0 };
 	rp.renderArea.extent = m_swapExtent;
 	rp.clearValueCount = 2;
 	rp.pClearValues = clears;
 	vkCmdBeginRenderPass( cmd, &rp, VK_SUBPASS_CONTENTS_INLINE );
+	m_frameCost.Add( kCostRenderPass, 0 );
 
 	if ( m_drawDemoTriangle && m_demoPipeline != VK_NULL_HANDLE )
 	{
@@ -5407,7 +5489,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		std::vector<uint32_t> skinOffsets;
 		const bool skinConstantsOk = UploadSkinConstants( &skinOffsets );
 		int openTarget = -1; // the swapchain pass opened above
-		bool openSrgb = false; // entered through the target's sRGB view
+		bool openSrgb = firstPassSrgb; // entered through the target's sRGB view
 		VkPipeline boundPipeline = VK_NULL_HANDLE;
 		bool worldBuffersBound = false;
 		// A query must begin and end inside one render pass, and only one
@@ -5423,20 +5505,34 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				m_querySlots[static_cast<size_t>( activeQuery )].failed = true;
 			activeQuery = -1;
 		};
-		// D3D9 (SRGBWRITEENABLE) encodes an sRGB-writing draw in hardware and
-		// blends it in linear space; such a draw is drawn through the target's
-		// sRGB view (the hardware decodes, blends and encodes, rounding as D3D9
-		// does). Everything else, clears above all, uses the UNORM view, which
-		// stores what it is given.
-		const auto drawWantsSrgb = [&]( const DynDraw &r )
+		// The view a record is drawn through. A view-agnostic record keeps the
+		// open view; opening a pass (another target, or a query, which must share
+		// one pass with the draws it counts) takes the view of the next record
+		// that needs one.
+		const auto viewFor = [&]( size_t index )
 		{
-			return m_srgbAttachments && r.kind == kRecordDraw &&
-			       ( r.shaderIndex == kDynShaderTextured || r.shaderIndex == kDynShaderPbrDirect ||
-			           r.shaderIndex == kDynShaderPbrWorld ||
-			           r.shaderIndex == kDynShaderPortalRefract ||
-			           r.shaderIndex == kDynShaderSkin ) &&
-			       ( r.colorFlags & kColorSrgbWrite );
+			const DynDraw &r = m_dynDrawRecords[index];
+			if ( !RecordViewAgnostic( r ) )
+				return RecordWantsSrgb( r );
+			if ( r.kind == kRecordQueryBegin || r.target != openTarget )
+			{
+				for ( size_t next = index + 1; next < m_dynDrawRecords.size(); ++next )
+				{
+					const DynDraw &n = m_dynDrawRecords[next];
+					if ( n.target != r.target || n.kind == kRecordCopy )
+						break;
+					if ( !RecordViewAgnostic( n ) )
+						return RecordWantsSrgb( n );
+				}
+			}
+			return r.target == openTarget && openSrgb;
 		};
+		// A copy closes the pass; the next record reopens one, so back-to-back
+		// copies open no empty pass between them. A copy identical to the one
+		// just made, with nothing drawn or cleared since, is skipped. Without
+		// merging the pass reopens at once and every copy is made.
+		bool passOpen = true;
+		const DynDraw *lastCopy = nullptr;
 		for ( size_t recordIndex = 0; recordIndex < m_dynDrawRecords.size(); ++recordIndex )
 		{
 			const DynDraw &d = m_dynDrawRecords[recordIndex];
@@ -5448,36 +5544,36 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			if ( d.kind == kRecordCopy )
 			{
 				endActiveQuery( false );
-				vkCmdEndRenderPass( cmd );
-				RecordTargetCopy( cmd, openTarget, d );
-				BeginTargetPass( cmd, openTarget, openSrgb );
+				if ( passOpen )
+					vkCmdEndRenderPass( cmd );
+				passOpen = false;
+				const bool repeat = m_passMerging && lastCopy && lastCopy->copyDst == d.copyDst &&
+				                    std::memcmp( lastCopy->copySrcRect, d.copySrcRect,
+				                        sizeof( d.copySrcRect ) ) == 0 &&
+				                    std::memcmp( lastCopy->copyDstRect, d.copyDstRect,
+				                        sizeof( d.copyDstRect ) ) == 0;
+				if ( !repeat )
+					RecordTargetCopy( cmd, openTarget, d );
+				lastCopy = &d;
+				if ( !m_passMerging )
+				{
+					BeginTargetPass( cmd, openTarget, openSrgb );
+					passOpen = true;
+				}
 				continue;
 			}
-			// A query begins in the pass its next draw needs, so the query and the
-			// draws it counts share one render pass; it ends in the open pass.
-			bool wantSrgb = drawWantsSrgb( d );
-			if ( d.kind == kRecordQueryEnd )
-				wantSrgb = openSrgb;
-			else if ( d.kind == kRecordQueryBegin )
-			{
-				wantSrgb = openSrgb;
-				for ( size_t next = recordIndex + 1; next < m_dynDrawRecords.size(); ++next )
-				{
-					const DynDraw &n = m_dynDrawRecords[next];
-					if ( n.kind == kRecordQueryBegin || n.kind == kRecordQueryEnd )
-						continue;
-					if ( n.target == d.target && n.kind != kRecordCopy )
-						wantSrgb = drawWantsSrgb( n );
-					break;
-				}
-			}
-			if ( d.target != openTarget || wantSrgb != openSrgb )
+			if ( d.kind == kRecordDraw || d.kind == kRecordClear )
+				lastCopy = nullptr;
+			const bool wantSrgb = viewFor( recordIndex );
+			if ( !passOpen || d.target != openTarget || wantSrgb != openSrgb )
 			{
 				endActiveQuery( false );
-				vkCmdEndRenderPass( cmd );
+				if ( passOpen )
+					vkCmdEndRenderPass( cmd );
 				openTarget = d.target;
 				openSrgb = wantSrgb;
 				BeginTargetPass( cmd, openTarget, openSrgb );
+				passOpen = true;
 				boundPipeline = VK_NULL_HANDLE;
 			}
 			if ( d.kind == kRecordQueryBegin )
@@ -5914,10 +6010,12 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		}
 		endActiveQuery( false );
 		// EndFrame closes the swapchain pass and transitions the image for
-		// present or capture, so the frame must end inside it.
-		if ( openTarget != -1 || openSrgb )
+		// present or capture, so the frame must end inside it. Either view's pass
+		// leaves the image in the same layout.
+		if ( !passOpen || openTarget != -1 || ( !m_passMerging && openSrgb ) )
 		{
-			vkCmdEndRenderPass( cmd );
+			if ( passOpen )
+				vkCmdEndRenderPass( cmd );
 			BeginTargetPass( cmd, -1 );
 		}
 	}
@@ -6548,6 +6646,7 @@ bool CVulkanContext::EndFrame( std::string *outError )
 	// for the acquire.
 	VkPipelineStageFlags waitStage =
 	    VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	if ( getenv( "VO_EXP_OLD_WAIT" ) ) waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT; // VO_EXP
 	VkSubmitInfo submit = {};
 	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submit.waitSemaphoreCount = 1;
@@ -7177,7 +7276,7 @@ void CVulkanContext::Shutdown()
 		m_commandBuffers.clear();
 
 		for ( VkRenderPass *pass : { &m_renderPass, &m_renderPassLoad, &m_renderPassTarget,
-		          &m_renderPassLoadSrgb, &m_renderPassTargetSrgb } )
+		          &m_renderPassLoadSrgb, &m_renderPassTargetSrgb, &m_renderPassClearSrgb } )
 		{
 			if ( *pass != VK_NULL_HANDLE )
 			{

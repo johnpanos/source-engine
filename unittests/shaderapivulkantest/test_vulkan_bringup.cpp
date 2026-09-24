@@ -652,6 +652,116 @@ int main( int argc, char **argv )
 	           worldVertices, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
 	    "world mesh can upload after release" );
 
+	// Render-pass merging: a tiled GPU stores and reloads the whole target at
+	// every pass break. Draws that write no color and depth/stencil-only clears
+	// keep the open (sRGB) view, a query spanning them stays in one pass, a
+	// repeated copy with nothing drawn since is made once, and the frame's
+	// clearing pass opens in the view its first draw needs. The frame is: sRGB
+	// draw, query { masked draw, depth/stencil clear, sRGB draw }, two identical
+	// copies, sRGB draw. With merging off (-vkpassmerge 0, the earlier policy)
+	// the same frame takes seven passes and two copies and fails the query.
+	{
+		static const float quad[6][8] = {
+		    { -0.5f, -0.5f, 0.5f, 1, 1, 1, 0, 0 },
+		    { 0.5f, 0.5f, 0.5f, 1, 1, 1, 1, 1 },
+		    { 0.5f, -0.5f, 0.5f, 1, 1, 1, 1, 0 },
+		    { -0.5f, -0.5f, 0.5f, 1, 1, 1, 0, 0 },
+		    { -0.5f, 0.5f, 0.5f, 1, 1, 1, 0, 1 },
+		    { 0.5f, 0.5f, 0.5f, 1, 1, 1, 1, 1 },
+		};
+		const float grey[4] = { 0.5f, 0.5f, 0.5f, 1.0f };
+		const float red[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
+		CVulkanContext::DynRasterState opaque;
+		CVulkanContext::DynRasterState masked;
+		masked.colorWrite = false;
+		const int copyTarget = ctx.CreateRenderTargetTexture( 64, 64, &err );
+		const int query = ctx.CreateOcclusionQuery( &err );
+		const bool srgb = ctx.LinearSpaceSrgbBlending();
+		for ( bool merge : { true, false } )
+		{
+			const char *const mode = merge ? "merged" : "unmerged";
+			ctx.SetPassMerging( merge );
+			ctx.ClearDynamicQueue();
+			ctx.SetClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
+			ctx.SetRenderTarget( -1 );
+			ctx.SelectDynamicShader( CVulkanContext::kDynShaderTextured );
+			ctx.BindManagedTexture( -1 );
+			ctx.SelectDynamicRasterState( opaque );
+			ctx.SelectDynamicColorSpace( CVulkanContext::kColorSrgbWrite );
+			ctx.SetDynamicModulation( grey );
+			ctx.QueueDynamicTriangles( &quad[0][0], 6 );
+			if ( query >= 0 )
+				ctx.QueueBeginOcclusionQuery( query );
+			ctx.SelectDynamicRasterState( masked );
+			ctx.SelectDynamicColorSpace( 0 );
+			ctx.SetDynamicModulation( red );
+			ctx.QueueDynamicTriangles( &quad[0][0], 6 );
+			ctx.QueueClear( false, true, true );
+			ctx.SelectDynamicRasterState( opaque );
+			ctx.SelectDynamicColorSpace( CVulkanContext::kColorSrgbWrite );
+			ctx.SetDynamicModulation( grey );
+			ctx.QueueDynamicTriangles( &quad[0][0], 6 );
+			if ( query >= 0 )
+				ctx.QueueEndOcclusionQuery( query );
+			Check( ctx.QueueCopyToTexture( copyTarget, nullptr, nullptr ), "first copy queues" );
+			Check( ctx.QueueCopyToTexture( copyTarget, nullptr, nullptr ), "repeated copy queues" );
+			ctx.QueueDynamicTriangles( &quad[0][0], 6 );
+			ctx.RequestCapture();
+			bool skip = true;
+			for ( int attempt = 0; skip && attempt < 100; ++attempt )
+			{
+				if ( !ctx.BeginFrame( &skip, &err ) )
+					break;
+				if ( skip )
+					SDL_Delay( 8 );
+			}
+			Check( !skip, "pass-merge frame records" );
+			if ( skip )
+				continue;
+			const render_vulkan::FrameCost &cost = ctx.CurrentFrameCost();
+			const uint32_t passes = cost.count[render_vulkan::kCostRenderPass];
+			const uint32_t copies = cost.count[render_vulkan::kCostTargetCopy];
+			std::fprintf( stderr, "  %s: %u render passes, %u copies\n", mode, passes, copies );
+			if ( merge )
+			{
+				// The clearing pass (in the sRGB view) and the pass after the copy.
+				Check( passes == 2, "masked draws, depth/stencil clears and queries break no pass" );
+				Check( copies == 1, "a repeated copy with nothing drawn since is made once" );
+			}
+			else
+			{
+				// Clear, sRGB, UNORM (masked draw and clear), sRGB, two reopened
+				// after the copies, and the UNORM pass the frame ended in.
+				Check( passes == ( srgb ? 7u : 3u ), "without merging, each view change breaks" );
+				Check( copies == 2, "without merging, every copy is made" );
+			}
+			Check( ctx.EndFrame( &err ), "pass-merge frame presents" );
+			if ( merge && query >= 0 )
+			{
+				const int64_t samples = ctx.OcclusionQueryResult( query, true );
+				Check( samples > 0, "a query spanning a masked and an sRGB draw completes" );
+			}
+			int cw = 0, ch = 0;
+			const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
+			if ( cw > 0 && ch > 0 && !px.empty() )
+			{
+				// sRGB(0.5) = 188 in both modes; the masked red draw left no color.
+				const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
+				const uint8_t *corner = &px[0];
+				Check( PixelClose( center, 188, 188, 188, 255, 2 ),
+				    "the sRGB-encoded grey is drawn; the masked draw writes no color" );
+				Check( PixelClose( corner, 0, 0, 0, 255, 0 ),
+				    "the clear stores the same bytes in either view" );
+			}
+			else
+				Check( false, "pass-merge frame captured" );
+		}
+		ctx.SetPassMerging( true );
+		if ( query >= 0 )
+			ctx.DestroyOcclusionQuery( query );
+		ctx.ClearDynamicQueue();
+	}
+
 	if ( ctx.ValidationEnabled() )
 		Check( ctx.ValidationErrorCount() == 0, "no validation errors/warnings during the run" );
 

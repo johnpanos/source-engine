@@ -34,7 +34,9 @@
 #include "bitvec.h"
 #include "tier1/utlvector.h"
 #include "tier1/utlflags.h"
-
+#include "gyro_sensor.h"
+#include "vibrator_device.h"
+#include "vibrator_policy.h"
 
 #include "steam/steam_api.h"
 
@@ -244,7 +246,16 @@ public:
 	
 	// Shut down touch	
 	void ShutdownTouch( void );
-	
+
+	// Gyroscope (gyro_sdl.cpp)
+	void InitializeGyro( void );
+	void ShutdownGyro( void );
+	void UpdateGyroSamplePeriod( void );
+
+	// The device's own vibrator (vibrator_sdl.cpp)
+	void InitializeDeviceVibrator( void );
+	void ShutdownDeviceVibrator( void );
+	void SetDeviceVibratorRumble( float fLeftMotor, float fRightMotor );
 
 #if defined( WIN32 )
 	// NVNT attaches window to novint devices
@@ -372,6 +383,9 @@ public:
 
 	virtual void StartTextInput();
 
+	virtual bool EnableGyro( bool bEnable );
+	virtual bool GetGyroAccumulators( float &pitch, float &yaw, float &roll );
+
 #if defined( USE_SDL )
 	void PollInputState_Platform();
 
@@ -403,6 +417,12 @@ public:
 	int m_nJoystickCount;
 	bool m_bJoystickInitialized;
 	bool m_bTouchInitialized;
+	bool m_bGyroWatchInstalled;
+	bool m_bGyroEnabled;
+	CGyroSensor m_GyroSensor;
+	bool m_bVibratorWatchInstalled;
+	CDeviceVibrator m_DeviceVibrator;
+	vibrator::CRumbleStream m_VibratorStream;
 	bool m_bXController;
 	JoystickInfo_t m_pJoystickInfo[ MAX_JOYSTICKS ];
 

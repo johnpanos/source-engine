@@ -55,6 +55,7 @@ tail.
 | `lightmap.denoise` | OpenImageDenoise `RTLightmap` pass on the atlas (default `true`; needs `libOpenImageDenoise.so.2`); the UV gutter fill still runs when this is `false` |
 | `lightmap.preview_gain` | temporary display gain for the Source preview (default 1) |
 | `world_mesh.weld_materials` / `weld_distance_source_units` | selected imported material names and a bounded Source-unit vertex weld to close measured near-coincident mesh seams (default: disabled); the pack receipt records affected corners and maximum movement |
+| `reflection_probe` | optional map probe: `width` (equirect mip 0, default 512), `face_size`, `samples`, `position` (USD meters; default the scene's horizontal center at the reference eye height). The bake reserves `width/2` atlas rows; the probe's roughness mips and a marker texel are stored there and `world_pbr.frag` adds split-sum specular from them |
 | `collision.envelope_meshes` | meshes whose bounds form the sealed shell (default: all meshes) |
 | `collision.solid_materials` / `solid_meshes` | meshes that become solids: one convex 18-DOP brush per connected part, so separate stair treads or cushions stay separate |
 
@@ -98,6 +99,7 @@ runs one render job per object and re-syncs the scene each time.
 | Bounded mesh seam repair | `tools/quality/worldmesh_seam_weld.py` |
 | KTX2 LMAP packaging | `tools/quality/lightmap_ktx2.py` (`--expected-scope`) |
 | Sky dome render stage | `tools/quality/pbrt_sky_dome.py` |
+| Reflection probe faces / layout | `tools/quality/pbrt_reflection_probe.py` / `reflection_probe.py` (read by `world_pbr.frag`) |
 | Collision shell, solids, spawn | `tools/quality/pbrt_collision_vmf.py` |
 | USD → WMSH/BSP2 | `tools/quality/usd_worldmesh_pack.py` |
 | VTF/VMT content | `tools/quality/pbrt_playable_content.py` (VTF helpers: `vtf_content.py`) |
@@ -110,10 +112,18 @@ runs one render job per object and re-syncs the scene each time.
 
 - Collision is one convex 18-DOP per connected part plus extruded floor
   triangles: exact for treads and boxes, conservative for curved furniture.
-- Every WMSH leaf references every meshlet (no spatial visibility yet).
+- Visibility is conservative: each BSP leaf references the meshlets that can
+  be seen through it (`tools/quality/worldmesh_leaf_visibility.py`) and the
+  engine culls meshlet spheres to the view frustum. Furniture collision is
+  nodraw `func_detail`, so a single-room scene is one vis cluster: PVS culls
+  nothing there, and frustum culling does the work. Check a map with
+  `tools/quality/worldmesh_visibility_oracle.py` (culled frames must be
+  byte-identical to drawing every meshlet).
 - Windows show the scene's sky through an unlit `SkyDome` (display-mapped,
-  not HDR). Refraction, mirrors/reflection probes and emissive WMSH batches
-  are absent in game; glass is an alpha preview.
+  not HDR). One reflection probe per map feeds mirrors and glossy floors:
+  blurry mips rather than a GGX prefilter, and no parallax correction, so
+  reflections are right near the probe and approximate elsewhere.
+  Refraction and emissive WMSH batches are absent; glass is an alpha preview.
 - PBRT coated, spectral and transmissive materials reduce to a single
   metal/roughness layer; each material's approximation is in the content
   receipt.

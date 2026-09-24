@@ -1,0 +1,66 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# Engine debug API (source.debug.v1 over JSON-RPC 2.0): the pinned protoc
+# generates C++ from debugapi/proto, and debugapi_core links it with the
+# transports, framings, dispatcher and server as a private static library of
+# the engine. Built only with --debug-api=enabled; configure verifies the
+# pinned protobuf prefix (quality/product_profiles/protobuf-linux-deps.json).
+
+top = '.'
+PROJECT_NAME = 'debugapi_core'
+
+CORE_SOURCES = [
+	'core/debugapi_server.cpp',
+	'core/dispatcher.cpp',
+	'core/framing.cpp',
+	'core/jsonrpc.cpp',
+	'core/log_collector.cpp',
+	'core/memory_transport.cpp',
+	'core/unix_socket_transport.cpp',
+]
+
+def options(opt):
+	return
+
+def configure(conf):
+	return
+
+def build(bld):
+	if not bld.env.DEBUGAPI:
+		return
+
+	proto_root = bld.path.find_dir('proto')
+	proto = proto_root.find_node('source/debug/v1/debug_api.proto')
+	gen_root = bld.path.get_bld().make_node('gen')
+	generated = [gen_root.find_or_declare('source/debug/v1/debug_api.pb.cc'),
+		gen_root.find_or_declare('source/debug/v1/debug_api.pb.h')]
+	bld(rule='"%s" --proto_path="%s" --cpp_out="%s" "${SRC[0].abspath()}"' % (
+			bld.env.PROTOC, proto_root.abspath(), gen_root.abspath()),
+		source=proto, target=generated, name='debugapi_proto',
+		idx=bld.get_taskgen_count())
+	# gccdeps reads the generated header while computing compile signatures.
+	bld.add_group()
+
+	# Protobuf and the checks in the dispatcher need IEEE semantics: drop the
+	# engine's fast-math relaxations (std::isfinite would fold to true) and its
+	# global defines except the shared string ABI.
+	env = bld.env.derive()
+	env.detach()
+	relaxed = {'-ffast-math', '-funsafe-math-optimizations', '-fpermissive', '-w'}
+	env.CXXFLAGS = [flag for flag in env.CXXFLAGS if flag not in relaxed]
+	env.DEFINES = [value for value in env.DEFINES
+		if value.startswith('_GLIBCXX_USE_CXX11_ABI=') or value == 'NDEBUG']
+
+	bld.stlib(
+		source   = CORE_SOURCES + [generated[0]],
+		target   = PROJECT_NAME,
+		name     = PROJECT_NAME,
+		features = 'cxx',
+		env      = env,
+		includes = ['.', '../public', gen_root],
+		use      = ['PROTOBUF'],
+		export_includes = [],
+		install_path = None,
+		idx      = bld.get_taskgen_count()
+	)

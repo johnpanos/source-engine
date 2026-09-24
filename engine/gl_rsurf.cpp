@@ -65,15 +65,18 @@ int g_MaxLeavesVisible = 512;
 static ConVar r_worldmesh_draw( "r_worldmesh_draw", "0", FCVAR_CHEAT,
     "WMSH comparison: 0 legacy, 1 overlay, 2 uploaded world batches" );
 static ConVar r_worldmesh_cull( "r_worldmesh_cull", "1", FCVAR_CHEAT,
-    "WMSH meshlet visibility: 0 draw every meshlet, 1 visible leaves and view frustum" );
+    "WMSH meshlet visibility: 0 draw every meshlet, 1 visible leaves and view frustum, "
+    "2 negative control that culls with half-size spheres (must change pixels)" );
 
 // A meshlet is outside when its bounding sphere lies behind any frustum plane.
-static bool WorldMeshMeshletOutside( const Frustum_t &frustum, const worldmeshcluster_t &meshlet )
+static bool WorldMeshMeshletOutside(
+    const Frustum_t &frustum, const worldmeshcluster_t &meshlet, float radiusScale )
 {
+	const float radius = meshlet.radius * radiusScale;
 	for ( int i = 0; i < FRUSTUM_NUMPLANES; ++i )
 	{
 		const cplane_t *pPlane = frustum.GetPlane( i );
-		if ( DotProduct( pPlane->normal, meshlet.center ) - pPlane->dist < -meshlet.radius )
+		if ( DotProduct( pPlane->normal, meshlet.center ) - pPlane->dist < -radius )
 			return true;
 	}
 	return false;
@@ -109,6 +112,7 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 	unsigned char *pVisible = visible.Base();
 	const unsigned int clusterCount = pWorld->worldMeshClusterCount;
 	const bool bCull = r_worldmesh_cull.GetBool();
+	const float radiusScale = r_worldmesh_cull.GetInt() == 2 ? 0.5f : 1.0f;
 	unsigned int marked = 0;
 	if ( !bCull )
 	{
@@ -150,7 +154,7 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 			if ( j < batch.meshletCount && pVisible[batch.firstMeshlet + j] )
 			{
 				meshlet = &pWorld->pWorldMeshClusters[batch.firstMeshlet + j];
-				if ( pFrustum && WorldMeshMeshletOutside( *pFrustum, *meshlet ) )
+				if ( pFrustum && WorldMeshMeshletOutside( *pFrustum, *meshlet, radiusScale ) )
 					meshlet = NULL;
 			}
 			if ( meshlet && runCount && meshlet->firstIndex == runFirst + runCount )
@@ -367,9 +371,7 @@ int SortInfoToLightmapPage( int sortID )
 class CWorldRenderList : public CRefCounted1<IWorldRenderList>
 {
 public:
-	CWorldRenderList() : m_bWorldMeshFrustumValid( false )
-	{
-	}
+	CWorldRenderList() : m_bWorldMeshFrustumValid( false ) {}
 
 	~CWorldRenderList()
 	{

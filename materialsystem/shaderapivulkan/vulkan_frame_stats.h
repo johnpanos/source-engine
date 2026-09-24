@@ -54,6 +54,9 @@ enum FrameCostKind
 	kCostMeshDraw,       // IMesh::Draw: the material's shader passes and their emits
 	kCostEmit,           // converting a pass's mesh into the frame's vertex stream
 	kCostEmitReuse,      // a pass that reused geometry already in the stream (count only)
+	kCostRenderPass,     // a scene render pass begun; a tiled GPU stores and reloads
+	                     // the target at each one (count only)
+	kCostTargetCopy,     // a render-target copy recorded (count only)
 	kFrameCostKinds
 };
 
@@ -62,7 +65,8 @@ inline const char *FrameCostName( int kind )
 {
 	static const char *const kNames[kFrameCostKinds] = { "pipeline_create", "single_submit",
 	    "device_wait_idle", "texture_create", "texture_upload", "buffer_grow", "query_wait",
-	    "fence_wait", "acquire", "record", "submit", "present", "mesh_draw", "emit", "emit_reuse" };
+	    "fence_wait", "acquire", "record", "submit", "present", "mesh_draw", "emit", "emit_reuse",
+	    "render_pass", "target_copy" };
 	return kind >= 0 && kind < kFrameCostKinds ? kNames[kind] : "unknown";
 }
 

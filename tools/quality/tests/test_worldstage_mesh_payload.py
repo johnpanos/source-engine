@@ -9,7 +9,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from worldstage_mesh_compare import read_payload  # noqa: E402
-from worldstage_mesh_pack import tangent_frame, write_payload  # noqa: E402
+from worldstage_mesh_pack import face_triangles, tangent_frame, write_payload  # noqa: E402
 
 
 class WorldMeshPayloadTests(unittest.TestCase):
@@ -49,6 +49,33 @@ class WorldMeshPayloadTests(unittest.TestCase):
             with self.subTest(section=offset_field):
                 with self.assertRaises(ValueError):
                     read_payload(bytes(changed))
+
+
+class FaceTriangleTests(unittest.TestCase):
+    # A unit square with a T-junction point (0.5, 0) on its first edge. Fanned
+    # from corner 0, the triangle (0, 1, 2) lies on that edge and has no area.
+    POINTS = [(0.0, 0.0, 0.0), (0.5, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0),
+              (0.0, 1.0, 0.0)]
+    NORMAL = (0.0, 0.0, 1.0)
+
+    def triangles(self, indices, uv_of=lambda point: point[:2]):
+        uv = [uv_of(self.POINTS[index]) for index in indices]
+        return face_triangles(self.POINTS, indices, [self.NORMAL] * (len(indices) // 3),
+                              uv, uv)
+
+    def test_collinear_fan_triangle_takes_the_face_frame(self):
+        result = self.triangles([0, 1, 2, 0, 2, 3, 0, 3, 4])
+        frames = {triangle[4:] for triangle in result}
+        self.assertEqual(len(result), 3)
+        self.assertEqual(frames, {((1.0, 0.0, 0.0), 1)})
+
+    def test_collapsed_uv_on_a_real_triangle_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "degenerate material UV"):
+            self.triangles([0, 2, 3], uv_of=lambda point: (point[0], 0.0))
+
+    def test_face_without_area_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "no triangle with area"):
+            self.triangles([0, 1, 2])
 
 
 if __name__ == "__main__":

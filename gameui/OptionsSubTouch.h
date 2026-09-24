@@ -17,6 +17,7 @@ class CCvarNegateCheckButton;
 class CKeyToggleCheckButton;
 class CCvarToggleCheckButton;
 class CCvarSlider;
+class CLabeledCommandComboBox;
 
 namespace vgui
 {
@@ -49,6 +50,8 @@ protected:
 	}
 
 	void UpdateLabel(CCvarSlider *slider, vgui::TextEntry *label);
+	void LayoutWithoutResource();
+
 private:
 	CCvarToggleCheckButton		*m_pReverseTouchCheckBox;
 	CCvarToggleCheckButton		*m_pTouchFilterCheckBox;
@@ -74,6 +77,17 @@ private:
 	vgui::TextEntry					*m_pTouchYawSensitivityLabel;
 	vgui::TextEntry					*m_pTouchPitchSensitivityLabel;
 
+	vgui::Label *m_pTouchSensitivityPreLabel;
+	vgui::Label *m_pTouchAccelExponentPreLabel;
+
+	vgui::Label *m_pGyroModePreLabel;
+	CLabeledCommandComboBox *m_pGyroModeCombo;
+	vgui::Label *m_pGyroAxisPreLabel;
+	CLabeledCommandComboBox *m_pGyroAxisCombo;
+	vgui::Label *m_pGyroSensitivityPreLabel;
+	CCvarSlider *m_pGyroSensitivitySlider;
+	vgui::TextEntry *m_pGyroSensitivityLabel;
+	CCvarToggleCheckButton *m_pGyroInvertPitchCheckBox;
 };
 
 

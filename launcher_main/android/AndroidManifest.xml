@@ -16,9 +16,14 @@
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-feature android:name="android.hardware.type.pc" android:required="false" />
 
-    <!-- Engine networking (listen/remote servers, downloads). Nothing else is requested:
-         content lives in the app-specific external files directory. -->
+    <!-- Engine networking (listen/remote servers, downloads). No storage permission is
+         requested: content lives in the app-specific external files directory. -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Gyro aiming samples at twice the display refresh rate (240 Hz on a
+         120 Hz panel); Android 12+ caps sensors at 200 Hz without this normal,
+         install-time permission (inputsystem/gyro_sensor.cpp). -->
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
 
     <!-- extractNativeLibs: the engine loads its modules by path from the native
          library directory (APP_LIB_PATH), so they must exist as files. -->

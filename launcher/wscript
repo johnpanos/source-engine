@@ -40,6 +40,8 @@ def build(bld):
 	] + bld.env.INCLUDES_SDL2
 
 	defines = []
+	if bld.env.DEBUGAPI:
+		defines += ['SOURCE_DEBUGAPI']
 
 	libs = ['tier0','tier1','tier2','tier3','vstdlib','steam_api','appframework','SDL2','togl', 'UNWIND']
 	if bld.env.DXVK:

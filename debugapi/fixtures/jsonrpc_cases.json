@@ -1,0 +1,1218 @@
+{
+ "schema": "debugapi-jsonrpc-fixtures/v1",
+ "description": "Shared JSON-RPC 2.0 cases for source.debug.v1. The C++ suite (unittests/debugapitest/test_jsonrpc.cpp) runs every case against the fake host (unittests/debugapitest/fakes/fake_host.h) under each framing; the Python suite (tools/debugapi/tests) checks the same params/results with the generated Python bindings. An expected error without \"message\" accepts any nonempty message. \"$FRAMING\" is the active framing name. Before each pump the fake clock advances by pumpClockStepSeconds. Products: client (default), dedicated, dedicated-idle (dedicated with no active server).",
+ "pumpClockStepSeconds": 0.015625,
+ "cases": [
+  {
+   "name": "hello",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "hello",
+      "params": {
+       "protocolVersion": "PROTOCOL_VERSION_1",
+       "clientName": "fixture"
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 1,
+       "result": {
+        "protocolVersion": "PROTOCOL_VERSION_1",
+        "framing": "$FRAMING",
+        "transport": "memory:",
+        "product": "PRODUCT_CLIENT",
+        "buildRevision": "fixture-revision",
+        "hostState": "HOST_STATE_RUN",
+        "providers": [
+         {
+          "role": "render",
+          "id": "null"
+         },
+         {
+          "role": "physics",
+          "id": "fixture"
+         }
+        ],
+        "gameDir": "/game/portal"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "hello-without-params",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "hello"
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 2,
+       "result": {
+        "protocolVersion": "PROTOCOL_VERSION_1",
+        "framing": "$FRAMING",
+        "transport": "memory:",
+        "product": "PRODUCT_CLIENT",
+        "buildRevision": "fixture-revision",
+        "hostState": "HOST_STATE_RUN",
+        "providers": [
+         {
+          "role": "render",
+          "id": "null"
+         },
+         {
+          "role": "physics",
+          "id": "fixture"
+         }
+        ],
+        "gameDir": "/game/portal"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "exec-string-id",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": "abc",
+      "method": "exec",
+      "params": {
+       "command": "echo hello"
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": "abc",
+       "result": {
+        "output": "hello\n",
+        "truncated": false
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "exec-invalid-utf8-output-is-replaced",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "exec",
+      "params": {
+       "command": "latin1"
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 3,
+       "result": {
+        "output": "caf�",
+        "truncated": false
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "exec-rejects-newlines",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "method": "exec",
+      "params": {
+       "command": "echo a\necho b"
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 4,
+       "error": {
+        "code": -32602,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_PARAMS"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "exec-rejects-empty",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "method": "exec",
+      "params": {}
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 5,
+       "error": {
+        "code": -32602,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_PARAMS"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "cvar-get",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 6,
+      "method": "cvarGet",
+      "params": {
+       "name": "fps_max"
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 6,
+       "result": {
+        "name": "fps_max",
+        "value": "300",
+        "defaultValue": "300",
+        "floatValue": 300,
+        "intValue": 300,
+        "flags": [
+         "archive"
+        ],
+        "help": "Frame rate limiter"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "cvar-get-missing",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 7,
+      "method": "cvarGet",
+      "params": {
+       "name": "nope"
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 7,
+       "error": {
+        "code": -32001,
+        "data": {
+         "errorCode": "ERROR_CODE_NOT_FOUND"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "cvar-get-invalid-name",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 8,
+      "method": "cvarGet",
+      "params": {
+       "name": "a b"
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 8,
+       "error": {
+        "code": -32602,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_PARAMS"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "cvar-set",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 9,
+      "method": "cvarSet",
+      "params": {
+       "name": "fps_max",
+       "value": "120"
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 9,
+       "result": {
+        "name": "fps_max",
+        "value": "120",
+        "defaultValue": "300",
+        "floatValue": 120,
+        "intValue": 120,
+        "flags": [
+         "archive"
+        ],
+        "help": "Frame rate limiter"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "cvar-set-cheat",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 10,
+      "method": "cvarSet",
+      "params": {
+       "name": "cheatvar",
+       "value": "1"
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 10,
+       "error": {
+        "code": -32003,
+        "data": {
+         "errorCode": "ERROR_CODE_FAILED_PRECONDITION"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "cvar-set-rejects-quotes",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 11,
+      "method": "cvarSet",
+      "params": {
+       "name": "fps_max",
+       "value": "1\";quit"
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 11,
+       "error": {
+        "code": -32602,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_PARAMS"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "status",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 12,
+      "method": "status",
+      "params": {}
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 12,
+       "result": {
+        "hostState": "HOST_STATE_RUN",
+        "map": "testchmb_a_00",
+        "serverActive": true,
+        "clientSignon": "SIGNON_STATE_FULL",
+        "playerCount": 1,
+        "maxPlayers": 1,
+        "hostFrame": 42,
+        "hostTime": 12.5
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "wait-for-frames",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 13,
+      "method": "waitFor",
+      "params": {
+       "condition": "WAIT_CONDITION_FRAMES",
+       "frames": 2,
+       "timeoutMs": 1000
+      }
+     },
+     "pumps": 3,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 13,
+       "result": {
+        "framesWaited": 2,
+        "elapsedMs": 31,
+        "status": {
+         "hostState": "HOST_STATE_RUN",
+         "map": "testchmb_a_00",
+         "serverActive": true,
+         "clientSignon": "SIGNON_STATE_FULL",
+         "playerCount": 1,
+         "maxPlayers": 1,
+         "hostFrame": 42,
+         "hostTime": 12.5
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "wait-for-met-condition-is-immediate",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 14,
+      "method": "waitFor",
+      "params": {
+       "condition": "WAIT_CONDITION_MAP_LOADED",
+       "timeoutMs": 1000
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 14,
+       "result": {
+        "framesWaited": 0,
+        "elapsedMs": 0,
+        "status": {
+         "hostState": "HOST_STATE_RUN",
+         "map": "testchmb_a_00",
+         "serverActive": true,
+         "clientSignon": "SIGNON_STATE_FULL",
+         "playerCount": 1,
+         "maxPlayers": 1,
+         "hostFrame": 42,
+         "hostTime": 12.5
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "wait-for-requires-timeout",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 15,
+      "method": "waitFor",
+      "params": {
+       "condition": "WAIT_CONDITION_FRAMES",
+       "frames": 1
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 15,
+       "error": {
+        "code": -32602,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_PARAMS"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "wait-for-times-out",
+   "product": "dedicated-idle",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 16,
+      "method": "waitFor",
+      "params": {
+       "condition": "WAIT_CONDITION_MAP_LOADED",
+       "timeoutMs": 40
+      }
+     },
+     "pumps": 5,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 16,
+       "error": {
+        "code": -32004,
+        "data": {
+         "errorCode": "ERROR_CODE_TIMEOUT"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "screenshot-inline-jpeg",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 17,
+      "method": "screenshot",
+      "params": {
+       "mode": "SCREENSHOT_MODE_INLINE_JPEG",
+       "jpegQuality": 80
+      }
+     },
+     "pumps": 3,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 17,
+       "result": {
+        "width": 640,
+        "height": 480,
+        "path": "",
+        "jpeg": "/9hmaXh0dXJl/9k=",
+        "hostFrame": 42
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "screenshot-path",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 18,
+      "method": "screenshot",
+      "params": {
+       "mode": "SCREENSHOT_MODE_PATH"
+      }
+     },
+     "pumps": 3,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 18,
+       "result": {
+        "width": 640,
+        "height": 480,
+        "path": "/game/portal/screenshots/debugapi_0001.tga",
+        "jpeg": "",
+        "hostFrame": 42
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "screenshot-requires-mode",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 19,
+      "method": "screenshot",
+      "params": {}
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 19,
+       "error": {
+        "code": -32602,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_PARAMS"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "screenshot-unavailable-on-dedicated",
+   "product": "dedicated",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 20,
+      "method": "screenshot",
+      "params": {
+       "mode": "SCREENSHOT_MODE_PATH"
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 20,
+       "error": {
+        "code": -32002,
+        "data": {
+         "errorCode": "ERROR_CODE_UNAVAILABLE_IN_PRODUCT"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "client-active-unavailable-on-dedicated",
+   "product": "dedicated",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 21,
+      "method": "waitFor",
+      "params": {
+       "condition": "WAIT_CONDITION_CLIENT_ACTIVE",
+       "timeoutMs": 10
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 21,
+       "error": {
+        "code": -32002,
+        "data": {
+         "errorCode": "ERROR_CODE_UNAVAILABLE_IN_PRODUCT"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "subscribe-and-log",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 22,
+      "method": "subscribe",
+      "params": {
+       "log": true
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 22,
+       "result": {
+        "log": true
+       }
+      }
+     ]
+    },
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 23,
+      "method": "exec",
+      "params": {
+       "command": "log hello"
+      }
+     },
+     "pumps": 2,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 23,
+       "result": {
+        "output": "",
+        "truncated": false
+       }
+      },
+      {
+       "jsonrpc": "2.0",
+       "method": "log",
+       "params": {
+        "seq": 1,
+        "droppedBefore": 0,
+        "text": "hello\n",
+        "developer": false,
+        "rgba": 0
+       }
+      }
+     ],
+     "note": "text printed during a pump is forwarded on the next one"
+    }
+   ]
+  },
+  {
+   "name": "quit",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 24,
+      "method": "quit",
+      "params": {}
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 24,
+       "result": {}
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "null-id-is-a-request",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": null,
+      "method": "status"
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": null,
+       "result": {
+        "hostState": "HOST_STATE_RUN",
+        "map": "testchmb_a_00",
+        "serverActive": true,
+        "clientSignon": "SIGNON_STATE_FULL",
+        "playerCount": 1,
+        "maxPlayers": 1,
+        "hostFrame": 42,
+        "hostTime": 12.5
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "notification-gets-no-reply",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "method": "status"
+     },
+     "pumps": 1,
+     "expect": []
+    }
+   ]
+  },
+  {
+   "name": "unknown-method",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 25,
+      "method": "teleport",
+      "params": {}
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 25,
+       "error": {
+        "code": -32601,
+        "data": {
+         "errorCode": "ERROR_CODE_METHOD_NOT_FOUND"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "unknown-method-notification-gets-no-reply",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "method": "teleport"
+     },
+     "pumps": 1,
+     "expect": []
+    }
+   ]
+  },
+  {
+   "name": "positional-params",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 26,
+      "method": "exec",
+      "params": [
+       "echo x"
+      ]
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 26,
+       "error": {
+        "code": -32602,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_PARAMS"
+        }
+       }
+      }
+     ],
+     "schemaInvalidParams": true
+    }
+   ]
+  },
+  {
+   "name": "unknown-param-field",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 27,
+      "method": "exec",
+      "params": {
+       "command": "echo x",
+       "cwd": "/"
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 27,
+       "error": {
+        "code": -32602,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_PARAMS"
+        }
+       }
+      }
+     ],
+     "schemaInvalidParams": true
+    }
+   ]
+  },
+  {
+   "name": "wrong-param-type",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 28,
+      "method": "waitFor",
+      "params": {
+       "condition": "WAIT_CONDITION_FRAMES",
+       "frames": "two",
+       "timeoutMs": 10
+      }
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 28,
+       "error": {
+        "code": -32602,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_PARAMS"
+        }
+       }
+      }
+     ],
+     "schemaInvalidParams": true
+    }
+   ]
+  },
+  {
+   "name": "invalid-json",
+   "steps": [
+    {
+     "sendText": "{\"jsonrpc\": \"2.0\", \"method\"",
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": null,
+       "error": {
+        "code": -32700,
+        "data": {
+         "errorCode": "ERROR_CODE_PARSE_ERROR"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "wrong-version",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "1.0",
+      "id": 29,
+      "method": "status"
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 29,
+       "error": {
+        "code": -32600,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_REQUEST"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "missing-version-without-id",
+   "steps": [
+    {
+     "send": {
+      "method": "status"
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": null,
+       "error": {
+        "code": -32600,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_REQUEST"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "unexpected-member",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 30,
+      "method": "status",
+      "extra": 1
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": 30,
+       "error": {
+        "code": -32600,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_REQUEST"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "object-id",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": {
+       "a": 1
+      },
+      "method": "status"
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": null,
+       "error": {
+        "code": -32600,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_REQUEST"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "fractional-id",
+   "steps": [
+    {
+     "send": {
+      "jsonrpc": "2.0",
+      "id": 1.5,
+      "method": "status"
+     },
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": null,
+       "error": {
+        "code": -32600,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_REQUEST"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "not-an-object",
+   "steps": [
+    {
+     "send": 7,
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": null,
+       "error": {
+        "code": -32600,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_REQUEST"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "batch-mixed",
+   "steps": [
+    {
+     "send": [
+      {
+       "jsonrpc": "2.0",
+       "id": 31,
+       "method": "status"
+      },
+      {
+       "jsonrpc": "2.0",
+       "method": "status"
+      },
+      {
+       "foo": 1
+      },
+      {
+       "jsonrpc": "2.0",
+       "id": 32,
+       "method": "waitFor",
+       "params": {
+        "condition": "WAIT_CONDITION_FRAMES",
+        "frames": 1,
+        "timeoutMs": 1000
+       }
+      }
+     ],
+     "pumps": 2,
+     "expect": [
+      [
+       {
+        "jsonrpc": "2.0",
+        "id": 31,
+        "result": {
+         "hostState": "HOST_STATE_RUN",
+         "map": "testchmb_a_00",
+         "serverActive": true,
+         "clientSignon": "SIGNON_STATE_FULL",
+         "playerCount": 1,
+         "maxPlayers": 1,
+         "hostFrame": 42,
+         "hostTime": 12.5
+        }
+       },
+       {
+        "jsonrpc": "2.0",
+        "id": null,
+        "error": {
+         "code": -32600,
+         "data": {
+          "errorCode": "ERROR_CODE_INVALID_REQUEST"
+         }
+        }
+       },
+       {
+        "jsonrpc": "2.0",
+        "id": 32,
+        "result": {
+         "framesWaited": 1,
+         "elapsedMs": 15,
+         "status": {
+          "hostState": "HOST_STATE_RUN",
+          "map": "testchmb_a_00",
+          "serverActive": true,
+          "clientSignon": "SIGNON_STATE_FULL",
+          "playerCount": 1,
+          "maxPlayers": 1,
+          "hostFrame": 42,
+          "hostTime": 12.5
+         }
+        }
+       }
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "batch-empty",
+   "steps": [
+    {
+     "send": [],
+     "pumps": 1,
+     "expect": [
+      {
+       "jsonrpc": "2.0",
+       "id": null,
+       "error": {
+        "code": -32600,
+        "data": {
+         "errorCode": "ERROR_CODE_INVALID_REQUEST"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "batch-of-notifications-gets-no-reply",
+   "steps": [
+    {
+     "send": [
+      {
+       "jsonrpc": "2.0",
+       "method": "status"
+      },
+      {
+       "jsonrpc": "2.0",
+       "method": "hello"
+      }
+     ],
+     "pumps": 1,
+     "expect": []
+    }
+   ]
+  }
+ ]
+}

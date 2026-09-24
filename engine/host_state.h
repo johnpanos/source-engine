@@ -25,6 +25,8 @@ void	HostState_Shutdown();
 void	HostState_Restart();
 bool	HostState_IsGameShuttingDown();
 bool	HostState_IsShuttingDown();
+// The current HOSTSTATES value (engine/host_state.cpp), for diagnostics.
+int		HostState_GetCurrentState();
 void	HostState_OnClientConnected();
 void	HostState_OnClientDisconnected();
 void	HostState_SetSpawnPoint(Vector &position, QAngle &angle);

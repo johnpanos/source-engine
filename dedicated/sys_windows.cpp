@@ -30,6 +30,7 @@
 #include "materialsystem/imaterialsystem.h"
 #include "appframework/linked_systems.h"
 #include "render/legacy_shader_provider.h"
+#include "engine/debugapi_root.h"
 #include "istudiorender.h"
 #include "vgui/ivgui.h"
 #include "console/TextConsoleWin32.h"
@@ -309,6 +310,10 @@ bool CSys::LoadModules( CDedicatedAppSystemGroup *pAppSystemGroup )
 	// The dedicated server renders nothing and requires no render feature.
 	const render::RenderProfileRequest renderRequest = render::PreferAvailableRenderFeatures();
 	if ( !MaterialSystem_SetRenderProfileRequest( material, &renderRequest ) )
+		return false;
+	const DebugApiComposedProvider composed[] = {
+	    { "physics", pPhysicsModule }, { "render", NullShaderBackend_Describe()->id } };
+	if ( !DebugApi_BindFromCommandLine( composed, ARRAYSIZE( composed ) ) )
 		return false;
 	engine = server;
 	return true;

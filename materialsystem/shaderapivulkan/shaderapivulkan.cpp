@@ -63,6 +63,17 @@ static render_vulkan::CVulkanContext g_VulkanContext;
 static bool g_bPendingModeChangeCallbacks = false;
 static void InvokePendingModeChangeCallbacks();
 
+// The DirectX support level this backend's caps claim: 95, shader model 3.0
+// class hardware, like the D3D9 device on the same GPUs. Vertex textures stay
+// off (HasFastVertexTextures), so the stdshaders keep selecting the ps20b/vs20
+// combos the native ports implement. -vkdxlevel 90 restores the earlier caps.
+static int NativeCapsDxLevel()
+{
+	static const int s_nLevel =
+	    CommandLine()->ParmValue( "-vkdxlevel", 95 ) == 90 ? 90 : 95;
+	return s_nLevel;
+}
+
 // Brings the context up against the engine's window. The window reference is
 // handed to the pair-specific bridge untouched; nothing here interprets it.
 static bool InitVulkanContext(
@@ -81,6 +92,8 @@ static bool InitVulkanContext(
 	std::string statsError;
 	if ( statsPath && !g_VulkanContext.OpenFrameStats( statsPath, &statsError ) )
 		Warning( "[NativeVulkan] frame stats unavailable: %s\n", statsError.c_str() );
+	// -vkpassmerge 0 restores one render pass per view change (A/B, rollback).
+	g_VulkanContext.SetPassMerging( CommandLine()->ParmValue( "-vkpassmerge", 1 ) != 0 );
 	// The pipeline store lives in the mod directory (the launcher runs from the
 	// base directory, and the mod directory is where the engine writes its
 	// config on every platform); -vkpipelinecache names another directory, or
@@ -2180,8 +2193,8 @@ void CShaderDeviceMgrVulkan::GetAdapterInfo( int adapter, MaterialAdapterInfo_t 
 {
 	memset( &info, 0, sizeof( info ) );
 	Q_strncpy( info.m_pDriverName, "Native Vulkan", sizeof( info.m_pDriverName ) );
-	info.m_nDXSupportLevel = 90;
-	info.m_nMaxDXSupportLevel = 90;
+	info.m_nDXSupportLevel = NativeCapsDxLevel();
+	info.m_nMaxDXSupportLevel = NativeCapsDxLevel();
 	info.m_nDriverVersionHigh = 1;
 	info.m_nDriverVersionLow = 0;
 }
@@ -2208,7 +2221,7 @@ static void InvokePendingModeChangeCallbacks()
 	if ( !g_bPendingModeChangeCallbacks )
 		return;
 	g_bPendingModeChangeCallbacks = false;
-	if ( ThreadInMainThread() )
+	if ( ThreadInMainThread() && !getenv( "VO_EXP_NO_CALLBACKS" ) ) // VO_EXP temporary
 		s_ShaderDeviceMgrEmpty.InvokeModeChangeCallbacks();
 }
 
@@ -2268,6 +2281,7 @@ void CShaderDeviceMgrVulkan::ToShaderDisplayMode(
 // Returns the number of modes
 int CShaderDeviceMgrVulkan::GetModeCount( int nAdapter ) const
 {
+	if ( getenv( "VO_EXP_OLD_MODES" ) || getenv( "VO_EXP_OLD_LIST" ) ) { m_Modes.assign( 1, render::DisplayModeFacts{ 1920, 1080, 60, 1 } ); return 1; } // VO_EXP
 	RefreshModeList();
 	return static_cast<int>( m_Modes.size() );
 }
@@ -2296,6 +2310,7 @@ void CShaderDeviceMgrVulkan::GetCurrentModeInfo( ShaderDisplayMode_t *pInfo, int
 {
 	if ( !pInfo )
 		return;
+	if ( getenv( "VO_EXP_OLD_MODES" ) || getenv( "VO_EXP_OLD_CURRENT" ) ) return; // VO_EXP
 	render::DisplayModeFacts desktop;
 	QueryDesktopDisplay( &desktop );
 	ToShaderDisplayMode( desktop, pInfo );
@@ -4159,11 +4174,7 @@ bool CShaderAPIVulkan::ActuallySupportsPixelShaders_2_b() const
 
 bool CShaderAPIVulkan::SupportsShaderModel_3_0() const
 {
-	if ( ( ShaderUtil()->GetConfig().dxSupportLevel > 0 ) &&
-	     ( ShaderUtil()->GetConfig().dxSupportLevel < 95 ) )
-		return false;
-
-	return true;
+	return GetDXSupportLevel() >= 95;
 }
 
 bool CShaderAPIVulkan::SupportsStaticControlFlow() const
@@ -4217,9 +4228,12 @@ int CShaderAPIVulkan::TextureMemorySize() const
 	return 64 * 1024 * 1024;
 }
 
+// As CHardwareConfig::GetDXSupportLevel: the configured level (mat_dxlevel)
+// when one is set, never above the caps.
 int CShaderAPIVulkan::GetDXSupportLevel() const
 {
-	return 90;
+	const int configured = ShaderUtil() ? ShaderUtil()->GetConfig().dxSupportLevel : 0;
+	return configured != 0 ? std::min( configured, NativeCapsDxLevel() ) : NativeCapsDxLevel();
 }
 
 bool CShaderAPIVulkan::SupportsOverbright() const
@@ -4288,7 +4302,7 @@ bool CShaderAPIVulkan::SupportsSpheremapping() const
 // This is the max dx support level supported by the card
 int CShaderAPIVulkan::GetMaxDXSupportLevel() const
 {
-	return 90;
+	return NativeCapsDxLevel();
 }
 
 bool CShaderAPIVulkan::SupportsHardwareLighting() const

@@ -66,6 +66,48 @@ def tangent_frame(points, uv, normal):
     return tangent, sign
 
 
+DEGENERATE_AREA = 1e-6
+
+
+def triangle_area(points):
+    edge1 = tuple(points[1][i] - points[0][i] for i in range(3))
+    edge2 = tuple(points[2][i] - points[0][i] for i in range(3))
+    return 0.5 * math.sqrt(sum(value * value for value in cross(edge1, edge2)))
+
+
+def face_triangles(points, indices, normals, uv, lightmap_uv):
+    """One BSP face's triangles with tangent frames.
+
+    A fan triangle through a collinear T-junction point has no area and draws
+    nothing; it takes the frame of the face's other triangles, which share one
+    planar texture projection. A triangle with area but collapsed material
+    UVs is an invalid projection and is rejected.
+    """
+    triangles = []
+    degenerate = []
+    for triangle in range(len(indices) // 3):
+        start = 3 * triangle
+        corners = indices[start:start + 3]
+        if any(corner < 0 or corner >= len(points) for corner in corners):
+            raise ValueError("World Stage face has an invalid vertex index")
+        positions = [points[corner] for corner in corners]
+        texture = uv[start:start + 3]
+        lightmap = lightmap_uv[start:start + 3]
+        normal = normals[triangle]
+        if triangle_area(positions) <= DEGENERATE_AREA:
+            degenerate.append(triangle)
+            tangent, sign = None, None
+        else:
+            tangent, sign = tangent_frame(positions, texture, normal)
+        triangles.append((positions, texture, lightmap, normal, tangent, sign))
+    frames = [item[4:] for item in triangles if item[4] is not None]
+    if not frames:
+        raise ValueError("World Stage face has no triangle with area")
+    for triangle in degenerate:
+        triangles[triangle] = triangles[triangle][:4] + frames[0]
+    return triangles
+
+
 def stage_faces(stage_path):
     from pxr import Usd, UsdGeom
 
@@ -84,30 +126,23 @@ def stage_faces(stage_path):
             raise ValueError("World Stage has duplicate BSP face IDs")
         mesh = UsdGeom.Mesh(prim)
         points = [tuple(map(float, point)) for point in mesh.GetPointsAttr().Get()]
-        counts = list(mesh.GetFaceVertexCountsAttr().Get())
+        counts = list(mesh.GetFaceVertexCountsAttr().Get() or [])
+        if not counts:
+            # vbsp2 authors no triangles for a face whose welded winding
+            # encloses no area; it has nothing to draw.
+            continue
         indices = list(mesh.GetFaceVertexIndicesAttr().Get())
         normals = [unit(tuple(map(float, value))) for value in mesh.GetNormalsAttr().Get()]
         uv = [tuple(map(float, value)) for value in prim.GetAttribute("primvars:st").Get()]
         lightmap_uv = [tuple(map(float, value)) for value in
                        prim.GetAttribute("primvars:lightmap:st").Get()]
         material = prim.GetAttribute("source:materialPath").Get()
-        if (not counts or any(count != 3 for count in counts) or
+        if (any(count != 3 for count in counts) or
                 len(indices) != 3 * len(counts) or len(normals) != len(counts) or
                 len(uv) != len(indices) or len(lightmap_uv) != len(indices) or
                 not isinstance(material, str) or not material):
             raise ValueError("World Stage face has unsupported triangulation or attributes")
-        triangles = []
-        for triangle in range(len(counts)):
-            start = 3 * triangle
-            corners = indices[start:start + 3]
-            if any(corner < 0 or corner >= len(points) for corner in corners):
-                raise ValueError("World Stage face has an invalid vertex index")
-            positions = [points[corner] for corner in corners]
-            texture = uv[start:start + 3]
-            lightmap = lightmap_uv[start:start + 3]
-            normal = normals[triangle]
-            tangent, sign = tangent_frame(positions, texture, normal)
-            triangles.append((positions, texture, lightmap, normal, tangent, sign))
+        triangles = face_triangles(points, indices, normals, uv, lightmap_uv)
         result[face_id] = {"material": material, "triangles": triangles}
     if not result:
         raise ValueError("World Stage has no world triangles")

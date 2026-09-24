@@ -354,16 +354,24 @@ def missing_providers(root, suite):
 # Building and running one suite
 # ---------------------------------------------------------------------------
 
+def rooted_flags(root, flags):
+    """Relative compiler response files (@path) name repository paths, like
+    sources, so they resolve against --root rather than the caller's cwd."""
+    return [("@" + os.path.join(root, f[1:])) if f.startswith("@") and not os.path.isabs(f[1:])
+            else f for f in flags]
+
+
 def build_command(root, cxx, profile, suite, out_bin, config="default"):
     flags = ["-std=" + profile["cxx_std"]]
     flags += list(profile.get("base_flags", []))
-    flags += list(suite.get("extra_flags", []))
+    flags += rooted_flags(root, suite.get("extra_flags", []))
     flags += BUILD_CONFIGS[config]
     includes = []
     for inc in profile.get("include_roots", []):
         includes += ["-I", os.path.join(root, inc)]
     sources = [os.path.join(root, s) for s in suite["sources"]]
-    return [cxx, *flags, *includes, *sources, *suite.get("link_flags", []), "-o", out_bin]
+    return [cxx, *flags, *includes, *sources, *rooted_flags(root, suite.get("link_flags", [])),
+            "-o", out_bin]
 
 
 def unit_build_commands(root, cxx, profile, suite, out_bin, config="default"):
@@ -385,10 +393,12 @@ def unit_build_commands(root, cxx, profile, suite, out_bin, config="default"):
             obj = "%s.%s.%d.o" % (out_bin, unit["id"], index)
             objects.append(obj)
             commands.append([cxx, *dialect, *profile.get("base_flags", []),
-                             *suite.get("extra_flags", []), *unit.get("flags", []),
+                             *rooted_flags(root, suite.get("extra_flags", [])),
+                             *rooted_flags(root, unit.get("flags", [])),
                              *BUILD_CONFIGS[config], *includes,
                              "-c", os.path.join(root, source), "-o", obj])
-    commands.append([cxx, *objects, *suite.get("link_flags", []), "-o", out_bin])
+    commands.append([cxx, *objects, *rooted_flags(root, suite.get("link_flags", [])),
+                     "-o", out_bin])
     return commands
 
 

@@ -102,6 +102,11 @@ void CInput::TouchMove( CUserCmd *cmd )
 
 	TouchScale( dx, dy );
 
+	float gyroX, gyroY;
+	gTouch.GetGyroDelta( &gyroX, &gyroY );
+	dx += gyroX;
+	dy += gyroY;
+
 	// Let the client mode at the mouse input before it's used
 	g_pClientMode->OverrideMouseInput( &dx, &dy );
 

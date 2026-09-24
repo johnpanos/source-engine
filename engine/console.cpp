@@ -575,9 +575,28 @@ void Con_ColorPrint( const Color& clr, char const *msg )
 }
 #endif
 
+static ConOutputCaptureFn g_pfnConOutputCapture = NULL;
+static void *g_pConOutputCaptureContext = NULL;
+
+void Con_SetOutputCapture( ConOutputCaptureFn capture, void *context )
+{
+	Assert( ThreadInMainThread() );
+	g_pfnConOutputCapture = capture;
+	g_pConOutputCaptureContext = context;
+}
+
 // returns false if the print function shouldn't continue
 bool HandleRedirectAndDebugLog( const char *msg )
 {
+	// Captured text replaces the display; other threads print normally.
+	if ( g_pfnConOutputCapture && ThreadInMainThread() )
+	{
+		g_pfnConOutputCapture( g_pConOutputCaptureContext, msg );
+		if ( con_debuglog )
+			Con_DebugLog( "%s", msg );
+		return false;
+	}
+
 	// Add to redirected message
 	if ( SV_RedirectActive() )
 	{

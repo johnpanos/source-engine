@@ -16,6 +16,16 @@ host profiles. Everything is installed under `build/toolchains/` (ignored), not
 Steps are idempotent: an install whose recorded revision matches is reused.
 `check` verifies versions against the profiles (Blender, OIDN, OpenUSD Python,
 KTX revision), required compile tools and `bsp2tool pack-world-lit`.
+
+The native Vulkan client needs the pinned KTX reader (a PIC static archive the
+ktx-reader step builds under dependencies/, outside every Waf output tree) to
+upload a map's LMAP lightmap. Enable it in a client
+tree, for example the one ./play boots, with
+
+    python3 tools/quality/pbrt_map_toolchain.py configure-client --build build
+
+which adds `--ktx-source-root/--ktx-build-root` to the tree's stored Waf
+options; the next ./play (or waf build) rebuilds the affected modules.
 """
 
 import argparse
@@ -30,7 +40,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE = ROOT / "quality/product_profiles/pbrt-map-linux-tools.json"
-STEPS = ("sources", "openusd", "ktx", "compile-tools", "write")
+STEPS = ("sources", "openusd", "ktx", "ktx-reader", "compile-tools", "write")
 
 
 def load_profiles(path=PROFILE):
@@ -125,6 +135,61 @@ def provision_ktx(profile, linked, sources, jobs):
          "-DCMAKE_BUILD_TYPE=" + ktx["toolchain"]["build_type"]] + options)
     run(["cmake", "--build", build, "--target", ktx["build"]["target"], "-j%d" % jobs])
     write_stamp(build, revision)
+
+
+def provision_ktx_reader(profile, linked, sources, jobs):
+    """The client links libktx_read.a into a shared module, so it must be PIC.
+
+    Its source and build live outside every Waf output tree: a client tree
+    cannot use headers from inside its own output directory (build/toolchains).
+    The source is a local clone of the pinned checkout (the reader needs no
+    submodules).
+    """
+    ktx = linked["ktx"]
+    layout = profile["layout"]
+    source = absolute(layout["ktx_reader_source"])
+    build = absolute(layout["ktx_reader_build"])
+    revision = ktx["dependencies"]["ktx_software"]["revision"]
+    if stamp_matches(build, revision) and (build / ktx["build"]["reader_library"]).is_file():
+        print("[ktx-reader] up to date")
+        return
+    if not source.exists():
+        run(["git", "clone", "--no-checkout", sources["ktx_software"], source])
+        run(["git", "-C", source, "checkout", "--detach", revision])
+    if git_revision(source) != (revision, False):
+        raise SystemExit("%s is not the clean pinned revision %s" % (source, revision))
+    options = ["-D%s=%s" % item for item in ktx["build"]["cmake_options"].items()]
+    run(["cmake", "-S", source, "-B", build, "-G", ktx["build"]["generator"],
+         "-DCMAKE_BUILD_TYPE=" + ktx["toolchain"]["build_type"],
+         "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"] + options)
+    run(["cmake", "--build", build, "--target", "ktx_read", "-j%d" % jobs])
+    write_stamp(build, revision)
+
+
+def configure_client(profile, linked, build):
+    """Add the pinned KTX reader to a client tree's stored Waf options."""
+    reader = absolute(profile["layout"]["ktx_reader_build"])
+    source = absolute(profile["layout"]["ktx_reader_source"])
+    revision = linked["ktx"]["dependencies"]["ktx_software"]["revision"]
+    if not stamp_matches(reader, revision):
+        raise SystemExit("the KTX reader is not provisioned; run: provision --steps ktx-reader")
+    # Add the two options to the tree's stored configure options, then replay
+    # them the way ./play does. `waf configure --reconfigure` must not be used:
+    # it overwrites every stored option with the parser's truthy defaults
+    # (a native Vulkan Portal tree becomes RENDER_BACKEND=legacy GAMES=hl2).
+    stored = absolute(build) / "configuration.py"
+    wafdirs = sorted(ROOT.glob(".waf3-*/waflib"))
+    if not stored.is_file() or not wafdirs:
+        raise SystemExit("%s is not a configured Waf tree" % build)
+    sys.path.insert(0, str(wafdirs[-1].parent))
+    from waflib import ConfigSet
+    configuration = ConfigSet.ConfigSet()
+    configuration.load(str(stored))
+    configuration["OPTIONS"]["KTX_SOURCE_ROOT"] = str(source)
+    configuration["OPTIONS"]["KTX_BUILD_ROOT"] = str(reader)
+    configuration.store(str(stored))
+    import ensure_configured
+    ensure_configured.reconfigure(absolute(build))
 
 
 def provision_compile_tools(profile, jobs):
@@ -253,8 +318,15 @@ def main():
     provision.add_argument("--steps", default=",".join(STEPS))
     check = commands.add_parser("check")
     check.add_argument("--toolchain", type=Path)
+    client = commands.add_parser("configure-client",
+                                 help="enable the pinned KTX lightmap reader in a client tree")
+    client.add_argument("--build", type=Path, default=Path("build"),
+                        help="configured native Vulkan Waf output tree (default: build)")
     args = parser.parse_args()
     profile, linked = load_profiles()
+    if args.command == "configure-client":
+        configure_client(profile, linked, args.build)
+        return
     toolchain_file = absolute(profile["layout"]["toolchain_file"])
     if args.command == "check":
         load(args.toolchain or toolchain_file)
@@ -266,11 +338,13 @@ def main():
         parser.error("unknown steps: " + ", ".join(sorted(unknown)))
     mirrors = dict(item.split("=", 1) for item in args.mirror)
     sources = provision_sources(profile, linked, mirrors) if (
-        {"sources", "openusd", "ktx"} & set(steps)) else None
+        {"sources", "openusd", "ktx", "ktx-reader"} & set(steps)) else None
     if "openusd" in steps:
         provision_openusd(profile, linked, sources, args.jobs)
     if "ktx" in steps:
         provision_ktx(profile, linked, sources, args.jobs)
+    if "ktx-reader" in steps:
+        provision_ktx_reader(profile, linked, sources, args.jobs)
     if "compile-tools" in steps:
         provision_compile_tools(profile, args.jobs)
     if "write" in steps:

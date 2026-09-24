@@ -35,6 +35,7 @@
 #include "vgui_baseui_interface.h"
 #endif
 #include "tier0/etwprof.h"
+#include "debugapi_engine.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -197,6 +198,7 @@ CEngine::~CEngine( void )
 //-----------------------------------------------------------------------------
 void CEngine::Unload( void )
 {
+	DebugApi_EngineStop();
 	Sys_ShutdownGame();
 
 	m_nDLLState			= DLL_INACTIVE;
@@ -215,6 +217,11 @@ bool CEngine::Load( bool bDedicated, const char *rootdir )
 	// NOTE: We must bypass the 'next state' block here for initialization to work properly.
 	m_nDLLState = m_nNextDLLState = InEditMode() ? DLL_PAUSED : DLL_ACTIVE;
 
+	// A root-bound debug API that cannot serve fails the load before any game
+	// system starts. It only answers requests from Frame(), after init.
+	if ( !DebugApi_EngineStart() )
+		return false;
+
 	if ( Sys_InitGame( 
 		g_AppSystemFactory,
 		rootdir, 
@@ -224,6 +231,10 @@ bool CEngine::Load( bool bDedicated, const char *rootdir )
 		success = true;
 
 		UpdateMaterialSystemConfig();
+	}
+	else
+	{
+		DebugApi_EngineStop();
 	}
 	
 	return success;
@@ -418,6 +429,10 @@ void CEngine::Frame( void )
 	TmU64 time0 = tmFastTime();
 #endif
 
+
+	// External debug requests run on the main thread before this frame's host
+	// work, so console commands and screenshot requests take effect in it.
+	DebugApi_EngineFrame();
 
 	switch( m_nDLLState )
 	{

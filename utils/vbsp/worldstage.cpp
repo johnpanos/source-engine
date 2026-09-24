@@ -59,6 +59,9 @@ struct FaceGeometry
 	std::string materialPath;
 	std::vector<pxr::GfVec3f> points;
 	std::vector<pxr::GfVec2f> materialUV;
+	// Indices into points that bound the face's surface (see SurfaceCorners);
+	// empty when the face encloses no area.
+	std::vector<int> corners;
 	pxr::GfVec3f normal;
 	bool reverseWinding;
 };
@@ -172,6 +175,46 @@ bool MaterialPath( const texinfo_t &info, std::string &name )
 	return !name.empty();
 }
 
+// Vertex welding (POINT_EPSILON in faces.cpp) can fold a face thinner than
+// the weld distance back onto itself: vertices a b a c enclose no area. The
+// surface is the winding with repeated vertices and spikes (a b a -> a)
+// removed, compared by BSP vertex index so no tolerance is involved. Faces
+// without folds keep every corner, including T-junction points.
+std::vector<int> SurfaceCorners( const std::vector<int> &vertices )
+{
+	std::vector<int> corners = vertices;
+	bool changed = true;
+	while ( changed && corners.size() >= 3 )
+	{
+		changed = false;
+		const size_t count = corners.size();
+		for ( size_t i = 0; i < count; ++i )
+		{
+			const size_t next = ( i + 1 ) % count;
+			if ( corners[i] == corners[next] )
+			{
+				corners.erase( corners.begin() + next );
+				changed = true;
+				break;
+			}
+			const size_t after = ( i + 2 ) % count;
+			if ( corners[i] == corners[after] )
+			{
+				// Drop the spike tip and its return to corners[i].
+				const size_t first = std::min( next, after );
+				const size_t second = std::max( next, after );
+				corners.erase( corners.begin() + second );
+				corners.erase( corners.begin() + first );
+				changed = true;
+				break;
+			}
+		}
+	}
+	if ( corners.size() < 3 )
+		corners.clear();
+	return corners;
+}
+
 bool GatherWorldFaces( std::vector<FaceGeometry> &faces, std::string &error )
 {
 	if ( nummodels != 1 )
@@ -222,6 +265,13 @@ bool GatherWorldFaces( std::vector<FaceGeometry> &faces, std::string &error )
 		}
 		const Vector &planeNormal = dplanes[face.planenum].normal;
 		geometry.normal = pxr::GfVec3f( planeNormal.x, planeNormal.y, planeNormal.z );
+		const float normalLength = pxr::GfGetLength( geometry.normal );
+		if ( !std::isfinite( normalLength ) || std::abs( normalLength - 1.0f ) > 1e-3f )
+		{
+			error = "world face has an invalid plane normal";
+			return false;
+		}
+		std::vector<int> vertices;
 		for ( int edgeIndex = face.firstedge; edgeIndex < face.firstedge + face.numedges;
 		    ++edgeIndex )
 		{
@@ -238,26 +288,37 @@ bool GatherWorldFaces( std::vector<FaceGeometry> &faces, std::string &error )
 				return false;
 			}
 			const Vector &point = dvertexes[vertex].point;
+			vertices.push_back( vertex );
 			geometry.points.emplace_back( point.x, point.y, point.z );
 			geometry.materialUV.emplace_back(
 			    Project( point, texture.textureVecsTexelsPerWorldUnits[0] ) / material.width,
 			    Project( point, texture.textureVecsTexelsPerWorldUnits[1] ) / material.height );
 		}
+		const std::vector<int> surface = SurfaceCorners( vertices );
+		// Corners index the first occurrence of each surviving vertex.
+		for ( int vertex : surface )
+			geometry.corners.push_back( static_cast<int>(
+			    std::find( vertices.begin(), vertices.end(), vertex ) - vertices.begin() ) );
 		// Newell's polygon normal; FixTjuncs can make the first three points
 		// collinear, so a single-corner cross product is not a valid winding test.
 		pxr::GfVec3f newell( 0.0f );
-		for ( size_t point = 0; point < geometry.points.size(); ++point )
+		for ( size_t corner = 0; corner < geometry.corners.size(); ++corner )
 		{
-			const pxr::GfVec3f &current = geometry.points[point];
-			const pxr::GfVec3f &next = geometry.points[( point + 1 ) % geometry.points.size()];
+			const pxr::GfVec3f &current = geometry.points[geometry.corners[corner]];
+			const pxr::GfVec3f &next =
+			    geometry.points[geometry.corners[( corner + 1 ) % geometry.corners.size()]];
 			newell += pxr::GfCross( current, next );
 		}
 		const float alignment = pxr::GfDot( newell, geometry.normal );
-		if ( !std::isfinite( alignment ) || std::abs( alignment ) < 1e-5f )
+		if ( !std::isfinite( alignment ) )
 		{
-			error = "world face has invalid winding or plane normal";
+			error = "world face has a non-finite winding";
 			return false;
 		}
+		// A folded or collinear face has no surface: it keeps its identity,
+		// points and chart but authors no triangles.
+		if ( std::abs( alignment ) < 1e-5f )
+			geometry.corners.clear();
 		geometry.reverseWinding = alignment < 0.0f;
 		faces.push_back( std::move( geometry ) );
 	}
@@ -313,16 +374,18 @@ bool AuthorFace( const pxr::UsdStageRefPtr &stage, const FaceGeometry &geometry,
 	pxr::VtArray<unsigned int> smoothingGroups;
 	pxr::VtArray<int> chartIds;
 	pxr::VtArray<pxr::GfVec3f> normals;
-	for ( int corner = 1; corner + 1 < static_cast<int>( geometry.points.size() ); ++corner )
+	const std::vector<int> &surface = geometry.corners;
+	for ( int corner = 1; corner + 1 < static_cast<int>( surface.size() ); ++corner )
 	{
 		counts.push_back( 3 );
 		faceIds.push_back( geometry.faceId );
 		smoothingGroups.push_back( face.smoothingGroups );
 		chartIds.push_back( geometry.faceId );
 		normals.push_back( geometry.normal );
-		for ( int vertex : { 0, geometry.reverseWinding ? corner + 1 : corner,
+		for ( int fan : { 0, geometry.reverseWinding ? corner + 1 : corner,
 		          geometry.reverseWinding ? corner : corner + 1 } )
 		{
+			const int vertex = surface[fan];
 			indices.push_back( vertex );
 			materialUV.push_back( geometry.materialUV[vertex] );
 			const pxr::GfVec3f &point = geometry.points[vertex];

@@ -76,6 +76,7 @@ def source_faces(path):
             raise ValueError("unterminated BSP material name")
         material_path = string_data[string_offset:end].decode("utf-8")
         points = []
+        vertex_ids = []
         for i in range(first_edge, first_edge + count):
             surfedge = struct.unpack_from("<i", surfedges, 4 * i)[0]
             edge_index = abs(surfedge)
@@ -85,10 +86,12 @@ def source_faces(path):
             vertex_index = b if surfedge < 0 else a
             if vertex_index >= len(vertices) // 12:
                 raise ValueError("invalid BSP vertex")
+            vertex_ids.append(vertex_index)
             points.append(struct.unpack_from("<fff", vertices, 12 * vertex_index))
         vectors = [struct.unpack_from("<ffff", texture, 16 * i) for i in range(4)]
         result[face_id] = {
-            "points": points, "chart": (chart_width + 1, chart_height + 1),
+            "points": points, "vertex_ids": vertex_ids,
+            "chart": (chart_width + 1, chart_height + 1),
             "material": material_path, "smoothing": smoothing_group,
             "normal": normal,
             "material_uv": [(project(point, vectors[0]) / image_width,
@@ -98,6 +101,41 @@ def source_faces(path):
                                     for point in points],
         }
     return result
+
+
+def surface_corners(vertex_ids):
+    """Winding positions bounding a face's surface, or [] for no surface.
+
+    Legacy vertex welding can fold a face thinner than the weld distance onto
+    itself (vertices a b a c). Repeated vertices and spikes (a b a -> a) are
+    removed by BSP vertex index; each survivor maps to its first position.
+    """
+    ring = list(vertex_ids)
+    changed = True
+    while changed and len(ring) >= 3:
+        changed = False
+        for i in range(len(ring)):
+            following = ring[(i + 1) % len(ring)]
+            if ring[i] == following:
+                del ring[(i + 1) % len(ring)]
+                changed = True
+                break
+            if ring[i] == ring[(i + 2) % len(ring)]:
+                for index in sorted({(i + 1) % len(ring), (i + 2) % len(ring)}, reverse=True):
+                    del ring[index]
+                changed = True
+                break
+    return [vertex_ids.index(vertex) for vertex in ring] if len(ring) >= 3 else []
+
+
+def newell_alignment(points, corners, normal):
+    total = [0.0, 0.0, 0.0]
+    for position, corner in enumerate(corners):
+        a, b = points[corner], points[corners[(position + 1) % len(corners)]]
+        total[0] += a[1] * b[2] - a[2] * b[1]
+        total[1] += a[2] * b[0] - a[0] * b[2]
+        total[2] += a[0] * b[1] - a[1] * b[0]
+    return sum(total[i] * normal[i] for i in range(3))
 
 
 def source_entities(path):
@@ -180,6 +218,7 @@ def compare(bsp_faces, bsp_entities, stage):
         raise ValueError("missing world geometry scope")
     seen = set()
     triangle_count = 0
+    degenerate_faces = []
     for prim in mesh_root.GetChildren():
         if not prim.IsA(UsdGeom.Mesh) or not prim.HasAPI("SourceMeshAPI"):
             raise ValueError("unexpected world geometry prim")
@@ -194,24 +233,26 @@ def compare(bsp_faces, bsp_entities, stage):
         expected = bsp_faces[face_id]["points"]
         if actual != expected:
             raise ValueError("world face points diverge from BSP")
-        counts = list(mesh.GetFaceVertexCountsAttr().Get())
-        indices = list(mesh.GetFaceVertexIndicesAttr().Get())
-        a, b, c = expected[:3]
-        edge_a = [b[i] - a[i] for i in range(3)]
-        edge_b = [c[i] - a[i] for i in range(3)]
-        cross = (edge_a[1] * edge_b[2] - edge_a[2] * edge_b[1],
-                 edge_a[2] * edge_b[0] - edge_a[0] * edge_b[2],
-                 edge_a[0] * edge_b[1] - edge_a[1] * edge_b[0])
+        counts = list(mesh.GetFaceVertexCountsAttr().Get() or [])
+        indices = list(mesh.GetFaceVertexIndicesAttr().Get() or [])
         normal = bsp_faces[face_id]["normal"]
-        alignment = sum(cross[i] * normal[i] for i in range(3))
-        if not math.isfinite(alignment) or abs(alignment) < 1e-5:
-            raise ValueError("BSP face has invalid winding or plane normal")
-        expected_indices = [vertex for corner in range(1, len(expected) - 1)
-                            for vertex in ((0, corner + 1, corner) if alignment < 0
-                                           else (0, corner, corner + 1))]
-        if counts != [3] * (len(expected) - 2) or indices != expected_indices:
+        if not all(math.isfinite(value) for value in normal) or abs(
+                math.sqrt(sum(value * value for value in normal)) - 1) > 1e-3:
+            raise ValueError("BSP face has an invalid plane normal")
+        corners = surface_corners(bsp_faces[face_id]["vertex_ids"])
+        # Newell's normal: T-junction points can make the first three collinear.
+        alignment = newell_alignment(expected, corners, normal) if corners else 0.0
+        if not math.isfinite(alignment):
+            raise ValueError("BSP face has a non-finite winding")
+        if abs(alignment) < 1e-5:
+            corners = []
+            degenerate_faces.append(face_id)
+        expected_indices = [corners[fan] for corner in range(1, len(corners) - 1)
+                            for fan in ((0, corner + 1, corner) if alignment < 0
+                                        else (0, corner, corner + 1))]
+        if counts != [3] * max(0, len(corners) - 2) or indices != expected_indices:
             raise ValueError("world face triangulation diverges from BSP")
-        if [tuple(value) for value in mesh.GetNormalsAttr().Get()] != [normal] * len(counts):
+        if [tuple(value) for value in mesh.GetNormalsAttr().Get() or []] != [normal] * len(counts):
             raise ValueError("world face normal diverges from BSP plane")
         triangle_count += len(counts)
         for attr, value in (("primvars:source:faceId", face_id),
@@ -299,6 +340,7 @@ def compare(bsp_faces, bsp_entities, stage):
                                   [linear_channel(value) for value in source_light[:3]])):
             raise ValueError("World Stage point light values diverge from BSP")
     return {"faces": len(seen), "triangles": triangle_count,
+            "faces_without_surface": sorted(degenerate_faces),
             "entities": len(bsp_entities), "point_lights": len(expected_lights),
             "light_styles": light_styles,
             "atlas_width": width, "atlas_height": height}
@@ -359,6 +401,26 @@ def main():
                 raise ValueError("missing entity negative control was accepted")
             stage.Reload()
             compare(faces, entities, stage)
+            # Surface rule: a real face may not lose its triangles, and a face
+            # welded to no surface may not gain any.
+            folded = set(evidence["faces_without_surface"])
+            cases = [("emptied_surface", min(set(faces) - folded), [], [])]
+            if folded:
+                cases.append(("folded_face_triangulated", min(folded), [3], [0, 1, 2]))
+            for key, face_id, counts, indices in cases:
+                mesh = stage.GetPrimAtPath("/World/Geometry/WorldSpawn/Mesh_" + str(face_id))
+                mesh.GetAttribute("faceVertexCounts").Set(counts)
+                mesh.GetAttribute("faceVertexIndices").Set(indices)
+                try:
+                    compare(faces, entities, stage)
+                except ValueError as error:
+                    if "triangulation diverges" not in str(error):
+                        raise
+                    evidence["negative_%s_rejected" % key] = True
+                else:
+                    raise ValueError("%s negative control was accepted" % key)
+                stage.Reload()
+                compare(faces, entities, stage)
             light_indices = [index for index, record in enumerate(entities)
                              if dict(record).get("classname") == "light"]
             if light_indices:

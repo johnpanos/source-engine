@@ -44,6 +44,7 @@
 #include "icvar.h"
 #include "filesystem/IQueuedLoader.h"
 #include "console/TextConsoleUnix.h"
+#include "engine/debugapi_root.h"
 
 // platform.h maps the Win32 spelling to dlsym on POSIX. Keep this class method
 // name literal now that dlsym itself is wrapped by loader telemetry.
@@ -304,6 +305,10 @@ bool CSys::LoadModules( CDedicatedAppSystemGroup *pAppSystemGroup )
 	// The dedicated server renders nothing and requires no render feature.
 	const render::RenderProfileRequest renderRequest = render::PreferAvailableRenderFeatures();
 	if ( !MaterialSystem_SetRenderProfileRequest( material, &renderRequest ) )
+		return false;
+	const DebugApiComposedProvider composed[] = {
+	    { "physics", pPhysicsModule }, { "render", NullShaderBackend_Describe()->id } };
+	if ( !DebugApi_BindFromCommandLine( composed, ARRAYSIZE( composed ) ) )
 		return false;
 	engine = server;
 	return true;

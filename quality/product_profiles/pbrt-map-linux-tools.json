@@ -24,6 +24,8 @@
     "openusd_install": "build/toolchains/openusd-25.11",
     "onetbb_install": "build/toolchains/onetbb-2021.9.0",
     "ktx_build": "build/toolchains/ktx-build",
+    "ktx_reader_source": "dependencies/pbrt-map/ktx-software",
+    "ktx_reader_build": "dependencies/pbrt-map/ktx-reader-build",
     "compile_tools": "build/toolchains/pbrt-map-tools",
     "toolchain_file": "build/toolchains/pbrt-map-toolchain.json"
   },

@@ -15,7 +15,7 @@ collision, a player spawn and a fallback compile light:
   stairwell) its upward-facing triangles are extruded into prism brushes, so
   openings in the floor stay open.
 
-The solids and floor prisms form one `func_detail`: they block the player but
+The solids and floor prisms form one nodraw `func_detail`: they block the player but
 not vis, since the render mesh is not their hull, and the engine walks their
 leaves, so the world mesh inside them stays visible.
 
@@ -39,6 +39,9 @@ import pbrt_scene  # noqa: E402
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_UNITS_PER_METER = 39.37007874015748
 MATERIAL = "DEV/DEV_MEASUREWALL01A"
+# Collision-only solids: the WMSH mesh is the visible world, so they need no
+# faces (and chopped detail faces can be zero-area slivers).
+NODRAW_MATERIAL = "TOOLS/TOOLSNODRAW"
 WALL = 16
 PLAYER_HALF_WIDTH = 16
 PLAYER_HEIGHT = 72
@@ -106,7 +109,7 @@ def convex_brush(planes, minimum_radius):
     return kept, vertices
 
 
-def brush_text(brush_id, side_id, planes, vertices):
+def brush_text(brush_id, side_id, planes, vertices, material=MATERIAL):
     """VMF solid; vbsp's plane normal is cross(p0 - p1, p2 - p1), outward."""
     import numpy as np
     result = ["\tsolid", "\t{", f'\t\t"id" "{brush_id}"']
@@ -121,7 +124,7 @@ def brush_text(brush_id, side_id, planes, vertices):
         points = (center + 64 * u, center, center + 64 * v)
         text = " ".join("(%.4f %.4f %.4f)" % tuple(point) for point in points)
         result.extend(("\t\tside", "\t\t{", f'\t\t\t"id" "{side_id + index}"',
-                       f'\t\t\t"plane" "{text}"', f'\t\t\t"material" "{MATERIAL}"',
+                       f'\t\t\t"plane" "{text}"', f'\t\t\t"material" "{material}"',
                        '\t\t\t"uaxis" "[1 0 0 0] 0.25"', '\t\t\t"vaxis" "[0 -1 0 0] 0.25"',
                        '\t\t\t"rotation" "0"', '\t\t\t"lightmapscale" "16"',
                        '\t\t\t"smoothing_groups" "0"', "\t\t}"))
@@ -423,7 +426,8 @@ def main():
     if solids:
         lines.extend(["entity", "{", '\t"id" "4"', '\t"classname" "func_detail"'])
         for index, (planes, vertices) in enumerate(solids):
-            lines.append(brush_text(10 + len(brushes) + index, side, planes, vertices))
+            lines.append(brush_text(10 + len(brushes) + index, side, planes, vertices,
+                                    NODRAW_MATERIAL))
             side += len(planes)
         lines.append("}")
     lines.extend(["entity", "{", '\t"id" "2"', '\t"classname" "info_player_start"',

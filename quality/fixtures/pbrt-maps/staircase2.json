@@ -36,8 +36,8 @@
     ]
   },
   "runtime_gate": {
-    "max_mae": 21,
-    "min_ssim": 0.74,
+    "max_mae": 15,
+    "min_ssim": 0.8,
     "max_grain_ratio": 0.6,
     "max_mottle_ratio": 1.15
   },

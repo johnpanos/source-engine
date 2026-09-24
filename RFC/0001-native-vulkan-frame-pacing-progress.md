@@ -136,3 +136,86 @@ HEAD 61-129 ms median -> coalescing 3.7-8.4 ms -> both fixes 2.1-2.4 ms
 byte-identical (sha256 `fcdcf2fc...`). Open: the packer still writes a full
 reference list per leaf (~31 MB of the 272 MB bedroom BSP2); identical lists
 should share one range, and real spatial visibility is still absent.
+
+## Mobile GPU cost: render-pass breaks (2026-09-23)
+
+Question: where the native backend spends GPU cost that a tiled mobile GPU
+pays and a desktop GPU hides, and which of it can go without changing pixels.
+Desktop RADV reports 0.3-0.9 ms of GPU time for the portal scenario, so the
+cost cannot be read from GPU timestamps here.
+
+Method: an investigation-only `LD_PRELOAD` counter around the Vulkan loader
+(render passes with their load/store ops, clears, blits and copies, and each
+pipeline's color-write mask and blend state) on the portal scenario at
+1024x720. It uses a tiled-GPU traffic model: every attachment `LOAD` reads the
+target and every `STORE` writes it (4 B/px color, 3+1 B/px depth/stencil). The
+model is an upper bound, since a driver may render a pass directly to memory,
+and it is not a device measurement. A read-only feature probe ran on the
+attached Galaxy Z Fold7 (Adreno 840, Vulkan 1.4.295): `textureCompressionBC`,
+`ETC2` and `ASTC_LDR` are supported, so DXT textures already stay compressed
+there. It also exposes `VK_KHR_load_store_op_none`,
+`VK_QCOM_render_pass_transform`, `VK_KHR_dynamic_rendering_local_read` and
+`VK_EXT_rasterization_order_attachment_access`.
+
+Finding: once the portals are linked, a frame used 31-33 render passes, each
+of which loaded and stored color, depth and stencil. The sequence showed no
+render-target-texture passes. Most breaks were the back buffer switching
+between its sRGB and UNORM views. Every UNORM-view pass held only color-masked
+draws (the portal stencil masks) or depth/stencil-only clears, whose results
+do not depend on the view. Other breaks were empty passes reopened between
+back-to-back copies, one copy that repeated the previous one exactly, and a
+UNORM pass opened only to end the frame.
+
+Change (`vulkan_device.cpp` stream replay):
+
+- queries, depth/stencil-only clears and color-masked draws keep the open
+  view; opening a pass takes the view of the next record that needs one;
+- a copy closes the pass and the next record reopens it;
+- a copy identical to the previous one, with nothing drawn since, is skipped;
+- the frame may end in the sRGB view.
+
+`render_pass` and `target_copy` are now count-only kinds in `-vkframestats`.
+
+| Phase (median frame) | Passes before | After | Modeled MB/frame at 1024x720, before | After |
+| --- | --- | --- | --- | --- |
+| idle | 10 | 5 | 126 | 60 |
+| fire_orange | 33 | 8 | 431 | 100 |
+| walk_blue | 25 | 5 | 325 | 60 |
+| walk_orange | 32 | 7 | 418 | 86 |
+
+Scaled to the Fold7 inner back buffer (2448x1848), the walk_orange model goes
+from about 2.6 GB to about 0.53 GB per frame (154 to 32 GB/s at 60 FPS).
+
+Evidence (A = backend from `d7fc2598`, B = the same source plus this change;
+all other libraries identical):
+
+- Pixels: all 10 `material_pixel_conformance` families in both HDR modes give
+  byte-identical `pixels.json` for A and B. The exposure family differs only
+  in `poll_frames`, which also varies between runs of A. `sky/integer` and
+  `pbr-fallback` fail identically on A and B (pre-existing).
+- Backend suites pass: bring-up 79 checks, backend 24, material-facing 20,
+  equivalence 31. The new bring-up case gives 3 passes and 1 copy. Built
+  against the old policy, it reports 7 passes and 2 copies, and its occlusion
+  query fails because the old policy split it across a view change (3
+  failures).
+- The in-game screenshots were not an identity oracle: two runs of A already
+  differ across the whole frame (particles, weapon sway, timing).
+
+Not verified / next:
+
+- Nothing has run on Android yet. The traffic figures are modeled, not
+  measured. The app was not launched on the device, and the harness still has
+  no Android runner.
+- Pixel-identical follow-ups, largest first:
+  1. open the frame's first pass through the view its first color draw needs
+     (an sRGB `CLEAR` variant; 1 break per frame);
+  2. present by rendering straight into the swapchain image when the sizes
+     match and gamma is identity, dropping the full-frame blit (8 B/px);
+  3. store depth/stencil `DONT_CARE`/`NONE` in the frame's last pass;
+  4. pre-rotate for `currentTransform` (`VK_QCOM_render_pass_transform`)
+     after confirming on the device whether the compositor rotates the frame.
+- The remaining breaks are the engine's framebuffer copies for refraction
+  (5-7 per linked-portal frame). Framebuffer fetch could replace them, but
+  that is a larger design decision.
+- Excluded because they change pixels: a lower render scale, reduced
+  precision, and lower anisotropy.

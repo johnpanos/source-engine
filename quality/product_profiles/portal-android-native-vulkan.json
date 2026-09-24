@@ -31,7 +31,8 @@
     "manifest_template": "launcher_main/android/AndroidManifest.xml",
     "activity": "org.libsdl.app.SDLActivity",
     "permissions": [
-      "android.permission.INTERNET"
+      "android.permission.INTERNET",
+      "android.permission.HIGH_SAMPLING_RATE_SENSORS"
     ],
     "required_features": [
       "android.hardware.vulkan.version"

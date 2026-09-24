@@ -30,6 +30,12 @@ void Con_Init (void);
 void Con_Shutdown (void);   // Free overlay line buffer.
 void Con_ClearNotify (void);
 
+// Diverts console text printed on the main thread to `capture` instead of the
+// console display (the debug log still records it). Main thread only; pass
+// null to stop. Used by the debug API's exec method.
+typedef void ( *ConOutputCaptureFn )( void *context, const char *text );
+void Con_SetOutputCapture( ConOutputCaptureFn capture, void *context );
+
 bool Con_IsVisible();
 
 /*

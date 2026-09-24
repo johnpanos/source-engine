@@ -33,6 +33,9 @@ game/server/*/server.lib
 build*/
 quality-results/
 run/runtime-p2/
+# PBRT maps published for ./play (tools/quality/playable_maps.py) and their mounts.
+run/maps/
+run/runtime*/portal/custom/pbrt-*
 .cache/
 .ccache/
 waf3*/

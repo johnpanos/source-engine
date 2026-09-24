@@ -3,6 +3,7 @@ install-location:'auto'
 minSdkVersion:'29'
 targetSdkVersion:'36'
 uses-permission: name='android.permission.INTERNET'
+uses-permission: name='android.permission.HIGH_SAMPLING_RATE_SENSORS'
 application: label='Portal (Source Engine)' icon=''
 application-isGame
 application-debuggable

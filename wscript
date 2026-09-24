@@ -392,6 +392,10 @@ def options(opt):
 		dest='PHYSICS_BACKEND', help='production physics provider, or both for tests')
 	grp.add_option('--video-provider', choices=['none', 'bink'], default='none',
 		dest='VIDEO_PROVIDER', help='linked video decoder (bink requires FFmpeg development libraries)')
+	grp.add_option('--debug-api', choices=['enabled', 'disabled'], default='disabled',
+		dest='DEBUG_API', help='engine debug API server (JSON-RPC 2.0; Linux desktop development only)')
+	grp.add_option('--protobuf-root', default='', dest='PROTOBUF_ROOT',
+		help='pinned protobuf prefix for --debug-api [default: build-deps/debugapi/prefix]')
 	grp.add_option('--dxvk-root', default='', dest='DXVK_ROOT',
 		help='pinned DXVK Native package prefix (contains include/dxvk and lib)')
 	grp.add_option('--product-profile', default='quality/product_profiles/portal-linux-wayland.json',
@@ -875,6 +879,32 @@ def configure(conf):
 		conf.check_cxx(fragment='#include <d3d9.h>\nint main() { return Direct3DCreate9 ? 0 : 1; }',
 			use='DXVK', mandatory=True, msg='Checking DXVK Native D3D9 ABI')
 
+	# The engine debug API links a pinned, ABI-matched protobuf. It is a desktop
+	# development feature: store and mobile products must never enable it.
+	conf.env.DEBUGAPI = conf.options.DEBUG_API == 'enabled'
+	if conf.env.DEBUGAPI:
+		if conf.env.DEST_OS != 'linux' or conf.env.ANDROID_SDL3:
+			conf.fatal('--debug-api is a Linux desktop development feature')
+		if conf.options.TESTS or conf.options.TOOLS:
+			conf.fatal('--debug-api belongs to client and dedicated products')
+		sys.path.insert(0, os.path.abspath('tools/debugapi'))
+		import build_deps
+		try:
+			pinned = build_deps.verify_consumer_prefix(
+				conf.options.PROTOBUF_ROOT or os.path.join('build-deps', 'debugapi', 'prefix'),
+				conf.env.CXX[-1])
+		except (build_deps.DepsError, OSError, KeyError) as error:
+			conf.fatal('debug API: %s' % error)
+		conf.env.PROTOC = pinned['protoc']
+		conf.env.INCLUDES_PROTOBUF = [pinned['include']]
+		conf.env.STLIBPATH_PROTOBUF = [pinned['libdir']]
+		conf.env.STLIB_PROTOBUF = pinned['libs']
+		# Built with hidden visibility; also keep the archives' symbols out of
+		# the engine's dynamic symbol table.
+		conf.env.LINKFLAGS_PROTOBUF = ['-Wl,--exclude-libs=' + ':'.join(
+			'lib%s.a' % name for name in pinned['libs'])]
+		conf.msg('Checking pinned protobuf for the debug API', pinned['prefix'])
+
 	# indicate if we are packaging for Linux/BSD
 	if conf.env.DEST_OS != 'android':
 		conf.env.LIBDIR = conf.env.PREFIX+'/bin/'
@@ -893,6 +923,8 @@ def configure(conf):
 		tool_projects = projects['tools'] + (LINUX_COMPILER_TOOL_PROJECTS if conf.env.DEST_OS == 'linux' else [])
 		conf.add_subproject(tool_projects)
 	elif conf.options.DEDICATED:
+		if conf.env.DEBUGAPI:
+			projects['dedicated'].insert(0, 'debugapi')
 		conf.add_subproject(projects['dedicated'])
 	else:
 		# Desktop conformance harnesses; the Android product packages only runtime modules.
@@ -911,6 +943,8 @@ def configure(conf):
 			projects['game'] += ['unittests/physicstest']
 		if conf.env.VIDEO_BINK:
 			projects['game'] += ['video/video_bink']
+		if conf.env.DEBUGAPI:
+			projects['game'].insert(0, 'debugapi')
 		conf.add_subproject(projects['game'])
 
 def build(bld):
@@ -942,6 +976,9 @@ def build(bld):
 		tool_projects = projects['tools'] + (LINUX_COMPILER_TOOL_PROJECTS if bld.env.DEST_OS == 'linux' else [])
 		bld.add_subproject(tool_projects)
 	elif bld.env.DEDICATED:
+		# First: its protoc rule ends a build group that its consumers follow.
+		if bld.env.DEBUGAPI:
+			projects['dedicated'].insert(0, 'debugapi')
 		bld.add_subproject(projects['dedicated'])
 	else:
 		# Desktop conformance harnesses; the Android product packages only runtime modules.
@@ -965,4 +1002,7 @@ def build(bld):
 
 		if bld.env.VIDEO_BINK:
 			projects['game'] += ['video/video_bink']
+		# First: its protoc rule ends a build group that its consumers follow.
+		if bld.env.DEBUGAPI:
+			projects['game'].insert(0, 'debugapi')
 		bld.add_subproject(projects['game'])

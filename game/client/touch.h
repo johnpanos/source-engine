@@ -199,6 +199,8 @@ public:
 	void FingerMotion( touch_event_t *ev );
 	void GetTouchAccumulators( float *forward, float *side, float *yaw, float *pitch );
 	void GetTouchDelta( float yaw, float pitch, float *dx, float *dy );
+	void GetGyroDelta( float *dx, float *dy );
+	bool IsGyroEngaged();
 	void EditEvent( touch_event_t *ev );
 	void EnableTouchEdit(bool enable);
 	void CreateAtlasTexture();
@@ -220,6 +222,7 @@ private:
 
 	float move_start_x, move_start_y;
 	float m_flPreviousYaw, m_flPreviousPitch;
+	double m_flLastGyroRead;
 
 	int touchTextureID;
 	IMesh* m_pMesh;

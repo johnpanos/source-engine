@@ -240,6 +240,11 @@ bool HostState_IsGameShuttingDown()
 	return g_HostState.IsGameShuttingDown();
 }
 
+int HostState_GetCurrentState()
+{
+	return g_HostState.m_currentState;
+}
+
 bool HostState_IsShuttingDown()
 {
 	return ( g_HostState.m_currentState == HS_SHUTDOWN ||

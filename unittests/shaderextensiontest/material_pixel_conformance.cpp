@@ -1085,9 +1085,10 @@ bool CMaterialPixelApp::ReadPixel( float fx, float fy, unsigned char rgb[3] )
 // that expects black.
 void CMaterialPixelApp::WriteClearProbe( FILE *out )
 {
-	fprintf( out, "\"renderer\":\"%s\",\"hdr_type\":%d,",
+	fprintf( out, "\"renderer\":\"%s\",\"hdr_type\":%d,\"dx_level\":%d,",
 	    CommandLine()->ParmValue( "-renderer", "" ),
-	    static_cast<int>( g_pMaterialSystemHardwareConfig->GetHDRType() ) );
+	    static_cast<int>( g_pMaterialSystemHardwareConfig->GetHDRType() ),
+	    g_pMaterialSystemHardwareConfig->GetDXSupportLevel() );
 	unsigned char probe[3] = { 0, 0, 0 };
 	g_pMaterialSystem->BeginFrame( 0 );
 	{

@@ -653,7 +653,8 @@ void CPhysicsEnvironmentBox3D::DeleteContactPair( CPhysicsObjectBox3D *pA, CPhys
 		pB->Wake();
 }
 
-int CPhysicsEnvironmentBox3D::FindDeletedPair( const CPhysicsObjectBox3D *pA, const CPhysicsObjectBox3D *pB ) const
+int CPhysicsEnvironmentBox3D::FindDeletedPair(
+    const CPhysicsObjectBox3D *pA, const CPhysicsObjectBox3D *pB ) const
 {
 	for ( int i = 0; i < m_deletedPairs.Count(); i++ )
 	{
@@ -730,7 +731,8 @@ void CPhysicsEnvironmentBox3D::RecheckPairs( CPhysicsObjectBox3D *pObject )
 	for ( int i = 0; i < candidates.Count(); i++ )
 	{
 		CPhysicsObjectBox3D *pOther = ObjectOf( candidates[i] );
-		if ( !pOther || pOther == pObject || !IsLive( pOther ) || b3Shape_IsSensor( candidates[i] ) )
+		if ( !pOther || pOther == pObject || !IsLive( pOther ) ||
+		     b3Shape_IsSensor( candidates[i] ) )
 			continue;
 		if ( ( pObject->IsStatic() && pOther->IsStatic() ) || !pOther->IsCollisionEnabled() )
 			continue;
@@ -783,7 +785,8 @@ void CPhysicsEnvironmentBox3D::RecheckPairs( CPhysicsObjectBox3D *pObject )
 		for ( int i = 0; i < overlapping.Count() && !repair; i++ )
 		{
 			CPhysicsObjectBox3D *pOther = ObjectOf( overlapping[i] );
-			if ( allowed.Find( pOther ) == allowed.InvalidIndex() || touching.Find( pOther ) != touching.InvalidIndex() )
+			if ( allowed.Find( pOther ) == allowed.InvalidIndex() ||
+			     touching.Find( pOther ) != touching.InvalidIndex() )
 				continue;
 			int index = FindDeletedPair( pObject, pOther );
 			repair = index < 0 || !m_deletedPairs[index].disabled;

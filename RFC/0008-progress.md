@@ -1095,7 +1095,8 @@ triangles, 1,520 meshlets and nine material batches. Its `--out-bsp2` path
 invokes `bsp2tool pack-world-lit` and the independent BSP2 reader; repeating
 the integrated pack produced byte-identical WMSH and BSP2 outputs. The first
 visibility policy references every imported meshlet from every leaf, pending
-spatial association.
+spatial association. Spatial association replaced it on 2026-09-23 (see
+[WMSH spatial visibility](#f4-wmsh-spatial-visibility-for-imported-maps-2026-09-23)).
 
 The [Cycles lightmap bake](../tools/quality/staircase2_lightmap_bake.py)
 authored a shared UV layer in a second USD stage and baked a 2048², 64-sample
@@ -1212,6 +1213,96 @@ python3 -m unittest tools/quality/tests/test_pbrt_scene.py
 python3 tools/quality/pbrt_map_build.py \
   --manifest quality/fixtures/pbrt-maps/living-room.json \
   --toolchain quality-results/pbrt-toolchain.json \
+  --out quality-results/living-room-map --boot
+```
+
+### F2/F5 PBRT map pipeline: pinned tools, gates, sky, probes, collision (2026-09-23)
+
+This follows the living-room slice above and acts on its four recommendations.
+
+- **Pinned toolchain.** The host-tool profile
+  [`pbrt-map-linux-tools.json`](../quality/product_profiles/pbrt-map-linux-tools.json)
+  adds Blender 5.2.1, OIDN 2.4.0, the OCIO fixture and the in-repo compile
+  tools. It reuses the OpenUSD 25.11 and KTX-Software profile pins.
+  [`pbrt_map_toolchain.py provision`](../tools/quality/pbrt_map_toolchain.py)
+  cloned those revisions and built OpenUSD/oneTBB and KTX. It installed
+  `vbsp2`, `vvis`, `vrad`, `vtex` and `bsp2tool` from this checkout under a
+  private Waf lock, into `build/toolchains/` instead of `/tmp`. Its check
+  compares versions and capabilities against the profiles; wrong Blender, OIDN
+  and OpenUSD pins and a `bsp2tool` without `pack-world-lit` are all rejected.
+- **vbsp2 winding fix.** The World Stage face check in
+  [`worldstage.cpp`](../utils/vbsp/worldstage.cpp) took the winding from the
+  first three vertices. `FixTjuncs` can make those collinear, so valid faces of
+  angled or thin brushes failed. It now uses the Newell polygon normal.
+- **Pixel gates.** [`reference_compare.py`](../tools/quality/reference_compare.py)
+  gates the Cycles render of the exported stage against the supplied reference.
+  It scores through the reference's own fitted display curve and bounds linear
+  exposure. It also gates a camera-matched native Vulkan frame against the
+  Cycles render. Grain and mottle are measured where the reference is smooth.
+  Black and horizontally mirrored candidates must fail every gate. Unit tests
+  cover the metrics' sensitivity.
+- **Material fidelity.** PBRT `coateddiffuse` albedo now includes the coat's
+  internal reflection: `a(1-F_dr)/(1-a F_dr)` with F_dr = 0.596 for IOR 1.5.
+  Cycles steps rebind PBRT-policy materials after USD import, because
+  UsdPreviewSurface dropped coat and transmission. The living-room linear
+  exposure error fell from 0.57 to 0.16 stops, and reference-display MAE from
+  19.8 to 8.3.
+- **Reference camera.** Blender's USD export derived camera apertures from the
+  default 16:9 render size. The square staircase2 camera therefore
+  round-tripped as 102° instead of 70°, which had made its game frame look
+  zoomed. Export now uses the film size, and the reference render fails if the
+  imported FOV differs from PBRT's by more than 0.1°.
+- **Lightmap noise.** Cycles bakes on the GPU (HIP, Radeon 8060S) as one
+  merged bake-only object. Blender had run one render job per object: 54 jobs,
+  464 s for 1024 samples, now 100 s. Both manifests bake 4096 samples, then
+  denoise. The living-room game frame measures grain 0.36× and mottle 1.06×
+  the Cycles reference; at 256 samples it was 0.83× and 1.18×.
+- **Sky.** An unlit `SkyDome`, added after the bake in a render stage, shows
+  the scene's own sky through windows.
+- **Reflection probe.** Six Cycles cube faces are rendered at a probe point and
+  stored as eight roughness mips. They go in 256 atlas rows that the bake
+  reserves. A marker texel lets `world_pbr.frag` add split-sum specular.
+  Without the marker the shader behaves as before:
+  `world_pbr_native_pixel_conformance` passes 25/0 with the change.
+- **Collision.** Solids are one convex 18-DOP per connected part, and the floor
+  under the spawn is extruded per triangle. A gravity drop test lands the player
+  on the highest walkable tops and the spawn floor: staircase2's top three
+  treads within 0.04 units and the living-room table top.
+- **Retirement.** The staircase2 scripts were retired after `staircase2.json`
+  regenerated their outputs with every gate passing. The KTX2 packager became
+  `lightmap_ktx2.py`, and the VTF helpers `vtf_content.py`. The earlier
+  staircase2 sections keep their receipts; their commands name retired
+  scripts, which remain in git history.
+
+Final local results (native Vulkan, headless, Radeon 8060S):
+
+| Map | Reference vs Tungsten | Runtime vs Cycles | Grain / mottle | Drop test |
+| --- | --- | --- | --- | --- |
+| living-room | MAE 8.27, SSIM 0.882, exposure 0.16 stops | MAE 27.8, SSIM 0.721 | 0.36 / 1.06 | 2/2 |
+| staircase2 | MAE 7.65, SSIM 0.978, exposure 0.22 stops | MAE 12.0, SSIM 0.834 | 0.53 / 0.94 | 4/4 |
+
+The staircase2 runtime was MAE 18.3 / SSIM 0.768 before the probe. Its
+tightened gate (MAE 15, SSIM 0.80) now rejects a build without reflections.
+
+Limits:
+
+- The probe is one point per map, stored as blurry mips rather than a GGX
+  prefilter, with no parallax correction.
+- The sky dome is display-mapped, not HDR.
+- Collision is conservative for curved parts.
+- Hosted CI, other GPUs, and the Android/Apple profiles did not run these
+  gates.
+- The living-room runtime error remains high, mostly display mapping and the
+  missing glass.
+
+This is preview tooling; F2/F5 acceptance is not claimed.
+
+```sh
+python3 tools/quality/pbrt_map_toolchain.py provision --jobs 16
+python3 -m unittest tools/quality/tests/test_pbrt_scene.py tools/quality/tests/test_pbrt_gates.py
+python3 tools/quality/pbrt_map_build.py --manifest quality/fixtures/pbrt-maps/staircase2.json \
+  --out quality-results/staircase2-pbrt-map --boot
+python3 tools/quality/pbrt_map_build.py --manifest quality/fixtures/pbrt-maps/living-room.json \
   --out quality-results/living-room-map --boot
 ```
 
@@ -2153,3 +2244,50 @@ structural and fine orientation-aware edge parity with optional thresholds.
 This fixes the reproduced black dotted edge failure in the selected playable
 camera. Reflection/transmission parity and other viewpoints still require
 their own F4/F5 acceptance evidence.
+
+### F4 WMSH spatial visibility for imported maps (2026-09-23)
+
+Imported USD maps no longer reference every meshlet from every leaf.
+
+- Packer ([`usd_worldmesh_pack.py`](../tools/quality/usd_worldmesh_pack.py)):
+  each face group's triangles follow a Z-order curve, so the fixed 21-triangle
+  meshlets are spatially compact. Leaves reference meshlets through
+  [`worldmesh_leaf_visibility.py`](../tools/quality/worldmesh_leaf_visibility.py),
+  which is conservative: the non-solid leaves a meshlet touches, plus every
+  non-solid leaf bordering a connected solid region the meshlet enters,
+  because a ray to a point inside solid last left open space there. Bounds
+  are padded for vbsp's truncated short leaf bounds. A meshlet no leaf
+  references falls back to every leaf. The shared writer
+  ([`worldstage_mesh_pack.write_payload`](../tools/quality/worldstage_mesh_pack.py))
+  takes this as an optional per-meshlet hook; the VMF World Stage path keeps
+  its face-based leaves. 9 unit tests, including isolated rooms, furniture
+  inside and against the shell, detail leaves and the fallback.
+- Collision ([`pbrt_collision_vmf.py`](../tools/quality/pbrt_collision_vmf.py)):
+  furniture and floor solids are one nodraw `func_detail`. As structural
+  brushes, vvis treated their hulls as opaque although the render mesh is
+  not their hull, so PVS could hide visible geometry; their chopped faces
+  also stopped `vbsp2`'s World Stage export on a zero-area winding. The
+  player still rests on them (drop test: bed top 17.03, rest 17.06).
+- Engine ([`gl_rsurf.cpp`](../engine/gl_rsurf.cpp)): meshlet bounding spheres
+  (validated by the container reader) are loaded and culled against the
+  frustum the view's leaves were culled with, captured when the world list is
+  built. `r_worldmesh_cull` 0 draws every meshlet (oracle), 1 culls (default),
+  2 is a negative control with half-size spheres.
+
+Evidence, bedroom (`quality/fixtures/pbrt-maps/bedroom.json`):
+
+- [`worldmesh_visibility_oracle.py`](../tools/quality/worldmesh_visibility_oracle.py)
+  sweeps 72 noclip views (2x2 eye grid, eight yaws level and pitched, up and
+  down). All 72 culled frames are byte-identical to drawing every meshlet;
+  the negative control changes 62, so the sweep detects culling errors.
+  Median GPU time 1.94 -> 0.56 ms at 1280x720 (RADV Strix Halo).
+- Leaf references 5.4 M -> 227 K; BSP2 272 -> 242 MB.
+- The map is one room: 4 open leaves, so PVS culls nothing and frustum
+  culling does the work. Multi-room USD maps get PVS culling through the same
+  assignment, but none is built yet.
+
+Not done: normal-cone backface culling (two-sided materials need a per-batch
+flag), occlusion culling, and `vbsp2` still fails on zero-area detail faces
+(avoided here with nodraw). Other maps change triangle order on their next
+pack, so their captured frames need re-review.
+

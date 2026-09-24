@@ -171,6 +171,11 @@ void CL_Retry( void );
 void CL_HudMessage( const char *pMessage );
 void CL_CheckClientState( void );
 void CL_TakeSnapshotAndSwap();
+// Called once per presented frame from CL_TakeSnapshotAndSwap, before the swap
+// and with material-system threading paused, so the hook may read the back
+// buffer. One hook at a time; null removes it. Used by the debug API.
+typedef void ( *CL_FrameCaptureHookFn )( void *context );
+void CL_SetFrameCaptureHook( CL_FrameCaptureHookFn hook, void *context );
 void CL_ReallocateDynamicData( int maxclients );
 void CL_SetupMapName( const char* pName, char* pFixedName, int maxlen );
 bool CL_CheckCRCs( const char *pszMap );

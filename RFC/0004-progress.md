@@ -1,14 +1,14 @@
 # RFC 0004 progress: Box3D Primary Physics Backend
 
-Updated: 2026-09-22 (Box3D provider completion)
+Updated: 2026-09-23 (collision-rule recheck for portals)
 Source revision at assessment: `87955f67` (working tree; AGENTS.md portfolio rows: R09, R19, R31, R34, R37, R44, R45)
 
 This file is the human-readable, durable progress record for RFC 0004. It tracks the phased implementation of replacing IVP/Havana with Box3D as Source's primary rigid-body physics backend.
 
 ## Status
 
-Evidence (2026-09-22): `python3 tools/quality/physics_conformance.py --out <dir>`
-passes. IVP and Box3D each pass 554 checks (149 boot, 405 gameplay); 12,372
+Evidence (2026-09-23): `python3 tools/quality/physics_conformance.py --out <dir>`
+passes. IVP and Box3D each pass 558 checks (149 boot, 409 gameplay); 12,372
 observations agree; all 17 sensitivity faults are detected. The contract and its
 known gaps are in
 [`vphysics.provider.v1`](../unittests/physicstest/contracts/vphysics.provider.v1.md).
@@ -49,6 +49,36 @@ Evidence:
   slower than IVP and never sticks. The repro is not installed as a tool; a
   Q-PHYSICS gameplay-scene runner is still open.
 - No CI lane runs these checks yet.
+
+Portal-under-prop fix (2026-09-23): with Box3D, a prop resting where a floor
+portal opened stayed on the portal instead of falling through. The portal
+simulator takes ownership of the prop, and the game's collision rules then reject
+the prop/world pair. The game applies this through `CollisionRulesChanged` →
+`RecheckCollisionFilter`, `Wake`, `RecheckContactPoints`. Box3D consults the
+rules only when a contact is created, and `b3Shape_SetFilter` ignores unchanged
+filter bits, so the existing floor contact survived.
+
+`RecheckCollisionFilter` now re-runs the rules on the object's pairs, as IVP's
+`recheck_collision_filter` does:
+
+- Candidates come from a broadphase query of the body bounds, inflated past the
+  fat-AABB margin, so they include non-touching contacts.
+- A pair the rules now reject is held off through the snapshot-deletion
+  pre-solve list until the rules allow it again. Contacts that are still allowed
+  are left alone, so they produce no extra touch or impact events.
+- A dynamic object that overlaps an allowed partner without a touching contact
+  (the rules rejected the pair when it formed) has that shape's proxy reset, so
+  Box3D pairs it again.
+
+Evidence:
+
+- Four new `rules.recheck-*` checks: resting contact dropped, allowed contact
+  kept, near pair dropped, and pair restored. IVP passes all four; the pre-fix
+  Box3D module fails three.
+- A local headless `testchmb_a_02` repro spawned a cube, opened a floor portal
+  under it with `NewLocation`, and logged the result with
+  `sv_portal_debug_touch`. IVP and the fixed Box3D teleport the cube; the pre-fix
+  Box3D never does. The repro is not installed as a tool.
 
 | Work item | Phase | Status | Evidence |
 | --- | --- | --- | --- |

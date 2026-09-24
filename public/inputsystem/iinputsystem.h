@@ -159,6 +159,16 @@ public:
 	}
 
 	virtual void StartTextInput() = 0;
+
+	// Gyro aiming. EnableGyro runs or stops the device gyroscope and returns
+	// whether the device has one. GetGyroAccumulators returns the rotation, in
+	// radians, since the previous call, about the axes of the screen as it is
+	// currently displayed: pitch about screen-right (positive tilts the top edge
+	// toward the player, i.e. looks up), yaw about screen-up (positive turns
+	// left) and roll about the axis out of the screen (positive is
+	// counter-clockwise). It returns false while no gyroscope is running.
+	virtual bool EnableGyro( bool bEnable ) = 0;
+	virtual bool GetGyroAccumulators( float &pitch, float &yaw, float &roll ) = 0;
 };
 
 

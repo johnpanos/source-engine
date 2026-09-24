@@ -77,12 +77,12 @@ def stage_runtime(runtime, stage, game="portal", content_only=False):
     return count
 
 
-def install_content(content_root, stage, game="portal"):
-    """Overlay a private compiled map and its materials into a staged game."""
+def content_files(content_root):
+    """Validated (source, relative) files of a compiled map content root."""
     source_root = Path(content_root).resolve()
     if not source_root.is_dir():
         raise ValueError("content root is missing")
-    plan = []
+    files = []
     for source in sorted(source_root.rglob("*")):
         if source.is_dir():
             continue
@@ -91,12 +91,20 @@ def install_content(content_root, stage, game="portal"):
                 or relative.parts[0] not in {"maps", "materials"}
                 or source.suffix.lower() not in {".bsp", ".vtf", ".vmt"}):
             raise ValueError("content root has an unsupported file: " + str(relative))
+        files.append((source, relative))
+    if not any(relative.parts[0] == "maps" for _, relative in files):
+        raise ValueError("content root has no map")
+    return files
+
+
+def install_content(content_root, stage, game="portal"):
+    """Overlay a private compiled map and its materials into a staged game."""
+    plan = []
+    for source, relative in content_files(content_root):
         target = stage / game / relative
         if target.exists() or target.is_symlink():
             raise ValueError("private content would replace installed content: " + str(relative))
         plan.append((source, relative, target))
-    if not any(relative.parts[0] == "maps" for _, relative, _ in plan):
-        raise ValueError("content root has no map")
     installed = {}
     for source, relative, target in plan:
         target.parent.mkdir(parents=True, exist_ok=True)

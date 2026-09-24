@@ -190,3 +190,31 @@ These checks prove the package builds and is well formed. They do not provide
 the profile's device evidence: installed-package smoke tests, rotation and
 fold, and surface recreation stay `unverified` until they run on the declared
 hardware.
+
+## Gyro aiming
+
+The client aims with the device gyroscope (`touch_gyro`, set on the Touch
+options page):
+- `0`: off.
+- `1`, the default: while a finger rests on the look area. This works like the
+  Steam Deck's gyro that turns on when the right trackpad is touched.
+- `2`: always.
+
+`inputsystem/gyro_sensor.cpp` reads the NDK sensor queue on its own thread
+because SDL3's Android sensor backend is fixed at 60 Hz. It samples at twice
+the display refresh rate, for example 240 Hz on a 120 Hz panel. It integrates
+each sample by its hardware timestamp. The main thread only reads atomic totals.
+Android 12 and later cap sensors at 200 Hz without
+`HIGH_SAMPLING_RATE_SENSORS`, so the profile declares that permission. It is an
+install-time permission and shows no prompt. The sensor is off while the app is
+in the background and while gyro aiming is off.
+
+The rate policy, the display-rotation axis remap and the integrator are tested
+by the `input.gyro` conformance suite (37 checks). Its sensitivity twin,
+`input.gyro.sensitivity`, confirms that six plausible defects are caught. Aim
+feel, orientation signs on hardware and the achieved sensor rate are
+`unverified` until they are measured on a device.
+
+```sh
+python3 tools/quality/conformance.py check --suite input.gyro --suite input.gyro.sensitivity
+```

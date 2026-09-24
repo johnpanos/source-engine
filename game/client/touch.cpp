@@ -12,6 +12,9 @@
 #include "tier0/icommandline.h"
 #include "vgui_controls/Button.h"
 #include "viewrender.h"
+#include "hud.h"
+#include "cdll_client_int.h"
+#include "inputsystem/iinputsystem.h"
 
 #define STB_RECT_PACK_IMPLEMENTATION
 #include "stb_rect_pack.h"
@@ -34,7 +37,9 @@ extern ConVar sensitivity;
 #define TOUCH_DEFAULT_CFG "touch_default.cfg"
 #define MIN_ALPHA_IN_CUTSCENE 20
 
-ConVar touch_enable( "touch_enable", TOUCH_DEFAULT, FCVAR_ARCHIVE );
+static void TouchGyroChanged( IConVar *var, const char *pOldValue, float flOldValue );
+
+ConVar touch_enable( "touch_enable", TOUCH_DEFAULT, FCVAR_ARCHIVE, "", TouchGyroChanged );
 ConVar touch_draw( "touch_draw", "1", FCVAR_ARCHIVE );
 ConVar touch_filter( "touch_filter", "0", FCVAR_ARCHIVE );
 ConVar touch_forwardzone( "touch_forwardzone", "0.06", FCVAR_ARCHIVE, "forward touch zone" );
@@ -47,6 +52,42 @@ ConVar touch_grid_enable( "touch_grid_enable", "1", FCVAR_ARCHIVE, "enable touch
 ConVar touch_precise_amount( "touch_precise_amount", "0.5", FCVAR_ARCHIVE, "sensitivity multiplier for precise-look" );
 
 ConVar touch_button_info( "touch_button_info", "0", FCVAR_ARCHIVE );
+
+// Gyro aiming. The hold mode follows the Steam Deck's "gyro on right trackpad
+// touch": the gyro aims only while a finger rests on the look area (or on a
+// button above it), and lifting the finger lets the device move freely.
+ConVar touch_gyro( "touch_gyro", TOUCH_DEFAULT, FCVAR_ARCHIVE,
+    "Gyro aiming: 0 off, 1 while a finger is held on the look area, 2 always", true, 0, true, 2,
+    TouchGyroChanged );
+ConVar touch_gyro_sensitivity( "touch_gyro_sensitivity", "1.0", FCVAR_ARCHIVE,
+    "Degrees the view turns per degree the device turns" );
+ConVar touch_gyro_axis( "touch_gyro_axis", "0", FCVAR_ARCHIVE,
+    "Gyro turning: 0 turn the device (yaw), 1 steer it like a wheel (roll), 2 both", true, 0, true,
+    2 );
+ConVar touch_gyro_invert_pitch(
+    "touch_gyro_invert_pitch", "0", FCVAR_ARCHIVE, "Invert gyro up/down aiming" );
+
+// Rotation made while nothing read the gyro (menus, pauses, level loads) is
+// discarded instead of arriving as one jump.
+#define GYRO_MAX_READ_GAP 0.25
+
+enum ETouchGyroMode
+{
+	gyro_off = 0,
+	gyro_hold,
+	gyro_always
+};
+
+static void TouchGyroChanged( IConVar *var, const char *pOldValue, float flOldValue )
+{
+	if ( !inputsystem )
+		return;
+
+	// The sensor runs only when a mode can use it; the hold mode needs touch.
+	const int mode = touch_gyro.GetInt();
+	inputsystem->EnableGyro(
+	    mode == gyro_always || ( mode == gyro_hold && touch_enable.GetBool() ) );
+}
 
 #define boundmax( num, high ) ( (num) < (high) ? (num) : (high) )
 #define boundmin( num, low )  ( (num) >= (low) ? (num) : (low)  )
@@ -310,6 +351,58 @@ void CTouchControls::GetTouchDelta( float yaw, float pitch, float *dx, float *dy
 	m_flPreviousPitch = pitch;
 }
 
+bool CTouchControls::IsGyroEngaged()
+{
+	if ( state != state_none || enginevgui->IsGameUIVisible() )
+		return false;
+
+	switch ( touch_gyro.GetInt() )
+	{
+	case gyro_hold:
+		return touch_enable.GetBool() && look_finger != -1;
+	case gyro_always:
+		return true;
+	default:
+		return false;
+	}
+}
+
+// View deltas from the gyro, in the look zone's convention (yaw -= dx, pitch += dy).
+void CTouchControls::GetGyroDelta( float *dx, float *dy )
+{
+	*dx = *dy = 0.f;
+
+	float pitch, yaw, roll;
+	if ( !inputsystem || !inputsystem->GetGyroAccumulators( pitch, yaw, roll ) )
+		return;
+
+	const double now = Plat_FloatTime();
+	const bool fresh = now - m_flLastGyroRead < GYRO_MAX_READ_GAP;
+	m_flLastGyroRead = now;
+	if ( !fresh || !IsGyroEngaged() )
+		return;
+
+	// yaw and roll are counter-clockwise positive: both turn the view left.
+	float turn;
+	switch ( touch_gyro_axis.GetInt() )
+	{
+	case 1:
+		turn = roll;
+		break;
+	case 2:
+		turn = yaw + roll;
+		break;
+	default:
+		turn = yaw;
+		break;
+	}
+
+	const float scale =
+	    RAD2DEG( 1.f ) * touch_gyro_sensitivity.GetFloat() * gHUD.GetFOVSensitivityAdjust();
+	*dx = -turn * scale;
+	*dy = -pitch * scale * ( touch_gyro_invert_pitch.GetBool() ? -1.f : 1.f );
+}
+
 // The built-in layout, used until the player saves their own (touch.cfg) and
 // when a game ships no cfg/touch_default.cfg. Buttons are squared to the screen
 // aspect when added (round_aspect), so heights follow from the widths.
@@ -422,6 +515,7 @@ void CTouchControls::Init()
 	mouse_events = 0;
 	move_start_x = move_start_y = 0.0f;
 	m_flPreviousYaw = m_flPreviousPitch = 0.f;
+	m_flLastGyroRead = 0.0;
 	gridcolor = rgba_t(255, 0, 0, 30);
 
 	m_bCutScene = false;
@@ -453,6 +547,8 @@ void CTouchControls::Init()
 	m_flHideTouch = 0.f;
 
 	initialized = true;
+
+	TouchGyroChanged( &touch_gyro, touch_gyro.GetString(), touch_gyro.GetFloat() );
 }
 
 void CTouchControls::LevelInit()
@@ -598,6 +694,9 @@ void CTouchControls::CreateAtlasTexture()
 
 void CTouchControls::Shutdown( )
 {
+	if ( inputsystem )
+		inputsystem->EnableGyro( false );
+
 	textureList.PurgeAndDeleteElements();
 	btns.PurgeAndDeleteElements();
 }

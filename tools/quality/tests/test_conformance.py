@@ -189,6 +189,28 @@ class RunSuiteClassificationTest(unittest.TestCase):
         self.assertFalse(r["matched"])
 
 
+class ResponseFileTest(unittest.TestCase):
+    """Relative @response files resolve against --root, not the caller's cwd."""
+
+    def test_rooted_flags(self):
+        self.assertEqual(conformance.rooted_flags("/r", ["@a/b.rsp", "@/abs.rsp", "-Dx", "-I@y"]),
+                         ["@/r/a/b.rsp", "@/abs.rsp", "-Dx", "-I@y"])
+
+    def test_response_file_applies_from_another_cwd(self):
+        profile = conformance.load_profile(os.path.join(REPO, PROFILES_DIR), "self-test")
+        build_dir = tempfile.mkdtemp(prefix="conf-rsp-")
+        suite = make_suite("rsp", ["response_file.cpp"],
+                           extra_flags=["@" + CPP + "/response_file.rsp"])
+        previous = os.getcwd()
+        os.chdir(build_dir)
+        try:
+            r = conformance.run_suite(REPO, CXX, profile, suite, build_dir)
+        finally:
+            os.chdir(previous)
+            shutil.rmtree(build_dir, ignore_errors=True)
+        self.assertEqual(r["outcome"], conformance.OUTCOME_PASS, r)
+
+
 class ProviderTest(unittest.TestCase):
     """Unavailable providers never pass; optional skips never certify."""
 

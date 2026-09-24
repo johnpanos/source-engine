@@ -1345,6 +1345,15 @@ static void screenshot_internal( const CCommand &args )
 
 ConCommand screenshot_internal_command( "__screenshot_internal", screenshot_internal, "Internal command to take a screenshot without renumbering or notifying Steam.", FCVAR_DONTRECORD | FCVAR_HIDDEN );
 
+static CL_FrameCaptureHookFn s_pfnFrameCaptureHook = NULL;
+static void *s_pFrameCaptureHookContext = NULL;
+
+void CL_SetFrameCaptureHook( CL_FrameCaptureHookFn hook, void *context )
+{
+	s_pfnFrameCaptureHook = hook;
+	s_pFrameCaptureHookContext = context;
+}
+
 void CL_TakeSnapshotAndSwap()
 {
 	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "%s", __FUNCTION__ );
@@ -1460,6 +1469,13 @@ void CL_TakeSnapshotAndSwap()
 		GetTestScriptMgr()->CheckPoint( "screenshot" );
 
 		// Restore threading if it was previously enabled (if it wasn't this will do nothing).
+		materials->AllowThreading( bEnabled, g_nMaterialSystemThread );
+	}
+
+	if ( s_pfnFrameCaptureHook )
+	{
+		bool bEnabled = materials->AllowThreading( false, g_nMaterialSystemThread );
+		s_pfnFrameCaptureHook( s_pFrameCaptureHookContext );
 		materials->AllowThreading( bEnabled, g_nMaterialSystemThread );
 	}
 

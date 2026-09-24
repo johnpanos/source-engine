@@ -89,6 +89,7 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 // memdbgon must be the last include file in a .cpp file!!!
 #include "render/legacy_shader_provider.h"
 #include "render/builtin_shader_provider.h"
+#include "engine/debugapi_root.h"
 #include "tier0/memdbgon.h"
 
 #define DEFAULT_HL2_GAMEDIR	"hl2"
@@ -920,6 +921,19 @@ bool CSourceAppSystemGroup::Create()
 		    requestedShaders );
 		return false;
 	}
+
+	// The debug API reports what this root composed; it binds before the
+	// engine loads and starts serving once the engine initializes.
+	const DebugApiComposedProvider composed[] = {
+#if defined( USE_SDL )
+	    { "window", window->name },
+#endif
+	    { "input", input->name },
+	    { "physics", pPhysicsModule },
+	    { "render", selected->id },
+	    { "shaders", standardShaders->id } };
+	if ( !DebugApi_BindFromCommandLine( composed, ARRAYSIZE( composed ) ) )
+		return false;
 
 	double elapsed = Plat_FloatTime() - st;
 	COM_TimestampedLog( "LoadAppSystems:  Took %.4f secs to load libraries and get factories.", (float)elapsed );

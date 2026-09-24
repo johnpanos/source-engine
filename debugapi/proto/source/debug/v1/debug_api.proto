@@ -1,0 +1,285 @@
+// ==== Copyright Valve Corporation, All rights reserved. ======================
+//
+// source.debug.v1: the engine debug/control protocol. This file is the single
+// authority for the methods, their parameter/result shapes and the error
+// codes; C++ (engine) and Python (tools/debugapi) bindings are generated from
+// it by the pinned protoc.
+//
+// Wire protocol: JSON-RPC 2.0 (https://www.jsonrpc.org/specification).
+//  - The JSON-RPC method name of an rpc is its name with the first letter
+//    lowercased ("Exec" -> "exec", "WaitFor" -> "waitFor").
+//  - "params" is the rpc's request message and "result" its result message, in
+//    the proto3 canonical JSON mapping (lowerCamelCase names, enums as names,
+//    bytes as base64). Params are named (an object) or omitted; unknown fields
+//    are rejected with INVALID_PARAMS.
+//  - Ids may be strings, integers (|n| <= 2^53) or null and are echoed exactly.
+//    Requests without an id are notifications and are never answered.
+//  - Batches (arrays) are answered with one array once every member request
+//    has completed. Deferred methods may complete out of request order.
+//  - The server sends DebugApiNotifications as JSON-RPC notifications.
+// Framing (newline-delimited or Content-Length headers) and transport (e.g. a
+// Unix socket) are selected independently by the engine's composition root.
+
+syntax = "proto3";
+
+package source.debug.v1;
+
+import "google/protobuf/empty.proto";
+
+// Methods a client may call.
+service DebugApi
+{
+	rpc Hello( HelloRequest ) returns ( HelloResult );
+	rpc Exec( ExecRequest ) returns ( ExecResult );
+	rpc CvarGet( CvarGetRequest ) returns ( CvarResult );
+	rpc CvarSet( CvarSetRequest ) returns ( CvarResult );
+	rpc Status( StatusRequest ) returns ( StatusResult );
+	// Deferred: completes when the condition holds, or fails with TIMEOUT.
+	rpc WaitFor( WaitForRequest ) returns ( WaitForResult );
+	// Deferred: completes after the next rendered frame is captured.
+	rpc Screenshot( ScreenshotRequest ) returns ( ScreenshotResult );
+	rpc Subscribe( SubscribeRequest ) returns ( SubscribeResult );
+	// Replies, then asks the engine to quit; the connection closes at teardown.
+	rpc Quit( QuitRequest ) returns ( QuitResult );
+}
+
+// Notifications the server sends (no id, no reply).
+service DebugApiNotifications
+{
+	rpc Log( LogNotification ) returns ( google.protobuf.Empty );
+}
+
+// JSON-RPC error.code values. The JSON-RPC error object also carries
+// data.errorCode, the enum value's name.
+enum ErrorCode
+{
+	ERROR_CODE_UNSPECIFIED = 0;
+	// Invalid JSON, or a frame the framing layer rejected.
+	ERROR_CODE_PARSE_ERROR = -32700;
+	// Not a valid JSON-RPC 2.0 request object, or an empty batch.
+	ERROR_CODE_INVALID_REQUEST = -32600;
+	ERROR_CODE_METHOD_NOT_FOUND = -32601;
+	// Params are not an object of the method's request message, or a field
+	// value is out of range.
+	ERROR_CODE_INVALID_PARAMS = -32602;
+	ERROR_CODE_INTERNAL_ERROR = -32603;
+	ERROR_CODE_NOT_FOUND = -32001;
+	// The method is valid but this product cannot provide it (e.g. screenshots
+	// from a dedicated server).
+	ERROR_CODE_UNAVAILABLE_IN_PRODUCT = -32002;
+	ERROR_CODE_FAILED_PRECONDITION = -32003;
+	ERROR_CODE_TIMEOUT = -32004;
+	// A bound was exceeded (frame size, batch size, pending requests).
+	ERROR_CODE_RESOURCE_EXHAUSTED = -32005;
+	// The server is shutting down; the request will not complete.
+	ERROR_CODE_CANCELLED = -32006;
+}
+
+// The JSON-RPC error object's "data" member.
+message ErrorData
+{
+	ErrorCode error_code = 1;
+}
+
+enum ProtocolVersion
+{
+	PROTOCOL_VERSION_UNSPECIFIED = 0;
+	PROTOCOL_VERSION_1 = 1;
+}
+
+enum Product
+{
+	PRODUCT_UNSPECIFIED = 0;
+	PRODUCT_CLIENT = 1;
+	PRODUCT_DEDICATED = 2;
+}
+
+// Mirrors the engine's HOSTSTATES (engine/host_state.cpp).
+enum HostState
+{
+	HOST_STATE_UNSPECIFIED = 0;
+	HOST_STATE_NEW_GAME = 1;
+	HOST_STATE_LOAD_GAME = 2;
+	HOST_STATE_CHANGE_LEVEL_SP = 3;
+	HOST_STATE_CHANGE_LEVEL_MP = 4;
+	HOST_STATE_RUN = 5;
+	HOST_STATE_GAME_SHUTDOWN = 6;
+	HOST_STATE_SHUTDOWN = 7;
+	HOST_STATE_RESTART = 8;
+}
+
+// Mirrors SIGNONSTATE_* (public/const.h); NONE is the zero value.
+enum SignonState
+{
+	SIGNON_STATE_NONE = 0;
+	SIGNON_STATE_CHALLENGE = 1;
+	SIGNON_STATE_CONNECTED = 2;
+	SIGNON_STATE_NEW = 3;
+	SIGNON_STATE_PRESPAWN = 4;
+	SIGNON_STATE_SPAWN = 5;
+	SIGNON_STATE_FULL = 6;
+	SIGNON_STATE_CHANGELEVEL = 7;
+}
+
+message HelloRequest
+{
+	// The version the client speaks; a mismatch fails with FAILED_PRECONDITION.
+	ProtocolVersion protocol_version = 1;
+	string client_name = 2;
+}
+
+// A composed provider, e.g. role "render" id "native-vulkan".
+message Provider
+{
+	string role = 1;
+	string id = 2;
+}
+
+message HelloResult
+{
+	ProtocolVersion protocol_version = 1;
+	string framing = 2;
+	string transport = 3;
+	Product product = 4;
+	string build_revision = 5;
+	HostState host_state = 6;
+	repeated Provider providers = 7;
+	string game_dir = 8;
+}
+
+// Runs one console command line synchronously (use ';' to chain commands;
+// newlines are rejected). Only output printed while it executes is captured,
+// and captured output is returned here instead of being displayed; work
+// deferred with `wait` is not captured.
+message ExecRequest
+{
+	string command = 1;
+}
+
+message ExecResult
+{
+	string output = 1;
+	bool truncated = 2;
+}
+
+message CvarGetRequest
+{
+	string name = 1;
+}
+
+// Sets through the console path, so cheat and protection rules apply.
+message CvarSetRequest
+{
+	string name = 1;
+	string value = 2;
+}
+
+message CvarResult
+{
+	string name = 1;
+	string value = 2;
+	string default_value = 3;
+	double float_value = 4;
+	int32 int_value = 5;
+	repeated string flags = 6;
+	string help = 7;
+}
+
+message StatusRequest
+{
+}
+
+message StatusResult
+{
+	HostState host_state = 1;
+	string map = 2;
+	bool server_active = 3;
+	SignonState client_signon = 4;
+	uint32 player_count = 5;
+	uint32 max_players = 6;
+	uint32 host_frame = 7;
+	double host_time = 8;
+}
+
+enum WaitCondition
+{
+	WAIT_CONDITION_UNSPECIFIED = 0;
+	// The local server is active on a map.
+	WAIT_CONDITION_MAP_LOADED = 1;
+	// The local client finished signon (SIGNON_STATE_FULL).
+	WAIT_CONDITION_CLIENT_ACTIVE = 2;
+	// `frames` further server pumps (engine frames) have run.
+	WAIT_CONDITION_FRAMES = 3;
+}
+
+message WaitForRequest
+{
+	WaitCondition condition = 1;
+	uint32 frames = 2;
+	// Required, 1..600000.
+	uint32 timeout_ms = 3;
+}
+
+message WaitForResult
+{
+	uint32 frames_waited = 1;
+	uint32 elapsed_ms = 2;
+	StatusResult status = 3;
+}
+
+enum ScreenshotMode
+{
+	SCREENSHOT_MODE_UNSPECIFIED = 0;
+	// Write a TGA through the engine's screenshot path; return its local path.
+	SCREENSHOT_MODE_PATH = 1;
+	// Return JPEG bytes inline.
+	SCREENSHOT_MODE_INLINE_JPEG = 2;
+}
+
+message ScreenshotRequest
+{
+	ScreenshotMode mode = 1;
+	// INLINE_JPEG only, 1..100; 0 selects 90.
+	uint32 jpeg_quality = 2;
+}
+
+message ScreenshotResult
+{
+	uint32 width = 1;
+	uint32 height = 2;
+	string path = 3;
+	bytes jpeg = 4;
+	uint32 host_frame = 5;
+}
+
+message SubscribeRequest
+{
+	// Stream console output as `log` notifications on this connection.
+	bool log = 1;
+}
+
+message SubscribeResult
+{
+	bool log = 1;
+}
+
+message QuitRequest
+{
+}
+
+message QuitResult
+{
+}
+
+message LogNotification
+{
+	// Per-connection notification sequence number, starting at 1.
+	uint32 seq = 1;
+	// Notifications dropped on this connection since the previous delivered
+	// one because its output buffer was full. Responses are never dropped.
+	uint32 dropped_before = 2;
+	string text = 3;
+	bool developer = 4;
+	// 0xRRGGBBAA when the text was printed in color, else 0.
+	uint32 rgba = 5;
+}

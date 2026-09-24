@@ -733,7 +733,7 @@ def run(args):
     evidence["harness_sha256"] = portal_boot.sha256(harness)
     pixels = output / "pixels.json"
     command = [str(harness), "-game", "portal", "-renderer", args.renderer, "-hdr", args.hdr,
-               "-family", args.family, "-out", str(pixels)]
+               "-family", args.family, "-out", str(pixels)] + args.extra_arg
     environment = os.environ.copy()
     environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
     # DXVK presents through SDL3 in these products; the native backend ignores it.
@@ -806,6 +806,9 @@ def main(argv=None):
     run_parser.add_argument("--out", type=Path, required=True)
     run_parser.add_argument("--reference", type=Path)
     run_parser.add_argument("--timeout", type=float, default=120)
+    run_parser.add_argument("--extra-arg", action="append", default=[],
+                            help="extra harness command-line argument (repeatable), e.g. "
+                                 "--extra-arg=-vkpassmerge --extra-arg=0")
     check_parser = commands.add_parser("check", help="judge an existing capture")
     check_parser.add_argument("--pixels", type=Path, required=True)
     check_parser.add_argument("--hdr", choices=sorted(HDR_TYPES), required=True)

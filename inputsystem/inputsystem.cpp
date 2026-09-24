@@ -84,6 +84,9 @@ CInputSystem::CInputSystem()
 	m_nJoystickCount = 0;
 	m_bJoystickInitialized = false;
 	m_bTouchInitialized = false;
+	m_bGyroWatchInstalled = false;
+	m_bGyroEnabled = false;
+	m_bVibratorWatchInstalled = false;
 	m_nPollCount = 0;
 	m_PrimaryUserId = INVALID_USER_ID;
 	m_uiMouseWheel = 0;
@@ -182,8 +185,12 @@ InitReturnVal_t CInputSystem::Init()
 	joy_xcontroller_found.SetValue( 0 );
 	
 	if( !m_bConsoleTextMode )
+	{
 		InitializeTouch();
-	
+		InitializeGyro();
+		InitializeDeviceVibrator();
+	}
+
 	if ( IsPC() && !m_bConsoleTextMode )
 	{
 		InitializeJoysticks();
@@ -264,6 +271,8 @@ void CInputSystem::Shutdown()
 		ShutdownJoysticks();
 	}
 	ShutdownTouch();
+	ShutdownGyro();
+	ShutdownDeviceVibrator();
 
 	BaseClass::Shutdown();
 }
@@ -973,6 +982,7 @@ void CInputSystem::SetPrimaryUserId( int userId )
 void CInputSystem::SetRumble( float fLeftMotor, float fRightMotor, int userId )
 {
 	SetXDeviceRumble( fLeftMotor, fRightMotor, userId );
+	SetDeviceVibratorRumble( fLeftMotor, fRightMotor );
 }
 
 
