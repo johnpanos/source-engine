@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_furnace",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/furnace/furnace.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

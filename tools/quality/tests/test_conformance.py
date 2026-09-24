@@ -524,5 +524,126 @@ class EndToEndTest(unittest.TestCase):
         self.assertFalse(evidence["reconciled"])
 
 
+VULKANINFO_SUMMARY = """==========
+VULKANINFO
+==========
+
+Vulkan Instance Version: 1.4.341
+
+Devices:
+========
+GPU0:
+	apiVersion         = 1.4.354
+	deviceType         = PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU
+	deviceName         = AMD Radeon 8060S Graphics (RADV STRIX_HALO)
+	driverName         = radv
+	driverInfo         = Mesa 26.2.2
+GPU1:
+	apiVersion         = 1.4.354
+	deviceType         = PHYSICAL_DEVICE_TYPE_CPU
+	deviceName         = llvmpipe (LLVM 22.1.8, 256 bits)
+	driverName         = llvmpipe
+"""
+
+
+class RunnerClassTest(unittest.TestCase):
+    """GPU profiles: class selection, profile env/link/providers, device probing."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.profile = conformance.load_profile(
+            os.path.join(REPO, PROFILES_DIR), "self-test")
+        cls.build_dir = tempfile.mkdtemp(prefix="conf-runner-")
+
+    def _gpu(self, sid, sources, **kwargs):
+        suite = make_suite(sid, sources, **kwargs)
+        suite["profile"] = "self-test-gpu"
+        return suite
+
+    def _profile(self, **fields):
+        return dict(self.profile, **fields)
+
+    def test_unselected_check_runs_only_the_headless_class(self):
+        suites = [make_suite("p", ["pass.cpp"]), self._gpu("g", ["failing.cpp"])]
+        self.assertEqual(EndToEndTest()._check(suites), 0)
+        self.assertEqual(EndToEndTest()._check(suites, extra_args=["--runner", "gpu"]), 1)
+        self.assertEqual(EndToEndTest()._check(suites, extra_args=["--runner", "all"]), 1)
+        # Naming a GPU suite selects it without --runner.
+        self.assertEqual(EndToEndTest()._check(suites, extra_args=["--suite", "g"]), 1)
+
+    def test_a_class_with_no_suites_is_fatal(self):
+        self.assertEqual(EndToEndTest()._check([self._gpu("g", ["pass.cpp"])]), 2)
+        self.assertEqual(EndToEndTest()._check([make_suite("p", ["pass.cpp"])],
+                                               extra_args=["--runner", "gpu"]), 2)
+
+    def test_unknown_runner_class_is_rejected(self):
+        directory = tempfile.mkdtemp(prefix="conf-profile-")
+        with open(os.path.join(directory, "bad.json"), "w", encoding="utf-8") as f:
+            json.dump({"schema": conformance.PROFILE_SCHEMA, "id": "bad",
+                       "cxx_std": "c++20", "runner": "quantum"}, f)
+        with self.assertRaises(conformance.ManifestError):
+            conformance.load_profile(directory, "bad")
+
+    def test_profile_environment_reaches_the_suite(self):
+        profile = self._profile(run_env={"FAIL_ON_ATTEMPT": "0"})
+        r = conformance.run_suite(REPO, CXX, profile, make_suite("env", ["environment.cpp"]),
+                                  self.build_dir)
+        self.assertEqual(r["outcome"], conformance.OUTCOME_FAIL)
+        os.environ["FAIL_ON_ATTEMPT"] = "0"
+        try:
+            profile = self._profile(run_env_unset=["FAIL_ON_ATTEMPT"])
+            r = conformance.run_suite(REPO, CXX, profile,
+                                      make_suite("env", ["environment.cpp"]), self.build_dir)
+        finally:
+            del os.environ["FAIL_ON_ATTEMPT"]
+        self.assertEqual(r["outcome"], conformance.OUTCOME_PASS)
+
+    def test_profile_link_flags_are_applied(self):
+        profile = self._profile(link_flags=["-lconformance-selftest-no-such-library"])
+        r = conformance.run_suite(REPO, CXX, profile, make_suite("p", ["pass.cpp"]),
+                                  self.build_dir)
+        self.assertEqual(r["outcome"], conformance.OUTCOME_COMPILE_ERROR)
+        self.assertIn("-lconformance-selftest-no-such-library", r["repro"])
+
+    def test_profile_providers_apply_to_every_suite(self):
+        profile = self._profile(requires=["executable:conformance-selftest-no-such-tool"])
+        r = conformance.run_suite(REPO, CXX, profile, make_suite("p", ["pass.cpp"]),
+                                  self.build_dir)
+        self.assertEqual(r["outcome"], conformance.OUTCOME_UNAVAILABLE)
+        self.assertIn("executable:conformance-selftest-no-such-tool", r["requires"])
+
+    def test_vulkaninfo_summary_is_parsed(self):
+        devices = conformance.parse_vulkaninfo_summary(VULKANINFO_SUMMARY)
+        self.assertEqual([d["deviceType"] for d in devices],
+                         ["PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU", "PHYSICAL_DEVICE_TYPE_CPU"])
+        self.assertEqual(devices[0]["driverName"], "radv")
+
+    def test_vulkan_device_provider_requires_a_real_gpu(self):
+        original = conformance.vulkan_devices
+        try:
+            cpu_only = [d for d in conformance.parse_vulkaninfo_summary(VULKANINFO_SUMMARY)
+                        if d["deviceType"].endswith("_CPU")]
+            conformance.vulkan_devices = lambda env=None: (cpu_only, None)
+            ok, detail = conformance.provider_available(REPO, "vulkan-device:gpu")
+            self.assertFalse(ok)
+            self.assertIn("PHYSICAL_DEVICE_TYPE_CPU", detail)
+            self.assertTrue(conformance.provider_available(REPO, "vulkan-device:any")[0])
+            self.assertFalse(conformance.provider_available(REPO, "vulkan-device:tpu")[0])
+            conformance.vulkan_devices = lambda env=None: ([], "vulkaninfo not found on PATH")
+            ok, detail = conformance.provider_available(REPO, "vulkan-device:gpu")
+            self.assertFalse(ok)
+            self.assertIn("vulkaninfo", detail)
+        finally:
+            conformance.vulkan_devices = original
+
+    def test_expected_divergence_names_the_defect(self):
+        # A deliberate failure of another kind must not satisfy the row.
+        failing = make_suite("other", ["failing.cpp"], expect="fail")
+        failing["expected_divergence"] = "zero checks executed"
+        r = conformance.run_suite(REPO, CXX, self.profile, failing, self.build_dir)
+        self.assertEqual(r["outcome"], conformance.OUTCOME_FAIL)
+        self.assertFalse(r["matched"])
+
+
 if __name__ == "__main__":
     unittest.main()

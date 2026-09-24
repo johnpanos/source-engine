@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_probe_grid",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/probe-grid/probe-grid.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

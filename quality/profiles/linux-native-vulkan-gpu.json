@@ -1,0 +1,35 @@
+{
+  "schema": "conformance-profile/v1",
+  "id": "linux-native-vulkan-gpu",
+  "description": "Linux x86_64 native Vulkan on a real GPU (RFC 0011 G0; RFC 0005 Q-PRESENTATION). Suites link the native device core (materialsystem/shaderapivulkan) with the system SDL3 and Vulkan loader and render headless: SDL's offscreen driver creates surfaces through VK_EXT_headless_surface, so no window reaches a desktop. Runs only on a runner with a physical GPU (`--runner gpu`); an unselected `check` stays headless. The evidence records the Vulkan devices vulkaninfo reported under this environment.",
+  "os": "linux",
+  "arch": "x86_64",
+  "runner": "gpu",
+  "dialect": "cxx20",
+  "include_roots": [
+    "public",
+    ".",
+    "materialsystem/shaderapivulkan"
+  ],
+  "base_flags": [
+    "-Wall",
+    "-Wextra",
+    "-Werror"
+  ],
+  "link_flags": [
+    "-lSDL3",
+    "-lvulkan"
+  ],
+  "requires": [
+    "vulkan-device:gpu"
+  ],
+  "run_env": {
+    "SDL_VIDEODRIVER": "offscreen"
+  },
+  "run_env_unset": [
+    "WAYLAND_DISPLAY",
+    "DISPLAY"
+  ],
+  "memory_limit_mb": 16384,
+  "timeout_seconds": 180
+}

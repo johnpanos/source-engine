@@ -1,0 +1,74 @@
+{
+  "baked_state": "open",
+  "cameras": {
+    "far": {
+      "eye": [
+        7.9,
+        3.7,
+        1.6
+      ],
+      "forward": [
+        -0.6920802213988716,
+        -0.6920802213988716,
+        -0.2050608063404064
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "door_bounds_m": [
+    [
+      4.075,
+      1.5,
+      0.0
+    ],
+    [
+      4.125,
+      2.5,
+      2.0
+    ]
+  ],
+  "door_mesh": "DoorSlab",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "map_manifest": "map.json",
+  "name": "door",
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Geometry-motion oracle: closing the door darkens room B's indirect light",
+  "regions": {
+    "far": {
+      "model": [
+        "ProbeB"
+      ],
+      "walls": [
+        "B_Xp",
+        "B_Yn",
+        "B_Yp",
+        "B_Zn",
+        "B_Zp",
+        "B_Xn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "door.usda",
+  "states": {
+    "closed": {
+      "layer": null,
+      "note": "door slab fills the doorway"
+    },
+    "open": {
+      "layer": "states/open.usda",
+      "note": "door slab hidden"
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "model": {
+      "eye": [
+        1.2,
+        -1.4,
+        1.5
+      ],
+      "forward": [
+        0.4310416013535586,
+        -0.890819309464021,
+        -0.1436805337845195
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "map_manifest": "map.json",
+  "model_center_m": [
+    2.7,
+    -4.5,
+    1.4
+  ],
+  "name": "room-states",
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Light-state changes (panel, sun, screen) in the usd-room interior; a dynamic model under the ceiling panel measures model lighting against the bake",
+  "regions": {
+    "model": {
+      "ceiling": [
+        "Ceiling"
+      ],
+      "floor": [
+        "Floor"
+      ],
+      "model": [
+        "ProbeSphere"
+      ],
+      "walls": [
+        "WallWest",
+        "WallNorth",
+        "WallSouth"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "room-states.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "sun, ceiling panel, sky and screen on"
+    },
+    "panel-off": {
+      "layer": "states/panel-off.usda",
+      "note": "ceiling RectLight intensity 0"
+    },
+    "screen-off": {
+      "layer": "states/screen-off.usda",
+      "note": "emissive screen texture disconnected (emission 0)"
+    },
+    "sun-low": {
+      "layer": "states/sun-low.usda",
+      "note": "sun lowered to 12 degrees elevation, rotated 25 degrees in azimuth"
+    }
+  }
+}

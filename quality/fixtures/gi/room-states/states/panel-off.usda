@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "Room"
+    metersPerUnit = 0.01
+    subLayers = [
+        @../room-states.usda@
+    ]
+    upAxis = "Y"
+)
+
+over "Room"
+{
+    over "Lights"
+    {
+        over "CeilingPanel"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

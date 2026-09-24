@@ -1,0 +1,19 @@
+{
+  "schema": "conformance-profile/v1",
+  "id": "self-test-gpu",
+  "description": "Runner self-test profile of the gpu runner class (tools/quality/tests). It needs no device; it only proves class selection. Not a product profile.",
+  "os": "linux",
+  "arch": "x86_64",
+  "runner": "gpu",
+  "cxx_std": "c++20",
+  "include_roots": [
+    "public"
+  ],
+  "base_flags": [
+    "-Wall",
+    "-Wextra",
+    "-Werror"
+  ],
+  "timeout_seconds": 30,
+  "memory_limit_mb": 64
+}

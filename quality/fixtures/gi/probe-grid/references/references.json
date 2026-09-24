@@ -1,0 +1,209 @@
+{
+  "analytic": [
+    {
+      "check": "probe-grid sky: floor radiance = rho * sky",
+      "expected": 0.5,
+      "observed": 0.499999314546585,
+      "ok": true
+    },
+    {
+      "check": "probe-grid sun: floor radiance = rho E sin(e) / pi",
+      "expected": 0.36575927925139085,
+      "observed": 0.3658680319786072,
+      "ok": true
+    }
+  ],
+  "fixture": "probe-grid",
+  "fixture_sha256": "53792e9d7c7486098fd1c0029f16a460df576f08fcf863083aa463a7c7f18c98",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "region_erosion_pixels": 2,
+  "renders": {
+    "sky": {
+      "blender": "5.2.1 LTS",
+      "composed_stage_sha256": "f021064c21efbd6addb7e88d1baf77b92c20d9443ef70820e51fe932e49687b9",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "renderer_sha256": "330e442fa277e2580d26914fbdb4a615b980426eb3c86f0498366b731fa3cbd4",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/probe-grid/probe-grid.usda": "801233d52625078b3400db621fb997aa695e915b0a46ab7a0066cc41e3d8190c"
+      }
+    },
+    "sun": {
+      "blender": "5.2.1 LTS",
+      "composed_stage_sha256": "41256eea4b7c176d212d0a6a76c75182e10121409312f80579ad5ec9fced840f",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "renderer_sha256": "330e442fa277e2580d26914fbdb4a615b980426eb3c86f0498366b731fa3cbd4",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/probe-grid/probe-grid.usda": "801233d52625078b3400db621fb997aa695e915b0a46ab7a0066cc41e3d8190c",
+        "quality/fixtures/gi/probe-grid/states/sun.usda": "4c2f6b19a5289830a12df28577d0359d98b5bb80c5b8eb6a051c8d8a9fd3fc3d"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "sky.floor": {
+      "camera": "floor",
+      "files": {
+        "index": {
+          "file": "sky.floor.index.png",
+          "sha256": "6bab6056033a59313e002a066ecc1fb2f2ff94aededc944cbc38c38ca9064994"
+        },
+        "indirect": {
+          "file": "sky.floor.indirect.exr",
+          "sha256": "9cf516ff7cbe4ce8d519847bf5a6b412a1c42bfce5e35430a49aca0a5303c62f"
+        },
+        "total": {
+          "file": "sky.floor.total.exr",
+          "sha256": "63771d7e3c39c49edd721230b78d7d759fa0a5b5f707763d54f9722643278836"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Floor": 1
+      },
+      "regions": {
+        "floor": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.9999986290931702,
+            0.9999986290931702,
+            0.9999986290931702
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "pixels": 31494,
+          "total": [
+            0.4999993145465851,
+            0.4999993145465851,
+            0.4999993145465851
+          ]
+        }
+      },
+      "state": "sky"
+    },
+    "sun.floor": {
+      "camera": "floor",
+      "files": {
+        "index": {
+          "file": "sun.floor.index.png",
+          "sha256": "6bab6056033a59313e002a066ecc1fb2f2ff94aededc944cbc38c38ca9064994"
+        },
+        "indirect": {
+          "file": "sun.floor.indirect.exr",
+          "sha256": "9cf516ff7cbe4ce8d519847bf5a6b412a1c42bfce5e35430a49aca0a5303c62f"
+        },
+        "total": {
+          "file": "sun.floor.total.exr",
+          "sha256": "c6bcf26c73840563b6b2ef9c034a5492a69ab0ca311bd85418a5dd48d4646183"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Floor": 1
+      },
+      "regions": {
+        "floor": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.7317360639572144,
+            0.7317360639572144,
+            0.7317360639572144
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "pixels": 31494,
+          "total": [
+            0.3658680319786072,
+            0.3658680319786072,
+            0.3658680319786072
+          ]
+        }
+      },
+      "state": "sun"
+    }
+  }
+}

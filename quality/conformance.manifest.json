@@ -2100,6 +2100,135 @@
         "unittests/inputtest/test_vibrator_policy_negative.cpp"
       ],
       "expect": "pass"
+    },
+    {
+      "id": "render.world-pbr.native-pixels",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0008",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "result_protocol": "checks-v1",
+      "description": "Scene-derived WMSH PBR (world_pbr.frag) on a real device: packed tangents, material masks, the LMAP atlas, directional and probe paths, with seeded controls",
+      "sources": [
+        "unittests/shaderapivulkantest/test_world_pbr_pixels.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
+        "mapcontainer/world_lightmap.cpp",
+        "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
+        "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.model-pbr.native-pixels",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0007",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "result_protocol": "checks-v1",
+      "description": "PBRMetalRough on dynamic meshes (model_pbr.frag) against the CPU model built on pbr_brdf.h, with seeded-defect controls",
+      "sources": [
+        "unittests/shaderapivulkantest/test_model_pbr_pixels.cpp",
+        "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
+        "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.pbr-direct.native-pixels",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0007",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "result_protocol": "checks-v1",
+      "description": "Synthetic direct-light PBR pixel stage against the headless BRDF model",
+      "sources": [
+        "unittests/shaderapivulkantest/test_pbr_pixels.cpp",
+        "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
+        "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.world-glass.native-pixels",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0007",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "result_protocol": "checks-v1",
+      "description": "Transmissive WMSH batches over an opaque scene with readable depth and negative controls",
+      "sources": [
+        "unittests/shaderapivulkantest/test_world_glass_pixels.cpp",
+        "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
+        "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.gpu-runner.zero-checks",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "kind": "sensitivity",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "A GPU suite that renders a frame but reports zero checks must fail (RFC 0011 G0): the GPU runner certifies nothing without counted checks",
+      "sources": [
+        "unittests/shaderapivulkantest/test_gpu_zero_checks.cpp",
+        "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
+        "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+      ],
+      "expect": "fail",
+      "result_protocol": "checks-v1",
+      "expected_divergence": "zero checks executed"
+    },
+    {
+      "id": "world.lightmap-layers",
+      "domain": "Q-CONTENT",
+      "rfc": "0011",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "mapcontainer/world_lightmap.cpp",
+        "unittests/mapcontainertest/test_world_lightmap.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "world.lightmap-layers.sensitivity",
+      "domain": "Q-CONTENT",
+      "rfc": "0011",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "mapcontainer/world_lightmap.cpp",
+        "unittests/mapcontainertest/test_world_lightmap_negative.cpp"
+      ],
+      "expect": "pass"
     }
   ]
 }

@@ -15,6 +15,7 @@
 
 #include "mapcontainer/map_container.h"
 #include "mapcontainer/map_container_builder.h"
+#include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh.h"
 #include "mapcontainer/world_mesh_format.h"
 #include "../common/map_file_io.h"
@@ -69,25 +70,26 @@ bool ReadWorldMesh( const char *pPath, std::vector<std::byte> *pBytes )
 	       ValidateWorldMesh( pBytes->data(), pBytes->size() ) == WorldMeshError::Ok;
 }
 
-bool ReadWorldLightmap( const char *pPath, std::vector<std::byte> *pBytes )
+// An LMAP v1 page or v2 layered page (world_lightmap.h owns the encoding);
+// `pVersion` receives the lump version the payload's layer count fixes.
+bool ReadWorldLightmap( const char *pPath, std::vector<std::byte> *pBytes, uint32_t *pVersion )
 {
 	FileByteSource source( pPath );
-	constexpr uint64_t kMaxLightmapBytes = 256ull * 1024 * 1024;
-	if ( !source.IsOpen() || source.Size() < 80 || source.Size() > kMaxLightmapBytes )
+	if ( !source.IsOpen() || source.Size() < 80 || source.Size() > kWorldLightmapMaxBytes )
 		return false;
 	pBytes->resize( size_t( source.Size() ) );
 	if ( !source.ReadAt( 0, pBytes->data(), pBytes->size() ) )
 		return false;
-	const unsigned char signature[12] = {
-	    0xAB, 'K', 'T', 'X', ' ', '2', '0', 0xBB, 0x0D, 0x0A, 0x1A, 0x0A };
-	const unsigned char *pHeader = reinterpret_cast<const unsigned char *>( pBytes->data() );
-	return std::memcmp( pHeader, signature, sizeof( signature ) ) == 0 &&
-	       ReadU32( pBytes->data() + 12 ) == 97 && // VK_FORMAT_R16G16B16A16_SFLOAT
-	       ReadU32( pBytes->data() + 20 ) > 0 && ReadU32( pBytes->data() + 24 ) > 0 &&
-	       ReadU32( pBytes->data() + 28 ) == 0 && // 2D
-	       ReadU32( pBytes->data() + 32 ) == 0 && // one face, no array
-	       ReadU32( pBytes->data() + 36 ) == 1 && ReadU32( pBytes->data() + 40 ) == 1 &&
-	       ReadU32( pBytes->data() + 44 ) == 0; // no supercompression
+	WorldLightmapLayout layout{};
+	const WorldLightmapError error =
+	    ValidateWorldLightmap( pBytes->data(), pBytes->size(), 0, &layout );
+	if ( error != WorldLightmapError::Ok )
+	{
+		std::fprintf( stderr, "bsp2tool: LMAP %s\n", WorldLightmapErrorName( error ) );
+		return false;
+	}
+	*pVersion = layout.version;
+	return true;
 }
 
 std::string FourCCText( uint32_t fourcc )
@@ -192,9 +194,10 @@ int main( int argc, char **argv )
 		return 2;
 	}
 	std::vector<std::byte> lightmap;
-	if ( bPackWorldLit && !ReadWorldLightmap( argv[4], &lightmap ) )
+	uint32_t lightmapVersion = kWorldLightmapMinVersion;
+	if ( bPackWorldLit && !ReadWorldLightmap( argv[4], &lightmap, &lightmapVersion ) )
 	{
-		std::fprintf( stderr, "bsp2tool: invalid linear RGBA16F KTX2 file %s\n", argv[4] );
+		std::fprintf( stderr, "bsp2tool: invalid LMAP (linear RGBA16F KTX2) file %s\n", argv[4] );
 		return 2;
 	}
 	const char *pOutput = argv[bPackWorldLit ? 5 : bPackWorld ? 4 : 3];
@@ -206,7 +209,7 @@ int main( int argc, char **argv )
 	const Bsp2LumpInput worldLump{
 	    kLumpWorldMesh, worldMeshVersion, 0, kBsp2BulkAlignment, worldMesh };
 	const Bsp2LumpInput lightmapLump{
-	    kLumpWorldLightmap, kWorldLightmapVersion, 0, kBsp2BulkAlignment, lightmap };
+	    kLumpWorldLightmap, lightmapVersion, 0, kBsp2BulkAlignment, lightmap };
 	const std::array<Bsp2LumpInput, 2> litLumps = { worldLump, lightmapLump };
 	const MapContainerStatus status =
 	    command == "export" ? ExportLegacyFromBsp2( source, sink )

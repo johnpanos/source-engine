@@ -347,6 +347,9 @@ def main():
     stage_scale = UsdGeom.GetStageMetersPerUnit(stage)
     scale = SOURCE_UNITS_PER_METER * stage_scale
     meshes = mesh_bounds(stage, scale)
+    # Dynamic-model stand-ins are entities, not world: no shell, no solid.
+    prop_shapes = map_scene.prop_shape_names(scene)
+    meshes = {name: mesh for name, mesh in meshes.items() if name not in prop_shapes}
     missing = [name for name in args.envelope_mesh + args.solid_mesh if name not in meshes]
     materials = {mesh["material"] for mesh in meshes.values()}
     missing += [name for name in args.solid_material if name not in materials]
@@ -434,8 +437,18 @@ def main():
                   '\t"origin" "%d %d %d"' % tuple(spawn["origin"]),
                   '\t"angles" "0 %g 0"' % spawn["yaw"], "}",
                   "entity", "{", '\t"id" "3"', '\t"classname" "light"',
-                  '\t"origin" "%g %g %g"' % tuple(light), '\t"_light" "255 255 240 300"', "}",
-                  "cameras", "{", '\t"activecamera" "-1"', "}", ""])
+                  '\t"origin" "%g %g %g"' % tuple(light), '\t"_light" "255 255 240 300"', "}"])
+    placed = []
+    for index, prop in enumerate(map_scene.props(scene)):
+        origin = [value * SOURCE_UNITS_PER_METER for value in prop["origin_m"]]
+        model = map_scene.prop_model_path(args.map_name, prop)
+        lines.extend(["entity", "{", '\t"id" "%d"' % (100 + index),
+                      '\t"classname" "prop_dynamic"', '\t"targetname" "%s"' % prop["name"],
+                      '\t"model" "%s"' % model, '\t"origin" "%.3f %.3f %.3f"' % tuple(origin),
+                      '\t"angles" "0 0 0"', '\t"solid" "0"', '\t"DisableShadows" "1"', "}"])
+        placed.append({"name": prop["name"], "model": model, "source_model": prop["model"],
+                       "origin_source_units": origin})
+    lines.extend(["cameras", "{", '\t"activecamera" "-1"', "}", ""])
     args.out_dir.mkdir(parents=True)
     shutil.copytree(ROOT / "quality/fixtures/vbsp-host/game", args.out_dir / "game")
     vmf = args.out_dir / (args.map_name + "_collision.vmf")
@@ -446,7 +459,7 @@ def main():
                "interior_source_units": interior, "shell_brush_count": len(brushes),
                "solid_meshes": solid_names, "solid_brush_count": len(solids),
                "skipped_outside_or_thin": skipped,
-               "spawn": spawn, "walkable_tops": tops,
+               "spawn": spawn, "walkable_tops": tops, "dynamic_models": placed,
                "policy": "18-DOP per connected component; floor triangles extruded; "
                          "solids are func_detail"}
     (args.out_dir / "collision-receipt.json").write_text(

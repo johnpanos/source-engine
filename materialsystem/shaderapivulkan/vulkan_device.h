@@ -119,6 +119,13 @@ public:
 	bool UploadWorldMesh( const void *vertices, size_t vertexBytes, const void *indices,
 	    size_t indexBytes, std::string *outError );
 	void SetWorldLightmapHandle( int handle );
+	// The map's lightmap layers (LMAP v2): the total page and its separated
+	// direct and indirect light, -1 where the map carries none. Replacing a
+	// layer destroys the previous image behind the frames that sample it;
+	// SetWorldLightmapHandle( -1 ) releases every layer.
+	void SetWorldLightmapHandles( int total, int direct, int indirect );
+	int WorldLightmapIndirectHandle() const { return m_worldLightmapIndirectHandle; }
+	int WorldLightmapDirectHandle() const { return m_worldLightmapDirectHandle; }
 	void ReleaseWorldMesh();
 	bool WorldMeshResident() const;
 	// Diagnostic readback for the native conformance test; synchronizes and
@@ -571,6 +578,13 @@ public:
 	};
 	void SetDynamicPbrWorldScene( const PbrWorldScene &scene ) { m_dynPbrWorld = scene; }
 	bool PbrWorldPipelineSupported() const { return m_pbrWorldReady; }
+	// RFC 0011 indirect-light debug view: 0 off, 1 indirect diffuse light
+	// (irradiance / pi), 2 indirect diffuse radiance; `scale` multiplies the
+	// written value. WMSH PBR batches show the LMAP indirect layer (black when
+	// the map has none) and PBRMetalRough models their ambient cube; every
+	// other draw is unchanged. Read when a frame is recorded.
+	void SetIndirectLightView( int mode, float scale );
+	int IndirectLightViewMode() const { return m_indirectViewMode; }
 	bool SelectPbrWorldMaterial( int mrao, int normal, const float eye[3], float alphaReference );
 	// The optional maps of an opaque WMSH PBR material: an sRGB emission
 	// color (decoded by the shader) times `emissionScale`, and an $envmap cube
@@ -1260,6 +1274,8 @@ private:
 	VkPipeline WorldTexturedPipeline(
 	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
 	std::map<uint64_t, VkPipeline> m_worldPbrPipelines;
+	// world_pbr.frag -DINDIRECT_VIEW, selected while the indirect view is on.
+	std::map<uint64_t, VkPipeline> m_worldPbrIndirectPipelines;
 	VkPipeline WorldPbrPipeline(
 	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
 	bool PbrWorldTexturesReady(
@@ -1273,6 +1289,7 @@ private:
 	VkPipelineVertexInputStateCreateInfo m_worldPbrVin = {};
 	VkShaderModule m_worldPbrVert = VK_NULL_HANDLE;
 	VkShaderModule m_worldPbrFrag = VK_NULL_HANDLE;
+	VkShaderModule m_worldPbrIndirectFrag = VK_NULL_HANDLE;
 	VkPipelineLayout m_worldPbrPipelineLayout = VK_NULL_HANDLE;
 	bool m_pbrWorldReady = false;
 	// Glass: world_pbr.vert with world_pbr_glass.frag, the WMSH PBR sets plus
@@ -1351,11 +1368,11 @@ private:
 	VkShaderModule m_solidEnergyFrag = VK_NULL_HANDLE;
 	// PBRMetalRough models share the skin layout and vertex stage. Variant 0
 	// reads the map probe from the LMAP atlas in set 5; variant 1 ($envmap)
-	// reads a cube there.
-	std::map<uint64_t, VkPipeline> m_pbrModelPipelines[2];
+	// reads a cube there; variant 2 is the indirect view (a 2D set 5).
+	std::map<uint64_t, VkPipeline> m_pbrModelPipelines[3];
 	VkPipeline PbrModelPipeline(
 	    const DynRasterState &state, bool envCube, bool srgbPass = false, int samples = 1 );
-	VkShaderModule m_pbrModelFrag[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+	VkShaderModule m_pbrModelFrag[3] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
 	bool m_pbrModelReady = false;
 	bool InitPbrModelPipeline( std::string *outError );
 	void DestroyPbrModelPipeline();
@@ -1497,6 +1514,10 @@ private:
 	};
 	std::vector<ManagedTexture> m_managedTextures;
 	int m_worldLightmapHandle = -1;
+	int m_indirectViewMode = 0;
+	float m_indirectViewScale = 1.0f;
+	int m_worldLightmapDirectHandle = -1;
+	int m_worldLightmapIndirectHandle = -1;
 	// Deleted textures awaiting the completion of the submission that may still
 	// use them (`afterSerial`, a value of m_submitSerial), and handles free again.
 	struct RetiredTexture

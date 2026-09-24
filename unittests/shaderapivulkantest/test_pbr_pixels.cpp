@@ -12,6 +12,7 @@
 #include "render/pbr_brdf.h"
 #include "../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_device.h"
+#include "testing/conformance_result.h"
 
 #include <SDL3/SDL.h>
 
@@ -271,5 +272,5 @@ int main()
 	SDL_DestroyWindow( window );
 	SDL_Quit();
 	std::printf( "PBR native pixels: %d checks, %d failures\n", g_checks, g_failures );
-	return g_checks > 0 && g_failures == 0 ? 0 : 1;
+	return testing::ReportConformance( g_checks, g_failures );
 }

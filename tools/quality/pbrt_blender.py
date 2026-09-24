@@ -378,6 +378,32 @@ def source_meshes():
 
 
 GPU_BACKENDS = ("OPTIX", "CUDA", "HIP", "ONEAPI", "METAL")
+# Cycles light-path policies, by name. `blender-default` keeps Blender's own
+# defaults (4 diffuse bounces), which every map built before RFC 0011 used.
+# `gi-reference` is the RFC 0011 oracle setting: enough diffuse bounces that
+# the truncated series is below 1e-6 at albedo 0.5, no path clamping, and no
+# caustics filter, so analytic fixtures (the furnace) converge to their
+# closed form rather than to a biased estimate.
+LIGHT_PATH_POLICIES = {
+    "blender-default": None,
+    "gi-reference": {"max_bounces": 64, "diffuse_bounces": 64, "glossy_bounces": 16,
+                     "transmission_bounces": 16, "volume_bounces": 0,
+                     "transparent_max_bounces": 16, "sample_clamp_direct": 0.0,
+                     "sample_clamp_indirect": 0.0, "blur_glossy": 0.0,
+                     "caustics_reflective": True, "caustics_refractive": True},
+}
+
+
+def configure_light_paths(policy):
+    """Apply a named light-path policy; return the settings Cycles now uses."""
+    if policy not in LIGHT_PATH_POLICIES:
+        raise ValueError("unknown light-path policy " + str(policy))
+    cycles = bpy.context.scene.cycles
+    for key, value in (LIGHT_PATH_POLICIES[policy] or {}).items():
+        setattr(cycles, key, value)
+    return {"policy": policy, **{key: getattr(cycles, key) for key in (
+        "max_bounces", "diffuse_bounces", "glossy_bounces", "transmission_bounces",
+        "sample_clamp_direct", "sample_clamp_indirect")}}
 
 
 def configure_cycles(samples, device="cpu"):

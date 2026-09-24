@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_thin_wall",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/thin-wall/thin-wall.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

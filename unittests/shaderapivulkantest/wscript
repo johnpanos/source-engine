@@ -132,9 +132,7 @@ def build(bld):
 		target='world_pbr_native_pixel_conformance',
 		name='world_pbr_native_pixel_conformance',
 		includes=includes,
-		use=['VULKAN', 'SDL3', 'vulkan_texture_image']
-			+ (['texturecontainer', 'KTXREAD'] if bld.env.KTX_READ_ENABLED else []),
-		defines=['RFC0008_KTX_READER'] if bld.env.KTX_READ_ENABLED else [],
+		use=['VULKAN', 'SDL3', 'mapcontainer'],
 		install_path=None)
 
 	# RFC 0007 glass and readable scene depth: transmissive WMSH batches over an

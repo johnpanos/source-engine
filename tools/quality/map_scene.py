@@ -15,6 +15,9 @@ branches on the source format itself. The shared model:
   distant_lights  [{direction, irradiance, angle_degrees}] (USD only)
   environment     sky / dome light or None; `environment_equirect` resamples it
   camera, film    reference view; `camera_pose` gives eye/forward/up in stage space
+  props           dynamic models (USD `sourceEngine:model` Xforms): [{name, model,
+                  origin_m, shapes}]; their shapes (role "prop") are Cycles
+                  stand-ins, rendered but never packed, baked or collided
 
 Material summaries always carry the full channel set: `textures` maps
 base/roughness/metallic/occlusion/normal/emission/opacity to UsdUVTexture-like
@@ -66,6 +69,23 @@ def parse(path):
 
 def is_usd_scene(scene):
     return scene.get("format") == "usd"
+
+
+def props(scene):
+    """Dynamic model placements; PBRT scenes have none."""
+    return list(scene.get("props", []))
+
+
+def prop_shape_names(scene):
+    """Names of the shapes that stand in for dynamic models."""
+    return {name for prop in props(scene) for name in prop["shapes"]}
+
+
+def prop_model_path(map_name, prop):
+    """Game path of a dynamic model's map-scoped copy (materials retargeted to
+    `materials/models/<map>/<prop>/`); the collision step places it and the
+    content step writes it."""
+    return "models/%s/%s.mdl" % (map_name, prop["name"].lower())
 
 
 def material_summary(scene, name):

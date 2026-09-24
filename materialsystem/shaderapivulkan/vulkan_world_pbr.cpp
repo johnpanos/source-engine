@@ -39,19 +39,23 @@ VkPipeline CVulkanContext::WorldPbrPipeline(
 {
 	const uint64_t key = PipelineKey( state, srgbPass, samples );
 	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
-	const auto existing = m_worldPbrPipelines.find( key );
-	if ( existing != m_worldPbrPipelines.end() )
+	const bool indirectView = m_indirectViewMode != 0;
+	std::map<uint64_t, VkPipeline> &pipelines =
+	    indirectView ? m_worldPbrIndirectPipelines : m_worldPbrPipelines;
+	const VkShaderModule fragment = indirectView ? m_worldPbrIndirectFrag : m_worldPbrFrag;
+	const auto existing = pipelines.find( key );
+	if ( existing != pipelines.end() )
 		return existing->second;
 	if ( pass == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE; // no pass of this sample count exists now
-	if ( m_worldPbrVert == VK_NULL_HANDLE || m_worldPbrFrag == VK_NULL_HANDLE )
+	if ( m_worldPbrVert == VK_NULL_HANDLE || fragment == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE;
-	VkPipeline pipeline = BuildMaterialPipeline( state, m_worldPbrVert, m_worldPbrFrag,
-	    m_worldPbrPipelineLayout, &m_worldPbrVin, pass, samples );
+	VkPipeline pipeline = BuildMaterialPipeline(
+	    state, m_worldPbrVert, fragment, m_worldPbrPipelineLayout, &m_worldPbrVin, pass, samples );
 	if ( pipeline == VK_NULL_HANDLE )
-		WorldPbrLog( "vkCreateGraphicsPipelines (WMSH PBR, state %#llx) failed\n",
-		    static_cast<unsigned long long>( key ) );
-	m_worldPbrPipelines[key] = pipeline;
+		WorldPbrLog( "vkCreateGraphicsPipelines (WMSH PBR%s, state %#llx) failed\n",
+		    indirectView ? " indirect view" : "", static_cast<unsigned long long>( key ) );
+	pipelines[key] = pipeline;
 	return pipeline;
 }
 
@@ -104,8 +108,13 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 	    m_clipPlanesSupported ? g_worldPbrClipFragSpv : g_worldPbrFragSpv;
 	const size_t fragmentBytes =
 	    m_clipPlanesSupported ? sizeof( g_worldPbrClipFragSpv ) : sizeof( g_worldPbrFragSpv );
+	const uint32_t *indirectWords =
+	    m_clipPlanesSupported ? g_worldPbrIndirectClipFragSpv : g_worldPbrIndirectFragSpv;
+	const size_t indirectBytes = m_clipPlanesSupported ? sizeof( g_worldPbrIndirectClipFragSpv )
+	                                                   : sizeof( g_worldPbrIndirectFragSpv );
 	if ( !CreateShaderModule( vertexWords, vertexBytes, &m_worldPbrVert, outError ) ||
-	     !CreateShaderModule( fragmentWords, fragmentBytes, &m_worldPbrFrag, outError ) )
+	     !CreateShaderModule( fragmentWords, fragmentBytes, &m_worldPbrFrag, outError ) ||
+	     !CreateShaderModule( indirectWords, indirectBytes, &m_worldPbrIndirectFrag, outError ) )
 		return false;
 	if ( WorldPbrPipeline( DynRasterState() ) == VK_NULL_HANDLE )
 	{
@@ -118,11 +127,15 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 
 void CVulkanContext::DestroyPbrWorldPipeline()
 {
-	for ( const auto &entry : m_worldPbrPipelines )
-		if ( entry.second != VK_NULL_HANDLE )
-			vkDestroyPipeline( m_device, entry.second, nullptr );
-	m_worldPbrPipelines.clear();
-	for ( VkShaderModule *module : { &m_worldPbrVert, &m_worldPbrFrag } )
+	for ( std::map<uint64_t, VkPipeline> *pipelines :
+	    { &m_worldPbrPipelines, &m_worldPbrIndirectPipelines } )
+	{
+		for ( const auto &entry : *pipelines )
+			if ( entry.second != VK_NULL_HANDLE )
+				vkDestroyPipeline( m_device, entry.second, nullptr );
+		pipelines->clear();
+	}
+	for ( VkShaderModule *module : { &m_worldPbrVert, &m_worldPbrFrag, &m_worldPbrIndirectFrag } )
 	{
 		if ( *module != VK_NULL_HANDLE )
 			vkDestroyShaderModule( m_device, *module, nullptr );
@@ -332,6 +345,12 @@ bool CVulkanContext::SelectPbrGlassMaterial( int mrao, int normal, const float e
 	m_dynGlassKey = glass.materialKey;
 	SelectDynamicShader( kDynShaderPbrGlass );
 	return true;
+}
+
+void CVulkanContext::SetIndirectLightView( int mode, float scale )
+{
+	m_indirectViewMode = mode >= 0 && mode <= 2 ? mode : 0;
+	m_indirectViewScale = scale > 0.0f && scale < 1.0e6f ? scale : 1.0f;
 }
 
 } // namespace render_vulkan

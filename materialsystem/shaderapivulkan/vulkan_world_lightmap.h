@@ -1,14 +1,14 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Checked BSP2 KTX2 lightmap upload into the native world context.
+// Purpose: Checked BSP2 lightmap layer upload into the native world context.
 //
 //===========================================================================//
 
 #ifndef SHADERAPIVULKAN_VULKAN_WORLD_LIGHTMAP_H
 #define SHADERAPIVULKAN_VULKAN_WORLD_LIGHTMAP_H
 
-#include <cstddef>
-#include <cstdint>
+#include "render/world_mesh_upload.h"
+
 #include <string>
 
 namespace render_vulkan
@@ -16,8 +16,11 @@ namespace render_vulkan
 
 class CVulkanContext;
 
-bool UploadWorldLightmapKtx2( CVulkanContext &context, const void *bytes, std::size_t size,
-    std::uint32_t *width, std::uint32_t *height, std::string *error );
+// Uploads every layer of a validated LMAP (linear RGBA16F, one page per role)
+// as map-scoped images, then publishes them together; on failure nothing is
+// published and the previous map's layers stay bound.
+bool UploadWorldLightmapLayers( CVulkanContext &context,
+    const world_mesh_gpu::WorldLightmapUploadRequest &request, std::string *error );
 
 } // namespace render_vulkan
 

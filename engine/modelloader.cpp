@@ -20,6 +20,7 @@
 #include "iscratchpad3d.h"
 #include "map_container_file.h"
 #ifndef SWDS
+#include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh.h"
 #include "mapcontainer/world_mesh_format.h"
 #include "render/world_mesh_upload.h"
@@ -4544,6 +4545,15 @@ static float WorldMeshF32( const unsigned char *pBytes )
 	return value;
 }
 
+// The LMAP reader's layer roles and the upload contract's are one numbering.
+static_assert( int( mapcontainer::WorldLightmapLayer::Total ) ==
+                       int( world_mesh_gpu::WorldLightmapRole::Total ) &&
+                   int( mapcontainer::WorldLightmapLayer::Direct ) ==
+                       int( world_mesh_gpu::WorldLightmapRole::Direct ) &&
+                   int( mapcontainer::WorldLightmapLayer::Indirect ) ==
+                       int( world_mesh_gpu::WorldLightmapRole::Indirect ),
+    "LMAP layer roles" );
+
 void CModelLoader::Map_LoadWorldMesh()
 {
 	if ( !s_pMapContainer || s_pMapContainer->Kind() != mapcontainer::MapContainerKind::Bsp2 )
@@ -4599,12 +4609,13 @@ void CModelLoader::Map_LoadWorldMesh()
 	const bool hasLightmap =
 	    s_pMapContainer->FindLump( mapcontainer::kLumpWorldLightmap, &lightmapLump );
 	CUtlVector<byte> lightmapBytes;
+	mapcontainer::WorldLightmapLayout lightmapLayout{};
 	if ( hasLightmap )
 	{
-		const uint64_t kMaxLightmapBytes = 256ull * 1024 * 1024;
-		if ( lightmapLump.version != mapcontainer::kWorldLightmapVersion ||
+		if ( lightmapLump.version < mapcontainer::kWorldLightmapMinVersion ||
+		     lightmapLump.version > mapcontainer::kWorldLightmapLayeredVersion ||
 		     lightmapLump.flags != 0 || lightmapLump.storedSize < 80 ||
-		     lightmapLump.storedSize > kMaxLightmapBytes )
+		     lightmapLump.storedSize > mapcontainer::kWorldLightmapMaxBytes )
 		{
 			Warning( "Map %s: LMAP version, flags or size unsupported\n", s_szMapName );
 			m_WorldMeshBytes.Purge();
@@ -4618,6 +4629,15 @@ void CModelLoader::Map_LoadWorldMesh()
 		         .Ok() )
 		{
 			Warning( "Map %s: LMAP read or hash failed\n", s_szMapName );
+			m_WorldMeshBytes.Purge();
+			return;
+		}
+		const mapcontainer::WorldLightmapError lightmapError = mapcontainer::ValidateWorldLightmap(
+		    lightmapBytes.Base(), lightmapBytes.Count(), lightmapLump.version, &lightmapLayout );
+		if ( lightmapError != mapcontainer::WorldLightmapError::Ok )
+		{
+			Warning( "Map %s: LMAP rejected (%s)\n", s_szMapName,
+			    mapcontainer::WorldLightmapErrorName( lightmapError ) );
 			m_WorldMeshBytes.Purge();
 			return;
 		}
@@ -4649,8 +4669,23 @@ void CModelLoader::Map_LoadWorldMesh()
 		m_WorldMeshBytes.Purge();
 		return;
 	}
-	if ( hasLightmap &&
-	     !uploader->UploadLightmapKtx2( lightmapBytes.Base(), lightmapBytes.Count() ) )
+	world_mesh_gpu::WorldLightmapUploadRequest lightmapRequest;
+	if ( hasLightmap )
+	{
+		lightmapRequest.width = lightmapLayout.width;
+		lightmapRequest.height = lightmapLayout.height;
+		lightmapRequest.layerCount = lightmapLayout.layerCount;
+		for ( uint32_t i = 0; i < lightmapLayout.layerCount; ++i )
+		{
+			lightmapRequest.layers[i] = lightmapBytes.Base() + lightmapLayout.layerOffset[i];
+			lightmapRequest.roles[i] =
+			    static_cast<world_mesh_gpu::WorldLightmapRole>( lightmapLayout.roles[i] );
+		}
+		Msg( "Map %s: LMAP v%u %ux%u, %u layer%s\n", s_szMapName, lightmapLayout.version,
+		    lightmapLayout.width, lightmapLayout.height, lightmapLayout.layerCount,
+		    lightmapLayout.layerCount == 1 ? "" : "s" );
+	}
+	if ( hasLightmap && !uploader->UploadLightmap( lightmapRequest ) )
 	{
 		Warning( "Map %s: WMSH LMAP upload failed\n", s_szMapName );
 		uploader->Release();

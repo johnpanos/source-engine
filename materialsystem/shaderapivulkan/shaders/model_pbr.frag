@@ -26,6 +26,12 @@
 // coat),
 // z kColor* flags (1 sRGB base, 4 sRGB output), w linear light scale;
 // params2.x the number of lights.
+//
+// INDIRECT_VIEW (RFC 0011 debug view) writes only the indirect light, for
+// comparison with Cycles' DiffInd pass: params2.y is the view (1 the diffuse
+// light cube( n ), no albedo; 2 the diffuse radiance, times the diffuse
+// albedo and occlusion) and params2.z the exposure scale. Local lights,
+// specular, emission and the tone-map scale are left out.
 layout( location = 0 ) in vec2 vBaseUv;
 layout( location = 1 ) in vec4 vLightAtten;
 layout( location = 2 ) in vec3 vWorldVertToEye;
@@ -187,6 +193,18 @@ void main()
 	    clamp( vec2( normalDotView, roughness ), vec2( 0.0 ), vec2( 1.0 ) ) ).rg;
 	vec3 directionalAlbedo = min( vec3( 1.0 ), f0 * splitSum.x + vec3( splitSum.y ) );
 	vec3 diffuseColor = base * ( 1.0 - metalness ) * ( vec3( 1.0 ) - directionalAlbedo );
+#ifdef INDIRECT_VIEW
+	{
+		vec3 viewed = AmbientCube( normal );
+		if ( consts.params2.y > 1.5 )
+			viewed *= base * ( 1.0 - metalness ) * occlusion;
+		viewed *= consts.params2.z;
+		if ( ( colorFlags & 4 ) != 0 )
+			viewed = LinearToSrgb( viewed );
+		outColor = vec4( viewed, baseSample.a );
+		return;
+	}
+#endif
 
 	const bool clearCoat = ( flags & kClearCoat ) != 0;
 	const float coat = clearCoat ? ps.c[2].y : 0.0;

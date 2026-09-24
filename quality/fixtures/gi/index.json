@@ -1,0 +1,12 @@
+{
+  "fixtures": [
+    "door",
+    "furnace",
+    "portal-view",
+    "probe-grid",
+    "room-states",
+    "thin-wall"
+  ],
+  "generator": "tools/quality/gi_fixtures.py",
+  "schema": "gi-fixture-index/v1"
+}

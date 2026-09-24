@@ -18,6 +18,12 @@ carries the sun beside the probe marker: texel (W - 2, 0) = direction toward
 the sun (xyz, w = 2) and texel (W - 3, 0) = its irradiance (rgb, w = disc
 angle in degrees). `world_pbr.frag` adds the sun's specular dynamically,
 shadowed by that alpha; its diffuse light is already in the bake.
+
+With `--layer ROLE=EXR` (denoised separated light from the bake's `--layers`)
+the package is an LMAP v2 2D array (public/mapcontainer/world_lightmap.h):
+layer 0 is the total page above; then `indirect` (two layers) or `direct`
+and `indirect` (three), each the flat light only, with a zero gradient half
+on a directional page and no probe or sun texels.
 """
 
 import argparse
@@ -62,8 +68,21 @@ def main():
                         help="UV coverage used to fill the visibility's gutters")
     parser.add_argument("--sun-bake-evidence", type=Path,
                         help="the bake receipt whose `sun` names the visibility EXR")
+    parser.add_argument("--layer", action="append", default=[], metavar="ROLE=EXR",
+                        help="separated-light layer (direct, indirect) and its denoised EXR")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    separated = {}
+    for item in args.layer:
+        role, _, path = item.partition("=")
+        if role not in ("direct", "indirect") or not path or role in separated:
+            parser.error("--layer takes distinct direct=EXR / indirect=EXR entries")
+        separated[role] = Path(path)
+    # Roles follow the layer count (world_lightmap.h): total, [direct,] indirect.
+    order = {(): [], ("indirect",): ["indirect"],
+             ("direct", "indirect"): ["direct", "indirect"]}.get(tuple(sorted(separated)))
+    if order is None:
+        parser.error("separated layers are indirect, or direct and indirect")
     evidence = json.loads(args.bake_evidence.read_text())
     if (evidence.get("status") != "pass" or evidence.get("scope") != args.expected_scope or
             evidence.get("atlas_exr_sha256") != sha256(args.exr) or
@@ -150,22 +169,47 @@ def main():
         direction /= np.linalg.norm(direction)
         rgba[0, width - 2] = np.array((*direction, 2.0), dtype="<f2")
         rgba[0, width - 3] = np.array((*sun["irradiance"], sun["angle_degrees"]), dtype="<f2")
+    pages = [rgba]
+    layer_receipts = {}
+    source_bake = evidence.get("source_bake_evidence_sha256")
+    for role in order:
+        path = separated[role]
+        receipt = json.loads(Path(str(path) + ".json").read_text())
+        if (receipt.get("status") != "pass" or receipt.get("layer") != role or
+                receipt.get("atlas_exr_sha256") != sha256(path) or not source_bake or
+                receipt.get("source_bake_evidence_sha256") != source_bake):
+            raise ValueError("%s layer differs from its receipt or the total's bake" % role)
+        light = iio.imread(path)
+        if light.shape != pixels.shape or not np.isfinite(light).all() or light[..., :3].min() < 0:
+            raise ValueError("%s layer has invalid dimensions or pixels" % role)
+        page = np.zeros((size, width, 4), dtype="<f2")
+        page[:, :size, :3] = (light[::-1, :, :3] * args.preview_gain).astype("<f2")
+        page[:, :, 3] = 1.0
+        pages.append(page)
+        layer_receipts[role] = {"exr_sha256": sha256(path),
+                                "receipt_sha256": sha256(Path(str(path) + ".json")),
+                                "mean_rgb": light[..., :3].reshape(-1, 3).mean(axis=0).tolist()}
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="lightmap-ktx2-", dir=args.out.parent) as name:
         temporary = Path(name)
-        raw = temporary / "atlas.rgba16f"
         package = temporary / "atlas.ktx2"
-        extracted = temporary / "extracted.rgba16f"
-        raw.write_bytes(rgba.tobytes())
+        raws = []
+        for index, page in enumerate(pages):
+            raws.append(temporary / ("layer%d.rgba16f" % index))
+            raws[-1].write_bytes(page.tobytes())
         tool = str(args.ktx_tool.resolve())
         run([tool, "create", "--format", "R16G16B16A16_SFLOAT", "--raw",
-             "--width", str(width), "--height", str(size),
-             "--assign-tf", "linear", "--assign-texcoord-origin", "top-left",
-             str(raw), str(package)])
+             "--width", str(width), "--height", str(size)] +
+            (["--layers", str(len(pages))] if len(pages) > 1 else []) +
+            ["--assign-tf", "linear", "--assign-texcoord-origin", "top-left"] +
+            [str(raw) for raw in raws] + [str(package)])
         run([tool, "validate", str(package)])
-        run([tool, "extract", "--raw", str(package), str(extracted)])
-        if extracted.read_bytes() != raw.read_bytes():
-            raise ValueError("KTX2 changed the authored half-float texels")
+        for index, raw in enumerate(raws):
+            extracted = temporary / ("extracted%d.rgba16f" % index)
+            run([tool, "extract", "--raw"] + (["--layer", str(index)] if len(pages) > 1 else []) +
+                [str(package), str(extracted)])
+            if extracted.read_bytes() != raw.read_bytes():
+                raise ValueError("KTX2 changed the authored half-float texels of layer %d" % index)
         os.replace(package, args.out)
     result = {"status": "pass", "scope": "cycles-l0-ktx2",
               "bake_scope": args.expected_scope,
@@ -176,6 +220,8 @@ def main():
               "orientation": "top-left", "width": width,
               "height": size, "preview_gain": args.preview_gain,
               "layout": "directional-2x1" if directional else "flat",
+              "lmap_version": 2 if len(pages) > 1 else 1,
+              "layers": ["total"] + order, "separated_layers": layer_receipts,
               "directional_exr_sha256": sha256(args.directional_exr) if directional else None,
               # Lightmap rows only; the probe band replaces the reserved rows.
               "max_half_quantization_error": float(np.max(np.abs(

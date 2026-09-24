@@ -1,0 +1,85 @@
+{
+  "analytic": {
+    "albedo": 0.5,
+    "note": "Floor treated as infinite (a 40 m square at <= 2 m height misses < 1% of the cosine-weighted lower hemisphere). Irradiance / pi (diffuse light units) on a probe normal n with elevation cosine nz: sky state total = sky * (1 + nz) / 2 + rho * sky * (1 - nz) / 2, indirect = the floor term; sun state direct = E_sun * max(0, n . l) / pi, indirect = rho * E_sun * sin(elevation) / pi * (1 - nz) / 2.",
+    "probes_m": [
+      [
+        0.0,
+        0.0,
+        1.0
+      ],
+      [
+        2.0,
+        -2.0,
+        0.5
+      ],
+      [
+        -3.0,
+        4.0,
+        2.0
+      ]
+    ],
+    "sky_radiance": 1.0,
+    "sun": {
+      "elevation_degrees": 50.0,
+      "irradiance": 3.0,
+      "to_sun": [
+        0.6427876096865394,
+        -0.0,
+        0.766044443118978
+      ]
+    },
+    "visibility_note": "probe mean hit distance downward = probe height; upward = no hit (sky)"
+  },
+  "baked_state": "sky",
+  "cameras": {
+    "floor": {
+      "eye": [
+        -3.0,
+        0.0,
+        1.7
+      ],
+      "forward": [
+        0.9467727448197126,
+        0.0,
+        -0.3219027332387023
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "map_manifest": "map.json",
+  "name": "probe-grid",
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Analytic probe irradiance: uniform sky over an albedo-0.5 floor, and one sun; irradiance and visibility references at known probes",
+  "regions": {
+    "floor": {
+      "floor": [
+        "Floor"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "probe-grid.usda",
+  "states": {
+    "sky": {
+      "layer": null,
+      "note": "uniform dome radiance 1"
+    },
+    "sun": {
+      "layer": "states/sun.usda",
+      "note": "sun only, 50 degrees elevation"
+    }
+  }
+}

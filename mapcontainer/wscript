@@ -18,7 +18,7 @@ def configure(conf):
 
 def build(bld):
 	bld.stlib(
-		source    = [ 'blake2b.cpp', 'map_container.cpp', 'world_mesh.cpp' ],
+		source    = [ 'blake2b.cpp', 'map_container.cpp', 'world_lightmap.cpp', 'world_mesh.cpp' ],
 		target    = PROJECT_NAME,
 		name      = PROJECT_NAME,
 		features  = 'c cxx',

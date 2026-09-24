@@ -55,7 +55,7 @@ namespace mapcontainer
 
 static const uint32_t kLumpWorldMesh = 0x48534D57u; // "WMSH"
 static const uint32_t kLumpWorldLightmap = 0x50414D4Cu; // "LMAP"
-static const uint32_t kWorldLightmapVersion = 1;
+// LMAP versions and layout: mapcontainer/world_lightmap.h.
 static const uint32_t kWorldMeshVersion = 2;
 static const uint32_t kWorldMeshMinVersion = 1;
 // Version 2 cones skip triangles whose front-face cross product is this short.

@@ -1,0 +1,98 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "dark": {
+      "eye": [
+        5.8016000000000005,
+        2.7,
+        1.6
+      ],
+      "forward": [
+        -0.8316554899054915,
+        -0.5236349380886428,
+        -0.18481233109010922
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "lit": {
+      "eye": [
+        0.3,
+        0.3,
+        1.6
+      ],
+      "forward": [
+        0.8316554899054915,
+        0.5236349380886428,
+        -0.18481233109010925
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "leak_bound": {
+    "measure": "dark-room mean indirect / lit-room mean indirect",
+    "provisional": 0.02
+  },
+  "map_manifest": "map.json",
+  "name": "thin-wall",
+  "panel": {
+    "thickness_source_units": 4.0,
+    "x_max_m": 3.1016,
+    "x_min_m": 3.0
+  },
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Probe leak control: indirect light in the dark room B must stay below the leak bound; a visibility-disabled build must exceed it",
+  "regions": {
+    "dark": {
+      "model": [
+        "ProbeB"
+      ],
+      "panel_face": [
+        "B_Xn"
+      ],
+      "walls": [
+        "B_Xn",
+        "B_Xp",
+        "B_Yn",
+        "B_Yp",
+        "B_Zn",
+        "B_Zp"
+      ]
+    },
+    "lit": {
+      "model": [
+        "ProbeA"
+      ],
+      "walls": [
+        "A_Xn",
+        "A_Xp",
+        "A_Yn",
+        "A_Yp",
+        "A_Zn",
+        "A_Zp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "thin-wall.usda",
+  "states": {
+    "default": {
+      "layer": null
+    }
+  }
+}

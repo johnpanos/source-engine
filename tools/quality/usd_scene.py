@@ -502,6 +502,7 @@ class Extractor:
         self.shapes = []             # dicts with geometry arrays
         self.emitters = []
         self.distant = []
+        self.props = {}              # prop prim path -> dynamic model placement
         self.environment = None
         self.notes = []
         self.skipped = {"invisible": 0, "guide_or_proxy": 0, "empty": 0}
@@ -597,13 +598,38 @@ class Extractor:
             corner_triangles = triangles[selected]
             if not len(corner_triangles):
                 continue
+            prop = self.prop_for(prim)
             self.shapes.append({
                 "name": self.shape_names.take(name_stem), "material": material_name,
+                "role": "prop" if prop else "world", "prop": prop,
                 "prim": str(prim.GetPath()), "subset": subset_name,
                 "double_sided": double_sided, "subdivision": str(subdivision),
                 "st_primvar": primvar_name,
                 "corner_triangles": corner_triangles, "points": world_points[indices],
                 "normals": world_normals, "uv": uv})
+
+    def prop_for(self, prim):
+        """Name of the dynamic model (`sourceEngine:model` Xform) a mesh
+        belongs to, or None for world geometry. The mesh is the model's
+        Cycles stand-in; the placement is recorded once per prop."""
+        current = prim
+        while current and not current.IsPseudoRoot():
+            attribute = current.GetAttribute("sourceEngine:model")
+            if attribute and attribute.HasAuthoredValue():
+                key = str(current.GetPath())
+                if key not in self.props:
+                    local_to_stage = self.xforms.GetLocalToWorldTransform(current)
+                    # Upright in its stage (translation only), so it is upright
+                    # in the Z-up pipeline frame once the stage axes convert.
+                    if not np.allclose(np.array(local_to_stage)[:3, :3], np.eye(3), atol=1e-6):
+                        raise ValueError("dynamic model %s must be translated only" % key)
+                    world = self.convert.matrix(local_to_stage)
+                    self.props[key] = {"name": sanitize(current.GetName()),
+                                       "prim": key, "model": str(attribute.Get()),
+                                       "origin_m": world[3, :3].tolist()}
+                return self.props[key]["name"]
+            current = current.GetParent()
+        return None
 
     def add_point_instancer(self, prim, instancer_world):
         instancer = UsdGeom.PointInstancer(prim)
@@ -976,7 +1002,8 @@ def shape_points(shape):
 
 def scene_model(extractor, camera, bounds, digest, inputs, usd_path):
     shapes = [{key: shape[key] for key in ("name", "material", "prim", "subset",
-                                           "double_sided", "subdivision", "st_primvar")}
+                                           "double_sided", "subdivision", "st_primvar",
+                                           "role", "prop")}
               | {"triangles": int(len(shape["corner_triangles"])),
                  "bounds": [shape_points(shape).min(axis=0).tolist(),
                             shape_points(shape).max(axis=0).tolist()]}
@@ -991,6 +1018,9 @@ def scene_model(extractor, camera, bounds, digest, inputs, usd_path):
             "emitters": [{k: v for k, v in emitter.items() if k != "prefix"}
                          for emitter in extractor.emitters],
             "distant_lights": extractor.distant, "environment": extractor.environment,
+            "props": [dict(prop, shapes=[shape["name"] for shape in extractor.shapes
+                                         if shape["prop"] == prop["name"]])
+                      for prop in sorted(extractor.props.values(), key=lambda p: p["name"])],
             "textures": {Path(t).name + ":" + hashlib.sha1(t.encode()).hexdigest()[:8]:
                          {"filename": t} for t in sorted(extractor.textures)},
             "skipped": extractor.skipped, "approximations": extractor.notes}

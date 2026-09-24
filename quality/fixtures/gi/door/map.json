@@ -1,0 +1,12 @@
+{
+  "collision": {
+    "solid_meshes": [
+      "A_Xp",
+      "B_Xn"
+    ]
+  },
+  "map": "gi_door",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/door/states/open.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

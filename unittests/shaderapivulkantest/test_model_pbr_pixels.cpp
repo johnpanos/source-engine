@@ -435,6 +435,46 @@ int main()
 		Check( Draw( context, handles, ambient, &pixel, &error ), "ambient case renders" );
 		Judge( "ambient dielectric", pixel, ambient, { kNoOcclusion } );
 
+		// RFC 0011 indirect view: the ambient cube alone (view 1: light, no
+		// albedo; view 2: times the diffuse albedo and occlusion). The quad
+		// faces -Z, whose cube face is 0.6.
+		{
+			const auto srgbByte = []( float linear )
+			{
+				linear = std::min( 1.0f, std::max( 0.0f, linear ) );
+				return 255.0f * ( linear <= 0.0031308f
+				                      ? linear * 12.92f
+				                      : 1.055f * std::pow( linear, 1.0f / 2.4f ) - 0.055f );
+			};
+			context.SetIndirectLightView( 1, 1.0f );
+			Check( Draw( context, handles, ambient, &pixel, &error ), "indirect view renders" );
+			bool lightOnly = true;
+			for ( int c = 0; c < 3; ++c )
+				lightOnly = lightOnly && std::abs( pixel[c] - srgbByte( 0.6f ) ) <= 1.5f;
+			Check( lightOnly, "model indirect view 1 writes the ambient cube's light" );
+			context.SetIndirectLightView( 2, 1.0f );
+			Check( Draw( context, handles, ambient, &pixel, &error ), "indirect view 2 renders" );
+			bool radiance = true;
+			for ( int c = 0; c < 3; ++c )
+			{
+				const float base = std::pow( ( ambient.base[c] / 255.0f + 0.055f ) / 1.055f, 2.4f );
+				radiance = radiance &&
+				           std::abs( pixel[c] - srgbByte( base * 0.6f * 200.0f / 255.0f ) ) <= 1.5f;
+			}
+			Check( radiance, "model indirect view 2 writes albedo x occlusion x ambient light" );
+			// A local light is direct light: the view leaves it out.
+			Scene direct = ambient;
+			for ( auto &face : direct.ambient )
+				face[0] = face[1] = face[2] = 0.0f;
+			direct.lights = 1;
+			direct.lightColor[0] = direct.lightColor[1] = direct.lightColor[2] = 1.0f;
+			context.SetIndirectLightView( 1, 1.0f );
+			Check( Draw( context, handles, direct, &pixel, &error ) && pixel[0] <= 1 &&
+			           pixel[1] <= 1 && pixel[2] <= 1,
+			    "model indirect view excludes local (direct) lights" );
+			context.SetIndirectLightView( 0, 1.0f );
+		}
+
 		// 2. One local light at 40 degrees, attenuated at the vertices.
 		Scene lit;
 		lit.lights = 1;

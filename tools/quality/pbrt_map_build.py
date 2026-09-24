@@ -151,6 +151,9 @@ class Pipeline:
                          "denoise": lightmap.get("denoise", True),
                          "directional": lightmap.get("directional", False),
                          "device": lightmap.get("device", "auto"),
+                         "light_paths": lightmap.get("light_paths", "blender-default"),
+                         # RFC 0011 separated light: LMAP v2 layers beside the total.
+                         "layers": list(lightmap.get("layers", [])),
                          "exclude_materials": lightmap.get("exclude_materials", [])}
         self.probe = with_defaults(manifest, self.profile, "reflection_probe")
         reference = dict(self.profile.get("reference") or {}, **manifest.get("reference", {}))
@@ -171,6 +174,7 @@ class Pipeline:
             "atlas_receipt": self.out / "lighting" / "atlas.exr.json",
             "denoised": self.out / "lighting" / "atlas-denoised.exr",
             "denoised_receipt": self.out / "lighting" / "atlas-denoised.exr.json",
+            "layers": self.out / "lighting" / "layers",
             "directional_bakes": self.out / "lighting" / "directional",
             "sun_visibility": self.out / "lighting" / "sun_visibility.exr",
             "directional": self.out / "lighting" / "atlas-directional.exr",
@@ -337,29 +341,49 @@ class Pipeline:
                      "--out-exr", p["atlas"], "--out-coverage-exr", p["coverage"],
                      "--size", str(self.lightmap["size"]),
                      "--samples", str(self.lightmap["samples"]),
-                     "--device", self.lightmap["device"]] + env_args
+                     "--device", self.lightmap["device"],
+                     "--light-paths", self.lightmap["light_paths"]] + env_args
         for material in self.lightmap["exclude_materials"]:
             bake_args += ["--exclude-material", material]
         directional = self.lightmap["directional"]
         if directional:
             bake_args += ["--directional-dir", p["directional_bakes"]]
+        layers = self.lightmap["layers"]
+        if layers:
+            bake_args += ["--layers", ",".join(layers), "--layers-dir", p["layers"]]
         self.step("bake", [p["stage"]] + ([environment] if environment else []),
                   dict({k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
-                                                      "device", "directional")},
+                                                      "device", "directional", "light_paths",
+                                                      "layers")},
                        reserve_rows=probe_width // 2),
                   SCENE_SCRIPTS + ["pbrt_blender.py", "pbrt_lightmap_bake.py"],
                   [p["lighting_stage"], p["atlas"], p["coverage"], p["atlas_receipt"]] +
-                  ([p["directional_bakes"]] if directional else []),
+                  ([p["directional_bakes"]] if directional else []) +
+                  ([p["layers"]] if layers else []),
                   lambda: self.blender("bake", "pbrt_lightmap_bake.py", bake_args))
         atlas, atlas_receipt, scope = p["atlas"], p["atlas_receipt"], BAKE_SCOPE
-        self.step("denoise", [p["atlas"], p["coverage"], p["atlas_receipt"]],
-                  {"uv_coverage": True, "denoise": self.lightmap["denoise"]},
-                  ["lightmap_denoise.py"], [p["denoised"], p["denoised_receipt"]],
-                  lambda: self.run("denoise", [sys.executable, HERE / "lightmap_denoise.py",
-                                               "--exr", p["atlas"], "--bake-evidence",
-                                               p["atlas_receipt"], "--coverage-exr",
-                                               p["coverage"], "--out", p["denoised"]] +
-                                   ([] if self.lightmap["denoise"] else ["--skip-denoise"])))
+        denoised_layers = {role: p["layers"] / (role + "-denoised.exr") for role in layers}
+
+        def denoise():
+            skip = [] if self.lightmap["denoise"] else ["--skip-denoise"]
+            seconds = self.run("denoise", [sys.executable, HERE / "lightmap_denoise.py",
+                                           "--exr", p["atlas"], "--bake-evidence",
+                                           p["atlas_receipt"], "--coverage-exr",
+                                           p["coverage"], "--out", p["denoised"]] + skip)
+            for role, out in denoised_layers.items():
+                seconds += self.run("denoise", [sys.executable, HERE / "lightmap_denoise.py",
+                                                "--exr", p["layers"] / (role + ".exr"),
+                                                "--layer", role, "--bake-evidence",
+                                                p["atlas_receipt"], "--coverage-exr",
+                                                p["coverage"], "--out", out] + skip)
+            return seconds
+        self.step("denoise", [p["atlas"], p["coverage"], p["atlas_receipt"]] +
+                  [p["layers"] / (role + ".exr") for role in layers],
+                  {"uv_coverage": True, "denoise": self.lightmap["denoise"], "layers": layers},
+                  ["lightmap_denoise.py"], [p["denoised"], p["denoised_receipt"]] +
+                  [path for out in denoised_layers.values()
+                   for path in (out, out.with_name(out.name + ".json"))],
+                  denoise)
         atlas, atlas_receipt = p["denoised"], p["denoised_receipt"]
         scope = BAKE_SCOPE + ("-denoised" if self.lightmap["denoise"] else "-gutter-filled")
         directional_args = []
@@ -398,7 +422,10 @@ class Pipeline:
         if self.scene.get("distant_lights") and probe:
             sun_args = ["--sun-visibility", p["sun_visibility"], "--coverage-exr", p["coverage"],
                         "--sun-bake-evidence", p["atlas_receipt"]]
+        layer_args = [item for role, out in denoised_layers.items()
+                      for item in ("--layer", "%s=%s" % (role, out))]
         self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"]] +
+                  list(denoised_layers.values()) +
                   ([p["sun_visibility"], p["coverage"]] if sun_args else []) +
                   ([p["probe"] / "probe.json"] if probe else []) +
                   ([p["directional"]] if directional else []),
@@ -411,7 +438,7 @@ class Pipeline:
                                             "--ktx-tool", self.tools["ktx"],
                                             "--preview-gain", str(self.lightmap["preview_gain"]),
                                             "--expected-scope", scope, "--out", p["ktx2"]] +
-                                           probe_args + directional_args + sun_args))
+                                           probe_args + directional_args + sun_args + layer_args))
         pack_stage = p["lighting_stage"]
         if environment:
             pack_stage = p["render_stage"]
@@ -459,7 +486,10 @@ class Pipeline:
                         str(self.world_mesh["weld_distance_source_units"])]
                        if self.world_mesh["weld_materials"] else []) +
                       [item for material in self.world_mesh["weld_materials"]
-                       for item in ("--weld-material", material)]))
+                       for item in ("--weld-material", material)] +
+                      # Dynamic models are placed as entities, not world mesh.
+                      [item for name in sorted(map_scene.prop_shape_names(self.scene))
+                       for item in ("--exclude-mesh", name)]))
         sky_args = ["--sky-texture", p["sky_texture"]] if environment else []
         self.step("content", [scene, p["stage_receipt"], p["bsp2"]] +
                   ([p["sky_texture"]] if environment else []), {},
@@ -469,6 +499,7 @@ class Pipeline:
                                                "--scene", scene, "--stage-receipt",
                                                p["stage_receipt"], "--bsp2", p["bsp2"],
                                                "--vtex", tools / "vtex", "--map-name", self.map,
+                                               "--runtime", self.tools["runtime"],
                                                "--out", p["content"]] + sky_args))
         if self.boot:
             content_files = sorted(f for f in p["content"].rglob("*") if f.is_file())

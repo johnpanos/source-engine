@@ -25,7 +25,7 @@ public:
 	}
 
 	bool Upload( const world_mesh_gpu::WorldMeshUploadRequest &request ) override;
-	bool UploadLightmapKtx2( const void *bytes, size_t size ) override;
+	bool UploadLightmap( const world_mesh_gpu::WorldLightmapUploadRequest &request ) override;
 	bool DrawBatch( uint32_t firstIndex, uint32_t indexCount ) override;
 	void Release() override;
 	bool IsResident() const override;

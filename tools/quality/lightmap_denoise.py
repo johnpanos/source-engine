@@ -121,11 +121,17 @@ def main():
     parser.add_argument("--bake-evidence", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--oidn-library", default="libOpenImageDenoise.so.2")
+    parser.add_argument("--layer",
+                        help="a separated-light layer (direct, indirect) named in the bake "
+                             "receipt's `layers`, rather than its total atlas")
     parser.add_argument("--skip-denoise", action="store_true",
                         help="fill UV gutters without filtering covered bake texels")
     args = parser.parse_args()
     evidence = json.loads(args.bake_evidence.read_text())
-    if evidence.get("status") != "pass" or evidence.get("atlas_exr_sha256") != sha256(args.exr):
+    expected = evidence.get("atlas_exr_sha256")
+    if args.layer:
+        expected = evidence.get("layers", {}).get(args.layer, {}).get("exr_sha256")
+    if evidence.get("status") != "pass" or not expected or expected != sha256(args.exr):
         raise ValueError("atlas differs from its passing bake receipt")
     pixels = iio.imread(args.exr).astype(np.float32)
     if pixels.ndim != 3 or pixels.shape[2] != 4 or not np.isfinite(pixels).all():
@@ -164,7 +170,8 @@ def main():
     suffix = "-gutter-filled" if args.skip_denoise else "-denoised"
     receipt.update({"status": "pass", "scope": evidence["scope"] + suffix,
                     "atlas_exr_sha256": sha256(args.out),
-                    "source_atlas_exr_sha256": evidence["atlas_exr_sha256"],
+                    "source_atlas_exr_sha256": expected,
+                    "layer": args.layer or "total",
                     "source_bake_evidence_sha256": sha256(args.bake_evidence),
                     "denoiser": None if args.skip_denoise else "OpenImageDenoise RTLightmap (CPU)",
                     "covered_texels": int(covered.sum()),

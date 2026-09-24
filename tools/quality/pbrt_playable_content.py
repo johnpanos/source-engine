@@ -35,6 +35,8 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import map_scene  # noqa: E402
+import source_content  # noqa: E402
+import source_model  # noqa: E402
 from vtf_content import compile_texture, power_of_two, verify_solid_vtf  # noqa: E402
 
 MAX_TEXTURE = 2048
@@ -228,6 +230,46 @@ def vmt(shader, lines):
     return '"%s"\n{\n%s}\n' % (shader, "".join('\t"%s" "%s"\n' % pair for pair in lines))
 
 
+def write_dynamic_models(scene, args, prefix, assets):
+    """Map-scoped copies of each dynamic model, drawing its stand-in's material.
+
+    Every texture name the model uses gets a PBRMetalRough VMT that reads the
+    stand-in material's basecolor/MRAO (so the model and its Cycles stand-in
+    share one albedo), with a VertexLitGeneric fallback for legacy devices.
+    """
+    placed = map_scene.props(scene)
+    if not placed:
+        return []
+    if not args.runtime:
+        raise ValueError("the scene places dynamic models; --runtime is required")
+    resolver = source_content.ContentResolver(str(args.runtime))
+    shapes = {shape["name"]: shape for shape in scene["shapes"]}
+    models = []
+    for prop in placed:
+        materials = {shapes[name]["material"].lower() for name in prop["shapes"]}
+        if len(materials) != 1:
+            raise ValueError("dynamic model %s stand-in must use one material" % prop["name"])
+        material = materials.pop()
+        model_path = map_scene.prop_model_path(prefix, prop)
+        directory = "models/%s/%s" % (prefix, prop["name"].lower())
+        receipt = source_model.retarget(resolver, prop["model"], args.out, model_path,
+                                        directory)
+        root = args.out / "materials" / directory
+        root.mkdir(parents=True, exist_ok=True)
+        texture = "%s/%s/basecolor" % (prefix, material)
+        fallback = vmt("VertexLitGeneric", [("$basetexture", texture)])
+        (root / "fallback.vmt").write_text(fallback)
+        for name in receipt["textures"]:
+            (root / (name.lower() + ".vmt")).write_text(vmt("PBRMetalRough", [
+                ("$basetexture", texture), ("$mraotexture", "%s/%s/mrao" % (prefix, material)),
+                ("$surfaceprop", "default"), ("$fallbackmaterial", directory + "/fallback")]))
+        receipt.update({"name": prop["name"], "material": material,
+                        "stand_in_basecolor_srgb": assets[material]["basecolor_srgb"],
+                        "vmt_directory": "materials/" + directory})
+        models.append(receipt)
+    return models
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scene", type=Path, required=True)
@@ -235,6 +277,9 @@ def main():
     parser.add_argument("--bsp2", type=Path, required=True)
     parser.add_argument("--vtex", type=Path, required=True)
     parser.add_argument("--map-name", required=True)
+    parser.add_argument("--runtime", type=Path,
+                        help="installed game runtime; required when the scene places "
+                             "dynamic models")
     parser.add_argument("--sky-texture", type=Path,
                         help="display texture for the SkyDome mesh (unlit, two-sided)")
     parser.add_argument("--out", type=Path, required=True,
@@ -364,7 +409,9 @@ def main():
                         "emission_scale": emission_scale if emission_image else None,
                         "vmt_sha256": sha256(material_root / (name + ".vmt")),
                         "fallback_vmt_sha256": sha256(fallback_root / (name + ".vmt"))}
+    models = write_dynamic_models(scene, args, prefix, assets)
     evidence = {"status": "pass", "scope": "pbrt-playable-content-preview",
+                "dynamic_models": models,
                 "map": args.map_name, "scene_sha256": scene["source_sha256"],
                 "stage_receipt_sha256": sha256(args.stage_receipt),
                 "bsp2_sha256": sha256(args.bsp2), "map_sha256": sha256(map_path),

@@ -2795,7 +2795,8 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		texPc.offset = 0;
 		// + vec4 alphaParams (128 bytes), and the user clip planes when the device
 		// clips (demo_dyn_tex_clip.vert reads them after the block).
-		texPc.size = m_clipPlanesSupported ? kTexturedPushBytes : sizeof( float ) * 32;
+		texPc.size = m_clipPlanesSupported ? static_cast<uint32_t>( kTexturedPushBytes )
+		                                    : sizeof( float ) * 32;
 		// Base, lightmap, cubemap and normal mask share the managed texture
 		// descriptor layout; each draw selects the corresponding texture set.
 		const VkDescriptorSetLayout texSetLayouts[4] = {
@@ -3427,7 +3428,8 @@ bool CVulkanContext::InitPbrDirectPipeline( std::string *outError )
 	}
 	VkPushConstantRange pc = {};
 	pc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-	pc.size = m_clipPlanesSupported ? kTexturedPushBytes : sizeof( float ) * 32;
+	pc.size = m_clipPlanesSupported ? static_cast<uint32_t>( kTexturedPushBytes )
+	                                 : sizeof( float ) * 32;
 	const VkDescriptorSetLayout sets[3] = {
 	    m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout };
 	VkPipelineLayoutCreateInfo pl = {};
@@ -5369,12 +5371,24 @@ bool CVulkanContext::UploadWorldMesh( const void *vertices, size_t vertexBytes, 
 
 void CVulkanContext::SetWorldLightmapHandle( int handle )
 {
-	if ( m_worldLightmapHandle == handle )
-		return;
-	const int old = m_worldLightmapHandle;
-	m_worldLightmapHandle = handle;
-	if ( old >= 0 )
-		DestroyManagedTexture( old );
+	SetWorldLightmapHandles( handle, handle >= 0 ? m_worldLightmapDirectHandle : -1,
+	    handle >= 0 ? m_worldLightmapIndirectHandle : -1 );
+}
+
+void CVulkanContext::SetWorldLightmapHandles( int total, int direct, int indirect )
+{
+	int *const slots[3] = { &m_worldLightmapHandle, &m_worldLightmapDirectHandle,
+	    &m_worldLightmapIndirectHandle };
+	const int values[3] = { total, direct, indirect };
+	for ( int i = 0; i < 3; ++i )
+	{
+		if ( *slots[i] == values[i] )
+			continue;
+		const int old = *slots[i];
+		*slots[i] = values[i];
+		if ( old >= 0 )
+			DestroyManagedTexture( old );
+	}
 }
 
 bool CVulkanContext::QueueWorldMeshBatch( uint32_t firstIndex, uint32_t indexCount )
@@ -6159,7 +6173,9 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				    d.skin >= 0 && static_cast<size_t>( d.skin ) < m_dynSkinConstants.size()
 				        ? &m_dynSkinConstants[static_cast<size_t>( d.skin )]
 				        : nullptr;
-				pbrModelEnv = c && ( c->combos & kPbrModelEnvMap ) != 0;
+				// The indirect view never reads the $envmap cube (set 5 stays 2D).
+				pbrModelEnv =
+				    m_indirectViewMode == 0 && c && ( c->combos & kPbrModelEnvMap ) != 0;
 				selected = PbrModelPipeline( d.raster, pbrModelEnv, openSrgb, passSamples );
 				if ( selected == VK_NULL_HANDLE || !c || !skinConstantsOk ||
 				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
@@ -6295,9 +6311,16 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					// there instead (the built-in sets while the push block says
 					// the shader does not read them).
 					const int environment = d.samplerHandles[kPbrWorldEnvironmentSampler];
+					// The indirect view samples the LMAP indirect layer where the
+					// lightmap would be; without one it binds the total page and
+					// the push block says the layer is absent.
+					const bool indirectViewLayer =
+					    !glass && m_indirectViewMode != 0 && m_worldLightmapIndirectHandle >= 0;
 					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
 					    sampledSet( d.samplerHandles[1], 0 ), sampledSet( d.samplerHandles[2], 0 ),
-					    sampledSet( m_worldLightmapHandle, 0 ),
+					    sampledSet( indirectViewLayer ? m_worldLightmapIndirectHandle
+					                                  : m_worldLightmapHandle,
+					        0 ),
 					    m_managedTextures[static_cast<size_t>( m_pbrSplitSumHandle )].descSet,
 					    glass ? ( sceneColor.descSetSrgb != VK_NULL_HANDLE ? sceneColor.descSetSrgb
 					                                                       : sceneColor.descSet )
@@ -6386,6 +6409,12 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				pushData[31] = d.outputScale;
 				pushData[32] = static_cast<float>( c.numLights );
 				pushData[33] = pushData[34] = pushData[35] = 0.0f;
+				if ( pbrModel && m_indirectViewMode != 0 )
+				{
+					// model_pbr.frag -DINDIRECT_VIEW: params2.y view, .z scale.
+					pushData[33] = static_cast<float>( m_indirectViewMode );
+					pushData[34] = m_indirectViewScale;
+				}
 				appendClipPlanes( pushData + 36 );
 				pushFloats = kSkinPushBytes / sizeof( float );
 			}
@@ -6409,6 +6438,15 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				std::memcpy( pushData + 20, scene.lightDirection, sizeof( scene.lightDirection ) );
 				std::memcpy( pushData + 24, scene.lightRadiance, sizeof( scene.lightRadiance ) );
 				std::memcpy( pushData + 28, scene.material, sizeof( scene.material ) );
+				if ( !glass && m_indirectViewMode != 0 )
+				{
+					// world_pbr.frag -DINDIRECT_VIEW: lightDirection is ( view,
+					// scale, indirect layer bound, 0 ).
+					pushData[20] = static_cast<float>( m_indirectViewMode );
+					pushData[21] = m_indirectViewScale;
+					pushData[22] = m_worldLightmapIndirectHandle >= 0 ? 1.0f : 0.0f;
+					pushData[23] = 0.0f;
+				}
 				if ( glass )
 				{
 					// shaders/world_pbr_glass.frag's glass, capture and material.

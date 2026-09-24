@@ -1,0 +1,112 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "direct": {
+      "eye": [
+        6.5,
+        1.0,
+        1.6
+      ],
+      "forward": [
+        -0.9411837077072378,
+        0.31372790256907923,
+        -0.12549116102763172
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "through": {
+      "eye": [
+        4.0,
+        4.95,
+        1.4
+      ],
+      "forward": [
+        -0.6273786225552799,
+        -0.768538812630218,
+        -0.12547572451105596
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "map_manifest": "map.json",
+  "name": "portal-view",
+  "portals": {
+    "north": {
+      "center_m": [
+        4.0,
+        5.0,
+        1.4
+      ],
+      "normal": [
+        0,
+        -1,
+        0
+      ]
+    },
+    "size_m": [
+      1.3,
+      2.3
+    ],
+    "south": {
+      "center_m": [
+        4.0,
+        0.0,
+        1.4
+      ],
+      "normal": [
+        0,
+        1,
+        0
+      ]
+    }
+  },
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "The same indirect contribution seen directly and through a portal pair",
+  "regions": {
+    "direct": {
+      "floor": [
+        "C_Zn"
+      ],
+      "model": [
+        "ProbeC"
+      ],
+      "red_wall": [
+        "C_Xn"
+      ]
+    },
+    "through": {
+      "floor": [
+        "C_Zn"
+      ],
+      "model": [
+        "ProbeC"
+      ],
+      "red_wall": [
+        "C_Xn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "portal-view.usda",
+  "states": {
+    "default": {
+      "layer": null
+    }
+  }
+}

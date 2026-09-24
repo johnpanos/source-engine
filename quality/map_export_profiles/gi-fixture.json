@@ -1,0 +1,18 @@
+{
+  "schema": "map-export-profile/v1",
+  "name": "gi-fixture",
+  "description": "RFC 0011 GI fixtures: a converged, denoised flat lightmap baked with the gi-reference Cycles light paths (64 diffuse bounces, no clamping), with separated direct and indirect LMAP v2 layers. No reflection probe, no directional page and no pipeline reference render: the fixtures' Cycles references come from tools/quality/gi_reference.py and their oracles from tools/quality/gi_runtime.py.",
+  "lightmap": {
+    "size": 1024,
+    "samples": 2048,
+    "device": "auto",
+    "denoise": true,
+    "directional": false,
+    "light_paths": "gi-reference",
+    "layers": ["direct", "indirect"]
+  },
+  "reflection_probe": null,
+  "reference": null,
+  "runtime_gate": null,
+  "audit": null
+}

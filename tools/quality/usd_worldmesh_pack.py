@@ -38,7 +38,8 @@ def normal_bucket(normal):
     return 2 * axis + int(normal[axis] < 0)
 
 
-def source_triangles(stage, material_prefix, require_lightmap_uv, include_emitters):
+def source_triangles(stage, material_prefix, require_lightmap_uv, include_emitters,
+                     exclude_meshes=()):
     if UsdGeom.GetStageUpAxis(stage) != UsdGeom.Tokens.z:
         raise ValueError("WMSH import requires a Z-up USD stage")
     meters = UsdGeom.GetStageMetersPerUnit(stage)
@@ -48,10 +49,16 @@ def source_triangles(stage, material_prefix, require_lightmap_uv, include_emitte
     transforms = UsdGeom.XformCache()
     faces = {}
     inventory = []
+    excluded = set(exclude_meshes)
     source_meshes = sorted((prim for prim in stage.Traverse()
                             if prim.IsA(UsdGeom.Mesh) and
-                            not re.fullmatch(EMITTER_NAME, prim.GetName())),
+                            not re.fullmatch(EMITTER_NAME, prim.GetName()) and
+                            prim.GetName() not in excluded),
                            key=lambda prim: prim.GetName())
+    found = {prim.GetName() for prim in stage.Traverse() if prim.IsA(UsdGeom.Mesh)}
+    if excluded - found:
+        raise ValueError("excluded meshes are not in the stage: " +
+                         ", ".join(sorted(excluded - found)))
     emitters = sorted((prim for prim in stage.Traverse()
                        if include_emitters and prim.IsA(UsdGeom.Mesh) and
                        re.fullmatch(EMITTER_NAME, prim.GetName())),
@@ -170,6 +177,8 @@ def main():
     parser.add_argument("--material-prefix", required=True)
     parser.add_argument("--require-lightmap-uv", action="store_true")
     parser.add_argument("--include-emitters", action="store_true")
+    parser.add_argument("--exclude-mesh", action="append", default=[],
+                        help="mesh prim name to leave out (dynamic-model stand-ins)")
     parser.add_argument("--weld-material", action="append", default=[],
                         help="material name whose near-coincident WMSH vertices are welded")
     parser.add_argument("--weld-distance-source-units", type=float, default=0.0)
@@ -192,7 +201,7 @@ def main():
     if not stage:
         raise ValueError("could not open USD stage")
     faces, inventory = source_triangles(stage, args.material_prefix,
-                                        args.require_lightmap_uv, args.include_emitters)
+                                        args.require_lightmap_uv, args.include_emitters, args.exclude_mesh)
     if args.weld_material and (not math.isfinite(args.weld_distance_source_units) or
                                args.weld_distance_source_units <= 0):
         parser.error("--weld-material requires a positive finite weld distance")

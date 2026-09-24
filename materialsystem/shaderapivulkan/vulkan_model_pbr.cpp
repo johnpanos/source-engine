@@ -39,7 +39,8 @@ void ModelPbrError( std::string *outError, const std::string &message )
 VkPipeline CVulkanContext::PbrModelPipeline(
     const DynRasterState &state, bool envCube, bool srgbPass, int samples )
 {
-	const int variant = envCube ? 1 : 0;
+	// The indirect view has no $envmap variant: it never reads set 5.
+	const int variant = m_indirectViewMode != 0 ? 2 : envCube ? 1 : 0;
 	const uint64_t key = PipelineKey( state, srgbPass, samples );
 	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
 	std::map<uint64_t, VkPipeline> &pipelines = m_pbrModelPipelines[variant];
@@ -53,9 +54,10 @@ VkPipeline CVulkanContext::PbrModelPipeline(
 	    m_skinPipelineLayout, &m_skinVin, pass, samples );
 	if ( pipeline == VK_NULL_HANDLE )
 		ModelPbrLog( "vkCreateGraphicsPipelines (model PBR%s, state %#llx) failed\n",
-		    envCube ? " envmap" : "", static_cast<unsigned long long>( key ) );
+		    variant == 2 ? " indirect view" : envCube ? " envmap" : "",
+		    static_cast<unsigned long long>( key ) );
 	pipelines[key] = pipeline;
-	if ( pipeline != VK_NULL_HANDLE )
+	if ( pipeline != VK_NULL_HANDLE && variant != 2 )
 		NotePipelineVariant( envCube ? kPipelinePbrModelEnv : kPipelinePbrModel, key );
 	return pipeline;
 }
@@ -78,7 +80,9 @@ bool CVulkanContext::InitPbrModelPipeline( std::string *outError )
 	if ( !CreateShaderModule(
 	         g_modelPbrFragSpv, sizeof( g_modelPbrFragSpv ), &m_pbrModelFrag[0], outError ) ||
 	     !CreateShaderModule( g_modelPbrEnvFragSpv, sizeof( g_modelPbrEnvFragSpv ),
-	         &m_pbrModelFrag[1], outError ) )
+	         &m_pbrModelFrag[1], outError ) ||
+	     !CreateShaderModule( g_modelPbrIndirectFragSpv, sizeof( g_modelPbrIndirectFragSpv ),
+	         &m_pbrModelFrag[2], outError ) )
 		return false;
 	if ( PbrModelPipeline( DynRasterState(), false ) == VK_NULL_HANDLE ||
 	     PbrModelPipeline( DynRasterState(), true ) == VK_NULL_HANDLE )

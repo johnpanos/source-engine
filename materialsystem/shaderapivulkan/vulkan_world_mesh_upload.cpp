@@ -31,17 +31,17 @@ bool CVulkanWorldMeshUpload::Upload( const world_mesh_gpu::WorldMeshUploadReques
 	return true;
 }
 
-bool CVulkanWorldMeshUpload::UploadLightmapKtx2( const void *bytes, size_t size )
+bool CVulkanWorldMeshUpload::UploadLightmap(
+    const world_mesh_gpu::WorldLightmapUploadRequest &request )
 {
 	std::string error;
-	uint32_t width = 0;
-	uint32_t height = 0;
-	if ( !UploadWorldLightmapKtx2( m_context, bytes, size, &width, &height, &error ) )
+	if ( !UploadWorldLightmapLayers( m_context, request, &error ) )
 	{
 		Warning( "[NativeVulkan] WMSH LMAP rejected: %s\n", error.c_str() );
 		return false;
 	}
-	Msg( "[NativeVulkan] WMSH LMAP ready (%u x %u, linear RGBA16F)\n", width, height );
+	Msg( "[NativeVulkan] WMSH LMAP ready (%u x %u, linear RGBA16F, %u layer%s)\n",
+	    request.width, request.height, request.layerCount, request.layerCount == 1 ? "" : "s" );
 	return true;
 }
 

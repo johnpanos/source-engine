@@ -1,0 +1,317 @@
+{
+  "analytic": [],
+  "fixture": "door",
+  "fixture_sha256": "33d4859686a669b55dc4e821d04ffee200f3913ad5bce5105d61708051366ce6",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "region_erosion_pixels": 2,
+  "renders": {
+    "closed": {
+      "blender": "5.2.1 LTS",
+      "composed_stage_sha256": "c6de19d31413a5ac6990dac2fae48d3b12381c6a84a0317b69a7087bd87106d8",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "renderer_sha256": "330e442fa277e2580d26914fbdb4a615b980426eb3c86f0498366b731fa3cbd4",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/door/door.usda": "1d98b2eb44988711fe3ec858ac15acf011ced0bde75507951a40025716be23c8"
+      }
+    },
+    "open": {
+      "blender": "5.2.1 LTS",
+      "composed_stage_sha256": "26e2d860279bc49808441bdc94516d785b3ad530b87c791ba7201ef251947654",
+      "cycles_device": "HIP: AMD Radeon 8060S Graphics",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "renderer_sha256": "330e442fa277e2580d26914fbdb4a615b980426eb3c86f0498366b731fa3cbd4",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/door/door.usda": "1d98b2eb44988711fe3ec858ac15acf011ced0bde75507951a40025716be23c8",
+        "quality/fixtures/gi/door/states/open.usda": "104ae9d76b2c587f1903df21d5b3bfd708048f5e6de4463c4c42eaf9c5191282"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "closed.far": {
+      "camera": "far",
+      "files": {
+        "index": {
+          "file": "closed.far.index.png",
+          "sha256": "7424f582d5c5d40b075d2f76942ee8570dcb1362056835bc7163cc3cec63bb24"
+        },
+        "indirect": {
+          "file": "closed.far.indirect.exr",
+          "sha256": "9cf516ff7cbe4ce8d519847bf5a6b412a1c42bfce5e35430a49aca0a5303c62f"
+        },
+        "total": {
+          "file": "closed.far.total.exr",
+          "sha256": "9cf516ff7cbe4ce8d519847bf5a6b412a1c42bfce5e35430a49aca0a5303c62f"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Xp": 2,
+        "A_Yn": 3,
+        "A_Yp": 4,
+        "A_Zn": 5,
+        "A_Zp": 6,
+        "B_Xn": 7,
+        "B_Xp": 8,
+        "B_Yn": 9,
+        "B_Yp": 10,
+        "B_Zn": 11,
+        "B_Zp": 12,
+        "DoorSlab": 13,
+        "Doorway": 14,
+        "LightQuad00": 15,
+        "ProbeBShape": 16
+      },
+      "regions": {
+        "model": {
+          "albedo": [
+            0.5999794602394104,
+            0.5999794602394104,
+            0.5999794602394104
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            16.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "pixels": 1572,
+          "total": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "walls": {
+          "albedo": [
+            0.5997545123100281,
+            0.5997545123100281,
+            0.5997545123100281
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.475163459777832
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "pixels": 43101,
+          "total": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "state": "closed"
+    },
+    "open.far": {
+      "camera": "far",
+      "files": {
+        "index": {
+          "file": "open.far.index.png",
+          "sha256": "e36b924ce775983d97ed439fd3492926e7cdfbace967e2a983e8933e066836c5"
+        },
+        "indirect": {
+          "file": "open.far.indirect.exr",
+          "sha256": "e3fcf67f49e0cf0293b92f32b8fb20b36ba267fe3a084a17b2baf0a8bb4ecfdd"
+        },
+        "total": {
+          "file": "open.far.total.exr",
+          "sha256": "10a36dd90650631d81241a5cdf6e2437ae4c3b38ced5e927d6f5dd90730c75ed"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Xp": 2,
+        "A_Yn": 3,
+        "A_Yp": 4,
+        "A_Zn": 5,
+        "A_Zp": 6,
+        "B_Xn": 7,
+        "B_Xp": 8,
+        "B_Yn": 9,
+        "B_Yp": 10,
+        "B_Zn": 11,
+        "B_Zp": 12,
+        "Doorway": 13,
+        "LightQuad00": 14,
+        "ProbeBShape": 15
+      },
+      "regions": {
+        "model": {
+          "albedo": [
+            0.5999794602394104,
+            0.5999794602394104,
+            0.5999794602394104
+          ],
+          "direct": [
+            3.943736373912543e-06,
+            3.943736828659894e-06,
+            3.943736373912543e-06
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.013358304277062416,
+            0.013358304277062416,
+            0.013358304277062416
+          ],
+          "pixels": 1572,
+          "total": [
+            0.00801719818264246,
+            0.00801719818264246,
+            0.00801719818264246
+          ]
+        },
+        "walls": {
+          "albedo": [
+            0.5997545123100281,
+            0.5997545123100281,
+            0.5997545123100281
+          ],
+          "direct": [
+            0.008078014478087425,
+            0.008078014478087425,
+            0.00807801354676485
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.475163459777832
+          ],
+          "indirect": [
+            0.01856159046292305,
+            0.01856159046292305,
+            0.01856159046292305
+          ],
+          "pixels": 43101,
+          "total": [
+            0.0159834623336792,
+            0.01598346047103405,
+            0.01598346047103405
+          ]
+        }
+      },
+      "state": "open"
+    }
+  }
+}

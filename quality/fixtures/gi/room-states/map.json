@@ -1,0 +1,15 @@
+{
+  "collision": {
+    "solid_meshes": [
+      "Table_Top",
+      "Table_Legs",
+      "MetalSphere",
+      "Body",
+      "Body_i1"
+    ]
+  },
+  "map": "gi_room_states",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/room-states/room-states.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

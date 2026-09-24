@@ -4,6 +4,13 @@
 // atlas carries one, or from the material's $envmap cube. $emissiontexture
 // (sRGB, decoded here) adds its color times $emissionscale. The native pixel
 // fixture checks normal, metalness, roughness, emission and the environment.
+//
+// INDIRECT_VIEW (RFC 0011 debug view) replaces the shading with the indirect
+// light alone, for comparison with Cycles' DiffInd pass: the bound lightmap
+// is then the map's LMAP indirect layer, and the push block's lightDirection
+// is ( view, exposure scale, 1 when that layer is bound, 0 ). View 1 writes
+// the indirect diffuse light (irradiance / pi, no albedo), view 2 the
+// indirect diffuse radiance (times the diffuse albedo and occlusion).
 layout( location = 0 ) in vec2 fragUv;
 layout( location = 1 ) in vec2 fragLightmapUv;
 layout( location = 2 ) in vec3 fragPosition;
@@ -91,6 +98,21 @@ void main()
 	vec4 baseSample = texture( baseTexture, fragUv );
 	if ( consts.material.x >= 0.0 && baseSample.a < consts.material.x )
 		discard;
+#ifdef INDIRECT_VIEW
+	{
+		vec3 indirectLight =
+		    consts.lightDirection.z > 0.5 ? BakedIrradiance( normalize( fragNormal ) ) : vec3( 0.0 );
+		vec3 viewed = indirectLight;
+		if ( consts.lightDirection.x > 1.5 )
+		{
+			vec3 viewMrao = texture( mraoTexture, fragUv ).rgb;
+			viewed *= baseSample.rgb * ( 1.0 - clamp( viewMrao.r, 0.0, 1.0 ) ) *
+			          clamp( viewMrao.b, 0.0, 1.0 );
+		}
+		outColor = vec4( viewed * consts.lightDirection.y, baseSample.a );
+		return;
+	}
+#endif
 	vec3 base = baseSample.rgb;
 	vec3 mrao = texture( mraoTexture, fragUv ).rgb;
 	float metalness = clamp( mrao.r, 0.0, 1.0 );

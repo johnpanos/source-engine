@@ -72,7 +72,19 @@ VALID_EXPECT = {
     OUTCOME_MISSING_SOURCE,
 }
 VALID_KIND = {"positive", "sensitivity", "self-test"}
-PROVIDER_KINDS = ("executable", "env", "path")
+PROVIDER_KINDS = ("executable", "env", "path", "vulkan-device")
+# Runner classes a profile declares (`runner`). A plain `check` runs the
+# headless class; GPU suites run on a runner that has the device and are
+# selected with --runner gpu (or any explicit selector). Every class is a
+# required gate on its own runner; none is folded into another's evidence.
+RUNNER_CLASSES = ("headless", "gpu")
+DEFAULT_RUNNER = "headless"
+# `vulkan-device:<type>` accepts these device classes from `vulkaninfo`.
+VULKAN_DEVICE_TYPES = {
+    "gpu": {"PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU", "PHYSICAL_DEVICE_TYPE_DISCRETE_GPU"},
+    "any": {"PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU", "PHYSICAL_DEVICE_TYPE_DISCRETE_GPU",
+            "PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU", "PHYSICAL_DEVICE_TYPE_CPU"},
+}
 
 # Build configurations. `release` proves test assertions stay effective in an
 # optimized NDEBUG build (RFC 0005 runner contract); it is appended after the
@@ -207,7 +219,27 @@ def load_profile(profiles_dir, profile_id):
             raise ManifestError("profile %s: %s" % (profile_id, e))
     if not data.get("cxx_std"):
         raise ManifestError("profile %s declares no dialect or cxx_std" % profile_id)
+    runner = data.setdefault("runner", DEFAULT_RUNNER)
+    if runner not in RUNNER_CLASSES:
+        raise ManifestError("profile %s has unknown runner class %r (valid: %s)"
+                            % (profile_id, runner, ", ".join(RUNNER_CLASSES)))
+    for req in data.get("requires", []):
+        parse_requirement(req)
+    run_env = data.get("run_env", {})
+    if not isinstance(run_env, dict) or not all(isinstance(v, str) for v in run_env.values()):
+        raise ManifestError("profile %s run_env must map names to strings" % profile_id)
+    if not isinstance(data.get("run_env_unset", []), list):
+        raise ManifestError("profile %s run_env_unset must be a list" % profile_id)
     return data
+
+
+def run_environment(profile, base=None):
+    """The environment a profile's suites (and its providers) run under."""
+    env = dict(os.environ if base is None else base)
+    for name in profile.get("run_env_unset", []):
+        env.pop(name, None)
+    env.update(profile.get("run_env", {}))
+    return env
 
 
 def suite_sources(suite):
@@ -327,9 +359,62 @@ def suite_input_digest(root, suite):
 # Providers
 # ---------------------------------------------------------------------------
 
-def provider_available(root, requirement):
+_VULKAN_DEVICES = {}
+
+
+def parse_vulkaninfo_summary(text):
+    """Physical devices from `vulkaninfo --summary`: dicts of its key = value
+    fields (deviceName, deviceType, apiVersion, driverName, driverInfo...)."""
+    devices, current = [], None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if re.match(r"^GPU[0-9]+:$", stripped):
+            current = {}
+            devices.append(current)
+            continue
+        if current is None:
+            continue
+        key, sep, value = stripped.partition("=")
+        if sep and key.strip():
+            current[key.strip()] = value.strip()
+    return [device for device in devices if device.get("deviceType")]
+
+
+def vulkan_devices(env=None):
+    """Physical Vulkan devices visible under `env` (cached per environment)."""
+    key = tuple(sorted((env or os.environ).items()))
+    if key not in _VULKAN_DEVICES:
+        tool = shutil.which("vulkaninfo")
+        devices, error = [], None
+        if tool is None:
+            error = "vulkaninfo not found on PATH"
+        else:
+            try:
+                probe = subprocess.run([tool, "--summary"], capture_output=True, text=True,
+                                       timeout=60, env=env, check=False)
+                devices = parse_vulkaninfo_summary(probe.stdout)
+                if probe.returncode != 0 and not devices:
+                    error = "vulkaninfo exited %d" % probe.returncode
+            except (OSError, subprocess.TimeoutExpired) as e:
+                error = "vulkaninfo failed: %s" % e
+        _VULKAN_DEVICES[key] = (devices, error)
+    return _VULKAN_DEVICES[key]
+
+
+def provider_available(root, requirement, env=None):
     """Return (available, detail) for one `kind:value` requirement."""
     kind, value = parse_requirement(requirement)
+    if kind == "vulkan-device":
+        if value not in VULKAN_DEVICE_TYPES:
+            return False, "unknown device class %r (valid: %s)" % (
+                value, ", ".join(sorted(VULKAN_DEVICE_TYPES)))
+        devices, error = vulkan_devices(env)
+        matching = [d for d in devices if d.get("deviceType") in VULKAN_DEVICE_TYPES[value]]
+        if not matching:
+            return False, error or ("no %s Vulkan device (found: %s)" % (
+                value, ", ".join(d.get("deviceType", "?") for d in devices) or "none"))
+        return True, "; ".join("%s (%s, %s)" % (d.get("deviceName"), d.get("driverName"),
+                                                d.get("driverInfo")) for d in matching)
     if kind == "executable":
         path = shutil.which(value)
         return (path is not None), (path or "not found on PATH")
@@ -341,10 +426,16 @@ def provider_available(root, requirement):
     return exists, (path if exists else "%s does not exist" % path)
 
 
-def missing_providers(root, suite):
+def suite_requirements(suite, profile=None):
+    """The suite's own providers plus every provider its profile requires."""
+    return list((profile or {}).get("requires", [])) + list(suite.get("requires", []))
+
+
+def missing_providers(root, suite, profile=None):
     missing = []
-    for req in suite.get("requires", []):
-        ok, detail = provider_available(root, req)
+    env = run_environment(profile) if profile else None
+    for req in suite_requirements(suite, profile):
+        ok, detail = provider_available(root, req, env)
         if not ok:
             missing.append("%s (%s)" % (req, detail))
     return missing
@@ -371,7 +462,7 @@ def build_command(root, cxx, profile, suite, out_bin, config="default"):
         includes += ["-I", os.path.join(root, inc)]
     sources = [os.path.join(root, s) for s in suite["sources"]]
     return [cxx, *flags, *includes, *sources, *rooted_flags(root, suite.get("link_flags", [])),
-            "-o", out_bin]
+            *profile.get("link_flags", []), "-o", out_bin]
 
 
 def unit_build_commands(root, cxx, profile, suite, out_bin, config="default"):
@@ -398,7 +489,7 @@ def unit_build_commands(root, cxx, profile, suite, out_bin, config="default"):
                              *BUILD_CONFIGS[config], *includes,
                              "-c", os.path.join(root, source), "-o", obj])
     commands.append([cxx, *objects, *rooted_flags(root, suite.get("link_flags", [])),
-                     "-o", out_bin])
+                     *profile.get("link_flags", []), "-o", out_bin])
     return commands
 
 
@@ -562,7 +653,8 @@ def run_suite(root, cxx, profile, suite, out_dir, config="default", repeat=1,
 
     # An unavailable provider is never a pass. Required suites fail; optional
     # suites record why they were skipped and certify nothing.
-    missing = missing_providers(root, suite)
+    result["requires"] = suite_requirements(suite, profile)
+    missing = missing_providers(root, suite, profile)
     if missing:
         reason = "unavailable provider(s): " + "; ".join(missing)
         if suite.get("optional"):
@@ -621,7 +713,7 @@ def run_suite(root, cxx, profile, suite, out_dir, config="default", repeat=1,
     limit = memory_limit_mb(profile, suite)
     result["memory_limit_mb"] = limit
     result["timeout_seconds"] = timeout
-    env = dict(os.environ)
+    env = run_environment(profile)
     env["CONFORMANCE_SEED"] = str(seed)
     env["CONFORMANCE_SUITE"] = sid
 
@@ -649,6 +741,10 @@ def run_suite(root, cxx, profile, suite, out_dir, config="default", repeat=1,
         ])
         observed["detail"] = tail(stdout + stderr)
         observed["matched"] = observed["outcome"] == expect
+        if suite.get("expected_divergence"):
+            # A negative row names the defect it must be rejected for.
+            observed["matched"] = observed["matched"] and \
+                suite["expected_divergence"] in (observed["first_divergence"] or "")
         if "expected_signal" in suite:
             observed["matched"] = observed["matched"] and observed["signal"] == suite["expected_signal"]
         result["attempts"].append(observed)
@@ -750,7 +846,23 @@ def plan(root, manifest, args):
         pid = s["profile"]
         if pid not in profiles:
             profiles[pid] = load_profile(profiles_dir, pid)
+    runner = selected_runner(args)
+    if runner != "all":
+        selected = [s for s in selected if profiles[s["profile"]]["runner"] == runner]
+        if not selected:
+            return None, None, "no suite runs on the %s runner class" % runner
+        profiles = {pid: p for pid, p in profiles.items()
+                    if any(s["profile"] == pid for s in selected)}
     return selected, profiles, None
+
+
+def selected_runner(args):
+    """--runner, else the headless class for an unselected run and every class
+    when the caller named suites, domains, RFCs or profiles explicitly."""
+    runner = getattr(args, "runner", None)
+    if runner:
+        return runner
+    return "all" if selectors_from(args) else DEFAULT_RUNNER
 
 
 def cmd_plan(args):
@@ -761,7 +873,7 @@ def cmd_plan(args):
         print("FATAL: " + err, file=sys.stderr)
         return 2
     for s in selected:
-        missing = missing_providers(root, s)
+        missing = missing_providers(root, s, profiles[s["profile"]])
         status = "ready"
         if missing:
             status = ("skip (optional): " if s.get("optional") else "UNAVAILABLE: ") + "; ".join(missing)
@@ -809,6 +921,7 @@ def cmd_check(args):
         "invocation": [sys.executable, os.path.relpath(os.path.abspath(__file__), root)]
                       + list(args.argv),
         "selectors": {f: sorted(v) for f, v in selectors_from(args)},
+        "runner": selected_runner(args),
         "config": args.config,
         "config_flags": BUILD_CONFIGS[args.config],
         "repeat": args.repeat,
@@ -821,6 +934,12 @@ def cmd_check(args):
     identity.update(compiler_identity(cxx))
     identity["host"] = host_identity()
     identity["submodules"] = submodule_identity(root)
+    # GPU evidence names the physical devices the suites could see.
+    for pid, profile in profiles.items():
+        if any(parse_requirement(r)[0] == "vulkan-device" for r in profile.get("requires", [])):
+            devices, error = vulkan_devices(run_environment(profile))
+            identity.setdefault("vulkan_devices", {})[pid] = {
+                "devices": devices, "error": error}
 
     # Evidence is written before execution and after every suite, so a runner
     # that is killed leaves an artifact whose decision is "incomplete".
@@ -914,6 +1033,11 @@ def build_evidence(root, manifest_path, manifest, identity, profiles, run, resul
                 "base_flags": p.get("base_flags", []),
                 "include_roots": p.get("include_roots", []),
                 "timeout_seconds": p.get("timeout_seconds"),
+                "runner": p.get("runner", DEFAULT_RUNNER),
+                "link_flags": p.get("link_flags", []),
+                "requires": p.get("requires", []),
+                "run_env": p.get("run_env", {}),
+                "run_env_unset": p.get("run_env_unset", []),
                 "memory_limit_mb": p.get("memory_limit_mb", DEFAULT_MEMORY_LIMIT_MB),
             } for pid, p in profiles.items()
         },
@@ -945,6 +1069,9 @@ def add_selectors(p):
     p.add_argument("--domain", action="append", help="Select by domain, e.g. Q-EDITOR.")
     p.add_argument("--rfc", action="append", help="Select by RFC number, e.g. 0002.")
     p.add_argument("--profile", action="append", help="Select by profile id.")
+    p.add_argument("--runner", choices=RUNNER_CLASSES + ("all",),
+                   help="Runner class to run (default: headless for an unselected run, "
+                        "every class when suites, domains, RFCs or profiles are named).")
 
 
 def build_parser():

@@ -1,0 +1,66 @@
+{
+  "analytic": {
+    "albedo": 0.6,
+    "diffuse_light_direct": 0.3,
+    "diffuse_light_indirect": 0.4499999999999999,
+    "diffuse_light_one_bounce_indirect": 0.18,
+    "diffuse_light_total": 0.7499999999999999,
+    "emission": 0.3,
+    "note": "Every surface sees radiance L = Le / (1 - rho) in every direction. Cycles diffuse light passes (irradiance / pi, no albedo): direct = Le (emission seen directly), indirect = L - Le. A probe anywhere inside has irradiance / pi = L on every normal.",
+    "radiance": 0.7499999999999999
+  },
+  "baked_state": "default",
+  "cameras": {
+    "inside": {
+      "eye": [
+        0.35,
+        0.35,
+        1.6
+      ],
+      "forward": [
+        0.6982151092401682,
+        0.6982151092401682,
+        -0.15808643982796264
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "map_manifest": "map.json",
+  "name": "furnace",
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Analytic infinite-bounce radiosity: detects missing or double-counted bounce",
+  "regions": {
+    "inside": {
+      "model": [
+        "ProbeSphere"
+      ],
+      "walls": [
+        "Box_Xn",
+        "Box_Xp",
+        "Box_Yn",
+        "Box_Yp",
+        "Box_Zn",
+        "Box_Zp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "furnace.usda",
+  "states": {
+    "default": {
+      "layer": null
+    }
+  }
+}

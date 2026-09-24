@@ -242,6 +242,38 @@ def bake_sun_visibility(merged, scene, path, size, render):
             "ignored_distant_lights": len(scene["distant_lights"]) - 1}
 
 
+# Separated diffuse light (RFC 0011): the same bake as the total atlas with
+# one Cycles pass filter, so total = direct + indirect up to sampling noise.
+SEPARATED_PASSES = {"direct": {"DIRECT"}, "indirect": {"INDIRECT"}}
+
+
+def bake_separated_layers(merged, layers, out_dir, size, render):
+    """Bake each separated layer into <out_dir>/<role>.exr; returns receipts."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    targets = [slot.material.node_tree.nodes["BakeTarget"] for slot in merged.material_slots
+               if slot.material and "BakeTarget" in slot.material.node_tree.nodes]
+    original = targets[0].image
+    result = {}
+    for role in layers:
+        image = bpy.data.images.new("PbrtLightmap_" + role, width=size, height=size,
+                                    alpha=True, float_buffer=True)
+        for node in targets:
+            node.image = image
+        bpy.ops.object.select_all(action="DESELECT")
+        merged.select_set(True)
+        bpy.context.view_layer.objects.active = merged
+        bpy.ops.object.bake(type="DIFFUSE", pass_filter=SEPARATED_PASSES[role])
+        path = out_dir / (role + ".exr")
+        image.save_render(filepath=str(path.resolve()), scene=render)
+        if not path.is_file():
+            raise RuntimeError("Cycles did not save the %s lightmap layer" % role)
+        result[role] = {"exr": path.name, "exr_sha256": sha256(path),
+                        "pass_filter": sorted(SEPARATED_PASSES[role])}
+    for node in targets:
+        node.image = original
+    return result
+
+
 def bake_rnm(merged, out_dir, size, render):
     """Bake diffuse irradiance for each RNM basis normal; return EXR hashes."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -323,11 +355,19 @@ def main():
     parser.add_argument("--samples", type=int, default=64)
     parser.add_argument("--exclude-material", action="append", default=[])
     parser.add_argument("--device", choices=("cpu", "gpu", "auto"), default="auto")
+    parser.add_argument("--light-paths", choices=sorted(pbrt_blender.LIGHT_PATH_POLICIES),
+                        default="blender-default",
+                        help="Cycles bounce/clamp policy (pbrt_blender.LIGHT_PATH_POLICIES)")
     parser.add_argument("--reserve-rows", type=int, default=0,
                         help="keep the atlas's first N texel rows (lightmap v < N/size) "
                              "empty for a reflection probe band")
     parser.add_argument("--directional-dir", type=Path,
                         help="also bake RNM-basis irradiance and the tangent frame here")
+    parser.add_argument("--layers", default="",
+                        help="comma-separated separated-light layers to bake beside the total "
+                             "atlas (direct, indirect): LMAP v2 layers (RFC 0011)")
+    parser.add_argument("--layers-dir", type=Path,
+                        help="directory for the separated layer EXRs (<role>.exr)")
     parser.add_argument("--margin-texels", type=int, default=2,
                         help="gap between packed charts; bake dilation uses half")
     args = parser.parse_args(arguments)
@@ -335,6 +375,11 @@ def main():
         parser.error("valid atlas size, samples and OCIO are required")
     if args.stage.resolve() == args.out_stage.resolve():
         parser.error("output stage must differ from input stage")
+    layers = [role for role in args.layers.split(",") if role]
+    if any(role not in SEPARATED_PASSES for role in layers) or len(set(layers)) != len(layers):
+        parser.error("--layers takes distinct roles from: " + ", ".join(SEPARATED_PASSES))
+    if layers and not args.layers_dir:
+        parser.error("--layers needs --layers-dir")
     scene = map_scene.parse(args.scene)
     unknown = set(args.exclude_material) - set(scene["materials"])
     if unknown:
@@ -354,11 +399,14 @@ def main():
     if sorted(obj.name for obj in meshes) != sorted(assignments):
         raise ValueError("USD stage meshes differ from the PBRT scene")
     baked = []
+    # Dynamic models are not static lighting: their stand-ins neither get
+    # atlas space nor take part in the bake's light transport.
+    props = map_scene.prop_shape_names(scene)
     for obj in meshes:
         if not obj.data.uv_layers.get("st"):
             raise ValueError("source mesh lacks material UVs: " + obj.name)
         obj.data.uv_layers.active = obj.data.uv_layers.new(name="lightmap_st")
-        if assignments[obj.name] in excluded:
+        if obj.name in props or assignments[obj.name] in excluded:
             # One texel at the far corner, away from a reflection probe band.
             corner = 1.0 - 0.5 / args.size
             for loop in obj.data.uv_layers.active.data:
@@ -422,7 +470,11 @@ def main():
     pbrt_blender.rebind_materials(scene, normal_maps=False)
     pbrt_blender.restore_emitters(scene)
     pbrt_blender.apply_environment(scene, args.environment)
+    for obj in meshes:
+        if obj.name in props:
+            obj.hide_render = True
     device = pbrt_blender.configure_cycles(args.samples, args.device)
+    light_paths = pbrt_blender.configure_light_paths(args.light_paths)
     render = bpy.context.scene
     render.render.bake.use_clear = True
     render.render.bake.margin = max(1, args.margin_texels // 2)
@@ -466,6 +518,8 @@ def main():
     atlas.save_render(filepath=str(args.out_exr.resolve()), scene=render)
     if not args.out_exr.is_file():
         raise RuntimeError("Cycles did not save the lightmap atlas")
+    separated = bake_separated_layers(merged, layers, args.layers_dir, args.size, render) \
+        if layers else {}
     sun = None
     if scene.get("distant_lights"):
         sun = bake_sun_visibility(merged, scene, args.out_exr.with_name("sun_visibility.exr"),
@@ -528,6 +582,9 @@ def main():
                 "projected_meshes": {name: {"parts": value["parts"]}
                                      for name, value in projected.items()},
                 "excluded_materials": sorted(excluded),
+                "excluded_dynamic_models": sorted(props),
+                "layers": separated,
+                "light_paths": light_paths,
                 "emitter_count": len(scene["emitters"]),
                 "atlas_coverage_estimate": covered,
                 "coverage_exr_sha256": sha256(args.out_coverage_exr)
