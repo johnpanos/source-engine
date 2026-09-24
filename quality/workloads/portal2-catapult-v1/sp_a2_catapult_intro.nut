@@ -31,6 +31,7 @@ QA_Expect( "plate2c.cube_plate_ignores_player", function()
 QA_Do( "drop the cube", function()
 {
 	::QA.marks.cubeRise <- 0.0
+	SendToConsole( "developer 2" )
 	QA_Fire( "cube_dropper-proxy", "OnProxyRelay1" )
 }, 0.1 )
 
