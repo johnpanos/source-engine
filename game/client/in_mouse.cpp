@@ -307,8 +307,10 @@ void CInput::Init_Mouse (void)
 //-----------------------------------------------------------------------------
 void CInput::GetWindowCenter( int&x, int& y )
 {
+	// In the VGUI cursor's units (UI units, which a scaled display has fewer of
+	// than pixels).
 	int w, h;
-	engine->GetScreenSize( w, h );
+	vgui::surface()->GetScreenSize( w, h );
 
 	x = w >> 1;
 	y = h >> 1;
@@ -574,7 +576,7 @@ void CInput::AccumulateMouse( void )
 	}
 
 	int w, h;
-	engine->GetScreenSize( w, h );
+	vgui::surface()->GetScreenSize( w, h );
 
 	// x,y = screen center
 	int x = w >> 1;	x;
@@ -609,9 +611,11 @@ void CInput::AccumulateMouse( void )
 		// Clamp
 		int ox, oy;
 		GetMousePos( ox, oy );
-		ox = clamp( ox, 0, w - 1 );
-		oy = clamp( oy, 0, h - 1 );
-		SetMousePos( ox, oy );
+		const int cx = clamp( ox, 0, w - 1 );
+		const int cy = clamp( oy, 0, h - 1 );
+		// Warping an unclamped cursor would snap it to its UI unit every frame.
+		if ( cx != ox || cy != oy )
+			SetMousePos( cx, cy );
 	}
 
 

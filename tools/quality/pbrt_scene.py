@@ -11,6 +11,8 @@ than being dropped.
 Run directly to print a JSON inventory of a scene:
 
     python3 tools/quality/pbrt_scene.py living-room/scene-v4.pbrt
+
+or, with `--meshes`, a table of mesh bounds for choosing collision meshes.
 """
 
 import hashlib
@@ -309,13 +311,30 @@ def parse(path):
         raise ValueError("PBRT attribute stack is incomplete")
     if not scene["camera"]:
         raise ValueError("PBRT scene has no camera")
-    names = [Path(shape["filename"]).stem for shape in scene["shapes"]]
-    if len(set(names)) != len(names):
-        raise ValueError("PBRT PLY stems must be unique; they become USD mesh names")
+    name_meshes(scene["shapes"])
     for shape in scene["shapes"]:
         if shape["material"] not in scene["materials"]:
             raise ValueError("PBRT mesh uses undefined material " + shape["material"])
     return scene
+
+
+def name_meshes(shapes):
+    """Give each PLY shape its USD/collision mesh name, `shape["name"]`.
+
+    The first use of a PLY keeps its stem; later placements of the same file
+    (PBRT instancing by repeated Shape) become `<stem>_i<n>` in file order.
+    Names must stay unique because they key materials, bakes and collision.
+    """
+    uses = {}
+    for shape in shapes:
+        stem = Path(shape["filename"]).stem
+        count = uses.get(stem, 0)
+        uses[stem] = count + 1
+        shape["name"] = stem if count == 0 else "%s_i%d" % (stem, count)
+    names = [shape["name"] for shape in shapes]
+    if len(set(names)) != len(names):
+        raise ValueError("PBRT mesh names must be unique; two PLY directories share a stem "
+                         "or a stem collides with an instance name")
 
 
 def material_texture(scene, material, parameter):
@@ -397,7 +416,9 @@ def material_summary(scene, name):
 
     `roughness` is perceptual (sqrt(alpha)). Colors are linear. This is the one
     translation policy shared by the Cycles stage, the lightmap bake and the
-    Source content bridge; `approximation` records what is lost.
+    Source content bridge; `approximation` records what is lost. `base_scale`
+    multiplies a `base_texture`; `diffuse_transmittance` ({color | texture,
+    scale}) is set only for PBRT diffusetransmission.
     """
     material = scene["materials"][name]
     parameters = material["parameters"]
@@ -409,6 +430,7 @@ def material_summary(scene, name):
     result = {"name": name, "pbrt_type": kind, "base_color": color, "base_texture": texture,
               "metallic": 0.0, "roughness": 1.0, "coat_roughness": None,
               "coat_internal_reflectance": None,
+              "base_scale": 1.0, "diffuse_transmittance": None,
               "transmission": 0.0, "ior": 1.5, "approximation": None}
     if kind == "coateddiffuse":
         if scalar(parameters, "albedo", 0.0) or parameters.get("albedo", {}).get("type") == "rgb":
@@ -434,7 +456,22 @@ def material_summary(scene, name):
         result["roughness"] = 0.0
         result["approximation"] = "refraction unavailable in game preview"
     elif kind == "diffusetransmission":
-        result["approximation"] = "diffuse transmission reduced to diffuse reflection"
+        # pbrt-v4 DiffuseTransmissionMaterial: R/pi reflected, T/pi transmitted,
+        # both times `scale`; R and T default to 0.25.
+        scale = scalar(parameters, "scale", 1.0)
+        if not texture:
+            result["base_color"] = tuple(value * scale for value in (
+                reflectance if reflectance else (0.25, 0.25, 0.25)))
+        else:
+            result["base_scale"] = scale
+        transmittance_texture = material_texture(scene, material, "transmittance")
+        transmittance = parameters.get("transmittance", {}).get("value")
+        result["diffuse_transmittance"] = {
+            "texture": transmittance_texture, "scale": scale if transmittance_texture else 1.0,
+            "color": None if transmittance_texture else tuple(
+                value * scale for value in (transmittance or (0.25, 0.25, 0.25)))}
+        result["approximation"] = ("diffuse transmission: Cycles diffuse + translucent; "
+                                   "game preview keeps only the reflected lobe")
     return result
 
 
@@ -524,10 +561,102 @@ def environment_equirect(scene, width=2048):
     return (source[row, column] * environment["scale"]).reshape(height, width, 3)
 
 
+def sky_display(pixels):
+    """8-bit display encoding of a linear sky for an unlit preview material.
+
+    Reinhard L / (1 + L), then sRGB; the game preview has no HDR sky pass.
+    """
+    import numpy as np
+    display = np.maximum(pixels, 0.0) / (1.0 + np.maximum(pixels, 0.0))
+    encoded = np.where(display <= 0.0031308, 12.92 * display,
+                       1.055 * np.power(display, 1 / 2.4) - 0.055)
+    return np.clip(np.rint(encoded * 255), 0, 255).astype(np.uint8)
+
+
+PLY_TYPES = {"char": "b", "int8": "b", "uchar": "B", "uint8": "B", "short": "h",
+             "int16": "h", "ushort": "H", "uint16": "H", "int": "i", "int32": "i",
+             "uint": "I", "uint32": "I", "float": "f", "float32": "f", "double": "d",
+             "float64": "d"}
+
+
+def read_ply_points(path):
+    """Vertex positions of a PLY file (ascii or binary), in object space."""
+    import struct
+    data = Path(path).read_bytes()
+    end = data.index(b"end_header") + len(b"end_header")
+    end += 2 if data[end:end + 2] == b"\r\n" else 1
+    header = data[:end].decode("ascii").split("\n")
+    fmt, count, properties, element = None, 0, [], None
+    for line in header:
+        words = line.split()
+        if not words:
+            continue
+        if words[0] == "format":
+            fmt = words[1]
+        elif words[0] == "element":
+            element = words[1]
+            if element == "vertex":
+                count = int(words[2])
+            elif count == 0:
+                raise ValueError("PLY vertex element must come first: " + str(path))
+        elif words[0] == "property" and element == "vertex":
+            if words[1] == "list":
+                raise ValueError("PLY vertex list properties are unsupported: " + str(path))
+            properties.append((words[2], PLY_TYPES[words[1]]))
+    names = [name for name, _ in properties]
+    if not {"x", "y", "z"} <= set(names):
+        raise ValueError("PLY vertices lack x/y/z: " + str(path))
+    axes = [names.index(axis) for axis in "xyz"]
+    if fmt == "ascii":
+        rows = data[end:].decode("ascii").split("\n")[:count]
+        values = [[float(v) for v in row.split()] for row in rows]
+    elif fmt in ("binary_little_endian", "binary_big_endian"):
+        record = struct.Struct(("<" if fmt.endswith("little_endian") else ">") +
+                               "".join(code for _, code in properties))
+        values = [record.unpack_from(data, end + i * record.size) for i in range(count)]
+    else:
+        raise ValueError("unsupported PLY format %s: %s" % (fmt, path))
+    return [tuple(row[axis] for axis in axes) for row in values]
+
+
+def mesh_bounds(scene, shape):
+    """World AABB of a PLY shape in USD (Z-up) stage units: (min, max)."""
+    points = read_ply_points(Path(scene["source"]).parent / shape["filename"])
+    to_usd = matmul(PBRT_TO_USD, shape["world_from_object"])
+    world = [transform_point(to_usd, point) for point in points]
+    return (tuple(min(p[i] for p in world) for i in range(3)),
+            tuple(max(p[i] for p in world) for i in range(3)))
+
+
+def mesh_table(scene):
+    """Meshes sorted by bounding volume, largest first, for collision decisions.
+
+    Shells (walls, floor) and large furniture sort to the top; the camera eye
+    is printed so a reader can see which meshes enclose it.
+    """
+    rows = []
+    for shape in scene["shapes"]:
+        low, high = mesh_bounds(scene, shape)
+        extent = tuple(high[i] - low[i] for i in range(3))
+        rows.append((extent[0] * extent[1] * extent[2], shape["name"], shape["material"],
+                     low, high, extent))
+    rows.sort(key=lambda row: -row[0])
+    eye = camera_pose(scene)["eye"]
+    lines = ["camera eye (USD m): %.2f %.2f %.2f" % tuple(eye),
+             "%-12s %-18s %-26s %-26s %s" % ("mesh", "material", "min (m)", "max (m)",
+                                              "encloses eye")]
+    for _, name, material, low, high, extent in rows:
+        inside = all(low[i] <= eye[i] <= high[i] for i in range(3))
+        lines.append("%-12s %-18s %-26s %-26s %s" % (
+            name, material[:18], " ".join("%7.2f" % v for v in low),
+            " ".join("%7.2f" % v for v in high), "yes" if inside else ""))
+    return "\n".join(lines)
+
+
 def inventory(scene):
     materials = {}
     for shape in scene["shapes"]:
-        materials.setdefault(shape["material"], []).append(Path(shape["filename"]).stem)
+        materials.setdefault(shape["material"], []).append(shape["name"])
     return {"source_sha256": scene["source_sha256"], "film": scene["film"],
             "camera_fov_degrees": scene["camera"]["fov_degrees"],
             "camera_usd": camera_pose(scene),
@@ -540,4 +669,9 @@ def inventory(scene):
 
 
 if __name__ == "__main__":
-    print(json.dumps(inventory(parse(sys.argv[1])), indent=2, sort_keys=True))
+    if len(sys.argv) == 3 and sys.argv[1] == "--meshes":
+        print(mesh_table(parse(sys.argv[2])))
+    elif len(sys.argv) == 2:
+        print(json.dumps(inventory(parse(sys.argv[1])), indent=2, sort_keys=True))
+    else:
+        raise SystemExit("usage: pbrt_scene.py [--meshes] scene.pbrt")

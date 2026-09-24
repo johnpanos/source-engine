@@ -27,29 +27,6 @@
 static ConVar	hud_quickinfo( "hud_quickinfo", "1", FCVAR_ARCHIVE );
 static ConVar	hud_quickinfo_swap( "hud_quickinfo_swap", "0", FCVAR_ARCHIVE );
 
-// The bracket artwork is oversized for the in-game crosshair. Keep it at half
-// its source size at 1080p and scale proportionally with the HUD resolution.
-static float QuickInfoIconScale()
-{
-	return ScreenHeight() / 2160.0f;
-}
-
-static int QuickInfoIconWidth( const CHudTexture *icon )
-{
-	return icon ? MAX( 1, static_cast<int>( icon->Width() * QuickInfoIconScale() ) ) : 0;
-}
-
-static int QuickInfoIconHeight( const CHudTexture *icon )
-{
-	return icon ? MAX( 1, static_cast<int>( icon->Height() * QuickInfoIconScale() ) ) : 0;
-}
-
-static void DrawQuickInfoIcon( const CHudTexture *icon, int x, int y, const Color &color )
-{
-	if ( icon )
-		icon->DrawSelf( x, y, QuickInfoIconWidth( icon ), QuickInfoIconHeight( icon ), color );
-}
-
 extern ConVar crosshair;
 
 #define QUICKINFO_EVENT_DURATION	1.0f
@@ -223,7 +200,7 @@ void CHUDQuickInfo::Paint()
 
 	// adjust center for the bigger crosshairs
 	xCenter	= ScreenWidth() / 2;
-	yCenter = ( ScreenHeight() - QuickInfoIconHeight( m_icon_lb ) ) / 2;
+	yCenter = ( ScreenHeight() - m_icon_lb->Height() ) / 2;
 
 	C_WeaponPortalgun *pPortalgun = dynamic_cast<C_WeaponPortalgun*>( pWeapon );
 
@@ -239,10 +216,8 @@ void CHUDQuickInfo::Paint()
 	{
 		// no quickinfo or we can't fire either portal, just draw the small versions of the crosshairs
 		clrNormal[3] = 196;
-		DrawQuickInfoIcon( m_icon_lbnone, xCenter - ( QuickInfoIconWidth( m_icon_lbnone ) * 2 ),
-		    yCenter, clrNormal );
-		DrawQuickInfoIcon(
-		    m_icon_rbnone, xCenter + QuickInfoIconWidth( m_icon_rbnone ), yCenter, clrNormal );
+		m_icon_lbnone->DrawSelf(xCenter - (m_icon_lbnone->Width() * 2), yCenter, clrNormal);
+		m_icon_rbnone->DrawSelf(xCenter + m_icon_rbnone->Width(), yCenter, clrNormal);
 		return;
 	}
 
@@ -345,46 +320,34 @@ void CHUDQuickInfo::Paint()
 	if ( !hud_quickinfo_swap.GetBool() )
 	{
 		if ( bPortalPlacability[0] )
-			DrawQuickInfoIcon( m_icon_lb, xCenter - ( QuickInfoIconWidth( m_icon_lb ) * 0.64f ),
-			    yCenter - ( QuickInfoIconHeight( m_icon_rb ) * 0.17f ), portal1Color );
+			m_icon_lb->DrawSelf(xCenter - (m_icon_lb->Width() * 0.64f ), yCenter - ( m_icon_rb->Height() * 0.17f ), portal1Color);
 		else
-			DrawQuickInfoIcon( m_icon_lbn, xCenter - ( QuickInfoIconWidth( m_icon_lbn ) * 0.64f ),
-			    yCenter - ( QuickInfoIconHeight( m_icon_rb ) * 0.17f ), portal1Color );
+			m_icon_lbn->DrawSelf(xCenter - (m_icon_lbn->Width() * 0.64f ), yCenter - ( m_icon_rb->Height() * 0.17f ), portal1Color);
 
 		if ( bPortalPlacability[1] )
-			DrawQuickInfoIcon( m_icon_rb, xCenter + ( QuickInfoIconWidth( m_icon_rb ) * -0.35f ),
-			    yCenter + ( QuickInfoIconHeight( m_icon_rb ) * 0.17f ), portal2Color );
+			m_icon_rb->DrawSelf(xCenter + ( m_icon_rb->Width() * -0.35f ), yCenter + ( m_icon_rb->Height() * 0.17f ), portal2Color);
 		else
-			DrawQuickInfoIcon( m_icon_rbn, xCenter + ( QuickInfoIconWidth( m_icon_rbn ) * -0.35f ),
-			    yCenter + ( QuickInfoIconHeight( m_icon_rb ) * 0.17f ), portal2Color );
+			m_icon_rbn->DrawSelf(xCenter + ( m_icon_rbn->Width() * -0.35f ), yCenter + ( m_icon_rb->Height() * 0.17f ), portal2Color);
 
 		//last placed portal indicator
-		DrawQuickInfoIcon( m_icon_lbe, xCenter - ( QuickInfoIconWidth( m_icon_lbe ) * 1.85f ),
-		    yCenter, lastPlaced1Color );
-		DrawQuickInfoIcon( m_icon_rbe, xCenter + ( QuickInfoIconWidth( m_icon_rbe ) * 0.75f ),
-		    yCenter, lastPlaced2Color );
+		m_icon_lbe->DrawSelf( xCenter - (m_icon_lbe->Width() * 1.85f), yCenter, lastPlaced1Color );
+		m_icon_rbe->DrawSelf( xCenter + (m_icon_rbe->Width() * 0.75f), yCenter, lastPlaced2Color );
 	}
 	else
 	{
 		if ( bPortalPlacability[1] )
-			DrawQuickInfoIcon( m_icon_lb, xCenter - ( QuickInfoIconWidth( m_icon_lb ) * 0.64f ),
-			    yCenter - ( QuickInfoIconHeight( m_icon_rb ) * 0.17f ), portal2Color );
+			m_icon_lb->DrawSelf(xCenter - (m_icon_lb->Width() * 0.64f ), yCenter - ( m_icon_rb->Height() * 0.17f ), portal2Color);
 		else
-			DrawQuickInfoIcon( m_icon_lbn, xCenter - ( QuickInfoIconWidth( m_icon_lbn ) * 0.64f ),
-			    yCenter - ( QuickInfoIconHeight( m_icon_rb ) * 0.17f ), portal2Color );
+			m_icon_lbn->DrawSelf(xCenter - (m_icon_lbn->Width() * 0.64f ), yCenter - ( m_icon_rb->Height() * 0.17f ), portal2Color);
 
 		if ( bPortalPlacability[0] )
-			DrawQuickInfoIcon( m_icon_rb, xCenter + ( QuickInfoIconWidth( m_icon_rb ) * -0.35f ),
-			    yCenter + ( QuickInfoIconHeight( m_icon_rb ) * 0.17f ), portal1Color );
+			m_icon_rb->DrawSelf(xCenter + ( m_icon_rb->Width() * -0.35f ), yCenter + ( m_icon_rb->Height() * 0.17f ), portal1Color);
 		else
-			DrawQuickInfoIcon( m_icon_rbn, xCenter + ( QuickInfoIconWidth( m_icon_rbn ) * -0.35f ),
-			    yCenter + ( QuickInfoIconHeight( m_icon_rb ) * 0.17f ), portal1Color );
+			m_icon_rbn->DrawSelf(xCenter + ( m_icon_rbn->Width() * -0.35f ), yCenter + ( m_icon_rb->Height() * 0.17f ), portal1Color);
 
 		//last placed portal indicator
-		DrawQuickInfoIcon( m_icon_lbe, xCenter - ( QuickInfoIconWidth( m_icon_lbe ) * 1.85f ),
-		    yCenter, lastPlaced2Color );
-		DrawQuickInfoIcon( m_icon_rbe, xCenter + ( QuickInfoIconWidth( m_icon_rbe ) * 0.75f ),
-		    yCenter, lastPlaced1Color );
+		m_icon_lbe->DrawSelf( xCenter - (m_icon_lbe->Width() * 1.85f), yCenter, lastPlaced2Color );
+		m_icon_rbe->DrawSelf( xCenter + (m_icon_rbe->Width() * 0.75f), yCenter, lastPlaced1Color );
 	}
 }
 
@@ -407,3 +370,4 @@ bool CHUDQuickInfo::EventTimeElapsed( void )
 
 	return false;
 }
+

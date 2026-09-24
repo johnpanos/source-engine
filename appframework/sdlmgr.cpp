@@ -329,6 +329,8 @@ public:
 	virtual void SetGammaRamp( const uint16 *pRed, const uint16 *pGreen, const uint16 *pBlue );
 			
 	virtual double GetPrevGLSwapWindowTime() { return m_flPrevGLSwapWindowTime; }
+	// SDL2's drawable matches the window size here; it reports no display scale.
+	virtual float GetWindowDisplayScale() { return 1.0f; }
 
 	// Called to create a game window that will be hidden, designed for
 	// getting an OpenGL context going so we can begin initializing things.

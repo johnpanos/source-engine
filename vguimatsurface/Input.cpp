@@ -455,7 +455,12 @@ bool InputHandleInputEvent( const InputEvent_t &event )
 			if ( event.m_nData == MOUSE_WHEEL )
 				return g_pIInput->InternalMouseWheeled( event.m_nData3 );
 			if ( event.m_nData == MOUSE_XY )
-				return g_pIInput->InternalCursorMoved( event.m_nData2, event.m_nData3 );
+			{
+				// The input system reports back buffer pixels; panels use UI units.
+				int x = event.m_nData2, y = event.m_nData3;
+				g_MatSystemSurface.PixelToUIUnits( x, y );
+				return g_pIInput->InternalCursorMoved( x, y );
+			}
 		}
 		break;
 
@@ -495,7 +500,11 @@ bool InputHandleInputEvent( const InputEvent_t &event )
 		return true;
 
 	case IE_LocateMouseClick:
-		g_pIInput->InternalCursorMoved( event.m_nData, event.m_nData2 );
+		{
+			int x = event.m_nData, y = event.m_nData2;
+			g_MatSystemSurface.PixelToUIUnits( x, y );
+			g_pIInput->InternalCursorMoved( x, y );
+		}
 		return true;
 
 	case IE_InputLanguageChanged:

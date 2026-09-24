@@ -51,6 +51,7 @@
 
 // For character manipulations isupper/tolower
 #include <ctype.h>
+#include "vgui_baseui_interface.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -2480,7 +2481,7 @@ CTextureListPanel::CTextureListPanel( vgui::Panel *parent ) :
 {
 	// Need parent here, before loading up textures, so getSurfaceBase 
 	//  will work on this panel ( it's null otherwise )
-	SetSize( videomode->GetModeStereoWidth() - 20, videomode->GetModeStereoHeight() - 20 );
+	SetSize( EngineVGui_ScreenWide() - 20, EngineVGui_ScreenTall() - 20 );
 	SetPos( 10, 10 );
 	SetVisible( true );
 	SetCursor( null );

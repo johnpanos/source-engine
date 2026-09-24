@@ -5,12 +5,24 @@
   "credit": "Modern Hall by NewSee2l035 (CC BY 3.0), pbrt-v4 conversion by Benedikt Bitterli",
   "reference": {
     "png": "staircase2/TungstenRender.png",
-    "exr": "staircase2/TungstenRender.exr"
+    "exr": "staircase2/TungstenRender.exr",
+    "render": {
+      "samples": 64,
+      "scale": 1.0
+    }
   },
   "lightmap": {
     "size": 2048,
-    "samples": 64,
-    "exclude_materials": ["SpotHolder"]
+    "samples": 1024,
+    "repair_narrow_dropouts": true,
+    "exclude_materials": [
+      "SpotHolder"
+    ],
+    "device": "auto"
   },
-  "collision": {}
+  "collision": {
+    "solid_meshes": [
+      "Mesh001"
+    ]
+  }
 }

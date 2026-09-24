@@ -52,6 +52,41 @@ def ssim(reference, candidate):
                          ((mu_a * mu_a + mu_b * mu_b + c1) * (var_a + var_b + c2))))
 
 
+def grain(reference, candidate):
+    """High-frequency energy where the reference is smooth.
+
+    Lightmap noise shows as grain on flat walls and ceilings. Regions with a
+    low luminance gradient in the (converged, denoised) reference, away from
+    clipped black/white, are eroded into a mask; grain is the mean absolute
+    deviation from a sigma-1.5 blur there. Texture detail is mostly excluded by
+    the mask and is present in both frames, so the candidate/reference ratio
+    isolates noise the game frame adds.
+    """
+    from scipy.ndimage import binary_erosion, gaussian_filter, gaussian_gradient_magnitude
+    weights = np.array([0.2126, 0.7152, 0.0722])
+    ref = np.tensordot(reference, weights, axes=1)
+    cand = np.tensordot(candidate, weights, axes=1)
+    gradient = gaussian_gradient_magnitude(ref, 2.0)
+    mask = (gradient < np.percentile(gradient, 30)) & (ref > 20) & (ref < 235)
+    mask = binary_erosion(mask, iterations=4)
+    if mask.sum() < 1000:
+        raise ValueError("reference has too few smooth pixels to measure grain")
+
+    def energy(image):
+        return float(np.abs(image - gaussian_filter(image, 1.5))[mask].mean())
+
+    def mottle(image):
+        # Denoised low-sample bakes leave blotches, not grain: band-pass 2-8 px.
+        return float(np.abs(gaussian_filter(image, 2.0) - gaussian_filter(image, 8.0))[mask].mean())
+    candidate_grain, reference_grain = energy(cand), energy(ref)
+    candidate_mottle, reference_mottle = mottle(cand), mottle(ref)
+    return {"smooth_pixels": int(mask.sum()), "candidate": candidate_grain,
+            "reference": reference_grain,
+            "ratio": candidate_grain / max(reference_grain, 1e-6),
+            "mottle_candidate": candidate_mottle, "mottle_reference": reference_mottle,
+            "mottle_ratio": candidate_mottle / max(reference_mottle, 1e-6)}
+
+
 def score(reference, candidate):
     return {"mean_absolute_rgb": float(np.mean(np.abs(reference - candidate))),
             "luminance_ssim": ssim(reference, candidate)}
@@ -160,7 +195,12 @@ def camera_commands(scene):
     # PBRT's fov spans the shorter axis; Source's fov is a 4:3 horizontal fov.
     vertical = fov if film["width"] >= film["height"] else 2 * math.atan(
         math.tan(fov / 2) * film["height"] / film["width"])
-    source_fov = round(math.degrees(2 * math.atan(math.tan(vertical / 2) * 4 / 3)))
+    # The 4:3 capture must contain the reference view on both axes; a
+    # reference wider than 4:3 (16:9 film) needs the horizontal fov, and the
+    # whole-degree fov rounds up so matched_crop never leaves the image.
+    horizontal = 2 * math.atan(math.tan(vertical / 2) * film["width"] / film["height"])
+    source_fov = math.ceil(max(math.degrees(2 * math.atan(math.tan(vertical / 2) * 4 / 3)),
+                               math.degrees(horizontal)) - 1e-9)
     captured_vertical = 2 * math.atan(math.tan(math.radians(source_fov) / 2) * 3 / 4)
     place = ["cmd setpos %.3f %.3f %.3f" % (eye[0], eye[1], eye[2] - EYE_HEIGHT),
              "cmd setang %.4f %.4f 0" % (pitch, yaw)]
@@ -217,13 +257,19 @@ def compare_runtime(args):
     if args.matched_frame:
         Image.fromarray(candidate.astype(np.uint8)).save(args.matched_frame)
     metrics = score(reference, candidate)
+    metrics["grain"] = grain(reference, candidate)
     result = {"scope": "pbrt-runtime-camera-comparison", "reference_sha256": sha256(args.reference),
               "boot_evidence_sha256": sha256(args.boot_evidence),
               "capture_sha256": shots[0]["sha256"], "capture_size": list(capture.size),
               "crop_box": box, "camera_commands": commands, **fovs, "gate": gate,
               "runtime_view": metrics, "scored": "runtime_view",
               "negative_controls": negative_controls(reference, candidate, gate)}
-    return result, passes(metrics, gate)
+    passed = passes(metrics, gate)
+    if gate.get("max_grain_ratio") is not None:
+        passed = passed and metrics["grain"]["ratio"] <= gate["max_grain_ratio"]
+    if gate.get("max_mottle_ratio") is not None:
+        passed = passed and metrics["grain"]["mottle_ratio"] <= gate["max_mottle_ratio"]
+    return result, passed
 
 
 def main():

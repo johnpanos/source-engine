@@ -28,6 +28,7 @@ def build(bld):
 		'MatSystemSurface.cpp',
 		'asanstubs.cpp',
 		'TextureDictionary.cpp',
+		'UIScale.cpp',
 		'../vgui2/src/vgui_key_translation.cpp',
 		'../public/vgui_controls/vgui_controls.cpp',
 		'../public/tier0/memoverride.cpp'

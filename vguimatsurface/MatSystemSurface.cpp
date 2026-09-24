@@ -40,6 +40,8 @@ ILauncherMgr *g_pLauncherMgr = NULL;
 #include "vgui_surfacelib/FontManager.h"
 #include "FontTextureCache.h"
 #include "MatSystemSurface.h"
+#include "UIScale.h"
+#include "tier1/convar.h"
 #include "inputsystem/iinputsystem.h"
 #include <vgui_controls/Controls.h>
 #include <vgui/ISystem.h>
@@ -165,8 +167,7 @@ CMatEmbeddedPanel::CMatEmbeddedPanel() : BaseClass( NULL, "MatSystemTopPanel" )
 void CMatEmbeddedPanel::OnThink()
 {
 	int x, y, width, height;
-	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
-	pRenderContext->GetViewport( x, y, width, height );
+	g_MatSystemSurface.GetViewportUIBounds( x, y, width, height );
 	SetSize( width, height );
 	SetPos( x, y );
 	Repaint();
@@ -698,12 +699,16 @@ void CMatSystemSurface::StartDrawing( void )
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
 	pRenderContext->GetViewport( x, y, width, height);
 
+	// Panels paint in UI units; the projection maps them onto the viewport's
+	// pixels (and keeps the pixel offset one pixel wide).
+	const float flScale = ScreenUIScale();
+
 	// we don't want to include x and y from the viewport here. DX will 
 	// automatically translate any drawing we do into that viewport.
 	m_pSurfaceExtents[0] = 0;
 	m_pSurfaceExtents[1] = 0;
-	m_pSurfaceExtents[2] = width;
-	m_pSurfaceExtents[3] = height;
+	m_pSurfaceExtents[2] = uiscale::UnitsCoveringPixels( width, flScale );
+	m_pSurfaceExtents[3] = uiscale::UnitsCoveringPixels( height, flScale );
 
 	pRenderContext->MatrixMode( MATERIAL_PROJECTION );
 	pRenderContext->PushMatrix();
@@ -711,7 +716,10 @@ void CMatSystemSurface::StartDrawing( void )
 	pRenderContext->Scale( 1, -1, 1 );
 	
 	//___stop___();
-	pRenderContext->Ortho( g_flPixelOffsetX, g_flPixelOffsetY, width + g_flPixelOffsetX, height + g_flPixelOffsetY, -1.0f, 1.0f ); 
+	const float flOffsetX = g_flPixelOffsetX / flScale;
+	const float flOffsetY = g_flPixelOffsetY / flScale;
+	pRenderContext->Ortho( flOffsetX, flOffsetY, width / flScale + flOffsetX,
+	    height / flScale + flOffsetY, -1.0f, 1.0f );
 
 	// make sure there is no translation and rotation laying around
 	pRenderContext->MatrixMode( MATERIAL_MODEL );
@@ -760,6 +768,8 @@ void CMatSystemSurface::FinishDrawing( void )
 //-----------------------------------------------------------------------------
 void CMatSystemSurface::RunFrame()
 {
+	// A display scale or ui_scale change relays out like a screen size change.
+	UpdateUIScale( true );
 	RunPendingFontReset();
 
 	int nPollCount = g_pInputSystem->GetPollCount();
@@ -1741,7 +1751,52 @@ HFont CMatSystemSurface::CreateFont()
 //-----------------------------------------------------------------------------
 bool CMatSystemSurface::SetFontGlyphSet(HFont font, const char *windowsFontName, int tall, int weight, int blur, int scanlines, int flags, int nRangeMin, int nRangeMax)
 {
+	// The font's size is in UI units; it rasterizes at its size in pixels.
+	const float flScale = UIScale();
+	if ( font != INVALID_FONT )
+	{
+		while ( m_FontRasterScales.Count() <= static_cast<int>( font ) )
+			m_FontRasterScales.AddToTail( 1.0f );
+		m_FontRasterScales[font] = flScale;
+	}
+	if ( flScale != 1.0f )
+	{
+		tall = uiscale::UnitsToPixelsRounded( tall, flScale );
+		blur = uiscale::UnitsToPixelsRounded( blur, flScale );
+		scanlines = uiscale::UnitsToPixelsRounded( scanlines, flScale );
+	}
 	return FontManager().SetFontGlyphSet(font, windowsFontName, tall, weight, blur, scanlines, flags, nRangeMin, nRangeMax);
+}
+
+//-----------------------------------------------------------------------------
+// Pixels per UI unit a font was rasterized at (1 for bitmap fonts)
+//-----------------------------------------------------------------------------
+float CMatSystemSurface::FontRasterScale( HFont font ) const
+{
+	if ( !m_FontRasterScales.IsValidIndex( font ) || m_FontRasterScales[font] <= 0.0f )
+		return 1.0f;
+	return m_FontRasterScales[font];
+}
+
+//-----------------------------------------------------------------------------
+// A glyph's quad: its pixel size at the pen position (in UI units, absolute).
+// On screen at the font's own scale the quad starts on a pixel, so each texel
+// covers exactly one pixel.
+//-----------------------------------------------------------------------------
+void CMatSystemSurface::GetGlyphQuad( float flPenX, float flPenY, int nPixelOffsetX,
+    int nPixelsWide, int nPixelsTall, float flFontScale, Vertex_t &ul, Vertex_t &lr ) const
+{
+	float flLeft = flPenX + nPixelOffsetX / flFontScale;
+	float flTop = flPenY;
+	const bool bOnPixelGrid = !m_bDrawingIn3DWorld && !m_ScreenSizeOverride.m_bActive &&
+	                          flFontScale == m_flUIScale;
+	if ( bOnPixelGrid )
+	{
+		flLeft = ( floorf( flPenX * flFontScale + 0.5f ) + nPixelOffsetX ) / flFontScale;
+		flTop = floorf( flPenY * flFontScale + 0.5f ) / flFontScale;
+	}
+	ul.m_Position.Init( flLeft, flTop );
+	lr.m_Position.Init( flLeft + nPixelsWide / flFontScale, flTop + nPixelsTall / flFontScale );
 }
 
 //-----------------------------------------------------------------------------
@@ -1749,6 +1804,9 @@ bool CMatSystemSurface::SetFontGlyphSet(HFont font, const char *windowsFontName,
 //-----------------------------------------------------------------------------
 bool CMatSystemSurface::SetBitmapFontGlyphSet(HFont font, const char *windowsFontName, float scalex, float scaley, int flags)
 {
+	// Bitmap fonts are textures; they scale with the rest of the UI.
+	if ( m_FontRasterScales.IsValidIndex( font ) )
+		m_FontRasterScales[font] = 1.0f;
 	return FontManager().SetBitmapFontGlyphSet(font, windowsFontName, scalex, scaley, flags);
 }
 
@@ -1757,7 +1815,7 @@ bool CMatSystemSurface::SetBitmapFontGlyphSet(HFont font, const char *windowsFon
 //-----------------------------------------------------------------------------
 int CMatSystemSurface::GetFontTall(HFont font)
 {
-	return FontManager().GetFontTall(font);
+	return uiscale::PixelsToUnitsRounded( FontManager().GetFontTall(font), FontRasterScale( font ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -1765,7 +1823,8 @@ int CMatSystemSurface::GetFontTall(HFont font)
 //-----------------------------------------------------------------------------
 int CMatSystemSurface::GetFontTallRequested(HFont font)
 {
-	return FontManager().GetFontTallRequested(font);
+	return uiscale::PixelsToUnitsRounded(
+	    FontManager().GetFontTallRequested(font), FontRasterScale( font ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -1773,7 +1832,8 @@ int CMatSystemSurface::GetFontTallRequested(HFont font)
 //-----------------------------------------------------------------------------
 int CMatSystemSurface::GetFontAscent(HFont font, wchar_t wch)
 {
-	return FontManager().GetFontAscent(font,wch);
+	return uiscale::PixelsToUnitsRounded(
+	    FontManager().GetFontAscent(font,wch), FontRasterScale( font ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -1792,6 +1852,14 @@ bool CMatSystemSurface::IsFontAdditive(HFont font)
 void CMatSystemSurface::GetCharABCwide(HFont font, int ch, int &a, int &b, int &c)
 {
 	FontManager().GetCharABCwide(font, ch, a, b, c);
+	const float flScale = FontRasterScale( font );
+	if ( flScale == 1.0f )
+		return;
+	// The parts add up to the character's width in whole units (GetCharacterWidth).
+	const int nWide = uiscale::PixelsToUnitsRounded( a + b + c, flScale );
+	a = uiscale::PixelsToUnitsRounded( a, flScale );
+	b = uiscale::PixelsToUnitsRounded( b, flScale );
+	c = nWide - a - b;
 }
 
 //-----------------------------------------------------------------------------
@@ -1799,7 +1867,8 @@ void CMatSystemSurface::GetCharABCwide(HFont font, int ch, int &a, int &b, int &
 //-----------------------------------------------------------------------------
 int CMatSystemSurface::GetCharacterWidth(HFont font, int ch)
 {
-	return FontManager().GetCharacterWidth(font, ch);
+	return uiscale::PixelsToUnitsRounded(
+	    FontManager().GetCharacterWidth(font, ch), FontRasterScale( font ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -1809,6 +1878,9 @@ void CMatSystemSurface::GetKernedCharWidth( HFont font, wchar_t ch, wchar_t chBe
 {
 	float abcC = 0.0f;
 	FontManager().GetKernedCharWidth(font, ch, chBefore, chAfter, wide, abcA, abcC );
+	const float flScale = FontRasterScale( font );
+	wide /= flScale;
+	abcA /= flScale;
 }
 
 
@@ -1818,6 +1890,14 @@ void CMatSystemSurface::GetKernedCharWidth( HFont font, wchar_t ch, wchar_t chBe
 void CMatSystemSurface::GetTextSize(HFont font, const wchar_t *text, int &wide, int &tall)
 {
 	FontManager().GetTextSize(font, text, wide, tall);
+	const float flScale = FontRasterScale( font );
+	if ( flScale == 1.0f )
+		return;
+	// The text is some number of lines of the font's height.
+	const int nLineTall = FontManager().GetFontTall(font);
+	const int nLines = nLineTall > 0 ? tall / nLineTall : 0;
+	wide = uiscale::UnitsCoveringPixels( wide, flScale );
+	tall = nLines * GetFontTall( font );
 }
 
 //-----------------------------------------------------------------------------
@@ -2263,6 +2343,7 @@ bool CMatSystemSurface::DrawGetUnicodeCharRenderInfo( wchar_t ch, CharRenderInfo
 	info.valid = true;
 	info.ch = ch;
 	DrawGetTextPos(info.x, info.y);
+	const int nPenX = info.x;
 
 	info.currentFont = m_hCurrentFont;
 	info.fontTall = GetFontTall(m_hCurrentFont);
@@ -2303,6 +2384,18 @@ bool CMatSystemSurface::DrawGetUnicodeCharRenderInfo( wchar_t ch, CharRenderInfo
 	info.verts = &m_BatchedCharVerts[ m_nBatchedCharVertCount ];
 	InitVertex( info.verts[0], info.x, info.y, texCoords[0], texCoords[1] );
 	InitVertex( info.verts[1], info.x + fontWide, info.y + info.fontTall, texCoords[2], texCoords[3] );
+
+	// A font rasterized at another scale spans its glyph's pixels; the rounded
+	// metrics above only advance the pen.
+	const float flFontScale = FontRasterScale( m_hCurrentFont );
+	if ( flFontScale != 1.0f )
+	{
+		int a, b, c;
+		FontManager().GetCharABCwide( m_hCurrentFont, ch, a, b, c );
+		GetGlyphQuad( nPenX + m_nTranslateX, info.y + m_nTranslateY, bUnderlined ? -a : a,
+		    bUnderlined ? a + b + c : b, FontManager().GetFontTall( m_hCurrentFont ), flFontScale,
+		    info.verts[0], info.verts[1] );
+	}
 
 	info.shouldclip = true;
 
@@ -2382,6 +2475,10 @@ void CMatSystemSurface::DrawPrintText(const wchar_t *text, int iTextLen, FontDra
 
 	int iTall = GetFontTall(m_hCurrentFont);
 	int iLastTexId = -1;
+
+	// A font rasterized at another scale draws each glyph at its pixel size.
+	const float flFontScale = FontRasterScale( m_hCurrentFont );
+	const int iTallPixels = FontManager().GetFontTall( m_hCurrentFont );
 
 	int iCount = 0;
 	vgui::Vertex_t *pQuads = (vgui::Vertex_t*)stackalloc((2 * iTextLen) * sizeof(vgui::Vertex_t) );
@@ -2463,6 +2560,14 @@ void CMatSystemSurface::DrawPrintText(const wchar_t *text, int iTextLen, FontDra
 			ul.m_Position.y = y;
 			lr.m_Position.x = ul.m_Position.x +  textureWide;
 			lr.m_Position.y = ul.m_Position.y + iTall;
+			if ( flFontScale != 1.0f )
+			{
+				int nPixelA, nPixelB, nPixelC;
+				FontManager().GetCharABCwide( m_hCurrentFont, ch, nPixelA, nPixelB, nPixelC );
+				GetGlyphQuad( x + iTotalWidth, y, bUnderlined ? 0 : nPixelA,
+				    bUnderlined ? nPixelA + nPixelB + nPixelC : nPixelB, iTallPixels, flFontScale,
+				    ul, lr );
+			}
 
 			// Gets at the texture coords for this character in its texture page
 			/*
@@ -2512,12 +2617,118 @@ void CMatSystemSurface::GetScreenSize(int &iWide, int &iTall)
 		return;
 	}
 
+	GetScreenPixelSize( iWide, iTall );
+	const float flScale = UIScale();
+	iWide = uiscale::UnitsCoveringPixels( iWide, flScale );
+	iTall = uiscale::UnitsCoveringPixels( iTall, flScale );
+}
+
+//-----------------------------------------------------------------------------
+// The screen in back buffer pixels (a screen size override is in UI units)
+//-----------------------------------------------------------------------------
+void CMatSystemSurface::GetScreenPixelSize( int &iWide, int &iTall )
+{
+	if ( m_ScreenSizeOverride.m_bActive )
+	{
+		iWide = m_ScreenSizeOverride.m_nValue[ 0 ];
+		iTall = m_ScreenSizeOverride.m_nValue[ 1 ];
+		return;
+	}
+
 	int x, y;
 
 	// mikesart: This is just sticking in unnecessary BeginRender/EndRender calls to the queue.
 	//   CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
 	IMatRenderContext *pRenderContext = g_pMaterialSystem->GetRenderContext();
 	pRenderContext->GetViewport( x, y, iWide, iTall );
+}
+
+//-----------------------------------------------------------------------------
+// UI scale
+//-----------------------------------------------------------------------------
+float CMatSystemSurface::UIScale()
+{
+	if ( !m_bUIScaleEvaluated )
+		UpdateUIScale( false );
+	return m_flUIScale;
+}
+
+float CMatSystemSurface::ScreenUIScale()
+{
+	return m_ScreenSizeOverride.m_bActive ? 1.0f : UIScale();
+}
+
+void CMatSystemSurface::GetViewportUIBounds( int &x, int &y, int &iWide, int &iTall )
+{
+	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+	pRenderContext->GetViewport( x, y, iWide, iTall );
+	const float flScale = UIScale();
+	x = uiscale::UnitAtPixel( x, flScale );
+	y = uiscale::UnitAtPixel( y, flScale );
+	iWide = uiscale::UnitsCoveringPixels( iWide, flScale );
+	iTall = uiscale::UnitsCoveringPixels( iTall, flScale );
+}
+
+void CMatSystemSurface::PixelToUIUnits( int &x, int &y )
+{
+	const float flScale = UIScale();
+	x = uiscale::UnitAtPixel( x, flScale );
+	y = uiscale::UnitAtPixel( y, flScale );
+}
+
+// Re-evaluates the UI scale from the window's display scale, the ui_scale
+// setting and how the back buffer is presented. With bNotifyChange, a changed
+// scale relays out the panels as a screen size change does.
+void CMatSystemSurface::UpdateUIScale( bool bNotifyChange )
+{
+	if ( !m_UIScaleSetting.IsValid() )
+		m_UIScaleSetting.Init( "ui_scale", true );
+
+	uiscale::Inputs inputs = {};
+	inputs.displayScale = 0.0f;
+	inputs.userScale = m_UIScaleSetting.IsValid() ? m_UIScaleSetting.GetFloat() : 0.0f;
+#if defined( USE_SDL )
+	if ( g_pLauncherMgr )
+	{
+		inputs.displayScale = g_pLauncherMgr->GetWindowDisplayScale();
+		uint nDrawableWide = 0, nDrawableTall = 0;
+		g_pLauncherMgr->DisplayedSize( nDrawableWide, nDrawableTall );
+		inputs.drawableWide = static_cast<int>( nDrawableWide );
+		inputs.drawableTall = static_cast<int>( nDrawableTall );
+	}
+#endif
+	g_pMaterialSystem->GetBackBufferDimensions( inputs.backBufferWide, inputs.backBufferTall );
+
+	const float flScale = uiscale::ComputeScale( inputs );
+	if ( m_bUIScaleEvaluated && flScale == m_flUIScale )
+		return;
+
+	// The root panel's size under the previous scale.
+	int nOldX, nOldY, nOldWide, nOldTall;
+	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+	pRenderContext->GetViewport( nOldX, nOldY, nOldWide, nOldTall );
+	nOldWide = uiscale::UnitsCoveringPixels( nOldWide, m_flUIScale );
+	nOldTall = uiscale::UnitsCoveringPixels( nOldTall, m_flUIScale );
+	const bool bFirst = !m_bUIScaleEvaluated;
+	m_bUIScaleEvaluated = true;
+	m_flUIScale = flScale;
+	// A resize in progress can briefly change the presentation ratio; report
+	// those changes to developers only.
+	const bool bInputsChanged = inputs.displayScale != m_flLoggedDisplayScale ||
+	                            inputs.userScale != m_flLoggedUserScale;
+	m_flLoggedDisplayScale = inputs.displayScale;
+	m_flLoggedUserScale = inputs.userScale;
+	char szReport[256];
+	V_snprintf( szReport, sizeof( szReport ),
+	    "VGUI UI scale %.2f (display %.2f, ui_scale %.2f, back buffer %dx%d, window %dx%d)\n",
+	    flScale, inputs.displayScale, inputs.userScale, inputs.backBufferWide,
+	    inputs.backBufferTall, inputs.drawableWide, inputs.drawableTall );
+	if ( bInputsChanged )
+		Msg( "%s", szReport );
+	else
+		DevMsg( "%s", szReport );
+	if ( bNotifyChange && !bFirst )
+		NotifyScreenSizeChanged( nOldWide, nOldTall );
 }
 
 bool CMatSystemSurface::ForceScreenSizeOverride( bool bState, int wide, int tall )
@@ -2565,6 +2776,21 @@ bool CMatSystemSurface::IsScreenPosOverrideActive( void )
 //-----------------------------------------------------------------------------
 void CMatSystemSurface::OnScreenSizeChanged( int nOldWidth, int nOldHeight )
 {
+	// The caller reports the old size in pixels; the panels were laid out in UI
+	// units under the scale in effect then. The new mode can change the scale.
+	const float flOldScale = UIScale();
+	UpdateUIScale( false );
+	NotifyScreenSizeChanged( uiscale::UnitsCoveringPixels( nOldWidth, flOldScale ),
+	    uiscale::UnitsCoveringPixels( nOldHeight, flOldScale ) );
+
+	// Run a frame of the GUI to notify all subwindows of the message size change
+	ivgui()->RunFrame();
+}
+
+// Resizes the root panel to the screen in UI units and notifies the panels; the
+// sizes are in UI units. The caller runs (or is inside) a GUI frame to deliver it.
+void CMatSystemSurface::NotifyScreenSizeChanged( int nOldWidth, int nOldHeight )
+{
 	int iNewWidth, iNewHeight;
 	GetScreenSize( iNewWidth, iNewHeight );
 
@@ -2577,16 +2803,14 @@ void CMatSystemSurface::OnScreenSizeChanged( int nOldWidth, int nOldHeight )
 	// scheme font (well over 100 ms). A window being dragged changes size every
 	// frame, so the reload waits until the size has held still for a moment;
 	// until then text keeps its current glyphs while the layout already follows.
-	// Armed first, so the GUI frame below postpones a reload already due.
+	// Armed first, so the GUI frame that delivers this notification postpones a
+	// reload already due.
 	m_bFontResetPending = true;
 	m_flFontResetTime = Plat_FloatTime() + kFontResetSettleSeconds;
 
 	// notify every panel
 	VPANEL panel = GetEmbeddedPanel();
 	ivgui()->PostMessage(panel, new KeyValues("OnScreenSizeChanged", "oldwide", nOldWidth, "oldtall", nOldHeight), NULL);
-
-	// Run a frame of the GUI to notify all subwindows of the message size change
-	ivgui()->RunFrame();
 }
 
 // Runs the font reload OnScreenSizeChanged deferred, once the screen size has
@@ -2855,12 +3079,15 @@ void CMatSystemSurface::PlaySound(const char *pFileName)
 //-----------------------------------------------------------------------------
 void CMatSystemSurface::SetCursorPos(int x, int y)
 {
-	CursorSetPos( m_HWnd, x, y );
+	// UI units to the back buffer pixels the platform cursor uses.
+	const float flScale = UIScale();
+	CursorSetPos( m_HWnd, uiscale::PixelAtUnit( x, flScale ), uiscale::PixelAtUnit( y, flScale ) );
 }
 
 void CMatSystemSurface::GetCursorPos(int &x, int &y)
 {
 	CursorGetPos( m_HWnd, x, y );
+	PixelToUIUnits( x, y );
 }
 
 void CMatSystemSurface::SetCursor(HCursor hCursor)
@@ -3331,6 +3558,7 @@ void CMatSystemSurface::Begin3DPaint( int iLeft, int iTop, int iRight, int iBott
 	Assert( !m_bIn3DPaintMode );
 	m_bIn3DPaintMode = true;
 	m_b3DPaintRenderToTexture = bRenderToTexture;
+	const float flScale = ScreenUIScale();
 
 	// Save off the matrices in case the painting method changes them.
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
@@ -3357,8 +3585,9 @@ void CMatSystemSurface::Begin3DPaint( int iLeft, int iTop, int iRight, int iBott
 
 		// FIXME: Set the viewport to match the clip rectangle?
 		// Set the viewport to match the scissor rectangle
-		pRenderContext->PushRenderTargetAndViewport( m_FullScreenBuffer, 
-			0, 0, iRight - iLeft, iBottom - iTop );
+		pRenderContext->PushRenderTargetAndViewport( m_FullScreenBuffer, 0, 0,
+		    uiscale::UnitsToPixelsRounded( iRight - iLeft, flScale ),
+		    uiscale::UnitsToPixelsRounded( iBottom - iTop, flScale ) );
 
 		// NOTE: Stencil is used to get 3D painting in vgui panels working correctly 
 		pRenderContext->SetStencilFailOperation( STENCILOPERATION_KEEP );
@@ -3375,7 +3604,12 @@ void CMatSystemSurface::Begin3DPaint( int iLeft, int iTop, int iRight, int iBott
 		bool clipEnabled;
 		GetScissorRect( clipLeft, clipTop, clipRight, clipBottom, clipEnabled );
 		pRenderContext->PushRenderTargetAndViewport();
-		pRenderContext->Viewport( clipLeft + iLeft, clipTop + iTop, iRight - iLeft, iBottom - iTop );
+		// The panel rectangle is in UI units; the viewport is in pixels.
+		const int nLeft = uiscale::UnitsToPixelsRounded( clipLeft + iLeft, flScale );
+		const int nTop = uiscale::UnitsToPixelsRounded( clipTop + iTop, flScale );
+		pRenderContext->Viewport( nLeft, nTop,
+		    uiscale::UnitsToPixelsRounded( clipLeft + iRight, flScale ) - nLeft,
+		    uiscale::UnitsToPixelsRounded( clipTop + iBottom, flScale ) - nTop );
 	}
 
 	pRenderContext->CullMode( MATERIAL_CULLMODE_CW );
@@ -3488,8 +3722,11 @@ void CMatSystemSurface::DrawFullScreenBuffer( int nLeft, int nTop, int nRight, i
 
 	DrawSetTexture( m_nFullScreenBufferMaterialId );
 
+	// Begin3DPaint rendered the panel's rectangle at its size in pixels.
+	const float flScale = ScreenUIScale();
 	float u0, u1, v0, v1;
-	GetFullScreenTexCoords( 0, 0, nRight - nLeft, nBottom - nTop, &u0, &v0, &u1, &v1 );
+	GetFullScreenTexCoords( 0, 0, uiscale::UnitsToPixelsRounded( nRight - nLeft, flScale ),
+	    uiscale::UnitsToPixelsRounded( nBottom - nTop, flScale ), &u0, &v0, &u1, &v1 );
 	DrawTexturedSubRect( nLeft, nTop, nRight, nBottom, u0, v0, u1, v1 );
 
 	m_DrawColor[0] = oldColor[0];
@@ -4455,7 +4692,7 @@ void CMatSystemSurface::GetFullscreenViewportAndRenderTarget( int & x, int & y, 
 	{
 		// this can't actually be zero. If it is, use the height of the screen instead
 		x = y = 0;
-		GetScreenSize( w, h );
+		GetScreenPixelSize( w, h );
 		if( ppRenderTarget)
 			*ppRenderTarget = NULL;
 	}
@@ -4496,7 +4733,12 @@ void CMatSystemSurface::PushFullscreenViewport()
 	pRenderContext->Scale( 1, -1, 1 );
 	
 	//___stop___();
-	pRenderContext->Ortho( g_flPixelOffsetX, g_flPixelOffsetY, vw + g_flPixelOffsetX, vh + g_flPixelOffsetY, -1.0f, 1.0f ); 
+	// The viewport is in pixels; the panels paint in UI units.
+	const float flScale = ScreenUIScale();
+	const float flOffsetX = g_flPixelOffsetX / flScale;
+	const float flOffsetY = g_flPixelOffsetY / flScale;
+	pRenderContext->Ortho( flOffsetX, flOffsetY, vw / flScale + flOffsetX,
+	    vh / flScale + flOffsetY, -1.0f, 1.0f );
 
 	DisableClipping( true );
 }

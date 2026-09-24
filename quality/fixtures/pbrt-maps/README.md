@@ -27,8 +27,17 @@ tail.
    meshes by material, camera, sky):
    `python3 tools/quality/pbrt_scene.py <dir>/scene-v4.pbrt`.
    Unsupported PBRT features fail loudly; extend `tools/quality/pbrt_scene.py`
-   and its tests rather than special-casing a scene.
-3. Copy a manifest. Only per-scene *decisions* belong in it:
+   and its tests rather than special-casing a scene. A PLY placed more than
+   once keeps its stem for the first placement and becomes `<stem>_i1`,
+   `<stem>_i2`, ... for later ones; those are the names manifests use.
+3. Choose collision meshes from the bounds table (USD Z-up meters, largest
+   first, marking meshes that enclose the reference camera):
+   `python3 tools/quality/pbrt_scene.py --meshes <dir>/scene-v4.pbrt`.
+   Shell meshes often include wall thickness, so their bounds reach past the
+   visible interior; prefer the floor plus an inner wall or ceiling mesh as
+   `envelope_meshes`. If the shell still reaches below the walkable floor by
+   less than a slab, the collision step raises the shell floor to it.
+4. Copy a manifest. Only per-scene *decisions* belong in it:
 
 | Field | Meaning |
 | --- | --- |
@@ -38,12 +47,17 @@ tail.
 | `lightmap.size` / `samples` | atlas edge and Cycles samples (2048 / 64 default) |
 | `lightmap.exclude_materials` | extra materials that get no atlas space (transmissive and fully metallic ones never read the atlas and are always excluded) |
 | `lightmap.denoise` | OpenImageDenoise `RTLightmap` pass on the atlas (default `true`; needs `libOpenImageDenoise.so.2`) |
+| `lightmap.repair_narrow_dropouts` | fill one- or two-texel bake dropouts after denoising (default `false`; opt in after a camera and edge parity check) |
 | `lightmap.preview_gain` | temporary display gain for the Source preview (default 1) |
 | `collision.envelope_meshes` | meshes whose bounds form the sealed shell (default: all meshes) |
 | `collision.solid_materials` / `solid_meshes` | meshes that become axis-aligned solids |
 
-4. Run the command above and inspect `<out>/reference/cycles.png` against the
-   scene's reference image and `<out>/boot/` for the in-game frame.
+5. Run the command above and inspect `<out>/reference/cycles.png` against the
+   scene's reference image and `<out>/boot/` for the in-game frame. A failing
+   pixel gate stops the build; `--keep-going` finishes the map anyway so you
+   can inspect it, reports `gate-failed` in `<out>/build.json` and still
+   exits nonzero. Do not loosen a gate to make a scene pass; record why it
+   fails.
 
 ## Toolchain file
 
@@ -96,3 +110,9 @@ how they were built. They are not yet product-profile pinned dependencies.
   metal/roughness layer; each material's approximation is in the content
   receipt.
 - The in-game eye height is the player's, not the reference camera's.
+- A mesh with more than 4096 separate parts (fur, grass, foliage cards) gets
+  one planar lightmap chart of its footprint, so its parts share the light
+  at their position rather than having their own charts. The bake receipt
+  lists these under `projected_meshes`.
+- PBRT `diffusetransmission` renders exactly in Cycles (diffuse +
+  translucent lobes); the game material keeps only the reflected lobe.

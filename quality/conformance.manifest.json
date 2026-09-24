@@ -1811,6 +1811,32 @@
         }
       ],
       "expect": "fail"
+    },
+    {
+      "id": "vgui.ui_scale",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "vguimatsurface/UIScale.cpp",
+        "unittests/vguitest/test_ui_scale.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "vgui.ui_scale.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "vguimatsurface/UIScale.cpp",
+        "unittests/vguitest/test_ui_scale_negative.cpp"
+      ],
+      "expect": "pass"
     }
   ]
 }

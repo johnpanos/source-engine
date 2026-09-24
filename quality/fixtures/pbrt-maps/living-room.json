@@ -18,7 +18,8 @@
   },
   "lightmap": {
     "size": 2048,
-    "samples": 256
+    "samples": 4096,
+    "device": "gpu"
   },
   "collision": {
     "envelope_meshes": [
@@ -35,5 +36,9 @@
       "Mesh037",
       "Mesh024"
     ]
+  },
+  "runtime_gate": {
+    "max_mae": 32,
+    "min_ssim": 0.65
   }
 }

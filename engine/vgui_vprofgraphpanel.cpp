@@ -21,6 +21,7 @@
 #include "materialsystem/MaterialSystemUtil.h"
 #include "client.h"
 #include "gl_matsysiface.h"
+#include "vgui_baseui_interface.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -145,7 +146,7 @@ static ConCommand vprof_child		("vprof_child",		  IN_VProfChild);
 CVProfGraphPanel::CVProfGraphPanel( vgui::VPANEL parent ) : BaseClass( NULL, "CVProfGraphPanel" )
 {
 	SetParent( parent ); 
-	SetSize( videomode->GetModeStereoWidth(), videomode->GetModeStereoHeight() );
+	SetSize( EngineVGui_ScreenWide(), EngineVGui_ScreenTall() );
 	SetPos( 0, 0 );
 	SetVisible( false );
 	SetCursor( null );
@@ -234,8 +235,8 @@ void CVProfGraphPanel::Paint()
 	// Get screen rectangle
 	vrect.x		 = 0;
 	vrect.y		 = 0;
-	vrect.width	 = videomode->GetModeStereoWidth();
-	vrect.height = videomode->GetModeStereoHeight();
+	vrect.width	 = EngineVGui_ScreenWide();
+	vrect.height = EngineVGui_ScreenTall();
 
 	// Determine graph width
 	w = vprof_graphwidth.GetInt();

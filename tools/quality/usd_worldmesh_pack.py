@@ -4,6 +4,10 @@
 The BSP supplies collision and leaves. Imported USD triangles use high-bit
 synthetic face IDs, which deliberately have no legacy decal association. Until
 spatial import is implemented, every leaf references every imported meshlet.
+Every mesh prim is a source mesh (including instanced `<stem>_iN` placements
+and the optional `SkyDome` from `pbrt_sky_dome.py`) and must have a bound
+material; emitter meshes `LightQuadNN`/`LightDiskNN` are packed only with
+`--include-emitters`.
 """
 
 import argparse
@@ -21,6 +25,7 @@ from worldstage_mesh_pack import cross, leaf_faces, sha256, tangent_frame, unit,
 
 SOURCE_UNITS_PER_METER = 39.37007874015748
 IMPORTED_FACE_BASE = 0x80000000
+EMITTER_NAME = r"Light(?:Quad|Disk)\d{2}"
 
 
 def normal_bucket(normal):
@@ -40,11 +45,11 @@ def source_triangles(stage, material_prefix, require_lightmap_uv, include_emitte
     inventory = []
     source_meshes = sorted((prim for prim in stage.Traverse()
                             if prim.IsA(UsdGeom.Mesh) and
-                            re.fullmatch(r"Mesh\d{3}", prim.GetName())),
+                            not re.fullmatch(EMITTER_NAME, prim.GetName())),
                            key=lambda prim: prim.GetName())
     emitters = sorted((prim for prim in stage.Traverse()
                        if include_emitters and prim.IsA(UsdGeom.Mesh) and
-                       re.fullmatch(r"Light(?:Quad|Disk)\d{2}", prim.GetName())),
+                       re.fullmatch(EMITTER_NAME, prim.GetName())),
                       key=lambda prim: prim.GetName())
     meshes = source_meshes + emitters
     if not source_meshes:

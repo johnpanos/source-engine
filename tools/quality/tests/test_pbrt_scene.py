@@ -83,6 +83,23 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(silver["metallic"], 1.0)
         self.assertTrue(all(0.9 < value < 1.0 for value in silver["base_color"]))
 
+    def test_diffuse_transmission_keeps_both_lobes(self):
+        leaf = pbrt_scene.material_summary(self.scene, "Leaf")
+        # pbrt-v4 defaults R = T = 0.25, both times scale.
+        self.assertEqual(leaf["base_color"], (0.125, 0.125, 0.125))
+        self.assertEqual(leaf["diffuse_transmittance"],
+                         {"texture": None, "scale": 1.0, "color": (0.125, 0.125, 0.125)})
+        self.assertEqual(leaf["transmission"], 0.0)
+        text = SCENE.replace('"float scale" .5', '"texture reflectance" [ "Wood" ] '
+                             '"texture transmittance" [ "Wood" ] "float scale" .5')
+        with tempfile.TemporaryDirectory() as directory:
+            scene = pbrt_scene.parse(write(directory, text))
+        leaf = pbrt_scene.material_summary(scene, "Leaf")
+        self.assertEqual((leaf["base_texture"], leaf["base_scale"]), ("textures/wood.tga", 0.5))
+        self.assertEqual(leaf["diffuse_transmittance"],
+                         {"texture": "textures/wood.tga", "scale": 0.5, "color": None})
+        self.assertIsNone(pbrt_scene.material_summary(scene, "Floor")["diffuse_transmittance"])
+
     def test_camera_pose_converts_to_z_up(self):
         pose = pbrt_scene.camera_pose(self.scene)
         np.testing.assert_allclose(pose["forward"], (0, -1, 0), atol=1e-12)
@@ -104,9 +121,58 @@ class RejectTest(unittest.TestCase):
                    "undefined material")
         self.check(SCENE + "AttributeBegin\n", "attribute stack")
 
-    def test_duplicate_mesh_stems(self):
-        self.check(SCENE + 'Shape "plymesh" "string filename" [ "other/Mesh000.ply" ]\n',
-                   "unique")
+    def test_colliding_mesh_names(self):
+        repeated = 'Shape "plymesh" "string filename" [ "models/Mesh000.ply" ]\n'
+        self.check(SCENE + repeated + 'Shape "plymesh" "string filename" '
+                   '[ "models/Mesh000_i1.ply" ]\n', "unique")
+
+
+class InstanceTest(unittest.TestCase):
+    def test_repeated_ply_becomes_named_instances(self):
+        placed = ('AttributeBegin\n  Transform [ 1 0 0 0 0 1 0 0 0 0 1 0 %d 0 0 1 ]\n'
+                  '  Shape "plymesh" "string filename" [ "other/Mesh001.ply" ]\nAttributeEnd\n')
+        with tempfile.TemporaryDirectory() as directory:
+            scene = pbrt_scene.parse(write(directory, SCENE + placed % 5 + placed % 7))
+        shapes = {shape["name"]: shape for shape in scene["shapes"]}
+        self.assertEqual(sorted(shapes), ["Mesh000", "Mesh001", "Mesh001_i1", "Mesh001_i2",
+                                          "Mesh002"])
+        self.assertEqual(shapes["Mesh001"]["world_from_object"][0][3], 2.0)
+        self.assertEqual(shapes["Mesh001_i1"]["world_from_object"][0][3], 5.0)
+        self.assertEqual(shapes["Mesh001_i2"]["world_from_object"][0][3], 7.0)
+        self.assertEqual(shapes["Mesh001_i2"]["filename"], "other/Mesh001.ply")
+
+
+class MeshBoundsTest(unittest.TestCase):
+    def ply(self, directory, name, binary):
+        points = [(0.0, 0.0, 0.0), (1.0, 2.0, 3.0), (-1.0, 0.5, 0.25)]
+        header = ("ply\nformat %s 1.0\nelement vertex 3\nproperty float x\n"
+                  "property float y\nproperty float z\nproperty float u\n"
+                  "element face 1\nproperty list uint8 int vertex_indices\nend_header\n" %
+                  ("binary_little_endian" if binary else "ascii"))
+        path = Path(directory) / "models" / name
+        path.parent.mkdir(exist_ok=True)
+        if binary:
+            body = b"".join(struct.pack("<4f", *point, 9.0) for point in points)
+            body += struct.pack("<B3i", 3, 0, 1, 2)
+        else:
+            body = ("".join("%g %g %g 9\n" % point for point in points) + "3 0 1 2\n").encode()
+        path.write_bytes(header.encode() + body)
+
+    def test_bounds_follow_transform_and_axis_conversion(self):
+        text = ('Camera "perspective" "float fov" [ 50 ]\nWorldBegin\n'
+                'MakeNamedMaterial "M" "string type" [ "diffuse" ]\nNamedMaterial "M"\n'
+                'Shape "plymesh" "string filename" [ "models/a.ply" ]\n'
+                'Translate 10 0 0\nShape "plymesh" "string filename" [ "models/b.ply" ]\n')
+        with tempfile.TemporaryDirectory() as directory:
+            self.ply(directory, "a.ply", binary=True)
+            self.ply(directory, "b.ply", binary=False)
+            scene = pbrt_scene.parse(write(directory, text))
+            a, b = (pbrt_scene.mesh_bounds(scene, shape) for shape in scene["shapes"])
+            # usd = (x, -z, y)
+            self.assertEqual(a, ((-1.0, -3.0, 0.0), (1.0, 0.0, 2.0)))
+            self.assertEqual(b, ((9.0, -3.0, 0.0), (11.0, 0.0, 2.0)))
+            rows = pbrt_scene.mesh_table(scene).splitlines()[2:]
+            self.assertEqual(sorted(row.split()[0] for row in rows), ["a", "b"])
 
 
 class EnvironmentTest(unittest.TestCase):

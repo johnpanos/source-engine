@@ -104,11 +104,7 @@ public:
 	int PeekAndRemoveKeyboardEvents(
 	    bool *escape, bool *enter, bool *space, bool debugEvents = false ) override;
 #endif
-	void SetCursorPosition( int x, int y ) override
-	{
-		if ( m_Window )
-			SDL_WarpMouseInWindow( m_Window, static_cast<float>( x ), static_cast<float>( y ) );
-	}
+	void SetCursorPosition( int x, int y ) override;
 	void SetWindowFullScreen( bool fullScreen, int width, int height ) override;
 	bool IsWindowFullScreen() override
 	{
@@ -144,12 +140,18 @@ public:
 	void OnFrameRendered() override;
 	void SetGammaRamp( const uint16 *, const uint16 *, const uint16 * ) override;
 	double GetPrevGLSwapWindowTime() override { return 0.0; }
+	float GetWindowDisplayScale() override
+	{
+		const float scale = m_Window ? SDL_GetWindowDisplayScale( m_Window ) : 0.0f;
+		return scale > 0.0f ? scale : 1.0f;
+	}
 
 private:
 	void PostEvent( const CCocoaEvent &event );
 	void HandleEvent( const SDL_Event &event );
 	void HandleKey( const SDL_KeyboardEvent &event );
 	void MousePosition( CCocoaEvent &event, float x, float y );
+	void RenderedToWindowScale( float &scaleX, float &scaleY );
 
 	SDL_Window *m_Window = NULL;
 	SDL_Cursor *m_Cursor = NULL; // Borrowed from the UI cursor owner.
@@ -464,17 +466,33 @@ void CSDL3Mgr::SetGammaRamp( const uint16 *, const uint16 *, const uint16 * )
 	}
 }
 
-void CSDL3Mgr::MousePosition( CCocoaEvent &event, float x, float y )
+// Rendered (back buffer) pixels per window coordinate: SDL reports the mouse in
+// window coordinates, while cursor positions are exchanged in rendered pixels.
+void CSDL3Mgr::RenderedToWindowScale( float &scaleX, float &scaleY )
 {
 	int width = 0, height = 0;
 	SDL_GetWindowSize( m_Window, &width, &height );
-	const float scaleX =
-	    width > 0 && m_RenderedWidth ? static_cast<float>( m_RenderedWidth ) / width : 1.0f;
-	const float scaleY =
+	scaleX = width > 0 && m_RenderedWidth ? static_cast<float>( m_RenderedWidth ) / width : 1.0f;
+	scaleY =
 	    height > 0 && m_RenderedHeight ? static_cast<float>( m_RenderedHeight ) / height : 1.0f;
+}
+
+void CSDL3Mgr::MousePosition( CCocoaEvent &event, float x, float y )
+{
+	float scaleX, scaleY;
+	RenderedToWindowScale( scaleX, scaleY );
 	event.m_MousePos[0] = static_cast<int>( x * scaleX );
 	event.m_MousePos[1] = static_cast<int>( y * scaleY );
 	event.m_MouseButtonFlags = m_MouseButtons;
+}
+
+void CSDL3Mgr::SetCursorPosition( int x, int y )
+{
+	if ( !m_Window )
+		return;
+	float scaleX, scaleY;
+	RenderedToWindowScale( scaleX, scaleY );
+	SDL_WarpMouseInWindow( m_Window, x / scaleX, y / scaleY );
 }
 
 void CSDL3Mgr::HandleKey( const SDL_KeyboardEvent &key )

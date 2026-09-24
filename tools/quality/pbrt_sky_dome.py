@@ -6,8 +6,8 @@ writes a render stage that sublayers the lighting stage (left unchanged, so the
 bake never sees the dome) and adds `/root/SkyDome`, a large inward-facing UV
 sphere bound to material `Sky`. Its `st` follows the pipeline's equirect sky
 convention (`pbrt_scene.environment_equirect`, row 0 = zenith), and it gets a
-zero `lightmap_st`. The sky image is written as an 8-bit display texture
-(Reinhard, sRGB-encoded) for an unlit Source material.
+zero `lightmap_st`. The sky texture itself comes from the pipeline's
+environment step (`pbrt_scene.sky_display`).
 
 Run with the OpenUSD Python (`pxr`) on PYTHONPATH.
 """
@@ -19,9 +19,6 @@ import math
 import os
 from pathlib import Path
 
-import imageio.v3 as iio
-import numpy as np
-from PIL import Image
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, Vt
 
 LONGITUDES = 64
@@ -75,9 +72,9 @@ def dome(center, radius):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", type=Path, required=True, help="baked lighting stage")
-    parser.add_argument("--environment", type=Path, required=True)
+    parser.add_argument("--sky-texture", type=Path, required=True,
+                        help="display texture from the environment step (recorded only)")
     parser.add_argument("--out-stage", type=Path, required=True)
-    parser.add_argument("--out-texture", type=Path, required=True)
     parser.add_argument("--radius-scale", type=float, default=4.0,
                         help="dome radius as a multiple of the scene's half diagonal")
     args = parser.parse_args()
@@ -111,22 +108,11 @@ def main():
     material = UsdShade.Material.Define(stage, "/root/_sky_materials/Sky")
     UsdShade.MaterialBindingAPI.Apply(mesh.GetPrim()).Bind(material)
     stage.GetRootLayer().Save()
-    pixels = iio.imread(args.environment)[:, :, :3].astype(np.float64)
-    if not np.isfinite(pixels).all():
-        raise ValueError("environment EXR has non-finite texels")
-    display = pixels / (1.0 + pixels)
-    encoded = np.where(display <= 0.0031308, 12.92 * display,
-                       1.055 * np.power(display, 1 / 2.4) - 0.055)
-    args.out_texture.parent.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(np.clip(np.rint(encoded * 255), 0, 255).astype(np.uint8)).save(
-        args.out_texture)
     receipt = {"status": "pass", "scope": "pbrt-sky-dome",
                "lighting_stage_sha256": sha256(args.stage),
-               "environment_sha256": sha256(args.environment),
+               "sky_texture_sha256": sha256(args.sky_texture),
                "render_stage_sha256": sha256(args.out_stage),
-               "texture_sha256": sha256(args.out_texture),
-               "center": center, "radius": radius, "triangles": len(points) // 3,
-               "display": "Reinhard L/(1+L), sRGB-encoded 8-bit"}
+               "center": center, "radius": radius, "triangles": len(points) // 3}
     args.out_stage.with_name(args.out_stage.name + ".json").write_text(
         json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     print(json.dumps({k: receipt[k] for k in ("status", "radius", "triangles")}))

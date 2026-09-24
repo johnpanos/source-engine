@@ -5115,8 +5115,8 @@ CColorCorrectionUIPanel::CColorCorrectionUIPanel( vgui::Panel *parent ) : BaseCl
 	int w = 250;
 	int h = 480;
 
-	int x = videomode->GetModeStereoWidth() - w - 10;
-	int y = videomode->GetModeStereoHeight() - h - 10;
+	int x = EngineVGui_ScreenWide() - w - 10;
+	int y = EngineVGui_ScreenTall() - h - 10;
 	SetBounds( x, y, w, h );
 
 	m_pOperationListPanel->PopulateList( );

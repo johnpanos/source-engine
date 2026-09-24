@@ -95,6 +95,8 @@ def main():
     parser.add_argument("--minimum-improvement", type=float, default=0.0)
     parser.add_argument("--min-edge-f1", type=float,
                         help="optional structural edge parity gate")
+    parser.add_argument("--min-wall-fine-precision", type=float,
+                        help="optional wall seam gate on fine edge precision")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     render = json.loads(args.reference_receipt.read_text())
@@ -113,6 +115,9 @@ def main():
     after_edges, reference_edge_map, candidate_edge_map = edge_parity(
         reference, candidate, REGIONS)
     after["edge_parity"] = after_edges
+    fine_edges, reference_fine_map, candidate_fine_map = edge_parity(
+        reference, candidate, REGIONS, sigma=0.7, threshold=3.0)
+    after["fine_edge_parity"] = fine_edges
     result = {"status": "pass", "scope": "staircase2-native-pbr-cycles-camera-comparison",
               "reference_sha256": sha256(args.reference),
               "reference_receipt_sha256": sha256(args.reference_receipt),
@@ -136,6 +141,8 @@ def main():
             raise ValueError("material ablation changed unexpected content: " + str(sorted(changed)))
         old = metrics(reference, before)
         old["edge_parity"] = edge_parity(reference, before, REGIONS)[0]
+        old["fine_edge_parity"] = edge_parity(reference, before, REGIONS,
+                                             sigma=0.7, threshold=3.0)[0]
         improvement = old["mean_absolute_rgb"] - after["mean_absolute_rgb"]
         result["before_boot_sha256"] = sha256(args.before_receipt)
         result["before_capture_sha256"] = sha256(old_capture)
@@ -150,16 +157,26 @@ def main():
         result["min_edge_f1"] = args.min_edge_f1
         if after_edges["whole_frame"]["f1"] < args.min_edge_f1:
             result["status"] = "fail"
+    if args.min_wall_fine_precision is not None:
+        if not 0 <= args.min_wall_fine_precision <= 1:
+            parser.error("--min-wall-fine-precision must be in [0, 1]")
+        result["min_wall_fine_precision"] = args.min_wall_fine_precision
+        if fine_edges["regions"]["wall"]["precision"] < args.min_wall_fine_precision:
+            result["status"] = "fail"
     args.out.parent.mkdir(parents=True, exist_ok=True)
     candidate.save(args.out.with_suffix(".png"))
     edge_path = args.out.with_name(args.out.stem + "-edges.png")
     edge_overlay(reference, reference_edge_map, candidate_edge_map).save(edge_path)
+    fine_edge_path = args.out.with_name(args.out.stem + "-fine-edges.png")
+    edge_overlay(reference, reference_fine_map, candidate_fine_map).save(fine_edge_path)
     result["candidate_square_sha256"] = sha256(args.out.with_suffix(".png"))
     result["edge_overlay_sha256"] = sha256(edge_path)
+    result["fine_edge_overlay_sha256"] = sha256(fine_edge_path)
     args.out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps({"status": result["status"], "after_mae": after["mean_absolute_rgb"],
                       "after_ssim": after["luminance_ssim"],
                       "after_edge_f1": after_edges["whole_frame"]["f1"],
+                      "after_wall_fine_precision": fine_edges["regions"]["wall"]["precision"],
                       "improvement": result.get("mean_absolute_rgb_improvement")},
                      sort_keys=True))
     if result["status"] != "pass":

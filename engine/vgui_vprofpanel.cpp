@@ -14,6 +14,7 @@
 #include "vprof_engine.h"
 #include "vprof_record.h"
 #include "ivideomode.h"
+#include "vgui_baseui_interface.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -488,8 +489,8 @@ CVProfPanel::CVProfPanel( vgui::Panel *pParent, const char *pElementName )
 
 	int x = VPROF_INDENT_X;
 	int y = VPROF_INDENT_Y;
-	int wide = videomode->GetModeStereoWidth() - x * 2;
-	int tall = videomode->GetModeStereoHeight() - y * 2;
+	int wide = EngineVGui_ScreenWide() - x * 2;
+	int tall = EngineVGui_ScreenTall() - y * 2;
 	SetBgColor(Color(0, 0, 0, 175));
 
 	// Initialize the top title.

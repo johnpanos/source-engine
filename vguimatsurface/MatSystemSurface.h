@@ -28,6 +28,7 @@
 #include "materialsystem/MaterialSystemUtil.h"
 #include "tier1/utldict.h"
 #include "tier3/tier3.h"
+#include "tier1/convar.h"
 
 using namespace vgui;
 
@@ -357,6 +358,11 @@ public:
 	virtual int GetTextureNumFrames( int id );
 	virtual void DrawSetTextureFrame( int id, int nFrame, unsigned int *pFrameCache );
 
+	// The current viewport in UI units (the embedded panel's bounds).
+	void GetViewportUIBounds( int &x, int &y, int &wide, int &tall );
+	// Converts a back buffer pixel position (input events) to UI units.
+	void PixelToUIUnits( int &x, int &y );
+
 private:
 	//void DrawRenderCharInternal( const FontCharRenderInfo& info );
 	void DrawRenderCharInternal( const CharRenderInfo& info );
@@ -479,6 +485,28 @@ private:
 	static constexpr double kFontResetSettleSeconds = 0.25;
 	bool m_bFontResetPending = false;
 	double m_flFontResetTime = 0.0;
+
+	// UI scale (UIScale.h): back buffer pixels per UI unit. The surface lays out,
+	// paints and exchanges cursor positions in UI units; a screen size override
+	// (a panel rendered to a texture) is already in UI units and is unscaled.
+	void UpdateUIScale( bool bNotifyChange );
+	float UIScale();
+	float ScreenUIScale();
+	void GetScreenPixelSize( int &wide, int &tall );
+	void NotifyScreenSizeChanged( int nOldWide, int nOldTall );
+	float m_flUIScale = 1.0f;
+	bool m_bUIScaleEvaluated = false;
+	float m_flLoggedDisplayScale = -1.0f;
+	float m_flLoggedUserScale = -1.0f;
+	// The engine's ui_scale setting, looked up once the engine registers it.
+	ConVarRef m_UIScaleSetting = ConVarRef( static_cast< IConVar * >( NULL ) );
+
+	// Fonts rasterize at their size in pixels (their UI size times the UI scale
+	// when they were created) and report metrics in UI units.
+	float FontRasterScale( vgui::HFont font ) const;
+	void GetGlyphQuad( float flPenX, float flPenY, int nPixelOffsetX, int nPixelsWide,
+	    int nPixelsTall, float flFontScale, vgui::Vertex_t &ul, vgui::Vertex_t &lr ) const;
+	CUtlVector< float > m_FontRasterScales;
 
 	// font drawing batching code
 	enum { MAX_BATCHED_CHAR_VERTS = 4096 };

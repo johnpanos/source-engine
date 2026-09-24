@@ -803,8 +803,13 @@ void Con_NXPrintf( const struct con_nprint_s *info, const char *fmt, ... )
 //-----------------------------------------------------------------------------
 CConPanel::CConPanel( vgui::Panel *parent ) : CBasePanel( parent, "CConPanel" )
 {
-	// Full screen assumed
-	SetSize( videomode->GetModeStereoWidth(), videomode->GetModeStereoHeight() );
+	// Full screen assumed: the root panel covers the screen in UI units.
+	int wide, tall;
+	if ( parent )
+		parent->GetSize( wide, tall );
+	else
+		vgui::surface()->GetScreenSize( wide, tall );
+	SetSize( wide, tall );
 	SetPos( 0, 0 );
 	SetVisible( true );
 	SetMouseInputEnabled( false );
@@ -1174,9 +1179,9 @@ int CConPanel::ProcessNotifyLines( int &left, int &top, int &right, int &bottom,
 			int fontTall = vgui::surface()->GetFontTall( m_hFontFixed ) + 1;
 
 			len = DrawTextLen( font, da_notify[i].szNotify );
-			x = videomode->GetModeStereoWidth() - 10 - len;
+			x = GetWide() - 10 - len;
 
-			if ( y + fontTall > videomode->GetModeStereoHeight() - 20 )
+			if ( y + fontTall > GetTall() - 20 )
 				return count;
 
 			count++;

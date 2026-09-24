@@ -999,6 +999,22 @@ static int getSDLDisplayIndexFullscreen()
 
 #endif // USE_SDL
 
+// ui_scale choices; 0 follows the display's scale.
+static const float s_UIScaleChoices[] = { 0.0f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f };
+
+static int AddUIScaleItem( ComboBox *pCombo, float flScale )
+{
+	char szText[32];
+	if ( flScale <= 0.0f )
+		Q_strncpy( szText, "Automatic", sizeof( szText ) );
+	else
+		Q_snprintf( szText, sizeof( szText ), "%d%%", (int)( flScale * 100.0f + 0.5f ) );
+	KeyValues *pData = new KeyValues( "UIScale", "scale", flScale );
+	const int nItem = pCombo->AddItem( szText, pData );
+	pData->deleteThis();
+	return nItem;
+}
+
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
@@ -1013,6 +1029,13 @@ COptionsSubVideo::COptionsSubVideo(vgui::Panel *parent) : PropertyPage(parent, N
 	m_pMode = new ComboBox(this, "Resolution", 8, false);
 	m_pAspectRatio = new ComboBox( this, "AspectRatio", 6, false );
 	m_pVRMode = new ComboBox( this, "VRMode", 2, false );
+	m_pUIScale = new ComboBox( this, "UIScale", 10, false );
+	m_pUIScaleLabel = new Label( this, "UIScaleLabel", "UI scale" );
+	m_pUIScaleLabel->SetAssociatedControl( m_pUIScale );
+	m_pUIScale->GetTooltip()->SetText(
+	    "Size of menus, the console and HUD icons. Automatic follows the display's scaling." );
+	for ( int i = 0; i < ARRAYSIZE( s_UIScaleChoices ); ++i )
+		AddUIScaleItem( m_pUIScale, s_UIScaleChoices[i] );
 	m_pAdvanced = new Button( this, "AdvancedButton", "#GameUI_AdvancedEllipsis" );
 	m_pAdvanced->SetCommand(new KeyValues("OpenAdvanced"));
 	m_pBenchmark = new Button( this, "BenchmarkButton", "#GameUI_LaunchBenchmark" );
@@ -1111,6 +1134,7 @@ COptionsSubVideo::COptionsSubVideo(vgui::Panel *parent) : PropertyPage(parent, N
 #endif
 
 	LoadControlSettings("Resource\\OptionsSubVideo.res");
+	PlaceUIScaleControls();
 
 	// Moved down here so we can set the Drop down's
 	// menu state after the default (disabled) value is loaded
@@ -1403,6 +1427,65 @@ void COptionsSubVideo::OnResetData()
 	m_pVRMode->ActivateItem( bVREnabled ? 1 : 0 );
 	EnableOrDisableWindowedForVR();
 
+	static ConVarRef ui_scale( "ui_scale" );
+	SelectUIScaleItem( ui_scale.IsValid() ? ui_scale.GetFloat() : 0.0f );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Stock OptionsSubVideo.res layouts predate the UI scale. Unless the
+//			layout places it, it goes below the resolution column.
+//-----------------------------------------------------------------------------
+void COptionsSubVideo::PlaceUIScaleControls()
+{
+	int x, y;
+	m_pUIScale->GetPos( x, y );
+	if ( x != 0 || y != 0 )
+		return;
+
+	int nColumnX, nColumnY, nColumnWide, nColumnTall;
+	m_pMode->GetBounds( nColumnX, nColumnY, nColumnWide, nColumnTall );
+	int nBottom = nColumnY + nColumnTall;
+	for ( int i = 0; i < GetChildCount(); ++i )
+	{
+		Panel *pChild = GetChild( i );
+		if ( !pChild || !pChild->IsVisible() || pChild == m_pUIScale || pChild == m_pUIScaleLabel )
+			continue;
+		int nChildX, nChildY, nChildWide, nChildTall;
+		pChild->GetBounds( nChildX, nChildY, nChildWide, nChildTall );
+		if ( nChildX < nColumnX + nColumnWide && nChildX + nChildWide > nColumnX )
+			nBottom = MAX( nBottom, nChildY + nChildTall );
+	}
+
+	// The layouts space a label 20 below the control above and its control 26 below it.
+	m_pUIScaleLabel->SetBounds( nColumnX, nBottom + 20, nColumnWide, nColumnTall );
+	m_pUIScale->SetBounds( nColumnX, nBottom + 46, nColumnWide, nColumnTall );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Selects the item for a ui_scale value, adding one for a value set
+//			elsewhere (the console)
+//-----------------------------------------------------------------------------
+void COptionsSubVideo::SelectUIScaleItem( float flScale )
+{
+	if ( flScale < 0.0f )
+		flScale = 0.0f;
+	for ( int i = 0; i < m_pUIScale->GetItemCount(); ++i )
+	{
+		const int nItem = m_pUIScale->GetItemIDFromRow( i );
+		KeyValues *pData = m_pUIScale->GetItemUserData( nItem );
+		if ( pData && fabsf( pData->GetFloat( "scale" ) - flScale ) < 0.005f )
+		{
+			m_pUIScale->SilentActivateItem( nItem );
+			return;
+		}
+	}
+	m_pUIScale->SilentActivateItem( AddUIScaleItem( m_pUIScale, flScale ) );
+}
+
+float COptionsSubVideo::GetSelectedUIScale()
+{
+	KeyValues *pData = m_pUIScale->GetActiveItemUserData();
+	return pData ? pData->GetFloat( "scale" ) : 0.0f;
 }
 
 //-----------------------------------------------------------------------------
@@ -1582,6 +1665,11 @@ void COptionsSubVideo::OnApplyChanges()
 	// apply changes
 	engine->ClientCmd_Unrestricted( "mat_savechanges\n" );
 
+	// The UI relays out at the new scale on its next frame.
+	static ConVarRef ui_scale( "ui_scale" );
+	const float flUIScale = GetSelectedUIScale();
+	if ( ui_scale.IsValid() && ui_scale.GetFloat() != flUIScale )
+		ui_scale.SetValue( flUIScale );
 }
 
 //-----------------------------------------------------------------------------
@@ -1629,6 +1717,10 @@ void COptionsSubVideo::OnTextChanged(Panel *pPanel, const char *pszText)
 	else if (pPanel == m_pWindowed)
 	{
 		PrepareResolutionList();
+		OnDataChanged();
+	}
+	else if ( pPanel == m_pUIScale )
+	{
 		OnDataChanged();
 	}
 	else if ( pPanel == m_pVRMode )

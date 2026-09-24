@@ -140,4 +140,9 @@ extern IEngineVGuiInternal *EngineVGui();
 // Purpose: Play a sound
 void VGui_PlaySound(const char *pFileName);
 
+// The VGUI screen in UI units, which engine panels lay out in (a scaled display
+// has fewer UI units than pixels).
+int EngineVGui_ScreenWide();
+int EngineVGui_ScreenTall();
+
 #endif // VGUI_BASEUI_INTERFACE_H

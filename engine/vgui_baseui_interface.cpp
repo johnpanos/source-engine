@@ -123,6 +123,43 @@ bool s_bWindowsInputEnabled = true;
 ConVar r_drawvgui( "r_drawvgui", "1", FCVAR_CHEAT, "Enable the rendering of vgui panels" );
 ConVar gameui_xbox( "gameui_xbox", "0", 0 );
 
+// The user's UI size. The VGUI surface reads it with the window's display scale
+// (vguimatsurface/UIScale.h); the video options offer it as "UI scale".
+static ConVar ui_scale( "ui_scale", "0", FCVAR_ARCHIVE,
+    "UI size in back buffer pixels per UI unit (menus, console, HUD icons and text). "
+    "0 follows the display's scale.",
+    true, 0.0f, true, 4.0f );
+
+//-----------------------------------------------------------------------------
+// The root panels cover the VGUI surface's screen, which is in UI units (fewer
+// than pixels on a scaled display). A VR override keeps its fixed UI resolution.
+//-----------------------------------------------------------------------------
+static void GetRootPanelSize( int &wide, int &tall )
+{
+	if ( videomode->GetModeUIWidth() != videomode->GetModeWidth() ||
+	     videomode->GetModeUIHeight() != videomode->GetModeHeight() )
+	{
+		wide = videomode->GetModeUIWidth();
+		tall = videomode->GetModeUIHeight();
+		return;
+	}
+	vgui::surface()->GetScreenSize( wide, tall );
+}
+
+int EngineVGui_ScreenWide()
+{
+	int wide, tall;
+	GetRootPanelSize( wide, tall );
+	return wide;
+}
+
+int EngineVGui_ScreenTall()
+{
+	int wide, tall;
+	GetRootPanelSize( wide, tall );
+	return tall;
+}
+
 void Con_CreateConsolePanel( vgui::Panel *parent );
 void CL_CreateEntityReportPanel( vgui::Panel *parent );
 void ClearIOStates( void );
@@ -645,8 +682,11 @@ void CEngineVGui::Init()
 	//		staticGameUIPanel ( GameUI stuff ) ( zpos == 100 )
 	//		staticDebugSystemPanel ( Engine debug stuff ) zpos == 125 )
 
+	int nRootWide, nRootTall;
+	GetRootPanelSize( nRootWide, nRootTall );
+
 	staticPanel = new CStaticPanel( NULL, "staticPanel" );	
-	staticPanel->SetBounds( 0, 0, videomode->GetModeUIWidth(), videomode->GetModeUIHeight() );
+	staticPanel->SetBounds( 0, 0, nRootWide, nRootTall );
 	staticPanel->SetPaintBorderEnabled(false);
 	staticPanel->SetPaintBackgroundEnabled(false);
 	staticPanel->SetPaintEnabled(false);
@@ -659,7 +699,7 @@ void CEngineVGui::Init()
 	COM_TimestampedLog( "Building Panels (staticClientDLLPanel)" );
 
 	staticClientDLLPanel = new CEnginePanel( staticPanel, "staticClientDLLPanel" );
-	staticClientDLLPanel->SetBounds( 0, 0, videomode->GetModeUIWidth(), videomode->GetModeUIHeight() );
+	staticClientDLLPanel->SetBounds( 0, 0, nRootWide, nRootTall );
 	staticClientDLLPanel->SetPaintBorderEnabled(false);
 	staticClientDLLPanel->SetPaintBackgroundEnabled(false);
 	staticClientDLLPanel->SetKeyBoardInputEnabled( false );	// popups in the client DLL can enable this.
@@ -673,7 +713,7 @@ void CEngineVGui::Init()
 	COM_TimestampedLog( "Building Panels (staticClientDLLToolsPanel)" );
 
 	staticClientDLLToolsPanel = new CEnginePanel( staticPanel, "staticClientDLLToolsPanel" );
-	staticClientDLLToolsPanel->SetBounds( 0, 0, videomode->GetModeUIWidth(), videomode->GetModeUIHeight() );
+	staticClientDLLToolsPanel->SetBounds( 0, 0, nRootWide, nRootTall );
 	staticClientDLLToolsPanel->SetPaintBorderEnabled(false);
 	staticClientDLLToolsPanel->SetPaintBackgroundEnabled(false);
 	staticClientDLLToolsPanel->SetKeyBoardInputEnabled( false );	// popups in the client DLL can enable this.
@@ -683,7 +723,7 @@ void CEngineVGui::Init()
 	staticClientDLLToolsPanel->SetZPos( 28 );
 
 	staticEngineToolsPanel = new CEnginePanel( staticPanel, "Engine Tools" );
-	staticEngineToolsPanel->SetBounds( 0, 0, videomode->GetModeUIWidth(), videomode->GetModeUIHeight() );
+	staticEngineToolsPanel->SetBounds( 0, 0, nRootWide, nRootTall );
 	staticEngineToolsPanel->SetPaintBorderEnabled(false);
 	staticEngineToolsPanel->SetPaintBackgroundEnabled(false);
 	staticEngineToolsPanel->SetPaintEnabled(false);
@@ -698,7 +738,7 @@ void CEngineVGui::Init()
 	if(NeedProportional())
 		staticGameUIPanel->SetProportional(true);
 
-	staticGameUIPanel->SetBounds( 0, 0, videomode->GetModeUIWidth(), videomode->GetModeUIHeight() );
+	staticGameUIPanel->SetBounds( 0, 0, nRootWide, nRootTall );
 	staticGameUIPanel->SetPaintBorderEnabled(false);
 	staticGameUIPanel->SetPaintBackgroundEnabled(false);
 	staticGameUIPanel->SetPaintEnabled(false);
@@ -707,7 +747,7 @@ void CEngineVGui::Init()
 	staticGameUIPanel->SetZPos( 100 );
 
 	staticGameDLLPanel = new CEnginePanel( staticPanel, "staticGameDLLPanel" );
-	staticGameDLLPanel->SetBounds( 0, 0, videomode->GetModeUIWidth(), videomode->GetModeUIHeight() );
+	staticGameDLLPanel->SetBounds( 0, 0, nRootWide, nRootTall );
 	staticGameDLLPanel->SetPaintBorderEnabled(false);
 	staticGameDLLPanel->SetPaintBackgroundEnabled(false);
 	staticGameDLLPanel->SetKeyBoardInputEnabled( false );	// popups in the game DLL can enable this.
@@ -760,7 +800,7 @@ void CEngineVGui::Init()
 
 	// Make sure this is on top of everything
 	staticFocusOverlayPanel = new CFocusOverlayPanel( staticPanel, "FocusOverlayPanel" );
-	staticFocusOverlayPanel->SetBounds( 0, 0, videomode->GetModeUIWidth(), videomode->GetModeUIHeight() );
+	staticFocusOverlayPanel->SetBounds( 0, 0, nRootWide, nRootTall );
 	staticFocusOverlayPanel->SetZPos( 150 );
 	staticFocusOverlayPanel->MoveToFront();
 
@@ -2068,8 +2108,10 @@ bool CFocusOverlayPanel::DrawFocusPanelList( void )
 		int x, y, x1, y1;
 		vgui::ipanel()->GetClipRect( vpanel, x, y, x1, y1 );
 
-		if ( (x1 - x) == videomode->GetModeUIWidth() && 
-			 (y1 - y) == videomode->GetModeUIHeight() )
+		int nRootWide, nRootTall;
+		GetRootPanelSize( nRootWide, nRootTall );
+		if ( (x1 - x) == nRootWide && 
+			 (y1 - y) == nRootTall )
 		{
 			x += fullscreeninset;
 			y += fullscreeninset;

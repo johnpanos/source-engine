@@ -832,8 +832,8 @@ CBugUIPanel::CBugUIPanel( bool bIsPublic, vgui::Panel *parent ) :
 	int w = GetWide();
 	int h = GetTall();
 
-	int x = ( videomode->GetModeStereoWidth() - w ) / 2;
-	int y = ( videomode->GetModeStereoHeight() - h ) / 2;
+	int x = ( EngineVGui_ScreenWide() - w ) / 2;
+	int y = ( EngineVGui_ScreenTall() - h ) / 2;
 
 	// Hidden by default
 	SetVisible( false );
@@ -864,8 +864,8 @@ bool CBugUIPanel::Init()
 		int w = GetWide();
 		int h = GetTall();
 	
-		int x = ( videomode->GetModeStereoWidth() - w ) / 2;
-		int y = ( videomode->GetModeStereoHeight() - h ) / 2;
+		int x = ( EngineVGui_ScreenWide() - w ) / 2;
+		int y = ( EngineVGui_ScreenTall() - h ) / 2;
 
 
 		SetPos( x, y );

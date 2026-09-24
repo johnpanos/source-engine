@@ -100,6 +100,11 @@ public:
 	virtual void SetGammaRamp( const uint16 *pRed, const uint16 *pGreen, const uint16 *pBlue ) = 0;
 
 	virtual double GetPrevGLSwapWindowTime() = 0;
+
+	// The window system's UI scale for the display the game window is on: how many
+	// window pixels a UI designed for a standard-density display should use per
+	// unit (SDL_GetWindowDisplayScale). 1 when the provider has no display scale.
+	virtual float GetWindowDisplayScale() = 0;
 };
 
 extern ILauncherMgr *g_pLauncherMgr;

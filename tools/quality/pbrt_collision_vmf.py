@@ -213,6 +213,41 @@ def mesh_bounds(stage, scale):
     return result
 
 
+def walkable_tops(solids, clearance=PLAYER_HEIGHT, minimum=PLAYER_HALF_WIDTH, step=4.0):
+    """Horizontal brush tops a player can stand on, for the drop test.
+
+    The hull (32 units) may be wider than a stair tread, so search positions
+    whose center lies on the top face and whose 72-unit column is clear;
+    overhanging the open side of a step is how players stand on stairs.
+    """
+    import numpy as np
+    boxes = [aabb(vertices) for _, vertices in solids]
+    tops = []
+    for index, (planes, vertices) in enumerate(solids):
+        for normal, offset in planes:
+            if normal[2] < 0.999:
+                continue
+            face = vertices[np.abs(vertices @ normal - offset) < 1e-3]
+            low, high = face.min(axis=0), face.max(axis=0)
+            if (high[0] - low[0]) < minimum or (high[1] - low[1]) < minimum:
+                continue
+            z = float(offset)
+            center = ((low[0] + high[0]) / 2, (low[1] + high[1]) / 2)
+            candidates = sorted(
+                ((x, y) for x in np.arange(low[0] + 1, high[0], step)
+                 for y in np.arange(low[1] + 1, high[1], step)),
+                key=lambda point: (point[0] - center[0]) ** 2 + (point[1] - center[1]) ** 2)
+            for x, y in candidates[:400]:
+                column = (x - PLAYER_HALF_WIDTH, y - PLAYER_HALF_WIDTH, z + 0.5,
+                          x + PLAYER_HALF_WIDTH, y + PLAYER_HALF_WIDTH, z + clearance)
+                if not any(other != index and overlaps(box, column)
+                           for other, box in enumerate(boxes)):
+                    tops.append({"x": round(float(x), 2), "y": round(float(y), 2),
+                                 "z": round(z, 2), "brush": index})
+                    break
+    return tops
+
+
 def aabb(vertices):
     return [float(v) for v in vertices.min(axis=0)] + [float(v) for v in vertices.max(axis=0)]
 
@@ -353,6 +388,18 @@ def main():
         prisms = [prism for prism in prisms if prism]
         solids += prisms
         spawn["floor_prisms"] = len(prisms)
+    elif spawn["floor_mesh"] and spawn["floor_z"] > interior[2]:
+        # Too thin for a slab (the shell mesh reaches below the walkable floor,
+        # e.g. wall thickness): raise the shell floor to the standing surface.
+        interior[2] = z0 = math.floor(spawn["floor_z"])
+        brushes[0] = convex_brush(box_planes((x0 - WALL, y0 - WALL, z0 - WALL,
+                                              x1 + WALL, y1 + WALL, z0)), 0.5)
+        for side in range(2, 6):
+            bounds = list(shell[side])
+            bounds[2] = z0
+            brushes[side] = convex_brush(box_planes(bounds), 0.5)
+        spawn["shell_floor_raised_to"] = z0
+    tops = walkable_tops(solids)
     light = [(x0 + x1) / 2, (y0 + y1) / 2, z1 - 8]
     lines = ["versioninfo", "{", '\t"editorversion" "400"', '\t"editorbuild" "8000"',
              '\t"mapversion" "1"', '\t"formatversion" "100"', '\t"prefab" "0"', "}",
@@ -378,7 +425,7 @@ def main():
                "interior_source_units": interior, "shell_brush_count": len(brushes),
                "solid_meshes": solid_names, "solid_brush_count": len(solids),
                "skipped_outside_or_thin": skipped,
-               "spawn": spawn, "policy": "18-DOP per connected component; floor triangles extruded"}
+               "spawn": spawn, "walkable_tops": tops, "policy": "18-DOP per connected component; floor triangles extruded"}
     (args.out_dir / "collision-receipt.json").write_text(
         json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     print(json.dumps({k: receipt[k] for k in ("status", "solid_brush_count", "spawn")}))

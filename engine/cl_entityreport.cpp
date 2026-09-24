@@ -6,6 +6,7 @@
 //=============================================================================//
 #include "client_pch.h"
 #include "ivideomode.h"
+#include "vgui_baseui_interface.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -271,7 +272,7 @@ CEntityReportPanel::CEntityReportPanel( vgui::Panel *parent ) :
 {
 	// Need parent here, before loading up textures, so getSurfaceBase 
 	//  will work on this panel ( it's null otherwise )
-	SetSize( videomode->GetModeStereoWidth(), videomode->GetModeStereoHeight() );
+	SetSize( EngineVGui_ScreenWide(), EngineVGui_ScreenTall() );
 	SetPos( 0, 0 );
 	SetVisible( true );
 	SetCursor( null );
@@ -574,12 +575,12 @@ void CEntityReportPanel::Paint()
 			if ( DrawEntry( row, col, rowheight, colwidth, entityIdx ) )
 			{
 				row++;
-				if ( top + row * rowheight > videomode->GetModeStereoHeight() - rowheight )
+				if ( top + row * rowheight > EngineVGui_ScreenTall() - rowheight )
 				{
 					row = 0;
 					col++;
 					// No more space anyway, give up
-					if ( left + ( col + 1 ) * 200 > videomode->GetModeStereoWidth() )
+					if ( left + ( col + 1 ) * 200 > EngineVGui_ScreenWide() )
 						return;
 				}
 			}
@@ -593,12 +594,12 @@ void CEntityReportPanel::Paint()
 			DrawEntry( row, col, rowheight, colwidth, i );
 
 			row++;
-			if ( top + row * rowheight > videomode->GetModeStereoHeight() - rowheight )
+			if ( top + row * rowheight > EngineVGui_ScreenTall() - rowheight )
 			{
 				row = 0;
 				col++;
 				// No more space anyway, give up
-				if ( left + ( col + 1 ) * 200 > videomode->GetModeStereoWidth() )
+				if ( left + ( col + 1 ) * 200 > EngineVGui_ScreenWide() )
 					return;
 			}
 		}

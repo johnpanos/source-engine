@@ -24,6 +24,7 @@
 #include <vgui_controls/PropertySheet.h>
 #include "tier1/CommandBuffer.h"
 #include "tier1/tier1.h"
+#include "vgui_baseui_interface.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -293,7 +294,7 @@ public:
 		}
 	
 		GetPropertySheet()->SetTabWidth(72);
-		SetPos( videomode->GetModeStereoWidth() - GetWide() - 10 , 10 );
+		SetPos( EngineVGui_ScreenWide() - GetWide() - 10 , 10 );
 		SetVisible( true );
 
 		if ( g_pFullFileSystem->FileExists( "resource/DebugOptionsPanel.res" ) )
@@ -336,7 +337,7 @@ CDebugSystemPanel::CDebugSystemPanel( Panel *parent, const char *panelName )
 	: BaseClass( parent, panelName )
 {
 
-	SetBounds( 0, 0, videomode->GetModeStereoWidth(), videomode->GetModeStereoHeight() );
+	SetBounds( 0, 0, EngineVGui_ScreenWide(), EngineVGui_ScreenTall() );
 
 	// Show arrow cursor while in this mode
 	SetCursor( vgui::dc_arrow );

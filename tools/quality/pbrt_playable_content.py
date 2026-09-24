@@ -26,7 +26,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pbrt_scene  # noqa: E402
-from staircase2_playable_content import compile_texture, power_of_two, verify_solid_vtf  # noqa: E402
+from vtf_content import compile_texture, power_of_two, verify_solid_vtf  # noqa: E402
 
 MAX_TEXTURE = 2048
 GLASS_PREVIEW_ALPHA = 0.13
@@ -51,12 +51,14 @@ def base_image(scene, summary):
         if size != image.size:
             image = image.resize(size, Image.Resampling.LANCZOS)
         fdr = summary.get("coat_internal_reflectance")
-        if fdr is not None:
+        scale = summary.get("base_scale", 1.0)
+        if fdr is not None or scale != 1.0:
             import numpy as np
             encoded = np.asarray(image, dtype=np.float64) / 255.0
             linear = np.where(encoded <= 0.04045, encoded / 12.92,
-                              ((encoded + 0.055) / 1.055) ** 2.4)
-            linear = pbrt_scene.coated_albedo(linear, fdr)
+                              ((encoded + 0.055) / 1.055) ** 2.4) * scale
+            if fdr is not None:
+                linear = pbrt_scene.coated_albedo(linear, fdr)
             encoded = np.where(linear <= 0.0031308, 12.92 * linear,
                                1.055 * np.power(linear, 1 / 2.4) - 0.055)
             image = Image.fromarray(np.clip(np.rint(encoded * 255), 0, 255).astype(np.uint8))
@@ -76,6 +78,8 @@ def main():
     parser.add_argument("--bsp2", type=Path, required=True)
     parser.add_argument("--vtex", type=Path, required=True)
     parser.add_argument("--map-name", required=True)
+    parser.add_argument("--sky-texture", type=Path,
+                        help="display texture for the SkyDome mesh (unlit, two-sided)")
     parser.add_argument("--out", type=Path, required=True,
                         help="content root; the receipt is written beside it as <out>.json")
     args = parser.parse_args()
@@ -101,11 +105,20 @@ def main():
                                     "base_color": (1.0, 1.0, 1.0), "metallic": 0.0,
                                     "roughness": 1.0, "transmission": 0.0,
                                     "pbrt_type": "emitter", "approximation": "unlit preview"}))
+    if args.sky_texture:
+        entries.append(("sky", {"name": "Sky", "base_texture": None, "base_color": None,
+                                "metallic": 0.0, "roughness": 1.0, "transmission": 0.0,
+                                "pbrt_type": "sky", "approximation": "display-mapped sky"}))
     assets = {}
     for name, summary in entries:
         directory = material_root / name
         directory.mkdir(parents=True)
-        image, solid, source_hash = base_image(scene, summary)
+        if summary["pbrt_type"] == "sky":
+            with Image.open(args.sky_texture) as opened:
+                image = opened.convert("RGB")
+            solid, source_hash = None, sha256(args.sky_texture)
+        else:
+            image, solid, source_hash = base_image(scene, summary)
         base_hash = compile_texture(image, directory / "basecolor", args.vtex.resolve())
         if solid:
             verify_solid_vtf(directory / "basecolor.vtf", solid)
@@ -121,6 +134,11 @@ def main():
             preview = "unlit-translucent"
             fallback = vmt("UnlitGeneric", [("$basetexture", texture), ("$translucent", "1"),
                                             ("$alpha", "%g" % GLASS_PREVIEW_ALPHA)] + common)
+            world = fallback
+        elif summary["pbrt_type"] == "sky":
+            preview = "unlit-sky"
+            fallback = vmt("UnlitGeneric", [("$basetexture", texture), ("$nocull", "1"),
+                                            ("$nofog", "1")] + common)
             world = fallback
         elif summary["pbrt_type"] == "emitter":
             preview = "unlit"

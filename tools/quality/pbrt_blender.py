@@ -54,7 +54,49 @@ def build_material(scene, name):
         shader.inputs["Coat Roughness"].default_value = summary["coat_roughness"]
     else:
         shader.inputs["Roughness"].default_value = summary["roughness"]
+    if summary["diffuse_transmittance"]:
+        diffuse_transmission_nodes(result.node_tree, shader, root, summary)
     return result
+
+
+def scaled_color(tree, color, scale):
+    if scale == 1.0:
+        return color
+    node = tree.nodes.new("ShaderNodeVectorMath")
+    node.operation = "SCALE"
+    tree.links.new(color, node.inputs[0])
+    node.inputs["Scale"].default_value = scale
+    return node.outputs["Vector"]
+
+
+def diffuse_transmission_nodes(tree, principled, root, summary):
+    """PBRT diffusetransmission exactly: Diffuse(R) + Translucent(T).
+
+    The Principled node keeps the reflectance wiring (and stays the USD
+    preview); the output is replaced by the two-lobe sum Cycles renders.
+    """
+    diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    base = principled.inputs["Base Color"]
+    if base.is_linked:
+        tree.links.new(scaled_color(tree, base.links[0].from_socket, summary["base_scale"]),
+                       diffuse.inputs["Color"])
+    else:
+        diffuse.inputs["Color"].default_value = base.default_value
+    translucent = tree.nodes.new("ShaderNodeBsdfTranslucent")
+    transmittance = summary["diffuse_transmittance"]
+    if transmittance["texture"]:
+        texture = tree.nodes.new("ShaderNodeTexImage")
+        texture.image = bpy.data.images.load(str((root / transmittance["texture"]).resolve()),
+                                             check_existing=True)
+        tree.links.new(scaled_color(tree, texture.outputs["Color"], transmittance["scale"]),
+                       translucent.inputs["Color"])
+    else:
+        translucent.inputs["Color"].default_value = tuple(transmittance["color"]) + (1.0,)
+    add = tree.nodes.new("ShaderNodeAddShader")
+    tree.links.new(diffuse.outputs["BSDF"], add.inputs[0])
+    tree.links.new(translucent.outputs["BSDF"], add.inputs[1])
+    output = tree.nodes.get("Material Output")
+    tree.links.new(add.outputs["Shader"], output.inputs["Surface"])
 
 
 def coated_albedo_nodes(tree, color, fdr):
@@ -85,7 +127,7 @@ def rebind_materials(scene):
     transform; the USD stage stays the geometry authority while Cycles steps
     shade with the same policy the game content uses.
     """
-    assignments = {Path(shape["filename"]).stem: shape["material"] for shape in scene["shapes"]}
+    assignments = {shape["name"]: shape["material"] for shape in scene["shapes"]}
     built = {}
     for obj in source_meshes():
         if obj.name not in assignments:
@@ -194,8 +236,35 @@ def source_meshes():
                    not obj.name.startswith(EMITTER_PREFIXES)), key=lambda obj: obj.name)
 
 
-def configure_cycles(samples):
+GPU_BACKENDS = ("OPTIX", "CUDA", "HIP", "ONEAPI", "METAL")
+
+
+def configure_cycles(samples, device="cpu"):
+    """Select Cycles, its sample count and device; return the device used.
+
+    `device` is "cpu", "gpu" (fail without one) or "auto" (GPU when Cycles
+    finds one). GPU and CPU renders are both unbiased estimates of the same
+    light; the receipt records which one produced the result.
+    """
     render = bpy.context.scene
     render.render.engine = "CYCLES"
-    render.cycles.device = "CPU"
     render.cycles.samples = samples
+    render.cycles.device = "CPU"
+    if device == "cpu":
+        return "CPU"
+    preferences = bpy.context.preferences.addons["cycles"].preferences
+    for backend in GPU_BACKENDS:
+        try:
+            preferences.compute_device_type = backend
+        except TypeError:
+            continue
+        preferences.get_devices()
+        gpus = [item for item in preferences.devices if item.type == backend]
+        if gpus:
+            for item in preferences.devices:
+                item.use = item.type == backend
+            render.cycles.device = "GPU"
+            return "%s: %s" % (backend, ", ".join(item.name for item in gpus))
+    if device == "gpu":
+        raise RuntimeError("no Cycles GPU device is available")
+    return "CPU"

@@ -35,6 +35,12 @@ class EdgeParityTest(unittest.TestCase):
         self.assertLess(missing["whole_frame"]["recall"], 0.8)
         self.assertLess(stray["whole_frame"]["precision"], 0.8)
 
+    def test_gap_in_visible_edge_reduces_recall(self):
+        reference = frame([(30, 12, 33, 115)])
+        broken = frame([(30, 12, 33, 52), (30, 78, 33, 115)])
+        score, _, _ = edge_parity(reference, broken)
+        self.assertLess(score["whole_frame"]["recall"], 0.8)
+
     def test_blank_frame_cannot_pass(self):
         reference = frame([(30, 12, 33, 115)])
         with self.assertRaisesRegex(ValueError, "nonempty"):

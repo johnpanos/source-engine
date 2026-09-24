@@ -198,13 +198,13 @@ void CTextureBudgetPanel::SendConfigDataToBase()
 	data.m_Height = texture_budget_panel_height.GetInt();
 
 	// Shift it..
-	if ( data.m_xCoord + data.m_Width > videomode->GetModeStereoWidth() )
+	if ( data.m_xCoord + data.m_Width > EngineVGui_ScreenWide() )
 	{
-		data.m_xCoord = videomode->GetModeStereoWidth() - data.m_Width;
+		data.m_xCoord = EngineVGui_ScreenWide() - data.m_Width;
 	}
-	if ( data.m_yCoord + data.m_Height > videomode->GetModeStereoHeight() )
+	if ( data.m_yCoord + data.m_Height > EngineVGui_ScreenTall() )
 	{
-		data.m_yCoord = videomode->GetModeStereoHeight() - data.m_Height;
+		data.m_yCoord = EngineVGui_ScreenTall() - data.m_Height;
 	}
 
 	// Send the config data to the base class.

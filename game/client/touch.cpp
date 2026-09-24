@@ -63,8 +63,9 @@ CTouchPanel::CTouchPanel( vgui::VPANEL parent ) : BaseClass( NULL, "TouchPanel" 
 {
 	SetParent( parent );
 
+	// The overlay paints in the VGUI screen's UI units.
 	int w, h;
-	engine->GetScreenSize(w, h);
+	vgui::surface()->GetScreenSize( w, h );
 	SetBounds( 0, 0, w, h );
 
 	SetFgColor( Color( 0, 0, 0, 255 ) );
@@ -401,7 +402,7 @@ void CTouchControls::ResetToDefaults()
 void CTouchControls::Init()
 {
 	int w,h;
-	engine->GetScreenSize( w, h );
+	vgui::surface()->GetScreenSize( w, h );
 	screen_w = w; screen_h = h;
 
 	touchTextureID = 0;

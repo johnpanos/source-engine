@@ -12,12 +12,13 @@ holds machine paths. `tools/quality/pbrt_map_toolchain.py provision` builds the
 pinned tools under build/toolchains/ and writes the default toolchain file;
 `--check-toolchain` validates versions and capabilities and exits. Steps:
 
-    environment  PBRT-v4 equal-area sky -> Z-up equirect EXR (skipped without sky)
+    environment  PBRT-v4 equal-area sky -> Z-up equirect EXR + display texture (if any sky)
     stage        PBRT -> USD stage in Blender (+ optional Cycles reference render)
     reference-gate  Cycles render vs the scene's reference image (manifest reference.gate)
     bake         shared lightmap UVs + Cycles diffuse irradiance atlas
     denoise      OpenImageDenoise RTLightmap filter (manifest lightmap.denoise, default on)
     ktx2         atlas -> linear RGBA16F KTX2 (LMAP payload)
+    sky          render stage = lighting stage + SkyDome for window views (scenes with a sky)
     collision    shell/solids/spawn VMF
     compile      vbsp2 / vvis / vrad -> collision + PVS BSP
     pack         USD triangles -> WMSH + LMAP inside BSP2
@@ -25,10 +26,14 @@ pinned tools under build/toolchains/ and writes the default toolchain file;
     boot         (with --boot) headless native Vulkan boot and screenshot at the spawn
     camera-boot  (with --boot) second boot with the camera at the PBRT reference eye
     runtime-gate camera-matched game frame vs the Cycles render (manifest runtime_gate)
+    traversal-boot / traversal  drop the player onto the highest walkable tops and
+                 the spawn floor; each must come to rest on its surface
 
 Each step records the digests of its inputs, script and settings in
 `<out>/steps.json`; unchanged steps are skipped, so editing collision does not
 re-run the bake. `--from STEP` forces a step and everything after it.
+A failing pixel gate stops the build unless `--keep-going` is given; then the
+map is still finished, build.json reports `gate-failed` and the exit is nonzero.
 """
 
 import argparse
@@ -46,11 +51,14 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import pbrt_map_toolchain  # noqa: E402
 import pbrt_scene  # noqa: E402
+import pbrt_traversal  # noqa: E402
 import reference_compare  # noqa: E402
 
-STEPS = ("environment", "stage", "reference-gate", "bake", "denoise", "ktx2", "collision",
-         "compile", "pack", "content", "boot", "camera-boot", "runtime-gate")
+STEPS = ("environment", "stage", "reference-gate", "bake", "denoise", "ktx2", "sky",
+         "collision", "compile", "pack", "content", "boot", "camera-boot", "runtime-gate",
+         "traversal-boot", "traversal")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
+GATES = ("reference-gate", "runtime-gate", "traversal")
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -61,6 +69,8 @@ def digest(value):
 
 def gate_summary(path):
     result = json.loads(Path(path).read_text())
+    if "scored" not in result:
+        return {"status": result["status"], "probes": len(result.get("probes", []))}
     return {"status": result["status"], **result[result["scored"]]}
 
 
@@ -76,7 +86,7 @@ def load_manifest(path):
 
 
 class Pipeline:
-    def __init__(self, manifest, toolchain, out, force_from, boot):
+    def __init__(self, manifest, toolchain, out, force_from, boot, keep_going=False):
         self.manifest = manifest
         self.tools = toolchain
         self.out = out.resolve()
@@ -86,12 +96,15 @@ class Pipeline:
         self.state = json.loads(self.state_path.read_text()) if self.state_path.is_file() else {}
         self.force_from = STEPS.index(force_from) if force_from else len(STEPS)
         self.boot = boot
-        self.forced = False
+        self.keep_going = keep_going
+        self.failed_gates = []
         lightmap = manifest.get("lightmap", {})
         self.lightmap = {"size": lightmap.get("size", 2048),
                          "samples": lightmap.get("samples", 64),
                          "preview_gain": lightmap.get("preview_gain", 1.0),
                          "denoise": lightmap.get("denoise", True),
+                         "device": lightmap.get("device", "auto"),
+                         "repair_narrow_dropouts": lightmap.get("repair_narrow_dropouts", False),
                          "exclude_materials": lightmap.get("exclude_materials", [])}
         self.paths = {
             "environment": self.out / "environment.exr",
@@ -104,6 +117,8 @@ class Pipeline:
             "denoised": self.out / "lighting" / "atlas-denoised.exr",
             "denoised_receipt": self.out / "lighting" / "atlas-denoised.exr.json",
             "ktx2": self.out / "lighting" / "atlas.ktx2",
+            "sky_texture": self.out / "sky.png",
+            "render_stage": self.out / "lighting" / (self.map + "_render.usda"),
             "collision": self.out / "collision",
             "bsp": self.out / "collision" / (self.map + "_collision.bsp"),
             "wmsh": self.out / (self.map + ".wmsh"),
@@ -113,6 +128,8 @@ class Pipeline:
             "reference_gate": self.out / "reference" / "gate.json",
             "camera_boot": self.out / "camera-boot",
             "runtime_gate": self.out / "camera-boot" / "gate.json",
+            "traversal_boot": self.out / "traversal-boot",
+            "traversal": self.out / "traversal-boot" / "result.json",
         }
         self.logs = self.out / "logs"
 
@@ -151,12 +168,13 @@ class Pipeline:
                       "scripts": {s: sha256(HERE / s) for s in scripts}})
         index = STEPS.index(name)
         previous = self.state.get(name, {})
-        fresh = (previous.get("key") == key and not self.forced and index < self.force_from and
+        # Keys hash every input file, so a rebuilt upstream output invalidates
+        # exactly the steps that read it; only --from forces a cascade.
+        fresh = (previous.get("key") == key and index < self.force_from and
                  all(Path(p).exists() for p in outputs))
         if fresh:
             print("[%s] up to date" % name)
             return
-        self.forced = True  # later steps must rebuild on new inputs
         for path in outputs:
             path = Path(path)
             if path.is_dir():
@@ -165,7 +183,15 @@ class Pipeline:
                 path.unlink()
         (self.logs / (name + ".log")).unlink(missing_ok=True)
         print("[%s] running..." % name, flush=True)
-        seconds = action()
+        try:
+            seconds = action()
+        except SystemExit as failure:
+            if not (self.keep_going and name in GATES):
+                raise
+            # Not recorded in steps.json, so the gate runs again next build.
+            print("[%s] FAILED, continuing (--keep-going): %s" % (name, failure), flush=True)
+            self.failed_gates.append(name)
+            return
         missing = [str(p) for p in outputs if not Path(p).exists()]
         if missing:
             raise SystemExit("step %s did not produce %s" % (name, ", ".join(missing)))
@@ -188,9 +214,11 @@ class Pipeline:
                 started = time.monotonic()
                 pixels = pbrt_scene.environment_equirect(self.scene, 2048)
                 iio.imwrite(environment, pixels.astype(np.float32))
+                iio.imwrite(p["sky_texture"], pbrt_scene.sky_display(pixels))
                 return time.monotonic() - started
             self.step("environment", [scene, Path(scene).parent / self.scene["environment"]["filename"]],
-                      {"width": 2048}, ["pbrt_scene.py"], [environment], write_environment)
+                      {"width": 2048}, ["pbrt_scene.py"], [environment, p["sky_texture"]],
+                      write_environment)
         env_args = ["--environment", environment] if environment else []
         reference = self.manifest.get("reference", {}).get("render")
         stage_args = ["--scene", scene, "--stage", p["stage"], "--receipt",
@@ -198,7 +226,8 @@ class Pipeline:
         if reference:
             stage_args += ["--render", p["reference"], "--samples",
                            str(reference.get("samples", 64)),
-                           "--scale", str(reference.get("scale", 1.0))]
+                           "--scale", str(reference.get("scale", 1.0)),
+                           "--device", reference.get("device", "auto")]
         self.step("stage", [scene] + ([environment] if environment else []),
                   {"reference": reference}, ["pbrt_scene.py", "pbrt_blender.py",
                                              "pbrt_usd_stage.py"],
@@ -220,21 +249,26 @@ class Pipeline:
                                        gate_args))
         bake_args = ["--scene", scene, "--stage", p["stage"], "--out-stage", p["lighting_stage"],
                      "--out-exr", p["atlas"], "--size", str(self.lightmap["size"]),
-                     "--samples", str(self.lightmap["samples"])] + env_args
+                     "--samples", str(self.lightmap["samples"]),
+                     "--device", self.lightmap["device"]] + env_args
         for material in self.lightmap["exclude_materials"]:
             bake_args += ["--exclude-material", material]
         self.step("bake", [p["stage"]] + ([environment] if environment else []),
-                  {k: self.lightmap[k] for k in ("size", "samples", "exclude_materials")},
+                  {k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
+                                                 "device")},
                   ["pbrt_scene.py", "pbrt_blender.py", "pbrt_lightmap_bake.py"],
                   [p["lighting_stage"], p["atlas"], p["atlas_receipt"]],
                   lambda: self.blender("bake", "pbrt_lightmap_bake.py", bake_args))
         atlas, atlas_receipt, scope = p["atlas"], p["atlas_receipt"], BAKE_SCOPE
         if self.lightmap["denoise"]:
-            self.step("denoise", [p["atlas"], p["atlas_receipt"]], {},
+            repair = self.lightmap["repair_narrow_dropouts"]
+            self.step("denoise", [p["atlas"], p["atlas_receipt"]],
+                      {"repair_narrow_dropouts": repair},
                       ["lightmap_denoise.py"], [p["denoised"], p["denoised_receipt"]],
                       lambda: self.run("denoise", [sys.executable, HERE / "lightmap_denoise.py",
                                                    "--exr", p["atlas"], "--bake-evidence",
-                                                   p["atlas_receipt"], "--out", p["denoised"]]))
+                                                   p["atlas_receipt"], "--out", p["denoised"]] +
+                                       (["--repair-narrow-dropouts"] if repair else [])))
             atlas, atlas_receipt, scope = p["denoised"], p["denoised_receipt"], BAKE_SCOPE + "-denoised"
         self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"]],
                   {"preview_gain": self.lightmap["preview_gain"], "scope": scope},
@@ -245,6 +279,15 @@ class Pipeline:
                                             "--ktx-tool", self.tools["ktx"],
                                             "--preview-gain", str(self.lightmap["preview_gain"]),
                                             "--expected-scope", scope, "--out", p["ktx2"]]))
+        pack_stage = p["lighting_stage"]
+        if environment:
+            pack_stage = p["render_stage"]
+            self.step("sky", [p["lighting_stage"], p["sky_texture"]], {},
+                      ["pbrt_sky_dome.py"],
+                      [p["render_stage"], p["render_stage"].with_name(p["render_stage"].name + ".json")],
+                      lambda: self.usd_python("sky", "pbrt_sky_dome.py", [
+                          "--stage", p["lighting_stage"], "--sky-texture", p["sky_texture"],
+                          "--out-stage", p["render_stage"]]))
         collision = self.manifest.get("collision", {})
         collision_args = ["--scene", scene, "--stage", p["lighting_stage"], "--map-name",
                           self.map, "--out-dir", p["collision"]]
@@ -269,23 +312,26 @@ class Pipeline:
                                             "-game", game, p["bsp"]])
             return seconds
         self.step("compile", [vmf], {"tools": str(tools)}, [], [p["bsp"]], compile_map)
-        self.step("pack", [p["lighting_stage"], p["bsp"], p["ktx2"]], {"prefix": self.map},
+        self.step("pack", [pack_stage, p["lighting_stage"], p["bsp"], p["ktx2"]],
+                  {"prefix": self.map},
                   ["usd_worldmesh_pack.py"],
                   [p["wmsh"], p["wmsh"].with_name(p["wmsh"].name + ".json"), p["bsp2"]],
                   lambda: self.usd_python("pack", "usd_worldmesh_pack.py", [
-                      "--stage", p["lighting_stage"], "--bsp", p["bsp"], "--material-prefix",
+                      "--stage", pack_stage, "--bsp", p["bsp"], "--material-prefix",
                       self.map, "--require-lightmap-uv"] +
                       (["--include-emitters"] if self.scene["emitters"] else []) + [
                       "--lightmap-ktx2", p["ktx2"], "--bsp2tool", self.tools["bsp2tool"],
                       "--out", p["wmsh"], "--out-bsp2", p["bsp2"]]))
-        self.step("content", [scene, p["stage_receipt"], p["bsp2"]], {},
+        sky_args = ["--sky-texture", p["sky_texture"]] if environment else []
+        self.step("content", [scene, p["stage_receipt"], p["bsp2"]] +
+                  ([p["sky_texture"]] if environment else []), {},
                   ["pbrt_scene.py", "pbrt_playable_content.py"],
                   [p["content"], p["content"].with_suffix(".json")],
                   lambda: self.run("content", [sys.executable, HERE / "pbrt_playable_content.py",
                                                "--scene", scene, "--stage-receipt",
                                                p["stage_receipt"], "--bsp2", p["bsp2"],
                                                "--vtex", tools / "vtex", "--map-name", self.map,
-                                               "--out", p["content"]]))
+                                               "--out", p["content"]] + sky_args))
         if self.boot:
             content_files = sorted(f for f in p["content"].rglob("*") if f.is_file())
             self.step("boot", content_files, {"build": self.tools["client_build"]},
@@ -323,16 +369,39 @@ class Pipeline:
                       lambda: self.run("runtime-gate", [sys.executable,
                                                         HERE / "reference_compare.py"] +
                                        gate_args))
-        summary = {"status": "pass", "map": self.map, "manifest_scene": scene,
+        if self.boot:
+            receipt_path = p["collision"] / "collision-receipt.json"
+            probe_commands = pbrt_traversal.commands(json.loads(receipt_path.read_text()))
+            content_files = sorted(f for f in p["content"].rglob("*") if f.is_file())
+            self.step("traversal-boot", content_files + [receipt_path],
+                      {"build": self.tools["client_build"], "commands": probe_commands},
+                      ["portal_boot.py", "pbrt_traversal.py"], [p["traversal_boot"]],
+                      lambda: self.run("traversal-boot", [
+                          sys.executable, HERE / "portal_boot.py", "--runtime",
+                          self.tools["runtime"], "--build", self.tools["client_build"],
+                          "--content-root", p["content"], "--renderer", "native-vulkan",
+                          "--headless", "--map", self.map, "--console-command",
+                          probe_commands[0], "--out", p["traversal_boot"]]))
+            self.step("traversal", [p["traversal_boot"] / "evidence.json", receipt_path], {},
+                      ["pbrt_traversal.py"], [p["traversal"]],
+                      lambda: self.run("traversal", [
+                          sys.executable, HERE / "pbrt_traversal.py", "--collision-receipt",
+                          receipt_path, "--boot-evidence", p["traversal_boot"] / "evidence.json",
+                          "--out", p["traversal"]]))
+        summary = {"status": "gate-failed" if self.failed_gates else "pass",
+                   "failed_gates": self.failed_gates, "map": self.map, "manifest_scene": scene,
                    "content_root": str(p["content"]),
                    "bsp2_sha256": sha256(p["bsp2"]),
                    "gates": {name: gate_summary(path) for name, path in
-                             (("reference", p["reference_gate"]), ("runtime", p["runtime_gate"]))
+                             (("reference", p["reference_gate"]), ("runtime", p["runtime_gate"]),
+                              ("traversal", p["traversal"]))
                              if path.is_file()},
                    "steps": {name: self.state[name]["seconds"] for name in STEPS
                              if name in self.state}}
         (self.out / "build.json").write_text(json.dumps(summary, indent=2) + "\n")
         print(json.dumps(summary, indent=2))
+        if self.failed_gates:
+            raise SystemExit("gates failed: " + ", ".join(self.failed_gates))
 
 
 def main():
@@ -347,6 +416,9 @@ def main():
                         help="rebuild this step and every later step")
     parser.add_argument("--boot", action="store_true",
                         help="boot the map headless in native Vulkan and screenshot it")
+    parser.add_argument("--keep-going", action="store_true",
+                        help="finish the map when a pixel gate fails; build.json records "
+                             "status gate-failed and the exit status stays nonzero")
     parser.add_argument("--check-toolchain", action="store_true")
     args = parser.parse_args()
     profile, _ = pbrt_map_toolchain.load_profiles()
@@ -358,7 +430,8 @@ def main():
         return
     if not args.out:
         parser.error("--out is required")
-    Pipeline(manifest, toolchain, args.out, args.force_from, args.boot).build()
+    Pipeline(manifest, toolchain, args.out, args.force_from, args.boot,
+             args.keep_going).build()
 
 
 if __name__ == "__main__":

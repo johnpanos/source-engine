@@ -1,0 +1,33 @@
+{
+  "schema": "pbrt-map-manifest/v1",
+  "map": "bedroom",
+  "scene": "bedroom/scene-v4.pbrt",
+  "credit": "Bedroom by SlykDrako (CC0), pbrt-v4 conversion by Benedikt Bitterli",
+  "reference": {
+    "png": "bedroom/TungstenRender.png",
+    "exr": "bedroom/TungstenRender.exr",
+    "render": {
+      "samples": 64,
+      "scale": 1.0
+    },
+    "gate": {
+      "max_mae": 10,
+      "min_ssim": 0.86,
+      "max_exposure_stops": 0.3
+    }
+  },
+  "lightmap": {
+    "size": 2048,
+    "samples": 256
+  },
+  "collision": {
+    "envelope_meshes": [
+      "Mesh060",
+      "Mesh013"
+    ],
+    "solid_materials": [
+      "WoodFurniture",
+      "Matress"
+    ]
+  }
+}

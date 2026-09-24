@@ -83,6 +83,24 @@ def extend_gutters(color, covered, rows, columns):
     return result
 
 
+def repair_narrow_dropouts(color):
+    """Fill subtexel black stripes between otherwise lit bake texels.
+
+    A candidate must be much darker than its 5x5 neighborhood and the local
+    neighborhood must contain real light. The two-texel distance limit leaves
+    wide dark regions and unlit charts alone.
+    """
+    peak = np.max(color, axis=2)
+    neighborhood = ndimage.maximum_filter(peak, size=5)
+    dropout = (peak < 0.15 * neighborhood) & (neighborhood > 0.2)
+    distance, (rows, columns) = ndimage.distance_transform_edt(
+        dropout, return_indices=True)
+    fill = dropout & (distance <= 2)
+    repaired = color.copy()
+    repaired[fill] = color[rows[fill], columns[fill]]
+    return repaired, int(fill.sum())
+
+
 def write_linear_exr(path, pixels):
     """Write named RGBA channels and verify that HDR and alpha survive."""
     height, width, channels = pixels.shape
@@ -111,6 +129,8 @@ def main():
     parser.add_argument("--bake-evidence", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--oidn-library", default="libOpenImageDenoise.so.2")
+    parser.add_argument("--repair-narrow-dropouts", action="store_true",
+                        help="fill one- and two-texel black bake stripes")
     args = parser.parse_args()
     evidence = json.loads(args.bake_evidence.read_text())
     if evidence.get("status") != "pass" or evidence.get("atlas_exr_sha256") != sha256(args.exr):
@@ -127,6 +147,11 @@ def main():
     result = pixels.copy()
     filtered = np.maximum(denoise(load_oidn(args.oidn_library), filled), 0.0)
     result[:, :, :3] = extend_gutters(filtered, covered, rows, columns)
+    repaired_texels = 0
+    if args.repair_narrow_dropouts:
+        result[:, :, :3], repaired_texels = repair_narrow_dropouts(result[:, :, :3])
+        if repaired_texels > result.shape[0] * result.shape[1] // 10:
+            raise ValueError("dropout repair touched more than 10% of the atlas")
     if not np.isfinite(result).all():
         raise ValueError("OIDN produced non-finite texels")
     before = pixels[covered][:, :3]
@@ -145,6 +170,7 @@ def main():
                     "denoiser": "OpenImageDenoise RTLightmap (CPU)",
                     "covered_texels": int(covered.sum()),
                     "filled_gutter_texels": int((~covered).sum()),
+                    "repaired_dropout_texels": repaired_texels,
                     "mean_rgb_before": before.mean(axis=0).tolist(),
                     "mean_rgb_after": after.mean(axis=0).tolist(),
                     "high_frequency_before": roughness(pixels[:, :, :3]),
