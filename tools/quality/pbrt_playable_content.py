@@ -259,10 +259,14 @@ def write_dynamic_models(scene, args, prefix, assets):
         texture = "%s/%s/basecolor" % (prefix, material)
         fallback = vmt("VertexLitGeneric", [("$basetexture", texture)])
         (root / "fallback.vmt").write_text(fallback)
+        glow = [("$emissiontexture", "%s/%s/emission" % (prefix, material)),
+                ("$emissionscale", "%g" % assets[material]["emission_scale"])] \
+            if assets[material]["emission_vtf_sha256"] else []
         for name in receipt["textures"]:
             (root / (name.lower() + ".vmt")).write_text(vmt("PBRMetalRough", [
-                ("$basetexture", texture), ("$mraotexture", "%s/%s/mrao" % (prefix, material)),
-                ("$surfaceprop", "default"), ("$fallbackmaterial", directory + "/fallback")]))
+                ("$basetexture", texture), ("$mraotexture", "%s/%s/mrao" % (prefix, material))] +
+                glow + [("$surfaceprop", "default"),
+                        ("$fallbackmaterial", directory + "/fallback")]))
         receipt.update({"name": prop["name"], "material": material,
                         "stand_in_basecolor_srgb": assets[material]["basecolor_srgb"],
                         "vmt_directory": "materials/" + directory})

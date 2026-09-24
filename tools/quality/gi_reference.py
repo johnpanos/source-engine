@@ -50,7 +50,8 @@ sys.path.insert(0, str(HERE))
 import map_scene  # noqa: E402
 import pbrt_map_toolchain  # noqa: E402
 
-FIXTURES = ROOT / "quality/fixtures/gi"
+# GI_FIXTURES_ROOT points experiments at a scratch copy of the fixtures.
+FIXTURES = Path(os.environ.get("GI_FIXTURES_ROOT", ROOT / "quality/fixtures/gi"))
 WORK = ROOT / "quality-results/rfc0011-references"
 SCHEMA = "gi-references/v1"
 DEFAULT_SAMPLES = 2048
@@ -186,6 +187,17 @@ def load_fixture(name):
         raise ValueError("invalid GI fixture " + str(path))
     fixture["directory"] = path.parent
     return fixture
+
+
+# The fixture fields a reference depends on; editing anything else (the map
+# manifest, notes, analytic tolerances) does not require a re-render.
+REFERENCE_FIELDS = ("stage", "states", "cameras", "film", "horizontal_fov_degrees", "regions",
+                    "dynamic_models", "lambertian")
+
+
+def reference_digest(fixture):
+    return hashlib.sha256(json.dumps({key: fixture.get(key) for key in REFERENCE_FIELDS},
+                                     sort_keys=True).encode()).hexdigest()
 
 
 def fixture_names():
@@ -347,7 +359,8 @@ def write_references(fixture, results):
             "renderer_sha256")}
         renders[state]["composed_stage_sha256"] = scene["source_sha256"]
         renders[state]["stage_layers"] = {
-            str(Path(path).relative_to(ROOT)): sha256(path)
+            (str(Path(path).relative_to(ROOT)) if Path(path).is_relative_to(ROOT)
+             else str(path)): sha256(path)
             for path in scene["source_files"] if Path(path).is_file() and
             Path(path).suffix.startswith(".usd")}
         for camera, output in sorted(receipt["renders"].items()):
@@ -374,7 +387,7 @@ def write_references(fixture, results):
                                                    passes["GlossInd"].max()))}
     checks = analytic_checks(fixture, regions_by_view)
     record = {"schema": SCHEMA, "fixture": fixture["name"],
-              "fixture_sha256": sha256(fixture["directory"] / "fixture.json"),
+              "fixture_reference_digest": reference_digest(fixture),
               "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
               "region_erosion_pixels": REGION_EROSION, "renders": renders, "views": views,
               "analytic": checks,
@@ -438,13 +451,17 @@ def cmd_check(args):
         if record.get("schema") != SCHEMA:
             failures.append("%s: references schema" % name)
             continue
-        if record["fixture_sha256"] != sha256(fixture["directory"] / "fixture.json"):
-            failures.append("%s: fixture.json changed since the references were rendered" % name)
+        if record.get("fixture_reference_digest") != reference_digest(fixture):
+            failures.append("%s: fixture states, cameras or regions changed since the "
+                            "references were rendered" % name)
         for state in fixture["states"]:
             render = record["renders"].get(state)
             if not render:
                 failures.append("%s: state %s has no reference" % (name, state))
                 continue
+            if render.get("renderer_sha256") != sha256(HERE / "gi_reference_blender.py"):
+                failures.append("%s/%s: rendered by another gi_reference_blender.py" %
+                                (name, state))
             for layer, digest in render["stage_layers"].items():
                 if not (ROOT / layer).is_file() or sha256(ROOT / layer) != digest:
                     failures.append("%s/%s: stage layer %s changed" % (name, state, layer))
@@ -461,7 +478,7 @@ def cmd_check(args):
                     if stats["pixels"] < 50:
                         failures.append("%s: %s.%s region %s has %d pixels" %
                                         (name, state, camera, region, stats["pixels"]))
-                if view["glossy_max"] > 1e-4:
+                if fixture.get("lambertian") and view["glossy_max"] > 1e-4:
                     failures.append("%s: %s.%s has a glossy lobe (%g); fixtures are "
                                     "Lambertian" % (name, state, camera, view["glossy_max"]))
         for check in record["analytic"]:

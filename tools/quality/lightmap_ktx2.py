@@ -134,6 +134,7 @@ def main():
         _, (rows, columns) = ndimage.distance_transform_edt(~covered, return_indices=True)
         rgba[:, :size, 3] = visibility[rows, columns][::-1].astype("<f2")
     band = 0
+    probe = None
     if args.probe_dir:
         import sys
         sys.path.insert(0, str(Path(__file__).resolve().parent))

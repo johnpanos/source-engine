@@ -19,11 +19,18 @@
       ]
     }
   },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
   "film": {
     "height": 192,
     "width": 256
   },
   "horizontal_fov_degrees": 90.0,
+  "lambertian": false,
   "map_manifest": "map.json",
   "model_center_m": [
     2.7,

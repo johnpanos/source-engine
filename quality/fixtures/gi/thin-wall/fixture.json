@@ -36,11 +36,22 @@
       ]
     }
   },
+  "dynamic_models": [
+    {
+      "name": "ProbeA",
+      "stand_in_mesh": "ProbeAShape"
+    },
+    {
+      "name": "ProbeB",
+      "stand_in_mesh": "ProbeBShape"
+    }
+  ],
   "film": {
     "height": 192,
     "width": 256
   },
   "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
   "leak_bound": {
     "measure": "dark-room mean indirect / lit-room mean indirect",
     "provisional": 0.02

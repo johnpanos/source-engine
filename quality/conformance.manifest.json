@@ -2229,6 +2229,20 @@
         "unittests/mapcontainertest/test_world_lightmap_negative.cpp"
       ],
       "expect": "pass"
+    },
+    {
+      "id": "world.probe-volume",
+      "domain": "Q-CONTENT",
+      "rfc": "0011",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "min_checks": 40,
+      "sources": [
+        "mapcontainer/probe_volume.cpp",
+        "unittests/mapcontainertest/test_probe_volume.cpp"
+      ],
+      "expect": "pass"
     }
   ]
 }

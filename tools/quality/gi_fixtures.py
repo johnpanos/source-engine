@@ -55,6 +55,8 @@ FILM = {"width": 256, "height": 192}
 HORIZONTAL_FOV = 90.0
 # The 4-unit panel of `thin-wall` (RFC 0011 fixture table).
 THIN_WALL_M = 4.0 / SOURCE_UNITS_PER_METER
+# Every dynamic model a fixture places (Author.probe_model / room_states).
+DYNAMIC_MODELS = ("ProbeSphere", "ProbeA", "ProbeB", "ProbeC")
 
 
 # ------------------------------------------------------------------ geometry
@@ -379,9 +381,18 @@ def map_manifest(name, scene, solid_meshes=(), envelope=()):
 
 
 def fixture_record(name, purpose, stage, states, cameras, regions, baked_state, extra=None):
+    # Region entries naming a dynamic model (rather than a mesh) cover the
+    # model's stand-in mesh, `<name>Shape`.
+    models = sorted({entry for view in regions.values() for entries in view.values()
+                     for entry in entries if entry in DYNAMIC_MODELS})
     record = {"schema": SCHEMA, "name": name, "purpose": purpose, "stage": stage,
+              "dynamic_models": [{"name": model, "stand_in_mesh": model + "Shape"}
+                                 for model in models],
               "states": states, "baked_state": baked_state, "cameras": cameras,
               "film": FILM, "horizontal_fov_degrees": HORIZONTAL_FOV,
+              # Every generated fixture material is Lambertian (ior 1); room-states
+              # reuses the usd-room's authored materials.
+              "lambertian": name != "room-states",
               "regions": regions, "map_manifest": "map.json",
               "probe_model": {"model": PROBE_MODEL, "radius_m": PROBE_RADIUS_M}}
     record.update(extra or {})
@@ -616,7 +627,9 @@ def probe_grid(out):
     sun (state `sun`), with known probe positions."""
     directory = out / "probe-grid"
     author = Author(directory / "probe-grid.usda", "ProbeGrid")
-    rho, sky = 0.5, 1.0
+    # Sky radiance 0.8, not 1: the bake's linear-EXR check needs light values
+    # away from 1, where a gamma error would be invisible.
+    rho, sky = 0.5, 0.8
     author.material("Ground", (rho,) * 3)
     half = 20.0
     author.mesh("Floor", [quad((-half, -half, 0.0), (half, half, 0.0), 2, 1)], "Ground")
@@ -639,7 +652,7 @@ def probe_grid(out):
     write_json(directory / "fixture.json", fixture_record(
         "probe-grid", "Analytic probe irradiance: uniform sky over an albedo-0.5 floor, and one "
         "sun; irradiance and visibility references at known probes", "probe-grid.usda",
-        {"sky": {"layer": None, "note": "uniform dome radiance 1"},
+        {"sky": {"layer": None, "note": "uniform dome radiance 0.8"},
          "sun": {"layer": "states/sun.usda", "note": "sun only, 50 degrees elevation"}},
         {"floor": pose}, {"floor": {"floor": ["Floor"]}}, "sky",
         {"analytic": {

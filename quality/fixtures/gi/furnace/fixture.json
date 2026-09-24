@@ -2,12 +2,12 @@
   "analytic": {
     "albedo": 0.6,
     "diffuse_light_direct": 0.3,
-    "diffuse_light_indirect": 0.4499999999999999,
+    "diffuse_light_indirect": 0.45,
     "diffuse_light_one_bounce_indirect": 0.18,
-    "diffuse_light_total": 0.7499999999999999,
+    "diffuse_light_total": 0.75,
     "emission": 0.3,
     "note": "Every surface sees radiance L = Le / (1 - rho) in every direction. Cycles diffuse light passes (irradiance / pi, no albedo): direct = Le (emission seen directly), indirect = L - Le. A probe anywhere inside has irradiance / pi = L on every normal.",
-    "radiance": 0.7499999999999999
+    "radiance": 0.75
   },
   "baked_state": "default",
   "cameras": {
@@ -29,11 +29,18 @@
       ]
     }
   },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
   "film": {
     "height": 192,
     "width": 256
   },
   "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
   "map_manifest": "map.json",
   "name": "furnace",
   "probe_model": {

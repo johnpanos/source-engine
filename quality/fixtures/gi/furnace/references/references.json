@@ -2,8 +2,8 @@
   "analytic": [
     {
       "check": "furnace walls total radiance = Le / (1 - rho)",
-      "expected": 0.7499999999999999,
-      "observed": 0.7500576376914977,
+      "expected": 0.75,
+      "observed": 0.7500613927841187,
       "ok": true
     },
     {
@@ -14,14 +14,49 @@
     },
     {
       "check": "furnace walls indirect light = rho Le / (1 - rho)",
-      "expected": 0.4499999999999999,
-      "observed": 0.45000603795051575,
+      "expected": 0.45,
+      "observed": 0.45004755258560186,
       "ok": true
     }
   ],
   "fixture": "furnace",
-  "fixture_sha256": "7d387c7b1dd9e643397e37b5899174c2e8140879c604a7be15d53559dc2e979f",
+  "fixture_reference_digest": "7e3a27cb104c815712715b0750d6cefce46f83a523a82a78a695b653d02252b2",
   "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "negative_controls": [
+    {
+      "checks": [
+        {
+          "check": "furnace walls total radiance = Le / (1 - rho)",
+          "expected": 0.75,
+          "observed": 0.7150699496269226,
+          "ok": false
+        },
+        {
+          "check": "furnace walls direct light = Le",
+          "expected": 0.3,
+          "observed": 0.2998802065849304,
+          "ok": true
+        },
+        {
+          "check": "furnace walls indirect light = rho Le / (1 - rho)",
+          "expected": 0.45,
+          "observed": 0.3917079567909241,
+          "ok": false
+        }
+      ],
+      "control": "blender-default light paths (4 diffuse bounces)",
+      "light_paths": {
+        "diffuse_bounces": 4,
+        "glossy_bounces": 4,
+        "max_bounces": 12,
+        "policy": "blender-default",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 10.0,
+        "transmission_bounces": 12
+      },
+      "rejected": true
+    }
+  ],
   "region_erosion_pixels": 2,
   "renders": {
     "default": {
@@ -38,7 +73,7 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "renderer_sha256": "330e442fa277e2580d26914fbdb4a615b980426eb3c86f0498366b731fa3cbd4",
+      "renderer_sha256": "cab92a707ca5dc396bf91875d464519a356654802f00285de94b0463808db677",
       "samples": 2048,
       "seed": 20260924,
       "stage_layers": {
@@ -58,11 +93,11 @@
         },
         "indirect": {
           "file": "default.inside.indirect.exr",
-          "sha256": "f904346bc69681e9f8d82a942e491e4e5a9b9ba527536dcf386c6abffc2afc21"
+          "sha256": "c6ae47b232563159f58525132a52bdbf6f1dd11bda9d8fb5808e13243fc52b0c"
         },
         "total": {
           "file": "default.inside.total.exr",
-          "sha256": "4b50eda2e664d33d19fe05d7f9461949ed82fecca96b2e22a25e3aa8c67def29"
+          "sha256": "c212c802070645169217da2b3aee32edb8c0a712ecde4e2f19bd54d4d44782cf"
         }
       },
       "glossy_max": 0.0,
@@ -111,15 +146,15 @@
             7.0
           ],
           "indirect": [
-            0.4496447741985321,
-            0.4496447741985321,
-            0.4496447741985321
+            0.44966915249824524,
+            0.44966915249824524,
+            0.44966915249824524
           ],
           "pixels": 4938,
           "total": [
-            0.7497244477272034,
-            0.7497244477272034,
-            0.7497244477272034
+            0.7497084140777588,
+            0.7497084140777588,
+            0.7497084140777588
           ]
         },
         "walls": {
@@ -157,15 +192,15 @@
             3.486964464187622
           ],
           "indirect": [
-            0.45000603795051575,
-            0.45000603795051575,
-            0.45000603795051575
+            0.4500475525856018,
+            0.4500475525856018,
+            0.4500475525856018
           ],
           "pixels": 41502,
           "total": [
-            0.7500576376914978,
-            0.7500576376914978,
-            0.7500576376914978
+            0.7500613927841187,
+            0.7500613927841187,
+            0.7500613927841187
           ]
         }
       },

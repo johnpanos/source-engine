@@ -1,0 +1,59 @@
+{
+  "schema": "gi-budget/v1",
+  "rfc": "0011",
+  "gate": "G0.4",
+  "recorded": "2026-09-24",
+  "policy": "Set before any indirect-light producer is optimized (AGENTS.md: budgets before optimization). Runners report each producer's measured cost against its row; a producer over budget on a profile is declared unsupported there, never enabled silently. A missing measurement leaves the row unverified. Rows are per producer; the switching fade's peak memory is the sum of both producers' rows plus the published volume.",
+  "measurement": {
+    "cpu_ms_per_update": "wall time of one producer update on the frame executor, median over the scenario's warm frames",
+    "gpu_ms": "producer passes' GPU time from timestamp queries, median over warm frames",
+    "memory_mb": "producer-owned CPU plus GPU allocations at steady state, excluding the lightmap",
+    "update_hz": "producer updates per second the budget is measured at"
+  },
+  "profiles": {
+    "portal-linux-wayland-native-vulkan": {
+      "device": "AMD Radeon 8060S (RADV STRIX_HALO), Mesa 26.2.2",
+      "frame_target_ms": 16.67,
+      "baseline": {
+        "frame_ms_median": 6.1,
+        "frame_ms_p99": 10.5,
+        "gpu_ms": [0.3, 0.9],
+        "scenario": "quality/workloads/portal-frame-pacing-v1.json, warm pass",
+        "source": "RFC/0001-native-vulkan-frame-pacing-progress.md (2026-09-22/23)"
+      },
+      "budgets": {
+        "baked": {"owner": "R71", "cpu_ms_per_update": 0.05, "gpu_ms": 0.1, "memory_mb": 16, "load_ms": 20},
+        "radiosity": {"owner": "R74", "cpu_ms_per_update": 1.0, "workers": 1, "update_hz": 60, "gpu_ms": 0.2, "memory_mb": 64},
+        "sdf": {"owner": "R76", "gpu_ms": 2.0, "resolution": [1920, 1080], "update_hz": 60, "memory_mb": 128},
+        "rayquery": {"owner": "R77", "gpu_ms": 1.5, "resolution": [1920, 1080], "update_hz": 60, "memory_mb": 128},
+        "switching": {"owner": "R73", "fade_frames": 30, "max_black_frame_luminance_drop": 0.1}
+      }
+    },
+    "portal-android-native-vulkan": {
+      "device": "Samsung Galaxy Z Fold7 (Adreno 840, Vulkan 1.4.295)",
+      "frame_target_ms": 16.67,
+      "baseline": {
+        "frame_interval_ms": 8.5,
+        "gpu_ms": [7.04, 7.65],
+        "resolution": [2448, 1848],
+        "scenario": "portal frame-pacing scenario, warm pass, 3 runs",
+        "source": "RFC/0001-native-vulkan-frame-pacing-progress.md#device-result-galaxy-z-fold7-adreno-840-2026-09-23"
+      },
+      "budgets": {
+        "baked": {"owner": "R71", "cpu_ms_per_update": 0.1, "gpu_ms": 0.2, "memory_mb": 12, "load_ms": 60},
+        "radiosity": {"owner": "R74", "cpu_ms_per_update": 2.0, "workers": 1, "update_hz": 15, "gpu_ms": 0.3, "memory_mb": 24},
+        "sdf": {"owner": "R76", "status": "unsupported until measured within a budget (RFC 0011 G6.4)"},
+        "rayquery": {"owner": "R77", "status": "unsupported until the device query and a measurement (RFC 0011 G7.3)"},
+        "switching": {"owner": "R73", "fade_frames": 30, "max_black_frame_luminance_drop": 0.1}
+      }
+    },
+    "macos-arm64-client": {
+      "status": "no runner (R29); the rows are the Android rows until an Apple measurement replaces them",
+      "inherits": "portal-android-native-vulkan"
+    },
+    "ios-arm64-device": {
+      "status": "no runner (R29); the rows are the Android rows until an Apple measurement replaces them",
+      "inherits": "portal-android-native-vulkan"
+    }
+  }
+}

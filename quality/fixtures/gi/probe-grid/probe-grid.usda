@@ -53,7 +53,7 @@ def Xform "ProbeGrid"
         def DomeLight "Sky"
         {
             color3f inputs:color = (1, 1, 1)
-            float inputs:intensity = 1
+            float inputs:intensity = 0.8
         }
 
         def DistantLight "Sun"

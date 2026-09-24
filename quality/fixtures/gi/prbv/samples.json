@@ -1,0 +1,566 @@
+{
+  "schema": "prbv-samples/v1",
+  "generator": "tools/quality/probe_volume.py fixture",
+  "samples": [
+    {
+      "file": "leak.prbv",
+      "position": [
+        56.0,
+        16.0,
+        16.0
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "layer": 0,
+      "visibility": true,
+      "expected": [
+        5.0071534884350874e-14,
+        5.0071534884350874e-14,
+        5.0071534884350874e-14
+      ]
+    },
+    {
+      "file": "leak.prbv",
+      "position": [
+        56.0,
+        16.0,
+        16.0
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "layer": 0,
+      "visibility": false,
+      "expected": [
+        0.05646688380596015,
+        0.05646688380596015,
+        0.05646688380596015
+      ]
+    },
+    {
+      "file": "leak.prbv",
+      "position": [
+        40.0,
+        16.0,
+        16.0
+      ],
+      "normal": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "layer": 0,
+      "visibility": true,
+      "expected": [
+        0.9999999999999499,
+        0.9999999999999499,
+        0.9999999999999499
+      ]
+    },
+    {
+      "file": "leak.prbv",
+      "position": [
+        40.0,
+        16.0,
+        16.0
+      ],
+      "normal": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "layer": 0,
+      "visibility": false,
+      "expected": [
+        0.9435331161940398,
+        0.9435331161940398,
+        0.9435331161940398
+      ]
+    },
+    {
+      "file": "leak.prbv",
+      "position": [
+        20.0,
+        10.0,
+        20.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layer": 0,
+      "visibility": true,
+      "expected": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "file": "leak.prbv",
+      "position": [
+        20.0,
+        10.0,
+        20.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layer": 0,
+      "visibility": false,
+      "expected": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "file": "leak.prbv",
+      "position": [
+        70.0,
+        20.0,
+        12.0
+      ],
+      "normal": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "layer": 0,
+      "visibility": true,
+      "expected": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "file": "leak.prbv",
+      "position": [
+        70.0,
+        20.0,
+        12.0
+      ],
+      "normal": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "layer": 0,
+      "visibility": false,
+      "expected": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        0.0,
+        0.0,
+        30.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layer": 0,
+      "visibility": true,
+      "expected": [
+        0.48852539062499994,
+        0.48852539062499994,
+        0.48852539062499994
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        0.0,
+        0.0,
+        30.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layer": 0,
+      "visibility": false,
+      "expected": [
+        0.48852539062499994,
+        0.48852539062499994,
+        0.48852539062499994
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        0.0,
+        0.0,
+        30.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layer": 1,
+      "visibility": true,
+      "expected": [
+        0.24426269531249997,
+        0.24426269531249997,
+        0.24426269531249997
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        0.0,
+        0.0,
+        30.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layer": 1,
+      "visibility": false,
+      "expected": [
+        0.24426269531249997,
+        0.24426269531249997,
+        0.24426269531249997
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        10.0,
+        -20.0,
+        40.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "layer": 0,
+      "visibility": true,
+      "expected": [
+        0.1114501953125,
+        0.1114501953125,
+        0.1114501953125
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        10.0,
+        -20.0,
+        40.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "layer": 0,
+      "visibility": false,
+      "expected": [
+        0.1114501953125,
+        0.1114501953125,
+        0.1114501953125
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        10.0,
+        -20.0,
+        40.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "layer": 1,
+      "visibility": true,
+      "expected": [
+        0.05572509765625,
+        0.05572509765625,
+        0.05572509765625
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        10.0,
+        -20.0,
+        40.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "layer": 1,
+      "visibility": false,
+      "expected": [
+        0.05572509765625,
+        0.05572509765625,
+        0.05572509765625
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        30.0,
+        30.0,
+        70.0
+      ],
+      "normal": [
+        0.6,
+        0.0,
+        0.8
+      ],
+      "layer": 0,
+      "visibility": true,
+      "expected": [
+        0.4244559151785715,
+        0.4244559151785715,
+        0.4244559151785715
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        30.0,
+        30.0,
+        70.0
+      ],
+      "normal": [
+        0.6,
+        0.0,
+        0.8
+      ],
+      "layer": 0,
+      "visibility": false,
+      "expected": [
+        0.4244559151785715,
+        0.4244559151785715,
+        0.4244559151785715
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        30.0,
+        30.0,
+        70.0
+      ],
+      "normal": [
+        0.6,
+        0.0,
+        0.8
+      ],
+      "layer": 1,
+      "visibility": true,
+      "expected": [
+        0.21222795758928575,
+        0.21222795758928575,
+        0.21222795758928575
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        30.0,
+        30.0,
+        70.0
+      ],
+      "normal": [
+        0.6,
+        0.0,
+        0.8
+      ],
+      "layer": 1,
+      "visibility": false,
+      "expected": [
+        0.21222795758928575,
+        0.21222795758928575,
+        0.21222795758928575
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        -50.0,
+        5.0,
+        10.0
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "layer": 0,
+      "visibility": true,
+      "expected": [
+        0.300048828125,
+        0.300048828125,
+        0.300048828125
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        -50.0,
+        5.0,
+        10.0
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "layer": 0,
+      "visibility": false,
+      "expected": [
+        0.300048828125,
+        0.300048828125,
+        0.300048828125
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        -50.0,
+        5.0,
+        10.0
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "layer": 1,
+      "visibility": true,
+      "expected": [
+        0.1500244140625,
+        0.1500244140625,
+        0.1500244140625
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        -50.0,
+        5.0,
+        10.0
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "layer": 1,
+      "visibility": false,
+      "expected": [
+        0.1500244140625,
+        0.1500244140625,
+        0.1500244140625
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        60.0,
+        60.0,
+        90.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layer": 0,
+      "visibility": true,
+      "expected": [
+        0.4885253906250001,
+        0.4885253906250001,
+        0.4885253906250001
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        60.0,
+        60.0,
+        90.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layer": 0,
+      "visibility": false,
+      "expected": [
+        0.4885253906250001,
+        0.4885253906250001,
+        0.4885253906250001
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        60.0,
+        60.0,
+        90.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layer": 1,
+      "visibility": true,
+      "expected": [
+        0.24426269531250006,
+        0.24426269531250006,
+        0.24426269531250006
+      ]
+    },
+    {
+      "file": "analytic.prbv",
+      "position": [
+        60.0,
+        60.0,
+        90.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layer": 1,
+      "visibility": false,
+      "expected": [
+        0.24426269531250006,
+        0.24426269531250006,
+        0.24426269531250006
+      ]
+    }
+  ]
+}

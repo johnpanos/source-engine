@@ -10,6 +10,12 @@ Per camera it writes one uncompressed multilayer EXR holding Combined,
 DiffDir, DiffInd, DiffCol, GlossDir, GlossInd, Emit, Env, IndexOB and Depth.
 Denoising is off: the references are unbiased estimates, and the recorded
 seed and sample count reproduce them on the recorded device.
+
+Dynamic models (map_scene props) are receivers only: seen by the camera and
+lit by the world, but invisible to diffuse, glossy, transmission and shadow
+rays, so they neither occlude nor bounce light onto the world. That is the
+light a baked or radiosity world gives a dynamic object (RFC 0011), and what
+the pipeline's bake, which leaves them out, can reproduce.
 """
 
 import argparse
@@ -85,6 +91,11 @@ def main():
     pbrt_blender.rebind_materials(scene)
     pbrt_blender.restore_emitters(scene)
     pbrt_blender.apply_environment(scene, args.environment)
+    receivers = sorted(map_scene.prop_shape_names(scene))
+    for name in receivers:
+        obj = bpy.data.objects[name]
+        obj.visible_diffuse = obj.visible_glossy = obj.visible_transmission = False
+        obj.visible_shadow = obj.visible_volume_scatter = False
     # Object indices for region masks: 1..N over sorted mesh names, emitters after.
     objects = sorted((obj for obj in bpy.data.objects if obj.type == "MESH"),
                      key=lambda obj: obj.name)
@@ -135,6 +146,7 @@ def main():
                "scene_sha256": scene["source_sha256"], "stage_sha256": sha256(args.stage),
                "environment_sha256": sha256(args.environment) if args.environment else None,
                "object_index": index, "renders": outputs,
+               "receiver_only_dynamic_models": receivers,
                "renderer_sha256": sha256(__file__),
                "ocio_configuration_sha256": sha256(os.environ["OCIO"])}
     (args.out_dir / "render.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) +

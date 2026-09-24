@@ -443,7 +443,10 @@ def main():
         origin = [value * SOURCE_UNITS_PER_METER for value in prop["origin_m"]]
         model = map_scene.prop_model_path(args.map_name, prop)
         lines.extend(["entity", "{", '\t"id" "%d"' % (100 + index),
-                      '\t"classname" "prop_dynamic"', '\t"targetname" "%s"' % prop["name"],
+                      # _override: placed as authored even when the model carries
+                      # physics prop data (a plain prop_dynamic deletes itself).
+                      '\t"classname" "prop_dynamic_override"',
+                      '\t"targetname" "%s"' % prop["name"],
                       '\t"model" "%s"' % model, '\t"origin" "%.3f %.3f %.3f"' % tuple(origin),
                       '\t"angles" "0 0 0"', '\t"solid" "0"', '\t"DisableShadows" "1"', "}"])
         placed.append({"name": prop["name"], "model": model, "source_model": prop["model"],

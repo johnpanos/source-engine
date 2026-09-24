@@ -36,11 +36,18 @@
       ]
     }
   },
+  "dynamic_models": [
+    {
+      "name": "ProbeC",
+      "stand_in_mesh": "ProbeCShape"
+    }
+  ],
   "film": {
     "height": 192,
     "width": 256
   },
   "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
   "map_manifest": "map.json",
   "name": "portal-view",
   "portals": {

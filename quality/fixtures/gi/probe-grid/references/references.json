@@ -2,8 +2,8 @@
   "analytic": [
     {
       "check": "probe-grid sky: floor radiance = rho * sky",
-      "expected": 0.5,
-      "observed": 0.499999314546585,
+      "expected": 0.4,
+      "observed": 0.3999102754712105,
       "ok": true
     },
     {
@@ -14,13 +14,13 @@
     }
   ],
   "fixture": "probe-grid",
-  "fixture_sha256": "53792e9d7c7486098fd1c0029f16a460df576f08fcf863083aa463a7c7f18c98",
+  "fixture_reference_digest": "b3f99836f15fabedef4542238c3ba6c6579f8c12e1be50bf84f448b5ff750ccf",
   "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
   "region_erosion_pixels": 2,
   "renders": {
     "sky": {
       "blender": "5.2.1 LTS",
-      "composed_stage_sha256": "f021064c21efbd6addb7e88d1baf77b92c20d9443ef70820e51fe932e49687b9",
+      "composed_stage_sha256": "1f1991e32b2ae89bd49bd93b75dbe3ca9859257b64182514122955f98adcab07",
       "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": false,
       "light_paths": {
@@ -32,16 +32,16 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "renderer_sha256": "330e442fa277e2580d26914fbdb4a615b980426eb3c86f0498366b731fa3cbd4",
+      "renderer_sha256": "cab92a707ca5dc396bf91875d464519a356654802f00285de94b0463808db677",
       "samples": 2048,
       "seed": 20260924,
       "stage_layers": {
-        "quality/fixtures/gi/probe-grid/probe-grid.usda": "801233d52625078b3400db621fb997aa695e915b0a46ab7a0066cc41e3d8190c"
+        "quality/fixtures/gi/probe-grid/probe-grid.usda": "7aafa807121f6edf810d4878e2d87701261c8ad2f7cac802d1ae600165f142ff"
       }
     },
     "sun": {
       "blender": "5.2.1 LTS",
-      "composed_stage_sha256": "41256eea4b7c176d212d0a6a76c75182e10121409312f80579ad5ec9fced840f",
+      "composed_stage_sha256": "9761f75bf789eaead4dcf5c6f6fe57b623e34461985384e5d9993757b8dc267c",
       "cycles_device": "HIP: AMD Radeon 8060S Graphics",
       "denoising": false,
       "light_paths": {
@@ -53,11 +53,11 @@
         "sample_clamp_indirect": 0.0,
         "transmission_bounces": 16
       },
-      "renderer_sha256": "330e442fa277e2580d26914fbdb4a615b980426eb3c86f0498366b731fa3cbd4",
+      "renderer_sha256": "cab92a707ca5dc396bf91875d464519a356654802f00285de94b0463808db677",
       "samples": 2048,
       "seed": 20260924,
       "stage_layers": {
-        "quality/fixtures/gi/probe-grid/probe-grid.usda": "801233d52625078b3400db621fb997aa695e915b0a46ab7a0066cc41e3d8190c",
+        "quality/fixtures/gi/probe-grid/probe-grid.usda": "7aafa807121f6edf810d4878e2d87701261c8ad2f7cac802d1ae600165f142ff",
         "quality/fixtures/gi/probe-grid/states/sun.usda": "4c2f6b19a5289830a12df28577d0359d98b5bb80c5b8eb6a051c8d8a9fd3fc3d"
       }
     }
@@ -78,7 +78,7 @@
         },
         "total": {
           "file": "sky.floor.total.exr",
-          "sha256": "63771d7e3c39c49edd721230b78d7d759fa0a5b5f707763d54f9722643278836"
+          "sha256": "1b6fb05e44f46b48cf9ef343d31de25b5ae5f1850ea5d99ef6ebd3de9fe90035"
         }
       },
       "glossy_max": 0.0,
@@ -93,9 +93,9 @@
             0.5
           ],
           "direct": [
-            0.9999986290931702,
-            0.9999986290931702,
-            0.9999986290931702
+            0.7998207211494446,
+            0.7998207211494446,
+            0.7998207211494446
           ],
           "emission": [
             0.0,
@@ -127,9 +127,9 @@
           ],
           "pixels": 31494,
           "total": [
-            0.4999993145465851,
-            0.4999993145465851,
-            0.4999993145465851
+            0.3999102711677551,
+            0.3999102711677551,
+            0.3999103307723999
           ]
         }
       },
