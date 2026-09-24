@@ -37,6 +37,7 @@
 #include "gl_matsysiface.h"
 #include "materialsystem/materialsystem_config.h"
 #include "tier2/tier2.h"
+#include "mapcontainer/probe_volume.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -265,6 +266,11 @@ static ConVar r_minnewsamples		("r_minnewsamples", "3");
 static ConVar r_maxnewsamples		("r_maxnewsamples", "6");
 static ConVar r_maxsampledist		("r_maxsampledist", "128");
 static ConVar r_lightcachecenter	("r_lightcachecenter", "1", FCVAR_CHEAT );
+// RFC 0011 G1: model ambient from the map's PRBV probe volume.
+static ConVar r_probevolume( "r_probevolume", "1", FCVAR_CHEAT,
+    "Light models from the map's PRBV probe volume when it carries one (0: the leaf ambient)" );
+static ConVar r_probevolume_visibility( "r_probevolume_visibility", "1", FCVAR_CHEAT,
+    "Apply the probe volume's visibility test (0: the leak-control sensitivity setting)" );
 
 // head and tail sentinels of the LRU
 #define LIGHT_LRU_HEAD_INDEX MAX_CACHE_ENTRY
@@ -676,6 +682,26 @@ static void ComputeAmbientFromSphericalSamples( const Vector& start,
 }
 
 
+// The map's probe volume's ambient cube at `start` (total light, the leaf
+// ambient's unit); false when the map has no volume, it is disabled, or the
+// point lies outside every grid.
+static bool ComputeAmbientFromProbeVolume( const Vector &start, Vector *lightBoxColor )
+{
+	const mapcontainer::ProbeVolumeView *pVolume =
+	    host_state.worldbrush ? host_state.worldbrush->pProbeVolume : NULL;
+	if ( !pVolume || !r_probevolume.GetBool() )
+		return false;
+	const float position[3] = { start.x, start.y, start.z };
+	float cube[6][3];
+	if ( !pVolume->AmbientCube( position, mapcontainer::ProbeVolumeLayer::Total,
+	         r_probevolume_visibility.GetBool(), cube ) )
+		return false;
+	// The volume's order is Source's: +X -X +Y -Y +Z -Z.
+	for ( int i = 0; i < 6; i++ )
+		lightBoxColor[i].Init( cube[i][0], cube[i][1], cube[i][2] );
+	return true;
+}
+
 static void ComputeAmbientFromLeaf( const Vector &start, int leafID, Vector *lightBoxColor, bool *bAddedLeafAmbientCube )
 {
 	if( leafID >= 0 )
@@ -742,6 +768,14 @@ static void R_StudioGetAmbientLightForPoint(
 		{
 			VectorFill( pLightBoxColor[i], 1.0 );
 		}
+		return;
+	}
+
+	// A map's probe volume holds all of its baked light (emit surfaces
+	// included, as the leaf ambient does) for static and dynamic models alike.
+	if ( r_radiosity.GetInt() == 4 && ComputeAmbientFromProbeVolume( start, pLightBoxColor ) )
+	{
+		*bAddedLeafAmbientCube = true;
 		return;
 	}
 

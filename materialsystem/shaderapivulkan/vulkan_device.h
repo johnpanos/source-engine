@@ -126,6 +126,21 @@ public:
 	void SetWorldLightmapHandles( int total, int direct, int indirect );
 	int WorldLightmapIndirectHandle() const { return m_worldLightmapIndirectHandle; }
 	int WorldLightmapDirectHandle() const { return m_worldLightmapDirectHandle; }
+	// The map's RFC 0011 PRBV probe volume: its RGBA16F atlas and the RGBA32F
+	// grid table (mapcontainer::WriteProbeGridTable), -1 when the map carries
+	// none. Replacing or releasing (-1, -1, 0) destroys the previous images
+	// behind the frames that sample them; ReleaseWorldMesh releases them.
+	void SetProbeVolumeHandles( int atlas, int grids, uint32_t gridCount );
+	bool ProbeVolumeResident() const { return m_probeAtlasHandle >= 0 && m_probeGridCount > 0; }
+	// Whether PBRMetalRough models can sample the volume per pixel: the device
+	// binds the nine descriptor sets its pipelines use.
+	bool ProbeVolumeSamplingSupported() const
+	{
+		return m_skinProbePipelineLayout != VK_NULL_HANDLE;
+	}
+	// Per-pixel probe sampling: 0 off (models use their ambient cube), 1 with
+	// the visibility test, 2 without it. Read when a frame is recorded.
+	void SetProbeVolumeSampling( int mode ) { m_probeSampling = mode < 0 || mode > 2 ? 0 : mode; }
 	void ReleaseWorldMesh();
 	bool WorldMeshResident() const;
 	// Diagnostic readback for the native conformance test; synchronizes and
@@ -1369,10 +1384,15 @@ private:
 	// PBRMetalRough models share the skin layout and vertex stage. Variant 0
 	// reads the map probe from the LMAP atlas in set 5; variant 1 ($envmap)
 	// reads a cube there; variant 2 is the indirect view (a 2D set 5).
-	std::map<uint64_t, VkPipeline> m_pbrModelPipelines[3];
-	VkPipeline PbrModelPipeline(
-	    const DynRasterState &state, bool envCube, bool srgbPass = false, int samples = 1 );
-	VkShaderModule m_pbrModelFrag[3] = { VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE };
+	// Variants 3..5 are those three with the map's PRBV probe volume sampled
+	// per pixel (sets 7 and 8, m_skinProbePipelineLayout).
+	std::map<uint64_t, VkPipeline> m_pbrModelPipelines[6];
+	VkPipeline PbrModelPipeline( const DynRasterState &state, bool envCube,
+	    bool srgbPass = false, int samples = 1, bool probeVolume = false );
+	VkShaderModule m_pbrModelFrag[6] = {};
+	// The skin layout plus the probe atlas (set 7) and grid table (set 8);
+	// created only on devices that bind nine descriptor sets.
+	VkPipelineLayout m_skinProbePipelineLayout = VK_NULL_HANDLE;
 	bool m_pbrModelReady = false;
 	bool InitPbrModelPipeline( std::string *outError );
 	void DestroyPbrModelPipeline();
@@ -1518,6 +1538,10 @@ private:
 	float m_indirectViewScale = 1.0f;
 	int m_worldLightmapDirectHandle = -1;
 	int m_worldLightmapIndirectHandle = -1;
+	int m_probeAtlasHandle = -1;
+	int m_probeGridHandle = -1;
+	uint32_t m_probeGridCount = 0;
+	int m_probeSampling = 1;
 	// Deleted textures awaiting the completion of the submission that may still
 	// use them (`afterSerial`, a value of m_submitSerial), and handles free again.
 	struct RetiredTexture

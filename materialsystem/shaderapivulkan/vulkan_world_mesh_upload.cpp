@@ -45,6 +45,22 @@ bool CVulkanWorldMeshUpload::UploadLightmap(
 	return true;
 }
 
+bool CVulkanWorldMeshUpload::UploadProbeVolume(
+    const world_mesh_gpu::ProbeVolumeUploadRequest &request )
+{
+	std::string error;
+	if ( !UploadWorldProbeVolume( m_context, request, &error ) )
+	{
+		Warning( "[NativeVulkan] PRBV rejected: %s\n", error.c_str() );
+		return false;
+	}
+	Msg( "[NativeVulkan] PRBV ready (%u x %u atlas, %u grid%s, per-pixel model sampling %s)\n",
+	    request.atlasWidth, request.atlasHeight, request.gridCount,
+	    request.gridCount == 1 ? "" : "s",
+	    m_context.ProbeVolumeSamplingSupported() ? "on" : "unavailable" );
+	return true;
+}
+
 bool CVulkanWorldMeshUpload::DrawBatch( uint32_t firstIndex, uint32_t indexCount )
 {
 	return m_context.WorldMeshResident() && indexCount && m_drawBatch &&

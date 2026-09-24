@@ -1211,6 +1211,14 @@ public:
 		InvokePendingModeChangeCallbacks();
 		g_VulkanContext.SetIndirectLightView(
 		    mat_indirect_view.GetInt(), mat_indirect_view_scale.GetFloat() );
+		// The engine's RFC 0011 probe-volume switches (lightcache.cpp) also
+		// govern per-pixel sampling: 0 off, 1 with visibility, 2 without.
+		static ConVarRef r_probevolume( "r_probevolume" );
+		static ConVarRef r_probevolume_visibility( "r_probevolume_visibility" );
+		g_VulkanContext.SetProbeVolumeSampling(
+		    r_probevolume.IsValid() && !r_probevolume.GetBool()                         ? 0
+		    : r_probevolume_visibility.IsValid() && !r_probevolume_visibility.GetBool() ? 2
+		                                                                                : 1 );
 		std::string error;
 		bool skip = false;
 		if ( g_VulkanContext.BeginFrame( &skip, &error ) )

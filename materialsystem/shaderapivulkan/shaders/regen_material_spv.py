@@ -39,6 +39,10 @@ SHADERS = (
     ("g_modelPbrFragSpv", "model_pbr.frag", []),
     ("g_modelPbrEnvFragSpv", "model_pbr.frag", ["-DENV_CUBE"]),
     ("g_modelPbrIndirectFragSpv", "model_pbr.frag", ["-DINDIRECT_VIEW"]),
+    # RFC 0011: the map's probe volume sampled per pixel (sets 7 and 8).
+    ("g_modelPbrProbeFragSpv", "model_pbr.frag", ["-DPROBE_VOLUME"]),
+    ("g_modelPbrEnvProbeFragSpv", "model_pbr.frag", ["-DENV_CUBE", "-DPROBE_VOLUME"]),
+    ("g_modelPbrIndirectProbeFragSpv", "model_pbr.frag", ["-DINDIRECT_VIEW", "-DPROBE_VOLUME"]),
     ("g_pbrDirectFragSpv", "pbr_direct.frag", []),
     ("g_pbrDirectClipFragSpv", "pbr_direct.frag", ["-DCLIP_PLANES"]),
     ("g_presentGammaVertSpv", "present_gamma.vert", []),

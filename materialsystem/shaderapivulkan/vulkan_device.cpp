@@ -5357,6 +5357,7 @@ bool CVulkanContext::UploadWorldMesh( const void *vertices, size_t vertexBytes, 
 		}
 	}
 	SetWorldLightmapHandle( -1 );
+	SetProbeVolumeHandles( -1, -1, 0 );
 	DestroyStreamBuffer( m_worldIndexBuffer );
 	DestroyStreamBuffer( m_worldVertexBuffer );
 	newVertices.capacity = vertexBytes;
@@ -5389,6 +5390,22 @@ void CVulkanContext::SetWorldLightmapHandles( int total, int direct, int indirec
 		if ( old >= 0 )
 			DestroyManagedTexture( old );
 	}
+}
+
+void CVulkanContext::SetProbeVolumeHandles( int atlas, int grids, uint32_t gridCount )
+{
+	int *const slots[2] = { &m_probeAtlasHandle, &m_probeGridHandle };
+	const int values[2] = { atlas, grids };
+	for ( int i = 0; i < 2; ++i )
+	{
+		if ( *slots[i] == values[i] )
+			continue;
+		const int old = *slots[i];
+		*slots[i] = values[i];
+		if ( old >= 0 )
+			DestroyManagedTexture( old );
+	}
+	m_probeGridCount = atlas >= 0 && grids >= 0 ? gridCount : 0;
 }
 
 bool CVulkanContext::QueueWorldMeshBatch( uint32_t firstIndex, uint32_t indexCount )
@@ -5490,6 +5507,7 @@ void CVulkanContext::ReleaseWorldMesh()
 	if ( WorldMeshResident() )
 		vkDeviceWaitIdle( m_device );
 	SetWorldLightmapHandle( -1 );
+	SetProbeVolumeHandles( -1, -1, 0 );
 	DestroyStreamBuffer( m_worldIndexBuffer );
 	DestroyStreamBuffer( m_worldVertexBuffer );
 	m_worldVertexCount = 0;
@@ -6083,6 +6101,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			bool solidEnergy = false;
 			bool pbrModel = false;
 			bool pbrModelEnv = false;
+			bool pbrModelProbe = false;
 			// sRGB inputs decoded by the sampler and output encoded by the view,
 			// which the shader must then not apply itself.
 			int decodedFlags = openSrgb ? kColorSrgbWrite : 0;
@@ -6175,11 +6194,15 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				        : nullptr;
 				// The indirect view never reads the $envmap cube (set 5 stays 2D).
 				pbrModelEnv = m_indirectViewMode == 0 && c && ( c->combos & kPbrModelEnvMap ) != 0;
-				selected = PbrModelPipeline( d.raster, pbrModelEnv, openSrgb, passSamples );
+				// The map's probe volume, per pixel, where the device supports it.
+				pbrModelProbe =
+				    m_probeSampling != 0 && ProbeVolumeResident() && ProbeVolumeSamplingSupported();
+				selected =
+				    PbrModelPipeline( d.raster, pbrModelEnv, openSrgb, passSamples, pbrModelProbe );
 				if ( selected == VK_NULL_HANDLE || !c || !skinConstantsOk ||
 				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
 					continue;
-				selectedLayout = m_skinPipelineLayout;
+				selectedLayout = pbrModelProbe ? m_skinProbePipelineLayout : m_skinPipelineLayout;
 				// The skin layout, push block and constants; its own samplers.
 				skin = true;
 				pbrModel = true;
@@ -6265,17 +6288,21 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					     IsSrgbFormat(
 					         m_managedTextures[static_cast<size_t>( d.texHandle )].format ) )
 						decodedFlags |= kColorSrgbReadBase;
-					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					// With the probe volume, its atlas (set 7) and grid table (set 8).
+					const VkDescriptorSet sets[9] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
 					    sampledSet( d.samplerHandles[10], 0 ), sampledSet( d.samplerHandles[1], 0 ),
 					    sampledSet( d.samplerHandles[2], 0 ),
 					    m_managedTextures[static_cast<size_t>( m_pbrSplitSumHandle )].descSet,
 					    pbrModelEnv ? sampledSet( probeTexture, 0 )
 					                : ( probeTexture >= 0 ? sampledSet( probeTexture, 0 )
 					                                      : m_dynTexDescSet ),
-					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set };
+					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set,
+					    pbrModelProbe ? sampledSet( m_probeAtlasHandle, 0 ) : VK_NULL_HANDLE,
+					    pbrModelProbe ? sampledSet( m_probeGridHandle, 0 ) : VK_NULL_HANDLE };
 					const uint32_t offset = skinOffsets[static_cast<size_t>( d.skin )];
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					    m_skinPipelineLayout, 0, 7, sets, 1, &offset );
+					    pbrModelProbe ? m_skinProbePipelineLayout : m_skinPipelineLayout, 0,
+					    pbrModelProbe ? 9 : 7, sets, 1, &offset );
 				}
 				else if ( skin )
 				{
@@ -6415,6 +6442,9 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					pushData[33] = static_cast<float>( m_indirectViewMode );
 					pushData[34] = m_indirectViewScale;
 				}
+				// model_pbr.frag -DPROBE_VOLUME: params2.w the sampling mode.
+				if ( pbrModelProbe )
+					pushData[35] = static_cast<float>( m_probeSampling );
 				appendClipPlanes( pushData + 36 );
 				pushFloats = kSkinPushBytes / sizeof( float );
 			}

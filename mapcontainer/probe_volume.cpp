@@ -442,6 +442,30 @@ bool ProbeVolumeView::Sample( const float position[3], const float normal[3],
 	return false;
 }
 
+void WriteProbeGridTable( const ProbeVolumeLayout &layout, float *out ) noexcept
+{
+	for ( uint32_t g = 0; g < layout.gridCount; ++g )
+	{
+		const ProbeGridLayout &grid = layout.grids[g];
+		float *row = out + g * kProbeGridTableFloats;
+		float minSpacing = grid.spacing[0];
+		for ( int i = 1; i < 3; ++i )
+			if ( grid.spacing[i] < minSpacing )
+				minSpacing = grid.spacing[i];
+		const float values[kProbeGridTableFloats] = { grid.origin[0], grid.origin[1],
+		    grid.origin[2], float( grid.tilesPerRow ), grid.spacing[0], grid.spacing[1],
+		    grid.spacing[2], grid.maxDistance, float( grid.dims[0] ), float( grid.dims[1] ),
+		    float( grid.dims[2] ), minSpacing, float( grid.irradianceOrigin[0][0] ),
+		    float( grid.irradianceOrigin[0][1] ), float( grid.irradianceOrigin[1][0] ),
+		    float( grid.irradianceOrigin[1][1] ), float( grid.visibilityOrigin[0] ),
+		    float( grid.visibilityOrigin[1] ), float( grid.stateOrigin[0] ),
+		    float( grid.stateOrigin[1] ), float( layout.layerCount ), float( layout.gridCount ),
+		    0.0f, 0.0f };
+		for ( uint32_t i = 0; i < kProbeGridTableFloats; ++i )
+			row[i] = values[i];
+	}
+}
+
 bool ProbeVolumeView::AmbientCube( const float position[3], ProbeVolumeLayer layer,
     bool useVisibility, float outCube[6][3] ) const noexcept
 {

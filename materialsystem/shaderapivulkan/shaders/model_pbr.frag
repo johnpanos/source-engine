@@ -27,9 +27,16 @@
 // z kColor* flags (1 sRGB base, 4 sRGB output), w linear light scale;
 // params2.x the number of lights.
 //
+// PROBE_VOLUME (RFC 0011) takes the diffuse light from the map's PRBV probe
+// volume, sampled at each pixel's world position and normal (probe_volume.glsl,
+// sets 7 and 8), wherever the volume covers it; elsewhere, and without it, the
+// ambient cube. params2.w is 0 without a resident volume, 1 to sample with the
+// visibility test and 2 without it (r_probevolume_visibility 0).
+//
 // INDIRECT_VIEW (RFC 0011 debug view) writes only the indirect light, for
 // comparison with Cycles' DiffInd pass: params2.y is the view (1 the diffuse
-// light cube( n ), no albedo; 2 the diffuse radiance, times the diffuse
+// light cube( n ), or the probe volume's indirect layer, no albedo; 2 the
+// diffuse radiance, times the diffuse
 // albedo and occlusion) and params2.z the exposure scale. Local lights,
 // specular, emission and the tone-map scale are left out.
 layout( location = 0 ) in vec2 vBaseUv;
@@ -72,6 +79,11 @@ const float kPi = 3.14159265358979323846;
 #else
 #include "world_pbr_probe.glsl"
 #endif
+#ifdef PROBE_VOLUME
+layout( set = 7, binding = 0 ) uniform sampler2D probeAtlas; // PRBV atlas, RGBA16F
+layout( set = 8, binding = 0 ) uniform sampler2D probeGrids; // grid table, RGBA32F
+#include "probe_volume.glsl"
+#endif
 
 const int kNormalMap = 1;
 const int kEmission = 2;
@@ -97,6 +109,19 @@ vec3 AmbientCube( vec3 n )
 	vec3 isPositive = mix( vec3( 0.0 ), nSquared, greaterThanEqual( n, vec3( 0.0 ) ) );
 	return isPositive.x * ps.c[4].xyz + isNegative.x * ps.c[5].xyz + isPositive.y * ps.c[6].xyz +
 	       isNegative.y * ps.c[7].xyz + isPositive.z * ps.c[8].xyz + isNegative.z * ps.c[9].xyz;
+}
+
+// The diffuse light arriving along n: the probe volume's `layer` (0 total,
+// 1 indirect) where it covers this pixel, else the ambient cube.
+vec3 DiffuseLight( vec3 n, int layer )
+{
+#ifdef PROBE_VOLUME
+	vec3 probe;
+	if ( consts.params2.w > 0.5 &&
+	     ProbeIrradiance( vWorldPos, n, layer, consts.params2.w < 1.5, probe ) )
+		return probe;
+#endif
+	return AmbientCube( n );
 }
 
 // cLightInfo: c20..c25, the fourth light spread across the w components.
@@ -195,7 +220,7 @@ void main()
 	vec3 diffuseColor = base * ( 1.0 - metalness ) * ( vec3( 1.0 ) - directionalAlbedo );
 #ifdef INDIRECT_VIEW
 	{
-		vec3 viewed = AmbientCube( normal );
+		vec3 viewed = DiffuseLight( normal, 1 );
 		if ( consts.params2.y > 1.5 )
 			viewed *= base * ( 1.0 - metalness ) * occlusion;
 		viewed *= consts.params2.z;
@@ -217,7 +242,7 @@ void main()
 	// Image light (the ambient cube's Lambertian return, occluded, and the
 	// specular environment below) and the local lights accumulate apart: the
 	// coat attenuates each once, with its own Fresnel.
-	vec3 indirect = diffuseColor * AmbientCube( normal ) * occlusion;
+	vec3 indirect = diffuseColor * DiffuseLight( normal, 0 ) * occlusion;
 	vec3 direct = vec3( 0.0 );
 
 	// Local lights through the full BRDF: radiance pi * color * attenuation.

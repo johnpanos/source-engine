@@ -147,6 +147,23 @@ int main()
 	           analytic.grids[0].probeCount == 27 && analytic.activeProbes == 26,
 	    "analytic fixture: two layers, 27 probes, one inactive" );
 	SamplesMatchPython( files );
+	{
+		// The GPU grid table mirrors the validated record (probe_volume.glsl).
+		float table[kProbeGridTableFloats] = {};
+		WriteProbeGridTable( analytic, table );
+		const ProbeGridLayout &grid = analytic.grids[0];
+		Check( table[0] == grid.origin[0] && table[2] == grid.origin[2] &&
+		           table[3] == float( grid.tilesPerRow ) && table[6] == grid.spacing[2] &&
+		           table[7] == grid.maxDistance && table[10] == float( grid.dims[2] ) &&
+		           table[11] == 48.0f,
+		    "grid table: origin, tiles per row, spacing, max distance, dims, smallest spacing" );
+		Check( table[12] == float( grid.irradianceOrigin[0][0] ) &&
+		           table[15] == float( grid.irradianceOrigin[1][1] ) &&
+		           table[17] == float( grid.visibilityOrigin[1] ) &&
+		           table[19] == float( grid.stateOrigin[1] ) && table[20] == 2.0f &&
+		           table[21] == 1.0f && table[22] == 0.0f && table[23] == 0.0f,
+		    "grid table: section origins, layer and grid counts" );
+	}
 
 	// Leak control on the fixture wall (x = 48): a point just behind it.
 	{

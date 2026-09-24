@@ -1,6 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Checked BSP2 lightmap layer upload into the native world context.
+// Purpose: Checked BSP2 lightmap layer and probe volume upload into the native
+//          world context.
 //
 //===========================================================================//
 
@@ -21,6 +22,12 @@ class CVulkanContext;
 // published and the previous map's layers stay bound.
 bool UploadWorldLightmapLayers( CVulkanContext &context,
     const world_mesh_gpu::WorldLightmapUploadRequest &request, std::string *error );
+
+// Uploads a validated PRBV probe volume's atlas and grid table as map-scoped
+// images, then publishes them together; on failure nothing is published and
+// the previous map's volume stays bound.
+bool UploadWorldProbeVolume( CVulkanContext &context,
+    const world_mesh_gpu::ProbeVolumeUploadRequest &request, std::string *error );
 
 } // namespace render_vulkan
 

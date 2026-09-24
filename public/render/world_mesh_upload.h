@@ -13,7 +13,7 @@
 namespace world_mesh_gpu
 {
 
-static const char *const kWorldMeshUploadInterface = "WorldMeshUpload004";
+static const char *const kWorldMeshUploadInterface = "WorldMeshUpload005";
 
 struct WorldMeshUploadRequest
 {
@@ -53,6 +53,20 @@ struct WorldLightmapUploadRequest
 // prior buffers intact. Release waits for GPU consumers before freeing storage.
 // This interface is available only from a provider that implements both WMSH
 // upload and ordered batch submission for its current world view.
+// The map's validated RFC 0011 PRBV probe volume in its GPU form: the lump's
+// RGBA16F atlas (rows top first) and the grid table
+// mapcontainer::WriteProbeGridTable writes (gridCount rows of `tableFloats`
+// floats, RGBA32F texels).
+struct ProbeVolumeUploadRequest
+{
+	uint32_t atlasWidth = 0;
+	uint32_t atlasHeight = 0;
+	const void *atlas = nullptr;
+	uint32_t gridCount = 0;
+	uint32_t tableFloats = 0;
+	const float *gridTable = nullptr;
+};
+
 class IWorldMeshUpload
 {
 public:
@@ -63,6 +77,10 @@ public:
 	// can draw. On failure the caller releases the map's WMSH so no unlit
 	// substitute is presented.
 	virtual bool UploadLightmap( const WorldLightmapUploadRequest &request ) = 0;
+	// The map's optional probe volume, after the lightmap. Optional for the
+	// map: on failure models keep the engine's ambient cube (evaluated from
+	// the same volume) and nothing else changes.
+	virtual bool UploadProbeVolume( const ProbeVolumeUploadRequest &request ) = 0;
 	// The caller binds the material first. The provider runs its material pass
 	// and queues this WMSH index range in the current ordered world view.
 	virtual bool DrawBatch( uint32_t firstIndex, uint32_t indexCount ) = 0;

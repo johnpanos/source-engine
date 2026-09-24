@@ -20,6 +20,7 @@
 #include "iscratchpad3d.h"
 #include "map_container_file.h"
 #ifndef SWDS
+#include "mapcontainer/probe_volume.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh.h"
 #include "mapcontainer/world_mesh_format.h"
@@ -366,6 +367,8 @@ private:
 	bool				m_bMapHasHDRLighting;
 #ifndef SWDS
 	void Map_LoadWorldMesh();
+	void Map_LoadProbeVolume();
+	void Map_ReleaseProbeVolume();
 	void BuildWorldMeshGroups();
 	void Map_ReleaseWorldMeshMaterials();
 	CUtlVector<byte> m_WorldMeshBytes;
@@ -376,6 +379,9 @@ private:
 	CUtlVector<worldmeshoccluder_t> m_WorldMeshOccluders;
 	CUtlVector<worldmeshgroup_t> m_WorldMeshGroups;
 	CUtlVector<worldmeshleafrun_t> m_WorldMeshLeafRuns;
+	// PRBV bytes and the view over them; the world brush borrows the view.
+	CUtlVector<byte> m_ProbeVolumeBytes;
+	mapcontainer::ProbeVolumeView *m_pProbeVolume = NULL;
 #endif
 
 	char				m_szActiveMapName[64];
@@ -4935,6 +4941,86 @@ void CModelLoader::BuildWorldMeshGroups()
 	}
 }
 
+// RFC 0011 G1: the map's PRBV probe volume, the source of model ambient cubes
+// (lightcache.cpp) on BSP2 maps that carry one. A malformed, truncated or
+// unverifiable lump is rejected with its structured error; the map stays
+// playable and models use the leaf ambient.
+void CModelLoader::Map_LoadProbeVolume()
+{
+	Map_ReleaseProbeVolume();
+	if ( !s_pMapContainer || s_pMapContainer->Kind() != mapcontainer::MapContainerKind::Bsp2 )
+		return;
+	mapcontainer::MapLumpInfo lump{};
+	if ( !s_pMapContainer->FindLump( mapcontainer::kLumpProbeVolume, &lump ) )
+		return;
+	const double started = Plat_FloatTime();
+	if ( lump.version != mapcontainer::kProbeVolumeVersion || lump.flags != 0 ||
+	     lump.storedSize < mapcontainer::kProbeVolumeHeaderBytes ||
+	     lump.storedSize > mapcontainer::kProbeVolumeMaxBytes )
+	{
+		Warning( "Map %s: PRBV version, flags or size unsupported; models use the leaf "
+		         "ambient\n",
+		    s_szMapName );
+		return;
+	}
+	m_ProbeVolumeBytes.SetCount( (int)lump.storedSize );
+	if ( !s_MapByteSource.ReadAt( lump.offset, m_ProbeVolumeBytes.Base(),
+	         m_ProbeVolumeBytes.Count() ) ||
+	     !s_pMapContainer
+	         ->VerifyContent( lump, m_ProbeVolumeBytes.Base(), m_ProbeVolumeBytes.Count() )
+	         .Ok() )
+	{
+		Warning( "Map %s: PRBV read or hash failed; models use the leaf ambient\n", s_szMapName );
+		m_ProbeVolumeBytes.Purge();
+		return;
+	}
+	mapcontainer::ProbeVolumeLayout layout{};
+	const mapcontainer::ProbeVolumeError error = mapcontainer::ValidateProbeVolume(
+	    m_ProbeVolumeBytes.Base(), m_ProbeVolumeBytes.Count(), &layout );
+	if ( error != mapcontainer::ProbeVolumeError::Ok )
+	{
+		Warning( "Map %s: PRBV rejected (%s); models use the leaf ambient\n", s_szMapName,
+		    mapcontainer::ProbeVolumeErrorName( error ) );
+		m_ProbeVolumeBytes.Purge();
+		return;
+	}
+	m_pProbeVolume = new mapcontainer::ProbeVolumeView( m_ProbeVolumeBytes.Base(), layout );
+	m_worldBrushData.pProbeVolume = m_pProbeVolume;
+	// A native world renderer also samples it per pixel for PBR models.
+	world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshUploader();
+	if ( uploader && uploader->IsResident() )
+	{
+		CUtlVector<float> table;
+		table.SetCount( int( layout.gridCount * mapcontainer::kProbeGridTableFloats ) );
+		mapcontainer::WriteProbeGridTable( layout, table.Base() );
+		world_mesh_gpu::ProbeVolumeUploadRequest request;
+		request.atlasWidth = layout.atlasWidth;
+		request.atlasHeight = layout.atlasHeight;
+		request.atlas = m_ProbeVolumeBytes.Base() + layout.atlasOffset;
+		request.gridCount = layout.gridCount;
+		request.tableFloats = mapcontainer::kProbeGridTableFloats;
+		request.gridTable = table.Base();
+		if ( !uploader->UploadProbeVolume( request ) )
+			Warning( "Map %s: PRBV GPU upload failed; models use the ambient cube\n",
+			    s_szMapName );
+	}
+	uint32_t probes = 0;
+	for ( uint32_t i = 0; i < layout.gridCount; ++i )
+		probes += layout.grids[i].probeCount;
+	Msg( "Map %s: PRBV v%u, %u grid%s, %u probes (%u active), %ux%u atlas, %d KB, %.2f ms\n",
+	    s_szMapName, lump.version, layout.gridCount, layout.gridCount == 1 ? "" : "s", probes,
+	    layout.activeProbes, layout.atlasWidth, layout.atlasHeight,
+	    m_ProbeVolumeBytes.Count() / 1024, ( Plat_FloatTime() - started ) * 1000.0 );
+}
+
+void CModelLoader::Map_ReleaseProbeVolume()
+{
+	m_worldBrushData.pProbeVolume = NULL;
+	delete m_pProbeVolume;
+	m_pProbeVolume = NULL;
+	m_ProbeVolumeBytes.Purge();
+}
+
 void CModelLoader::Map_ReleaseWorldMeshMaterials()
 {
 	for ( int i = 0; i < m_WorldMeshBatches.Count(); ++i )
@@ -4955,6 +5041,7 @@ void CModelLoader::Map_LoadModel( model_t *mod )
 	if ( world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshUploader() )
 		uploader->Release();
 	m_WorldMeshBytes.Purge();
+	Map_ReleaseProbeVolume();
 	Map_ReleaseWorldMeshMaterials();
 	m_WorldMeshClusters.Purge();
 	m_WorldMeshLeafRanges.Purge();
@@ -5012,6 +5099,7 @@ void CModelLoader::Map_LoadModel( model_t *mod )
 	CMapLoadHelper::Init( mod, m_szLoadName );
 #ifndef SWDS
 	Map_LoadWorldMesh();
+	Map_LoadProbeVolume();
 #endif
 
 	COM_TimestampedLog( "  Mod_LoadVertices" );
@@ -5314,6 +5402,7 @@ void CModelLoader::Map_UnloadModel( model_t *mod )
 #ifndef SWDS
 	if ( world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshUploader() )
 		uploader->Release();
+	Map_ReleaseProbeVolume();
 	m_worldBrushData.pWorldMeshData = NULL;
 	m_worldBrushData.worldMeshSize = 0;
 	m_worldBrushData.pWorldMeshBatches = NULL;

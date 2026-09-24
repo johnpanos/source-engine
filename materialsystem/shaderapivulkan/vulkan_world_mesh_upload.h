@@ -26,6 +26,7 @@ public:
 
 	bool Upload( const world_mesh_gpu::WorldMeshUploadRequest &request ) override;
 	bool UploadLightmap( const world_mesh_gpu::WorldLightmapUploadRequest &request ) override;
+	bool UploadProbeVolume( const world_mesh_gpu::ProbeVolumeUploadRequest &request ) override;
 	bool DrawBatch( uint32_t firstIndex, uint32_t indexCount ) override;
 	void Release() override;
 	bool IsResident() const override;

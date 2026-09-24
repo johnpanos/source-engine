@@ -124,6 +124,17 @@ private:
 
 float HalfToFloat( uint16_t half ) noexcept;
 
+// The GPU form of the grid records (shaders/probe_volume.glsl reads it): per
+// grid, kProbeGridTableTexels RGBA32F texels, one row per grid:
+//   0 origin.xyz, tiles per row      1 spacing.xyz, max visibility distance
+//   2 dims.xyz, smallest spacing     3 irradiance layer 0 origin xy, layer 1 xy
+//   4 visibility origin xy, state origin xy
+//   5 layer count, grid count, 0, 0
+static const uint32_t kProbeGridTableTexels = 6;
+static const uint32_t kProbeGridTableFloats = kProbeGridTableTexels * 4;
+// Writes layout.gridCount rows of kProbeGridTableFloats to `out`.
+void WriteProbeGridTable( const ProbeVolumeLayout &layout, float *out ) noexcept;
+
 } // namespace mapcontainer
 
 #endif // MAPCONTAINER_PROBE_VOLUME_H
