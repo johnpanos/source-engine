@@ -2929,7 +2929,7 @@ bool CGrabController::UpdateObjectVM( CBasePlayer *pPlayer, float flError )
 	// path wakes it in SetTargetPosition; without this, a view model held object
 	// the player carries while standing still goes to sleep and stops following.
 	pPhys->Wake();
-	
+
 	// Don't let anything change the transmit state back to PVS_CHECK or we'll
 	// start disappearing when going through portals or standing near walls.
 	// HACK: This isn't ideal... maybe add a test in baseentity::UpdateTransmitState? Hard to do this for any

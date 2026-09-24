@@ -4,9 +4,9 @@
   "driver": "qa_driver.nut",
   "scenarios": [
     {
-      "name": "sp_a1_intro2",
-      "map": "sp_a1_intro2",
-      "script": "sp_a1_intro2.nut",
+      "name": "sp_a1_intro5",
+      "map": "sp_a1_intro5",
+      "script": "sp_a1_intro5.nut",
       "timeout_seconds": 180,
       "required_checks": [
         "cube.at_rest",

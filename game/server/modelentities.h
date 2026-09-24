@@ -26,6 +26,9 @@ public:
 	DECLARE_CLASS( CFuncBrush, CBaseEntity );
 
 	virtual void Spawn( void );
+#ifdef PORTAL2
+	virtual void Activate( void );
+#endif
 	bool CreateVPhysics( void );
 
 	virtual int	ObjectCaps( void ) { return HasSpawnFlags(SF_IGNORE_PLAYERUSE) ? BaseClass::ObjectCaps() : BaseClass::ObjectCaps() | FCAP_IMPULSE_USE; }

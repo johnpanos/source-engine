@@ -221,7 +221,11 @@ void CTriggerCatapult::LaunchByTarget( CBaseEntity *pVictim, CBaseEntity *pTarge
 				    m_bApplyAngularImpulse ? RandomAngularImpulse( -150.0f, 150.0f ) : vec3_origin;
 				pPhysObject->SetVelocityInstantaneous( &vecVelocity, &angImpulse );
 
-				// UNDONE: don't mess with physics properties
+				// The arc ignores air resistance, so the flight must too (retail
+				// does this for targeted launches as well as directional ones).
+				float flNull = 0.0f;
+				pPhysObject->SetDragCoefficient( &flNull, &flNull );
+				pPhysObject->SetDamping( &flNull, &flNull );
 
 #if defined( GAME_DLL )
 				CPhysicsProp *pProp = dynamic_cast<CPhysicsProp *>( pVictim );
@@ -386,17 +390,10 @@ void CTriggerCatapult::StartTouch( CBaseEntity *pOther )
 		nRefireIndex = 0;
 	}
 
+	// Retail simply refuses; players are retried by LaunchThink while they
+	// stay in the trigger, objects only when they touch it again.
 	if ( m_flRefireDelay[nRefireIndex] > gpGlobals->curtime )
-	{
-		// but also don't forget to try again
-		if ( m_hAbortedLaunchees.Find( pOther ) == -1 )
-		{
-			m_hAbortedLaunchees.AddToTail( pOther );
-		}
-		SetThink( &CTriggerCatapult::LaunchThink );
-		SetNextThink( gpGlobals->curtime + 0.05f );
 		return;
-	}
 
 #if defined( GAME_DLL )
 	// Don't touch things the player is holding

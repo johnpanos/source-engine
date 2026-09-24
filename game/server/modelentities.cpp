@@ -66,6 +66,24 @@ void CFuncBrush::Spawn( void )
 	}
 }
 
+#ifdef PORTAL2
+//-----------------------------------------------------------------------------
+// Portal 2 (as its retail server and the CS:GO-era source): a brush's shadow
+// starts awake so objects spawned resting on it respond to it changing, and
+// disabling a brush wakes whatever rests on it. Item droppers hold their
+// cube on a func_brush clip and release it by disabling the clip.
+//-----------------------------------------------------------------------------
+void CFuncBrush::Activate( void )
+{
+	BaseClass::Activate();
+	IPhysicsObject *pPhysObject = VPhysicsGetObject();
+	if ( pPhysObject )
+	{
+		pPhysObject->Wake();
+	}
+}
+#endif
+
 //-----------------------------------------------------------------------------
 
 bool CFuncBrush::CreateVPhysics( void )
@@ -77,7 +95,11 @@ bool CFuncBrush::CreateVPhysics( void )
 	if ( pPhys )
 	{
 		int contents = modelinfo->GetModelContents( GetModelIndex() );
+#ifdef PORTAL2
+		if ( m_iDisabled || !(contents & (MASK_SOLID|MASK_PLAYERSOLID|MASK_NPCSOLID)) )
+#else
 		if ( ! (contents & (MASK_SOLID|MASK_PLAYERSOLID|MASK_NPCSOLID)) )
+#endif
 		{
 			// leave the physics shadow there in case it has crap constrained to it
 			// but disable collisions with it
@@ -170,6 +192,15 @@ void CFuncBrush::TurnOff( void )
 	}
 
 	AddEffects( EF_NODRAW );
+#ifdef PORTAL2
+	IPhysicsObject *pObject = VPhysicsGetObject();
+	if ( pObject )
+	{
+		pObject->Wake();
+		pObject->EnableCollisions( false );
+	}
+	WakeRestingObjects();
+#endif
 	m_iDisabled = TRUE;
 }
 
@@ -188,6 +219,18 @@ void CFuncBrush::TurnOn( void )
 	}
 
 	RemoveEffects( EF_NODRAW );
+#ifdef PORTAL2
+	IPhysicsObject *pObject = VPhysicsGetObject();
+	if ( pObject )
+	{
+		pObject->EnableCollisions( true );
+		if ( pObject->IsAsleep() )
+		{
+			pObject->Wake();
+		}
+	}
+	m_iDisabled = FALSE;
+#endif
 }
 
 

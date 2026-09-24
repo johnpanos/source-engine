@@ -25,7 +25,10 @@
         "plate2c.touchdown",
         "plate2c.rest",
         "plate2c.cube_plate_ignores_player",
-        "cube.launched_up"
+        "cube.launched_up",
+        "cube_fling.launched",
+        "cube_fling.touchdown",
+        "cube_fling.on_target"
       ]
     }
   ],

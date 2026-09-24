@@ -92,6 +92,8 @@ OUTPUTS:
 
 extern ISaveRestoreOps *variantFuncs;	// function pointer set for save/restoring variants
 
+#define VMF_IOPARAM_STRING_DELIMITER 0x1b
+
 BEGIN_SIMPLE_DATADESC( CEventAction )
 	DEFINE_FIELD( m_iTarget, FIELD_STRING ),
 	DEFINE_FIELD( m_iTargetInput, FIELD_STRING ),
@@ -108,7 +110,6 @@ END_DATADESC()
 // ID Stamp used to uniquely identify every output
 int CEventAction::s_iNextIDStamp = 0;
 
-#define VMF_IOPARAM_STRING_DELIMITER 0x1b
 
 //-----------------------------------------------------------------------------
 // Purpose: Creates an event action and assigns it an unique ID stamp.
@@ -138,7 +139,7 @@ CEventAction::CEventAction( const char *ActionData )
 	//
 	// Parse the target name.
 	//
-	const char *psz = nexttoken(szToken, ActionData, chDelim);
+	const char *psz = nexttoken( szToken, ActionData, chDelim );
 	if (szToken[0] != '\0')
 	{
 		m_iTarget = AllocPooledString(szToken);
@@ -147,7 +148,7 @@ CEventAction::CEventAction( const char *ActionData )
 	//
 	// Parse the input name.
 	//
-	psz = nexttoken(szToken, psz, chDelim);
+	psz = nexttoken( szToken, psz, chDelim );
 	if (szToken[0] != '\0')
 	{
 		m_iTargetInput = AllocPooledString(szToken);
@@ -160,7 +161,7 @@ CEventAction::CEventAction( const char *ActionData )
 	//
 	// Parse the parameter override.
 	//
-	psz = nexttoken(szToken, psz, chDelim);
+	psz = nexttoken( szToken, psz, chDelim );
 	if (szToken[0] != '\0')
 	{
 		m_iParameter = AllocPooledString(szToken);
@@ -169,7 +170,7 @@ CEventAction::CEventAction( const char *ActionData )
 	//
 	// Parse the delay.
 	//
-	psz = nexttoken(szToken, psz, chDelim);
+	psz = nexttoken( szToken, psz, chDelim );
 	if (szToken[0] != '\0')
 	{
 		m_flDelay = atof(szToken);
@@ -178,7 +179,7 @@ CEventAction::CEventAction( const char *ActionData )
 	//
 	// Parse the number of times to fire.
 	//
-	nexttoken(szToken, psz, chDelim);
+	nexttoken( szToken, psz, chDelim );
 	if (szToken[0] != '\0')
 	{
 		m_nTimesToFire = atoi(szToken);

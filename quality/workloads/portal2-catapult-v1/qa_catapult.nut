@@ -26,24 +26,13 @@ function QA_FlatDist( a, b )
 	return sqrt( dx * dx + dy * dy )
 }
 
-// Height of the floor under <ent>, where a standing player's origin rests.
-function QA_FloorBelow( ent )
-{
-	local top = ent.GetOrigin()
-	local bottom = top - Vector( 0, 0, 512 )
-	local fraction = TraceLine( top, bottom, null )
-	if ( fraction >= 1.0 )
-		throw "no floor below " + ent.GetName()
-	return top.z - 512.0 * fraction
-}
-
 // Starts recording the player's flight under <key>: QA_FlightTick samples it
 // every driver tick and finds touchdown by extrapolating the last airborne
-// sample down to <floorZ> (the player origin height on the landing floor).
-function QA_FlightBegin( key, floorZ )
+// sample down to the floor the player lands on.
+function QA_FlightBegin( key )
 {
 	::QA.marks[key] <- {
-		floorZ = floorZ
+		floorZ = 0.0
 		last = null
 		apex = -100000.0
 		gravity = []
@@ -76,7 +65,9 @@ function QA_FlightTick( key )
 		QA_Detail( "not airborne at " + QA_Vec( sample.pos ) + " vel " + QA_Vec( sample.vel ) )
 		return false
 	}
-	// Solve last.z + vz s - g s^2 / 2 = floorZ for the later root.
+	// On the ground now: the origin rests on the landing floor. Solve
+	// last.z + vz s - g s^2 / 2 = floorZ for the later root.
+	f.floorZ = sample.pos.z
 	local l = f.last
 	local a = -0.5 * ::QA_CATAPULT_GRAVITY, b = l.vel.z, c = l.pos.z - f.floorZ
 	local disc = b * b - 4.0 * a * c
@@ -106,7 +97,7 @@ function QA_PlayerFling( prefix, catapult, target, yaw )
 	QA_Do( prefix + ": step on", function() : ( prefix, catapult, target, yaw )
 	{
 		::QA.marks[prefix + "_fired"] <- QA_Fired( catapult, "OnCatapulted" )
-		QA_FlightBegin( prefix, QA_FloorBelow( QA_Ent( target ) ) )
+		QA_FlightBegin( prefix )
 		QA_StandIn( QA_Ent( catapult ), yaw )
 	}, 0.0 )
 
@@ -140,13 +131,47 @@ function QA_PlayerFling( prefix, catapult, target, yaw )
 		return miss < 32.0
 	} )
 
+	// Comes to rest on the floor it landed on (a landing slides on a little).
 	QA_WaitFor( prefix + ".rest", function() : ( prefix, target )
 	{
 		local p = QA_Player()
 		local f = ::QA.marks[prefix]
 		QA_Detail( "at " + QA_Vec( p.GetOrigin() ) + " vel " + QA_Vec( p.GetVelocity() ) +
-		           format( " floor z=%.1f", f.floorZ ) )
+		           format( " landing floor z=%.1f", f.floorZ ) )
 		return p.GetVelocity().Length() < 1.0 && fabs( p.GetOrigin().z - f.floorZ ) < 2.0 &&
 		       QA_FlatDist( p.GetOrigin(), QA_Ent( target ).GetOrigin() ) < 160.0
 	}, 4.0 )
+}
+
+// Contact detection for a thrown object sampled by position only. <track>
+// holds { samples = [] }; returns the touchdown point once the newest sample
+// leaves the free-fall path (g = sv_gravity) predicted from the two before
+// it, else null.
+function QA_BallisticContact( track, sample )
+{
+	local s = track.samples
+	s.append( sample )
+	if ( s.len() < 3 )
+		return null
+	local p0 = s[s.len() - 3], p1 = s[s.len() - 2], p2 = s[s.len() - 1]
+	local d01 = p1.t - p0.t, d12 = p2.t - p1.t
+	if ( d01 <= 0.0 || d12 <= 0.0 )
+		return null
+	local g = ::QA_CATAPULT_GRAVITY
+	// Velocity at p1 from the chord p0 -> p1 under constant gravity.
+	local v = QA_Scale( p1.pos - p0.pos, 1.0 / d01 )
+	v.z -= 0.5 * g * d01
+	local predicted = p1.pos + QA_Scale( v, d12 )
+	predicted.z -= 0.5 * g * d12 * d12
+	// Still flying (or not yet thrown: resting samples predict a fall).
+	if ( QA_Dist( predicted, p2.pos ) < 4.0 || v.z > 0.0 || v.Length() < 100.0 )
+		return null
+	// Solve p1.z + v.z s - g s^2 / 2 = p2.z for the later root.
+	local a = -0.5 * g, b = v.z, c = p1.pos.z - p2.pos.z
+	local disc = b * b - 4.0 * a * c
+	local t = disc < 0.0 ? 0.0 : ( -b - sqrt( disc ) ) / ( 2.0 * a )
+	t = t < 0.0 ? 0.0 : ( t > d12 ? d12 : t )
+	local hit = Vector( p1.pos.x + v.x * t, p1.pos.y + v.y * t, p2.pos.z )
+	QA_Log( "contact " + QA_Vec( hit ) + " after " + QA_Vec( p1.pos ) + " vel " + QA_Vec( v ) )
+	return hit
 }

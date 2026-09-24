@@ -417,7 +417,7 @@ void CTriggerCatapult::PlayerPassesTriggerFiltersThink( void )
 //-----------------------------------------------------------------------------
 void CTriggerCatapult::EndTouch( CBaseEntity *pOther )
 {
-	BaseClass::EndTouch( pOther );
-
+	// Retail does not chain to CBaseTrigger: StartTouch never registers the
+	// toucher there either.
 	m_hAbortedLaunchees.FindAndFastRemove( pOther );
 }
