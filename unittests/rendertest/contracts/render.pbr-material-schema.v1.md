@@ -6,6 +6,13 @@ MRAO and bump maps are linear. A material requires `$basetexture`,
 `$mraotexture`, and `$fallbackmaterial`. The fallback is a separate VMT path,
 not a shader name. Existing material families retain their current parameters.
 
+Glass is three optional scalars on the same family: `$transmission` (0..1, the
+refracted fraction, default 0), `$ior` (1..3, default 1.5) and `$thickness`
+(world units through the glass, default 0 for a thin sheet). `$basetexture`
+tints transmitted light. `IsValidTransmission` owns the accepted ranges; NaN is
+rejected. A material with `$transmission` above 0 is translucent: the native
+shader sets the flag, so it sorts and draws after the opaque scene it refracts.
+
 The editor catalog validates that the PBR definition and fallback VMT parse,
 that patch includes on both sides are bounded to the legacy loader's ten levels
 and acyclic, and that the supplied compatibility

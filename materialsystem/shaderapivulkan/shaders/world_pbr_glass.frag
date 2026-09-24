@@ -54,6 +54,28 @@ vec2 ScreenOffset( vec3 from, vec3 to )
 	return ( b.xy / b.w - a.xy / a.w ) * vec2( consts.capture.z, -consts.capture.w );
 }
 
+// World distance from this fragment to the surface behind it along the view
+// ray, from that surface's window depth: solve z(Q) / w(Q) = depth for
+// Q = fragment + s * direction with the mvp's z and w rows. Without depth, or
+// behind the far plane, a nominal 128 units (about 3 m).
+float BehindDistance( float depth, bool depthValid )
+{
+	const float kNominal = 128.0;
+	if ( !depthValid || depth >= 1.0 )
+		return kNominal;
+	vec3 direction = normalize( fragPosition - consts.eyePosition.xyz );
+	vec4 rowZ = vec4( consts.mvp[0][2], consts.mvp[1][2], consts.mvp[2][2], consts.mvp[3][2] );
+	vec4 rowW = vec4( consts.mvp[0][3], consts.mvp[1][3], consts.mvp[2][3], consts.mvp[3][3] );
+	float a = dot( rowZ, vec4( fragPosition, 1.0 ) );
+	float b = dot( rowZ.xyz, direction );
+	float c = dot( rowW, vec4( fragPosition, 1.0 ) );
+	float e = dot( rowW.xyz, direction );
+	float denominator = b - depth * e;
+	if ( abs( denominator ) < 1e-8 )
+		return kNominal;
+	return clamp( ( depth * c - a ) / denominator, 0.0, 16384.0 );
+}
+
 void main()
 {
 	vec4 baseSample = texture( baseTexture, fragUv );
@@ -100,13 +122,28 @@ void main()
 	vec2 uv = clamp( pixel * consts.capture.xy, vec2( 0.0 ), vec2( 1.0 ) );
 	// A refracted sample of something nearer than the glass would show an
 	// object in front of it through it; take the undisplaced pixel instead.
-	if ( consts.glass.w >= 0.5 && textureLod( sceneDepth, uv, 0.0 ).r < gl_FragCoord.z )
+	bool depthValid = consts.glass.w >= 0.5;
+	float behindDepth = depthValid ? textureLod( sceneDepth, uv, 0.0 ).r : 1.0;
+	if ( depthValid && behindDepth < gl_FragCoord.z )
+	{
 		uv = gl_FragCoord.xy * consts.capture.xy;
-	// Rough glass scatters the transmitted light: blur by the GGX alpha, up to
-	// a quarter of the view height at alpha 1.
+		behindDepth = textureLod( sceneDepth, uv, 0.0 ).r;
+	}
+	// Rough glass scatters what it transmits. The microfacet normals spread
+	// about atan(alpha); by Snell's law (small angles) entering glass deflects
+	// a ray by (1 - 1/n) of the tilt and leaving it by (n - 1), so a thin sheet
+	// spreads light by (n - 1/n) and a solid's first surface by (1 - 1/n).
+	// The blur is that angle over the distance from the glass to what is
+	// behind it, as seen from the eye.
 	float alpha = roughness * roughness;
-	float radius = alpha * consts.capture.w * 0.5;
-	float lod = clamp( log2( max( radius, 1.0 ) ), 0.0, max( consts.material.z - 1.0, 0.0 ) );
+	float spread = atan( alpha ) * ( thickness > 0.0 ? 1.0 - 1.0 / ior : ior - 1.0 / ior );
+	float behindDistance = BehindDistance( behindDepth, depthValid );
+	vec3 across = normalize( cross( view, abs( view.z ) < 0.9 ? vec3( 0, 0, 1 ) : vec3( 1, 0, 0 ) ) );
+	vec3 behindPoint = fragPosition - view * behindDistance;
+	float radius = length( ScreenOffset( behindPoint,
+	    behindPoint + across * ( behindDistance * tan( min( spread, 1.2 ) ) ) ) );
+	// A mip level averages 2^level pixels: the footprint is twice the radius.
+	float lod = clamp( log2( max( 2.0 * radius, 1.0 ) ), 0.0, max( consts.material.z - 1.0, 0.0 ) );
 	vec3 behind = textureLod( sceneColor, uv, lod ).rgb;
 	vec3 transmitted = behind * tint * ( 1.0 - reflectance );
 

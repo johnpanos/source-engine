@@ -10545,6 +10545,8 @@ CBaseCombatCharacter* CAI_BaseNPC::GetEnemyCombatCharacterPointer()
 // This should be an exact copy of the var's in the header.  Fields
 // that aren't save/restored are commented out
 
+// Source datadesc and network table macros require their declaration layout.
+// clang-format off
 BEGIN_DATADESC( CAI_BaseNPC )
 
 	//								m_pSchedule  (reacquired on restore)
@@ -10800,7 +10802,8 @@ IMPLEMENT_SERVERCLASS_ST( CAI_BaseNPC, DT_AI_BaseNPC )
 #ifdef PORTAL2
 	SendPropString( SENDINFO( m_szNetworkedName ) ),
 #endif
-END_SEND_TABLE()
+END_SEND_TABLE();
+// clang-format on
 
 //-------------------------------------
 

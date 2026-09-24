@@ -60,7 +60,6 @@ private:
 	bool m_bImportanRagdoll;
 };
 
-
 #ifdef PORTAL2
 // The NPC that speaks for PotatOS (@glados or @actor_potatos), whose mouth
 // drives the LightedMouth material proxy; NULL until one is networked.

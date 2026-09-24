@@ -148,9 +148,9 @@ bool CVulkanContext::EnsureSceneCapture( std::string *outError )
 	VkCommandBuffer cmd = VK_NULL_HANDLE;
 	if ( ok && BeginSingleTimeCommands( &cmd, outError ) )
 	{
-		VkImageMemoryBarrier toDst = ImageBarrier( depth.image, m_depthAspects, 0, 1,
-		    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
-		    VK_ACCESS_TRANSFER_WRITE_BIT );
+		VkImageMemoryBarrier toDst =
+		    ImageBarrier( depth.image, m_depthAspects, 0, 1, VK_IMAGE_LAYOUT_UNDEFINED,
+		        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT );
 		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
 		    VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toDst );
 		const VkClearDepthStencilValue far = { 1.0f, 0 };
@@ -288,16 +288,16 @@ bool CVulkanContext::RecordSceneCapture( VkCommandBuffer cmd, int target )
 	    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, srcRest, VK_ACCESS_TRANSFER_READ_BIT,
 	    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT );
 	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-	    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
-	    0, nullptr, 0, nullptr, 1, &srcBack );
+	    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
+	    nullptr, 0, nullptr, 1, &srcBack );
 	int32_t levelW = static_cast<int32_t>( width );
 	int32_t levelH = static_cast<int32_t>( height );
 	for ( uint32_t level = 1; level < color.mipLevels; ++level )
 	{
-		VkImageMemoryBarrier above = ImageBarrier( color.image, VK_IMAGE_ASPECT_COLOR_BIT,
-		    level - 1, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT,
-		    VK_ACCESS_TRANSFER_READ_BIT );
+		VkImageMemoryBarrier above =
+		    ImageBarrier( color.image, VK_IMAGE_ASPECT_COLOR_BIT, level - 1, 1,
+		        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		        VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT );
 		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
 		    0, 0, nullptr, 0, nullptr, 1, &above );
 		VkImageBlit down = {};
@@ -325,7 +325,7 @@ bool CVulkanContext::RecordSceneCapture( VkCommandBuffer cmd, int target )
 	// Depth, when this target's depth is single-sampled. A multisampled back
 	// buffer's depth cannot be copied into a single-sampled image.
 	m_sceneDepthCaptured = false;
-	if ( m_sceneDepthHandle < 0 || ( target == -1 && m_activeSamples > 1 ) )
+	if ( m_sceneDepthHandle < 0 || !m_sceneDepthEnabled || ( target == -1 && m_activeSamples > 1 ) )
 		return false;
 	const VkImage depthSrc = srcIsTexture
 	                             ? m_managedTextures[static_cast<size_t>( target )].depthImage

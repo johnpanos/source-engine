@@ -28,6 +28,9 @@ enum class MaterialParameter : unsigned
 	kTranslucent,
 	kEnvMap,
 	kFallbackMaterial,
+	kTransmission,
+	kIndexOfRefraction,
+	kThickness,
 	kCount
 };
 
@@ -69,6 +72,13 @@ static constexpr MaterialParameterSpec kMaterialParameters[] = {
     { "$envmap", ParameterKind::kTexture, ColorEncoding::kLinear, false, nullptr },
     { "$fallbackmaterial", ParameterKind::kMaterialReference, ColorEncoding::kNotApplicable, true,
         nullptr },
+    // Glass: the fraction of light refracted through the surface rather than
+    // diffusely reflected, the dielectric's index of refraction, and the
+    // distance light travels through it in world units (0 = a thin sheet,
+    // which passes light straight through). $basetexture tints what passes.
+    { "$transmission", ParameterKind::kFloat, ColorEncoding::kNotApplicable, false, "0" },
+    { "$ior", ParameterKind::kFloat, ColorEncoding::kNotApplicable, false, "1.5" },
+    { "$thickness", ParameterKind::kFloat, ColorEncoding::kNotApplicable, false, "0" },
 };
 
 static_assert( sizeof( kMaterialParameters ) / sizeof( kMaterialParameters[0] ) ==
@@ -78,6 +88,17 @@ static_assert( sizeof( kMaterialParameters ) / sizeof( kMaterialParameters[0] ) 
 inline const MaterialParameterSpec &Parameter( MaterialParameter id )
 {
 	return kMaterialParameters[static_cast<unsigned>( id )];
+}
+
+// The accepted glass values: transmission in [0, 1], an index of refraction in
+// [1, 3] (air to beyond diamond), and a finite, non-negative thickness. NaN
+// fails every comparison and so every range.
+static constexpr float kMaxIndexOfRefraction = 3.0f;
+
+inline bool IsValidTransmission( float transmission, float ior, float thickness )
+{
+	return transmission >= 0.0f && transmission <= 1.0f && ior >= 1.0f &&
+	       ior <= kMaxIndexOfRefraction && thickness >= 0.0f && thickness <= 1.0e6f;
 }
 
 inline bool IsMetalRoughShader( const char *name )

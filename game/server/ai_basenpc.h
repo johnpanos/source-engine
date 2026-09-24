@@ -2122,7 +2122,10 @@ public:
 #ifdef PORTAL2
 	// Retail Portal 2 networks entity names; its client finds the NPC that
 	// speaks for PotatOS (@glados or @actor_potatos) by name.
-	enum { NETWORKED_NAME_LENGTH = 64 };
+	enum
+	{
+		NETWORKED_NAME_LENGTH = 64
+	};
 	CNetworkString( m_szNetworkedName, NETWORKED_NAME_LENGTH );
 #endif
 

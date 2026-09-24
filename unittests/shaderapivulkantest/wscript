@@ -33,6 +33,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='native_vulkan_bringup_conformance',
 		name='native_vulkan_bringup_conformance',
@@ -88,6 +89,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='pbr_native_pixel_conformance',
 		name='pbr_native_pixel_conformance',
@@ -102,6 +104,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='ktx2_native_pixel_conformance',
 		name='ktx2_native_pixel_conformance',
@@ -119,6 +122,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp',
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='world_pbr_native_pixel_conformance',
@@ -127,6 +131,22 @@ def build(bld):
 		use=['VULKAN', 'SDL3', 'vulkan_texture_image']
 			+ (['texturecontainer', 'KTXREAD'] if bld.env.KTX_READ_ENABLED else []),
 		defines=['RFC0008_KTX_READER'] if bld.env.KTX_READ_ENABLED else [],
+		install_path=None)
+
+	# RFC 0007 glass and readable scene depth: transmissive WMSH batches over an
+	# opaque WMSH scene, with depth readback and negative controls.
+	bld.program(
+		features='c cxx', env=test_env.derive(),
+		source=['test_world_glass_pixels.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
+			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
+		target='world_glass_native_pixel_conformance',
+		name='world_glass_native_pixel_conformance',
+		includes=includes,
+		use=['VULKAN', 'SDL3', 'vulkan_texture_image'],
 		install_path=None)
 
 	# Material-facing integration slice: drives the legacy IShaderAPI/IShaderDevice
@@ -140,7 +160,8 @@ def build(bld):
 			# g_VulkanContext instance the backend's exported accessor returns.
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
-			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp'],
+			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp'],
 		target='material_facing_vulkan_conformance',
 		name='material_facing_vulkan_conformance',
 		includes=['../../materialsystem/shaderapivulkan', '../../public',
@@ -159,7 +180,8 @@ def build(bld):
 		source=['test_material_equivalence.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
-			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp'],
+			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp'],
 		target='material_equivalence_vulkan_conformance',
 		name='material_equivalence_vulkan_conformance',
 		includes=['../../materialsystem/shaderapivulkan', '../../public',

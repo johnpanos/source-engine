@@ -83,6 +83,22 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(silver["metallic"], 1.0)
         self.assertTrue(all(0.9 < value < 1.0 for value in silver["base_color"]))
 
+    def test_dielectric_keeps_its_roughness_and_ior(self):
+        text = SCENE.replace('NamedMaterial "Floor"\n', 'MakeNamedMaterial "LampGlass" '
+                             '"string type" [ "dielectric" ] "float eta" [ 1.33 ] '
+                             '"float uroughness" [ 0.1 ] "float vroughness" [ 0.1 ] '
+                             '"bool remaproughness" [ false ]\n'
+                             'MakeNamedMaterial "Clear" "string type" [ "dielectric" ]\n'
+                             'NamedMaterial "Floor"\n', 1)
+        with tempfile.TemporaryDirectory() as directory:
+            scene = pbrt_scene.parse(write(directory, text))
+        lamp = pbrt_scene.material_summary(scene, "LampGlass")
+        self.assertEqual((lamp["transmission"], lamp["ior"]), (1.0, 1.33))
+        # Perceptual roughness is sqrt(alpha); alpha 0.1 is not remapped.
+        self.assertAlmostEqual(lamp["roughness"], math.sqrt(0.1))
+        clear = pbrt_scene.material_summary(scene, "Clear")
+        self.assertEqual((clear["roughness"], clear["ior"]), (0.0, 1.5))
+
     def test_diffuse_transmission_keeps_both_lobes(self):
         leaf = pbrt_scene.material_summary(self.scene, "Leaf")
         # pbrt-v4 defaults R = T = 0.25, both times scale.

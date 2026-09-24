@@ -190,9 +190,11 @@ void C_NPC_Personality_Core::ClientThink( void )
 	SetNextClientThink( CLIENT_THINK_ALWAYS );
 }
 
+// clang-format off
 IMPLEMENT_CLIENTCLASS_DT( C_NPC_Personality_Core, DT_NPC_Personality_Core, CNPC_PersonalityCore )
 	RecvPropBool( RECVINFO( m_bFlashlightEnabled ) ),
-END_RECV_TABLE()
+END_RECV_TABLE();
+// clang-format on
 
 //-----------------------------------------------------------------------------
 // Purpose: Material proxy that lights the core's mouth while it talks. On

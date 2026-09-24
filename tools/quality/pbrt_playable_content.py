@@ -5,14 +5,17 @@ Material values come from the shared translation policy in `pbrt_scene`, so
 the game preview, the Cycles stage and the lightmap bake agree. Layout:
 
     maps/<map>.bsp                        the BSP2 package
-    materials/<map>/<material>.vmt        WMSH namespace (`PBR` preview shader)
+    materials/<map>/<material>.vmt        WMSH namespace (`PBR` preview shader;
+                                          `PBRMetalRough` glass)
     materials/<map>_fallback/<material>.vmt   LightmappedGeneric/UnlitGeneric
     materials/<map>/<material>/basecolor.vtf, mrao.vtf
 
 Base colors are encoded as sRGB (the PBR shader samples $basetexture with
-sRGB read); MRAO stays linear. Transmissive materials use an alpha-blended
-unlit preview, and emitters an unlit white preview, because refraction and
-emissive WMSH batches are not implemented.
+sRGB read); MRAO stays linear. Transmissive (glass) materials are
+`PBRMetalRough` with `$transmission`, `$ior` and `$thickness` from the same
+policy, drawn two-sided; their fallback is an alpha-blended unlit preview.
+Emitters use an unlit white preview, because emissive WMSH batches are not
+implemented.
 """
 
 import argparse
@@ -131,10 +134,14 @@ def main():
         if summary["pbrt_type"] == "diffusetransmission":
             common.append(("$nocull", "1"))
         if summary["transmission"] > 0:
-            preview = "unlit-translucent"
+            preview = "pbr-glass"
             fallback = vmt("UnlitGeneric", [("$basetexture", texture), ("$translucent", "1"),
                                             ("$alpha", "%g" % GLASS_PREVIEW_ALPHA)] + common)
-            world = fallback
+            world = vmt("PBRMetalRough", [
+                ("$basetexture", texture), ("$mraotexture", "%s/%s/mrao" % (prefix, name)),
+                ("$transmission", "%g" % summary["transmission"]),
+                ("$ior", "%g" % summary["ior"]), ("$thickness", "0"), ("$nocull", "1"),
+                ("$fallbackmaterial", "%s_fallback/%s" % (prefix, name))] + common)
         elif summary["pbrt_type"] == "sky":
             preview = "unlit-sky"
             fallback = vmt("UnlitGeneric", [("$basetexture", texture), ("$nocull", "1"),

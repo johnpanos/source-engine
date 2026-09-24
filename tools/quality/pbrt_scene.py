@@ -453,8 +453,9 @@ def material_summary(scene, name):
         result["base_color"] = (1.0, 1.0, 1.0)
         result["transmission"] = 1.0
         result["ior"] = scalar(parameters, "eta", 1.5)
-        result["roughness"] = 0.0
-        result["approximation"] = "refraction unavailable in game preview"
+        result["roughness"] = math.sqrt(roughness_alpha(parameters, 0.0))
+        result["approximation"] = ("glass refracts a screen-space capture of the scene "
+                                   "behind it, as a thin sheet")
     elif kind == "diffusetransmission":
         # pbrt-v4 DiffuseTransmissionMaterial: R/pi reflected, T/pi transmitted,
         # both times `scale`; R and T default to 0.25.

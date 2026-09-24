@@ -10,6 +10,7 @@
 #include "testing/conformance_result.h"
 
 #include <cstdio>
+#include <limits>
 #include <map>
 #include <string>
 #include <vector>
@@ -101,6 +102,23 @@ int main()
 	           Parameter( MaterialParameter::kFallbackMaterial ).kind ==
 	               ParameterKind::kMaterialReference,
 	    "fallback is a required VMT reference" );
+	Check( Parameter( MaterialParameter::kTransmission ).kind == ParameterKind::kFloat &&
+	           !Parameter( MaterialParameter::kTransmission ).required &&
+	           std::string( Parameter( MaterialParameter::kTransmission ).defaultValue ) == "0" &&
+	           std::string( Parameter( MaterialParameter::kIndexOfRefraction ).name ) == "$ior" &&
+	           std::string( Parameter( MaterialParameter::kIndexOfRefraction ).defaultValue ) ==
+	               "1.5" &&
+	           std::string( Parameter( MaterialParameter::kThickness ).defaultValue ) == "0",
+	    "glass parameters are optional scalars defaulting to an opaque dielectric" );
+	Check( IsValidTransmission( 1.0f, 1.5f, 0.0f ) && IsValidTransmission( 0.0f, 1.0f, 2.0f ) &&
+	           IsValidTransmission( 0.5f, kMaxIndexOfRefraction, 1.0e6f ),
+	    "clear, opaque and dense glass values are accepted" );
+	Check( !IsValidTransmission( -0.1f, 1.5f, 0.0f ) && !IsValidTransmission( 1.1f, 1.5f, 0.0f ) &&
+	           !IsValidTransmission( 1.0f, 0.9f, 0.0f ) &&
+	           !IsValidTransmission( 1.0f, kMaxIndexOfRefraction + 0.1f, 0.0f ) &&
+	           !IsValidTransmission( 1.0f, 1.5f, -1.0f ) &&
+	           !IsValidTransmission( std::numeric_limits<float>::quiet_NaN(), 1.5f, 0.0f ),
+	    "out-of-range and NaN glass values are rejected" );
 	Check( IsValidFallbackReference( "compat/red" ) && !IsValidFallbackReference( "../outside" ) &&
 	           !IsValidFallbackReference( "compat//red" ) &&
 	           !IsValidFallbackReference( "compat\\red" ) &&

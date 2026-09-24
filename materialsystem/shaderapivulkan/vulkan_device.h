@@ -590,6 +590,9 @@ public:
 	// the captured area. The capture of a multisampled back buffer has no
 	// depth; ReadSceneDepth then fails.
 	bool SceneDepthSupported() const { return m_sceneDepthUsable; }
+	// Diagnostic: captures skip depth while disabled, as on a device without
+	// readable depth (glass then keeps refracted samples of nearer geometry).
+	void SetSceneDepthEnabled( bool enabled ) { m_sceneDepthEnabled = enabled; }
 	bool ReadSceneDepth( std::vector<float> *outDepth, uint32_t *outWidth, uint32_t *outHeight,
 	    std::string *outError );
 	// Scene captures replayed into the last recorded frame, and how many of
@@ -1234,6 +1237,7 @@ private:
 	int m_sceneDepthHandle = -1;
 	// The depth format can be copied from the attachments and sampled.
 	bool m_sceneDepthUsable = false;
+	bool m_sceneDepthEnabled = true;
 	// Queue-side state: whether the target still holds what the last capture
 	// copied, which target and glass material it served, and captures queued.
 	bool m_sceneCaptureCurrent = false;

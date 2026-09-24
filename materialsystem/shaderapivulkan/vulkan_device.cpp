@@ -4865,6 +4865,7 @@ static bool SrgbCapableShader( int shaderIndex )
 	return shaderIndex == CVulkanContext::kDynShaderTextured ||
 	       shaderIndex == CVulkanContext::kDynShaderPbrDirect ||
 	       shaderIndex == CVulkanContext::kDynShaderPbrWorld ||
+	       shaderIndex == CVulkanContext::kDynShaderPbrGlass ||
 	       shaderIndex == CVulkanContext::kDynShaderPortalRefract ||
 	       shaderIndex == CVulkanContext::kDynShaderSkin ||
 	       shaderIndex == CVulkanContext::kDynShaderSolidEnergy;

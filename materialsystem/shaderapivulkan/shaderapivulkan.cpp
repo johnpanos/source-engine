@@ -3690,8 +3690,27 @@ void CEmptyMesh::EmitToNativeQueue()
 			// sets 0, 1 and 2, and the map-owned HDR LMAP at set 3.
 			float eye[3];
 			g_ShaderAPIEmpty.GetWorldSpaceCameraPosition( eye );
-			if ( !g_VulkanContext.SelectPbrWorldMaterial(
-			         g_boundPbrMraoHandle, g_boundPbrNormalHandle, eye, g_CurrentAlphaRef ) )
+			// PBRMetalRough's dynamic state writes c0: transmission, IOR,
+			// thickness, and w = 1 for glass (pbr_metalrough_native.cpp).
+			const bool glass =
+			    render::pbr::IsMetalRoughShader( g_pBoundMaterial->GetShaderName() ) &&
+			    g_psConstants[0][3] > 0.5f;
+			if ( glass )
+			{
+				render_vulkan::CVulkanContext::PbrGlassParams params;
+				params.transmission = g_psConstants[0][0];
+				params.ior = g_psConstants[0][1];
+				params.thickness = g_psConstants[0][2];
+				params.materialKey = reinterpret_cast<uintptr_t>( g_pBoundMaterial );
+				if ( !g_VulkanContext.SelectPbrGlassMaterial( g_boundPbrMraoHandle,
+				         g_boundPbrNormalHandle, eye, g_CurrentAlphaRef, params ) )
+				{
+					DropDraw( "draw dropped: WMSH glass images or pipeline unavailable" );
+					return;
+				}
+			}
+			else if ( !g_VulkanContext.SelectPbrWorldMaterial(
+			              g_boundPbrMraoHandle, g_boundPbrNormalHandle, eye, g_CurrentAlphaRef ) )
 			{
 				DropDraw( "draw dropped: WMSH PBR images or pipeline unavailable" );
 				return;

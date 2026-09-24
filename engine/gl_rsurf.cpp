@@ -110,6 +110,19 @@ struct WorldMeshCullView_t
 	bool occlusionValid;
 };
 
+// A visible meshlet of a translucent WMSH batch, drawn in its leaf's turn of
+// the back-to-front translucent pass (Shader_DrawTranslucentSurfaces). It
+// belongs to the nearest visible leaf that references it, as a legacy
+// translucent surface belongs to the first leaf the front-to-back walk finds
+// it in.
+struct WorldMeshTranslucent_t
+{
+	int sortIndex; // position in the render list's m_VisibleLeaves
+	unsigned int batch;
+	unsigned int meshlet;
+	float distanceSqr; // eye to the meshlet's center
+};
+
 // A meshlet is outside when its bounding sphere lies behind any frustum plane.
 static bool WorldMeshMeshletOutside(
     const Frustum_t &frustum, const worldmeshcluster_t &meshlet, float radiusScale )
@@ -173,6 +186,8 @@ struct WorldMeshBatchCull_t
 	bool occluder;
 	bool twoSided;
 	bool occludee;
+	// Drawn in the translucent pass rather than with the opaque world.
+	bool translucent;
 };
 
 // The shader state these flags select (CBaseShader::SetInitialShadowState)
@@ -184,6 +199,7 @@ static WorldMeshBatchCull_t ClassifyWorldMeshBatch( IMaterial *pMaterial, unsign
 	const bool noDepth = pMaterial->GetMaterialVarFlag( MATERIAL_VAR_IGNOREZ ) ||
 	                     pMaterial->GetMaterialVarFlag( MATERIAL_VAR_DECAL );
 	cull.twoSided = pMaterial->GetMaterialVarFlag( MATERIAL_VAR_NOCULL );
+	cull.translucent = pMaterial->IsTranslucent();
 	cull.backface = !cull.twoSided && !wireframe;
 	cull.occludee = !noDepth;
 	cull.occluder = draw == WORLDMESH_BATCH_DRAWN && !wireframe && !noDepth &&
@@ -193,11 +209,73 @@ static WorldMeshBatchCull_t ClassifyWorldMeshBatch( IMaterial *pMaterial, unsign
 	return cull;
 }
 
+// Assigns each visible meshlet of a translucent batch to the nearest visible
+// leaf referencing it, ordered by leaf and then back to front within a leaf.
+static void CollectWorldMeshTranslucent( const worldbrushdata_t *pWorld,
+    const WorldMeshBatchCull_t *pBatchCull, const unsigned short *pVisibleLeaves,
+    int nVisibleLeaves, unsigned char *pVisible, const Vector &eye,
+    CUtlVector<WorldMeshTranslucent_t> &out )
+{
+	out.RemoveAll();
+	for ( unsigned int b = 0; b < pWorld->worldMeshBatchCount; ++b )
+	{
+		if ( !pBatchCull[b].translucent )
+			continue;
+		// A batch's meshlets are one contiguous range.
+		const worldmeshbatch_t &batch = pWorld->pWorldMeshBatches[b];
+		const unsigned int batchFirst = batch.firstMeshlet;
+		const unsigned int batchEnd = batch.firstMeshlet + batch.meshletCount;
+		for ( int i = 0; i < nVisibleLeaves; ++i )
+		{
+			const int leafIndex = pVisibleLeaves[i];
+			if ( leafIndex < 0 ||
+			     static_cast<unsigned int>( leafIndex ) >= pWorld->worldMeshLeafCount )
+				continue;
+			const worldmeshleafrange_t &leaf = pWorld->pWorldMeshLeafRanges[leafIndex];
+			const worldmeshleafrun_t *pRuns = pWorld->pWorldMeshLeafRuns + leaf.firstRun;
+			for ( unsigned int r = 0; r < leaf.runCount; ++r )
+			{
+				const unsigned int first = max( pRuns[r].firstMeshlet, batchFirst );
+				const unsigned int end =
+				    min( pRuns[r].firstMeshlet + pRuns[r].meshletCount, batchEnd );
+				for ( unsigned int m = first; m < end; ++m )
+				{
+					// 1 is visible and unassigned; 2 is assigned.
+					if ( pVisible[m] != 1 )
+						continue;
+					pVisible[m] = 2;
+					WorldMeshTranslucent_t entry;
+					entry.sortIndex = i;
+					entry.batch = b;
+					entry.meshlet = m;
+					entry.distanceSqr = pWorld->pWorldMeshClusters[m].center.DistToSqr( eye );
+					out.AddToTail( entry );
+				}
+			}
+		}
+	}
+	struct Order
+	{
+		static int Compare( const WorldMeshTranslucent_t *a, const WorldMeshTranslucent_t *b )
+		{
+			if ( a->sortIndex != b->sortIndex )
+				return a->sortIndex < b->sortIndex ? -1 : 1;
+			if ( a->distanceSqr != b->distanceSqr )
+				return a->distanceSqr > b->distanceSqr ? -1 : 1;
+			return a->meshlet < b->meshlet ? -1 : ( a->meshlet > b->meshlet ? 1 : 0 );
+		}
+	};
+	out.Sort( Order::Compare );
+}
+
 // Draws the meshlets of the visible leaves that pass the view's culling.
-// pView is NULL when the list was built without frustum culling.
+// pView is NULL when the list was built without frustum culling. Translucent
+// batches are not drawn here: their visible meshlets go to pTranslucent for
+// the translucent pass.
 static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
     const unsigned short *pVisibleLeaves, int nVisibleLeaves, CUtlVector<unsigned char> &visible,
-    const WorldMeshCullView_t *pView, unsigned long flags )
+    const WorldMeshCullView_t *pView, unsigned long flags,
+    CUtlVector<WorldMeshTranslucent_t> &translucent )
 {
 	world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshDrawProvider();
 	if ( !uploader )
@@ -395,6 +473,10 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 	}
 	const double cullTime = Plat_FloatTime();
 
+	CollectWorldMeshTranslucent( pWorld, pBatchCull, pVisibleLeaves, nVisibleLeaves, pVisible,
+	    pView ? Vector( pView->eye[0], pView->eye[1], pView->eye[2] ) : CurrentViewOrigin(),
+	    translucent );
+
 	// Drawing a culled meshlet never changes a pixel, so a culled gap shorter
 	// than the bridge is drawn: that costs less than another draw.
 	const unsigned int bridgeIndices = cullMode == 1 ? 3 * r_worldmesh_cull_bridge.GetInt() : 0;
@@ -405,6 +487,8 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 	static bool s_reportedRejected = false;
 	for ( unsigned int i = 0; i < batchCount; ++i )
 	{
+		if ( pBatchCull[i].translucent )
+			continue;
 		const worldmeshbatch_t &batch = pWorld->pWorldMeshBatches[i];
 		pRenderContext->Bind( batch.material, NULL );
 		// Meshlets are the visibility unit, not the draw unit: visible meshlets
@@ -754,6 +838,7 @@ public:
 		m_VisibleLeaves.Purge();
 		m_VisibleLeafFogVolumes.Purge();
 		m_WorldMeshVisibility.Purge();
+		m_WorldMeshTranslucent.Purge();
 		for ( int i = 0; i < MAX_MAT_SORT_GROUPS; i++ )
 		{
 			m_ShadowHandles[i].Purge();
@@ -786,6 +871,7 @@ public:
 		m_VisibleLeaves.RemoveAll();
 		m_VisibleLeafFogVolumes.RemoveAll();
 		m_WorldMeshVisibility.RemoveAll();
+		m_WorldMeshTranslucent.RemoveAll();
 
 		m_VisitedSurfs.ClearAll();
 	}
@@ -810,6 +896,8 @@ public:
 	CUtlVector<LeafIndex_t>		m_VisibleLeaves;
 	CUtlVector<LeafFogVolume_t>	m_VisibleLeafFogVolumes;
 	CUtlVector<unsigned char> m_WorldMeshVisibility;
+	// Visible meshlets of translucent WMSH batches, by leaf, back to front.
+	CUtlVector<WorldMeshTranslucent_t> m_WorldMeshTranslucent;
 	// How m_VisibleLeaves was culled, for WMSH meshlet culling.
 	WorldMeshCullView_t m_WorldMeshView;
 
@@ -2649,7 +2737,7 @@ static void Shader_WorldEnd( CWorldRenderList *pRenderList, unsigned long flags,
 			Shader_DrawWorldMeshBatches( pRenderContext, pRenderList->m_VisibleLeaves.Base(),
 			    pRenderList->m_VisibleLeaves.Count(), pRenderList->m_WorldMeshVisibility,
 			    pRenderList->m_WorldMeshView.frustumValid ? &pRenderList->m_WorldMeshView : NULL,
-			    flags );
+			    flags, pRenderList->m_WorldMeshTranslucent );
 #else
 		Shader_DrawChains( pRenderList, nSortGroup, false );
 #endif
@@ -2702,9 +2790,78 @@ static void Shader_WorldEnd( CWorldRenderList *pRenderList, unsigned long flags,
 //-----------------------------------------------------------------------------
 // Renders translucent surfaces
 //-----------------------------------------------------------------------------
+
+// The translucent WMSH meshlets of one visible leaf: [first, first + count) of
+// the list's m_WorldMeshTranslucent, which is sorted by leaf.
+static int WorldMeshTranslucentRange(
+    const CWorldRenderList *pRenderList, int sortIndex, int *pFirst )
+{
+	const CUtlVector<WorldMeshTranslucent_t> &entries = pRenderList->m_WorldMeshTranslucent;
+	int low = 0;
+	int high = entries.Count();
+	while ( low < high )
+	{
+		const int middle = ( low + high ) / 2;
+		if ( entries[middle].sortIndex < sortIndex )
+			low = middle + 1;
+		else
+			high = middle;
+	}
+	int end = low;
+	while ( end < entries.Count() && entries[end].sortIndex == sortIndex )
+		++end;
+	*pFirst = low;
+	return end - low;
+}
+
+// Draws a leaf's translucent WMSH meshlets back to front, as ranges of
+// adjacent indices within one batch.
+static void Shader_DrawWorldMeshTranslucent(
+    IMatRenderContext *pRenderContext, const CWorldRenderList *pRenderList, int sortIndex )
+{
+	int first = 0;
+	const int count = WorldMeshTranslucentRange( pRenderList, sortIndex, &first );
+	world_mesh_gpu::IWorldMeshUpload *uploader = count ? WorldMeshDrawProvider() : NULL;
+	if ( !uploader )
+		return;
+	const worldbrushdata_t *pWorld = host_state.worldbrush;
+	const WorldMeshTranslucent_t *pEntries = pRenderList->m_WorldMeshTranslucent.Base() + first;
+	static bool s_reportedRejected = false;
+	unsigned int boundBatch = ~0u;
+	for ( int i = 0; i < count; )
+	{
+		const unsigned int batch = pEntries[i].batch;
+		if ( batch != boundBatch )
+		{
+			pRenderContext->Bind( pWorld->pWorldMeshBatches[batch].material, NULL );
+			boundBatch = batch;
+		}
+		const worldmeshcluster_t &meshlet = pWorld->pWorldMeshClusters[pEntries[i].meshlet];
+		unsigned int runFirst = meshlet.firstIndex;
+		unsigned int runCount = meshlet.indexCount;
+		for ( ++i; i < count && pEntries[i].batch == batch; ++i )
+		{
+			const worldmeshcluster_t &next = pWorld->pWorldMeshClusters[pEntries[i].meshlet];
+			if ( next.firstIndex != runFirst + runCount )
+				break;
+			runCount += next.indexCount;
+		}
+		if ( !uploader->DrawBatch( runFirst, runCount ) && !s_reportedRejected )
+		{
+			IMaterial *pMaterial = pWorld->pWorldMeshBatches[batch].material;
+			Warning( "WMSH translucent draw rejected material %s at index %u\n",
+			    pMaterial ? pMaterial->GetName() : "(null)", runFirst );
+			s_reportedRejected = true;
+		}
+	}
+}
+
 bool Shader_LeafContainsTranslucentSurfaces( IWorldRenderList *pRenderListIn, int sortIndex, unsigned long flags )
 {
 	CWorldRenderList *pRenderList = assert_cast<CWorldRenderList *>(pRenderListIn);
+	int first = 0;
+	if ( WorldMeshTranslucentRange( pRenderList, sortIndex, &first ) )
+		return true;
 	int i;
 	for ( i = 0; i < MAX_MAT_SORT_GROUPS; ++i )
 	{
@@ -2742,7 +2899,10 @@ void Shader_DrawTranslucentSurfaces( IWorldRenderList *pRenderListIn, int sortIn
 		skipLight = true;
 	}
 
-
+	// The leaf's translucent WMSH meshlets (glass), which never write the
+	// shadow depth map.
+	if ( !bShadowDepth )
+		Shader_DrawWorldMeshTranslucent( pRenderContext, pRenderList, sortIndex );
 
 	// Gotta draw each sort group
 	// Draw the fog volume first, if there is one, because it turns out

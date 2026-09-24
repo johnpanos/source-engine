@@ -262,6 +262,7 @@
           "materialsystem/shaderapivulkan/vulkan_device.h",
           "materialsystem/shaderapivulkan/vulkan_device.cpp",
           "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+          "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
           "materialsystem/shaderapivulkan/vulkan_surface_host.h",
           "materialsystem/shaderapivulkan/vulkan_present_mode.h",
           "materialsystem/shaderapivulkan/vulkan_adapter.h",

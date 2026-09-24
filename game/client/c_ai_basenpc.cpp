@@ -19,6 +19,8 @@
 
 #define PING_MAX_TIME	2.0
 
+// Source network table macros require their declaration layout.
+// clang-format off
 IMPLEMENT_CLIENTCLASS_DT( C_AI_BaseNPC, DT_AI_BaseNPC, CAI_BaseNPC )
 	RecvPropInt( RECVINFO( m_lifeState ) ),
 	RecvPropBool( RECVINFO( m_bPerformAvoidance ) ),
@@ -34,7 +36,8 @@ IMPLEMENT_CLIENTCLASS_DT( C_AI_BaseNPC, DT_AI_BaseNPC, CAI_BaseNPC )
 #ifdef PORTAL2
 	RecvPropString( RECVINFO( m_szNetworkedName ) ),
 #endif
-END_RECV_TABLE()
+END_RECV_TABLE();
+// clang-format on
 
 #ifdef PORTAL2
 static CHandle<C_BaseEntity> s_hPotatosSpeaker;
@@ -161,8 +164,8 @@ void C_AI_BaseNPC::OnDataChanged( DataUpdateType_t type )
 
 #ifdef PORTAL2
 	// As in the retail client, PotatOS's light follows the actor that voices her.
-	if ( type == DATA_UPDATE_CREATED &&
-		 ( !V_stricmp( m_szNetworkedName, "@glados" ) || !V_stricmp( m_szNetworkedName, "@actor_potatos" ) ) )
+	if ( type == DATA_UPDATE_CREATED && ( !V_stricmp( m_szNetworkedName, "@glados" ) ||
+	                                        !V_stricmp( m_szNetworkedName, "@actor_potatos" ) ) )
 	{
 		s_hPotatosSpeaker = this;
 		MouthInfo().ActivateEnvelope();
