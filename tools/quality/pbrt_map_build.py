@@ -172,6 +172,7 @@ class Pipeline:
             "denoised": self.out / "lighting" / "atlas-denoised.exr",
             "denoised_receipt": self.out / "lighting" / "atlas-denoised.exr.json",
             "directional_bakes": self.out / "lighting" / "directional",
+            "sun_visibility": self.out / "lighting" / "sun_visibility.exr",
             "directional": self.out / "lighting" / "atlas-directional.exr",
             "audit": self.out / "audit.json",
             "ktx2": self.out / "lighting" / "atlas.ktx2",
@@ -392,7 +393,13 @@ class Pipeline:
                       [p["probe"]],
                       lambda: self.blender("probe", "pbrt_reflection_probe.py", face_args))
             probe_args = ["--probe-dir", p["probe"], "--probe-width", str(probe_width)]
+        # A scene sun: baked visibility + marker texels for dynamic specular.
+        sun_args = []
+        if self.scene.get("distant_lights") and probe:
+            sun_args = ["--sun-visibility", p["sun_visibility"], "--coverage-exr", p["coverage"],
+                        "--sun-bake-evidence", p["atlas_receipt"]]
         self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"]] +
+                  ([p["sun_visibility"], p["coverage"]] if sun_args else []) +
                   ([p["probe"] / "probe.json"] if probe else []) +
                   ([p["directional"]] if directional else []),
                   {"preview_gain": self.lightmap["preview_gain"], "scope": scope,
@@ -404,7 +411,7 @@ class Pipeline:
                                             "--ktx-tool", self.tools["ktx"],
                                             "--preview-gain", str(self.lightmap["preview_gain"]),
                                             "--expected-scope", scope, "--out", p["ktx2"]] +
-                                           probe_args + directional_args))
+                                           probe_args + directional_args + sun_args))
         pack_stage = p["lighting_stage"]
         if environment:
             pack_stage = p["render_stage"]

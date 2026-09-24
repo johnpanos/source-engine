@@ -3715,9 +3715,16 @@ void CEmptyMesh::EmitToNativeQueue()
 			}
 			if ( features & render::pbr::kNativeEnvMap )
 				maps.environment = g_boundPbrEnvmapHandle;
-			if ( glass && ( features & ( render::pbr::kNativeEmission | render::pbr::kNativeEnvMap ) ) )
+			if ( features & render::pbr::kNativeClearCoat )
 			{
-				DropDraw( "draw dropped: WMSH glass with $emissiontexture or $envmap not implemented" );
+				maps.clearCoat = g_psConstants[2][1];
+				maps.clearCoatRoughness = g_psConstants[2][2];
+			}
+			if ( glass && ( features & ( render::pbr::kNativeEmission | render::pbr::kNativeEnvMap |
+			                               render::pbr::kNativeClearCoat ) ) )
+			{
+				DropDraw( "draw dropped: WMSH glass with $emissiontexture, $envmap or $clearcoat not "
+				          "implemented" );
 				return;
 			}
 			if ( glass )
@@ -5911,11 +5918,13 @@ static void CommitPbrModelConstants( const CShaderAPIVulkan &api )
 	                   int( render_vulkan::CVulkanContext::kPbrModelEmission ) ==
 	                       render::pbr::kNativeEmission &&
 	                   int( render_vulkan::CVulkanContext::kPbrModelEnvMap ) ==
-	                       render::pbr::kNativeEnvMap,
+	                       render::pbr::kNativeEnvMap &&
+	                   int( render_vulkan::CVulkanContext::kPbrModelClearCoat ) ==
+	                       render::pbr::kNativeClearCoat,
 	    "model_pbr.frag's flags are the material's native feature flags" );
 	c.combos = static_cast<int>( g_psConstants[3][0] ) &
 	           ( render::pbr::kNativeNormalMap | render::pbr::kNativeEmission |
-	               render::pbr::kNativeEnvMap );
+	               render::pbr::kNativeEnvMap | render::pbr::kNativeClearCoat );
 	const int envmap = g_boundPbrEnvmapHandle;
 	c.ps[2][3] = envmap >= 0 && size_t( envmap ) < g_TextureRecords.size()
 	                 ? static_cast<float>( g_TextureRecords[size_t( envmap )].mipLevels )

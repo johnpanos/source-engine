@@ -8,11 +8,14 @@
 #include "../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_device.h"
 #include "../../materialsystem/shaderapivulkan/vulkan_world_lightmap.h"
+#include "render/pbr_brdf.h"
 #include "testing/conformance_result.h"
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #ifdef RFC0008_KTX_READER
@@ -274,6 +277,52 @@ int main()
 		std::fprintf( stderr, "envmap red %u (expected ~133)\n", reflected );
 		check( reflected >= 128 && reflected <= 136,
 		    "$envmap mirrors the reflected +Z face through the split-sum albedo" );
+		// $clearcoat at a grazing view: eye far along +X, so N.V ~ 0.1 and the
+		// coat's Fresnel ~ 0.61. Both layers reflect toward -X; a black, fully
+		// rough dielectric base leaves env * ( albedo ( 1 - Fc ) + Fc ).
+		for ( std::uint32_t face = 0; face < 6; ++face )
+		{
+			const std::array<std::uint8_t, 4> texel =
+			    face == 1 ? std::array<std::uint8_t, 4>{ 200, 100, 50, 255 } : black;
+			check( context.UploadManagedTexture( environment, texel.data(), 4, &error, 0, face ),
+			    "environment cube face uploads" );
+		}
+		const std::array<std::uint8_t, 4> roughDielectric = { 0, 255, 255, 255 };
+		check( context.UploadManagedTexture( base, black.data(), 4, &error ) &&
+		           context.UploadManagedTexture( mrao, roughDielectric.data(), 4, &error ),
+		    "black rough dielectric uploads" );
+		const float grazingEye[3] = { 10.0f, 0.0f, 1.5f };
+		std::uint8_t uncoated = 0;
+		check( context.SelectPbrWorldMaterial( mrao, normal, grazingEye, -1.0f, cubeMaps ) &&
+		           DrawWorld( context, &uncoated, &error ),
+		    "uncoated grazing pixel renders" );
+		render_vulkan::CVulkanContext::PbrWorldMaps coatMaps = cubeMaps;
+		coatMaps.clearCoat = 1.0f;
+		coatMaps.clearCoatRoughness = 0.05f;
+		std::uint8_t coated = 0;
+		check( context.SelectPbrWorldMaterial( mrao, normal, grazingEye, -1.0f, coatMaps ) &&
+		           DrawWorld( context, &coated, &error ),
+		    "clear-coated grazing pixel renders" );
+		{
+			const float normalDotView = 1.0f / std::sqrt( 101.0f );
+			const float grazing = 1.0f - normalDotView;
+			const float fresnel = 0.04f + 0.96f * std::pow( grazing, 5.0f );
+			const render::pbr::SplitSumCoefficients split =
+			    render::pbr::SampleSplitSum( normalDotView, 1.0f );
+			const float albedo = std::min( 1.0f, 0.04f * split.a + split.b );
+			const float linear = ( 200.0f / 255.0f ) * ( albedo * ( 1.0f - fresnel ) + fresnel );
+			const float encoded =
+			    linear <= 0.0031308f ? linear * 12.92f
+			                         : 1.055f * std::pow( linear, 1.0f / 2.4f ) - 0.055f;
+			std::fprintf( stderr, "clear coat red %u (expected %.1f), uncoated %u\n", coated,
+			    encoded * 255.0f, uncoated );
+			check( std::abs( coated - encoded * 255.0f ) <= 4.0f,
+			    "$clearcoat adds its grazing Fresnel reflection over the attenuated base" );
+			check( coated > uncoated + 40, "the coat is visible against the uncoated base" );
+			check( !context.SelectPbrWorldMaterial( mrao, normal, grazingEye, -1.0f,
+			           render_vulkan::CVulkanContext::PbrWorldMaps{ -1, 0.0f, -1, 1.5f, 0.1f } ),
+			    "an out-of-range $clearcoat is rejected" );
+		}
 		check( context.UploadManagedTexture( base, baseBytes.data(), baseBytes.size(), &error ),
 		    "base color restored" );
 		context.DestroyManagedTexture( emission );

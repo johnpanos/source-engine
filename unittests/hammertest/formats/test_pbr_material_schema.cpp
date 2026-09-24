@@ -119,6 +119,18 @@ int main()
 	           !IsValidTransmission( 1.0f, 1.5f, -1.0f ) &&
 	           !IsValidTransmission( std::numeric_limits<float>::quiet_NaN(), 1.5f, 0.0f ),
 	    "out-of-range and NaN glass values are rejected" );
+	Check( Parameter( MaterialParameter::kClearCoat ).kind == ParameterKind::kFloat &&
+	           !Parameter( MaterialParameter::kClearCoat ).required &&
+	           std::string( Parameter( MaterialParameter::kClearCoat ).name ) == "$clearcoat" &&
+	           std::string( Parameter( MaterialParameter::kClearCoat ).defaultValue ) == "0" &&
+	           std::string( Parameter( MaterialParameter::kClearCoatRoughness ).name ) ==
+	               "$clearcoatroughness",
+	    "clear coat parameters are optional scalars defaulting to no coat" );
+	Check( IsValidClearCoat( 0.0f, 0.0f ) && IsValidClearCoat( 1.0f, 1.0f ) &&
+	           !IsValidClearCoat( -0.1f, 0.5f ) && !IsValidClearCoat( 1.1f, 0.5f ) &&
+	           !IsValidClearCoat( 0.5f, 1.5f ) &&
+	           !IsValidClearCoat( std::numeric_limits<float>::quiet_NaN(), 0.5f ),
+	    "clear coat weight and roughness are bounded to [0, 1]" );
 	Check( IsValidFallbackReference( "compat/red" ) && !IsValidFallbackReference( "../outside" ) &&
 	           !IsValidFallbackReference( "compat//red" ) &&
 	           !IsValidFallbackReference( "compat\\red" ) &&

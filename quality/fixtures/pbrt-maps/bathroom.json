@@ -1,0 +1,37 @@
+{
+  "schema": "pbrt-map-manifest/v1",
+  "map": "bathroom",
+  "scene": "bathroom/scene-v4.pbrt",
+  "credit": "Contemporary Bathroom by Mareck (CC0), pbrt-v4 conversion by Benedikt Bitterli",
+  "reference": {
+    "png": "bathroom/TungstenRender.png",
+    "exr": "bathroom/TungstenRender.exr",
+    "render": {
+      "samples": 64,
+      "scale": 1.0
+    },
+    "gate": {
+      "max_mae": 10,
+      "min_ssim": 0.86,
+      "max_exposure_stops": 0.3
+    }
+  },
+  "lightmap": {
+    "size": 2048,
+    "samples": 4096,
+    "device": "gpu"
+  },
+  "collision": {
+    "envelope_meshes": [
+      "Mesh005",
+      "Mesh007",
+      "Mesh003"
+    ],
+    "solid_materials": [
+      "Bathtube"
+    ],
+    "solid_meshes": [
+      "Mesh793"
+    ]
+  }
+}

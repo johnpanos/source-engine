@@ -19,7 +19,9 @@ branches on the source format itself. The shared model:
 Material summaries always carry the full channel set: `textures` maps
 base/roughness/metallic/occlusion/normal/emission/opacity to UsdUVTexture-like
 records ({file, channel, scale, bias, colorspace}), plus `emission_color`,
-`opacity` and `opacity_threshold`. PBRT summaries get empty defaults.
+`opacity`, `opacity_threshold` and a UsdPreviewSurface clear coat
+(`clearcoat`, `clearcoat_roughness`) over the base. PBRT summaries get empty
+defaults; PBRT coateddiffuse keeps its `coat_roughness` model.
 
     python3 tools/quality/map_scene.py <scene.pbrt | scene.json>
     python3 tools/quality/map_scene.py --meshes <scene>
@@ -35,7 +37,7 @@ import pbrt_scene  # noqa: E402
 SCHEMA = "map-scene/v1"
 USD_SUFFIXES = (".usd", ".usda", ".usdc", ".usdz")
 CHANNEL_DEFAULTS = {"textures": {}, "emission_color": None, "opacity": 1.0,
-                    "opacity_threshold": 0.0}
+                    "opacity_threshold": 0.0, "clearcoat": 0.0, "clearcoat_roughness": 0.01}
 sky_display = pbrt_scene.sky_display
 coated_albedo = pbrt_scene.coated_albedo
 

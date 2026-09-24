@@ -88,6 +88,8 @@ struct Scene
 	Vec3 lightDirection = { 0, 0, -1 }; // toward the light
 	float lightColor[3] = { 0, 0, 0 };
 	float attenuation = 1.0f;
+	float coat = 0.0f;
+	float coatRoughness = 0.03f;
 	int flags = 0; // model_pbr.frag's
 };
 
@@ -116,6 +118,7 @@ enum Defect
 	kNoOcclusion,          // ambient not multiplied by MRAO occlusion
 	kEnvIgnoresFresnel,    // environment added without the split-sum albedo
 	kEmissionLinearBytes,  // emission bytes used without sRGB decode
+	kNoClearCoat,          // $clearcoat ignored
 };
 
 std::array<float, 3> Expected( const Scene &scene, Defect defect = kNone )
@@ -165,11 +168,31 @@ std::array<float, 3> Expected( const Scene &scene, Defect defect = kNone )
 	const float vn = Dot( kView, normal );
 	const Vec3 reflected = { 2.0f * vn * normal.x - kView.x, 2.0f * vn * normal.y - kView.y,
 		2.0f * vn * normal.z - kView.z };
+	// Clear coat (Filament's model): IOR 1.5 layer on the geometric normal.
+	const bool coated = ( scene.flags & CVulkanContext::kPbrModelClearCoat ) && defect != kNoClearCoat;
+	const auto schlick = []( float f0, float cosine )
+	{
+		const float g = 1.0f - cosine;
+		return f0 + ( 1.0f - f0 ) * g * g * g * g * g;
+	};
+	const float coatRoughness = std::max( scene.coatRoughness, 0.02f );
+	const float coatLightDotHalf = std::max( Dot( light, half ), 0.0f );
+	const float coatLightFresnel = coated ? schlick( 0.04f, coatLightDotHalf ) * scene.coat : 0.0f;
+	const float coatDirect = coated ? kPi * GgxDistribution( std::max( Dot( kNormal, half ), 0.0f ),
+	                                          coatRoughness ) *
+	                                      ( 0.25f / std::max( coatLightDotHalf * coatLightDotHalf,
+	                                                   1e-6f ) ) *
+	                                      coatLightFresnel * std::max( Dot( kNormal, light ), 0.0f )
+	                                : 0.0f;
+	const float coatViewFresnel = coated ? schlick( 0.04f, std::max( Dot( kNormal, kView ), 0.0f ) ) *
+	                                           scene.coat
+	                                     : 0.0f;
 	for ( int c = 0; c < 3; ++c )
 	{
 		const float directionalAlbedo = std::min( 1.0f, f0Channel[c] * albedo.a + albedo.b );
 		const float diffuseColor = baseChannel[c] * ( 1.0f - metalness ) * ( 1.0f - directionalAlbedo );
 		float value = diffuseColor * AmbientCubeAt( scene.ambient, normal, c ).x * occlusion;
+		float direct = 0.0f;
 		if ( scene.lights > 0 && normalDotLight > 0.0f )
 		{
 			const float incident = scene.lightColor[c] *
@@ -177,7 +200,7 @@ std::array<float, 3> Expected( const Scene &scene, Defect defect = kNone )
 			float lit = kPi * directChannel[c] * incident * normalDotLight;
 			if ( defect == kSpecularWithoutPi )
 				lit -= ( kPi - 1.0f ) * specularChannel[c] * incident * normalDotLight;
-			value += lit;
+			direct = lit * ( 1.0f - coatLightFresnel ) + coatDirect * incident;
 		}
 		float environment;
 		if ( scene.flags & CVulkanContext::kPbrModelEnvMap )
@@ -196,6 +219,10 @@ std::array<float, 3> Expected( const Scene &scene, Defect defect = kNone )
 		}
 		value += environment * ( defect == kEnvIgnoresFresnel ? 1.0f : directionalAlbedo ) *
 		         occlusion;
+		// The coat reflects the environment in the geometric normal's mirror
+		// direction (-Z here, like the base), attenuating the image light.
+		value = value * ( 1.0f - coatViewFresnel ) + environment * coatViewFresnel * occlusion +
+		        direct;
 		if ( scene.flags & CVulkanContext::kPbrModelEmission )
 		{
 			const float byte = scene.emission[c] / 255.0f;
@@ -254,6 +281,8 @@ bool Draw( CVulkanContext &context, const Handles &handles, const Scene &scene,
 	constants.ps[21][1] = light.y * kDistance;
 	constants.ps[21][2] = 0.5f + light.z * kDistance;
 	constants.ps[2][0] = scene.emissionScale;
+	constants.ps[2][1] = scene.coat;
+	constants.ps[2][2] = scene.coatRoughness;
 	constants.ps[2][3] = 1.0f;
 	const float identity[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	std::memcpy( constants.viewProj, identity, sizeof( identity ) );
@@ -466,6 +495,23 @@ int main()
 		}
 		Check( Draw( context, handles, env, &pixel, &error ), "environment map case renders" );
 		Judge( "envmap metal", pixel, env, { kEnvIgnoresFresnel } );
+
+		// 7. $clearcoat over a rough, dark base: a light along the normal puts
+		// the coat's GGX peak (roughness 0.3) on the pixel.
+		Scene coated;
+		coated.flags = CVulkanContext::kPbrModelClearCoat;
+		coated.coat = 1.0f;
+		coated.coatRoughness = 0.3f;
+		coated.base = { 40, 40, 40, 255 };
+		coated.mrao = { 0, 255, 255, 255 };
+		coated.lights = 1;
+		coated.lightDirection = kNormal;
+		coated.lightColor[0] = coated.lightColor[1] = coated.lightColor[2] = 0.2f;
+		for ( int face = 0; face < 6; ++face )
+			for ( int c = 0; c < 3; ++c )
+				coated.ambient[face][c] = 0.05f;
+		Check( Draw( context, handles, coated, &pixel, &error ), "clear coat case renders" );
+		Judge( "clear coat", pixel, coated, { kNoClearCoat } );
 	}
 	if ( handles.base >= 0 )
 		context.DestroyManagedTexture( handles.base );

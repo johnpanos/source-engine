@@ -587,6 +587,9 @@ public:
 		int emission = -1;
 		float emissionScale = 0.0f;
 		int environment = -1;
+		// $clearcoat weight (0: no coat) and its roughness, both in [0, 1].
+		float clearCoat = 0.0f;
+		float clearCoatRoughness = 0.03f;
 	};
 	bool SelectPbrWorldMaterial( int mrao, int normal, const float eye[3], float alphaReference,
 	    const PbrWorldMaps &maps );
@@ -636,7 +639,8 @@ public:
 		kPbrModelNormalMap = 1,
 		kPbrModelEmission = 2,
 		kPbrModelEnvMap = 4,
-		kPbrModelMapProbe = 8 // set per draw when a map LMAP atlas is resident
+		kPbrModelMapProbe = 8, // set per draw when a map LMAP atlas is resident
+		kPbrModelClearCoat = 32
 	};
 	// False when the device cannot bind the skin shader's seven descriptor sets
 	// or its push block; its draws are then declined.

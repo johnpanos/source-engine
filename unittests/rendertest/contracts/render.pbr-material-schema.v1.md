@@ -13,6 +13,11 @@ tints transmitted light. `IsValidTransmission` owns the accepted ranges; NaN is
 rejected. A material with `$transmission` above 0 is translucent: the native
 shader sets the flag, so it sorts and draws after the opaque scene it refracts.
 
+Clear coat is two optional scalars: `$clearcoat` (0..1, the coat's weight,
+default 0) and `$clearcoatroughness` (0..1, its perceptual roughness, default
+0.03). The coat is a dielectric of IOR 1.5 over the base layer, shaded with the
+geometric normal; `IsValidClearCoat` owns the ranges and rejects NaN.
+
 The editor catalog validates that the PBR definition and fallback VMT parse,
 that patch includes on both sides are bounded to the legacy loader's ten levels
 and acyclic, and that the supplied compatibility

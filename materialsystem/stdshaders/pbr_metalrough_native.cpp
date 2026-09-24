@@ -9,7 +9,8 @@
 //          On other meshes (models and props) the shader API draws the model
 //          pipeline (shaders/model_pbr.frag), lit by the ambient cube (c4..c9)
 //          and the local lights (c20..c25) this dynamic state commits.
-//          c2.x is $emissionscale; c3.x the feature flags the native pipelines
+//          c2.x is $emissionscale, c2.y $clearcoat and c2.z
+//          $clearcoatroughness; c3.x the feature flags the native pipelines
 //          test (render::pbr::NativeFeature).
 //
 //===========================================================================//
@@ -41,6 +42,8 @@ SHADER_PARAM( ALPHATESTREFERENCE, SHADER_PARAM_TYPE_FLOAT, "0.7", "Alpha cutoff"
 SHADER_PARAM( TRANSMISSION, SHADER_PARAM_TYPE_FLOAT, "0", "Refracted fraction (glass)" )
 SHADER_PARAM( IOR, SHADER_PARAM_TYPE_FLOAT, "1.5", "Index of refraction" )
 SHADER_PARAM( THICKNESS, SHADER_PARAM_TYPE_FLOAT, "0", "World units through; 0 = thin sheet" )
+SHADER_PARAM( CLEARCOAT, SHADER_PARAM_TYPE_FLOAT, "0", "Clear coat weight (IOR 1.5 layer)" )
+SHADER_PARAM( CLEARCOATROUGHNESS, SHADER_PARAM_TYPE_FLOAT, "0.03", "Clear coat roughness" )
 END_SHADER_PARAMS
 
 SHADER_INIT_PARAMS()
@@ -56,6 +59,11 @@ SHADER_INIT_PARAMS()
 		params[THICKNESS]->SetFloatValue( SchemaDefault( MaterialParameter::kThickness ) );
 	if ( !params[EMISSIONSCALE]->IsDefined() )
 		params[EMISSIONSCALE]->SetFloatValue( SchemaDefault( MaterialParameter::kEmissionScale ) );
+	if ( !params[CLEARCOAT]->IsDefined() )
+		params[CLEARCOAT]->SetFloatValue( SchemaDefault( MaterialParameter::kClearCoat ) );
+	if ( !params[CLEARCOATROUGHNESS]->IsDefined() )
+		params[CLEARCOATROUGHNESS]->SetFloatValue(
+		    SchemaDefault( MaterialParameter::kClearCoatRoughness ) );
 	// Glass is translucent by definition: it sorts with translucent surfaces
 	// and draws after the opaque scene it refracts.
 	if ( params[TRANSMISSION]->GetFloatValue() > 0.0f )
@@ -76,6 +84,10 @@ SHADER_INIT
 	if ( !render::pbr::IsValidTransmission(
 	         transmission, params[IOR]->GetFloatValue(), params[THICKNESS]->GetFloatValue() ) )
 		Warning( "PBRMetalRough material %s has $transmission, $ior or $thickness out of range\n",
+		    pMaterialName );
+	if ( !render::pbr::IsValidClearCoat(
+	         params[CLEARCOAT]->GetFloatValue(), params[CLEARCOATROUGHNESS]->GetFloatValue() ) )
+		Warning( "PBRMetalRough material %s has $clearcoat or $clearcoatroughness out of range\n",
 		    pMaterialName );
 	if ( !( params[EMISSIONSCALE]->GetFloatValue() >= 0.0f ) )
 		Warning( "PBRMetalRough material %s has a negative or invalid $emissionscale\n",
@@ -102,11 +114,14 @@ SHADER_DRAW
 	const bool emission = params[EMISSIONTEXTURE]->IsTexture();
 	const bool envmap = params[ENVMAP]->IsTexture();
 	const bool normalMap = params[BUMPMAP]->IsTexture();
+	const float clearCoat = params[CLEARCOAT]->GetFloatValue();
+	const float clearCoatRoughness = params[CLEARCOATROUGHNESS]->GetFloatValue();
 	// Missing required textures cannot borrow a previous material's GPU
 	// binding. The shader API also validates formats before it queues a draw,
 	// and declines features a mesh's native pipeline lacks by name.
 	const bool supported = params[BASETEXTURE]->IsTexture() && params[MRAOTEXTURE]->IsTexture() &&
 	                       render::pbr::IsValidTransmission( transmission, ior, thickness ) &&
+	                       render::pbr::IsValidClearCoat( clearCoat, clearCoatRoughness ) &&
 	                       emissionScale >= 0.0f;
 	int features = 0;
 	if ( normalMap )
@@ -117,6 +132,8 @@ SHADER_DRAW
 		features |= render::pbr::kNativeEnvMap;
 	if ( IS_FLAG_SET( MATERIAL_VAR_TRANSLUCENT ) && !glass )
 		features |= render::pbr::kNativeTranslucent;
+	if ( clearCoat > 0.0f )
+		features |= render::pbr::kNativeClearCoat;
 	SHADOW_STATE
 	{
 		if ( glass )
@@ -176,8 +193,9 @@ SHADER_DRAW
 		// c0: transmission, IOR, thickness, and 1 for glass.
 		const float glassConstants[4] = { transmission, ior, thickness, glass ? 1.0f : 0.0f };
 		pShaderAPI->SetPixelShaderConstant( 0, glassConstants, 1 );
-		// c2.x: $emissionscale; c3.x: the native feature flags.
-		const float emissionConstants[4] = { emissionScale, 0.0f, 0.0f, 0.0f };
+		// c2: $emissionscale, $clearcoat, $clearcoatroughness; c3.x: the native
+		// feature flags.
+		const float emissionConstants[4] = { emissionScale, clearCoat, clearCoatRoughness, 0.0f };
 		pShaderAPI->SetPixelShaderConstant( 2, emissionConstants, 1 );
 		const float featureConstants[4] = { static_cast<float>( features ), 0.0f, 0.0f, 0.0f };
 		pShaderAPI->SetPixelShaderConstant( 3, featureConstants, 1 );

@@ -296,6 +296,12 @@ bool CVulkanContext::SelectPbrWorldMaterial(
 			return false;
 		scene.material[2] = maps.emissionScale;
 	}
+	if ( !( maps.clearCoat >= 0.0f && maps.clearCoat <= 1.0f &&
+	         maps.clearCoatRoughness >= 0.0f && maps.clearCoatRoughness <= 1.0f ) )
+		return false;
+	// The push block's spare lanes (world_pbr.frag).
+	scene.eye[3] = maps.clearCoat;
+	scene.lightRadiance[3] = maps.clearCoatRoughness;
 	if ( maps.environment >= 0 )
 	{
 		const ManagedTexture *cube = uploaded( maps.environment );

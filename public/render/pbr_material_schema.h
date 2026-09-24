@@ -31,6 +31,8 @@ enum class MaterialParameter : unsigned
 	kTransmission,
 	kIndexOfRefraction,
 	kThickness,
+	kClearCoat,
+	kClearCoatRoughness,
 	kCount
 };
 
@@ -79,6 +81,10 @@ static constexpr MaterialParameterSpec kMaterialParameters[] = {
     { "$transmission", ParameterKind::kFloat, ColorEncoding::kNotApplicable, false, "0" },
     { "$ior", ParameterKind::kFloat, ColorEncoding::kNotApplicable, false, "1.5" },
     { "$thickness", ParameterKind::kFloat, ColorEncoding::kNotApplicable, false, "0" },
+    // Clear coat: a thin dielectric layer (IOR 1.5) over the base, its weight
+    // and its own perceptual roughness. 0 is no coat.
+    { "$clearcoat", ParameterKind::kFloat, ColorEncoding::kNotApplicable, false, "0" },
+    { "$clearcoatroughness", ParameterKind::kFloat, ColorEncoding::kNotApplicable, false, "0.03" },
 };
 
 static_assert( sizeof( kMaterialParameters ) / sizeof( kMaterialParameters[0] ) ==
@@ -109,8 +115,15 @@ enum NativeFeature : int
 	kNativeNormalMap = 1,
 	kNativeEmission = 2,
 	kNativeEnvMap = 4,
-	kNativeTranslucent = 16 // alpha-blended, not glass
+	kNativeTranslucent = 16, // alpha-blended, not glass
+	kNativeClearCoat = 32
 };
+
+// The accepted clear coat values: both in [0, 1]. NaN fails both ranges.
+inline bool IsValidClearCoat( float weight, float roughness )
+{
+	return weight >= 0.0f && weight <= 1.0f && roughness >= 0.0f && roughness <= 1.0f;
+}
 
 inline bool IsMetalRoughShader( const char *name )
 {

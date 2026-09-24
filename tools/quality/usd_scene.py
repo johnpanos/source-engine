@@ -242,7 +242,8 @@ def default_summary(name, color, source, approximation):
             "base_scale": 1.0, "metallic": 0.0, "roughness": 0.5, "coat_roughness": None,
             "coat_internal_reflectance": None, "diffuse_transmittance": None,
             "transmission": 0.0, "ior": 1.5, "emission_color": None, "opacity": 1.0,
-            "opacity_threshold": 0.0, "textures": {}, "primvar": "st",
+            "opacity_threshold": 0.0, "clearcoat": 0.0, "clearcoat_roughness": 0.01,
+            "textures": {}, "primvar": "st",
             "st_transform": None, "approximation": approximation}
 
 
@@ -289,9 +290,8 @@ def preview_summary(name, material):
         notes.append("specular workflow reduced to metallic 0 with the authored roughness")
         summary["metallic"] = 0.0
         textures.pop("metallic", None)
-    if constant("clearcoat") > 0:
-        notes.append("clearcoat %.2f dropped from the single-layer preview" %
-                     constant("clearcoat"))
+    summary["clearcoat"] = constant("clearcoat")
+    summary["clearcoat_roughness"] = constant("clearcoatRoughness")
     if surface.GetInput("displacement") and surface.GetInput("displacement").HasConnectedSource():
         notes.append("displacement ignored")
     if summary["opacity"] < 1.0 and summary["opacity_threshold"] <= 0 and \

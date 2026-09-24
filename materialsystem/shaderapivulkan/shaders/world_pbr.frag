@@ -22,9 +22,9 @@ layout( set = 6, binding = 0 ) uniform samplerCube environmentTexture;
 layout( push_constant ) uniform Constants
 {
 	mat4 mvp;
-	vec4 eyePosition;
+	vec4 eyePosition;   // w: $clearcoat (0: no coat)
 	vec4 lightDirection;
-	vec4 lightRadiance;
+	vec4 lightRadiance; // w: $clearcoatroughness
 	// x alpha cutoff (<0 disables), y normal-map enable, z $emissionscale
 	// (0: no emission), w the $envmap cube's mip count (0: no cube)
 	vec4 material;
@@ -61,6 +61,29 @@ vec3 BakedIrradiance( vec3 normal )
 	vec3 beta = texture( lightmapTexture, vec2( u + 0.5, fragLightmapUv.y ) ).rgb;
 	float gain = 1.0 + dot( beta, normal - normalize( fragNormal ) );
 	return irradiance * clamp( gain, 0.0, 4.0 );
+}
+
+// Specular image light: the material's $envmap cube, else the map probe.
+bool ImageRadiance( vec3 direction, float roughness, out vec3 radiance )
+{
+	if ( consts.material.w >= 1.0 )
+	{
+		radiance = textureLod( environmentTexture, direction,
+		    roughness * ( consts.material.w - 1.0 ) ).rgb;
+		return true;
+	}
+	return ProbeRadiance( direction, roughness, radiance );
+}
+
+// Clear coat, after Filament's standard model (Apache-2.0, google/filament
+// shaders/src/surface_shading_model_standard.fs): IOR 1.5 (F0 0.04), GGX with
+// Kelemen visibility, on the geometric normal; the base beneath is attenuated
+// by 1 - Fc.
+float SchlickF( float f0, float cosine )
+{
+	float grazing = 1.0 - cosine;
+	float grazing2 = grazing * grazing;
+	return f0 + ( 1.0 - f0 ) * grazing2 * grazing2 * grazing;
 }
 
 void main()
@@ -110,6 +133,26 @@ void main()
 		specular = consts.lightRadiance.rgb * fresnel * distribution *
 		    visibility * normalDotLight;
 	}
+	float coat = consts.eyePosition.w;
+	vec3 coatNormal = normalize( fragNormal );
+	if ( coat > 0.0 )
+	{
+		float coatRoughness = max( consts.lightRadiance.w, 0.02 );
+		float coatAlpha = coatRoughness * coatRoughness;
+		float coatAlphaSquared = coatAlpha * coatAlpha;
+		vec3 halfVector = normalize( view + light );
+		float lightDotHalf = max( dot( light, halfVector ), 0.0 );
+		float coatNormalDotLight = max( dot( coatNormal, light ), 0.0 );
+		float coatNormalDotHalf = max( dot( coatNormal, halfVector ), 0.0 );
+		float denominator =
+		    coatNormalDotHalf * coatNormalDotHalf * ( coatAlphaSquared - 1.0 ) + 1.0;
+		float coatLightFresnel = SchlickF( 0.04, lightDotHalf ) * coat;
+		specular = specular * ( 1.0 - coatLightFresnel ) +
+		           consts.lightRadiance.rgb * coatAlphaSquared /
+		               ( kPi * denominator * denominator ) *
+		               ( 0.25 / max( lightDotHalf * lightDotHalf, 1e-6 ) ) * coatLightFresnel *
+		               coatNormalDotLight;
+	}
 	vec3 probe;
 	vec3 reflected = reflect( -view, normal );
 	// Specular horizon occlusion: a normal-mapped normal that faces away from
@@ -118,12 +161,20 @@ void main()
 	// facing away from the camera mirrored the probe at Fresnel 1).
 	float horizon = clamp( 1.0 + 1.3 * dot( reflected, normalize( fragNormal ) ), 0.0, 1.0 );
 	float probeWeight = occlusion * horizon * horizon;
-	if ( consts.material.w >= 1.0 )
-		specular += textureLod( environmentTexture, reflected,
-		                roughness * ( consts.material.w - 1.0 ) ).rgb *
-		            directionalAlbedo * probeWeight;
-	else if ( ProbeRadiance( reflected, roughness, probe ) )
-		specular += probe * directionalAlbedo * probeWeight;
+	vec3 image = diffuse;
+	if ( ImageRadiance( reflected, roughness, probe ) )
+		image += probe * directionalAlbedo * probeWeight;
+	if ( coat > 0.0 )
+	{
+		// The baked and image light beneath the coat, attenuated by its
+		// view-angle Fresnel, then the coat's own image light (its geometric
+		// normal needs no horizon term).
+		float coatFresnel = SchlickF( 0.04, max( dot( coatNormal, view ), 0.0 ) ) * coat;
+		image *= 1.0 - coatFresnel;
+		if ( ImageRadiance( reflect( -view, coatNormal ), max( consts.lightRadiance.w, 0.02 ),
+		         probe ) )
+			image += probe * coatFresnel * occlusion;
+	}
 	vec3 emission = vec3( 0.0 );
 	if ( consts.material.z > 0.0 )
 	{
@@ -132,5 +183,5 @@ void main()
 		               step( 0.04045, encoded ) ) *
 		           consts.material.z;
 	}
-	outColor = vec4( diffuse + specular + emission, baseSample.a );
+	outColor = vec4( image + specular + emission, baseSample.a );
 }

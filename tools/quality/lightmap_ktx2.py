@@ -11,6 +11,13 @@ world-space luminance gradient beta on the right, at the same texel rows.
 `world_pbr.frag` recognises the 2:1 page and samples both halves at the same
 lightmap coordinate. A reflection probe band stays in the top rows (mips from
 x = 0) with its marker at the page's top-right texel.
+
+With `--sun-visibility` (the bake's sun mask) the flat half's alpha holds the
+sun's [0, 1] visibility, gutter-filled from `--coverage-exr`, and the marker row
+carries the sun beside the probe marker: texel (W - 2, 0) = direction toward
+the sun (xyz, w = 2) and texel (W - 3, 0) = its irradiance (rgb, w = disc
+angle in degrees). `world_pbr.frag` adds the sun's specular dynamically,
+shadowed by that alpha; its diffuse light is already in the bake.
 """
 
 import argparse
@@ -49,6 +56,12 @@ def main():
                         help="equirect width of probe mip 0; the band is half as tall")
     parser.add_argument("--directional-exr", type=Path,
                         help="beta page from lightmap_directional.py (receipt beside it)")
+    parser.add_argument("--sun-visibility", type=Path,
+                        help="sun visibility EXR named by the bake receipt's `sun`")
+    parser.add_argument("--coverage-exr", type=Path,
+                        help="UV coverage used to fill the visibility's gutters")
+    parser.add_argument("--sun-bake-evidence", type=Path,
+                        help="the bake receipt whose `sun` names the visibility EXR")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     evidence = json.loads(args.bake_evidence.read_text())
@@ -82,7 +95,25 @@ def main():
         # beta is a ratio: the preview gain does not scale it.
         rgba[:, size:, :3] = beta[::-1, :, :3].astype("<f2")
     rgba[:, :, 3] = 1.0
-    probe = None
+    sun = None
+    if args.sun_visibility:
+        if not args.sun_bake_evidence:
+            raise ValueError("--sun-visibility needs --sun-bake-evidence")
+        bake = json.loads(args.sun_bake_evidence.read_text())
+        if sha256(args.sun_bake_evidence) != evidence.get("source_bake_evidence_sha256"):
+            raise ValueError("sun bake receipt is not the atlas's source bake")
+        sun = bake.get("sun")
+        if not sun or sun.get("visibility_exr_sha256") != sha256(args.sun_visibility):
+            raise ValueError("sun visibility differs from the bake receipt")
+        if not args.coverage_exr:
+            raise ValueError("--sun-visibility needs --coverage-exr")
+        from scipy import ndimage
+        visibility = iio.imread(args.sun_visibility)[:, :, 0].astype(np.float64)
+        covered = iio.imread(args.coverage_exr)[:, :, :3].min(axis=2) > 0.5
+        if visibility.shape != (size, size) or covered.shape != (size, size):
+            raise ValueError("sun visibility or coverage has the wrong size")
+        _, (rows, columns) = ndimage.distance_transform_edt(~covered, return_indices=True)
+        rgba[:, :size, 3] = visibility[rows, columns][::-1].astype("<f2")
     band = 0
     if args.probe_dir:
         import sys
@@ -112,6 +143,13 @@ def main():
         probe = reflection_probe.write_band(staging, [mip * args.preview_gain for mip in mips])
         rgba[:band] = staging[:band].astype("<f2")
         probe["receipt_sha256"] = sha256(args.probe_dir / "probe.json")
+    if sun:
+        if not probe:
+            raise ValueError("the sun texels live in the probe band's marker row")
+        direction = -np.asarray(sun["direction"], dtype=np.float64)
+        direction /= np.linalg.norm(direction)
+        rgba[0, width - 2] = np.array((*direction, 2.0), dtype="<f2")
+        rgba[0, width - 3] = np.array((*sun["irradiance"], sun["angle_degrees"]), dtype="<f2")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="lightmap-ktx2-", dir=args.out.parent) as name:
         temporary = Path(name)
@@ -143,7 +181,11 @@ def main():
               "max_half_quantization_error": float(np.max(np.abs(
                   rgba[::-1][:rgba.shape[0] - band, :size, :3].astype(np.float32) -
                   pixels[:pixels.shape[0] - band, :, :3] * args.preview_gain))),
-              "reflection_probe": probe}
+              "reflection_probe": probe,
+              "sun": {"texels": [[width - 2, 0], [width - 3, 0]],
+                      "visibility_exr_sha256": sha256(args.sun_visibility),
+                      "direction_to_sun": (-np.asarray(sun["direction"])).tolist(),
+                      "irradiance": sun["irradiance"]} if sun else None}
     args.out.with_name(args.out.name + ".json").write_text(
         json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps(result, sort_keys=True))

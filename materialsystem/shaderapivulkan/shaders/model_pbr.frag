@@ -17,11 +17,13 @@
 // (world_pbr_probe.glsl), else the ambient cube in the reflected direction.
 //
 // Pixel constants (the material's dynamic state, c0..c31):
-//   c2  x $emissionscale, w the environment map's mip count (ENV_CUBE)
+//   c2  x $emissionscale, y $clearcoat, z $clearcoatroughness, w the
+//       environment map's mip count (ENV_CUBE)
 //   c4..c9   cAmbientCube (PSREG_AMBIENT_CUBE)
 //   c20..c25 cLightInfo (PSREG_LIGHT_INFO_ARRAY)
 // Push block (skin.vert's): params x alpha-test reference (< 0 disables),
-// y flags (1 normal map, 2 emission, 4 environment map, 8 map probe),
+// y flags (1 normal map, 2 emission, 4 environment map, 8 map probe, 32 clear
+// coat),
 // z kColor* flags (1 sRGB base, 4 sRGB output), w linear light scale;
 // params2.x the number of lights.
 layout( location = 0 ) in vec2 vBaseUv;
@@ -69,6 +71,7 @@ const int kNormalMap = 1;
 const int kEmission = 2;
 const int kEnvMap = 4;
 const int kMapProbe = 8;
+const int kClearCoat = 32;
 
 vec3 SrgbToLinear( vec3 c )
 {
@@ -120,6 +123,31 @@ float SmithVisibility( float normalDotView, float normalDotLight, float alphaSqu
 	return denominator > 0.0 ? 0.5 / denominator : 0.0;
 }
 
+// Specular image light in `direction` at `roughness`.
+vec3 EnvironmentRadiance( vec3 direction, float roughness, int flags )
+{
+	vec3 environment;
+#ifdef ENV_CUBE
+	float mips = max( ps.c[2].w, 1.0 );
+	environment = textureLod( envTexture, direction, roughness * ( mips - 1.0 ) ).rgb;
+#else
+	if ( ( flags & kMapProbe ) == 0 || !ProbeRadiance( direction, roughness, environment ) )
+		environment = AmbientCube( direction );
+#endif
+	return environment;
+}
+
+// Clear coat, after Filament's standard model (Apache-2.0, google/filament
+// shaders/src/surface_shading_model_standard.fs): a dielectric layer of IOR
+// 1.5 (F0 0.04) with a GGX lobe and Kelemen visibility 1 / ( 4 L.H^2 ), shaded
+// with the geometric normal. The base layer beneath is attenuated by 1 - Fc.
+float SchlickF( float f0, float cosine )
+{
+	float grazing = 1.0 - cosine;
+	float grazing2 = grazing * grazing;
+	return f0 + ( 1.0 - f0 ) * grazing2 * grazing2 * grazing;
+}
+
 void main()
 {
 	const int flags = int( consts.params.y );
@@ -160,8 +188,19 @@ void main()
 	vec3 directionalAlbedo = min( vec3( 1.0 ), f0 * splitSum.x + vec3( splitSum.y ) );
 	vec3 diffuseColor = base * ( 1.0 - metalness ) * ( vec3( 1.0 ) - directionalAlbedo );
 
-	// Ambient cube: Lambertian return, occluded.
-	vec3 color = diffuseColor * AmbientCube( normal ) * occlusion;
+	const bool clearCoat = ( flags & kClearCoat ) != 0;
+	const float coat = clearCoat ? ps.c[2].y : 0.0;
+	const float coatRoughness = max( ps.c[2].z, 0.02 );
+	const float coatAlpha = coatRoughness * coatRoughness;
+	const float coatAlphaSquared = coatAlpha * coatAlpha;
+	vec3 coatNormal = dot( vNormal, vNormal ) > 1e-12 ? normalize( vNormal ) : view;
+	const float coatNormalDotView = max( dot( coatNormal, view ), 0.0 );
+
+	// Image light (the ambient cube's Lambertian return, occluded, and the
+	// specular environment below) and the local lights accumulate apart: the
+	// coat attenuates each once, with its own Fresnel.
+	vec3 indirect = diffuseColor * AmbientCube( normal ) * occlusion;
+	vec3 direct = vec3( 0.0 );
 
 	// Local lights through the full BRDF: radiance pi * color * attenuation.
 	for ( int i = 0; i < 4; ++i )
@@ -186,20 +225,33 @@ void main()
 			            SmithVisibility( normalDotView, normalDotLight, alphaSquared ) *
 			            normalDotLight;
 		}
-		color += lighting;
+		if ( clearCoat )
+		{
+			vec3 halfVector = normalize( view + light );
+			float lightDotHalf = max( dot( light, halfVector ), 0.0 );
+			float coatFresnel = SchlickF( 0.04, lightDotHalf ) * coat;
+			float coatNormalDotLight = max( dot( coatNormal, light ), 0.0 );
+			float coatNormalDotHalf = max( dot( coatNormal, halfVector ), 0.0 );
+			lighting = lighting * ( 1.0 - coatFresnel ) +
+			           kPi * incident * GgxDistribution( coatNormalDotHalf, coatAlphaSquared ) *
+			               ( 0.25 / max( lightDotHalf * lightDotHalf, 1e-6 ) ) * coatFresnel *
+			               coatNormalDotLight;
+		}
+		direct += lighting;
 	}
 
 	// Specular image lighting (split sum).
-	vec3 reflected = reflect( -view, normal );
-	vec3 environment;
-#ifdef ENV_CUBE
-	float mips = max( ps.c[2].w, 1.0 );
-	environment = textureLod( envTexture, reflected, roughness * ( mips - 1.0 ) ).rgb;
-#else
-	if ( ( flags & kMapProbe ) == 0 || !ProbeRadiance( reflected, roughness, environment ) )
-		environment = AmbientCube( reflected );
-#endif
-	color += environment * directionalAlbedo * occlusion;
+	vec3 environment = EnvironmentRadiance( reflect( -view, normal ), roughness, flags );
+	indirect += environment * directionalAlbedo * occlusion;
+	if ( clearCoat )
+	{
+		// The coat's image light over the attenuated base image light.
+		float coatFresnel = SchlickF( 0.04, coatNormalDotView ) * coat;
+		indirect = indirect * ( 1.0 - coatFresnel ) +
+		           EnvironmentRadiance( reflect( -view, coatNormal ), coatRoughness, flags ) *
+		               coatFresnel * occlusion;
+	}
+	vec3 color = direct + indirect;
 
 	if ( ( flags & kEmission ) != 0 )
 		color += SrgbToLinear( texture( emissionTexture, vBaseUv ).rgb ) * ps.c[2].x;

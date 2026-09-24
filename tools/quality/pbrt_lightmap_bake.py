@@ -15,6 +15,12 @@ RNM basis normals in each texel's lightmap tangent frame (T from the
 and that frame is baked too (EMIT of T and N, encoded 0.5 + 0.5 v).
 `lightmap_directional.py` fits the per-texel irradiance gradient the runtime
 shader applies to normal-mapped surfaces.
+
+A scene with a distant light (sun) also gets `sun_visibility.exr`: the sun's
+direct diffuse bake with shadows divided by the same bake without them, so
+texels hold the sun's [0, 1] visibility (soft penumbrae included). Its diffuse
+light stays in the atlas; the runtime adds the sun's specular dynamically,
+shadowed by this mask, as Source 2 does for its static sun.
 """
 
 import argparse
@@ -37,6 +43,7 @@ RNM_BASIS = ((0.816496580927726, 0.0, 0.5773502691896258),
              (-0.408248290463863, 0.7071067811865475, 0.5773502691896258),
              (-0.408248290463863, -0.7071067811865475, 0.5773502691896258))
 FRAME_SAMPLES = 16
+SUN_SAMPLES = 256
 PROJECTED_PART_LIMIT = 4096
 PROXY_PREFIX = "_lightmap_footprint_"
 
@@ -174,6 +181,65 @@ def lightmap_frame(tree):
                                                    projected))
     b = vector_math(tree, "CROSS_PRODUCT", normal, t)
     return normal, t, b
+
+
+def bake_sun_visibility(merged, scene, path, size, render):
+    """Sun-only direct diffuse with / without shadows; their ratio is visibility."""
+    import numpy as np
+    light = scene["distant_lights"][0]
+    suns = sorted((obj for obj in bpy.data.objects if obj.type == "LIGHT" and
+                   obj.data.type == "SUN"), key=lambda obj: obj.name)
+    if not suns:
+        raise ValueError("scene has a distant light but Blender has no sun lamp")
+    sun = suns[0]
+    # Only the first sun lights these bakes: hide every other light source.
+    hidden = [obj for obj in bpy.data.objects if obj is not sun and obj.hide_render is False and
+              (obj.type == "LIGHT" or obj.name.startswith(pbrt_blender.EMITTER_PREFIXES))]
+    for obj in hidden:
+        obj.hide_render = True
+    world = render.world
+    background = world.node_tree.nodes.get("Background") if world and world.use_nodes else None
+    strength = background.inputs["Strength"].default_value if background else None
+    if background:
+        background.inputs["Strength"].default_value = 0.0
+    samples = render.cycles.samples
+    render.cycles.samples = SUN_SAMPLES
+    render.render.bake.use_pass_indirect = False
+    planes = []
+    for shadows in (True, False):
+        sun.data.use_shadow = shadows
+        image = bpy.data.images.new("PbrtSun%d" % shadows, width=size, height=size,
+                                    alpha=True, float_buffer=True)
+        for material in {slot.material for slot in merged.material_slots}:
+            target = material.node_tree.nodes["BakeTarget"]
+            target.image = image
+            material.node_tree.nodes.active = target
+        bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT"})
+        planes.append(np.array(image.pixels[:], dtype=np.float64).reshape(size, size, 4))
+    sun.data.use_shadow = True
+    render.cycles.samples = samples
+    render.render.bake.use_pass_indirect = True
+    if background:
+        background.inputs["Strength"].default_value = strength
+    for obj in hidden:
+        obj.hide_render = False
+    shadowed, open_sky = (plane[..., :3].mean(axis=2) for plane in planes)
+    lit = open_sky > 1e-6
+    visibility = np.where(lit, np.clip(shadowed / np.maximum(open_sky, 1e-6), 0.0, 1.0), 0.0)
+    image = bpy.data.images.new("PbrtSunVisibility", width=size, height=size, alpha=True,
+                                float_buffer=True)
+    image.pixels.foreach_set(np.dstack([visibility] * 3 + [np.ones_like(visibility)])
+                             .astype(np.float32).ravel())
+    image.save_render(filepath=str(path.resolve()), scene=render)
+    if not path.is_file():
+        raise RuntimeError("Cycles did not save the sun visibility")
+    for material in {slot.material for slot in merged.material_slots}:
+        material.node_tree.nodes["BakeTarget"].image = bpy.data.images["PbrtLightmap"]
+    return {"source": light.get("source"), "direction": light["direction"],
+            "irradiance": light["irradiance"], "angle_degrees": light["angle_degrees"],
+            "samples": SUN_SAMPLES, "visibility_exr_sha256": sha256(path),
+            "lit_fraction": float(lit.mean()),
+            "ignored_distant_lights": len(scene["distant_lights"]) - 1}
 
 
 def bake_rnm(merged, out_dir, size, render):
@@ -400,6 +466,10 @@ def main():
     atlas.save_render(filepath=str(args.out_exr.resolve()), scene=render)
     if not args.out_exr.is_file():
         raise RuntimeError("Cycles did not save the lightmap atlas")
+    sun = None
+    if scene.get("distant_lights"):
+        sun = bake_sun_visibility(merged, scene, args.out_exr.with_name("sun_visibility.exr"),
+                                  args.size, render)
     directional = None
     if args.directional_dir:
         directional = bake_rnm(merged, args.directional_dir, args.size, render)
@@ -462,7 +532,7 @@ def main():
                 "atlas_coverage_estimate": covered,
                 "coverage_exr_sha256": sha256(args.out_coverage_exr)
                 if args.out_coverage_exr else None,
-                "directional": directional,
+                "directional": directional, "sun": sun,
                 "texels_per_square_meter": {"min": min(density.values()),
                                             "max": max(density.values())},
                 "linear_exr_sample_count": len(sampled), "linear_exr_max_sample_error": error,

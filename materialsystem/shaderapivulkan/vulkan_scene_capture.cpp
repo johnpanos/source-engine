@@ -376,15 +376,38 @@ bool CVulkanContext::ReadSceneDepth(
 		return false;
 	}
 	const ManagedTexture &depth = m_managedTextures[static_cast<size_t>( m_sceneDepthHandle )];
-	// The depth aspect of every depth format this backend selects copies out
-	// as 32-bit floats (D32_SFLOAT, D32_SFLOAT_S8_UINT); others are refused.
-	if ( m_depthFormat != VK_FORMAT_D32_SFLOAT && m_depthFormat != VK_FORMAT_D32_SFLOAT_S8_UINT )
+	// The depth aspect copies out as 32-bit floats (D32_SFLOAT and
+	// D32_SFLOAT_S8_UINT), 32-bit words holding 24-bit UNORM depth in the low
+	// bits (D24_UNORM_S8_UINT, X8_D24_UNORM_PACK32) or 16-bit UNORM (D16 and
+	// D16_UNORM_S8_UINT); readback returns depth in [0, 1] for each.
+	enum DepthWords
 	{
-		CaptureError( outError, "scene depth readback supports 32-bit float depth only" );
+		kFloat32,
+		kUnorm24,
+		kUnorm16
+	};
+	DepthWords words;
+	switch ( m_depthFormat )
+	{
+	case VK_FORMAT_D32_SFLOAT:
+	case VK_FORMAT_D32_SFLOAT_S8_UINT:
+		words = kFloat32;
+		break;
+	case VK_FORMAT_D24_UNORM_S8_UINT:
+	case VK_FORMAT_X8_D24_UNORM_PACK32:
+		words = kUnorm24;
+		break;
+	case VK_FORMAT_D16_UNORM:
+	case VK_FORMAT_D16_UNORM_S8_UINT:
+		words = kUnorm16;
+		break;
+	default:
+		CaptureError( outError, "scene depth readback does not know this depth format" );
 		return false;
 	}
 	vkDeviceWaitIdle( m_device );
-	const VkDeviceSize bytes = VkDeviceSize( depth.width ) * depth.height * sizeof( float );
+	const VkDeviceSize texelBytes = words == kUnorm16 ? 2 : 4;
+	const VkDeviceSize bytes = VkDeviceSize( depth.width ) * depth.height * texelBytes;
 	VkBuffer buffer = VK_NULL_HANDLE;
 	VkDeviceMemory memory = VK_NULL_HANDLE;
 	if ( !CreateBuffer( bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -415,8 +438,25 @@ bool CVulkanContext::ReadSceneDepth(
 	void *mapped = nullptr;
 	if ( ok && vkMapMemory( m_device, memory, 0, bytes, 0, &mapped ) == VK_SUCCESS )
 	{
-		const float *texels = static_cast<const float *>( mapped );
-		outDepth->assign( texels, texels + VkDeviceSize( depth.width ) * depth.height );
+		const size_t count = size_t( depth.width ) * depth.height;
+		outDepth->resize( count );
+		if ( words == kFloat32 )
+		{
+			const float *texels = static_cast<const float *>( mapped );
+			outDepth->assign( texels, texels + count );
+		}
+		else if ( words == kUnorm24 )
+		{
+			const uint32_t *texels = static_cast<const uint32_t *>( mapped );
+			for ( size_t i = 0; i < count; ++i )
+				( *outDepth )[i] = float( texels[i] & 0xffffffu ) / float( 0xffffffu );
+		}
+		else
+		{
+			const uint16_t *texels = static_cast<const uint16_t *>( mapped );
+			for ( size_t i = 0; i < count; ++i )
+				( *outDepth )[i] = float( texels[i] ) / 65535.0f;
+		}
 		vkUnmapMemory( m_device, memory );
 		if ( outWidth )
 			*outWidth = depth.width;

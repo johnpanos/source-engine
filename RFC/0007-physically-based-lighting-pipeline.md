@@ -2,6 +2,10 @@
 
 - Status: Accepted for planning (2026-09-22); implementation partial (see
   [progress](0007-progress.md))
+- Amended: 2026-09-24 by [RFC 0011](0011-runtime-indirect-lighting.md)
+  (proposed): separated direct/indirect lightmap outputs, probe outputs in the
+  `render.probe-volume.v1` encoding with visibility, and the optional `RTRN`
+  radiosity transfer precompute. Amended passages say so inline
 - Date: 2026-09-22
 - Scope: Map compile tools (vbsp, vvis, vrad), a substitutable light baker with a
   Cycles provider, a PBR material family on the native Vulkan backend, image-based
@@ -37,7 +41,8 @@ parts:
    contract whose input is built from the RFC 0008 World Stage. The legacy vrad
    solver remains as the parity provider and oracle. A Cycles-based provider
    supplies path-traced quality and produces the canonical lighting: SH L1
-   lightmaps, exact RNM bases, SH L2 probes, and HDR reflection probes.
+   lightmaps, exact RNM bases, probe-volume irradiance and visibility
+   (RFC 0011), and HDR reflection probes.
 2. **A PBR material family** on the native Vulkan backend: a metal/roughness
    shader with a GGX specular BRDF, consuming the same baked lighting as legacy
    shaders plus prefiltered image-based lighting. It is a new, opt-in family.
@@ -103,9 +108,12 @@ making Blender (GPL) a build or runtime dependency.
 - Replacing or "upgrading" legacy shader families (`LightmappedGeneric`,
   `VertexLitGeneric`, ...). Their fidelity is owned by RFC 0001 R32/R36 and
   defined by the D3D9 implementation.
-- Implementing real-time GI or hardware ray-traced runtime lighting in the
-  baked-lighting phases. RFC 0008 F10 owns measured runtime visual capabilities;
-  this RFC's canonical bake and reference data remain comparison inputs.
+- Implementing real-time GI or hardware ray-traced runtime lighting.
+  [RFC 0011](0011-runtime-indirect-lighting.md) owns runtime indirect light and
+  its producers; RFC 0008 F10 owns the measured visual gate. This RFC's bake
+  supplies RFC 0011's baked producer data, the separated direct/indirect
+  layers, and the radiosity transfer precompute, and its reference renders
+  remain the comparison oracle.
 - Defining containers, encodings, or interchange schemas. RFC 0008 owns them;
   this RFC owns the values computed into them.
 - Replacing vbsp's BSP construction, or making vvis use Cycles.
@@ -333,7 +341,7 @@ record is kept with the pin.
                 └─ test fakes / deliberately bad providers
                           │ BakeResult (typed, linear, unencoded)
                           ▼
-         RFC 0008 writers: lighting layer (SH L1 atlas per style, exact RNM, SH L2 probes,
+         RFC 0008 writers: lighting layer (SH L1 atlas per style, exact RNM, probe volume,
                            HDR reflection probes) ──> packer ──> BSP2 + KTX2
                                                   └─> LegacyLightingExporter (optional payload)
                           │
@@ -374,7 +382,8 @@ Every sample the bake must produce is enumerated in the input:
   Displacements are charted like any other surface.
 - **Vertex samples:** static prop vertices (per LOD as vrad does) and detail
   prop placements, for props that are not lightmapped.
-- **Probe samples:** probe volume positions (placement owned by RFC 0008).
+- **Probe samples:** probe grid positions, including relocation offsets
+  (structure owned by RFC 0008 `PRBV`, semantics by RFC 0011).
 - **Reflection probe samples:** positions from `env_cubemap` entities and their
   resolution.
 - **Emitters:** `light`, `light_spot`, `light_environment` (sun and sky
@@ -398,7 +407,17 @@ Every sample the bake must produce is enumerated in the input:
   irradiance coefficients fitted from those four directional irradiances (the
   canonical data; see [RNM and SH L1 from one bake](#rnm-and-sh-l1-from-one-bake));
 - per vertex sample: irradiance (and bumped basis for props that use it);
-- per probe, per style: SH L2 irradiance coefficients;
+- per lightmap sample, per style *(amended by RFC 0011)*: the direct and
+  indirect irradiance separately, whose sum is the total above. The
+  `RuntimeIndirect` policy consumes the direct layer alone;
+- per probe, per style *(amended by RFC 0011)*: irradiance in the
+  `render.probe-volume.v1` encoding and visibility (mean and mean-squared hit
+  distance per octahedral direction). SH L2 coefficients may be kept as a
+  bake-side intermediate;
+- optionally *(RFC 0011 G4)*: the radiosity transfer precompute for `RTRN`
+  (surface patches, sparse visibility-weighted form factors, probe gather
+  weights, and per-patch visibility of each baked light), computed with the
+  same ray tracer and scene as the lightmap;
 - per reflection probe: HDR radiance cube faces (prefiltering belongs to the
   RFC 0008 writer);
 - diagnostics: sample counts, variance/noise estimate, invalid samples
@@ -516,7 +535,7 @@ within tolerance in parity-oriented mode.
 | Alpha shadows | Transparent BSDF from base texture alpha | Matches `-textureshadows` scope; per-material opt-in preserved |
 | Displacements | Displacement triangles charted in the atlas like other surfaces | Seam continuity oracle across displacement/brush boundaries |
 | Light styles | One bake per style with other styles' emitters disabled | At most four styles per chart, matching `MAXLIGHTMAPS`, so the legacy payload is always derivable |
-| Probe volume (SH L2) | Low-resolution panoramic radiance renders at each probe (`PANORAMA_EQUIRECTANGULAR` camera in `src/kernel/types.h`), projected to SH L2 and convolved to irradiance | No proxy geometry is needed, because probes are camera renders, not surface bakes. Legacy ambient cubes are derived by RFC 0008's exporter |
+| Probe volume (RFC 0011 encoding) | Low-resolution panoramic radiance and depth renders at each probe (`PANORAMA_EQUIRECTANGULAR` camera in `src/kernel/types.h`), convolved to octahedral irradiance; hit distances give the visibility moments | No proxy geometry is needed, because probes are camera renders, not surface bakes. Legacy ambient cubes are derived from the volume by RFC 0008's exporter |
 | Reflection probes | Six 90° cube-face renders (or `PANORAMA_EQUIANGULAR_CUBEMAP_FACE`) in HDR at each `env_cubemap` | Replaces in-game `buildcubemaps`; prefiltering by the RFC 0008 writer |
 | Static prop lighting | Vertex bake points (barycentric corners are nudged inward by the kernel) | `-StaticPropLighting`, `-StaticPropPolys`, texture shadows; props are merged into the bake target or baked in separate sessions |
 | Denoising | Open Image Denoise on lightmap atlases with albedo/normal guides | Per-face borders must be denoised without bleeding across unrelated faces; optional and recorded; excluded from the `Exact` profile until determinism is measured |
@@ -584,7 +603,7 @@ The model tracks the Cycles Principled BSDF as inspected (see
 - Static lighting: on BSP2 maps, evaluate the SH L1 lightmap (per style layer)
   at the normal-mapped normal. On legacy maps, reconstruct irradiance from the
   RNM basis exactly as `LightmappedGeneric` does.
-- Dynamic objects: SH L2 probe volume on BSP2 maps, ambient cube on legacy
+- Dynamic objects: the RFC 0011 probe volume on BSP2 maps, ambient cube on legacy
   maps, plus dynamic lights through the clustered path (RFC 0008), evaluated
   with the same BRDF.
 - Specular environment: split-sum IBL from the blended, parallax-corrected
@@ -673,8 +692,14 @@ providers, or incomplete output.
 - Basis oracle: a distant light exactly along each RNM basis vector produces the
   expected flat and basis values.
 - SH oracle: fitted SH L1 irradiance vs exact clamped-cosine irradiance over the
-  hemisphere for analytic environments. SH L2 probes vs analytic irradiance of
-  a single distant light and a uniform sky.
+  hemisphere for analytic environments. Probe-volume irradiance (RFC 0011
+  encoding) vs analytic irradiance of a single distant light and a uniform sky.
+- Probe visibility (RFC 0011): the `thin-wall` fixture's dark room stays below
+  the leak bound, and hit-distance moments match the analytic distances of the
+  `probe-grid` fixture.
+- Direct/indirect separation (RFC 0011): per texel, direct plus indirect equals
+  the total within the noise band, and the furnace's indirect layer matches the
+  analytic bounce energy.
 - Luxel registration: a light with a sharp shadow edge at a known world
   coordinate lands in the analytically expected luxel.
 - BRDF: GGX/Smith/Fresnel values against an independent reference
@@ -697,7 +722,9 @@ providers, or incomplete output.
 Each must fail its oracle: a half-luxel offset, swapped basis vectors, a missing
 style, gamma-encoded output, double-applied overbright, a BRDF without Fresnel,
 an unnormalized GGX distribution, prefiltering with the wrong roughness mapping,
-and a PBR material without fallback on a non-PBR provider.
+and a PBR material without fallback on a non-PBR provider. RFC 0011 adds:
+swapped direct and indirect layers, probes without visibility, and a transfer
+matrix whose per-patch sums exceed one.
 
 ### Product
 
@@ -716,7 +743,7 @@ the compile-tool port and can start first.
 ### Phase A: PBR shading core with synthetic lighting
 
 BRDF library with analytic tests. PBR family on native Vulkan lit by synthetic
-SH L1 and RNM lightmaps, SH L2 probes, and a test reflection probe. The `pbr` pixel harness family
+SH L1 and RNM lightmaps, synthetic probe volumes, and a test reflection probe. The `pbr` pixel harness family
 with Cycles-rendered reference fixtures and negative controls. Capability
 declaration and fallback validation.
 *Gate:* analytic BRDF tests, pixel family vs Cycles fixtures, negative controls
@@ -755,7 +782,8 @@ duplicate conversion constant is detected.
 ### Phase E: Full quality bake
 
 Bounces, sky, texture lights, RNM bases and the SH L1 fit, styles,
-displacements, alpha shadows, SH L2 probe volume, reflection probe renders,
+displacements, alpha shadows, probe volume with visibility and separated
+direct/indirect layers (RFC 0011), reflection probe renders,
 static and detail prop lighting, and optional denoising.
 *Gate:* all analytic (including SH) and negative oracles, the statistical
 comparison with vrad, and runtime rendering on the BSP2 path and through the

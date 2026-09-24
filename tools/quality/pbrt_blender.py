@@ -60,6 +60,11 @@ def build_material(scene, name, normal_maps=True):
         shader.inputs["Coat Roughness"].default_value = summary["coat_roughness"]
     else:
         shader.inputs["Roughness"].default_value = summary["roughness"]
+    if summary["clearcoat"] > 0:
+        # UsdPreviewSurface clear coat: an IOR 1.5 GGX layer over the base.
+        shader.inputs["Coat Weight"].default_value = summary["clearcoat"]
+        shader.inputs["Coat Roughness"].default_value = summary["clearcoat_roughness"]
+        shader.inputs["Coat IOR"].default_value = 1.5
     for channel, socket in (("roughness", "Roughness"), ("metallic", "Metallic"),
                             ("opacity", "Alpha")):
         if channel in textures:
