@@ -19,8 +19,10 @@ const int MAX_CONDITIONAL_SYMBOL = 64;
 class CConditionalParser
 {
 public:
-	CConditionalParser( const char *pBegin, const char *pEnd, KVConditionalSymbolFn_t pfnSymbol, void *pContext )
-		: m_p( pBegin ), m_pEnd( pEnd ), m_pfnSymbol( pfnSymbol ), m_pContext( pContext ), m_bError( false )
+	CConditionalParser(
+	    const char *pBegin, const char *pEnd, KVConditionalSymbolFn_t pfnSymbol, void *pContext )
+	    : m_p( pBegin ), m_pEnd( pEnd ), m_pfnSymbol( pfnSymbol ), m_pContext( pContext ),
+	      m_bError( false )
 	{
 	}
 
@@ -130,8 +132,8 @@ private:
 
 } // namespace
 
-bool EvaluateKVConditionalExpression( const char *pExpression, KVConditionalSymbolFn_t pfnSymbol,
-	void *pContext, bool &bResult )
+bool EvaluateKVConditionalExpression(
+    const char *pExpression, KVConditionalSymbolFn_t pfnSymbol, void *pContext, bool &bResult )
 {
 	bResult = false;
 	if ( !pExpression )

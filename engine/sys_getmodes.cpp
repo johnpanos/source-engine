@@ -593,7 +593,6 @@ void CVideoMode_Common::PublishModeExpressionSymbols( int nWidth, int nHeight )
 	KeyValuesSystem()->SetKeyValuesExpressionSymbol( "WIN32LODEF", !bHidef );
 }
 
-
 //-----------------------------------------------------------------------------
 // Creates the game window, plays the startup movie
 //-----------------------------------------------------------------------------

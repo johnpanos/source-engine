@@ -19,8 +19,8 @@ namespace
 
 // The SDK 2013 evaluator: substring matching of one symbol, with an unknown
 // symbol false even when negated ([!$GAMECONSOLE] rejected every retail font).
-bool LegacySubstringEvaluator( const char *pExpression, KVConditionalSymbolFn_t pfnSymbol, void *pContext,
-	bool &bResult )
+bool LegacySubstringEvaluator(
+    const char *pExpression, KVConditionalSymbolFn_t pfnSymbol, void *pContext, bool &bResult )
 {
 	bResult = false;
 	if ( !pExpression )
@@ -30,7 +30,8 @@ bool LegacySubstringEvaluator( const char *pExpression, KVConditionalSymbolFn_t 
 		c = (char)std::toupper( (unsigned char)c );
 	size_t start = ( !text.empty() && text[0] == '[' ) ? 1 : 0;
 	const bool bNot = text.size() > start && text[start] == '!';
-	static const char *const s_Symbols[] = { "DECK", "X360", "WIN32", "WINDOWS", "OSX", "LINUX", "POSIX" };
+	static const char *const s_Symbols[] = {
+	    "DECK", "X360", "WIN32", "WINDOWS", "OSX", "LINUX", "POSIX" };
 	for ( const char *pSymbol : s_Symbols )
 	{
 		if ( text.find( std::string( "$" ) + pSymbol ) != std::string::npos )
@@ -44,8 +45,8 @@ bool LegacySubstringEvaluator( const char *pExpression, KVConditionalSymbolFn_t 
 
 // Groups everything after the first && as its right operand, so
 // "a && b || c" reads as "a && (b || c)" (no operator precedence).
-bool RightGroupingEvaluator( const char *pExpression, KVConditionalSymbolFn_t pfnSymbol, void *pContext,
-	bool &bResult )
+bool RightGroupingEvaluator(
+    const char *pExpression, KVConditionalSymbolFn_t pfnSymbol, void *pContext, bool &bResult )
 {
 	if ( !pExpression )
 		return EvaluateKVConditionalExpression( pExpression, pfnSymbol, pContext, bResult );
@@ -61,8 +62,8 @@ bool RightGroupingEvaluator( const char *pExpression, KVConditionalSymbolFn_t pf
 }
 
 // Stops at the first blank, as the SDK 2013 tokenizer split "[$A && $B]".
-bool SplitAtBlankEvaluator( const char *pExpression, KVConditionalSymbolFn_t pfnSymbol, void *pContext,
-	bool &bResult )
+bool SplitAtBlankEvaluator(
+    const char *pExpression, KVConditionalSymbolFn_t pfnSymbol, void *pContext, bool &bResult )
 {
 	if ( !pExpression )
 		return EvaluateKVConditionalExpression( pExpression, pfnSymbol, pContext, bResult );
@@ -74,16 +75,16 @@ bool SplitAtBlankEvaluator( const char *pExpression, KVConditionalSymbolFn_t pfn
 }
 
 // Never reports a syntax error.
-bool AcceptsMalformedEvaluator( const char *pExpression, KVConditionalSymbolFn_t pfnSymbol, void *pContext,
-	bool &bResult )
+bool AcceptsMalformedEvaluator(
+    const char *pExpression, KVConditionalSymbolFn_t pfnSymbol, void *pContext, bool &bResult )
 {
 	EvaluateKVConditionalExpression( pExpression, pfnSymbol, pContext, bResult );
 	return true;
 }
 
 // Resolves symbols without regard to negation.
-bool IgnoresNotEvaluator( const char *pExpression, KVConditionalSymbolFn_t pfnSymbol, void *pContext,
-	bool &bResult )
+bool IgnoresNotEvaluator(
+    const char *pExpression, KVConditionalSymbolFn_t pfnSymbol, void *pContext, bool &bResult )
 {
 	if ( !pExpression )
 		return EvaluateKVConditionalExpression( pExpression, pfnSymbol, pContext, bResult );
@@ -121,11 +122,11 @@ int main()
 	}
 
 	static const BrokenEvaluator s_Broken[] = {
-		{ "SDK 2013 substring evaluator", LegacySubstringEvaluator },
-		{ "no operator precedence", RightGroupingEvaluator },
-		{ "split at the first blank", SplitAtBlankEvaluator },
-		{ "accepts malformed expressions", AcceptsMalformedEvaluator },
-		{ "ignores negation", IgnoresNotEvaluator },
+	    { "SDK 2013 substring evaluator", LegacySubstringEvaluator },
+	    { "no operator precedence", RightGroupingEvaluator },
+	    { "split at the first blank", SplitAtBlankEvaluator },
+	    { "accepts malformed expressions", AcceptsMalformedEvaluator },
+	    { "ignores negation", IgnoresNotEvaluator },
 	};
 
 	for ( const BrokenEvaluator &broken : s_Broken )
@@ -141,7 +142,8 @@ int main()
 		}
 		else
 		{
-			std::printf( "detected: %s (%lu of %lu checks)\n", broken.name, tally.failures, tally.checks );
+			std::printf(
+			    "detected: %s (%lu of %lu checks)\n", broken.name, tally.failures, tally.checks );
 		}
 	}
 

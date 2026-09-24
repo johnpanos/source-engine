@@ -2705,7 +2705,8 @@ static void CL_SetLanguageExpressionSymbols( const char *pLanguage, bool bValue 
 }
 
 static void CL_LanguageChanged( IConVar *pConVar, const char *pOldValue, float flOldValue );
-ConVar cl_language( "cl_language", "english", FCVAR_USERINFO, "Language (from HKCU\\Software\\Valve\\Steam\\Language)", CL_LanguageChanged );
+ConVar cl_language( "cl_language", "english", FCVAR_USERINFO,
+    "Language (from HKCU\\Software\\Valve\\Steam\\Language)", CL_LanguageChanged );
 
 static void CL_LanguageChanged( IConVar *pConVar, const char *pOldValue, float flOldValue )
 {

@@ -1233,14 +1233,19 @@ void CHLClient::Shutdown( void )
 #ifdef PORTAL2
 	scriptmanager = NULL;
 	Portal2_DisconnectScriptManager();
-	Portal2_DisconnectMatchFramework();
 #endif
 
+#if defined( GAMEUI_EMBEDDED )
+	// The embedded GameUI shares this module's globals. The engine deletes the
+	// GameUI panels after this (their destructors use g_pCVar and the match
+	// framework) and then calls CGameUI::Shutdown, which disconnects them.
+#else
 	// This call disconnects the VGui libraries which we rely on later in the shutdown path, so don't do it
 //	DisconnectTier3Libraries( );
 	DisconnectTier2Libraries( );
 	ConVar_Unregister();
 	DisconnectTier1Libraries( );
+#endif
 
 	gameeventmanager = NULL;
 

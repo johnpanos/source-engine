@@ -65,6 +65,31 @@ VARIANTS = ("debug", "release")
 VTF_RGBA8888 = 0
 
 
+def merge_profile(base, derived):
+    """derived over base: objects merge key by key, any other value replaces."""
+    merged = dict(base)
+    for key, value in derived.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = merge_profile(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def load_profile(path):
+    """A product profile, with its "extends" chain (paths relative to it) resolved.
+
+    A derived product (another game in the same app shell) names the profile
+    that owns the shared pins instead of copying them.
+    """
+    path = Path(path).resolve()
+    profile = json.loads(path.read_text())
+    parent = profile.pop("extends", None)
+    if parent is None:
+        return profile
+    return merge_profile(load_profile(path.parent / parent), profile)
+
+
 class Failures:
     def __init__(self):
         self.items = []
@@ -440,9 +465,14 @@ def main(argv=None):
     cmd.add_argument("--build-tools", type=Path, help="SDK build-tools directory "
                      "(default: the profile's pinned build-tools under dependencies/android)")
     cmd.add_argument("--report", type=Path, help="write a JSON report here")
+    resolve = sub.add_parser("resolve", help="print a profile with its \"extends\" chain resolved")
+    resolve.add_argument("profile", type=Path)
     args = parser.parse_args(argv)
 
-    profile = json.loads(args.profile.read_text())
+    if args.command == "resolve":
+        print(json.dumps(load_profile(args.profile), indent=2))
+        return 0
+    profile = load_profile(args.profile)
     build_tools = args.build_tools or default_build_tools(profile)
     failures, facts = check(args.apk, profile, args.abi, build_tools, args.variant)
     report = {

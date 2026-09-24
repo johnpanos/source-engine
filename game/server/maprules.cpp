@@ -273,6 +273,11 @@ public:
 	inline	const char *MessageGet( void )	{ return STRING( m_iszMessage ); }
 
 	void InputDisplay( inputdata_t &inputdata );
+	void InputSetText( inputdata_t &inputdata );
+	void InputSetTextColor( inputdata_t &inputdata );
+	void InputSetTextColor2( inputdata_t &inputdata );
+	void InputSetPosX( inputdata_t &inputdata );
+	void InputSetPosY( inputdata_t &inputdata );
 	void Display( CBaseEntity *pActivator );
 
 	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
@@ -308,6 +313,14 @@ BEGIN_DATADESC( CGameText )
 	// Inputs
 	DEFINE_INPUTFUNC( FIELD_VOID, "Display", InputDisplay ),
 
+	// Later-branch inputs; Portal 2's chapter titles set their text and style
+	// from VScript before displaying (sp_transition_list.nut).
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetText", InputSetText ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetTextColor", InputSetTextColor ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetTextColor2", InputSetTextColor2 ),
+	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetPosX", InputSetPosX ),
+	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetPosY", InputSetPosY ),
+
 END_DATADESC()
 
 
@@ -342,6 +355,31 @@ bool CGameText::KeyValue( const char *szKeyName, const char *szValue )
 void CGameText::InputDisplay( inputdata_t &inputdata )
 {
 	Display( inputdata.pActivator );
+}
+
+void CGameText::InputSetText( inputdata_t &inputdata )
+{
+	MessageSet( inputdata.value.String() );
+}
+
+void CGameText::InputSetTextColor( inputdata_t &inputdata )
+{
+	KeyValue( "color", inputdata.value.String() );
+}
+
+void CGameText::InputSetTextColor2( inputdata_t &inputdata )
+{
+	KeyValue( "color2", inputdata.value.String() );
+}
+
+void CGameText::InputSetPosX( inputdata_t &inputdata )
+{
+	m_textParms.x = inputdata.value.Float();
+}
+
+void CGameText::InputSetPosY( inputdata_t &inputdata )
+{
+	m_textParms.y = inputdata.value.Float();
 }
 
 void CGameText::Display( CBaseEntity *pActivator )

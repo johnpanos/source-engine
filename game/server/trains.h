@@ -111,6 +111,9 @@ public:
 	void InputSetSpeedDirAccel( inputdata_t &inputdata );
 	void InputTeleportToPathTrack( inputdata_t &inputdata );
 	void InputSetSpeedForwardModifier( inputdata_t &inputdata );
+	void InputSetMaxSpeed( inputdata_t &inputdata );
+	void InputMoveToPathNode( inputdata_t &inputdata );
+	void InputTeleportToPathNode( inputdata_t &inputdata );
 
 	static CFuncTrackTrain *Instance( edict_t *pent );
 
@@ -197,6 +200,8 @@ private:
 	bool		m_bSoundPlaying;
 
 	COutputEvent m_OnStart,m_OnNext; 
+	COutputEvent m_OnArrivedAtDestinationNode;
+	string_t	m_strPathTarget;			// Destination node of MoveToPathNode/TeleportToPathNode
 
 	bool		m_bManualSpeedChanges;		// set when we want to send entity IO to govern speed and obey our TrainVelocityType_t
 	float		m_flDesiredSpeed;			// target speed, when m_bManualSpeedChanges is set

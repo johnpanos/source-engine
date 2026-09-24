@@ -12,6 +12,7 @@
 #endif
 
 #include "GameUI/IGameConsole.h"
+#include "vgui_controls/PHandle.h"
 
 class CGameConsoleDialog;
 
@@ -46,7 +47,10 @@ public:
 private:
 
 	bool m_bInitialized;
-	CGameConsoleDialog *m_pConsole;
+	// The dialog is parented to an engine panel, and the engine deletes that
+	// tree at shutdown while panel destructors can still print to the console;
+	// the handle clears when the dialog is deleted.
+	vgui::DHANDLE<CGameConsoleDialog> m_pConsole;
 };
 
 extern CGameConsole &GameConsole();

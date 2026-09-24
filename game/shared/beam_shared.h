@@ -130,6 +130,7 @@ public:
 	float GetFrame( void ) const;
 	float GetScrollRate( void ) const;
 	float GetHDRColorScale( void ) const;
+	float GetHaloScale( void ) const;
 	void SetHDRColorScale( float flScale ) { m_flHDRColorScale = flScale; }
 
 
@@ -431,6 +432,11 @@ inline float CBeam::GetScrollRate( void ) const
 inline float CBeam::GetHDRColorScale( void ) const
 {
 	return m_flHDRColorScale;
+}
+
+inline float CBeam::GetHaloScale( void ) const
+{
+	return m_fHaloScale;
 }
 
 inline void CBeam::LiveForTime( float time ) 

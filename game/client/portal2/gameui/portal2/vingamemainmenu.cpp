@@ -1266,12 +1266,15 @@ void InGameMainMenu::OnThink()
 
 	IMatchSession *pIMatchSession = g_pMatchFramework->GetMatchSession();
 	KeyValues *pGameSettings = pIMatchSession ? pIMatchSession->GetSessionSettings() : NULL;
-	
+
 	// Retail relied on KeyValues accessors tolerating a NULL this; a map started
 	// without the match framework (e.g. +map) has no session, so use its defaults.
-	char const *szNetwork = pGameSettings ? pGameSettings->GetString( "system/network", "offline" ) : "offline";
-	char const *szGameMode = pGameSettings ? pGameSettings->GetString( "game/mode", "coop" ) : "coop";
-	char const *szGameState = pGameSettings ? pGameSettings->GetString( "game/state", "lobby" ) : "lobby";
+	char const *szNetwork =
+	    pGameSettings ? pGameSettings->GetString( "system/network", "offline" ) : "offline";
+	char const *szGameMode =
+	    pGameSettings ? pGameSettings->GetString( "game/mode", "coop" ) : "coop";
+	char const *szGameState =
+	    pGameSettings ? pGameSettings->GetString( "game/state", "lobby" ) : "lobby";
 
 	bool bCanInvite = !Q_stricmp( "LIVE", szNetwork );
 	bool bInFinale = !Q_stricmp( "finale", szGameState );
@@ -1399,7 +1402,8 @@ void InGameMainMenu::PerformLayout( void )
 	IMatchSession *pIMatchSession = g_pMatchFramework->GetMatchSession();
 	KeyValues *pGameSettings = pIMatchSession ? pIMatchSession->GetSessionSettings() : NULL;
 
-	char const *szNetwork = pGameSettings ? pGameSettings->GetString( "system/network", "offline" ) : "offline";
+	char const *szNetwork =
+	    pGameSettings ? pGameSettings->GetString( "system/network", "offline" ) : "offline";
 
 	bool bPlayOffline = !Q_stricmp( "offline", szNetwork );
 

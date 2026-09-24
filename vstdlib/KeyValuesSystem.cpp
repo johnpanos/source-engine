@@ -98,7 +98,7 @@ private:
 
 	// Values are read by any thread that parses KeyValues (e.g. material loading).
 	CThreadFastMutex m_ExpressionSymbolMutex;
-	CUtlDict< bool, int > m_ExpressionSymbols;
+	CUtlDict<bool, int> m_ExpressionSymbols;
 };
 
 // EXPOSE_SINGLE_INTERFACE(CKeyValuesSystem, IKeyValuesSystem, KEYVALUES_INTERFACE_VERSION);

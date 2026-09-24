@@ -122,6 +122,7 @@ inline UI_BASEMOD_PANEL_CLASS & ConstructUiBaseModPanelClass() { return *BasePan
 #ifdef PORTAL2
 // Portal 2 port: game/shared/portal2/portal2_shared_compat.h (not included by the GameUI sources).
 bool Portal2_ConnectMatchFramework( CreateInterfaceFn engineFactory );
+void Portal2_DisconnectMatchFramework();
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -558,7 +559,10 @@ void CGameUI::Shutdown()
 #ifndef NO_STEAM
 	steamapicontext->Clear();
 #endif
-	
+
+	// Embedded in the client, this runs after the engine has deleted the GameUI
+	// panels, so it (not CHLClient::Shutdown) disconnects the shared globals.
+	Portal2_DisconnectMatchFramework();
 	ConVar_Unregister();
 	DisconnectTier3Libraries();
 	DisconnectTier2Libraries();

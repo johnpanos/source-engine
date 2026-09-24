@@ -266,6 +266,10 @@ public:
 	void SetForcedGrabControllerType( ForcedGrabControllerType type );
 	ForcedGrabControllerType m_ForcedGrabController;
 
+	// Set by logic_playerproxy while a scripted carry must not be dropped by the player.
+	void SetDropEnabled( bool bEnabled ) { m_bDropEnabled = bEnabled; }
+	bool m_bDropEnabled;
+
 	// Object we're successfully holding we network down to the client
 	// for clientside simulation under multiplayer
 	CNetworkHandle( CBaseEntity, m_hAttachedObject );

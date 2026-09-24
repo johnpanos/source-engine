@@ -450,6 +450,7 @@ BEGIN_DATADESC( CPortal_Player )
 	DEFINE_FIELD( m_flAutoGrabLockOutTime, FIELD_TIME ),
 	DEFINE_FIELD( m_hAttachedObject, FIELD_EHANDLE ),
 	DEFINE_FIELD( m_ForcedGrabController, FIELD_INTEGER ),
+	DEFINE_FIELD( m_bDropEnabled, FIELD_BOOLEAN ),
 
 	DEFINE_FIELD( m_nPortalsEnteredInAirFlags, FIELD_INTEGER ),
 	DEFINE_FIELD( m_nAirTauntCount, FIELD_INTEGER ),
@@ -546,6 +547,7 @@ CPortal_Player::CPortal_Player()
 	// Taunt code
 	m_bWantsToSwapGuns = false;
 	m_bPotatos = true;
+	m_bDropEnabled = true;
 	m_flMotionBlurAmount = -1.0f;
 	m_Shared.Init( this );
 	m_Shared.m_flTauntRemoveTime = 0.0f;
@@ -2684,10 +2686,17 @@ void CPortal_Player::PlayerUse( void )
 
 	bool bUsePressed = (m_afButtonPressed & IN_USE) != 0;
 
+	// Maps lock dropping from a core's OnPlayerPickup and never unlock it, so the
+	// lock covers only that carry and ends once scripted logic takes the object.
+	if ( !m_bDropEnabled && !m_hUseEntity )
+	{
+		m_bDropEnabled = true;
+	}
+
 	if ( bUsePressed && m_hUseEntity )
 	{
 		// Currently using a latched entity?
-		if ( !ClearUseEntity() )
+		if ( !m_bDropEnabled || !ClearUseEntity() )
 		{
 			m_bPlayUseDenySound = true;
 		}

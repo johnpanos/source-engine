@@ -84,6 +84,7 @@
 
 #ifdef PORTAL2
 #include "props.h"
+#include "portal_grabcontroller_shared.h"
 #endif
 
 ConVar autoaim_max_dist( "autoaim_max_dist", "2160" ); // 2160 = 180 feet
@@ -4562,8 +4563,21 @@ void CBasePlayer::PostThink()
 					|| FClassnameIs( GetActiveWeapon(), "weapon_portalgun" ) 
 	#endif //#ifdef PORTAL			
 					) )
-				{  
-					m_hUseEntity->Use( this, this, USE_SET, 2 );	// try fire the gun
+				{
+#ifdef PORTAL2
+					// Portal 2's pickup controller has no Use(); it is driven through
+					// UsePickupController, which moves the held object every frame.
+					CPlayerPickupController *pPickupController =
+					    dynamic_cast<CPlayerPickupController *>( m_hUseEntity.Get() );
+					if ( pPickupController )
+					{
+						pPickupController->UsePickupController( this, this, USE_SET, 2 );
+					}
+					else
+#endif
+					{
+						m_hUseEntity->Use( this, this, USE_SET, 2 ); // try fire the gun
+					}
 				}
 				else
 				{
@@ -7585,6 +7599,21 @@ bool CBasePlayer::ClearUseEntity()
 {
 	if ( m_hUseEntity != NULL )
 	{
+#ifdef PORTAL2
+		// The pickup controller detaches the held object and clears the use
+		// entity itself; it refuses when there is no safe place to drop it.
+		CPlayerPickupController *pPickupController =
+		    dynamic_cast<CPlayerPickupController *>( m_hUseEntity.Get() );
+		if ( pPickupController )
+		{
+			if ( !pPickupController->UsePickupController( this, this, USE_OFF, 0 ) )
+				return false;
+
+			m_hUseEntity = NULL;
+			return true;
+		}
+#endif
+
 		// Stop controlling the train/object
 		// TODO: Send HUD Update
 		m_hUseEntity->Use( this, this, USE_OFF, 0 );

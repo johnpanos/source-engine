@@ -2018,7 +2018,7 @@ void *CMatSystemSurface::FontDataHelper( const char *pchFontName, int &size, con
 
 		int nFontBytes = buf.TellPut();
 		const ValveFont::DecodeResult_t decode =
-			ValveFont::DecodeFont( (unsigned char *)buf.Base(), buf.TellPut(), nFontBytes );
+		    ValveFont::DecodeFont( (unsigned char *)buf.Base(), buf.TellPut(), nFontBytes );
 		if ( decode == ValveFont::DECODE_MALFORMED )
 		{
 			Msg( "Malformed custom font file '%s'\n", fontFileName );
@@ -2030,7 +2030,8 @@ void *CMatSystemSurface::FontDataHelper( const char *pchFontName, int &size, con
 		}
 
 		FT_Face face;
-		const FT_Error error = FT_New_Memory_Face( FontManager().GetFontLibraryHandle(), (FT_Byte *)buf.Base(), nFontBytes, 0, &face );
+		const FT_Error error = FT_New_Memory_Face(
+		    FontManager().GetFontLibraryHandle(), (FT_Byte *)buf.Base(), nFontBytes, 0, &face );
 
 		if ( error  ) 
 		{
@@ -2044,7 +2045,7 @@ void *CMatSystemSurface::FontDataHelper( const char *pchFontName, int &size, con
 		entry.data = malloc( entry.size );
 		memcpy( entry.data, buf.Base(), entry.size );
 
-		if( pchFontName )
+		if ( pchFontName )
 		{
 			AddFontDataName( pchFontName, entry );
 		}
@@ -2052,8 +2053,16 @@ void *CMatSystemSurface::FontDataHelper( const char *pchFontName, int &size, con
 		{
 			// Schemes name custom fonts by family ("HalfLife2") or, for faces of one
 			// family, by PostScript name ("UniversLTStd-BoldCn"); register both.
-			AddFontDataName( face->family_name, entry );
-			AddFontDataName( FT_Get_Postscript_Name( face ), entry );
+			const char *pchFamily = face->family_name;
+			const char *pchPostscript = FT_Get_Postscript_Name( face );
+			if ( pchFamily && pchFamily[0] )
+			{
+				AddFontDataName( pchFamily, entry );
+			}
+			if ( pchPostscript && pchPostscript[0] )
+			{
+				AddFontDataName( pchPostscript, entry );
+			}
 		}
 
 		FT_Done_Face( face );
@@ -2079,14 +2088,13 @@ void *CMatSystemSurface::FontDataHelper( const char *pchFontName, int &size, con
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Registers font data under a lookup name. The first registration of
-//			a name wins, as lookups have always returned the first match. Font
-//			data lives for the process, so several names may share one buffer.
+// Purpose: Registers font data under a lookup name (an empty requested name is
+//			cached too, so fallbacks for it are not reloaded). The first
+//			registration of a name wins, as lookups have always returned the
+//			first match. Font data lives for the process, so names may share it.
 //-----------------------------------------------------------------------------
 void CMatSystemSurface::AddFontDataName( const char *pchFontName, const font_entry &entry )
 {
-	if ( !pchFontName || !pchFontName[0] )
-		return;
 
 	// Replace spaces and dashes with underscores.
 	CUtlString strFontName( pchFontName );

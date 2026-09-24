@@ -606,7 +606,7 @@ const char *KeyValues::ReadToken( CUtlBuffer &buf, bool &wasQuoted, bool &wasCon
 		}
 
 		// break on whitespace
-		if ( isspace(*c) && ( !bInConditional || *c == '\n' || *c == '\r' ) )
+		if ( isspace( *c ) && ( !bInConditional || *c == '\n' || *c == '\r' ) )
 			break;
 
 		if (nCount < (KEYVALUES_TOKEN_SIZE-1) )
@@ -2256,7 +2256,6 @@ bool EvaluateConditional( const char *str )
 	}
 	return bResult;
 }
-
 
 //-----------------------------------------------------------------------------
 // Read from a buffer...

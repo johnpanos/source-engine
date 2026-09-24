@@ -497,8 +497,10 @@ void CHud::InitFonts()
 //-----------------------------------------------------------------------------
 vgui::HFont GetClientSchemeFont( const char *pchFontName, bool bProportional )
 {
-	vgui::IScheme *pScheme = vgui::scheme()->GetIScheme( vgui::scheme()->GetScheme( "ClientScheme" ) );
-	vgui::HFont hFont = pScheme ? pScheme->GetFont( pchFontName, bProportional ) : vgui::INVALID_FONT;
+	vgui::IScheme *pScheme =
+	    vgui::scheme()->GetIScheme( vgui::scheme()->GetScheme( "ClientScheme" ) );
+	vgui::HFont hFont =
+	    pScheme ? pScheme->GetFont( pchFontName, bProportional ) : vgui::INVALID_FONT;
 
 #if defined( PORTAL2 )
 	if ( !hFont )
@@ -509,7 +511,8 @@ vgui::HFont GetClientSchemeFont( const char *pchFontName, bool bProportional )
 		vgui::HScheme hBaseMod = vgui::scheme()->GetScheme( "basemodui_scheme" );
 		if ( hBaseMod == vgui::scheme()->GetDefaultScheme() )
 		{
-			hBaseMod = vgui::scheme()->LoadSchemeFromFile( "resource/basemodui_scheme.res", "basemodui_scheme" );
+			hBaseMod = vgui::scheme()->LoadSchemeFromFile(
+			    "resource/basemodui_scheme.res", "basemodui_scheme" );
 		}
 
 		vgui::IScheme *pBaseMod = vgui::scheme()->GetIScheme( hBaseMod );

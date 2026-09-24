@@ -74,7 +74,7 @@ void CGameConsole::Initialize()
 //-----------------------------------------------------------------------------
 void CGameConsole::Activate()
 {
-	if (!m_bInitialized)
+	if ( !m_bInitialized || !m_pConsole )
 		return;
 
 	vgui::surface()->RestrictPaintToSinglePanel(NULL);
@@ -86,7 +86,7 @@ void CGameConsole::Activate()
 //-----------------------------------------------------------------------------
 void CGameConsole::Hide()
 {
-	if (!m_bInitialized)
+	if ( !m_bInitialized || !m_pConsole )
 		return;
 
 	m_pConsole->Hide();
@@ -97,7 +97,7 @@ void CGameConsole::Hide()
 //-----------------------------------------------------------------------------
 void CGameConsole::Clear()
 {
-	if (!m_bInitialized)
+	if ( !m_bInitialized || !m_pConsole )
 		return;
 
 	m_pConsole->Clear();
@@ -109,7 +109,7 @@ void CGameConsole::Clear()
 //-----------------------------------------------------------------------------
 bool CGameConsole::IsConsoleVisible()
 {
-	if (!m_bInitialized)
+	if ( !m_bInitialized || !m_pConsole )
 		return false;
 	
 	return m_pConsole->IsVisible();
@@ -120,15 +120,15 @@ bool CGameConsole::IsConsoleVisible()
 //-----------------------------------------------------------------------------
 void CGameConsole::ActivateDelayed(float time)
 {
-	if (!m_bInitialized)
+	if ( !m_bInitialized || !m_pConsole )
 		return;
 
-	m_pConsole->PostMessage(m_pConsole, new KeyValues("Activate"), time);
+	m_pConsole->PostMessage( m_pConsole->GetVPanel(), new KeyValues( "Activate" ), time );
 }
 
 void CGameConsole::SetParent( intp parent )
-{	
-	if (!m_bInitialized)
+{
+	if ( !m_bInitialized || !m_pConsole )
 		return;
 
 	m_pConsole->SetParent( static_cast<vgui::VPANEL>( parent ));
@@ -139,7 +139,10 @@ void CGameConsole::SetParent( intp parent )
 //-----------------------------------------------------------------------------
 void CGameConsole::OnCmdCondump()
 {
-	g_GameConsole.m_pConsole->DumpConsoleTextToFile();
+	if ( g_GameConsole.m_pConsole )
+	{
+		g_GameConsole.m_pConsole->DumpConsoleTextToFile();
+	}
 }
 
 CON_COMMAND( condump, "dump the text currently in the console to condumpXX.log" )

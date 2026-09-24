@@ -1191,6 +1191,7 @@ BEGIN_DATADESC( CFuncTrackTrain )
 	DEFINE_FIELD( m_controlMaxs, FIELD_VECTOR ),
 	DEFINE_FIELD( m_flVolume, FIELD_FLOAT ),
 	DEFINE_FIELD( m_oldSpeed, FIELD_FLOAT ),
+	DEFINE_FIELD( m_strPathTarget, FIELD_STRING ),
 	//DEFINE_FIELD( m_lastBlockPos, FIELD_POSITION_VECTOR ), // temp values for blocking, don't save
 	//DEFINE_FIELD( m_lastBlockTick, FIELD_INTEGER ),
 
@@ -1217,10 +1218,14 @@ BEGIN_DATADESC( CFuncTrackTrain )
 	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetSpeedDirAccel", InputSetSpeedDirAccel ),
 	DEFINE_INPUTFUNC( FIELD_STRING, "TeleportToPathTrack", InputTeleportToPathTrack ),
 	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetSpeedForwardModifier", InputSetSpeedForwardModifier ),
+	DEFINE_INPUTFUNC( FIELD_FLOAT, "SetMaxSpeed", InputSetMaxSpeed ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "MoveToPathNode", InputMoveToPathNode ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "TeleportToPathNode", InputTeleportToPathNode ),
 
 	// Outputs
 	DEFINE_OUTPUT( m_OnStart, "OnStart" ),
 	DEFINE_OUTPUT( m_OnNext, "OnNextPoint" ),
+	DEFINE_OUTPUT( m_OnArrivedAtDestinationNode, "OnArrivedAtDestinationNode" ),
 
 	// Function Pointers
 	DEFINE_FUNCTION( Next ),
@@ -1258,6 +1263,7 @@ CFuncTrackTrain::CFuncTrackTrain()
 	m_lastBlockTick = gpGlobals->tickcount;
 
 	m_flSpeedForwardModifier = 1.0f;
+	m_strPathTarget = NULL_STRING;
 	m_flUnmodifiedDesiredSpeed = 0.0f;
 
 	m_bDamageChild = false;
@@ -1554,6 +1560,114 @@ void CFuncTrackTrain::InputTeleportToPathTrack( inputdata_t &inputdata )
 	{
 		TeleportToPathTrack( pTrack );
 		m_ppath = pTrack;
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Input handler that sets the max speed of the train.
+//-----------------------------------------------------------------------------
+void CFuncTrackTrain::InputSetMaxSpeed( inputdata_t &inputdata )
+{
+	m_maxSpeed = inputdata.value.Float();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Input handler that moves the train along its path to the named
+//			node, then fires OnArrivedAtDestinationNode (Portal 2 elevators).
+//-----------------------------------------------------------------------------
+void CFuncTrackTrain::InputMoveToPathNode( inputdata_t &inputdata )
+{
+	m_strPathTarget = MAKE_STRING( inputdata.value.String() );
+
+	CBaseEntity *pEntity = gEntList.FindEntityByName( NULL, inputdata.value.StringID() );
+	CPathTrack *pTrack = m_ppath;
+	CPathTrack *pNext;
+
+	const int MAX_SEARCH_LENGTH = 1000;
+	int searchesLeft = MAX_SEARCH_LENGTH;
+
+	if ( !pTrack || !pEntity )
+		return;
+
+	float flDesiredSpeed = pTrack->m_flSpeed;
+	if ( pTrack->m_flSpeed == 0 )
+	{
+		flDesiredSpeed = m_maxSpeed;
+	}
+
+	// Already at the target: keep moving, and stop on passing it.
+	if ( pEntity == pTrack )
+	{
+		if ( IsDirForward() )
+		{
+			if ( pTrack->GetNext() )
+			{
+				SetDirForward( false );
+				SetSpeed( flDesiredSpeed );
+				return;
+			}
+		}
+		else
+		{
+			if ( pTrack->GetPrevious() )
+			{
+				SetDirForward( true );
+				SetSpeed( flDesiredSpeed );
+				return;
+			}
+		}
+
+		Stop();
+		return;
+	}
+
+	// Search forward first, then backward.
+	do
+	{
+		searchesLeft--;
+		pNext = pTrack->GetNext();
+		if ( pNext )
+			pTrack = pNext;
+	} while ( pNext && pEntity != pNext && searchesLeft );
+
+	if ( pNext == pEntity )
+	{
+		SetDirForward( true );
+		SetSpeed( flDesiredSpeed );
+		return;
+	}
+
+	searchesLeft = MAX_SEARCH_LENGTH;
+	pTrack = m_ppath;
+
+	do
+	{
+		searchesLeft--;
+		pNext = pTrack->GetPrevious();
+		if ( pNext )
+			pTrack = pNext;
+	} while ( pNext && pEntity != pNext && searchesLeft );
+
+	if ( pNext == pEntity )
+	{
+		SetDirForward( false );
+		SetSpeed( flDesiredSpeed );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Input handler that teleports the train to the named node.
+//-----------------------------------------------------------------------------
+void CFuncTrackTrain::InputTeleportToPathNode( inputdata_t &inputdata )
+{
+	m_strPathTarget = MAKE_STRING( inputdata.value.String() );
+
+	CPathTrack *pTrack = dynamic_cast<CPathTrack *>( gEntList.FindEntityByName( NULL, inputdata.value.StringID() ) );
+	if ( pTrack )
+	{
+		m_ppath = pTrack;
+		ArriveAtNode( m_ppath );
+		TeleportToPathTrack( m_ppath );
 	}
 }
 
@@ -1898,6 +2012,20 @@ void CFuncTrackTrain::ArriveAtNode( CPathTrack *pNode )
 	if ( pNode->HasSpawnFlags( SF_PATH_DISABLE_TRAIN ) )
 	{
 		m_spawnflags |= SF_TRACKTRAIN_NOCONTROL;
+	}
+
+	// Stop at the destination of MoveToPathNode/TeleportToPathNode.
+	if ( m_strPathTarget != NULL_STRING )
+	{
+		CBaseEntity *pEntity = gEntList.FindEntityByName( NULL, STRING( m_strPathTarget ) );
+		if ( pEntity && pNode == pEntity )
+		{
+			m_OnArrivedAtDestinationNode.FireOutput( pNode, this );
+			m_strPathTarget = NULL_STRING;
+			m_oldSpeed = m_flSpeed;
+			m_flSpeed = 0;
+			return;
+		}
 	}
 	
 	//
@@ -2368,7 +2496,10 @@ void CFuncTrackTrain::Next( void )
 		m_OnNext.FireOutput( pNext, this );
 
 		SetThink( &CFuncTrackTrain::Next );
-		SetMoveDoneTime( 0.5 );
+		// A node is reached one 0.1 s look-ahead early. A train that stopped there
+		// (a MoveToPathNode destination) coasts only that remainder; a longer move
+		// overshoots and then pushes against whatever it rests on every tick.
+		SetMoveDoneTime( m_flSpeed ? 0.5 : 0.1 );
 		SetNextThink( gpGlobals->curtime );
 		SetMoveDone( NULL );
 	}
@@ -2466,6 +2597,18 @@ void CFuncTrackTrain::DeadEnd( void )
 		DevMsg( 2, "at %s\n", pTrack->GetDebugName() );
 		variant_t emptyVariant;
 		pTrack->AcceptInput( "InPass", this, this, emptyVariant, 0 );
+
+		// A MoveToPathNode destination at the end of the path is reached here.
+		if ( m_strPathTarget != NULL_STRING )
+		{
+			CBaseEntity *pEntity = gEntList.FindEntityByName( NULL, STRING( m_strPathTarget ) );
+			if ( pEntity && pTrack == pEntity )
+			{
+				m_ppath = pTrack;
+				m_OnArrivedAtDestinationNode.FireOutput( pTrack, this );
+				m_strPathTarget = NULL_STRING;
+			}
+		}
 	}
 	else
 	{

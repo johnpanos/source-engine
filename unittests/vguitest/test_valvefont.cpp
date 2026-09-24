@@ -31,7 +31,8 @@ void Check( bool condition, const char *what )
 }
 
 // Encodes like the later branches: nSaltBytes includes the trailing count.
-std::vector<unsigned char> Encode( const std::vector<unsigned char> &font, const std::vector<unsigned char> &salt )
+std::vector<unsigned char> Encode(
+    const std::vector<unsigned char> &font, const std::vector<unsigned char> &salt )
 {
 	std::vector<unsigned char> out( font );
 	unsigned char key = 0xA7;
@@ -73,13 +74,16 @@ void CheckRoundTrip( size_t fontSize, size_t saltSize )
 		salt[i] = (unsigned char)( 0x5A ^ ( i * 29 ) );
 
 	std::vector<unsigned char> buffer = Encode( font, salt );
-	Check( fontSize == 0 || std::memcmp( buffer.data(), font.data(), fontSize ) != 0, "encoding changes the payload" );
+	Check( fontSize == 0 || std::memcmp( buffer.data(), font.data(), fontSize ) != 0,
+	    "encoding changes the payload" );
 
 	int nDecoded = -1;
-	const ValveFont::DecodeResult_t result = ValveFont::DecodeFont( buffer.data(), (int)buffer.size(), nDecoded );
+	const ValveFont::DecodeResult_t result =
+	    ValveFont::DecodeFont( buffer.data(), (int)buffer.size(), nDecoded );
 	Check( result == ValveFont::DECODE_OK, "tagged buffer decodes" );
 	Check( nDecoded == (int)fontSize, "decoded size excludes salt, count and tag" );
-	Check( nDecoded >= 0 && std::memcmp( buffer.data(), font.data(), fontSize ) == 0, "decoded bytes equal the font" );
+	Check( nDecoded >= 0 && std::memcmp( buffer.data(), font.data(), fontSize ) == 0,
+	    "decoded bytes equal the font" );
 }
 
 } // namespace
@@ -97,8 +101,9 @@ int main()
 		std::vector<unsigned char> font = SampleFont( 512 );
 		const std::vector<unsigned char> original = font;
 		int nDecoded = -1;
-		Check( ValveFont::DecodeFont( font.data(), (int)font.size(), nDecoded ) == ValveFont::DECODE_NOT_ENCODED,
-			"untagged buffer is not encoded" );
+		Check( ValveFont::DecodeFont( font.data(), (int)font.size(), nDecoded ) ==
+		           ValveFont::DECODE_NOT_ENCODED,
+		    "untagged buffer is not encoded" );
 		Check( nDecoded == 0 && font == original, "untagged buffer is unchanged" );
 	}
 
@@ -107,28 +112,33 @@ int main()
 	{
 		unsigned char tagOnly[] = { 'V', 'F', 'O', 'N', 'T', '1' };
 		int nDecoded = -1;
-		Check( ValveFont::DecodeFont( tagOnly, sizeof( tagOnly ), nDecoded ) == ValveFont::DECODE_NOT_ENCODED,
-			"bare tag has no payload" );
+		Check( ValveFont::DecodeFont( tagOnly, sizeof( tagOnly ), nDecoded ) ==
+		           ValveFont::DECODE_NOT_ENCODED,
+		    "bare tag has no payload" );
 
 		unsigned char zeroCount[] = { 1, 2, 3, 0, 'V', 'F', 'O', 'N', 'T', '1' };
-		Check( ValveFont::DecodeFont( zeroCount, sizeof( zeroCount ), nDecoded ) == ValveFont::DECODE_MALFORMED,
-			"zero salt count is malformed" );
+		Check( ValveFont::DecodeFont( zeroCount, sizeof( zeroCount ), nDecoded ) ==
+		           ValveFont::DECODE_MALFORMED,
+		    "zero salt count is malformed" );
 
 		unsigned char oversized[] = { 1, 2, 3, 4, 'V', 'F', 'O', 'N', 'T', '1' };
-		Check( ValveFont::DecodeFont( oversized, sizeof( oversized ), nDecoded ) == ValveFont::DECODE_MALFORMED,
-			"salt count covering the whole payload is malformed" );
+		Check( ValveFont::DecodeFont( oversized, sizeof( oversized ), nDecoded ) ==
+		           ValveFont::DECODE_MALFORMED,
+		    "salt count covering the whole payload is malformed" );
 		Check( nDecoded == 0, "malformed buffer reports no font bytes" );
 
 		unsigned char countOnly[] = { 1, 'V', 'F', 'O', 'N', 'T', '1' };
-		Check( ValveFont::DecodeFont( countOnly, sizeof( countOnly ), nDecoded ) == ValveFont::DECODE_MALFORMED,
-			"count byte without a payload is malformed" );
+		Check( ValveFont::DecodeFont( countOnly, sizeof( countOnly ), nDecoded ) ==
+		           ValveFont::DECODE_MALFORMED,
+		    "count byte without a payload is malformed" );
 	}
 
 	// Null input.
 	{
 		int nDecoded = -1;
-		Check( ValveFont::DecodeFont( nullptr, 0, nDecoded ) == ValveFont::DECODE_NOT_ENCODED && nDecoded == 0,
-			"null buffer is not encoded" );
+		Check( ValveFont::DecodeFont( nullptr, 0, nDecoded ) == ValveFont::DECODE_NOT_ENCODED &&
+		           nDecoded == 0,
+		    "null buffer is not encoded" );
 	}
 
 	return testing::ReportConformance( g_Checks, g_Failures );

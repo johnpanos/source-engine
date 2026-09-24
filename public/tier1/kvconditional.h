@@ -19,11 +19,11 @@
 #endif
 
 // Returns the value of a symbol, given without its leading '$'.
-typedef bool (*KVConditionalSymbolFn_t)( const char *pSymbol, void *pContext );
+typedef bool ( *KVConditionalSymbolFn_t )( const char *pSymbol, void *pContext );
 
 // Evaluates pExpression, which may keep its enclosing brackets ("[$X]").
 // Returns false, leaving bResult false, when the expression is malformed.
-bool EvaluateKVConditionalExpression( const char *pExpression, KVConditionalSymbolFn_t pfnSymbol,
-	void *pContext, bool &bResult );
+bool EvaluateKVConditionalExpression(
+    const char *pExpression, KVConditionalSymbolFn_t pfnSymbol, void *pContext, bool &bResult );
 
 #endif // KVCONDITIONAL_H

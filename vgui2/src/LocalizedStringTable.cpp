@@ -492,7 +492,9 @@ bool CLocalizedStringTable::AddFile( const char *szFileName, const char *pPathID
 						bool bAccepted = true;
 						ucs2 conditional[ MAX_LOCALIZED_CHARS ];
 						ucs2 *tempData = ReadUnicodeToken(data, conditional, MAX_LOCALIZED_CHARS, bQuoted);
-						if ( !bQuoted && conditional[0] == L'[' && ( conditional[1] == L'$' || conditional[1] == L'!' ) ) // [$X] or [!$X]; an unconsumed tag would shift every later key/value pair
+						// [$X] or [!$X]; an unconsumed tag would shift every later key/value pair
+						if ( !bQuoted && conditional[0] == L'[' &&
+						     ( conditional[1] == L'$' || conditional[1] == L'!' ) )
 						{
 							// Evaluate the conditional tag
 							char cond[MAX_LOCALIZED_CHARS];

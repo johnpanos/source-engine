@@ -108,6 +108,7 @@ END_DATADESC()
 // ID Stamp used to uniquely identify every output
 int CEventAction::s_iNextIDStamp = 0;
 
+#define VMF_IOPARAM_STRING_DELIMITER 0x1b
 
 //-----------------------------------------------------------------------------
 // Purpose: Creates an event action and assigns it an unique ID stamp.
@@ -129,10 +130,15 @@ CEventAction::CEventAction( const char *ActionData )
 
 	char szToken[256];
 
+	// Later compilers (Portal 2 onward) separate the fields with ESC so that
+	// parameters may contain commas; older maps use commas.
+	const char chDelim =
+	    strchr( ActionData, VMF_IOPARAM_STRING_DELIMITER ) ? VMF_IOPARAM_STRING_DELIMITER : ',';
+
 	//
 	// Parse the target name.
 	//
-	const char *psz = nexttoken(szToken, ActionData, ',');
+	const char *psz = nexttoken(szToken, ActionData, chDelim);
 	if (szToken[0] != '\0')
 	{
 		m_iTarget = AllocPooledString(szToken);
@@ -141,7 +147,7 @@ CEventAction::CEventAction( const char *ActionData )
 	//
 	// Parse the input name.
 	//
-	psz = nexttoken(szToken, psz, ',');
+	psz = nexttoken(szToken, psz, chDelim);
 	if (szToken[0] != '\0')
 	{
 		m_iTargetInput = AllocPooledString(szToken);
@@ -154,7 +160,7 @@ CEventAction::CEventAction( const char *ActionData )
 	//
 	// Parse the parameter override.
 	//
-	psz = nexttoken(szToken, psz, ',');
+	psz = nexttoken(szToken, psz, chDelim);
 	if (szToken[0] != '\0')
 	{
 		m_iParameter = AllocPooledString(szToken);
@@ -163,7 +169,7 @@ CEventAction::CEventAction( const char *ActionData )
 	//
 	// Parse the delay.
 	//
-	psz = nexttoken(szToken, psz, ',');
+	psz = nexttoken(szToken, psz, chDelim);
 	if (szToken[0] != '\0')
 	{
 		m_flDelay = atof(szToken);
@@ -172,7 +178,7 @@ CEventAction::CEventAction( const char *ActionData )
 	//
 	// Parse the number of times to fire.
 	//
-	nexttoken(szToken, psz, ',');
+	nexttoken(szToken, psz, chDelim);
 	if (szToken[0] != '\0')
 	{
 		m_nTimesToFire = atoi(szToken);

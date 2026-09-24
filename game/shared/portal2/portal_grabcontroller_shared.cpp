@@ -2924,6 +2924,11 @@ bool CGrabController::UpdateObjectVM( CBasePlayer *pPlayer, float flError )
 	}
 	pPhys->GetVelocity( &vel, &angImpulse );
 	pEnt->SetLocalVelocity( vel );
+
+	// The grab controller only runs while the object is simulating. The physics
+	// path wakes it in SetTargetPosition; without this, a view model held object
+	// the player carries while standing still goes to sleep and stops following.
+	pPhys->Wake();
 	
 	// Don't let anything change the transmit state back to PVS_CHECK or we'll
 	// start disappearing when going through portals or standing near walls.

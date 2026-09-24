@@ -24,9 +24,9 @@ namespace ValveFont
 
 enum DecodeResult_t
 {
-	DECODE_NOT_ENCODED,	// no VFONT1 tag: the buffer is left unchanged
-	DECODE_OK,			// decoded in place; nDecodedBytes is the font size
-	DECODE_MALFORMED,	// tagged, but the salt count does not fit the buffer
+	DECODE_NOT_ENCODED, // no VFONT1 tag: the buffer is left unchanged
+	DECODE_OK,          // decoded in place; nDecodedBytes is the font size
+	DECODE_MALFORMED,   // tagged, but the salt count does not fit the buffer
 };
 
 //-----------------------------------------------------------------------------
