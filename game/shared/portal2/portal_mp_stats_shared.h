@@ -8,6 +8,7 @@
 #define PORTAL_MP_STATS_SHARED_H
 
 class CBaseEntity;
+class IPlayerLocal;
 
 class CPortalMPStats
 {
@@ -25,7 +26,7 @@ public:
 		(void)pPlayer;
 		(void)nTaunt;
 	}
-	void RefreshStats( CBaseEntity *pPlayer, CBaseEntity *pLocalPlayer )
+	void RefreshStats( CBaseEntity *pPlayer, IPlayerLocal *pLocalPlayer )
 	{
 		(void)pPlayer;
 		(void)pLocalPlayer;

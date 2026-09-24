@@ -702,7 +702,7 @@ void CBeam::RelinkBeam( void )
 
 	CTraceFilterChain traceFilterChain( &traceFilter, pEntityBeamTraceFilter );
 
-	bUseExtraPoints = UTIL_Portal_Trace_Beam( this, startPos, endPos, vecAbsExtra1, vecAbsExtra2, &traceFilterChain );
+	bUseExtraPoints = false;
 #endif
 
 	// UNDONE: Should we do this to make the boxes smaller?
@@ -1098,7 +1098,7 @@ void CBeam::ComputeBounds( Vector& mins, Vector& maxs )
 
 	CTraceFilterChain traceFilterChain( &traceFilter, pEntityBeamTraceFilter );
 
-	bUseExtraPoints = UTIL_Portal_Trace_Beam( this, vecAbsStart, vecAbsEnd, vecAbsExtra1, vecAbsExtra2, &traceFilterChain );
+	bUseExtraPoints = false;
 #endif
 
 	switch( GetType() )

@@ -226,7 +226,7 @@ void CLaserCatcher::UpdateOnRemove()
 	}
 
 	StopSound( "prop_laser_catcher.powerloop" );
-	StopParticleEffect( this, "laser_relay_powered" );
+	StopParticleEffects( this );
 
 	BaseClass::UpdateOnRemove();
 }
@@ -256,7 +256,7 @@ void CLaserCatcher::OnUnPowered()
 {
 	m_OnUnpowered.FireOutput( this, this );
 
-	StopParticleEffect( this, "laser_relay_powered" );
+	StopParticleEffects( this );
 
 	EmitSound( "prop_laser_catcher.poweroff" );
 	StopSound( "prop_laser_catcher.powerloop" );

@@ -1,5 +1,4 @@
-#if 0 // Portal 2-only implementation stubbed for this SDK build.
-//========= Copyright © 1996-2008, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2008, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
@@ -43,6 +42,7 @@
 #include "gameconsole.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "portal2_engine_compat.h"
 #include "tier0/memdbgon.h"
 
 using namespace BaseModUI;
@@ -1765,7 +1765,7 @@ void CBaseModFrame::CreateVirtualUiControls()
 
 char const * CBaseModFrame::GetEntityOverMouseCursorInEngine()
 {
-	if( !engine->IsLocalPlayerResolvable() )
+	if( !Portal2Engine::IsLocalPlayerResolvable() )
 	{
 		return "";
 	}
@@ -1788,14 +1788,14 @@ char const * CBaseModFrame::GetEntityOverMouseCursorInEngine()
 
 	// Find the view basis
 	C_BaseEntity *pHitEnt = NULL;
-	if ( C_BasePlayer *pBasePlayer = C_BasePlayer::GetLocalPlayer( 0 ) )
+	if ( C_BasePlayer *pBasePlayer = C_BasePlayer::GetLocalPlayer() )
 	{
-		C_BaseEntity *pEntOrg = pBasePlayer->GetViewEntity();
-		if ( !pEntOrg )
-			pEntOrg = pBasePlayer;
+		C_BaseEntity *pEntOrg = pBasePlayer;
 
 		Vector org = pEntOrg->GetAbsOrigin();
-		Vector basis[3] = { -pEntOrg->Left(), pEntOrg->Up(), pEntOrg->Forward() };
+		Vector basis[3];
+		pEntOrg->GetVectors( &basis[2], &basis[0], &basis[1] );
+		basis[0] = -basis[0];
 
 		Vector vecTraceDirection = vs.zNear * basis[2] + flWwX * basis[0] + flWwY * basis[1];
 		Vector ptOnNearPlane = org + vecTraceDirection;
@@ -1817,7 +1817,7 @@ char const * CBaseModFrame::GetEntityOverMouseCursorInEngine()
 	// }
 
 	static char s_chHitResult[128] = {0};
-	char const *szHitName = pHitEnt ? pHitEnt->GetEntityName() : "";
+	char const *szHitName = pHitEnt ? pHitEnt->GetDebugName() : "";
 	Q_strncpy( s_chHitResult, szHitName, sizeof( s_chHitResult ) );
 	return s_chHitResult;
 }
@@ -1941,5 +1941,3 @@ void BaseModUI::CBaseModFrame::SetDialogSubTitle( const char *pMajor, const wcha
 		m_nTitleTilesWide = nTitleTilesWide;
 	}
 }
-
-#endif

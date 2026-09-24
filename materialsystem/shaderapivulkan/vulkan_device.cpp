@@ -2794,8 +2794,9 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		t.dynStates[2] = VK_DYNAMIC_STATE_STENCIL_COMPARE_MASK;
 		t.dynStates[3] = VK_DYNAMIC_STATE_STENCIL_WRITE_MASK;
 		t.dynStates[4] = VK_DYNAMIC_STATE_STENCIL_REFERENCE;
+		t.dynStates[5] = VK_DYNAMIC_STATE_DEPTH_BIAS;
 		t.dyn = dyn;
-		t.dyn.dynamicStateCount = 5;
+		t.dyn.dynamicStateCount = 6;
 		t.dyn.pDynamicStates = t.dynStates;
 
 		// Build the default (opaque) state now so a device that cannot create
@@ -2828,10 +2829,10 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 	return true;
 }
 
-uint32_t CVulkanContext::RasterStateKey( const DynRasterState &state )
+uint64_t CVulkanContext::RasterStateKey( const DynRasterState &state )
 {
-	// Blend factors are below 32 and compare ops below 8, so the state packs
-	// into disjoint bit fields.
+	// Blend factors are below 32 and compare ops below 8. The alpha-write bit
+	// lives above the pass/sample bits so every raster state has a distinct key.
 	return ( state.blend ? 1u : 0u ) | ( static_cast<uint32_t>( state.srcFactor ) & 31u ) << 1 |
 	       ( static_cast<uint32_t>( state.dstFactor ) & 31u ) << 6 |
 	       ( state.depthTest ? 1u : 0u ) << 11 | ( state.depthWrite ? 1u : 0u ) << 12 |
@@ -2844,10 +2845,12 @@ uint32_t CVulkanContext::RasterStateKey( const DynRasterState &state )
 	                     ( static_cast<uint32_t>( state.stencilFail ) & 7u ) << 23 |
 	                     ( static_cast<uint32_t>( state.stencilDepthFail ) & 7u ) << 26 |
 	                     ( static_cast<uint32_t>( state.stencilPass ) & 7u ) << 29
-	               : 0u );
+	               : 0u ) |
+	       ( state.alphaWrite ? 1ull << 36 : 0ull ) | ( state.depthBiasEnable ? 1ull << 37 : 0ull );
 }
 
-// The inverse of RasterStateKey (bits 32 and up, the pass, are PipelineKey's).
+// The inverse of RasterStateKey. Bits 32-35 are PipelineKey's pass and sample
+// selection; bits 36-37 belong to the raster state.
 CVulkanContext::DynRasterState CVulkanContext::RasterStateFromKey( uint64_t key )
 {
 	const uint32_t k = static_cast<uint32_t>( key );
@@ -2859,6 +2862,8 @@ CVulkanContext::DynRasterState CVulkanContext::RasterStateFromKey( uint64_t key 
 	state.depthWrite = ( ( k >> 12 ) & 1u ) != 0;
 	state.depthCompare = static_cast<VkCompareOp>( ( k >> 13 ) & 7u );
 	state.colorWrite = ( ( k >> 16 ) & 1u ) != 0;
+	state.alphaWrite = ( key & ( 1ull << 36 ) ) != 0;
+	state.depthBiasEnable = ( key & ( 1ull << 37 ) ) != 0;
 	state.cullMode = static_cast<VkCullModeFlags>( ( k >> 17 ) & 3u );
 	state.stencilEnable = ( ( k >> 19 ) & 1u ) != 0;
 	if ( state.stencilEnable )
@@ -3022,9 +3027,11 @@ VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, V
 {
 	CFrameCostScope cost( m_frameCost, kCostPipelineCreate );
 	VkPipelineColorBlendAttachmentState att = {};
-	att.colorWriteMask = state.colorWrite ? VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-	                                            VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
-	                                      : 0;
+	if ( state.colorWrite )
+		att.colorWriteMask =
+		    VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT;
+	if ( state.alphaWrite )
+		att.colorWriteMask |= VK_COLOR_COMPONENT_A_BIT;
 	att.blendEnable = state.blend ? VK_TRUE : VK_FALSE;
 	att.srcColorBlendFactor = state.srcFactor;
 	att.dstColorBlendFactor = state.dstFactor;
@@ -3058,6 +3065,7 @@ VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, V
 	gp.pViewportState = &t.vp;
 	VkPipelineRasterizationStateCreateInfo rs = t.rs;
 	rs.cullMode = state.cullMode;
+	rs.depthBiasEnable = state.depthBiasEnable ? VK_TRUE : VK_FALSE;
 	rs.frontFace = vertexInput == &m_worldVin || vertexInput == &m_worldPbrVin
 	                   ? VK_FRONT_FACE_COUNTER_CLOCKWISE
 	                   : VK_FRONT_FACE_CLOCKWISE;
@@ -4487,6 +4495,8 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 	std::memcpy( d.pbrAngles, m_dynPbrAngles, sizeof( d.pbrAngles ) );
 	d.pbrWorld = m_dynPbrWorld;
 	d.raster = m_dynRaster;
+	d.depthBiasConstant = m_dynDepthBiasConstant;
+	d.depthBiasSlope = m_dynDepthBiasSlope;
 	d.alphaRef = m_dynAlphaRef;
 	d.texHandle = m_dynBoundTexHandle;
 	d.lightmapHandle = m_dynLightmapHandle;
@@ -4773,8 +4783,8 @@ bool CVulkanContext::RecordWantsSrgb( const DynDraw &r ) const
 }
 
 // Records whose result is the same through either view: queries, clears of
-// depth/stencil alone, and draws that write no color (the view only changes how
-// color is stored; these shaders' alpha test precedes their sRGB encode, and
+// depth/stencil alone, and draws that write no RGB (the view only changes how
+// RGB is stored; these shaders' alpha test precedes their sRGB encode, and
 // each has a pipeline for either view). With merging they stay in the open
 // pass, since on a tiled GPU every pass break stores and reloads the target.
 bool CVulkanContext::RecordViewAgnostic( const DynDraw &r ) const
@@ -5837,6 +5847,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			}
 			if ( textured || pbrDirect || pbrWorld || portal || skin )
 			{
+				vkCmdSetDepthBias( cmd, d.depthBiasConstant, 0.0f, d.depthBiasSlope );
 				vkCmdSetStencilCompareMask(
 				    cmd, VK_STENCIL_FACE_FRONT_AND_BACK, d.stencilTestMask );
 				vkCmdSetStencilWriteMask( cmd, VK_STENCIL_FACE_FRONT_AND_BACK, d.stencilWriteMask );

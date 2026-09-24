@@ -1,5 +1,4 @@
-#if 0 // Portal 2-only implementation stubbed for this SDK build.
-//========= Copyright � Valve Corporation, All rights reserved. ============//
+//========= Copyright ï¿½ Valve Corporation, All rights reserved. ============//
 //
 //
 //==========================================================================//
@@ -23,11 +22,13 @@
 #include <vgui_controls/ImageList.h>
 #include "vgui_avatarimage.h"
 
+#if defined( PORTAL2_PUZZLEMAKER )
 #include "gc_clientsystem.h"
 #include "econ_gcmessages.h"
+#include "rtime.h"
+#endif
 #include "vratemapdialog.h"
 #include "imageutils.h"
-#include "rtime.h"
 
 #ifdef PORTAL2_PUZZLEMAKER
 #include "c_community_coop.h"
@@ -1361,5 +1362,3 @@ public:
 GC_REG_JOB( GCSDK::CGCClient, CGCIsFollowingAuthorResponse, "CGCIsFollowingAuthorResponse", k_EMsgGCCommunityMapIsFollowingAuthorResponse, GCSDK::k_EServerTypeGCClient );
 
 #endif // PORTAL2_PUZZLEMAKER
-
-#endif

@@ -1,4 +1,3 @@
-#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Copyright (c) Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
@@ -6,6 +5,8 @@
 //============================================================================//
 
 #include "cbase.h"
+
+#if defined( PORTAL2_PUZZLEMAKER )
 
 #include "vquickplay.h"
 #include "vfooterpanel.h"
@@ -922,4 +923,4 @@ void CQuickPlay::LaunchQuickPlayMap( PublishedFileId_t unFileID )
 	m_eState = IDLE;
 }
 
-#endif
+#endif // PORTAL2_PUZZLEMAKER

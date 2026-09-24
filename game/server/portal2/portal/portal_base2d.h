@@ -1,4 +1,4 @@
-//===== Copyright � 1996-2005, Valve Corporation, All rights reserved. ======//
+//===== Copyright Â© 1996-2005, Valve Corporation, All rights reserved. ======//
 //
 // Purpose: 
 //
@@ -133,7 +133,7 @@ public:
 	{
 		static inline int GetOffset_m_PortalSimulator()
 		{
-			return MyOffsetOf( ThisClass, m_PortalSimulator );
+			return 0;
 		}
 
 	public:
@@ -167,9 +167,11 @@ public:
 	void					OnEntityTeleportedToPortal( CBaseEntity *pEntity );
 	void					OnEntityTeleportedFromPortal( CBaseEntity *pEntity );
 
-protected:
+public:
 	CNetworkVar( bool, m_bActivated ); //a portal can exist and not be active
 	CNetworkVar( bool, m_bOldActivatedState ); //the old state
+
+protected:
 
 	void					BroadcastPortalEvent( PortalEvent_t nEventType );
 

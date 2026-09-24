@@ -1,10 +1,11 @@
-//===== Copyright © 1996-2005, Valve Corporation, All rights reserved. ======//
+//===== Copyright Â© 1996-2005, Valve Corporation, All rights reserved. ======//
 //
 // Purpose: 
 //
 // $NoKeywords: $
 //===========================================================================//
 
+#if 0
 #include "cbase.h"
 #include "portalrenderable_flatbasic.h"
 #include "precache_register.h"
@@ -1745,3 +1746,4 @@ CPortalRenderable *CreatePortal_FlatBasic_Fn( void )
 }
 
 static CPortalRenderableCreator_AutoRegister CreatePortal_FlatBasic( "Flat Basic", CreatePortal_FlatBasic_Fn );
+#endif

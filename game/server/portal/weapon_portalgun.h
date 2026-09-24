@@ -110,7 +110,7 @@ public:
 	virtual float GetFireRate( void ) { return 0.7; };
 	void WeaponIdle( void );
 
-	PortalWeaponID GetWeaponID( void ) const { return WEAPON_PORTALGUN; }
+	int GetWeaponID( void ) const { return WEAPON_PORTALGUN; }
 
 protected:
 

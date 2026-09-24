@@ -1,4 +1,4 @@
-//====== Copyright � 1996-2008, Valve Corporation, All rights reserved. =======
+//====== Copyright Â© 1996-2008, Valve Corporation, All rights reserved. =======
 //
 // Purpose: Add entities to this system, and the Locator will maintain an arrow
 //			on the HUD that points to the entities when they are offscreen.
@@ -13,6 +13,7 @@
 
 
 #include "vgui_controls/PHandle.h"
+
 
 
 #define MAX_LOCATOR_BINDINGS_SHOWN	8
@@ -135,7 +136,7 @@ public:
 	void SetOnscreenIconTextureName( const char *pszTexture );
 	void SetOffscreenIconTextureName( const char *pszTexture );
 	void SetBinding( const char *pszBinding );
-	void SetSteamControllerBindingToOrigin( EControllerActionOrigin *pOrigins, int nOriginalToken, const char *pszActionName );
+	void SetSteamControllerBindingToOrigin( int *pOrigins, int nOriginalToken, const char *pszActionName );
 	const char *UseBindingImage( char *pchIconTextureName, size_t bufSize );
 	void SetIconNoTarget( bool bIconNoTarget ) { m_bIconNoTarget = bIconNoTarget; }
 

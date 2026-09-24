@@ -6,6 +6,7 @@
 
 #include "cbase.h"
 #include "vcollide_parse.h"
+#if 0
 #include "c_portal_player.h"
 #include "view.h"
 #include "c_basetempentity.h"
@@ -26,6 +27,7 @@
 #include "prediction.h"
 #include "choreoevent.h"
 #include "model_types.h"
+#include "materialsystem/itexture.h"
 #include "materialsystem/imaterialvar.h"
 #include "portal_mp_gamerules.h"
 #include "collisionutils.h"
@@ -1618,7 +1620,7 @@ void C_Portal_Player::UpdateClientSideAnimation( void )
 
 	// Update the animation data. It does the local check here so this works when using
 	// a third-person camera (and we don't have valid player angles).
-	if ( C_BasePlayer::IsLocalPlayer( this ) )
+	if ( IsLocalPlayer() )
 	{
 		m_PlayerAnimState->Update( EyeAngles()[YAW], m_angEyeAngles[PITCH] );
 	}
@@ -1643,7 +1645,7 @@ void C_Portal_Player::UpdateClientSideAnimation( void )
 
 void C_Portal_Player::DoAnimationEvent( PlayerAnimEvent_t event, int nData )
 {
-	if ( GetPredictable() && IsLocalPlayer( this ) )
+	if ( GetPredictable() && IsLocalPlayer() )
 	{
 		if ( !prediction->IsFirstTimePredicted() )
 			return;
@@ -1711,7 +1713,8 @@ IClientModelRenderable*	C_Portal_Player::GetClientModelRenderable()
 	if( (GetSplitScreenViewPlayer() == this) && ShouldSkipRenderingViewpointPlayerForThisView() )
 		return NULL;
 
-	return BaseClass::GetClientModelRenderable();
+	// This engine has no CS:GO fast-path model-renderable interface.
+	return NULL;
 }
 
 //-----------------------------------------------------------------------------
@@ -1734,7 +1737,7 @@ int C_Portal_Player::DrawModel( int flags, const RenderableInstance_t &instance 
 		m_nLastFrameDrawn = gpGlobals->framecount;
 		m_nLastDrawnStudioFlags = flags;
 	}
-	return BaseClass::DrawModel( flags, instance );
+	return BaseClass::DrawModel( flags );
 }
 
 
@@ -1796,7 +1799,7 @@ void C_Portal_Player::PreThink( void )
 {
 	QAngle vTempAngles = GetLocalAngles();
 
-	if ( IsLocalPlayer( this ) )
+	if ( IsLocalPlayer() )
 	{
 		vTempAngles[PITCH] = EyeAngles()[PITCH];
 	}
@@ -1815,7 +1818,7 @@ void C_Portal_Player::PreThink( void )
 	BaseClass::PreThink();
 
 	// Cache the velocity before impact
-	if( engine->HasPaintmap() )
+	if( Portal2Engine::HasPaintmap() )
 		m_PortalLocal.m_vPreUpdateVelocity = GetAbsVelocity();
 
 	// Update the painted power
@@ -1848,7 +1851,7 @@ void C_Portal_Player::Simulate( void )
 	// Zero out model pitch, blending takes care of all of it.
 	SetLocalAnglesDim( X_INDEX, 0 );
 
-	if( !C_BasePlayer::IsLocalPlayer( this ) )
+	if( !IsLocalPlayer() )
 	{
 		if ( IsEffectActive( EF_DIMLIGHT ) )
 		{
@@ -1910,7 +1913,7 @@ bool C_Portal_Player::ShouldDraw( void )
 	//	if( GetTeamNumber() == TEAM_SPECTATOR )
 	//		return false;
 
-	if( IsLocalPlayer( this ) && IsRagdoll() )
+	if( IsLocalPlayer() && IsRagdoll() )
 		return true;
 
 	if ( IsRagdoll() )
@@ -1970,7 +1973,7 @@ const QAngle& C_Portal_Player::EyeAngles()
 {
 	static QAngle eyeAngles;
 
-	if ( IsLocalPlayer( this ) && g_nKillCamMode == OBS_MODE_NONE )
+	if ( IsLocalPlayer() && g_nKillCamMode == OBS_MODE_NONE )
 	{
 		eyeAngles = BaseClass::EyeAngles();
 	}
@@ -2059,7 +2062,7 @@ void C_Portal_Player::PlayerPortalled( C_Portal_Base2D *pEnteredPortal, float fT
 		m_bPortalledMessagePending = true;
 		m_PendingPortalMatrix = pEnteredPortal->MatrixThisToLinked();
 
-		if( IsLocalPlayer( this ) && pRemotePortal )
+		if( IsLocalPlayer() && pRemotePortal )
 		{
 			g_pPortalRender->EnteredPortal( GetSplitScreenPlayerSlot( ), pEnteredPortal );
 		}
@@ -2169,7 +2172,7 @@ void C_Portal_Player::CheckPlayerAboutToTouchPortal( void )
 			{
 				// stop the effect linger effect if it exists
 				m_FlingTrailEffect->SetOwner( NULL );
-				ParticleProp()->StopEmission( m_FlingTrailEffect, false, true, false );
+				ParticleProp()->StopEmission( m_FlingTrailEffect, false, true );
 				m_FlingTrailEffect = NULL;
 				m_bFlingTrailActive = false;
 				m_bFlingTrailPrePortalled = true;
@@ -3148,7 +3151,7 @@ static ConVar portal_deathcam_gib_pitch( "portal_deathcam_gib_pitch", "25.f", FC
 //-----------------------------------------------------------------------------
 CEG_NOINLINE void C_Portal_Player::TurnOnTauntCam( void )
 {
-	if ( !IsLocalPlayer( this ) )
+	if ( !IsLocalPlayer() )
 		return;
 
 	m_bFinishingTaunt = false;
@@ -3236,7 +3239,7 @@ CEG_NOINLINE void C_Portal_Player::TurnOnTauntCam( void )
 //-----------------------------------------------------------------------------
 void C_Portal_Player::TurnOffTauntCam( void )
 {
-	if ( !IsLocalPlayer( this ) )
+	if ( !IsLocalPlayer() )
 		return;
 
 	ACTIVE_SPLITSCREEN_PLAYER_GUARD_ENT( this );
@@ -3345,7 +3348,7 @@ void C_Portal_Player::TauntCamInterpolation()
 
 		Vector vecCamOffset = g_ThirdPersonManager.GetCameraOffsetAngles();
 
-		CTraceFilterSkipTwoEntities filter( pLocalPlayer, NULL );
+		CTraceFilterSkipTwoEntities filter( pLocalPlayer, NULL, COLLISION_GROUP_NONE );
 		if ( pLocalPlayer->GetTeamTauntState() >= TEAM_TAUNT_HAS_PARTNER )
 		{
 			for( int i = 1; i <= gpGlobals->maxClients; ++i )
@@ -3880,9 +3883,7 @@ bool C_Portal_Player::RenderScreenSpacePaintEffect( IMatRenderContext *pRenderCo
 		SetRenderTargetAndViewPort( pDestRenderTarget );
 		pRenderContext->ClearColor4ub( 128, 128, 0, 0 );
 		pRenderContext->ClearBuffers( true, false, false );
-		RenderableInstance_t instance;
-		instance.m_nAlpha = 255;
-		m_PaintScreenSpaceEffect->DrawModel( 1, instance );
+		m_PaintScreenSpaceEffect->DrawModel( 1 );
 
 		if( IsGameConsole() )
 		{
@@ -3922,7 +3923,7 @@ void C_Portal_Player::InvalidatePaintEffects()
 
 void C_Portal_Player::ClientPlayerRespawn()
 {
-	if ( IsLocalPlayer( this ) )
+	if ( IsLocalPlayer() )
 	{
 		m_bGibbed = false;
 
@@ -3933,7 +3934,7 @@ void C_Portal_Player::ClientPlayerRespawn()
 		// Reset the camera.
 		m_bWasTaunting = false;
 
-		if ( IsLocalPlayer( this ) )
+		if ( IsLocalPlayer() )
 		{
 			ACTIVE_SPLITSCREEN_PLAYER_GUARD_ENT( this );
 
@@ -4077,7 +4078,7 @@ void C_Portal_Player::UpdateClientsideWearables( void )
 
 	if ( IsSplitScreenPlayer() )
 	{
-		pHostPlayer = ToPortalPlayer( C_BasePlayer::GetLocalPlayer( 0 ) );
+		pHostPlayer = ToPortalPlayer( C_BasePlayer::GetLocalPlayer() );
 		if ( !pHostPlayer )
 		{
 			return;
@@ -4213,3 +4214,4 @@ void C_Portal_Player::RemoveClientsideWearables( void )
 }
 
 #endif //!defined( NO_STEAM ) && !defined( NO_STEAM_GAMECOORDINATOR )
+#endif

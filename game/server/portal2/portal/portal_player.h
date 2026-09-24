@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2005, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
@@ -355,7 +355,7 @@ public:
 
 	void SetInTractorBeam( CTrigger_TractorBeam *pTractorBeam );
 	void SetLeaveTractorBeam( CTrigger_TractorBeam *pTractorBeam, bool bKeepFloating );
-	CTrigger_TractorBeam* GetTractorBeam( void ) const { return m_PortalLocal.m_hTractorBeam.Get(); }
+	CTrigger_TractorBeam* GetTractorBeam( void ) const { return NULL; }
 
 	friend class CPortalGameMovement;
 
@@ -403,7 +403,7 @@ private:
 
 	int m_nWheatleyMonitorDestructionCount;
 
-	CNetworkQAngleXYZ( m_angEyeAngles );
+	CNetworkQAngle( m_angEyeAngles );
 
 	CPortalPlayerAnimState*   m_PlayerAnimState;
 

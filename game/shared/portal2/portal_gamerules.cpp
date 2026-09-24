@@ -1,5 +1,4 @@
-#if 0 // Portal 2-only implementation stubbed for this SDK build.
-//========= Copyright © 1996-2005, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: The Half-Life 2 game rules, such as the relationship tables and ammo
 //			damage cvars.
@@ -289,7 +288,7 @@ CAmmoDef *GetAmmoDef()
 		def.AddAmmoType("Grenade",			DMG_BURN,					TRACER_NONE,			"sk_plr_dmg_grenade",		"sk_npc_dmg_grenade",		"sk_max_grenade",		0, 0);
 		def.AddAmmoType("Thumper",			DMG_SONIC,					TRACER_NONE,			10, 10, 2, 0, 0 );
 		def.AddAmmoType("Gravity",			DMG_CLUB,					TRACER_NONE,			0,	0, 8, 0, 0 );
-		def.AddAmmoType("Battery",			DMG_CLUB,					TRACER_NONE,			NULL, NULL, NULL, 0, 0 );
+		def.AddAmmoType("Battery",			DMG_CLUB,					TRACER_NONE,			0, 0, 0, 0, 0 );
 #ifndef PORTAL2
 		def.AddAmmoType("GaussEnergy",		DMG_SHOCK,					TRACER_NONE,			"sk_jeep_gauss_damage",		"sk_jeep_gauss_damage", "sk_max_gauss_round", BULLET_IMPULSE(650, 8000), 0 ); // hit like a 10kg weight at 400 in/s
 #endif
@@ -456,5 +455,3 @@ void CPortalGameRules::RegisterScriptFunctions( void )
 	g_pScriptVM->RegisterInstance( &PlayerVoiceListener(), "PlayerVoiceListener" );
 }
 #endif // !CLIENT_DLL
-
-#endif

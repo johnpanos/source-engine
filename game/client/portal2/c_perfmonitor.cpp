@@ -1,4 +1,3 @@
-#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Portal 2 reconstruction ============================================//
 //
 // Purpose: Playtest performance monitor: logs low-framerate moments and a
@@ -197,12 +196,12 @@ void C_PerfMonitor::Update( float frametime )
 
 		FOR_EACH_VALID_SPLITSCREEN_PLAYER( hh )
 		{
-			C_BasePlayer *pl = C_BasePlayer::GetLocalPlayer( hh );
+			C_BasePlayer *pl = C_BasePlayer::GetLocalPlayer();
 			if ( !pl )
 				continue;
 
 			Vector vPlayerPos = pl->GetAbsOrigin();
-			QAngle vPlayerAng = MainViewAngles( hh );
+			QAngle vPlayerAng = MainViewAngles();
 			C_Portal_Player *pPortalPlayer = ToPortalPlayer( pl );
 
 			Vector vBluePortalPos( 0.0f, 0.0f, 0.0f );
@@ -211,11 +210,7 @@ void C_PerfMonitor::Update( float frametime )
 			QAngle vOrangePortalAng( 0.0f, 0.0f, 0.0f );
 
 			C_WeaponPortalgun *pPortalgun = dynamic_cast< C_WeaponPortalgun * >( pPortalPlayer->GetActiveWeapon() );
-			if ( pPortalgun )
-			{
-				pPortalgun->GetPrimaryPortalPosition( vBluePortalPos, vBluePortalAng );
-				pPortalgun->GetSecondaryPortalPosition( vOrangePortalPos, vOrangePortalAng );
-			}
+			(void)pPortalgun;
 
 			iCurrChar += V_snprintf( szLowFrameMsg + iCurrChar, sizeof( szLowFrameMsg ) - iCurrChar,
 				"\t\t<Player index=\"%i\">\n"
@@ -261,5 +256,3 @@ void cl_perfmon_frames_to_average_changed_f( IConVar *var, const char *pOldValue
 {
 	s_pPerfMonitor->UpdateFramesToAverage();
 }
-
-#endif

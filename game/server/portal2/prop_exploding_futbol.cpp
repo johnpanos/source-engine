@@ -44,6 +44,13 @@ ConVar exploding_futbol_hit_breakables( "exploding_futbol_hit_breakables", "1", 
 ConVar exploding_futbol_explode_on_fizzle( "exploding_futbol_explode_on_fizzle", "0", FCVAR_CHEAT, "If the exploding futbol should explode when it fizzles." );
 ConVar sv_futbol_funnel_max_correct( "sv_futbol_funnel_max_correct", "128.f", FCVAR_DEVELOPMENTONLY, "Max distance to move our hit-target if there's a portal nearby it" );
 
+static Color FutbolColorFromConVar( const ConVar &colorVar )
+{
+	color32 value;
+	UTIL_StringToColor32( &value, colorVar.GetString() );
+	return Color( value.r, value.g, value.b, value.a );
+}
+
 // Entities the explosion is allowed to damage (NULL terminated)
 static const char *g_psxExplodableEntities[] =
 {
@@ -578,7 +585,7 @@ void CPropExplodingFutbol::DoExplosion( const Vector &vecCenter, float flExplosi
 			entRay.Init( vecRayStart, vecRayEnd );
 
 			trace_t trace;
-			UTIL_TraceRay( entRay, MASK_SHOT, &traceFilter, &trace );
+			enginetrace->TraceRay( entRay, MASK_SHOT, &traceFilter, &trace );
 
 			if ( trace.m_pEnt != GetWorldEntity() )
 			{
@@ -652,7 +659,7 @@ void CPropExplodingFutbol::ActivateFutbolTimer( float flTimer )
 		m_flLastTimerSoundTime = gpGlobals->curtime - 1.0f;
 		m_flLastFlashTime = gpGlobals->curtime;
 
-		Color futbolColor = exploding_futbol_start_color.GetColor();
+		Color futbolColor = FutbolColorFromConVar( exploding_futbol_start_color );
 		SetRenderColor( futbolColor.r(), futbolColor.g(), futbolColor.b() );
 
 		SetContextThink( &CPropExplodingFutbol::TimerThink, gpGlobals->curtime + gpGlobals->interval_per_tick, g_szExplodingFutbolTimerThinkContext );
@@ -664,7 +671,7 @@ void CPropExplodingFutbol::StopFutbolTimer( void )
 {
 	m_bTimerActive = false;
 
-	Color futbolColor = exploding_futbol_start_color.GetColor();
+	Color futbolColor = FutbolColorFromConVar( exploding_futbol_start_color );
 	SetRenderColor( futbolColor.r(), futbolColor.g(), futbolColor.b() );
 }
 
@@ -737,11 +744,8 @@ int CPropExplodingFutbol::OnTakeDamage( const CTakeDamageInfo &info )
 
 void CPropExplodingFutbol::OnFizzled( void )
 {
-	BaseClass::OnFizzled();
-
 	DestroyFutbol( exploding_futbol_explode_on_fizzle.GetBool() );
 }
-
 
 void CPropExplodingFutbol::VPhysicsCollision( int index, gamevcollisionevent_t *pEvent )
 {
@@ -807,14 +811,14 @@ void CPropExplodingFutbol::TimerThink( void )
 			flCurrentFlashDuration = 0.0f;
 		}
 
-		startColor = exploding_futbol_flash_start_color.GetColor();
-		endColor = exploding_futbol_flash_end_color.GetColor();
+		startColor = FutbolColorFromConVar( exploding_futbol_flash_start_color );
+		endColor = FutbolColorFromConVar( exploding_futbol_flash_end_color );
 		flPercent = flCurrentFlashDuration / exploding_futbol_flash_duration.GetFloat();
 	}
 	else
 	{
-		startColor = exploding_futbol_start_color.GetColor();
-		endColor = exploding_futbol_end_color.GetColor();
+		startColor = FutbolColorFromConVar( exploding_futbol_start_color );
+		endColor = FutbolColorFromConVar( exploding_futbol_end_color );
 		flPercent = ( m_flTotalTimer - m_flExplosionTimer ) / m_flTotalTimer;
 	}
 
@@ -881,7 +885,7 @@ void CExplodingFutbolCatcher::CatchThink( void )
 	ray.Init( m_vecCatcherBoxOrigin, m_vecCatcherBoxOrigin, m_vecCatcherBoxMins, m_vecCatcherBoxMaxs );
 	CFilterOnlyExplodingFutbol filter;
 	trace_t trace;
-	UTIL_TraceRay( ray, MASK_SOLID, &filter, &trace );
+	enginetrace->TraceRay( ray, MASK_SOLID, &filter, &trace );
 
 	if ( trace.m_pEnt && trace.m_pEnt != GetWorldEntity() && !m_bDisableRecaptureOnPlayerGrab )
 	{

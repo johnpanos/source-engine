@@ -7,6 +7,7 @@
 // Valve source; the repository's provenance and distribution warning applies.
 //
 //=============================================================================//
+#if 0
 #include "cbase.h"
 #include "c_paintblob_render.h"
 #include "paint_sprayer_shared.h"
@@ -787,3 +788,4 @@ void Paintblob_Draw( int renderMode, IClientRenderable *pClientRenderable, const
 }
 
 } // namespace NPaintRenderer
+#endif

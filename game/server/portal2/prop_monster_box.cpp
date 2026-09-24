@@ -88,21 +88,33 @@ void CPropMonsterBox::MonsterThink()
 	SetNextThink( gpGlobals->curtime + 0.1f );
 }
 
-void CPropMonsterBox::InputBecomeBox( inputdata_t &inputData )
+void CPropMonsterBox::BecomeBox( bool bPlayEffects )
 {
-	(void)inputData;
+	(void)bPlayEffects;
 	m_bForcedAsBox = true;
 	SetBoxState( true );
 }
 
-void CPropMonsterBox::InputBecomeMonster( inputdata_t &inputData )
+void CPropMonsterBox::BecomeMonster( bool bPlayEffects )
 {
-	(void)inputData;
+	(void)bPlayEffects;
 	m_bForcedAsBox = false;
 	if ( !m_bIsShortcircuit )
 	{
 		SetBoxState( false );
 	}
+}
+
+void CPropMonsterBox::InputBecomeBox( inputdata_t &inputData )
+{
+	(void)inputData;
+	BecomeBox( true );
+}
+
+void CPropMonsterBox::InputBecomeMonster( inputdata_t &inputData )
+{
+	(void)inputData;
+	BecomeMonster( true );
 }
 
 void CPropMonsterBox::InputBecomeShortcircuit( inputdata_t &inputData )

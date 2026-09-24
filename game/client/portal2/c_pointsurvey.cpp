@@ -1,4 +1,3 @@
-#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Portal 2 reconstruction ============================================//
 //
 // Purpose: Client side of point_survey: opens the survey panel on request.
@@ -14,6 +13,7 @@
 #include "iclientmode.h"
 #include "hud_macros.h"
 #include "portal2/vgui/surveypanel.h"
+#include "portal2_engine_compat.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -47,7 +47,7 @@ END_RECV_TABLE()
 //-----------------------------------------------------------------------------
 void __MsgFunc_StartSurvey( bf_read &msg )
 {
-	C_PointSurvey *pPointSurvey = static_cast< C_PointSurvey * >( UTIL_EntityFromUserMessageEHandle( msg.ReadLong() ) );
+	C_PointSurvey *pPointSurvey = static_cast< C_PointSurvey * >( Portal2Engine::EntityFromUserMessageEHandle( msg.ReadLong() ) );
 	if ( !pPointSurvey )
 	{
 		Warning( "PointSurvey: Unable to find client side survey entity\n" );
@@ -94,5 +94,3 @@ class C_PointSurveyHelper : public CAutoGameSystem
 };
 
 static C_PointSurveyHelper s_PointSurveyHelper;
-
-#endif

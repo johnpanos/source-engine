@@ -1,9 +1,10 @@
-//========= Copyright © 1996-2009, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2009, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Shared variables, etc. for the paint gun.
 //
 //=============================================================================//
 
+#if 0
 #include "cbase.h"
 #include "paint_color_manager.h"
 #include "shot_manipulator.h"
@@ -485,3 +486,4 @@ void CWeaponPaintGun::SprayPaint( float flDeltaTime, int paintType )
 		DecrementPaintAmmo( paintType );
 	}
 }
+#endif

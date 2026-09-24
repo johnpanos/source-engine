@@ -1709,3 +1709,52 @@ on the native GPU runner: 25 checks, 0 failures. The backend and suite built
 with the existing native Vulkan Waf profile. This slice establishes state
 round trips; it does not claim that fixed-lighting or morph shader variants
 render correctly yet.
+
+## Independent RGB and alpha writes (2026-09-24)
+
+The captured Portal unimplemented-entry census recorded 3,516 calls to
+`IShaderShadow::EnableAlphaWrites` in one run. D3D9 defaults alpha writes off
+and changes the alpha channel independently of RGB; the native material
+pipelines previously wrote all four channels whenever color writes were on.
+The shadow state now records alpha writes, includes that choice in snapshot
+identity and pipeline keys, and builds the Vulkan attachment write mask from
+independent RGB and alpha choices. The default preserves the target alpha.
+
+The material-equivalence GPU suite renders a full-screen red quad over a blue
+clear with alpha 64 and verifies three cases: RGB-only leaves alpha at 64,
+RGBA writes alpha 255, and alpha-only leaves the blue RGB clear while writing
+alpha 255. It also verifies that the three choices receive distinct snapshots.
+Results on the native runner: material equivalence 37 checks, 0 failures;
+material-facing 25/0; native bring-up 98/0. An installed, headless native
+Vulkan Portal boot on `testchmb_a_01` also passed with the rebuilt backend:
+`python3 tools/quality/portal_boot.py --runtime run/runtime --build build
+--renderer native-vulkan --require-vulkan --headless --map testchmb_a_01
+--out /tmp/portal-native-alpha-write-20260924 --timeout 120`. Its screenshot
+is a recognizable chamber at 1024x768 (`has_scene_detail: true`, 32 distinct
+colors capped); the evidence records the backend library hash and dirty source
+digest. This covers material pipelines through a real swapchain readback and a
+Portal smoke frame; it does not certify other shader families or full
+cross-backend pixel parity.
+
+## Polygon depth bias for decals and shadow passes (2026-09-24)
+
+The captured Portal census counted 1,204 ignored `EnablePolyOffset` calls.
+Native shadow snapshots now retain the requested polygon-offset mode. At draw
+time the backend reads the same normal/decal configuration and shadow-bias
+factors that D3D9 uses, records the converted depth-bias factors with each
+draw, and enables Vulkan depth bias on the selected material pipeline.
+`SetShadowDepthBiasFactors` now affects later shadow-bias draws without changing
+the snapshot. Unsupported offset modes remain in the unimplemented census.
+The normalized D3D9 constant term maps to D24 depth-buffer units; the D32
+float fallback uses an approximate scale near depth 0.5, so exact cross-device
+depth-bias parity remains unverified.
+
+The material-equivalence GPU suite draws two coplanar quads under strict LESS
+depth testing: without bias the first blue quad stays visible, and with decal
+bias the second red quad appears. It also verifies that zero shadow-bias
+factors leave the first quad visible while a negative constant factor moves
+the second forward, using the same snapshot. Results: material equivalence
+42 checks/0 failures, material-facing 25/0, and native bring-up 98/0. An
+installed headless Portal boot on `testchmb_a_01` passed with the rebuilt
+backend (`/tmp/portal-native-polyoffset-20260924/evidence.json`); its
+1024x768 capture was visually inspected as a recognizable chamber.

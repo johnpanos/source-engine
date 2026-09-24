@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2009, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2009, Valve Corporation, All rights reserved. ============//
 //
 //=============================================================================//
 #include "cbase.h"
@@ -94,7 +94,7 @@ void CPaintCleanserManager::UpdatePaintCleanserVisibility( void )
 {
 	FOR_EACH_VALID_SPLITSCREEN_PLAYER( hh )
 	{
-		C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer( hh );
+	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
 		if( !pPlayer )
 			continue;
 

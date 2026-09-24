@@ -4,6 +4,7 @@
 //
 //=============================================================================//
 
+#if 0
 #include "cbase.h"
 #include "weapon_portalgun_shared.h"
 #include "portal_mp_gamerules.h"
@@ -1752,3 +1753,4 @@ CProp_Portal *CWeaponPortalgun::GetAssociatedPortal( bool bPortal2 )
 
 	return pRetVal;
 }
+#endif

@@ -14,7 +14,8 @@
 
 typedef unsigned char BYTE;
 typedef BYTE *LPBYTE;
-typedef	int32	INT32;
+// libjpeg in this build also supplies INT32 as a long on POSIX.
+typedef	long	INT32;
 typedef	uint32	DWORD32;
 typedef	uint64	DWORD64;
 

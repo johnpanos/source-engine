@@ -296,6 +296,11 @@ public:
 	{
 		return m_Value; 
 	}
+
+	const char *ToCStr() const
+	{
+		return m_Value.ToCStr();
+	}
 	
 	const Type* operator->() const 
 	{

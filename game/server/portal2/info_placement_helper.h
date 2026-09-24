@@ -67,7 +67,7 @@ public:
 			if ( pProxy != NULL )
 				return pProxy->GetAbsOrigin();
 
-			Warning( "Placement proxy entity %s not found!\n", STRING( m_strTargetProxy ) );
+			Warning( "Placement proxy entity %s not found!\n", STRING( m_strTargetProxy.Get() ) );
 		}
 
 		return GetAbsOrigin();
@@ -82,7 +82,7 @@ public:
 			if ( pProxy != NULL )
 				return pProxy->GetAbsAngles();
 
-			Warning( "Placement proxy entity %s not found!\n", STRING( m_strTargetProxy ) );
+			Warning( "Placement proxy entity %s not found!\n", STRING( m_strTargetProxy.Get() ) );
 		}
 
 		return GetAbsAngles();

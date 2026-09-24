@@ -5,6 +5,7 @@
 //=============================================================================//
 
 #include "cbase.h"
+#define PortalPlacedByType PortalPlacedBy_t
 #include "clienteffectprecachesystem.h"
 #include "fx.h"
 #include "fx_sparks.h"

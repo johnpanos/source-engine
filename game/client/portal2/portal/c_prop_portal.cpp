@@ -1,10 +1,11 @@
-//===== Copyright © 1996-2005, Valve Corporation, All rights reserved. ======//
+//===== Copyright Â© 1996-2005, Valve Corporation, All rights reserved. ======//
 //
 // Purpose: 
 //
 // $NoKeywords: $
 //===========================================================================//
 
+#if 0
 #include "cbase.h"
 #include "c_prop_portal.h"
 #include "portal_shareddefs.h"
@@ -1369,4 +1370,5 @@ CPortalRenderable *CreateProp_Portal_Fn( void )
 }
 
 static CPortalRenderableCreator_AutoRegister CreateProp_Portal( "Prop_Portal", CreateProp_Portal_Fn );
+#endif
 

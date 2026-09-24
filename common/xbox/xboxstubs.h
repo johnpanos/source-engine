@@ -222,6 +222,7 @@ typedef struct {
 FORCEINLINE void			XBX_ProcessEvents() {}
 FORCEINLINE unsigned int	XBX_GetSystemTime() { return 0; }
 FORCEINLINE	int				XBX_GetPrimaryUserId() { return 0; }
+FORCEINLINE	int				XBX_GetActiveUserId() { return XBX_GetPrimaryUserId(); }
 FORCEINLINE	void			XBX_SetPrimaryUserId( DWORD idx ) {}
 FORCEINLINE	int				XBX_GetStorageDeviceId() { return 0; }
 FORCEINLINE	void			XBX_SetStorageDeviceId( DWORD idx ) {}

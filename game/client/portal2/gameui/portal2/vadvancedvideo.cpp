@@ -453,7 +453,7 @@ void CAdvancedVideo::SetQueuedModeState()
 	if ( m_drpQueuedMode )
 	{
 		// Only allow the options on multi-processor machines.
-		if ( GetCPUInformation().m_nPhysicalProcessors >= 2 )
+		if ( GetCPUInformation()->m_nPhysicalProcessors >= 2 )
 		{
 			if ( m_iQueuedMode != 0 )
 			{

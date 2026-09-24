@@ -128,37 +128,34 @@ LINK_ENTITY_TO_CLASS( prop_floor_button, CPropFloorButton );
 
 BEGIN_DATADESC( CPropFloorButton )
 
-	DEFINE_THINKFUNC( AnimateThink ),
-	DEFINE_THINKFUNC( PressingBoxHasSetteledThink ),
+DEFINE_THINKFUNC( AnimateThink ), DEFINE_THINKFUNC( PressingBoxHasSetteledThink ),
 
-	DEFINE_FIELD( m_UpSequence, FIELD_INTEGER ),
-	DEFINE_FIELD( m_DownSequence, FIELD_INTEGER ),
+    DEFINE_FIELD( m_UpSequence, FIELD_INTEGER ), DEFINE_FIELD( m_DownSequence, FIELD_INTEGER ),
 
-	DEFINE_FIELD( m_hButtonTrigger, FIELD_EHANDLE ),
+    DEFINE_FIELD( m_hButtonTrigger, FIELD_EHANDLE ),
 
-	DEFINE_INPUTFUNC( FIELD_VOID, "PressIn", InputPressIn ),
-	DEFINE_INPUTFUNC( FIELD_VOID, "PressOut", InputPressOut ),
+    DEFINE_INPUTFUNC( FIELD_VOID, "PressIn", InputPressIn ),
+    DEFINE_INPUTFUNC( FIELD_VOID, "PressOut", InputPressOut ),
 
-	DEFINE_OUTPUT( m_OnPressed,			"OnPressed" ),
-	DEFINE_OUTPUT( m_OnPressedOrange,	"OnPressedOrange" ),
-	DEFINE_OUTPUT( m_OnPressedBlue,		"OnPressedBlue" ),
-	DEFINE_OUTPUT( m_OnUnPressed,		"OnUnPressed" ),
+    DEFINE_OUTPUT( m_OnPressed, "OnPressed" ),
+    DEFINE_OUTPUT( m_OnPressedOrange, "OnPressedOrange" ),
+    DEFINE_OUTPUT( m_OnPressedBlue, "OnPressedBlue" ),
+    DEFINE_OUTPUT( m_OnUnPressed, "OnUnPressed" ),
 
-END_DATADESC()
+    END_DATADESC()
 
-IMPLEMENT_SERVERCLASS_ST(CPropFloorButton, DT_PropFloorButton)
+        IMPLEMENT_SERVERCLASS_ST( CPropFloorButton, DT_PropFloorButton )
 
-SendPropBool( SENDINFO( m_bButtonState ) ), 
+            SendPropBool( SENDINFO( m_bButtonState ) ),
 
-END_SEND_TABLE()
+    END_SEND_TABLE()
 
-//-----------------------------------------------------------------------------
-// Purpose: constructor
-//-----------------------------------------------------------------------------
-CPropFloorButton::CPropFloorButton():
-m_bButtonState( false ) // button is not pressed by default
+    //-----------------------------------------------------------------------------
+    // Purpose: constructor
+    //-----------------------------------------------------------------------------
+    CPropFloorButton::CPropFloorButton()
 {
-	RemoveEffects( EF_SHADOWDEPTH_NOCACHE );
+	m_bButtonState = false;
 }
 
 //-----------------------------------------------------------------------------
@@ -202,7 +199,7 @@ void CPropFloorButton::Spawn( void )
 
 	// Never let crucial game components fade out!
 	SetFadeDistance( -1.0f, 0.0f );
-	SetGlobalFadeScale( 0.0f );
+	// SetFadeDistance above keeps the gameplay button visible in this SDK.
 }
 
 
@@ -264,7 +261,7 @@ void CPropFloorButton::PressingBoxHasSetteledThink( void )
 	if ( gpGlobals->maxClients == 1 && (V_strcmp( gpGlobals->mapname.ToCStr(), "sp_a2_bts1" ) != 0) 
 									&& (V_strcmp( gpGlobals->mapname.ToCStr(), "mp_coop_catapult_1" ) != 0) )
 	{
-		UTIL_RecordAchievementEvent( "ACH.BOX_HOLE_IN_ONE" );
+		// Achievement reporting is unavailable in this SDK.
 	}
 
 	SetContextThink( NULL, gpGlobals->curtime, s_pszPressingBoxHasSetteledThinkContext );
@@ -289,10 +286,10 @@ void CPropFloorButton::UpdateOnRemove( void )
 //-----------------------------------------------------------------------------
 const char *CPropFloorButton::GetButtonModelName()
 {
-	if ( m_ModelName == NULL_STRING )
+	if ( GetModelName() == NULL_STRING )
 		return PROP_FLOOR_BUTTON_DEFAULT_MODEL_NAME;
 
-	return STRING( m_ModelName );
+	return STRING( GetModelName() );
 }
 
 //-----------------------------------------------------------------------------
@@ -491,7 +488,12 @@ void CPortalButtonTrigger::StartTouch(CBaseEntity *pOther)
 		}
 	}
 
+	int nBefore = m_hTouchingEntities.Count();
 	BaseClass::StartTouch( pOther );
+	if ( nBefore == 0 && m_hTouchingEntities.Count() == 1 )
+	{
+		OnStartTouchAll( pOther );
+	}
 }
 
 void CPortalButtonTrigger::EndTouch(CBaseEntity *pOther)
@@ -509,7 +511,12 @@ void CPortalButtonTrigger::EndTouch(CBaseEntity *pOther)
 		}
 	}
 
+	int nBefore = m_hTouchingEntities.Count();
 	BaseClass::EndTouch( pOther );
+	if ( nBefore > 0 && m_hTouchingEntities.Count() == 0 )
+	{
+		OnEndTouchAll( pOther );
+	}
 }
 
 //----------------------------------------------------------------------------------
@@ -535,8 +542,8 @@ bool CPortalButtonTrigger::PassesTriggerFilters(CBaseEntity *pOther)
 	// did a cube touch me?
 	if ( FClassnameIs( pOther, "prop_weighted_cube") || FClassnameIs( pOther, "prop_monster_box") )
 	{
-		CPropWeightedCube *pCube = static_cast<CPropWeightedCube*>( pOther );
-		bool bIsBall = pCube && pCube->GetCubeType() == CUBE_SPHERE;
+		bool bIsBall = FClassnameIs( pOther, "prop_weighted_cube" ) &&
+		               static_cast<CPropWeightedCube *>( pOther )->GetCubeType() == CUBE_SPHERE;
 
 		if ( ( bIsBall && m_pOwnerButton->AcceptsBall() ) || //If the button accepts balls and this is a ball ( floor, under and ball buttons )
 		   ( !bIsBall && !m_pOwnerButton->OnlyAcceptBall() ) ) //If the button doesn't only accept balls and this is not a ball ( cube buttons )
@@ -559,8 +566,6 @@ void CPortalButtonTrigger::OnStartTouchAll( CBaseEntity *pOther )
 	{
 		m_pOwnerButton->TriggerStartTouch( pOther );
 	}
-
-	BaseClass::OnStartTouchAll( pOther );
 }
 
 //----------------------------------------------------------------------------------
@@ -573,8 +578,6 @@ void CPortalButtonTrigger::OnEndTouchAll( CBaseEntity *pOther )
 	{
 		m_pOwnerButton->TriggerEndTouch( pOther );
 	}
-
-	BaseClass::OnEndTouchAll( pOther );
 }
 
 //----------------------------------------------------------------------------------

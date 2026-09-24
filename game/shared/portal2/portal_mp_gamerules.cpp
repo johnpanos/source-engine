@@ -1,4 +1,3 @@
-#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Copyright (c) 1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: The Half-Life 2 game rules, such as the relationship tables and ammo
@@ -53,6 +52,25 @@
 #endif	// CLIENT_DLL
 
 #ifndef CLIENT_DLL
+
+	static void Portal2_GlobalEntity_SetFlags( string_t name, int flags )
+	{
+		GlobalEntity_SetCounter( name, flags );
+	}
+
+	static int Portal2_GlobalEntity_GetFlags( string_t name )
+	{
+		return GlobalEntity_GetCounter( name );
+	}
+
+	static void Portal2_GlobalEntity_AddFlags( string_t name, int flags )
+	{
+		Portal2_GlobalEntity_SetFlags( name, Portal2_GlobalEntity_GetFlags( name ) | flags );
+	}
+
+	#define GlobalEntity_SetFlags Portal2_GlobalEntity_SetFlags
+	#define GlobalEntity_GetFlags Portal2_GlobalEntity_GetFlags
+	#define GlobalEntity_AddFlags Portal2_GlobalEntity_AddFlags
 
 	extern void respawn(CBaseEntity *pEdict, bool fCopyCorpse);
 
@@ -2314,7 +2332,7 @@ void CPortalMPGameRules::SetMapComplete( int nPlayer, int nBranch, int nLevel, b
 bool CPortalMPGameRules::IsLobbyMap( void )
 {
 #ifdef CLIENT_DLL
-	return StringHasPrefix( engine->GetLevelNameShort(), "mp_coop_lobby" );
+	return StringHasPrefix( engine->GetLevelName(), "mp_coop_lobby" );
 #else
 	return StringHasPrefix( gpGlobals->mapname.ToCStr(), "mp_coop_lobby" );
 #endif
@@ -2323,7 +2341,7 @@ bool CPortalMPGameRules::IsLobbyMap( void )
 bool CPortalMPGameRules::IsStartMap( void )
 {
 #ifdef CLIENT_DLL
-	return V_strcmp( engine->GetLevelNameShort(), "mp_coop_start" ) == 0;
+	return V_strcmp( engine->GetLevelName(), "mp_coop_start" ) == 0;
 #else
 	return V_strcmp( gpGlobals->mapname.ToCStr(), "mp_coop_start" ) == 0;
 #endif
@@ -2332,7 +2350,7 @@ bool CPortalMPGameRules::IsStartMap( void )
 bool CPortalMPGameRules::IsCreditsMap( void )
 {
 #ifdef CLIENT_DLL
-	return V_strcmp( engine->GetLevelNameShort(), "mp_coop_credits" ) == 0;
+	return V_strcmp( engine->GetLevelName(), "mp_coop_credits" ) == 0;
 #else
 	return V_strcmp( gpGlobals->mapname.ToCStr(), "mp_coop_credits" ) == 0;
 #endif
@@ -2341,7 +2359,7 @@ bool CPortalMPGameRules::IsCreditsMap( void )
 bool CPortalMPGameRules::IsCommunityCoopHub( void )
 {
 #ifdef CLIENT_DLL
-	return V_strcmp( engine->GetLevelNameShort(), "mp_coop_community_hub" ) == 0;
+	return V_strcmp( engine->GetLevelName(), "mp_coop_community_hub" ) == 0;
 #else
 	return V_strcmp( gpGlobals->mapname.ToCStr(), "mp_coop_community_hub" ) == 0;
 #endif
@@ -2487,7 +2505,7 @@ void CPortalMPGameRules::LoadMapCompleteData( void )
 
 	if ( GetPortalMPStats() )
 	{
-		GetPortalMPStats()->RefreshStats( pPlayer, pLocalPlayer );
+		GetPortalMPStats()->RefreshStats( pLocalPlayer, pPlayer );
 	}
 
 	// Let the server know that we loaded completion data on the client for this player
@@ -3064,6 +3082,4 @@ bool ClientIsCrossplayingWithConsole( void )
 
 	return false;
 }
-#endif
-
 #endif

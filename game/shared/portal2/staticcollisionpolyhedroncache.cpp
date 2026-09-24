@@ -1,10 +1,11 @@
-//========= Copyright © 1996-2006, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2006, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
 // $NoKeywords: $
 //=====================================================================================//
 
+#if 0
 #include "cbase.h"
 #include "staticcollisionpolyhedroncache.h"
 #include "engine/IEngineTrace.h"
@@ -580,6 +581,8 @@ void CStaticCollisionPolyhedronCache::ReleaseStaticPropPolyhedrons( ICollideable
 		((CPolyhedron *)pPolyhedrons[i])->Release();
 	}
 }
+
+#endif
 
 
 

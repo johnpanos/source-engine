@@ -183,6 +183,12 @@
 #define FL_UNBLOCKABLE_BY_PLAYER (1<<31) // pusher that can't be blocked by the player
 #endif
 
+// Portal 2 uses the remaining flag bit to prevent paint on gameplay entities.
+// The Portal single-player layout above leaves bit 31 available.
+#if defined( PORTAL2 ) && defined( PORTAL ) && !defined( HL2MP )
+#define FL_UNPAINTABLE ( 1u << 31 )
+#endif
+
 // edict->movetype values
 enum MoveType_t
 {
@@ -440,4 +446,3 @@ typedef CThreadNullMutex CSourceMutex;
 #endif
 
 #endif
-

@@ -14,8 +14,10 @@
 
 #if defined( GAME_DLL )
 #include "baseprojector.h"
+#include "portal_player.h"
 #else
 #include "c_baseprojectedentity.h"
+#include "c_portal_player.h"
 typedef C_BaseProjectedEntity CBaseProjectedEntity;
 #endif
 

@@ -361,6 +361,9 @@ typedef void ( *pfnDemoCustomDataCallback )( uint8 *pData, size_t iSize );
 
 namespace Portal2Engine
 {
+	// Decodes an entity handle carried as a 32-bit user-message field.
+	C_BaseEntity *EntityFromUserMessageEHandle( uint32 encodedHandle );
+
 	// Map name without "maps/" and ".bsp" (engine->GetLevelName()); "" when not connected.
 	const char *GetLevelNameShort();
 

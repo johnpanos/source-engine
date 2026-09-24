@@ -9,6 +9,7 @@
 //=============================================================================//
 
 #include "cbase.h"
+#include "portal2_engine_compat.h"
 #include "isaverestore.h"
 #include "paint_saverestore.h"
 

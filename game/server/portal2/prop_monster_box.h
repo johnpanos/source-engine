@@ -18,6 +18,8 @@ public:
 	CPropMonsterBox();
 	void Precache() OVERRIDE;
 	void Spawn() OVERRIDE;
+	void BecomeBox( bool bPlayEffects );
+	void BecomeMonster( bool bPlayEffects );
 
 private:
 	void InputBecomeBox( inputdata_t &inputData );

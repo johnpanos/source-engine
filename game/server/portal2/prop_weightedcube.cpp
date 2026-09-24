@@ -389,7 +389,6 @@ CEG_NOINLINE void CPropWeightedCube::Spawn( void )
 	VisibilityMonitor_AddEntity_NotVisibleThroughGlass( this, sv_portal2_pickup_hint_range.GetFloat() - 50.0f, NULL, NULL );
 
 	SetFadeDistance( -1.0f, 0.0f );
-	SetGlobalFadeScale( 0.0f );
 }
 
 
@@ -912,7 +911,7 @@ void CPropWeightedCube::InputPreDissolveJoke( inputdata_t &in )
 //-----------------------------------------------------------------------------
 void CPropWeightedCube::InputDisablePortalFunnel( inputdata_t &in )
 {
-	m_bAllowPortalFunnel = false;
+	// This engine has no per-prop portal funnel setting.
 }
 
 //-----------------------------------------------------------------------------
@@ -920,7 +919,7 @@ void CPropWeightedCube::InputDisablePortalFunnel( inputdata_t &in )
 //-----------------------------------------------------------------------------
 void CPropWeightedCube::InputEnablePortalFunnel( inputdata_t &in )
 {
-	m_bAllowPortalFunnel = true;
+	// This engine has no per-prop portal funnel setting.
 }
 
 //-----------------------------------------------------------------------------
@@ -934,18 +933,6 @@ QAngle CPropWeightedCube::CalculatePreferredAngles( CBasePlayer *pPlayer )
 void CPropWeightedCube::UpdatePreferredAngles( CBasePlayer *pPlayer )
 {
 	m_vecCarryAngles = CalculatePreferredAngles( pPlayer );
-
-	if( HasPreferredCarryAnglesForPlayer( pPlayer ) )
-	{
-		m_qPreferredPlayerCarryAngles = m_vecCarryAngles;
-	}
-	else
-	{
-		if( m_qPreferredPlayerCarryAngles.Get().x < FLT_MAX )
-		{
-			m_qPreferredPlayerCarryAngles.GetForModify().Init( FLT_MAX, FLT_MAX, FLT_MAX );
-		}
-	}
 }
 
 extern void ComputePlayerMatrix( CBasePlayer *pPlayer, matrix3x4_t &out );
@@ -1177,7 +1164,7 @@ void CPropWeightedCube::UpdateSchrodingerSound( void )
 	if ( !m_hSchrodingerTwin.Get() )
 		return;
 
-	float fDist = m_hSchrodingerTwin->GetDistanceToEntity( this );
+	float fDist = ( m_hSchrodingerTwin->WorldSpaceCenter() - WorldSpaceCenter() ).Length();
 
 	if ( m_pSchrodingerSound )
 	{
@@ -1379,7 +1366,7 @@ void CPropWeightedCube::SchrodingerThink( void )
 void CPropWeightedCube::DisabledThink( void )
 {
 	bool hasPaintPower = false;
-	if( engine->HasPaintmap() )
+	if ( false ) // This engine does not provide a paint map service.
 	{
 		if( GetPaintedPower() != NO_POWER )
 		{

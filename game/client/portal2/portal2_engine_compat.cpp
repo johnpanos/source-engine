@@ -9,6 +9,7 @@
 #include "cbase.h"
 #include "portal2_engine_compat.h"
 #include "portal/c_portal_player.h"
+#include "cliententitylist.h"
 #include "prediction.h"
 #include "inetchannelinfo.h"
 #include "inputsystem/iinputsystem.h"
@@ -191,6 +192,11 @@ C_BasePlayer *GetSplitScreenViewPlayer( int nSlot )
 //-----------------------------------------------------------------------------
 namespace Portal2Engine
 {
+
+C_BaseEntity *EntityFromUserMessageEHandle( uint32 encodedHandle )
+{
+	return cl_entitylist->GetBaseEntityFromHandle( ClientEntityHandle_t( encodedHandle ) );
+}
 
 const char *GetLevelNameShort()
 {

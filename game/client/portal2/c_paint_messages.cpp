@@ -41,7 +41,7 @@ void __MsgFunc_PaintWorld( bf_read &msg )
 
 	{
 		PaintPowerType power = static_cast< PaintPowerType >( msg.ReadByte() );
-		C_BaseEntity *pBrushEntity = UTIL_EntityFromUserMessageEHandle( msg.ReadLong() );
+		C_BaseEntity *pBrushEntity = Portal2Engine::EntityFromUserMessageEHandle( msg.ReadLong() );
 
 		int nPaintCount = msg.ReadByte();
 
@@ -70,7 +70,7 @@ void __MsgFunc_PaintWorld( bf_read &msg )
 //-----------------------------------------------------------------------------
 void __MsgFunc_PaintEntity( bf_read &msg )
 {
-	C_BaseEntity *pEntity = UTIL_EntityFromUserMessageEHandle( msg.ReadLong() );
+	C_BaseEntity *pEntity = Portal2Engine::EntityFromUserMessageEHandle( msg.ReadLong() );
 	IPaintableEntity *pPaintableEnt = pEntity ? dynamic_cast< IPaintableEntity* >( pEntity ) : NULL;
 	const PaintPowerType power = static_cast< PaintPowerType >( msg.ReadByte() );
 
@@ -92,7 +92,7 @@ void __MsgFunc_PaintEntity( bf_read &msg )
 //-----------------------------------------------------------------------------
 void __MsgFunc_ChangePaintColor( bf_read &msg )
 {
-	C_BaseEntity *pEntity = UTIL_EntityFromUserMessageEHandle( msg.ReadLong() );
+	C_BaseEntity *pEntity = Portal2Engine::EntityFromUserMessageEHandle( msg.ReadLong() );
 	if ( !pEntity )
 	{
 		DevMsg( "Failed to change paint color" );

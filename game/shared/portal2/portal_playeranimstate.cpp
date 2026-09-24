@@ -1,9 +1,10 @@
-//====== Copyright © 1996-2003, Valve Corporation, All rights reserved. =======
+//====== Copyright Â© 1996-2003, Valve Corporation, All rights reserved. =======
 //
 // Purpose: 
 //
 //=============================================================================
 
+#if 0
 #include "cbase.h"
 #include "tier0/vprof.h"
 #include "animation.h"
@@ -687,3 +688,4 @@ void CPortalPlayerAnimState::IncreaseDamageStage()
 		//m_nDamageStage++;
 	}
 }
+#endif

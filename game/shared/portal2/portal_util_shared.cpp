@@ -1,10 +1,11 @@
-//========= Copyright © 1996-2005, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
 // $NoKeywords: $
 //=============================================================================//
 
+#if 0
 #include "cbase.h"
 #include <algorithm>
 #include "portal_util_shared.h"
@@ -3469,4 +3470,5 @@ void UTIL_FindBrushEntitiesInSphere( CBrushEntityList& brushEnum, const Vector& 
 	enginetrace->EnumerateEntities( vCenter - vExtents, vCenter + vExtents, &brushEnum );
 }
 
+#endif
 #endif

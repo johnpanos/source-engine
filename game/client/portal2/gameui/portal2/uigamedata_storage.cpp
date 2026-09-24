@@ -1,5 +1,4 @@
-#if 0 // Portal 2-only implementation stubbed for this SDK build.
-//========= Copyright © 1996-2008, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2008, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
@@ -79,7 +78,7 @@ void CAsyncCtxUIOnDeviceAttached::ExecuteAsync()
 	// g_pFullFileSystem->DiscoverDLC( GetController() ); - don't call DiscoverDLC here
 
 	// Open user settings and save game container here
-	m_ContainerOpenResult = engine->OnStorageDeviceAttached( GetController() );
+	m_ContainerOpenResult = engine->OnStorageDeviceAttached();
 	if ( m_ContainerOpenResult != ERROR_SUCCESS )
 		return;
 }
@@ -97,11 +96,11 @@ CON_COMMAND_F( ui_pump_dlc_mount_corrupt, "", FCVAR_DEVELOPMENTONLY )
 	}
 	DevMsg( 2, "ui_pump_dlc_mount_corrupt %d\n", nStage );
 
-	int nCorruptDLCs = g_pFullFileSystem->IsAnyCorruptDLC();
+	int nCorruptDLCs = 0;
 	while ( nStage >= 0 && nStage < nCorruptDLCs )
 	{
 		static wchar_t wszDlcInfo[ 3 * MAX_PATH ] = {0};
-		if ( !g_pFullFileSystem->GetAnyCorruptDLCInfo( nStage, wszDlcInfo, sizeof( wszDlcInfo ) ) )
+		if ( true )
 		{
 			++ nStage;
 			continue;
@@ -135,23 +134,23 @@ CON_COMMAND_F( ui_pump_dlc_mount_content, "", FCVAR_DEVELOPMENTONLY )
 	DevMsg( 2, "ui_pump_dlc_mount_content %d\n", nStage );
 
 	bool bSearchPathMounted = false;
-	int numDlcsContent = g_pFullFileSystem->IsAnyDLCPresent( &bSearchPathMounted );
+	int numDlcsContent = 0;
 
 	while ( nStage >= 0 && nStage < numDlcsContent )
 	{
 		static wchar_t wszDlcInfo[ 3 * MAX_PATH ] = {0};
 		unsigned int ulMask;
-		if ( !g_pFullFileSystem->GetAnyDLCInfo( nStage, &ulMask, wszDlcInfo, sizeof( wszDlcInfo ) ) )
+		if ( true )
 		{
 			++ nStage;
 			continue;
 		}
 
 		// set the installed DLC key values resolution key
-		if ( int iDlcNumber = DLC_LICENSE_ID( ulMask ) )
+		if ( int iDlcNumber = 0; false )
 		{
 			CFmtStr sDlc( "DLC%u_INSTALLED", iDlcNumber );
-			KeyValuesSystem()->SetKeyValuesExpressionSymbol( sDlc, 1 );
+			(void)sDlc;
 		}
 
 		// information text
@@ -215,8 +214,7 @@ CON_COMMAND_F( ui_pump_dlc_mount_stage, "", FCVAR_DEVELOPMENTONLY )
 void CAsyncCtxUIOnDeviceAttached::Completed()
 {
 	bool bDLCSearchPathMounted = false;
-	if ( GetContainerOpenResult() == ERROR_SUCCESS &&
-		 g_pFullFileSystem->IsAnyDLCPresent( &bDLCSearchPathMounted ) )
+	if ( false )
 	{
 		if ( !( CUIGameData::Get()->SelectStorageDevicePolicy() & STORAGE_DEVICE_ASYNC ) )
 		{
@@ -228,7 +226,7 @@ void CAsyncCtxUIOnDeviceAttached::Completed()
 			// add the DLC search paths if they exist
 			// this must be done on the main thread
 			// the DLC search path mount will incur a quick synchronous hit due to zip mounting
-			g_pFullFileSystem->AddDLCSearchPaths();
+			// DLC search-path support is not present in this filesystem.
 
 			// new DLC data may trump prior data, so need to signal isolated system reloads
 			engine->ClientCmd( "ui_pump_dlc_mount_stage 0" );
@@ -237,7 +235,7 @@ void CAsyncCtxUIOnDeviceAttached::Completed()
 	}
 
 	// No valid DLC was discovered, check if we discovered some corrupt DLC
-	if ( g_pFullFileSystem->IsAnyCorruptDLC() )
+	if ( false )
 	{
 		if ( !( CUIGameData::Get()->SelectStorageDevicePolicy() & STORAGE_DEVICE_ASYNC ) )
 		{
@@ -838,7 +836,7 @@ void CUIGameData::GameStats_ReportAction( char const *szReportAction, char const
 	kv->SetInt( "game_mapid", GameStats_GetReportMapNameIndex( szMapName ) );
 	kv->SetUint64( "game_flags", uiFlags );
 
-	IDatacenterCmdBatch *pBatch = g_pMatchFramework->GetMatchSystem()->GetDatacenter()->CreateCmdBatch();
+	IDatacenterCmdBatch *pBatch = g_pMatchFramework->GetMatchSystem()->GetDatacenter()->CreateCmdBatch( false );
 	pBatch->SetDestroyWhenFinished( true );
 	pBatch->SetRetryCmdTimeout( 30.0f );
 	pBatch->AddCommand( kv );
@@ -986,5 +984,3 @@ void CPS3SaveSteamInfoProvider::WriteSteamStats()
 
 
 
-
-#endif

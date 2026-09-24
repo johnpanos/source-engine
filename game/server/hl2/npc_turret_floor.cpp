@@ -1136,7 +1136,7 @@ void CNPC_FloorTurret::Shoot( const Vector &vecSrc, const Vector &vecDirToEnemy,
 
 	if ( !bStrict && GetEnemy() != NULL )
 	{
-		Vector vecDir = GetActualShootTrajectory( vecSrc );
+		Vector vecDir = vecDirToEnemy;
 
 		info.m_vecSrc = vecSrc;
 		info.m_vecDirShooting = vecDir;

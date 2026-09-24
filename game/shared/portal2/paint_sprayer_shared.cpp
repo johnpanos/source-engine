@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2009, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2009, Valve Corporation, All rights reserved. ============//
 //
 //=============================================================================//
 
@@ -11,6 +11,7 @@
 
 #ifdef CLIENT_DLL
 	#include "c_paint_sprayer.h"
+	#include "portal2_engine_compat.h"
 #else
 	#include "paint_sprayer.h"
 #endif
@@ -124,7 +125,7 @@ CPaintBlob* FirePaintBlob( const Vector& vecSourcePosition,
 {
 #ifdef CLIENT_DLL
 	// if the client is listen server, don't create blobs twice, we don't want to double the work
-	if ( engine->IsClientLocalToActiveServer() )
+	if ( Portal2Engine::IsClientLocalToActiveServer() )
 		return NULL;
 #endif
 

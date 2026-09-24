@@ -1,6 +1,7 @@
-//========= Copyright © 1996-2009, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2009, Valve Corporation, All rights reserved. ============//
 //
 //=============================================================================//
+#if 0
 #include "cbase.h"
 
 #include <numeric>
@@ -561,3 +562,4 @@ float CPaintStreamManager::PlayPaintImpactSound( const EmitSound_t& emitParams )
 	CBaseEntity::EmitSound( filter, 0, emitParams );
 	return CBaseEntity::GetSoundDuration( emitParams.m_pSoundName, NULL ); // This will generate a "should use game_sounds.txt" warning, but the sound name comes from game_sounds.txt. The warning is benign.
 }
+#endif

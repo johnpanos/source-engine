@@ -1,9 +1,10 @@
-//========== Copyright © 2008, Valve Corporation, All rights reserved. ========
+//========== Copyright Â© 2008, Valve Corporation, All rights reserved. ========
 //
 // Purpose:
 //
 //=============================================================================
 
+#if 0
 #include "cbase.h"
 #include "vscript_shared.h"
 #include "icommandline.h"
@@ -323,3 +324,4 @@ CON_COMMAND( script_dump_all, "Dump the state of the VM to the console" )
 	}
 	g_pScriptVM->DumpState();
 }
+#endif

@@ -46,8 +46,8 @@ FizzlerEffects *FizzlerEffects::Create( CBaseEntity *pAttachTo )
 
 		// Play the fizzle sequence and shrink the model over its duration
 		pDissolvingAnimating->ResetSequence( 1 );
-		pDissolvingAnimating->SetModelScale( fizzler_fx_model_target_scale.GetFloat(),
-			pDissolvingAnimating->SequenceDuration(), NONHIERARCHICAL_MODEL_SCALE );
+		pDissolvingAnimating->SetModelScale(
+		    fizzler_fx_model_target_scale.GetFloat(), pDissolvingAnimating->SequenceDuration() );
 	}
 
 	return pFizzlerEffects;

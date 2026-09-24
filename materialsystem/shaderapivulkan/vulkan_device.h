@@ -300,9 +300,11 @@ public:
 		bool depthTest = true;
 		bool depthWrite = true;
 		VkCompareOp depthCompare = VK_COMPARE_OP_LESS_OR_EQUAL;
-		// IShaderShadow::EnableColorWrites; false leaves the target unchanged (a
-		// draw that only feeds an occlusion query, such as dev/lumcompare).
+		bool depthBiasEnable = false;
+		// D3D9 controls RGB and alpha writes independently. Both are off for a
+		// draw that only feeds an occlusion query, such as dev/lumcompare.
 		bool colorWrite = true;
+		bool alphaWrite = false;
 		// D3D9's effective D3DRS_CULLMODE (the shadow state's EnableCulling with the
 		// dynamic CullMode). Triangles are wound in D3D screen space, which the
 		// flipped draw viewport preserves, so the front face is clockwise.
@@ -318,8 +320,19 @@ public:
 		VkStencilOp stencilPass = VK_STENCIL_OP_KEEP;
 	};
 	void SelectDynamicRasterState( const DynRasterState &state ) { m_dynRaster = state; }
+	void SetDynamicDepthBias( float constantFactor, float slopeFactor )
+	{
+		m_dynDepthBiasConstant = constantFactor;
+		m_dynDepthBiasSlope = slopeFactor;
+	}
+	// D3D9 supplies a normalized bias; Vulkan's constant factor is in depth
+	// buffer units. The D32 float scale is approximate near depth 0.5.
+	float DepthBiasUnitScale() const
+	{
+		return m_depthFormat == VK_FORMAT_D32_SFLOAT_S8_UINT ? 8388608.0f : 16777216.0f;
+	}
 	// Distinct states have distinct keys.
-	static uint32_t RasterStateKey( const DynRasterState &state );
+	static uint64_t RasterStateKey( const DynRasterState &state );
 	// Its inverse: the state a key was made from (fields a disabled stencil test
 	// ignores come back as their defaults).
 	static DynRasterState RasterStateFromKey( uint64_t key );
@@ -1095,6 +1108,8 @@ private:
 	float m_dynPbrAngles[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	PbrWorldScene m_dynPbrWorld;
 	DynRasterState m_dynRaster;
+	float m_dynDepthBiasConstant = 0.0f;
+	float m_dynDepthBiasSlope = 0.0f;
 	float m_dynAlphaRef = -1.0f; // $alphatest reference; < 0 disables
 	// "$basetexture" material pipeline: a built-in 2-tone texture sampled at the
 	// mesh UVs, bound through a descriptor set (its own layout adds the sampler).
@@ -1231,7 +1246,7 @@ private:
 		VkPipelineViewportStateCreateInfo vp;
 		VkPipelineRasterizationStateCreateInfo rs;
 		VkPipelineMultisampleStateCreateInfo ms;
-		VkDynamicState dynStates[5];
+		VkDynamicState dynStates[6];
 		VkPipelineDynamicStateCreateInfo dyn;
 	};
 	TexturedPipelineTemplate m_texTemplate = {};
@@ -1434,6 +1449,8 @@ private:
 		PbrWorldScene pbrWorld;
 		float monitorContrast = 0.0f;
 		DynRasterState raster;
+		float depthBiasConstant = 0.0f;
+		float depthBiasSlope = 0.0f;
 		float alphaRef = -1.0f;   // $alphatest reference; < 0 disables
 		int texHandle = -1;       // managed texture bound at this draw (-1 = built-in)
 		int lightmapHandle = -1;  // lightmap page multiplied in (-1 = none)

@@ -1,4 +1,3 @@
-#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Portal 2 reconstruction ============================================//
 //
 // Purpose: Client side of the projected light bridge (hard light wall): the
@@ -685,7 +684,7 @@ void C_ProjectedWallEntity::ProjectWall( void )
 	// Anybody standing on the old wall needs to re-find their ground
 	FOR_EACH_VALID_SPLITSCREEN_PLAYER( hPlayer )
 	{
-		C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer( hPlayer );
+		C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
 		if ( pPlayer && pPlayer->GetGroundEntity() == this )
 		{
 			pPlayer->SetGroundEntity( NULL );
@@ -952,8 +951,7 @@ void C_ProjectedWallEntity::GetToolRecordingState( KeyValues *msg )
 {
 	BaseClass::GetToolRecordingState( msg );
 
-	KeyValues *pKV = CIFM_EntityKeyValuesHandler_AutoRegister::FindOrCreateNonConformantKeyValues( msg );
-	pKV->SetString( CIFM_EntityKeyValuesHandler_AutoRegister::GetHandlerIDKeyString(), "C_ProjectedWallEntity" );
+	KeyValues *pKV = msg;
 	pKV->SetInt( "entIndex", index );
 	pKV->SetFloat( "width", m_flWidth );
 	pKV->SetFloat( "height", m_flHeight );
@@ -1013,7 +1011,7 @@ void C_ProjectedWallEntity::RestoreToToolRecordedState( KeyValues *pKV )
 	}
 
 	// Visible in every view
-	m_VisibilityBits.SetAll();
+	// The current client has no tool-framework visibility mask.
 }
 
 //-----------------------------------------------------------------------------
@@ -1094,6 +1092,7 @@ void C_ProjectedWallEntity::SetupWallParticles( void )
 	}
 }
 
+#if 0
 class CProjectedWallEntity_NonConformantDataHandler : public CIFM_EntityKeyValuesHandler_RecreateEntities
 {
 public:
@@ -1120,7 +1119,7 @@ public:
 
 		if ( pCastEntity->RenderHandle() == INVALID_CLIENT_RENDER_HANDLE )
 		{
-			clienttools->AddClientRenderable( pCastEntity, false, RENDERABLE_IS_TRANSLUCENT );
+			clienttools->AddClientRenderable( pCastEntity, RENDER_GROUP_TRANSLUCENT_ENTITY );
 		}
 
 		clienttools->MarkClientRenderableDirty( pCastEntity );
@@ -1128,6 +1127,7 @@ public:
 };
 
 static CProjectedWallEntity_NonConformantDataHandler s_ProjectedWallEntityIFMHandler;
+#endif
 
 
 //-----------------------------------------------------------------------------
@@ -1163,5 +1163,3 @@ BEGIN_RECV_TABLE_NOBASE( C_TEWallPaintedEvent, DT_TEWallPaintedEvent )
 	RecvPropInt( RECVINFO( m_colorIndex ) ),
 	RecvPropInt( RECVINFO( m_nSegment ) ),
 END_RECV_TABLE()
-
-#endif

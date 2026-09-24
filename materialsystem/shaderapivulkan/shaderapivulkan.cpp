@@ -307,6 +307,7 @@ static ShaderViewport_t g_Viewport;
 
 // Blend mode and alpha-test reference the current pass selected (BeginPass).
 static render_vulkan::CVulkanContext::DynRasterState g_CurrentRaster;
+static PolygonOffsetMode_t g_CurrentPolyOffset = SHADER_POLYOFFSET_DISABLE;
 static float g_CurrentAlphaRef = -1.0f;
 // CVulkanContext::kColorSrgb*/kFragment*/kVertex* flags of the pass being drawn.
 static int g_CurrentColorFlags = 0;
@@ -884,6 +885,9 @@ public:
 	ShaderAlphaFunc_t m_alphaFunc = SHADER_ALPHAFUNC_GEQUAL;
 	// IShaderShadow::EnableColorWrites.
 	bool m_colorWrites = true;
+	// IShaderShadow::EnableAlphaWrites; D3D9's default is off.
+	bool m_alphaWrites = false;
+	PolygonOffsetMode_t m_polyOffset = SHADER_POLYOFFSET_DISABLE;
 	// IShaderShadow::EnableCulling ($nocull turns it off); on by default, as in
 	// CShaderShadowDX8::SetDefaultState.
 	bool m_cullEnable = true;
@@ -1903,7 +1907,8 @@ public:
 	virtual void SetShadowDepthBiasFactors(
 	    float fShadowSlopeScaleDepthBias, float fShadowDepthBias )
 	{
-		VK_UNIMPLEMENTED();
+		m_shadowSlopeScaleDepthBias = fShadowSlopeScaleDepthBias;
+		m_shadowDepthBias = fShadowDepthBias;
 	}
 
 	virtual void SetDisallowAccess( bool ) {}
@@ -1994,6 +1999,9 @@ private:
 	};
 
 	CEmptyMesh m_Mesh;
+	float m_shadowSlopeScaleDepthBias = 0.0f;
+	float m_shadowDepthBias = 0.0f;
+	void ApplyDepthBiasState( render_vulkan::CVulkanContext::DynRasterState &raster );
 	float m_FloatRenderingParameters[MAX_FLOAT_RENDER_PARMS];
 	int m_IntRenderingParameters[MAX_INT_RENDER_PARMS];
 	Vector m_VectorRenderingParameters[MAX_VECTOR_RENDER_PARMS];
@@ -3936,6 +3944,8 @@ void CShaderShadowVulkan::SetDefaultState()
 	m_alphaRef = 0.7f;
 	m_alphaFunc = SHADER_ALPHAFUNC_GEQUAL;
 	m_colorWrites = true;
+	m_alphaWrites = false;
+	m_polyOffset = SHADER_POLYOFFSET_DISABLE;
 	m_cullEnable = true;
 	m_vertexUsage = 0;
 	m_colorFlags = 0;
@@ -3986,7 +3996,14 @@ void CShaderShadowVulkan::EnableDepthTest( bool bEnable )
 
 void CShaderShadowVulkan::EnablePolyOffset( PolygonOffsetMode_t nOffsetMode )
 {
-	VK_UNIMPLEMENTED();
+	if ( nOffsetMode != SHADER_POLYOFFSET_DISABLE && nOffsetMode != SHADER_POLYOFFSET_DECAL &&
+	     nOffsetMode != SHADER_POLYOFFSET_SHADOW_BIAS )
+	{
+		NoteUnimplemented( "EnablePolyOffset(reserved mode)" );
+		m_polyOffset = SHADER_POLYOFFSET_DISABLE;
+		return;
+	}
+	m_polyOffset = nOffsetMode;
 }
 
 // Suppresses/activates color writing
@@ -3998,7 +4015,7 @@ void CShaderShadowVulkan::EnableColorWrites( bool bEnable )
 // Suppresses/activates alpha writing
 void CShaderShadowVulkan::EnableAlphaWrites( bool bEnable )
 {
-	VK_UNIMPLEMENTED();
+	m_alphaWrites = bEnable;
 }
 
 // Methods related to alpha blending
@@ -4542,6 +4559,7 @@ static std::vector<std::string> g_snapshotShaders;
 // with, taken from the recorded IShaderShadow state so BeginPass can select the
 // matching pipeline.
 static std::vector<render_vulkan::CVulkanContext::DynRasterState> g_snapshotRaster;
+static std::vector<PolygonOffsetMode_t> g_snapshotPolyOffset;
 // Parallel to g_snapshotShaders: the $alphatest reference each snapshot applies
 // (< 0 when alpha test is disabled).
 static std::vector<float> g_snapshotAlphaRef;
@@ -4742,9 +4760,43 @@ render_vulkan::CVulkanContext::DynRasterState SnapshotRasterState(
 	state.depthWrite = shadow.m_bIsDepthWriteEnabled;
 	state.depthCompare = NativeDepthCompare( shadow.m_depthFunc );
 	state.colorWrite = shadow.m_colorWrites;
+	state.alphaWrite = shadow.m_alphaWrites;
 	// Culling on; the dynamic CullMode picks the face when the pass is drawn.
 	state.cullMode = shadow.m_cullEnable ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE;
 	return state;
+}
+
+// D3D9 applies the configured slope and normalized constant bias at the draw,
+// not when the shadow snapshot is made. Convert the constant term to Vulkan's
+// depth-buffer units; keep the actual factors on the queued draw so later
+// config or shadow-bias changes cannot alter an already recorded pass.
+void CShaderAPIVulkan::ApplyDepthBiasState( render_vulkan::CVulkanContext::DynRasterState &raster )
+{
+	static const MaterialSystem_Config_t defaults;
+	const MaterialSystem_Config_t &config = ShaderUtil() ? ShaderUtil()->GetConfig() : defaults;
+	float slope = 0.0f;
+	float normalized = 0.0f;
+	if ( g_CurrentPolyOffset == SHADER_POLYOFFSET_DECAL )
+	{
+		slope = config.m_SlopeScaleDepthBias_Decal != 0.0f
+		            ? 1.0f / config.m_SlopeScaleDepthBias_Decal
+		            : 0.0f;
+		normalized = config.m_DepthBias_Decal != 0.0f ? 1.0f / config.m_DepthBias_Decal : 0.0f;
+	}
+	else if ( g_CurrentPolyOffset == SHADER_POLYOFFSET_SHADOW_BIAS )
+	{
+		slope = m_shadowSlopeScaleDepthBias;
+		normalized = m_shadowDepthBias;
+	}
+	else
+	{
+		slope = config.m_SlopeScaleDepthBias_Normal != 0.0f
+		            ? 1.0f / config.m_SlopeScaleDepthBias_Normal
+		            : 0.0f;
+		normalized = config.m_DepthBias_Normal != 0.0f ? 1.0f / config.m_DepthBias_Normal : 0.0f;
+	}
+	raster.depthBiasEnable = slope != 0.0f || normalized != 0.0f;
+	g_VulkanContext.SetDynamicDepthBias( normalized * g_VulkanContext.DepthBiasUnitScale(), slope );
 }
 
 // The textured pipeline variant a snapshot selects, beyond its sRGB flags: the
@@ -5198,8 +5250,9 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	        : -1.0f;
 	const int shaderFlags = SnapshotShaderFlags( g_ShaderShadow );
 	char key[128];
-	V_snprintf( key, sizeof( key ), "|%d|%u|%.6g|%llx|%d|%d", static_cast<int>( id ),
-	    render_vulkan::CVulkanContext::RasterStateKey( raster ), alphaRef,
+	V_snprintf( key, sizeof( key ), "|%d|%llx|%d|%.6g|%llx|%d|%d", static_cast<int>( id ),
+	    static_cast<unsigned long long>( render_vulkan::CVulkanContext::RasterStateKey( raster ) ),
+	    static_cast<int>( g_ShaderShadow.m_polyOffset ), alphaRef,
 	    static_cast<unsigned long long>( g_ShaderShadow.m_vertexUsage ), shaderFlags,
 	    g_ShaderShadow.m_vertexShaderIndex );
 	const std::string stateKey = SnapshotShaderRoute( g_ShaderShadow ) + key;
@@ -5217,6 +5270,7 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	}
 	g_snapshotShaders.push_back( SnapshotShaderRoute( g_ShaderShadow ) );
 	g_snapshotRaster.push_back( raster );
+	g_snapshotPolyOffset.push_back( g_ShaderShadow.m_polyOffset );
 	g_snapshotAlphaRef.push_back( alphaRef );
 	g_snapshotVertexUsage.push_back( g_ShaderShadow.m_vertexUsage );
 	g_snapshotColorFlags.push_back( shaderFlags );
@@ -5638,7 +5692,9 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	if ( index < g_snapshotRaster.size() )
 	{
 		g_CurrentRaster = g_snapshotRaster[index];
-		g_VulkanContext.SelectDynamicRasterState( g_snapshotRaster[index] );
+		g_CurrentPolyOffset = g_snapshotPolyOffset[index];
+		ApplyDepthBiasState( g_CurrentRaster );
+		g_VulkanContext.SelectDynamicRasterState( g_CurrentRaster );
 	}
 	g_CurrentColorFlags = index < g_snapshotColorFlags.size() ? g_snapshotColorFlags[index] : 0;
 	g_CurrentModulationInPixelC1 =
@@ -5829,6 +5885,7 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		// shaders choose their tone-map type per combo (below).
 		// D3D9's effective cull mode: the snapshot's culling with the dynamic face.
 		render_vulkan::CVulkanContext::DynRasterState raster = g_CurrentRaster;
+		ApplyDepthBiasState( raster );
 		if ( raster.cullMode != VK_CULL_MODE_NONE )
 			raster.cullMode = g_DesiredCullMode == MATERIAL_CULLMODE_CW ? VK_CULL_MODE_FRONT_BIT
 			                                                            : VK_CULL_MODE_BACK_BIT;

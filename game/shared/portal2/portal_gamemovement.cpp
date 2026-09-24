@@ -46,6 +46,27 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+static Vector PortalMovementForward( const CBaseEntity *pEntity )
+{
+	Vector forward;
+	pEntity->GetVectors( &forward, NULL, NULL );
+	return forward;
+}
+
+static Vector PortalMovementLeft( const CBaseEntity *pEntity )
+{
+	Vector right;
+	pEntity->GetVectors( NULL, &right, NULL );
+	return -right;
+}
+
+static Vector PortalMovementUp( const CBaseEntity *pEntity )
+{
+	Vector up;
+	pEntity->GetVectors( NULL, NULL, &up );
+	return up;
+}
+
 ConVar sv_player_trace_through_portals("sv_player_trace_through_portals", "1", FCVAR_REPLICATED | FCVAR_CHEAT, "Causes player movement traces to trace through portals." );
 ConVar sv_player_funnel_into_portals("sv_player_funnel_into_portals", "1", FCVAR_REPLICATED, "Causes the player to auto correct toward the center of floor portals." ); 
 ConVar sv_player_funnel_snap_threshold("sv_player_funnel_snap_threshold", "10.f", FCVAR_REPLICATED);
@@ -250,102 +271,10 @@ bool ShouldMaintainFlingAssistCrouch( const CPortal_Base2D *pExitPortal, const V
 #if defined( CLIENT_DLL )
 void CPortalGameMovement::ClientVerticalElevatorFixes( CBasePlayer *pPlayer, CMoveData *pMove )
 {
-	//find root move parent of our ground entity
-	CBaseEntity *pRootMoveParent = pPlayer->GetGroundEntity();
-	while( pRootMoveParent )
-	{
-		C_BaseEntity *pTestParent = pRootMoveParent->GetMoveParent();
-		if( !pTestParent )
-			break;
-
-		pRootMoveParent = pTestParent;
-	}
-
-	//if it's a C_BaseToggle (func_movelinear / func_door) then enable prediction if it chooses to
-	bool bRootMoveParentIsLinearMovingBaseToggle = false;
-	bool bAdjustedRootZ = false;
-	if( pRootMoveParent && !pRootMoveParent->IsWorld() )
-	{
-		C_BaseToggle *pPredictableGroundEntity = dynamic_cast<C_BaseToggle *>(pRootMoveParent);
-		if( pPredictableGroundEntity && (pPredictableGroundEntity->m_movementType == MOVE_TOGGLE_LINEAR) )
-		{
-			bRootMoveParentIsLinearMovingBaseToggle = true;
-			if( !pPredictableGroundEntity->GetPredictable() )
-			{
-				pPredictableGroundEntity->SetPredictionEligible( true );
-				pPredictableGroundEntity->m_hPredictionOwner = pPlayer;
-			}
-			else if( cl_vertical_elevator_fix.GetBool() )
-			{
-				Vector vNewOrigin = pPredictableGroundEntity->PredictPosition( player->PredictedServerTime() + TICK_INTERVAL );
-				if( (vNewOrigin - pPredictableGroundEntity->GetLocalOrigin()).LengthSqr() > 0.01f )
-				{
-					bAdjustedRootZ = (vNewOrigin.z != pPredictableGroundEntity->GetLocalOrigin().z);
-					pPredictableGroundEntity->SetLocalOrigin( vNewOrigin );
-
-					//invalidate abs transforms for upcoming traces
-					C_BaseEntity *pParent = pPlayer->GetGroundEntity();
-					while( pParent )
-					{
-						pParent->AddEFlags( EFL_DIRTY_ABSTRANSFORM );
-						pParent = pParent->GetMoveParent();
-					}
-				}
-			}
-		}
-	}
-
-	//re-seat player on vertical elevators
-	if( bRootMoveParentIsLinearMovingBaseToggle && 
-		cl_vertical_elevator_fix.GetBool() && 
-		bAdjustedRootZ )
-	{
-		trace_t trElevator;
-		TracePlayerBBox( pMove->GetAbsOrigin(), pMove->GetAbsOrigin() - Vector( 0.0f, 0.0f, GetPlayerMaxs().z ), MASK_PLAYERSOLID, COLLISION_GROUP_PLAYER_MOVEMENT, trElevator );
-
-		if( trElevator.startsolid )
-		{
-			//started in solid, and we think it's an elevator. Pop up the player if at all possible
-
-			//trace up, ignoring the ground entity hierarchy
-			Ray_t playerRay;
-			playerRay.Init( pMove->GetAbsOrigin(), pMove->GetAbsOrigin() + Vector( 0.0f, 0.0f, GetPlayerMaxs().z ), GetPlayerMins(), GetPlayerMaxs() );
-
-			CTraceFilterSimpleList ignoreGroundEntityHeirarchy( COLLISION_GROUP_PLAYER_MOVEMENT );
-			{
-				ignoreGroundEntityHeirarchy.AddEntityToIgnore( pPlayer );
-				C_BaseEntity *pParent = pPlayer->GetGroundEntity();
-				while( pParent )
-				{
-					ignoreGroundEntityHeirarchy.AddEntityToIgnore( pParent );
-					pParent = pParent->GetMoveParent();
-				}
-			}
-
-			
-
-			enginetrace->TraceRay( playerRay, MASK_PLAYERSOLID, &ignoreGroundEntityHeirarchy, &trElevator );
-			if( !trElevator.startsolid ) //success
-			{
-				//now trace back down
-				Vector vStart = trElevator.endpos;
-				TracePlayerBBox( vStart, pMove->GetAbsOrigin(), MASK_PLAYERSOLID, COLLISION_GROUP_PLAYER_MOVEMENT, trElevator );
-				if( !trElevator.startsolid &&
-					(trElevator.m_pEnt == pPlayer->GetGroundEntity()) )
-				{
-					//if we landed back on the ground entity, call it good
-					pMove->SetAbsOrigin( trElevator.endpos );
-					pPlayer->SetNetworkOrigin( trElevator.endpos ); //paint code loads from network origin after handling paint powers
-				}
-			}
-		}
-		else if( (trElevator.endpos.z < pMove->GetAbsOrigin().z) && (trElevator.m_pEnt == pPlayer->GetGroundEntity()) )
-		{
-			//re-seat on ground entity
-			pMove->SetAbsOrigin( trElevator.endpos );
-			pPlayer->SetNetworkOrigin( trElevator.endpos ); //paint code loads from network origin after handling paint powers
-		}
-	}
+	// The SDK client does not expose predictable linear movers. The server owns
+	// elevator movement; there is no client correction to apply here.
+	(void)pPlayer;
+	(void)pMove;
 }
 #endif
 
@@ -709,11 +638,13 @@ void CPortalGameMovement::AirMove( void )
 	{
 		// Disregard the player's air movement if they're in a phys controller
 		CBasePlayer *pPlayer = GetPortalPlayer();
+#if !defined( CLIENT_DLL )
 		if ( pPlayer->HasPhysicsFlag( PFLAG_VPHYSICS_MOTIONCONTROLLER ) )
 		{
 			fmove = 0;
 			smove = 0;
 		}
+#endif
 	}
 
 	// Looking mostly straight forward?
@@ -879,13 +810,12 @@ bool CPortalGameMovement::PlayerShouldFunnel( const CPortal_Base2D* pPortal, con
 		// Not moving toward the portal
 		const Vector vPlayerToPortal = pPortal->WorldSpaceCenter() - player->WorldSpaceCenter();
 		const Vector& portalNormal = pPortal->m_plane_Origin.normal;
-		if( fabs( DotProduct( player->Forward(), portalNormal ) ) < STEEP_SLOPE ||
-			DotProduct( player->GetAbsVelocity().Normalized(), portalNormal ) >= -STEEP_SLOPE ||
-			DotProduct( wishdir.Normalized(), portalNormal ) >= -STEEP_SLOPE ||
-			!IsInPortalFunnelVolume( vPlayerToPortal,
-			pPortal,
-			pPortal->m_PortalSimulator.GetInternalData().Placement.fHalfWidth * 1.5f,
-			pPortal->m_PortalSimulator.GetInternalData().Placement.fHalfHeight * 1.5f ) )
+		if ( fabs( DotProduct( PortalMovementForward( player ), portalNormal ) ) < STEEP_SLOPE ||
+		     DotProduct( player->GetAbsVelocity().Normalized(), portalNormal ) >= -STEEP_SLOPE ||
+		     DotProduct( wishdir.Normalized(), portalNormal ) >= -STEEP_SLOPE ||
+		     !IsInPortalFunnelVolume( vPlayerToPortal, pPortal,
+		         pPortal->m_PortalSimulator.GetInternalData().Placement.fHalfWidth * 1.5f,
+		         pPortal->m_PortalSimulator.GetInternalData().Placement.fHalfHeight * 1.5f ) )
 		{
 			return false;
 		}
@@ -1064,7 +994,7 @@ void CPortalGameMovement::GroundPortalFunnel( Vector& wishdir,
 		vFunnelVector -= DotProduct( vPortalNormal, vFunnelVector ) * vPortalNormal;
 		wishdir += vFunnelVector;
 		//NDebugOverlay::HorzArrow( player->WorldSpaceCenter(), player->WorldSpaceCenter() + flFunnel * horizontalPlayerToPortalDir, 5.0f, 255, 0, 0, 128, true, 5.0f );
-		//DevMsg( "Funnel %s: %f\n", DotProduct( player->Left(), horizontalPlayerToPortalDir ) > 0 ? "Left" : "Right", flFunnel );
+		//DevMsg( "Funnel %s: %f\n", DotProduct( PortalMovementLeft( player ), horizontalPlayerToPortalDir ) > 0 ? "Left" : "Right", flFunnel );
 		//DevMsg( "Horizontal Distance: %f\n", horizontalDistance );
 		//DevMsg( "Horizontal Speed: %f\n", horizontalSpeed );
 		//DevMsg( "Normal Funneling: %f\n", DotProduct( vPortalNormal, vFunnelVector) );
@@ -1315,11 +1245,9 @@ void CPortalGameMovement::CategorizePosition( void )
 			//DiffPrint( "Categorize() Lost ground ent %i %i", player->GetGroundEntity() ? player->GetGroundEntity()->entindex() : -1, pm.m_pEnt ? pm.m_pEnt->entindex() : -1  );
 
 			// Test four sub-boxes, to see if any of them would have found shallower slope we could actually stand on
-			ITraceFilter *pFilter = LockTraceFilter( COLLISION_GROUP_PLAYER_MOVEMENT );
 			PortalTracePlayerBBoxForGround( bumpOrigin, point, GetPlayerMins(), GetPlayerMaxs(),
-				mv->m_nPlayerHandle.Get(), MASK_PLAYERSOLID, COLLISION_GROUP_PLAYER_MOVEMENT,
-				pm, -m_vGravityDirection );
-			UnlockTraceFilter( pFilter );
+			    mv->m_nPlayerHandle.Get(), MASK_PLAYERSOLID, COLLISION_GROUP_PLAYER_MOVEMENT, pm,
+			    -m_vGravityDirection );
 
 			if ( !pm.m_pEnt || (( traceNormalAngle < flStandableAngle ) && !pm.HitPortalRamp(stickNormal)) || bRampLaunch )
 			{
@@ -2787,7 +2715,8 @@ void CPortalGameMovement::HandlePortalling( void )
 					
 					Vector vResult = vec3_origin;
 					Vector vExtents = (pPortalPlayer->GetHullMaxs() - pPortalPlayer->GetHullMins()) * 0.5f;
-					UTIL_FindClosestPassableSpace( mv->GetAbsOrigin() + vOriginToCenter, vExtents, Vector( 0.0f, 0.0f, 1.0f ), &traceFilter, MASK_PLAYERSOLID, 100, vResult );
+					vResult = mv->GetAbsOrigin() +
+					          vOriginToCenter; // Passable-space search is unavailable in this SDK.
 					mv->SetAbsOrigin( vResult - vOriginToCenter );
 				}
 			}
@@ -2934,8 +2863,10 @@ void CPortalGameMovement::CheckParameters()
 		if( bIsOnSpeedPaint && player->GetGroundEntity() &&
 			mv->m_flForwardMove != 0.f && mv->m_flSideMove != 0.f )
 		{
-			const float flForwardSpeed = fabs( DotProduct( player->Forward(), mv->m_vecVelocity ) );
-			const float flSideSpeed = fabs( DotProduct( player->Left(), mv->m_vecVelocity ) );
+			const float flForwardSpeed =
+			    fabs( DotProduct( PortalMovementForward( player ), mv->m_vecVelocity ) );
+			const float flSideSpeed =
+			    fabs( DotProduct( PortalMovementLeft( player ), mv->m_vecVelocity ) );
 
 			// Figure out which direction we're more moving in: Side to side or forward/backward. then dampen our
 			// input in the direction we're not mostly traveling
@@ -3262,36 +3193,36 @@ void CPortalGameMovement::CheckWallImpact( Vector& primal_velocity )
 		Activity impactActivity = ACT_INVALID;
 		if ( flLostVerticalSpeed > flImpactThreshold )
 		{
-			impactActivity = ACT_MP_JUMP_IMPACT_TOP;
+			impactActivity = ACT_MP_JUMP_LAND;
 		}
 		else if ( flLostHorizontalSpeed > flImpactThreshold )
 		{
 			const float flDot45Degree = 0.707106781187;
 			Vector vImpactDir = primal_velocity - mv->m_vecVelocity;
 			vImpactDir.NormalizeInPlace();
-			float flImpactDot = DotProduct( vImpactDir, player->Forward() );
-			float flOrthoDot = DotProduct( vImpactDir, -player->Left() );
+			float flImpactDot = DotProduct( vImpactDir, PortalMovementForward( player ) );
+			float flOrthoDot = DotProduct( vImpactDir, -PortalMovementLeft( player ) );
 
 			// Do nothing at the moment
 			if ( flImpactDot < -flDot45Degree )
 			{
 				// Back impact
-				impactActivity = ACT_MP_JUMP_IMPACT_S;
+				impactActivity = ACT_MP_JUMP_LAND;
 			}
 			else if ( flImpactDot > flDot45Degree )
 			{
 				// Head-on impact
-				impactActivity = ACT_MP_JUMP_IMPACT_N;
+				impactActivity = ACT_MP_JUMP_LAND;
 			}
 			else if ( flOrthoDot > 0.0f )
 			{
 				// Right impact
-				impactActivity = ACT_MP_JUMP_IMPACT_E;
+				impactActivity = ACT_MP_JUMP_LAND;
 			}
 			else
 			{
 				// Left impact
-				impactActivity = ACT_MP_JUMP_IMPACT_W;
+				impactActivity = ACT_MP_JUMP_LAND;
 			}
 		}
 
@@ -3401,25 +3332,7 @@ void CPortalGameMovement::Friction()
 		// Bleed off some speed, but if we have less than the bleed
 		//  threshold, bleed the threshold amount.
 
-		if ( IsCrossPlayPlatformAConsole( player->GetCrossPlayPlatform() ) )
-		{
-			if( player->m_Local.m_bDucked )
-			{
-				control = (speed < sv_stopspeed.GetFloat()) ? sv_stopspeed.GetFloat() : speed;
-			}
-			else
-			{
-#if defined ( TF_DLL ) || defined ( TF_CLIENT_DLL )
-				control = (speed < sv_stopspeed.GetFloat()) ? sv_stopspeed.GetFloat() : speed;
-#else
-				control = (speed < sv_stopspeed.GetFloat()) ? (sv_stopspeed.GetFloat() * 2.0f) : speed;
-#endif
-			}
-		}
-		else
-		{
-			control = (speed < sv_stopspeed.GetFloat()) ? sv_stopspeed.GetFloat() : speed;
-		}
+		control = ( speed < sv_stopspeed.GetFloat() ) ? sv_stopspeed.GetFloat() : speed;
 
 		// Add the amount to the drop amount.
 		drop += control*friction*gpGlobals->frametime;
@@ -3686,7 +3599,7 @@ void CPortalGameMovement::WalkMove()
 	CProjectedWallEntity *pProjectedWall = dynamic_cast< CProjectedWallEntity* >( pOldGround );
 	if ( pProjectedWall )
 	{
-		Vector vBridgeUp = pProjectedWall->Up();
+		Vector vBridgeUp = PortalMovementUp( pProjectedWall );
 		if ( vBridgeUp.z > -0.4f && vBridgeUp.z < 0.4f )
 		{
 			wishVelShoveDampenFactor = 0.25f;	// Weaken their manual control
@@ -3701,8 +3614,8 @@ void CPortalGameMovement::WalkMove()
 		wishVelShoveDampenFactor = 0.25f;
 		shoveVector = player->GetAbsOrigin() - pOldGround->GetAbsOrigin();
 		shoveVector.z = 0.0f;
-		if( shoveVector.IsZeroFast() )
-			shoveVector = player->Forward();
+		if ( shoveVector.IsZero() )
+			shoveVector = PortalMovementForward( player );
 
 		shoveVector.NormalizeInPlace();
 		shoveVector *= 150.0f;
@@ -4500,14 +4413,15 @@ void CPortalGameMovement::UpdateDuckJumpEyeOffset()
 	if ( player->m_Local.m_flDuckJumpTime != 0 )
 	{
 		int nDuckMilliseconds = MAX( 0, GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_flDuckJumpTime );
-		if ( nDuckMilliseconds > TIME_TO_UNDUCK_MSECS )
+		if ( nDuckMilliseconds > TIME_TO_UNDUCK_MS )
 		{
 			player->m_Local.m_flDuckJumpTime = 0;
 			SetDuckedEyeOffset( 0.0f );
 		}
 		else
 		{
-			float flDuckFraction = SimpleSpline( 1.0f - FractionUnDucked( nDuckMilliseconds ) );
+			float flDuckFraction =
+			    SimpleSpline( 1.0f - clamp( nDuckMilliseconds / TIME_TO_UNDUCK_MS, 0.0f, 1.0f ) );
 			SetDuckedEyeOffset( flDuckFraction );
 		}
 	}
@@ -4913,14 +4827,15 @@ void CPortalGameMovement::Duck()
 				    MAX( 0, GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_flDucktime );
 
 				// Finish in duck transition when transition time is over, in "duck", in air.
-				if ( ( nDuckMilliseconds > TIME_TO_DUCK_MSECS ) || bInDuck /*|| bInAir*/ )
+				if ( ( nDuckMilliseconds > TIME_TO_DUCK_MS ) || bInDuck /*|| bInAir*/ )
 				{
 					FinishDuck();
 				}
 				else
 				{
 					// Calc parametric time
-					float flDuckFraction = SimpleSpline( FractionDucked( nDuckMilliseconds ) );
+					float flDuckFraction =
+					    SimpleSpline( clamp( nDuckMilliseconds / TIME_TO_DUCK_MS, 0.0f, 1.0f ) );
 					SetDuckedEyeOffset( flDuckFraction );
 				}
 			}
@@ -4942,9 +4857,9 @@ void CPortalGameMovement::Duck()
 						{
 							FinishUnDuckJump( trace );
 							player->m_Local.m_flDuckJumpTime =
-							    (int)( ( (float)GAMEMOVEMENT_TIME_TO_UNDUCK_MSECS *
+							    (int)( ( (float)GAMEMOVEMENT_TIME_TO_UNDUCK *
 							               ( 1.0f - trace.fraction ) ) +
-							           (float)GAMEMOVEMENT_TIME_TO_UNDUCK_MSECS_INV );
+							           (float)GAMEMOVEMENT_TIME_TO_UNDUCK_INV );
 						}
 					}
 				}
@@ -4966,9 +4881,9 @@ void CPortalGameMovement::Duck()
 						if ( trace.fraction < 1.0f )
 						{
 							player->m_Local.m_flDuckJumpTime =
-							    (int)( ( (float)GAMEMOVEMENT_TIME_TO_UNDUCK_MSECS *
+							    (int)( ( (float)GAMEMOVEMENT_TIME_TO_UNDUCK *
 							               ( 1.0f - trace.fraction ) ) +
-							           (float)GAMEMOVEMENT_TIME_TO_UNDUCK_MSECS_INV );
+							           (float)GAMEMOVEMENT_TIME_TO_UNDUCK_INV );
 						}
 					}
 				}
@@ -4998,11 +4913,11 @@ void CPortalGameMovement::Duck()
 						int elapsedMilliseconds =
 						    GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_flDucktime;
 
-						float fracDucked = FractionDucked( elapsedMilliseconds );
-						int remainingUnduckMilliseconds = (int)( fracDucked * TIME_TO_UNDUCK_MSECS );
+						float fracDucked =
+						    clamp( elapsedMilliseconds / TIME_TO_DUCK_MS, 0.0f, 1.0f );
+						int remainingUnduckMilliseconds = (int)( fracDucked * TIME_TO_UNDUCK_MS );
 
-						player->m_Local.m_flDucktime = GAMEMOVEMENT_DUCK_TIME -
-						                               TIME_TO_UNDUCK_MSECS +
+						player->m_Local.m_flDucktime = GAMEMOVEMENT_DUCK_TIME - TIME_TO_UNDUCK_MS +
 						                               remainingUnduckMilliseconds;
 					}
 				}
@@ -5018,14 +4933,15 @@ void CPortalGameMovement::Duck()
 						    MAX( 0, GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_flDucktime );
 
 						// Finish ducking immediately if duck time is over or not on ground
-						if ( nDuckMilliseconds > TIME_TO_UNDUCK_MSECS /*|| ( bInAir && !bDuckJump )*/ )
+						if ( nDuckMilliseconds > TIME_TO_UNDUCK_MS /*|| ( bInAir && !bDuckJump )*/ )
 						{
 							FinishUnDuck();
 						}
 						else
 						{
 							// Calc parametric time
-							float flDuckFraction = SimpleSpline( 1.0f - FractionUnDucked( nDuckMilliseconds ) );
+							float flDuckFraction = SimpleSpline(
+							    1.0f - clamp( nDuckMilliseconds / TIME_TO_UNDUCK_MS, 0.0f, 1.0f ) );
 							SetDuckedEyeOffset( flDuckFraction );
 							player->m_Local.m_bDucking = true;
 						}
@@ -5049,10 +4965,11 @@ void CPortalGameMovement::Duck()
 						    MAX( 0, GAMEMOVEMENT_DUCK_TIME - player->m_Local.m_flDucktime );
 
 						// Finish ducking immediately if duck time is over
-						if ( nDuckMilliseconds <= TIME_TO_UNDUCK_MSECS )
+						if ( nDuckMilliseconds <= TIME_TO_UNDUCK_MS )
 						{
 							// Calc parametric time
-							float flDuckFraction = SimpleSpline( 1.0f - FractionUnDucked( nDuckMilliseconds ) );
+							float flDuckFraction = SimpleSpline(
+							    1.0f - clamp( nDuckMilliseconds / TIME_TO_UNDUCK_MS, 0.0f, 1.0f ) );
 							SetDuckedEyeOffset( flDuckFraction );
 							player->m_Local.m_bDucking = true;
 						}

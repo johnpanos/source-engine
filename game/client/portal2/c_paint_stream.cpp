@@ -7,6 +7,7 @@
 // Valve source; the repository's provenance and distribution warning applies.
 //
 //=============================================================================//
+#if 0
 #include "cbase.h"
 #include "c_paint_stream.h"
 #include "c_paintblob.h"
@@ -616,3 +617,4 @@ void C_PaintStream::GetCurrentBlobData( BlobDataVector_t& blobData )
 		InterpolateBlobData( flPercent, dataA, dataB, blobData );
 	}
 }
+#endif

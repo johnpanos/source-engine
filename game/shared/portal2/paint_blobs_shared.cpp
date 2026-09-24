@@ -4,6 +4,7 @@
 //
 //============================================================================//
 
+#if 0
 #include "cbase.h"
 #include <algorithm>
 #include <functional>
@@ -2298,3 +2299,4 @@ bool CBasePaintBlob::ShouldPlayEffect() const
 {
 	return m_bShouldPlayEffect && !m_bDrawOnly;
 }
+#endif

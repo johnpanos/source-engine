@@ -132,7 +132,6 @@ CPropButton::CPropButton( void )
 	m_bLocked = false;
 	m_bTimerCancelled = false;
 
-	RemoveEffects( EF_SHADOWDEPTH_NOCACHE );
 	AddEffects( EF_MARKED_FOR_FAST_REFLECTION );
 }
 
@@ -193,7 +192,7 @@ void CPropButton::Spawn( void )
 
 	// Never let crucial game components fade out!
 	SetFadeDistance( -1.0f, 0.0f );
-	SetGlobalFadeScale( 0.0f );
+	// SetFadeDistance above keeps the button visible in this SDK.
 
 	// Start "up"
 	ResetSequence( m_IdleUpSequence );

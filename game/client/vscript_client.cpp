@@ -4,6 +4,7 @@
 //
 //=============================================================================
 
+#if 0
 #include "cbase.h"
 #include "vscript_client.h"
 #include "icommandline.h"
@@ -238,4 +239,5 @@ class CSetMixLayerTriggerHelper : public CAutoGameSystem
 };
 
 static CSetMixLayerTriggerHelper g_SetMixLayerTriggerHelper;
+#endif
 #endif

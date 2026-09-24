@@ -1,5 +1,4 @@
-#if 0 // Portal 2-only implementation stubbed for this SDK build.
-//========= Copyright � 1996-2005, Valve Corporation, All rights reserved. ============//
+//========= Copyright ÃÂ¯ÃÂ¿ÃÂ½ 1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
@@ -161,7 +160,7 @@ IClientModelRenderable*	CWeaponPortalBase::GetClientModelRenderable()
 #if 0
 	C_BasePlayer *pOwner = ToBasePlayer( GetOwner() );
 
-	if ( pOwner && C_BasePlayer::IsLocalPlayer( pOwner ) )
+	if ( pOwner && pOwner == C_BasePlayer::GetLocalPlayer() )
 	{
 		ACTIVE_SPLITSCREEN_PLAYER_GUARD_ENT( pOwner );
 		if  ( !g_pPortalRender->IsRenderingPortal() && !pOwner->ShouldDrawLocalPlayer() )
@@ -182,10 +181,10 @@ int CWeaponPortalBase::DrawModel( int flags, const RenderableInstance_t &instanc
 
 	C_BasePlayer *pOwner = ToBasePlayer( GetOwner() );
 
-	if ( pOwner && C_BasePlayer::IsLocalPlayer( pOwner ) )
+	if ( pOwner && pOwner == C_BasePlayer::GetLocalPlayer() )
 	{
 		ACTIVE_SPLITSCREEN_PLAYER_GUARD_ENT( pOwner );
-		if ( !g_pPortalRender->IsRenderingPortal() && !pOwner->ShouldDrawLocalPlayer() && !VGui_IsSplitScreen() )
+		if ( !g_pPortalRender->IsRenderingPortal() && !pOwner->ShouldDrawLocalPlayer() )
 			return 0;
 	}
 
@@ -210,7 +209,7 @@ int CWeaponPortalBase::DrawModel( int flags, const RenderableInstance_t &instanc
 
 bool CWeaponPortalBase::ShouldPredict()
 {
-	if ( C_BasePlayer::IsLocalPlayer( GetOwner() ) )
+	if ( GetOwner() == C_BasePlayer::GetLocalPlayer() )
 		return true;
 
 	return BaseClass::ShouldPredict();
@@ -221,59 +220,6 @@ bool CWeaponPortalBase::ShouldPredict()
 //-----------------------------------------------------------------------------
 void CWeaponPortalBase::DrawCrosshair()
 {
-	C_BasePlayer *player = C_BasePlayer::GetLocalPlayer();
-	if ( !player )
-		return;
-
-	Color clr = GetHud().m_clrNormal;
-
-	CHudCrosshair *crosshair = GET_HUDELEMENT( CHudCrosshair );
-	if ( !crosshair )
-		return;
-
-	// Check to see if the player is in VGUI mode...
-	if (player->IsInVGuiInputMode())
-	{
-		CHudTexture *pArrow	= HudIcons().GetIcon( "arrow" );
-
-		crosshair->SetCrosshair( pArrow, GetHud().m_clrNormal );
-		return;
-	}
-
-	// Find out if this weapon's auto-aimed onto a target
-	bool bOnTarget = ( m_iState == WEAPON_IS_ACTIVE ) && player->m_fOnTarget;
-
-	if ( player->GetFOV() >= 90 )
-	{ 
-		// normal crosshairs
-		if ( bOnTarget && GetWpnData().iconAutoaim )
-		{
-			clr[3] = 255;
-
-			crosshair->SetCrosshair( GetWpnData().iconAutoaim, clr );
-		}
-		else if ( GetWpnData().iconCrosshair )
-		{
-			clr[3] = 255;
-			crosshair->SetCrosshair( GetWpnData().iconCrosshair, clr );
-		}
-		else
-		{
-			crosshair->ResetCrosshair();
-		}
-	}
-	else
-	{ 
-		Color white( 255, 255, 255, 255 );
-
-		// zoomed crosshairs
-		if (bOnTarget && GetWpnData().iconZoomedAutoaim)
-			crosshair->SetCrosshair(GetWpnData().iconZoomedAutoaim, white);
-		else if ( GetWpnData().iconZoomedCrosshair )
-			crosshair->SetCrosshair( GetWpnData().iconZoomedCrosshair, white );
-		else
-			crosshair->ResetCrosshair();
-	}
 }
 
 void CWeaponPortalBase::DoAnimationEvents( CStudioHdr *pStudioHdr )
@@ -419,7 +365,7 @@ void CWeaponPortalBase::FireBullets( const FireBulletsInfo_t &info )
 {
 	FireBulletsInfo_t modinfo = info;
 
-	modinfo.m_flPlayerDamage = GetPortalWpnData().m_iPlayerDamage;
+	modinfo.m_iPlayerDamage = GetPortalWpnData().m_iPlayerDamage;
 
 	BaseClass::FireBullets( modinfo );
 }
@@ -460,5 +406,3 @@ void UTIL_ClipPunchAngleOffset( QAngle &in, const QAngle &punch, const QAngle &c
 
 #endif
 
-
-#endif

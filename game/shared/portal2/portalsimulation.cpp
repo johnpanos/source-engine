@@ -6,6 +6,7 @@
 //=====================================================================================//
 
 
+#if 0
 #include "cbase.h"
 #include "portalsimulation.h"
 #include "vphysics_interface.h"
@@ -5083,6 +5084,7 @@ static void PortalSimulatorDumps_DumpPlanesToGlView( float *pPlanes, int iPlaneC
 
 	filesystem->Close( fp );
 }
+#endif
 
 
 static void PortalSimulatorDumps_DumpBoxToGlView( const Vector &vMins, const Vector &vMaxs, float fRed, float fGreen, float fBlue, const char *pszFileName )

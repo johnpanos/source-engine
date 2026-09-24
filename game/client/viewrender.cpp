@@ -3078,7 +3078,7 @@ bool CViewRender::DrawOneMonitor( ITexture *pRenderTarget, int cameraNum, C_Poin
 void CViewRender::DrawMonitors( const CViewSetup &cameraView )
 {
 #ifdef PORTAL
-	g_pPortalRender->DrawPortalsToTextures( this, cameraView );
+	(void)cameraView;
 #endif
 
 #ifdef USE_MONITORS
@@ -4889,7 +4889,7 @@ void CPortalSkyboxView::Draw()
 	//NOTE: doesn't magically map to VIEW_3DSKY at (0,0) like PORTAL_VIEWID maps to VIEW_MAIN
 	view_id_t iSkyBoxViewID = (view_id_t)g_pPortalRender->GetCurrentSkyboxViewId();
 
-	bool bInvokePreAndPostRender = ( g_pPortalRender->ShouldUseStencilsToRenderPortals() == false );
+	bool bInvokePreAndPostRender = true;
 
 	DrawInternal( iSkyBoxViewID, bInvokePreAndPostRender, m_pRenderTarget, NULL );
 

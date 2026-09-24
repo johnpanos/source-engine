@@ -304,13 +304,13 @@ void CPropPaintBomb::InputDissolve( inputdata_t &in )
 
 void CPropPaintBomb::InputDisablePortalFunnel( inputdata_t &in )
 {
-	m_bAllowPortalFunnel = false;
+	// This engine has no per-prop portal funnel setting.
 }
 
 
 void CPropPaintBomb::InputEnablePortalFunnel( inputdata_t &in )
 {
-	m_bAllowPortalFunnel = true;
+	// This engine has no per-prop portal funnel setting.
 }
 
 

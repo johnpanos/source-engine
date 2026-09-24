@@ -1,6 +1,7 @@
-//========= Copyright © 1996-2009, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2009, Valve Corporation, All rights reserved. ============//
 //
 //=============================================================================//
+#if 0
 #include "cbase.h"
 
 #include "paint_stream_shared.h"
@@ -230,3 +231,4 @@ void CPaintStream::ResetBlobsTeleportedThisFrame()
 		m_blobs[i]->SetBlobTeleportedThisFrame( false );
 	}
 }
+#endif

@@ -1,10 +1,11 @@
-//========= Copyright © 1996-2008, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2008, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: See header file
 //
 // $NoKeywords: $
 //=============================================================================//
 
+#if 0
 #include "cbase.h"
 #include "hud_locator_target.h"
 #include "iclientmode.h"
@@ -2452,4 +2453,4 @@ void CLocatorPanel::RemoveTarget( int hTarget )
 		pTarget->Deactivate();
 	}
 }
-
+#endif

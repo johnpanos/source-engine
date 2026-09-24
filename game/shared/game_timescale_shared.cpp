@@ -1,4 +1,5 @@
 //============ Copyright (c) Valve Corporation, All rights reserved. ============
+#if 0
 #include "cbase.h"
 #include "game_timescale_shared.h"
 #include "usermessages.h"
@@ -209,3 +210,4 @@ bool __MsgFunc_DesiredTimescale( const CCSUsrMsg_DesiredTimescale &msg )
 USER_MESSAGE_REGISTER( DesiredTimescale );
 
 #endif //#ifdef CLIENT_DLL
+#endif

@@ -1,4 +1,3 @@
-#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Copyright (c) 1996-2008, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
@@ -327,7 +326,7 @@ void CUIGameData::OnSetStorageDeviceId( int iController, uint nDeviceId )
 		m_pSelectStorageClient->OnDeviceFail( ISelectStorageDeviceClient::FAIL_NOT_SELECTED );
 		m_pSelectStorageClient = NULL;
 	}
-	else if ( IsX360() && xboxsystem && !xboxsystem->DeviceCapacityAdequate( iController, nDeviceId, Portal2Engine::GetModDirectory() ) )
+	else if ( IsX360() && xboxsystem && !xboxsystem->DeviceCapacityAdequate( nDeviceId, Portal2Engine::GetModDirectory() ) )
 	{
 		CloseWaitScreen( NULL, "ReportDeviceFull" );
 		m_pSelectStorageClient->OnDeviceFail( ISelectStorageDeviceClient::FAIL_FULL );
@@ -1878,7 +1877,7 @@ CEG_NOINLINE void CUIGameData::InitiateSplitscreenPlay()
 
 CON_COMMAND_F( ui_reloadscheme, "Reloads the resource files for the active UI window", 0 )
 {
-	g_pFullFileSystem->SyncDvdDevCache();
+	// DVD development-cache synchronization is not provided by this filesystem.
 	CUIGameData::Get()->ReloadScheme();
 }
 
@@ -2667,5 +2666,3 @@ bool GameModeIsSingleChapter( char const *szGameMode )
 	return !Q_stricmp( szGameMode, "survival" ) || !Q_stricmp( szGameMode, "scavenge" ) || !Q_stricmp( szGameMode, "teamscavenge" );
 }
 
-
-#endif

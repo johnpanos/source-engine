@@ -124,7 +124,7 @@ void CPropTestChamberDoor::Spawn( void )
 
 	// Never let crucial game components fade out!
 	SetFadeDistance( -1.0f, 0.0f );
-	SetGlobalFadeScale( 0.0f );
+	// SetFadeDistance above keeps this gameplay door visible in this SDK.
 }
 
 //-----------------------------------------------------------------------------

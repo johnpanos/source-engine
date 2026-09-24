@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2009, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2009, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Declares the base class for all paint power users.
 //
@@ -342,7 +342,7 @@ template< typename BaseEntityType >
 void PaintPowerUser<BaseEntityType>::UpdatePaintPowers()
 {
 	// Only update if there's paint in the map
-	if( engine->HasPaintmap() )
+	if( false )
 	{
 		// Update which powers are active
 		PaintPowerInfoVector activePowers;

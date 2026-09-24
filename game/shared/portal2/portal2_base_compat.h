@@ -48,11 +48,52 @@ extern IMatchFramework *g_pMatchFramework;
 #ifndef IsCert
 #define IsCert() false
 #endif
+#ifndef UNREFERENCED_PARAMETER
+#define UNREFERENCED_PARAMETER( value ) ( (void)( value ) )
+#endif
+#ifndef STEAMREMOTESTORAGE_CLOUD_CONFIG
+#define STEAMREMOTESTORAGE_CLOUD_CONFIG 1
+#define STEAMREMOTESTORAGE_CLOUD_SPRAY 2
+#define STEAMREMOTESTORAGE_CLOUD_ALL ( STEAMREMOTESTORAGE_CLOUD_CONFIG | STEAMREMOTESTORAGE_CLOUD_SPRAY )
+#endif
+#ifndef Q_wcsncat
+#define Q_wcsncat V_wcsncat
+#endif
+#ifndef IsPlatformWindowsPC
+#if defined( _WIN32 )
+#define IsPlatformWindowsPC() ( IsPlatformWindowsPC32() || IsPlatformWindowsPC64() )
+#else
+#define IsPlatformWindowsPC() false
+#endif
+#endif
+#ifndef AreBoundsValid
+#define AreBoundsValid( mins, maxs ) ( ( mins ).x <= ( maxs ).x && ( mins ).y <= ( maxs ).y && ( mins ).z <= ( maxs ).z )
+#endif
+#ifndef PRECACHE_REGISTER_BEGIN
+#define PRECACHE_REGISTER_BEGIN( scope, name ) static void name() {
+#define PRECACHE( type, name )
+#define PRECACHE_REGISTER_END() }
+#endif
+#ifndef DECLARE_LOGGING_CHANNEL
+#define DECLARE_LOGGING_CHANNEL( name )
+#endif
+#ifndef LINK_ENTITY_TO_CLASS_ALIASED
+#define LINK_ENTITY_TO_CLASS_ALIASED( mapClassName, className ) LINK_ENTITY_TO_CLASS( mapClassName, C##className )
+#endif
+
+#ifndef MATERIAL_VAR_ALPHA_MODIFIED_BY_PROXY
+#define MATERIAL_VAR_ALPHA_MODIFIED_BY_PROXY MATERIAL_VAR_ALPHATEST
+#endif
+
 #ifndef DOT_45DEGREE
 #define DOT_45DEGREE 0.70710678118f
 #endif
 #ifndef DOT_30DEGREE
 #define DOT_30DEGREE 0.86602540378f
+#endif
+
+#ifndef GLOWS_ENABLE
+#define GLOWS_ENABLE
 #endif
 
 template <typename TraceType>

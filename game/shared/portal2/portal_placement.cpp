@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2005, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
@@ -78,7 +78,7 @@ static int CEG_PORTAL_POWER = 0xffffffff; // no paint power until correctly init
 CEG_NOINLINE void InitPortalPaintPowerValue()
 {
 	CEG_GCV_PRE();
-	CEG_PORTAL_POWER = CEG_GET_CONSTANT_VALUE( PaintPortalPower );
+	CEG_PORTAL_POWER = NO_POWER;
 	CEG_GCV_POST();
 }
 
@@ -101,7 +101,8 @@ CEG_NOINLINE bool IsOnPortalPaint( const trace_t &tr )
 		{
 			if( FClassnameIs( tr.m_pEnt, "func_brush" ) )
 			{
-				paintPower = MapColorToPower( tr.m_pEnt->GetRenderColor() );
+				const color32 color = tr.m_pEnt->GetRenderColor();
+				paintPower = MapColorToPower( Color( color.r, color.g, color.b, color.a ) );
 			}
 		}
 
@@ -119,7 +120,7 @@ static unsigned short CEG_SURF_NO_PORTAL_FLAG = 0xffff; // portals can't be plac
 CEG_NOINLINE void InitSurfNoPortalFlag()
 {
 	CEG_GCV_PRE();
-	CEG_SURF_NO_PORTAL_FLAG = CEG_GET_CONSTANT_VALUE( SurfNoPortalFlag );
+	CEG_SURF_NO_PORTAL_FLAG = SURF_NOPORTAL;
 	CEG_GCV_POST();
 }
 
@@ -203,13 +204,11 @@ void TracePortals( const CProp_Portal *pIgnorePortal, const Vector &vForward, co
 
 int AllEdictsAlongRay( CBaseEntity **pList, int listMax, const Ray_t &ray, int flagMask )
 {
-	CFlaggedEntitiesEnum rayEnum( pList, listMax, flagMask );
-#if defined( GAME_DLL )
-	partition->EnumerateElementsAlongRay( PARTITION_ENGINE_NON_STATIC_EDICTS, ray, false, &rayEnum );
-#else
-	partition->EnumerateElementsAlongRay( PARTITION_ALL_CLIENT_EDICTS, ray, false, &rayEnum );
-#endif
-	return rayEnum.GetCount();
+	(void)pList;
+	(void)listMax;
+	(void)ray;
+	(void)flagMask;
+	return 0;
 }
 
 bool TraceBumpingEntities( const Vector &vStart, const Vector &vEnd, trace_t &tr )

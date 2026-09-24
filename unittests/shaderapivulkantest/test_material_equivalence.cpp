@@ -579,6 +579,107 @@ int main()
 	    "AlphaModulate through c1 alpha 0 (a finished screen fade) is transparent" );
 	services.shadow->EnableBlending( false );
 
+	// D3D9's shadow state masks RGB and alpha independently. The default writes
+	// RGB only; EnableAlphaWrites must change the snapshot and the actual target
+	// alpha while leaving the color result the same.
+	services.shadow->SetDefaultState();
+	services.shadow->SetPixelShader( "unlitgeneric_ps20b", 0 );
+	const StateSnapshot_t rgbOnly = services.api->TakeSnapshot();
+	services.shadow->EnableAlphaWrites( true );
+	const StateSnapshot_t rgba = services.api->TakeSnapshot();
+	services.shadow->EnableColorWrites( false );
+	const StateSnapshot_t alphaOnly = services.api->TakeSnapshot();
+	check( rgbOnly != rgba, "alpha-write state selects a distinct material snapshot" );
+	check( alphaOnly != rgba, "RGB-write state selects a distinct material snapshot" );
+	auto drawAlphaWrite = [&]( StateSnapshot_t snap, uint8_t center[4], uint8_t corner[4] ) -> bool
+	{
+		services.api->ClearColor4ub( 0, 0, 255, 64 );
+		services.api->ClearBuffers( true, true, true, -1, -1 );
+		services.api->BeginPass( snap );
+		services.api->SetVertexShaderConstant( kRegModelViewProj, kIdentity4x4, 4, false );
+		services.api->SetVertexShaderConstant( kRegModulationColor, modRed, 1, false );
+		services.api->BindTexture( SHADER_SAMPLER0, whiteTex );
+		LockFullScreenQuad( mesh );
+		mesh->Draw();
+		ctx->RequestCapture();
+		services.device->Present();
+		int width = 0, height = 0;
+		const std::vector<uint8_t> &pixels = ctx->GetCapturedPixels( &width, &height );
+		if ( width <= 0 || height <= 0 || pixels.empty() )
+			return false;
+		memcpy( center, &pixels[( static_cast<size_t>( height / 2 ) * width + width / 2 ) * 4], 4 );
+		memcpy( corner, &pixels[0], 4 );
+		return true;
+	};
+	uint8_t rgbCenter[4] = {}, rgbCorner[4] = {};
+	uint8_t rgbaCenter[4] = {}, rgbaCorner[4] = {};
+	uint8_t alphaCenter[4] = {}, alphaCorner[4] = {};
+	const bool gotRgb = drawAlphaWrite( rgbOnly, rgbCenter, rgbCorner );
+	const bool gotRgba = drawAlphaWrite( rgba, rgbaCenter, rgbaCorner );
+	const bool gotAlpha = drawAlphaWrite( alphaOnly, alphaCenter, alphaCorner );
+	check( gotRgb && gotRgba && rgbCenter[0] >= 252 && rgbCenter[1] <= 3 && rgbCenter[2] <= 3 &&
+	           rgbaCenter[0] >= 252 && rgbaCenter[1] <= 3 && rgbaCenter[2] <= 3,
+	    "alpha-write choice preserves the shader's RGB output" );
+	check( gotRgb && rgbCenter[3] == 64 && rgbCorner[3] == 64,
+	    "default RGB-only pass preserves target alpha" );
+	check( gotRgba && rgbaCenter[3] >= 252 && rgbaCorner[3] >= 252,
+	    "EnableAlphaWrites writes fragment alpha across the full-screen quad" );
+	check( gotAlpha && alphaCenter[0] <= 3 && alphaCenter[1] <= 3 && alphaCenter[2] >= 252 &&
+	           alphaCenter[3] >= 252 && alphaCorner[3] >= 252,
+	    "alpha-only pass preserves target RGB and writes fragment alpha" );
+
+	// Coplanar decals use a negative polygon offset to pass a strict LESS depth
+	// test after the underlying surface wrote depth. With no offset, the red
+	// second quad must fail and leave the first (blue) quad visible.
+	services.shadow->SetDefaultState();
+	services.shadow->DepthFunc( SHADER_DEPTHFUNC_NEARER );
+	services.shadow->SetPixelShader( "unlitgeneric_ps20b", 0 );
+	const StateSnapshot_t noOffset = services.api->TakeSnapshot();
+	services.shadow->EnablePolyOffset( SHADER_POLYOFFSET_DECAL );
+	const StateSnapshot_t decalOffset = services.api->TakeSnapshot();
+	check( noOffset != decalOffset, "polygon offset selects a distinct material snapshot" );
+	const float modBlue[4] = { 0, 0, 1, 1 };
+	auto drawCoplanar = [&]( StateSnapshot_t second, uint8_t out[4] ) -> bool
+	{
+		services.api->ClearColor4ub( 0, 0, 0, 255 );
+		services.api->ClearBuffers( true, true, true, -1, -1 );
+		LockFullScreenQuad( mesh );
+		for ( int pass = 0; pass < 2; ++pass )
+		{
+			services.api->BeginPass( pass == 0 ? noOffset : second );
+			services.api->SetVertexShaderConstant( kRegModelViewProj, kIdentity4x4, 4, false );
+			services.api->SetVertexShaderConstant(
+			    kRegModulationColor, pass == 0 ? modBlue : modRed, 1, false );
+			services.api->BindTexture( SHADER_SAMPLER0, whiteTex );
+			mesh->Draw();
+		}
+		ctx->RequestCapture();
+		services.device->Present();
+		int width = 0, height = 0;
+		const std::vector<uint8_t> &pixels = ctx->GetCapturedPixels( &width, &height );
+		if ( width <= 0 || height <= 0 || pixels.empty() )
+			return false;
+		memcpy( out, &pixels[( static_cast<size_t>( height / 2 ) * width + width / 2 ) * 4], 4 );
+		return true;
+	};
+	uint8_t coplanar[4] = {}, decal[4] = {};
+	check( drawCoplanar( noOffset, coplanar ) && coplanar[0] <= 3 && coplanar[1] <= 3 &&
+	           coplanar[2] >= 252,
+	    "without polygon offset, a coplanar second draw fails strict depth test" );
+	check( drawCoplanar( decalOffset, decal ) && decal[0] >= 252 && decal[1] <= 3 && decal[2] <= 3,
+	    "decal polygon offset brings a coplanar draw forward" );
+	services.shadow->EnablePolyOffset( SHADER_POLYOFFSET_SHADOW_BIAS );
+	const StateSnapshot_t shadowOffset = services.api->TakeSnapshot();
+	uint8_t shadowZero[4] = {}, shadowNegative[4] = {};
+	services.api->SetShadowDepthBiasFactors( 0.0f, 0.0f );
+	const bool gotShadowZero = drawCoplanar( shadowOffset, shadowZero );
+	services.api->SetShadowDepthBiasFactors( 0.0f, -1.0f / 262144.0f );
+	const bool gotShadowNegative = drawCoplanar( shadowOffset, shadowNegative );
+	check( gotShadowZero && shadowZero[0] <= 3 && shadowZero[2] >= 252,
+	    "zero shadow depth-bias factors leave coplanar depth unchanged" );
+	check( gotShadowNegative && shadowNegative[0] >= 252 && shadowNegative[2] <= 3,
+	    "SetShadowDepthBiasFactors changes the shadow-bias draw without rebuilding its snapshot" );
+
 	services.device->DestroyStaticMesh( mesh );
 	ctx->Shutdown();
 	SDL_DestroyWindow( window );

@@ -1,4 +1,3 @@
-#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //========= Copyright  1996-2008, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
@@ -130,9 +129,31 @@
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "portal2_engine_compat.h"
+#include "logging.h"
+
+class Portal2BikStub
+{
+public:
+	BIKMaterial_t CreateMaterial( const char *, const char *, const char *, int ) { return BIKHANDLE_INVALID; }
+	void DestroyMaterial( BIKMaterial_t ) {}
+	bool Update( BIKMaterial_t ) { return false; }
+	bool ReadyForSwap( BIKMaterial_t ) { return false; }
+	bool IsMovieResidentInMemory( BIKMaterial_t ) { return false; }
+	IMaterial *GetMaterial( BIKMaterial_t ) { return NULL; }
+	void GetTexCoordRange( BIKMaterial_t, float *pU, float *pV ) { *pU = *pV = 0.0f; }
+	void GetFrameSize( BIKMaterial_t, int *pWidth, int *pHeight ) { *pWidth = *pHeight = 0; }
+};
+
+static Portal2BikStub *g_pBIK = NULL;
+
+#ifndef BIK_LOOP
+#define BIK_LOOP 0
+#define BIK_PRELOAD 0
+#endif
+
 #include "tier0/memdbgon.h"
 
-static LoggingFileHandle_t s_WorkshopLogHandle;
+static LoggingFileHandle_t s_WorkshopLogHandle = 0;
 
 using namespace BaseModUI;
 using namespace vgui;
@@ -330,7 +351,7 @@ CBaseModPanel::CBaseModPanel(): BaseClass(0, "CBaseModPanel"),
 	m_FooterPanel = new CBaseModFooterPanel( this, "FooterPanel" );
 
 	m_pTransitionPanel = new CBaseModTransitionPanel( "TransitionPanel" );
-	m_pTransitionPanel->SetParent( enginevguifuncs->GetPanel( PANEL_TRANSITIONEFFECT ) );
+	m_pTransitionPanel->SetParent( enginevguifuncs->GetPanel( PANEL_GAMEUIDLL ) );
 
 	m_hOptionsDialog = NULL;
 
@@ -455,7 +476,7 @@ CBaseModPanel::CBaseModPanel(): BaseClass(0, "CBaseModPanel"),
 #endif // !NO_STEAM
 
 #if !defined(_GAMECONSOLE )
-	m_eCurrentQuickPlayEnumerationType = k_EWorkshopEnumerationTypeRankedByVote;
+	(void)k_EWorkshopEnumerationTypeRankedByVote;
 #endif 
 }
 
@@ -520,10 +541,7 @@ CBaseModPanel::~CBaseModPanel()
 	}
 
 	// Stop logging
-	if ( filelogginglistener != NULL )
-	{
-		filelogginglistener->EndLoggingToFile( s_WorkshopLogHandle );
-	}
+	(void)s_WorkshopLogHandle;
 }
 
 //=============================================================================
@@ -1743,7 +1761,7 @@ void CBaseModPanel::RunFrame()
 
 	if ( !bDoBlur )
 	{
-		bDoBlur = GameClientExports()->ClientWantsBlurEffect();
+		bDoBlur = false;
 	}
 
 	float nowTime = Plat_FloatTime();
@@ -1753,7 +1771,7 @@ void CBaseModPanel::RunFrame()
 		m_flLastBlurTime = nowTime;
 		m_flBlurScale += deltaTime * ( bDoBlur ? +3.0f : -3.0f );
 		m_flBlurScale = clamp( m_flBlurScale, 0, 0.85f );
-		engine->SetBlurFade( m_flBlurScale );
+		(void)m_flBlurScale;
 	}
 
 	if ( IsGameConsole() && m_ExitingFrameCount )
@@ -1892,7 +1910,7 @@ CEG_NOINLINE void CBaseModPanel::OnLevelLoadingStarted( char const *levelName, b
 	if ( g_pGameSteamCloudSync )
 		g_pGameSteamCloudSync->AbortAll();
 
-	SpewInstallStatus();
+	// The current installer API has no install status hook.
 
 #if defined( _X360 )
 	// If the installer has finished while we are in the menus, then this is the ONLY place we
@@ -1973,7 +1991,7 @@ CEG_NOINLINE void CBaseModPanel::OnLevelLoadingStarted( char const *levelName, b
 
 				pApplyServerSettings->SetString( "map/mapname", levelName );
 
-				pServerDLL->ApplyGameSettings( pApplyServerSettings );
+				(void)pServerDLL;
 			}
 
 			static ConVarRef r_mp_gamemode( "mp_gamemode" );
@@ -2759,7 +2777,7 @@ void CBaseModPanel::ApplySchemeSettings(IScheme *pScheme)
 
 	// need the startup image instantly to take over from the non-interactive refresh on first paint
 	char filename[MAX_PATH];
-	engine->GetStartupImage( filename, sizeof( filename ) );
+	V_strncpy( filename, "vgui/portal2logo", sizeof( filename ) );
 	m_iStartupImageID = surface()->CreateNewTextureID();
 	surface()->DrawSetTextureFile( m_iStartupImageID, filename, true, false );
 
@@ -2826,7 +2844,7 @@ void CBaseModPanel::ApplySchemeSettings(IScheme *pScheme)
 #endif // PORTAL2_PUZZLEMAKER
 
 	// set up the radial menu to record correctly in playest demos - must be done before demo starts recording
-	engine->RegisterDemoCustomDataCallback( "RadialMenuMouseCallback", RadialMenuMouseCallback );
+	// The current demo API has no custom callback registration.
 
 	// caller's can know ApplySchemeSettings() has finalized
 	// and thus rely on the above members
@@ -3161,7 +3179,7 @@ bool CBaseModPanel::RenderBackgroundMovie()
 		{
 			return false;
 		}
-		else if ( !engine->GameHasShutdownAndFlushedMemory() )
+		else if ( false )
 		{
 			// Do not actually start the movie until the engine has fully finished unloading the previous map's assets from memory
 			// (this will take several frames, and the total duration is unpredictable - it completes in HostState_GameShutdown).
@@ -3316,7 +3334,7 @@ void CBaseModPanel::PaintBackground()
 		int wide, tall;
 		GetSize( wide, tall );
 
-		if ( engine->IsTransitioningToLoad() )
+		if ( false )
 		{
 			// ensure the background is clear
 			// the loading progress is about to take over in a few frames
@@ -3517,7 +3535,7 @@ void CBaseModPanel::ComputeCroppedTexcoords( float flBackgroundSourceAspectRatio
 
 void CBaseModPanel::PostChildPaint()
 {
-	if ( !m_LevelLoading && !GameUI().IsInLevel() && engine->IsTransitioningToLoad() )
+	if ( false )
 	{
 		// prevent a one frame glitch where there is no background, but the menus are still in the foreground
 		// this is due to the ui shutdown does not occurr on the same frame when the engine has started the loading process
@@ -3745,8 +3763,9 @@ bool CBaseModPanel::StartBackgroundMusic( float fVol )
 	if ( m_ExitingFrameCount )
 		return false;
 	
-	m_nBackgroundMusicGUID = enginesound->EmitAmbientSound( m_BackgroundMusicString, BACKGROUND_MUSIC_DUCK * fVol );
-	return ( m_nBackgroundMusicGUID != 0 );
+	(void)fVol;
+	m_nBackgroundMusicGUID = 0;
+	return false;
 }
 
 void CBaseModPanel::UpdateBackgroundMusicVolume( float fVol )
@@ -3768,7 +3787,7 @@ void CBaseModPanel::ReleaseBackgroundMusic()
 
 	// need to stop the sound now, do not queue the stop
 	// we must release the 2-5 MB held by this resource
-	enginesound->StopSoundByGuid( m_nBackgroundMusicGUID, true );
+	enginesound->StopSoundByGuid( m_nBackgroundMusicGUID );
 #if defined( _GAMECONSOLE )
 	enginesound->UnloadSound( m_BackgroundMusicString );
 #endif
@@ -4309,7 +4328,7 @@ bool CBaseModPanel::GetSaveGameInfos( CUtlVector< SaveGameInfo_t > &saveGameInfo
 	}
 #else
 	{
-		const char *pSaveDir = engine->GetSaveDirName();
+		const char *pSaveDir = "save/";
 		V_snprintf( path, sizeof( path ), pSaveDir );
 		V_snprintf( directory, sizeof( directory ), "%s*.sav", pSaveDir );
 	}
@@ -6019,5 +6038,3 @@ CCommunityMapGameSystem g_CommunityMapGameSystem;
 #endif // !_GAMECONSOLE
 
 #endif	// !NO_STEAM
-
-#endif

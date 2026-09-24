@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2008, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2008, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
@@ -333,7 +333,7 @@ static void LoadLastSaveOkCallback()
 			pSelf->Close();
 		}
 
-		const char *szMostRecentSave = engine->GetMostRecentSaveGame( true );
+		const char *szMostRecentSave = engine->GetMostRecentSaveGame();
 		CUIGameData::Get()->GameStats_ReportAction( "loadlast", Portal2Engine::GetLevelNameShort(), !!( szMostRecentSave && szMostRecentSave[0] ) );
 
 		engine->ExecuteClientCmd( "load_recent_checkpoint" );

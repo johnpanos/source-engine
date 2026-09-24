@@ -80,34 +80,31 @@ END_DATADESC()
 LINK_ENTITY_TO_CLASS( trigger_tractorbeam, CTrigger_TractorBeam );
 
 IMPLEMENT_SERVERCLASS_ST( CTrigger_TractorBeam, DT_Trigger_TractorBeam )
-	SendPropBool( SENDINFO( m_bDisabled ) ),
-	SendPropFloat( SENDINFO( m_gravityScale ), 0, SPROP_NOSCALE ),
-	SendPropFloat( SENDINFO( m_addAirDensity ), 0, SPROP_NOSCALE ),
-	SendPropFloat( SENDINFO( m_linearLimit ), 0, SPROP_NOSCALE ),
-	SendPropFloat( SENDINFO( m_linearLimitDelta ), 0, SPROP_NOSCALE ),
-	SendPropFloat( SENDINFO( m_linearLimitTime ), 0, SPROP_NOSCALE ),
-	SendPropFloat( SENDINFO( m_linearLimitStart ), 0, SPROP_NOSCALE ),
-	SendPropFloat( SENDINFO( m_linearLimitStartTime ), 0, SPROP_NOSCALE ),
-	SendPropFloat( SENDINFO( m_linearScale ), 0, SPROP_NOSCALE ),
-	SendPropFloat( SENDINFO( m_angularLimit ), 0, SPROP_NOSCALE ),
-	SendPropFloat( SENDINFO( m_angularScale ), 0, SPROP_NOSCALE ),
-	SendPropQAngles( SENDINFO( m_linearForceAngles ), 0, SPROP_NOSCALE ),
-	SendPropEHandle( SENDINFO( m_hProxyEntity ) ),
-	SendPropVector( SENDINFO( m_vStart ), 0, SPROP_NOSCALE ),
-	SendPropVector( SENDINFO( m_vEnd ), 0, SPROP_NOSCALE ),
-	SendPropFloat( SENDINFO( m_linearForce ), 0, SPROP_NOSCALE ),
-	SendPropFloat( SENDINFO( m_flRadius ), 0, SPROP_NOSCALE ),
-	SendPropBool( SENDINFO( m_bReversed ) ),
-	SendPropBool( SENDINFO( m_bFromPortal ) ),
-	SendPropBool( SENDINFO( m_bToPortal ) ),
-	SendPropBool( SENDINFO( m_bDisablePlayerMove ) ),
-END_SEND_TABLE()
+SendPropBool( SENDINFO_NOCHECK( m_bDisabled ) ),
+    SendPropFloat( SENDINFO( m_gravityScale ), 0, SPROP_NOSCALE ),
+    SendPropFloat( SENDINFO( m_addAirDensity ), 0, SPROP_NOSCALE ),
+    SendPropFloat( SENDINFO( m_linearLimit ), 0, SPROP_NOSCALE ),
+    SendPropFloat( SENDINFO( m_linearLimitDelta ), 0, SPROP_NOSCALE ),
+    SendPropFloat( SENDINFO( m_linearLimitTime ), 0, SPROP_NOSCALE ),
+    SendPropFloat( SENDINFO( m_linearLimitStart ), 0, SPROP_NOSCALE ),
+    SendPropFloat( SENDINFO( m_linearLimitStartTime ), 0, SPROP_NOSCALE ),
+    SendPropFloat( SENDINFO( m_linearScale ), 0, SPROP_NOSCALE ),
+    SendPropFloat( SENDINFO( m_angularLimit ), 0, SPROP_NOSCALE ),
+    SendPropFloat( SENDINFO( m_angularScale ), 0, SPROP_NOSCALE ),
+    SendPropQAngles( SENDINFO( m_linearForceAngles ), 0, SPROP_NOSCALE ),
+    SendPropEHandle( SENDINFO( m_hProxyEntity ) ),
+    SendPropVector( SENDINFO( m_vStart ), 0, SPROP_NOSCALE ),
+    SendPropVector( SENDINFO( m_vEnd ), 0, SPROP_NOSCALE ),
+    SendPropFloat( SENDINFO( m_linearForce ), 0, SPROP_NOSCALE ),
+    SendPropFloat( SENDINFO( m_flRadius ), 0, SPROP_NOSCALE ),
+    SendPropBool( SENDINFO( m_bReversed ) ), SendPropBool( SENDINFO( m_bFromPortal ) ),
+    SendPropBool( SENDINFO( m_bToPortal ) ), SendPropBool( SENDINFO( m_bDisablePlayerMove ) ),
+    END_SEND_TABLE()
 
-
-//-----------------------------------------------------------------------------
-// Purpose:
-//-----------------------------------------------------------------------------
-CTrigger_TractorBeam::CTrigger_TractorBeam()
+    //-----------------------------------------------------------------------------
+    // Purpose:
+    //-----------------------------------------------------------------------------
+    CTrigger_TractorBeam::CTrigger_TractorBeam()
 {
 	// Reconstruction note: the 2010 server kept its beams in
 	// CTrigger_TractorBeam_Shared::AllTractorBeams; the retail shared code (and the 2010

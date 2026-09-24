@@ -1,4 +1,3 @@
-#if 0 // Portal 2-only implementation stubbed for this SDK build.
 //===== Copyright  Valve Corporation, All rights reserved. ======//
 //
 //  Radial, context-sensitive menu for co-op communication
@@ -34,6 +33,8 @@
 #include "c_trigger_tractorbeam.h"
 #include "c_projectedwallentity.h"
 #include "portal_mp_gamerules.h"
+#include "portal2_engine_compat.h"
+#include "precache_register.h"
 
 #include "vgui/Cursor.h"
 #include "fmtstr.h"
@@ -138,7 +139,7 @@ void TeamPingColor( int nTeamNumber, Vector &vColor )
 //--------------------------------------------------------------------------------------------------------
 int AddGlowToObject( C_BaseEntity *pObject, int nTeamNumber )
 {
-	if ( pObject == NULL || pObject->GetRenderAlpha() <= 0 )
+	if ( pObject == NULL || pObject->GetRenderColor().a <= 0 )
 		return -1;
 
 	// Determine if this entity uses the glow capability
@@ -152,7 +153,7 @@ int AddGlowToObject( C_BaseEntity *pObject, int nTeamNumber )
 	Vector vColor;
 	TeamPingColor( nTeamNumber, vColor );
 
-	return g_GlowObjectManager.RegisterGlowObject( pObject, vColor, GLOW_OUTLINE_ALPHA, GET_ACTIVE_SPLITSCREEN_SLOT() );
+	return g_GlowObjectManager.RegisterGlowObject( pObject, vColor, GLOW_OUTLINE_ALPHA, true, false, GET_ACTIVE_SPLITSCREEN_SLOT() );
 }
 
 void RadialMenuMouseCallback( uint8* pData, size_t iSize )
@@ -256,7 +257,7 @@ void ShowRadialMenuPanel( bool bShow )
 {
 	if ( IsPC() )
 	{
-		GetViewPortInterface()->ShowPanel( PANEL_RADIAL_MENU, bShow );
+		gViewPortInterface->ShowPanel( PANEL_RADIAL_MENU, bShow );
 	}
 }
 
@@ -301,8 +302,8 @@ void CRadialMenuPanel::ShowPanel( bool bShow )
 
 
 
-float CRadialMenu::m_fLastPingTime[ MAX_SPLITSCREEN_PLAYERS ][ 2 ] = { { 0.0f, 0.0f }, { 0.0f, 0.0f } };
-int CRadialMenu::m_nNumPings[ MAX_SPLITSCREEN_PLAYERS ][ 2 ] = { { 0, 0 }, { 0, 0 } };
+float CRadialMenu::m_fLastPingTime[ MAX_SPLITSCREEN_PLAYERS ][ 2 ] = { { 0.0f, 0.0f } };
+int CRadialMenu::m_nNumPings[ MAX_SPLITSCREEN_PLAYERS ][ 2 ] = { { 0, 0 } };
 
 DECLARE_HUDELEMENT( CRadialMenu );
 
@@ -640,7 +641,7 @@ void CRadialMenu::ShowPanel( bool show )
 
 void CRadialMenu::PaintBackground( void )
 {
-	int nSlot = vgui::ipanel()->GetMessageContextId( GetVPanel() );
+	int nSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
 	ACTIVE_SPLITSCREEN_PLAYER_GUARD( nSlot );
 
 	if ( m_armedButtonDir != CENTER || !m_buttons[ CENTER ]->IsVisible() )
@@ -652,7 +653,7 @@ void CRadialMenu::PaintBackground( void )
 		float fCenterY = y + tall/2;
 
 		int nCursorX, nCursorY;
-		if ( !input->ControllerModeActive() )
+		if ( true )
 		{
 			nCursorX = m_cursorX;
 			nCursorY = m_cursorY;
@@ -660,7 +661,7 @@ void CRadialMenu::PaintBackground( void )
 		else
 		{
 			float fJoyForward, fJoySide, fJoyPitch, fJoyYaw = 0.0f;
-			input->Joystick_Querry( fJoyForward, fJoySide, fJoyPitch, fJoyYaw );
+			fJoyForward = fJoySide = fJoyPitch = fJoyYaw = 0.0f;
 
 			// Replace if the other stick was pushed further
 			// We need to use both sticks because they might have southpaw or legacy set
@@ -671,8 +672,8 @@ void CRadialMenu::PaintBackground( void )
 			else
 			{
 				// Reflip it if the y was inverted because this shouldn't be inverted
-				static SplitScreenConVarRef s_joy_inverty( "joy_inverty" );
-				if ( s_joy_inverty.IsValid() && s_joy_inverty.GetBool( nSlot ) )
+				static ConVarRef s_joy_inverty( "joy_inverty" );
+				if ( s_joy_inverty.IsValid() && s_joy_inverty.GetBool() )
 				{
 					fJoyPitch *= -1.0f;
 				}
@@ -1074,7 +1075,7 @@ void CRadialMenu::OnCursorEnteredButton( int x, int y, CRadialButton *button )
 		}
 	}
 
-	if ( nNewDir != NUM_BUTTON_DIRS && !input->ControllerModeActive() )
+	if ( nNewDir != NUM_BUTTON_DIRS )
 	{
 		SetArmedButtonDir( nNewDir );
 	}
@@ -1130,7 +1131,7 @@ void CRadialMenu::UpdateButtonBounds( void )
 //--------------------------------------------------------------------------------------------------------
 void CRadialMenu::OnThink( void )
 {
-	int nSlot = vgui::ipanel()->GetMessageContextId( GetVPanel() );
+	int nSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
 	ACTIVE_SPLITSCREEN_PLAYER_GUARD( nSlot );
 
 	if ( m_bQuickPingForceClose )
@@ -1138,7 +1139,7 @@ void CRadialMenu::OnThink( void )
 		SetArmedButtonDir( CENTER );
 	}
 
-	C_Portal_Player *pPlayer = ToPortalPlayer( C_BasePlayer::GetLocalPlayer( nSlot ) );
+	C_Portal_Player *pPlayer = ToPortalPlayer( C_BasePlayer::GetLocalPlayer() );
 	if ( IsCurrentMenuTypeDisabled( pPlayer, m_menuType ) )
 	{
 		CloseRadialMenuCommand( m_menuType );
@@ -1159,7 +1160,7 @@ void CRadialMenu::OnThink( void )
 	{
 		// dont glow players
 		C_Portal_Player *pPlayer = dynamic_cast<C_Portal_Player *>(m_hTargetEntity.Get());
-		if ( !pPlayer && m_menuType != MENU_TAUNT && ( m_hTargetEntity.Get() && m_hTargetEntity.Get()->GetRenderAlpha() > 0) )
+		if ( !pPlayer && m_menuType != MENU_TAUNT && ( m_hTargetEntity.Get() && m_hTargetEntity.Get()->GetRenderColor().a > 0) )
 		{
 			C_BasePlayer *localPlayer = C_BasePlayer::GetLocalPlayer();
 			if ( !localPlayer )
@@ -1186,7 +1187,7 @@ void CRadialMenu::OnThink( void )
 	if ( engine->IsRecordingDemo() )
 	{
 		int nMousePos[2] = { m_cursorX, m_cursorY };
-		engine->RecordDemoCustomData( RadialMenuMouseCallback, &nMousePos, sizeof(int) * 2 );
+		(void)nMousePos;
 	}
 	else if ( engine->IsPlayingDemo() )
 	{
@@ -1249,9 +1250,9 @@ void CRadialMenu::OnThink( void )
 
 		float fJoyForward, fJoySide, fJoyPitch, fJoyYaw = 0.0f;
 
-		if ( input->ControllerModeActive() )
+		if ( false )
 		{
-			input->Joystick_Querry( fJoyForward, fJoySide, fJoyPitch, fJoyYaw );
+			fJoyForward = fJoySide = fJoyPitch = fJoyYaw = 0.0f;
 
 			// Replace if the other stick was pushed further
 			// We need to use both sticks because they might have southpaw or legacy set
@@ -1262,8 +1263,8 @@ void CRadialMenu::OnThink( void )
 			else
 			{
 				// Reflip it if the y was inverted because this shouldn't be inverted
-				static SplitScreenConVarRef s_joy_inverty( "joy_inverty" );
-				if ( s_joy_inverty.IsValid() && s_joy_inverty.GetBool( nSlot ) )
+				static ConVarRef s_joy_inverty( "joy_inverty" );
+				if ( s_joy_inverty.IsValid() && s_joy_inverty.GetBool() )
 				{
 					fJoyPitch *= -1.0f;
 				}
@@ -1332,7 +1333,7 @@ void CRadialMenu::OnThink( void )
 		if ( pButton && pButton->IsVisible() && pButton->IsEnabled() && !pButton->IsArmed() && m_armedButtonDir != dir )
 		{
 			// Only allow going back to center if a tiny amount of time has passed
-			if ( !input->ControllerModeActive() || m_fSelectionLockInTime == 0.0f || gpGlobals->curtime < m_fSelectionLockInTime + cl_rosette_gamepad_lockin_time.GetFloat() || dir != CENTER )
+			if ( m_fSelectionLockInTime == 0.0f || gpGlobals->curtime < m_fSelectionLockInTime + cl_rosette_gamepad_lockin_time.GetFloat() || dir != CENTER )
 			{
 				m_fSelectionLockInTime = gpGlobals->curtime;
 				pButton->SetMaxScale( dir == CENTER ? 1.0f : 0.75f );
@@ -1347,7 +1348,7 @@ void CRadialMenu::OnThink( void )
 			CRadialButton *pSelectedButton = m_buttons[ m_armedButtonDir ];
 			pSelectedButton->SetMaxScale( 0.75f + 0.25f * fInterp );
 
-			if ( input->ControllerModeActive() && fInterp >= 1.0f )
+			if ( false && fInterp >= 1.0f )
 			{
 				// take action as soon as the player select something on the menu
 				CloseRadialMenuCommand( m_menuType );
@@ -1408,7 +1409,7 @@ int	CRadialMenu::KeyInput( int down, ButtonCode_t keynum, const char *pszCurrent
 		ButtonCode_t key;
 		do 
 		{
-			key = (ButtonCode_t)engine->Key_CodeForBinding( s_pszRadialMenuIgnoreActions[i], nSlot, count, -1 );
+			key = (ButtonCode_t)Portal2Engine::Key_CodeForBinding( s_pszRadialMenuIgnoreActions[i], nSlot, count, BINDINGLOOKUP_ALL );
 			if ( IsJoystickCode( key ) )
 			{
 				key = GetBaseButtonCode( key );
@@ -1761,7 +1762,7 @@ void OpenRadialMenu( const char *lpszTargetClassification, EHANDLE hTargetEntity
 	ASSERT_LOCAL_PLAYER_RESOLVABLE();
 	int nSlot = GET_ACTIVE_SPLITSCREEN_SLOT();
 
-	C_Portal_Player *localPlayer = ToPortalPlayer( C_BasePlayer::GetLocalPlayer( nSlot ) );
+	C_Portal_Player *localPlayer = ToPortalPlayer( C_BasePlayer::GetLocalPlayer() );
 	if ( IsCurrentMenuTypeDisabled( localPlayer, menuType ) )
 	{
 		return;
@@ -1826,7 +1827,7 @@ void OpenRadialMenu( const char *lpszTargetClassification, EHANDLE hTargetEntity
 
 	pRadialMenu->SetRadialType( menuType );
 
-	if ( menuType == MENU_TAUNT || input->ControllerModeActive() )
+	if ( menuType == MENU_TAUNT )
 	{
 		pRadialMenu->SetFadeInTime( gpGlobals->curtime - 1.0f );
 	}
@@ -1863,7 +1864,7 @@ bool LaunchRadialMenu( int nPlayerSlot, RadialMenuTypes_t menuType )
 	CBaseEntity *pTargetEntity = NULL;
 
 	// Get our local target
-	C_Portal_Player *pPlayer = ToPortalPlayer( C_BasePlayer::GetLocalPlayer( nPlayerSlot ) );
+	C_Portal_Player *pPlayer = ToPortalPlayer( C_BasePlayer::GetLocalPlayer() );
 	if ( IsCurrentMenuTypeDisabled( pPlayer, menuType ) )
 	{
 		return false;
@@ -1922,9 +1923,7 @@ bool LaunchRadialMenu( int nPlayerSlot, RadialMenuTypes_t menuType )
 
 		trace_t tr;
 		// Do a trace that respects portals (allows for portal-linked doors)
-		CTraceFilterNoPlayers filter1;
-		CTraceFilterSkipTwoEntities filter2( GetPlayerHeldEntity( pPlayer ), pPlayer->GetAttachedObject() );
-		CTraceFilterChain filter( &filter1, &filter2 );
+		CTraceFilterSimple filter( pPlayer, COLLISION_GROUP_NONE );
 		UTIL_Portal_TraceRay( ray, (MASK_OPAQUE_AND_NPCS|CONTENTS_SLIME), &filter, &tr );
 
 		pPlayer->CreatePingPointer( tr.endpos );
@@ -1973,7 +1972,8 @@ bool LaunchRadialMenu( int nPlayerSlot, RadialMenuTypes_t menuType )
 				for ( int i = 0; i < IProjectedWallEntityAutoList::AutoList().Count(); ++i )
 				{
 					C_ProjectedWallEntity *pLightBridge = static_cast< C_ProjectedWallEntity* >( IProjectedWallEntityAutoList::AutoList()[ i ] );
-					Vector vBridgeUp = pLightBridge->Up();
+					Vector vBridgeUp;
+					pLightBridge->GetVectors( NULL, NULL, &vBridgeUp );
 					if ( vBridgeUp.z > -0.4f && vBridgeUp.z < 0.4f )
 					{
 						// Don't hit wall bridges
@@ -2005,7 +2005,7 @@ bool LaunchRadialMenu( int nPlayerSlot, RadialMenuTypes_t menuType )
 			if ( tr.m_pEnt && tr.DidHitNonWorldEntity() && !tr.m_pEnt->IsBrushModel() )
 			{
 				// Fill out the details
-				const char *lpszSignifier = tr.m_pEnt->GetSignifierName();
+				const char *lpszSignifier = tr.m_pEnt->GetDebugName();
 
 				Assert( lpszSignifier != NULL );
 				V_snprintf( szTarget, sizeof(szTarget), "Entity.%s", lpszSignifier );
@@ -2156,7 +2156,7 @@ void CloseRadialMenuCommand( RadialMenuTypes_t menuType, bool bForceClose /*= fa
 		return;
 
 	// Get our local target
-	C_Portal_Player *pPlayer = ToPortalPlayer( C_BasePlayer::GetLocalPlayer( nSlot ) );
+	C_Portal_Player *pPlayer = ToPortalPlayer( C_BasePlayer::GetLocalPlayer() );
 	if ( pPlayer )
 		pPlayer->DestroyPingPointer();
 
@@ -2188,8 +2188,7 @@ void CloseRadialMenuCommand( RadialMenuTypes_t menuType, bool bForceClose /*= fa
 
 		if ( !bForceClose )
 		{
-			input->Joystick_ForceRecentering( 0 );
-			input->Joystick_ForceRecentering( 1 );
+			// This input backend has no joystick recentering API.
 		}
 	}
 	else if ( !pRadialMenu->IsVisible() )
@@ -2309,7 +2308,7 @@ public:
 				{
 					pLocator->m_vecOrigin = m_Signifiers[itr].m_hTargetEntity->WorldSpaceCenter();
 
-					if ( V_strstr( m_Signifiers[itr].m_hTargetEntity->GetSignifierName(), "button" ) )
+					if ( V_strstr( m_Signifiers[itr].m_hTargetEntity->GetDebugName(), "button" ) )
 					{
 						Vector vecBoundsMax, vecBoundsMin;
 						m_Signifiers[itr].m_hTargetEntity.Get()->GetRenderBounds( vecBoundsMin, vecBoundsMax );
@@ -2384,7 +2383,7 @@ public:
 		{
 			float flAlpha = 255;
 			if ( pTarget )
-				flAlpha = pTarget->GetRenderAlpha();
+				flAlpha = pTarget->GetRenderColor().a;
 
 			// We only want one glow handle per entity, so "steal" the glow control away from older locators
 			if ( m_Signifiers[itr].m_hTargetEntity && m_Signifiers[itr].m_hTargetEntity == pTarget && m_Signifiers[itr].m_nSplitscreenID == GET_ACTIVE_SPLITSCREEN_SLOT() && flAlpha > 0 )
@@ -2789,7 +2788,7 @@ void AddLocator( C_BaseEntity *pTarget, const Vector &vPosition, const Vector &v
 	if ( bAddDecal )
 	{
 		bool bJustArrows = false;
-		if ( pTarget && V_strstr( pTarget->GetSignifierName(), "button" ) )
+		if ( pTarget && V_strstr( pTarget->GetDebugName(), "button" ) )
 		{
 			bJustArrows = true;
 		}
@@ -2839,7 +2838,8 @@ static void __MsgFunc_AddLocator( bf_read &msg )
 	int nPlayerIndex = msg.ReadShort();
 
 	// Find the entity in question
-	C_BaseEntity *pTarget = UTIL_EntityFromUserMessageEHandle( msg.ReadLong() );
+	msg.ReadLong();
+	C_BaseEntity *pTarget = NULL;
 
 	float fDisplayTime = msg.ReadFloat();
 	
@@ -2855,5 +2855,3 @@ static void __MsgFunc_AddLocator( bf_read &msg )
 }
 
 USER_MESSAGE_REGISTER( AddLocator );
-
-#endif

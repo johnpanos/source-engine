@@ -277,7 +277,7 @@ void CFutbolCatcher::CatchThink( void )
 	ray.Init( m_vecCatchBoxOrig, m_vecCatchBoxOrig, m_vecCatchBoxMins, m_vecCatchBoxMaxs );
 	CFilterOnlyGlassFutbol filter;
 	trace_t tr;
-	UTIL_TraceRay( ray, MASK_SOLID, &filter, &tr );
+	enginetrace->TraceRay( ray, MASK_SOLID, &filter, &tr );
 
 	if ( tr.m_pEnt && tr.m_pEnt != GetWorldEntity() && !m_bDisableRecaptureOnPlayerGrab )
 	{

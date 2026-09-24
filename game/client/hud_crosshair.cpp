@@ -93,7 +93,7 @@ bool CHudCrosshair::ShouldDraw( void )
 	if ( pWeapon && !pWeapon->ShouldDrawCrosshair() )
 		return false;
 
-#ifdef PORTAL
+#if defined( PORTAL ) && !defined( PORTAL2 )
 	C_Portal_Player *portalPlayer = ToPortalPlayer(pPlayer);
 	if ( portalPlayer && portalPlayer->IsSuppressingCrosshair() )
 		return false;

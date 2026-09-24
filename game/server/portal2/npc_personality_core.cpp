@@ -11,6 +11,7 @@
 #include "cbase.h"
 #include "ai_playerally.h"
 #include "ai_speech.h"
+#include "AI_Criteria.h"
 #include "ai_default.h"
 #include "player_pickup.h"
 #include "sceneentity.h"
@@ -98,13 +99,7 @@ public:
 	virtual void	VPhysicsCollision( int index, gamevcollisionevent_t *pEvent );
 	virtual QAngle	PreferredCarryAngles( void );
 	virtual bool	HasPreferredCarryAnglesForPlayer( CBasePlayer *pPlayer ) { return true; }
-	virtual void	ModifyOrAppendCriteria( ResponseRules::CriteriaSet &set );
-	virtual CAI_Expresser *CreateExpresser( void )
-	{
-		CAI_Expresser *expresser = new CAI_ExpresserWithFollowup( this );
-		expresser->Connect( this );
-		return expresser;
-	}
+	virtual void ModifyOrAppendCriteria( AI_CriteriaSet &set );
 
 	virtual void	NotifySystemEvent( CBaseEntity *pNotify, notify_system_event_t eventType, const notify_system_event_params_t &params );
 
@@ -114,7 +109,6 @@ public:
 	virtual void	PrescheduleThink( void );
 
 protected:
-	virtual bool	TestRemarkingUpon( CInfoRemarkable *pRemarkable );
 	bool			IsBeingHeldByPlayer( void );
 	const char		*GetCoreTypeName( void );
 	float			GetPlayerSpeed( void );
@@ -239,7 +233,6 @@ void CNPC_PersonalityCore::Spawn( void )
 	SetHealth( 250 );
 	SetBloodColor( DONT_BLEED );
 	m_flFieldOfView = -1.0f;
-	m_bRemarkablePolling = true;
 
 	NPCInit();
 
@@ -313,7 +306,8 @@ bool CNPC_PersonalityCore::StartSceneEvent( CSceneEventInfo *info, CChoreoScene 
 		if ( info->m_nSequence < 0 )
 			return false;
 
-		SetIdealSequence( info->m_nSequence, true );
+		SetSequence( info->m_nSequence );
+		ResetSequenceInfo();
 		m_flAnimResetTime = gpGlobals->curtime + event->GetEndTime();
 		return true;
 	}
@@ -330,11 +324,13 @@ void CNPC_PersonalityCore::PrescheduleThink( void )
 	{
 		if ( m_iIdleOverrideSequence >= 0 )
 		{
-			SetIdealSequence( m_iIdleOverrideSequence );
+			SetSequence( m_iIdleOverrideSequence );
+			ResetSequenceInfo();
 		}
 		else if ( m_bAttached )
 		{
-			SetIdealSequence( LookupSequence( "sphere_plug_idle_neutral" ) );
+			SetSequence( LookupSequence( "sphere_plug_idle_neutral" ) );
+			ResetSequenceInfo();
 		}
 		else
 		{
@@ -649,7 +645,6 @@ void CNPC_PersonalityCore::OnPhysGunDrop( CBasePlayer *pPhysGunUser, PhysGunDrop
 void CNPC_PersonalityCore::OnFizzled( void )
 {
 	Speak( "TLK_FIZZLED" );
-	BaseClass::OnFizzled();
 }
 
 //-----------------------------------------------------------------------------
@@ -758,22 +753,14 @@ const char *CNPC_PersonalityCore::GetCoreTypeName( void )
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
-bool CNPC_PersonalityCore::TestRemarkingUpon( CInfoRemarkable *pRemarkable )
-{
-	return IsLineOfSightClear( pRemarkable, IGNORE_ACTORS );
-}
-
-//-----------------------------------------------------------------------------
-// Purpose:
-//-----------------------------------------------------------------------------
-void CNPC_PersonalityCore::ModifyOrAppendCriteria( ResponseRules::CriteriaSet &set )
+void CNPC_PersonalityCore::ModifyOrAppendCriteria( AI_CriteriaSet &set )
 {
 	BaseClass::ModifyOrAppendCriteria( set );
 
 	set.AppendCriteria( "core_type", GetCoreTypeName() );
 	set.AppendCriteria( "core_held", IsBeingHeldByPlayer() ? "true" : "false" );
 	set.AppendCriteria( "core_picked_up", m_bHasBeenPickedUp ? "true" : "false" );
-	set.AppendCriteria( "player_speed", GetPlayerSpeed() );
+	set.AppendCriteria( "player_speed", UTIL_VarArgs( "%f", GetPlayerSpeed() ) );
 	set.AppendCriteria( "player_held_item", GetPlayerHeldEntityName() );
 }
 

@@ -1,10 +1,11 @@
-//========= Copyright � 1996-2005, Valve Corporation, All rights reserved. ============//
+//========= Copyright ï¿½ 1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
 // $NoKeywords: $
 //
 //=============================================================================//
+#if 0
 #include "cbase.h"
 #include <functional>
 #include "portal_player_shared.h"
@@ -5223,5 +5224,6 @@ bool CPortal_Player::IsTaunting()
 	return ( m_Shared.InCond( PORTAL_COND_TAUNTING ) ||
 			 m_Shared.InCond( PORTAL_COND_DROWNING ) ||
 			 m_Shared.InCond( PORTAL_COND_DEATH_CRUSH ) ||
-			 m_Shared.InCond( PORTAL_COND_DEATH_GIB ) );
+		 m_Shared.InCond( PORTAL_COND_DEATH_GIB ) );
 }
+#endif

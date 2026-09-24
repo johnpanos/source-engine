@@ -1,10 +1,11 @@
-//========= Copyright © 1996-2005, Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© 1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
 // $NoKeywords: $
 //
 //=============================================================================//
+#if 0
 #include "cbase.h"
 #include "ivmodemanager.h"
 #include "clientmode_hlnormal.h"
@@ -484,4 +485,5 @@ ClientModePortalNormal* GetClientModePortalNormal()
 
 static CHLModeManager g_HLModeManager;
 IVModeManager *modemanager = &g_HLModeManager;
+#endif
 
