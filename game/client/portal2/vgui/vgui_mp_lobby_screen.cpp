@@ -159,7 +159,6 @@ void CObjectControlPanel::OnTickActive( C_BaseEntity *pObj, C_Portal_Player *pLo
 //-----------------------------------------------------------------------------
 vgui::Panel *CObjectControlPanel::TickCurrentPanel()
 {
-	HACK_GETLOCALPLAYER_GUARD( "CObjectControlPanel::TickCurrentPanel" );
 	C_Portal_Player *pLocalPlayer = C_Portal_Player::GetLocalPortalPlayer();
 	C_BaseEntity *pObj = GetOwningObject();
 
@@ -169,7 +168,6 @@ vgui::Panel *CObjectControlPanel::TickCurrentPanel()
 	return m_pCurrentPanel;
 }
 
-
 //-----------------------------------------------------------------------------
 // Sends a message to the server object
 //-----------------------------------------------------------------------------
@@ -178,13 +176,9 @@ void CObjectControlPanel::SendToServerObject( const char *pMsg )
 	C_BaseEntity *pObj = GetOwningObject();
 	if ( pObj )
 	{
-		int nSlot = vgui::ipanel()->GetMessageContextId( GetVPanel() );
-		ACTIVE_SPLITSCREEN_PLAYER_GUARD( nSlot );
-
 		engine->ServerCmd( pMsg );
 	}
 }
-
 
 //-----------------------------------------------------------------------------
 // Frame-based update
