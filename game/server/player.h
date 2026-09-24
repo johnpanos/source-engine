@@ -1128,7 +1128,12 @@ private:
 
 	bool					m_bPlayerUnderwater;
 
+#ifdef PORTAL2
+	// Networked as in retail Portal 2: the shared EyeAngles() follows it.
+	CNetworkHandle( CBaseEntity, m_hViewEntity );
+#else
 	EHANDLE					m_hViewEntity;
+#endif
 
 	// Movement constraints
 	CNetworkHandle( CBaseEntity, m_hConstraintEntity );

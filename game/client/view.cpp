@@ -697,6 +697,12 @@ void CViewRender::SetUpViews()
 				{
 					VectorCopy( ve->GetAbsOrigin(), view.origin );
 					VectorCopy( ve->GetAbsAngles(), view.angles );
+#ifdef PORTAL2
+					// Retail Portal 2 shakes the view entity's view too. The
+					// player's own shaken eye view was just replaced, so without
+					// this the sp_a1_intro1 point_viewproxy ride loses its impacts.
+					vieweffects->ApplyShake( view.origin, view.angles, 1.0 );
+#endif
 				}
 			}
 

@@ -72,9 +72,17 @@ CDebugOverlayBox3D s_defaultDebugOverlay;
 // IVP's material manager combines surfaces by product, clamped to [0, 1]
 // (IVP_Material_Manager / CIVPMaterialManager), not Box3D's geometric-mean
 // friction and maximum restitution.
+//
+// IVP's friction solver limits each contact's friction impulse by the pressure
+// its gap spring measured, which settles about 5% below the true normal
+// force: a sliding object decelerates at 0.95 * mu * g for every mass and
+// material pair measured (1 to 1000 kg, ice to metal). The factor keeps
+// pushed and sliding props moving as far as they do on IVP.
+const float kIVPFrictionScale = 0.95f;
+
 float MixFriction( float frictionA, uint64_t, float frictionB, uint64_t )
 {
-	return clamp( frictionA * frictionB, 0.0f, 1.0f );
+	return clamp( frictionA * frictionB, 0.0f, 1.0f ) * kIVPFrictionScale;
 }
 
 // The elasticity product is the fraction of normal-speed *energy* an impact
@@ -860,9 +868,48 @@ bool CPhysicsEnvironmentBox3D::PreSolve( b3ShapeId shapeIdA, b3ShapeId shapeIdB,
 
 void CPhysicsEnvironmentBox3D::SetCollisionSolver( IPhysicsCollisionSolver *pSolver ) { m_pSolver = pSolver; }
 
+// IVP runs its controllers by priority, highest first: buoyancy (1600),
+// springs (1400), gravity with damping (1000), the player controller (501),
+// shadow and motion controllers and drag (500), then constraints (400s). The
+// order matters to the game: a controller that sets a velocity (the grab and
+// player controllers) overrides this step's gravity and damping instead of
+// having them applied on top.
 void CPhysicsEnvironmentBox3D::PreStep( float dt )
 {
 	UpdateDeletedPairs();
+	for ( int i = 0; i < m_fluids.Count(); i++ )
+	{
+		CPhysicsObjectBox3D *pFluidObject = m_fluids[i]->GetObject();
+		for ( int k = 0; k < m_triggerOverlaps.Count(); k++ )
+		{
+			if ( m_triggerOverlaps[k].pTrigger == pFluidObject && IsLive( m_triggerOverlaps[k].pObject ) )
+				m_fluids[i]->ApplyToObject( m_triggerOverlaps[k].pObject, dt );
+		}
+	}
+	for ( int i = 0; i < m_springs.Count(); i++ )
+		m_springs[i]->Simulate( dt );
+	// Objects a controller drives this step.
+	CUtlVector<IPhysicsObject *> controlled;
+	for ( int i = 0; i < m_playerControllers.Count(); i++ )
+	{
+		if ( m_playerControllers[i]->GetObject() )
+			controlled.AddToTail( m_playerControllers[i]->GetObject() );
+	}
+	for ( int i = 0; i < m_motionControllers.Count(); i++ )
+	{
+		int count = m_motionControllers[i]->CountObjects();
+		int base = controlled.AddMultipleToTail( count );
+		m_motionControllers[i]->GetObjects( controlled.Base() + base );
+	}
+	for ( int i = 0; i < m_objects.Count(); i++ )
+	{
+		CPhysicsObjectBox3D *pObject = ToBox3D( m_objects[i] );
+		bool isControlled = pObject->GetShadow() != NULL || controlled.Find( pObject ) != controlled.InvalidIndex();
+		pObject->ApplyGravityAndDamping( dt, m_gravity, isControlled );
+	}
+
+	for ( int i = 0; i < m_playerControllers.Count(); i++ )
+		m_playerControllers[i]->Simulate( dt );
 	// Controllers may create or destroy objects; walk snapshots.
 	CUtlVector<IPhysicsObject *> objects;
 	objects.CopyArray( m_objects.Base(), m_objects.Count() );
@@ -881,29 +928,16 @@ void CPhysicsEnvironmentBox3D::PreStep( float dt )
 		if ( m_motionControllers.Find( motion[i] ) != m_motionControllers.InvalidIndex() )
 			motion[i]->Simulate( dt );
 	}
-	// IVP runs player controllers just after motion controllers.
-	for ( int i = 0; i < m_playerControllers.Count(); i++ )
-		m_playerControllers[i]->Simulate( dt );
+	for ( int i = 0; i < m_objects.Count(); i++ )
+		ToBox3D( m_objects[i] )->ApplyDrag( dt, m_airDensity );
 	for ( int i = 0; i < m_vehicles.Count(); i++ )
 		m_vehicles[i]->Simulate( dt );
-	for ( int i = 0; i < m_springs.Count(); i++ )
-		m_springs[i]->Simulate( dt );
-	for ( int i = 0; i < m_fluids.Count(); i++ )
-	{
-		CPhysicsObjectBox3D *pFluidObject = m_fluids[i]->GetObject();
-		for ( int k = 0; k < m_triggerOverlaps.Count(); k++ )
-		{
-			if ( m_triggerOverlaps[k].pTrigger == pFluidObject && IsLive( m_triggerOverlaps[k].pObject ) )
-				m_fluids[i]->ApplyToObject( m_triggerOverlaps[k].pObject, dt );
-		}
-	}
 	for ( int i = 0; i < m_constraints.Count(); i++ )
 		m_constraints[i]->PreStep( dt );
 
 	for ( int i = 0; i < m_objects.Count(); i++ )
 	{
 		CPhysicsObjectBox3D *pObject = ToBox3D( m_objects[i] );
-		pObject->ApplyDampingAndDrag( dt, m_airDensity );
 		pObject->CommitVelocity();
 		pObject->CapturePreStepVelocity();
 		pObject->SetWasAwake( !pObject->IsAsleep() );

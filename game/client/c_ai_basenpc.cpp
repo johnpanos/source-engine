@@ -165,6 +165,7 @@ void C_AI_BaseNPC::OnDataChanged( DataUpdateType_t type )
 		 ( !V_stricmp( m_szNetworkedName, "@glados" ) || !V_stricmp( m_szNetworkedName, "@actor_potatos" ) ) )
 	{
 		s_hPotatosSpeaker = this;
+		MouthInfo().ActivateEnvelope();
 	}
 #endif
 

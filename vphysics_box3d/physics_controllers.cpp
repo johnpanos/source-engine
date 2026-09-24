@@ -283,6 +283,7 @@ void CPlayerControllerBox3D::DetachObject()
 	if ( !m_pObject )
 		return;
 	m_pObject->SetDamping( NULL, &m_savedRotDamping );
+	m_pObject->SetFrictionless( false );
 	m_pObject->SetCallbackFlags( m_pObject->GetCallbackFlags() & ~CALLBACK_IS_PLAYER_CONTROLLER );
 	m_pObject->SetPlayerController( NULL );
 	m_pObject = NULL;
@@ -332,6 +333,13 @@ void CPlayerControllerBox3D::Update( const Vector &position, const Vector &veloc
 	{
 		MaxSpeed( velocity );
 	}
+	// A driven IVP shadow feels no floor friction: it pushes a prop exactly
+	// as fast whether it stands on the floor, floats above it, or is made of
+	// ice (IVP presses it down harder than its minimum collision speed every
+	// step, so the floor contact likely never builds friction pressure). A
+	// Box3D shadow resting on the floor with full friction pushes props
+	// about 10% slower (dynamics.player-push.*).
+	m_pObject->SetFrictionless( m_enabled );
 	m_pGround = ground ? ToBox3D( ground ) : NULL;
 	if ( m_pGround )
 		m_pGround->WorldToLocal( &m_groundPosition, m_targetPosition );

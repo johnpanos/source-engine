@@ -307,6 +307,15 @@ const QAngle &CBasePlayer::EyeAngles( )
 
 	if ( !pMoveParent )
 	{
+#ifdef PORTAL2
+		// Retail Portal 2: while the player looks through another entity
+		// (point_viewcontrol, point_viewproxy) the eyes are that entity's.
+		CBaseEntity *pViewEntity = GetViewEntity();
+		if ( pViewEntity && pViewEntity != this )
+		{
+			return pViewEntity->EyeAngles();
+		}
+#endif
 		return pl.v_angle;
 	}
 
@@ -349,6 +358,14 @@ Vector CBasePlayer::EyePosition( )
 					return MainViewOrigin();
 				}
 			}
+		}
+#endif
+#ifdef PORTAL2
+		// CPortal_Player overrides EyePosition() without this, as in retail.
+		CBaseEntity *pViewEntity = GetViewEntity();
+		if ( pViewEntity && pViewEntity != this )
+		{
+			return pViewEntity->EyePosition();
 		}
 #endif
 		return BaseClass::EyePosition();

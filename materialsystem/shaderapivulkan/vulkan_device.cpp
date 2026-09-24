@@ -520,6 +520,16 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 		m_depthAspects = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
 		m_stencilBits = 8;
 	}
+	// Readable scene depth: attachments are copied into a sampled image of the
+	// same format (RecordSceneCapture).
+	{
+		VkFormatProperties depthProps = {};
+		vkGetPhysicalDeviceFormatProperties( m_physicalDevice, m_depthFormat, &depthProps );
+		const VkFormatFeatureFlags readable = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
+		                                      VK_FORMAT_FEATURE_TRANSFER_SRC_BIT |
+		                                      VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
+		m_sceneDepthUsable = ( depthProps.optimalTilingFeatures & readable ) == readable;
+	}
 
 	VkDeviceCreateInfo createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -815,7 +825,8 @@ bool CVulkanContext::CreateDepthResources( std::string *outError )
 		img.arrayLayers = 1;
 		img.samples = VK_SAMPLE_COUNT_1_BIT;
 		img.tiling = VK_IMAGE_TILING_OPTIMAL;
-		img.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		img.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+		            ( m_sceneDepthUsable ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0 );
 		img.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		img.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		if ( vkCreateImage( m_device, &img, nullptr, &m_depthImages[i] ) != VK_SUCCESS )
@@ -2839,10 +2850,17 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		Log( "WMSH PBR pipeline unavailable: %s\n", pbrError.c_str() );
 		DestroyPbrWorldPipeline();
 	}
+	else if ( !InitPbrGlassPipeline( &pbrError ) )
+	{
+		Log( "WMSH glass pipeline unavailable: %s\n", pbrError.c_str() );
+		DestroyPbrGlassPipeline();
+	}
 
-	Log( "dynamic mesh pipelines ready (PBR direct %s, WMSH PBR %s)\n",
+	Log( "dynamic mesh pipelines ready (PBR direct %s, WMSH PBR %s, glass %s, scene depth %s)\n",
 	    m_pbrDirectReady ? "available" : "unavailable",
-	    m_pbrWorldReady ? "available" : "unavailable" );
+	    m_pbrWorldReady ? "available" : "unavailable",
+	    m_pbrGlassReady ? "available" : "unavailable",
+	    m_sceneDepthUsable ? "readable" : "unavailable" );
 	return true;
 }
 
@@ -3826,15 +3844,19 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 		if ( t.srgbView != VK_NULL_HANDLE )
 			allocateSet( t.srgbView, &t.descSetSrgb );
 	}
+	return StoreManagedTexture( t );
+}
 
+int CVulkanContext::StoreManagedTexture( const ManagedTexture &texture )
+{
 	if ( !m_freeTextureHandles.empty() )
 	{
 		const int handle = m_freeTextureHandles.back();
 		m_freeTextureHandles.pop_back();
-		m_managedTextures[static_cast<size_t>( handle )] = t;
+		m_managedTextures[static_cast<size_t>( handle )] = texture;
 		return handle;
 	}
-	m_managedTextures.push_back( t );
+	m_managedTextures.push_back( texture );
 	return static_cast<int>( m_managedTextures.size() - 1 );
 }
 
@@ -3949,7 +3971,8 @@ int CVulkanContext::CreateRenderTargetTexture( int width, int height, std::strin
 	di.arrayLayers = 1;
 	di.samples = VK_SAMPLE_COUNT_1_BIT;
 	di.tiling = VK_IMAGE_TILING_OPTIMAL;
-	di.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	di.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+	           ( m_sceneDepthUsable ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0 );
 	di.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	di.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	if ( vkCreateImage( m_device, &di, nullptr, &t.depthImage ) != VK_SUCCESS )
@@ -4409,6 +4432,7 @@ void CVulkanContext::QueueClear( bool color, bool depth, bool stencil )
 	if ( !color && !depth && !stencil )
 		return;
 	DynDraw &d = AppendRecord( kRecordClear );
+	NoteSceneChanged();
 	d.clearColor = color;
 	d.clearDepth = depth;
 	d.clearStencil = stencil;
@@ -4421,6 +4445,8 @@ bool CVulkanContext::QueueCopyToTexture( int dstHandle, const int *srcRect, cons
 	if ( !IsRenderTargetTexture( dstHandle ) || dstHandle == m_dynTarget )
 		return false;
 	DynDraw &d = AppendRecord( kRecordCopy );
+	if ( dstHandle == m_sceneCaptureTarget )
+		NoteSceneChanged();
 	d.copyDst = dstHandle;
 	if ( srcRect )
 		std::memcpy( d.copySrcRect, srcRect, sizeof( d.copySrcRect ) );
@@ -4546,6 +4572,11 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 	// transform/shader/constant per object before each Draw).
 	DynDraw &d = AppendRecord( kRecordDraw );
 	d.shaderIndex = m_dynShaderIndex;
+	// Anything but glass changes what a scene capture of this target holds.
+	if ( d.shaderIndex == kDynShaderPbrGlass )
+		m_sceneCaptureGlassDrawn = true;
+	else
+		NoteSceneChanged();
 	std::memcpy( d.transform, m_dynTransform, sizeof( d.transform ) );
 	std::memcpy( d.color, m_dynConstColor, sizeof( d.color ) );
 	std::memcpy( d.modulation, m_dynModulation, sizeof( d.modulation ) );
@@ -4876,7 +4907,7 @@ bool CVulkanContext::FirstPassWantsSrgb() const
 			return false;
 	for ( const DynDraw &r : m_dynDrawRecords )
 	{
-		if ( r.target != -1 || r.kind == kRecordCopy )
+		if ( r.target != -1 || r.kind == kRecordCopy || r.kind == kRecordSceneCapture )
 			return false;
 		if ( !RecordViewAgnostic( r ) )
 			return RecordWantsSrgb( r );
@@ -4983,6 +5014,7 @@ void CVulkanContext::DestroyDynamicMesh()
 	for ( const auto &entry : m_worldTexPipelines )
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_worldTexPipelines.clear();
+	DestroyPbrGlassPipeline();
 	DestroyPbrWorldPipeline();
 	if ( m_worldVert != VK_NULL_HANDLE )
 	{
@@ -5053,6 +5085,9 @@ void CVulkanContext::DestroyDynamicMesh()
 	for ( ManagedTexture &t : m_managedTextures )
 		ReleaseManagedTextureObjects( t );
 	m_managedTextures.clear();
+	m_sceneColorHandle = -1;
+	m_sceneDepthHandle = -1;
+	m_sceneDepthCaptured = false;
 	for ( RetiredTexture &r : m_retiredTextures )
 		ReleaseManagedTextureObjects( r.texture );
 	m_retiredTextures.clear();
@@ -5234,16 +5269,22 @@ bool CVulkanContext::QueueWorldMeshBatch( uint32_t firstIndex, uint32_t indexCou
 {
 	if ( !WorldMeshResident() || m_worldVert == VK_NULL_HANDLE || !indexCount ||
 	     firstIndex > m_worldIndexCount || indexCount > m_worldIndexCount - firstIndex ||
-	     ( m_dynShaderIndex != kDynShaderTextured && m_dynShaderIndex != kDynShaderPbrWorld ) )
+	     ( m_dynShaderIndex != kDynShaderTextured && m_dynShaderIndex != kDynShaderPbrWorld &&
+	         m_dynShaderIndex != kDynShaderPbrGlass ) )
 		return false;
-	if ( m_dynShaderIndex == kDynShaderPbrWorld )
+	if ( m_dynShaderIndex == kDynShaderPbrWorld || m_dynShaderIndex == kDynShaderPbrGlass )
 	{
-		if ( !m_pbrWorldReady ||
+		const bool ready =
+		    m_dynShaderIndex == kDynShaderPbrGlass ? m_pbrGlassReady : m_pbrWorldReady;
+		if ( !ready ||
 		     !PbrWorldTexturesReady( m_dynBoundTexHandle, m_dynSamplerHandles[1],
 		         m_dynSamplerHandles[2], m_dynPbrWorld.material[1] >= 0.5f,
 		         ( m_dynColorFlags & kColorSrgbReadBase ) != 0 ) )
 			return false;
 	}
+	// Glass refracts what was drawn before it.
+	if ( m_dynShaderIndex == kDynShaderPbrGlass )
+		QueueSceneCaptureIfNeeded( m_dynGlassKey );
 	DynDraw &draw = AppendDrawRecord();
 	draw.worldMesh = true;
 	draw.worldMeshRevision = m_worldMeshRevision;
@@ -5501,6 +5542,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	// them replays. Only the slots this stream issues are reset, so a result of
 	// an earlier frame that the engine has yet to read survives.
 	m_replayedQueries.clear();
+	m_lastFrameSceneCaptures = 0;
+	m_lastFrameSceneDepthCaptures = 0;
 	if ( m_queryPool != VK_NULL_HANDLE && m_dynPipeline != VK_NULL_HANDLE )
 	{
 		for ( const DynDraw &d : m_dynDrawRecords )
@@ -5699,7 +5742,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				for ( size_t next = index + 1; next < m_dynDrawRecords.size(); ++next )
 				{
 					const DynDraw &n = m_dynDrawRecords[next];
-					if ( n.target != r.target || n.kind == kRecordCopy )
+					if ( n.target != r.target || n.kind == kRecordCopy ||
+					     n.kind == kRecordSceneCapture )
 						break;
 					if ( !RecordViewAgnostic( n ) )
 						return RecordWantsSrgb( n );
@@ -5713,6 +5757,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		// merging the pass reopens at once and every copy is made.
 		bool passOpen = true;
 		const DynDraw *lastCopy = nullptr;
+		// Whether the latest scene capture holds this view's depth (glass reads it).
+		bool sceneDepthValid = false;
 		for ( size_t recordIndex = 0; recordIndex < m_dynDrawRecords.size(); ++recordIndex )
 		{
 			const DynDraw &d = m_dynDrawRecords[recordIndex];
@@ -5744,6 +5790,22 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					BeginTargetPass( cmd, openTarget, openSrgb );
 					passOpen = true;
 				}
+				continue;
+			}
+			if ( d.kind == kRecordSceneCapture )
+			{
+				// Like a copy, outside any pass, of the target the glass after it
+				// draws into (the open one, or the record's own if none is open).
+				endActiveQuery( false );
+				if ( passOpen )
+					vkCmdEndRenderPass( cmd );
+				passOpen = false;
+				if ( d.target != openTarget )
+					openTarget = d.target;
+				if ( openTarget == -1 && m_activeSamples > 1 )
+					ResolveBackBuffer( cmd, m_acquiredImage );
+				sceneDepthValid = RecordSceneCapture( cmd, openTarget );
+				lastCopy = nullptr;
 				continue;
 			}
 			if ( d.kind == kRecordDraw || d.kind == kRecordClear )
@@ -5889,6 +5951,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			bool textured = false;
 			bool pbrDirect = false;
 			bool pbrWorld = false;
+			bool glass = false; // pbrWorld's sets and block, plus the scene capture
 			bool portal = false;
 			bool skin = false;
 			bool solidEnergy = false;
@@ -5933,6 +5996,20 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					continue;
 				selectedLayout = m_worldPbrPipelineLayout;
 				pbrWorld = true;
+			}
+			else if ( d.shaderIndex == kDynShaderPbrGlass )
+			{
+				if ( !d.worldMesh || m_sceneColorHandle < 0 ||
+				     !PbrWorldTexturesReady( d.texHandle, d.samplerHandles[1], d.samplerHandles[2],
+				         d.pbrWorld.material[1] >= 0.5f,
+				         ( d.colorFlags & kColorSrgbReadBase ) != 0 ) )
+					continue;
+				selected = WorldGlassPipeline( d.raster, openSrgb, passSamples );
+				if ( selected == VK_NULL_HANDLE )
+					continue;
+				selectedLayout = m_worldGlassPipelineLayout;
+				pbrWorld = true;
+				glass = true;
 			}
 			else if ( d.shaderIndex == kDynShaderPortalRefract )
 			{
@@ -6051,12 +6128,22 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				}
 				else if ( pbrWorld )
 				{
-					const VkDescriptorSet sets[5] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					// Glass adds the scene capture: color through its sRGB view
+					// (linear light), and depth; without a depth capture the
+					// built-in set stands in and the shader is told not to read it.
+					const ManagedTexture &sceneColor =
+					    m_managedTextures[static_cast<size_t>( std::max( m_sceneColorHandle, 0 ) )];
+					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
 					    sampledSet( d.samplerHandles[1], 0 ), sampledSet( d.samplerHandles[2], 0 ),
 					    sampledSet( m_worldLightmapHandle, 0 ),
-					    m_managedTextures[static_cast<size_t>( m_pbrSplitSumHandle )].descSet };
+					    m_managedTextures[static_cast<size_t>( m_pbrSplitSumHandle )].descSet,
+					    glass ? ( sceneColor.descSetSrgb != VK_NULL_HANDLE ? sceneColor.descSetSrgb
+					                                                       : sceneColor.descSet )
+					          : VK_NULL_HANDLE,
+					    glass ? sampledSet( m_sceneDepthHandle, 0 ) : VK_NULL_HANDLE };
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					    m_worldPbrPipelineLayout, 0, 5, sets, 0, nullptr );
+					    glass ? m_worldGlassPipelineLayout : m_worldPbrPipelineLayout, 0,
+					    glass ? 7 : 5, sets, 0, nullptr );
 				}
 				else
 				{
@@ -6154,6 +6241,21 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				std::memcpy( pushData + 20, scene.lightDirection, sizeof( scene.lightDirection ) );
 				std::memcpy( pushData + 24, scene.lightRadiance, sizeof( scene.lightRadiance ) );
 				std::memcpy( pushData + 28, scene.material, sizeof( scene.material ) );
+				if ( glass )
+				{
+					// shaders/world_pbr_glass.frag's glass, capture and material.
+					const ManagedTexture &sceneColor =
+					    m_managedTextures[static_cast<size_t>( m_sceneColorHandle )];
+					pushData[20] = scene.glass[0];
+					pushData[21] = scene.glass[1];
+					pushData[22] = scene.glass[2];
+					pushData[23] = sceneDepthValid && m_sceneDepthHandle >= 0 ? 1.0f : 0.0f;
+					pushData[24] = 1.0f / static_cast<float>( sceneColor.width );
+					pushData[25] = 1.0f / static_cast<float>( sceneColor.height );
+					pushData[26] = 0.5f * viewport.width;
+					pushData[27] = 0.5f * viewport.height;
+					pushData[30] = static_cast<float>( sceneColor.mipLevels );
+				}
 				pushFloats = 32;
 				if ( m_clipPlanesSupported )
 				{

@@ -149,6 +149,9 @@ public:
 	void				SetObserverMode ( int iNewMode );
 	virtual CBaseEntity	*GetObserverTarget() const;
 	void			SetObserverTarget( EHANDLE hObserverTarget );
+#ifdef PORTAL2
+	C_BaseEntity	*GetViewEntity( void ) const { return m_hViewEntity; }
+#endif
 
 	bool			AudioStateIsUnderwater( Vector vecMainViewOrigin );
 
@@ -497,6 +500,9 @@ protected:
 // DATA
 	int				m_iObserverMode;	// if in spectator mode != 0
 	EHANDLE			m_hObserverTarget;	// current observer target
+#ifdef PORTAL2
+	EHANDLE			m_hViewEntity;		// networked as in retail Portal 2
+#endif
 	float			m_flObserverChaseDistance; // last distance to observer traget
 	Vector			m_vecFreezeFrameStart;
 	float			m_flFreezeFrameStartTime;	// Time at which we entered freeze frame observer mode

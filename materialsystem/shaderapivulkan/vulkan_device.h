@@ -266,6 +266,8 @@ public:
 		m_dynDrawRecords.clear();
 		m_dynSkinConstants.clear();
 		m_dynFramePresented = false;
+		m_sceneCaptureCurrent = false;
+		m_sceneCapturesQueued = 0;
 	}
 	// Select which material-shader pipeline the queued geometry uses this frame
 	// (0 = vertex-color passthrough, 1 = "greenify", 2 = "constant color"). This
@@ -289,7 +291,9 @@ public:
 		// fizzlers, bridges and beams, on the skin pipeline's layout (its
 		// constants arrive through SetDynamicSkinConstants); see
 		// shaders/solidenergy.{vert,frag}.
-		kDynShaderSolidEnergy = 8
+		kDynShaderSolidEnergy = 8,
+		// Transmissive PBRMetalRough WMSH batches (glass); shaders/world_pbr_glass.frag.
+		kDynShaderPbrGlass = 10
 	};
 	void SelectDynamicShader( int shaderIndex ) { m_dynShaderIndex = shaderIndex; }
 	// Output-merger state of the queued geometry, in the terms of the D3D9 state a
@@ -553,10 +557,45 @@ public:
 		float lightDirection[4] = { 0, 0, -1, 0 };
 		float lightRadiance[4] = { 1, 1, 1, 0 };
 		float material[4] = { -1, 0, 0, 0 };
+		// Glass only: transmission (0..1), index of refraction, thickness in
+		// world units (0 = a thin sheet), unused.
+		float glass[4] = { 1, 1.5f, 0, 0 };
 	};
 	void SetDynamicPbrWorldScene( const PbrWorldScene &scene ) { m_dynPbrWorld = scene; }
 	bool PbrWorldPipelineSupported() const { return m_pbrWorldReady; }
 	bool SelectPbrWorldMaterial( int mrao, int normal, const float eye[3], float alphaReference );
+	// Transmissive PBR (glass) on WMSH batches. Its draw refracts the scene
+	// captured just before it: the first glass draw after anything else was
+	// drawn or cleared on the target queues a scene capture (color mip chain and
+	// depth), and so does a glass draw of another `materialKey`, so glass behind
+	// glass shows through. A frame makes at most kMaxSceneCaptures captures;
+	// later glass reuses the last one.
+	struct PbrGlassParams
+	{
+		float transmission = 1.0f;
+		float ior = 1.5f;
+		float thickness = 0.0f; // world units through the glass; 0 = a thin sheet
+		uint64_t materialKey = 0;
+	};
+	enum
+	{
+		kMaxSceneCaptures = 16
+	};
+	bool PbrGlassPipelineSupported() const { return m_pbrGlassReady; }
+	bool SelectPbrGlassMaterial( int mrao, int normal, const float eye[3], float alphaReference,
+	    const PbrGlassParams &glass );
+	// Readable scene depth: whether this device can copy and sample its depth
+	// format (and so glass can reject foreground samples), and the depth of the
+	// latest scene capture of the last recorded frame, one float per pixel of
+	// the captured area. The capture of a multisampled back buffer has no
+	// depth; ReadSceneDepth then fails.
+	bool SceneDepthSupported() const { return m_sceneDepthUsable; }
+	bool ReadSceneDepth( std::vector<float> *outDepth, uint32_t *outWidth, uint32_t *outHeight,
+	    std::string *outError );
+	// Scene captures replayed into the last recorded frame, and how many of
+	// them also copied depth.
+	uint32_t LastFrameSceneCaptures() const { return m_lastFrameSceneCaptures; }
+	uint32_t LastFrameSceneDepthCaptures() const { return m_lastFrameSceneDepthCaptures; }
 	bool PbrDirectPipelineSupported() const { return m_pbrDirectReady; }
 	// False when the device cannot bind the skin shader's seven descriptor sets
 	// or its push block; its draws are then declined.
@@ -1145,6 +1184,7 @@ private:
 	float m_dynTexXform1[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
 	float m_dynPbrAngles[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	PbrWorldScene m_dynPbrWorld;
+	uint64_t m_dynGlassKey = 0; // SelectPbrGlassMaterial's material identity
 	DynRasterState m_dynRaster;
 	float m_dynDepthBiasConstant = 0.0f;
 	float m_dynDepthBiasSlope = 0.0f;
@@ -1177,6 +1217,40 @@ private:
 	VkShaderModule m_worldPbrFrag = VK_NULL_HANDLE;
 	VkPipelineLayout m_worldPbrPipelineLayout = VK_NULL_HANDLE;
 	bool m_pbrWorldReady = false;
+	// Glass: world_pbr.vert with world_pbr_glass.frag, the WMSH PBR sets plus
+	// the scene capture's color (set 5) and depth (set 6).
+	std::map<uint64_t, VkPipeline> m_worldGlassPipelines;
+	VkPipeline WorldGlassPipeline(
+	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
+	VkShaderModule m_worldGlassFrag = VK_NULL_HANDLE;
+	VkPipelineLayout m_worldGlassPipelineLayout = VK_NULL_HANDLE;
+	bool m_pbrGlassReady = false;
+	bool InitPbrGlassPipeline( std::string *outError );
+	void DestroyPbrGlassPipeline();
+	// Scene capture (vulkan_scene_capture.cpp): managed textures the size of the
+	// back buffer. Color is the swapchain format with its sRGB view and a full
+	// mip chain; depth is the depth format, sampled through a depth-only view.
+	int m_sceneColorHandle = -1;
+	int m_sceneDepthHandle = -1;
+	// The depth format can be copied from the attachments and sampled.
+	bool m_sceneDepthUsable = false;
+	// Queue-side state: whether the target still holds what the last capture
+	// copied, which target and glass material it served, and captures queued.
+	bool m_sceneCaptureCurrent = false;
+	int m_sceneCaptureTarget = -1;
+	uint64_t m_sceneCaptureKey = 0;
+	bool m_sceneCaptureGlassDrawn = false;
+	uint32_t m_sceneCapturesQueued = 0;
+	uint32_t m_lastFrameSceneCaptures = 0;
+	uint32_t m_lastFrameSceneDepthCaptures = 0;
+	// Whether the latest replayed capture copied depth (ReadSceneDepth).
+	bool m_sceneDepthCaptured = false;
+	bool EnsureSceneCapture( std::string *outError );
+	void DestroySceneCapture();
+	void QueueSceneCaptureIfNeeded( uint64_t materialKey );
+	void NoteSceneChanged() { m_sceneCaptureCurrent = false; }
+	// Records the copy into the capture images; returns whether depth was copied.
+	bool RecordSceneCapture( VkCommandBuffer cmd, int target );
 	VkPipelineVertexInputStateCreateInfo m_worldVin = {};
 	// The pipeline store (OpenPipelineStore): the cache every material pipeline
 	// is built through, the variants built this session, and the files.
@@ -1369,6 +1443,8 @@ private:
 	uint64_t m_completedSerial = 0;
 	uint32_t m_liveTextureSets = 0;
 	void ReleaseManagedTextureObjects( ManagedTexture &t );
+	// Stores a fully built managed texture in a free handle.
+	int StoreManagedTexture( const ManagedTexture &texture );
 	void RetireCompletedTextures();
 	// The managed texture currently bound (BindManagedTexture); captured per draw.
 	int m_dynBoundTexHandle = -1;
@@ -1459,7 +1535,10 @@ private:
 		kRecordClear = 1,
 		kRecordCopy = 2,
 		kRecordQueryBegin = 3,
-		kRecordQueryEnd = 4
+		kRecordQueryEnd = 4,
+		// Copies the open target's color and depth to the scene capture images
+		// (RecordSceneCapture), outside any pass, for the glass draws after it.
+		kRecordSceneCapture = 5
 	};
 	struct DynDraw
 	{

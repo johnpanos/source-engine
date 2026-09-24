@@ -58,7 +58,7 @@ CPhysicsObjectBox3D::CPhysicsObjectBox3D( CPhysicsEnvironmentBox3D *pEnv, const 
 	  m_volume( 0.0f ), m_buoyancyRatio( 1.0f ), m_friction( 0.8f ), m_restitution( 0.0f ), m_hingeAxis( -1 ),
 	  m_contents( CONTENTS_SOLID ), m_callbackFlags( kDefaultCallbacks ), m_gameFlags( 0 ), m_gameIndex( 0 ),
 	  m_isStatic( isStatic ), m_isTrigger( false ), m_collisionEnabled( pParams ? pParams->enableCollisions : true ),
-	  m_gravityEnabled( !isStatic ), m_dragEnabled( false ), m_motionEnabled( true ), m_shadowTempGravityDisable( false ),
+	  m_gravityEnabled( !isStatic ), m_stepGravity( false ), m_frictionless( false ), m_dragEnabled( false ), m_motionEnabled( true ), m_shadowTempGravityDisable( false ),
 	  m_wasAwake( false ), m_reportPreStep( false ), m_hasTouchedDynamic( false ), m_asleepSinceCreation( true )
 {
 	objectparams_t defaults;
@@ -296,7 +296,7 @@ void CPhysicsObjectBox3D::CreateShapes()
 	def.isSensor = m_isTrigger;
 	def.updateBodyMass = false;
 	def.density = 1.0f;
-	def.baseMaterial.friction = m_friction;
+	def.baseMaterial.friction = m_frictionless ? 0.0f : m_friction;
 	def.baseMaterial.restitution = m_restitution;
 	def.baseMaterial.userMaterialId = (uint64_t)m_materialIndex;
 
@@ -394,7 +394,7 @@ void CPhysicsObjectBox3D::ApplyBodyType()
 	{
 		ApplyMassProperties();
 	}
-	b3Body_SetGravityScale( m_body, m_gravityEnabled ? 1.0f : 0.0f );
+	ApplyGravityScale();
 }
 
 void CPhysicsObjectBox3D::ApplyFilter()
@@ -413,7 +413,7 @@ void CPhysicsObjectBox3D::ApplyFilter()
 		b3Shape_SetFilter( shapes[i], filter, true );
 	}
 	if ( !m_isStatic )
-		b3Body_SetGravityScale( m_body, m_gravityEnabled ? 1.0f : 0.0f );
+		ApplyGravityScale();
 	if ( asleep && !IsAsleep() )
 		b3Body_SetAwake( m_body, false );
 }
@@ -445,7 +445,26 @@ void CPhysicsObjectBox3D::EnableGravity( bool enable )
 	if ( m_isStatic )
 		return;
 	m_gravityEnabled = enable;
-	b3Body_SetGravityScale( m_body, enable ? 1.0f : 0.0f );
+	if ( !enable )
+		m_stepGravity = false;
+	ApplyGravityScale();
+}
+
+void CPhysicsObjectBox3D::SetFrictionless( bool frictionless )
+{
+	if ( m_frictionless == frictionless )
+		return;
+	m_frictionless = frictionless;
+	CUtlVector<b3ShapeId> shapes;
+	GetBodyShapes( m_body, shapes );
+	for ( int i = 0; i < shapes.Count(); i++ )
+		b3Shape_SetFriction( shapes[i], frictionless ? 0.0f : m_friction );
+}
+
+// Box3D integrates gravity unless it is off or applied by the step itself.
+void CPhysicsObjectBox3D::ApplyGravityScale()
+{
+	b3Body_SetGravityScale( m_body, m_gravityEnabled && !m_stepGravity ? 1.0f : 0.0f );
 }
 
 void CPhysicsObjectBox3D::EnableDrag( bool enable )
@@ -589,7 +608,7 @@ void CPhysicsObjectBox3D::SetMaterialIndex( int materialIndex )
 	for ( int i = 0; i < shapeCount; i++ )
 	{
 		b3SurfaceMaterial material = b3Shape_GetSurfaceMaterial( shapes[i] );
-		material.friction = m_friction;
+		material.friction = m_frictionless ? 0.0f : m_friction;
 		material.restitution = m_restitution;
 		material.userMaterialId = (uint64_t)m_materialIndex;
 		b3Shape_SetSurfaceMaterial( shapes[i], material );
@@ -670,28 +689,22 @@ float CPhysicsObjectBox3D::CalculateAngularDrag( const Vector &objectSpaceRotati
 	return GetAngularDragInDirection( objectSpaceRotationAxis ) * DEG2RAD( 1.0f );
 }
 
-void CPhysicsObjectBox3D::ApplyDampingAndDrag( float dt, float airDensity )
+void CPhysicsObjectBox3D::ApplyGravityAndDamping( float dt, const Vector &gravity, bool controlled )
 {
+	if ( !m_gravityEnabled )
+		return;
+	bool stepGravity = controlled && IsMoveable() && !IsAsleep() && b3Body_GetType( m_body ) == b3_dynamicBody;
+	if ( stepGravity != m_stepGravity )
+	{
+		m_stepGravity = stepGravity;
+		ApplyGravityScale();
+	}
+	// IVP damps only through the gravity controller: an object with gravity
+	// off keeps its speed.
 	if ( !IsMoveable() || IsAsleep() || b3Body_GetType( m_body ) != b3_dynamicBody )
 		return;
 	Vector linear, angular;
 	GetWorldVelocity( &linear, &angular );
-
-	if ( IsDragEnabled() )
-	{
-		float dragForce = -0.5f * GetDragInDirection( linear * kMetersPerInch ) * airDensity * dt;
-		if ( dragForce < -1.0f )
-			dragForce = -1.0f;
-		if ( dragForce < 0 )
-			linear += linear * dragForce;
-		Vector localAngular;
-		WorldToLocalVector( &localAngular, angular );
-		float angDragForce = -GetAngularDragInDirection( localAngular ) * airDensity * dt;
-		if ( angDragForce < -1.0f )
-			angDragForce = -1.0f;
-		if ( angDragForce < 0 )
-			angular += angular * angDragForce;
-	}
 
 	// IVP_Core::damp_object: the rotational factor switches to exp() once
 	// the damping vector's squared length reaches 0.5, the linear one once
@@ -702,6 +715,29 @@ void CPhysicsObjectBox3D::ApplyDampingAndDrag( float dt, float airDensity )
 	float speedFactor = speed < 0.25f ? 1.0f - speed : expf( -speed );
 	linear *= speedFactor;
 	angular *= rotFactor;
+	if ( stepGravity )
+		linear += gravity * dt;
+	SetWorldVelocity( linear, angular );
+}
+
+void CPhysicsObjectBox3D::ApplyDrag( float dt, float airDensity )
+{
+	if ( !IsDragEnabled() || !IsMoveable() || IsAsleep() || b3Body_GetType( m_body ) != b3_dynamicBody )
+		return;
+	Vector linear, angular;
+	GetWorldVelocity( &linear, &angular );
+	float dragForce = -0.5f * GetDragInDirection( linear * kMetersPerInch ) * airDensity * dt;
+	if ( dragForce < -1.0f )
+		dragForce = -1.0f;
+	if ( dragForce < 0 )
+		linear += linear * dragForce;
+	Vector localAngular;
+	WorldToLocalVector( &localAngular, angular );
+	float angDragForce = -GetAngularDragInDirection( localAngular ) * airDensity * dt;
+	if ( angDragForce < -1.0f )
+		angDragForce = -1.0f;
+	if ( angDragForce < 0 )
+		angular += angular * angDragForce;
 	SetWorldVelocity( linear, angular );
 }
 

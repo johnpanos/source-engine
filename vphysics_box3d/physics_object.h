@@ -229,9 +229,20 @@ public:
 	// controller's speed budget reads only the committed part.
 	Vector GetCommittedVelocity() const;
 	void CommitVelocity() { m_uncommittedLinear.Init(); }
-	// IVP's per-step damping and air drag (CDragController), applied by the
-	// environment before each step.
-	void ApplyDampingAndDrag( float dt, float airDensity );
+	// IVP's gravity controller (IVP_Standard_Gravity_Controller): damping,
+	// then gravity, for awake objects with gravity enabled, before the game's
+	// controllers run. A controlled object (motion, shadow or player
+	// controller) gets this step's gravity here, so its controller sees and
+	// can cancel it as in IVP; any other object keeps Box3D's per-substep
+	// gravity, which its contact solver expects.
+	void ApplyGravityAndDamping( float dt, const Vector &gravity, bool controlled );
+	void ApplyGravityScale();
+	// A driven player shadow slides without friction (see
+	// CPlayerControllerBox3D::Update); its material friction is restored
+	// when the controller lets go.
+	void SetFrictionless( bool frictionless );
+	// IVP's air drag controller (CDragController).
+	void ApplyDrag( float dt, float airDensity );
 	bool HasTouchedDynamic() const { return m_hasTouchedDynamic; }
 	void SetTouchedDynamic() { m_hasTouchedDynamic = true; }
 	bool IsAsleepSinceCreation() const { return m_asleepSinceCreation; }
@@ -295,6 +306,8 @@ private:
 	bool m_isTrigger;
 	bool m_collisionEnabled;
 	bool m_gravityEnabled;
+	bool m_stepGravity;		// gravity applied by ApplyGravityAndDamping this step
+	bool m_frictionless;
 	bool m_dragEnabled;
 	bool m_motionEnabled;
 	bool m_shadowTempGravityDisable;

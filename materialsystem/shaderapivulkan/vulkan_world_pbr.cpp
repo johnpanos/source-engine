@@ -132,6 +132,90 @@ void CVulkanContext::DestroyPbrWorldPipeline()
 	m_pbrWorldReady = false;
 }
 
+VkPipeline CVulkanContext::WorldGlassPipeline(
+    const DynRasterState &state, bool srgbPass, int samples )
+{
+	const uint64_t key = PipelineKey( state, srgbPass, samples );
+	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
+	const auto existing = m_worldGlassPipelines.find( key );
+	if ( existing != m_worldGlassPipelines.end() )
+		return existing->second;
+	if ( pass == VK_NULL_HANDLE || m_worldPbrVert == VK_NULL_HANDLE ||
+	     m_worldGlassFrag == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE;
+	VkPipeline pipeline = BuildMaterialPipeline( state, m_worldPbrVert, m_worldGlassFrag,
+	    m_worldGlassPipelineLayout, &m_worldPbrVin, pass, samples );
+	if ( pipeline == VK_NULL_HANDLE )
+		WorldPbrLog( "vkCreateGraphicsPipelines (WMSH glass, state %#llx) failed\n",
+		    static_cast<unsigned long long>( key ) );
+	m_worldGlassPipelines[key] = pipeline;
+	return pipeline;
+}
+
+bool CVulkanContext::InitPbrGlassPipeline( std::string *outError )
+{
+	if ( !m_pbrWorldReady )
+	{
+		WorldPbrError( outError, "WMSH glass requires the WMSH PBR pipeline" );
+		return false;
+	}
+	VkPhysicalDeviceProperties properties = {};
+	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
+	if ( properties.limits.maxBoundDescriptorSets < 7 )
+	{
+		WorldPbrError( outError, "WMSH glass needs seven texture sets" );
+		return false;
+	}
+	VkDescriptorSetLayout layouts[7];
+	for ( VkDescriptorSetLayout &layout : layouts )
+		layout = m_dynTexDescLayout;
+	VkPushConstantRange range = {};
+	range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+	range.size = m_clipPlanesSupported ? kTexturedPushBytes : 128;
+	VkPipelineLayoutCreateInfo info = {};
+	info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	info.setLayoutCount = 7;
+	info.pSetLayouts = layouts;
+	info.pushConstantRangeCount = 1;
+	info.pPushConstantRanges = &range;
+	if ( vkCreatePipelineLayout( m_device, &info, nullptr, &m_worldGlassPipelineLayout ) !=
+	     VK_SUCCESS )
+	{
+		WorldPbrError( outError, "vkCreatePipelineLayout (WMSH glass) failed" );
+		return false;
+	}
+	const uint32_t *fragmentWords =
+	    m_clipPlanesSupported ? g_worldGlassClipFragSpv : g_worldGlassFragSpv;
+	const size_t fragmentBytes =
+	    m_clipPlanesSupported ? sizeof( g_worldGlassClipFragSpv ) : sizeof( g_worldGlassFragSpv );
+	if ( !CreateShaderModule( fragmentWords, fragmentBytes, &m_worldGlassFrag, outError ) )
+		return false;
+	DynRasterState state;
+	state.depthWrite = false;
+	if ( WorldGlassPipeline( state ) == VK_NULL_HANDLE )
+	{
+		WorldPbrError( outError, "vkCreateGraphicsPipelines (WMSH glass) failed" );
+		return false;
+	}
+	m_pbrGlassReady = true;
+	return true;
+}
+
+void CVulkanContext::DestroyPbrGlassPipeline()
+{
+	for ( const auto &entry : m_worldGlassPipelines )
+		if ( entry.second != VK_NULL_HANDLE )
+			vkDestroyPipeline( m_device, entry.second, nullptr );
+	m_worldGlassPipelines.clear();
+	if ( m_worldGlassFrag != VK_NULL_HANDLE )
+		vkDestroyShaderModule( m_device, m_worldGlassFrag, nullptr );
+	m_worldGlassFrag = VK_NULL_HANDLE;
+	if ( m_worldGlassPipelineLayout != VK_NULL_HANDLE )
+		vkDestroyPipelineLayout( m_device, m_worldGlassPipelineLayout, nullptr );
+	m_worldGlassPipelineLayout = VK_NULL_HANDLE;
+	m_pbrGlassReady = false;
+}
+
 bool CVulkanContext::PbrWorldTexturesReady(
     int base, int mrao, int normal, bool useNormal, bool baseReadSrgb ) const
 {
@@ -188,6 +272,22 @@ bool CVulkanContext::SelectPbrWorldMaterial(
 	BindManagedSampler( 2, normal );
 	SetDynamicPbrWorldScene( scene );
 	SelectDynamicShader( kDynShaderPbrWorld );
+	return true;
+}
+
+bool CVulkanContext::SelectPbrGlassMaterial( int mrao, int normal, const float eye[3],
+    float alphaReference, const PbrGlassParams &glass )
+{
+	if ( !m_pbrGlassReady || !( glass.transmission >= 0.0f && glass.transmission <= 1.0f ) ||
+	     !( glass.ior >= 1.0f ) || !( glass.thickness >= 0.0f ) )
+		return false;
+	if ( !SelectPbrWorldMaterial( mrao, normal, eye, alphaReference ) )
+		return false;
+	m_dynPbrWorld.glass[0] = glass.transmission;
+	m_dynPbrWorld.glass[1] = glass.ior;
+	m_dynPbrWorld.glass[2] = glass.thickness;
+	m_dynGlassKey = glass.materialKey;
+	SelectDynamicShader( kDynShaderPbrGlass );
 	return true;
 }
 

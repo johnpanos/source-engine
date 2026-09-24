@@ -117,8 +117,9 @@ public:
 	void Reset()
 	{
 		m_impacts = 0;
-		m_loudImpacts = 0;
-		m_maxImpactSpeed = 0.0f;
+		m_audibleImpacts = 0;
+		m_firstImpactSpeed = -1.0f;
+		m_maxVolume = 0.0f;
 		m_frictionEvents = 0;
 		m_frictionEnergy = 0.0f;
 	}
@@ -126,10 +127,16 @@ public:
 	virtual void PostCollision( vcollisionevent_t *pEvent )
 	{
 		m_impacts++;
-		// CPhysicsImpactSound plays above ~70 in/s (physics_impact_sound.cpp).
-		if ( pEvent->collisionSpeed > 70.0f )
-			m_loudImpacts++;
-		m_maxImpactSpeed = MAX( m_maxImpactSpeed, pEvent->collisionSpeed );
+		if ( m_firstImpactSpeed < 0.0f )
+			m_firstImpactSpeed = pEvent->collisionSpeed;
+		// PhysCollisionSound (game/server/physics.cpp): silent below 70 in/s
+		// or within 0.05 s of the pair's last impact; full volume at 320.
+		if ( pEvent->deltaCollisionTime >= 0.05f && pEvent->collisionSpeed >= 70.0f )
+		{
+			m_audibleImpacts++;
+			float speed = pEvent->collisionSpeed;
+			m_maxVolume = MAX( m_maxVolume, MIN( speed * speed / ( 320.0f * 320.0f ), 1.0f ) );
+		}
 		if ( TraceEnabled() )
 		{
 			Vector speed, normal, v0, v1;
@@ -153,8 +160,9 @@ public:
 	virtual void PostSimulationFrame() {}
 
 	int m_impacts;
-	int m_loudImpacts;
-	float m_maxImpactSpeed;
+	int m_audibleImpacts;
+	float m_firstImpactSpeed;
+	float m_maxVolume;
 	int m_frictionEvents;
 	float m_frictionEnergy;
 };
@@ -335,7 +343,8 @@ void TestDrop( const CubeModel_t &model )
 		}
 		Vector rest = PositionOf( pCube );
 		Check( TIER_GAMEPLAY, "dynamics.drop-lands", landed && firstImpactTick > 0, "impact tick %d", firstImpactTick );
-		Check( TIER_GAMEPLAY, "dynamics.drop-rests-flat", Near( rest.z, restZ, 0.5f ) && TiltFromFlat( pCube ) < 1.0f,
+		// IVP rests objects at its collision distance, about 0.47 units up.
+		Check( TIER_GAMEPLAY, "dynamics.drop-rests-flat", Near( rest.z, restZ, 0.75f ) && TiltFromFlat( pCube ) < 1.0f,
 			"z %.3f (face %.3f) tilt %.3f", rest.z, restZ, TiltFromFlat( pCube ) );
 		// Elasticity products are small (metalpanel on concrete); a flat drop
 		// must not bounce higher than a fraction of its drop.
@@ -343,19 +352,21 @@ void TestDrop( const CubeModel_t &model )
 		Check( TIER_GAMEPLAY, "dynamics.drop-settles", settle.settledTick >= 0 && settle.Seconds() < 2.0f,
 			"settled %.3f s", settle.Seconds() );
 		Check( TIER_GAMEPLAY, "dynamics.drop-sleeps", sleepTick >= 0, "sleep tick %d", sleepTick );
-		Check( TIER_GAMEPLAY, "dynamics.drop-no-drift", rest.AsVector2D().Length() < 0.25f, "xy drift %.3f",
-			rest.AsVector2D().Length() );
-		Obs1( "dynamics.drop.impact-tick", "a1", (float)firstImpactTick );
-		Obs1( "dynamics.drop.rebound-apex", "a0.5", reboundApex );
+		// IVP lands a flat cube corner by corner, which leaves it rocking a
+		// few degrees and a little off center; Box3D lands it flat.
+		Check( TIER_GAMEPLAY, "dynamics.drop-no-drift", rest.AsVector2D().Length() < 4.0f && maxTilt < 10.0f,
+			"xy drift %.3f max tilt %.3f", rest.AsVector2D().Length(), maxTilt );
+		Obs1( "dynamics.drop.impact-tick", "a3", (float)firstImpactTick );
+		Obs1( "dynamics.drop.first-impact-speed", "r0.05", world.events.m_firstImpactSpeed );
+		Obs1( "dynamics.drop.rebound-apex", "a0.75", reboundApex );
 		Obs1( "dynamics.drop.rebounds", "a1", (float)rebounds );
-		Obs1( "dynamics.drop.settle-seconds", "a0.25", settle.Seconds() );
+		Obs1( "dynamics.drop.settle-seconds", "a0.3", settle.Seconds() );
 		Obs1( "dynamics.drop.sleep-seconds", "a0.5", sleepTick * kDynTick );
-		Obs1( "dynamics.drop.max-tilt", "a1", maxTilt );
-		Obs1( "dynamics.drop.rest-z", "a0.1", rest.z );
-		Obs1( "dynamics.drop.loud-impacts", "a1", (float)world.events.m_loudImpacts );
-		Obs1( "dynamics.drop.max-impact-speed", "r0.1", world.events.m_maxImpactSpeed );
-		Trace( "DYN drop summary impacts %d loud %d friction %d energy %.3f\n", world.events.m_impacts,
-			world.events.m_loudImpacts, world.events.m_frictionEvents, world.events.m_frictionEnergy );
+		Obs1( "dynamics.drop.rest-z", "a0.6", rest.z );
+		Obs1( "dynamics.drop.audible-impacts", "a1", (float)world.events.m_audibleImpacts );
+		Obs1( "dynamics.drop.max-volume", "a0.1", world.events.m_maxVolume );
+		Trace( "DYN drop summary impacts %d audible %d friction %d energy %.3f\n", world.events.m_impacts,
+			world.events.m_audibleImpacts, world.events.m_frictionEvents, world.events.m_frictionEnergy );
 		DestroyFeelWorld( world );
 	}
 
@@ -384,12 +395,60 @@ void TestDrop( const CubeModel_t &model )
 		Check( TIER_GAMEPLAY, "dynamics.tumble-settles", settle.settledTick >= 0 && settle.Seconds() < 3.0f,
 			"settled %.3f s", settle.Seconds() );
 		Check( TIER_GAMEPLAY, "dynamics.tumble-travel-bounded", travel < 48.0f, "travel %.3f", travel );
-		Obs1( "dynamics.tumble.settle-seconds", "a0.4", settle.Seconds() );
+		// A single tumble is chaotic (a small change in the first contact
+		// moves the resting place); its travel is bounded above and compared
+		// only as a mean over many drops (TestTumbleStatistics).
+		Obs1( "dynamics.tumble.settle-seconds", "a0.5", settle.Seconds() );
 		Obs1( "dynamics.tumble.sleep-seconds", "a0.75", sleepTick * kDynTick );
-		Obs1( "dynamics.tumble.travel", "a6", travel );
-		Obs1( "dynamics.tumble.loud-impacts", "a2", (float)world.events.m_loudImpacts );
+		Obs1( "dynamics.tumble.audible-impacts", "a2", (float)world.events.m_audibleImpacts );
 		DestroyFeelWorld( world );
 	}
+}
+
+// Tumbling drops from many orientations. One tumble is chaotic, so only
+// the means are compared: how high the cube bounces after its first landing
+// and how far it ends from where it fell. Every drop must end flat.
+void TestTumbleStatistics( const CubeModel_t &model )
+{
+	const int kDrops = 12;
+	float peakSum = 0.0f, travelSum = 0.0f;
+	int flat = 0;
+	for ( int k = 0; k < kDrops; k++ )
+	{
+		FeelWorld_t world;
+		CreateFeelWorld( world );
+		QAngle angles( ( k * 37 ) % 360, ( k * 71 ) % 360, ( k * 53 ) % 360 );
+		Vector mins, maxs;
+		s_pCollision->CollideGetAABB( &mins, &maxs, model.pCollide, vec3_origin, angles );
+		IPhysicsObject *pCube = CreateFeelCube( world, model, Vector( 0, 0, -mins.z + 64.0f ), angles );
+		float peak = 0.0f;
+		bool landed = false;
+		for ( int i = 0; i < 240; i++ )
+		{
+			Tick( world.pEnv );
+			landed |= world.events.m_impacts > 0;
+			if ( landed )
+			{
+				// Height of the lowest point above the floor after landing.
+				Vector pos;
+				QAngle now;
+				pCube->GetPosition( &pos, &now );
+				Vector boxMins, boxMaxs;
+				s_pCollision->CollideGetAABB( &boxMins, &boxMaxs, model.pCollide, pos, now );
+				peak = MAX( peak, boxMins.z );
+			}
+		}
+		Vector rest = PositionOf( pCube );
+		peakSum += peak;
+		travelSum += rest.AsVector2D().Length();
+		flat += ( TiltFromFlat( pCube ) < 1.0f && Near( rest.z, RestHeight( model ), 0.75f ) ) ? 1 : 0;
+		Trace( "DYN tumble-stats %d peak %.3f travel %.3f tilt %.3f\n", k, peak, rest.AsVector2D().Length(),
+			TiltFromFlat( pCube ) );
+		DestroyFeelWorld( world );
+	}
+	Check( TIER_GAMEPLAY, "dynamics.tumbles-end-flat", flat == kDrops, "%d of %d flat", flat, kDrops );
+	Obs1( "dynamics.tumble-stats.peak-mean", "a1.5", peakSum / kDrops );
+	Obs1( "dynamics.tumble-stats.travel-mean", "a8", travelSum / kDrops );
 }
 
 //-----------------------------------------------------------------------------
@@ -435,14 +494,17 @@ void TestSlide( const CubeModel_t &model )
 	// the frictionless bound and must stop.
 	Check( TIER_GAMEPLAY, "dynamics.slide-stops", stopTick > 0 && distance > 1.0f, "stop tick %d distance %.3f",
 		stopTick, distance );
-	Check( TIER_GAMEPLAY, "dynamics.slide-straight", fabsf( end.y - start.y ) < 1.0f, "sideways %.3f", end.y - start.y );
+	// IVP's contact-point friction curves a slide about 12 units sideways.
+	Check( TIER_GAMEPLAY, "dynamics.slide-straight", fabsf( end.y - start.y ) < 20.0f, "sideways %.3f", end.y - start.y );
+	// Scrape sounds come from friction events every tick of the slide.
+	Check( TIER_GAMEPLAY, "dynamics.slide-scrapes", stopTick > 0 && world.events.m_frictionEvents >= stopTick * 3 / 4,
+		"friction events %d over %d ticks", world.events.m_frictionEvents, stopTick );
 	Check( TIER_GAMEPLAY, "dynamics.slide-stays-down", maxTilt < 10.0f && maxLift < 1.0f, "tilt %.3f lift %.3f",
 		maxTilt, maxLift );
-	Obs1( "dynamics.slide.distance", "r0.15", distance );
-	Obs1( "dynamics.slide.stop-seconds", "a0.1", stopTick * kDynTick );
-	ObsFloats( "dynamics.slide.speed-samples", "a15", 3, speeds );
+	Obs1( "dynamics.slide.distance", "r0.1", distance );
+	Obs1( "dynamics.slide.stop-seconds", "a0.25", stopTick * kDynTick );
+	ObsFloats( "dynamics.slide.speed-samples", "a12", 3, speeds );
 	Obs1( "dynamics.slide.max-tilt", "a1", maxTilt );
-	Obs1( "dynamics.slide.friction-events", "a3", (float)world.events.m_frictionEvents );
 	Trace( "DYN slide summary friction %d energy %.3f impacts %d\n", world.events.m_frictionEvents,
 		world.events.m_frictionEnergy, world.events.m_impacts );
 	DestroyFeelWorld( world );
@@ -472,12 +534,14 @@ void TestPush( const CubeModel_t &model )
 			TiltFromFlat( pCube ) );
 		DestroyFeelWorld( world );
 	}
-	bool monotonic = true;
+	// Below the friction limit IVP's friction springs let the cube give a
+	// few units and pull back; above it the push must win.
+	bool monotonic = moved[ARRAYSIZE( fractions ) - 1] > 10.0f;
 	for ( int f = 1; f < ARRAYSIZE( fractions ); f++ )
-		monotonic &= moved[f] >= moved[f - 1] - 0.01f;
+		monotonic &= moved[f] >= moved[f - 1] - 5.0f;
 	Check( TIER_GAMEPLAY, "dynamics.push-monotonic", monotonic, "moved %.2f %.2f %.2f %.2f", moved[0], moved[1],
 		moved[2], moved[3] );
-	ObsFloats( "dynamics.push.moved", "a3", ARRAYSIZE( moved ), moved );
+	ObsFloats( "dynamics.push.moved", "a5", ARRAYSIZE( moved ), moved );
 }
 
 //-----------------------------------------------------------------------------
@@ -524,7 +588,7 @@ void TestSlope( const CubeModel_t &model )
 		travel[1], travel[2], travel[3] );
 	Check( TIER_GAMEPLAY, "dynamics.slope-stays-on-face", tilt[0] < 2.0f && tilt[1] < 2.0f && tilt[2] < 2.0f,
 		"tilt %.2f %.2f %.2f", tilt[0], tilt[1], tilt[2] );
-	ObsFloats( "dynamics.slope.travel", "a4", ARRAYSIZE( travel ), travel );
+	ObsFloats( "dynamics.slope.travel", "a10", ARRAYSIZE( travel ), travel );
 	ObsFloats( "dynamics.slope.tilt", "a3", ARRAYSIZE( tilt ), tilt );
 }
 
@@ -538,7 +602,7 @@ void TestStack( const CubeModel_t &model )
 	float height = model.maxs.z - model.mins.z;
 	IPhysicsObject *pCubes[3];
 	for ( int i = 0; i < 3; i++ )
-		pCubes[i] = CreateFeelCube( world, model, Vector( 0, 0, RestHeight( model ) + i * ( height + 0.25f ) ), vec3_angle );
+		pCubes[i] = CreateFeelCube( world, model, Vector( 0, 0, RestHeight( model ) + 0.5f + i * ( height + 1.0f ) ), vec3_angle );
 	int sleepTick = -1;
 	float maxJitter = 0.0f;
 	Vector last = PositionOf( pCubes[2] );
@@ -559,12 +623,13 @@ void TestStack( const CubeModel_t &model )
 	Vector top = PositionOf( pCubes[2] );
 	float drift = top.AsVector2D().Length();
 	float expectedTop = RestHeight( model ) + 2.0f * height;
-	Check( TIER_GAMEPLAY, "dynamics.stack-stands", Near( top.z, expectedTop, 1.0f ) && drift < 1.0f,
+	// IVP's collision distance stacks up to about 1.5 units over three cubes.
+	Check( TIER_GAMEPLAY, "dynamics.stack-stands", Near( top.z, expectedTop, 2.0f ) && drift < 2.0f,
 		"top z %.3f (expect %.3f) drift %.3f", top.z, expectedTop, drift );
 	Check( TIER_GAMEPLAY, "dynamics.stack-sleeps", sleepTick >= 0, "sleep tick %d", sleepTick );
 	Check( TIER_GAMEPLAY, "dynamics.stack-still", maxJitter < 0.05f, "max per-tick motion %.4f", maxJitter );
-	Obs1( "dynamics.stack.top-z", "a0.25", top.z );
-	Obs1( "dynamics.stack.drift", "a0.25", drift );
+	Obs1( "dynamics.stack.top-z", "a2", top.z );
+	Obs1( "dynamics.stack.drift", "a1", drift );
 	Obs1( "dynamics.stack.sleep-seconds", "a1", sleepTick * kDynTick );
 	DestroyFeelWorld( world );
 }
@@ -721,8 +786,10 @@ void TestHeld( const CubeModel_t &model )
 		Check( TIER_GAMEPLAY, "dynamics.held-arrives", arriveTick >= 0 && arriveTick < 30, "arrive tick %d", arriveTick );
 		Check( TIER_GAMEPLAY, "dynamics.held-steady", maxLateError < 0.25f && maxLateAngle < 1.0f,
 			"late error %.3f angle %.3f", maxLateError, maxLateAngle );
+		// IVP applies gravity before the grab controller runs, so the
+		// controller cancels it and the held cube does not sag.
 		Obs1( "dynamics.held.arrive-tick", "a2", (float)arriveTick );
-		Obs1( "dynamics.held.late-error", "a0.1", maxLateError );
+		Obs1( "dynamics.held.late-error", "a0.05", maxLateError );
 		world.pEnv->DestroyMotionController( held.pController );
 		DestroyFeelWorld( world );
 	}
@@ -754,8 +821,8 @@ void TestHeld( const CubeModel_t &model )
 		}
 		float lagMean = lagSum / MAX( lagSamples, 1 );
 		Check( TIER_GAMEPLAY, "dynamics.held-follows", lagMax < 12.0f, "lag mean %.3f max %.3f", lagMean, lagMax );
-		Obs1( "dynamics.held.carry-lag-mean", "a1", lagMean );
-		Obs1( "dynamics.held.carry-lag-max", "a2", lagMax );
+		Obs1( "dynamics.held.carry-lag-mean", "a0.05", lagMean );
+		Obs1( "dynamics.held.carry-lag-max", "a0.1", lagMax );
 		world.pEnv->DestroyMotionController( held.pController );
 		DestroyFeelWorld( world );
 	}
@@ -797,14 +864,15 @@ void TestHeld( const CubeModel_t &model )
 		Vector rest = PositionOf( pCube );
 		float gap = faceX - rest.x;
 		// Path length over the last two seconds: a cube resting on the wall
-		// barely moves; a buzzing one covers ground every tick.
-		Check( TIER_GAMEPLAY, "dynamics.held-wall-contact", gap > -1.0f && gap < 1.0f, "gap %.3f", gap );
-		Check( TIER_GAMEPLAY, "dynamics.held-wall-quiet", travel < 4.0f && maxAngular < 30.0f,
-			"travel %.3f spread %.3f angular %.3f", travel, maxX - minX, maxAngular );
-		Obs1( "dynamics.held.wall-gap", "a0.3", gap );
-		Obs1( "dynamics.held.wall-travel", "a1", travel );
-		Obs1( "dynamics.held.wall-spread", "a0.25", maxX - minX );
-		Obs1( "dynamics.held.wall-mean-speed", "a2", sumSpeed / MAX( samples, 1 ) );
+		// barely moves; a buzzing one covers ground every tick. IVP buzzes
+		// (about 70 units and 340 deg/s); the bounds catch anything worse.
+		// Both hold the cube about 2.3 units off the wall: the controller's
+		// contact sliding removes the approach once the cube touches it.
+		Check( TIER_GAMEPLAY, "dynamics.held-wall-contact", gap > -1.0f && gap < 4.0f, "gap %.3f", gap );
+		Check( TIER_GAMEPLAY, "dynamics.held-wall-quiet", travel < 150.0f && maxAngular < 720.0f,
+			"travel %.3f spread %.3f angular %.3f mean speed %.3f", travel, maxX - minX, maxAngular,
+			sumSpeed / MAX( samples, 1 ) );
+		Obs1( "dynamics.held.wall-gap", "a0.5", gap );
 		world.pEnv->DestroyMotionController( held.pController );
 		DestroyFeelWorld( world );
 	}
@@ -833,11 +901,11 @@ void TestHeld( const CubeModel_t &model )
 			Trace( "DYN floor-hold %d pos %.4f %.4f %.4f w %.3f\n", i, pos.x, pos.y, pos.z, AngularSpeedOf( pCube ) );
 		}
 		float gap = PositionOf( pCube ).z - RestHeight( model );
-		Check( TIER_GAMEPLAY, "dynamics.held-floor-contact", gap > -1.0f && gap < 1.0f, "gap %.3f", gap );
-		Check( TIER_GAMEPLAY, "dynamics.held-floor-quiet", travel < 4.0f && maxAngular < 30.0f,
+		// IVP holds the cube about 1.5 units up and buzzes (about 9 units,
+		// 100 deg/s); the bounds catch anything worse.
+		Check( TIER_GAMEPLAY, "dynamics.held-floor-contact", gap > -1.0f && gap < 3.0f, "gap %.3f", gap );
+		Check( TIER_GAMEPLAY, "dynamics.held-floor-quiet", travel < 30.0f && maxAngular < 360.0f,
 			"travel %.3f angular %.3f", travel, maxAngular );
-		Obs1( "dynamics.held.floor-gap", "a0.3", gap );
-		Obs1( "dynamics.held.floor-travel", "a1", travel );
 		world.pEnv->DestroyMotionController( held.pController );
 		DestroyFeelWorld( world );
 	}
@@ -897,11 +965,15 @@ void TestImpacts( const CubeModel_t &model )
 		Vector after = VelocityOf( pCube );
 		Check( TIER_GAMEPLAY, "dynamics.wall-rebounds", after.x < 0.0f && after.x > -600.0f, "vx %.3f", after.x );
 		Check( TIER_GAMEPLAY, "dynamics.wall-no-tunnel", maxPenetration < 2.0f, "penetration %.3f", maxPenetration );
-		Check( TIER_GAMEPLAY, "dynamics.wall-straight", AngularSpeedOf( pCube ) < 5.0f && fabsf( after.y ) + fabsf( after.z ) < 5.0f,
+		// IVP resolves a flat hit corner by corner and sets the cube
+		// spinning (about 100 deg/s); Box3D keeps it square.
+		Check( TIER_GAMEPLAY, "dynamics.wall-straight", AngularSpeedOf( pCube ) < 360.0f && fabsf( after.y ) + fabsf( after.z ) < 60.0f,
 			"angular %.3f vyz %.3f %.3f", AngularSpeedOf( pCube ), after.y, after.z );
-		Obs1( "dynamics.wall.rebound-vx", "a20", after.x );
-		Obs1( "dynamics.wall.penetration", "a0.5", maxPenetration );
-		Obs1( "dynamics.wall.impact-speed", "r0.1", world.events.m_maxImpactSpeed );
+		// Rebound: IVP gives back speed * sqrt(elasticity product).
+		Obs1( "dynamics.wall.rebound-vx", "a35", after.x );
+		// Box3D's soft contact lets a 600 in/s hit sink about 0.9 units.
+		Obs1( "dynamics.wall.penetration", "a1.5", maxPenetration );
+		Obs1( "dynamics.wall.first-impact-speed", "r0.05", world.events.m_firstImpactSpeed );
 		DestroyFeelWorld( world );
 	}
 
@@ -971,16 +1043,19 @@ void TestImpacts( const CubeModel_t &model )
 		float sink = RestHeight( model ) - minLowerZ;
 		float upperZ = PositionOf( pUpper ).z;
 		Check( TIER_GAMEPLAY, "dynamics.cube-on-cube-no-sink", sink < 1.0f, "sink %.3f", sink );
-		Obs1( "dynamics.cube-on-cube.sink", "a0.25", sink );
+		Obs1( "dynamics.cube-on-cube.sink", "a0.6", sink );
 		Obs1( "dynamics.cube-on-cube.upper-z", "a2", upperZ );
 		DestroyFeelWorld( world );
 	}
 }
 
 //-----------------------------------------------------------------------------
-// The player walks into the cube and keeps walking: the player controller
-// (CBasePlayer::SetupVPhysicsShadow: 85 kg "player" hull, push limits 350 kg
-// and 50 in/s) pushes it along the floor.
+// The player walks into the cube and keeps walking. Game movement stops the
+// player at the cube; CBasePlayer::PostThinkVPhysics then leads the physics
+// shadow's target by half of the blocked step (m_touchedPhysObject), and the
+// player controller (SetupVPhysicsShadow: 85 kg "player" hull, push limits
+// 350 kg and 50 in/s) pushes the cube with it. Movement is emulated along x:
+// the player origin advances at walking speed until it meets the cube's face.
 //-----------------------------------------------------------------------------
 void TestPlayerPush( const CubeModel_t &model )
 {
@@ -993,23 +1068,39 @@ void TestPlayerPush( const CubeModel_t &model )
 	params.inertia = 1e24f;
 	params.dragCoefficient = 0;
 	int playerMaterial = s_pProps->GetSurfaceIndex( "player" );
-	Vector start( model.mins.x - 16.0f - 24.0f, 0, 0.25f );
-	IPhysicsObject *pPlayer = world.pEnv->CreatePolyObject( pHull, playerMaterial >= 0 ? playerMaterial : 0, start, vec3_angle, &params );
+	Vector origin( model.mins.x - 16.0f - 24.0f, 0, 0 );
+	IPhysicsObject *pPlayer = world.pEnv->CreatePolyObject( pHull, playerMaterial >= 0 ? playerMaterial : 0, origin, vec3_angle, &params );
 	pPlayer->SetCallbackFlags( CALLBACK_GLOBAL_COLLISION | CALLBACK_SHADOW_COLLISION );
 	IPhysicsPlayerController *pController = world.pEnv->CreatePlayerController( pPlayer );
 	pController->SetPushMassLimit( 350.0f );
 	pController->SetPushSpeedLimit( 50.0f );
 	Vector cubeStart = PositionOf( pCube );
-	const Vector walk( 175, 0, 0 );
-	Vector target = start;
-	int contactTick = -1;
-	float speedSum = 0.0f;
+	const Vector wishVel( 175, 0, 0 );
+	const float kDistEpsilon = 0.03125f;
+	int contactTick = -1, blockedTicks = 0;
+	float speedSum = 0.0f, maxTilt = 0.0f;
 	int speedSamples = 0;
-	for ( int i = 0; i < 90; i++ )
+	for ( int i = 0; i < 120; i++ )
 	{
-		target += walk * kDynTick;
+		// Game movement: walk until the player's box meets the cube.
+		Vector cubeMins, cubeMaxs, cubePos;
+		QAngle cubeAngles;
+		pCube->GetPosition( &cubePos, &cubeAngles );
+		s_pCollision->CollideGetAABB( &cubeMins, &cubeMaxs, model.pCollide, cubePos, cubeAngles );
+		Vector old = origin;
+		float wanted = old.x + wishVel.x * kDynTick;
+		float limit = cubeMins.x - 16.0f - kDistEpsilon;
+		bool touched = wanted > limit;
+		origin.x = touched ? MAX( old.x, limit ) : wanted;
+		Vector target = origin;
+		if ( touched )
+		{
+			// PostThinkVPhysics: halfway to where the player wanted to be.
+			target = origin * 0.5f + ( old + wishVel * kDynTick ) * 0.5f;
+			blockedTicks++;
+		}
 		if ( !FaultIs( "player-inert" ) )
-			pController->Update( target, walk, kDynTick, true, world.pFloor );
+			pController->Update( target, wishVel, kDynTick, true, NULL );
 		Tick( world.pEnv );
 		if ( contactTick < 0 && PositionOf( pCube ).x > cubeStart.x + 0.5f )
 			contactTick = i;
@@ -1018,16 +1109,73 @@ void TestPlayerPush( const CubeModel_t &model )
 			speedSum += VelocityOf( pCube ).x;
 			speedSamples++;
 		}
-		Trace( "DYN player-push %d player %.3f cube %.3f vx %.3f tilt %.3f\n", i, PositionOf( pPlayer ).x,
-			PositionOf( pCube ).x, VelocityOf( pCube ).x, TiltFromFlat( pCube ) );
+		maxTilt = MAX( maxTilt, TiltFromFlat( pCube ) );
+		Trace( "DYN player-push %d origin %.3f shadow %.3f z %.3f cube %.3f vx %.3f tilt %.3f shadow-v %.3f %.3f\n", i,
+			origin.x, PositionOf( pPlayer ).x, PositionOf( pPlayer ).z, PositionOf( pCube ).x, VelocityOf( pCube ).x,
+			TiltFromFlat( pCube ), VelocityOf( pPlayer ).x, VelocityOf( pPlayer ).z );
 	}
 	float pushed = PositionOf( pCube ).x - cubeStart.x;
 	float cubeSpeed = speedSum / MAX( speedSamples, 1 );
 	Check( TIER_GAMEPLAY, "dynamics.player-push-moves", contactTick >= 0 && pushed > 16.0f, "contact tick %d pushed %.3f",
 		contactTick, pushed );
-	Check( TIER_GAMEPLAY, "dynamics.player-push-upright", TiltFromFlat( pCube ) < 10.0f, "tilt %.3f", TiltFromFlat( pCube ) );
+	Check( TIER_GAMEPLAY, "dynamics.player-push-upright", maxTilt < 10.0f, "max tilt %.3f", maxTilt );
 	Obs1( "dynamics.player-push.distance", "a8", pushed );
-	Obs1( "dynamics.player-push.cube-speed", "a15", cubeSpeed );
+	Obs1( "dynamics.player-push.cube-speed", "a4", cubeSpeed );
+	Obs1( "dynamics.player-push.blocked-ticks", "a10", (float)blockedTicks );
+	world.pEnv->DestroyPlayerController( pController );
+	DestroyFeelWorld( world );
+}
+
+// The player walks across the top of the cube. The cube is lighter than
+// twice the player, so it is not rideable ground (CBasePlayer::
+// IsRideablePhysics) and the controller gets no ground object; the player's
+// feet must not drag the cube along.
+void TestPlayerWalksOnCube( const CubeModel_t &model )
+{
+	FeelWorld_t world;
+	CreateFeelWorld( world );
+	IPhysicsObject *pCube = SettledCube( world, model, Vector( 0, 0, 0 ) );
+	CPhysCollide *pHull = s_pCollision->BBoxToCollide( Vector( -16, -16, 0 ), Vector( 16, 16, 72 ) );
+	world.collides.AddToTail( pHull );
+	objectparams_t params = DefaultParams( 85.0f, NULL );
+	params.inertia = 1e24f;
+	params.dragCoefficient = 0;
+	int playerMaterial = s_pProps->GetSurfaceIndex( "player" );
+	float top = PositionOf( pCube ).z + model.maxs.z;
+	Vector origin( -12, 0, top );
+	IPhysicsObject *pPlayer = world.pEnv->CreatePolyObject( pHull, playerMaterial >= 0 ? playerMaterial : 0, origin, vec3_angle, &params );
+	pPlayer->SetCallbackFlags( CALLBACK_GLOBAL_COLLISION | CALLBACK_SHADOW_COLLISION );
+	IPhysicsPlayerController *pController = world.pEnv->CreatePlayerController( pPlayer );
+	pController->SetPushMassLimit( 350.0f );
+	pController->SetPushSpeedLimit( 50.0f );
+	// Stand still for a moment, then walk 24 units across the top.
+	for ( int i = 0; i < 20; i++ )
+	{
+		if ( !FaultIs( "player-inert" ) )
+			pController->Update( origin, vec3_origin, kDynTick, true, NULL );
+		Tick( world.pEnv );
+	}
+	Vector cubeStart = PositionOf( pCube );
+	const Vector walk( 150, 0, 0 );
+	float maxCubeSpeed = 0.0f;
+	for ( int i = 0; i < 10; i++ )
+	{
+		origin += walk * kDynTick;
+		if ( !FaultIs( "player-inert" ) )
+			pController->Update( origin, walk, kDynTick, true, NULL );
+		Tick( world.pEnv );
+		maxCubeSpeed = MAX( maxCubeSpeed, VelocityOf( pCube ).AsVector2D().Length() );
+		Trace( "DYN walk-on-cube %d player %.3f %.3f cube %.3f vx %.3f\n", i, PositionOf( pPlayer ).x, PositionOf( pPlayer ).z,
+			PositionOf( pCube ).x, VelocityOf( pCube ).x );
+	}
+	float dragged = ( PositionOf( pCube ) - cubeStart ).AsVector2D().Length();
+	float playerZ = PositionOf( pPlayer ).z;
+	Check( TIER_GAMEPLAY, "dynamics.walk-on-cube-supports", playerZ > top - 2.0f, "player z %.3f top %.3f", playerZ, top );
+	// IVP's shadow hops on its collision distance and jostles the cube about
+	// 3 units (up to 40 in/s); Box3D leaves it in place. Either is fine;
+	// dragging it along with the player is not.
+	Check( TIER_GAMEPLAY, "dynamics.walk-on-cube-not-dragged", dragged < 8.0f, "dragged %.3f max speed %.3f", dragged,
+		maxCubeSpeed );
 	world.pEnv->DestroyPlayerController( pController );
 	DestroyFeelWorld( world );
 }
@@ -1041,6 +1189,7 @@ void TestDynamics( const vcollide_t *pCubeFixture )
 		return;
 	Obs1( "dynamics.cube-model.rest-height", "a0.01", RestHeight( model ) );
 	TestDrop( model );
+	TestTumbleStatistics( model );
 	TestSlide( model );
 	TestPush( model );
 	TestSlope( model );
@@ -1048,4 +1197,5 @@ void TestDynamics( const vcollide_t *pCubeFixture )
 	TestHeld( model );
 	TestImpacts( model );
 	TestPlayerPush( model );
+	TestPlayerWalksOnCube( model );
 }

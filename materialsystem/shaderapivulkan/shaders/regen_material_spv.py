@@ -25,6 +25,8 @@ SHADERS = (
     ("g_worldPbrClipVertSpv", "world_pbr.vert", ["-DCLIP_PLANES"]),
     ("g_worldPbrFragSpv", "world_pbr.frag", []),
     ("g_worldPbrClipFragSpv", "world_pbr.frag", ["-DCLIP_PLANES"]),
+    ("g_worldGlassFragSpv", "world_pbr_glass.frag", []),
+    ("g_worldGlassClipFragSpv", "world_pbr_glass.frag", ["-DCLIP_PLANES"]),
     ("g_materialTexFragSpv", "demo_dyn_tex.frag", []),
     ("g_portalRefractVertSpv", "portal_refract.vert", []),
     ("g_portalRefractFragSpv", "portal_refract.frag", []),
@@ -45,8 +47,8 @@ HEADER = """//========= Copyright Valve Corporation, All rights reserved. ======
 //          portal_refract_vs20.fxc / portal_refract_ps2x.fxc) and VertexLitGeneric's
 //          $phong path (skin_vs20.fxc / skin_ps20b.fxc), SolidEnergy
 //          (solidenergy_vs20.fxc / solidenergy_ps20b.fxc), and the RFC 0007
-//          synthetic PBR direct-light pixel stage, and the present-time
-//          monitor gamma pass. GENERATED
+//          synthetic PBR direct-light pixel stage, the WMSH PBR and glass
+//          stages, and the present-time monitor gamma pass. GENERATED
 //          by shaders/regen_material_spv.py from the GLSL in shaders/; do not edit.
 //
 //===========================================================================//
