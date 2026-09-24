@@ -185,7 +185,7 @@ void C_PropTractorBeamProjector::CreateEffect( void )
 	{
 		if ( m_hEmitterEffect[i] )
 		{
-			ParticleProp()->StopEmission( m_hEmitterEffect[i], false, false, false, true );
+			ParticleProp()->StopEmission( m_hEmitterEffect[i], false, false );
 			m_hEmitterEffect[i] = NULL;
 		}
 
@@ -198,7 +198,9 @@ void C_PropTractorBeamProjector::CreateEffect( void )
 			Vector color = ( m_flLinearForce < 0.0f ) ? Vector( 255, 160, 32 ) : Vector( 64, 160, 255 );
 			m_hEmitterEffect[i]->SetControlPoint( 1, color );
 
-			Vector vVelocity = Forward() * m_flLinearForce;
+			Vector vForward;
+			AngleVectors( GetAbsAngles(), &vForward );
+			Vector vVelocity = vForward * m_flLinearForce;
 			m_hEmitterEffect[i]->SetControlPoint( 2, vVelocity );
 		}
 	}
@@ -218,7 +220,9 @@ void C_PropTractorBeamProjector::UpdateEffect( void )
 			Vector color = ( m_flLinearForce < 0.0f ) ? Vector( 255, 160, 32 ) : Vector( 64, 160, 255 );
 			m_hEmitterEffect[i]->SetControlPoint( 1, color );
 
-			Vector vVelocity = Forward() * m_flLinearForce;
+			Vector vForward;
+			AngleVectors( GetAbsAngles(), &vForward );
+			Vector vVelocity = vForward * m_flLinearForce;
 			m_hEmitterEffect[i]->SetControlPoint( 2, vVelocity );
 		}
 	}
@@ -233,7 +237,7 @@ void C_PropTractorBeamProjector::StopEffect( void )
 	{
 		if ( m_hEmitterEffect[i] )
 		{
-			ParticleProp()->StopEmission( m_hEmitterEffect[i], false, false, false, true );
+			ParticleProp()->StopEmission( m_hEmitterEffect[i], false, false );
 			m_hEmitterEffect[i] = NULL;
 		}
 	}

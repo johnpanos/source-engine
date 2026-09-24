@@ -132,7 +132,34 @@
 
 class IMesh;
 class C_BaseEntity;
+class C_BasePlayer;
 struct model_t;
+
+// Portal 2's client input and interpolation extensions are absent in this SDK.
+// The target is single-player, so use the SDK interpolator unchanged.
+template <typename T>
+using CDiscontinuousInterpolatedVar = CInterpolatedVar<T>;
+
+// CS:GO player render mode; this engine always renders the player the same way.
+enum PlayerRenderMode_t
+{
+	PLAYER_RENDER_FIRSTPERSON,
+	PLAYER_RENDER_THIRDPERSON,
+};
+
+// This SDK exposes client transforms as individual setters rather than a
+// server-style Teleport virtual. Reset interpolation after the atomic update.
+void Portal2_ClientTeleport( C_BaseEntity *pEntity, const Vector *pOrigin,
+							 const QAngle *pAngles, const Vector *pVelocity );
+
+// Use-entity state is replicated by the SDK and has no writable client API.
+// These adapters preserve prediction-side pickup behavior without extending it.
+void Portal2_ClientSetUseEntity( C_BasePlayer *pPlayer, C_BaseEntity *pUseEntity );
+void Portal2_ClientForceDropOfCarriedPhysObjects( C_BasePlayer *pPlayer );
+
+#ifndef LINK_ENTITY_TO_CLASS_CLIENTONLY
+#define LINK_ENTITY_TO_CLASS_CLIENTONLY( localName, className ) LINK_ENTITY_TO_CLASS( localName, className )
+#endif
 
 //-----------------------------------------------------------------------------
 // CS:GO renderable API types (public/iclientrenderable.h in CS:GO)

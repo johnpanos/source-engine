@@ -17,6 +17,7 @@
 #include "paintable_entity.h"
 #include "portal_util_shared.h"
 #include "c_weapon_paintgun.h"
+#include "portal2_engine_compat.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -35,7 +36,7 @@ static ConVar sv_paint_alpha_coat( "sv_paint_alpha_coat", "0.4f", FCVAR_REPLICAT
 void __MsgFunc_PaintWorld( bf_read &msg )
 {
 	// the listen server already painted the shared paintmaps
-	if ( engine->IsClientLocalToActiveServer() )
+	if ( Portal2Engine::IsClientLocalToActiveServer() )
 		return;
 
 	{
@@ -111,22 +112,22 @@ void __MsgFunc_ChangePaintColor( bf_read &msg )
 void __MsgFunc_RemoveAllPaint( bf_read &msg )
 {
 	// the listen server already cleared the shared paintmaps
-	if ( engine->IsClientLocalToActiveServer() )
+	if ( Portal2Engine::IsClientLocalToActiveServer() )
 		return;
 
-	engine->RemoveAllPaint();
+	Portal2Engine::RemoveAllPaint();
 }
 
 
 void __MsgFunc_PaintAllSurfaces( bf_read &msg )
 {
 	// the listen server already painted the shared paintmaps
-	if ( engine->IsClientLocalToActiveServer() )
+	if ( Portal2Engine::IsClientLocalToActiveServer() )
 		return;
 
 	{
 		uint8 power = msg.ReadByte();
-		engine->PaintAllSurfaces( power );
+		Portal2Engine::PaintAllSurfaces( power );
 	}
 }
 
@@ -153,7 +154,7 @@ void __MsgFunc_LoadPaintmapData( bf_read &msg )
 		offset += nElements;
 	}
 
-	engine->LoadPaintmapData( data, nPaintmapID, nPaintmapOffset );
+	Portal2Engine::LoadPaintmapData( data, nPaintmapID, nPaintmapOffset );
 }
 
 
@@ -172,7 +173,7 @@ void __MsgFunc_LoadPaintmapBits( bf_read &msg )
 		paintSurfBits.SetDWord( i, (uint32)msg.ReadFloat() );
 	}
 
-	engine->LoadPaintSurfBits( paintSurfBits );
+	Portal2Engine::LoadPaintSurfBits( paintSurfBits );
 }
 
 

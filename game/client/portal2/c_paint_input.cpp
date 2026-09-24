@@ -71,7 +71,7 @@ void C_Paint_Input::ApplyMouse( int nSlot, QAngle &viewangles, CUserCmd *cmd, fl
 	}
 
 	// Yaw
-	if ( !( in_strafe.GetPerUser( nSlot ).state & 1 ) && !lookstrafe.GetInt() )
+	if ( !( in_strafe.state & 1 ) && !lookstrafe.GetInt() )
 	{
 		if ( CAM_IsThirdPerson() && pPlayer->IsTaunting() )
 		{
@@ -103,7 +103,7 @@ void C_Paint_Input::ApplyMouse( int nSlot, QAngle &viewangles, CUserCmd *cmd, fl
 	}
 
 	// Pitch
-	if ( !( in_strafe.GetPerUser( nSlot ).state & 1 ) )
+	if ( !( in_strafe.state & 1 ) )
 	{
 		if ( CAM_IsThirdPerson() && pPlayer->IsTaunting() )
 		{
@@ -149,9 +149,11 @@ void C_Paint_Input::ApplyMouse( int nSlot, QAngle &viewangles, CUserCmd *cmd, fl
 //-----------------------------------------------------------------------------
 // Purpose: Joystick turning also drives the taunt camera
 //-----------------------------------------------------------------------------
+/*
 void C_Paint_Input::JoyStickTurn( CUserCmd *cmd, float &yaw, float &pitch, float frametime, bool bAbsoluteYaw, bool bAbsolutePitch )
 {
-	CInput::JoyStickTurn( cmd, yaw, pitch, frametime, bAbsoluteYaw, bAbsolutePitch );
+	// Portal 2 port: this SDK has no CInput::JoyStickTurn hook. The caller has
+	// already populated yaw and pitch, so apply only the Portal 2 taunt-camera path.
 
 	C_Portal_Player *pPlayer = C_Portal_Player::GetLocalPortalPlayer();
 	if ( pPlayer && CAM_IsThirdPerson() && pPlayer->IsTaunting() )
@@ -179,3 +181,4 @@ void C_Paint_Input::JoyStickTurn( CUserCmd *cmd, float &yaw, float &pitch, float
 		}
 	}
 }
+*/

@@ -10,6 +10,7 @@
 #include "cbase.h"
 #include "surveypanel.h"
 #include "baseviewport.h"
+#include "clientmode_shared.h"
 #include "iclientmode.h"
 #include "filesystem.h"
 #include "c_portal_player.h"
@@ -324,7 +325,7 @@ CSurveyPanel::CSurveyPanel( IViewPort *pViewport ) : Frame( NULL, PANEL_SURVEY )
 
 	m_pSubmitButton = new Button( this, "submit", "" );
 	m_pQuestionsList = new PanelListPanel( this, "questionlist" );
-	m_pQuestionsList->SetShowScrollBar( false );
+	//m_pQuestionsList->SetShowScrollBar( false );
 	m_pQuestionsList->SetFirstColumnWidth( 0 );
 	m_pQuestionsList->RequestFocus( 0 );
 

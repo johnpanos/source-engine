@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2005, Valve Corporation, All rights reserved. ============//
+//========= Copyright ï¿½ 1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
@@ -15,6 +15,7 @@
 
 #if defined( CLIENT_DLL )
 	#define CWeaponPortalBase C_WeaponPortalBase
+	#include "portal2_engine_compat.h"
 	void UTIL_ClipPunchAngleOffset( QAngle &in, const QAngle &punch, const QAngle &clip );
 #endif
 
@@ -67,6 +68,7 @@ public:
 public:
 	#if defined( CLIENT_DLL )
 	
+		PORTAL2_DRAWMODEL_BRIDGE();
 		virtual IClientModelRenderable*	GetClientModelRenderable();
 		virtual int		DrawModel( int flags, const RenderableInstance_t &instance );
 		virtual bool	ShouldDrawCrosshair( void ) { return true; }

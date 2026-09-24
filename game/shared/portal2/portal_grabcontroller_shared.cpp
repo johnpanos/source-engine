@@ -1,4 +1,4 @@
-//===== Copyright © Valve Corporation, All rights reserved. ======//
+//===== Copyright ï¿½ Valve Corporation, All rights reserved. ======//
 //
 // Purpose: 
 //
@@ -533,7 +533,18 @@ void CGrabController::ComputeMaxSpeed( CBaseEntity *pEntity, IPhysicsObject *pPh
 	m_shadow.maxAngular = DEFAULT_MAX_ANGULAR;
 
 	// Compute total mass...
-	float flMass = PhysGetEntityMass( pEntity );
+	float flMass;
+#if defined( CLIENT_DLL )
+	IPhysicsObject *pObjects[VPHYSICS_MAX_OBJECT_LIST_COUNT];
+	const int nObjects = pEntity->VPhysicsGetObjectList( pObjects, ARRAYSIZE( pObjects ) );
+	flMass = 0.0f;
+	for ( int i = 0; i < nObjects; ++i )
+	{
+		flMass += pObjects[i]->GetMass();
+	}
+#else
+	flMass = PhysGetEntityMass( pEntity );
+#endif
 	float flMaxMass = physcannon_maxmass.GetFloat();
 	if ( flMass <= flMaxMass )
 		return;
@@ -1259,7 +1270,11 @@ void CPlayerPickupController::InitGrabController( CBasePlayer *pPlayer, CBaseEnt
 	GetGrabController().AttachEntity( pPlayer, pObject, pPhysics, false, vec3_origin, false );
 	
 	m_pPlayer->m_Local.m_iHideHUD |= HIDEHUD_WEAPONSELECTION;
+#if defined( CLIENT_DLL )
+	Portal2_ClientSetUseEntity( m_pPlayer, this );
+#else
 	m_pPlayer->SetUseEntity( this );
+#endif
 
 #if !defined ( CLIENT_DLL )
 	//pObject->DispatchUpdateTransmitState();
@@ -1298,7 +1313,11 @@ bool CPlayerPickupController::Shutdown( bool bThrown )
 
 	if ( pOwner )
 	{
+#if defined( CLIENT_DLL )
+		Portal2_ClientSetUseEntity( pOwner, NULL );
+#else
 		pOwner->SetUseEntity( NULL );
+#endif
 		if ( !pOwner->m_bSilentDropAndPickup )
 		{
 			pOwner->SetHeldObjectOnOppositeSideOfPortal( false );
@@ -2614,7 +2633,7 @@ void CGrabController::AttachEntityVM( CBasePlayer *pPlayer, CBaseEntity *pEntity
 	if( pEntity->GetPredictable() )
 #endif
 	{
-		pEntity->Teleport( &m_shadow.targetPosition, &m_shadow.targetRotation, NULL );
+		Portal2_ClientTeleport( pEntity, &m_shadow.targetPosition, &m_shadow.targetRotation, NULL );
 	}
 
 #if !defined ( CLIENT_DLL )
@@ -3196,7 +3215,7 @@ int C_PlayerHeldObjectClone::DrawModel( int flags, const RenderableInstance_t &i
 		}
 	}
 
-	return BaseClass::DrawModel( flags, instance );
+	return BaseClass::DrawModel( flags );
 }
 
 #if 0

@@ -1,4 +1,4 @@
-//========= Copyright © 1996-2005, Valve Corporation, All rights reserved. ============//
+//========= Copyright ï¿½ 1996-2005, Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
@@ -199,7 +199,7 @@ int CWeaponPortalBase::DrawModel( int flags, const RenderableInstance_t &instanc
 		bChangeModelBack = true;
 	}
 
-	int iRetVal = BaseClass::DrawModel( flags, instance );
+	int iRetVal = BaseClass::DrawModel( flags );
 
 	if( bChangeModelBack )
 		SetModelIndex( iOriginalIndex );

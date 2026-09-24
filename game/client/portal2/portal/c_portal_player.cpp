@@ -1835,7 +1835,7 @@ void C_Portal_Player::PreThink( void )
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
-bool C_Portal_Player::Simulate( void )
+void C_Portal_Player::Simulate( void )
 {
 	BaseClass::Simulate();
 
@@ -1854,7 +1854,7 @@ bool C_Portal_Player::Simulate( void )
 			int iAttachment = LookupAttachment( "anim_attachment_RH" );
 
 			if ( iAttachment < 0 )
-				return true;
+				return;
 
 			Vector vecOrigin;
 			QAngle eyeAngles = m_angEyeAngles;
@@ -1875,7 +1875,7 @@ bool C_Portal_Player::Simulate( void )
 		ManageHeldObject();
 	}
 
-	return true;
+	return;
 }
 
 ShadowType_t C_Portal_Player::ShadowCastType( void ) 
@@ -1928,7 +1928,8 @@ bool C_Portal_Player::ShouldSuppressForSplitScreenPlayer( int nSlot )
 	if ( pSplitscreenPlayer == this )
 		return false;
 
-	return BaseClass::ShouldSuppressForSplitScreenPlayer( nSlot );
+	// Portal 2 port: the SDK has one local player and no split-screen renderer.
+	return false;
 }
 
 //-----------------------------------------------------------------------------
@@ -1948,7 +1949,8 @@ PlayerRenderMode_t C_Portal_Player::GetPlayerRenderMode( int nSlot )
 		   pSplitscreenPlayer->m_Shared.InCond( PORTAL_COND_DEATH_GIB ) ) )
 		return PLAYER_RENDER_THIRDPERSON;
 
-	return BaseClass::GetPlayerRenderMode( nSlot );
+	// Portal 2 port: the SDK has no split-screen render-mode API.
+	return PLAYER_RENDER_THIRDPERSON;
 }
 
 

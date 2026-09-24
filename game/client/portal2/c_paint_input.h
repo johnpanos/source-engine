@@ -29,7 +29,7 @@ public:
 
 protected:
 	virtual void ApplyMouse( int nSlot, QAngle &viewangles, CUserCmd *cmd, float mouse_x, float mouse_y );
-	virtual void JoyStickTurn( CUserCmd *cmd, float &yaw, float &pitch, float frametime, bool bAbsoluteYaw, bool bAbsolutePitch );
+	// virtual void JoyStickTurn( CUserCmd *cmd, float &yaw, float &pitch, float frametime, bool bAbsoluteYaw, bool bAbsolutePitch );
 };
 
 #endif // C_PAINT_INPUT_H

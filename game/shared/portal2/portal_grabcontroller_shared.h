@@ -14,6 +14,7 @@
 #if defined ( CLIENT_DLL )
 #include "c_baseanimating.h"
 #include "player_pickup.h"
+#include "portal2_engine_compat.h"
 #endif
 
 //#define DEBUG_SHADOW_CONTROLLER
@@ -219,6 +220,7 @@ public:
 	bool InitClone( C_BaseEntity *pObject, C_BasePlayer *pPlayer, bool bIsViewModel = true, C_PlayerHeldObjectClone *pVMToFollow = NULL );
 	void ClientThink( void );
 	
+	PORTAL2_DRAWMODEL_BRIDGE();
 	virtual bool OnInternalDrawModel( ClientModelRenderInfo_t *pInfo );
 	virtual int DrawModel( int flags, const RenderableInstance_t &instance );
 

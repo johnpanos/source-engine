@@ -37,7 +37,8 @@ public:
 	virtual void	WeaponIdle();
 	virtual void	ClientThink();
 
-	virtual bool	Simulate();
+	// Portal 2 port: the SDK always simulates client entities.
+	virtual void	Simulate();
 	virtual void	OnPreDataChanged( DataUpdateType_t type );
 	virtual void	OnDataChanged( DataUpdateType_t updateType );
 	virtual bool	Deploy();

@@ -48,6 +48,8 @@ public:
 };
 
 class CMoveData;
+class C_Trigger_TractorBeam;
+typedef C_Trigger_TractorBeam CTrigger_TractorBeam;
 
 //=============================================================================
 // >> Portal_Player
@@ -76,12 +78,12 @@ public:
 
 	static inline C_Portal_Player* GetLocalPortalPlayer( int nSlot = -1 )
 	{
-		return static_cast< C_Portal_Player* >( C_BasePlayer::GetLocalPlayer( nSlot ) );
+		return static_cast< C_Portal_Player* >( C_BasePlayer::GetLocalPlayer() );
 	}
 
 	static inline C_Portal_Player* GetLocalPlayer( int nSlot = -1 )
 	{
-		return static_cast< C_Portal_Player* >( C_BasePlayer::GetLocalPlayer( nSlot ) );
+		return static_cast< C_Portal_Player* >( C_BasePlayer::GetLocalPlayer() );
 	}
 
 	virtual Vector GetThirdPersonViewPosition( void );
@@ -97,7 +99,8 @@ public:
 	bool ShouldSkipRenderingViewpointPlayerForThisView( void );
 	virtual const char *GetPlayerModelName( void );
 	virtual int DrawModel( int flags, const RenderableInstance_t &instance );
-	virtual bool Simulate( void );
+	// Portal 2 port: this SDK always simulates entities and exposes void Simulate().
+	virtual void Simulate( void );
 	virtual IClientModelRenderable	*GetClientModelRenderable();
 
 	QAngle GetAnimEyeAngles( void ) { return m_angEyeAngles; }

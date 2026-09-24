@@ -133,7 +133,8 @@ void C_WeaponPaintGun::ClientThink()
 	}
 
 	// The local player sees the predicted color, everyone else the networked one
-	Color color = C_BasePlayer::IsLocalPlayer( GetOwner() ) ? MapPowerToColor( m_iSubType ) : MapPowerToColor( m_nCurrentColor );
+	C_BasePlayer *pOwner = ToBasePlayer( GetOwner() );
+	Color color = pOwner && pOwner->IsLocalPlayer() ? MapPowerToColor( m_iSubType ) : MapPowerToColor( m_nCurrentColor );
 	if( MapColorToPower( color ) == NO_POWER || !HasAnyPaintPower() )
 	{
 		color = Color( 255, 255, 255 );
@@ -145,17 +146,12 @@ void C_WeaponPaintGun::ClientThink()
 }
 
 
-bool C_WeaponPaintGun::Simulate()
+void C_WeaponPaintGun::Simulate()
 {
-	bool result = true;
-
 	if( IsEffectActive( EF_NODRAW ) )
 	{
 		StopHoseEffect();
-		result = false;
 	}
-
-	return result;
 }
 
 
@@ -222,7 +218,7 @@ void C_WeaponPaintGun::ChangeRenderColor( bool bForce )
 	C_BasePlayer *pPlayer = ToBasePlayer( GetOwner() );
 	Color color;
 
-	color = C_BasePlayer::IsLocalPlayer( pPlayer ) ? MapPowerToColor( m_iSubType ) : MapPowerToColor( m_nCurrentColor );
+	color = pPlayer && pPlayer->IsLocalPlayer() ? MapPowerToColor( m_iSubType ) : MapPowerToColor( m_nCurrentColor );
 
 	if( !HasAnyPaintPower() && !bForce )
 	{
@@ -252,7 +248,7 @@ void C_WeaponPaintGun::StartHoseEffect()
 	Color paintColor;
 
 	C_BasePlayer *pOwner = ToBasePlayer( GetOwner() );
-	if( C_BasePlayer::IsLocalPlayer( pOwner ) )
+	if( pOwner && pOwner->IsLocalPlayer() )
 	{
 		ACTIVE_SPLITSCREEN_PLAYER_GUARD_ENT( pOwner );
 
@@ -283,7 +279,7 @@ void C_WeaponPaintGun::StopHoseEffect()
 	if( m_pStreamEffect )
 	{
 		C_BasePlayer *pOwner = ToBasePlayer( GetOwner() );
-		if( C_BasePlayer::IsLocalPlayer( pOwner ) )
+		if( pOwner && pOwner->IsLocalPlayer() )
 		{
 			ACTIVE_SPLITSCREEN_PLAYER_GUARD_ENT( pOwner );
 
@@ -306,7 +302,7 @@ C_BaseViewModel *C_WeaponPaintGun::GetEffectViewModel()
 {
 	C_BaseViewModel *pViewModel = NULL;
 	C_BasePlayer *pOwner = ToBasePlayer( GetOwner() );
-	if( C_BasePlayer::IsLocalPlayer( pOwner ) )
+	if( pOwner && pOwner->IsLocalPlayer() )
 	{
 		ACTIVE_SPLITSCREEN_PLAYER_GUARD_ENT( pOwner );
 		pViewModel = pOwner->GetViewModel();
@@ -457,7 +453,8 @@ void C_WeaponPaintGun::CyclePaintPower( bool bForward )
 	const int nPowerCount = ARRAYSIZE( paintPowersInGunOrder );
 
 	int nCurrentPowerIndex = -1;
-	int nCurrentColor = C_BasePlayer::IsLocalPlayer( GetOwner() ) ? m_iSubType : m_nCurrentColor;
+	C_BasePlayer *pOwner = ToBasePlayer( GetOwner() );
+	int nCurrentColor = pOwner && pOwner->IsLocalPlayer() ? m_iSubType : m_nCurrentColor;
 
 	for( int i = 0; i < nPowerCount; ++i )
 	{

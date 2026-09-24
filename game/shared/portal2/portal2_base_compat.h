@@ -21,6 +21,14 @@
 
 #include "tier0/platform.h"
 
+#ifndef TEMPLATE_STATIC
+#define TEMPLATE_STATIC
+#endif
+
+#ifndef INVALID_EHANDLE
+#define INVALID_EHANDLE EHANDLE()
+#endif
+
 //-----------------------------------------------------------------------------
 // Platform predicates. This fork builds no console targets.
 //-----------------------------------------------------------------------------
@@ -76,8 +84,38 @@
 // Server and shared additions (wave cohort S)
 //-----------------------------------------------------------------------------
 
+class CMemZeroOnNew
+{
+public:
+	void *operator new( size_t stAllocateBlock )
+	{
+		void *pMem = malloc( stAllocateBlock );
+		memset( pMem, 0, stAllocateBlock );
+		return pMem;
+	}
+	void operator delete( void *pMem )
+	{
+		free( pMem );
+	}
+};
+
 //-----------------------------------------------------------------------------
 // Client additions (wave cohort C)
 //-----------------------------------------------------------------------------
+
+// Portal 2 survey panel identifier.
+#define PANEL_SURVEY "survey"
+#define PANEL_RADIAL_MENU "radial_menu"
+
+#ifdef CLIENT_DLL
+#include <time.h>
+
+inline void Plat_GetLocalTime( struct tm *t )
+{
+	time_t ltime;
+	time( &ltime );
+	Plat_localtime( &ltime, t );
+}
+#endif // CLIENT_DLL
 
 #endif // PORTAL2_BASE_COMPAT_H

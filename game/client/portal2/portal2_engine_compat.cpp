@@ -8,6 +8,7 @@
 
 #include "cbase.h"
 #include "portal2_engine_compat.h"
+#include "portal/c_portal_player.h"
 #include "prediction.h"
 #include "inetchannelinfo.h"
 #include "inputsystem/iinputsystem.h"
@@ -33,6 +34,37 @@ extern bool IsInCommentaryMode( void );
 			DevWarning( "Portal 2: " feature " is not supported by this engine\n" ); \
 		} \
 	} while ( 0 )
+
+void Portal2_ClientTeleport( C_BaseEntity *pEntity, const Vector *pOrigin,
+							 const QAngle *pAngles, const Vector *pVelocity )
+{
+	if ( !pEntity )
+		return;
+
+	if ( pOrigin )
+		pEntity->SetAbsOrigin( *pOrigin );
+	if ( pAngles )
+		pEntity->SetAbsAngles( *pAngles );
+	if ( pVelocity )
+		pEntity->SetAbsVelocity( *pVelocity );
+	pEntity->ResetLatched();
+}
+
+void Portal2_ClientSetUseEntity( C_BasePlayer *pPlayer, C_BaseEntity *pUseEntity )
+{
+	UNREFERENCED_PARAMETER( pPlayer );
+	UNREFERENCED_PARAMETER( pUseEntity );
+	PORTAL2_UNSUPPORTED( "client-side SetUseEntity" );
+}
+
+void Portal2_ClientForceDropOfCarriedPhysObjects( C_BasePlayer *pPlayer )
+{
+	C_Portal_Player *pPortalPlayer = dynamic_cast< C_Portal_Player * >( pPlayer );
+	if ( pPortalPlayer )
+	{
+		pPortalPlayer->ForceDropOfCarriedPhysObjects( NULL );
+	}
+}
 
 //-----------------------------------------------------------------------------
 // Stencil state
