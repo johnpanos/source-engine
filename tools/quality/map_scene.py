@@ -26,7 +26,6 @@ records ({file, channel, scale, bias, colorspace}), plus `emission_color`,
 """
 
 import json
-import math
 import sys
 from pathlib import Path
 
@@ -222,15 +221,6 @@ def inventory(scene):
             "environment": bool(scene["environment"]),
             "materials": {name: material_summary(scene, name) for name in sorted(materials)},
             "meshes_by_material": materials}
-
-
-def horizontal_fov_degrees(scene):
-    """The reference camera's horizontal field of view."""
-    film = scene["film"]
-    fov = math.radians(scene["camera"]["fov_degrees"])
-    if film["width"] >= film["height"]:
-        return math.degrees(2 * math.atan(math.tan(fov / 2) * film["width"] / film["height"]))
-    return math.degrees(fov)
 
 
 if __name__ == "__main__":

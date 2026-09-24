@@ -34,7 +34,7 @@ from pathlib import Path
 from pxr import Gf, Usd, UsdGeom, UsdShade
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import pbrt_scene  # noqa: E402
+import map_scene  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_UNITS_PER_METER = 39.37007874015748
@@ -297,7 +297,7 @@ def surface_below(meshes, x, y, top):
 
 def choose_spawn(scene, meshes, interior, solids, scale, stage_scale):
     """Stand on the surface below the reference camera, clear of walls and solids."""
-    pose = pbrt_scene.camera_pose(scene)
+    pose = map_scene.camera_pose(scene)
     eye = [value * stage_scale * scale for value in pose["eye"]]
     margin = PLAYER_HALF_WIDTH + 2
     floor, floor_mesh = surface_below(meshes, eye[0], eye[1], eye[2])
@@ -340,7 +340,7 @@ def main():
     args = parser.parse_args()
     if args.out_dir.exists():
         parser.error("output directory already exists: " + str(args.out_dir))
-    scene = pbrt_scene.parse(args.scene)
+    scene = map_scene.parse(args.scene)
     stage = Usd.Stage.Open(str(args.stage))
     if not stage or UsdGeom.GetStageUpAxis(stage) != UsdGeom.Tokens.z:
         raise ValueError("collision requires a readable Z-up USD stage")

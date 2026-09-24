@@ -1,11 +1,14 @@
-"""Convert a PBRT-v4 scene to a Z-up USD stage and optionally render it in Cycles.
+"""Write the map stage of a scene and optionally render it in Cycles.
 
 Run inside Blender (``blender -b --factory-startup --python-exit-code 9
 --python tools/quality/pbrt_usd_stage.py -- ...``); the map pipeline
-(`pbrt_map_build.py`) does this for you. Every PLY becomes a USD mesh named
-after its file stem with a faceVarying `st` primvar and its PBRT material; area
-emitters become `LightQuadNN`/`LightDiskNN` meshes. The optional reference
-render re-imports the written stage, so it measures what was exported.
+(`pbrt_map_build.py`) does this for you. For a PBRT scene every PLY becomes a
+USD mesh named after its file stem with a faceVarying `st` primvar and its
+PBRT material; area emitters become `LightQuadNN`/`LightDiskNN` meshes. An
+authored USD scene arrives as a `map-scene/v1` model whose normalized stage
+`usd_scene.py extract` already wrote; this step then only renders and
+records it. The optional reference render re-imports the stage, so it
+measures what was exported.
 """
 
 import argparse
@@ -19,8 +22,8 @@ from pathlib import Path
 import bpy
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import map_scene  # noqa: E402
 import pbrt_blender  # noqa: E402
-import pbrt_scene  # noqa: E402
 
 CAMERA_NAME = "ReferenceCamera"
 
@@ -86,6 +89,9 @@ def render_reference(scene, stage, environment, out, samples, scale, device):
     pbrt_blender.restore_emitters(scene)
     pbrt_blender.apply_environment(scene, environment)
     camera = bpy.data.objects.get(CAMERA_NAME)
+    if map_scene.is_usd_scene(scene):
+        # Normalized USD stages carry no camera; the scene model owns it.
+        camera = camera or pbrt_blender.add_camera(scene, CAMERA_NAME)
     if not camera:
         raise ValueError("USD round trip lost the reference camera")
     render_settings = bpy.context.scene.render
@@ -98,7 +104,7 @@ def render_reference(scene, stage, environment, out, samples, scale, device):
     shorter = 2 * math.atan(1.0 / (projection[1][1] if film["width"] >= film["height"]
                                    else projection[0][0]))
     if abs(math.degrees(shorter) - scene["camera"]["fov_degrees"]) > 0.1:
-        raise ValueError("USD camera fov %.2f differs from PBRT %.2f" %
+        raise ValueError("USD camera fov %.2f differs from the scene's %.2f" %
                          (math.degrees(shorter), scene["camera"]["fov_degrees"]))
     render = bpy.context.scene
     render.camera = camera
@@ -139,18 +145,23 @@ def main():
     args = parser.parse_args(arguments)
     if not os.environ.get("OCIO") or not Path(os.environ["OCIO"]).is_file():
         parser.error("a readable OCIO configuration is required for color fidelity")
-    scene = pbrt_scene.parse(args.scene)
-    pbrt_blender.clear_scene()
-    import_scene(scene)
-    export_stage(args.stage, scene)
+    scene = map_scene.parse(args.scene)
+    if map_scene.is_usd_scene(scene):
+        if not args.stage.is_file():
+            parser.error("a USD scene's normalized stage must exist: " + str(args.stage))
+    else:
+        pbrt_blender.clear_scene()
+        import_scene(scene)
+        export_stage(args.stage, scene)
     receipt = {"status": "pass", "scope": "pbrt-usd-stage",
+               "scene_format": scene["format"],
                "adapter_sha256": sha256(__file__), "source_sha256": scene["source_sha256"],
                "stage_sha256": sha256(args.stage),
                "environment_sha256": sha256(args.environment) if args.environment else None,
                "mesh_count": len(scene["shapes"]), "emitter_count": len(scene["emitters"]),
                "material_assignments": {shape["name"]: shape["material"]
                                         for shape in scene["shapes"]},
-               "materials": {name: pbrt_scene.material_summary(scene, name)
+               "materials": {name: map_scene.material_summary(scene, name)
                              for name in sorted({shape["material"]
                                                  for shape in scene["shapes"]})},
                "blender": bpy.app.version_string,

@@ -1,16 +1,18 @@
-"""Blender-side helpers for the PBRT map pipeline (import inside Blender only).
+"""Blender-side helpers for the map pipeline (import inside Blender only).
 
-The PBRT reader and material translation policy live in `pbrt_scene`; this
-module turns them into Blender data so the USD stage step, the Cycles reference
-render and the lightmap bake build identical materials, emitters and sky.
+Scenes are read through `map_scene` (PBRT scenes and extracted USD scene
+models); this module turns them into Blender data so the stage step, the
+Cycles reference render, the lightmap bake and the reflection probe build
+identical materials (every texture channel), emitters, sun lamps and sky.
 """
 
 import math
 from pathlib import Path
 
 import bpy
-from mathutils import Matrix
+from mathutils import Matrix, Vector
 
+import map_scene
 import pbrt_scene
 
 PBRT_TO_USD = Matrix(pbrt_scene.PBRT_TO_USD)
@@ -27,22 +29,21 @@ def clear_scene():
 
 
 def build_material(scene, name):
-    """Create a Principled material from the shared PBRT translation policy."""
-    summary = pbrt_scene.material_summary(scene, name)
-    root = Path(scene["source"]).parent
+    """Create a Principled material from the shared material translation policy."""
+    summary = map_scene.material_summary(scene, name)
+    root = map_scene.material_root(scene)
     result = bpy.data.materials.new(name)
     result.use_nodes = True
-    shader = result.node_tree.nodes.get("Principled BSDF")
+    tree = result.node_tree
+    shader = tree.nodes.get("Principled BSDF")
+    textures = summary["textures"]
     if summary["base_texture"]:
-        image = bpy.data.images.load(str((root / summary["base_texture"]).resolve()),
-                                     check_existing=True)
-        texture = result.node_tree.nodes.new("ShaderNodeTexImage")
-        texture.image = image
-        color = texture.outputs["Color"]
+        channel = textures.get("base") or {"file": summary["base_texture"], "channel": "rgb"}
+        color = texture_channel(tree, root, channel, color=True)
         fdr = summary["coat_internal_reflectance"]
         if fdr is not None:
-            color = coated_albedo_nodes(result.node_tree, color, fdr)
-        result.node_tree.links.new(color, shader.inputs["Base Color"])
+            color = coated_albedo_nodes(tree, color, fdr)
+        tree.links.new(color, shader.inputs["Base Color"])
     else:
         shader.inputs["Base Color"].default_value = tuple(summary["base_color"]) + (1.0,)
     shader.inputs["Metallic"].default_value = summary["metallic"]
@@ -54,9 +55,99 @@ def build_material(scene, name):
         shader.inputs["Coat Roughness"].default_value = summary["coat_roughness"]
     else:
         shader.inputs["Roughness"].default_value = summary["roughness"]
+    for channel, socket in (("roughness", "Roughness"), ("metallic", "Metallic"),
+                            ("opacity", "Alpha")):
+        if channel in textures:
+            tree.links.new(texture_channel(tree, root, textures[channel]),
+                           shader.inputs[socket])
+    if not textures.get("opacity") and summary["opacity"] < 1.0 and \
+            summary["transmission"] == 0.0:
+        shader.inputs["Alpha"].default_value = summary["opacity"]
+    if summary["opacity_threshold"] > 0 and shader.inputs["Alpha"].is_linked:
+        # UsdPreviewSurface opacityThreshold: a binary cut-out mask.
+        cut = tree.nodes.new("ShaderNodeMath")
+        cut.operation = "GREATER_THAN"
+        cut.inputs[1].default_value = summary["opacity_threshold"] - 1e-6
+        tree.links.new(shader.inputs["Alpha"].links[0].from_socket, cut.inputs[0])
+        tree.links.new(cut.outputs[0], shader.inputs["Alpha"])
+    if "normal" in textures:
+        normal_map = tree.nodes.new("ShaderNodeNormalMap")
+        normal_map.space = "TANGENT"
+        normal_map.uv_map = "st"
+        tree.links.new(texture_channel(tree, root, textures["normal"], normal=True),
+                       normal_map.inputs["Color"])
+        tree.links.new(normal_map.outputs["Normal"], shader.inputs["Normal"])
+    if "emission" in textures:
+        tree.links.new(texture_channel(tree, root, textures["emission"], color=True),
+                       shader.inputs["Emission Color"])
+        shader.inputs["Emission Strength"].default_value = 1.0
+    elif summary["emission_color"] and max(summary["emission_color"]) > 0:
+        shader.inputs["Emission Color"].default_value = tuple(summary["emission_color"]) + (1.0,)
+        shader.inputs["Emission Strength"].default_value = 1.0
     if summary["diffuse_transmittance"]:
-        diffuse_transmission_nodes(result.node_tree, shader, root, summary)
+        diffuse_transmission_nodes(tree, shader, root, summary)
     return result
+
+
+def texture_channel(tree, root, texture, color=False, normal=False):
+    """A UsdUVTexture-like record as a Blender socket.
+
+    Reads `st` explicitly (bakes make the lightmap UVs active), applies the
+    record's scale and bias, and selects its output channel. A normal record
+    becomes the [0, 1] colour Blender's Normal Map node expects:
+    (tex * scale + bias + 1) / 2.
+    """
+    path = Path(texture["file"])
+    image = bpy.data.images.load(str((root / path).resolve()), check_existing=True)
+    space = texture.get("colorspace", "auto")
+    linear = space == "raw" or (space == "auto" and (not color or path.suffix.lower() in
+                                                      (".exr", ".hdr")))
+    if linear:
+        image.colorspace_settings.name = "Non-Color"
+    node = tree.nodes.new("ShaderNodeTexImage")
+    node.image = image
+    node.interpolation = "Linear"
+    wraps = texture.get("wrap", ["repeat", "repeat"])
+    if all(value in ("clamp",) for value in wraps):
+        node.extension = "EXTEND"
+    elif all(value == "black" for value in wraps):
+        node.extension = "CLIP"
+    uv = tree.nodes.new("ShaderNodeUVMap")
+    uv.uv_map = "st"
+    tree.links.new(uv.outputs["UV"], node.inputs["Vector"])
+    scale = texture.get("scale", [1.0, 1.0, 1.0, 1.0])
+    bias = texture.get("bias", [0.0, 0.0, 0.0, 0.0])
+    channel = texture.get("channel", "rgb")
+    if channel == "a":
+        socket = node.outputs["Alpha"]
+        return affine(tree, socket, scale[3], bias[3])
+    socket = node.outputs["Color"]
+    if normal:
+        scale = [value / 2 for value in scale[:3]]
+        bias = [(value + 1) / 2 for value in bias[:3]]
+    if any(abs(v - 1) > 1e-9 for v in scale[:3]) or any(abs(v) > 1e-9 for v in bias[:3]):
+        node_ma = tree.nodes.new("ShaderNodeVectorMath")
+        node_ma.operation = "MULTIPLY_ADD"
+        tree.links.new(socket, node_ma.inputs[0])
+        node_ma.inputs[1].default_value = tuple(scale[:3])
+        node_ma.inputs[2].default_value = tuple(bias[:3])
+        socket = node_ma.outputs["Vector"]
+    if channel in ("r", "g", "b"):
+        separate = tree.nodes.new("ShaderNodeSeparateColor")
+        tree.links.new(socket, separate.inputs["Color"])
+        socket = separate.outputs["rgb".index(channel)]
+    return socket
+
+
+def affine(tree, socket, scale, bias):
+    if abs(scale - 1) < 1e-9 and abs(bias) < 1e-9:
+        return socket
+    node = tree.nodes.new("ShaderNodeMath")
+    node.operation = "MULTIPLY_ADD"
+    tree.links.new(socket, node.inputs[0])
+    node.inputs[1].default_value = scale
+    node.inputs[2].default_value = bias
+    return node.outputs[0]
 
 
 def scaled_color(tree, color, scale):
@@ -131,7 +222,7 @@ def rebind_materials(scene):
     built = {}
     for obj in source_meshes():
         if obj.name not in assignments:
-            raise ValueError("USD mesh has no PBRT material assignment: " + obj.name)
+            raise ValueError("USD mesh has no scene material assignment: " + obj.name)
         name = assignments[obj.name]
         if name not in built:
             built[name] = build_material(scene, name)
@@ -139,8 +230,7 @@ def rebind_materials(scene):
         obj.data.materials.append(built[name])
 
 
-def emitter_name(index, shape):
-    return ("LightDisk" if shape["kind"] == "disk" else "LightQuad") + "%02d" % index
+emitter_name = map_scene.emitter_name
 
 
 def add_emitter(index, shape):
@@ -161,7 +251,7 @@ def add_emitter(index, shape):
     mesh.update()
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.scene.collection.objects.link(obj)
-    obj.matrix_world = PBRT_TO_USD @ matrix(shape["world_from_object"])
+    obj.matrix_world = matrix(map_scene.emitter_to_stage(shape))
     return obj
 
 
@@ -175,18 +265,47 @@ def emitter_material(index, shape):
     node = nodes.new("ShaderNodeEmission")
     node.inputs["Color"].default_value = tuple(emission["radiance"]) + (1.0,)
     node.inputs["Strength"].default_value = emission["scale"]
-    result.node_tree.links.new(node.outputs["Emission"], output.inputs["Surface"])
+    surface = node.outputs["Emission"]
+    if emission.get("one_sided"):
+        # UsdLux area lights emit from their front face only.
+        geometry = nodes.new("ShaderNodeNewGeometry")
+        dark = nodes.new("ShaderNodeBsdfTransparent")
+        mix = nodes.new("ShaderNodeMixShader")
+        result.node_tree.links.new(geometry.outputs["Backfacing"], mix.inputs["Fac"])
+        result.node_tree.links.new(surface, mix.inputs[1])
+        result.node_tree.links.new(dark.outputs["BSDF"], mix.inputs[2])
+        surface = mix.outputs["Shader"]
+    result.node_tree.links.new(surface, output.inputs["Surface"])
     return result
 
 
 def restore_emitters(scene):
-    """Rebind PBRT radiance: Blender's USD preview-surface bridge drops emission."""
+    """Rebind emitter radiance (Blender's USD preview-surface bridge drops
+    emission) and add the scene's distant lights as sun lamps."""
     for index, shape in enumerate(scene["emitters"]):
         obj = bpy.data.objects.get(emitter_name(index, shape))
         if not obj or obj.type != "MESH":
-            raise ValueError("USD stage lost PBRT emitter " + emitter_name(index, shape))
+            raise ValueError("USD stage lost scene emitter " + emitter_name(index, shape))
         obj.data.materials.clear()
         obj.data.materials.append(emitter_material(index, shape))
+    for index, light in enumerate(scene.get("distant_lights", [])):
+        add_sun(index, light)
+
+
+def add_sun(index, light):
+    """A UsdLux DistantLight: Cycles sun strength is perpendicular irradiance."""
+    irradiance = light["irradiance"]
+    peak = max(irradiance)
+    data = bpy.data.lights.new("Sun%02d" % index, "SUN")
+    data.energy = peak
+    data.color = tuple(value / peak for value in irradiance) if peak > 0 else (1.0, 1.0, 1.0)
+    data.angle = math.radians(light["angle_degrees"])
+    obj = bpy.data.objects.new(data.name, data)
+    bpy.context.scene.collection.objects.link(obj)
+    direction = Vector(light["direction"]).normalized()
+    # A sun lamp shines along its local -Z.
+    obj.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+    return obj
 
 
 def apply_environment(scene, equirect_exr):
@@ -213,13 +332,18 @@ def add_camera(scene, name):
     data = bpy.data.cameras.new(name)
     camera = bpy.data.objects.new(name, data)
     bpy.context.scene.collection.objects.link(camera)
-    # PBRT camera space has +Z forward; Blender cameras look down -Z. These
-    # exported cameras carry a mirrored camera_from_world (det -1), so the
-    # column flip leaves a proper rotation.
-    world_from_camera = matrix(scene["camera"]["camera_from_world"]).inverted()
-    for row in range(3):
-        world_from_camera[row][2] *= -1.0
-    camera.matrix_world = PBRT_TO_USD @ world_from_camera
+    # Blender cameras look down -Z with +Y up; build that frame from the
+    # scene's reference pose in stage space.
+    pose = map_scene.camera_pose(scene)
+    forward = Vector(pose["forward"]).normalized()
+    up = Vector(pose["up"])
+    right = forward.cross(up).normalized()
+    up = right.cross(forward).normalized()
+    eye = pose["eye"]
+    camera.matrix_world = Matrix(((right.x, up.x, -forward.x, eye[0]),
+                                  (right.y, up.y, -forward.y, eye[1]),
+                                  (right.z, up.z, -forward.z, eye[2]),
+                                  (0.0, 0.0, 0.0, 1.0)))
     data.type = "PERSP"
     film = scene["film"]
     # Blender's USD export derives the camera apertures from the scene's render
@@ -228,12 +352,13 @@ def add_camera(scene, name):
     render = bpy.context.scene.render
     render.resolution_x, render.resolution_y = film["width"], film["height"]
     render.resolution_percentage = 100
-    # PBRT's fov spans the shorter image axis.
+    # The reference fov spans the shorter image axis.
     data.sensor_fit = "VERTICAL" if film["width"] >= film["height"] else "HORIZONTAL"
     if data.sensor_fit == "VERTICAL":
         data.angle_y = math.radians(scene["camera"]["fov_degrees"])
     else:
         data.angle_x = math.radians(scene["camera"]["fov_degrees"])
+    data.clip_start = 0.01
     return camera
 
 

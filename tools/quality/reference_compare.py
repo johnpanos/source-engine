@@ -29,7 +29,7 @@ from PIL import Image
 from edge_parity import edge_parity
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import pbrt_scene  # noqa: E402
+import map_scene  # noqa: E402
 
 SOURCE_UNITS_PER_METER = 39.37007874015748
 EYE_HEIGHT = 64.0  # VEC_VIEW in game/shared/gamerules.cpp
@@ -190,7 +190,7 @@ def compare_render(args):
 
 def camera_commands(scene):
     """Console commands that put the Source camera at the PBRT reference eye."""
-    pose = pbrt_scene.camera_pose(scene)
+    pose = map_scene.camera_pose(scene)
     eye = [value * SOURCE_UNITS_PER_METER for value in pose["eye"]]
     forward = pose["forward"]
     yaw = math.degrees(math.atan2(forward[1], forward[0]))
@@ -233,7 +233,7 @@ def matched_crop(image, aspect, reference_vfov, capture_vfov):
 
 def compare_runtime(args):
     gate = json.loads(args.gate) if args.gate else {}
-    scene = pbrt_scene.parse(args.scene)
+    scene = map_scene.parse(args.scene)
     commands, fovs = camera_commands(scene)
     boot = json.loads(args.boot_evidence.read_text())
     if boot.get("schema") != "portal-boot-evidence/v1" or boot.get("status") != "pass":

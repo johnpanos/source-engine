@@ -22,7 +22,7 @@ from mathutils import Matrix, Vector
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pbrt_blender  # noqa: E402
-import pbrt_scene  # noqa: E402
+import map_scene  # noqa: E402
 import reflection_probe  # noqa: E402
 
 
@@ -44,7 +44,7 @@ def main():
     args = parser.parse_args(arguments)
     if not os.environ.get("OCIO"):
         parser.error("OCIO is required")
-    scene = pbrt_scene.parse(args.scene)
+    scene = map_scene.parse(args.scene)
     pbrt_blender.clear_scene()
     if bpy.ops.wm.usd_import(filepath=str(args.stage.resolve()), import_materials=True,
                              import_lights=True, import_cameras=True) != {"FINISHED"}:
@@ -66,7 +66,7 @@ def main():
     else:
         corners = [obj.matrix_world @ Vector(corner) for obj in pbrt_blender.source_meshes()
                    for corner in obj.bound_box]
-        eye = pbrt_scene.camera_pose(scene)["eye"]
+        eye = map_scene.camera_pose(scene)["eye"]
         position = Vector(((min(c.x for c in corners) + max(c.x for c in corners)) / 2,
                            (min(c.y for c in corners) + max(c.y for c in corners)) / 2,
                            eye[2]))

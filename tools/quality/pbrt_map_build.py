@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
-"""Build a playable BSP2 map from a PBRT-v4 scene with one command.
+"""Build a playable BSP2 map from a PBRT-v4 or OpenUSD scene with one command.
 
     python3 tools/quality/pbrt_map_build.py \\
         --manifest quality/fixtures/pbrt-maps/living-room.json \\
         --out quality-results/living-room-map [--boot]
 
 The manifest (`pbrt-map-manifest/v1`) holds only per-scene decisions that the
-PBRT file cannot supply: map name, lightmap settings, collision selection and
-optional material exclusions. The toolchain file (`pbrt-map-toolchain/v1`)
+scene file cannot supply: map name, lightmap settings, collision selection and
+optional material exclusions. Its `scene` is a `.pbrt` file or an authored
+`.usd`/`.usda`/`.usdc` stage; every later step reads either through
+`map_scene`. The toolchain file (`pbrt-map-toolchain/v1`)
 holds machine paths. `tools/quality/pbrt_map_toolchain.py provision` builds the
 pinned tools under build/toolchains/ and writes the default toolchain file;
 `--check-toolchain` validates versions and capabilities and exits. Steps:
 
-    environment  PBRT-v4 equal-area sky -> Z-up equirect EXR + display texture (if any sky)
+    scene        (USD scenes) usd_scene.py extract: map-scene/v1 model + normalized stage
+    environment  sky (PBRT equal-area map or USD DomeLight) -> Z-up equirect EXR +
+                 display texture (if any sky)
     stage        PBRT -> USD stage in Blender (+ optional Cycles reference render)
     reference-gate  Cycles render vs the scene's reference image (manifest reference.gate)
     bake         shared lightmap UVs + Cycles diffuse irradiance atlas
@@ -53,17 +57,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import map_scene  # noqa: E402
 import pbrt_map_toolchain  # noqa: E402
-import pbrt_scene  # noqa: E402
 import pbrt_traversal  # noqa: E402
 import playable_maps  # noqa: E402
 import reference_compare  # noqa: E402
 
-STEPS = ("environment", "stage", "reference-gate", "bake", "denoise", "probe", "ktx2", "sky",
+STEPS = ("scene", "environment", "stage", "reference-gate", "bake", "denoise", "probe", "ktx2", "sky",
          "collision", "compile", "pack", "content", "boot", "camera-boot", "runtime-gate",
          "traversal-boot", "traversal")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
 GATES = ("reference-gate", "runtime-gate", "traversal")
+SCENE_SCRIPTS = ["pbrt_scene.py", "map_scene.py"]
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -87,6 +92,7 @@ def load_manifest(path):
     if not name.replace("_", "").isalnum() or name.lower() != name:
         raise ValueError("manifest map must be lowercase [a-z0-9_]")
     manifest["scene"] = str((ROOT / manifest["scene"]).resolve())
+    manifest["scene_format"] = "usd" if map_scene.is_usd(manifest["scene"]) else "pbrt"
     return manifest
 
 
@@ -97,7 +103,10 @@ class Pipeline:
         self.tools = toolchain
         self.out = out.resolve()
         self.map = manifest["map"]
-        self.scene = pbrt_scene.parse(manifest["scene"])
+        self.usd = manifest["scene_format"] == "usd"
+        # A USD scene is read through the model its `scene` step extracts.
+        self.scene_file = (self.out / "scene" / "scene.json") if self.usd else manifest["scene"]
+        self.scene = None if self.usd else map_scene.parse(self.scene_file)
         self.state_path = self.out / "steps.json"
         self.state = json.loads(self.state_path.read_text()) if self.state_path.is_file() else {}
         self.force_from = STEPS.index(force_from) if force_from else len(STEPS)
@@ -214,22 +223,42 @@ class Pipeline:
         self.state_path.write_text(json.dumps(self.state, indent=2, sort_keys=True) + "\n")
         print("[%s] done in %.1fs" % (name, seconds or 0), flush=True)
 
+    def extract_usd_scene(self):
+        """`scene` step: the USD scene's model and normalized stage."""
+        p = self.paths
+        model = self.scene_file
+        previous = json.loads(model.read_text()).get("source_files", []) \
+            if model.is_file() else []
+        # The model lists every layer and texture it read; any change reruns.
+        inputs = [self.manifest["scene"]] + [path for path in previous if Path(path).is_file()]
+        self.step("scene", inputs, {"missing_inputs": [path for path in previous
+                                                       if not Path(path).is_file()]},
+                  ["usd_scene.py"], [model, p["stage"]],
+                  lambda: self.usd_python("scene", "usd_scene.py", [
+                      "extract", "--scene", self.manifest["scene"], "--out-scene", model,
+                      "--out-stage", p["stage"]]))
+        self.scene = map_scene.parse(model)
+
     def build(self):
         self.out.mkdir(parents=True, exist_ok=True)
         p = self.paths
-        scene = self.manifest["scene"]
+        if self.usd:
+            self.extract_usd_scene()
+        scene = str(self.scene_file)
         environment = p["environment"] if self.scene["environment"] else None
         if environment:
             def write_environment():
                 import imageio.v3 as iio
                 import numpy as np
                 started = time.monotonic()
-                pixels = pbrt_scene.environment_equirect(self.scene, 2048)
+                pixels = map_scene.environment_equirect(self.scene, 2048)
                 iio.imwrite(environment, pixels.astype(np.float32))
-                iio.imwrite(p["sky_texture"], pbrt_scene.sky_display(pixels))
+                iio.imwrite(p["sky_texture"], map_scene.sky_display(pixels))
                 return time.monotonic() - started
-            self.step("environment", [scene, Path(scene).parent / self.scene["environment"]["filename"]],
-                      {"width": 2048}, ["pbrt_scene.py"], [environment, p["sky_texture"]],
+            sky_inputs = [scene] if self.usd else \
+                [scene, Path(scene).parent / self.scene["environment"]["filename"]]
+            self.step("environment", sky_inputs, {"width": 2048},
+                      ["pbrt_scene.py", "map_scene.py"], [environment, p["sky_texture"]],
                       write_environment)
         env_args = ["--environment", environment] if environment else []
         reference = self.manifest.get("reference", {}).get("render")
@@ -240,10 +269,13 @@ class Pipeline:
                            str(reference.get("samples", 64)),
                            "--scale", str(reference.get("scale", 1.0)),
                            "--device", reference.get("device", "auto")]
-        self.step("stage", [scene] + ([environment] if environment else []),
-                  {"reference": reference}, ["pbrt_scene.py", "pbrt_blender.py",
-                                             "pbrt_usd_stage.py"],
-                  [p["stage"], p["stage_receipt"]] + ([p["reference"]] if reference else []),
+        # A USD scene's stage is the `scene` step's output: an input here.
+        self.step("stage", [scene] + ([environment] if environment else []) +
+                  ([p["stage"]] if self.usd else []),
+                  {"reference": reference}, SCENE_SCRIPTS + ["pbrt_blender.py",
+                                                             "pbrt_usd_stage.py"],
+                  ([] if self.usd else [p["stage"]]) + [p["stage_receipt"]] +
+                  ([p["reference"]] if reference else []),
                   lambda: self.blender("stage", "pbrt_usd_stage.py", stage_args))
         supplied = self.manifest.get("reference", {})
         if reference and supplied.get("gate"):
@@ -273,7 +305,7 @@ class Pipeline:
                   dict({k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
                                                       "device")},
                        reserve_rows=probe_width // 2),
-                  ["pbrt_scene.py", "pbrt_blender.py", "pbrt_lightmap_bake.py"],
+                  SCENE_SCRIPTS + ["pbrt_blender.py", "pbrt_lightmap_bake.py"],
                   [p["lighting_stage"], p["atlas"], p["coverage"], p["atlas_receipt"]],
                   lambda: self.blender("bake", "pbrt_lightmap_bake.py", bake_args))
         atlas, atlas_receipt, scope = p["atlas"], p["atlas_receipt"], BAKE_SCOPE
@@ -296,8 +328,9 @@ class Pipeline:
             if probe.get("position"):
                 face_args += ["--position"] + [str(value) for value in probe["position"]]
             self.step("probe", [p["lighting_stage"]] + ([environment] if environment else []),
-                      probe, ["pbrt_reflection_probe.py", "reflection_probe.py",
-                              "pbrt_blender.py"], [p["probe"]],
+                      probe, SCENE_SCRIPTS + ["pbrt_reflection_probe.py",
+                                              "reflection_probe.py", "pbrt_blender.py"],
+                      [p["probe"]],
                       lambda: self.blender("probe", "pbrt_reflection_probe.py", face_args))
             probe_args = ["--probe-dir", p["probe"], "--probe-width", str(probe_width)]
         self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"]] +
@@ -330,7 +363,7 @@ class Pipeline:
             for value in collision.get(key, []):
                 collision_args += [flag, value]
         self.step("collision", [scene, p["lighting_stage"]], collision,
-                  ["pbrt_scene.py", "pbrt_collision_vmf.py"], [p["collision"]],
+                  SCENE_SCRIPTS + ["pbrt_collision_vmf.py"], [p["collision"]],
                   lambda: self.usd_python("collision", "pbrt_collision_vmf.py", collision_args))
         vmf = p["collision"] / (self.map + "_collision.vmf")
         tools = Path(self.tools["compile_tools"])
@@ -363,7 +396,7 @@ class Pipeline:
         sky_args = ["--sky-texture", p["sky_texture"]] if environment else []
         self.step("content", [scene, p["stage_receipt"], p["bsp2"]] +
                   ([p["sky_texture"]] if environment else []), {},
-                  ["pbrt_scene.py", "pbrt_playable_content.py"],
+                  SCENE_SCRIPTS + ["pbrt_playable_content.py", "vtf_content.py"],
                   [p["content"], p["content"].with_suffix(".json")],
                   lambda: self.run("content", [sys.executable, HERE / "pbrt_playable_content.py",
                                                "--scene", scene, "--stage-receipt",

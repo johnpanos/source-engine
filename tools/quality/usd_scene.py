@@ -620,7 +620,7 @@ class Extractor:
             root_world_inverse = np.linalg.inv(np.array(
                 self.xforms.GetLocalToWorldTransform(root)))
             for child in Usd.PrimRange(root, Usd.TraverseInstanceProxies()):
-                if not child.IsA(UsdGeom.Mesh) or not self.visible(child):
+                if not child.IsA(UsdGeom.Mesh) or not self.visible_below(child, root):
                     continue
                 # The mesh in its prototype root's frame; `local` already
                 # includes the root's own transform (IncludeProtoXform).
@@ -632,6 +632,21 @@ class Extractor:
                 count += 1
         if count > 20000:
             raise ValueError("point instancer %s expands to %d meshes" % (prim.GetPath(), count))
+
+    def visible_below(self, prim, root):
+        """Prototype visibility: only opinions at or below the prototype root
+        count, because instancers commonly hide prototypes in place."""
+        current = prim
+        while True:
+            imageable = UsdGeom.Imageable(current)
+            if imageable.GetVisibilityAttr().Get(self.time) == UsdGeom.Tokens.invisible or \
+                    imageable.GetPurposeAttr().Get() in (UsdGeom.Tokens.guide,
+                                                         UsdGeom.Tokens.proxy):
+                self.skipped["invisible"] += 1
+                return False
+            if current == root:
+                return True
+            current = current.GetParent()
 
     def visible(self, prim):
         imageable = UsdGeom.Imageable(prim)
@@ -955,10 +970,16 @@ def write_stage(path, shapes, emitters, summaries):
     stage.GetRootLayer().Save()
 
 
+def shape_points(shape):
+    return shape["points"][shape["corner_triangles"].reshape(-1)]
+
+
 def scene_model(extractor, camera, bounds, digest, inputs, usd_path):
     shapes = [{key: shape[key] for key in ("name", "material", "prim", "subset",
                                            "double_sided", "subdivision", "st_primvar")}
-              | {"triangles": int(len(shape["corner_triangles"]))}
+              | {"triangles": int(len(shape["corner_triangles"])),
+                 "bounds": [shape_points(shape).min(axis=0).tolist(),
+                            shape_points(shape).max(axis=0).tolist()]}
               for shape in extractor.shapes]
     return {"schema": SCHEMA, "format": "usd", "source": str(Path(usd_path).resolve()),
             "source_sha256": digest, "source_files": inputs,

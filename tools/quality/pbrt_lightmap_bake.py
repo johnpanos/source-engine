@@ -21,7 +21,7 @@ import bpy
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pbrt_blender  # noqa: E402
-import pbrt_scene  # noqa: E402
+import map_scene  # noqa: E402
 
 SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
 PROJECTED_PART_LIMIT = 4096
@@ -156,7 +156,7 @@ def main():
         parser.error("valid atlas size, samples and OCIO are required")
     if args.stage.resolve() == args.out_stage.resolve():
         parser.error("output stage must differ from input stage")
-    scene = pbrt_scene.parse(args.scene)
+    scene = map_scene.parse(args.scene)
     unknown = set(args.exclude_material) - set(scene["materials"])
     if unknown:
         parser.error("excluded materials are not in the PBRT scene: " + ", ".join(sorted(unknown)))
@@ -164,8 +164,8 @@ def main():
     # diffuse by (1 - metalness), so neither reads the atlas.
     excluded = set(args.exclude_material) | {
         name for name in scene["materials"]
-        if pbrt_scene.material_summary(scene, name)["transmission"] > 0 or
-        pbrt_scene.material_summary(scene, name)["metallic"] >= 1.0}
+        if map_scene.material_summary(scene, name)["transmission"] > 0 or
+        map_scene.material_summary(scene, name)["metallic"] >= 1.0}
     pbrt_blender.clear_scene()
     if bpy.ops.wm.usd_import(filepath=str(args.stage.resolve()), import_materials=True,
                              import_lights=True, import_cameras=True) != {"FINISHED"}:

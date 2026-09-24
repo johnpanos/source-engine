@@ -1,0 +1,9 @@
+{
+  "schema": "pbrt-map-manifest/v1",
+  "map": "usd_room",
+  "scene": "quality/fixtures/usd-maps/room/room.usda",
+  "reference": {"render": {"samples": 256, "scale": 0.5}},
+  "collision": {
+    "solid_meshes": ["Table_Top", "Table_Legs", "MetalSphere", "Body", "Body_i1"]
+  }
+}
