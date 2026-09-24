@@ -29,29 +29,33 @@ class IHandleEntity;
 
 enum
 {
-	PARTITION_ENGINE_SOLID_EDICTS		= (1 << 0),		// every edict_t that isn't SOLID_TRIGGER or SOLID_NOT (and static props)
-	PARTITION_ENGINE_TRIGGER_EDICTS		= (1 << 1),		// every edict_t that IS SOLID_TRIGGER
-	PARTITION_CLIENT_SOLID_EDICTS		= (1 << 2),
-	PARTITION_CLIENT_RESPONSIVE_EDICTS	= (1 << 3),		// these are client-side only objects that respond to being forces, etc.
-	PARTITION_ENGINE_NON_STATIC_EDICTS	= (1 << 4),		// everything in solid & trigger except the static props, includes SOLID_NOTs
-	PARTITION_CLIENT_STATIC_PROPS		= (1 << 5),
-	PARTITION_ENGINE_STATIC_PROPS		= (1 << 6),
-	PARTITION_CLIENT_NON_STATIC_EDICTS	= (1 << 7),		// everything except the static props
+	PARTITION_ENGINE_SOLID_EDICTS =
+	    ( 1 << 0 ), // every edict_t that isn't SOLID_TRIGGER or SOLID_NOT (and static props)
+	PARTITION_ENGINE_TRIGGER_EDICTS = ( 1 << 1 ), // every edict_t that IS SOLID_TRIGGER
+	PARTITION_CLIENT_SOLID_EDICTS = ( 1 << 2 ),
+	PARTITION_CLIENT_RESPONSIVE_EDICTS =
+	    ( 1 << 3 ), // these are client-side only objects that respond to being forces, etc.
+	PARTITION_ENGINE_NON_STATIC_EDICTS =
+	    ( 1 << 4 ), // everything in solid & trigger except the static props, includes SOLID_NOTs
+	PARTITION_CLIENT_STATIC_PROPS = ( 1 << 5 ),
+	PARTITION_ENGINE_STATIC_PROPS = ( 1 << 6 ),
+	PARTITION_CLIENT_NON_STATIC_EDICTS = ( 1 << 7 ), // everything except the static props
+	PARTITION_CLIENT_TRIGGER_ENTITIES = ( 1 << 8 ),  // client-predicted trigger volumes
 };
 
 // Use this to look for all client edicts.
-#define PARTITION_ALL_CLIENT_EDICTS	(		\
-	PARTITION_CLIENT_NON_STATIC_EDICTS |	\
-	PARTITION_CLIENT_STATIC_PROPS |			\
-	PARTITION_CLIENT_RESPONSIVE_EDICTS |	\
-	PARTITION_CLIENT_SOLID_EDICTS			\
-	)
-
+#define PARTITION_ALL_CLIENT_EDICTS                                                                \
+	( PARTITION_CLIENT_NON_STATIC_EDICTS | PARTITION_CLIENT_STATIC_PROPS |                         \
+	    PARTITION_CLIENT_RESPONSIVE_EDICTS | PARTITION_CLIENT_SOLID_EDICTS |                       \
+	    PARTITION_CLIENT_TRIGGER_ENTITIES )
 
 // These are the only handles in the spatial partition that the game is controlling (everything but static props)
 // These masks are used to handle updating the dirty spatial partition list in each game DLL
-#define PARTITION_CLIENT_GAME_EDICTS (PARTITION_ALL_CLIENT_EDICTS & ~PARTITION_CLIENT_STATIC_PROPS)
-#define PARTITION_SERVER_GAME_EDICTS (PARTITION_ENGINE_SOLID_EDICTS|PARTITION_ENGINE_TRIGGER_EDICTS|PARTITION_ENGINE_NON_STATIC_EDICTS)
+#define PARTITION_CLIENT_GAME_EDICTS                                                               \
+	( PARTITION_ALL_CLIENT_EDICTS & ~PARTITION_CLIENT_STATIC_PROPS )
+#define PARTITION_SERVER_GAME_EDICTS                                                               \
+	( PARTITION_ENGINE_SOLID_EDICTS | PARTITION_ENGINE_TRIGGER_EDICTS |                            \
+	    PARTITION_ENGINE_NON_STATIC_EDICTS )
 
 //-----------------------------------------------------------------------------
 // Clients that want to know about all elements within a particular
@@ -214,6 +218,3 @@ public:
 };
 
 #endif
-
-
-

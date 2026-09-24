@@ -18,6 +18,13 @@
 
 ConVar sv_projected_entities_use_placement_helper( "sv_projected_entities_use_placement_helper", "1" );
 
+// Source send-table macros require their declaration layout.
+// clang-format off
+IMPLEMENT_SERVERCLASS_ST( CBaseProjector, DT_BaseProjector )
+	SendPropEHandle( SENDINFO( m_hFirstChild ) ),
+	SendPropBool( SENDINFO( m_bEnabled ) ),
+END_SEND_TABLE()
+
 BEGIN_DATADESC( CBaseProjector )
 
 	DEFINE_FIELD( m_hFirstChild, FIELD_EHANDLE ),
@@ -33,7 +40,7 @@ BEGIN_DATADESC( CBaseProjector )
 END_DATADESC()
 
 static CUtlVector<CBaseProjector *> s_AllProjectors;
-
+// clang-format on
 
 CBaseProjector::CBaseProjector()
 {

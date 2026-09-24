@@ -18,15 +18,20 @@
 
 #include "c_baseanimating.h"
 
-// Reconstruction note: neither 2010 client build has DWARF for this header; the only
-// client projector recovered (C_PropTractorBeamProjector) derives from C_BaseAnimating
-// and the server's CBaseProjector declares no server class, so the client base carries
-// no networked state. The shared projection code only needs the type to name the owning
-// projector (CBaseProjector *) passed through RecursiveProjection().
+// The 2010 client builds have no DWARF for this class. The retained retail
+// client and server binaries both name DT_BaseProjector, m_hFirstChild and
+// m_bEnabled, and the server table setup places the two fields after baseclass.
+class C_BaseProjectedEntity;
+
 class C_BaseProjector : public C_BaseAnimating
 {
 public:
 	DECLARE_CLASS( C_BaseProjector, C_BaseAnimating );
+	DECLARE_CLIENTCLASS();
+
+protected:
+	CHandle<C_BaseProjectedEntity> m_hFirstChild;
+	bool m_bEnabled;
 };
 
 typedef C_BaseProjector CBaseProjector;

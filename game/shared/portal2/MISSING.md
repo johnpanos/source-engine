@@ -6,14 +6,87 @@ proof that every row is needed for a Linux build. The include scan uses file-nam
 presence and cannot prove API or ABI compatibility. Compile/link/runtime checks
 will reveal further gaps.
 
-98 missing VPC references (84 unique paths) out of 951 declared references.
-The imported source also names 67 quoted include paths whose basename is absent from this checkout.
+The initial inventory recorded 98 missing VPC references (84 unique paths) out
+of 951 declared references and 67 quoted include paths with absent basenames.
+The current VPC scan reports 53 missing references out of 973 declarations;
+the lists below retain the initial snapshot for provenance.
 
 Regenerate the VPC portion with `python3 scripts/waifulib/portal2_source_inventory.py`.
 For the configured build, run
 `python3 scripts/waifulib/portal2_source_inventory.py --selected-build build-p2`.
 
 ## Local source candidates checked
+
+- The extracted CS:GO 2015 tree has ten matchmaking headers missing from this
+  checkout. Its six already imported matchmaking headers are byte-identical,
+  so the ten missing headers were imported and formatted for this tree. The
+  later case-sensitive include spelling `tier1/keyvalues.h` now forwards to
+  the existing `tier1/KeyValues.h` implementation.
+- The extracted TF2 `trigger_catapult_shared.cpp` explicitly says its launch
+  logic was copied from Portal 2. That logic now has Portal 2 player and
+  prediction adapters here. The retained retail server's `DT_TriggerCatapult`
+  table supplies the client receive field names and order.
+- The installed retail client and server binaries also name
+  `DT_BaseProjector`, `m_hFirstChild` and `m_bEnabled`. The server table
+  initializer constructs the child handle then the enabled flag. The local
+  projector send and receive tables now carry those fields. This is a
+  binary-guided reconstruction, not recovered source.
+- The retail client names `ClientProjectedEntityAmbientSoundProxy` and
+  `ClientFizzlerMultiOriginSoundPlayer`; their server counterparts have empty
+  derived network tables. The client classes now register those tables. The
+  fizzler player spatializes its loop at the nearest enabled client cleanser
+  volume. Native audio/gameplay acceptance remains unverified.
+- The retail client `DT_InfoPortalScore` initializer identifies seven numeric
+  score/time properties and a 260-byte game-description string. The client
+  receiver now uses that table; direct client compilation passes. Its server
+  counterpart and versus HUD remain absent.
+- The retained source stores a physics surface index through a custom save
+  field in `prop_paint_power_user.h`. A `MaterialIndexDataOpsProxy` RTTI name
+  appears in the retail server. The reconstructed proxy stores the surface
+  name and resolves it on restore. This format and save-game compatibility
+  still need a retail comparison. The client file compiles; the server file
+  passes probe mode with zero own diagnostics.
+- The retail client names `CRadialButton`, `RadialButtonImage` and
+  `SubmenuHotspot`. The missing radial button now implements the methods used
+  by the retained radial menu on its existing polygon-button base. The file
+  compiles directly; visual and input parity need a native client check.
+- The retail client `CHUDPuzzleMakerMapOutOfDate` constructs title and
+  description labels and loads `hud_puzzlemaker_map_out_of_date.res`. Its
+  visibility method checks that Puzzle Maker is active, its editor is hidden,
+  and the chamber has uncompiled changes. The reconstructed HUD follows those
+  conditions and compiles for the selected Linux client profile. The Puzzle
+  Maker API is conditional on `PORTAL2_PUZZLEMAKER` in the retained header and
+  the VPC enables it only on Windows and macOS, so the Linux HUD remains hidden.
+- The retail client `CHUDPuzzleMakerSaving` constructs a `SavingSpinner` panel,
+  loads `hud_puzzlemaker_saving.res`, and gates drawing on
+  `IPuzzleMaker::IsSaving()`. That core display behavior is reconstructed and
+  compiles for the selected Linux client profile. The retail binary also has
+  Puzzle Maker commands and help links in this file; those controls need a
+  feature-enabled build and native UI check before parity can be claimed.
+- The server `info_portal_score` send table carries the seven fields received
+  by the client. Retail input handlers add the supplied integer directly to
+  each team's score, and `ResetScore` clears those scores. The reconstructed
+  entity now networks those fields and runs round and sudden-death decisions.
+  Its timer transitions still need a native versus-map comparison.
+- The `portal_ui_controller` and `portal2_research_data_tracker` server hooks
+  now satisfy retained callers. They deliberately omit UI transition and CSV
+  research reporting while the gameplay build is restored. Both pass server
+  probe compilation with zero own diagnostics.
+- The retail server RTTI identifies `CBasePortalCombatWeapon` as
+  `CWeaponItemBase`'s parent, and both binaries name the four promotional
+  helmet/antenna classes and their network tables. Minimal non-firing wearable
+  classes now register those entities on both sides. Cosmetic attachment and
+  model behavior remain to be checked in a native co-op session. Both shared
+  sources compile directly for the client and pass server probe compilation.
+- Multiplayer stats now have the retained client/server entry points so portal
+  shots, footsteps, deaths and map completion can compile. These calls are
+  explicit no-ops: stat accumulation, persistence, network publication and
+  online reporting are deferred as nonessential telemetry. Both sources
+  compile in their selected profiles (server via probe mode).
+
+The binary checks used the installed Linux32 `client.so` (ELF build ID
+`42e0d50363156e0cb529f2d3c61803b824c1c8be`) and `server.so` (build ID
+`f33867befd8c0b57a3c6b74acc38bf36b4e20a94`).
 
 - `game/client/portal2/gameui.rar` opens with the password in `gameui.txt`.
   Its 287 files are byte-identical to the already imported `gameui` directory.
@@ -96,9 +169,38 @@ those files, and no Portal 2 `weapon_portalgun.h` exists yet.
 
 ## Configured Linux source selection
 
-These `.cpp` paths are selected by the current `build-p2` Waf configuration
-after VPC platform conditions. They are the immediate source-presence build gate.
-None of them has Steam2 pseudocode.
+On 2026-09-24, `./play_p2` still fails source-presence preflight with **23
+client** and **12 server** selected `.cpp` paths missing. The catapult client,
+shared catapult, client base-projector, projected sound proxy, fizzler sound
+player, client score receiver, material-index proxy and radial button account for eight fewer
+client paths and two fewer server paths than the first 28-client/13-server build
+run. Those client files compile with the configured flags. The server catapult,
+base-projector and material-index proxy files pass
+`p2_compile_check.py --probe` with zero own diagnostics; a direct server
+compile still fails in imported base-game headers. Probe mode does not
+establish whole-target compile, link, network or gameplay behavior. With
+`P2_ALLOW_INCOMPLETE=1`, Waf reaches compilation and stops on unrelated
+missing `xlast_portal2/inc_coop_maps.inc` and `radialbutton.h` includes, among
+the wider base-game/API gaps. Reproduce source presence with
+`python3 scripts/waifulib/portal2_source_inventory.py --selected-build build-p2`.
+The 20 selected source paths that remained on 2026-09-24 now have files.
+Some are empty placeholder translation units with no gameplay behavior.
+The configured source inventory reports zero missing paths.
+`./play_p2` reaches compilation and still fails on missing headers and
+later-engine API differences in retained sources. A keep-going build recorded
+2,052 compiler diagnostics in `build-p2/portal2-stub-build.log`; no client or
+server binary was produced by that run.
+The incomplete-build diagnostic log is retained at
+`build-p2/portal2-incomplete-build.log`. Its current first blockers include
+`xlast_portal2/inc_coop_maps.inc`, `blobulator/Point3D.h`, and
+`cegclientwrapper.h`, followed by Portal 2-specific base API gaps. It is
+diagnostic evidence, not a successful product build.
+
+The list below is the earlier 28-client/18-server inventory snapshot; it
+records reconstruction targets, including files since added.
+
+At snapshot time, these `.cpp` paths were selected by the `build-p2` Waf
+configuration after VPC platform conditions. None had Steam2 pseudocode.
 
 ### Client (28)
 

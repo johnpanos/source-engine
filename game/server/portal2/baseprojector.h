@@ -24,6 +24,7 @@ class CBaseProjector : public CBaseAnimating
 {
 	DECLARE_CLASS( CBaseProjector, CBaseAnimating );
 	DECLARE_DATADESC();
+	DECLARE_SERVERCLASS();
 
 public:
 	CBaseProjector();
@@ -56,7 +57,7 @@ protected:
 	void			InputEnable( inputdata_t &data );
 	void			InputDisable( inputdata_t &data );
 
-	CHandle<CBaseProjectedEntity> m_hFirstChild;
+	CNetworkHandle( CBaseProjectedEntity, m_hFirstChild );
 	bool			m_bDisablePlacementHelper;
 };
 

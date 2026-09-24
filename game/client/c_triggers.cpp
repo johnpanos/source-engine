@@ -7,7 +7,6 @@
 #include "cbase.h"
 #include "c_triggers.h"
 #include "in_buttons.h"
-#include "c_func_brush.h"
 #include "collisionutils.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
