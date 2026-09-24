@@ -27,6 +27,7 @@
 #endif
 
 #include "render/render_gamma_ramp.h"
+#include "vulkan_adapter.h"
 #include "vulkan_frame_stats.h"
 #include "vulkan_surface_host.h"
 
@@ -105,6 +106,9 @@ public:
 	void Shutdown();
 
 	bool IsValid() const { return m_device != VK_NULL_HANDLE; }
+	// The live device's identity and capabilities (vulkan_adapter.h); invalid
+	// before Init.
+	const VulkanAdapterCaps &AdapterCaps() const { return m_adapterCaps; }
 	uint32_t MaxSampledTextureDimension() const;
 	int MaxAnisotropicLevel() const { return m_maxAnisotropy; }
 	void SetAnisotropicLevel( int level );
@@ -875,6 +879,7 @@ private:
 	VkFormat m_swapFormat = VK_FORMAT_UNDEFINED;
 	VkColorSpaceKHR m_swapColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 	VkPresentModeKHR m_presentMode = VK_PRESENT_MODE_FIFO_KHR;
+	VulkanAdapterCaps m_adapterCaps;
 	bool m_requestedVSync = true;
 	std::vector<VkPresentModeKHR> m_surfacePresentModes;
 	bool m_swapchainVSync = true; // the vsync request m_presentMode was selected for

@@ -50,6 +50,7 @@
 #ifndef SWDS
 #include "Overlay.h"
 #include "render/world_mesh_upload.h"
+#include "worldmesh_cull.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -65,8 +66,36 @@ int g_MaxLeavesVisible = 512;
 static ConVar r_worldmesh_draw( "r_worldmesh_draw", "0", FCVAR_CHEAT,
     "WMSH comparison: 0 legacy, 1 overlay, 2 uploaded world batches" );
 static ConVar r_worldmesh_cull( "r_worldmesh_cull", "1", FCVAR_CHEAT,
-    "WMSH meshlet visibility: 0 draw every meshlet, 1 visible leaves and view frustum, "
-    "2 negative control that culls with half-size spheres (must change pixels)" );
+    "WMSH meshlet culling: 0 draw every meshlet, 1 visible leaves, view frustum, back faces and "
+    "occlusion; negative controls that must change pixels: 2 half-size frustum spheres, "
+    "3 back faces ignoring meshlet extent, 4 occlusion tested at meshlet centers" );
+static ConVar r_worldmesh_cull_backface( "r_worldmesh_cull_backface", "1", FCVAR_CHEAT,
+    "WMSH normal-cone back-face culling while r_worldmesh_cull is on" );
+static ConVar r_worldmesh_cull_occlusion( "r_worldmesh_cull_occlusion", "1", FCVAR_CHEAT,
+    "WMSH software occlusion culling while r_worldmesh_cull is on" );
+static ConVar r_worldmesh_cull_report( "r_worldmesh_cull_report", "0", FCVAR_CHEAT,
+    "Print WMSH culling counts and CPU time for each world draw" );
+
+// Faces within this sine of edge-on are never cone-culled.
+static const float kWorldMeshConeMargin = 1e-3f;
+
+// Per-view WMSH culling inputs, captured when the list's leaves are culled.
+struct WorldMeshCullView_t
+{
+	Frustum_t frustum;
+	float worldToClip[16];
+	float eye[3];
+	float zNear;
+	float zFar;
+	// The frustum culled the visible leaves.
+	bool frustumValid;
+	// Perspective with the standard handedness: GPU back faces are those the
+	// front-face normal turns away from the eye.
+	bool backfaceValid;
+	// The outermost scene view without vis or water overrides, where no client
+	// clip plane removes occluders.
+	bool occlusionValid;
+};
 
 // A meshlet is outside when its bounding sphere lies behind any frustum plane.
 static bool WorldMeshMeshletOutside(
@@ -94,31 +123,78 @@ static world_mesh_gpu::IWorldMeshUpload *WorldMeshDrawProvider()
 	return uploader && uploader->IsResident() ? uploader : NULL;
 }
 
-// pFrustum is the frustum the visible leaves were culled with, or NULL when
-// the list was built without frustum culling.
+// Whether each batch's material has drawn, per map: an occluder must come from
+// a batch the provider is known to draw.
+enum WorldMeshBatchDraw_t
+{
+	WORLDMESH_BATCH_UNKNOWN = 0,
+	WORLDMESH_BATCH_DRAWN,
+	WORLDMESH_BATCH_REJECTED,
+};
+extern int g_nMapLoadCount;
+static CUtlVector<unsigned char> s_WorldMeshBatchDraw;
+static int s_nWorldMeshBatchDrawMap = -1;
+static worldmesh_cull::OcclusionBuffer s_WorldMeshOcclusion;
+
+struct WorldMeshBatchCull_t
+{
+	bool backface;
+	bool occluder;
+	bool twoSided;
+	bool occludee;
+};
+
+// The shader state these flags select (CBaseShader::SetInitialShadowState)
+// decides what the GPU does with a batch: culling, depth test and writes.
+static WorldMeshBatchCull_t ClassifyWorldMeshBatch( IMaterial *pMaterial, unsigned char draw )
+{
+	WorldMeshBatchCull_t cull;
+	const bool wireframe = pMaterial->GetMaterialVarFlag( MATERIAL_VAR_WIREFRAME );
+	const bool noDepth = pMaterial->GetMaterialVarFlag( MATERIAL_VAR_IGNOREZ ) ||
+	                     pMaterial->GetMaterialVarFlag( MATERIAL_VAR_DECAL );
+	cull.twoSided = pMaterial->GetMaterialVarFlag( MATERIAL_VAR_NOCULL );
+	cull.backface = !cull.twoSided && !wireframe;
+	cull.occludee = !noDepth;
+	cull.occluder = draw == WORLDMESH_BATCH_DRAWN && !wireframe && !noDepth &&
+	                !pMaterial->GetMaterialVarFlag( MATERIAL_VAR_ZNEARER ) &&
+	                !pMaterial->GetMaterialVarFlag( MATERIAL_VAR_NO_DRAW ) &&
+	                !pMaterial->IsTranslucent() && !pMaterial->IsAlphaTested();
+	return cull;
+}
+
+// Draws the meshlets of the visible leaves that pass the view's culling.
+// pView is NULL when the list was built without frustum culling.
 static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
     const unsigned short *pVisibleLeaves, int nVisibleLeaves, CUtlVector<unsigned char> &visible,
-    const Frustum_t *pFrustum )
+    const WorldMeshCullView_t *pView, unsigned long flags )
 {
 	world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshDrawProvider();
 	if ( !uploader )
 		return;
+	const double startTime = Plat_FloatTime();
 	const worldbrushdata_t *pWorld = host_state.worldbrush;
+	if ( s_nWorldMeshBatchDrawMap != g_nMapLoadCount ||
+	     s_WorldMeshBatchDraw.Count() != int( pWorld->worldMeshBatchCount ) )
+	{
+		s_WorldMeshBatchDraw.SetCount( pWorld->worldMeshBatchCount );
+		Q_memset( s_WorldMeshBatchDraw.Base(), WORLDMESH_BATCH_UNKNOWN, s_WorldMeshBatchDraw.Count() );
+		s_nWorldMeshBatchDrawMap = g_nMapLoadCount;
+	}
 	visible.SetCount( pWorld->worldMeshClusterCount );
 	Q_memset( visible.Base(), 0, visible.Count() );
-	// Leaves often reference the same meshlets (today every leaf references
-	// all of them), so stop once every meshlet is marked. The local pointer
-	// keeps the byte stores from forcing a reload of the vector's base.
+	// Leaves often reference the same meshlets, so stop once every meshlet is
+	// marked. The local pointer keeps the byte stores from forcing a reload of
+	// the vector's base.
 	unsigned char *pVisible = visible.Base();
 	const unsigned int clusterCount = pWorld->worldMeshClusterCount;
-	const bool bCull = r_worldmesh_cull.GetBool();
-	const float radiusScale = r_worldmesh_cull.GetInt() == 2 ? 0.5f : 1.0f;
+	const int cullMode = r_worldmesh_cull.GetInt();
+	const float radiusScale = cullMode == 2 ? 0.5f : 1.0f;
 	unsigned int marked = 0;
-	if ( !bCull )
+	if ( !cullMode )
 	{
 		Q_memset( pVisible, 1, clusterCount );
 		marked = clusterCount;
-		pFrustum = NULL;
+		pView = NULL;
 	}
 	for ( int i = 0; i < nVisibleLeaves && marked < clusterCount; ++i )
 	{
@@ -134,12 +210,87 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 			flag = 1;
 		}
 	}
-	unsigned int submitted = 0;
-	unsigned int draws = 0;
-	static bool s_reportedRejected = false;
-	for ( unsigned int i = 0; i < pWorld->worldMeshBatchCount; ++i )
+
+	const bool frustum = pView && pView->frustumValid;
+	const bool backface = frustum && pView->backfaceValid && r_worldmesh_cull_backface.GetBool();
+	// Views where occluders may not reach the depth buffer as drawn: water
+	// passes, height clipping, and debug modes that replace or blend materials.
+	const bool occlusion = frustum && pView->occlusionValid &&
+	                       r_worldmesh_cull_occlusion.GetBool() &&
+	                       !( flags & ( DRAWWORLDLISTS_DRAW_REFRACTION | DRAWWORLDLISTS_DRAW_REFLECTION ) ) &&
+	                       pRenderContext->GetHeightClipMode() == MATERIAL_HEIGHTCLIPMODE_DISABLE &&
+	                       !ShouldDrawInWireFrameMode() && !g_pMaterialSystemConfig->bMeasureFillRate &&
+	                       !g_pMaterialSystemConfig->bVisualizeFillRate && pWorld->pWorldMeshOccluders;
+	const float coneRadiusScale = cullMode == 3 ? 0.0f : 1.0f;
+	const float coneMargin = cullMode == 3 ? 0.0f : kWorldMeshConeMargin;
+	const unsigned int batchCount = pWorld->worldMeshBatchCount;
+	WorldMeshBatchCull_t *pBatchCull =
+	    static_cast<WorldMeshBatchCull_t *>( stackalloc( batchCount * sizeof( WorldMeshBatchCull_t ) ) );
+	unsigned int frustumCulled = 0;
+	unsigned int backfaceCulled = 0;
+	unsigned int occluded = 0;
+	for ( unsigned int i = 0; i < batchCount; ++i )
 	{
 		const worldmeshbatch_t &batch = pWorld->pWorldMeshBatches[i];
+		pBatchCull[i] = ClassifyWorldMeshBatch( batch.material, s_WorldMeshBatchDraw[i] );
+		if ( !frustum )
+			continue;
+		const bool batchBackface = backface && pBatchCull[i].backface;
+		for ( unsigned int j = batch.firstMeshlet; j < batch.firstMeshlet + batch.meshletCount; ++j )
+		{
+			if ( !pVisible[j] )
+				continue;
+			const worldmeshcluster_t &meshlet = pWorld->pWorldMeshClusters[j];
+			if ( WorldMeshMeshletOutside( pView->frustum, meshlet, radiusScale ) )
+			{
+				pVisible[j] = 0;
+				++frustumCulled;
+			}
+			else if ( batchBackface &&
+			          worldmesh_cull::ConeFacesAway( pView->eye, meshlet.center.Base(),
+			              meshlet.radius * coneRadiusScale, meshlet.coneAxis.Base(),
+			              meshlet.coneCutoff, coneMargin ) )
+			{
+				pVisible[j] = 0;
+				++backfaceCulled;
+			}
+		}
+	}
+	// Any drawn occluder is nearer than or equal to what the reference frame
+	// shows at its pixels, so occluders from every surviving meshlet are sound.
+	if ( occlusion )
+	{
+		s_WorldMeshOcclusion.Begin( pView->worldToClip, pView->eye, pView->zNear, pView->zFar );
+		for ( unsigned int i = 0; i < batchCount; ++i )
+		{
+			if ( !pBatchCull[i].occluder )
+				continue;
+			const worldmeshbatch_t &batch = pWorld->pWorldMeshBatches[i];
+			for ( unsigned int j = batch.firstMeshlet; j < batch.firstMeshlet + batch.meshletCount;
+			      ++j )
+			{
+				const worldmeshcluster_t &meshlet = pWorld->pWorldMeshClusters[j];
+				if ( !pVisible[j] || !meshlet.occluderCount )
+					continue;
+				const worldmeshoccluder_t *pOccluder = pWorld->pWorldMeshOccluders + meshlet.firstOccluder;
+				for ( unsigned int k = 0; k < meshlet.occluderCount; ++k )
+					s_WorldMeshOcclusion.AddOccluder( pOccluder[k].corners[0].Base(),
+					    pOccluder[k].corners[1].Base(), pOccluder[k].corners[2].Base(),
+					    pBatchCull[i].twoSided );
+			}
+		}
+		s_WorldMeshOcclusion.Finish();
+	}
+	const double cullTime = Plat_FloatTime();
+
+	unsigned int submitted = 0;
+	unsigned int triangles = 0;
+	unsigned int draws = 0;
+	static bool s_reportedRejected = false;
+	for ( unsigned int i = 0; i < batchCount; ++i )
+	{
+		const worldmeshbatch_t &batch = pWorld->pWorldMeshBatches[i];
+		const bool testOcclusion = occlusion && pBatchCull[i].occludee;
 		pRenderContext->Bind( batch.material, NULL );
 		// Meshlets are the visibility unit, not the draw unit: visible meshlets
 		// whose index ranges are adjacent go out as one range, in the same
@@ -148,14 +299,22 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 		unsigned int runCount = 0;
 		unsigned int runMeshlets = 0;
 		bool rejected = false;
+		bool drew = false;
 		for ( unsigned int j = 0; j <= batch.meshletCount && !rejected; ++j )
 		{
 			const worldmeshcluster_t *meshlet = NULL;
 			if ( j < batch.meshletCount && pVisible[batch.firstMeshlet + j] )
 			{
 				meshlet = &pWorld->pWorldMeshClusters[batch.firstMeshlet + j];
-				if ( pFrustum && WorldMeshMeshletOutside( *pFrustum, *meshlet, radiusScale ) )
+				if ( testOcclusion &&
+				     ( cullMode == 4 ? s_WorldMeshOcclusion.IsBoxOccluded( meshlet->center.Base(),
+				                           meshlet->center.Base() )
+				                     : s_WorldMeshOcclusion.IsBoxOccluded(
+				                           meshlet->mins.Base(), meshlet->maxs.Base() ) ) )
+				{
 					meshlet = NULL;
+					++occluded;
+				}
 			}
 			if ( meshlet && runCount && meshlet->firstIndex == runFirst + runCount )
 			{
@@ -177,13 +336,20 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 					rejected = true;
 					break;
 				}
+				drew = true;
 				submitted += runMeshlets;
+				triangles += runCount / 3;
 				++draws;
 			}
 			runFirst = meshlet ? meshlet->firstIndex : 0;
 			runCount = meshlet ? meshlet->indexCount : 0;
 			runMeshlets = meshlet ? 1 : 0;
 		}
+		// A rejection is final for the map; a batch occludes once it has drawn.
+		if ( rejected )
+			s_WorldMeshBatchDraw[i] = WORLDMESH_BATCH_REJECTED;
+		else if ( drew && s_WorldMeshBatchDraw[i] == WORLDMESH_BATCH_UNKNOWN )
+			s_WorldMeshBatchDraw[i] = WORLDMESH_BATCH_DRAWN;
 	}
 	static bool s_reported = false;
 	if ( !s_reported )
@@ -192,6 +358,15 @@ static void Shader_DrawWorldMeshBatches( IMatRenderContext *pRenderContext,
 		     "in %u draws)\n",
 		    pWorld->worldMeshBatchCount, nVisibleLeaves, submitted, draws );
 		s_reported = true;
+	}
+	if ( r_worldmesh_cull_report.GetBool() )
+	{
+		Msg( "WMSH cull: %u leaf-visible, %u frustum, %u back-face, %u occluded, %u drawn "
+		     "(%u triangles, %u draws); %d occluders, %d cells; cull %.3f ms, total %.3f ms\n",
+		    marked, frustumCulled, backfaceCulled, occluded, submitted, triangles, draws,
+		    occlusion ? s_WorldMeshOcclusion.RasterizedOccluders() : 0,
+		    occlusion ? s_WorldMeshOcclusion.CoveredCells() : 0, 1000.0 * ( cullTime - startTime ),
+		    1000.0 * ( Plat_FloatTime() - startTime ) );
 	}
 }
 #endif
@@ -371,7 +546,7 @@ int SortInfoToLightmapPage( int sortID )
 class CWorldRenderList : public CRefCounted1<IWorldRenderList>
 {
 public:
-	CWorldRenderList() : m_bWorldMeshFrustumValid( false ) {}
+	CWorldRenderList() { m_WorldMeshView.frustumValid = false; }
 
 	~CWorldRenderList()
 	{
@@ -420,7 +595,7 @@ public:
 		m_DispAlphaSortList.Init( g_MaxLeavesVisible, 32 );
 		m_VisitedSurfs.Resize( nSurfaces );
 		m_bSkyVisible = false;
-		m_bWorldMeshFrustumValid = false;
+		m_WorldMeshView.frustumValid = false;
 	}
 
 	void Purge()
@@ -450,7 +625,7 @@ public:
 		m_DispAlphaSortList.Reset();
 
 		m_bSkyVisible = false;
-		m_bWorldMeshFrustumValid = false;
+		m_WorldMeshView.frustumValid = false;
 		for (int j = 0; j < MAX_MAT_SORT_GROUPS; ++j)
 		{
 			//Assert(pRenderList->m_ShadowHandles[j].Count() == 0 );
@@ -486,9 +661,8 @@ public:
 	CUtlVector<LeafIndex_t>		m_VisibleLeaves;
 	CUtlVector<LeafFogVolume_t>	m_VisibleLeafFogVolumes;
 	CUtlVector<unsigned char> m_WorldMeshVisibility;
-	// The frustum m_VisibleLeaves was culled with, for WMSH meshlet culling.
-	Frustum_t m_WorldMeshFrustum;
-	bool m_bWorldMeshFrustumValid;
+	// How m_VisibleLeaves was culled, for WMSH meshlet culling.
+	WorldMeshCullView_t m_WorldMeshView;
 
 	CVisitedSurfs m_VisitedSurfs;
 	bool						m_bSkyVisible;
@@ -2325,7 +2499,8 @@ static void Shader_WorldEnd( CWorldRenderList *pRenderList, unsigned long flags,
 		if ( drawWorldMesh )
 			Shader_DrawWorldMeshBatches( pRenderContext, pRenderList->m_VisibleLeaves.Base(),
 			    pRenderList->m_VisibleLeaves.Count(), pRenderList->m_WorldMeshVisibility,
-			    pRenderList->m_bWorldMeshFrustumValid ? &pRenderList->m_WorldMeshFrustum : NULL );
+			    pRenderList->m_WorldMeshView.frustumValid ? &pRenderList->m_WorldMeshView : NULL,
+			    flags );
 #else
 		Shader_DrawChains( pRenderList, nSortGroup, false );
 #endif
@@ -3117,6 +3292,53 @@ void R_RenderWorldTopView( CWorldRenderList *pRenderList, mnode_t *node )
 //-----------------------------------------------------------------------------
 // Spews the leaf we're in
 //-----------------------------------------------------------------------------
+// The sign of the x, y, w rows' determinant for a standard view; a view with
+// the opposite sign is mirrored and flips which faces the GPU culls.
+static float WorldMeshClipHandedness( const VMatrix &worldToClip )
+{
+	const Vector x( worldToClip[0][0], worldToClip[0][1], worldToClip[0][2] );
+	const Vector y( worldToClip[1][0], worldToClip[1][1], worldToClip[1][2] );
+	const Vector w( worldToClip[3][0], worldToClip[3][1], worldToClip[3][2] );
+	return DotProduct( CrossProduct( x, y ), w );
+}
+
+static void CaptureWorldMeshCullView( WorldMeshCullView_t &view, bool frustumValid, bool noOverride )
+{
+	static float s_standardHandedness = 0.0f;
+	if ( s_standardHandedness == 0.0f )
+	{
+		CViewSetup standard;
+		standard.fov = 90;
+		standard.zNear = 4;
+		standard.zFar = 4096;
+		standard.m_flAspectRatio = 1;
+		standard.origin.Init();
+		standard.angles.Init();
+		VMatrix worldToView, viewToProjection, worldToProjection;
+		ComputeViewMatrices( &worldToView, &viewToProjection, &worldToProjection, standard );
+		s_standardHandedness = WorldMeshClipHandedness( worldToProjection ) < 0 ? -1.0f : 1.0f;
+	}
+	view.frustum = g_Frustum;
+	view.frustumValid = frustumValid;
+	const VMatrix &worldToClip = g_EngineRenderer->WorldToScreenMatrix();
+	for ( int row = 0; row < 4; ++row )
+	{
+		for ( int column = 0; column < 4; ++column )
+			view.worldToClip[4 * row + column] = worldToClip[row][column];
+	}
+	const Vector &eye = g_EngineRenderer->ViewOrigin();
+	view.eye[0] = eye.x;
+	view.eye[1] = eye.y;
+	view.eye[2] = eye.z;
+	view.zNear = g_EngineRenderer->GetZNear();
+	view.zFar = g_EngineRenderer->GetZFar();
+	const bool perspective = !g_EngineRenderer->ViewGetCurrent().m_bOrtho;
+	view.backfaceValid = frustumValid && perspective &&
+	                     WorldMeshClipHandedness( worldToClip ) * s_standardHandedness > 0.0f;
+	view.occlusionValid =
+	    view.backfaceValid && noOverride && view.zNear > 0.0f && R_IsOutermostSceneView();
+}
+
 static void SpewLeaf()
 {
 	int leaf = CM_PointLeafnum( g_EngineRenderer->ViewOrigin() );
@@ -3157,9 +3379,9 @@ void R_BuildWorldLists( IWorldRenderList *pRenderListIn, WorldListInfo_t* pInfo,
 
 	Shader_WorldBegin( pRenderList );
 
-	pRenderList->m_WorldMeshFrustum = g_Frustum;
-	pRenderList->m_bWorldMeshFrustumValid =
-	    !r_drawtopview && !bShadowDepth && r_frustumcullworld.GetBool();
+	CaptureWorldMeshCullView( pRenderList->m_WorldMeshView,
+	    !r_drawtopview && !bShadowDepth && r_frustumcullworld.GetBool(),
+	    iForceViewLeaf < 0 && !pVisData && !pWaterReflectionHeight );
 	if ( !r_drawtopview )
 	{
 		R_SetupAreaBits( iForceViewLeaf, pVisData, pWaterReflectionHeight );

@@ -25,6 +25,10 @@
 #include "render/legacy_shader_provider.h"
 #include "render/pbr_material_schema.h"
 #include "render/render_display_modes.h"
+#include "render/render_sample_count.h"
+#include "dxsupport_keyvalues.h"
+#include "filesystem.h"
+#include "tier1/KeyValues.h"
 #include "vulkan_device.h"
 #include "vulkan_world_mesh_upload.h"
 #include "sdl3/sdl3_vulkan_surface_host.h"
@@ -38,6 +42,7 @@
 
 #include <algorithm>
 #include <array>
+#include <climits>
 #include <functional>
 #include <map>
 #include <string>
@@ -72,6 +77,25 @@ static int NativeCapsDxLevel()
 	static const int s_nLevel =
 	    CommandLine()->ParmValue( "-vkdxlevel", 95 ) == 90 ? 90 : 95;
 	return s_nLevel;
+}
+
+// The adapter's identity and caps (vulkan_adapter.h): the live device once
+// SetMode brought it up; before that, a probe (the material system asks at
+// Init, before any window exists). The probe runs once.
+static const render_vulkan::VulkanAdapterCaps &CurrentAdapterCaps()
+{
+	if ( g_VulkanContext.IsValid() )
+		return g_VulkanContext.AdapterCaps();
+	static render_vulkan::VulkanAdapterCaps s_Probe;
+	static bool s_bProbed = false;
+	if ( !s_bProbed )
+	{
+		s_bProbed = true;
+		std::string error;
+		if ( !render_vulkan::ProbeVulkanAdapter( &s_Probe, &error ) )
+			Warning( "[NativeVulkan] %s\n", error.c_str() );
+	}
+	return s_Probe;
 }
 
 // Brings the context up against the engine's window. The window reference is
@@ -1011,7 +1035,12 @@ public:
 	void InvokeModeChangeCallbacks();
 
 private:
+	void ClampToCapabilities( KeyValues *pKeyValues ) const;
+
 	CUtlVector<ShaderModeChangeCallbackFunc_t> m_ModeChangeCallbacks;
+	IFileSystem *m_pFileSystem = NULL;
+	KeyValues *m_pDXSupport = NULL;
+	bool m_bDXSupportRead = false;
 	// The desktop of the display the launcher selected (sdl_displayindex). The
 	// launcher owns display selection; false when there is none (tools, tests).
 	bool QueryDesktopDisplay( render::DisplayModeFacts *pDesktop ) const;
@@ -2075,6 +2104,8 @@ bool CShaderDeviceMgrVulkan::Connect( CreateInterfaceFn factory )
 	// Optional: application roots without a launcher (tools, tests) get no modes.
 	m_pLauncherMgr = (ILauncherMgr *)factory( SDLMGR_INTERFACE_VERSION, NULL );
 #endif
+	// Optional: without a file system there is no dxsupport.cfg to recommend from.
+	m_pFileSystem = (IFileSystem *)factory( FILESYSTEM_INTERFACE_VERSION, NULL );
 	return true;
 }
 
@@ -2085,6 +2116,11 @@ void CShaderDeviceMgrVulkan::Disconnect()
 	m_pLauncherMgr = NULL;
 #endif
 	m_Modes.clear();
+	m_pFileSystem = NULL;
+	if ( m_pDXSupport )
+		m_pDXSupport->deleteThis();
+	m_pDXSupport = NULL;
+	m_bDXSupportRead = false;
 	ConVar_Unregister();
 	DisconnectTier1Libraries();
 }
@@ -2182,20 +2218,77 @@ int CShaderDeviceMgrVulkan::GetAdapterCount() const
 	return 1;
 }
 
+// dxsupport.cfg (the file the D3D9 device reads) through the shared
+// render.dxsupport-policy.v1 owner, for this adapter's identity, then held to
+// what this backend supports: a recommendation never names a mode the Video
+// options could not apply.
 bool CShaderDeviceMgrVulkan::GetRecommendedConfigurationInfo(
     int nAdapter, int nDXLevel, KeyValues *pKeyValues )
 {
+	const int nLevel = render::ClosestActualDxLevel(
+	    nDXLevel != 0 ? nDXLevel : NativeCapsDxLevel(), false, ABSOLUTE_MINIMUM_DXLEVEL );
+	if ( nLevel > NativeCapsDxLevel() )
+		return false;
+
+	if ( !m_pDXSupport && !m_bDXSupportRead )
+	{
+		m_bDXSupportRead = true;
+		m_pDXSupport = dxsupport::ReadConfig( m_pFileSystem, "dxsupport.cfg", "dxsupport_override.cfg" );
+	}
+	if ( !m_pDXSupport )
+		return true;
+
+	const render_vulkan::VulkanAdapterCaps &caps = CurrentAdapterCaps();
+	render::DxSupportQuery query;
+	query.dxLevel = nLevel;
+	query.maxDxLevel = NativeCapsDxLevel();
+	query.vendorId = static_cast<int>( caps.vendorId );
+	query.deviceId = static_cast<int>( caps.deviceId );
+	query.videoMemoryBytes = g_ShaderAPIEmpty.TextureMemorySize();
+	dxsupport::FillHostFacts( &query );
+	dxsupport::ApplyRecommendedConfig( m_pDXSupport, query, pKeyValues );
+	ClampToCapabilities( pKeyValues );
 	return true;
+}
+
+void CShaderDeviceMgrVulkan::ClampToCapabilities( KeyValues *pKeyValues ) const
+{
+	uint32_t sampleMask = 1;
+	for ( int samples = 2; samples <= render::kMaxSampleCount; samples *= 2 )
+	{
+		if ( g_ShaderAPIEmpty.SupportsMSAAMode( samples ) )
+			sampleMask |= static_cast<uint32_t>( samples );
+	}
+	if ( KeyValues *pAA = pKeyValues->FindKey( "ConVar.mat_antialias" ) )
+	{
+		const int samples = render::ClampSampleCount( pAA->GetInt(), sampleMask );
+		if ( samples != pAA->GetInt() && pAA->GetInt() > 1 )
+		{
+			pKeyValues->SetInt( "ConVar.mat_antialias", samples );
+			pKeyValues->SetInt( "ConVar.mat_aaquality", 0 );
+		}
+	}
+	if ( !g_ShaderAPIEmpty.SupportsShadowDepthTextures() )
+		pKeyValues->SetInt( "ConVar.r_flashlightdepthtexture", 0 );
+	if ( KeyValues *pHDR = pKeyValues->FindKey( "ConVar.mat_hdr_level" ) )
+	{
+		if ( pHDR->GetInt() > 2 )
+			pKeyValues->SetInt( "ConVar.mat_hdr_level", 2 );
+	}
 }
 
 // Returns info about each adapter
 void CShaderDeviceMgrVulkan::GetAdapterInfo( int adapter, MaterialAdapterInfo_t &info ) const
 {
 	memset( &info, 0, sizeof( info ) );
-	Q_strncpy( info.m_pDriverName, "Native Vulkan", sizeof( info.m_pDriverName ) );
+	const render_vulkan::VulkanAdapterCaps &caps = CurrentAdapterCaps();
+	Q_strncpy( info.m_pDriverName, caps.valid ? caps.name.c_str() : "Native Vulkan",
+	    sizeof( info.m_pDriverName ) );
+	info.m_VendorID = caps.vendorId;
+	info.m_DeviceID = caps.deviceId;
 	info.m_nDXSupportLevel = NativeCapsDxLevel();
 	info.m_nMaxDXSupportLevel = NativeCapsDxLevel();
-	info.m_nDriverVersionHigh = 1;
+	info.m_nDriverVersionHigh = caps.driverVersion;
 	info.m_nDriverVersionLow = 0;
 }
 
@@ -4220,10 +4313,12 @@ int CShaderAPIVulkan::MaxTextureAspectRatio() const
 	return MaxTextureWidth();
 }
 
+// The largest device-local heap, what a D3D9 driver reports (the interface is
+// an int of bytes, so larger heaps report INT_MAX).
 int CShaderAPIVulkan::TextureMemorySize() const
 {
-	// fake it
-	return 64 * 1024 * 1024;
+	const uint64_t bytes = CurrentAdapterCaps().largestDeviceLocalHeapBytes;
+	return bytes ? static_cast<int>( std::min<uint64_t>( bytes, INT_MAX ) ) : 64 * 1024 * 1024;
 }
 
 // As CHardwareConfig::GetDXSupportLevel: the configured level (mat_dxlevel)

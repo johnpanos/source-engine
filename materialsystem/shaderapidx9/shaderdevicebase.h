@@ -92,9 +92,6 @@ private:
 	// Reads in the dxsupport.cfg keyvalues
 	KeyValues *ReadDXSupportKeyValues();
 
-	// Reads in ConVars + config variables
-	void LoadConfig( KeyValues *pKeyValues, KeyValues *pConfiguration );
-
 	// Loads the hardware caps, for cases in which the D3D caps lie or where we need to augment the caps
 	void LoadHardwareCaps( KeyValues *pGroup, HardwareCaps_t &caps );
 
@@ -103,14 +100,6 @@ private:
 
 	// Returns the amount of video memory in bytes for a particular adapter
 	virtual int GetVidMemBytes( int nAdapter ) const = 0;
-
-	// Looks for override keyvalues in the dxsupport cfg keyvalues
-	KeyValues *FindDXLevelSpecificConfig( KeyValues *pKeyValues, int nDxLevel );
-	KeyValues *FindDXLevelAndVendorSpecificConfig( KeyValues *pKeyValues, int nDxLevel, int nVendorID );
-	KeyValues *FindCPUSpecificConfig( KeyValues *pKeyValues, int nCPUMhz, bool bAMD );
-	KeyValues *FindMemorySpecificConfig( KeyValues *pKeyValues, int nSystemRamMB );
-	KeyValues *FindVidMemSpecificConfig( KeyValues *pKeyValues, int nVideoRamMB );
-	KeyValues *FindCardSpecificConfig( KeyValues *pKeyValues, int nVendorID, int nDeviceID );
 
 protected:
 	// Stores adapter info for all adapters

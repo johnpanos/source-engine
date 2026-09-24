@@ -27,6 +27,7 @@
 #include "tier1/convar.h"
 #include "tier1/utlbuffer.h"
 #ifndef SWDS
+#include "bitmap/tgawriter.h"
 #include "cl_main.h"
 #include "client.h"
 #include "ivideomode.h"
@@ -206,6 +207,9 @@ public:
 		pending.ticket = m_NextTicket++;
 		pending.spec = spec;
 		m_Captures.push_back( std::move( pending ) );
+		// Hooked only while a capture is pending: the hook pauses material
+		// threading for the frame, like the engine's own screenshot path.
+		CL_SetFrameCaptureHook( &EngineDebugApiHost::FrameCaptureThunk, this );
 		return m_Captures.back().ticket;
 #endif
 	}
@@ -233,9 +237,10 @@ public:
 			if ( it->ticket == ticket )
 			{
 				m_Captures.erase( it );
-				return;
+				break;
 			}
 		}
+		UnhookWhenIdle();
 	}
 
 	void RequestQuit() override { Cbuf_AddText( "quit\n" ); }
@@ -326,6 +331,7 @@ private:
 			pending.result = Capture( pending );
 			pending.done = true;
 		}
+		UnhookWhenIdle();
 	}
 
 	HostResult<ScreenshotCapture> Capture( const PendingCapture &pending )
@@ -334,13 +340,18 @@ private:
 		capture.width = static_cast<uint32_t>( videomode->GetModeStereoWidth() );
 		capture.height = static_cast<uint32_t>( videomode->GetModeStereoHeight() );
 		capture.hostFrame = static_cast<uint32_t>( host_framecount );
-		if ( pending.spec.kind == ScreenshotKind::InlineJpeg )
+		if ( pending.spec.kind == ScreenshotKind::InlineTga )
 		{
+			// The same read and encoder as TakeSnapshotTGA, kept in memory.
+			std::vector<uint8> pixels( size_t( capture.width ) * capture.height * 3 );
+			videomode->ReadScreenPixels( 0, 0, capture.width, capture.height, pixels.data(),
+			    IMAGE_FORMAT_RGB888 );
 			CUtlBuffer buffer;
-			if ( !videomode->TakeSnapshotJPEGToBuffer( buffer, pending.spec.jpegQuality ) )
+			if ( !TGAWriter::WriteToBuffer( pixels.data(), buffer, capture.width, capture.height,
+			         IMAGE_FORMAT_RGB888, IMAGE_FORMAT_RGB888 ) )
 				return foundation::MakeUnexpected(
-				    Error( HostErrorCode::Internal, "JPEG capture failed" ) );
-			capture.jpeg.assign( static_cast<const char *>( buffer.Base() ), buffer.TellPut() );
+				    Error( HostErrorCode::Internal, "TGA encoding failed" ) );
+			capture.tga.assign( static_cast<const char *>( buffer.Base() ), buffer.TellPut() );
 			return capture;
 		}
 		char name[MAX_PATH];
@@ -356,6 +367,18 @@ private:
 		return capture;
 	}
 #endif
+
+	void UnhookWhenIdle()
+	{
+#ifndef SWDS
+		for ( const PendingCapture &pending : m_Captures )
+		{
+			if ( !pending.done )
+				return;
+		}
+		CL_SetFrameCaptureHook( NULL, NULL );
+#endif
+	}
 
 	const BoundSelection &m_Selection;
 	std::string m_Capture;
@@ -429,9 +452,6 @@ bool DebugApi_EngineStart()
 		return true;
 	s_Host = std::make_unique<EngineDebugApiHost>( s_Selection );
 	g_pCVar->InstallConsoleDisplayFunc( s_Host.get() );
-#ifndef SWDS
-	CL_SetFrameCaptureHook( &EngineDebugApiHost::FrameCaptureThunk, s_Host.get() );
-#endif
 	ServiceResult service = StartDebugApiService(
 	    *s_Selection.transport, s_Selection.address, *s_Selection.framing, *s_Host );
 	if ( !service )

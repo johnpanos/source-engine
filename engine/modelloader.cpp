@@ -371,6 +371,7 @@ private:
 	CUtlVector<worldmeshcluster_t> m_WorldMeshClusters;
 	CUtlVector<worldmeshleafrange_t> m_WorldMeshLeafRanges;
 	CUtlVector<unsigned int> m_WorldMeshLeafReferences;
+	CUtlVector<worldmeshoccluder_t> m_WorldMeshOccluders;
 #endif
 
 	char				m_szActiveMapName[64];
@@ -4695,16 +4696,51 @@ void CModelLoader::Map_LoadWorldMesh()
 	// been drained at map unload.
 	for ( int i = 0; i < m_WorldMeshBatches.Count(); ++i )
 		m_WorldMeshBatches[i].material->IncrementReferenceCount();
+	// Triangles at least this large (square units) are occluder candidates;
+	// smaller ones rarely cover a whole occlusion cell.
+	const float kOccluderMinArea = 1.0f;
 	m_WorldMeshClusters.SetCount( summary.meshletCount );
+	m_WorldMeshOccluders.RemoveAll();
 	for ( uint32_t i = 0; i < summary.meshletCount; ++i )
 	{
 		const unsigned char *pMeshlet = m_WorldMeshBytes.Base() + summary.sectionOffsets[4] +
 		                                uint64_t( i ) * mapcontainer::kWorldMeshMeshletSize;
-		m_WorldMeshClusters[i].firstIndex = WorldMeshU32( pMeshlet );
-		m_WorldMeshClusters[i].indexCount = WorldMeshU32( pMeshlet + 4 );
-		m_WorldMeshClusters[i].center.Init( WorldMeshF32( pMeshlet + 16 ),
-		    WorldMeshF32( pMeshlet + 20 ), WorldMeshF32( pMeshlet + 24 ) );
-		m_WorldMeshClusters[i].radius = WorldMeshF32( pMeshlet + 28 );
+		worldmeshcluster_t &cluster = m_WorldMeshClusters[i];
+		cluster.firstIndex = WorldMeshU32( pMeshlet );
+		cluster.indexCount = WorldMeshU32( pMeshlet + 4 );
+		cluster.center.Init( WorldMeshF32( pMeshlet + 16 ), WorldMeshF32( pMeshlet + 20 ),
+		    WorldMeshF32( pMeshlet + 24 ) );
+		cluster.radius = WorldMeshF32( pMeshlet + 28 );
+		// Only version 2 cones bound front faces; a version 1 cone never culls.
+		cluster.coneAxis.Init( WorldMeshF32( pMeshlet + 32 ), WorldMeshF32( pMeshlet + 36 ),
+		    WorldMeshF32( pMeshlet + 40 ) );
+		cluster.coneCutoff = summary.version >= 2 ? WorldMeshF32( pMeshlet + 44 ) : -1.0f;
+		// Deindexed: index i is vertex i.
+		cluster.mins.Init( FLT_MAX, FLT_MAX, FLT_MAX );
+		cluster.maxs.Init( -FLT_MAX, -FLT_MAX, -FLT_MAX );
+		cluster.firstOccluder = m_WorldMeshOccluders.Count();
+		for ( uint32_t corner = 0; corner < cluster.indexCount; corner += 3 )
+		{
+			Vector points[3];
+			for ( int k = 0; k < 3; ++k )
+			{
+				const unsigned char *pVertex = m_WorldMeshBytes.Base() + summary.sectionOffsets[0] +
+				                               uint64_t( cluster.firstIndex + corner + k ) *
+				                                   mapcontainer::kWorldMeshVertexSize;
+				points[k].Init( WorldMeshF32( pVertex ), WorldMeshF32( pVertex + 4 ),
+				    WorldMeshF32( pVertex + 8 ) );
+				VectorMin( cluster.mins, points[k], cluster.mins );
+				VectorMax( cluster.maxs, points[k], cluster.maxs );
+			}
+			if ( 0.5f * CrossProduct( points[1] - points[0], points[2] - points[0] ).Length() >=
+			     kOccluderMinArea )
+			{
+				worldmeshoccluder_t &occluder = m_WorldMeshOccluders[m_WorldMeshOccluders.AddToTail()];
+				for ( int k = 0; k < 3; ++k )
+					occluder.corners[k] = points[k];
+			}
+		}
+		cluster.occluderCount = m_WorldMeshOccluders.Count() - cluster.firstOccluder;
 	}
 	m_WorldMeshLeafRanges.SetCount( summary.leafCount );
 	for ( uint32_t i = 0; i < summary.leafCount; ++i )
@@ -4725,8 +4761,11 @@ void CModelLoader::Map_LoadWorldMesh()
 	m_worldBrushData.pWorldMeshLeafRanges = m_WorldMeshLeafRanges.Base();
 	m_worldBrushData.worldMeshLeafCount = m_WorldMeshLeafRanges.Count();
 	m_worldBrushData.pWorldMeshLeafReferences = m_WorldMeshLeafReferences.Base();
-	Msg( "Map %s: WMSH materials ready (%u batches)\n", s_szMapName,
-	    m_worldBrushData.worldMeshBatchCount );
+	m_worldBrushData.pWorldMeshOccluders = m_WorldMeshOccluders.Base();
+	m_worldBrushData.worldMeshOccluderCount = m_WorldMeshOccluders.Count();
+	Msg( "Map %s: WMSH materials ready (%u batches, %u occluder triangles, cones %s)\n",
+	    s_szMapName, m_worldBrushData.worldMeshBatchCount,
+	    m_worldBrushData.worldMeshOccluderCount, summary.version >= 2 ? "front-face" : "unused" );
 }
 
 void CModelLoader::Map_ReleaseWorldMeshMaterials()
@@ -4753,6 +4792,9 @@ void CModelLoader::Map_LoadModel( model_t *mod )
 	m_WorldMeshClusters.Purge();
 	m_WorldMeshLeafRanges.Purge();
 	m_WorldMeshLeafReferences.Purge();
+	m_WorldMeshOccluders.Purge();
+	m_worldBrushData.pWorldMeshOccluders = NULL;
+	m_worldBrushData.worldMeshOccluderCount = 0;
 	m_worldBrushData.pWorldMeshData = NULL;
 	m_worldBrushData.worldMeshSize = 0;
 	m_worldBrushData.pWorldMeshBatches = NULL;

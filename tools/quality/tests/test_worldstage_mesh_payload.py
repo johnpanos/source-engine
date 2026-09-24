@@ -9,7 +9,8 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from worldstage_mesh_compare import read_payload  # noqa: E402
-from worldstage_mesh_pack import face_triangles, tangent_frame, write_payload  # noqa: E402
+from worldstage_mesh_pack import (face_triangles, front_face_cone, tangent_frame,  # noqa: E402
+                                  write_payload)
 
 
 class WorldMeshPayloadTests(unittest.TestCase):
@@ -39,6 +40,27 @@ class WorldMeshPayloadTests(unittest.TestCase):
             with self.subTest(size=len(case)):
                 with self.assertRaises(ValueError):
                     read_payload(case)
+
+    def test_v2_cone_follows_winding_not_vertex_normals(self):
+        decoded = read_payload(self.make_payload())
+        self.assertEqual(decoded["version"], 2)
+        axis, cutoff = decoded["meshlets"][0][8:11], decoded["meshlets"][0][11]
+        self.assertEqual(axis, (0.0, 0.0, 1.0))
+        self.assertGreater(cutoff, 0.99)
+        # Clockwise corners face -z whatever the vertex normal says.
+        self.assertEqual(front_face_cone([[(0, 0, 0), (0, 1, 0), (1, 0, 0)]])[0], (0.0, 0.0, -1.0))
+
+    def test_cone_of_opposing_or_degenerate_faces_cannot_cull(self):
+        up, down = [(0, 0, 0), (1, 0, 0), (0, 1, 0)], [(0, 0, 0), (0, 1, 0), (1, 0, 0)]
+        self.assertEqual(front_face_cone([up, down])[1], -1.0)
+        self.assertEqual(front_face_cone([[(0, 0, 0), (1, 0, 0), (2, 0, 0)]])[1], -1.0)
+
+    def test_reader_rejects_a_cone_excluding_a_front_face(self):
+        changed = bytearray(self.make_payload())
+        meshlet = struct.unpack_from("<Q", changed, 88)[0]
+        struct.pack_into("<4f", changed, meshlet + 32, 0.0, 0.0, -1.0, 0.5)
+        with self.assertRaisesRegex(ValueError, "cone does not bound"):
+            read_payload(bytes(changed))
 
     def test_bad_index_and_leaf_reference_are_rejected(self):
         payload = self.make_payload()

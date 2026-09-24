@@ -32,6 +32,10 @@ inline bool R_CullBoxSkipNear( const Vector& mins, const Vector& maxs )
 void R_DrawScreenRect( float left, float top, float right, float bottom );
 
 void R_DrawPortals();
+
+// True while drawing the outermost perspective 3D view into the current
+// target, which no client clip plane restricts.
+bool R_IsOutermostSceneView();
 float GetScreenAspect( );
 void R_CheckForLightingConfigChanges();
 

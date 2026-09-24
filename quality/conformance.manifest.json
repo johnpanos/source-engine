@@ -1783,6 +1783,24 @@
       "expect": "pass"
     },
     {
+      "id": "world.meshlet-cull",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0008",
+      "contract": "unittests/worldmeshtest/contracts/world.meshlet_cull.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-O2",
+        "-Iengine"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "engine/worldmesh_cull.cpp",
+        "unittests/worldmeshtest/test_worldmesh_cull.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "toolchain.abi.jobsystem-batch",
       "domain": "Q-FOUNDATION",
       "rfc": "0006",

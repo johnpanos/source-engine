@@ -242,6 +242,23 @@ struct worldmeshcluster_t
 	// Bounding sphere; the container validator checks it holds every vertex.
 	Vector center;
 	float radius;
+	// Vertex bounds, computed at load.
+	Vector mins;
+	Vector maxs;
+	// WMSH v2 front-face cone; cutoff -1 (never culls) for version 1.
+	Vector coneAxis;
+	float coneCutoff;
+	// Occluder triangles of this meshlet: [firstOccluder, firstOccluder + occluderCount)
+	// in worldbrushdata_t::pWorldMeshOccluders.
+	unsigned int firstOccluder;
+	unsigned int occluderCount;
+};
+
+// A large WMSH triangle, a candidate occluder when its batch's material is
+// opaque and depth-writing.
+struct worldmeshoccluder_t
+{
+	Vector corners[3];
 };
 
 struct worldmeshleafrange_t
@@ -358,6 +375,8 @@ struct worldbrushdata_t
 	const worldmeshleafrange_t *pWorldMeshLeafRanges;
 	unsigned int worldMeshLeafCount;
 	const unsigned int *pWorldMeshLeafReferences;
+	const worldmeshoccluder_t *pWorldMeshOccluders;
+	unsigned int worldMeshOccluderCount;
 #if 0
 	int			numportals;
 	mportal_t	*portals;

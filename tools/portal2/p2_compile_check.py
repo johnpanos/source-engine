@@ -8,10 +8,19 @@ compile check only and says nothing about linking or runtime behavior.
 
   python3 tools/portal2/p2_compile_check.py server game/server/portal2/paint_sphere.cpp
   python3 tools/portal2/p2_compile_check.py client --all-present --jobs 16
+  python3 tools/portal2/p2_compile_check.py server --probe game/server/portal2/paint_sphere.cpp
+
+--probe is for reconstruction work while the imported base game still fails to
+compile. It replaces each missing header outside the checked files with an empty
+stub in <build-dir>/p2-probe-shims (never in the source tree), retries, and
+reports only diagnostics located in the checked files and their headers (or the
+--own paths). An empty stub hides that header's declarations, so errors that
+name its types are base-port gaps, not proof of a defect in the checked file.
 """
 
 import argparse
 import ast
+import re
 import concurrent.futures
 import os
 import shlex
@@ -34,6 +43,10 @@ BASE_INCLUDES = {
 	'server': ['.', '../shared', '../../utils/common', '../shared/econ', 'NextBot', '../../common',
 			   '../../public/tier0', '../../public/tier1', '../../public'],
 }
+# The imported Portal 2 sources spell some includes from the source root.
+PORTAL2_INCLUDES = ['../..']
+FATAL_MISSING = re.compile(r'^(?P<src>[^:\n]+):\d+:\d+: fatal error: (?P<hdr>[^:]+): No such file or directory', re.M)
+DIAGNOSTIC = re.compile(r'^(?P<file>/[^:\n]+):(?P<line>\d+):(?P<col>\d+): (?P<kind>fatal error|error|warning): (?P<msg>.*)$', re.M)
 
 
 def load_cache(build_dir, side):
@@ -64,16 +77,57 @@ def project(build_dir, side):
 		os.chdir(cwd)
 	game_dir = ROOT / 'game' / side
 	defines = [d for d in cache['DEFINES'] + game['defines'] if d != 'PROTECTED_THINGS_ENABLE']
-	includes = [os.path.normpath(game_dir / i) for i in BASE_INCLUDES[side] + game['includes']]
+	includes = [os.path.normpath(game_dir / i) for i in BASE_INCLUDES[side] + game['includes'] + PORTAL2_INCLUDES]
 	includes += cache.get('INCLUDES', []) + cache.get('INCLUDES_SDL2', [])
 	flags = [f for f in cache['CXXFLAGS'] if f not in ('-MMD', '-w') and not f.startswith('-L')]
 	sources = [os.path.normpath(game_dir / s) for s in game['sources']]
 	return cache['CXX'], flags, defines, includes, sources
 
 
-def command(cxx, flags, defines, includes, source, extra):
-	return (list(cxx) + flags + ['-fsyntax-only', '-w', '-fmax-errors=50'] + extra
+def command(cxx, flags, defines, includes, source, extra, max_errors=50):
+	return (list(cxx) + flags + ['-fsyntax-only', '-w', f'-fmax-errors={max_errors}'] + extra
 			+ ['-D' + d for d in defines] + ['-I' + i for i in includes] + [source])
+
+
+def own_paths(source, extra_own):
+	stem = os.path.splitext(source)[0]
+	own = {source, stem + '.h'}
+	directory, base = os.path.split(stem)
+	if base.startswith('c_'):
+		own.add(os.path.join(directory, base + '.h'))
+	return own | set(extra_own)
+
+
+def probe(cxx, flags, defines, includes, source, extra, shim_root, own):
+	"""Compile with empty stubs for missing foreign headers; return own diagnostics."""
+	shims = []
+	for _ in range(200):
+		cmd = command(cxx, flags, defines, includes + [str(shim_root)], source, extra, max_errors=0)
+		result = subprocess.run(cmd, cwd=os.path.dirname(source), capture_output=True, text=True)
+		output = result.stdout + result.stderr
+		fatal = FATAL_MISSING.search(output)
+		if not fatal:
+			break
+		header = fatal.group('hdr')
+		includer = os.path.normpath(fatal.group('src'))
+		if includer in own:
+			# A checked file names a header that does not exist: that is its own gap.
+			shims.append(f'{header} (included by checked file {os.path.relpath(includer, ROOT)})')
+		else:
+			shims.append(header)
+		stub = shim_root / header
+		if stub.exists():
+			# The spelling resolved relative to the includer only; nothing a stub can fix.
+			return shims, [(includer, 0, 0, 'fatal error', f'{header}: No such file or directory')], output
+		stub.parent.mkdir(parents=True, exist_ok=True)
+		stub.write_text('// p2_compile_check probe stub: header absent from this checkout\n#pragma once\n')
+	diagnostics = []
+	for match in DIAGNOSTIC.finditer(output):
+		path = os.path.normpath(match.group('file'))
+		if path in own and match.group('kind') != 'warning':
+			diagnostics.append((path, int(match.group('line')), int(match.group('col')), match.group('kind'),
+								match.group('msg')))
+	return shims, diagnostics, output
 
 
 def main():
@@ -86,6 +140,9 @@ def main():
 	parser.add_argument('--print-command', action='store_true')
 	parser.add_argument('--quiet', action='store_true', help='only list pass/fail per file')
 	parser.add_argument('--extra', default='', help='extra compiler flags (shell-quoted)')
+	parser.add_argument('--probe', action='store_true', help='stub missing foreign headers; report own diagnostics')
+	parser.add_argument('--own', action='append', default=[], help='additional paths whose diagnostics count')
+	parser.add_argument('--show-shims', action='store_true', help='list stubbed headers per file in --probe')
 	args = parser.parse_args()
 
 	cxx, flags, defines, includes, sources = project(ROOT / args.build_dir, args.side)
@@ -102,6 +159,28 @@ def main():
 	if args.print_command:
 		print(shlex.join(command(cxx, flags, defines, includes, files[0], extra)))
 		return 0
+
+	if args.probe:
+		shim_root = ROOT / args.build_dir / 'p2-probe-shims' / args.side
+		shim_root.mkdir(parents=True, exist_ok=True)
+		extra_own = [os.path.normpath(ROOT / p) for p in args.own]
+		failed = 0
+		for f in files:
+			shims, diagnostics, _output = probe(cxx, flags, defines, includes, f, extra, shim_root,
+												own_paths(f, extra_own))
+			rel = os.path.relpath(f, ROOT)
+			print(f'{"PASS" if not diagnostics else "FAIL"} {rel} ({len(diagnostics)} own diagnostics, '
+				  f'{len(shims)} stubbed headers)')
+			if args.show_shims:
+				for shim in shims:
+					print(f'  stub: {shim}')
+			if diagnostics:
+				failed += 1
+				if not args.quiet:
+					for path, line, col, kind, msg in diagnostics:
+						print(f'  {os.path.relpath(path, ROOT)}:{line}:{col}: {kind}: {msg}')
+		print(f'{len(files) - failed}/{len(files)} without own diagnostics (probe mode)', file=sys.stderr)
+		return 1 if failed else 0
 
 	def run(f):
 		result = subprocess.run(command(cxx, flags, defines, includes, f, extra), cwd=ROOT / 'game' / args.side,

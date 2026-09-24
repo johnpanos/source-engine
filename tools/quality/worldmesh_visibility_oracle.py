@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """Prove WMSH meshlet visibility culling changes no pixels.
 
-Runs the same camera sweep three times on the installed product through the
-frame pacing harness (`frame_pacing.py`, which owns staging, launch and
+Runs the same camera sweep once per mode on the installed product through
+the frame pacing harness (`frame_pacing.py`, which owns staging, launch and
 command chaining):
 
-    reference  r_worldmesh_cull 0: every meshlet drawn
-    candidate  r_worldmesh_cull 1: leaf visibility and view frustum
-    negative   r_worldmesh_cull 2: frustum culling with half-size spheres
+    reference          r_worldmesh_cull 0: every meshlet drawn
+    candidate          r_worldmesh_cull 1: leaves, frustum, back faces, occlusion
+    negative-frustum   r_worldmesh_cull 2: frustum culling with half-size spheres
+    negative-backface  r_worldmesh_cull 3: cone culling ignoring meshlet extent
+    negative-occlusion r_worldmesh_cull 4: occlusion tested at meshlet centers
 
-Every candidate screenshot must be byte-identical to its reference, and the
+Every candidate screenshot must be byte-identical to its reference, and each
 negative control must differ in at least one view, or the sweep cannot see
-culling errors. The sweep flies (noclip) through a grid of eye positions
+that stage's errors. The candidate run prints per-draw culling counts
+(`r_worldmesh_cull_report`), summarized so the evidence shows each stage
+rejects meshlets. The sweep flies (noclip) through a grid of eye positions
 inside the collision interior, looking in eight directions level and pitched,
 plus straight up and down. Frame stats of each run are summarized so the
 evidence also shows what culling saves.
@@ -27,12 +31,21 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import statistics
 import subprocess
 import sys
 
 HERE = Path(__file__).resolve().parent
-MODES = {"reference": 0, "candidate": 1, "negative": 2}
+MODES = {"reference": 0, "candidate": 1, "negative-frustum": 2, "negative-backface": 3,
+         "negative-occlusion": 4}
+NEGATIVES = [mode for mode in MODES if mode.startswith("negative")]
+CULL_LINE = re.compile(
+    r"WMSH cull: (\d+) leaf-visible, (\d+) frustum, (\d+) back-face, (\d+) occluded, "
+    r"(\d+) drawn \((\d+) triangles, (\d+) draws\); (\d+) occluders, (\d+) cells; "
+    r"cull ([0-9.]+) ms, total ([0-9.]+) ms")
+CULL_FIELDS = ("leaf_visible", "frustum", "backface", "occluded", "drawn", "triangles", "draws",
+               "occluders", "cells", "cull_ms", "total_ms")
 EYE_HEIGHT = 64
 MARGIN = 24
 
@@ -66,7 +79,10 @@ def scenario(map_name, mode, poses):
     return {"schema": "frame-pacing-scenario/v1", "id": "worldmesh-visibility-%s" % mode,
             "description": "WMSH visibility oracle sweep (r_worldmesh_cull %d)" % MODES[mode],
             "map": map_name, "passes": 1, "host_framerate": 60,
-            "setup": ["r_worldmesh_draw 2", "r_worldmesh_cull %d" % MODES[mode], "net_graph 0",
+            "setup": ["r_worldmesh_draw 2", "r_worldmesh_cull %d" % MODES[mode],
+                      "r_worldmesh_cull_report %d" % (mode == "candidate"),
+                      # The candidate's report must not reach the on-screen notify area.
+                      "contimes 0", "net_graph 0",
                       "cl_showfps 0", "noclip", "notarget", "wait 90"],
             "body": body, "budgets": {}}
 
@@ -94,8 +110,14 @@ def run(args, mode, poses):
     evidence = json.loads((out / "evidence.json").read_text()) if (
         out / "evidence.json").is_file() else {}
     shots = sorted((out / "runtime/portal/screenshots").glob("*.tga"))
+    console = out / "runtime/portal/console.log"
+    culls = [dict(zip(CULL_FIELDS, map(float, match.groups()))) for match in
+             CULL_LINE.finditer(console.read_text(errors="replace"))] if console.is_file() else []
     return {"returncode": result.returncode, "status": evidence.get("status"),
             "failures": evidence.get("failures", []), "screenshots": shots,
+            "culling": {key: {"median": statistics.median(item[key] for item in culls),
+                              "max": max(item[key] for item in culls)}
+                        for key in CULL_FIELDS} if culls else None,
             "frames": frame_summary(out / "frame-stats.jsonl")
             if (out / "frame-stats.jsonl").is_file() else None}
 
@@ -123,15 +145,22 @@ def main():
     counts = {mode: len(item["screenshots"]) for mode, item in runs.items()}
     if any(count != len(poses) for count in counts.values()):
         failures.append("expected %d screenshots per run, got %s" % (len(poses), counts))
-    pairs = list(zip(poses, runs["reference"]["screenshots"], runs["candidate"]["screenshots"],
-                     runs["negative"]["screenshots"]))
+    digests = {mode: [sha256(shot) for shot in item["screenshots"]] for mode, item in runs.items()}
+    pairs = list(zip(poses, runs["reference"]["screenshots"], runs["candidate"]["screenshots"]))
     mismatched = [{"pose": pose, "reference": str(ref), "candidate": str(cand)}
-                  for pose, ref, cand, _ in pairs if sha256(ref) != sha256(cand)]
-    negative_differs = sum(1 for _, ref, _, neg in pairs if sha256(ref) != sha256(neg))
+                  for index, (pose, ref, cand) in enumerate(pairs)
+                  if digests["reference"][index] != digests["candidate"][index]]
+    negative_differs = {mode: sum(1 for index in range(len(pairs))
+                                  if digests["reference"][index] != digests[mode][index])
+                        for mode in NEGATIVES}
     if mismatched:
         failures.append("%d of %d views differ with culling on" % (len(mismatched), len(pairs)))
-    if not negative_differs:
-        failures.append("negative control changed no view: the sweep cannot detect culling errors")
+    for mode, count in negative_differs.items():
+        if not count:
+            failures.append("%s changed no view: the sweep cannot detect that stage's errors" % mode)
+    culling = runs["candidate"]["culling"]
+    if not culling:
+        failures.append("candidate run printed no culling report")
     evidence = {"schema": "worldmesh-visibility-oracle/v1",
                 "status": "fail" if failures else "pass", "failures": failures,
                 "map": args.map, "build": str(args.build.resolve()),
@@ -139,12 +168,14 @@ def main():
                 "interior_source_units": interior, "views": len(poses),
                 "identical_views": len(pairs) - len(mismatched),
                 "negative_control_differing_views": negative_differs,
+                "candidate_culling": culling,
                 "first_mismatches": mismatched[:5],
                 "frames": {mode: item["frames"] for mode, item in runs.items()}}
     (args.out / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
     print(json.dumps({key: evidence[key] for key in
                       ("status", "failures", "views", "identical_views",
-                       "negative_control_differing_views", "frames")}, indent=2))
+                       "negative_control_differing_views", "candidate_culling", "frames")},
+                     indent=2))
     if failures:
         raise SystemExit(1)
 

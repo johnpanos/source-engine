@@ -10,7 +10,7 @@ the schema. Framing and transport are pluggable like the engine's:
     with DebugApiClient.connect_unix("/run/user/1000/source-debugapi-123.sock") as api:
         print(api.call("status"))
         api.call("waitFor", condition="WAIT_CONDITION_CLIENT_ACTIVE", timeoutMs=60000)
-        shot = api.call("screenshot", mode="SCREENSHOT_MODE_INLINE_JPEG")
+        shot = api.call("screenshot", mode="SCREENSHOT_MODE_INLINE_TGA")
 
 Requires the pinned runtime in tools/debugapi/requirements.txt.
 """

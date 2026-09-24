@@ -184,6 +184,19 @@ int main()
 	           { kDx95, kAmdCatchAll, kDx95Amd, kCpuAmd } ),
 	    "memory ranges are half-open (250 is outside [0, 250))" );
 
+	// The device-group order alone is what hardware caps apply (ReadHardwareCaps).
+	Check( render::ResolveDeviceGroupOrder( groups, 95, 0x1002, 0x744c ) ==
+	               std::vector<size_t>{ kDx95, kAmdCatchAll, kDx95Amd } &&
+	           render::ResolveDeviceGroupOrder( groups, 95, 0x10de, 0x1234 ) ==
+	               std::vector<size_t>{ kDx95, kNvidiaNarrow },
+	    "device group order is the recommended configuration's leading groups" );
+	Check(
+	    render::FindCardGroup( groups, 0x10de, 0x1234 ) == std::optional<size_t>( kNvidiaNarrow ) &&
+	        render::FindCardGroup( groups, 0x10de, 0x2684 ) ==
+	            std::optional<size_t>( kNvidiaCatchAll ) &&
+	        !render::FindCardGroup( groups, 0x8086, 0x56a0 ),
+	    "the card group is the first vendor match whose range holds the device" );
+
 	Check( render::ClosestActualDxLevel( 95, false, 80 ) == 95 &&
 	           render::ClosestActualDxLevel( 94, false, 80 ) == 90 &&
 	           render::ClosestActualDxLevel( 98, false, 80 ) == 95 &&

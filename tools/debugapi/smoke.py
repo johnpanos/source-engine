@@ -73,6 +73,8 @@ def client_scenario(session, checks, args, output):
 
     cheats = session.call("cvarSet", name="sv_cheats", value="1")
     checks.check("cvarSet applies through the console path", cheats.value == "1", cheats.value)
+    # The portal_boot capture settings, applied over the API.
+    session.call("cvarSet", name="mat_queue_mode", value="0")
 
     started = time.monotonic()
     loaded = session.call("exec", command="map %s" % args.map)
@@ -84,9 +86,13 @@ def client_scenario(session, checks, args, output):
                  active.status.client_signon == api.pb.SIGNON_STATE_FULL, api.to_json_dict(active))
     checks.check("status names the loaded map", active.status.map == args.map, active.status.map)
 
-    frames = session.call("waitFor", condition="WAIT_CONDITION_FRAMES", frames=60, timeoutMs=60000,
-                          timeout=90)
-    checks.check("waitFor(FRAMES 60) counts frames", frames.frames_waited == 60, frames.frames_waited)
+    # -console opens the console, which pauses a single-player game (and its
+    # fade-in); close it like portal_boot's +hideconsole.
+    session.call("exec", command="hideconsole")
+    frames = session.call("waitFor", condition="WAIT_CONDITION_FRAMES", frames=args.settle_frames,
+                          timeoutMs=120000, timeout=150)
+    checks.check("waitFor(FRAMES) counts frames", frames.frames_waited == args.settle_frames,
+                 frames.frames_waited)
 
     status_output = session.call("exec", command="status").output
     checks.check("exec returns the command's own output",
@@ -100,11 +106,12 @@ def client_scenario(session, checks, args, output):
     info = portal_boot.screenshot_info(Path(shot.path)) if shot.path else None
     checks.check("screenshot(PATH) writes a TGA with scene detail",
                  bool(info) and info.get("has_scene_detail"), info)
-    jpeg = session.call("screenshot", mode="SCREENSHOT_MODE_INLINE_JPEG", jpegQuality=85,
-                        timeout=60)
-    checks.check("screenshot(INLINE_JPEG) returns JPEG bytes",
-                 jpeg.jpeg[:2] == b"\xff\xd8" and jpeg.width == shot.width, len(jpeg.jpeg))
-    (output / "inline.jpg").write_bytes(jpeg.jpeg)
+    inline = session.call("screenshot", mode="SCREENSHOT_MODE_INLINE_TGA", timeout=60)
+    (output / "inline.tga").write_bytes(inline.tga)
+    inline_info = portal_boot.screenshot_info(output / "inline.tga")
+    checks.check("screenshot(INLINE_TGA) returns a TGA with scene detail",
+                 bool(inline_info) and inline_info.get("has_scene_detail")
+                 and inline.width == shot.width, inline_info)
 
     malformed = session.raw('{"jsonrpc":"2.0","id":')
     parse_errors = [m for m in malformed if isinstance(m, dict)
@@ -119,17 +126,16 @@ def client_scenario(session, checks, args, output):
     checks.check("the connection survives protocol errors",
                  session.call("status").map == args.map)
 
-    with api.DebugApiClient.connect_unix(args.socket, framing="content-length") as second:
-        other = second.call("hello")
-        checks.check("a second client can use the other framing", other.framing == "newline"
-                     and other.product == api.pb.PRODUCT_CLIENT)
+    with api.DebugApiClient.connect_unix(args.socket) as second:
+        other = second.call("status")
+        checks.check("a second client is served concurrently", other.map == args.map)
 
     logs = []
     while (item := session.next_notification(timeout=0.5)) is not None:
         logs.append(item[1].text)
     checks.check("console output arrives as log notifications", len(logs) > 0, len(logs))
     return {"load_seconds": round(load_seconds, 3), "screenshot": info,
-            "screenshot_path": shot.path, "jpeg_bytes": len(jpeg.jpeg),
+            "screenshot_path": shot.path, "inline_tga": inline_info,
             "log_notifications": len(logs), "providers": providers,
             "build_revision": hello.build_revision}
 
@@ -144,6 +150,8 @@ def main(argv=None):
     parser.add_argument("--renderer", default="native-vulkan")
     parser.add_argument("--physics", default="vphysics")
     parser.add_argument("--load-timeout", type=float, default=180)
+    parser.add_argument("--settle-frames", type=int, default=600,
+                        help="frames to run after signon before capturing")
     parser.add_argument("--timeout", type=float, default=420)
     args = parser.parse_args(argv)
 

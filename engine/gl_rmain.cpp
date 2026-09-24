@@ -315,6 +315,9 @@ private:
 
 		bool m_bIs2DView;
 		bool m_bNoDraw;
+		// Pushed with its own render target (water, monitors) instead of the
+		// current one.
+		bool m_bExplicitTarget;
 	};
 
 
@@ -335,6 +338,9 @@ private:
 
 	CUtlStack< ViewStack_t > m_ViewStack;
 	int m_iLightmapUpdateDepth;
+
+public:
+	bool IsOutermostSceneView() const;
 };
 
 
@@ -343,6 +349,25 @@ private:
 //-----------------------------------------------------------------------------
 static CRender gRender;
 IRender *g_EngineRenderer = &gRender;
+
+// The top view is the only 3D view on the stack, draws to the current target
+// and is perspective. Views nested inside another 3D view (portals) or given
+// their own target (water, monitors) may draw under client clip planes.
+bool CRender::IsOutermostSceneView() const
+{
+	if ( !m_ViewStack.Count() || m_ViewStack.Top().m_bIs2DView ||
+	     m_ViewStack.Top().m_bExplicitTarget || m_ViewStack.Top().m_View.m_bOrtho )
+		return false;
+	int views3D = 0;
+	for ( int i = 0; i < m_ViewStack.Count(); ++i )
+		views3D += !m_ViewStack[i].m_bIs2DView;
+	return views3D == 1;
+}
+
+bool R_IsOutermostSceneView()
+{
+	return gRender.IsOutermostSceneView();
+}
 
 
 //-----------------------------------------------------------------------------
@@ -615,6 +640,7 @@ void CRender::Push3DView( const CViewSetup &view, int nFlags, ITexture* pRenderT
 	m_ViewStack[i].m_View = view;
 	m_ViewStack[i].m_bIs2DView = false;
 	m_ViewStack[i].m_bNoDraw = ( ( nFlags & VIEW_NO_DRAW ) != 0 );
+	m_ViewStack[i].m_bExplicitTarget = pRenderTarget != NULL;
 
 	CViewSetup &topView = m_ViewStack[i].m_View;
 
@@ -671,6 +697,7 @@ void CRender::Push2DView( const CViewSetup &view, int nFlags, ITexture* pRenderT
 	m_ViewStack[i].m_View = view;
 	m_ViewStack[i].m_bIs2DView = true;
 	m_ViewStack[i].m_bNoDraw = ( ( nFlags & VIEW_NO_DRAW ) != 0 );
+	m_ViewStack[i].m_bExplicitTarget = pRenderTarget != NULL;
 	m_ViewStack[i].m_matrixView = m_matrixView;
 	m_ViewStack[i].m_matrixProjection = m_matrixProjection;
 	m_ViewStack[i].m_matrixWorldToScreen = m_matrixWorldToScreen;

@@ -114,53 +114,71 @@ std::optional<size_t> FindFirst( const std::vector<DxSupportGroupFacts> &groups,
 }
 } // namespace dxsupport_detail
 
-// Each lookup takes the first matching group, in file order:
-// - dx level: "name" as an integer equals the level;
-// - dx level and vendor: that, and VendorID equals the vendor;
-// - card: VendorID equals the vendor and MinDeviceID <= device <= MaxDeviceID.
-// A card group spanning every device (0..0xffff) is a vendor catch-all: it
-// applies before the dx-level-and-vendor group. Any narrower card group applies
-// last and the dx-level-and-vendor group is skipped. CPU ("AMD"/"Intel" in the
-// name, [min, max) megahertz) then system RAM ([min, max) megabytes) groups
-// follow. The video-memory group ([min, max) megatexels, compared with memory
-// in MB) only contributes a picmip floor, and only at the maximum level or
-// under 100 MB.
+// The card group for a device: VendorID equals the vendor and
+// MinDeviceID <= device <= MaxDeviceID (first in file order). It also carries
+// the device's MaxDXLevel/DXLevel.
+[[nodiscard]] inline std::optional<size_t> FindCardGroup(
+    const std::vector<DxSupportGroupFacts> &groups, int vendorId, int deviceId )
+{
+	return dxsupport_detail::FindFirst( groups,
+	    [&]( const DxSupportGroupFacts &g )
+	    {
+		    return g.vendorId == vendorId && deviceId >= g.minDeviceId && deviceId <= g.maxDeviceId;
+	    } );
+}
+
+// The device groups for a level, in application order: the dx-level group
+// ("name" as an integer equals the level), then the card group. A card group
+// spanning every device (0..0xffff) is a vendor catch-all, so the dx-level-and-
+// vendor group (same name, VendorID equal) applies after it; a narrower card
+// group applies last and the dx-level-and-vendor group is skipped. Both the
+// recommended configuration and the hardware caps apply this order.
+[[nodiscard]] inline std::vector<size_t> ResolveDeviceGroupOrder(
+    const std::vector<DxSupportGroupFacts> &groups, int dxLevel, int vendorId, int deviceId )
+{
+	using dxsupport_detail::FindFirst;
+	std::vector<size_t> order;
+	const std::optional<size_t> dxLevelGroup = FindFirst( groups,
+	    [&]( const DxSupportGroupFacts &g )
+	    {
+		    return g.nameAsInt == dxLevel;
+	    } );
+	const std::optional<size_t> dxLevelVendorGroup = FindFirst( groups,
+	    [&]( const DxSupportGroupFacts &g )
+	    {
+		    return g.nameAsInt == dxLevel && g.vendorId == vendorId;
+	    } );
+	const std::optional<size_t> cardGroup = FindCardGroup( groups, vendorId, deviceId );
+	const bool cardIsCatchAll = cardGroup && groups[*cardGroup].minDeviceId == 0 &&
+	                            groups[*cardGroup].maxDeviceId == 0xffff;
+	for ( const std::optional<size_t> &group :
+	    { dxLevelGroup, cardGroup, cardIsCatchAll ? dxLevelVendorGroup : std::nullopt } )
+	{
+		if ( group )
+			order.push_back( *group );
+	}
+	return order;
+}
+
+// The recommended configuration: the device groups (ResolveDeviceGroupOrder),
+// then the CPU group ("AMD"/"Intel" in the name, [min, max) megahertz), then
+// the system-RAM group ([min, max) megabytes). The video-memory group
+// ([min, max) megatexels, compared with memory in MB) only contributes a
+// picmip floor, and only at the maximum level or under 100 MB.
 [[nodiscard]] inline DxSupportPlan ResolveRecommendedConfig(
     const std::vector<DxSupportGroupFacts> &groups, const DxSupportQuery &query )
 {
 	using dxsupport_detail::FindFirst;
 	DxSupportPlan plan;
 	plan.dxLevel = query.dxLevel;
-
-	const std::optional<size_t> dxLevelGroup = FindFirst( groups,
-	    [&]( const DxSupportGroupFacts &g )
-	    {
-		    return g.nameAsInt == query.dxLevel;
-	    } );
-	const std::optional<size_t> dxLevelVendorGroup = FindFirst( groups,
-	    [&]( const DxSupportGroupFacts &g )
-	    {
-		    return g.nameAsInt == query.dxLevel && g.vendorId == query.vendorId;
-	    } );
-	const std::optional<size_t> cardGroup = FindFirst( groups,
-	    [&]( const DxSupportGroupFacts &g )
-	    {
-		    return g.vendorId == query.vendorId && query.deviceId >= g.minDeviceId &&
-		           query.deviceId <= g.maxDeviceId;
-	    } );
+	plan.applyOrder =
+	    ResolveDeviceGroupOrder( groups, query.dxLevel, query.vendorId, query.deviceId );
 
 	const auto apply = [&]( const std::optional<size_t> &group )
 	{
 		if ( group )
 			plan.applyOrder.push_back( *group );
 	};
-	const bool cardIsCatchAll = cardGroup && groups[*cardGroup].minDeviceId == 0 &&
-	                            groups[*cardGroup].maxDeviceId == 0xffff;
-	apply( dxLevelGroup );
-	apply( cardGroup );
-	if ( cardIsCatchAll )
-		apply( dxLevelVendorGroup );
-
 	apply( FindFirst( groups,
 	    [&]( const DxSupportGroupFacts &g )
 	    {

@@ -144,6 +144,7 @@ bool CVulkanContext::Init(
 		return false;
 	}
 	CreateTimestampPool();
+	QueryVulkanAdapterCaps( m_physicalDevice, m_swapFormat, &m_adapterCaps );
 
 	Log( "device '%s' vendor=0x%04x %s validation=%s %ux%u images=%zu\n", m_deviceName.c_str(),
 	    m_vendorId, m_isDiscrete ? "discrete" : "integrated/other",
@@ -387,13 +388,7 @@ bool CVulkanContext::PickPhysicalDevice( std::string *outError )
 		if ( m_config.requireDiscreteGpu && !discrete )
 			continue;
 
-		int score = 0;
-		if ( discrete )
-			score += 1000;
-		else if ( props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU )
-			score += 500;
-		else if ( props.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU )
-			score += 100;
+		const int score = ScorePhysicalDeviceType( props.deviceType );
 
 		if ( score > bestScore )
 		{
@@ -511,18 +506,13 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 	m_blockCompression = supported.textureCompressionBC == VK_TRUE;
 	features.textureCompressionBC = supported.textureCompressionBC;
 	// A depth format with stencil, as D3D9 always creates one (D24S8): portal
-	// views are drawn with stencil recursion. D24S8 first, then D32S8.
-	for ( VkFormat candidate : { VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT_S8_UINT } )
+	// views are drawn with stencil recursion (SelectDepthStencilFormat).
+	const VkFormat depthStencil = SelectDepthStencilFormat( m_physicalDevice );
+	if ( depthStencil != VK_FORMAT_UNDEFINED )
 	{
-		VkFormatProperties fp = {};
-		vkGetPhysicalDeviceFormatProperties( m_physicalDevice, candidate, &fp );
-		if ( fp.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT )
-		{
-			m_depthFormat = candidate;
-			m_depthAspects = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-			m_stencilBits = 8;
-			break;
-		}
+		m_depthFormat = depthStencil;
+		m_depthAspects = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+		m_stencilBits = 8;
 	}
 
 	VkDeviceCreateInfo createInfo = {};
@@ -7197,6 +7187,7 @@ bool CVulkanContext::Resize( int width, int height, std::string *outError )
 
 void CVulkanContext::Shutdown()
 {
+	m_adapterCaps = VulkanAdapterCaps();
 	CloseFrameStats();
 	if ( m_device != VK_NULL_HANDLE && !m_pipelineStoreDirectory.empty() )
 	{

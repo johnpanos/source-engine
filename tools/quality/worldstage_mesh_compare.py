@@ -55,7 +55,8 @@ def read_payload(data):
     if len(data) < 128:
         raise ValueError("WMSH header is truncated")
     fields = struct.unpack_from("<4s13I", data)
-    if fields[0] != b"WMSH" or fields[1:4] != (1, 128, 0) or fields[13] != 0:
+    version = fields[1]
+    if fields[0] != b"WMSH" or version not in (1, 2) or fields[2:4] != (128, 0) or fields[13]:
         raise ValueError("WMSH header version or flags are invalid")
     vertices, indices, triangles, batches, meshlets, leaves, refs, materials = fields[4:12]
     material_bytes = fields[12]
@@ -150,8 +151,16 @@ def read_payload(data):
             raise ValueError("WMSH preview meshlet crosses BSP face identity")
         meshlet_faces.append(next(iter(faces_in_meshlet)))
         for vertex in parsed_vertices[first:first + count]:
-            if math.dist(vertex[0], center) > radius + 1e-4 or dot(vertex[1], axis) < cutoff - 1e-4:
+            if math.dist(vertex[0], center) > radius + 1e-4 or (
+                    version == 1 and dot(vertex[1], axis) < cutoff - 1e-4):
                 raise ValueError("WMSH meshlet bound does not contain its vertices")
+        # Version 2: the cone bounds each front-face normal cross(b - a, c - a).
+        for corner in range(first, first + count, 3) if version >= 2 else ():
+            a, b, c = (parsed_vertices[corner + i][0] for i in range(3))
+            normal = cross(tuple(b[i] - a[i] for i in range(3)), tuple(c[i] - a[i] for i in range(3)))
+            length = math.sqrt(dot(normal, normal))
+            if length > 1e-12 and dot(normal, axis) / length < cutoff - 1e-4:
+                raise ValueError("WMSH meshlet cone does not bound its front faces")
         index_cursor += count
     if index_cursor != indices:
         raise ValueError("WMSH meshlets omit triangles")
@@ -167,7 +176,7 @@ def read_payload(data):
         ref_cursor += count
     if ref_cursor != refs:
         raise ValueError("WMSH has unreferenced leaf entries")
-    return {"vertices": parsed_vertices, "faces": parsed_faces,
+    return {"version": version, "vertices": parsed_vertices, "faces": parsed_faces,
             "batches": parsed_batches, "meshlets": parsed_meshlets,
             "meshlet_faces": meshlet_faces, "leaves": parsed_leaves,
             "materials": parsed_materials,
@@ -284,7 +293,8 @@ def main():
         container = bsp2_reader.Bsp2File(args.bsp2.read_bytes(),
                                          known=(bsp2_reader.fourcc("WMSH"),))
         entry = container.by_id.get(bsp2_reader.fourcc("WMSH"))
-        if (entry is None or entry["version"] != 1 or entry["flags"] != 0 or
+        if (entry is None or entry["version"] != read_payload(payload)["version"] or
+                entry["flags"] != 0 or
                 entry["alignment"] != 4096 or container.lump(entry) != payload or
                 container.export_legacy() != args.container_legacy.read_bytes()):
             raise ValueError("BSP2 WMSH carriage or legacy export differs")

@@ -18,6 +18,19 @@
 #define PORTAL_HALF_DEPTH 2.0f
 #define PORTAL_BUMP_FORGIVENESS 2.0f
 
+// Portal 2 reserves collision groups after the shared Source groups.  Keep
+// these values explicit: map entities and physics traces exchange the numeric
+// group, and the historical server binary assigns func_placement_clip group 22.
+enum PortalCollisionGroup_t
+{
+	COLLISION_GROUP_PZ_CLIP = LAST_SHARED_COLLISION_GROUP,
+	COLLISION_GROUP_CAMERA_SOLID,
+	COLLISION_GROUP_PLACEMENT_SOLID,
+	COLLISION_GROUP_PLAYER_HELD,
+	COLLISION_GROUP_WEIGHTED_CUBE,
+	COLLISION_GROUP_DEBRIS_BLOCK_PROJECTILE,
+};
+
 enum PortalPlacementResult_t
 {
 	// Success cases

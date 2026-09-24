@@ -80,6 +80,7 @@ def build(bld):
 		'disp_mapload.cpp',
 		'gl_draw.cpp',
 		'gl_rsurf.cpp',
+		'worldmesh_cull.cpp',
 		'gl_shader.cpp',
 		'l_studio.cpp',
 		'matsys_interface.cpp',

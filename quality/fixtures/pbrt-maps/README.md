@@ -22,6 +22,34 @@ collision edit does not repeat the bake. `--from STEP` forces a step and all
 later ones. Logs are in `<out>/logs/<step>.log`; the failing step prints its
 tail.
 
+## Playing a map
+
+A finished build is published to `run/maps/<map>/` (untracked), and every
+`./play` mounts all published maps into its runtime as
+`portal/custom/pbrt-<map>`, so this works immediately:
+
+```sh
+./play living_room        # also staircase2_pbrt, bedroom
+python3 tools/quality/playable_maps.py list                 # what is published
+python3 tools/quality/playable_maps.py publish quality-results/living-room-map
+python3 tools/quality/playable_maps.py remove bedroom
+```
+
+A build that failed a gate under `--keep-going` is still published, and
+`list` and `./play` show its failed gates. `--no-publish` skips publishing. A
+published map starts with `sv_cheats 1` and `r_worldmesh_draw 2`, because the
+engine draws the WMSH/LMAP world only through that opt-in path; otherwise you
+would see the compile brushes. A published map is not mounted when a
+shipped map has the same name.
+
+The client must include the pinned KTX reader, or the log shows
+`WMSH LMAP rejected` and the world is unlit. Enable it once per client tree:
+
+```sh
+python3 tools/quality/pbrt_map_toolchain.py provision --steps ktx-reader
+python3 tools/quality/pbrt_map_toolchain.py configure-client --build build
+```
+
 ## Adding a scene
 
 1. Put the scene directory (`scene-v4.pbrt`, `models/`, `textures/`, license)
@@ -107,6 +135,7 @@ runs one render job per object and re-syncs the scene each time.
 | Collision drop test | `tools/quality/pbrt_traversal.py` (tests: `tests/test_pbrt_gates.py`) |
 | Tool pins, provisioning, toolchain checks | `tools/quality/pbrt_map_toolchain.py` + `quality/product_profiles/pbrt-map-linux-tools.json` |
 | Step order and caching | `tools/quality/pbrt_map_build.py` |
+| Publishing to `./play` (store, mounts, launch arguments) | `tools/quality/playable_maps.py` (tests: `tests/test_playable_maps.py`) |
 
 ## Known limits (preview, not RFC 0008 acceptance)
 

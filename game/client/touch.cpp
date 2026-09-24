@@ -127,9 +127,9 @@ void CTouchPanel::OnScreenSizeChanged(int iOldWide, int iOldTall)
 {
 	BaseClass::OnScreenSizeChanged(iOldWide, iOldTall);
 
-	int w,h;
-	w = ScreenWidth();
-	h = ScreenHeight();
+	// Touch artwork and the panel bounds use the same UI units as VGUI.
+	int w, h;
+	vgui::surface()->GetScreenSize( w, h );
 	gTouch.SetScreenSize( w, h );
 
 	SetBounds( 0, 0, w, h );
@@ -139,9 +139,8 @@ void CTouchPanel::ApplySchemeSettings(vgui::IScheme *pScheme)
 {
 	BaseClass::ApplySchemeSettings(pScheme);
 
-	int w,h;
-	w = ScreenWidth();
-	h = ScreenHeight();
+	int w, h;
+	vgui::surface()->GetScreenSize( w, h );
 	gTouch.SetScreenSize( w, h );
 
 	SetBounds( 0, 0, w, h );
@@ -162,11 +161,13 @@ CON_COMMAND( touch_addbutton, "add native touch button" )
 		if( argc >= 14 )
 			aspect = Q_atof( args[13] );
 
-		color = rgba_t(Q_atoi(args[8]), Q_atoi(args[9]), Q_atoi(args[10]), Q_atoi(args[11])); 
-		gTouch.AddButton( args[1], args[2], args[3],
-			Q_atof( args[4] ), Q_atof( args[5] ), 
-			Q_atof( args[6] ), Q_atof( args[7] ) ,
-			color, round_aspect, aspect, flags );
+		color = rgba_t(Q_atoi(args[8]), Q_atoi(args[9]), Q_atoi(args[10]), Q_atoi(args[11]));
+		// Look and move zones use the saved screen fractions. Applying the
+		// saved aspect ratio would shrink their drag area on a different display.
+		const bool bDragZone = !Q_strcmp( args[3], "_look" ) || !Q_strcmp( args[3], "_move" );
+		gTouch.AddButton( args[1], args[2], args[3], Q_atof( args[4] ), Q_atof( args[5] ),
+		    Q_atof( args[6] ), Q_atof( args[7] ), color, bDragZone ? round_none : round_aspect,
+		    aspect, flags );
 
 		return;
 	}
