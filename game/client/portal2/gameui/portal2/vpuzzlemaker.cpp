@@ -1,4 +1,4 @@
-//========= Copyright © Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© Valve Corporation, All rights reserved. ============//
 //
 // Purpose: This file provides Client.dll's wrapper around the PuzzleMaker LIB/DLL
 //
