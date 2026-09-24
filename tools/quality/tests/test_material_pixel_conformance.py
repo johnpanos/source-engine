@@ -184,6 +184,31 @@ class PbrFallbackTest(unittest.TestCase):
     def test_valid_fallback_passes(self):
         self.assertEqual(oracle.evaluate(self.capture(), "none"), [])
 
+    def native(self):
+        report = self.capture()
+        report.update({"renderer": "native-vulkan", "shader": "PBRMetalRough",
+                       "primary_patch_shader": "PBRMetalRough",
+                       "primary_patch_resolved": False, "primary_patch_pixel": [0, 0, 0]})
+        report["pixels"]["center"] = [30, 20, 10]
+        return report
+
+    def test_native_renderer_keeps_the_primary_shader(self):
+        self.assertEqual(oracle.evaluate(self.native(), "none"), [])
+
+    def test_native_renderer_that_falls_back_fails(self):
+        report = self.native()
+        report["shader"] = "UnlitGeneric"
+        report["primary_patch_shader"] = "UnlitGeneric"
+        failures = oracle.evaluate(report, "none")
+        self.assertTrue(any("expected PBRMetalRough" in failure for failure in failures))
+        self.assertTrue(any("primary patch" in failure for failure in failures))
+
+    def test_native_renderer_still_rejects_invalid_materials(self):
+        report = self.native()
+        report["invalid"]["cycle_rejected"] = False
+        failures = oracle.evaluate(report, "none")
+        self.assertTrue(any("cycle_rejected" in failure for failure in failures))
+
     def test_missing_shader_selection_and_wrong_pixels_fail(self):
         report = self.capture()
         report["shader"] = "Wireframe_DX9"
@@ -779,3 +804,64 @@ class CaptureFormatTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PbrModelTest(unittest.TestCase):
+    """pbr-model has no D3D9 reference (D3D9 draws the fallback); the versioned
+    native capture exercises the oracle and its seeded defects."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.report = json.loads(
+            (REFERENCES / "pbr-model-native-vulkan-none.json").read_text())
+        cls.frames = oracle.material_pixel_pbr_model
+        cls.modules = oracle.material_pixel_frames
+
+    def _case(self, report, name):
+        return next(case for case in report["cases"] if case["name"] == name)
+
+    def test_native_capture_satisfies_the_layered_brdf(self):
+        self.assertEqual(oracle.evaluate(self.report, "none"), [])
+
+    def test_darkened_quad_is_detected(self):
+        changed = copy.deepcopy(self.report)
+        case = self._case(changed, "pbr_lights")
+        width, height = changed["frame"]
+        rgb = bytearray(self.modules.decode_frame(case, changed["frame"]))
+        # The centre quad at 85%: the brightness of a missing specular lobe.
+        for y in range(height // 3 + 8, 2 * height // 3 - 8):
+            for x in range(width // 3 + 8, 2 * width // 3 - 8):
+                for k in range(3):
+                    index = (y * width + x) * 3 + k
+                    rgb[index] = int(rgb[index] * 0.85)
+        case["frame"] = self.modules.encode_frame(rgb)
+        _, wrong, _ = self.frames.disagreements(changed, case)
+        self.assertTrue(wrong)
+
+    def test_frames_swapped_between_materials_are_detected(self):
+        changed = copy.deepcopy(self.report)
+        lights = self._case(changed, "pbr_lights")
+        metal = self._case(changed, "pbr_metal")
+        lights["frame"], metal["frame"] = metal["frame"], lights["frame"]
+        _, wrong, _ = self.frames.disagreements(changed, lights)
+        self.assertTrue(wrong)
+
+    def test_every_seeded_shader_defect_is_separated(self):
+        for name, defects in self.frames.CONTROLS.items():
+            case = self._case(self.report, name)
+            for defect in defects:
+                _, wrong, _ = self.frames.disagreements(self.report, case, defect, stride=4)
+                self.assertTrue(wrong, "%s: %s" % (name, defect))
+
+    def test_cross_backend_reference_is_refused(self):
+        failures = oracle.evaluate(self.report, "none", self.report)
+        self.assertTrue(any("no cross-backend reference" in f for f in failures))
+
+    def test_missing_case_is_rejected(self):
+        changed = copy.deepcopy(self.report)
+        changed["cases"].pop()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pixels.json"
+            path.write_text(json.dumps(changed))
+            with self.assertRaises(ValueError):
+                oracle.read_pixels(path)

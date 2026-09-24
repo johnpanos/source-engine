@@ -1,8 +1,9 @@
 #version 450
 // Scene-derived WMSH PBR: Cycles diffuse-light bake plus a directional specular
 // source, and split-sum specular from a map reflection probe when the LMAP
-// atlas carries one. The native pixel fixture checks normal, metalness and
-// roughness.
+// atlas carries one, or from the material's $envmap cube. $emissiontexture
+// (sRGB, decoded here) adds its color times $emissionscale. The native pixel
+// fixture checks normal, metalness, roughness, emission and the environment.
 layout( location = 0 ) in vec2 fragUv;
 layout( location = 1 ) in vec2 fragLightmapUv;
 layout( location = 2 ) in vec3 fragPosition;
@@ -15,6 +16,8 @@ layout( set = 1, binding = 0 ) uniform sampler2D mraoTexture;
 layout( set = 2, binding = 0 ) uniform sampler2D normalTexture;
 layout( set = 3, binding = 0 ) uniform sampler2D lightmapTexture;
 layout( set = 4, binding = 0 ) uniform sampler2D splitSumTexture;
+layout( set = 5, binding = 0 ) uniform sampler2D emissionTexture;
+layout( set = 6, binding = 0 ) uniform samplerCube environmentTexture;
 
 layout( push_constant ) uniform Constants
 {
@@ -22,7 +25,9 @@ layout( push_constant ) uniform Constants
 	vec4 eyePosition;
 	vec4 lightDirection;
 	vec4 lightRadiance;
-	vec4 material; // x alpha cutoff (<0 disables), y normal-map enable
+	// x alpha cutoff (<0 disables), y normal-map enable, z $emissionscale
+	// (0: no emission), w the $envmap cube's mip count (0: no cube)
+	vec4 material;
 #ifdef CLIP_PLANES
 	vec4 clipPlanes[2];
 #endif
@@ -37,6 +42,25 @@ vec3 SurfaceNormal()
 	if ( consts.material.y < 0.5 )
 		return normal;
 	return MappedNormal( normal, fragTangent, texture( normalTexture, fragUv ).rg );
+}
+
+// A 2:1 LMAP page is directional (tools/quality/lightmap_directional.py): the
+// flat irradiance E0 baked on the smooth normal N on the left, and at the same
+// texel on the right the world-space luminance gradient beta of the fitted
+// irradiance E(n) = a + g.n, relative to E0. A normal-mapped normal n receives
+// E0 * (1 + beta.(n - N)); n = N reproduces the flat bake exactly. Samples are
+// clamped to their half so linear filtering never mixes the two.
+vec3 BakedIrradiance( vec3 normal )
+{
+	ivec2 size = textureSize( lightmapTexture, 0 );
+	if ( size.x != 2 * size.y )
+		return texture( lightmapTexture, fragLightmapUv ).rgb;
+	float halfTexel = 0.5 / float( size.x );
+	float u = clamp( fragLightmapUv.x * 0.5, halfTexel, 0.5 - halfTexel );
+	vec3 irradiance = texture( lightmapTexture, vec2( u, fragLightmapUv.y ) ).rgb;
+	vec3 beta = texture( lightmapTexture, vec2( u + 0.5, fragLightmapUv.y ) ).rgb;
+	float gain = 1.0 + dot( beta, normal - normalize( fragNormal ) );
+	return irradiance * clamp( gain, 0.0, 4.0 );
 }
 
 void main()
@@ -59,7 +83,7 @@ void main()
 	// Cycles DIFFUSE DIRECT+INDIRECT with COLOR disabled already contains the
 	// Lambertian 1/pi factor. Multiplying this bake by albedo must not divide
 	// it by pi again.
-	vec3 bakedDiffuse = texture( lightmapTexture, fragLightmapUv ).rgb;
+	vec3 bakedDiffuse = BakedIrradiance( normal );
 	vec3 diffuse = base * ( 1.0 - metalness ) *
 	    ( vec3( 1.0 ) - directionalAlbedo ) * bakedDiffuse * occlusion;
 	vec3 specular = vec3( 0.0 );
@@ -87,7 +111,26 @@ void main()
 		    visibility * normalDotLight;
 	}
 	vec3 probe;
-	if ( ProbeRadiance( reflect( -view, normal ), roughness, probe ) )
-		specular += probe * directionalAlbedo * occlusion;
-	outColor = vec4( diffuse + specular, baseSample.a );
+	vec3 reflected = reflect( -view, normal );
+	// Specular horizon occlusion: a normal-mapped normal that faces away from
+	// the viewer reflects it below the geometric surface, where no light
+	// arrives (Cycles bends such normals back; without this, every groove
+	// facing away from the camera mirrored the probe at Fresnel 1).
+	float horizon = clamp( 1.0 + 1.3 * dot( reflected, normalize( fragNormal ) ), 0.0, 1.0 );
+	float probeWeight = occlusion * horizon * horizon;
+	if ( consts.material.w >= 1.0 )
+		specular += textureLod( environmentTexture, reflected,
+		                roughness * ( consts.material.w - 1.0 ) ).rgb *
+		            directionalAlbedo * probeWeight;
+	else if ( ProbeRadiance( reflected, roughness, probe ) )
+		specular += probe * directionalAlbedo * probeWeight;
+	vec3 emission = vec3( 0.0 );
+	if ( consts.material.z > 0.0 )
+	{
+		vec3 encoded = texture( emissionTexture, fragUv ).rgb;
+		emission = mix( encoded / 12.92, pow( ( encoded + 0.055 ) / 1.055, vec3( 2.4 ) ),
+		               step( 0.04045, encoded ) ) *
+		           consts.material.z;
+	}
+	outColor = vec4( diffuse + specular + emission, baseSample.a );
 }

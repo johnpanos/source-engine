@@ -49,7 +49,7 @@
 //          Run inside a staged game runtime (the driver stages one):
 //            material_pixel_conformance -game portal -renderer <id>
 //                -hdr <none|integer> [-family <lightmap|exposure|skinning|portal|
-//                                         modellight|cable|pbr-fallback>]
+//                                         modellight|cable|pbr-fallback|pbr-model>]
 //                -out <file.json>
 //
 //=============================================================================//
@@ -318,14 +318,15 @@ int CMaterialPixelApp::Main()
 	const bool monitor = !Q_stricmp( family, "monitor" );
 	const bool sprite = !Q_stricmp( family, "sprite" );
 	const bool pbrFallback = !Q_stricmp( family, "pbr-fallback" );
+	const bool pbrModel = !Q_stricmp( family, "pbr-model" );
 	if ( !outPath[0] || ( !integerHdr && Q_stricmp( hdr, "none" ) ) ||
 	     ( !exposure && !skinning && !portal && !modelLight && !cable && !sky && !monitor && !sprite &&
-	         !pbrFallback &&
+	         !pbrFallback && !pbrModel &&
 	         Q_stricmp( family, "lightmap" ) ) )
 	{
 		Warning(
 		    "material pixel conformance: need -out <file>, -hdr <none|integer> and "
-		    "-family <lightmap|exposure|skinning|portal|modellight|cable|sky|monitor|sprite|pbr-fallback>\n" );
+		    "-family <lightmap|exposure|skinning|portal|modellight|cable|sky|monitor|sprite|pbr-fallback|pbr-model>\n" );
 		return 2;
 	}
 
@@ -364,7 +365,7 @@ int CMaterialPixelApp::Main()
 	// dxsupport level's defaults (4x MSAA and mat_trilinear 1 on D3D9 here; the
 	// native backend reads no dxsupport.cfg), so the sample count and the texture
 	// filter are pinned after it.
-	if ( portal || modelLight )
+	if ( portal || modelLight || pbrModel )
 	{
 		MaterialSystem_Config_t pinned = g_pMaterialSystem->GetCurrentConfigForVideoCard();
 		pinned.m_nAASamples = 0;
@@ -401,6 +402,8 @@ int CMaterialPixelApp::Main()
 	                : monitor     ? RunMonitorCases( out )
 	                : sprite      ? RunSpriteCases( out )
 	                : pbrFallback ? RunPbrFallbackCases( out )
+	                : pbrModel    ? RunPbrModelCases( out, outPath, WriteClearProbeThunk,
+	                                    integerHdr ? kModelLightToneScale : 1.0f )
 	                : portal      ? RunPortalCases( out, outPath, WriteClearProbeThunk )
 	                : modelLight
 	                    // Integer HDR scales FinalOutput's linear light (the game's
@@ -526,7 +529,8 @@ bool CMaterialPixelApp::RunPbrFallbackCases( FILE *out )
 		g_pMaterialSystem->SwapBuffers();
 	}
 	fprintf( out,
-	    "\"shader\":\"%s\",\"error_material\":%s,\"primary_patch_resolved\":%s,"
+	    "\"shader\":\"%s\",\"error_material\":%s,\"primary_patch_shader\":\"%s\","
+	    "\"primary_patch_resolved\":%s,"
 	    "\"primary_patch_pixel\":[%u,%u,%u],"
 	    "\"pixels\":{\"center\":[%u,%u,%u],"
 	    "\"outside\":[%u,%u,%u]},\"invalid\":{\"missing_reference_rejected\":%s,"
@@ -537,6 +541,7 @@ bool CMaterialPixelApp::RunPbrFallbackCases( FILE *out )
 	    "\"unsupported_rejected\":%s,\"cycle_rejected\":%s,"
 	    "\"pbr_target_rejected\":%s}}\n",
 	    shader, pMaterial->IsErrorMaterial() ? "true" : "false",
+	    pPrimaryPatchShader ? pPrimaryPatchShader : "",
 	    bPrimaryPatchResolved ? "true" : "false", primaryPatchPixel[0], primaryPatchPixel[1],
 	    primaryPatchPixel[2], center[0], center[1], center[2], outside[0],
 	    outside[1], outside[2],

@@ -1193,6 +1193,52 @@ bool CVulkanContext::CreateCaptureImage( VkExtent2D extent, std::string *outErro
 	return true;
 }
 
+// The Location of every Input variable of a vertex-stage SPIR-V module, as a
+// bit mask. False for a module without a vertex entry point or one that is not
+// well-formed SPIR-V; its pipelines then keep the attributes they declare.
+static bool VertexInputLocations( const uint32_t *words, size_t count, uint64_t *outMask )
+{
+	enum
+	{
+		kOpEntryPoint = 15,
+		kOpVariable = 59,
+		kOpDecorate = 71,
+		kDecorationLocation = 30,
+		kStorageInput = 1,
+		kExecutionModelVertex = 0
+	};
+	if ( !words || count < 5 || words[0] != 0x07230203u )
+		return false;
+	bool vertex = false;
+	std::map<uint32_t, uint32_t> locations; // id -> Location
+	std::vector<uint32_t> inputs;
+	for ( size_t at = 5; at < count; )
+	{
+		const uint32_t length = words[at] >> 16;
+		const uint32_t opcode = words[at] & 0xffffu;
+		if ( length == 0 || at + length > count )
+			return false;
+		if ( opcode == kOpEntryPoint && length >= 2 && words[at + 1] == kExecutionModelVertex )
+			vertex = true;
+		else if ( opcode == kOpDecorate && length >= 4 && words[at + 2] == kDecorationLocation )
+			locations[words[at + 1]] = words[at + 3];
+		else if ( opcode == kOpVariable && length >= 4 && words[at + 3] == kStorageInput )
+			inputs.push_back( words[at + 2] );
+		at += length;
+	}
+	if ( !vertex )
+		return false;
+	uint64_t mask = 0;
+	for ( uint32_t id : inputs )
+	{
+		const auto location = locations.find( id );
+		if ( location != locations.end() && location->second < 64 )
+			mask |= uint64_t( 1 ) << location->second;
+	}
+	*outMask = mask;
+	return true;
+}
+
 bool CVulkanContext::CreateShaderModule(
     const uint32_t *code, size_t sizeBytes, VkShaderModule *outModule, std::string *outError )
 {
@@ -1206,7 +1252,34 @@ bool CVulkanContext::CreateShaderModule(
 		SetError( outError, std::string( "vkCreateShaderModule failed: " ) + ResultString( r ) );
 		return false;
 	}
+	// A handle can be reused after its module is destroyed; forget the old one.
+	m_vertexInputLocations.erase( *outModule );
+	uint64_t locations = 0;
+	if ( VertexInputLocations( code, sizeBytes / sizeof( uint32_t ), &locations ) )
+		m_vertexInputLocations[*outModule] = locations;
 	return true;
+}
+
+const VkPipelineVertexInputStateCreateInfo *CVulkanContext::FilterVertexInput(
+    const VkPipelineVertexInputStateCreateInfo *input, VkShaderModule vertex,
+    ConsumedVertexInput *storage ) const
+{
+	const auto found = m_vertexInputLocations.find( vertex );
+	if ( !input || found == m_vertexInputLocations.end() )
+		return input;
+	storage->info = *input;
+	storage->attributes.clear();
+	for ( uint32_t i = 0; i < input->vertexAttributeDescriptionCount; ++i )
+	{
+		const VkVertexInputAttributeDescription &attribute = input->pVertexAttributeDescriptions[i];
+		if ( attribute.location < 64 && ( found->second >> attribute.location ) & 1u )
+			storage->attributes.push_back( attribute );
+	}
+	storage->info.vertexAttributeDescriptionCount =
+	    static_cast<uint32_t>( storage->attributes.size() );
+	storage->info.pVertexAttributeDescriptions =
+	    storage->attributes.empty() ? nullptr : storage->attributes.data();
+	return &storage->info;
 }
 
 bool CVulkanContext::CreateBuffer( VkDeviceSize size, VkBufferUsageFlags usage,
@@ -1382,7 +1455,8 @@ bool CVulkanContext::InitDemoTriangle( std::string *outError )
 	gp.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	gp.stageCount = 2;
 	gp.pStages = stages;
-	gp.pVertexInputState = &vin;
+	ConsumedVertexInput consumedInput;
+	gp.pVertexInputState = FilterVertexInput( &vin, stages[0].module, &consumedInput );
 	gp.pInputAssemblyState = &ia;
 	gp.pViewportState = &vp;
 	gp.pRasterizationState = &rs;
@@ -1788,7 +1862,8 @@ bool CVulkanContext::InitTexturedQuad( std::string *outError )
 	gp.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	gp.stageCount = 2;
 	gp.pStages = stages;
-	gp.pVertexInputState = &vin;
+	ConsumedVertexInput consumedInput;
+	gp.pVertexInputState = FilterVertexInput( &vin, stages[0].module, &consumedInput );
 	gp.pInputAssemblyState = &ia;
 	gp.pViewportState = &vp;
 	gp.pRasterizationState = &rs;
@@ -2072,7 +2147,8 @@ bool CVulkanContext::InitIndexedUbo( std::string *outError )
 	gp.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	gp.stageCount = 2;
 	gp.pStages = stages;
-	gp.pVertexInputState = &vin;
+	ConsumedVertexInput consumedInput;
+	gp.pVertexInputState = FilterVertexInput( &vin, stages[0].module, &consumedInput );
 	gp.pInputAssemblyState = &ia;
 	gp.pViewportState = &vp;
 	gp.pRasterizationState = &rs;
@@ -2291,7 +2367,8 @@ bool CVulkanContext::InitDemoDepth( std::string *outError )
 	gp.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	gp.stageCount = 2;
 	gp.pStages = stages;
-	gp.pVertexInputState = &vin;
+	ConsumedVertexInput consumedInput;
+	gp.pVertexInputState = FilterVertexInput( &vin, stages[0].module, &consumedInput );
 	gp.pInputAssemblyState = &ia;
 	gp.pViewportState = &vp;
 	gp.pRasterizationState = &rs;
@@ -2481,7 +2558,8 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 	gp.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	gp.stageCount = 2;
 	gp.pStages = stages;
-	gp.pVertexInputState = &vin;
+	ConsumedVertexInput consumedInput;
+	gp.pVertexInputState = FilterVertexInput( &vin, stages[0].module, &consumedInput );
 	gp.pInputAssemblyState = &ia;
 	gp.pViewportState = &vp;
 	gp.pRasterizationState = &rs;
@@ -2855,11 +2933,19 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		Log( "WMSH glass pipeline unavailable: %s\n", pbrError.c_str() );
 		DestroyPbrGlassPipeline();
 	}
+	// Model PBR needs the split-sum table the direct pipeline owns.
+	if ( m_pbrDirectReady && !InitPbrModelPipeline( &pbrError ) )
+	{
+		Log( "model PBR pipeline unavailable: %s\n", pbrError.c_str() );
+		DestroyPbrModelPipeline();
+	}
 
-	Log( "dynamic mesh pipelines ready (PBR direct %s, WMSH PBR %s, glass %s, scene depth %s)\n",
+	Log( "dynamic mesh pipelines ready (PBR direct %s, WMSH PBR %s, glass %s, model PBR %s, "
+	     "scene depth %s)\n",
 	    m_pbrDirectReady ? "available" : "unavailable",
 	    m_pbrWorldReady ? "available" : "unavailable",
 	    m_pbrGlassReady ? "available" : "unavailable",
+	    m_pbrModelReady ? "available" : "unavailable",
 	    m_sceneDepthUsable ? "readable" : "unavailable" );
 	return true;
 }
@@ -3118,7 +3204,8 @@ VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, V
 	gp.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	gp.stageCount = 2;
 	gp.pStages = stages;
-	gp.pVertexInputState = vertexInput;
+	ConsumedVertexInput consumedInput;
+	gp.pVertexInputState = FilterVertexInput( vertexInput, stages[0].module, &consumedInput );
 	gp.pInputAssemblyState = &t.ia;
 	gp.pViewportState = &t.vp;
 	VkPipelineRasterizationStateCreateInfo rs = t.rs;
@@ -4136,6 +4223,26 @@ bool CVulkanContext::UploadManagedTexture(
 	    std::max( 1u, t.height >> level ), data, dataSize, outError, level, face );
 }
 
+// Formats whose samples the hardware decodes from sRGB on every view.
+static bool IsSrgbFormat( VkFormat format )
+{
+	switch ( format )
+	{
+	case VK_FORMAT_R8G8B8A8_SRGB:
+	case VK_FORMAT_B8G8R8A8_SRGB:
+	case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+	case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
+	case VK_FORMAT_BC2_SRGB_BLOCK:
+	case VK_FORMAT_BC3_SRGB_BLOCK:
+	case VK_FORMAT_BC7_SRGB_BLOCK:
+	case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+	case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+		return true;
+	default:
+		return false;
+	}
+}
+
 static size_t TextureBlockBytes( VkFormat format )
 {
 	switch ( format )
@@ -4601,7 +4708,8 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 	std::memcpy( d.samplerHandles, m_dynSamplerHandles, sizeof( d.samplerHandles ) );
 	d.portal = m_dynPortal;
 	d.fog = m_dynFog;
-	if ( d.shaderIndex == kDynShaderSkin || d.shaderIndex == kDynShaderSolidEnergy )
+	if ( d.shaderIndex == kDynShaderSkin || d.shaderIndex == kDynShaderSolidEnergy ||
+	     d.shaderIndex == kDynShaderPbrModel )
 	{
 		d.skin = static_cast<int>( m_dynSkinConstants.size() );
 		m_dynSkinConstants.push_back( m_dynSkin );
@@ -4648,7 +4756,8 @@ void CVulkanContext::EndDynamicDraw( uint32_t vertexCount, uint32_t indexCount )
 		m_dynQueued.resize( static_cast<size_t>( d.firstVertex ) * kDynVertexFloats );
 		m_dynIndices.resize( d.firstIndex );
 		if ( d.skin >= 0 &&
-		     ( d.shaderIndex == kDynShaderSkin || d.shaderIndex == kDynShaderSolidEnergy ) )
+		     ( d.shaderIndex == kDynShaderSkin || d.shaderIndex == kDynShaderSolidEnergy ||
+		         d.shaderIndex == kDynShaderPbrModel ) )
 			m_dynSkinConstants.pop_back();
 		m_dynDrawRecords.pop_back();
 		return;
@@ -4868,7 +4977,8 @@ static bool SrgbCapableShader( int shaderIndex )
 	       shaderIndex == CVulkanContext::kDynShaderPbrGlass ||
 	       shaderIndex == CVulkanContext::kDynShaderPortalRefract ||
 	       shaderIndex == CVulkanContext::kDynShaderSkin ||
-	       shaderIndex == CVulkanContext::kDynShaderSolidEnergy;
+	       shaderIndex == CVulkanContext::kDynShaderSolidEnergy ||
+	       shaderIndex == CVulkanContext::kDynShaderPbrModel;
 }
 
 bool CVulkanContext::RecordWantsSrgb( const DynDraw &r ) const
@@ -5025,6 +5135,7 @@ void CVulkanContext::DestroyDynamicMesh()
 	for ( const auto &entry : m_portalPipelines )
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_portalPipelines.clear();
+	DestroyPbrModelPipeline();
 	DestroySkinPipeline();
 	DestroyPbrDirectPipeline();
 	for ( VkShaderModule *module : { &m_portalVert, &m_portalFrag } )
@@ -5956,6 +6067,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			bool portal = false;
 			bool skin = false;
 			bool solidEnergy = false;
+			bool pbrModel = false;
+			bool pbrModelEnv = false;
 			// sRGB inputs decoded by the sampler and output encoded by the view,
 			// which the shader must then not apply itself.
 			int decodedFlags = openSrgb ? kColorSrgbWrite : 0;
@@ -6040,6 +6153,22 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				skin = true;
 				solidEnergy = true;
 			}
+			else if ( d.shaderIndex == kDynShaderPbrModel )
+			{
+				const SkinConstants *c =
+				    d.skin >= 0 && static_cast<size_t>( d.skin ) < m_dynSkinConstants.size()
+				        ? &m_dynSkinConstants[static_cast<size_t>( d.skin )]
+				        : nullptr;
+				pbrModelEnv = c && ( c->combos & kPbrModelEnvMap ) != 0;
+				selected = PbrModelPipeline( d.raster, pbrModelEnv, openSrgb, passSamples );
+				if ( selected == VK_NULL_HANDLE || !c || !skinConstantsOk ||
+				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
+					continue;
+				selectedLayout = m_skinPipelineLayout;
+				// The skin layout, push block and constants; its own samplers.
+				skin = true;
+				pbrModel = true;
+			}
 			if ( selected == VK_NULL_HANDLE )
 				continue;
 			if ( selected != boundPipeline )
@@ -6105,6 +6234,34 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 					    m_skinPipelineLayout, 0, 7, sets, 1, &offset );
 				}
+				else if ( pbrModel )
+				{
+					// shaders/model_pbr.frag: s0 base (sRGB), s10 MRAO, s1 normal,
+					// s2 emission (decoded by the shader), the split-sum table,
+					// then the $envmap cube (s3) or the map's LMAP atlas, whose
+					// probe marker the shader checks; then the constants.
+					const int probeTexture =
+					    pbrModelEnv ? d.samplerHandles[3] : m_worldLightmapHandle;
+					// A base stored in an sRGB format (a KTX2 BC7 sRGB package)
+					// is decoded by the sampler through any view; the shader must
+					// not decode it again.
+					if ( d.texHandle >= 0 &&
+					     d.texHandle < static_cast<int>( m_managedTextures.size() ) &&
+					     IsSrgbFormat(
+					         m_managedTextures[static_cast<size_t>( d.texHandle )].format ) )
+						decodedFlags |= kColorSrgbReadBase;
+					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					    sampledSet( d.samplerHandles[10], 0 ), sampledSet( d.samplerHandles[1], 0 ),
+					    sampledSet( d.samplerHandles[2], 0 ),
+					    m_managedTextures[static_cast<size_t>( m_pbrSplitSumHandle )].descSet,
+					    pbrModelEnv ? sampledSet( probeTexture, 0 )
+					                : ( probeTexture >= 0 ? sampledSet( probeTexture, 0 )
+					                                      : m_dynTexDescSet ),
+					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set };
+					const uint32_t offset = skinOffsets[static_cast<size_t>( d.skin )];
+					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+					    m_skinPipelineLayout, 0, 7, sets, 1, &offset );
+				}
 				else if ( skin )
 				{
 					// s0 base (sRGB), s1 specular warp, s2 diffuse warp, s3 normal
@@ -6134,17 +6291,22 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					// built-in set stands in and the shader is told not to read it.
 					const ManagedTexture &sceneColor =
 					    m_managedTextures[static_cast<size_t>( std::max( m_sceneColorHandle, 0 ) )];
+					// Opaque batches take the emission map and the $envmap cube
+					// there instead (the built-in sets while the push block says
+					// the shader does not read them).
+					const int environment = d.samplerHandles[kPbrWorldEnvironmentSampler];
 					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
 					    sampledSet( d.samplerHandles[1], 0 ), sampledSet( d.samplerHandles[2], 0 ),
 					    sampledSet( m_worldLightmapHandle, 0 ),
 					    m_managedTextures[static_cast<size_t>( m_pbrSplitSumHandle )].descSet,
 					    glass ? ( sceneColor.descSetSrgb != VK_NULL_HANDLE ? sceneColor.descSetSrgb
 					                                                       : sceneColor.descSet )
-					          : VK_NULL_HANDLE,
-					    glass ? sampledSet( m_sceneDepthHandle, 0 ) : VK_NULL_HANDLE };
+					          : sampledSet( d.samplerHandles[kPbrWorldEmissionSampler], 0 ),
+					    glass ? sampledSet( m_sceneDepthHandle, 0 )
+					          : sampledSet( environment >= 0 ? environment : m_whiteCubeHandle, 0 ) };
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					    glass ? m_worldGlassPipelineLayout : m_worldPbrPipelineLayout, 0,
-					    glass ? 7 : 5, sets, 0, nullptr );
+					    glass ? m_worldGlassPipelineLayout : m_worldPbrPipelineLayout, 0, 7, sets,
+					    0, nullptr );
 				}
 				else
 				{
@@ -6214,7 +6376,12 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				std::memcpy( pushData + 20, c.texXform1, sizeof( c.texXform1 ) );
 				std::memcpy( pushData + 24, c.eyePos, sizeof( c.eyePos ) );
 				pushData[28] = d.alphaRef;
-				pushData[29] = static_cast<float>( c.combos );
+				// model_pbr.frag's flags take the map probe while an LMAP
+				// atlas is resident.
+				int combos = c.combos;
+				if ( pbrModel && !pbrModelEnv && m_worldLightmapHandle >= 0 )
+					combos |= kPbrModelMapProbe;
+				pushData[29] = static_cast<float>( combos );
 				pushData[30] = static_cast<float>( d.colorFlags & ~decodedFlags );
 				pushData[31] = d.outputScale;
 				pushData[32] = static_cast<float>( c.numLights );
@@ -6976,7 +7143,8 @@ bool CVulkanContext::EnsurePresentGamma( std::string *outError )
 	gp.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	gp.stageCount = 2;
 	gp.pStages = stages;
-	gp.pVertexInputState = &vin;
+	ConsumedVertexInput consumedInput;
+	gp.pVertexInputState = FilterVertexInput( &vin, stages[0].module, &consumedInput );
 	gp.pInputAssemblyState = &ia;
 	gp.pViewportState = &vp;
 	gp.pRasterizationState = &rs;
@@ -7414,6 +7582,8 @@ int CVulkanContext::PrewarmPipelines()
 			pipeline = SkinPipeline( state, srgb, samples );
 		else if ( family == kPipelineSolidEnergy )
 			pipeline = SolidEnergyPipeline( state, srgb, samples );
+		else if ( family == kPipelinePbrModel || family == kPipelinePbrModelEnv )
+			pipeline = PbrModelPipeline( state, family == kPipelinePbrModelEnv, srgb, samples );
 		else if ( family == kPipelinePbrDirect )
 			pipeline = PbrDirectPipeline( state, srgb, samples );
 		if ( pipeline != VK_NULL_HANDLE )

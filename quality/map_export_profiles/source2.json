@@ -1,0 +1,37 @@
+{
+  "schema": "map-export-profile/v1",
+  "name": "source2",
+  "description": "Default export quality for scene-derived maps: GPU path-traced lightmaps with OIDN, directional (normal-map-aware) baked light, a map reflection probe, every authored material channel, and a camera-matched Cycles reference for the runtime gate.",
+  "lightmap": {
+    "size": 2048,
+    "samples": 2048,
+    "device": "auto",
+    "denoise": true,
+    "directional": true
+  },
+  "reflection_probe": {
+    "width": 512,
+    "face_size": 256,
+    "samples": 1024
+  },
+  "reference": {
+    "render": {
+      "samples": 256,
+      "scale": 0.5
+    }
+  },
+  "runtime_gate": {
+    "max_mae": 24,
+    "min_ssim": 0.7
+  },
+  "audit": {
+    "min_lightmap_samples": 1024,
+    "require_denoise": true,
+    "require_directional": true,
+    "require_reflection_probe": true,
+    "require_authored_channels": true,
+    "max_texture_size": 2048,
+    "max_wmsh_normal_fallback_fraction": 0.01,
+    "require_runtime_gate_when_booted": true
+  }
+}

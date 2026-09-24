@@ -293,7 +293,10 @@ public:
 		// shaders/solidenergy.{vert,frag}.
 		kDynShaderSolidEnergy = 8,
 		// Transmissive PBRMetalRough WMSH batches (glass); shaders/world_pbr_glass.frag.
-		kDynShaderPbrGlass = 10
+		kDynShaderPbrGlass = 10,
+		// PBRMetalRough on dynamic meshes (models and props), on the skin
+		// pipeline's layout and vertex stage; shaders/model_pbr.frag.
+		kDynShaderPbrModel = 11
 	};
 	void SelectDynamicShader( int shaderIndex ) { m_dynShaderIndex = shaderIndex; }
 	// Output-merger state of the queued geometry, in the terms of the D3D9 state a
@@ -555,7 +558,12 @@ public:
 	{
 		float eye[4] = { 0, 0, 1, 0 };
 		float lightDirection[4] = { 0, 0, -1, 0 };
-		float lightRadiance[4] = { 1, 1, 1, 0 };
+		// No direct light unless a caller supplies one: a map's WMSH lightmap
+		// already holds all baked light, and a default white light added
+		// spurious specular to every map (glints on every normal-mapped edge).
+		float lightRadiance[4] = { 0, 0, 0, 0 };
+		// Alpha cutoff (< 0 disables), normal map enable, $emissionscale (0: no
+		// emission) and the $envmap cube's mip count (0: the map probe).
 		float material[4] = { -1, 0, 0, 0 };
 		// Glass only: transmission (0..1), index of refraction, thickness in
 		// world units (0 = a thin sheet), unused.
@@ -564,6 +572,24 @@ public:
 	void SetDynamicPbrWorldScene( const PbrWorldScene &scene ) { m_dynPbrWorld = scene; }
 	bool PbrWorldPipelineSupported() const { return m_pbrWorldReady; }
 	bool SelectPbrWorldMaterial( int mrao, int normal, const float eye[3], float alphaReference );
+	// The optional maps of an opaque WMSH PBR material: an sRGB emission
+	// color (decoded by the shader) times `emissionScale`, and an $envmap cube
+	// replacing the map probe. A handle that is not uploaded, or an envmap that
+	// is not a cube, fails the selection rather than drawing without it.
+	// The draw's sampler slots that carry them to sets 5 and 6.
+	enum
+	{
+		kPbrWorldEmissionSampler = 5,
+		kPbrWorldEnvironmentSampler = 6
+	};
+	struct PbrWorldMaps
+	{
+		int emission = -1;
+		float emissionScale = 0.0f;
+		int environment = -1;
+	};
+	bool SelectPbrWorldMaterial( int mrao, int normal, const float eye[3], float alphaReference,
+	    const PbrWorldMaps &maps );
 	// Transmissive PBR (glass) on WMSH batches. Its draw refracts the scene
 	// captured just before it: the first glass draw after anything else was
 	// drawn or cleared on the target queues a scene capture (color mip chain and
@@ -600,6 +626,18 @@ public:
 	uint32_t LastFrameSceneCaptures() const { return m_lastFrameSceneCaptures; }
 	uint32_t LastFrameSceneDepthCaptures() const { return m_lastFrameSceneDepthCaptures; }
 	bool PbrDirectPipelineSupported() const { return m_pbrDirectReady; }
+	// PBRMetalRough model draws: the skin layout plus the split-sum table. Their
+	// constants arrive through SetDynamicSkinConstants, `combos` holding
+	// model_pbr.frag's flags. Samplers: s0 base, s10 MRAO, s1 normal, s2
+	// emission, s3 the $envmap cube.
+	bool PbrModelPipelineSupported() const { return m_pbrModelReady; }
+	enum
+	{
+		kPbrModelNormalMap = 1,
+		kPbrModelEmission = 2,
+		kPbrModelEnvMap = 4,
+		kPbrModelMapProbe = 8 // set per draw when a map LMAP atlas is resident
+	};
 	// False when the device cannot bind the skin shader's seven descriptor sets
 	// or its push block; its draws are then declined.
 	bool SkinPipelineSupported() const { return m_skinPipelineLayout != VK_NULL_HANDLE; }
@@ -965,6 +1003,19 @@ private:
 	bool ResolveCapturedPixels( std::string *outError );
 
 	uint32_t FindMemoryType( uint32_t typeBits, VkMemoryPropertyFlags props, bool *found ) const;
+	// The vertex attributes a pipeline declares, less those its vertex stage
+	// does not read (Vulkan reports each as WARNING-Shader-OutputNotConsumed).
+	// CreateShaderModule records each vertex module's input locations from its
+	// SPIR-V. `storage` holds the filtered copy until the pipeline is created.
+	struct ConsumedVertexInput
+	{
+		VkPipelineVertexInputStateCreateInfo info = {};
+		std::vector<VkVertexInputAttributeDescription> attributes;
+	};
+	const VkPipelineVertexInputStateCreateInfo *FilterVertexInput(
+	    const VkPipelineVertexInputStateCreateInfo *input, VkShaderModule vertex,
+	    ConsumedVertexInput *storage ) const;
+	std::map<VkShaderModule, uint64_t> m_vertexInputLocations;
 	bool CreateShaderModule(
 	    const uint32_t *code, size_t sizeBytes, VkShaderModule *outModule, std::string *outError );
 	bool CreateBuffer( VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props,
@@ -1265,6 +1316,8 @@ private:
 		kPipelineSkin = 2,
 		kPipelinePbrDirect = 3,
 		kPipelineSolidEnergy = 4,
+		kPipelinePbrModel = 5,
+		kPipelinePbrModelEnv = 6,
 		kPipelineFamilies
 	};
 	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
@@ -1292,6 +1345,16 @@ private:
 	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
 	VkShaderModule m_solidEnergyVert = VK_NULL_HANDLE;
 	VkShaderModule m_solidEnergyFrag = VK_NULL_HANDLE;
+	// PBRMetalRough models share the skin layout and vertex stage. Variant 0
+	// reads the map probe from the LMAP atlas in set 5; variant 1 ($envmap)
+	// reads a cube there.
+	std::map<uint64_t, VkPipeline> m_pbrModelPipelines[2];
+	VkPipeline PbrModelPipeline(
+	    const DynRasterState &state, bool envCube, bool srgbPass = false, int samples = 1 );
+	VkShaderModule m_pbrModelFrag[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+	bool m_pbrModelReady = false;
+	bool InitPbrModelPipeline( std::string *outError );
+	void DestroyPbrModelPipeline();
 	std::map<uint64_t, VkPipeline> m_pbrDirectPipelines;
 	VkPipeline PbrDirectPipeline(
 	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );

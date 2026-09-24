@@ -101,6 +101,17 @@ inline bool IsValidTransmission( float transmission, float ior, float thickness 
 	       ior <= kMaxIndexOfRefraction && thickness >= 0.0f && thickness <= 1.0e6f;
 }
 
+// The features a PBRMetalRough material asks of the native Vulkan pipelines,
+// as its dynamic state reports them in pixel constant c3.x. A pipeline that
+// lacks one declines the draw by name rather than drawing without it.
+enum NativeFeature : int
+{
+	kNativeNormalMap = 1,
+	kNativeEmission = 2,
+	kNativeEnvMap = 4,
+	kNativeTranslucent = 16 // alpha-blended, not glass
+};
+
 inline bool IsMetalRoughShader( const char *name )
 {
 	const char expected[] = "PBRMetalRough";

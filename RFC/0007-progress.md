@@ -556,3 +556,101 @@ fallback is no longer selected; that failure is retained in the RFC 0008
 audit receipt. Dynamic meshes need a native PBR pass and a new positive pixel
 oracle before the material family is complete. Reflections, transmission,
 coat, KTX2 base textures, and cross-platform GPU evidence also remain open.
+
+## PBRMetalRough on models, emission, $envmap and validation-clean GPU suites (R47 slice, 2026-09-24)
+
+Scope (owner: session source-engine-79). This slice adds a native pass for dynamic
+meshes, a positive oracle to replace the stale native `pbr-fallback`
+expectation, and the emission and environment-map features that were declined
+before.
+
+- **Model pipeline.** `shaders/model_pbr.frag` (`vulkan_model_pbr.cpp`,
+  `kDynShaderPbrModel`) draws PBRMetalRough on every non-WMSH mesh:
+  - It runs on the skin pipeline's layout and vertex stage. The shader API
+    already converts those vertices on the CPU: world-space position, normal,
+    tangent (skinned or MODEL-transformed) and each vertex's attenuation of
+    the four sorted lights.
+  - The material's dynamic state commits the ambient cube (c4..c9) and the
+    lights (c20..c25), as `skin_dx9_helper.cpp` does.
+  - The BRDF is `pbr_brdf.h`'s layered GGX. Source's model-light units make a
+    local light incident radiance π·color·attenuation, so a rough dielectric
+    keeps VertexLitGeneric's brightness.
+  - Specular image light comes from the `$envmap` cube, else the map's LMAP
+    probe, else the ambient cube in the reflected direction.
+  - A mesh without normals shades toward the eye instead of producing NaN.
+  - A base stored in an sRGB format is never decoded twice.
+- **Feature flags.** PBRMetalRough reports its features in c3.x
+  (`render::pbr::NativeFeature`) and `$emissionscale` in c2.x. Pipelines
+  decline, by name, only the features they lack: glass on models, and glass
+  combined with emission or `$envmap`.
+- **WMSH.** `world_pbr.frag` adds `$emissiontexture` (sRGB, decoded in the
+  shader) × `$emissionscale` and the `$envmap` cube. The layout grows to 7
+  sets, and `material.zw` carries the emission scale and cube mip count. A
+  non-cube `$envmap` fails selection. Alpha-blended PBRMetalRough WMSH
+  batches are no longer declined; they draw in the engine's back-to-front
+  translucent WMSH pass.
+- **Validation.** `CreateShaderModule` reflects each vertex module's SPIR-V
+  input locations, and pipelines drop the attributes their vertex stage does
+  not read. That removes every `WARNING-Shader-OutputNotConsumed`.
+
+Evidence (RADV Radeon 8060S; private tree `build-vk79`; headless
+`SDL_VIDEODRIVER=offscreen`). The Khronos validation layer was loaded from
+Steam's runtime copy through a scratch manifest and `VK_ADD_LAYER_PATH`.
+
+| Suite | Result | Validation messages |
+| --- | --- | --- |
+| `model_pbr_native_pixel_conformance` (new) | 30/0 | 0 |
+| `world_pbr_native_pixel_conformance` (+ emission, `$envmap`, non-cube rejection) | 41/0 | 0 |
+| `world_glass_native_pixel_conformance` | 36/0 | 0 |
+| `pbr_native_pixel_conformance` | 32/0 (was 31/1 with validation on) | 0 |
+| `ktx2_native_pixel_conformance` | 23/0 | 0 |
+| `native_vulkan_bringup_conformance` | 99/0 (was 98/1 with validation on) | 0 |
+| `material_equivalence_vulkan_conformance`, `material_facing_vulkan_conformance` | 64/0, 25/0 | layer not requested |
+| `builtin_shader_conformance` | 306/0 | — |
+
+- The model suite's CPU model uses `pbr_brdf.h`. Seven cases (ambient,
+  lit dielectric, sRGB-stored base, lit metal, normal map, emission,
+  `$envmap`) each match within 3 levels. Seeded defects are each separated by
+  more than 6 levels: ignored occlusion, attenuation or Fresnel weighting,
+  specular without π, MRAO decoded as sRGB, and emission bytes used undecoded.
+- New material-system family `pbr-model`
+  (`tools/quality/material_pixel_pbr_model.py`):
+  - The modellight harness's quads, ambient cubes, point/spot/directional
+    lights and rigid/skinned placements, drawn with four PBRMetalRough
+    materials.
+  - Judged per pixel against an independent layered-BRDF model that reads the
+    generated split-sum table. It passes in `--hdr none` and `--hdr integer`
+    over 57,976 judged pixels per case.
+  - Pixels within 0.04 of N·V = 0 are not judged (`HORIZON_MARGIN`). At the
+    horizon, both the GPU and the model switch terms, and the sub-pixel
+    sample position decides the result, exactly as `EDGE_MARGIN` handles
+    coverage.
+  - Every seeded defect in `CONTROLS` must fail. The versioned native capture
+    `quality/fixtures/material-pixels/pbr-model-native-vulkan-none.json`
+    drives 6 oracle self-tests.
+  - D3D9 draws the fallback, so this family has no cross-backend reference.
+    A reference argument is refused.
+- `pbr-fallback` now has a native contract: native resolves `PBRMetalRough`
+  (including the valid primary patch), rejects every invalid definition, and
+  leaves pixels to `pbr-model`. The D3D9/DXVK contract is unchanged. It
+  passes on native, and the oracle suite passes 92/0 (3 new native-contract
+  tests).
+- Regression runs on native pass: modellight in both HDR modes against the
+  D3D9 references, lightmap, skinning, portal, sprite, cable, sky and monitor.
+- In-game:
+  - `living_room` boots on `build-vk79` with WMSH PBR and the 2048² LMAP
+    (`quality-results/vk79-boot-living3`).
+  - A private staged Portal runtime mounted a PBRMetalRough override of
+    `models/props/metal_box` through `portal/custom/` (searched before the
+    VPKs). `prop_physics_create props/metal_box` draws it through shader 11,
+    the model PBR pipeline, with its normal map
+    (`quality-results/vk79-pbrbox3`). `portal_boot.py --content-root`
+    deliberately cannot shadow installed content, so the relaunch used the
+    recorded command.
+
+Not covered:
+- Static props' baked vertex lighting (color mesh) is not used by the model
+  pipeline; it lights with the ambient cube and local lights.
+- Clear coat, model glass, and flashlight/projected-texture passes for PBR
+  models.
+- Other GPUs and the Android/Apple profiles.

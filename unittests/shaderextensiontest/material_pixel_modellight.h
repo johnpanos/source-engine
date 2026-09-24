@@ -17,5 +17,9 @@
 // `toneScale` is the linear tone-mapping scale set for every case (integer HDR).
 bool RunModelLightCases(
     FILE *out, const char *outPath, void ( *writeClearProbe )( FILE * ), float toneScale );
+// The "pbr-model" family: the same quads, lights and placements drawn with
+// RFC 0007 PBRMetalRough materials (native Vulkan's model pipeline).
+bool RunPbrModelCases(
+    FILE *out, const char *outPath, void ( *writeClearProbe )( FILE * ), float toneScale );
 
 #endif // MATERIAL_PIXEL_MODELLIGHT_H

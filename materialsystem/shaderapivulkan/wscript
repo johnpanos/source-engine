@@ -34,6 +34,7 @@ def build(bld):
 		'../dxsupport_keyvalues.cpp',
 		'vulkan_world_pbr.cpp',
 		'vulkan_scene_capture.cpp',
+		'vulkan_model_pbr.cpp',
 		'vulkan_world_lightmap.cpp',
 		'vulkan_world_mesh_upload.cpp',
 		# The SDL3-Vulkan pair bridge: the only source here that includes SDL.

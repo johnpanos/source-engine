@@ -6,7 +6,15 @@ keep a degenerate
 lightmap UV at (0, 0) and get no atlas space. Every other source mesh is
 smart-projected, area-normalized and packed into one atlas, then baked as
 scene-linear diffuse irradiance (direct + indirect, albedo divided out) under
-the scene's area emitters and sky.
+the scene's area emitters, sun lamps and sky. Materials bake on their smooth
+normals (no normal maps).
+
+With `--directional-dir` the same light is also baked for the three Source
+RNM basis normals in each texel's lightmap tangent frame (T from the
+`lightmap_st` tangent orthogonalized against the smooth normal N, B = N x T),
+and that frame is baked too (EMIT of T and N, encoded 0.5 + 0.5 v).
+`lightmap_directional.py` fits the per-texel irradiance gradient the runtime
+shader applies to normal-mapped surfaces.
 """
 
 import argparse
@@ -24,6 +32,11 @@ import pbrt_blender  # noqa: E402
 import map_scene  # noqa: E402
 
 SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
+# Source's radiosity normal mapping basis (tangent space), 54.74 degrees from N.
+RNM_BASIS = ((0.816496580927726, 0.0, 0.5773502691896258),
+             (-0.408248290463863, 0.7071067811865475, 0.5773502691896258),
+             (-0.408248290463863, -0.7071067811865475, 0.5773502691896258))
+FRAME_SAMPLES = 16
 PROJECTED_PART_LIMIT = 4096
 PROXY_PREFIX = "_lightmap_footprint_"
 
@@ -132,6 +145,104 @@ def pack_lightmap_uvs(meshes, margin):
     return {obj.name: {"parts": parts[obj.name], "proxy": proxies[obj.name]} for obj in projected}
 
 
+def vector_math(tree, operation, *inputs, scale=None):
+    node = tree.nodes.new("ShaderNodeVectorMath")
+    node.operation = operation
+    for index, value in enumerate(inputs):
+        if isinstance(value, bpy.types.NodeSocket):
+            tree.links.new(value, node.inputs[index])
+        else:
+            node.inputs[index].default_value = value
+    if scale is not None:
+        if isinstance(scale, bpy.types.NodeSocket):
+            tree.links.new(scale, node.inputs["Scale"])
+        else:
+            node.inputs["Scale"].default_value = scale
+    return node.outputs["Value" if operation == "DOT_PRODUCT" else "Vector"]
+
+
+def lightmap_frame(tree):
+    """(N, T, B) sockets: smooth normal, lightmap tangent orthogonal to N, N x T."""
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    tangent = tree.nodes.new("ShaderNodeTangent")
+    tangent.direction_type = "UV_MAP"
+    tangent.uv_map = "lightmap_st"
+    normal = geometry.outputs["Normal"]
+    along = vector_math(tree, "DOT_PRODUCT", tangent.outputs["Tangent"], normal)
+    projected = vector_math(tree, "SCALE", normal, scale=along)
+    t = vector_math(tree, "NORMALIZE", vector_math(tree, "SUBTRACT", tangent.outputs["Tangent"],
+                                                   projected))
+    b = vector_math(tree, "CROSS_PRODUCT", normal, t)
+    return normal, t, b
+
+
+def bake_rnm(merged, out_dir, size, render):
+    """Bake diffuse irradiance for each RNM basis normal; return EXR hashes."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    hashes = []
+    for index, basis in enumerate(RNM_BASIS):
+        image = bpy.data.images.new("PbrtLightmapRnm%d" % index, width=size, height=size,
+                                    alpha=True, float_buffer=True)
+        for material in {slot.material for slot in merged.material_slots}:
+            tree = material.node_tree
+            material.cycles.use_bump_map_correction = False
+            normal, t, b = lightmap_frame(tree)
+            direction = vector_math(tree, "NORMALIZE", vector_math(
+                tree, "ADD", vector_math(tree, "ADD", vector_math(tree, "SCALE", t,
+                                                                  scale=basis[0]),
+                                         vector_math(tree, "SCALE", b, scale=basis[1])),
+                vector_math(tree, "SCALE", normal, scale=basis[2])))
+            for node in list(tree.nodes):
+                if node.type.startswith("BSDF") and "Normal" in node.inputs:
+                    tree.links.new(direction, node.inputs["Normal"])
+            target = tree.nodes["BakeTarget"]
+            target.image = image
+            tree.nodes.active = target
+        bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT"})
+        path = out_dir / ("rnm%d.exr" % index)
+        image.save_render(filepath=str(path.resolve()), scene=render)
+        if not path.is_file():
+            raise RuntimeError("Cycles did not save RNM bake %d" % index)
+        hashes.append(sha256(path))
+    return {"basis": [list(basis) for basis in RNM_BASIS], "rnm_exr_sha256": hashes}
+
+
+def bake_frame(merged, out_dir, size, render):
+    """EMIT-bake the lightmap tangent frame (T and N, 0.5 + 0.5 v)."""
+    samples = render.cycles.samples
+    render.cycles.samples = FRAME_SAMPLES
+    render.render.bake.margin = 0
+    hashes = {}
+    for axis in ("t", "n"):
+        image = bpy.data.images.new("PbrtLightmapFrame" + axis, width=size, height=size,
+                                    alpha=True, float_buffer=True)
+        material = bpy.data.materials.new("PbrtLightmapFrame" + axis)
+        material.use_nodes = True
+        tree = material.node_tree
+        tree.nodes.clear()
+        output = tree.nodes.new("ShaderNodeOutputMaterial")
+        emission = tree.nodes.new("ShaderNodeEmission")
+        normal, t, _ = lightmap_frame(tree)
+        encoded = vector_math(tree, "MULTIPLY_ADD", t if axis == "t" else normal,
+                              (0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        tree.links.new(encoded, emission.inputs["Color"])
+        tree.links.new(emission.outputs[0], output.inputs[0])
+        target = tree.nodes.new("ShaderNodeTexImage")
+        target.image = image
+        tree.nodes.active = target
+        merged.data.materials.clear()
+        merged.data.materials.append(material)
+        if bpy.ops.object.bake(type="EMIT") != {"FINISHED"}:
+            raise RuntimeError("Cycles could not bake the lightmap frame")
+        path = out_dir / ("frame_%s.exr" % axis)
+        image.save_render(filepath=str(path.resolve()), scene=render)
+        if not path.is_file():
+            raise RuntimeError("Cycles did not save the lightmap frame")
+        hashes[axis] = sha256(path)
+    render.cycles.samples = samples
+    return hashes
+
+
 def main():
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     parser = argparse.ArgumentParser(description=__doc__)
@@ -149,6 +260,8 @@ def main():
     parser.add_argument("--reserve-rows", type=int, default=0,
                         help="keep the atlas's first N texel rows (lightmap v < N/size) "
                              "empty for a reflection probe band")
+    parser.add_argument("--directional-dir", type=Path,
+                        help="also bake RNM-basis irradiance and the tangent frame here")
     parser.add_argument("--margin-texels", type=int, default=2,
                         help="gap between packed charts; bake dilation uses half")
     args = parser.parse_args(arguments)
@@ -240,7 +353,7 @@ def main():
                              triangulate_meshes=True,
                              export_textures_mode="NEW") != {"FINISHED"}:
         raise RuntimeError("could not export the lighting USD stage")
-    pbrt_blender.rebind_materials(scene)
+    pbrt_blender.rebind_materials(scene, normal_maps=False)
     pbrt_blender.restore_emitters(scene)
     pbrt_blender.apply_environment(scene, args.environment)
     device = pbrt_blender.configure_cycles(args.samples, args.device)
@@ -287,6 +400,9 @@ def main():
     atlas.save_render(filepath=str(args.out_exr.resolve()), scene=render)
     if not args.out_exr.is_file():
         raise RuntimeError("Cycles did not save the lightmap atlas")
+    directional = None
+    if args.directional_dir:
+        directional = bake_rnm(merged, args.directional_dir, args.size, render)
     if args.out_coverage_exr:
         coverage = bpy.data.images.new("PbrtUvCoverage", width=args.size, height=args.size,
                                        alpha=True, float_buffer=True)
@@ -310,6 +426,10 @@ def main():
         coverage.save_render(filepath=str(args.out_coverage_exr.resolve()), scene=render)
         if not args.out_coverage_exr.is_file():
             raise RuntimeError("Cycles did not save the UV footprint")
+    if directional is not None:
+        directional["frame_exr_sha256"] = bake_frame(merged, args.directional_dir, args.size,
+                                                     render)
+        directional["frame_samples"] = FRAME_SAMPLES
     pixels = list(atlas.pixels)
     sampled = []
     stride = max(1, args.size // 16)
@@ -342,6 +462,7 @@ def main():
                 "atlas_coverage_estimate": covered,
                 "coverage_exr_sha256": sha256(args.out_coverage_exr)
                 if args.out_coverage_exr else None,
+                "directional": directional,
                 "texels_per_square_meter": {"min": min(density.values()),
                                             "max": max(density.values())},
                 "linear_exr_sample_count": len(sampled), "linear_exr_max_sample_error": error,

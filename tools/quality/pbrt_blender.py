@@ -28,8 +28,13 @@ def clear_scene():
         bpy.data.objects.remove(obj, do_unlink=True)
 
 
-def build_material(scene, name):
-    """Create a Principled material from the shared material translation policy."""
+def build_material(scene, name, normal_maps=True):
+    """Create a Principled material from the shared material translation policy.
+
+    Lightmap bakes pass `normal_maps=False`: baked irradiance is sampled at
+    lightmap resolution on the smooth normal, and the runtime shader applies
+    normal-map detail through the directional lightmap.
+    """
     summary = map_scene.material_summary(scene, name)
     root = map_scene.material_root(scene)
     result = bpy.data.materials.new(name)
@@ -70,7 +75,7 @@ def build_material(scene, name):
         cut.inputs[1].default_value = summary["opacity_threshold"] - 1e-6
         tree.links.new(shader.inputs["Alpha"].links[0].from_socket, cut.inputs[0])
         tree.links.new(cut.outputs[0], shader.inputs["Alpha"])
-    if "normal" in textures:
+    if "normal" in textures and normal_maps:
         normal_map = tree.nodes.new("ShaderNodeNormalMap")
         normal_map.space = "TANGENT"
         normal_map.uv_map = "st"
@@ -211,7 +216,7 @@ def coated_albedo_nodes(tree, color, fdr):
     return divide.outputs["Vector"]
 
 
-def rebind_materials(scene):
+def rebind_materials(scene, normal_maps=True):
     """Replace USD preview materials with the PBRT translation policy.
 
     UsdPreviewSurface cannot carry coats, transmission or the coat albedo
@@ -225,7 +230,7 @@ def rebind_materials(scene):
             raise ValueError("USD mesh has no scene material assignment: " + obj.name)
         name = assignments[obj.name]
         if name not in built:
-            built[name] = build_material(scene, name)
+            built[name] = build_material(scene, name, normal_maps)
         obj.data.materials.clear()
         obj.data.materials.append(built[name])
 

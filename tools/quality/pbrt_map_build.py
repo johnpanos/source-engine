@@ -63,11 +63,14 @@ import pbrt_traversal  # noqa: E402
 import playable_maps  # noqa: E402
 import reference_compare  # noqa: E402
 
-STEPS = ("scene", "environment", "stage", "reference-gate", "bake", "denoise", "probe", "ktx2", "sky",
+STEPS = ("scene", "environment", "stage", "reference-gate", "bake", "denoise", "directional",
+         "probe", "ktx2", "sky",
          "collision", "compile", "pack", "content", "boot", "camera-boot", "runtime-gate",
-         "traversal-boot", "traversal")
+         "traversal-boot", "traversal", "audit")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
-GATES = ("reference-gate", "runtime-gate", "traversal")
+GATES = ("reference-gate", "runtime-gate", "traversal", "audit")
+PROFILES = ROOT / "quality" / "map_export_profiles"
+DEFAULT_QUALITY = "source2"
 SCENE_SCRIPTS = ["pbrt_scene.py", "map_scene.py"]
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -93,7 +96,31 @@ def load_manifest(path):
         raise ValueError("manifest map must be lowercase [a-z0-9_]")
     manifest["scene"] = str((ROOT / manifest["scene"]).resolve())
     manifest["scene_format"] = "usd" if map_scene.is_usd(manifest["scene"]) else "pbrt"
+    manifest.setdefault("quality", DEFAULT_QUALITY)
     return manifest
+
+
+def load_profile(name):
+    """A declared export-quality profile (quality/map_export_profiles/<name>.json)."""
+    path = PROFILES / (name + ".json")
+    if not path.is_file():
+        raise ValueError("unknown map export quality profile " + name)
+    profile = json.loads(path.read_text())
+    if profile.get("schema") != "map-export-profile/v1" or profile.get("name") != name:
+        raise ValueError("invalid map export profile " + str(path))
+    profile["path"] = str(path)
+    return profile
+
+
+def with_defaults(manifest, profile, key):
+    """Manifest value over the profile default; dicts merge, null disables."""
+    default = profile.get(key)
+    if key not in manifest:
+        return default
+    value = manifest[key]
+    if isinstance(value, dict) and isinstance(default, dict):
+        return dict(default, **value)
+    return value or None
 
 
 class Pipeline:
@@ -114,13 +141,21 @@ class Pipeline:
         self.keep_going = keep_going
         self.publish = publish
         self.failed_gates = []
-        lightmap = manifest.get("lightmap", {})
+        # Export quality comes from a declared profile (default `source2`);
+        # the manifest overrides individual settings.
+        self.profile = load_profile(manifest["quality"])
+        lightmap = with_defaults(manifest, self.profile, "lightmap")
         self.lightmap = {"size": lightmap.get("size", 2048),
                          "samples": lightmap.get("samples", 64),
                          "preview_gain": lightmap.get("preview_gain", 1.0),
                          "denoise": lightmap.get("denoise", True),
+                         "directional": lightmap.get("directional", False),
                          "device": lightmap.get("device", "auto"),
                          "exclude_materials": lightmap.get("exclude_materials", [])}
+        self.probe = with_defaults(manifest, self.profile, "reflection_probe")
+        reference = dict(self.profile.get("reference") or {}, **manifest.get("reference", {}))
+        self.reference_render = reference.get("render")
+        self.runtime_gate = with_defaults(manifest, self.profile, "runtime_gate")
         world_mesh = manifest.get("world_mesh", {})
         self.world_mesh = {"weld_materials": world_mesh.get("weld_materials", []),
                            "weld_distance_source_units":
@@ -136,6 +171,9 @@ class Pipeline:
             "atlas_receipt": self.out / "lighting" / "atlas.exr.json",
             "denoised": self.out / "lighting" / "atlas-denoised.exr",
             "denoised_receipt": self.out / "lighting" / "atlas-denoised.exr.json",
+            "directional_bakes": self.out / "lighting" / "directional",
+            "directional": self.out / "lighting" / "atlas-directional.exr",
+            "audit": self.out / "audit.json",
             "ktx2": self.out / "lighting" / "atlas.ktx2",
             "probe": self.out / "lighting" / "probe",
             "sky_texture": self.out / "sky.png",
@@ -261,7 +299,7 @@ class Pipeline:
                       ["pbrt_scene.py", "map_scene.py"], [environment, p["sky_texture"]],
                       write_environment)
         env_args = ["--environment", environment] if environment else []
-        reference = self.manifest.get("reference", {}).get("render")
+        reference = self.reference_render
         stage_args = ["--scene", scene, "--stage", p["stage"], "--receipt",
                       p["stage_receipt"]] + env_args
         if reference:
@@ -291,7 +329,7 @@ class Pipeline:
                       lambda: self.run("reference-gate", [sys.executable,
                                                           HERE / "reference_compare.py"] +
                                        gate_args))
-        probe = self.manifest.get("reflection_probe")
+        probe = self.probe
         probe_width = probe.get("width", 512) if probe else 0
         bake_args = ["--reserve-rows", str(probe_width // 2),
                      "--scene", scene, "--stage", p["stage"], "--out-stage", p["lighting_stage"],
@@ -301,12 +339,16 @@ class Pipeline:
                      "--device", self.lightmap["device"]] + env_args
         for material in self.lightmap["exclude_materials"]:
             bake_args += ["--exclude-material", material]
+        directional = self.lightmap["directional"]
+        if directional:
+            bake_args += ["--directional-dir", p["directional_bakes"]]
         self.step("bake", [p["stage"]] + ([environment] if environment else []),
                   dict({k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
-                                                      "device")},
+                                                      "device", "directional")},
                        reserve_rows=probe_width // 2),
                   SCENE_SCRIPTS + ["pbrt_blender.py", "pbrt_lightmap_bake.py"],
-                  [p["lighting_stage"], p["atlas"], p["coverage"], p["atlas_receipt"]],
+                  [p["lighting_stage"], p["atlas"], p["coverage"], p["atlas_receipt"]] +
+                  ([p["directional_bakes"]] if directional else []),
                   lambda: self.blender("bake", "pbrt_lightmap_bake.py", bake_args))
         atlas, atlas_receipt, scope = p["atlas"], p["atlas_receipt"], BAKE_SCOPE
         self.step("denoise", [p["atlas"], p["coverage"], p["atlas_receipt"]],
@@ -319,6 +361,23 @@ class Pipeline:
                                    ([] if self.lightmap["denoise"] else ["--skip-denoise"])))
         atlas, atlas_receipt = p["denoised"], p["denoised_receipt"]
         scope = BAKE_SCOPE + ("-denoised" if self.lightmap["denoise"] else "-gutter-filled")
+        directional_args = []
+        if directional:
+            bakes = [p["directional_bakes"] / name for name in
+                     ("rnm0.exr", "rnm1.exr", "rnm2.exr", "frame_t.exr", "frame_n.exr")]
+            self.step("directional", [atlas, atlas_receipt, p["atlas_receipt"], p["coverage"]] +
+                      bakes, {"denoise": self.lightmap["denoise"]},
+                      ["lightmap_directional.py", "lightmap_denoise.py"],
+                      [p["directional"], p["directional"].with_name(p["directional"].name +
+                                                                    ".json")],
+                      lambda: self.run("directional", [
+                          sys.executable, HERE / "lightmap_directional.py",
+                          "--flat-exr", atlas, "--flat-evidence", atlas_receipt,
+                          "--bake-evidence", p["atlas_receipt"], "--directional-dir",
+                          p["directional_bakes"], "--coverage-exr", p["coverage"],
+                          "--out", p["directional"]] +
+                          ([] if self.lightmap["denoise"] else ["--skip-denoise"])))
+            directional_args = ["--directional-exr", p["directional"]]
         probe_args = []
         if probe:
             face_args = ["--scene", scene, "--stage", p["lighting_stage"], "--out-dir", p["probe"],
@@ -334,7 +393,8 @@ class Pipeline:
                       lambda: self.blender("probe", "pbrt_reflection_probe.py", face_args))
             probe_args = ["--probe-dir", p["probe"], "--probe-width", str(probe_width)]
         self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"]] +
-                  ([p["probe"] / "probe.json"] if probe else []),
+                  ([p["probe"] / "probe.json"] if probe else []) +
+                  ([p["directional"]] if directional else []),
                   {"preview_gain": self.lightmap["preview_gain"], "scope": scope,
                    "probe_width": probe_width},
                   ["lightmap_ktx2.py", "reflection_probe.py"], [p["ktx2"]],
@@ -344,7 +404,7 @@ class Pipeline:
                                             "--ktx-tool", self.tools["ktx"],
                                             "--preview-gain", str(self.lightmap["preview_gain"]),
                                             "--expected-scope", scope, "--out", p["ktx2"]] +
-                                           probe_args))
+                                           probe_args + directional_args))
         pack_stage = p["lighting_stage"]
         if environment:
             pack_stage = p["render_stage"]
@@ -414,7 +474,7 @@ class Pipeline:
                                                 "--renderer", "native-vulkan", "--headless",
                                                 "--map", self.map, "--console-command",
                                                 "r_worldmesh_draw 2", "--out", p["boot"]]))
-        runtime_gate = self.manifest.get("runtime_gate")
+        runtime_gate = self.runtime_gate
         if self.boot and reference:
             commands, _ = reference_compare.camera_commands(self.scene)
             boot_args = ["--runtime", self.tools["runtime"], "--build",
@@ -459,7 +519,21 @@ class Pipeline:
                           sys.executable, HERE / "pbrt_traversal.py", "--collision-receipt",
                           receipt_path, "--boot-evidence", p["traversal_boot"] / "evidence.json",
                           "--out", p["traversal"]]))
+        if self.profile.get("audit"):
+            receipts = [path for path in (
+                p["atlas_receipt"], p["denoised_receipt"], p["ktx2"].with_name(
+                    p["ktx2"].name + ".json"), p["content"].with_suffix(".json"),
+                p["wmsh"].with_name(p["wmsh"].name + ".json"), p["runtime_gate"],
+                p["directional"].with_name(p["directional"].name + ".json"))
+                if path.is_file()]
+            self.step("audit", receipts, {"profile": self.profile["name"], "boot": self.boot},
+                      ["map_export_audit.py"], [p["audit"]],
+                      lambda: self.run("audit", [
+                          sys.executable, HERE / "map_export_audit.py", "--build", self.out,
+                          "--profile", self.profile["path"], "--out", p["audit"]] +
+                          (["--booted"] if self.boot else [])))
         summary = {"status": "gate-failed" if self.failed_gates else "pass",
+                   "quality": self.profile["name"],
                    "failed_gates": self.failed_gates, "map": self.map, "manifest_scene": scene,
                    "content_root": str(p["content"]),
                    "bsp2_sha256": sha256(p["bsp2"]),

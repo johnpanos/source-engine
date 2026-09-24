@@ -18,6 +18,12 @@
 //          vertex lighting of common_vs_fxc.h independently and holds the frames
 //          to it and to the D3D9 reference.
 //
+//          The "pbr-model" family draws the same quads, lights and placements
+//          with RFC 0007 PBRMetalRough materials. D3D9 has no PBR shader (it
+//          draws the $fallbackmaterial), so its oracle is independent only:
+//          tools/quality/material_pixel_pbr_model.py evaluates the layered
+//          metal/roughness BRDF per pixel under the same lighting inputs.
+//
 //=============================================================================//
 
 #include "material_pixel_modellight.h"
@@ -95,10 +101,21 @@ enum ModelMaterial
 	kMaterialCount
 };
 
+// The PBRMetalRough materials of the "pbr-model" family (kPbrMaterials).
+enum PbrModelMaterial
+{
+	kPbrDielectric,
+	kPbrMetal,
+	kPbrBumped,
+	kPbrEmissive,
+	kPbrMaterialCount
+};
+const int kMaxMaterials = kMaterialCount > kPbrMaterialCount ? kMaterialCount : kPbrMaterialCount;
+
 struct ModelLightCase
 {
 	const char *name;
-	ModelMaterial material;
+	int material; // ModelMaterial, or PbrModelMaterial in the pbr-model family
 	float cube[6][3]; // +x, -x, +y, -y, +z, -z
 	int numLights;
 	ModelLight lights[4];
@@ -180,6 +197,32 @@ const ModelLightCase kCases[] = {
         2, { kDirectional, kPoint }, false },
 };
 
+// PBRMetalRough under the same lighting. The ambient cube also reaches the
+// specular term (in the reflected direction) when no probe is resident.
+const ModelLightCase kPbrCases[] = {
+    { "pbr_ambient", kPbrDielectric,
+        { { 0.6f, 0.08f, 0.05f }, { 0.07f, 0.5f, 0.06f }, { 0.05f, 0.08f, 0.55f },
+            { 0.4f, 0.35f, 0.04f }, { 0.05f, 0.4f, 0.45f }, { 0.3f, 0.12f, 0.45f } },
+        0, {}, false },
+    { "pbr_lights", kPbrDielectric,
+        { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
+            { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
+        2, { kDirectional, kPoint }, false },
+    { "pbr_four_lights", kPbrDielectric, {}, 4, { kSpot, kDirectional, kPoint, kDirectional2 },
+        false },
+    { "pbr_metal", kPbrMetal,
+        { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
+            { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
+        2, { kDirectional, kPoint }, false },
+    { "pbr_bumped", kPbrBumped, {}, 2, { kDirectional, kPoint }, false },
+    { "pbr_emissive", kPbrEmissive,
+        { { 0.05f, 0.04f, 0.03f }, { 0.02f, 0.05f, 0.03f }, { 0.04f, 0.04f, 0.06f },
+            { 0.03f, 0.02f, 0.02f }, { 0.02f, 0.03f, 0.05f }, { 0.04f, 0.02f, 0.03f } },
+        0, {}, false },
+    { "pbr_model_transform", kPbrDielectric, {}, 2, { kDirectional, kPoint }, false, kRigid },
+    { "pbr_skinned", kPbrMetal, {}, 2, { kDirectional, kPoint }, false, kSkinned },
+};
+
 // Procedural textures (sRGB-encoded where the material reads them as sRGB).
 struct ProceduralTexture
 {
@@ -200,6 +243,14 @@ const ProceduralTexture kTextures[] = {
     { "conformance/modellight_lightwarp", 32, 1, { 0, 0, 0, 255 }, true },
 };
 const int kTextureCount = sizeof( kTextures ) / sizeof( kTextures[0] );
+// The PBR family's own maps: linear metalness/roughness/occlusion and an sRGB
+// emission color.
+const ProceduralTexture kPbrTextures[] = {
+    { "conformance/pbrmodel_mrao_dielectric", 4, 4, { 0, 140, 230, 255 }, false },
+    { "conformance/pbrmodel_mrao_metal", 4, 4, { 255, 70, 255, 255 }, false },
+    { "conformance/pbrmodel_emission", 4, 4, { 120, 60, 20, 255 }, false },
+};
+const int kPbrTextureCount = sizeof( kPbrTextures ) / sizeof( kPbrTextures[0] );
 
 // The lightwarp texel at x of 32: distinct curves per channel, so a sample at
 // the wrong coordinate or channel shows.
@@ -257,6 +308,29 @@ const MaterialVariant kMaterials[kMaterialCount] = {
     { "conformance/modellight_selfillum",
         { { "$basetexture", "conformance/modellight_base_masked" }, { "$selfillum", "1" },
             { "$selfillumtint", "[0.9 0.6 0.3]" } } },
+};
+
+// $fallbackmaterial is required; the runner stages this VMT (a D3D9 profile
+// would draw it, and the native pipeline never does).
+const MaterialVariant kPbrMaterials[kPbrMaterialCount] = {
+    { "conformance/pbrmodel_dielectric",
+        { { "$basetexture", "conformance/modellight_base" },
+            { "$mraotexture", "conformance/pbrmodel_mrao_dielectric" },
+            { "$fallbackmaterial", "conformance/pbr_fallback" } } },
+    { "conformance/pbrmodel_metal",
+        { { "$basetexture", "conformance/modellight_base" },
+            { "$mraotexture", "conformance/pbrmodel_mrao_metal" },
+            { "$fallbackmaterial", "conformance/pbr_fallback" } } },
+    { "conformance/pbrmodel_bumped",
+        { { "$basetexture", "conformance/modellight_base" },
+            { "$mraotexture", "conformance/pbrmodel_mrao_dielectric" },
+            { "$bumpmap", "conformance/modellight_normal" },
+            { "$fallbackmaterial", "conformance/pbr_fallback" } } },
+    { "conformance/pbrmodel_emissive",
+        { { "$basetexture", "conformance/modellight_base" },
+            { "$mraotexture", "conformance/pbrmodel_mrao_dielectric" },
+            { "$emissiontexture", "conformance/pbrmodel_emission" },
+            { "$emissionscale", "0.5" }, { "$fallbackmaterial", "conformance/pbr_fallback" } } },
 };
 
 // The static-prop color of a quad's corner (sRGB-like bytes, as vrad bakes them
@@ -334,6 +408,13 @@ void QuadTangent( int quad, float tangent[4] )
 class CModelLightScene
 {
 public:
+	// The materials this scene draws: VertexLitGeneric's (kMaterials), or the
+	// pbr-model family's PBRMetalRough (kPbrMaterials).
+	explicit CModelLightScene( bool pbr )
+	    : m_Pbr( pbr ), m_pVariants( pbr ? kPbrMaterials : kMaterials ),
+	      m_VariantCount( pbr ? kPbrMaterialCount : kMaterialCount )
+	{
+	}
 	bool Init();
 	void Shutdown();
 	bool RenderCase( const ModelLightCase &c, FILE *out, const char *framePath, bool first );
@@ -345,9 +426,15 @@ public:
 private:
 	void ApplyLighting( const ModelLightCase &c );
 
-	ITexture *m_pTextures[kTextureCount] = {};
-	IMaterial *m_pMaterials[kMaterialCount] = {};
-	IMesh *m_pMesh[kMaterialCount] = {};
+public:
+	const bool m_Pbr;
+	const MaterialVariant *const m_pVariants;
+	const int m_VariantCount;
+
+private:
+	ITexture *m_pTextures[kTextureCount + kPbrTextureCount] = {};
+	IMaterial *m_pMaterials[kMaxMaterials] = {};
+	IMesh *m_pMesh[kMaxMaterials] = {};
 	IMesh *m_pColorMesh = nullptr;
 };
 
@@ -356,10 +443,12 @@ bool CModelLightScene::Init()
 	g_pMaterialSystem->GetBackBufferDimensions( m_Width, m_Height );
 	// The textures live until the material system shuts down, and call their
 	// regenerators then, so the regenerators outlive this scene.
-	static CProceduralRegenerator s_Regenerators[kTextureCount];
-	for ( int t = 0; t < kTextureCount; ++t )
+	static CProceduralRegenerator s_Regenerators[kTextureCount + kPbrTextureCount];
+	const int textureCount = kTextureCount + ( m_Pbr ? kPbrTextureCount : 0 );
+	for ( int t = 0; t < textureCount; ++t )
 	{
-		const ProceduralTexture &spec = kTextures[t];
+		const ProceduralTexture &spec =
+		    t < kTextureCount ? kTextures[t] : kPbrTextures[t - kTextureCount];
 		m_pTextures[t] = g_pMaterialSystem->CreateProceduralTexture( spec.name, TEXTURE_GROUP_OTHER,
 		    spec.width, spec.height, IMAGE_FORMAT_RGBA8888,
 		    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL |
@@ -371,23 +460,23 @@ bool CModelLightScene::Init()
 		m_pTextures[t]->Download();
 	}
 
-	for ( int m = 0; m < kMaterialCount; ++m )
+	for ( int m = 0; m < m_VariantCount; ++m )
 	{
-		KeyValues *pKeys = new KeyValues( "VertexLitGeneric" );
+		KeyValues *pKeys = new KeyValues( m_Pbr ? "PBRMetalRough" : "VertexLitGeneric" );
 		pKeys->SetInt( "$model", 1 );
-		for ( const auto &param : kMaterials[m].params )
+		for ( const auto &param : m_pVariants[m].params )
 		{
 			if ( param[0] )
 				pKeys->SetString( param[0], param[1] );
 		}
-		m_pMaterials[m] = g_pMaterialSystem->CreateMaterial( kMaterials[m].name, pKeys );
+		m_pMaterials[m] = g_pMaterialSystem->CreateMaterial( m_pVariants[m].name, pKeys );
 		if ( !m_pMaterials[m] || m_pMaterials[m]->IsErrorMaterial() )
 			return false;
 		m_pMaterials[m]->IncrementReferenceCount();
 	}
 	g_pMaterialSystem->CacheUsedMaterials();
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
-	for ( int m = 0; m < kMaterialCount; ++m )
+	for ( int m = 0; m < m_VariantCount; ++m )
 	{
 		if ( m_pMaterials[m]->GetVertexFormat() == 0 )
 		{
@@ -461,7 +550,7 @@ bool CModelLightScene::Init()
 void CModelLightScene::Shutdown()
 {
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
-	for ( int m = 0; m < kMaterialCount; ++m )
+	for ( int m = 0; m < m_VariantCount; ++m )
 	{
 		if ( m_pMesh[m] )
 			pRenderContext->DestroyStaticMesh( m_pMesh[m] );
@@ -566,8 +655,9 @@ bool CModelLightScene::RenderCase(
 	fprintf( out,
 	    "%s{\"name\":\"%s\",\"material\":\"%s\",\"half_lambert\":%s,"
 	    "\"static_color\":%s,",
-	    first ? "" : ",", c.name, kMaterials[c.material].name,
-	    c.material == kHalfLambert ? "true" : "false", c.staticColor ? "true" : "false" );
+	    first ? "" : ",", c.name, m_pVariants[c.material].name,
+	    !m_Pbr && c.material == kHalfLambert ? "true" : "false",
+	    c.staticColor ? "true" : "false" );
 	// The model-to-world transform, rows of a 3x4 column-vector matrix.
 	const matrix3x4_t &placement =
 	    c.placement == kIdentity ? matrix3x4_t( 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0 ) : kTransform;
@@ -607,15 +697,19 @@ bool CModelLightScene::RenderCase(
 
 } // namespace
 
-bool RunModelLightCases(
-    FILE *out, const char *outPath, void ( *writeClearProbe )( FILE * ), float toneScale )
+namespace
+{
+
+bool RunCases( FILE *out, const char *outPath, void ( *writeClearProbe )( FILE * ),
+    float toneScale, bool pbr )
 {
 	// The clear probe draws the first frame, which applies the pinned video
 	// config: on D3D9 that resets the device, which fails while static meshes
 	// (losable resources) are alive. The scene's meshes are created after it.
-	fprintf( out, "{\"schema\":\"source-material-pixels/v1\",\"family\":\"modellight\"," );
+	fprintf( out, "{\"schema\":\"source-material-pixels/v1\",\"family\":\"%s\",",
+	    pbr ? "pbr-model" : "modellight" );
 	writeClearProbe( out );
-	CModelLightScene scene;
+	CModelLightScene scene( pbr );
 	scene.m_ToneScale = toneScale;
 	if ( !scene.Init() )
 	{
@@ -633,9 +727,11 @@ bool RunModelLightCases(
 	    kTextures[0].rgba[0], kTextures[0].rgba[1], kTextures[0].rgba[2], kQuadZ, kQuadZ );
 	// The procedural textures' texels, and the materials' parameters.
 	fprintf( out, "\"textures\":{" );
-	for ( int t = 0; t < kTextureCount; ++t )
+	const int textureCount = kTextureCount + ( pbr ? kPbrTextureCount : 0 );
+	for ( int t = 0; t < textureCount; ++t )
 	{
-		const ProceduralTexture &spec = kTextures[t];
+		const ProceduralTexture &spec =
+		    t < kTextureCount ? kTextures[t] : kPbrTextures[t - kTextureCount];
 		fprintf( out, "%s\"%s\":{\"size\":[%d,%d],\"row\":[", t ? "," : "", spec.name, spec.width,
 		    spec.height );
 		for ( int x = 0; x < spec.width; ++x )
@@ -650,11 +746,11 @@ bool RunModelLightCases(
 		fprintf( out, "]}" );
 	}
 	fprintf( out, "},\"materials\":{" );
-	for ( int m = 0; m < kMaterialCount; ++m )
+	for ( int m = 0; m < scene.m_VariantCount; ++m )
 	{
-		fprintf( out, "%s\"%s\":{", m ? "," : "", kMaterials[m].name );
+		fprintf( out, "%s\"%s\":{", m ? "," : "", scene.m_pVariants[m].name );
 		bool firstParam = true;
-		for ( const auto &param : kMaterials[m].params )
+		for ( const auto &param : scene.m_pVariants[m].params )
 		{
 			if ( !param[0] )
 				continue;
@@ -688,8 +784,12 @@ bool RunModelLightCases(
 
 	bool ok = true;
 	bool first = true;
-	for ( const ModelLightCase &c : kCases )
+	const ModelLightCase *cases = pbr ? kPbrCases : kCases;
+	const size_t caseCount = pbr ? sizeof( kPbrCases ) / sizeof( kPbrCases[0] )
+	                             : sizeof( kCases ) / sizeof( kCases[0] );
+	for ( size_t i = 0; i < caseCount; ++i )
 	{
+		const ModelLightCase &c = cases[i];
 		const std::string framePath = std::string( outPath ) + "." + c.name + ".rgb";
 		ok = scene.RenderCase( c, out, framePath.c_str(), first ) && ok;
 		first = false;
@@ -697,4 +797,18 @@ bool RunModelLightCases(
 	fprintf( out, "]}\n" );
 	scene.Shutdown();
 	return ok;
+}
+
+} // namespace
+
+bool RunModelLightCases(
+    FILE *out, const char *outPath, void ( *writeClearProbe )( FILE * ), float toneScale )
+{
+	return RunCases( out, outPath, writeClearProbe, toneScale, false );
+}
+
+bool RunPbrModelCases(
+    FILE *out, const char *outPath, void ( *writeClearProbe )( FILE * ), float toneScale )
+{
+	return RunCases( out, outPath, writeClearProbe, toneScale, true );
 }

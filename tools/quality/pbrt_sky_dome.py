@@ -38,7 +38,11 @@ def stage_bounds(stage):
 
 
 def dome(center, radius):
-    """Corner-expanded triangles, inward normals, equirect st (v down)."""
+    """Corner-expanded triangles, inward normals, equirect st.
+
+    `st` follows USD's bottom-left origin (v = 1 at the zenith row), like
+    every other stage mesh; the WMSH packer flips it for top-left sampling.
+    """
     points, st, normals = [], [], []
     for row in range(LATITUDES):
         for column in range(LONGITUDES):
@@ -64,7 +68,7 @@ def dome(center, radius):
                     positions = [positions[0], positions[2], positions[1]]
                 for (direction, uv), position in zip(corners, positions):
                     points.append(position)
-                    st.append(Gf.Vec2f(uv[0], uv[1]))
+                    st.append(Gf.Vec2f(uv[0], 1.0 - uv[1]))
                     normals.append(Gf.Vec3f(*[-value for value in direction]))
     return points, st, normals
 

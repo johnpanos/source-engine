@@ -248,6 +248,8 @@ static int g_boundRefractCubeHandle = -1;
 static int g_boundNormalMaskHandle = -1;
 static int g_boundPbrNormalHandle = -1;
 static int g_boundPbrMraoHandle = -1;
+static int g_boundPbrEnvmapHandle = -1;   // sampler 3: PBRMetalRough's $envmap
+static int g_boundPbrEmissionHandle = -1; // sampler 2: PBRMetalRough's $emissiontexture
 static bool g_BindingLightmap = false;
 static uint64_t g_DrawsTextured = 0;   // bound a handle whose pixels were uploaded
 static uint64_t g_DrawsUnuploaded = 0; // bound a handle that was never filled
@@ -274,6 +276,7 @@ struct TextureRecord
 	int priority = 0; // TexSetPriority
 	int width = 0;
 	int height = 0;
+	int mipLevels = 1;
 	// What mat_texture_list reports (IDebugTextureInfo), as D3D9's Texture_t
 	// keeps it: the bytes of every level and face, and the binds per frame.
 	int sizeBytes = 0;
@@ -301,6 +304,7 @@ static void NoteTextureCreated( int handle, const char *debugName, ImageFormat f
 	record.format = format;
 	record.width = width;
 	record.height = height;
+	record.mipLevels = std::max( 1, mipLevels );
 	// D3D9 sums ImageLoader::GetMemRequired over every level (and cube face).
 	for ( int level = 0; level < std::max( 1, mipLevels ); ++level )
 	{
@@ -513,6 +517,10 @@ static int g_CurrentSkinCombos = -1;
 // Whether the pass is SolidEnergy's (solidenergy_ps20b), which reads its combos
 // from its own constants c10/c11 (solidenergy_dx9_helper.cpp).
 static bool g_CurrentSolidEnergy = false;
+// Whether the pass is PBRMetalRough's (pbr_metalrough_world_ps). WMSH batches
+// select the world pipelines in EmitToNativeQueue; every other mesh draws
+// through shaders/model_pbr.frag with skin_vs20's vertex conversion.
+static bool g_CurrentPbrModel = false;
 // IShaderAPI::CullMode, D3D9's default CCW.
 static MaterialCullMode_t g_DesiredCullMode = MATERIAL_CULLMODE_CCW;
 
@@ -3692,9 +3700,26 @@ void CEmptyMesh::EmitToNativeQueue()
 			g_ShaderAPIEmpty.GetWorldSpaceCameraPosition( eye );
 			// PBRMetalRough's dynamic state writes c0: transmission, IOR,
 			// thickness, and w = 1 for glass (pbr_metalrough_native.cpp).
-			const bool glass =
-			    render::pbr::IsMetalRoughShader( g_pBoundMaterial->GetShaderName() ) &&
-			    g_psConstants[0][3] > 0.5f;
+			const bool metalRough =
+			    render::pbr::IsMetalRoughShader( g_pBoundMaterial->GetShaderName() );
+			const bool glass = metalRough && g_psConstants[0][3] > 0.5f;
+			// The material's optional maps (pbr_metalrough_native.cpp: c3.x
+			// its features, c2.x $emissionscale). Translucent batches draw in
+			// the engine's back-to-front WMSH pass with the snapshot's blend.
+			const int features = metalRough ? static_cast<int>( g_psConstants[3][0] ) : 0;
+			render_vulkan::CVulkanContext::PbrWorldMaps maps;
+			if ( features & render::pbr::kNativeEmission )
+			{
+				maps.emission = g_boundPbrEmissionHandle;
+				maps.emissionScale = g_psConstants[2][0];
+			}
+			if ( features & render::pbr::kNativeEnvMap )
+				maps.environment = g_boundPbrEnvmapHandle;
+			if ( glass && ( features & ( render::pbr::kNativeEmission | render::pbr::kNativeEnvMap ) ) )
+			{
+				DropDraw( "draw dropped: WMSH glass with $emissiontexture or $envmap not implemented" );
+				return;
+			}
 			if ( glass )
 			{
 				render_vulkan::CVulkanContext::PbrGlassParams params;
@@ -3709,8 +3734,8 @@ void CEmptyMesh::EmitToNativeQueue()
 					return;
 				}
 			}
-			else if ( !g_VulkanContext.SelectPbrWorldMaterial(
-			              g_boundPbrMraoHandle, g_boundPbrNormalHandle, eye, g_CurrentAlphaRef ) )
+			else if ( !g_VulkanContext.SelectPbrWorldMaterial( g_boundPbrMraoHandle,
+			              g_boundPbrNormalHandle, eye, g_CurrentAlphaRef, maps ) )
 			{
 				DropDraw( "draw dropped: WMSH PBR images or pipeline unavailable" );
 				return;
@@ -3733,6 +3758,12 @@ void CEmptyMesh::EmitToNativeQueue()
 			m_worldDrawQueued = true;
 		else
 			DropDraw( "draw dropped: WMSH batch unavailable" );
+		return;
+	}
+	// PBRMetalRough glass has only the WMSH pipeline.
+	if ( g_CurrentPbrModel && g_psConstants[0][3] > 0.5f )
+	{
+		DropDraw( "draw dropped: PBRMetalRough glass on a model not implemented" );
 		return;
 	}
 	const CEmptyMesh &vertices = m_pVertexSource ? *m_pVertexSource : *this;
@@ -3764,7 +3795,9 @@ void CEmptyMesh::EmitToNativeQueue()
 	// Normal and tangent, only for the shaders that read them: PortalRefract
 	// (model space; skinned normals and tangents are not blended) and the skin
 	// shader (world space, below).
-	const bool skin = g_CurrentSkinCombos >= 0;
+	// PBRMetalRough models take the skin shader's vertex record: world-space
+	// position, normal and tangent, and the four lights' attenuation.
+	const bool skin = g_CurrentSkinCombos >= 0 || g_CurrentPbrModel;
 	const bool envmap =
 	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentLightmappedEnvmap ) != 0;
 	const bool refract =
@@ -5856,6 +5889,43 @@ static void CommitSolidEnergyConstants( const CShaderAPIVulkan &api )
 	g_VulkanContext.SetDynamicSkinConstants( c );
 }
 
+// PBRMetalRough on a model (pbr_metalrough_native.cpp's dynamic state): c2.x
+// $emissionscale, c3 the material's feature flags (normal map, emission,
+// environment map, as CVulkanContext::kPbrModel*), c4..c9 the ambient cube and
+// c20..c25 the lights. skin.vert's registers come from the same vertex state
+// as the skin shader's. The environment map's mip count goes to c2.w.
+static void CommitPbrModelConstants( const CShaderAPIVulkan &api )
+{
+	render_vulkan::CVulkanContext::SkinConstants c;
+	memcpy( c.ps, g_psConstants, sizeof( c.ps ) );
+	EnsureMatricesInit();
+	MatMul( g_matrices.mat[MATERIAL_VIEW], DrawProjection(), c.viewProj );
+	memcpy( c.texXform0, g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_0],
+	    sizeof( c.texXform0 ) );
+	memcpy( c.texXform1, g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_0 + 1],
+	    sizeof( c.texXform1 ) );
+	c.eyePos[3] = 0.0f;
+	api.GetWorldSpaceCameraPosition( c.eyePos );
+	static_assert( int( render_vulkan::CVulkanContext::kPbrModelNormalMap ) ==
+	                       render::pbr::kNativeNormalMap &&
+	                   int( render_vulkan::CVulkanContext::kPbrModelEmission ) ==
+	                       render::pbr::kNativeEmission &&
+	                   int( render_vulkan::CVulkanContext::kPbrModelEnvMap ) ==
+	                       render::pbr::kNativeEnvMap,
+	    "model_pbr.frag's flags are the material's native feature flags" );
+	c.combos = static_cast<int>( g_psConstants[3][0] ) &
+	           ( render::pbr::kNativeNormalMap | render::pbr::kNativeEmission |
+	               render::pbr::kNativeEnvMap );
+	const int envmap = g_boundPbrEnvmapHandle;
+	c.ps[2][3] = envmap >= 0 && size_t( envmap ) < g_TextureRecords.size()
+	                 ? static_cast<float>( g_TextureRecords[size_t( envmap )].mipLevels )
+	                 : 1.0f;
+	c.numLights = 0;
+	for ( bool enabled : g_LightEnabled )
+		c.numLights += enabled ? 1 : 0;
+	g_VulkanContext.SetDynamicSkinConstants( c );
+}
+
 static const float *MonitorTexture2Rows()
 {
 	return &g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_2][0];
@@ -5904,6 +5974,8 @@ static std::string SnapshotShaderRoute( const CShaderShadowVulkan &shadow )
 		return "skin#" + std::to_string( skinCombos );
 	if ( !V_stricmp( shadow.m_pixelShaderName, "solidenergy_ps20b" ) )
 		return "solidenergy";
+	if ( !V_stricmp( shadow.m_pixelShaderName, "pbr_metalrough_world_ps" ) )
+		return "pbr_model";
 	if ( !V_strnicmp( shadow.m_pixelShaderName, "portal_refract_ps20b", 20 ) )
 		return "portal_refract#" + std::to_string( ( shadow.m_pixelShaderIndex / 4 ) % 3 );
 	if ( !V_strnicmp( shadow.m_pixelShaderName, "portal_refract_ps20", 19 ) )
@@ -6488,9 +6560,13 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 		g_CurrentSolidEnergy = name == "solidenergy";
 		if ( g_CurrentSolidEnergy )
 			shader = render_vulkan::CVulkanContext::kDynShaderSolidEnergy;
+		g_CurrentPbrModel = name == "pbr_model";
+		if ( g_CurrentPbrModel )
+			shader = render_vulkan::CVulkanContext::kDynShaderPbrModel;
 		g_SamplesBaseTexture = ( shader == render_vulkan::CVulkanContext::kDynShaderTextured ||
 		                         shader == render_vulkan::CVulkanContext::kDynShaderSkin ||
-		                         shader == render_vulkan::CVulkanContext::kDynShaderSolidEnergy );
+		                         shader == render_vulkan::CVulkanContext::kDynShaderSolidEnergy ||
+		                         shader == render_vulkan::CVulkanContext::kDynShaderPbrModel );
 		// Shaders that sample nothing on sampler 0: WriteZ and the quad clears draw
 		// depth, stencil or their vertex color; PortalRefract samples the frame
 		// copy only in stage 0.
@@ -6526,6 +6602,8 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	g_boundNormalMaskHandle = -1;
 	g_boundPbrNormalHandle = -1;
 	g_boundPbrMraoHandle = -1;
+	g_boundPbrEnvmapHandle = -1;
+	g_boundPbrEmissionHandle = -1;
 	g_VulkanContext.BindManagedLightmap( -1 );
 	for ( int sampler = 1; sampler < render_vulkan::CVulkanContext::kMaxSamplers; ++sampler )
 		g_VulkanContext.BindManagedSampler( sampler, -1 );
@@ -6698,8 +6776,14 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	// feed WMSH tangents and the map-scoped HDR lightmap. Ordinary dynamic
 	// meshes still need their own PBR pipeline cohort.
 	if ( render::pbr::IsMetalRoughShader( shaderName ) || !V_stricmp( shaderName, "PBR" ) )
-		return g_pRenderMesh && g_pRenderMesh->IsWorldMeshBatch() &&
-		       g_VulkanContext.PbrWorldPipelineSupported();
+	{
+		if ( g_pRenderMesh && g_pRenderMesh->IsWorldMeshBatch() )
+			return g_VulkanContext.PbrWorldPipelineSupported();
+		// Other meshes: the canonical material's model pipeline. Legacy PBR
+		// keeps its WMSH-only preview bridge.
+		return render::pbr::IsMetalRoughShader( shaderName ) && g_CurrentPbrModel &&
+		       g_VulkanContext.PbrModelPipelineSupported();
+	}
 	return false;
 }
 
@@ -6786,6 +6870,8 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 			CommitSkinConstants( *this );
 		if ( g_CurrentSolidEnergy )
 			CommitSolidEnergyConstants( *this );
+		if ( g_CurrentPbrModel )
+			CommitPbrModelConstants( *this );
 		const bool lightmapped = g_boundLightmapHandle >= 0;
 		const bool refract =
 		    g_pBoundMaterial && !V_stricmp( g_pBoundMaterial->GetShaderName(), "Refract_DX90" );
@@ -6829,7 +6915,7 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		// (SnapshotToneMapType): GAMMA by GAMMA_LIGHT_SCALE, c30.w.
 		const bool linearToneScale =
 		    lightmapped || g_CurrentPortalStage == 2 || g_CurrentModulationInPixelC1 ||
-		    g_CurrentSkinCombos >= 0 ||
+		    g_CurrentSkinCombos >= 0 || g_CurrentPbrModel ||
 		    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentSky ) ||
 		    g_CurrentToneMap == kToneMapLinear;
 		float outputScale = 1.0f;
@@ -7791,13 +7877,19 @@ void CShaderAPIVulkan::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t te
 	if ( stage != SHADER_SAMPLER0 )
 		g_VulkanContext.BindManagedSampler( static_cast<int>( stage ), native );
 	if ( stage == SHADER_SAMPLER2 )
+	{
 		g_boundEnvmapHandle = native;
+		g_boundPbrEmissionHandle = native;
+	}
 	if ( stage == SHADER_SAMPLER1 )
 		g_boundPbrNormalHandle = native;
 	if ( stage == SHADER_SAMPLER10 )
 		g_boundPbrMraoHandle = native;
 	if ( stage == SHADER_SAMPLER3 )
+	{
 		g_boundRefractNormalHandle = native;
+		g_boundPbrEnvmapHandle = native;
+	}
 	if ( stage == SHADER_SAMPLER4 )
 	{
 		g_boundRefractCubeHandle = native;

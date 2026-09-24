@@ -4,6 +4,13 @@
 Used by the PBRT map pipeline's ktx2 step; `--expected-scope` names the bake
 receipt producer this package trusts (for example
 `pbrt-shared-lightmap-uv-and-cycles-bake-denoised`).
+
+With `--directional-exr` (from `lightmap_directional.py`) the page is twice as
+wide as it is tall: the flat irradiance atlas on the left and the per-texel
+world-space luminance gradient beta on the right, at the same texel rows.
+`world_pbr.frag` recognises the 2:1 page and samples both halves at the same
+lightmap coordinate. A reflection probe band stays in the top rows (mips from
+x = 0) with its marker at the page's top-right texel.
 """
 
 import argparse
@@ -40,6 +47,8 @@ def main():
                         help="reflection probe faces from pbrt_reflection_probe.py")
     parser.add_argument("--probe-width", type=int, default=512,
                         help="equirect width of probe mip 0; the band is half as tall")
+    parser.add_argument("--directional-exr", type=Path,
+                        help="beta page from lightmap_directional.py (receipt beside it)")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     evidence = json.loads(args.bake_evidence.read_text())
@@ -53,8 +62,25 @@ def main():
         raise ValueError("Cycles atlas has invalid dimensions or pixels")
     if not np.isfinite(args.preview_gain) or not 0 < args.preview_gain <= 1:
         raise ValueError("preview gain must be finite and in (0, 1]")
-    rgba = np.empty(pixels.shape, dtype="<f2")
-    rgba[:, :, :3] = (pixels[::-1, :, :3] * args.preview_gain).astype("<f2")
+    size = evidence["size"]
+    width = size
+    directional = None
+    if args.directional_exr:
+        directional = json.loads(Path(str(args.directional_exr) + ".json").read_text())
+        if (directional.get("status") != "pass" or
+                directional.get("directional_exr_sha256") != sha256(args.directional_exr) or
+                directional.get("flat_exr_sha256") != sha256(args.exr) or
+                directional.get("size") != size):
+            raise ValueError("directional page differs from its receipt or flat atlas")
+        beta = iio.imread(args.directional_exr)
+        if beta.shape != pixels.shape or not np.isfinite(beta).all():
+            raise ValueError("directional page has invalid dimensions or pixels")
+        width = 2 * size
+    rgba = np.empty((size, width, 4), dtype="<f2")
+    rgba[:, :size, :3] = (pixels[::-1, :, :3] * args.preview_gain).astype("<f2")
+    if directional:
+        # beta is a ratio: the preview gain does not scale it.
+        rgba[:, size:, :3] = beta[::-1, :, :3].astype("<f2")
     rgba[:, :, 3] = 1.0
     probe = None
     band = 0
@@ -95,7 +121,7 @@ def main():
         raw.write_bytes(rgba.tobytes())
         tool = str(args.ktx_tool.resolve())
         run([tool, "create", "--format", "R16G16B16A16_SFLOAT", "--raw",
-             "--width", str(evidence["size"]), "--height", str(evidence["size"]),
+             "--width", str(width), "--height", str(size),
              "--assign-tf", "linear", "--assign-texcoord-origin", "top-left",
              str(raw), str(package)])
         run([tool, "validate", str(package)])
@@ -109,11 +135,13 @@ def main():
               "bake_evidence_sha256": sha256(args.bake_evidence),
               "lighting_stage_sha256": sha256(args.lighting_stage),
               "ktx2_sha256": sha256(args.out), "format": "R16G16B16A16_SFLOAT",
-              "orientation": "top-left", "width": evidence["size"],
-              "height": evidence["size"], "preview_gain": args.preview_gain,
+              "orientation": "top-left", "width": width,
+              "height": size, "preview_gain": args.preview_gain,
+              "layout": "directional-2x1" if directional else "flat",
+              "directional_exr_sha256": sha256(args.directional_exr) if directional else None,
               # Lightmap rows only; the probe band replaces the reserved rows.
               "max_half_quantization_error": float(np.max(np.abs(
-                  rgba[::-1][:rgba.shape[0] - band, :, :3].astype(np.float32) -
+                  rgba[::-1][:rgba.shape[0] - band, :size, :3].astype(np.float32) -
                   pixels[:pixels.shape[0] - band, :, :3] * args.preview_gain))),
               "reflection_probe": probe}
     args.out.with_name(args.out.name + ".json").write_text(

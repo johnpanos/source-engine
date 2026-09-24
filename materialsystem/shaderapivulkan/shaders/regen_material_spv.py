@@ -34,6 +34,8 @@ SHADERS = (
     ("g_skinFragSpv", "skin.frag", []),
     ("g_solidEnergyVertSpv", "solidenergy.vert", []),
     ("g_solidEnergyFragSpv", "solidenergy.frag", []),
+    ("g_modelPbrFragSpv", "model_pbr.frag", []),
+    ("g_modelPbrEnvFragSpv", "model_pbr.frag", ["-DENV_CUBE"]),
     ("g_pbrDirectFragSpv", "pbr_direct.frag", []),
     ("g_pbrDirectClipFragSpv", "pbr_direct.frag", ["-DCLIP_PLANES"]),
     ("g_presentGammaVertSpv", "present_gamma.vert", []),
@@ -46,7 +48,8 @@ HEADER = """//========= Copyright Valve Corporation, All rights reserved. ======
 //          (with and without D3D9 user clip planes), PortalRefract (a port of
 //          portal_refract_vs20.fxc / portal_refract_ps2x.fxc) and VertexLitGeneric's
 //          $phong path (skin_vs20.fxc / skin_ps20b.fxc), SolidEnergy
-//          (solidenergy_vs20.fxc / solidenergy_ps20b.fxc), and the RFC 0007
+//          (solidenergy_vs20.fxc / solidenergy_ps20b.fxc), PBRMetalRough on
+//          models (model_pbr.frag, both probe sources), and the RFC 0007
 //          synthetic PBR direct-light pixel stage, the WMSH PBR and glass
 //          stages, and the present-time monitor gamma pass. GENERATED
 //          by shaders/regen_material_spv.py from the GLSL in shaders/; do not edit.

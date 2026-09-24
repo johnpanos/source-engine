@@ -6,19 +6,18 @@ scenes and extracted USD scenes), so the game preview, the Cycles stage and
 the lightmap bake agree. Layout:
 
     maps/<map>.bsp                        the BSP2 package
-    materials/<map>/<material>.vmt        WMSH namespace (`PBR` preview shader;
-                                          `PBRMetalRough` glass)
+    materials/<map>/<material>.vmt        WMSH namespace (`PBRMetalRough`)
     materials/<map>_fallback/<material>.vmt   LightmappedGeneric/UnlitGeneric
-    materials/<map>/<material>/basecolor.vtf, mrao.vtf[, normal.vtf]
+    materials/<map>/<material>/basecolor.vtf, mrao.vtf[, normal.vtf, emission.vtf]
 
 Every authored channel is carried: base colour textures (with UsdUVTexture
 scale/bias), metallic/roughness/occlusion textures packed per texel into MRAO,
 tangent-space normal maps ($bumpmap, OpenGL +Y), and cut-out opacity as base
-alpha with $alphatest. Base colors are encoded as sRGB (the PBR shader samples
-$basetexture with sRGB read); MRAO and normals stay linear. A material whose
-emission outshines its reflectance becomes an unlit display-mapped emissive
-preview until native WMSH emission lands; the receipt lists, per material,
-which channels were exported and which were approximated. Transmissive (glass) materials are
+alpha with $alphatest, and emission as an sRGB $emissiontexture times a linear
+$emissionscale (HDR emission above 1 survives). Base colors are encoded as sRGB
+(the shader samples $basetexture with sRGB read); MRAO and normals stay
+linear. The receipt lists, per material, which channels were exported and
+which were approximated. Transmissive (glass) materials are
 `PBRMetalRough` with `$transmission`, `$ior` and `$thickness` from the same
 policy, drawn two-sided; their fallback is an alpha-blended unlit preview.
 Emitters use an unlit white preview, because emissive WMSH batches are not
@@ -211,13 +210,18 @@ def emission_linear(scene, summary):
     return None
 
 
-def emission_dominates(summary, emission):
-    """Emission outshines what the surface reflects under unit light."""
+def emission_texture(emission):
+    """(linear scale, sRGB image) with emission = decode(image) * scale."""
     import numpy as np
     if emission is None:
-        return False
-    albedo = max(summary["base_color"]) if summary["base_color"] else 0.5
-    return float(np.percentile(emission.max(axis=2), 90)) > max(albedo, 0.05)
+        return 1.0, None
+    peak = float(np.max(emission))
+    if peak <= 0:
+        return 1.0, None
+    scale = max(1.0, peak)
+    size = target_size((emission.shape[1], emission.shape[0]))
+    encoded = srgb_encode(resized(np.clip(emission / scale, 0.0, 1.0), size))
+    return scale, Image.fromarray(np.clip(np.rint(encoded * 255), 0, 255).astype(np.uint8))
 
 
 def vmt(shader, lines):
@@ -271,17 +275,11 @@ def main():
         directory = material_root / name
         directory.mkdir(parents=True)
         emission = emission_linear(scene, summary)
-        emissive_preview = emission_dominates(summary, emission)
+        emission_scale, emission_image = emission_texture(emission)
         if summary["pbrt_type"] == "sky":
             with Image.open(args.sky_texture) as opened:
                 image = opened.convert("RGB")
             solid, source_hashes = None, {"sky": sha256(args.sky_texture)}
-        elif emissive_preview:
-            import numpy as np
-            display = map_scene.sky_display(emission.astype(np.float32))
-            image = Image.fromarray(display).resize(target_size(display.shape[1::-1]),
-                                                    Image.Resampling.LANCZOS)
-            solid, source_hashes = None, {}
         else:
             image, solid, source_hashes = base_image(scene, summary)
         base_hash = compile_texture(image, directory / "basecolor", args.vtex.resolve())
@@ -294,6 +292,8 @@ def main():
         normal, normal_source = normal_image(scene, summary)
         normal_hash = compile_texture(normal, directory / "normal", args.vtex.resolve()) \
             if normal else None
+        emission_hash = compile_texture(emission_image, directory / "emission",
+                                        args.vtex.resolve()) if emission_image else None
         texture = "%s/%s/basecolor" % (prefix, name)
         common = [("$surfaceprop", "default")]
         cutout = image.mode == "RGBA"
@@ -318,16 +318,19 @@ def main():
             fallback = vmt("UnlitGeneric", [("$basetexture", texture), ("$nocull", "1"),
                                             ("$nofog", "1")] + common)
             world = fallback
-        elif summary["pbrt_type"] == "emitter" or emissive_preview:
-            preview = "unlit" if summary["pbrt_type"] == "emitter" else "unlit-emissive"
+        elif summary["pbrt_type"] == "emitter":
+            preview = "unlit"
             fallback = vmt("UnlitGeneric", [("$basetexture", texture), ("$nocull", "1")] + common)
             world = fallback
         else:
             preview = "pbr"
             fallback = vmt("LightmappedGeneric", [("$basetexture", texture)] + common)
             bump = [("$bumpmap", "%s/%s/normal" % (prefix, name))] if normal else []
-            world = vmt("PBR", [("$basetexture", texture),
-                                ("$mraotexture", "%s/%s/mrao" % (prefix, name))] + bump +
+            glow = [("$emissiontexture", "%s/%s/emission" % (prefix, name)),
+                    ("$emissionscale", "%g" % emission_scale)] if emission_image else []
+            world = vmt("PBRMetalRough", [("$basetexture", texture),
+                                          ("$mraotexture", "%s/%s/mrao" % (prefix, name))] +
+                        bump + glow +
                         [("$fallbackmaterial", "%s_fallback/%s" % (prefix, name))] + common)
         (fallback_root / (name + ".vmt")).write_text(fallback)
         (material_root / (name + ".vmt")).write_text(world)
@@ -340,7 +343,7 @@ def main():
             "opacity": "cutout" if cutout else (
                 "transmission" if summary["transmission"] > 0 else "opaque"),
             "emission": None if emission is None else (
-                "unlit-preview" if emissive_preview else "dropped: no native WMSH emission")}
+                "texture" if emission_image else "dropped: sky/emitter preview")}
         assets[name] = {"pbrt_material": summary["name"], "pbrt_type": summary["pbrt_type"],
                         "preview": preview, "approximation": summary["approximation"],
                         "source_texture_sha256": source_hashes.get("base") or
@@ -357,6 +360,8 @@ def main():
                         "normal_dimensions": list(normal.size) if normal else None,
                         "basecolor_vtf_sha256": base_hash,
                         "mrao_vtf_sha256": mrao_hash, "normal_vtf_sha256": normal_hash,
+                        "emission_vtf_sha256": emission_hash,
+                        "emission_scale": emission_scale if emission_image else None,
                         "vmt_sha256": sha256(material_root / (name + ".vmt")),
                         "fallback_vmt_sha256": sha256(fallback_root / (name + ".vmt"))}
     evidence = {"status": "pass", "scope": "pbrt-playable-content-preview",

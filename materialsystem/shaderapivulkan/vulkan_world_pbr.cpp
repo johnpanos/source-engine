@@ -65,10 +65,10 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 	VkPhysicalDeviceProperties properties = {};
 	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
 	const uint32_t pushBytes = m_clipPlanesSupported ? kTexturedPushBytes : 128;
-	if ( properties.limits.maxBoundDescriptorSets < 5 ||
+	if ( properties.limits.maxBoundDescriptorSets < 7 ||
 	     properties.limits.maxPushConstantsSize < pushBytes )
 	{
-		WorldPbrError( outError, "WMSH PBR needs five texture sets and its scene push block" );
+		WorldPbrError( outError, "WMSH PBR needs seven texture sets and its scene push block" );
 		return false;
 	}
 	for ( int i = 0; i < 4; ++i )
@@ -78,14 +78,16 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 	m_worldPbrVin = m_worldVin;
 	m_worldPbrVin.vertexAttributeDescriptionCount = 6;
 	m_worldPbrVin.pVertexAttributeDescriptions = m_worldPbrAttrs;
-	const VkDescriptorSetLayout layouts[5] = { m_dynTexDescLayout, m_dynTexDescLayout,
-	    m_dynTexDescLayout, m_dynTexDescLayout, m_dynTexDescLayout };
+	// Base, MRAO, normal, LMAP, split sum, emission and the $envmap cube.
+	VkDescriptorSetLayout layouts[7];
+	for ( VkDescriptorSetLayout &layout : layouts )
+		layout = m_dynTexDescLayout;
 	VkPushConstantRange range = {};
 	range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	range.size = pushBytes;
 	VkPipelineLayoutCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	info.setLayoutCount = 5;
+	info.setLayoutCount = 7;
 	info.pSetLayouts = layouts;
 	info.pushConstantRangeCount = 1;
 	info.pPushConstantRanges = &range;
@@ -216,6 +218,15 @@ void CVulkanContext::DestroyPbrGlassPipeline()
 	m_pbrGlassReady = false;
 }
 
+// Linear formats world_pbr.frag can read a tangent-space normal's .rg from.
+// Material-system VTF normal maps arrive as 8-bit RGBA/BGRA (CreateTexture has
+// no two-channel mapping); packaged KTX2 normals as R8G8 or BC5.
+static bool PbrWorldNormalFormat( VkFormat format )
+{
+	return format == VK_FORMAT_R8G8_UNORM || format == VK_FORMAT_BC5_UNORM_BLOCK ||
+	       format == VK_FORMAT_R8G8B8A8_UNORM || format == VK_FORMAT_B8G8R8A8_UNORM;
+}
+
 bool CVulkanContext::PbrWorldTexturesReady(
     int base, int mrao, int normal, bool useNormal, bool baseReadSrgb ) const
 {
@@ -239,8 +250,7 @@ bool CVulkanContext::PbrWorldTexturesReady(
 	                        maskTexture->format == VK_FORMAT_BC7_UNORM_BLOCK ||
 	                        maskTexture->format == VK_FORMAT_ASTC_4x4_UNORM_BLOCK ||
 	                        maskTexture->format == VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK;
-	const bool normalLinear = !useNormal || normalTexture->format == VK_FORMAT_R8G8_UNORM ||
-	                          normalTexture->format == VK_FORMAT_BC5_UNORM_BLOCK;
+	const bool normalLinear = !useNormal || PbrWorldNormalFormat( normalTexture->format );
 	return baseSrgb && maskLinear && normalLinear &&
 	       lightmap->format == VK_FORMAT_R16G16B16A16_SFLOAT;
 }
@@ -251,15 +261,27 @@ bool CVulkanContext::PbrWorldNormalReady( int handle ) const
 		return false;
 	const ManagedTexture &texture = m_managedTextures[static_cast<size_t>( handle )];
 	return texture.uploaded && texture.descSet != VK_NULL_HANDLE &&
-	       ( texture.format == VK_FORMAT_R8G8_UNORM ||
-	           texture.format == VK_FORMAT_BC5_UNORM_BLOCK );
+	       PbrWorldNormalFormat( texture.format );
 }
 
 bool CVulkanContext::SelectPbrWorldMaterial(
     int mrao, int normal, const float eye[3], float alphaReference )
 {
+	return SelectPbrWorldMaterial( mrao, normal, eye, alphaReference, PbrWorldMaps() );
+}
+
+bool CVulkanContext::SelectPbrWorldMaterial(
+    int mrao, int normal, const float eye[3], float alphaReference, const PbrWorldMaps &maps )
+{
 	if ( !eye || !m_pbrWorldReady )
 		return false;
+	const auto uploaded = [this]( int handle ) -> const ManagedTexture *
+	{
+		if ( handle < 0 || handle >= static_cast<int>( m_managedTextures.size() ) )
+			return nullptr;
+		const ManagedTexture &texture = m_managedTextures[static_cast<size_t>( handle )];
+		return texture.uploaded && texture.descSet != VK_NULL_HANDLE ? &texture : nullptr;
+	};
 	PbrWorldScene scene;
 	for ( int i = 0; i < 3; ++i )
 		scene.eye[i] = eye[i];
@@ -268,8 +290,23 @@ bool CVulkanContext::SelectPbrWorldMaterial(
 	if ( !PbrWorldTexturesReady( m_dynBoundTexHandle, mrao, normal, scene.material[1] >= 0.5f,
 	         ( m_dynColorFlags & kColorSrgbReadBase ) != 0 ) )
 		return false;
+	if ( maps.emission >= 0 )
+	{
+		if ( !uploaded( maps.emission ) || !( maps.emissionScale >= 0.0f ) )
+			return false;
+		scene.material[2] = maps.emissionScale;
+	}
+	if ( maps.environment >= 0 )
+	{
+		const ManagedTexture *cube = uploaded( maps.environment );
+		if ( !cube || cube->layers != 6 )
+			return false;
+		scene.material[3] = static_cast<float>( cube->mipLevels );
+	}
 	BindManagedSampler( 1, mrao );
 	BindManagedSampler( 2, normal );
+	BindManagedSampler( kPbrWorldEmissionSampler, maps.emission );
+	BindManagedSampler( kPbrWorldEnvironmentSampler, maps.environment );
 	SetDynamicPbrWorldScene( scene );
 	SelectDynamicShader( kDynShaderPbrWorld );
 	return true;

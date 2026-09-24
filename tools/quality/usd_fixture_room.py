@@ -100,7 +100,7 @@ def write_textures(out):
              encode=False)
     # Plaster: fine bumps only.
     bumps = value_noise(size, 64, 4) * 0.7 + value_noise(size, 16, 5) * 0.3
-    save_rgb(out / "plaster_normal.png", normal_from_height(bumps, 0.0015 * 64), encode=False)
+    save_rgb(out / "plaster_normal.png", normal_from_height(bumps, 0.0006 * 64), encode=False)
     # Screen: emissive test pattern with an orientation marker.
     screen = Image.new("RGB", (256, 256), (10, 10, 30))
     draw = ImageDraw.Draw(screen)

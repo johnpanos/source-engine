@@ -6,7 +6,8 @@ synthetic face IDs, which deliberately have no legacy decal association.
 Triangles of each face group are ordered along a Z-order curve so meshlets
 are spatially compact, and each BSP leaf references the meshlets that can be
 seen through it (`worldmesh_leaf_visibility`).
-Every mesh prim is a source mesh (including instanced `<stem>_iN` placements
+Material `st` is stored with v flipped (WMSH samples textures from the
+top-left, USD from the bottom-left). Every mesh prim is a source mesh (including instanced `<stem>_iN` placements
 and the optional `SkyDome` from `pbrt_sky_dome.py`) and must have a bound
 material; emitter meshes `LightQuadNN`/`LightDiskNN` are packed only with
 `--include-emitters`.
@@ -144,7 +145,12 @@ def source_triangles(stage, material_prefix, require_lightmap_uv, include_emitte
             bucket = normal_bucket(normal)
             face_id = IMPORTED_FACE_BASE | (mesh_index << 3) | bucket
             item = faces.setdefault(face_id, {"material": material_path, "triangles": []})
-            item["triangles"].append((positions, texture_uv,
+            # USD `st` has its origin at the image's bottom-left; WMSH texture
+            # coordinates (Vulkan/D3D sampling) at its top-left. The tangent
+            # frame above stays in authored `st`, so +Y of an OpenGL-convention
+            # normal map is still image-up.
+            stored_uv = [(u, 1.0 - v) for u, v in texture_uv]
+            item["triangles"].append((positions, stored_uv,
                                       chart_uv, normal,
                                       tangent, sign))
             triangle_count += 1

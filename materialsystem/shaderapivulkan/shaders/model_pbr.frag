@@ -142,7 +142,10 @@ void main()
 	float alpha = roughness * roughness;
 	float alphaSquared = alpha * alpha;
 
-	vec3 normal = normalize( vNormal );
+	vec3 view = normalize( vWorldVertToEye );
+	// A mesh without normals (a screen-space rectangle) faces the eye rather
+	// than shading with a NaN normal.
+	vec3 normal = dot( vNormal, vNormal ) > 1e-12 ? normalize( vNormal ) : view;
 	if ( ( flags & kNormalMap ) != 0 )
 	{
 		vec2 xy = texture( normalTexture, vBaseUv ).rg * 2.0 - 1.0;
@@ -150,7 +153,6 @@ void main()
 		normal = normalize( normalize( vTangentS ) * mapped.x +
 		                    normalize( vTangentT ) * mapped.y + normal * mapped.z );
 	}
-	vec3 view = normalize( vWorldVertToEye );
 	float normalDotView = max( dot( normal, view ), 0.0 );
 	vec3 f0 = mix( vec3( 0.04 ), base, metalness );
 	vec2 splitSum = texture( splitSumTexture,

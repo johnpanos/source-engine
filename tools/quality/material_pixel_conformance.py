@@ -26,6 +26,11 @@ Families:
   the frame its bones place it in, and a back-facing model quad must be culled.
 * pbr-fallback: a staged PBRMetalRough VMT resolves to its legacy UnlitGeneric
   VMT and draws a green texture, distinct from the PBR VMT's red base texture.
+  This is the D3D9/DXVK profile's contract; native Vulkan draws PBRMetalRough
+  itself and is judged by pbr-model instead;
+* pbr-model: PBRMetalRough models under the modellight family's ambient cubes,
+  local lights and placements, judged per pixel against the layered BRDF
+  (material_pixel_pbr_model.py). Native Vulkan only: D3D9 has no PBR shader.
 
 A backend that reports a different HDR mode than the run requested fails with
 that reason; it is never compared as if it supported the mode.
@@ -59,6 +64,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import conformance  # noqa: E402
 import material_pixel_frames  # noqa: E402
 import material_pixel_modellight  # noqa: E402
+import material_pixel_pbr_model  # noqa: E402
 import material_pixel_portal  # noqa: E402
 import portal_boot  # noqa: E402
 
@@ -77,10 +83,11 @@ DARK = 2  # a channel at or below this reads as zero
 LIGHTMAP_CASES = ("black_lightmap", "ramp_low", "ramp_mid", "ramp_high", "channels",
                   "base_gray", "base_color")
 FAMILIES = ("lightmap", "exposure", "skinning", "portal", "modellight", "cable",
-            "sky", "monitor", "sprite", "pbr-fallback")
+            "sky", "monitor", "sprite", "pbr-fallback", "pbr-model")
 # Families whose harness writes whole frames, and the oracle module of each
 # (validate, evaluate).
-FRAME_FAMILIES = {"portal": material_pixel_portal, "modellight": material_pixel_modellight}
+FRAME_FAMILIES = {"portal": material_pixel_portal, "modellight": material_pixel_modellight,
+                  "pbr-model": material_pixel_pbr_model}
 # Which third of the frame (left, middle, right) each skinning case's bones place
 # its quad in. The oracle's own copy: the harness reports its expectation too,
 # but a harness that computed placements wrongly must not pass itself.
@@ -529,9 +536,27 @@ def check_sprite(report):
     return failures
 
 
+# Renderers that draw PBRMetalRough themselves: the material resolves to its
+# primary shader, and the pbr-model family judges its pixels.
+NATIVE_PBR_RENDERERS = ("native-vulkan",)
+
+
 def check_pbr_fallback(report):
-    """The runtime must select and draw the referenced legacy VMT."""
+    """The runtime must select and draw the referenced legacy VMT; a native PBR
+    renderer must keep the primary shader instead. Either way, every invalid
+    material definition is rejected."""
     failures = []
+    if report.get("renderer") in NATIVE_PBR_RENDERERS:
+        if report["shader"] != "PBRMetalRough" or report["error_material"]:
+            failures.append("native PBR material resolved %s, error material %s; expected "
+                            "PBRMetalRough" % (report["shader"], report["error_material"]))
+        if report.get("primary_patch_shader") != "PBRMetalRough":
+            failures.append("valid PBR primary patch resolved %s; expected PBRMetalRough"
+                            % report.get("primary_patch_shader"))
+        if not _close(report["pixels"]["outside"], CLEAR, PIXEL_TOLERANCE):
+            failures.append("PBR outside pixel %s, expected untouched clear color"
+                            % report["pixels"]["outside"])
+        return failures + _pbr_rejections(report)
     if report["shader"] != "UnlitGeneric" or report["error_material"]:
         failures.append("PBR fallback resolved %s, error material %s; expected UnlitGeneric"
                         % (report["shader"], report["error_material"]))
@@ -546,6 +571,11 @@ def check_pbr_fallback(report):
     if not _close(report["pixels"]["outside"], CLEAR, PIXEL_TOLERANCE):
         failures.append("PBR fallback outside pixel %s, expected untouched clear color"
                         % report["pixels"]["outside"])
+    return failures + _pbr_rejections(report)
+
+
+def _pbr_rejections(report):
+    failures = []
     for key in ("missing_reference_rejected", "missing_mrao_rejected",
                 "missing_base_rejected",
                 "missing_target_rejected", "self_rejected", "traversal_rejected",
@@ -728,6 +758,14 @@ def run(args):
             target = material_dir / material
             shutil.copy2(fixture_dir / fixture, target)
             evidence["fixtures"][material] = portal_boot.sha256(target)
+    if args.family == "pbr-model":
+        # PBRMetalRough requires a $fallbackmaterial VMT on disk.
+        fixture_dir = Path(__file__).resolve().parents[2] / "quality/fixtures/material-pixels"
+        material_dir = stage / "portal/materials/conformance"
+        material_dir.mkdir(parents=True, exist_ok=True)
+        target = material_dir / "pbr_fallback.vmt"
+        shutil.copy2(fixture_dir / "pbr-fallback-legacy.vmt", target)
+        evidence["fixtures"] = {"pbr_fallback.vmt": portal_boot.sha256(target)}
     harness = stage / "material_pixel_conformance"
     shutil.copy2(find_harness(args.build), harness)
     evidence["harness_sha256"] = portal_boot.sha256(harness)
