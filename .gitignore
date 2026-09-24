@@ -47,3 +47,25 @@ source-engine.sln
 
 # Pinned native SDKs fetched by tools/quality/product_profile.py (not sources).
 dependencies/
+
+# Staged game runtimes and packaging output (./play, run.sh, product staging).
+# Built binaries and game content; never commit them.
+run/
+myout/
+hammer/gtk/hammer_gtk
+# PBRT reference scenes from https://benedikt-bitterli.me/resources/, unpacked
+# at the repository root for quality/fixtures/pbrt-maps (see its README).
+/bathroom/
+/bedroom/
+/living-room/
+/staircase2/
+/*.zip
+# Large binary data and build outputs.
+*.so
+*.so.[0-9]*
+*.a
+*.sav
+*.ply
+*.pfm
+*.vpk
+*.vpk.sound.cache
