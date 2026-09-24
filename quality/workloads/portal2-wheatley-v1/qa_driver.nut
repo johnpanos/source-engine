@@ -115,7 +115,9 @@ function QA_Tick()
 	}
 	catch ( error )
 	{
-		QA_Check( step.name, false, "script error: " + error )
+		// Action names are prose; report their errors under a check name.
+		local name = step.kind == "wait" ? step.name : "step." + format( "%02d", ::QA.index )
+		QA_Check( name, false, "script error in '" + step.name + "': " + error )
 		failed = true
 	}
 
@@ -171,8 +173,13 @@ function QA_Fire( target, input, parameter = "", delay = 0.0 )
 // Counts how often <name>'s <output> fires; QA_Fired reads the count.
 function QA_Watch( name, output )
 {
-	local ent = QA_Ent( name )
-	local key = name + ":" + output
+	QA_WatchEntity( QA_Ent( name ), name, output )
+}
+
+// For unnamed entities: <label> stands in for the name in QA_Fired.
+function QA_WatchEntity( ent, label, output )
+{
+	local key = label + ":" + output
 	local handler = "QA_Output_" + ::QA.fired.len()
 	::QA.fired[key] <- 0
 	ent.ValidateScriptScope()
@@ -190,6 +197,15 @@ function QA_Fired( name, output )
 	if ( !( key in ::QA.fired ) )
 		throw "output " + key + " is not watched"
 	return ::QA.fired[key]
+}
+
+// Brush entities without a name, found by class near their map origin.
+function QA_EntNear( classname, origin )
+{
+	local ent = Entities.FindByClassnameNearest( classname, origin, 16.0 )
+	if ( ent == null )
+		throw "no " + classname + " near " + QA_Vec( origin )
+	return ent
 }
 
 function QA_ParentName( ent )
@@ -345,6 +361,36 @@ function QA_CarryTo( mark, target, from )
 }
 
 // Holds a +command button for <seconds> of server time; the client runs it.
+// Keeps the player's standing height and finds the pitch and horizontal
+// distance at which an object held at view offset <mark> reaches <target>,
+// approaching from the <from> side: what a player does looking down at a
+// socket. Returns false when the target is out of reach from that height.
+function QA_ReachTo( mark, target, from )
+{
+	local o = ::QA.marks[mark]
+	local eyeZ = QA_Player().EyePosition().z
+	local dz = target.z - eyeZ
+	// Height of the held point: o.u * cos(p) - o.f * sin(p) = dz.
+	local radius = sqrt( o.f * o.f + o.u * o.u )
+	if ( fabs( dz ) > radius )
+	{
+		QA_Log( format( "reach: target %.1f below eye, hold radius %.1f", -dz, radius ) )
+		return false
+	}
+	local phase = atan2( o.f, o.u )
+	local pitch = QA_Deg( acos( dz / radius ) - phase )
+	if ( pitch > 89.0 || pitch < -89.0 )
+		return false
+	local horizontal = o.f * cos( QA_Rad( pitch ) ) + o.u * sin( QA_Rad( pitch ) )
+	local yaw = QA_AnglesTo( from, target ).yaw
+	local basis = QA_Basis( 0.0, yaw )
+	local eye = target - QA_Scale( basis.forward, horizontal ) - QA_Scale( basis.right, o.r )
+	eye.z = eyeZ
+	QA_PlaceEye( eye, pitch, yaw )
+	QA_Log( "reach to " + QA_Vec( target ) + " eye " + QA_Vec( eye ) + format( " pitch=%.1f", pitch ) )
+	return true
+}
+
 function QA_Press( command, seconds )
 {
 	::QA.marks.pressed <- command

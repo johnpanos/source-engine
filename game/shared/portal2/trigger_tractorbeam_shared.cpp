@@ -558,7 +558,6 @@ float CTrigger_TractorBeam::GetLinearLimit()
 	return flLimit;
 }
 
-
 struct ShouldDeleteBlob_t
 {
 	inline bool operator()( const CPaintBlob* pBlob ) const
@@ -580,7 +579,6 @@ void CTrigger_TractorBeam::RemoveDeadBlobs()
 	int numRemoved = middle - begin;
 	m_blobs.RemoveMultipleFromHead( numRemoved );
 }
-
 
 struct IsBlobInSameBeam_t
 {

@@ -34,7 +34,8 @@ to the following restrictions:
 #ifdef __cplusplus
 extern "C" {
 #endif
-#if defined( _WIN32 ) && !defined( _GAMECONSOLE ) // clang would record it as an ELF dependent library
+#if defined( _WIN32 ) &&                                                                           \
+    !defined( _GAMECONSOLE ) // clang would record it as an ELF dependent library
 #pragma comment(lib, "WSOCK32.LIB")
 #endif
 struct SQDbgServer;

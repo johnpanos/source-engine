@@ -18,9 +18,9 @@
 
 namespace vgui
 {
-	class Frame;
-	class TextEntry;
-	class Panel;
+class Frame;
+class TextEntry;
+class Panel;
 }
 class CCvarTextEntry;
 

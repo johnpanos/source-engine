@@ -53,39 +53,121 @@ QA_WaitFor( "stairwell.still_held", function()
 	return d < 120.0 && QA_Fired( "@sphere", "OnPlayerDrop" ) == 0
 }, 3.0 )
 
-// The breaker room: warp into the elevator shaft, which enables the socket.
-QA_Do( "warp inside elevator", function() { QA_Fire( "@debug_warp_inside_of_elevator", "Trigger" ) }, 4.0 )
-QA_WaitFor( "elevator.landed_holding", function()
+// Bottom of the stairwell: the map forces the physics grab controller when
+// the player walks into this trigger, which moves him from the view model
+// pose to a physically simulated hold at eye height.
+QA_Do( "walk into grab trigger", function()
+{
+	local trigger = QA_EntNear( "trigger_once", Vector( 10380, 1208, 99.24 ) )
+	QA_WatchEntity( trigger, "stairs_grab_trigger", "OnStartTouch" )
+	local p = QA_Player()
+	local yaw = p.GetAngles().y
+	QA_PlaceEye( trigger.GetCenter() + QA_EyeOffset(), 0.0, yaw )
+}, 2.0 )
+
+QA_WaitFor( "stairwell.physics_hold", function()
+{
+	local s = QA_Ent( "@sphere" )
+	QA_MarkViewOffset( "phys", s )
+	local o = ::QA.marks.phys
+	QA_Detail( format( "view offset f=%.1f r=%.1f u=%.1f", o.f, o.r, o.u ) + " touched=" +
+	           QA_Fired( "stairs_grab_trigger", "OnStartTouch" ) + " drops=" +
+	           QA_Fired( "@sphere", "OnPlayerDrop" ) )
+	local vm = ::QA.marks.vm
+	local change = sqrt( ( o.f - vm.f ) * ( o.f - vm.f ) + ( o.u - vm.u ) * ( o.u - vm.u ) )
+	return QA_Fired( "stairs_grab_trigger", "OnStartTouch" ) == 1 && o.f > 20.0 && o.f < 120.0 &&
+	       change > 5.0 && QA_Fired( "@sphere", "OnPlayerDrop" ) == 0
+}, 3.0 )
+
+QA_Do( "turn with physics hold", function()
+{
+	QA_SetView( 0.0, QA_Player().GetAngles().y - 45.0 )
+}, 1.5 )
+QA_Expect( "stairwell.physics_follows_turn", function() { return QA_HeldAt( QA_Ent( "@sphere" ), "phys", 16.0 ) } )
+
+// The breaker room: warp to its floor with the map's relay, then walk into
+// the breaker cage. Carrying Wheatley past the entry trigger opens the hatch;
+// touching the cage floor trigger starts Wheatley's "don't touch anything"
+// scenes, and the last of them opens the socket.
+QA_Do( "warp to breaker room", function()
+{
+	QA_Watch( "basement_breakers_socket_relay", "OnTrigger" )
+	QA_Watch( "basement_breaker_room_entry_trigger", "OnTrigger" )
+	QA_Watch( "do_not_touch_anything_trigger", "OnTrigger" )
+	QA_Fire( "@debug_warp_to_elevator", "Trigger" )
+}, 1.5 )
+
+QA_WaitFor( "breaker.arrived_holding", function()
 {
 	local p = QA_Player()
-	local s = QA_Ent( "@sphere" )
-	QA_SetView( 0.0, p.GetAngles().y )
-	local d = QA_Dist( s.GetCenter(), p.EyePosition() )
+	local d = QA_Dist( QA_Ent( "@sphere" ).GetCenter(), p.EyePosition() )
 	QA_Detail( "player " + QA_Vec( p.GetOrigin() ) + format( " eye distance=%.1f", d ) )
-	return p.GetOrigin().z < -560.0 && d < 120.0
-}, 8.0 )
+	return p.GetOrigin().z < -440.0 && d < 120.0 && QA_Fired( "@sphere", "OnPlayerDrop" ) == 0
+}, 5.0 )
+
+QA_Do( "face the cage", function()
+{
+	local p = QA_Player()
+	QA_PlaceEye( Vector( 8976, 1300, p.EyePosition().z ), 0.0, 270.0 )
+}, 1.0 )
+
+QA_Do( "walk into the cage", function() { QA_Press( "forward", 1.6 ) }, 2.5 )
+
+QA_WaitFor( "breaker.entered_holding", function()
+{
+	local p = QA_Player()
+	local d = QA_Dist( QA_Ent( "@sphere" ).GetCenter(), p.EyePosition() )
+	QA_Detail( "player " + QA_Vec( p.GetOrigin() ) + format( " eye distance=%.1f", d ) +
+	           " entry=" + QA_Fired( "basement_breaker_room_entry_trigger", "OnTrigger" ) +
+	           " floor=" + QA_Fired( "do_not_touch_anything_trigger", "OnTrigger" ) )
+	return QA_Fired( "basement_breaker_room_entry_trigger", "OnTrigger" ) == 1 &&
+	       QA_Fired( "do_not_touch_anything_trigger", "OnTrigger" ) == 1 && d < 120.0 &&
+	       QA_Fired( "@sphere", "OnPlayerDrop" ) == 0
+}, 3.0 )
+
+QA_WaitFor( "breaker.scene_opens_socket", function()
+{
+	return QA_Fired( "basement_breakers_socket_relay", "OnTrigger" ) == 1
+}, 60.0 )
+
+QA_Expect( "breaker.socket_waits_for_carry", function()
+{
+	::QA.marks.socket <- QA_Ent( "basement_breakers_socket_trigger" ).GetCenter()
+	QA_Detail( "sphere " + QA_Vec( QA_Ent( "@sphere" ).GetCenter() ) + " socket " + QA_Vec( ::QA.marks.socket ) )
+	return QA_Fired( "socket_powered_rl", "OnTrigger" ) == 0
+} )
+
+// The trigger is enabled 2 s after the relay; the socket model rises with
+// the hatch, so wait until it stops moving before aiming at it.
+QA_Sleep( 2.2 )
+QA_WaitFor( "breaker.socket_settled", function()
+{
+	local now = QA_Ent( "basement_breakers_socket_trigger" ).GetCenter()
+	local moved = QA_Dist( now, ::QA.marks.socket )
+	::QA.marks.socket <- now
+	QA_Detail( "socket " + QA_Vec( now ) + format( " moved %.2f", moved ) )
+	return moved < 0.25
+}, 10.0 )
 
 QA_Do( "measure hold", function() { QA_MarkViewOffset( "carry", QA_Ent( "@sphere" ) ) }, 0.2 )
 
 QA_Do( "carry into socket", function()
 {
-	local trigger = QA_Ent( "basement_breakers_socket_trigger" )
-	::QA.marks.socketFrom <- QA_Player().EyePosition()
-	QA_CarryTo( "carry", trigger.GetCenter(), ::QA.marks.socketFrom )
+	if ( !QA_ReachTo( "carry", ::QA.marks.socket, QA_Player().EyePosition() ) )
+		throw "socket at " + QA_Vec( ::QA.marks.socket ) + " is out of reach"
 }, 0.1 )
 
 QA_WaitFor( "socket.trigger_fired", function()
 {
-	QA_Detail( "sphere " + QA_Vec( QA_Ent( "@sphere" ).GetCenter() ) + " socket trigger " +
-	           QA_Vec( QA_Ent( "basement_breakers_socket_trigger" ).GetCenter() ) )
+	QA_Detail( "sphere " + QA_Vec( QA_Ent( "@sphere" ).GetCenter() ) + " socket " + QA_Vec( ::QA.marks.socket ) )
 	return QA_Fired( "socket_powered_rl", "OnTrigger" ) == 1
 }, 5.0 )
 
 QA_WaitFor( "socket.parented", function()
 {
 	local s = QA_Ent( "@sphere" )
-	QA_Detail( "parent=" + QA_ParentName( s ) )
-	return QA_ParentName( s ) == "core_receptacle_socket"
+	QA_Detail( "parent=" + QA_ParentName( s ) + " drops=" + QA_Fired( "@sphere", "OnPlayerDrop" ) )
+	return QA_ParentName( s ) == "core_receptacle_socket" && QA_Fired( "@sphere", "OnPlayerDrop" ) == 1
 }, 2.0 )
 
 QA_WaitFor( "socket.breakers_start", function()
@@ -93,20 +175,22 @@ QA_WaitFor( "socket.breakers_start", function()
 	return QA_Fired( "basement_breakers_start", "OnTrigger" ) == 1
 }, 4.0 )
 
-// Once socketed he belongs to the socket, not the player.
+// Once socketed he belongs to the socket: stepping back and turning away
+// must leave him there instead of dragging him along.
 QA_Do( "step back", function()
 {
-	::QA.marks.socketed <- QA_Ent( "@sphere" ).GetCenter()
 	local p = QA_Player()
+	::QA.marks.eyeDistance <- QA_Dist( QA_Ent( "@sphere" ).GetCenter(), p.EyePosition() )
 	local back = QA_Basis( 0.0, p.GetAngles().y ).forward
 	QA_PlaceEye( p.EyePosition() - QA_Scale( back, 64.0 ), 0.0, p.GetAngles().y + 90.0 )
 }, 1.5 )
 
 QA_Expect( "socket.released_by_player", function()
 {
-	local moved = QA_Dist( QA_Ent( "@sphere" ).GetCenter(), ::QA.marks.socketed )
-	QA_Detail( format( "moved %.1f after the player stepped away", moved ) )
-	return moved < 8.0
+	local s = QA_Ent( "@sphere" )
+	local d = QA_Dist( s.GetCenter(), QA_Player().EyePosition() )
+	QA_Detail( format( "eye distance %.1f -> %.1f", ::QA.marks.eyeDistance, d ) + " parent=" + QA_ParentName( s ) )
+	return QA_ParentName( s ) == "core_receptacle_socket" && d > ::QA.marks.eyeDistance + 40.0
 } )
 
 QA_Start( "sp_a1_wakeup" )

@@ -69,7 +69,6 @@ CPaintBlob* CPaintStream::GetBlob( int id )
 	return m_blobs[id];
 }
 
-
 struct ShouldNotDeleteBlob_t
 {
 	inline bool operator()( const CPaintBlob* pBlob ) const
@@ -92,7 +91,6 @@ void CPaintStream::RemoveDeadBlobs()
 	int numRemoved = end - middle;
 	m_blobs.RemoveMultipleFromTail( numRemoved );
 }
-
 
 struct TimeElapsed
 {
@@ -181,7 +179,6 @@ const Vector& CPaintStream::WorldAlignMaxs() const
 {
 	return m_vCachedWorldMaxs;
 }
-
 
 struct TeleportedThisFrameBlob_t
 {

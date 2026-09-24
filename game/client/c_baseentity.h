@@ -977,7 +977,10 @@ public:
 
 	void					SetGroundEntity( C_BaseEntity *ground );
 	C_BaseEntity			*GetGroundEntity( void );
-	C_BaseEntity			*GetGroundEntity( void ) const { return const_cast<C_BaseEntity *>(this)->GetGroundEntity(); }
+	C_BaseEntity *GetGroundEntity( void ) const
+	{
+		return const_cast<C_BaseEntity *>( this )->GetGroundEntity();
+	}
 
 	void					PhysicsPushEntity( const Vector& push, trace_t *pTrace );
 	void					PhysicsCheckWaterTransition( void );

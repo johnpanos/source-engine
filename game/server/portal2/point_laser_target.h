@@ -46,6 +46,8 @@ public:
 	DECLARE_CLASS( CPortalLaserTarget, CBaseEntity );
 	DECLARE_DATADESC();
 
+	CPortalLaserTarget();
+
 	virtual void Spawn();
 
 	virtual int OnTakeDamage( const CTakeDamageInfo &info );

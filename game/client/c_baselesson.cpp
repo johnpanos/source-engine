@@ -1058,32 +1058,32 @@ void CIconLesson::UpdateLocatorTarget( CLocatorTarget *pLocatorTarget, C_BaseEnt
 #define LESSON_VARIABLE_INIT_INFO_CALL( _varEnum, _varName, _varType ) g_pLessonVariableInfo[ LESSON_VARIABLE_##_varEnum ].Init_##_varEnum();
 
 // Init info
-#define LESSON_VARIABLE_INIT_INFO( _varEnum, _varName, _varType ) \
-	void Init_##_varEnum( void ) \
-	{ \
-		iOffset = offsetof( CScriptedIconLesson, _varName ); \
-		varType = LessonParamTypeFromString( #_varType ); \
+#define LESSON_VARIABLE_INIT_INFO( _varEnum, _varName, _varType )                                  \
+	void Init_##_varEnum( void )                                                                   \
+	{                                                                                              \
+		iOffset = offsetof( CScriptedIconLesson, _varName );                                       \
+		varType = LessonParamTypeFromString( #_varType );                                          \
 	}
 
-#define LESSON_VARIABLE_INIT_INFO_BOOL( _varEnum, _varName, _varType ) \
-	void Init_##_varEnum( void ) \
-	{ \
-		iOffset = offsetof( CScriptedIconLesson, _varName ); \
-		varType = FIELD_BOOLEAN; \
+#define LESSON_VARIABLE_INIT_INFO_BOOL( _varEnum, _varName, _varType )                             \
+	void Init_##_varEnum( void )                                                                   \
+	{                                                                                              \
+		iOffset = offsetof( CScriptedIconLesson, _varName );                                       \
+		varType = FIELD_BOOLEAN;                                                                   \
 	}
 
-#define LESSON_VARIABLE_INIT_INFO_EHANDLE( _varEnum, _varName, _varType ) \
-	void Init_##_varEnum( void ) \
-	{ \
-		iOffset = offsetof( CScriptedIconLesson, _varName ); \
-		varType = FIELD_EHANDLE; \
+#define LESSON_VARIABLE_INIT_INFO_EHANDLE( _varEnum, _varName, _varType )                          \
+	void Init_##_varEnum( void )                                                                   \
+	{                                                                                              \
+		iOffset = offsetof( CScriptedIconLesson, _varName );                                       \
+		varType = FIELD_EHANDLE;                                                                   \
 	}
 
-#define LESSON_VARIABLE_INIT_INFO_STRING( _varEnum, _varName, _varType ) \
-	void Init_##_varEnum( void ) \
-	{ \
-		iOffset = offsetof( CScriptedIconLesson, _varName ); \
-		varType = FIELD_STRING; \
+#define LESSON_VARIABLE_INIT_INFO_STRING( _varEnum, _varName, _varType )                           \
+	void Init_##_varEnum( void )                                                                   \
+	{                                                                                              \
+		iOffset = offsetof( CScriptedIconLesson, _varName );                                       \
+		varType = FIELD_STRING;                                                                    \
 	}
 
 // Data desc

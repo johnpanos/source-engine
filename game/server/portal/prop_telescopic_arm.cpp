@@ -58,8 +58,8 @@ private:
 #else
 	typedef CProp_Portal AimPortal_t;
 #endif
-	Vector FindAimPointThroughPortal ( const AimPortal_t* pPortal );
-	
+	Vector FindAimPointThroughPortal( const AimPortal_t *pPortal );
+
 	bool m_bEnabled;
 	bool m_bCanSeeTarget;
 	int m_iFrontMarkerAttachment;
@@ -340,7 +340,7 @@ Vector CPropTelescopicArm::FindTargetAimPoint( void )
 // Input  : pPortal - The portal to look through
 // Output : Vector& output point in world space where the target *appears* to be as seen through the portal
 //-----------------------------------------------------------------------------
-Vector CPropTelescopicArm::FindAimPointThroughPortal( const AimPortal_t* pPortal )
+Vector CPropTelescopicArm::FindAimPointThroughPortal( const AimPortal_t *pPortal )
 { 
 	if ( pPortal && pPortal->m_bActivated )
 	{

@@ -36,7 +36,7 @@ ConVar sv_player_collide_with_laser( "sv_player_collide_with_laser", "1", FCVAR_
 
 ConVar new_portal_laser( "new_portal_laser", "1", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
 ConVar portal_laser_normal_update( "portal_laser_normal_update", "0.05f", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
-ConVar portal_laser_high_precision_update( "portal_laser_high_precision_update", "0.01f", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
+ConVar portal_laser_high_precision_update( "portal_laser_high_precision_update", "0.03f", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
 ConVar sv_debug_laser( "sv_debug_laser", "0", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
 ConVar sv_laser_cube_autoaim( "sv_laser_cube_autoaim", "0", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
 
@@ -815,7 +815,7 @@ void CPortalLaser::DamageEntitiesAlongLaser( const CUtlVector< PortalLaserInfo_t
 	}
 }
 
-ConVar sv_laser_tight_box( "sv_laser_tight_box", "9.f", FCVAR_DEVELOPMENTONLY );
+ConVar sv_laser_tight_box( "sv_laser_tight_box", "1.25f", FCVAR_DEVELOPMENTONLY );
 
 //-----------------------------------------------------------------------------
 // Purpose: Records the segment and its sorted victims; returns the terminal

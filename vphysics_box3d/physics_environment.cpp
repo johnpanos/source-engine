@@ -900,6 +900,7 @@ void CPhysicsEnvironmentBox3D::PreStep( float dt )
 	{
 		CPhysicsObjectBox3D *pObject = ToBox3D( m_objects[i] );
 		pObject->ApplyDampingAndDrag( dt, m_airDensity );
+		pObject->CommitVelocity();
 		pObject->CapturePreStepVelocity();
 		pObject->SetWasAwake( !pObject->IsAsleep() );
 	}

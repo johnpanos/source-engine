@@ -1681,7 +1681,7 @@ void SaveLoadGameDialog::ConfirmOverwriteSaveGame()
 	if ( m_SaveGameInfos.IsValidIndex( m_nSaveGameToOverwrite ) )
 	{
 		// saves have multiple .x.y extensions, need the basename
-		savename = m_SaveGameInfos[m_nSaveGameToOverwrite].m_Filename.Get();		
+		savename = m_SaveGameInfos[m_nSaveGameToOverwrite].m_Filename.Get();
 		char *pExtension = V_stristr( savename.GetForModify(), PLATFORM_EXT ".sav" );
 		if ( pExtension )
 		{

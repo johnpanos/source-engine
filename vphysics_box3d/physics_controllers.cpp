@@ -338,7 +338,9 @@ void CPlayerControllerBox3D::Update( const Vector &position, const Vector &veloc
 }
 
 // IVP removes the part of the requested velocity the object already has
-// along it. The product dot * length is formed in meters, as IVP does.
+// along it. The product dot * length is formed in meters, as IVP does. IVP
+// reads the core's speed, which excludes velocity the game set since the
+// last step.
 void CPlayerControllerBox3D::MaxSpeed( const Vector &maxVelocity )
 {
 	const float kMeters = 0.0254f;
@@ -346,8 +348,7 @@ void CPlayerControllerBox3D::MaxSpeed( const Vector &maxVelocity )
 	Vector available = requested;
 	Vector direction = requested;
 	float length = VectorNormalize( direction );
-	Vector current;
-	m_pObject->GetVelocity( &current, NULL );
+	Vector current = m_pObject->GetCommittedVelocity();
 	float dot = DotProduct( direction, current * kMeters );
 	if ( dot > 0 )
 		available -= direction * ( dot * length );

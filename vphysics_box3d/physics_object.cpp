@@ -70,6 +70,7 @@ CPhysicsObjectBox3D::CPhysicsObjectBox3D( CPhysicsEnvironmentBox3D *pEnv, const 
 
 	m_preStepLinear.Init();
 	m_preStepAngular.Init();
+	m_uncommittedLinear.Init();
 	V_strncpy( m_name, params.pName ? params.pName : "box3d_object", sizeof( m_name ) );
 
 	// IVP's InitObjectTemplate.
@@ -809,6 +810,13 @@ void CPhysicsObjectBox3D::ClampVelocity()
 		SetWorldVelocity( linear, angular );
 }
 
+void CPhysicsObjectBox3D::AddUncommittedChange( const Vector &linearBefore )
+{
+	Vector linear;
+	GetWorldVelocity( &linear, NULL );
+	m_uncommittedLinear += linear - linearBefore;
+}
+
 void CPhysicsObjectBox3D::SetVelocity( const Vector *velocity, const AngularImpulse *angularVelocity )
 {
 	if ( !IsMoveable() )
@@ -820,6 +828,9 @@ void CPhysicsObjectBox3D::SetVelocity( const Vector *velocity, const AngularImpu
 	if ( angularVelocity )
 		b3Body_SetAngularVelocity( m_body, AngularToB3( *angularVelocity, rotation ) );
 	ClampVelocity();
+	// As IVP: the core's speed is zeroed and the whole velocity is pending.
+	if ( velocity )
+		GetWorldVelocity( &m_uncommittedLinear, NULL );
 }
 
 bool CPhysicsObjectBox3D::IsControlledByGame() const
@@ -832,6 +843,16 @@ bool CPhysicsObjectBox3D::IsControlledByGame() const
 void CPhysicsObjectBox3D::SetVelocityInstantaneous( const Vector *velocity, const AngularImpulse *angularVelocity )
 {
 	SetVelocity( velocity, angularVelocity );
+	// As IVP: this sets the core's speed itself, with nothing pending.
+	if ( velocity )
+		m_uncommittedLinear.Init();
+}
+
+Vector CPhysicsObjectBox3D::GetCommittedVelocity() const
+{
+	Vector linear;
+	GetWorldVelocity( &linear, NULL );
+	return linear - m_uncommittedLinear;
 }
 
 void CPhysicsObjectBox3D::CapturePreStepVelocity()
@@ -860,9 +881,10 @@ void CPhysicsObjectBox3D::AddVelocity( const Vector *velocity, const AngularImpu
 	if ( !IsMoveable() )
 		return;
 	Wake();
-	Vector linear;
+	Vector linear, before;
 	AngularImpulse angular;
 	GetVelocity( &linear, &angular );
+	GetWorldVelocity( &before, NULL );
 	if ( velocity )
 		linear += *velocity;
 	if ( angularVelocity )
@@ -871,6 +893,7 @@ void CPhysicsObjectBox3D::AddVelocity( const Vector *velocity, const AngularImpu
 	b3Body_SetLinearVelocity( m_body, ToB3( linear ) );
 	b3Body_SetAngularVelocity( m_body, AngularToB3( angular, rotation ) );
 	ClampVelocity();
+	AddUncommittedChange( before );
 }
 
 void CPhysicsObjectBox3D::GetVelocityAtPoint( const Vector &worldPosition, Vector *pVelocity ) const
@@ -888,16 +911,22 @@ void CPhysicsObjectBox3D::ApplyForceCenter( const Vector &forceVector )
 	// VPhysics "forces" are impulses (kg * in/s).
 	if ( !IsMoveable() )
 		return;
+	Vector before;
+	GetWorldVelocity( &before, NULL );
 	b3Body_ApplyLinearImpulseToCenter( m_body, ToB3( forceVector ), true );
 	ClampVelocity();
+	AddUncommittedChange( before );
 }
 
 void CPhysicsObjectBox3D::ApplyForceOffset( const Vector &forceVector, const Vector &worldPosition )
 {
 	if ( !IsMoveable() )
 		return;
+	Vector before;
+	GetWorldVelocity( &before, NULL );
 	b3Body_ApplyLinearImpulse( m_body, ToB3( forceVector ), ToB3( worldPosition ), true );
 	ClampVelocity();
+	AddUncommittedChange( before );
 }
 
 void CPhysicsObjectBox3D::ApplyTorqueCenter( const AngularImpulse &torque )

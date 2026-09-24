@@ -67,6 +67,9 @@
       "Everything in the Portal profile's known_blockers (BC textures, surface teardown)",
       "Retail Portal 2 content is about 11.5 GB on the device"
     ],
-    "observations": []
+    "observations": [
+      "2026-09-24 (local, not CI): arm64-v8a APK built by build-android-portal2-apk.sh and passed tools/quality/android_apk.py (30 libraries, 18 touch icons)",
+      "Not yet run: x86_64 build, installed-package smoke on any device, content sync to a device, hosted CI lane"
+    ]
   }
 }

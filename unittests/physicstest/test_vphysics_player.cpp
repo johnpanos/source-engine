@@ -226,6 +226,43 @@ void TestTeleport()
 	DestroyWorld( world );
 }
 
+// CBasePlayer::SetVCollisionState (noclip off, ducking, a portal teleport)
+// teleports the shadow and sets its velocity; movement then targets that same
+// position. IVP holds a game-set velocity in IVP_Core::speed_change until the
+// next step, and Update's speed budget excludes it: the controller removes at
+// most the offered speed per axis, so the shadow keeps the rest for the step.
+void TestCollisionStateVelocity()
+{
+	World_t world;
+	if ( !CreateWorld( world, NULL ) )
+		return;
+	Player_t player;
+	if ( !CreatePlayer( world, Vector( 0, 0, 400 ), player ) )
+	{
+		DestroyWorld( world );
+		return;
+	}
+	Step( world.pEnv, kTick );
+	Vector at = PositionOf( player.pObject );
+	Vector velocity( 500, -600, 700 );
+	player.pObject->SetPosition( at, vec3_angle, true );
+	player.pObject->SetVelocity( &velocity, NULL );
+	// Airborne, the game offers the controller its full speed on every axis.
+	const float kBudget = 175.0f;
+	Drive( player.pController, at, Vector( kBudget, kBudget, kBudget ), NULL );
+	Step( world.pEnv, kTick );
+	Vector kept( velocity.x - kBudget, velocity.y + kBudget, velocity.z - kBudget );
+	Vector moved = PositionOf( player.pObject ) - at;
+	Vector shadowVelocity;
+	player.pController->GetShadowVelocity( &shadowVelocity );
+	Check( TIER_GAMEPLAY, "player.set-velocity-budget", NearVec( shadowVelocity, kept, 20.0f ) &&
+		NearVec( moved, kept * kTick, 1.0f ), "moved (%.2f %.2f %.2f) velocity (%.2f %.2f %.2f)", moved.x, moved.y,
+		moved.z, shadowVelocity.x, shadowVelocity.y, shadowVelocity.z );
+	ObsVector( "player.set-velocity-step", "a1", moved );
+	DestroyPlayer( world, player );
+	DestroyWorld( world );
+}
+
 // The player walks into a 50 kg crate. At an over-limit contact the push
 // velocity is clamped: the player's own speed drops to zero on contact;
 // within the limit it keeps pushing at walking speed. Returns the lowest
@@ -355,6 +392,7 @@ void TestPlayerController()
 	TestAttachment();
 	TestWalking();
 	TestTeleport();
+	TestCollisionStateVelocity();
 	TestPushing();
 	TestGround();
 }

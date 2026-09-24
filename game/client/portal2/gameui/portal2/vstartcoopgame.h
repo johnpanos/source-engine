@@ -13,7 +13,7 @@
 
 namespace vgui
 {
-	class Label;
+class Label;
 }
 
 namespace BaseModUI {

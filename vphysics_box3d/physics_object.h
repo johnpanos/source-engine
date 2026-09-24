@@ -224,6 +224,11 @@ public:
 	void CapturePreStepVelocity();
 	void ReportPreStepVelocity( bool report ) { m_reportPreStep = report; }
 	Vector GetPreStepVelocity() const { return m_preStepLinear; }
+	// IVP holds velocity the game sets or adds (IVP_Core::speed_change) apart
+	// from the core's speed until the next step commits it; the player
+	// controller's speed budget reads only the committed part.
+	Vector GetCommittedVelocity() const;
+	void CommitVelocity() { m_uncommittedLinear.Init(); }
 	// IVP's per-step damping and air drag (CDragController), applied by the
 	// environment before each step.
 	void ApplyDampingAndDrag( float dt, float airDensity );
@@ -253,6 +258,8 @@ private:
 	float GetDragInDirection( const Vector &worldVelocity ) const;
 	float GetAngularDragInDirection( const Vector &localAngularRadians ) const;
 	void ClampVelocity();
+	// IVP defers velocity added by the game (async pushes) the same way.
+	void AddUncommittedChange( const Vector &linearBefore );
 
 	CPhysicsEnvironmentBox3D *m_pEnv;
 	const CPhysCollide *m_pCollide;
@@ -297,6 +304,7 @@ private:
 	bool m_asleepSinceCreation;
 	Vector m_preStepLinear;
 	Vector m_preStepAngular;	// world, radians/second
+	Vector m_uncommittedLinear;	// world; game velocity changes since the last step
 };
 
 inline CPhysicsObjectBox3D *ToBox3D( IPhysicsObject *pObject ) { return static_cast<CPhysicsObjectBox3D *>( pObject ); }

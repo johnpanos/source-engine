@@ -1069,7 +1069,7 @@ bool CNPC_RocketTurret::FindAimPointThroughPortal( const CProp_Portal* pPortal, 
 { 
 	if ( pPortal && pPortal->m_bActivated )
 	{
-		auto *pLinked = pPortal->m_hLinkedPortal.Get(); 
+		auto *pLinked = pPortal->m_hLinkedPortal.Get();
 		CBaseEntity*  pTarget = GetEnemy();
 
 		// Require that the portal is facing towards the beam to test through it

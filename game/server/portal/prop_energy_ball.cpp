@@ -46,7 +46,7 @@ public:
 
 #ifdef PORTAL2
 	// Any linked portal the ball passes, including Portal 2 portal doors.
-	CHandle<CPortal_Base2D>	m_hTouchedPortal;	// Pointer to the portal we are touched most recently
+	CHandle<CPortal_Base2D> m_hTouchedPortal; // Pointer to the portal we are touched most recently
 #else
 	CHandle<CProp_Portal>		m_hTouchedPortal;	// Pointer to the portal we are touched most recently
 #endif

@@ -18,10 +18,10 @@ namespace BaseModUI
 
 namespace vgui
 {
-	class TextEntry;
-	class ImagePanel;
-	class CheckButton;
-	class Label;
+class TextEntry;
+class ImagePanel;
+class CheckButton;
+class Label;
 }
 
 enum PuzzleMakerSaveDialogReason_t

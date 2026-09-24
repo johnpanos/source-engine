@@ -181,7 +181,8 @@ def write_fake_zenity(directory):
     zenity.chmod(0o755)
 
 
-def run_scenario(scenario, runtime, output, start_frames, width, height, tool_directory):
+def run_scenario(scenario, runtime, output, start_frames, width, height, tool_directory,
+                 gdb_script=None):
     runtime = Path(runtime).resolve()
     console = runtime / "portal2/console.log"
     console.unlink(missing_ok=True)
@@ -198,6 +199,10 @@ def run_scenario(scenario, runtime, output, start_frames, width, height, tool_di
                "-insecure", "-windowed", "-w", str(width), "-h", str(height), "-condebug",
                "+volume", "0", "+map", scenario["map"], "+wait", str(start_frames),
                "+exec", "qa_" + scenario["name"]]
+    if gdb_script:
+        # Diagnosis only: gdb's own exit status replaces the game's.
+        command = ["gdb", "-q", "-batch", "-x", str(Path(gdb_script).resolve()), "-ex", "run",
+                   "-ex", "bt", "--args"] + command
     output.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     timed_out = False
@@ -246,6 +251,9 @@ def main(argv=None):
                         help="client frames to wait after the map loads before the driver starts")
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=720)
+    parser.add_argument("--gdb-script", type=Path,
+                        help="run the game under gdb with this command file (diagnosis; "
+                             "the output lands in each scenario's stdout.log)")
     parser.add_argument("--list", action="store_true", help="list scenarios and exit")
     args = parser.parse_args(argv)
 
@@ -296,7 +304,7 @@ def main(argv=None):
     for scenario in scenarios:
         print("== %s (%s)" % (scenario["name"], scenario["map"]), flush=True)
         result = run_scenario(scenario, args.runtime, output / scenario["name"], args.start_frames,
-                              args.width, args.height, tools)
+                              args.width, args.height, tools, args.gdb_script)
         evidence["results"].append(result)
         evidence_path.write_text(json.dumps(evidence, indent=2) + "\n")
         for check, value in result["checks"].items():

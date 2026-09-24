@@ -5002,7 +5002,8 @@ void CPortal_Player::ModifyOrAppendCriteria( AI_CriteriaSet& criteriaSet )
 	BaseClass::ModifyOrAppendCriteria( criteriaSet );
 
 	// Determine if we're in the air
-	criteriaSet.AppendCriteria( "in_air", ( GetGroundEntity() == NULL || m_PortalLocal.m_hTractorBeam.Get() ) ? "1" : "0" );
+	criteriaSet.AppendCriteria(
+	    "in_air", ( GetGroundEntity() == NULL || m_PortalLocal.m_hTractorBeam.Get() ) ? "1" : "0" );
 
 	// Determine if we're standing on something special
 	CBaseEntity *pGroundEnt = GetGroundEntity();
@@ -5046,7 +5047,8 @@ void CPortal_Player::ModifyOrAppendCriteria( AI_CriteriaSet& criteriaSet )
 		criteriaSet.AppendCriteria( "dist_to_partner", "0" );
 	}
 
-	criteriaSet.AppendCriteria( "rps_outcome", CFmtStr( "%d", PortalMPGameRules() ? PortalMPGameRules()->GetRPSOutcome() : 0 ) );
+	criteriaSet.AppendCriteria( "rps_outcome",
+	    CFmtStr( "%d", PortalMPGameRules() ? PortalMPGameRules()->GetRPSOutcome() : 0 ) );
 
 	if ( m_szTauntForce[ 0 ] == '\0' )
 	{

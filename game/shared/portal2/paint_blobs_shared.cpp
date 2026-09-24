@@ -1293,7 +1293,6 @@ void CBasePaintBlob::PlayEffect( const Vector& vPosition, const Vector& vNormal 
 	m_bShouldPlayEffect = true;
 }
 
-
 struct BlobInBeam_t
 {
 	inline bool operator()( const CPaintBlob* pBlob ) const
@@ -1301,7 +1300,6 @@ struct BlobInBeam_t
 		return pBlob->GetMoveState() == PAINT_BLOB_TRACTOR_BEAM_MOVE;
 	}
 };
-
 
 struct BlobInAir_t
 {
