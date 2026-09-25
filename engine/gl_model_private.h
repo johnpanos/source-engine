@@ -43,10 +43,7 @@ struct msurface1_t;
 struct msurfacelighting_t;
 struct msurfacenormal_t;
 class ITexture;
-namespace mapcontainer
-{
-class ProbeVolumeView;
-}
+
 class CEngineSprite;
 
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
@@ -409,10 +406,6 @@ struct worldbrushdata_t
 
 	mleafambientindex_t		*m_pLeafAmbient;
 	mleafambientlighting_t	*m_pAmbientSamples;
-	// The map's validated RFC 0011 PRBV probe volume, borrowed from
-	// CModelLoader's map-scoped storage; null when the map carries none or it
-	// was rejected (models then use the leaf ambient).
-	const mapcontainer::ProbeVolumeView *pProbeVolume;
 	// Borrowed from CModelLoader's map-scoped storage. A native world renderer
 	// may upload this only while the world model remains loaded.
 	const unsigned char *pWorldMeshData;

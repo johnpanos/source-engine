@@ -785,6 +785,166 @@
       "layer": 1,
       "visibility": false,
       "expected": null
+    },
+    {
+      "file": "contract.prbv",
+      "position": [
+        56.0,
+        16.0,
+        16.0
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "layer": 0,
+      "visibility": true,
+      "expected": [
+        3.755365116326315e-14,
+        3.755365116326315e-14,
+        3.755365116326315e-14
+      ]
+    },
+    {
+      "file": "contract.prbv",
+      "position": [
+        56.0,
+        16.0,
+        16.0
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "layer": 0,
+      "visibility": false,
+      "expected": [
+        0.04235016285447011,
+        0.04235016285447011,
+        0.04235016285447011
+      ]
+    },
+    {
+      "file": "contract.prbv",
+      "position": [
+        56.0,
+        16.0,
+        16.0
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "layer": 1,
+      "visibility": true,
+      "expected": [
+        2.2529745798793618e-14,
+        2.2529745798793618e-14,
+        2.2529745798793618e-14
+      ]
+    },
+    {
+      "file": "contract.prbv",
+      "position": [
+        56.0,
+        16.0,
+        16.0
+      ],
+      "normal": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "layer": 1,
+      "visibility": false,
+      "expected": [
+        0.02540734054062123,
+        0.02540734054062123,
+        0.02540734054062123
+      ]
+    },
+    {
+      "file": "contract.prbv",
+      "position": [
+        20.0,
+        16.0,
+        16.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layer": 0,
+      "visibility": true,
+      "expected": [
+        0.75,
+        0.75,
+        0.75
+      ]
+    },
+    {
+      "file": "contract.prbv",
+      "position": [
+        20.0,
+        16.0,
+        16.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layer": 0,
+      "visibility": false,
+      "expected": [
+        0.75,
+        0.75,
+        0.75
+      ]
+    },
+    {
+      "file": "contract.prbv",
+      "position": [
+        20.0,
+        16.0,
+        16.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layer": 1,
+      "visibility": true,
+      "expected": [
+        0.44995117187499994,
+        0.44995117187499994,
+        0.44995117187499994
+      ]
+    },
+    {
+      "file": "contract.prbv",
+      "position": [
+        20.0,
+        16.0,
+        16.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "layer": 1,
+      "visibility": false,
+      "expected": [
+        0.44995117187499994,
+        0.44995117187499994,
+        0.44995117187499994
+      ]
     }
   ]
 }

@@ -35,6 +35,7 @@
 #include "materialsystem/imaterialsystemhardwareconfig.h"
 #include "../utils/common/bsplib.h"
 #include "ibsppack.h"
+#include "indirect_light_host.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -254,7 +255,7 @@ void R_LevelInit( void )
 	// A map whose baked light is carried by its probe volume (RFC 0011 PRBV)
 	// is lit without world lights.
 	if ( host_state.worldmodel->brush.pShared->numworldlights == 0 &&
-	     !host_state.worldmodel->brush.pShared->pProbeVolume )
+	     !IndirectLight_CurrentVolume() )
 	{
 		ConDMsg( "Level unlit, setting 'mat_fullbright 1'\n" );
 		mat_fullbright.SetValue( 1 );

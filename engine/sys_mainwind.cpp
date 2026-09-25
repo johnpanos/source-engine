@@ -85,8 +85,7 @@
 
 #endif
 
-
-
+#include "indirect_light_host.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -268,6 +267,11 @@ void CGame::AppActivate( bool fActive )
 	SetCanPostActivateEvents( false );
 
 #ifndef SWDS
+	// RFC 0011: indirect-light producers stop scheduling in the background.
+	if ( fActive )
+		IndirectLight_Resume();
+	else
+		IndirectLight_Background();
 	if ( videomode )
 	{
 		if ( fActive )

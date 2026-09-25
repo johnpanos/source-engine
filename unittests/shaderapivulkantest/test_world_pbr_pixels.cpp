@@ -256,8 +256,8 @@ int main()
 			// black bake so the pixel is theirs alone. The centre pixel is world
 			// (0, 0, 0.5), normal +Z, seen from the eye at (0, 0, 1).
 			check( context.DirectLightsSupported(), "WMSH PBR adds direct lights on this device" );
-			const std::vector<char> black = lmap_cases::MakeLmap(
-			    1, 1, 2, { { 0, 0, 0, 0x3c00 }, { 0, 0, 0, 0x3c00 } } );
+			const std::vector<char> black =
+			    lmap_cases::MakeLmap( 1, 1, 2, { { 0, 0, 0, 0x3c00 }, { 0, 0, 0, 0x3c00 } } );
 			check( UploadLmap( context, black, 2, &error ), "a black lightmap uploads" );
 			std::uint8_t dark = 255;
 			check( DrawWorld( context, &dark, &error ) && dark <= 1,
@@ -271,31 +271,31 @@ int main()
 			// The CPU model: pi x incident x the layered BRDF x N.L, incident
 			// the light set's legacy falloff; `cosine` and `falloff` off are the
 			// seeded controls.
-			const auto expectedLinear = [&]( const render_vulkan::CVulkanContext::DirectLight &light,
+			const auto expectedLinear = [&](
+			                                const render_vulkan::CVulkanContext::DirectLight &light,
 			                                bool cosine, bool falloff )
 			{
-				const float toLight[3] = { light.position[0], light.position[1],
-					light.position[2] - 0.5f };
-				const float distanceSquared = toLight[0] * toLight[0] +
-				                              toLight[1] * toLight[1] + toLight[2] * toLight[2];
+				const float toLight[3] = {
+				    light.position[0], light.position[1], light.position[2] - 0.5f };
+				const float distanceSquared =
+				    toLight[0] * toLight[0] + toLight[1] * toLight[1] + toLight[2] * toLight[2];
 				const float distance = std::sqrt( distanceSquared );
-				const float l[3] = { toLight[0] / distance, toLight[1] / distance,
-					toLight[2] / distance };
+				const float l[3] = {
+				    toLight[0] / distance, toLight[1] / distance, toLight[2] / distance };
 				const float h[3] = { l[0], l[1], l[2] + 1.0f };
 				const float hLength = std::sqrt( h[0] * h[0] + h[1] * h[1] + h[2] * h[2] );
 				const float normalDotLight = l[2];
 				const float normalDotHalf = h[2] / hLength;
 				const float viewDotHalf = h[2] / hLength;
 				const float baseRed = std::pow( ( 200.0f / 255.0f + 0.055f ) / 1.055f, 2.4f );
-				const render::pbr::Color brdf = render::pbr::EvaluateLayeredDirect(
-				    { baseRed, 0.0f, 0.0f }, 0.0f, 1.0f, normalDotLight, normalDotHalf,
-				    viewDotHalf, 128.0f / 255.0f );
+				const render::pbr::Color brdf =
+				    render::pbr::EvaluateLayeredDirect( { baseRed, 0.0f, 0.0f }, 0.0f, 1.0f,
+				        normalDotLight, normalDotHalf, viewDotHalf, 128.0f / 255.0f );
 				const float incident =
 				    light.color[0] *
 				    ( falloff ? light_set::Falloff( distanceSquared, light.radius, light.minLight )
 				              : 1.0f );
-				return render::pbr::kPi * incident * brdf.red *
-				       ( cosine ? normalDotLight : 1.0f );
+				return render::pbr::kPi * incident * brdf.red * ( cosine ? normalDotLight : 1.0f );
 			};
 			context.SetDirectLights( &point, 1 );
 			std::uint8_t lit = 0;
@@ -329,6 +329,37 @@ int main()
 			               3.0f,
 			    "two lights add, and a spot aimed at the surface lights it like a point" );
 			context.SetDirectLights( nullptr, 0 );
+
+			// render.indirect-policy.v1 on the furnace's values (total 0.75,
+			// direct 0.3, indirect 0.45): RuntimeIndirect (the direct layer plus
+			// the baked producer's indirect) matches Baked (the total layer);
+			// the seeded double count (the total layer under RuntimeIndirect)
+			// does not.
+			const std::vector<char> furnace = lmap_cases::MakeLmap( 1, 1, 3,
+			    { { 0x3a00, 0x3a00, 0x3a00, 0x3c00 }, { 0x34cd, 0x34cd, 0x34cd, 0x3c00 },
+			        { 0x3733, 0x3733, 0x3733, 0x3c00 } } );
+			check( UploadLmap( context, furnace, 2, &error ) &&
+			           context.WorldLightmapDirectHandle() >= 0,
+			    "a furnace-valued LMAP v2 with direct and indirect layers uploads" );
+			std::uint8_t baked = 0, runtime = 0, seeded = 0;
+			context.SetIndirectPolicy( 0, false );
+			check( DrawWorld( context, &baked, &error ), "Baked policy renders" );
+			context.SetIndirectPolicy( 2, false );
+			check( context.EffectiveIndirectPolicy() == 2 && DrawWorld( context, &runtime, &error ),
+			    "RuntimeIndirect policy renders" );
+			context.SetIndirectPolicy( 2, true );
+			check( DrawWorld( context, &seeded, &error ), "the seeded double count renders" );
+			std::fprintf( stderr, "furnace policy red: baked %u runtime %u seeded double %u\n",
+			    baked, runtime, seeded );
+			check( std::abs( int( baked ) - int( runtime ) ) <= 1,
+			    "RuntimeIndirect composes the furnace's total light as Baked does" );
+			check( seeded > baked + 10, "the seeded double count (total + indirect) is detected" );
+			context.SetIndirectPolicy( 0, false );
+			check( UploadLmap( context, layered, 2, &error ) &&
+			           ( context.SetIndirectPolicy( 2, false ),
+			               context.EffectiveIndirectPolicy() ) == 0,
+			    "RuntimeIndirect is unavailable without a direct layer" );
+			context.SetIndirectPolicy( 0, false );
 			check( UploadLmap( context, layered, 2, &error ), "the layered lightmap is restored" );
 			check( DrawWorld( context, &restored, &error ) && restored == diffuse,
 			    "without direct lights the shading is the bake's again" );

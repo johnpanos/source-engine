@@ -35,17 +35,18 @@ void WorldPbrError( std::string *outError, const std::string &message )
 } // namespace
 
 VkPipeline CVulkanContext::WorldPbrPipeline(
-    const DynRasterState &state, bool srgbPass, int samples, bool directLights )
+    const DynRasterState &state, bool srgbPass, int samples, int extended )
 {
 	const uint64_t key = PipelineKey( state, srgbPass, samples );
 	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
 	const bool indirectView = m_indirectViewMode != 0;
-	if ( directLights && ( indirectView || m_worldPbrLightPipelineLayout == VK_NULL_HANDLE ) )
+	if ( extended < 0 || extended > 3 ||
+	     ( extended && ( indirectView || m_worldPbrExtendedLayout == VK_NULL_HANDLE ) ) )
 		return VK_NULL_HANDLE;
-	std::map<uint64_t, VkPipeline> &pipelines = directLights ? m_worldPbrLightPipelines
-	                                           : indirectView ? m_worldPbrIndirectPipelines
-	                                                          : m_worldPbrPipelines;
-	const VkShaderModule fragment = directLights ? m_worldPbrLightFrag
+	std::map<uint64_t, VkPipeline> &pipelines = extended ? m_worldPbrExtendedPipelines[extended]
+	                                            : indirectView ? m_worldPbrIndirectPipelines
+	                                                           : m_worldPbrPipelines;
+	const VkShaderModule fragment = extended       ? m_worldPbrExtendedFrag[extended]
 	                                : indirectView ? m_worldPbrIndirectFrag
 	                                               : m_worldPbrFrag;
 	const auto existing = pipelines.find( key );
@@ -56,12 +57,13 @@ VkPipeline CVulkanContext::WorldPbrPipeline(
 	if ( m_worldPbrVert == VK_NULL_HANDLE || fragment == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE;
 	VkPipeline pipeline = BuildMaterialPipeline( state, m_worldPbrVert, fragment,
-	    directLights ? m_worldPbrLightPipelineLayout : m_worldPbrPipelineLayout, &m_worldPbrVin,
-	    pass, samples );
+	    extended ? m_worldPbrExtendedLayout : m_worldPbrPipelineLayout, &m_worldPbrVin, pass,
+	    samples );
 	if ( pipeline == VK_NULL_HANDLE )
-		WorldPbrLog( "vkCreateGraphicsPipelines (WMSH PBR%s, state %#llx) failed\n",
-		    directLights ? " direct lights" : indirectView ? " indirect view" : "",
-		    static_cast<unsigned long long>( key ) );
+		WorldPbrLog( "vkCreateGraphicsPipelines (WMSH PBR%s%s%s, state %#llx) failed\n",
+		    ( extended & kWorldPbrDirectLights ) ? " direct lights" : "",
+		    ( extended & kWorldPbrRuntimeIndirect ) ? " runtime indirect" : "",
+		    indirectView ? " indirect view" : "", static_cast<unsigned long long>( key ) );
 	pipelines[key] = pipeline;
 	return pipeline;
 }
@@ -129,54 +131,93 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 		return false;
 	}
 	m_pbrWorldReady = true;
-	// RFC 0011 G2: direct light from the frame's unbaked lights, in the
-	// per-frame constants ring (set 7). Optional: without an eighth set or the
-	// ring, WMSH PBR draws the bake alone and the log says so.
-	if ( properties.limits.maxBoundDescriptorSets >= 8 && m_skinUboLayout != VK_NULL_HANDLE )
+	// RFC 0011 G2: the extended variants on nine sets: direct light from the
+	// frame's unbaked lights (the per-frame constants ring, set 7) and the
+	// RuntimeIndirect policy (the producer's indirect atlas, set 8). Optional:
+	// without nine sets or the ring, WMSH PBR draws the bake alone under the
+	// Baked policy and the log says so.
+	if ( properties.limits.maxBoundDescriptorSets >= 9 && m_skinUboLayout != VK_NULL_HANDLE )
 	{
-		VkDescriptorSetLayout lightLayouts[8];
-		for ( int i = 0; i < 7; ++i )
-			lightLayouts[i] = m_dynTexDescLayout;
-		lightLayouts[7] = m_skinUboLayout;
-		info.setLayoutCount = 8;
-		info.pSetLayouts = lightLayouts;
-		const uint32_t *lightWords =
-		    m_clipPlanesSupported ? g_worldPbrLightClipFragSpv : g_worldPbrLightFragSpv;
-		const size_t lightBytes = m_clipPlanesSupported ? sizeof( g_worldPbrLightClipFragSpv )
-		                                                : sizeof( g_worldPbrLightFragSpv );
-		std::string lightError;
-		if ( vkCreatePipelineLayout(
-		         m_device, &info, nullptr, &m_worldPbrLightPipelineLayout ) != VK_SUCCESS ||
-		     !CreateShaderModule( lightWords, lightBytes, &m_worldPbrLightFrag, &lightError ) ||
-		     WorldPbrPipeline( DynRasterState(), false, 1, true ) == VK_NULL_HANDLE )
+		VkDescriptorSetLayout extendedLayouts[9];
+		for ( int i = 0; i < 9; ++i )
+			extendedLayouts[i] = m_dynTexDescLayout;
+		extendedLayouts[7] = m_skinUboLayout;
+		info.setLayoutCount = 9;
+		info.pSetLayouts = extendedLayouts;
+		const struct
 		{
-			WorldPbrLog( "WMSH PBR direct lights unavailable%s%s\n", lightError.empty() ? "" : ": ",
-			    lightError.c_str() );
-			DestroyWorldPbrLightVariant();
+			const uint32_t *words;
+			size_t bytes;
+		} variants[4] = { { nullptr, 0 },
+		    { m_clipPlanesSupported ? g_worldPbrLightClipFragSpv : g_worldPbrLightFragSpv,
+		        m_clipPlanesSupported ? sizeof( g_worldPbrLightClipFragSpv )
+		                              : sizeof( g_worldPbrLightFragSpv ) },
+		    { m_clipPlanesSupported ? g_worldPbrRuntimeClipFragSpv : g_worldPbrRuntimeFragSpv,
+		        m_clipPlanesSupported ? sizeof( g_worldPbrRuntimeClipFragSpv )
+		                              : sizeof( g_worldPbrRuntimeFragSpv ) },
+		    { m_clipPlanesSupported ? g_worldPbrLightRuntimeClipFragSpv
+		                            : g_worldPbrLightRuntimeFragSpv,
+		        m_clipPlanesSupported ? sizeof( g_worldPbrLightRuntimeClipFragSpv )
+		                              : sizeof( g_worldPbrLightRuntimeFragSpv ) } };
+		std::string extendedError;
+		bool ready = vkCreatePipelineLayout(
+		                 m_device, &info, nullptr, &m_worldPbrExtendedLayout ) == VK_SUCCESS;
+		for ( int variant = 1; ready && variant < 4; ++variant )
+			ready = CreateShaderModule( variants[variant].words, variants[variant].bytes,
+			            &m_worldPbrExtendedFrag[variant], &extendedError ) &&
+			        WorldPbrPipeline( DynRasterState(), false, 1, variant ) != VK_NULL_HANDLE;
+		if ( !ready )
+		{
+			WorldPbrLog( "WMSH PBR direct lights and RuntimeIndirect unavailable%s%s\n",
+			    extendedError.empty() ? "" : ": ", extendedError.c_str() );
+			DestroyWorldPbrExtendedVariants();
 		}
 	}
 	else
-		WorldPbrLog( "WMSH PBR direct lights unavailable (descriptor sets or constants ring)\n" );
+		WorldPbrLog( "WMSH PBR direct lights and RuntimeIndirect unavailable (descriptor sets "
+		             "or constants ring)\n" );
 	return true;
 }
 
-void CVulkanContext::DestroyWorldPbrLightVariant()
+void CVulkanContext::DestroyWorldPbrExtendedVariants()
 {
-	for ( const auto &entry : m_worldPbrLightPipelines )
-		if ( entry.second != VK_NULL_HANDLE )
-			vkDestroyPipeline( m_device, entry.second, nullptr );
-	m_worldPbrLightPipelines.clear();
-	if ( m_worldPbrLightFrag != VK_NULL_HANDLE )
-		vkDestroyShaderModule( m_device, m_worldPbrLightFrag, nullptr );
-	m_worldPbrLightFrag = VK_NULL_HANDLE;
-	if ( m_worldPbrLightPipelineLayout != VK_NULL_HANDLE )
-		vkDestroyPipelineLayout( m_device, m_worldPbrLightPipelineLayout, nullptr );
-	m_worldPbrLightPipelineLayout = VK_NULL_HANDLE;
+	for ( std::map<uint64_t, VkPipeline> &pipelines : m_worldPbrExtendedPipelines )
+	{
+		for ( const auto &entry : pipelines )
+			if ( entry.second != VK_NULL_HANDLE )
+				vkDestroyPipeline( m_device, entry.second, nullptr );
+		pipelines.clear();
+	}
+	for ( VkShaderModule &module : m_worldPbrExtendedFrag )
+	{
+		if ( module != VK_NULL_HANDLE )
+			vkDestroyShaderModule( m_device, module, nullptr );
+		module = VK_NULL_HANDLE;
+	}
+	if ( m_worldPbrExtendedLayout != VK_NULL_HANDLE )
+		vkDestroyPipelineLayout( m_device, m_worldPbrExtendedLayout, nullptr );
+	m_worldPbrExtendedLayout = VK_NULL_HANDLE;
+}
+
+void CVulkanContext::SetIndirectPolicy( int policy, bool seedDoubleCount )
+{
+	m_indirectPolicy = policy < 0 || policy > 2 ? 0 : policy;
+	m_indirectPolicySeedDouble = seedDoubleCount;
+}
+
+int CVulkanContext::EffectiveIndirectPolicy() const
+{
+	// indirect_policy::Available: RuntimeIndirect needs both separated layers.
+	if ( m_indirectPolicy == 2 &&
+	     ( m_worldLightmapDirectHandle < 0 || m_worldLightmapIndirectHandle < 0 ||
+	         m_worldPbrExtendedLayout == VK_NULL_HANDLE ) )
+		return 0;
+	return m_indirectPolicy;
 }
 
 void CVulkanContext::DestroyPbrWorldPipeline()
 {
-	DestroyWorldPbrLightVariant();
+	DestroyWorldPbrExtendedVariants();
 	for ( std::map<uint64_t, VkPipeline> *pipelines :
 	    { &m_worldPbrPipelines, &m_worldPbrIndirectPipelines } )
 	{

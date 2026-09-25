@@ -200,9 +200,23 @@
           "public/render/render_gamma_ramp.h",
           "public/render/render_present_policy.h",
           "public/render/render_sample_count.h",
-          "public/render/dxsupport_policy.h"
+          "public/render/dxsupport_policy.h",
+          "public/render/light_set.h",
+          "public/render/indirect_policy.h"
         ],
         "allowedEdges": []
+      },
+      {
+        "id": "render.indirect-light",
+        "paths": [
+          "public/render/indirect_light.h",
+          "public/render/indirect_switcher.h"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.contracts",
+          "world.map-container"
+        ]
       },
       {
         "id": "render.legacy-provider-contract",
@@ -261,6 +275,7 @@
         ],
         "allowedEdges": [
           "render.contracts",
+          "render.indirect-light",
           "testing.contracts"
         ]
       },
@@ -357,7 +372,8 @@
           "unittests/shaderapivulkantest/test_sdl3_vulkan_presentation.cpp",
           "unittests/shaderapivulkantest/test_pbr_pixels.cpp",
           "unittests/shaderapivulkantest/test_ktx2_pixels.cpp",
-          "unittests/shaderapivulkantest/test_world_pbr_pixels.cpp"
+          "unittests/shaderapivulkantest/test_world_pbr_pixels.cpp",
+          "unittests/shaderapivulkantest/test_indirect_switching.cpp"
         ],
         "allowedEdges": [
           "content.texture-contract",
@@ -367,6 +383,7 @@
           "render.bridge.world-mesh-vulkan",
           "render.conformance-tests",
           "render.contracts",
+          "render.indirect-light",
           "render.vulkan.core",
           "testing.contracts",
           "world.map-container",

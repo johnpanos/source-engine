@@ -54,6 +54,7 @@ extern IFileSystem *g_pFileSystem;
 #endif
 
 #include "igame.h"
+#include "indirect_light_host.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -1552,6 +1553,9 @@ void ShutdownMaterialSystem( void )
 void ReleaseMaterialSystemObjects()
 {
 #ifndef SWDS
+	// RFC 0011: the device's resources go; the baked volume is republished
+	// once they return.
+	IndirectLight_DeviceLost();
 	DispInfo_ReleaseMaterialSystemObjects( host_state.worldmodel );
 
 	modelrender->ReleaseAllStaticPropColorData();
@@ -1598,6 +1602,8 @@ void RestoreMaterialSystemObjects( int nChangeFlags )
 #ifndef SWDS
 		// Need to re-figure out the env_cubemaps, so blow away the lightcache.
 		R_StudioInitLightingCache();
+		// The indirect-light volume returns, then the previous producer.
+		IndirectLight_DeviceRestored();
 		modelrender->RestoreAllStaticPropColorData();
 #endif
 	}

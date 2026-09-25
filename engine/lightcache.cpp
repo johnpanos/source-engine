@@ -37,6 +37,7 @@
 #include "gl_matsysiface.h"
 #include "materialsystem/materialsystem_config.h"
 #include "tier2/tier2.h"
+#include "indirect_light_host.h"
 #include "mapcontainer/probe_volume.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -692,8 +693,8 @@ static void ComputeAmbientFromSphericalSamples( const Vector& start,
 // point lies outside every grid.
 static bool ComputeAmbientFromProbeVolume( const Vector &start, Vector *lightBoxColor )
 {
-	const mapcontainer::ProbeVolumeView *pVolume =
-	    host_state.worldbrush ? host_state.worldbrush->pProbeVolume : NULL;
+	// The volume the map's indirect-light producer publishes (RFC 0011).
+	const mapcontainer::ProbeVolumeView *pVolume = IndirectLight_CurrentVolume();
 	if ( !pVolume || !r_probevolume.GetBool() )
 		return false;
 	const float position[3] = { start.x, start.y, start.z };

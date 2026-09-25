@@ -20,6 +20,7 @@
 #include "iscratchpad3d.h"
 #include "map_container_file.h"
 #ifndef SWDS
+#include "indirect_light_host.h"
 #include "mapcontainer/probe_volume.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh.h"
@@ -379,9 +380,8 @@ private:
 	CUtlVector<worldmeshoccluder_t> m_WorldMeshOccluders;
 	CUtlVector<worldmeshgroup_t> m_WorldMeshGroups;
 	CUtlVector<worldmeshleafrun_t> m_WorldMeshLeafRuns;
-	// PRBV bytes and the view over them; the world brush borrows the view.
+	// PRBV bytes while the lump is read and validated (then the host's).
 	CUtlVector<byte> m_ProbeVolumeBytes;
-	mapcontainer::ProbeVolumeView *m_pProbeVolume = NULL;
 #endif
 
 	char				m_szActiveMapName[64];
@@ -4984,25 +4984,6 @@ void CModelLoader::Map_LoadProbeVolume()
 		m_ProbeVolumeBytes.Purge();
 		return;
 	}
-	m_pProbeVolume = new mapcontainer::ProbeVolumeView( m_ProbeVolumeBytes.Base(), layout );
-	m_worldBrushData.pProbeVolume = m_pProbeVolume;
-	// A native world renderer also samples it per pixel for PBR models.
-	world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshUploader();
-	if ( uploader && uploader->IsResident() )
-	{
-		CUtlVector<float> table;
-		table.SetCount( int( layout.gridCount * mapcontainer::kProbeGridTableFloats ) );
-		mapcontainer::WriteProbeGridTable( layout, table.Base() );
-		world_mesh_gpu::ProbeVolumeUploadRequest request;
-		request.atlasWidth = layout.atlasWidth;
-		request.atlasHeight = layout.atlasHeight;
-		request.atlas = m_ProbeVolumeBytes.Base() + layout.atlasOffset;
-		request.gridCount = layout.gridCount;
-		request.tableFloats = mapcontainer::kProbeGridTableFloats;
-		request.gridTable = table.Base();
-		if ( !uploader->UploadProbeVolume( request ) )
-			Warning( "Map %s: PRBV GPU upload failed; models use the ambient cube\n", s_szMapName );
-	}
 	uint32_t probes = 0;
 	for ( uint32_t i = 0; i < layout.gridCount; ++i )
 		probes += layout.grids[i].probeCount;
@@ -5010,13 +4991,15 @@ void CModelLoader::Map_LoadProbeVolume()
 	    s_szMapName, lump.version, layout.gridCount, layout.gridCount == 1 ? "" : "s", probes,
 	    layout.activeProbes, layout.atlasWidth, layout.atlasHeight,
 	    m_ProbeVolumeBytes.Count() / 1024, ( Plat_FloatTime() - started ) * 1000.0 );
+	// The indirect-light host owns the volume from here: its producers
+	// publish what the ambient cube and the renderer sample.
+	IndirectLight_BeginMap( m_ProbeVolumeBytes.Base(), size_t( m_ProbeVolumeBytes.Count() ) );
+	m_ProbeVolumeBytes.Purge();
 }
 
 void CModelLoader::Map_ReleaseProbeVolume()
 {
-	m_worldBrushData.pProbeVolume = NULL;
-	delete m_pProbeVolume;
-	m_pProbeVolume = NULL;
+	IndirectLight_EndMap();
 	m_ProbeVolumeBytes.Purge();
 }
 

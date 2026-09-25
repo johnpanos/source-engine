@@ -20,7 +20,7 @@ using namespace light_set;
 
 unsigned long g_checks = 0;
 unsigned long g_failures = 0;
-#if defined( LIGHT_SET_SEEDED_SLOT_IDS ) || defined( LIGHT_SET_SEEDED_STYLE_IGNORED ) || \
+#if defined( LIGHT_SET_SEEDED_SLOT_IDS ) || defined( LIGHT_SET_SEEDED_STYLE_IGNORED ) ||           \
     defined( LIGHT_SET_SEEDED_FROZEN_EPOCH )
 constexpr bool kSeeded = true;
 #else
@@ -121,8 +121,8 @@ int main()
 {
 	UnderTest builder;
 	builder.BeginMap( 7 );
-	const std::vector<WorldLightInput> world = { World( 0, 0, 2.0f ), World( 1, 5, 1.0f ),
-		World( 2, 5, 3.0f ) };
+	const std::vector<WorldLightInput> world = {
+	    World( 0, 0, 2.0f ), World( 1, 5, 1.0f ), World( 2, 5, 3.0f ) };
 	std::vector<float> styles( 64, 1.0f );
 	std::set<uint32_t> everIssued;
 	uint64_t lastEpoch = 0;
@@ -141,8 +141,8 @@ int main()
 	};
 
 	// Frame 1: three world lights, two dlights, one elight.
-	const Snapshot f1 = builder.Build(
-	    world, styles, { Dynamic( 0, 11 ), Dynamic( 3, 12 ), Dynamic( 0, 11, LightKind::Entity ) } );
+	const Snapshot f1 = builder.Build( world, styles,
+	    { Dynamic( 0, 11 ), Dynamic( 3, 12 ), Dynamic( 0, 11, LightKind::Entity ) } );
 	issued( f1, "frame 1: IDs are non-zero and unique" );
 	Check( f1.mapSerial == 7 && f1.lights.size() == 6, "frame 1 carries every light" );
 	for ( size_t i = 0; i < 3; ++i )
@@ -160,8 +160,8 @@ int main()
 
 	// Frame 2: the same lights; style 5 dims to 0.25.
 	styles[5] = 0.25f;
-	const Snapshot f2 = builder.Build(
-	    world, styles, { Dynamic( 0, 11 ), Dynamic( 3, 12 ), Dynamic( 0, 11, LightKind::Entity ) } );
+	const Snapshot f2 = builder.Build( world, styles,
+	    { Dynamic( 0, 11 ), Dynamic( 3, 12 ), Dynamic( 0, 11, LightKind::Entity ) } );
 	issued( f2, "frame 2: IDs are unique" );
 	for ( size_t i = 0; i < f1.lights.size(); ++i )
 		Check( f2.lights[i].id == f1.lights[i].id, "a surviving light keeps its ID" );
@@ -191,8 +191,8 @@ int main()
 	    "a light that went dark and returned is a new light" );
 	bool reused = false;
 	for ( const RuntimeLight &light : f4.lights )
-		reused |= light.kind != LightKind::World &&
-		          ( light.id == oldSlot0 || light.id == oldSlot3 );
+		reused |=
+		    light.kind != LightKind::World && ( light.id == oldSlot0 || light.id == oldSlot3 );
 	Check( !reused, "no ID is reused within a map" );
 
 	// A map change: world IDs rebind, the epoch restarts, dynamics are new.

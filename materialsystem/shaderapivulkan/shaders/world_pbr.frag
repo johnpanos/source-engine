@@ -5,6 +5,10 @@
 // (sRGB, decoded here) adds its color times $emissionscale. The native pixel
 // fixture checks normal, metalness, roughness, emission and the environment.
 //
+// RUNTIME_INDIRECT (RFC 0011 render.indirect-policy.v1's RuntimeIndirect):
+// the bound lightmap is the bake's direct layer, and the producer's indirect
+// light is added from its atlas (set 8), sampled at the lightmap coordinate.
+//
 // DIRECT_LIGHTS (RFC 0011 G2) adds the frame's unbaked lights, from the
 // engine's light set (render/light_set.h), through the legacy dlight falloff
 // times the Lambert cosine and the layered BRDF (set 7). The push block's
@@ -111,6 +115,10 @@ vec3 SpecularBrdf( vec3 normal, vec3 view, vec3 light, vec3 f0, float roughness 
 	vec3 fresnel = f0 + ( vec3( 1.0 ) - f0 ) * grazing5;
 	return fresnel * distribution * visibility;
 }
+
+#ifdef RUNTIME_INDIRECT
+layout( set = 8, binding = 0 ) uniform sampler2D producerIndirect;
+#endif
 
 #ifdef DIRECT_LIGHTS
 // Four vec4 per light: position.xyz, radius; color.rgb, minLight;
@@ -222,6 +230,9 @@ void main()
 	// Lambertian 1/pi factor. Multiplying this bake by albedo must not divide
 	// it by pi again.
 	vec3 bakedDiffuse = BakedIrradiance( normal );
+#ifdef RUNTIME_INDIRECT
+	bakedDiffuse += texture( producerIndirect, fragLightmapUv ).rgb;
+#endif
 	vec3 diffuse = base * ( 1.0 - metalness ) *
 	    ( vec3( 1.0 ) - directionalAlbedo ) * bakedDiffuse * occlusion;
 	vec3 specular = vec3( 0.0 );

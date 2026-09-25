@@ -319,6 +319,7 @@ def build(bld):
 			'host_saverestore.cpp',
 			'lightcache.cpp',
 			'light_set_publisher.cpp',
+			'indirect_light_host.cpp',
 			'saverestore_filesystem.cpp',
 			'sys_getmodes.cpp',
 			'vgui_askconnectpanel.cpp',

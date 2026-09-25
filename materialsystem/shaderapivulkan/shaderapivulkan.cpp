@@ -236,6 +236,14 @@ static ConVar mat_indirect_view( "mat_indirect_view", "0", FCVAR_CHEAT,
     "2 indirect diffuse radiance. WMSH PBR surfaces show the map's LMAP indirect layer "
     "(black without one), PBRMetalRough models their ambient cube.",
     true, 0.0f, true, 2.0f );
+// RFC 0011 render.indirect-policy.v1 for the world (CVulkanContext::SetIndirectPolicy).
+static ConVar r_indirect_policy( "r_indirect_policy", "0", FCVAR_CHEAT,
+    "World indirect-light policy: 0 Baked (the lightmap's total layer), 1 BakedPlusDelta, 2 "
+    "RuntimeIndirect (the direct layer plus the producer's indirect; needs LMAP v2 direct and "
+    "indirect layers)",
+    true, 0.0f, true, 2.0f );
+static ConVar r_indirect_policy_seed_double( "r_indirect_policy_seed_double", "0", FCVAR_CHEAT,
+    "Sensitivity control: the RuntimeIndirect variant reads the total layer (a double count)" );
 static ConVar mat_indirect_view_scale( "mat_indirect_view_scale", "1", FCVAR_CHEAT,
     "Linear exposure applied to mat_indirect_view's output.", true, 1.0e-4f, true, 1.0e4f );
 static bool g_bHDREnabled = false;
@@ -1212,6 +1220,8 @@ public:
 		InvokePendingModeChangeCallbacks();
 		g_VulkanContext.SetIndirectLightView(
 		    mat_indirect_view.GetInt(), mat_indirect_view_scale.GetFloat() );
+		g_VulkanContext.SetIndirectPolicy(
+		    r_indirect_policy.GetInt(), r_indirect_policy_seed_double.GetBool() );
 		// The engine's RFC 0011 probe-volume switches (lightcache.cpp) also
 		// govern per-pixel sampling: 0 off, 1 with visibility, 2 without.
 		// r_probevolume 2 keeps the volume to the ambient cube (the path

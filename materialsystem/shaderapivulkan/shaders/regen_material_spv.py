@@ -29,6 +29,14 @@ SHADERS = (
     # RFC 0011 G2: the frame's unbaked lights (set 7).
     ("g_worldPbrLightFragSpv", "world_pbr.frag", ["-DDIRECT_LIGHTS"]),
     ("g_worldPbrLightClipFragSpv", "world_pbr.frag", ["-DDIRECT_LIGHTS", "-DCLIP_PLANES"]),
+    # RFC 0011 G2: the RuntimeIndirect policy (set 8), with and without lights.
+    ("g_worldPbrRuntimeFragSpv", "world_pbr.frag", ["-DRUNTIME_INDIRECT"]),
+    ("g_worldPbrRuntimeClipFragSpv", "world_pbr.frag", ["-DRUNTIME_INDIRECT", "-DCLIP_PLANES"]),
+    ("g_worldPbrLightRuntimeFragSpv", "world_pbr.frag", ["-DDIRECT_LIGHTS",
+                                                          "-DRUNTIME_INDIRECT"]),
+    ("g_worldPbrLightRuntimeClipFragSpv", "world_pbr.frag", ["-DDIRECT_LIGHTS",
+                                                              "-DRUNTIME_INDIRECT",
+                                                              "-DCLIP_PLANES"]),
     ("g_worldPbrIndirectClipFragSpv", "world_pbr.frag", ["-DINDIRECT_VIEW", "-DCLIP_PLANES"]),
     ("g_worldGlassFragSpv", "world_pbr_glass.frag", []),
     ("g_worldGlassClipFragSpv", "world_pbr_glass.frag", ["-DCLIP_PLANES"]),

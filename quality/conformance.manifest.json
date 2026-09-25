@@ -960,6 +960,21 @@
       "expect": "pass"
     },
     {
+      "id": "render.indirect-light",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.indirect-light.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "RFC 0011 producer contract: the shared suite passes the Baked producer and a scripted fake and rejects each of the seven deliberately bad producers; render.indirect-switching's scenarios (baked <-> fake, a failed Begin, device loss mid-fade, backgrounding, map change) against a fake GPU timeline",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_indirect_light.cpp",
+        "mapcontainer/probe_volume.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.indirect-policy",
       "domain": "Q-PRESENTATION",
       "rfc": "0011",
@@ -2229,6 +2244,29 @@
       "description": "PBRMetalRough on dynamic meshes (model_pbr.frag) against the CPU model built on pbr_brdf.h, with seeded-defect controls; RFC 0011 per-pixel probe-volume sampling against the C++ reference sampler (quality/fixtures/gi/prbv/gpu.prbv)",
       "sources": [
         "unittests/shaderapivulkantest/test_model_pbr_pixels.cpp",
+        "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
+        "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
+        "mapcontainer/probe_volume.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.indirect-switching.native-pixels",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.indirect-light.v1.md",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "result_protocol": "checks-v1",
+      "description": "RFC 0011 render.indirect-switching on native Vulkan: Baked <-> scripted fake with real frames and completion serials, a failed Begin, a simulated device loss mid-fade; no black frame, fade residency within budget, validation-clean when the layer is present",
+      "sources": [
+        "unittests/shaderapivulkantest/test_indirect_switching.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",

@@ -462,6 +462,39 @@ def fixture_analytic():
     return build([grid], 2)
 
 
+def fixture_contract():
+    """The producer contract suite's seed (render.indirect-light.v1): the leak
+    fixture's four-by-two-by-two probes and wall at x = 48, with two layers.
+    The lit probes (x <= 1) hold the furnace's light, total 0.75 and indirect
+    0.45 (direct 0.3); the dark ones hold none. A producer that keeps the seed's
+    visibility keeps the dark side dark; one that publishes total and indirect
+    inconsistently changes the lit side's direct light."""
+    dims = [4, 2, 2]
+    count = int(np.prod(dims))
+    spacing, wall = 32.0, 48.0
+    irradiance = np.zeros((2, count, 6, 6, 3), np.float32)
+    visibility = uniform_visibility(count, 200.0)
+    directions = interior_directions(VISIBILITY_TILE - 2)
+    for z in range(2):
+        for y in range(2):
+            for x in range(4):
+                i = probe_index(dims, x, y, z)
+                if x <= 1:
+                    irradiance[0, i] = 0.75
+                    irradiance[1, i] = 0.45
+                toward = directions[..., 0] if x <= 1 else -directions[..., 0]
+                gap = abs(wall - x * spacing)
+                hit = np.minimum(np.where(toward > 1e-3, gap / np.maximum(toward, 1e-3), 200.0),
+                                 200.0)
+                visibility[i, ..., 0] = hit
+                visibility[i, ..., 1] = hit * hit
+    grid = {"origin": [0.0, 0.0, 0.0], "spacing": [spacing] * 3, "dims": dims,
+            "max_relocation": 8.0, "max_distance": 200.0, "irradiance": irradiance,
+            "visibility": visibility, "offsets": np.zeros((count, 3)),
+            "active": np.ones(count)}
+    return build([grid], 2)
+
+
 def fixture_gpu():
     """The native GPU sampler's fixture (shaderapivulkantest's model PBR
     probe cases): a 3 x 3 x 3 grid around the test quad (clip space equals
@@ -497,7 +530,7 @@ def write_fixtures(out):
     """Checked-in PRBV conformance fixtures and the Python sampler's values."""
     out.mkdir(parents=True, exist_ok=True)
     files = {"leak.prbv": fixture_leak(), "analytic.prbv": fixture_analytic(),
-             "gpu.prbv": fixture_gpu()}
+             "gpu.prbv": fixture_gpu(), "contract.prbv": fixture_contract()}
     samples = []
     for name, data in files.items():
         (out / name).write_bytes(data)
@@ -512,6 +545,8 @@ def write_fixtures(out):
                               ((30.0, 30.0, 70.0), (0.6, 0.0, 0.8)),
                               ((-50.0, 5.0, 10.0), (1.0, 0.0, 0.0)),
                               ((60.0, 60.0, 90.0), (0.0, 0.0, 1.0))],
+            "contract.prbv": [((56.0, 16.0, 16.0), (1.0, 0.0, 0.0)),
+                              ((20.0, 16.0, 16.0), (0.0, 0.0, 1.0))],
             "gpu.prbv": [((-0.3, 0.2, 0.5), (0.0, 0.0, -1.0)),
                          ((0.1, -0.4, 0.5), (0.6, 0.0, -0.8)),
                          ((0.4, 0.0, 0.5), (0.0, 0.0, -1.0))]}[name]

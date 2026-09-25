@@ -1,0 +1,473 @@
+//========= Copyright Valve Corporation, All rights reserved. ============//
+//
+// Purpose: The indirect-light producer contract (render.indirect-light.v1,
+//          RFC 0011): what a baked, radiosity, SDF or ray-query producer
+//          promises, so producers substitute behind one switcher and one
+//          shared suite (unittests/rendertest/test_indirect_light.cpp).
+//
+//          Obligations (each checked by the suite, each seeded by a bad
+//          producer it must reject):
+//          - Begin validates the scene and either succeeds or leaves no
+//            resources behind, reporting an IndirectError.
+//          - A published volume is complete, immutable, in the scene's grid
+//            topology, with a strictly increasing epoch.
+//          - The first publication after Begin is not darker than the seed by
+//            more than the producer's seed tolerance (no black flash).
+//          - A published volume keeps the seed's visibility (no leaks).
+//          - Total minus indirect stays the seed's direct light: a producer
+//            publishes indirect light, never counts the direct twice.
+//          - Within convergenceFrames of a change a producer claims to
+//            respond to, its volume is within tolerance of that change's
+//            steady state; a producer claims no response it lacks.
+//          - Resources are released behind the completion serial End's
+//            ticket names; nothing a submitted frame may read is freed.
+//          - Schedule adds CPU jobs to the frame's executor and returns; it
+//            never waits for the GPU and never creates threads.
+//
+//===========================================================================//
+
+#ifndef RENDER_INDIRECT_LIGHT_H
+#define RENDER_INDIRECT_LIGHT_H
+
+#include "foundation/expected.h"
+#include "mapcontainer/probe_volume.h"
+#include "render/indirect_policy.h"
+#include "render/light_set.h"
+
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <span>
+#include <vector>
+
+namespace indirect_light
+{
+enum class ProducerKind : uint8_t
+{
+	Baked,
+	PrecomputedRadiosity,
+	SdfTraced,
+	RayQuery,
+	ScriptedFake, // the contract's test producer; never offered to players
+};
+
+// r_indirect_producer's values.
+[[nodiscard]] inline const char *ProducerName( ProducerKind kind )
+{
+	switch ( kind )
+	{
+	case ProducerKind::Baked:
+		return "baked";
+	case ProducerKind::PrecomputedRadiosity:
+		return "radiosity";
+	case ProducerKind::SdfTraced:
+		return "sdf";
+	case ProducerKind::RayQuery:
+		return "rayquery";
+	case ProducerKind::ScriptedFake:
+		return "fake";
+	}
+	return "unknown";
+}
+
+[[nodiscard]] inline bool ParseProducer( const char *name, ProducerKind *out )
+{
+	for ( ProducerKind kind : { ProducerKind::Baked, ProducerKind::PrecomputedRadiosity,
+	          ProducerKind::SdfTraced, ProducerKind::RayQuery, ProducerKind::ScriptedFake } )
+	{
+		if ( name && std::strcmp( name, ProducerName( kind ) ) == 0 )
+		{
+			*out = kind;
+			return true;
+		}
+	}
+	return false;
+}
+
+// The scene changes a producer can respond to.
+enum Response : uint32_t
+{
+	kLightIntensity = 1u << 0, // style scalars, toggles, dimming, color
+	kLightMotion = 1u << 1,    // moved or unbaked lights
+	kGeometryMotion = 1u << 2, // doors, panels, props occlude and bounce
+	kEmission = 1u << 3,       // emissive material changes
+};
+
+[[nodiscard]] constexpr uint32_t PolicyBit( indirect_policy::Policy policy )
+{
+	return 1u << uint32_t( policy );
+}
+
+struct ProducerCaps
+{
+	ProducerKind kind = ProducerKind::Baked;
+	uint32_t responds = 0;
+	uint32_t policies = PolicyBit( indirect_policy::Policy::Baked );
+	uint32_t requiredFeatures = 0; // device feature bits (RFC 0011 G5)
+	uint32_t convergenceFrames = 0;
+	bool publishesSurfaceAtlas = false;
+	float seedTolerance = 0.05f;     // first publication: at least (1 - this) x the seed
+	float responseTolerance = 0.05f; // converged: within this of the steady state
+};
+
+enum class IndirectError : uint8_t
+{
+	MissingSceneData = 1, // e.g. no probe volume, no RTRN, no SDF input
+	UnsupportedPolicy,
+	MissingFeature,
+	InvalidSeed,
+	Unavailable, // not offered on this profile or map
+};
+
+[[nodiscard]] inline const char *IndirectErrorName( IndirectError error )
+{
+	switch ( error )
+	{
+	case IndirectError::MissingSceneData:
+		return "missing-scene-data";
+	case IndirectError::UnsupportedPolicy:
+		return "unsupported-policy";
+	case IndirectError::MissingFeature:
+		return "missing-feature";
+	case IndirectError::InvalidSeed:
+		return "invalid-seed";
+	case IndirectError::Unavailable:
+		return "unavailable";
+	}
+	return "unknown";
+}
+
+// IEEE binary16 from float, round to nearest even (the PRBV texel encoding).
+[[nodiscard]] inline uint16_t FloatToHalf( float value )
+{
+	uint32_t bits;
+	std::memcpy( &bits, &value, sizeof( bits ) );
+	const uint32_t sign = ( bits >> 16 ) & 0x8000u;
+	int32_t exponent = int32_t( ( bits >> 23 ) & 0xff ) - 127 + 15;
+	uint32_t mantissa = bits & 0x7fffffu;
+	if ( ( ( bits >> 23 ) & 0xff ) == 0xff )
+		return uint16_t( sign | 0x7c00u | ( mantissa ? 0x200u : 0u ) );
+	if ( exponent >= 31 )
+		return uint16_t( sign | 0x7c00u );
+	if ( exponent <= 0 )
+	{
+		if ( exponent < -10 )
+			return uint16_t( sign );
+		mantissa |= 0x800000u;
+		const uint32_t shift = uint32_t( 14 - exponent );
+		uint32_t half = mantissa >> shift;
+		const uint32_t rest = mantissa & ( ( 1u << shift ) - 1 );
+		const uint32_t halfway = 1u << ( shift - 1 );
+		if ( rest > halfway || ( rest == halfway && ( half & 1u ) ) )
+			++half;
+		return uint16_t( sign | half );
+	}
+	uint32_t half = ( uint32_t( exponent ) << 10 ) | ( mantissa >> 13 );
+	const uint32_t rest = mantissa & 0x1fffu;
+	if ( rest > 0x1000u || ( rest == 0x1000u && ( half & 1u ) ) )
+		++half;
+	return uint16_t( sign | half );
+}
+
+// A complete, immutable probe volume: validated PRBV bytes and their layout.
+struct Volume
+{
+	std::vector<unsigned char> bytes;
+	mapcontainer::ProbeVolumeLayout layout{};
+
+	// Null when the bytes are not a valid volume.
+	[[nodiscard]] static std::shared_ptr<const Volume> FromBytes( std::vector<unsigned char> bytes )
+	{
+		auto volume = std::make_shared<Volume>();
+		if ( mapcontainer::ValidateProbeVolume( bytes.data(), bytes.size(), &volume->layout ) !=
+		     mapcontainer::ProbeVolumeError::Ok )
+			return nullptr;
+		volume->bytes = std::move( bytes );
+		return volume;
+	}
+
+	[[nodiscard]] mapcontainer::ProbeVolumeView View() const
+	{
+		return mapcontainer::ProbeVolumeView( bytes.data(), layout );
+	}
+
+	// Same header, grids and atlas: volumes a fade can blend texel by texel.
+	[[nodiscard]] bool SameTopology( const Volume &other ) const
+	{
+		return bytes.size() == other.bytes.size() &&
+		       layout.atlasOffset == other.layout.atlasOffset &&
+		       std::memcmp( bytes.data(), other.bytes.data(), size_t( layout.atlasOffset ) ) == 0;
+	}
+
+	// The mean luminance of every probe's layer-`layer` irradiance tile (the
+	// measure a switch's "no black frame" check compares).
+	[[nodiscard]] float MeanIrradiance( uint32_t layer = 0 ) const
+	{
+		double sum = 0.0;
+		uint64_t count = 0;
+		for ( uint32_t g = 0; g < layout.gridCount; ++g )
+		{
+			const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
+			if ( layer >= layout.layerCount )
+				return 0.0f;
+			const uint32_t rows = ( grid.probeCount + grid.tilesPerRow - 1 ) / grid.tilesPerRow;
+			const uint32_t x0 = grid.irradianceOrigin[layer][0];
+			const uint32_t y0 = grid.irradianceOrigin[layer][1];
+			for ( uint32_t y = y0; y < y0 + rows * mapcontainer::kProbeIrradianceTile; ++y )
+			{
+				for ( uint32_t x = x0;
+				    x < x0 + grid.tilesPerRow * mapcontainer::kProbeIrradianceTile; ++x )
+				{
+					const unsigned char *texel = bytes.data() + layout.atlasOffset +
+					                             ( uint64_t( y ) * layout.atlasWidth + x ) * 8;
+					uint16_t rgb[3];
+					std::memcpy( rgb, texel, sizeof( rgb ) );
+					sum += 0.2126 * mapcontainer::HalfToFloat( rgb[0] ) +
+					       0.7152 * mapcontainer::HalfToFloat( rgb[1] ) +
+					       0.0722 * mapcontainer::HalfToFloat( rgb[2] );
+					++count;
+				}
+			}
+		}
+		return count ? float( sum / double( count ) ) : 0.0f;
+	}
+};
+
+// Texel-by-texel blend of two volumes of one topology: a fade's frame.
+// Null when the topologies differ.
+[[nodiscard]] inline std::shared_ptr<const Volume> Blend(
+    const Volume &from, const Volume &to, float weight )
+{
+	if ( !from.SameTopology( to ) )
+		return nullptr;
+	auto blended = std::make_shared<Volume>( from );
+	const size_t begin = size_t( from.layout.atlasOffset );
+	for ( size_t i = begin; i + 1 < from.bytes.size(); i += 2 )
+	{
+		uint16_t a, b;
+		std::memcpy( &a, from.bytes.data() + i, 2 );
+		std::memcpy( &b, to.bytes.data() + i, 2 );
+		const float value = mapcontainer::HalfToFloat( a ) * ( 1.0f - weight ) +
+		                    mapcontainer::HalfToFloat( b ) * weight;
+		const uint16_t half = FloatToHalf( value );
+		std::memcpy( blended->bytes.data() + i, &half, 2 );
+	}
+	return blended;
+}
+
+struct PublishedVolume
+{
+	uint64_t epoch = 0;
+	// Shared by the producer, the switcher's fade and the frames that sample
+	// it until the host retires them behind the completion serial.
+	std::shared_ptr<const Volume> volume;
+};
+
+// A scripted scene change (a door opening, a light toggled): the scenario
+// inputs a producer's response is judged on.
+struct SceneChange
+{
+	uint32_t response = 0; // the Response bit it exercises
+	uint32_t target = 0;
+	float value = 0.0f;
+};
+
+struct IndirectScene
+{
+	uint64_t mapSerial = 0;
+	std::shared_ptr<const Volume> baked; // the map's PRBV: every producer's seed
+	indirect_policy::Policy policy = indirect_policy::Policy::Baked;
+	uint32_t deviceFeatures = 0;
+	bool hasTransfer = false; // RTRN (the radiosity producer's input, G4)
+};
+
+// GPU resources a producer owns, released behind the provider's completion
+// serial (the native provider's retirement rule).
+class IResourceTracker
+{
+public:
+	virtual ~IResourceTracker() = default;
+	virtual uint64_t Acquire( size_t bytes ) = 0;
+	// Frees `id` once the completion serial reaches `afterSerial`.
+	virtual void Release( uint64_t id, uint64_t afterSerial ) = 0;
+	[[nodiscard]] virtual uint64_t SubmittedSerial() const = 0;
+	[[nodiscard]] virtual uint64_t CompletedSerial() const = 0;
+};
+
+// One frame's work: CPU jobs the frame's executor runs (a producer never
+// creates threads; a CPU producer's serial mode runs its jobs in order), the
+// frame's scene changes, and read-only GPU progress. There is no GPU wait.
+struct FrameWork
+{
+	uint64_t frameSerial = 0;
+	std::vector<std::function<void()>> jobs;
+	IResourceTracker *resources = nullptr;
+	std::span<const SceneChange> changes;
+};
+
+struct RetireTicket
+{
+	uint64_t afterSerial = 0; // resources are free once the completion serial reaches this
+};
+
+class IProducer
+{
+public:
+	virtual ~IProducer() = default;
+	[[nodiscard]] virtual ProducerCaps Caps() const = 0;
+	// Validates scene data and allocates. Fails without side effects.
+	[[nodiscard]] virtual foundation::Expected<void, IndirectError> Begin(
+	    const IndirectScene &scene, const PublishedVolume &seed, IResourceTracker &resources ) = 0;
+	// Adds this frame's CPU jobs; never blocks on the GPU.
+	virtual void Schedule( FrameWork &work, const light_set::Snapshot &lights ) = 0;
+	// The newest complete volume, or none before the first publication.
+	[[nodiscard]] virtual std::optional<PublishedVolume> Published() const = 0;
+	// Stops scheduling; resources are released once the ticket completes.
+	[[nodiscard]] virtual RetireTicket End() = 0;
+};
+
+// The Baked producer: publishes the map's PRBV once, as its seed. It
+// responds to nothing, runs under the Baked policy only, needs no device
+// feature, and is every other producer's seed and fallback.
+class BakedProducer final : public IProducer
+{
+public:
+	[[nodiscard]] ProducerCaps Caps() const override
+	{
+		ProducerCaps caps;
+		caps.kind = ProducerKind::Baked;
+		caps.seedTolerance = 0.0f;
+		return caps;
+	}
+	[[nodiscard]] foundation::Expected<void, IndirectError> Begin(
+	    const IndirectScene &scene, const PublishedVolume &, IResourceTracker & ) override
+	{
+		if ( !scene.baked )
+			return foundation::MakeUnexpected( IndirectError::MissingSceneData );
+		if ( scene.policy != indirect_policy::Policy::Baked )
+			return foundation::MakeUnexpected( IndirectError::UnsupportedPolicy );
+		m_published = PublishedVolume{ ++m_epoch, scene.baked };
+		return {};
+	}
+	void Schedule( FrameWork &, const light_set::Snapshot & ) override {}
+	[[nodiscard]] std::optional<PublishedVolume> Published() const override { return m_published; }
+	[[nodiscard]] RetireTicket End() override
+	{
+		m_published.reset(); // CPU data only: the host retires its uploads
+		return {};
+	}
+
+private:
+	std::optional<PublishedVolume> m_published;
+	uint64_t m_epoch = 0;
+};
+
+// The contract's scripted fake as the product composes it (offered only
+// under -indirect_test_fake, never to players): after `delayFrames` it
+// publishes the seed with its indirect light scaled by `indirectScale` and
+// its total recomposed (the seed's direct light plus that indirect). It
+// responds to nothing and runs under Baked and RuntimeIndirect. The native
+// switching suite uses it for a visible, deterministic switch.
+class ScriptedFakeProducer final : public IProducer
+{
+public:
+	explicit ScriptedFakeProducer( float indirectScale = 1.2f, uint32_t delayFrames = 2 )
+	    : m_indirectScale( indirectScale ), m_delayFrames( delayFrames )
+	{
+	}
+	[[nodiscard]] ProducerCaps Caps() const override
+	{
+		ProducerCaps caps;
+		caps.kind = ProducerKind::ScriptedFake;
+		caps.policies = PolicyBit( indirect_policy::Policy::Baked ) |
+		                PolicyBit( indirect_policy::Policy::RuntimeIndirect );
+		caps.convergenceFrames = m_delayFrames;
+		return caps;
+	}
+	[[nodiscard]] foundation::Expected<void, IndirectError> Begin(
+	    const IndirectScene &scene, const PublishedVolume &seed, IResourceTracker & ) override
+	{
+		if ( !scene.baked )
+			return foundation::MakeUnexpected( IndirectError::MissingSceneData );
+		if ( !( Caps().policies & PolicyBit( scene.policy ) ) )
+			return foundation::MakeUnexpected( IndirectError::UnsupportedPolicy );
+		m_seed =
+		    seed.volume && seed.volume->SameTopology( *scene.baked ) ? seed.volume : scene.baked;
+		m_frames = 0;
+		m_published.reset();
+		return {};
+	}
+	void Schedule( FrameWork &work, const light_set::Snapshot & ) override
+	{
+		if ( m_published || !m_seed )
+			return;
+		work.jobs.push_back(
+		    [this]
+		    {
+			    if ( ++m_frames >= m_delayFrames )
+				    m_published = PublishedVolume{ ++m_epoch, Rescaled( *m_seed ) };
+		    } );
+	}
+	[[nodiscard]] std::optional<PublishedVolume> Published() const override { return m_published; }
+	[[nodiscard]] RetireTicket End() override
+	{
+		m_published.reset();
+		m_seed.reset();
+		return {};
+	}
+
+private:
+	std::shared_ptr<const Volume> Rescaled( const Volume &seed ) const
+	{
+		auto volume = std::make_shared<Volume>( seed );
+		if ( seed.layout.layerCount < 2 )
+			return volume;
+		for ( uint32_t g = 0; g < seed.layout.gridCount; ++g )
+		{
+			const mapcontainer::ProbeGridLayout &grid = seed.layout.grids[g];
+			const uint32_t rows = ( grid.probeCount + grid.tilesPerRow - 1 ) / grid.tilesPerRow;
+			for ( uint32_t y = 0; y < rows * mapcontainer::kProbeIrradianceTile; ++y )
+			{
+				for ( uint32_t x = 0; x < grid.tilesPerRow * mapcontainer::kProbeIrradianceTile;
+				    ++x )
+				{
+					const auto offset = [&]( uint32_t layer )
+					{
+						return size_t( seed.layout.atlasOffset +
+						               ( uint64_t( grid.irradianceOrigin[layer][1] + y ) *
+						                       seed.layout.atlasWidth +
+						                   grid.irradianceOrigin[layer][0] + x ) *
+						                   8 );
+					};
+					for ( int c = 0; c < 3; ++c )
+					{
+						uint16_t total, indirect;
+						std::memcpy( &total, seed.bytes.data() + offset( 0 ) + 2 * c, 2 );
+						std::memcpy( &indirect, seed.bytes.data() + offset( 1 ) + 2 * c, 2 );
+						const float seedIndirect = mapcontainer::HalfToFloat( indirect );
+						const float scaled = seedIndirect * m_indirectScale;
+						const uint16_t newIndirect = FloatToHalf( scaled );
+						const uint16_t newTotal = FloatToHalf(
+						    mapcontainer::HalfToFloat( total ) - seedIndirect + scaled );
+						std::memcpy( volume->bytes.data() + offset( 1 ) + 2 * c, &newIndirect, 2 );
+						std::memcpy( volume->bytes.data() + offset( 0 ) + 2 * c, &newTotal, 2 );
+					}
+				}
+			}
+		}
+		return volume;
+	}
+
+	float m_indirectScale;
+	uint32_t m_delayFrames;
+	std::shared_ptr<const Volume> m_seed;
+	std::optional<PublishedVolume> m_published;
+	uint32_t m_frames = 0;
+	uint64_t m_epoch = 0;
+};
+
+} // namespace indirect_light
+
+#endif // RENDER_INDIRECT_LIGHT_H

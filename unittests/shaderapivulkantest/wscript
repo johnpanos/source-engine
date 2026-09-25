@@ -173,6 +173,25 @@ def build(bld):
 		use=['VULKAN', 'SDL3', 'vulkan_texture_image', 'mapcontainer'],
 		install_path=None)
 
+	# RFC 0011 render.indirect-switching on native Vulkan: the producer
+	# switcher driving the per-pixel probe volume with real frames and
+	# completion serials. Skips (exit 77) without a device/display.
+	bld.program(
+		features='c cxx', env=test_env.derive(),
+		source=['test_indirect_switching.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_model_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp',
+			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
+		target='indirect_switching_native_conformance',
+		name='indirect_switching_native_conformance',
+		includes=includes,
+		use=['VULKAN', 'SDL3', 'vulkan_texture_image', 'mapcontainer'],
+		install_path=None)
+
 	# Material-facing integration slice: drives the legacy IShaderAPI/IShaderDevice
 	# interfaces (as the material system does) through the linked native Vulkan
 	# backend and reads the presented frame back. Links the real backend library.

@@ -31,7 +31,6 @@
 #include <cmath>
 #include <map>
 #include <span>
-#include <tuple>
 #include <vector>
 
 namespace light_set
@@ -154,10 +153,9 @@ public:
 			light.shape = input.shape;
 			light.baked = true;
 			light.style = input.style;
-			light.styleScalar =
-			    input.style >= 0 && size_t( input.style ) < styleScalars.size()
-			        ? styleScalars[size_t( input.style )]
-			        : kBakedStyleScalar;
+			light.styleScalar = input.style >= 0 && size_t( input.style ) < styleScalars.size()
+			                        ? styleScalars[size_t( input.style )]
+			                        : kBakedStyleScalar;
 			light.matchesBaked =
 			    std::fabs( light.styleScalar - kBakedStyleScalar ) <= kStyleScalarTolerance;
 			for ( int k = 0; k < 3; ++k )
@@ -178,8 +176,7 @@ public:
 			if ( live.count( key ) )
 				continue; // one light per slot and key
 			const auto previous = m_live.find( key );
-			const uint32_t id =
-			    previous != m_live.end() ? previous->second : m_nextDynamic++;
+			const uint32_t id = previous != m_live.end() ? previous->second : m_nextDynamic++;
 			live[key] = id;
 			RuntimeLight light;
 			light.id = id;
@@ -207,7 +204,21 @@ public:
 	static constexpr uint32_t kFirstDynamicId = 1u << 20;
 
 private:
-	using Key = std::tuple<uint8_t, uint32_t, int>;
+	// A dynamic light's identity key: kind, table slot and key.
+	struct Key
+	{
+		uint8_t kind;
+		uint32_t slot;
+		int key;
+		bool operator<( const Key &other ) const
+		{
+			if ( kind != other.kind )
+				return kind < other.kind;
+			if ( slot != other.slot )
+				return slot < other.slot;
+			return key < other.key;
+		}
+	};
 	uint64_t m_mapSerial = 0;
 	uint64_t m_epoch = 0;
 	uint32_t m_nextDynamic = kFirstDynamicId;

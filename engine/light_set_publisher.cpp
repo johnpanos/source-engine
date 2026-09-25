@@ -7,6 +7,8 @@
 
 #include "light_set_publisher.h"
 
+#include "indirect_light_host.h"
+
 #include "cl_main.h"
 #include "convar.h"
 #include "gl_model_private.h"
@@ -43,8 +45,8 @@ void ToLinear( const ColorRGBExp32 &color, float out[3] )
 	out[2] = TexLightToLinear( color.b, color.exponent );
 }
 
-void GatherDynamic( const dlight_t *lights, int count, LightKind kind,
-    std::vector<DynamicLightInput> *out )
+void GatherDynamic(
+    const dlight_t *lights, int count, LightKind kind, std::vector<DynamicLightInput> *out )
 {
 	for ( int i = 0; i < count; ++i )
 	{
@@ -92,8 +94,6 @@ void LightSet_PublishFrame()
 		s_consumer = static_cast<ILightSetConsumer *>(
 		    materials->QueryInterface( kLightSetConsumerInterface ) );
 	}
-	if ( !s_consumer )
-		return;
 	std::vector<WorldLightInput> worldLights;
 	worldLights.reserve( size_t( world->numworldlights ) );
 	for ( int i = 0; i < world->numworldlights; ++i )
@@ -102,9 +102,8 @@ void LightSet_PublishFrame()
 		WorldLightInput input;
 		input.index = uint32_t( i );
 		input.shape = wl.type == emit_skylight ? LightShape::Directional
-		              : wl.type == emit_spotlight || wl.type == emit_surface
-		                  ? LightShape::Spot
-		                  : LightShape::Point;
+		              : wl.type == emit_spotlight || wl.type == emit_surface ? LightShape::Spot
+		                                                                     : LightShape::Point;
 		for ( int k = 0; k < 3; ++k )
 		{
 			input.position[k] = wl.origin[k];
@@ -124,7 +123,10 @@ void LightSet_PublishFrame()
 	GatherDynamic( cl_dlights, MAX_DLIGHTS, LightKind::Dynamic, &dynamic );
 	GatherDynamic( cl_elights, MAX_ELIGHTS, LightKind::Entity, &dynamic );
 	const Snapshot snapshot = s_builder.Build( worldLights, styles, dynamic );
-	s_consumer->PublishLightSet( snapshot );
+	if ( s_consumer )
+		s_consumer->PublishLightSet( snapshot );
+	// The indirect-light producers see the same frame's lights.
+	IndirectLight_Frame( snapshot );
 	if ( r_lightset_report.GetBool() )
 	{
 		r_lightset_report.SetValue( 0 );

@@ -3516,7 +3516,7 @@ bool CVulkanContext::UploadSkinConstants( std::vector<uint32_t> *offsets )
 	m_directLightOffset = UINT32_MAX;
 	// The frame's direct lights ride in the same ring, one block after the
 	// draws' constants.
-	const bool lights = m_directLightCount > 0 && m_worldPbrLightPipelineLayout != VK_NULL_HANDLE;
+	const bool lights = m_directLightCount > 0 && m_worldPbrExtendedLayout != VK_NULL_HANDLE;
 	if ( ( m_dynSkinConstants.empty() && !lights ) || m_skinUbos.empty() )
 		return !m_dynSkinConstants.empty() ? false : true;
 	const VkDeviceSize block = sizeof( m_dynSkinConstants[0].ps );
@@ -3579,8 +3579,8 @@ bool CVulkanContext::UploadSkinConstants( std::vector<uint32_t> *offsets )
 		    static_cast<unsigned char *>( slot.mapped ) + stride * m_dynSkinConstants.size();
 		const float header[4] = { static_cast<float>( m_directLightCount ), 0.0f, 0.0f, 0.0f };
 		std::memcpy( out, header, sizeof( header ) );
-		std::memcpy( out + sizeof( header ), m_directLights,
-		    sizeof( DirectLight ) * m_directLightCount );
+		std::memcpy(
+		    out + sizeof( header ), m_directLights, sizeof( DirectLight ) * m_directLightCount );
 		m_directLightOffset = static_cast<uint32_t>( stride * m_dynSkinConstants.size() );
 	}
 	return true;
@@ -6127,6 +6127,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			bool pbrModelEnv = false;
 			bool pbrModelProbe = false;
 			bool pbrWorldLights = false;
+			bool pbrWorldRuntime = false;
 			// sRGB inputs decoded by the sampler and output encoded by the view,
 			// which the shader must then not apply itself.
 			int decodedFlags = openSrgb ? kColorSrgbWrite : 0;
@@ -6162,15 +6163,18 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				         d.pbrWorld.material[1] >= 0.5f,
 				         ( d.colorFlags & kColorSrgbReadBase ) != 0 ) )
 					continue;
-				// With this frame's direct lights, the variant that adds them.
+				// The extended variants: this frame's direct lights, and the
+				// RuntimeIndirect policy (render/indirect_policy.h).
 				pbrWorldLights = m_directLightOffset != UINT32_MAX && m_indirectViewMode == 0;
+				pbrWorldRuntime = m_indirectViewMode == 0 && EffectiveIndirectPolicy() == 2;
+				const int extended = ( pbrWorldLights ? kWorldPbrDirectLights : 0 ) |
+				                     ( pbrWorldRuntime ? kWorldPbrRuntimeIndirect : 0 );
 				selected = d.worldMesh
-				               ? WorldPbrPipeline( d.raster, openSrgb, passSamples, pbrWorldLights )
+				               ? WorldPbrPipeline( d.raster, openSrgb, passSamples, extended )
 				               : VK_NULL_HANDLE;
 				if ( selected == VK_NULL_HANDLE )
 					continue;
-				selectedLayout =
-				    pbrWorldLights ? m_worldPbrLightPipelineLayout : m_worldPbrPipelineLayout;
+				selectedLayout = extended ? m_worldPbrExtendedLayout : m_worldPbrPipelineLayout;
 				pbrWorld = true;
 			}
 			else if ( d.shaderIndex == kDynShaderPbrGlass )
@@ -6371,29 +6375,42 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					// the push block says the layer is absent.
 					const bool indirectViewLayer =
 					    !glass && m_indirectViewMode != 0 && m_worldLightmapIndirectHandle >= 0;
-					// The direct-light variant adds this frame's light block (set 7).
-					const VkDescriptorSet sets[8] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					// RuntimeIndirect reads the direct layer (the seeded double
+					// count: the total layer) plus the producer's indirect atlas.
+					const int worldLightmap = indirectViewLayer ? m_worldLightmapIndirectHandle
+					                          : pbrWorldRuntime && !m_indirectPolicySeedDouble
+					                              ? m_worldLightmapDirectHandle
+					                              : m_worldLightmapHandle;
+					// The extended variants bind sets 7 and 8 below.
+					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
 					    sampledSet( d.samplerHandles[1], 0 ), sampledSet( d.samplerHandles[2], 0 ),
-					    sampledSet( indirectViewLayer ? m_worldLightmapIndirectHandle
-					                                  : m_worldLightmapHandle,
-					        0 ),
+					    sampledSet( worldLightmap, 0 ),
 					    m_managedTextures[static_cast<size_t>( m_pbrSplitSumHandle )].descSet,
 					    glass ? ( sceneColor.descSetSrgb != VK_NULL_HANDLE ? sceneColor.descSetSrgb
 					                                                       : sceneColor.descSet )
 					          : sampledSet( d.samplerHandles[kPbrWorldEmissionSampler], 0 ),
 					    glass
 					        ? sampledSet( m_sceneDepthHandle, 0 )
-					        : sampledSet( environment >= 0 ? environment : m_whiteCubeHandle, 0 ),
-					    pbrWorldLights ? m_skinUbos[static_cast<size_t>( m_currentFrame ) %
-					                                m_skinUbos.size()]
-					                         .set
-					                   : VK_NULL_HANDLE };
-					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					    glass            ? m_worldGlassPipelineLayout
-					    : pbrWorldLights ? m_worldPbrLightPipelineLayout
-					                     : m_worldPbrPipelineLayout,
-					    0, pbrWorldLights ? 8 : 7, sets, pbrWorldLights ? 1 : 0,
-					    pbrWorldLights ? &m_directLightOffset : nullptr );
+					        : sampledSet( environment >= 0 ? environment : m_whiteCubeHandle, 0 ) };
+					const VkPipelineLayout layout = glass ? m_worldGlassPipelineLayout
+					                                : ( pbrWorldLights || pbrWorldRuntime )
+					                                    ? m_worldPbrExtendedLayout
+					                                    : m_worldPbrPipelineLayout;
+					vkCmdBindDescriptorSets(
+					    cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 7, sets, 0, nullptr );
+					if ( pbrWorldLights )
+						vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 7, 1,
+						    &m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()]
+						        .set,
+						    1, &m_directLightOffset );
+					if ( pbrWorldRuntime )
+					{
+						// The baked producer's indirect atlas: the LMAP indirect layer.
+						const VkDescriptorSet producer =
+						    sampledSet( m_worldLightmapIndirectHandle, 0 );
+						vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 8, 1,
+						    &producer, 0, nullptr );
+					}
 				}
 				else
 				{

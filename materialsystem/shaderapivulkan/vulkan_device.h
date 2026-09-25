@@ -157,9 +157,20 @@ public:
 	static constexpr uint32_t kMaxDirectLights = 7;
 	void SetDirectLights( const DirectLight *lights, uint32_t count );
 	uint32_t DirectLightCount() const { return m_directLightCount; }
-	// Whether WMSH PBR can add direct lights: the device binds eight sets and
-	// the per-frame constants ring exists.
-	bool DirectLightsSupported() const { return m_worldPbrLightPipelineLayout != VK_NULL_HANDLE; }
+	// Whether WMSH PBR can add direct lights and run the RuntimeIndirect
+	// policy: the device binds nine sets and the per-frame constants ring
+	// exists (m_worldPbrExtendedLayout).
+	bool DirectLightsSupported() const { return m_worldPbrExtendedLayout != VK_NULL_HANDLE; }
+	// RFC 0011 render.indirect-policy.v1 for the world (indirect_policy.h):
+	// 0 Baked, 1 BakedPlusDelta, 2 RuntimeIndirect. RuntimeIndirect takes
+	// effect only while the map's LMAP carries direct and indirect layers; the
+	// world then reads the direct layer plus the producer's indirect atlas (the
+	// baked producer's: the LMAP indirect layer). BakedPlusDelta reads the
+	// total layer, and no producer publishes a delta yet. `seedDoubleCount` is
+	// the sensitivity control: the RuntimeIndirect variant reads the total
+	// layer. Read when a frame is recorded.
+	void SetIndirectPolicy( int policy, bool seedDoubleCount );
+	int EffectiveIndirectPolicy() const;
 	// Per-pixel probe sampling: 0 off (models use their ambient cube), 1 with
 	// the visibility test, 2 without it. Read when a frame is recorded.
 	void SetProbeVolumeSampling( int mode ) { m_probeSampling = mode < 0 || mode > 2 ? 0 : mode; }
@@ -1313,10 +1324,17 @@ private:
 	std::map<uint64_t, VkPipeline> m_worldPbrPipelines;
 	// world_pbr.frag -DINDIRECT_VIEW, selected while the indirect view is on.
 	std::map<uint64_t, VkPipeline> m_worldPbrIndirectPipelines;
-	// `directLights`: world_pbr.frag -DDIRECT_LIGHTS, which adds the frame's
-	// direct-light block (set 7, m_worldPbrLightPipelineLayout).
-	VkPipeline WorldPbrPipeline( const DynRasterState &state, bool srgbPass = false,
-	    int samples = 1, bool directLights = false );
+	// `extended`: kWorldPbrDirectLights (world_pbr.frag -DDIRECT_LIGHTS, the
+	// frame's direct-light block in set 7) and kWorldPbrRuntimeIndirect
+	// (-DRUNTIME_INDIRECT, the producer's indirect atlas in set 8), on
+	// m_worldPbrExtendedLayout.
+	enum
+	{
+		kWorldPbrDirectLights = 1,
+		kWorldPbrRuntimeIndirect = 2,
+	};
+	VkPipeline WorldPbrPipeline(
+	    const DynRasterState &state, bool srgbPass = false, int samples = 1, int extended = 0 );
 	bool PbrWorldTexturesReady(
 	    int base, int mrao, int normal, bool useNormal, bool baseReadSrgb ) const;
 	bool PbrWorldNormalReady( int handle ) const;
@@ -1570,10 +1588,15 @@ private:
 	uint32_t m_directLightCount = 0;
 	// This frame's direct-light block in the constants ring (UINT32_MAX: none).
 	uint32_t m_directLightOffset = UINT32_MAX;
-	VkPipelineLayout m_worldPbrLightPipelineLayout = VK_NULL_HANDLE;
-	void DestroyWorldPbrLightVariant();
-	VkShaderModule m_worldPbrLightFrag = VK_NULL_HANDLE;
-	std::map<uint64_t, VkPipeline> m_worldPbrLightPipelines;
+	int m_indirectPolicy = 0;
+	bool m_indirectPolicySeedDouble = false;
+	// world_pbr.frag's extended variants on nine sets (the seven texture sets,
+	// the direct-light block, the producer's indirect atlas), indexed by
+	// kWorldPbrDirectLights | kWorldPbrRuntimeIndirect (index 0 unused).
+	VkPipelineLayout m_worldPbrExtendedLayout = VK_NULL_HANDLE;
+	VkShaderModule m_worldPbrExtendedFrag[4] = {};
+	std::map<uint64_t, VkPipeline> m_worldPbrExtendedPipelines[4];
+	void DestroyWorldPbrExtendedVariants();
 	// Deleted textures awaiting the completion of the submission that may still
 	// use them (`afterSerial`, a value of m_submitSerial), and handles free again.
 	struct RetiredTexture

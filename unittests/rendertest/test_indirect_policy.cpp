@@ -81,8 +81,7 @@ int main()
 	           Select( Policy::RuntimeIndirect ).modelsReadRuntimeVolume,
 	    "RuntimeIndirect: the direct layer plus the producer's indirect; models the runtime "
 	    "volume" );
-	for ( Policy policy :
-	    { Policy::Baked, Policy::BakedPlusDelta, Policy::RuntimeIndirect } )
+	for ( Policy policy : { Policy::Baked, Policy::BakedPlusDelta, Policy::RuntimeIndirect } )
 	{
 		const Selection s = Select( policy );
 		Check( !( s.worldLayer == WorldLightmapLayer::Total && s.worldAddsProducerIndirect ) &&

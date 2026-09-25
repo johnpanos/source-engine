@@ -18,7 +18,7 @@ Where this file disagrees with the versioned artifacts, the artifacts win:
 | --- | --- | --- |
 | G0 baseline, fixtures and runner | done (2026-09-24) | Six fixtures with Cycles total/indirect references; GPU runner; `mat_indirect_view` matches Cycles on five fixtures and rejects a seeded double; budgets per profile; models receive no baked indirect light today |
 | G1 probe volume, baked producer | active | Bake, pack, engine load and fallback, per-pixel `model_pbr` sampling and the CPU ambient cube done; all native oracles pass; the DXVK check (G1.7) is deferred by user direction; corpus load and memory being recorded |
-| G2 light set, separated bake, policy | planned | — |
+| G2 light set, separated bake, policy | done (2026-09-24, native Vulkan) | `render.light-set.v1` published each frame, with seeded ID reuse rejected; separated-bake consistency with swapped and doubled layers rejected; `render.indirect-policy.v1` with the double count rejected by the furnace in the CPU model, the GPU and the engine; native WMSH direct light from unbaked lights |
 | G3 producer contract and switching | planned | — |
 | G4 precomputed radiosity | planned | — |
 | G5 GPU compute foundation | planned | — |
@@ -514,3 +514,152 @@ DXVK-only defects, recorded here and not pursued:
   (`--shader-artifacts`);
 - the leaf-ambient interpolation reads about 58% brighter than the volume at
   the room-states model.
+
+## G2: Light set, separated bake, policy (done 2026-09-24, native Vulkan)
+
+### G2.1 Runtime light set
+
+[`render/light_set.h`](../public/render/light_set.h) (`render.light-set.v1`)
+holds the frame's lights as an immutable value snapshot with no native types:
+
+- **IDs.** A world light's ID is fixed by its map index. A dynamic or entity
+  light keeps its ID while it stays alive in the same slot with the same key,
+  and gets a new one when the slot is reused or it goes dark. No ID is
+  reused within a map.
+- **Baked state.** Style scalars scale world light colours. A world light
+  `matchesBaked` at its baked scalar of 1.
+- **Epoch.** Advances by one per built frame.
+
+The publisher, [`engine/light_set_publisher.cpp`](../engine/light_set_publisher.cpp),
+builds the snapshot on the main thread in `V_RenderView` before the view
+renders:
+
+- from `worldlights`, `LightStyleValue` and the active `cl_dlights` and
+  `cl_elights`, with the legacy dlight minimum light;
+- publishing to the renderer's `ILightSetConsumer`, which the material
+  system returns from `QueryInterface`, alongside the world-mesh uploader.
+
+A dlight created while the view renders is published next frame.
+`r_lightset_report 1` prints one snapshot.
+
+Suites (headless): `render.light-set` runs 32 checks over a scripted
+sequence:
+
+- slot reuse;
+- a light going dark and returning;
+- key changes and style changes;
+- a map change;
+- earlier snapshots keeping their values.
+
+Three sensitivity rows must be rejected, and each is rejected by its own
+checks:
+
+- slot-index IDs (identity reuse), 6 rejections;
+- ignored style scalars, 2;
+- a frozen epoch, 3.
+
+In the engine, a `light_dynamic` spawned in room-states was published as
+`1 dynamic ... radius 300`
+(`quality-results/rfc0011-g2/dlight-boot`).
+
+### G2.2–G2.3 Separated bake
+
+The bake has written the `direct` and `indirect` layers as independent bakes
+since G0, and LMAP v2 carries them; the reader validates them in
+`world.lightmap-layers`.
+[`lightmap_layers.py check`](../tools/quality/lightmap_layers.py) verifies:
+
+- each layer against its bake receipt's hash;
+- the sum per 16×16 block: the mean residual total − (direct + indirect)
+  within four standard errors of zero;
+- the atlas mean within four standard errors plus 0.1% of the total;
+- for the furnace, the analytic layers (direct 0.3, indirect 0.45) within 1%.
+
+All six fixtures pass; the furnace's direct and indirect means are 0.3000
+and 0.4499. The seeded controls fail as they must:
+
+- swapped layers fail the furnace's analytic check (0.4499 vs 0.30), while
+  the sum still holds;
+- doubled indirect fails the sum on every block, for the furnace and for
+  room-states.
+
+Unit tests cover the oracle (`test_gi_tools.py`, `LightmapLayersTest`).
+Evidence: `quality-results/rfc0011-g2/layers/`.
+
+### G2.4 Indirect policy
+
+[`render/indirect_policy.h`](../public/render/indirect_policy.h)
+(`render.indirect-policy.v1`) holds:
+
+- the policy table: `Baked`, `BakedPlusDelta`, `RuntimeIndirect`;
+- `Available`: `RuntimeIndirect` needs the direct and indirect layers;
+- `WorldDiffuseLight`, the composition every renderer implements.
+
+**Headless.** `render.indirect-policy` (12 checks) covers the table, the
+availability rules and the furnace: every policy with the baked producer
+gives 0.75, and a doubling producer is detected. The sensitivity row
+`render.indirect-policy.double-count`, which reads the total layer under the
+`RuntimeIndirect` variant, is rejected.
+
+**Native.** The policy is part of `world_pbr`'s variant key.
+`-DRUNTIME_INDIRECT` binds the direct layer as the lightmap and adds the
+producer's indirect atlas in set 8 (at G2, the baked producer's LMAP
+indirect layer). Controls:
+
+- `r_indirect_policy`: 0, 1 or 2, falling back to Baked without the layers;
+- `r_indirect_policy_seed_double`: the sensitivity control.
+
+`BakedPlusDelta` reads the total layer; no producer publishes a delta until
+G4.
+
+GPU (`render.world-pbr.native-pixels`), on a furnace-valued LMAP:
+
+- Baked 173, RuntimeIndirect 173;
+- seeded double count 213, rejected;
+- RuntimeIndirect unavailable on a total-and-indirect LMAP.
+
+Engine, on the furnace map with the tone map pinned:
+
+- Baked mean 223.69, RuntimeIndirect 223.68, at most 2 levels apart (bake
+  noise between separately denoised layers);
+- seeded double +28 levels.
+
+Evidence: `quality-results/rfc0011-g2/policy-boot`.
+
+### G2.5 Direct light from unbaked lights
+
+The native consumer keeps each frame's unbaked point and spot lights, at
+most seven. They travel as one block in the per-frame constants ring, whose
+slot is fence-reused like the skin constants.
+`world_pbr.frag -DDIRECT_LIGHTS` (set 7) adds them:
+
+- the legacy dlight falloff (`light_set::Falloff`, matching
+  `AddSingleDynamicLight`) times the Lambert cosine;
+- through the layered BRDF, in `model_pbr`'s units: diffuse albedo times the
+  diffuse light, plus π times the incident light through GGX.
+
+The shared GGX term is one function, `SpecularBrdf`. The directional
+`lightRadiance` push light stays as the pixel suite's hook; the engine never
+set it. The extended variants use nine sets, created only where
+`maxBoundDescriptorSets >= 9`; otherwise the world draws the bake alone
+under Baked, and the log says so.
+
+GPU checks:
+
+- one point light: 113 against the CPU model's 113.1;
+- seeded controls without the cosine and without the falloff each miss by
+  more than 6;
+- a light beyond its radius and a spot aimed away add nothing;
+- two lights add.
+
+Engine: the room-states `light_dynamic` brightened 116k pixels of the native
+world.
+
+### Verification
+
+- Headless conformance passes 129/129 (six new rows), and the GPU runner
+  5/5. Evidence: `quality-results/rfc0011-g2/{headless,gpu}.json`.
+- Style is clean on every changed file.
+- Archlint: the new contracts belong to `render.contracts`. The light-set
+  key is a struct, because `<tuple>` is not on the standard-header list. No
+  finding is in G2 files.
