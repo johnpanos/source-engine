@@ -172,6 +172,7 @@ struct Scenario
 	std::shared_ptr<const Volume> seed;
 	std::shared_ptr<const Transfer> transfer;
 	std::shared_ptr<const SdfData> sdf;
+	std::shared_ptr<const WorldGeometry> geometry; // for the ray-query producer
 	gpu_compute::IGpuCompute *gpu = nullptr;
 	// A real device's completion (null: the suite's fake timeline).
 	IResourceTracker *resources = nullptr;
@@ -224,6 +225,7 @@ std::vector<std::string> RunContract(
 			unsupported.baked = seed;
 			unsupported.transfer = transfer;
 			unsupported.sdf = scenario.sdf;
+			unsupported.geometry = scenario.geometry;
 			unsupported.gpu = scenario.gpu;
 			unsupported.policy = policy;
 			auto other = make();
@@ -248,6 +250,7 @@ std::vector<std::string> RunContract(
 		scene.baked = seed;
 		scene.transfer = transfer;
 		scene.sdf = scenario.sdf;
+		scene.geometry = scenario.geometry;
 		scene.gpu = scenario.gpu;
 		scene.policy = policy;
 		if ( !producer->Begin( scene, PublishedVolume{ 0, seed }, gpu ) )

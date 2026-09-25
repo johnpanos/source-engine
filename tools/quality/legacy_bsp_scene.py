@@ -40,10 +40,11 @@ in the engine's lightmap unit, which is the pipeline's (irradiance / pi):
   surface      the emitting (SURF_LIGHT) faces' materials get an emissive
          radiance of pi x (their patches' summed intensity) / face area, per
          face; faces of one material that differ get separate materials.
-A named light keeps its light style (`sourceEngine:lightStyle`), so the
-radiosity transfer switches it with the map's own `TurnOn`/`TurnOff`. A named
-light that starts dark (spawnflag 1) is left out of the bake: it stays a
-world light the engine applies when it is switched on. The receipt lists
+A styled light keeps its light style (`sourceEngine:lightStyle`), so the
+radiosity transfer follows the map's own `TurnOn`/`TurnOff` (styles 32+) and
+preset animations (1-31). A named light that starts dark (spawnflag 1) is
+left out of the bake: it stays a world light the engine applies when it is
+switched on. The receipt lists
 every approximation, exclusion and conversion.
 """
 
@@ -75,6 +76,7 @@ LEGACY_ONLY_SHADERS = {"water", "refract", "unlittwotexture", "monitorscreen",
                        "spritecard", "sprite", "cable"}
 CUBEMAP_PATCH_KEYS = {"$envmap", "$envmaporigin", "$envmapmaskintintmasktexture"}
 BASE_KEY = "%relight_base"  # the material a cubemap patch renders as
+FIRST_SWITCHED_STYLE = 32  # below: the engine's preset animated styles
 EMISSION_STEP = 0.02  # emissive radiances within 2% share a material
 SURFACE_MATCH_DISTANCE = 2.0  # units: a patch light's origin lies on (or 1 unit off) its face
 
@@ -280,6 +282,13 @@ def entity_for_light(entities, light):
     return best
 
 
+def starting_dark_styles(lights, owners):
+    """Switchable styles (32+) that any light of starts dark (spawnflag 1)."""
+    return {light["style"] for light in lights
+            if light["style"] >= FIRST_SWITCHED_STYLE and owners.get(light["index"]) and
+            int(owners[light["index"]].get("spawnflags", "0") or 0) & 1}
+
+
 def build_model(bsp, resolver, texture_dir):
     """Everything the USD writer needs, as plain data, plus the receipt."""
     texinfo = bsp.texinfo()
@@ -445,15 +454,14 @@ def build_model(bsp, resolver, texture_dir):
                 # Brush planes face out of the brush.
                 occluders.append((polygon, normals[brush["sides"][side][0]]))
 
-    # Analytic lights. A style any of whose lights starts dark is left out
-    # whole (vbsp gives every light of one targetname the same style).
+    # Analytic lights. A switchable style (32+: vbsp gives every light of one
+    # targetname one) any of whose lights starts dark is left out whole; the
+    # engine ignores the start-dark flag of the preset styles (1-31).
     light_records = []
     left_out = []
     owners = {light["index"]: entity_for_light(entities, light) for light in lights
               if light["type"] in ("point", "spot")}
-    dark_styles = {light["style"] for light in lights
-                   if light["style"] != 0 and owners.get(light["index"]) and
-                   int(owners[light["index"]].get("spawnflags", "0") or 0) & 1}
+    dark_styles = starting_dark_styles(lights, owners)
     for light in lights:
         kind = light["type"]
         if kind == "surface":

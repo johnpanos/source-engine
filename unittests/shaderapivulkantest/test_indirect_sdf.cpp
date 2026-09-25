@@ -190,6 +190,74 @@ std::shared_ptr<const SdfData> LoadSdf()
 	return SdfData::FromBytes( LoadFile( "quality/fixtures/gi/sdfv/contract.sdfv" ) );
 }
 
+// TRIS bytes (tools/quality/sdf_volume.py write_tris): the contract scene's
+// triangles for the ray-query producer.
+std::shared_ptr<const WorldGeometry> LoadTriangles( const char *path )
+{
+	const std::vector<unsigned char> bytes = LoadFile( path );
+	uint32_t header[3] = {};
+	if ( bytes.size() < sizeof( header ) )
+		return nullptr;
+	std::memcpy( header, bytes.data(), sizeof( header ) );
+	if ( header[0] != 0x53495254u ||
+	     bytes.size() != sizeof( header ) + size_t( header[1] ) * 12 + size_t( header[2] ) * 4 )
+		return nullptr;
+	auto geometry = std::make_shared<WorldGeometry>();
+	geometry->positions.resize( size_t( header[1] ) * 3 );
+	geometry->indices.resize( header[2] );
+	std::memcpy( geometry->positions.data(), bytes.data() + sizeof( header ),
+	    geometry->positions.size() * 4 );
+	std::memcpy( geometry->indices.data(), bytes.data() + sizeof( header ) + geometry->positions.size() * 4,
+	    geometry->indices.size() * 4 );
+	for ( uint32_t index : geometry->indices )
+		if ( index >= header[1] )
+			return nullptr;
+	return geometry;
+}
+
+// The compute service with ray query hidden: a device without it.
+class WithoutRayQuery final : public gpu_compute::IGpuCompute
+{
+public:
+	explicit WithoutRayQuery( gpu_compute::IGpuCompute &inner ) : m_inner( inner ) {}
+	gpu_compute::Caps Capabilities() const override
+	{
+		gpu_compute::Caps caps = m_inner.Capabilities();
+		caps.rayQuery = false;
+		return caps;
+	}
+	uint32_t CreateBuffer( size_t bytes, gpu_compute::BufferUse use ) override
+	{
+		return m_inner.CreateBuffer( bytes, use );
+	}
+	void *Map( uint32_t buffer ) override { return m_inner.Map( buffer ); }
+	uint32_t CreateProgram( const char *name, const gpu_compute::Binding *bindings, uint32_t count,
+	    uint32_t pushBytes ) override
+	{
+		return m_inner.CreateProgram( name, bindings, count, pushBytes );
+	}
+	uint32_t CreateGeometry( const float *, uint32_t, const uint32_t *, uint32_t ) override
+	{
+		return 0;
+	}
+	uint32_t CreateScene( const gpu_compute::SceneInstance *, uint32_t ) override { return 0; }
+	uint64_t QueueDispatch( uint32_t program, const uint32_t *buffers, uint32_t count,
+	    const void *push, uint32_t pushBytes, uint32_t groupsX, uint32_t groupsY,
+	    uint32_t groupsZ ) override
+	{
+		return m_inner.QueueDispatch(
+		    program, buffers, count, push, pushBytes, groupsX, groupsY, groupsZ );
+	}
+	uint64_t CompletedSerial() const override { return m_inner.CompletedSerial(); }
+	void Retire( uint32_t resource, uint64_t afterSerial ) override
+	{
+		m_inner.Retire( resource, afterSerial );
+	}
+
+private:
+	gpu_compute::IGpuCompute &m_inner;
+};
+
 // The probe at the origin: the mean of its layer's interior texels.
 float ProbeMean( const Volume &volume, uint32_t layer )
 {
@@ -213,13 +281,15 @@ float ProbeMean( const Volume &volume, uint32_t layer )
 // The traced field's own estimate of the baked scene (its reference phase),
 // per side of the contract's thin wall (x 47..49): the mean total light of
 // the probes left (x < 47) and right (x > 49) of it.
-bool ReferenceSides( Frames &frames, const std::shared_ptr<const Volume> &seed,
-    const std::shared_ptr<const SdfData> &sdf, float *lit, float *dark )
+bool ReferenceSides( Frames &frames, TraceMode mode, const std::shared_ptr<const Volume> &seed,
+    const std::shared_ptr<const SdfData> &sdf, const std::shared_ptr<const WorldGeometry> &geometry,
+    float *lit, float *dark )
 {
-	SdfTracedProducer producer;
+	TracedProducer producer( mode );
 	IndirectScene scene;
 	scene.baked = seed;
 	scene.sdf = sdf;
+	scene.geometry = geometry;
 	scene.gpu = &frames.Service();
 	scene.policy = indirect_policy::Policy::BakedPlusDelta;
 	if ( !producer.Begin( scene, PublishedVolume{ 0, seed }, frames ) )
@@ -278,20 +348,48 @@ std::shared_ptr<const SdfData> WithoutTheWall( const SdfData &sdf )
 	return SdfData::FromBytes( std::move( bytes ) );
 }
 
+// The contract triangles without the thin wall's two faces (x 47 and 49).
+std::shared_ptr<const WorldGeometry> WithoutTheWallTriangles( const WorldGeometry &geometry )
+{
+	auto out = std::make_shared<WorldGeometry>();
+	out->positions = geometry.positions;
+	for ( size_t t = 0; t + 2 < geometry.indices.size(); t += 3 )
+	{
+		bool wall = true;
+		for ( int k = 0; k < 3; ++k )
+		{
+			const float x = geometry.positions[size_t( geometry.indices[t + k] ) * 3];
+			wall = wall && ( x == 47.0f || x == 49.0f );
+		}
+		if ( !wall )
+			out->indices.insert( out->indices.end(), geometry.indices.begin() + std::ptrdiff_t( t ),
+			    geometry.indices.begin() + std::ptrdiff_t( t + 3 ) );
+	}
+	return out;
+}
+
 // A map's update cost: warm updates' median and p95 GPU time.
-int Bench( Device &d, Frames &frames, const char *prbvPath, const char *sdfvPath )
+int Bench( Device &d, Frames &frames, const char *prbvPath, const char *sdfvPath,
+    const char *wmshPath )
 {
 	auto baked = Volume::FromBytes( LoadFile( prbvPath ) );
 	auto sdf = SdfData::FromBytes( LoadFile( sdfvPath ) );
-	if ( !baked || !sdf )
+	std::shared_ptr<const WorldGeometry> geometry;
+	if ( wmshPath )
+	{
+		const std::vector<unsigned char> wmsh = LoadFile( wmshPath );
+		geometry = WorldGeometryFromMesh( wmsh.data(), wmsh.size() );
+	}
+	if ( !baked || !sdf || ( wmshPath && !geometry ) )
 	{
 		std::fprintf( stderr, "bench: cannot load %s / %s\n", prbvPath, sdfvPath );
 		return 2;
 	}
-	SdfTracedProducer producer;
+	TracedProducer producer( wmshPath ? TraceMode::RayQuery : TraceMode::Sdf );
 	IndirectScene scene;
 	scene.baked = baked;
 	scene.sdf = sdf;
+	scene.geometry = geometry;
 	scene.gpu = &frames.Service();
 	scene.policy = indirect_policy::Policy::BakedPlusDelta;
 	if ( !producer.Begin( scene, PublishedVolume{ 0, baked }, frames ) )
@@ -320,10 +418,10 @@ int Bench( Device &d, Frames &frames, const char *prbvPath, const char *sdfvPath
 	std::sort( times.begin(), times.end() );
 	if ( times.empty() )
 		return 2;
-	std::printf( "BENCH {\"probes\": %u, \"voxels\": [%u, %u, %u], \"updates\": %zu, "
+	std::printf( "BENCH {\"producer\": \"%s\", \"probes\": %u, \"voxels\": [%u, %u, %u], \"updates\": %zu, "
 	             "\"gpu_ms_median\": %.3f, \"gpu_ms_p95\": %.3f, \"gpu_ms_max\": %.3f, "
 	             "\"device\": \"%s\"}\n",
-	    baked->layout.grids[0].probeCount, sdf->layout.dims[0], sdf->layout.dims[1],
+	    wmshPath ? "rayquery" : "sdf", baked->layout.grids[0].probeCount, sdf->layout.dims[0], sdf->layout.dims[1],
 	    sdf->layout.dims[2], times.size(), times[times.size() / 2], times[times.size() * 95 / 100],
 	    times.back(), d.name.c_str() );
 	(void)producer.End();
@@ -345,9 +443,9 @@ int main( int argc, char **argv )
 	std::string error;
 	Check( resources.Init( d.physical, d.device, d.chain.Enabled(), &error ), "compute: " + error );
 	Frames frames( d, resources );
-	if ( argc == 4 && std::string( argv[1] ) == "--bench" )
+	if ( ( argc == 4 || argc == 5 ) && std::string( argv[1] ) == "--bench" )
 	{
-		const int status = Bench( d, frames, argv[2], argv[3] );
+		const int status = Bench( d, frames, argv[2], argv[3], argc == 5 ? argv[4] : nullptr );
 		vkDeviceWaitIdle( d.device );
 		frames.Release();
 		resources.Shutdown();
@@ -356,13 +454,15 @@ int main( int argc, char **argv )
 	}
 	const auto seed = LoadSeed();
 	const auto sdf = LoadSdf();
-	Check( seed && sdf, "the contract seed and its SDF scene load" );
-	if ( !seed || !sdf )
+	const auto geometry = LoadTriangles( "quality/fixtures/gi/sdfv/contract.tris" );
+	Check( seed && sdf && geometry, "the contract seed and its SDF and triangle scenes load" );
+	if ( !seed || !sdf || !geometry )
 		return testing::ReportConformance( g_checks, g_failures );
 
 	Scenario scene;
 	scene.seed = seed;
 	scene.sdf = sdf;
+	scene.geometry = geometry;
 	scene.gpu = &frames.Service();
 	scene.resources = &frames;
 	scene.afterFrame = [&] { frames.Submit(); };
@@ -382,32 +482,69 @@ int main( int argc, char **argv )
 		           ? std::string()
 		           : std::string( "the probe it encloses in a proxy is not dark" );
 	};
-	const auto started = std::chrono::steady_clock::now();
-	const auto broken = RunContract(
-	    []( const FakeGpu & ) { return std::make_unique<SdfTracedProducer>(); }, scene, nullptr );
-	for ( const auto &b : broken )
-		std::fprintf( stderr, "  sdf: %s\n", b.c_str() );
-	Check( broken.empty(), "the SDF-traced producer passes the shared suite on the GPU" );
-	std::printf( "shared suite: %.1f s\n",
-	    std::chrono::duration<double>( std::chrono::steady_clock::now() - started ).count() );
-
-	// Thin wall: the composition (the bake times the field's ratio) would
-	// hide a leak in the traced field, so the field's own reference is
-	// judged: the dark side of the wall stays dark while the lit side holds
-	// the furnace's light. Erasing the wall must fail it.
+	const bool rayQuery = frames.Service().Capabilities().rayQuery;
+	std::printf( "device: %s, ray query %s\n", d.name.c_str(), rayQuery ? "on" : "off" );
+	for ( TraceMode mode : { TraceMode::Sdf, TraceMode::RayQuery } )
 	{
+		const bool rq = mode == TraceMode::RayQuery;
+		const char *name = rq ? "ray-query" : "SDF-traced";
+		if ( rq && !rayQuery )
+		{
+			std::printf( "the ray-query producer: no ray query on this device\n" );
+			continue;
+		}
+		const auto started = std::chrono::steady_clock::now();
+		const auto broken = RunContract(
+		    [mode]( const FakeGpu & ) { return std::make_unique<TracedProducer>( mode ); }, scene,
+		    nullptr );
+		for ( const auto &b : broken )
+			std::fprintf( stderr, "  %s: %s\n", name, b.c_str() );
+		Check( broken.empty(), std::string( "the " ) + name + " producer passes the shared suite on the GPU" );
+		std::printf( "%s shared suite: %.1f s\n", name,
+		    std::chrono::duration<double>( std::chrono::steady_clock::now() - started ).count() );
+
+		// Thin wall: the composition (the bake times the field's ratio) would
+		// hide a leak in the traced field, so the field's own reference is
+		// judged: the dark side of the wall stays dark while the lit side
+		// holds the furnace's light. Erasing the wall (from the distance field,
+		// or its triangles) must fail it.
 		float lit = 0.0f, dark = 0.0f;
-		const bool traced = ReferenceSides( frames, seed, sdf, &lit, &dark );
-		std::printf( "reference field: lit side %.4f, dark side %.4f\n", lit, dark );
+		const bool traced = ReferenceSides( frames, mode, seed, sdf, geometry, &lit, &dark );
+		std::printf( "%s reference field: lit side %.4f, dark side %.4f\n", name, lit, dark );
 		Check( traced && lit > 0.5f && dark < 0.02f * lit,
-		    "the traced field sees no light through the thin wall" );
-		const auto leaky = WithoutTheWall( *sdf );
+		    std::string( "the " ) + name + " field sees no light through the thin wall" );
 		float leakyLit = 0.0f, leakyDark = 0.0f;
 		const bool leakyTraced =
-		    leaky && ReferenceSides( frames, seed, leaky, &leakyLit, &leakyDark );
-		std::printf( "without the wall: lit side %.4f, dark side %.4f\n", leakyLit, leakyDark );
+		    rq ? ReferenceSides( frames, mode, seed, sdf, WithoutTheWallTriangles( *geometry ),
+		             &leakyLit, &leakyDark )
+		       : ReferenceSides( frames, mode, seed, WithoutTheWall( *sdf ), geometry, &leakyLit,
+		             &leakyDark );
+		std::printf( "%s without the wall: lit side %.4f, dark side %.4f\n", name, leakyLit,
+		    leakyDark );
 		Check( leakyTraced && leakyDark >= 0.02f * leakyLit,
-		    "erasing the wall (the leak defect) is detected" );
+		    std::string( "erasing the wall (the leak defect) is detected for the " ) + name +
+		        " producer" );
+	}
+
+	// A device without ray query does not run the ray-query producer: Begin
+	// fails with missing-feature and creates nothing.
+	{
+		WithoutRayQuery plain( frames.Service() );
+		RayQueryProducer producer;
+		IndirectScene without;
+		without.baked = seed;
+		without.sdf = sdf;
+		without.geometry = geometry;
+		without.gpu = &plain;
+		without.policy = indirect_policy::Policy::BakedPlusDelta;
+		const size_t before = resources.LiveCount();
+		const auto begun = producer.Begin( without, PublishedVolume{ 0, seed }, frames );
+		Check( !begun && begun.Error() == IndirectError::MissingFeature &&
+		           resources.LiveCount() == before,
+		    "without ray query the ray-query producer fails with missing-feature, creating "
+		    "nothing" );
+		Check( ( producer.Caps().requiredFeatures & ( 1u << 7 ) ) != 0,
+		    "the ray-query producer requires kRayQuery" );
 	}
 
 	// The radiosity producer, which claims no GeometryMotion, run on the SDF

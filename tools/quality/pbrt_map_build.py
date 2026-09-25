@@ -165,13 +165,14 @@ def bsp_entities(path):
 
 
 def check_legacy_light_styles(bsp, controls):
-    """Each switchable source of a relit map is a style of the map's own named
-    lights (vbsp gives every `light*` entity of one targetname one style)."""
+    """Each styled source of a relit map is a style of the map's own lights
+    (vbsp writes a named light's switchable style, 32+, into its entity; the
+    preset animated styles 1-31 are authored there)."""
     styles = {entity.get("style") for entity in bsp_entities(bsp)
-              if entity.get("classname", "").startswith("light") and entity.get("targetname")}
+              if entity.get("classname", "").startswith("light")}
     wrong = [(c["name"], c["style"]) for c in controls if str(c["style"]) not in styles]
     if wrong:
-        raise ValueError("switchable sources with no named light of their style: %s" % wrong)
+        raise ValueError("styled sources with no light entity of their style: %s" % wrong)
 
 
 def check_light_styles(bsp, controls):

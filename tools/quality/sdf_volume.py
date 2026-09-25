@@ -8,7 +8,7 @@ C++ reader (mapcontainer/sdf_volume) is checked against. The bake
 
     python3 tools/quality/sdf_volume.py validate <file.sdfv>
     python3 tools/quality/sdf_volume.py info <file.sdfv>
-    python3 tools/quality/sdf_volume.py fixtures <dir>
+    python3 tools/quality/sdf_volume.py fixtures <dir>   (contract.sdfv, contract.tris, ...)
 
 Model. Source units. A uniform grid of voxels over the static world, each
 holding the signed distance at its centre to the nearest world surface
@@ -212,12 +212,42 @@ def fixture_contract():
                  [{"kind": "dome", "style": -1, "rgb": (0.0, 0.0, 0.0)}], max_distance)
 
 
+CONTRACT_ROOMS = (((-16.0, -16.0, -16.0), (47.0, 48.0, 48.0)),
+                  ((49.0, -16.0, -16.0), (112.0, 48.0, 48.0)))
+TRIS_MAGIC = 0x53495254  # "TRIS"
+
+
+def contract_geometry():
+    """The contract scene as triangles (the ray-query producer's world): the
+    two rooms' boxes, whose facing walls at x 47 and 49 are the wall slab's
+    faces. Returns (positions (V, 3), indices (T * 3,))."""
+    positions, indices = [], []
+    for lo, hi in CONTRACT_ROOMS:
+        base = len(positions)
+        positions += [(x, y, z) for z in (lo[2], hi[2]) for y in (lo[1], hi[1])
+                      for x in (lo[0], hi[0])]
+        # Corner k has bits x=1, y=2, z=4; one quad (two triangles) per face.
+        for quad in ((0, 2, 3, 1), (4, 5, 7, 6), (0, 1, 5, 4), (2, 6, 7, 3), (0, 4, 6, 2),
+                     (1, 3, 7, 5)):
+            a, b, c, d = (base + k for k in quad)
+            indices += [a, b, c, a, c, d]
+    return np.asarray(positions, np.float32), np.asarray(indices, np.uint32)
+
+
+def write_tris(positions, indices):
+    """TRIS bytes (test fixtures): u32 magic, u32 vertices, u32 indices, then
+    f32 xyz per vertex and u32 per index, little-endian."""
+    return (struct.pack("<III", TRIS_MAGIC, len(positions), len(indices)) +
+            np.asarray(positions, "<f4").tobytes() + np.asarray(indices, "<u4").tobytes())
+
+
 def write_fixtures(out):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     data = fixture_contract()
     Volume(data)
     (out / "contract.sdfv").write_bytes(data)
+    (out / "contract.tris").write_bytes(write_tris(*contract_geometry()))
     variants = []
     for name, variant in malformations(data):
         try:

@@ -198,6 +198,13 @@ class LightConversionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             scene.falloff_match(self.light((0.0, 0.0, 0.0)))
 
+    def test_only_switchable_styles_start_dark(self):
+        lights = [{"index": i, "style": style} for i, style in enumerate((0, 1, 32, 33, 33))]
+        owners = {0: {"spawnflags": "1"}, 1: {"spawnflags": "1"}, 2: {"spawnflags": "0"},
+                  3: {}, 4: {"spawnflags": "1"}}
+        # Preset style 1 ignores the flag; 33 is dark because one of its lights is.
+        self.assertEqual(scene.starting_dark_styles(lights, owners), {33})
+
     def test_surface_lights_sum_onto_their_face(self):
         face = {"index": 7, "plane_normal": np.array((0.0, 0.0, -1.0)),
                 "points": np.array([(0, 0, 100), (0, 32, 100), (32, 32, 100), (32, 0, 100)],

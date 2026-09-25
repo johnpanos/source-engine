@@ -38,6 +38,8 @@
 #ifndef RENDER_INDIRECT_SDF_H
 #define RENDER_INDIRECT_SDF_H
 
+#include "mapcontainer/world_mesh.h"
+#include "mapcontainer/world_mesh_format.h"
 #include "render/indirect_light.h"
 
 #include <algorithm>
@@ -77,6 +79,28 @@ struct SdfTraceParams
 	} proxies[kMaxProxies];
 };
 static_assert( sizeof( SdfTraceParams ) == 2144, "sdf_probe_trace.comp Params" );
+
+// The static world's triangles from validated WMSH bytes (its float3
+// positions and 32-bit indices); null for invalid bytes.
+[[nodiscard]] inline std::shared_ptr<const WorldGeometry> WorldGeometryFromMesh(
+    const void *bytes, size_t size )
+{
+	mapcontainer::WorldMeshSummary summary = {};
+	if ( mapcontainer::ValidateWorldMesh( bytes, size, &summary ) != mapcontainer::WorldMeshError::Ok ||
+	     summary.indexCount == 0 || summary.indexCount % 3 )
+		return nullptr;
+	auto geometry = std::make_shared<WorldGeometry>();
+	const unsigned char *base = static_cast<const unsigned char *>( bytes );
+	geometry->positions.resize( size_t( summary.vertexCount ) * 3 );
+	for ( uint32_t v = 0; v < summary.vertexCount; ++v )
+		std::memcpy( &geometry->positions[size_t( v ) * 3],
+		    base + summary.sectionOffsets[0] + size_t( v ) * mapcontainer::kWorldMeshVertexSize,
+		    sizeof( float ) * 3 );
+	geometry->indices.resize( summary.indexCount );
+	std::memcpy( geometry->indices.data(), base + summary.sectionOffsets[1],
+	    size_t( summary.indexCount ) * sizeof( uint32_t ) );
+	return geometry;
+}
 
 // How a traced producer's rays find surfaces.
 enum class TraceMode
