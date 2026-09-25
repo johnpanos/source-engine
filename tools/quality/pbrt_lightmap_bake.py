@@ -48,6 +48,8 @@ FRAME_SAMPLES = 16
 SUN_SAMPLES = 256
 PROJECTED_PART_LIMIT = 4096
 PROXY_PREFIX = "_lightmap_footprint_"
+# Vertices this close (stage metres) are one vertex for charting.
+WELD_DISTANCE = 1e-6
 
 
 # Bake tile edge: a 4096 atlas reports 16 tiles of progress per pass.
@@ -150,6 +152,14 @@ def pack_lightmap_uvs(meshes, margin):
     # a selected UV face so projection and packing see the whole atlas.
     bpy.context.scene.tool_settings.use_uv_select_sync = True
     bpy.ops.mesh.select_all(action="SELECT")
+    # Charts are connected regions, so faces must share their vertices: a
+    # triangle soup (usd_scene's normalized stages, relit BSP faces) would
+    # chart every triangle alone, and each chart's separately baked and
+    # denoised border shows as a seam along every triangle edge. Welding
+    # exactly coincident vertices changes connectivity only; positions and
+    # per-corner UVs and normals are kept.
+    if bpy.ops.mesh.remove_doubles(threshold=WELD_DISTANCE) != {"FINISHED"}:
+        raise RuntimeError("Blender could not weld coincident lightmap vertices")
     if bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=margin,
                                 area_weight=0.0, correct_aspect=True,
                                 scale_to_bounds=False) != {"FINISHED"}:

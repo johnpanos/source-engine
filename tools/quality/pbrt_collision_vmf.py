@@ -347,9 +347,10 @@ def main():
                              "and normal in meters (stage space) and 1 for the pair's second "
                              "portal")
     parser.add_argument("--door", action="append", default=[],
-                        metavar="NAME,X0,Y0,Z0,X1,Y1,Z1",
+                        metavar="NAME,X0,Y0,Z0,X1,Y1,Z1[,MATERIAL]",
                         help="a moving box (meters) the static bake lacks: a func_brush named "
-                             "NAME, disabled (open) at spawn; `ent_fire NAME Enable` closes it")
+                             "NAME, disabled (open) at spawn, drawn with MATERIAL (default "
+                             "the dev texture); `ent_fire NAME Enable` closes it")
     parser.add_argument("--light-control", action="append", default=[], metavar="NAME",
                         help="a switchable baked light (RFC 0011 RTRN source), in style order: "
                              "a named zero-brightness `light`, so vbsp gives it light style "
@@ -481,14 +482,15 @@ def main():
     doors = []
     for index, spec in enumerate(args.door):
         name, *values = spec.split(",")
+        material = values.pop().upper() if len(values) == 7 else DOOR_MATERIAL
         bounds = [float(v) * SOURCE_UNITS_PER_METER for v in values]
         planes, vertices = convex_brush(box_planes(bounds), 0.25)
         lines.extend(["entity", "{", '\t"id" "%d"' % (70 + index), '\t"classname" "func_brush"',
                       '\t"targetname" "%s"' % name, '\t"Solidity" "0"', '\t"StartDisabled" "1"',
                       '\t"vrad_brush_cast_shadows" "0"',
-                      brush_text(900 + index, side, planes, vertices, DOOR_MATERIAL), "}"])
+                      brush_text(900 + index, side, planes, vertices, material), "}"])
         side += len(planes)
-        doors.append({"name": name, "bounds_source_units": bounds})
+        doors.append({"name": name, "bounds_source_units": bounds, "material": material})
     placed = []
     for index, prop in enumerate(map_scene.props(scene)):
         origin = [value * SOURCE_UNITS_PER_METER for value in prop["origin_m"]]

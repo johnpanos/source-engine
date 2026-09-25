@@ -14,7 +14,7 @@ cd "$(dirname "$0")"
 ROOT="$(pwd)"
 
 # ---- Configuration: built-in defaults < run.conf < environment --------------
-CONFIG_KEYS="MAP WIDTH HEIGHT WINDOWED FPS_MAX RENDERER PHYSICS EXTRA_ARGS \
+CONFIG_KEYS="MAP WIDTH HEIGHT WINDOWED FPS_MAX RENDERER PHYSICS JOB_ARGS EXTRA_ARGS \
              BUILD BUILD_DIR RUNTIME BASE_RUNTIME SDL_VIDEODRIVER"
 # Remember values already provided via the environment so they win over run.conf.
 for k in $CONFIG_KEYS; do eval "__set_$k=\${$k+set}" "__val_$k=\${$k-}"; done
@@ -23,6 +23,7 @@ MAP=testchmb_a_01
 WIDTH=1920; HEIGHT=1080; WINDOWED=1; FPS_MAX=120
 RENDERER=native-vulkan
 PHYSICS=vphysics_box3d
+JOB_ARGS=                  # job-system ConVars; run.conf enables the pooled graphs
 EXTRA_ARGS="-novid -insecure +mat_queue_mode 0"
 BUILD=1
 BUILD_DIR=build
@@ -63,8 +64,11 @@ export DXVK_WSI_DRIVER=SDL3
 export SteamAppId=400 SteamGameId=400
 export LD_LIBRARY_PATH="$PWD/bin:${LD_LIBRARY_PATH:-}"
 
+# shellcheck disable=SC2206  # JOB_ARGS is intentionally word-split
+job_args=($JOB_ARGS)
+# Job-system ConVars go before +map so the first frame already uses them.
 cmd=(./hl2_launcher -game portal -w "$WIDTH" -h "$HEIGHT"
-     -renderer "$RENDERER" -physics "$PHYSICS" +fps_max "$FPS_MAX" +map "$MAP")
+     -renderer "$RENDERER" -physics "$PHYSICS" +fps_max "$FPS_MAX" "${job_args[@]}" +map "$MAP")
 [ "$WINDOWED" = 1 ] && cmd+=(-windowed)
 # Headless (offscreen) runs have no one listening: mute them.
 [ "$SDL_VIDEODRIVER" = offscreen ] && cmd+=(+volume 0)

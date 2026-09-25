@@ -520,6 +520,145 @@ private:
 	bool m_hasDistant = false;
 };
 
+// Moving geometry in a probe volume's visibility: the bake's distance
+// moments do not know a door is shut, so the world and models would sample a
+// probe on its far side through it (light leaking round the door). Each
+// active probe's visibility direction that meets a proxy closer than its
+// stored mean distance takes the proxy's distance (mean, and its square as
+// the second moment), and the tile's octahedral border is rewritten. Returns
+// the number of probes changed; a volume no proxy is near is unchanged.
+inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> proxies )
+{
+	if ( proxies.empty() )
+		return 0;
+	const mapcontainer::ProbeVolumeLayout &layout = volume.layout;
+	constexpr uint32_t kTile = mapcontainer::kProbeVisibilityTile;
+	constexpr uint32_t kInterior = kTile - 2;
+	unsigned char *atlas = volume.bytes.data() + layout.atlasOffset;
+	const auto texel = [&]( uint32_t x, uint32_t y ) { return atlas + ( size_t( y ) * layout.atlasWidth + x ) * 8; };
+	const auto read = [&]( const unsigned char *p, int c )
+	{
+		uint16_t half;
+		std::memcpy( &half, p + 2 * c, 2 );
+		return mapcontainer::HalfToFloat( half );
+	};
+	const auto write = [&]( unsigned char *p, int c, float value )
+	{
+		const uint16_t half = FloatToHalf( value );
+		std::memcpy( p + 2 * c, &half, 2 );
+	};
+	// Interior texel centres' directions (probe_volume.py interior_directions).
+	float directions[kInterior][kInterior][3];
+	for ( uint32_t v = 0; v < kInterior; ++v )
+		for ( uint32_t u = 0; u < kInterior; ++u )
+		{
+			float px = ( float( u ) + 0.5f ) / float( kInterior ) * 2.0f - 1.0f;
+			float py = ( float( v ) + 0.5f ) / float( kInterior ) * 2.0f - 1.0f;
+			const float z = 1.0f - std::fabs( px ) - std::fabs( py );
+			if ( z < 0.0f )
+			{
+				const float fx = ( 1.0f - std::fabs( py ) ) * ( px >= 0.0f ? 1.0f : -1.0f );
+				const float fy = ( 1.0f - std::fabs( px ) ) * ( py >= 0.0f ? 1.0f : -1.0f );
+				px = fx;
+				py = fy;
+			}
+			const float length = std::sqrt( px * px + py * py + z * z );
+			directions[v][u][0] = px / length;
+			directions[v][u][1] = py / length;
+			directions[v][u][2] = z / length;
+		}
+	size_t changedProbes = 0;
+	for ( uint32_t g = 0; g < layout.gridCount; ++g )
+	{
+		const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
+		const uint32_t stateRow = grid.tilesPerRow * kTile;
+		for ( uint32_t i = 0; i < grid.probeCount; ++i )
+		{
+			const unsigned char *state =
+			    texel( grid.stateOrigin[0] + i % stateRow, grid.stateOrigin[1] + i / stateRow );
+			if ( read( state, 3 ) < 0.5f )
+				continue;
+			const uint32_t index[3] = { i % grid.dims[0], ( i / grid.dims[0] ) % grid.dims[1],
+				i / ( grid.dims[0] * grid.dims[1] ) };
+			float probe[3];
+			for ( int k = 0; k < 3; ++k )
+				probe[k] = grid.origin[k] + float( index[k] ) * grid.spacing[k] + read( state, k );
+			// Only proxies within the probe's visibility range.
+			bool near = false;
+			for ( const Proxy &proxy : proxies )
+			{
+				float d2 = 0.0f;
+				for ( int k = 0; k < 3; ++k )
+				{
+					const float e = std::max( { proxy.lo[k] - probe[k], 0.0f, probe[k] - proxy.hi[k] } );
+					d2 += e * e;
+				}
+				near = near || d2 < grid.maxDistance * grid.maxDistance;
+			}
+			if ( !near )
+				continue;
+			const uint32_t x0 = grid.visibilityOrigin[0] + ( i % grid.tilesPerRow ) * kTile;
+			const uint32_t y0 = grid.visibilityOrigin[1] + ( i / grid.tilesPerRow ) * kTile;
+			bool changed = false;
+			for ( uint32_t v = 0; v < kInterior; ++v )
+				for ( uint32_t u = 0; u < kInterior; ++u )
+				{
+					const float *d = directions[v][u];
+					float nearest = grid.maxDistance;
+					for ( const Proxy &proxy : proxies )
+					{
+						float enter = 0.0f, leave = nearest;
+						bool hit = true;
+						for ( int k = 0; k < 3 && hit; ++k )
+						{
+							if ( std::fabs( d[k] ) < 1e-8f )
+							{
+								hit = probe[k] >= proxy.lo[k] && probe[k] <= proxy.hi[k];
+								continue;
+							}
+							float t0 = ( proxy.lo[k] - probe[k] ) / d[k];
+							float t1 = ( proxy.hi[k] - probe[k] ) / d[k];
+							if ( t0 > t1 )
+								std::swap( t0, t1 );
+							enter = std::max( enter, t0 );
+							leave = std::min( leave, t1 );
+							hit = enter <= leave;
+						}
+						if ( hit )
+							nearest = std::min( nearest, enter );
+					}
+					unsigned char *at = texel( x0 + 1 + u, y0 + 1 + v );
+					const float mean = nearest / grid.maxDistance;
+					if ( mean < read( at, 0 ) )
+					{
+						write( at, 0, mean );
+						write( at, 1, std::min( read( at, 1 ), mean * mean ) );
+						changed = true;
+					}
+				}
+			if ( !changed )
+				continue;
+			++changedProbes;
+			// The octahedral border (probe_volume.py with_border).
+			const auto copy = [&]( uint32_t tx, uint32_t ty, uint32_t sx, uint32_t sy )
+			{ std::memcpy( texel( x0 + tx, y0 + ty ), texel( x0 + 1 + sx, y0 + 1 + sy ), 8 ); };
+			const uint32_t n = kInterior;
+			for ( uint32_t k = 0; k < n; ++k )
+			{
+				copy( 1 + k, 0, n - 1 - k, 0 );
+				copy( 1 + k, n + 1, n - 1 - k, n - 1 );
+				copy( 0, 1 + k, 0, n - 1 - k );
+				copy( n + 1, 1 + k, n - 1, n - 1 - k );
+			}
+			copy( 0, 0, n - 1, n - 1 );
+			copy( n + 1, 0, 0, n - 1 );
+			copy( 0, n + 1, n - 1, 0 );
+			copy( n + 1, n + 1, 0, 0 );
+		}
+	}
+	return changedProbes;
+}
+
 } // namespace indirect_light
 
 #endif // RENDER_DIRECT_OCCLUSION_H

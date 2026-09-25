@@ -18,25 +18,44 @@ light source that emission belongs to (its light style scales it; 0xFFFF:
 none). Analytic lights the producer samples with shadow rays: rectangles
 (radiance, centre, two half-extent axes, emitting along -(u x v)... the
 winding the bake records as `normal`), distant lights (irradiance, the
-direction light travels, angular diameter) and a uniform dome (radiance).
-Each light carries its light style (-1: fixed), matching the map's RTRN
-sources.
+direction light travels, angular diameter), a uniform dome (radiance),
+spheres (radiance, centre, radius) and spots (a one-sided disk: radiance,
+centre, emitting normal, radius, and vrad's cone: full inside the inner cone,
+((cos - outer) / (inner - outer)) ** exponent between the cones, nothing
+outside the outer one; exponent 0 is linear). Each light carries its light
+style (-1: fixed), matching the map's RTRN sources.
+
+Version 2 adds the light cells: a coarse grid over the world whose every cell
+lists the lights that may reach points in it (the bake culls by range and,
+for a compiled map, by its visibility). A point outside the grid uses the
+nearest cell. A version-1 volume has no cells: every light reaches every
+point.
 
 Encoding (little-endian):
 
-  header (64 bytes)
-    0  u32 magic 'SDFV'   4  u32 version (1)   8  u32 header bytes (64)   12 u32 flags (0)
+  header (64 bytes; 96 in version 2)
+    0  u32 magic 'SDFV'   4  u32 version (1 or 2)   8  u32 header bytes (64 or 96)
+    12 u32 flags (0)
     16 f32 origin[3] (the first voxel's centre)  28 f32 voxel size
     32 u32 dims[3]        44 u32 lights        48 f32 max distance (clamp)
     52 u32 reserved[3] (0)
+    version 2:
+    64 f32 cell origin[3] (the grid's low corner)  76 f32 cell size
+    80 u32 cell dims[3]   92 u32 cell entries
   voxels   dims.x * dims.y * dims.z records of 16 bytes, x fastest:
            f16 distance, f16 reflectance rgb, f16 emission rgb, u16 source (0xFFFF none)
   lights   records of 64 bytes:
-           u32 kind (0 rect, 1 distant, 2 dome), i32 style, f32 rgb[3] (rect/dome radiance,
-           distant irradiance), f32 a[3], f32 b[3], f32 c[3], f32 reserved[2]
+           u32 kind (0 rect, 1 distant, 2 dome, 3 sphere, 4 spot; 3 and 4 in version 2),
+           i32 style, f32 rgb[3] (radiance; distant: irradiance), f32 a[3], f32 b[3],
+           f32 c[3], f32 d[2] (zero but for a spot's exponent)
            rect: a centre, b half-axis u, c half-axis v, emitting along normalize(b x c)
            distant: a the direction light travels (unit), b[0] angular diameter (radians)
            dome: a, b, c zero
+           sphere: a centre, b[0] radius (> 0)
+           spot: a centre, b emitting normal (unit), c radius (> 0), cos inner, cos outer
+                 (-1 <= outer <= inner <= 1), d[0] exponent (>= 0)
+  cells    (version 2) u32 first entry per cell, x fastest, then the entry count;
+           u16 light index per entry, zero-padded to 4 bytes
 """
 
 import argparse
@@ -52,14 +71,45 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import radiosity_transfer  # noqa: E402  (its byte-diff recipe for the corpus)
 
 MAGIC = 0x56464453  # "SDFV"
-VERSION = 1
-HEADER_BYTES = 64
+VERSION = 2
+HEADER_BYTES = 96
+V1_HEADER_BYTES = 64
 VOXEL_BYTES = 16
 LIGHT_BYTES = 64
 MAX_VOXELS = 1 << 24
-MAX_LIGHTS = 64
+MAX_LIGHTS = 4096
+MAX_CELLS = 1 << 22
 NO_SOURCE = 0xFFFF
-KINDS = ("rect", "distant", "dome")
+KINDS = ("rect", "distant", "dome", "sphere", "spot")
+V1_KINDS = 3
+
+
+def check_light(light, index):
+    """A light record's kind-specific invariants (SdfError otherwise)."""
+    kind, b, c, d = light["kind"], light["b"], light["c"], light["d"]
+    ok = True
+    if kind == "distant":
+        ok = abs(np.linalg.norm(light["a"]) - 1) <= 1e-3
+    elif kind == "sphere":
+        ok = b[0] > 0 and not any(b[1:]) and not any(c) and not any(d)
+    elif kind == "spot":
+        ok = abs(np.linalg.norm(b) - 1) <= 1e-3 and c[0] > 0 and \
+            -1.0 <= c[2] <= c[1] <= 1.0 and d[0] >= 0 and d[1] == 0
+    else:
+        ok = not any(d)
+    if not ok:
+        raise SdfError("invalid-light", "light %d %s" % (index, kind))
+
+
+def spot_multiplier(cos_angle, inner, outer, exponent):
+    """vrad's spot cone at `cos_angle` from the axis (one-sided disk's
+    cosine not included)."""
+    if cos_angle >= inner:
+        return 1.0
+    if cos_angle <= outer:
+        return 0.0
+    t = (cos_angle - outer) / (inner - outer)
+    return t ** exponent if exponent not in (0.0, 1.0) else t
 
 
 class SdfError(ValueError):
@@ -68,9 +118,12 @@ class SdfError(ValueError):
         self.code = code
 
 
-def build(origin, voxel, dims, distance, reflectance, emission, source, lights, max_distance):
+def build(origin, voxel, dims, distance, reflectance, emission, source, lights, max_distance,
+          cells=None):
     """SDFV bytes. distance (Z, Y, X); reflectance and emission (Z, Y, X, 3);
-    source (Z, Y, X) u16; lights: [{kind, style, rgb, a, b, c}]."""
+    source (Z, Y, X) u16; lights: [{kind, style, rgb, a, b, c, d}]; cells:
+    {origin, size, dims, lists: [[light index, ...] per cell, x fastest]}
+    (default: one cell over the voxels listing every light)."""
     dims = [int(v) for v in dims]
     count = dims[0] * dims[1] * dims[2]
     voxels = np.zeros((count, 8), dtype="<u2")
@@ -78,14 +131,29 @@ def build(origin, voxel, dims, distance, reflectance, emission, source, lights, 
     voxels[:, 1:4] = np.asarray(reflectance, np.float32).reshape(-1, 3).astype("<f2").view("<u2")
     voxels[:, 4:7] = np.asarray(emission, np.float32).reshape(-1, 3).astype("<f2").view("<u2")
     voxels[:, 7] = np.asarray(source).reshape(-1).astype("<u2")
-    header = struct.pack("<IIII3ff3IIf3I", MAGIC, VERSION, HEADER_BYTES, 0, *origin, voxel, *dims,
-                         len(lights), max_distance, 0, 0, 0)
+    if cells is None:
+        low = np.asarray(origin, np.float64) - voxel / 2
+        extent = (np.asarray(dims) - 1) * voxel + voxel
+        cells = {"origin": low.tolist(), "size": float(extent.max()), "dims": [1, 1, 1],
+                 "lists": [list(range(len(lights)))]}
+    lists = cells["lists"]
+    if len(lists) != int(np.prod(cells["dims"])):
+        raise SdfError("invalid-cells", "one list per cell")
+    entries = sum(len(entry) for entry in lists)
+    header = struct.pack("<IIII3ff3IIf3I3ff3II", MAGIC, VERSION, HEADER_BYTES, 0, *origin, voxel,
+                         *dims, len(lights), max_distance, 0, 0, 0, *cells["origin"],
+                         cells["size"], *cells["dims"], entries)
     records = b""
     for light in lights:
         records += struct.pack("<Ii3f3f3f3f2f", KINDS.index(light["kind"]), int(light["style"]),
                                *light["rgb"], *light.get("a", (0, 0, 0)),
-                               *light.get("b", (0, 0, 0)), *light.get("c", (0, 0, 0)), 0, 0)
-    return header + voxels.tobytes() + records
+                               *light.get("b", (0, 0, 0)), *light.get("c", (0, 0, 0)),
+                               *light.get("d", (0, 0)))
+    offsets = np.concatenate([[0], np.cumsum([len(entry) for entry in lists])]).astype("<u4")
+    indices = np.asarray([i for entry in lists for i in entry], "<u2")
+    padding = b"\0\0" if entries % 2 else b""
+    return (header + voxels.tobytes() + records + offsets.tobytes() + indices.tobytes() +
+            padding)
 
 
 class Volume:
@@ -97,8 +165,10 @@ class Volume:
         magic, version, header, flags = values[0:4]
         if magic != MAGIC:
             raise SdfError("bad-magic")
-        if version != VERSION or header != HEADER_BYTES or flags or any(values[13:16]):
+        if (version, header) not in ((1, V1_HEADER_BYTES), (2, HEADER_BYTES)) or flags or \
+                any(values[13:16]) or len(data) < header:
             raise SdfError("unsupported-version")
+        self.version = version
         self.origin = np.array(values[4:7], np.float64)
         self.voxel = float(values[7])
         self.dims = [int(v) for v in values[8:11]]
@@ -109,9 +179,26 @@ class Volume:
                 or min(self.dims) < 2 or count > MAX_VOXELS or self.light_count > MAX_LIGHTS or \
                 not (self.max_distance > 0 and math.isfinite(self.max_distance)):
             raise SdfError("invalid-grid")
-        if len(data) != HEADER_BYTES + count * VOXEL_BYTES + self.light_count * LIGHT_BYTES:
-            raise SdfError("size-mismatch")
-        raw = np.frombuffer(data, "<u2", count * 8, HEADER_BYTES).reshape(count, 8)
+        lights_end = header + count * VOXEL_BYTES + self.light_count * LIGHT_BYTES
+        if version == 1:
+            cell_count = entries = 0
+            if len(data) != lights_end:
+                raise SdfError("size-mismatch")
+        else:
+            cell = struct.unpack_from("<3ff3II", data, 64)
+            self.cell_origin = np.array(cell[0:3], np.float64)
+            self.cell_size = float(cell[3])
+            self.cell_dims = [int(v) for v in cell[4:7]]
+            entries = int(cell[7])
+            cell_count = self.cell_dims[0] * self.cell_dims[1] * self.cell_dims[2]
+            if not np.isfinite(self.cell_origin).all() or \
+                    not (self.cell_size > 0 and math.isfinite(self.cell_size)) or \
+                    min(self.cell_dims) < 1 or cell_count > MAX_CELLS:
+                raise SdfError("invalid-cells", "grid")
+            size = lights_end + 4 * (cell_count + 1) + 2 * entries + 2 * (entries % 2)
+            if len(data) != size:
+                raise SdfError("size-mismatch")
+        raw = np.frombuffer(data, "<u2", count * 8, header).reshape(count, 8)
         with np.errstate(invalid="ignore", over="ignore"):
             halves = raw[:, :7].view("<f2").astype(np.float32)
         if not np.isfinite(halves).all():
@@ -126,25 +213,57 @@ class Volume:
         self.emission = halves[:, 4:7].reshape(shape + (3,))
         self.source = raw[:, 7].reshape(shape)
         self.lights = []
-        base = HEADER_BYTES + count * VOXEL_BYTES
+        base = header + count * VOXEL_BYTES
         for i in range(self.light_count):
             v = struct.unpack_from("<Ii3f3f3f3f2f", data, base + i * LIGHT_BYTES)
-            if v[0] >= len(KINDS) or not -1 <= v[1] <= 63 or v[14] or v[15] or \
-                    not all(math.isfinite(x) for x in v[2:14]) or min(v[2:5]) < 0:
+            kinds = V1_KINDS if version == 1 else len(KINDS)
+            if v[0] >= kinds or not -1 <= v[1] <= 63 or \
+                    not all(math.isfinite(x) for x in v[2:16]) or min(v[2:5]) < 0:
                 raise SdfError("invalid-light", "light %d" % i)
             light = {"kind": KINDS[v[0]], "style": v[1], "rgb": list(v[2:5]), "a": list(v[5:8]),
-                     "b": list(v[8:11]), "c": list(v[11:14])}
-            if light["kind"] == "distant" and abs(np.linalg.norm(light["a"]) - 1) > 1e-3:
-                raise SdfError("invalid-light", "light %d direction" % i)
+                     "b": list(v[8:11]), "c": list(v[11:14]), "d": list(v[14:16])}
+            check_light(light, i)
             self.lights.append(light)
+        if version == 1:
+            # Every light everywhere: one cell over the voxels.
+            self.cell_origin = self.origin - self.voxel / 2
+            self.cell_size = float(max(self.dims)) * self.voxel
+            self.cell_dims = [1, 1, 1]
+            self.cell_offsets = np.array([0, self.light_count], np.int64)
+            self.cell_entries = np.arange(self.light_count, dtype=np.int64)
+        else:
+            at = lights_end
+            self.cell_offsets = np.frombuffer(data, "<u4", cell_count + 1, at).astype(np.int64)
+            self.cell_entries = np.frombuffer(data, "<u2", entries,
+                                              at + 4 * (cell_count + 1)).astype(np.int64)
+            padding = data[at + 4 * (cell_count + 1) + 2 * entries:]
+            if self.cell_offsets[0] != 0 or self.cell_offsets[-1] != entries or \
+                    (np.diff(self.cell_offsets) < 0).any() or any(padding):
+                raise SdfError("invalid-cells", "offsets")
+            if entries and int(self.cell_entries.max()) >= self.light_count:
+                raise SdfError("invalid-cells", "light index")
         used = self.source[self.source != NO_SOURCE]
         if used.size and int(used.max()) >= 64:
             raise SdfError("invalid-voxel", "source index")
         self.bytes = len(data)
 
+    def cell_lights(self, point):
+        """The light indices listed for the cell holding `point` (the nearest
+        cell outside the grid)."""
+        index = np.floor((np.asarray(point, np.float64) - self.cell_origin) / self.cell_size)
+        index = np.clip(index, 0, np.asarray(self.cell_dims) - 1).astype(int)
+        cell = index[0] + self.cell_dims[0] * (index[1] + self.cell_dims[1] * index[2])
+        return self.cell_entries[self.cell_offsets[cell]:self.cell_offsets[cell + 1]].tolist()
+
     def info(self):
-        return {"bytes": self.bytes, "origin": self.origin.tolist(), "voxel": self.voxel,
-                "dims": self.dims, "lights": self.lights, "max_distance": self.max_distance,
+        lengths = np.diff(self.cell_offsets)
+        return {"bytes": self.bytes, "version": self.version, "origin": self.origin.tolist(),
+                "voxel": self.voxel, "dims": self.dims, "lights": self.lights,
+                "max_distance": self.max_distance,
+                "cells": {"origin": self.cell_origin.tolist(), "size": self.cell_size,
+                          "dims": self.cell_dims, "entries": int(len(self.cell_entries)),
+                          "max_lights": int(lengths.max()) if len(lengths) else 0,
+                          "mean_lights": float(lengths.mean()) if len(lengths) else 0.0},
                 "inside_fraction": float((self.distance < 0).mean()),
                 "emissive_voxels": int((self.emission.max(axis=-1) > 0).sum())}
 
@@ -158,7 +277,15 @@ def malformations(data):
         struct.pack_into(fmt, out, offset, *values)
         return bytes(out)
 
+    def edited(*edits):
+        out = bytearray(data)
+        for offset, fmt, *values in edits:
+            struct.pack_into(fmt, out, offset, *values)
+        return bytes(out)
+
     first_light = HEADER_BYTES + count * VOXEL_BYTES
+    lights = header[11]
+    cells = first_light + lights * LIGHT_BYTES
     return [("truncated", data[:HEADER_BYTES - 2]), ("short", data[:-8]),
             ("bad-magic", patched(0, "<I", 0)), ("version", patched(4, "<I", 9)),
             ("flags", patched(12, "<I", 1)), ("voxel-size", patched(28, "<f", 0.0)),
@@ -167,7 +294,17 @@ def malformations(data):
             ("emission", patched(HEADER_BYTES + 8, "<e", -1.0)),
             ("distance", patched(HEADER_BYTES, "<e", 60000.0)),
             ("light-kind", patched(first_light, "<I", 9)),
-            ("light-style", patched(first_light + 4, "<i", 99))]
+            ("light-style", patched(first_light + 4, "<i", 99)),
+            # Version 2: a reserved word set on a dome, a sphere of radius 0,
+            # a spot whose inner cone is outside its outer one.
+            ("light-reserved", patched(first_light + 56, "<f", 1.0)),
+            ("sphere-radius", patched(first_light, "<I", 3)),
+            ("spot-cone", edited((first_light, "<I", 4), (first_light + 32, "<3f", 0.0, 0.0, 1.0),
+                                 (first_light + 44, "<3f", 1.0, 0.2, 0.9))),
+            ("cell-size", patched(76, "<f", 0.0)),
+            ("cell-dims", patched(80, "<I", 0)),
+            ("cell-offsets", patched(cells, "<I", 1)),
+            ("cell-index", patched(cells + 8, "<H", 999))]
 
 
 def fixture_contract():
@@ -212,6 +349,30 @@ def fixture_contract():
                  [{"kind": "dome", "style": -1, "rgb": (0.0, 0.0, 0.0)}], max_distance)
 
 
+def fixture_lights():
+    """Every light kind and a 2 x 2 x 1 cell grid, over a small empty volume
+    (the readers' positive fixture): a rect, a distant light, a dome, a
+    sphere and a spot; the global lights are in every cell, the sphere in the
+    cells with x < 32, the spot in cell 3 only."""
+    voxel = 16.0
+    dims = [5, 5, 3]
+    shape = (dims[2], dims[1], dims[0])
+    lights = [
+        {"kind": "rect", "style": 32, "rgb": (1.0, 1.0, 1.0), "a": (16.0, 16.0, 30.0),
+         "b": (4.0, 0.0, 0.0), "c": (0.0, -4.0, 0.0)},
+        {"kind": "distant", "style": -1, "rgb": (2.0, 2.0, 2.0), "a": (0.0, 0.0, -1.0),
+         "b": (0.01, 0.0, 0.0)},
+        {"kind": "dome", "style": -1, "rgb": (0.1, 0.1, 0.1)},
+        {"kind": "sphere", "style": -1, "rgb": (5.0, 4.0, 3.0), "a": (8.0, 8.0, 16.0),
+         "b": (2.0, 0.0, 0.0)},
+        {"kind": "spot", "style": 33, "rgb": (9.0, 9.0, 9.0), "a": (48.0, 48.0, 30.0),
+         "b": (0.0, 0.0, -1.0), "c": (2.0, 0.9659, 0.8660), "d": (2.0, 0.0)}]
+    cells = {"origin": [-8.0, -8.0, -8.0], "size": 40.0, "dims": [2, 2, 1],
+             "lists": [[0, 1, 2, 3], [0, 1, 2], [0, 1, 2, 3], [0, 1, 2, 4]]}
+    return build([0.0, 0.0, 0.0], voxel, dims, np.full(shape, 32.0), np.zeros(shape + (3,)),
+                 np.zeros(shape + (3,)), np.full(shape, NO_SOURCE), lights, 64.0, cells)
+
+
 CONTRACT_ROOMS = (((-16.0, -16.0, -16.0), (47.0, 48.0, 48.0)),
                   ((49.0, -16.0, -16.0), (112.0, 48.0, 48.0)))
 TRIS_MAGIC = 0x53495254  # "TRIS"
@@ -247,6 +408,9 @@ def write_fixtures(out):
     data = fixture_contract()
     Volume(data)
     (out / "contract.sdfv").write_bytes(data)
+    lights = fixture_lights()
+    Volume(lights)
+    (out / "lights.sdfv").write_bytes(lights)
     (out / "contract.tris").write_bytes(write_tris(*contract_geometry()))
     variants = []
     for name, variant in malformations(data):
@@ -256,8 +420,9 @@ def write_fixtures(out):
         except SdfError as error:
             code = error.code
         variants.append({"name": name, "error": code, **radiosity_transfer.recipe(data, variant)})
-    (out / "fixtures.json").write_text(json.dumps({"schema": "sdfv-fixtures/v1",
+    (out / "fixtures.json").write_text(json.dumps({"schema": "sdfv-fixtures/v2",
                                                    "contract": Volume(data).info(),
+                                                   "lights": Volume(lights).info(),
                                                    "malformations": variants}, indent=1) + "\n")
     # The same corpus as plain text for the C++ reader's test:
     #   name error length [offset:hex ...]

@@ -634,8 +634,11 @@ def door(out):
                             solid_meshes=["A_Xp", "B_Xn"])
     # The slab as a moving brush entity (open at spawn): the geometry change
     # the SDF-traced producer must follow and radiosity cannot (G6).
+    # It draws with the map's wall material (the same 0.6 grey as DoorPaint),
+    # in its legacy lightmapped form: a brush entity is not world mesh.
     manifest["collision"]["doors"] = [{"name": "Door", "bounds_m": [
-        [wall0 + 0.075, hole_y[0], hole_z[0]], [wall0 + 0.125, hole_y[1], hole_z[1]]]}]
+        [wall0 + 0.075, hole_y[0], hole_z[0]], [wall0 + 0.125, hole_y[1], hole_z[1]]],
+        "material": "gi_door_fallback/wall"}]
     write_json(directory / "map.json", manifest)
 
 

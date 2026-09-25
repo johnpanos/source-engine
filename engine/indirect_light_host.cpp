@@ -207,6 +207,7 @@ struct Host
 	EngineExecutor occlusionExecutor{ true };
 	std::vector<Proxy> occluded;
 	std::vector<unsigned char> occludedTotal;
+	std::vector<Proxy> visibilityProxies; // the proxies the consumed volume's visibility has
 	std::vector<LightOverride> lightOverrides; // r_indirect_light_direction
 	uint64_t uploadedGeneration = 0;
 	uint64_t mapSerial = 0;
@@ -344,6 +345,16 @@ void Consume( const FrameVolume &frame )
 		return;
 	host.uploadedGeneration = frame.generation;
 	host.current = frame.volume;
+	// Moving geometry in the probes' visibility: a closed door stops probes
+	// on its far side from lighting through it (a copy; the producer's
+	// volume stays as published).
+	host.visibilityProxies = host.proxies;
+	if ( !host.proxies.empty() )
+	{
+		auto occluded = std::make_shared<Volume>( *frame.volume );
+		if ( OccludeProbeVisibility( *occluded, host.proxies ) )
+			host.current = occluded;
+	}
 	host.view.emplace( host.current->bytes.data(), host.current->layout );
 	// Every model's ambient cube is re-evaluated from the new volume.
 	R_StudioInitLightingCache();
@@ -556,6 +567,7 @@ void IndirectLight_EndMap()
 	host.occlusion = DirectOcclusion();
 	host.occluded.clear();
 	host.occludedTotal.clear();
+	host.visibilityProxies.clear();
 	host.uploadedGeneration = 0;
 	host.scene = IndirectScene();
 }
@@ -588,6 +600,9 @@ void IndirectLight_Frame( const light_set::Snapshot &lights )
 		job();
 	const double updateMs = ( Plat_FloatTime() - started ) * 1000.0;
 	host.tracker.Advance();
+	// New proxies re-consume the same volume with their visibility.
+	if ( host.proxies != host.visibilityProxies )
+		host.uploadedGeneration = 0;
 	const bool published = frame.volume && frame.generation != host.uploadedGeneration;
 	Consume( frame );
 	if ( r_indirect_report.GetBool() && ( !work.jobs.empty() || published ) )

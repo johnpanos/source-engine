@@ -1,13 +1,20 @@
-truncated truncated 62
-short size-mismatch 56904
-bad-magic bad-magic 56912 0:00000000
-version unsupported-version 56912 4:09
-flags unsupported-version 56912 12:01
-voxel-size invalid-grid 56912 31:00
-dims invalid-grid 56912 32:01
-max-distance invalid-grid 56912 50:c07f
-reflectance invalid-voxel 56912 66:003e
-emission invalid-voxel 56912 72:00bc
-distance invalid-voxel 56912 64:537b
-light-kind invalid-light 56912 56848:09
-light-style invalid-light 56912 56852:63000000
+truncated truncated 94
+short size-mismatch 56948
+bad-magic bad-magic 56956 0:00000000
+version unsupported-version 56956 4:09
+flags unsupported-version 56956 12:01
+voxel-size invalid-grid 56956 31:00
+dims invalid-grid 56956 32:01
+max-distance invalid-grid 56956 50:c07f
+reflectance invalid-voxel 56956 98:003e
+emission invalid-voxel 56956 104:00bc
+distance invalid-voxel 56956 96:537b
+light-kind invalid-light 56956 56880:09
+light-style invalid-light 56956 56884:63000000
+light-reserved invalid-light 56956 56938:803f
+sphere-radius invalid-light 56956 56880:03
+spot-cone invalid-light 56956 56880:04 56922:803f 56926:803fcdcc4c3e6666663f
+cell-size invalid-cells 56956 78:0000
+cell-dims invalid-cells 56956 80:00
+cell-offsets invalid-cells 56956 56944:01
+cell-index invalid-cells 56956 56952:e703

@@ -844,7 +844,8 @@ class Pipeline:
             collision_args += ["--light-control", control["name"]]
         for door in collision.get("doors", []):
             collision_args += ["--door", ",".join([door["name"]] + [
-                "%g" % v for corner in door["bounds_m"] for v in corner])]
+                "%g" % v for corner in door["bounds_m"] for v in corner] +
+                ([door["material"]] if door.get("material") else []))]
         for portal in collision.get("portals", []):
             collision_args += ["--portal", ",".join(
                 "%g" % v for v in list(portal["center_m"]) + list(portal["normal"]) +
