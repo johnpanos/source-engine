@@ -539,6 +539,20 @@ static bool g_CurrentSolidEnergy = false;
 // select the world pipelines in EmitToNativeQueue; every other mesh draws
 // through shaders/model_pbr.frag with skin_vs20's vertex conversion.
 static bool g_CurrentPbrModel = false;
+// LightmappedGeneric's lightmappedgeneric_ps20b static combos as lightmapped.frag's
+// flags (CVulkanContext::kLightmapped*), -1 when the pass is not drawn by that
+// pipeline; with its DETAIL_BLEND_MODE and lightmappedgeneric_vs20's static combos
+// (1 VERTEXCOLOR, 2 VERTEXALPHATEXBLENDFACTOR).
+static int g_CurrentLightmappedCombos = -1;
+static int g_CurrentLightmappedDetailMode = 0;
+static int g_CurrentLightmappedVsCombos = 0;
+// The bloom or color-correction pass (CVulkanContext::kPost*), 0 for none, and
+// its pixel shader's static combo index.
+static int g_CurrentPostMode = 0;
+static int g_CurrentPostStatic = 0;
+// Whether the pass is the Shadow shader's projected render-to-texture shadow
+// (shadow_ps2x), drawn by the textured pipeline's shadow stage.
+static bool g_CurrentShadowProjection = false;
 // IShaderAPI::CullMode, D3D9's default CCW.
 static MaterialCullMode_t g_DesiredCullMode = MATERIAL_CULLMODE_CCW;
 
@@ -941,16 +955,18 @@ public:
 	// 12 bytes position + 4 bytes color + 8 bytes texcoord0 + 8 bytes texcoord1
 	// + 8 bytes bone weights (two floats) + 4 bytes bone indices + 12 bytes
 	// normal + 16 bytes user data (the TANGENT stream, binormal sign in w)
-	// + 12 bytes each of tangent S and tangent T (brush formats' tangent frame).
+	// + 12 bytes each of tangent S and tangent T (brush formats' tangent frame)
+	// + 8 bytes texcoord2 (a bumped brush's lightmap page offset).
 	enum
 	{
-		kMeshVertexStride = 96,
+		kMeshVertexStride = 104,
 		kMeshBoneWeightOffset = 32,
 		kMeshBoneIndexOffset = 40,
 		kMeshNormalOffset = 44,
 		kMeshUserDataOffset = 56,
 		kMeshTangentSOffset = 72,
-		kMeshTangentTOffset = 84
+		kMeshTangentTOffset = 84,
+		kMeshTexCoord2Offset = 96
 	};
 };
 
@@ -1432,8 +1448,16 @@ public:
 	{
 		s_ShaderDeviceEmpty.GetBackBufferDimensions( width, height );
 	}
+	// The material system's color correction (its lookups, bound as
+	// TEXTURE_COLOR_CORRECTION_VOLUME_*), as CShaderAPIBase reports it. Without
+	// the post-processing pipeline Engine_Post is declined, so it reports none.
 	virtual void GetCurrentColorCorrection( ShaderColorCorrectionInfo_t *pInfo )
 	{
+		if ( g_VulkanContext.PostPipelineSupported() )
+		{
+			ShaderUtil()->GetCurrentColorCorrection( pInfo );
+			return;
+		}
 		pInfo->m_bIsEnabled = false;
 		pInfo->m_nLookupCount = 0;
 		pInfo->m_flDefaultWeight = 0.0f;
@@ -2081,7 +2105,14 @@ public:
 
 	virtual int GetMaxVertexTextureDimension() const { return 0; }
 
-	virtual int MaxTextureDepth() const { return 0; }
+	// Volume textures (the color-correction lookups), when the post-processing
+	// pipeline that samples them exists.
+	virtual int MaxTextureDepth() const
+	{
+		return g_VulkanContext.PostPipelineSupported()
+		           ? static_cast<int>( g_VulkanContext.MaxVolumeTextureDimension() )
+		           : 0;
+	}
 
 	// Binds a vertex texture to a particular texture stage in the vertex pipe
 	virtual void BindVertexTexture(
@@ -3252,6 +3283,7 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 		memset( vertex + kMeshBoneIndexOffset, 0, 4 );
 		memset( vertex + kMeshNormalOffset, 0, 28 );
 		memset( vertex + kMeshTangentSOffset, 0, 24 );
+		memset( vertex + kMeshTexCoord2Offset, 0, 8 );
 	}
 
 	desc.m_pPosition = (float *)( vertexMemory );
@@ -3262,15 +3294,17 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 	desc.m_pSpecular = m_dummyComponent;
 	desc.m_VertexSize_Specular = 0;
 
-	// Texcoord0 (base UV) lives at offset 16 and texcoord1 (the lightmap
-	// coordinate) at 24; other texcoord sets go to the dummy scratch.
+	// Texcoord0 (base UV) lives at offset 16, texcoord1 (the lightmap
+	// coordinate) at 24 and texcoord2 (the bumped lightmap offset) at 96; other
+	// texcoord sets go to the dummy scratch.
 	desc.m_pNormal = (float *)( vertexMemory + kMeshNormalOffset );
 	int i;
 	for ( i = 0; i < VERTEX_MAX_TEXTURE_COORDINATES; ++i )
 	{
-		if ( i < 2 )
+		if ( i < 3 )
 		{
-			desc.m_pTexCoord[i] = (float *)( vertexMemory + 16 + i * 8 );
+			desc.m_pTexCoord[i] =
+			    (float *)( vertexMemory + ( i < 2 ? 16 + i * 8 : kMeshTexCoord2Offset ) );
 			desc.m_VertexSize_TexCoord[i] = kMeshVertexStride;
 		}
 		else
@@ -3351,8 +3385,11 @@ void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, i
 		vdesc.m_pColor = m_dummyComponent;
 		vdesc.m_VertexSize_Position = 0;
 		vdesc.m_VertexSize_Color = 0;
-		vdesc.m_pTexCoord[0] = (float *)m_dummyComponent;
-		vdesc.m_VertexSize_TexCoord[0] = 0;
+		for ( int t = 0; t < 3; ++t )
+		{
+			vdesc.m_pTexCoord[t] = (float *)m_dummyComponent;
+			vdesc.m_VertexSize_TexCoord[t] = 0;
+		}
 		vdesc.m_pNormal = (float *)m_dummyComponent;
 		vdesc.m_VertexSize_Normal = 0;
 		vdesc.m_pUserData = (float *)m_dummyComponent;
@@ -3372,6 +3409,8 @@ void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, i
 		vdesc.m_pPosition = (float *)base;
 		vdesc.m_pColor = base + 12;
 		vdesc.m_pTexCoord[0] = (float *)( base + 16 );
+		vdesc.m_pTexCoord[1] = (float *)( base + 24 );
+		vdesc.m_pTexCoord[2] = (float *)( base + kMeshTexCoord2Offset );
 		vdesc.m_pBoneWeight = (float *)( base + kMeshBoneWeightOffset );
 		vdesc.m_pBoneMatrixIndex = base + kMeshBoneIndexOffset;
 		vdesc.m_pNormal = (float *)( base + kMeshNormalOffset );
@@ -3818,6 +3857,7 @@ static void NoteEmitReuseCheck( bool equal )
 }
 
 static const float *MonitorTexture2Rows();
+static const float *ShadowJitter();
 
 void CEmptyMesh::EmitToNativeQueue()
 {
@@ -3948,8 +3988,15 @@ void CEmptyMesh::EmitToNativeQueue()
 	const bool solidEnergy = g_CurrentSolidEnergy;
 	const bool solidEnergyModel =
 	    solidEnergy && ( static_cast<int>( g_psConstants[11][0] ) & 256 ) != 0; // MODELFORMAT
-	const bool wantsTangents =
-	    g_CurrentPortalStage >= 0 || skin || envmap || refract || solidEnergy;
+	// LightmappedGeneric (shaders/lightmapped.vert): world-space position, normal
+	// and tangents S and T, and the bumped lightmap offset (TEXCOORD2.x).
+	const bool lightmappedFamily = g_CurrentLightmappedCombos >= 0;
+	// shadow_ps2x: its jitter ( 1 / width, 1 / height ) of the shadow texture,
+	// SHADER_SPECIFIC_CONST_2, in the vertex color it does not otherwise read.
+	const bool shadowProjection = g_CurrentShadowProjection;
+	const float *shadowJitter = ShadowJitter();
+	const bool wantsTangents = g_CurrentPortalStage >= 0 || skin || envmap || refract ||
+	                           solidEnergy || lightmappedFamily;
 	float envContrast = 0.0f, envSaturation = 1.0f, fresnelReflection = 1.0f;
 	if ( envmap && g_pBoundMaterial )
 	{
@@ -4023,6 +4070,7 @@ void CEmptyMesh::EmitToNativeQueue()
 			SkinPosition( base, pos );
 		memcpy( uv, base + 16, sizeof( uv ) );
 		memcpy( out + 8, base + 24, 2 * sizeof( float ) ); // lightmap uv
+		std::fill( out + 18, out + kRecordFloats, 0.0f );
 		if ( monitorTexture2 )
 		{
 			// unlittwotexture_vs20 derives both coordinates from TEXCOORD0.
@@ -4067,6 +4115,20 @@ void CEmptyMesh::EmitToNativeQueue()
 				memcpy( nt, normal, sizeof( normal ) );
 				memcpy( nt + 3, tangentS, sizeof( tangentS ) );
 				nt[6] = handedness < 0.0f ? -1.0f : 1.0f;
+			}
+			else if ( lightmappedFamily )
+			{
+				// lightmappedgeneric_vs20: mul( vector, (float3x3)cModel[0] ), not
+				// normalized, for the normal and the brush's tangents S and T.
+				float objectS[3], objectT[3], normal[3];
+				memcpy( normal, nt, sizeof( normal ) );
+				memcpy( objectS, base + kMeshTangentSOffset, sizeof( objectS ) );
+				memcpy( objectT, base + kMeshTangentTOffset, sizeof( objectT ) );
+				WorldNormal( base, normal, nt );
+				WorldNormal( base, objectS, nt + 3 );
+				nt[6] = 0.0f;
+				WorldNormal( base, objectT, out + 18 );
+				memcpy( out + 21, base + kMeshTexCoord2Offset, sizeof( float ) );
 			}
 			else if ( skin )
 			{
@@ -4167,6 +4229,22 @@ void CEmptyMesh::EmitToNativeQueue()
 				atten[i] = VertexAtten( skinLights[i], pos );
 			memcpy( out + 3, atten, 3 * sizeof( float ) );
 			out[17] = atten[3];
+		}
+		else if ( lightmappedFamily )
+		{
+			// World-space position (the push block holds only cViewProj) and the
+			// raw vertex color, which lightmapped.frag combines per its combos.
+			if ( g_NumBoneWeights <= 0 )
+				ModelToWorld( pos );
+			out[3] = col[2] / 255.0f;
+			out[4] = col[1] / 255.0f;
+			out[5] = col[0] / 255.0f;
+		}
+		else if ( shadowProjection )
+		{
+			out[3] = shadowJitter[0];
+			out[4] = shadowJitter[1];
+			out[5] = 0.0f;
 		}
 		else if ( monitor )
 		{
@@ -4392,12 +4470,15 @@ void CEmptyMesh::EmitToNativeQueue()
 		    ( selfIllum ? 8u : 0u ) | ( dynamicLight ? 16u : 0u ) | ( staticLight ? 32u : 0u ) |
 		    ( g_CurrentVertexLit.halfLambert ? 64u : 0u ) | ( g_NumBoneWeights > 0 ? 128u : 0u ) |
 		    ( monitor ? 256u : 0u ) | ( monitorTexture2 ? 512u : 0u ) |
-		    ( solidEnergy ? 1024u : 0u ) | ( solidEnergyModel ? 2048u : 0u );
+		    ( solidEnergy ? 1024u : 0u ) | ( solidEnergyModel ? 2048u : 0u ) |
+		    ( lightmappedFamily ? 4096u : 0u ) | ( shadowProjection ? 8192u : 0u );
 		key.skinLightCount = skinLightCount;
 		key.lightCount = lightCount;
 		// The constants the conversion reads, beyond the bones.
-		if ( g_NumBoneWeights <= 0 && ( skin || vertexLighting || solidEnergy ) )
+		if ( g_NumBoneWeights <= 0 && ( skin || vertexLighting || solidEnergy || lightmappedFamily ) )
 			inputs.insert( inputs.end(), ModelMatrix(), ModelMatrix() + 16 );
+		if ( shadowProjection )
+			inputs.insert( inputs.end(), shadowJitter, shadowJitter + 2 );
 		for ( int i = 0; i < skinLightCount; ++i )
 		{
 			const float *light = reinterpret_cast<const float *>( &skinLights[i] );
@@ -4601,6 +4682,10 @@ void CShaderShadowVulkan::EnableSRGBRead( Sampler_t stage, bool bEnable )
 		flag = render_vulkan::CVulkanContext::kColorSrgbReadLightmap;
 	else if ( stage == SHADER_SAMPLER2 )
 		flag = render_vulkan::CVulkanContext::kColorSrgbReadSampler2;
+	else if ( stage == SHADER_SAMPLER7 )
+		flag = render_vulkan::CVulkanContext::kColorSrgbReadSampler7;
+	else if ( stage == SHADER_SAMPLER12 )
+		flag = render_vulkan::CVulkanContext::kColorSrgbReadSampler12;
 	m_colorFlags = bEnable ? ( m_colorFlags | flag ) : ( m_colorFlags & ~flag );
 }
 
@@ -6070,6 +6155,67 @@ static void CommitPbrModelConstants( const CShaderAPIVulkan &api )
 	g_VulkanContext.SetDynamicSkinConstants( c );
 }
 
+// LightmappedGeneric's registers for the draw (lightmappedgeneric_dx9_helper.cpp's
+// dynamic state), laid out as shaders/lightmapped.frag reads them: the pixel
+// constants c0..c31, with the unused flashlight registers c13..c23 carrying the
+// vertex stage's texture transforms (SHADER_SPECIFIC_CONST_0..5), its
+// cModulationColor.a and combos, the pixel shader's dynamic combo index, and
+// DETAIL_BLEND_MODE. The push block takes cViewProj and the eye position; the
+// vertex positions arrive in world space (EmitToNativeQueue).
+static void CommitLightmappedConstants( const CShaderAPIVulkan &api )
+{
+	EnsureMatricesInit();
+	render_vulkan::CVulkanContext::SkinConstants c;
+	memcpy( c.ps, g_psConstants, sizeof( c.ps ) );
+	for ( int i = 0; i < 6; ++i )
+		memcpy( c.ps[13 + i], g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_0 + i],
+		    sizeof( c.ps[0] ) );
+	// lightmappedgeneric_vs20's dynamic FASTPATH (stride 1): raw texture coordinates.
+	const bool vsFastPath = ( g_VertexShaderDynamicIndex % 2 ) != 0;
+	c.ps[22][0] = g_vsConstants.regs[VERTEX_SHADER_MODULATION_COLOR][3];
+	c.ps[22][1] = static_cast<float>( g_CurrentLightmappedVsCombos );
+	c.ps[22][2] = static_cast<float>( g_PixelShaderDynamicIndex );
+	c.ps[22][3] = vsFastPath ? 1.0f : 0.0f;
+	c.ps[23][0] = static_cast<float>( g_CurrentLightmappedDetailMode );
+	c.ps[23][1] = c.ps[23][2] = c.ps[23][3] = 0.0f;
+	MatMul( g_matrices.mat[MATERIAL_VIEW], DrawProjection(), c.viewProj );
+	c.eyePos[3] = 0.0f;
+	api.GetWorldSpaceCameraPosition( c.eyePos );
+	c.combos = g_CurrentLightmappedCombos;
+	c.numLights = 0;
+	g_VulkanContext.SetDynamicSkinConstants( c );
+}
+
+// The bloom and color-correction passes' registers: their pixel constants
+// c0..c5, the vertex stage's tap offsets (SHADER_SPECIFIC_CONST_0..3) in
+// c8..c11, and the pixel shader's static and dynamic combo indices in c16, as
+// shaders/screenspace_post.frag reads them; `combos` is the pass.
+static void CommitPostConstants()
+{
+	render_vulkan::CVulkanContext::SkinConstants c;
+	memcpy( c.ps, g_psConstants, sizeof( c.ps ) );
+	for ( int i = 0; i < 4; ++i )
+		memcpy( c.ps[8 + i], g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_0 + i],
+		    sizeof( c.ps[0] ) );
+	c.ps[16][0] = static_cast<float>( g_CurrentPostStatic );
+	c.ps[16][1] = static_cast<float>( g_PixelShaderDynamicIndex );
+	c.ps[16][2] = c.ps[16][3] = 0.0f;
+	MatSetIdentity( c.viewProj );
+	const float identityRow0[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
+	const float identityRow1[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
+	memcpy( c.texXform0, identityRow0, sizeof( c.texXform0 ) );
+	memcpy( c.texXform1, identityRow1, sizeof( c.texXform1 ) );
+	c.combos = g_CurrentPostMode;
+	c.numLights = 0;
+	g_VulkanContext.SetDynamicSkinConstants( c );
+}
+
+// shadow_vs20's cTextureJitter[0]: ( 1 / width, 1 / height ) of the shadow texture.
+static const float *ShadowJitter()
+{
+	return &g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_2][0];
+}
+
 static const float *MonitorTexture2Rows()
 {
 	return &g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_2][0];
@@ -6124,9 +6270,78 @@ static std::string SnapshotShaderRoute( const CShaderShadowVulkan &shadow )
 		return "portal_refract#" + std::to_string( ( shadow.m_pixelShaderIndex / 4 ) % 3 );
 	if ( !V_strnicmp( shadow.m_pixelShaderName, "portal_refract_ps20", 19 ) )
 		return "portal_refract#" + std::to_string( shadow.m_pixelShaderIndex % 3 );
+	// LightmappedGeneric and WorldVertexTransition's ps20b build: its static combo
+	// indices, decoded when the pass begins (LightmappedCombos).
+	if ( !V_stricmp( shadow.m_pixelShaderName, "lightmappedgeneric_ps20b" ) &&
+	     !V_stricmp( shadow.m_vertexShaderName, "lightmappedgeneric_vs20" ) &&
+	     g_VulkanContext.LightmappedPipelineSupported() )
+	{
+		return "lightmapped#" + std::to_string( shadow.m_pixelShaderIndex ) + "#" +
+		       std::to_string( shadow.m_vertexShaderIndex );
+	}
+	// The bloom and color-correction passes' ps20b builds.
+	if ( g_VulkanContext.PostPipelineSupported() )
+	{
+		int mode = 0;
+		if ( !V_stricmp( shadow.m_pixelShaderName, "downsample_nohdr_ps20b" ) )
+			mode = render_vulkan::CVulkanContext::kPostDownsample;
+		else if ( !V_stricmp( shadow.m_pixelShaderName, "blurfilter_ps20b" ) )
+			mode = render_vulkan::CVulkanContext::kPostBlur;
+		else if ( !V_stricmp( shadow.m_pixelShaderName, "engine_post_ps20b" ) )
+			mode = render_vulkan::CVulkanContext::kPostEnginePost;
+		if ( mode )
+			return "post#" + std::to_string( mode ) + "#" +
+			       std::to_string( shadow.m_pixelShaderIndex );
+	}
 	if ( !shadow.m_pixelShaderName[0] )
 		return std::string( "vs:" ) + shadow.m_vertexShaderName;
 	return shadow.m_pixelShaderName;
+}
+
+// lightmappedgeneric_ps20b's static combos (fxctmp9/lightmappedgeneric_ps20b.inc
+// strides) as lightmapped.frag's flags, and its DETAIL_BLEND_MODE. Combos the
+// port does not implement are reported; the pass draws without them.
+static int LightmappedCombos( int index, int *outDetailMode )
+{
+	using render_vulkan::CVulkanContext;
+	const auto combo = [index]( int stride, int count )
+	{
+		return ( index / stride ) % count;
+	};
+	int flags = 0;
+	flags |= combo( 96, 2 ) ? CVulkanContext::kLightmappedMaskedBlending : 0;
+	flags |= combo( 192, 2 ) ? CVulkanContext::kLightmappedBaseTexture2 : 0;
+	flags |= combo( 384, 2 ) ? CVulkanContext::kLightmappedDetailTexture : 0;
+	const int bumpmap = combo( 768, 3 );
+	flags |= bumpmap == 1 ? CVulkanContext::kLightmappedBumpmap : 0;
+	flags |= bumpmap == 2 ? CVulkanContext::kLightmappedSsbump : 0;
+	flags |= combo( 2304, 2 ) ? CVulkanContext::kLightmappedBumpmap2 : 0;
+	flags |= combo( 4608, 2 ) ? CVulkanContext::kLightmappedCubemap : 0;
+	flags |= combo( 9216, 2 ) ? CVulkanContext::kLightmappedEnvmapMask : 0;
+	flags |= combo( 18432, 2 ) ? CVulkanContext::kLightmappedBaseAlphaEnvmapMask : 0;
+	flags |= combo( 36864, 2 ) ? CVulkanContext::kLightmappedSelfIllum : 0;
+	flags |= combo( 73728, 2 ) ? CVulkanContext::kLightmappedNormalMapAlphaEnvmapMask : 0;
+	flags |= combo( 147456, 2 ) ? CVulkanContext::kLightmappedDiffuseBumpmap : 0;
+	flags |= combo( 294912, 2 ) ? CVulkanContext::kLightmappedBaseTextureNoEnvmap : 0;
+	flags |= combo( 589824, 2 ) ? CVulkanContext::kLightmappedBaseTexture2NoEnvmap : 0;
+	flags |= combo( 37748736, 2 ) ? CVulkanContext::kLightmappedBumpMask : 0;
+	if ( combo( 1179648, 2 ) )
+		NoteUnimplemented( "lightmappedgeneric_ps20b: WARPLIGHTING (drawn without the warp)" );
+	if ( combo( 2359296, 2 ) )
+		NoteUnimplemented( "lightmappedgeneric_ps20b: FANCY_BLENDING (drawn unmodulated)" );
+	if ( combo( 4718592, 2 ) )
+		NoteUnimplemented( "lightmappedgeneric_ps20b: SEAMLESS (drawn with TEXCOORD0)" );
+	if ( combo( 9437184, 2 ) || combo( 18874368, 2 ) )
+		NoteUnimplemented( "lightmappedgeneric_ps20b: OUTLINE/SOFTEDGES" );
+	*outDetailMode = combo( 75497472, 12 );
+	return flags;
+}
+
+// lightmappedgeneric_vs20's static combos (fxctmp9/lightmappedgeneric_vs20.inc):
+// 1 VERTEXCOLOR (stride 128), 2 VERTEXALPHATEXBLENDFACTOR (256).
+static int LightmappedVsCombos( int index )
+{
+	return ( ( index / 128 ) % 2 ? 1 : 0 ) | ( ( index / 256 ) % 2 ? 2 : 0 );
 }
 
 // The tone-mapping scale type a pass's pixel shader ends in (common_ps_fxc.h
@@ -6187,6 +6402,14 @@ static PixelFogInputs SnapshotPixelFog( const CShaderShadowVulkan &shadow )
 		fog.paramsRegister = 12;
 		fog.eyeRegister = 11;
 	}
+	else if ( is( "shadow_ps2" ) )
+	{
+		// shadow_ps2x: g_EyePos c2, g_FogParams c3. It fades toward white rather
+		// than blending (demo_dyn_tex.frag's shadow stage).
+		fog.mode = kPixelFogCombo;
+		fog.paramsRegister = 3;
+		fog.eyeRegister = 2;
+	}
 	return fog;
 }
 
@@ -6202,7 +6425,8 @@ static int SnapshotToneMapType( const CShaderShadowVulkan &shadow )
 	     is( "unlittwotexture_ps2" ) )
 		return kToneMapLinear;
 	if ( is( "shadow_ps2" ) || is( "decalmodulate_ps2" ) || is( "refract_ps2" ) ||
-	     is( "monitorscreen_ps2" ) )
+	     is( "monitorscreen_ps2" ) || is( "shadowbuildtexture_ps2" ) ||
+	     is( "downsample_nohdr_ps2" ) || is( "blurfilter_ps2" ) || is( "engine_post_ps2" ) )
 		return kToneMapNone;
 	// PortalRefract: only stage 2 (the flames) scales; RenderPass knows the stage.
 	// SolidEnergy clamps the scale; RenderPass applies it.
@@ -6707,10 +6931,31 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 		g_CurrentPbrModel = name == "pbr_model";
 		if ( g_CurrentPbrModel )
 			shader = render_vulkan::CVulkanContext::kDynShaderPbrModel;
+		g_CurrentLightmappedCombos = -1;
+		if ( !name.compare( 0, 12, "lightmapped#" ) )
+		{
+			shader = render_vulkan::CVulkanContext::kDynShaderLightmapped;
+			const char *indices = name.c_str() + 12;
+			const char *vsIndex = strchr( indices, '#' );
+			g_CurrentLightmappedCombos =
+			    LightmappedCombos( atoi( indices ), &g_CurrentLightmappedDetailMode );
+			g_CurrentLightmappedVsCombos = vsIndex ? LightmappedVsCombos( atoi( vsIndex + 1 ) ) : 0;
+		}
+		g_CurrentPostMode = 0;
+		if ( !name.compare( 0, 5, "post#" ) )
+		{
+			shader = render_vulkan::CVulkanContext::kDynShaderPost;
+			g_CurrentPostMode = atoi( name.c_str() + 5 );
+			const char *staticIndex = strchr( name.c_str() + 5, '#' );
+			g_CurrentPostStatic = staticIndex ? atoi( staticIndex + 1 ) : 0;
+		}
+		g_CurrentShadowProjection = !name.compare( 0, 11, "shadow_ps20" );
 		g_SamplesBaseTexture = ( shader == render_vulkan::CVulkanContext::kDynShaderTextured ||
 		                         shader == render_vulkan::CVulkanContext::kDynShaderSkin ||
 		                         shader == render_vulkan::CVulkanContext::kDynShaderSolidEnergy ||
-		                         shader == render_vulkan::CVulkanContext::kDynShaderPbrModel );
+		                         shader == render_vulkan::CVulkanContext::kDynShaderPbrModel ||
+		                         shader == render_vulkan::CVulkanContext::kDynShaderLightmapped ||
+		                         shader == render_vulkan::CVulkanContext::kDynShaderPost );
 		// Shaders that sample nothing on sampler 0: WriteZ and the quad clears draw
 		// depth, stencil or their vertex color; PortalRefract samples the frame
 		// copy only in stage 0.
@@ -6720,6 +6965,9 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 		else if ( g_CurrentPortalStage == 0 )
 			g_SamplesBaseTexture = true;
 		g_VulkanContext.SelectDynamicShader( shader );
+		g_VulkanContext.SelectDynamicTexturedMode(
+		    g_CurrentShadowProjection ? render_vulkan::CVulkanContext::kTexturedModeShadow
+		                              : render_vulkan::CVulkanContext::kTexturedModeDefault );
 	}
 	// Apply the blend and depth state this snapshot recorded.
 	if ( index < g_snapshotRaster.size() )
@@ -6808,7 +7056,8 @@ static void CommitPassFog()
 		memcpy( fog.params, g_psConstants[g_CurrentPixelFog.paramsRegister], sizeof( fog.params ) );
 		fog.misc[0] = g_psConstants[g_CurrentPixelFog.eyeRegister][2];
 		fog.misc[1] = g_CurrentPixelFog.mode == kPixelFogDecal ? 1.0f : 0.0f;
-		if ( g_NumBoneWeights <= 0 )
+		// LightmappedGeneric's positions arrive in world space, like skinned ones.
+		if ( g_NumBoneWeights <= 0 && g_CurrentLightmappedCombos < 0 )
 		{
 			const float *model = ModelMatrix();
 			fog.worldZ[0] = model[2];
@@ -6916,6 +7165,18 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	// the skin pipeline's layout (shaders/solidenergy.*).
 	if ( !V_stricmp( shaderName, "SolidEnergy_dx9" ) )
 		return g_VulkanContext.SolidEnergyPipelineSupported();
+	// ShadowBuild_DX9 (shadowbuildtexture_ps2x) adds base alpha times the
+	// modulation alpha into the shadow texture; the textured pipeline's
+	// modulated base gives the same alpha. Its color, white on D3D9, is the base
+	// texture's here, and nothing reads it (shadow_ps2x reads only alpha).
+	if ( !V_stricmp( shaderName, "ShadowBuild_DX9" ) )
+		return true;
+	// The bloom and color-correction passes, when their ps20b build was routed
+	// to the post-processing pipeline.
+	if ( g_CurrentPostMode > 0 &&
+	     ( !V_stricmp( shaderName, "Downsample_nohdr" ) || !V_stricmp( shaderName, "BlurFilterX" ) ||
+	         !V_stricmp( shaderName, "BlurFilterY" ) || !V_stricmp( shaderName, "Engine_Post_dx9" ) ) )
+		return true;
 	// Both the canonical native material and legacy PBR's sampler contract can
 	// feed WMSH tangents and the map-scoped HDR lightmap. Ordinary dynamic
 	// meshes still need their own PBR pipeline cohort.
@@ -7016,6 +7277,10 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 			CommitSolidEnergyConstants( *this );
 		if ( g_CurrentPbrModel )
 			CommitPbrModelConstants( *this );
+		if ( g_CurrentLightmappedCombos >= 0 )
+			CommitLightmappedConstants( *this );
+		if ( g_CurrentPostMode > 0 )
+			CommitPostConstants();
 		const bool lightmapped = g_boundLightmapHandle >= 0;
 		const bool refract =
 		    g_pBoundMaterial && !V_stricmp( g_pBoundMaterial->GetShaderName(), "Refract_DX90" );
@@ -7034,7 +7299,7 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 			    g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_1],
 			    g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_2] );
 		}
-		if ( lightmapped && g_pBoundMaterial &&
+		if ( lightmapped && g_pBoundMaterial && g_CurrentLightmappedCombos < 0 &&
 		     !V_stricmp( g_pBoundMaterial->GetShaderName(), "LightmappedGeneric" ) &&
 		     g_VulkanContext.ManagedTextureIsCube( g_boundEnvmapHandle ) )
 		{
@@ -7058,7 +7323,8 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		// Other shaders scale as their FinalOutput's tone-map type says
 		// (SnapshotToneMapType): GAMMA by GAMMA_LIGHT_SCALE, c30.w.
 		const bool linearToneScale =
-		    lightmapped || g_CurrentPortalStage == 2 || g_CurrentModulationInPixelC1 ||
+		    lightmapped || g_CurrentLightmappedCombos >= 0 || g_CurrentPortalStage == 2 ||
+		    g_CurrentModulationInPixelC1 ||
 		    g_CurrentSkinCombos >= 0 || g_CurrentPbrModel ||
 		    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentSky ) ||
 		    g_CurrentToneMap == kToneMapLinear;
@@ -7083,6 +7349,10 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 			g_VulkanContext.SetDynamicModulation( tintAndScale );
 			g_VulkanContext.SelectDynamicAlphaTest( g_psConstants[2][0] );
 		}
+		// shadow_ps2x's g_ShadowColor (c1, already linear) takes the modulation's
+		// place; the vertex color carries the jitter (EmitToNativeQueue).
+		if ( g_CurrentShadowProjection )
+			g_VulkanContext.SetDynamicModulation( g_psConstants[1] );
 		g_pRenderMesh->EmitToNativeQueue();
 	}
 	if ( drawstatefixture::Instance().Enabled() )
@@ -8298,6 +8568,44 @@ void CShaderAPIVulkan::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 		if ( w <= textureWidth )
 			break;
 	}
+	// A volume (the color-correction lookups) is uploaded whole, every slice of
+	// its level, converted to the image's 8-bit order.
+	if ( g_VulkanContext.ManagedTextureIsVolume( handle ) )
+	{
+		int w = 0, h = 0, d = 0;
+		pVTF->ComputeMipLevelDimensions( firstMip, &w, &h, &d );
+		const unsigned char *bits = pVTF->ImageData( iVTFFrame, 0, firstMip );
+		const ImageFormat src = pVTF->Format();
+		const int srcBytes = ( src == IMAGE_FORMAT_RGB888 || src == IMAGE_FORMAT_BGR888 ) ? 3
+		                     : ( src == IMAGE_FORMAT_RGBA8888 || src == IMAGE_FORMAT_BGRA8888 ||
+		                           src == IMAGE_FORMAT_BGRX8888 )
+		                         ? 4
+		                         : 0;
+		if ( !bits || w <= 0 || h <= 0 || d <= 0 || srcBytes == 0 )
+		{
+			NoteUnimplemented( "TexImageFromVTF: volume texture format" );
+			return;
+		}
+		const ImageFormat image = g_TextureRecords[static_cast<size_t>( handle )].format;
+		const bool imageIsBgra = image == IMAGE_FORMAT_BGRA8888 || image == IMAGE_FORMAT_BGRX8888;
+		const bool srcIsBgr =
+		    src == IMAGE_FORMAT_BGR888 || src == IMAGE_FORMAT_BGRA8888 || src == IMAGE_FORMAT_BGRX8888;
+		const size_t texels = static_cast<size_t>( w ) * h * d;
+		std::vector<uint8_t> converted( texels * 4 );
+		for ( size_t i = 0; i < texels; ++i )
+		{
+			const unsigned char *in = bits + i * srcBytes;
+			uint8_t rgba[4] = { in[srcIsBgr ? 2 : 0], in[1], in[srcIsBgr ? 0 : 2],
+			    static_cast<uint8_t>( srcBytes == 4 && src != IMAGE_FORMAT_BGRX8888 ? in[3] : 255 ) };
+			if ( imageIsBgra )
+				std::swap( rgba[0], rgba[2] );
+			memcpy( &converted[i * 4], rgba, 4 );
+		}
+		std::string error;
+		if ( !g_VulkanContext.UploadManagedTexture( handle, converted.data(), converted.size(), &error ) )
+			Warning( "[NativeVulkan] TexImageFromVTF volume upload failed: %s\n", error.c_str() );
+		return;
+	}
 	const uint32_t levels = g_VulkanContext.ManagedTextureMipLevels( handle );
 	const int faces = ( pVTF->Flags() & TEXTUREFLAGS_ENVMAP ) ? 6 : 1;
 	if ( pVTF->FaceCount() < faces )
@@ -8508,12 +8816,22 @@ ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height,
 
 	std::string error;
 	// Render targets are drawn into, so they need an attachment-capable image,
-	// a depth buffer and a framebuffer rather than a sampled-only texture.
+	// a depth buffer and a framebuffer rather than a sampled-only texture. A
+	// depth above one is a volume (the color-correction lookups), 8-bit only.
+	const uint32_t volumeDepth = static_cast<uint32_t>( std::max( 1, depth ) );
+	if ( volumeDepth > 1 && vkFormat != VK_FORMAT_R8G8B8A8_UNORM &&
+	     vkFormat != VK_FORMAT_B8G8R8A8_UNORM )
+	{
+		Warning( "[NativeVulkan] CreateTexture: volume texture format %d unsupported\n",
+		    dstImageFormat );
+		return 0;
+	}
 	const int native = ( flags & TEXTURE_CREATE_RENDERTARGET )
 	                       ? g_VulkanContext.CreateRenderTargetTexture( width, height, &error )
 	                       : g_VulkanContext.CreateManagedTexture( width, height, vkFormat, &error,
 	                             0, static_cast<uint32_t>( std::max( 1, numMipLevels ) ),
-	                             VK_FORMAT_UNDEFINED, ( flags & TEXTURE_CREATE_CUBEMAP ) != 0 );
+	                             VK_FORMAT_UNDEFINED, ( flags & TEXTURE_CREATE_CUBEMAP ) != 0,
+	                             volumeDepth );
 	if ( native < 0 )
 	{
 		Warning( "[NativeVulkan] CreateTexture failed: %s\n", error.c_str() );

@@ -704,6 +704,11 @@ def evaluate(report, hdr, reference=None):
 
 
 def find_harness(build):
+    # The tree's own target; a search only when it is elsewhere, since other
+    # build trees can be nested inside this one.
+    canonical = Path(build) / "unittests" / "shaderextensiontest" / "material_pixel_conformance"
+    if canonical.is_file() and os.access(canonical, os.X_OK):
+        return canonical
     candidates = sorted(Path(build).rglob("material_pixel_conformance"))
     candidates = [path for path in candidates if path.is_file() and os.access(path, os.X_OK)]
     if len(candidates) != 1:

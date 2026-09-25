@@ -475,10 +475,10 @@ FORCEINLINE_PIXEL void CPixelWriter::WritePixelNoAdvance( int r, int g, int b, i
 			}
 		case 3:
 			{
-				{
-					((unsigned char *)m_pBits)[0] = (unsigned char)((val & 0xffff));
-					m_pBits[2] = (unsigned char)((val >> 16) & 0xff);
-				}
+				// Three bytes, low first (byte-wise: 24-bit texels are unaligned).
+				m_pBits[0] = (unsigned char)(val & 0xff);
+				m_pBits[1] = (unsigned char)((val >> 8) & 0xff);
+				m_pBits[2] = (unsigned char)((val >> 16) & 0xff);
 				return;
 			}
 		case 4:

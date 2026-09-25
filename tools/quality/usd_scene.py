@@ -27,6 +27,7 @@ Run with the OpenUSD Python (`pxr`) on PYTHONPATH:
 """
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import math
@@ -299,6 +300,15 @@ def preview_summary(name, material):
         # A uniformly partial opacity is a thin transmissive sheet.
         summary["transmission"] = 1.0 - summary["opacity"]
         notes.append("uniform opacity %.2f treated as thin transmission" % summary["opacity"])
+        if summary["opacity"] <= 0.0:
+            # Fully transparent: no diffuse lobe, and UsdPreviewSurface does
+            # not tint transmitted light by diffuseColor. The Principled/VMT
+            # transmission tint is the base colour, so it must be white (as
+            # PBRT dielectrics are); a black diffuseColor would be opaque.
+            if summary["base_color"] != (1.0, 1.0, 1.0) or "base" in textures:
+                notes.append("diffuseColor unused at opacity 0; transmission is untinted")
+            summary["base_color"] = (1.0, 1.0, 1.0)
+            textures.pop("base", None)
     elif "opacity" in textures and summary["opacity_threshold"] <= 0:
         summary["opacity_threshold"] = 0.5
         notes.append("textured opacity without opacityThreshold alpha-tested at 0.5")
@@ -450,6 +460,37 @@ def ear_clip(polygon):
     return fan
 
 
+def cluster_simplify(points, corner_triangles, cell):
+    """Vertex-clustering simplification for a manifest-selected mesh: snap
+    every used corner to a `cell`-metre grid cell, move it to the mean of its
+    cell's corner positions, and drop triangles that collapse or repeat
+    another triangle of the same cells and winding. Corner normals and UVs
+    are kept, so texturing and shading follow the original surface.
+    Returns (corner_triangles, points) with `points` a modified copy."""
+    used = np.unique(corner_triangles)
+    keys = np.floor(points[used] / cell).astype(np.int64)
+    _, cluster = np.unique(keys, axis=0, return_inverse=True)
+    cluster = cluster.reshape(-1)
+    means = np.zeros((cluster.max() + 1, 3))
+    np.add.at(means, cluster, points[used])
+    means /= np.bincount(cluster)[:, None]
+    corner_cluster = np.full(len(points), -1, dtype=np.int64)
+    corner_cluster[used] = cluster
+    cells = corner_cluster[corner_triangles]
+    keep = ((cells[:, 0] != cells[:, 1]) & (cells[:, 1] != cells[:, 2]) &
+            (cells[:, 0] != cells[:, 2]))
+    triangles, cells = corner_triangles[keep], cells[keep]
+    # Rotate each cell triple to start at its smallest cell: same winding,
+    # one key per oriented triangle, so two-sided shells keep both sides.
+    rotation = np.argmin(cells, axis=1)
+    order = (rotation[:, None] + np.arange(3)[None, :]) % 3
+    rotated = np.take_along_axis(cells, order, axis=1)
+    _, first = np.unique(rotated, axis=0, return_index=True)
+    simplified = points.copy()
+    simplified[used] = means[cluster]
+    return triangles[np.sort(first)], simplified
+
+
 def apply_st_transform(uv, transform):
     """UsdTransform2d: scale, then rotate (degrees, CCW), then translate."""
     if not transform:
@@ -489,9 +530,12 @@ def display_color(prim, counts, indices, point_count):
 # --------------------------------------------------------------- traversal
 
 class Extractor:
-    def __init__(self, stage, source):
+    def __init__(self, stage, source, simplify=()):
         self.stage = stage
         self.source = source
+        # (prim path pattern, cell metres) rules; each must match a mesh.
+        self.simplify = [(pattern, float(cell)) for pattern, cell in simplify]
+        self.simplify_used = set()
         self.convert = Converter(stage)
         self.time = Usd.TimeCode.EarliestTime()
         self.xforms = UsdGeom.XformCache(self.time)
@@ -507,6 +551,7 @@ class Extractor:
         self.notes = []
         self.skipped = {"invisible": 0, "guide_or_proxy": 0, "empty": 0}
         self.textures = set()
+        self.exposure_scale = 1.0
 
     # materials -----------------------------------------------------------
     def material_name(self, material, prim, counts, indices, point_count):
@@ -598,6 +643,17 @@ class Extractor:
             corner_triangles = triangles[selected]
             if not len(corner_triangles):
                 continue
+            corner_points = world_points[indices]
+            for pattern, cell in self.simplify:
+                if fnmatch.fnmatchcase(str(prim.GetPath()), pattern):
+                    self.simplify_used.add(pattern)
+                    before = len(corner_triangles)
+                    corner_triangles, corner_points = cluster_simplify(
+                        corner_points, corner_triangles, cell)
+                    self.notes.append("%s simplified by %g m vertex clustering: %d -> %d "
+                                      "triangles" % (prim.GetPath(), cell, before,
+                                                     len(corner_triangles)))
+                    break
             prop = self.prop_for(prim)
             self.shapes.append({
                 "name": self.shape_names.take(name_stem), "material": material_name,
@@ -605,7 +661,7 @@ class Extractor:
                 "prim": str(prim.GetPath()), "subset": subset_name,
                 "double_sided": double_sided, "subdivision": str(subdivision),
                 "st_primvar": primvar_name,
-                "corner_triangles": corner_triangles, "points": world_points[indices],
+                "corner_triangles": corner_triangles, "points": corner_points,
                 "normals": world_normals, "uv": uv})
 
     def prop_for(self, prim):
@@ -813,6 +869,9 @@ class Extractor:
         if not chosen:
             return None
         camera = UsdGeom.Camera(chosen)
+        # Photographic exposure (exposure, exposure:iso/time/fStop/responsivity)
+        # scales the image; `run` folds it into the UsdLux light units.
+        self.exposure_scale = float(camera.ComputeLinearExposureScale(self.time))
         world = self.convert.matrix(self.xforms.GetLocalToWorldTransform(chosen))
         eye = self.convert.points(np.zeros((1, 3)), world)[0]
         forward = self.convert.directions(np.array(((0.0, 0.0, -1.0),)), world)[0]
@@ -887,10 +946,32 @@ class Extractor:
                 raise ValueError("MeshLightAPI emitters are not supported: " + str(prim.GetPath()))
         if not self.shapes:
             raise ValueError("USD scene has no visible meshes")
+        unused = [pattern for pattern, _ in self.simplify if pattern not in self.simplify_used]
+        if unused:
+            raise ValueError("simplify patterns match no mesh: " + ", ".join(unused))
         points = np.concatenate([shape["points"] for shape in self.shapes])
         bounds = (points.min(axis=0), points.max(axis=0))
         camera = self.camera() or self.synthesized_camera(bounds)
+        self.apply_exposure()
         return camera, bounds
+
+    def apply_exposure(self):
+        """Scale UsdLux light units by the camera's linear exposure, so the
+        baked radiance is the image the camera would record. UsdPreviewSurface
+        emission is left as authored (preview fallbacks are display-level)."""
+        scale = self.exposure_scale
+        if not math.isfinite(scale) or scale <= 0:
+            raise ValueError("camera exposure scale %r is invalid" % scale)
+        if scale == 1.0:
+            return
+        for emitter in self.emitters:
+            emitter["emission"]["radiance"] = [v * scale for v in emitter["emission"]["radiance"]]
+        for light in self.distant:
+            light["irradiance"] = [v * scale for v in light["irradiance"]]
+        if self.environment:
+            self.environment["radiance"] = [v * scale for v in self.environment["radiance"]]
+        self.notes.append("camera exposure scale %g applied to UsdLux lights; material "
+                          "emission kept as authored" % scale)
 
 
 def uv_sphere(radius, longitudes, latitudes):
@@ -1013,6 +1094,7 @@ def scene_model(extractor, camera, bounds, digest, inputs, usd_path):
             "up_axis": str(UsdGeom.GetStageUpAxis(extractor.stage)),
             "meters_per_unit": extractor.convert.meters,
             "film": extractor.film, "camera": camera,
+            "camera_exposure_scale": extractor.exposure_scale,
             "bounds_m": {"min": bounds[0].tolist(), "max": bounds[1].tolist()},
             "shapes": shapes, "materials": extractor.summaries,
             "emitters": [{k: v for k, v in emitter.items() if k != "prefix"}
@@ -1026,11 +1108,11 @@ def scene_model(extractor, camera, bounds, digest, inputs, usd_path):
             "skipped": extractor.skipped, "approximations": extractor.notes}
 
 
-def extract(usd_path, out_scene, out_stage):
+def extract(usd_path, out_scene, out_stage, simplify=()):
     stage = Usd.Stage.Open(str(usd_path))
     if not stage:
         raise ValueError("could not open USD scene " + str(usd_path))
-    extractor = Extractor(stage, usd_path)
+    extractor = Extractor(stage, usd_path, simplify)
     camera, bounds = extractor.run()
     digest, inputs = source_digest(stage, extractor.textures)
     write_stage(Path(out_stage), extractor.shapes, extractor.emitters, extractor.summaries)
@@ -1048,11 +1130,17 @@ def main():
     run.add_argument("--scene", type=Path, required=True)
     run.add_argument("--out-scene", type=Path, required=True)
     run.add_argument("--out-stage", type=Path, required=True)
+    run.add_argument("--simplify", action="append", default=[], metavar="PRIM_GLOB=CELL_M",
+                     help="vertex-cluster meshes whose prim path matches the glob to a grid "
+                          "of CELL_M metres (repeatable; each pattern must match a mesh)")
     show = commands.add_parser("inventory", help="print the scene model without stage output")
     show.add_argument("scene", type=Path)
     args = parser.parse_args()
     if args.command == "extract":
-        model = extract(args.scene, args.out_scene, args.out_stage)
+        rules = [rule.rsplit("=", 1) for rule in args.simplify]
+        if any(len(rule) != 2 for rule in rules):
+            parser.error("--simplify takes PRIM_GLOB=CELL_M")
+        model = extract(args.scene, args.out_scene, args.out_stage, rules)
         print("USD_SCENE " + json.dumps({"status": "pass", "meshes": len(model["shapes"]),
                                          "materials": len(model["materials"]),
                                          "emitters": len(model["emitters"]),

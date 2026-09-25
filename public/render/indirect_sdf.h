@@ -8,7 +8,9 @@
 //
 //          Publication (render.indirect-policy.v1 BakedPlusDelta, as the
 //          radiosity producer): the baked volume plus the change of the
-//          traced field from its own converged estimate of the baked scene.
+//          traced field from its own converged estimate of the baked scene,
+//          per texel: light removed as the ratio of the field to that
+//          estimate (the bake times it), light added as their difference.
 //          The traced field's bias then cancels, and the unchanged scene is
 //          the bake byte for byte.
 //
@@ -80,6 +82,8 @@ public:
 	static constexpr uint32_t kPropagationUpdates = 24;
 	static constexpr uint32_t kReferenceUpdates = 64;
 	static constexpr uint32_t kActiveUpdates = 72;
+	// Below this reference irradiance a darkening is absolute, not relative.
+	static constexpr float kRelativeFloor = 1e-4f;
 
 	[[nodiscard]] ProducerCaps Caps() const override
 	{
@@ -413,17 +417,35 @@ private:
 			return;
 		m_total.resize( count * 3 );
 		m_indirect.resize( count * 3 );
-		for ( size_t t = 0; t < count; ++t )
-			for ( int c = 0; c < 3; ++c )
+		for ( uint32_t probe = 0; probe < m_probes; ++probe )
+		{
+			const float *baseTotal = m_composer.BaseInterior( *m_baked, m_probes, probe, 0 );
+			const float *baseIndirect = m_composer.BaseInterior( *m_baked, m_probes, probe, 1 );
+			for ( uint32_t k = 0; k < kTexels * 3; ++k )
 			{
-				m_total[t * 3 + c] = field[t * 12 + c] - m_reference[t * 12 + c];
-				m_indirect[t * 3 + c] = field[t * 12 + 4 + c] - m_reference[t * 12 + 4 + c];
+				const size_t t = size_t( probe ) * kTexels + k / 3;
+				const int c = int( k % 3 );
+				m_total[t * 3 + c] = Change( field[t * 12 + c], m_reference[t * 12 + c], baseTotal[k] );
+				m_indirect[t * 3 + c] =
+				    Change( field[t * 12 + 4 + c], m_reference[t * 12 + 4 + c], baseIndirect[k] );
 			}
+		}
 		m_published =
 		    PublishedVolume{ ++m_epoch, m_composer.Compose( *m_baked, m_total.data(),
 		                                    m_indirect.data(), m_probes, nullptr ) };
 		if ( m_updates >= kActiveUpdates )
 			m_active = false;
+	}
+
+	// The change of one texel from the bake. Light removed is relative (the
+	// bake times the field's ratio to its reference), so the field's bias
+	// cancels and a probe the field sees go dark goes dark; light added is
+	// absolute (a dark baked texel has no ratio).
+	static float Change( float now, float reference, float base )
+	{
+		if ( now >= reference || reference <= kRelativeFloor )
+			return now - reference;
+		return base * ( std::max( now, 0.0f ) / reference - 1.0f );
 	}
 
 	gpu_compute::IGpuCompute *m_gpu = nullptr;

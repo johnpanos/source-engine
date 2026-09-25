@@ -144,6 +144,66 @@ class NegativeTest(unittest.TestCase):
         self.assertEqual(len(triangles), 4)
         self.assertAlmostEqual(area, 3.0)
 
+    def grid_stage(self, cells):
+        """A flat 1 m square tessellated into cells x cells quads."""
+        stage = Usd.Stage.CreateInMemory()
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+        mesh = UsdGeom.Mesh.Define(stage, "/World/Bed/stone")
+        step = 1.0 / cells
+        mesh.CreatePointsAttr([Gf.Vec3f(x * step, y * step, 0) for y in range(cells + 1)
+                               for x in range(cells + 1)])
+        mesh.CreateFaceVertexCountsAttr([4] * cells * cells)
+        mesh.CreateFaceVertexIndicesAttr([i for y in range(cells) for x in range(cells)
+                                          for i in (y * (cells + 1) + x, y * (cells + 1) + x + 1,
+                                                    (y + 1) * (cells + 1) + x + 1,
+                                                    (y + 1) * (cells + 1) + x)])
+        return stage
+
+    def test_simplify_clusters_selected_meshes_and_keeps_extent(self):
+        extractor = usd_scene.Extractor(self.grid_stage(40), "memory",
+                                        [("/World/*/stone", 0.1)])
+        extractor.run()
+        (shape,) = extractor.shapes
+        self.assertLess(len(shape["corner_triangles"]), 2 * 40 * 40 // 4)
+        self.assertGreater(len(shape["corner_triangles"]), 0)
+        points = usd_scene.shape_points(shape)
+        np.testing.assert_allclose(points.min(axis=0), (0, 0, 0), atol=0.05)
+        np.testing.assert_allclose(points.max(axis=0), (1, 1, 0), atol=0.05)
+        # Area is preserved for a plane, and every triangle keeps its winding.
+        corners = points.reshape(-1, 3, 3)
+        cross = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
+        self.assertTrue(np.all(cross[:, 2] > 0))
+        self.assertAlmostEqual(0.5 * cross[:, 2].sum(), 1.0, delta=0.1)
+        self.assertTrue(any("vertex clustering: 3200 ->" in note for note in extractor.notes))
+
+    def test_camera_exposure_scales_lights_not_material_emission(self):
+        stage = self.stage()
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+        camera = UsdGeom.Camera.Define(stage, "/World/Camera")
+        camera.GetPrim().CreateAttribute("exposure", Sdf.ValueTypeNames.Float).Set(-10.0)
+        dome = UsdLux.DomeLight.Define(stage, "/World/Dome")
+        dome.CreateIntensityAttr(4096.0)
+        rect = UsdLux.RectLight.Define(stage, "/World/Rect")
+        rect.CreateIntensityAttr(2048.0)
+        material = UsdShade.Material.Define(stage, "/World/Glow")
+        shader = UsdShade.Shader.Define(stage, "/World/Glow/Surface")
+        shader.CreateIdAttr("UsdPreviewSurface")
+        shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(1.5, 1, 0.5))
+        material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+        UsdShade.MaterialBindingAPI.Apply(stage.GetPrimAtPath("/World/Quad")).Bind(material)
+        extractor = usd_scene.Extractor(stage, "memory")
+        extractor.run()
+        self.assertEqual(extractor.exposure_scale, 2.0 ** -10)
+        np.testing.assert_allclose(extractor.environment["radiance"], (4.0, 4.0, 4.0))
+        np.testing.assert_allclose(extractor.emitters[0]["emission"]["radiance"], (2.0, 2.0, 2.0))
+        np.testing.assert_allclose(extractor.summaries["glow"]["emission_color"], (1.5, 1, 0.5))
+
+    def test_simplify_pattern_matching_nothing_fails(self):
+        extractor = usd_scene.Extractor(self.grid_stage(2), "memory", [("/World/Rocks", 0.1)])
+        with self.assertRaises(ValueError):
+            extractor.run()
+
 
 if __name__ == "__main__":
     unittest.main()

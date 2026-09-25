@@ -337,12 +337,18 @@ class Pipeline:
             if model.is_file() else []
         # The model lists every layer and texture it read; any change reruns.
         inputs = [self.manifest["scene"]] + [path for path in previous if Path(path).is_file()]
-        self.step("scene", inputs, {"missing_inputs": [path for path in previous
-                                                       if not Path(path).is_file()]},
+        # Manifest `simplify`: {prim path glob: vertex-cluster cell in metres}.
+        simplify = self.manifest.get("simplify", {})
+        simplify_args = [item for pattern, cell in sorted(simplify.items())
+                         for item in ("--simplify", "%s=%g" % (pattern, cell))]
+        settings = {"missing_inputs": [path for path in previous if not Path(path).is_file()]}
+        if simplify:
+            settings["simplify"] = simplify
+        self.step("scene", inputs, settings,
                   ["usd_scene.py"], [model, p["stage"]],
                   lambda: self.usd_python("scene", "usd_scene.py", [
                       "extract", "--scene", self.manifest["scene"], "--out-scene", model,
-                      "--out-stage", p["stage"]]))
+                      "--out-stage", p["stage"]] + simplify_args))
         self.scene = map_scene.parse(model)
 
     def build(self):
@@ -565,6 +571,9 @@ class Pipeline:
         controls = self.light_controls() if radiosity else []
         for control in controls:
             collision_args += ["--light-control", control["name"]]
+        for door in collision.get("doors", []):
+            collision_args += ["--door", ",".join([door["name"]] + [
+                "%g" % v for corner in door["bounds_m"] for v in corner])]
         for portal in collision.get("portals", []):
             collision_args += ["--portal", ",".join(
                 "%g" % v for v in list(portal["center_m"]) + list(portal["normal"]) +

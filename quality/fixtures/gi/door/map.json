@@ -1,5 +1,22 @@
 {
   "collision": {
+    "doors": [
+      {
+        "bounds_m": [
+          [
+            4.075,
+            1.5,
+            0.0
+          ],
+          [
+            4.125,
+            2.5,
+            2.0
+          ]
+        ],
+        "name": "Door"
+      }
+    ],
     "solid_meshes": [
       "A_Xp",
       "B_Xn"

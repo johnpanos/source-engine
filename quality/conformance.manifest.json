@@ -2383,6 +2383,23 @@
       "expect": "pass"
     },
     {
+      "id": "render.indirect-light.sdf",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "result_protocol": "checks-v1",
+      "description": "RFC 0011 G6 SDF-traced producer on a headless device through the renderer's compute service (render/gpu_compute.h over vulkan_compute's GpuComputeService): the shared producer suite (unittests/rendertest/indirect_contract.h) on the contract SDFV scene, including its geometry oracle (a proxy box around a probe darkens it below 5% of the seed); the radiosity producer claims no GeometryMotion; the GPU time of one update; validation-clean with the layer. The same source runs on Android from /data/local/tmp",
+      "sources": [
+        "unittests/shaderapivulkantest/test_indirect_sdf.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
+        "mapcontainer/probe_volume.cpp",
+        "mapcontainer/radiosity_transfer.cpp",
+        "mapcontainer/sdf_volume.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.indirect-switching.native-pixels",
       "domain": "Q-PRESENTATION",
       "rfc": "0011",

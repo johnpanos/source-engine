@@ -58,6 +58,10 @@ CAPTURE_WIDTH, CAPTURE_HEIGHT = 1024, 768
 # Frames from the console commands to the screenshot: the camera commands
 # settle in about 240, and the view must be on for several frames after.
 CAPTURE_WAIT = 420
+# The frames the camera placement and proof screenshot take from the start of
+# the line (reference_compare.camera_commands' waits plus `wait 5`) before
+# --console-command runs.
+PLACEMENT_FRAMES = 245
 
 
 def sha256(path):
@@ -141,7 +145,8 @@ def capture(args):
             [sys.executable, HERE / "portal_boot.py", "--runtime", runtime, "--build", build,
              "--content-root", content, "--renderer", "native-vulkan", "--headless",
              "--map", manifest["map"], "--width", str(CAPTURE_WIDTH),
-             "--height", str(CAPTURE_HEIGHT), "--capture-wait", str(CAPTURE_WAIT),
+             "--height", str(CAPTURE_HEIGHT),
+             "--capture-wait", str(getattr(args, "capture_wait", None) or CAPTURE_WAIT),
              "--console-command", line, "--out", boot],
             cwd=ROOT, capture_output=True, text=True)
         evidence = json.loads((boot / "evidence.json").read_text()) \
@@ -211,7 +216,7 @@ def reference_level(fixture, state, light="indirect"):
 
 
 def compare_view(fixture, state, camera, capture_path, scale, gate_models, tolerance, level,
-                 light="indirect"):
+                 light="indirect", absolute_fraction=ABSOLUTE_FRACTION):
     references = fixture["directory"] / "references"
     record = json.loads((references / "references.json").read_text())
     # A camera that renders another's view (the portal-view camera looking
@@ -229,7 +234,7 @@ def compare_view(fixture, state, camera, capture_path, scale, gate_models, toler
                                       {"props": [{"name": name, "shapes": [mesh]} for name, mesh
                                                  in fixture_props(fixture).items()]})
     regions = {}
-    allowance_floor = ABSOLUTE_FRACTION * level
+    allowance_floor = absolute_fraction * level
     for region, mask in masks.items():
         if mask.sum() < 50:
             regions[region] = {"pixels": int(mask.sum()), "status": "too-small"}
@@ -272,14 +277,17 @@ def compare(args):
     views = {}
     failures = []
     light = getattr(args, "reference_light", "indirect")
-    level = reference_level(fixture, args.state, light)
+    # A state that should be dark throughout (a closed door) is judged at the
+    # light level of the state named by --level-state.
+    level = reference_level(fixture, getattr(args, "level_state", None) or args.state, light)
+    absolute_fraction = getattr(args, "absolute_fraction", None) or ABSOLUTE_FRACTION
     for camera, shot in sorted(capture_record["cameras"].items()):
         if shot["status"] != "pass" or not shot["screenshot"]:
             failures.append("%s: capture did not pass (%s)" % (camera, shot["failures"]))
             continue
         regions = compare_view(fixture, args.state, camera, shot["screenshot"],
                                args.declared_scale or capture_record["scale"], args.gate_models,
-                               args.tolerance, level, light)
+                               args.tolerance, level, light, absolute_fraction)
         views[camera] = regions
         for region, result in regions.items():
             if result["status"] == "fail":
@@ -293,8 +301,9 @@ def compare(args):
               "capture": str(Path(args.capture).resolve()), "view": capture_record["view"],
               "capture_scale": capture_record["scale"],
               "declared_scale": args.declared_scale or capture_record["scale"],
-              "tolerance": args.tolerance, "absolute_fraction": ABSOLUTE_FRACTION,
+              "tolerance": args.tolerance, "absolute_fraction": absolute_fraction,
               "reference_level": level,
+              "level_state": getattr(args, "level_state", None) or args.state,
               "reference": "Cycles DiffInd (indirect diffuse light, E / pi)"
               if light == "indirect" else "Cycles DiffDir + DiffInd (diffuse light, E / pi)",
               "reference_light": light,
@@ -360,6 +369,10 @@ def main():
     c = commands.add_parser("capture")
     capture_options(c)
     c.add_argument("--view", type=int, default=1, choices=(0, 1, 2))
+    c.add_argument("--capture-wait", type=int,
+                   help="frames from the start of the console line to the scored screenshot "
+                        "(default %d; the camera placement uses %d of them)" % (
+                            CAPTURE_WAIT, PLACEMENT_FRAMES))
     c.add_argument("--scale", type=float, default=1.0)
     m = commands.add_parser("compare")
     m.add_argument("--fixture", required=True)
@@ -371,6 +384,12 @@ def main():
     m.add_argument("--gate-models", action="store_true")
     m.add_argument("--reference-light", choices=sorted(REFERENCE_LIGHT), default="indirect")
     m.add_argument("--tolerance", type=float, default=WORLD_TOLERANCE)
+    m.add_argument("--absolute-fraction", type=float,
+                   help="the dark-region allowance as a fraction of the reference level "
+                        "(default %g; a producer's declared tolerance)" % ABSOLUTE_FRACTION)
+    m.add_argument("--level-state",
+                   help="the state whose brightest region sets the reference level "
+                        "(default: the compared state; for a state that is dark throughout)")
     v = commands.add_parser("indirect-view")
     capture_options(v)
     v.add_argument("--state", default="default")

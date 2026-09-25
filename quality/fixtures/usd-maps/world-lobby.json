@@ -1,0 +1,32 @@
+{
+  "schema": "pbrt-map-manifest/v1",
+  "map": "world_lobby",
+  "scene": "World_Lobby/World_Lobby.usd",
+  "credit": "World Lobby OpenUSD sample scene by NVIDIA Omniverse (Collected_World_Lobby.zip); not redistributed here",
+  "simplify": {
+    "/World/assembly_Lobby/assets_lobby_vegetation/*/Bowl/stone": 0.01
+  },
+  "lightmap": {
+    "size": 4096
+  },
+  "reflection_probe": {
+    "position": [20.5, 20.5, 1.5]
+  },
+  "collision": {
+    "envelope_meshes": ["Default_Floor_758", "Ceiling_758"],
+    "solid_materials": [
+      "plaster_wall",
+      "concrete_formed",
+      "white",
+      "bowl", "bowl_i1", "bowl_i2",
+      "earthenware_01", "earthenware_01_i1",
+      "squaregardenplanterlong", "squaregardenplanterlong_i1",
+      "squaregardenplantertall", "squaregardenplantertall_i1",
+      "seahorn",
+      "paint_satin", "paint_satin_i1", "paint_satin_i2",
+      "felt_green", "felt_green_i1", "felt_green_i2", "felt_green_i3", "felt_green_i4",
+      "felt_green_i5", "felt_green_i6", "felt_green_i7", "felt_green_i8", "felt_green_i9",
+      "aluminum", "aluminum_i1", "aluminum_i2", "aluminum_i3"
+    ]
+  }
+}

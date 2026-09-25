@@ -623,6 +623,10 @@ def door(out):
                                    [wall0 + 0.125, hole_y[1], hole_z[1]]]}))
     manifest = map_manifest("gi_door", "quality/fixtures/gi/door/states/open.usda",
                             solid_meshes=["A_Xp", "B_Xn"])
+    # The slab as a moving brush entity (open at spawn): the geometry change
+    # the SDF-traced producer must follow and radiosity cannot (G6).
+    manifest["collision"]["doors"] = [{"name": "Door", "bounds_m": [
+        [wall0 + 0.075, hole_y[0], hole_z[0]], [wall0 + 0.125, hole_y[1], hole_z[1]]]}]
     write_json(directory / "map.json", manifest)
 
 
@@ -734,7 +738,7 @@ def generate(out):
     write_json(out / "index.json", index)
 
 
-OTHER_WRITERS = {"prbv", "rtrn"}
+OTHER_WRITERS = {"prbv", "rtrn", "sdfv"}
 
 
 def compare_trees(expected, actual):

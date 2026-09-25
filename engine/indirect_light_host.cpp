@@ -483,7 +483,15 @@ void IndirectLight_Frame( const light_set::Snapshot &lights )
 	work.frameSerial = host.tracker.Frame() + 1;
 	work.resources = &host.tracker;
 	work.executor = &host.executor;
+	const size_t proxiesBefore = host.proxies.size();
 	GatherProxies( &host.proxies );
+	if ( r_indirect_report.GetBool() && host.proxies.size() != proxiesBefore )
+	{
+		Msg( "indirect light: %zu moving brush proxies\n", host.proxies.size() );
+		for ( const Proxy &proxy : host.proxies )
+			Msg( "  proxy (%.1f %.1f %.1f) - (%.1f %.1f %.1f)\n", proxy.lo[0], proxy.lo[1],
+			    proxy.lo[2], proxy.hi[0], proxy.hi[1], proxy.hi[2] );
+	}
 	work.proxies = host.proxies;
 	work.lightOverrides = host.lightOverrides;
 	const FrameVolume frame = host.switcher->Frame( work, lights );

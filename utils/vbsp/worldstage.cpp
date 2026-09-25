@@ -217,11 +217,16 @@ std::vector<int> SurfaceCorners( const std::vector<int> &vertices )
 
 bool GatherWorldFaces( std::vector<FaceGeometry> &faces, std::string &error )
 {
-	if ( nummodels != 1 )
+	if ( nummodels < 1 )
 	{
-		error = "brush entity models are not yet supported by the World Stage emitter";
+		error = "the map has no world model";
 		return false;
 	}
+	// The geometry scope is WorldSpawn: brush entity models (doors, func_brush)
+	// move, and their geometry is not emitted (their entities are).
+	if ( nummodels > 1 )
+		Msg( "World Stage: %d brush entity model(s) not emitted as world geometry\n",
+		    nummodels - 1 );
 	const dmodel_t &world = dmodels[0];
 	if ( world.firstface < 0 || world.numfaces <= 0 || world.firstface + world.numfaces > numfaces )
 	{

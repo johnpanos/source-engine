@@ -411,6 +411,16 @@ public:
 		return volume;
 	}
 
+	// `base`'s interior texels, decoded once per base: kTexels RGB values of
+	// `probe`'s layer 0 (total) or 1 (indirect).
+	[[nodiscard]] const float *BaseInterior(
+	    const Volume &base, uint32_t probeCount, uint32_t probe, uint32_t layer ) const
+	{
+		if ( m_baseBytes != base.bytes.data() || m_baseSize != base.bytes.size() )
+			DecodeBase( base, probeCount );
+		return &m_baseInterior[( size_t( probe ) * 2 + layer ) * kTexels * 3];
+	}
+
 private:
 	struct Context
 	{
