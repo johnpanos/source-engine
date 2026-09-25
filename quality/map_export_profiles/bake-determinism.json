@@ -1,0 +1,29 @@
+{
+  "schema": "map-export-profile/v1",
+  "name": "bake-determinism",
+  "description": "RFC 0007 determinism lanes (tools/quality/bake_determinism.py): every Cycles pass of the lightmap bake (total, separated direct/indirect layers, sun visibility, RNM basis, tangent frame, coverage) and a small reflection probe, undenoised on the CPU at a small atlas and low sample count, so two builds can be compared bit for bit and a GPU build compared statistically. Not a playable export: the lanes stop after the probe step.",
+  "lightmap": {
+    "size": 256,
+    "samples": 32,
+    "device": "cpu",
+    "denoise": false,
+    "directional": true,
+    "light_paths": "blender-default",
+    "layers": [
+      "direct",
+      "indirect"
+    ]
+  },
+  "reflection_probe": {
+    "width": 64,
+    "face_size": 32,
+    "samples": 16,
+    "denoise": false
+  },
+  "probe_volume": null,
+  "radiosity": null,
+  "sdf_volume": null,
+  "reference": null,
+  "runtime_gate": null,
+  "audit": null
+}

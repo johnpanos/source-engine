@@ -21,6 +21,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import cycles_device  # noqa: E402
 import pbrt_blender  # noqa: E402
 import map_scene  # noqa: E402
 import reflection_probe  # noqa: E402
@@ -42,6 +43,9 @@ def main():
     parser.add_argument("--device", choices=pbrt_blender.DEVICES,
                         default=pbrt_blender.DEFAULT_DEVICE)
     parser.add_argument("--position", type=float, nargs=3)
+    parser.add_argument("--seed", type=int, default=pbrt_blender.SEED)
+    parser.add_argument("--denoise", action=argparse.BooleanOptionalAction, default=True,
+                        help="Cycles' OIDN denoiser on the faces (off for an exact probe)")
     args = parser.parse_args(arguments)
     if not os.environ.get("OCIO"):
         parser.error("OCIO is required")
@@ -54,8 +58,8 @@ def main():
     pbrt_blender.restore_emitters(scene)
     pbrt_blender.apply_environment(scene, args.environment)
     device = pbrt_blender.configure_cycles(args.samples, args.device)
+    sampling = pbrt_blender.pin_sampling(seed=args.seed, denoise=args.denoise)
     render = bpy.context.scene
-    render.cycles.use_denoising = True
     render.render.resolution_x = render.render.resolution_y = args.face_size
     render.render.resolution_percentage = 100
     render.render.film_transparent = False
@@ -98,7 +102,8 @@ def main():
     receipt = {"status": "pass", "scope": "pbrt-reflection-probe-faces",
                "stage_sha256": sha256(args.stage), "scene_sha256": scene["source_sha256"],
                "position": list(position), "face_size": args.face_size,
-               "samples": args.samples, "device": device, "faces": faces,
+               "samples": args.samples, "device": device, "sampling": sampling,
+               "determinism": cycles_device.determinism(device, args.denoise), "faces": faces,
                "blender": bpy.app.version_string}
     (args.out_dir / "probe.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     print("PBRT_REFLECTION_PROBE " + json.dumps({"status": "pass", "device": device}))

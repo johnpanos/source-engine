@@ -35,6 +35,7 @@ import bpy
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bake_progress  # noqa: E402
+import cycles_device  # noqa: E402
 import pbrt_blender  # noqa: E402
 import map_scene  # noqa: E402
 
@@ -388,6 +389,8 @@ def main():
                              "atlas (direct, indirect): LMAP v2 layers (RFC 0011)")
     parser.add_argument("--layers-dir", type=Path,
                         help="directory for the separated layer EXRs (<role>.exr)")
+    parser.add_argument("--seed", type=int, default=pbrt_blender.SEED,
+                        help="Cycles seed for every bake pass (recorded in the receipt)")
     parser.add_argument("--margin-texels", type=int, default=2,
                         help="gap between packed charts; bake dilation uses half")
     args = parser.parse_args(arguments)
@@ -483,6 +486,7 @@ def main():
         # Export the material UVs as the default `st` layer.
         obj.data.uv_layers.active = obj.data.uv_layers.get("st")
     args.out_stage.parent.mkdir(parents=True, exist_ok=True)
+    pbrt_blender.sort_collections()
     if bpy.ops.wm.usd_export(filepath=str(args.out_stage.resolve()), export_materials=True,
                              export_uvmaps=True, rename_uvmaps=False, export_normals=True,
                              export_cameras=True, export_lights=True,
@@ -497,6 +501,7 @@ def main():
             obj.hide_render = True
     device = pbrt_blender.configure_cycles(args.samples, args.device)
     light_paths = pbrt_blender.configure_light_paths(args.light_paths)
+    sampling = pbrt_blender.pin_sampling(seed=args.seed)
     render = bpy.context.scene
     render.cycles.use_auto_tile = True
     render.cycles.tile_size = BAKE_TILE
@@ -608,6 +613,7 @@ def main():
                 "scene_sha256": scene["source_sha256"], "atlas_exr_sha256": sha256(args.out_exr),
                 "environment_sha256": sha256(args.environment) if args.environment else None,
                 "size": args.size, "samples": args.samples, "device": device,
+                "sampling": sampling, "determinism": cycles_device.determinism(device, False),
                 "reserved_rows": args.reserve_rows,
                 "mesh_count": len(meshes), "baked_mesh_count": len(baked),
                 "projected_meshes": {name: {"parts": value["parts"]}

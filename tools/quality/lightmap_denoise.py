@@ -99,6 +99,9 @@ def write_linear_exr(path, pixels):
     spec = oiio.ImageSpec(width, height, 4, oiio.FLOAT)
     spec.channelnames = ["R", "G", "B", "A"]
     spec.alpha_channel = 3
+    # OIIO stamps the write time (EXR capDate) unless DateTime is empty; the
+    # file must be a function of its pixels.
+    spec.attribute("DateTime", "")
     output = oiio.ImageOutput.create(str(path))
     if not output or not output.open(str(path), spec):
         raise OSError("could not open denoised EXR for writing")

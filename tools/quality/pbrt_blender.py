@@ -29,6 +29,19 @@ def clear_scene():
         bpy.data.objects.remove(obj, do_unlink=True)
 
 
+def sort_collections():
+    """Relink every collection's objects in name order.
+
+    Blender's USD import links objects in a run-dependent order, and the USD
+    export writes prims in collection order, so without this two exports of
+    the same scene hold the same prims in different orders (different bytes).
+    """
+    for collection in [bpy.context.scene.collection] + list(bpy.data.collections):
+        for obj in sorted(collection.objects, key=lambda item: item.name):
+            collection.objects.unlink(obj)
+            collection.objects.link(obj)
+
+
 def build_material(scene, name, normal_maps=True):
     """Create a Principled material from the shared material translation policy.
 
@@ -449,6 +462,11 @@ def configure_cycles(samples, device=DEFAULT_DEVICE):
     """
     render = bpy.context.scene
     render.render.engine = "CYCLES"
+    # Render results carry stamp metadata (date, render time, host) into
+    # saved EXRs; outputs must be a function of the scene and settings.
+    for name in dir(render.render):
+        if name.startswith("use_stamp"):
+            setattr(render.render, name, False)
     render.cycles.samples = samples
     render.cycles.device = "CPU"
     if device not in DEVICES:

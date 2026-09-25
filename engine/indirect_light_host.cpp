@@ -115,6 +115,7 @@ private:
 class EngineExecutor final : public IBatchExecutor
 {
 public:
+	explicit EngineExecutor( bool alwaysPooled = false ) : m_alwaysPooled( alwaysPooled ) {}
 	void ParallelFor( const char *name, uint32_t count, void ( *body )( void *, uint32_t ),
 	    void *context ) override
 	{
@@ -123,7 +124,7 @@ public:
 		desc.context = context;
 		desc.count = count;
 		desc.process = body;
-		const bool pooled = r_indirect_executor.GetInt() == 1 && g_pThreadPool;
+		const bool pooled = ( m_alwaysPooled || r_indirect_executor.GetInt() == 1 ) && g_pThreadPool;
 		desc.maxParticipants = pooled ? unsigned( g_pThreadPool->NumThreads() ) + 1 : 1;
 		if ( !RunThreadPoolJobBatch( pooled ? g_pThreadPool : nullptr, desc,
 		         pooled ? jobsystem::BatchMode::Parallel : jobsystem::BatchMode::Serial ) )
@@ -133,6 +134,9 @@ public:
 				body( context, i );
 		}
 	}
+
+private:
+	bool m_alwaysPooled;
 };
 
 #ifdef ANDROID
@@ -198,6 +202,9 @@ struct Host
 	// Baked direct light moving geometry blocks, and the occluders the
 	// uploaded lightmap was composed for.
 	DirectOcclusion occlusion;
+	// Occlusion runs on the pool whatever r_indirect_executor says: it is a
+	// one-frame burst when a door moves, not a per-frame producer update.
+	EngineExecutor occlusionExecutor{ true };
 	std::vector<Proxy> occluded;
 	std::vector<unsigned char> occludedTotal;
 	std::vector<LightOverride> lightOverrides; // r_indirect_light_direction
@@ -262,7 +269,7 @@ void ApplyOcclusion( Host &host )
 		return;
 	const double started = Plat_FloatTime();
 	const size_t blocked =
-	    host.occlusion.Compose( host.proxies, &host.executor, &host.occludedTotal );
+	    host.occlusion.Compose( host.proxies, &host.occlusionExecutor, &host.occludedTotal );
 	const mapcontainer::WorldLightmapLayout &layout = host.occlusion.Layout();
 	world_mesh_gpu::WorldLightmapUploadRequest request;
 	request.width = layout.width;

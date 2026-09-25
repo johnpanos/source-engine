@@ -284,6 +284,8 @@ class Pipeline:
                          "light_paths": lightmap.get("light_paths", "blender-default"),
                          # RFC 0011 separated light: LMAP v2 layers beside the total.
                          "layers": list(lightmap.get("layers", [])),
+                         # Cycles seed of the bake and probe (pbrt_blender.pin_sampling).
+                         "seed": lightmap.get("seed", 0),
                          "exclude_materials": lightmap.get("exclude_materials", [])}
         self.probe = with_defaults(manifest, self.profile, "reflection_probe")
         self.probe_volume = with_defaults(manifest, self.profile, "probe_volume")
@@ -590,7 +592,7 @@ class Pipeline:
                      "--out-exr", p["atlas"], "--out-coverage-exr", p["coverage"],
                      "--size", str(self.lightmap["size"]),
                      "--samples", str(self.lightmap["samples"]),
-                     "--device", self.lightmap["device"],
+                     "--device", self.lightmap["device"], "--seed", str(self.lightmap["seed"]),
                      "--light-paths", self.lightmap["light_paths"]] + env_args
         for material in self.lightmap["exclude_materials"]:
             bake_args += ["--exclude-material", material]
@@ -604,7 +606,7 @@ class Pipeline:
                   ([environment] if environment else []),
                   dict({k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
                                                       "device", "directional", "light_paths",
-                                                      "layers")},
+                                                      "layers", "seed")},
                        reserve_rows=probe_width // 2),
                   SCENE_SCRIPTS + ["pbrt_blender.py", "pbrt_lightmap_bake.py"],
                   [p["lighting_stage"], p["atlas"], p["coverage"], p["atlas_receipt"]] +
@@ -658,12 +660,15 @@ class Pipeline:
             face_args = ["--scene", scene, "--stage", p["lighting_stage"], "--out-dir", p["probe"],
                          "--face-size", str(probe.get("face_size", 256)),
                          "--samples", str(probe.get("samples", 512)),
-                         "--device", self.lightmap["device"]] + env_args
+                         "--device", self.lightmap["device"], "--seed", str(self.lightmap["seed"]),
+                         "--denoise" if probe.get("denoise", True) else "--no-denoise"] + env_args
             if probe.get("position"):
                 face_args += ["--position"] + [str(value) for value in probe["position"]]
             self.step("probe", [p["lighting_stage"]] + self.scene_sources() +
                       ([environment] if environment else []),
-                      probe, SCENE_SCRIPTS + ["pbrt_reflection_probe.py",
+                      dict(probe, device=self.lightmap["device"], seed=self.lightmap["seed"],
+                           denoise=probe.get("denoise", True)),
+                      SCENE_SCRIPTS + ["pbrt_reflection_probe.py",
                                               "reflection_probe.py", "pbrt_blender.py"],
                       [p["probe"]],
                       lambda: self.blender("probe", "pbrt_reflection_probe.py", face_args))

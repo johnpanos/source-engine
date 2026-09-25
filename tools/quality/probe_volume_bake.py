@@ -290,8 +290,7 @@ def main():
     render = bpy.context.scene
     # Every texel takes all its samples (adaptive sampling would stop at a 1%
     # noise estimate), from a recorded seed.
-    render.cycles.use_adaptive_sampling = False
-    render.cycles.seed = SEED
+    sampling = pbrt_blender.pin_sampling(seed=SEED)
     render.render.bake.use_clear = True
     render.render.bake.margin = 0
     render.render.bake.use_pass_color = False
@@ -327,7 +326,7 @@ def main():
                "environment_sha256": sha256(args.environment) if args.environment else None,
                "prbv": args.out.name, "prbv_sha256": hashlib.sha256(data).hexdigest(),
                "prbv_bytes": len(data), "cycles_device": device, "samples": args.samples, "seed": SEED,
-               "adaptive_sampling": False,
+               "adaptive_sampling": False, "sampling": sampling,
                "light_paths": light_paths, "normal_maps": False,
                "layers": ["total", "indirect"], "bake_images": images,
                "grid": {"origin": grid["origin"], "spacing": grid["spacing"],
