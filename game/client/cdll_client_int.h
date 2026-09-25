@@ -75,6 +75,11 @@ extern IVModelRender *modelrender;
 extern IVEngineClient	*engine;
 extern IVModelRender *modelrender;
 extern IVEfx *effects;
+namespace indirect_portals
+{
+class IIndirectLightPortals;
+}
+extern indirect_portals::IIndirectLightPortals *indirectlightportals;
 extern IVRenderView *render;
 extern IVDebugOverlay *debugoverlay;
 extern IMaterialSystem *materials;

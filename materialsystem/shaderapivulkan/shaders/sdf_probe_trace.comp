@@ -29,6 +29,13 @@
 // the probes only through what they bounce off: their direct light reaches
 // the world and models through their own direct-light paths.
 //
+// Open portals (RFC 0011 G10, counts.w): a ray that enters one from its front
+// continues from its linked portal (at most kMaxPortalHops), and a point in
+// front of one sees the lights around its linked portal through it (virtual
+// lights, both legs shadow-tested in their own space). None of that light is
+// in the bake, so the probe carries it in its indirect layer as well: the
+// world adds only that layer's change.
+//
 // RAY_QUERY (G7, the ray-query producer): rays and visibility are traced
 // against a scene of the world's triangles (instance 0) and this frame's
 // proxy boxes (instances 1.., unit cubes scaled into place) instead of the
@@ -61,6 +68,14 @@ struct Proxy
 	vec4 lo; // w: reflectance
 	vec4 hi;
 };
+struct Portal
+{
+	vec4 origin;  // w half width (along right)
+	vec4 forward; // out of its wall; w half height (along up)
+	vec4 right;
+	vec4 up;
+	vec4 m[3]; // row-major 3x4: a point in front of it to where its linked portal shows it
+};
 
 layout( std430, set = 0, binding = 0 ) readonly buffer Voxels
 {
@@ -74,11 +89,12 @@ layout( std430, set = 0, binding = 1 ) readonly buffer Params
 	vec4 probeSpacing; // xyz, w max distance
 	uvec4 probeDims;   // xyz, w probe count
 	uvec4 counts;      // x proxy count, y ray-query instance mask (1: the world only),
-	                   // z unbaked lights after the SDFV's
+	                   // z unbaked lights after the SDFV's, w open portals
 	vec4 cellOrigin;   // xyz the light cells' low corner, w cell size
 	uvec4 cellDims;    // xyz
 	vec4 sourceScale[16];
 	Proxy proxies[16];
+	Portal portals[8];
 }
 params;
 layout( std430, set = 0, binding = 2 ) readonly buffer Probes
@@ -224,7 +240,8 @@ vec3 gHitNormal = vec3( 0.0, 0.0, 1.0 );
 
 #ifdef RAY_QUERY
 // Ray query: true on a hit within `tMax`; `escaped` when nothing is hit.
-bool Trace( vec3 origin, vec3 direction, float tMax, out float t, out int proxy, out bool escaped )
+bool TraceSegment(
+    vec3 origin, vec3 direction, float tMax, out float t, out int proxy, out bool escaped )
 {
 	rayQueryEXT query;
 	rayQueryInitializeEXT( query, scene, gl_RayFlagsOpaqueEXT, params.counts.y, origin, 0.0,
@@ -286,7 +303,8 @@ vec3 HitNormal( vec3 p )
 }
 #else
 // Sphere tracing: true on a hit within `tMax` (then `t` is its distance).
-bool Trace( vec3 origin, vec3 direction, float tMax, out float t, out int proxy, out bool escaped )
+bool TraceSegment(
+    vec3 origin, vec3 direction, float tMax, out float t, out int proxy, out bool escaped )
 {
 	const float voxel = params.sdfOrigin.w;
 	t = 0.0;
@@ -332,7 +350,8 @@ bool Visible( vec3 from, vec3 to )
 	float t;
 	int proxy;
 	bool escaped;
-	return !Trace( from, delta / distance, distance - 0.5 * params.sdfOrigin.w, t, proxy, escaped );
+	return !TraceSegment(
+	    from, delta / distance, distance - 0.5 * params.sdfOrigin.w, t, proxy, escaped );
 }
 
 vec3 HitNormal( vec3 p )
@@ -340,6 +359,121 @@ vec3 HitNormal( vec3 p )
 	return SceneNormal( p );
 }
 #endif
+
+// Open portals (G10). Portal k's transform, and its inverse (rigid).
+const uint kMaxPortalHops = 2u;
+
+vec3 PortalPoint( uint k, vec3 p )
+{
+	const vec4 q = vec4( p, 1.0 );
+	return vec3( dot( params.portals[k].m[0], q ), dot( params.portals[k].m[1], q ),
+	    dot( params.portals[k].m[2], q ) );
+}
+
+vec3 PortalVector( uint k, vec3 v )
+{
+	return vec3( dot( params.portals[k].m[0].xyz, v ), dot( params.portals[k].m[1].xyz, v ),
+	    dot( params.portals[k].m[2].xyz, v ) );
+}
+
+vec3 PortalVectorInverse( uint k, vec3 v )
+{
+	return params.portals[k].m[0].xyz * v.x + params.portals[k].m[1].xyz * v.y +
+	       params.portals[k].m[2].xyz * v.z;
+}
+
+vec3 PortalPointInverse( uint k, vec3 p )
+{
+	return PortalVectorInverse( k, p - vec3( params.portals[k].m[0].w, params.portals[k].m[1].w,
+	                                       params.portals[k].m[2].w ) );
+}
+
+// The linked portal's forward: the direction out of the wall it is on.
+vec3 LinkedForward( uint k )
+{
+	return normalize( PortalVector( k, -params.portals[k].forward.xyz ) );
+}
+
+// Where a ray from `origin` along `direction` enters portal k from its front
+// within (0, tMax]; a negative distance when it does not.
+float PortalCrossing( uint k, vec3 origin, vec3 direction, float tMax )
+{
+	const vec3 f = params.portals[k].forward.xyz;
+	const float facing = dot( direction, f );
+	if ( facing >= -1e-6 )
+		return -1.0;
+	const float tp = dot( params.portals[k].origin.xyz - origin, f ) / facing;
+	if ( tp < 0.0 || tp > tMax )
+		return -1.0;
+	const vec3 local = origin + direction * tp - params.portals[k].origin.xyz;
+	if ( abs( dot( local, params.portals[k].right.xyz ) ) > params.portals[k].origin.w ||
+	     abs( dot( local, params.portals[k].up.xyz ) ) > params.portals[k].forward.w )
+		return -1.0;
+	return tp;
+}
+
+// The nearest portal a ray enters within tMax (-1: none), and where.
+int PortalEntry( vec3 origin, vec3 direction, float tMax, out float tPortal )
+{
+	int best = -1;
+	tPortal = tMax;
+	for ( uint k = 0u; k < params.counts.w; ++k )
+	{
+		const float tp = PortalCrossing( k, origin, direction, tPortal );
+		if ( tp >= 0.0 )
+		{
+			best = int( k );
+			tPortal = tp;
+		}
+	}
+	return best;
+}
+
+// Trace through open portals: `hitPoint` and `hitDirection` are in the space
+// of the hit, `hopped` when the ray passed a portal. The sphere trace stops
+// on the wall a portal is on, just short of the portal's plane, so a hit
+// within a voxel of the crossing is the crossing.
+bool Trace( vec3 origin, vec3 direction, float tMax, out float t, out int proxy, out bool escaped,
+    out vec3 hitPoint, out vec3 hitDirection, out bool hopped )
+{
+	hopped = false;
+	float travelled = 0.0;
+	for ( uint hop = 0u;; ++hop )
+	{
+		float tPortal;
+		const int portal = hop < kMaxPortalHops
+		                       ? PortalEntry( origin, direction, tMax - travelled, tPortal )
+		                       : -1;
+#ifdef RAY_QUERY
+		const bool hit = TraceSegment(
+		    origin, direction, portal >= 0 ? tPortal : tMax - travelled, t, proxy, escaped );
+		const bool crossed = portal >= 0 && !hit;
+#else
+		const bool hit = TraceSegment( origin, direction, tMax - travelled, t, proxy, escaped );
+		// A hit on the portal's wall: within a voxel of the crossing and on the
+		// portal's plane (a floor or side wall met near it is a hit).
+		const bool onPlane =
+		    abs( dot( origin + direction * t - params.portals[max( portal, 0 )].origin.xyz,
+		        params.portals[max( portal, 0 )].forward.xyz ) ) <= 0.5 * params.sdfOrigin.w;
+		const bool crossed = portal >= 0 && proxy < 0 &&
+		                     ( !hit || ( t >= tPortal - params.sdfOrigin.w && onPlane ) );
+#endif
+		if ( !crossed )
+		{
+			hitPoint = origin + direction * t;
+			hitDirection = direction;
+			t += travelled;
+			return hit;
+		}
+		// Continue from the linked portal, a voxel off its wall.
+		const uint k = uint( portal );
+		const vec3 crossing = origin + direction * tPortal;
+		origin = PortalPoint( k, crossing ) + LinkedForward( k ) * params.sdfOrigin.w;
+		direction = normalize( PortalVector( k, direction ) );
+		travelled += tPortal;
+		hopped = true;
+	}
+}
 
 // The lights of the cell holding `p` (the nearest cell outside the grid):
 // entries [x, y) of cellLights.
@@ -353,9 +487,8 @@ uvec2 CellRange( vec3 p )
 
 // One sample of analytic light `l` at `p`: the unshadowed diffuse light
 // along `w` for a normal facing it (irradiance / pi), 0 when it cannot light p.
-vec3 LightSample( uint l, vec3 p, inout uint rng, out vec3 w, out vec3 target )
+vec3 LightSampleOf( Light light, vec3 p, inout uint rng, out vec3 w, out vec3 target )
 {
-	const Light light = lights[l];
 	const uint kind = uint( light.kind.x );
 	if ( kind == 0u )
 	{
@@ -472,6 +605,55 @@ vec3 LightSample( uint l, vec3 p, inout uint rng, out vec3 w, out vec3 target )
 	return vec3( 0.0 );
 }
 
+vec3 LightSample( uint l, vec3 p, inout uint rng, out vec3 w, out vec3 target )
+{
+	return LightSampleOf( lights[l], p, rng, w, target );
+}
+
+// Light l, around portal k's linked portal, seen from `p` through portal k
+// (G10): sampled at its image in p's space (the inverse transform), counted
+// only when the path enters portal k and both legs are unoccluded, each in
+// its own space. Distant lights and the dome do not pass (0).
+vec3 PortalLightSample( uint k, uint l, vec3 p, inout uint rng, out vec3 w )
+{
+	w = vec3( 0.0, 0.0, 1.0 );
+	Light light = lights[l];
+	const uint kind = uint( light.kind.x );
+	if ( kind == 1u || kind == 2u ||
+	     dot( p - params.portals[k].origin.xyz, params.portals[k].forward.xyz ) <= 0.0 )
+		return vec3( 0.0 );
+	light.a.xyz = PortalPointInverse( k, light.a.xyz );
+	if ( kind == 0u )
+	{
+		light.b.xyz = PortalVectorInverse( k, light.b.xyz );
+		light.c.xyz = PortalVectorInverse( k, light.c.xyz );
+	}
+	else if ( kind == 4u )
+		light.b.xyz = PortalVectorInverse( k, light.b.xyz );
+	else if ( kind == 5u )
+		light.c.xyz = PortalVectorInverse( k, light.c.xyz );
+	vec3 target;
+	const vec3 value = LightSampleOf( light, p, rng, w, target );
+	if ( !any( greaterThan( value, vec3( 0.0 ) ) ) )
+		return vec3( 0.0 );
+	const vec3 delta = target - p;
+	const float distance = length( delta );
+	const float tp = PortalCrossing( k, p, delta / max( distance, 1e-6 ), distance );
+	if ( tp < 0.0 || !Visible( p, p + delta / distance * tp ) )
+		return vec3( 0.0 );
+	const vec3 far = PortalPoint( k, p + delta / distance * tp ) +
+	                 LinkedForward( k ) * params.sdfOrigin.w;
+	return Visible( far, PortalPoint( k, target ) ) ? value : vec3( 0.0 );
+}
+
+// The lights around portal k's linked portal: its cell's (the cell just in
+// front of it).
+uvec2 LinkedCellRange( uint k )
+{
+	return CellRange( PortalPoint( k, params.portals[k].origin.xyz ) +
+	                  LinkedForward( k ) * ( 0.5 * params.cellOrigin.w ) );
+}
+
 vec2 OctEncode( vec3 d )
 {
 	d /= abs( d.x ) + abs( d.y ) + abs( d.z );
@@ -581,11 +763,12 @@ void main()
 #else
 	const float tMax = 4.0 * params.probeSpacing.w;
 #endif
-	if ( Trace( position.xyz, dir, tMax, t, proxy, escaped ) )
+	vec3 hit, hitDir;
+	bool hopped;
+	if ( Trace( position.xyz, dir, tMax, t, proxy, escaped, hit, hitDir, hopped ) )
 	{
-		const vec3 hit = position.xyz + dir * t;
 		vec3 n = HitNormal( hit );
-		if ( dot( n, dir ) > 0.0 )
+		if ( dot( n, hitDir ) > 0.0 )
 			n = -n; // a two-sided surface, seen from behind
 		vec3 reflectance = vec3( 0.0 );
 		vec3 emission = vec3( 0.0 );
@@ -631,8 +814,26 @@ void main()
 			     Visible( lift, target ) )
 				arriving += value * cosSurface;
 		}
+		// The lights the hit sees through open portals.
+		for ( uint k = 0u; k < params.counts.w; ++k )
+		{
+			const uvec2 linked = LinkedCellRange( k );
+			for ( uint e = linked.x; e < linked.y; ++e )
+			{
+				vec3 w;
+				const vec3 value = PortalLightSample( k, cellLights[e], lift, rng, w );
+				arriving += value * max( 0.0, dot( n, w ) );
+			}
+		}
 		direct = emission;
 		indirect = reflectance * arriving;
+		// Light from beyond a portal is not in the bake: all of it is the
+		// probe's indirect layer's.
+		if ( hopped )
+		{
+			indirect += direct;
+			direct = vec3( 0.0 );
+		}
 	}
 	else if ( escaped )
 	{
@@ -652,6 +853,26 @@ void main()
 		const uint u = lane % kInterior;
 		const uint v = lane / kInterior;
 		texelDir = OctDecode( ( vec2( u, v ) + 0.5 ) / float( kInterior ) * 2.0 - 1.0 );
+	}
+	// The lights the probe sees through open portals, as the analytic ones
+	// below; it lands in the indirect layer (not in the bake).
+	vec3 portalLight = vec3( 0.0 );
+	for ( uint k = 0u; k < params.counts.w; ++k )
+	{
+		const uvec2 linked = LinkedCellRange( k );
+		for ( uint e = linked.x; e < linked.y; ++e )
+		{
+			vec3 w;
+			const vec3 value = PortalLightSample( k, cellLights[e], position.xyz, rng, w );
+			barrier();
+			sLightDir[lane] = w;
+			sLightValue[lane] = value;
+			barrier();
+			if ( lane < kTexels )
+				for ( uint j = 0u; j < kRays; ++j )
+					portalLight +=
+					    sLightValue[j] * max( 0.0, dot( texelDir, sLightDir[j] ) ) / float( kRays );
+		}
 	}
 	// The analytic lights' direct light at the probe: 128 samples per light.
 	for ( uint e = probeLights.x; e < probeLights.y; ++e )
@@ -684,8 +905,9 @@ void main()
 	seenDirect /= max( weights, 1e-6 );
 	seenIndirect /= max( weights, 1e-6 );
 	const uint slot = ( probe * kTexels + lane ) * 3u;
-	const vec3 total = analytic + seenDirect + seenIndirect;
+	const vec3 total = analytic + seenDirect + seenIndirect + portalLight;
 	next[slot] = vec4( mix( previous[slot].rgb, total, alpha ), 0.0 );
-	next[slot + 1u] = vec4( mix( previous[slot + 1u].rgb, seenIndirect, alpha ), 0.0 );
+	next[slot + 1u] =
+	    vec4( mix( previous[slot + 1u].rgb, seenIndirect + portalLight, alpha ), 0.0 );
 	next[slot + 2u] = vec4( mix( previous[slot + 2u].rgb, analytic, alpha ), 0.0 );
 }

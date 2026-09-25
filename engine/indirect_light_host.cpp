@@ -34,11 +34,13 @@
 #include "render/gpu_compute.h"
 #include "render/indirect_radiosity.h"
 #include "render/indirect_sdf.h"
+#include "render/indirect_portals.h"
 #include "render/indirect_switcher.h"
 #include "render/light_set.h"
 #include "render/world_mesh_upload.h"
 #include "tier0/dbg.h"
 #include "tier0/platform.h"
+#include "tier1/interface.h"
 #include "vstdlib/jobgraph_parallel.h"
 
 #include <algorithm>
@@ -76,6 +78,9 @@ ConVar r_indirect_executor( "r_indirect_executor", "0", FCVAR_NONE,
     "How CPU indirect-light producers run their batches (RFC 0003 job system): 0 serially on "
     "the main thread (one worker, the pooled mode's oracle), 1 on the engine's worker pool; "
     "both produce identical volumes" );
+ConVar r_indirect_portals( "r_indirect_portals", "1", FCVAR_CHEAT,
+    "Producers that carry light through open portal pairs are given them (RFC 0011 G10; 0: "
+    "not, the negative control of the portal-light test)" );
 ConVar r_indirect_shadows( "r_indirect_shadows", "1", FCVAR_CHEAT,
     "Unbaked lights are shadowed by the map's SDF (RFC 0011 G9; 0: unshadowed, the negative "
     "control of the swing test)" );
@@ -413,6 +418,7 @@ struct Host
 	bool brushesLit = false;                   // brush entities lit from the consumed volume
 	bool shadowFieldUploaded = false;          // the SDFV's distances, for direct-light shadows
 	std::vector<LightOverride> lightOverrides; // r_indirect_light_direction
+	std::vector<Portal> portals;               // the client's open portals (G10)
 	ProbeFocus focus;                          // the traced producers' probes near the camera
 	uint64_t uploadedGeneration = 0;
 	uint64_t mapSerial = 0;
@@ -766,6 +772,7 @@ void IndirectLight_EndMap()
 	host.change.clear();
 	host.proxies.clear();
 	host.lightOverrides.clear();
+	host.portals.clear();
 	host.focus = ProbeFocus();
 	host.occlusion = DirectOcclusion();
 	host.occluded.clear();
@@ -826,6 +833,8 @@ void IndirectLight_Frame( const light_set::Snapshot &lights )
 	}
 	work.proxies = host.proxies;
 	work.lightOverrides = host.lightOverrides;
+	if ( r_indirect_portals.GetBool() )
+		work.portals = host.portals;
 	if ( host.scene.sdf && r_indirect_focus.GetBool() )
 		work.focusProbes = host.focus.Update( MainViewOrigin() );
 	work.probeBudget = uint32_t( std::max( 0, r_indirect_probe_budget.GetInt() ) );
@@ -912,3 +921,35 @@ void IndirectLight_DeviceRestored()
 	host.tracker.Advance();
 	Consume( frame );
 }
+
+// The client's open portal pairs (render/indirect_portals.h), copied as the
+// next frame's portals.
+class CIndirectLightPortals final : public indirect_portals::IIndirectLightPortals
+{
+public:
+	void SetOpenPortals( const indirect_portals::PortalInput *portals, int count ) override
+	{
+		std::vector<Portal> &out = TheHost().portals;
+		const size_t before = out.size();
+		out.clear();
+		for ( int i = 0; portals && i < count && i < indirect_portals::kMaxOpenPortals; ++i )
+		{
+			const indirect_portals::PortalInput &in = portals[i];
+			Portal portal;
+			std::memcpy( portal.origin, in.origin, sizeof( portal.origin ) );
+			std::memcpy( portal.forward, in.forward, sizeof( portal.forward ) );
+			std::memcpy( portal.right, in.right, sizeof( portal.right ) );
+			std::memcpy( portal.up, in.up, sizeof( portal.up ) );
+			portal.halfWidth = in.halfWidth;
+			portal.halfHeight = in.halfHeight;
+			std::memcpy( portal.toLinked, in.toLinked, sizeof( portal.toLinked ) );
+			out.push_back( portal );
+		}
+		if ( r_indirect_report.GetBool() && out.size() != before )
+			Msg( "indirect light: %zu open portal(s)\n", out.size() );
+	}
+};
+
+static CIndirectLightPortals s_IndirectLightPortals;
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR_WITH_NAMESPACE( CIndirectLightPortals, indirect_portals::,
+    IIndirectLightPortals, indirect_portals::kIndirectLightPortalsVersion, s_IndirectLightPortals );

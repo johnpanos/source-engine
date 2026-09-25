@@ -351,7 +351,8 @@ def main():
                         help="omit the fallback light entity: the map's probe volume "
                              "(RFC 0011 PRBV) lights models and derives the leaf ambient, "
                              "so vrad must add no light of its own")
-    parser.add_argument("--portal", action="append", default=[], metavar="X,Y,Z,NX,NY,NZ,TWO",
+    parser.add_argument("--portal", action="append", default=[],
+                        metavar="X,Y,Z,NX,NY,NZ,TWO[,NAME]",
                         help="a map-placed, activated prop_portal of linkage group 0: its centre "
                              "and normal in meters (stage space) and 1 for the pair's second "
                              "portal")
@@ -480,7 +481,9 @@ def main():
                   "entity", "{", '\t"id" "3"', '\t"classname" "light"',
                   '\t"origin" "%g %g %g"' % tuple(light), '\t"_light" "255 255 240 300"', "}"]))
     for index, spec in enumerate(args.portal):
-        values = [float(v) for v in spec.split(",")]
+        fields = spec.split(",")
+        values = [float(v) for v in fields[:7]]
+        name = fields[7] if len(fields) > 7 else None
         centre = [v * SOURCE_UNITS_PER_METER for v in values[0:3]]
         nx, ny, nz = values[3:6]
         pitch = -math.degrees(math.asin(max(-1.0, min(1.0, nz))))
@@ -488,7 +491,8 @@ def main():
         lines.extend(["entity", "{", '\t"id" "%d"' % (80 + index), '\t"classname" "prop_portal"',
                       '\t"origin" "%.3f %.3f %.3f"' % tuple(centre),
                       '\t"angles" "%g %g 0"' % (pitch, yaw), '\t"Activated" "1"',
-                      '\t"PortalTwo" "%d"' % int(values[6]), '\t"LinkageGroupID" "0"', "}"])
+                      '\t"PortalTwo" "%d"' % int(values[6]), '\t"LinkageGroupID" "0"'] +
+                     (['\t"targetname" "%s"' % name] if name else []) + ["}"])
     # Switchable baked lights: the runtime owns their light (the radiosity
     # transfer and its style scalar); vrad adds none.
     for index, name in enumerate(args.light_control):

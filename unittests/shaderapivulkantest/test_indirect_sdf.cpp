@@ -719,6 +719,116 @@ int Bench( Device &d, Frames &frames, const BenchOptions &options )
 	return 0;
 }
 
+// Probe p's mean over its irradiance tile's interior in `layer`.
+float ProbeMeanAt( const Volume &volume, uint32_t layer, uint32_t probe )
+{
+	const mapcontainer::ProbeGridLayout &grid = volume.layout.grids[0];
+	const uint32_t tile = mapcontainer::kProbeIrradianceTile;
+	const uint32_t x0 = grid.irradianceOrigin[layer][0] + ( probe % grid.tilesPerRow ) * tile + 1;
+	const uint32_t y0 = grid.irradianceOrigin[layer][1] + ( probe / grid.tilesPerRow ) * tile + 1;
+	double sum = 0.0;
+	for ( uint32_t v = 0; v < tile - 2; ++v )
+		for ( uint32_t u = 0; u < tile - 2; ++u )
+		{
+			uint16_t half;
+			std::memcpy( &half,
+			    volume.bytes.data() + volume.layout.atlasOffset +
+			        ( uint64_t( y0 + v ) * volume.layout.atlasWidth + x0 + u ) * 8,
+			    2 );
+			sum += mapcontainer::HalfToFloat( half );
+		}
+	return float( sum / double( ( tile - 2 ) * ( tile - 2 ) ) );
+}
+
+// RFC 0011 G10: light through an open portal pair. A pair covering the
+// contract's thin wall (x 47 facing room A and x 49 facing room B, the
+// wall's whole 64 x 64 units, each a 2-unit translation onto the other) is
+// the wall erased: room B's probes, black behind the wall, take the light
+// they take with the wall removed from the scene. The erased scene's light
+// is its own reference field's (a producer publishes the change from its
+// reference, which there already holds the leak): `erasedDark`, the mean
+// ReferenceSides measures. The wall's run must stay black and the open
+// pair's must match it.
+std::string PortalTransport(
+    Frames &frames, TraceMode mode, const IndirectScene &walled, float erasedDark )
+{
+	const auto run = [&]( const IndirectScene &base, bool portals, float *darkIndirect,
+	                      float *darkTotal )
+	{
+		TracedProducer producer( mode );
+		IndirectScene scene = base;
+		scene.gpu = &frames.Service();
+		scene.policy = indirect_policy::Policy::BakedPlusDelta;
+		if ( !producer.Begin( scene, PublishedVolume{ 0, scene.baked }, frames ) )
+			return false;
+		Portal pair[2];
+		for ( int side = 0; side < 2; ++side )
+		{
+			Portal &portal = pair[side];
+			portal.origin[0] = side == 0 ? 47.0f : 49.0f;
+			portal.origin[1] = 16.0f, portal.origin[2] = 16.0f;
+			portal.forward[0] = side == 0 ? -1.0f : 1.0f;
+			portal.right[1] = 1.0f;
+			portal.up[2] = 1.0f;
+			portal.halfWidth = portal.halfHeight = 32.0f;
+			// Identity rotation, a translation onto the other face.
+			portal.toLinked[0] = portal.toLinked[5] = portal.toLinked[10] = 1.0f;
+			portal.toLinked[3] = side == 0 ? 2.0f : -2.0f;
+		}
+		const light_set::Snapshot lights;
+		const uint32_t count = producer.Caps().warmupFrames + 120;
+		for ( uint32_t frame = 0; frame < count; ++frame )
+		{
+			FrameWork work;
+			work.resources = &frames;
+			work.frameSerial = uint64_t( frame ) + 1;
+			if ( portals && frame >= producer.Caps().warmupFrames )
+				work.portals = std::span<const Portal>( pair, 2 );
+			producer.Schedule( work, lights );
+			for ( auto &job : work.jobs )
+				job();
+			frames.Submit();
+		}
+		frames.Drain();
+		const auto published = producer.Published();
+		const Volume &volume = published ? *published->volume : *scene.baked;
+		const mapcontainer::ProbeGridLayout &grid = volume.layout.grids[0];
+		double indirect = 0.0, total = 0.0, probes = 0.0;
+		for ( uint32_t probe = 0; probe < grid.probeCount; ++probe )
+		{
+			const float x = grid.origin[0] + float( probe % grid.dims[0] ) * grid.spacing[0];
+			if ( x <= 49.0f )
+				continue;
+			indirect += ProbeMeanAt( volume, 1, probe );
+			total += ProbeMeanAt( volume, 0, probe );
+			probes += 1.0;
+		}
+		*darkIndirect = float( indirect / std::max( probes, 1.0 ) );
+		*darkTotal = float( total / std::max( probes, 1.0 ) );
+		(void)producer.End();
+		frames.Drain();
+		return probes > 0.0;
+	};
+	float closedIndirect, closedTotal, openIndirect, openTotal;
+	if ( !run( walled, false, &closedIndirect, &closedTotal ) ||
+	     !run( walled, true, &openIndirect, &openTotal ) )
+		return "the producer did not run";
+	std::fprintf( stderr,
+	    "room B probes, total (indirect): wall %.4f (%.4f), open pair %.4f (%.4f), wall erased "
+	    "%.4f\n",
+	    closedTotal, closedIndirect, openTotal, openIndirect, erasedDark );
+	if ( !( erasedDark > 0.0f ) || !( closedTotal < 0.1f * erasedDark ) )
+		return "room B is lit through the closed wall";
+	// The erased wall leaves a 2-unit slot open to the outside around the
+	// rooms' junction, which the pair does not: the two are alike, not equal
+	// (the Cycles portal-light fixture is the accurate oracle).
+	if ( !( openTotal > 0.5f * erasedDark && openTotal < 1.5f * erasedDark ) )
+		return "the open pair does not carry the light the erased wall lets through";
+	if ( std::fabs( ( openTotal - openIndirect ) - ( closedTotal - closedIndirect ) ) > 0.01f )
+		return "light through the pair landed outside the indirect layer";
+	return {};
+}
+
 // RFC 0011 G9: the frame's unbaked lights. Probe 0's published light with
 // no unbaked light, with an inverse-square light on its side of the
 // contract's thin wall (x 47..49), and with that light moved behind the
@@ -966,6 +1076,35 @@ int main( int argc, char **argv )
 		Check( failed.empty(), "the " + name +
 		                           " producer bounces an unbaked light, follows it "
 		                           "behind the wall, and adds none of its direct light" );
+	}
+
+	// RFC 0011 G10: light through an open portal pair.
+	for ( TraceMode mode : { TraceMode::Sdf, TraceMode::RayQuery } )
+	{
+		if ( mode == TraceMode::RayQuery && !frames.Service().Capabilities().rayQuery )
+			continue;
+		const std::string name = mode == TraceMode::RayQuery ? "ray-query" : "SDF-traced";
+		IndirectScene walled;
+		walled.baked = seed;
+		walled.sdf = sdf;
+		walled.geometry = geometry;
+		// The exact erased wall: the ray-query field without the wall's two
+		// faces (the SDF's erased slab also removes floor and ceiling). Without
+		// ray query the SDF's own slab stands in, and only its darkness counts.
+		float erasedLit = 0.0f, erasedDark = 0.0f;
+		const bool exact = frames.Service().Capabilities().rayQuery;
+		const bool erasedTraced =
+		    exact ? ReferenceSides( frames, TraceMode::RayQuery, seed, sdf,
+		                WithoutTheWallTriangles( *geometry ), &erasedLit, &erasedDark )
+		          : ReferenceSides( frames, mode, seed, WithoutTheWall( *sdf ), geometry,
+		                &erasedLit, &erasedDark );
+		const std::string failed = erasedTraced
+		                               ? PortalTransport( frames, mode, walled, erasedDark )
+		                               : std::string( "the erased-wall reference did not run" );
+		if ( !failed.empty() )
+			std::fprintf( stderr, "  %s: %s\n", name.c_str(), failed.c_str() );
+		Check( failed.empty(), "the " + name + " producer carries light through an open portal "
+		                           "pair, in the indirect layer" );
 	}
 
 	// GPU cost of one update on the contract scene (16 probes).

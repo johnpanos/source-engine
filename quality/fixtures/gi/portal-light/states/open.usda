@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "PortalLight"
+    metersPerUnit = 1
+    subLayers = [
+        @../portal-light.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "PortalLight"
+{
+    over "World"
+    {
+        over "Plug"
+        {
+            token visibility = "invisible"
+        }
+    }
+}
+

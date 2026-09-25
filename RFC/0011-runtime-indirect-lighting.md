@@ -790,6 +790,55 @@ Done when:
    Android, where the traced producers are unsupported, draws the bulb
    unshadowed with its direct light, and records that.
 
+### G10: Light through open portals (amendment, 2026-09-25)
+
+Added after G9 at the user's direction. It closes open decision 6. It
+matters most for Portal: an open portal pair joins two places, and light
+must flow through it the way it flows through a doorway.
+
+**Decisions.**
+
+- **The portal set.** The client publishes the frame's open portals, both
+  portals of every activated, linked pair, to the engine
+  (`render/indirect_portals.h`, `VIndirectLightPortals001`). Each carries
+  its frame, its half size and the transform to its partner. The host hands
+  them to producers in `FrameWork::portals`; `r_indirect_portals 0` (cheat)
+  withholds them.
+- **Traced producers (ray transforms).** A ray that enters an open portal
+  from its front continues from the linked portal (at most two hops). A
+  point in front of a portal sees the analytic lights around the linked
+  portal through it: virtual lights at their images, each leg
+  shadow-tested in its own space.
+- **Radiosity (dynamic links).** When the set changes, receivers in front of
+  a portal (patches and probes) gain links to the patches in front of its
+  linked portal, at their images. The form factor is cos · cos · A /
+  (π d² + A), and the probe SH follows the gather's convention. The map's
+  SDFV lights beyond are sampled at their images too. The links carry the
+  whole reflected light (bake plus change), and the absolute bake is solved
+  once. They are unoccluded, since the transfer holds no geometry to test.
+- **Layering.** None of this light is in the bake, so probes carry it in
+  their indirect layer as well as their total. The world adds that layer's
+  change, and models read the total.
+
+**Fixture `portal-light`.** Room A, lit by a ceiling panel, and room B, with
+no light of its own, are sealed and 6 m apart in the map. A linked
+`prop_portal` pair on their facing walls is the only connection, so the
+pair's transform is the 6 m translation. The Cycles reference joins the
+rooms at one wall plane with a portal-sized opening (`open`), or plugs it
+(`closed`).
+
+Done when:
+
+1. A GPU check shows a traced producer carrying light through a pair of
+   portals on the contract's thin wall, like the wall erased, in the
+   indirect layer, with the closed wall dark.
+2. In game, with the pair open, room B's diffuse view matches Cycles `open`
+   per world region within the producer's tolerance, for the SDF,
+   ray-query and radiosity producers. Deactivating a portal makes room B
+   match `closed`, which is dark.
+3. The bake, and a traced producer denied the portals, fail `open`: the
+   scenario tells them apart.
+
 ## Roadmap
 
 Not yet ranked. AGENTS.md owns ranks and states. This RFC proposes the
@@ -807,6 +856,7 @@ following rows for the user to rank:
 | R77 | Ray-query producer (G7) | R73, R75 |
 | R78 | GI product defaults, soak and platform evidence (G8) | R74, R29 |
 | R79 | Moved lights: SDF shadows, inverse-square dynamic lights, traced producers' unbaked lights, `swing` fixture (G9) | R76 or R77 |
+| R80 | Light through open portals: client portal set, traced ray transforms and virtual lights, radiosity portal links, `portal-light` fixture (G10) | R74, R76 or R77 |
 
 R71 supplies the `PRBV` portion of R56, and R74 together with R76 or R77
 supplies the real-time indirect-light portion of R63. Neither row closes those
@@ -863,6 +913,8 @@ parents alone.
    producers.
 6. Light transport through open portals: dynamic patch links for radiosity, or
    ray transforms for SDF/RT. A later extension with its own fixture.
+   *Decided 2026-09-25 (G10): both, plus virtual lights for the analytic
+   lights beyond a portal; the fixture is `portal-light`.*
 7. Which reference implementation the SDF producer follows (Godot SDFGI or
    FidelityFX Brixelizer GI), after license and fit review.
 

@@ -74,12 +74,13 @@ namespace indirect_light
 struct SdfTraceParams
 {
 	static constexpr uint32_t kMaxProxies = 16;
+	static constexpr uint32_t kMaxPortals = 8;
 	float sdfOrigin[4];
 	uint32_t sdfDims[4];
 	float probeOrigin[4];
 	float probeSpacing[4];
 	uint32_t probeDims[4];
-	uint32_t counts[4]; // x proxies, y the ray-query cull mask
+	uint32_t counts[4]; // x proxies, y the ray-query cull mask, z unbaked lights, w portals
 	float cellOrigin[4];
 	uint32_t cellDims[4];
 	float sourceScale[64];
@@ -88,8 +89,17 @@ struct SdfTraceParams
 		float lo[4];
 		float hi[4];
 	} proxies[kMaxProxies];
+	// RFC 0011 G10: the open portals (indirect_light.h Portal).
+	struct PortalRecord
+	{
+		float origin[4];  // w half width
+		float forward[4]; // w half height
+		float right[4];
+		float up[4];
+		float toLinked[12]; // row-major 3x4
+	} portals[kMaxPortals];
 };
-static_assert( sizeof( SdfTraceParams ) == 896, "sdf_probe_trace.comp Params" );
+static_assert( sizeof( SdfTraceParams ) == 896 + 8 * 112, "sdf_probe_trace.comp Params" );
 
 // One light of the trace program's light buffer (sdf_probe_trace.comp Light).
 struct SdfTraceLight
@@ -107,33 +117,6 @@ static_assert( sizeof( SdfTraceLight ) == 96, "sdf_probe_trace.comp Light" );
 // trace, under the baked scene, sees the world only).
 static constexpr uint32_t kWorldInstanceMask = 0x1;
 static constexpr uint32_t kProxyInstanceMask = 0x2;
-
-// Each probe's world position (xyz) and whether it is active (w 1 or 0), from
-// a volume's first grid and its relocation offsets.
-[[nodiscard]] inline std::vector<float> ProbePositions( const Volume &volume )
-{
-	const mapcontainer::ProbeVolumeLayout &layout = volume.layout;
-	const mapcontainer::ProbeGridLayout &grid = layout.grids[0];
-	std::vector<float> out( size_t( grid.probeCount ) * 4 );
-	const uint32_t row = grid.tilesPerRow * mapcontainer::kProbeVisibilityTile;
-	for ( uint32_t i = 0; i < grid.probeCount; ++i )
-	{
-		const uint32_t index[3] = { i % grid.dims[0], ( i / grid.dims[0] ) % grid.dims[1],
-		    i / ( grid.dims[0] * grid.dims[1] ) };
-		uint16_t state[4];
-		std::memcpy( state,
-		    volume.bytes.data() + layout.atlasOffset +
-		        ( uint64_t( grid.stateOrigin[1] + i / row ) * layout.atlasWidth +
-		            grid.stateOrigin[0] + i % row ) *
-		            8,
-		    sizeof( state ) );
-		for ( int k = 0; k < 3; ++k )
-			out[i * 4 + k] = grid.origin[k] + float( index[k] ) * grid.spacing[k] +
-			                 mapcontainer::HalfToFloat( state[k] );
-		out[i * 4 + 3] = mapcontainer::HalfToFloat( state[3] );
-	}
-	return out;
-}
 
 // The SDFV's light cells for the trace program: per cell its first entry
 // (then the entry count), and the entries' light indices. A version-1
@@ -241,7 +224,8 @@ public:
 	{
 		ProducerCaps caps;
 		caps.kind = m_mode == TraceMode::Sdf ? ProducerKind::SdfTraced : ProducerKind::RayQuery;
-		caps.responds = kLightIntensity | kLightMotion | kGeometryMotion | kEmission;
+		caps.responds =
+		    kLightIntensity | kLightMotion | kGeometryMotion | kEmission | kPortalTransport;
 		caps.policies = PolicyBit( indirect_policy::Policy::BakedPlusDelta );
 		// RenderFeature::kComputeShaders, and kRayQuery for ray queries.
 		caps.requiredFeatures = ( 1u << 2 ) | ( m_mode == TraceMode::RayQuery ? 1u << 7 : 0u );
@@ -542,6 +526,7 @@ private:
 		std::vector<float> directions; // 3 per light
 		std::vector<Proxy> proxies;
 		std::vector<SdfTraceLight> unbaked; // kind 5 records, after the SDFV's lights
+		std::vector<Portal> portals;        // the open portals (G10)
 
 		uint64_t Hash() const
 		{
@@ -557,6 +542,8 @@ private:
 			for ( const Proxy &proxy : proxies )
 				mix( &proxy, sizeof( proxy ) );
 			mix( unbaked.data(), unbaked.size() * sizeof( SdfTraceLight ) );
+			for ( const Portal &portal : portals )
+				mix( &portal, sizeof( portal ) );
 			return h;
 		}
 	};
@@ -613,6 +600,8 @@ private:
 						config.directions[l * 3 + k] = light.direction[k];
 		for ( size_t p = 0; p < work.proxies.size() && p < SdfTraceParams::kMaxProxies; ++p )
 			config.proxies.push_back( work.proxies[p] );
+		for ( size_t p = 0; p < work.portals.size() && p < SdfTraceParams::kMaxPortals; ++p )
+			config.portals.push_back( work.portals[p] );
 		for ( const light_set::RuntimeLight &light : lights.lights )
 		{
 			if ( light.baked || light.shape == light_set::LightShape::Directional ||
@@ -664,6 +653,22 @@ private:
 		params.counts[0] = uint32_t( config.proxies.size() );
 		params.counts[1] = mask;
 		params.counts[2] = uint32_t( config.unbaked.size() );
+		params.counts[3] = uint32_t( config.portals.size() );
+		for ( size_t p = 0; p < config.portals.size(); ++p )
+		{
+			const Portal &portal = config.portals[p];
+			SdfTraceParams::PortalRecord &record = params.portals[p];
+			for ( int k = 0; k < 3; ++k )
+			{
+				record.origin[k] = portal.origin[k];
+				record.forward[k] = portal.forward[k];
+				record.right[k] = portal.right[k];
+				record.up[k] = portal.up[k];
+			}
+			record.origin[3] = portal.halfWidth;
+			record.forward[3] = portal.halfHeight;
+			std::copy( std::begin( portal.toLinked ), std::end( portal.toLinked ), record.toLinked );
+		}
 		std::copy( std::begin( config.scale ), std::end( config.scale ), params.sourceScale );
 		for ( size_t p = 0; p < config.proxies.size(); ++p )
 		{

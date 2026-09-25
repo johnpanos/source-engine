@@ -1,0 +1,39 @@
+{
+  "collision": {
+    "portals": [
+      {
+        "center_m": [
+          4.0,
+          2.0,
+          1.4
+        ],
+        "name": "PortalA",
+        "normal": [
+          -1,
+          0,
+          0
+        ],
+        "portal_two": false
+      },
+      {
+        "center_m": [
+          10.0,
+          2.0,
+          1.4
+        ],
+        "name": "PortalB",
+        "normal": [
+          1,
+          0,
+          0
+        ],
+        "portal_two": true
+      }
+    ],
+    "solid_meshes": []
+  },
+  "map": "gi_portal_light",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/portal-light/map.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

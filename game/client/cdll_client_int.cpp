@@ -21,6 +21,7 @@
 #include "view.h"
 #include "ienginevgui.h"
 #include "iefx.h"
+#include "render/indirect_portals.h"
 #include "enginesprite.h"
 #include "networkstringtable_clientdll.h"
 #include "voice_status.h"
@@ -199,6 +200,8 @@ extern IClientMode *GetClientModeNormal();
 IVEngineClient	*engine = NULL;
 IVModelRender *modelrender = NULL;
 IVEfx *effects = NULL;
+// RFC 0011 G10: optional; the engine's indirect light takes the open portals.
+indirect_portals::IIndirectLightPortals *indirectlightportals = NULL;
 IVRenderView *render = NULL;
 IVDebugOverlay *debugoverlay = NULL;
 IMaterialSystemStub *materials_stub = NULL;
@@ -950,6 +953,9 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 		return false;
 	if ( (scenefilecache = (ISceneFileCache *)appSystemFactory( SCENE_FILE_CACHE_INTERFACE_VERSION, NULL )) == NULL )
 		return false;
+	// Optional: an engine without runtime indirect light does not expose it.
+	indirectlightportals = (indirect_portals::IIndirectLightPortals *)appSystemFactory(
+	    indirect_portals::kIndirectLightPortalsVersion, NULL );
 #ifdef PORTAL2
 	// Optional, as on the server: without a manager client scripts do not run.
 	scriptmanager = Portal2_ConnectScriptManager( appSystemFactory );

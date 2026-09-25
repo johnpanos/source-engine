@@ -16,6 +16,7 @@ that builds the fixture's baked state into a playable BSP2 map:
   probe-grid   a large floor under a uniform sky, and under one sun
   portal-view  a lit chamber seen directly and from the two portal cameras
   swing        a bulb swinging on a rope, at rest and 40 degrees either side
+  portal-light a lit room and a dark one joined only by a portal pair
 
 plus the gallery (`gi_gallery.py`): dozens of smaller fixtures (colored
 lights blending, colored and cluttered furnaces, color bleeding, leaks,
@@ -62,7 +63,7 @@ HORIZONTAL_FOV = 90.0
 # The 4-unit panel of `thin-wall` (RFC 0011 fixture table).
 THIN_WALL_M = 4.0 / SOURCE_UNITS_PER_METER
 # Every dynamic model a fixture places (Author.probe_model / room_states).
-DYNAMIC_MODELS = ("ProbeSphere", "ProbeA", "ProbeB", "ProbeC", "ProbeD", "ProbeS")
+DYNAMIC_MODELS = ("ProbeSphere", "ProbeA", "ProbeB", "ProbeC", "ProbeD", "ProbeS", "ProbeP")
 
 
 # ------------------------------------------------------------------ geometry
@@ -833,7 +834,104 @@ def swing(out):
     write_json(directory / "map.json", manifest)
 
 
-FIXTURES = (furnace, thin_wall, room_states, door, probe_grid, portal_view, swing)
+# `portal-light` (RFC 0011 G10): Portal's portal size (portal_shareddefs.h
+# PORTAL_HALF_WIDTH / PORTAL_HALF_HEIGHT) and the pair's placement.
+PORTAL_HALF_WIDTH_M = 32.0 / SOURCE_UNITS_PER_METER
+PORTAL_HALF_HEIGHT_M = 54.0 / SOURCE_UNITS_PER_METER
+PORTAL_CENTRE = (2.0, 1.4)  # y, z on both walls
+# Room B sits this far from room A in the map; the pair's transform is this
+# translation, so the Cycles reference joins the rooms at one wall plane.
+PORTAL_ROOM_OFFSET_M = 6.0
+
+
+def portal_light(out):
+    """Room A (lit by a ceiling panel) and room B (no light of its own), each
+    4 x 4 x 3 m. In the map they are sealed and 6 m apart; a linked portal
+    pair on A's east wall and B's west wall is their only connection. A
+    portal pair is a zero-thickness doorway with the pair's transform, here
+    the 6 m translation, so the reference stage joins the rooms at one wall
+    plane (x = 4) with a portal-sized opening: `open`. `closed` plugs the
+    opening, which is what deactivated portals leave (the walls behind them)."""
+    directory = out / "portal-light"
+    hole_y = (PORTAL_CENTRE[0] - PORTAL_HALF_WIDTH_M, PORTAL_CENTRE[0] + PORTAL_HALF_WIDTH_M)
+    hole_z = (PORTAL_CENTRE[1] - PORTAL_HALF_HEIGHT_M, PORTAL_CENTRE[1] + PORTAL_HALF_HEIGHT_M)
+    hole = ((hole_y[0], hole_z[0]), (hole_y[1], hole_z[1]))
+    outer = ((0.0, 0.0), (4.0, 3.0))
+
+    def rooms(author, b0):
+        """Room A at x 0..4 and room B at x b0..b0 + 4; returns B's meshes."""
+        author.material("Wall", (0.7, 0.7, 0.7))
+        author.material("Red", (0.7, 0.1, 0.1))
+        author.material("ProbeGrey", (0.6, 0.6, 0.6))
+        author.room("A", (0.0, 0.0, 0.0), (4.0, 4.0, 3.0), "Wall", skip=("Xp", "Yn"))
+        # A red south wall in room A: its bounce colours what reaches room B.
+        author.mesh("A_Yn", [box_faces((0.0, 0.0, 0.0), (4.0, 4.0, 3.0), inward=True)[2][1:]],
+                    "Red")
+        b = author.room("B", (b0, 0.0, 0.0), (b0 + 4.0, 4.0, 3.0), "Wall", skip=("Xn",))
+        author.rect_light("PanelA", (2.0, 2.0, 2.99), (1.2, 1.2), 10.0)
+        return b
+
+    # The reference: the rooms joined at x = 4. The two faces of the shared
+    # wall (and of the plug) sit a millimetre apart: coplanar faces would
+    # z-fight, and from room B the back of A's face would hide B's.
+    gap = 0.0005
+    author = Author(directory / "portal-light.usda", "PortalLight")
+    room_b = rooms(author, 4.0)
+    author.mesh("A_Xp", rect_with_hole(4.0 - gap, 0, -1, outer, hole), "Wall")
+    author.mesh("B_Xn", rect_with_hole(4.0 + gap, 0, 1, outer, hole), "Wall")
+    # The plug: both faces of the opening, shown only in `closed`.
+    author.mesh("Plug", [quad((4.0 - gap, hole_y[0], hole_z[0]),
+                              (4.0 - gap, hole_y[1], hole_z[1]), 0, -1),
+                         quad((4.0 + gap, hole_y[0], hole_z[0]),
+                              (4.0 + gap, hole_y[1], hole_z[1]), 0, 1)], "Wall")
+    joined_model = (4.0 + 1.6, 1.2, 0.8)
+    author.probe_model("ProbeP", joined_model, "ProbeGrey")
+    joined = camera_pose((7.6, 3.6, 1.7), (4.4, 1.4, 0.5))
+    author.camera("Camera", joined)
+    author.save()
+    base = directory / "portal-light.usda"
+    state_layer(directory / "states" / "open.usda", base,
+                [("/PortalLight/World/Plug", "visibility", None, UsdGeom.Tokens.invisible)])
+    # The map: the rooms sealed, B 6 m further along x.
+    offset = PORTAL_ROOM_OFFSET_M
+    author = Author(directory / "map.usda", "PortalLight")
+    rooms(author, 4.0 + offset)
+    author.mesh("A_Xp", [box_faces((0.0, 0.0, 0.0), (4.0, 4.0, 3.0), inward=True)[1][1:]],
+                "Wall")
+    author.mesh("B_Xn", [box_faces((4.0 + offset, 0.0, 0.0), (8.0 + offset, 4.0, 3.0),
+                                   inward=True)[0][1:]], "Wall")
+    author.probe_model("ProbeP", (joined_model[0] + offset,) + joined_model[1:], "ProbeGrey")
+    room = camera_pose((7.6 + offset, 3.6, 1.7), (4.4 + offset, 1.4, 0.5))
+    author.camera("Camera", room)
+    author.save()
+    regions = {"floor": ["B_Zn"], "portal_wall": ["B_Xn"], "side_wall": ["B_Yn"],
+               "model": ["ProbeP"]}
+    write_json(directory / "fixture.json", fixture_record(
+        "portal-light", "Light through an open portal pair: room B's only light arrives "
+        "through the pair from lit room A", "portal-light.usda",
+        {"open": {"layer": "states/open.usda", "note": "the pair open: the rooms joined"},
+         "closed": {"layer": None, "note": "the pair closed: the opening plugged"}},
+        {"joined": joined, "room": room},
+        {"joined": regions, "room": regions},
+        "closed", {"reference_cameras": {"room": "joined"},
+                   "portals": {"offset_m": [offset, 0.0, 0.0],
+                               "size_m": [2 * PORTAL_HALF_WIDTH_M, 2 * PORTAL_HALF_HEIGHT_M],
+                               "a": {"center_m": [4.0, PORTAL_CENTRE[0], PORTAL_CENTRE[1]],
+                                     "normal": [-1, 0, 0], "name": "PortalA"},
+                               "b": {"center_m": [4.0 + offset, PORTAL_CENTRE[0],
+                                                  PORTAL_CENTRE[1]],
+                                     "normal": [1, 0, 0], "name": "PortalB"}}}))
+    manifest = map_manifest("gi_portal_light", "quality/fixtures/gi/portal-light/map.usda")
+    # The linked pair, map-placed and activated (`closed` deactivates it).
+    manifest["collision"]["portals"] = [
+        {"center_m": [4.0, PORTAL_CENTRE[0], PORTAL_CENTRE[1]], "normal": [-1, 0, 0],
+         "portal_two": False, "name": "PortalA"},
+        {"center_m": [4.0 + offset, PORTAL_CENTRE[0], PORTAL_CENTRE[1]], "normal": [1, 0, 0],
+         "portal_two": True, "name": "PortalB"}]
+    write_json(directory / "map.json", manifest)
+
+
+FIXTURES = (furnace, thin_wall, room_states, door, probe_grid, portal_view, swing, portal_light)
 
 
 def generate(out):

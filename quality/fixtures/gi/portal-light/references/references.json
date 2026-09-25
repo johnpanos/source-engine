@@ -1,0 +1,606 @@
+{
+  "analytic": [],
+  "fixture": "portal-light",
+  "fixture_reference_digest": "8b522bb7c60cea3f633a4d985b84bf6a0c6dfc67db34800069bfcb00211e11f6",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 0,
+    "controls_unrejected": [],
+    "failed": 0,
+    "oracles": 0
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "closed": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "f051a024f2d69da1fd93217b4dfdfe437f91365c658caf573703fcd091ef387d",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/portal-light/portal-light.usda": "c30fb46eef3fb1853cf692f6d5aef27989bce7ea398d562f59ea0a20e5ca08d5"
+      }
+    },
+    "open": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "ffd52bf727f35f3147733788e8ac5b0a0975eafaaf6871d220af0a2b35513fb3",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/portal-light/portal-light.usda": "c30fb46eef3fb1853cf692f6d5aef27989bce7ea398d562f59ea0a20e5ca08d5",
+        "quality/fixtures/gi/portal-light/states/open.usda": "238c8f4a53e8ddb3bcb0d03a0c8c15423b4d6ccc2c5e21465bb62b4033d000c4"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "closed.joined": {
+      "camera": "joined",
+      "files": {
+        "index": {
+          "file": "closed.joined.index.png",
+          "sha256": "952070ed474dda5c9a7a199d0e5ecaba3af2082c620c5551af7d8798ae7464b5"
+        },
+        "indirect": {
+          "file": "closed.joined.indirect.exr",
+          "sha256": "9cf516ff7cbe4ce8d519847bf5a6b412a1c42bfce5e35430a49aca0a5303c62f"
+        },
+        "total": {
+          "file": "closed.joined.total.exr",
+          "sha256": "9cf516ff7cbe4ce8d519847bf5a6b412a1c42bfce5e35430a49aca0a5303c62f"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Xp": 2,
+        "A_Yn": 3,
+        "A_Yp": 4,
+        "A_Zn": 5,
+        "A_Zp": 6,
+        "B_Xn": 7,
+        "B_Xp": 8,
+        "B_Yn": 9,
+        "B_Yp": 10,
+        "B_Zn": 11,
+        "B_Zp": 12,
+        "LightQuad00": 13,
+        "Plug": 14,
+        "ProbePShape": 15
+      },
+      "regions": {
+        "floor": {
+          "albedo": [
+            0.7001082897186279,
+            0.7001082897186279,
+            0.7001082897186279
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            11.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "pixels": 15601,
+          "total": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "model": {
+          "albedo": [
+            0.5999805927276611,
+            0.5999805927276611,
+            0.5999805927276611
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "pixels": 1229,
+          "total": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "portal_wall": {
+          "albedo": [
+            0.7000420689582825,
+            0.7000420689582825,
+            0.7000420689582825
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "pixels": 8854,
+          "total": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "side_wall": {
+          "albedo": [
+            0.7000609040260315,
+            0.7000609040260315,
+            0.7000609040260315
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "pixels": 10097,
+          "total": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "state": "closed"
+    },
+    "closed.room": {
+      "camera": "room",
+      "files": {
+        "index": {
+          "file": "closed.room.index.png",
+          "sha256": "b882202776ba77175b72b6dc69be8da28f0eb31e0391759838f07f4937159a42"
+        },
+        "indirect": {
+          "file": "closed.room.indirect.exr",
+          "sha256": "9cf516ff7cbe4ce8d519847bf5a6b412a1c42bfce5e35430a49aca0a5303c62f"
+        },
+        "total": {
+          "file": "closed.room.total.exr",
+          "sha256": "9cf516ff7cbe4ce8d519847bf5a6b412a1c42bfce5e35430a49aca0a5303c62f"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Xp": 2,
+        "A_Yn": 3,
+        "A_Yp": 4,
+        "A_Zn": 5,
+        "A_Zp": 6,
+        "B_Xn": 7,
+        "B_Xp": 8,
+        "B_Yn": 9,
+        "B_Yp": 10,
+        "B_Zn": 11,
+        "B_Zp": 12,
+        "LightQuad00": 13,
+        "Plug": 14,
+        "ProbePShape": 15
+      },
+      "regions": {
+        "floor": {
+          "pixels": 0
+        },
+        "model": {
+          "pixels": 0
+        },
+        "portal_wall": {
+          "pixels": 0
+        },
+        "side_wall": {
+          "pixels": 0
+        }
+      },
+      "state": "closed"
+    },
+    "open.joined": {
+      "camera": "joined",
+      "files": {
+        "index": {
+          "file": "open.joined.index.png",
+          "sha256": "2ab79e4c1913d822535d4d389caa2373bfa6bfca91bdcf165eb7202d1758c246"
+        },
+        "indirect": {
+          "file": "open.joined.indirect.exr",
+          "sha256": "f7f6d146701faf33aac531851ecbfac0b64d594a6fb86baa2125793814cd5b52"
+        },
+        "total": {
+          "file": "open.joined.total.exr",
+          "sha256": "f4d9b565546eddfc663782b81c46f536e49e77d1a39f6536cb07c059ff7f18b3"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Xp": 2,
+        "A_Yn": 3,
+        "A_Yp": 4,
+        "A_Zn": 5,
+        "A_Zp": 6,
+        "B_Xn": 7,
+        "B_Xp": 8,
+        "B_Yn": 9,
+        "B_Yp": 10,
+        "B_Zn": 11,
+        "B_Zp": 12,
+        "LightQuad00": 13,
+        "ProbePShape": 14
+      },
+      "regions": {
+        "floor": {
+          "albedo": [
+            0.7001082897186279,
+            0.7001082897186279,
+            0.7001082897186279
+          ],
+          "direct": [
+            0.05143967270851135,
+            0.05143967270851135,
+            0.05143967270851135
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            11.0
+          ],
+          "indirect": [
+            0.08707914501428604,
+            0.0646006315946579,
+            0.0646006315946579
+          ],
+          "pixels": 15601,
+          "total": [
+            0.09696221351623535,
+            0.08122739940881729,
+            0.08122739940881729
+          ]
+        },
+        "model": {
+          "albedo": [
+            0.5999805927276611,
+            0.5999805927276611,
+            0.5999805927276611
+          ],
+          "direct": [
+            0.00728435767814517,
+            0.00728435767814517,
+            0.00728435767814517
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            14.0
+          ],
+          "indirect": [
+            0.08309106528759003,
+            0.06683726608753204,
+            0.06683726608753204
+          ],
+          "pixels": 1229,
+          "total": [
+            0.05422409251332283,
+            0.0444721020758152,
+            0.0444721020758152
+          ]
+        },
+        "portal_wall": {
+          "albedo": [
+            0.7000420689582825,
+            0.7000420689582825,
+            0.7000420689582825
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.07585141807794571,
+            0.058985497802495956,
+            0.058985497802495956
+          ],
+          "pixels": 8855,
+          "total": [
+            0.05309532582759857,
+            0.04128935560584068,
+            0.04128935560584068
+          ]
+        },
+        "side_wall": {
+          "albedo": [
+            0.7000609040260315,
+            0.7000609040260315,
+            0.7000609040260315
+          ],
+          "direct": [
+            0.005047914572060108,
+            0.005047914572060108,
+            0.005047914572060108
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.0
+          ],
+          "indirect": [
+            0.096298947930336,
+            0.0780077800154686,
+            0.0780077800154686
+          ],
+          "pixels": 10097,
+          "total": [
+            0.07094231247901917,
+            0.058138299733400345,
+            0.058138299733400345
+          ]
+        }
+      },
+      "state": "open"
+    },
+    "open.room": {
+      "camera": "room",
+      "files": {
+        "index": {
+          "file": "open.room.index.png",
+          "sha256": "b882202776ba77175b72b6dc69be8da28f0eb31e0391759838f07f4937159a42"
+        },
+        "indirect": {
+          "file": "open.room.indirect.exr",
+          "sha256": "cb5fb4142fd37e05ddcd3c6ab9f71a9e79aaaf55cfb87551561d4eea38cd8304"
+        },
+        "total": {
+          "file": "open.room.total.exr",
+          "sha256": "cdd4d51b136d08c581f876e181c71585afeb64b24189bdad0501a0360d9090f6"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Xp": 2,
+        "A_Yn": 3,
+        "A_Yp": 4,
+        "A_Zn": 5,
+        "A_Zp": 6,
+        "B_Xn": 7,
+        "B_Xp": 8,
+        "B_Yn": 9,
+        "B_Yp": 10,
+        "B_Zn": 11,
+        "B_Zp": 12,
+        "LightQuad00": 13,
+        "ProbePShape": 14
+      },
+      "regions": {
+        "floor": {
+          "pixels": 0
+        },
+        "model": {
+          "pixels": 0
+        },
+        "portal_wall": {
+          "pixels": 0
+        },
+        "side_wall": {
+          "pixels": 0
+        }
+      },
+      "state": "open"
+    }
+  }
+}

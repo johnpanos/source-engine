@@ -97,6 +97,7 @@ enum Response : uint32_t
 	kLightMotion = 1u << 1,    // moved or unbaked lights
 	kGeometryMotion = 1u << 2, // doors, panels, props occlude and bounce
 	kEmission = 1u << 3,       // emissive material changes
+	kPortalTransport = 1u << 4, // light through open portal pairs (RFC 0011 G10)
 };
 
 [[nodiscard]] constexpr uint32_t PolicyBit( indirect_policy::Policy policy )
@@ -326,6 +327,52 @@ struct Proxy
 
 	bool operator==( const Proxy & ) const = default;
 };
+
+// An open portal (RFC 0011 G10): a rectangle on a wall that shows its linked
+// portal's side of the map. Source units; the unit axes of its frame
+// (forward out of the wall), its half extents along right and up, and the
+// row-major 3x4 transform from a point in front of it to the point the
+// linked portal shows it at. Producers claiming kPortalTransport carry light
+// through it; the others ignore it. Both portals of an open pair are listed.
+struct Portal
+{
+	float origin[3] = {};
+	float forward[3] = {};
+	float right[3] = {};
+	float up[3] = {};
+	float halfWidth = 0.0f;
+	float halfHeight = 0.0f;
+	float toLinked[12] = {};
+
+	bool operator==( const Portal & ) const = default;
+};
+
+// Each probe's world position (xyz) and whether it is active (w 1 or 0), from
+// a volume's first grid and its relocation offsets.
+[[nodiscard]] inline std::vector<float> ProbePositions( const Volume &volume )
+{
+	const mapcontainer::ProbeVolumeLayout &layout = volume.layout;
+	const mapcontainer::ProbeGridLayout &grid = layout.grids[0];
+	std::vector<float> out( size_t( grid.probeCount ) * 4 );
+	const uint32_t row = grid.tilesPerRow * mapcontainer::kProbeVisibilityTile;
+	for ( uint32_t i = 0; i < grid.probeCount; ++i )
+	{
+		const uint32_t index[3] = { i % grid.dims[0], ( i / grid.dims[0] ) % grid.dims[1],
+		    i / ( grid.dims[0] * grid.dims[1] ) };
+		uint16_t state[4];
+		std::memcpy( state,
+		    volume.bytes.data() + layout.atlasOffset +
+		        ( uint64_t( grid.stateOrigin[1] + i / row ) * layout.atlasWidth +
+		            grid.stateOrigin[0] + i % row ) *
+		            8,
+		    sizeof( state ) );
+		for ( int k = 0; k < 3; ++k )
+			out[i * 4 + k] = grid.origin[k] + float( index[k] ) * grid.spacing[k] +
+			                 mapcontainer::HalfToFloat( state[k] );
+		out[i * 4 + 3] = mapcontainer::HalfToFloat( state[3] );
+	}
+	return out;
+}
 
 // A scene light's current direction, by light style (a moved sun).
 struct LightOverride
@@ -604,6 +651,7 @@ struct FrameWork
 	std::span<const SceneChange> changes;
 	std::span<const Proxy> proxies;
 	std::span<const LightOverride> lightOverrides;
+	std::span<const Portal> portals; // this frame's open portals (G10)
 	// Traced producers: the probes (indices into the volume's first grid) to
 	// update every update, the camera's surroundings; empty means every
 	// probe. The others take turns, `probeBudget` probes an update.

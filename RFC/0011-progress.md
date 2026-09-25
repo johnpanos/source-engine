@@ -25,7 +25,8 @@ Where this file disagrees with the versioned artifacts, the artifacts win:
 | G6 SDF-traced producer | done (2026-09-25, native Vulkan desktop; Android declared unsupported) | SDFV bake/pack/reader; shared suite plus a traced-field thin-wall oracle with a seeded leak; in game the door closes the far room to Cycles' dark within 64 frames while radiosity and baked fail; the sun move settles toward Cycles; 0.49 ms per update for 400 probes (budget 2.0) |
 | G7 ray-query producer | done (2026-09-25, native Vulkan desktop; Android declared unsupported) | Same producer and shader as G6, traced by ray queries against the world's triangles and proxy boxes; `rayquery` offered only with device ray query; shared suite plus thin-wall oracle; door (indirect and shaded) and sun gates pass at SDF's tolerance; 1.0 ms per update for 400 probes on a loaded host (budget 1.5) |
 | G8 product defaults and soak | done (2026-09-25; Android soak shortened to 5 min by the user; Apple unverified) | Per-profile defaults chosen from measurements, recorded in the product profiles and generated into the engine (`r_indirect_producer auto`; rollback `baked`); Linux 30-minute soak under validation passes (777 switches, 56 map changes, 0 validation messages, flat memory); Android soak passes; Apple has no R29 runner |
-| G9 moved lights (amendment) | active (2026-09-25) | Swinging-bulb `swing` fixture; SDF shadows (decision 4) and inverse-square `light_dynamic`; traced producers take unbaked lights. See [G9](#g9-moved-lights-active) |
+| G9 moved lights (amendment) | done (2026-09-25, native Vulkan desktop; Android draws unbaked lights unshadowed) | A bulb swinging on a rope (`swing`): inverse-square `light_dynamic`, SDF shadows (decision 4), traced producers bounce unbaked lights; frozen states match Cycles and radiosity and shadows-off fail; no flicker while swinging (motion mode); shadow 0.06 ms at 1080p. See [G9](#g9-moved-lights-done) |
+| G10 light through open portals (amendment) | done (2026-09-25, native Vulkan desktop; Android radiosity path unverified on device) | Client portal set; traced producers carry rays and virtual lights through open pairs; radiosity gains dynamic portal links; `portal-light` room B matches Cycles open for SDF, ray query and radiosity, goes dark closed; the bake and a producer denied the portals fail. See [G10](#g10-light-through-open-portals-done) |
 
 ## G0: Baseline, fixtures and runner
 
@@ -1199,7 +1200,7 @@ Open:
 - Hosted CI runs only the smoke row and the rule self-tests. The timed gate
   needs the declared runner.
 
-## G9: Moved lights (active)
+## G9: Moved lights (done)
 
 Scope, added 2026-09-25 at the user's direction: a light that moves must
 move its direct light, its shadows and its bounce. The pass scenario is a
@@ -1528,3 +1529,104 @@ trace is unmeasured.
 - After the motion-mode change, `gi_sdf.py door` (G6.2) and `gi_swing.py
   frozen` passed again.
 
+## G10: Light through open portals (done)
+
+Scope, added 2026-09-25 at the user's direction (open decision 6): light
+flows through an open portal pair the way it flows through a doorway. The
+gate text is in the RFC's
+[G10](0011-runtime-indirect-lighting.md#g10-light-through-open-portals-amendment-2026-09-25).
+
+**The portal set.**
+- `render/indirect_portals.h` is plain data across the client/engine
+  boundary: `VIndirectLightPortals001`, `SetOpenPortals`, at most 8.
+- The Portal client publishes, from `PreRender`, every activated portal
+  linked to an activated one (a `CAutoGameSystemPerFrame` in
+  `c_prop_portal.cpp`). Each portal carries `m_ptOrigin`, its axes, the
+  portal half size and `MatrixThisToLinked()` as a 3×4.
+- The engine copies them as the frame's portals (`FrameWork::portals`).
+  `r_indirect_portals 0` (cheat) withholds them; `r_indirect_report`
+  prints the count when it changes.
+
+**Traced producers** (`sdf_probe_trace.comp`, both variants).
+- `Trace` carries a ray into an open portal from its front, within its
+  rectangle, and continues it from the linked portal a voxel off its wall,
+  for up to two hops.
+  - The sphere trace stops on the wall a portal is on, so a hit within a
+    voxel of the crossing, on the portal's plane, is the crossing.
+  - The ray query stops each segment at the nearest aperture.
+- `PortalLightSample` sees the lights of the linked portal's cell through
+  the portal, at their images (the inverse transform). A sample counts only
+  when its path enters the aperture and both legs are unoccluded.
+- Light from beyond a portal (a hopped ray's emission and hit light, and
+  the virtual lights) goes into the probe's indirect layer as well as its
+  total. It is not in the bake, and the world adds only the indirect
+  layer's change.
+
+**Radiosity** (`RadiositySolver::SetPortals`).
+- On a change of the portal set, receivers in front of each portal
+  (patches and active probes) gain links to the images of the patches in
+  front of its linked portal.
+  - Patch links use the form factor cos·cos·A / (π d² + A). Probe links
+    use the gather's SH, `BAND_SCALE_k · Ω · Y_k(ω)` (radiosity_transfer.py).
+  - The links carry ρ(H + X), the whole reflected light, with the bake's
+    absolute H solved once by Jacobi.
+- The map's SDFV analytic lights beyond a portal are sampled at their
+  images (16 stratified points for a rect or a spot disk; a sphere whole)
+  into the receivers' injection and the probes' indirect light, at their
+  styles' current scalars.
+- The links are unoccluded: RTRN holds no geometry. The space in front of
+  each portal is taken as open.
+- Without the SDFV lights, radiosity carried only the patch light: room B
+  read 0.056 on the floor against Cycles 0.121, 53% low. The panel's light
+  through the aperture is 42% of the floor's.
+- The serial and pooled solves stay identical (`jobsystem.radiosity`).
+
+**Oracles.**
+
+1. `render.indirect-light.sdf` (now 33 checks): a pair covering the
+   contract's thin wall.
+
+   | Producer | Room B, closed wall | Room B, open pair | Exactly erased wall (reference field) |
+   | --- | --- | --- | --- |
+   | SDF | 0.0000 | 0.0957 | 0.0719 |
+   | Ray query | 0.0000 | 0.0690 | 0.0719 |
+
+   - The exactly erased wall is the ray-query field without the wall's two
+     faces. It leaves a slot the pair does not, so the check bounds the pair
+     at 0.5–1.5× of it. All the light is in the indirect layer.
+   - The fixture below is the accurate oracle.
+2. `portal-light` (`gi_portal.py`), room B in the diffuse view against
+   Cycles `open` (measured / reference):
+
+   | Producer | Floor | Portal wall | Side wall | Model (measured) |
+   | --- | --- | --- | --- | --- |
+   | SDF | 0.128 / 0.121 | 0.073 / 0.063 | 0.103 / 0.087 | 0.100 / 0.078 |
+   | Ray query | 0.130 / 0.121 | 0.076 / 0.063 | 0.105 / 0.087 | 0.097 / 0.078 |
+   | Radiosity | 0.136 / 0.121 | 0.078 / 0.063 | 0.105 / 0.087 | 0.094 / 0.078 |
+
+   - All pass: within 0.1 of the reference plus 0.1 of its level.
+   - With `PortalA` deactivated, room B is dark for every producer (about
+     0.001).
+   - The bake, and SDF or ray query with `r_indirect_portals 0`, fail open.
+   - The common 5–20% excess is probe-resolution world light: the
+     through-portal patch on B's floor is smeared over 1 m probes.
+3. **A reference defect found on the way.** The joined stage's two wall
+   faces were coplanar. Cycles z-fought them, and from room B the back of
+   A's face hid B's, so room B's portal wall rendered black and the room
+   read 20–30% dark. The faces now sit 1 mm apart.
+
+**Cost.** Radiosity's update with the portal links: median 1.44 ms, maximum
+3.86 ms (30 updates, loaded host). The traced producers' portal tests are
+8 plane tests per ray step, not measured separately from the G9.5 figures.
+
+**Observed.** Once in about 42 captures today the product crashed at
+shutdown ("Illegal termination of worker thread!") after its screenshot:
+a ray-query closed capture. It passed on rerun. It is thread teardown,
+not traced to this work; open.
+
+**Unverified.** Android runs radiosity by default and so carries light
+through portals by this path, but no device run was made. Portal 2's
+portals are not published (the publisher is in Portal's client).
+
+Evidence: `quality-results/rfc0011-g10/gate/gate.json`,
+`quality-results/rfc0011-g10/gate-rayquery/gate.json`.

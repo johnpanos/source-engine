@@ -1,0 +1,140 @@
+{
+  "baked_state": "closed",
+  "cameras": {
+    "joined": {
+      "eye": [
+        7.6,
+        3.6,
+        1.7
+      ],
+      "forward": [
+        -0.7873085300881966,
+        -0.5412746144356353,
+        -0.29524069878307374
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "room": {
+      "eye": [
+        13.6,
+        3.6,
+        1.7
+      ],
+      "forward": [
+        -0.7873085300881966,
+        -0.5412746144356353,
+        -0.29524069878307374
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeP",
+      "stand_in_mesh": "ProbePShape"
+    }
+  ],
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "portal-light",
+  "portals": {
+    "a": {
+      "center_m": [
+        4.0,
+        2.0,
+        1.4
+      ],
+      "name": "PortalA",
+      "normal": [
+        -1,
+        0,
+        0
+      ]
+    },
+    "b": {
+      "center_m": [
+        10.0,
+        2.0,
+        1.4
+      ],
+      "name": "PortalB",
+      "normal": [
+        1,
+        0,
+        0
+      ]
+    },
+    "offset_m": [
+      6.0,
+      0.0,
+      0.0
+    ],
+    "size_m": [
+      1.6256,
+      2.7432
+    ]
+  },
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Light through an open portal pair: room B's only light arrives through the pair from lit room A",
+  "reference_cameras": {
+    "room": "joined"
+  },
+  "regions": {
+    "joined": {
+      "floor": [
+        "B_Zn"
+      ],
+      "model": [
+        "ProbeP"
+      ],
+      "portal_wall": [
+        "B_Xn"
+      ],
+      "side_wall": [
+        "B_Yn"
+      ]
+    },
+    "room": {
+      "floor": [
+        "B_Zn"
+      ],
+      "model": [
+        "ProbeP"
+      ],
+      "portal_wall": [
+        "B_Xn"
+      ],
+      "side_wall": [
+        "B_Yn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "portal-light.usda",
+  "states": {
+    "closed": {
+      "layer": null,
+      "note": "the pair closed: the opening plugged"
+    },
+    "open": {
+      "layer": "states/open.usda",
+      "note": "the pair open: the rooms joined"
+    }
+  }
+}

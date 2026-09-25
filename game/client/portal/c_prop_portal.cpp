@@ -33,6 +33,7 @@
 #include "iefx.h"
 
 #include "simple_keys.h"
+#include "render/indirect_portals.h"
 
 #ifdef _DEBUG
 #include "filesystem.h"
@@ -950,3 +951,48 @@ bool C_Prop_Portal::IsActivedAndLinked( void ) const
 {
 	return ( m_bActivated && m_hLinkedPortal.Get() != NULL );
 }
+
+//-----------------------------------------------------------------------------
+// RFC 0011 G10: the open portal pairs, published to the engine every frame
+// for the indirect-light producers that carry light through them. A portal
+// is open while it and its linked portal are activated.
+//-----------------------------------------------------------------------------
+class CIndirectLightPortalPublisher : public CAutoGameSystemPerFrame
+{
+public:
+	CIndirectLightPortalPublisher() : CAutoGameSystemPerFrame( "CIndirectLightPortalPublisher" ) {}
+
+	virtual void PreRender()
+	{
+		if ( !indirectlightportals )
+			return;
+		indirect_portals::PortalInput portals[indirect_portals::kMaxOpenPortals];
+		int count = 0;
+		for ( int i = 0; i < CProp_Portal_Shared::AllPortals.Count() &&
+		                 count < indirect_portals::kMaxOpenPortals;
+		      ++i )
+		{
+			C_Prop_Portal *portal = CProp_Portal_Shared::AllPortals[i];
+			if ( !portal || !portal->IsActivedAndLinked() || !portal->m_hLinkedPortal->m_bActivated )
+				continue;
+			indirect_portals::PortalInput &out = portals[count++];
+			for ( int k = 0; k < 3; ++k )
+			{
+				out.origin[k] = portal->m_ptOrigin[k];
+				out.forward[k] = portal->m_vForward[k];
+				out.right[k] = portal->m_vRight[k];
+				out.up[k] = portal->m_vUp[k];
+			}
+			out.halfWidth = PORTAL_HALF_WIDTH;
+			out.halfHeight = PORTAL_HALF_HEIGHT;
+			const VMatrix &toLinked = portal->MatrixThisToLinked();
+			for ( int row = 0; row < 3; ++row )
+				for ( int column = 0; column < 4; ++column )
+					out.toLinked[row * 4 + column] = toLinked.m[row][column];
+		}
+		indirectlightportals->SetOpenPortals( portals, count );
+	}
+};
+
+static CIndirectLightPortalPublisher s_IndirectLightPortalPublisher;
+

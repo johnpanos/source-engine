@@ -42,6 +42,7 @@
     "mix-sun-sky-pillar",
     "occlusion-colored-shadows",
     "occlusion-l-corridor",
+    "portal-light",
     "portal-view",
     "probe-directional-rgb",
     "probe-grid",

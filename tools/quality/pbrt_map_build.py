@@ -935,8 +935,9 @@ class Pipeline:
                 ([door["material"]] if door.get("material") else []))]
         for portal in collision.get("portals", []):
             collision_args += ["--portal", ",".join(
-                "%g" % v for v in list(portal["center_m"]) + list(portal["normal"]) +
-                [1 if portal.get("portal_two") else 0])]
+                ["%g" % v for v in list(portal["center_m"]) + list(portal["normal"]) +
+                 [1 if portal.get("portal_two") else 0]] +
+                ([portal["name"]] if portal.get("name") else []))]
         for flag, key in (("--envelope-mesh", "envelope_meshes"),
                           ("--solid-material", "solid_materials"),
                           ("--solid-mesh", "solid_meshes")):
