@@ -24,6 +24,9 @@
 
 const char *LASER_SPARK_EFFECT_NAME = "discouragement_beam_sparks";
 
+// Client counterpart of sv_debug_laser_trace: prints where each drawn beam ends
+ConVar cl_debug_laser_trace( "cl_debug_laser_trace", "0", FCVAR_CHEAT );
+
 class C_PortalLaser : public C_BaseAnimating
 {
 public:
@@ -214,6 +217,15 @@ void C_PortalLaser::ClientThink()
 
 		m_beamHelper.UpdatePointDirection(
 		    vStart, vDir, MASK_SHOT & ~CONTENTS_WINDOW, &traceFilter, &tr );
+	}
+
+	if ( cl_debug_laser_trace.GetBool() )
+	{
+		Msg( "client laser %d reflector %d segments %d (%.1f %.1f %.1f) -> "
+		     "(%.1f %.1f %.1f) hit %s\n",
+		    entindex(), pReflector ? pReflector->entindex() : -1, m_beamHelper.BeamCount(),
+		    tr.startpos.x, tr.startpos.y, tr.startpos.z, tr.endpos.x, tr.endpos.y, tr.endpos.z,
+		    tr.m_pEnt ? tr.m_pEnt->GetClassname() : "nothing" );
 	}
 
 	// Sparks at the end of the last segment, facing along the surface normal

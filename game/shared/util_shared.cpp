@@ -253,7 +253,19 @@ bool StandardFilterRules( IHandleEntity *pHandleEntity, int fContentsMask )
 	}
 
 	// This code is used to cull out tests against see-thru entities
-	if ( !(fContentsMask & CONTENTS_WINDOW) && pCollide->IsTransparent() )
+	bool bSeeThrough = pCollide->IsTransparent();
+#if defined( CLIENT_DLL ) && defined( PORTAL2 )
+	// Portal 2's engine gives studio models a translucency type instead of the
+	// translucent model flag, so its client (like the server) only sees through
+	// a studio model whose render mode says so. This client's IsTransparent also
+	// counts translucent materials, which let lasers pass through the glass of
+	// a reflection cube.
+	if ( bSeeThrough && modelinfo->GetModelType( pModel ) == mod_studio )
+	{
+		bSeeThrough = ( pCollide->GetRenderMode() != kRenderNormal );
+	}
+#endif
+	if ( !( fContentsMask & CONTENTS_WINDOW ) && bSeeThrough )
 		return false;
 
 	// FIXME: this is to skip BSP models that are entities that can be 

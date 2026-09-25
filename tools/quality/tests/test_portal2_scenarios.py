@@ -97,6 +97,66 @@ class EvaluateTests(unittest.TestCase):
         self.assertEqual(len([f for f in result["failures"] if "required check" in f]), 2)
 
 
+CONSOLE_SCENARIO = dict(SCENARIO, required_checks=["socket.fired", "socket.parented",
+                                                   "beam.stops", "beam.gone"],
+                        console_checks=[
+                            {"name": "beam.stops", "window": "placed",
+                             "select": r"^client laser \d+ reflector -1 ", "expect": r" hit \S*Cube$"},
+                            {"name": "beam.gone", "window": "moved", "absent": r"reflector [0-9]"}])
+CONSOLE_GOOD = GOOD + """QA_WINDOW placed BEGIN
+client laser 35 reflector -1 segments 1 (7472.0 -5728.0 18.0) -> (7981.9 -5728.0 18.0) hit 18C_PropWeightedCube
+client laser 221 reflector 11 segments 1 (8000.0 -5704.6 20.0) -> (8000.0 -5504.0 20.0) hit 7C_World
+QA_WINDOW placed END
+QA_WINDOW moved BEGIN
+client laser 35 reflector -1 segments 1 (7472.0 -5728.0 18.0) -> (8320.0 -5728.0 18.0) hit 7C_World
+QA_WINDOW moved END
+client laser 221 reflector 11 segments 1 after the window
+"""
+
+
+class ConsoleCheckTests(unittest.TestCase):
+    def evaluate(self, log):
+        return scenarios.evaluate(CONSOLE_SCENARIO, log, 0, False)
+
+    def assertFailsWith(self, result, text):
+        self.assertEqual(result["status"], "fail")
+        self.assertTrue(any(text in failure for failure in result["failures"]), result["failures"])
+
+    def test_passing_windows(self):
+        result = self.evaluate(CONSOLE_GOOD)
+        self.assertEqual(result["status"], "pass", result["failures"])
+        self.assertEqual(result["checks"]["beam.stops"]["detail"], "1 selected lines match")
+
+    def test_selected_line_that_differs_fails(self):
+        # The beam drawn through the cube before the client trace filter fix
+        log = CONSOLE_GOOD.replace("(7981.9 -5728.0 18.0) hit 18C_PropWeightedCube",
+                                   "(8320.0 -5728.0 18.0) hit 7C_World")
+        self.assertFailsWith(self.evaluate(log), "beam.stops failed: 1 of 1 selected lines differ")
+
+    def test_empty_selection_fails(self):
+        log = CONSOLE_GOOD.replace("client laser 35 reflector -1 segments 1 (7472.0 -5728.0 18.0) -> "
+                                   "(7981.9", "server laser (7981.9")
+        self.assertFailsWith(self.evaluate(log), "beam.stops failed: no line in 2 matches")
+
+    def test_absent_line_present_fails(self):
+        log = CONSOLE_GOOD.replace("QA_WINDOW moved END", "client laser 221 reflector 11 x\nQA_WINDOW moved END")
+        self.assertFailsWith(self.evaluate(log), "beam.gone failed: 1 lines match")
+
+    def test_window_must_be_bracketed_once(self):
+        for label, log in {
+            "missing": CONSOLE_GOOD.replace("QA_WINDOW placed END\n", ""),
+            "unopened": CONSOLE_GOOD.replace("QA_WINDOW moved BEGIN\n", ""),
+            "repeated": CONSOLE_GOOD + "QA_WINDOW placed BEGIN\nQA_WINDOW placed END\n",
+        }.items():
+            with self.subTest(label):
+                self.assertFailsWith(self.evaluate(log), "was not bracketed once")
+        self.assertFailsWith(self.evaluate(GOOD), "beam.gone failed: window moved")
+
+    def test_script_cannot_also_report_a_console_check(self):
+        log = CONSOLE_GOOD.replace("QA_DONE demo checks=2", "QA_CHECK demo.beam.stops PASS\nQA_DONE demo checks=3")
+        self.assertFailsWith(self.evaluate(log), "check reported twice: beam.stops")
+
+
 class WorkloadTests(unittest.TestCase):
     def write(self, directory, workload, scripts=("driver.nut", "demo.nut")):
         for script in scripts:
@@ -131,6 +191,18 @@ class WorkloadTests(unittest.TestCase):
             "checks": self.workload(required_checks=[]),
             "check name": self.workload(required_checks=["undotted"]),
             "script": self.workload(script="missing.nut"),
+            "console name": self.workload(console_checks=[
+                {"name": "other.check", "window": "w", "absent": "x"}]),
+            "console window": self.workload(console_checks=[
+                {"name": "socket.fired", "window": "a b", "absent": "x"}]),
+            "console keys": self.workload(console_checks=[
+                {"name": "socket.fired", "window": "w", "select": "x"}]),
+            "console mixed": self.workload(console_checks=[
+                {"name": "socket.fired", "window": "w", "select": "x", "expect": "y", "absent": "z"}]),
+            "console pattern": self.workload(console_checks=[
+                {"name": "socket.fired", "window": "w", "absent": "("}]),
+            "console duplicate": self.workload(console_checks=[
+                {"name": "socket.fired", "window": "w", "absent": "x"}] * 2),
         }
         for label, workload in cases.items():
             with self.subTest(label), tempfile.TemporaryDirectory() as directory:

@@ -70,7 +70,7 @@ now exits cleanly on both backends.
 
 ### Retail comparison: `sp_a2_triple_laser` (2026-09-25)
 
-`quality/workloads/portal2-triple-laser-v1` holds two scenarios for
+`quality/workloads/portal2-triple-laser-v1` holds the scenarios for
 `tools/quality/portal2_scenarios.py`: the puzzle solution with 17 screenshots
 (`sp_a2_triple_laser`, 7 checks) and a walk through a portal pair and back
 (`sp_a2_triple_laser_traverse`, 5 checks; the room's lasers are switched off
@@ -106,6 +106,32 @@ and `dev/motion_blur` are missing; laser beams are wider and redder; one laser
 segment shows as a horizontal line in the view through a portal; the elevator
 video is about 1.35 times brighter. One heap corruption (a `double free` abort)
 was seen once in about 20 runs and not reproduced.
+
+### Laser through a redirection cube (2026-09-25)
+
+A laser that hit a redirection cube kept going: the cube sent out its own
+beam, and the client also drew the incoming beam straight through the cube.
+The server stopped the beam at the cube. The client re-traces every beam each
+frame with `MASK_SHOT & ~CONTENTS_WINDOW`, as retail does, and
+`StandardFilterRules` skips "see-through" entities for masks without
+`CONTENTS_WINDOW`. This SDK's engine marks a studio model translucent when any
+of its materials is (the cube's `reflecto_cube_glass` is `$translucent`). The
+client's `IsTransparent` counts that, but the server's only reads the render
+mode. Portal 2's engine, like CS:GO's (`Mod_ComputeTranslucencyType`), never
+sets that flag on studio models. So on the Portal 2 client,
+`StandardFilterRules` now treats a studio model as see-through only when its
+render mode is not normal, as retail and the server do. `IsTransparent` itself
+is unchanged because it also picks the render group.
+
+`sp_a2_triple_laser_cube_blocks` turns cube 2 north, west and south in the
+wall laser, then moves it away. `cl_debug_laser_trace` (the client counterpart
+of `sv_debug_laser_trace`) prints each drawn beam's end. The workload's
+`console_checks` require the client and server beams to end at the cube in
+every orientation, and the beam to reach the wall once the cube has gone. A
+console check reads the lines between the driver's `QA_WINDOW <label>
+BEGIN/END` markers; the evaluator's fixtures cover it. On the log from before
+the fix, the three client checks fail (the beam ends at the far wall, x=8320)
+and the server checks pass.
 
 The repository's provenance and distribution warning in the root README also
 applies to this import.

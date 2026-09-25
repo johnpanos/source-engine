@@ -1,6 +1,6 @@
 {
   "schema": "portal2-scenarios/v1",
-  "description": "sp_a2_triple_laser played through: portal pair on the defunct laser's placement helper, redirection cubes under the ceiling laser and in the wall laser, all three catchers powered and the exit door open. The driver takes a named screenshot (QA_SHOT) at each major step for a retail-vs-build composite. Run by tools/quality/portal2_scenarios.py.",
+  "description": "sp_a2_triple_laser played through: portal pair on the defunct laser's placement helper, redirection cubes under the ceiling laser and in the wall laser, all three catchers powered and the exit door open. The driver takes a named screenshot (QA_SHOT) at each major step for a retail-vs-build composite. Run by tools/quality/portal2_scenarios.py. A third scenario turns a redirection cube in the wall laser and checks that the client draws the incoming beam ending at the cube, as the server traces it.",
   "driver": "../portal2-wheatley-v1/qa_driver.nut",
   "scenarios": [
     {
@@ -29,6 +29,74 @@
         "cross.a_to_b_heading",
         "cross.b_to_a",
         "cross.b_to_a_heading"
+      ]
+    },
+    {
+      "name": "sp_a2_triple_laser_cube_blocks",
+      "map": "sp_a2_triple_laser",
+      "script": "sp_a2_triple_laser_cube_blocks.nut",
+      "timeout_seconds": 120,
+      "required_checks": [
+        "entry.cube_spawned",
+        "cube.redirects",
+        "away.cube_laser_removed",
+        "wall_laser.server_stops_north",
+        "wall_laser.client_stops_north",
+        "wall_laser.server_stops_west",
+        "wall_laser.client_stops_west",
+        "wall_laser.server_stops_south",
+        "wall_laser.client_stops_south",
+        "away.client_reaches_wall",
+        "away.client_no_cube_beam"
+      ],
+      "console_checks": [
+        {
+          "name": "wall_laser.server_stops_north",
+          "window": "north",
+          "select": "^laser \\d+ segment \\(7472\\.0 -5728\\.0 ",
+          "expect": " hit prop_weighted_cube$"
+        },
+        {
+          "name": "wall_laser.client_stops_north",
+          "window": "north",
+          "select": "^client laser \\d+ reflector -1 segments \\d+ \\(7472\\.0 -5728\\.0 ",
+          "expect": " hit \\S*PropWeightedCube$"
+        },
+        {
+          "name": "wall_laser.server_stops_west",
+          "window": "west",
+          "select": "^laser \\d+ segment \\(7472\\.0 -5728\\.0 ",
+          "expect": " hit prop_weighted_cube$"
+        },
+        {
+          "name": "wall_laser.client_stops_west",
+          "window": "west",
+          "select": "^client laser \\d+ reflector -1 segments \\d+ \\(7472\\.0 -5728\\.0 ",
+          "expect": " hit \\S*PropWeightedCube$"
+        },
+        {
+          "name": "wall_laser.server_stops_south",
+          "window": "south",
+          "select": "^laser \\d+ segment \\(7472\\.0 -5728\\.0 ",
+          "expect": " hit prop_weighted_cube$"
+        },
+        {
+          "name": "wall_laser.client_stops_south",
+          "window": "south",
+          "select": "^client laser \\d+ reflector -1 segments \\d+ \\(7472\\.0 -5728\\.0 ",
+          "expect": " hit \\S*PropWeightedCube$"
+        },
+        {
+          "name": "away.client_reaches_wall",
+          "window": "away",
+          "select": "^client laser \\d+ reflector -1 segments \\d+ \\(7472\\.0 -5728\\.0 ",
+          "expect": " hit \\S*C_World$"
+        },
+        {
+          "name": "away.client_no_cube_beam",
+          "window": "away",
+          "absent": "^client laser \\d+ reflector [0-9]"
+        }
       ]
     }
   ]

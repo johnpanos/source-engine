@@ -9,6 +9,12 @@ normally, every declared check is reported exactly once as PASS, no undeclared
 check appears, the driver prints a matching ``QA_DONE`` record, and no
 scenario script raised a Squirrel error.
 
+A scenario may also declare ``console_checks`` for evidence the server-side
+driver cannot see, such as client debug output. The driver brackets a window
+with ``QA_WINDOW <label> BEGIN`` and ``QA_WINDOW <label> END``; a check then
+needs at least one line in that window matching ``select``, every one of them
+matching ``expect``, or no line matching ``absent``.
+
 The client renders offscreen (SDL's offscreen video driver), so no window
 reaches the desktop. Retail content comes from a local Steam installation.
 """
@@ -36,6 +42,7 @@ SIMPLE_NAME = re.compile(r"[A-Za-z0-9_]+")
 CHECK_NAME = re.compile(r"[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+")
 CHECK_LINE = re.compile(r"^QA_CHECK (\S+) (PASS|FAIL)(?: (.*))?$")
 DONE_LINE = re.compile(r"^QA_DONE (\S+) checks=(\d+) failures=(\d+)\s*$")
+WINDOW_LINE = re.compile(r"^QA_WINDOW (\S+) (BEGIN|END)\s*$")
 SCRIPT_ERROR = "AN ERROR HAS OCCURED"
 # The callstack Squirrel prints after an error names the failing script file.
 SCRIPT_ERROR_CONTEXT_LINES = 24
@@ -89,7 +96,71 @@ def load_workload(path):
         if not isinstance(checks, list) or not checks or len(set(checks)) != len(checks) or \
                 not all(isinstance(check, str) and CHECK_NAME.fullmatch(check) for check in checks):
             raise ScenarioError("%s: %s needs unique dotted required checks" % (path, name))
+        load_console_checks(path, scenario)
     return workload
+
+
+def load_console_checks(path, scenario):
+    """Validates a scenario's console checks and compiles their patterns."""
+    name = scenario["name"]
+    console_checks = scenario.get("console_checks", [])
+    if not isinstance(console_checks, list):
+        raise ScenarioError("%s: %s console_checks must be a list" % (path, name))
+    seen = set()
+    for check in console_checks:
+        if not isinstance(check, dict) or check.get("name") not in scenario["required_checks"] or \
+                check["name"] in seen:
+            raise ScenarioError("%s: %s console checks need unique required names" % (path, name))
+        seen.add(check["name"])
+        if not SIMPLE_NAME.fullmatch(str(check.get("window", ""))):
+            raise ScenarioError("%s: %s needs a simple window name" % (path, check["name"]))
+        keys = set(check) - {"name", "window"}
+        if keys not in ({"select", "expect"}, {"absent"}):
+            raise ScenarioError("%s: %s needs select and expect, or absent" % (path, check["name"]))
+        for key in keys:
+            try:
+                re.compile(check[key])
+            except (TypeError, re.error) as error:
+                raise ScenarioError("%s: %s %s: %s" % (path, check["name"], key, error))
+
+
+def console_windows(lines):
+    """Lines between each QA_WINDOW label's BEGIN and END; None if not bracketed once."""
+    windows, open_windows, markers = {}, {}, {}
+    for line in lines:
+        match = WINDOW_LINE.match(line.strip())
+        if match:
+            label, edge = match.group(1), match.group(2)
+            markers.setdefault(label, []).append(edge)
+            if edge == "BEGIN":
+                open_windows[label] = []
+            elif label in open_windows:
+                windows[label] = open_windows.pop(label)
+            continue
+        for window in open_windows.values():
+            window.append(line)
+    return {label: windows.get(label) if edges == ["BEGIN", "END"] else None
+            for label, edges in markers.items()}
+
+
+def evaluate_console_check(check, windows):
+    """Returns (outcome, detail) for one console check."""
+    window = windows.get(check["window"])
+    if window is None:
+        return "FAIL", "window %s was not bracketed once" % check["window"]
+    if "absent" in check:
+        found = [line for line in window if re.search(check["absent"], line)]
+        if found:
+            return "FAIL", "%d lines match: %s" % (len(found), found[0].strip())
+        return "PASS", "none of %d lines match" % len(window)
+    selected = [line for line in window if re.search(check["select"], line)]
+    if not selected:
+        return "FAIL", "no line in %d matches the selection" % len(window)
+    wrong = [line for line in selected if not re.search(check["expect"], line)]
+    if wrong:
+        return "FAIL", "%d of %d selected lines differ: %s" % (len(wrong), len(selected),
+                                                                wrong[0].strip())
+    return "PASS", "%d selected lines match" % len(selected)
 
 
 def script_errors(lines):
@@ -125,8 +196,6 @@ def evaluate(scenario, log, returncode, timed_out):
         if outcome != "PASS":
             failures.append("%s failed: %s" % (check, detail))
     failures += ["undeclared check: " + check for check in undeclared]
-    failures += ["required check not reported: " + check
-                 for check in required if check not in checks]
 
     done = [DONE_LINE.match(line.strip()) for line in lines]
     done = [match for match in done if match]
@@ -141,6 +210,19 @@ def evaluate(scenario, log, returncode, timed_out):
             failures.append("QA_DONE counts %s/%s differ from the %d checks and %d failures "
                             "in the log" % (record.group(2), record.group(3), len(checks),
                                             reported_failures))
+
+    windows = console_windows(lines)
+    for console_check in scenario.get("console_checks", []):
+        check = console_check["name"]
+        if check in checks:
+            failures.append("check reported twice: " + check)
+            continue
+        outcome, detail = evaluate_console_check(console_check, windows)
+        checks[check] = {"outcome": outcome, "detail": detail}
+        if outcome != "PASS":
+            failures.append("%s failed: %s" % (check, detail))
+    failures += ["required check not reported: " + check
+                 for check in required if check not in checks]
 
     errors = script_errors(lines)
     own_errors = [error for error in errors
