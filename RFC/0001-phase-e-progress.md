@@ -1,6 +1,6 @@
 # RFC 0001 Phase E progress
 
-Updated: 2026-09-22
+Updated: 2026-09-25
 
 Phase E replaces first-party launchable-DLL tool indirection with normal
 executables or directly linked tool libraries. A retained process boundary must
@@ -23,10 +23,17 @@ wrappers, and the VMPI in-process debug path:
 | VTEX / vtexconv | Two wrappers load `vtex_dll` and request `ILaunchableDLL` | Directly linked executable entry; preserve `IVTex` temporarily for existing engine callers | active |
 | VVIS | Wrapper and VMPI debug mode load `vvis_dll` | Normal executable; VMPI always uses its process path | active |
 | VRAD | Wrapper loads `vrad_dll`; redirect and `-both` select/run variants | Normal executable plus process routing where isolation/version selection is required; preserve Hammer `IVRadDLL` until R22 migrates it | planned |
-| shadercompile | Wrapper loads `shadercompile_dll` | Normal executable; preserve required remote compiler behavior through an explicit process workflow | planned |
-| texturecompile | Wrapper loads `texturecompile_dll` | Normal executable | planned |
+| shadercompile | Wrapper loads `shadercompile_dll` | Normal executable; preserve required remote compiler behavior through an explicit process workflow | active |
+| texturecompile | Wrapper loads `texturecompile_dll` | Normal executable | active |
 | StudioMDL / tool dictionaries | Generic app-system/module composition | Inventory named callers and migrate only after workflow fixtures exist | planned |
 | Perforce / SQL providers | Generic loader use, including P4 in staging runtime code | Tool-only linked provider or named optional tool host; zero runtime-product dependencies | planned |
+
+The State column follows the authoritative ledger,
+[`architecture/tool_migrations.json`](../architecture/tool_migrations.json), as of
+2026-09-25. The ledger also tracks `phase-e-vmpi-worker` (active),
+`phase-e-tool-dictionaries` (planned) and `phase-e-external-vpc-binlaunch`
+(blocked on an external VPC decision). No cohort is `verified` or `retired`,
+and no cohort records acceptance evidence yet.
 
 The Phase A loader inventory is a freeze, not a Phase E oracle: it classifies
 tool sites broadly and does not reject `ILaunchableDLL`, app-system member loads,
@@ -46,6 +53,13 @@ failure, timeout, acknowledged cancellation, and cleanup. Deliberately broken
 providers must prove each clause is observable. Native providers and installed
 tool workflows remain separate evidence.
 
+Update (2026-09-25): the contract is installed as `platform.tool_process.v1`
+(`public/platform/contracts/tool_process.h`, `platform::ToolProcessClient`).
+`platform.tool_process` (49 checks) and its sensitivity suite (11 checks) pass
+against the test backend in the 2026-09-23 Q-FOUNDATION run. A POSIX provider,
+`platform/posix/tool_process_provider.cpp`, is in the tree, but no Waf target
+builds it and no suite runs it. No tool caller uses the client yet.
+
 ### VTEX direct entry
 
 `vtex_dll` retains `IVTex` only for current compatibility callers. The command
@@ -55,6 +69,11 @@ their filename/interface lookup are retirement targets in this slice. A
 separate host-tools Waf composition and fixture workflow are required before
 this cohort is complete.
 
+Update (2026-09-25): the wrappers and `public/ilaunchabledll.h` are deleted
+(`66e2a40c`). The isolated `./waf configure --tools` product builds `vtex` and
+`vtexconv`, and R01 records `build.tools` passing with gcc and clang. No
+installed VTEX workflow or `IVTex` caller inventory is recorded.
+
 ### VVIS and VMPI
 
 VVIS already contains its real executable `main`; its DLL adapter and wrapper
@@ -62,6 +81,15 @@ are being removed. VMPI's ordinary remote-worker path already creates a child
 process from an argument vector and supports termination. Its optional
 `-TryDLLMode` path is the in-process exception being retired; the remaining
 process implementation still has to satisfy the new protocol tests.
+
+Update (2026-09-25): the `utils/vvis_launcher` sources and `-TryDLLMode` are
+gone. On Linux the `--tools` product builds VVIS and VRAD as normal
+executables, and `vvis_host_smoke.py` and `vrad_host_smoke.py` pass on a
+synthetic room (see
+[the R48 record](0007-progress.md#r48-host-compiler-preparation-2026-09-23)).
+Linux rejects `-mpi`. These synthetic smokes are not the installed-workflow,
+legacy-output or process-protocol evidence the ledger requires. shadercompile and texturecompile now have normal
+`main` entries but only VPC projects, no Waf target.
 
 ## Required evidence before closure
 
@@ -92,6 +120,12 @@ The existing Waf game build is not a Phase E tools profile. A diagnostic
 `vtex_dll` build reached unrelated pre-existing `vstdlib/jobthread.cpp` compile
 errors before the tool link; the edited `vtex.cpp` translation unit itself
 compiled using the generated command. This is not installed-tool evidence.
+
+On 2026-09-25, `python3 tools/archlint/archlint.py tools --verify` reports the
+ledger and launchable-DLL ratchet valid: 10 cohorts, no first-party wrapper
+sites, and 2 preserved occurrences in the vendored
+`external/vpc/public/ilaunchabledll.h`. The general architecture check is red
+for unrelated reasons; see the [Phase A record](0001-phase-a-progress.md).
 
 ## Rollback
 

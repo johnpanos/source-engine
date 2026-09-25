@@ -4,7 +4,7 @@
 - Date: 2026-09-21
 - Scope: Shared verification infrastructure and acceptance gates for RFCs 0001–0004 and 0006
 - Related: [Platform](0001-capability-based-platform-architecture.md), [Hammer](0002-hammer-responsibility-factorization.md), [jobs](0003-dependency-aware-job-system.md), [physics](0004-box3d-primary-physics-backend.md), [C++20](0006-modern-cpp-ownership-and-synchronization.md)
-- Implementation status: Specification. The harness families and proposed artifacts below are not implemented by this document.
+- Implementation status: Specification, partly installed. Q0 (baseline audit) and Q1 (shared runner) are done; domain suites are registered but no domain gate is complete. State and commands: [0005-progress.md](0005-progress.md). This document implements nothing by itself.
 
 ## Summary
 
@@ -124,9 +124,11 @@ status or linking an old successful run cannot certify new code.
 
 Proposed artifact families are `tools/quality/`, `unittests/support/`,
 `quality/profiles/`, and a generated `quality-results/` directory. These names
-are illustrative until implemented. Domain fixtures stay with their domain.
+are illustrative until implemented. `tools/quality/`, `quality/profiles/` and
+`quality-results/` are now installed; `unittests/support/` is not. Domain
+fixtures stay with their domain.
 Schemas are versioned and reject unknown versions; generated output is stable.
-Record installed commands in a future `RFC/0005-progress.md` when they work.
+Record installed commands in [`RFC/0005-progress.md`](0005-progress.md) when they work.
 
 ### Fixture and oracle policy
 

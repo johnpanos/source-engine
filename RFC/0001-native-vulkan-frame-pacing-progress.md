@@ -94,7 +94,10 @@ glyph uploads each submit and `vkQueueWaitIdle`.
 
 ## Not verified / next
 
-- Nothing measured on Android. The pipeline and queue-idle stalls are the
+- Superseded (2026-09-23): the portal scenario has since run on a Galaxy Z
+  Fold7 (see [device result](#device-result-galaxy-z-fold7-adreno-840-2026-09-23)),
+  through an investigation script, not installed tooling. Originally:
+  Nothing measured on Android. The pipeline and queue-idle stalls are the
   likeliest device stutter sources, but their size there is unmeasured; the
   harness has no Android runner yet.
 - Remaining sustained cost is CPU skinning (~90 ns/vertex) of unique skinned
@@ -136,6 +139,9 @@ HEAD 61-129 ms median -> coalescing 3.7-8.4 ms -> both fixes 2.1-2.4 ms
 byte-identical (sha256 `fcdcf2fc...`). Open: the packer still writes a full
 reference list per leaf (~31 MB of the 272 MB bedroom BSP2); identical lists
 should share one range, and real spatial visibility is still absent.
+Superseded (2026-09-23): imported maps now get per-leaf meshlet references and
+meshlet frustum culling (leaf references 5.4 M -> 227 K); see
+[RFC 0008 F4 WMSH spatial visibility](0008-progress.md#f4-wmsh-spatial-visibility-for-imported-maps-2026-09-23).
 
 ## Mobile GPU cost: render-pass breaks (2026-09-23)
 
@@ -205,7 +211,8 @@ Not verified / next:
 
 - Nothing has run on Android yet. The traffic figures are modeled, not
   measured. The app was not launched on the device, and the harness still has
-  no Android runner.
+  no Android runner. (Superseded the same day by the device result below. The
+  harness still has no Android runner: `frame_pacing.py` has no device path.)
 - Pixel-identical follow-ups, largest first:
   1. open the frame's first pass through the view its first color draw needs
      (an sRGB `CLEAR` variant; 1 break per frame);

@@ -4,7 +4,7 @@
 - Date: 2026-09-21
 - Scope: New and migrated first-party targets, result/ownership vocabulary, queues and CPU/GPU synchronization
 - Related: [Platform](0001-capability-based-platform-architecture.md), [Hammer](0002-hammer-responsibility-factorization.md), [jobs](0003-dependency-aware-job-system.md), [physics](0004-box3d-primary-physics-backend.md), [harnesses](0005-quality-and-correctness-harnesses.md)
-- Implementation status: Specification with an installed mechanical-style checker (see below). Existing targets are not upgraded by this document.
+- Implementation status: Specification with an installed mechanical-style checker and per-target dialect policy (see below). M0 (R03) is active; see [progress](0006-progress.md). This document upgrades no target by itself.
 
 ## Summary
 
@@ -17,6 +17,15 @@ dependencies, including Box3D's C17 sources.
 The existing Waf configuration selects C++11 for applicable C++ compilation.
 Implementation therefore begins with an explicit per-target compiler and
 standard-library capability policy; it cannot assume C++20 is already active.
+
+Update (2026-09-25): that policy is installed as `quality/toolchain/policy.json`,
+applied by `scripts/waifulib/toolchain_dialect.py` and checked by
+`tools/quality/toolchain_boundary.py`. By user decision (2026-09-22), unmigrated
+in-tree C++ now compiles as C++20 with `-fpermissive` (`cxx20-permissive`),
+not C++11. New and migrated targets use strict `cxx20`, Box3D's private target
+stays on `box3d-c17`, and `legacy-cxx11` is left only for frozen
+external-consumer fixtures. A permissive C++20 compile is not evidence of M0
+acceptance for any target.
 
 ## Mechanical style gate
 

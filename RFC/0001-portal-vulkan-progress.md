@@ -1,6 +1,6 @@
 # RFC 0001 Portal SDL3 / Vulkan compatibility slice
 
-Updated: 2026-09-22
+Updated: 2026-09-25
 
 Portal now boots, loads an active player into `testchmb_a_00` and
 `testchmb_a_01`, renders textured geometry and lighting, and shuts down cleanly
@@ -8,6 +8,11 @@ on the selected Linux x86_64 SDL3 / native Wayland / Vulkan profile. This is the
 RFC's compatibility waypoint: DXVK Native translates the retained D3D9 material
 implementation to Vulkan. It is not the future native Vulkan material renderer,
 a default-provider change, or four-platform acceptance.
+
+2026-09-25: the separate native Vulkan provider now boots and renders Portal
+too; see [native Vulkan progress](0001-native-vulkan-progress.md#current-state-2026-09-25).
+DXVK comparison captures are deferred by user direction, so this slice's
+evidence was not rerun.
 
 ## Composition and migration boundary
 
@@ -91,7 +96,8 @@ Observed native results on this machine:
 Generated evidence, captures and logs are local artifacts, not committed golden
 images. Source/build identities and dependency hashes are recorded by each run.
 A changed source or profile requires new evidence. Vulkan validation-layer
-coverage and ASan were unavailable on this host; native rendering success does
+coverage and ASan were unavailable on this host (2026-09-25: the Khronos
+validation layer is now installed, but this slice was not rerun under it); native rendering success does
 not substitute for those lanes or for performance/power budgets.
 
 ## Earlier phases and remaining scope

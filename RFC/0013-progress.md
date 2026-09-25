@@ -1,6 +1,6 @@
 # RFC 0013 progress: Opt-in Box3D Physics Capabilities
 
-Roadmap row: R67 (`active` for P0–P1). Design: [RFC 0013](0013-opt-in-physics-capabilities.md).
+Roadmap row: R67 (`active`; P0–P3 done on the Linux desktop). Design: [RFC 0013](0013-opt-in-physics-capabilities.md).
 
 ## Goal and scope (2026-09-24)
 
@@ -41,7 +41,8 @@ record and the roadmap say what passed and what is unverified.
 | Declaration and limits | [`quality/budgets/physics-v1.json`](../quality/budgets/physics-v1.json) |
 | Contract record | [`vphysics.parallel-step.v1`](../unittests/physicstest/contracts/vphysics.parallel-step.v1.md) |
 
-Nothing in the engine or game calls the capability.
+At P1, nothing in the engine or game called the capability. Since P3 the
+server does (`game/server/physics.cpp`); see [P3](#p3-the-game-collision-filter-check).
 
 ## Evidence
 
@@ -148,6 +149,8 @@ Acceptance runs: see [gate runs](#gate-runs) below.
 
   This change measures the pinned source. The patch needs an owner decision:
   commit it to a pinned fork or revision, or drop it. It was not modified.
+  Still open on 2026-09-25: the shared tree's `box3d` checkout still shows
+  `M src/contact_solver.c`, and HEAD still pins `9e5a4cd`.
 - **Box3D's default continuous collision loses to IVP against thin dynamic
   bodies** (56 of 64 projectiles through panes, IVP 24). IVP's look-ahead also
   stops most tunneling against static walls at the 2000 in/s speed limit. The
@@ -345,10 +348,19 @@ Certifying the pool bridge's timing needs a run on a quiet host.
 
 ## Unverified and open
 
-- No product enables parallel stepping by default; that is a per-profile
-  decision. The client environment keeps one worker. No gameplay soak or
-  gameplay timing capture at N workers exists, and the dedicated server has no
-  profile row.
+- The server default is on only where Box3D is selected (2026-09-25):
+  `./play`, `./play_p2` and `run.sh`. The launcher and the dedicated server
+  default to IVP (`-physics vphysics`), and the Android launcher passes no
+  `-physics`, so the APKs run IVP with one worker unless `commandline.txt`
+  selects Box3D. The client environment keeps one worker. No gameplay soak
+  or gameplay timing capture at N workers exists, and the dedicated server
+  has no profile row in `physics-v1.json`.
+- The pool bridge's timing rules are not certified: the merged-code
+  acceptance run was contended (see above).
+- The parity runner as a whole still fails on the pre-existing
+  `dynamics.tumble.audible-impacts` divergence (RFC 0004 progress). P1's
+  "`physics.conformance` still passes" holds for every check on the pinned
+  source, at 1 and 4 workers, not for the runner's verdict.
 - The adapter's serial `PreStep`/`PostStep` share limits scaling (above).
 - Android (Fold7) and Apple profiles are `unverified` in `physics-v1.json`.
 - No CI lane. `physics.bench` is not yet a `quality/baseline.json` check,

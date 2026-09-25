@@ -1,6 +1,6 @@
 # RFC 0001 native Vulkan backend progress
 
-Updated: 2026-09-24
+Updated: 2026-09-25
 
 This record tracks the *native* Vulkan material backend (`shaderapivulkan`),
 distinct from the DXVK compatibility waypoint documented in
@@ -13,7 +13,50 @@ The Video options on this backend (display modes, vsync, brightness, DirectX 95
 caps, recommended configuration, MSAA, and the pending flashlight shadow depth)
 are tracked in [the video options record](0001-native-vulkan-video-options-progress.md).
 
+## Current state (2026-09-25)
+
+The dated sections below are history, oldest first. Later sections supersede
+earlier "not yet", "blocked" and "open" statements. The present state is:
+
+- **Portal renders a lit, textured scene natively.** `portal_boot.py
+  --renderer native-vulkan` passes, with inspected captures, on
+  `testchmb_a_01`, `testchmb_a_08`, `escape_00` and `escape_02` (2026-09-24
+  sections). Render targets, world texture residency, flat and bumped
+  lightmaps (`shaders/lightmapped.{vert,frag}`), model vertex and phong
+  lighting, integer HDR and exposure, PortalRefract, VGUI, fog, bloom and
+  color correction, and model shadows are implemented.
+- **Pixel oracle.** `tools/quality/material_pixel_conformance.py` has 14
+  families. Most are judged against D3D9 references. `bump`, `shadow` and
+  `post` use native-only closed forms. Fixtures are in
+  `quality/fixtures/material-pixels/`.
+- **GPU suites.** The latest dated Waf results are bring-up 98, material-facing
+  25 and material equivalence 64 checks, all 0 failures. These remain Waf
+  targets outside the manifest. The manifest's `linux-native-vulkan-gpu`
+  profile (added 2026-09-24, `30240b80`) holds 15 other GPU suites, which pass
+  (capture-tool section).
+- **Declined by name, not approximated:** MotionBlur, Water, Eyes, Teeth and
+  flashlight passes (P7). `NativePipelineImplementsShader` lists the rest.
+  Line and point topologies are dropped. `EnableAlphaToCoverage` is
+  `VK_UNIMPLEMENTED`. Skinning runs on the CPU.
+- **Also delivered:** the queued material system
+  ([queued rendering](0001-native-vulkan-queued-rendering-progress.md)), the
+  Video options ([video options](0001-native-vulkan-video-options-progress.md)),
+  the frame-pacing fixes ([frame pacing](0001-native-vulkan-frame-pacing-progress.md)),
+  and RenderDoc support (last section).
+- **Validation.** The Khronos validation layer is now installed on this host.
+  A `-vkvalidate` boot and the validation-enabled GPU suites log no messages
+  (last section).
+- **Legacy shader ports (R32-LEGACY-SHADERS) are not in this tree.** The 84
+  stdshader_dx9 ports exist only in the `source-engine-vkshaders` worktree,
+  as uncommitted changes over `223f0ed8`. This tree has no
+  `shaders/legacy/`, `regen_legacy_spv.py` or legacy-shaders record.
+- **Open:** no hosted CI lane; Android and Apple runs; DXVK comparison
+  captures (deferred by user direction). R28 and R32 remain open.
+
 ## Correction (2026-09-22): Portal does NOT yet render a real scene
+
+Superseded (2026-09-25): Portal renders natively; see
+[Current state](#current-state-2026-09-25).
 
 An earlier version of this document claimed `portal_boot.py` "passes" and Portal
 "renders a material-shaded scene." **That was a false positive and is retracted.**
@@ -83,6 +126,8 @@ default shader, so materials never executed (`BeginPass` was never called, only
   manager uses for most VTFs) was implemented instead of returning null handles.
 
 **Honest remaining gaps (the frame is not yet a recognizable scene):**
+(Superseded (2026-09-25): residency, lighting and the per-draw path were fixed
+in later sections; see [Current state](#current-state-2026-09-25).)
 1. **World textures are not resident.** The world's base textures are not being
    allocated/downloaded through this path, so `CTexture::Bind` takes its
    not-allocated branch and calls `BindStandardTexture(TEXTURE_WHITE)`, which is a
@@ -214,6 +259,8 @@ The `shaderapivulkan` shared library links the device core and builds clean in
 tree. Like the DXVK presentation suite, this native-GPU suite is a waf target run
 directly; it is **not** in `quality/conformance.manifest.json`, whose runner is
 the headless-core compile-and-run model with no display/SDL3/Vulkan link.
+(2026-09-25: the manifest now has a `linux-native-vulkan-gpu` profile with 15
+suites. This suite is still a Waf target outside it.)
 
 ## Generalizing the material system: a substitutable backend contract (LSP)
 
@@ -360,6 +407,11 @@ tracked below; it improves accuracy but is no longer blocking a rendered frame.
 
 ## Scope boundaries — what is NOT done
 
+Superseded (2026-09-25): this list describes the R28 bootstrap. The backend now
+advertises its adapter, `IsUsingGraphics()` reports the live context, Portal
+boots natively, and the validation layer is installed on this host. See
+[Current state](#current-state-2026-09-25).
+
 This is the R28 bootstrap slice. It does not close R28 fully and does not begin
 to satisfy R32:
 
@@ -449,6 +501,8 @@ material-system integration, in dependency order:
 
 Each step is independently testable the same outcome-driven way (build the
 primitive, drive it, read the pixels back). None is delivered yet.
+(Superseded (2026-09-25): steps 0–5 are delivered for the Portal scope in
+later sections; the shader library port is partial.)
 
 ## Restoring the DXVK compatibility renderer (2026-09-22)
 
@@ -527,7 +581,8 @@ inside the frustum and in front of the 1.0 depth clear), the draw path itself
 clear value, render area, viewport/scissor, framebuffer indexing, swapchain
 extent and image count, and the absence of any swapchain recreation loop.
 
-**Open blocker: the swapchain -> capture readback yields one column.** Every
+(Superseded (2026-09-25): later native `portal_boot.py` captures read whole,
+inspected frames.) **Open blocker: the swapchain -> capture readback yields one column.** Every
 capture of an in-game frame comes back black except the final pixel column, at
 both 2880x1620 (Wayland) and 1920x1080 (X11). The engine's `+screenshot` reads the
 same captured frame, which is why `portal_boot.py` reports a blank capture even
@@ -1161,7 +1216,9 @@ Also passing after these changes:
 reformatted before this change) and other sessions' physics entries.
 
 Open:
-- Native reads no `dxsupport.cfg`: `GetRecommendedConfigurationInfo` is a stub,
+- Superseded (2026-09-23, video options P4/P5): native reports DX level 95 and
+  reads `dxsupport.cfg`. Previously:
+  Native reads no `dxsupport.cfg`: `GetRecommendedConfigurationInfo` is a stub,
   and it reports dx level 90 and no anisotropy (D3D9: 95 and 16). The game
   therefore runs with different convar defaults from D3D9.
 - ATI1N/ATI2N remain unsupported, as before.

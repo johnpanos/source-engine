@@ -1,6 +1,6 @@
 # RFC 0001 presentation bridges (roadmap R16, rank 9)
 
-Updated: 2026-09-22
+Updated: 2026-09-25
 
 R16 asks for four things:
 
@@ -74,6 +74,12 @@ unset; the X11 profile used that compositor's own Xwayland display and auth file
 - Architecture: `archlint check --all` reports no `CAP` findings. Its remaining
   ARCH105 findings predate this work (see below). The archlint self-tests pass.
   Style: all new files and edited regions pass stylelint (clang-format 22.1.8).
+  Superseded (2026-09-25): at `d6260d90`, `archlint check --all` reports five
+  `CAP002` findings in `render.vulkan.core`. `vulkan_device.h` includes
+  `vulkan_compute.h`, `vulkan_debug_utils.h`, `vulkan_frame_stats.h` and
+  `vulkan_shader_library.h`, and `vulkan_render_backend.cpp` includes
+  `vulkan_compute.h`. None of them is registered in the module manifest. The
+  core still includes no SDL header.
 
 ## Platform findings
 
@@ -115,6 +121,8 @@ unset; the X11 profile used that compositor's own Xwayland display and auth file
   libraries). That is build evidence only, not device evidence. Also unverified: real
   `VK_ERROR_DEVICE_LOST`, validation layers (unavailable on this host), and a
   required CI lane. Native suites stay Waf targets outside the headless manifest.
+  (2026-09-25: the manifest's `linux-native-vulkan-gpu` profile now runs 15
+  other GPU suites; the presentation and bring-up suites are not among them.)
 - **Pre-existing, not changed here.** The archlint ARCH105 baseline records
   `shaderapivulkan.cpp` `SetMode` at lines 359 and 1381. Before this work it was
   already at 882 and 1948. That drift, plus unrelated `vphysics_box3d` and

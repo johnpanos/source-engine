@@ -1,6 +1,6 @@
 # RFC 0001 render provider seam (roadmap R15, rank 8)
 
-Updated: 2026-09-22
+Updated: 2026-09-25
 
 Rank 8 adds the render provider, device, capability and profile contracts,
 structured creation errors, a `LegacyRenderBackendProvider` around
@@ -17,7 +17,7 @@ tested without new shader globals.
 | Feature profile and quirks | `public/render/render_profile.h` | New (`render.profile.v1`): request, profile, quirk, structured `RenderProfileError`, and `SelectRenderFeatureProfile`. C++11-compatible. |
 | Legacy provider | `materialsystem/legacy_render_backend_provider.{h,cpp}` | `LegacyRenderBackendProvider` adapts a bound `LegacyShaderServices` bundle. Identity comes from the catalog entry, adapter identity from `IShaderDeviceMgr::GetAdapterInfo`, and semantic facts from the backend's optional `describeAdapter` hook. It depends only on adapter enumeration (`ILegacyAdapterSource`). It claims no offscreen device or presentation; those stay on `SetMode` until R16. |
 | Legacy quirk table and selection | same file | `LegacyRenderQuirks()` has one documented entry, `gl.float-normalization-cubemaps`. `SelectLegacyRenderProfile` is the single owner of "provider + adapter + request → profile". |
-| Backend facts | `shaderapiempty`, `shaderapidx9`, `shaderapivulkan` | Null: one software adapter, `driverApi=none`, no features. The null manager previously reported zero adapters. D3D9: sampled sRGB and offscreen render from the adapter's actual caps; `driverApi` is `vulkan` under DXVK and `opengl`/`d3d9` otherwise. Native Vulkan: `driverApi=vulkan`, no features claimed until its own path implements them (R32). |
+| Backend facts | `shaderapiempty`, `shaderapidx9`, `shaderapivulkan` | Null: one software adapter, `driverApi=none`, no features. The null manager previously reported zero adapters. D3D9: sampled sRGB and offscreen render from the adapter's actual caps; `driverApi` is `vulkan` under DXVK and `opengl`/`d3d9` otherwise. Native Vulkan: `driverApi=vulkan`, no features claimed until its own path implements them (R32). Superseded (2026-09-25): since RFC 0011 G5 (`f9539fb2`) it claims `kComputeShaders`, `kStorageImages` and `kRayQuery` as its created device enabled them (`ComputeFeatureBits`, `vulkan_compute.cpp`), and none before the device exists. |
 | Scoped legacy services | `render::LegacyShaderServices` (`public/render/legacy_shader_provider.h`) | Existing. It is borrowed for one binding and cleared on `Disconnect`. The optional `describeAdapter` hook was added. |
 | Explicit selection | `launcher/launcher.cpp`, `dedicated/sys_{linux,windows}.cpp` | The roots select the provider (existing) and now state a render profile request before `Connect` (`MaterialSystem_SetRenderProfileRequest`). |
 | Material system | `materialsystem/cmaterialsystem.cpp` | `Init` selects the profile after the adapter and manager are initialized. It fails `Init` on a missing required feature and logs `Render profile for provider '<id>' adapter <n>: features=... quirks=...`. The profile is a `CMaterialSystem` member injected into `ITextureManager::Init`; no new global. |

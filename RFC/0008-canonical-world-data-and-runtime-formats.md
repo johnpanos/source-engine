@@ -1,11 +1,16 @@
 # RFC 0008: Canonical World Data and Runtime Formats
 
-- Status: Accepted for planning (2026-09-22); F1 active, F2 partial ([progress](0008-progress.md))
+- Status: Accepted for planning (2026-09-22); F1 active; F2, F3 and F4–F5
+  partial ([progress](0008-progress.md))
 - Amended: 2026-09-24 by [RFC 0011](0011-runtime-indirect-lighting.md)
   (proposed): `PRBV` becomes a grid-addressable probe volume with visibility
   (resolving open decision 3), `LMAP` may carry separated direct/indirect
   layers, a new `RTRN` radiosity transfer lump, and runtime indirect light for
   F10 follows RFC 0011's producers. Amended passages say so inline
+- Registered 2026-09-25: the `SDFV` signed distance lump (RFC 0011 G6, as
+  built) and `RPRB` v2 relight bands (R50-RELIGHT) in the render lump table;
+  [installed encodings](#installed-encodings-2026-09-25) records what the
+  readers accept today
 - Date: 2026-09-22
 - Scope: The compiled-world interchange stage, runtime map and model resources,
   world render data (mesh, lightmaps, probes, reflection probes), the texture
@@ -350,9 +355,30 @@ dependencies (checked by R12's link evidence).
 | `LSTY` | Light style table: style id → atlas layer, per-chart style masks | Per-surface `styles[MAXLIGHTMAPS]` compositing on the CPU |
 | `PRBV` | Probe volume *(amended by RFC 0011)*: one or more axis-aligned probe grids (origin, spacing, dimensions); per probe an octahedral irradiance tile and an octahedral visibility tile (hit-distance mean and mean²), an active mask and a bounded relocation offset; style layers; stored as 2D atlases in the `render.probe-volume.v1` encoding so load is a copy | Leaf ambient cubes |
 | `RTRN` | Radiance transfer *(RFC 0011 G4, optional)*: surface patches mapped to lightmap charts, sparse visibility-weighted form factors, probe gather weights, per-patch visibility of each baked light | — (new capability: runtime radiosity) |
-| `RPRB` | Reflection probes: position, influence and parallax boxes, blend priority, KTX2 prefiltered HDR cube (GGX roughness mips) | `env_cubemap` VTFs from `buildcubemaps` |
+| `SDFV` | Signed distance volume *(RFC 0011 G6, optional)*: a uniform voxel grid over the static world (signed distance, reflectance, emission and its light source per voxel), the analytic lights the traced producers shadow-test, and (v2) per-cell light lists | — (new capability: SDF-traced indirect light and unbaked-light shadows) |
+| `RPRB` | Reflection probes: position, influence and parallax boxes, blend priority, KTX2 prefiltered HDR cube (GGX roughness mips); optionally *(R50-RELIGHT)* relight bands (albedo, distance, normal of what each capture saw) | `env_cubemap` VTFs from `buildcubemaps` |
 | `MTBL` | Material table: canonical material asset identity, optional legacy VMT path, family, shader capability requirement, hashes | `texdata` string table lookups for render batching |
 | `PKMF` | Package manifest: profile, formats chosen, source stage hashes, tool versions, derived-legacy flag | — |
+
+#### Installed encodings (2026-09-25)
+
+Each installed lump has one C++ reader in `public/mapcontainer/` and a
+Python writer in `tools/quality/`. For `PRBV`, `RTRN`, `SDFV` and `RPRB` that
+module owns the encoding and is also the independent reader; the C++ reader
+must accept exactly what it writes. `bsp2tool pack-world*` validates and
+packs them, and `engine/modelloader.cpp` loads each as optional: a malformed
+lump is rejected with a warning and the map stays playable without it.
+
+| 4CC | Versions | Reader / writer | Differences from the table above |
+| --- | --- | --- | --- |
+| `WMSH` | 1, 2 | `world_mesh_format.h`, `world_mesh.h` / `worldstage_mesh_pack.py`, `usd_worldmesh_pack.py` | v2 adds front-face normal cones. The triangle map holds BSP face IDs; imported USD triangles use synthetic high-bit IDs, not canonical source surface IDs. Material paths are inline, not an `MTBL` |
+| `LMAP` | 1, 2 | `world_lightmap.h` / `lightmap_ktx2.py` | One uncompressed linear RGBA16F KTX2 texture inside the lump, not the asset table. v1 is the total diffuse page with an optional luminance-gradient half (`lightmap_directional.py`); v2 adds direct/indirect layers. Not SH L1, and no style layers |
+| `PRBV` | 1 | `probe_volume.h` / `probe_volume.py` | `render.probe-volume.v1`, with total and indirect layers |
+| `RTRN` | 1 | `radiosity_transfer.h` / `radiosity_transfer.py` | As RFC 0011 G4 defines it |
+| `SDFV` | 1, 2 | `sdf_volume.h` / `sdf_volume.py` | v2 adds sphere and spot lights and light cells |
+| `RPRB` | 1, 2 | `reflection_probes.h` / `reflection_probe_set.py` | At most 16 probes in one raw RGBA16F atlas of GGX-prefiltered equirect mip chains, not KTX2 cubes |
+
+`LSTY`, `MTBL`, `PKMF` and the asset table lump have no reader or writer.
 
 Light styles stay a gameplay feature (switchable lights). On the new path,
 styles become atlas layers blended in the shader by the style's current scalar,
@@ -610,6 +636,12 @@ and the stage can emit MaterialX when needed.
    [USD decision](#usd-decision).
 7. Lightmap chart packer: our own, or a pinned library (for example xatlas).
    Charts must respect smoothing groups and displacement seams.
+   *Observed 2026-09-25:* the PBRT/USD preview pipeline uses exact planar UVs
+   and xatlas charts for curved surfaces (xatlas pinned in
+   `quality/product_profiles/pbrt-map-linux-tools.json`), and the VMF
+   `vbsp2` path writes its own charts
+   ([record](0007-progress.md#lightmap-layout-seams-and-noise-installed-2026-09-25)).
+   The canonical packer is still undecided.
 8. Per-profile format tables, filled from device queries.
 
 ## Source references

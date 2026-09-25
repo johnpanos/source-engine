@@ -1,6 +1,6 @@
 # RFC 0001 Phase A progress
 
-Updated: 2026-09-22
+Updated: 2026-09-25
 
 Phase A covers the dynamic-module-loader retirement inventory and freeze. This
 file is the durable progress record; detailed current sites live in
@@ -23,6 +23,25 @@ Assessment at source revision `91c47351` (the shared worktree also carries
 uncommitted, behavior-preserving refinements to the telemetry sources): all
 architecture-checker tests pass; `check --all`, `baseline --verify`, and
 `inventory --verify` all pass.
+
+Current state (2026-09-25): the freeze is still installed and in CI, but the
+tree no longer matches it. The Phase A work items remain complete; the ratchet
+now needs reviewed classification (owned by R04 and R07), never a blind rewrite.
+
+- `check --all` and `baseline --verify` fail with 64 new occurrences and 1
+  stale one. They are 50 `ARCH105` and 14 `ARCH101`–`ARCH103`. Most are in the
+  Portal 2 client GameUI, VScript and matchmaking code added from 2026-09-22
+  (`game/client/portal2/gameui/`, `game/client/gameui/`,
+  `game/shared/portal2/`, `matchmaking/`). The rest are in `vphysics_box3d/`,
+  `unittests/physicstest/` and `engine/vgui_baseui_interface.cpp`.
+- `inventory --verify` rejects 13 native loader sites without telemetry:
+  vendored `box3d/extern/sokol` (7) and `box3d/samples` (2),
+  `external/portal2_steam2_xsi/src/SMDExport/expvalidate.cpp` (2),
+  `unittests/physicstest/test_vphysics_conformance.cpp` (1), and the RenderDoc
+  `RTLD_NOLOAD` probe in `materialsystem/shaderapivulkan/shaderapivulkan.cpp`
+  (1). `nativeTelemetryCoverage` is therefore no longer complete for the tree.
+- R01's [baseline](../quality/baseline.json) records the older drift (7 new and
+  3 stale; 10 uninstrumented sites).
 
 The isolated Tier 1 loader-telemetry composition
 (`unittests/tier1test/moduleloadtelemetrytest.cpp`, the `moduleloadfixture`
@@ -52,6 +71,12 @@ work as product-build evidence; it was not re-run in this session and the full
 end-to-end run because its pre-existing `TSList`/`TSQueue` stress tests crash
 before completion — the loader-telemetry suite is therefore built and run as the
 isolated composition above.
+
+Update (2026-09-25): the `CTSQueue` crash is fixed (R20-POOL-TRUST; see the
+[scheduler trust record](0003-scheduler-trust-progress.md)). R01 now records
+the remaining `unittest_legacy` crash in this suite itself: in the installed
+layout, `moduleloadtelemetrytest.cpp` cannot `dlopen` `./libmoduleloadfixture.so`
+relative to the working directory. That fixture path is owned by R07.
 
 Phase A (dynamic-module-loader retirement, inventory and freeze) is complete:
 every load site is classified and frozen behind the architecture linter, every
@@ -95,3 +120,8 @@ give `CAppSystemGroup` explicit `IAppSystem` instances, link mandatory
 first-party systems through typed factories, and replace backend loading with
 typed provider catalogs. Source presence alone does not establish ABI or
 behavioral compatibility; each removal carries its own gate.
+
+Phase B has since renamed the pseudo-module overload and added explicit
+`IAppSystem` instances; see the [Phase B record](0001-phase-b-progress.md). The
+typed-factory and provider-catalog work is tracked under R39, and tool
+cleanup under R40 ([Phase E](0001-phase-e-progress.md)).

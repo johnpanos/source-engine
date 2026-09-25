@@ -1,5 +1,7 @@
 # Dedicated composition migration slice
 
+Updated: 2026-09-25
+
 The dedicated child application group now registers one `IAppSystem` compatibility
 bridge. `ApplicationComposition` orders, connects, initializes, rolls back, and
 tears down the product systems behind it. The bridge keeps the existing interface
@@ -44,3 +46,11 @@ systems remain legacy implementations. The current dedicated
 binary also links material/studio render support and has not met R12's absent
 render/UI proof. Linux native runtime evidence does not certify Windows or the
 other planned platforms.
+
+State on 2026-09-25: the dedicated Waf target still links `materialsystem`,
+`shaderapiempty` and `studiorender`, and `CSys::LoadModules` still loads the
+physics provider by filename. R01's [baseline](../quality/baseline.json) still
+records `build.dedicated` failing on a protected `LoadModule` call at
+`dedicated/sys_linux.cpp:277`. That call became `LoadPhysicsModule` in
+`97e298c6` (2026-09-23), before the build evidence above, so the baseline
+outcome is stale until R01 re-runs it.

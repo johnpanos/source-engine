@@ -1,10 +1,12 @@
 # RFC 0008 progress: Canonical world data and runtime formats
 
-Updated: 2026-09-23
+Updated: 2026-09-25
 Portfolio rows: R53 (F1) active; R54 (F2) partial with a compiled World Stage,
 Portal material layer and Cycles preview; R55 (F3) has host-tool, reader, native
-GPU and GTK preview evidence; R56 has an initial WMSH container slice; R57–R58
-are not started. F1 native-run evidence records the engine
+GPU and GTK preview evidence; R56 (F4–F5) is partial: WMSH is the default world
+draw for maps that carry one, and `LMAP`, `PRBV`, `RTRN`, `SDFV` and `RPRB`
+are carried and loaded (see [Current state](#current-state-after-the-2026-09-23-records-2026-09-25));
+R57–R58 are not started. F1 native-run evidence records the engine
 revision and working-tree digest; the F3 probe records the pinned KTX source
 revision and profile hash. This work overlaps other in-progress tree changes.
 
@@ -35,9 +37,9 @@ iteration. The current WMSH/LMAP preview does not pass those gates.
 | Phase | State | Summary |
 | --- | --- | --- |
 | F1 BSP2 container and map-reader seam | **active (prototype; gate incomplete)** | Container, seam, both readers, pinned v20/v21 lossless corpora, 64-bit sparse tool export, client boot, a 26-map Portal v20 dedicated comparison and five-map v21 client/dedicated engine-seam comparisons work. A derived v19-header map also loads in both products. Authored v19 content, native Portal 2 gameplay and the CI content lane remain (see [Remaining for the F1 gate](#remaining-for-the-f1-gate)) |
-| F2 World Stage | partial (world geometry, light and Portal material preview; gate incomplete) | Opt-in `vbsp2` emits BSP, lossless BSP2 and OpenUSD world faces, a lightmap chart table, ordered entities and a `UsdLuxSphereLight` with its compiled style ID. A private Portal-remaster VMF compiles; a separate `UsdPreviewSurface` layer binds two real PBR materials and renders in Blender Cycles at 2048×1152. A preview bridge places Cycles flat and three RNM lightmap samples in a legacy lighting lump. The BSP2 map carries them and renders the flat page in native Vulkan; a controlled legacy DXVK comparison shows the RNM samples change in-game pixels. Pinned standalone Cycles, a canonical baker, accepted SH L1, render lumps and native consumption of directional lighting remain. |
-| F4–F5 BSP2 world path | partial (opt-in playable WMSH PBR slice; gate incomplete) | An independently checked WMSH v1 mesh payload from the Portal World Stage is carried in BSP2 beside byte-identical legacy data. The client validates and retains WMSH for the map lifetime; native Vulkan uploads its vertex and index sections once into device-local buffers. An opt-in draw uses the engine's visible leaves, WMSH meshlet references, and Source material passes. A playable USD-derived staircase now binds VTF base color/MRAO and a Cycles HDR KTX2 atlas through the native WMSH PBR pipeline, with a generated material namespace and a real player frame. The GPU pixel fixture covers tangents, material masks, normal maps, linear irradiance and back-face culling. Malformed optional WMSH is rejected while the legacy map stays playable. Canonical lightmap/probe data, automatic map-selected PBR rendering, feature cohorts, visual parity and load-cost gates remain. |
-| F6–F7 | planned | Not started |
+| F2 World Stage | partial (world geometry, light and Portal material preview; gate incomplete) | Opt-in `vbsp2` emits BSP, lossless BSP2 and OpenUSD world faces, a lightmap chart table, ordered entities and a `UsdLuxSphereLight` with its compiled style ID. A private Portal-remaster VMF compiles; a separate `UsdPreviewSurface` layer binds two real PBR materials and renders in Blender Cycles at 2048×1152. A preview bridge places Cycles flat and three RNM lightmap samples in a legacy lighting lump. The BSP2 map carries them and renders the flat page in native Vulkan; a controlled legacy DXVK comparison shows the RNM samples change in-game pixels. Pinned standalone Cycles, a canonical baker, accepted SH L1, render lumps and native consumption of directional lighting remain. (2026-09-25: the PBRT/USD path's WMSH shader reads a luminance-gradient directional page; that is not the canonical SH L1 or RNM.) |
+| F4–F5 BSP2 world path | partial (playable WMSH PBR slice; WMSH draw default since 2026-09-23; gate incomplete) | An independently checked WMSH v1 mesh payload from the Portal World Stage is carried in BSP2 beside byte-identical legacy data. The client validates and retains WMSH for the map lifetime; native Vulkan uploads its vertex and index sections once into device-local buffers. An opt-in draw uses the engine's visible leaves, WMSH meshlet references, and Source material passes. A playable USD-derived staircase now binds VTF base color/MRAO and a Cycles HDR KTX2 atlas through the native WMSH PBR pipeline, with a generated material namespace and a real player frame. The GPU pixel fixture covers tangents, material masks, normal maps, linear irradiance and back-face culling. Malformed optional WMSH is rejected while the legacy map stays playable. Canonical lightmap/probe data, automatic map-selected PBR rendering, feature cohorts, visual parity and load-cost gates remain. (2026-09-25: the draw is no longer opt-in; probe, radiosity, SDF and reflection-probe lumps now exist; canonical SH L1/`LSTY` lighting, the legacy exporter, feature cohorts, visual parity and load cost remain. See [Current state](#current-state-after-the-2026-09-23-records-2026-09-25).) |
+| F6–F7 | planned | Not started. The preview map pipeline's per-step cache (`pbrt_map_build.py`, `steps.json`) is not the F6 build graph |
 | F3 KTX2 textures | **partial (host packer, device selection, owned readers and native/GTK consumers)** | Pinned Linux tool builds; thirteen transcode targets validate, UASTC master decode pixels match fixtures, and the packer publishes validated packages from explicit or product-profile device selections. Strict KTX2 and VTF readers produce the same owned image description for a 2D caller cohort; sRGB base color and linear BC7 MRAO feed native pixel tests. Hammer's GTK material catalog previews packaged RGBA8/BGRA8 KTX2 through that reader. Material-system file selection, Hammer compressed-format preview, installed product device identity and ASTC/ETC2/EAC GPU pixels remain. |
 
 F2 requires the R48 host compile-tool gate. Its [current compiler preparation](0007-progress.md#r48-host-compiler-preparation-2026-09-23)
@@ -50,7 +52,8 @@ with one and two threads, rejects missing portals and unsupported MPI, and
 survives the same BSP2 round trip. A corrected texture-axis fixture then bakes
 nonzero LDR lighting and world/ambient light data through VRAD, with identical
 lighting lumps at one and two threads and a byte-exact BSP2 round trip. This
-supplies native compiler consumers for F1 while F2 remains planned. The
+supplies native compiler consumers for F1 while F2 was still planned (F2 is
+now partial). The
 legacy-output oracle, baker contract, and full R48 gate are still missing.
 An installed Portal 2 Community Edition v25 toolchain under Wine produces
 byte-identical entity, visibility, and HDR ambient sample lumps and the same
@@ -64,6 +67,50 @@ structural evidence for R48, not the same-revision or World Stage bake gate.
 The same audit passes all 106 SHA-pinned Portal 2 v21 maps (259,620 lit faces;
 183,075 bumped) with no unreferenced lighting bytes; reproduction and evidence
 are in [R48 progress](0007-progress.md#r48-cross-version-executable-baseline-2026-09-23).
+
+### Current state after the 2026-09-23 records (2026-09-25)
+
+The dated entries below are history. Later work changed the current state as
+follows; the linked records hold the evidence. No F-phase gate is complete.
+
+- **WMSH draw.** `r_worldmesh_draw` defaults to 2 and is no longer a cheat
+  (`engine/gl_rsurf.cpp`), so every map with a resident WMSH draws it; see the
+  note in the [draw preview entry](#f4-native-vulkan-visible-wmsh-draw-preview-2026-09-23).
+- **WMSH v2 and culling.** The writers emit WMSH v2 (front-face normal cones);
+  v1 is still read. The engine culls meshlet groups by frustum, by those cones
+  for materials without `$nocull`, and by software occlusion
+  (`engine/worldmesh_cull.{h,cpp}`). The contract is
+  [`world.meshlet_cull.v1`](../unittests/worldmeshtest/contracts/world.meshlet_cull.v1.md)
+  and the suite `world.meshlet-cull`, which must catch two unsound cullers.
+  No run of that suite is recorded here. This supersedes the "Not done" line
+  of the [spatial visibility entry](#f4-wmsh-spatial-visibility-for-imported-maps-2026-09-23).
+- **Lighting and probe lumps.** `LMAP` v2 (separated direct/indirect layers),
+  `PRBV`, `RTRN` and `SDFV` come from RFC 0011. Its
+  [progress record](0011-progress.md#g1-probe-volume-baked-producer-and-consumer)
+  marks G1 done on native Vulkan, with the G1.7 DXVK capture deferred. That is
+  the F5 "`PRBV` passes RFC 0011 G1" item on native Vulkan only.
+- **Reflection probes.** `RPRB` v1 and v2 come from
+  [R50-PARALLAX](0007-progress.md#r50-parallax-parallax-corrected-blended-reflection-probes-bounded-r50-slice-2026-09-25)
+  and [R50-RELIGHT](0007-progress.md#r50-relight-relightable-reflection-probes-bounded-r50-slice-2026-09-25).
+  The payload is a raw RGBA16F atlas, not the KTX2 cube RFC 0008 specifies.
+- **Encodings.** RFC 0008 now lists what each installed lump's reader
+  accepts and how it differs from the planned table
+  ([installed encodings](0008-canonical-world-data-and-runtime-formats.md#installed-encodings-2026-09-25)).
+  `LSTY`, `MTBL`, `PKMF` and the asset table lump do not exist.
+- **Authored USD input.** Since 2026-09-24, `pbrt_map_build.py` also accepts a
+  `.usd`/`.usda`/`.usdc` scene through `tools/quality/usd_scene.py`, with
+  manifests in `quality/fixtures/usd-maps/` (a hand-authored `usd-room`
+  fixture, and a World Lobby manifest whose sample is not checked in).
+  Collision, spawn and PVS still come from a generated VMF
+  (`pbrt_collision_vmf.py`) compiled by `vbsp2`/`vvis`/`vrad`, so this is not
+  an RFC 0009 native compiler. No build or boot result for these manifests is
+  recorded here.
+- **VMF World Stage scope.** Since 2026-09-24, the `vbsp2` emitter accepts
+  maps with brush entity models and emits WorldSpawn geometry only
+  (`utils/vbsp/worldstage.cpp`).
+- **Still open for F4–F5:** canonical SH L1 `LMAP` with style layers and
+  `LSTY`, the legacy lighting exporter and D3D9/DXVK payload, clustered dynamic
+  lights, the engine feature cohorts, visual parity and load cost.
 
 ### F2 OpenUSD host and schema preparation (2026-09-23)
 
@@ -1612,19 +1659,28 @@ licensed game content and runtime output stay outside source control.
   source files are absent. No authored v19 native content was found; the
   header-only derivative checks the engine route but cannot replace that corpus.
   Portal 2 game-specific behavior remains unverified.
+  (2026-09-25: `scripts/waifulib/portal2_source_inventory.py --selected-build
+  build-p2` reports 0 missing of 1365 declared source references for that
+  configuration. No isolated dedicated Portal 2 build, BSP2 gameplay run or
+  dedicated comparison has been recorded since, so this item stays open.)
 - **CI content lane.** The C++ suite and Python reader/comparator self-tests run
   in CI. The client and dedicated runners now treat licensed content as a required input,
   but no CI runner with that content and a built dedicated product is configured.
   This lane remains unverified rather than skipped or inferred from local runs.
 - **Scope decisions still open:**
   - Lump override files (`.lmp`) keep working by legacy index. Keying them by
-    4CC for new lumps waits until new lumps exist (F4/F5).
+    4CC for new lumps waits until new lumps exist (F4/F5). (2026-09-25: new
+    lumps now exist, but `public/lumpfiles.cpp` is unchanged and still keys
+    overrides by legacy index only.)
   - `IFileSystem` seeks are 32-bit, so the engine bridge refuses offsets past
     2 GiB. The container and `bsp2tool info/verify/export` support 64-bit
     offsets; `bsp2tool convert` now uses bounded file I/O and 64-bit offsets.
   - Compile tools (`utils/common/bsplib`, `vbsp`, `vvis`, `vrad`, `bspzip`)
     and Hammer still read and write only VBSP. A BSP2 package is produced after
     compile by `bsp2tool convert`, until F2 (`vbsp2`) writes it directly.
+    (Observed 2026-09-25: opt-in `vbsp2` publishes `<map>.bsp2` itself, by
+    converting its own legacy BSP in process, `PublishBsp2` in
+    `utils/vbsp/worldstage.cpp`.)
   - `utils/hlfaceposer` also reads raw BSP headers. It is Windows-only and out
     of F1 scope.
   - Big-endian console `PSBV` maps are rejected, the same as the removed
@@ -2291,6 +2347,8 @@ Evidence, bedroom (`quality/fixtures/pbrt-maps/bedroom.json`):
   culling does the work. Multi-room USD maps get PVS culling through the same
   assignment, but none is built yet.
 
+(2026-09-25: normal-cone and occlusion culling were added later the same day;
+see [Current state](#current-state-after-the-2026-09-23-records-2026-09-25).)
 Not done: normal-cone backface culling (two-sided materials need a per-batch
 flag), occlusion culling, and `vbsp2` still fails on zero-area detail faces
 (avoided here with nodraw). Other maps change triangle order on their next

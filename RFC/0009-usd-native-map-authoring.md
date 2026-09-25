@@ -43,6 +43,15 @@ and [tools announcement](https://store.steampowered.com/news/posts/?appgroupname
 - `tools/quality/usd_worldmesh_pack.py` can pack imported USD triangles into a
   WMSH preview, but takes a precompiled BSP for collision/leaves and places
   every imported meshlet in every leaf. It is not a map compiler.
+  (2026-09-25: it now assigns conservative per-leaf meshlet references through
+  `worldmesh_leaf_visibility.py`, but still needs the precompiled BSP.)
+- (2026-09-25) `tools/quality/pbrt_map_build.py` accepts an authored
+  `.usd`/`.usda`/`.usdc` scene through `usd_scene.py`, with a hand-authored
+  room fixture in `quality/fixtures/usd-maps/`. Its BSP2 takes collision,
+  spawn and PVS from a generated VMF (`pbrt_collision_vmf.py`) compiled by
+  `vbsp2`, `vvis` and `vrad`. That is the temporary-VMF route the
+  [compiler seam](#compiler-seam-and-compatibility) excludes, so it is
+  preview tooling, not U1. No build result for the USD fixtures is recorded.
 - `vvis` and `vrad` read compiled BSP data. `IMapContainer` and the client/server
   already read legacy BSP or BSP2, so a complete BSP2 producer can reuse the
   runtime seam without loading USD in the game.

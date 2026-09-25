@@ -1,7 +1,8 @@
 # RFC 0003 progress: opening the host frame's nodes (R10, R20, R21/R30)
 
-Updated: 2026-09-24. Branch `scheduler-nodes` in worktree
+Updated: 2026-09-25 (section 6). Branch `scheduler-nodes` in worktree
 `source-engine-scheduler`, rebased onto `subsystem-refactor` at `d59bcda5`
+and since merged into it (tip `568a8d02`, 2026-09-24)
 (parent increment: [scheduler trust](0003-scheduler-trust-progress.md)).
 Roadmap rows R10, R20, R21 and R30 stay `partial`; see "Open".
 
@@ -257,6 +258,10 @@ No measurable difference, as the profile predicted (the cohorts are well under
 0.1 ms). The default stays 0: making the graph the default would also move
 control of both cohorts from their existing ConVars to this one, which is a
 product decision rather than a measured gain.
+
+(2026-09-25) The engine default is still 0. The Portal launchers pass
+`cl_render_start_graph 2`: `run.conf` since 2026-09-24 and `play_p2` since
+2026-09-25. `JOB_ARGS=` rolls this back.
 
 ## 6. Threaded listen server: tried in the launchers, then withdrawn (2026-09-25)
 

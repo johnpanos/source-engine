@@ -1,7 +1,27 @@
 # RFC 0005 progress: Quality and correctness harnesses
 
-Updated: 2026-09-22
+Updated: 2026-09-25 (current-state notes); dated evidence below is unchanged.
 Source revision at assessment: `95798d15` (working tree; AGENTS.md portfolio row: R02)
+
+**Current state (2026-09-25, `d6260d90`):**
+
+- The manifest has 172 suites: Q-PRESENTATION 62, Q-EDITOR 60,
+  Q-FOUNDATION 21, Q-JOBS 16, Q-CONTENT 13. An unselected
+  `conformance.py plan` selects 157 headless suites (2 optional TSan rows
+  skip without `CONFORMANCE_TSAN`); `--runner gpu` selects 15.
+- Profile files in `quality/profiles/`: `linux-headless-core`,
+  `linux-native-vulkan-gpu` (the GPU runner class,
+  [RFC 0011 G0.2](0011-progress.md#g02-gpu-runner-profile-done-2026-09-24))
+  and `windows-pe-wine` (`parity_wine.py`).
+- Runner self-tests: 55 (`test_conformance.py`).
+- `quality/baseline.json` validates with 37 tools, 6 content corpora,
+  17 profiles, 41 checks and 20 baseline entries.
+- Hosted CI: `conformance.yml` has run on GitHub. The two 2026-09-23 runs
+  passed, including all four headless-manifest cells. The three 2026-09-24
+  runs (last pushed commit `c84d6a65`) failed in `runner-self-tests`: the
+  BSP2 reader self-test could not link `bsp2tool` (undefined
+  `mapcontainer::ValidateWorldMesh` and others), so the manifest jobs did not
+  run. That self-test passes locally at `d6260d90`, which is not pushed.
 
 This file is the human-readable, durable gate-decision record for RFC 0005. The
 machine facts live in the versioned artifacts (`quality/conformance.manifest.json`,
@@ -18,9 +38,9 @@ domain's correctness, and this document makes no such claim.
 | --- | --- | --- | --- |
 | Q0 | Baseline profiles and current-check audit | **done (R01, Linux x86_64 host)** | [Q0 section below](#q0--r01-baseline-and-profile-inventory); `quality/baseline.json` |
 | Q1 | Shared runner, fixtures, result schema | **done (R02)** | [Q1 section below](#q1--r02-runner-shared-conformance-runner); `tools/quality/conformance.py` |
-| Q2 | Q-ARCH and Q-FOUNDATION reference suites | planned | `tools/archlint`, `tools/stylelint` (R04-STYLE only) |
-| Q3 | Domain oracles | partial | Q-EDITOR + Q-JOBS suites registered (below) |
-| Q4 | Content and native integration | planned | — |
+| Q2 | Q-ARCH and Q-FOUNDATION reference suites | partial (2026-09-25) | `tools/archlint`, `tools/stylelint` (R04-STYLE only); 21 Q-FOUNDATION manifest rows (platform capability suites with sensitivity rows, `foundation.expected`, `toolchain.abi.*`) |
+| Q3 | Domain oracles | partial | Q-EDITOR and Q-JOBS suites registered; the IVP/Box3D comparison runs outside the manifest (`physics.conformance` in `quality/baseline.json`) |
+| Q4 | Content and native integration | partial (2026-09-25) | BSP2 corpus checks in `quality/baseline.json`; Q-CONTENT manifest rows; the GPU runner class (`linux-native-vulkan-gpu`) |
 | Q5 | Promotion and maintenance | planned | — |
 
 ## Q0 — R01: baseline and profile inventory
@@ -65,6 +85,22 @@ x86_64, 32 threads, 125 GiB, AMD Radeon 8060S (RADV, Mesa 26.2.2), Python 3.14.7
 | `build.dedicated`, `build.dedicated-clang` | fail | R12 | `dedicated/sys_linux.cpp:277` calls protected `CAppSystemGroup::LoadModule` |
 | `legacy.unittest-legacy` (gcc) | crash | R20 | SIGSEGV in tier0 `TSListTests::PushThreadFunc` (CTSQueue multithread pop), 4 of 4 runs; this is the `scripts/tests-ubuntu-amd64.sh` command. R02 triage: a lock-free `CTSQueue` defect (NULL tail via an unvalidated help path and untagged `pNext` CAS), not a runner defect; see [Q1](#legacy-host-and-ctsqueue-triage) |
 | `legacy.unittest-legacy-clang` | crash | R07 | `moduleloadtelemetrytest.cpp:289/291` cannot `dlopen("./libmoduleloadfixture.so")` from the installed layout, then crashes |
+
+Changes since this table (2026-09-25; source and static checks only, no
+`baseline.py audit` re-run):
+
+- `legacy.unittest-legacy` (gcc): the CTSQueue crash is fixed by the
+  synchronized `CTSQueue` ([scheduler trust](0003-scheduler-trust-progress.md#3-ctsqueue-crash-r20)).
+  The run now stops at the same R07 fixture-path crash as clang, and the
+  baseline entry is re-attributed to R07.
+- `build.dedicated`, `build.dedicated-clang`: `dedicated/sys_linux.cpp` now
+  calls `CDedicatedAppSystemGroup::LoadPhysicsModule` (`97e298c6`,
+  2026-09-23), not the protected `LoadModule`. The builds were not re-run
+  here, so the recorded `fail` outcome is unverified.
+- `arch.check`, `arch.baseline`: still fail, now with 64 new and 1 stale
+  occurrences. `arch.inventory`: still fails, now with 13 uninstrumented
+  sites.
+- `roadmap.check`: still fails with the same two R15/R16 errors.
 
 Passing at this revision: the archlint, stylelint, roadmap and quality
 self-tests; `archlint hammer`; the conformance runner (93 suites, g++ and
@@ -282,17 +318,25 @@ runner, based on this triage:
   which belongs to RFC 0003 C / RFC 0006 M2.
 - **Runner behaviour:** the host correctly reports the crash (exit 139). The
   hosted job is bounded.
+- **Resolved (2026-09-25):** RFC 0003's scheduler trust increment replaced
+  `CTSQueue` with a mutex-guarded list. The gcc run passes all 84 CTSQueue
+  and 84 CTSList lines in 3 of 3 runs, then stops at the R07 fixture crash
+  ([record](0003-scheduler-trust-progress.md#3-ctsqueue-crash-r20)).
 
 ### Honest non-claims
 
 - R02 certifies the shared runner and its outcome handling, not any domain gate.
   RFC 0002, 0003 and other gates keep their own acceptance criteria.
-- No hosted CI run has executed `conformance.yml` yet. The `ubuntu:24.04`
-  container run shows the image's default compilers build and pass every suite.
-  Making the check required is repository-administrator policy.
-- Only the `linux-headless-core` runner profile executes here. Native
-  GPU/window, device (Android/Apple), sanitizer and TSan lanes are separate
-  profiles and gates. The g++ sanitizer runtimes are absent on this host (Q0).
+- No hosted CI run had executed `conformance.yml` at this date. The
+  `ubuntu:24.04` container run shows the image's default compilers build and
+  pass every suite. Making the check required is repository-administrator
+  policy. (2026-09-25: hosted runs exist; see the current state at the top.)
+- Only the `linux-headless-core` runner profile executed here at this date.
+  Native GPU/window, device (Android/Apple), sanitizer and TSan lanes are
+  separate profiles and gates. The g++ sanitizer runtimes are absent on this
+  host (Q0). (2026-09-25: the GPU runner class exists; a device runner and a
+  hosted GPU lane do not. The only TSan manifest rows are the optional
+  `jobsystem.radiosity.tsan` pair.)
 - The runner bounds processes it starts. It does not prove safe production
   shutdown (RFC 0005).
 - Evidence in `quality-results/` is per run and git-ignored. A linked old run
@@ -348,11 +392,14 @@ provider without process-global shader interfaces.
 
 ## Next steps
 
-- Observe the first hosted `conformance.yml` run. Administrators decide whether
-  to make it a required check.
+- Fix the hosted `conformance.yml` failure seen on 2026-09-24 (the BSP2
+  reader self-test link step) and confirm a passing hosted run of the current
+  tree. Administrators decide whether to make it a required check.
 - Grow the manifest as each RFC lands a suite (Q-FOUNDATION lifecycle/loader/ABI,
   Q-CONTENT corpora, Q-PHYSICS IVP/Box3D comparisons, Q-PRESENTATION command
   suites). Each addition is one manifest row plus a domain contract and a
   `checks-v1` suite.
-- Add native/device profiles (and their `conformance-profile/v1` files) as the
+- Add device profiles (and their `conformance-profile/v1` files) as the
   R03 toolchain boundary and R14–R18 native seams provide runnable targets.
+  The Linux GPU profile exists (2026-09-24); Android and Apple runner profiles
+  do not.

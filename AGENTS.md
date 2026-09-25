@@ -20,9 +20,9 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0006](RFC/0006-modern-cpp-ownership-and-synchronization.md) | C++20 targets, results, ownership, bounded queues, CPU publication and GPU fences |
 | [0007](RFC/0007-physically-based-lighting-pipeline.md) | Substitutable light baker (legacy vrad, Cycles), PBR material family, image-based lighting, compile-tool port |
 | [0008](RFC/0008-canonical-world-data-and-runtime-formats.md) | Compiled USD World Stage, BSP2/KTX2, modern map and model resources, visual capabilities, incremental builds and live USD development loading |
-| [0009](RFC/0009-usd-native-map-authoring.md) | Editable USD map source, world/prop role separation, native map compiler and editor workflow without VMF |
-| [0010](RFC/0010-portable-vgui-surface.md) | VGUI beneath its frozen API: UI draw list, UI scale, portable fonts, text input, optional HTML, composition |
-| [0011](RFC/0011-runtime-indirect-lighting.md) | Runtime indirect light: probe volume with visibility, indirect policy, runtime light set, substitutable baked/radiosity/SDF/ray-query producers switchable at runtime (proposed) |
+| [0009](RFC/0009-usd-native-map-authoring.md) | Editable USD map source, world/prop role separation, native map compiler and editor workflow without VMF (proposed) |
+| [0010](RFC/0010-portable-vgui-surface.md) | VGUI beneath its frozen API: UI draw list, UI scale, portable fonts, text input, optional HTML, composition (proposed; no roadmap row yet) |
+| [0011](RFC/0011-runtime-indirect-lighting.md) | Runtime indirect light: probe volume with visibility, indirect policy, runtime light set, substitutable baked/radiosity/SDF/ray-query producers switchable at runtime (proposed; G0–G10 evidence on native Vulkan desktop, rows R70–R80 unranked) |
 | [0012](RFC/0012-antialiasing-msaa-specular-alpha-coverage.md) | Antialiasing: per-profile 4x MSAA target policy, alpha to coverage, PBR specular AA, offline normal-variance roughness and alpha-coverage mips (proposed) |
 | [0013](RFC/0013-opt-in-physics-capabilities.md) | Opt-in Box3D capabilities beside the IVP-parity contract: one versioned interface per capability, profile selection, per-capability benchmark gates; parallel step first (proposed) |
 | [0014](RFC/0014-native-vulkan-and-bsp2-debug-controls.md) | Native Vulkan and BSP2 debug controls: one device-owned view catalog in separate `DEBUG_VIEW` variants, draw pick/bisection, shader reload/capture, sync/reuse checks, BSP2 lump inspection (proposed) |
@@ -353,29 +353,29 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 
 | Rank / ID | Work and RFC scope | Prerequisites | Done looks like | State |
 | --- | --- | --- | --- | --- |
-| 1 / R01 | Reproducible baseline and profile inventory; 0005 Q0, baseline portions of all domains | — | Current checks/failures recorded; exact build/content/tool availability and supported profiles established; baseline captures and budgets identified | done ([Q0 baseline](RFC/0005-progress.md#q0--r01-baseline-and-profile-inventory)) |
+| 1 / R01 | Reproducible baseline and profile inventory; 0005 Q0, baseline portions of all domains | — | Current checks/failures recorded; exact build/content/tool availability and supported profiles established; baseline captures and budgets identified | partial (reopened 2026-09-25: audit deviates; [Q0 baseline](RFC/0005-progress.md#q0--r01-baseline-and-profile-inventory)) |
 | 2 / R02 | Trustworthy runner, fixtures, evidence; 0005 Q1 | R01 | Zero/missing tests, skips, crashes, timeouts and incomplete output fail correctly; explicit test composition and reproducible artifacts work | done ([Q1 runner](RFC/0005-progress.md#q1--r02-runner-shared-conformance-runner)) |
 | 3 / R03 | Per-target C++20/toolchain boundary; 0006 M0 | R01, R02 | Compile/link/run proof; final flags verified; legacy/C17 settings and frozen-consumer ABI combinations preserved | active ([0006 progress](RFC/0006-progress.md)) |
 | 4 / R04 | Full architecture and migration enforcement; 0001 rank 1, 0002 H0 enforcement, Q-ARCH | R01, R02 | Ownership, direct/transitive includes, Waf/link graph, hermetic builds, exact debt and evidence schemas enforced; negative projects fail | partial |
-| 5 / R05 | Results, IDs, quantities, ownership vocabulary; 0001 rank 2, 0006 M1 | R03, R04 | `Expected`, borrowing/scoped resources and matchers pass value/lifetime/ABI tests; a real consumer uses them | planned |
-| 6 / R06 | Composition/lifecycle kernel and minimal test providers; 0001 rank 3, Q-FOUNDATION | R02, R05 | Unit runner composes typed providers without ambient factories; required/optional validation, failure-at-each-stage rollback and repeat-instance tests pass | planned |
+| 5 / R05 | Results, IDs, quantities, ownership vocabulary; 0001 rank 2, 0006 M1 | R03, R04 | `Expected`, borrowing/scoped resources and matchers pass value/lifetime/ABI tests; a real consumer uses them | partial ([`Expected` and consumers](RFC/0006-progress.md)) |
+| 6 / R06 | Composition/lifecycle kernel and minimal test providers; 0001 rank 3, Q-FOUNDATION | R02, R05 | Unit runner composes typed providers without ambient factories; required/optional validation, failure-at-each-stage rollback and repeat-instance tests pass | partial (`platform/composition.cpp`; [conformance record](RFC/0001-conformance-progress.md)) |
 | 7 / R07 | Loader containment, telemetry and ABI fixtures; 0001 rank 4 / retirement A | R04, R06 | Scoped ownership, structured errors, legacy bridge and fake/native suites pass; telemetry handles failed/duplicate/nested requests; reviewed ratchet/inventory current | partial |
 | 8 / R08 | Hammer H0 corpus and migration inventory; 0002, Q-EDITOR/Q-CONTENT | R02, R03, R04 | Exhaustive ownership/callers and migration records; legacy build evidence/gaps; headless target; semantic comparator detects seeded data loss | active |
-| 9 / R09 | Physics A feasibility and IVP baseline; 0004, Q-PHYSICS | R01, R02, R05 | Method/profile inventory, units/assets and measurements; tested solution or explicit scope decision for impact state, contact mutation, ragdoll limits and hull/decoder blockers | planned ([0004 progress](RFC/0004-progress.md)) |
+| 9 / R09 | Physics A feasibility and IVP baseline; 0004, Q-PHYSICS | R01, R02, R05 | Method/profile inventory, units/assets and measurements; tested solution or explicit scope decision for impact state, contact mutation, ragdoll limits and hull/decoder blockers | partial ([0004 progress](RFC/0004-progress.md)) |
 | 10 / R10 | Runner/clock/sequence contracts and serial graph; 0001 rank 11, 0003 A–B | R05, R06 | Virtual time and independent graph model; validation/publication/affinity/failure tests; ordered serial host graph matches legacy captures | active ([0003 progress](RFC/0003-progress.md); [host graph](RFC/0003-scheduler-trust-progress.md); [render nodes](RFC/0003-scheduler-nodes-progress.md)) |
 | 11 / R11 | Paths and module resolution; 0001 rank 5 | R05, R07 | Native/virtual paths distinct; resolution/verification separate from opening; encoding/search/failure corpus passes | planned |
 | 12 / R12 | Dedicated-server composition; 0001 rank 6 | R06, R07, R11 | Installed startup/shutdown and partial failure pass; link/runtime evidence shows render and desktop UI absent | partial ([composition migration slice](RFC/0001-dedicated-composition-progress.md)) |
-| 13 / R13 | Hammer geometry and scene seams; 0002 H1 | R05, R08 | Strict headless targets; geometry/reference/reparent tests and independent documents pass; selected legacy callers route through shared owner | planned |
+| 13 / R13 | Hammer geometry and scene seams; 0002 H1 | R05, R08 | Strict headless targets; geometry/reference/reparent tests and independent documents pass; selected legacy callers route through shared owner | partial ([0002 current state](RFC/0002-progress.md#current-state-2026-09-25)) |
 | 14 / R14 | Window/input contracts and SDL2 adapter; 0001 rank 7 | R06 | Existing behavior captured and preserved; normalized events, optional behavior, surface ownership and input lifecycle conformance pass | planned |
 | 15 / R15 | Render seam, scoped legacy services and null provider; 0001 rank 8 | R06 | Explicit provider/caps/profile selection; null and legacy contract suites; material consumer tested without new shader globals | done ([render seam](RFC/0001-render-seam-progress.md)) |
 | 16 / R16 | Pair-specific presentation bridges; 0001 rank 9, 0006 M3 | R14, R15 | Native handles confined; multi-surface resize/zero-size/loss/shutdown pass; delayed GPU completion prevents early reuse | done ([presentation bridges](RFC/0001-presentation-bridge-progress.md); R14 surface slice only) |
 | 17 / R17 | Hammer real renderer feasibility; 0002 R1 | R08, R15, R16 | Source-material viewport on declared GTK X11/Wayland profiles; state/target restoration, scale, capture, sharing and teardown measured | planned |
 | 18 / R18 | SDL3 provider parity; 0001 rank 10 | R14, R16 | Same window/input suites and representative behavior pass for SDL2/SDL3; SDK dependency is private; supported interop pairs tested | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
-| 19 / R19 | Box3D one-worker vertical slice; 0004 B | R05, R09 | Pinned coherent provider loads existing BSP/PHY, compound prop, inside trace, verified impact, ragdoll and matching-schema restore | planned |
+| 19 / R19 | Box3D one-worker vertical slice; 0004 B | R05, R09 | Pinned coherent provider loads existing BSP/PHY, compound prop, inside trace, verified impact, ragdoll and matching-schema restore | partial ([0004 progress](RFC/0004-progress.md)) |
 | 20 / R20 | Parallel scheduler and controlled legacy bridge; 0003 C, 0006 M2 | R10 | Bounded queue/worker contracts, publication/wake/overflow and native stress pass; no forbidden helping/nested wait; total capacity and overhead measured | partial ([batch migration](RFC/0003-batch-migration-progress.md); [pool trust](RFC/0003-scheduler-trust-progress.md); [bounds, budgets](RFC/0003-scheduler-nodes-progress.md)) |
 | 21 / R21 | Particle reference migration; 0003 D | R20 | Legacy/serial/parallel captured outputs agree; attachment/lifetime tests, improvement and small-workload budgets pass; quiescent rollback works | partial ([batch migration](RFC/0003-batch-migration-progress.md)) |
-| 22 / R22 | Hammer persistence slice; 0002 H2 | R11, R13 | Declared VMF features round-trip and compile; independent acceptance, unknown/loss reporting, detached import and save failure/recovery pass | planned |
-| 23 / R23 | Hammer application authority; 0002 H3 | R13, R22 | One selection/mutation/history owner; draft resolution, transform/cancel/undo/redo/save-position and generated sequences pass headlessly | planned |
+| 22 / R22 | Hammer persistence slice; 0002 H2 | R11, R13 | Declared VMF features round-trip and compile; independent acceptance, unknown/loss reporting, detached import and save failure/recovery pass | partial ([0002 current state](RFC/0002-progress.md#current-state-2026-09-25)) |
+| 23 / R23 | Hammer application authority; 0002 H3 | R13, R22 | One selection/mutation/history owner; draft resolution, transform/cancel/undo/redo/save-position and generated sequences pass headlessly | partial ([0002 current state](RFC/0002-progress.md#current-state-2026-09-25)) |
 | 24 / R24 | Hammer tools and presenters; 0002 H4 | R23 | Normalized traces share policies across entry points; two-document and close/focus/capture tests pass; no widgets in tools/presenters | planned |
 | 25 / R25 | GTK editor workflow; 0002 H5 | R17, R22, R24 | Open/edit/undo/save/reopen/compile/run with multiple views, inspector and textures; declared fidelity and no hidden MFC runtime dependency | planned |
 | 26 / R26 | Remaining foundation providers; 0001 rank 12 | R10, R11 | Native clock/thread/memory/process/environment/paths/diagnostics suites pass for supported profiles, including failure and cleanup | planned |
@@ -383,7 +383,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 28 / R28 | Native Vulkan bootstrap; 0001 rank 14 | R10, R16, R18 | Native adapter/device/queues and SDL3 bridge present smoke frame; required-profile failure and validation diagnostics work | partial ([native Vulkan slice](RFC/0001-native-vulkan-progress.md)) |
 | 29 / R29 | Four-platform architecture proof; 0001 rank 15 expanded to Linux/macOS/iOS/Android | R12, R18, R26, R28 | Each target passes foundation and SDL3/Vulkan native lifecycle smoke; Apple portability, iOS static composition and mobile packaging demonstrated; headless roles tested where declared | planned |
 | 30 / R30 | Existing parallel kernels; 0003 E | R21 | Each bones/query-cache/entity-packing/leaf/shadow cohort independently passes three-mode, ownership, latency/performance and rollback gates | partial ([batch migration](RFC/0003-batch-migration-progress.md)) |
-| 31 / R31 | Physics core compatibility; 0004 C | R19 | Required traces, filters, events, materials, constraints/ragdolls, controllers and persistence pass client/dedicated gameplay corpus | planned |
+| 31 / R31 | Physics core compatibility; 0004 C | R19 | Required traces, filters, events, materials, constraints/ragdolls, controllers and persistence pass client/dedicated gameplay corpus | partial (provider level; [0004 progress](RFC/0004-progress.md)) |
 | 32 / R32 | Native Vulkan functional MVP; 0001 rank 16 | R10, R28 | Representative map renders opt-in; resource/pipeline/upload/sync/swapchain contracts pass; unsupported features fail explicitly | active ([video options](RFC/0001-native-vulkan-video-options-progress.md); [queued rendering](RFC/0001-native-vulkan-queued-rendering-progress.md)) |
 | 33 / R47 | PBR material family core; 0007 A/D | R02, R15 | BRDF analytic and white-furnace tests; `pbr` pixel family matches Cycles references; negative controls fail; capability and validated fallback on D3D9/DXVK | active ([0007 progress](RFC/0007-progress.md)) |
 | 34 / R65 | Runtime antialiasing: 4x MSAA targets, alpha to coverage, PBR specular AA; 0012 A0–A3, A5 | R02, R32, R47 | Edge/alpha/shimmer/identity oracles with negative providers pass; glass keeps scene depth under MSAA; per-profile target memory policy and 4x recommendation follow measured Linux and Fold7 budgets | planned ([RFC 0012](RFC/0012-antialiasing-msaa-specular-alpha-coverage.md)) |
@@ -406,7 +406,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 51 / R64 | Direct USD development-runtime iteration; 0008 F11 | R56, R59, R60 | Desktop edit/reload/play retains authored identities and runtime parity; mobile opt-in decision follows measured package, startup, memory and lifecycle results; compiled-package path remains supported | planned ([RFC 0008](RFC/0008-canonical-world-data-and-runtime-formats.md)) |
 | 52 / R58 | Mobile map packages; 0008 F7 | R29, R55, R56 | Device format queries recorded; per-profile packages pass installed-package smoke tests on R29 runners | planned |
 | 53 / R33 | Hammer feature families; 0002 H6 | R25 | Each declared displacement/instance/manifest/overlay/texture/preview family passes load/edit/undo/save/build, recovery and performance gates | planned |
-| 54 / R34 | Physics gameplay and tool completion; 0004 D | R31 | Required fluids, vehicle modes, pulley/group and selected Portal/game features pass; compiler/content workflows preserve supported formats | planned |
+| 54 / R34 | Physics gameplay and tool completion; 0004 D | R31 | Required fluids, vehicle modes, pulley/group and selected Portal/game features pass; compiler/content workflows preserve supported formats | partial (provider level; [0004 progress](RFC/0004-progress.md)) |
 | 55 / R35 | New audited compute seams; 0003 F | R30 | Animation/render-list/AI/streaming cohorts have stable inputs, correct cross-system edges and ordered commit; individual equivalence/budget gates pass | planned |
 | 56 / R36 | Vulkan parity and four-platform release readiness; 0001 rank 17 | R29, R32 | Per-platform materials/images, loss/recovery, cache, hardware budgets and normal package/store-compatibility checks pass; default selection is a separate product decision | planned |
 | 57 / R37 | Physics parallel rollout and default gate; 0004 E | R20, R34 | Worker-count determinism, nested-work/callback/shutdown bridge, platform packaging, budgets and supported client/server combinations pass; IVP rollback tested | planned |
@@ -482,8 +482,15 @@ Keep the table concise and link details below or from the domain progress file.
     - the parity suite at 4 workers matches its serial observations bitwise.
   - Parallel stepping is the server default (user decision, 2026-09-25):
     auto workers from the compute pool, with `-physics_workers 1` to opt out.
-    Unmeasured on the Fold7 and Apple profiles.
+    Unmeasured on the Fold7 and Apple profiles. It applies only where Box3D is
+    selected (`./play`, `./play_p2`, `run.sh`). The launcher, the dedicated
+    server, Waf and the Android APKs default to IVP.
   - Not done:
+    - the parity runner's verdict fails: 602/602 checks pass but
+      `dynamics.tumble.audible-impacts` diverges (2026-09-25);
+    - the `box3d` submodule carries an uncommitted `contact_solver.c` patch,
+      so the build is not the pinned source;
+    - pool-bridge timing on the merged code is uncertified (busy host);
     - the client environment has one worker;
     - no gameplay soak;
     - no Android or Apple measurements;
@@ -509,8 +516,14 @@ Keep the table concise and link details below or from the domain progress file.
     places the Cycles atlas in the legacy flat lightmap channel for the
     compiled style 32, now carried by the Stage's typed light API; the in-game
     frame changes while executable and material hashes stay fixed.
-    Canonical RNM/SH lighting and BSP2 render lumps remain open. R56–R58 remain
-    planned.
+    Canonical RNM/SH lighting and BSP2 render lumps remain open. That bridge
+    is the VMF path; PBRT/USD maps carry their Cycles atlas in `LMAP`
+    directly.
+  - Since then (2026-09-25): WMSH draws by default (`r_worldmesh_draw 2`) with
+    cone and occlusion culling; `RPRB`, `PRBV`, `RTRN` and `SDFV` lumps exist.
+    Installed encodings differ from the RFC's plan (`LMAP` is one RGBA16F
+    page, `RPRB` a raw atlas, WMSH keeps face IDs). See
+    [RFC 0008 current state](RFC/0008-progress.md). R57–R58 remain planned.
 
 - R48-BAKER: `planned` (2026-09-24, user direction). This is one
   `ILightBaker` seam with the legacy vrad and pinned standalone-Cycles
@@ -520,7 +533,9 @@ Keep the table concise and link details below or from the domain progress file.
   - Why: a 2026-09-24 audit found three Blender-driven bakers and duplicated
     basis constants and L1 fits. It also found cache keys that miss scene files
     and tool revisions, and steps that delete the previous package before
-    rerunning.
+    rerunning. `pbrt_map_build.py` has since fixed its cache keys and keeps the
+    previous outputs (`c1b67422`, `d112d001`); the duplicated basis and L1 code
+    remain, and the baker-level requirement stands.
   - Done also requires complete cache keys, atomic output replacement, and a
     dirty-subset bake request for R52/R57.
   - No baker code is installed. See the
@@ -530,6 +545,8 @@ Keep the table concise and link details below or from the domain progress file.
     regular vbsp/vvis/vrad compile feeds the Blender pipeline. It is not the
     seam and closes no R48 criterion
     ([record](RFC/0007-progress.md#regular-compile-hook-vrad_cyclespy-installed-2026-09-25)).
+  - Cycles bakes default to the CPU (user decision 2026-09-25, `d57305aa`);
+    `gpu` and `auto` are opt-ins.
 
 - R65–R66 (RFC 0012): added 2026-09-24 as `planned` at the user's direction.
   R65 is ranked directly after R47: it is bounded, it closes the native
@@ -549,6 +566,8 @@ Keep the table concise and link details below or from the domain progress file.
     instead of up to eleven. They pass their pixel suites as a four-set
     device (`.four-sets`).
   - Legacy LightmappedGeneric and `$phong` still need nine and seven sets.
+  - Clear coat is on world and model PBR (`cd29e77a`); model glass is still
+    dropped.
   - No Apple, Mali or Fold7 run. This closes no R29 criterion. See the
     [record](RFC/0007-progress.md#energy-compensation-one-glsl-brdf-and-grouped-descriptor-sets-r47--r29-prep-2026-09-25).
 
@@ -587,16 +606,44 @@ Keep the table concise and link details below or from the domain progress file.
     Apple runs. See the
     [record](RFC/0007-progress.md#r50-relight-relightable-reflection-probes-bounded-r50-slice-2026-09-25).
 
+- R70–R80 (RFC 0011): not yet ranked in the table; ranking is a user
+  decision. On 2026-09-24/25 the user directed G0–G10 in order, and every gate
+  has a done record on native Vulkan desktop
+  ([gate status](RFC/0011-progress.md#gate-status)).
+  - Deferred or unverified: the G1.7 DXVK capture; Apple (G8.3); the Fold7
+    with grouped descriptor sets; G10 radiosity on an Android device. The
+    Android soak was shortened to 5 minutes by the user. SDF and ray-query
+    producers are declared unsupported on Android.
+  - `gi_reference.py check` fails at HEAD: the six hand-built fixtures'
+    references predate `980565cd`, and `portal-light`'s `room` camera has
+    empty regions. The gallery and `swing` pass.
+  - None of these rows can be `done` while its prerequisites (R20, R28, R29,
+    R32, R47, R49, R53, R54) are open, so `partial` is the honest state once
+    ranked.
+
 - R59–R60 (RFC 0009): added 2026-09-23 as `planned` for USD-native map
   compilation and editing. R54's VMF-derived compiled World Stage remains a
   separate gate. R59 requires a playable map compiled from authored USD without
   VMF or a prior BSP; R60 requires USD to own editor persistence and a declared
   VMF import path, with role-aware tools and measured edit-to-preview behavior.
-  Current USD previews do not satisfy either gate.
+  Current USD previews do not satisfy either gate. `pbrt_map_build.py` accepts
+  USD scenes but compiles them through a generated VMF, which is not R59's
+  compiler.
 - R61–R64 (RFC 0008 F8–F11): added 2026-09-23 as `planned` for versioned native
   map spatial data, a modern model asset path, visual parity and geometry
   scalability, and direct USD development-runtime iteration. They extend the
   Source 2-like outcome without marking F1–F7 or the current preview complete.
+
+- R08: `active`. See the
+  [RFC 0002 current state](RFC/0002-progress.md#current-state-2026-09-25).
+  - The ledger has 28 migrations, 11 of them extracted format cores.
+    Inventory coverage is 46 of 530 files. There are 60 Q-EDITOR suites.
+  - `archlint hammer --verify` has failed since `7035c29e` (2026-09-22). It
+    rejects the `hammer.formats` → `render.contracts` edge added by the R47
+    PBR schema. Fixing it needs a decision: the validator accepts edges to
+    capability modules, or Hammer reaches the schema through its own port.
+  - Include-graph checking is not installed. Strict Hammer files already
+    form a geometry↔formats cycle, and nothing fails.
 
 - R16: `done` (2026-09-22) for the rank 9 scope:
   - Contract: `public/render/render_presentation.h` (`render.presentation.v1`).
@@ -615,7 +662,10 @@ Keep the table concise and link details below or from the domain progress file.
     here. R14's event/input contracts and SDL2 adapter remain `planned`.
   - Open: the D3D9/DXVK pair stays on the legacy `SetMode` membrane (no D3D9
     new-contract device); Android, macOS and iOS surfaces are unverified; no CI
-    lane. Findings: Wayland cannot unminimize; hiding after a FIFO present kills
+    lane. Since 2026-09-24 archlint reports five `CAP002` findings in
+    `render.vulkan.core` (unregistered `vulkan_compute.h`, `vulkan_debug_utils.h`,
+    `vulkan_frame_stats.h`, `vulkan_shader_library.h`); the no-SDL rule still
+    holds. Findings: Wayland cannot unminimize; hiding after a FIFO present kills
     the connection. See the [presentation bridge record](RFC/0001-presentation-bridge-progress.md).
 
 - R01: `done` (2026-09-22) for the Q0 baseline and profile inventory:
@@ -635,6 +685,19 @@ Keep the table concise and link details below or from the domain progress file.
   - This certifies no domain or platform gate. See the
     [Q0 record](RFC/0005-progress.md#q0--r01-baseline-and-profile-inventory).
     Reopen R01 when an audit deviates and the declaration is not reviewed.
+  - Reopened 2026-09-25: the declaration no longer matches the tree.
+    - `arch.hammer` and `gi.references` fail but are declared `pass` (rerun
+      2026-09-25). The first rejects the `hammer.formats` → `render.contracts`
+      edge from the R47 schema work; the second has fixture references older
+      than `980565cd`.
+    - `physics.conformance` is declared `pass`; its runner verdict fails on
+      `dynamics.tumble.audible-impacts` (RFC 0004 record, not rerun here).
+    - The archlint reasons are stale: 64 new / 1 stale occurrences and 13
+      uninstrumented loader sites.
+    - The gcc TSList crash is gone, and the dedicated build's recorded cause
+      is fixed in source (`97e298c6`) but not rebuilt.
+
+    Close it again by rerunning `baseline.py audit` and reviewing each outcome.
 
 - R15: `done` (2026-09-22) for the rank 8 scope:
   - Contracts: feature profile, quirks and structured selection errors
@@ -700,7 +763,8 @@ Keep the table concise and link details below or from the domain progress file.
     - zero discovery and partially unmatched selectors;
     - interrupted runs, which leave `incomplete` evidence.
   - Also supported: repeats and seeds.
-  - Self-tests: 44 negative and positive runner self-tests.
+  - Self-tests: 44 negative and positive runner self-tests (55 at
+    2026-09-25).
   - Legacy hosts: `unittest_legacy`, `run_headless.sh` and `parity_wine.py`
     now fail on zero discovery.
   - Evidence (93/93 each):
@@ -715,6 +779,12 @@ Keep the table concise and link details below or from the domain progress file.
     defect, triaged to R20.
   - Not delivered: native, GPU, device and sanitizer runner profiles, and any
     domain gate.
+  - Since then (2026-09-25): the manifest has 172 suites (157 headless, 15 in
+    the `linux-native-vulkan-gpu` profile). Hosted CI passed twice on
+    2026-09-23; the three 2026-09-24 runs failed linking the BSP2 reader
+    self-test before any suite ran. It passes locally at HEAD, which is not
+    pushed. The gcc CTSQueue crash is fixed (R20); the remaining
+    `unittest_legacy` crash is R07's fixture path.
   - See [Q1](RFC/0005-progress.md#q1--r02-runner-shared-conformance-runner).
 
 - R20-BATCH / R21-PARTICLE / R30-BONES-PACKING: `partial`. A C++11 facade
@@ -725,13 +795,18 @@ Keep the table concise and link details below or from the domain progress file.
   tests and Portal native smoke runs pass. Query-cache maintenance and Portal
   placement carving each share one kernel with their conformance suites and are
   proven output-equivalent to the original code. They stay default legacy
-  because pooled measured no faster. Full engine-pool TSan is **not clean**;
-  semantic gameplay captures and frame/performance gates remain open. See the
+  because pooled measured no faster. The engine-pool fixtures are TSan-clean;
+  the whole product has never run TSan-clean, and semantic gameplay captures
+  and frame/performance gates remain open. The launchers pass
+  `sv_querycache_job_graph 2` and `portal_carve_job_graph 2`. Commit
+  `66e2a40c` moved six further call sites (leaf-system dispatches, shadow bone
+  batches, snapshot send, nav visibility) onto pooled dispatch with no mode
+  switch, oracle or record; snapshot send belongs to R38's scope. See the
   [scope, evidence, rollback and deferred consumers](RFC/0003-batch-migration-progress.md).
   Contract-preserving scheduler optimizations are
   [recorded with microbenchmarks and oracles](RFC/0003-scheduler-performance-progress.md).
   Examples: real-pool 1-worker 2048-item dispatch 38.8→4.4 µs, and Seal up to 42×
-  faster. Q-JOBS is now 10/10. This sets no frame budget and closes no gate.
+  faster. Q-JOBS has 16 manifest rows (14 required, 2 optional TSan). This sets no frame budget and closes no gate.
 
 - R10-HOST-GRAPH / R20-POOL-TRUST: `partial` (2026-09-25). The host frame after
   admission runs as an ordered serial graph (one legacy node per phase,
@@ -830,8 +905,11 @@ Keep the table concise and link details below or from the domain progress file.
     Portal maps and `gi_door` boot queued with 0 cross-thread calls;
     `gi_door` frames byte-identical across modes; frame pacing on a loaded
     host shows mode 2 at least as fast with a lower p99.
-  - Launchers keep pinning mode 0 (run.conf, portal_boot, frame_pacing,
-    Android); no TSan, resize/device-loss or mobile evidence. See the
+  - `run.conf` and `run.sh` pass `+mat_queue_mode 2`; `portal_boot.py`,
+    `frame_pacing.py` and Android still pin 0.
+  - A TSan run of the product tree found 46 signatures only in mode 2, each
+    triaged in the record. `portal_boot --resize-stress` fails in both modes.
+    No device-loss or mobile evidence. See the
     [queued rendering record](RFC/0001-native-vulkan-queued-rendering-progress.md).
 
 - R32-VIDEO-OPTIONS: `partial` (2026-09-23). The Video options take effect on
@@ -864,50 +942,29 @@ Keep the table concise and link details below or from the domain progress file.
   traffic saving does not hold for that driver. See the
   [frame pacing record](RFC/0001-native-vulkan-frame-pacing-progress.md#mobile-gpu-cost-render-pass-breaks-2026-09-23).
 
-Current RFC 0001 evidence (2026-09-22):
+Current RFC 0001 evidence (updated 2026-09-25):
 
-- [Native Vulkan slice](RFC/0001-native-vulkan-progress.md) records the R28
-  bootstrap and the substitutable-backend work. A real instance/physical-device/
-  queues/SDL3-surface/swapchain core behind `shaderapivulkan` presents pixel-
-  verified frames and rasterizes a demo triangle and a sampled textured quad,
-  surviving resize/teardown (`native_vulkan_bringup_conformance`, 15 checks). A
-  native Vulkan provider of the backend-agnostic `render_backend.h` contract
-  (`vulkan_render_backend.{h,cpp}`) passes the SAME shared conformance suite as
-  the null provider (`render_backend_vulkan_conformance`, 33 checks) — the LSP
-  substitutability proof for generalizing the material system's backend. The
-  material-facing legacy interfaces drive native Vulkan for clear/present, mesh
-  geometry, per-draw shader binding/constants/transform, and material-uploaded
-  textures (incl. DXT), verified by `material_facing_vulkan_conformance`
-  (13 checks). **Correction:** an earlier claim that `portal_boot.py` passes was a
-  false positive — the screenshot `ReadPixels` overload the engine uses was a stub,
-  so the `has_scene_detail` gate was satisfied by uninitialized-memory noise. With
-  `ReadPixels` fixed the gate correctly reports the frame is near-black: the world
-  geometry does not yet render through the native path. Real bugs fixed while
-  finding this (stub `ReadPixels`, discarded index buffer, stubbed matrix stack,
-  `IsUsingGraphics()` returning false so the material system skipped drawing, and
-  unsupported `BGRX8888`/`I8`/`BGR888` texture uploads) are genuine improvements.
-  A further fix wired the **real material draw path** (`IMesh::Draw` ->
-  `IShaderAPI::Bind`/`DrawMesh` -> `material->DrawMesh` -> `CShaderSystem::DrawElements`
-  -> `BeginPass` -> `RenderPass`), which `CEmptyMesh::Draw` had bypassed entirely:
-  the engine now binds the **real Source world/model shaders** (LightmappedGeneric,
-  vertexlit_and_unlit_generic, ...) and the world geometry flows to the GPU
-  (~30 -> 8000+ draws / ~12M verts/frame) with the correct transform (verified: a
-  forced solid-color shader fills the view). Per-draw texture binding and the batch
-  `CreateTextures` were also implemented. Remaining before a recognizable frame:
-  world-texture residency (base textures aren't downloaded, so surfaces hit the
-  no-op `BindStandardTexture` fallback and render the debug color), lighting
-  (lightmaps unapplied), and draw-path performance (12M verts through the naive
-  per-draw path sometimes exceeds the boot timeout). Conformance suites (equiv 17,
-  facing 13, bringup 20, LSP 33) remain green. A **material equivalence
-  oracle** (`material_equivalence_vulkan_conformance`, 14 checks) now measures
-  equivalence against the behavior the D3D9 shaders define: the native
-  UnlitGeneric path produces `cModulationColor * baseTexture(cBaseTextureTransform
-  * uv)` — the exact `unlitgeneric_ps2x`/`vs20` formula — with every constant set
-  at its real Source register (`common_vs_fxc.h`: c4/c37/c38-c39), plus the
-  `$translucent`/`$additive` blend equations selected from `IShaderShadow` state,
-  and negative controls proving a non-conforming backend is caught. UnlitGeneric
-  is the first shader family at real fidelity against it; alpha test, the matrix
-  stack, and the rest of `stdshader_dx9` are the tracked next slices.
+- [Native Vulkan slice](RFC/0001-native-vulkan-progress.md)
+  ([current state](RFC/0001-native-vulkan-progress.md#current-state-2026-09-25))
+  records R28/R32. Portal renders a lit, textured scene natively:
+  `portal_boot.py --renderer native-vulkan` passes on testchmb_a_01,
+  testchmb_a_08, escape_00 and escape_02.
+  - Implemented: render targets, world texture residency, flat and bumped
+    lightmaps, model lighting, integer HDR, PortalRefract, VGUI, fog,
+    bloom/color correction and model shadows.
+  - Declined by name: motion blur, water, eyes, teeth and flashlight. Line and
+    point draws are dropped, alpha to coverage is a stub, and skinning runs on
+    the CPU.
+  - Oracles: `material_pixel_conformance.py` has 14 families, most judged
+    against D3D9 references. Waf GPU suites: bring-up 98, material-facing 25,
+    equivalence 64 checks. The 15 suites of the manifest's
+    `linux-native-vulkan-gpu` profile pass. A `-vkvalidate` boot logs no
+    messages.
+  - The 84 legacy stdshader ports (R32-LEGACY-SHADERS) are not in this tree;
+    they exist only as uncommitted changes in the `source-engine-vkshaders`
+    worktree.
+  - The 2026-09-22 false-positive correction is history. No hosted CI lane;
+    Android and Apple are unverified.
 - [Portal SDL3/Wayland/Vulkan progress](RFC/0001-portal-vulkan-progress.md) records
   the verified Linux compatibility slice, real images and GPU/lifecycle tests.
   DXVK Native retains the D3D9 material implementation; R28/R32 native Vulkan
@@ -916,8 +973,14 @@ Current RFC 0001 evidence (2026-09-22):
   trace have outcome tests and deliberately bad fixtures. Product staging
   verifies dependency/source/artifact hashes and preserves the supplied runtime.
 - Phase A/B progress records remain scoped completion evidence. R39 is partial:
-  typed first-party composition has migrated caller cohorts, but built-in shader
-  loading and remaining provider catalogs still prevent global Phase D closure.
+  typed first-party composition has migrated caller cohorts. The standard
+  shader library is now linked and bound by a typed descriptor, and the
+  launcher picks window, input, video and audio providers from typed
+  descriptors (2026-09-25). Physics and the filesystem are still loaded by
+  filename, which prevents global Phase D closure. R40: the launchable-DLL
+  wrappers and `ilaunchabledll.h` are deleted (`66e2a40c`) and the tool process
+  contract is installed; its POSIX provider is not built or tested
+  ([Phase E](RFC/0001-phase-e-progress.md)).
 
 Initial evidence, observed at `87955f67` before these documentation changes:
 
@@ -925,7 +988,7 @@ Initial evidence, observed at `87955f67` before these documentation changes:
   reports 10 new and 3 stale occurrences; inventory verification reports stale.
   This is an existing failure to reconcile through review, not permission to
   regenerate baselines automatically. Native product/harness gates are unverified.
-- R07: [telemetry source](tier1/module_load_telemetry.cpp) and
+- R07: [telemetry source](tier0/module_load_telemetry.cpp) and
   [request API](public/tier1/module_load_telemetry.h) exist. Required native,
   failure/lifetime and ABI evidence has not been established by this assessment;
   see [Phase A progress](RFC/0001-phase-a-progress.md).

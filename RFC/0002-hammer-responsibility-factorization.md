@@ -9,12 +9,18 @@
 - Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
 - Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
 - Source inspection reference: `b5eb9915bdebf5af1045c5821d4ac3d9af15dbb2`
-- Implementation status: Phase H0 is active. The migration schema, module graph,
-  enforcement increment 1 (inventory/DAG validation and the HAM003 native-token
-  ratchet), and corpus scaffolding are installed; inventory coverage is partial and
-  no delivery gate is complete. Gate decisions and open-question answers are in
-  [0002-progress.md](0002-progress.md). Later modules, contracts, and CI gates
-  remain future work.
+- Implementation status (2026-09-25): Phase H0 is active, and no delivery gate
+  is complete. Installed: the migration schema, module graph, enforcement
+  increment 1 (inventory/DAG validation and the HAM003 native-token ratchet),
+  and corpus scaffolding. Strict `hammer.geometry`, `hammer.scene`,
+  `hammer.ports`, `hammer.formats` and `hammer.app` sources have 60 registered
+  Q-EDITOR suites. Inventory coverage is partial (46 of 530 files), and
+  `archlint hammer --verify` currently fails: `hammer.formats` declares an edge
+  to `render.contracts`, which is outside the Hammer module graph.
+  Gate decisions, current state and open-question answers are in
+  [0002-progress.md](0002-progress.md). The viewport, tools and presenters
+  modules, enforcement increments 2–3, and the remaining contracts and CI
+  gates are future work.
 
 ## Summary
 
@@ -538,7 +544,8 @@ arbitrary docking system is a separate feature decision.
 ### Versioned migration artifacts
 
 Phase H0 introduces the following artifacts. They are proposed paths, not files
-created by adopting this document alone.
+created by adopting this document alone. All eight exist as of 2026-09-25; their
+current contents are summarized in [0002-progress.md](0002-progress.md).
 
 | Artifact | Authority and contents |
 | --- | --- |

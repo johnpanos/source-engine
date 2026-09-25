@@ -1,9 +1,11 @@
 # RFC 0011 progress: Runtime indirect lighting
 
-Updated: 2026-09-24
-Rows: RFC 0011 proposes R70–R78 (G0–G8). They are not yet ranked in
+Updated: 2026-09-25
+Rows: RFC 0011 proposes R70–R80 (G0–G10). They are not yet ranked in
 AGENTS.md. On 2026-09-24 the user directed implementation of G0 through G8 in
-order; this file is the gate-decision record for that work.
+order; on 2026-09-25 the user added G9 (moved lights, R79) and G10 (light
+through open portals, R80). This file is the gate-decision record for that
+work.
 
 Where this file disagrees with the versioned artifacts, the artifacts win:
 
@@ -27,6 +29,31 @@ Where this file disagrees with the versioned artifacts, the artifacts win:
 | G8 product defaults and soak | done (2026-09-25; Android soak shortened to 5 min by the user; Apple unverified) | Per-profile defaults chosen from measurements, recorded in the product profiles and generated into the engine (`r_indirect_producer auto`; rollback `baked`); Linux 30-minute soak under validation passes (777 switches, 56 map changes, 0 validation messages, flat memory); Android soak passes; Apple has no R29 runner |
 | G9 moved lights (amendment) | done (2026-09-25, native Vulkan desktop; Android draws unbaked lights unshadowed) | A bulb swinging on a rope (`swing`): inverse-square `light_dynamic`, SDF shadows (decision 4), traced producers bounce unbaked lights; frozen states match Cycles and radiosity and shadows-off fail; no flicker while swinging (motion mode); shadow 0.06 ms at 1080p. See [G9](#g9-moved-lights-done) |
 | G10 light through open portals (amendment) | done (2026-09-25, native Vulkan desktop; Android radiosity path unverified on device) | Client portal set; traced producers carry rays and virtual lights through open pairs; radiosity gains dynamic portal links; `portal-light` room B matches Cycles open for SDF, ray query and radiosity, goes dark closed; the bake and a producer denied the portals fail. See [G10](#g10-light-through-open-portals-done) |
+
+Current notes (2026-09-25, checked at `d6260d90`):
+
+- **`gi_reference.py check` fails.** A read-only rerun reports:
+  - the six hand-built fixtures: their references predate the last
+    `gi_reference_blender.py` change (`980565cd`), and the `portal-view` and
+    `room-states` fixture digests changed (recorded in the
+    [gallery section](#gi-gallery-relational-oracles-2026-09-25-user-request));
+  - `portal-light`: every region of its `room` camera has 0 pixels in the
+    references (both states). Not yet explained.
+
+  The gallery fixtures and `swing` pass (301 oracles, 4,369 checks).
+  `quality/baseline.json` still records `gi.references` as pass, so the R01
+  audit should deviate. This weakens the G0.1 and G10 reference records.
+  The in-game gates were not rerun.
+- **Descriptor sets.** The PBR and GI stages now bind three grouped sets
+  (RFC 0007's
+  [grouped-sets record](0007-progress.md#energy-compensation-one-glsl-brdf-and-grouped-descriptor-sets-r47--r29-prep-2026-09-25)).
+  The probe grid, the change volume and the shadow field are set 0 bindings
+  (`world_pbr.frag`, `model_pbr.frag`). The 9-, 10- and 11-set layouts in
+  G1.3, G2.4–G2.5, G4 and G9.2 below are superseded. The
+  `.four-sets` rows of `render.world-pbr.native-pixels`,
+  `render.model-pbr.native-pixels` and
+  `render.indirect-switching.native-pixels` run as a four-set device. No Fold7
+  run has checked per-pixel probe sampling or the change volume there.
 
 ## G0: Baseline, fixtures and runner
 
@@ -695,7 +722,8 @@ world.
 
 This section was written on 2026-09-24 from another session's evidence and
 an independent rerun. It records where each done criterion stands; the work
-is still in progress.
+is still in progress. *(2026-09-25: every criterion below passes; the gate
+is done, as the heading and the gate table say.)*
 
 | Done criterion | State |
 | --- | --- |
@@ -754,7 +782,7 @@ These boots predate the radiosity producer being offered on a map.
 
 **Found on the way.** The compile tools write 100-byte world-light records under lump version 0, which the engine reads as 88-byte records: every record after the first is garbage (a SIGSEGV in `AddWorldLightToLightingState`). Pipeline maps now carry no world lights; the tool bug itself is open.
 
-**Open (not G4 gates).** On Adreno, per-pixel model sampling and the world change volume are unavailable (descriptor-set limit), so the Fold7 uses the ambient cube and the world keeps the bake. World direct light of a switched baked light stays in the lightmap (needs per-style layers, RFC 0008 LSTY).
+**Open (not G4 gates).** On Adreno, per-pixel model sampling and the world change volume are unavailable (descriptor-set limit), so the Fold7 uses the ambient cube and the world keeps the bake. *(2026-09-25: that set-count gate is gone with the grouped descriptor sets; not rerun on the Fold7. See the current notes under the gate table.)* World direct light of a switched baked light stays in the lightmap (needs per-style layers, RFC 0008 LSTY).
 
 Evidence: `quality-results/rfc0011-g4/{furnace,convergence,budget}.json`, `quality-results/rfc0011-g4/states/states.json`.
 

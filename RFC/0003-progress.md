@@ -1,9 +1,21 @@
 # RFC 0003 progress: Dependency-aware job system and frame scheduling
 
-Updated: 2026-09-22
+Updated: 2026-09-25 (current-state summary); the sections below keep their
+dated evidence.
 Source revision at assessment: `0649f377` (working tree; AGENTS.md portfolio row: R10)
 
-**Latest increment (2026-09-24):** [scheduler nodes](0003-scheduler-nodes-progress.md) (render sub-nodes, threaded deadlock, pool bounds and budgets, declared frame graph); before it, [scheduler trust](0003-scheduler-trust-progress.md)
+**Current state (2026-09-25, `d6260d90`):** both scheduler increments are
+merged into `subsystem-refactor`; their worktree branches are not needed to
+reproduce them. The manifest has 16 Q-JOBS rows (14 required; the two
+`jobsystem.radiosity.tsan` rows are optional and need `CONFORMANCE_TSAN`).
+Defaults: `host_frame_graph 1`, `cl_render_start_graph 0`,
+`host_thread_mode 0`; the particle, bone, renderable and entity-packing cohorts
+`2` (pooled); query-cache and carve `0`. The Portal launchers (`run.conf`,
+`play_p2`) also pass `cl_render_start_graph 2` and `sv_querycache_job_graph 2`,
+and `run.conf` passes `portal_carve_job_graph 2`. No RFC 0003 phase gate is
+closed.
+
+**Latest increment (2026-09-24):** [scheduler nodes](0003-scheduler-nodes-progress.md) (render sub-nodes, threaded deadlock, pool bounds and budgets, declared frame graph; section 6 records the 2026-09-25 `host_thread_mode 1` launcher trial and its withdrawal); before it, [scheduler trust](0003-scheduler-trust-progress.md)
 runs the host frame as an ordered serial graph that matches captured legacy
 frames (R10). It also makes the engine pool TSan-clean on native fixtures,
 fixes the CTSQueue crash, adds bounded worker steal deques, and forbids waits
@@ -16,8 +28,9 @@ stress suite. It optimizes Seal, both graph executors, the batch facade and dyna
 scopes without changing their contracts. It closes no gate.
 
 **Latest production-caller increment:** [bounded batch migrations and native
-Portal evidence](0003-batch-migration-progress.md) records the default-off
-particle, bone and entity-packing graph paths, borrowed engine-pool execution,
+Portal evidence](0003-batch-migration-progress.md) records the particle, bone,
+renderable and entity-packing graph paths (pooled by default since 2026-09-22),
+the query-cache and carve kernels, borrowed engine-pool execution,
 affinity fix, real C++11/C++20 tests, measured dispatch costs and remaining race /
 semantic / performance gates. It supersedes the older statements below that no
 `game/` or `engine/` callers have migrated or that a runnable game is unavailable.
@@ -58,9 +71,9 @@ migration needs the game build and captured workloads (see gaps).
 | Work item | Phase | Status | Evidence |
 | --- | --- | --- | --- |
 | Catalog job/thread facilities, config defaults, seams, hazards | A | Complete (static) | Inventory sections below; each seam verified to a current `file:line` |
-| Reproducible **runtime** baseline (captures, budgets) | A | **Unavailable here** | No runtime target/maps/hardware; requirements listed below |
+| Reproducible **runtime** baseline (captures, budgets) | A | **Partial (2026-09-25)** | Portal now runs here: host-frame trace captures and frame-pacing measurements are in the linked records. `jobs.legacy-captures` is `partial` in `quality/baseline.json`; no versioned frame capture or frame budget |
 | First particle workload selection | A | Decision D-A1 | `CParticleMgr::UpdateNewEffects` |
-| `Expected<T,E>` (job-system-scoped) | B | Delivered | `public/jobsystem/expected.h`; used throughout |
+| `Expected<T,E>` | B | Delivered; aliases `foundation::Expected` | `public/jobsystem/expected.h` (includes `foundation/expected.h`); used throughout |
 | Graph builder + validator (names, handles, cycles incl. sequence-induced, resource conflicts) | B | Delivered + tested | `jobsystem/job_graph.cpp`; `jobsystemtest` |
 | Immutable SealedGraph + stable topological order | B | Delivered + tested | `public/jobsystem/job_graph.h` |
 | Deterministic serial reference executor | B | Delivered + tested | `jobsystem/deterministic_executor.cpp` |
@@ -74,8 +87,8 @@ migration needs the game build and captured workloads (see gaps).
 | External-completion adapter (exactly-once; register/complete/cancel/repeat races) | C | **Delivered + tested (2026-09-22)** | `public/jobsystem/external_completion.h`; `jobsystemtest`, `jobsystemqjobstest` |
 | Dynamic child scopes (reserved completion ownership; producer/continuation; no worker blocks) | — | **Delivered + tested (2026-09-22)** | `jobsystem/dynamic_scope.cpp`; conformance `jobsystem.dynamicscope` |
 | Q-JOBS independent model / adversarial schedules / negative executors | B/C | **Delivered + tested (2026-09-22)** | `unittests/jobsystemtest/qjobstest.cpp`; conformance `jobsystem.qjobs`; TSan-clean |
-| Game-subsystem source migration; legacy-capture comparison | B/D | **Not delivered / unavailable** | needs game build + captures |
-| Runtime performance / latency / low-core budgets | D+ | **Not delivered / unavailable** | needs runnable profile, maps, hardware |
+| Game-subsystem source migration; legacy-capture comparison | B/D | **Partial (2026-09-25)** | Cohorts: [batch migration](0003-batch-migration-progress.md). Host frame and render steps: live legacy/graph captures match ([trust](0003-scheduler-trust-progress.md), [nodes](0003-scheduler-nodes-progress.md)). Semantic gameplay captures of the cohorts are missing |
+| Runtime performance / latency / low-core budgets | D+ | **Partial (2026-09-25)** | Pool capacity and overhead budgets, 1-worker rows included: `quality/budgets/scheduler-v1.json` (Linux desktop). No frame, p95/p99, mobile or power budget (`jobs.frame-budgets` is `missing` in `quality/baseline.json`) |
 
 ## Verification performed (this increment)
 
@@ -207,6 +220,12 @@ the wscripts but were not built in the shared tree to avoid disturbing that lock
 
 ## Known gaps (still required before the R10 gate closes)
 
+(2026-09-25) Gaps 5 and 7 below are superseded. The cohorts, the host frame
+and the render-start region have migrated (see the status table), and
+`jobsystem/expected.h` now aliases `foundation::Expected`. Gap 6 is partly
+met: host-frame live captures and scheduler budgets exist, but semantic
+gameplay captures and frame budgets do not.
+
 5. **Game-subsystem source migration**: the real engine *thread pool* (`vstdlib`)
    now executes job graphs (delivered above), but nothing in `game/` or `engine/`
    game-subsystem source is modified. The particle pilot is a faithful model, not
@@ -226,7 +245,7 @@ the wscripts but were not built in the shared tree to avoid disturbing that lock
 ## Module layout
 
 ```
-public/jobsystem/expected.h            scoped Expected<T,E> (pending R05)
+public/jobsystem/expected.h            job-system names for foundation::Expected
 public/jobsystem/job_graph.h           handles, executors, resources, builder, SealedGraph, errors
 public/jobsystem/graph_executor.h      JobRunContext, FrameContext, RunOptions(pumpMainThread), RunResult(stalled), executors
 public/jobsystem/parallel_executor.h   ParallelExecutor (lane-aware std::thread pool: compute/main/blocking)
@@ -236,7 +255,12 @@ public/jobsystem/worker_backend.h      IWorkerBackend (C++11-clean bridge bounda
 public/jobsystem/pooled_executor.h     PooledExecutor (wave executor over a backend)
 public/jobsystem/frame_graph.h         FrameContext region, IFrameContributor, FrameCoordinator
 public/jobsystem/pilot_particles.h     ParticleFrameState, reference update, pilot contributor
+public/jobsystem/parallel_batch.h      scoped batch contract (batch migration)
+public/jobsystem/serial_frame_graph.h  C++11 serial host-frame graph facade (scheduler trust)
+public/jobsystem/declared_frame_graph.h  declared frame-graph regions (scheduler nodes)
 public/vstdlib/jobgraph_pool_bridge.h  C++11-clean factory: real CThreadPool -> IWorkerBackend
+public/vstdlib/jobgraph_parallel.h     JobGraphParallelProcess adapter for legacy callers
+public/vstdlib/jobgraph_frame.h        vstdlib exports for the host frame graph
 jobsystem/*.cpp                        implementations + Waf stlib (C++20)
 vstdlib/jobgraph_pool_bridge.cpp       real engine-pool backend (C++11, in vstdlib)
 unittests/jobsystemtest/qjobstest.cpp  Q-JOBS independent model + adversarial negative executors
@@ -344,8 +368,14 @@ python3 -m unittest discover -s tools/archlint/tests
 
 ## Next increment
 
-In priority order (the module-implementable Phase B/C contracts are now done;
-what remains is gated on runtime resources):
+(2026-09-25) Superseded. Item 1 is partly done: particles run on the graph
+behind `r_particle_job_graph`, pooled by default, without the measured
+improvement or frame budget. Item 3's `Expected` convergence is done.
+Forbidden nested waits are detected in the engine pool (scheduler nodes). The
+current open lists are in the
+[scheduler nodes](0003-scheduler-nodes-progress.md#open-rows-stay-partial) and
+[batch migration](0003-batch-migration-progress.md#measurements-and-open-gates)
+records. The original list:
 1. **Real particle migration (Phase D)**: wire the pilot pattern into
    `CParticleMgr::UpdateNewEffects` behind a diagnostic switch, gated on the
    engine build, captured workloads, three-mode equivalence on real outputs, a

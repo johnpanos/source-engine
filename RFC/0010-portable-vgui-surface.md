@@ -1,6 +1,8 @@
 # RFC 0010: Portable VGUI Surface, Text, and Input
 
-- Status: Proposed (2026-09-23); no implementation gate complete
+- Status: Proposed (2026-09-23); no implementation gate complete. V1's UI
+  scale owner is installed, but its exit gate is not met
+  ([2026-09-25 update](#update-2026-09-25))
 - Date: 2026-09-23
 - Scope: The machinery beneath VGUI's frozen panel/control API: the 2D draw
   path in `vguimatsurface`, UI scale and coordinate spaces, font discovery and
@@ -99,6 +101,29 @@ Facts observed in the tree at 2026-09-23; they are not implementation claims.
   headers under `public/panorama`; there is no implementation.
 - **Tests.** Apart from the UI-scale suites there is no VGUI conformance suite,
   call-stream capture, or VGUI pixel fixture.
+
+### Update (2026-09-25)
+
+The list above is the 2026-09-23 starting point. Since then:
+
+- The UI-scale work is committed. `ui_scale` is an archived engine ConVar
+  (`engine/vgui_baseui_interface.cpp`). The
+  [record](0001-native-vulkan-progress.md#vgui-and-hud-follow-the-sdl3-display-scale-2026-09-23)
+  reports `vgui.ui_scale` (28 checks) and `vgui.ui_scale.sensitivity`
+  (6 checks) passing, and isolated sway captures at 1.0, 1.5 and 2.0. It does
+  not cover X11, macOS, iOS, Android, D3D9/DXVK or SDL2. V1 also needs pixel
+  and hit-test round-trip fixtures at three scales, a mid-session scale
+  change, and a check that no second px/unit conversion exists; none is
+  recorded.
+- Portal 2 retail fonts: `common/vgui_surfacelib/ValveFont.h` decodes `.vfont`
+  files for `CMatSystemSurface`, with the `vgui.valvefont` suite (Q-CONTENT).
+  `vgui2/src/Scheme.cpp` skips `"isproportional"` entries inside font blocks.
+  This is a font format fix, not the V4 font source provider.
+- Native Vulkan still drops `MATERIAL_LINES` and `MATERIAL_LINE_STRIP` draws
+  (`shaderapivulkan.cpp`, "draw dropped: line/point topology").
+- Native Vulkan applies `OverrideDepthEnable`, so in-world VGUI screens
+  depth-test as on D3D9
+  ([record](0001-native-vulkan-progress.md#forced-depth-test-for-vgui-screens-in-the-world-2026-09-24)).
 
 ## Goals
 
@@ -220,7 +245,7 @@ glyph rasterization size, hit testing, texture subrect math and input
 conversion route through it. Scale changes (display change, rotation, user
 setting) are events: the surface re-evaluates the scale, invalidates the glyph
 cache at the new raster size and notifies panels through the existing
-screen-size-changed path. The in-progress `UIScale` work is V1's starting point.
+screen-size-changed path. The installed `UIScale` owner is V1's starting point.
 
 ## Fonts
 
@@ -353,7 +378,7 @@ claim unverified under AGENTS.md.
 | Phase | Deliverable | Exit gate |
 | --- | --- | --- |
 | V0 | Baseline: `ISurface` method inventory by caller and category (paint, texture, font, window, input, HTML, 3D); direct-render panel inventory; fixed-screen corpus with D3D9/DXVK and native captures; UI draw-call counts; native `MATERIAL_LINES` support | Captures reproducible from recorded commands; line fixture draws on native; a seeded missing-line or reordered-draw defect is detected |
-| V1 | UI scale owner (the in-progress `UIScale` work) | Scale suites, hit-test and pixel round trips at three scales; scale change mid-session; no second px/unit conversion outside `uiscale` |
+| V1 | UI scale owner (the installed `UIScale` work) | Scale suites, hit-test and pixel round trips at three scales; scale change mid-session; no second px/unit conversion outside `uiscale` |
 | V2 | Draw-list contract, recorder, recording and immediate material-system consumers, shared suite | Immediate mode is pixel-identical to the pre-V2 surface on the corpus; bad consumers fail; no `ISurface` change |
 | V3 | Batched consumer and barrier audit | Byte-identical to immediate on each backend; measured draw-call and frame-time change against V0 budgets; default chosen from measurement with rollback |
 | V4 | Font source providers and shared rasterizer; packaged-font manifest | Metric fixtures and negative fixtures pass on Linux (fontconfig and packaged) and Android; Apple profiles when available; GDI unchanged on Windows |
@@ -367,19 +392,21 @@ proceed independently of the renderer work.
 
 ## Roadmap
 
-Not yet ranked. AGENTS.md owns ranks and states; this RFC proposes the
-following rows for the user to rank:
+Not yet ranked. AGENTS.md owns ranks, states and row IDs; this RFC proposes
+the following rows for the user to rank. The first draft used R65–R69, but
+AGENTS.md has since assigned R65–R66 to RFC 0012 and R67 to RFC 0013, so the
+rows below use local labels until AGENTS.md assigns IDs:
 
-| Proposed ID | Scope | Prerequisites |
+| Proposed row | Scope | Prerequisites |
 | --- | --- | --- |
-| R65 | VGUI baseline and UI scale owner (V0–V1) | R02, R15 |
-| R66 | UI draw list and batched execution (V2–V3; V6 optional) | R65 |
-| R67 | Portable fonts (V4) | R65 |
-| R68 | VGUI input and text entry (V5) | R14, R65 |
-| R69 | VGUI composition, optional HTML and product scope (V7) | R06, R65 |
+| VG-A | VGUI baseline and UI scale owner (V0–V1) | R02, R15 |
+| VG-B | UI draw list and batched execution (V2–V3; V6 optional) | VG-A |
+| VG-C | Portable fonts (V4) | VG-A |
+| VG-D | VGUI input and text entry (V5) | R14, VG-A |
+| VG-E | VGUI composition, optional HTML and product scope (V7) | R06, VG-A |
 
-Mobile evidence from R66–R69 contributes to R29 and R36; none of these rows
-closes a platform gate by itself.
+Mobile evidence from VG-B to VG-E contributes to R29 and R36; none of these
+rows closes a platform gate by itself.
 
 ## Risks and mitigations
 
@@ -442,6 +469,6 @@ closes a platform gate by itself.
 ## Proposed decision
 
 Accept for planning. Start with **V0** (baseline, direct-render inventory, D3D9
-reference captures, native line support) and **V1** (land the UI scale owner
-with its suites). Neither changes VGUI's API or a renderer default. Commit to
+reference captures, native line support) and **V1** (finish the gate of the
+UI scale owner, which has landed with its suites). Neither changes VGUI's API or a renderer default. Commit to
 batching as a default only after V3's measurements.

@@ -1,7 +1,9 @@
 # RFC 0002 progress: Hammer responsibility factorization
 
-Updated: 2026-09-22
-Source revision at assessment: `2d7e01d5` (working tree; AGENTS.md portfolio row: R08)
+Updated: 2026-09-25
+Source revision at assessment: `2d7e01d5` (working tree; AGENTS.md portfolio row: R08).
+Current-state review: `d6260d90` (2026-09-25); see
+[Current state](#current-state-2026-09-25).
 
 This file is the human-readable gate-decision record for RFC 0002. The machine
 facts live in the versioned artifacts under `architecture/` and the conformance
@@ -11,6 +13,49 @@ disagree with prose here.
 RFC 0002 is Proposed. Accepting it establishes the architecture and migration
 protocol; it does not mark any delivery gate complete. This record opens Phase H0
 and answers the open decisions the RFC deferred to measured H0/R1 results.
+
+## Current state (2026-09-25)
+
+Checked at `d6260d90` against the machine artifacts. The dated sections below
+are history.
+
+- AGENTS.md row R08 is `active`. No RFC 0002 delivery gate is complete.
+  `tools/roadmap/roadmap.py show` reports R08 and R17 startable. R13, R22–R25,
+  R33 and R43 are `planned` and blocked on prerequisites.
+- **`archlint hammer --verify` fails.** Since `7035c29e` (2026-09-22, the RFC
+  0007 R47 PBR schema), `hammerModules` lets `hammer.formats` depend on
+  `render.contracts`. That is a capability module the Hammer graph validator
+  does not know: `module hammer.formats allows edge to unknown module
+  render.contracts`. It is the only reported problem; the inventory, ledger,
+  compatibility and HAM003 checks pass. `quality/baseline.json` still expects
+  `arch.hammer` to pass, and CI (`tests.yml`) runs the command. The fix needs a
+  decision: let the validator accept declared edges to capability modules, or
+  reach the schema through a Hammer-owned port.
+- Strict sources exist for `hammer.geometry` (5), `hammer.scene` (2),
+  `hammer.formats` (16) and `hammer.app` (7), plus three `hammer.ports`
+  headers. `hammer.viewport`, `hammer.tools` and `hammer.presenters` are
+  declared but empty; the interactive tools live in `hammer.app`
+  (`EditorController`).
+- Ledger: 28 migrations. 11 are `extracted`, 11 `characterized`, 2
+  `substitutable`, 2 `isolated` and 2 `inventoried`; none is `cutover` or
+  `retired`. Legacy Hammer is still the live authority for every legacy caller.
+- Inventory: 46 authored records. `hammer --coverage` reports 46 of 530 files
+  classified; the authored total is still 452.
+- Conformance: 60 Q-EDITOR suites are registered
+  (`conformance.py plan --rfc 0002 --domain Q-EDITOR`), all on `checks-v1`.
+  The last recorded full run is the 2026-09-22 R02 evidence: g++ and clang++,
+  default and release, and Wine PE 60/60
+  ([RFC 0005 Q1](0005-progress.md#q1--r02-runner-shared-conformance-runner)).
+  This review did not rerun them.
+- 31 contract records exist under `unittests/hammertest/contracts/`.
+  `unittests/hammertest/fixtures/` holds only its README; the sample maps are
+  `hammer/gtk/samples/{room,wedge,displacement}.vmf`.
+- Build: there is still no `hammer/wscript`. The first Waf target that compiles
+  strict Hammer sources is `hammer_ktx2_preview_conformance`
+  (`unittests/texturecontainertest/wscript`, RFC 0008 F3). The GTK shell is
+  still built by `hammer/gtk/build.sh`.
+- Work this record did not yet describe is summarized in
+  [Additional work recorded 2026-09-25](#additional-work-recorded-2026-09-25).
 
 ## Decisions (answers to the RFC's open questions)
 
@@ -80,6 +125,12 @@ Recorded in `architecture/hammer_compatibility.json` (profiles).
   proves unacceptable. The choice is recorded with measurements when R1 runs; a
   wireframe substitute does **not** pass the Source-material fidelity gate.
 - **Blocked on:** the H0 minimal render contract and the pinned GTK/Wayland profile.
+- **2026-09-25:** the engine render seam is `done` (R15, `render.profile.v1`), and
+  so are the presentation bridges (R16, `render.presentation.v1`). Neither has
+  a GTK host pair. HAM-RENDER-001 is still `inventoried`, and the contract IDs
+  it names (`render.baseline.v1`, `host.surface.v1`) exist nowhere else in the
+  tree. The GTK shell's GL viewport is a substitute renderer, so it does not
+  count toward this decision.
 
 ### D4 — Toolkit and language boundary (initial pins, finalized at H5/R03)
 
@@ -235,15 +286,15 @@ gate.
 | Artifact | Purpose | Status |
 | --- | --- | --- |
 | `architecture/modules.json` → `hammerModules` | Editor module ownership + allowed dependency edges + strict include roots + native-token list | Installed; graph validated acyclic |
-| `architecture/hammer_inventory.json` | Owned-file inventory with responsibility/effect/state/factorization/evidence and symbol splits | Installed; **coverage partial (13/452 files)** |
-| `architecture/hammer_migrations.json` | Migration ledger (IDs, dependency DAG, status, contracts, test selectors, retirement conditions) | Installed; 8 seed migrations |
-| `architecture/hammer_baseline.json` | Exact editor-rule (HAM003) violations; strict modules zero-debt | Installed; **empty** (no strict modules yet) |
+| `architecture/hammer_inventory.json` | Owned-file inventory with responsibility/effect/state/factorization/evidence and symbol splits | Installed; **coverage partial** (13/452 at install; 46 records, 46/530 files on 2026-09-25) |
+| `architecture/hammer_migrations.json` | Migration ledger (IDs, dependency DAG, status, contracts, test selectors, retirement conditions) | Installed; 8 seed migrations (28 on 2026-09-25) |
+| `architecture/hammer_baseline.json` | Exact editor-rule (HAM003) violations; strict modules zero-debt | Installed; **empty** (strict roots populated since; still zero entries on 2026-09-25) |
 | `architecture/hammer_compatibility.json` | Declared features/formats/profiles/limitations per gate | Installed; H0 declares no editor features |
 | `tools/archlint/archlint.py` → `hammer` subcommand | Validates the four artifacts + module graph; runs HAM003 native-token scan over strict roots | Installed |
 | `tools/archlint/archlint.py hammer --coverage` | Diffs the hammer source universe against the inventory; lists unclassified files with lexically-detected effects; warns when the authored total drifts | Installed (HAM-INVENTORY-001 aid) |
 | `tools/archlint/archlint.py hammer --scaffold` | Emits schema-valid inventory stubs (`evidence: "hypothesis"`, with `reviewTODO`) for a batch of unclassified files; never mutates the artifact | Installed (HAM-INVENTORY-001 aid) |
-| `tools/archlint/tests/test_hammer.py` | Negative fixtures proving the validator rejects bad ownership, edges, cycles, statuses, and native tokens; coverage/scaffold accuracy fixtures | 24 tests, passing |
-| `unittests/hammertest/{contracts,fixtures}/` | Contract-suite and characterization-corpus scaffolding | Directory + provenance conventions only |
+| `tools/archlint/tests/test_hammer.py` | Negative fixtures proving the validator rejects bad ownership, edges, cycles, statuses, and native tokens; coverage/scaffold accuracy fixtures | 24 tests, passing (rerun 2026-09-25) |
+| `unittests/hammertest/{contracts,fixtures}/` | Contract-suite and characterization-corpus scaffolding | Conventions at install; 31 contract records on 2026-09-25, `fixtures/` still README only |
 
 ### Commands
 
@@ -283,15 +334,30 @@ HAM003 currently finds zero occurrences because the strict include roots do not
 exist yet; the scan is proven live by `test_hammer.py`, not by a populated
 baseline. No gate claims a stronger guarantee than these installed checks provide.
 
+2026-09-25: the roots `public/hammer/` and `hammer/core/` now hold strict
+sources, and HAM003 still finds zero occurrences. Because increment 2 is not
+installed, the strict sources already use edges `modules.json` does not allow,
+and nothing fails:
+
+- `hammer/geometry/brush.h` and `displacement.h` include
+  `hammer/formats/keyvalues.h`. `hammer.geometry` declares no edges, and
+  `hammer.formats` → `hammer.geometry` is allowed, so this is a
+  geometry↔formats cycle at the include level.
+- `hammer/app/editor_document.h` and `hammer/core/app/editor_controller.cpp`
+  include `hammer/formats/keyvalues.h`; `hammer.app` does not allow
+  `hammer.formats`.
+
+Either the graph or the includes must change before increment 2 can pass.
+
 ## Gate status
 
 | Phase | State | Notes |
 | --- | --- | --- |
-| H0 | **active / partial** | Migration schema, module graph, ratchet increment 1, corpus scaffolding, and a **headless strict C++20 build+test target** (`unittests/hammertest/run_headless.sh`, HAM-BUILD-001) installed and passing under gcc 16 and clang. Remaining for H0 exit: exhaustive inventory coverage and the versioned semantic comparator with a negative corpus. |
+| H0 | **active / partial** | Migration schema, module graph, ratchet increment 1, corpus scaffolding, and a **headless strict C++20 build+test target** (`unittests/hammertest/run_headless.sh`, HAM-BUILD-001) installed and passing under gcc 16 and clang. Remaining for H0 exit: exhaustive inventory coverage and the versioned semantic comparator with a negative corpus. 2026-09-25: the comparator and its negative case exist (`CompareKeyValues`, HAM-CORPUS-001); still open are inventory coverage (46/530), the RFC minimum fixture corpus, a Waf/CI-integrated target with R03 flags, and the failing `archlint hammer --verify` ([current state](#current-state-2026-09-25)). |
 | H1 | **active (geometry + scene seams)** | `hammer.geometry`: `AxisAlignedBox`, `RoundHalfAwayFromZero` (DRY grid-rounding owner), angle policies. `hammer.scene`: generational `HandleTable` (stale-reference rejection, independent documents) and `SceneGraph` (handle-addressed, validated/atomic reparent with cycle rejection, atomic subtree delete). All headless-verified under gcc + clang with negative providers. See below. |
 | H3 | **partial (independent models)** | Ahead-of-authority reference models landed and pinned: `DocumentHistory` (revision vs saved-position, no-op neutrality, undo-to-saved clears modified), `PropertyValue` (empty-vs-unset-vs-mixed), and `UpdateHint` (HAM-UPDATEHINT-001) — the reusable core of MFC `CUpdateHint`, composing `hammer.geometry` + `hammer.scene` (notify-code buckets + unioned affected region, legacy `MAX_NOTIFY_CODES`=16 preserved; legacy source is orphaned dead code, so this is a reconstruction of intent). Not yet the live authority (needs H2 + legacy cutover). The **shared entity editor** (`EntitySelection` + `EditorDocument` entity methods, HAM-SEL-001/D8) now wires `PropertyValue` into live multi-selection editing with atomic multi-entity undo, and the GTK sibling drives it end to end. |
-| H2 | **partial (codec + save seams)** | `hammer.formats`: VMF/keyvalues parser + writer + versioned semantic comparator (unknown-chunk preservation, malformed diagnostics, data-loss detection). `hammer.ports` + `hammer.app`: `IFileStore` port and `SaveDocument` transactional save (temp-write + atomic rename; failed save preserves prior file), verified with an in-memory fault-injecting fake. Remaining: VMF↔scene import/export, real file-store provider, fixtures corpus. |
-| H4–H7, R1 | planned | Blocked on H0 exit and, for R1, the render contract + GTK profile. A bounded `linux-gtk-desktop` **boot + VMF-render feasibility slice** now exists (below): it is feasibility evidence, not R1/H5 completion — no editing tools, live-document authority, or material fidelity yet. |
+| H2 | **partial (codec + save seams)** | `hammer.formats`: VMF/keyvalues parser + writer + versioned semantic comparator (unknown-chunk preservation, malformed diagnostics, data-loss detection). `hammer.ports` + `hammer.app`: `IFileStore` port and `SaveDocument` transactional save (temp-write + atomic rename; failed save preserves prior file), verified with an in-memory fault-injecting fake. Remaining: VMF↔scene import/export, real file-store provider, fixtures corpus. 2026-09-25: `DiskFileStore` is the real provider (D6); `EditorController::LoadVmf`/`ToVmf` round-trip world brushes, per-face materials and point entities, but not brush entities or texture axes, and not through `hammer.scene` handles; 11 format/geometry cores are `extracted` ([additional work](#additional-work-recorded-2026-09-25)). Detached import, compile acceptance and the fixture corpus remain. |
+| H4–H7, R1 | planned | Blocked on H0 exit and, for R1, the render contract + GTK profile. 2026-09-25: R15 and R16 are `done` and `roadmap.py` reports R17 (R1) startable; HAM-RENDER-001 is still `inventoried` and no Source-material GTK viewport exists. A bounded `linux-gtk-desktop` **boot + VMF-render feasibility slice** now exists (below): it is feasibility evidence, not R1/H5 completion — no editing tools, live-document authority, or material fidelity yet. |
 
 **Strict-module conformance suites** are registered in the shared RFC 0005 runner
 (`quality/conformance.manifest.json`, `tools/quality/conformance.py`): the RFC 0002
@@ -302,6 +368,9 @@ current manifest) and cross-verified as native Windows PE under Wine (23/23,
 14 migrations tracked. (A UTF-8 decode crash in the shared
 runner's git-evidence step was fixed here so the gate survives binary files in the
 working tree — this also unblocked the RFC 0003 lane on the same runner.)
+2026-09-25: the manifest now registers 60 Q-EDITOR suites. The committed
+`hammer_windows_parity.json` records 26/26, and the R02 evidence records 60/60
+under Wine. Inventory has 46 records and the ledger 28 migrations.
 
 ### First H1 extraction — `hammer.geometry` AABB (HAM-GEOMETRY-001)
 
@@ -460,6 +529,13 @@ stack, with no new document, global, or second selection owner:
   reconciliation item from AGENTS.md — an intentional review action, not a
   regression from RFC 0002 work. This change touches no scanned source and no
   loader manifest section, so it does not affect that count.
+- 2026-09-25 at `d6260d90`: `check --all` and `baseline --verify` report 64 new
+  and 1 stale occurrence (0 relocated). `inventory --verify` reports 13
+  uninstrumented native sites. None of them is in a Hammer path.
+- 2026-09-25: `archlint hammer --verify` fails on the `render.contracts` edge
+  that the RFC 0007 PBR schema slice added to `hammer.formats` (see
+  [current state](#current-state-2026-09-25)). The failure is in RFC 0002's own
+  check, but RFC 0002 work did not introduce it.
 
 ### VPK + texture (VTF/VMT) loading: asset catalog and textured viewport (HAM-ASSET-001)
 
@@ -586,7 +662,57 @@ existing touchpad/orbit/pan and 2D editing paths are unchanged.
   (pointer delta + hidden cursor vs recenter-each-frame) is a platform constraint,
   not a deferred feature.
 
+## Additional work recorded 2026-09-25
+
+The ledger and git history show Hammer work that the sections above do not
+describe. The ledger is authoritative for each entry.
+
+- **Format and geometry cores (2026-09-22).** Eleven strict headless modules
+  are `extracted` with `authority: new`. Each has a contract record and a
+  positive and sensitivity suite:
+  - HAM-DISP-001 (`geometry.displacement.v1`);
+  - HAM-INSTANCE-001 (`formats.instancing.v1`);
+  - HAM-FGD-001 (`formats.fgd.v1`);
+  - HAM-CORDON-001 (`formats.cordon.v1`);
+  - HAM-OVERLAY-001 (`formats.overlay.v1`);
+  - HAM-VISGROUP-001 (`formats.visgroups.v1`);
+  - HAM-MATERIAL-001 (`formats.material.v1`);
+  - HAM-GROUP-001 (`formats.groups.v1`);
+  - HAM-PREFAB-001 (`formats.prefab.v1`, on the shared `vmf_transform`);
+  - HAM-EXPORT-001 (`formats.map_export.v1`: instances, then hidden
+    visgroups, then cordon);
+  - HAM-PROPSHEET-001 (`formats.entity_property_sheet.v1`, FGD rows for the
+    entity editor).
+
+  No legacy caller routes through them, and none closes an H2 or H6 family
+  gate. HAM-ASSET-001, named in the VPK/VTF section above, has no ledger entry.
+- **`checks-v1` results (R02, `2134571b`).** Every Q-EDITOR suite reports one
+  `testing::ReportConformance` record. `run_headless.sh` fails when a listed
+  compiler is missing ([RFC 0005 Q1](0005-progress.md#q1--r02-runner-shared-conformance-runner)).
+- **PBR material validation (RFC 0007 R47, `7035c29e`).** `MaterialCatalog`
+  validates `PBRMetalRough` definitions against
+  `public/render/pbr_material_schema.h` and follows primary and fallback patch
+  chains with depth and cycle limits. The `render.pbr-material-schema` suite
+  (Q-CONTENT) compiles the Hammer catalog sources. This slice added the
+  `render.contracts` edge that now fails `archlint hammer --verify`. See the
+  [RFC 0007 record](0007-progress.md).
+- **KTX2 preview (RFC 0008 F3, `97e298c6`).** `MaterialCatalog` prefers a
+  packaged KTX2 asset over the VTF of the same `$basetexture` through a decoder
+  injected at composition. `hammer/adapters/source/ktx2_preview.cpp` supplies
+  it to the GTK shell. The Waf-built `hammer_ktx2_preview_conformance` suite
+  recorded 10 checks and 0 failures. Compressed-format preview and
+  cross-provider precedence remain open. See the
+  [RFC 0008 record](0008-progress.md#f3-hammer-ktx2-preview-caller-2026-09-23).
+
+Still true on 2026-09-25: the MFC sibling (`hammer_mfc_shell.cpp`,
+`test_mfc_workflow.cpp`) still uses `SetFirstBlockKey`, not the shared entity
+editor (D8).
+
 ## Next dependency-ready migrations
+
+2026-09-25 status: item 1 is open. For items 2–4, the first step named below
+is done and the rest remains, as noted in each item. Before them, restore
+`archlint hammer --verify` ([current state](#current-state-2026-09-25)).
 
 1. **HAM-INVENTORY-001 (continue):** expand `hammer_inventory.json` toward
    exhaustive per-file/per-symbol coverage; flip `coverage.status` to `complete`
@@ -599,10 +725,18 @@ existing touchpad/orbit/pan and 2D editing paths are unchanged.
      `452`). The tree has grown past that figure (new `hammer/*.cpp` and
      `public/hammer/geometry/aabb.h`); run the command for the current count and
      update the authored total as part of the next reviewed inventory write, not
-     automatically.
+     automatically. On 2026-09-25 the universe is 530 files, with 46 classified.
 2. **HAM-BUILD-001:** establish the Linux 64-bit headless editor test target and
    record the final C++20 flags (coordinated with R02/R03).
+   - 2026-09-25: `run_headless.sh` is the headless target, and CI runs it.
+     Still open: a Waf-integrated editor target and R03 flag validation.
 3. **HAM-CORPUS-001:** author the versioned semantic comparator and its negative
    corpus alongside the first VMF/geometry fixtures.
+   - 2026-09-25: the comparator exists (`CompareKeyValues`) and its negative
+     case passes. Still open: the RFC minimum fixture corpus and its provenance
+     records under `unittests/hammertest/fixtures/`.
 4. **HAM-GEOMETRY-001:** once a strict target exists, extract `BoundBox` into
    `hammer.geometry`, compile without the MFC PCH, and route callers through it.
+   - 2026-09-25: `AxisAlignedBox` is extracted and characterized, and the
+     `Vector`↔`Vec3` seam exists (D5). No legacy `BoundBox` caller routes
+     through it yet, so the status stays `characterized`.

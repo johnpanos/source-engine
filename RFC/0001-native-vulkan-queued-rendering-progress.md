@@ -121,6 +121,11 @@ baselines are unchanged. The Android main pins `+mat_queue_mode 0`
 (overridable in `commandline.txt`): the render thread is unmeasured there.
 Making queued the desktop launcher default is left to the user.
 
+Superseded (2026-09-25): `run.conf`/`run.sh` now pass `+mat_queue_mode 2`
+(see [Launcher trial](#launcher-trial-2026-09-25)). `portal_boot.py` and
+`frame_pacing.py` (default `--mat-queue-mode 0`) still pin 0, and so does the
+Android main (`launcher_main/android_main.cpp`).
+
 ## Evidence
 
 Host: AMD Radeon 8060S (RADV STRIX_HALO), Fedora 44, shared with other

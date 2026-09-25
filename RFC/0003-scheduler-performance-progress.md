@@ -153,3 +153,12 @@ Not addressed: engine-pool TSan, frame and p95/p99 latency budgets,
 low-core/mobile profiles, and non-x86_64 hardware. Microbenchmarks are not a
 default-selection gate. Work-stealing or lock-free queues were deliberately not
 introduced (RFC 0003 prefers synchronized queues until such evidence exists).
+
+(2026-09-25) Later increments changed part of this. The
+[scheduler trust](0003-scheduler-trust-progress.md) increment made the engine
+pool's native fixtures TSan-clean and gave each worker a bounded, mutex-guarded
+steal deque (no lock-free queue). The
+[scheduler nodes](0003-scheduler-nodes-progress.md#budgets) increment added pool
+capacity and overhead budgets on the Linux desktop, 1-worker rows included.
+Full-product TSan, frame and p95/p99 budgets, mobile profiles and non-x86_64
+hardware remain open.

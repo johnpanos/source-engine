@@ -1,6 +1,9 @@
 # RFC 0004: Box3D as the Primary Physics Backend
 
-- Status: Proposed
+- Status: Proposed. Implementation state (2026-09-25) is in the
+  [progress record](0004-progress.md): the `vphysics_box3d` provider runs
+  the shared IVP-oracle suite, and the development launchers select it. The
+  engine launcher and dedicated server still default to IVP.
 - Date: 2026-09-21
 - Scope: VPhysics, collision assets, physics-dependent gameplay, content tools,
   and client/dedicated-server builds
@@ -924,6 +927,12 @@ this RFC does not claim Box3D is faster or more compatible than alternatives.
 | Tool and historical ABI support | Explicit profile inventory | Actual exports and tool consumers |
 | Initial substep/worker counts | One worker; measured substeps | Stability, performance, and callback results |
 | Removal of remaining IVP code | After independent decoding/cooking | Dependency audit and asset corpus passes |
+
+Worker counts (2026-09-25): at the user's direction,
+[RFC 0013](0013-opt-in-physics-capabilities.md#composition-and-selection-p3)
+makes the server environment step on the engine compute pool by default when
+Box3D is selected. The client keeps one worker. `IPhysics::CreateEnvironment`
+remains the one-worker parity path.
 
 ## Source references
 

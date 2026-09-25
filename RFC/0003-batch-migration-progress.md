@@ -1,12 +1,15 @@
 # RFC 0003: bounded production batch migrations
 
-Updated: 2026-09-22 (cohort defaults on; query-cache and portal-carving oracles). Portfolio: R20 / R21 / R30, all **partial**.
+Updated: 2026-09-25 (notes on engine-pool TSan, launcher arguments and the
+remaining `JobGraphParallelProcess` call sites); 2026-09-22 (cohort defaults
+on; query-cache and portal-carving oracles). Portfolio: R20 / R21 / R30, all **partial**.
 
 This increment moves four existing compute cohorts onto opt-in dependency-aware
 job graphs. It preserves their synchronous gather/compute/commit boundaries and
 uses the already composed engine pool. It does not add another pool, advance
 world simulation, enable snapshot-send concurrency, or close the RFC's gameplay
-equivalence and performance gates. Legacy mode remains the default.
+equivalence and performance gates. Legacy mode was the default until the
+2026-09-22 decision below; it is now the rollback.
 
 ## Delivered callers and ownership
 
@@ -24,8 +27,9 @@ to `1`**, so every cohort runs its pooled graph path with no configuration
 (`r_threaded_particles` and `sv_parallel_packentities` already defaulted to `1`).
 Before this change the bone and renderable graph paths were unreachable by
 default because their legacy gates were `0`. Defaulting on does **not** close the
-open gates below: engine-pool TSan is still not clean, and gameplay captures and
-frame budgets are still missing. Roll back at the next batch boundary by setting
+open gates below: engine-pool TSan was not clean at the time (2026-09-25: the
+native pool fixtures are now TSan-clean, but no full-product TSan run exists),
+and gameplay captures and frame budgets are still missing. Roll back at the next batch boundary by setting
 the corresponding graph ConVar to zero, or the legacy gate to zero to restore the
 original serial behaviour. No graph callback or borrowed payload survives return.
 
@@ -213,6 +217,11 @@ runtimes):
   defined in both client and server, was refused linkage ("Parent cvar in
   server.dll not allowed"). It is now `FCVAR_REPLICATED`.
 
+(2026-09-25) The engine defaults are still `0`. The Portal launchers pass
+`sv_querycache_job_graph 2` (`run.conf`, `play_p2`) and
+`portal_carve_job_graph 2` (`run.conf`) as oracle-proven equivalent paths; no
+new measurement was recorded for that choice.
+
 Measurements (why both remain default legacy): the whole carve costs **0.05–0.12 ms
 per placement in-game**. Pooled was slower on the same placements (0.106 vs
 0.061 ms, 0.078 vs 0.051 ms), and across the 160 synthetic placements
@@ -253,6 +262,12 @@ ASan success and portable-executor TSan success cannot certify this engine pool.
 Classify and repair those boundaries with native race fixtures before closing
 R20 or enabling any migrated cohort by default.
 
+(2026-09-25) The [scheduler trust](0003-scheduler-trust-progress.md#2-engine-pool-and-primitives-tsan-clean-r20)
+increment repaired these reports (the `CThread` init flag, `CInterlocked*`
+reads and `CThreadFastMutex`). `jobsystemlegacybatchtest` and
+`jobsystembridgetest` now run with 0 TSan warnings. The whole product has not
+run under TSan; the cohorts had already been enabled by default.
+
 Deferred consumers have concrete reasons:
 
 - Query-cache maintenance: the hazard (shared counters, victim-list insertion
@@ -261,6 +276,13 @@ Deferred consumers have concrete reasons:
   default stays legacy until a workload shows a benefit.
 - Leaf/shadow parallel branches are hardcoded disabled. This work does not enable
   them or pretend that editing an unreachable dispatch establishes performance.
+  (2026-09-25) Commit `66e2a40c` (2026-09-22) replaced `ParallelProcess` with
+  `JobGraphParallelProcess`, pooled mode, with no mode ConVar and the result
+  unchecked, at six sites: both leaf-system dispatches and both shadow bone
+  batches (still hardcoded off), `SV_ParallelSendSnapshot`
+  (`sv_parallel_sendsnapshot 0`) and `CNavArea::ComputeVisibilityToMesh`. The
+  nav site runs whenever nav visibility is computed. No oracle, test or
+  progress record covers the six sites.
 - Snapshot sending remains disabled for the documented shared snapshot-manager
   race. Async navigation, host-overlap and save/network queues need scoped
   lifetimes and explicit continuations; they are not synchronous batch renames.

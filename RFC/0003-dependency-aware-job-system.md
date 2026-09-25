@@ -6,8 +6,8 @@
 - Depends on: [RFC 0001: Capability-Based Platform Architecture](0001-capability-based-platform-architecture.md), especially its task-runner, ownership, and render-threading contracts
 - Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
 - Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
-- Evidence: Static inspection of this repository; no runtime performance baseline has been collected for this proposal
-- Implementation status: This RFC specifies future work; it does not introduce the scheduler, interfaces, or migrations described below
+- Evidence: Static inspection of this repository at proposal time. Later scheduler microbenchmarks, pool budgets and in-game frame measurements are in the progress records; no frame, latency or mobile budget is set
+- Implementation status: Partial; no phase gate is complete. The graph runtime, executors, engine-pool bridge, serial host frame graph, declared frame-graph regions and several cohort migrations are installed. State and evidence: [0003-progress.md](0003-progress.md) and the records it links
 
 ## Summary
 
@@ -123,7 +123,10 @@ bounded steal deques. See
 threaded listen-server path. The latter uses previous-frame client timing,
 submits `_Host_RunFrame_Server_Async` as one job, proceeds through rendering,
 sound, and client update, and waits before executing server-deferred work.
-`host_thread_mode` defaults to zero on PC in this tree.
+`host_thread_mode` defaults to zero on PC in this tree. Since the R10
+scheduler-trust increment, the frame after admission runs as an ordered
+serial graph by default (`host_frame_graph 1`); the hand-ordered body is the
+rollback.
 
 The single-player wait contains a warning about executing queued AI operations
 at the wrong point while helping the pool. This is evidence that a wait is also

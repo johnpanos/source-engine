@@ -109,6 +109,28 @@ nothing here was measured for this RFC:
   Depth/stencil resolve and render pass 2 are extensions there, and core in
   1.2.
 
+Rechecked at `d6260d90` (2026-09-25), by reading source. No A0–A5 work
+exists, and the points above hold except the API level:
+
+- Alpha to coverage is still the `VK_UNIMPLEMENTED()` stub
+  (`shaderapivulkan.cpp:5385`), with empty dynamic calls (`:2656`).
+- No PBR shader filters roughness: `max( mrao.g, 0.02 )` is at
+  `world_pbr.frag:366`, `model_pbr.frag:177` and `world_pbr_glass.frag:88`.
+  The clear coat clamps in `PbrClearCoat` (`pbr_brdf.glsl:101`), at
+  `world_pbr.frag:450` and at `model_pbr.frag:214`. Alpha test is still a
+  `discard` (`world_pbr.frag:344`).
+- No `render.msaa-targets.v1`, `render.alpha-coverage.v1` or
+  `render.pbr-specular-aa.v1` owner, fixture or manifest suite exists.
+  `frame_pacing.py` still pins `mat_antialias 0`.
+- The MSAA code is unchanged in kind but has moved: `ApplySampleCount`
+  (`vulkan_device.cpp:7609`), `CreateMsaaTargets` (`:7643`),
+  `CreateAttachmentPass` (`:985`), `ResolveBackBuffer` (`:7806`), and the
+  scene-capture depth skip (`vulkan_scene_capture.cpp:331`).
+- **API level changed.** The instance now requests Vulkan 1.2 when the loader
+  offers it, else 1.1 (`vulkan_device.cpp:238`), for RFC 0011 G5's compute
+  feature chain. The backend still uses neither depth/stencil resolve nor
+  render pass 2, so open decision 2 stands.
+
 ## Goals
 
 1. Antialiased geometry, alpha-tested and specular edges in the native PBR

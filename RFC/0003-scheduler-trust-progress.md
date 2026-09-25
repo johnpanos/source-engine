@@ -3,7 +3,8 @@
 Updated: 2026-09-25. Base revision `504ee284` (the history rewrite of `f7eb1cf1`;
 source content identical), branch `scheduler-trust`, worktree
 `source-engine-scheduler`. Owner: this increment. Roadmap rows R10 and R20;
-neither row closes here (see "Open").
+neither row closes here (see "Open"). The branch is merged into
+`subsystem-refactor` (`cf2c2dee`, 2026-09-24).
 
 The increment has four parts:
 
@@ -67,7 +68,10 @@ Switch: `host_frame_graph` (default `1`). `0` runs the legacy hand-ordered body,
 kept verbatim apart from that carry substitution. It is the rollback and
 comparison path. **Deletion condition:** remove the legacy body once the
 threaded-path live comparison below passes and one further release ships
-without a rollback.
+without a rollback. (2026-09-25: the threaded comparison now passes, 6 of 6
+pairs identical, in the
+[scheduler nodes record](0003-scheduler-nodes-progress.md#3-threaded-listen-server-deadlock-and-io-pool-capacity-r20);
+the legacy body stays until the release condition is met.)
 
 ### Evidence
 
@@ -328,6 +332,15 @@ of `--filter <workload> --samples 15`. For frames, run
 | archlint unit tests | pass |
 
 ## Open (R10/R20 remain partial)
+
+(2026-09-25) The [scheduler nodes](0003-scheduler-nodes-progress.md) increment
+closed several items below: the `host_thread_mode 2` deadlock was a per-thread
+array overrun and threaded captures now match (section 3 there); the shared
+injection queue is bounded with a no-drop overflow policy, forbidden nested
+waits and starvation are detected, and pool capacity and overhead budgets are
+recorded (section 4). Still open from this list: the RFC 0001 runner/clock
+contracts, a full-product TSan run and mobile profiles. The current list is in
+[that record](0003-scheduler-nodes-progress.md#open-rows-stay-partial).
 
 - Threaded listen server (`host_thread_mode 2`) live comparison: not possible
   yet. Portal deadlocks after about 8 frames in either frame mode, and **also

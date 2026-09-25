@@ -156,8 +156,10 @@ Observed at the working tree of 2026-09-22 (branch `subsystem-refactor`):
   `hammer/core/formats/material_catalog.cpp` and VTF/VPK readers in the same
   directory. There is no compile/run workflow in the GTK host yet (RFC 0002 H5).
 - At the initial 2026-09-22 baseline, the native Vulkan backend had no new PBR
-  material path. A synthetic direct-specular pixel path is now recorded in
-  [progress](0007-progress.md); the complete material family remains open. The
+  material path. As of 2026-09-25, [progress](0007-progress.md) records
+  native `PBRMetalRough` world (WMSH), glass and model pipelines, and a
+  synthetic direct-light fixture. The complete material family (the R47 gate)
+  remains open. The
   repository already has a separate `PBR` shader in
   `materialsystem/stdshaders/pbr_dx9.cpp` and its FXC sources; its name and
   existing content semantics must be preserved. The native shader work
@@ -575,8 +577,9 @@ registration are recorded in [progress](0007-progress.md). The temporary
 fallback path has end-to-end VMT and pixel checks on DXVK and native Vulkan.
 Both loaders now reject missing required fields, absent or self fallbacks,
 traversal references, unsupported or PBR fallback shaders, and a patch cycle.
-Fallback patch-include path validation and malformed VMT syntax still need
-full runtime coverage.
+Since 2026-09-23 the runtime loader also checks fallback and primary patch
+include paths, and native Vulkan resolves `PBRMetalRough` itself instead of
+its fallback. Malformed VMT syntax still needs full runtime coverage.
 New PBR textures are KTX2
 (RFC 0008), which covers BC7, BC6H, and ASTC. VTF lacks BC6H/BC7 and its BC5
 encoder is unavailable on Linux (see
@@ -599,7 +602,10 @@ The model tracks the Cycles Principled BSDF as inspected (see
   which is exact against Cycles' F82-tint model with a white tint.
 - Multi-scattering energy compensation is a declared option recorded in the
   capability. References are rendered with both `ggx` (exact-model check) and
-  `multi_ggx` (Blender default, tolerance check).
+  `multi_ggx` (Blender default, tolerance check). As built (2026-09-25), it is
+  always on: `pbr_brdf.h` and its one GLSL mirror `pbr_brdf.glsl` compensate
+  the lobe (Kulla–Conty, Filament's form), and no capability option exists
+  yet (see [progress](0007-progress.md#energy-compensation-one-glsl-brdf-and-grouped-descriptor-sets-r47--r29-prep-2026-09-25)).
 - Static lighting: on BSP2 maps, evaluate the SH L1 lightmap (per style layer)
   at the normal-mapped normal. On legacy maps, reconstruct irradiance from the
   RNM basis exactly as `LightmappedGeneric` does.
@@ -635,6 +641,13 @@ Two sources, one shading path:
 
 The BRDF integration and directional-albedo table is computed once per filter
 version and shared by both.
+
+As built for scene-derived maps (2026-09-25, R50-PARALLAX): probes are placed
+automatically per room and per glossy surface, not only at `env_cubemap`
+positions. Cycles renders them through Blender (`pbrt_reflection_probe.py`),
+not the baker, and `RPRB` v1/v2 carries raw RGBA16F rather than KTX2. The
+legacy runtime prefilter is not built. See
+[progress](0007-progress.md#r50-parallax-parallax-corrected-blended-reflection-probes-bounded-r50-slice-2026-09-25).
 
 **Amendment (2026-09-25, R50-RELIGHT; RFC 0011 open decision 5): relightable
 baked probes.** Without this, runtime light never reaches specular. The
@@ -951,7 +964,10 @@ exact legacy payload, produced by the same bake at no extra cost.
     from the SH oracle.
 9. Runtime Fresnel for dielectrics: Schlick with tolerance (v1) vs Cycles'
    remapped dielectric Fresnel; multi-scatter compensation on or off by
-   default. Decided from pixel-oracle error measured per term.
+   default. Decided from pixel-oracle error measured per term. *Interim
+   (2026-09-25):* compensation is on in every native PBR shader, at the
+   user's direction, before any per-term Cycles comparison. The Fresnel
+   choice and a Cycles `multi_ggx` measurement remain open.
 10. How to pin Cycles' dependency stack: Blender precompiled library
     submodule revisions vs a minimal self-built set; decided by build cost
     and profile reproducibility.

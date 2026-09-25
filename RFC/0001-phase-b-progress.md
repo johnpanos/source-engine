@@ -1,6 +1,6 @@
 # RFC 0001 Phase B completion
 
-Updated: 2026-09-22
+Updated: 2026-09-25
 
 Phase B removes the app-framework pseudo-module path for factories that are
 already linked into a product. It does not complete the later typed provider,
@@ -69,3 +69,21 @@ record](0001-portal-vulkan-progress.md) distinguishes these delivered slices fro
 the remaining provider catalogs and first-party shader loader. Phases E–G still own tool executable cleanup, named extension
 hosts, and removal of the public loader. Consequently, portfolio item R39 remains
 open even though its Phase B sub-scope is complete.
+
+Source state on 2026-09-25 (not a gate claim):
+
+- Phase C: the client launcher adds linked instances for input, the material
+  system, data and model caches, studio render, video services, VGUI and the engine.
+  The dedicated root uses the same pattern through its
+  [composition bridge](0001-dedicated-composition-progress.md). Both roots
+  still load the physics provider by filename (`-physics`, default
+  `vphysics`). The launcher still loads the filesystem, `sourcevr`, `p4lib`,
+  `vstdlib` and `hammer_dll` by filename.
+- Phase D: the launcher selects window, input, video and audio providers from
+  typed linked descriptors (`-window-provider`, `-input-provider`,
+  `-video-provider`, `-audio-provider`). The standard shader library is linked
+  into client and tools products and bound through
+  `MaterialSystem_BindBuiltinShaderProvider`. Filename shader loading is left
+  only for mod shaders, through the shader-extension compatibility host. No
+  progress record yet covers the window, input, video and audio catalogs.
+- Phase E: see the [Phase E record](0001-phase-e-progress.md).

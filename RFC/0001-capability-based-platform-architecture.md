@@ -5,8 +5,8 @@
 - Scope: Tier 0–3, application bootstrap, and platform backends
 - Verification: [RFC 0005: Quality and Correctness Harnesses](0005-quality-and-correctness-harnesses.md)
 - Language and synchronization: [RFC 0006: C++20, Ownership, and Synchronization](0006-modern-cpp-ownership-and-synchronization.md)
-- Implementation: [Phase A](0001-phase-a-progress.md) and [Phase B](0001-phase-b-progress.md) complete in their documented scope; [Portal SDL3/Wayland/Vulkan slice and Phase C–D progress](0001-portal-vulkan-progress.md) verified separately
-- Current native outcome (2026-09-22): Portal renders through linked DXVK Native on SDL3/Wayland; native Vulkan material replacement and global Phase D retirement remain open
+- Implementation: [Phase A](0001-phase-a-progress.md) and [Phase B](0001-phase-b-progress.md) complete in their documented scope; [Portal SDL3/Wayland/Vulkan slice and Phase C–D progress](0001-portal-vulkan-progress.md) verified separately; later slices in the [render seam](0001-render-seam-progress.md), [presentation bridge](0001-presentation-bridge-progress.md), [native Vulkan](0001-native-vulkan-progress.md), [dedicated composition](0001-dedicated-composition-progress.md), [Phase E](0001-phase-e-progress.md) and [capability conformance](0001-conformance-progress.md) records
+- Current native outcome (2026-09-25): Portal renders lit, textured chambers through the native Vulkan backend on SDL3, and DXVK Native remains the compatibility waypoint; R28, R32 and global Phase D retirement remain open (see the update below)
 
 ## Summary
 
@@ -62,6 +62,47 @@ are recorded in [the Portal progress record](0001-portal-vulkan-progress.md),
 [shader artifact tooling](../tools/quality/shader_artifacts.md), and
 [render diagnostics](../tools/quality/render_trace.md). Dependency and toolchain
 facts belong to the referenced profile, not a second matrix in this RFC.
+
+### Update (2026-09-25)
+
+Later slices supersede parts of the snapshot above. The roadmap states are
+in [AGENTS.md](../AGENTS.md).
+
+- **Render seam and presentation (ranks 8–9).** R15 and R16 are `done` for
+  their rank scope. `render.profile.v1` and `render.presentation.v1` are
+  installed, with headless-null and SDL3–Vulkan bridges. The roadmap checker
+  reports both rows as hard-gate violations: R15 needs R06 and R16 needs R14,
+  and both prerequisites are still `planned`.
+- **Native Vulkan (ranks 14 and 16).** The native backend renders lit, textured
+  Portal chambers. `portal_boot.py --renderer native-vulkan` passes on four
+  maps. Named features are declined, for example Water, Eyes and flashlight
+  passes. R28 is `partial` and R32 `active`; see the
+  [native Vulkan record](0001-native-vulkan-progress.md).
+- **Provider catalogs (Phase D).** The standard shader library is linked into
+  client and tools products and bound through a typed `BuiltinShaderProvider`.
+  Filename shader loading remains only for mod shaders, in the
+  shader-extension compatibility host. The launcher also selects window, input,
+  video and audio providers from typed linked descriptors. Physics and the
+  filesystem are still loaded by filename in the launcher and dedicated roots.
+  See the [Phase B record](0001-phase-b-progress.md#later-work-not-claimed-here).
+- **Dedicated server (rank 6).** A dedicated composition bridge is in place,
+  but the product still links material and studio render support. R12 is
+  `partial`.
+- **Composition and vocabulary (ranks 2–3).** `public/foundation/expected.h`
+  and `public/platform/composition.h` pass their Q-FOUNDATION suites with test
+  providers. The window and input contracts in `public/platform/window/` are
+  not built or run by any target. R05, R06 and R14 remain `planned`.
+- **Tools (rank 19).** No first-party launchable-DLL wrapper remains. The
+  structured process contract passes against its test backend. R40 is
+  `active`; see the [Phase E record](0001-phase-e-progress.md).
+- **Architecture ratchet (ranks 1 and 4).** `archlint check --all` and the loader
+  inventory currently fail on unreviewed drift; see the
+  [Phase A record](0001-phase-a-progress.md).
+- **Platforms (rank 15).** The portfolio expands rank 15 from one additional OS
+  to Linux, macOS, iOS and Android (R29). An SDL3/native-Vulkan Portal APK
+  profile builds from pinned inputs, and an arm64 APK has run on a Galaxy Z
+  Fold7. That profile's device gates remain unverified. No Apple engine
+  build or runner evidence is recorded.
 
 ## Motivation
 

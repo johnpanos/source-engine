@@ -1,6 +1,12 @@
 # RFC 0011: Runtime Indirect Lighting with Substitutable Probe Producers
 
-- Status: Proposed (2026-09-24); no implementation gate complete
+- Status: Proposed (2026-09-24), amended with G9 and G10 (2026-09-25).
+  Implementation (2026-09-25): every gate G0–G10 has a done record on native
+  Vulkan desktop in the [progress file](0011-progress.md#gate-status). Still
+  deferred or unverified: the G1.7 DXVK capture, Apple profiles (G8.3),
+  the Fold7 with the grouped descriptor sets, and the G10 radiosity path on
+  an Android device. SDF and ray query are declared unsupported on Android.
+  Rows R70–R80 are not ranked in AGENTS.md, so no roadmap row is closed.
 - Date: 2026-09-24
 - Scope: The runtime indirect-light (global illumination) data contract, a
   grid-addressable probe volume with visibility, the lighting policy that
@@ -56,6 +62,8 @@ Not in scope: glossy reflections (RFC 0007 F / R50 owns reflection probes),
 screen-space effects, direct-light shadow techniques beyond what the producers
 consume, legacy shader families (they keep ambient cubes), and light transport
 *through* open portals (a later extension; see open decisions).
+*2026-09-25: light through open portals was added as
+[G10](#g10-light-through-open-portals-amendment-2026-09-25) (open decision 6).*
 
 ## Observed starting point
 
@@ -183,6 +191,9 @@ Facts observed in the tree at `73e7ec64` plus the shared dirty tree on
 | GPU resources and completion | Native Vulkan provider (serial/fence tokens today) | Producers, switching |
 
 The header names below are proposed. None of them exist yet.
+*As built (2026-09-25):* they exist as `public/mapcontainer/probe_volume.h`
+(`PRBV`) and `public/render/light_set.h`, `indirect_policy.h`,
+`indirect_light.h` and `indirect_switcher.h`.
 
 ## Probe volume contract (`render.probe-volume.v1`)
 
@@ -356,6 +367,9 @@ Deliberately bad producers must each fail the suite:
 The selected producer is `r_indirect_producer`, an archived convar with the
 values `baked`, `radiosity`, `sdf` and `rayquery`. Video options exposes only
 the values the composed device and map support.
+*As built (G8):* the default is `auto`, the first producer in the product
+profile's list that the map and device offer; `r_indirect_producer_offered`
+lists the offered values.
 
 - **Startup validation:** at composition, a saved value the profile cannot
   satisfy is rejected. The rejection is logged as a structured diagnostic, the
@@ -518,6 +532,19 @@ The GPU suites need a GPU runner profile in `quality/conformance.manifest.json`.
 None exists today, so it is a G0 deliverable. Standalone wscript programs do not
 certify a gate.
 
+*As built (2026-09-25):* the GPU profile is `linux-native-vulkan-gpu` (G0).
+The rows are named differently from the list above:
+
+- `world.probe-volume`, `world.radiosity-transfer` and `world.sdf-volume`
+  are the `PRBV`, `RTRN` and `SDFV` reader suites. The C++ sampler is matched
+  to GLSL in `render.model-pbr.native-pixels`.
+- `render.indirect-light` runs the shared suite against baked, radiosity and
+  the fake, and the switching scenarios on a fake GPU timeline.
+  `render.indirect-light.sdf` (GPU) runs it against SDF and ray query.
+- `render.indirect-switching.native-pixels` is the native switching suite.
+- `render.indirect-radiosity`, `render.light-set`, `render.indirect-policy`
+  and `jobsystem.radiosity` carry the names above.
+
 ## Delivery plan and gates
 
 Each gate lists what "done" means. Numbers marked *provisional* are proposed
@@ -588,6 +615,10 @@ Implementation notes (2026-09-24, [progress](0011-progress.md#g1-probe-volume-ba
   decision. The leaf ambient is still derived from the volume.
 - Per-pixel sampling needs nine bound descriptor sets. Devices that bind fewer
   keep the ambient cube evaluated from the same volume.
+  *Superseded 2026-09-25:* the PBR and GI stages now bind three grouped sets,
+  and the nine-set gate is gone
+  ([RFC 0007 record](0007-progress.md#energy-compensation-one-glsl-brdf-and-grouped-descriptor-sets-r47--r29-prep-2026-09-25)).
+  No Fold7 run has checked it.
 
 ### G2: Light set, separated bake, policy
 
@@ -866,6 +897,13 @@ following rows for the user to rank:
 R71 supplies the `PRBV` portion of R56, and R74 together with R76 or R77
 supplies the real-time indirect-light portion of R63. Neither row closes those
 parents alone.
+
+Implementation evidence (2026-09-25): each gate G0–G10 has a done record on
+native Vulkan desktop in the [progress file](0011-progress.md#gate-status),
+with its deferred and unverified items. That is evidence for ranking, not a
+roadmap state. Several prerequisites are not done in AGENTS.md (R20, R28,
+R29, R32, R47, R49, R53, R54). Under its hard-gate rule, the rows that
+depend on them cannot be marked done until they close.
 
 ## Risks and mitigations
 

@@ -1,8 +1,35 @@
 # RFC 0007 progress
 
-Updated: 2026-09-24. The full physically based lighting pipeline is not yet
+Updated: 2026-09-25. The full physically based lighting pipeline is not yet
 implemented. This record separates installed evidence from the RFC's planned
 interfaces and phases.
+
+Current state at `d6260d90` (2026-09-25). The dated sections below are the
+evidence; this list only summarizes them.
+
+- **R47 (active).** Installed:
+  - `pbr_brdf.h` with energy compensation, mirrored by one GLSL library
+    (`pbr_brdf.glsl`);
+  - the v1 schema, used by the editor catalog and the runtime VMT loader;
+  - native `PBRMetalRough` world (WMSH), glass and model pipelines, with
+    emission, `$envmap` and clear coat;
+  - grouped descriptor sets.
+
+  Open: a `pbr` pixel family against Cycles references (the `pbr-model`
+  family is judged against an independent CPU model, not Cycles), malformed
+  VMT syntax, model glass, and Apple/Android runs.
+- **R48 (partial).** vbsp, vvis and vrad build and run as Linux host tools,
+  with synthetic smokes and a cross-version comparison. The same-revision
+  byte-identity gate is open. R48-BAKER is `planned`: `public/lighting/` and
+  `utils/lighting/` do not exist. The `vrad_cycles.py` hook is installed and
+  is not the seam.
+- **R49 (planned).** SH L1 feasibility only. No Cycles provider is built or
+  pinned; every Cycles bake is a Blender subprocess.
+- **R50 (partial).** R50-PARALLAX and R50-RELIGHT are installed bounded
+  slices. The legacy runtime prefilter, IBL pixel fixtures and cache
+  invalidation are open.
+- **R51 (planned).** Nothing is installed. Reference renders use Blender
+  (`gi_reference_blender.py`), not the pinned Cycles standalone.
 
 ## R47: PBR material family core
 
@@ -341,6 +368,9 @@ The full R48–R52 gates remain open. VBSP has a Linux host-tool port and a
 synthetic smoke; vvis/vrad and the legacy-output comparator remain. The Cycles
 provider is not built or pinned, and RFC 0008's World Stage and canonical
 lighting formats are prerequisite work for the later bake phases.
+(2026-09-25 note: the vvis and vrad Linux ports and the cross-version
+comparator came later on 2026-09-23; see below. The same-revision
+byte-identity gate and the Cycles provider remain open.)
 
 ### R48 host compiler preparation (2026-09-23)
 
@@ -552,6 +582,26 @@ unassigned. Nothing below is installed.
     [R49 preparation](#r49-preparation-four-sample-sh-l1-feasibility)).
   - The bake oracles are not in the conformance manifest.
 
+Note (2026-09-25): `pbrt_map_build.py` has since fixed three of these
+findings, at `c1b67422` and `d112d001` (2026-09-24). They are pipeline fixes,
+not the scope-6 baker gate:
+
+- **Cache keys.** A step's key hashes every scene file
+  (`map_scene.source_files`; for a PBRT scene, the file and its PLY meshes,
+  textures and sky), the pinned identity of each tool the step runs (`STEP_TOOLS`), and
+  the requested device and seed. An `auto` device's resolved choice is still
+  not keyed.
+- **No deletion.** A step moves its previous outputs to `.previous/<step>`
+  and restores them if it fails or raises.
+- **Seeds.** The lightmap, reflection-probe and probe-volume bakes pin
+  Cycles sampling (`pbrt_blender.pin_sampling`). The lightmap and probe
+  seeds come from the manifest (default 0); the probe volume uses a fixed
+  seed. The lightmap and probe receipts record a determinism class
+  (`cycles_device.determinism`).
+
+The seam, the basis and L1 duplicates, the Blender subprocess and the
+manifest registration are unchanged.
+
 ### Device policy (installed 2026-09-24)
 
 [`tools/quality/cycles_device.py`](../tools/quality/cycles_device.py) owns
@@ -572,6 +622,14 @@ Measured on the Ryzen AI Max+ 395 / Radeon 8060S host with Blender 5.2.1:
 
 The existing G0 references were rendered on HIP. Re-rendering them on the CPU
 would change their recorded hashes, and has not been done.
+
+Superseded (2026-09-25, user decision, `d57305aa`): bakes and previews now
+use the CPU too. `cycles_device.BAKE_DEVICE` is `cpu`, and every manifest
+or map export profile under `quality/` that sets `lightmap.device` sets
+`cpu`. `gpu` and `auto` are explicit opt-ins. The reasons given are the wedged HIP queue recorded
+below, the CPU's bit-identical results and Cycles' path guiding. The
+[pipeline guide](../quality/fixtures/pbrt-maps/README.md) records the living
+room's CPU bake time as not yet measured (about 6 minutes on HIP).
 
 ### Lightmap layout, seams and noise (installed 2026-09-25)
 
@@ -690,7 +748,9 @@ Blender/Cycles pipeline without a manifest. See the
   host reboots. The evidence run below therefore used the CPU.
 - `--cycles-device` (and `legacy_bsp_relight.py --device`) overrides the
   profile's device for every bake. `cpu` and `auto` stay explicit opt-ins
-  under the device policy above.
+  under the device policy above. (Later the same day the profiles moved to
+  `cpu`, so `gpu` and `auto` are now the opt-ins. Both tools' help text still
+  names `gpu` as the default.)
 - Evidence:
   - `tests/test_vrad_cycles.py` has 17 tests against a fake vrad and a
     recording relight. They cover argument splitting, vrad's map and `-game`
@@ -931,6 +991,13 @@ Not covered:
   pipeline; it lights with the ambient cube and local lights.
 - Clear coat, model glass, and flashlight/projected-texture passes for PBR
   models.
+  - Note (2026-09-25): clear coat landed shortly after this record, at
+    `cd29e77a` (2026-09-24). `$clearcoat` and `$clearcoatroughness` are in
+    the schema. World and model PBR draw the coat (`PbrClearCoat`). The
+    model suite has a `kNoClearCoat` seeded defect, and the world suite a
+    grazing coated/uncoated case. Both are in the suites'
+    [2026-09-25 runs](#energy-compensation-one-glsl-brdf-and-grouped-descriptor-sets-r47--r29-prep-2026-09-25).
+    Model glass is still dropped by name.
 - Other GPUs and the Android/Apple profiles.
 
 ## Energy compensation, one GLSL BRDF, and grouped descriptor sets (R47 / R29 prep, 2026-09-25)

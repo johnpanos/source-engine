@@ -136,14 +136,15 @@ recorded in the [progress record](0013-progress.md).
   server-authoritative.
 - Box3D's character mover (RFC 0004 non-goal).
 - Changing any default. Promotion stays per profile under RFC 0004 and this
-  RFC's gates.
+  RFC's gates. (The user overrode this for parallel stepping on 2026-09-25;
+  see [Composition and selection](#composition-and-selection-p3).)
 - Mixing providers, or moving a live world between worker counts.
 
 ## Capability catalog
 
 | Capability | Interface | Enables | Box3D API | State | Gate |
 | --- | --- | --- | --- | --- | --- |
-| `vphysics.parallel-step.v1` | `IPhysicsParallelStep` ([header](../public/vphysics/parallel_step.h)) | An environment stepped on N workers of the caller's thread pool, fixed at creation | world `workerCount`, `enqueueTask`/`finishTask` | Implemented (P1–P3); server opt-in `-physics_workers N` | `parallel-step` (required) |
+| `vphysics.parallel-step.v1` | `IPhysicsParallelStep` ([header](../public/vphysics/parallel_step.h)) | An environment stepped on N workers of the caller's thread pool, fixed at creation | world `workerCount`, `enqueueTask`/`finishTask` | Implemented (P1–P3); server default when the provider offers it, `-physics_workers N` or `1` | `parallel-step` (required) |
 | `vphysics.step-profile.v1` | `IPhysicsStepProfile` ([header](../public/vphysics/step_profile.h)) | Solver against adapter time per `Simulate`, body/awake/contact counts, game-solver calls on and off the calling thread | `b3World_GetCounters`, provider timers | Implemented (P2); `physics_step_profile` server command | contract clauses in `parallel-step` |
 | `vphysics.continuous.v1` | planned | Per-object bullet flag: continuous collision against dynamic bodies | `b3Body_SetBullet` | planned (P4) | `ccd-bullets` (planned; fails today) |
 | `vphysics.recording.v1` | planned | Record a session; validate a replay | `b3World_StartRecording`, `b3ValidateReplay` | planned (P5) | replay equals digest |
@@ -361,8 +362,11 @@ for the conformance suite and the benchmark, and no new `dlopen` site.
     an explicit `N > 1` it logs a warning instead.
   - `-physics_workers_required`, with or without `N`, turns a missing
     capability into a `Sys_Error`.
-- The default applies on every platform that runs this server code,
-  including the Android listen server, whose profile has no physics
+- The default takes effect only where the process selects Box3D. The
+  launcher and the dedicated server default to IVP (`-physics vphysics`).
+  `./play`, `./play_p2` and `run.sh` select Box3D. The Android launcher
+  passes no `-physics`, so the APKs run IVP with one worker unless their
+  `commandline.txt` selects Box3D; that profile has no physics
   measurements yet (see the open decisions).
 
   Portal's simulators share this environment (`physenv_main`), so they are
@@ -393,7 +397,10 @@ for the conformance suite and the benchmark, and no new `dlopen` site.
 R67 in [AGENTS.md](../AGENTS.md) tracks this RFC. It depends on R19 (the
 Box3D slice). P2 depends on R20, P3 on R31 and R12, and P7 on R59 and R45.
 Enabling any capability by default in a profile is a separate product
-decision after that profile's gates pass.
+decision after that profile's gates pass. The 2026-09-25 parallel-step
+default was a user decision made before that: the Fold7 and Apple profiles
+are unmeasured, and the pool bridge's timing rules are not yet certified on
+a quiet host ([progress](0013-progress.md#acceptance-run-on-the-merged-code-2026-09-25)).
 
 ## Risks and mitigations
 

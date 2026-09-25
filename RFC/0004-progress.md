@@ -1,11 +1,46 @@
 # RFC 0004 progress: Box3D Primary Physics Backend
 
-Updated: 2026-09-23 (collision-rule recheck for portals)
-Source revision at assessment: `87955f67` (working tree; AGENTS.md portfolio rows: R09, R19, R31, R34, R37, R44, R45)
+Updated: 2026-09-25 (status reconciled with the tree)
+Source revision at assessment: `d6260d90` (earlier entries: `87955f67`; AGENTS.md portfolio rows: R09, R19, R31, R34, R37, R44, R45)
 
 This file is the human-readable, durable progress record for RFC 0004. It tracks the phased implementation of replacing IVP/Havana with Box3D as Source's primary rigid-body physics backend.
 
 ## Status
+
+Current state (2026-09-25, read from the tree; nothing rerun):
+
+- The parity runner does not pass as a whole in the latest recorded runs. It
+  fails on any divergent observation (`physics_conformance.py`, default
+  `--require all`).
+  - Pinned Box3D source (worktree, 2026-09-24): 602 of 602 checks pass, but
+    `dynamics.tumble.audible-impacts` diverges (IVP 4, Box3D 1, tolerance ±2).
+  - The shared tree's source: `box3d/src/contact_solver.c` still carries the
+    uncommitted restitution patch (`git -C box3d status`), while the parent
+    pins `9e5a4cd`. With it, three Box3D gameplay checks fail (see below).
+  - `quality/baseline.json` still declares `physics.conformance` (rows R09,
+    R19) with outcome `pass`. It was not rerun for this update.
+- Provider selection: the launcher and the dedicated server default to
+  `-physics vphysics` (IVP), and Waf's `--physics-backend` defaults to `ivp`.
+  `./play`, `./play_p2` and `run.sh` select Box3D. The Android launcher
+  (`launcher_main/android_main.cpp`) passes no `-physics`, so the APKs, which
+  package both providers, run IVP unless `commandline.txt` selects Box3D.
+- `vphysics_box3d` links no IVP library and includes no IVP header. Its
+  `.phy`/BSP decoder is `legacy_collision.cpp`; it shares only the keyvalue
+  parser `vphysics/vcollide_parse.cpp`. `vbsp` and `studiomdl` still load
+  the IVP `vphysics` module.
+- CI runs the physics runner unit tests and the filter audit
+  (`conformance.yml`), not the parity suite or the benchmark.
+- Parallel stepping on the engine pool is the server default when Box3D is
+  selected ([RFC 0013](0013-progress.md#default-on-2026-09-25-user-decision)).
+  The client environment keeps one worker.
+
+Roadmap criteria against this record (2026-09-25):
+
+| Row | Has evidence | Missing |
+| --- | --- | --- |
+| R09 | Impact state (pre-step velocities, `events.*`), contact mutation (`contacts.*`), asymmetric ragdoll limits (`constraint.ragdoll-*`), decoder over every Portal and HL2 `.phy` (`corpus.*`), with convexes over Box3D's hull limits split into patch hulls (`BuildHulls`); synthetic IVP measurements (`physics-v1.json`) | Method-level consumer inventory; map/gameplay and load-time IVP measurements |
+| R19 | BSP and `.phy` load, compound props, inside-start traces, impact events, one ragdoll, save/restore (`bsp.*`, `vcollide.*`, `trace.*`, `events.*`, `save.*`/`restore.*`) | A coherent pinned source (the uncommitted patch above); a passing runner; a CI lane |
+| R31 | Provider-level traces, filters, events, materials, constraints, controllers and persistence | Client/dedicated gameplay corpus; the dedicated build fails (`build.dedicated`, R12) |
 
 Evidence (2026-09-24): `python3 tools/quality/physics_conformance.py --out <dir>`
 passes. IVP and Box3D each pass 559 checks (149 boot, 410 gameplay); 12,373
@@ -142,7 +177,7 @@ Those are the three failures earlier noted as pre-existing on main's build.
 | Interface & Consumer Inventory | A | Partial | Every VPhysics interface implemented and covered by the contract; no method-level consumer inventory |
 | Asset Corpus & IVP Baselines | A | Partial | Conformance corpus: every `.phy` in the Portal and HL2 packs, `testchmb_a_00.bsp`, HL2 vehicle scripts, with IVP as the oracle; no performance baselines |
 | Event & Contact-mutation Prototypes | A | Done (provider) | Pre-step velocities for `PreCollision`; snapshot contact deletion via pre-solve (`contacts.*`) |
-| Box3D Build Integration (Pinned) | B | Done | `box3d/` pinned, private C17 target |
+| Box3D Build Integration (Pinned) | B | Done | `box3d/` pinned, private C17 target; the shared tree's checkout carries an uncommitted `contact_solver.c` patch (2026-09-25), so its build differs from the pin |
 | VPhysics Adapter & World Lifecycle | B | Done | `vphysics_box3d` module, `-physics` selection |
 | Legacy Geometry Decoder | B | Done | `.phy`/BSP decode (`vcollide.*`, `corpus.*`, `bsp.*`), IVP-format writer (`collide.write-*`) |
 | Trace & Query Foundation | B | Done | `trace.*`, `bsp.world-traces` |
@@ -151,9 +186,9 @@ Those are the three failures earlier noted as pre-existing on main's build.
 | Persistence & Materials | C | Done | `save.*`, `restore.*`, `vehicle.restore-*`, `surfaceprops.*` |
 | Fluids & Vehicles | D | Done (gaps recorded) | `fluid.*`, `vehicle.*`; the raycast car type and wheel side-friction are listed gaps |
 | Tool Workflows (`studiomdl`, `vbsp`) | D | Partial | `CollideWrite` emits the legacy format; tools not rebuilt against Box3D |
-| Parallel Scheduler Integration | E | Partial (opt-in) | [RFC 0013](0013-opt-in-physics-capabilities.md) P1: `vphysics.parallel-step.v1` on Box3D's built-in scheduler, unused by the game; engine-pool bridge is P2 |
+| Parallel Scheduler Integration | E | Partial | [RFC 0013](0013-opt-in-physics-capabilities.md) P1–P3: `vphysics.parallel-step.v1` on the engine pool; the server steps in parallel by default when Box3D is selected (2026-09-25); client one worker; Linux desktop only; pool-bridge timing not certified on a quiet host |
 | Performance Budgets & Packaging | E | Partial | Synthetic-scene budgets and IVP comparison for Linux desktop in `quality/budgets/physics-v1.json` ([RFC 0013 progress](0013-progress.md)); no gameplay or mobile budgets |
-| Independent Collision Cooking | F | Not started | — |
+| Independent Collision Cooking | F | Not started | `vphysics_box3d` decodes `.phy`/BSP without IVP code; `vbsp` and `studiomdl` still load the IVP `vphysics` module; no dependency audit |
 | IVP Simulation Retirement | F | Not started | — |
 
 ## Scoped Actionable Tasks
