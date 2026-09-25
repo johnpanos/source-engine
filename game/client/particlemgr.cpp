@@ -1976,7 +1976,8 @@ void CParticleMgr::UpdateNewEffectsEnd()
 
 	// Light the bursts the batch gathered, in effect order; an effect that did
 	// not simulate this frame releases its light.
-	for ( CNewParticleEffect *pNewEffect = m_NewEffects.m_pHead; pNewEffect; pNewEffect = pNewEffect->m_pNext )
+	for ( CNewParticleEffect *pNewEffect = m_NewEffects.m_pHead; pNewEffect;
+	    pNewEffect = pNewEffect->m_pNext )
 	{
 		pNewEffect->CommitLight();
 	}

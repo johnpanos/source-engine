@@ -142,6 +142,8 @@ class CBinkMaterial : public IVideoMaterial
 		// Initializes, shuts down the video stream
 		void 						OpenMovie( const char *theMovieFileName );
 		void 						CloseFile();
+		bool						DecodeNextFrame();
+		bool						Rewind( double flTime );
 
 		// Initializes, shuts down the procedural texture
 		void						CreateProceduralTexture( const char *pTextureName );
@@ -201,6 +203,7 @@ class CBinkMaterial : public IVideoMaterial
 		int m_AVAudioStreamID;
 
 		AVCodecContext *m_AVVideoDecCtx ;
+		bool m_bDecoderDraining;
 		AVCodecContext *m_AVAudioDecCtx ;
 
 		AVStream *m_AVVideoStream;

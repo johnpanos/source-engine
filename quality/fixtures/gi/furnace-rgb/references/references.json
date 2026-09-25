@@ -1,0 +1,163 @@
+{
+  "analytic": [],
+  "fixture": "furnace-rgb",
+  "fixture_reference_digest": "4a6d1b752807c536c47af1d8674877dd4b76f6c8463621ee1754bd4560efa010",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 18,
+    "controls_unrejected": [],
+    "failed": 0,
+    "oracles": 1
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "default": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "cbecd99ec84c585ac68ef9f3e8df5035e43196ba68936d2d1fa4f8be150e6c87",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/furnace-rgb/furnace-rgb.usda": "91acd5b4d9677af9cc04cc069cb62077a5a280985632fa6366870c8fcc02952a"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "default.inside": {
+      "camera": "inside",
+      "files": {
+        "index": {
+          "file": "default.inside.index.png",
+          "sha256": "cf582992bc49fe2d008c3c7b304f7aaba7cbede27f8d074207dcf55cd091b879"
+        },
+        "indirect": {
+          "file": "default.inside.indirect.exr",
+          "sha256": "df95687f840b7c6a88097efb87f6933637906b47c83a2e6116ba7e112f0235ba"
+        },
+        "total": {
+          "file": "default.inside.total.exr",
+          "sha256": "44c3cbd50fbfa10ac80c13b4f5f321de30f930d191a77fbdf8499538c79c0c5a"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Box_Xn": 1,
+        "Box_Xp": 2,
+        "Box_Yn": 3,
+        "Box_Yp": 4,
+        "Box_Zn": 5,
+        "Box_Zp": 6,
+        "ProbeSphereShape": 7
+      },
+      "regions": {
+        "model": {
+          "albedo": [
+            0.8000367879867554,
+            0.5,
+            0.20000919699668884
+          ],
+          "direct": [
+            0.1598936915397644,
+            0.23983202874660492,
+            0.3197873830795288
+          ],
+          "emission": [
+            0.15999290347099304,
+            0.23999102413654327,
+            0.3199858069419861
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.6398642063140869,
+            0.2398476004600525,
+            0.07994727045297623
+          ],
+          "pixels": 4938,
+          "total": [
+            0.7998573184013367,
+            0.4798322021961212,
+            0.3999584913253784
+          ]
+        },
+        "walls": {
+          "albedo": [
+            0.8003279566764832,
+            0.5,
+            0.2000819891691208
+          ],
+          "direct": [
+            0.16003616154193878,
+            0.24013406038284302,
+            0.32007232308387756
+          ],
+          "emission": [
+            0.16003619134426117,
+            0.24013406038284302,
+            0.32007238268852234
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            3.486964464187622
+          ],
+          "indirect": [
+            0.6400997638702393,
+            0.24000057578086853,
+            0.08002226799726486
+          ],
+          "pixels": 41502,
+          "total": [
+            0.8001312613487244,
+            0.4800623655319214,
+            0.4001639783382416
+          ]
+        }
+      },
+      "state": "default"
+    }
+  }
+}

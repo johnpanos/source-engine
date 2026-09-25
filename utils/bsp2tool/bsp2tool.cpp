@@ -17,6 +17,9 @@
 //   bsp2tool pack-world-sdf <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv>
 //            <transfer.rtrn> <field.sdfv> <out.bsp2>   and the signed distance
 //                                          volume of RFC 0011 G6
+//   Every pack-world-lit* command also takes a trailing
+//            --reflection-probes <probes.rprb>   the map's RPRB reflection probes
+//                                          (R50-PARALLAX), fully validated
 //
 // Exit status: 0 success, 1 container error, 2 usage or file I/O error.
 //
@@ -26,6 +29,7 @@
 #include "mapcontainer/map_container_builder.h"
 #include "mapcontainer/probe_volume.h"
 #include "mapcontainer/radiosity_transfer.h"
+#include "mapcontainer/reflection_probes.h"
 #include "mapcontainer/sdf_volume.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh.h"
@@ -118,6 +122,26 @@ bool ReadProbeVolume( const char *pPath, std::vector<std::byte> *pBytes )
 	if ( error != ProbeVolumeError::Ok )
 	{
 		std::fprintf( stderr, "bsp2tool: PRBV %s\n", ProbeVolumeErrorName( error ) );
+		return false;
+	}
+	return true;
+}
+
+// RPRB reflection probes (reflection_probes.h owns the encoding), fully
+// validated.
+bool ReadReflectionProbes( const char *pPath, std::vector<std::byte> *pBytes )
+{
+	FileByteSource source( pPath );
+	if ( !source.IsOpen() || source.Size() < kReflectionProbesHeaderBytes ||
+	     source.Size() > kReflectionProbesMaxBytes )
+		return false;
+	pBytes->resize( size_t( source.Size() ) );
+	if ( !source.ReadAt( 0, pBytes->data(), pBytes->size() ) )
+		return false;
+	const ReflectionProbesError error = ValidateReflectionProbes( pBytes->data(), pBytes->size() );
+	if ( error != ReflectionProbesError::Ok )
+	{
+		std::fprintf( stderr, "bsp2tool: RPRB %s\n", ReflectionProbesErrorName( error ) );
 		return false;
 	}
 	return true;
@@ -233,10 +257,18 @@ int main( int argc, char **argv )
 		    "pack-world-probed <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv> "
 		    "<out.bsp2> | pack-world-gi <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv> "
 		    "<transfer.rtrn> <out.bsp2> | pack-world-sdf <legacy.bsp> <world.wmsh> <atlas.ktx2> "
-		    "<volume.prbv> <transfer.rtrn> <field.sdfv> <out.bsp2>\n" );
+		    "<volume.prbv> <transfer.rtrn> <field.sdfv> <out.bsp2> "
+		    "[--reflection-probes <probes.rprb>]\n" );
 		return 2;
 	}
 	const std::string command = argv[1];
+	// The optional trailing reflection probes of any pack-world-lit* command.
+	const char *pReflectionProbes = nullptr;
+	if ( argc >= 5 && std::string( argv[argc - 2] ) == "--reflection-probes" )
+	{
+		pReflectionProbes = argv[argc - 1];
+		argc -= 2;
+	}
 	const bool bTwoPaths = command == "convert" || command == "export";
 	const bool bPackWorld = command == "pack-world";
 	const bool bPackWorldSdf = command == "pack-world-sdf";
@@ -257,6 +289,11 @@ int main( int argc, char **argv )
 	                                    : 3 ) )
 	{
 		std::fprintf( stderr, "bsp2tool: wrong argument count for '%s'\n", command.c_str() );
+		return 2;
+	}
+	if ( pReflectionProbes && !bPackWorldLit )
+	{
+		std::fprintf( stderr, "bsp2tool: --reflection-probes needs a pack-world-lit* command\n" );
 		return 2;
 	}
 	if ( !bTwoPaths && !bPackWorld && !bPackWorldLit )
@@ -307,6 +344,12 @@ int main( int argc, char **argv )
 		std::fprintf( stderr, "bsp2tool: invalid SDFV file %s\n", argv[7] );
 		return 2;
 	}
+	std::vector<std::byte> reflectionProbes;
+	if ( pReflectionProbes && !ReadReflectionProbes( pReflectionProbes, &reflectionProbes ) )
+	{
+		std::fprintf( stderr, "bsp2tool: invalid RPRB file %s\n", pReflectionProbes );
+		return 2;
+	}
 	const char *pOutput = argv[bPackWorldSdf        ? 8
 	                           : bPackWorldGi       ? 7
 	                           : bPackWorldProbed ? 6
@@ -330,12 +373,21 @@ int main( int argc, char **argv )
 	const uint32_t fieldVersion = field.empty() ? kSdfVolumeVersion : ReadU32( field.data() + 4 );
 	const Bsp2LumpInput fieldLump{
 	    kLumpSdfVolume, fieldVersion, 0, kBsp2BulkAlignment, field };
-	const std::array<Bsp2LumpInput, 5> probedLumps = {
-	    worldLump, lightmapLump, probeLump, transferLump, fieldLump };
-	const std::span<const Bsp2LumpInput> litLumps( probedLumps.data(), bPackWorldSdf      ? 5
-	                                                                   : bPackWorldGi     ? 4
-	                                                                   : bPackWorldProbed ? 3
-	                                                                                      : 2 );
+	// The lump version repeats the payload's own (v1, and v2 with relight bands).
+	const uint32_t reflectionVersion = reflectionProbes.empty()
+	                                       ? kReflectionProbesVersion
+	                                       : ReadU32( reflectionProbes.data() + 4 );
+	const Bsp2LumpInput reflectionLump{
+	    kLumpReflectionProbes, reflectionVersion, 0, kBsp2BulkAlignment, reflectionProbes };
+	std::vector<Bsp2LumpInput> litLumps = { worldLump, lightmapLump };
+	if ( bPackWorldProbed )
+		litLumps.push_back( probeLump );
+	if ( bPackWorldGi )
+		litLumps.push_back( transferLump );
+	if ( bPackWorldSdf )
+		litLumps.push_back( fieldLump );
+	if ( pReflectionProbes )
+		litLumps.push_back( reflectionLump );
 	const MapContainerStatus status =
 	    command == "export" ? ExportLegacyFromBsp2( source, sink )
 	    : bPackWorldLit     ? ConvertLegacyToBsp2( source, sink, litLumps )

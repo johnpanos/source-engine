@@ -18,7 +18,7 @@ def Xform "GalleryFurnaceRgb"
             {
                 uniform token info:id = "UsdPreviewSurface"
                 color3f inputs:diffuseColor = (0.8, 0.5, 0.2)
-                color3f inputs:emissiveColor = (0.2, 0.3, 0.4)
+                color3f inputs:emissiveColor = (0.16, 0.24, 0.32)
                 float inputs:ior = 1
                 float inputs:metallic = 0
                 float inputs:roughness = 1
@@ -34,7 +34,7 @@ def Xform "GalleryFurnaceRgb"
             {
                 uniform token info:id = "UsdPreviewSurface"
                 color3f inputs:diffuseColor = (0.8, 0.5, 0.2)
-                color3f inputs:emissiveColor = (0.2, 0.3, 0.4)
+                color3f inputs:emissiveColor = (0.16, 0.24, 0.32)
                 float inputs:ior = 1
                 float inputs:metallic = 0
                 float inputs:roughness = 1

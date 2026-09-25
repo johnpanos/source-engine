@@ -213,9 +213,10 @@ class Bsp2ReaderTests(unittest.TestCase):
             scratch = Path(scratch)
             tool = scratch / "bsp2tool"
             build = subprocess.run(
-                [compiler, "-std=c++20", "-O1", "-Wall", "-Wextra", "-Werror", "-I", str(ROOT / "public"),
-                 str(ROOT / "mapcontainer/blake2b.cpp"), str(ROOT / "mapcontainer/map_container.cpp"),
-                 str(ROOT / "utils/bsp2tool/bsp2tool.cpp"), "-o", str(tool)],
+                # Every mapcontainer source: bsp2tool validates each lump it packs.
+                [compiler, "-std=c++20", "-O1", "-Wall", "-Wextra", "-Werror", "-I", str(ROOT / "public")] +
+                [str(path) for path in sorted((ROOT / "mapcontainer").glob("*.cpp"))] +
+                [str(ROOT / "utils/bsp2tool/bsp2tool.cpp"), "-o", str(tool)],
                 text=True, capture_output=True, timeout=120)
             self.assertEqual(build.returncode, 0, build.stdout + build.stderr)
 

@@ -3,6 +3,7 @@
 
     python3 tools/quality/legacy_bsp_relight.py testchmb_a_00 [--boot]
     python3 tools/quality/legacy_bsp_relight.py --bsp path/to/map.bsp --map-name my_map_relit
+    tools/quality/vrad_cycles.py -game <gamedir> path/to/map   (a vrad drop-in)
 
 The map (by name from the toolchain's game runtime, or any v20/v21 `--bsp`)
 is rebuilt by `pbrt_map_build.py` from a `legacy_bsp` manifest this script
@@ -78,16 +79,80 @@ def gameplay_identity(source, bsp2):
             "revision": [header["revision"], package.legacy["revision"]]}
 
 
+def load_toolchain(path=None):
+    """The map pipeline's toolchain file (default: the provisioned one)."""
+    profile, _ = pbrt_map_toolchain.load_profiles()
+    return pbrt_map_toolchain.load(path or ROOT / profile["layout"]["toolchain_file"])
+
+
+def relight(bsp, name, out, toolchain, quality=pbrt_map_build.LEGACY_QUALITY, game=None,
+            force_from=None, boot=False, keep_going=False, publish=True, device=None):
+    """Relight the compiled map `bsp` as map `name`, built in `out`.
+
+    `game` is the directory the map was compiled against (vbsp/vrad
+    `-game`); its loose materials are found before the game runtime's.
+    `device` overrides the profile's Cycles device for every bake
+    (`cycles_device.DEVICES`; `cpu` and `auto` are explicit opt-ins).
+    Returns the gameplay identity; raises SystemExit when a step or the
+    identity check fails (the input BSP is never written)."""
+    bsp, out = Path(bsp).resolve(), Path(out).resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    manifest_path = out / "manifest.json"
+    manifest = {"schema": "pbrt-map-manifest/v1", "map": name, "legacy_bsp": str(bsp),
+                "quality": quality,
+                "credit": "Relight of %s; its gameplay lumps are carried unchanged" % bsp.name}
+    if game:
+        manifest["legacy_game"] = str(Path(game).resolve())
+    if device:
+        manifest["lightmap"] = {"device": device}
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    manifest = pbrt_map_build.load_manifest(manifest_path)
+    pipeline = pbrt_map_build.Pipeline(manifest, toolchain, out, force_from, boot,
+                                       keep_going, publish=False)
+    failure = None
+    try:
+        pipeline.build()
+    except SystemExit as error:
+        # Gate failures under --keep-going still finish the map.
+        if not (keep_going and pipeline.failed_gates):
+            raise
+        failure = error
+    identity = gameplay_identity(bsp.read_bytes(), pipeline.paths["bsp2"].read_bytes())
+    identity.update(source=str(bsp), bsp2=str(pipeline.paths["bsp2"]))
+    (out / "gameplay-identity.json").write_text(json.dumps(identity, indent=2) + "\n")
+    print(json.dumps({k: identity[k] for k in ("status", "identical_lumps", "relit_lumps",
+                                               "differing_lumps", "added_lumps")}))
+    if identity["status"] != "pass":
+        raise SystemExit("the relit map changed gameplay lumps: %s" %
+                         identity["differing_lumps"])
+    if publish:
+        import playable_maps
+        playable_maps.publish(json.loads((out / "build.json").read_text()))
+        print("published; play it with ./play " + name)
+    if failure:
+        raise failure
+    return identity
+
+
+def default_out(name):
+    return ROOT / "quality-results" / "relight" / name
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("map", nargs="?", help="shipped map name (portal/maps/<map>.bsp)")
     parser.add_argument("--bsp", type=Path, help="a BSP file instead of a shipped map")
+    parser.add_argument("--game", type=Path,
+                        help="the game directory --bsp was compiled against (vrad -game); "
+                             "its materials are found first")
     parser.add_argument("--map-name", help="output map name (default <map>_relit)")
     parser.add_argument("--out", type=Path,
                         help="build directory (default quality-results/relight/<map name>)")
     parser.add_argument("--quality", default=pbrt_map_build.LEGACY_QUALITY,
                         help="map export profile (default legacy-relight)")
+    parser.add_argument("--device", choices=pbrt_map_build.cycles_device.DEVICES,
+                        help="Cycles device for every bake (default: the profile's, gpu)")
     parser.add_argument("--toolchain", type=Path)
     parser.add_argument("--from", dest="force_from", choices=pbrt_map_build.STEPS)
     parser.add_argument("--boot", action="store_true",
@@ -95,9 +160,7 @@ def main():
     parser.add_argument("--keep-going", action="store_true")
     parser.add_argument("--no-publish", action="store_true")
     args = parser.parse_args()
-    profile, _ = pbrt_map_toolchain.load_profiles()
-    toolchain = pbrt_map_toolchain.load(
-        args.toolchain or ROOT / profile["layout"]["toolchain_file"])
+    toolchain = load_toolchain(args.toolchain)
     if bool(args.map) == bool(args.bsp):
         parser.error("name a shipped map or give --bsp, not both")
     if args.map:
@@ -111,39 +174,8 @@ def main():
         bsp = args.bsp
         stem = bsp.stem
     name = args.map_name or (stem.lower() + "_relit")
-    out = (args.out or ROOT / "quality-results" / "relight" / name).resolve()
-    out.mkdir(parents=True, exist_ok=True)
-    manifest_path = out / "manifest.json"
-    manifest_path.write_text(json.dumps({
-        "schema": "pbrt-map-manifest/v1", "map": name, "legacy_bsp": str(bsp.resolve()),
-        "quality": args.quality,
-        "credit": "Relight of %s; its gameplay lumps are carried unchanged" % bsp.name},
-        indent=2) + "\n")
-    manifest = pbrt_map_build.load_manifest(manifest_path)
-    pipeline = pbrt_map_build.Pipeline(manifest, toolchain, out, args.force_from, args.boot,
-                                       args.keep_going, publish=False)
-    failure = None
-    try:
-        pipeline.build()
-    except SystemExit as error:
-        # Gate failures under --keep-going still finish the map.
-        if not (args.keep_going and pipeline.failed_gates):
-            raise
-        failure = error
-    identity = gameplay_identity(bsp.read_bytes(), pipeline.paths["bsp2"].read_bytes())
-    identity.update(source=str(bsp.resolve()), bsp2=str(pipeline.paths["bsp2"]))
-    (out / "gameplay-identity.json").write_text(json.dumps(identity, indent=2) + "\n")
-    print(json.dumps({k: identity[k] for k in ("status", "identical_lumps", "relit_lumps",
-                                               "differing_lumps", "added_lumps")}))
-    if identity["status"] != "pass":
-        raise SystemExit("the relit map changed gameplay lumps: %s" %
-                         identity["differing_lumps"])
-    if not args.no_publish:
-        import playable_maps
-        playable_maps.publish(json.loads((out / "build.json").read_text()))
-        print("published; play it with ./play " + name)
-    if failure:
-        raise failure
+    relight(bsp, name, args.out or default_out(name), toolchain, args.quality, args.game,
+            args.force_from, args.boot, args.keep_going, not args.no_publish, args.device)
 
 
 if __name__ == "__main__":

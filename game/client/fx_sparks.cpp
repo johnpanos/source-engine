@@ -38,7 +38,8 @@ CLIENTEFFECT_REGISTER_END()
 
 PMaterialHandle g_Material_Spark = NULL;
 
-static ConVar fx_drawmetalspark( "fx_drawmetalspark", "1", FCVAR_DEVELOPMENTONLY, "Draw metal spark effects." );
+static ConVar fx_drawmetalspark(
+    "fx_drawmetalspark", "1", FCVAR_DEVELOPMENTONLY, "Draw metal spark effects." );
 //-----------------------------------------------------------------------------
 // Purpose: 
 // Input  : &pos - 
@@ -172,6 +173,8 @@ CTrailParticles::CTrailParticles( const char *pDebugName ) : CSimpleEmitter( pDe
 void CTrailParticles::EmitLight( const Vector &origin, const SparkLightParams_t &params )
 {
 	m_Light.Configure( params );
+	const float anchor[3] = { origin.x, origin.y, origin.z };
+	m_LightBurst.SetReach( anchor, params.m_flRadius );
 
 	// The first simulate is a frame away; light the burst where it starts.
 	const SparkLight::Light_t light = { true, { origin.x, origin.y, origin.z }, { 1, 1, 1 }, 1.0f };
@@ -425,9 +428,11 @@ void FX_ElectricSpark( const Vector &pos, int nMagnitude, int nTrailLength, cons
 	}
 
 	pSparkEmitter2->SetSortOrigin( pos );
-	
-	pSparkEmitter2->m_ParticleCollision.SetGravity( 400.0f );
-	pSparkEmitter2->SetFlag( bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
+
+	// Collide with the surfaces around the spark, as the big sparks do; without
+	// the planes these sparks fell through the surface they started on.
+	pSparkEmitter2->Setup( pos, NULL, SPARK_ELECTRIC_SPREAD, 128.0f, 256.0f, 400.0f,
+	    SPARK_ELECTRIC_DAMPEN, bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
 
 	numSparks = nMagnitude * random->RandomInt( 16, 32 );
 
@@ -662,10 +667,12 @@ void FX_MetalSpark( const Vector &position, const Vector &direction, const Vecto
 
 	//Setup our information
 	sparkEmitter->SetSortOrigin( offset );
-	sparkEmitter->SetFlag( bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
+	// Collide with the surfaces around the impact (the surface struck and its
+	// neighbors); Setup also sets the gravity and collision dampening.
+	sparkEmitter->Setup( offset, &direction, METAL_SPARK_SPREAD, METAL_SPARK_MINSPEED,
+	    METAL_SPARK_MAXSPEED, METAL_SPARK_GRAVITY, METAL_SPARK_DAMPEN,
+	    bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
 	sparkEmitter->SetVelocityDampen( 8.0f );
-	sparkEmitter->SetGravity( METAL_SPARK_GRAVITY );
-	sparkEmitter->SetCollisionDamped( METAL_SPARK_DAMPEN );
 	sparkEmitter->GetBinding().SetBBox( offset - Vector( 32, 32, 32 ), offset + Vector( 32, 32, 32 ) );
 	sparkEmitter->EmitLight( offset, SparkLightParams( 2, MIN( 64.0f + 32.0f * iScale, 192.0f ) ) );
 
@@ -840,9 +847,10 @@ void FX_Sparks( const Vector &pos, int nMagnitude, int nTrailLength, const Vecto
 	}
 
 	pSparkEmitter2->SetSortOrigin( pos );
-	
-	pSparkEmitter2->m_ParticleCollision.SetGravity( 400.0f );
-	pSparkEmitter2->SetFlag( bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
+
+	// Collide with the surfaces around the spark, as the big sparks do.
+	pSparkEmitter2->Setup( pos, NULL, SPARK_SPREAD, flMinSpeed, flMaxSpeed, 400.0f, SPARK_DAMPEN,
+	    bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
 
 	numSparks = nMagnitude * random->RandomInt( 4, 8 );
 

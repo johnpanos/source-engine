@@ -79,6 +79,7 @@ States: `todo`, `active`, `done` (built, with the evidence noted), `deferred`
 | ID | Gap | State |
 | --- | --- | --- |
 | G23 | Portal 2's stencil fast path (bitmask stencil, batched portal quads, early-Z, scissor) ran only in queued material mode, which native Vulkan never uses, so the Portal 1-style `_Old` path always ran; early-Z had no caller | Portal 2 done (see log); Portal 1 backport todo |
+| G24 | Gel streams: the server never created the paint blob pool (crash on a sprayer's first blob), the blob materials were bound unreferenced, the `paintblob` shader was absent and Valve's blobulator library is unavailable | done on native Vulkan (see log); retail image comparison, `$interior` and flashlight unverified |
 
 ### Low
 
@@ -177,3 +178,31 @@ Newest last. Each entry names the build and the check that passed.
   otherwise. Screenshots old, fast and fast+early-Z differ only inside the
   animated portal rim (bounding box of >8 differences 609–672 × 288–397 at
   1280×683).
+- 2026-09-25, G24 (build-p2 release, native Vulkan): gel streams render.
+  - The blobulator is a clean-room library (no public reimplementation of
+    Valve's was found): `public/blobulator` and
+    `game/client/portal2/blobulator/ImpTiler.cpp`, a marching-tetrahedra
+    isosurface of the blob metaballs on sparse tiles. The
+    `blobulator.tiler-mesh` conformance suite (508 checks) covers surface
+    distance, closure across tile seams, orientation, bridging, determinism
+    and the tiler pool. Its seeded-defect row fails as required. The suite
+    found two tiler bugs, both fixed: vertices off the surface (fixed-step
+    refinement) and non-unit tangents.
+  - The `paintblob` shader is ported from `cstrike15_src`
+    (`materialsystem/stdshaders/paintblob_*`). The generated combo indices
+    match the retail `.vcs` headers (ps20b 10240/20, vs20 24/12). Native
+    Vulkan draws it with `shaders/paintblob.frag` after `skin.vert`, with
+    combos in c27. Not ported: `FRESNEL_WARP`, `OPACITY_TEXTURE`,
+    `CONTACT_SHADOW` and the flashlight (reported unimplemented; no retail
+    gel material uses them).
+  - The server creates the blob pool from `CPaintStream::Init`. The pool
+    grows, because streams share it and each is capped by its own
+    `maxblobcount`. `C_PaintStream` holds references to the blob materials.
+  - Oracle: the `portal2-paint-v1` scenario (`sp_a3_speed_ramp`, both
+    sprayers started, blobs frozen) passed with `mat_queue_mode` 0 and 2.
+    `tools/quality/portal2_paint_shots.py` then passed on its shots: blue
+    and orange gel present, and the isosurface differs from the sphere
+    fallback. The checker has 10 fixture tests. It fails the earlier
+    untextured run (both streams pale).
+  - `r_paintblob_wireframe` draws nothing on native Vulkan (no wireframe
+    shader there).

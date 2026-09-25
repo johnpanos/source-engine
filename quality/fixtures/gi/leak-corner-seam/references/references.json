@@ -1,0 +1,487 @@
+{
+  "analytic": [],
+  "fixture": "leak-corner-seam",
+  "fixture_reference_digest": "39346b3fd2f1899f3dc8532e453afbb837b75963a6f6f6ddc617055ca95751dc",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 48,
+    "controls_unrejected": [],
+    "failed": 0,
+    "oracles": 2
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "default": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "f8a4a5c6df940ad1d02ef34fb18871be03e0135db08552f92b67b79c297e7c44",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/leak-corner-seam/leak-corner-seam.usda": "8882e3a33d6b4dcf24aad483327645e3ac1736fd43be19b77ad0f9091e39e003"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "default.a": {
+      "camera": "a",
+      "files": {
+        "index": {
+          "file": "default.a.index.png",
+          "sha256": "8a7a0e456182768ca57f69e89637d7ba198fc67ddc886014473c4a67cccffdb6"
+        },
+        "indirect": {
+          "file": "default.a.indirect.exr",
+          "sha256": "ba495d1c57926022be690c66d72f7c5b27070a8ef11fcecc42163cfc61692f6e"
+        },
+        "total": {
+          "file": "default.a.total.exr",
+          "sha256": "a67046e643b2e39daf68ce3a7419e7720f4a5c2a15ecd452d595f5e0815dc125"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Xp": 2,
+        "A_Yn": 3,
+        "A_Yp": 4,
+        "A_Zn": 5,
+        "A_Zp": 6,
+        "B_Xn": 7,
+        "B_Xp": 8,
+        "B_Yn": 9,
+        "B_Yp": 10,
+        "B_Zn": 11,
+        "B_Zp": 12,
+        "LightQuad00": 13,
+        "LightQuad01": 14,
+        "ProbeAShape": 15,
+        "ProbeBShape": 16
+      },
+      "regions": {
+        "A_Xp": {
+          "albedo": [
+            0.599999725818634,
+            0.599999725818634,
+            0.599999725818634
+          ],
+          "direct": [
+            0.19506174325942993,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.22358860075473785,
+            0.0,
+            0.0
+          ],
+          "pixels": 16024,
+          "total": [
+            0.25118517875671387,
+            0.0,
+            0.0
+          ]
+        },
+        "A_Yp": {
+          "albedo": [
+            0.599999725818634,
+            0.599999725818634,
+            0.599999725818634
+          ],
+          "direct": [
+            0.1950611174106598,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.2235170155763626,
+            0.0,
+            0.0
+          ],
+          "pixels": 16024,
+          "total": [
+            0.2511405944824219,
+            0.0,
+            0.0
+          ]
+        },
+        "A_Zn": {
+          "albedo": [
+            0.6000621914863586,
+            0.6000621914863586,
+            0.6000621914863586
+          ],
+          "direct": [
+            0.22063277661800385,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.2129002958536148,
+            0.0,
+            0.0
+          ],
+          "pixels": 11570,
+          "total": [
+            0.26011374592781067,
+            0.0,
+            0.0
+          ]
+        },
+        "ProbeA": {
+          "albedo": [
+            0.5999807119369507,
+            0.5999807119369507,
+            0.5999807119369507
+          ],
+          "direct": [
+            0.27776631712913513,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.23299147188663483,
+            0.0,
+            0.0
+          ],
+          "pixels": 1186,
+          "total": [
+            0.3064485788345337,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "state": "default"
+    },
+    "default.b": {
+      "camera": "b",
+      "files": {
+        "index": {
+          "file": "default.b.index.png",
+          "sha256": "3fa64d6a124f9b35c9d278aa6d07b4d7dc37a547cc6c7eb5ee6e8c11dd868e3d"
+        },
+        "indirect": {
+          "file": "default.b.indirect.exr",
+          "sha256": "3ee872caeeff782db613bbd42a83ab2b3f66d12ef130d6d6a58d11c81295180d"
+        },
+        "total": {
+          "file": "default.b.total.exr",
+          "sha256": "48bb26f3fa64a986cdd46372708e45fec00a495a5c11a425515ad7d4352711f1"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "A_Xn": 1,
+        "A_Xp": 2,
+        "A_Yn": 3,
+        "A_Yp": 4,
+        "A_Zn": 5,
+        "A_Zp": 6,
+        "B_Xn": 7,
+        "B_Xp": 8,
+        "B_Yn": 9,
+        "B_Yp": 10,
+        "B_Zn": 11,
+        "B_Zp": 12,
+        "LightQuad00": 13,
+        "LightQuad01": 14,
+        "ProbeAShape": 15,
+        "ProbeBShape": 16
+      },
+      "regions": {
+        "B_Xn": {
+          "albedo": [
+            0.599999725818634,
+            0.599999725818634,
+            0.599999725818634
+          ],
+          "direct": [
+            0.0,
+            0.19506147503852844,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.0,
+            0.22359192371368408,
+            0.0
+          ],
+          "pixels": 16024,
+          "total": [
+            0.0,
+            0.25118693709373474,
+            0.0
+          ]
+        },
+        "B_Yn": {
+          "albedo": [
+            0.599999725818634,
+            0.599999725818634,
+            0.599999725818634
+          ],
+          "direct": [
+            0.0,
+            0.1950610727071762,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            9.0
+          ],
+          "indirect": [
+            0.0,
+            0.22353985905647278,
+            0.0
+          ],
+          "pixels": 16024,
+          "total": [
+            0.0,
+            0.2511559724807739,
+            0.0
+          ]
+        },
+        "B_Zn": {
+          "albedo": [
+            0.6000621914863586,
+            0.6000621914863586,
+            0.6000621914863586
+          ],
+          "direct": [
+            0.0,
+            0.22063279151916504,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            11.0
+          ],
+          "indirect": [
+            0.0,
+            0.2129128873348236,
+            0.0
+          ],
+          "pixels": 11570,
+          "total": [
+            0.0,
+            0.260123074054718,
+            0.0
+          ]
+        },
+        "ProbeB": {
+          "albedo": [
+            0.5999807119369507,
+            0.5999807119369507,
+            0.5999807119369507
+          ],
+          "direct": [
+            0.0,
+            0.2777537405490875,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            16.0
+          ],
+          "indirect": [
+            0.0,
+            0.23298966884613037,
+            0.0
+          ],
+          "pixels": 1186,
+          "total": [
+            0.0,
+            0.3064396381378174,
+            0.0
+          ]
+        }
+      },
+      "state": "default"
+    }
+  }
+}

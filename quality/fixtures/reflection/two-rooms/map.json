@@ -1,0 +1,17 @@
+{
+  "collision": {
+    "solid_meshes": [
+      "A_Xp",
+      "B_Xn"
+    ]
+  },
+  "map": "reflection_two_rooms",
+  "quality": "reflection-fixture",
+  "reflection_probe": {
+    "placement": {
+      "glossy_roughness": -1.0
+    }
+  },
+  "scene": "quality/fixtures/reflection/two-rooms/two-rooms.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

@@ -636,6 +636,38 @@ Two sources, one shading path:
 The BRDF integration and directional-albedo table is computed once per filter
 version and shared by both.
 
+**Amendment (2026-09-25, R50-RELIGHT; RFC 0011 open decision 5): relightable
+baked probes.** Without this, runtime light never reaches specular. The
+lightmap and probe volume follow the runtime light set and the indirect
+producers (RFC 0011), but a baked probe keeps reflecting the room as baked.
+So a switched-on lamp lights a wall and not the wall's reflection.
+
+- **Data.** A baked probe may carry relight bands (`RPRB` v2), a G-buffer of
+  what its capture saw, rendered in the same Cycles faces:
+  - the diffuse albedo (the Diffuse Color pass);
+  - the ray distance (the Depth pass the proxy fit already uses);
+  - the world normal (the Normal pass);
+  - all in the radiance chain's mip layout, box-filtered.
+- **Shading.** At a probe lookup the shader reconstructs the point the
+  capture saw and adds albedo times the scene's diffuse-light change since
+  the bake at that point. The point is capture + direction × distance, with
+  the band's normal. The change is whatever the world itself adds in that
+  shader variant: the producer's change volume and the unbaked lights'
+  SDF-shadowed direct light. It is exact in the baked state and for a mirror
+  reflection of a Lambertian surface.
+- **Source and deviations.** McAuley, "Rendering the World of Far Cry 4"
+  (GDC 2015), relights an albedo and normal cubemap from the sun, sky and
+  probes, then prefilters it at runtime. It has no shadows, because it
+  stores no depth.
+  - Here the stored distance lets the relit point be shadowed and lit by
+    point lights.
+  - The change is added at lookup time rather than re-prefiltered, so a
+    rough lookup takes the change at the lobe's centre (a documented
+    approximation).
+- **Scope.** The glossy part of a surface seen in a probe stays as baked,
+  and so does light a probe's own emitters or the sky change. Legacy
+  `env_cubemap` probes have no G-buffer and are not relit.
+
 ### Platform tiers
 
 Mobile and MoltenVK profiles declare a PBR quality tier: fewer prefiltered mips,
@@ -793,8 +825,10 @@ legacy payload.
 
 BRDF and directional-albedo tables. Parallax-corrected, blended reflection
 probes from `RPRB`, and the runtime prefilter for legacy maps with caching.
+Relightable baked probes (the 2026-09-25 amendment above).
 *Gate:* IBL pixel fixtures against Cycles, cache invalidation tests, and
-existing maps unchanged on legacy families.
+existing maps unchanged on legacy families. For relighting: a mirror floor
+reflecting an unbaked light matches Cycles, and the probes as baked fail.
 
 ### Phase G: Stage reference rendering
 

@@ -1,5 +1,6 @@
 {
   "fixtures": [
+    "analytic-colored-quadrants",
     "bleed-blue-carpet",
     "bleed-checker-hall",
     "bleed-cornell",
@@ -12,6 +13,7 @@
     "door",
     "emissive-orbs",
     "emissive-parallel-plates",
+    "emissive-stripe-floor",
     "furnace",
     "furnace-channel-extremes",
     "furnace-clutter",
@@ -22,6 +24,7 @@
     "furnace-rgb",
     "furnace-sphere",
     "integrating-sphere",
+    "leak-corner-seam",
     "leak-louver",
     "leak-quad-rooms",
     "leak-rgb-rooms",
@@ -42,6 +45,7 @@
     "mix-sun-sky-pillar",
     "occlusion-colored-shadows",
     "occlusion-l-corridor",
+    "occlusion-pinhole",
     "portal-light",
     "portal-view",
     "probe-directional-rgb",
@@ -51,9 +55,11 @@
     "range-color-temperature",
     "range-hdr-pair",
     "range-intensity-ladder",
+    "range-long-hall",
     "room-states",
     "swing",
     "symmetry-courtyard-sun",
+    "symmetry-four-fold",
     "thin-wall",
     "tinted-sky-plane"
   ],

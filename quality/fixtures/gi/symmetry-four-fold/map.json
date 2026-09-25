@@ -1,0 +1,15 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "lightmap": {
+    "samples": 512
+  },
+  "map": "gi_symmetry_four_fold",
+  "probe_volume": {
+    "samples": 1024
+  },
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/symmetry-four-fold/symmetry-four-fold.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

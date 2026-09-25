@@ -1,0 +1,64 @@
+#version 450
+// render.pbr-brdf.glsl: evaluates pbr_brdf.glsl, the BRDF every PBR stage
+// includes, on the suite's cases so it can compare them with
+// public/render/pbr_brdf.h. One invocation per case.
+layout( local_size_x = 64, local_size_y = 1, local_size_z = 1 ) in;
+
+#include "pbr_brdf.glsl"
+
+// Per case: (N.V, N.L, N.H, V.H); (roughness, F0 rgb); (split-sum A, B,
+// clear-coat weight, clear-coat roughness).
+struct Case
+{
+	vec4 angles;
+	vec4 material;
+	vec4 extra;
+};
+
+// Per case: (D, V, scalar Schlick F of F0.r, 0); single-scatter specular;
+// energy compensation; multiple-scattering directional albedo; clear coat
+// (specular, Fresnel, 0, 0).
+struct Result
+{
+	vec4 terms;
+	vec4 specular;
+	vec4 compensation;
+	vec4 albedo;
+	vec4 coat;
+};
+
+layout( set = 0, binding = 0 ) readonly buffer Cases
+{
+	Case cases[];
+};
+layout( set = 0, binding = 1 ) writeonly buffer Results
+{
+	Result results[];
+};
+
+layout( push_constant ) uniform Push
+{
+	uint count;
+}
+push;
+
+void main()
+{
+	const uint index = gl_GlobalInvocationID.x;
+	if ( index >= push.count )
+		return;
+	const Case c = cases[index];
+	const float roughness = c.material.x;
+	const vec3 f0 = c.material.yzw;
+	const vec2 splitSum = c.extra.xy;
+	Result r;
+	r.terms = vec4( PbrGgxDistribution( c.angles.z, roughness ),
+	    PbrSmithVisibility( c.angles.x, c.angles.y, roughness ),
+	    PbrFresnelSchlick( f0.r, c.angles.w ), 0.0 );
+	r.specular =
+	    vec4( PbrSpecular( f0, c.angles.x, c.angles.y, c.angles.z, c.angles.w, roughness ), 0.0 );
+	r.compensation = vec4( PbrEnergyCompensation( f0, splitSum ), 0.0 );
+	r.albedo = vec4( PbrDirectionalAlbedo( f0, splitSum ), 0.0 );
+	r.coat = vec4( PbrClearCoat( c.extra.z, c.angles.z, c.angles.w, c.extra.w ), 0.0, 0.0 );
+	results[index] = r;
+}

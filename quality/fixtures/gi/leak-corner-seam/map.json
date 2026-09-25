@@ -1,0 +1,15 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "lightmap": {
+    "samples": 512
+  },
+  "map": "gi_leak_corner_seam",
+  "probe_volume": {
+    "samples": 1024
+  },
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/leak-corner-seam/leak-corner-seam.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

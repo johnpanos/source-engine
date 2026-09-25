@@ -83,7 +83,7 @@ python3 tools/quality/pbrt_map_toolchain.py configure-client --build build
 | `lightmap.denoise` | OpenImageDenoise `RTLightmap` pass on the atlas (default `true`; needs `libOpenImageDenoise.so.2`); the UV gutter fill still runs when this is `false` |
 | `lightmap.preview_gain` | temporary display gain for the Source preview (default 1) |
 | `world_mesh.weld_materials` / `weld_distance_source_units` | selected imported material names and a bounded Source-unit vertex weld to close measured near-coincident mesh seams (default: disabled); the pack receipt records affected corners and maximum movement |
-| `reflection_probe` | optional map probe: `width` (equirect mip 0, default 512), `face_size`, `samples`, `position` (USD meters; default the scene's horizontal center at the reference eye height). The bake reserves `width/2` atlas rows; the probe's roughness mips and a marker texel are stored there and `world_pbr.frag` adds split-sum specular from them |
+| `reflection_probe` | optional map reflection probes (R50-PARALLAX), packed as the RPRB lump: `width` (equirect mip 0 of every probe, default 512), `face_size`, `samples`, `light_paths` (Cycles policy of the probe renders, default `blender-default`; never the diffuse-only `lightmap`), `placement` (overrides of `reflection_probe_set.PLACEMENT_DEFAULTS`: `max_probes`, `spacing_m`, `eye_height_m`, `glossy_roughness`, `glossy_radius_m`, `fade_m`, ...), `bounds_m` (placement bounds, default the probe volume's or the meshes'), `position`/`positions` (USD meters: captures placed first, kept for scenes whose default placement a wall would spoil). Probes are placed per room (every eye-height floor point covered by a probe whose box contains and sees it) and near glossy surfaces, rendered with the depth pass, fitted to a parallax box, GGX-prefiltered and blended per pixel by `world_pbr.frag` |
 | `collision.envelope_meshes` | meshes whose bounds form the sealed shell (default: all meshes) |
 | `collision.solid_materials` / `solid_meshes` | meshes that become solids: one convex 18-DOP brush per connected part, so separate stair treads or cushions stay separate |
 
@@ -141,6 +141,60 @@ lightmaps. Other current limits, each recorded in the receipt:
 - named lights that start dark stay world lights and are not baked;
 - static props do not occlude the bake.
 
+## Hooking a regular compile into the pipeline
+
+`vrad_cycles.py` is a drop-in for vrad. Anything that runs vrad can run it
+with the same command line: Hammer's `$light_exe`, or a compile script that
+runs vbsp, then vvis, then vrad.
+
+```sh
+T=build/toolchains/pbrt-map-tools
+$T/vbsp -game "$GAME" maps/mymap
+$T/vvis -game "$GAME" maps/mymap
+tools/quality/vrad_cycles.py -game "$GAME" -final maps/mymap   # was: $T/vrad ...
+./play mymap_relit
+```
+
+It runs the real vrad with every argument except its own `--cycles-*`
+options. It then relights the BSP vrad wrote, the same way as a shipped map
+(`legacy_bsp_relight.relight`, described above):
+
+- vvis's visibility and vrad's lightmaps for brush entities, displacements
+  and translucent faces are carried unchanged;
+- Cycles bakes the opaque world, the PRBV, the RTRN and the SDFV from vrad's
+  lights;
+- the map is published as `<map>_relit`.
+
+vrad still has to run in full: the relight converts its world lights, and
+the legacy renderer uses its lightmaps for the faces the relight leaves out.
+
+vrad's `-game` (or `-vproject`, or `$VPROJECT`) directory is searched for
+the map's materials before the toolchain's game runtime, as vrad searched it
+(manifest key `legacy_game`).
+
+The relight never writes vrad's BSP, so a failed bake leaves the regular
+compile's output usable, and the exit status is nonzero. If vrad fails, the
+relight does not run and vrad's exit status is returned.
+
+Options:
+
+| Option | Default |
+| --- | --- |
+| `--cycles-quality NAME` | `legacy-relight`; `legacy-relight-preview` builds in minutes |
+| `--cycles-map-name NAME` | `<map>_relit` |
+| `--cycles-out DIR` | `quality-results/relight/<name>` |
+| `--cycles-vrad PATH` | the toolchain's `vrad` |
+| `--cycles-toolchain FILE` | the provisioned toolchain |
+| `--cycles-from STEP` | none |
+| `--cycles-device gpu\|cpu\|auto` | the profile's `gpu`; `cpu` and `auto` are opt-ins for hosts without a usable GPU |
+| `--cycles-boot` | off |
+| `--cycles-keep-going` | off |
+| `--cycles-no-publish` | off |
+
+The `legacy-relight` profiles exclude their occluder material only from maps
+that have one. A map with no nodraw brush sides has no occluders. Exclusions
+a manifest names must still exist.
+
 ## Toolchain
 
 [`pbrt-map-linux-tools.json`](../../product_profiles/pbrt-map-linux-tools.json)
@@ -192,7 +246,10 @@ about 24% slower than the GPU alone, so it is not offered.
 | Bounded mesh seam repair | `tools/quality/worldmesh_seam_weld.py` |
 | KTX2 LMAP packaging | `tools/quality/lightmap_ktx2.py` (`--expected-scope`) |
 | Sky dome render stage | `tools/quality/pbrt_sky_dome.py` |
-| Reflection probe faces / layout | `tools/quality/pbrt_reflection_probe.py` / `reflection_probe.py` (read by `world_pbr.frag`) |
+| Reflection probe placement and faces (with depth) | `tools/quality/pbrt_reflection_probe.py` |
+| Per-probe math: GGX chain, parallax-box fit, corrected lookup, distance roughness | `tools/quality/reflection_probe.py` (tests: `tests/test_reflection_probe_set.py`, `tests/test_pbrt_gates.py`) |
+| RPRB encoding, blend, placement, packing | `tools/quality/reflection_probe_set.py` (C++ reader: `mapcontainer/reflection_probes.cpp`, suite `world.reflection-probes`; shader: `shaders/reflection_probes.glsl`, suite `render.reflection-probes.glsl`) |
+| Reflection fixtures and in-game probe gates | `tools/quality/reflection_fixtures.py`, `tools/quality/reflection_runtime.py` |
 | Collision shell, solids, spawn | `tools/quality/pbrt_collision_vmf.py` |
 | USD → WMSH/BSP2 | `tools/quality/usd_worldmesh_pack.py` |
 | VTF/VMT content | `tools/quality/pbrt_playable_content.py` (VTF helpers: `vtf_content.py`) |
@@ -204,6 +261,7 @@ about 24% slower than the GPU alone, so it is not offered.
 | Legacy map → relight scene, vrad light conversion | `tools/quality/legacy_bsp_scene.py` |
 | VTF decoding | `tools/quality/vtf_decode.py` |
 | Relight driver and gameplay-identity oracle | `tools/quality/legacy_bsp_relight.py` |
+| vrad drop-in that relights a regular compile | `tools/quality/vrad_cycles.py` (tests: `tests/test_vrad_cycles.py`) |
 | SDFV light cells (range, side, PVS culling) | `tools/quality/sdf_light_cells.py` (tests: `tests/test_sdf_light_cells.py`) |
 | Traced producers' probe focus, independent of the engine host | `tools/quality/gi_focus.py` |
 | Bake progress from Cycles' log | `tools/quality/bake_progress.py` (tests: `tests/test_bake_progress.py`) |
@@ -226,10 +284,14 @@ about 24% slower than the GPU alone, so it is not offered.
   culled frames must be byte-identical to drawing every meshlet, and each
   stage's negative control must change a frame.
 - Windows show the scene's sky through an unlit `SkyDome` (display-mapped,
-  not HDR). One reflection probe per map feeds mirrors and glossy floors:
-  blurry mips rather than a GGX prefilter, and no parallax correction, so
-  reflections are right near the probe and approximate elsewhere.
-  Refraction and emissive WMSH batches are absent; glass is an alpha preview.
+  not HDR). Reflection probes are GGX-prefiltered and parallax-corrected
+  against an axis-aligned box per probe, and blend between probes; a box
+  only approximates a room with furniture or a non-rectangular shape, so a
+  mirror shows walls flat and furniture misplaced (the audit gates each
+  box's fit residual). Probes see no dynamic objects. Maps built before
+  RPRB keep one direction-only probe in their LMAP band, which the shader
+  still reads. Refraction and emissive WMSH batches are absent; glass is an
+  alpha preview.
 - PBRT coated, spectral and transmissive materials reduce to a single
   metal/roughness layer; each material's approximation is in the content
   receipt.

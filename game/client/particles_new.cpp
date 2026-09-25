@@ -138,16 +138,22 @@ void CNewParticleEffect::Release()
 //-----------------------------------------------------------------------------
 // Spark light (render/spark_light.h)
 //-----------------------------------------------------------------------------
+// A spark system's light: exponent 2, this radius, reaching its sparks this far
+// from control point 0.
+static const float kSparkSystemLightRadius = 160.0f;
+
 static bool DrawsSparks( CParticleCollection *pCollection )
 {
-	return pCollection->m_pDef && SparkLight::IsSparkMaterial( pCollection->m_pDef->MaterialName() );
+	return pCollection->m_pDef &&
+	       SparkLight::IsSparkMaterial( pCollection->m_pDef->MaterialName() );
 }
 
 static bool TreeDrawsSparks( CParticleCollection *pCollection )
 {
 	if ( DrawsSparks( pCollection ) )
 		return true;
-	for ( CParticleCollection *pChild = pCollection->m_Children.m_pHead; pChild; pChild = pChild->m_pNext )
+	for ( CParticleCollection *pChild = pCollection->m_Children.m_pHead; pChild;
+	    pChild = pChild->m_pNext )
 	{
 		if ( TreeDrawsSparks( pChild ) )
 			return true;
@@ -164,14 +170,16 @@ static void AddSparkEmission( CParticleCollection *pCollection, SparkLight::CBur
 		{
 			// Vector attributes are stored as four x, four y, four z.
 			const float *pXYZ = pCollection->GetFloatAttributePtr( PARTICLE_ATTRIBUTE_XYZ, i );
-			const float *pTint = pCollection->GetFloatAttributePtr( PARTICLE_ATTRIBUTE_TINT_RGB, i );
+			const float *pTint =
+			    pCollection->GetFloatAttributePtr( PARTICLE_ATTRIBUTE_TINT_RGB, i );
 			const float flAlpha = *pCollection->GetFloatAttributePtr( PARTICLE_ATTRIBUTE_ALPHA, i );
 			const float pos[3] = { pXYZ[0], pXYZ[4], pXYZ[8] };
 			const float tint[3] = { pTint[0], pTint[4], pTint[8] };
 			pBurst->Add( pos, SparkLight::SystemEmission( flAlpha, tint ), tint );
 		}
 	}
-	for ( CParticleCollection *pChild = pCollection->m_Children.m_pHead; pChild; pChild = pChild->m_pNext )
+	for ( CParticleCollection *pChild = pCollection->m_Children.m_pHead; pChild;
+	    pChild = pChild->m_pNext )
 	{
 		AddSparkEmission( pChild, pBurst );
 	}
@@ -184,6 +192,10 @@ void CNewParticleEffect::GatherLight()
 		m_nLightClass = TreeDrawsSparks( this ) ? 1 : 0;
 	if ( !m_nLightClass )
 		return;
+	// The system's source moves with its control point.
+	const Vector &vecSource = m_ControlPoints[0].m_Position;
+	const float anchor[3] = { vecSource.x, vecSource.y, vecSource.z };
+	m_LightBurst.SetReach( anchor, kSparkSystemLightRadius );
 	m_LightBurst.BeginFrame();
 	AddSparkEmission( this, &m_LightBurst );
 	m_bLightGathered = true;
@@ -198,7 +210,7 @@ void CNewParticleEffect::CommitLight()
 	}
 	m_bLightGathered = false;
 	if ( !m_Light.IsConfigured() )
-		m_Light.Configure( SparkLightParams( 2, 160.0f ) );
+		m_Light.Configure( SparkLightParams( 2, kSparkSystemLightRadius ) );
 	m_Light.Commit( m_LightBurst.Current() );
 }
 

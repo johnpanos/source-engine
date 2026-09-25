@@ -174,10 +174,10 @@ private:
 	int			m_RefCount;		// When this goes to zero and the effect has no more active
 								// particles, (and it's dynamically allocated), it will delete itself.
 
-	SparkLight::CBurst		m_LightBurst;		// written by GatherLight only
-	CParticleDynamicLight	m_Light;			// host only
-	signed char				m_nLightClass;		// -1 unclassified, 0 no light, 1 sparks
-	bool					m_bLightGathered;	// GatherLight ran since the last CommitLight
+	SparkLight::CBurst m_LightBurst; // written by GatherLight only
+	CParticleDynamicLight m_Light;   // host only
+	signed char m_nLightClass;       // -1 unclassified, 0 no light, 1 sparks
+	bool m_bLightGathered;           // GatherLight ran since the last CommitLight
 
 	CNewParticleEffect( const CNewParticleEffect & ); // not defined, not accessible
 };

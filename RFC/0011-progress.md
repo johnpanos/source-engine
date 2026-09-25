@@ -1182,7 +1182,11 @@ added. The run also found a runner bug: two sensitivity items on one workload
 had been merged into one run, so the change-atlas slowdown never ran. Each
 item now runs alone. The sensitivity controls make the change atlas,
 `Schedule` and the pooled compose 4x slower and require their rows to regress.
-VERIFY2_RESULT
+A clean verification of the calibrated rows is still to run. Other sessions'
+bakes held the host at 2 to 6 load per CPU from 02:05 to at least 03:57, so the
+queued run never started. It
+reruns with `python3 tools/quality/gi_sdf_bench.py run --gpu --rounds 3
+--sensitivity` on a quiet host.
 
 Reproduce:
 
@@ -1199,6 +1203,152 @@ Open:
 - The ray-query producer has no workloads.
 - Hosted CI runs only the smoke row and the rule self-tests. The timed gate
   needs the declared runner.
+
+## GI gallery: relational oracles (2026-09-25, user request)
+
+The user asked for many more GI test cases, such as colored lights blending
+in one scene. [`gi_gallery.py`](../tools/quality/gi_gallery.py) adds 54
+`gi-fixture/v1` fixtures beside the hand-built ones. `gi_fixtures.py` calls it,
+so `--check` covers the gallery too. Each fixture has a `family` field and
+declares `oracles`: light-transport properties that hold for any correct
+renderer. [`gi_oracles.py`](../tools/quality/gi_oracles.py) evaluates them
+per channel:
+
+| Kind | Property | Seeded control (must fail) |
+| --- | --- | --- |
+| `superposition` | a state with several lights on is the sum of the states with one on | the sum state missing a part (a dropped light) |
+| `equal` | mirror symmetry, with a channel permutation where mirrored lights or walls swap colors | one side biased 8% |
+| `value` | a per-channel closed form (colored furnace, tinted sky, parallel plates) | the closed form 5x its tolerance off |
+| `zero` | an exactly dark channel: sealed rooms, a color no light emits, all lights off, an umbra's direct light | a 1% leak |
+| `dominant`, `tint_order` | color bleeding and filtering: channel ratios and their order across regions | a luminance-only producer |
+| `ordered`, `scale` | albedo and distance ladders; intensity over four decades | order reversed; factor 10% off |
+| `chromaticity` | a light's color survives grey bounces exactly; blackbody color temperature | a luminance-only producer |
+| `uniform` | the walls of an integrating sphere; four quarter-turned views of off-grid probes | one entry 15% brighter |
+
+Every state of a fixture has identical geometry: lights are switched by
+`inputs:intensity` 0 and emission by `emissiveColor` 0, since
+superposition requires it. Relations between renders are judged per channel
+at 2% of the channel's level, floored at 5% of the brightest channel. Without
+the floor, a dim light (`range-hdr-pair`) could be dropped and still pass.
+
+`gi_reference.py render` evaluates the oracles when it writes references.
+`gi_reference.py check` re-evaluates them from the recorded region means,
+so changing an oracle needs no re-render. The check fails when an oracle
+fails or its control is not rejected.
+`gi_runtime.py oracles --fixture F --capture DIR` applies each oracle that
+reads only the captured state's indirect light to an in-game capture:
+leak zeros, mirrors, chromaticity, dominance and uniformity. It widens
+tolerances for 8-bit captures (10% relative; zero bound 1% of the reference
+level) and uses no Cycles value, only the capture's own regions.
+
+| Family | Fixture | States × cameras | Oracles | Kinds |
+| --- | --- | --- | --- | --- |
+| mix | `mix-cmy-ceiling` | 4 × 1 | 12 | chromaticity, equal, superposition, zero |
+| mix | `mix-color-cube` | 3 × 2 | 2 | superposition |
+| mix | `mix-complementary-corridor` | 3 × 2 | 21 | chromaticity, equal, superposition, tint_order, zero |
+| mix | `mix-disco` | 5 × 2 | 4 | superposition, zero |
+| mix | `mix-hue-ring` | 5 × 2 | 2 | superposition |
+| mix | `mix-neon-strips` | 3 × 1 | 2 | superposition, tint_order |
+| mix | `mix-rgb-ceiling` | 4 × 1 | 12 | equal, superposition, tint_order, zero |
+| mix | `mix-rgb-probes` | 4 × 1 | 10 | dominant, equal, superposition |
+| mix | `mix-rgb-venn` | 4 × 1 | 8 | equal, superposition, zero |
+| mix | `mix-spot-cross` | 3 × 1 | 9 | equal, superposition, zero |
+| mix | `mix-sun-sky-pillar` | 3 × 2 | 10 | chromaticity, dominant, superposition, zero |
+| symmetry | `mix-light-swap` | 4 × 1 | 9 | chromaticity, equal, superposition |
+| symmetry | `mix-moving-light` | 5 × 1 | 17 | chromaticity, equal, ordered |
+| symmetry | `symmetry-courtyard-sun` | 2 × 1 | 5 | equal |
+| symmetry | `symmetry-four-fold` | 1 × 4 | 8 | chromaticity, uniform |
+| furnace | `furnace-channel-extremes` | 1 × 1 | 1 | value |
+| furnace | `furnace-clutter` | 1 × 2 | 2 | value |
+| furnace | `furnace-high-albedo` | 1 × 1 | 1 | value |
+| furnace | `furnace-low-albedo` | 1 × 1 | 1 | value |
+| furnace | `furnace-maze` | 1 × 1 | 1 | value |
+| furnace | `furnace-near-black` | 1 × 1 | 1 | value |
+| furnace | `furnace-rgb` | 1 × 1 | 1 | value |
+| furnace | `furnace-sphere` | 1 × 1 | 1 | value |
+| analytic | `analytic-colored-quadrants` | 1 × 1 | 5 | value, zero |
+| analytic | `emissive-parallel-plates` | 1 × 2 | 3 | value, zero |
+| analytic | `integrating-sphere` | 4 × 2 | 8 | chromaticity, superposition, uniform |
+| analytic | `tinted-sky-plane` | 2 × 1 | 4 | value, zero |
+| bleed | `bleed-blue-carpet` | 1 × 2 | 4 | dominant, zero |
+| bleed | `bleed-checker-hall` | 1 × 2 | 7 | dominant, equal |
+| bleed | `bleed-cornell` | 1 × 1 | 3 | tint_order |
+| bleed | `bleed-cornell-mirror` | 1 × 1 | 6 | dominant, equal |
+| bleed | `bleed-hue-pillars` | 1 × 1 | 7 | equal, tint_order |
+| bleed | `bleed-two-bounce-filter` | 1 × 3 | 6 | dominant, tint_order, zero |
+| leak | `leak-corner-seam` | 1 × 2 | 2 | zero |
+| leak | `leak-louver` | 3 × 2 | 6 | chromaticity, superposition |
+| leak | `leak-quad-rooms` | 1 × 4 | 4 | chromaticity, zero |
+| leak | `leak-rgb-rooms` | 1 × 3 | 3 | zero |
+| leak | `leak-slit` | 1 × 2 | 3 | chromaticity, ordered |
+| leak | `leak-stacked-floors` | 1 × 2 | 2 | zero |
+| occlusion | `occlusion-colored-shadows` | 4 × 3 | 10 | dominant, equal, superposition, zero |
+| occlusion | `occlusion-l-corridor` | 1 × 2 | 8 | dominant, tint_order, zero |
+| occlusion | `occlusion-pinhole` | 3 × 1 | 6 | dominant, superposition, zero |
+| probe | `probe-directional-rgb` | 4 × 5 | 11 | dominant, superposition, tint_order, zero |
+| probe | `probe-vertical-gradient` | 1 × 3 | 2 | tint_order |
+| range | `range-albedo-ladder` | 1 × 5 | 2 | ordered |
+| range | `range-color-temperature` | 1 × 4 | 5 | chromaticity, tint_order |
+| range | `range-hdr-pair` | 3 × 1 | 4 | superposition, zero |
+| range | `range-intensity-ladder` | 5 × 1 | 7 | chromaticity, scale |
+| range | `range-long-hall` | 1 × 2 | 3 | chromaticity, ordered |
+| emissive | `emissive-orbs` | 4 × 1 | 10 | chromaticity, equal, superposition, zero |
+| emissive | `emissive-stripe-floor` | 4 × 1 | 7 | equal, superposition, zero |
+| complex | `complex-city-block` | 3 × 1 | 3 | dominant, superposition, tint_order |
+| complex | `complex-colonnade` | 3 × 1 | 3 | chromaticity, superposition |
+| complex | `complex-stairwell` | 3 × 2 | 7 | chromaticity, superposition, tint_order |
+
+**Finding: Cycles light passes and albedo 0.** Cycles' DiffDir and DiffInd
+passes divide by the diffuse color, so a channel whose albedo is exactly 0
+reports a meaningless split. An albedo-0 furnace read direct 0 instead of Le.
+A (0.9, 0, 0.5) furnace read green direct 0.07 and indirect 0.23 for a true
+0.3 and 0. A reference with such a region carries a wrong DiffInd for the
+runtime to be judged against. The gallery keeps every region's albedo above
+0 (`furnace-near-black` 0.02, `furnace-channel-extremes` green 0.05).
+
+**Results (CPU, 2048 samples, seed 20260924, gi-reference light paths).**
+All 54 fixtures (205 views) pass: 301 oracles with 4,369 checks. Every seeded
+control is rejected and no region is below 50 pixels.
+- The oracles caught one authoring defect. `emissive-stripe-floor` first
+  put its glowing stripes on top of the room's own floor face. The coplanar
+  surfaces z-fought, and the mirror oracle failed: direct light on mirrored
+  walls differed by 11%, beyond noise.
+- A 16-sample preview of every fixture (`GI_FIXTURES_ROOT` on a scratch
+  copy) found the camera and expectation errors first:
+  - a probe hidden behind another, and a pillar on a camera's diagonal;
+  - probe tint judged from above, where a model's visible half mostly shows
+    the ceiling;
+  - a pinhole too dim to measure.
+
+**Maps.** Every gallery fixture's `map.json` builds a playable map
+`gi_<name>`, published to `run/maps`. The gallery bakes use 512 denoised
+lightmap samples and 1,024 probe samples on the CPU. At the gi-fixture
+profile's 2,048 samples, one map took over an hour while other work saturated
+the host (load 80+ on 32 threads). The shared integrated GPU was slower still
+(512 samples: unfinished after 50 minutes; CPU: about 2 minutes a pass).
+Denoised bakes are statistical, which the runtime's 10% tolerance allows.
+
+**Pre-existing, not from this work:** `gi_reference.py check` fails on the
+hand-built fixtures' references. Their renderer hash is stale, and
+`portal-view` and `room-states` changed after rendering. Before this change the
+check stopped evaluating oracles after the first failing fixture; it now
+evaluates per fixture.
+
+Reproduce:
+
+```sh
+PYTHONPATH=$(python3 -c "import json; print(json.load(open('build/toolchains/pbrt-map-toolchain.json'))['usd_pythonpath'])") \
+    /usr/bin/python3.12 tools/quality/gi_fixtures.py --check
+python3 tools/quality/gi_reference.py render --fixture mix-rgb-ceiling   # about 25 s a view on a free CPU
+python3 tools/quality/gi_reference.py check
+python3 -m unittest tools/quality/tests/test_gi_tools.py                # OracleTest: every kind, control and validation
+python3 tools/quality/pbrt_map_build.py --manifest quality/fixtures/gi/mix-rgb-ceiling/map.json \
+    --out quality-results/rfc0011-gallery/maps/mix-rgb-ceiling
+python3 tools/quality/gi_runtime.py capture --fixture mix-rgb-ceiling \
+    --map-build quality-results/rfc0011-gallery/maps/mix-rgb-ceiling --out quality-results/x
+python3 tools/quality/gi_runtime.py oracles --fixture mix-rgb-ceiling --capture quality-results/x \
+    --out quality-results/x/oracles.json
+```
 
 ## G9: Moved lights (done)
 
@@ -1302,15 +1452,106 @@ rendered placeholder materials, because the shared build carried other
 sessions' in-progress renderer changes. Evidence:
 `quality-results/spark-light/{legacy-ab,wmsh-living_room}`.
 
-**Open:**
+### Follow-up: PCF sparks, strongest-first selection, collision (2026-09-25)
 
-- PCF (DMX) particle sparks emit no light. Their operators run on the
-  pooled batch, so they would need a host-thread commit.
-- The native consumer keeps the first seven unbaked lights in slot order,
-  not the strongest.
-- Sparks that fall through the floor (an existing particle-collision
-  behavior) carry their faint tail light below it.
-- No DXVK run, per the native-focus decision.
+The three limitations above are fixed.
+
+**PCF sparks, worker-side.** Particle systems drawn with a spark material
+now light, through the particle job graph:
+
+- **Gather (pool).** Each effect's simulate item gathers its light right
+  after it simulates (`CNewParticleEffect::GatherLight`). The gather reads
+  only that effect's collections (position, tint and alpha) and writes only
+  that effect's burst. It classifies the effect once (any collection whose
+  material names a spark) and costs nothing for other effects.
+- **Commit (host).** The ordered host pass after the batch
+  (`UpdateNewEffectsEnd`, the render-start graph's `ParticlesCommit` node)
+  commits every effect's light in effect order. An effect that did not
+  gather releases its light, so a sleeping system gives its budget place
+  back.
+- **Declaration.** The render-start graph now declares the dlight table as
+  `RS_DOMAIN_DYNAMIC_LIGHTS`, written only by the particle gather and commit
+  host nodes.
+- **Shared transport.** The dlight, the `fx_spark_lights` budget and the
+  30% color moved into one client owner,
+  [`particle_light.cpp`](../game/client/particle_light.cpp). Trail sparks and
+  systems both use it.
+- **Policy additions** (`render/spark_light.h`): system emission (alpha
+  times the brightest tint channel), spark-material recognition, the
+  emission-weighted light color, a full-burst floor for systems (eight
+  sparks), and a reach.
+
+**Reach.** Only sparks within the light's radius of the burst's source
+count: trail sparks use the effect origin, systems control point 0. A spark
+that flies off or falls out of the world no longer drags the light away.
+
+**Strongest first.**
+[`render/direct_light_selection.h`](../public/render/direct_light_selection.h)
+(`render.direct-light-selection.v1`) ranks unbaked point and spot lights.
+A light's importance is its luminance, times its own falloff at half its
+reach, times its view coverage `reach² / (reach² + d²)`. The engine stamps
+the last main view origin on each snapshot. Ties go to the lower ID. The
+native consumer takes the top `kMaxDirectLights`. `r_lightset_report` now
+prints each light's rank and importance.
+
+**Collision.**
+
+- The "little spark" emitters of `FX_ElectricSpark` and `FX_Sparks`, and
+  `FX_MetalSpark`, never called `Setup`, so they had no collision planes at
+  all. Every spark emitter now probes its surroundings. A gdb census on an
+  `env_spark` at a wall base in testchmb_a_01 went from 196 sparks ending
+  below the floor, in every direction, to 42. All 42 enter the wall the
+  spark was placed against, which brush-only traces pass through.
+- The plane test now counts a particle that starts on a surface (within
+  epsilon) and moves into it as a hit, with a fraction clamped to [0, 1].
+  TE origins travel with 1/32-unit truncation (whole units in multiplayer).
+  A plane probe that starts in solid retries from one unit back, and a
+  retest that starts in solid keeps the coarse plane.
+- The predicate is
+  [`particle_plane_crossing.h`](../game/client/particle_plane_crossing.h),
+  checked by `client.particle-plane-crossing` (10 checks; the original
+  predicate is rejected).
+
+**Headless** (all pass, each seeded defect rejected):
+
+| Suite | Checks | Seeded defects rejected |
+| --- | --- | --- |
+| `render.spark-light` | 39 | unweighted, no-fade, budget-leak, no-reach |
+| `render.direct-light-selection` | 10 | table-order, no-distance, unstable-ties |
+| `client.particle-plane-crossing` | 10 | the original predicate |
+
+All 27 non-TSan RFC 0011 headless suites pass. Q-JOBS passes. Its
+`jobsystem.querycache` timed out once at load average 100 and passed alone.
+
+**Engine** (native Vulkan, headless, `build/`):
+
+- Seven faint `light_dynamic`s fill dlight slots 0–6, and an `env_spark`
+  fires in living_room (WMSH). The spark's light is eighth in table order
+  and ranks 1, and the world shows its pool: 7,558 pixels are brighter than
+  with `fx_spark_lights 0`. The old first-seven rule would have dropped it.
+  Evidence: `quality-results/spark-light/select`.
+- testchmb_a_11's shipped `spark_boxdropper_a11_1` sparks light from their
+  source and follow them about 50 units down. They go dark once the sparks
+  leave the reach, instead of sinking out of the world
+  (`quality-results/spark-light/a11`).
+- The testchmb_a_01 floor case settles at z = 0; before the fix it reached
+  z = −445 (`quality-results/spark-light/floor`).
+- The PCF path on Portal: `ricochet_sparks` (`impact_fx.pcf`, drawn with
+  `effects/spark`) gets no light with the budget at 0. With the budget at 4
+  it lights at the sparks, is released (darkened) the next frame and is
+  gone after (`quality-results/spark-light/pcf-p1`).
+
+**Not verified: the Portal 2 runtime.** `build-p2`'s client and engine
+build with this change. Its `materialsystem` and `shaderapivulkan` don't
+compile, because of another session's in-progress mesh-interface change.
+A private runtime with the older material system crashes in
+`CMatQueuedMesh::SetPrimitiveType` from `C_OP_RenderSpritesTrail`, a vtable
+mismatch unrelated to the spark light. The Portal 2 spark systems
+(`sparks_generic_random`, `impact_ricochet_sparks`,
+`discouragement_beam_sparks`, …) run the same client code as
+`ricochet_sparks`, but that is not a P2 runtime check.
+
+**Open:** no DXVK run, per the native-focus decision.
 
 ### G9.2 SDF shadows for unbaked lights (done 2026-09-25)
 
@@ -1630,3 +1871,68 @@ portals are not published (the publisher is in Portal's client).
 
 Evidence: `quality-results/rfc0011-g10/gate/gate.json`,
 `quality-results/rfc0011-g10/gate-rayquery/gate.json`.
+
+
+## Open decisions 1, 2, 5 and 7 closed (2026-09-25)
+
+The user asked whether decisions 1, 2 and 7 had been closed. None had been
+recorded as decided, although G1 and G6 had built on answers to all three.
+Each is now marked decided in the RFC's
+[open decisions](0011-runtime-indirect-lighting.md#open-decisions-and-required-evidence).
+
+**1. Encoding: octahedral 6×6 in `RGBA16F`, kept.** The RFC asked for
+analytic error and memory. G1 had measured the tile against analytic
+references (G1.4) but had never measured SH L2 or `B10G11R11`.
+[`probe_encoding.py`](../tools/quality/probe_encoding.py) now does. It uses
+four analytic environments and 2048 normals, with error relative to each
+environment's mean diffuse light (record
+`quality-results/rfc0011-decisions/encoding.json`, 100k quadrature
+directions):
+
+| Environment | Octahedral RGBA16F, mean / max | B10G11R11, mean / max | SH L2, mean / max |
+| --- | --- | --- | --- |
+| sky over a darker ground | 3.9% / 13.4% | 3.8% / 14.5% | 0.02% / 0.1% |
+| sun (0.5° disk) over the sky | 11.9% / 81% | 11.8% / 81% | 9.9% / 38%, negative at 103 normals |
+| window patch in a dim room | 5.9% / 21% | 6.1% / 21% | 5.3% / 12.5% |
+| red/blue colour bleed | 3.3% / 17% | 3.3% / 18% | 0.14% / 0.8% |
+
+Irradiance bytes per probe are 512, 256 and 54. The visibility tile adds
+1,024 to every option, because SH L2 has no visibility.
+
+- SH L2 is the more accurate irradiance encoding. This contradicts the
+  RFC's implicit assumption and is recorded as the alternative.
+- The tile is kept:
+  - the visibility tile dominates memory either way (1,536 against 1,078
+    bytes);
+  - every producer writes and blends the tile per texel;
+  - strong direct light goes through the light set, not the tile (G2);
+  - SH L2 rings negative under a sun;
+  - the G1 gates pass with the tile.
+- `B10G11R11` costs nothing measurable, but it is unsigned, so it cannot
+  hold a change volume. It stays a per-profile option for baked layers.
+
+**2. Layout: uniform grids.** The G1 corpus decided it: every map fits the
+budget except `staircase2`, and that map's remedy is its own spacing or
+bounds. The traced producers' probe focus supplies the camera-centred
+priority a clipmap would. It schedules probes, rather than storing
+cascades.
+
+**5. Relightable reflection probes: yes, in RFC 0007 (R50-RELIGHT).** The
+probes consume this RFC's change (the change volume and the unbaked lights'
+SDF-shadowed direct light) at the point each probe saw. The `mirror-lamp`
+gate passes against Cycles (relit floor/wall 1.38 mean, as-baked control
+3.02), at 0.32 ms per 1080p frame. See
+[R50-RELIGHT](0007-progress.md#r50-relight-relightable-reflection-probes-bounded-r50-slice-2026-09-25).
+
+**7. SDF reference design: neither.** The producer is this RFC's own design
+(a baked uniform SDFV with light records and cells, traced probe texels,
+proxy boxes, SDF shadows). It contains no code or data from Godot's SDFGI
+or FidelityFX Brixelizer GI, so no license review is needed. A clipmapped
+field would be a separate producer behind the same contract.
+
+Reproduce:
+
+```sh
+python3 tools/quality/probe_encoding.py --samples 100000 \
+    --out quality-results/rfc0011-decisions/encoding.json
+```

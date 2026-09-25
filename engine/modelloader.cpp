@@ -23,6 +23,7 @@
 #include "indirect_light_host.h"
 #include "mapcontainer/probe_volume.h"
 #include "mapcontainer/radiosity_transfer.h"
+#include "mapcontainer/reflection_probes.h"
 #include "mapcontainer/sdf_volume.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh.h"
@@ -4557,6 +4558,68 @@ static float WorldMeshF32( const unsigned char *pBytes )
 	return value;
 }
 
+// R50-PARALLAX: the map's RPRB reflection probes, uploaded in their GPU form.
+// Optional: a missing, malformed or unverifiable lump leaves the map playable
+// and its world samples the lightmap's legacy probe band, if any.
+static void UploadWorldReflectionProbes( world_mesh_gpu::IWorldMeshUpload *uploader )
+{
+	const auto remove = [uploader]()
+	{
+		uploader->UploadReflectionProbes( world_mesh_gpu::ReflectionProbesUploadRequest() );
+	};
+	mapcontainer::MapLumpInfo lump{};
+	if ( !s_pMapContainer->FindLump( mapcontainer::kLumpReflectionProbes, &lump ) )
+	{
+		remove();
+		return;
+	}
+	// The lump version repeats the payload's: v1, or v2 with relight bands.
+	if ( ( lump.version != mapcontainer::kReflectionProbesVersion &&
+	         lump.version != mapcontainer::kReflectionProbesRelightVersion ) ||
+	     lump.flags != 0 ||
+	     lump.storedSize < mapcontainer::kReflectionProbesHeaderBytes ||
+	     lump.storedSize > mapcontainer::kReflectionProbesMaxBytes )
+	{
+		Warning( "Map %s: RPRB version, flags or size unsupported\n", s_szMapName );
+		remove();
+		return;
+	}
+	CUtlVector<byte> bytes;
+	bytes.SetCount( (int)lump.storedSize );
+	if ( !s_MapByteSource.ReadAt( lump.offset, bytes.Base(), bytes.Count() ) ||
+	     !s_pMapContainer->VerifyContent( lump, bytes.Base(), bytes.Count() ).Ok() )
+	{
+		Warning( "Map %s: RPRB read or hash failed\n", s_szMapName );
+		remove();
+		return;
+	}
+	mapcontainer::ReflectionProbesLayout layout{};
+	const mapcontainer::ReflectionProbesError error =
+	    mapcontainer::ValidateReflectionProbes( bytes.Base(), bytes.Count(), &layout );
+	if ( error != mapcontainer::ReflectionProbesError::Ok )
+	{
+		Warning( "Map %s: RPRB rejected (%s)\n", s_szMapName,
+		    mapcontainer::ReflectionProbesErrorName( error ) );
+		remove();
+		return;
+	}
+	world_mesh_gpu::ReflectionProbesUploadRequest request;
+	request.width = layout.atlasWidth;
+	request.height = mapcontainer::ReflectionProbeTextureRows( layout );
+	request.probeCount = layout.count;
+	CUtlVector<uint16> texels;
+	texels.SetCount( int( request.width * request.height * 4 ) );
+	mapcontainer::WriteReflectionProbeTexture(
+	    bytes.Base(), layout, mapcontainer::ReflectionProbeMode::Blend, texels.Base() );
+	request.texels = texels.Base();
+	if ( uploader->UploadReflectionProbes( request ) )
+		Msg( "Map %s: RPRB v%u, %u reflection probe%s, %u mips from %u wide%s\n", s_szMapName,
+		    lump.version, layout.count, layout.count == 1 ? "" : "s", layout.mipCount,
+		    layout.width, layout.relight ? ", relightable" : "" );
+	else
+		Warning( "Map %s: RPRB upload failed; no parallax-corrected probes\n", s_szMapName );
+}
+
 // The LMAP reader's layer roles and the upload contract's are one numbering.
 static_assert( int( mapcontainer::WorldLightmapLayer::Total ) ==
                        int( world_mesh_gpu::WorldLightmapRole::Total ) &&
@@ -4704,6 +4767,7 @@ void CModelLoader::Map_LoadWorldMesh()
 		m_WorldMeshBytes.Purge();
 		return;
 	}
+	UploadWorldReflectionProbes( uploader );
 	m_worldBrushData.pWorldMeshData = m_WorldMeshBytes.Base();
 	m_worldBrushData.worldMeshSize = m_WorldMeshBytes.Count();
 	m_WorldLightmapBytes.Swap( lightmapBytes );

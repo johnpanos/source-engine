@@ -43,7 +43,8 @@
     "waf_lock": ".lock-waf-pbrt-map-tools",
     "waf_options": ["--tools", "-T", "release"],
     "required": ["vbsp2", "vvis", "vrad", "vtex", "bsp2tool", "share/sourceWorld"],
-    "bsp2tool_commands": ["pack-world-lit", "pack-world-probed", "pack-world-gi"]
+    "bsp2tool_commands": ["pack-world-lit", "pack-world-probed", "pack-world-gi",
+                          "--reflection-probes"]
   },
   "runtime": {
     "runtime": "run/runtime-native",

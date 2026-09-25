@@ -148,6 +148,17 @@ class Scene:
         self.solids = []
         self.probe_bounds = None
         self.extra = {}
+        # The stage camera places the player spawn (pbrt_collision_vmf.py):
+        # the first view unless a scene names a pose clear for the player hull.
+        self.spawn = None
+        # Lightmap layout: "planar" (lightmap_layout.py) where Blender's charts
+        # break the seam invariants: curved meshes (texel density) and meshes of
+        # coplanar boxes such as stairs (flat in-mesh seams).
+        self.layout = None
+        # Lightmap samples: 512 unless small, bright or sharp lights (spots,
+        # a pinhole, a tiny HDR lamp, a sun) leave fireflies whose removal
+        # moves the denoised mean more than lightmap_denoise.py's 5%.
+        self.samples = 512
 
     # ------------------------------------------------------------ materials
     def mat(self, name, albedo, emission=(0.0, 0.0, 0.0)):
@@ -181,6 +192,10 @@ class Scene:
         return name
 
     def boxes(self, name, bounds, material, skip=(), solid=True):
+        # Touching boxes (maze walls, stair treads) share faces in one mesh.
+        if any(all(a[0][k] <= b[1][k] and b[0][k] <= a[1][k] for k in range(3))
+               for i, a in enumerate(bounds) for b in bounds[i + 1:]):
+            self.layout = "planar"
         faces = [(c, n) for lo, hi in bounds for _, c, n in box_face_list(lo, hi, skip)]
         self.mesh(name, faces, material)
         if solid:
@@ -212,6 +227,7 @@ class Scene:
         return self.mesh(name, faces, material)
 
     def sphere(self, name, center, radius, material, inward=False, **band):
+        self.layout = "planar"
         return self.mesh(name, sphere_faces(center, radius, inward, **band), material)
 
     def probe(self, name, center, material="ProbeGrey"):
@@ -422,7 +438,7 @@ class Scene:
                 if unknown:
                     raise ValueError("%s: camera %s region %s names unknown %s" % (
                         self.name, camera, region, unknown))
-        first = next(iter(self.cameras.values()))
+        first = gf.camera_pose(*self.spawn) if self.spawn else next(iter(self.cameras.values()))
         self.author.camera("Camera", first)
         self.author.save()
         stage = self.directory / (self.name + ".usda")
@@ -442,9 +458,19 @@ class Scene:
         gf.write_json(self.directory / "fixture.json", record)
         layer = states[baked]["layer"]
         scene = "quality/fixtures/gi/%s/%s" % (self.name, layer or stage.name)
-        gf.write_json(self.directory / "map.json", gf.map_manifest(
-            "gi_" + self.name.replace("-", "_"), scene, solid_meshes=self.solids,
-            probe_bounds=self.probe_bounds))
+        manifest = gf.map_manifest("gi_" + self.name.replace("-", "_"), scene,
+                                   solid_meshes=self.solids, probe_bounds=self.probe_bounds)
+        # Gallery maps bake cheaper than the gi-fixture profile, with 512
+        # denoised lightmap samples and 1024 probe samples: dozens of maps at
+        # 2048 samples on a shared host take a day. Their oracles run on the
+        # 2048-sample references; denoised bakes are statistical
+        # (cycles_device.determinism), which the runtime's 10% tolerances
+        # allow. (The shared integrated GPU was slower still.)
+        manifest["lightmap"] = {"samples": self.samples}
+        if self.layout:
+            manifest["lightmap"]["layout"] = self.layout
+        manifest.setdefault("probe_volume", {})["samples"] = 1024
+        gf.write_json(self.directory / "map.json", manifest)
 
 
 # ======================================================================
@@ -564,6 +590,7 @@ def mix_complementary_corridor(out):
 def mix_rgb_venn(out):
     s = Scene(out, "mix-rgb-venn", "mix", "Three cone spots (red, green, blue) overlap on the "
               "floor as an additive Venn diagram; mirror symmetry swaps green and blue")
+    s.samples = 2048
     size = (6.0, 6.0, 4.0)
     symmetric_room(s, size=size)
     for name, angle, color in (("Red", 90, RED), ("Green", 210, GREEN), ("Blue", 330, BLUE)):
@@ -588,6 +615,7 @@ def mix_rgb_venn(out):
 def mix_spot_cross(out):
     s = Scene(out, "mix-spot-cross", "mix", "A red spot from the left and a blue spot from "
               "the right cross on the back wall: overlap adds, mirror swaps red and blue")
+    s.samples = 2048
     symmetric_room(s)
     s.spot("Red", (0.3, 1.0, 2.6), 0.08, 1500.0, RED, (0.55, 1.0, -0.25), 10.0, 16.0)
     s.spot("Blue", (5.7, 1.0, 2.6), 0.08, 1500.0, BLUE, (-0.55, 1.0, -0.25), 10.0, 16.0)
@@ -609,6 +637,7 @@ def mix_sun_sky_pillar(out):
     s = Scene(out, "mix-sun-sky-pillar", "mix", "An orange sun and a blue sky over a grey "
               "ground and pillar: sun and sky add, each keeps its color on the grey world, "
               "the sun's shadow is blue and the lit face orange")
+    s.samples = 2048
     s.mat("Ground", (0.5, 0.5, 0.5))
     s.mat("Stone", (0.6, 0.6, 0.6))
     half = 20.0
@@ -841,8 +870,9 @@ def furnace_values(albedo, emission):
 
 def colored_furnace(out, name, purpose, albedo, emission, clutter=None, size=(3.0, 3.0, 3.0),
                     eye=(0.35, 0.35, 1.6), target=(3.0, 3.0, 1.0), probe=(1.5, 1.5, 1.2),
-                    extra_views=()):
+                    extra_views=(), spawn=None):
     s = Scene(out, name, "furnace", purpose)
+    s.spawn = spawn
     s.mat("Furnace", albedo, emission)
     s.mat("ProbeFurnace", albedo, emission)
     walls = s.room("Box", (0.0, 0.0, 0.0), size, "Furnace")
@@ -864,9 +894,11 @@ def colored_furnace(out, name, purpose, albedo, emission, clutter=None, size=(3.
 
 
 def furnace_family(out):
+    # L peaks at 0.8, not 1: the bake validates its linear EXR on texels away
+    # from 1, where a gamma error would be invisible (pbrt_lightmap_bake.py).
     colored_furnace(out, "furnace-rgb", "Colored furnace: albedo (0.8, 0.5, 0.2) and emission "
-                    "(0.2, 0.3, 0.4) give L = (1.0, 0.6, 0.5); channels must bounce "
-                    "independently", (0.8, 0.5, 0.2), (0.2, 0.3, 0.4))
+                    "(0.16, 0.24, 0.32) give L = (0.8, 0.48, 0.4); channels must bounce "
+                    "independently", (0.8, 0.5, 0.2), (0.16, 0.24, 0.32))
     colored_furnace(out, "furnace-high-albedo", "Albedo 0.9 furnace: 90% of the light is "
                     "indirect, reached only after dozens of bounces; bounce truncation shows",
                     (0.9, 0.9, 0.9), (0.05, 0.05, 0.05))
@@ -899,6 +931,7 @@ def furnace_family(out):
                     "on every surface regardless of occlusion", (0.7, 0.5, 0.3),
                     (0.1, 0.2, 0.3), clutter, size=(4.0, 4.0, 3.0), eye=(0.3, 3.7, 1.7),
                     target=(3.5, 0.8, 1.1), probe=(0.6, 2.2, 0.9),
+                    spawn=((1.9, 1.9, 1.7), (3.9, 3.9, 1.0)),
                     extra_views=[("crevice", (3.9, 3.9, 2.8), (3.2, 0.8, 1.6),
                                   {"crevice": ["Crevice"], "fins": ["Fins"], "orb": ["Orb"],
                                    "walls": ["Box_Xn", "Box_Yn", "Box_Zn"]})])
@@ -965,19 +998,26 @@ def tinted_sky_plane(out):
 
 
 def parallel_plates(out):
-    s = Scene(out, "emissive-parallel-plates", "analytic", "Two 60 m plates 1 m apart: a "
+    s = Scene(out, "emissive-parallel-plates", "analytic", "Two 80 m plates 2.5 m apart: a "
               "glowing floor under a colored ceiling. Multiple bounces between them give "
               "B_floor = Le / (1 - rho_f rho_c) and B_ceiling = rho_c B_floor per channel")
     rho_f, rho_c, le = (0.5, 0.5, 0.5), (0.2, 0.6, 0.9), (0.4, 0.2, 0.05)
     s.mat("Glow", rho_f, le)
     s.mat("Canopy", rho_c)
     s.mat("Black", (0.0, 0.0, 0.0))
-    half, height = 30.0, 1.0
+    # 80 m plates 2.5 m apart: the view factor to the black walls from the
+    # centre is 0.4%; the cameras stand at eye height (a camera 0.5 m up in a
+    # 1 m slot, looking straight up or down, read half the light in game).
+    half, height = 40.0, 2.5
     s.room("P", (-half, -half, 0.0), (half, half, height), "Black",
            materials={"Zn": "Glow", "Zp": "Canopy"})
-    s.view("up", (0.0, 0.0, 0.5), (0.05, 0.0, 1.0), ["P_Zp"])
-    s.view("down", (0.0, 0.0, 0.5), (0.05, 0.0, 0.0), ["P_Zn"])
-    s.base("default", "glowing floor, colored ceiling, black side walls 30 m away")
+    s.view("up", (0.0, 0.0, 1.7), (1.0, 0.0, 1.7 + math.sqrt(3.0)), ["P_Zp"])
+    s.view("down", (0.0, 0.0, 1.7), (1.0, 0.0, 1.7 - math.sqrt(3.0)), ["P_Zn"])
+    # The centre views see one uniform plate each, which portal_boot's scene
+    # detail gate rejects; their shaded proof frame comes from this view.
+    s.view("overview", (-35.0, 0.0, 1.7), (0.0, 3.0, 1.2), ["P_Zn", "P_Zp"])
+    s.extra["proof_cameras"] = {"up": "overview", "down": "overview"}
+    s.base("default", "glowing floor, colored ceiling, black side walls 40 m away")
     floor = [e / (1 - f * c) for e, f, c in zip(le, rho_f, rho_c)]
     ceiling = [c * b for c, b in zip(rho_c, floor)]
     s.value("default", "up", ["P_Zp"], {"total": ceiling, "direct": list(le),
@@ -1005,6 +1045,7 @@ def integrating_sphere(out):
             if band[1] > band[0]:
                 faces += sphere_faces(center, radius, True, rows=rows, columns=band)
         s.mesh(name, faces, "Shell")
+    s.layout = "planar"
     lights = {"Red": ((0.8, 0.5, 2.6), RED, 400.0), "Green": ((-0.9, -0.4, 1.3), GREEN, 200.0),
               "Blue": ((0.2, -1.1, 3.1), BLUE, 100.0)}
     for name, (position, color, intensity) in lights.items():
@@ -1263,6 +1304,8 @@ def leak_slit(out):
     s.view("dark", (6.0, 0.2, 1.7), (3.2, 2.2, 0.9), ["B_Zn", "B_Xn", "B_Yp", "B_Zp",
                                                       "ProbeB"])
     s.base("default", "lamp in room A")
+    # The dim room's shaded frame shows too little detail to prove a render.
+    s.extra["proof_cameras"] = {"dark": "lit"}
     s.chroma("default", "dark", orange, name="light through the slit stays orange")
     s.chroma("default", "lit", orange)
     s.ordered([("default", "dark", "B_Zn"), ("default", "lit", "A_Zn")], 10.0,
@@ -1534,6 +1577,7 @@ def hdr_pair(out):
     s = Scene(out, "range-hdr-pair", "range", "A tiny, very bright red lamp and a wide, dim "
               "blue panel: two hundred times apart in level, they still add exactly and keep "
               "to their own channels")
+    s.samples = 2048
     s.mat("Grey", (0.5, 0.5, 0.5))
     s.room("R", (0.0, 0.0, 0.0), (6.0, 6.0, 3.0), "Grey")
     s.point("Red", (1.5, 3.0, 2.5), 0.02, 150000.0, RED)
@@ -1689,6 +1733,175 @@ def city_block(out):
     s.finish()
 
 
+# ======================================================================
+# second batch
+# ======================================================================
+
+def pinhole(out):
+    s = Scene(out, "occlusion-pinhole", "occlusion", "A camera obscura: a red lamp up and to "
+              "the left and a blue lamp down and to the right shine through a 20 cm pinhole, "
+              "and each lands inverted in the opposite quadrant of the back wall")
+    s.samples = 2048
+    s.mat("Wall", GREY)
+    s.room("R", (0.0, 0.0, 0.0), (4.0, 4.0, 3.0), "Wall", skip=("Yn", "Yp"))
+    s.wall("Front", 0.0, 1, 1, ((0.0, 0.0), (4.0, 3.0)), [((1.9, 1.4), (2.1, 1.6))], "Wall")
+    quadrants = {"BackUL": ((0.0, 1.5), (2.0, 3.0)), "BackUR": ((2.0, 1.5), (4.0, 3.0)),
+                 "BackLL": ((0.0, 0.0), (2.0, 1.5)), "BackLR": ((2.0, 0.0), (4.0, 1.5))}
+    for name, ((x0, z0), (x1, z1)) in quadrants.items():
+        s.panel(name, (x0, 4.0, z0), (x1, 4.0, z1), 1, -1, "Wall")
+    # Through (2, 0, 1.5): the red lamp lands near (3.3, 4, 0.6), the blue near (0.7, 4, 2.4).
+    s.point("Red", (1.0, -3.0, 2.2), 0.05, 100000.0, RED)
+    s.point("Blue", (3.0, -3.0, 0.8), 0.05, 100000.0, BLUE)
+    s.view("inside", (2.0, 0.6, 1.5), (2.0, 4.0, 1.5), list(quadrants) + ["R_Zn", "R_Zp"])
+    s.base("both", "both lamps outside the pinhole")
+    s.state("red", "red lamp alone", s.off("Blue"))
+    s.state("blue", "blue lamp alone", s.off("Red"))
+    s.superpose_all("both", ["red", "blue"])
+    s.zero("red", "inside", [0, 1, 2], ["BackUL", "BackUR", "BackLL"], ["direct"],
+           name="red: direct light only in the lower right quadrant")
+    s.zero("blue", "inside", [0, 1, 2], ["BackUR", "BackLL", "BackLR"], ["direct"],
+           name="blue: direct light only in the upper left quadrant")
+    s.dominant("both", "inside", "BackLR", 0, [2], 3.0, lights=["total"])
+    s.dominant("both", "inside", "BackUL", 2, [0], 3.0, lights=["total"])
+    s.zero_all("both", [1])
+    s.finish()
+
+
+def long_hall(out):
+    s = Scene(out, "range-long-hall", "range", "A 24 m hall lit by one warm lamp at one end: "
+              "floor light falls with distance segment by segment, and stays the lamp's color "
+              "on the grey hall")
+    s.mat("Grey", GREY)
+    s.room("H", (0.0, 0.0, 0.0), (24.0, 3.0, 3.0), "Grey", skip=("Zn",))
+    for i in range(8):
+        s.panel("F%d" % i, (3.0 * i, 0.0, 0.0), (3.0 * i + 3.0, 3.0, 0.0), 2, 1, "Grey")
+    warm = (1.0, 0.8, 0.6)
+    s.point("Lamp", (1.0, 1.5, 2.5), 0.1, 800.0, warm)
+    s.view("near", (9.0, 1.5, 2.7), (0.0, 1.5, 0.0), ["F0", "F1", "H_Yn", "H_Yp"])
+    s.view("far", (21.0, 1.5, 2.7), (12.0, 1.5, 0.0), ["F4", "F5", "H_Yn", "H_Yp"])
+    s.base("default", "one lamp at the west end")
+    s.ordered([("default", "far", "F5"), ("default", "far", "F4"), ("default", "near", "F1"),
+               ("default", "near", "F0")], 1.2)
+    s.chroma_all("default", warm)
+    s.finish()
+
+
+def corner_seam(out):
+    s = Scene(out, "leak-corner-seam", "leak", "Two sealed rooms that meet only at one corner "
+              "edge, 4 units apart, lit red and green, with models by the shared corner: a "
+              "probe cell spanning the corner must not carry either color across")
+    s.mat("Wall", GREY)
+    gap = gf.THIN_WALL_M
+    b0 = 3.0 + gap
+    s.room("A", (0.0, 0.0, 0.0), (3.0, 3.0, 3.0), "Wall")
+    s.room("B", (b0, b0, 0.0), (b0 + 3.0, b0 + 3.0, 3.0), "Wall")
+    s.rect("LampA", (1.5, 1.5, 2.99), (1.0, 1.0), 8.0, RED)
+    s.rect("LampB", (b0 + 1.5, b0 + 1.5, 2.99), (1.0, 1.0), 8.0, GREEN)
+    s.probe("ProbeA", (2.4, 2.4, 1.2))
+    s.probe("ProbeB", (b0 + 0.6, b0 + 0.6, 1.2))
+    s.view("a", (0.2, 0.2, 1.7), (2.4, 2.4, 0.9), ["A_Zn", "A_Xp", "A_Yp", "ProbeA"])
+    s.view("b", (b0 + 2.8, b0 + 2.8, 1.7), (b0 + 0.6, b0 + 0.6, 0.9),
+           ["B_Zn", "B_Xn", "B_Yn", "ProbeB"])
+    s.base("default", "red room A, green room B")
+    s.zero("default", "a", [1, 2])
+    s.zero("default", "b", [0, 2])
+    s.finish()
+
+
+def colored_quadrants(out):
+    s = Scene(out, "analytic-colored-quadrants", "analytic", "Four colored ground quadrants "
+              "under a white sky: each quadrant's radiance is its albedo times the sky "
+              "exactly, with no indirect light")
+    colors = {"NE": (0.8, 0.3, 0.2), "NW": (0.2, 0.7, 0.3), "SW": (0.2, 0.3, 0.8),
+              "SE": (0.8, 0.8, 0.2)}
+    signs = {"NE": (1, 1), "NW": (-1, 1), "SW": (-1, -1), "SE": (1, -1)}
+    probes = {"NE": "ProbeA", "NW": "ProbeB", "SW": "ProbeC", "SE": "ProbeD"}
+    sky = 0.8
+    half = 20.0
+    for quadrant, albedo in colors.items():
+        s.mat("Ground" + quadrant, albedo)
+        sx, sy = signs[quadrant]
+        s.panel("Ground" + quadrant, (min(0.0, sx * half), min(0.0, sy * half), 0.0),
+                (max(0.0, sx * half), max(0.0, sy * half), 0.0), 2, 1, "Ground" + quadrant)
+        s.probe(probes[quadrant], (2.0 * sx, 2.0 * sy, 0.8))
+    s.sky("Sky", sky, (1.0, 1.0, 1.0))
+    s.view("above", (0.0, -0.3, 6.0), (0.0, 0.0, 0.0),
+           ["Ground" + q for q in colors] + list(probes.values()))
+    s.base("default", "white sky alone")
+    for quadrant, albedo in colors.items():
+        s.value("default", "above", ["Ground" + quadrant],
+                {"total": [a * sky for a in albedo], "direct": [sky] * 3},
+                "%s quadrant radiance = albedo x sky" % quadrant)
+    s.zero("default", "above", [0, 1, 2], ["Ground" + q for q in colors], ["indirect"],
+           name="the ground receives no indirect light")
+    # The models are regions for runtime comparison only: seen from above, a
+    # model's upper half gathers ground light from every quadrant near the
+    # horizon, so no per-model color relation holds (measured).
+    s.probe_bounds = (-5.0, -5.0, 0.25, 5.0, 5.0, 2.75)
+    s.finish()
+
+
+def four_fold(out):
+    s = Scene(out, "symmetry-four-fold", "symmetry", "A square room with a centred square "
+              "lamp and four models at off-grid positions related by quarter turns: four "
+              "quarter-turned cameras must see the same light on each model, floor and wall")
+    s.mat("White", WHITE)
+    s.room("R", (0.0, 0.0, 0.0), (6.0, 6.0, 3.0), "White")
+    warm = (1.0, 0.8, 0.6)
+    s.rect("Lamp", (3.0, 3.0, 2.99), (1.0, 1.0), 12.0, warm)
+
+    def turn(point, k):
+        x, y = point[0] - 3.0, point[1] - 3.0
+        for _ in range(k):
+            x, y = -y, x
+        return (round(3.0 + x, 6), round(3.0 + y, 6)) + tuple(point[2:])
+    walls = ["R_Xp", "R_Yp", "R_Xn", "R_Yn"]
+    probes = ["ProbeA", "ProbeB", "ProbeC", "ProbeD"]
+    probe0, eye0 = (4.3, 3.4, 1.0), (0.5, 1.2, 1.6)
+    for k in range(4):
+        s.probe(probes[k], turn(probe0, k))
+    for k in range(4):
+        s.view("turn%d" % k, turn(eye0, k), turn(probe0, k),
+               {"model": [probes[k]], "floor": ["R_Zn"], "wall-a": [walls[k]],
+                "wall-b": [walls[(k + 1) % 4]]})
+    s.base("default", "centred lamp")
+    for region in ("model", "floor", "wall-a", "wall-b"):
+        s.uniform([("default", "turn%d" % k, region) for k in range(4)], lights=BOTH,
+                  name="%s is the same under quarter turns" % region)
+    s.chroma_all("default", warm)
+    s.finish()
+
+
+def stripe_floor(out):
+    s = Scene(out, "emissive-stripe-floor", "emissive", "A floor of glowing red, green and "
+              "blue stripes twice over: each color adds, stays in its own channel, and the "
+              "mirror maps red stripes onto blue")
+    # The stripes are the floor: a room floor under them would be coplanar and
+    # z-fight (the mirror oracle caught an 11% direct-light asymmetry).
+    s.mat("White", WHITE)
+    s.room("R", (0.0, 0.0, 0.0), (6.0, 6.0, 3.0), "White", skip=("Zn",))
+    colors = [("Red", RED), ("Green", GREEN), ("Blue", BLUE)]
+    faces = {name: [] for name, _ in colors}
+    for i in range(6):
+        name = colors[i % 3][0]
+        faces[name].append(gf.quad((float(i), 0.0, 0.0), (i + 1.0, 6.0, 0.0), 2, 1))
+    for name, color in colors:
+        s.mat("Glow" + name, (0.3, 0.3, 0.3), tuple(0.5 * c for c in color))
+        s.mesh("Stripes" + name, faces[name], "Glow" + name)
+    s.view("centre", (3.0, 0.2, 1.8), (3.0, 6.0, 1.2), ["R_Xn", "R_Xp", "R_Yp", "R_Zp"])
+    s.base("all", "every stripe glowing")
+    materials = ["GlowRed", "GlowGreen", "GlowBlue"]
+    for name, _ in colors:
+        s.state(name.lower(), name.lower() + " stripes alone",
+                s.dark(*[m for m in materials if m != "Glow" + name]))
+    s.superpose_all("all", ["red", "green", "blue"], lights=ALL_LIGHTS)
+    for name, zero in (("red", [1, 2]), ("green", [0, 2]), ("blue", [0, 1])):
+        s.zero_all(name, zero)
+    s.mirror(("all", "centre", "R_Xn"), ("all", "centre", "R_Xp"), SWAP_RB)
+    self_mirrors(s, "all", "centre", SWAP_RB, ["R_Yp", "R_Zp"])
+    s.finish()
+
+
 GALLERY = (mix_rgb_ceiling, mix_cmy_ceiling, mix_complementary_corridor, mix_rgb_venn,
            mix_spot_cross, mix_sun_sky_pillar, mix_disco, mix_hue_ring, mix_color_cube,
            mix_neon_strips, mix_rgb_probes, mix_light_swap, mix_moving_light, furnace_family,
@@ -1697,7 +1910,8 @@ GALLERY = (mix_rgb_ceiling, mix_cmy_ceiling, mix_complementary_corridor, mix_rgb
            leak_quad_rooms, leak_slit, leak_stacked, louver, l_corridor, colored_shadows,
            directional_probe, vertical_gradient, courtyard_sun, intensity_ladder,
            albedo_ladder, hdr_pair, color_temperature, emissive_orbs, stairwell, colonnade,
-           city_block)
+           city_block, pinhole, long_hall, corner_seam, colored_quadrants, four_fold,
+           stripe_floor)
 
 
 def generate(out):

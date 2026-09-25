@@ -1,0 +1,1371 @@
+{
+  "analytic": [],
+  "fixture": "mix-color-cube",
+  "fixture_reference_digest": "70241e9be32c1cbd825df6989e5536454c69b2378c0c14f577d69d6d4ab737e6",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 72,
+    "controls_unrejected": [],
+    "failed": 0,
+    "oracles": 2
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "all": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "828c5a242ee21dce7cba16ad576007df2634b688030997bc302c746bae8e3864",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/mix-color-cube/mix-color-cube.usda": "a2b534c7e1fda057a7563d0cc20b258e9c9ceee709005da4f96503411dec35f9"
+      }
+    },
+    "cool": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "57db43f72715780f186bf6c50b3687c1879e66193adf1842a6a4f4fe41c835bb",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/mix-color-cube/mix-color-cube.usda": "a2b534c7e1fda057a7563d0cc20b258e9c9ceee709005da4f96503411dec35f9",
+        "quality/fixtures/gi/mix-color-cube/states/cool.usda": "95c6aa59e6583ae853523ff2b2ff0fc18a9dbce9da2c5c2dda03c244d0959fce"
+      }
+    },
+    "warm": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "0b8bc58b92319ae47f1f8246f824e57c4c5731bf3d897415c3daab94e98a21d2",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/mix-color-cube/mix-color-cube.usda": "a2b534c7e1fda057a7563d0cc20b258e9c9ceee709005da4f96503411dec35f9",
+        "quality/fixtures/gi/mix-color-cube/states/warm.usda": "e60b3cf33caac88a4391850151dfe952dc71e4e3de0fe4d8255f893e13e72ee5"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "all.high": {
+      "camera": "high",
+      "files": {
+        "index": {
+          "file": "all.high.index.png",
+          "sha256": "99cf961d1d23d6227cdbb6ea370b1647c56d046ca0cc3cc9129fea581b2b72c5"
+        },
+        "indirect": {
+          "file": "all.high.indirect.exr",
+          "sha256": "7cf24a1ee186396684128344ba6dc71a0ac34b6fd1e0e30fd3744f4ef18c4d81"
+        },
+        "total": {
+          "file": "all.high.total.exr",
+          "sha256": "1449ce4aeed76c2f12ec2032102ab0e50f986bd642535f900459b5090fc4cb5a"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Cube_Xn": 1,
+        "Cube_Xp": 2,
+        "Cube_Yn": 3,
+        "Cube_Yp": 4,
+        "Cube_Zn": 5,
+        "Cube_Zp": 6,
+        "ProbeSphereShape": 7
+      },
+      "regions": {
+        "Cube_Xn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.12184655666351318,
+            0.1476544886827469,
+            0.15310731530189514
+          ],
+          "emission": [
+            0.25,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.1338505744934082,
+            0.11691466718912125,
+            0.11784262955188751
+          ],
+          "pixels": 15316,
+          "total": [
+            0.3778485953807831,
+            0.13228456676006317,
+            0.13547445833683014
+          ]
+        },
+        "Cube_Yn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.1476471871137619,
+            0.12184778600931168,
+            0.15311181545257568
+          ],
+          "emission": [
+            0.0,
+            0.25,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            3.0
+          ],
+          "indirect": [
+            0.11688148230314255,
+            0.13383200764656067,
+            0.11780586838722229
+          ],
+          "pixels": 15316,
+          "total": [
+            0.13226436078548431,
+            0.3778396248817444,
+            0.13545823097229004
+          ]
+        },
+        "Cube_Zn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.1509363055229187,
+            0.1509382277727127,
+            0.09572651982307434
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.2499999701976776
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.11804661154747009,
+            0.11799200624227524,
+            0.13168087601661682
+          ],
+          "pixels": 9216,
+          "total": [
+            0.13449138402938843,
+            0.1344655156135559,
+            0.36370351910591125
+          ]
+        },
+        "ProbeSphere": {
+          "albedo": [
+            0.5999795198440552,
+            0.5999795198440552,
+            0.5999795198440552
+          ],
+          "direct": [
+            0.1549297571182251,
+            0.15493661165237427,
+            0.17100241780281067
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.12599824368953705,
+            0.12598401308059692,
+            0.12622864544391632
+          ],
+          "pixels": 1560,
+          "total": [
+            0.16855347156524658,
+            0.1685490608215332,
+            0.1783345490694046
+          ]
+        }
+      },
+      "state": "all"
+    },
+    "all.low": {
+      "camera": "low",
+      "files": {
+        "index": {
+          "file": "all.low.index.png",
+          "sha256": "cc5f359a3f15c6e9d7578177adee8adf7b70a2ac4a4aba50e671ebefd620a6c8"
+        },
+        "indirect": {
+          "file": "all.low.indirect.exr",
+          "sha256": "7e3c12776de9b9782eadee562a4c4d5b7c355e9f1bff532191c3f520f96c677f"
+        },
+        "total": {
+          "file": "all.low.total.exr",
+          "sha256": "9018e77e9b3cac3455979aaa7151ff58e8bf8bc2dd93bad4f8d693eec57e93ae"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Cube_Xn": 1,
+        "Cube_Xp": 2,
+        "Cube_Yn": 3,
+        "Cube_Yp": 4,
+        "Cube_Zn": 5,
+        "Cube_Zp": 6,
+        "ProbeSphereShape": 7
+      },
+      "regions": {
+        "Cube_Xp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.12815505266189575,
+            0.10234556347131729,
+            0.09689226746559143
+          ],
+          "emission": [
+            0.0,
+            0.25,
+            0.25
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.11614181846380234,
+            0.13312223553657532,
+            0.13221915066242218
+          ],
+          "pixels": 15316,
+          "total": [
+            0.122148297727108,
+            0.3677338659763336,
+            0.36455562710762024
+          ]
+        },
+        "Cube_Yp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.10234475135803223,
+            0.12815548479557037,
+            0.09689449518918991
+          ],
+          "emission": [
+            0.25,
+            0.0,
+            0.25
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.1331258863210678,
+            0.11619645357131958,
+            0.13218125700950623
+          ],
+          "pixels": 15316,
+          "total": [
+            0.3677352964878082,
+            0.12217601388692856,
+            0.36453747749328613
+          ]
+        },
+        "Cube_Zp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.09905944764614105,
+            0.09905808418989182,
+            0.15427833795547485
+          ],
+          "emission": [
+            0.25,
+            0.25,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.13200265169143677,
+            0.1319497674703598,
+            0.11832118034362793
+          ],
+          "pixels": 9216,
+          "total": [
+            0.36553090810775757,
+            0.3655042052268982,
+            0.13629962503910065
+          ]
+        },
+        "ProbeSphere": {
+          "albedo": [
+            0.5999795198440552,
+            0.5999795198440552,
+            0.5999795198440552
+          ],
+          "direct": [
+            0.09493216127157211,
+            0.09492208808660507,
+            0.07882259041070938
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.12388135492801666,
+            0.1239713802933693,
+            0.12360913306474686
+          ],
+          "pixels": 1560,
+          "total": [
+            0.13128510117530823,
+            0.13133296370506287,
+            0.12145581096410751
+          ]
+        }
+      },
+      "state": "all"
+    },
+    "cool.high": {
+      "camera": "high",
+      "files": {
+        "index": {
+          "file": "cool.high.index.png",
+          "sha256": "99cf961d1d23d6227cdbb6ea370b1647c56d046ca0cc3cc9129fea581b2b72c5"
+        },
+        "indirect": {
+          "file": "cool.high.indirect.exr",
+          "sha256": "364c2db7b43b3684225496209fed0c8c74392b19dff4f0f5e32c82eb270ec168"
+        },
+        "total": {
+          "file": "cool.high.total.exr",
+          "sha256": "74779e961503750dd2544fe90915492d5bba014d85d01e0ddb18ad36a17f1a42"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Cube_Xn": 1,
+        "Cube_Xp": 2,
+        "Cube_Yn": 3,
+        "Cube_Yp": 4,
+        "Cube_Zn": 5,
+        "Cube_Zp": 6,
+        "ProbeSphereShape": 7
+      },
+      "regions": {
+        "Cube_Xn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.0,
+            0.08760079741477966,
+            0.09131404012441635
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.0,
+            0.07590743899345398,
+            0.07637277245521545
+          ],
+          "pixels": 15316,
+          "total": [
+            0.0,
+            0.08175424486398697,
+            0.08384369313716888
+          ]
+        },
+        "Cube_Yn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.0,
+            0.061793431639671326,
+            0.10235262662172318
+          ],
+          "emission": [
+            0.0,
+            0.25,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            3.0
+          ],
+          "indirect": [
+            0.0,
+            0.09283572435379028,
+            0.08172822743654251
+          ],
+          "pixels": 15316,
+          "total": [
+            0.0,
+            0.3273142874240875,
+            0.09204009920358658
+          ]
+        },
+        "Cube_Zn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.0,
+            0.09906366467475891,
+            0.04786451533436775
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.2499999701976776
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.0,
+            0.08158910274505615,
+            0.09100556373596191
+          ],
+          "pixels": 9216,
+          "total": [
+            0.0,
+            0.0903264582157135,
+            0.31943467259407043
+          ]
+        },
+        "ProbeSphere": {
+          "albedo": [
+            0.5999795198440552,
+            0.5999795198440552,
+            0.5999795198440552
+          ],
+          "direct": [
+            0.0,
+            0.08646642416715622,
+            0.0897410586476326
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.0,
+            0.0831230953335762,
+            0.08353142440319061
+          ],
+          "pixels": 1560,
+          "total": [
+            0.0,
+            0.10175113379955292,
+            0.10396059602499008
+          ]
+        }
+      },
+      "state": "cool"
+    },
+    "cool.low": {
+      "camera": "low",
+      "files": {
+        "index": {
+          "file": "cool.low.index.png",
+          "sha256": "cc5f359a3f15c6e9d7578177adee8adf7b70a2ac4a4aba50e671ebefd620a6c8"
+        },
+        "indirect": {
+          "file": "cool.low.indirect.exr",
+          "sha256": "dbb3490e1b01c343aeb8011776476c0b870a4e26e3aa267dc752dd2a50e8257a"
+        },
+        "total": {
+          "file": "cool.low.total.exr",
+          "sha256": "4e5dc431be3c56dae554dbbbc289872c5a0b4c07718efe0a55ff12be24116c9b"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Cube_Xn": 1,
+        "Cube_Xp": 2,
+        "Cube_Yn": 3,
+        "Cube_Yp": 4,
+        "Cube_Zn": 5,
+        "Cube_Zp": 6,
+        "ProbeSphereShape": 7
+      },
+      "regions": {
+        "Cube_Xp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.0,
+            0.061791080981492996,
+            0.06005386635661125
+          ],
+          "emission": [
+            0.0,
+            0.25,
+            0.25
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.0,
+            0.09285116195678711,
+            0.09241966158151627
+          ],
+          "pixels": 15316,
+          "total": [
+            0.0,
+            0.32732081413269043,
+            0.32623687386512756
+          ]
+        },
+        "Cube_Yp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.0,
+            0.08760189265012741,
+            0.09689448028802872
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0,
+            0.07591153681278229,
+            0.08081113547086716
+          ],
+          "pixels": 15316,
+          "total": [
+            0.0,
+            0.08175672590732574,
+            0.08885286003351212
+          ]
+        },
+        "Cube_Zp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.0,
+            0.09905806183815002,
+            0.1030799150466919
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.0,
+            0.08158770948648453,
+            0.07734198868274689
+          ],
+          "pixels": 9216,
+          "total": [
+            0.0,
+            0.09032271057367325,
+            0.0902109146118164
+          ]
+        },
+        "ProbeSphere": {
+          "albedo": [
+            0.5999795198440552,
+            0.5999795198440552,
+            0.5999795198440552
+          ],
+          "direct": [
+            0.0,
+            0.08645704388618469,
+            0.07364413887262344
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.0,
+            0.08314814418554306,
+            0.08325723558664322
+          ],
+          "pixels": 1560,
+          "total": [
+            0.0,
+            0.10176058113574982,
+            0.09413815289735794
+          ]
+        }
+      },
+      "state": "cool"
+    },
+    "warm.high": {
+      "camera": "high",
+      "files": {
+        "index": {
+          "file": "warm.high.index.png",
+          "sha256": "99cf961d1d23d6227cdbb6ea370b1647c56d046ca0cc3cc9129fea581b2b72c5"
+        },
+        "indirect": {
+          "file": "warm.high.indirect.exr",
+          "sha256": "a9f9d56a83d6cc06ed2289e1e5e89d89917b2a76bc7fe40f63343cee9d32ff3a"
+        },
+        "total": {
+          "file": "warm.high.total.exr",
+          "sha256": "2cfef5c8ddec80e1b42b327280285c9d24ab9a2a1bbadac4acf465aef2334fb7"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Cube_Xn": 1,
+        "Cube_Xp": 2,
+        "Cube_Yn": 3,
+        "Cube_Yp": 4,
+        "Cube_Zn": 5,
+        "Cube_Zp": 6,
+        "ProbeSphereShape": 7
+      },
+      "regions": {
+        "Cube_Xn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.12184655666351318,
+            0.06005352362990379,
+            0.061793018132448196
+          ],
+          "emission": [
+            0.25,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.1338505744934082,
+            0.04100663959980011,
+            0.04146932065486908
+          ],
+          "pixels": 15316,
+          "total": [
+            0.3778485953807831,
+            0.05053017660975456,
+            0.051631055772304535
+          ]
+        },
+        "Cube_Yn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.1476471871137619,
+            0.06005435436964035,
+            0.05075867846608162
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            3.0
+          ],
+          "indirect": [
+            0.11688148230314255,
+            0.04099623113870621,
+            0.03607749193906784
+          ],
+          "pixels": 15316,
+          "total": [
+            0.13226436078548431,
+            0.05052518472075462,
+            0.043417952954769135
+          ]
+        },
+        "Cube_Zn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.1509363055229187,
+            0.05187457054853439,
+            0.04786200076341629
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.11804661154747009,
+            0.0364028625190258,
+            0.040674999356269836
+          ],
+          "pixels": 9216,
+          "total": [
+            0.13449138402938843,
+            0.04413871467113495,
+            0.04426850005984306
+          ]
+        },
+        "ProbeSphere": {
+          "albedo": [
+            0.5999795198440552,
+            0.5999795198440552,
+            0.5999795198440552
+          ],
+          "direct": [
+            0.1549297571182251,
+            0.06847180426120758,
+            0.08126220107078552
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.12599824368953705,
+            0.04286202788352966,
+            0.042698271572589874
+          ],
+          "pixels": 1560,
+          "total": [
+            0.16855347156524658,
+            0.0667986273765564,
+            0.07437462359666824
+          ]
+        }
+      },
+      "state": "warm"
+    },
+    "warm.low": {
+      "camera": "low",
+      "files": {
+        "index": {
+          "file": "warm.low.index.png",
+          "sha256": "cc5f359a3f15c6e9d7578177adee8adf7b70a2ac4a4aba50e671ebefd620a6c8"
+        },
+        "indirect": {
+          "file": "warm.low.indirect.exr",
+          "sha256": "e160941f1d2920544a6d6e7fbfd7acaa8aa17f9b3e6ec24e151debfd45b08ba8"
+        },
+        "total": {
+          "file": "warm.low.total.exr",
+          "sha256": "60b580cee65931af48d46bb6ea2ac903292b23eeeb78db4b0198f94103bb017b"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Cube_Xn": 1,
+        "Cube_Xp": 2,
+        "Cube_Yn": 3,
+        "Cube_Yp": 4,
+        "Cube_Zn": 5,
+        "Cube_Zp": 6,
+        "ProbeSphereShape": 7
+      },
+      "regions": {
+        "Cube_Xp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.12815505266189575,
+            0.040554482489824295,
+            0.03683839738368988
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.11614181846380234,
+            0.04027086868882179,
+            0.03979916125535965
+          ],
+          "pixels": 15316,
+          "total": [
+            0.122148297727108,
+            0.040412623435258865,
+            0.03831885755062103
+          ]
+        },
+        "Cube_Yp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.10234475135803223,
+            0.040553588420152664,
+            1.5940234021627475e-08
+          ],
+          "emission": [
+            0.25,
+            0.0,
+            0.25
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.1331258863210678,
+            0.0402849018573761,
+            0.05137043818831444
+          ],
+          "pixels": 15316,
+          "total": [
+            0.3677352964878082,
+            0.04041916877031326,
+            0.27568554878234863
+          ]
+        },
+        "Cube_Zp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.09905944764614105,
+            2.6490953430879927e-08,
+            0.05119841545820236
+          ],
+          "emission": [
+            0.25,
+            0.25,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.13200265169143677,
+            0.05036231502890587,
+            0.04097919166088104
+          ],
+          "pixels": 9216,
+          "total": [
+            0.36553090810775757,
+            0.2751809358596802,
+            0.0460888035595417
+          ]
+        },
+        "ProbeSphere": {
+          "albedo": [
+            0.5999795198440552,
+            0.5999795198440552,
+            0.5999795198440552
+          ],
+          "direct": [
+            0.09493216127157211,
+            0.00846531055867672,
+            0.005178540945053101
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.12388135492801666,
+            0.04082402586936951,
+            0.040352895855903625
+          ],
+          "pixels": 1560,
+          "total": [
+            0.13128510117530823,
+            0.02957305684685707,
+            0.027318300679326057
+          ]
+        }
+      },
+      "state": "warm"
+    }
+  }
+}

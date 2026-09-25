@@ -1,0 +1,1086 @@
+{
+  "analytic": [],
+  "fixture": "integrating-sphere",
+  "fixture_reference_digest": "540e33ccced72eb1fe2982e19aa65a92779d6144cb389ff5be17146d8399ed09",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 84,
+    "controls_unrejected": [],
+    "failed": 0,
+    "oracles": 8
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "all": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "4b6c46c8dcd33d6fb981d22ffa258e3fd2c788d529eb7973b3b0a279c053aad8",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/integrating-sphere/integrating-sphere.usda": "963ef11c6a1354402713ea140a8159699d42be9c9e859c4e5260455bdb71193b"
+      }
+    },
+    "blue": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "9a787a8837d269a5483657aa51b3154a34831a3607724e9338174f8aeb469c03",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/integrating-sphere/integrating-sphere.usda": "963ef11c6a1354402713ea140a8159699d42be9c9e859c4e5260455bdb71193b",
+        "quality/fixtures/gi/integrating-sphere/states/blue.usda": "68dac358059a3a58ed19d00babdde2d4321712bfbc154651c59d62d47f8fe874"
+      }
+    },
+    "green": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "18dcc043e36d6bd3f697c46ffdf47d4499e9f3864f7a66b4092a23ea7def8d02",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/integrating-sphere/integrating-sphere.usda": "963ef11c6a1354402713ea140a8159699d42be9c9e859c4e5260455bdb71193b",
+        "quality/fixtures/gi/integrating-sphere/states/green.usda": "2881c903c14bef18c4b4ec6ff3c5c8bd5cf2173b4e072080d3f0a1aa242a8a5e"
+      }
+    },
+    "red": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "5567b707c394240ba49a0939a07c063626436cdcbb323e7c512a287a05008d44",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/integrating-sphere/integrating-sphere.usda": "963ef11c6a1354402713ea140a8159699d42be9c9e859c4e5260455bdb71193b",
+        "quality/fixtures/gi/integrating-sphere/states/red.usda": "b725cf66ecac673c1ecef7f775949666072da2b9b2c586d65fae75dc593ccb7c"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "all.east": {
+      "camera": "east",
+      "files": {
+        "index": {
+          "file": "all.east.index.png",
+          "sha256": "73b25744b82a46fa2a6eeda1ecdcacfacf0433bcbe9d54d3df45f630894bf8e3"
+        },
+        "indirect": {
+          "file": "all.east.indirect.exr",
+          "sha256": "d338ee53b007c2f9dabe52d4ed5dba1ca57495802da83f44edd754645d89b918"
+        },
+        "total": {
+          "file": "all.east.total.exr",
+          "sha256": "80a28946b85ba2a45cea51c90341ffc719c68db8b51dcce8dc357963aa554411"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ShellLE": 4,
+        "ShellLW": 5,
+        "ShellUE": 6,
+        "ShellUW": 7
+      },
+      "regions": {
+        "ShellLE": {
+          "albedo": [
+            0.5998791456222534,
+            0.5998791456222534,
+            0.5998791456222534
+          ],
+          "direct": [
+            0.2819794714450836,
+            0.06133899837732315,
+            0.03043241985142231
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.37600764632225037,
+            0.18789085745811462,
+            0.09373802691698074
+          ],
+          "pixels": 23184,
+          "total": [
+            0.39478540420532227,
+            0.14953504502773285,
+            0.07450082898139954
+          ]
+        },
+        "ShellUE": {
+          "albedo": [
+            0.5998808145523071,
+            0.5998808145523071,
+            0.5998808145523071
+          ],
+          "direct": [
+            0.6170132160186768,
+            0.05270307883620262,
+            0.04869793355464935
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.3760208785533905,
+            0.1878911703824997,
+            0.09369368851184845
+          ],
+          "pixels": 23044,
+          "total": [
+            0.5958071351051331,
+            0.14435303211212158,
+            0.0854334607720375
+          ]
+        }
+      },
+      "state": "all"
+    },
+    "all.west": {
+      "camera": "west",
+      "files": {
+        "index": {
+          "file": "all.west.index.png",
+          "sha256": "f376856880a1fc5f6c7f097b2a622c4fe7b1c669450d7786370e237a1e3a61c2"
+        },
+        "indirect": {
+          "file": "all.west.indirect.exr",
+          "sha256": "e3dcbfa3a62bcfe41d01f789bbe6e13a86168c17f6fcf382b9590cc46c29106d"
+        },
+        "total": {
+          "file": "all.west.total.exr",
+          "sha256": "c56455b64595afed93998702bf7286e94a7a7cf5bd10d283a2e2602e9d6312c2"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ShellLE": 4,
+        "ShellLW": 5,
+        "ShellUE": 6,
+        "ShellUW": 7
+      },
+      "regions": {
+        "ShellLW": {
+          "albedo": [
+            0.599879801273346,
+            0.599879801273346,
+            0.599879801273346
+          ],
+          "direct": [
+            0.11369296908378601,
+            0.3435230553150177,
+            0.026549236848950386
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.3758488595485687,
+            0.18803273141384125,
+            0.09373470395803452
+          ],
+          "pixels": 23131,
+          "total": [
+            0.2937192916870117,
+            0.3189259469509125,
+            0.07216862589120865
+          ]
+        },
+        "ShellUW": {
+          "albedo": [
+            0.5998791456222534,
+            0.5998791456222534,
+            0.5998791456222534
+          ],
+          "direct": [
+            0.13156384229660034,
+            0.13317415118217468,
+            0.036392394453287125
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.3757563531398773,
+            0.1879490464925766,
+            0.0937698632478714
+          ],
+          "pixels": 23184,
+          "total": [
+            0.3043849468231201,
+            0.1926690936088562,
+            0.07809573411941528
+          ]
+        }
+      },
+      "state": "all"
+    },
+    "blue.east": {
+      "camera": "east",
+      "files": {
+        "index": {
+          "file": "blue.east.index.png",
+          "sha256": "73b25744b82a46fa2a6eeda1ecdcacfacf0433bcbe9d54d3df45f630894bf8e3"
+        },
+        "indirect": {
+          "file": "blue.east.indirect.exr",
+          "sha256": "9e263b75818a9272d87aae2e0a91cc8635d4bd11844880102ae6172231e988a6"
+        },
+        "total": {
+          "file": "blue.east.total.exr",
+          "sha256": "0187974d5ec0dbfa2115e84fd8ed0c35441eafcb3e1a527fcb99132236d5b24b"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ShellLE": 4,
+        "ShellLW": 5,
+        "ShellUE": 6,
+        "ShellUW": 7
+      },
+      "regions": {
+        "ShellLE": {
+          "albedo": [
+            0.5998791456222534,
+            0.5998791456222534,
+            0.5998791456222534
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.030431922525167465
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.09373542666435242
+          ],
+          "pixels": 23184,
+          "total": [
+            0.0,
+            0.0,
+            0.07449892908334732
+          ]
+        },
+        "ShellUE": {
+          "albedo": [
+            0.5998808145523071,
+            0.5998808145523071,
+            0.5998808145523071
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.048693522810935974
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.09370935708284378
+          ],
+          "pixels": 23044,
+          "total": [
+            0.0,
+            0.0,
+            0.08544028550386429
+          ]
+        }
+      },
+      "state": "blue"
+    },
+    "blue.west": {
+      "camera": "west",
+      "files": {
+        "index": {
+          "file": "blue.west.index.png",
+          "sha256": "f376856880a1fc5f6c7f097b2a622c4fe7b1c669450d7786370e237a1e3a61c2"
+        },
+        "indirect": {
+          "file": "blue.west.indirect.exr",
+          "sha256": "a8406adaa890fc9bca1f0971fd6b8d462d62acdc0978307882c7a0257246ef89"
+        },
+        "total": {
+          "file": "blue.west.total.exr",
+          "sha256": "b23a98381ab0aefbfef704a07614ec53132c6f026559362b5ea8407ec24f2964"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ShellLE": 4,
+        "ShellLW": 5,
+        "ShellUE": 6,
+        "ShellUW": 7
+      },
+      "regions": {
+        "ShellLW": {
+          "albedo": [
+            0.599879801273346,
+            0.599879801273346,
+            0.599879801273346
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.026547491550445557
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0937337651848793
+          ],
+          "pixels": 23131,
+          "total": [
+            0.0,
+            0.0,
+            0.07216726243495941
+          ]
+        },
+        "ShellUW": {
+          "albedo": [
+            0.5998791456222534,
+            0.5998791456222534,
+            0.5998791456222534
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.036393292248249054
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0937226414680481
+          ],
+          "pixels": 23184,
+          "total": [
+            0.0,
+            0.0,
+            0.07806768268346786
+          ]
+        }
+      },
+      "state": "blue"
+    },
+    "green.east": {
+      "camera": "east",
+      "files": {
+        "index": {
+          "file": "green.east.index.png",
+          "sha256": "73b25744b82a46fa2a6eeda1ecdcacfacf0433bcbe9d54d3df45f630894bf8e3"
+        },
+        "indirect": {
+          "file": "green.east.indirect.exr",
+          "sha256": "dabc728050d0ab59164746ee29d39d6162eee524e59b87093452bb74cb2c627b"
+        },
+        "total": {
+          "file": "green.east.total.exr",
+          "sha256": "15deb6b493569dcd5e6fdc4e0b8fb51bfc8b84fc3aac57d04a90541df8204ed8"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ShellLE": 4,
+        "ShellLW": 5,
+        "ShellUE": 6,
+        "ShellUW": 7
+      },
+      "regions": {
+        "ShellLE": {
+          "albedo": [
+            0.5998791456222534,
+            0.5998791456222534,
+            0.5998791456222534
+          ],
+          "direct": [
+            0.0,
+            0.06133881211280823,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0,
+            0.18788518011569977,
+            0.0
+          ],
+          "pixels": 23184,
+          "total": [
+            0.0,
+            0.14953145384788513,
+            0.0
+          ]
+        },
+        "ShellUE": {
+          "albedo": [
+            0.5998808145523071,
+            0.5998808145523071,
+            0.5998808145523071
+          ],
+          "direct": [
+            0.0,
+            0.052702974528074265,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.0,
+            0.18787609040737152,
+            0.0
+          ],
+          "pixels": 23044,
+          "total": [
+            0.0,
+            0.14434486627578735,
+            0.0
+          ]
+        }
+      },
+      "state": "green"
+    },
+    "green.west": {
+      "camera": "west",
+      "files": {
+        "index": {
+          "file": "green.west.index.png",
+          "sha256": "f376856880a1fc5f6c7f097b2a622c4fe7b1c669450d7786370e237a1e3a61c2"
+        },
+        "indirect": {
+          "file": "green.west.indirect.exr",
+          "sha256": "968ea2663f0f64dcf777671fc23c850486e03d490adc7856fcd0fc1f575a4c1f"
+        },
+        "total": {
+          "file": "green.west.total.exr",
+          "sha256": "69efbaaeda073212a739a1abc657d8734bf8bb192a0eb91ce87351ebe035ec0f"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ShellLE": 4,
+        "ShellLW": 5,
+        "ShellUE": 6,
+        "ShellUW": 7
+      },
+      "regions": {
+        "ShellLW": {
+          "albedo": [
+            0.599879801273346,
+            0.599879801273346,
+            0.599879801273346
+          ],
+          "direct": [
+            0.0,
+            0.34352317452430725,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.0,
+            0.18803736567497253,
+            0.0
+          ],
+          "pixels": 23131,
+          "total": [
+            0.0,
+            0.31893041729927063,
+            0.0
+          ]
+        },
+        "ShellUW": {
+          "albedo": [
+            0.5998791456222534,
+            0.5998791456222534,
+            0.5998791456222534
+          ],
+          "direct": [
+            0.0,
+            0.13317370414733887,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.0,
+            0.18794935941696167,
+            0.0
+          ],
+          "pixels": 23184,
+          "total": [
+            0.0,
+            0.1926703006029129,
+            0.0
+          ]
+        }
+      },
+      "state": "green"
+    },
+    "red.east": {
+      "camera": "east",
+      "files": {
+        "index": {
+          "file": "red.east.index.png",
+          "sha256": "73b25744b82a46fa2a6eeda1ecdcacfacf0433bcbe9d54d3df45f630894bf8e3"
+        },
+        "indirect": {
+          "file": "red.east.indirect.exr",
+          "sha256": "c1d8f9b784072d81278efe10e8b797340bbddf0c9167b9adc65cdbe7c08f73cb"
+        },
+        "total": {
+          "file": "red.east.total.exr",
+          "sha256": "36ac85deb2c50c7224f6339a00aad6c474881be72651636a6e1579c68258a1fd"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ShellLE": 4,
+        "ShellLW": 5,
+        "ShellUE": 6,
+        "ShellUW": 7
+      },
+      "regions": {
+        "ShellLE": {
+          "albedo": [
+            0.5998791456222534,
+            0.5998791456222534,
+            0.5998791456222534
+          ],
+          "direct": [
+            0.28197914361953735,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.3759797513484955,
+            0.0,
+            0.0
+          ],
+          "pixels": 23184,
+          "total": [
+            0.3947660028934479,
+            0.0,
+            0.0
+          ]
+        },
+        "ShellUE": {
+          "albedo": [
+            0.5998808145523071,
+            0.5998808145523071,
+            0.5998808145523071
+          ],
+          "direct": [
+            0.6170132756233215,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.37610241770744324,
+            0.0,
+            0.0
+          ],
+          "pixels": 23044,
+          "total": [
+            0.5958567261695862,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "state": "red"
+    },
+    "red.west": {
+      "camera": "west",
+      "files": {
+        "index": {
+          "file": "red.west.index.png",
+          "sha256": "f376856880a1fc5f6c7f097b2a622c4fe7b1c669450d7786370e237a1e3a61c2"
+        },
+        "indirect": {
+          "file": "red.west.indirect.exr",
+          "sha256": "974120537f1c605f47ac921e31efc98542f2258eb40893886b93bad9ec7f995b"
+        },
+        "total": {
+          "file": "red.west.total.exr",
+          "sha256": "d9bdb9fd68f21bad94ee9b06f631d00245748dfdd481613924a942af10ccf578"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ShellLE": 4,
+        "ShellLW": 5,
+        "ShellUE": 6,
+        "ShellUW": 7
+      },
+      "regions": {
+        "ShellLW": {
+          "albedo": [
+            0.599879801273346,
+            0.599879801273346,
+            0.599879801273346
+          ],
+          "direct": [
+            0.11369349807500839,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.37586599588394165,
+            0.0,
+            0.0
+          ],
+          "pixels": 23131,
+          "total": [
+            0.2937312424182892,
+            0.0,
+            0.0
+          ]
+        },
+        "ShellUW": {
+          "albedo": [
+            0.5998791456222534,
+            0.5998791456222534,
+            0.5998791456222534
+          ],
+          "direct": [
+            0.13156268000602722,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.37584388256073,
+            0.0,
+            0.0
+          ],
+          "pixels": 23184,
+          "total": [
+            0.3044394850730896,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "state": "red"
+    }
+  }
+}

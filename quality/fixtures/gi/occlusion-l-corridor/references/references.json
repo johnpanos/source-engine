@@ -1,0 +1,533 @@
+{
+  "analytic": [],
+  "fixture": "occlusion-l-corridor",
+  "fixture_reference_digest": "dc0d6918e86686f177427de7a8579b6caa60d34a07f70f94537e33d1c3c80b4c",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 47,
+    "controls_unrejected": [],
+    "failed": 0,
+    "oracles": 8
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "default": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "8decf7875654995afda12baebd9431b0fcc78bc17605ea508a93bdd4932e2286",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/occlusion-l-corridor/occlusion-l-corridor.usda": "70b1fe66429cf8fbc9bc6c328977e4bbc3a2483b7a3b60c8e7d97e37271fc239"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "default.far": {
+      "camera": "far",
+      "files": {
+        "index": {
+          "file": "default.far.index.png",
+          "sha256": "a3157c0e3d6ecf8ea02a1fde250752b1af6386c20775109d807ad167655cdc48"
+        },
+        "indirect": {
+          "file": "default.far.indirect.exr",
+          "sha256": "b24258eb6999b8ebd3878d9d28971bd3aece5046a03a8a66987a71632da5f78e"
+        },
+        "total": {
+          "file": "default.far.total.exr",
+          "sha256": "7b0c92ad893bbb25f4f92363844af93230ccf3e2ce4343d177281c02f913f1d5"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Ceil1": 1,
+        "CeilFar": 2,
+        "CeilNear": 3,
+        "Corner": 4,
+        "EastFar": 5,
+        "End": 6,
+        "Floor1": 7,
+        "FloorFar": 8,
+        "FloorNear": 9,
+        "LightQuad00": 10,
+        "North1": 11,
+        "ProbeSphereShape": 12,
+        "South": 13,
+        "West": 14,
+        "WestFar": 15,
+        "WestNear": 16
+      },
+      "regions": {
+        "CeilFar": {
+          "albedo": [
+            0.6999853253364563,
+            0.6999853253364563,
+            0.6999853253364563
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.015120255760848522,
+            0.0,
+            0.004017340950667858
+          ],
+          "pixels": 2090,
+          "total": [
+            0.010584068484604359,
+            0.0,
+            0.002812111983075738
+          ]
+        },
+        "EastFar": {
+          "albedo": [
+            0.7001085877418518,
+            0.7001085877418518,
+            0.7001085877418518
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.009989732876420021,
+            0.0,
+            0.0030106634367257357
+          ],
+          "pixels": 15647,
+          "total": [
+            0.006992737762629986,
+            0.0,
+            0.0021074432879686356
+          ]
+        },
+        "FloorFar": {
+          "albedo": [
+            0.6999636888504028,
+            0.6999636888504028,
+            0.6999636888504028
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.012135294266045094,
+            0.0,
+            0.003405971685424447
+          ],
+          "pixels": 5704,
+          "total": [
+            0.008494644425809383,
+            0.0,
+            0.002384154126048088
+          ]
+        },
+        "ProbeSphere": {
+          "albedo": [
+            0.5999782085418701,
+            0.5999782085418701,
+            0.5999782085418701
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            12.0
+          ],
+          "indirect": [
+            0.006706138141453266,
+            0.0,
+            0.00206730212084949
+          ],
+          "pixels": 2310,
+          "total": [
+            0.004023595247417688,
+            0.0,
+            0.0012403555447235703
+          ]
+        },
+        "WestFar": {
+          "albedo": [
+            0.7001085877418518,
+            0.7001085877418518,
+            0.7001085877418518
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            15.0
+          ],
+          "indirect": [
+            0.010318060405552387,
+            0.0,
+            0.0026311667170375586
+          ],
+          "pixels": 15647,
+          "total": [
+            0.007222561631351709,
+            0.0,
+            0.0018418007530272007
+          ]
+        }
+      },
+      "state": "default"
+    },
+    "default.near": {
+      "camera": "near",
+      "files": {
+        "index": {
+          "file": "default.near.index.png",
+          "sha256": "f17703aac50aa888e952e5e355670bfca01eab1815986226e33d7e4b8b69e427"
+        },
+        "indirect": {
+          "file": "default.near.indirect.exr",
+          "sha256": "4ef82cdc889b675e254910cc22166e42856fb00e1bee1631f63b12be4ef7ade0"
+        },
+        "total": {
+          "file": "default.near.total.exr",
+          "sha256": "79cdea3f1f891d02e261dcd9d343d3bf8214029651124746b62a9a76d569f16b"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Ceil1": 1,
+        "CeilFar": 2,
+        "CeilNear": 3,
+        "Corner": 4,
+        "EastFar": 5,
+        "End": 6,
+        "Floor1": 7,
+        "FloorFar": 8,
+        "FloorNear": 9,
+        "LightQuad00": 10,
+        "North1": 11,
+        "ProbeSphereShape": 12,
+        "South": 13,
+        "West": 14,
+        "WestFar": 15,
+        "WestNear": 16
+      },
+      "regions": {
+        "Corner": {
+          "albedo": [
+            0.9000228047370911,
+            0.5,
+            0.10000244528055191
+          ],
+          "direct": [
+            0.07141106575727463,
+            0.0,
+            0.07141124457120895
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.14330387115478516,
+            0.0,
+            0.10264497995376587
+          ],
+          "pixels": 2034,
+          "total": [
+            0.19324687123298645,
+            0.0,
+            0.017405889928340912
+          ]
+        },
+        "Floor1": {
+          "albedo": [
+            0.6999685168266296,
+            0.6999685168266296,
+            0.6999685168266296
+          ],
+          "direct": [
+            0.10486771911382675,
+            0.0,
+            0.10486771911382675
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.3373260498046875,
+            0.0,
+            0.3140006363391876
+          ],
+          "pixels": 5983,
+          "total": [
+            0.30953216552734375,
+            0.0,
+            0.2932051122188568
+          ]
+        },
+        "North1": {
+          "albedo": [
+            0.7001205682754517,
+            0.7001205682754517,
+            0.7001205682754517
+          ],
+          "direct": [
+            0.20993672311306,
+            0.0,
+            0.20993672311306
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            11.0
+          ],
+          "indirect": [
+            0.4950869679450989,
+            0.0,
+            0.4808815121650696
+          ],
+          "pixels": 18159,
+          "total": [
+            0.4935114085674286,
+            0.0,
+            0.4835672080516815
+          ]
+        },
+        "South": {
+          "albedo": [
+            0.7001059055328369,
+            0.7001059055328369,
+            0.7001059055328369
+          ],
+          "direct": [
+            0.15244697034358978,
+            0.0,
+            0.15244697034358978
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            13.0
+          ],
+          "indirect": [
+            0.44222143292427063,
+            0.0,
+            0.425119012594223
+          ],
+          "pixels": 15180,
+          "total": [
+            0.4162639081478119,
+            0.0,
+            0.4042930603027344
+          ]
+        }
+      },
+      "state": "default"
+    }
+  }
+}

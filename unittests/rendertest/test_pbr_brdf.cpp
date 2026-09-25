@@ -29,6 +29,8 @@ struct Model
 {
 	DistributionFunction distribution;
 	SpecularFunction specular;
+	// The lobe with its multiple-scattering energy compensation.
+	SpecularFunction multiScatter;
 };
 
 #ifdef PBR_SEEDED_BAD_GGX
@@ -60,7 +62,7 @@ void Check( bool condition, const char *description )
 		++g_failures;
 		g_failureDescriptions.emplace_back( description );
 #if !defined( PBR_SEEDED_BAD_GGX ) && !defined( PBR_SEEDED_NO_FRESNEL ) &&                         \
-    !defined( PBR_SEEDED_BAD_SPLIT_SUM )
+    !defined( PBR_SEEDED_BAD_SPLIT_SUM ) && !defined( PBR_SEEDED_NO_ENERGY_COMPENSATION )
 		std::fprintf( stderr, "FAIL: %s\n", description );
 #endif
 	}
@@ -125,12 +127,15 @@ double WhiteFurnace( float roughness, float normalDotView, SpecularFunction spec
 int main()
 {
 	using namespace render::pbr;
-	Model model{ GgxDistribution, EvaluateSpecular };
+	Model model{ GgxDistribution, EvaluateSpecular, EvaluateSpecularMultiScatter };
 #ifdef PBR_SEEDED_BAD_GGX
 	model.distribution = UnnormalizedGgx;
 #endif
 #ifdef PBR_SEEDED_NO_FRESNEL
 	model.specular = NoFresnelSpecular;
+#endif
+#ifdef PBR_SEEDED_NO_ENERGY_COMPENSATION
+	model.multiScatter = EvaluateSpecular;
 #endif
 
 	Check( Near( model.distribution( 1.0f, 1.0f ), 1.0 / kPi, 1e-6 ),
@@ -172,10 +177,27 @@ int main()
 			Check( Near( table.a, white - grazing, 0.03 ) && Near( table.b, grazing, 0.03 ),
 			    "split-sum table matches an independent hemisphere BRDF integral" );
 			const double dielectricSpecular =
-			    WhiteFurnace( roughness, normalDotView, model.specular, 0.04f );
-			const double layeredWhite = dielectricSpecular + 1.0 - ( 0.04 * table.a + table.b );
+			    WhiteFurnace( roughness, normalDotView, model.multiScatter, 0.04f );
+			const double layeredWhite =
+			    dielectricSpecular + 1.0 - SpecularDirectionalAlbedo( 0.04f, table );
 			Check( Near( layeredWhite, 1.0, 0.03 ),
 			    "layered white dielectric closes energy in a white furnace" );
+		}
+	}
+	// Multiple scattering: the single-scatter lobe of a rough white metal
+	// loses up to 1 - ln(2) of the light (above); the compensated lobe keeps
+	// it, and never creates energy. A colored metal stays below one.
+	for ( float roughness : { 0.5f, 0.75f, 1.0f } )
+	{
+		for ( float normalDotView : { 0.3f, 0.65f, 1.0f } )
+		{
+			Check( Near( WhiteFurnace( roughness, normalDotView, model.multiScatter ), 1.0, 0.03 ),
+			    "rough white metal keeps its energy in a white furnace" );
+			const double colored =
+			    WhiteFurnace( roughness, normalDotView, model.multiScatter, 0.6f );
+			Check( colored > WhiteFurnace( roughness, normalDotView, model.specular, 0.6f ) &&
+			           colored < 1.0,
+			    "compensation brightens a colored metal without creating energy" );
 		}
 	}
 	const Color whiteDielectric =
@@ -209,9 +231,11 @@ int main()
 	    "light below the horizon contributes nothing" );
 
 #if defined( PBR_SEEDED_BAD_GGX ) || defined( PBR_SEEDED_NO_FRESNEL ) ||                           \
-    defined( PBR_SEEDED_BAD_SPLIT_SUM )
+    defined( PBR_SEEDED_BAD_SPLIT_SUM ) || defined( PBR_SEEDED_NO_ENERGY_COMPENSATION )
 #ifdef PBR_SEEDED_BAD_GGX
 	const char *expectedFailure = "GGX distribution integrates to one";
+#elif defined( PBR_SEEDED_NO_ENERGY_COMPENSATION )
+	const char *expectedFailure = "rough white metal keeps its energy in a white furnace";
 #elif defined( PBR_SEEDED_BAD_SPLIT_SUM )
 	const char *expectedFailure = "split-sum table matches an independent hemisphere BRDF integral";
 #else

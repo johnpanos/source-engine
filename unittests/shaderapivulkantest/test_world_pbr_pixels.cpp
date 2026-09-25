@@ -128,6 +128,11 @@ int main()
 	render_vulkan::VulkanContextConfig config;
 	config.appName = "wmsh-pbr-pixels";
 	config.enableValidation = true;
+#ifdef VULKAN_TEST_DESCRIPTOR_SET_LIMIT
+	// As a device that binds only this many descriptor sets (the Vulkan
+	// minimum is four): every PBR and GI variant must still be built.
+	config.descriptorSetLimit = VULKAN_TEST_DESCRIPTOR_SET_LIMIT;
+#endif
 	if ( !host || !context.Init( *host, config, &error ) )
 	{
 		std::fprintf( stderr, "SKIP: native Vulkan context unavailable: %s\n", error.c_str() );
@@ -148,6 +153,16 @@ int main()
 	};
 	check( context.InitDynamicMesh( &error ) && context.PbrWorldPipelineSupported(),
 	    "scene-derived WMSH PBR pipeline initializes" );
+	// Grouped by update frequency, the PBR and GI stages fit the four sets
+	// Vulkan guarantees, so none of their variants is gated on the device.
+	std::printf( "descriptor sets: device limit %u, PBR layouts use %u\n",
+	    context.DescriptorSetLimit(), context.PbrDescriptorSetsUsed() );
+	check( context.PbrDescriptorSetsUsed() >= 2 && context.PbrDescriptorSetsUsed() <= 4,
+	    "every PBR and GI pipeline layout binds at most four descriptor sets" );
+	check( context.PbrGlassPipelineSupported() && context.DirectLightsSupported() &&
+	           context.BakedPlusDeltaSupported() && context.PbrModelPipelineSupported() &&
+	           context.ProbeVolumeSamplingSupported(),
+	    "glass, direct lights, BakedPlusDelta, model PBR and its probe-volume variants build" );
 	const std::array<WorldVertex, 3> vertices = { {
 	    { { -0.75f, -0.75f, 0.5f }, { 0, 0 }, { 32767, 0 }, 1, { 0, 0, 0 }, { 0.5f, 0.5f },
 	        { 0.5f, 0.5f } },
@@ -343,21 +358,6 @@ int main()
 			check(
 			    std::abs( bulbLit - srgbByte( expectedLinear( legacyBulb, true, true ) ) ) > 6.0f,
 			    "the legacy falloff misses the inverse-square light (seeded control)" );
-			// RFC 0011 G9: the SDF shadow field. A sphere occluder (an exact
-			// distance field, 0.02-unit voxels) sits across the path to a bulb
-			// of source radius 0.05 at (0.2, 0, 0.8): on the path the pixel is
-			// dark, beside it lit as unshadowed, and at a grazing clearance
-			// partly lit. The seeded control removes the field: the blocked
-			// pixel is then lit, which the occluded check rejects.
-			{
-				render_vulkan::CVulkanContext::DirectLight soft = bulb;
-				soft.sourceRadius = 0.05f;
-				const float lit = srgbByte( expectedLinear( soft, true, true ) );
-				const auto shadowed = [&]( float cx, float cz, float r, std::uint8_t *out )
-				{
-					world_mesh_gpu::ShadowFieldUploadRequest field;
-					field.voxel = 0.02f;
-					field.origin[0] = -0.5f, field.origin[1] = -0.3f, field.origin[2] = 0.3f;
 			// RFC 0011 G9 view 3: all diffuse light, no albedo or BRDF: over the
 			// black bake, the bulb's incident light times N.L alone.
 			{
@@ -378,6 +378,21 @@ int main()
 				    srgbByte( 0.5f * diffuse ) );
 				context.SetIndirectLightView( 0, 1.0f );
 			}
+			// RFC 0011 G9: the SDF shadow field. A sphere occluder (an exact
+			// distance field, 0.02-unit voxels) sits across the path to a bulb
+			// of source radius 0.05 at (0.2, 0, 0.8): on the path the pixel is
+			// dark, beside it lit as unshadowed, and at a grazing clearance
+			// partly lit. The seeded control removes the field: the blocked
+			// pixel is then lit, which the occluded check rejects.
+			{
+				render_vulkan::CVulkanContext::DirectLight soft = bulb;
+				soft.sourceRadius = 0.05f;
+				const float lit = srgbByte( expectedLinear( soft, true, true ) );
+				const auto shadowed = [&]( float cx, float cz, float r, std::uint8_t *out )
+				{
+					world_mesh_gpu::ShadowFieldUploadRequest field;
+					field.voxel = 0.02f;
+					field.origin[0] = -0.5f, field.origin[1] = -0.3f, field.origin[2] = 0.3f;
 					field.dims[0] = 51, field.dims[1] = 31, field.dims[2] = 36;
 					std::vector<uint16_t> distances(
 					    size_t( field.dims[0] ) * field.dims[1] * field.dims[2] );
@@ -617,6 +632,11 @@ int main()
 		context.DestroyManagedTexture( mrao );
 		context.DestroyManagedTexture( normal );
 	}
+	std::printf( "grouped descriptor sets: %llu written, %llu reused\n",
+	    static_cast<unsigned long long>( context.GroupedDescriptors().SetsWritten() ),
+	    static_cast<unsigned long long>( context.GroupedDescriptors().SetsReused() ) );
+	check( context.GroupedDescriptors().SetsWritten() > 0,
+	    "WMSH PBR draws bind the grouped frame and material sets" );
 	context.Shutdown();
 	SDL_DestroyWindow( window );
 	SDL_Quit();

@@ -4,7 +4,13 @@
       "Columns"
     ]
   },
+  "lightmap": {
+    "samples": 512
+  },
   "map": "gi_complex_colonnade",
+  "probe_volume": {
+    "samples": 1024
+  },
   "quality": "gi-fixture",
   "scene": "quality/fixtures/gi/complex-colonnade/complex-colonnade.usda",
   "schema": "pbrt-map-manifest/v1"

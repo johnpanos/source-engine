@@ -74,7 +74,8 @@ PASS_NAMES = {"total": "Combined", "indirect": "DiffInd", "direct": "DiffDir",
 LONG_PASS_NAMES = {"Diffuse Direct": "DiffDir", "Diffuse Indirect": "DiffInd",
                    "Diffuse Color": "DiffCol", "Emission": "Emit", "Environment": "Env",
                    "Glossy Direct": "GlossDir", "Glossy Indirect": "GlossInd",
-                   "Object Index": "IndexOB", "Depth": "Depth", "Combined": "Combined"}
+                   "Object Index": "IndexOB", "Depth": "Depth", "Combined": "Combined",
+                   "Normal": "Normal"}
 
 
 def sha256(path):
@@ -521,8 +522,9 @@ def cmd_check(args):
                                 (name, control["control"]))
         if name == "furnace" and not record.get("negative_controls"):
             failures.append("furnace: no negative control recorded")
-        failures += ["%s: %s" % (name, p) for p in gi_oracles.validate(fixture)]
-        if fixture.get("oracles") and not failures:
+        problems = gi_oracles.validate(fixture)
+        failures += ["%s: %s" % (name, p) for p in problems]
+        if fixture.get("oracles") and not problems:
             results = gi_oracles.evaluate(fixture, gi_oracles.views_from_references(record))
             failures += oracle_failures(name, results)
             checked["oracles"] += len(results)

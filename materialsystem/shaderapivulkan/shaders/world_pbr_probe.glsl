@@ -1,8 +1,28 @@
 // Shared by world_pbr.frag, world_pbr_glass.frag and model_pbr.frag: the map
-// reflection probe and the tangent-space normal. The includer declares
-// `lightmapTexture`, the map's LMAP atlas, whose top rows carry the probe.
+// reflection probes and the tangent-space normal. The includer declares
+// `lightmapTexture` (frame set binding 1), the map's LMAP atlas, whose top
+// rows carry a map built before RPRB's one direction-only probe; the map's
+// RPRB probes are frame set binding 5 (R50-PARALLAX, reflection_probes.glsl).
+// An includer that defines REFLECTION_PROBE_RELIGHT before including this
+// file defines ReflectionProbeDiffuseChange (R50-RELIGHT; world_pbr.frag).
 
 #include "pbr_brdf.glsl"
+
+// The map's RPRB texture, or the built-in 2D texture when it has none (its
+// first texel lacks the marker, so ReflectionProbesRadiance declines).
+layout( set = 0, binding = 5 ) uniform sampler2D reflectionProbes;
+
+vec4 ReflectionProbesFetch( ivec2 texel )
+{
+	return texelFetch( reflectionProbes, texel, 0 );
+}
+
+vec4 ReflectionProbesSample( vec2 texel )
+{
+	return textureLod( reflectionProbes, texel / vec2( textureSize( reflectionProbes, 0 ) ), 0.0 );
+}
+
+#include "reflection_probes.glsl"
 
 // Reflection probe packed into the LMAP atlas's top rows by the map pipeline
 // (tools/quality/reflection_probe.py): equirect mips side by side from x = 0,
@@ -32,6 +52,17 @@ bool ProbeRadiance( vec3 direction, float roughness, out vec3 radiance )
 	radiance = mix( SampleProbeLevel( uv, lower, marker.g, vec2( size ) ),
 	    SampleProbeLevel( uv, upper, marker.g, vec2( size ) ), lod - lower );
 	return true;
+}
+
+// The map's specular image light at `position` (geometric normal `normal`)
+// along the unit ray `direction`: its blended, parallax-corrected RPRB
+// probes, else the LMAP band's direction-only probe of an older map.
+bool MapProbeRadiance(
+    vec3 position, vec3 normal, vec3 direction, float roughness, out vec3 radiance )
+{
+	if ( ReflectionProbesRadiance( position, normal, direction, roughness, radiance ) )
+		return true;
+	return ProbeRadiance( direction, roughness, radiance );
 }
 
 // The WMSH interpolated frame applied to a two-channel tangent-space normal

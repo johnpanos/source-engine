@@ -145,7 +145,8 @@ void CBinkMaterialRGBTextureRegenerator::RegenerateTextureBits( ITexture *pTextu
 	}*/
 
 	// Verify the destination texture is set up correctly
-	Assert( pVTFTexture->Format() == IMAGE_FORMAT_RGB888 );
+	// yuv420_rgb24_std writes blue, green, red.
+	Assert( pVTFTexture->Format() == IMAGE_FORMAT_BGR888 );
 	Assert( pVTFTexture->RowSizeInBytes( 0 ) >= pVTFTexture->Width() * 4 );
 	Assert( pVTFTexture->Width() >= m_nSourceWidth );
 	Assert( pVTFTexture->Height() >= m_nSourceHeight );
@@ -189,6 +190,9 @@ CBinkMaterial::CBinkMaterial() :
 {
 	memset( m_AVVideoData, 0, sizeof(m_AVVideoData) );
 	memset( m_AVVideoLinesize, 0, sizeof(m_AVVideoLinesize) );
+	m_AVFmtCtx = nullptr;
+	m_AVVideoDecCtx = nullptr;
+	m_RGBData = nullptr;
 
 	Reset();
 }
@@ -204,14 +208,10 @@ CBinkMaterial::~CBinkMaterial()
 	DestroyProceduralTexture();
 	DestroyProceduralMaterial();
 
+	CloseFile();
+	free( m_RGBData );
 	av_frame_free( &m_AVFrame );
 	av_packet_free( &m_AVPkt );
-
-	if( m_AVVideoData[0] )
-		av_free(m_AVVideoData[0]);
-
-	if( m_AVFmtCtx )
-		avformat_close_input( &m_AVFmtCtx );
 }
 
 
@@ -254,26 +254,16 @@ void CBinkMaterial::Reset()
 	if( !m_AVPkt)
 		m_AVPkt = av_packet_alloc();
 
-	m_RGBData = nullptr;
-
-	m_AVFmtCtx = nullptr;
-	m_AVAudioStream = nullptr;
-	m_AVVideoStream = nullptr;
-
 	AssertMsg( m_AVFrame, "av_frame_alloc return nullptr\n" );
 	AssertMsg( m_AVPkt, "av_packet_alloc return nullptr\n"  );
 
-	if( m_AVVideoData[0] )
-	{
-		av_free(m_AVVideoData[0]);
-		m_AVVideoData[0] = nullptr;
-	}
-
-	if( m_AVFmtCtx )
-	{
-		avformat_close_input( &m_AVFmtCtx );
-		m_AVFmtCtx = nullptr;
-	}
+	// The texture that read m_RGBData was destroyed above.
+	CloseFile();
+	free( m_RGBData );
+	m_RGBData = nullptr;
+	m_AVAudioStream = nullptr;
+	m_AVVideoStream = nullptr;
+	m_bDecoderDraining = false;
 
 	m_LastResult = VideoResult::SUCCESS;
 }
@@ -433,6 +423,7 @@ bool CBinkMaterial::Init( const char *pMaterialName, const char *pFileName, Vide
 	AssertExitF( m_bInitCalled == false );
 
 	m_PlaybackFlags	= flags;
+	m_bLoopMovie = BITFLAGS_SET( flags, VideoPlaybackFlags::LOOP_VIDEO );
 
 	OpenMovie( pFileName );	// Open up the Quicktime file
 
@@ -553,6 +544,8 @@ void CBinkMaterial::SetPaused( bool bPauseState )
 	}
 
 	m_bMoviePaused = bPauseState;
+	if ( !bPauseState )
+		m_NextInterestingTimeToPlay = Plat_FloatTime();
 }
 
 
@@ -621,51 +614,21 @@ bool CBinkMaterial::Update( void )
 	if ( m_bMoviePaused )
 		return true;			// reuse the last frame
 
-	// Get current time in the movie
-	float curMovieTime; // = GetMovieTime( m_QTMovie, nullptr );
-
-	if( m_NextInterestingTimeToPlay > Plat_FloatTime() )
+	const double flNow = Plat_FloatTime();
+	if( m_NextInterestingTimeToPlay > flNow )
 		return true;
 
+	// One frame per update; after a hitch, resume from now rather than
+	// decoding the missed frames back to back.
 	m_NextInterestingTimeToPlay += m_MovieFrameDuration;
+	if ( m_NextInterestingTimeToPlay < flNow )
+		m_NextInterestingTimeToPlay = flNow + m_MovieFrameDuration;
 
-	/* read frames from the file */
-
-	int ret;
-	while( (ret = av_read_frame(m_AVFmtCtx, m_AVPkt)) >= 0 )
-	{
-		if (m_AVPkt->stream_index == m_AVVideoStreamID)
-		{
-			avcodec_send_packet(m_AVVideoDecCtx, m_AVPkt);
-
-			ret = avcodec_receive_frame(m_AVVideoDecCtx, m_AVFrame);
-			if (ret < 0)
-			{
-				av_packet_unref(m_AVPkt);
-				return true;
-			}
-
-			// write the frame data to output file
-			if (m_AVVideoDecCtx->codec->type == AVMEDIA_TYPE_VIDEO)
-			{
-				av_image_copy(m_AVVideoData, m_AVVideoLinesize, (const uint8_t **)(m_AVFrame->data), m_AVFrame->linesize, m_AVPixFormat, m_VideoFrameWidth, m_VideoFrameHeight);
-			}
-
-			av_frame_unref(m_AVFrame);
-			break;
-		}
-
-		av_packet_unref(m_AVPkt);
-	}
-
-
-	if( ret < 0 )
+	if ( !DecodeNextFrame() && !( m_bLoopMovie && Rewind( 0.0 ) && DecodeNextFrame() ) )
 	{
 		StopVideo();
 		return false;
 	}
-
-
 
 	yuv420_rgb24_std( m_VideoFrameWidth, m_VideoFrameHeight, m_AVVideoData[0],
 			m_AVVideoData[0]+m_VideoFrameHeight*m_VideoFrameWidth,
@@ -673,6 +636,12 @@ bool CBinkMaterial::Update( void )
 			m_VideoFrameWidth, (m_VideoFrameWidth+1)/2, m_RGBData, m_VideoFrameWidth*3, YCBCR_601
 		);
 
+	// A VGUI surface that draws this material through a procedural texture id
+	// (vgui_movie_display) installs its own regenerator on the material's base
+	// texture; Valve's Bink material has no $basetexture and is not affected.
+	// Put ours back before each upload. Neither regenerator deletes itself on
+	// Release, so the exchange is safe in either order.
+	m_Texture->SetTextureRegenerator( &m_TextureRegen );
 	m_Texture->Download();
 
 	SetResult( VideoResult::SUCCESS );
@@ -771,32 +740,56 @@ float CBinkMaterial::GetCurrentVideoTime()
 bool CBinkMaterial::SetTime( float flTime )
 {
 	AssertExitF( m_bMoviePlaying );
-	AssertExitF( flTime >= 0 && flTime < m_QTMovieDurationinSec );
+	AssertExitF( flTime >= 0 );
 
-	float newTime = ( flTime * m_QTMovieFrameRate.GetUnitsPerSecond() + 0.5f) ;
+	if ( !Rewind( flTime ) )
+		return false;
+	m_NextInterestingTimeToPlay = Plat_FloatTime();
+	return true;
+}
 
-	clamp( newTime,  m_MovieFirstFrameTime, m_QTMovieDuration ); 
-
-	// Are we paused?
-	if ( m_bMoviePaused )
+// Next decoded video frame into m_AVVideoData; false at the end of the stream
+// or on an error. The decoder may need several packets before its first frame
+// (EAGAIN), and holds frames back until it is drained at the end.
+bool CBinkMaterial::DecodeNextFrame()
+{
+	for ( ;; )
 	{
-		m_MoviePauseTime = newTime;
-		return true;
+		int ret = avcodec_receive_frame( m_AVVideoDecCtx, m_AVFrame );
+		if ( ret == 0 )
+		{
+			av_image_copy( m_AVVideoData, m_AVVideoLinesize, (const uint8_t **)( m_AVFrame->data ),
+				m_AVFrame->linesize, (AVPixelFormat)m_AVPixFormat, m_VideoFrameWidth, m_VideoFrameHeight );
+			av_frame_unref( m_AVFrame );
+			return true;
+		}
+		if ( ret != AVERROR( EAGAIN ) || m_bDecoderDraining )
+			return false;
+
+		ret = av_read_frame( m_AVFmtCtx, m_AVPkt );
+		if ( ret < 0 )
+		{
+			// End of the file: drain the frames the decoder still holds.
+			m_bDecoderDraining = true;
+			avcodec_send_packet( m_AVVideoDecCtx, nullptr );
+			continue;
+		}
+		if ( m_AVPkt->stream_index == m_AVVideoStreamID )
+			avcodec_send_packet( m_AVVideoDecCtx, m_AVPkt );
+		av_packet_unref( m_AVPkt );
 	}
+}
 
-	float curMovieTime; // = GetMovieTime( m_QTMovie, nullptr );
-
-	// Don't stop and reset movie if we are within 1 frame of the requested time
-	if ( newTime <= curMovieTime - m_QTMovieFrameRate.GetUnitsPerFrame() || newTime >= curMovieTime + m_QTMovieFrameRate.GetUnitsPerFrame() )
-	{
-		// Reset the movie to the requested time
-/*		StopMovie( m_QTMovie );
-		SetMovieTimeValue( m_QTMovie, newTime );
-		StartMovie( m_QTMovie );
-
-		Assert( GetMoviesError() == noErr );*/
-	}
-
+// Seeks to the key frame at or before flTime (seconds) and restarts decoding.
+bool CBinkMaterial::Rewind( double flTime )
+{
+	if ( !m_AVFmtCtx || !m_AVVideoStream )
+		return false;
+	const int64_t timestamp = (int64_t)( flTime / av_q2d( m_AVVideoStream->time_base ) );
+	if ( av_seek_frame( m_AVFmtCtx, m_AVVideoStreamID, timestamp, AVSEEK_FLAG_BACKWARD ) < 0 )
+		return false;
+	avcodec_flush_buffers( m_AVVideoDecCtx );
+	m_bDecoderDraining = false;
 	return true;
 }
 
@@ -812,16 +805,19 @@ void CBinkMaterial::CreateProceduralTexture( const char *pTextureName )
 	AssertIncRange( m_VideoFrameHeight, cMinVideoFrameHeight, cMaxVideoFrameHeight );
 	AssertStr( pTextureName );
 
-	// Either make the texture the same dimensions as the video,
-	// or choose power-of-two textures which are at least as big as the video
-	bool actualSizeTexture = BITFLAGS_SET( m_PlaybackFlags, VideoPlaybackFlags::TEXTURES_ACTUAL_SIZE );
+	// The texture is the video frame's size (aligned), as Valve's Bink textures
+	// are: Portal 2's video_splitter.nut gives each elevator panel texture
+	// coordinates over the whole texture, which a power-of-two texture padded
+	// past the frame would sample outside the video. Every supported renderer
+	// takes non-power-of-two textures.
+	bool actualSizeTexture = true;
 
 	int nWidth  = ( actualSizeTexture ) ? ALIGN_VALUE( m_VideoFrameWidth, TEXTURE_SIZE_ALIGNMENT ) : ComputeGreaterPowerOfTwo( m_VideoFrameWidth ); 
 	int nHeight = ( actualSizeTexture ) ? ALIGN_VALUE( m_VideoFrameHeight, TEXTURE_SIZE_ALIGNMENT ) : ComputeGreaterPowerOfTwo( m_VideoFrameHeight ); 
 
-	// initialize the procedural texture as 32-it RGBA, w/o mipmaps
+	// initialize the procedural texture as 24-bit BGR, w/o mipmaps
 	m_Texture.InitProceduralTexture( pTextureName, "VideoCacheTextures", nWidth, nHeight, 
-				IMAGE_FORMAT_RGB888, TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_NOMIP |
+				IMAGE_FORMAT_BGR888, TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_NOMIP |
 				TEXTUREFLAGS_PROCEDURAL | TEXTUREFLAGS_SINGLECOPY | TEXTUREFLAGS_NOLOD );
 
 	// Use this to get the updated frame from the remote connection	
@@ -1068,10 +1064,12 @@ void CBinkMaterial::OpenMovie( const char *theMovieFileName )
 
 void CBinkMaterial::CloseFile()
 {
+	// m_RGBData stays: the texture keeps showing the last frame and regenerates
+	// from it (Reset frees it with the texture).
 	av_freep( &m_AVVideoData[0] );
+	avcodec_free_context( &m_AVVideoDecCtx );
 	avformat_close_input( &m_AVFmtCtx );
 	m_AVFmtCtx = nullptr;
-	free(m_RGBData);
 
 	SetFileName( nullptr );
 }

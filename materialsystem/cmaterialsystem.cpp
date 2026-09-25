@@ -668,10 +668,33 @@ bool CMaterialSystem::BindShaderProvider( const render::LegacyShaderProvider &pr
 	delete[] m_pShaderDLL;
 	m_pShaderDLL = description;
 	m_ShaderServices = services;
+	m_pQueuedWorldMeshUpload.reset();
+	if ( services.worldMeshUpload )
+		m_pQueuedWorldMeshUpload.reset(
+		    new CQueuedWorldMeshUpload( services.worldMeshUpload, RenderCapabilityHost() ) );
+	m_pQueuedLightSetConsumer.reset();
+	if ( services.lightSetConsumer )
+		m_pQueuedLightSetConsumer.reset(
+		    new CQueuedLightSetConsumer( services.lightSetConsumer, RenderCapabilityHost() ) );
 	m_SelectedShaderProvider = provider;
 	m_bShaderProviderSelected = true;
 	m_ShaderAPIFactory = LegacyShaderInterface;
 	return true;
+}
+
+RenderCapabilityQueueHost CMaterialSystem::RenderCapabilityHost()
+{
+	RenderCapabilityQueueHost host;
+	host.renderCallQueue = [this]()
+	{
+		return GetRenderCallQueue();
+	};
+	host.boundMaterial = [this]() -> IMaterial *
+	{
+		IMatRenderContextInternal *context = GetRenderContextInternal();
+		return context ? context->GetCurrentMaterialInternal() : NULL;
+	};
+	return host;
 }
 
 CreateInterfaceFn CMaterialSystem::CreateShaderAPI( const char *name )
@@ -702,6 +725,8 @@ void CMaterialSystem::DestroyShaderAPI()
 	g_pHWConfig = NULL;
 	g_pShaderShadow = NULL;
 	m_ShaderServices = render::LegacyShaderServices();
+	m_pQueuedWorldMeshUpload.reset();
+	m_pQueuedLightSetConsumer.reset();
 	m_ShaderAPIFactory = NULL;
 }
 
@@ -848,10 +873,13 @@ void *CMaterialSystem::QueryShaderAPI( const char *name )
 //-----------------------------------------------------------------------------
 void *CMaterialSystem::QueryInterface( const char *pInterfaceName )
 {
+	// World mesh and light set calls are ordered with the frame's queued
+	// render-context calls; the compute service orders itself against the
+	// submission it records into (gpu_compute.h).
 	if ( pInterfaceName && !Q_strcmp( pInterfaceName, world_mesh_gpu::kWorldMeshUploadInterface ) )
-		return m_ShaderServices.worldMeshUpload;
+		return static_cast<world_mesh_gpu::IWorldMeshUpload *>( m_pQueuedWorldMeshUpload.get() );
 	if ( pInterfaceName && !Q_strcmp( pInterfaceName, light_set::kLightSetConsumerInterface ) )
-		return m_ShaderServices.lightSetConsumer;
+		return static_cast<light_set::ILightSetConsumer *>( m_pQueuedLightSetConsumer.get() );
 	if ( pInterfaceName && !Q_strcmp( pInterfaceName, gpu_compute::kGpuComputeInterface ) )
 		return m_ShaderServices.gpuCompute;
 

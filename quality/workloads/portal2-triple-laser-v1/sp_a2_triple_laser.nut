@@ -22,6 +22,9 @@ IncludeScript( "qa/qa_driver" )
 function QA_Shot( name )
 {
 	printl( "QA_SHOT " + ::QA.scenario + " " + name )
+	local player = QA_Player()
+	QA_Log( "shot " + name + " eye " + QA_Vec( player.EyePosition() ) + " fwd " +
+	        QA_Vec( QA_Scale( player.GetForwardVector(), 100.0 ) ) )
 	SendToConsole( "screenshot" )
 }
 

@@ -1,0 +1,210 @@
+{
+  "analytic": [],
+  "fixture": "furnace-maze",
+  "fixture_reference_digest": "25a68e2c1c6b82fa6e720ad81bc30c9bc4dc5c6e7c8258b6bf4bd3cfc187f9bf",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 27,
+    "controls_unrejected": [],
+    "failed": 0,
+    "oracles": 1
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "default": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "dbb826d6d2df4044921b47f47eda052a8218cdb9311b66e60c655a4d50494eb9",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/furnace-maze/furnace-maze.usda": "f1e6ef441eec1efe3cf4078dc9c3a5b3f2226ab25ee8775623b4bfe85e4a566c"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "default.inside": {
+      "camera": "inside",
+      "files": {
+        "index": {
+          "file": "default.inside.index.png",
+          "sha256": "9ebe949385d813107dec01d992ff9d728bacbff1780e74d90d2aa9abf23e5b27"
+        },
+        "indirect": {
+          "file": "default.inside.indirect.exr",
+          "sha256": "4812b3177aec2e01740d5d190ade4edb503706a31f677f9ac696977aed5d4ff8"
+        },
+        "total": {
+          "file": "default.inside.total.exr",
+          "sha256": "34d5e1d12379b0c8a738dba290232be939e6d993b0dd4d45088256454c5114e0"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Box_Xn": 1,
+        "Box_Xp": 2,
+        "Box_Yn": 3,
+        "Box_Yp": 4,
+        "Box_Zn": 5,
+        "Box_Zp": 6,
+        "Maze": 7,
+        "ProbeSphereShape": 8
+      },
+      "regions": {
+        "maze": {
+          "albedo": [
+            0.6000161170959473,
+            0.6000161170959473,
+            0.6000161170959473
+          ],
+          "direct": [
+            0.19997046887874603,
+            0.19997046887874603,
+            0.19997046887874603
+          ],
+          "emission": [
+            0.1999705284833908,
+            0.1999705284833908,
+            0.1999705284833908
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.3000398278236389,
+            0.3000398278236389,
+            0.3000398278236389
+          ],
+          "pixels": 15377,
+          "total": [
+            0.5000525116920471,
+            0.5000525116920471,
+            0.5000525116920471
+          ]
+        },
+        "model": {
+          "albedo": [
+            0.5999832153320312,
+            0.5999832153320312,
+            0.5999832153320312
+          ],
+          "direct": [
+            0.1998705267906189,
+            0.1998705267906189,
+            0.1998705267906189
+          ],
+          "emission": [
+            0.20000271499156952,
+            0.20000271499156952,
+            0.20000271499156952
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.29986947774887085,
+            0.29986947774887085,
+            0.29986947774887085
+          ],
+          "pixels": 802,
+          "total": [
+            0.4998690187931061,
+            0.4998690187931061,
+            0.4998690187931061
+          ]
+        },
+        "walls": {
+          "albedo": [
+            0.5998209118843079,
+            0.5998209118843079,
+            0.5998209118843079
+          ],
+          "direct": [
+            0.20003622770309448,
+            0.20003622770309448,
+            0.20003622770309448
+          ],
+          "emission": [
+            0.20003628730773926,
+            0.20003628730773926,
+            0.20003628730773926
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            3.0890984535217285
+          ],
+          "indirect": [
+            0.3000144958496094,
+            0.3000144958496094,
+            0.3000144958496094
+          ],
+          "pixels": 29574,
+          "total": [
+            0.5000348091125488,
+            0.5000348091125488,
+            0.5000348091125488
+          ]
+        }
+      },
+      "state": "default"
+    }
+  }
+}

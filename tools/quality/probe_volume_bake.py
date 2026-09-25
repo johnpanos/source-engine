@@ -159,8 +159,13 @@ def trace_run(bounds):
                                                 job["spacing_min"])
         positions[k], offsets[k], active[k] = home + offset, offset, is_active
         distances, _ = trace(job["bvh"], positions[k], rays, job["max_distance"])
-        visibility[k, ..., 0] = (lobes @ distances).reshape(VIS_INTERIOR, VIS_INTERIOR)
-        visibility[k, ..., 1] = (lobes @ distances ** 2).reshape(VIS_INTERIOR, VIS_INTERIOR)
+        # einsum, not BLAS: a forked worker inherits the parent's OpenMP
+        # BLAS state (libopenblaso, started by `texels @ rays.T`) without its
+        # threads, and a threaded gemv then waits at the barrier forever.
+        visibility[k, ..., 0] = np.einsum("ij,j->i", lobes, distances).reshape(
+            VIS_INTERIOR, VIS_INTERIOR)
+        visibility[k, ..., 1] = np.einsum("ij,j->i", lobes, distances ** 2).reshape(
+            VIS_INTERIOR, VIS_INTERIOR)
     return first, positions, offsets, active, fractions, visibility
 
 

@@ -1,0 +1,1690 @@
+{
+  "analytic": [],
+  "fixture": "probe-directional-rgb",
+  "fixture_reference_digest": "18cf0c483d8027a73e306b030dd80ec8ab24284197ed898c5071d1072b4fd0d7",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 56,
+    "controls_unrejected": [],
+    "failed": 0,
+    "oracles": 11
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "all": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "fd4dec3e203f7b443b97bd3594a2c3b0f284966fcb8933037723c5886595185e",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/probe-directional-rgb/probe-directional-rgb.usda": "5e34197a97afa32b0be0d2558c730f58c80b9b60a012aa5a198d7a7b62e76d29"
+      }
+    },
+    "blue": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "fff05332120e8eb4e3d51504ae014a698614ad514cc75b9d7eaaf5fd586c9053",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/probe-directional-rgb/probe-directional-rgb.usda": "5e34197a97afa32b0be0d2558c730f58c80b9b60a012aa5a198d7a7b62e76d29",
+        "quality/fixtures/gi/probe-directional-rgb/states/blue.usda": "b80bfd5450b2bdee52784973b49ea5a0f52b23b6848252b8a7c1c7e270f13925"
+      }
+    },
+    "green": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "bea00d9b4d56fcc4d39e97816bab6867010c49c72464edca2a8d1c309c69e8fc",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/probe-directional-rgb/probe-directional-rgb.usda": "5e34197a97afa32b0be0d2558c730f58c80b9b60a012aa5a198d7a7b62e76d29",
+        "quality/fixtures/gi/probe-directional-rgb/states/green.usda": "04528a9a4036ce5d0f742d4ea64db5a6c36c18f59a3e1f0a74fd22d0c1590b25"
+      }
+    },
+    "red": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "b7d495109a44e4f078c10a3e808f856d7f0ef342a4252978c1b99ee46c36a258",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/probe-directional-rgb/probe-directional-rgb.usda": "5e34197a97afa32b0be0d2558c730f58c80b9b60a012aa5a198d7a7b62e76d29",
+        "quality/fixtures/gi/probe-directional-rgb/states/red.usda": "9edd8851ff563cadf1ff50fdceb744b8d10886d5b731d2c2394952187b6c19af"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "all.east": {
+      "camera": "east",
+      "files": {
+        "index": {
+          "file": "all.east.index.png",
+          "sha256": "0e2007be90fd0636672f30097ef36d894f8eb5b2ea836748405ca8a60ddad9da"
+        },
+        "indirect": {
+          "file": "all.east.indirect.exr",
+          "sha256": "b71b9c69c71998cec351e72e00268c24acf045b267881fc4c23b0e52631bea3c"
+        },
+        "total": {
+          "file": "all.east.total.exr",
+          "sha256": "6b4e2959da1fde79e54fd56ed0a8f49269a2356300d484d7322f0683d2b13586"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.2217009961605072,
+            0.028107309713959694,
+            0.05314739793539047
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.08982827514410019,
+            0.03919325768947601,
+            0.05367029458284378
+          ],
+          "pixels": 1976,
+          "total": [
+            0.18691395223140717,
+            0.04037943482398987,
+            0.06408923864364624
+          ]
+        }
+      },
+      "state": "all"
+    },
+    "all.north": {
+      "camera": "north",
+      "files": {
+        "index": {
+          "file": "all.north.index.png",
+          "sha256": "adc53ed9a0c29d569e968c6de4fa9729c1884b45bed06401431985fce273d6f4"
+        },
+        "indirect": {
+          "file": "all.north.indirect.exr",
+          "sha256": "6052bbcb909dc87033b0401509ce966371a526b0eb65d18579fa7d8247080da0"
+        },
+        "total": {
+          "file": "all.north.total.exr",
+          "sha256": "835655c43c9ebc8573e156602fbdf9503467e1ebba917416a948779e2e3168aa"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.028108203783631325,
+            0.22171908617019653,
+            0.05314365029335022
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.03924787789583206,
+            0.08963838964700699,
+            0.05394931137561798
+          ],
+          "pixels": 1976,
+          "total": [
+            0.04041280224919319,
+            0.18681086599826813,
+            0.06425442546606064
+          ]
+        }
+      },
+      "state": "all"
+    },
+    "all.south": {
+      "camera": "south",
+      "files": {
+        "index": {
+          "file": "all.south.index.png",
+          "sha256": "389cd1eb9a9c03bd32595d0e47a5e814445fe2e41292b0ceec7e859d1d590a1b"
+        },
+        "indirect": {
+          "file": "all.south.indirect.exr",
+          "sha256": "fdb3ca3d4c9e0a2300e012c6e907ba5982604c597403c2eb05c4a377852e8cd7"
+        },
+        "total": {
+          "file": "all.south.total.exr",
+          "sha256": "605538eb1549732f675da04ab499517b7524d2d2e680196d48984dc4b44de960"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.02811345085501671,
+            0.0,
+            0.05315140262246132
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.03925356641411781,
+            0.019715294241905212,
+            0.05375680327415466
+          ],
+          "pixels": 1976,
+          "total": [
+            0.04041936621069908,
+            0.011828926391899586,
+            0.0641435980796814
+          ]
+        }
+      },
+      "state": "all"
+    },
+    "all.top": {
+      "camera": "top",
+      "files": {
+        "index": {
+          "file": "all.top.index.png",
+          "sha256": "c4a8d9cb825fe372012dad6121cb99b01a522a5bb3204dfe276a1003c52b2df8"
+        },
+        "indirect": {
+          "file": "all.top.indirect.exr",
+          "sha256": "78e71da4e90168ecf00beb5d5d47507f10c2d24296838a9559dd9112beb7c361"
+        },
+        "total": {
+          "file": "all.top.total.exr",
+          "sha256": "896f505492f74f423e8819817c9da5aa7ee78d82772ef48070e716cc06f6351c"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.6000049114227295,
+            0.6000049114227295,
+            0.6000049114227295
+          ],
+          "direct": [
+            0.02592639811336994,
+            0.003721920307725668,
+            0.4982188940048218
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.041657645255327225,
+            0.031284160912036896,
+            0.1497756540775299
+          ],
+          "pixels": 4428,
+          "total": [
+            0.040549565106630325,
+            0.021003270521759987,
+            0.3887888491153717
+          ]
+        }
+      },
+      "state": "all"
+    },
+    "all.west": {
+      "camera": "west",
+      "files": {
+        "index": {
+          "file": "all.west.index.png",
+          "sha256": "ce7fb4a19517cb0f1737bfe668af067b1bb20cea625fefdf492bf5b22dd5ea64"
+        },
+        "indirect": {
+          "file": "all.west.indirect.exr",
+          "sha256": "0197306812cd69d42dc4caae74c5103041c5af58f2f38fb0a6f17e1884283f78"
+        },
+        "total": {
+          "file": "all.west.total.exr",
+          "sha256": "6fe6c719b483342e58656d05fe2ff585aa6e0de588694ddfeb0351f20056c7ae"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.0,
+            0.0281025730073452,
+            0.05315976217389107
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.019710708409547806,
+            0.0392029844224453,
+            0.05371692031621933
+          ],
+          "pixels": 1976,
+          "total": [
+            0.01182620320469141,
+            0.04038248583674431,
+            0.06412481516599655
+          ]
+        }
+      },
+      "state": "all"
+    },
+    "blue.east": {
+      "camera": "east",
+      "files": {
+        "index": {
+          "file": "blue.east.index.png",
+          "sha256": "0e2007be90fd0636672f30097ef36d894f8eb5b2ea836748405ca8a60ddad9da"
+        },
+        "indirect": {
+          "file": "blue.east.indirect.exr",
+          "sha256": "0a7ebf221f2ae547244c01f5d1770c2a2d2b11be4b118b5f5fe76f2a6568b354"
+        },
+        "total": {
+          "file": "blue.east.total.exr",
+          "sha256": "4b0d12e70040b87868776311248763f9150b2a89a5f0eea03a39e370ef565ea5"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.05315304920077324
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.053669523447752
+          ],
+          "pixels": 1976,
+          "total": [
+            0.0,
+            0.0,
+            0.06409219652414322
+          ]
+        }
+      },
+      "state": "blue"
+    },
+    "blue.north": {
+      "camera": "north",
+      "files": {
+        "index": {
+          "file": "blue.north.index.png",
+          "sha256": "adc53ed9a0c29d569e968c6de4fa9729c1884b45bed06401431985fce273d6f4"
+        },
+        "indirect": {
+          "file": "blue.north.indirect.exr",
+          "sha256": "aa0c64abc888cf05c987e137815b54944f4552c4e065b09cd66c14b2fde8a1d5"
+        },
+        "total": {
+          "file": "blue.north.total.exr",
+          "sha256": "66ba43ad3f27621b5f9ea20977b774a52662dc20174094994a3a272d6588e396"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.053153812885284424
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.05370191112160683
+          ],
+          "pixels": 1976,
+          "total": [
+            0.0,
+            0.0,
+            0.06411202996969223
+          ]
+        }
+      },
+      "state": "blue"
+    },
+    "blue.south": {
+      "camera": "south",
+      "files": {
+        "index": {
+          "file": "blue.south.index.png",
+          "sha256": "389cd1eb9a9c03bd32595d0e47a5e814445fe2e41292b0ceec7e859d1d590a1b"
+        },
+        "indirect": {
+          "file": "blue.south.indirect.exr",
+          "sha256": "1177ca22924fb2ed73f68fe7829695dcacc32c757f084f3f034c04bee8b389a9"
+        },
+        "total": {
+          "file": "blue.south.total.exr",
+          "sha256": "942f42ba8ecd87bac5a2b43fbb2382e82f3be7ca8301fdecc56fd893fad52813"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.05315322056412697
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.053689729422330856
+          ],
+          "pixels": 1976,
+          "total": [
+            0.0,
+            0.0,
+            0.06410451978445053
+          ]
+        }
+      },
+      "state": "blue"
+    },
+    "blue.top": {
+      "camera": "top",
+      "files": {
+        "index": {
+          "file": "blue.top.index.png",
+          "sha256": "c4a8d9cb825fe372012dad6121cb99b01a522a5bb3204dfe276a1003c52b2df8"
+        },
+        "indirect": {
+          "file": "blue.top.indirect.exr",
+          "sha256": "501ce0e481418fd795574715079f97b88324eeab37eb1e0362cf6e319e161c5c"
+        },
+        "total": {
+          "file": "blue.top.total.exr",
+          "sha256": "067e55eb290486366c6cec16dc6afa0d86d16d7c2fe8c981f0e13faad1782ed2"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.6000049114227295,
+            0.6000049114227295,
+            0.6000049114227295
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.49825307726860046
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.14975976943969727
+          ],
+          "pixels": 4428,
+          "total": [
+            0.0,
+            0.0,
+            0.38880065083503723
+          ]
+        }
+      },
+      "state": "blue"
+    },
+    "blue.west": {
+      "camera": "west",
+      "files": {
+        "index": {
+          "file": "blue.west.index.png",
+          "sha256": "ce7fb4a19517cb0f1737bfe668af067b1bb20cea625fefdf492bf5b22dd5ea64"
+        },
+        "indirect": {
+          "file": "blue.west.indirect.exr",
+          "sha256": "9f62813db945bd31037723061d5dc901776c9f9d45279065a90e227aed3ebdcc"
+        },
+        "total": {
+          "file": "blue.west.total.exr",
+          "sha256": "344910b164445c92fc7579e820a2203e796a2778724ac4a88dfbf162955643a9"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.05315419286489487
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.053706783801317215
+          ],
+          "pixels": 1976,
+          "total": [
+            0.0,
+            0.0,
+            0.06411521136760712
+          ]
+        }
+      },
+      "state": "blue"
+    },
+    "green.east": {
+      "camera": "east",
+      "files": {
+        "index": {
+          "file": "green.east.index.png",
+          "sha256": "0e2007be90fd0636672f30097ef36d894f8eb5b2ea836748405ca8a60ddad9da"
+        },
+        "indirect": {
+          "file": "green.east.indirect.exr",
+          "sha256": "32b2c597ef9683633646c154471631f4eccd4fafc6fe4ef5a2abdb5e48525910"
+        },
+        "total": {
+          "file": "green.east.total.exr",
+          "sha256": "227daba7eb3f3fa31553802f7c0a41787fb4bf15e2232b5046402a61ae4d158a"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.0,
+            0.02811332605779171,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0,
+            0.03923947736620903,
+            0.0
+          ],
+          "pixels": 1976,
+          "total": [
+            0.0,
+            0.040410902351140976,
+            0.0
+          ]
+        }
+      },
+      "state": "green"
+    },
+    "green.north": {
+      "camera": "north",
+      "files": {
+        "index": {
+          "file": "green.north.index.png",
+          "sha256": "adc53ed9a0c29d569e968c6de4fa9729c1884b45bed06401431985fce273d6f4"
+        },
+        "indirect": {
+          "file": "green.north.indirect.exr",
+          "sha256": "05dda4d4c673d012e4c08027f31929a87e26a4b9202100df69775994736c88cf"
+        },
+        "total": {
+          "file": "green.north.total.exr",
+          "sha256": "5b16fec696e44ae8c902480f6ec2a4c5dfea8485d770e3922a890fdf9a8ea7c9"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.0,
+            0.22171343863010406,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0,
+            0.08981063216924667,
+            0.0
+          ],
+          "pixels": 1976,
+          "total": [
+            0.0,
+            0.18691076338291168,
+            0.0
+          ]
+        }
+      },
+      "state": "green"
+    },
+    "green.south": {
+      "camera": "south",
+      "files": {
+        "index": {
+          "file": "green.south.index.png",
+          "sha256": "389cd1eb9a9c03bd32595d0e47a5e814445fe2e41292b0ceec7e859d1d590a1b"
+        },
+        "indirect": {
+          "file": "green.south.indirect.exr",
+          "sha256": "6003afb09f52cca8d61b95cf17f673aa325735277e564770de8a48fc7bcd005a"
+        },
+        "total": {
+          "file": "green.south.total.exr",
+          "sha256": "e498a060bd8afd862592a2e4c66097e27e12ac68ddf684a57cb560ca100af9bb"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0,
+            0.0197151992470026,
+            0.0
+          ],
+          "pixels": 1976,
+          "total": [
+            0.0,
+            0.011828864924609661,
+            0.0
+          ]
+        }
+      },
+      "state": "green"
+    },
+    "green.top": {
+      "camera": "top",
+      "files": {
+        "index": {
+          "file": "green.top.index.png",
+          "sha256": "c4a8d9cb825fe372012dad6121cb99b01a522a5bb3204dfe276a1003c52b2df8"
+        },
+        "indirect": {
+          "file": "green.top.indirect.exr",
+          "sha256": "28c00e9498badb66b93603ea7b76d8f9fb2447ded4aa84a4b8f81ad178794eee"
+        },
+        "total": {
+          "file": "green.top.total.exr",
+          "sha256": "ee4da38be32b306ff57f91dea4f6a75d527490a9633b198244e754df3cc0b4da"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.6000049114227295,
+            0.6000049114227295,
+            0.6000049114227295
+          ],
+          "direct": [
+            0.0,
+            0.0037112287245690823,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0,
+            0.03127323463559151,
+            0.0
+          ],
+          "pixels": 4428,
+          "total": [
+            0.0,
+            0.02099021151661873,
+            0.0
+          ]
+        }
+      },
+      "state": "green"
+    },
+    "green.west": {
+      "camera": "west",
+      "files": {
+        "index": {
+          "file": "green.west.index.png",
+          "sha256": "ce7fb4a19517cb0f1737bfe668af067b1bb20cea625fefdf492bf5b22dd5ea64"
+        },
+        "indirect": {
+          "file": "green.west.indirect.exr",
+          "sha256": "bef9b8cbb4e50847a8dec2ab5283e0be3d9b37311641b33d9a5a11342cbd499c"
+        },
+        "total": {
+          "file": "green.west.total.exr",
+          "sha256": "71b2e773cb3971b854479a98c25ba30aa7d331166bc0d255aa286cabfa232abb"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.0,
+            0.02810937725007534,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0,
+            0.03925417736172676,
+            0.0
+          ],
+          "pixels": 1976,
+          "total": [
+            0.0,
+            0.04041730985045433,
+            0.0
+          ]
+        }
+      },
+      "state": "green"
+    },
+    "red.east": {
+      "camera": "east",
+      "files": {
+        "index": {
+          "file": "red.east.index.png",
+          "sha256": "0e2007be90fd0636672f30097ef36d894f8eb5b2ea836748405ca8a60ddad9da"
+        },
+        "indirect": {
+          "file": "red.east.indirect.exr",
+          "sha256": "0c1bb7f2a87dddae8457b142b8b9faa748ce566b3008c42af9925f8a3cfbd5e0"
+        },
+        "total": {
+          "file": "red.east.total.exr",
+          "sha256": "5f550d7e6bc9ca9d2f008ae5f663f0c57257638018a1d4a0d39aa02eabeeccc9"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.22171349823474884,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0898500308394432,
+            0.0,
+            0.0
+          ],
+          "pixels": 1976,
+          "total": [
+            0.18693453073501587,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "state": "red"
+    },
+    "red.north": {
+      "camera": "north",
+      "files": {
+        "index": {
+          "file": "red.north.index.png",
+          "sha256": "adc53ed9a0c29d569e968c6de4fa9729c1884b45bed06401431985fce273d6f4"
+        },
+        "indirect": {
+          "file": "red.north.indirect.exr",
+          "sha256": "1c21e2aed1cf6c5bfe019594da16725c94c53f354b9acfda5964873ef9d93128"
+        },
+        "total": {
+          "file": "red.north.total.exr",
+          "sha256": "7e992c726af62e798f196f757c361d72270624475dfc26a2f310befa93570915"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.0281093530356884,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.039245206862688065,
+            0.0,
+            0.0
+          ],
+          "pixels": 1976,
+          "total": [
+            0.04041195660829544,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "state": "red"
+    },
+    "red.south": {
+      "camera": "south",
+      "files": {
+        "index": {
+          "file": "red.south.index.png",
+          "sha256": "389cd1eb9a9c03bd32595d0e47a5e814445fe2e41292b0ceec7e859d1d590a1b"
+        },
+        "indirect": {
+          "file": "red.south.indirect.exr",
+          "sha256": "ac29841bfa7e7e178f4211996583e167d29c12870841c3fc45e5f88048eccfe0"
+        },
+        "total": {
+          "file": "red.south.total.exr",
+          "sha256": "70fa91d762dd0b8bf108c741b5c5bfcd56c4e148130d40727a0d4dc8a3786822"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.028113318607211113,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.03924943506717682,
+            0.0,
+            0.0
+          ],
+          "pixels": 1976,
+          "total": [
+            0.04041679948568344,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "state": "red"
+    },
+    "red.top": {
+      "camera": "top",
+      "files": {
+        "index": {
+          "file": "red.top.index.png",
+          "sha256": "c4a8d9cb825fe372012dad6121cb99b01a522a5bb3204dfe276a1003c52b2df8"
+        },
+        "indirect": {
+          "file": "red.top.indirect.exr",
+          "sha256": "e0e699f0381cce514ea114174ce8c2bf4a43ffc94a4ad39f5ebf00337e60b47b"
+        },
+        "total": {
+          "file": "red.top.total.exr",
+          "sha256": "78dca0615832019a3065e950a5788cce29c4cdbf677c7d702e3d36907addebe3"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.6000049114227295,
+            0.6000049114227295,
+            0.6000049114227295
+          ],
+          "direct": [
+            0.025927230715751648,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.04166121408343315,
+            0.0,
+            0.0
+          ],
+          "pixels": 4428,
+          "total": [
+            0.04055231809616089,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "state": "red"
+    },
+    "red.west": {
+      "camera": "west",
+      "files": {
+        "index": {
+          "file": "red.west.index.png",
+          "sha256": "ce7fb4a19517cb0f1737bfe668af067b1bb20cea625fefdf492bf5b22dd5ea64"
+        },
+        "indirect": {
+          "file": "red.west.indirect.exr",
+          "sha256": "1e0410325d8c152dbcca5a6528a482cf3b9572d0c886f1b9637698a80c54510e"
+        },
+        "total": {
+          "file": "red.west.total.exr",
+          "sha256": "139fb49b5a6ac1f097f56808ed1970951d5571e739978336fe00f16c3b1ac624"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "LightQuad00": 1,
+        "LightQuad01": 2,
+        "LightQuad02": 3,
+        "ProbeSphereShape": 4,
+        "R_Xn": 5,
+        "R_Xp": 6,
+        "R_Yn": 7,
+        "R_Yp": 8,
+        "R_Zn": 9,
+        "R_Zp": 10
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999786853790283,
+            0.5999786853790283,
+            0.5999786853790283
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.019714662805199623,
+            0.0,
+            0.0
+          ],
+          "pixels": 1976,
+          "total": [
+            0.011828560382127762,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "state": "red"
+    }
+  }
+}

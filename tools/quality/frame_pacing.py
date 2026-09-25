@@ -344,7 +344,8 @@ def run_once(args, scenario, passes, build, output):
                    # Presentation pinned: no vsync wait (a real mat_vsync would cap the
                    # measured intervals) and no MSAA (a recommended configuration can
                    # enable it), so runs stay comparable with earlier baselines.
-                   "+sv_cheats", "1", "+mat_queue_mode", "0", "+mat_vsync", "0", "+mat_antialias", "0",
+                   "+sv_cheats", "1", "+mat_queue_mode", str(args.mat_queue_mode),
+                   "+mat_vsync", "0", "+mat_antialias", "0",
                    "+fps_max", str(args.fps_max),
                    "+host_framerate", str(scenario["host_framerate"]),
                    "+volume", "0", "+map", scenario["map"],
@@ -363,6 +364,7 @@ def run_once(args, scenario, passes, build, output):
             environment["MESA_SHADER_CACHE_DISABLE"] = "true"
             environment["__GL_SHADER_DISK_CACHE"] = "0"
         evidence["cold_shader_cache"] = args.cold_shader_cache
+        evidence["mat_queue_mode"] = args.mat_queue_mode
         if not args.windowed:
             # Real GPU rendering through VK_EXT_headless_surface: no window on
             # anyone's desktop and no compositor pacing in the measurement.
@@ -454,6 +456,9 @@ def main(argv=None):
     parser.add_argument("--fps-max", type=int, default=1000,
                         help="engine frame cap; the default leaves each frame's cost uncapped "
                              "(fps_max 0 stops this engine presenting frames at all)")
+    parser.add_argument("--mat-queue-mode", type=int, choices=(0, 2), default=0,
+                        help="material system threading: 0 renders on the main thread (the "
+                             "baselines), 2 on the material system's render thread")
     parser.add_argument("--timeout", type=float, default=240)
     parser.add_argument("--windowed", action="store_true",
                         help="use the ambient display instead of the SDL offscreen driver")

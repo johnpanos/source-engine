@@ -191,6 +191,8 @@ def main():
                         help="RTRN radiosity transfer baked for --probe-volume (RFC 0011 G4)")
     parser.add_argument("--sdf-volume", type=Path,
                         help="SDFV signed distance volume, beside --radiosity-transfer (G6)")
+    parser.add_argument("--reflection-probes", type=Path,
+                        help="RPRB reflection probes to carry in the BSP2 (R50-PARALLAX)")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     pack_requested = (args.lightmap_ktx2, args.bsp2tool, args.out_bsp2)
@@ -261,6 +263,8 @@ def main():
         else:
             command = [str(args.bsp2tool.resolve()), "pack-world-lit", str(args.bsp),
                        str(args.out), str(args.lightmap_ktx2), str(args.out_bsp2)]
+        if args.reflection_probes:
+            command += ["--reflection-probes", str(args.reflection_probes)]
         subprocess.run(command, check=True, capture_output=True, text=True, timeout=120)
         subprocess.run([sys.executable,
                         str(Path(__file__).with_name("bsp2_reader.py")),
@@ -273,6 +277,8 @@ def main():
                         radiosity_transfer_sha256=sha256(args.radiosity_transfer)
                         if args.radiosity_transfer else None,
                         sdf_volume_sha256=sha256(args.sdf_volume) if args.sdf_volume else None,
+                        reflection_probes_sha256=sha256(args.reflection_probes)
+                        if args.reflection_probes else None,
                         bsp2_path=str(args.out_bsp2))
     receipt_path.write_text(json.dumps(evidence, indent=2,
                                        sort_keys=True) + "\n")

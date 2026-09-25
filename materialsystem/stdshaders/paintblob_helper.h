@@ -21,10 +21,7 @@ class IShaderShadow;
 //-----------------------------------------------------------------------------
 struct PaintBlobVars_t
 {
-	PaintBlobVars_t()
-	{
-		memset( this, 0xFF, sizeof( PaintBlobVars_t ) );
-	}
+	PaintBlobVars_t() { memset( this, 0xFF, sizeof( PaintBlobVars_t ) ); }
 
 	int m_nBackSurface;
 	int m_nBumpStrength;
@@ -64,12 +61,12 @@ struct PaintBlobVars_t
 };
 
 // default shader param values
-static const int   kDefaultBackSurface = 0;
+static const int kDefaultBackSurface = 0;
 static const float kDefaultBumpStrength = 1.0f;
 static const float kDefaultFresnelBumpStrength = 1.0f;
 static const float kDefaultUVScale = 0.02f;
 
-static const int   kDefaultInteriorEnable = 1;
+static const int kDefaultInteriorEnable = 1;
 static const float kDefaultInteriorFogStrength = 0.06f;
 static const float kDefaultInteriorBackgroundBoost = 0.0f;
 static const float kDefaultInteriorAmbientScale = 0.3f;
@@ -86,12 +83,14 @@ static const float kDefaultRimLightScale = 1.0f;
 static const float kDefaultUVProjOffset[3] = { 0.0f, 0.0f, 0.0f };
 static const float kDefaultBB[3] = { 0.0f, 0.0f, 0.0f };
 
-static const int   kDefaultBumpFrame = 0;
-static const int   kDefaultContactShadows = 0;
+static const int kDefaultBumpFrame = 0;
+static const int kDefaultContactShadows = 0;
 
-void InitParamsPaintBlob( CBaseVSShader *pShader, IMaterialVar** params, const char *pMaterialName, PaintBlobVars_t &info );
-void InitPaintBlob( CBaseVSShader *pShader, IMaterialVar** params, PaintBlobVars_t &info );
-void DrawPaintBlob( CBaseVSShader *pShader, IMaterialVar** params, IShaderDynamicAPI *pShaderAPI,
-					 IShaderShadow* pShaderShadow, PaintBlobVars_t &info, VertexCompressionType_t vertexCompression );
+void InitParamsPaintBlob( CBaseVSShader *pShader, IMaterialVar **params, const char *pMaterialName,
+    PaintBlobVars_t &info );
+void InitPaintBlob( CBaseVSShader *pShader, IMaterialVar **params, PaintBlobVars_t &info );
+void DrawPaintBlob( CBaseVSShader *pShader, IMaterialVar **params, IShaderDynamicAPI *pShaderAPI,
+    IShaderShadow *pShaderShadow, PaintBlobVars_t &info,
+    VertexCompressionType_t vertexCompression );
 
 #endif // PAINTBLOB_HELPER_H

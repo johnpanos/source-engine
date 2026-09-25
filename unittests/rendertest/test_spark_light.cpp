@@ -23,7 +23,7 @@ using namespace SparkLight;
 unsigned long g_checks = 0;
 unsigned long g_failures = 0;
 #if defined( SPARK_LIGHT_SEEDED_UNWEIGHTED ) || defined( SPARK_LIGHT_SEEDED_NO_FADE ) ||           \
-    defined( SPARK_LIGHT_SEEDED_BUDGET_LEAK )
+    defined( SPARK_LIGHT_SEEDED_BUDGET_LEAK ) || defined( SPARK_LIGHT_SEEDED_NO_REACH )
 constexpr bool kSeeded = true;
 #else
 constexpr bool kSeeded = false;
@@ -58,6 +58,15 @@ class BurstUnderTest
 public:
 	explicit BurstUnderTest( float fullEmission = 0.0f ) : m_burst( fullEmission ) {}
 	void BeginFrame() { m_burst.BeginFrame(); }
+	void SetReach( const float anchor[3], float reach )
+	{
+#ifndef SPARK_LIGHT_SEEDED_NO_REACH
+		m_burst.SetReach( anchor, reach );
+#else
+		(void)anchor;
+		(void)reach;
+#endif
+	}
 	void Add( const float pos[3], float emission )
 	{
 		static const float kWhite[3] = { 1.0f, 1.0f, 1.0f };
@@ -216,8 +225,8 @@ int main()
 	// slash; nothing else.
 	{
 		const char *sparks[] = { "effects/spark", "particle\\sparks\\sparks.vmt",
-			"particle/particle_spark", "particle/glow_spark_01", "particle/sparks/sparks_ob",
-			"PARTICLE/SPARKS/SPARKS_NONTRAIL" };
+		    "particle/particle_spark", "particle/glow_spark_01", "particle/sparks/sparks_ob",
+		    "PARTICLE/SPARKS/SPARKS_NONTRAIL" };
 		bool all = true;
 		for ( const char *name : sparks )
 			all &= IsSparkMaterial( name );
@@ -259,11 +268,32 @@ int main()
 		burst.BeginFrame();
 		for ( int i = 0; i < 16; ++i )
 			burst.Add( at, 1.0f );
-		Check( burst.Current().m_flScale == 1.0f, "a burst above full emission is at full strength" );
+		Check(
+		    burst.Current().m_flScale == 1.0f, "a burst above full emission is at full strength" );
 		burst.BeginFrame();
 		for ( int i = 0; i < 8; ++i )
 			burst.Add( at, 1.0f );
 		Check( Near( burst.Current().m_flScale, 0.5f ), "and then fades against its own peak" );
+	}
+
+	// Reach: a spark far from the burst's source (flown off, or fallen out of
+	// the world) neither moves nor lights the burst.
+	{
+		BurstUnderTest burst;
+		const float source[3] = { 0, 0, 0 }, near[3] = { 20, 0, 0 }, gone[3] = { 0, 0, -3000 };
+		burst.SetReach( source, 160.0f );
+		burst.BeginFrame();
+		burst.Add( near, 1.0f );
+		burst.BeginFrame();
+		burst.Add( near, 1.0f );
+		burst.Add( gone, 1.0f );
+		const Light_t light = burst.Current();
+		Check( light.m_bLit && Near( light.m_Origin[2], 0.0f ) && Near( light.m_Origin[0], 20.0f ),
+		    "a spark beyond the reach does not move the light" );
+		Check( light.m_flScale == 1.0f, "a spark beyond the reach does not add to its strength" );
+		burst.BeginFrame();
+		burst.Add( gone, 1.0f );
+		Check( !burst.Current().m_bLit, "a burst whose sparks are all beyond its reach is dark" );
 	}
 
 	// A scripted burst of falling sparks: the light fades monotonically,

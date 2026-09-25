@@ -37,6 +37,9 @@ CHART_PAD = 16
 # streak the filter keeps as detail; on testchmb_a_00 (256 samples) the
 # edge texels' residual p99 was 94% with copies and 50% with this fill.
 CHART_FILL_SIGMA = 4.0
+# Mean covered light (E / pi) below which a layer counts as unlit: far below
+# any lit surface (the dimmest GI fixture regions read about 1e-3).
+UNLIT_MEAN = 1e-6
 
 
 def sha256(path):
@@ -252,8 +255,14 @@ def main():
     result = pixels.copy()
     # A layer with no light at all (the indirect layer of a scene where no
     # surface sees another) has no noise to remove, and the denoiser does not
-    # map zero to zero; it passes through unfiltered.
-    unlit = not pixels[covered][:, :3].any()
+    # map zero to zero; it passes through unfiltered. "No light" includes a
+    # handful of isolated fireflies: the open ground of the gallery's
+    # analytic-colored-quadrants baked 2 nonzero indirect texels (1e-3) of
+    # 1,040,400, a covered mean of 2e-9, which the denoiser raised 1000-fold.
+    # The same holds per channel: the blue of a map lit only red and green
+    # (leak-corner-seam) is kept as baked.
+    dark_channels = pixels[covered][:, :3].mean(axis=0) < UNLIT_MEAN
+    unlit = bool(dark_channels.all())
     skip = args.skip_denoise or unlit
     chart_record = None
     if skip:
@@ -264,6 +273,7 @@ def main():
             filtered, chart_record = denoise_charts(filled, covered, denoiser)
         finally:
             denoiser.close()
+    filtered[:, :, dark_channels] = filled[:, :, dark_channels]
     result[:, :, :3] = extend_gutters(filtered, covered, rows, columns)
     if not np.isfinite(result).all():
         raise ValueError("lightmap processing produced non-finite texels")
@@ -286,6 +296,7 @@ def main():
                     "denoiser": None if skip else "OpenImageDenoise RTLightmap (CPU), per chart",
                     "denoise_charts": chart_record,
                     "unlit_layer": unlit,
+                    "unfiltered_dark_channels": [int(c) for c in np.nonzero(dark_channels)[0]],
                     "covered_texels": int(covered.sum()),
                     "filled_gutter_texels": int((~covered).sum()),
                     "coverage_exr_sha256": evidence.get("coverage_exr_sha256"),

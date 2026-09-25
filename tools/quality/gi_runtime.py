@@ -111,8 +111,32 @@ def dark_view(fixture, state, camera):
     return bool(means) and max(means) < UNLIT_LUMINANCE
 
 
+# `--scale auto` puts the brightest reference indirect light (its 99.5th
+# percentile over the baked state's cameras) at or below AUTO_PEAK of the
+# 8-bit capture's range, in powers of two from 1/64 to 16: bright scenes stop
+# clipping at 1.0 and dim ones use more of the range.
+AUTO_PEAK = 0.8
+
+
+def auto_scale(fixture):
+    import imageio.v3 as iio
+    references = fixture["directory"] / "references"
+    record = json.loads((references / "references.json").read_text())
+    peak = 0.0
+    for view in record["views"].values():
+        if view["state"] == fixture["baked_state"]:
+            image = np.asarray(iio.imread(references / view["files"]["indirect"]["file"]))
+            peak = max(peak, float(np.percentile(image[..., :3].max(axis=-1), 99.5)))
+    if peak <= 0:
+        return 1.0
+    return 2.0 ** min(4, max(-6, math.floor(math.log2(AUTO_PEAK / peak))))
+
+
 def capture(args):
     fixture = gi_reference.load_fixture(args.fixture)
+    if args.scale == "auto":
+        args.scale = auto_scale(fixture)
+    args.scale = float(args.scale)
     profile, _ = pbrt_map_toolchain.load_profiles()
     toolchain = pbrt_map_toolchain.load(args.toolchain or
                                         ROOT / profile["layout"]["toolchain_file"])
@@ -137,6 +161,10 @@ def capture(args):
         proof = next((other for other in sorted(fixture["cameras"])
                       if not dark_view(fixture, fixture["baked_state"], other)),
                      None) if dark else camera
+        # A camera that sees one uniform surface (the emissive parallel
+        # plates' centre) shows no scene detail either: the fixture names a
+        # proof camera that does.
+        proof = fixture.get("proof_cameras", {}).get(camera, proof)
         if proof is None:
             raise ValueError("%s: every camera is dark; nothing can prove a rendered frame"
                              % args.fixture)
@@ -300,6 +328,12 @@ def compare(args):
     # A state that should be dark throughout (a closed door) is judged at the
     # light level of the state named by --level-state.
     level = reference_level(fixture, getattr(args, "level_state", None) or args.state, light)
+    if level < UNLIT_LUMINANCE:
+        # No indirect light anywhere (an open plane under a sky, whose
+        # reference is float noise of 1e-9): judge darkness against the
+        # scene's diffuse light instead of against that noise.
+        level = reference_level(fixture, getattr(args, "level_state", None) or args.state,
+                                "diffuse")
     absolute_fraction = getattr(args, "absolute_fraction", None) or ABSOLUTE_FRACTION
     for camera, shot in sorted(capture_record["cameras"].items()):
         if shot["status"] != "pass" or not shot["screenshot"]:
@@ -380,7 +414,9 @@ def capture_oracles(args):
               "reference_level": level, "regions": measured,
               "oracles": results, "summary": gi_oracles.summary(results),
               "failures": failures,
-              "status": "fail" if failures or not results else "pass"}
+              # A fixture whose relations all span several states (sun and
+              # sky, each light alone) has no single-state oracle to apply.
+              "status": "fail" if failures else "pass" if results else "not-applicable"}
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     for result in results:
@@ -443,7 +479,9 @@ def main():
                    help="frames from the start of the console line to the scored screenshot "
                         "(default %d; the camera placement uses %d of them)" % (
                             CAPTURE_WAIT, PLACEMENT_FRAMES))
-    c.add_argument("--scale", type=float, default=1.0)
+    c.add_argument("--scale", default="1",
+                   help="indirect view exposure (mat_indirect_view_scale), or `auto`: the "
+                        "power of two that keeps the reference peak below %g" % AUTO_PEAK)
     m = commands.add_parser("compare")
     m.add_argument("--fixture", required=True)
     m.add_argument("--state", required=True)
@@ -489,7 +527,7 @@ def main():
     if args.command == "compare":
         return 0 if compare(args)["status"] == "pass" else 1
     if args.command == "oracles":
-        return 0 if capture_oracles(args)["status"] == "pass" else 1
+        return 0 if capture_oracles(args)["status"] != "fail" else 1
     return indirect_view(args)
 
 

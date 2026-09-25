@@ -590,6 +590,11 @@ int main()
 	render_vulkan::VulkanContextConfig config;
 	config.appName = "model-pbr-pixels";
 	config.enableValidation = true;
+#ifdef VULKAN_TEST_DESCRIPTOR_SET_LIMIT
+	// As a device that binds only this many descriptor sets (the Vulkan
+	// minimum is four): every PBR and GI variant must still be built.
+	config.descriptorSetLimit = VULKAN_TEST_DESCRIPTOR_SET_LIMIT;
+#endif
 	if ( !host || !context.Init( *host, config, &error ) )
 	{
 		std::fprintf( stderr, "SKIP: native Vulkan context unavailable: %s\n", error.c_str() );

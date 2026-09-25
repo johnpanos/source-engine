@@ -70,7 +70,7 @@ void CBaseSimpleCollision::TraceLine( const Vector &start, const Vector &end, tr
 		float dot2 = m_collisionPlanes[i].DistTo(end);
 
 		//Must be crossing into the plane, including from on it
-		float	t;
+		float t;
 		if ( !ParticlePlaneCrossing::Hits( dot1, dot2, COLLISION_EPSILON, &t ) )
 			continue;
 
@@ -170,7 +170,8 @@ void CBaseSimpleCollision::TestForPlane( const Vector &start, const Vector &dir,
 		{
 			Vector vBack = vStepIncr;
 			VectorNormalize( vBack );
-			UTIL_TraceLine( testStart - vBack, testEnd, MASK_SOLID_BRUSHONLY, NULL, COLLISION_GROUP_NONE, &tr );
+			UTIL_TraceLine(
+			    testStart - vBack, testEnd, MASK_SOLID_BRUSHONLY, NULL, COLLISION_GROUP_NONE, &tr );
 		}
 
 		// Still in solid: there is no plane to take.
@@ -327,7 +328,9 @@ bool CParticleCollision::MoveParticle( Vector &origin, Vector &velocity, float *
 		{
 			#if	__DEBUG_PARTICLE_COLLISION_RETEST
 			//Retest the collision with a true trace line to avoid errant collisions
-			trace_t coarse = *pTrace;
+			// (CGameTrace copies only by assignment.)
+			trace_t coarse;
+			coarse = *pTrace;
 			UTIL_TraceLine( origin, testPosition, MASK_SOLID_BRUSHONLY, NULL, COLLISION_GROUP_NONE, pTrace );
 
 			// A particle on the surface starts the true trace in solid, which
@@ -336,7 +339,7 @@ bool CParticleCollision::MoveParticle( Vector &origin, Vector &velocity, float *
 			{
 				*pTrace = coarse;
 			}
-			#endif	//__DEBUG_RETEST_COLLISION
+#endif //__DEBUG_RETEST_COLLISION
 
 			//Did we hit anything?
 			if ( pTrace->fraction != 1.0f )

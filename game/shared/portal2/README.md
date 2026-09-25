@@ -68,5 +68,44 @@ Quitting `sp_a1_intro3`, which has pre-placed portals, used to hang in
 network changes to a wrong owner address until the `portal_base2d.h` fix, and it
 now exits cleanly on both backends.
 
+### Retail comparison: `sp_a2_triple_laser` (2026-09-25)
+
+`quality/workloads/portal2-triple-laser-v1` holds two scenarios for
+`tools/quality/portal2_scenarios.py`: the puzzle solution with 17 screenshots
+(`sp_a2_triple_laser`, 7 checks) and a walk through a portal pair and back
+(`sp_a2_triple_laser_traverse`, 5 checks; the room's lasers are switched off
+because they shove the player). The retail Linux binary ran the same scripts
+headless through a `mapspawn.nut` hook, since retail ignores `+wait` on the
+command line. It ran at 1024x768, the SDL offscreen driver's largest mode, so
+the frames line up. Both scenarios pass on retail, and on this build with IVP
+and Box3D and with the default queued material system (`mat_queue_mode 2`).
+Fixed on the way:
+
+- Walking through a portal crashed the client, then spun the view back.
+  `C_BaseEntity::Remove` now defers releases while entities simulate, as CS:GO
+  does: a portal's `Simulate` removes ghost renderables the simulate loop has
+  not reached. The client also never called `ProcessPortalTeleportations`, so
+  the local view was never rotated, which retail does in
+  `FRAME_NET_UPDATE_POSTDATAUPDATE_END`.
+- Light-panel glass (`glass/glasswindow_refract01*`: `$localrefract`,
+  `$envmapsaturation`) was dropped on native Vulkan and showed as white slabs.
+  The refract pipeline now has Portal 2's `LOCALREFRACT` and cubemap terms.
+- Elevator video screens showed white (no video provider), then black. Portal
+  2 targets now configure `--video-provider=bink`, the FFmpeg provider. Its
+  decode loop handles `EAGAIN`, draining, looping and `SetTime`. Its texture
+  is the frame's size and BGR, and it reinstalls its regenerator before each
+  upload: the VGUI surface replaces the regenerator of a procedural material's
+  base texture.
+- `dev/bloomadd` (Portal 2's bloom composite) and SpriteCard's `ANIMBLEND` and
+  `ADDSELF` now run on native Vulkan (`kTexturedModeSpriteCard`).
+
+Still different from retail: there are no projected-texture lights or shadows
+(native flashlight passes are unimplemented, video-options P7); SpriteCard
+`DEPTHBLEND`, the `warp2_warp` particle, `PortalStaticOverlay`, `EyeRefract`
+and `dev/motion_blur` are missing; laser beams are wider and redder; one laser
+segment shows as a horizontal line in the view through a portal; the elevator
+video is about 1.35 times brighter. One heap corruption (a `double free` abort)
+was seen once in about 20 runs and not reproduced.
+
 The repository's provenance and distribution warning in the root README also
 applies to this import.

@@ -6,24 +6,24 @@
       0.2
     ],
     "diffuse_light_direct": [
-      0.2,
-      0.3,
-      0.4
+      0.16,
+      0.24,
+      0.32
     ],
     "diffuse_light_indirect": [
-      0.8000000000000003,
-      0.3,
-      0.09999999999999998
+      0.6400000000000001,
+      0.24,
+      0.07999999999999996
     ],
     "diffuse_light_total": [
-      1.0000000000000002,
-      0.6,
-      0.5
+      0.8000000000000002,
+      0.48,
+      0.39999999999999997
     ],
     "emission": [
-      0.2,
-      0.3,
-      0.4
+      0.16,
+      0.24,
+      0.32
     ]
   },
   "baked_state": "default",
@@ -66,19 +66,19 @@
       "camera": "inside",
       "expected": {
         "direct": [
-          0.2,
-          0.3,
-          0.4
+          0.16,
+          0.24,
+          0.32
         ],
         "indirect": [
-          0.8,
-          0.3,
-          0.1
+          0.64,
+          0.24,
+          0.08
         ],
         "total": [
-          1.0,
-          0.6,
-          0.5
+          0.8,
+          0.48,
+          0.4
         ]
       },
       "kind": "value",
@@ -99,7 +99,7 @@
     "model": "models/props/sphere.mdl",
     "radius_m": 0.51435
   },
-  "purpose": "Colored furnace: albedo (0.8, 0.5, 0.2) and emission (0.2, 0.3, 0.4) give L = (1.0, 0.6, 0.5); channels must bounce independently",
+  "purpose": "Colored furnace: albedo (0.8, 0.5, 0.2) and emission (0.16, 0.24, 0.32) give L = (0.8, 0.48, 0.4); channels must bounce independently",
   "regions": {
     "inside": {
       "model": [
@@ -120,7 +120,7 @@
   "states": {
     "default": {
       "layer": null,
-      "note": "uniform emission [0.2, 0.3, 0.4], albedo [0.8, 0.5, 0.2]"
+      "note": "uniform emission [0.16, 0.24, 0.32], albedo [0.8, 0.5, 0.2]"
     }
   }
 }

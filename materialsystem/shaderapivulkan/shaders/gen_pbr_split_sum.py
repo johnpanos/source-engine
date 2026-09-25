@@ -2,8 +2,16 @@
 """Generate the deterministic GGX split-sum table for CPU and GPU upload.
 
 The table stores A and B such that directional specular albedo for Schlick F0
-is F0*A+B. Importance samples use the same GGX alpha=roughness^2 and correlated
-Smith visibility as render/pbr_brdf.h. No texture encoding is applied.
+is F0*A+B; A+B is the albedo for F0 = 1, from which the BRDF's
+multiple-scattering energy compensation follows. Importance samples use the
+same GGX alpha=roughness^2 and correlated Smith visibility as render/pbr_brdf.h.
+No texture encoding is applied.
+
+Both axes include their end points: texel i holds N.V (and roughness) i/(SIZE-1),
+so a lookup of c reads texel coordinate c*(SIZE-1) (texture coordinate
+(c*(SIZE-1)+0.5)/SIZE). Roughness one is a real row, not an extrapolation of
+roughness (SIZE-0.5)/SIZE, whose albedo is visibly higher. N.V below 1/(2 SIZE)
+and roughness below 0.02 are evaluated at those minima.
 """
 
 import argparse
@@ -55,7 +63,7 @@ def integrate(normal_dot_view, roughness):
 
 
 def values():
-    return [integrate((x + 0.5) / SIZE, max(0.02, (y + 0.5) / SIZE))
+    return [integrate(max(0.5 / SIZE, x / (SIZE - 1)), max(0.02, y / (SIZE - 1)))
             for y in range(SIZE) for x in range(SIZE)]
 
 

@@ -4,7 +4,14 @@
       "Maze"
     ]
   },
+  "lightmap": {
+    "layout": "planar",
+    "samples": 512
+  },
   "map": "gi_furnace_maze",
+  "probe_volume": {
+    "samples": 1024
+  },
   "quality": "gi-fixture",
   "scene": "quality/fixtures/gi/furnace-maze/furnace-maze.usda",
   "schema": "pbrt-map-manifest/v1"

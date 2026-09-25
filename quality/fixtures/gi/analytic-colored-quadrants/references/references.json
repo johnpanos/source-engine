@@ -1,0 +1,440 @@
+{
+  "analytic": [],
+  "fixture": "analytic-colored-quadrants",
+  "fixture_reference_digest": "a57841d7b9c89fcf7d6c140203b23851a766d1e393644df847ed920e965b3400",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 36,
+    "controls_unrejected": [],
+    "failed": 0,
+    "oracles": 5
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "default": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "8747f57a2c097842cf150f783b6c1a2e6453f5622b7402fd8c9af84a1390e8ee",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/analytic-colored-quadrants/analytic-colored-quadrants.usda": "1fa881fcfda007820ea505e6bc4545fcdd3a68113bc7b7dfeced369ae56f7ccc"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "default.above": {
+      "camera": "above",
+      "files": {
+        "index": {
+          "file": "default.above.index.png",
+          "sha256": "3cc31aff66886eea42994ba1b781183727f3c63276bc45e029e97f06a1814c28"
+        },
+        "indirect": {
+          "file": "default.above.indirect.exr",
+          "sha256": "3cd73a070fca884bc60777ba7d581e3a2d521121679cd320bc26d207f5c269bb"
+        },
+        "total": {
+          "file": "default.above.total.exr",
+          "sha256": "59a3246561f004c1f798a4bd404e2def8d0c7f9b655d77f8dd9a7a7e254e9acf"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "GroundNE": 1,
+        "GroundNW": 2,
+        "GroundSE": 3,
+        "GroundSW": 4,
+        "ProbeAShape": 5,
+        "ProbeBShape": 6,
+        "ProbeCShape": 7,
+        "ProbeDShape": 8
+      },
+      "regions": {
+        "GroundNE": {
+          "albedo": [
+            0.7999160289764404,
+            0.3000296354293823,
+            0.1999790221452713
+          ],
+          "direct": [
+            0.7997931838035583,
+            0.799814760684967,
+            0.7997931838035583
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "pixels": 10694,
+          "total": [
+            0.6398388147354126,
+            0.23995037376880646,
+            0.15995970368385315
+          ]
+        },
+        "GroundNW": {
+          "albedo": [
+            0.1999790072441101,
+            0.7000684142112732,
+            0.3000296354293823
+          ],
+          "direct": [
+            0.7997931838035583,
+            0.7998098731040955,
+            0.7998153567314148
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "pixels": 10694,
+          "total": [
+            0.1599598377943039,
+            0.559872031211853,
+            0.23995071649551392
+          ]
+        },
+        "GroundSE": {
+          "albedo": [
+            0.7999165058135986,
+            0.7999165058135986,
+            0.19997912645339966
+          ],
+          "direct": [
+            0.7997931241989136,
+            0.7997931241989136,
+            0.7997931241989136
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            3.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "pixels": 10645,
+          "total": [
+            0.639837920665741,
+            0.639837920665741,
+            0.15995948016643524
+          ]
+        },
+        "GroundSW": {
+          "albedo": [
+            0.19997912645339966,
+            0.30002954602241516,
+            0.7999165058135986
+          ],
+          "direct": [
+            0.7997926473617554,
+            0.7998151183128357,
+            0.7997926473617554
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "pixels": 10645,
+          "total": [
+            0.1599595993757248,
+            0.2399502992630005,
+            0.6398383975028992
+          ]
+        },
+        "ProbeA": {
+          "albedo": [
+            0.5999898910522461,
+            0.5999898910522461,
+            0.5999898910522461
+          ],
+          "direct": [
+            0.6999661326408386,
+            0.6999661326408386,
+            0.6999661326408386
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.05172564089298248,
+            0.05493474751710892,
+            0.03502009063959122
+          ],
+          "pixels": 414,
+          "total": [
+            0.45100557804107666,
+            0.45293086767196655,
+            0.44098249077796936
+          ]
+        },
+        "ProbeB": {
+          "albedo": [
+            0.5999898910522461,
+            0.5999898910522461,
+            0.5999898910522461
+          ],
+          "direct": [
+            0.6999738216400146,
+            0.6999738216400146,
+            0.6999738216400146
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.04805992543697357,
+            0.049724478274583817,
+            0.039976172149181366
+          ],
+          "pixels": 414,
+          "total": [
+            0.4488108456134796,
+            0.44980961084365845,
+            0.4439607262611389
+          ]
+        },
+        "ProbeC": {
+          "albedo": [
+            0.5999892354011536,
+            0.5999892354011536,
+            0.5999892354011536
+          ],
+          "direct": [
+            0.7081907987594604,
+            0.7081907987594604,
+            0.7081907987594604
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.046332646161317825,
+            0.05073593929409981,
+            0.03319287672638893
+          ],
+          "pixels": 447,
+          "total": [
+            0.45270487666130066,
+            0.45534664392471313,
+            0.44482120871543884
+          ]
+        },
+        "ProbeD": {
+          "albedo": [
+            0.5999894738197327,
+            0.5999894738197327,
+            0.5999888181686401
+          ],
+          "direct": [
+            0.7083715796470642,
+            0.7083715796470642,
+            0.7083714008331299
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.04504121467471123,
+            0.04550916701555252,
+            0.036693502217531204
+          ],
+          "pixels": 447,
+          "total": [
+            0.45203840732574463,
+            0.45231908559799194,
+            0.4470294117927551
+          ]
+        }
+      },
+      "state": "default"
+    }
+  }
+}

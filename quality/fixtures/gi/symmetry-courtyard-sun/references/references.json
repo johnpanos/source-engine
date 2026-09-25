@@ -1,0 +1,582 @@
+{
+  "analytic": [],
+  "fixture": "symmetry-courtyard-sun",
+  "fixture_reference_digest": "ec25d56a2eccbbc47a0de6ebbb2e3941a664fd92b95cab541480aeb73ddcc293",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 45,
+    "controls_unrejected": [],
+    "failed": 0,
+    "oracles": 5
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "az150": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "42377723f18c78ffac903383251ccdebf93b21dc16db899c1ecf5ce2288c37cb",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/symmetry-courtyard-sun/states/az150.usda": "b86e4919cf344fb2d14533f3d4150aa5af683529e26069cea1e6c56a8a7dbaf5",
+        "quality/fixtures/gi/symmetry-courtyard-sun/symmetry-courtyard-sun.usda": "f15e98264e58017aeec058da36dc9ce1ae08ebfba89ff360057fa2066b6e85ac"
+      }
+    },
+    "az30": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "a2ac2c4022e4fe04e809776785dbe319391920013d0d0ddf555f0c1caabbc9dd",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/symmetry-courtyard-sun/symmetry-courtyard-sun.usda": "f15e98264e58017aeec058da36dc9ce1ae08ebfba89ff360057fa2066b6e85ac"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "az150.centre": {
+      "camera": "centre",
+      "files": {
+        "index": {
+          "file": "az150.centre.index.png",
+          "sha256": "8612213f29ce5bbbfbd7b85d6a50b82c3b6135305d502fe2f2d404a24eb14bb6"
+        },
+        "indirect": {
+          "file": "az150.centre.indirect.exr",
+          "sha256": "d087fcff9f27adc27b45b528a52425af5c18a607fe33e3543366008d564a712c"
+        },
+        "total": {
+          "file": "az150.centre.total.exr",
+          "sha256": "50569d8676ea2efe4b973cea15ebed2ba1ad12d1dd17c14afd4d08f712c179fc"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "ProbeSphereShape": 1,
+        "Y_Xn": 2,
+        "Y_Xp": 3,
+        "Y_Yn": 4,
+        "Y_Yp": 5,
+        "Y_Zn": 6
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999898910522461,
+            0.5999898910522461,
+            0.5999898910522461
+          ],
+          "direct": [
+            0.1524410843849182,
+            0.15699143707752228,
+            0.18144603073596954
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.21675549447536469,
+            0.20006610453128815,
+            0.19348463416099548
+          ],
+          "pixels": 404,
+          "total": [
+            0.22151325643062592,
+            0.21423013508319855,
+            0.22495384514331818
+          ]
+        },
+        "Y_Xn": {
+          "albedo": [
+            0.6000239849090576,
+            0.6000239849090576,
+            0.6000239849090576
+          ],
+          "direct": [
+            0.04844430834054947,
+            0.07264798134565353,
+            0.12105534970760345
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.1453375220298767,
+            0.14235302805900574,
+            0.15259233117103577
+          ],
+          "pixels": 5573,
+          "total": [
+            0.11626659333705902,
+            0.12899786233901978,
+            0.16418558359146118
+          ]
+        },
+        "Y_Xp": {
+          "albedo": [
+            0.6000239849090576,
+            0.6000239849090576,
+            0.6000239849090576
+          ],
+          "direct": [
+            0.5962035655975342,
+            0.5108514428138733,
+            0.42231470346450806
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            3.0
+          ],
+          "indirect": [
+            0.1682857722043991,
+            0.16072240471839905,
+            0.16524457931518555
+          ],
+          "pixels": 5573,
+          "total": [
+            0.45868366956710815,
+            0.4029372036457062,
+            0.35252851247787476
+          ]
+        },
+        "Y_Yp": {
+          "albedo": [
+            0.6000498533248901,
+            0.6000498533248901,
+            0.6000498533248901
+          ],
+          "direct": [
+            0.049889545887708664,
+            0.07481535524129868,
+            0.12466634809970856
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.16351285576820374,
+            0.1562594771385193,
+            0.16082298755645752
+          ],
+          "pixels": 8590,
+          "total": [
+            0.12803871929645538,
+            0.13864196836948395,
+            0.17129050195217133
+          ]
+        },
+        "Y_Zn": {
+          "albedo": [
+            0.599907398223877,
+            0.599907398223877,
+            0.599907398223877
+          ],
+          "direct": [
+            0.3457842469215393,
+            0.3296922445297241,
+            0.338005006313324
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.1490260809659958,
+            0.1380508691072464,
+            0.13441692292690277
+          ],
+          "pixels": 20986,
+          "total": [
+            0.29688122868537903,
+            0.28064119815826416,
+            0.2834455072879791
+          ]
+        }
+      },
+      "state": "az150"
+    },
+    "az30.centre": {
+      "camera": "centre",
+      "files": {
+        "index": {
+          "file": "az30.centre.index.png",
+          "sha256": "8612213f29ce5bbbfbd7b85d6a50b82c3b6135305d502fe2f2d404a24eb14bb6"
+        },
+        "indirect": {
+          "file": "az30.centre.indirect.exr",
+          "sha256": "d73bed4affe8766c2ccaa5d5c04d419a492bbbde697b809b7eb1a7e7df5b8d2a"
+        },
+        "total": {
+          "file": "az30.centre.total.exr",
+          "sha256": "1a9d6998d9b42672b309319ef293a8d56e5295d65ac185068c6cc17a900e147d"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "ProbeSphereShape": 1,
+        "Y_Xn": 2,
+        "Y_Xp": 3,
+        "Y_Yn": 4,
+        "Y_Yp": 5,
+        "Y_Zn": 6
+      },
+      "regions": {
+        "ProbeSphere": {
+          "albedo": [
+            0.5999898910522461,
+            0.5999898910522461,
+            0.5999898910522461
+          ],
+          "direct": [
+            0.15241281688213348,
+            0.15696971118450165,
+            0.18143288791179657
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.21642741560935974,
+            0.19980619847774506,
+            0.19331088662147522
+          ],
+          "pixels": 404,
+          "total": [
+            0.2212996482849121,
+            0.21406124532222748,
+            0.22484171390533447
+          ]
+        },
+        "Y_Xn": {
+          "albedo": [
+            0.6000239849090576,
+            0.6000239849090576,
+            0.6000239849090576
+          ],
+          "direct": [
+            0.596203088760376,
+            0.510853111743927,
+            0.42232152819633484
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.16829617321491241,
+            0.16072100400924683,
+            0.16522181034088135
+          ],
+          "pixels": 5573,
+          "total": [
+            0.45868927240371704,
+            0.4029358923435211,
+            0.35251882672309875
+          ]
+        },
+        "Y_Xp": {
+          "albedo": [
+            0.6000239849090576,
+            0.6000239849090576,
+            0.6000239849090576
+          ],
+          "direct": [
+            0.04844062402844429,
+            0.07264257222414017,
+            0.12104634940624237
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            3.0
+          ],
+          "indirect": [
+            0.14535099267959595,
+            0.14237408339977264,
+            0.15262876451015472
+          ],
+          "pixels": 5573,
+          "total": [
+            0.11627256125211716,
+            0.12900738418102264,
+            0.1642017513513565
+          ]
+        },
+        "Y_Yp": {
+          "albedo": [
+            0.6000498533248901,
+            0.6000498533248901,
+            0.6000498533248901
+          ],
+          "direct": [
+            0.049889545887708664,
+            0.07481535524129868,
+            0.12466634809970856
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.1635226011276245,
+            0.15626651048660278,
+            0.1608268767595291
+          ],
+          "pixels": 8590,
+          "total": [
+            0.12804415822029114,
+            0.1386459618806839,
+            0.17129231989383698
+          ]
+        },
+        "Y_Zn": {
+          "albedo": [
+            0.599907398223877,
+            0.599907398223877,
+            0.599907398223877
+          ],
+          "direct": [
+            0.3457930386066437,
+            0.3297010660171509,
+            0.3380088210105896
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            6.0
+          ],
+          "indirect": [
+            0.1489696502685547,
+            0.13800744712352753,
+            0.1343916356563568
+          ],
+          "pixels": 20986,
+          "total": [
+            0.2968522012233734,
+            0.28061968088150024,
+            0.2834334969520569
+          ]
+        }
+      },
+      "state": "az30"
+    }
+  }
+}

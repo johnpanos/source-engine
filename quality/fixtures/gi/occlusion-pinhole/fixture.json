@@ -1,0 +1,189 @@
+{
+  "baked_state": "both",
+  "cameras": {
+    "inside": {
+      "eye": [
+        2.0,
+        0.6,
+        1.5
+      ],
+      "forward": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "occlusion",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "occlusion-pinhole",
+  "oracles": [
+    {
+      "camera": "inside",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "both = red + blue (inside)",
+      "parts": [
+        "red",
+        "blue"
+      ],
+      "regions": [
+        "BackUL",
+        "BackUR",
+        "BackLL",
+        "BackLR",
+        "R_Zn",
+        "R_Zp"
+      ],
+      "sum": "both"
+    },
+    {
+      "camera": "inside",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "red: direct light only in the lower right quadrant",
+      "regions": [
+        "BackUL",
+        "BackUR",
+        "BackLL"
+      ],
+      "state": "red"
+    },
+    {
+      "camera": "inside",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "blue: direct light only in the upper left quadrant",
+      "regions": [
+        "BackUR",
+        "BackLL",
+        "BackLR"
+      ],
+      "state": "blue"
+    },
+    {
+      "camera": "inside",
+      "channel": 0,
+      "factor": 3.0,
+      "kind": "dominant",
+      "lights": [
+        "total"
+      ],
+      "name": "both/BackLR R dominant (inside)",
+      "over": [
+        2
+      ],
+      "region": "BackLR",
+      "state": "both"
+    },
+    {
+      "camera": "inside",
+      "channel": 2,
+      "factor": 3.0,
+      "kind": "dominant",
+      "lights": [
+        "total"
+      ],
+      "name": "both/BackUL B dominant (inside)",
+      "over": [
+        0
+      ],
+      "region": "BackUL",
+      "state": "both"
+    },
+    {
+      "camera": "inside",
+      "channels": [
+        1
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "both: G dark (inside)",
+      "regions": [
+        "BackUL",
+        "BackUR",
+        "BackLL",
+        "BackLR",
+        "R_Zn",
+        "R_Zp"
+      ],
+      "state": "both"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A camera obscura: a red lamp up and to the left and a blue lamp down and to the right shine through a 20 cm pinhole, and each lands inverted in the opposite quadrant of the back wall",
+  "regions": {
+    "inside": {
+      "BackLL": [
+        "BackLL"
+      ],
+      "BackLR": [
+        "BackLR"
+      ],
+      "BackUL": [
+        "BackUL"
+      ],
+      "BackUR": [
+        "BackUR"
+      ],
+      "R_Zn": [
+        "R_Zn"
+      ],
+      "R_Zp": [
+        "R_Zp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "occlusion-pinhole.usda",
+  "states": {
+    "blue": {
+      "layer": "states/blue.usda",
+      "note": "blue lamp alone"
+    },
+    "both": {
+      "layer": null,
+      "note": "both lamps outside the pinhole"
+    },
+    "red": {
+      "layer": "states/red.usda",
+      "note": "red lamp alone"
+    }
+  }
+}

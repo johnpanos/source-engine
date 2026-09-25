@@ -1,0 +1,108 @@
+{
+  "fixture": "mirror-room",
+  "fixture_reference_digest": "db28e4af85dd15bd466a7bde62a075641c4d170ed3edd80d3f86ba286338f290",
+  "object_index": {
+    "Floor": 1,
+    "LightQuad00": 2,
+    "Room_Ceiling_00": 3,
+    "Room_Ceiling_01": 4,
+    "Room_Ceiling_02": 5,
+    "Room_Ceiling_03": 6,
+    "Room_Ceiling_04": 7,
+    "Room_Ceiling_05": 8,
+    "Room_Ceiling_06": 9,
+    "Room_Ceiling_07": 10,
+    "Room_Ceiling_08": 11,
+    "Room_Ceiling_09": 12,
+    "Room_Ceiling_10": 13,
+    "Room_Ceiling_11": 14,
+    "Room_Xn_00": 15,
+    "Room_Xn_01": 16,
+    "Room_Xn_02": 17,
+    "Room_Xn_03": 18,
+    "Room_Xn_04": 19,
+    "Room_Xn_05": 20,
+    "Room_Xn_06": 21,
+    "Room_Xn_07": 22,
+    "Room_Xp_00": 23,
+    "Room_Xp_01": 24,
+    "Room_Xp_02": 25,
+    "Room_Xp_03": 26,
+    "Room_Xp_04": 27,
+    "Room_Xp_05": 28,
+    "Room_Xp_06": 29,
+    "Room_Xp_07": 30,
+    "Room_Yn_00": 31,
+    "Room_Yn_01": 32,
+    "Room_Yn_02": 33,
+    "Room_Yn_03": 34,
+    "Room_Yn_04": 35,
+    "Room_Yn_05": 36,
+    "Room_Yn_06": 37,
+    "Room_Yn_07": 38,
+    "Room_Yn_08": 39,
+    "Room_Yn_09": 40,
+    "Room_Yn_10": 41,
+    "Room_Yn_11": 42,
+    "Room_Yp_00": 43,
+    "Room_Yp_01": 44,
+    "Room_Yp_02": 45,
+    "Room_Yp_03": 46,
+    "Room_Yp_04": 47,
+    "Room_Yp_05": 48,
+    "Room_Yp_06": 49,
+    "Room_Yp_07": 50,
+    "Room_Yp_08": 51,
+    "Room_Yp_09": 52,
+    "Room_Yp_10": 53,
+    "Room_Yp_11": 54
+  },
+  "render": {
+    "blender": "5.2.2 LTS",
+    "cycles_device": "CPU",
+    "light_paths": {
+      "diffuse_bounces": 64,
+      "glossy_bounces": 16,
+      "max_bounces": 64,
+      "policy": "gi-reference",
+      "sample_clamp_direct": 0.0,
+      "sample_clamp_indirect": 0.0,
+      "transmission_bounces": 16
+    },
+    "samples": 512,
+    "seed": 0
+  },
+  "schema": "reflection-references/v1",
+  "views": {
+    "corner": {
+      "combined": {
+        "file": "corner.exr",
+        "sha256": "f06ee9a8381fe4e408a05c16e9cf60b8e07ed385a11580ea2e61483e089fec05"
+      },
+      "index": {
+        "file": "corner.index.png",
+        "sha256": "09d54d1c8b24adf2489fa416f46138dfdd7538e48046c48d281edb634820f40d"
+      }
+    },
+    "far-corner": {
+      "combined": {
+        "file": "far-corner.exr",
+        "sha256": "5ed06b36b0802732fbabb76748cc5c29cd9941b742967c47187be2e596652b68"
+      },
+      "index": {
+        "file": "far-corner.index.png",
+        "sha256": "400c03c785e8fb75972987710aea4edbc52047ac7b610294941bd8f313828c2f"
+      }
+    },
+    "side": {
+      "combined": {
+        "file": "side.exr",
+        "sha256": "520489e26c6808444027d14ab3e200f2d0748c1874f9804aac9a464662e95fba"
+      },
+      "index": {
+        "file": "side.index.png",
+        "sha256": "ea4938c240fedc24c800eb03bff31e57b146fd5b9cd908c8a84de7391dacdd92"
+      }
+    }
+  }
+}

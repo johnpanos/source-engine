@@ -9,6 +9,7 @@
 
 #include "tier1/delegates.h"
 #include "render/legacy_shader_provider.h"
+#include "render_capability_queue.h"
 #include "render/builtin_shader_provider.h"
 
 #include "materialsystem_global.h"
@@ -648,6 +649,11 @@ private:
 	render::LegacyShaderProvider m_SelectedShaderProvider;
 	bool m_bShaderProviderSelected;
 	render::LegacyShaderServices m_ShaderServices;
+	// The provider's optional world mesh and light set capabilities, as handed
+	// out: frame-ordered on the render call queue (render_capability_queue.h).
+	std::unique_ptr<CQueuedWorldMeshUpload> m_pQueuedWorldMeshUpload;
+	std::unique_ptr<CQueuedLightSetConsumer> m_pQueuedLightSetConsumer;
+	RenderCapabilityQueueHost RenderCapabilityHost();
 	// The composition root's feature request (kept across Disconnect like the
 	// provider) and the profile Init selected from it; valid until Shutdown.
 	render::RenderProfileRequest m_RenderProfileRequest;

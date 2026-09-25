@@ -1375,6 +1375,23 @@
       "expect": "pass"
     },
     {
+      "id": "render.spark-light.no-reach",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.spark-light.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: a burst whose light follows sparks beyond its reach (fallen out of the world) must be rejected",
+      "extra_flags": [
+        "-DSPARK_LIGHT_SEEDED_NO_REACH"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_spark_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.direct-light-selection",
       "domain": "Q-PRESENTATION",
       "rfc": "0011",
@@ -1621,6 +1638,23 @@
       "profile": "linux-headless-core",
       "extra_flags": [
         "-DPBR_SEEDED_BAD_SPLIT_SUM"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_pbr_brdf.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.pbr-brdf.no-energy-compensation",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0007",
+      "migration": "PBR-BRDF-001",
+      "contract": "unittests/rendertest/contracts/render.pbr-brdf.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DPBR_SEEDED_NO_ENERGY_COMPENSATION"
       ],
       "result_protocol": "checks-v1",
       "sources": [
@@ -2723,6 +2757,34 @@
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
+        "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
+        "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.world-pbr.native-pixels.four-sets",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0008",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "extra_flags": [
+        "-DVULKAN_TEST_DESCRIPTOR_SET_LIMIT=4"
+      ],
+      "result_protocol": "checks-v1",
+      "description": "The same suite on a device limited to four descriptor sets, the Vulkan minimum (VulkanContextConfig::descriptorSetLimit): the PBR and GI stages bind grouped frame, material and constants sets (vulkan_descriptor_groups.h), so every variant is built and draws the same pixels; the legacy seven- and nine-set stages are declined. Base: Scene-derived WMSH PBR (world_pbr.frag) on a real device: packed tangents, material masks, the LMAP atlas, directional and probe paths, with seeded controls",
+      "sources": [
+        "unittests/shaderapivulkantest/test_world_pbr_pixels.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
+        "mapcontainer/world_lightmap.cpp",
+        "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
+        "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
@@ -2744,6 +2806,34 @@
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
+        "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
+        "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
+        "mapcontainer/probe_volume.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.model-pbr.native-pixels.four-sets",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0007",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "extra_flags": [
+        "-DVULKAN_TEST_DESCRIPTOR_SET_LIMIT=4"
+      ],
+      "result_protocol": "checks-v1",
+      "description": "The same suite on a device limited to four descriptor sets, the Vulkan minimum (VulkanContextConfig::descriptorSetLimit): the PBR and GI stages bind grouped frame, material and constants sets (vulkan_descriptor_groups.h), so every variant is built and draws the same pixels; the legacy seven- and nine-set stages are declined. Base: PBRMetalRough on dynamic meshes (model_pbr.frag) against the CPU model built on pbr_brdf.h, with seeded-defect controls; RFC 0011 per-pixel probe-volume sampling against the C++ reference sampler (quality/fixtures/gi/prbv/gpu.prbv)",
+      "sources": [
+        "unittests/shaderapivulkantest/test_model_pbr_pixels.cpp",
+        "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
+        "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
@@ -2801,6 +2891,37 @@
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
+        "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
+        "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
+        "mapcontainer/probe_volume.cpp",
+        "mapcontainer/radiosity_transfer.cpp",
+        "mapcontainer/sdf_volume.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.indirect-switching.native-pixels.four-sets",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.indirect-light.v1.md",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "extra_flags": [
+        "-DVULKAN_TEST_DESCRIPTOR_SET_LIMIT=4"
+      ],
+      "result_protocol": "checks-v1",
+      "description": "The same suite on a device limited to four descriptor sets, the Vulkan minimum (VulkanContextConfig::descriptorSetLimit): the PBR and GI stages bind grouped frame, material and constants sets (vulkan_descriptor_groups.h), so every variant is built and draws the same pixels; the legacy seven- and nine-set stages are declined. Base: RFC 0011 render.indirect-switching on native Vulkan: Baked <-> scripted fake with real frames and completion serials, a failed Begin, a simulated device loss mid-fade; no black frame, fade residency within budget, validation-clean when the layer is present",
+      "sources": [
+        "unittests/shaderapivulkantest/test_indirect_switching.cpp",
+        "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
+        "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
@@ -2826,10 +2947,58 @@
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
         "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.pbr-brdf.glsl",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0007",
+      "migration": "PBR-BRDF-001",
+      "contract": "unittests/rendertest/contracts/render.pbr-brdf.v1.md",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "result_protocol": "checks-v1",
+      "description": "shaders/pbr_brdf.glsl, the BRDF every native PBR stage includes, evaluated in a compute program on a headless device and compared with public/render/pbr_brdf.h on 1,080 cases (GGX, Smith, Schlick, the single-scatter lobe, multiple-scattering compensation and directional albedo, clear coat); seeded C++ models without compensation, with alpha = roughness, or with an unweighted coat are rejected by the same comparator; validation-clean with the layer",
+      "sources": [
+        "unittests/shaderapivulkantest/test_pbr_brdf_glsl.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.reflection-probes.glsl",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0007",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "result_protocol": "checks-v1",
+      "description": "R50-PARALLAX: shaders/reflection_probes.glsl, the RPRB blend every native PBR stage includes, evaluated in a compute program on a headless device over the RPRB fixture's GPU texture and compared with mapcontainer::ReflectionProbesView on 448 cases in each of four modes (blended and parallax-corrected, nearest capture, direction-only, weight view); every other mode's reference is rejected by the same comparator; a texture without the marker carries no probes; R50-RELIGHT: over the RPRB v2 relight fixture the shader relit by the fixture's analytic change matches the relit reference in three modes, the unrelit reference is rejected, and the relight switch off matches it; validation-clean with the layer",
+      "sources": [
+        "unittests/shaderapivulkantest/test_reflection_probes_glsl.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
+        "mapcontainer/reflection_probes.cpp",
+        "mapcontainer/probe_volume.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.grouped-descriptors",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "result_protocol": "checks-v1",
+      "description": "The PBR and GI stages' descriptor sets grouped by update frequency (vulkan_descriptor_groups.h) on a headless device: equal requests in a frame slot share a set, another view, sampler or group gets its own, slots are independent and recycle only at their BeginFrame, a frame beyond one pool grows the slot's pools, Invalidate forgets the reuse table; the seeded view-only reuse key is caught; validation-clean with the layer",
+      "sources": [
+        "unittests/shaderapivulkantest/test_descriptor_groups.cpp",
+        "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp"
       ],
       "expect": "pass"
     },
@@ -2847,6 +3016,32 @@
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
+        "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
+        "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.world-glass.native-pixels.four-sets",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0007",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "extra_flags": [
+        "-DVULKAN_TEST_DESCRIPTOR_SET_LIMIT=4"
+      ],
+      "result_protocol": "checks-v1",
+      "description": "The same suite on a device limited to four descriptor sets, the Vulkan minimum (VulkanContextConfig::descriptorSetLimit): the PBR and GI stages bind grouped frame, material and constants sets (vulkan_descriptor_groups.h), so every variant is built and draws the same pixels; the legacy seven- and nine-set stages are declined. Base: Transmissive WMSH batches over an opaque scene with readable depth and negative controls",
+      "sources": [
+        "unittests/shaderapivulkantest/test_world_glass_pixels.cpp",
+        "materialsystem/shaderapivulkan/vulkan_device.cpp",
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
+        "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
+        "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
@@ -2867,6 +3062,7 @@
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+        "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
@@ -2913,6 +3109,22 @@
       "sources": [
         "mapcontainer/probe_volume.cpp",
         "unittests/mapcontainertest/test_probe_volume.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "world.reflection-probes",
+      "domain": "Q-CONTENT",
+      "rfc": "0007",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "R50-PARALLAX RPRB reader: the shared fixture validates and its GPU texture is byte-identical to the Python writer's; every edit of the shared malformation corpus fails with the independent Python reader's error; the C++ reference blend reproduces the Python oracle's parallax-corrected samples; blending is continuous across an influence boundary while the nearest-capture control jumps; mutation fuzzing never crashes; R50-RELIGHT: the RPRB v2 relight fixture validates, its GPU texture matches the Python writer's, its malformation corpus fails with the Python reader's errors, the relit reference reproduces the Python oracle's relit samples and a zero change reproduces the baked radiance exactly",
+      "result_protocol": "checks-v1",
+      "min_checks": 50,
+      "sources": [
+        "mapcontainer/probe_volume.cpp",
+        "mapcontainer/reflection_probes.cpp",
+        "unittests/mapcontainertest/test_reflection_probes.cpp"
       ],
       "expect": "pass"
     },

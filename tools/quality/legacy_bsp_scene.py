@@ -121,6 +121,24 @@ def parse_keyvalues(text):
     return root, block()
 
 
+class GameDirectory:
+    """The compile's game directory (vrad's `-game`) ahead of the installed
+    content, so a map's own loose materials resolve as they did for vrad.
+    Lookups ignore case, like the Source filesystem's."""
+
+    def __init__(self, path, resolver):
+        self.path = Path(path)
+        self.resolver = resolver
+        self.files = {str(f.relative_to(self.path)).replace("\\", "/").lower(): f
+                      for f in sorted((self.path / "materials").rglob("*")) if f.is_file()}
+
+    def read(self, relative):
+        found = self.files.get(relative.replace("\\", "/").lower())
+        if found is not None:
+            return found.read_bytes(), "game:" + relative.lower()
+        return self.resolver.read(relative)
+
+
 class Materials:
     """VMT lookup through the map's pak lump, then the game content."""
 
@@ -886,12 +904,16 @@ def main():
     parser.add_argument("--bsp", type=Path, required=True)
     parser.add_argument("--runtime", type=Path, required=True,
                         help="installed game runtime (portal/ and hl2/ content)")
+    parser.add_argument("--game-dir", type=Path,
+                        help="the compile's game directory (vrad -game), searched first")
     parser.add_argument("--map-name", required=True)
     parser.add_argument("--out", type=Path, required=True,
                         help="output directory: scene.usda, textures/, scene-receipt.json")
     args = parser.parse_args()
     bsp = legacy_bsp.LegacyBsp.read(args.bsp)
     resolver = source_content.ContentResolver(str(args.runtime))
+    if args.game_dir:
+        resolver = GameDirectory(args.game_dir, resolver)
     args.out.mkdir(parents=True, exist_ok=True)
     model, receipt = build_model(bsp, resolver, args.out / "textures")
     write_usd(model, args.out / "scene.usda", args.map_name)

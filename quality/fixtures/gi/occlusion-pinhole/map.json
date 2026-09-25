@@ -1,0 +1,15 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "lightmap": {
+    "samples": 2048
+  },
+  "map": "gi_occlusion_pinhole",
+  "probe_volume": {
+    "samples": 1024
+  },
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/occlusion-pinhole/occlusion-pinhole.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

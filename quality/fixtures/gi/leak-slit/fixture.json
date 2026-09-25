@@ -119,6 +119,9 @@
     "model": "models/props/sphere.mdl",
     "radius_m": 0.51435
   },
+  "proof_cameras": {
+    "dark": "lit"
+  },
   "purpose": "Orange light enters a dark room only through a 5 cm slit: the dark room is lit, far less than the lit one, and exactly orange",
   "regions": {
     "dark": {

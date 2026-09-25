@@ -87,11 +87,13 @@ namespace light_set
 		if ( importance > 0.0f )
 			ranked.push_back( { importance, light.id, i } );
 	}
-	std::sort( ranked.begin(), ranked.end(), []( const Ranked &a, const Ranked &b ) {
-		if ( a.importance != b.importance )
-			return a.importance > b.importance;
-		return a.id < b.id;
-	} );
+	std::sort( ranked.begin(), ranked.end(),
+	    []( const Ranked &a, const Ranked &b )
+	    {
+		    if ( a.importance != b.importance )
+			    return a.importance > b.importance;
+		    return a.id < b.id;
+	    } );
 	std::vector<size_t> selected;
 	for ( size_t i = 0; i < ranked.size() && i < maxLights; ++i )
 		selected.push_back( ranked[i].index );

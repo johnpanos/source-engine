@@ -1,0 +1,882 @@
+{
+  "analytic": [],
+  "fixture": "mix-neon-strips",
+  "fixture_reference_digest": "4b1dfd63996922e146d35795655715ac906c47d96ec4ebe80e4839a798351061",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 32,
+    "controls_unrejected": [],
+    "failed": 0,
+    "oracles": 2
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "all": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "13da017f7eaa5119b38f7241d05b13ae7907f4401d810d831931b525047ec88b",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/mix-neon-strips/mix-neon-strips.usda": "754d426a0caac0071804ae525166318e4d0f22649db5e76c006a3f07a426930e"
+      }
+    },
+    "cool": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "046c39095f28a65f92d6a1139c69c2603465cc341cc986046d0355042af9412e",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/mix-neon-strips/mix-neon-strips.usda": "754d426a0caac0071804ae525166318e4d0f22649db5e76c006a3f07a426930e",
+        "quality/fixtures/gi/mix-neon-strips/states/cool.usda": "060128ef59a17105e5aa73fdf415fe08f1c56f8db414422a96eec898be2bd928"
+      }
+    },
+    "warm": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "221ea5a728fc10fdfb1768cf2b1f5cf57e6549eba326b22b4bbf4dcfdf80858d",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/mix-neon-strips/mix-neon-strips.usda": "754d426a0caac0071804ae525166318e4d0f22649db5e76c006a3f07a426930e",
+        "quality/fixtures/gi/mix-neon-strips/states/warm.usda": "49b4912b21388ca3f1c9dc548483315715b14c0d652837f5aa360ccf051baf21"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "all.centre": {
+      "camera": "centre",
+      "files": {
+        "index": {
+          "file": "all.centre.index.png",
+          "sha256": "6487b84ecf7cc644dc47f565b0f0b4c9aabb7bb65b5ae8b18f2e30f38e0019ba"
+        },
+        "indirect": {
+          "file": "all.centre.indirect.exr",
+          "sha256": "fa6d7c7a619d7fcb30617563cb2b0cc106ef70028730d77240c13e8b17fad78a"
+        },
+        "total": {
+          "file": "all.centre.total.exr",
+          "sha256": "b821308441f57860e82bad3627767ecddb8f6ff4e76930236ef1d41fd0db825c"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "NeonBlue": 1,
+        "NeonGreen": 2,
+        "NeonOrange": 3,
+        "NeonRed": 4,
+        "NeonViolet": 5,
+        "NeonYellow": 6,
+        "R_Xn": 7,
+        "R_Xp": 8,
+        "R_Yn": 9,
+        "R_Yp": 10,
+        "R_Zn": 11,
+        "R_Zp": 12
+      },
+      "regions": {
+        "R_Xn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.030365457758307457,
+            0.014354122802615166,
+            0.003557340009137988
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.04037295654416084,
+            0.023667141795158386,
+            0.009806780144572258
+          ],
+          "pixels": 3969,
+          "total": [
+            0.035369254648685455,
+            0.01901065744459629,
+            0.006682056933641434
+          ]
+        },
+        "R_Xp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.016644157469272614,
+            0.014016772620379925,
+            0.025398992002010345
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.026603424921631813,
+            0.023336883634328842,
+            0.02921455167233944
+          ],
+          "pixels": 3969,
+          "total": [
+            0.021623747423291206,
+            0.018676839768886566,
+            0.02730679325759411
+          ]
+        },
+        "R_Yp": {
+          "albedo": [
+            0.4999997317790985,
+            0.4999997317790985,
+            0.4999997317790985
+          ],
+          "direct": [
+            0.03589169681072235,
+            0.02807394415140152,
+            0.01969716139137745
+          ],
+          "emission": [
+            1.784694518391916e-06,
+            1.952009597516735e-06,
+            1.1154340882058023e-06
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            10.0
+          ],
+          "indirect": [
+            0.03877236321568489,
+            0.02986178733408451,
+            0.0214676596224308
+          ],
+          "pixels": 5253,
+          "total": [
+            0.037333689630031586,
+            0.028969716280698776,
+            0.020583411678671837
+          ]
+        },
+        "R_Zn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.013888624496757984,
+            0.012193555012345314,
+            0.007227819878607988
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            11.0
+          ],
+          "indirect": [
+            0.02290613204240799,
+            0.018940163776278496,
+            0.012288575991988182
+          ],
+          "pixels": 16728,
+          "total": [
+            0.01839735358953476,
+            0.015566801652312279,
+            0.00975822377949953
+          ]
+        },
+        "R_Zp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.008797836489975452,
+            0.007631635759025812,
+            0.00461419764906168
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            12.0
+          ],
+          "indirect": [
+            0.022415317595005035,
+            0.018600454553961754,
+            0.012060155160725117
+          ],
+          "pixels": 14388,
+          "total": [
+            0.015606575645506382,
+            0.013116053305566311,
+            0.008337179198861122
+          ]
+        }
+      },
+      "state": "all"
+    },
+    "cool.centre": {
+      "camera": "centre",
+      "files": {
+        "index": {
+          "file": "cool.centre.index.png",
+          "sha256": "6487b84ecf7cc644dc47f565b0f0b4c9aabb7bb65b5ae8b18f2e30f38e0019ba"
+        },
+        "indirect": {
+          "file": "cool.centre.indirect.exr",
+          "sha256": "b08c68e4af3f33d954678c8cebf5c295f1e1d428bc9f583eba15f357bbf847d4"
+        },
+        "total": {
+          "file": "cool.centre.total.exr",
+          "sha256": "fbbe0e777fbbe8064ac632f8726da7893b4ba9a1fd8a8d56a8b8bc9187d38c57"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "NeonBlue": 1,
+        "NeonGreen": 2,
+        "NeonOrange": 3,
+        "NeonRed": 4,
+        "NeonViolet": 5,
+        "NeonYellow": 6,
+        "R_Xn": 7,
+        "R_Xp": 8,
+        "R_Yn": 9,
+        "R_Yp": 10,
+        "R_Zn": 11,
+        "R_Zp": 12
+      },
+      "regions": {
+        "R_Xn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.0008467183215543628,
+            0.004047720227390528,
+            0.003556021023541689
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.0027541436720639467,
+            0.008221396245062351,
+            0.009800761938095093
+          ],
+          "pixels": 3969,
+          "total": [
+            0.0018004293087869883,
+            0.006134568247944117,
+            0.006678397301584482
+          ]
+        },
+        "R_Xp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.009140596725046635,
+            0.009174855425953865,
+            0.025416752323508263
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.009577708318829536,
+            0.013641134835779667,
+            0.029237840324640274
+          ],
+          "pixels": 3969,
+          "total": [
+            0.009359135292470455,
+            0.011407989077270031,
+            0.02732732892036438
+          ]
+        },
+        "R_Yp": {
+          "albedo": [
+            0.4999997317790985,
+            0.4999997317790985,
+            0.4999997317790985
+          ],
+          "direct": [
+            0.005901767872273922,
+            0.013002630323171616,
+            0.019686320796608925
+          ],
+          "emission": [
+            6.692604301861138e-07,
+            1.1154340882058023e-06,
+            1.1154340882058023e-06
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            10.0
+          ],
+          "indirect": [
+            0.00649200240150094,
+            0.013876089826226234,
+            0.021458648145198822
+          ],
+          "pixels": 5253,
+          "total": [
+            0.006197515409439802,
+            0.01344039011746645,
+            0.020573550835251808
+          ]
+        },
+        "R_Zn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.0019260718254372478,
+            0.005654672160744667,
+            0.0072240629233419895
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            11.0
+          ],
+          "indirect": [
+            0.0034864104818552732,
+            0.008799237199127674,
+            0.012310611084103584
+          ],
+          "pixels": 16728,
+          "total": [
+            0.002706236904487014,
+            0.007226957939565182,
+            0.0097673200070858
+          ]
+        },
+        "R_Zp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.001224880339577794,
+            0.0035451226867735386,
+            0.004621230065822601
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            12.0
+          ],
+          "indirect": [
+            0.0033938325941562653,
+            0.008627770468592644,
+            0.012058504857122898
+          ],
+          "pixels": 14388,
+          "total": [
+            0.0023093554191291332,
+            0.006086455192416906,
+            0.008339869789779186
+          ]
+        }
+      },
+      "state": "cool"
+    },
+    "warm.centre": {
+      "camera": "centre",
+      "files": {
+        "index": {
+          "file": "warm.centre.index.png",
+          "sha256": "6487b84ecf7cc644dc47f565b0f0b4c9aabb7bb65b5ae8b18f2e30f38e0019ba"
+        },
+        "indirect": {
+          "file": "warm.centre.indirect.exr",
+          "sha256": "06361031e5d09ec67b80d0ffb49889e1888331f21a15193575e0dff283366ede"
+        },
+        "total": {
+          "file": "warm.centre.total.exr",
+          "sha256": "3c900b4a34548201ca5d3b4dfc467318f847e81cf08c8d03e6e9e8bda776576b"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "NeonBlue": 1,
+        "NeonGreen": 2,
+        "NeonOrange": 3,
+        "NeonRed": 4,
+        "NeonViolet": 5,
+        "NeonYellow": 6,
+        "R_Xn": 7,
+        "R_Xp": 8,
+        "R_Yn": 9,
+        "R_Yp": 10,
+        "R_Zn": 11,
+        "R_Zp": 12
+      },
+      "regions": {
+        "R_Xn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.029508158564567566,
+            0.01030503585934639,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.03764684498310089,
+            0.015442063100636005,
+            0.0
+          ],
+          "pixels": 3969,
+          "total": [
+            0.03357746824622154,
+            0.012873555533587933,
+            0.0
+          ]
+        },
+        "R_Xp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.007510441821068525,
+            0.004846882075071335,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            8.0
+          ],
+          "indirect": [
+            0.01703226938843727,
+            0.009682772681117058,
+            0.0
+          ],
+          "pixels": 3969,
+          "total": [
+            0.01227136142551899,
+            0.0072648245841264725,
+            0.0
+          ]
+        },
+        "R_Yp": {
+          "albedo": [
+            0.4999997317790985,
+            0.4999997317790985,
+            0.4999997317790985
+          ],
+          "direct": [
+            0.030036091804504395,
+            0.015056714415550232,
+            0.0
+          ],
+          "emission": [
+            1.1154340882058023e-06,
+            8.365755093109328e-07,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            10.0
+          ],
+          "indirect": [
+            0.03227577358484268,
+            0.015997115522623062,
+            0.0
+          ],
+          "pixels": 5253,
+          "total": [
+            0.031156951561570168,
+            0.01552776712924242,
+            0.0
+          ]
+        },
+        "R_Zn": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.011963185854256153,
+            0.006539471913129091,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            11.0
+          ],
+          "indirect": [
+            0.01942828856408596,
+            0.01017454918473959,
+            0.0
+          ],
+          "pixels": 16728,
+          "total": [
+            0.015695767477154732,
+            0.008356993086636066,
+            0.0
+          ]
+        },
+        "R_Zp": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.007569834124296904,
+            0.004092355724424124,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            12.0
+          ],
+          "indirect": [
+            0.019017579033970833,
+            0.009964737109839916,
+            0.0
+          ],
+          "pixels": 14388,
+          "total": [
+            0.013293731026351452,
+            0.007028533145785332,
+            0.0
+          ]
+        }
+      },
+      "state": "warm"
+    }
+  }
+}

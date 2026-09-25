@@ -16,6 +16,7 @@
 #include "mathlib/mathlib.h"
 #include "r_local.h"
 #include "render.h"
+#include "render/direct_light_selection.h"
 #include "render/light_set.h"
 
 #include <cmath>
@@ -143,11 +144,22 @@ void LightSet_PublishFrame()
 		Msg( "light set map %llu epoch %llu: %d world, %d dynamic, %d entity\n",
 		    (unsigned long long)snapshot.mapSerial, (unsigned long long)snapshot.epoch, counts[0],
 		    counts[1], counts[2] );
-		for ( const RuntimeLight &light : snapshot.lights )
+		// The direct-light rank of each light (render/direct_light_selection.h);
+		// a renderer with a budget of N takes ranks 1..N.
+		const std::vector<size_t> ranked = SelectDirectLights( snapshot, snapshot.lights.size() );
+		std::vector<int> rank( snapshot.lights.size(), 0 );
+		for ( size_t r = 0; r < ranked.size(); ++r )
+			rank[ranked[r]] = int( r + 1 );
+		for ( size_t i = 0; i < snapshot.lights.size(); ++i )
+		{
+			const RuntimeLight &light = snapshot.lights[i];
 			if ( light.kind != LightKind::World )
-				Msg( "  light %u: %s at %.0f %.0f %.0f radius %.0f color %.3f %.3f %.3f\n",
+				Msg( "  light %u: %s at %.0f %.0f %.0f radius %.0f color %.3f %.3f %.3f rank %d "
+				     "importance %.3g\n",
 				    light.id, light.kind == LightKind::Dynamic ? "dlight" : "elight",
 				    light.position[0], light.position[1], light.position[2], light.radius,
-				    light.color[0], light.color[1], light.color[2] );
+				    light.color[0], light.color[1], light.color[2], rank[i],
+				    DirectImportance( light, snapshot ) );
+		}
 	}
 }

@@ -53,6 +53,8 @@ SHADERS = (
     ("g_computeFillSpv", "compute_fill.comp", []),
     # RFC 0011 G6: the SDF-traced producer's probe update.
     ("g_sdfProbeTraceSpv", "sdf_probe_trace.comp", []),
+    # R50-PARALLAX: the reflection-probe GLSL suite's program.
+    ("g_reflectionProbesCheckSpv", "reflection_probes_check.comp", []),
     # RFC 0011 G7: the same update traced with ray queries (SPIR-V 1.5).
     ("g_rayQueryProbeTraceSpv", "sdf_probe_trace.comp", ["--target-env=vulkan1.2",
                                                          "-DRAY_QUERY"]),
@@ -82,6 +84,8 @@ SHADERS = (
     ("g_modelPbrIndirectProbeFragSpv", "model_pbr.frag", ["-DINDIRECT_VIEW", "-DPROBE_VOLUME"]),
     ("g_pbrDirectFragSpv", "pbr_direct.frag", []),
     ("g_pbrDirectClipFragSpv", "pbr_direct.frag", ["-DCLIP_PLANES"]),
+    # render.pbr-brdf.glsl: pbr_brdf.glsl evaluated beside public/render/pbr_brdf.h.
+    ("g_pbrBrdfCheckSpv", "pbr_brdf_check.comp", []),
     ("g_presentGammaVertSpv", "present_gamma.vert", []),
     ("g_presentGammaFragSpv", "present_gamma.frag", []),
 )

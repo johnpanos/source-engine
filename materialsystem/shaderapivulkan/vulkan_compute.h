@@ -25,6 +25,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -79,6 +80,10 @@ enum class ComputeBinding : uint8_t
 	AccelerationStructure,
 };
 
+// Thread-safe: with the queued material system, engine producers create and
+// retire resources on the main thread while the render thread records
+// dispatches and collects retirements. Handles and mapped pointers stay valid
+// until their resource is collected.
 class ComputeResources
 {
 public:
@@ -139,8 +144,16 @@ public:
 	void Retire( uint32_t resource, uint64_t afterSerial );
 	void Collect( uint64_t completedSerial );
 	bool Alive( uint32_t resource ) const;
-	size_t PendingRetirements() const { return m_retired.size(); }
-	size_t LiveCount() const { return m_resources.size(); }
+	size_t PendingRetirements() const
+	{
+		std::lock_guard<std::recursive_mutex> lock( m_mutex );
+		return m_retired.size();
+	}
+	size_t LiveCount() const
+	{
+		std::lock_guard<std::recursive_mutex> lock( m_mutex );
+		return m_resources.size();
+	}
 	// The seeded early-free defect (the retirement check's control): destroy
 	// at Retire, ignoring the serial.
 	void SetEarlyFreeDefect( bool on ) { m_earlyFree = on; }
@@ -193,6 +206,8 @@ private:
 	    Resource &resource, VkBuildAccelerationStructureFlagsKHR flags, std::string *error );
 	void Destroy( Resource &resource );
 
+	// Guards everything below; Find's pointers are valid only while it is held.
+	mutable std::recursive_mutex m_mutex;
 	VkPhysicalDevice m_physical = VK_NULL_HANDLE;
 	VkDevice m_device = VK_NULL_HANDLE;
 	ComputeCaps m_enabled;
@@ -240,8 +255,10 @@ public:
 		m_resources.Retire( resource, afterSerial );
 	}
 	// Records every queued dispatch, in order, into the owner's submission.
+	// Producers may queue on another thread than the one recording: a
+	// dispatch's serial is never one already recorded.
 	void Record( VkCommandBuffer cmd, uint64_t serial );
-	bool Pending() const { return !m_queue.empty(); }
+	bool Pending() const;
 
 private:
 	struct Queued
@@ -255,7 +272,9 @@ private:
 	ComputeResources &m_resources;
 	std::function<uint64_t()> m_nextSerial;
 	std::function<uint64_t()> m_completedSerial;
-	std::vector<Queued> m_queue;
+	mutable std::mutex m_queueMutex;
+	std::vector<Queued> m_queue; // guarded by m_queueMutex
+	uint64_t m_lastRecorded = 0; // guarded by m_queueMutex
 };
 
 } // namespace render_vulkan

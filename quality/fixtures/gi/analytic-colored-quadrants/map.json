@@ -1,0 +1,23 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "lightmap": {
+    "samples": 512
+  },
+  "map": "gi_analytic_colored_quadrants",
+  "probe_volume": {
+    "bounds_m": [
+      -5.0,
+      -5.0,
+      0.25,
+      5.0,
+      5.0,
+      2.75
+    ],
+    "samples": 1024
+  },
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/analytic-colored-quadrants/analytic-colored-quadrants.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

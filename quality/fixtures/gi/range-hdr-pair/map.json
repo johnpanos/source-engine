@@ -2,7 +2,13 @@
   "collision": {
     "solid_meshes": []
   },
+  "lightmap": {
+    "samples": 2048
+  },
   "map": "gi_range_hdr_pair",
+  "probe_volume": {
+    "samples": 1024
+  },
   "quality": "gi-fixture",
   "scene": "quality/fixtures/gi/range-hdr-pair/range-hdr-pair.usda",
   "schema": "pbrt-map-manifest/v1"

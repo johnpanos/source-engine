@@ -1,0 +1,167 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "far": {
+      "eye": [
+        21.0,
+        1.5,
+        2.7
+      ],
+      "forward": [
+        -0.9578262852211514,
+        0.0,
+        -0.28734788556634544
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "near": {
+      "eye": [
+        9.0,
+        1.5,
+        2.7
+      ],
+      "forward": [
+        -0.9578262852211514,
+        0.0,
+        -0.28734788556634544
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "range",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "range-long-hall",
+  "oracles": [
+    {
+      "entries": [
+        {
+          "camera": "far",
+          "region": "F5",
+          "state": "default"
+        },
+        {
+          "camera": "far",
+          "region": "F4",
+          "state": "default"
+        },
+        {
+          "camera": "near",
+          "region": "F1",
+          "state": "default"
+        },
+        {
+          "camera": "near",
+          "region": "F0",
+          "state": "default"
+        }
+      ],
+      "factor": 1.2,
+      "kind": "ordered",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "luminance rises along F5, F4, F1, F0"
+    },
+    {
+      "camera": "near",
+      "expected": [
+        1.0,
+        0.8,
+        0.6
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "default chromaticity (near)",
+      "regions": [
+        "F0",
+        "F1",
+        "H_Yn",
+        "H_Yp"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "far",
+      "expected": [
+        1.0,
+        0.8,
+        0.6
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "default chromaticity (far)",
+      "regions": [
+        "F4",
+        "F5",
+        "H_Yn",
+        "H_Yp"
+      ],
+      "state": "default"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A 24 m hall lit by one warm lamp at one end: floor light falls with distance segment by segment, and stays the lamp's color on the grey hall",
+  "regions": {
+    "far": {
+      "F4": [
+        "F4"
+      ],
+      "F5": [
+        "F5"
+      ],
+      "H_Yn": [
+        "H_Yn"
+      ],
+      "H_Yp": [
+        "H_Yp"
+      ]
+    },
+    "near": {
+      "F0": [
+        "F0"
+      ],
+      "F1": [
+        "F1"
+      ],
+      "H_Yn": [
+        "H_Yn"
+      ],
+      "H_Yp": [
+        "H_Yp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "range-long-hall.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "one lamp at the west end"
+    }
+  }
+}

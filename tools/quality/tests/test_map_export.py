@@ -144,8 +144,15 @@ class AuditTest(unittest.TestCase):
             "lighting/atlas.exr.json": {"samples": 2048, "directional": {"basis": []}},
             "lighting/atlas-denoised.exr.json": {"denoiser": "OpenImageDenoise"},
             "lighting/atlas-directional.exr.json": {"status": "pass"},
-            "lighting/atlas.ktx2.json": {"layout": "directional-2x1",
-                                         "reflection_probe": {"mips": 8}},
+            "lighting/atlas.ktx2.json": {"layout": "directional-2x1"},
+            "lighting/reflection_probes.rprb.json": {
+                "status": "pass", "probes": 2, "width": 512, "max_mean_relative_residual": 0.08,
+                "fits": [{"index": 0, "role": "room", "mean_relative_residual": 0.08},
+                         {"index": 1, "role": "glossy", "mean_relative_residual": 0.03}],
+                "placement": {"walkable_samples": 120, "uncovered_walkable": 0,
+                              "glossy_samples": 40, "glossy_servable": 30,
+                              "unserved_glossy": 2, "room_stop": "covered",
+                              "glossy_stop": "min_area", "max_probes": 8}},
             "content.json": {"materials": {"wood": {
                 "authored_channels": ["base", "normal", "roughness"],
                 "exported_channels": {"base": "texture", "normal": "texture",
@@ -170,8 +177,7 @@ class AuditTest(unittest.TestCase):
         self.assertEqual(self.audit()["status"], "pass")
 
     def test_missing_directional_fails(self):
-        result = self.audit(**{"lighting/atlas.ktx2.json": {"layout": "flat",
-                                                           "reflection_probe": {"mips": 8}}})
+        result = self.audit(**{"lighting/atlas.ktx2.json": {"layout": "flat"}})
         self.assertIn("directional-lightmap", result["failed"])
 
     def test_dropped_normal_map_fails(self):
@@ -184,10 +190,23 @@ class AuditTest(unittest.TestCase):
     def test_low_samples_and_missing_probe_fail(self):
         result = self.audit(**{"lighting/atlas.exr.json": {"samples": 64,
                                                            "directional": {"basis": []}},
-                               "lighting/atlas.ktx2.json": {"layout": "directional-2x1",
-                                                            "reflection_probe": None}})
+                               "lighting/reflection_probes.rprb.json": None})
         self.assertIn("lightmap-samples", result["failed"])
         self.assertIn("reflection-probe", result["failed"])
+        self.assertIn("reflection-probe-fit", result["failed"])
+
+    def test_badly_fitted_or_sparse_probes_fail(self):
+        receipt = {"status": "pass", "probes": 1, "width": 512,
+                   "max_mean_relative_residual": 0.9,
+                   "fits": [{"index": 0, "role": "room", "mean_relative_residual": 0.9}],
+                   "placement": {"walkable_samples": 100, "uncovered_walkable": 30,
+                                 "glossy_samples": 10, "glossy_servable": 10,
+                                 "unserved_glossy": 8, "room_stop": "max_probes",
+                                 "glossy_stop": "max_probes", "max_probes": 1}}
+        result = self.audit(**{"lighting/reflection_probes.rprb.json": receipt})
+        for check in ("reflection-probe-fit", "reflection-probe-coverage",
+                      "reflection-probe-glossy", "reflection-probe-budget"):
+            self.assertIn(check, result["failed"])
 
     def test_failed_runtime_gate_fails(self):
         result = self.audit(**{"camera-boot/gate.json": {"status": "fail"}})

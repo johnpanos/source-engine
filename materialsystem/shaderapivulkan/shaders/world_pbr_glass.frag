@@ -14,13 +14,15 @@ layout( location = 3 ) in vec3 fragNormal;
 layout( location = 4 ) in vec4 fragTangent;
 layout( location = 0 ) out vec4 outColor;
 
-layout( set = 0, binding = 0 ) uniform sampler2D baseTexture;
-layout( set = 1, binding = 0 ) uniform sampler2D mraoTexture;
-layout( set = 2, binding = 0 ) uniform sampler2D normalTexture;
-layout( set = 3, binding = 0 ) uniform sampler2D lightmapTexture;
-layout( set = 4, binding = 0 ) uniform sampler2D splitSumTexture;
-layout( set = 5, binding = 0 ) uniform sampler2D sceneColor;
-layout( set = 6, binding = 0 ) uniform sampler2D sceneDepth;
+// world_pbr.frag's grouped sets: the frame's, then the material's, where
+// the scene capture takes the emission and depth slots.
+layout( set = 0, binding = 0 ) uniform sampler2D splitSumTexture;
+layout( set = 0, binding = 1 ) uniform sampler2D lightmapTexture;
+layout( set = 1, binding = 0 ) uniform sampler2D baseTexture;
+layout( set = 1, binding = 1 ) uniform sampler2D mraoTexture;
+layout( set = 1, binding = 2 ) uniform sampler2D normalTexture;
+layout( set = 1, binding = 3 ) uniform sampler2D sceneColor;
+layout( set = 1, binding = 5 ) uniform sampler2D sceneDepth;
 
 // The same size and vertex-visible layout as world_pbr's block (the vertex
 // stage is world_pbr.vert, which reads only mvp and the clip planes).
@@ -107,7 +109,8 @@ void main()
 
 	vec3 reflected = vec3( 0.0 );
 	vec3 probe;
-	if ( ProbeRadiance( reflect( -view, normal ), roughness, probe ) )
+	if ( MapProbeRadiance( fragPosition, normalize( fragNormal ), reflect( -view, normal ),
+	         roughness, probe ) )
 		reflected = probe * reflectance * occlusion;
 
 	// A thin sheet passes light straight through. Solid glass bends it: the

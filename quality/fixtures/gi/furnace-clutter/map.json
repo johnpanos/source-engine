@@ -8,7 +8,14 @@
       "Crevice"
     ]
   },
+  "lightmap": {
+    "layout": "planar",
+    "samples": 512
+  },
   "map": "gi_furnace_clutter",
+  "probe_volume": {
+    "samples": 1024
+  },
   "quality": "gi-fixture",
   "scene": "quality/fixtures/gi/furnace-clutter/furnace-clutter.usda",
   "schema": "pbrt-map-manifest/v1"

@@ -383,7 +383,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 29 / R29 | Four-platform architecture proof; 0001 rank 15 expanded to Linux/macOS/iOS/Android | R12, R18, R26, R28 | Each target passes foundation and SDL3/Vulkan native lifecycle smoke; Apple portability, iOS static composition and mobile packaging demonstrated; headless roles tested where declared | planned |
 | 30 / R30 | Existing parallel kernels; 0003 E | R21 | Each bones/query-cache/entity-packing/leaf/shadow cohort independently passes three-mode, ownership, latency/performance and rollback gates | partial ([batch migration](RFC/0003-batch-migration-progress.md)) |
 | 31 / R31 | Physics core compatibility; 0004 C | R19 | Required traces, filters, events, materials, constraints/ragdolls, controllers and persistence pass client/dedicated gameplay corpus | planned |
-| 32 / R32 | Native Vulkan functional MVP; 0001 rank 16 | R10, R28 | Representative map renders opt-in; resource/pipeline/upload/sync/swapchain contracts pass; unsupported features fail explicitly | active ([video options](RFC/0001-native-vulkan-video-options-progress.md)) |
+| 32 / R32 | Native Vulkan functional MVP; 0001 rank 16 | R10, R28 | Representative map renders opt-in; resource/pipeline/upload/sync/swapchain contracts pass; unsupported features fail explicitly | active ([video options](RFC/0001-native-vulkan-video-options-progress.md); [queued rendering](RFC/0001-native-vulkan-queued-rendering-progress.md)) |
 | 33 / R47 | PBR material family core; 0007 A/D | R02, R15 | BRDF analytic and white-furnace tests; `pbr` pixel family matches Cycles references; negative controls fail; capability and validated fallback on D3D9/DXVK | active ([0007 progress](RFC/0007-progress.md)) |
 | 34 / R65 | Runtime antialiasing: 4x MSAA targets, alpha to coverage, PBR specular AA; 0012 A0–A3, A5 | R02, R32, R47 | Edge/alpha/shimmer/identity oracles with negative providers pass; glass keeps scene depth under MSAA; per-profile target memory policy and 4x recommendation follow measured Linux and Fold7 budgets | planned ([RFC 0012](RFC/0012-antialiasing-msaa-specular-alpha-coverage.md)) |
 | 35 / R48 | Compile tools on Waf and bake seam; 0007 B, vvis track | R01, R02, R03 | vbsp/vvis/vrad build on a declared profile; byte-identical legacy lumps and PVS vs legacy executables; shared baker suite passes the legacy provider and rejects bad providers | partial ([Linux compiler host smoke](RFC/0007-progress.md#r48-host-compiler-preparation-2026-09-23); [R48-BAKER](RFC/0007-progress.md#r48-baker-light-baker-seam-and-pipeline-consolidation) planned) |
@@ -393,7 +393,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 39 / R54 | Compiled USD World Stage and lightmap charts; 0008 F2 | R48, R53 | vbsp2 emits the geometry layer with charts; `usdchecker` clean; stage renders in pinned Cycles; semantic comparator detects seeded loss; face-ID-free compiled fixture validates; native USD authoring remains R59–R60 | partial ([0008 progress](RFC/0008-progress.md#f2-compiled-world-geometry-slice-2026-09-23)) |
 | 40 / R49 | Cycles light baker; 0007 C/E | R05, R48, R54 | Feasibility decision recorded; SH L1/RNM, probe and reflection outputs pass analytic, comparative and negative oracles | planned |
 | 41 / R56 | BSP2 native Vulkan world path; 0008 F4–F5 | R32, R49, R54, R55 | World mesh uploaded without rebuild; style-layer lightmaps, probe volume and clustered dynamic lights; each engine feature cohort passes; legacy payload renders on D3D9/DXVK | partial ([WMSH with Cycles preview light](RFC/0008-progress.md#f4-world-stage-geometry-and-cycles-light-in-the-playable-wmsh-view-2026-09-23)) |
-| 42 / R50 | Image-based lighting; 0007 F | R47, R56 | Baked reflection probes and legacy runtime prefilter pass IBL pixel fixtures and cache invalidation; legacy families unchanged | planned |
+| 42 / R50 | Image-based lighting; 0007 F | R47, R56 | Baked reflection probes and legacy runtime prefilter pass IBL pixel fixtures and cache invalidation; legacy families unchanged | partial ([R50-PARALLAX](RFC/0007-progress.md#r50-parallax-parallax-corrected-blended-reflection-probes-bounded-r50-slice-2026-09-25)) |
 | 43 / R51 | Stage reference rendering; 0007 G | R49, R54 | Versioned Cycles reference fixtures rendered from stages; seeded material-mapping error detected | planned |
 | 44 / R52 | Hammer compile/preview and vvis job graph; 0007 H | R20, R25, R49 | GTK compile/run and progressive preview with cancellation/recovery; serial/parallel/legacy PVS byte equivalence | planned |
 | 45 / R57 | Incremental map build graph; 0008 F6 | R52, R54 | Cache-hit traces per change class and source-producer identity; cancellation leaves the previous package intact; native USD inputs extend the graph under R59 | planned |
@@ -524,6 +524,11 @@ Keep the table concise and link details below or from the domain progress file.
     dirty-subset bake request for R52/R57.
   - No baker code is installed. See the
     [R48-BAKER record](RFC/0007-progress.md#r48-baker-light-baker-seam-and-pipeline-consolidation).
+  - Interim hook (2026-09-25, user direction): `tools/quality/vrad_cycles.py`
+    is a vrad drop-in. It runs vrad, then the Cycles relight of its BSP, so a
+    regular vbsp/vvis/vrad compile feeds the Blender pipeline. It is not the
+    seam and closes no R48 criterion
+    ([record](RFC/0007-progress.md#regular-compile-hook-vrad_cyclespy-installed-2026-09-25)).
 
 - R65–R66 (RFC 0012): added 2026-09-24 as `planned` at the user's direction.
   R65 is ranked directly after R47: it is bounded, it closes the native
@@ -532,6 +537,54 @@ Keep the table concise and link details below or from the domain progress file.
   it extends. MSAA itself exists (R32-VIDEO-OPTIONS P6); no MSAA frame has
   been measured on any profile, and mobile target policy and defaults wait
   for A0 budgets and Fold7 measurements. Temporal AA stays out of scope.
+
+- R47 energy compensation, shared BRDF and grouped descriptor sets
+  (2026-09-25, user direction, Filament comparison follow-ups):
+  - The PBR lobe is energy-compensated for multiple scattering. The rough
+    white-metal furnace closes to 1.
+  - `shaders/pbr_brdf.glsl` is the one GLSL BRDF. The `render.pbr-brdf.glsl`
+    GPU suite matches it to `pbr_brdf.h` on 1,080 cases.
+  - The PBR and GI stages bind three sets (frame, material, constants)
+    instead of up to eleven. They pass their pixel suites as a four-set
+    device (`.four-sets`).
+  - Legacy LightmappedGeneric and `$phong` still need nine and seven sets.
+  - No Apple, Mali or Fold7 run. This closes no R29 criterion. See the
+    [record](RFC/0007-progress.md#energy-compensation-one-glsl-brdf-and-grouped-descriptor-sets-r47--r29-prep-2026-09-25).
+
+- R50-PARALLAX: `partial` (2026-09-25, user direction), a bounded R50
+  slice. Scene maps carry automatically placed reflection probes in RFC
+  0008's `RPRB` lump:
+  - per room and per glossy surface, each with a box fitted to its own depth
+    pass;
+  - parallax-corrected, with distance-based roughness;
+  - blended per pixel on native Vulkan, in world, glass and model PBR.
+  - Sources: 3kliksphilip (2019), Lagarde and Zanuttini (SIGGRAPH 2012), and
+    Frostbite 2014 notes for distance-based roughness.
+  - A Python oracle, the C++ reader and the GLSL agree
+    (`world.reflection-probes`, `render.reflection-probes.glsl`).
+  - In-game gates against Cycles pass with negative controls:
+    - mirror floor off-probe: blended 1.8x wall error, direction-only
+      8x, a wrong box 5x;
+    - walk through a doorway: weight step 0.047, while the nearest-capture
+      control shows a 1.0 seam.
+  - Not done: the legacy runtime prefilter, IBL pixel fixtures and cache
+    invalidation; a KTX2 payload; mobile and Apple runs. R47 and R56 remain
+    open. See the
+    [record](RFC/0007-progress.md#r50-parallax-parallax-corrected-blended-reflection-probes-bounded-r50-slice-2026-09-25).
+- R50-RELIGHT: `partial` (2026-09-25, user goal; RFC 0011 decision 5), a
+  bounded R50 slice. Baked probes are relit, so runtime light reaches
+  specular:
+  - RPRB v2 relight bands (albedo, distance, normal) come from the probe
+    faces' Diffuse Color, Normal and Depth passes;
+  - `world_pbr` adds albedo times RFC 0011's change (the change volume and
+    the unbaked lights' SDF-shadowed direct light) at the point each probe
+    saw (after McAuley, Far Cry 4, GDC 2015, with the distance for shadows).
+  - The Python, C++ and GLSL versions agree, with negative controls.
+  - `mirror-lamp` in game: relit floor/wall 1.38 against Cycles; the probes
+    as baked fail at 3.02. Cost 0.32 ms at 1080p (budget 0.5).
+  - Not done: glass and model lookups; rough-lobe accuracy; mobile and
+    Apple runs. See the
+    [record](RFC/0007-progress.md#r50-relight-relightable-reflection-probes-bounded-r50-slice-2026-09-25).
 
 - R59–R60 (RFC 0009): added 2026-09-23 as `planned` for USD-native map
   compilation and editing. R54's VMF-derived compiled World Stage remains a
@@ -724,6 +777,25 @@ Keep the table concise and link details below or from the domain progress file.
     - Open: an executor that overlaps across several host nodes, audited
       declarations for legacy blocks, TickServer split, a semantic live
       oracle for the client region, mobile budgets, full-product TSan.
+
+- R32-QUEUED: `partial` (2026-09-25, user goal). Native Vulkan runs the queued
+  material system (`mat_queue_mode 2`): the main thread builds the next frame
+  while the `MatQueue` render thread replays the current one.
+  - One owner of the mesh vertex record (`vulkan_mesh_layout`) for the mesh
+    lock and `ComputeVertexDescription`; a CPU oracle (173 checks, packed-layout
+    negative control) proves a queued replay equals a direct build.
+  - The device follows the material system's thread ownership, with a
+    cross-thread census; GPU compute is thread-safe; world-mesh and light-set
+    calls reach the provider through frame-ordered queue adapters.
+  - Fixed on the way: a 0-byte dynamic VB size that exhausted the call queue,
+    and a GI brush relight that the queued material system dropped.
+  - Evidence: 14 pixel families byte-identical to the pre-change backend;
+    Portal maps and `gi_door` boot queued with 0 cross-thread calls;
+    `gi_door` frames byte-identical across modes; frame pacing on a loaded
+    host shows mode 2 at least as fast with a lower p99.
+  - Launchers keep pinning mode 0 (run.conf, portal_boot, frame_pacing,
+    Android); no TSan, resize/device-loss or mobile evidence. See the
+    [queued rendering record](RFC/0001-native-vulkan-queued-rendering-progress.md).
 
 - R32-VIDEO-OPTIONS: `partial` (2026-09-23). The Video options take effect on
   native Vulkan: real display modes and mode-change callbacks, vsync through

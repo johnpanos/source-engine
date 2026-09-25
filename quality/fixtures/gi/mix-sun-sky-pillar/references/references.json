@@ -1,0 +1,1233 @@
+{
+  "analytic": [],
+  "fixture": "mix-sun-sky-pillar",
+  "fixture_reference_digest": "538d44eccb6706593101576314b9cf07091b67d52df0eb10880f123d92a0c4ab",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 134,
+    "controls_unrejected": [],
+    "failed": 0,
+    "oracles": 10
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "both": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "220cb0ea47264b96b946824199c7bf0a6865b7439af4df8b0d3a6944c851b6bb",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/mix-sun-sky-pillar/mix-sun-sky-pillar.usda": "08dbfc491e062633b4fccba97055e037e6ee6d41b94e8a486ba00cd75d02061f"
+      }
+    },
+    "sky": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "33e32386ebc5a62adc0bb991bb3ddc09c9c32455bb2e0ace543d0cd2ffa2da3d",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/mix-sun-sky-pillar/mix-sun-sky-pillar.usda": "08dbfc491e062633b4fccba97055e037e6ee6d41b94e8a486ba00cd75d02061f",
+        "quality/fixtures/gi/mix-sun-sky-pillar/states/sky.usda": "caf71b20f065bb155e3d21a0a2e6d2a84e75b7b127b451aa7523b891d30048a8"
+      }
+    },
+    "sun": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "9238ae5cab69580e0254f473a5d4a23ee2e7f51f001a5dfca8f83a996da860df",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/mix-sun-sky-pillar/mix-sun-sky-pillar.usda": "08dbfc491e062633b4fccba97055e037e6ee6d41b94e8a486ba00cd75d02061f",
+        "quality/fixtures/gi/mix-sun-sky-pillar/states/sun.usda": "437b817591076107218ea2cc622ac96e79b1b5a6d6fb58147a4ec9db053a770e"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "both.lit": {
+      "camera": "lit",
+      "files": {
+        "index": {
+          "file": "both.lit.index.png",
+          "sha256": "79d972ce58140ca34786a6577a7e45bc6517bef7e0c39cc59d6a17b17e91c3d2"
+        },
+        "indirect": {
+          "file": "both.lit.indirect.exr",
+          "sha256": "416e2d8b5068faee4b4923d3d0e058e1ea7af06713e230df280ce359f23f7ae1"
+        },
+        "total": {
+          "file": "both.lit.total.exr",
+          "sha256": "2313a587894f214878cdf05d3c061b171e1b55991c3688ed9fbd1ac76bcc82aa"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Ground": 1,
+        "GroundShadow": 2,
+        "Pillar_Xn": 3,
+        "Pillar_Xp": 4,
+        "Pillar_Yn": 5,
+        "Pillar_Yp": 6,
+        "Pillar_Zp": 7
+      },
+      "regions": {
+        "Ground": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.7174712419509888,
+            0.677370548248291,
+            0.7313562035560608
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.010548507794737816,
+            0.009874902665615082,
+            0.010505864396691322
+          ],
+          "pixels": 25897,
+          "total": [
+            0.3640099763870239,
+            0.3436260223388672,
+            0.37092798948287964
+          ]
+        },
+        "Pillar_Xp": {
+          "albedo": [
+            0.5999877452850342,
+            0.5999877452850342,
+            0.5999877452850342
+          ],
+          "direct": [
+            0.8751454949378967,
+            0.7325799465179443,
+            0.6173720955848694
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.17851440608501434,
+            0.1659080684185028,
+            0.17425361275672913
+          ],
+          "pixels": 503,
+          "total": [
+            0.6321835517883301,
+            0.539081871509552,
+            0.47496581077575684
+          ]
+        },
+        "Pillar_Yn": {
+          "albedo": [
+            0.5999828577041626,
+            0.5999828577041626,
+            0.5999828577041626
+          ],
+          "direct": [
+            0.09380632638931274,
+            0.14655093848705292,
+            0.26569780707359314
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.1697872281074524,
+            0.15940137207508087,
+            0.1704399734735489
+          ],
+          "pixels": 841,
+          "total": [
+            0.15815278887748718,
+            0.18356774747371674,
+            0.2616773247718811
+          ]
+        }
+      },
+      "state": "both"
+    },
+    "both.shade": {
+      "camera": "shade",
+      "files": {
+        "index": {
+          "file": "both.shade.index.png",
+          "sha256": "a1eb094781500ad5bf5035064925c7522ba6e91a23fceaa9abddf209dbce8528"
+        },
+        "indirect": {
+          "file": "both.shade.indirect.exr",
+          "sha256": "286c1033e6ac76c51d3e0ef6d7732d80e21bc2caf97a32384cbf91b7af8ebfa9"
+        },
+        "total": {
+          "file": "both.shade.total.exr",
+          "sha256": "77842007594af9e32f059cb2933d38dc42cfe8f90e5bc10223b3e209a378a448"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Ground": 1,
+        "GroundShadow": 2,
+        "Pillar_Xn": 3,
+        "Pillar_Xp": 4,
+        "Pillar_Yn": 5,
+        "Pillar_Yp": 6,
+        "Pillar_Zp": 7
+      },
+      "regions": {
+        "Ground": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.7156921029090881,
+            0.6763631701469421,
+            0.7315008044242859
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.005621304269880056,
+            0.006033816374838352,
+            0.007861324585974216
+          ],
+          "pixels": 24786,
+          "total": [
+            0.36066246032714844,
+            0.3411977291107178,
+            0.36967897415161133
+          ]
+        },
+        "GroundShadow": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.16030511260032654,
+            0.25174829363822937,
+            0.45788687467575073
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.010474519804120064,
+            0.013243096880614758,
+            0.020514318719506264
+          ],
+          "pixels": 752,
+          "total": [
+            0.08538980036973953,
+            0.13249576091766357,
+            0.2392006367444992
+          ]
+        },
+        "Pillar_Xn": {
+          "albedo": [
+            0.5999877452850342,
+            0.5999877452850342,
+            0.5999877452850342
+          ],
+          "direct": [
+            0.0928942859172821,
+            0.1458842009305954,
+            0.2653382122516632
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            3.0
+          ],
+          "indirect": [
+            0.12728847563266754,
+            0.1275097131729126,
+            0.1512635350227356
+          ],
+          "pixels": 503,
+          "total": [
+            0.1321069598197937,
+            0.16403287649154663,
+            0.24995586276054382
+          ]
+        },
+        "Pillar_Yn": {
+          "albedo": [
+            0.5999828577041626,
+            0.5999828577041626,
+            0.5999828577041626
+          ],
+          "direct": [
+            0.09380976855754852,
+            0.14655643701553345,
+            0.26570793986320496
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.1697995513677597,
+            0.15940149128437042,
+            0.1704189032316208
+          ],
+          "pixels": 841,
+          "total": [
+            0.15816232562065125,
+            0.1835712045431137,
+            0.2616705894470215
+          ]
+        }
+      },
+      "state": "both"
+    },
+    "sky.lit": {
+      "camera": "lit",
+      "files": {
+        "index": {
+          "file": "sky.lit.index.png",
+          "sha256": "79d972ce58140ca34786a6577a7e45bc6517bef7e0c39cc59d6a17b17e91c3d2"
+        },
+        "indirect": {
+          "file": "sky.lit.indirect.exr",
+          "sha256": "be2d76ddba2b03f8ca8ad1e49cc25a58b669567b64e4912ca417496d1234828e"
+        },
+        "total": {
+          "file": "sky.lit.total.exr",
+          "sha256": "ffae3c63dc2592745578d2ab9d8abb011215cd5aaeb0fb51e4d5d177b3a81762"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Ground": 1,
+        "GroundShadow": 2,
+        "Pillar_Xn": 3,
+        "Pillar_Xp": 4,
+        "Pillar_Yn": 5,
+        "Pillar_Yp": 6,
+        "Pillar_Zp": 7
+      },
+      "regions": {
+        "Ground": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.16975581645965576,
+            0.2665894329547882,
+            0.4848804473876953
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.002393362345173955,
+            0.003758597420528531,
+            0.006836215034127235
+          ],
+          "pixels": 25897,
+          "total": [
+            0.08607479929924011,
+            0.13517418503761292,
+            0.24585919082164764
+          ]
+        },
+        "Pillar_Xp": {
+          "albedo": [
+            0.5999877452850342,
+            0.5999877452850342,
+            0.5999877452850342
+          ],
+          "direct": [
+            0.09290391951799393,
+            0.14589929580688477,
+            0.2653656005859375
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.03904791176319122,
+            0.06132207810878754,
+            0.11153427511453629
+          ],
+          "pixels": 503,
+          "total": [
+            0.07916944473981857,
+            0.12433034181594849,
+            0.22613535821437836
+          ]
+        },
+        "Pillar_Yn": {
+          "albedo": [
+            0.5999828577041626,
+            0.5999828577041626,
+            0.5999828577041626
+          ],
+          "direct": [
+            0.0928727313876152,
+            0.1458503156900406,
+            0.26527658104896545
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.03907361254096031,
+            0.06136242300271988,
+            0.11160778999328613
+          ],
+          "pixels": 841,
+          "total": [
+            0.07916612923145294,
+            0.12432510405778885,
+            0.22612601518630981
+          ]
+        }
+      },
+      "state": "sky"
+    },
+    "sky.shade": {
+      "camera": "shade",
+      "files": {
+        "index": {
+          "file": "sky.shade.index.png",
+          "sha256": "a1eb094781500ad5bf5035064925c7522ba6e91a23fceaa9abddf209dbce8528"
+        },
+        "indirect": {
+          "file": "sky.shade.indirect.exr",
+          "sha256": "15dfde914bea88133d37ba3afb161141d084efb00f53e83c80788c6707779fd6"
+        },
+        "total": {
+          "file": "sky.shade.total.exr",
+          "sha256": "6476d6576d1c3cc8f7320f43c9df442d95af44730a883722acac0313f8aabe01"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Ground": 1,
+        "GroundShadow": 2,
+        "Pillar_Xn": 3,
+        "Pillar_Xp": 4,
+        "Pillar_Yn": 5,
+        "Pillar_Yp": 6,
+        "Pillar_Zp": 7
+      },
+      "regions": {
+        "Ground": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.1701488047838211,
+            0.26720693707466125,
+            0.486002117395401
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.002215993357822299,
+            0.0034800719004124403,
+            0.006329691968858242
+          ],
+          "pixels": 24786,
+          "total": [
+            0.08618254959583282,
+            0.13534365594387054,
+            0.2461649477481842
+          ]
+        },
+        "GroundShadow": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.16031119227409363,
+            0.25175827741622925,
+            0.4579046964645386
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.006569260731339455,
+            0.0103165777400136,
+            0.018764082342386246
+          ],
+          "pixels": 752,
+          "total": [
+            0.08344020694494247,
+            0.13103730976581573,
+            0.2383342683315277
+          ]
+        },
+        "Pillar_Xn": {
+          "albedo": [
+            0.5999877452850342,
+            0.5999877452850342,
+            0.5999877452850342
+          ],
+          "direct": [
+            0.0928942859172821,
+            0.1458842009305954,
+            0.2653382122516632
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            3.0
+          ],
+          "indirect": [
+            0.039055921137332916,
+            0.061334699392318726,
+            0.11155726760625839
+          ],
+          "pixels": 503,
+          "total": [
+            0.07916845381259918,
+            0.12432878464460373,
+            0.2261325716972351
+          ]
+        },
+        "Pillar_Yn": {
+          "albedo": [
+            0.5999828577041626,
+            0.5999828577041626,
+            0.5999828577041626
+          ],
+          "direct": [
+            0.09287621825933456,
+            0.14585579931735992,
+            0.26528653502464294
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.039075952023267746,
+            0.06136618182063103,
+            0.11161454766988754
+          ],
+          "pixels": 841,
+          "total": [
+            0.07916969060897827,
+            0.12433058768510818,
+            0.2261359989643097
+          ]
+        }
+      },
+      "state": "sky"
+    },
+    "sun.lit": {
+      "camera": "lit",
+      "files": {
+        "index": {
+          "file": "sun.lit.index.png",
+          "sha256": "79d972ce58140ca34786a6577a7e45bc6517bef7e0c39cc59d6a17b17e91c3d2"
+        },
+        "indirect": {
+          "file": "sun.lit.indirect.exr",
+          "sha256": "203f3e01dbd9c4809124d5db5caacff303cdfd8d14ffff211ec974324e8ad493"
+        },
+        "total": {
+          "file": "sun.lit.total.exr",
+          "sha256": "cfeee170f62f82af242c303923e73963ddec878992984e325b646ecdab5b476f"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Ground": 1,
+        "GroundShadow": 2,
+        "Pillar_Xn": 3,
+        "Pillar_Xp": 4,
+        "Pillar_Yn": 5,
+        "Pillar_Yp": 6,
+        "Pillar_Zp": 7
+      },
+      "regions": {
+        "Ground": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.5478144884109497,
+            0.41081714630126953,
+            0.24653607606887817
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.00815637782216072,
+            0.006117239128798246,
+            0.003670369042083621
+          ],
+          "pixels": 25897,
+          "total": [
+            0.27793654799461365,
+            0.2084503322839737,
+            0.12507037818431854
+          ]
+        },
+        "Pillar_Xp": {
+          "albedo": [
+            0.5999877452850342,
+            0.5999877452850342,
+            0.5999877452850342
+          ],
+          "direct": [
+            0.7822364568710327,
+            0.58668053150177,
+            0.35200634598731995
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            4.0
+          ],
+          "indirect": [
+            0.13934636116027832,
+            0.10450972616672516,
+            0.06270582973957062
+          ],
+          "pixels": 503,
+          "total": [
+            0.552940845489502,
+            0.41470545530319214,
+            0.248823344707489
+          ]
+        },
+        "Pillar_Yn": {
+          "albedo": [
+            0.5999828577041626,
+            0.5999828577041626,
+            0.5999828577041626
+          ],
+          "direct": [
+            0.0009330965112894773,
+            0.0006998227327130735,
+            0.0004198934184387326
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.1307605654001236,
+            0.09807047247886658,
+            0.0588422529399395
+          ],
+          "pixels": 841,
+          "total": [
+            0.07901453971862793,
+            0.05926090478897095,
+            0.035556551069021225
+          ]
+        }
+      },
+      "state": "sun"
+    },
+    "sun.shade": {
+      "camera": "shade",
+      "files": {
+        "index": {
+          "file": "sun.shade.index.png",
+          "sha256": "a1eb094781500ad5bf5035064925c7522ba6e91a23fceaa9abddf209dbce8528"
+        },
+        "indirect": {
+          "file": "sun.shade.indirect.exr",
+          "sha256": "adca6528b57f2c8755bf5be4de3e3cbe5ca2d3dac774cbbe3831fbe4b18dfa70"
+        },
+        "total": {
+          "file": "sun.shade.total.exr",
+          "sha256": "bad9522b8f3cb1457b6d6d24d9f2779ef74c63f252101d8672abe1bfc9257dc0"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Ground": 1,
+        "GroundShadow": 2,
+        "Pillar_Xn": 3,
+        "Pillar_Xp": 4,
+        "Pillar_Yn": 5,
+        "Pillar_Yp": 6,
+        "Pillar_Zp": 7
+      },
+      "regions": {
+        "Ground": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.5456392765045166,
+            0.4091728627681732,
+            0.24555544555187225
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.0034027816727757454,
+            0.0025520743802189827,
+            0.0015312442556023598
+          ],
+          "pixels": 24786,
+          "total": [
+            0.27447354793548584,
+            0.20585373044013977,
+            0.12351223826408386
+          ]
+        },
+        "GroundShadow": {
+          "albedo": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            2.0
+          ],
+          "indirect": [
+            0.003914202097803354,
+            0.0029356456361711025,
+            0.0017613894306123257
+          ],
+          "pixels": 752,
+          "total": [
+            0.001957101048901677,
+            0.0014678228180855513,
+            0.0008806947153061628
+          ]
+        },
+        "Pillar_Xn": {
+          "albedo": [
+            0.5999877452850342,
+            0.5999877452850342,
+            0.5999877452850342
+          ],
+          "direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            3.0
+          ],
+          "indirect": [
+            0.0881500095129013,
+            0.06611252576112747,
+            0.039667513221502304
+          ],
+          "pixels": 503,
+          "total": [
+            0.05288894101977348,
+            0.03966671973466873,
+            0.023800021037459373
+          ]
+        },
+        "Pillar_Yn": {
+          "albedo": [
+            0.5999828577041626,
+            0.5999828577041626,
+            0.5999828577041626
+          ],
+          "direct": [
+            0.00093309604562819,
+            0.0006998219178058207,
+            0.00041989271994680166
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            5.0
+          ],
+          "indirect": [
+            0.13062724471092224,
+            0.09797058254480362,
+            0.058782294392585754
+          ],
+          "pixels": 841,
+          "total": [
+            0.07893462479114532,
+            0.05920093134045601,
+            0.035520583391189575
+          ]
+        }
+      },
+      "state": "sun"
+    }
+  }
+}

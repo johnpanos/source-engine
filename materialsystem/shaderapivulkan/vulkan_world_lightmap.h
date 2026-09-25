@@ -32,6 +32,12 @@ bool UploadWorldShadowField( CVulkanContext &context,
     const world_mesh_gpu::ShadowFieldUploadRequest &request, std::string *error );
 bool UploadWorldProbeVolume( CVulkanContext &context,
     const world_mesh_gpu::ProbeVolumeUploadRequest &request, std::string *error );
+// R50-PARALLAX: the map's RPRB reflection probes in their GPU form, published
+// as one map-scoped RGBA16F texture (vulkan_world_reflection_probes.cpp). A
+// request without texels removes them; on failure the previous map's probes
+// stay bound.
+bool UploadWorldReflectionProbes( CVulkanContext &context,
+    const world_mesh_gpu::ReflectionProbesUploadRequest &request, std::string *error );
 
 } // namespace render_vulkan
 

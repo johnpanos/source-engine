@@ -18,7 +18,7 @@ def configure(conf):
 
 def build(bld):
 	bld.stlib(
-		source    = [ 'blake2b.cpp', 'map_container.cpp', 'probe_volume.cpp', 'radiosity_transfer.cpp', 'sdf_volume.cpp',
+		source    = [ 'blake2b.cpp', 'map_container.cpp', 'probe_volume.cpp', 'radiosity_transfer.cpp', 'reflection_probes.cpp', 'sdf_volume.cpp',
 		              'world_lightmap.cpp',
 		              'world_mesh.cpp' ],
 		target    = PROJECT_NAME,

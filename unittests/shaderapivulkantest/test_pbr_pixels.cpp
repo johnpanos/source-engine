@@ -246,8 +246,9 @@ int main()
 			        { 1, 1, 1, 1 }, { 0.8f, 0.8f, 0.8f, 1 }, false, false, false, false, true },
 			    { "metal-half-rough", { 255, 255, 255, 255 }, { 255, 128, 255, 255 },
 			        { 1, 1, 1, 1 }, { 0.5f, 0.5f, 0.5f, 1 }, true, false, false, false, false },
+			    // Radiance 8 keeps the energy-compensated red below the 8-bit ceiling.
 			    { "colored-metal", { 204, 51, 26, 255 }, { 255, 255, 255, 255 }, { 1, 1, 1, 1 },
-			        { 10, 10, 10, 1 }, false, false, true, false, false },
+			        { 8, 8, 8, 1 }, false, false, true, false, false },
 			    { "half-metal", { 255, 0, 0, 255 }, { 128, 255, 128, 255 }, { 1, 1, 1, 1 },
 			        { 2, 2, 2, 1 }, false, false, false, true, false },
 			    { "grazing-dielectric", { 255, 255, 255, 255 }, { 0, 255, 0, 255 },

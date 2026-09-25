@@ -1,0 +1,163 @@
+{
+  "analytic": [],
+  "fixture": "furnace-low-albedo",
+  "fixture_reference_digest": "375863e8d1d8f748ed89f8edc51e99e40e99096bccfae708a9776575775965dc",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 18,
+    "controls_unrejected": [],
+    "failed": 0,
+    "oracles": 1
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "default": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "9b36ec9893cea65c5095b69825087f5ba1cb908dabc19933f3299c3bd92be3d5",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/furnace-low-albedo/furnace-low-albedo.usda": "c16a3d12cf284957d25479e4abc6551ea5981196e160f420382135f67b1f9320"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "default.inside": {
+      "camera": "inside",
+      "files": {
+        "index": {
+          "file": "default.inside.index.png",
+          "sha256": "cf582992bc49fe2d008c3c7b304f7aaba7cbede27f8d074207dcf55cd091b879"
+        },
+        "indirect": {
+          "file": "default.inside.indirect.exr",
+          "sha256": "d917eaf315fccdea0010f8a719832d67a13730902d0c18525508444c78eaea13"
+        },
+        "total": {
+          "file": "default.inside.total.exr",
+          "sha256": "18ccb61eeb9f9350ae5ecf7dc6e4eec3ab7dfa20d4663942d3bfdc5927905757"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Box_Xn": 1,
+        "Box_Xp": 2,
+        "Box_Yn": 3,
+        "Box_Yp": 4,
+        "Box_Zn": 5,
+        "Box_Zp": 6,
+        "ProbeSphereShape": 7
+      },
+      "regions": {
+        "model": {
+          "albedo": [
+            0.10000459849834442,
+            0.10000459849834442,
+            0.10000459849834442
+          ],
+          "direct": [
+            0.4996728003025055,
+            0.4996728003025055,
+            0.4996728003025055
+          ],
+          "emission": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            7.0
+          ],
+          "indirect": [
+            0.055517710745334625,
+            0.055517710745334625,
+            0.055517710745334625
+          ],
+          "pixels": 4938,
+          "total": [
+            0.5555131435394287,
+            0.5555131435394287,
+            0.5555131435394287
+          ]
+        },
+        "walls": {
+          "albedo": [
+            0.1000409945845604,
+            0.1000409945845604,
+            0.1000409945845604
+          ],
+          "direct": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "emission": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            3.486964464187622
+          ],
+          "indirect": [
+            0.055556520819664,
+            0.055556520819664,
+            0.055556520819664
+          ],
+          "pixels": 41502,
+          "total": [
+            0.5553686618804932,
+            0.5553686618804932,
+            0.5553686618804932
+          ]
+        }
+      },
+      "state": "default"
+    }
+  }
+}

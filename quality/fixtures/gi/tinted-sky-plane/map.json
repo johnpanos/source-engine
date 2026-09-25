@@ -2,6 +2,9 @@
   "collision": {
     "solid_meshes": []
   },
+  "lightmap": {
+    "samples": 512
+  },
   "map": "gi_tinted_sky_plane",
   "probe_volume": {
     "bounds_m": [
@@ -11,7 +14,8 @@
       5.0,
       5.0,
       2.75
-    ]
+    ],
+    "samples": 1024
   },
   "quality": "gi-fixture",
   "scene": "quality/fixtures/gi/tinted-sky-plane/tinted-sky-plane.usda",

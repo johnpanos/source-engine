@@ -872,11 +872,49 @@ static bool ProbeSampleClamped( const mapcontainer::ProbeVolumeView &view, const
 	       view.Sample( best, normal, mapcontainer::ProbeVolumeLayer::Total, true, light );
 }
 
+// One surface's probe light: kept for its later rebuilds (dynamic lights
+// rebuild from it) and built into its lightmap now. With the queued material
+// system every lightmap rebuild runs on the render thread (R_BuildLightMap
+// queues R_BuildLightMapGuts), which then owns g_ProbeLitSurfaces and the
+// blocklights scratch, and CMaterialSystem::UpdateLightmap ignores a main-
+// thread update; so there the relight is queued too.
+static void ApplyProbeLitSurface( SurfaceHandle_t surfID, std::vector<Vector4D> luxels )
+{
+	g_ProbeLitSurfaces[surfID] = std::move( luxels );
+	matrix3x4_t identity;
+	SetIdentityMatrix( identity );
+	R_BuildLightMapGuts( NULL, surfID, identity, 0, SurfNeedsBumpedLightmaps( surfID ), true );
+}
+
+static void ClearProbeLitSurfaces()
+{
+	g_ProbeLitSurfaces.clear();
+}
+
+class CQueuedProbeLitSurface : public CFunctorBase
+{
+public:
+	CQueuedProbeLitSurface( SurfaceHandle_t surfID, const std::vector<Vector4D> &luxels )
+	    : m_surfID( surfID ), m_luxels( luxels )
+	{
+	}
+	void operator()() override { ApplyProbeLitSurface( m_surfID, std::move( m_luxels ) ); }
+
+private:
+	SurfaceHandle_t m_surfID;
+	std::vector<Vector4D> m_luxels;
+};
+
 bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view )
 {
+	CMatRenderContextPtr pRenderContext( materials );
+	ICallQueue *pCallQueue = pRenderContext->GetCallQueue();
 	if ( !view )
 	{
-		g_ProbeLitSurfaces.clear();
+		if ( pCallQueue )
+			pCallQueue->QueueCall( ClearProbeLitSurfaces );
+		else
+			ClearProbeLitSurfaces();
 		return true;
 	}
 	// Not yet: the map's lightmap pages are allocated after its volume loads.
@@ -954,11 +992,16 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 					else
 						++unsampled;
 				}
-			g_ProbeLitSurfaces[surfID] = luxels;
-			matrix3x4_t identity;
-			SetIdentityMatrix( identity );
-			R_BuildLightMapGuts(
-			    NULL, surfID, identity, 0, SurfNeedsBumpedLightmaps( surfID ), true );
+			if ( pCallQueue )
+			{
+				CFunctor *apply = new CQueuedProbeLitSurface( surfID, luxels );
+				pCallQueue->QueueFunctor( apply );
+				apply->Release();
+			}
+			else
+			{
+				ApplyProbeLitSurface( surfID, luxels );
+			}
 		}
 	}
 	if ( report.IsValid() && report.GetBool() )

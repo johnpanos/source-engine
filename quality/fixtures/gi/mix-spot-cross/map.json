@@ -2,7 +2,13 @@
   "collision": {
     "solid_meshes": []
   },
+  "lightmap": {
+    "samples": 2048
+  },
   "map": "gi_mix_spot_cross",
+  "probe_volume": {
+    "samples": 1024
+  },
   "quality": "gi-fixture",
   "scene": "quality/fixtures/gi/mix-spot-cross/mix-spot-cross.usda",
   "schema": "pbrt-map-manifest/v1"

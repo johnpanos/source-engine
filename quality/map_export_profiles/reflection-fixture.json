@@ -1,0 +1,29 @@
+{
+  "schema": "map-export-profile/v1",
+  "name": "reflection-fixture",
+  "description": "R50-PARALLAX reflection fixtures (quality/fixtures/reflection/): a denoised flat lightmap and automatically placed reflection probes (RPRB) rendered with the gi-reference Cycles light paths at mirror-fidelity resolution, so engine captures of their mirror floors can be judged against Cycles renders of the same cameras (tools/quality/reflection_runtime.py). No probe volume, directional page or pipeline reference render. Baked and rendered on the CPU, so the fixtures do not depend on the host GPU's HIP compute (which wedged on 2026-09-25 and hung every Cycles GPU job).",
+  "lightmap": {
+    "size": 1024,
+    "samples": 256,
+    "device": "cpu",
+    "denoise": true,
+    "directional": false,
+    "light_paths": "gi-reference"
+  },
+  "probe_volume": null,
+  "reflection_probe": {
+    "width": 1024,
+    "face_size": 256,
+    "samples": 64,
+    "light_paths": "gi-reference"
+  },
+  "reference": null,
+  "runtime_gate": null,
+  "audit": {
+    "require_reflection_probe": true,
+    "max_reflection_probe_residual": 0.15,
+    "require_reflection_probe_budget": true,
+    "max_uncovered_walkable_fraction": 0.0,
+    "max_unserved_glossy_fraction": 0.1
+  }
+}

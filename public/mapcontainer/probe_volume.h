@@ -123,6 +123,9 @@ private:
 };
 
 float HalfToFloat( uint16_t half ) noexcept;
+// IEEE binary16 from float, round to nearest even: the half-float texel
+// encoding of every map payload (PRBV, RPRB) and its GPU forms.
+uint16_t FloatToHalf( float value ) noexcept;
 
 // The GPU form of the grid records (shaders/probe_volume.glsl reads it): per
 // grid, kProbeGridTableTexels RGBA32F texels, one row per grid:

@@ -8,7 +8,10 @@ and fails when any requirement is not met:
 
   * lightmap bake samples, OIDN denoising and the directional (normal-map-aware)
     bake, packaged as a 2:1 directional LMAP page;
-  * a map reflection probe in the LMAP page;
+  * the map's reflection probes (RPRB): present, their parallax boxes within
+    the profile's fit-residual budget (how far the scene lies from each box,
+    seen from its capture point), placement coverage of the walkable space
+    and of glossy surfaces, and placement not cut short by the probe budget;
   * every authored material channel exported (base, metallic, roughness,
     occlusion, normal, opacity; emission not dropped) and no texture above
     the profile's size;
@@ -57,9 +60,42 @@ def audit(build, profile, booted):
                "fitted_texels": directional.get("fitted_texels"),
                "clamped_fraction": directional.get("clamped_fraction"),
                "rnm_colour_residual": directional.get("rnm_colour_residual")})
+    rprb = load(build / "lighting" / "reflection_probes.rprb.json") or {}
     if rules.get("require_reflection_probe"):
-        check("reflection-probe", bool(ktx2.get("reflection_probe")),
-              {"probe": ktx2.get("reflection_probe")})
+        check("reflection-probe", rprb.get("status") == "pass" and rprb.get("probes", 0) >= 1,
+              {"probes": rprb.get("probes"), "width": rprb.get("width")})
+    if "max_reflection_probe_residual" in rules:
+        fits = [{"index": fit["index"], "role": fit["role"],
+                 "mean_relative_residual": fit["mean_relative_residual"]}
+                for fit in rprb.get("fits", [])]
+        check("reflection-probe-fit",
+              bool(fits) and rprb.get("max_mean_relative_residual", 1e9) <=
+              rules["max_reflection_probe_residual"],
+              {"limit": rules["max_reflection_probe_residual"], "fits": fits})
+    placement = rprb.get("placement") or {}
+    if rules.get("require_reflection_probe_budget"):
+        # Placement stops when coverage is done or no longer worth a probe;
+        # stopping at max_probes means the scene needs a larger budget.
+        stops = {"room": placement.get("room_stop"), "glossy": placement.get("glossy_stop")}
+        check("reflection-probe-budget", bool(rprb) and "max_probes" not in stops.values(),
+              {"stops": stops, "probes": rprb.get("probes"),
+               "max_probes": placement.get("max_probes")})
+    if "max_uncovered_walkable_fraction" in rules:
+        samples = placement.get("walkable_samples", 0)
+        fraction = placement.get("uncovered_walkable", 0) / samples if samples else 1.0
+        check("reflection-probe-coverage",
+              bool(samples) and fraction <= rules["max_uncovered_walkable_fraction"],
+              {"walkable_samples": samples, "uncovered_fraction": fraction})
+    if "max_unserved_glossy_fraction" in rules:
+        # Of the glossy samples some eye-height point sees: placement cannot
+        # serve the rest (under furniture, behind objects).
+        samples = placement.get("glossy_servable", placement.get("glossy_samples", 0))
+        fraction = placement.get("unserved_glossy", 0) / samples if samples else 0.0
+        check("reflection-probe-glossy", bool(rprb) and
+              fraction <= rules["max_unserved_glossy_fraction"],
+              {"glossy_samples": placement.get("glossy_samples", 0), "glossy_servable": samples,
+               "unserved_fraction": fraction,
+               "glossy_shapes": placement.get("glossy_shapes", [])})
     if rules.get("require_authored_channels"):
         missing = {}
         for name, material in content.get("materials", {}).items():

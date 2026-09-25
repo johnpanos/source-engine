@@ -29,8 +29,8 @@
 //
 // PROBE_VOLUME (RFC 0011) takes the diffuse light from the map's PRBV probe
 // volume, sampled at each pixel's world position and normal (probe_volume.glsl,
-// sets 7 and 8), wherever the volume covers it; elsewhere, and without it, the
-// ambient cube. params2.w is 0 without a resident volume, 1 to sample with the
+// frame set bindings 2 and 3), wherever the volume covers it; elsewhere, and
+// without it, the ambient cube. params2.w is 0 without a resident volume, 1 to sample with the
 // visibility test and 2 without it (r_probevolume_visibility 0).
 //
 // INDIRECT_VIEW (RFC 0011 debug view) writes only the indirect light, for
@@ -47,17 +47,20 @@ layout( location = 4 ) in vec3 vTangentT;
 layout( location = 5 ) in vec3 vNormal;
 layout( location = 6 ) in vec3 vWorldPos;
 layout( location = 0 ) out vec4 outColor;
-layout( set = 0, binding = 0 ) uniform sampler2D baseTexture;     // s0, sRGB
-layout( set = 1, binding = 0 ) uniform sampler2D mraoTexture;     // s10, linear
-layout( set = 2, binding = 0 ) uniform sampler2D normalTexture;   // s1, linear
-layout( set = 3, binding = 0 ) uniform sampler2D emissionTexture; // s2, sRGB
-layout( set = 4, binding = 0 ) uniform sampler2D splitSumTexture;
-#ifdef ENV_CUBE
-layout( set = 5, binding = 0 ) uniform samplerCube envTexture; // s3 $envmap
-#else
-layout( set = 5, binding = 0 ) uniform sampler2D lightmapTexture; // map LMAP atlas
+// Sets by update frequency (vulkan_descriptor_groups.h), as world_pbr.frag:
+// 0 the frame's, 1 the material's, 2 this draw's constants.
+layout( set = 0, binding = 0 ) uniform sampler2D splitSumTexture;
+#ifndef ENV_CUBE
+layout( set = 0, binding = 1 ) uniform sampler2D lightmapTexture; // map LMAP atlas
 #endif
-layout( set = 6, binding = 0 ) uniform PixelShaderConstants
+layout( set = 1, binding = 0 ) uniform sampler2D baseTexture;     // s0, sRGB
+layout( set = 1, binding = 1 ) uniform sampler2D mraoTexture;     // s10, linear
+layout( set = 1, binding = 2 ) uniform sampler2D normalTexture;   // s1, linear
+layout( set = 1, binding = 3 ) uniform sampler2D emissionTexture; // s2, sRGB
+#ifdef ENV_CUBE
+layout( set = 1, binding = 4 ) uniform samplerCube envTexture; // s3 $envmap
+#endif
+layout( set = 2, binding = 0 ) uniform PixelShaderConstants
 {
 	vec4 c[32];
 }
@@ -79,8 +82,8 @@ consts;
 #include "world_pbr_probe.glsl"
 #endif
 #ifdef PROBE_VOLUME
-layout( set = 7, binding = 0 ) uniform sampler2D probeAtlas; // PRBV atlas, RGBA16F
-layout( set = 8, binding = 0 ) uniform sampler2D probeGrids; // grid table, RGBA32F
+layout( set = 0, binding = 2 ) uniform sampler2D probeAtlas; // PRBV atlas, RGBA16F
+layout( set = 0, binding = 3 ) uniform sampler2D probeGrids; // grid table, RGBA32F
 #include "probe_volume.glsl"
 #endif
 
@@ -145,7 +148,10 @@ vec3 EnvironmentRadiance( vec3 direction, float roughness, int flags )
 	float mips = max( ps.c[2].w, 1.0 );
 	environment = textureLod( envTexture, direction, roughness * ( mips - 1.0 ) ).rgb;
 #else
-	if ( ( flags & kMapProbe ) == 0 || !ProbeRadiance( direction, roughness, environment ) )
+	if ( ( flags & kMapProbe ) == 0 ||
+	     !MapProbeRadiance( vWorldPos, dot( vNormal, vNormal ) > 1e-12 ? normalize( vNormal )
+	                                                                    : direction,
+	         direction, roughness, environment ) )
 		environment = AmbientCube( direction );
 #endif
 	return environment;

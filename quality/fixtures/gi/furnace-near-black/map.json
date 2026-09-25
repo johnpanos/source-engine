@@ -2,7 +2,13 @@
   "collision": {
     "solid_meshes": []
   },
+  "lightmap": {
+    "samples": 512
+  },
   "map": "gi_furnace_near_black",
+  "probe_volume": {
+    "samples": 1024
+  },
   "quality": "gi-fixture",
   "scene": "quality/fixtures/gi/furnace-near-black/furnace-near-black.usda",
   "schema": "pbrt-map-manifest/v1"

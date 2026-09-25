@@ -2,6 +2,9 @@
   "collision": {
     "solid_meshes": []
   },
+  "lightmap": {
+    "samples": 512
+  },
   "map": "gi_symmetry_courtyard_sun",
   "probe_volume": {
     "bounds_m": [
@@ -11,7 +14,8 @@
       4.0,
       4.0,
       3.75
-    ]
+    ],
+    "samples": 1024
   },
   "quality": "gi-fixture",
   "scene": "quality/fixtures/gi/symmetry-courtyard-sun/symmetry-courtyard-sun.usda",

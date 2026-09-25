@@ -369,6 +369,11 @@ def main():
                              "inverse-square light_dynamic NAME_light of linear COLOR; each "
                              "HOLD (degrees) is a point_teleport NAME_hold_<k> that places it "
                              "there (after `ent_fire NAME DisableMotion`)")
+    parser.add_argument("--dynamic-light", action="append", default=[],
+                        metavar="NAME,X,Y,Z,COLOR",
+                        help="an unbaked bulb at a point (meters): an inverse-square "
+                             "light_dynamic NAME of linear COLOR, absent from the bake "
+                             "(R50-RELIGHT: the light a relit probe must reflect)")
     parser.add_argument("--light-control", action="append", default=[], metavar="NAME",
                         help="a switchable baked light (RFC 0011 RTRN source), in style order: "
                              "a named zero-brightness `light`, so vbsp gives it light style "
@@ -568,6 +573,25 @@ def main():
                       "holds": [{"name": "%s_hold_%d" % (name, k), "degrees": hold,
                                  "origin_source_units": at_angle(hold)}
                                 for k, hold in enumerate(holds)]})
+    # Unbaked bulbs at fixed points: inverse-square light_dynamic entities.
+    bulbs = []
+    for index, spec in enumerate(args.dynamic_light):
+        name, *values = spec.split(",")
+        x, y, z, color = (float(v) for v in values)
+        origin = [x * SOURCE_UNITS_PER_METER, y * SOURCE_UNITS_PER_METER,
+                  z * SOURCE_UNITS_PER_METER]
+        exponent = math.ceil(math.log2(color)) if color > 0 else 0
+        mantissa = max(0, min(255, round(color * 255.0 / 2.0 ** exponent)))
+        lines.extend(["entity", "{", '\t"id" "%d"' % (90 + index),
+                      '\t"classname" "light_dynamic"', '\t"targetname" "%s"' % name,
+                      '\t"origin" "%.3f %.3f %.3f"' % tuple(origin),
+                      # 16: DLIGHT_INVERSE_SQUARE, the physical bulb.
+                      '\t"spawnflags" "16"',
+                      '\t"_light" "%d %d %d 255"' % (mantissa, mantissa, mantissa),
+                      '\t"brightness" "%d"' % exponent, '\t"distance" "4000"',
+                      '\t"_cone" "0"', '\t"_inner_cone" "0"', '\t"style" "0"', "}"])
+        bulbs.append({"name": name, "origin_source_units": origin,
+                      "color": [mantissa, exponent]})
     placed = []
     for index, prop in enumerate(map_scene.props(scene)):
         origin = [value * SOURCE_UNITS_PER_METER for value in prop["origin_m"]]
@@ -608,6 +632,7 @@ def main():
                "portals": args.portal,
                "doors": doors,
                "lamps": lamps,
+               "dynamic_lights": bulbs,
                "light_controls": [{"name": name, "style": 32 + index}
                                   for index, name in enumerate(args.light_control)],
                "policy": "18-DOP per connected component; floor triangles extruded; "

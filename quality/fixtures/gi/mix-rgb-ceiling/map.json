@@ -2,7 +2,13 @@
   "collision": {
     "solid_meshes": []
   },
+  "lightmap": {
+    "samples": 512
+  },
   "map": "gi_mix_rgb_ceiling",
+  "probe_volume": {
+    "samples": 1024
+  },
   "quality": "gi-fixture",
   "scene": "quality/fixtures/gi/mix-rgb-ceiling/mix-rgb-ceiling.usda",
   "schema": "pbrt-map-manifest/v1"

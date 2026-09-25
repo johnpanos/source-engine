@@ -165,7 +165,8 @@ Facts observed in the tree at `73e7ec64` plus the shared dirty tree on
 - Screen-space GI, voxel cone tracing, light propagation volumes and Lumen-style
   surface caches. They are rejected alternatives (below), not deferred phases.
 - Glossy indirect light. Probes store irradiance; specular stays with RFC 0007
-  reflection probes. Relightable reflection probes are an open decision.
+  reflection probes. Relightable reflection probes (open decision 5) were
+  decided as an RFC 0007 amendment that consumes this RFC's change.
 - Claiming identical pixels across producers. Each producer declares its own
   tolerance against the shared reference.
 
@@ -191,7 +192,8 @@ the GPU and by CPU producers. Per probe:
 
 - **Irradiance:** octahedral map, 6×6 interior texels plus a 1-texel border
   (8×8), linear HDR (`RGBA16F` master; `B10G11R11_UFLOAT` is a per-profile
-  encoding decided by measurement).
+  encoding decided by measurement: open decision 1 found it lossless enough
+  but unsigned, so it is for baked layers only, never a change volume).
 - **Visibility:** octahedral mean and mean-squared distance to the first hit,
   14×14 interior plus border (16×16), `RG16F`. The shader applies a Chebyshev
   test, which is what stops light leaking through walls and thin panels.
@@ -445,6 +447,9 @@ receive light from the probe volume but neither occlude nor bounce it.
 - It requires the G5 compute foundation. Godot 4's SDFGI and AMD FidelityFX
   Brixelizer GI are the reference designs to evaluate. Their licenses are to
   be recorded before any code is used.
+- *As built (open decision 7, decided):* the field is a uniform SDFV baked at
+  map build, not a clipmap voxelized from `WMSH` at load. The producer uses
+  neither reference's code.
 
 ### Ray query (compute)
 
@@ -899,9 +904,41 @@ parents alone.
 1. Probe irradiance encoding: octahedral 6×6 versus SH L2, and
    `B10G11R11_UFLOAT` versus `RGBA16F`. Decided in G1 by analytic error and
    memory.
+   *Decided 2026-09-25: octahedral 6×6 in `RGBA16F`, as implemented since G1.*
+   - SH L2 reconstructs smooth irradiance more accurately
+     (`tools/quality/probe_encoding.py`). Mean error relative to the
+     environment's level: sky 0.02% against 3.9%, colour bleed 0.1% against
+     3.3%, a window 5.3% against 5.9%, a sun 9.9% against 11.9%.
+   - SH L2 still loses:
+     - it rings negative under a sun (103 of 2048 normals);
+     - it carries no visibility, so the 1 KB octahedral visibility tile
+       stays either way and dominates the memory (1,536 against 1,078 bytes
+       per probe);
+     - every producer writes and blends the octahedral tile per texel, and
+       the G1 oracles gate that tile.
+   - Strong direct light already goes through the light set, not the tile
+     (G2).
+   - `B10G11R11_UFLOAT` adds no measurable error (within 0.2% of `RGBA16F`)
+     and halves the irradiance bytes. It is unsigned, so it can hold only
+     the baked total and indirect layers, never a `BakedPlusDelta` change
+     volume. It stays a per-profile option until a mobile memory budget
+     needs it.
+   - SH L2 irradiance with the octahedral visibility is the recorded
+     alternative, if the between-texel error is ever what fails a gate.
 2. Grid layout: uniform grids per region versus clipmapped cascades around the
    camera for large maps. Decided by corpus memory in G1, and required before
    G6.
+   *Decided 2026-09-25: uniform grids, one per map at the pipeline's spacing
+   (PRBV allows 16).*
+   - The G1 corpus fits the budget (16 MB, 20 ms load) with an order of
+     magnitude to spare, except `staircase2`. Its 1 m spacing over a large
+     exterior gives 5,280 probes (2.6× the memory). The remedy is that map's
+     `probe_volume.spacing_m` or `bounds_m`, not a runtime structure.
+   - The camera-centred priority a clipmap would give comes from the traced
+     producers' probe focus: the camera's PVS clusters first, a rotating
+     budget for the rest. That keeps the cost bounded on a whole Portal map
+     (4,862 probes: 0.61 ms against 3.48 ms without focus), with no
+     cascade storage.
 3. Whether the radiosity producer publishes a surface atlas or only probes,
    decided by `room-states` quality versus memory in G4.
 4. Shadow technique for moved lights (shadow atlas versus SDF shadows), shared
@@ -911,12 +948,32 @@ parents alone.
 5. Whether relightable reflection probes are added so dynamic light reaches
    specular. This would be an RFC 0007 F amendment, not part of this RFC's
    producers.
+   *Decided 2026-09-25: yes, as an RFC 0007 image-based lighting amendment
+   (R50-RELIGHT). Probes carry relight bands (RPRB v2: albedo, distance,
+   normal), and `world_pbr` adds albedo times this RFC's change (the change
+   volume and the unbaked lights' shadowed direct light) at the point each
+   probe saw. The `mirror-lamp` gate passes against Cycles, and the probes
+   as baked fail it (RFC/0007-progress.md, R50-RELIGHT).*
 6. Light transport through open portals: dynamic patch links for radiosity, or
    ray transforms for SDF/RT. A later extension with its own fixture.
    *Decided 2026-09-25 (G10): both, plus virtual lights for the analytic
    lights beyond a portal; the fixture is `portal-light`.*
 7. Which reference implementation the SDF producer follows (Godot SDFGI or
    FidelityFX Brixelizer GI), after license and fit review.
+   *Decided 2026-09-25: neither.*
+   - The producer is this RFC's own design, and no code, shaders or data from
+     either project are used, so neither license applies.
+   - The design, which fits the probe contract and Source maps better than
+     either reference:
+     - a uniform SDFV baked at map build (0.1 m voxels, with reflectance,
+       emission, analytic light records and per-cell light lists), not a
+       clipmapped field voxelized at load;
+     - the probe volume's own texels traced per probe, with focus and a
+       rotating budget;
+     - brush-entity proxy boxes for moving geometry, and the same field's
+       SDF shadows for unbaked lights (decision 4).
+   - A future clipmapped or runtime-voxelized field would be a new producer
+     behind the same contract, reviewed on its own.
 
 ## Amendments to RFC 0007 and RFC 0008
 

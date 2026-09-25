@@ -29,6 +29,7 @@
 #include "render/render_gamma_ramp.h"
 #include "vulkan_adapter.h"
 #include "vulkan_compute.h"
+#include "vulkan_descriptor_groups.h"
 #include "vulkan_frame_stats.h"
 #include "vulkan_surface_host.h"
 
@@ -85,6 +86,10 @@ struct VulkanContextConfig
 	// Wait for vertical blank when presenting. The present mode for either
 	// setting is chosen by render.present-policy.v1; RequestVSync changes it.
 	bool vsync = true;
+	// Behave as if the device bound at most this many descriptor sets (0: the
+	// device's own maxBoundDescriptorSets). The suites set 4, the Vulkan
+	// minimum, to show what such a device draws.
+	uint32_t descriptorSetLimit = 0;
 };
 
 // A single, coherent native Vulkan presentation context bound to one window
@@ -137,6 +142,17 @@ public:
 	// is destroyed behind the frames that may read it).
 	void SetShadowField( int handle, const float origin[3], float voxel, const uint32_t dims[3] );
 	bool ShadowFieldResident() const { return m_shadowFieldHandle >= 0; }
+	// R50-PARALLAX: the map's RPRB reflection probes as one RGBA16F texture
+	// (mapcontainer::WriteReflectionProbeTexture; null texels: none). The
+	// context keeps the texels and applies `mat_reflection_probes` and
+	// `mat_reflection_relight` (R50-RELIGHT) by rewriting the mode texel into
+	// a new texture; each replaced texture is
+	// destroyed behind the frames that sample it. The checked upload is
+	// vulkan_world_reflection_probes.cpp's UploadWorldReflectionProbes.
+	bool SetReflectionProbes( const uint16_t *texels, uint32_t width, uint32_t height,
+	    uint32_t count, std::string *outError = nullptr );
+	void SetReflectionProbeMode( int mode, bool relight );
+	int ReflectionProbeHandle() const { return m_reflectionProbeHandle; }
 	bool ProbeVolumeResident() const { return m_probeAtlasHandle >= 0 && m_probeGridCount > 0; }
 	// RFC 0011 G4: a BakedPlusDelta producer's change volume (an RGBA16F atlas
 	// in the volume's layout whose indirect layer holds the signed change),
@@ -166,12 +182,20 @@ public:
 	}
 	uint64_t CompletedFrameSerial() const { return m_completedSerial; }
 	bool ProbeDeltaResident() const { return m_probeDeltaHandle >= 0 && ProbeVolumeResident(); }
-	// Whether PBRMetalRough models can sample the volume per pixel: the device
-	// binds the nine descriptor sets its pipelines use.
-	bool ProbeVolumeSamplingSupported() const
-	{
-		return m_skinProbePipelineLayout != VK_NULL_HANDLE;
-	}
+	// Whether PBRMetalRough models can sample the volume per pixel (their
+	// probe-volume variants were built).
+	bool ProbeVolumeSamplingSupported() const { return m_pbrModelFrag[3] != VK_NULL_HANDLE; }
+	// The descriptor sets a pipeline layout may use: the device's
+	// maxBoundDescriptorSets, or VulkanContextConfig::descriptorSetLimit when
+	// lower. Every PBR and GI layout uses at most kPbrDescriptorSets.
+	uint32_t DescriptorSetLimit() const { return m_descriptorSetLimit; }
+	static constexpr uint32_t kPbrDescriptorSets = 3;
+	// The largest set count of any PBR or GI pipeline layout created so far
+	// (world, glass, model, and their GI variants).
+	uint32_t PbrDescriptorSetsUsed() const { return m_pbrDescriptorSetsUsed; }
+	// The grouped frame/material sets (vulkan_descriptor_groups.h): written
+	// and reused counts, for the suites.
+	const CGroupedDescriptors &GroupedDescriptors() const { return m_groupedDescriptors; }
 	// RFC 0011 G2: the frame's unbaked lights (dynamic and entity lights from
 	// the engine's light set, render/light_set.h) that WMSH PBR adds as direct
 	// light, through the legacy dlight falloff times the Lambert cosine. At most
@@ -194,9 +218,11 @@ public:
 	void SetDirectLights( const DirectLight *lights, uint32_t count );
 	uint32_t DirectLightCount() const { return m_directLightCount; }
 	// Whether WMSH PBR can add direct lights and run the RuntimeIndirect
-	// policy: the device binds nine sets and the per-frame constants ring
-	// exists (m_worldPbrExtendedLayout).
+	// policy: the per-frame constants ring exists and the variants were built
+	// (m_worldPbrExtendedLayout).
 	bool DirectLightsSupported() const { return m_worldPbrExtendedLayout != VK_NULL_HANDLE; }
+	// Whether WMSH PBR can run the BakedPlusDelta policy (its variants were built).
+	bool BakedPlusDeltaSupported() const { return m_worldPbrDeltaLayout != VK_NULL_HANDLE; }
 	// RFC 0011 render.indirect-policy.v1 for the world (indirect_policy.h):
 	// -1 the producer's (BakedPlusDelta while a change volume is resident,
 	// else Baked), 0 Baked, 1 BakedPlusDelta, 2 RuntimeIndirect.
@@ -461,11 +487,14 @@ public:
 	}
 	// The textured pipeline's alternative pixel stages (alphaParams.y), per draw:
 	// 0 the material shader the flags describe, 2 shadow_ps2x's projected
-	// render-to-texture shadow (1 is taken by "multiply by the lightmap").
+	// render-to-texture shadow, 3 spritecard_ps2x (its second animation frame,
+	// blend factor and ADDSELF weight travel in the vertex record; see
+	// demo_dyn_tex.frag). 1 is taken by "multiply by the lightmap".
 	enum
 	{
 		kTexturedModeDefault = 0,
-		kTexturedModeShadow = 2
+		kTexturedModeShadow = 2,
+		kTexturedModeSpriteCard = 3
 	};
 	void SelectDynamicTexturedMode( int mode ) { m_dynTexturedMode = mode; }
 	void SelectDynamicShader( int shaderIndex ) { m_dynShaderIndex = shaderIndex; }
@@ -757,6 +786,9 @@ public:
 	// other draw is unchanged. Read when a frame is recorded.
 	void SetIndirectLightView( int mode, float scale );
 	int IndirectLightViewMode() const { return m_indirectViewMode; }
+	// Views 1 and 2 draw the indirect layer through the INDIRECT_VIEW shaders;
+	// view 3 (RFC 0011 G9) is the diffuse light of the lit shaders.
+	bool IndirectViewShading() const { return m_indirectViewMode == 1 || m_indirectViewMode == 2; }
 	bool SelectPbrWorldMaterial( int mrao, int normal, const float eye[3], float alphaReference );
 	// The optional maps of an opaque WMSH PBR material: an sRGB emission
 	// color (decoded by the shader) times `emissionScale`, and an $envmap cube
@@ -785,9 +817,6 @@ public:
 	// depth), and so does a glass draw of another `materialKey`, so glass behind
 	// glass shows through. A frame makes at most kMaxSceneCaptures captures;
 	// later glass reuses the last one.
-	// Views 1 and 2 draw the indirect layer through the INDIRECT_VIEW shaders;
-	// view 3 (RFC 0011 G9) is the diffuse light of the lit shaders.
-	bool IndirectViewShading() const { return m_indirectViewMode == 1 || m_indirectViewMode == 2; }
 	struct PbrGlassParams
 	{
 		float transmission = 1.0f;
@@ -1360,6 +1389,22 @@ private:
 	std::vector<VkCommandBuffer> m_commandBuffers;
 
 	uint32_t m_framesInFlight = 2;
+	uint32_t m_descriptorSetLimit = 0;
+	uint32_t m_pbrDescriptorSetsUsed = 0;
+	// The PBR and GI stages' frame and material sets (vulkan_descriptor_groups.h).
+	CGroupedDescriptors m_groupedDescriptors;
+	// A grouped layout: the frame set, the material set and, when the
+	// constants ring exists, its dynamic block (set 2), with one push range
+	// of `pushBytes` for both stages. Records the set count it used.
+	bool CreatePbrPipelineLayout(
+	    uint32_t pushBytes, VkPipelineLayout *outLayout, std::string *outError );
+	// A managed texture as a grouped binding, as the per-texture sets bind it:
+	// its view (its sRGB view when `srgb` and it has one; *outSrgb says which)
+	// and sampler; `fallback` (a built-in white cube or volume handle, or -1
+	// for the built-in 2D texture) when the handle holds no texture or is
+	// `openTarget`, the target open for rendering.
+	CGroupedDescriptors::Image GroupedImage(
+	    int handle, int fallback, int openTarget, bool srgb, bool *outSrgb = nullptr ) const;
 	uint32_t m_currentFrame = 0;
 	std::vector<VkSemaphore> m_imageAvailable;
 	std::vector<VkSemaphore> m_renderFinished; // per swapchain image (GrowRenderFinished)
@@ -1465,11 +1510,11 @@ private:
 	// world_pbr.frag -DINDIRECT_VIEW, selected while the indirect view is on.
 	std::map<uint64_t, VkPipeline> m_worldPbrIndirectPipelines;
 	// `extended`: kWorldPbrDirectLights (world_pbr.frag -DDIRECT_LIGHTS, the
-	// frame's direct-light block in set 7) and kWorldPbrRuntimeIndirect
-	// (-DRUNTIME_INDIRECT, the producer's indirect atlas in set 8), on
+	// frame's direct-light block in set 2) and kWorldPbrRuntimeIndirect
+	// (-DRUNTIME_INDIRECT, the producer's indirect atlas in the frame set), on
 	// m_worldPbrExtendedLayout.
-	// kWorldPbrDeltaVolume (-DDELTA_VOLUME, the change volume in sets 8 and
-	// 9) is on m_worldPbrDeltaLayout and excludes kWorldPbrRuntimeIndirect;
+	// kWorldPbrDeltaVolume (-DDELTA_VOLUME, the change volume in the frame
+	// set) is on m_worldPbrDeltaLayout and excludes kWorldPbrRuntimeIndirect;
 	// alone it is also the indirect view's variant.
 	enum
 	{
@@ -1493,8 +1538,8 @@ private:
 	VkShaderModule m_worldPbrIndirectFrag = VK_NULL_HANDLE;
 	VkPipelineLayout m_worldPbrPipelineLayout = VK_NULL_HANDLE;
 	bool m_pbrWorldReady = false;
-	// Glass: world_pbr.vert with world_pbr_glass.frag, the WMSH PBR sets plus
-	// the scene capture's color (set 5) and depth (set 6).
+	// Glass: world_pbr.vert with world_pbr_glass.frag, the WMSH PBR sets with
+	// the scene capture's color and depth in the material set.
 	std::map<uint64_t, VkPipeline> m_worldGlassPipelines;
 	VkPipeline WorldGlassPipeline(
 	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
@@ -1599,18 +1644,16 @@ private:
 	uint32_t m_maxImageDimension3D = 0;
 	bool InitPostPipeline( std::string *outError );
 	void DestroyPostPipeline();
-	// PBRMetalRough models share the skin layout and vertex stage. Variant 0
-	// reads the map probe from the LMAP atlas in set 5; variant 1 ($envmap)
-	// reads a cube there; variant 2 is the indirect view (a 2D set 5).
-	// Variants 3..5 are those three with the map's PRBV probe volume sampled
-	// per pixel (sets 7 and 8, m_skinProbePipelineLayout).
+	// PBRMetalRough models share the skin vertex stage and constants ring, on
+	// their own grouped layout (m_pbrModelPipelineLayout). Variant 0 reads the
+	// map probe from the LMAP atlas (frame set); variant 1 ($envmap) reads the
+	// material's cube instead; variant 2 is the indirect view. Variants 3..5
+	// are those three with the map's PRBV probe volume sampled per pixel.
 	std::map<uint64_t, VkPipeline> m_pbrModelPipelines[6];
 	VkPipeline PbrModelPipeline( const DynRasterState &state, bool envCube, bool srgbPass = false,
 	    int samples = 1, bool probeVolume = false );
 	VkShaderModule m_pbrModelFrag[6] = {};
-	// The skin layout plus the probe atlas (set 7) and grid table (set 8);
-	// created only on devices that bind nine descriptor sets.
-	VkPipelineLayout m_skinProbePipelineLayout = VK_NULL_HANDLE;
+	VkPipelineLayout m_pbrModelPipelineLayout = VK_NULL_HANDLE;
 	bool m_pbrModelReady = false;
 	bool InitPbrModelPipeline( std::string *outError );
 	void DestroyPbrModelPipeline();
@@ -1759,6 +1802,13 @@ private:
 	int m_worldLightmapIndirectHandle = -1;
 	int m_probeAtlasHandle = -1;
 	int m_shadowFieldHandle = -1;
+	// R50-PARALLAX: SetReflectionProbes' texture, its texels and mode.
+	int m_reflectionProbeHandle = -1;
+	int m_reflectionProbeMode = 1;
+	bool m_reflectionProbeRelight = true;
+	uint32_t m_reflectionProbeWidth = 0;
+	uint32_t m_reflectionProbeHeight = 0;
+	std::vector<uint16_t> m_reflectionProbeTexels;
 	float m_shadowFieldOrigin[4] = {}; // xyz the first voxel centre, w the voxel size
 	float m_shadowFieldDims[4] = {};
 	int m_probeGridHandle = -1;
@@ -1776,15 +1826,14 @@ private:
 	uint32_t m_directLightOffset = UINT32_MAX;
 	int m_indirectPolicy = -1;
 	bool m_indirectPolicySeedDouble = false;
-	// world_pbr.frag's extended variants on nine sets (the seven texture sets,
-	// the direct-light block, the producer's indirect atlas), indexed by
+	// world_pbr.frag's extended variants (the direct-light block in set 2,
+	// the producer's indirect atlas in the frame set), indexed by
 	// kWorldPbrDirectLights | kWorldPbrRuntimeIndirect (index 0 unused).
 	VkPipelineLayout m_worldPbrExtendedLayout = VK_NULL_HANDLE;
 	VkShaderModule m_worldPbrExtendedFrag[8] = {};
 	std::map<uint64_t, VkPipeline> m_worldPbrExtendedPipelines[8];
-	// The BakedPlusDelta variants on ten sets (the extended nine with the
-	// change atlas in set 8, and the grid table in set 9), and the indirect
-	// view's.
+	// The BakedPlusDelta variants (the change atlas and grid table in the
+	// frame set), and the indirect view's.
 	VkPipelineLayout m_worldPbrDeltaLayout = VK_NULL_HANDLE;
 	VkShaderModule m_worldPbrIndirectDeltaFrag = VK_NULL_HANDLE;
 	std::map<uint64_t, VkPipeline> m_worldPbrIndirectDeltaPipelines;

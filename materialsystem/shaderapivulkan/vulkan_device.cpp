@@ -510,6 +510,12 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 	        : 1;
 	m_anisotropyLevel = std::min( 4, m_maxAnisotropy );
 	m_portalPushSupported = properties.limits.maxPushConstantsSize >= kPortalPushBytes;
+	m_descriptorSetLimit = properties.limits.maxBoundDescriptorSets;
+	// Volume textures (the white volume, color-correction volumes, the SDF
+	// shadow field) are checked against it whichever pipelines exist.
+	m_maxImageDimension3D = properties.limits.maxImageDimension3D;
+	if ( m_config.descriptorSetLimit > 0 )
+		m_descriptorSetLimit = std::min( m_descriptorSetLimit, m_config.descriptorSetLimit );
 	m_clipPlanesSupported = supported.shaderClipDistance == VK_TRUE &&
 	                        properties.limits.maxClipDistances >= kMaxClipPlanes &&
 	                        properties.limits.maxPushConstantsSize >= kTexturedPushBytes;
@@ -2830,6 +2836,15 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 			if ( !UploadManagedTexture(
 			         m_whiteCubeHandle, white, sizeof( white ), outError, 0, face ) )
 				return false;
+		// The white volume: what an unread 3D sampler reads (the post
+		// passes' unused color-correction volumes, the PBR frame set's
+		// shadow field when the map has none).
+		m_whiteVolumeHandle = CreateManagedTexture(
+		    1, 1, VK_FORMAT_R8G8B8A8_UNORM, outError, 0, 1, VK_FORMAT_UNDEFINED, false, 2 );
+		const uint8_t whiteVolume[8] = { 255, 255, 255, 255, 255, 255, 255, 255 };
+		if ( m_whiteVolumeHandle < 0 || !UploadManagedTexture( m_whiteVolumeHandle, whiteVolume,
+		                                    sizeof( whiteVolume ), outError ) )
+			return false;
 
 		// The UnlitGeneric push block is larger than the color pipelines': it
 		// carries cModelViewProj (mat4), cModulationColor (vec4), and the two rows
@@ -2977,7 +2992,11 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		Log( "post-processing pipeline unavailable: %s\n", postError.c_str() );
 		DestroyPostPipeline();
 	}
+	// The PBR and GI stages bind their textures in frame and material sets
+	// (vulkan_descriptor_groups.h); without them those stages are declined.
 	std::string pbrError;
+	if ( !m_groupedDescriptors.Init( m_device, m_framesInFlight, &pbrError ) )
+		Log( "grouped descriptor sets unavailable: %s\n", pbrError.c_str() );
 	if ( !InitPbrDirectPipeline( &pbrError ) )
 	{
 		Log( "PBR direct pipeline unavailable: %s\n", pbrError.c_str() );
@@ -3155,7 +3174,7 @@ VkPipeline CVulkanContext::SkinPipeline( const DynRasterState &state, bool srgbP
 		return existing->second;
 	if ( pass == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE; // no pass of this sample count exists now
-	if ( m_skinVert == VK_NULL_HANDLE )
+	if ( m_skinVert == VK_NULL_HANDLE || m_skinPipelineLayout == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE;
 	VkPipeline pipeline = BuildMaterialPipeline(
 	    state, m_skinVert, m_skinFrag, m_skinPipelineLayout, &m_skinVin, pass, samples );
@@ -3203,8 +3222,8 @@ VkPipeline CVulkanContext::PaintBlobPipeline(
 		return VK_NULL_HANDLE; // no pass of this sample count exists now
 	if ( m_paintBlobFrag == VK_NULL_HANDLE )
 		return VK_NULL_HANDLE;
-	VkPipeline pipeline = BuildMaterialPipeline( state, m_skinVert, m_paintBlobFrag,
-	    m_skinPipelineLayout, &m_skinVin, pass, samples );
+	VkPipeline pipeline = BuildMaterialPipeline(
+	    state, m_skinVert, m_paintBlobFrag, m_skinPipelineLayout, &m_skinVin, pass, samples );
 	if ( pipeline == VK_NULL_HANDLE )
 		Log( "vkCreateGraphicsPipelines (PaintBlob, state %#llx) failed\n",
 		    static_cast<unsigned long long>( key ) );
@@ -3418,16 +3437,18 @@ bool CVulkanContext::InitPortalPipeline( std::string *outError )
 // VertexLitGeneric's $phong path: its own shaders (a GLSL port of skin_vs20.fxc
 // and skin_ps20b.fxc), six sampler sets, the pixel shader constants in a
 // dynamic uniform buffer (set 6) and a push block with the vertex stage's
-// registers (see shaders/skin.frag). A device that cannot bind seven sets or
-// the block gets no pipeline, and the shader API declines the draws by name.
+// registers (see shaders/skin.frag). A device that cannot bind the block gets
+// none of it, and the shader API declines the draws by name. The constants
+// ring and the vertex stage are shared with model PBR and the world's direct
+// lights, which bind three sets; only the $phong layout needs seven, so a
+// device below that keeps them and declines $phong alone.
 bool CVulkanContext::InitSkinPipeline( std::string *outError )
 {
 	VkPhysicalDeviceProperties properties = {};
 	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
-	if ( !m_clipPlanesSupported || properties.limits.maxBoundDescriptorSets < 7 ||
-	     properties.limits.maxPushConstantsSize < kSkinPushBytes )
+	if ( !m_clipPlanesSupported || properties.limits.maxPushConstantsSize < kSkinPushBytes )
 	{
-		Log( "skin pipeline unavailable: descriptor sets, push constants or clip distances\n" );
+		Log( "skin pipeline unavailable: push constants or clip distances\n" );
 		return true;
 	}
 	m_uboAlignment =
@@ -3476,6 +3497,30 @@ bool CVulkanContext::InitSkinPipeline( std::string *outError )
 		}
 	}
 
+	if ( !CreateShaderModule( g_skinVertSpv, sizeof( g_skinVertSpv ), &m_skinVert, outError ) )
+		return false;
+	// Position, attenuation (the color slot) and uv as the textured stage reads
+	// them, then the normal, tangent and the fourth attenuation (the alpha slot).
+	std::memcpy( m_skinAttrs, m_texTemplate.attrs, sizeof( m_skinAttrs[0] ) * 4 );
+	m_skinAttrs[4].location = 4;
+	m_skinAttrs[4].format = VK_FORMAT_R32G32B32_SFLOAT;
+	m_skinAttrs[4].offset = sizeof( float ) * 10;
+	m_skinAttrs[5].location = 5;
+	m_skinAttrs[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	m_skinAttrs[5].offset = sizeof( float ) * 13;
+	m_skinAttrs[6].location = 6;
+	m_skinAttrs[6].format = VK_FORMAT_R32_SFLOAT;
+	m_skinAttrs[6].offset = sizeof( float ) * 17;
+	m_skinVin = m_texTemplate.vin;
+	m_skinVin.vertexAttributeDescriptionCount = 7;
+	m_skinVin.pVertexAttributeDescriptions = m_skinAttrs;
+	if ( DescriptorSetLimit() < 7 )
+	{
+		Log( "skin pipeline unavailable: %u descriptor sets (the constants ring and vertex "
+		     "stage remain for PBR)\n",
+		    DescriptorSetLimit() );
+		return true;
+	}
 	VkPushConstantRange pc = {};
 	pc.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	pc.size = kSkinPushBytes;
@@ -3493,24 +3538,8 @@ bool CVulkanContext::InitSkinPipeline( std::string *outError )
 		SetError( outError, "vkCreatePipelineLayout (skin) failed" );
 		return false;
 	}
-	if ( !CreateShaderModule( g_skinVertSpv, sizeof( g_skinVertSpv ), &m_skinVert, outError ) ||
-	     !CreateShaderModule( g_skinFragSpv, sizeof( g_skinFragSpv ), &m_skinFrag, outError ) )
+	if ( !CreateShaderModule( g_skinFragSpv, sizeof( g_skinFragSpv ), &m_skinFrag, outError ) )
 		return false;
-	// Position, attenuation (the color slot) and uv as the textured stage reads
-	// them, then the normal, tangent and the fourth attenuation (the alpha slot).
-	std::memcpy( m_skinAttrs, m_texTemplate.attrs, sizeof( m_skinAttrs[0] ) * 4 );
-	m_skinAttrs[4].location = 4;
-	m_skinAttrs[4].format = VK_FORMAT_R32G32B32_SFLOAT;
-	m_skinAttrs[4].offset = sizeof( float ) * 10;
-	m_skinAttrs[5].location = 5;
-	m_skinAttrs[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-	m_skinAttrs[5].offset = sizeof( float ) * 13;
-	m_skinAttrs[6].location = 6;
-	m_skinAttrs[6].format = VK_FORMAT_R32_SFLOAT;
-	m_skinAttrs[6].offset = sizeof( float ) * 17;
-	m_skinVin = m_texTemplate.vin;
-	m_skinVin.vertexAttributeDescriptionCount = 7;
-	m_skinVin.pVertexAttributeDescriptions = m_skinAttrs;
 	if ( SkinPipeline( DynRasterState() ) == VK_NULL_HANDLE )
 	{
 		SetError( outError, "vkCreateGraphicsPipelines (skin) failed" );
@@ -3548,7 +3577,7 @@ bool CVulkanContext::InitPbrDirectPipeline( std::string *outError )
 {
 	VkPhysicalDeviceProperties properties = {};
 	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
-	if ( properties.limits.maxBoundDescriptorSets < 3 )
+	if ( DescriptorSetLimit() < 3 )
 	{
 		SetError( outError, "PBR direct requires three descriptor sets" );
 		return false;
@@ -3718,6 +3747,7 @@ bool CVulkanContext::UploadSkinConstants( std::vector<uint32_t> *offsets )
 		    static_cast<unsigned char *>( slot.mapped ) + stride * m_dynSkinConstants.size();
 		// world_pbr.frag DirectLights: the count and whether the shadow field
 		// is bound, the field's origin and voxel, its dimensions, the lights.
+		// z, w: view 3 (the diffuse light) and its exposure.
 		float header[3][4] = { { static_cast<float>( m_directLightCount ),
 		    m_shadowFieldHandle >= 0 ? 1.0f : 0.0f, m_indirectViewMode == 3 ? 1.0f : 0.0f,
 		    m_indirectViewScale } };
@@ -3748,7 +3778,6 @@ void CVulkanContext::DestroySkinPipeline()
 		if ( *module != VK_NULL_HANDLE )
 			vkDestroyShaderModule( m_device, *module, nullptr );
 		*module = VK_NULL_HANDLE;
-		// z, w: view 3 (the diffuse light) and its exposure.
 	}
 	for ( SkinUniformBuffer &slot : m_skinUbos )
 	{
@@ -3775,7 +3804,7 @@ bool CVulkanContext::InitLightmappedPipeline( std::string *outError )
 {
 	VkPhysicalDeviceProperties properties = {};
 	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
-	if ( m_skinPipelineLayout == VK_NULL_HANDLE || properties.limits.maxBoundDescriptorSets < 9 ||
+	if ( m_skinPipelineLayout == VK_NULL_HANDLE || DescriptorSetLimit() < 9 ||
 	     properties.limits.maxVertexInputAttributes < 13 )
 	{
 		SetError( outError, "needs the skin constants, nine descriptor sets and 13 attributes" );
@@ -3865,17 +3894,12 @@ bool CVulkanContext::InitPostPipeline( std::string *outError )
 		SetError( outError, "needs the skin layout" );
 		return false;
 	}
-	VkPhysicalDeviceProperties properties = {};
-	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
-	m_maxImageDimension3D = properties.limits.maxImageDimension3D;
-	// The unused color-correction samplers read a white volume.
-	m_whiteVolumeHandle = CreateManagedTexture(
-	    1, 1, VK_FORMAT_R8G8B8A8_UNORM, outError, 0, 1, VK_FORMAT_UNDEFINED, false, 2 );
+	// The unused color-correction samplers read the white volume.
 	if ( m_whiteVolumeHandle < 0 )
+	{
+		SetError( outError, "needs the white volume" );
 		return false;
-	const uint8_t white[8] = { 255, 255, 255, 255, 255, 255, 255, 255 };
-	if ( !UploadManagedTexture( m_whiteVolumeHandle, white, sizeof( white ), outError ) )
-		return false;
+	}
 	VkShaderModule vert = VK_NULL_HANDLE;
 	if ( !CreateShaderModule( g_postVertSpv, sizeof( g_postVertSpv ), &vert, outError ) ||
 	     !CreateShaderModule( g_postFragSpv, sizeof( g_postFragSpv ), &m_postFrag, outError ) )
@@ -3909,10 +3933,6 @@ void CVulkanContext::DestroyPostPipeline()
 			vkDestroyShaderModule( m_device, *module, nullptr );
 		*module = VK_NULL_HANDLE;
 	}
-	if ( m_whiteVolumeHandle >= 0 )
-		DestroyManagedTexture( m_whiteVolumeHandle );
-	m_whiteVolumeHandle = -1;
-	m_maxImageDimension3D = 0;
 }
 
 void CVulkanContext::SetDynamicTransform( const float *m16 )
@@ -4025,6 +4045,9 @@ void CVulkanContext::SetAnisotropicLevel( int level )
 		}
 		vkDestroySampler( m_device, old, nullptr );
 	}
+	// A new sampler may reuse a destroyed one's handle: forget grouped sets
+	// keyed by the old ones.
+	m_groupedDescriptors.Invalidate();
 	m_anisotropyLevel = selected;
 }
 
@@ -5497,6 +5520,7 @@ void CVulkanContext::DestroyDynamicMesh()
 	DestroyPostPipeline();
 	DestroySkinPipeline();
 	DestroyPbrDirectPipeline();
+	m_groupedDescriptors.Shutdown();
 	for ( VkShaderModule *module : { &m_portalVert, &m_portalFrag } )
 	{
 		if ( *module != VK_NULL_HANDLE )
@@ -5556,6 +5580,7 @@ void CVulkanContext::DestroyDynamicMesh()
 	for ( ManagedTexture &t : m_managedTextures )
 		ReleaseManagedTextureObjects( t );
 	m_managedTextures.clear();
+	m_whiteVolumeHandle = -1;
 	m_sceneColorHandle = -1;
 	m_sceneDepthHandle = -1;
 	m_sceneDepthCaptured = false;
@@ -5719,6 +5744,7 @@ bool CVulkanContext::UploadWorldMesh( const void *vertices, size_t vertexBytes, 
 	SetProbeVolumeHandles( -1, -1, 0 );
 	SetProbeDeltaHandle( -1 );
 	SetShadowField( -1, nullptr, 0.0f, nullptr );
+	SetReflectionProbes( nullptr, 0, 0, 0 );
 	DestroyStreamBuffer( m_worldIndexBuffer );
 	DestroyStreamBuffer( m_worldVertexBuffer );
 	newVertices.capacity = vertexBytes;
@@ -5775,6 +5801,81 @@ void CVulkanContext::SetShadowField(
 		m_shadowFieldDims[k] = handle >= 0 ? static_cast<float>( dims[k] ) : 0.0f;
 	}
 	m_shadowFieldOrigin[3] = handle >= 0 ? voxel : 0.0f;
+}
+
+// The mode texel's value (0..7, reflection_probes.h's ReflectionProbeMode)
+// as an IEEE binary16; the integers 0..7 are exact halves.
+static const uint16_t kReflectionProbeModeHalf[8] = {
+    0x0000, 0x3c00, 0x4000, 0x4200, 0x4400, 0x4500, 0x4600, 0x4700 };
+
+bool CVulkanContext::SetReflectionProbes(
+    const uint16_t *texels, uint32_t width, uint32_t height, uint32_t count, std::string *outError )
+{
+	if ( !texels )
+	{
+		if ( m_reflectionProbeHandle >= 0 )
+			DestroyManagedTexture( m_reflectionProbeHandle );
+		m_reflectionProbeHandle = -1;
+		m_reflectionProbeTexels.clear();
+		m_reflectionProbeWidth = m_reflectionProbeHeight = 0;
+		return true;
+	}
+	std::vector<uint16_t> copy( texels, texels + size_t( width ) * height * 4 );
+	// Texel 1 of row 0 is the mode and the relight switch
+	// (shaders/reflection_probes.glsl); relight applies only to probes whose
+	// table carries a relight row.
+	copy[4] = kReflectionProbeModeHalf[m_reflectionProbeMode];
+	copy[5] = m_reflectionProbeRelight ? 0x3c00 : 0x0000;
+	std::string detail;
+	const int handle =
+	    CreateManagedTexture( int( width ), int( height ), VK_FORMAT_R16G16B16A16_SFLOAT, &detail );
+	if ( handle < 0 ||
+	     !UploadManagedTexture(
+	         handle, reinterpret_cast<const uint8_t *>( copy.data() ), copy.size() * 2, &detail ) )
+	{
+		if ( handle >= 0 )
+			DestroyManagedTexture( handle );
+		if ( outError )
+			*outError = "reflection probe texture upload failed: " + detail;
+		return false;
+	}
+	// The table is read with texelFetch; the atlas with clamped bilinear
+	// filtering inside each mip (the shader clamps to texel centres).
+	SetManagedTextureSamplerState( handle, kSamplerClampU | kSamplerClampV | kSamplerLinear );
+	if ( m_reflectionProbeHandle >= 0 )
+		DestroyManagedTexture( m_reflectionProbeHandle );
+	m_reflectionProbeHandle = handle;
+	m_reflectionProbeTexels.swap( copy );
+	m_reflectionProbeWidth = width;
+	m_reflectionProbeHeight = height;
+	(void)count;
+	return true;
+}
+
+void CVulkanContext::SetReflectionProbeMode( int mode, bool relight )
+{
+	// Valid modes are 0..3 and 5..7 (reflection_probes.h); anything else
+	// is the default blend.
+	if ( mode < 0 || mode > 7 || mode == 4 )
+		mode = 1;
+	if ( mode == m_reflectionProbeMode && relight == m_reflectionProbeRelight )
+		return;
+	m_reflectionProbeMode = mode;
+	m_reflectionProbeRelight = relight;
+	if ( m_reflectionProbeHandle < 0 )
+		return;
+	// A new texture with the new mode texel; the old one is retired behind
+	// the frames that read it.
+	std::vector<uint16_t> texels;
+	texels.swap( m_reflectionProbeTexels );
+	std::string error;
+	if ( !SetReflectionProbes(
+	         texels.data(), m_reflectionProbeWidth, m_reflectionProbeHeight, 0, &error ) )
+	{
+		m_reflectionProbeTexels.swap( texels );
+		Log( "mat_reflection_probes %d / mat_reflection_relight %d not applied: %s\n", mode,
+		    relight ? 1 : 0, error.c_str() );
+	}
 }
 
 void CVulkanContext::SetProbeVolumeHandles( int atlas, int grids, uint32_t gridCount )
@@ -5895,6 +5996,7 @@ void CVulkanContext::ReleaseWorldMesh()
 	SetProbeVolumeHandles( -1, -1, 0 );
 	SetProbeDeltaHandle( -1 );
 	SetShadowField( -1, nullptr, 0.0f, nullptr );
+	SetReflectionProbes( nullptr, 0, 0, 0 );
 	DestroyStreamBuffer( m_worldIndexBuffer );
 	DestroyStreamBuffer( m_worldVertexBuffer );
 	m_worldVertexCount = 0;
@@ -5988,6 +6090,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	m_completedSerial = std::max( m_completedSerial, m_slotSerial[m_currentFrame] );
 	RetireCompletedTextures();
 	ReadSlotGpuTime( m_currentFrame );
+	// The slot's grouped sets are no longer read: they return to its pools.
+	m_groupedDescriptors.BeginFrame( m_currentFrame );
 
 	uint32_t imageIndex = 0;
 	VkResult r;
@@ -6614,7 +6718,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				    d.skin >= 0 && static_cast<size_t>( d.skin ) < m_dynSkinConstants.size()
 				        ? &m_dynSkinConstants[static_cast<size_t>( d.skin )]
 				        : nullptr;
-				// The indirect view never reads the $envmap cube (set 5 stays 2D).
+				// The indirect view never reads the $envmap cube.
 				pbrModelEnv = m_indirectViewMode == 0 && c && ( c->combos & kPbrModelEnvMap ) != 0;
 				// The map's probe volume, per pixel, where the device supports it.
 				pbrModelProbe =
@@ -6624,8 +6728,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				if ( selected == VK_NULL_HANDLE || !c || !skinConstantsOk ||
 				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
 					continue;
-				selectedLayout = pbrModelProbe ? m_skinProbePipelineLayout : m_skinPipelineLayout;
-				// The skin layout, push block and constants; its own samplers.
+				selectedLayout = m_pbrModelPipelineLayout;
+				// The skin push block and constants; the grouped PBR sets.
 				skin = true;
 				pbrModel = true;
 			}
@@ -6737,12 +6841,12 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				}
 				else if ( pbrModel )
 				{
-					// shaders/model_pbr.frag: s0 base (sRGB), s10 MRAO, s1 normal,
-					// s2 emission (decoded by the shader), the split-sum table,
-					// then the $envmap cube (s3) or the map's LMAP atlas, whose
-					// probe marker the shader checks; then the constants.
-					const int probeTexture =
-					    pbrModelEnv ? d.samplerHandles[3] : m_worldLightmapHandle;
+					// shaders/model_pbr.frag's grouped sets. Frame: the split-sum
+					// table, the map's LMAP atlas (whose probe marker the shader
+					// checks), and with the probe volume its atlas and grid table.
+					// Material: s0 base (sRGB), s10 MRAO, s1 normal, s2 emission
+					// (decoded by the shader), the $envmap cube (s3). Then the
+					// constants.
 					// A base stored in an sRGB format (a KTX2 BC7 sRGB package)
 					// is decoded by the sampler through any view; the shader must
 					// not decode it again.
@@ -6751,21 +6855,42 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					     IsSrgbFormat(
 					         m_managedTextures[static_cast<size_t>( d.texHandle )].format ) )
 						decodedFlags |= kColorSrgbReadBase;
-					// With the probe volume, its atlas (set 7) and grid table (set 8).
-					const VkDescriptorSet sets[9] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
-					    sampledSet( d.samplerHandles[10], 0 ), sampledSet( d.samplerHandles[1], 0 ),
-					    sampledSet( d.samplerHandles[2], 0 ),
-					    m_managedTextures[static_cast<size_t>( m_pbrSplitSumHandle )].descSet,
-					    pbrModelEnv ? sampledSet( probeTexture, 0 )
-					                : ( probeTexture >= 0 ? sampledSet( probeTexture, 0 )
-					                                      : m_dynTexDescSet ),
-					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set,
-					    pbrModelProbe ? sampledSet( m_probeAtlasHandle, 0 ) : VK_NULL_HANDLE,
-					    pbrModelProbe ? sampledSet( m_probeGridHandle, 0 ) : VK_NULL_HANDLE };
+					const CGroupedDescriptors::Image frame[CGroupedDescriptors::kFrameBindings] = {
+					    GroupedImage( m_pbrSplitSumHandle, -1, openTarget, false ),
+					    GroupedImage(
+					        pbrModelEnv ? -1 : m_worldLightmapHandle, -1, openTarget, false ),
+					    GroupedImage(
+					        pbrModelProbe ? m_probeAtlasHandle : -1, -1, openTarget, false ),
+					    GroupedImage(
+					        pbrModelProbe ? m_probeGridHandle : -1, -1, openTarget, false ),
+					    GroupedImage( -1, m_whiteVolumeHandle, openTarget, false ),
+					    GroupedImage(
+					        pbrModelEnv ? -1 : m_reflectionProbeHandle, -1, openTarget, false ) };
+					bool baseSrgb = false;
+					const CGroupedDescriptors::Image
+					    material[CGroupedDescriptors::kMaterialBindings] = {
+					        GroupedImage( d.texHandle, -1, openTarget,
+					            ( d.colorFlags & kColorSrgbReadBase ) != 0, &baseSrgb ),
+					        GroupedImage( d.samplerHandles[10], -1, openTarget, false ),
+					        GroupedImage( d.samplerHandles[1], -1, openTarget, false ),
+					        GroupedImage( d.samplerHandles[2], -1, openTarget, false ),
+					        GroupedImage( pbrModelEnv && ManagedTextureIsCube( d.samplerHandles[3] )
+					                          ? d.samplerHandles[3]
+					                          : m_whiteCubeHandle,
+					            m_whiteCubeHandle, openTarget, false ),
+					        GroupedImage( -1, -1, openTarget, false ) };
+					if ( baseSrgb )
+						decodedFlags |= kColorSrgbReadBase;
+					const VkDescriptorSet sets[3] = {
+					    m_groupedDescriptors.Acquire( CGroupedDescriptors::kFrameGroup, frame ),
+					    m_groupedDescriptors.Acquire(
+					        CGroupedDescriptors::kMaterialGroup, material ),
+					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set };
+					if ( sets[0] == VK_NULL_HANDLE || sets[1] == VK_NULL_HANDLE )
+						continue;
 					const uint32_t offset = skinOffsets[static_cast<size_t>( d.skin )];
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-					    pbrModelProbe ? m_skinProbePipelineLayout : m_skinPipelineLayout, 0,
-					    pbrModelProbe ? 9 : 7, sets, 1, &offset );
+					    m_pbrModelPipelineLayout, 0, 3, sets, 1, &offset );
 				}
 				else if ( lightmapped )
 				{
@@ -6831,14 +6956,15 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				}
 				else if ( pbrWorld )
 				{
-					// Glass adds the scene capture: color through its sRGB view
-					// (linear light), and depth; without a depth capture the
-					// built-in set stands in and the shader is told not to read it.
-					const ManagedTexture &sceneColor =
-					    m_managedTextures[static_cast<size_t>( std::max( m_sceneColorHandle, 0 ) )];
-					// Opaque batches take the emission map and the $envmap cube
-					// there instead (the built-in sets while the push block says
-					// the shader does not read them).
+					// The grouped sets (world_pbr.frag, world_pbr_glass.frag).
+					// Frame: the split-sum table, the lightmap, the variant's
+					// indirect source and grid table, the direct lights' shadow
+					// field. Material: base, MRAO, normal, then the emission map
+					// and the $envmap cube, or for glass the scene capture's color
+					// (through its sRGB view: linear light) and depth. A slot the
+					// variant does not read holds the built-in texture of its
+					// dimension; without a depth capture the push block tells
+					// glass not to read it.
 					const int environment = d.samplerHandles[kPbrWorldEnvironmentSampler];
 					// The indirect view samples the LMAP indirect layer where the
 					// lightmap would be; without one it binds the total page and
@@ -6851,53 +6977,59 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					                          : pbrWorldRuntime && !m_indirectPolicySeedDouble
 					                              ? m_worldLightmapDirectHandle
 					                              : m_worldLightmapHandle;
-					// The extended variants bind sets 7 and 8 below.
-					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
-					    sampledSet( d.samplerHandles[1], 0 ), sampledSet( d.samplerHandles[2], 0 ),
-					    sampledSet( worldLightmap, 0 ),
-					    m_managedTextures[static_cast<size_t>( m_pbrSplitSumHandle )].descSet,
-					    glass ? ( sceneColor.descSetSrgb != VK_NULL_HANDLE ? sceneColor.descSetSrgb
-					                                                       : sceneColor.descSet )
-					          : sampledSet( d.samplerHandles[kPbrWorldEmissionSampler], 0 ),
-					    glass
-					        ? sampledSet( m_sceneDepthHandle, 0 )
-					        : sampledSet( environment >= 0 ? environment : m_whiteCubeHandle, 0 ) };
+					// RuntimeIndirect: the baked producer's indirect atlas (the
+					// LMAP indirect layer). BakedPlusDelta: the producer's change
+					// volume and the volume's grid table.
+					const int indirectSource = pbrWorldRuntime ? m_worldLightmapIndirectHandle
+					                           : pbrWorldDelta ? m_probeDeltaHandle
+					                                           : -1;
+					// RFC 0011 G9: the shadow field (a white volume, unread, when
+					// the map has none).
+					const int shadowField =
+					    pbrWorldLights && m_shadowFieldHandle >= 0 ? m_shadowFieldHandle : -1;
+					const CGroupedDescriptors::Image frame[CGroupedDescriptors::kFrameBindings] = {
+					    GroupedImage( m_pbrSplitSumHandle, -1, openTarget, false ),
+					    GroupedImage( worldLightmap, -1, openTarget, false ),
+					    GroupedImage( indirectSource, -1, openTarget, false ),
+					    GroupedImage(
+					        pbrWorldDelta ? m_probeGridHandle : -1, -1, openTarget, false ),
+					    GroupedImage( shadowField, m_whiteVolumeHandle, openTarget, false ),
+					    GroupedImage( m_reflectionProbeHandle, -1, openTarget, false ) };
+					bool baseSrgb = false;
+					const CGroupedDescriptors::Image
+					    material[CGroupedDescriptors::kMaterialBindings] = {
+					        GroupedImage( d.texHandle, -1, openTarget,
+					            ( d.colorFlags & kColorSrgbReadBase ) != 0, &baseSrgb ),
+					        GroupedImage( d.samplerHandles[1], -1, openTarget, false ),
+					        GroupedImage( d.samplerHandles[2], -1, openTarget, false ),
+					        glass ? GroupedImage( std::max( m_sceneColorHandle, 0 ), -1, -1, true )
+					              : GroupedImage( d.samplerHandles[kPbrWorldEmissionSampler], -1,
+					                    openTarget, false ),
+					        GroupedImage(
+					            !glass && environment >= 0 ? environment : m_whiteCubeHandle,
+					            m_whiteCubeHandle, openTarget, false ),
+					        GroupedImage(
+					            glass ? m_sceneDepthHandle : -1, -1, openTarget, false ) };
+					if ( baseSrgb )
+						decodedFlags |= kColorSrgbReadBase;
 					const VkPipelineLayout layout = glass           ? m_worldGlassPipelineLayout
 					                                : pbrWorldDelta ? m_worldPbrDeltaLayout
 					                                : ( pbrWorldLights || pbrWorldRuntime )
 					                                    ? m_worldPbrExtendedLayout
 					                                    : m_worldPbrPipelineLayout;
+					const VkDescriptorSet sets[2] = {
+					    m_groupedDescriptors.Acquire( CGroupedDescriptors::kFrameGroup, frame ),
+					    m_groupedDescriptors.Acquire(
+					        CGroupedDescriptors::kMaterialGroup, material ) };
+					if ( sets[0] == VK_NULL_HANDLE || sets[1] == VK_NULL_HANDLE )
+						continue;
 					vkCmdBindDescriptorSets(
-					    cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 7, sets, 0, nullptr );
+					    cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 2, sets, 0, nullptr );
 					if ( pbrWorldLights )
-					{
-						vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 7, 1,
+						vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1,
 						    &m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()]
 						        .set,
 						    1, &m_directLightOffset );
-						// RFC 0011 G9: the shadow field after the variant's other sets
-						// (a white volume, unread, when the map has none).
-						const VkDescriptorSet field = sampledSet(
-						    m_shadowFieldHandle >= 0 ? m_shadowFieldHandle : m_whiteVolumeHandle, 0 );
-						vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout,
-						    pbrWorldDelta ? 10 : 9, 1, &field, 0, nullptr );
-					}
-					if ( pbrWorldRuntime )
-					{
-						// The baked producer's indirect atlas: the LMAP indirect layer.
-						const VkDescriptorSet producer =
-						    sampledSet( m_worldLightmapIndirectHandle, 0 );
-						vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 8, 1,
-						    &producer, 0, nullptr );
-					}
-					if ( pbrWorldDelta )
-					{
-						// The producer's change volume and the volume's grid table.
-						const VkDescriptorSet change[2] = { sampledSet( m_probeDeltaHandle, 0 ),
-						    sampledSet( m_probeGridHandle, 0 ) };
-						vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 8, 2,
-						    change, 0, nullptr );
-					}
 				}
 				else
 				{
@@ -6968,9 +7100,10 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				std::memcpy( pushData + 24, c.eyePos, sizeof( c.eyePos ) );
 				pushData[28] = d.alphaRef;
 				// model_pbr.frag's flags take the map probe while an LMAP
-				// atlas is resident.
+				// atlas or the map's RPRB reflection probes are resident.
 				int combos = c.combos;
-				if ( pbrModel && !pbrModelEnv && m_worldLightmapHandle >= 0 )
+				if ( pbrModel && !pbrModelEnv &&
+				     ( m_worldLightmapHandle >= 0 || m_reflectionProbeHandle >= 0 ) )
 					combos |= kPbrModelMapProbe;
 				if ( paintBlob && !ManagedTextureIsCube( d.samplerHandles[7] ) )
 					combos &= ~kPaintBlobEnvMap;

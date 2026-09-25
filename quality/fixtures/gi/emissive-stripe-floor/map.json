@@ -1,0 +1,15 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "lightmap": {
+    "samples": 512
+  },
+  "map": "gi_emissive_stripe_floor",
+  "probe_volume": {
+    "samples": 1024
+  },
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/emissive-stripe-floor/emissive-stripe-floor.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

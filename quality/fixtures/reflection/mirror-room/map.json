@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "reflection_mirror_room",
+  "quality": "reflection-fixture",
+  "scene": "quality/fixtures/reflection/mirror-room/mirror-room.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

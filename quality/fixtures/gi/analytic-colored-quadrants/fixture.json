@@ -1,0 +1,212 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "above": {
+      "eye": [
+        0.0,
+        -0.3,
+        6.0
+      ],
+      "forward": [
+        0.0,
+        0.049937616943892225,
+        -0.9987523388778445
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeA",
+      "stand_in_mesh": "ProbeAShape"
+    },
+    {
+      "name": "ProbeB",
+      "stand_in_mesh": "ProbeBShape"
+    },
+    {
+      "name": "ProbeC",
+      "stand_in_mesh": "ProbeCShape"
+    },
+    {
+      "name": "ProbeD",
+      "stand_in_mesh": "ProbeDShape"
+    }
+  ],
+  "family": "analytic",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "analytic-colored-quadrants",
+  "oracles": [
+    {
+      "camera": "above",
+      "expected": {
+        "direct": [
+          0.8,
+          0.8,
+          0.8
+        ],
+        "total": [
+          0.64,
+          0.24,
+          0.16
+        ]
+      },
+      "kind": "value",
+      "lights": [
+        "direct",
+        "total"
+      ],
+      "name": "NE quadrant radiance = albedo x sky",
+      "regions": [
+        "GroundNE"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "above",
+      "expected": {
+        "direct": [
+          0.8,
+          0.8,
+          0.8
+        ],
+        "total": [
+          0.16,
+          0.56,
+          0.24
+        ]
+      },
+      "kind": "value",
+      "lights": [
+        "direct",
+        "total"
+      ],
+      "name": "NW quadrant radiance = albedo x sky",
+      "regions": [
+        "GroundNW"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "above",
+      "expected": {
+        "direct": [
+          0.8,
+          0.8,
+          0.8
+        ],
+        "total": [
+          0.16,
+          0.24,
+          0.64
+        ]
+      },
+      "kind": "value",
+      "lights": [
+        "direct",
+        "total"
+      ],
+      "name": "SW quadrant radiance = albedo x sky",
+      "regions": [
+        "GroundSW"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "above",
+      "expected": {
+        "direct": [
+          0.8,
+          0.8,
+          0.8
+        ],
+        "total": [
+          0.64,
+          0.64,
+          0.16
+        ]
+      },
+      "kind": "value",
+      "lights": [
+        "direct",
+        "total"
+      ],
+      "name": "SE quadrant radiance = albedo x sky",
+      "regions": [
+        "GroundSE"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "above",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "indirect"
+      ],
+      "name": "the ground receives no indirect light",
+      "regions": [
+        "GroundNE",
+        "GroundNW",
+        "GroundSW",
+        "GroundSE"
+      ],
+      "state": "default"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Four colored ground quadrants under a white sky: each quadrant's radiance is its albedo times the sky exactly, with no indirect light",
+  "regions": {
+    "above": {
+      "GroundNE": [
+        "GroundNE"
+      ],
+      "GroundNW": [
+        "GroundNW"
+      ],
+      "GroundSE": [
+        "GroundSE"
+      ],
+      "GroundSW": [
+        "GroundSW"
+      ],
+      "ProbeA": [
+        "ProbeA"
+      ],
+      "ProbeB": [
+        "ProbeB"
+      ],
+      "ProbeC": [
+        "ProbeC"
+      ],
+      "ProbeD": [
+        "ProbeD"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "analytic-colored-quadrants.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "white sky alone"
+    }
+  }
+}

@@ -214,6 +214,12 @@ extern "C" int SDL_main( int, char ** )
 	argv[argc++] = const_cast<char *>( "-nosteam" );
 	argv[argc++] = const_cast<char *>( "-insecure" );
 	argv[argc++] = const_cast<char *>( "-nouserclip" );
+	// The material system renders on the main thread here, as before native
+	// Vulkan supported the queued mode: its render thread is unmeasured on the
+	// Android profiles (surface recreation, backgrounding, thermal budget).
+	// commandline.txt may still ask for +mat_queue_mode 2.
+	argv[argc++] = const_cast<char *>( "+mat_queue_mode" );
+	argv[argc++] = const_cast<char *>( "0" );
 
 	static char argumentsPath[PATH_MAX];
 	static char argumentsStorage[4096];

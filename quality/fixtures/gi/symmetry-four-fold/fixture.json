@@ -1,0 +1,377 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "turn0": {
+      "eye": [
+        0.5,
+        1.2,
+        1.6
+      ],
+      "forward": [
+        0.8574579965723959,
+        0.4964230506471766,
+        -0.13538810472195728
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "turn1": {
+      "eye": [
+        4.8,
+        0.5,
+        1.6
+      ],
+      "forward": [
+        -0.4964230506471766,
+        0.8574579965723961,
+        -0.1353881047219573
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "turn2": {
+      "eye": [
+        5.5,
+        4.8,
+        1.6
+      ],
+      "forward": [
+        -0.8574579965723961,
+        -0.4964230506471766,
+        -0.1353881047219573
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "turn3": {
+      "eye": [
+        1.2,
+        5.5,
+        1.6
+      ],
+      "forward": [
+        0.4964230506471766,
+        -0.8574579965723959,
+        -0.13538810472195728
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeA",
+      "stand_in_mesh": "ProbeAShape"
+    },
+    {
+      "name": "ProbeB",
+      "stand_in_mesh": "ProbeBShape"
+    },
+    {
+      "name": "ProbeC",
+      "stand_in_mesh": "ProbeCShape"
+    },
+    {
+      "name": "ProbeD",
+      "stand_in_mesh": "ProbeDShape"
+    }
+  ],
+  "family": "symmetry",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "symmetry-four-fold",
+  "oracles": [
+    {
+      "entries": [
+        {
+          "camera": "turn0",
+          "region": "model",
+          "state": "default"
+        },
+        {
+          "camera": "turn1",
+          "region": "model",
+          "state": "default"
+        },
+        {
+          "camera": "turn2",
+          "region": "model",
+          "state": "default"
+        },
+        {
+          "camera": "turn3",
+          "region": "model",
+          "state": "default"
+        }
+      ],
+      "kind": "uniform",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "model is the same under quarter turns"
+    },
+    {
+      "entries": [
+        {
+          "camera": "turn0",
+          "region": "floor",
+          "state": "default"
+        },
+        {
+          "camera": "turn1",
+          "region": "floor",
+          "state": "default"
+        },
+        {
+          "camera": "turn2",
+          "region": "floor",
+          "state": "default"
+        },
+        {
+          "camera": "turn3",
+          "region": "floor",
+          "state": "default"
+        }
+      ],
+      "kind": "uniform",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "floor is the same under quarter turns"
+    },
+    {
+      "entries": [
+        {
+          "camera": "turn0",
+          "region": "wall-a",
+          "state": "default"
+        },
+        {
+          "camera": "turn1",
+          "region": "wall-a",
+          "state": "default"
+        },
+        {
+          "camera": "turn2",
+          "region": "wall-a",
+          "state": "default"
+        },
+        {
+          "camera": "turn3",
+          "region": "wall-a",
+          "state": "default"
+        }
+      ],
+      "kind": "uniform",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "wall-a is the same under quarter turns"
+    },
+    {
+      "entries": [
+        {
+          "camera": "turn0",
+          "region": "wall-b",
+          "state": "default"
+        },
+        {
+          "camera": "turn1",
+          "region": "wall-b",
+          "state": "default"
+        },
+        {
+          "camera": "turn2",
+          "region": "wall-b",
+          "state": "default"
+        },
+        {
+          "camera": "turn3",
+          "region": "wall-b",
+          "state": "default"
+        }
+      ],
+      "kind": "uniform",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "wall-b is the same under quarter turns"
+    },
+    {
+      "camera": "turn0",
+      "expected": [
+        1.0,
+        0.8,
+        0.6
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "default chromaticity (turn0)",
+      "regions": [
+        "model",
+        "floor",
+        "wall-a",
+        "wall-b"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "turn1",
+      "expected": [
+        1.0,
+        0.8,
+        0.6
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "default chromaticity (turn1)",
+      "regions": [
+        "model",
+        "floor",
+        "wall-a",
+        "wall-b"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "turn2",
+      "expected": [
+        1.0,
+        0.8,
+        0.6
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "default chromaticity (turn2)",
+      "regions": [
+        "model",
+        "floor",
+        "wall-a",
+        "wall-b"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "turn3",
+      "expected": [
+        1.0,
+        0.8,
+        0.6
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "default chromaticity (turn3)",
+      "regions": [
+        "model",
+        "floor",
+        "wall-a",
+        "wall-b"
+      ],
+      "state": "default"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A square room with a centred square lamp and four models at off-grid positions related by quarter turns: four quarter-turned cameras must see the same light on each model, floor and wall",
+  "regions": {
+    "turn0": {
+      "floor": [
+        "R_Zn"
+      ],
+      "model": [
+        "ProbeA"
+      ],
+      "wall-a": [
+        "R_Xp"
+      ],
+      "wall-b": [
+        "R_Yp"
+      ]
+    },
+    "turn1": {
+      "floor": [
+        "R_Zn"
+      ],
+      "model": [
+        "ProbeB"
+      ],
+      "wall-a": [
+        "R_Yp"
+      ],
+      "wall-b": [
+        "R_Xn"
+      ]
+    },
+    "turn2": {
+      "floor": [
+        "R_Zn"
+      ],
+      "model": [
+        "ProbeC"
+      ],
+      "wall-a": [
+        "R_Xn"
+      ],
+      "wall-b": [
+        "R_Yn"
+      ]
+    },
+    "turn3": {
+      "floor": [
+        "R_Zn"
+      ],
+      "model": [
+        "ProbeD"
+      ],
+      "wall-a": [
+        "R_Yn"
+      ],
+      "wall-b": [
+        "R_Xp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "symmetry-four-fold.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "centred lamp"
+    }
+  }
+}

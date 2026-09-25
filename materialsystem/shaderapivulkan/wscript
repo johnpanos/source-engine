@@ -31,12 +31,15 @@ def build(bld):
 		'shaderapivulkan.cpp',
 		'vulkan_compute.cpp',
 		'vulkan_device.cpp',
+		'vulkan_mesh_layout.cpp',
 		'vulkan_adapter.cpp',
 		'../dxsupport_keyvalues.cpp',
 		'vulkan_world_pbr.cpp',
+		'vulkan_descriptor_groups.cpp',
 		'vulkan_scene_capture.cpp',
 		'vulkan_model_pbr.cpp',
 		'vulkan_world_lightmap.cpp',
+		'vulkan_world_reflection_probes.cpp',
 		'vulkan_world_mesh_upload.cpp',
 		# The SDL3-Vulkan pair bridge: the only source here that includes SDL.
 		'sdl3/sdl3_vulkan_surface_host.cpp',
@@ -54,7 +57,8 @@ def build(bld):
 
 	defines = []
 
-	libs = ['tier0','tier1','vstdlib','mathlib','bitmap','VULKAN','SDL3','vulkan_texture_image']
+	libs = ['tier0','tier1','vstdlib','mathlib','bitmap','VULKAN','SDL3','vulkan_texture_image',
+		'mapcontainer']
 	if bld.env.KTX_READ_ENABLED:
 		libs += ['texturecontainer', 'KTXREAD']
 		defines += ['RFC0008_KTX_READER']

@@ -14,10 +14,11 @@ material's $fallbackmaterial), so this oracle is the only judge:
   interpolated over each triangle at the pixel centers;
 * per pixel, the layered metal/roughness BRDF of public/render/pbr_brdf.h:
   GGX distribution with alpha = roughness^2, height-correlated Smith visibility,
-  Schlick Fresnel from F0 = lerp( 0.04, base, metalness ), and a Lambertian
-  layer weighted by 1 - the split-sum directional albedo (the table in
-  public/render/pbr_split_sum_table.h, sampled bilinearly as the GPU samples
-  it). Source's model light units make a local light incident radiance
+  Schlick Fresnel from F0 = lerp( 0.04, base, metalness ), the multiple-
+  scattering energy compensation 1 + F0 (1 / (A + B) - 1), and a Lambertian
+  layer weighted by 1 - the compensated split-sum directional albedo (the
+  table in public/render/pbr_split_sum_table.h, sampled bilinearly as the GPU
+  samples it). Source's model light units make a local light incident radiance
   pi * color * attenuation, and the ambient cube a Lambertian return; with no
   probe resident the cube in the reflected direction is the specular image
   light. $emissiontexture adds its sRGB-decoded color times $emissionscale.
@@ -78,10 +79,10 @@ def split_sum_table():
 
 
 def sample_split_sum(n_dot_v, roughness):
-    """render::pbr::SampleSplitSum: clamped bilinear at texel centers."""
+    """render::pbr::SampleSplitSum: bilinear over texels at i / (size - 1)."""
     size, table = split_sum_table()
-    x = min(max(n_dot_v, 0.0), 1.0) * size - 0.5
-    y = min(max(roughness, 0.0), 1.0) * size - 0.5
+    x = min(max(n_dot_v, 0.0), 1.0) * (size - 1)
+    y = min(max(roughness, 0.0), 1.0) * (size - 1)
     x0 = max(0, min(int(math.floor(x)), size - 1))
     y0 = max(0, min(int(math.floor(y)), size - 1))
     x1, y1 = min(x0 + 1, size - 1), min(y0 + 1, size - 1)
@@ -143,7 +144,10 @@ def pbr_pixel(case, report, material, v, scale, defect=None):
     n_dot_v = max(modellight._dot(n, view), 0.0)
     f0 = [modellight._lerp(0.04, b, metalness) for b in material.base]
     a, b = sample_split_sum(n_dot_v, roughness)
-    albedo = [min(1.0, f * a + b) for f in f0]
+    # Multiple-scattering energy compensation (render::pbr::
+    # SpecularEnergyCompensation): 1 + F0 (1 / (A + B) - 1).
+    compensation = [1.0 + f * (1.0 / max(a + b, 1e-4) - 1.0) for f in f0]
+    albedo = [min(1.0, (f0[k] * a + b) * compensation[k]) for k in range(3)]
     if defect == "no_diffuse_layering":
         albedo_diffuse = [0.0] * 3
     else:
@@ -173,7 +177,7 @@ def pbr_pixel(case, report, material, v, scale, defect=None):
             for k in range(3):
                 fresnel = f0[k] + (1.0 - f0[k]) * grazing
                 lit[k] += radiance_scale * incident[k] * fresnel * distribution * \
-                    visibility * n_dot_l
+                    visibility * compensation[k] * n_dot_l
         color = [color[k] + lit[k] for k in range(3)]
     reflected = [2.0 * modellight._dot(n, view) * n[k] - view[k] for k in range(3)]
     environment = modellight._ambient_ps(cube, modellight._normalize(reflected))

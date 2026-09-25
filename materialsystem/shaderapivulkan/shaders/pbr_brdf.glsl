@@ -10,12 +10,14 @@
 
 const float kPi = 3.14159265358979323846;
 
-// Trowbridge-Reitz GGX normal distribution.
+// Trowbridge-Reitz GGX normal distribution, its denominator in the
+// well-conditioned form (1 - (N.H)^2) + (N.H)^2 alpha^2 (see GgxDistribution).
 float PbrGgxDistribution( float normalDotHalf, float roughness )
 {
 	float alpha = roughness * roughness;
 	float alphaSquared = alpha * alpha;
-	float denominator = normalDotHalf * normalDotHalf * ( alphaSquared - 1.0 ) + 1.0;
+	float cosineSquared = normalDotHalf * normalDotHalf;
+	float denominator = ( 1.0 - cosineSquared ) + cosineSquared * alphaSquared;
 	return alphaSquared / ( kPi * denominator * denominator );
 }
 
@@ -68,11 +70,14 @@ vec3 PbrSpecular( vec3 normal, vec3 view, vec3 light, vec3 reflectanceAtNormal, 
 	    max( dot( view, halfVector ), 0.0 ), roughness );
 }
 
-// The split-sum table's (A, B) at (N.V, roughness): clamped linear sampling.
+// The split-sum table's (A, B) at (N.V, roughness): linear sampling of a
+// table whose texels sit on i / (size - 1), end points included
+// (gen_pbr_split_sum.py), as SampleSplitSum reads it.
 vec2 PbrSplitSum( sampler2D table, float normalDotView, float roughness )
 {
-	return texture( table, clamp( vec2( normalDotView, roughness ), vec2( 0.0 ), vec2( 1.0 ) ) )
-	    .rg;
+	vec2 size = vec2( textureSize( table, 0 ) );
+	vec2 coordinate = clamp( vec2( normalDotView, roughness ), vec2( 0.0 ), vec2( 1.0 ) );
+	return texture( table, ( coordinate * ( size - 1.0 ) + 0.5 ) / size ).rg;
 }
 
 // SpecularEnergyCompensation: 1 + F0 (1 / (A + B) - 1).

@@ -1,0 +1,267 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "corner": {
+      "eye": [
+        0.5,
+        0.5,
+        1.6
+      ],
+      "forward": [
+        0.7308383057011438,
+        0.5603093677042102,
+        -0.3897804297072767
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "far-corner": {
+      "eye": [
+        5.5,
+        3.5,
+        1.4
+      ],
+      "forward": [
+        -0.7231540446028428,
+        -0.6026283705023691,
+        -0.3374718874813266
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "side": {
+      "eye": [
+        3.0,
+        0.4,
+        2.3
+      ],
+      "forward": [
+        0.0,
+        0.7779411802037216,
+        -0.6283371070876211
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": false,
+  "map_manifest": "map.json",
+  "mirror_meshes": [
+    "Floor"
+  ],
+  "name": "mirror-room",
+  "purpose": "Parallax oracle: the engine's mirror floor seen from cameras away from the probe against Cycles; direction-only sampling and a wrong box must fail",
+  "regions": {
+    "corner": {
+      "floor": [
+        "Floor"
+      ],
+      "walls": [
+        "Room_Xn_00",
+        "Room_Xn_01",
+        "Room_Xn_02",
+        "Room_Xn_03",
+        "Room_Xn_04",
+        "Room_Xn_05",
+        "Room_Xn_06",
+        "Room_Xn_07",
+        "Room_Xp_00",
+        "Room_Xp_01",
+        "Room_Xp_02",
+        "Room_Xp_03",
+        "Room_Xp_04",
+        "Room_Xp_05",
+        "Room_Xp_06",
+        "Room_Xp_07",
+        "Room_Yn_00",
+        "Room_Yn_01",
+        "Room_Yn_02",
+        "Room_Yn_03",
+        "Room_Yn_04",
+        "Room_Yn_05",
+        "Room_Yn_06",
+        "Room_Yn_07",
+        "Room_Yn_08",
+        "Room_Yn_09",
+        "Room_Yn_10",
+        "Room_Yn_11",
+        "Room_Yp_00",
+        "Room_Yp_01",
+        "Room_Yp_02",
+        "Room_Yp_03",
+        "Room_Yp_04",
+        "Room_Yp_05",
+        "Room_Yp_06",
+        "Room_Yp_07",
+        "Room_Yp_08",
+        "Room_Yp_09",
+        "Room_Yp_10",
+        "Room_Yp_11",
+        "Room_Ceiling_00",
+        "Room_Ceiling_01",
+        "Room_Ceiling_02",
+        "Room_Ceiling_03",
+        "Room_Ceiling_04",
+        "Room_Ceiling_05",
+        "Room_Ceiling_06",
+        "Room_Ceiling_07",
+        "Room_Ceiling_08",
+        "Room_Ceiling_09",
+        "Room_Ceiling_10",
+        "Room_Ceiling_11"
+      ]
+    },
+    "far-corner": {
+      "floor": [
+        "Floor"
+      ],
+      "walls": [
+        "Room_Xn_00",
+        "Room_Xn_01",
+        "Room_Xn_02",
+        "Room_Xn_03",
+        "Room_Xn_04",
+        "Room_Xn_05",
+        "Room_Xn_06",
+        "Room_Xn_07",
+        "Room_Xp_00",
+        "Room_Xp_01",
+        "Room_Xp_02",
+        "Room_Xp_03",
+        "Room_Xp_04",
+        "Room_Xp_05",
+        "Room_Xp_06",
+        "Room_Xp_07",
+        "Room_Yn_00",
+        "Room_Yn_01",
+        "Room_Yn_02",
+        "Room_Yn_03",
+        "Room_Yn_04",
+        "Room_Yn_05",
+        "Room_Yn_06",
+        "Room_Yn_07",
+        "Room_Yn_08",
+        "Room_Yn_09",
+        "Room_Yn_10",
+        "Room_Yn_11",
+        "Room_Yp_00",
+        "Room_Yp_01",
+        "Room_Yp_02",
+        "Room_Yp_03",
+        "Room_Yp_04",
+        "Room_Yp_05",
+        "Room_Yp_06",
+        "Room_Yp_07",
+        "Room_Yp_08",
+        "Room_Yp_09",
+        "Room_Yp_10",
+        "Room_Yp_11",
+        "Room_Ceiling_00",
+        "Room_Ceiling_01",
+        "Room_Ceiling_02",
+        "Room_Ceiling_03",
+        "Room_Ceiling_04",
+        "Room_Ceiling_05",
+        "Room_Ceiling_06",
+        "Room_Ceiling_07",
+        "Room_Ceiling_08",
+        "Room_Ceiling_09",
+        "Room_Ceiling_10",
+        "Room_Ceiling_11"
+      ]
+    },
+    "side": {
+      "floor": [
+        "Floor"
+      ],
+      "walls": [
+        "Room_Xn_00",
+        "Room_Xn_01",
+        "Room_Xn_02",
+        "Room_Xn_03",
+        "Room_Xn_04",
+        "Room_Xn_05",
+        "Room_Xn_06",
+        "Room_Xn_07",
+        "Room_Xp_00",
+        "Room_Xp_01",
+        "Room_Xp_02",
+        "Room_Xp_03",
+        "Room_Xp_04",
+        "Room_Xp_05",
+        "Room_Xp_06",
+        "Room_Xp_07",
+        "Room_Yn_00",
+        "Room_Yn_01",
+        "Room_Yn_02",
+        "Room_Yn_03",
+        "Room_Yn_04",
+        "Room_Yn_05",
+        "Room_Yn_06",
+        "Room_Yn_07",
+        "Room_Yn_08",
+        "Room_Yn_09",
+        "Room_Yn_10",
+        "Room_Yn_11",
+        "Room_Yp_00",
+        "Room_Yp_01",
+        "Room_Yp_02",
+        "Room_Yp_03",
+        "Room_Yp_04",
+        "Room_Yp_05",
+        "Room_Yp_06",
+        "Room_Yp_07",
+        "Room_Yp_08",
+        "Room_Yp_09",
+        "Room_Yp_10",
+        "Room_Yp_11",
+        "Room_Ceiling_00",
+        "Room_Ceiling_01",
+        "Room_Ceiling_02",
+        "Room_Ceiling_03",
+        "Room_Ceiling_04",
+        "Room_Ceiling_05",
+        "Room_Ceiling_06",
+        "Room_Ceiling_07",
+        "Room_Ceiling_08",
+        "Room_Ceiling_09",
+        "Room_Ceiling_10",
+        "Room_Ceiling_11"
+      ]
+    }
+  },
+  "room_m": [
+    [
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      6.0,
+      4.0,
+      3.0
+    ]
+  ],
+  "schema": "gi-fixture/v1",
+  "stage": "mirror-room.usda",
+  "states": {
+    "default": {
+      "layer": null
+    }
+  }
+}

@@ -63,13 +63,15 @@ std::vector<size_t> Select( const Snapshot &snapshot, size_t maxLights )
 #elif defined( DIRECT_LIGHT_SELECTION_SEEDED_UNSTABLE_TIES )
 	// Ties to the higher ID.
 	std::vector<size_t> selected = SelectDirectLights( snapshot, snapshot.lights.size() );
-	std::stable_sort( selected.begin(), selected.end(), [&]( size_t a, size_t b ) {
-		const float ia = DirectImportance( snapshot.lights[a], snapshot );
-		const float ib = DirectImportance( snapshot.lights[b], snapshot );
-		if ( ia != ib )
-			return ia > ib;
-		return snapshot.lights[a].id > snapshot.lights[b].id;
-	} );
+	std::stable_sort( selected.begin(), selected.end(),
+	    [&]( size_t a, size_t b )
+	    {
+		    const float ia = DirectImportance( snapshot.lights[a], snapshot );
+		    const float ib = DirectImportance( snapshot.lights[b], snapshot );
+		    if ( ia != ib )
+			    return ia > ib;
+		    return snapshot.lights[a].id > snapshot.lights[b].id;
+	    } );
 	if ( selected.size() > maxLights )
 		selected.resize( maxLights );
 	return selected;
@@ -154,8 +156,8 @@ int main()
 	{
 		Snapshot snapshot;
 		snapshot.hasView = true;
-		snapshot.lights = { Dynamic( 30, 0.0f, 1.0f ), Dynamic( 20, 0.0f, 1.0f ),
-			Dynamic( 25, 0.0f, 1.0f ) };
+		snapshot.lights = {
+		    Dynamic( 30, 0.0f, 1.0f ), Dynamic( 20, 0.0f, 1.0f ), Dynamic( 25, 0.0f, 1.0f ) };
 		const std::vector<size_t> selected = Select( snapshot, 2 );
 		Check( selected.size() == 2 && selected[0] == 1 && selected[1] == 2,
 		    "equal lights are taken lowest ID first" );

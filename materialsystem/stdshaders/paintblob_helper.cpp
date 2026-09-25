@@ -37,8 +37,8 @@ enum PaintBlobStaticFlags_t
 
 static const int PAINTBLOB_PSREG_COMBOS = 27;
 
-void InitParamsPaintBlob(
-    CBaseVSShader *pShader, IMaterialVar **params, const char *pMaterialName, PaintBlobVars_t &info )
+void InitParamsPaintBlob( CBaseVSShader *pShader, IMaterialVar **params, const char *pMaterialName,
+    PaintBlobVars_t &info )
 {
 	// Set material parameter default values
 	SET_PARAM_INT_IF_NOT_DEFINED( info.m_nBackSurface, kDefaultBackSurface );
@@ -410,8 +410,9 @@ void DrawPaintBlob( CBaseVSShader *pShader, IMaterialVar **params, IShaderDynami
 		flConsts[2] = IS_PARAM_DEFINED( info.m_nSpecScale )
 		                  ? params[info.m_nSpecScale]->GetFloatValue()
 		                  : kDefaultSpecScale;
-		flConsts[3] = IS_PARAM_DEFINED( info.m_nSpecExp2 ) ? params[info.m_nSpecExp2]->GetFloatValue()
-		                                                   : kDefaultSpecExp;
+		flConsts[3] = IS_PARAM_DEFINED( info.m_nSpecExp2 )
+		                  ? params[info.m_nSpecExp2]->GetFloatValue()
+		                  : kDefaultSpecExp;
 		pShaderAPI->SetPixelShaderConstant( 3, flConsts, 1 );
 
 		flConsts[0] = IS_PARAM_DEFINED( info.m_nSpecScale2 )
@@ -455,7 +456,8 @@ void DrawPaintBlob( CBaseVSShader *pShader, IMaterialVar **params, IShaderDynami
 		                   ( bOpacityTexture ? PAINTBLOB_OPACITY_TEXTURE : 0 ) |
 		                   ( bInteriorLayer ? PAINTBLOB_INTERIOR_LAYER : 0 ) |
 		                   ( bContactShadows ? PAINTBLOB_CONTACT_SHADOW : 0 ) |
-		                   ( bSpecMap ? PAINTBLOB_SPEC_MASK : 0 ) | ( bEnvMap ? PAINTBLOB_ENVMAP : 0 );
+		                   ( bSpecMap ? PAINTBLOB_SPEC_MASK : 0 ) |
+		                   ( bEnvMap ? PAINTBLOB_ENVMAP : 0 );
 		float vCombos[4] = { (float)nStaticFlags, (float)lightState.m_nNumLights,
 		    bHasFlashlight ? 1.0f : 0.0f, 0.0f };
 		pShaderAPI->SetPixelShaderConstant( PAINTBLOB_PSREG_COMBOS, vCombos, 1 );

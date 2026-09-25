@@ -9,8 +9,8 @@
 //
 //          A burst is one light, not one per spark: the renderer takes at most
 //          a few unbaked lights per frame. The light sits at the emission-
-//          weighted centroid of the live sparks, in their emission-weighted
-//          color. Its strength is the frame's total emission over the burst's
+//          weighted centroid of the live sparks near its source (within its
+//          reach), in their emission-weighted color. Its strength is the frame's total emission over the burst's
 //          peak (or over a full burst's emission, when the burst has one), so
 //          it starts at full strength and fades as the sparks fade and die.
 //          A trail spark's emission is its drawn ramp times the share of its
@@ -107,9 +107,20 @@ public:
 	// flFullEmission > 0: a burst's full strength needs at least this much
 	// emission (a system of a few faint glints lights less than a shower);
 	// 0: every burst's peak is its full strength.
-	explicit CBurst( float flFullEmission = 0.0f ) : m_flPeak( flFullEmission )
+	explicit CBurst( float flFullEmission = 0.0f ) : m_flPeak( flFullEmission ), m_flReach( 0.0f )
 	{
+		m_Anchor[0] = m_Anchor[1] = m_Anchor[2] = 0.0f;
 		BeginFrame();
+	}
+
+	// Only sparks within flReach of the anchor (the burst's source) light it; 0
+	// takes every spark. A spark that has flown far off, or fallen out of the
+	// world, lights nothing near the burst and must not drag its light away.
+	void SetReach( const float anchor[3], float flReach )
+	{
+		for ( int k = 0; k < 3; ++k )
+			m_Anchor[k] = anchor[k];
+		m_flReach = flReach;
 	}
 
 	void BeginFrame()
@@ -129,6 +140,14 @@ public:
 	{
 		if ( !( flEmission > 0.0f ) )
 			return;
+		if ( m_flReach > 0.0f )
+		{
+			float flDistSq = 0.0f;
+			for ( int k = 0; k < 3; ++k )
+				flDistSq += ( pos[k] - m_Anchor[k] ) * ( pos[k] - m_Anchor[k] );
+			if ( !( flDistSq <= m_flReach * m_flReach ) )
+				return;
+		}
 		for ( int k = 0; k < 3; ++k )
 		{
 			m_Sum[k] += pos[k] * flEmission;
@@ -160,6 +179,8 @@ private:
 	float m_ColorSum[3];
 	float m_flTotal;
 	float m_flPeak;
+	float m_Anchor[3];
+	float m_flReach;
 };
 
 // How many bursts hold a light at once. The owner acquires before it first

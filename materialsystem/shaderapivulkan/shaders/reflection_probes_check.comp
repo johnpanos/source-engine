@@ -1,0 +1,83 @@
+#version 450
+// render.reflection-probes.glsl: evaluates reflection_probes.glsl, the RPRB
+// blend every native PBR stage includes, on the suite's cases so it can
+// compare them with mapcontainer::ReflectionProbesView. One invocation per
+// case. The probe texture arrives as packed half floats in a storage buffer;
+// the two texel accessors below read it exactly and with bilinear filtering,
+// as a sampler would.
+layout( local_size_x = 64, local_size_y = 1, local_size_z = 1 ) in;
+
+const float kPi = 3.14159265358979323846;
+
+// Per case: (position xyz, roughness); (geometric normal xyz, 0);
+// (reflected ray xyz, 0).
+struct Case
+{
+	vec4 positionRoughness;
+	vec4 normal;
+	vec4 reflected;
+};
+
+layout( set = 0, binding = 0 ) readonly buffer Texture
+{
+	uint halves[]; // RGBA16F texels, two uints each, rows top first
+};
+layout( set = 0, binding = 1 ) readonly buffer Cases
+{
+	Case cases[];
+};
+layout( set = 0, binding = 2 ) writeonly buffer Results
+{
+	vec4 results[]; // radiance, 1 when the texture carried probes
+};
+
+layout( push_constant ) uniform Push
+{
+	uint count;
+	uint width;
+	uint height;
+}
+push;
+
+vec4 ReflectionProbesFetch( ivec2 texel )
+{
+	texel = clamp( texel, ivec2( 0 ), ivec2( int( push.width ) - 1, int( push.height ) - 1 ) );
+	const uint base = ( uint( texel.y ) * push.width + uint( texel.x ) ) * 2u;
+	return vec4( unpackHalf2x16( halves[base] ), unpackHalf2x16( halves[base + 1u] ) );
+}
+
+vec4 ReflectionProbesSample( vec2 texel )
+{
+	const vec2 t = texel - vec2( 0.5 );
+	const ivec2 corner = ivec2( floor( t ) );
+	const vec2 f = t - vec2( corner );
+	const vec4 upper = mix( ReflectionProbesFetch( corner ),
+	    ReflectionProbesFetch( corner + ivec2( 1, 0 ) ), f.x );
+	const vec4 lower = mix( ReflectionProbesFetch( corner + ivec2( 0, 1 ) ),
+	    ReflectionProbesFetch( corner + ivec2( 1, 1 ) ), f.x );
+	return mix( upper, lower, f.y );
+}
+
+// R50-RELIGHT: the analytic change the relight fixture is relit by
+// (tools/quality/reflection_probe_set.py fixture_change; the C++ suite's
+// FixtureChange), so a texture with relight bands exercises the relit path.
+#define REFLECTION_PROBE_RELIGHT
+#include "reflection_probes.glsl"
+
+vec3 ReflectionProbeDiffuseChange( vec3 position, vec3 normal )
+{
+	return vec3( 0.002 * position.x + 0.5 * max( normal.z, 0.0 ), 0.3 - 0.003 * position.y,
+	    0.25 * normal.x - 0.1 );
+}
+
+void main()
+{
+	const uint index = gl_GlobalInvocationID.x;
+	if ( index >= push.count )
+		return;
+	const Case c = cases[index];
+	vec3 radiance;
+	const bool carried = ReflectionProbesRadiance( c.positionRoughness.xyz, c.normal.xyz,
+	    c.reflected.xyz, c.positionRoughness.w, radiance );
+	results[index] = vec4( radiance, carried ? 1.0 : 0.0 );
+}

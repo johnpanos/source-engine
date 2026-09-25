@@ -5,12 +5,29 @@
       "eye": [
         0.0,
         0.0,
-        0.5
+        1.7
       ],
       "forward": [
-        0.09950371902099893,
+        0.5000000000000001,
         0.0,
-        -0.9950371902099893
+        -0.8660254037844387
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "overview": {
+      "eye": [
+        -35.0,
+        0.0,
+        1.7
+      ],
+      "forward": [
+        0.9962457378500158,
+        0.08539249181571563,
+        -0.01423208196928594
       ],
       "up": [
         0.0,
@@ -22,12 +39,12 @@
       "eye": [
         0.0,
         0.0,
-        0.5
+        1.7
       ],
       "forward": [
-        0.09950371902099893,
+        0.5000000000000001,
         0.0,
-        0.9950371902099893
+        0.8660254037844387
       ],
       "up": [
         0.0,
@@ -127,11 +144,23 @@
     "model": "models/props/sphere.mdl",
     "radius_m": 0.51435
   },
-  "purpose": "Two 60 m plates 1 m apart: a glowing floor under a colored ceiling. Multiple bounces between them give B_floor = Le / (1 - rho_f rho_c) and B_ceiling = rho_c B_floor per channel",
+  "proof_cameras": {
+    "down": "overview",
+    "up": "overview"
+  },
+  "purpose": "Two 80 m plates 2.5 m apart: a glowing floor under a colored ceiling. Multiple bounces between them give B_floor = Le / (1 - rho_f rho_c) and B_ceiling = rho_c B_floor per channel",
   "regions": {
     "down": {
       "P_Zn": [
         "P_Zn"
+      ]
+    },
+    "overview": {
+      "P_Zn": [
+        "P_Zn"
+      ],
+      "P_Zp": [
+        "P_Zp"
       ]
     },
     "up": {
@@ -145,7 +174,7 @@
   "states": {
     "default": {
       "layer": null,
-      "note": "glowing floor, colored ceiling, black side walls 30 m away"
+      "note": "glowing floor, colored ceiling, black side walls 40 m away"
     }
   }
 }

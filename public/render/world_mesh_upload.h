@@ -13,7 +13,7 @@
 namespace world_mesh_gpu
 {
 
-static const char *const kWorldMeshUploadInterface = "WorldMeshUpload006";
+static const char *const kWorldMeshUploadInterface = "WorldMeshUpload007";
 
 struct WorldMeshUploadRequest
 {
@@ -83,6 +83,20 @@ struct ShadowFieldUploadRequest
 	const uint16_t *distances = nullptr;
 };
 
+// R50-PARALLAX: the map's RPRB reflection probes in their GPU form
+// (mapcontainer::WriteReflectionProbeTexture): `width` x `height` RGBA16F
+// texels, rows top first, the header's mode texel set to Blend. The caller
+// owns `texels` until the call returns; the provider keeps its own copy and
+// may rewrite the mode texel (mat_reflection_probes). A request without
+// texels removes the map's probes.
+struct ReflectionProbesUploadRequest
+{
+	uint32_t width = 0;
+	uint32_t height = 0;
+	uint32_t probeCount = 0;
+	const uint16_t *texels = nullptr;
+};
+
 class IWorldMeshUpload
 {
 public:
@@ -100,6 +114,10 @@ public:
 	// The map's optional shadow field, after the world mesh. Optional: on
 	// failure unbaked lights stay unshadowed and nothing else changes.
 	virtual bool UploadShadowField( const ShadowFieldUploadRequest &request ) = 0;
+	// The map's optional reflection probes, after the lightmap. Optional: on
+	// failure the world samples the lightmap's legacy probe band if it has
+	// one, else no map probe, and nothing else changes.
+	virtual bool UploadReflectionProbes( const ReflectionProbesUploadRequest &request ) = 0;
 	// The caller binds the material first. The provider runs its material pass
 	// and queues this WMSH index range in the current ordered world view.
 	virtual bool DrawBatch( uint32_t firstIndex, uint32_t indexCount ) = 0;

@@ -6,7 +6,13 @@
       "PillarBlue"
     ]
   },
+  "lightmap": {
+    "samples": 512
+  },
   "map": "gi_bleed_hue_pillars",
+  "probe_volume": {
+    "samples": 1024
+  },
   "quality": "gi-fixture",
   "scene": "quality/fixtures/gi/bleed-hue-pillars/bleed-hue-pillars.usda",
   "schema": "pbrt-map-manifest/v1"

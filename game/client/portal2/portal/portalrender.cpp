@@ -93,6 +93,21 @@ extern ConVar portal_draw_ghosting;
 static CPortalRender s_PortalRender;
 CPortalRender* g_pPortalRender = &s_PortalRender;
 
+// Resolves the portal quad mesh after a block of range draws, before anything
+// else renders. The queued material system (mat_queue_mode 2) requires a
+// dynamic mesh to be drawn to its last index or marked drawn before the next
+// dynamic mesh is requested, and a recursive portal view requests many
+// (including this function's own rebuild). The next use rebuilds the same
+// geometry (RebuildCachedPortalQuadMesh).
+static void ResolvePortalQuadMesh( IMesh *&pPortalQuadMesh )
+{
+	if ( pPortalQuadMesh )
+	{
+		pPortalQuadMesh->MarkAsDrawn();
+		pPortalQuadMesh = NULL;
+	}
+}
+
 //CUtlVector<PortalRenderableCreationFunction_t> CPortalRender::m_PortalRenderableCreators;
 CPortalRenderableCreator_AutoRegister *CPortalRenderableCreator_AutoRegister::s_pRegisteredTypes = NULL;
 
@@ -829,6 +844,7 @@ bool CPortalRender::DrawPortalsUsingStencils( CViewRender *pViewRender )
 			pPortalQuadMesh = RebuildCachedPortalQuadMesh( pRenderContext );
 		}
 		DrawPortalGhostLocations( pRenderContext, pPortalQuadMesh, m_portalGhostRenderInfos.Base(), m_portalGhostRenderInfos.Count() );
+		ResolvePortalQuadMesh( pPortalQuadMesh );
 	}
 #endif
 
@@ -962,7 +978,8 @@ bool CPortalRender::DrawPortalsUsingStencils( CViewRender *pViewRender )
 		m_StencilState.m_nReferenceValue = 0;
 		Portal2_SetStencilState( pRenderContext, m_StencilState );
 		pRenderContext->PerformFullScreenStencilOperation();	// Clear stencil. Is this really necessary?
-		pPortalQuadMesh = NULL;	// NULL it out so we know to restore our dynamic mesh later
+		// Resolved so we know to restore our dynamic mesh later.
+		ResolvePortalQuadMesh( pPortalQuadMesh );
 
         m_RecursiveViewComplexFrustums[0].RemoveAll(); //clear any garbage leftover in the complex frustums from last frame
 
@@ -1062,6 +1079,7 @@ bool CPortalRender::DrawPortalsUsingStencils( CViewRender *pViewRender )
 				pPortalQuadMesh->Draw( nStartIndex, nIndexCount );
 			}
 		}
+		ResolvePortalQuadMesh( pPortalQuadMesh );
 
 		pRenderContext->EndPIXEvent();
 	}
@@ -1122,6 +1140,7 @@ bool CPortalRender::DrawPortalsUsingStencils( CViewRender *pViewRender )
 				Portal2_OverrideDepthEnable( pRenderContext, false, true, true );
 			}
 		}
+		ResolvePortalQuadMesh( pPortalQuadMesh );
 
 		pRenderContext->EndPIXEvent();
 	}
@@ -1207,7 +1226,8 @@ bool CPortalRender::DrawPortalsUsingStencils( CViewRender *pViewRender )
 			// TODO: We could render the portal quads instead of a fullscreen quad to save fill.
 			pRenderContext->BeginPIXEvent( PIX_VALVE_ORANGE, "Portal_Step2_clear_portal_depth" );
 			pRenderContext->ClearBuffersObeyStencil( false, true );
-			pPortalQuadMesh = NULL;	// NULL it out so we know to restore our dynamic mesh later
+			// Resolved so we know to restore our dynamic mesh later.
+			ResolvePortalQuadMesh( pPortalQuadMesh );
 			pRenderContext->EndPIXEvent();
 		}
 
@@ -1292,6 +1312,7 @@ bool CPortalRender::DrawPortalsUsingStencils( CViewRender *pViewRender )
 				pPortalQuadMesh->Draw( nStartIndex, nIndexCount );
 			}
 			Portal2_OverrideDepthEnable( pRenderContext, false, true, true );
+			ResolvePortalQuadMesh( pPortalQuadMesh );
 
 			pRenderContext->EndPIXEvent();
 		}

@@ -44,8 +44,8 @@ public:
 
 private:
 	SparkLightParams_t m_Params;
-	int m_nKey;       // 0: no light
-	bool m_bHeld;     // holds a place in the budget and a dlight
+	int m_nKey;   // 0: no light
+	bool m_bHeld; // holds a place in the budget and a dlight
 };
 
 #endif // PARTICLE_LIGHT_H

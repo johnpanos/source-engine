@@ -7,18 +7,19 @@
 //
 // RUNTIME_INDIRECT (RFC 0011 render.indirect-policy.v1's RuntimeIndirect):
 // the bound lightmap is the bake's direct layer, and the producer's indirect
-// light is added from its atlas (set 8), sampled at the lightmap coordinate.
+// light is added from its atlas (frame set binding 2), sampled at the lightmap
+// coordinate.
 //
 // DELTA_VOLUME (RFC 0011 render.indirect-policy.v1's BakedPlusDelta): the
 // bound lightmap is the bake's total, and the producer's signed change of
-// indirect light is added from its change volume (sets 8 and 9: a PRBV-layout
-// atlas whose indirect layer holds the change, and the grid table), sampled
-// at the surface with the probes' visibility. Under INDIRECT_VIEW the change
+// indirect light is added from its change volume (frame set bindings 2 and
+// 3: a PRBV-layout atlas whose indirect layer holds the change, and the grid
+// table), sampled at the surface with the probes' visibility. Under INDIRECT_VIEW the change
 // is added to the view's indirect layer.
 //
 // DIRECT_LIGHTS (RFC 0011 G2) adds the frame's unbaked lights, from the
 // engine's light set (render/light_set.h), through the legacy dlight falloff
-// times the Lambert cosine and the layered BRDF (set 7). The push block's
+// times the Lambert cosine and the layered BRDF (set 2). The push block's
 // lightDirection / lightRadiance directional light is the pixel suite's
 // hook; the engine never sets it.
 //
@@ -35,13 +36,15 @@ layout( location = 3 ) in vec3 fragNormal;
 layout( location = 4 ) in vec4 fragTangent;
 layout( location = 0 ) out vec4 outColor;
 
-layout( set = 0, binding = 0 ) uniform sampler2D baseTexture;
-layout( set = 1, binding = 0 ) uniform sampler2D mraoTexture;
-layout( set = 2, binding = 0 ) uniform sampler2D normalTexture;
-layout( set = 3, binding = 0 ) uniform sampler2D lightmapTexture;
-layout( set = 4, binding = 0 ) uniform sampler2D splitSumTexture;
-layout( set = 5, binding = 0 ) uniform sampler2D emissionTexture;
-layout( set = 6, binding = 0 ) uniform samplerCube environmentTexture;
+// Sets by update frequency (vulkan_descriptor_groups.h): 0 what the frame and
+// the map select, 1 the draw's material, 2 the frame's direct-light block.
+layout( set = 0, binding = 0 ) uniform sampler2D splitSumTexture;
+layout( set = 0, binding = 1 ) uniform sampler2D lightmapTexture;
+layout( set = 1, binding = 0 ) uniform sampler2D baseTexture;
+layout( set = 1, binding = 1 ) uniform sampler2D mraoTexture;
+layout( set = 1, binding = 2 ) uniform sampler2D normalTexture;
+layout( set = 1, binding = 3 ) uniform sampler2D emissionTexture;
+layout( set = 1, binding = 4 ) uniform samplerCube environmentTexture;
 
 layout( push_constant ) uniform Constants
 {
@@ -58,6 +61,21 @@ layout( push_constant ) uniform Constants
 }
 consts;
 
+// R50-RELIGHT: with a change to relight by (the producer's change volume or
+// the unbaked lights), the map's probes that carry relight bands are relit
+// (ReflectionProbeDiffuseChange, below).
+#if defined( DELTA_VOLUME ) || defined( DIRECT_LIGHTS )
+#define REFLECTION_PROBE_RELIGHT
+// The share of the pixel the probe lookup being made contributes (its
+// directional albedo's luminance times the probe weight). Below
+// kRelightMinWeight the change is skipped: a matte dielectric's reflection
+// carries about 4% of what it sees, and the pixel already shows the change
+// diffusely, so the skipped part is at most a tenth of a change the pixel
+// has, while mirrors, metals and glossy floors at grazing angles stay relit.
+// The change volume's per-sample cost is what this saves (R50-RELIGHT cost).
+const float kRelightMinWeight = 0.1;
+float g_relightWeight = 1.0;
+#endif
 #include "world_pbr_probe.glsl"
 
 vec3 SurfaceNormal()
@@ -87,7 +105,8 @@ vec3 BakedIrradiance( vec3 normal )
 	return irradiance * clamp( gain, 0.0, 4.0 );
 }
 
-// Specular image light: the material's $envmap cube, else the map probe.
+// Specular image light: the material's $envmap cube, else the map's probes
+// (parallax-corrected from this fragment; world_pbr_probe.glsl).
 bool ImageRadiance( vec3 direction, float roughness, out vec3 radiance )
 {
 	if ( consts.material.w >= 1.0 )
@@ -96,23 +115,30 @@ bool ImageRadiance( vec3 direction, float roughness, out vec3 radiance )
 		    roughness * ( consts.material.w - 1.0 ) ).rgb;
 		return true;
 	}
-	return ProbeRadiance( direction, roughness, radiance );
+	return MapProbeRadiance( fragPosition, normalize( fragNormal ), direction, roughness,
+	    radiance );
 }
 
 #ifdef RUNTIME_INDIRECT
-layout( set = 8, binding = 0 ) uniform sampler2D producerIndirect;
+layout( set = 0, binding = 2 ) uniform sampler2D producerIndirect;
 #endif
 
 #ifdef DELTA_VOLUME
-layout( set = 8, binding = 0 ) uniform sampler2D probeAtlas; // the change, PRBV layout
-layout( set = 9, binding = 0 ) uniform sampler2D probeGrids; // grid table, RGBA32F
+layout( set = 0, binding = 2 ) uniform sampler2D probeAtlas; // the change, PRBV layout
+layout( set = 0, binding = 3 ) uniform sampler2D probeGrids; // grid table, RGBA32F
 #include "probe_volume.glsl"
 
-// The producer's change of indirect diffuse light along the geometric normal.
-vec3 IndirectChange( vec3 normal )
+// The producer's change of indirect diffuse light at `position` along `normal`.
+vec3 IndirectChangeAt( vec3 position, vec3 normal )
 {
 	vec3 change;
-	return ProbeIrradiance( fragPosition, normal, 1, true, change ) ? change : vec3( 0.0 );
+	return ProbeIrradiance( position, normal, 1, true, change ) ? change : vec3( 0.0 );
+}
+
+// ... at the fragment, along the geometric normal.
+vec3 IndirectChange( vec3 normal )
+{
+	return IndirectChangeAt( fragPosition, normal );
 }
 #endif
 
@@ -120,7 +146,7 @@ vec3 IndirectChange( vec3 normal )
 // Four vec4 per light: position.xyz, radius; color.rgb, minLight;
 // direction.xyz, outer cone cosine (below -1: no cone); inner cone cosine,
 // inverse square (1) or the legacy falloff, source radius.
-layout( set = 7, binding = 0 ) uniform DirectLights
+layout( set = 2, binding = 0 ) uniform DirectLights
 {
 	vec4 header;      // x: the light count, y: 1 when the shadow field is bound
 	vec4 fieldOrigin; // the shadow field's first voxel centre, w its voxel size
@@ -130,12 +156,8 @@ layout( set = 7, binding = 0 ) uniform DirectLights
 directLights;
 
 // RFC 0011 G9: the map's SDFV distances (Source units, R16F, trilinear),
-// which shadow the unbaked lights. After the variant's other sets.
-#ifdef DELTA_VOLUME
-layout( set = 10, binding = 0 ) uniform sampler3D shadowField;
-#else
-layout( set = 9, binding = 0 ) uniform sampler3D shadowField;
-#endif
+// which shadow the unbaked lights.
+layout( set = 0, binding = 4 ) uniform sampler3D shadowField;
 
 // The field's distance at `p`; outside it nothing occludes.
 float FieldDistance( vec3 p )
@@ -204,17 +226,18 @@ float InverseSquareFalloff( float distanceSquared, float radius, float sourceRad
 // The direct light the frame's unbaked lights return toward the eye: the
 // diffuse albedo times their diffuse light (the bake's unit), plus pi times
 // their incident light through the specular lobe, as model_pbr.frag lights.
-// Unbaked light i's incident diffuse light at the fragment (its falloff,
-// cone and shadow; 0 when it cannot light it), with its direction and the
-// Lambert cosine for `normal`.
-vec3 DirectLightIncident( int i, vec3 normal, out vec3 light, out float normalDotLight )
+// Unbaked light i's incident diffuse light at `position` (its falloff, cone
+// and shadow, traced from off the surface along `surfaceNormal`; 0 when it
+// cannot light it), with its direction and the Lambert cosine for `normal`.
+vec3 DirectLightIncidentAt( int i, vec3 position, vec3 surfaceNormal, vec3 normal,
+    out vec3 light, out float normalDotLight )
 {
 	vec4 positionRadius = directLights.lights[4 * i];
 	vec4 colorMinLight = directLights.lights[4 * i + 1];
 	vec4 directionOuter = directLights.lights[4 * i + 2];
 	vec4 coneFalloff = directLights.lights[4 * i + 3];
 	float innerCos = coneFalloff.x;
-	vec3 toLight = positionRadius.xyz - fragPosition;
+	vec3 toLight = positionRadius.xyz - position;
 	float distanceSquared = dot( toLight, toLight );
 	float falloff = coneFalloff.y > 0.5
 	                    ? InverseSquareFalloff( distanceSquared, positionRadius.w, coneFalloff.z )
@@ -232,12 +255,34 @@ vec3 DirectLightIncident( int i, vec3 normal, out vec3 light, out float normalDo
 	}
 	if ( falloff <= 0.0 || normalDotLight <= 0.0 )
 		return vec3( 0.0 );
-	falloff *= SdfShadow( fragPosition, normalize( fragNormal ), positionRadius.xyz,
-	    coneFalloff.z );
+	falloff *= SdfShadow( position, surfaceNormal, positionRadius.xyz, coneFalloff.z );
 	return colorMinLight.rgb * falloff;
 }
 
-// View 3 (RFC 0011 G9): the unbaked lights' diffuse light, irradiance / pi.
+// ... at the fragment.
+vec3 DirectLightIncident( int i, vec3 normal, out vec3 light, out float normalDotLight )
+{
+	return DirectLightIncidentAt(
+	    i, fragPosition, normalize( fragNormal ), normal, light, normalDotLight );
+}
+
+// The unbaked lights' diffuse light (irradiance / pi) at `position` on a
+// surface with unit normal `normal`.
+vec3 DirectLightDiffuseAt( vec3 position, vec3 normal )
+{
+	vec3 total = vec3( 0.0 );
+	int count = int( directLights.header.x );
+	for ( int i = 0; i < 7 && i < count; ++i )
+	{
+		vec3 light;
+		float normalDotLight;
+		total += DirectLightIncidentAt( i, position, normal, normal, light, normalDotLight ) *
+		         normalDotLight;
+	}
+	return total;
+}
+
+// View 3 (RFC 0011 G9): the unbaked lights' diffuse light at the fragment.
 vec3 DirectLightDiffuse( vec3 normal )
 {
 	vec3 total = vec3( 0.0 );
@@ -270,6 +315,25 @@ vec3 DirectLightRadiance( vec3 normal, vec3 view, vec3 diffuseAlbedo, vec3 f0, f
 		total += lit;
 	}
 	return total;
+}
+#endif
+
+#ifdef REFLECTION_PROBE_RELIGHT
+// R50-RELIGHT: what a relight band's point gains since the bake: the change
+// the world itself adds under this variant (the producer's change volume,
+// the unbaked lights' shadowed direct light), in the bake's unit.
+vec3 ReflectionProbeDiffuseChange( vec3 position, vec3 normal )
+{
+	vec3 change = vec3( 0.0 );
+	if ( g_relightWeight < kRelightMinWeight )
+		return change;
+#ifdef DELTA_VOLUME
+	change += IndirectChangeAt( position, normal );
+#endif
+#ifdef DIRECT_LIGHTS
+	change += DirectLightDiffuseAt( position, normal );
+#endif
+	return change;
 }
 #endif
 
@@ -368,6 +432,9 @@ void main()
 	float horizon = clamp( 1.0 + 1.3 * dot( reflected, normalize( fragNormal ) ), 0.0, 1.0 );
 	float probeWeight = occlusion * horizon * horizon;
 	vec3 image = diffuse;
+#ifdef REFLECTION_PROBE_RELIGHT
+	g_relightWeight = dot( directionalAlbedo, vec3( 0.2126, 0.7152, 0.0722 ) ) * probeWeight;
+#endif
 	if ( ImageRadiance( reflected, roughness, probe ) )
 		image += probe * directionalAlbedo * probeWeight;
 	if ( coat > 0.0 )
@@ -377,6 +444,9 @@ void main()
 		// normal needs no horizon term).
 		float coatFresnel = PbrFresnelSchlick( 0.04, max( dot( coatNormal, view ), 0.0 ) ) * coat;
 		image *= 1.0 - coatFresnel;
+#ifdef REFLECTION_PROBE_RELIGHT
+		g_relightWeight = coatFresnel * occlusion;
+#endif
 		if ( ImageRadiance( reflect( -view, coatNormal ), max( consts.lightRadiance.w, 0.02 ),
 		         probe ) )
 			image += probe * coatFresnel * occlusion;

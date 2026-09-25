@@ -189,10 +189,37 @@ vec4 LocalRefract( int flags, vec4 normal )
 		color = LinearToSrgb( color );
 	return vec4( color, normal.a );
 }
+// spritecard_ps2x.fxc (alphaParams.y == 3): the frame, blended with the second
+// animation frame (lightmap-uv slot) by the frame blend (fragReflection.x) with
+// ANIMBLEND, times fOverbrightFactor (the modulation), then either times the
+// vertex color or, with ADDSELF (fragReflection.y = 1 + weight), premultiplied
+// by alpha and brightened by weight times itself before the vertex color.
+vec4 SpriteCardColor( int flags )
+{
+	vec4 frame0 = texture( baseTexture, fragUv );
+	vec4 frame1 = texture( baseTexture, fragLightmapUv );
+	if ( ( flags & 1 ) != 0 )
+	{
+		frame0.rgb = SrgbToLinear( frame0.rgb );
+		frame1.rgb = SrgbToLinear( frame1.rgb );
+	}
+	vec4 blended = mix( frame0, frame1, fragReflection.x );
+	blended.rgb *= fragModulation.rgb;
+	if ( fragReflection.y > 0.5 )
+	{
+		const float addSelf = fragReflection.y - 1.0;
+		blended.a *= fragVertexColor.a;
+		blended.rgb *= blended.a;
+		blended.rgb += fragModulation.r * addSelf * fragVertexColor.a * blended.rgb;
+		blended.rgb *= fragVertexColor.rgb;
+		return blended;
+	}
+	return blended * fragVertexColor;
+}
 void main()
 {
 	const int flags = int( consts.alphaParams.z );
-	if ( consts.alphaParams.y > 1.5 )
+	if ( consts.alphaParams.y > 1.5 && consts.alphaParams.y < 2.5 )
 	{
 		outColor = ShadowProjection( flags );
 		return;
@@ -247,7 +274,11 @@ void main()
 	if ( ( flags & 1 ) != 0 )
 		base.rgb = SrgbToLinear( base.rgb );
 	vec4 result;
-	if ( ( flags & 16 ) != 0 )
+	if ( consts.alphaParams.y > 2.5 )
+	{
+		result = SpriteCardColor( flags );
+	}
+	else if ( ( flags & 16 ) != 0 )
 	{
 		const float luminance =
 		    dot( base.rgb * consts.modulation.z, vec3( 0.2125, 0.7154, 0.0721 ) );

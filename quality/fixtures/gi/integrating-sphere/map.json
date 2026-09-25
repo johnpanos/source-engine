@@ -2,7 +2,14 @@
   "collision": {
     "solid_meshes": []
   },
+  "lightmap": {
+    "layout": "planar",
+    "samples": 512
+  },
   "map": "gi_integrating_sphere",
+  "probe_volume": {
+    "samples": 1024
+  },
   "quality": "gi-fixture",
   "scene": "quality/fixtures/gi/integrating-sphere/integrating-sphere.usda",
   "schema": "pbrt-map-manifest/v1"

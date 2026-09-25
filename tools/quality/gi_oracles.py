@@ -274,6 +274,9 @@ def control(oracle):
     oracle must reject."""
     kind = oracle["kind"]
     perturbed = copy.deepcopy(oracle)
+    # Seeded errors stay well outside the oracle's own tolerance, which a
+    # capture's oracles widen (gi_runtime.py oracles).
+    tolerance = oracle.get("tolerance", DEFAULT_RELATIVE.get(kind, 0.02))
     if kind == "superposition":
         dropped = perturbed["parts"].pop()
         return "sum state missing part %s (a dropped light)" % dropped, perturbed, None
@@ -281,12 +284,13 @@ def control(oracle):
         b = perturbed["b"]
         target = (b["state"], b["camera"], b["region"])
         channels = set(b.get("channels", [0, 1, 2]))
+        bias = max(0.08, 3 * tolerance)
 
         def biased(state, camera, region, light, value):
             if (state, camera, region) != target:
                 return value
-            return [v * 1.08 if c in channels else v for c, v in enumerate(value)]
-        return "compared channels of one side biased 8%", perturbed, biased
+            return [v * (1 + bias) if c in channels else v for c, v in enumerate(value)]
+        return "compared channels of one side biased %.0f%%" % (100 * bias), perturbed, biased
     if kind in ("value", "scale"):
         bias = 1 + 5 * perturbed.get("tolerance", DEFAULT_RELATIVE[kind])
         if kind == "scale":
@@ -311,15 +315,18 @@ def control(oracle):
     if kind == "chromaticity":
         if max(oracle["expected"]) - min(oracle["expected"]) > 0.05 * max(oracle["expected"]):
             return "luminance-only producer", perturbed, grey
-        perturbed["expected"] = [oracle["expected"][0] * 0.9] + oracle["expected"][1:]
-        return "red chromaticity off by 10%", perturbed, None
+        off = max(0.1, 3 * tolerance)
+        perturbed["expected"] = [oracle["expected"][0] * (1 - off)] + oracle["expected"][1:]
+        return "red chromaticity off by %.0f%%" % (100 * off), perturbed, None
     if kind == "uniform":
         first = oracle["entries"][0]
         target = (first["state"], first["camera"], first["region"])
+        lift = max(0.15, 5 * tolerance)
 
         def lifted(state, camera, region, light, value):
-            return [v * 1.15 for v in value] if (state, camera, region) == target else value
-        return "one region 15% brighter", perturbed, lifted
+            return [v * (1 + lift) for v in value] if (state, camera, region) == target \
+                else value
+        return "one region %.0f%% brighter" % (100 * lift), perturbed, lifted
     raise ValueError("unknown GI oracle kind " + str(kind))
 
 

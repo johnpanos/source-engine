@@ -9,7 +9,10 @@
 //          and a retired resource is freed only after the serial it names.
 //          With ray query (Caps::rayQuery, G7): triangle geometry and scenes
 //          of its instances for programs to trace against. No call waits for
-//          the GPU. No native types.
+//          the GPU. No native types. Producers may call it from a thread
+//          other than the one submitting frames (the queued material
+//          system's main thread): a dispatch is recorded into a submission
+//          after the call, and its serial names that submission or a later one.
 //
 //===========================================================================//
 

@@ -31,11 +31,15 @@ struct Color
 };
 
 // Trowbridge-Reitz GGX normal distribution. alpha = perceptualRoughness^2.
+// The denominator 1 + (N.H)^2 (alpha^2 - 1) is evaluated as
+// (1 - (N.H)^2) + (N.H)^2 alpha^2: at N.H = 1 and roughness 0.02 (alpha^2
+// 1.6e-7) the textbook form cancels to a fifth of its float precision.
 [[nodiscard]] inline float GgxDistribution( float normalDotHalf, float perceptualRoughness )
 {
 	const float alpha = perceptualRoughness * perceptualRoughness;
 	const float alphaSquared = alpha * alpha;
-	const float denominator = normalDotHalf * normalDotHalf * ( alphaSquared - 1.0f ) + 1.0f;
+	const float cosineSquared = normalDotHalf * normalDotHalf;
+	const float denominator = ( 1.0f - cosineSquared ) + cosineSquared * alphaSquared;
 	return alphaSquared / ( kPi * denominator * denominator );
 }
 
@@ -80,8 +84,10 @@ struct Color
 {
 	const float view = std::fmax( 0.0f, std::fmin( normalDotView, 1.0f ) );
 	const float perceptualRoughness = std::fmax( 0.0f, std::fmin( roughness, 1.0f ) );
-	const float x = view * kSplitSumSize - 0.5f;
-	const float y = perceptualRoughness * kSplitSumSize - 0.5f;
+	// The table's texels sit on N.V and roughness i / (size - 1), end points
+	// included (shaders/gen_pbr_split_sum.py).
+	const float x = view * ( kSplitSumSize - 1 );
+	const float y = perceptualRoughness * ( kSplitSumSize - 1 );
 	const int lowX =
 	    std::max( 0, std::min( static_cast<int>( std::floor( x ) ), kSplitSumSize - 1 ) );
 	const int lowY =

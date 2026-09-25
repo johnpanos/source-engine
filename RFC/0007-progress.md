@@ -575,10 +575,17 @@ would change their recorded hashes, and has not been done.
 
 ### Lightmap layout, seams and noise (installed 2026-09-25)
 
-Blender no longer decides the lightmap layout on profiles with
-`lightmap.layout: planar`; it only runs Cycles on UVs the `layout` step
-writes into the stage (`--layout authored`, checked unchanged after the
-round trip).
+Blender no longer decides the lightmap layout: `lightmap.layout: planar` is
+the default, and `"blender"` remains only as an explicit comparison option.
+Blender runs Cycles on UVs the `layout` step writes into the stage
+(`--layout authored`, checked unchanged after the round trip). On the PBRT
+scenes:
+
+- staircase2: 212 curved triangles in 42 xatlas charts, stretch 0.67 to 1.48.
+  It passed a CPU bake and the `seams` gate: no overlap, bleed or escaped
+  UVs, density spread 1.003 on flat charts, no flat seam.
+- The bathroom's layout step passes on 590k triangles: 398k curved in 25k
+  charts.
 
 - **Topology** (`legacy_bsp.py`, `legacy_bsp_scene.py`, `usd_scene.py`):
   relit faces keep the BSP's shared vertices (merged within 0.01 units) and
@@ -622,10 +629,98 @@ round trip).
 
     The residual that remains sits at chart edges. `legacy-relight` bakes
     4096 samples with a 15% p99 target.
+- Stalls: a Blender step that prints nothing for 30 minutes is stopped with
+  its whole process group, and the step fails (`run_logged`,
+  `tests/test_pbrt_map_build_run.py`). On 2026-09-25 at 02:06 the amdgpu
+  driver logged "MES failed to respond to msg=REMOVE_QUEUE" and a page
+  fault. The testchmb_a_00 relight bake then waited 4.5 hours on a lost HIP
+  queue. Afterwards even a 64x64 Cycles HIP render would not finish; CPU
+  bakes were unaffected. It needs a GPU reset or reboot. The full relight
+  (4096 atlas, 4096 samples, 64-bounce paths) is therefore not yet built.
 - Pre-existing, not caused by this work: the bathroom's reference gate fails
   on this host (mean error 10.874 against 10, SSIM 0.917). The 2026-09-24
   corpus build (`quality-results/rfc0011-corpus/bathroom`) recorded the same
   numbers. The cause is not established.
+
+### Regular-compile hook: `vrad_cycles.py` (installed 2026-09-25)
+
+At the user's direction, a regular vbsp/vvis/vrad compile can now feed the
+Blender/Cycles pipeline without a manifest. See the
+[pipeline guide](../quality/fixtures/pbrt-maps/README.md#hooking-a-regular-compile-into-the-pipeline).
+
+- [`vrad_cycles.py`](../tools/quality/vrad_cycles.py) takes vrad's command
+  line, so it can replace vrad as Hammer's `$light_exe` or as a script's light
+  step.
+  - It runs the real vrad without its own `--cycles-*` options.
+  - It then passes vrad's BSP to `legacy_bsp_relight.relight`, the function
+    `main` was split into. That is the path shipped maps already use.
+  - vrad's BSP is never written. A vrad failure returns vrad's exit status
+    and stops before the relight; a relight failure is nonzero.
+- Two changes the fixture needed:
+  - vrad's `-game` directory (or `-vproject`, `$VPROJECT`) becomes the
+    manifest's `legacy_game`. `legacy_bsp_scene.GameDirectory` searches its
+    `materials/` before the runtime, ignoring case, and those files are part
+    of the `legacy-scene` step key. On the fixture, the relit scene without
+    it took both base textures from the runtime's `hl2_textures_dir.vpk`.
+    vbsp and vrad compiled against the fixture's untextured VMTs instead.
+    With it, the scene uses those VMTs, and the base color is the texdata
+    reflectivity vrad used.
+  - The profile's `relight_occluder` exclusion made the bake fail on a map
+    with no nodraw brush sides ("excluded materials are not in the PBRT
+    scene"). `pbrt_map_build.applicable_exclusions` now applies a profile's
+    exclusions only to scenes that have them. Exclusions a manifest names are
+    still rejected when absent.
+- The fixture run also found a hang in `probe_volume_bake.py`, whose forked
+  trace workers came in with `a7928390` (2026-09-25):
+  - A worker's `lobes @ distances` hung in libgomp's barrier.
+    `texels @ rays.T` in the parent starts the OpenMP team of Blender's
+    `libopenblaso` before the fork, and a forked child has none of its
+    threads.
+  - Setting OpenBLAS to one thread in the parent or in a worker initializer
+    did not help. A 45 s Blender reproduction hung in all three variants.
+  - The workers now use `np.einsum`, which does not call BLAS. In the same
+    reproduction, pooled results were bitwise equal to serial and within
+    2.4e-15 (relative) of BLAS.
+  - Every probe-volume bake with more than one worker and more than one
+    probe run was exposed to this hang, relights of shipped maps included.
+- A GPU bake hung for 90 minutes in `hipStreamCreate` (HSA signal wait).
+  The GPU's compute side had been wedged since 02:06:05, when the kernel
+  logged `amdgpu: MES failed to respond to msg=REMOVE_QUEUE` and then a
+  gfxhub page fault. Every HIP bake hangs until the GPU is reset or the
+  host reboots. The evidence run below therefore used the CPU.
+- `--cycles-device` (and `legacy_bsp_relight.py --device`) overrides the
+  profile's device for every bake. `cpu` and `auto` stay explicit opt-ins
+  under the device policy above.
+- Evidence:
+  - `tests/test_vrad_cycles.py` has 17 tests against a fake vrad and a
+    recording relight. They cover argument splitting, vrad's map and `-game`
+    rules, the failure paths, the game-directory layer, the exclusion policy,
+    the relight manifest (`legacy_game`, device) and `legacy_game`
+    validation.
+  - Four of the five mutants were detected. The fifth was equivalent: it
+    changed a branch `--cycles-*` options never reach.
+  - `tests/test_legacy_relight.py` still passes (33).
+  - End-to-end on `quality/fixtures/vbsp-host/sealed_room.vmf`:
+    - The toolchain's `vbsp` and `vvis` ran first. Then
+      `vrad_cycles.py -game game -bounce 2 --cycles-quality legacy-relight-preview --cycles-device cpu`
+      ran on the pinned vrad, exiting 0.
+    - `gameplay-identity.json` passed: 59 legacy lumps were identical and
+      none differed. The world lights (vrad's 100 bytes; the named light
+      became RTRN style 32) and the four leaf-ambient lumps were relit.
+      LMAP, PRBV, RTRN, SDFV and WMSH were added.
+    - vrad's BSP kept its pre-run SHA-256, and the BSP2 is `173e3581…`.
+    - The pipeline steps took 548 s on the CPU, 424 s of them in the
+      lightmap bake.
+    - `--cycles-boot` booted the relit map headless on native Vulkan
+      (`portal_boot` status pass), drawing the WMSH with the map's
+      materials.
+    - Unverified: a GPU bake (see above), a real Portal map through the
+      hook, and Hammer's Run Map dialog.
+- This is a hook, not the `ILightBaker` seam: Blender remains a subprocess,
+  vrad must still run in full (the relight converts its world lights and
+  keeps its lightmaps for brush entities, displacements and translucent
+  faces), and Hammer under Wine cannot launch the Linux script. It closes no
+  R48 criterion.
 
 ### Scope
 
@@ -837,3 +932,530 @@ Not covered:
 - Clear coat, model glass, and flashlight/projected-texture passes for PBR
   models.
 - Other GPUs and the Android/Apple profiles.
+
+## Energy compensation, one GLSL BRDF, and grouped descriptor sets (R47 / R29 prep, 2026-09-25)
+
+Scope, at the user's direction: three of the follow-ups from the comparison
+with Google's Filament. Clean baseline before the change, at `7aca8408`
+(archived tree): all 9 PBR suites passed.
+
+- **Multiple-scattering energy compensation.**
+  - `pbr_brdf.h` adds `SpecularEnergyCompensation`,
+    `SpecularDirectionalAlbedo` and `EvaluateSpecularMultiScatter`, using
+    Kulla–Conty in Filament's form `1 + F0·(1/(A+B) − 1)`.
+  - `EvaluateLayeredDirect` now compensates the lobe and layers diffuse under
+    the compensated albedo.
+  - The split-sum table already carried the term (`A + B` is the F0 = 1
+    albedo). Its axes were wrong for it, though: the last row sat at
+    roughness 0.984, so roughness 1 was under-compensated by 6%.
+  - The table now includes its end points (texel `i` at `i/(size−1)`). The
+    C++ lookup, the GLSL lookup (`PbrSplitSum`) and the Python oracle
+    (`material_pixel_pbr_model.py`) read it the same way.
+  - White furnace, compensated: 0.9995–1.0004 for a white metal at roughness
+    0.5–1. Single-scatter was 0.307 at roughness 1, N·V 1.
+  - `render.pbr-brdf` adds the rough-metal and colored-metal furnace checks
+    (55 checks). The new sensitivity suite
+    `render.pbr-brdf.no-energy-compensation` must fail the rough-metal check.
+- **One GLSL BRDF.**
+  - `shaders/pbr_brdf.glsl` holds GGX, Smith, Schlick, the lobe, split-sum
+    sampling, the compensation, the directional albedo and the clear coat.
+  - `pbr_direct.frag`, `world_pbr.frag`, `world_pbr_glass.frag` and
+    `model_pbr.frag` include it and define none of their own. Before this
+    there were three GGX copies.
+  - `EvaluateClearCoat` joins `pbr_brdf.h`, so the coat has a C++ reference.
+  - The GGX denominator is evaluated as `(1−(N·H)²) + (N·H)²α²`, the same
+    value algebraically. At roughness 0.02 and N·H = 1 the textbook form lost
+    20% in float on the host; the new GPU check found it.
+  - `render.pbr-brdf.glsl` (GPU) evaluates the library in a compute program
+    (`pbr_brdf_check.comp`): 1,080 of 1,080 cases agree within
+    `1e-6 + 3e-4·|C++|`. Seeded C++ models are rejected: no compensation
+    (234 cases agree), α = roughness (180), and an unweighted coat (368).
+  - `tools/quality/tests/test_pbr_shader_library.py` guards the source: every
+    stage includes the library, no BRDF term is defined outside it, and no
+    grouped stage binds a set above 2. It has 6 tests, 4 of them negative.
+- **Descriptor sets by update frequency.**
+  - `vulkan_descriptor_groups.{h,cpp}` (`CGroupedDescriptors`) gives the PBR
+    and GI stages three sets instead of up to eleven:
+    - set 0, the frame's: split sum, lightmap, indirect source, probe grid,
+      shadow field;
+    - set 1, the material's: base, MRAO, normal, emission or scene color,
+      `$envmap` cube, scene depth;
+    - set 2, the constants ring's dynamic block.
+  - Sets 0 and 1 are written into per-frame-slot pools. A slot is reset only
+    at its `BeginFrame`, after its fence. Equal requests in a slot share one
+    set, a full pool grows the slot, and `Invalidate` follows an in-place
+    sampler replacement.
+  - The `maxBoundDescriptorSets` gates on WMSH PBR (7), direct lights and
+    RuntimeIndirect (10), BakedPlusDelta (11), glass (7) and model
+    probe-volume sampling (9) are gone.
+  - `InitSkinPipeline` now creates the shared constants ring and vertex stage
+    before its own 7-set gate, so only `$phong` needs seven sets. Model PBR
+    has its own layout.
+  - The white volume now lives beside the white cube, and
+    `m_maxImageDimension3D` is set at device creation. Before this, a device
+    without the post pipeline could not create any volume texture, the SDF
+    shadow field included.
+  - `VulkanContextConfig::descriptorSetLimit` lets suites act as a smaller
+    device.
+
+Evidence (RADV Radeon 8060S, headless, validation layer on):
+
+| Suite | Result |
+| --- | --- |
+| `render.pbr-brdf` (+ 4 sensitivity suites) | 55/0, each seeded defect detected |
+| `render.pbr-brdf.glsl` (new) | 9/0 |
+| `render.grouped-descriptors` (new, seeded view-only key detected) | 15/0 |
+| `render.world-pbr.native-pixels` / `.four-sets` | 94/0 / 94/0; PBR layouts use 3 sets |
+| `render.model-pbr.native-pixels` / `.four-sets` | 67/0 / 67/0 |
+| `render.world-glass.native-pixels` / `.four-sets` | 36/0 / 36/0 |
+| `render.indirect-switching.native-pixels` / `.four-sets` | 83/0 / 83/0 |
+| `render.pbr-direct.native-pixels` | 32/0 |
+| `tools/quality/tests/test_material_pixel_conformance.py` | pass |
+
+The `.four-sets` variants run the whole suite as a device that binds four
+descriptor sets, the Vulkan minimum. Every PBR and GI variant is built and
+draws the same checked pixels. LightmappedGeneric (9 sets) and `$phong`
+(7 sets) are declined there, by name.
+
+Pixel changes:
+- Rough metals are brighter: up to 3.3× the old single-scatter specular at
+  roughness 1.
+- The `pbr-direct` colored-metal case's radiance went from 10 to 8 so the
+  compensated red stays under the 8-bit ceiling.
+
+Not covered:
+- No suite draws BakedPlusDelta's pixels. The `.four-sets` run proves only
+  that its pipelines build and validate at 4 sets.
+- The legacy LightmappedGeneric and `$phong` layouts still need 9 and 7
+  sets. A 4-set device keeps PBR and GI but not those legacy stages.
+- Nothing ran on MoltenVK, Mali, the Fold7 or other GPUs, and no in-game
+  capture was taken of the brighter rough metals.
+- R29 platform evidence remains open.
+
+## R50-PARALLAX: parallax-corrected, blended reflection probes (bounded R50 slice, 2026-09-25)
+
+Scope, at the user's direction (2026-09-25): replace the scene-map
+pipeline's single direction-only probe with automatically placed,
+parallax-corrected, blended reflection probes carried by RFC 0008's `RPRB`
+lump. This is a bounded slice of R50 (RFC 0007 F). It does not close R50: the
+legacy runtime prefilter, IBL pixel fixtures across material families and
+cache invalidation remain, and R50's prerequisites R47 and R56 are open.
+
+### Why, and the sources
+
+- **The problem.** The old pipeline rendered one probe at the scene's
+  centre and sampled it by direction only. That assumes an infinitely
+  distant scene, so the reflection does not move as the viewer does and is
+  skewed everywhere except at the capture point. 3kliksphilip's "Advanced
+  Reflections in CS:GO... and for Source 2?" (2019-12-01,
+  https://www.youtube.com/watch?v=uX5krqI51hQ) shows each failure this slice
+  fixes:
+  - static reflections (01:49);
+  - a proxy that is the wrong shape: a sphere at the world origin (03:19);
+  - hand-tuned parallax per surface (04:15);
+  - splay where the reflection meets the floor (04:26);
+  - separate mirrors needing separate cubemaps (05:02);
+  - Source 1 switching to the nearest cubemap instead of blending (06:13);
+  - Source 2 apparently using parallax-corrected cubemaps for VR (06:52).
+
+  The subtitles and a timestamped transcript are kept outside the repository
+  (`~/Downloads/kliksphilip-cubemaps/`). The video cites Valve's developer-wiki
+  page "Parallax Corrected Cubemaps"; that page could not be read here (a
+  bot challenge), so nothing below relies on it.
+- **Box proxy and blending.** Lagarde and Zanuttini, "Local Image-based
+  Lighting With Parallax-corrected Cubemap", SIGGRAPH 2012
+  (https://seblagarde.files.wordpress.com/2012/08/parallax_corrected_cubemap-siggraph2012.pdf):
+  - intersect the reflected ray with a box proxy and sample toward the hit
+    from the capture point; the box centre need not be the capture point;
+  - influence volumes whose weights are 0% at the boundary and 100% inside
+    an inner range, with a smaller volume inside a larger one taking
+    precedence, normalized;
+  - a limit on overlapping cubemaps (4 there) pops when a fifth overlaps;
+  - glossy normals reaching the lower hemisphere can miss the box.
+- **Distance roughness and easing.** Lagarde and de Rousiers, "Moving
+  Frostbite to Physically Based Rendering 3.0", SIGGRAPH 2014 course notes
+  (https://seblagarde.files.wordpress.com/2015/07/course_notes_moving_frostbite_to_pbr_v32.pdf):
+  - distance-based roughness, `clamp(d_point / d_capture * r, 0, r)` eased
+    back to `r` by `r` (Listing 25);
+  - the corrected direction eased toward the reflected ray by roughness,
+    and a smoothstep fade at the influence boundary (Listing F.1).
+
+  Correction to the proposal: distance-based roughness is from the 2014
+  notes, not the 2012 talk.
+
+### Design and deviations from the sources
+
+- **Proxy fit.** The capture's own depth pass fits the proxy: Cycles' Depth
+  pass on the six cube faces the probe already renders, so no extra render.
+  - Each box plane is the farthest strong planar peak of that face's
+    solid-angle-weighted distance histogram, taken as a weighted median:
+    peaks at least `PLANE_FRACTION` 0.25 of the strongest.
+  - A plain high percentile is pulled through a doorway (the test
+    `test_a_plain_percentile_would_have_gone_through_the_doorway` guards
+    this) and is biased by the floor's continuous run of distances up to the
+    wall.
+  - A face that is mostly sky stays open (1000 m), which is right for
+    windows.
+  - The packer checks the depth convention (planar camera z) against BVH ray
+    distances the renderer records at 64 texels per face before trusting it.
+- **Placement.**
+  - **Room probes.** Greedy cover of every eye-height point above a floor
+    (1.63 m, 0.75 m grid) by a probe whose estimated box contains it and
+    which sees it; each new probe is moved to the candidate nearest the
+    middle of what it newly covers. Separate rooms therefore get separate
+    probes.
+  - **Glossy probes.** Every sample on a glossy surface (base or clear-coat
+    roughness ≤ 0.35) needs a capture within 2.5 m in front of it that sees
+    it. Uncovered ones get a probe whose influence is those samples' bounds,
+    so a mirror gets its own probe.
+  - Manifest `position(s)` seed captures. The largest room probe is global.
+- **Blend** (our choices within Lagarde's rules):
+  - Probes are visited by rank: influence volume ascending, the global probe
+    last. Each takes its weight times the weight still unassigned; the
+    global probe takes the rest.
+  - A weight is 1 inside the influence box and falls to 0 at `fade`
+    (0.5 m) outside it (a smoothstep). The influence box is the parallax box
+    grown by 0.15 m, so the room's own walls get full weight.
+  - Not in the sources: a facing term (smoothstep of the cosine over
+    ±0.1) drops a probe whose capture lies behind the shaded surface, so a
+    room's probe does not reflect onto the far side of its wall.
+  - At most two probes are sampled per pixel: the two largest shares, each
+    less the third largest, renormalized. This is continuous where the
+    ranking changes, unlike Lagarde's fixed cap.
+  - Weights are per shaded point, so a surface point's probe mix never
+    depends on the camera. The Source 1 failure is therefore a spatial seam
+    where one surface switches probe, and the walk gate measures that.
+- **Interim step not built.** The proposal's interim carrier (the probe's
+  position and box in extra LMAP marker texels until RPRB existed) was not
+  built: RPRB landed in the same change, and a second carrier would have
+  duplicated it.
+- **Carrier.** `RPRB` v1 is raw RGBA16F like `PRBV`, not KTX2 (RFC 0008
+  lists KTX2; BC6H/ASTC transcode is later work). Equirect mips use the
+  legacy band's layout, and each probe has a band.
+  - The GPU form is one texture: a record table with hi/lo half pairs
+    (about 0.01-unit precision), header marker −3, then the atlas.
+  - It binds in the frame descriptor set (vulkan_descriptor_groups.h) for
+    world, glass and model PBR. Maps built before RPRB keep their LMAP band
+    probe, which the shaders still read.
+  - The scene sun's LMAP marker texels (no shader reader) are no longer
+    written.
+- **Modes.** `mat_reflection_probes`: 1 blend (default), 0 off, 2 nearest
+  capture (Source 1's switch, a negative control), 3 direction-only (the
+  old lookup, a negative control). +4 is the weight view: palette colour per
+  rank times weight.
+
+### Evidence
+
+All on the Fedora host (RADV Strix Halo, Radeon 8060S), 2026-09-25:
+
+- **Math and format** (`tools/quality/tests/test_reflection_probe_set.py`,
+  23 tests).
+  - The lookup is exact when the box is the room; a ray from the capture
+    point is unchanged; a point outside whose ray misses keeps its ray.
+  - Frostbite Listing 25 is reproduced to its worked values.
+  - The box fit:
+    - recovers an empty room exactly;
+    - ignores a sofa;
+    - ignores a doorway, where a plain percentile would have gone through
+      it;
+    - stays open to sky;
+    - scores a wrong box.
+  - RPRB round-trips, and each of the 20 malformations fails with its code.
+  - Blending: weights sum to one on at most two probes, and a smaller volume
+    wins. A walk is continuous within the smoothstep's slope, while the
+    nearest-capture mode jumps.
+  - Placement: each room of a two-room scene gets a probe whose box is that
+    room, doorway geometry included, and a far mirror gets its own probe.
+  - Analytic mirror-floor oracle, mean error against traced ground truth:
+    fitted box 0.030, direction-only 0.39, wrong box 0.45.
+- **C++ reader** (`world.reflection-probes`, 57 checks; clean under clang
+  ASan/UBSan).
+  - The fixture validates, and its GPU texture is byte-identical to the
+    Python writer's.
+  - Every corpus edit fails with the Python reader's error.
+  - The reference blend reproduces the Python oracle's 192 samples (four
+    modes) within 1e-6.
+  - The continuity walk and the facing rule hold; 3,000 fuzzed mutants never
+    crash.
+- **GLSL** (`render.reflection-probes.glsl`, 30 checks):
+  `shaders/reflection_probes.glsl` in a compute program on the device agrees
+  with the C++ reference on 448 cases in each of four modes. Every other
+  mode's reference is rejected (0 to 280 of 448 agree), and a texture
+  without the marker carries no probes. No validation messages.
+- **Existing GPU suites still pass** after the frame-set binding and shader
+  change, including the `.four-sets` variants:
+  - `render.world-pbr`, `model-pbr`, `world-glass` and
+    `indirect-switching.native-pixels`;
+  - `render.pbr-direct.native-pixels`;
+  - `render.grouped-descriptors`.
+- **Real scene: living room** (`scene-v4.pbrt` on its existing lighting
+  stage).
+  - Placement: two probes (the room, seeded at the manifest's position, and
+    the window bay), all 36 walkable samples covered, global = the room.
+  - The Depth pass's convention was verified as planar (median error 0 at
+    the BVH samples).
+  - Mean box residuals 0.050 and 0.067. 43 of 83 glossy samples are visible
+    from eye height; 15 of those are unserved, none in a patch of 0.5 m².
+  - In game (`build/`, native Vulkan, the map's BSP2 with the RPRB lump
+    added): the engine logs "RPRB v1, 2 reflection probes".
+    - With the old LMAP-band probe (`mat_reflection_probes 0`), the floor
+      shows bright halos by the walls and sofa, and the mirror above the
+      fireplace is black.
+    - With the blend, the floor reflection sits in place and the mirror
+      reflects the room.
+    - The weight view shows the bay probe fading into the room's.
+- **Mirror gate** (`reflection_runtime.py mirror`, record
+  `quality-results/reflection-gates/mirror/mirror.json`): mirror-room, four
+  probes (the room plus three glossy-floor probes, boxes within 0.0004 of the
+  room), three cameras away from every capture. Floor error over wall error,
+  per view:
+
+  | Run | Floor/wall per view | Mean floor error |
+  | --- | --- | --- |
+  | Blended | 1.52–1.80 | 0.187 |
+  | Direction-only | 7.6–8.2 | 0.883 |
+  | Boxes shifted by (1.0, 0.8) m | 4.4–6.0 | 0.597 |
+
+  Wall error is 0.10–0.12 in every run; the limit is 2.5 and the control
+  margin 1.5×. PASS.
+- **Walk gate** (`reflection_runtime.py walk`, record
+  `quality-results/reflection-gates/walk/walk.json`): two-rooms, one probe
+  per room (boxes exactly the rooms), 25 stations through the doorway.
+  - Blended weight view: the largest red-share step between neighbouring
+    floor pixels is 0.047 (limit 0.25), with the share running 0 to 1 over
+    the walk.
+  - Nearest-capture control: 1.0 (seam minimum 0.6). PASS.
+- **Audit budgets.**
+  - `reflection-fixture`: residual ≤ 0.15, no uncovered walkable sample,
+    unserved glossy ≤ 0.1, budget not exhausted. Both fixture maps pass
+    their audits and are published as playable maps (reflection_mirror_room,
+    reflection_two_rooms).
+  - `source2`: residual ≤ 0.25, uncovered walkable ≤ 0.1, unserved glossy
+    ≤ 0.5, placement not stopped by `max_probes`. These are set from the
+    living room (0.067, 0, 0.35), the one furnished scene measured.
+- **Placement lessons.**
+  - A capture in front of a doorway fits a box through it.
+  - Candidates therefore need 0.5 m clearance and a 90th-percentile box
+    residual of at most 0.35. A box through a doorway scores 0.4–0.6; the
+    mean is diluted.
+  - Each wall plane is bounded by how far the ceiling runs unbroken from the
+    zenith. A room's ceiling reaches its walls whatever furniture stands on
+    the floor, while the next room's ceiling seen under a lintel is a
+    separate run.
+  - The global probe is the room probe covering the most walkable space: an
+    open box to the sky (a window bay) can be the largest by volume.
+- **Pipeline fixes on the way.**
+  - A stale source list in `test_bsp2_reader`'s bsp2tool build now compiles
+    every `mapcontainer` source.
+  - `FloatToHalf` has one owner (`mapcontainer`); `render/indirect_light.h`
+    forwards to it.
+  - Fixture bakes run on the CPU. On this host the GPU's HIP compute side
+    wedged at 02:06 (the kernel logged "amdgpu: MES failed to respond to
+    msg=REMOVE_QUEUE", then a page fault). Every later Cycles GPU job hung in
+    `hipStreamCreate` (`hsa_signal_wait_scacquire`) until a GPU reset or
+    reboot; CPU bakes were unaffected.
+
+### Not done or not verified
+
+- The rest of R50: the legacy maps' runtime `env_cubemap` prefilter, IBL
+  pixel fixtures across the material families, and cache invalidation.
+- A KTX2/BC6H RPRB payload; a probe-count or memory budget per mobile
+  profile.
+- Android, macOS and iOS runs. The RPRB lump needs no KTX reader, but it
+  is untested on the Fold7.
+- D3D9/DXVK, which ignores RPRB.
+- Dynamic objects are not in the probes.
+- No pixel oracle covers models on an RPRB map; only the shared shader path
+  and the GLSL suite cover them.
+- The source2 budgets rest on one furnished scene.
+- Pre-existing, unrelated test failures seen here:
+  - `test_android_profile.test_pins_are_complete`: a peer added
+    `ktx_software`;
+  - `test_usd_scene`: the system Python has no `pxr`.
+
+## R50-RELIGHT: relightable reflection probes (bounded R50 slice, 2026-09-25)
+
+Scope, at the user's direction (2026-09-25, a goal that also closed RFC 0011
+decisions 4 and 6): make dynamic light reach specular. This is RFC 0011's
+open decision 5, which the user placed as an amendment to this RFC's
+image-based lighting. The amendment is in the RFC's
+[image-based lighting](0007-physically-based-lighting-pipeline.md#image-based-lighting)
+section. This builds on R50-PARALLAX and does not close R50.
+
+### The problem and the source
+
+- **The problem.** The world follows the runtime light set and the indirect
+  producers (RFC 0011): unbaked lights with SDF shadows, and the change
+  volume. The RPRB probes are fixed at bake time. A bulb switched on after
+  the bake lights the west wall, but the mirror floor keeps reflecting the
+  wall dark.
+- **The source.** McAuley, "Rendering the World of Far Cry 4" (GDC 2015;
+  transcript at archive.org, "GDC2015McAuley"):
+  - it stores an albedo and a normal cubemap;
+  - it relights them from the sun, the sky and the nearest probe's indirect
+    light;
+  - it GGX-prefilters the result at runtime (0.066 ms to light and 0.275 ms
+    to filter a 128² cube);
+  - it has no shadows, because it stores no depth.
+
+### Design and deviations
+
+- **Data (RPRB v2).**
+  - Each probe gets two relight bands in its radiance chain's mip layout,
+    box-filtered:
+    - albedo RGB (Cycles' Diffuse Color pass) with the ray distance in
+      alpha (the Depth pass the box fit already reads);
+    - the world normal (the Normal pass).
+  - Both come from the faces the probe already renders: no extra render.
+  - `pbrt_reflection_probe.py --gbuffer` adds the two passes, enabled by
+    `reflection_probe.relight` in the manifest or profile.
+  - `reflection_probe_set.py` owns the encoding. The version is 2, and
+    header flag 1 means relight. Each record's last word is its albedo
+    band's row. v1 payloads still read.
+  - The C++ reader (`mapcontainer/reflection_probes.{h,cpp}`) mirrors the
+    Python reader, and the engine and bsp2tool carry the payload's version
+    as the lump version.
+  - The GPU table's field 3 w is the relight row. The mode texel's y is the
+    switch `mat_reflection_relight` (cheat, default 1).
+- **Shading** (`reflection_probes.glsl`). At a probe's lookup direction and
+  lod, the seen point is capture + direction × distance, with the band's
+  normal. The probe gains albedo × `ReflectionProbeDiffuseChange(point,
+  normal)`, clamped at zero.
+  - The includer supplies the change. `world_pbr.frag` supplies what the
+    world itself adds in that variant: the change volume (`DELTA_VOLUME`)
+    and the unbaked lights' SDF-shadowed direct light (`DIRECT_LIGHTS`).
+    One owner per term: the same functions, now taking a position.
+  - It is exact in the baked state and for a mirror of a Lambertian surface.
+- **Deviations from the source.**
+  - The stored distance lets the relit point be shadowed and lit by point
+    lights.
+  - The change is added at lookup time instead of relighting texels and
+    re-prefiltering, so a rough lookup takes the change at its lobe's
+    centre.
+  - There is no pass, prefilter or per-probe runtime storage. The cost
+    scales with pixels, not probes.
+- **Cost policy** (`kRelightMinWeight`). The change is skipped for a lookup
+  whose share of the pixel is below 0.1 (directional albedo luminance times
+  the probe weight).
+  - A matte dielectric's reflection carries about 4% of what it sees, and
+    the pixel already shows the change diffusely.
+  - Mirrors, metals and glossy floors at grazing angles stay relit.
+- **Not relit.**
+  - The glossy part of what a probe sees stays as baked, and so do its
+    emitters and sky.
+  - Under `RuntimeIndirect` without unbaked lights there is no change to
+    apply (that variant has no change volume).
+  - Glass and model PBR do not define the change, so their probe lookups
+    stay as baked.
+
+### Evidence
+
+All on the Fedora host (RADV Strix Halo, Radeon 8060S), native Vulkan,
+2026-09-25:
+
+- **Oracles and parity.**
+  - Python (`test_reflection_probe_set.py`, 27 tests, 4 new): a mirror
+    floor reflecting a Lambertian room after a point light is added.
+    - The relit probe is off by 6.6% of the level, within 2 points of the
+      lookup's own 5.1% on the baked room (stripe edges).
+    - Unrelit it is 33% off; with the distances halved (the seen point
+      misplaced), 47%.
+    - A zero change is the baked probe exactly.
+    - The v2 round trip and its corpus pass, and v1 still reads.
+  - C++ (`world.reflection-probes`, 81 checks, was 57):
+    - the relight fixture validates, and its GPU texture is byte-identical
+      to Python's;
+    - all 11 relight malformations fail with the Python reader's codes;
+    - the relit reference reproduces the Python oracle's 144 relit samples
+      within 1e-6 (largest relight 0.58);
+    - a zero change reproduces the baked radiance exactly;
+    - a second fuzz pass runs over the v2 payload.
+  - GLSL (`render.reflection-probes.glsl`, 52 checks, was 30): in each of
+    blend, nearest and direction-only modes:
+    - relit, all 448 cases match the relit reference;
+    - the unrelit reference agrees on none;
+    - with the switch off, all 448 match the unrelit reference;
+    - no validation messages.
+- **In-game gate** (`reflection_runtime.py relight`, record
+  `quality-results/reflection-gates/relight/relight.json`).
+  - The fixture is `mirror-lamp` (profile `reflection-relight-fixture`,
+    5 probes, 1024 wide, max box residual 0.021):
+    - the mirror room with a pillar;
+    - a 2-unit bulb that the bake hides;
+    - in game, an inverse-square `light_dynamic` (the new manifest
+      `collision.dynamic_lights`);
+    - Cycles references rendered with the bulb lit.
+  - The SDF producer ran, warmed up and converged.
+  - Scoring is `mirror`'s floor/wall ratio after the wall-gain fit. The floor
+    pixels that mirror the bulb itself are left out (about 180–450 of
+    19–23k), because the bulb is not in any probe.
+
+  | Run | Floor/wall per view (east, far, south) | Mean floor error |
+  | --- | --- | --- |
+  | Relit | 1.34, 1.20, 1.61 (mean 1.38) | 0.369 |
+  | As baked (`mat_reflection_relight 0`) | 2.88, 2.97, 3.21 (mean 3.02) | 0.806 |
+
+  The limit is 2.5 per view, and the control must be at least 1.5× the
+  relit mean (it is 2.2×). PASS. The engine logs "RPRB v2, 5 reflection
+  probes, 9 mips from 1024 wide, relightable".
+  - The wall error (0.26–0.29, against 0.10 in mirror-room) is reference
+    noise. The bulb reaches the walls through the mirror, a caustic that
+    shows as fireflies at 1024 samples, which the ratio normalizes.
+  - By eye, relit, the floor mirrors the bulb-lit west wall and the pillar
+    as the direct view shows them. As baked, it mirrors them dark.
+- **Cost** (`reflection_runtime.py relight-cost`, record
+  `quality-results/reflection-gates/relight-cost/relight-cost.json`). At
+  1920 × 1080 from the east camera, SDF producer settled:
+  - GPU frame median relit 1.195 and 1.201 ms, as baked 0.875 ms;
+  - relight 0.323 ms against the declared 0.5 ms desktop budget. PASS.
+  - Before the cost policy it was 0.678 ms and failed.
+  - Attribution, measured before the policy: 0.591 ms with shadows off, and
+    no measurable cost with the baked producer (no change volume). So the
+    change volume's sampling, done per lookup, dominated, and the SDF
+    shadow was about 0.09 ms.
+- **No regressions.**
+  - The R50-PARALLAX mirror gate on the rebuilt client gives the same
+    numbers: blended 1.68 mean floor/wall, direction-only 7.95, wrong box
+    5.36. PASS.
+  - `render.world-pbr`, `model-pbr`, `world-glass`, `indirect-switching`
+    (each with `.four-sets`), `pbr-direct` and `grouped-descriptors` pass.
+  - `test_gi_tools`, `test_map_export` and `test_pbrt_gates` pass (73).
+  - `reflection_fixtures.py --check` passes.
+
+Reproduce:
+
+```sh
+python3 tools/quality/reflection_probe_set.py fixture
+python3 tools/quality/conformance.py check --suite world.reflection-probes
+python3 tools/quality/conformance.py check --runner gpu --suite render.reflection-probes.glsl
+python3 tools/quality/pbrt_map_build.py --manifest quality/fixtures/reflection/mirror-lamp/map.json \
+    --out quality-results/reflection-maps/mirror-lamp
+python3 tools/quality/reflection_runtime.py references --fixture mirror-lamp --device cpu
+python3 tools/quality/reflection_runtime.py relight --build build --out quality-results/reflection-gates/relight
+python3 tools/quality/reflection_runtime.py relight-cost --build build \
+    --out quality-results/reflection-gates/relight-cost
+```
+
+A runtime is staged once per output directory, and a rerun into the same
+`--out` boots the old binaries. Give each build a fresh `--out`.
+
+### Not done or not verified
+
+- Glass and model PBR lookups are not relit. They do not bind the direct
+  light block or define the change.
+- Rough lookups take the change at the lobe's centre. No rough-surface
+  pixel fixture measures that error.
+- Baked light styles switched at runtime reach specular only through the
+  producer's change volume, not per-style probe layers.
+- Legacy `env_cubemap` probes carry no G-buffer.
+- Android, macOS and iOS are not run; no mobile cost budget exists. The
+  Fold7 has no SDF shadows (unshadowed relight) and would pay the per-lookup
+  light loop.
+- DXVK/D3D9 ignores RPRB.
+- **An observed defect, not from this slice.** On `mirror-lamp` the bulb's
+  pool of light on the west wall and ceiling shows faint concentric rings in
+  the world's own direct light (G9's SDF shadow of an unbaked light), and
+  the relit reflection reproduces them.
+  - Hypothesis: the sphere trace's penumbra estimate bands near the
+    surface it leaves. Not investigated.
+  - Evidence: `quality-results/reflection-gates/relight/relit/`.

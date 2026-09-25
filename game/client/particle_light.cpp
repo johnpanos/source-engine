@@ -11,8 +11,8 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-static ConVar fx_spark_lights(
-    "fx_spark_lights", "4", 0, "Most spark bursts that light their surroundings at once (0: none)." );
+static ConVar fx_spark_lights( "fx_spark_lights", "4", 0,
+    "Most spark bursts that light their surroundings at once (0: none)." );
 
 // The warm white of the spark textures' bright texels (255, 222, 170), as
 // linear light mantissas at 30% strength.
@@ -28,7 +28,7 @@ static int s_nSerial = 0;
 SparkLightParams_t SparkLightParams( int nExponent, float flRadius )
 {
 	SparkLightParams_t params = {
-		{ kSparkLightColor[0], kSparkLightColor[1], kSparkLightColor[2] }, nExponent, flRadius };
+	    { kSparkLightColor[0], kSparkLightColor[1], kSparkLightColor[2] }, nExponent, flRadius };
 	return params;
 }
 

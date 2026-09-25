@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "MirrorLamp"
+    metersPerUnit = 1
+    subLayers = [
+        @../mirror-lamp.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "MirrorLamp"
+{
+    over "World"
+    {
+        over "Bulb"
+        {
+            token visibility = "invisible"
+        }
+    }
+}
+

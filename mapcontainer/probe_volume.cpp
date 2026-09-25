@@ -73,6 +73,37 @@ void OctEncode( const float d[3], float out[2] )
 
 } // namespace
 
+uint16_t FloatToHalf( float value ) noexcept
+{
+	uint32_t bits;
+	std::memcpy( &bits, &value, sizeof( bits ) );
+	const uint32_t sign = ( bits >> 16 ) & 0x8000u;
+	int32_t exponent = int32_t( ( bits >> 23 ) & 0xff ) - 127 + 15;
+	uint32_t mantissa = bits & 0x7fffffu;
+	if ( ( ( bits >> 23 ) & 0xff ) == 0xff )
+		return uint16_t( sign | 0x7c00u | ( mantissa ? 0x200u : 0u ) );
+	if ( exponent >= 31 )
+		return uint16_t( sign | 0x7c00u );
+	if ( exponent <= 0 )
+	{
+		if ( exponent < -10 )
+			return uint16_t( sign );
+		mantissa |= 0x800000u;
+		const uint32_t shift = uint32_t( 14 - exponent );
+		uint32_t half = mantissa >> shift;
+		const uint32_t rest = mantissa & ( ( 1u << shift ) - 1 );
+		const uint32_t halfway = 1u << ( shift - 1 );
+		if ( rest > halfway || ( rest == halfway && ( half & 1u ) ) )
+			++half;
+		return uint16_t( sign | half );
+	}
+	uint32_t half = ( uint32_t( exponent ) << 10 ) | ( mantissa >> 13 );
+	const uint32_t rest = mantissa & 0x1fffu;
+	if ( rest > 0x1000u || ( rest == 0x1000u && ( half & 1u ) ) )
+		++half;
+	return uint16_t( sign | half );
+}
+
 float HalfToFloat( uint16_t half ) noexcept
 {
 	const uint32_t sign = uint32_t( half >> 15 ) << 31;

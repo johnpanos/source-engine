@@ -80,6 +80,21 @@ bool CVulkanWorldMeshUpload::UploadShadowField(
 	return true;
 }
 
+bool CVulkanWorldMeshUpload::UploadReflectionProbes(
+    const world_mesh_gpu::ReflectionProbesUploadRequest &request )
+{
+	std::string error;
+	if ( !UploadWorldReflectionProbes( m_context, request, &error ) )
+	{
+		Warning( "[NativeVulkan] RPRB reflection probes rejected: %s\n", error.c_str() );
+		return false;
+	}
+	if ( request.texels )
+		Msg( "[NativeVulkan] RPRB reflection probes ready (%u probe%s, %u x %u texture)\n",
+		    request.probeCount, request.probeCount == 1 ? "" : "s", request.width, request.height );
+	return true;
+}
+
 bool CVulkanWorldMeshUpload::DrawBatch( uint32_t firstIndex, uint32_t indexCount )
 {
 	return m_context.WorldMeshResident() && indexCount && m_drawBatch &&

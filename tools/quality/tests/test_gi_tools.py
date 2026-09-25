@@ -331,6 +331,25 @@ class OracleTest(unittest.TestCase):
         results = gi_oracles.evaluate({"oracles": selected}, views)
         self.assertTrue(all(r["ok"] and r["control"]["rejected"] for r in results))
 
+    def test_controls_stay_outside_capture_tolerances(self):
+        fixture = {"oracles": [
+            {"kind": "equal", "lights": ["indirect"],
+             "a": {"state": "all", "camera": "c", "region": "left"},
+             "b": {"state": "all", "camera": "c", "region": "right"}},
+            {"kind": "uniform", "lights": ["indirect"],
+             "entries": [{"state": "all", "camera": "c", "region": r}
+                         for r in ("left", "right")]},
+            {"kind": "chromaticity", "state": "all", "camera": "c", "regions": ["left"],
+             "expected": [1.0, 1.0, 1.0], "lights": ["indirect"]}]}
+        views = {("all", "c"): {"left": {"indirect": [0.2, 0.2, 0.2]},
+                                "right": {"indirect": [0.2, 0.2, 0.2]}}}
+        results = gi_oracles.evaluate(
+            {"oracles": gi_oracles.for_capture(fixture, "all", 0.1, 0.004)}, views)
+        self.assertEqual(len(results), 3)
+        for result in results:
+            self.assertTrue(result["ok"], result["oracle"])
+            self.assertTrue(result["control"]["rejected"], result["control"]["description"])
+
     def test_validation_names_unknown_references(self):
         oracle = {"kind": "zero", "state": "green", "camera": "c", "regions": ["ceiling"],
                   "channels": [0], "lights": ["glow"]}

@@ -1,0 +1,32 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryEmissiveStripeFloor"
+    metersPerUnit = 1
+    subLayers = [
+        @../emissive-stripe-floor.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryEmissiveStripeFloor"
+{
+    over "Looks"
+    {
+        over "GlowRed"
+        {
+            over "Surface"
+            {
+                color3f inputs:emissiveColor = (0, 0, 0)
+            }
+        }
+
+        over "GlowBlue"
+        {
+            over "Surface"
+            {
+                color3f inputs:emissiveColor = (0, 0, 0)
+            }
+        }
+    }
+}
+

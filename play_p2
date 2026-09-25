@@ -42,7 +42,7 @@ else
     echo "play_p2: configuring Portal 2 build in $P2_BUILD_DIR"
     (cd "$ROOT" && WAFLOCK="$P2_WAFLOCK" python3 ./waf configure \
         --platform-provider=sdl3 --render-backend=native-vulkan \
-        --build-games=portal2 --physics-backend=both --disable-warns \
+        --build-games=portal2 --physics-backend=both --video-provider=bink --disable-warns \
         -T release -o "$P2_BUILD_DIR" --prefix="$P2_BUILD_DIR/install")
 fi
 

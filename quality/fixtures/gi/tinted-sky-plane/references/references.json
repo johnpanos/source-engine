@@ -1,0 +1,204 @@
+{
+  "analytic": [],
+  "fixture": "tinted-sky-plane",
+  "fixture_reference_digest": "4ab3fc851dc7af0ec913479ba37c35f47923b22b43fa4ef1b5a061a2d99dbf01",
+  "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
+  "oracles": {
+    "checks": 18,
+    "controls_unrejected": [],
+    "failed": 0,
+    "oracles": 4
+  },
+  "region_erosion_pixels": 2,
+  "renders": {
+    "sky": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "c20f2b63bbc91b17799f8154d4703f0d5d92961760ba5289c228bf4147e1957d",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/tinted-sky-plane/tinted-sky-plane.usda": "10dfc529cc2f1d179d054a15001020b0c677f356d80c8ba15e898b458faea52f"
+      }
+    },
+    "sun": {
+      "blender": "5.2.2 LTS",
+      "composed_stage_sha256": "20c13cd4d6aa9a086a2f1452ad5cbab53fa53b34e6c5565d1dcac911a63523f5",
+      "cycles_device": "CPU",
+      "denoising": false,
+      "light_paths": {
+        "diffuse_bounces": 64,
+        "glossy_bounces": 16,
+        "max_bounces": 64,
+        "policy": "gi-reference",
+        "sample_clamp_direct": 0.0,
+        "sample_clamp_indirect": 0.0,
+        "transmission_bounces": 16
+      },
+      "normal_maps": false,
+      "renderer_sha256": "519104e61f3fe78e67aec92ab0a20471eac156977cba30879bc33332842c615f",
+      "samples": 2048,
+      "seed": 20260924,
+      "stage_layers": {
+        "quality/fixtures/gi/tinted-sky-plane/states/sun.usda": "30fc453fa5ac025448f40b45ca38daf832f30b4bc8e2b3588c2ecd2ce6788cfd",
+        "quality/fixtures/gi/tinted-sky-plane/tinted-sky-plane.usda": "10dfc529cc2f1d179d054a15001020b0c677f356d80c8ba15e898b458faea52f"
+      }
+    }
+  },
+  "schema": "gi-references/v1",
+  "status": "pass",
+  "views": {
+    "sky.floor": {
+      "camera": "floor",
+      "files": {
+        "index": {
+          "file": "sky.floor.index.png",
+          "sha256": "6bab6056033a59313e002a066ecc1fb2f2ff94aededc944cbc38c38ca9064994"
+        },
+        "indirect": {
+          "file": "sky.floor.indirect.exr",
+          "sha256": "1f224dc6ec551c03e06680e02eba9c0df75460ed57edb69c324d03cdee58184e"
+        },
+        "total": {
+          "file": "sky.floor.total.exr",
+          "sha256": "c03616f24ee502cd43ad041f681c4dff110054cf22a8f9849ff729900bad91ce"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Floor": 1
+      },
+      "regions": {
+        "Floor": {
+          "albedo": [
+            0.9002582430839539,
+            0.5998080372810364,
+            0.2999040186405182
+          ],
+          "direct": [
+            0.1999511867761612,
+            0.5000026226043701,
+            0.9001235365867615
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            3.1303377667768473e-09,
+            5.218707688214863e-09,
+            4.696327327025074e-09
+          ],
+          "pixels": 31494,
+          "total": [
+            0.17996929585933685,
+            0.29993531107902527,
+            0.26999327540397644
+          ]
+        }
+      },
+      "state": "sky"
+    },
+    "sun.floor": {
+      "camera": "floor",
+      "files": {
+        "index": {
+          "file": "sun.floor.index.png",
+          "sha256": "6bab6056033a59313e002a066ecc1fb2f2ff94aededc944cbc38c38ca9064994"
+        },
+        "indirect": {
+          "file": "sun.floor.indirect.exr",
+          "sha256": "9cf516ff7cbe4ce8d519847bf5a6b412a1c42bfce5e35430a49aca0a5303c62f"
+        },
+        "total": {
+          "file": "sun.floor.total.exr",
+          "sha256": "59647c51d476de8cdc0510af1dc1ecd7c7f6ab76a6effbb43582e82a02801ddc"
+        }
+      },
+      "glossy_max": 0.0,
+      "object_index": {
+        "Floor": 1
+      },
+      "regions": {
+        "Floor": {
+          "albedo": [
+            0.9002582430839539,
+            0.5998080372810364,
+            0.2999040186405182
+          ],
+          "direct": [
+            0.8267548680305481,
+            0.7030884027481079,
+            0.4961095154285431
+          ],
+          "emission": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "environment": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_direct": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "glossy_indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "index": [
+            1.0
+          ],
+          "indirect": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "pixels": 31494,
+          "total": [
+            0.7441732287406921,
+            0.4218564033508301,
+            0.1488855630159378
+          ]
+        }
+      },
+      "state": "sun"
+    }
+  }
+}

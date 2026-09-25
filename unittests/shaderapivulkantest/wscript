@@ -34,6 +34,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_model_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
@@ -94,6 +95,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_model_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
@@ -111,6 +113,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_model_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
@@ -131,6 +134,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_model_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp',
@@ -150,6 +154,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_model_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
@@ -171,6 +176,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_model_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp',
@@ -216,6 +222,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_model_pbr.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp',
@@ -239,6 +246,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_model_pbr.cpp'],
 		target='material_facing_vulkan_conformance',
@@ -247,6 +255,21 @@ def build(bld):
 			'../../public/tier0', '../../public/tier1']
 			+ bld.env.INCLUDES_SDL3 + bld.env.INCLUDES_VULKAN,
 		use=['shaderapivulkan', 'tier0', 'tier1', 'VULKAN', 'SDL3'],
+		install_path=None)
+
+	# Queued-mesh contract (mat_queue_mode 2): ComputeVertexDescription plus the
+	# material system's verbatim replay reproduce a direct build's records for
+	# every vertex format, with a packed-layout negative control. CPU only.
+	bld.program(
+		features='c cxx', env=test_env.derive(),
+		source=['test_queued_mesh_contract.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_mesh_layout.cpp'],
+		target='queued_mesh_contract_vulkan_conformance',
+		name='queued_mesh_contract_vulkan_conformance',
+		includes=['../../materialsystem/shaderapivulkan', '../../public',
+			'../../public/tier0', '../../public/tier1']
+			+ bld.env.INCLUDES_VULKAN,
+		use=['shaderapivulkan', 'tier0', 'tier1', 'VULKAN'],
 		install_path=None)
 
 	# Material equivalence oracle: asserts the native UnlitGeneric path produces
@@ -261,6 +284,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_world_pbr.cpp',
+			'../../materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_model_pbr.cpp'],
 		target='material_equivalence_vulkan_conformance',

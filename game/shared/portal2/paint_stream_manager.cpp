@@ -108,11 +108,11 @@ void CPaintStreamManager::AllocatePaintBlobPool( int nMaxBlobs )
 		return;
 
 #ifdef GAME_DLL
-	m_pBlobPool = new CClassMemoryPool< CPaintBlob >( nMaxCount, CUtlMemoryPool::GROW_SLOW );
+	m_pBlobPool = new CClassMemoryPool<CPaintBlob>( nMaxCount, CUtlMemoryPool::GROW_SLOW );
 #else
 	if ( !Portal2Engine::IsClientLocalToActiveServer() )
 	{
-		m_pBlobPool = new CClassMemoryPool< CPaintBlob >( nMaxCount, CUtlMemoryPool::GROW_SLOW );
+		m_pBlobPool = new CClassMemoryPool<CPaintBlob>( nMaxCount, CUtlMemoryPool::GROW_SLOW );
 	}
 #endif
 }

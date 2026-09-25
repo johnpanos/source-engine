@@ -15,7 +15,10 @@ pinned tools under build/toolchains/ and writes the default toolchain file;
 `--check-toolchain` validates versions and capabilities and exits.
 
 A manifest with `legacy_bsp` instead of `scene` relights a compiled map
-(`legacy_bsp_relight.py` writes one): the scene is authored from the BSP, the
+(`legacy_bsp_relight.py` writes one; its optional `legacy_game` is the
+compile's game directory, searched for materials before the game runtime,
+which is how `vrad_cycles.py` hooks a regular vbsp/vvis/vrad compile into this
+pipeline): the scene is authored from the BSP, the
 BSP itself replaces `collision` and `compile` (its gameplay lumps are carried
 unchanged), its baked world lights are removed in `pack`, the scene's light
 emitters stay invisible, and there is no sky dome or traversal gate. Steps:
@@ -27,11 +30,11 @@ emitters stay invisible, and there is no sky dome or traversal gate. Steps:
                  display texture (if any sky)
     stage        PBRT -> USD stage in Blender (+ optional Cycles reference render)
     reference-gate  Cycles render vs the scene's reference image (manifest reference.gate)
-    layout       (lightmap.layout "planar") lightmap_layout.py: exact lightmap UVs for flat
+    layout       (lightmap.layout "planar", the default) lightmap_layout.py: exact UVs for flat
                  geometry and xatlas charts (within a verified stretch) for curved surfaces,
                  written into a copy of the stage; the bake uses them unchanged
-    bake         shared lightmap UVs (Blender charting unless laid out) + Cycles diffuse
-                 irradiance atlas
+    bake         shared lightmap UVs (from layout; Blender charting with "layout": "blender")
+                 + Cycles diffuse irradiance atlas
     noise        (lightmap.noise_target) lightmap_noise.py: the bake's measured Monte Carlo
                  noise (every light page is the mean of two half-sample bakes) must be under
                  the target, or the step reports the sample count that would meet it; with
@@ -40,8 +43,11 @@ emitters stay invisible, and there is no sky dome or traversal gate. Steps:
     seams        lightmap_seams.py extract --check: the lighting stage's chart seams, and a
                  gate on its chart invariants (no overlap, bleed, escaped UVs or split
                  flat regions); ktx2 stitches every page across those seams
-    probe        optional reflection probe (manifest reflection_probe): six Cycles cube
-                 faces, stored as roughness mips in rows the bake reserved in the LMAP
+    probe        optional reflection probes (manifest reflection_probe): placed per room
+                 and per glossy surface (pbrt_reflection_probe.py), six Cycles cube faces
+                 each with the depth pass
+    rprb         the probes' parallax boxes fitted to their depth, GGX roughness mips and
+                 influence volumes, encoded as the RPRB lump (reflection_probe_set.py pack)
     probe-volume optional RFC 0011 PRBV (profile/manifest probe_volume): Cycles-baked
                  irradiance and ray-traced visibility per probe (probe_volume_bake.py);
                  the map then has no vrad fallback light, and its leaf ambient is
@@ -108,7 +114,7 @@ import playable_maps  # noqa: E402
 import reference_compare  # noqa: E402
 
 STEPS = ("legacy-scene", "scene", "environment", "stage", "reference-gate", "layout", "bake", "noise", "denoise", "directional",
-         "seams", "probe", "probe-volume", "radiosity", "sdf", "ktx2", "sky",
+         "seams", "probe", "rprb", "probe-volume", "radiosity", "sdf", "ktx2", "sky",
          "collision", "compile", "pack", "content", "boot", "camera-boot", "runtime-gate",
          "traversal-boot", "traversal", "audit")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
@@ -182,6 +188,10 @@ def load_manifest(path):
         manifest["legacy_bsp"] = str((ROOT / manifest["legacy_bsp"]).resolve())
         if not Path(manifest["legacy_bsp"]).is_file():
             raise ValueError("legacy_bsp does not exist: " + manifest["legacy_bsp"])
+        if "legacy_game" in manifest:
+            manifest["legacy_game"] = str((ROOT / manifest["legacy_game"]).resolve())
+            if not Path(manifest["legacy_game"]).is_dir():
+                raise ValueError("legacy_game is not a directory: " + manifest["legacy_game"])
         # The `legacy-scene` step writes the scene (Pipeline sets its path).
         manifest["scene"] = None
         manifest["scene_format"] = "usd"
@@ -255,6 +265,57 @@ def with_defaults(manifest, profile, key):
     return value or None
 
 
+def applicable_exclusions(excluded, authored, scene_materials):
+    """The lightmap exclusions to bake with. A manifest's own must be in the
+    scene (the bake rejects a typo); a profile's apply to the scenes that
+    have them (a relit map with no nodraw brush sides has no occluder)."""
+    return [name for name in excluded if name in authored or name in scene_materials]
+
+
+# Cycles logs every sample batch, so a Blender step silent this long is stuck
+# (a HIP queue lost to a GPU fault waits forever); scene import and CPU
+# tracing between bakes stay well under it.
+BLENDER_SILENCE = 30 * 60
+
+
+def run_logged(command, handle, env=None, on_line=None, silence=None):
+    """Run `command` (in its own process group), writing its output to
+    `handle` and passing each line to `on_line`. Returns (exit status, None),
+    or (None, seconds) when it printed nothing for `silence` seconds and its
+    whole process group was killed."""
+    import queue
+    import signal
+    import threading
+    process = subprocess.Popen([str(part) for part in command], stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, cwd=ROOT, text=True, errors="replace",
+                               bufsize=1, env=dict(os.environ, **(env or {})),
+                               start_new_session=True)
+    lines = queue.Queue()
+
+    def pump():
+        for line in process.stdout:
+            lines.put(line)
+        lines.put(None)
+    reader = threading.Thread(target=pump, daemon=True)
+    reader.start()
+    while True:
+        try:
+            line = lines.get(timeout=silence)
+        except queue.Empty:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+            handle.write("[stopped: no output for %d s]\n" % silence)
+            handle.flush()
+            return None, silence
+        if line is None:
+            break
+        handle.write(line)
+        if on_line:
+            on_line(line)
+    reader.join()
+    return process.wait(), None
+
+
 class Pipeline:
     def __init__(self, manifest, toolchain, out, force_from, boot, keep_going=False,
                  publish=True, until=None):
@@ -299,12 +360,16 @@ class Pipeline:
                          # Cycles seed of the bake and probe (pbrt_blender.pin_sampling).
                          "seed": lightmap.get("seed", 0),
                          "exclude_materials": lightmap.get("exclude_materials", []),
-                         # "planar": lightmap_layout.py; "blender": Blender charting.
-                         "layout": lightmap.get("layout", "blender"),
+                         # "planar" (default): lightmap_layout.py, exact planar
+                         # charts plus xatlas for curved surfaces; "blender":
+                         # Blender's smart-project charting, kept for comparison.
+                         "layout": lightmap.get("layout", "planar"),
                          # Largest relative bake noise allowed (lightmap_noise.py), or None.
                          "noise_target": lightmap.get("noise_target")}
         if self.lightmap["layout"] not in ("blender", "planar"):
             raise ValueError("unknown lightmap layout " + str(self.lightmap["layout"]))
+        self.authored_exclusions = set(
+            (manifest.get("lightmap") or {}).get("exclude_materials", []))
         self.probe = with_defaults(manifest, self.profile, "reflection_probe")
         self.probe_volume = with_defaults(manifest, self.profile, "probe_volume")
         self.radiosity = with_defaults(manifest, self.profile, "radiosity")
@@ -349,6 +414,7 @@ class Pipeline:
             "ktx2": self.out / "lighting" / "atlas.ktx2",
             "seams": self.out / "lighting" / "seams.npz",
             "probe": self.out / "lighting" / "probe",
+            "rprb": self.out / "lighting" / "reflection_probes.rprb",
             "prbv": self.out / "lighting" / "probe_volume.prbv",
             "prbv_work": self.out / "lighting" / "probe_volume",
             "rtrn": self.out / "lighting" / "radiosity.rtrn",
@@ -372,28 +438,30 @@ class Pipeline:
         }
         self.logs = self.out / "logs"
 
-    def run(self, step, command, env=None, progress=None):
+    def run(self, step, command, env=None, progress=None, silence=None):
         """Run a step's command, its output going to logs/<step>.log; the
-        lines `progress.feed` returns for its output are shown as they come."""
+        lines `progress.feed` returns for its output are shown as they come.
+        With `silence` (seconds), a command that prints nothing for that long
+        is killed and the step fails (run_logged)."""
         self.logs.mkdir(parents=True, exist_ok=True)
         log = self.logs / (step + ".log")
         started = time.monotonic()
         with log.open("a") as handle:
             handle.write("$ " + " ".join(map(str, command)) + "\n")
             handle.flush()
-            process = subprocess.Popen([str(part) for part in command], stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT, cwd=ROOT, text=True,
-                                       errors="replace", bufsize=1,
-                                       env=dict(os.environ, **(env or {})))
-            for line in process.stdout:
-                handle.write(line)
-                for message in (progress.feed(line) if progress else []):
-                    print("[%s] %s" % (step, message), flush=True)
-            process.wait()
-        if process.returncode:
+            returncode, quiet = run_logged(
+                command, handle, env,
+                (lambda line: [print("[%s] %s" % (step, message), flush=True)
+                               for message in progress.feed(line)]) if progress else None,
+                silence)
+        if quiet is not None:
+            raise SystemExit("step %s printed nothing for %d minutes and was stopped (a stalled "
+                             "GPU does this: check the kernel log for amdgpu faults); log %s"
+                             % (step, quiet // 60, log))
+        if returncode:
             tail = log.read_text().splitlines()[-15:]
             raise SystemExit("step %s failed (exit %d); log %s:\n  %s" %
-                             (step, process.returncode, log, "\n  ".join(tail)))
+                             (step, returncode, log, "\n  ".join(tail)))
         return time.monotonic() - started
 
     def light_controls(self):
@@ -415,7 +483,7 @@ class Pipeline:
                         # Cycles and OIDN use TBB, not OpenMP.
                         env={"OCIO": self.tools["ocio"], "OMP_NUM_THREADS": "1",
                              "OPENBLAS_NUM_THREADS": "1"},
-                        progress=bake_progress.CyclesProgress())
+                        progress=bake_progress.CyclesProgress(), silence=BLENDER_SILENCE)
 
     def usd_python(self, step, script, arguments):
         return self.run(step, [self.tools["usd_python"], HERE / script] + arguments,
@@ -552,14 +620,22 @@ class Pipeline:
         p = self.paths
         runtime = Path(self.tools["runtime"])
         runtime = runtime if runtime.is_absolute() else ROOT / runtime
-        # The game content the materials come from (VPK directories).
+        # The game content the materials come from (VPK directories), after
+        # the compile's own game directory (vrad's -game) when it has one.
         content = sorted(runtime.resolve().glob("*/*_dir.vpk"))
-        self.step("legacy-scene", [self.legacy] + content, {"runtime": str(runtime)},
+        settings = {"runtime": str(runtime)}
+        game_args = []
+        game = self.manifest.get("legacy_game")
+        if game:
+            content += sorted(f for f in (Path(game) / "materials").rglob("*") if f.is_file())
+            settings["game"] = game
+            game_args = ["--game-dir", game]
+        self.step("legacy-scene", [self.legacy] + content, settings,
                   ["legacy_bsp_scene.py", "legacy_bsp.py", "vtf_decode.py", "source_content.py",
                    "bsp2_reader.py"], [p["legacy_scene"]],
                   lambda: self.usd_python("legacy-scene", "legacy_bsp_scene.py", [
                       "--bsp", self.legacy, "--runtime", runtime, "--map-name", self.map,
-                      "--out", p["legacy_scene"]]))
+                      "--out", p["legacy_scene"]] + game_args))
 
     def build(self):
         self.out.mkdir(parents=True, exist_ok=True)
@@ -615,26 +691,25 @@ class Pipeline:
                       lambda: self.run("reference-gate", [sys.executable,
                                                           HERE / "reference_compare.py"] +
                                        gate_args))
+        self.lightmap["exclude_materials"] = applicable_exclusions(
+            self.lightmap["exclude_materials"], self.authored_exclusions,
+            self.scene["materials"])
         probe = self.probe
-        probe_width = probe.get("width", 512) if probe else 0
         bake_stage = p["stage"]
         if self.lightmap["layout"] == "planar":
             _, unbaked = map_scene.lightmap_exclusions(self.scene,
                                                        self.lightmap["exclude_materials"])
-            layout_settings = {"size": self.lightmap["size"], "reserve_rows": probe_width // 2,
-                               "unbaked": sorted(unbaked)}
+            layout_settings = {"size": self.lightmap["size"], "unbaked": sorted(unbaked)}
             self.step("layout", [p["stage"]] + self.scene_sources(), layout_settings,
                       ["lightmap_layout.py"], [p["layout_stage"], p["layout_receipt"]],
                       lambda: self.usd_python("layout", "lightmap_layout.py", [
                           "author", "--stage", p["stage"], "--out", p["layout_stage"],
                           "--size", str(self.lightmap["size"]),
-                          "--reserve-rows", str(probe_width // 2),
                           "--xatlas", self.tools["xatlas"],
                           "--receipt", p["layout_receipt"]] +
                           [item for name in sorted(unbaked) for item in ("--exclude-mesh", name)]))
             bake_stage = p["layout_stage"]
-        bake_args = ["--reserve-rows", str(probe_width // 2),
-                     "--layout", "authored" if bake_stage != p["stage"] else "blender",
+        bake_args = ["--layout", "authored" if bake_stage != p["stage"] else "blender",
                      "--scene", scene, "--stage", bake_stage, "--out-stage", p["lighting_stage"],
                      "--out-exr", p["atlas"], "--out-coverage-exr", p["coverage"],
                      "--size", str(self.lightmap["size"]),
@@ -657,8 +732,7 @@ class Pipeline:
                   dict({k: self.lightmap[k] for k in ("size", "samples", "exclude_materials",
                                                       "device", "directional", "light_paths",
                                                       "layers", "seed", "layout",
-                                                      "noise_target")},
-                       reserve_rows=probe_width // 2),
+                                                      "noise_target")}),
                   SCENE_SCRIPTS + ["pbrt_blender.py", "pbrt_lightmap_bake.py"],
                   [p["lighting_stage"], p["atlas"], p["coverage"], p["atlas_receipt"]] +
                   ([p["directional_bakes"]] if directional else []) +
@@ -727,24 +801,47 @@ class Pipeline:
                   lambda: self.usd_python("seams", "lightmap_seams.py", [
                       "extract", "--check", "--stage", p["lighting_stage"],
                       "--size", str(self.lightmap["size"]), "--out", p["seams"]]))
-        probe_args = []
         if probe:
+            # Reflection probes (R50-PARALLAX): placed per room and per glossy
+            # surface, each rendered with its depth pass, then fitted to a
+            # parallax box, prefiltered and encoded as the RPRB lump.
             face_args = ["--scene", scene, "--stage", p["lighting_stage"], "--out-dir", p["probe"],
                          "--face-size", str(probe.get("face_size", 256)),
                          "--samples", str(probe.get("samples", 512)),
                          "--device", self.lightmap["device"], "--seed", str(self.lightmap["seed"]),
+                         "--placement", json.dumps(probe.get("placement", {}), sort_keys=True),
+                         "--light-paths", probe.get("light_paths", "blender-default"),
                          "--denoise" if probe.get("denoise", True) else "--no-denoise"] + env_args
-            if probe.get("position"):
-                face_args += ["--position"] + [str(value) for value in probe["position"]]
+            if probe.get("relight"):
+                # R50-RELIGHT: the Diffuse Color and Normal passes, the
+                # G-buffer that RPRB v2's relight bands carry.
+                face_args.append("--gbuffer")
+            seeds = probe.get("positions", []) + ([probe["position"]] if probe.get("position")
+                                                  else [])
+            for position in seeds:
+                face_args += ["--position"] + [str(value) for value in position]
+            bounds = probe.get("bounds_m") or (self.probe_volume or {}).get("bounds_m")
+            if bounds:
+                face_args += ["--bounds"] + [str(value) for value in bounds]
             self.step("probe", [p["lighting_stage"]] + self.scene_sources() +
                       ([environment] if environment else []),
                       dict(probe, device=self.lightmap["device"], seed=self.lightmap["seed"],
-                           denoise=probe.get("denoise", True)),
-                      SCENE_SCRIPTS + ["pbrt_reflection_probe.py",
-                                              "reflection_probe.py", "pbrt_blender.py"],
+                           denoise=probe.get("denoise", True), bounds_m=bounds),
+                      SCENE_SCRIPTS + ["pbrt_reflection_probe.py", "reflection_probe_set.py",
+                                       "reflection_probe.py", "pbrt_blender.py"],
                       [p["probe"]],
                       lambda: self.blender("probe", "pbrt_reflection_probe.py", face_args))
-            probe_args = ["--probe-dir", p["probe"], "--probe-width", str(probe_width)]
+            self.step("rprb", [p["probe"] / "probes.json"],
+                      {"width": probe.get("width", 512),
+                       "preview_gain": self.lightmap["preview_gain"]},
+                      ["reflection_probe_set.py", "reflection_probe.py", "gi_reference.py"],
+                      [p["rprb"], p["rprb"].with_name(p["rprb"].name + ".json")],
+                      lambda: self.run("rprb", [sys.executable, HERE / "reflection_probe_set.py",
+                                                "pack", "--probes-dir", p["probe"],
+                                                "--width", str(probe.get("width", 512)),
+                                                "--preview-gain",
+                                                str(self.lightmap["preview_gain"]),
+                                                "--out", p["rprb"]]))
         volume = self.probe_volume
         if volume:
             volume_args = ["--scene", scene, "--stage", p["stage"],
@@ -803,33 +900,26 @@ class Pipeline:
                                        "pbrt_blender.py"],
                       [p["sdfv"], p["sdfv_work"]],
                       lambda: self.blender("sdf", "sdf_volume_bake.py", field_args))
-        # A scene sun: baked visibility + marker texels for dynamic specular.
-        sun_args = []
-        if self.scene.get("distant_lights") and probe:
-            sun_args = ["--sun-visibility", p["sun_visibility"], "--coverage-exr", p["coverage"],
-                        "--sun-bake-evidence", p["atlas_receipt"]]
+        # The scene sun's LMAP marker texels lived in the retired probe band's
+        # marker row and had no shader reader; scene maps no longer write them.
         layer_args = [item for role, out in denoised_layers.items()
                       for item in ("--layer", "%s=%s" % (role, out))]
         # The raw total marks buried texels, which stitching may move freely.
-        seam_args = ["--seams", p["seams"], "--buried-exr", p["atlas"]] + (
-            [] if sun_args else ["--coverage-exr", p["coverage"]])
+        seam_args = ["--seams", p["seams"], "--buried-exr", p["atlas"], "--coverage-exr",
+                     p["coverage"]]
         self.step("ktx2", [atlas, atlas_receipt, p["lighting_stage"], p["seams"],
                            p["coverage"], p["atlas"]] +
                   list(denoised_layers.values()) +
-                  ([p["sun_visibility"]] if sun_args else []) +
-                  ([p["probe"] / "probe.json"] if probe else []) +
                   ([p["directional"]] if directional else []),
-                  {"preview_gain": self.lightmap["preview_gain"], "scope": scope,
-                   "probe_width": probe_width},
-                  ["lightmap_ktx2.py", "reflection_probe.py"], [p["ktx2"]],
+                  {"preview_gain": self.lightmap["preview_gain"], "scope": scope},
+                  ["lightmap_ktx2.py"], [p["ktx2"]],
                   lambda: self.run("ktx2", [sys.executable, HERE / "lightmap_ktx2.py",
                                             "--exr", atlas, "--bake-evidence", atlas_receipt,
                                             "--lighting-stage", p["lighting_stage"],
                                             "--ktx-tool", self.tools["ktx"],
                                             "--preview-gain", str(self.lightmap["preview_gain"]),
                                             "--expected-scope", scope, "--out", p["ktx2"]] +
-                                           probe_args + directional_args + sun_args + layer_args +
-                                           seam_args))
+                                           directional_args + layer_args + seam_args))
         pack_stage = p["lighting_stage"]
         # A relit map keeps its own skybox; no sky dome joins its world mesh.
         if environment and not self.legacy:
@@ -900,15 +990,18 @@ class Pipeline:
                        for item in ("--exclude-mesh", name)] +
                       (["--probe-volume", p["prbv"]] if volume else []) +
                       (["--radiosity-transfer", p["rtrn"]] if radiosity else []) +
-                      (["--sdf-volume", p["sdfv"]] if self.sdf_volume else []))
+                      (["--sdf-volume", p["sdfv"]] if self.sdf_volume else []) +
+                      (["--reflection-probes", p["rprb"]] if probe else []))
         self.step("pack", [pack_stage, p["lighting_stage"], p["bsp"], p["ktx2"]] +
                   ([p["prbv"]] if volume else []) + ([p["rtrn"]] if radiosity else []) +
                   ([p["sdfv"]] if self.sdf_volume else []) +
+                  ([p["rprb"]] if probe else []) +
                   ([scene_receipt] if self.legacy else []),
                   dict({"prefix": self.map, **self.world_mesh},
                        **({"probe_volume": True} if volume else {}),
                        **({"radiosity_transfer": True} if radiosity else {}),
                        **({"sdf_volume": True} if self.sdf_volume else {}),
+                       **({"reflection_probes": True} if probe else {}),
                        **({"hidden_meshes": sorted(hidden)} if hidden else {}),
                        **({"legacy": True} if self.legacy else {})),
                   ["usd_worldmesh_pack.py", "worldmesh_seam_weld.py", "worldstage_mesh_pack.py"] +
@@ -933,6 +1026,14 @@ class Pipeline:
             collision_args += ["--door", ",".join([door["name"]] + [
                 "%g" % v for corner in door["bounds_m"] for v in corner] +
                 ([door["material"]] if door.get("material") else []))]
+        for lamp in collision.get("lamps", []):
+            collision_args += ["--lamp", ",".join([lamp["name"]] + [
+                "%g" % v for v in list(lamp["anchor_m"]) +
+                [lamp["length_m"], lamp["release_degrees"], lamp["color_linear"]] +
+                list(lamp.get("holds_degrees", []))])]
+        for bulb in collision.get("dynamic_lights", []):
+            collision_args += ["--dynamic-light", ",".join([bulb["name"]] + [
+                "%g" % v for v in list(bulb["position_m"]) + [bulb["color_linear"]]])]
         for portal in collision.get("portals", []):
             collision_args += ["--portal", ",".join(
                 ["%g" % v for v in list(portal["center_m"]) + list(portal["normal"]) +

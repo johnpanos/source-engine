@@ -288,6 +288,8 @@
           "materialsystem/shaderapivulkan/vulkan_device.h",
           "materialsystem/shaderapivulkan/vulkan_device.cpp",
           "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
+          "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
+          "materialsystem/shaderapivulkan/vulkan_descriptor_groups.h",
           "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
           "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
           "materialsystem/shaderapivulkan/vulkan_surface_host.h",
@@ -326,11 +328,13 @@
           "materialsystem/shaderapivulkan/vulkan_world_mesh_upload.h",
           "materialsystem/shaderapivulkan/vulkan_world_mesh_upload.cpp",
           "materialsystem/shaderapivulkan/vulkan_world_lightmap.h",
-          "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp"
+          "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
+          "materialsystem/shaderapivulkan/vulkan_world_reflection_probes.cpp"
         ],
         "allowedEdges": [
           "render.vulkan.core",
-          "render.bridge.texture-image-vulkan"
+          "render.bridge.texture-image-vulkan",
+          "world.map-container"
         ],
         "legacyIncludes": [
           "render/world_mesh_upload.h",

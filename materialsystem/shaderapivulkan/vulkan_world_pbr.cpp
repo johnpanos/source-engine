@@ -7,6 +7,7 @@
 #include "vulkan_device.h"
 #include "material_spv.h"
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <initializer_list>
@@ -33,6 +34,78 @@ void WorldPbrError( std::string *outError, const std::string &message )
 }
 
 } // namespace
+
+bool CVulkanContext::CreatePbrPipelineLayout(
+    uint32_t pushBytes, VkPipelineLayout *outLayout, std::string *outError )
+{
+	if ( !m_groupedDescriptors.Ready() )
+	{
+		WorldPbrError( outError, "PBR layouts need the grouped descriptor sets" );
+		return false;
+	}
+	const VkDescriptorSetLayout layouts[kPbrDescriptorSets] = {
+	    m_groupedDescriptors.Layout( CGroupedDescriptors::kFrameGroup ),
+	    m_groupedDescriptors.Layout( CGroupedDescriptors::kMaterialGroup ), m_skinUboLayout };
+	const uint32_t count = m_skinUboLayout != VK_NULL_HANDLE ? 3 : 2;
+	if ( DescriptorSetLimit() < count )
+	{
+		WorldPbrError( outError, "PBR layouts need " + std::to_string( count ) +
+		                             " descriptor sets, the device binds " +
+		                             std::to_string( DescriptorSetLimit() ) );
+		return false;
+	}
+	VkPushConstantRange range = {};
+	range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+	range.size = pushBytes;
+	VkPipelineLayoutCreateInfo info = {};
+	info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	info.setLayoutCount = count;
+	info.pSetLayouts = layouts;
+	info.pushConstantRangeCount = 1;
+	info.pPushConstantRanges = &range;
+	if ( vkCreatePipelineLayout( m_device, &info, nullptr, outLayout ) != VK_SUCCESS )
+	{
+		*outLayout = VK_NULL_HANDLE;
+		WorldPbrError( outError, "vkCreatePipelineLayout (PBR) failed" );
+		return false;
+	}
+	m_pbrDescriptorSetsUsed = std::max( m_pbrDescriptorSetsUsed, count );
+	return true;
+}
+
+CGroupedDescriptors::Image CVulkanContext::GroupedImage(
+    int handle, int fallback, int openTarget, bool srgb, bool *outSrgb ) const
+{
+	if ( outSrgb )
+		*outSrgb = false;
+	const auto image = [this]( int h, bool readSrgb, bool *usedSrgb ) -> CGroupedDescriptors::Image
+	{
+		CGroupedDescriptors::Image result;
+		if ( h < 0 || h >= static_cast<int>( m_managedTextures.size() ) )
+			return result;
+		const ManagedTexture &t = m_managedTextures[static_cast<size_t>( h )];
+		const bool useSrgb = readSrgb && t.srgbView != VK_NULL_HANDLE;
+		result.view = useSrgb ? t.srgbView : t.view;
+		result.sampler = t.samplerState >= 0 && t.samplerState < kSamplerStates &&
+		                         m_samplers[t.samplerState] != VK_NULL_HANDLE
+		                     ? m_samplers[t.samplerState]
+		                     : m_dynTexSampler;
+		if ( usedSrgb && result.view != VK_NULL_HANDLE )
+			*usedSrgb = useSrgb;
+		return result;
+	};
+	CGroupedDescriptors::Image result;
+	if ( handle != openTarget )
+		result = image( handle, srgb, outSrgb );
+	if ( result.view == VK_NULL_HANDLE )
+		result = image( fallback, false, nullptr );
+	if ( result.view == VK_NULL_HANDLE )
+	{
+		result.view = m_dynTexView;
+		result.sampler = m_dynTexSampler;
+	}
+	return result;
+}
 
 VkPipeline CVulkanContext::WorldPbrPipeline(
     const DynRasterState &state, bool srgbPass, int samples, int extended )
@@ -88,10 +161,9 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 	VkPhysicalDeviceProperties properties = {};
 	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
 	const uint32_t pushBytes = m_clipPlanesSupported ? kTexturedPushBytes : 128;
-	if ( properties.limits.maxBoundDescriptorSets < 7 ||
-	     properties.limits.maxPushConstantsSize < pushBytes )
+	if ( properties.limits.maxPushConstantsSize < pushBytes )
 	{
-		WorldPbrError( outError, "WMSH PBR needs seven texture sets and its scene push block" );
+		WorldPbrError( outError, "WMSH PBR needs its scene push block" );
 		return false;
 	}
 	for ( int i = 0; i < 4; ++i )
@@ -101,25 +173,10 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 	m_worldPbrVin = m_worldVin;
 	m_worldPbrVin.vertexAttributeDescriptionCount = 6;
 	m_worldPbrVin.pVertexAttributeDescriptions = m_worldPbrAttrs;
-	// Base, MRAO, normal, LMAP, split sum, emission and the $envmap cube.
-	VkDescriptorSetLayout layouts[7];
-	for ( VkDescriptorSetLayout &layout : layouts )
-		layout = m_dynTexDescLayout;
-	VkPushConstantRange range = {};
-	range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-	range.size = pushBytes;
-	VkPipelineLayoutCreateInfo info = {};
-	info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	info.setLayoutCount = 7;
-	info.pSetLayouts = layouts;
-	info.pushConstantRangeCount = 1;
-	info.pPushConstantRanges = &range;
-	if ( vkCreatePipelineLayout( m_device, &info, nullptr, &m_worldPbrPipelineLayout ) !=
-	     VK_SUCCESS )
-	{
-		WorldPbrError( outError, "vkCreatePipelineLayout (WMSH PBR) failed" );
+	// The frame set (split sum, lightmap, GI sources, shadow field), the
+	// material set, and the constants ring's block (vulkan_descriptor_groups.h).
+	if ( !CreatePbrPipelineLayout( pushBytes, &m_worldPbrPipelineLayout, outError ) )
 		return false;
-	}
 	const uint32_t *vertexWords = m_clipPlanesSupported ? g_worldPbrClipVertSpv : g_worldPbrVertSpv;
 	const size_t vertexBytes =
 	    m_clipPlanesSupported ? sizeof( g_worldPbrClipVertSpv ) : sizeof( g_worldPbrVertSpv );
@@ -141,20 +198,14 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 		return false;
 	}
 	m_pbrWorldReady = true;
-	// RFC 0011 G2: the extended variants on nine sets: direct light from the
-	// frame's unbaked lights (the per-frame constants ring, set 7) and the
-	// RuntimeIndirect policy (the producer's indirect atlas, set 8). Optional:
-	// without nine sets or the ring, WMSH PBR draws the bake alone under the
+	// RFC 0011 G2: the extended variants: direct light from the frame's
+	// unbaked lights (the per-frame constants ring, set 2) and the
+	// RuntimeIndirect policy (the producer's indirect atlas in the frame set).
+	// Optional: without the ring, WMSH PBR draws the bake alone under the
 	// Baked policy and the log says so.
-	// RFC 0011 G9: the direct lights' shadow field is set 9.
-	if ( properties.limits.maxBoundDescriptorSets >= 10 && m_skinUboLayout != VK_NULL_HANDLE )
+	// RFC 0011 G9: the direct lights' shadow field is in the frame set.
+	if ( m_skinUboLayout != VK_NULL_HANDLE )
 	{
-		VkDescriptorSetLayout extendedLayouts[10];
-		for ( int i = 0; i < 10; ++i )
-			extendedLayouts[i] = m_dynTexDescLayout;
-		extendedLayouts[7] = m_skinUboLayout;
-		info.setLayoutCount = 10;
-		info.pSetLayouts = extendedLayouts;
 		const struct
 		{
 			const uint32_t *words;
@@ -171,8 +222,8 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 		        m_clipPlanesSupported ? sizeof( g_worldPbrLightRuntimeClipFragSpv )
 		                              : sizeof( g_worldPbrLightRuntimeFragSpv ) } };
 		std::string extendedError;
-		bool ready = vkCreatePipelineLayout(
-		                 m_device, &info, nullptr, &m_worldPbrExtendedLayout ) == VK_SUCCESS;
+		bool ready =
+		    CreatePbrPipelineLayout( pushBytes, &m_worldPbrExtendedLayout, &extendedError );
 		for ( int variant = 1; ready && variant < 4; ++variant )
 			ready = CreateShaderModule( variants[variant].words, variants[variant].bytes,
 			            &m_worldPbrExtendedFrag[variant], &extendedError ) &&
@@ -185,22 +236,12 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 		}
 	}
 	else
-		WorldPbrLog( "WMSH PBR direct lights and RuntimeIndirect unavailable (descriptor sets "
-		             "or constants ring)\n" );
-	// RFC 0011 G4: BakedPlusDelta on ten sets: the extended nine with the
-	// producer's change volume in set 8 and its grid table in set 9. Optional:
-	// without it the world keeps the bake and the log says so (models still
-	// sample the published volume).
-	// With direct lights, their shadow field is set 10.
-	if ( properties.limits.maxBoundDescriptorSets >= 11 &&
-	     m_worldPbrExtendedLayout != VK_NULL_HANDLE )
+		WorldPbrLog( "WMSH PBR direct lights and RuntimeIndirect unavailable (constants ring)\n" );
+	// RFC 0011 G4: BakedPlusDelta: the producer's change volume and its grid
+	// table in the frame set. Optional: without it the world keeps the bake
+	// and the log says so (models still sample the published volume).
+	if ( m_worldPbrExtendedLayout != VK_NULL_HANDLE )
 	{
-		VkDescriptorSetLayout deltaLayouts[11];
-		for ( VkDescriptorSetLayout &layout : deltaLayouts )
-			layout = m_dynTexDescLayout;
-		deltaLayouts[7] = m_skinUboLayout;
-		info.setLayoutCount = 11;
-		info.pSetLayouts = deltaLayouts;
 		const struct
 		{
 			VkShaderModule *module;
@@ -222,8 +263,7 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 		        m_clipPlanesSupported ? sizeof( g_worldPbrIndirectDeltaClipFragSpv )
 		                              : sizeof( g_worldPbrIndirectDeltaFragSpv ) } };
 		std::string deltaError;
-		bool ready = vkCreatePipelineLayout( m_device, &info, nullptr, &m_worldPbrDeltaLayout ) ==
-		             VK_SUCCESS;
+		bool ready = CreatePbrPipelineLayout( pushBytes, &m_worldPbrDeltaLayout, &deltaError );
 		for ( const auto &variant : variants )
 			ready = ready &&
 			        CreateShaderModule( variant.words, variant.bytes, variant.module, &deltaError );
@@ -237,7 +277,7 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 		}
 	}
 	else
-		WorldPbrLog( "WMSH PBR BakedPlusDelta unavailable (descriptor sets)\n" );
+		WorldPbrLog( "WMSH PBR BakedPlusDelta unavailable (no extended variants)\n" );
 	return true;
 }
 
@@ -355,31 +395,9 @@ bool CVulkanContext::InitPbrGlassPipeline( std::string *outError )
 		WorldPbrError( outError, "WMSH glass requires the WMSH PBR pipeline" );
 		return false;
 	}
-	VkPhysicalDeviceProperties properties = {};
-	vkGetPhysicalDeviceProperties( m_physicalDevice, &properties );
-	if ( properties.limits.maxBoundDescriptorSets < 7 )
-	{
-		WorldPbrError( outError, "WMSH glass needs seven texture sets" );
+	if ( !CreatePbrPipelineLayout( m_clipPlanesSupported ? kTexturedPushBytes : 128,
+	         &m_worldGlassPipelineLayout, outError ) )
 		return false;
-	}
-	VkDescriptorSetLayout layouts[7];
-	for ( VkDescriptorSetLayout &layout : layouts )
-		layout = m_dynTexDescLayout;
-	VkPushConstantRange range = {};
-	range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-	range.size = m_clipPlanesSupported ? kTexturedPushBytes : 128;
-	VkPipelineLayoutCreateInfo info = {};
-	info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	info.setLayoutCount = 7;
-	info.pSetLayouts = layouts;
-	info.pushConstantRangeCount = 1;
-	info.pPushConstantRanges = &range;
-	if ( vkCreatePipelineLayout( m_device, &info, nullptr, &m_worldGlassPipelineLayout ) !=
-	     VK_SUCCESS )
-	{
-		WorldPbrError( outError, "vkCreatePipelineLayout (WMSH glass) failed" );
-		return false;
-	}
 	const uint32_t *fragmentWords =
 	    m_clipPlanesSupported ? g_worldGlassClipFragSpv : g_worldGlassFragSpv;
 	const size_t fragmentBytes =

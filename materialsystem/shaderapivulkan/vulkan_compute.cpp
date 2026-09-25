@@ -147,6 +147,7 @@ void DeviceFeatureChain::Build( VkPhysicalDevice physical, const ComputeCaps &ca
 bool ComputeResources::Init(
     VkPhysicalDevice physical, VkDevice device, const ComputeCaps &enabled, std::string *error )
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	m_physical = physical;
 	m_device = device;
 	m_enabled = enabled;
@@ -186,6 +187,7 @@ bool ComputeResources::Init(
 
 void ComputeResources::Shutdown()
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	for ( Resource &resource : m_resources )
 		Destroy( resource );
 	m_resources.clear();
@@ -237,6 +239,7 @@ bool ComputeResources::Memory( const VkMemoryRequirements &requirements,
 
 uint32_t ComputeResources::CreateBuffer( size_t bytes, std::string *error, bool readback )
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	if ( !Ready() || bytes == 0 )
 		return 0;
 	Resource resource;
@@ -310,6 +313,7 @@ VkDeviceAddress ComputeResources::Address( VkBuffer buffer ) const
 uint32_t ComputeResources::CreateGeometry( const float *positions, uint32_t vertexCount,
     const uint32_t *indices, uint32_t indexCount, std::string *error )
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	if ( !Ready() || !m_enabled.rayQuery || !vertexCount || !indexCount || indexCount % 3 )
 	{
 		if ( error )
@@ -361,6 +365,7 @@ uint32_t ComputeResources::CreateGeometry( const float *positions, uint32_t vert
 uint32_t ComputeResources::CreateScene(
     const Instance *instances, uint32_t count, std::string *error )
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	if ( !Ready() || !m_enabled.rayQuery || !count )
 	{
 		if ( error )
@@ -470,6 +475,7 @@ uint32_t ComputeResources::FinishStructure(
 
 bool ComputeResources::RecordBuild( VkCommandBuffer cmd, uint32_t structure )
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	Resource *resource = Find( structure );
 	if ( !resource || resource->structure == VK_NULL_HANDLE )
 		return false;
@@ -500,6 +506,7 @@ bool ComputeResources::RecordBuild( VkCommandBuffer cmd, uint32_t structure )
 uint32_t ComputeResources::CreateStorageImage(
     uint32_t width, uint32_t height, VkFormat format, std::string *error )
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	if ( !Ready() || !m_enabled.storageImages || !width || !height )
 	{
 		if ( error )
@@ -545,6 +552,7 @@ uint32_t ComputeResources::CreateStorageImage(
 uint32_t ComputeResources::CreateProgram( const uint32_t *spirv, size_t bytes,
     const std::vector<ComputeBinding> &bindings, uint32_t pushBytes, std::string *error )
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	if ( !Ready() )
 		return 0;
 	Resource resource;
@@ -639,24 +647,28 @@ uint32_t ComputeResources::CreateProgram( const uint32_t *spirv, size_t bytes,
 
 void *ComputeResources::Map( uint32_t buffer )
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	Resource *resource = Find( buffer );
 	return resource ? resource->mapped : nullptr;
 }
 
 VkImage ComputeResources::Image( uint32_t image ) const
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	const Resource *resource = Find( image );
 	return resource ? resource->image : VK_NULL_HANDLE;
 }
 
 VkBuffer ComputeResources::BufferHandle( uint32_t buffer ) const
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	const Resource *resource = Find( buffer );
 	return resource ? resource->buffer : VK_NULL_HANDLE;
 }
 
 void ComputeResources::RecordImageLayout( VkCommandBuffer cmd, uint32_t image )
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	const Resource *resource = Find( image );
 	if ( !resource || resource->image == VK_NULL_HANDLE )
 		return;
@@ -677,6 +689,7 @@ bool ComputeResources::RecordDispatch( VkCommandBuffer cmd, uint64_t serial, uin
     const std::vector<uint32_t> &resources, const void *push, uint32_t pushBytes, uint32_t groupsX,
     uint32_t groupsY, uint32_t groupsZ )
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	Resource *pipeline = Find( program );
 	if ( !pipeline || !pipeline->program || resources.size() != pipeline->bindings.size() ||
 	     pushBytes != pipeline->pushBytes )
@@ -785,6 +798,7 @@ void ComputeResources::Destroy( Resource &resource )
 
 void ComputeResources::Retire( uint32_t resource, uint64_t afterSerial )
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	if ( !Find( resource ) )
 		return;
 	m_retired.push_back( { resource, m_earlyFree ? 0 : afterSerial } );
@@ -794,6 +808,7 @@ void ComputeResources::Retire( uint32_t resource, uint64_t afterSerial )
 
 void ComputeResources::Collect( uint64_t completedSerial )
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	for ( Resource &resource : m_resources )
 	{
 		size_t live = 0;
@@ -829,6 +844,7 @@ void ComputeResources::Collect( uint64_t completedSerial )
 
 bool ComputeResources::Alive( uint32_t resource ) const
 {
+	std::lock_guard<std::recursive_mutex> lock( m_mutex );
 	return Find( resource ) != nullptr;
 }
 
@@ -891,6 +907,7 @@ uint32_t GpuComputeService::CreateGeometry(
 	{
 		Queued queued;
 		queued.build = geometry;
+		std::lock_guard<std::mutex> lock( m_queueMutex );
 		m_queue.push_back( std::move( queued ) );
 	}
 	return geometry;
@@ -913,6 +930,7 @@ uint32_t GpuComputeService::CreateScene(
 	{
 		Queued queued;
 		queued.build = scene;
+		std::lock_guard<std::mutex> lock( m_queueMutex );
 		m_queue.push_back( std::move( queued ) );
 	}
 	return scene;
@@ -932,12 +950,24 @@ uint64_t GpuComputeService::QueueDispatch( uint32_t program, const uint32_t *buf
 	queued.groups[0] = groupsX;
 	queued.groups[1] = groupsY;
 	queued.groups[2] = groupsZ;
+	// Under the lock Record takes: a dispatch queued after a recording goes
+	// into a later submission, never one already recorded.
+	std::lock_guard<std::mutex> lock( m_queueMutex );
 	m_queue.push_back( std::move( queued ) );
-	return m_nextSerial();
+	return std::max( m_nextSerial(), m_lastRecorded + 1 );
+}
+
+bool GpuComputeService::Pending() const
+{
+	std::lock_guard<std::mutex> lock( m_queueMutex );
+	return !m_queue.empty();
 }
 
 void GpuComputeService::Record( VkCommandBuffer cmd, uint64_t serial )
 {
+	std::lock_guard<std::mutex> lock( m_queueMutex );
+	if ( !m_queue.empty() )
+		m_lastRecorded = std::max( m_lastRecorded, serial );
 	for ( const Queued &queued : m_queue )
 	{
 		if ( queued.build )

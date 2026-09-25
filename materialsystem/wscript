@@ -44,6 +44,7 @@ def build(bld):
 		'pch_materialsystem.cpp',
 		'cmaterialdict.cpp',
 		'cmaterialsystem.cpp',
+		'render_capability_queue.cpp',
 		'cmatlightmaps.cpp',
 		'cmatrendercontext.cpp',
 		'cmatqueuedrendercontext.cpp',

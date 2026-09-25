@@ -4,7 +4,13 @@
       "Pillars"
     ]
   },
+  "lightmap": {
+    "samples": 512
+  },
   "map": "gi_mix_disco",
+  "probe_volume": {
+    "samples": 1024
+  },
   "quality": "gi-fixture",
   "scene": "quality/fixtures/gi/mix-disco/mix-disco.usda",
   "schema": "pbrt-map-manifest/v1"

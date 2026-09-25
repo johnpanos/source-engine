@@ -4,7 +4,13 @@
       "Pedestal"
     ]
   },
+  "lightmap": {
+    "samples": 512
+  },
   "map": "gi_mix_hue_ring",
+  "probe_volume": {
+    "samples": 1024
+  },
   "quality": "gi-fixture",
   "scene": "quality/fixtures/gi/mix-hue-ring/mix-hue-ring.usda",
   "schema": "pbrt-map-manifest/v1"
