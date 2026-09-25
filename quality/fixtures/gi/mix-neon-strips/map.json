@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_mix_neon_strips",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/mix-neon-strips/mix-neon-strips.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

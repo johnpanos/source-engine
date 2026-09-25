@@ -1,0 +1,209 @@
+{
+  "analytic": {
+    "albedo": [
+      0.7,
+      0.5,
+      0.3
+    ],
+    "diffuse_light_direct": [
+      0.1,
+      0.2,
+      0.3
+    ],
+    "diffuse_light_indirect": [
+      0.2333333333333333,
+      0.2,
+      0.12857142857142861
+    ],
+    "diffuse_light_total": [
+      0.3333333333333333,
+      0.4,
+      0.4285714285714286
+    ],
+    "emission": [
+      0.1,
+      0.2,
+      0.3
+    ]
+  },
+  "baked_state": "default",
+  "cameras": {
+    "crevice": {
+      "eye": [
+        3.9,
+        3.9,
+        2.8
+      ],
+      "forward": [
+        -0.20606068329331226,
+        -0.9125544545846688,
+        -0.3532468856456782
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "inside": {
+      "eye": [
+        0.3,
+        3.7,
+        1.7
+      ],
+      "forward": [
+        0.7339372324154997,
+        -0.6651306168765466,
+        -0.13761323107790616
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "furnace",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "furnace-clutter",
+  "oracles": [
+    {
+      "camera": "inside",
+      "expected": {
+        "direct": [
+          0.1,
+          0.2,
+          0.3
+        ],
+        "indirect": [
+          0.233333333,
+          0.2,
+          0.128571429
+        ],
+        "total": [
+          0.333333333,
+          0.4,
+          0.428571429
+        ]
+      },
+      "kind": "value",
+      "lights": [
+        "direct",
+        "indirect",
+        "total"
+      ],
+      "name": "furnace L = Le / (1 - rho) per channel (inside)",
+      "regions": [
+        "walls",
+        "model",
+        "block",
+        "slab",
+        "fins",
+        "pillar"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "crevice",
+      "expected": {
+        "direct": [
+          0.1,
+          0.2,
+          0.3
+        ],
+        "indirect": [
+          0.233333333,
+          0.2,
+          0.128571429
+        ],
+        "total": [
+          0.333333333,
+          0.4,
+          0.428571429
+        ]
+      },
+      "kind": "value",
+      "lights": [
+        "direct",
+        "indirect",
+        "total"
+      ],
+      "name": "furnace L = Le / (1 - rho) per channel (crevice)",
+      "regions": [
+        "crevice",
+        "fins",
+        "orb",
+        "walls"
+      ],
+      "state": "default"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Colored furnace full of occluders (block, slab, thin fins, pillar, a 1 cm crevice, a sphere): the furnace property holds on every surface regardless of occlusion",
+  "regions": {
+    "crevice": {
+      "crevice": [
+        "Crevice"
+      ],
+      "fins": [
+        "Fins"
+      ],
+      "orb": [
+        "Orb"
+      ],
+      "walls": [
+        "Box_Xn",
+        "Box_Yn",
+        "Box_Zn"
+      ]
+    },
+    "inside": {
+      "block": [
+        "Block"
+      ],
+      "fins": [
+        "Fins"
+      ],
+      "model": [
+        "ProbeSphere"
+      ],
+      "pillar": [
+        "Pillar"
+      ],
+      "slab": [
+        "Slab"
+      ],
+      "walls": [
+        "Box_Xn",
+        "Box_Xp",
+        "Box_Yn",
+        "Box_Yp",
+        "Box_Zn",
+        "Box_Zp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "furnace-clutter.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "uniform emission [0.1, 0.2, 0.3], albedo [0.7, 0.5, 0.3]"
+    }
+  }
+}

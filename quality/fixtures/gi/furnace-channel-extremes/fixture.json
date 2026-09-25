@@ -1,0 +1,126 @@
+{
+  "analytic": {
+    "albedo": [
+      0.9,
+      0.05,
+      0.5
+    ],
+    "diffuse_light_direct": [
+      0.04,
+      0.3,
+      0.1
+    ],
+    "diffuse_light_indirect": [
+      0.3600000000000001,
+      0.01578947368421052,
+      0.1
+    ],
+    "diffuse_light_total": [
+      0.4000000000000001,
+      0.3157894736842105,
+      0.2
+    ],
+    "emission": [
+      0.04,
+      0.3,
+      0.1
+    ]
+  },
+  "baked_state": "default",
+  "cameras": {
+    "inside": {
+      "eye": [
+        0.35,
+        0.35,
+        1.6
+      ],
+      "forward": [
+        0.6982151092401682,
+        0.6982151092401682,
+        -0.15808643982796264
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "furnace",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "furnace-channel-extremes",
+  "oracles": [
+    {
+      "camera": "inside",
+      "expected": {
+        "direct": [
+          0.04,
+          0.3,
+          0.1
+        ],
+        "indirect": [
+          0.36,
+          0.015789474,
+          0.1
+        ],
+        "total": [
+          0.4,
+          0.315789474,
+          0.2
+        ]
+      },
+      "kind": "value",
+      "lights": [
+        "direct",
+        "indirect",
+        "total"
+      ],
+      "name": "furnace L = Le / (1 - rho) per channel (inside)",
+      "regions": [
+        "walls",
+        "model"
+      ],
+      "state": "default"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Albedo (0.9, 0.05, 0.5): red bounces ten times its emission, green barely bounces, blue doubles",
+  "regions": {
+    "inside": {
+      "model": [
+        "ProbeSphere"
+      ],
+      "walls": [
+        "Box_Xn",
+        "Box_Xp",
+        "Box_Yn",
+        "Box_Yp",
+        "Box_Zn",
+        "Box_Zp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "furnace-channel-extremes.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "uniform emission [0.04, 0.3, 0.1], albedo [0.9, 0.05, 0.5]"
+    }
+  }
+}

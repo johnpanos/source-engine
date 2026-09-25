@@ -1,0 +1,134 @@
+{
+  "baked_state": "both",
+  "cameras": {
+    "street": {
+      "eye": [
+        3.0,
+        -9.0,
+        1.7
+      ],
+      "forward": [
+        0.0,
+        0.999244683777023,
+        -0.03885951548021756
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "complex",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "complex-city-block",
+  "oracles": [
+    {
+      "camera": "street",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "both = sun + sky (street)",
+      "parts": [
+        "sun",
+        "sky"
+      ],
+      "regions": [
+        "Ground",
+        "Bldg10",
+        "Bldg11",
+        "Bldg20",
+        "Bldg21"
+      ],
+      "sum": "both"
+    },
+    {
+      "channel": 0,
+      "entries": [
+        {
+          "camera": "street",
+          "region": "Ground",
+          "state": "sun"
+        },
+        {
+          "camera": "street",
+          "region": "Ground",
+          "state": "sky"
+        }
+      ],
+      "factor": 2.0,
+      "kind": "tint_order",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "R/B falls along Ground, Ground",
+      "over": 2
+    },
+    {
+      "camera": "street",
+      "channel": 2,
+      "factor": 1.5,
+      "kind": "dominant",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "sky/Ground B dominant (street)",
+      "over": [
+        0
+      ],
+      "region": "Ground",
+      "state": "sky"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Nine colored buildings at sunset: low orange sun and blue sky add along a street, and the street reads far redder under the sun than under the sky",
+  "regions": {
+    "street": {
+      "Bldg10": [
+        "Bldg10"
+      ],
+      "Bldg11": [
+        "Bldg11"
+      ],
+      "Bldg20": [
+        "Bldg20"
+      ],
+      "Bldg21": [
+        "Bldg21"
+      ],
+      "Ground": [
+        "Ground"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "complex-city-block.usda",
+  "states": {
+    "both": {
+      "layer": null,
+      "note": "sun and sky"
+    },
+    "sky": {
+      "layer": "states/sky.usda",
+      "note": "sky alone"
+    },
+    "sun": {
+      "layer": "states/sun.usda",
+      "note": "sun alone"
+    }
+  }
+}

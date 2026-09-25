@@ -1,0 +1,284 @@
+{
+  "baked_state": "all",
+  "cameras": {
+    "east": {
+      "eye": [
+        0.0,
+        0.0,
+        2.0
+      ],
+      "forward": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "west": {
+      "eye": [
+        0.0,
+        0.0,
+        2.0
+      ],
+      "forward": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "analytic",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "integrating-sphere",
+  "oracles": [
+    {
+      "camera": "east",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "all = red + green + blue (east)",
+      "parts": [
+        "red",
+        "green",
+        "blue"
+      ],
+      "regions": [
+        "ShellUE",
+        "ShellLE"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "west",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "all = red + green + blue (west)",
+      "parts": [
+        "red",
+        "green",
+        "blue"
+      ],
+      "regions": [
+        "ShellUW",
+        "ShellLW"
+      ],
+      "sum": "all"
+    },
+    {
+      "entries": [
+        {
+          "camera": "east",
+          "region": "ShellUE",
+          "state": "all"
+        },
+        {
+          "camera": "east",
+          "region": "ShellLE",
+          "state": "all"
+        },
+        {
+          "camera": "west",
+          "region": "ShellUW",
+          "state": "all"
+        },
+        {
+          "camera": "west",
+          "region": "ShellLW",
+          "state": "all"
+        }
+      ],
+      "kind": "uniform",
+      "lights": [
+        "indirect"
+      ],
+      "name": "all: wall indirect light is uniform"
+    },
+    {
+      "entries": [
+        {
+          "camera": "east",
+          "region": "ShellUE",
+          "state": "red"
+        },
+        {
+          "camera": "east",
+          "region": "ShellLE",
+          "state": "red"
+        },
+        {
+          "camera": "west",
+          "region": "ShellUW",
+          "state": "red"
+        },
+        {
+          "camera": "west",
+          "region": "ShellLW",
+          "state": "red"
+        }
+      ],
+      "kind": "uniform",
+      "lights": [
+        "indirect"
+      ],
+      "name": "red: wall indirect light is uniform"
+    },
+    {
+      "entries": [
+        {
+          "camera": "east",
+          "region": "ShellUE",
+          "state": "green"
+        },
+        {
+          "camera": "east",
+          "region": "ShellLE",
+          "state": "green"
+        },
+        {
+          "camera": "west",
+          "region": "ShellUW",
+          "state": "green"
+        },
+        {
+          "camera": "west",
+          "region": "ShellLW",
+          "state": "green"
+        }
+      ],
+      "kind": "uniform",
+      "lights": [
+        "indirect"
+      ],
+      "name": "green: wall indirect light is uniform"
+    },
+    {
+      "entries": [
+        {
+          "camera": "east",
+          "region": "ShellUE",
+          "state": "blue"
+        },
+        {
+          "camera": "east",
+          "region": "ShellLE",
+          "state": "blue"
+        },
+        {
+          "camera": "west",
+          "region": "ShellUW",
+          "state": "blue"
+        },
+        {
+          "camera": "west",
+          "region": "ShellLW",
+          "state": "blue"
+        }
+      ],
+      "kind": "uniform",
+      "lights": [
+        "indirect"
+      ],
+      "name": "blue: wall indirect light is uniform"
+    },
+    {
+      "camera": "east",
+      "expected": [
+        1.0,
+        0.5,
+        0.25
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "indirect"
+      ],
+      "name": "all: indirect color is the lights' flux ratio 4:2:1 (east)",
+      "regions": [
+        "ShellUE",
+        "ShellLE"
+      ],
+      "state": "all"
+    },
+    {
+      "camera": "west",
+      "expected": [
+        1.0,
+        0.5,
+        0.25
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "indirect"
+      ],
+      "name": "all: indirect color is the lights' flux ratio 4:2:1 (west)",
+      "regions": [
+        "ShellUW",
+        "ShellLW"
+      ],
+      "state": "all"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Integrating sphere: three colored lights at arbitrary positions inside a grey spherical cavity. Every wall point sees every other with the same form factor, so wall indirect light is uniform, with the lights' flux ratio as its color, wherever the lights are",
+  "regions": {
+    "east": {
+      "ShellLE": [
+        "ShellLE"
+      ],
+      "ShellUE": [
+        "ShellUE"
+      ]
+    },
+    "west": {
+      "ShellLW": [
+        "ShellLW"
+      ],
+      "ShellUW": [
+        "ShellUW"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "integrating-sphere.usda",
+  "states": {
+    "all": {
+      "layer": null,
+      "note": "all three lights on"
+    },
+    "blue": {
+      "layer": "states/blue.usda",
+      "note": "blue light alone"
+    },
+    "green": {
+      "layer": "states/green.usda",
+      "note": "green light alone"
+    },
+    "red": {
+      "layer": "states/red.usda",
+      "note": "red light alone"
+    }
+  }
+}

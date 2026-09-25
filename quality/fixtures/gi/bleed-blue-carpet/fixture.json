@@ -1,0 +1,158 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "down": {
+      "eye": [
+        0.3,
+        0.3,
+        2.6
+      ],
+      "forward": [
+        0.6332423700593872,
+        0.6332423700593872,
+        -0.44498112490659647
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "up": {
+      "eye": [
+        0.3,
+        0.3,
+        1.2
+      ],
+      "forward": [
+        0.6825226732452808,
+        0.6825226732452808,
+        0.2613916620939373
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "bleed",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "bleed-blue-carpet",
+  "oracles": [
+    {
+      "camera": "up",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "the ceiling sees no emitter",
+      "regions": [
+        "R_Zp"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "up",
+      "channel": 2,
+      "factor": 1.3,
+      "kind": "dominant",
+      "lights": [
+        "indirect"
+      ],
+      "name": "default/R_Zp B dominant (up)",
+      "over": [
+        0
+      ],
+      "region": "R_Zp",
+      "state": "default"
+    },
+    {
+      "camera": "up",
+      "channel": 2,
+      "factor": 1.1,
+      "kind": "dominant",
+      "lights": [
+        "indirect"
+      ],
+      "name": "default/R_Zp B dominant (up)",
+      "over": [
+        1
+      ],
+      "region": "R_Zp",
+      "state": "default"
+    },
+    {
+      "camera": "up",
+      "channel": 2,
+      "factor": 1.1,
+      "kind": "dominant",
+      "lights": [
+        "indirect"
+      ],
+      "name": "default/ProbeSphere B dominant (up)",
+      "over": [
+        0
+      ],
+      "region": "ProbeSphere",
+      "state": "default"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A deep blue carpet under a downward lamp: the ceiling gets no direct light and its bounce light is blue",
+  "regions": {
+    "down": {
+      "R_Xp": [
+        "R_Xp"
+      ],
+      "R_Yp": [
+        "R_Yp"
+      ],
+      "R_Zn": [
+        "R_Zn"
+      ]
+    },
+    "up": {
+      "ProbeSphere": [
+        "ProbeSphere"
+      ],
+      "R_Xp": [
+        "R_Xp"
+      ],
+      "R_Yp": [
+        "R_Yp"
+      ],
+      "R_Zp": [
+        "R_Zp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "bleed-blue-carpet.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "lamp on"
+    }
+  }
+}

@@ -1,0 +1,242 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "booth0": {
+      "eye": [
+        0.2,
+        0.2,
+        1.8
+      ],
+      "forward": [
+        0.6396021490668313,
+        0.6396021490668313,
+        -0.42640143271122094
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "booth1": {
+      "eye": [
+        2.4000000000000004,
+        0.2,
+        1.8
+      ],
+      "forward": [
+        0.6396021490668312,
+        0.6396021490668313,
+        -0.42640143271122094
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "booth2": {
+      "eye": [
+        4.6000000000000005,
+        0.2,
+        1.8
+      ],
+      "forward": [
+        0.6396021490668312,
+        0.6396021490668313,
+        -0.42640143271122094
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "booth3": {
+      "eye": [
+        6.800000000000001,
+        0.2,
+        1.8
+      ],
+      "forward": [
+        0.6396021490668314,
+        0.6396021490668312,
+        -0.42640143271122083
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "booth4": {
+      "eye": [
+        9.0,
+        0.2,
+        1.8
+      ],
+      "forward": [
+        0.6396021490668314,
+        0.6396021490668312,
+        -0.42640143271122083
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "range",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "range-albedo-ladder",
+  "oracles": [
+    {
+      "entries": [
+        {
+          "camera": "booth0",
+          "region": "Booth0_Zn",
+          "state": "default"
+        },
+        {
+          "camera": "booth1",
+          "region": "Booth1_Zn",
+          "state": "default"
+        },
+        {
+          "camera": "booth2",
+          "region": "Booth2_Zn",
+          "state": "default"
+        },
+        {
+          "camera": "booth3",
+          "region": "Booth3_Zn",
+          "state": "default"
+        },
+        {
+          "camera": "booth4",
+          "region": "Booth4_Zn",
+          "state": "default"
+        }
+      ],
+      "factor": 1.3,
+      "kind": "ordered",
+      "lights": [
+        "indirect"
+      ],
+      "name": "luminance rises along Booth0_Zn, Booth1_Zn, Booth2_Zn, Booth3_Zn, Booth4_Zn"
+    },
+    {
+      "entries": [
+        {
+          "camera": "booth0",
+          "region": "Booth0_Zn",
+          "state": "default"
+        },
+        {
+          "camera": "booth1",
+          "region": "Booth1_Zn",
+          "state": "default"
+        },
+        {
+          "camera": "booth2",
+          "region": "Booth2_Zn",
+          "state": "default"
+        },
+        {
+          "camera": "booth3",
+          "region": "Booth3_Zn",
+          "state": "default"
+        },
+        {
+          "camera": "booth4",
+          "region": "Booth4_Zn",
+          "state": "default"
+        }
+      ],
+      "factor": 1.5,
+      "kind": "ordered",
+      "lights": [
+        "total"
+      ],
+      "name": "luminance rises along Booth0_Zn, Booth1_Zn, Booth2_Zn, Booth3_Zn, Booth4_Zn"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Five sealed booths with the same lamp and albedo 0.1, 0.3, 0.5, 0.7, 0.9: indirect light rises steeply with albedo",
+  "regions": {
+    "booth0": {
+      "Booth0_Xp": [
+        "Booth0_Xp"
+      ],
+      "Booth0_Yp": [
+        "Booth0_Yp"
+      ],
+      "Booth0_Zn": [
+        "Booth0_Zn"
+      ]
+    },
+    "booth1": {
+      "Booth1_Xp": [
+        "Booth1_Xp"
+      ],
+      "Booth1_Yp": [
+        "Booth1_Yp"
+      ],
+      "Booth1_Zn": [
+        "Booth1_Zn"
+      ]
+    },
+    "booth2": {
+      "Booth2_Xp": [
+        "Booth2_Xp"
+      ],
+      "Booth2_Yp": [
+        "Booth2_Yp"
+      ],
+      "Booth2_Zn": [
+        "Booth2_Zn"
+      ]
+    },
+    "booth3": {
+      "Booth3_Xp": [
+        "Booth3_Xp"
+      ],
+      "Booth3_Yp": [
+        "Booth3_Yp"
+      ],
+      "Booth3_Zn": [
+        "Booth3_Zn"
+      ]
+    },
+    "booth4": {
+      "Booth4_Xp": [
+        "Booth4_Xp"
+      ],
+      "Booth4_Yp": [
+        "Booth4_Yp"
+      ],
+      "Booth4_Zn": [
+        "Booth4_Zn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "range-albedo-ladder.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "five booths lit alike"
+    }
+  }
+}

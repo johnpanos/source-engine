@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryComplexColonnade"
+    metersPerUnit = 1
+    subLayers = [
+        @../complex-colonnade.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryComplexColonnade"
+{
+    over "Lights"
+    {
+        over "Sun"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

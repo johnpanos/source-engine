@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_furnace_high_albedo",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/furnace-high-albedo/furnace-high-albedo.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

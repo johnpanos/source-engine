@@ -1,0 +1,246 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "far": {
+      "eye": [
+        7.0,
+        9.8,
+        1.6
+      ],
+      "forward": [
+        0.0,
+        -0.9906211292434749,
+        -0.13663739713703102
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "near": {
+      "eye": [
+        1.0,
+        1.0,
+        1.6
+      ],
+      "forward": [
+        0.9938330302002205,
+        0.07098807358573003,
+        -0.08518568830287605
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "occlusion",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "occlusion-l-corridor",
+  "oracles": [
+    {
+      "camera": "far",
+      "channels": [
+        1
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "default: G dark (far)",
+      "regions": [
+        "FloorFar",
+        "EastFar",
+        "WestFar",
+        "CeilFar",
+        "ProbeSphere"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "near",
+      "channels": [
+        1
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "default: G dark (near)",
+      "regions": [
+        "Floor1",
+        "Corner",
+        "South",
+        "North1"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "far",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "the far leg receives no direct light",
+      "regions": [
+        "FloorFar",
+        "EastFar",
+        "WestFar",
+        "CeilFar",
+        "ProbeSphere"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "far",
+      "channel": 0,
+      "factor": 1.2,
+      "kind": "dominant",
+      "lights": [
+        "indirect"
+      ],
+      "name": "default/FloorFar R dominant (far)",
+      "over": [
+        2
+      ],
+      "region": "FloorFar",
+      "state": "default"
+    },
+    {
+      "camera": "far",
+      "channel": 0,
+      "factor": 1.2,
+      "kind": "dominant",
+      "lights": [
+        "indirect"
+      ],
+      "name": "default/EastFar R dominant (far)",
+      "over": [
+        2
+      ],
+      "region": "EastFar",
+      "state": "default"
+    },
+    {
+      "camera": "far",
+      "channel": 0,
+      "factor": 1.2,
+      "kind": "dominant",
+      "lights": [
+        "indirect"
+      ],
+      "name": "default/WestFar R dominant (far)",
+      "over": [
+        2
+      ],
+      "region": "WestFar",
+      "state": "default"
+    },
+    {
+      "camera": "far",
+      "channel": 0,
+      "factor": 1.2,
+      "kind": "dominant",
+      "lights": [
+        "indirect"
+      ],
+      "name": "default/ProbeSphere R dominant (far)",
+      "over": [
+        2
+      ],
+      "region": "ProbeSphere",
+      "state": "default"
+    },
+    {
+      "channel": 0,
+      "entries": [
+        {
+          "camera": "far",
+          "region": "FloorFar",
+          "state": "default"
+        },
+        {
+          "camera": "near",
+          "region": "Floor1",
+          "state": "default"
+        }
+      ],
+      "factor": 1.05,
+      "kind": "tint_order",
+      "lights": [
+        "indirect"
+      ],
+      "name": "R/B falls along FloorFar, Floor1",
+      "over": 2
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A magenta lamp at one end of an L corridor: the far leg is lit only by bounces, around an orange corner, so it has no direct light, no green, and more red than blue",
+  "regions": {
+    "far": {
+      "CeilFar": [
+        "CeilFar"
+      ],
+      "EastFar": [
+        "EastFar"
+      ],
+      "FloorFar": [
+        "FloorFar"
+      ],
+      "ProbeSphere": [
+        "ProbeSphere"
+      ],
+      "WestFar": [
+        "WestFar"
+      ]
+    },
+    "near": {
+      "Corner": [
+        "Corner"
+      ],
+      "Floor1": [
+        "Floor1"
+      ],
+      "North1": [
+        "North1"
+      ],
+      "South": [
+        "South"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "occlusion-l-corridor.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "magenta lamp at the west end"
+    }
+  }
+}

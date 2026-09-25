@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_mix_moving_light",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/mix-moving-light/mix-moving-light.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

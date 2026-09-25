@@ -1,0 +1,29 @@
+{
+  "collision": {
+    "solid_meshes": [
+      "Bldg00",
+      "Bldg01",
+      "Bldg02",
+      "Bldg10",
+      "Bldg11",
+      "Bldg12",
+      "Bldg20",
+      "Bldg21",
+      "Bldg22"
+    ]
+  },
+  "map": "gi_complex_city_block",
+  "probe_volume": {
+    "bounds_m": [
+      -10.0,
+      -10.0,
+      0.25,
+      10.0,
+      10.0,
+      6.0
+    ]
+  },
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/complex-city-block/complex-city-block.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

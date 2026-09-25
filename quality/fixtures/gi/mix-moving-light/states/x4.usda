@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryMixMovingLight"
+    metersPerUnit = 1
+    subLayers = [
+        @../mix-moving-light.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryMixMovingLight"
+{
+    over "Lights"
+    {
+        over "Lamp"
+        {
+            matrix4d xformOp:transform = ( (0, -1, 0, 0), (1, 0, 0, 0), (-0, -0, 1, 0), (4, 3.5, 2.2, 1) )
+        }
+    }
+}
+

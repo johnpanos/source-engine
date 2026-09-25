@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_mix_rgb_ceiling",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/mix-rgb-ceiling/mix-rgb-ceiling.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

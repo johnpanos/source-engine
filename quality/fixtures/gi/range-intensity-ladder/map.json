@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_range_intensity_ladder",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/range-intensity-ladder/range-intensity-ladder.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

@@ -1,0 +1,11 @@
+{
+  "collision": {
+    "solid_meshes": [
+      "Stairs"
+    ]
+  },
+  "map": "gi_complex_stairwell",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/complex-stairwell/complex-stairwell.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

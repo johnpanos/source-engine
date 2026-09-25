@@ -1174,6 +1174,28 @@
       "expect": "pass"
     },
     {
+      "id": "render.indirect-sdf.bench-smoke",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "RFC 0011 G6 SDF GI CPU benchmark (unittests/rendertest/indirect_sdf_bench.cpp) in its smoke mode: the SDF-traced producer on the contract scene against a host-memory compute service, and the baked direct light's occlusion on a synthetic floor. Every sample is checked: the unchanged scene publishes the bake byte for byte, a converged probe publishes the bake times the field's ratio, the change atlas is published minus baked, occlusion without proxies is the bake, and pooled compose is serial compose byte for byte. The same program measures the performance fixtures of tools/quality/gi_sdf_bench.py (quality/budgets/indirect-sdf-perf-v1.json)",
+      "result_protocol": "checks-v1",
+      "min_checks": 13,
+      "sources": [
+        "unittests/rendertest/indirect_sdf_bench.cpp",
+        "mapcontainer/probe_volume.cpp",
+        "mapcontainer/radiosity_transfer.cpp",
+        "mapcontainer/sdf_volume.cpp",
+        "mapcontainer/world_mesh.cpp",
+        "mapcontainer/world_lightmap.cpp"
+      ],
+      "extra_flags": [
+        "-pthread"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.indirect-radiosity",
       "domain": "Q-PRESENTATION",
       "rfc": "0011",
@@ -1284,6 +1306,102 @@
       "result_protocol": "checks-v1",
       "sources": [
         "unittests/rendertest/test_light_set.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.spark-light",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.spark-light.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "RFC 0011 spark-burst light: the original trail ramp, emission-weighted centroid, fade against the burst's peak, batching and the burst budget",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_spark_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.spark-light.unweighted",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.spark-light.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: a centroid and strength that ignore each spark's emission must be rejected",
+      "extra_flags": [
+        "-DSPARK_LIGHT_SEEDED_UNWEIGHTED"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_spark_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.spark-light.no-fade",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.spark-light.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: a burst light that never fades must be rejected",
+      "extra_flags": [
+        "-DSPARK_LIGHT_SEEDED_NO_FADE"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_spark_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.spark-light.budget-leak",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/rendertest/contracts/render.spark-light.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: a budget that keeps released places must be rejected",
+      "extra_flags": [
+        "-DSPARK_LIGHT_SEEDED_BUDGET_LEAK"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/rendertest/test_spark_light.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "client.particle-plane-crossing",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/clienttest/contracts/client.particle-plane-crossing.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Particle collision plane crossing: a particle starting on a surface and moving into it hits it; leaving, sliding and backside particles do not",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/clienttest/test_particle_plane_crossing.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "client.particle-plane-crossing.original",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0011",
+      "contract": "unittests/clienttest/contracts/client.particle-plane-crossing.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "seeded: the original predicate, which lets a particle on a surface fall through it, must be rejected",
+      "extra_flags": [
+        "-DPARTICLE_PLANE_CROSSING_SEEDED_ORIGINAL"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/clienttest/test_particle_plane_crossing.cpp"
       ],
       "expect": "pass"
     },
@@ -2127,6 +2245,101 @@
         "unittests/worldmeshtest/test_worldmesh_cull.cpp"
       ],
       "expect": "pass"
+    },
+    {
+      "id": "blobulator.tiler-mesh",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0005",
+      "contract": "public/blobulator/Implicit/ImpTiler.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Portal 2 blobulator tiler CPU mesh (clean-room ImpTiler): lone-particle spheres at retail, low-res and fine grids (vertices on the sphere, field at threshold, outward normals, winding, tangent frames), bitwise-welded closed oriented manifolds with Euler 2 and positive volume, tile seams at negative coordinates and per-tile independence, bridging, determinism, scale-0, sorted build and factory counts, with negative controls for each checker. Legacy tier0/mathlib headers are system headers; unittests/blobulatortest/tier0_link_fake.cpp supplies their link surface",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-DLINUX",
+        "-D_LINUX",
+        "-DPOSIX",
+        "-D_POSIX",
+        "-DPLATFORM_POSIX",
+        "-DGNUC",
+        "-DNO_MALLOC_OVERRIDE",
+        "-isystem",
+        "public",
+        "-isystem",
+        "public/tier0"
+      ],
+      "units": [
+        {
+          "id": "tiler",
+          "dialect": "cxx20-permissive",
+          "flags": [
+            "-Wno-unused-parameter",
+            "-Wno-deprecated-enum-float-conversion"
+          ],
+          "sources": [
+            "game/client/portal2/blobulator/ImpTiler.cpp"
+          ]
+        },
+        {
+          "id": "suite",
+          "dialect": "cxx20",
+          "sources": [
+            "unittests/blobulatortest/test_imptiler.cpp",
+            "unittests/blobulatortest/tier0_link_fake.cpp"
+          ]
+        }
+      ],
+      "min_checks": 400,
+      "expect": "pass"
+    },
+    {
+      "id": "blobulator.tiler-mesh.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0005",
+      "contract": "public/blobulator/Implicit/ImpTiler.h",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "blobulator.tiler-mesh with -DBLOBULATOR_SEED_DEFECT, which drops one triangle from every mesh the suite reads: the closed-surface checks must fail the run",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-DLINUX",
+        "-D_LINUX",
+        "-DPOSIX",
+        "-D_POSIX",
+        "-DPLATFORM_POSIX",
+        "-DGNUC",
+        "-DNO_MALLOC_OVERRIDE",
+        "-isystem",
+        "public",
+        "-isystem",
+        "public/tier0"
+      ],
+      "units": [
+        {
+          "id": "tiler",
+          "dialect": "cxx20-permissive",
+          "flags": [
+            "-Wno-unused-parameter",
+            "-Wno-deprecated-enum-float-conversion"
+          ],
+          "sources": [
+            "game/client/portal2/blobulator/ImpTiler.cpp"
+          ]
+        },
+        {
+          "id": "suite",
+          "dialect": "cxx20",
+          "flags": [
+            "-DBLOBULATOR_SEED_DEFECT"
+          ],
+          "sources": [
+            "unittests/blobulatortest/test_imptiler.cpp",
+            "unittests/blobulatortest/tier0_link_fake.cpp"
+          ]
+        }
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL lone.retail.s1.origin closed-oriented-manifold"
     },
     {
       "id": "toolchain.abi.jobsystem-batch",

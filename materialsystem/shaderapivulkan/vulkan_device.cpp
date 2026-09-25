@@ -3191,6 +3191,29 @@ VkPipeline CVulkanContext::SolidEnergyPipeline(
 	return pipeline;
 }
 
+VkPipeline CVulkanContext::PaintBlobPipeline(
+    const DynRasterState &state, bool srgbPass, int samples )
+{
+	const uint64_t key = PipelineKey( state, srgbPass, samples );
+	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
+	const auto existing = m_paintBlobPipelines.find( key );
+	if ( existing != m_paintBlobPipelines.end() )
+		return existing->second;
+	if ( pass == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE; // no pass of this sample count exists now
+	if ( m_paintBlobFrag == VK_NULL_HANDLE )
+		return VK_NULL_HANDLE;
+	VkPipeline pipeline = BuildMaterialPipeline( state, m_skinVert, m_paintBlobFrag,
+	    m_skinPipelineLayout, &m_skinVin, pass, samples );
+	if ( pipeline == VK_NULL_HANDLE )
+		Log( "vkCreateGraphicsPipelines (PaintBlob, state %#llx) failed\n",
+		    static_cast<unsigned long long>( key ) );
+	m_paintBlobPipelines[key] = pipeline;
+	if ( pipeline != VK_NULL_HANDLE )
+		NotePipelineVariant( kPipelinePaintBlob, key );
+	return pipeline;
+}
+
 VkPipeline CVulkanContext::LightmappedPipeline(
     const DynRasterState &state, bool srgbPass, int samples )
 {
@@ -3509,6 +3532,15 @@ bool CVulkanContext::InitSkinPipeline( std::string *outError )
 			*module = VK_NULL_HANDLE;
 		}
 	}
+	// The paint blobs' pixel stage after skin.vert. Without it their draws are
+	// declined by name; the skin shader is unaffected.
+	std::string paintBlobError;
+	if ( !CreateShaderModule(
+	         g_paintBlobFragSpv, sizeof( g_paintBlobFragSpv ), &m_paintBlobFrag, &paintBlobError ) )
+	{
+		Log( "PaintBlob pipeline unavailable: %s\n", paintBlobError.c_str() );
+		m_paintBlobFrag = VK_NULL_HANDLE;
+	}
 	return true;
 }
 
@@ -3703,8 +3735,11 @@ void CVulkanContext::DestroySkinPipeline()
 	for ( const auto &entry : m_solidEnergyPipelines )
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_solidEnergyPipelines.clear();
+	for ( const auto &entry : m_paintBlobPipelines )
+		vkDestroyPipeline( m_device, entry.second, nullptr );
+	m_paintBlobPipelines.clear();
 	for ( VkShaderModule *module :
-	    { &m_skinVert, &m_skinFrag, &m_solidEnergyVert, &m_solidEnergyFrag } )
+	    { &m_skinVert, &m_skinFrag, &m_solidEnergyVert, &m_solidEnergyFrag, &m_paintBlobFrag } )
 	{
 		if ( *module != VK_NULL_HANDLE )
 			vkDestroyShaderModule( m_device, *module, nullptr );
@@ -5024,7 +5059,7 @@ CVulkanContext::DynDraw &CVulkanContext::AppendDrawRecord()
 	d.texturedMode = m_dynTexturedMode;
 	if ( d.shaderIndex == kDynShaderSkin || d.shaderIndex == kDynShaderSolidEnergy ||
 	     d.shaderIndex == kDynShaderPbrModel || d.shaderIndex == kDynShaderLightmapped ||
-	     d.shaderIndex == kDynShaderPost )
+	     d.shaderIndex == kDynShaderPost || d.shaderIndex == kDynShaderPaintBlob )
 	{
 		d.skin = static_cast<int>( m_dynSkinConstants.size() );
 		m_dynSkinConstants.push_back( m_dynSkin );
@@ -5294,7 +5329,8 @@ static bool SrgbCapableShader( int shaderIndex )
 	       shaderIndex == CVulkanContext::kDynShaderSolidEnergy ||
 	       shaderIndex == CVulkanContext::kDynShaderPbrModel ||
 	       shaderIndex == CVulkanContext::kDynShaderLightmapped ||
-	       shaderIndex == CVulkanContext::kDynShaderPost;
+	       shaderIndex == CVulkanContext::kDynShaderPost ||
+	       shaderIndex == CVulkanContext::kDynShaderPaintBlob;
 }
 
 bool CVulkanContext::RecordWantsSrgb( const DynDraw &r ) const
@@ -5677,6 +5713,7 @@ bool CVulkanContext::UploadWorldMesh( const void *vertices, size_t vertexBytes, 
 	SetWorldLightmapHandle( -1 );
 	SetProbeVolumeHandles( -1, -1, 0 );
 	SetProbeDeltaHandle( -1 );
+	SetShadowField( -1, nullptr, 0.0f, nullptr );
 	DestroyStreamBuffer( m_worldIndexBuffer );
 	DestroyStreamBuffer( m_worldVertexBuffer );
 	newVertices.capacity = vertexBytes;
@@ -5713,13 +5750,26 @@ void CVulkanContext::SetWorldLightmapHandles( int total, int direct, int indirec
 
 void CVulkanContext::SetProbeDeltaHandle( int atlas )
 {
-	SetShadowField( -1, nullptr, 0.0f, nullptr );
 	if ( m_probeDeltaHandle == atlas )
 		return;
 	const int old = m_probeDeltaHandle;
 	m_probeDeltaHandle = atlas;
 	if ( old >= 0 )
 		DestroyManagedTexture( old );
+}
+
+void CVulkanContext::SetShadowField(
+    int handle, const float origin[3], float voxel, const uint32_t dims[3] )
+{
+	if ( m_shadowFieldHandle >= 0 && m_shadowFieldHandle != handle )
+		DestroyManagedTexture( m_shadowFieldHandle );
+	m_shadowFieldHandle = handle;
+	for ( int k = 0; k < 3; ++k )
+	{
+		m_shadowFieldOrigin[k] = handle >= 0 ? origin[k] : 0.0f;
+		m_shadowFieldDims[k] = handle >= 0 ? static_cast<float>( dims[k] ) : 0.0f;
+	}
+	m_shadowFieldOrigin[3] = handle >= 0 ? voxel : 0.0f;
 }
 
 void CVulkanContext::SetProbeVolumeHandles( int atlas, int grids, uint32_t gridCount )
@@ -5758,20 +5808,6 @@ bool CVulkanContext::QueueWorldMeshBatch( uint32_t firstIndex, uint32_t indexCou
 	// Glass refracts what was drawn before it.
 	if ( m_dynShaderIndex == kDynShaderPbrGlass )
 		QueueSceneCaptureIfNeeded( m_dynGlassKey );
-void CVulkanContext::SetShadowField(
-    int handle, const float origin[3], float voxel, const uint32_t dims[3] )
-{
-	if ( m_shadowFieldHandle >= 0 && m_shadowFieldHandle != handle )
-		DestroyManagedTexture( m_shadowFieldHandle );
-	m_shadowFieldHandle = handle;
-	for ( int k = 0; k < 3; ++k )
-	{
-		m_shadowFieldOrigin[k] = handle >= 0 ? origin[k] : 0.0f;
-		m_shadowFieldDims[k] = handle >= 0 ? static_cast<float>( dims[k] ) : 0.0f;
-	}
-	m_shadowFieldOrigin[3] = handle >= 0 ? voxel : 0.0f;
-}
-
 	DynDraw &draw = AppendDrawRecord();
 	draw.worldMesh = true;
 	draw.worldMeshRevision = m_worldMeshRevision;
@@ -5853,6 +5889,7 @@ void CVulkanContext::ReleaseWorldMesh()
 	SetWorldLightmapHandle( -1 );
 	SetProbeVolumeHandles( -1, -1, 0 );
 	SetProbeDeltaHandle( -1 );
+	SetShadowField( -1, nullptr, 0.0f, nullptr );
 	DestroyStreamBuffer( m_worldIndexBuffer );
 	DestroyStreamBuffer( m_worldVertexBuffer );
 	m_worldVertexCount = 0;
@@ -5889,7 +5926,6 @@ bool CVulkanContext::WaitForSubmittedFrame( uint64_t serial, uint64_t timeoutNs 
 
 bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 {
-	SetShadowField( -1, nullptr, 0.0f, nullptr );
 	if ( outSkip )
 		*outSkip = false;
 	m_frameBeginUs = FrameClockMicros();
@@ -6450,6 +6486,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 			bool portal = false;
 			bool skin = false;
 			bool solidEnergy = false;
+			bool paintBlob = false;
 			bool pbrModel = false;
 			bool pbrModelEnv = false;
 			bool pbrModelProbe = false;
@@ -6553,6 +6590,18 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				// The skin layout, push block and constants; its own samplers.
 				skin = true;
 				solidEnergy = true;
+			}
+			else if ( d.shaderIndex == kDynShaderPaintBlob )
+			{
+				selected = PaintBlobPipeline( d.raster, openSrgb, passSamples );
+				if ( selected == VK_NULL_HANDLE || d.skin < 0 || !skinConstantsOk ||
+				     static_cast<size_t>( d.skin ) >= skinOffsets.size() )
+					continue;
+				selectedLayout = m_skinPipelineLayout;
+				// The skin layout, vertex stage, push block and constants; its
+				// own pixel stage and samplers.
+				skin = true;
+				paintBlob = true;
 			}
 			else if ( d.shaderIndex == kDynShaderPbrModel )
 			{
@@ -6658,6 +6707,24 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					    sampledSet( d.samplerHandles[1], 0 ), sampledSet( d.samplerHandles[4], 0 ),
 					    sampledSet( d.samplerHandles[5], 0 ), sampledSet( d.samplerHandles[6], 0 ),
 					    sampledSet( d.samplerHandles[7], 0 ),
+					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set };
+					const uint32_t offset = skinOffsets[static_cast<size_t>( d.skin )];
+					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+					    m_skinPipelineLayout, 0, 7, sets, 1, &offset );
+				}
+				else if ( paintBlob )
+				{
+					// shaders/paintblob.frag: s0 base (sRGB), s1 bump, s3 spec
+					// mask, s7 environment cube (the white cube without one; the
+					// push block then clears kPaintBlobEnvMap), s4 light warp, s2
+					// the frame copy, then this draw's constants.
+					const int envmap = ManagedTextureIsCube( d.samplerHandles[7] )
+					                       ? d.samplerHandles[7]
+					                       : m_whiteCubeHandle;
+					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
+					    sampledSet( d.samplerHandles[1], 0 ), sampledSet( d.samplerHandles[3], 0 ),
+					    sampledSet( envmap, kColorSrgbReadSampler7 ),
+					    sampledSet( d.samplerHandles[4], 0 ), sampledSet( d.samplerHandles[2], 0 ),
 					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set };
 					const uint32_t offset = skinOffsets[static_cast<size_t>( d.skin )];
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -6798,10 +6865,18 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					vkCmdBindDescriptorSets(
 					    cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 7, sets, 0, nullptr );
 					if ( pbrWorldLights )
+					{
 						vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 7, 1,
 						    &m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()]
 						        .set,
 						    1, &m_directLightOffset );
+						// RFC 0011 G9: the shadow field after the variant's other sets
+						// (a white volume, unread, when the map has none).
+						const VkDescriptorSet field = sampledSet(
+						    m_shadowFieldHandle >= 0 ? m_shadowFieldHandle : m_whiteVolumeHandle, 0 );
+						vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout,
+						    pbrWorldDelta ? 10 : 9, 1, &field, 0, nullptr );
+					}
 					if ( pbrWorldRuntime )
 					{
 						// The baked producer's indirect atlas: the LMAP indirect layer.
@@ -6865,18 +6940,10 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				const PortalConstants &c = d.portal;
 				std::memcpy( pushData, c.model, sizeof( c.model ) );
 				std::memcpy( pushData + 16, c.viewProj, sizeof( c.viewProj ) );
-					{
 				std::memcpy( pushData + 32, c.texXform0, sizeof( c.texXform0 ) );
 				std::memcpy( pushData + 36, c.texXform1, sizeof( c.texXform1 ) );
 				pushData[40] = c.time;
 				pushData[41] = c.openAmount;
-						// RFC 0011 G9: the shadow field after the variant's other sets
-						// (a white volume, unread, when the map has none).
-						const VkDescriptorSet field = sampledSet(
-						    m_shadowFieldHandle >= 0 ? m_shadowFieldHandle : m_whiteVolumeHandle, 0 );
-						vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout,
-						    pbrWorldDelta ? 10 : 9, 1, &field, 0, nullptr );
-					}
 				pushData[42] = c.active;
 				pushData[43] = c.colorScale;
 				pushData[44] = d.alphaRef;
@@ -6900,6 +6967,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				int combos = c.combos;
 				if ( pbrModel && !pbrModelEnv && m_worldLightmapHandle >= 0 )
 					combos |= kPbrModelMapProbe;
+				if ( paintBlob && !ManagedTextureIsCube( d.samplerHandles[7] ) )
+					combos &= ~kPaintBlobEnvMap;
 				pushData[29] = static_cast<float>( combos );
 				pushData[30] = static_cast<float>( d.colorFlags & ~decodedFlags );
 				pushData[31] = d.outputScale;
@@ -8124,6 +8193,8 @@ int CVulkanContext::PrewarmPipelines()
 			pipeline = SkinPipeline( state, srgb, samples );
 		else if ( family == kPipelineSolidEnergy )
 			pipeline = SolidEnergyPipeline( state, srgb, samples );
+		else if ( family == kPipelinePaintBlob )
+			pipeline = PaintBlobPipeline( state, srgb, samples );
 		else if ( family == kPipelinePbrModel || family == kPipelinePbrModelEnv )
 			pipeline = PbrModelPipeline( state, family == kPipelinePbrModelEnv, srgb, samples );
 		else if ( family == kPipelinePbrDirect )

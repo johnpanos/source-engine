@@ -194,7 +194,7 @@ def write_fake_zenity(directory):
 
 
 def run_scenario(scenario, runtime, output, start_frames, width, height, tool_directory,
-                 gdb_script=None):
+                 gdb_script=None, extra_args=()):
     runtime = Path(runtime).resolve()
     console = runtime / "portal2/console.log"
     console.unlink(missing_ok=True)
@@ -209,7 +209,7 @@ def run_scenario(scenario, runtime, output, start_frames, width, height, tool_di
     })
     command = [str(runtime / "hl2_launcher"), "-game", "portal2", "-multirun", "-novid",
                "-insecure", "-windowed", "-w", str(width), "-h", str(height), "-condebug",
-               "+volume", "0", "+map", scenario["map"], "+wait", str(start_frames),
+               "+volume", "0", *extra_args, "+map", scenario["map"], "+wait", str(start_frames),
                "+exec", "qa_" + scenario["name"]]
     if gdb_script:
         # Diagnosis only: gdb's own exit status replaces the game's.
@@ -266,6 +266,9 @@ def main(argv=None):
     parser.add_argument("--gdb-script", type=Path,
                         help="run the game under gdb with this command file (diagnosis; "
                              "the output lands in each scenario's stdout.log)")
+    parser.add_argument("--extra-arg", action="append", default=[],
+                        help="extra engine command-line argument, placed before +map "
+                             "(repeatable), e.g. --extra-arg='+host_thread_mode 1'")
     parser.add_argument("--list", action="store_true", help="list scenarios and exit")
     args = parser.parse_args(argv)
 
@@ -316,7 +319,7 @@ def main(argv=None):
     for scenario in scenarios:
         print("== %s (%s)" % (scenario["name"], scenario["map"]), flush=True)
         result = run_scenario(scenario, args.runtime, output / scenario["name"], args.start_frames,
-                              args.width, args.height, tools, args.gdb_script)
+                              args.width, args.height, tools, args.gdb_script, args.extra_arg)
         evidence["results"].append(result)
         evidence_path.write_text(json.dumps(evidence, indent=2) + "\n")
         for check, value in result["checks"].items():

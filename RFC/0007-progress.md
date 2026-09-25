@@ -573,6 +573,60 @@ Measured on the Ryzen AI Max+ 395 / Radeon 8060S host with Blender 5.2.1:
 The existing G0 references were rendered on HIP. Re-rendering them on the CPU
 would change their recorded hashes, and has not been done.
 
+### Lightmap layout, seams and noise (installed 2026-09-25)
+
+Blender no longer decides the lightmap layout on profiles with
+`lightmap.layout: planar`; it only runs Cycles on UVs the `layout` step
+writes into the stage (`--layout authored`, checked unchanged after the
+round trip).
+
+- **Topology** (`legacy_bsp.py`, `legacy_bsp_scene.py`, `usd_scene.py`):
+  relit faces keep the BSP's shared vertices (merged within 0.01 units) and
+  plane numbers (`primvars:sourceEngine:plane`). Faces are triangulated by
+  the widest triangulation, which maximizes the thinnest triangle, instead of
+  a fan that left micron-wide slivers at vbsp's crack-fix vertices.
+- **Layout** ([`lightmap_layout.py`](../tools/quality/lightmap_layout.py)):
+  - Flat triangles on one plane that meet along an edge or T-junction are one
+    chart, projected onto that plane at one texel density.
+  - Curved surfaces are triangles joined along smooth edges (continuous
+    authored normals, non-coplanar). xatlas, pinned in the map tools profile
+    and built by `pbrt_map_toolchain.py provision --steps sources,xatlas`,
+    cuts and flattens them (`xatlas_chart.cpp`). Each chart is scaled to its
+    surface area, and a chart stretching beyond 1.5x is charted again
+    smaller until every triangle holds.
+  - One deterministic packer places every chart with at least 4 texels
+    between charts. The same triangles give the same bytes in any order.
+  - The step fails on any overlap, bleed, escaped UV, flat-region split,
+    off-density flat triangle or over-stretched curved triangle.
+- **Seams** ([`lightmap_seams.py`](../tools/quality/lightmap_seams.py)): the
+  `seams` step extracts the seams that remain and gates on chart invariants.
+  `ktx2` stitches every page across them by least squares.
+- **Lights**: a USD sphere, disk or rect light now lights the bake as the
+  matching Cycles lamp. The tessellated mesh stays visible to the camera
+  only. On the fixture (`tests/blender_emitter_lamps.py`) every lamp matches
+  analytic irradiance within 0.35%, and the sphere lamp has 1/120 of the
+  mesh's noise at equal samples.
+- **Noise** ([`lightmap_noise.py`](../tools/quality/lightmap_noise.py)):
+  - Every page is the mean of two half-sample bakes.
+  - The total is the sum of the direct and indirect layers rather than a
+    third bake.
+  - The denoiser runs per chart, padded with the chart's own smoothed light
+    so no chart reaches another.
+  - The `noise` gate judges the halves' difference after that denoise.
+  - testchmb_a_00 at 2048 texels:
+
+    | Samples | Raw median | Denoised median / p99 |
+    | --- | --- | --- |
+    | 256 | 25% | 1.5% / 28% |
+    | 1024 | 12.3% | 1.0% / 17% |
+
+    The residual that remains sits at chart edges. `legacy-relight` bakes
+    4096 samples with a 15% p99 target.
+- Pre-existing, not caused by this work: the bathroom's reference gate fails
+  on this host (mean error 10.874 against 10, SSIM 0.917). The 2026-09-24
+  corpus build (`quality-results/rfc0011-corpus/bathroom`) recorded the same
+  numbers. The cause is not established.
+
 ### Scope
 
 1. `utils/lighting/` (strict C++20):

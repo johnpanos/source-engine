@@ -6,6 +6,7 @@
 //=============================================================================//
 #include "cbase.h"
 #include "particle_collision.h"
+#include "particle_plane_crossing.h"
 #include "engine/ivdebugoverlay.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -68,16 +69,12 @@ void CBaseSimpleCollision::TraceLine( const Vector &start, const Vector &end, tr
 		float dot1 = m_collisionPlanes[i].DistTo(start);
 		float dot2 = m_collisionPlanes[i].DistTo(end);
 
-		//Don't consider particles on the backside of planes
-		if ( dot1 < -COLLISION_EPSILON )
-			continue;
-
-		//Must be crossing the plane's boundary
-		if ( ( dot1 > COLLISION_EPSILON ) == ( dot2 > COLLISION_EPSILON ) )
+		//Must be crossing into the plane, including from on it
+		float	t;
+		if ( !ParticlePlaneCrossing::Hits( dot1, dot2, COLLISION_EPSILON, &t ) )
 			continue;
 
 		//Find the intersection point
-		float	t = dot1 / (dot1 - dot2);
 		Vector	vIntersection = start + (end - start) * t;
 
 		//Fake the collision info
@@ -165,6 +162,20 @@ void CBaseSimpleCollision::TestForPlane( const Vector &start, const Vector &dir,
 
 		//Trace the line
 		UTIL_TraceLine( testStart, testEnd, MASK_SOLID_BRUSHONLY, NULL, COLLISION_GROUP_NONE, &tr );
+
+		// An effect origin on a surface (the network quantizes origins to 1/32
+		// unit or less) starts this probe in solid, which reports no plane. Probe
+		// again from a unit back along the step to find the surface under it.
+		if ( tr.startsolid && i == 1 )
+		{
+			Vector vBack = vStepIncr;
+			VectorNormalize( vBack );
+			UTIL_TraceLine( testStart - vBack, testEnd, MASK_SOLID_BRUSHONLY, NULL, COLLISION_GROUP_NONE, &tr );
+		}
+
+		// Still in solid: there is no plane to take.
+		if ( tr.startsolid )
+			return;
 
 		//See if we found one
 		if ( tr.fraction != 1.0f )
@@ -316,7 +327,15 @@ bool CParticleCollision::MoveParticle( Vector &origin, Vector &velocity, float *
 		{
 			#if	__DEBUG_PARTICLE_COLLISION_RETEST
 			//Retest the collision with a true trace line to avoid errant collisions
+			trace_t coarse = *pTrace;
 			UTIL_TraceLine( origin, testPosition, MASK_SOLID_BRUSHONLY, NULL, COLLISION_GROUP_NONE, pTrace );
+
+			// A particle on the surface starts the true trace in solid, which
+			// reports no plane; the coarse hit on our plane stands.
+			if ( pTrace->startsolid )
+			{
+				*pTrace = coarse;
+			}
 			#endif	//__DEBUG_RETEST_COLLISION
 
 			//Did we hit anything?

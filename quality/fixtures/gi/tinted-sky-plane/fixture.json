@@ -1,0 +1,142 @@
+{
+  "baked_state": "sky",
+  "cameras": {
+    "floor": {
+      "eye": [
+        -3.0,
+        0.0,
+        1.7
+      ],
+      "forward": [
+        0.9467727448197126,
+        0.0,
+        -0.3219027332387023
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "analytic",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "tinted-sky-plane",
+  "oracles": [
+    {
+      "camera": "floor",
+      "expected": {
+        "direct": [
+          0.2,
+          0.5,
+          0.9
+        ],
+        "total": [
+          0.18,
+          0.3,
+          0.27
+        ]
+      },
+      "kind": "value",
+      "lights": [
+        "direct",
+        "total"
+      ],
+      "name": "sky: floor radiance = rho x sky, direct light = sky",
+      "regions": [
+        "Floor"
+      ],
+      "state": "sky"
+    },
+    {
+      "camera": "floor",
+      "expected": {
+        "direct": [
+          0.826993343,
+          0.702944342,
+          0.496196006
+        ],
+        "total": [
+          0.744294009,
+          0.421766605,
+          0.148858802
+        ]
+      },
+      "kind": "value",
+      "lights": [
+        "direct",
+        "total"
+      ],
+      "name": "sun: floor radiance = rho E sin(e) / pi per channel",
+      "regions": [
+        "Floor"
+      ],
+      "state": "sun"
+    },
+    {
+      "camera": "floor",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "indirect"
+      ],
+      "name": "sky: an open plane receives no indirect light",
+      "regions": [
+        "Floor"
+      ],
+      "state": "sky"
+    },
+    {
+      "camera": "floor",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "indirect"
+      ],
+      "name": "sun: an open plane receives no indirect light",
+      "regions": [
+        "Floor"
+      ],
+      "state": "sun"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A blue-tinted sky, then an ivory sun, over an orange plane: floor radiance is albedo x sky (or albedo x E sin e / pi) per channel, and an open plane has no indirect light at all",
+  "regions": {
+    "floor": {
+      "Floor": [
+        "Floor"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "tinted-sky-plane.usda",
+  "states": {
+    "sky": {
+      "layer": null,
+      "note": "tinted sky alone"
+    },
+    "sun": {
+      "layer": "states/sun.usda",
+      "note": "sun alone"
+    }
+  }
+}

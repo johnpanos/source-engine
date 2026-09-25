@@ -115,6 +115,7 @@
     {"id": "conformance.gpu", "group": "suites", "domain": "Q-PRESENTATION", "rows": ["R70"], "argv": ["python3", "tools/quality/conformance.py", "check", "--runner", "gpu", "--build-dir", "{scratch}/conformance-gpu", "--out", "{scratch}/conformance-gpu.json"], "requires": ["tool:vulkan-hardware-gpu"], "timeout": 1800, "baseline": {"outcome": "pass"}},
     {"id": "gi.references", "group": "suites", "domain": "Q-PRESENTATION", "rows": ["R70"], "argv": ["python3", "tools/quality/gi_reference.py", "check"], "timeout": 600, "baseline": {"outcome": "pass"}},
     {"id": "gi.budgets", "group": "suites", "domain": "Q-PRESENTATION", "rows": ["R70"], "argv": ["python3", "tools/quality/gi_budgets.py", "check"], "timeout": 60, "baseline": {"outcome": "pass"}},
+    {"id": "gi.sdf-perf-fixtures", "group": "suites", "domain": "Q-PRESENTATION", "rows": ["R76"], "argv": ["python3", "tools/quality/gi_sdf_bench.py", "validate"], "timeout": 60, "baseline": {"outcome": "pass"}},
     {"id": "scheduler.budgets", "group": "suites", "domain": "Q-JOBS", "rows": ["R20"], "argv": ["python3", "tools/quality/scheduler_budgets.py", "check"], "timeout": 60, "baseline": {"outcome": "pass"}}
   ],
   "baselines": [

@@ -1,0 +1,145 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "high": {
+      "eye": [
+        0.3,
+        0.3,
+        5.3016000000000005
+      ],
+      "forward": [
+        0.6330637042635242,
+        0.6330637042635242,
+        -0.4454892733706283
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "low": {
+      "eye": [
+        0.3,
+        0.3,
+        1.2
+      ],
+      "forward": [
+        0.6745785200962754,
+        0.6745785200962754,
+        0.29981267559834457
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeA",
+      "stand_in_mesh": "ProbeAShape"
+    },
+    {
+      "name": "ProbeB",
+      "stand_in_mesh": "ProbeBShape"
+    }
+  ],
+  "family": "leak",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "leak-stacked-floors",
+  "oracles": [
+    {
+      "camera": "low",
+      "channels": [
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "default: GB dark (low)",
+      "regions": [
+        "Low_Zp",
+        "Low_Xp",
+        "Low_Yp",
+        "ProbeA"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "high",
+      "channels": [
+        0,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "default: RB dark (high)",
+      "regions": [
+        "High_Zn",
+        "High_Xp",
+        "High_Yp",
+        "ProbeB"
+      ],
+      "state": "default"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A green-lit room above a red-lit room, separated by a 4-unit slab: neither color crosses the slab",
+  "regions": {
+    "high": {
+      "High_Xp": [
+        "High_Xp"
+      ],
+      "High_Yp": [
+        "High_Yp"
+      ],
+      "High_Zn": [
+        "High_Zn"
+      ],
+      "ProbeB": [
+        "ProbeB"
+      ]
+    },
+    "low": {
+      "Low_Xp": [
+        "Low_Xp"
+      ],
+      "Low_Yp": [
+        "Low_Yp"
+      ],
+      "Low_Zp": [
+        "Low_Zp"
+      ],
+      "ProbeA": [
+        "ProbeA"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "leak-stacked-floors.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "red below, green above"
+    }
+  }
+}

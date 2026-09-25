@@ -7,6 +7,8 @@
         --capture quality-results/x --out quality-results/x/gate.json
     python3 tools/quality/gi_runtime.py indirect-view --fixture furnace \\
         --map-build quality-results/rfc0011-maps/furnace --out quality-results/rfc0011-g0-view
+    python3 tools/quality/gi_runtime.py oracles --fixture leak-rgb-rooms \\
+        --capture quality-results/x --out quality-results/x/oracles.json
 
 `capture` boots the fixture's map headless on native Vulkan (`portal_boot.py`),
 places the camera at a fixture camera with the pipeline's own camera commands
@@ -21,6 +23,13 @@ Cycles indirect-only reference (DiffInd, the same E / pi unit as the LMAP
 indirect layer and the view). World regions are gated by a relative
 luminance tolerance; dynamic-model regions are measured and reported, and
 gated only with --gate-models (RFC 0011 G1 makes them pass).
+
+`oracles` judges a capture of the fixture's baked state by the fixture's own
+relational oracles (`gi_oracles.py`): each region's mean indirect light from
+the capture, and every declared oracle that reads only that state's indirect
+light (leak zeros, mirror symmetry, chromaticity, dominance, uniformity),
+with tolerances for an 8-bit capture. No Cycles value enters these checks,
+only the capture's own regions (the masks come from the reference).
 
 `indirect-view` is the G0 oracle run: a capture at scale 1 must pass the
 world gate, and a seeded capture whose indirect light is doubled (scale 2,
@@ -41,6 +50,7 @@ from PIL import Image
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
+import gi_oracles  # noqa: E402
 import gi_reference  # noqa: E402
 import pbrt_map_toolchain  # noqa: E402
 import reference_compare  # noqa: E402
@@ -215,24 +225,32 @@ def reference_level(fixture, state, light="indirect"):
     return level
 
 
-def compare_view(fixture, state, camera, capture_path, scale, gate_models, tolerance, level,
-                 light="indirect", absolute_fraction=ABSOLUTE_FRACTION):
+def view_masks(fixture, state, camera):
+    """(reference view record, {region: mask}) for a fixture camera. A camera
+    that renders another's view (the portal-view camera looking through the
+    portal pair) takes that camera's reference and masks."""
     references = fixture["directory"] / "references"
     record = json.loads((references / "references.json").read_text())
-    # A camera that renders another's view (the portal-view camera looking
-    # through the portal pair) is judged against that camera's reference.
     camera = fixture.get("reference_cameras", {}).get(camera, camera)
     view = record["views"]["%s.%s" % (state, camera)]
-    import imageio.v3 as iio
-    reference = np.asarray(iio.imread(references / view["files"]["indirect"]["file"]),
-                           dtype=np.float64)[..., :3]
     index = np.asarray(Image.open(references / view["files"]["index"]["file"]))
-    measured = linear_capture(capture_path, fixture["film"], scale)
-    scene_props = {region for region, entries in fixture["regions"][camera].items()
-                   if any(entry in fixture_props(fixture) for entry in entries)}
     masks = gi_reference.region_masks(index, view["object_index"], fixture["regions"][camera],
                                       {"props": [{"name": name, "shapes": [mesh]} for name, mesh
                                                  in fixture_props(fixture).items()]})
+    return view, masks
+
+
+def compare_view(fixture, state, camera, capture_path, scale, gate_models, tolerance, level,
+                 light="indirect", absolute_fraction=ABSOLUTE_FRACTION):
+    references = fixture["directory"] / "references"
+    view, masks = view_masks(fixture, state, camera)
+    camera = fixture.get("reference_cameras", {}).get(camera, camera)
+    import imageio.v3 as iio
+    reference = np.asarray(iio.imread(references / view["files"]["indirect"]["file"]),
+                           dtype=np.float64)[..., :3]
+    measured = linear_capture(capture_path, fixture["film"], scale)
+    scene_props = {region for region, entries in fixture["regions"][camera].items()
+                   if any(entry in fixture_props(fixture) for entry in entries)}
     regions = {}
     allowance_floor = absolute_fraction * level
     for region, mask in masks.items():
@@ -322,6 +340,55 @@ def compare(args):
     return result
 
 
+def capture_oracles(args):
+    """The fixture's single-state oracles judged on a capture's indirect light."""
+    fixture = gi_reference.load_fixture(args.fixture)
+    capture_record = json.loads((Path(args.capture) / "capture.json").read_text())
+    state = args.state or fixture["baked_state"]
+    level = reference_level(fixture, state)
+    absolute = args.absolute_fraction * level
+    scale = args.declared_scale or capture_record["scale"]
+    views, failures, measured = {}, [], {}
+    for camera, shot in sorted(capture_record["cameras"].items()):
+        if shot["status"] != "pass" or not shot["screenshot"]:
+            failures.append("%s: capture did not pass (%s)" % (camera, shot["failures"]))
+            continue
+        _, masks = view_masks(fixture, state, camera)
+        image = linear_capture(shot["screenshot"], fixture["film"], scale)
+        regions = {}
+        for region, mask in masks.items():
+            regions[region] = {"pixels": int(mask.sum())}
+            if mask.sum() >= 50:
+                regions[region]["indirect"] = image[mask].mean(axis=0).tolist()
+        views[(state, camera)] = regions
+        measured[camera] = regions
+    oracles = gi_oracles.for_capture(fixture, state, args.tolerance, absolute)
+    results = gi_oracles.evaluate({"oracles": oracles}, views) if not failures else []
+    for result in results:
+        failures += ["%s observed %.5g expected %.5g" % (c["check"], c["observed"],
+                                                        c["expected"])
+                     for c in result["checks"] if not c["ok"]]
+        if not result["control"]["rejected"]:
+            failures.append("oracle %s did not reject its control (%s)" % (
+                result["oracle"], result["control"]["description"]))
+    record = {"schema": "gi-runtime-oracles/v1", "fixture": args.fixture, "state": state,
+              "capture": str(Path(args.capture).resolve()), "declared_scale": scale,
+              "relative_tolerance": args.tolerance, "zero_bound": absolute,
+              "reference_level": level, "regions": measured,
+              "oracles": results, "summary": gi_oracles.summary(results),
+              "failures": failures,
+              "status": "fail" if failures or not results else "pass"}
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.out).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    for result in results:
+        print("  %-4s %-60s %3d checks" % ("ok" if result["ok"] else "FAIL", result["oracle"],
+                                           len(result["checks"])))
+    print("GI runtime oracles %s/%s: %s (%d oracles, %d checks, %d failures)" % (
+        args.fixture, state, record["status"], len(results),
+        record["summary"]["checks"], len(failures)))
+    return record
+
+
 def indirect_view(args):
     """G0 oracle: the view passes at scale 1; a doubled seeded view fails."""
     out = Path(args.out)
@@ -390,6 +457,19 @@ def main():
     m.add_argument("--level-state",
                    help="the state whose brightest region sets the reference level "
                         "(default: the compared state; for a state that is dark throughout)")
+    o = commands.add_parser("oracles")
+    o.add_argument("--fixture", required=True)
+    o.add_argument("--capture", required=True)
+    o.add_argument("--out", required=True)
+    o.add_argument("--state", help="the captured state (default: the fixture's baked state)")
+    o.add_argument("--declared-scale", type=float,
+                   help="exposure scale to divide out (default: the capture's)")
+    o.add_argument("--tolerance", type=float, default=WORLD_TOLERANCE,
+                   help="least relative tolerance of equal, chromaticity, value and uniform "
+                        "oracles (default %g)" % WORLD_TOLERANCE)
+    o.add_argument("--absolute-fraction", type=float, default=ABSOLUTE_FRACTION,
+                   help="a zero oracle's bound as a fraction of the reference level "
+                        "(default %g)" % ABSOLUTE_FRACTION)
     v = commands.add_parser("indirect-view")
     capture_options(v)
     v.add_argument("--state", default="default")
@@ -402,6 +482,8 @@ def main():
         return 0 if all(c["status"] == "pass" for c in record["cameras"].values()) else 1
     if args.command == "compare":
         return 0 if compare(args)["status"] == "pass" else 1
+    if args.command == "oracles":
+        return 0 if capture_oracles(args)["status"] == "pass" else 1
     return indirect_view(args)
 
 

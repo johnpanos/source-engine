@@ -1,0 +1,205 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "blue": {
+      "eye": [
+        8.9032,
+        2.7,
+        1.6
+      ],
+      "forward": [
+        -0.8316554899054915,
+        -0.5236349380886428,
+        -0.18481233109010925
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "green": {
+      "eye": [
+        4.6015999999999995,
+        0.2,
+        1.6
+      ],
+      "forward": [
+        0.0,
+        0.9778024140774094,
+        -0.2095290887308735
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "red": {
+      "eye": [
+        0.3,
+        0.3,
+        1.6
+      ],
+      "forward": [
+        0.8316554899054915,
+        0.5236349380886428,
+        -0.18481233109010925
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeA",
+      "stand_in_mesh": "ProbeAShape"
+    },
+    {
+      "name": "ProbeB",
+      "stand_in_mesh": "ProbeBShape"
+    },
+    {
+      "name": "ProbeC",
+      "stand_in_mesh": "ProbeCShape"
+    }
+  ],
+  "family": "leak",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "leak-rgb-rooms",
+  "oracles": [
+    {
+      "camera": "red",
+      "channels": [
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "default: GB dark (red)",
+      "regions": [
+        "Red_Xp",
+        "Red_Yp",
+        "Red_Zn",
+        "ProbeA"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "green",
+      "channels": [
+        0,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "default: RB dark (green)",
+      "regions": [
+        "Green_Xn",
+        "Green_Xp",
+        "Green_Yp",
+        "Green_Zn",
+        "ProbeB"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "blue",
+      "channels": [
+        0,
+        1
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "default: RG dark (blue)",
+      "regions": [
+        "Blue_Xn",
+        "Blue_Yn",
+        "Blue_Zn",
+        "ProbeC"
+      ],
+      "state": "default"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Three sealed rooms in a row behind 4-unit walls, lit red, green and blue: no room may contain another room's color",
+  "regions": {
+    "blue": {
+      "Blue_Xn": [
+        "Blue_Xn"
+      ],
+      "Blue_Yn": [
+        "Blue_Yn"
+      ],
+      "Blue_Zn": [
+        "Blue_Zn"
+      ],
+      "ProbeC": [
+        "ProbeC"
+      ]
+    },
+    "green": {
+      "Green_Xn": [
+        "Green_Xn"
+      ],
+      "Green_Xp": [
+        "Green_Xp"
+      ],
+      "Green_Yp": [
+        "Green_Yp"
+      ],
+      "Green_Zn": [
+        "Green_Zn"
+      ],
+      "ProbeB": [
+        "ProbeB"
+      ]
+    },
+    "red": {
+      "ProbeA": [
+        "ProbeA"
+      ],
+      "Red_Xp": [
+        "Red_Xp"
+      ],
+      "Red_Yp": [
+        "Red_Yp"
+      ],
+      "Red_Zn": [
+        "Red_Zn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "leak-rgb-rooms.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "each room lit by its own color"
+    }
+  }
+}

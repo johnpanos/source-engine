@@ -1,0 +1,96 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryMixDisco"
+    metersPerUnit = 1
+    subLayers = [
+        @../mix-disco.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryMixDisco"
+{
+    over "Lights"
+    {
+        over "Light00"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light01"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light03"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light04"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light06"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light07"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light09"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light10"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light12"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light13"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light15"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light16"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light18"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light19"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light21"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Light22"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_mix_complementary_corridor",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/mix-complementary-corridor/mix-complementary-corridor.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

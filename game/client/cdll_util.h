@@ -97,6 +97,7 @@ const char *nexttoken(char *token, const char *str, char sep);
 
 enum
 {
+	LIGHT_INDEX_SPARK = 0x08000000, // spark bursts (fx_sparks.cpp): the base plus a serial below it
 	LIGHT_INDEX_TE_DYNAMIC = 0x10000000,
 	LIGHT_INDEX_PLAYER_BRIGHT = 0x20000000,
 	LIGHT_INDEX_MUZZLEFLASH = 0x40000000,

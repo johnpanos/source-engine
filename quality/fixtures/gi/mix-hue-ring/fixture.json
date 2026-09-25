@@ -1,0 +1,163 @@
+{
+  "baked_state": "all",
+  "cameras": {
+    "above": {
+      "eye": [
+        7.5,
+        4.0,
+        3.3
+      ],
+      "forward": [
+        -0.7917822555634719,
+        0.0,
+        -0.6108034542918211
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "corner": {
+      "eye": [
+        0.4,
+        0.4,
+        1.7
+      ],
+      "forward": [
+        0.7005163887483006,
+        0.7005163887483006,
+        -0.13621152003439177
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "mix",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "mix-hue-ring",
+  "oracles": [
+    {
+      "camera": "corner",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "all = triad-0 + triad-1 + triad-2 + triad-3 (corner)",
+      "parts": [
+        "triad-0",
+        "triad-1",
+        "triad-2",
+        "triad-3"
+      ],
+      "regions": [
+        "R_Zn",
+        "R_Xp",
+        "R_Yp",
+        "Pedestal",
+        "ProbeSphere"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "above",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "all = triad-0 + triad-1 + triad-2 + triad-3 (above)",
+      "parts": [
+        "triad-0",
+        "triad-1",
+        "triad-2",
+        "triad-3"
+      ],
+      "regions": [
+        "R_Zn",
+        "R_Xn",
+        "Pedestal",
+        "ProbeSphere"
+      ],
+      "sum": "all"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Twelve lights round a pedestal at every 30 degrees of hue; four triads (RGB, their halves, CMY, the rest) add to the full ring",
+  "regions": {
+    "above": {
+      "Pedestal": [
+        "Pedestal"
+      ],
+      "ProbeSphere": [
+        "ProbeSphere"
+      ],
+      "R_Xn": [
+        "R_Xn"
+      ],
+      "R_Zn": [
+        "R_Zn"
+      ]
+    },
+    "corner": {
+      "Pedestal": [
+        "Pedestal"
+      ],
+      "ProbeSphere": [
+        "ProbeSphere"
+      ],
+      "R_Xp": [
+        "R_Xp"
+      ],
+      "R_Yp": [
+        "R_Yp"
+      ],
+      "R_Zn": [
+        "R_Zn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "mix-hue-ring.usda",
+  "states": {
+    "all": {
+      "layer": null,
+      "note": "the full ring on"
+    },
+    "triad-0": {
+      "layer": "states/triad-0.usda",
+      "note": "hues 000, 120, 240 on"
+    },
+    "triad-1": {
+      "layer": "states/triad-1.usda",
+      "note": "hues 030, 150, 270 on"
+    },
+    "triad-2": {
+      "layer": "states/triad-2.usda",
+      "note": "hues 060, 180, 300 on"
+    },
+    "triad-3": {
+      "layer": "states/triad-3.usda",
+      "note": "hues 090, 210, 330 on"
+    }
+  }
+}

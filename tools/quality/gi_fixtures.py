@@ -16,6 +16,11 @@ that builds the fixture's baked state into a playable BSP2 map:
   probe-grid   a large floor under a uniform sky, and under one sun
   portal-view  a lit chamber seen directly and from the two portal cameras
 
+plus the gallery (`gi_gallery.py`): dozens of smaller fixtures (colored
+lights blending, colored and cluttered furnaces, color bleeding, leaks,
+symmetry, intensity ranges) whose relational `oracles` `gi_oracles.py`
+evaluates.
+
 Materials are Lambertian (UsdPreviewSurface ior 1, so Cycles' Principled BSDF
 has no specular lobe) unless a fixture says otherwise. Dynamic models are
 `Xform` prims carrying `sourceEngine:model`; their child mesh is the Cycles
@@ -56,7 +61,7 @@ HORIZONTAL_FOV = 90.0
 # The 4-unit panel of `thin-wall` (RFC 0011 fixture table).
 THIN_WALL_M = 4.0 / SOURCE_UNITS_PER_METER
 # Every dynamic model a fixture places (Author.probe_model / room_states).
-DYNAMIC_MODELS = ("ProbeSphere", "ProbeA", "ProbeB", "ProbeC")
+DYNAMIC_MODELS = ("ProbeSphere", "ProbeA", "ProbeB", "ProbeC", "ProbeD")
 
 
 # ------------------------------------------------------------------ geometry
@@ -744,6 +749,9 @@ FIXTURES = (furnace, thin_wall, room_states, door, probe_grid, portal_view)
 def generate(out):
     for build in FIXTURES:
         build(out)
+    # The gallery (gi_gallery.py) builds on this module's authoring helpers.
+    import gi_gallery
+    gi_gallery.generate(out)
     index = {"schema": "gi-fixture-index/v1",
              "fixtures": sorted(p.parent.name for p in out.glob("*/fixture.json")),
              "generator": "tools/quality/gi_fixtures.py"}

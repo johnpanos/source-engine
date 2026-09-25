@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_bleed_two_bounce_filter",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/bleed-two-bounce-filter/bleed-two-bounce-filter.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

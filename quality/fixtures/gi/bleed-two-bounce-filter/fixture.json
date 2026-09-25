@@ -1,0 +1,233 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "room-a": {
+      "eye": [
+        0.2,
+        2.8,
+        1.8
+      ],
+      "forward": [
+        0.7048627044982937,
+        -0.6293417004449051,
+        -0.32725768423135065
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "room-b": {
+      "eye": [
+        6.0,
+        0.2,
+        2.0
+      ],
+      "forward": [
+        -0.6880624620561867,
+        0.6389151433378877,
+        -0.34403123102809335
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "room-c": {
+      "eye": [
+        9.2,
+        0.2,
+        1.8
+      ],
+      "forward": [
+        -0.6958740458438459,
+        0.6423452730866271,
+        -0.3211726365433136
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "bleed",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "bleed-two-bounce-filter",
+  "oracles": [
+    {
+      "camera": "room-b",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "room B receives no direct light",
+      "regions": [
+        "B_Zn",
+        "B_Yp",
+        "B_Xn",
+        "B_Zp"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "room-c",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "room C receives no direct light",
+      "regions": [
+        "C_Zn",
+        "C_Yp",
+        "C_Xn"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "room-c",
+      "channel": 1,
+      "factor": 3.0,
+      "kind": "dominant",
+      "lights": [
+        "indirect"
+      ],
+      "name": "default/C_Zn G dominant (room-c)",
+      "over": [
+        0,
+        2
+      ],
+      "region": "C_Zn",
+      "state": "default"
+    },
+    {
+      "camera": "room-c",
+      "channel": 1,
+      "factor": 3.0,
+      "kind": "dominant",
+      "lights": [
+        "indirect"
+      ],
+      "name": "default/C_Yp G dominant (room-c)",
+      "over": [
+        0,
+        2
+      ],
+      "region": "C_Yp",
+      "state": "default"
+    },
+    {
+      "camera": "room-c",
+      "channel": 1,
+      "factor": 3.0,
+      "kind": "dominant",
+      "lights": [
+        "indirect"
+      ],
+      "name": "default/C_Xn G dominant (room-c)",
+      "over": [
+        0,
+        2
+      ],
+      "region": "C_Xn",
+      "state": "default"
+    },
+    {
+      "channel": 0,
+      "entries": [
+        {
+          "camera": "room-a",
+          "region": "A_Zn",
+          "state": "default"
+        },
+        {
+          "camera": "room-b",
+          "region": "B_Zn",
+          "state": "default"
+        },
+        {
+          "camera": "room-c",
+          "region": "C_Zn",
+          "state": "default"
+        }
+      ],
+      "factor": 1.5,
+      "kind": "tint_order",
+      "lights": [
+        "indirect"
+      ],
+      "name": "R/G falls along A_Zn, B_Zn, C_Zn",
+      "over": 1
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "White light reaches the third room only off yellow walls and then cyan walls: yellow removes blue, cyan removes red, and green alone arrives. No direct light passes either doorway",
+  "regions": {
+    "room-a": {
+      "A_Xp": [
+        "A_Xp"
+      ],
+      "A_Yn": [
+        "A_Yn"
+      ],
+      "A_Zn": [
+        "A_Zn"
+      ]
+    },
+    "room-b": {
+      "B_Xn": [
+        "B_Xn"
+      ],
+      "B_Yp": [
+        "B_Yp"
+      ],
+      "B_Zn": [
+        "B_Zn"
+      ],
+      "B_Zp": [
+        "B_Zp"
+      ]
+    },
+    "room-c": {
+      "C_Xn": [
+        "C_Xn"
+      ],
+      "C_Yp": [
+        "C_Yp"
+      ],
+      "C_Zn": [
+        "C_Zn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "bleed-two-bounce-filter.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "lamp in room A facing away from the doorway"
+    }
+  }
+}

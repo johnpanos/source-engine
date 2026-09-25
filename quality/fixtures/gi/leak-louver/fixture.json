@@ -1,0 +1,235 @@
+{
+  "baked_state": "both",
+  "cameras": {
+    "a": {
+      "eye": [
+        0.2,
+        0.3,
+        1.7
+      ],
+      "forward": [
+        0.8546341880281204,
+        0.49478821412154345,
+        -0.15743261358412744
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "b": {
+      "eye": [
+        8.0,
+        0.3,
+        1.7
+      ],
+      "forward": [
+        -0.8546341880281204,
+        0.49478821412154345,
+        -0.15743261358412744
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeA",
+      "stand_in_mesh": "ProbeAShape"
+    },
+    {
+      "name": "ProbeB",
+      "stand_in_mesh": "ProbeBShape"
+    }
+  ],
+  "family": "leak",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "leak-louver",
+  "oracles": [
+    {
+      "camera": "a",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "both = orange + blue (a)",
+      "parts": [
+        "orange",
+        "blue"
+      ],
+      "regions": [
+        "A_Zn",
+        "A_Yp",
+        "A_Xp",
+        "ProbeA"
+      ],
+      "sum": "both"
+    },
+    {
+      "camera": "b",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "both = orange + blue (b)",
+      "parts": [
+        "orange",
+        "blue"
+      ],
+      "regions": [
+        "B_Zn",
+        "B_Yp",
+        "B_Xn",
+        "ProbeB"
+      ],
+      "sum": "both"
+    },
+    {
+      "camera": "a",
+      "expected": [
+        1.0,
+        0.6,
+        0.2
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "orange chromaticity (a)",
+      "regions": [
+        "A_Zn",
+        "A_Yp",
+        "A_Xp",
+        "ProbeA"
+      ],
+      "state": "orange"
+    },
+    {
+      "camera": "b",
+      "expected": [
+        1.0,
+        0.6,
+        0.2
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "orange chromaticity (b)",
+      "regions": [
+        "B_Zn",
+        "B_Yp",
+        "B_Xn",
+        "ProbeB"
+      ],
+      "state": "orange"
+    },
+    {
+      "camera": "a",
+      "expected": [
+        0.2,
+        0.4,
+        1.0
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "blue chromaticity (a)",
+      "regions": [
+        "A_Zn",
+        "A_Yp",
+        "A_Xp",
+        "ProbeA"
+      ],
+      "state": "blue"
+    },
+    {
+      "camera": "b",
+      "expected": [
+        0.2,
+        0.4,
+        1.0
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "blue chromaticity (b)",
+      "regions": [
+        "B_Zn",
+        "B_Yp",
+        "B_Xn",
+        "ProbeB"
+      ],
+      "state": "blue"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "An orange-lit room and a blue-lit room joined by a louvered opening of thin slats: light crosses in both directions and adds, each color unchanged by the grey slats",
+  "regions": {
+    "a": {
+      "A_Xp": [
+        "A_Xp"
+      ],
+      "A_Yp": [
+        "A_Yp"
+      ],
+      "A_Zn": [
+        "A_Zn"
+      ],
+      "ProbeA": [
+        "ProbeA"
+      ]
+    },
+    "b": {
+      "B_Xn": [
+        "B_Xn"
+      ],
+      "B_Yp": [
+        "B_Yp"
+      ],
+      "B_Zn": [
+        "B_Zn"
+      ],
+      "ProbeB": [
+        "ProbeB"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "leak-louver.usda",
+  "states": {
+    "blue": {
+      "layer": "states/blue.usda",
+      "note": "blue room alone"
+    },
+    "both": {
+      "layer": null,
+      "note": "both rooms lit"
+    },
+    "orange": {
+      "layer": "states/orange.usda",
+      "note": "orange room alone"
+    }
+  }
+}

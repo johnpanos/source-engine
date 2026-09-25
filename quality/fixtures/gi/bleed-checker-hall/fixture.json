@@ -1,0 +1,262 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "diagonal": {
+      "eye": [
+        0.3,
+        0.3,
+        1.8
+      ],
+      "forward": [
+        0.7004922542956701,
+        0.7004922542956701,
+        -0.13645953005759806
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "mid": {
+      "eye": [
+        4.0,
+        0.3,
+        1.8
+      ],
+      "forward": [
+        0.0,
+        0.9815489870809552,
+        -0.1912108416391471
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "bleed",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "bleed-checker-hall",
+  "oracles": [
+    {
+      "a": {
+        "camera": "mid",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "R_Xn",
+        "state": "default"
+      },
+      "b": {
+        "camera": "mid",
+        "channels": [
+          2,
+          1,
+          0
+        ],
+        "region": "R_Xp",
+        "state": "default"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror default/R_Xn = default/R_Xp"
+    },
+    {
+      "a": {
+        "camera": "mid",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "FloorRed",
+        "state": "default"
+      },
+      "b": {
+        "camera": "mid",
+        "channels": [
+          2,
+          1,
+          0
+        ],
+        "region": "FloorBlue",
+        "state": "default"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror default/FloorRed = default/FloorBlue"
+    },
+    {
+      "a": {
+        "camera": "mid",
+        "channels": [
+          0
+        ],
+        "region": "R_Yp",
+        "state": "default"
+      },
+      "b": {
+        "camera": "mid",
+        "channels": [
+          2
+        ],
+        "region": "R_Yp",
+        "state": "default"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "self-mirror default/R_Yp R = B"
+    },
+    {
+      "a": {
+        "camera": "mid",
+        "channels": [
+          0
+        ],
+        "region": "R_Zp",
+        "state": "default"
+      },
+      "b": {
+        "camera": "mid",
+        "channels": [
+          2
+        ],
+        "region": "R_Zp",
+        "state": "default"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "self-mirror default/R_Zp R = B"
+    },
+    {
+      "a": {
+        "camera": "diagonal",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "R_Xp",
+        "state": "default"
+      },
+      "b": {
+        "camera": "diagonal",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "R_Yp",
+        "state": "default"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror default/R_Xp = default/R_Yp"
+    },
+    {
+      "camera": "mid",
+      "channel": 0,
+      "factor": 1.5,
+      "kind": "dominant",
+      "lights": [
+        "indirect"
+      ],
+      "name": "default/R_Zp R dominant (mid)",
+      "over": [
+        1
+      ],
+      "region": "R_Zp",
+      "state": "default"
+    },
+    {
+      "camera": "mid",
+      "channel": 2,
+      "factor": 1.5,
+      "kind": "dominant",
+      "lights": [
+        "indirect"
+      ],
+      "name": "default/R_Zp B dominant (mid)",
+      "over": [
+        1
+      ],
+      "region": "R_Zp",
+      "state": "default"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A red and blue checkerboard floor: reflecting across the hall's midline swaps red and blue tiles, so the two tile sets and the two side walls match with channels swapped",
+  "regions": {
+    "diagonal": {
+      "FloorBlue": [
+        "FloorBlue"
+      ],
+      "FloorRed": [
+        "FloorRed"
+      ],
+      "R_Xp": [
+        "R_Xp"
+      ],
+      "R_Yp": [
+        "R_Yp"
+      ]
+    },
+    "mid": {
+      "FloorBlue": [
+        "FloorBlue"
+      ],
+      "FloorRed": [
+        "FloorRed"
+      ],
+      "R_Xn": [
+        "R_Xn"
+      ],
+      "R_Xp": [
+        "R_Xp"
+      ],
+      "R_Yp": [
+        "R_Yp"
+      ],
+      "R_Zp": [
+        "R_Zp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "bleed-checker-hall.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "lamp on"
+    }
+  }
+}

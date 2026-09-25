@@ -15,6 +15,7 @@
 //   uint32   vertex count V, triangle count T
 //   float32  positions[3V], normals[3V]
 //   uint32   indices[3T]
+//   uint32   group[T]: faces of different groups never share a chart
 //   float32  maxCost, normalDeviationWeight, roundnessWeight,
 //            straightnessWeight, normalSeamWeight, textureSeamWeight,
 //            maxChartArea, maxBoundaryLength
@@ -76,11 +77,13 @@ int main( int argc, char **argv )
 	std::vector<float> positions( 3 * size_t( vertexCount ) );
 	std::vector<float> normals( 3 * size_t( vertexCount ) );
 	std::vector<uint32_t> indices( 3 * size_t( triangleCount ) );
+	std::vector<uint32_t> groups( triangleCount );
 	float weights[8];
 	uint32_t maxIterations = 0;
 	const bool read = ReadAll( in, positions.data(), positions.size() * sizeof( float ) ) &&
 					  ReadAll( in, normals.data(), normals.size() * sizeof( float ) ) &&
 					  ReadAll( in, indices.data(), indices.size() * sizeof( uint32_t ) ) &&
+					  ReadAll( in, groups.data(), groups.size() * sizeof( uint32_t ) ) &&
 					  ReadAll( in, weights, sizeof( weights ) ) &&
 					  ReadAll( in, &maxIterations, sizeof( maxIterations ) );
 	fclose( in );
@@ -102,6 +105,7 @@ int main( int argc, char **argv )
 	mesh.indexCount = uint32_t( indices.size() );
 	mesh.indexData = indices.data();
 	mesh.indexFormat = xatlas::IndexFormat::UInt32;
+	mesh.faceMaterialData = groups.data();
 	if ( xatlas::AddMesh( atlas, mesh, 1 ) != xatlas::AddMeshError::Success )
 	{
 		xatlas::Destroy( atlas );

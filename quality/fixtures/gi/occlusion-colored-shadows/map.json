@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_occlusion_colored_shadows",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/occlusion-colored-shadows/occlusion-colored-shadows.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

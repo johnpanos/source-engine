@@ -1,0 +1,158 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "front": {
+      "eye": [
+        1.5,
+        0.1,
+        1.5
+      ],
+      "forward": [
+        0.0,
+        0.9946917938265512,
+        -0.10289915108550532
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "bleed",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "bleed-cornell",
+  "oracles": [
+    {
+      "channel": 0,
+      "entries": [
+        {
+          "camera": "front",
+          "region": "BackLeft",
+          "state": "default"
+        },
+        {
+          "camera": "front",
+          "region": "BackRight",
+          "state": "default"
+        }
+      ],
+      "factor": 1.05,
+      "kind": "tint_order",
+      "lights": [
+        "indirect"
+      ],
+      "name": "R/G falls along BackLeft, BackRight",
+      "over": 1
+    },
+    {
+      "channel": 0,
+      "entries": [
+        {
+          "camera": "front",
+          "region": "FloorLeft",
+          "state": "default"
+        },
+        {
+          "camera": "front",
+          "region": "FloorRight",
+          "state": "default"
+        }
+      ],
+      "factor": 1.05,
+      "kind": "tint_order",
+      "lights": [
+        "indirect"
+      ],
+      "name": "R/G falls along FloorLeft, FloorRight",
+      "over": 1
+    },
+    {
+      "channel": 0,
+      "entries": [
+        {
+          "camera": "front",
+          "region": "Short_Xn",
+          "state": "default"
+        },
+        {
+          "camera": "front",
+          "region": "Tall_Xp",
+          "state": "default"
+        }
+      ],
+      "factor": 1.05,
+      "kind": "tint_order",
+      "lights": [
+        "indirect"
+      ],
+      "name": "R/G falls along Short_Xn, Tall_Xp",
+      "over": 1
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "The Cornell box: red and green side walls tint the white surfaces nearest them; the block faces facing each wall take its color",
+  "regions": {
+    "front": {
+      "BackLeft": [
+        "BackLeft"
+      ],
+      "BackRight": [
+        "BackRight"
+      ],
+      "C_Xn": [
+        "C_Xn"
+      ],
+      "C_Xp": [
+        "C_Xp"
+      ],
+      "C_Zp": [
+        "C_Zp"
+      ],
+      "FloorLeft": [
+        "FloorLeft"
+      ],
+      "FloorRight": [
+        "FloorRight"
+      ],
+      "ProbeSphere": [
+        "ProbeSphere"
+      ],
+      "Short_Xn": [
+        "Short_Xn"
+      ],
+      "Short_Yn": [
+        "Short_Yn"
+      ],
+      "Tall_Xp": [
+        "Tall_Xp"
+      ],
+      "Tall_Yn": [
+        "Tall_Yn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "bleed-cornell.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "ceiling lamp on"
+    }
+  }
+}

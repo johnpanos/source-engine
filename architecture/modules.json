@@ -202,6 +202,7 @@
           "public/render/render_sample_count.h",
           "public/render/dxsupport_policy.h",
           "public/render/light_set.h",
+          "public/render/spark_light.h",
           "public/render/indirect_policy.h"
         ],
         "allowedEdges": []

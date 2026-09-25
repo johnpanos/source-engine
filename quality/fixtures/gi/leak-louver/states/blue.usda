@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryLeakLouver"
+    metersPerUnit = 1
+    subLayers = [
+        @../leak-louver.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryLeakLouver"
+{
+    over "Lights"
+    {
+        over "Orange"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

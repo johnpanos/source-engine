@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_bleed_cornell",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/bleed-cornell/bleed-cornell.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_bleed_checker_hall",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/bleed-checker-hall/bleed-checker-hall.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

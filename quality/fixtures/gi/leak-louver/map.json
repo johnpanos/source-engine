@@ -1,0 +1,11 @@
+{
+  "collision": {
+    "solid_meshes": [
+      "Louvers"
+    ]
+  },
+  "map": "gi_leak_louver",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/leak-louver/leak-louver.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

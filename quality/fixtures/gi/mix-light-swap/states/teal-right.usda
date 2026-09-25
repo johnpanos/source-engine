@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryMixLightSwap"
+    metersPerUnit = 1
+    subLayers = [
+        @../mix-light-swap.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryMixLightSwap"
+{
+    over "Lights"
+    {
+        over "Left"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

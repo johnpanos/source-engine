@@ -1,0 +1,156 @@
+{
+  "baked_state": "both",
+  "cameras": {
+    "nave": {
+      "eye": [
+        0.5,
+        4.0,
+        1.8
+      ],
+      "forward": [
+        0.9970165267285711,
+        0.0,
+        0.07718837626285711
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "complex",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "complex-colonnade",
+  "oracles": [
+    {
+      "camera": "nave",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "both = sun + sky (nave)",
+      "parts": [
+        "sun",
+        "sky"
+      ],
+      "regions": [
+        "N_Zn",
+        "N_Xp",
+        "N_Yn",
+        "N_Yp",
+        "Roof",
+        "Columns",
+        "ProbeSphere"
+      ],
+      "sum": "both"
+    },
+    {
+      "camera": "nave",
+      "expected": [
+        1.0,
+        0.85,
+        0.6
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "sun chromaticity (nave)",
+      "regions": [
+        "N_Zn",
+        "N_Xp",
+        "N_Yn",
+        "N_Yp",
+        "Roof",
+        "Columns",
+        "ProbeSphere"
+      ],
+      "state": "sun"
+    },
+    {
+      "camera": "nave",
+      "expected": [
+        0.35,
+        0.5,
+        1.0
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "sky chromaticity (nave)",
+      "regions": [
+        "N_Zn",
+        "N_Xp",
+        "N_Yn",
+        "N_Yp",
+        "Roof",
+        "Columns",
+        "ProbeSphere"
+      ],
+      "state": "sky"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A long hall of columns lit through three roof openings by a warm sun and a blue sky: sun and sky add, and each keeps its color throughout the grey interior",
+  "regions": {
+    "nave": {
+      "Columns": [
+        "Columns"
+      ],
+      "N_Xp": [
+        "N_Xp"
+      ],
+      "N_Yn": [
+        "N_Yn"
+      ],
+      "N_Yp": [
+        "N_Yp"
+      ],
+      "N_Zn": [
+        "N_Zn"
+      ],
+      "ProbeSphere": [
+        "ProbeSphere"
+      ],
+      "Roof": [
+        "Roof"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "complex-colonnade.usda",
+  "states": {
+    "both": {
+      "layer": null,
+      "note": "sun and sky"
+    },
+    "sky": {
+      "layer": "states/sky.usda",
+      "note": "sky alone"
+    },
+    "sun": {
+      "layer": "states/sun.usda",
+      "note": "sun alone"
+    }
+  }
+}

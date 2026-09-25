@@ -1,0 +1,130 @@
+{
+  "analytic": {
+    "albedo": [
+      0.6,
+      0.6,
+      0.6
+    ],
+    "diffuse_light_direct": [
+      0.2,
+      0.2,
+      0.2
+    ],
+    "diffuse_light_indirect": [
+      0.3,
+      0.3,
+      0.3
+    ],
+    "diffuse_light_total": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "emission": [
+      0.2,
+      0.2,
+      0.2
+    ]
+  },
+  "baked_state": "default",
+  "cameras": {
+    "inside": {
+      "eye": [
+        1.0,
+        0.3,
+        1.5
+      ],
+      "forward": [
+        0.0,
+        0.9958932064677037,
+        -0.09053574604251852
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "furnace",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "furnace-maze",
+  "oracles": [
+    {
+      "camera": "inside",
+      "expected": {
+        "direct": [
+          0.2,
+          0.2,
+          0.2
+        ],
+        "indirect": [
+          0.3,
+          0.3,
+          0.3
+        ],
+        "total": [
+          0.5,
+          0.5,
+          0.5
+        ]
+      },
+      "kind": "value",
+      "lights": [
+        "direct",
+        "indirect",
+        "total"
+      ],
+      "name": "furnace L = Le / (1 - rho) per channel (inside)",
+      "regions": [
+        "walls",
+        "model",
+        "maze"
+      ],
+      "state": "default"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Furnace maze: light must turn many corners to reach the dead ends, yet every surface still sees L",
+  "regions": {
+    "inside": {
+      "maze": [
+        "Maze"
+      ],
+      "model": [
+        "ProbeSphere"
+      ],
+      "walls": [
+        "Box_Xn",
+        "Box_Xp",
+        "Box_Yn",
+        "Box_Yp",
+        "Box_Zn",
+        "Box_Zp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "furnace-maze.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "uniform emission [0.2, 0.2, 0.2], albedo [0.6, 0.6, 0.6]"
+    }
+  }
+}

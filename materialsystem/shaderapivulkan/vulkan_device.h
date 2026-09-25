@@ -402,7 +402,26 @@ public:
 		// Engine_Post) on the skin pipeline's layout; shaders/screenspace_post.*.
 		// Its constants arrive through SetDynamicSkinConstants, `combos` holding
 		// the pass (kPost*).
-		kDynShaderPost = 13
+		kDynShaderPost = 13,
+		// Portal 2's paint blobs (paintblob_vs20 / paintblob_ps20b): the
+		// blobulator's isosurface, on the skin pipeline's layout and vertex
+		// stage (its constants arrive through SetDynamicSkinConstants); see
+		// shaders/paintblob.frag.
+		kDynShaderPaintBlob = 14
+	};
+	// paintblob.frag's combo flags (SkinConstants::combos, c27.x of
+	// paintblob_helper.cpp); the draw clears kPaintBlobEnvMap when the bound
+	// environment map is not a cube.
+	enum
+	{
+		kPaintBlobBackSurface = 1,
+		kPaintBlobLightWarp = 2,
+		kPaintBlobFresnelWarp = 4,
+		kPaintBlobOpacityTexture = 8,
+		kPaintBlobInteriorLayer = 16,
+		kPaintBlobContactShadow = 32,
+		kPaintBlobSpecMask = 64,
+		kPaintBlobEnvMap = 128
 	};
 	// lightmapped.frag's static combo flags (SkinConstants::combos).
 	enum
@@ -816,6 +835,10 @@ public:
 	{
 		return m_skinPipelineLayout != VK_NULL_HANDLE && m_solidEnergyVert != VK_NULL_HANDLE;
 	}
+	bool PaintBlobPipelineSupported() const
+	{
+		return m_skinPipelineLayout != VK_NULL_HANDLE && m_paintBlobFrag != VK_NULL_HANDLE;
+	}
 	// False when the device's push constants cannot hold PortalRefract's block;
 	// its draws are then declined.
 	bool PortalPipelineSupported() const { return m_portalPipelineLayout != VK_NULL_HANDLE; }
@@ -1140,6 +1163,7 @@ private:
 	bool CreateFramebuffers( std::string *outError );
 	bool CreateCommandResources( std::string *outError );
 	bool CreateSyncObjects( std::string *outError );
+	bool GrowRenderFinished( size_t count, std::string *outError );
 	bool CreateCaptureImage( VkExtent2D extent, std::string *outError );
 
 	void DestroySwapchainObjects();
@@ -1163,7 +1187,6 @@ private:
 	    VkCommandBuffer cmd, uint32_t imageIndex, VkImageLayout backBufferLayout, bool capture );
 	// Copies the presented swapchain image (in `layout`, last written at
 	// `srcStage`/`srcAccess`) for capture if requested, then transitions it to
-	bool GrowRenderFinished( size_t count, std::string *outError );
 	// PRESENT_SRC.
 	void RecordPresentedCaptureAndRelease( VkCommandBuffer cmd, uint32_t imageIndex,
 	    VkImageLayout layout, VkPipelineStageFlags srcStage, VkAccessFlags srcAccess,
@@ -1511,6 +1534,7 @@ private:
 		kPipelinePbrModelEnv = 6,
 		kPipelineLightmapped = 7,
 		kPipelinePost = 8,
+		kPipelinePaintBlob = 9,
 		kPipelineFamilies
 	};
 	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
@@ -1538,6 +1562,12 @@ private:
 	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
 	VkShaderModule m_solidEnergyVert = VK_NULL_HANDLE;
 	VkShaderModule m_solidEnergyFrag = VK_NULL_HANDLE;
+	// Paint blobs: skin.vert and paintblob.frag on the skin layout, with six
+	// sampler sets (s0, s1, s3, s7 as a cube, s4, s2) and the constants.
+	std::map<uint64_t, VkPipeline> m_paintBlobPipelines;
+	VkPipeline PaintBlobPipeline(
+	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
+	VkShaderModule m_paintBlobFrag = VK_NULL_HANDLE;
 	// LightmappedGeneric: the skin push block and nine sets (s0, s1, s2, s4, s5,
 	// s7, the constants, s8, s12), with its own vertex input (the tangent T and
 	// the bumped lightmap offset beyond the skin record, and the fog stream).
@@ -1720,6 +1750,9 @@ private:
 	int m_worldLightmapDirectHandle = -1;
 	int m_worldLightmapIndirectHandle = -1;
 	int m_probeAtlasHandle = -1;
+	int m_shadowFieldHandle = -1;
+	float m_shadowFieldOrigin[4] = {}; // xyz the first voxel centre, w the voxel size
+	float m_shadowFieldDims[4] = {};
 	int m_probeGridHandle = -1;
 	uint32_t m_probeGridCount = 0;
 	int m_probeDeltaHandle = -1;
@@ -1750,9 +1783,6 @@ private:
 	void DestroyWorldPbrExtendedVariants();
 	void DestroyWorldPbrDeltaVariants();
 	// Deleted textures awaiting the completion of the submission that may still
-	int m_shadowFieldHandle = -1;
-	float m_shadowFieldOrigin[4] = {}; // xyz the first voxel centre, w the voxel size
-	float m_shadowFieldDims[4] = {};
 	// use them (`afterSerial`, a value of m_submitSerial), and handles free again.
 	struct RetiredTexture
 	{

@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_occlusion_l_corridor",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/occlusion-l-corridor/occlusion-l-corridor.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

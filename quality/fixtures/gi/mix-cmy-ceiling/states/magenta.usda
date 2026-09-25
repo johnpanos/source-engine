@@ -1,0 +1,26 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryMixCmyCeiling"
+    metersPerUnit = 1
+    subLayers = [
+        @../mix-cmy-ceiling.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryMixCmyCeiling"
+{
+    over "Lights"
+    {
+        over "Cyan"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Yellow"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

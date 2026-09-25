@@ -1,0 +1,333 @@
+{
+  "baked_state": "all",
+  "cameras": {
+    "north-west": {
+      "eye": [
+        0.4,
+        7.6,
+        2.0
+      ],
+      "forward": [
+        0.7037212078676834,
+        -0.7037212078676833,
+        -0.09773905664828936
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "south": {
+      "eye": [
+        4.0,
+        0.3,
+        2.0
+      ],
+      "forward": [
+        0.0,
+        0.9774141654398673,
+        -0.21133279252753887
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "south-east": {
+      "eye": [
+        7.6,
+        0.4,
+        2.0
+      ],
+      "forward": [
+        -0.7037212078676833,
+        0.7037212078676834,
+        -0.09773905664828936
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "occlusion",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "occlusion-colored-shadows",
+  "oracles": [
+    {
+      "camera": "south-east",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "all = red + green + blue (south-east)",
+      "parts": [
+        "red",
+        "green",
+        "blue"
+      ],
+      "regions": [
+        "Pillar_Xp",
+        "Pillar_Yn",
+        "R_Zn"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "north-west",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "all = red + green + blue (north-west)",
+      "parts": [
+        "red",
+        "green",
+        "blue"
+      ],
+      "regions": [
+        "Pillar_Xn",
+        "Pillar_Yp",
+        "R_Zn"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "south",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "all = red + green + blue (south)",
+      "parts": [
+        "red",
+        "green",
+        "blue"
+      ],
+      "regions": [
+        "Pillar_Yn",
+        "R_Zn",
+        "R_Xn",
+        "R_Xp"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "south-east",
+      "channel": 0,
+      "factor": 3.0,
+      "kind": "dominant",
+      "lights": [
+        "direct"
+      ],
+      "name": "all/Pillar_Xp R dominant (south-east)",
+      "over": [
+        1,
+        2
+      ],
+      "region": "Pillar_Xp",
+      "state": "all"
+    },
+    {
+      "camera": "north-west",
+      "channel": 2,
+      "factor": 3.0,
+      "kind": "dominant",
+      "lights": [
+        "direct"
+      ],
+      "name": "all/Pillar_Xn B dominant (north-west)",
+      "over": [
+        0,
+        1
+      ],
+      "region": "Pillar_Xn",
+      "state": "all"
+    },
+    {
+      "camera": "north-west",
+      "channel": 1,
+      "factor": 3.0,
+      "kind": "dominant",
+      "lights": [
+        "direct"
+      ],
+      "name": "all/Pillar_Yp G dominant (north-west)",
+      "over": [
+        0,
+        2
+      ],
+      "region": "Pillar_Yp",
+      "state": "all"
+    },
+    {
+      "camera": "south",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "the south face sees no lamp",
+      "regions": [
+        "Pillar_Yn"
+      ],
+      "state": "all"
+    },
+    {
+      "a": {
+        "camera": "south",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "R_Xn",
+        "state": "all"
+      },
+      "b": {
+        "camera": "south",
+        "channels": [
+          2,
+          1,
+          0
+        ],
+        "region": "R_Xp",
+        "state": "all"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror all/R_Xn = all/R_Xp"
+    },
+    {
+      "a": {
+        "camera": "south",
+        "channels": [
+          0
+        ],
+        "region": "Pillar_Yn",
+        "state": "all"
+      },
+      "b": {
+        "camera": "south",
+        "channels": [
+          2
+        ],
+        "region": "Pillar_Yn",
+        "state": "all"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "self-mirror all/Pillar_Yn R = B"
+    },
+    {
+      "a": {
+        "camera": "south",
+        "channels": [
+          0
+        ],
+        "region": "R_Zn",
+        "state": "all"
+      },
+      "b": {
+        "camera": "south",
+        "channels": [
+          2
+        ],
+        "region": "R_Zn",
+        "state": "all"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "self-mirror all/R_Zn R = B"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Red, green and blue lamps round a pillar: each face is lit by the lamp it faces, the face turned from all three gets only bounce light, and the red/blue mirror swaps faces",
+  "regions": {
+    "north-west": {
+      "Pillar_Xn": [
+        "Pillar_Xn"
+      ],
+      "Pillar_Yp": [
+        "Pillar_Yp"
+      ],
+      "R_Zn": [
+        "R_Zn"
+      ]
+    },
+    "south": {
+      "Pillar_Yn": [
+        "Pillar_Yn"
+      ],
+      "R_Xn": [
+        "R_Xn"
+      ],
+      "R_Xp": [
+        "R_Xp"
+      ],
+      "R_Zn": [
+        "R_Zn"
+      ]
+    },
+    "south-east": {
+      "Pillar_Xp": [
+        "Pillar_Xp"
+      ],
+      "Pillar_Yn": [
+        "Pillar_Yn"
+      ],
+      "R_Zn": [
+        "R_Zn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "occlusion-colored-shadows.usda",
+  "states": {
+    "all": {
+      "layer": null,
+      "note": "three lamps on"
+    },
+    "blue": {
+      "layer": "states/blue.usda",
+      "note": "blue lamp alone"
+    },
+    "green": {
+      "layer": "states/green.usda",
+      "note": "green lamp alone"
+    },
+    "red": {
+      "layer": "states/red.usda",
+      "note": "red lamp alone"
+    }
+  }
+}

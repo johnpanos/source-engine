@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_furnace_near_black",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/furnace-near-black/furnace-near-black.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

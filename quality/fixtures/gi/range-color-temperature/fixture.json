@@ -1,0 +1,257 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "k10000": {
+      "eye": [
+        6.800000000000001,
+        0.2,
+        1.8
+      ],
+      "forward": [
+        0.6396021490668314,
+        0.6396021490668312,
+        -0.42640143271122083
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "k1900": {
+      "eye": [
+        0.2,
+        0.2,
+        1.8
+      ],
+      "forward": [
+        0.6396021490668313,
+        0.6396021490668313,
+        -0.42640143271122094
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "k3200": {
+      "eye": [
+        2.4000000000000004,
+        0.2,
+        1.8
+      ],
+      "forward": [
+        0.6396021490668312,
+        0.6396021490668313,
+        -0.42640143271122094
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "k5600": {
+      "eye": [
+        4.6000000000000005,
+        0.2,
+        1.8
+      ],
+      "forward": [
+        0.6396021490668312,
+        0.6396021490668313,
+        -0.42640143271122094
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "range",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "range-color-temperature",
+  "oracles": [
+    {
+      "camera": "k1900",
+      "expected": [
+        2.625639,
+        0.616902,
+        0.00805
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "1900 K booth has the blackbody color",
+      "regions": [
+        "K1900_Zn",
+        "K1900_Xp",
+        "K1900_Yp"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "k3200",
+      "expected": [
+        1.679905,
+        0.865969,
+        0.325642
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "3200 K booth has the blackbody color",
+      "regions": [
+        "K3200_Zn",
+        "K3200_Xp",
+        "K3200_Yp"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "k5600",
+      "expected": [
+        1.132336,
+        0.972695,
+        0.880806
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "5600 K booth has the blackbody color",
+      "regions": [
+        "K5600_Zn",
+        "K5600_Xp",
+        "K5600_Yp"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "k10000",
+      "expected": [
+        0.871841,
+        0.994688,
+        1.429996
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "10000 K booth has the blackbody color",
+      "regions": [
+        "K10000_Zn",
+        "K10000_Xp",
+        "K10000_Yp"
+      ],
+      "state": "default"
+    },
+    {
+      "channel": 0,
+      "entries": [
+        {
+          "camera": "k1900",
+          "region": "K1900_Zn",
+          "state": "default"
+        },
+        {
+          "camera": "k3200",
+          "region": "K3200_Zn",
+          "state": "default"
+        },
+        {
+          "camera": "k5600",
+          "region": "K5600_Zn",
+          "state": "default"
+        },
+        {
+          "camera": "k10000",
+          "region": "K10000_Zn",
+          "state": "default"
+        }
+      ],
+      "factor": 1.1,
+      "kind": "tint_order",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "R/B falls along K1900_Zn, K3200_Zn, K5600_Zn, K10000_Zn",
+      "over": 2
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Four sealed white booths lit at 1900 K, 3200 K, 5600 K and 10000 K: grey walls take each blackbody color exactly, and red over blue falls as the temperature rises",
+  "regions": {
+    "k10000": {
+      "K10000_Xp": [
+        "K10000_Xp"
+      ],
+      "K10000_Yp": [
+        "K10000_Yp"
+      ],
+      "K10000_Zn": [
+        "K10000_Zn"
+      ]
+    },
+    "k1900": {
+      "K1900_Xp": [
+        "K1900_Xp"
+      ],
+      "K1900_Yp": [
+        "K1900_Yp"
+      ],
+      "K1900_Zn": [
+        "K1900_Zn"
+      ]
+    },
+    "k3200": {
+      "K3200_Xp": [
+        "K3200_Xp"
+      ],
+      "K3200_Yp": [
+        "K3200_Yp"
+      ],
+      "K3200_Zn": [
+        "K3200_Zn"
+      ]
+    },
+    "k5600": {
+      "K5600_Xp": [
+        "K5600_Xp"
+      ],
+      "K5600_Yp": [
+        "K5600_Yp"
+      ],
+      "K5600_Zn": [
+        "K5600_Zn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "range-color-temperature.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "four booths"
+    }
+  }
+}

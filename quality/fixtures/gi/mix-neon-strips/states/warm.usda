@@ -1,0 +1,40 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryMixNeonStrips"
+    metersPerUnit = 1
+    subLayers = [
+        @../mix-neon-strips.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryMixNeonStrips"
+{
+    over "Looks"
+    {
+        over "NeonGreen"
+        {
+            over "Surface"
+            {
+                color3f inputs:emissiveColor = (0, 0, 0)
+            }
+        }
+
+        over "NeonBlue"
+        {
+            over "Surface"
+            {
+                color3f inputs:emissiveColor = (0, 0, 0)
+            }
+        }
+
+        over "NeonViolet"
+        {
+            over "Surface"
+            {
+                color3f inputs:emissiveColor = (0, 0, 0)
+            }
+        }
+    }
+}
+

@@ -421,8 +421,9 @@ class CurvedLayoutTest(unittest.TestCase):
         real = layout.xatlas_charts
         calls = []
 
-        def stretched_first(positions, corner_normals, members, tool, max_area=0.0):
-            labels, flat = real(positions, corner_normals, members, tool, max_area)
+        def stretched_first(positions, corner_normals, members, tool, max_area=0.0,
+                            groups_of=None):
+            labels, flat = real(positions, corner_normals, members, tool, max_area, groups_of)
             calls.append(max_area)
             if max_area == 0.0:
                 flat = flat * np.array([2.0, 1.0])
@@ -447,6 +448,88 @@ class CurvedLayoutTest(unittest.TestCase):
         low, high = layout.stretch(positions, uvs * SIZE, record["texels_per_metre"])
         self.assertLessEqual(high.max(), limit + 1e-6)
         self.assertGreaterEqual(low.min(), 1 / limit - 1e-6)
+
+    def test_tiny_triangles_are_charted(self):
+        """A 1 mm smooth sphere: its triangles are below xatlas's fixed area
+        epsilon in metres (1.2e-7), which it drops as degenerate; every one
+        must still be charted, within the stretch limit."""
+        positions, normals = smooth_sphere(np.random.default_rng(5), 0.001, 16, 8)
+        self.assertLess(layout.triangle_areas(positions).max(), 1.19e-7)
+        uvs, record = layout.planar_layout(positions, SIZE, corner_normals=normals,
+                                           xatlas=xatlas_tool())
+        self.assertEqual(record["parked_triangles"], 0)
+        self.assertEqual(record["curved_triangles"], len(positions))
+        low, high = layout.stretch(positions, uvs * SIZE, record["texels_per_metre"])
+        self.assertLessEqual(high.max(), layout.MAX_STRETCH + 1e-6)
+        self.assertGreaterEqual(low.min(), 1 / layout.MAX_STRETCH - 1e-6)
+        invariants = seams.chart_invariants(positions, uvs, SIZE, layout.MAX_STRETCH ** 2)
+        self.assertEqual(invariants["overlap_texels"] + invariants["bleed_texels"], 0)
+        # Negative control: handed metres, xatlas drops them and the layout
+        # refuses rather than park them.
+        units = layout.XATLAS_UNITS_PER_METRE
+        try:
+            layout.XATLAS_UNITS_PER_METRE = 1.0
+            with self.assertRaisesRegex(RuntimeError, "uncharted"):
+                layout.planar_layout(positions, SIZE, corner_normals=normals,
+                                     xatlas=xatlas_tool())
+        finally:
+            layout.XATLAS_UNITS_PER_METRE = units
+
+    def test_flat_faces_join_the_fillet_they_meet(self):
+        """Two flat walls rounded into each other by a smooth quarter-round
+        fillet are one curved surface, flat parts included; the same walls
+        with a faceted fillet are all flat."""
+        def rounded(faceted):
+            tris, normals = [], []
+            steps, radius = 6, 0.2
+            angles = [math.pi / 2 * i / steps for i in range(steps + 1)]
+            # Profile in the xy plane: wall along +y at x = 0, fillet, wall along +x.
+            # Each wall has two columns: the far one meets the fillet only
+            # through the near one, across a flat edge.
+            profile = [((0.0, 1.0), (-1.0, 0.0)), ((0.0, 0.6), (-1.0, 0.0))]
+            for a in angles:
+                profile.append(((radius - radius * math.cos(a), radius - radius * math.sin(a)),
+                                (-math.cos(a), -math.sin(a))))
+            profile += [((0.6, 0.0), (0.0, -1.0)), ((1.0, 0.0), (0.0, -1.0))]
+            for i in range(len(profile) - 1):
+                (p0, n0), (p1, n1) = profile[i], profile[i + 1]
+                if faceted:
+                    mid = np.array(n0) + np.array(n1)
+                    n0 = n1 = tuple(mid / np.linalg.norm(mid))
+                corners = [(p0[0], p0[1], 0.0), (p1[0], p1[1], 0.0), (p1[0], p1[1], 1.0),
+                           (p0[0], p0[1], 1.0)]
+                ns = [n0 + (0.0,), n1 + (0.0,), n1 + (0.0,), n0 + (0.0,)]
+                for tri in ((0, 1, 2), (0, 2, 3)):
+                    tris.append([corners[k] for k in tri])
+                    normals.append([ns[k] for k in tri])
+            return np.array(tris, float), np.array(normals, float)
+        smooth, smooth_normals = rounded(False)
+        live = np.ones(len(smooth), bool)
+        self.assertTrue(layout.curved_triangles(smooth, smooth_normals, live).all())
+        # The far wall columns (first and last two triangles) touch no bend.
+        normals, _ = seams.triangle_normals(smooth)
+        self.assertGreater(np.dot(normals[0], normals[2]), layout.FLAT_COS)
+        faceted, faceted_normals = rounded(True)
+        self.assertFalse(layout.curved_triangles(faceted, faceted_normals, live).any())
+
+    def test_plane_faces_are_never_curved(self):
+        """A BSP face carries its plane's normal on every corner, including a
+        face vbsp snapped far off its plane: its geometric normal then differs
+        from its neighbours' while the corner normals agree. It must stay a
+        planar face, laid out exactly as without the normals."""
+        wall = np.array([((0, 0, 0), (2, 0, 0), (2, 1, 0)), ((0, 0, 0), (2, 1, 0), (0, 1, 0)),
+                         # snapped: shares the edge (2,0)-(2,1), tilted out of plane
+                         ((2, 0, 0), (2.004, 0.5, 0.003), (2, 1, 0))], dtype=float)
+        planes = np.array([7, 7, 7])
+        plane_normals = np.tile((0.0, 0.0, 1.0), (3, 1))
+        normals = np.repeat(plane_normals[:, None], 3, axis=1)
+        live = np.ones(3, bool)
+        self.assertTrue(layout.curved_triangles(wall, normals, live).any())
+        uvs, record = layout.planar_layout(wall, SIZE, planes=planes,
+                                           plane_normals=plane_normals, corner_normals=normals)
+        plain, _ = layout.planar_layout(wall, SIZE, planes=planes, plane_normals=plane_normals)
+        self.assertEqual(record["curved_triangles"], 0)
+        self.assertEqual(uvs.tobytes(), plain.tobytes())
 
     def test_curved_surfaces_need_xatlas(self):
         positions, normals, _ = self.scene(1)

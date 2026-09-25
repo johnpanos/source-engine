@@ -1,0 +1,26 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryMixRgbVenn"
+    metersPerUnit = 1
+    subLayers = [
+        @../mix-rgb-venn.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryMixRgbVenn"
+{
+    over "Lights"
+    {
+        over "Red"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Blue"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

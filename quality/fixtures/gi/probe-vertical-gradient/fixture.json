@@ -1,0 +1,183 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "high": {
+      "eye": [
+        0.3,
+        0.3,
+        7.0
+      ],
+      "forward": [
+        0.7071067811865476,
+        0.7071067811865476,
+        0.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "low": {
+      "eye": [
+        0.3,
+        0.3,
+        1.0
+      ],
+      "forward": [
+        0.7071067811865476,
+        0.7071067811865476,
+        0.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "mid": {
+      "eye": [
+        0.3,
+        0.3,
+        4.0
+      ],
+      "forward": [
+        0.7071067811865476,
+        0.7071067811865476,
+        0.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeA",
+      "stand_in_mesh": "ProbeAShape"
+    },
+    {
+      "name": "ProbeB",
+      "stand_in_mesh": "ProbeBShape"
+    },
+    {
+      "name": "ProbeC",
+      "stand_in_mesh": "ProbeCShape"
+    }
+  ],
+  "family": "probe",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "probe-vertical-gradient",
+  "oracles": [
+    {
+      "channel": 1,
+      "entries": [
+        {
+          "camera": "low",
+          "region": "ProbeA",
+          "state": "default"
+        },
+        {
+          "camera": "mid",
+          "region": "ProbeB",
+          "state": "default"
+        },
+        {
+          "camera": "high",
+          "region": "ProbeC",
+          "state": "default"
+        }
+      ],
+      "factor": 1.1,
+      "kind": "tint_order",
+      "lights": [
+        "indirect"
+      ],
+      "name": "G/R falls along ProbeA, ProbeB, ProbeC",
+      "over": 0
+    },
+    {
+      "channel": 2,
+      "entries": [
+        {
+          "camera": "high",
+          "region": "ProbeC",
+          "state": "default"
+        },
+        {
+          "camera": "mid",
+          "region": "ProbeB",
+          "state": "default"
+        },
+        {
+          "camera": "low",
+          "region": "ProbeA",
+          "state": "default"
+        }
+      ],
+      "factor": 1.1,
+      "kind": "tint_order",
+      "lights": [
+        "indirect"
+      ],
+      "name": "B/G falls along ProbeC, ProbeB, ProbeA",
+      "over": 1
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A tall room with a green floor and a magenta ceiling: dynamic models low, middle and high read greener near the floor and more magenta near the ceiling",
+  "regions": {
+    "high": {
+      "ProbeC": [
+        "ProbeC"
+      ],
+      "R_Xp": [
+        "R_Xp"
+      ],
+      "R_Yp": [
+        "R_Yp"
+      ]
+    },
+    "low": {
+      "ProbeA": [
+        "ProbeA"
+      ],
+      "R_Xp": [
+        "R_Xp"
+      ],
+      "R_Yp": [
+        "R_Yp"
+      ]
+    },
+    "mid": {
+      "ProbeB": [
+        "ProbeB"
+      ],
+      "R_Xp": [
+        "R_Xp"
+      ],
+      "R_Yp": [
+        "R_Yp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "probe-vertical-gradient.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "four white lamps at mid height"
+    }
+  }
+}

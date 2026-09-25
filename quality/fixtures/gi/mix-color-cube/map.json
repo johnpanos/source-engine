@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_mix_color_cube",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/mix-color-cube/mix-color-cube.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

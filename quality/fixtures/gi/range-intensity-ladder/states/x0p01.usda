@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryRangeIntensityLadder"
+    metersPerUnit = 1
+    subLayers = [
+        @../range-intensity-ladder.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryRangeIntensityLadder"
+{
+    over "Lights"
+    {
+        over "Lamp"
+        {
+            float inputs:intensity = 0.1
+        }
+    }
+}
+

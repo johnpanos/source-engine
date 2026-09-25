@@ -19,7 +19,8 @@
 //          measures a map's update cost (RFC 0011 G6.4, the budget's gpu_ms:
 //          the median over warm updates of the dispatch's timestamps): the
 //          reference phase and a live phase after the first switchable light
-//          (style 32) halves and, with --proxy, a box appears.
+//          (style 32) halves and, with --proxy, a box appears; also the CPU
+//          time of Schedule before and after the change.
 //
 //===========================================================================//
 
@@ -662,6 +663,9 @@ int Bench( Device &d, Frames &frames, const BenchOptions &options )
 	std::vector<double> reference;
 	std::vector<Proxy> proxies;
 	uint64_t probesBefore = 0;
+	// Schedule's CPU time on the frame thread (its composition reads the
+	// field back from host-cached memory), before and after the change.
+	std::vector<double> scheduleBefore, scheduleAfter;
 	for ( int frame = 0; frame < options.frames; ++frame )
 	{
 		if ( frame == kWarm )
@@ -683,9 +687,15 @@ int Bench( Device &d, Frames &frames, const BenchOptions &options )
 		work.focusProbes = options.focus;
 		work.probeBudget = options.budget;
 		work.proxies = proxies;
+		const auto started = std::chrono::steady_clock::now();
 		producer.Schedule( work, lights );
 		for ( auto &job : work.jobs )
 			job();
+		const double ms = std::chrono::duration<double, std::milli>(
+		    std::chrono::steady_clock::now() - started )
+		                      .count();
+		if ( frame >= kWarm )
+			( frame < kChange ? scheduleBefore : scheduleAfter ).push_back( ms );
 		frames.Submit();
 	}
 	frames.Drain();
@@ -694,13 +704,16 @@ int Bench( Device &d, Frames &frames, const BenchOptions &options )
 	             "\"lights\": %u, \"focus\": %zu, \"budget\": %u, \"reference_updates\": %zu, "
 	             "\"reference_ms_median\": %.3f, \"reference_ms_p95\": %.3f, "
 	             "\"live_updates\": %zu, \"live_ms_median\": %.3f, \"live_ms_p95\": %.3f, "
-	             "\"probe_updates\": [%llu, %llu], \"live\": %s, \"device\": \"%s\"}\n",
+	             "\"probe_updates\": [%llu, %llu], \"live\": %s, "
+	             "\"schedule_cpu_ms_median\": [%.4f, %.4f], \"schedule_cpu_ms_p95\": [%.4f, %.4f], "
+	             "\"device\": \"%s\"}\n",
 	    options.wmsh ? "rayquery" : "sdf", baked->layout.grids[0].probeCount, sdf->layout.dims[0],
 	    sdf->layout.dims[1], sdf->layout.dims[2], sdf->layout.lightCount, options.focus.size(),
 	    options.budget, reference.size(), Median( reference ), Median( reference, 0.95 ),
 	    live.size(), Median( live ), Median( live, 0.95 ), (unsigned long long)probesBefore,
 	    (unsigned long long)( producer.ProbeUpdates() - probesBefore ),
-	    producer.Live() ? "true" : "false", d.name.c_str() );
+	    producer.Live() ? "true" : "false", Median( scheduleBefore ), Median( scheduleAfter ),
+	    Median( scheduleBefore, 0.95 ), Median( scheduleAfter, 0.95 ), d.name.c_str() );
 	(void)producer.End();
 	frames.Drain();
 	return 0;

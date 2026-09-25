@@ -1,0 +1,61 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryMixHueRing"
+    metersPerUnit = 1
+    subLayers = [
+        @../mix-hue-ring.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryMixHueRing"
+{
+    over "Lights"
+    {
+        over "Hue000"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Hue030"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Hue090"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Hue120"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Hue150"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Hue210"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Hue240"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Hue270"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Hue330"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

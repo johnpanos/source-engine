@@ -274,7 +274,10 @@ def edge_uv(uvs, positions, t, a, b, direction, s):
 def charts(positions, uvs, size=4096):
     """Chart id per triangle: triangles joined by an edge equal in world
     position and lightmap UV at both ends, or by a UV-continuous T-junction,
-    belong to one chart; uncharted (degenerate-UV) triangles get -1."""
+    belong to one chart; uncharted (degenerate-UV) triangles get -1. A
+    degenerate-UV triangle still joins its neighbours: sharing its edges in
+    position and UV, they are continuous through it (a sub-texel sliver in
+    the middle of a chart does not cut it in two)."""
     count = len(positions)
     _, solid = triangle_normals(positions)
     charted = (uv_area(uvs) > MIN_UV_AREA) & solid
@@ -294,7 +297,7 @@ def charts(positions, uvs, size=4096):
     keys = np.round(positions / QUANTUM).astype(np.int64)
     uv_keys = np.round(uvs * size * 64).astype(np.int64)
     owner = {}
-    for t in np.flatnonzero(charted):
+    for t in np.flatnonzero(solid):
         for k in range(3):
             a, b = k, (k + 1) % 3
             edge = tuple(sorted([(tuple(keys[t, a]), tuple(uv_keys[t, a])),

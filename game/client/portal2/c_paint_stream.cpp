@@ -19,6 +19,7 @@
 #include "view.h"
 #include "view_scene.h"
 #include "viewrender.h"
+#include "clienteffectprecachesystem.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "portal2_engine_compat.h"
@@ -44,6 +45,17 @@ END_RECV_TABLE()
 LINK_ENTITY_TO_CLASS( paint_stream, C_PaintStream );
 
 IMPLEMENT_AUTO_LIST( IPaintStreamAutoList );
+
+// Portal 2 port: DrawModel binds CPaintStreamManager's blob materials by name,
+// so hold a reference to each for the level (this tree's PRECACHE_REGISTER is
+// a no-op); an unreferenced material is bound with a reference count of 0.
+// blob_surface_stick is named by the manager but not shipped.
+CLIENTEFFECT_REGISTER_BEGIN( PrecachePaintBlobMaterials )
+CLIENTEFFECT_MATERIAL( "paintblobs/blob_surface_bounce" )
+CLIENTEFFECT_MATERIAL( "paintblobs/blob_surface_speed" )
+CLIENTEFFECT_MATERIAL( "paintblobs/blob_surface_portal" )
+CLIENTEFFECT_MATERIAL( "paintblobs/blob_surface_erase" )
+CLIENTEFFECT_REGISTER_END()
 
 // Extra room around the blob positions for the stream's render bounds.
 // Reconstruction note: the binaries only record the literal 18 units.

@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_mix_spot_cross",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/mix-spot-cross/mix-spot-cross.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

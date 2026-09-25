@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_leak_quad_rooms",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/leak-quad-rooms/leak-quad-rooms.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryRangeHdrPair"
+    metersPerUnit = 1
+    subLayers = [
+        @../range-hdr-pair.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryRangeHdrPair"
+{
+    over "Lights"
+    {
+        over "Blue"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

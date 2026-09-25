@@ -1,0 +1,149 @@
+{
+  "baked_state": "all",
+  "cameras": {
+    "high": {
+      "eye": [
+        3.7,
+        3.7,
+        3.4
+      ],
+      "forward": [
+        -0.6332423700593872,
+        -0.6332423700593872,
+        -0.44498112490659636
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "low": {
+      "eye": [
+        0.3,
+        0.3,
+        0.6
+      ],
+      "forward": [
+        0.6332423700593872,
+        0.6332423700593872,
+        0.44498112490659647
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "mix",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "mix-color-cube",
+  "oracles": [
+    {
+      "camera": "low",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "all = warm + cool (low)",
+      "parts": [
+        "warm",
+        "cool"
+      ],
+      "regions": [
+        "Cube_Xp",
+        "Cube_Yp",
+        "Cube_Zp",
+        "ProbeSphere"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "high",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "all = warm + cool (high)",
+      "parts": [
+        "warm",
+        "cool"
+      ],
+      "regions": [
+        "Cube_Xn",
+        "Cube_Yn",
+        "Cube_Zn",
+        "ProbeSphere"
+      ],
+      "sum": "all"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Every wall of a closed cube glows a different color (red, cyan, green, magenta, blue, yellow): warm and cool halves add",
+  "regions": {
+    "high": {
+      "Cube_Xn": [
+        "Cube_Xn"
+      ],
+      "Cube_Yn": [
+        "Cube_Yn"
+      ],
+      "Cube_Zn": [
+        "Cube_Zn"
+      ],
+      "ProbeSphere": [
+        "ProbeSphere"
+      ]
+    },
+    "low": {
+      "Cube_Xp": [
+        "Cube_Xp"
+      ],
+      "Cube_Yp": [
+        "Cube_Yp"
+      ],
+      "Cube_Zp": [
+        "Cube_Zp"
+      ],
+      "ProbeSphere": [
+        "ProbeSphere"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "mix-color-cube.usda",
+  "states": {
+    "all": {
+      "layer": null,
+      "note": "every wall glowing"
+    },
+    "cool": {
+      "layer": "states/cool.usda",
+      "note": "cyan, green and blue walls glowing"
+    },
+    "warm": {
+      "layer": "states/warm.usda",
+      "note": "red, magenta and yellow walls glowing"
+    }
+  }
+}

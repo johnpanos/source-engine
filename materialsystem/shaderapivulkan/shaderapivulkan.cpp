@@ -566,6 +566,10 @@ static int g_CurrentSkinCombos = -1;
 // Whether the pass is SolidEnergy's (solidenergy_ps20b), which reads its combos
 // from its own constants c10/c11 (solidenergy_dx9_helper.cpp).
 static bool g_CurrentSolidEnergy = false;
+// Whether the pass is the paint blobs' (paintblob_ps20b), which reads its combos
+// from its own constant c27 (paintblob_helper.cpp) and draws through skin.vert
+// with skin_vs20's vertex conversion.
+static bool g_CurrentPaintBlob = false;
 // Whether the pass is PBRMetalRough's (pbr_metalrough_world_ps). WMSH batches
 // select the world pipelines in EmitToNativeQueue; every other mesh draws
 // through shaders/model_pbr.frag with skin_vs20's vertex conversion.
@@ -4407,7 +4411,9 @@ void CEmptyMesh::EmitToNativeQueue()
 	// shader (world space, below).
 	// PBRMetalRough models take the skin shader's vertex record: world-space
 	// position, normal and tangent, and the four lights' attenuation.
-	const bool skin = g_CurrentSkinCombos >= 0 || g_CurrentPbrModel;
+	// Paint blobs take the same record (paintblob_vs20 reads the same
+	// world-space position, normal and light attenuation).
+	const bool skin = g_CurrentSkinCombos >= 0 || g_CurrentPbrModel || g_CurrentPaintBlob;
 	const bool envmap =
 	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentLightmappedEnvmap ) != 0;
 	const bool refract =
@@ -6573,6 +6579,40 @@ static void CommitSolidEnergyConstants( const CShaderAPIVulkan &api )
 	g_VulkanContext.SetDynamicSkinConstants( c );
 }
 
+// The paint blobs' registers for the draw (paintblob_helper.cpp's dynamic
+// state): its pixel constants c0..c31, with the combos in c27, and skin.vert's
+// block: cViewProj and cEyePos, with paintblob_vs20's UV scale
+// (SHADER_SPECIFIC_CONST_0) and projection offset (SHADER_SPECIFIC_CONST_1) in
+// the texture transform rows, which paintblob.frag reads. The vertex positions
+// arrive in world space (EmitToNativeQueue).
+static void CommitPaintBlobConstants( const CShaderAPIVulkan &api )
+{
+	EnsureMatricesInit();
+	render_vulkan::CVulkanContext::SkinConstants c;
+	memcpy( c.ps, g_psConstants, sizeof( c.ps ) );
+	MatMul( g_matrices.mat[MATERIAL_VIEW], DrawProjection(), c.viewProj );
+	memcpy( c.texXform0, g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_0],
+	    sizeof( c.texXform0 ) );
+	memcpy( c.texXform1, g_vsConstants.regs[VERTEX_SHADER_SHADER_SPECIFIC_CONST_1],
+	    sizeof( c.texXform1 ) );
+	c.eyePos[3] = 0.0f;
+	api.GetWorldSpaceCameraPosition( c.eyePos );
+	c.combos = static_cast<int>( g_psConstants[27][0] );
+	c.numLights = 0;
+	for ( bool enabled : g_LightEnabled )
+		c.numLights += enabled ? 1 : 0;
+	using Ctx = render_vulkan::CVulkanContext;
+	if ( c.combos & Ctx::kPaintBlobFresnelWarp )
+		NoteUnimplemented( "paintblob_ps20b: FRESNEL_WARP" );
+	if ( c.combos & Ctx::kPaintBlobOpacityTexture )
+		NoteUnimplemented( "paintblob_ps20b: OPACITY_TEXTURE" );
+	if ( c.combos & Ctx::kPaintBlobContactShadow )
+		NoteUnimplemented( "paintblob_ps20b: CONTACT_SHADOW" );
+	if ( g_psConstants[27][2] != 0.0f )
+		NoteUnimplemented( "paintblob_ps20b: FLASHLIGHT" );
+	g_VulkanContext.SetDynamicSkinConstants( c );
+}
+
 // PBRMetalRough on a model (pbr_metalrough_native.cpp's dynamic state): c2.x
 // $emissionscale, c3 the material's feature flags (normal map, emission,
 // environment map, as CVulkanContext::kPbrModel*), c4..c9 the ambient cube and
@@ -6757,6 +6797,9 @@ static std::string SnapshotShaderRoute( const CShaderShadowVulkan &shadow )
 		return "skin#" + std::to_string( skinCombos );
 	if ( !V_stricmp( shadow.m_pixelShaderName, "solidenergy_ps20b" ) )
 		return "solidenergy";
+	if ( !V_stricmp( shadow.m_pixelShaderName, "paintblob_ps20b" ) &&
+	     g_VulkanContext.PaintBlobPipelineSupported() )
+		return "paintblob";
 	if ( !V_stricmp( shadow.m_pixelShaderName, "pbr_metalrough_world_ps" ) )
 		return "pbr_model";
 	if ( !V_strnicmp( shadow.m_pixelShaderName, "portal_refract_ps20b", 20 ) )
@@ -7471,6 +7514,9 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 		g_CurrentPbrModel = name == "pbr_model";
 		if ( g_CurrentPbrModel )
 			shader = render_vulkan::CVulkanContext::kDynShaderPbrModel;
+		g_CurrentPaintBlob = name == "paintblob";
+		if ( g_CurrentPaintBlob )
+			shader = render_vulkan::CVulkanContext::kDynShaderPaintBlob;
 		g_CurrentLightmappedCombos = -1;
 		if ( !name.compare( 0, 12, "lightmapped#" ) )
 		{
@@ -7495,7 +7541,8 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 		                         shader == render_vulkan::CVulkanContext::kDynShaderSolidEnergy ||
 		                         shader == render_vulkan::CVulkanContext::kDynShaderPbrModel ||
 		                         shader == render_vulkan::CVulkanContext::kDynShaderLightmapped ||
-		                         shader == render_vulkan::CVulkanContext::kDynShaderPost );
+		                         shader == render_vulkan::CVulkanContext::kDynShaderPost ||
+		                         shader == render_vulkan::CVulkanContext::kDynShaderPaintBlob );
 		// Shaders that sample nothing on sampler 0: WriteZ and the quad clears draw
 		// depth, stencil or their vertex color; PortalRefract samples the frame
 		// copy only in stage 0.
@@ -7732,6 +7779,10 @@ static bool NativePipelineImplementsShader( const char *shaderName )
 	// the skin pipeline's layout (shaders/solidenergy.*).
 	if ( !V_stricmp( shaderName, "SolidEnergy_dx9" ) )
 		return g_VulkanContext.SolidEnergyPipelineSupported();
+	// Portal 2's paint blobs: skin.vert and shaders/paintblob.frag on the skin
+	// pipeline's layout.
+	if ( !V_stricmp( shaderName, "paintblob_dx9" ) )
+		return g_VulkanContext.PaintBlobPipelineSupported();
 	// ShadowBuild_DX9 (shadowbuildtexture_ps2x) adds base alpha times the
 	// modulation alpha into the shadow texture; the textured pipeline's
 	// modulated base gives the same alpha. Its color, white on D3D9, is the base
@@ -7843,6 +7894,8 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 			CommitSkinConstants( *this );
 		if ( g_CurrentSolidEnergy )
 			CommitSolidEnergyConstants( *this );
+		if ( g_CurrentPaintBlob )
+			CommitPaintBlobConstants( *this );
 		if ( g_CurrentPbrModel )
 			CommitPbrModelConstants( *this );
 		if ( g_CurrentLightmappedCombos >= 0 )
@@ -7893,6 +7946,7 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		const bool linearToneScale =
 		    lightmapped || g_CurrentLightmappedCombos >= 0 || g_CurrentPortalStage == 2 ||
 		    g_CurrentModulationInPixelC1 || g_CurrentSkinCombos >= 0 || g_CurrentPbrModel ||
+		    g_CurrentPaintBlob ||
 		    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kFragmentSky ) ||
 		    g_CurrentToneMap == kToneMapLinear;
 		float outputScale = 1.0f;

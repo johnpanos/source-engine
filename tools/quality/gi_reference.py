@@ -26,7 +26,11 @@ unit, so a region comparison needs no conversion.
 `check` validates the checked-in references against their fixture
 (declared states and cameras present, stage digests current, image hashes)
 and applies the closed forms: the furnace must reach L = Le / (1 - rho), and
-the probe-grid floor its analytic sky and sun radiance. `render` also renders
+the probe-grid floor its analytic sky and sun radiance. It also evaluates each
+fixture's declared relational `oracles` (`gi_oracles.py`: superposition,
+mirror symmetry, exact zeros, per-channel closed forms, ...) from the recorded
+region means, and requires every oracle's seeded negative control to fail, so
+changing an oracle needs no re-render. `render` also renders
 the furnace with Blender's default light paths (4 diffuse bounces) and
 records that the analytic check rejects it, proving the oracle can fail.
 """
@@ -48,6 +52,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 import cycles_device  # noqa: E402
+import gi_oracles  # noqa: E402
 import map_scene  # noqa: E402
 import pbrt_map_toolchain  # noqa: E402
 
@@ -387,15 +392,33 @@ def write_references(fixture, results):
                            "glossy_max": float(max(passes["GlossDir"].max(),
                                                    passes["GlossInd"].max()))}
     checks = analytic_checks(fixture, regions_by_view)
+    oracles = gi_oracles.evaluate(fixture, regions_by_view)
     record = {"schema": SCHEMA, "fixture": fixture["name"],
               "fixture_reference_digest": reference_digest(fixture),
               "light_units": "diffuse light passes are E / pi (a white Lambertian's return)",
               "region_erosion_pixels": REGION_EROSION, "renders": renders, "views": views,
-              "analytic": checks,
-              "status": "pass" if all(c["ok"] for c in checks) else "fail"}
+              "analytic": checks, "oracles": gi_oracles.summary(oracles),
+              "status": "pass" if all(c["ok"] for c in checks) and oracles_pass(oracles)
+              else "fail"}
     (references / "references.json").write_text(json.dumps(record, indent=2, sort_keys=True) +
                                                 "\n")
     return record
+
+
+def oracles_pass(results):
+    return all(r["ok"] and r["control"]["rejected"] for r in results)
+
+
+def oracle_failures(name, results):
+    failures = []
+    for result in results:
+        failures += ["%s: %s observed %.5g expected %.5g" % (name, c["check"], c["observed"],
+                                                             c["expected"])
+                     for c in result["checks"] if not c["ok"]]
+        if not result["control"]["rejected"]:
+            failures.append("%s: oracle %s did not reject its control (%s)" % (
+                name, result["oracle"], result["control"]["description"]))
+    return failures
 
 
 def cmd_render(args):
@@ -419,6 +442,11 @@ def cmd_render(args):
         print("[%s] %s: %s" % (name, record["status"], "; ".join(
             "%s %.4f vs %.4f" % (c["check"], c["observed"], c["expected"])
             for c in record["analytic"]) or "no closed form"), flush=True)
+        if fixture.get("oracles"):
+            summary = record["oracles"]
+            print("[%s] oracles: %d with %d checks, %d failed, controls not rejected: %s" % (
+                name, summary["oracles"], summary["checks"], summary["failed"],
+                ", ".join(summary["controls_unrejected"]) or "none"), flush=True)
         status |= record["status"] != "pass"
     return status
 
@@ -442,6 +470,7 @@ def furnace_negative_control(tools, fixture, work, samples, seed, device):
 
 def cmd_check(args):
     failures = []
+    checked = {"oracles": 0, "checks": 0}
     for name in args.fixture or fixture_names():
         fixture = load_fixture(name)
         path = fixture["directory"] / "references" / "references.json"
@@ -492,9 +521,16 @@ def cmd_check(args):
                                 (name, control["control"]))
         if name == "furnace" and not record.get("negative_controls"):
             failures.append("furnace: no negative control recorded")
+        failures += ["%s: %s" % (name, p) for p in gi_oracles.validate(fixture)]
+        if fixture.get("oracles") and not failures:
+            results = gi_oracles.evaluate(fixture, gi_oracles.views_from_references(record))
+            failures += oracle_failures(name, results)
+            checked["oracles"] += len(results)
+            checked["checks"] += sum(len(r["checks"]) for r in results)
     for failure in failures:
         print("FAIL " + failure)
-    print("GI references: %s" % ("FAIL" if failures else "pass"))
+    print("GI references: %s (%d relational oracles, %d checks)" % (
+        "FAIL" if failures else "pass", checked["oracles"], checked["checks"]))
     return 1 if failures else 0
 
 

@@ -17,6 +17,19 @@
         "exit.relay",
         "exit.door_open"
       ]
+    },
+    {
+      "name": "sp_a2_triple_laser_traverse",
+      "map": "sp_a2_triple_laser",
+      "script": "sp_a2_triple_laser_traverse.nut",
+      "timeout_seconds": 120,
+      "required_checks": [
+        "portals.placed",
+        "cross.a_to_b",
+        "cross.a_to_b_heading",
+        "cross.b_to_a",
+        "cross.b_to_a_heading"
+      ]
     }
   ]
 }

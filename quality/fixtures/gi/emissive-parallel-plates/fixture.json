@@ -1,0 +1,151 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "down": {
+      "eye": [
+        0.0,
+        0.0,
+        0.5
+      ],
+      "forward": [
+        0.09950371902099893,
+        0.0,
+        -0.9950371902099893
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "up": {
+      "eye": [
+        0.0,
+        0.0,
+        0.5
+      ],
+      "forward": [
+        0.09950371902099893,
+        0.0,
+        0.9950371902099893
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "analytic",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "emissive-parallel-plates",
+  "oracles": [
+    {
+      "camera": "up",
+      "expected": {
+        "direct": [
+          0.4,
+          0.2,
+          0.05
+        ],
+        "indirect": [
+          0.044444444,
+          0.085714286,
+          0.040909091
+        ],
+        "total": [
+          0.088888889,
+          0.171428571,
+          0.081818182
+        ]
+      },
+      "kind": "value",
+      "lights": [
+        "direct",
+        "indirect",
+        "total"
+      ],
+      "name": "ceiling: rho_c Le / (1 - rho_f rho_c); incoming = floor radiance",
+      "regions": [
+        "P_Zp"
+      ],
+      "state": "default",
+      "tolerance": 0.015
+    },
+    {
+      "camera": "down",
+      "expected": {
+        "indirect": [
+          0.088888889,
+          0.171428571,
+          0.081818182
+        ],
+        "total": [
+          0.444444444,
+          0.285714286,
+          0.090909091
+        ]
+      },
+      "kind": "value",
+      "lights": [
+        "indirect",
+        "total"
+      ],
+      "name": "floor: Le / (1 - rho_f rho_c); incoming = ceiling radiance",
+      "regions": [
+        "P_Zn"
+      ],
+      "state": "default",
+      "tolerance": 0.015
+    },
+    {
+      "camera": "down",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "floor sees no emitter directly",
+      "regions": [
+        "P_Zn"
+      ],
+      "state": "default"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Two 60 m plates 1 m apart: a glowing floor under a colored ceiling. Multiple bounces between them give B_floor = Le / (1 - rho_f rho_c) and B_ceiling = rho_c B_floor per channel",
+  "regions": {
+    "down": {
+      "P_Zn": [
+        "P_Zn"
+      ]
+    },
+    "up": {
+      "P_Zp": [
+        "P_Zp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "emissive-parallel-plates.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "glowing floor, colored ceiling, black side walls 30 m away"
+    }
+  }
+}

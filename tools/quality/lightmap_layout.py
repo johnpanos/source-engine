@@ -34,8 +34,9 @@ tools profile, and only for this:
   curved      a triangle is curved when it meets a non-coplanar neighbour
               along a smooth edge - one where the authored corner normals of
               both triangles agree at both ends (within SMOOTH_COS). A hard
-              edge (a normal break) or a flat face is never curved; a BSP's
-              world faces, which carry their plane's normal, never are
+              edge (a normal break) or a flat face is never curved, nor is a
+              triangle carrying a plane number (a BSP face, even one whose
+              corners vbsp snapped off its plane)
   charts      xatlas cuts the curved triangles into charts and flattens each;
               the triangles go to it in a canonical order (corners rotated to
               the least first, triangles sorted), so input order changes
@@ -152,69 +153,126 @@ def planar_charts(positions, charted, planes=None, plane_normals=None):
     return labels, normals
 
 
+def groups(labels):
+    """Members of each label 0..max, in ascending order (one stable sort, not
+    a scan per label)."""
+    labels = np.asarray(labels)
+    count = int(labels.max(initial=-1)) + 1
+    order = np.argsort(labels, kind="stable")
+    bounds = np.searchsorted(labels[order], np.arange(count + 1))
+    return [order[bounds[i]:bounds[i + 1]] for i in range(count)]
+
+
 def curved_triangles(positions, corner_normals, live):
-    """Bool per triangle: live and joined to a non-coplanar live neighbour
-    along a smooth edge (both triangles' corner normals agree at both ends)."""
+    """Bool per triangle: on a curved surface. Live triangles joined along
+    smooth edges (both triangles' corner normals agree at both ends) form a
+    surface; it is curved when any of its smooth edges bends (joins
+    non-coplanar triangles), and then all of it is - flat parts included, so
+    a fillet and the flat faces it rounds are charted together."""
     positions = np.asarray(positions, dtype=np.float64)
     corner_normals = np.asarray(corner_normals, dtype=np.float64)
     corner_normals = corner_normals / np.maximum(
         np.linalg.norm(corner_normals, axis=2, keepdims=True), 1e-30)
     normals, _ = lightmap_seams.triangle_normals(positions)
-    edges = {}
-    for t in np.flatnonzero(live):
-        for k in range(3):
-            a, b = positions[t, k].tobytes(), positions[t, (k + 1) % 3].tobytes()
-            key, ends = (a, b) if a < b else (b, a), ((k, (k + 1) % 3) if a < b else
-                                                        ((k + 1) % 3, k))
-            edges.setdefault(key, []).append((t, ends))
     curved = np.zeros(len(positions), bool)
-    for sides in edges.values():
+    triangles = np.flatnonzero(live)
+    if not len(triangles):
+        return curved
+    # Every edge as (triangle, start corner, end corner), its ends ordered so
+    # the lexicographically lesser point comes first.
+    t = np.repeat(triangles, 3)
+    k0 = np.tile(np.arange(3), len(triangles))
+    k1 = (k0 + 1) % 3
+    ends = np.stack([positions[t, k0], positions[t, k1]], axis=1)
+    swap = least_corner(ends) == 1
+    k0, k1 = np.where(swap, k1, k0), np.where(swap, k0, k1)
+    key = np.concatenate([positions[t, k0], positions[t, k1]], axis=1)
+    _, group, sizes = np.unique(key, axis=0, return_inverse=True, return_counts=True)
+    group = group.reshape(-1)
+    order = np.argsort(group, kind="stable")
+    starts = np.concatenate([[0], np.cumsum(sizes)])
+
+    links, bends = [], []
+
+    def join(a, b):
+        """Record the smooth ones among edge-side pairs a, b (edge indices)."""
+        smooth = (np.einsum("ij,ij->i", corner_normals[t[a], k0[a]],
+                            corner_normals[t[b], k0[b]]) > SMOOTH_COS) & \
+            (np.einsum("ij,ij->i", corner_normals[t[a], k1[a]],
+                       corner_normals[t[b], k1[b]]) > SMOOTH_COS)
+        links.append(np.stack([t[a][smooth], t[b][smooth]], axis=1))
+        bent = np.einsum("ij,ij->i", normals[t[a]], normals[t[b]]) <= FLAT_COS
+        bends.append(t[a][smooth & bent])
+
+    pairs = np.flatnonzero(sizes == 2)
+    join(order[starts[pairs]], order[starts[pairs] + 1])
+    for g in np.flatnonzero(sizes > 2):
+        sides = order[starts[g]:starts[g + 1]]
         for i in range(len(sides)):
-            for j in range(i + 1, len(sides)):
-                (t, (a0, a1)), (u, (b0, b1)) = sides[i], sides[j]
-                if np.dot(normals[t], normals[u]) > FLAT_COS:
-                    continue
-                if np.dot(corner_normals[t, a0], corner_normals[u, b0]) > SMOOTH_COS and \
-                        np.dot(corner_normals[t, a1], corner_normals[u, b1]) > SMOOTH_COS:
-                    curved[t] = curved[u] = True
-    return curved
+            join(np.full(len(sides) - i - 1, sides[i]), sides[i + 1:])
+    links = np.concatenate(links)
+    bends = np.concatenate(bends)
+    if not len(bends):
+        return curved
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    count = len(positions)
+    graph = coo_matrix((np.ones(len(links)), (links[:, 0], links[:, 1])), shape=(count, count))
+    _, surface = connected_components(graph, directed=False)
+    curved[np.isin(surface, np.unique(surface[bends]))] = True
+    return curved & np.asarray(live, bool)
+
+
+def least_corner(corners):
+    """Per row, the index of its lexicographically least corner (corners:
+    (n, k, d), k points of d values each); one sort, not a loop."""
+    count, points, width = corners.shape
+    flat = corners.reshape(-1, width)
+    row = np.repeat(np.arange(count), points)
+    order = np.lexsort(tuple(flat[:, c] for c in range(width - 1, -1, -1)) + (row,))
+    return order[0::points] - points * np.arange(count)
 
 
 def canonical_triangles(positions, normals, members):
-    """`members` in a canonical order with canonical corner rotation: each
-    triangle's corners rotated (winding kept) so the least point is first,
-    triangles sorted by their corners. Returns (order, rotations)."""
-    rows = []
-    for t in members:
-        corners = [tuple(positions[t, k]) + tuple(normals[t, k]) for k in range(3)]
-        first = min(range(3), key=lambda k: corners[k])
-        rows.append((tuple(corners[(first + k) % 3] for k in range(3)), t, first))
-    rows.sort()
-    return [row[1] for row in rows], [row[2] for row in rows]
+    """Canonical order and corner rotation of the triangles `members`: each
+    triangle's corners (position, normal) rotated, winding kept, so the least
+    comes first; triangles sorted by those corners. Returns (rows, first):
+    positions in `members`, in canonical order, and each one's first corner."""
+    members = np.asarray(members)
+    corners = np.concatenate([positions[members], normals[members]], axis=2)
+    first = least_corner(corners)
+    turn = (first[:, None] + np.arange(3)[None]) % 3
+    keys = turned(corners, turn).reshape(len(members), -1)
+    rows = np.lexsort((members,) + tuple(keys[:, c] for c in range(keys.shape[1] - 1, -1, -1)))
+    return rows, first[rows]
 
 
-def xatlas_charts(positions, corner_normals, members, tool, max_area=0.0):
+def xatlas_charts(positions, corner_normals, members, tool, max_area=0.0, groups_of=None):
     """Chart id (per member, from 0) and flattened corner coordinates
     (members, 3, 2) for the curved triangles `members`, from xatlas; charts
-    grow to at most `max_area` square metres (0: no limit)."""
+    grow to at most `max_area` square metres (0: no limit), and members of
+    different `groups_of` (per member) never share a chart."""
     import struct
     import subprocess
     import tempfile
-    order, rotations = canonical_triangles(positions, corner_normals, members)
+    members = np.asarray(members)
+    rows, first = canonical_triangles(positions, corner_normals, members)
     # Millimetres from the members' least corner (the same in any order).
     origin = positions[members].reshape(-1, 3).min(axis=0)
-    local = (positions - origin) * XATLAS_UNITS_PER_METRE
-    corners = np.array([[np.concatenate([local[t, (r + k) % 3],
-                                         corner_normals[t, (r + k) % 3]]) for k in range(3)]
-                        for t, r in zip(order, rotations)], dtype=np.float32).reshape(-1, 6)
+    turn = (first[:, None] + np.arange(3)[None]) % 3
+    corners = np.concatenate([
+        turned((positions[members[rows]] - origin) * XATLAS_UNITS_PER_METRE, turn),
+        turned(corner_normals[members[rows]], turn)], axis=2).astype(np.float32).reshape(-1, 6)
     vertices, indices = np.unique(corners, axis=0, return_inverse=True)
     with tempfile.TemporaryDirectory() as work:
         source, result = Path(work) / "in.bin", Path(work) / "out.bin"
         with open(source, "wb") as out:
-            out.write(b"XAC1" + struct.pack("<II", len(vertices), len(order)))
+            out.write(b"XAC1" + struct.pack("<II", len(vertices), len(rows)))
             out.write(np.ascontiguousarray(vertices[:, :3], "<f4").tobytes())
             out.write(np.ascontiguousarray(vertices[:, 3:], "<f4").tobytes())
             out.write(np.asarray(indices, "<u4").reshape(-1).tobytes())
+            group = np.zeros(len(members)) if groups_of is None else np.asarray(groups_of)
+            out.write(np.asarray(group[rows], "<u4").tobytes())
             options = XATLAS_OPTIONS[:6] + (max_area,) + XATLAS_OPTIONS[7:]
             out.write(struct.pack("<8fI", *options, XATLAS_ITERATIONS))
         subprocess.run([str(tool), str(source), str(result)], check=True)
@@ -222,20 +280,19 @@ def xatlas_charts(positions, corner_normals, members, tool, max_area=0.0):
     if data[:4] != b"XAO1":
         raise RuntimeError("xatlas_chart wrote no XAO1 output")
     count, _ = struct.unpack_from("<II", data, 4)
-    if count != len(order):
-        raise RuntimeError("xatlas_chart returned %d of %d triangles" % (count, len(order)))
+    if count != len(rows):
+        raise RuntimeError("xatlas_chart returned %d of %d triangles" % (count, len(rows)))
     charts = np.frombuffer(data, "<i4", count, 12)
     flat = np.frombuffer(data, "<f4", 6 * count, 12 + 4 * count).reshape(count, 3, 2) / \
         XATLAS_UNITS_PER_METRE
     if (charts < 0).any():
         raise RuntimeError("xatlas left %d curved triangles uncharted" % int((charts < 0).sum()))
     labels = np.empty(len(members), np.int64)
+    labels[rows] = charts
     uvs = np.empty((len(members), 3, 2))
-    where = {t: i for i, t in enumerate(members)}
-    for row, (t, r) in enumerate(zip(order, rotations)):
-        labels[where[t]] = charts[row]
-        for k in range(3):
-            uvs[where[t], (r + k) % 3] = flat[row, k]
+    unturned = np.empty_like(flat, dtype=np.float64)
+    np.put_along_axis(unturned, turn[..., None], flat, axis=1)
+    uvs[rows] = unturned
     return labels, uvs
 
 
@@ -243,9 +300,7 @@ def canonical_turn(positions):
     """Per triangle the corner order (n, 3) that starts at its least corner and
     keeps its winding: sums over corners taken in this order round the same
     whatever corner the input starts at."""
-    first = np.array([min(range(3), key=lambda k: tuple(triangle[k])) for triangle in positions],
-                     dtype=np.int64)
-    return (first[:, None] + np.arange(3)[None]) % 3
+    return (least_corner(positions)[:, None] + np.arange(3)[None]) % 3
 
 
 def turned(values, turn):
@@ -280,42 +335,52 @@ def isometric(positions):
     return result
 
 
-def curved_charts(positions, corner_normals, members, tool, max_area=0.0):
+def curved_charts(positions, corner_normals, members, tool):
     """Charts of the curved triangles `members`, each within MAX_STRETCH.
 
     xatlas charts them; each chart is scaled so its UV area is its surface
-    area (one texel density on average), and a chart whose triangles stretch
-    beyond [1 / MAX_STRETCH, MAX_STRETCH] is charted again on its own with a
-    quarter of its area as the largest chart. A chart xatlas will not split
-    further is split into its triangles, each flattened exactly. Returns
-    (chart id per member from 0, flattened corners in metres (members, 3, 2))."""
+    area (one texel density on average). A chart whose triangles stretch
+    beyond [1 / MAX_STRETCH, MAX_STRETCH] is charted again with a largest
+    chart area between a quarter and a sixteenth of its own (charts of one
+    size band share an xatlas run, kept apart by group). A chart xatlas will
+    not split below the area it was given is split into its triangles, each
+    flattened exactly. Returns (chart id per member from 0, flattened corners
+    in metres (members, 3, 2))."""
     members = np.asarray(members)
-    labels, flat = xatlas_charts(positions, corner_normals, members, tool, max_area)
     turn = canonical_turn(positions[members])
     area = triangle_areas(positions[members], turn)
-    uv_areas = triangle_areas(flat, turn)
-    result_labels = np.empty(len(members), np.int64)
-    result_flat = np.empty((len(members), 3, 2))
+    labels = np.empty(len(members), np.int64)
+    result = np.empty((len(members), 3, 2))
+    first_labels, flat = xatlas_charts(positions, corner_normals, members, tool)
+    pending = [(rows, 0.0) for rows in groups(first_labels) if len(rows)]
     next_label = 0
-    for chart in np.unique(labels):
-        rows = np.flatnonzero(labels == chart)
-        chart_area = math.fsum(area[rows])
-        uv_area = math.fsum(uv_areas[rows])
-        scaled = flat[rows] * math.sqrt(chart_area / max(uv_area, 1e-30))
-        low, high = stretch(positions[members[rows]], scaled, 1.0)
-        if low.min() >= 1 / MAX_STRETCH and high.max() <= MAX_STRETCH:
-            parts = [(rows, np.zeros(len(rows), np.int64), scaled)]
-        elif len(rows) > 1 and (max_area == 0.0 or chart_area < max_area):
-            sub_labels, sub_flat = curved_charts(positions, corner_normals, members[rows], tool,
-                                                 chart_area / 4)
-            parts = [(rows, sub_labels, sub_flat)]
-        else:
-            parts = [(rows, np.arange(len(rows)), isometric(positions[members[rows]]))]
-        for part_rows, part_labels, part_flat in parts:
-            result_labels[part_rows] = next_label + part_labels
-            result_flat[part_rows] = part_flat
-            next_label += int(part_labels.max()) + 1
-    return result_labels, result_flat
+    while pending:
+        bands = {}
+        for rows, limit in pending:
+            chart_area = math.fsum(area[rows])
+            uv_area = math.fsum(triangle_areas(flat[rows], turn[rows]))
+            scaled = flat[rows] * math.sqrt(chart_area / max(uv_area, 1e-30))
+            low, high = stretch(positions[members[rows]], scaled, 1.0)
+            if low.min() >= 1 / MAX_STRETCH and high.max() <= MAX_STRETCH:
+                labels[rows], result[rows] = next_label, scaled
+                next_label += 1
+            elif len(rows) > 1 and (limit == 0.0 or chart_area < limit):
+                bands.setdefault(math.floor(math.log(chart_area, 4)), []).append(rows)
+            else:
+                labels[rows] = next_label + np.arange(len(rows))
+                result[rows] = isometric(positions[members[rows]])
+                next_label += len(rows)
+        pending = []
+        for band in sorted(bands):
+            charts = bands[band]
+            limit = 4.0 ** band / 4
+            rows = np.concatenate(charts)
+            group = np.concatenate([np.full(len(chart), index)
+                                    for index, chart in enumerate(charts)])
+            sub_labels, flat[rows] = xatlas_charts(positions, corner_normals, members[rows], tool,
+                                                   limit, group)
+            pending += [(rows[sub], limit) for sub in groups(sub_labels) if len(sub)]
+    return labels, result
 
 
 def stretch(positions, uvs, density):
@@ -399,8 +464,11 @@ def planar_layout(positions, size, charted=None, margin=MARGIN, reserved_rows=0,
     charted = np.ones(count, bool) if charted is None else np.asarray(charted, bool)
     area = 0.5 * np.linalg.norm(np.cross(positions[:, 1] - positions[:, 0],
                                          positions[:, 2] - positions[:, 0]), axis=1)
-    curved = np.zeros(count, bool) if corner_normals is None else \
-        curved_triangles(positions, corner_normals, charted & (area > DEGENERATE_AREA))
+    # A triangle with a plane number is a flat face by declaration (a BSP
+    # face, even one vbsp snapped off its plane), never part of a curve.
+    flat_faces = np.zeros(count, bool) if planes is None else np.asarray(planes) >= 0
+    curved = np.zeros(count, bool) if corner_normals is None else curved_triangles(
+        positions, corner_normals, charted & (area > DEGENERATE_AREA) & ~flat_faces)
     if curved.any() and xatlas is None:
         raise ValueError("%d triangles lie on curved surfaces: charting them needs xatlas"
                          % int(curved.sum()))
@@ -425,8 +493,7 @@ def planar_layout(positions, size, charted=None, margin=MARGIN, reserved_rows=0,
     # every float operation below runs in an order the triangle order cannot
     # change: the same geometry gives the same bytes.
     members_of, keys = [], []
-    for chart in range(labels.max() + 1):
-        members = np.flatnonzero(labels == chart)
+    for members in groups(labels):
         points = np.unique(positions[members].reshape(-1, 3), axis=0)
         members_of.append(members)
         # Distinct charts have distinct point sets (neighbours share corners,
@@ -461,7 +528,7 @@ def planar_layout(positions, size, charted=None, margin=MARGIN, reserved_rows=0,
     for chart in range(labels.max() + 1):
         u, v, umin, vmin = frames[chart]
         x, y = best[chart]
-        members = np.flatnonzero(labels == chart)
+        members = members_of[chart]
         if curved[members[0]]:
             corners = np.concatenate([flattened[members],
                                       np.zeros((len(members), 3, 1))], axis=2)
@@ -636,22 +703,34 @@ def main():
     # every chart invariant and split no flat region, flat triangles must
     # take the atlas density exactly (float32 storage of positions and UVs
     # moves it by ~1e-4 at most) and curved ones stay within MAX_STRETCH.
+    # A curved triangle's two principal scales each lie within
+    # [1 / MAX_STRETCH, MAX_STRETCH], so its texel area density can differ
+    # from another's by up to MAX_STRETCH ** 4.
     invariants = lightmap_seams.chart_invariants(
-        positions, uvs, args.size, MAX_STRETCH ** 2 if curved.any() else 1.001)
+        positions, uvs, args.size, MAX_STRETCH ** 4 if curved.any() else 1.001)
     violations = []
-    parked = np.all(uvs == parking_uv(args.size), axis=(1, 2))
-    if record.get("texels_per_metre"):
-        low, high = stretch(positions, uvs * args.size, record["texels_per_metre"])
-        flat_ok = ~curved & ~parked
-        if flat_ok.any() and (low[flat_ok].min() < 1 / 1.001 or high[flat_ok].max() > 1.001):
+    # Parked and zero-area triangles draw nothing and have no texel scale.
+    measured = ~np.all(uvs == parking_uv(args.size), axis=(1, 2)) & \
+        (triangle_areas(positions) > DEGENERATE_AREA)
+    if record.get("texels_per_metre") and measured.any():
+        low, high = np.ones(len(positions)), np.ones(len(positions))
+        low[measured], high[measured] = stretch(positions[measured],
+                                                uvs[measured] * args.size,
+                                                record["texels_per_metre"])
+        planar = ~curved & measured
+        if planar.any() and (low[planar].min() < 1 / 1.001 or high[planar].max() > 1.001):
             violations.append("flat_density")
         if curved.any() and (low[curved].min() < 1 / MAX_STRETCH - 1e-3 or
                              high[curved].max() > MAX_STRETCH + 1e-3):
             violations.append("stretch")
+        record["measured_stretch"] = [float(low[measured].min()), float(high[measured].max())]
     _, _, _, triangles, _ = lightmap_seams.find_seams(positions, uvs, args.size)
     normals, _ = lightmap_seams.triangle_normals(positions)
-    flat = int((np.einsum("ij,ij->i", normals[triangles[:, 0]], normals[triangles[:, 1]])
-                > FLAT_COS).sum()) if len(triangles) else 0
+    # A seam across flat geometry is a layout error; inside a curved surface
+    # xatlas chose the cut, and ktx2 stitches it under its seam gate.
+    flat = int(((np.einsum("ij,ij->i", normals[triangles[:, 0]], normals[triangles[:, 1]])
+                 > FLAT_COS) & ~curved[triangles[:, 0]] & ~curved[triangles[:, 1]]).sum()) \
+        if len(triangles) else 0
     violations += [key for key in ("out_of_bounds", "overlap_texels", "bleed_texels",
                                    "density_violation") if invariants[key]]
     if flat:

@@ -39,6 +39,25 @@ CLIENTEFFECT_REGISTER_END()
 PMaterialHandle g_Material_Spark = NULL;
 
 static ConVar fx_drawmetalspark( "fx_drawmetalspark", "1", FCVAR_DEVELOPMENTONLY, "Draw metal spark effects." );
+static ConVar fx_spark_lights( "fx_spark_lights", "4", 0,
+    "Most spark bursts that light their surroundings at once (0: none)." );
+
+// The warm white of effects/spark's bright texels (255, 222, 170), as linear
+// light mantissas at 30% strength.
+#define SPARK_LIGHT_COLOR 77, 67, 51
+
+// A lit burst's dlight outlives the frame by this much, so the engine keeps its
+// slot (and gives it to no other light) until the burst's next simulate.
+#define SPARK_LIGHT_HOLD 0.1f
+
+static SparkLight::CBudget s_SparkLightBudget;
+static int s_nSparkLightSerial = 0;
+
+static SparkLightParams_t SparkLightParams( int nExponent, float flRadius )
+{
+	SparkLightParams_t params = { { SPARK_LIGHT_COLOR }, nExponent, flRadius };
+	return params;
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -165,6 +184,81 @@ CTrailParticles::CTrailParticles( const char *pDebugName ) : CSimpleEmitter( pDe
 {
 	m_fFlags			= 0;
 	m_flVelocityDampen	= 0.0f;
+	m_nLightKey = 0;
+	m_bLightHeld = false;
+}
+
+CTrailParticles::~CTrailParticles()
+{
+	ReleaseLight();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Lights the surroundings from this emitter's live sparks
+//-----------------------------------------------------------------------------
+void CTrailParticles::EmitLight( const Vector &origin, const SparkLightParams_t &params )
+{
+	m_LightParams = params;
+	if ( !m_nLightKey )
+	{
+		s_nSparkLightSerial = ( s_nSparkLightSerial + 1 ) & ( LIGHT_INDEX_SPARK - 1 );
+		m_nLightKey = LIGHT_INDEX_SPARK + s_nSparkLightSerial;
+	}
+
+	// The first simulate is a frame away; light the burst where it starts.
+	LightBurst( origin, 1.0f );
+}
+
+void CTrailParticles::LightBurst( const Vector &origin, float flScale )
+{
+	if ( !m_bLightHeld )
+	{
+		// Never take a slot another light holds: with every slot active,
+		// CL_AllocDlight would overwrite the first.
+		dlight_t *pActive[MAX_DLIGHTS];
+		if ( effects->CL_GetActiveDLights( pActive ) >= MAX_DLIGHTS ||
+		     !s_SparkLightBudget.Acquire( fx_spark_lights.GetInt() ) )
+			return;
+		m_bLightHeld = true;
+	}
+
+	flScale = clamp( flScale, 0.0f, 1.0f );
+	dlight_t *dl = effects->CL_AllocDlight( m_nLightKey );
+	dl->origin = origin;
+	dl->color.r = (byte)( m_LightParams.m_Color[0] * flScale + 0.5f );
+	dl->color.g = (byte)( m_LightParams.m_Color[1] * flScale + 0.5f );
+	dl->color.b = (byte)( m_LightParams.m_Color[2] * flScale + 0.5f );
+	dl->color.exponent = m_LightParams.m_nExponent;
+	dl->radius = m_LightParams.m_flRadius;
+	dl->die = gpGlobals->curtime + SPARK_LIGHT_HOLD;
+}
+
+void CTrailParticles::ReleaseLight()
+{
+	if ( !m_bLightHeld )
+		return;
+	m_bLightHeld = false;
+	s_SparkLightBudget.Release();
+
+	// Darken the dlight now and let the engine's next decay drop it, rather
+	// than keep it lit for the rest of its hold.
+	dlight_t *pActive[MAX_DLIGHTS];
+	int nActive = effects->CL_GetActiveDLights( pActive );
+	for ( int i = 0; i < nActive; ++i )
+	{
+		if ( pActive[i]->key == m_nLightKey )
+		{
+			pActive[i]->color.r = pActive[i]->color.g = pActive[i]->color.b = 0;
+			pActive[i]->die = 0.0f;
+			break;
+		}
+	}
+}
+
+void CTrailParticles::Update( float flTimeDelta )
+{
+	BaseClass::Update( flTimeDelta );
+	m_LightBurst.BeginFrame();
 }
 
 //-----------------------------------------------------------------------------
@@ -216,17 +310,9 @@ void CTrailParticles::RenderParticles( CParticleRenderIterator *pIterator )
 		Vector3DMultiply( ParticleMgr()->GetModelView(), pParticle->m_vecVelocity, delta );
 		
 		float	color[4];
-		float	ramp = 1.0;
-
-		// Fade in for the first few frames
-		if ( pParticle->m_flLifetime <= 0.3 && m_fFlags & bitsPARTICLE_TRAIL_FADE_IN )
-		{
-			ramp = pParticle->m_flLifetime;
-		}
-		else if ( m_fFlags & bitsPARTICLE_TRAIL_FADE )
-		{
-			ramp = ( 1.0f - ( pParticle->m_flLifetime / pParticle->m_flDieTime  ) );
-		}
+		float ramp = SparkLight::TrailRamp( pParticle->m_flLifetime, pParticle->m_flDieTime,
+		    ( m_fFlags & bitsPARTICLE_TRAIL_FADE_IN ) != 0,
+		    ( m_fFlags & bitsPARTICLE_TRAIL_FADE ) != 0 );
 
 		color[0] = pParticle->m_color.r * ramp * (1.0f / 255.0f);
 		color[1] = pParticle->m_color.g * ramp * (1.0f / 255.0f);
@@ -280,9 +366,29 @@ void CTrailParticles::SimulateParticles( CParticleSimulateIterator *pIterator )
 		pParticle->m_flLifetime += timeDelta;
 
 		if ( pParticle->m_flLifetime >= pParticle->m_flDieTime )
+		{
 			pIterator->RemoveParticle( pParticle );
+		}
+		else if ( m_nLightKey )
+		{
+			m_LightBurst.Add( pParticle->m_Pos.Base(),
+			    SparkLight::TrailEmission( pParticle->m_flLifetime, pParticle->m_flDieTime,
+			        ( m_fFlags & bitsPARTICLE_TRAIL_FADE_IN ) != 0,
+			        ( m_fFlags & bitsPARTICLE_TRAIL_FADE ) != 0 ) );
+		}
 
 		pParticle = (TrailParticle*)pIterator->GetNext();
+	}
+
+	if ( m_nLightKey )
+	{
+		// Every batch this frame so far (one per material).
+		const SparkLight::Light_t light = m_LightBurst.Current();
+		if ( light.m_bLit )
+			LightBurst( Vector( light.m_Origin[0], light.m_Origin[1], light.m_Origin[2] ),
+			    light.m_flScale );
+		else
+			ReleaseLight();
 	}
 }
 
@@ -324,6 +430,8 @@ void FX_ElectricSpark( const Vector &pos, int nMagnitude, int nTrailLength, cons
 							bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
 
 	pSparkEmitter->SetSortOrigin( pos );
+	pSparkEmitter->EmitLight(
+	    pos, SparkLightParams( 2, MIN( 64.0f + 64.0f * nMagnitude, 384.0f ) ) );
 
 	//
 	// Big sparks.
@@ -568,6 +676,7 @@ void FX_MetalScrape( Vector &position, Vector &normal )
 						METAL_SCRAPE_GRAVITY, 
 						METAL_SCRAPE_DAMPEN, 
 						bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
+	sparkEmitter->EmitLight( offset, SparkLightParams( 1, 96.0f ) );
 
 	int	numSparks = random->RandomInt( 4, 8 );
 	
@@ -642,6 +751,7 @@ void FX_MetalSpark( const Vector &position, const Vector &direction, const Vecto
 	sparkEmitter->SetGravity( METAL_SPARK_GRAVITY );
 	sparkEmitter->SetCollisionDamped( METAL_SPARK_DAMPEN );
 	sparkEmitter->GetBinding().SetBBox( offset - Vector( 32, 32, 32 ), offset + Vector( 32, 32, 32 ) );
+	sparkEmitter->EmitLight( offset, SparkLightParams( 2, MIN( 64.0f + 32.0f * iScale, 192.0f ) ) );
 
 	int	numSparks = random->RandomInt( 4, 8 ) * ( iScale * 2 );
 	numSparks = (int)( 0.5f + (float)numSparks * g_pParticleSystemMgr->ParticleThrottleScaling() );
@@ -756,6 +866,8 @@ void FX_Sparks( const Vector &pos, int nMagnitude, int nTrailLength, const Vecto
 							bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
 
 	pSparkEmitter->SetSortOrigin( pos );
+	pSparkEmitter->EmitLight(
+	    pos, SparkLightParams( 2, MIN( 64.0f + 64.0f * nMagnitude, 384.0f ) ) );
 
 	//
 	// Big sparks.
@@ -1484,6 +1596,7 @@ void FX_SparkFan( Vector &position, Vector &normal )
 						METAL_SCRAPE_GRAVITY, 
 						METAL_SCRAPE_DAMPEN, 
 						bitsPARTICLE_TRAIL_VELOCITY_DAMPEN );
+	sparkEmitter->EmitLight( offset, SparkLightParams( 2, 160.0f ) );
 
 	if ( g_Material_Spark == NULL )
 	{

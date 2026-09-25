@@ -90,26 +90,31 @@ void CPaintStreamManager::LevelShutdownPostEntity()
 }
 
 
+//-----------------------------------------------------------------------------
+// Purpose: Create the blob pool every stream allocates from, starting with
+//			room for one stream's blob budget.
+//			Portal 2 port: the pool is shared by all streams, and a map runs
+//			several sprayers at once (each capped at its own maxblobcount by
+//			CPaintSprayer), so the pool grows in steps of that budget instead
+//			of refusing blobs once the first stream's budget is used. Blocks
+//			never move, so live blobs stay valid. The server creates it from
+//			CPaintStream::Init; a client that is not the listen server's (whose
+//			draws read the server's shared blob data) from its first update.
+//-----------------------------------------------------------------------------
 void CPaintStreamManager::AllocatePaintBlobPool( int nMaxBlobs )
 {
-	int nMaxCount = ( nMaxBlobs ) ? nMaxBlobs : 250;
-	// pre-allocate pool of blobs
-	if ( !m_pBlobPool )
-	{
+	int nMaxCount = ( nMaxBlobs > 0 ) ? nMaxBlobs : 250;
+	if ( m_pBlobPool )
+		return;
+
 #ifdef GAME_DLL
-		m_pBlobPool = new CClassMemoryPool< CPaintBlob >( nMaxCount, CUtlMemoryPool::GROW_NONE );
+	m_pBlobPool = new CClassMemoryPool< CPaintBlob >( nMaxCount, CUtlMemoryPool::GROW_SLOW );
 #else
-		if ( !Portal2Engine::IsClientLocalToActiveServer() )
-		{
-			m_pBlobPool = new CClassMemoryPool< CPaintBlob >( nMaxCount, CUtlMemoryPool::GROW_NONE );
-		}
-#endif
-	}
-	else if ( ( m_pBlobPool->Size() / m_pBlobPool->BlockSize() ) != nMaxBlobs )
+	if ( !Portal2Engine::IsClientLocalToActiveServer() )
 	{
-		Assert( 0 );
-		Warning( "CPaintStreamManager::AllocatePaintBlobPool is being called multiple times (for some reasons) with different pool sizes." );
+		m_pBlobPool = new CClassMemoryPool< CPaintBlob >( nMaxCount, CUtlMemoryPool::GROW_SLOW );
 	}
+#endif
 }
 
 
@@ -140,6 +145,12 @@ CPaintBlob* CPaintStreamManager::AllocatePaintBlob( bool bSilent /*= false*/ )
 		return NULL;
 	}
 #endif
+
+	// No stream has created the pool (a listen server's client has none).
+	if ( !m_pBlobPool )
+	{
+		return NULL;
+	}
 
 	return m_pBlobPool->Alloc();
 }

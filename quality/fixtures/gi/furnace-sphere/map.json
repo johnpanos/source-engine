@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_furnace_sphere",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/furnace-sphere/furnace-sphere.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

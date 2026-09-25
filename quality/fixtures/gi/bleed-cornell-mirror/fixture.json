@@ -1,0 +1,213 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "front": {
+      "eye": [
+        1.5,
+        0.1,
+        1.5
+      ],
+      "forward": [
+        0.0,
+        0.9946917938265512,
+        -0.10289915108550532
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "bleed",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "bleed-cornell-mirror",
+  "oracles": [
+    {
+      "a": {
+        "camera": "front",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "C_Xn",
+        "state": "default"
+      },
+      "b": {
+        "camera": "front",
+        "channels": [
+          1,
+          0,
+          2
+        ],
+        "region": "C_Xp",
+        "state": "default"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror default/C_Xn = default/C_Xp"
+    },
+    {
+      "a": {
+        "camera": "front",
+        "channels": [
+          0
+        ],
+        "region": "C_Yp",
+        "state": "default"
+      },
+      "b": {
+        "camera": "front",
+        "channels": [
+          1
+        ],
+        "region": "C_Yp",
+        "state": "default"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "self-mirror default/C_Yp R = G"
+    },
+    {
+      "a": {
+        "camera": "front",
+        "channels": [
+          0
+        ],
+        "region": "C_Zn",
+        "state": "default"
+      },
+      "b": {
+        "camera": "front",
+        "channels": [
+          1
+        ],
+        "region": "C_Zn",
+        "state": "default"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "self-mirror default/C_Zn R = G"
+    },
+    {
+      "a": {
+        "camera": "front",
+        "channels": [
+          0
+        ],
+        "region": "C_Zp",
+        "state": "default"
+      },
+      "b": {
+        "camera": "front",
+        "channels": [
+          1
+        ],
+        "region": "C_Zp",
+        "state": "default"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "self-mirror default/C_Zp R = G"
+    },
+    {
+      "a": {
+        "camera": "front",
+        "channels": [
+          0
+        ],
+        "region": "ProbeSphere",
+        "state": "default"
+      },
+      "b": {
+        "camera": "front",
+        "channels": [
+          1
+        ],
+        "region": "ProbeSphere",
+        "state": "default"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "self-mirror default/ProbeSphere R = G"
+    },
+    {
+      "camera": "front",
+      "channel": 0,
+      "factor": 1.1,
+      "kind": "dominant",
+      "lights": [
+        "indirect"
+      ],
+      "name": "default/C_Zn R dominant (front)",
+      "over": [
+        2
+      ],
+      "region": "C_Zn",
+      "state": "default"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A symmetric Cornell box: walls (0.7, 0.1, 0.1) and (0.1, 0.7, 0.1). Mirroring swaps red and green, so every centred surface has equal red and green light",
+  "regions": {
+    "front": {
+      "C_Xn": [
+        "C_Xn"
+      ],
+      "C_Xp": [
+        "C_Xp"
+      ],
+      "C_Yp": [
+        "C_Yp"
+      ],
+      "C_Zn": [
+        "C_Zn"
+      ],
+      "C_Zp": [
+        "C_Zp"
+      ],
+      "ProbeSphere": [
+        "ProbeSphere"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "bleed-cornell-mirror.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "ceiling lamp on"
+    }
+  }
+}

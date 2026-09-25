@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryComplexCityBlock"
+    metersPerUnit = 1
+    subLayers = [
+        @../complex-city-block.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryComplexCityBlock"
+{
+    over "Lights"
+    {
+        over "Sun"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

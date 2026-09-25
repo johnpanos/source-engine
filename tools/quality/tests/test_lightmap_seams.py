@@ -252,5 +252,30 @@ class IndexedTrianglesTest(unittest.TestCase):
             self.assertGreater(np.dot(area, normal), 0)  # counter-clockwise front
 
 
+class DegenerateUvBridgeTest(unittest.TestCase):
+    """A sub-texel sliver inside a chart does not cut the chart in two."""
+
+    def strip(self):
+        p = np.array([(0, 0, 0), (1, 0, 0), (0, 1, 0), (1, 1, 0), (0, 2, 0)], float) * 0.1
+        uv = np.array([(0.30, 0.30), (0.40, 0.30), (0.30, 0.40), (0.35, 0.35), (0.30, 0.50)])
+        # The middle triangle's UV corners are collinear: zero UV area.
+        faces = [(0, 1, 2), (1, 3, 2), (3, 4, 2)]
+        return (np.array([[p[i] for i in f] for f in faces]),
+                np.array([[uv[i] for i in f] for f in faces]))
+
+    def test_sliver_joins_its_neighbours(self):
+        positions, uvs = self.strip()
+        self.assertLess(seams.uv_area(uvs)[1], seams.MIN_UV_AREA)
+        labels = seams.charts(positions, uvs, 256)
+        self.assertEqual(labels[1], -1)
+        self.assertEqual(labels[0], labels[2])
+        self.assertGreaterEqual(labels[0], 0)
+
+    def test_without_the_sliver_they_are_two_charts(self):
+        positions, uvs = self.strip()
+        labels = seams.charts(positions[[0, 2]], uvs[[0, 2]], 256)
+        self.assertNotEqual(labels[0], labels[1])
+
+
 if __name__ == "__main__":
     unittest.main()

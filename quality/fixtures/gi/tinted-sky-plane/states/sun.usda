@@ -1,0 +1,26 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryTintedSkyPlane"
+    metersPerUnit = 1
+    subLayers = [
+        @../tinted-sky-plane.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryTintedSkyPlane"
+{
+    over "Lights"
+    {
+        over "Sky"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Sun"
+        {
+            float inputs:intensity = 3
+        }
+    }
+}
+

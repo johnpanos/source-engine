@@ -1,0 +1,378 @@
+{
+  "baked_state": "all",
+  "cameras": {
+    "centre": {
+      "eye": [
+        3.0,
+        0.2,
+        1.6
+      ],
+      "forward": [
+        0.0,
+        0.9927956130099674,
+        -0.11982016019085816
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "mix",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "mix-rgb-ceiling",
+  "oracles": [
+    {
+      "camera": "centre",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "all = red + green + blue (centre)",
+      "parts": [
+        "red",
+        "green",
+        "blue"
+      ],
+      "regions": [
+        "R_Xn",
+        "R_Xp",
+        "R_Yp",
+        "R_Zn",
+        "R_Zp",
+        "ProbeSphere"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "centre",
+      "channels": [
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "red: GB dark (centre)",
+      "regions": [
+        "R_Xn",
+        "R_Xp",
+        "R_Yp",
+        "R_Zn",
+        "R_Zp",
+        "ProbeSphere"
+      ],
+      "state": "red"
+    },
+    {
+      "camera": "centre",
+      "channels": [
+        0,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "green: RB dark (centre)",
+      "regions": [
+        "R_Xn",
+        "R_Xp",
+        "R_Yp",
+        "R_Zn",
+        "R_Zp",
+        "ProbeSphere"
+      ],
+      "state": "green"
+    },
+    {
+      "camera": "centre",
+      "channels": [
+        0,
+        1
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "blue: RG dark (centre)",
+      "regions": [
+        "R_Xn",
+        "R_Xp",
+        "R_Yp",
+        "R_Zn",
+        "R_Zp",
+        "ProbeSphere"
+      ],
+      "state": "blue"
+    },
+    {
+      "a": {
+        "camera": "centre",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "R_Xn",
+        "state": "all"
+      },
+      "b": {
+        "camera": "centre",
+        "channels": [
+          2,
+          1,
+          0
+        ],
+        "region": "R_Xp",
+        "state": "all"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror all/R_Xn = all/R_Xp"
+    },
+    {
+      "a": {
+        "camera": "centre",
+        "channels": [
+          0
+        ],
+        "region": "R_Yp",
+        "state": "all"
+      },
+      "b": {
+        "camera": "centre",
+        "channels": [
+          2
+        ],
+        "region": "R_Yp",
+        "state": "all"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "self-mirror all/R_Yp R = B"
+    },
+    {
+      "a": {
+        "camera": "centre",
+        "channels": [
+          0
+        ],
+        "region": "R_Zn",
+        "state": "all"
+      },
+      "b": {
+        "camera": "centre",
+        "channels": [
+          2
+        ],
+        "region": "R_Zn",
+        "state": "all"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "self-mirror all/R_Zn R = B"
+    },
+    {
+      "a": {
+        "camera": "centre",
+        "channels": [
+          0
+        ],
+        "region": "R_Zp",
+        "state": "all"
+      },
+      "b": {
+        "camera": "centre",
+        "channels": [
+          2
+        ],
+        "region": "R_Zp",
+        "state": "all"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "self-mirror all/R_Zp R = B"
+    },
+    {
+      "a": {
+        "camera": "centre",
+        "channels": [
+          0
+        ],
+        "region": "ProbeSphere",
+        "state": "all"
+      },
+      "b": {
+        "camera": "centre",
+        "channels": [
+          2
+        ],
+        "region": "ProbeSphere",
+        "state": "all"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "self-mirror all/ProbeSphere R = B"
+    },
+    {
+      "a": {
+        "camera": "centre",
+        "channels": [
+          0
+        ],
+        "region": "R_Xn",
+        "state": "red"
+      },
+      "b": {
+        "camera": "centre",
+        "channels": [
+          2
+        ],
+        "region": "R_Xp",
+        "state": "blue"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror red/R_Xn = blue/R_Xp"
+    },
+    {
+      "a": {
+        "camera": "centre",
+        "channels": [
+          1
+        ],
+        "region": "R_Xn",
+        "state": "green"
+      },
+      "b": {
+        "camera": "centre",
+        "channels": [
+          1
+        ],
+        "region": "R_Xp",
+        "state": "green"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror green/R_Xn = green/R_Xp"
+    },
+    {
+      "channel": 0,
+      "entries": [
+        {
+          "camera": "centre",
+          "region": "R_Xn",
+          "state": "all"
+        },
+        {
+          "camera": "centre",
+          "region": "R_Zn",
+          "state": "all"
+        },
+        {
+          "camera": "centre",
+          "region": "R_Xp",
+          "state": "all"
+        }
+      ],
+      "factor": 1.1,
+      "kind": "tint_order",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "R/B falls along R_Xn, R_Zn, R_Xp",
+      "over": 2
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Red, green and blue ceiling panels in a white room: every mix is the sum of its parts, a pure light stays pure through grey bounces, and the red/blue mirror symmetry swaps channels",
+  "regions": {
+    "centre": {
+      "ProbeSphere": [
+        "ProbeSphere"
+      ],
+      "R_Xn": [
+        "R_Xn"
+      ],
+      "R_Xp": [
+        "R_Xp"
+      ],
+      "R_Yp": [
+        "R_Yp"
+      ],
+      "R_Zn": [
+        "R_Zn"
+      ],
+      "R_Zp": [
+        "R_Zp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "mix-rgb-ceiling.usda",
+  "states": {
+    "all": {
+      "layer": null,
+      "note": "red, green and blue panels on"
+    },
+    "blue": {
+      "layer": "states/blue.usda",
+      "note": "blue panel alone"
+    },
+    "green": {
+      "layer": "states/green.usda",
+      "note": "green panel alone"
+    },
+    "red": {
+      "layer": "states/red.usda",
+      "note": "red panel alone"
+    }
+  }
+}

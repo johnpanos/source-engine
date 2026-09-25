@@ -1,0 +1,158 @@
+{
+  "baked_state": "both",
+  "cameras": {
+    "corner": {
+      "eye": [
+        5.7,
+        0.3,
+        1.7
+      ],
+      "forward": [
+        -0.7007124942196027,
+        0.7007124942196027,
+        -0.1341789882548175
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "range",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "range-hdr-pair",
+  "oracles": [
+    {
+      "camera": "corner",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "both = red + blue (corner)",
+      "parts": [
+        "red",
+        "blue"
+      ],
+      "regions": [
+        "R_Zn",
+        "R_Xn",
+        "R_Yp",
+        "ProbeSphere"
+      ],
+      "sum": "both"
+    },
+    {
+      "camera": "corner",
+      "channels": [
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "red: GB dark (corner)",
+      "regions": [
+        "R_Zn",
+        "R_Xn",
+        "R_Yp",
+        "ProbeSphere"
+      ],
+      "state": "red"
+    },
+    {
+      "camera": "corner",
+      "channels": [
+        0,
+        1
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "blue: RG dark (corner)",
+      "regions": [
+        "R_Zn",
+        "R_Xn",
+        "R_Yp",
+        "ProbeSphere"
+      ],
+      "state": "blue"
+    },
+    {
+      "camera": "corner",
+      "channels": [
+        1
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "both: G dark (corner)",
+      "regions": [
+        "R_Zn",
+        "R_Xn",
+        "R_Yp",
+        "ProbeSphere"
+      ],
+      "state": "both"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A tiny, very bright red lamp and a wide, dim blue panel: two hundred times apart in level, they still add exactly and keep to their own channels",
+  "regions": {
+    "corner": {
+      "ProbeSphere": [
+        "ProbeSphere"
+      ],
+      "R_Xn": [
+        "R_Xn"
+      ],
+      "R_Yp": [
+        "R_Yp"
+      ],
+      "R_Zn": [
+        "R_Zn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "range-hdr-pair.usda",
+  "states": {
+    "blue": {
+      "layer": "states/blue.usda",
+      "note": "blue panel alone"
+    },
+    "both": {
+      "layer": null,
+      "note": "both on"
+    },
+    "red": {
+      "layer": "states/red.usda",
+      "note": "red lamp alone"
+    }
+  }
+}

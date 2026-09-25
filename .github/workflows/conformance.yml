@@ -33,6 +33,10 @@ jobs:
       run: python3 -m unittest tools/quality/tests/test_physics_filter_audit.py -v
     - name: Game collision filters stay safe on physics worker threads (RFC 0013 P3)
       run: python3 tools/quality/physics_filter_audit.py check
+    - name: SDF GI performance fixture rules (RFC 0011 G6)
+      run: python3 -m unittest tools/quality/tests/test_gi_sdf_bench.py -v
+    - name: SDF GI performance fixtures declaration (RFC 0011 G6)
+      run: python3 tools/quality/gi_sdf_bench.py validate
 
   headless-manifest:
     needs: runner-self-tests

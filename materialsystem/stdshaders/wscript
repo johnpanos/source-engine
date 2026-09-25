@@ -76,6 +76,8 @@ def build(bld):
 		#'morphweight_dx9.cpp',						[$WIN32]
 		'motion_blur_dx9.cpp',
 		'occlusion_dx9.cpp',
+		'paintblob_dx9.cpp',
+		'paintblob_helper.cpp',
 		'particlelitgeneric_dx9.cpp',
 		'particlelitgeneric_dx9_helper.cpp',
 		'particlesphere_dx9.cpp',

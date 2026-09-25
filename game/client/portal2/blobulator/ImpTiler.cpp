@@ -25,8 +25,12 @@
 static const int NC = ImpTiler::TILE_CELLS + 1;
 static const int CORNERS_PER_TILE = NC * NC * NC;
 
-// Regula falsi steps that move an edge vertex onto the true surface.
-static const int VERTEX_REFINE_STEPS = 4;
+// Regula falsi steps that move an edge vertex onto the true surface: until the
+// field is within VERTEX_REFINE_TOLERANCE (relative) of the threshold, at most
+// VERTEX_REFINE_MAX_STEPS. A root near one end of a long edge can need more
+// than four steps on the steep kernel.
+static const int VERTEX_REFINE_MAX_STEPS = 16;
+static const float VERTEX_REFINE_TOLERANCE = 1e-5f;
 
 struct ImpTileBlock_t
 {
@@ -410,12 +414,13 @@ int ImpTiler::EdgeVertex( ImpTileBlock_t *pTile, int x, int y, int z, int nDir, 
 	float t0 = 0.0f, t1 = 1.0f, f0 = fa - m_flThreshold, f1 = fb - m_flThreshold;
 	float t = ( fabsf( f1 - f0 ) > 1e-12f ) ? f0 / ( f0 - f1 ) : 0.5f;
 	int nLastSide = 0;
-	for ( int nStep = 0; nStep < VERTEX_REFINE_STEPS; ++nStep )
+	const float flTolerance = VERTEX_REFINE_TOLERANCE * m_flThreshold;
+	for ( int nStep = 0; nStep < VERTEX_REFINE_MAX_STEPS; ++nStep )
 	{
 		float flValue;
 		EvaluateAt( pParticles, nParticles, vecA + vecEdge * t, &flValue, NULL, NULL, NULL );
 		float f = flValue - m_flThreshold;
-		if ( f == 0.0f )
+		if ( fabsf( f ) <= flTolerance )
 			break;
 		if ( ( f > 0.0f ) == ( f0 > 0.0f ) )
 		{
@@ -453,8 +458,12 @@ int ImpTiler::EdgeVertex( ImpTileBlock_t *pTile, int x, int y, int z, int nDir, 
 	vert.color = ( flWeight > 0.0f ) ? vecColor * ( 1.0f / flWeight ) : Vector( 1.0f, 1.0f, 1.0f );
 
 	// Tangent frame: the blended particle tangent made orthogonal to the normal.
+	// Normalize before projecting and fall back to a fixed axis when the unit
+	// tangent is within ~0.6 degrees of the normal: VectorNormalize adds
+	// FLT_EPSILON to the length, so a shorter projection would not come out unit.
+	float flTangentLength = VectorNormalize( vecTangent );
 	vecTangent -= vert.normal * DotProduct( vecTangent, vert.normal );
-	if ( VectorNormalize( vecTangent ) <= 1e-6f )
+	if ( flTangentLength <= 0.0f || VectorNormalize( vecTangent ) <= 1e-2f )
 	{
 		Vector vecUp = ( fabsf( vert.normal.z ) < 0.9f ) ? Vector( 0.0f, 0.0f, 1.0f )
 		                                                 : Vector( 1.0f, 0.0f, 0.0f );

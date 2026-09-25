@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryMixSunSkyPillar"
+    metersPerUnit = 1
+    subLayers = [
+        @../mix-sun-sky-pillar.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryMixSunSkyPillar"
+{
+    over "Lights"
+    {
+        over "Sun"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

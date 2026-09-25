@@ -95,6 +95,10 @@ static unsigned short g_iAbsRecomputationStackPos = 0;
 static CUtlLinkedList<C_BaseEntity*, unsigned short> g_InterpolationList;
 static CUtlLinkedList<C_BaseEntity*, unsigned short> g_TeleportList;
 
+// Entities removed while removals are deferred; each unregisters in its destructor.
+static bool s_bImmediateRemovesAllowed = true;
+static CUtlVector<C_BaseEntity *> s_PendingRemovals;
+
 #if !defined( NO_ENTITY_PREDICTION )
 //-----------------------------------------------------------------------------
 // Purpose: Maintains a list of predicted or client created entities
@@ -998,6 +1002,10 @@ C_BaseEntity::~C_BaseEntity()
 #endif
 	RemoveFromInterpolationList();
 	RemoveFromTeleportList();
+	if ( IsMarkedForDeletion() )
+	{
+		s_PendingRemovals.FindAndFastRemove( this );
+	}
 }
 
 void C_BaseEntity::Clear( void )
@@ -4762,17 +4770,42 @@ int C_BaseEntity::PrecacheModel( const char *name )
 //-----------------------------------------------------------------------------
 void C_BaseEntity::Remove( )
 {
+	if ( IsMarkedForDeletion() )
+		return;
+	AddEFlags( EFL_KILLME );	// Make sure to ignore further calls into here or UTIL_Remove.
+
 	// Nothing for now, if it's a predicted entity, could flag as "delete" or dormant
 	if ( GetPredictable() || IsClientCreated() )
 	{
 		// Make it solid
 		AddSolidFlags( FSOLID_NOT_SOLID );
 		SetMoveType( MOVETYPE_NONE );
+	}
 
-		AddEFlags( EFL_KILLME );	// Make sure to ignore further calls into here or UTIL_Remove.
+	if ( !s_bImmediateRemovesAllowed )
+	{
+		s_PendingRemovals.AddToTail( this );
+		return;
 	}
 
 	Release();
+}
+
+void C_BaseEntity::SetImmediateRemovesAllowed( bool bAllowed )
+{
+	s_bImmediateRemovesAllowed = bAllowed;
+}
+
+void C_BaseEntity::PurgeRemovedEntities()
+{
+	Assert( s_bImmediateRemovesAllowed );
+	// A release may release others, which unregister themselves.
+	while ( s_PendingRemovals.Count() )
+	{
+		C_BaseEntity *pEntity = s_PendingRemovals.Tail();
+		s_PendingRemovals.RemoveMultipleFromTail( 1 );
+		pEntity->Release();
+	}
 }
 
 

@@ -1,0 +1,32 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryEmissiveOrbs"
+    metersPerUnit = 1
+    subLayers = [
+        @../emissive-orbs.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryEmissiveOrbs"
+{
+    over "Looks"
+    {
+        over "GlowMagenta"
+        {
+            over "Surface"
+            {
+                color3f inputs:emissiveColor = (0, 0, 0)
+            }
+        }
+
+        over "GlowCyan"
+        {
+            over "Surface"
+            {
+                color3f inputs:emissiveColor = (0, 0, 0)
+            }
+        }
+    }
+}
+

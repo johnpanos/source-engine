@@ -1,0 +1,126 @@
+{
+  "analytic": {
+    "albedo": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "diffuse_light_direct": [
+      0.05,
+      0.05,
+      0.05
+    ],
+    "diffuse_light_indirect": [
+      0.4500000000000001,
+      0.4500000000000001,
+      0.4500000000000001
+    ],
+    "diffuse_light_total": [
+      0.5000000000000001,
+      0.5000000000000001,
+      0.5000000000000001
+    ],
+    "emission": [
+      0.05,
+      0.05,
+      0.05
+    ]
+  },
+  "baked_state": "default",
+  "cameras": {
+    "inside": {
+      "eye": [
+        0.35,
+        0.35,
+        1.6
+      ],
+      "forward": [
+        0.6982151092401682,
+        0.6982151092401682,
+        -0.15808643982796264
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "furnace",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "furnace-high-albedo",
+  "oracles": [
+    {
+      "camera": "inside",
+      "expected": {
+        "direct": [
+          0.05,
+          0.05,
+          0.05
+        ],
+        "indirect": [
+          0.45,
+          0.45,
+          0.45
+        ],
+        "total": [
+          0.5,
+          0.5,
+          0.5
+        ]
+      },
+      "kind": "value",
+      "lights": [
+        "direct",
+        "indirect",
+        "total"
+      ],
+      "name": "furnace L = Le / (1 - rho) per channel (inside)",
+      "regions": [
+        "walls",
+        "model"
+      ],
+      "state": "default"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Albedo 0.9 furnace: 90% of the light is indirect, reached only after dozens of bounces; bounce truncation shows",
+  "regions": {
+    "inside": {
+      "model": [
+        "ProbeSphere"
+      ],
+      "walls": [
+        "Box_Xn",
+        "Box_Xp",
+        "Box_Yn",
+        "Box_Yp",
+        "Box_Zn",
+        "Box_Zp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "furnace-high-albedo.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "uniform emission [0.05, 0.05, 0.05], albedo [0.9, 0.9, 0.9]"
+    }
+  }
+}

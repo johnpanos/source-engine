@@ -88,6 +88,11 @@ void CPaintStream::Init( const Vector& vLightPosition, int nPaintType, int nRend
 	m_nPaintType = nPaintType;
 	m_nRenderMode = nRenderMode;
 	m_nMaxBlobCount = nMaxBlobCount;
+
+	// Portal 2 port: the server's blobs come from the manager's pool, which
+	// nothing else creates on the server (the client does it on its first
+	// update, C_PaintStream::OnDataChanged).
+	PaintStreamManager.AllocatePaintBlobPool( nMaxBlobCount );
 }
 
 

@@ -1,0 +1,257 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "blue": {
+      "eye": [
+        0.2,
+        5.9016,
+        1.7
+      ],
+      "forward": [
+        0.6848300870011593,
+        -0.6848300870011594,
+        -0.2490291225458761
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "green": {
+      "eye": [
+        5.9016,
+        0.2,
+        1.7
+      ],
+      "forward": [
+        -0.6848300870011594,
+        0.6848300870011593,
+        -0.2490291225458761
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "red": {
+      "eye": [
+        0.2,
+        0.2,
+        1.7
+      ],
+      "forward": [
+        0.6848300870011593,
+        0.6848300870011593,
+        -0.2490291225458761
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "white": {
+      "eye": [
+        5.9016,
+        5.9016,
+        1.7
+      ],
+      "forward": [
+        -0.6848300870011593,
+        -0.6848300870011593,
+        -0.24902912254587609
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeA",
+      "stand_in_mesh": "ProbeAShape"
+    },
+    {
+      "name": "ProbeB",
+      "stand_in_mesh": "ProbeBShape"
+    },
+    {
+      "name": "ProbeC",
+      "stand_in_mesh": "ProbeCShape"
+    },
+    {
+      "name": "ProbeD",
+      "stand_in_mesh": "ProbeDShape"
+    }
+  ],
+  "family": "leak",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "leak-quad-rooms",
+  "oracles": [
+    {
+      "camera": "red",
+      "channels": [
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "default: GB dark (red)",
+      "regions": [
+        "Red_Zn",
+        "Red_Xp",
+        "Red_Yp",
+        "ProbeA"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "green",
+      "channels": [
+        0,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "default: RB dark (green)",
+      "regions": [
+        "Green_Zn",
+        "Green_Xn",
+        "Green_Yp",
+        "ProbeB"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "blue",
+      "channels": [
+        0,
+        1
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "default: RG dark (blue)",
+      "regions": [
+        "Blue_Zn",
+        "Blue_Xp",
+        "Blue_Yn",
+        "ProbeC"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "white",
+      "expected": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "the white room stays neutral",
+      "regions": [
+        "White_Zn",
+        "White_Xn",
+        "White_Yn",
+        "ProbeD"
+      ],
+      "state": "default"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Four sealed rooms around one corner (red, green, blue, white), each with a model beside the shared corner where a probe cell spans all four: colors stay in their rooms, and white stays neutral",
+  "regions": {
+    "blue": {
+      "Blue_Xp": [
+        "Blue_Xp"
+      ],
+      "Blue_Yn": [
+        "Blue_Yn"
+      ],
+      "Blue_Zn": [
+        "Blue_Zn"
+      ],
+      "ProbeC": [
+        "ProbeC"
+      ]
+    },
+    "green": {
+      "Green_Xn": [
+        "Green_Xn"
+      ],
+      "Green_Yp": [
+        "Green_Yp"
+      ],
+      "Green_Zn": [
+        "Green_Zn"
+      ],
+      "ProbeB": [
+        "ProbeB"
+      ]
+    },
+    "red": {
+      "ProbeA": [
+        "ProbeA"
+      ],
+      "Red_Xp": [
+        "Red_Xp"
+      ],
+      "Red_Yp": [
+        "Red_Yp"
+      ],
+      "Red_Zn": [
+        "Red_Zn"
+      ]
+    },
+    "white": {
+      "ProbeD": [
+        "ProbeD"
+      ],
+      "White_Xn": [
+        "White_Xn"
+      ],
+      "White_Yn": [
+        "White_Yn"
+      ],
+      "White_Zn": [
+        "White_Zn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "leak-quad-rooms.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "each room lit by its own color"
+    }
+  }
+}

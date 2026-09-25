@@ -1,0 +1,370 @@
+{
+  "baked_state": "all",
+  "cameras": {
+    "east": {
+      "eye": [
+        6.5,
+        4.0,
+        1.6
+      ],
+      "forward": [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "north": {
+      "eye": [
+        4.0,
+        6.5,
+        1.6
+      ],
+      "forward": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "south": {
+      "eye": [
+        4.0,
+        1.5,
+        1.6
+      ],
+      "forward": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "top": {
+      "eye": [
+        4.0,
+        3.3,
+        3.2
+      ],
+      "forward": [
+        0.0,
+        0.4008188340197078,
+        -0.9161573349021891
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "west": {
+      "eye": [
+        1.5,
+        4.0,
+        1.6
+      ],
+      "forward": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "probe",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "probe-directional-rgb",
+  "oracles": [
+    {
+      "camera": "east",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "all = red + green + blue (east)",
+      "parts": [
+        "red",
+        "green",
+        "blue"
+      ],
+      "regions": [
+        "ProbeSphere"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "west",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "all = red + green + blue (west)",
+      "parts": [
+        "red",
+        "green",
+        "blue"
+      ],
+      "regions": [
+        "ProbeSphere"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "north",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "all = red + green + blue (north)",
+      "parts": [
+        "red",
+        "green",
+        "blue"
+      ],
+      "regions": [
+        "ProbeSphere"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "south",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "all = red + green + blue (south)",
+      "parts": [
+        "red",
+        "green",
+        "blue"
+      ],
+      "regions": [
+        "ProbeSphere"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "top",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "all = red + green + blue (top)",
+      "parts": [
+        "red",
+        "green",
+        "blue"
+      ],
+      "regions": [
+        "ProbeSphere"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "west",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "red: the model's west side is unlit",
+      "regions": [
+        "ProbeSphere"
+      ],
+      "state": "red"
+    },
+    {
+      "camera": "south",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "green: the model's south side is unlit",
+      "regions": [
+        "ProbeSphere"
+      ],
+      "state": "green"
+    },
+    {
+      "channel": 0,
+      "entries": [
+        {
+          "camera": "east",
+          "region": "ProbeSphere",
+          "state": "all"
+        },
+        {
+          "camera": "west",
+          "region": "ProbeSphere",
+          "state": "all"
+        }
+      ],
+      "factor": 2.0,
+      "kind": "tint_order",
+      "lights": [
+        "total"
+      ],
+      "name": "R/G falls along ProbeSphere, ProbeSphere",
+      "over": 1
+    },
+    {
+      "channel": 1,
+      "entries": [
+        {
+          "camera": "north",
+          "region": "ProbeSphere",
+          "state": "all"
+        },
+        {
+          "camera": "south",
+          "region": "ProbeSphere",
+          "state": "all"
+        }
+      ],
+      "factor": 2.0,
+      "kind": "tint_order",
+      "lights": [
+        "total"
+      ],
+      "name": "G/R falls along ProbeSphere, ProbeSphere",
+      "over": 0
+    },
+    {
+      "channel": 2,
+      "entries": [
+        {
+          "camera": "top",
+          "region": "ProbeSphere",
+          "state": "all"
+        },
+        {
+          "camera": "south",
+          "region": "ProbeSphere",
+          "state": "all"
+        }
+      ],
+      "factor": 1.2,
+      "kind": "tint_order",
+      "lights": [
+        "total"
+      ],
+      "name": "B/G falls along ProbeSphere, ProbeSphere",
+      "over": 1
+    },
+    {
+      "camera": "east",
+      "channel": 0,
+      "factor": 1.2,
+      "kind": "dominant",
+      "lights": [
+        "direct"
+      ],
+      "name": "all/ProbeSphere R dominant (east)",
+      "over": [
+        1,
+        2
+      ],
+      "region": "ProbeSphere",
+      "state": "all"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A dynamic model lit red from the east, green from the north and blue from above, seen from five sides: each side shows its light's color, and a lamp's far side is exactly unlit",
+  "regions": {
+    "east": {
+      "ProbeSphere": [
+        "ProbeSphere"
+      ]
+    },
+    "north": {
+      "ProbeSphere": [
+        "ProbeSphere"
+      ]
+    },
+    "south": {
+      "ProbeSphere": [
+        "ProbeSphere"
+      ]
+    },
+    "top": {
+      "ProbeSphere": [
+        "ProbeSphere"
+      ]
+    },
+    "west": {
+      "ProbeSphere": [
+        "ProbeSphere"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "probe-directional-rgb.usda",
+  "states": {
+    "all": {
+      "layer": null,
+      "note": "three lamps on"
+    },
+    "blue": {
+      "layer": "states/blue.usda",
+      "note": "blue lamp alone"
+    },
+    "green": {
+      "layer": "states/green.usda",
+      "note": "green lamp alone"
+    },
+    "red": {
+      "layer": "states/red.usda",
+      "note": "red lamp alone"
+    }
+  }
+}

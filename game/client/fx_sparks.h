@@ -15,6 +15,7 @@
 #include "particlemgr.h"
 #include "c_pixel_visibility.h"
 #include "fx_fleck.h"
+#include "render/spark_light.h"
 
 #include "tier0/memdbgon.h"
 
@@ -66,6 +67,15 @@ inline void Color32Init( color32 &out, int r, int g, int b, int a )
 	out.b = b;
 	out.a = a;
 }
+
+// The dynamic light a burst of sparks emits (render/spark_light.h), at full strength.
+struct SparkLightParams_t
+{
+	int m_Color[3];  // ColorRGBExp32 mantissas, 0..255 (linear)
+	int m_nExponent; // ColorRGBExp32 exponent
+	float m_flRadius;
+};
+
 //
 // CTrailParticles
 //
@@ -75,11 +85,17 @@ class CTrailParticles : public CSimpleEmitter
 	DECLARE_CLASS( CTrailParticles, CSimpleEmitter );
 public:
 	CTrailParticles( const char *pDebugName );
-	
+	virtual ~CTrailParticles();
+
 	static CTrailParticles	*Create( const char *pDebugName )	{	return new CTrailParticles( pDebugName );	}
 
+	virtual void Update( float flTimeDelta );
 	virtual void RenderParticles( CParticleRenderIterator *pIterator );
 	virtual void SimulateParticles( CParticleSimulateIterator *pIterator );
+
+	// Lights the surroundings from this emitter's live sparks, starting now at
+	// origin at full strength (fx_spark_lights caps how many bursts do).
+	void EmitLight( const Vector &origin, const SparkLightParams_t &params );
 
 	//Setup for point emission
 	virtual void	Setup( const Vector &origin, const Vector *direction, float angularSpread, float minSpeed, float maxSpeed, float gravity, float dampen, int flags, bool bNotCollideable = false );
@@ -98,6 +114,14 @@ protected:
 	float				m_flVelocityDampen;
 
 private:
+	void LightBurst( const Vector &origin, float flScale );
+	void ReleaseLight();
+
+	SparkLight::CBurst m_LightBurst;
+	SparkLightParams_t m_LightParams;
+	int m_nLightKey;   // 0: this emitter emits no light
+	bool m_bLightHeld; // holds one of the fx_spark_lights budget
+
 	CTrailParticles( const CTrailParticles & ); // not defined, not accessible
 };
 

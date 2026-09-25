@@ -1,0 +1,284 @@
+{
+  "baked_state": "both",
+  "cameras": {
+    "lit": {
+      "eye": [
+        3.0,
+        -4.0,
+        2.0
+      ],
+      "forward": [
+        -0.5834323811883105,
+        0.777909841584414,
+        -0.2333729524753242
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "shade": {
+      "eye": [
+        -3.0,
+        -4.0,
+        2.0
+      ],
+      "forward": [
+        0.5834323811883105,
+        0.777909841584414,
+        -0.2333729524753242
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "mix",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "mix-sun-sky-pillar",
+  "oracles": [
+    {
+      "camera": "shade",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "both = sun + sky (shade)",
+      "parts": [
+        "sun",
+        "sky"
+      ],
+      "regions": [
+        "Ground",
+        "GroundShadow",
+        "Pillar_Xn",
+        "Pillar_Yn"
+      ],
+      "sum": "both"
+    },
+    {
+      "camera": "lit",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "both = sun + sky (lit)",
+      "parts": [
+        "sun",
+        "sky"
+      ],
+      "regions": [
+        "Ground",
+        "Pillar_Xp",
+        "Pillar_Yn"
+      ],
+      "sum": "both"
+    },
+    {
+      "camera": "shade",
+      "expected": [
+        1.0,
+        0.75,
+        0.45
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "sun chromaticity (shade)",
+      "regions": [
+        "Ground",
+        "GroundShadow",
+        "Pillar_Xn",
+        "Pillar_Yn"
+      ],
+      "state": "sun"
+    },
+    {
+      "camera": "lit",
+      "expected": [
+        1.0,
+        0.75,
+        0.45
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "sun chromaticity (lit)",
+      "regions": [
+        "Ground",
+        "Pillar_Xp",
+        "Pillar_Yn"
+      ],
+      "state": "sun"
+    },
+    {
+      "camera": "shade",
+      "expected": [
+        0.35,
+        0.55,
+        1.0
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "sky chromaticity (shade)",
+      "regions": [
+        "Ground",
+        "GroundShadow",
+        "Pillar_Xn",
+        "Pillar_Yn"
+      ],
+      "state": "sky"
+    },
+    {
+      "camera": "lit",
+      "expected": [
+        0.35,
+        0.55,
+        1.0
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "sky chromaticity (lit)",
+      "regions": [
+        "Ground",
+        "Pillar_Xp",
+        "Pillar_Yn"
+      ],
+      "state": "sky"
+    },
+    {
+      "camera": "shade",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "direct"
+      ],
+      "name": "sun: the pillar's umbra has no direct light",
+      "regions": [
+        "GroundShadow"
+      ],
+      "state": "sun"
+    },
+    {
+      "camera": "shade",
+      "channel": 2,
+      "factor": 1.5,
+      "kind": "dominant",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "both/GroundShadow B dominant (shade)",
+      "over": [
+        0
+      ],
+      "region": "GroundShadow",
+      "state": "both"
+    },
+    {
+      "camera": "shade",
+      "channel": 2,
+      "factor": 1.1,
+      "kind": "dominant",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "both/Pillar_Xn B dominant (shade)",
+      "over": [
+        0
+      ],
+      "region": "Pillar_Xn",
+      "state": "both"
+    },
+    {
+      "camera": "lit",
+      "channel": 0,
+      "factor": 1.2,
+      "kind": "dominant",
+      "lights": [
+        "total"
+      ],
+      "name": "both/Pillar_Xp R dominant (lit)",
+      "over": [
+        2
+      ],
+      "region": "Pillar_Xp",
+      "state": "both"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "An orange sun and a blue sky over a grey ground and pillar: sun and sky add, each keeps its color on the grey world, the sun's shadow is blue and the lit face orange",
+  "regions": {
+    "lit": {
+      "Ground": [
+        "Ground"
+      ],
+      "Pillar_Xp": [
+        "Pillar_Xp"
+      ],
+      "Pillar_Yn": [
+        "Pillar_Yn"
+      ]
+    },
+    "shade": {
+      "Ground": [
+        "Ground"
+      ],
+      "GroundShadow": [
+        "GroundShadow"
+      ],
+      "Pillar_Xn": [
+        "Pillar_Xn"
+      ],
+      "Pillar_Yn": [
+        "Pillar_Yn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "mix-sun-sky-pillar.usda",
+  "states": {
+    "both": {
+      "layer": null,
+      "note": "sun and sky"
+    },
+    "sky": {
+      "layer": "states/sky.usda",
+      "note": "sky alone"
+    },
+    "sun": {
+      "layer": "states/sun.usda",
+      "note": "sun alone"
+    }
+  }
+}

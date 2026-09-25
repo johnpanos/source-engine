@@ -1,0 +1,639 @@
+{
+  "baked_state": "all",
+  "cameras": {
+    "east": {
+      "eye": [
+        5.0,
+        1.25,
+        1.8
+      ],
+      "forward": [
+        0.983188736076488,
+        0.0,
+        -0.18259219384277636
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "west": {
+      "eye": [
+        7.0,
+        1.25,
+        1.8
+      ],
+      "forward": [
+        -0.983188736076488,
+        0.0,
+        -0.18259219384277636
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "mix",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "mix-complementary-corridor",
+  "oracles": [
+    {
+      "camera": "west",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "all = red + cyan (west)",
+      "parts": [
+        "red",
+        "cyan"
+      ],
+      "regions": [
+        "F0",
+        "F1",
+        "F2",
+        "C_Xn",
+        "C_Yn",
+        "C_Yp",
+        "C_Zp"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "east",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "all = red + cyan (east)",
+      "parts": [
+        "red",
+        "cyan"
+      ],
+      "regions": [
+        "F5",
+        "F4",
+        "F3",
+        "C_Xp",
+        "C_Yn",
+        "C_Yp",
+        "C_Zp"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "west",
+      "channels": [
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "red: GB dark (west)",
+      "regions": [
+        "F0",
+        "F1",
+        "F2",
+        "C_Xn",
+        "C_Yn",
+        "C_Yp",
+        "C_Zp"
+      ],
+      "state": "red"
+    },
+    {
+      "camera": "east",
+      "channels": [
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "red: GB dark (east)",
+      "regions": [
+        "F5",
+        "F4",
+        "F3",
+        "C_Xp",
+        "C_Yn",
+        "C_Yp",
+        "C_Zp"
+      ],
+      "state": "red"
+    },
+    {
+      "camera": "west",
+      "channels": [
+        0
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "cyan: R dark (west)",
+      "regions": [
+        "F0",
+        "F1",
+        "F2",
+        "C_Xn",
+        "C_Yn",
+        "C_Yp",
+        "C_Zp"
+      ],
+      "state": "cyan"
+    },
+    {
+      "camera": "east",
+      "channels": [
+        0
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "cyan: R dark (east)",
+      "regions": [
+        "F5",
+        "F4",
+        "F3",
+        "C_Xp",
+        "C_Yn",
+        "C_Yp",
+        "C_Zp"
+      ],
+      "state": "cyan"
+    },
+    {
+      "camera": "west",
+      "expected": [
+        0.0,
+        1.0,
+        1.0
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "cyan chromaticity (west)",
+      "regions": [
+        "F0",
+        "F1",
+        "F2",
+        "C_Xn",
+        "C_Yn",
+        "C_Yp",
+        "C_Zp"
+      ],
+      "state": "cyan"
+    },
+    {
+      "camera": "east",
+      "expected": [
+        0.0,
+        1.0,
+        1.0
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "cyan chromaticity (east)",
+      "regions": [
+        "F5",
+        "F4",
+        "F3",
+        "C_Xp",
+        "C_Yn",
+        "C_Yp",
+        "C_Zp"
+      ],
+      "state": "cyan"
+    },
+    {
+      "a": {
+        "camera": "west",
+        "channels": [
+          0
+        ],
+        "region": "F0",
+        "state": "red"
+      },
+      "b": {
+        "camera": "east",
+        "channels": [
+          1
+        ],
+        "region": "F5",
+        "state": "cyan"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror red/F0 R = cyan/F5 G"
+    },
+    {
+      "a": {
+        "camera": "west",
+        "channels": [
+          0
+        ],
+        "region": "F0",
+        "state": "red"
+      },
+      "b": {
+        "camera": "east",
+        "channels": [
+          2
+        ],
+        "region": "F5",
+        "state": "cyan"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror red/F0 R = cyan/F5 B"
+    },
+    {
+      "a": {
+        "camera": "west",
+        "channels": [
+          0
+        ],
+        "region": "F1",
+        "state": "red"
+      },
+      "b": {
+        "camera": "east",
+        "channels": [
+          1
+        ],
+        "region": "F4",
+        "state": "cyan"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror red/F1 R = cyan/F4 G"
+    },
+    {
+      "a": {
+        "camera": "west",
+        "channels": [
+          0
+        ],
+        "region": "F1",
+        "state": "red"
+      },
+      "b": {
+        "camera": "east",
+        "channels": [
+          2
+        ],
+        "region": "F4",
+        "state": "cyan"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror red/F1 R = cyan/F4 B"
+    },
+    {
+      "a": {
+        "camera": "west",
+        "channels": [
+          0
+        ],
+        "region": "F2",
+        "state": "red"
+      },
+      "b": {
+        "camera": "east",
+        "channels": [
+          1
+        ],
+        "region": "F3",
+        "state": "cyan"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror red/F2 R = cyan/F3 G"
+    },
+    {
+      "a": {
+        "camera": "west",
+        "channels": [
+          0
+        ],
+        "region": "F2",
+        "state": "red"
+      },
+      "b": {
+        "camera": "east",
+        "channels": [
+          2
+        ],
+        "region": "F3",
+        "state": "cyan"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror red/F2 R = cyan/F3 B"
+    },
+    {
+      "a": {
+        "camera": "west",
+        "channels": [
+          0
+        ],
+        "region": "C_Xn",
+        "state": "red"
+      },
+      "b": {
+        "camera": "east",
+        "channels": [
+          1
+        ],
+        "region": "C_Xp",
+        "state": "cyan"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror red/C_Xn R = cyan/C_Xp G"
+    },
+    {
+      "a": {
+        "camera": "west",
+        "channels": [
+          0
+        ],
+        "region": "C_Xn",
+        "state": "red"
+      },
+      "b": {
+        "camera": "east",
+        "channels": [
+          2
+        ],
+        "region": "C_Xp",
+        "state": "cyan"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror red/C_Xn R = cyan/C_Xp B"
+    },
+    {
+      "a": {
+        "camera": "west",
+        "channels": [
+          0
+        ],
+        "region": "C_Yn",
+        "state": "red"
+      },
+      "b": {
+        "camera": "east",
+        "channels": [
+          1
+        ],
+        "region": "C_Yn",
+        "state": "cyan"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror red/C_Yn R = cyan/C_Yn G"
+    },
+    {
+      "a": {
+        "camera": "west",
+        "channels": [
+          0
+        ],
+        "region": "C_Yn",
+        "state": "red"
+      },
+      "b": {
+        "camera": "east",
+        "channels": [
+          2
+        ],
+        "region": "C_Yn",
+        "state": "cyan"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror red/C_Yn R = cyan/C_Yn B"
+    },
+    {
+      "a": {
+        "camera": "west",
+        "channels": [
+          0
+        ],
+        "region": "C_Zp",
+        "state": "red"
+      },
+      "b": {
+        "camera": "east",
+        "channels": [
+          1
+        ],
+        "region": "C_Zp",
+        "state": "cyan"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror red/C_Zp R = cyan/C_Zp G"
+    },
+    {
+      "a": {
+        "camera": "west",
+        "channels": [
+          0
+        ],
+        "region": "C_Zp",
+        "state": "red"
+      },
+      "b": {
+        "camera": "east",
+        "channels": [
+          2
+        ],
+        "region": "C_Zp",
+        "state": "cyan"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "mirror red/C_Zp R = cyan/C_Zp B"
+    },
+    {
+      "channel": 0,
+      "entries": [
+        {
+          "camera": "west",
+          "region": "F0",
+          "state": "all"
+        },
+        {
+          "camera": "west",
+          "region": "F1",
+          "state": "all"
+        },
+        {
+          "camera": "west",
+          "region": "F2",
+          "state": "all"
+        },
+        {
+          "camera": "east",
+          "region": "F3",
+          "state": "all"
+        },
+        {
+          "camera": "east",
+          "region": "F4",
+          "state": "all"
+        },
+        {
+          "camera": "east",
+          "region": "F5",
+          "state": "all"
+        }
+      ],
+      "factor": 1.05,
+      "kind": "tint_order",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "R/G falls along F0, F1, F2, F3, F4, F5",
+      "over": 1
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A 12 m corridor with a red panel at one end and a cyan panel at the other: the floor fades red to cyan segment by segment, and the mirrored ends match channel for channel",
+  "regions": {
+    "east": {
+      "C_Xp": [
+        "C_Xp"
+      ],
+      "C_Yn": [
+        "C_Yn"
+      ],
+      "C_Yp": [
+        "C_Yp"
+      ],
+      "C_Zp": [
+        "C_Zp"
+      ],
+      "F3": [
+        "F3"
+      ],
+      "F4": [
+        "F4"
+      ],
+      "F5": [
+        "F5"
+      ]
+    },
+    "west": {
+      "C_Xn": [
+        "C_Xn"
+      ],
+      "C_Yn": [
+        "C_Yn"
+      ],
+      "C_Yp": [
+        "C_Yp"
+      ],
+      "C_Zp": [
+        "C_Zp"
+      ],
+      "F0": [
+        "F0"
+      ],
+      "F1": [
+        "F1"
+      ],
+      "F2": [
+        "F2"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "mix-complementary-corridor.usda",
+  "states": {
+    "all": {
+      "layer": null,
+      "note": "both panels on"
+    },
+    "cyan": {
+      "layer": "states/cyan.usda",
+      "note": "cyan panel alone"
+    },
+    "red": {
+      "layer": "states/red.usda",
+      "note": "red panel alone"
+    }
+  }
+}

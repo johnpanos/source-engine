@@ -1,0 +1,40 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryMixColorCube"
+    metersPerUnit = 1
+    subLayers = [
+        @../mix-color-cube.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryMixColorCube"
+{
+    over "Looks"
+    {
+        over "GlowXp"
+        {
+            over "Surface"
+            {
+                color3f inputs:emissiveColor = (0, 0, 0)
+            }
+        }
+
+        over "GlowYn"
+        {
+            over "Surface"
+            {
+                color3f inputs:emissiveColor = (0, 0, 0)
+            }
+        }
+
+        over "GlowZn"
+        {
+            over "Surface"
+            {
+                color3f inputs:emissiveColor = (0, 0, 0)
+            }
+        }
+    }
+}
+

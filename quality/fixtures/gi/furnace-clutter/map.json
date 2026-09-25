@@ -1,0 +1,15 @@
+{
+  "collision": {
+    "solid_meshes": [
+      "Block",
+      "Slab",
+      "Fins",
+      "Pillar",
+      "Crevice"
+    ]
+  },
+  "map": "gi_furnace_clutter",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/furnace-clutter/furnace-clutter.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

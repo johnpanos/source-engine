@@ -500,59 +500,6 @@ world_mesh_gpu::IWorldMeshUpload *Uploader()
 	                 : nullptr;
 }
 
-// The world's change atlas under BakedPlusDelta: `published`'s atlas with its
-// indirect layer's irradiance texels replaced by published minus baked.
-bool ChangeAtlas( const Volume &published, const Volume &baked, std::vector<unsigned char> *out )
-{
-	const mapcontainer::ProbeVolumeLayout &layout = published.layout;
-	if ( layout.layerCount < 2 || !published.SameTopology( baked ) )
-		return false;
-	out->assign( published.bytes.begin() + layout.atlasOffset, published.bytes.end() );
-	for ( uint32_t g = 0; g < layout.gridCount; ++g )
-	{
-		const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
-		const uint32_t rows = ( grid.probeCount + grid.tilesPerRow - 1 ) / grid.tilesPerRow;
-		for ( uint32_t y = 0; y < rows * mapcontainer::kProbeIrradianceTile; ++y )
-		{
-			const uint64_t row = uint64_t( grid.irradianceOrigin[1][1] + y ) * layout.atlasWidth;
-			for ( uint32_t x = 0; x < grid.tilesPerRow * mapcontainer::kProbeIrradianceTile; ++x )
-			{
-				const uint64_t texel = ( row + grid.irradianceOrigin[1][0] + x ) * 8;
-				for ( int c = 0; c < 3; ++c )
-				{
-					uint16_t now, then;
-					std::memcpy(
-					    &now, published.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
-					std::memcpy(
-					    &then, baked.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
-					const uint16_t change = FloatToHalf(
-					    mapcontainer::HalfToFloat( now ) - mapcontainer::HalfToFloat( then ) );
-	if ( !host.shadowFieldUploaded && host.scene.sdf )
-	{
-		// Once per map (G9): the SDFV's distances shadow the unbaked lights.
-		host.shadowFieldUploaded = true;
-		const mapcontainer::SdfVolumeLayout &f = host.scene.sdf->layout;
-		const size_t voxels = size_t( f.dims[0] ) * f.dims[1] * f.dims[2];
-		std::vector<uint16_t> distances( voxels );
-		const unsigned char *voxel = host.scene.sdf->bytes.data() + f.voxelOffset;
-		for ( size_t i = 0; i < voxels; ++i )
-			std::memcpy( &distances[i], voxel + i * mapcontainer::kSdfVoxelBytes, 2 );
-		world_mesh_gpu::ShadowFieldUploadRequest field;
-		std::memcpy( field.origin, f.origin, sizeof( field.origin ) );
-		field.voxel = f.voxel;
-		std::memcpy( field.dims, f.dims, sizeof( field.dims ) );
-		field.distances = distances.data();
-		if ( !uploader->UploadShadowField( field ) )
-			Warning( "indirect light: shadow field upload failed; unbaked lights are unshadowed\n" );
-	}
-					std::memcpy( out->data() + texel + 2 * c, &change, 2 );
-				}
-			}
-		}
-	}
-	return true;
-}
-
 // Makes `frame` what consumers sample: the CPU view (the ambient cube) and
 // the renderer's per-pixel copy.
 void Consume( const FrameVolume &frame )
@@ -580,6 +527,24 @@ void Consume( const FrameVolume &frame )
 	world_mesh_gpu::IWorldMeshUpload *uploader = Uploader();
 	if ( host.deviceLost || !uploader || !uploader->IsResident() )
 		return;
+	if ( !host.shadowFieldUploaded && host.scene.sdf )
+	{
+		// Once per map (G9): the SDFV's distances shadow the unbaked lights.
+		host.shadowFieldUploaded = true;
+		const mapcontainer::SdfVolumeLayout &f = host.scene.sdf->layout;
+		const size_t voxels = size_t( f.dims[0] ) * f.dims[1] * f.dims[2];
+		std::vector<uint16_t> distances( voxels );
+		const unsigned char *voxel = host.scene.sdf->bytes.data() + f.voxelOffset;
+		for ( size_t i = 0; i < voxels; ++i )
+			std::memcpy( &distances[i], voxel + i * mapcontainer::kSdfVoxelBytes, 2 );
+		world_mesh_gpu::ShadowFieldUploadRequest field;
+		std::memcpy( field.origin, f.origin, sizeof( field.origin ) );
+		field.voxel = f.voxel;
+		std::memcpy( field.dims, f.dims, sizeof( field.dims ) );
+		field.distances = distances.data();
+		if ( !uploader->UploadShadowField( field ) )
+			Warning( "indirect light: shadow field upload failed; unbaked lights are unshadowed\n" );
+	}
 	const mapcontainer::ProbeVolumeLayout &layout = host.current->layout;
 	std::vector<float> table( layout.gridCount * mapcontainer::kProbeGridTableFloats );
 	mapcontainer::WriteProbeGridTable( layout, table.data() );
@@ -770,7 +735,6 @@ void IndirectLight_BeginMap( const IndirectLightMapData &map )
 	host.switcher = std::make_unique<Switcher>( host.catalog, host.tracker );
 	ReportOffered();
 	ProducerKind requested = ProducerKind::Baked;
-	host.shadowFieldUploaded = false;
 	const char *saved = r_indirect_producer.GetString();
 	const bool parsed = ResolveProducer( saved, &requested );
 	const auto begun =
@@ -806,6 +770,7 @@ void IndirectLight_EndMap()
 	host.switcher.reset();
 	R_RelightBrushEntitiesFromProbes( nullptr );
 	host.brushesLit = false;
+	host.shadowFieldUploaded = false;
 	host.view.reset();
 	host.current.reset();
 	host.change.clear();
@@ -879,7 +844,6 @@ void IndirectLight_Background()
 	if ( !TheHost().switcher )
 		return;
 	TheHost().switcher->Background();
-	host.shadowFieldUploaded = false;
 	Msg( "indirect light: background (%s stops scheduling)\n",
 	    ProducerName( TheHost().switcher->Active() ) );
 }
@@ -915,6 +879,7 @@ void IndirectLight_DeviceRestored()
 		    r_indirect_producer.GetString(), IndirectErrorName( recovered.Error() ) );
 	// The recreated device gets the volume and the shadow field again.
 	host.uploadedGeneration = 0;
+	host.shadowFieldUploaded = false;
 	FrameWork work;
 	work.frameSerial = host.tracker.Frame() + 1;
 	work.resources = &host.tracker;

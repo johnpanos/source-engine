@@ -1,0 +1,19 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_tinted_sky_plane",
+  "probe_volume": {
+    "bounds_m": [
+      -5.0,
+      -5.0,
+      0.25,
+      5.0,
+      5.0,
+      2.75
+    ]
+  },
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/tinted-sky-plane/tinted-sky-plane.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

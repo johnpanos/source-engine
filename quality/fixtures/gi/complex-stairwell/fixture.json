@@ -1,0 +1,249 @@
+{
+  "baked_state": "both",
+  "cameras": {
+    "lower": {
+      "eye": [
+        5.5,
+        0.3,
+        1.5
+      ],
+      "forward": [
+        -0.522737522150903,
+        0.8513153932171847,
+        -0.04480607332722026
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "upper": {
+      "eye": [
+        5.5,
+        0.3,
+        5.0
+      ],
+      "forward": [
+        -0.5052867645845873,
+        0.8228955880377565,
+        -0.259861764643502
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [],
+  "family": "complex",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "complex-stairwell",
+  "oracles": [
+    {
+      "camera": "lower",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "both = warm + cool (lower)",
+      "parts": [
+        "warm",
+        "cool"
+      ],
+      "regions": [
+        "H_Zn",
+        "Mezz_Zn",
+        "Stairs",
+        "H_Xn"
+      ],
+      "sum": "both"
+    },
+    {
+      "camera": "upper",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "both = warm + cool (upper)",
+      "parts": [
+        "warm",
+        "cool"
+      ],
+      "regions": [
+        "Mezz_Zp",
+        "H_Zp",
+        "H_Yp",
+        "Mezz_Yn"
+      ],
+      "sum": "both"
+    },
+    {
+      "camera": "lower",
+      "expected": [
+        1.0,
+        0.7,
+        0.4
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "warm chromaticity (lower)",
+      "regions": [
+        "H_Zn",
+        "Mezz_Zn",
+        "Stairs",
+        "H_Xn"
+      ],
+      "state": "warm"
+    },
+    {
+      "camera": "upper",
+      "expected": [
+        1.0,
+        0.7,
+        0.4
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "warm chromaticity (upper)",
+      "regions": [
+        "Mezz_Zp",
+        "H_Zp",
+        "H_Yp",
+        "Mezz_Yn"
+      ],
+      "state": "warm"
+    },
+    {
+      "camera": "lower",
+      "expected": [
+        0.4,
+        0.6,
+        1.0
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "cool chromaticity (lower)",
+      "regions": [
+        "H_Zn",
+        "Mezz_Zn",
+        "Stairs",
+        "H_Xn"
+      ],
+      "state": "cool"
+    },
+    {
+      "camera": "upper",
+      "expected": [
+        0.4,
+        0.6,
+        1.0
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "cool chromaticity (upper)",
+      "regions": [
+        "Mezz_Zp",
+        "H_Zp",
+        "H_Yp",
+        "Mezz_Yn"
+      ],
+      "state": "cool"
+    },
+    {
+      "channel": 2,
+      "entries": [
+        {
+          "camera": "lower",
+          "region": "H_Zn",
+          "state": "both"
+        },
+        {
+          "camera": "upper",
+          "region": "Mezz_Zp",
+          "state": "both"
+        }
+      ],
+      "factor": 1.5,
+      "kind": "tint_order",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "B/R falls along H_Zn, Mezz_Zp",
+      "over": 0
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "A two-level hall with stairs up to a mezzanine: a warm lamp above and a cool lamp below add, each keeps its color on the grey building, and the lower floor reads cooler than the mezzanine",
+  "regions": {
+    "lower": {
+      "H_Xn": [
+        "H_Xn"
+      ],
+      "H_Zn": [
+        "H_Zn"
+      ],
+      "Mezz_Zn": [
+        "Mezz_Zn"
+      ],
+      "Stairs": [
+        "Stairs"
+      ]
+    },
+    "upper": {
+      "H_Yp": [
+        "H_Yp"
+      ],
+      "H_Zp": [
+        "H_Zp"
+      ],
+      "Mezz_Yn": [
+        "Mezz_Yn"
+      ],
+      "Mezz_Zp": [
+        "Mezz_Zp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "complex-stairwell.usda",
+  "states": {
+    "both": {
+      "layer": null,
+      "note": "both lamps on"
+    },
+    "cool": {
+      "layer": "states/cool.usda",
+      "note": "lower lamp alone"
+    },
+    "warm": {
+      "layer": "states/warm.usda",
+      "note": "upper lamp alone"
+    }
+  }
+}

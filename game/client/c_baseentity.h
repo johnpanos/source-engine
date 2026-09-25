@@ -893,6 +893,12 @@ public:
 	static void						PrefetchSound( const char *name );
 	void							Remove( ); // UTIL_Remove( this );
 
+	// While entities simulate, Remove() only marks the entity and SimulateEntities()
+	// releases it after the loop (as CS:GO does): a Simulate() may remove entities
+	// the loop has yet to visit, such as a portal's ghost renderables.
+	static void						SetImmediateRemovesAllowed( bool bAllowed );
+	static void						PurgeRemovedEntities();
+
 public:
 
 	// Returns the attachment point index on our parent that our transform is relative to.

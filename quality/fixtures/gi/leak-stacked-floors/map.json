@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_leak_stacked_floors",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/leak-stacked-floors/leak-stacked-floors.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

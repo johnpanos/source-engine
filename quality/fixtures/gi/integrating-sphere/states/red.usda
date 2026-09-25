@@ -1,0 +1,26 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryIntegratingSphere"
+    metersPerUnit = 1
+    subLayers = [
+        @../integrating-sphere.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryIntegratingSphere"
+{
+    over "Lights"
+    {
+        over "Green"
+        {
+            float inputs:intensity = 0
+        }
+
+        over "Blue"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

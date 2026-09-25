@@ -1,0 +1,220 @@
+{
+  "baked_state": "az30",
+  "cameras": {
+    "centre": {
+      "eye": [
+        0.0,
+        -3.8,
+        2.5
+      ],
+      "forward": [
+        0.0,
+        0.945372981626272,
+        -0.3259906833194042
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "symmetry",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "symmetry-courtyard-sun",
+  "oracles": [
+    {
+      "a": {
+        "camera": "centre",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "Y_Xn",
+        "state": "az30"
+      },
+      "b": {
+        "camera": "centre",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "Y_Xp",
+        "state": "az150"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "mirror az30/Y_Xn = az150/Y_Xp"
+    },
+    {
+      "a": {
+        "camera": "centre",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "Y_Xp",
+        "state": "az30"
+      },
+      "b": {
+        "camera": "centre",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "Y_Xn",
+        "state": "az150"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "mirror az30/Y_Xp = az150/Y_Xn"
+    },
+    {
+      "a": {
+        "camera": "centre",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "Y_Yp",
+        "state": "az30"
+      },
+      "b": {
+        "camera": "centre",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "Y_Yp",
+        "state": "az150"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "mirror az30/Y_Yp = az150/Y_Yp"
+    },
+    {
+      "a": {
+        "camera": "centre",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "Y_Zn",
+        "state": "az30"
+      },
+      "b": {
+        "camera": "centre",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "Y_Zn",
+        "state": "az150"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "mirror az30/Y_Zn = az150/Y_Zn"
+    },
+    {
+      "a": {
+        "camera": "centre",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "ProbeSphere",
+        "state": "az30"
+      },
+      "b": {
+        "camera": "centre",
+        "channels": [
+          0,
+          1,
+          2
+        ],
+        "region": "ProbeSphere",
+        "state": "az150"
+      },
+      "kind": "equal",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "mirror az30/ProbeSphere = az150/ProbeSphere"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "An open courtyard under a warm sun at azimuth 30 degrees, then 150: the two are mirror images, wall for wall",
+  "regions": {
+    "centre": {
+      "ProbeSphere": [
+        "ProbeSphere"
+      ],
+      "Y_Xn": [
+        "Y_Xn"
+      ],
+      "Y_Xp": [
+        "Y_Xp"
+      ],
+      "Y_Yp": [
+        "Y_Yp"
+      ],
+      "Y_Zn": [
+        "Y_Zn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "symmetry-courtyard-sun.usda",
+  "states": {
+    "az150": {
+      "layer": "states/az150.usda",
+      "note": "sun from azimuth 150 degrees"
+    },
+    "az30": {
+      "layer": null,
+      "note": "sun from azimuth 30 degrees"
+    }
+  }
+}

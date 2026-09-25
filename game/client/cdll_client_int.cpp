@@ -176,6 +176,10 @@ extern vgui::IInputInternal *g_InputInternal;
 
 // Client VScript manager (vscript_client.cpp); NULL when scripting is unavailable.
 IScriptManager *scriptmanager = NULL;
+
+// Applies the entity-portalled messages received this packet (c_portal_base2d.cpp):
+// the local player's view rotation, interpolation discontinuities and ghosts.
+extern void ProcessPortalTeleportations( void );
 #endif
 
 #include "vstdlib/jobgraph_frame.h"
@@ -2014,12 +2018,18 @@ void SimulateEntities()
 	// TODO: make an ISimulateable interface so C_BaseNetworkables can simulate?
 	{
 		VPROF_("C_BaseEntity::Simulate", 1, VPROF_BUDGETGROUP_CLIENT_SIM, false, BUDGETFLAG_CLIENT);
+		C_BaseEntity::SetImmediateRemovesAllowed( false );
 		C_BaseEntityIterator iterator;
 		C_BaseEntity *pEnt;
 		while ( (pEnt = iterator.Next()) != NULL )
 		{
-			pEnt->Simulate();
+			if ( !pEnt->IsMarkedForDeletion() )
+			{
+				pEnt->Simulate();
+			}
 		}
+		C_BaseEntity::SetImmediateRemovesAllowed( true );
+		C_BaseEntity::PurgeRemovedEntities();
 	}
 }
 
@@ -2247,6 +2257,9 @@ void CHLClient::FrameStageNotify( ClientFrameStage_t curStage )
 	case FRAME_NET_UPDATE_POSTDATAUPDATE_END:
 		{
 			VPROF( "CHLClient::FrameStageNotify FRAME_NET_UPDATE_POSTDATAUPDATE_END" );
+#ifdef PORTAL2
+			ProcessPortalTeleportations();
+#endif
 			PREDICTION_ENDTRACKVALUE();
 			// Let prediction copy off pristine data
 			prediction->PostEntityPacketReceived();

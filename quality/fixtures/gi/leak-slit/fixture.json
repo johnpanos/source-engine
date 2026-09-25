@@ -1,0 +1,161 @@
+{
+  "baked_state": "default",
+  "cameras": {
+    "dark": {
+      "eye": [
+        6.0,
+        0.2,
+        1.7
+      ],
+      "forward": [
+        -0.792593923901217,
+        0.5661385170722979,
+        -0.22645540682891913
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "lit": {
+      "eye": [
+        0.2,
+        0.2,
+        1.7
+      ],
+      "forward": [
+        0.8120207067920382,
+        0.5220133115091674,
+        -0.2610066557545837
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeB",
+      "stand_in_mesh": "ProbeBShape"
+    }
+  ],
+  "family": "leak",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "leak-slit",
+  "oracles": [
+    {
+      "camera": "dark",
+      "expected": [
+        1.0,
+        0.5,
+        0.1
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "light through the slit stays orange",
+      "regions": [
+        "B_Zn",
+        "B_Xn",
+        "B_Yp",
+        "B_Zp",
+        "ProbeB"
+      ],
+      "state": "default"
+    },
+    {
+      "camera": "lit",
+      "expected": [
+        1.0,
+        0.5,
+        0.1
+      ],
+      "kind": "chromaticity",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "default chromaticity (lit)",
+      "regions": [
+        "A_Zn",
+        "A_Xp",
+        "A_Yp"
+      ],
+      "state": "default"
+    },
+    {
+      "entries": [
+        {
+          "camera": "dark",
+          "region": "B_Zn",
+          "state": "default"
+        },
+        {
+          "camera": "lit",
+          "region": "A_Zn",
+          "state": "default"
+        }
+      ],
+      "factor": 10.0,
+      "kind": "ordered",
+      "lights": [
+        "total"
+      ],
+      "name": "the slit passes under a tenth of room A's light"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Orange light enters a dark room only through a 5 cm slit: the dark room is lit, far less than the lit one, and exactly orange",
+  "regions": {
+    "dark": {
+      "B_Xn": [
+        "B_Xn"
+      ],
+      "B_Yp": [
+        "B_Yp"
+      ],
+      "B_Zn": [
+        "B_Zn"
+      ],
+      "B_Zp": [
+        "B_Zp"
+      ],
+      "ProbeB": [
+        "ProbeB"
+      ]
+    },
+    "lit": {
+      "A_Xp": [
+        "A_Xp"
+      ],
+      "A_Yp": [
+        "A_Yp"
+      ],
+      "A_Zn": [
+        "A_Zn"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "leak-slit.usda",
+  "states": {
+    "default": {
+      "layer": null,
+      "note": "lamp in room A"
+    }
+  }
+}

@@ -1,0 +1,231 @@
+{
+  "baked_state": "all",
+  "cameras": {
+    "north": {
+      "eye": [
+        4.0,
+        7.6,
+        1.8
+      ],
+      "forward": [
+        0.0,
+        -0.9914542955425437,
+        -0.13045451257138732
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "south": {
+      "eye": [
+        4.0,
+        0.4,
+        1.8
+      ],
+      "forward": [
+        0.0,
+        0.9914542955425437,
+        -0.13045451257138732
+      ],
+      "up": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "dynamic_models": [
+    {
+      "name": "ProbeSphere",
+      "stand_in_mesh": "ProbeSphereShape"
+    }
+  ],
+  "family": "mix",
+  "film": {
+    "height": 192,
+    "width": 256
+  },
+  "horizontal_fov_degrees": 90.0,
+  "lambertian": true,
+  "map_manifest": "map.json",
+  "name": "mix-disco",
+  "oracles": [
+    {
+      "camera": "south",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "all = set-a + set-b + set-c (south)",
+      "parts": [
+        "set-a",
+        "set-b",
+        "set-c"
+      ],
+      "regions": [
+        "R_Zn",
+        "R_Zp",
+        "Pillars",
+        "ProbeSphere",
+        "R_Yp",
+        "R_Xn",
+        "R_Xp"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "north",
+      "kind": "superposition",
+      "lights": [
+        "total",
+        "indirect"
+      ],
+      "name": "all = set-a + set-b + set-c (north)",
+      "parts": [
+        "set-a",
+        "set-b",
+        "set-c"
+      ],
+      "regions": [
+        "R_Zn",
+        "R_Zp",
+        "Pillars",
+        "ProbeSphere",
+        "R_Yn",
+        "R_Xn",
+        "R_Xp"
+      ],
+      "sum": "all"
+    },
+    {
+      "camera": "south",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "off: RGB dark (south)",
+      "regions": [
+        "R_Zn",
+        "R_Zp",
+        "Pillars",
+        "ProbeSphere",
+        "R_Yp",
+        "R_Xn",
+        "R_Xp"
+      ],
+      "state": "off"
+    },
+    {
+      "camera": "north",
+      "channels": [
+        0,
+        1,
+        2
+      ],
+      "kind": "zero",
+      "lights": [
+        "total",
+        "indirect",
+        "direct"
+      ],
+      "name": "off: RGB dark (north)",
+      "regions": [
+        "R_Zn",
+        "R_Zp",
+        "Pillars",
+        "ProbeSphere",
+        "R_Yn",
+        "R_Xn",
+        "R_Xp"
+      ],
+      "state": "off"
+    }
+  ],
+  "probe_model": {
+    "model": "models/props/sphere.mdl",
+    "radius_m": 0.51435
+  },
+  "purpose": "Twenty-four small lights of seeded random hue and position among four pillars: three random subsets add to the whole, and with every light off the room is exactly black",
+  "regions": {
+    "north": {
+      "Pillars": [
+        "Pillars"
+      ],
+      "ProbeSphere": [
+        "ProbeSphere"
+      ],
+      "R_Xn": [
+        "R_Xn"
+      ],
+      "R_Xp": [
+        "R_Xp"
+      ],
+      "R_Yn": [
+        "R_Yn"
+      ],
+      "R_Zn": [
+        "R_Zn"
+      ],
+      "R_Zp": [
+        "R_Zp"
+      ]
+    },
+    "south": {
+      "Pillars": [
+        "Pillars"
+      ],
+      "ProbeSphere": [
+        "ProbeSphere"
+      ],
+      "R_Xn": [
+        "R_Xn"
+      ],
+      "R_Xp": [
+        "R_Xp"
+      ],
+      "R_Yp": [
+        "R_Yp"
+      ],
+      "R_Zn": [
+        "R_Zn"
+      ],
+      "R_Zp": [
+        "R_Zp"
+      ]
+    }
+  },
+  "schema": "gi-fixture/v1",
+  "stage": "mix-disco.usda",
+  "states": {
+    "all": {
+      "layer": null,
+      "note": "all 24 lights on"
+    },
+    "off": {
+      "layer": "states/off.usda",
+      "note": "every light off"
+    },
+    "set-a": {
+      "layer": "states/set-a.usda",
+      "note": "lights Light00, Light03, Light06, Light09, Light12, Light15, Light18, Light21 on"
+    },
+    "set-b": {
+      "layer": "states/set-b.usda",
+      "note": "lights Light01, Light04, Light07, Light10, Light13, Light16, Light19, Light22 on"
+    },
+    "set-c": {
+      "layer": "states/set-c.usda",
+      "note": "lights Light02, Light05, Light08, Light11, Light14, Light17, Light20, Light23 on"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_bleed_blue_carpet",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/bleed-blue-carpet/bleed-blue-carpet.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

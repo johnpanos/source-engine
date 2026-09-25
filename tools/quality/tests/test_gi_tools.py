@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Self-tests for the RFC 0011 GI tools: budgets, the EXR reader, region
-masks, runtime capture decoding and the RTRN radiosity transfer reader. Run:
+masks, the relational oracles, runtime capture decoding and the RTRN
+radiosity transfer reader. Run:
 
     python3 -m unittest tools/quality/tests/test_gi_tools.py
 """
@@ -19,6 +20,7 @@ from PIL import Image
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 import gi_budgets  # noqa: E402
+import gi_oracles  # noqa: E402
 import gi_reference  # noqa: E402
 import gi_runtime  # noqa: E402
 import lightmap_layers  # noqa: E402
@@ -133,6 +135,190 @@ class RegionTest(unittest.TestCase):
         self.assertFalse(masks["walls"][2, 2])
         with self.assertRaises(ValueError):
             gi_reference.region_masks(index, {"Wall": 1}, {"x": ["Missing"]})
+
+
+def fixture_with(oracle, states=("all", "red", "blue"), cameras=("c",),
+                 regions=("left", "right", "floor")):
+    return {"states": {s: {} for s in states},
+            "cameras": {c: {} for c in cameras},
+            "regions": {c: {r: [r] for r in regions} for c in cameras},
+            "oracles": [oracle]}
+
+
+def view(**regions):
+    """{region: {light: rgb}} with the same rgb for every light."""
+    return {r: {"total": list(v), "indirect": list(v), "direct": list(v)}
+            for r, v in regions.items()}
+
+
+class OracleTest(unittest.TestCase):
+    """gi_oracles: every kind passes consistent statistics, fails a real
+    defect, and its seeded control is rejected."""
+
+    def evaluate(self, oracle, views, **fixture):
+        [result] = gi_oracles.evaluate(fixture_with(oracle, **fixture), views)
+        return result
+
+    def mirror_views(self):
+        return {("red", "c"): view(left=(0.4, 0, 0), right=(0.1, 0, 0), floor=(0.2, 0, 0)),
+                ("blue", "c"): view(left=(0, 0, 0.1), right=(0, 0, 0.4), floor=(0, 0, 0.2)),
+                ("all", "c"): view(left=(0.4, 0, 0.1), right=(0.1, 0, 0.4),
+                                   floor=(0.2, 0, 0.2))}
+
+    def test_superposition_passes_sums_and_rejects_a_dropped_light(self):
+        oracle = {"kind": "superposition", "camera": "c", "sum": "all",
+                  "parts": ["red", "blue"], "regions": ["left", "right", "floor"],
+                  "lights": ["total", "indirect"]}
+        result = self.evaluate(oracle, self.mirror_views())
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(result["checks"]), 18)
+        self.assertTrue(result["control"]["rejected"])
+        views = self.mirror_views()
+        views[("all", "c")]["floor"]["total"] = [0.2, 0.0, 0.23]
+        self.assertFalse(self.evaluate(oracle, views)["ok"])
+
+    def test_superposition_rejects_a_nonlinear_producer(self):
+        oracle = {"kind": "superposition", "camera": "c", "sum": "all",
+                  "parts": ["red", "blue"], "regions": ["floor"], "lights": ["total"]}
+        views = {("red", "c"): view(floor=(0.2, 0.1, 0.1)),
+                 ("blue", "c"): view(floor=(0.1, 0.1, 0.2))}
+        views[("all", "c")] = view(floor=tuple((a + b) ** 1.1 for a, b in
+                                              zip((0.2, 0.1, 0.1), (0.1, 0.1, 0.2))))
+        self.assertFalse(self.evaluate(oracle, views)["ok"])
+
+    def test_mirror_with_channel_swap(self):
+        oracle = {"kind": "equal", "lights": ["total"],
+                  "a": {"state": "all", "camera": "c", "region": "left", "channels": [0, 1, 2]},
+                  "b": {"state": "all", "camera": "c", "region": "right", "channels": [2, 1, 0]}}
+        result = self.evaluate(oracle, self.mirror_views())
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["channel_mapping_observable"])
+        self.assertTrue(result["control"]["rejected"])
+
+    def test_self_mirror_control_biases_one_channel(self):
+        oracle = {"kind": "equal", "lights": ["total"],
+                  "a": {"state": "all", "camera": "c", "region": "floor", "channels": [0]},
+                  "b": {"state": "all", "camera": "c", "region": "floor", "channels": [2]}}
+        result = self.evaluate(oracle, self.mirror_views())
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["control"]["rejected"])
+
+    def test_zero_is_exact(self):
+        oracle = {"kind": "zero", "state": "red", "camera": "c", "regions": ["left", "floor"],
+                  "channels": [1, 2], "lights": ["total"]}
+        result = self.evaluate(oracle, self.mirror_views())
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["control"]["rejected"])
+        views = self.mirror_views()
+        views[("red", "c")]["floor"]["total"] = [0.2, 1e-4, 0.0]
+        self.assertFalse(self.evaluate(oracle, views)["ok"])
+
+    def test_value_and_its_bias_control(self):
+        expected = {"total": [1.0, 0.6, 0.5], "indirect": [0.8, 0.3, 0.1]}
+        oracle = {"kind": "value", "state": "all", "camera": "c", "regions": ["floor"],
+                  "lights": ["indirect", "total"], "expected": expected}
+        views = {("all", "c"): {"floor": {"total": [1.004, 0.598, 0.5],
+                                          "indirect": [0.801, 0.3, 0.1]}}}
+        result = self.evaluate(oracle, views)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["control"]["rejected"])
+        views[("all", "c")]["floor"]["indirect"] = [0.8 * 0.97, 0.3, 0.1]
+        self.assertFalse(self.evaluate(oracle, views)["ok"])
+
+    def test_dominant_rejects_a_luminance_only_producer(self):
+        oracle = {"kind": "dominant", "state": "all", "camera": "c", "region": "left",
+                  "channel": 0, "over": [2], "factor": 2.0, "lights": ["indirect"]}
+        result = self.evaluate(oracle, self.mirror_views())
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["control"]["description"], "luminance-only producer")
+        self.assertTrue(result["control"]["rejected"])
+
+    def test_tint_order_and_ordered(self):
+        entries = [{"state": "all", "camera": "c", "region": r}
+                   for r in ("left", "floor", "right")]
+        tint = {"kind": "tint_order", "entries": entries, "channel": 0, "over": 2,
+                "factor": 1.5, "lights": ["total"]}
+        result = self.evaluate(tint, self.mirror_views())
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["control"]["rejected"])
+        ordered = {"kind": "ordered", "entries": [entries[2], entries[1]], "factor": 1.0,
+                   "lights": ["total"]}
+        views = {("all", "c"): view(left=(0, 0, 0), right=(0.1, 0.1, 0.1),
+                                    floor=(0.3, 0.3, 0.3))}
+        result = self.evaluate(ordered, views)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["control"]["rejected"])
+
+    def test_scale_chromaticity_and_uniform(self):
+        views = {("all", "c"): view(left=(0.1, 0.05, 0.01), right=(0.1, 0.05, 0.01),
+                                    floor=(0.1, 0.05, 0.01)),
+                 ("red", "c"): view(left=(10.0, 5.0, 1.0), right=(10.0, 5.0, 1.0),
+                                    floor=(10.0, 5.0, 1.0))}
+        scale = {"kind": "scale", "camera": "c", "base": "all", "scaled": "red",
+                 "factor": 100.0, "regions": ["left", "floor"], "lights": ["total"]}
+        chroma = {"kind": "chromaticity", "state": "red", "camera": "c",
+                  "regions": ["floor"], "expected": [1.0, 0.5, 0.1], "lights": ["total"]}
+        uniform = {"kind": "uniform", "lights": ["total"],
+                   "entries": [{"state": "all", "camera": "c", "region": r}
+                               for r in ("left", "right", "floor")]}
+        for oracle in (scale, chroma, uniform):
+            result = self.evaluate(oracle, views)
+            self.assertTrue(result["ok"], oracle["kind"])
+            self.assertTrue(result["control"]["rejected"], oracle["kind"])
+        views[("red", "c")]["floor"]["total"] = [10.0, 5.0, 1.3]
+        self.assertFalse(self.evaluate(chroma, views)["ok"])
+
+    def test_a_region_without_pixels_fails_instead_of_raising(self):
+        oracle = {"kind": "zero", "state": "red", "camera": "c", "regions": ["floor"],
+                  "channels": [1], "lights": ["direct"]}
+        views = {("red", "c"): {"floor": {"pixels": 0}}}
+        result = self.evaluate(oracle, views)
+        self.assertFalse(result["ok"])
+        self.assertIn("no direct light", result["checks"][0]["error"])
+
+    def test_capture_oracles_keep_single_state_indirect_checks(self):
+        fixture = {"oracles": [
+            {"kind": "superposition", "camera": "c", "sum": "all", "parts": ["red"],
+             "regions": ["floor"], "lights": ["indirect"]},
+            {"kind": "zero", "state": "all", "camera": "c", "regions": ["floor"],
+             "channels": [1], "lights": ["total", "indirect", "direct"]},
+            {"kind": "zero", "state": "red", "camera": "c", "regions": ["floor"],
+             "channels": [1], "lights": ["indirect"]},
+            {"kind": "chromaticity", "state": "all", "camera": "c", "regions": ["floor"],
+             "expected": [1.0, 0.0, 0.5], "lights": ["total"]},
+            {"kind": "equal", "lights": ["total", "indirect"],
+             "a": {"state": "all", "camera": "c", "region": "left"},
+             "b": {"state": "all", "camera": "c", "region": "right"}}]}
+        selected = gi_oracles.for_capture(fixture, "all", 0.1, 0.004)
+        self.assertEqual([o["kind"] for o in selected], ["zero", "equal"])
+        self.assertEqual(selected[0]["lights"], ["indirect"])
+        self.assertEqual(selected[0]["absolute"], 0.004)
+        self.assertEqual(selected[1]["tolerance"], 0.1)
+        views = {("all", "c"): {"floor": {"indirect": [0.3, 0.003, 0.1]},
+                                "left": {"indirect": [0.2, 0.1, 0.1]},
+                                "right": {"indirect": [0.21, 0.1, 0.1]}}}
+        results = gi_oracles.evaluate({"oracles": selected}, views)
+        self.assertTrue(all(r["ok"] and r["control"]["rejected"] for r in results))
+
+    def test_validation_names_unknown_references(self):
+        oracle = {"kind": "zero", "state": "green", "camera": "c", "regions": ["ceiling"],
+                  "channels": [0], "lights": ["glow"]}
+        problems = gi_oracles.validate(fixture_with(oracle))
+        self.assertTrue(any("unknown state green" in p for p in problems))
+        self.assertTrue(any("no region ceiling" in p for p in problems))
+        self.assertTrue(any("unknown light glow" in p for p in problems))
+        self.assertTrue(gi_oracles.validate(fixture_with({"kind": "vibes"})))
+
+    def test_checked_in_gallery_oracles_are_valid(self):
+        gallery = 0
+        for name in json.loads((FIXTURES / "index.json").read_text())["fixtures"]:
+            fixture = json.loads((FIXTURES / name / "fixture.json").read_text())
+            if "family" not in fixture:
+                continue
+            gallery += 1
+            self.assertTrue(fixture["oracles"], name)
+            self.assertEqual(gi_oracles.validate(fixture), [], name)
+        self.assertGreaterEqual(gallery, 40)
 
 
 class CaptureDecodeTest(unittest.TestCase):

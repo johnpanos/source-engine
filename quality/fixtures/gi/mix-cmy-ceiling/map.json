@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_mix_cmy_ceiling",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/mix-cmy-ceiling/mix-cmy-ceiling.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

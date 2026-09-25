@@ -1,0 +1,9 @@
+{
+  "collision": {
+    "solid_meshes": []
+  },
+  "map": "gi_mix_rgb_probes",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/mix-rgb-probes/mix-rgb-probes.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

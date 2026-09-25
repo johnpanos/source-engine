@@ -1,0 +1,13 @@
+{
+  "collision": {
+    "solid_meshes": [
+      "PillarRed",
+      "PillarGreen",
+      "PillarBlue"
+    ]
+  },
+  "map": "gi_bleed_hue_pillars",
+  "quality": "gi-fixture",
+  "scene": "quality/fixtures/gi/bleed-hue-pillars/bleed-hue-pillars.usda",
+  "schema": "pbrt-map-manifest/v1"
+}

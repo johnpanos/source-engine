@@ -1,0 +1,21 @@
+#usda 1.0
+(
+    defaultPrim = "GalleryMixSpotCross"
+    metersPerUnit = 1
+    subLayers = [
+        @../mix-spot-cross.usda@
+    ]
+    upAxis = "Z"
+)
+
+over "GalleryMixSpotCross"
+{
+    over "Lights"
+    {
+        over "Blue"
+        {
+            float inputs:intensity = 0
+        }
+    }
+}
+

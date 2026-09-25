@@ -1,0 +1,850 @@
+{
+  "schema": "gi-sdf-perf/v1",
+  "rfc": "0011",
+  "rows": [
+    "R76"
+  ],
+  "recorded": "2026-09-25",
+  "policy": "Performance fixtures of the SDF-traced indirect light path (RFC 0011 G6/G7), for burning down its performance debt. Budgets are set before optimization (AGENTS.md): each row has a budget (its own, or `budget_ref` into quality/budgets/indirect-light-v1.json, which owns the producers' GPU budgets) and a reviewed baseline (the median of interleaved rounds on the profile's runner). A row fails when it measures over max(budget, baseline) x tolerance.ratio + tolerance.absolute_ms; a row whose baseline is over budget is performance debt, listed by size with its owner; a row measuring under baseline x tolerance.improved_ratio is improved and its baseline is lowered with --update-baselines (never raised without review). CPU budgets proposed 2026-09-25 with these fixtures: one publishing frame's main-thread work 1.0 ms (the radiosity producer's cpu_ms_per_update), a still scene 0.01 ms (the producer's promise that a still scene costs nothing), an occlusion recompose per door change 4 ms pooled and 10 ms serial (the desktop frame's slack: 16.67 ms target less the 6.1 ms warm median), load-time stages 20 ms and the occlusion build 100 ms. Synthetic scenes are sized like the real maps and generated deterministically; map scenes are optional pipeline outputs, and a missing one leaves its rows unverified. A profile without its own runner's measurements is unverified. Android, macOS and iOS have no rows: RFC 0011 declares sdf unsupported there until measured, and these fixtures have no runner for them.",
+  "budgets": "quality/budgets/indirect-light-v1.json",
+  "suites": {
+    "cpu": "render.indirect-sdf.bench-smoke",
+    "gpu": "render.indirect-light.sdf"
+  },
+  "default_profile": "linux-x86_64-desktop",
+  "tolerance": {
+    "ratio": 1.5,
+    "absolute_ms": 0.05,
+    "improved_ratio": 0.67
+  },
+  "metrics": {
+    "load_ms": "PRBV and SDFV validation of bytes in memory (the map load's share)",
+    "begin_ms": "SdfTracedProducer::Begin: light cells, voxel style scan, buffer creation and uploads",
+    "schedule_reference.median_ms": "Schedule per frame while probes build their reference (dispatch bookkeeping, reference capture)",
+    "schedule_idle.median_ms": "Schedule per frame in a still scene after every reference",
+    "schedule_publish.median_ms": "Schedule on a frame that publishes: the field's change from its reference applied to the bake and the volume composed (ChangeComposer)",
+    "consume_change_atlas.median_ms": "the host's BakedPlusDelta change atlas per published volume (indirect_light.h ChangeAtlas)",
+    "consume_visibility.median_ms": "the host's copy of a published volume with the proxies' probe visibility (OccludeProbeVisibility)",
+    "frame_publish.median_ms": "one publishing frame's main-thread total: Schedule plus the host's work per published volume",
+    "frame_publish.p95_ms": "the same, 95th percentile",
+    "build_ms": "DirectOcclusion build per map (rasterize the lightmap texels, orient, light samples)",
+    "compose_serial.median_ms": "DirectOcclusion compose per proxy change, serial (the low-core path)",
+    "compose_pooled.median_ms": "DirectOcclusion compose per proxy change on the declared workers",
+    "live_ms_median": "GPU: trace dispatch timestamps per update after the change (median)",
+    "live_ms_p95": "GPU: the same, 95th percentile",
+    "reference_ms_median": "GPU: trace dispatch timestamps per update in the reference phase",
+    "schedule_cpu_ms_median": "GPU bench: Schedule's CPU time on the device after the change (field readback from host-cached memory)"
+  },
+  "scenes": {
+    "contract": {
+      "files": {
+        "prbv": "quality/fixtures/gi/prbv/contract.prbv",
+        "sdfv": "quality/fixtures/gi/sdfv/contract.sdfv"
+      },
+      "note": "the producer contract's 16 probes (render.indirect-light.sdf)"
+    },
+    "synthetic-door": {
+      "synthetic": {
+        "probe_dims": [
+          10,
+          5,
+          4
+        ],
+        "probe_spacing": [
+          36.0,
+          36.0,
+          36.0
+        ],
+        "origin": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "voxel": 3.937,
+        "voxel_dims": [
+          87,
+          45,
+          35
+        ],
+        "lights": 1,
+        "active_fraction": 1.0,
+        "focus_radius": 0.0,
+        "room_every": 5,
+        "cell": 78.74,
+        "seed": 1
+      },
+      "note": "sized like the gi_door fixture map: 200 probes, 87 x 45 x 35 voxels of 10 cm, one switchable light"
+    },
+    "synthetic-portal-4m": {
+      "synthetic": {
+        "probe_dims": [
+          26,
+          17,
+          11
+        ],
+        "probe_spacing": [
+          155.0,
+          155.0,
+          155.0
+        ],
+        "origin": [
+          -3976.0,
+          -1128.0,
+          -136.0
+        ],
+        "voxel": 19.685,
+        "lights": 14,
+        "active_fraction": 0.999,
+        "focus_radius": 440.0,
+        "room_every": 4,
+        "cell": 78.74,
+        "light_range": 600.0,
+        "seed": 2
+      },
+      "note": "sized like relit testchmb_a_00 at 4 m: 4862 probes, 50 cm voxels, 14 lights in 2 m light cells, about 94 focus probes"
+    },
+    "map-door": {
+      "files": {
+        "prbv": "quality-results/rfc0011-maps/door/lighting/probe_volume.prbv",
+        "sdfv": "quality-results/rfc0011-maps/door/lighting/field.sdfv",
+        "wmsh": "quality-results/rfc0011-maps/door/gi_door.wmsh",
+        "lmap": "quality-results/rfc0011-maps/door/lighting/atlas.ktx2"
+      },
+      "rebuild": "python3 tools/quality/pbrt_map_build.py --manifest quality/fixtures/gi/door/map.json --out quality-results/rfc0011-maps/door"
+    },
+    "map-relit-4m": {
+      "files": {
+        "prbv": "quality-results/relight/testchmb_a_00_relit-preview/lighting/probe_volume.prbv",
+        "sdfv": "quality-results/relight/testchmb_a_00_relit-preview/lighting/field.sdfv",
+        "wmsh": "quality-results/relight/testchmb_a_00_relit-preview/testchmb_a_00_relit.wmsh",
+        "lmap": "quality-results/relight/testchmb_a_00_relit-preview/lighting/atlas.ktx2",
+        "focus": "quality-results/relight/sdf-gates/bench/focus-spawn.txt"
+      },
+      "rebuild": "python3 tools/quality/legacy_bsp_relight.py testchmb_a_00 --quality legacy-relight-preview; focus: tools/quality/gi_focus.py at the spawn"
+    },
+    "map-relit-2m": {
+      "files": {
+        "prbv": "quality-results/relight/sdf-gates/bench/synthetic-2m-all.prbv",
+        "sdfv": "quality-results/relight/testchmb_a_00_relit-preview/lighting/field.sdfv",
+        "focus": "quality-results/relight/sdf-gates/bench/focus-spawn-2m-all.txt"
+      },
+      "rebuild": "the 2 m probe grid of the relit map (RFC/0011-progress.md, probe focus), every probe active; focus at the spawn",
+      "note": "34272 probes: the probe count a 2 m grid gives a whole Portal map"
+    }
+  },
+  "workloads": {
+    "producer/synthetic-door": {
+      "bench": "producer",
+      "scene": "synthetic-door",
+      "proxy": [
+        163.0,
+        54.0,
+        0.0,
+        165.0,
+        94.0,
+        78.0
+      ]
+    },
+    "producer/synthetic-portal-4m-focus": {
+      "bench": "producer",
+      "scene": "synthetic-portal-4m",
+      "focus": true,
+      "budget": 128,
+      "proxy": [
+        -2071.0,
+        110.0,
+        583.0,
+        -2007.0,
+        114.0,
+        695.0
+      ]
+    },
+    "producer/synthetic-portal-4m-all": {
+      "bench": "producer",
+      "scene": "synthetic-portal-4m",
+      "proxy": [
+        -2071.0,
+        110.0,
+        583.0,
+        -2007.0,
+        114.0,
+        695.0
+      ]
+    },
+    "producer/map-door": {
+      "bench": "producer",
+      "scene": "map-door",
+      "proxy": [
+        160.4,
+        59.1,
+        0.0,
+        162.4,
+        98.4,
+        78.7
+      ]
+    },
+    "producer/map-relit-4m-focus": {
+      "bench": "producer",
+      "scene": "map-relit-4m",
+      "focus": true,
+      "budget": 128,
+      "proxy": [
+        -760.0,
+        -632.0,
+        180.0,
+        -696.0,
+        -628.0,
+        292.0
+      ]
+    },
+    "producer/map-relit-2m-focus": {
+      "bench": "producer",
+      "scene": "map-relit-2m",
+      "focus": true,
+      "budget": 128,
+      "proxy": [
+        -760.0,
+        -632.0,
+        180.0,
+        -696.0,
+        -628.0,
+        292.0
+      ]
+    },
+    "occlusion/synthetic-door-texels": {
+      "bench": "occlusion",
+      "synthetic_texels": 842164,
+      "synthetic_lights": 1,
+      "repeats": 8,
+      "workers": 8,
+      "note": "the door map's covered texels under one rectangle light on a flat floor; every texel's paths pass the proxy's bounds, the case where DirectOcclusion's all-lights prefilter rejects nothing (as on a map whose lights span it)"
+    },
+    "occlusion/synthetic-portal-texels": {
+      "bench": "occlusion",
+      "synthetic_texels": 3040357,
+      "synthetic_lights": 2,
+      "repeats": 3,
+      "workers": 8,
+      "note": "the relit map's covered texels under two rectangle lights on a flat floor; the prefilter rejects nothing (per-texel cost scales with lights x 16 samples)"
+    },
+    "occlusion/map-door": {
+      "bench": "occlusion",
+      "scene": "map-door",
+      "proxy": [
+        160.4,
+        59.1,
+        0.0,
+        162.4,
+        98.4,
+        78.7
+      ],
+      "repeats": 8,
+      "workers": 8
+    },
+    "occlusion/map-relit-4m": {
+      "bench": "occlusion",
+      "scene": "map-relit-4m",
+      "proxy": [
+        -760.0,
+        -632.0,
+        180.0,
+        -696.0,
+        -628.0,
+        292.0
+      ],
+      "repeats": 4,
+      "workers": 8
+    },
+    "gpu/synthetic-portal-4m-focus": {
+      "bench": "gpu",
+      "scene": "synthetic-portal-4m",
+      "focus": true,
+      "budget": 128,
+      "proxy": [
+        -2071.0,
+        110.0,
+        583.0,
+        -2007.0,
+        114.0,
+        695.0
+      ]
+    },
+    "gpu/map-door": {
+      "bench": "gpu",
+      "scene": "map-door",
+      "proxy": [
+        160.4,
+        59.1,
+        0.0,
+        162.4,
+        98.4,
+        78.7
+      ]
+    },
+    "gpu/map-relit-4m-focus": {
+      "bench": "gpu",
+      "scene": "map-relit-4m",
+      "focus": true,
+      "budget": 128,
+      "proxy": [
+        -760.0,
+        -632.0,
+        180.0,
+        -696.0,
+        -628.0,
+        292.0
+      ]
+    }
+  },
+  "sensitivity": [
+    {
+      "workload": "producer/synthetic-door",
+      "seed_slow": "change-atlas=4",
+      "metric": "consume_change_atlas.median_ms"
+    },
+    {
+      "workload": "producer/synthetic-door",
+      "seed_slow": "schedule=4",
+      "metric": "schedule_publish.median_ms"
+    },
+    {
+      "workload": "occlusion/synthetic-door-texels",
+      "seed_slow": "occlusion-compose-pooled=4",
+      "metric": "compose_pooled.median_ms"
+    }
+  ],
+  "profiles": {
+    "linux-x86_64-desktop": {
+      "status": "measured on the declared runner",
+      "runner": "AMD Ryzen AI Max (Strix Halo), 32 threads, Radeon 8060S (RADV), shared with other agents' builds: interleaved rounds",
+      "indirect_light_profile": "portal-linux-wayland-native-vulkan",
+      "rows": [
+        {
+          "workload": "producer/synthetic-door",
+          "metric": "frame_publish.median_ms",
+          "budget_ms": 1.0,
+          "baseline_ms": 1.141,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-door",
+          "metric": "frame_publish.p95_ms",
+          "budget_ms": 2.0,
+          "baseline_ms": 1.543,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-door",
+          "metric": "schedule_publish.median_ms",
+          "budget_ms": 0.5,
+          "baseline_ms": 0.253,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-door",
+          "metric": "consume_change_atlas.median_ms",
+          "budget_ms": 0.25,
+          "baseline_ms": 0.751,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-door",
+          "metric": "consume_visibility.median_ms",
+          "budget_ms": 0.25,
+          "baseline_ms": 0.135,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-door",
+          "metric": "schedule_reference.median_ms",
+          "budget_ms": 0.1,
+          "baseline_ms": 0.002,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-door",
+          "metric": "schedule_idle.median_ms",
+          "budget_ms": 0.01,
+          "baseline_ms": 0.001,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-door",
+          "metric": "begin_ms",
+          "budget_ms": 20.0,
+          "baseline_ms": 1.496,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-door",
+          "metric": "load_ms",
+          "budget_ms": 20.0,
+          "baseline_ms": 2.855,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-focus",
+          "metric": "frame_publish.median_ms",
+          "budget_ms": 1.0,
+          "baseline_ms": 25.635,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-focus",
+          "metric": "frame_publish.p95_ms",
+          "budget_ms": 2.0,
+          "baseline_ms": 41.095,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-focus",
+          "metric": "schedule_publish.median_ms",
+          "budget_ms": 0.5,
+          "baseline_ms": 6.76,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-focus",
+          "metric": "consume_change_atlas.median_ms",
+          "budget_ms": 0.25,
+          "baseline_ms": 11.461,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-focus",
+          "metric": "consume_visibility.median_ms",
+          "budget_ms": 0.25,
+          "baseline_ms": 5.546,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-focus",
+          "metric": "schedule_reference.median_ms",
+          "budget_ms": 0.1,
+          "baseline_ms": 0.006,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-focus",
+          "metric": "begin_ms",
+          "budget_ms": 20.0,
+          "baseline_ms": 25.047,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-focus",
+          "metric": "load_ms",
+          "budget_ms": 20.0,
+          "baseline_ms": 86.804,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-all",
+          "metric": "frame_publish.median_ms",
+          "budget_ms": 1.0,
+          "baseline_ms": 48.504,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-all",
+          "metric": "frame_publish.p95_ms",
+          "budget_ms": 2.0,
+          "baseline_ms": 64.897,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-all",
+          "metric": "schedule_publish.median_ms",
+          "budget_ms": 0.5,
+          "baseline_ms": 17.554,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-all",
+          "metric": "consume_change_atlas.median_ms",
+          "budget_ms": 0.25,
+          "baseline_ms": 21.814,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-all",
+          "metric": "consume_visibility.median_ms",
+          "budget_ms": 0.25,
+          "baseline_ms": 5.386,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-all",
+          "metric": "schedule_reference.median_ms",
+          "budget_ms": 0.1,
+          "baseline_ms": 0.041,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-all",
+          "metric": "schedule_idle.median_ms",
+          "budget_ms": 0.01,
+          "baseline_ms": 0.005,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-all",
+          "metric": "begin_ms",
+          "budget_ms": 20.0,
+          "baseline_ms": 37.511,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/synthetic-portal-4m-all",
+          "metric": "load_ms",
+          "budget_ms": 20.0,
+          "baseline_ms": 79.673,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-door",
+          "metric": "frame_publish.median_ms",
+          "budget_ms": 1.0,
+          "baseline_ms": 0.921,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-door",
+          "metric": "frame_publish.p95_ms",
+          "budget_ms": 2.0,
+          "baseline_ms": 1.525,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-door",
+          "metric": "schedule_publish.median_ms",
+          "budget_ms": 0.5,
+          "baseline_ms": 0.249,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-door",
+          "metric": "consume_change_atlas.median_ms",
+          "budget_ms": 0.25,
+          "baseline_ms": 0.488,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-door",
+          "metric": "consume_visibility.median_ms",
+          "budget_ms": 0.25,
+          "baseline_ms": 0.184,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-door",
+          "metric": "schedule_reference.median_ms",
+          "budget_ms": 0.1,
+          "baseline_ms": 0.002,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-door",
+          "metric": "schedule_idle.median_ms",
+          "budget_ms": 0.01,
+          "baseline_ms": 0.001,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-door",
+          "metric": "begin_ms",
+          "budget_ms": 20.0,
+          "baseline_ms": 1.941,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-door",
+          "metric": "load_ms",
+          "budget_ms": 20.0,
+          "baseline_ms": 3.117,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-4m-focus",
+          "metric": "frame_publish.median_ms",
+          "budget_ms": 1.0,
+          "baseline_ms": 24.547,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-4m-focus",
+          "metric": "frame_publish.p95_ms",
+          "budget_ms": 2.0,
+          "baseline_ms": 41.098,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-4m-focus",
+          "metric": "schedule_publish.median_ms",
+          "budget_ms": 0.5,
+          "baseline_ms": 6.918,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-4m-focus",
+          "metric": "consume_change_atlas.median_ms",
+          "budget_ms": 0.25,
+          "baseline_ms": 10.347,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-4m-focus",
+          "metric": "consume_visibility.median_ms",
+          "budget_ms": 0.25,
+          "baseline_ms": 5.053,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-4m-focus",
+          "metric": "schedule_reference.median_ms",
+          "budget_ms": 0.1,
+          "baseline_ms": 0.005,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-4m-focus",
+          "metric": "begin_ms",
+          "budget_ms": 20.0,
+          "baseline_ms": 30.669,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-4m-focus",
+          "metric": "load_ms",
+          "budget_ms": 20.0,
+          "baseline_ms": 53.214,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-2m-focus",
+          "metric": "frame_publish.median_ms",
+          "budget_ms": 1.0,
+          "baseline_ms": 160.354,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-2m-focus",
+          "metric": "frame_publish.p95_ms",
+          "budget_ms": 2.0,
+          "baseline_ms": 226.155,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-2m-focus",
+          "metric": "schedule_publish.median_ms",
+          "budget_ms": 0.5,
+          "baseline_ms": 40.892,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-2m-focus",
+          "metric": "consume_change_atlas.median_ms",
+          "budget_ms": 0.25,
+          "baseline_ms": 72.646,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-2m-focus",
+          "metric": "consume_visibility.median_ms",
+          "budget_ms": 0.25,
+          "baseline_ms": 29.791,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-2m-focus",
+          "metric": "schedule_reference.median_ms",
+          "budget_ms": 0.1,
+          "baseline_ms": 0.013,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-2m-focus",
+          "metric": "begin_ms",
+          "budget_ms": 20.0,
+          "baseline_ms": 73.829,
+          "owner": "R76"
+        },
+        {
+          "workload": "producer/map-relit-2m-focus",
+          "metric": "load_ms",
+          "budget_ms": 20.0,
+          "baseline_ms": 167.403,
+          "owner": "R76"
+        },
+        {
+          "workload": "occlusion/synthetic-door-texels",
+          "metric": "compose_pooled.median_ms",
+          "budget_ms": 4.0,
+          "baseline_ms": 43.316,
+          "owner": "R76"
+        },
+        {
+          "workload": "occlusion/synthetic-door-texels",
+          "metric": "compose_serial.median_ms",
+          "budget_ms": 10.0,
+          "baseline_ms": 244.528,
+          "owner": "R76"
+        },
+        {
+          "workload": "occlusion/synthetic-door-texels",
+          "metric": "build_ms",
+          "budget_ms": 100.0,
+          "baseline_ms": 227.355,
+          "owner": "R76"
+        },
+        {
+          "workload": "occlusion/synthetic-portal-texels",
+          "metric": "compose_pooled.median_ms",
+          "budget_ms": 4.0,
+          "baseline_ms": 257.948,
+          "owner": "R76"
+        },
+        {
+          "workload": "occlusion/synthetic-portal-texels",
+          "metric": "compose_serial.median_ms",
+          "budget_ms": 10.0,
+          "baseline_ms": 1393.284,
+          "owner": "R76"
+        },
+        {
+          "workload": "occlusion/synthetic-portal-texels",
+          "metric": "build_ms",
+          "budget_ms": 100.0,
+          "baseline_ms": 1690.61,
+          "owner": "R76"
+        },
+        {
+          "workload": "occlusion/map-door",
+          "metric": "compose_pooled.median_ms",
+          "budget_ms": 4.0,
+          "baseline_ms": 19.199,
+          "owner": "R76"
+        },
+        {
+          "workload": "occlusion/map-door",
+          "metric": "compose_serial.median_ms",
+          "budget_ms": 10.0,
+          "baseline_ms": 111.955,
+          "owner": "R76"
+        },
+        {
+          "workload": "occlusion/map-door",
+          "metric": "build_ms",
+          "budget_ms": 100.0,
+          "baseline_ms": 368.541,
+          "owner": "R76"
+        },
+        {
+          "workload": "occlusion/map-relit-4m",
+          "metric": "compose_pooled.median_ms",
+          "budget_ms": 4.0,
+          "baseline_ms": 112.124,
+          "owner": "R76"
+        },
+        {
+          "workload": "occlusion/map-relit-4m",
+          "metric": "compose_serial.median_ms",
+          "budget_ms": 10.0,
+          "baseline_ms": 624.956,
+          "owner": "R76"
+        },
+        {
+          "workload": "occlusion/map-relit-4m",
+          "metric": "build_ms",
+          "budget_ms": 100.0,
+          "baseline_ms": 1107.244,
+          "owner": "R76"
+        },
+        {
+          "workload": "gpu/synthetic-portal-4m-focus",
+          "metric": "live_ms_median",
+          "budget_ref": "sdf.gpu_ms",
+          "baseline_ms": 2.278,
+          "owner": "R76"
+        },
+        {
+          "workload": "gpu/synthetic-portal-4m-focus",
+          "metric": "live_ms_p95",
+          "budget_ref": "sdf.gpu_ms",
+          "baseline_ms": 5.084,
+          "owner": "R76"
+        },
+        {
+          "workload": "gpu/synthetic-portal-4m-focus",
+          "metric": "reference_ms_median",
+          "budget_ref": "sdf.gpu_ms",
+          "baseline_ms": 1.422,
+          "owner": "R76"
+        },
+        {
+          "workload": "gpu/synthetic-portal-4m-focus",
+          "metric": "schedule_cpu_ms_median",
+          "budget_ms": 0.5,
+          "baseline_ms": 4.888,
+          "owner": "R76"
+        },
+        {
+          "workload": "gpu/map-door",
+          "metric": "live_ms_median",
+          "budget_ref": "sdf.gpu_ms",
+          "baseline_ms": 1.433,
+          "owner": "R76"
+        },
+        {
+          "workload": "gpu/map-door",
+          "metric": "live_ms_p95",
+          "budget_ref": "sdf.gpu_ms",
+          "baseline_ms": 2.651,
+          "owner": "R76"
+        },
+        {
+          "workload": "gpu/map-door",
+          "metric": "reference_ms_median",
+          "budget_ref": "sdf.gpu_ms",
+          "baseline_ms": 1.383,
+          "owner": "R76"
+        },
+        {
+          "workload": "gpu/map-door",
+          "metric": "schedule_cpu_ms_median",
+          "budget_ms": 0.5,
+          "baseline_ms": 0.481,
+          "owner": "R76"
+        },
+        {
+          "workload": "gpu/map-relit-4m-focus",
+          "metric": "live_ms_median",
+          "budget_ref": "sdf.gpu_ms",
+          "baseline_ms": 3.288,
+          "owner": "R76"
+        },
+        {
+          "workload": "gpu/map-relit-4m-focus",
+          "metric": "live_ms_p95",
+          "budget_ref": "sdf.gpu_ms",
+          "baseline_ms": 7.234,
+          "owner": "R76"
+        },
+        {
+          "workload": "gpu/map-relit-4m-focus",
+          "metric": "reference_ms_median",
+          "budget_ref": "sdf.gpu_ms",
+          "baseline_ms": 2.094,
+          "owner": "R76"
+        },
+        {
+          "workload": "gpu/map-relit-4m-focus",
+          "metric": "schedule_cpu_ms_median",
+          "budget_ms": 0.5,
+          "baseline_ms": 3.804,
+          "owner": "R76"
+        }
+      ]
+    }
+  }
+}
