@@ -157,8 +157,8 @@ class Materials:
                             changed.add(k)
                 # vbsp's cubemap patches only add the probe's $envmap; they
                 # render as their base material here.
-                if changed <= CUBEMAP_PATCH_KEYS:
-                    merged[BASE_KEY] = self.vmt(include, depth + 1)[1].get(BASE_KEY, include)
+                if not changed <= CUBEMAP_PATCH_KEYS:
+                    merged[BASE_KEY] = key
                 result = (base_shader, merged, "%s (patch of %s)" % (source, include))
             else:
                 result = (shader, dict({k: v for k, v in params.items()

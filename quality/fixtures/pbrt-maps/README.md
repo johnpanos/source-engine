@@ -94,6 +94,46 @@ python3 tools/quality/pbrt_map_toolchain.py configure-client --build build
    exits nonzero. Do not loosen a gate to make a scene pass; record why it
    fails.
 
+## Relighting a shipped map
+
+`legacy_bsp_relight.py` rebakes a compiled legacy map (v20/v21) with the new
+lighting and keeps its gameplay:
+
+```sh
+python3 tools/quality/legacy_bsp_relight.py testchmb_a_00 --boot
+./play testchmb_a_00_relit
+```
+
+It writes a `legacy_bsp` manifest to `<out>/manifest.json`
+(`quality-results/relight/<map>_relit` by default) and runs the pipeline with
+the `legacy-relight` profile:
+
+1. `legacy-scene` (`legacy_bsp_scene.py`) turns the map into a USD scene:
+   - the opaque world faces, with materials from their VMTs and VTFs;
+   - the nodraw sides of the solid world brushes, as occluders;
+   - vrad's compiled world lights, converted to physical lights.
+   `legacy-scene/scene-receipt.json` lists every conversion and approximation.
+2. The usual bakes run on that scene: direct and indirect LMAP layers, PRBV,
+   RTRN and SDFV. With all of them, every indirect-light producer can run on
+   the map, including `r_indirect_producer sdf`.
+3. The BSP itself stands in for `collision` and `compile`.
+4. `gameplay-identity.json` proves that every legacy lump is carried byte for
+   byte, except two lighting-only kinds:
+   - the leaf ambient lumps, rederived from the probe volume;
+   - the world lights, where vrad's baked lights are removed so models are not
+     lit twice.
+   The run fails on any other difference.
+
+The engine replaces only the opaque world with the relit world mesh. Brush
+entities, displacements, water and translucent faces keep their vrad
+lightmaps. Other current limits, each recorded in the receipt:
+
+- spot cones become cosine lobes;
+- constant and linear falloffs are matched at vrad's 100-unit normalization
+  distance;
+- named lights that start dark stay world lights and are not baked;
+- static props do not occlude the bake.
+
 ## Toolchain
 
 [`pbrt-map-linux-tools.json`](../../product_profiles/pbrt-map-linux-tools.json)
@@ -153,6 +193,10 @@ about 24% slower than the GPU alone, so it is not offered.
 | Collision drop test | `tools/quality/pbrt_traversal.py` (tests: `tests/test_pbrt_gates.py`) |
 | Tool pins, provisioning, toolchain checks | `tools/quality/pbrt_map_toolchain.py` + `quality/product_profiles/pbrt-map-linux-tools.json` |
 | Step order and caching | `tools/quality/pbrt_map_build.py` |
+| Legacy BSP reading (faces, brushes, world lights) | `tools/quality/legacy_bsp.py` (tests: `tests/test_legacy_relight.py`) |
+| Legacy map → relight scene, vrad light conversion | `tools/quality/legacy_bsp_scene.py` |
+| VTF decoding | `tools/quality/vtf_decode.py` |
+| Relight driver and gameplay-identity oracle | `tools/quality/legacy_bsp_relight.py` |
 | Publishing to `./play` (store, mounts, launch arguments) | `tools/quality/playable_maps.py` (tests: `tests/test_playable_maps.py`) |
 
 ## Known limits (preview, not RFC 0008 acceptance)

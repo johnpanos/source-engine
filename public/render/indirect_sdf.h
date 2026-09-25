@@ -1,10 +1,14 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: The SDF-traced producer (RFC 0011 G6, render.indirect-light.v1):
-//          probes trace rays through the map's signed distance volume (SDFV)
-//          and this frame's proxy boxes on the GPU (the renderer's
-//          "sdf-probe-trace" program through render/gpu_compute.h), so moved
-//          lights and moving occluders change indirect light.
+// Purpose: The traced producers (render.indirect-light.v1): probes trace
+//          rays on the GPU through render/gpu_compute.h, so moved lights and
+//          moving occluders change indirect light. The SDF-traced producer
+//          (RFC 0011 G6) sphere-traces the map's signed distance volume
+//          (SDFV) and this frame's proxy boxes ("sdf-probe-trace"); the
+//          ray-query producer (G7) traces the world's triangles and the
+//          proxies as a ray-query scene ("ray-query-probe-trace"), rebuilt
+//          when the proxies change, and needs a device with ray query. Both
+//          take surface attributes and lights from the SDFV.
 //
 //          Publication (render.indirect-policy.v1 BakedPlusDelta, as the
 //          radiosity producer): the baked volume plus the change of the
@@ -25,7 +29,9 @@
 //          GPU lifetime. Four field and parameter buffers form a ring; at
 //          most two dispatches are in flight, so the buffer the CPU reads was
 //          written by a completed dispatch and nothing in flight writes it.
-//          End retires every buffer behind the last dispatch's serial.
+//          End retires every buffer behind the last dispatch's serial, and a
+//          replaced ray-query scene retires behind the last dispatch that
+//          traced it.
 //
 //===========================================================================//
 
@@ -72,9 +78,20 @@ struct SdfTraceParams
 };
 static_assert( sizeof( SdfTraceParams ) == 2144, "sdf_probe_trace.comp Params" );
 
-class SdfTracedProducer final : public IProducer
+// How a traced producer's rays find surfaces.
+enum class TraceMode
+{
+	Sdf,      // sphere tracing the SDFV ("sdf-probe-trace", G6)
+	RayQuery, // ray queries against the world's triangles ("ray-query-probe-trace", G7)
+};
+
+// The traced producers (SdfTracedProducer, RayQueryProducer): the same probe
+// update, publication and lifetime; only the tracer differs.
+class TracedProducer : public IProducer
 {
 public:
+	explicit TracedProducer( TraceMode mode ) : m_mode( mode ) {}
+
 	static constexpr uint32_t kConvergenceFrames = 60; // 1 s at 60 Hz
 	static constexpr uint32_t kTexels = 36;
 	static constexpr uint32_t kRing = 4;
@@ -88,10 +105,11 @@ public:
 	[[nodiscard]] ProducerCaps Caps() const override
 	{
 		ProducerCaps caps;
-		caps.kind = ProducerKind::SdfTraced;
+		caps.kind = m_mode == TraceMode::Sdf ? ProducerKind::SdfTraced : ProducerKind::RayQuery;
 		caps.responds = kLightIntensity | kLightMotion | kGeometryMotion | kEmission;
 		caps.policies = PolicyBit( indirect_policy::Policy::BakedPlusDelta );
-		caps.requiredFeatures = 1u << 2; // RenderFeature::kComputeShaders
+		// RenderFeature::kComputeShaders, and kRayQuery for ray queries.
+		caps.requiredFeatures = ( 1u << 2 ) | ( m_mode == TraceMode::RayQuery ? 1u << 7 : 0u );
 		caps.convergenceFrames = kConvergenceFrames;
 		// A dispatch completes kMaxInFlight frames after its submission, so
 		// the reference phase takes (kMaxInFlight + 1) / kMaxInFlight frames
@@ -106,11 +124,14 @@ public:
 	[[nodiscard]] foundation::Expected<void, IndirectError> Begin(
 	    const IndirectScene &scene, const PublishedVolume &, IResourceTracker & ) override
 	{
-		if ( !scene.baked || !scene.sdf )
+		const bool rayQuery = m_mode == TraceMode::RayQuery;
+		if ( !scene.baked || !scene.sdf ||
+		     ( rayQuery && ( !scene.geometry || scene.geometry->indices.empty() ) ) )
 			return foundation::MakeUnexpected( IndirectError::MissingSceneData );
 		if ( scene.policy != indirect_policy::Policy::BakedPlusDelta )
 			return foundation::MakeUnexpected( IndirectError::UnsupportedPolicy );
-		if ( !scene.gpu || !scene.gpu->Capabilities().compute )
+		if ( !scene.gpu || !scene.gpu->Capabilities().compute ||
+		     ( rayQuery && !scene.gpu->Capabilities().rayQuery ) )
 			return foundation::MakeUnexpected( IndirectError::MissingFeature );
 		if ( scene.baked->layout.gridCount != 1 || scene.sdf->layout.lightCount > SdfTraceParams::kMaxLights )
 			return foundation::MakeUnexpected( IndirectError::MissingSceneData );
@@ -137,13 +158,47 @@ public:
 			m_field[k] = make( field, BufferUse::Readback );
 			m_params[k] = make( sizeof( SdfTraceParams ), BufferUse::Upload );
 		}
-		m_program = m_gpu->CreateProgram( "sdf-probe-trace", 5, 8 );
-		if ( made.size() != 2 + 2 * kRing || !m_program )
+		using gpu_compute::Binding;
+		const Binding bindings[8] = { Binding::Buffer, Binding::Buffer, Binding::Buffer,
+			Binding::Buffer, Binding::Buffer, Binding::Scene, Binding::Buffer, Binding::Buffer };
+		m_program = m_gpu->CreateProgram(
+		    rayQuery ? "ray-query-probe-trace" : "sdf-probe-trace", bindings, rayQuery ? 8 : 5, 8 );
+		size_t expected = 2 + 2 * kRing;
+		if ( rayQuery && m_program )
+		{
+			// The world's triangles: the scene's instance 0, and the vertices
+			// and indices the program reads a hit's normal from; a unit cube
+			// scaled into place for each proxy.
+			const WorldGeometry &world = *scene.geometry;
+			const uint32_t vertices = uint32_t( world.positions.size() / 3 );
+			m_worldVertices = make( size_t( vertices ) * 16, BufferUse::Upload );
+			m_worldIndices = make( world.indices.size() * 4, BufferUse::Upload );
+			expected += 2;
+			if ( m_worldVertices && m_worldIndices )
+			{
+				float *out = static_cast<float *>( m_gpu->Map( m_worldVertices ) );
+				for ( uint32_t v = 0; v < vertices; ++v )
+				{
+					for ( int k = 0; k < 3; ++k )
+						out[v * 4 + k] = world.positions[v * 3 + k];
+					out[v * 4 + 3] = 1.0f;
+				}
+				std::memcpy( m_gpu->Map( m_worldIndices ), world.indices.data(),
+				    world.indices.size() * 4 );
+			}
+			m_worldGeometry = m_gpu->CreateGeometry( world.positions.data(), vertices,
+			    world.indices.data(), uint32_t( world.indices.size() ) );
+			m_cubeGeometry = m_gpu->CreateGeometry( kCubePositions, 8, kCubeIndices, 36 );
+		}
+		if ( made.size() != expected || !m_program ||
+		     ( rayQuery && ( !m_worldGeometry || !m_cubeGeometry ) ) )
 		{
 			for ( uint32_t buffer : made )
 				m_gpu->Retire( buffer, 0 );
-			if ( m_program )
-				m_gpu->Retire( m_program, 0 );
+			for ( uint32_t resource : { m_program, m_worldGeometry, m_cubeGeometry } )
+				if ( resource )
+					m_gpu->Retire( resource, 0 );
+			m_program = m_worldGeometry = m_cubeGeometry = 0;
 			m_gpu = nullptr;
 			return foundation::MakeUnexpected( IndirectError::MissingFeature );
 		}
@@ -168,6 +223,8 @@ public:
 		m_lastSerial = 0;
 		m_frame = 0;
 		m_configHash = BakedConfigHash();
+		m_scene = 0;
+		m_sceneProxies.clear();
 		m_published = PublishedVolume{ ++m_epoch, m_baked };
 		return {};
 	}
@@ -227,7 +284,13 @@ public:
 				m_gpu->Retire( m_params[k], m_lastSerial );
 			}
 			m_gpu->Retire( m_program, m_lastSerial );
+			// The scene before the geometry it instances (same serial).
+			for ( uint32_t resource :
+			    { m_scene, m_worldGeometry, m_cubeGeometry, m_worldVertices, m_worldIndices } )
+				if ( resource )
+					m_gpu->Retire( resource, m_lastSerial );
 		}
+		m_scene = m_worldGeometry = m_cubeGeometry = m_worldVertices = m_worldIndices = 0;
 		m_gpu = nullptr;
 		m_published.reset();
 		m_baked.reset();
@@ -394,16 +457,49 @@ private:
 			float alpha;
 			uint32_t frame;
 		} push = { alpha, ++m_frame };
-		const uint32_t buffers[5] = { m_voxels, m_params[slot], m_positions,
-			m_field[m_written % kRing], m_field[slot] };
-		const uint64_t serial =
-		    m_gpu->QueueDispatch( m_program, buffers, 5, &push, sizeof( push ), m_probes, 1, 1 );
+		const bool rayQuery = m_mode == TraceMode::RayQuery;
+		if ( rayQuery && ( !m_scene || config.proxies != m_sceneProxies ) && !BuildScene( config ) )
+			return;
+		const uint32_t buffers[8] = { m_voxels, m_params[slot], m_positions,
+			m_field[m_written % kRing], m_field[slot], m_scene, m_worldVertices, m_worldIndices };
+		const uint64_t serial = m_gpu->QueueDispatch(
+		    m_program, buffers, rayQuery ? 8 : 5, &push, sizeof( push ), m_probes, 1, 1 );
 		if ( !serial )
 			return;
 		m_written = m_written + 1;
 		m_lastSerial = serial;
 		m_inFlight.push_back( { serial, slot } );
 		++m_updates;
+	}
+
+	// The ray-query scene for this configuration's proxies: the world plus a
+	// unit cube per proxy (customIndex 1 + its index, as the program reads
+	// it). The previous scene retires behind the last dispatch that used it.
+	bool BuildScene( const Config &config )
+	{
+		std::vector<gpu_compute::SceneInstance> instances( 1 + config.proxies.size() );
+		instances[0].geometry = m_worldGeometry;
+		for ( size_t p = 0; p < config.proxies.size(); ++p )
+		{
+			const Proxy &proxy = config.proxies[p];
+			gpu_compute::SceneInstance &instance = instances[1 + p];
+			instance.geometry = m_cubeGeometry;
+			instance.customIndex = uint32_t( 1 + p );
+			for ( int k = 0; k < 3; ++k )
+			{
+				for ( int c = 0; c < 3; ++c )
+					instance.transform[k * 4 + c] = k == c ? proxy.hi[k] - proxy.lo[k] : 0.0f;
+				instance.transform[k * 4 + 3] = proxy.lo[k];
+			}
+		}
+		const uint32_t scene = m_gpu->CreateScene( instances.data(), uint32_t( instances.size() ) );
+		if ( !scene )
+			return false;
+		if ( m_scene )
+			m_gpu->Retire( m_scene, m_lastSerial );
+		m_scene = scene;
+		m_sceneProxies = config.proxies;
+		return true;
 	}
 
 	void Consume()
@@ -454,6 +550,19 @@ private:
 		return base * ( std::max( now, 0.0f ) / reference - 1.0f );
 	}
 
+	// A unit cube, outward-wound, for proxy instances.
+	static constexpr float kCubePositions[24] = { 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1,
+		0, 1, 1, 1, 1, 0, 1, 1 };
+	static constexpr uint32_t kCubeIndices[36] = { 0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0,
+		5, 4, 3, 7, 6, 3, 6, 2, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5 };
+
+	TraceMode m_mode;
+	uint32_t m_worldVertices = 0;
+	uint32_t m_worldIndices = 0;
+	uint32_t m_worldGeometry = 0;
+	uint32_t m_cubeGeometry = 0;
+	uint32_t m_scene = 0;
+	std::vector<Proxy> m_sceneProxies;
 	gpu_compute::IGpuCompute *m_gpu = nullptr;
 	std::shared_ptr<const Volume> m_baked;
 	std::shared_ptr<const SdfData> m_sdf;
@@ -481,6 +590,18 @@ private:
 	Phase m_phase = Phase::Reference;
 	std::optional<PublishedVolume> m_published;
 	uint64_t m_epoch = 0;
+};
+
+class SdfTracedProducer final : public TracedProducer
+{
+public:
+	SdfTracedProducer() : TracedProducer( TraceMode::Sdf ) {}
+};
+
+class RayQueryProducer final : public TracedProducer
+{
+public:
+	RayQueryProducer() : TracedProducer( TraceMode::RayQuery ) {}
 };
 
 } // namespace indirect_light

@@ -307,6 +307,14 @@ struct SdfData
 	}
 };
 
+// The static world's triangles (Source units), for producers that trace
+// geometry (the ray-query producer): xyz positions and 32-bit indices.
+struct WorldGeometry
+{
+	std::vector<float> positions;
+	std::vector<uint32_t> indices;
+};
+
 // A moving occluder this frame (a closed door, a pushed crate): its world
 // box (Source units) and reflectance. Producers that claim kGeometryMotion
 // include it; the others ignore it.
@@ -315,6 +323,8 @@ struct Proxy
 	float lo[3] = {};
 	float hi[3] = {};
 	float reflectance = 0.5f;
+
+	bool operator==( const Proxy & ) const = default;
 };
 
 // A scene light's current direction, by light style (a moved sun).
@@ -353,6 +363,7 @@ struct IndirectScene
 	uint32_t deviceFeatures = 0;
 	std::shared_ptr<const Transfer> transfer; // RTRN: the radiosity producer's input
 	std::shared_ptr<const SdfData> sdf;       // SDFV: the SDF-traced producer's input
+	std::shared_ptr<const WorldGeometry> geometry; // the ray-query producer's triangles
 	gpu_compute::IGpuCompute *gpu = nullptr;  // the renderer's compute service, if any
 };
 

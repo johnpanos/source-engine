@@ -53,6 +53,9 @@ SHADERS = (
     ("g_computeFillSpv", "compute_fill.comp", []),
     # RFC 0011 G6: the SDF-traced producer's probe update.
     ("g_sdfProbeTraceSpv", "sdf_probe_trace.comp", []),
+    # RFC 0011 G7: the same update traced with ray queries (SPIR-V 1.5).
+    ("g_rayQueryProbeTraceSpv", "sdf_probe_trace.comp", ["--target-env=vulkan1.2",
+                                                         "-DRAY_QUERY"]),
     ("g_worldGlassFragSpv", "world_pbr_glass.frag", []),
     ("g_worldGlassClipFragSpv", "world_pbr_glass.frag", ["-DCLIP_PLANES"]),
     ("g_materialTexFragSpv", "demo_dyn_tex.frag", []),
