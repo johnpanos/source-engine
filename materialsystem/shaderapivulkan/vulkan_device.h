@@ -785,6 +785,9 @@ public:
 	// depth), and so does a glass draw of another `materialKey`, so glass behind
 	// glass shows through. A frame makes at most kMaxSceneCaptures captures;
 	// later glass reuses the last one.
+	// Views 1 and 2 draw the indirect layer through the INDIRECT_VIEW shaders;
+	// view 3 (RFC 0011 G9) is the diffuse light of the lit shaders.
+	bool IndirectViewShading() const { return m_indirectViewMode == 1 || m_indirectViewMode == 2; }
 	struct PbrGlassParams
 	{
 		float transmission = 1.0f;

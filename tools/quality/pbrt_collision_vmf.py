@@ -43,6 +43,9 @@ MATERIAL = "DEV/DEV_MEASUREWALL01A"
 # faces (and chopped detail faces can be zero-area slivers).
 NODRAW_MATERIAL = "TOOLS/TOOLSNODRAW"
 DOOR_MATERIAL = "DEV/DEV_MEASUREGENERIC01B"
+# A swinging lamp (--lamp): a Half-Life 2 lampshade, a physics prop (the caged
+# lights have no collision model, so prop_physics removes them).
+LAMP_MODEL = "models/props_c17/lampshade001a.mdl"
 WALL = 16
 PLAYER_HALF_WIDTH = 16
 PLAYER_HEIGHT = 72
@@ -357,6 +360,14 @@ def main():
                         help="a moving box (meters) the static bake lacks: a func_brush named "
                              "NAME, disabled (open) at spawn, drawn with MATERIAL (default "
                              "the dev texture); `ent_fire NAME Enable` closes it")
+    parser.add_argument("--lamp", action="append", default=[],
+                        metavar="NAME,AX,AY,AZ,LENGTH,RELEASE,COLOR[,HOLD...]",
+                        help="a lamp swinging on a rope (RFC 0011 G9): a physics prop NAME "
+                             "hung LENGTH meters from the anchor (meters), released RELEASE "
+                             "degrees from straight down in the xz plane, carrying an "
+                             "inverse-square light_dynamic NAME_light of linear COLOR; each "
+                             "HOLD (degrees) is a point_teleport NAME_hold_<k> that places it "
+                             "there (after `ent_fire NAME DisableMotion`)")
     parser.add_argument("--light-control", action="append", default=[], metavar="NAME",
                         help="a switchable baked light (RFC 0011 RTRN source), in style order: "
                              "a named zero-brightness `light`, so vbsp gives it light style "
@@ -497,6 +508,62 @@ def main():
                       brush_text(900 + index, side, planes, vertices, material), "}"])
         side += len(planes)
         doors.append({"name": name, "bounds_source_units": bounds, "material": material})
+    # Lamps on ropes: a physics prop held by a length constraint (a rope's
+    # pull, no push) from the anchor, the rope drawn from the anchor to the
+    # prop, and the bulb's light riding on the prop.
+    lamps = []
+    for index, spec in enumerate(args.lamp):
+        name, *values = spec.split(",")
+        ax, ay, az, length, release, color, *holds = (float(v) for v in values)
+        anchor = [ax * SOURCE_UNITS_PER_METER, ay * SOURCE_UNITS_PER_METER,
+                  az * SOURCE_UNITS_PER_METER]
+
+        def at_angle(degrees):
+            angle = math.radians(degrees)
+            return [anchor[0] + length * SOURCE_UNITS_PER_METER * math.sin(angle), anchor[1],
+                    anchor[2] - length * SOURCE_UNITS_PER_METER * math.cos(angle)]
+        end = at_angle(release)
+        # The light's color as Source's color and exponent: mantissa * 2^exponent / 255.
+        exponent = math.ceil(math.log2(color)) if color > 0 else 0
+        mantissa = max(0, min(255, round(color * 255.0 / 2.0 ** exponent)))
+        at = '\t"origin" "%.3f %.3f %.3f"' % tuple(end)
+        base = 60 + index * 5
+        lines.extend(["entity", "{", '\t"id" "%d"' % base, '\t"classname" "prop_physics"',
+                      '\t"targetname" "%s"' % name, '\t"model" "%s"' % LAMP_MODEL, at,
+                      # Pitch tilts the lamp's up axis along the rope.
+                      '\t"angles" "%g 0 0"' % -release, '\t"spawnflags" "0"', "}",
+                      "entity", "{", '\t"id" "%d"' % (base + 1),
+                      '\t"classname" "light_dynamic"', '\t"targetname" "%s_light"' % name,
+                      '\t"parentname" "%s"' % name, at,
+                      # 16: DLIGHT_INVERSE_SQUARE, the physical bulb.
+                      '\t"spawnflags" "16"',
+                      '\t"_light" "%d %d %d 255"' % (mantissa, mantissa, mantissa),
+                      '\t"brightness" "%d"' % exponent, '\t"distance" "4000"',
+                      '\t"_cone" "0"', '\t"_inner_cone" "0"', '\t"style" "0"', "}",
+                      "entity", "{", '\t"id" "%d"' % (base + 2),
+                      '\t"classname" "phys_lengthconstraint"',
+                      '\t"targetname" "%s_rope"' % name, at, '\t"attach1" "%s"' % name,
+                      '\t"attachpoint" "%.3f %.3f %.3f"' % tuple(anchor),
+                      '\t"addlength" "0"', '\t"minlength" "0"', "}",
+                      "entity", "{", '\t"id" "%d"' % (base + 3), '\t"classname" "move_rope"',
+                      '\t"targetname" "%s_rope_top"' % name,
+                      '\t"origin" "%.3f %.3f %.3f"' % tuple(anchor),
+                      '\t"NextKey" "%s_rope_end"' % name, '\t"RopeMaterial" "cable/cable.vmt"',
+                      '\t"Width" "1"', '\t"Slack" "0"', '\t"Subdiv" "2"', '\t"Type" "0"', "}",
+                      "entity", "{", '\t"id" "%d"' % (base + 4), '\t"classname" "keyframe_rope"',
+                      '\t"targetname" "%s_rope_end"' % name, '\t"parentname" "%s"' % name, at,
+                      '\t"RopeMaterial" "cable/cable.vmt"', '\t"Width" "1"', "}"])
+        for k, hold in enumerate(holds):
+            lines.extend(["entity", "{", '\t"id" "%d"' % (40 + index * 8 + k),
+                          '\t"classname" "point_teleport"',
+                          '\t"targetname" "%s_hold_%d"' % (name, k), '\t"target" "%s"' % name,
+                          '\t"origin" "%.3f %.3f %.3f"' % tuple(at_angle(hold)),
+                          '\t"angles" "%g 0 0"' % -hold, "}"])
+        lamps.append({"name": name, "anchor_source_units": anchor, "release_degrees": release,
+                      "start_source_units": end, "color": [mantissa, exponent],
+                      "holds": [{"name": "%s_hold_%d" % (name, k), "degrees": hold,
+                                 "origin_source_units": at_angle(hold)}
+                                for k, hold in enumerate(holds)]})
     placed = []
     for index, prop in enumerate(map_scene.props(scene)):
         origin = [value * SOURCE_UNITS_PER_METER for value in prop["origin_m"]]
@@ -536,6 +603,7 @@ def main():
                "fallback_light": not args.no_fallback_light,
                "portals": args.portal,
                "doors": doors,
+               "lamps": lamps,
                "light_controls": [{"name": name, "style": 32 + index}
                                   for index, name in enumerate(args.light_control)],
                "policy": "18-DOP per connected component; floor triangles extruded; "

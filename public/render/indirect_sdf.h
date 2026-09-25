@@ -224,6 +224,14 @@ public:
 	static constexpr uint32_t kMaxInFlight = 2;
 	static constexpr uint32_t kPropagationUpdates = 24;
 	static constexpr uint32_t kMaxUnbakedLights = 8;
+	// Continuous motion (G9: a swinging light changes the configuration
+	// every update): changes within kMotionWindow updates of each other.
+	// Its live updates blend at kMotionAlpha with one fixed ray rotation and
+	// seed, so each probe's estimate is a smooth function of the scene
+	// instead of a fresh noisy one every frame (flicker). When the changes
+	// stop, the normal schedule resumes and settles to the running mean.
+	static constexpr uint32_t kMotionWindow = 3;
+	static constexpr float kMotionAlpha = 0.35f;
 	static constexpr uint32_t kReferenceUpdates = 64;
 	static constexpr uint32_t kActiveUpdates = 72;
 	// Below this reference irradiance a darkening is absolute, not relative.
@@ -409,6 +417,9 @@ public:
 		m_inFlight.clear();
 		m_lastSerial = 0;
 		m_frame = 0;
+		m_changed = false;
+		m_motion = false;
+		m_motionSeed = 0;
 		m_bakedHash = BakedConfig().Hash();
 		m_configHash = m_bakedHash;
 		m_scene = 0;
@@ -449,11 +460,18 @@ public:
 		if ( hash != m_configHash )
 		{
 			m_configHash = hash;
+			const bool continuing = m_changed && m_updates <= kMotionWindow;
+			if ( continuing && !m_motion )
+				m_motionSeed = m_frame + 1;
+			m_motion = continuing;
+			m_changed = true;
 			m_updates = 0;
 			for ( uint32_t p = 0; p < m_probes; ++p )
 				if ( m_active[p] && m_referenced[p] )
 					m_liveUpdates[p] = 0;
 		}
+		else if ( m_updates > kMotionWindow )
+			m_motion = false; // still again: the normal schedule settles
 		if ( m_inFlight.size() < kMaxInFlight )
 			Dispatch( config, work.focusProbes, work.probeBudget );
 	}
@@ -761,7 +779,8 @@ private:
 			float alpha;
 			if ( NeedsLive( p ) )
 			{
-				alpha = Alpha( m_liveUpdates[p]++ );
+				alpha = m_motion ? kMotionAlpha : Alpha( m_liveUpdates[p] );
+				++m_liveUpdates[p];
 				liveSchedule[lives * 2] = p;
 				std::memcpy( &liveSchedule[lives * 2 + 1], &alpha, 4 );
 				++lives;
@@ -781,14 +800,16 @@ private:
 		    kWorldInstanceMask | kProxyInstanceMask );
 		WriteLights( static_cast<SdfTraceLight *>( m_gpu->Map( m_liveLights[slot] ) ), config );
 		const uint32_t previous = m_field[m_written % kRing];
-		const auto queue = [&](
-		                       uint32_t params, uint32_t lights, uint32_t schedule, uint32_t count )
+		const auto queue = [&]( uint32_t params, uint32_t lights, uint32_t schedule,
+		                       uint32_t count, bool live )
 		{
+			// In motion, live probes keep one rotation and seed.
+			++m_frame;
 			struct
 			{
 				uint32_t entries;
 				uint32_t frame;
-			} push = { count, ++m_frame };
+			} push = { count, live && m_motion ? m_motionSeed : m_frame };
 			std::vector<uint32_t> buffers = {
 			    m_voxels, params, m_positions, previous, m_field[slot] };
 			if ( rayQuery )
@@ -799,9 +820,10 @@ private:
 		};
 		uint64_t serial = 0;
 		if ( lives )
-			serial = queue( m_params[slot], m_liveLights[slot], m_liveSchedule[slot], lives );
+			serial = queue( m_params[slot], m_liveLights[slot], m_liveSchedule[slot], lives, true );
 		if ( ( serial || !lives ) && references )
-			serial = queue( m_bakedParams, m_bakedLights, m_referenceSchedule[slot], references );
+			serial = queue(
+			    m_bakedParams, m_bakedLights, m_referenceSchedule[slot], references, false );
 		if ( !serial )
 			return;
 		m_recent.push_back( chosen );
@@ -968,6 +990,9 @@ private:
 	uint64_t m_bakedHash = 0;
 	uint32_t m_updates = 0;
 	uint32_t m_frame = 0;
+	bool m_changed = false;    // the configuration has changed since Begin
+	bool m_motion = false;     // changes arrive within kMotionWindow updates
+	uint32_t m_motionSeed = 0; // the live probes' seed while in motion
 	Phase m_phase = Phase::Reference;
 	std::optional<PublishedVolume> m_published;
 	uint64_t m_epoch = 0;

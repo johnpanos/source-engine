@@ -39,7 +39,7 @@ VkPipeline CVulkanContext::WorldPbrPipeline(
 {
 	const uint64_t key = PipelineKey( state, srgbPass, samples );
 	const VkRenderPass pass = PipelineRenderPass( srgbPass, samples );
-	const bool indirectView = m_indirectViewMode != 0;
+	const bool indirectView = IndirectViewShading();
 	const bool delta = ( extended & kWorldPbrDeltaVolume ) != 0;
 	if ( extended < 0 || extended > 7 || ( delta && ( extended & kWorldPbrRuntimeIndirect ) ) )
 		return VK_NULL_HANDLE;
@@ -530,7 +530,7 @@ bool CVulkanContext::SelectPbrGlassMaterial( int mrao, int normal, const float e
 
 void CVulkanContext::SetIndirectLightView( int mode, float scale )
 {
-	m_indirectViewMode = mode >= 0 && mode <= 2 ? mode : 0;
+	m_indirectViewMode = mode >= 0 && mode <= 3 ? mode : 0;
 	m_indirectViewScale = scale > 0.0f && scale < 1.0e6f ? scale : 1.0f;
 }
 

@@ -358,6 +358,26 @@ int main()
 					world_mesh_gpu::ShadowFieldUploadRequest field;
 					field.voxel = 0.02f;
 					field.origin[0] = -0.5f, field.origin[1] = -0.3f, field.origin[2] = 0.3f;
+			// RFC 0011 G9 view 3: all diffuse light, no albedo or BRDF: over the
+			// black bake, the bulb's incident light times N.L alone.
+			{
+				const float toLight[3] = {
+				    bulb.position[0], bulb.position[1], bulb.position[2] - 0.5f };
+				const float d2 =
+				    toLight[0] * toLight[0] + toLight[1] * toLight[1] + toLight[2] * toLight[2];
+				const float diffuse =
+				    bulb.color[0] *
+				    light_set::InverseSquareFalloff( d2, bulb.radius, bulb.sourceRadius ) *
+				    toLight[2] / std::sqrt( d2 );
+				context.SetIndirectLightView( 3, 0.5f );
+				std::uint8_t viewed = 0;
+				check( DrawWorld( context, &viewed, &error ) &&
+				           std::abs( viewed - srgbByte( 0.5f * diffuse ) ) <= 2.0f,
+				    "view 3 writes the unbaked light's diffuse light times the exposure" );
+				std::fprintf( stderr, "view 3 bulb red %u (expected %.1f)\n", viewed,
+				    srgbByte( 0.5f * diffuse ) );
+				context.SetIndirectLightView( 0, 1.0f );
+			}
 					field.dims[0] = 51, field.dims[1] = 31, field.dims[2] = 36;
 					std::vector<uint16_t> distances(
 					    size_t( field.dims[0] ) * field.dims[1] * field.dims[2] );

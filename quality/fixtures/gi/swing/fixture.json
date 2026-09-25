@@ -3,14 +3,14 @@
   "cameras": {
     "room": {
       "eye": [
-        4.7,
-        0.3,
-        1.8
+        2.5,
+        0.35,
+        1.9
       ],
       "forward": [
-        -0.6904509632033649,
-        0.6904509632033649,
-        -0.21576592600105152
+        0.0,
+        0.9606455744055223,
+        -0.27777703356304256
       ],
       "up": [
         0.0,
@@ -43,6 +43,9 @@
       "back_wall": [
         "S_Yp"
       ],
+      "east_wall": [
+        "S_Xp"
+      ],
       "floor": [
         "S_Zn"
       ],
@@ -70,6 +73,7 @@
         2.5,
         1.850933
       ],
+      "hold": 1,
       "layer": "states/left.usda",
       "note": "bulb -40 degrees from rest"
     },
@@ -79,6 +83,7 @@
         2.5,
         1.5
       ],
+      "hold": 0,
       "layer": null,
       "note": "bulb hanging straight down"
     },
@@ -88,6 +93,7 @@
         2.5,
         1.850933
       ],
+      "hold": 2,
       "layer": "states/right.usda",
       "note": "bulb 40 degrees from rest"
     }

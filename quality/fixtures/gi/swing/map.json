@@ -8,6 +8,11 @@
           3.0
         ],
         "color_linear": 0.2,
+        "holds_degrees": [
+          0.0,
+          -40.0,
+          40.0
+        ],
         "length_m": 1.5,
         "name": "Lamp",
         "release_degrees": -40.0

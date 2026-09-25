@@ -69,6 +69,11 @@ bool UploadWorldShadowField( CVulkanContext &context,
 			*error = message;
 		return false;
 	};
+	if ( !request.distances )
+	{
+		context.SetShadowField( -1, nullptr, 0.0f, nullptr );
+		return true;
+	}
 	if ( !context.WorldMeshResident() )
 		return fail( "the shadow field requires a resident world mesh" );
 	const uint32_t edge = context.MaxVolumeTextureDimension();

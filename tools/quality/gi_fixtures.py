@@ -788,19 +788,25 @@ def swing(out):
     sphere_mesh(author.stage, bulb.AppendChild("BulbShape"), SWING_BULB_RADIUS_M, 24, 12)
     UsdShade.MaterialBindingAPI.Apply(author.stage.GetPrimAtPath(
         bulb.AppendChild("BulbShape"))).Bind(author.materials["Bulb"])
-    pose = camera_pose((4.7, 0.3, 1.8), (1.5, 3.5, 0.8))
+    # From the south wall along +y: the bulb swings across the view, and the
+    # pillar's shadow moves over the east wall and the floor beside it.
+    pose = camera_pose((2.5, 0.35, 1.9), (2.5, 4.5, 0.7))
     author.camera("Camera", pose)
     author.save()
     base = directory / "swing.usda"
+    # Each state's hold: the in-game point_teleport (Lamp_hold_<k>) that
+    # places the lamp at the state's angle.
+    holds = [0.0, -SWING_ANGLE_DEGREES, SWING_ANGLE_DEGREES]
     states = {"rest": {"layer": None, "note": "bulb hanging straight down",
-                       "bulb_m": list(swing_position(0.0))}}
+                       "bulb_m": list(swing_position(0.0)), "hold": 0}}
     for name, angle in (("left", -SWING_ANGLE_DEGREES), ("right", SWING_ANGLE_DEGREES)):
         position = swing_position(angle)
         state_layer(directory / "states" / (name + ".usda"), base,
                     [(str(bulb), "xformOp:translate", Sdf.ValueTypeNames.Double3,
                       Gf.Vec3d(*position))])
         states[name] = {"layer": "states/%s.usda" % name,
-                        "note": "bulb %g degrees from rest" % angle, "bulb_m": list(position)}
+                        "note": "bulb %g degrees from rest" % angle, "bulb_m": list(position),
+                        "hold": holds.index(angle)}
     state_layer(directory / "states" / "baked.usda", base,
                 [(str(bulb), "visibility", None, UsdGeom.Tokens.invisible)])
     states["baked"] = {"layer": "states/baked.usda", "note": "bulb hidden: the map's bake"}
@@ -808,8 +814,8 @@ def swing(out):
         "swing", "Moved-light oracle: a bulb on a rope lights the room directly, through its "
         "shadows and by its bounce, wherever it swings", "swing.usda", states,
         {"room": pose},
-        {"room": {"floor": ["S_Zn"], "red_wall": ["S_Xn"], "back_wall": ["S_Yp"],
-                  "pillar": ["Pillar"], "model": ["ProbeS"]}},
+        {"room": {"floor": ["S_Zn"], "red_wall": ["S_Xn"], "east_wall": ["S_Xp"],
+                  "back_wall": ["S_Yp"], "pillar": ["Pillar"], "model": ["ProbeS"]}},
         "baked",
         {"swing": {"anchor_m": list(SWING_ANCHOR_M), "length_m": SWING_LENGTH_M,
                    "angle_degrees": SWING_ANGLE_DEGREES, "bulb_radius_m": SWING_BULB_RADIUS_M,
@@ -822,7 +828,7 @@ def swing(out):
     # left extreme so it swings.
     manifest["collision"]["lamps"] = [{
         "name": "Lamp", "anchor_m": list(SWING_ANCHOR_M), "length_m": SWING_LENGTH_M,
-        "release_degrees": -SWING_ANGLE_DEGREES,
+        "release_degrees": -SWING_ANGLE_DEGREES, "holds_degrees": holds,
         "color_linear": SWING_RADIANCE * (2.0 / 100.0) ** 2}]
     write_json(directory / "map.json", manifest)
 

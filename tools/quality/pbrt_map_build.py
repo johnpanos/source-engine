@@ -408,7 +408,13 @@ class Pipeline:
         return self.run(step, [self.tools["blender"], "-b", "--factory-startup",
                                "--log-level", "debug", "--log", "cycles",
                                "--python-exit-code", "9", "--python", HERE / script,
-                               "--"] + arguments, env={"OCIO": self.tools["ocio"]},
+                               "--"] + arguments,
+                        # BLAS on one thread: a script's forked workers (probe
+                        # tracing) inherit no OpenMP pool, so an OpenMP BLAS
+                        # call in them waits forever on the parent's barrier.
+                        # Cycles and OIDN use TBB, not OpenMP.
+                        env={"OCIO": self.tools["ocio"], "OMP_NUM_THREADS": "1",
+                             "OPENBLAS_NUM_THREADS": "1"},
                         progress=bake_progress.CyclesProgress())
 
     def usd_python(self, step, script, arguments):

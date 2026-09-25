@@ -719,6 +719,70 @@ int Bench( Device &d, Frames &frames, const BenchOptions &options )
 	return 0;
 }
 
+// RFC 0011 G9: the frame's unbaked lights. Probe 0's published light with
+// no unbaked light, with an inverse-square light on its side of the
+// contract's thin wall (x 47..49), and with that light moved behind the
+// wall. The light near it adds bounce (the indirect layer rises) but no
+// direct light at the probe (total minus indirect is unchanged: direct light
+// from unbaked lights is the world's and models' own); behind the wall the
+// probe is back at its baseline. Returns "" or what failed.
+std::string UnbakedLights( Frames &frames, TraceMode mode, const IndirectScene &base )
+{
+	TracedProducer producer( mode );
+	IndirectScene scene = base;
+	scene.gpu = &frames.Service();
+	scene.policy = indirect_policy::Policy::BakedPlusDelta;
+	if ( !producer.Begin( scene, PublishedVolume{ 0, scene.baked }, frames ) )
+		return "Begin failed";
+	light_set::Snapshot lights;
+	const auto run = [&]( uint32_t count, float *total, float *indirect )
+	{
+		for ( uint32_t frame = 0; frame < count; ++frame )
+		{
+			FrameWork work;
+			work.resources = &frames;
+			work.frameSerial = uint64_t( frame ) + 1;
+			producer.Schedule( work, lights );
+			for ( auto &job : work.jobs )
+				job();
+			frames.Submit();
+		}
+		frames.Drain();
+		const auto published = producer.Published();
+		const Volume &volume = published ? *published->volume : *scene.baked;
+		*total = ProbeMean( volume, 0 );
+		*indirect = ProbeMean( volume, 1 );
+	};
+	float total0, indirect0, total1, indirect1, total2, indirect2;
+	run( producer.Caps().warmupFrames + 8, &total0, &indirect0 );
+	light_set::RuntimeLight bulb;
+	bulb.id = light_set::Builder::kFirstDynamicId;
+	bulb.kind = light_set::LightKind::Dynamic;
+	bulb.falloff = light_set::LightFalloff::InverseSquare;
+	bulb.sourceRadius = light_set::kInverseSquareSourceRadius;
+	bulb.position[0] = 16.0f, bulb.position[2] = 16.0f;
+	bulb.color[0] = bulb.color[1] = bulb.color[2] = 2.0f;
+	lights.lights = { bulb };
+	run( 120, &total1, &indirect1 );
+	lights.lights[0].position[0] = 80.0f; // behind the wall
+	run( 120, &total2, &indirect2 );
+	(void)producer.End();
+	frames.Drain();
+	std::fprintf( stderr,
+	    "unbaked light, probe 0: indirect %.4f -> %.4f near -> %.4f behind the wall; direct "
+	    "%.4f -> %.4f -> %.4f\n",
+	    indirect0, indirect1, indirect2, total0 - indirect0, total1 - indirect1,
+	    total2 - indirect2 );
+	if ( !( indirect1 > indirect0 + 0.02f ) )
+		return "the light near the probe adds no bounce";
+	if ( std::fabs( ( total1 - indirect1 ) - ( total0 - indirect0 ) ) >
+	     0.1f * std::max( total0 - indirect0, 0.01f ) )
+		return "the unbaked light added direct light at the probe";
+	if ( std::fabs( indirect2 - indirect0 ) > 0.25f * ( indirect1 - indirect0 ) )
+		return "the light moved behind the wall still lights the probe";
+	return {};
+}
+
 } // namespace
 
 int main( int argc, char **argv )
@@ -884,6 +948,24 @@ int main( int argc, char **argv )
 		(void)radiosity;
 		Check( !( radiosity.Caps().responds & kGeometryMotion ),
 		    "the radiosity producer does not claim GeometryMotion" );
+	}
+
+	// RFC 0011 G9: unbaked lights reach the traced field.
+	for ( TraceMode mode : { TraceMode::Sdf, TraceMode::RayQuery } )
+	{
+		if ( mode == TraceMode::RayQuery && !frames.Service().Capabilities().rayQuery )
+			continue;
+		const std::string name = mode == TraceMode::RayQuery ? "ray-query" : "SDF-traced";
+		IndirectScene unbaked;
+		unbaked.baked = seed;
+		unbaked.sdf = sdf;
+		unbaked.geometry = geometry;
+		const std::string failed = UnbakedLights( frames, mode, unbaked );
+		if ( !failed.empty() )
+			std::fprintf( stderr, "  %s: %s\n", name.c_str(), failed.c_str() );
+		Check( failed.empty(), "the " + name +
+		                           " producer bounces an unbaked light, follows it "
+		                           "behind the wall, and adds none of its direct light" );
 	}
 
 	// GPU cost of one update on the contract scene (16 probes).

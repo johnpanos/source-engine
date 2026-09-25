@@ -765,15 +765,25 @@ Done when:
 2. A GPU check of the SDF shadow gives lit, occluded and penumbra texels
    against an analytic occluder, and a seeded no-shadow control fails.
 3. **`swing`, frozen:** for each state the lamp is held at the state's
-   position.
-   - After the producer's declared convergence, the shaded capture matches
-     the Cycles total reference per region within the producer's
-     tolerance, and the indirect view matches the indirect reference.
-   - Radiosity's indirect view fails the moved states, and shadows off fails
-     the shadowed region. These show the scenario tells them apart.
-4. **`swing`, swinging:** a burst captured while the lamp swings has no
-   flicker beyond the motion. Its temporal score's high-frequency term
-   stays within the `gi_temporal` limits.
+   position (`DisableMotion`, then a `point_teleport`).
+   - After the producer's declared convergence, the diffuse view
+     (`mat_indirect_view 3`: all diffuse light, no albedo) matches Cycles
+     DiffDir + DiffInd per world region within the producer's tolerance,
+     and the indirect view matches DiffInd.
+   - The shadowed pixels (the east-wall and floor pixels where Cycles'
+     direct light is under a tenth of the region's) match the reference's
+     light within the same tolerance.
+   - Radiosity's indirect view fails every state (the bulb is unbaked), and
+     shadows off (`r_indirect_shadows 0`) fails the shadowed pixels. These
+     show the scenario tells them apart.
+   - Models are measured, not gated: their light from the bulb is the
+     engine's dlight path, unshadowed.
+4. **`swing`, swinging:** while the lamp swings, consecutive frames
+   (`startmovie` at a fixed 1/60 s step; screenshots cannot be consecutive)
+   show no flicker beyond the motion. The high-frequency term, the RMS of
+   each pixel's second temporal difference relative to mean luminance, may
+   exceed the baked producer's by at most 0.002. Baked shows the same
+   moving direct light and shadows, with no bounce.
 5. The SDF shadow's cost at 1920 × 1080 is measured against a desktop budget
    (provisional: ≤ 1 ms for one light on the Radeon 8060S), and the
    producer's cost under continuous motion stays within its G6/G7 budget.

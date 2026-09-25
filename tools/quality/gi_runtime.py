@@ -241,7 +241,7 @@ def view_masks(fixture, state, camera):
 
 
 def compare_view(fixture, state, camera, capture_path, scale, gate_models, tolerance, level,
-                 light="indirect", absolute_fraction=ABSOLUTE_FRACTION):
+                 light="indirect", absolute_fraction=ABSOLUTE_FRACTION, gate_world=False):
     references = fixture["directory"] / "references"
     view, masks = view_masks(fixture, state, camera)
     camera = fixture.get("reference_cameras", {}).get(camera, camera)
@@ -269,8 +269,10 @@ def compare_view(fixture, state, camera, capture_path, scale, gate_models, toler
         error = abs(lum_observed - lum_expected) / max(allowance, 1e-9)
         kind = "model" if region in scene_props else "world"
         # The world view shows the LMAP indirect layer: gated only against
-        # indirect light.
-        gated = (kind == "world" and light == "indirect") or (kind == "model" and gate_models)
+        # indirect light, unless the capture is of all diffuse light
+        # (mat_indirect_view 3, --gate-world).
+        gated = (kind == "world" and (light == "indirect" or gate_world)) or \
+            (kind == "model" and gate_models)
         regions[region] = {"kind": kind, "pixels": int(mask.sum()),
                            "reference_rgb": expected.tolist(), "measured_rgb": observed.tolist(),
                            "reference_luminance": lum_expected,
@@ -305,7 +307,8 @@ def compare(args):
             continue
         regions = compare_view(fixture, args.state, camera, shot["screenshot"],
                                args.declared_scale or capture_record["scale"], args.gate_models,
-                               args.tolerance, level, light, absolute_fraction)
+                               args.tolerance, level, light, absolute_fraction,
+                               getattr(args, "gate_world", False))
         views[camera] = regions
         for region, result in regions.items():
             if result["status"] == "fail":
@@ -435,7 +438,7 @@ def main():
         p.add_argument("--out", required=True)
     c = commands.add_parser("capture")
     capture_options(c)
-    c.add_argument("--view", type=int, default=1, choices=(0, 1, 2))
+    c.add_argument("--view", type=int, default=1, choices=(0, 1, 2, 3))
     c.add_argument("--capture-wait", type=int,
                    help="frames from the start of the console line to the scored screenshot "
                         "(default %d; the camera placement uses %d of them)" % (
@@ -450,6 +453,9 @@ def main():
                    help="exposure scale to divide out (default: the capture's)")
     m.add_argument("--gate-models", action="store_true")
     m.add_argument("--reference-light", choices=sorted(REFERENCE_LIGHT), default="indirect")
+    m.add_argument("--gate-world", action="store_true",
+                   help="gate world regions against --reference-light too: a capture of all "
+                        "diffuse light (mat_indirect_view 3, RFC 0011 G9)")
     m.add_argument("--tolerance", type=float, default=WORLD_TOLERANCE)
     m.add_argument("--absolute-fraction", type=float,
                    help="the dark-region allowance as a fraction of the reference level "

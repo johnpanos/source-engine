@@ -1353,3 +1353,178 @@ context's own present now uses one semaphore per swapchain image
 (`GrowRenderFinished`), as the SDL3 bridge already did. These suites had
 passed earlier only because validation was off in that run. All 8 GPU
 suites now pass with validation on (`quality-results/conformance.20260925T085440Z.json`).
+
+### G9.3 prerequisites (2026-09-25)
+
+- **Unbaked lights in the traced producers.** The first 8 unbaked point and
+  spot lights of the light set join the live configuration (and its hash)
+  as kind-5 records after the SDFV's lights. `sdf_probe_trace.comp`
+  evaluates them with the light set's falloff (legacy or inverse square)
+  and cone, as world_pbr does. Every ray hit is lit by them, whatever its
+  cell. They are left out of the probe's own analytic term: their direct
+  light at the world and at models is the world's and the engine's own, and
+  counting it again in the models' probe total would double it.
+  - `render.indirect-light.sdf` (now 31 checks) puts an inverse-square
+    light near probe 0 of the contract scene, then moves it behind the
+    thin wall. SDF: indirect 0.450 → 23.30 near → 0.476 behind; direct
+    (total − indirect) 0.300 → 0.301 → 0.301. Ray query: 0.450 → 21.38 →
+    0.466, direct unchanged likewise.
+- **View 3.** `mat_indirect_view 3` shows all diffuse light (irradiance / π,
+  no albedo): the bake at the smooth normal, the producer's change, and the
+  unbaked lights' shadowed direct light. It is Cycles' DiffDir + DiffInd,
+  the light the swing oracle scores. It draws through the direct-light
+  variants; models show their ambient cube, as in view 1. GPU check: the
+  bulb over a black bake draws 153 against the CPU model's 153.3.
+- **Negative control.** `r_indirect_shadows 0` (cheat) removes the shadow
+  field: an upload request without distances removes it, checked every
+  frame.
+- **Fixture `swing`.** A 5 × 5 × 3 m room with a red west wall, a
+  0.5 × 0.6 × 1.4 m pillar and a dim baked panel. A 2-unit bulb of radiance
+  500 hangs 1.5 m below the ceiling's centre. States: rest, left and right
+  (±40°), plus `baked` (bulb hidden: the map's bake). Cycles references,
+  CPU, 2048 samples: the bulb dominates (floor diffuse 0.39 at rest against
+  0.013 from the panel), and indirect light is 0.25–0.31 per region.
+- **The lamp in the map** (`collision.lamps`, `pbrt_collision_vmf.py
+  --lamp`):
+  - `prop_physics` `Lamp` (the HL2 caged bulb) on a `phys_lengthconstraint`
+    to the anchor, released at −40°;
+  - a parented inverse-square `light_dynamic` (spawnflag 16, color 0.2 as
+    204 × 2⁻²);
+  - `move_rope` / `keyframe_rope` for the rope;
+  - a `point_teleport` `Lamp_hold_<k>` per reference angle.
+
+  `light_dynamic`'s networked flags widened from 4 to 5 bits so the
+  inverse-square bit reaches the client. This is a `DT_DynamicLight`
+  change that clients and servers of this tree share.
+
+### G9.3 `swing`, frozen (done 2026-09-25)
+
+`python3 tools/quality/gi_swing.py frozen [--producer rayquery]` holds the
+lamp at each state's angle (`DisableMotion`, then `Lamp_hold_<k>`
+`Teleport`). It captures after the producer's warm-up and its declared
+64-frame convergence. Diffuse views (view 3) are captured at 1/8 exposure,
+because the bulb lights the pillar's top to 4.4 (irradiance / π), past an
+8-bit screenshot's 1.0.
+
+| Capture | SDF | Ray query |
+| --- | --- | --- |
+| rest, left, right: diffuse view vs DiffDir + DiffInd, world regions | pass | pass |
+| rest, left, right: indirect view vs DiffInd | pass | pass |
+| rest, left, right: shadowed pixels | pass | pass |
+| radiosity, every state, indirect view | fails, as required | fails, as required |
+| right, `r_indirect_shadows 0`: shadowed pixels | fails, as required | fails, as required |
+
+- **Accuracy.** In the right state the diffuse view's walls and floor are
+  within 1–5% of Cycles, and the pillar within 10%.
+- **Shadowed pixels.** These are the east-wall and floor pixels where
+  Cycles' direct light is under a tenth of the region's, computed per pixel
+  as Combined / 0.7 − DiffInd on the white Lambertian surfaces. Ray query:
+  left 0.226 against 0.209, rest 0.262 against 0.254, right 0.311 against
+  0.295. With shadows off the right state reads 0.529.
+- **Models.** They are measured only; view 3 shows their ambient cube, and
+  their light from the bulb is the engine's unshadowed dlight path.
+- **Region means miss the shadow.** They pass even without shadows: the
+  pillar's shadow is too small a share of the east wall and floor. That is
+  why the per-pixel shadow check exists.
+- **The lamp model.** It is `models/props_c17/lampshade001a.mdl`. The
+  caged-bulb models have no collision model, so `prop_physics` deletes
+  them. The shade does not occlude its own light (the SDF holds the static
+  world).
+
+Evidence: `quality-results/rfc0011-g9/frozen/gate.json`,
+`quality-results/rfc0011-g9/frozen-rayquery/gate.json`.
+
+### G9.4 `swing`, swinging (done 2026-09-25)
+
+`gi_swing.py swinging` fixes the frame step (`host_framerate 60`). Each run
+holds the lamp at −40°, warms the producer up, releases the lamp
+(`EnableMotion`) and 30 frames later records 90 frames with
+`startmovie swing tga` (37–38 kept after the first five).
+
+**Metric.** Each world region's mean luminance per frame is a smooth curve
+under the swing. Its high-frequency term is the RMS of the curve's second
+temporal difference over its mean. A producer passes when no region adds
+more than 0.002 over the baked control, which has the same moving direct
+light and shadows and no bounce.
+
+**Why this metric.** Screenshots cannot be consecutive, and a per-pixel
+comparison across runs fails: the swing replays only to within a third of a
+frame's motion, which is large at moving edges. The region curves remove
+both problems. A second baked run is the pairing control.
+
+**Found: the traced producers flickered under continuous motion.** Before
+the fix, the region terms read (floor, red wall, back wall, east wall):
+
+| Producer | Floor | Red wall | Back wall | East wall |
+| --- | --- | --- | --- | --- |
+| baked | 0.0013 | 0.0009 | 0.0009 | 0.0010 |
+| SDF | 0.0031 | 0.0095 | 0.0046 | 0.0061 |
+| Ray query | 0.0036 | 0.0083 | 0.0031 | 0.0039 |
+
+That is about 1% per-frame jitter on the red wall. Every configuration
+change restarted the probes at a 0.5 blend with a fresh ray rotation and
+seed, so each frame was half a new 128-ray estimate.
+
+**The fix: motion mode** (`TracedProducer::kMotionWindow`, `kMotionAlpha`).
+Changes arriving within 3 updates of each other are continuous motion. The
+live dispatch then keeps one ray rotation and seed, so each probe's
+estimate is a smooth function of the scene, and probes blend at 0.35. When
+the changes stop, the normal schedule resumes (0.5, then a running mean
+over fresh rotations). A one-off change (a door, a teleport, a toggle)
+never enters motion mode.
+
+**After the fix:**
+- The baked re-run adds 0.00000 in every region.
+- SDF adds −0.0003 to −0.0006, ray query −0.0003 to −0.0007: the bounce
+  smooths the curves.
+- A synthetic test (`test_gi_tools` SwingScoreTest) shows 1% jitter on a
+  smooth curve adding more than the limit, and a smooth bounce adding less.
+
+Evidence: `quality-results/rfc0011-g9/swinging/gate.json`.
+
+**Also found: the probe-volume bake hung.** `probe_volume_bake.py` (another
+session's change) now forks trace workers inside Blender. The forked
+children deadlock in OpenMP OpenBLAS (`gomp_team_barrier_wait_end` under
+`cblas_dgemv`; the parent's thread pool does not exist after fork).
+`pbrt_map_build.py` now runs Blender with `OMP_NUM_THREADS=1` and
+`OPENBLAS_NUM_THREADS=1`; Cycles and OIDN use TBB. The swing probe volume
+then baked in 88 s. The change's owner was told.
+
+### G9.5 Cost (done 2026-09-25)
+
+`gi_swing.py cost` runs at 1920 × 1080 with `-vkframestats` GPU timestamps.
+The lamp is held at rest with the SDF producer settled, and the SDF shadow
+goes on, off and on again, 300 frames each. The lamp is then released under
+SDF, and afterwards under ray query, released again because the swing dies
+away within about 15 s.
+
+| Measure | Run 1 | Run 2 | Budget |
+| --- | --- | --- | --- |
+| SDF shadow, one light | 0.074 ms | 0.061 ms | 1.0 ms |
+| SDF producer, swinging | 0.827 ms | 0.439 ms | 2.0 ms (G6.4) |
+| Ray-query producer, swinging | — | 0.315 ms | 1.5 ms (G7.3) |
+
+- The shadow cost is the medians of the two shadow-on phases less the
+  shadow-off one. The whole frame is 0.4–0.7 ms of GPU time in this room.
+- The producers' cost is their frame less the still, shadowed one: an
+  update every frame while the lamp swings.
+- Run 1's ray-query phase measured nothing, because the lamp had stopped.
+  The load (23–80) moved the SDF figure by 2×.
+- Evidence: `quality-results/rfc0011-g9/cost/gate.json`.
+
+**Android.** The shadow field is not uploaded on Android
+(`kShadowFieldProfileSupported`), as the traced producers are not: the
+bulb's direct light draws unshadowed, and the Fold7 cost of the per-pixel
+trace is unmeasured.
+
+### G9 verification (2026-09-25)
+
+- `render.world-pbr.native-pixels`, `render.indirect-light.sdf`,
+  `render.light-set` (with its seeded builds) and the other GPU suites pass
+  with the validation layer on.
+- `test_gi_tools` SwingScoreTest passes.
+- `gi_swing.py frozen`, for both SDF and ray query, and `swinging` and
+  `cost` pass.
+- After the motion-mode change, `gi_sdf.py door` (G6.2) and `gi_swing.py
+  frozen` passed again.
+

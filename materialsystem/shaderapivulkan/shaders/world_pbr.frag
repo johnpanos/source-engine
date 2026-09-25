@@ -204,41 +204,65 @@ float InverseSquareFalloff( float distanceSquared, float radius, float sourceRad
 // The direct light the frame's unbaked lights return toward the eye: the
 // diffuse albedo times their diffuse light (the bake's unit), plus pi times
 // their incident light through the specular lobe, as model_pbr.frag lights.
+// Unbaked light i's incident diffuse light at the fragment (its falloff,
+// cone and shadow; 0 when it cannot light it), with its direction and the
+// Lambert cosine for `normal`.
+vec3 DirectLightIncident( int i, vec3 normal, out vec3 light, out float normalDotLight )
+{
+	vec4 positionRadius = directLights.lights[4 * i];
+	vec4 colorMinLight = directLights.lights[4 * i + 1];
+	vec4 directionOuter = directLights.lights[4 * i + 2];
+	vec4 coneFalloff = directLights.lights[4 * i + 3];
+	float innerCos = coneFalloff.x;
+	vec3 toLight = positionRadius.xyz - fragPosition;
+	float distanceSquared = dot( toLight, toLight );
+	float falloff = coneFalloff.y > 0.5
+	                    ? InverseSquareFalloff( distanceSquared, positionRadius.w, coneFalloff.z )
+	                    : DynamicFalloff( distanceSquared, positionRadius.w, colorMinLight.w );
+	light = toLight * inversesqrt( max( distanceSquared, 1e-8 ) );
+	normalDotLight = max( dot( normal, light ), 0.0 );
+	if ( falloff <= 0.0 )
+		return vec3( 0.0 );
+	if ( directionOuter.w >= -1.0 )
+	{
+		float cosine = dot( -light, normalize( directionOuter.xyz ) );
+		falloff *= innerCos > directionOuter.w + 1e-4
+		               ? smoothstep( directionOuter.w, innerCos, cosine )
+		               : step( directionOuter.w, cosine );
+	}
+	if ( falloff <= 0.0 || normalDotLight <= 0.0 )
+		return vec3( 0.0 );
+	falloff *= SdfShadow( fragPosition, normalize( fragNormal ), positionRadius.xyz,
+	    coneFalloff.z );
+	return colorMinLight.rgb * falloff;
+}
+
+// View 3 (RFC 0011 G9): the unbaked lights' diffuse light, irradiance / pi.
+vec3 DirectLightDiffuse( vec3 normal )
+{
+	vec3 total = vec3( 0.0 );
+	int count = int( directLights.header.x );
+	for ( int i = 0; i < 7 && i < count; ++i )
+	{
+		vec3 light;
+		float normalDotLight;
+		total += DirectLightIncident( i, normal, light, normalDotLight ) * normalDotLight;
+	}
+	return total;
+}
+
 vec3 DirectLightRadiance( vec3 normal, vec3 view, vec3 diffuseAlbedo, vec3 f0, float roughness,
     vec3 compensation )
 {
 	vec3 total = vec3( 0.0 );
 	int count = int( directLights.header.x );
-	for ( int i = 0; i < 7; ++i )
+	for ( int i = 0; i < 7 && i < count; ++i )
 	{
-		if ( i >= count )
-			break;
-		vec4 positionRadius = directLights.lights[4 * i];
-		vec4 colorMinLight = directLights.lights[4 * i + 1];
-		vec4 directionOuter = directLights.lights[4 * i + 2];
-		vec4 coneFalloff = directLights.lights[4 * i + 3];
-		float innerCos = coneFalloff.x;
-		vec3 toLight = positionRadius.xyz - fragPosition;
-		float distanceSquared = dot( toLight, toLight );
-		float falloff = coneFalloff.y > 0.5
-		                    ? InverseSquareFalloff( distanceSquared, positionRadius.w, coneFalloff.z )
-		                    : DynamicFalloff( distanceSquared, positionRadius.w, colorMinLight.w );
-		if ( falloff <= 0.0 )
+		vec3 light;
+		float normalDotLight;
+		vec3 incident = DirectLightIncident( i, normal, light, normalDotLight );
+		if ( normalDotLight <= 0.0 || all( equal( incident, vec3( 0.0 ) ) ) )
 			continue;
-		vec3 light = toLight * inversesqrt( max( distanceSquared, 1e-8 ) );
-		if ( directionOuter.w >= -1.0 )
-		{
-			float cosine = dot( -light, normalize( directionOuter.xyz ) );
-			falloff *= innerCos > directionOuter.w + 1e-4
-			               ? smoothstep( directionOuter.w, innerCos, cosine )
-			               : step( directionOuter.w, cosine );
-		}
-		float normalDotLight = max( dot( normal, light ), 0.0 );
-		if ( falloff <= 0.0 || normalDotLight <= 0.0 )
-			continue;
-		falloff *= SdfShadow( fragPosition, normalize( fragNormal ), positionRadius.xyz,
-		    coneFalloff.z );
-		vec3 incident = colorMinLight.rgb * falloff;
 		vec3 lit = diffuseAlbedo * incident * normalDotLight;
 		if ( dot( normal, view ) > 0.0 )
 			lit += kPi * incident * PbrSpecular( normal, view, light, f0, roughness ) *
@@ -295,6 +319,25 @@ void main()
 #endif
 #ifdef DELTA_VOLUME
 	bakedDiffuse = max( bakedDiffuse + IndirectChange( normalize( fragNormal ) ), vec3( 0.0 ) );
+#endif
+#ifdef DIRECT_LIGHTS
+	// View 3 (RFC 0011 G9): all diffuse light, for Cycles' DiffDir + DiffInd:
+	// the bake and the producer's change at the smooth normal, plus the
+	// unbaked lights' shadowed direct light, no albedo, times the exposure.
+	if ( directLights.header.z > 0.5 )
+	{
+		vec3 smoothNormal = normalize( fragNormal );
+		vec3 light = BakedIrradiance( smoothNormal );
+#ifdef RUNTIME_INDIRECT
+		light += texture( producerIndirect, fragLightmapUv ).rgb;
+#endif
+#ifdef DELTA_VOLUME
+		light = max( light + IndirectChange( smoothNormal ), vec3( 0.0 ) );
+#endif
+		outColor = vec4( ( light + DirectLightDiffuse( smoothNormal ) ) * directLights.header.w,
+		    baseSample.a );
+		return;
+	}
 #endif
 	vec3 diffuse = base * ( 1.0 - metalness ) *
 	    ( vec3( 1.0 ) - directionalAlbedo ) * bakedDiffuse * occlusion;

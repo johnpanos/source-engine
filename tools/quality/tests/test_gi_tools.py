@@ -26,6 +26,7 @@ import gi_runtime  # noqa: E402
 import lightmap_layers  # noqa: E402
 import radiosity_transfer  # noqa: E402
 import gi_soak  # noqa: E402
+import gi_swing  # noqa: E402
 import gi_temporal  # noqa: E402
 import indirect_defaults  # noqa: E402
 import sdf_volume  # noqa: E402
@@ -64,6 +65,36 @@ def exr_bytes(width, height, channels, compression=0, multipart=False):
         offset += len(row)
     table = b"".join(struct.pack("<Q", o) for o, _ in rows)
     return prefix + table + b"".join(r for _, r in rows)
+
+
+class SwingScoreTest(unittest.TestCase):
+    """RFC 0011 G9.4: a region's mean light per frame is smooth under the
+    swing; flicker raises its second temporal difference."""
+
+    def test_smooth_bounce_adds_little_and_flicker_adds_more_than_the_limit(self):
+        t = np.arange(40, dtype=np.float64)
+        # The control: a region lit by a light swinging past it (direct only).
+        control = 0.3 + 0.1 * np.sin(t / 9.0)
+        # A producer's run: the same plus a smooth bounce that follows it.
+        smooth = control + 0.03 * np.sin(t / 9.0 + 0.4) + 0.05
+        added = gi_swing.high_frequency(smooth) - gi_swing.high_frequency(control)
+        self.assertLessEqual(added, gi_swing.HF_LIMIT)
+        jitter = np.random.default_rng(3).normal(0.0, 0.01 * 0.35, t.shape)
+        flicker = gi_swing.high_frequency(smooth + jitter) - gi_swing.high_frequency(control)
+        self.assertGreater(flicker, gi_swing.HF_LIMIT)
+
+    def test_region_curves_average_each_mask(self):
+        frames = np.zeros((3, 8, 8))
+        frames[:, :4] = 1.0
+        masks = {region: np.zeros((2, 2), dtype=bool) for region in gi_swing.SWING_REGIONS}
+        masks["floor"][0, :] = True
+        masks["red_wall"][1, :] = True
+        masks["back_wall"][:, 0] = True
+        masks["east_wall"][:, 1] = True
+        curves = gi_swing.region_curves(frames, masks)
+        self.assertEqual(curves["floor"].tolist(), [1.0, 1.0, 1.0])
+        self.assertEqual(curves["red_wall"].tolist(), [0.0, 0.0, 0.0])
+        self.assertEqual(curves["back_wall"].tolist(), [0.5, 0.5, 0.5])
 
 
 class BudgetTest(unittest.TestCase):

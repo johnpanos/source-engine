@@ -73,7 +73,8 @@ END_DATADESC()
 
 
 IMPLEMENT_SERVERCLASS_ST(CDynamicLight, DT_DynamicLight)
-	SendPropInt( SENDINFO(m_Flags), 4, SPROP_UNSIGNED ),
+	// 5 bits: RFC 0011 G9's DLIGHT_INVERSE_SQUARE is 0x10.
+	SendPropInt( SENDINFO(m_Flags), 5, SPROP_UNSIGNED ),
 	SendPropInt( SENDINFO(m_LightStyle), 4, SPROP_UNSIGNED ),
 	SendPropFloat( SENDINFO(m_Radius), 0, SPROP_NOSCALE),
 	SendPropInt( SENDINFO(m_Exponent), NUM_DL_EXPONENT_BITS),

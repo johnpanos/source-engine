@@ -74,8 +74,9 @@ bool CVulkanWorldMeshUpload::UploadShadowField(
 		Warning( "[NativeVulkan] SDF shadow field rejected: %s\n", error.c_str() );
 		return false;
 	}
-	Msg( "[NativeVulkan] SDF shadow field ready (%u x %u x %u, %.1f-unit voxels)\n",
-	    request.dims[0], request.dims[1], request.dims[2], request.voxel );
+	if ( request.distances )
+		Msg( "[NativeVulkan] SDF shadow field ready (%u x %u x %u, %.1f-unit voxels)\n",
+		    request.dims[0], request.dims[1], request.dims[2], request.voxel );
 	return true;
 }
 

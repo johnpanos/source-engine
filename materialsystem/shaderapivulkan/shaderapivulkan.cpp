@@ -265,9 +265,11 @@ static ConVar mat_hdr_level( "mat_hdr_level", "2", FCVAR_ARCHIVE );
 // RFC 0011 indirect-light debug view (CVulkanContext::SetIndirectLightView).
 static ConVar mat_indirect_view( "mat_indirect_view", "0", FCVAR_CHEAT,
     "Indirect-light debug view: 0 off, 1 indirect diffuse light (irradiance / pi), "
-    "2 indirect diffuse radiance. WMSH PBR surfaces show the map's LMAP indirect layer "
-    "(black without one), PBRMetalRough models their ambient cube.",
-    true, 0.0f, true, 2.0f );
+    "2 indirect diffuse radiance, 3 all diffuse light (the bake, the producer's change and the "
+    "unbaked lights' shadowed direct light; irradiance / pi). In views 1 and 2 WMSH PBR "
+    "surfaces show the map's LMAP indirect layer (black without one); in every view "
+    "PBRMetalRough models show their ambient cube.",
+    true, 0.0f, true, 3.0f );
 // RFC 0011 render.indirect-policy.v1 for the world (CVulkanContext::SetIndirectPolicy).
 static ConVar r_indirect_policy( "r_indirect_policy", "-1", FCVAR_CHEAT,
     "World indirect-light policy: -1 the producer's (BakedPlusDelta while a radiosity change "

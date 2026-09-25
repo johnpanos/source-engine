@@ -277,7 +277,7 @@ def Xform "Swing"
         float focalLength = 18
         float horizontalAperture = 36
         float verticalAperture = 27
-        matrix4d xformOp:transform = ( (0.7071067811865476, 0.7071067811865476, -0, 0), (-0.15256954942433837, 0.15256954942433837, 0.9764451163157656, 0), (0.690450963203365, -0.690450963203365, 0.21576592600105154, 0), (4.7, 0.3, 1.8, 1) )
+        matrix4d xformOp:transform = ( (1, -0, 0, 0), (0, 0.2777770335630426, 0.9606455744055226, 0), (-0, -0.9606455744055226, 0.2777770335630426, 0), (2.5, 0.35, 1.9, 1) )
         uniform token[] xformOpOrder = ["xformOp:transform"]
     }
 }

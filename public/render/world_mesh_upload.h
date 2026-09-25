@@ -73,7 +73,8 @@ struct ProbeVolumeUploadRequest
 
 // RFC 0011 G9: the map's SDFV signed distances, which shadow the frame's
 // unbaked lights: half floats in Source units, x fastest, the first voxel's
-// centre at `origin`. The caller owns `distances` until the call returns.
+// centre at `origin`. The caller owns `distances` until the call returns. A
+// request without distances removes the map's field.
 struct ShadowFieldUploadRequest
 {
 	float origin[3] = {};

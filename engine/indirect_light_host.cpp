@@ -76,6 +76,9 @@ ConVar r_indirect_executor( "r_indirect_executor", "0", FCVAR_NONE,
     "How CPU indirect-light producers run their batches (RFC 0003 job system): 0 serially on "
     "the main thread (one worker, the pooled mode's oracle), 1 on the engine's worker pool; "
     "both produce identical volumes" );
+ConVar r_indirect_shadows( "r_indirect_shadows", "1", FCVAR_CHEAT,
+    "Unbaked lights are shadowed by the map's SDF (RFC 0011 G9; 0: unshadowed, the negative "
+    "control of the swing test)" );
 ConVar r_indirect_occlusion( "r_indirect_occlusion", "1", FCVAR_CHEAT,
     "Moving geometry (drawn brush entities) blocks the baked direct light and the probe "
     "visibility behind it (0: the bake's, the negative control of the door test)" );
@@ -333,12 +336,17 @@ private:
 	bool m_alwaysPooled;
 };
 
+// The SDF shadow of unbaked lights (G9) is a per-pixel sphere trace, as
+// unmeasured on the Fold7 as the traced producers: Android draws them
+// unshadowed.
 #ifdef ANDROID
 constexpr bool kSdfProfileSupported = false;
 constexpr bool kRayQueryProfileSupported = false;
+constexpr bool kShadowFieldProfileSupported = false;
 #else
 constexpr bool kSdfProfileSupported = true;
 constexpr bool kRayQueryProfileSupported = true;
+constexpr bool kShadowFieldProfileSupported = true;
 #endif
 
 class EngineCatalog final : public IProducerCatalog
@@ -527,24 +535,6 @@ void Consume( const FrameVolume &frame )
 	world_mesh_gpu::IWorldMeshUpload *uploader = Uploader();
 	if ( host.deviceLost || !uploader || !uploader->IsResident() )
 		return;
-	if ( !host.shadowFieldUploaded && host.scene.sdf )
-	{
-		// Once per map (G9): the SDFV's distances shadow the unbaked lights.
-		host.shadowFieldUploaded = true;
-		const mapcontainer::SdfVolumeLayout &f = host.scene.sdf->layout;
-		const size_t voxels = size_t( f.dims[0] ) * f.dims[1] * f.dims[2];
-		std::vector<uint16_t> distances( voxels );
-		const unsigned char *voxel = host.scene.sdf->bytes.data() + f.voxelOffset;
-		for ( size_t i = 0; i < voxels; ++i )
-			std::memcpy( &distances[i], voxel + i * mapcontainer::kSdfVoxelBytes, 2 );
-		world_mesh_gpu::ShadowFieldUploadRequest field;
-		std::memcpy( field.origin, f.origin, sizeof( field.origin ) );
-		field.voxel = f.voxel;
-		std::memcpy( field.dims, f.dims, sizeof( field.dims ) );
-		field.distances = distances.data();
-		if ( !uploader->UploadShadowField( field ) )
-			Warning( "indirect light: shadow field upload failed; unbaked lights are unshadowed\n" );
-	}
 	const mapcontainer::ProbeVolumeLayout &layout = host.current->layout;
 	std::vector<float> table( layout.gridCount * mapcontainer::kProbeGridTableFloats );
 	mapcontainer::WriteProbeGridTable( layout, table.data() );
@@ -785,11 +775,42 @@ void IndirectLight_EndMap()
 	host.scene = IndirectScene();
 }
 
+// The SDFV's distances shadow the unbaked lights (G9): uploaded once per
+// map, removed while r_indirect_shadows is 0.
+static void SyncShadowField( Host &host )
+{
+	const bool wanted =
+	    kShadowFieldProfileSupported && host.scene.sdf && r_indirect_shadows.GetBool();
+	if ( wanted == host.shadowFieldUploaded || host.deviceLost )
+		return;
+	world_mesh_gpu::IWorldMeshUpload *uploader = Uploader();
+	if ( !uploader || !uploader->IsResident() )
+		return;
+	host.shadowFieldUploaded = wanted;
+	world_mesh_gpu::ShadowFieldUploadRequest field;
+	std::vector<uint16_t> distances;
+	if ( wanted )
+	{
+		const mapcontainer::SdfVolumeLayout &f = host.scene.sdf->layout;
+		distances.resize( size_t( f.dims[0] ) * f.dims[1] * f.dims[2] );
+		const unsigned char *voxel = host.scene.sdf->bytes.data() + f.voxelOffset;
+		for ( size_t i = 0; i < distances.size(); ++i )
+			std::memcpy( &distances[i], voxel + i * mapcontainer::kSdfVoxelBytes, 2 );
+		std::memcpy( field.origin, f.origin, sizeof( field.origin ) );
+		field.voxel = f.voxel;
+		std::memcpy( field.dims, f.dims, sizeof( field.dims ) );
+		field.distances = distances.data();
+	}
+	if ( !uploader->UploadShadowField( field ) && wanted )
+		Warning( "indirect light: shadow field upload failed; unbaked lights are unshadowed\n" );
+}
+
 void IndirectLight_Frame( const light_set::Snapshot &lights )
 {
 	Host &host = TheHost();
 	if ( !host.switcher )
 		return;
+	SyncShadowField( host );
 	FrameWork work;
 	work.frameSerial = host.tracker.Frame() + 1;
 	work.resources = &host.tracker;

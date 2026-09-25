@@ -3652,7 +3652,10 @@ bool CVulkanContext::UploadSkinConstants( std::vector<uint32_t> *offsets )
 	m_directLightOffset = UINT32_MAX;
 	// The frame's direct lights ride in the same ring, one block after the
 	// draws' constants.
-	const bool lights = m_directLightCount > 0 && m_worldPbrExtendedLayout != VK_NULL_HANDLE;
+	// View 3 (the diffuse light) draws through the direct-light variants
+	// even without a light.
+	const bool lights = ( m_directLightCount > 0 || m_indirectViewMode == 3 ) &&
+	                    m_worldPbrExtendedLayout != VK_NULL_HANDLE;
 	if ( ( m_dynSkinConstants.empty() && !lights ) || m_skinUbos.empty() )
 		return !m_dynSkinConstants.empty() ? false : true;
 	const VkDeviceSize block = sizeof( m_dynSkinConstants[0].ps );
@@ -3716,7 +3719,8 @@ bool CVulkanContext::UploadSkinConstants( std::vector<uint32_t> *offsets )
 		// world_pbr.frag DirectLights: the count and whether the shadow field
 		// is bound, the field's origin and voxel, its dimensions, the lights.
 		float header[3][4] = { { static_cast<float>( m_directLightCount ),
-		                           m_shadowFieldHandle >= 0 ? 1.0f : 0.0f, 0.0f, 0.0f } };
+		    m_shadowFieldHandle >= 0 ? 1.0f : 0.0f, m_indirectViewMode == 3 ? 1.0f : 0.0f,
+		    m_indirectViewScale } };
 		std::memcpy( header[1], m_shadowFieldOrigin, sizeof( header[1] ) );
 		std::memcpy( header[2], m_shadowFieldDims, sizeof( header[2] ) );
 		std::memcpy( out, header, sizeof( header ) );
@@ -3744,6 +3748,7 @@ void CVulkanContext::DestroySkinPipeline()
 		if ( *module != VK_NULL_HANDLE )
 			vkDestroyShaderModule( m_device, *module, nullptr );
 		*module = VK_NULL_HANDLE;
+		// z, w: view 3 (the diffuse light) and its exposure.
 	}
 	for ( SkinUniformBuffer &slot : m_skinUbos )
 	{
@@ -6532,8 +6537,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					continue;
 				// The extended variants: this frame's direct lights, and the
 				// RuntimeIndirect policy (render/indirect_policy.h).
-				pbrWorldLights = m_directLightOffset != UINT32_MAX && m_indirectViewMode == 0;
-				pbrWorldRuntime = m_indirectViewMode == 0 && EffectiveIndirectPolicy() == 2;
+				pbrWorldLights = m_directLightOffset != UINT32_MAX && !IndirectViewShading();
+				pbrWorldRuntime = !IndirectViewShading() && EffectiveIndirectPolicy() == 2;
 				// BakedPlusDelta: the producer's change volume, also in the
 				// indirect view.
 				pbrWorldDelta = EffectiveIndirectPolicy() == 1 && ProbeDeltaResident() &&
@@ -6839,7 +6844,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 					// lightmap would be; without one it binds the total page and
 					// the push block says the layer is absent.
 					const bool indirectViewLayer =
-					    !glass && m_indirectViewMode != 0 && m_worldLightmapIndirectHandle >= 0;
+					    !glass && IndirectViewShading() && m_worldLightmapIndirectHandle >= 0;
 					// RuntimeIndirect reads the direct layer (the seeded double
 					// count: the total layer) plus the producer's indirect atlas.
 					const int worldLightmap = indirectViewLayer ? m_worldLightmapIndirectHandle
@@ -6977,7 +6982,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				if ( pbrModel && m_indirectViewMode != 0 )
 				{
 					// model_pbr.frag -DINDIRECT_VIEW: params2.y view, .z scale.
-					pushData[33] = static_cast<float>( m_indirectViewMode );
+					pushData[33] = static_cast<float>( m_indirectViewMode == 3 ? 1 : m_indirectViewMode );
 					pushData[34] = m_indirectViewScale;
 				}
 				// model_pbr.frag -DPROBE_VOLUME: params2.w the sampling mode.
@@ -7006,7 +7011,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				std::memcpy( pushData + 20, scene.lightDirection, sizeof( scene.lightDirection ) );
 				std::memcpy( pushData + 24, scene.lightRadiance, sizeof( scene.lightRadiance ) );
 				std::memcpy( pushData + 28, scene.material, sizeof( scene.material ) );
-				if ( !glass && m_indirectViewMode != 0 )
+				if ( !glass && IndirectViewShading() )
 				{
 					// world_pbr.frag -DINDIRECT_VIEW: lightDirection is ( view,
 					// scale, indirect layer bound, 0 ).
