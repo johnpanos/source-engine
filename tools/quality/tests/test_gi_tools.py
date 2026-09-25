@@ -23,6 +23,7 @@ import gi_reference  # noqa: E402
 import gi_runtime  # noqa: E402
 import lightmap_layers  # noqa: E402
 import radiosity_transfer  # noqa: E402
+import gi_temporal  # noqa: E402
 import sdf_volume  # noqa: E402
 
 FIXTURES = HERE.parents[2] / "quality" / "fixtures" / "gi"
@@ -258,6 +259,38 @@ class SdfVolumeTest(unittest.TestCase):
         self.assertEqual(volume.dims, [21, 13, 13])
         self.assertEqual([light["kind"] for light in volume.lights], ["dome"])
         self.assertGreater(volume.info()["emissive_voxels"], 0)
+
+
+class TemporalStabilityTest(unittest.TestCase):
+    """gi_temporal's score: a still burst passes at 0; flicker fails."""
+
+    def burst(self, noise=0.0, seed=7):
+        rng = np.random.default_rng(seed)
+        base = np.full((12, 48, 64), 0.18)
+        return base * (1.0 + noise * rng.standard_normal(base.shape))
+
+    def test_a_still_burst_scores_zero(self):
+        result = gi_temporal.score(self.burst())
+        self.assertAlmostEqual(result["flicker_rms"], 0.0, places=12)
+        self.assertEqual(result["status"], "pass")
+
+    def test_seeded_flicker_fails(self):
+        # One percent per-pixel noise, frame to frame: the SDF defect scored 2.6%.
+        result = gi_temporal.score(self.burst(noise=0.01))
+        self.assertEqual(result["status"], "fail")
+        self.assertGreater(result["flicker_rms"], gi_temporal.FLICKER_RMS_LIMIT)
+
+    def test_one_frame_pop_fails_the_step(self):
+        frames = self.burst()
+        frames[6] *= 1.01
+        result = gi_temporal.score(frames)
+        self.assertEqual(result["status"], "fail")
+        self.assertGreater(result["step_max"], gi_temporal.STEP_LIMIT)
+
+    def test_a_quantization_step_in_a_few_pixels_passes(self):
+        frames = self.burst()
+        frames[5, :4, :4] += 1.0 / 255.0
+        self.assertEqual(gi_temporal.score(frames)["status"], "pass")
 
 
 if __name__ == "__main__":

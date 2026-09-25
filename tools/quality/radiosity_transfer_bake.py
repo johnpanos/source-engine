@@ -93,13 +93,14 @@ def collect_sources(scene, materials):
     """[{name, kind, style, objects, world, material}] in style order.
 
     Styles are assigned in order (32, 33, ...) unless the scene authors them
-    (`sourceEngine:lightStyle` on its lights, as a relit compiled map does):
-    then each light keeps its own style and every other source is fixed."""
+    (a relit compiled map: `sourceEngine:authoredLightStyles` on the stage,
+    `sourceEngine:lightStyle` on its styled lights): then each light keeps its
+    own style and every other source is fixed."""
     sources = []
     lights = [(shape, pbrt_blender.emitter_name(index, shape))
               for index, shape in enumerate(scene["emitters"])] + \
         [(light, "Sun%02d" % index) for index, light in enumerate(scene.get("distant_lights", []))]
-    authored = any("style" in light for light, _ in lights)
+    authored = scene.get("authored_light_styles") or any("style" in light for light, _ in lights)
     for light, obj in lights:
         sources.append({"name": prim_name(light.get("source") or obj), "kind": "light",
                         "objects": [obj]})

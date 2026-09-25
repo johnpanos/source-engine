@@ -71,7 +71,8 @@ def world_triangles(objects):
 def rect_records(obj, radiance, one_sided):
     """An area emitter as rectangle records (Source units). A planar
     rectangle is exact; any other shape (a disk, a mesh) becomes the square
-    of its area at its centroid, facing its mean normal."""
+    of its area at its centroid, facing its mean normal, and a closed one
+    three orthogonal two-sided squares."""
     mesh = obj.data
     matrix = obj.matrix_world
     points = np.array([tuple(matrix @ v.co) for v in mesh.vertices], dtype=np.float64)
@@ -80,8 +81,20 @@ def rect_records(obj, radiance, one_sided):
     cross = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
     area = 0.5 * np.linalg.norm(cross, axis=1)
     normal = cross.sum(axis=0)
-    normal /= np.linalg.norm(normal)
     centre = (tri.mean(axis=1) * area[:, None]).sum(axis=0) / area.sum()
+    if np.linalg.norm(normal) <= 1e-6 * 2 * area.sum():
+        # A closed emitter (a sphere light) faces nowhere: three orthogonal
+        # two-sided squares of a sixth of its area each keep its power
+        # (pi L A) and its mean intensity, within +15%/-33% by direction.
+        half = math.sqrt(area.sum() / 6) / 2
+        axes = np.eye(3) * half
+        return [{"kind": "rect", "rgb": radiance.tolist(),
+                 "a": (centre * SOURCE_UNITS_PER_METER).tolist(),
+                 "b": (a * SOURCE_UNITS_PER_METER).tolist(),
+                 "c": (b * SOURCE_UNITS_PER_METER).tolist()}
+                for i in range(3) for a, b in ((axes[(i + 1) % 3], axes[(i + 2) % 3]),
+                                               (axes[(i + 2) % 3], axes[(i + 1) % 3]))], False
+    normal /= np.linalg.norm(normal)
     exact = False
     if len(points) == 4:
         edge_a, edge_b = points[1] - points[0], points[2] - points[1]

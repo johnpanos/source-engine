@@ -1119,6 +1119,9 @@ def scene_model(extractor, camera, bounds, digest, inputs, usd_path):
             "emitters": [{k: v for k, v in emitter.items() if k != "prefix"}
                          for emitter in extractor.emitters],
             "distant_lights": extractor.distant, "environment": extractor.environment,
+            # A relit compiled map authors every light's style (unstyled: fixed).
+            "authored_light_styles": bool(extractor.stage.GetRootLayer().customLayerData.get(
+                "sourceEngine:authoredLightStyles")),
             "props": [dict(prop, shapes=[shape["name"] for shape in extractor.shapes
                                          if shape["prop"] == prop["name"]])
                       for prop in sorted(extractor.props.values(), key=lambda p: p["name"])],

@@ -554,6 +554,9 @@ def write_usd(model, path, map_name):
                       "tools/quality/legacy_bsp_scene.py, do not edit" % map_name)
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
     UsdGeom.SetStageMetersPerUnit(stage, METERS_PER_UNIT)
+    # Every light's style is the map's own: an unstyled light is fixed, and
+    # the radiosity transfer must not number the sources itself.
+    stage.GetRootLayer().customLayerData = {"sourceEngine:authoredLightStyles": True}
     root = UsdGeom.Xform.Define(stage, "/" + sanitize(map_name))
     stage.SetDefaultPrim(root.GetPrim())
     looks = root.GetPath().AppendChild("Looks")

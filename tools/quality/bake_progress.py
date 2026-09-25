@@ -4,7 +4,7 @@
 `pbrt_map_build.py` runs Blender with Cycles' debug log (`--log-level debug
 --log cycles`) and feeds every output line here. Cycles logs when it starts a
 bake (`Using tile size of (w, h)`), each finished sample batch (`Rendered N
-samples in T seconds (...)`) and each finished tile (`Write tile at x, y`).
+samples in T seconds (...)`) and each finished tile (`Write tile result.`).
 A bake script may name its passes with a line
 
     PROGRESS {"event": "bake", "label": "direct", "size": [4096, 4096], "samples": 1024}
@@ -24,7 +24,9 @@ import time
 
 TILE_SIZE = re.compile(r"Using tile size of \((\d+), (\d+)\)")
 RENDERED = re.compile(r"Rendered (\d+) samples in ([0-9.]+) seconds \(")
-TILE_WRITTEN = re.compile(r"Write tile at (\d+), (\d+)")
+# Logged once per finished tile, whether the bake has one tile or writes
+# several to disk (then `Write tile at x, y` follows).
+TILE_WRITTEN = re.compile(r"Write tile result\.$")
 PREFIX = "PROGRESS "
 
 
