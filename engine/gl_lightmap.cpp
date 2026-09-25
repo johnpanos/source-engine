@@ -848,6 +848,7 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 	if ( !host_state.worldbrush || !materialSortInfoArray )
 		return false;
 	static ConVarRef report( "r_indirect_report" );
+	const double start = Plat_FloatTime();
 	std::vector<Vector4D> luxels;
 	int lit = 0, noLight = 0, baked = 0, noLightmap = 0, whitePage = 0;
 	size_t luxelCount = 0, unsampled = 0;
@@ -888,12 +889,16 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 			// The face's own plane: SURFDRAW_PLANEBACK only relates it to its node.
 			const Vector normal = MSurf_Plane( surfID ).normal;
 			luxels.assign( size_t( width ) * height, Vector4D( 0, 0, 0, 1 ) );
+			// Degenerate lightmap vectors (an axis along the normal) place no
+			// luxel: the whole face then takes its centroid's light.
+			Vector centroid;
+			Surf_ComputeCentroid( surfID, &centroid );
 			for ( int t = 0; t < height; ++t )
 				for ( int s = 0; s < width; ++s )
 				{
 					Vector position;
 					if ( !LuxelPosition( surfID, s, t, &position ) )
-						continue;
+						position = centroid;
 					// A little off the face, toward the side it shows.
 					const float at[3] = {
 					    position.x + normal.x, position.y + normal.y, position.z + normal.z };
@@ -910,12 +915,6 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 						++unsampled;
 				}
 			g_ProbeLitSurfaces[surfID] = luxels;
-			if ( report.IsValid() && report.GetInt() > 1 ) // DBGDOOR
-				Msg( "DBGDOOR surf page %d offset %d %d size %dx%d normal %.2f %.2f %.2f first %.4f "
-				     "flags %x\n",
-				    page, MSurf_OffsetIntoLightmapPage( surfID )[0],
-				    MSurf_OffsetIntoLightmapPage( surfID )[1], width, height, normal.x, normal.y,
-				    normal.z, luxels[0].x, MSurf_Flags( surfID ) );
 			matrix3x4_t identity;
 			SetIdentityMatrix( identity );
 			R_BuildLightMapGuts(
@@ -926,9 +925,10 @@ bool R_RelightBrushEntitiesFromProbes( const mapcontainer::ProbeVolumeView *view
 		Msg(
 		    "indirect light: %d brush-entity surface(s) lit from probes (%d replacing baked light; "
 		    "skipped: %d unlit, %d without a lightmap, %d on the white page); %zu luxels, "
-		    "%zu outside the volume, mean %.4f\n",
+		    "%zu outside the volume, mean %.4f; %.3f ms\n",
 		    lit, baked, noLight, noLightmap, whitePage, luxelCount, unsampled,
-		    luxelCount > unsampled ? luxelSum / double( luxelCount - unsampled ) : 0.0 );
+		    luxelCount > unsampled ? luxelSum / double( luxelCount - unsampled ) : 0.0,
+		    ( Plat_FloatTime() - start ) * 1000.0 );
 	return true;
 }
 
