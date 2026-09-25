@@ -16,9 +16,10 @@
 #include "mathlib/mathlib.h"
 #include "mathlib/vector.h"
 #include "box3d/math_functions.h"
+#include "foundation/units.h"
 
 // Game units per meter; the value Box3D's length scale is set to.
-const float kBox3DInchesPerMeter = 1.0f / 0.0254f;
+const float kBox3DInchesPerMeter = foundation::units::kSourceUnitsPerMeterF;
 
 inline b3Vec3 ToB3( const Vector &v )
 {

@@ -147,3 +147,155 @@ R03 stays `active`. Still open:
 - the R54 ABI island;
 - the user decision on the whole-tree C++20 wording conflict.
 
+
+## R05-STRONGID: strong identifier vocabulary (2026-09-25)
+
+Scope: RFC 0006 "Results and value types" asks for strong IDs instead of
+interchangeable integers. Before this slice, each contract hand-rolled its own
+ID with different semantics: `platform::window::WindowId` had `IsValid` with
+0 invalid but no ordering; `debugapi::ConnectionId` had ordering but no
+validity. This slice gives the rule one owner and migrates those two
+consumers.
+
+- `public/foundation/strong_id.h`: `foundation::StrongId<Tag, Rep, Invalid>`.
+  - It is an aggregate with a public `value`, so existing `Id{ n }`, `.value`
+    and `==` uses compile unchanged.
+  - `Invalid` is the default and the reserved "names nothing" value, and
+    `IsValid()` tests against it.
+  - It has defaulted `==` and `<=>` and a `std::hash` specialization.
+  - There is no implicit conversion from or to `Rep`, and different tags
+    neither convert nor compare.
+  - Its layout is exactly `Rep`'s, and it is trivially copyable and
+    standard-layout (static assertions).
+- Consumers: `WindowId` and `ConnectionId` are now aliases of the shared
+  type. The transports number connections from 1, and the transport suite
+  already used `ConnectionId{}` as "none", so 0 as invalid matches existing
+  semantics.
+- Manifest: `standardHeaders` gains `compare`, and
+  `platform.window-contracts` gains its `foundation` edge.
+- Oracle:
+  - `test_strong_id.cpp`: 9 runtime checks plus 10 static assertions.
+  - Sensitivity sources `test_strong_id_mixed_tags.cpp` and
+    `test_strong_id_implicit.cpp`; each fails to compile, as required.
+- Evidence:
+  - The whole manifest (`--runner all`, 220 suites): 193 matched,
+    0 mismatched, 27 optional skips, with both g++ and clang++.
+  - `build.tests`, `build.portal-native` and `build.portal-features` (debug
+    API) pass.
+  - `arch.check` and `arch.hermetic` (50 headers) pass.
+
+**Scoped native resources (same slice).**
+
+- `public/foundation/scoped_resource.h`: `foundation::ScopedResource<Traits>`.
+  - It owns a non-pointer handle (a file descriptor, or an integer or 64-bit
+    API handle). Pointer resources keep `std::unique_ptr` with a deleter, as
+    RFC 0006 prescribes.
+  - A `ResourceTraits` concept names `Handle`, a `noexcept Invalid()` and a
+    `noexcept Close()`.
+  - It is move-only and `[[nodiscard]]`, closes exactly once, and is safe on
+    self-move. `Reset(h)` closes the previous handle but keeps an identical
+    one open; `Release()` is `[[nodiscard]]`. Its layout is the handle's.
+- Consumer: `debugapi`'s hand-rolled `ScopedFd` (26 lines) is now `FdTraits`
+  plus an alias. Syscalls return -1 on failure, so `Invalid() == -1`
+  preserves the old `fd >= 0` ownership rule.
+- Oracle:
+  - `test_scoped_resource.cpp`: 15 checks and 6 static assertions (closing
+    exactly once, move and self-move, `Reset` and `Release`, a zero-invalid
+    64-bit handle).
+  - Sensitivity sources: a copy (deleted copy constructor) and an ignored
+    `Release()` (`-Werror=unused-result`). Each fails to compile for exactly
+    that reason.
+- Evidence:
+  - The debug API transport conformance (73 checks) and unix-socket endpoint
+    test (18 checks) pass with g++ and clang++, the same counts as the
+    pre-migration source.
+  - `arch.check`, and `arch.hermetic` with 51 headers, pass.
+- Finding: the `unittests/debugapitest` programs were referenced by no
+  manifest row and no wscript, so nothing ran them. Transport (73 checks),
+  unix-socket endpoint (18) and framing (51) are now headless manifest suites
+  (`debugapi.*`). JSON-RPC and server need the generated protobuf headers of
+  a `--debug-api` tree, so they stay unregistered for now.
+- Manifest rows: `foundation.strong-id` and `foundation.scoped-resource`,
+  plus four compile-error sensitivity rows with `expected_diagnostic`
+  (`StrongId<BetaTag>`, `unsigned int`, `deleted`, `nodiscard`), and the
+  three `debugapi.*` suites. All 9 match with g++ and clang++. The headless
+  plan is now 166 suites, and `conformance.gcc`/`.clang` pass.
+
+**Common test matchers (same slice).** RFC 0001 rank 2 names "common test
+matchers". Before this, 14 test files re-declared the same `check( bool )`
+lambda, with no location and no observed values.
+
+- `public/testing/checks.h`: `testing::Checks`.
+  - `That`, `Equal` (prints actual and expected when streamable, otherwise
+    `<unprintable>`) and `Near` (tolerance; NaN never matches).
+  - A failure prints `FAIL <file>:<line>: <what> (…)` using
+    `std::source_location`, and never aborts.
+  - The output stream is injectable. `Result()` feeds the linked runner, and
+    `Report()` prints the checks-v1 record.
+- Migrated: `test_expected`, `test_strong_id` and `test_scoped_resource`.
+  They keep their `check(...)` calls through a thin adapter whose defaulted
+  `source_location` names each call site. Counts are identical before and
+  after (12, 9, 15), and the linked `unittest` host still reports
+  `foundation.expected: 12`.
+- Oracle:
+  - `testing.checks` has 11 self-checks against a captured stream: counting,
+    location, values, the unprintable fallback, tolerance and NaN, and
+    zero-checks-never-passes.
+  - `testing.checks.failing` is a sensitivity suite that fails one matcher
+    check and must fail through the runner.
+  - All 5 related rows match with g++ and clang++; `arch.hermetic` covers
+    52 headers.
+- Remaining cohort, with a deletion condition: the other 11 files with a
+  private `check` lambda move to `testing::Checks` when next edited. They
+  are `hammertest/adapters/adapter_checks.h`,
+  `hammertest/formats/test_ktx2_preview.cpp`,
+  `hammertest/ports/file_store_contract.h`,
+  `mapcontainertest/test_world_lightmap.cpp`, `platformtest/composition/test_runner.cpp`
+  (a runner self-test, kept independent on purpose), five
+  `shaderapivulkantest` pixel suites, and two `texturecontainertest`
+  readers.
+
+**Quantities (same slice).** `public/foundation/units.h` is the one owner
+of "one Source unit is one inch, 0.0254 m", with degree/radian conversions.
+It is header-only, `constexpr` and dialect-neutral (it compiles as C++11).
+
+- Its float forms use the same expressions as the literals they replace, and
+  are bit-identical to them.
+- Box3D's `kBox3DInchesPerMeter` and `kInertiaToBox3D` now use it. A
+  `static_assert` ties the frozen `METERS_PER_INCH` ABI macro to the same
+  value.
+- Evidence:
+  - `foundation.units`: 9 checks, including bit-identity, on g++ and clang++.
+  - The recompiled Box3D object was byte-identical, so Waf did not relink
+    the module.
+  - `physics.conformance` observations are unchanged.
+- Remaining literal: `utils/vbsp/worldstage.cpp`, after the R59 U1 merge.
+  Python tools keep their own constants; that is out of scope here.
+
+R05 is `partial`. Every vocabulary item named in the row and in RFC 0001
+rank 2 is installed with a real consumer and its own suite: results, strong
+IDs, scoped ownership, matchers and quantities. The row cannot close while
+its hard-gate prerequisites R03 (Apple/MSVC/CI) and R04 are open.
+
+## R03 wording reconciliation (2026-09-25)
+
+AGENTS.md ("C++ and code style") and RFC 0006's build-policy paragraph still
+said not to change the whole tree's standard. That predated the user decision
+of 2026-09-22 that every in-tree C++ target compiles as C++20. The decision is
+recorded in `policy.json`, in this record and in the build. Both texts now
+describe the installed policy:
+
+- a per-target dialect owned by `policy.json`;
+- `cxx20-permissive` for unmigrated code and strict `cxx20` for migrated code;
+- `legacy-cxx11` only for frozen-consumer fixtures;
+- Box3D on C17;
+- no tree-wide floating-point change.
+
+This removes the conflict listed as a user decision, as the recommended
+option under the user's standing instruction (agent decision). No build flag
+changed.
+
+R03 stays `active`. The locally doable slices (A: the ABI contract; B: full
+target coverage and Android x86_64) are done. What remains needs resources
+this host lacks: Apple and MSVC toolchains, and hosted CI runs.
+

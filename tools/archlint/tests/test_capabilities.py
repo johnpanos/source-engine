@@ -231,15 +231,40 @@ class LinkGraphTest(unittest.TestCase):
             ('feature_lib', 'feature/a.cpp', ['other_lib', 'backend_lib']),
             ('other_lib', 'other/o.cpp', []),
             ('backend_lib', 'backend/n.cpp', ['VULKAN'])))
-        self.assertEqual(2, len(errors))
+        closure_errors = [e for e in errors if 'outside the allowed closure' in e]
+        self.assertEqual(2, len(closure_errors))
+        self.assertTrue(any('backend_lib (backend): uses native library VULKAN' in e for e in errors))
         self.assertTrue(any('other_lib whose other' in e for e in errors))
         self.assertTrue(any('backend_lib whose backend' in e for e in errors))
 
-    def test_native_and_unowned_targets_are_not_judged(self):
+    def test_native_target_needs_a_uselib_grant(self):
+        block = copy.deepcopy(self.block)
+        errors, judged, _ = capabilities.link_graph_errors(block, self.record(
+            ('backend_lib', 'backend/n.cpp', ['VULKAN', 'SDL3'])))
+        self.assertEqual(1, judged)
+        self.assertEqual(2, len(errors))
+        block['modules'][3]['uselib'] = ['VULKAN']
+        errors, _, _ = capabilities.link_graph_errors(block, self.record(
+            ('backend_lib', 'backend/n.cpp', ['VULKAN', 'SDL3'])))
+        self.assertEqual(1, len(errors))
+        self.assertIn('native library SDL3', errors[0])
+
+    def test_mixed_native_and_legacy_targets_are_not_judged(self):
         errors, judged, skipped = capabilities.link_graph_errors(self.block, self.record(
-            ('backend_lib', 'backend/n.cpp', ['VULKAN', 'SDL3']),
+            ('mixed_lib', 'backend/n.cpp', ['SDL3']),
+            ('mixed_lib', 'engine/legacy.cpp', ['SDL3']),
             ('legacy', 'engine/x.cpp', ['SDL3'])))
-        self.assertEqual(([], 0, 1), (errors, judged, skipped))
+        self.assertEqual(([], 0, 2), (errors, judged, skipped))
+
+    def test_portable_module_cannot_grant_uselib(self):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__('shutil').rmtree(root))
+        (root / 'feature').mkdir()
+        (root / 'feature/a.h').write_text('')
+        block = copy.deepcopy(self.block)
+        block['modules'][1]['uselib'] = ['VULKAN']
+        errors = capabilities.check(root, block, archlint.strip_comments_and_literals)
+        self.assertTrue(any('CAP004 feature' in e for e in errors))
 
 
 class HermeticHeaderTest(unittest.TestCase):

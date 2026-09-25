@@ -6,6 +6,7 @@
 #include "tier0/threadtools.h"
 #include "vphysics_interface.h"
 #include "vphysics/performance.h"
+#include "vphysics/shape_inertia.h"
 #include "vphysics/step_profile.h"
 #include "vphysics/stats.h"
 #include "vphysics/constraints.h"
@@ -139,6 +140,20 @@ public:
 	// Provider internals.
 	b3WorldId GetWorld() const { return m_world; }
 	int GetWorkerCount() const { return m_workerCount; }
+	// RFC 0013 vphysics.shape-inertia.v1: the model new objects take; it can
+	// change only while the environment holds no object.
+	physics_inertia_model_t GetInertiaModel() const { return m_inertiaModel; }
+	bool SetInertiaModel( physics_inertia_model_t model )
+	{
+		if ( m_objects.Count() || ( model != PHYSICS_INERTIA_LEGACY && model != PHYSICS_INERTIA_SHAPE ) )
+			return false;
+		m_inertiaModel = model;
+		return true;
+	}
+	bool ContainsObject( const IPhysicsObject *pObject ) const
+	{
+		return m_objects.Find( const_cast<IPhysicsObject *>( pObject ) ) != m_objects.InvalidIndex();
+	}
 	// RFC 0013 vphysics.step-profile.v1: the last Simulate call.
 	const physics_stepprofile_t &GetLastSimulateProfile() const { return m_lastProfile; }
 	float GetStepTime() const { return m_timestep; }
@@ -202,6 +217,7 @@ private:
 
 	b3WorldId m_world;
 	int m_workerCount;
+	physics_inertia_model_t m_inertiaModel;
 	IThreadPool *m_pThreadPool;
 	physics_stepprofile_t m_lastProfile;
 	// Game solver calls (step profile), counted under m_solverMutex when

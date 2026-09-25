@@ -2622,6 +2622,20 @@ bool LoadMapFile( const char *pszFileName )
 			pMainManifest->CordonWorld();
 		}
 
+		ReportLoadedMapBounds();
+	}
+
+	PublishLoadedMap();
+
+	return ( ( eResult == ChunkFile_Ok ) || ( eResult == ChunkFile_EOF ) );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Bounds and statistics of the map just loaded (VMF or authored input).
+//-----------------------------------------------------------------------------
+void ReportLoadedMapBounds( void )
+{
+	{
 		ClearBounds (g_LoadingMap->map_mins, g_LoadingMap->map_maxs);
 		for (int i=0 ; i<g_MainMap->entities[0].numbrushes ; i++)
 		{
@@ -2647,19 +2661,66 @@ bool LoadMapFile( const char *pszFileName )
 			g_LoadingMap->map_maxs[0],g_LoadingMap->map_maxs[1],g_LoadingMap->map_maxs[2]);
 
 		//TestExpandBrushes();
-		
+
 		// Clear the error reporting
 		g_MapError.ClearState();
 	}
+}
 
+//-----------------------------------------------------------------------------
+// Purpose: Makes the main map's entities the global entity list.
+//-----------------------------------------------------------------------------
+void PublishLoadedMap( void )
+{
 	if ( g_MainMap == g_LoadingMap )
 	{
 		num_entities = g_MainMap->num_entities;
 		memcpy( entities, g_MainMap->entities, sizeof( g_MainMap->entities ) );
 	}
 	g_LoadingMap->ForceFuncAreaPortalWindowContents();
+}
 
-	return ( ( eResult == ChunkFile_Ok ) || ( eResult == ChunkFile_EOF ) );
+//-----------------------------------------------------------------------------
+// Purpose: Contents rules every brush side follows once its material and
+//			explicit contents are known.
+//-----------------------------------------------------------------------------
+void FinishSideContents( side_t *side )
+{
+	if ( side->contents & ( CONTENTS_PLAYERCLIP | CONTENTS_MONSTERCLIP ) )
+	{
+		side->contents |= CONTENTS_DETAIL;
+	}
+
+	if ( fulldetail )
+	{
+		side->contents &= ~CONTENTS_DETAIL;
+	}
+
+	if ( !( side->contents &
+	         ( ALL_VISIBLE_CONTENTS | CONTENTS_PLAYERCLIP | CONTENTS_MONSTERCLIP ) ) )
+	{
+		side->contents |= CONTENTS_SOLID;
+	}
+
+	// hints and skips are never detail, and have no content
+	if ( side->surf & ( SURF_HINT | SURF_SKIP ) )
+	{
+		side->contents = 0;
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Applies the -luxelscale and minimum luxel size to a side's authored
+//			lightmap scale (world units per luxel).
+//-----------------------------------------------------------------------------
+vec_t ScaleLightmapWorldUnitsPerLuxel( vec_t worldUnitsPerLuxel )
+{
+	worldUnitsPerLuxel *= g_luxelScale;
+	if ( worldUnitsPerLuxel < g_minLuxelScale )
+	{
+		worldUnitsPerLuxel = g_minLuxelScale;
+	}
+	return worldUnitsPerLuxel;
 }
 
 ChunkFileResult_t LoadSideCallback(CChunkFile *pFile, LoadSide_t *pSideInfo)
@@ -2708,26 +2769,7 @@ ChunkFileResult_t CMapFile::LoadSideCallback(CChunkFile *pFile, LoadSide_t *pSid
 		side->surf |= pSideInfo->nBaseFlags;
 		pSideInfo->td.flags |= pSideInfo->nBaseFlags;
 
-		if (side->contents & (CONTENTS_PLAYERCLIP|CONTENTS_MONSTERCLIP) )
-		{
-			side->contents |= CONTENTS_DETAIL;
-		}
-
-		if (fulldetail )
-		{
-			side->contents &= ~CONTENTS_DETAIL;
-		}
-		
-		if (!(side->contents & (ALL_VISIBLE_CONTENTS | CONTENTS_PLAYERCLIP|CONTENTS_MONSTERCLIP)  ) )
-		{
-			side->contents |= CONTENTS_SOLID;
-		}
-
-		// hints and skips are never detail, and have no content
-		if (side->surf & (SURF_HINT|SURF_SKIP) )
-		{
-			side->contents = 0;
-		}
+		FinishSideContents( side );
 
 		//
 		// find the plane number
@@ -2858,13 +2900,10 @@ ChunkFileResult_t LoadSideKeyCallback(const char *szKey, const char *szValue, Lo
 		if (pSideInfo->td.lightmapWorldUnitsPerLuxel == 0.0f)
 		{
 			g_MapError.ReportWarning("luxel size of 0");
-			pSideInfo->td.lightmapWorldUnitsPerLuxel = g_defaultLuxelSize; 
+			pSideInfo->td.lightmapWorldUnitsPerLuxel = g_defaultLuxelSize;
 		}
-		pSideInfo->td.lightmapWorldUnitsPerLuxel *= g_luxelScale;
-		if (pSideInfo->td.lightmapWorldUnitsPerLuxel < g_minLuxelScale)
-		{
-			pSideInfo->td.lightmapWorldUnitsPerLuxel = g_minLuxelScale;
-		}
+		pSideInfo->td.lightmapWorldUnitsPerLuxel =
+		    ScaleLightmapWorldUnitsPerLuxel( pSideInfo->td.lightmapWorldUnitsPerLuxel );
 	}
 	else if (!stricmp(szKey, "contents"))
 	{

@@ -139,6 +139,7 @@ bool ContactGeometry( const b3ContactData &data, Vector *pPoint, Vector *pNormal
 
 CPhysicsEnvironmentBox3D::CPhysicsEnvironmentBox3D( int workerCount, IThreadPool *pThreadPool )
     : m_workerCount( workerCount > 1 && pThreadPool ? workerCount : 1 ),
+      m_inertiaModel( PHYSICS_INERTIA_LEGACY ),
       m_pThreadPool( pThreadPool ), m_simulateThread( ThreadGetCurrentId() ), m_solverCalls( 0 ),
       m_solverCallsOffCaller( 0 ), m_stepSeconds( 0.0 ), m_preStepSeconds( 0.0 ),
       m_postStepSeconds( 0.0 ), m_airDensity( 2.0f ), m_timestep( kDefaultTimestep ),

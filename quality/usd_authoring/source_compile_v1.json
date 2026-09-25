@@ -1,0 +1,61 @@
+{
+  "schema": "source-usd-compile-profile/v1",
+  "profile": "source-usd-compile",
+  "version": 1,
+  "rfc": "0009",
+  "phase": "U1",
+  "description": "Policy of the first native USD map compiler (tools/quality/usd_map_compile.py): how a stage that passes source-authoring v1 becomes a BSP2 map. Decisions and their reasons are in RFC/0009-progress.md (U1).",
+  "authoring_profile": {"profile": "source-authoring", "version": 1},
+  "brushset_schema": "source-authored-brushset/v1",
+  "provenance_schema": "source-usd-map-provenance/v1",
+  "check_schema": "source-usd-map-check/v1",
+  "entity_id_key": "sourcemap_id",
+  "texture": {
+    "st": "usd-t-up",
+    "description": "primvars:st is in texture repeats with t up (UsdPreviewSurface). The texel column is s * width and the texel row is (1 - t) * height, with width and height from the material's base texture as vbsp's material system reports them."
+  },
+  "lightmap_scale": 16,
+  "brush_entity_material": "tools/toolstrigger",
+  "brush_entity_st_units_per_repeat": 128.0,
+  "classes": {
+    "worldspawn": {"keys": {"skyname": "sky_escape_01_"}},
+    "info_player_start": {"keys": {}},
+    "trigger_multiple": {"keys": {"spawnflags": "1", "wait": "1", "StartDisabled": "0"}},
+    "trigger_once": {"keys": {"spawnflags": "1", "StartDisabled": "0"}},
+    "prop_static": {"keys": {}},
+    "prop_physics": {"keys": {}},
+    "light": {"keys": {"_lightHDR": "-1 -1 -1 1", "_lightscaleHDR": "1", "_constant_attn": "0", "_linear_attn": "0", "_quadratic_attn": "1"}}
+  },
+  "class_defaults_source": "Valve base.fgd defaults Hammer writes for these classes (Trigger: spawnflags 1 = clients, StartDisabled 0; trigger_multiple wait 1); vrad's physical inverse-square falloff for lights. No FGD is in this tree.",
+  "static_prop_solid": {"vphysics": "6", "none": "0"},
+  "model_files": {
+    "prop_static": {"always": [".mdl"], "collision:vphysics": [".phy"]},
+    "prop_physics": {"always": [".mdl", ".phy"]}
+  },
+  "light": {
+    "policy": "usdlux-sphere-to-vrad-point/v1",
+    "description": "A SphereLight with normalize off emits luminance L = intensity * 2^exposure * diffuse (nits); seen from any direction it is a disk of area pi r^2, so its luminous intensity is I = L * pi * (radius * 0.0254 m)^2 candela. vrad's brightness B with inverse-square falloff is the 0-255 lightmap value at 100 units (2.54 m). v1 maps full lightmap white (255) to full_white_lux, so B = 255 * I / (2.54^2 * full_white_lux), times the largest linear colour channel; the colour normalised to that channel is written sRGB-encoded (c^(1/2.2) * 255, inverting vrad's decode). The light is a point: radius only sets the intensity.",
+    "full_white_lux": 10.0,
+    "meters_per_source_unit": 0.0254,
+    "reference_distance_units": 100.0,
+    "srgb_gamma": 2.2,
+    "unsupported_inputs": {"inputs:normalize": true, "inputs:enableColorTemperature": true},
+    "recalibration": "Physically calibrated baking against Cycles belongs to R49/R51; a changed constant or formula is a new policy version."
+  },
+  "tools": {
+    "vbsp": ["-authored"],
+    "vvis": ["-threads", "1"],
+    "vrad": ["-threads", "1"],
+    "description": "Full vvis and vrad (no -fast). Each stage runs one thread: the compile tools' own worker threads are private pools, so the stages stay serial until the engine job system schedules them (RFC 0003; RFC 0008 F6 / R57 run the stage graph)."
+  },
+  "errors": {
+    "compile.authoring-invalid": "The stage fails the source-authoring v1 validator; its codes are reported and nothing is compiled",
+    "compile.model-missing": "A prop's model file is not in the game content",
+    "compile.model-collision-missing": "A prop role that needs collision has no .phy next to its model",
+    "compile.material-missing": "A face's material has no VMT in the game content",
+    "compile.light-unsupported": "A light uses an input the v1 light policy does not convert, or converts to no light",
+    "compile.leak": "The world solids do not seal the entities from the void",
+    "compile.tool-failed": "vbsp, vvis, vrad or bsp2tool failed or produced no output",
+    "compile.output-check": "The independent BSP2 checks (usd_map_check.py) failed"
+  }
+}

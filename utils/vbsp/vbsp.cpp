@@ -19,6 +19,7 @@
 #include "loadcmdline.h"
 #include "byteswap.h"
 #include "worldvertextransitionfixup.h"
+#include "authoredmap.h"
 
 extern float		g_maxLightmapDimension;
 
@@ -296,6 +297,11 @@ void ProcessWorldModel (void)
 			Warning( ("**** leaked ****\n") );
 			leaked = true;
 			LeakFile (tree);
+			if ( g_bAuthoredInput )
+			{
+				// An authored map must seal; publishing a leaked map is never partial success.
+				Error( "authored map leaked: see %s.lin\n", source );
+			}
 			if (leaktest)
 			{
 				Warning( ("--- MAP LEAKED ---\n") );
@@ -1000,6 +1006,11 @@ int RunVBSP( int argc, char **argv )
 			Msg ("microvolume = %f\n", microvolume);
 			i++;
 		}
+		else if ( !Q_stricmp( argv[i], "-authored" ) )
+		{
+			Msg( "authored = true\n" );
+			g_bAuthoredInput = true;
+		}
 		else if (!Q_stricmp(argv[i], "-leaktest"))
 		{
 			Msg ("leaktest = true\n");
@@ -1190,6 +1201,9 @@ int RunVBSP( int argc, char **argv )
 			"  -vproject <directory> : Override the VPROJECT environment variable.\n"
 			"  -game <directory>     : Same as -vproject.\n"
 			"\n" );
+		Warning( "  -authored   : mapfile is a source-authored-brushset/v1 .json written by the\n"
+		         "                USD map compiler (RFC 0009), not a .vmf.\n"
+		         "\n" );
 
 		if ( verbose )
 		{
@@ -1245,6 +1259,16 @@ int RunVBSP( int argc, char **argv )
 	}
 
 	// Sanity check
+	const char *pszInputExtension = V_GetFileExtension( argv[argc - 1] );
+	const bool bJsonInput = pszInputExtension && !Q_stricmp( pszInputExtension, "json" );
+	if ( g_bAuthoredInput && ( onlyents || onlyprops || g_bKeepStaleZip || !bJsonInput ) )
+	{
+		Warning( "-authored compiles a whole .json brush set; it does not combine with\n"
+		         "-onlyents, -onlyprops or -keepstalezip.\n" );
+		DeleteCmdLine( argc, argv );
+		CmdLib_Cleanup();
+		CmdLib_Exit( 1 );
+	}
 	if ( *g_szEmbedDir && ( onlyents || onlyprops ) )
 	{
 		Warning( "-embed only makes sense alongside full BSP compiles.\n"
@@ -1393,7 +1417,14 @@ int RunVBSP( int argc, char **argv )
 			    GetPakFile(), "stale.txt", (void *)"stale", strlen( "stale" ) + 1, false );
 		}
 
-		LoadMapFile (name);
+		if ( g_bAuthoredInput )
+		{
+			LoadAuthoredMapFile( name );
+		}
+		else
+		{
+			LoadMapFile( name );
+		}
 		WorldVertexTransitionFixup();
 		if( ( g_nDXLevel == 0 ) || ( g_nDXLevel >= 70 ) )
 		{

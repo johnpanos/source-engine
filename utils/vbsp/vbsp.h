@@ -372,6 +372,12 @@ extern char		mapbase[ 64 ];
 extern CUtlVector<int> g_SkyAreas;
 
 bool 	LoadMapFile( const char *pszFileName );
+// Shared by the VMF loader and the typed authored input (authoredmap.cpp).
+void ReportLoadedMapBounds( void );
+void PublishLoadedMap( void );
+void FinishSideContents( side_t *side );
+int BrushContents( mapbrush_t *b );
+vec_t ScaleLightmapWorldUnitsPerLuxel( vec_t worldUnitsPerLuxel );
 int		GetVertexnum( Vector& v );
 bool Is3DSkyboxArea( int area );
 

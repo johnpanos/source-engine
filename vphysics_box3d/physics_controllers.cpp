@@ -615,10 +615,17 @@ void CMotionControllerBox3D::Simulate( float dt )
 		if ( force )
 		{
 			worldLinear *= pObject->GetInvMass();
-			Vector invInertia = pObject->GetInvInertia();
-			localAngular.x *= invInertia.x;
-			localAngular.y *= invInertia.y;
-			localAngular.z *= invInertia.z;
+			if ( pObject->UsesShapeInertia() )
+			{
+				localAngular = pObject->MultiplyInverseInertia( localAngular );
+			}
+			else
+			{
+				Vector invInertia = pObject->GetInvInertia();
+				localAngular.x *= invInertia.x;
+				localAngular.y *= invInertia.y;
+				localAngular.z *= invInertia.z;
+			}
 		}
 		Vector worldAngular;
 		pObject->LocalToWorldVector( &worldAngular, localAngular );

@@ -313,3 +313,50 @@ class ArchlintTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnbuiltVendorTests(unittest.TestCase):
+    """R07: a vendored tree skips loader telemetry only while no recorded build compiles it."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        (self.root / "vendor/lib").mkdir(parents=True)
+        (self.root / "vendor/lib/loader.c").write_text('void *h = dlopen("x", 0);\n')
+        self.manifest = dict(MANIFEST, loaderInventory=dict(
+            MANIFEST["loaderInventory"],
+            unbuiltVendorPaths=[{"prefix": "vendor/lib/", "reason": "sample app", "evidence": "no target"}]))
+
+    def record(self, *sources: str) -> None:
+        tree = self.root / "build-x"
+        tree.mkdir(exist_ok=True)
+        (tree / "toolchain-invocations.json").write_text(json.dumps(
+            {"entries": [{"source": source} for source in sources]}))
+
+    def test_unbuilt_vendor_site_is_classified_and_not_missing(self) -> None:
+        self.record("engine/a.cpp")
+        self.assertEqual([], archlint.validate_unbuilt_vendor_paths(self.root, self.manifest))
+        sites = archlint.supplemental_inventory_occurrences(self.root, self.manifest)
+        self.assertEqual([("unbuilt-vendor", "unbuilt-vendor")],
+                         [(s["classification"], s["telemetry"]) for s in sites])
+
+    def test_a_built_vendor_source_invalidates_the_exclusion(self) -> None:
+        self.record("vendor/lib/loader.c")
+        errors = archlint.validate_unbuilt_vendor_paths(self.root, self.manifest)
+        self.assertTrue(any("compiles vendor/lib/loader.c" in e for e in errors))
+
+    def test_malformed_exclusions_are_rejected(self) -> None:
+        for entry in ({"prefix": "vendor/*", "reason": "r", "evidence": "e"},
+                      {"prefix": "vendor/lib", "reason": "r", "evidence": "e"},
+                      {"prefix": "absent/", "reason": "r", "evidence": "e"},
+                      {"prefix": "vendor/lib/", "reason": " ", "evidence": "e"},
+                      {"prefix": "vendor/lib/", "reason": "r"}):
+            with self.subTest(entry=entry):
+                manifest = dict(MANIFEST, loaderInventory=dict(
+                    MANIFEST["loaderInventory"], unbuiltVendorPaths=[entry]))
+                self.assertTrue(archlint.validate_unbuilt_vendor_paths(self.root, manifest))
+
+    def test_without_the_exclusion_the_site_is_missing_telemetry(self) -> None:
+        sites = archlint.supplemental_inventory_occurrences(self.root, MANIFEST)
+        self.assertEqual(["missing"], [s["telemetry"] for s in sites])

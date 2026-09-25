@@ -71,8 +71,11 @@ Private first-party C++ interfaces may use modern types where both sides share
 a tested toolchain and ownership contract.
 
 Box3D remains a private C17 target with its required floating-point, precision,
-alignment, PIC, linkage, and runtime settings. Do not apply a whole-tree C++20
-flag or a global fast-math change as part of this work.
+alignment, PIC, linkage, and runtime settings. Dialects are selected per target
+by `quality/toolchain/policy.json`. The whole-tree `cxx20-permissive` default
+is the user's 2026-09-22 decision (see the update above), not a blanket flag
+added outside that policy. Do not make a global fast-math or floating-point
+change as part of this work.
 
 ## Results and value types
 

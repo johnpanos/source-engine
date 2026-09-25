@@ -21,6 +21,8 @@
 #include "SoundEmitterSystem/isoundemittersystembase.h"
 
 #include "physics_saverestore.h"
+#include "vphysics/shape_inertia.h"
+#include "tier0/icommandline.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -474,6 +476,36 @@ IPhysicsObject *PhysSphereCreate( CBaseEntity *pEntity, float radius, const Vect
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+// RFC 0013 vphysics.shape-inertia.v1 (user decision, 2026-09-25): with
+// -physics_shape_inertia, objects take their collision solid's full inertia
+// tensor (products of inertia, no rotInertiaLimit) when the provider offers
+// the capability; ./play and ./play_p2 pass it. A provider without it (IVP)
+// keeps the legacy model, and -physics_shape_inertia_required makes that an
+// error. The model is fixed before the environment's first object, so the
+// server and client environments call this right after creating theirs.
+//-----------------------------------------------------------------------------
+void PhysApplyInertiaModel( IPhysicsEnvironment *pEnvironment, const char *pRole )
+{
+	bool required = CommandLine()->FindParm( "-physics_shape_inertia_required" ) != 0;
+	if ( !pEnvironment || ( !required && !CommandLine()->FindParm( "-physics_shape_inertia" ) ) )
+		return;
+	IPhysicsShapeInertia *pInertia =
+		(IPhysicsShapeInertia *)physics->QueryInterface( VPHYSICS_SHAPE_INERTIA_INTERFACE_VERSION );
+	if ( pInertia && pInertia->SetInertiaModel( pEnvironment, PHYSICS_INERTIA_SHAPE ) )
+	{
+		Msg( "Physics: %s objects use their collision shape's inertia tensor\n", pRole );
+		return;
+	}
+	if ( required )
+	{
+		Error( "Physics: -physics_shape_inertia_required needs the %s capability (provider %s)\n",
+			VPHYSICS_SHAPE_INERTIA_INTERFACE_VERSION, pInertia ? "refused it" : "lacks it" );
+	}
+	DevMsg( "Physics: %s keeps the legacy inertia model (provider %s)\n", pRole,
+		pInertia ? "refused the shape model" : "lacks the capability" );
+}
+
 void PhysGetDefaultAABBSolid( solid_t &solid )
 {
 	solid.params = g_PhysDefaultObjectParams;

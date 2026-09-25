@@ -73,6 +73,16 @@ inline CPhysConvexBox3D *ToBox3D( CPhysConvex *pConvex ) { return reinterpret_ca
 // Builds a convex from points; triangles come from the hull when not given.
 CPhysConvexBox3D *CreateConvexBox3D( const Vector *pPoints, int pointCount );
 
+// The collide's solid at unit density (RFC 0013 vphysics.shape-inertia.v1):
+// its volume (cubic inches) and full inertia tensor about the point `about`
+// (collide space, inches^5, [row][column]), products of inertia included.
+// A convex that is one Box3D hull uses Box3D's own hull mass integration; a
+// convex covered by several (overlapping) patch hulls integrates its source
+// surface triangles instead; flat pieces have no solid. Returns false when
+// the collide has no solid volume.
+bool ComputeSolidInertia( const CPhysCollideBox3D *pCollide, const Vector &about, double *pVolume,
+    double inertia[3][3] );
+
 class CPhysicsCollisionBox3D : public IPhysicsCollision
 {
 public:

@@ -37,6 +37,8 @@
 #include <thread>
 
 #include "tier0/dbg.h"
+// The conformance host loads each provider through the Phase A loader telemetry.
+#include "tier0/native_module_load_telemetry.h"
 #include "tier1/interface.h"
 #include "tier1/utlvector.h"
 #include "mathlib/mathlib.h"
@@ -1997,6 +1999,7 @@ int main( int argc, char **argv )
 		TestVehicles( vehicles.Base(), vehicles.Count() );
 		// Before the serialization clauses, which rewrite the fixture's solids.
 		TestDynamics( fixtures.Count() && fixtures[0].loaded ? &fixtures[0].collide : NULL );
+		TestGyroscopic();
 		TestCollideModels( fixtures.Count() && fixtures[0].loaded ? &fixtures[0].collide : NULL, pBsp );
 		for ( int i = 0; i < fixtures.Count(); i++ )
 		{

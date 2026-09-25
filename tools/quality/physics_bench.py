@@ -61,6 +61,7 @@ class BudgetError(Exception):
 RULE_FIELDS = {
     "complete": [],
     "contract": ["provider"],
+    "contract_checks": ["provider", "prefix"],
     "metric_max": ["workload", "provider", "metric", "max"],
     "digest_repeatable": ["workload", "provider"],
     "digest_invariant": ["workload", "provider"],
@@ -238,6 +239,7 @@ def run_bench(binary, library, surfaces, cube, workload, workers, env, timeout, 
     result = {
         "command": command, "returncode": returncode, "outcome": outcome,
         "failed_checks": ["%s %s: %s" % (c["tier"], c["name"], c["detail"]) for c in parsed["checks"] if c["status"] == "fail"],
+        "check_status": {c["name"]: c["status"] for c in parsed["checks"]},
         "metrics": parsed["metrics"], "digest": parsed["digest"], "memory": parsed["memory"],
         "unsupported": parsed["unsupported"], "bench": parsed["bench"], "build_us": parsed["build_us"],
         "stats": sample_stats(parsed["samples"]) if isinstance(parsed["samples"], list) and parsed["samples"] else None,
@@ -305,6 +307,20 @@ def evaluate_rule(rule, results, contract, contended=None):
         if run is None:
             return None, "contract not run"
         return run["outcome"] == "pass", "%s%s" % (run["outcome"], (": " + "; ".join(run["failed_checks"])) if run["failed_checks"] else "")
+    if kind == "contract_checks":
+        # One capability's clauses in the contract run: at least one check
+        # with the prefix ran, and every one passed.
+        run = contract.get(rule["provider"])
+        if run is None:
+            return None, "contract not run"
+        if run["outcome"] not in ("pass", "fail"):
+            return False, run["outcome"]
+        checks = {n: st for n, st in run.get("check_status", {}).items() if n.startswith(rule["prefix"])}
+        failed = sorted(n for n, st in checks.items() if st != "pass")
+        if not checks:
+            return False, "no %s checks ran" % rule["prefix"]
+        return not failed, ("failed: " + ", ".join(failed)) if failed else "%d %s checks pass" % (
+            len(checks), rule["prefix"])
     if kind == "metric_max":
         runs = matching(results, rule["provider"], rule["workload"], rule.get("workers", "all"))
         if not runs:

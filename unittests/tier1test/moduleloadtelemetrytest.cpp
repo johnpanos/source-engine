@@ -14,6 +14,9 @@
 #include "../legacymoduleclientfixture/legacy_module_client_fixture.h"
 
 #include <string.h>
+#if defined( POSIX )
+#include <unistd.h>
+#endif
 
 #undef Sys_LoadModule
 
@@ -21,6 +24,24 @@ DEFINE_TESTSUITE( ModuleLoadTelemetryTestSuite )
 
 namespace
 {
+
+#if defined( POSIX )
+// A native fixture sits beside the host in a hand-assembled run directory and in
+// bin/ in the installed layout. Resolving its path without calling the loader
+// keeps the telemetry stream to exactly the events each test asserts.
+const char *NativeFixturePath( const char *pFileName, char *pBuffer, size_t nBufferSize )
+{
+	static const char *const s_pDirectories[] = { ".", "./bin" };
+	for ( const char *pDirectory : s_pDirectories )
+	{
+		Q_snprintf( pBuffer, nBufferSize, "%s/%s", pDirectory, pFileName );
+		if ( access( pBuffer, F_OK ) == 0 )
+			return pBuffer;
+	}
+	Q_snprintf( pBuffer, nBufferSize, "./%s", pFileName );
+	return pBuffer;
+}
+#endif
 
 ModuleLoadTelemetryEvent_t g_Events[64];
 int g_nEventCount = 0;
@@ -285,7 +306,9 @@ DEFINE_TESTCASE( ModuleLoadTelemetryNativeLoaderLifecycle, ModuleLoadTelemetryTe
 	Sys_SetModuleLoadTelemetrySink( CaptureModuleLoadEvent, NULL );
 
 #if defined( POSIX )
-	void *pModule = dlopen( "./libmoduleloadfixture.so", RTLD_NOW );
+	char szFixture[256];
+	void *pModule = dlopen(
+	    NativeFixturePath( "libmoduleloadfixture.so", szFixture, sizeof( szFixture ) ), RTLD_NOW );
 	Shipping_Assert( pModule != NULL );
 	void *pEntryPoint = dlsym( pModule, "PhaseALoaderFixtureSymbol" );
 	Shipping_Assert( pEntryPoint != NULL );
@@ -323,8 +346,10 @@ DEFINE_TESTCASE( ModuleLoadTelemetryFrozenLegacyAbi, ModuleLoadTelemetryTestSuit
 	ResetEvents();
 	Sys_SetModuleLoadTelemetrySink( CaptureModuleLoadEvent, NULL );
 #if defined( POSIX )
+	char szFixture[256];
 	void *pClientModule = dlopen(
-		"./liblegacymoduleclientfixture.so", RTLD_NOW );
+	    NativeFixturePath( "liblegacymoduleclientfixture.so", szFixture, sizeof( szFixture ) ),
+	    RTLD_NOW );
 	Shipping_Assert( pClientModule != NULL );
 	PhaseALegacyLoaderClientProbeFn pProbe =
 		reinterpret_cast<PhaseALegacyLoaderClientProbeFn>( dlsym(

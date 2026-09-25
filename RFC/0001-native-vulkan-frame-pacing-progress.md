@@ -263,3 +263,27 @@ Consequences:
   bandwidth counters) before more backend changes are aimed at it.
 - The working tree at the time started the game at 640x480 and then about
   931x703, not the panel size. `-w 2448 -h 1848` was passed for these runs.
+
+## R32-PARALLEL-EMIT: CPU vertex conversion on the engine pool (active, 2026-09-25)
+
+Scope: the job-based follow-up to this record's profile. "Emit"
+(`kCostEmit`) is converting each pass's mesh into the frame vertex stream,
+mostly CPU skinning. It is several times the command-recording cost, so it
+is the main-thread (or MatQueue) cost worth splitting. Slices:
+
+- **(A) Measure.** Add an `emit_convert` sub-scope and a unique-vertex count,
+  and stop if conversion is a minor share.
+- **(B) Parallelize.** Convert large draws' vertices as a synchronous batch on
+  the engine pool (`RunThreadPoolJobBatch`). Slot assignment, the reuse
+  cache, the stream reserve and submission order stay serial. It is off by
+  default, and the serial path remains the oracle and the rollback.
+
+Oracle:
+
+- a byte-comparing `-vkemitparallelverify` mode;
+- the 14 material pixel families byte-identical between serial and parallel;
+- TSan on the split conversion;
+- seeded chunk-offset and shared-`maxBone` negative controls;
+- an interleaved `frame_pacing.py` A/B in queue modes 0 and 2.
+
+Implemented in an isolated worktree; results are recorded here when merged.

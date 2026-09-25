@@ -22,6 +22,7 @@
 #include "utlsymbol.h"
 #include "tier1/strtools.h"
 #include "KeyValues.h"
+#include "authoredmap.h"
 
 static void SetCurrentModel( studiohdr_t *pStudioHdr );
 static void FreeCurrentModelVertexes();
@@ -162,7 +163,7 @@ bool LoadStudioModel( char const* pModelName, char const* pEntityType, CUtlBuffe
 
 	Studio_ConvertStudioHdrToNewVersion( pHdr );
 
-	if (pHdr->version != STUDIO_VERSION)
+	if ( !Studio_IsConvertibleVersion( pHdr->version ) )
 	{
 		return false;
 	}
@@ -474,7 +475,13 @@ static void AddStaticPropToLump( StaticPropBuild_t const& build )
 	// Get the collision model
 	CPhysCollide* pConvexHull = GetCollisionModel( build.m_pModelName );
 	if (!pConvexHull)
+	{
+		// An authored prop_static is never dropped silently.
+		if ( g_bAuthoredInput )
+			Error( "authored map: prop_static \"%s\" has no usable static-prop model\n",
+			    build.m_pModelName );
 		return;
+	}
 
 	// Compute the leaves the static prop's convex hull hits
 	CUtlVector< unsigned short > leafList;
@@ -483,6 +490,8 @@ static void AddStaticPropToLump( StaticPropBuild_t const& build )
 	if ( !leafList.Count() )
 	{
 		Warning( "Static prop %s outside the map (%.2f, %.2f, %.2f)\n", build.m_pModelName, build.m_Origin.x, build.m_Origin.y, build.m_Origin.z );
+		if ( g_bAuthoredInput )
+			Error( "authored map: prop_static \"%s\" is outside the map\n", build.m_pModelName );
 		return;
 	}
 	// Insert an element into the lump data...
@@ -527,6 +536,38 @@ static void AddStaticPropToLump( StaticPropBuild_t const& build )
 
 }
 
+//-----------------------------------------------------------------------------
+// The record the engine reads for this writer's output: a version-21 BSP with
+// a version-10 static prop lump is StaticPropLumpV10_21_t
+// (CStaticPropMgr::UnserializeModels). The flags byte keeps the low flags the
+// engine reads; the format has no per-prop lightmap resolution, and diffuse
+// modulation is opaque white. Unset bytes are zero so the output is
+// deterministic.
+//-----------------------------------------------------------------------------
+COMPILE_TIME_ASSERT( BSPVERSION == 21 && GAMELUMP_STATIC_PROPS_VERSION == 10 );
+
+static StaticPropLumpV10_21_t SerializedStaticProp( const StaticPropLump_t &prop )
+{
+	StaticPropLumpV10_21_t out;
+	memset( &out, 0, sizeof( out ) );
+	out.m_Origin = prop.m_Origin;
+	out.m_Angles = prop.m_Angles;
+	out.m_PropType = prop.m_PropType;
+	out.m_FirstLeaf = prop.m_FirstLeaf;
+	out.m_LeafCount = prop.m_LeafCount;
+	out.m_Solid = prop.m_Solid;
+	out.m_Flags = (unsigned char)( prop.m_Flags & 0xff );
+	out.m_Skin = prop.m_Skin;
+	out.m_FadeMinDist = prop.m_FadeMinDist;
+	out.m_FadeMaxDist = prop.m_FadeMaxDist;
+	out.m_LightingOrigin = prop.m_LightingOrigin;
+	out.m_flForcedFadeScale = prop.m_flForcedFadeScale;
+	out.m_DiffuseModulation.r = 255;
+	out.m_DiffuseModulation.g = 255;
+	out.m_DiffuseModulation.b = 255;
+	out.m_DiffuseModulation.a = 255;
+	return out;
+}
 
 //-----------------------------------------------------------------------------
 // Places static props in the lump
@@ -539,7 +580,7 @@ static void SetLumpData( )
 		g_GameLumps.DestroyGameLump(handle);
 
 	int dictsize = s_StaticPropDictLump.Size() * sizeof(StaticPropDictLump_t);
-	int objsize = s_StaticPropLump.Size() * sizeof(StaticPropLump_t);
+	int objsize = s_StaticPropLump.Size() * sizeof( StaticPropLumpV10_21_t );
 	int leafsize = s_StaticPropLeafLump.Size() * sizeof(StaticPropLeafLump_t);
 	int size = dictsize + objsize + leafsize + 3 * sizeof(int);
 
@@ -554,8 +595,11 @@ static void SetLumpData( )
 	if (leafsize)
 		buf.Put( s_StaticPropLeafLump.Base(), leafsize );
 	buf.PutInt( s_StaticPropLump.Size() );
-	if (objsize)
-		buf.Put( s_StaticPropLump.Base(), objsize );
+	for ( int i = 0; i < s_StaticPropLump.Count(); ++i )
+	{
+		const StaticPropLumpV10_21_t record = SerializedStaticProp( s_StaticPropLump[i] );
+		buf.Put( &record, sizeof( record ) );
+	}
 }
 
 
@@ -570,7 +614,15 @@ void EmitStaticProps()
 	{
 		s_pPhysCollision = (IPhysicsCollision *)physicsFactory( VPHYSICS_COLLISION_INTERFACE_VERSION, NULL );
 		if( !s_pPhysCollision )
+		{
+			if ( g_bAuthoredInput )
+				Error( "authored map: static props need the vphysics collision interface\n" );
 			return;
+		}
+	}
+	else if ( g_bAuthoredInput )
+	{
+		Error( "authored map: static props need the vphysics module\n" );
 	}
 
 	// Generate a list of lighting origins, and strip them out

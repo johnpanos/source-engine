@@ -484,7 +484,7 @@ bool LoadStudioModel( char const* pModelName, CUtlBuffer& buf )
 
 	Studio_ConvertStudioHdrToNewVersion( pHdr );
 
-	if (pHdr->version != STUDIO_VERSION)
+	if ( !Studio_IsConvertibleVersion( pHdr->version ) )
 	{
 		Warning("Error! Invalid model version \"%s\"\n", pModelName );
 		return false;
@@ -1034,9 +1034,14 @@ void CVradStaticPropMgr::UnserializeModels( CUtlBuffer& buf )
 	m_StaticProps.AddMultipleToTail(count);
 	for ( int i = 0; i < count; ++i )				  
 	{
+		// vbsp writes the record the engine reads for a version-21 map (see
+		// SerializedStaticProp in utils/vbsp/staticprop.cpp); convert it as the
+		// engine does.
+		StaticPropLumpV10_21_t record;
+		buf.Get( &record, sizeof( record ) );
 		StaticPropLump_t lump;
-		buf.Get( &lump, sizeof(StaticPropLump_t) );
-		
+		lump = record;
+
 		VectorCopy( lump.m_Origin, m_StaticProps[i].m_Origin );
 		VectorCopy( lump.m_Angles, m_StaticProps[i].m_Angles );
 		VectorCopy( lump.m_LightingOrigin, m_StaticProps[i].m_LightingOrigin );

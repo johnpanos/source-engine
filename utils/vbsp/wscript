@@ -17,6 +17,7 @@ def build(bld):
 		bld.fatal('the vbsp host-tool profile is currently validated only on Linux')
 
 	source = [
+		'authoredmap.cpp',
 		'boundbox.cpp',
 		'brushbsp.cpp',
 		'../../public/collisionutils.cpp',

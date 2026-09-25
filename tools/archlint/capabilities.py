@@ -74,7 +74,7 @@ def check(root, block, strip):
         module = modules[mid]
         native = module.get('kind') in {'backend', 'native-test', 'legacy-interop'}
         if not native:
-            if module.get('externalHeaders') or module.get('legacyIncludes'):
+            if module.get('externalHeaders') or module.get('legacyIncludes') or module.get('uselib'):
                 errors.append(f'CAP004 {mid}: portable modules cannot grant native/legacy include access')
             for match in OS_BRANCH.finditer(stripped):
                 errors.append(f'CAP001 {relative}: platform identity branch in portable module')
@@ -236,35 +236,47 @@ NATIVE_USELIB = re.compile(r'^(SDL[0-9]*|VULKAN|X11|XCB|WAYLAND.*|EGL|GL|GLES.*|
 def link_graph_errors(block, record):
     """CAP006 over a tree's toolchain-invocations.json (target, sources, use).
 
-    A target whose strict sources are all portable may not use a native SDK
-    library, nor a first-party target whose strict code lies outside its
-    modules' allowed closure. Targets that mix portable and native modules, or
-    carry no strict source, are counted but not judged until targets declare
-    their architectural owner. Returns (errors, judged, skipped).
+    A target owns the strict modules of its sources. Every first-party target
+    it uses must carry strict code only inside the union of those modules'
+    allowed closures, and every native SDK library it uses must be granted by
+    the `uselib` allowlist of one of those modules. Only native modules may
+    grant `uselib`, so a target whose strict code is all portable may use none.
+    Targets without strict sources, and mixed native targets (strict plus
+    legacy sources, which need an explicit owner first), are counted but not
+    judged. Returns (errors, judged, skipped).
     """
     modules = {m['id']: m for m in block['modules']}
     closure = allowed_closure(modules)
-    owned, uses = {}, {}
+    owned, uses, unowned = {}, {}, set()
     for entry in record.get('entries', []):
         target = entry['target']
         uses.setdefault(target, set()).update(entry.get('use', []))
         mid = owner(entry['source'], block)
-        if mid is not None:
+        if mid is None:
+            unowned.add(target)
+        else:
             owned.setdefault(target, set()).add(mid)
-    errors, judged, skipped = set(), 0, 0
+    errors, judged = set(), 0
+    skipped = len(set(uses) - set(owned))
     for target, mids in sorted(owned.items()):
-        if any(modules[m].get('kind') in NATIVE_KINDS for m in mids):
+        # A mixed target (strict plus legacy sources) needs an explicit owner
+        # before its edges can be judged, unless all its strict code is portable.
+        if target in unowned and any(modules[m].get('kind') in NATIVE_KINDS for m in mids):
             skipped += 1
             continue
         judged += 1
+        label = f'{target} ({", ".join(sorted(mids))})'
         allowed = set().union(*(closure[m] for m in mids))
+        granted = set()
+        for mid in mids:
+            if modules[mid].get('kind') in NATIVE_KINDS:
+                granted.update(modules[mid].get('uselib', []))
         for dep in sorted(uses.get(target, ())):
-            if NATIVE_USELIB.match(dep):
-                errors.add(f'CAP006 {target} ({", ".join(sorted(mids))}): portable target uses native library {dep}')
+            if NATIVE_USELIB.match(dep) and dep not in granted:
+                errors.add(f'CAP006 {label}: uses native library {dep}, which none of its modules grants')
             for dep_mid in sorted(owned.get(dep, ())):
                 if dep_mid not in allowed:
-                    errors.add(f'CAP006 {target} ({", ".join(sorted(mids))}): links {dep} whose {dep_mid} '
-                               f'is outside the allowed closure')
+                    errors.add(f'CAP006 {label}: links {dep} whose {dep_mid} is outside the allowed closure')
     return sorted(errors), judged, skipped
 
 

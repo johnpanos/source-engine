@@ -76,6 +76,48 @@ class SensitivityTests(unittest.TestCase):
             self.assertTrue(prefixes, fault)
 
 
+class ReferenceDeficiencyTests(unittest.TestCase):
+    DEFICIENT = {"gyro.free-energy-not-gained": "explicit gyroscopic integration"}
+
+    def result(self, *checks):
+        return {"outcome": "fail" if any(s == "fail" for _, s in checks) else "pass",
+                "checks": [{"tier": "gameplay", "name": n, "status": s, "detail": ""} for n, s in checks]}
+
+    def test_deficiency_failing_on_reference_passes_the_gate(self):
+        result = self.result(("trace.ray-hit", "pass"), ("gyro.free-energy-not-gained", "fail"))
+        self.assertEqual([], physics.judge_reference(result, self.DEFICIENT))
+
+    def test_deficiency_passing_on_reference_fails_the_gate(self):
+        result = self.result(("trace.ray-hit", "pass"), ("gyro.free-energy-not-gained", "pass"))
+        failures = physics.judge_reference(result, self.DEFICIENT)
+        self.assertEqual(1, len(failures))
+        self.assertIn("not reproduced", failures[0])
+
+    def test_missing_deficiency_fails_the_gate(self):
+        failures = physics.judge_reference(self.result(("trace.ray-hit", "pass")), self.DEFICIENT)
+        self.assertIn("not reproduced (missing)", failures[0])
+
+    def test_other_reference_failure_still_fails(self):
+        result = self.result(("trace.ray-hit", "fail"), ("gyro.free-energy-not-gained", "fail"))
+        failures = physics.judge_reference(result, self.DEFICIENT)
+        self.assertEqual(1, len(failures))
+        self.assertIn("trace.ray-hit", failures[0])
+
+    def test_crashed_reference_fails(self):
+        result = self.result(("gyro.free-energy-not-gained", "fail"))
+        result["outcome"] = "crash"
+        self.assertIn("crash", physics.judge_reference(result, self.DEFICIENT)[0])
+
+    def test_deficiency_is_not_fault_evidence(self):
+        for name in physics.REFERENCE_DEFICIENCIES:
+            parsed = self.result((name, "fail"))
+            self.assertFalse(physics.fault_detected(parsed, ["gyro."]))
+
+    def test_deficiencies_have_reasons(self):
+        for name, reason in physics.REFERENCE_DEFICIENCIES.items():
+            self.assertTrue(reason.strip(), name)
+
+
 class VpkTests(unittest.TestCase):
     def write_vpk(self, directory, entries):
         tree = b""

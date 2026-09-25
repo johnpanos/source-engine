@@ -52,6 +52,7 @@ proves a map loads; it does not prove the game plays.
 | `player.` | The player controller tracks its target within per-axis speed budgets (which exclude velocity the game set since the last step), teleports past the 24-unit error bound (unless the handler refuses), clamps push velocity at over-limit contacts, reports ground-relative velocity, survives ground deletion, steps up, and attaches/detaches like IVP (flag, damping, drag) | `CBasePlayer` physics shadow |
 | `vehicle.` | HL2's jeep and airboat scripts on their real bodies: the controller creates wheels, settles, drives (gearbox, speed), steers, brakes, boosts, reports wheel contacts and debug rays; the airboat floats and drives on water and land; body deletion shuts the car system down; the vehicle saves and restores with its wheels | `CFourWheelVehiclePhysics` (jeep, buggy, airboat) |
 | `polysoup.` / `virtualmesh.` / `bboxcache.` / `cone.` / `collide.write-*` | Triangle collides from polysoups and displacement-style virtual meshes support objects and (polysoups) traces; identical boxes share one cached collide that survives `DestroyCollide`; box/cone queries; `CollideWrite` emits the legacy compact-surface format (checked by an independent reader against IVP's own writer) and reads back unchanged | static props, displacements, `vbsp`/`studiomdl`, memory reports |
+| `gyro.` | Rotation obeys the gyroscopic torque `-w x (I w)`: a box's principal inertia lies along its local axes; a torque-free tumbling body keeps its world angular momentum (direction within 5 degrees, magnitude 0.8 to 1.03 times) and never gains rotational energy while its angular velocity wanders; spin about the intermediate axis flips over, spin about the major axis does not; a spinning plate on a ballsocket precesses about the vertical at `m g r / (I3 s)` (within 25%) with its axle within 10 degrees of level. Judged from the reported orientation, not the reported velocity | spinning props, thrown and knocked-over slender objects, `phys_torque`, gyroscope-like contraptions |
 | `bsp.` | A shipped map's world collision (the BSP physics lump) decodes and traces identically | map load (`CM` world physics) |
 | `stats.` | Simulation counters accumulate and clear | `physics_report`-style diagnostics |
 
@@ -64,7 +65,10 @@ keyvalues (exact), decoded geometry (AABB ±0.5 units, volume ±5%, mass center
 (±0.5–1), free-fall distance (±25%), map world traces (576 samples, ±1),
 serialized ledge/triangle/point counts (exact), controller outcomes (player
 walk distance ±4, clamped push speed ±5, step after a game-set velocity ±1) and vehicle outcomes (ride height ±4,
-drive distance/speed ±35%, turn direction exact). Trajectories are not required
+drive distance/speed ±35%, turn direction exact) and rotation outcomes (box
+inertia ±1%, free-tumble momentum drift ±5 degrees and angular-velocity wander
+±25 degrees, intermediate-axis flip time ±1.5 s, gyroscope precession rate
+±10%). Trajectories are not required
 to match IVP beyond these; the other simulation clauses are qualitative
 ranges.
 
@@ -88,7 +92,24 @@ fails unless the targeted checks fail:
 `pairhash-ordered`, `collision-unit-aabb`, `collision-trace-miss`,
 `vcollide-keyvalues`, `sim-noop`, `constraint-inactive`, `fluid-inert`,
 `spring-inert`, `events-silent`, `drag-off`, `save-dropped`, `soup-null`,
-`collide-write-stub`, `player-inert`, `vehicle-stub`.
+`collide-write-stub`, `player-inert`, `vehicle-stub`, `gyro-off` (holds each
+body's world angular velocity across the tick, as an integrator without the
+gyroscopic term does for a torque-free body).
+
+## 5a. Reference deficiencies
+
+Checks the oracle provider must fail, named in the runner's
+`REFERENCE_DEFICIENCIES`. The runner fails when IVP passes one (the recorded
+deficiency no longer reproduces and must be reviewed); every candidate must
+pass it like any other check, and it never counts as fault evidence.
+
+- `gyro.free-energy-not-gained`, `gyro.free-momentum-magnitude`: IVP
+  integrates the gyroscopic term with explicit Euler substeps
+  (`ivp_calc_next_psi_solver.cxx`, `calc_rotation_matrix`). A torque-free
+  48x24x8 box spun at 1 rev/s about each axis gains 40% rotational energy and
+  20% angular momentum in 3 s. Box3D solves the term implicitly
+  (`b3IntegrateVelocitiesTask`), which loses a little instead (energy -19%,
+  momentum -11% in the same scene).
 
 ## 6. Legacy behaviors the suite pins down
 

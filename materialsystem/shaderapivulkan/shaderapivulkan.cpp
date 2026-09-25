@@ -56,6 +56,8 @@
 #include <unordered_set>
 #if defined( POSIX )
 #include <dlfcn.h>
+// RenderDoc's in-application API is probed through the Phase A loader telemetry.
+#include "tier0/native_module_load_telemetry.h"
 #endif
 #include <vector>
 

@@ -204,10 +204,18 @@ proof of an LSP violation.
 
 ## C++ and code style
 
-Use C++20 in new strict and deliberately migrated first-party targets after
-their compiler/standard-library profile is validated. Existing Waf flags are
-not proof of C++20 support. Keep legacy target/header dialects and Box3D's C17
-configuration explicit; do not change the entire tree's standard or FP flags.
+Every in-tree C++ target compiles as C++20 (user decision, 2026-09-22;
+`quality/toolchain/policy.json` owns the dialect per target):
+
+- unmigrated code uses `cxx20-permissive`;
+- new and deliberately migrated targets use strict `cxx20`;
+- `legacy-cxx11` exists only for frozen external-consumer fixtures;
+- Box3D keeps its private `box3d-c17` configuration.
+
+A permissive C++20 compile is not proof of a target's C++20 support; that
+needs its validated compiler/standard-library profile. Do not change
+floating-point flags tree-wide, and never select a dialect with target-local
+`-std` flags.
 
 Prefer values, RAII, strong IDs, scoped enums, `[[nodiscard]]`, `std::optional`,
 and bounded views where they clarify a contract. Use project `Expected<T, E>`
@@ -357,11 +365,11 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | --- | --- | --- | --- | --- |
 | 1 / R01 | Reproducible baseline and profile inventory; 0005 Q0, baseline portions of all domains | — | Current checks/failures recorded; exact build/content/tool availability and supported profiles established; baseline captures and budgets identified | done (re-audited 2026-09-25; [Q0 baseline](RFC/0005-progress.md#re-audit-2026-09-25)) |
 | 2 / R02 | Trustworthy runner, fixtures, evidence; 0005 Q1 | R01 | Zero/missing tests, skips, crashes, timeouts and incomplete output fail correctly; explicit test composition and reproducible artifacts work | done ([Q1 runner](RFC/0005-progress.md#q1--r02-runner-shared-conformance-runner)) |
-| 3 / R03 | Per-target C++20/toolchain boundary; 0006 M0 | R01, R02 | Compile/link/run proof; final flags verified; legacy/C17 settings and frozen-consumer ABI combinations preserved | active (R03-A ABI contract and R03-B full target coverage and Android x86_64 done 2026-09-25; open: Apple/MSVC, CI, R54 ABI island; [0006 progress](RFC/0006-progress.md#r03-b-complete-linux-target-coverage-and-android-x86_64-slice-done-2026-09-25)) |
-| 4 / R04 | Full architecture and migration enforcement; 0001 rank 1, 0002 H0 enforcement, Q-ARCH | R01, R02 | Ownership, direct/transitive includes, Waf/link graph, hermetic builds, exact debt and evidence schemas enforced; negative projects fail | active (`archlint check --all` passes since R04-DRIFT and R04-CAP; `--compile-deps` transitive include and portable link-graph checks installed and declared as `arch.compile-deps` (R04-DEPS) 2026-09-25; hermetic contract-header compiles (R04-HERMETIC) and the Hammer include graph (R04-HAMGRAPH) installed; open: per-target `arch_module` ownership for mixed targets; [Phase A record](RFC/0001-phase-a-progress.md#r04-deps-compiler-grounded-transitive-include-check-slice-done-2026-09-25)) |
-| 5 / R05 | Results, IDs, quantities, ownership vocabulary; 0001 rank 2, 0006 M1 | R03, R04 | `Expected`, borrowing/scoped resources and matchers pass value/lifetime/ABI tests; a real consumer uses them | partial ([`Expected` and consumers](RFC/0006-progress.md)) |
-| 6 / R06 | Composition/lifecycle kernel and minimal test providers; 0001 rank 3, Q-FOUNDATION | R02, R05 | Unit runner composes typed providers without ambient factories; required/optional validation, failure-at-each-stage rollback and repeat-instance tests pass | partial (`platform/composition.cpp`; [conformance record](RFC/0001-conformance-progress.md)) |
-| 7 / R07 | Loader containment, telemetry and ABI fixtures; 0001 rank 4 / retirement A | R04, R06 | Scoped ownership, structured errors, legacy bridge and fake/native suites pass; telemetry handles failed/duplicate/nested requests; reviewed ratchet/inventory current | partial |
+| 3 / R03 | Per-target C++20/toolchain boundary; 0006 M0 | R01, R02 | Compile/link/run proof; final flags verified; legacy/C17 settings and frozen-consumer ABI combinations preserved | partial (gate needs an Apple arm64 runner, the MSVC toolchain and hosted CI, all unavailable here; Linux and Android slices R03-A/B done and C++20 wording reconciled 2026-09-25; [0006 progress](RFC/0006-progress.md#r03-wording-reconciliation-2026-09-25)) |
+| 4 / R04 | Full architecture and migration enforcement; 0001 rank 1, 0002 H0 enforcement, Q-ARCH | R01, R02 | Ownership, direct/transitive includes, Waf/link graph, hermetic builds, exact debt and evidence schemas enforced; negative projects fail | active (`archlint check --all` passes since R04-DRIFT and R04-CAP; `--compile-deps` transitive include and portable link-graph checks installed and declared as `arch.compile-deps` (R04-DEPS) 2026-09-25; hermetic contract-header compiles (R04-HERMETIC), the Hammer include graph (R04-HAMGRAPH) and link-graph/`uselib` grants for all strict targets (R04-TARGETS) installed; open: per-target `arch_module` ownership for mixed legacy targets; [Phase A record](RFC/0001-phase-a-progress.md#r04-deps-compiler-grounded-transitive-include-check-slice-done-2026-09-25)) |
+| 5 / R05 | Results, IDs, quantities, ownership vocabulary; 0001 rank 2, 0006 M1 | R03, R04 | `Expected`, borrowing/scoped resources and matchers pass value/lifetime/ABI tests; a real consumer uses them | partial (all vocabulary delivered with consumers 2026-09-25: `Expected`, `StrongId`, `ScopedResource`, `testing::Checks`, `units`; waits on hard gates R03/R04; [record](RFC/0006-progress.md#r05-strongid-strong-identifier-vocabulary-2026-09-25)) |
+| 6 / R06 | Composition/lifecycle kernel and minimal test providers; 0001 rank 3, Q-FOUNDATION | R02, R05 | Unit runner composes typed providers without ambient factories; required/optional validation, failure-at-each-stage rollback and repeat-instance tests pass | partial (all implementation clauses evidenced, reviewed 2026-09-25; waits on R05; [conformance record](RFC/0001-conformance-progress.md)) |
+| 7 / R07 | Loader containment, telemetry and ABI fixtures; 0001 rank 4 / retirement A | R04, R06 | Scoped ownership, structured errors, legacy bridge and fake/native suites pass; telemetry handles failed/duplicate/nested requests; reviewed ratchet/inventory current | partial (R07-INVENTORY: inventory current, telemetry complete, `unittest_legacy` fixed on both compilers including a tier0 logger race, 2026-09-25; [Phase A record](RFC/0001-phase-a-progress.md#r07-inventory-loader-inventory-reconciled-slice-done-2026-09-25)) |
 | 8 / R08 | Hammer H0 corpus and migration inventory; 0002, Q-EDITOR/Q-CONTENT | R02, R03, R04 | Exhaustive ownership/callers and migration records; legacy build evidence/gaps; headless target; semantic comparator detects seeded data loss | active |
 | 9 / R09 | Physics A feasibility and IVP baseline; 0004, Q-PHYSICS | R01, R02, R05 | Method/profile inventory, units/assets and measurements; tested solution or explicit scope decision for impact state, contact mutation, ragdoll limits and hull/decoder blockers | partial ([0004 progress](RFC/0004-progress.md)) |
 | 10 / R10 | Runner/clock/sequence contracts and serial graph; 0001 rank 11, 0003 A–B | R05, R06 | Virtual time and independent graph model; validation/publication/affinity/failure tests; ordered serial host graph matches legacy captures | active ([0003 progress](RFC/0003-progress.md); [host graph](RFC/0003-scheduler-trust-progress.md); [render nodes](RFC/0003-scheduler-nodes-progress.md)) |
@@ -400,7 +408,7 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 | 43 / R51 | Stage reference rendering; 0007 G | R49, R54 | Versioned Cycles reference fixtures rendered from stages; seeded material-mapping error detected | planned |
 | 44 / R52 | Hammer compile/preview and vvis job graph; 0007 H | R20, R25, R49 | GTK compile/run and progressive preview with cancellation/recovery; serial/parallel/legacy PVS byte equivalence | planned |
 | 45 / R57 | Incremental map build graph; 0008 F6 | R52, R54 | Cache-hit traces per change class and source-producer identity; cancellation leaves the previous package intact; native USD inputs extend the graph under R59 | planned |
-| 46 / R59 | USD-native map schema and compiler; 0009 U0–U2 | R05, R48, R53, R54 | A hand-authored USD room compiles without VMF or prior BSP and runs in client/server; world, static, dynamic and physics roles validate distinctly; collision/visibility and negative fixtures pass | active (U0 authoring schema and validator, 2026-09-25; [RFC 0009 progress](RFC/0009-progress.md)) |
+| 46 / R59 | USD-native map schema and compiler; 0009 U0–U2 | R05, R48, R53, R54 | A hand-authored USD room compiles without VMF or prior BSP and runs in client/server; world, static, dynamic and physics roles validate distinctly; collision/visibility and negative fixtures pass | active (U0 authoring profile, fixture room and validator; U1 first slice: the U0 room compiles to BSP2 without VMF or a prior BSP and boots in dedicated, client and headless native Vulkan, 2026-09-25; [RFC 0009 progress](RFC/0009-progress.md#u1-native-usd-map-compiler-first-slice-slice-done-2026-09-25)) |
 | 47 / R60 | USD-native editor workflow and VMF migration; 0009 U3–U4 | R13, R25, R59 | USD owns save/reopen/history and compile; role-aware block/mesh/prop editing, material/light viewport, object-linked diagnostics, edit-to-preview budgets, two-document workflow, external edit, import loss reports and installed product gates pass | planned ([RFC 0009](RFC/0009-usd-native-map-authoring.md)) |
 | 48 / R61 | Modern map spatial/gameplay data; 0008 F8 | R31, R53, R59 | Versioned USD-native geometry/collision/visibility payload passes client/server semantic and malformed-input suites; legacy BSP bytes and behavior remain compatible | planned ([RFC 0008](RFC/0008-canonical-world-data-and-runtime-formats.md)) |
 | 49 / R62 | Modern model asset path; 0008 F9 | R47, R55, R59 | Authored/compiled model assets serve static, dynamic and physics roles with materials, LOD, collision and required animation; MDL corpus and lifecycle gates pass | planned ([RFC 0008](RFC/0008-canonical-world-data-and-runtime-formats.md)) |
@@ -630,7 +638,10 @@ Keep the table concise and link details below or from the domain progress file.
   VMF import path, with role-aware tools and measured edit-to-preview behavior.
   Current USD previews do not satisfy either gate. `pbrt_map_build.py` accepts
   USD scenes but compiles them through a generated VMF, which is not R59's
-  compiler.
+  compiler. R59's compiler is `usd_map_compile.py` (U1 first slice,
+  2026-09-25): staged, with `vbsp -authored` building brushes in memory.
+  The U2 role cohorts remain, and so do the compiled World Stage and render
+  payload for USD maps.
 - R61–R64 (RFC 0008 F8–F11): added 2026-09-23 as `planned` for versioned native
   map spatial data, a modern model asset path, visual parity and geometry
   scalability, and direct USD development-runtime iteration. They extend the

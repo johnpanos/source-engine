@@ -160,6 +160,7 @@ void PhysicsLevelInit( void )
 {
 	physenv = physics->CreateEnvironment();
 	assert( physenv );
+	PhysApplyInertiaModel( physenv, "client" );
 #ifdef PORTAL
 	physenv_main = physenv;
 #endif

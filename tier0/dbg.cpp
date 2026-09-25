@@ -62,6 +62,13 @@ public:
 	void Disable();
 
 private:
+	void WriteToFile( const char *data );
+	void FreeBufferedMessages();
+
+	// Spew reaches Write from any thread: the buffer, its count and the file are
+	// only touched under this lock (concurrent writers once overran MAX_MSGS).
+	CThreadFastMutex m_Mutex;
+
 	FILE *file;
 	float flStartTime;
 	bool bShouldLog;
@@ -79,15 +86,19 @@ CDbgLogger::CDbgLogger()
 	iMsg = 0;
 }
 
+// Frees buffered messages 0..iMsg-1. The caller holds m_Mutex or is the last owner.
+void CDbgLogger::FreeBufferedMessages()
+{
+	for ( size_t i = 0; i < iMsg; i++ )
+		delete[] pMsgs[i];
+	iMsg = 0;
+}
+
 void CDbgLogger::Disable()
 {
+	AUTO_LOCK( m_Mutex );
 	bShouldLog = false;
-
-	while( iMsg > 0 )
-	{
-		delete[] pMsgs[iMsg];
-		iMsg--;
-	}
+	FreeBufferedMessages();
 }
 
 void CDbgLogger::Init(const char *logfile)
@@ -97,6 +108,7 @@ void CDbgLogger::Init(const char *logfile)
 
 	char szTime[256];
 
+	AUTO_LOCK( m_Mutex );
 	bShouldLog = true;
 
 	time( &timeCur );
@@ -119,22 +131,15 @@ void CDbgLogger::Init(const char *logfile)
 		fprintf(file, "Compiler LDFLAGS: %s\n", WAF_LDFLAGS);
 		fflush(file);
 
-		for( int i = 0; i < iMsg; i++ )
-		{
-			Write(pMsgs[i]);
-			delete[] pMsgs[i];
-		}
-		iMsg = 0;
+		for ( size_t i = 0; i < iMsg; i++ )
+			WriteToFile( pMsgs[i] );
+		FreeBufferedMessages();
 	}
 }
 
 CDbgLogger::~CDbgLogger()
 {
-	while( iMsg > 0 )
-	{
-		delete[] pMsgs[iMsg];
-		iMsg--;
-	}
+	FreeBufferedMessages();
 
 	if( !file )
 		return;
@@ -152,8 +157,16 @@ CDbgLogger::~CDbgLogger()
 	fclose(file);
 }
 
+void CDbgLogger::WriteToFile( const char *data )
+{
+	fprintf( file, "[%.4f] ", Plat_FloatTime() - flStartTime );
+	fprintf( file, "%s", data );
+	fflush( file );
+}
+
 void CDbgLogger::Write(const char *data)
 {
+	AUTO_LOCK( m_Mutex );
 	if( !bShouldLog )
 		return;
 
@@ -161,9 +174,7 @@ void CDbgLogger::Write(const char *data)
 
 	if( file )
 	{
-		fprintf(file, "[%.4f] ", Plat_FloatTime() - flStartTime);
-		fprintf(file, "%s", data);
-		fflush(file);
+		WriteToFile( data );
 	}
 	else if( iMsg < MAX_MSGS )
 	{

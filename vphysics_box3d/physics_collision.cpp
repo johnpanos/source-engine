@@ -401,6 +401,107 @@ CPhysCollideBox3D::~CPhysCollideBox3D()
 	convexes.PurgeAndDeleteElements();
 }
 
+bool ComputeSolidInertia( const CPhysCollideBox3D *pCollide, const Vector &about, double *pVolume,
+    double inertia[3][3] )
+{
+	// Volume, first moments and second moments (the integrals of x_a x_b)
+	// about the collide origin, then shifted to `about`.
+	double volume = 0.0;
+	double first[3] = { 0, 0, 0 };
+	double second[3][3] = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } };
+	for ( int c = 0; c < pCollide->convexes.Count(); c++ )
+	{
+		const CPhysConvexBox3D *pConvex = pCollide->convexes[c];
+		if ( pConvex->volume <= 0.0f )
+			continue;
+		if ( pConvex->hulls.Count() == 1 )
+		{
+			b3MassData mass = b3ComputeHullMass( pConvex->hulls[0], 1.0f );
+			if ( mass.mass <= 0.0f )
+				continue;
+			const b3Vec3 *pColumns[3] = { &mass.inertia.cx, &mass.inertia.cy, &mass.inertia.cz };
+			double tensor[3][3];
+			for ( int col = 0; col < 3; col++ )
+			{
+				tensor[0][col] = pColumns[col]->x;
+				tensor[1][col] = pColumns[col]->y;
+				tensor[2][col] = pColumns[col]->z;
+			}
+			// A tensor about the centroid is trace(S) E - S, S the centroid's
+			// second moments, so S = trace(I) / 2 E - I.
+			double halfTrace = 0.5 * ( tensor[0][0] + tensor[1][1] + tensor[2][2] );
+			double center[3] = { mass.center.x, mass.center.y, mass.center.z };
+			for ( int a = 0; a < 3; a++ )
+			{
+				first[a] += mass.mass * center[a];
+				for ( int b = 0; b < 3; b++ )
+				{
+					second[a][b] += ( a == b ? halfTrace : 0.0 ) - tensor[a][b] +
+					                mass.mass * center[a] * center[b];
+				}
+			}
+			volume += mass.mass;
+			continue;
+		}
+		// Tetrahedra from an interior point to each source surface triangle:
+		// the integral of x_a x_b over one is V/20 (sum_k x_ka x_kb + X_a X_b),
+		// X the vertex sums.
+		int pointCount = pConvex->points.Count();
+		if ( pointCount < 4 )
+			continue;
+		Vector interior( 0, 0, 0 );
+		for ( int i = 0; i < pointCount; i++ )
+			interior += pConvex->points[i];
+		interior /= (float)pointCount;
+		for ( int t = 0; t + 2 < pConvex->triangles.Count(); t += 3 )
+		{
+			const Vector *pTet[4] = { &interior, &pConvex->points[pConvex->triangles[t]],
+				&pConvex->points[pConvex->triangles[t + 1]],
+				&pConvex->points[pConvex->triangles[t + 2]] };
+			double v = fabs( DotProduct( *pTet[1] - interior,
+			               CrossProduct( *pTet[2] - interior, *pTet[3] - interior ) ) ) /
+			           6.0;
+			if ( v <= 0.0 )
+				continue;
+			double sums[3] = { 0, 0, 0 };
+			for ( int k = 0; k < 4; k++ )
+			{
+				for ( int a = 0; a < 3; a++ )
+					sums[a] += ( *pTet[k] )[a];
+			}
+			for ( int a = 0; a < 3; a++ )
+			{
+				first[a] += v * sums[a] * 0.25;
+				for ( int b = 0; b < 3; b++ )
+				{
+					double products = 0.0;
+					for ( int k = 0; k < 4; k++ )
+						products += (double)( *pTet[k] )[a] * ( *pTet[k] )[b];
+					second[a][b] += v * ( products + sums[a] * sums[b] ) / 20.0;
+				}
+			}
+			volume += v;
+		}
+	}
+	if ( volume <= 1e-6 )
+		return false;
+	double p[3] = { about.x, about.y, about.z };
+	double shifted[3][3];
+	for ( int a = 0; a < 3; a++ )
+	{
+		for ( int b = 0; b < 3; b++ )
+			shifted[a][b] = second[a][b] - first[a] * p[b] - p[a] * first[b] + volume * p[a] * p[b];
+	}
+	double trace = shifted[0][0] + shifted[1][1] + shifted[2][2];
+	for ( int a = 0; a < 3; a++ )
+	{
+		for ( int b = 0; b < 3; b++ )
+			inertia[a][b] = ( a == b ? trace : 0.0 ) - shifted[a][b];
+	}
+	*pVolume = volume;
+	return true;
+}
+
 CPhysConvexBox3D *CreateConvexBox3D( const Vector *pPoints, int pointCount )
 {
 	CPhysConvexBox3D *pConvex = new CPhysConvexBox3D;

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Launch the separate Portal 2 target with VPKs from the installed game.
 # Physics runs on Box3D (vphysics_box3d), as in ./play; PHYSICS=vphysics ./play_p2
-# uses IVP, and an explicit -physics argument wins.
+# uses IVP, and an explicit -physics argument wins. PHYSICS_ARGS carries the
+# physics launch flags, as in run.conf: -physics_shape_inertia by default
+# (RFC 0013 shape inertia); PHYSICS_ARGS= ./play_p2 rolls back.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -10,6 +12,7 @@ P2_RUNTIME="${P2_RUNTIME:-$ROOT/run/runtime-p2}"
 P2_BUILD_DIR="${P2_BUILD_DIR:-$ROOT/build-p2}"
 P2_WAFLOCK=.lock-waf-p2
 PHYSICS="${PHYSICS:-vphysics_box3d}"
+PHYSICS_ARGS="${PHYSICS_ARGS--physics_shape_inertia}"
 # Job system (RFC 0003), as run.conf's JOB_ARGS for Portal: the pooled
 # render-start and query-cache graphs. portal_carve_job_graph is Portal-only;
 # host_thread_mode stays 0 (see run.conf). JOB_ARGS= rolls back to the engine
@@ -69,5 +72,5 @@ for arg in "$@"; do
     fi
 done
 # shellcheck disable=SC2206  # the ConVar lists are intentionally word-split
-config_args=($JOB_ARGS $MAT_ARGS)
+config_args=($PHYSICS_ARGS $JOB_ARGS $MAT_ARGS)
 exec ./hl2_launcher -game portal2 "${physics_args[@]}" "${config_args[@]}" "$@"

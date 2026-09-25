@@ -527,8 +527,8 @@ def check_command(args: argparse.Namespace, root: Path, manifest: dict) -> int:
             link_errors, judged, skipped = capabilities.link_graph_errors(
                 manifest.get("capabilityModules"), json.loads(invocations.read_text(encoding="utf-8"))
             )
-            print(f"archlint: link-graph {tree}: {judged} portable strict targets judged, "
-                  f"{skipped} mixed/native targets not judged")
+            print(f"archlint: link-graph {tree}: {judged} strict targets judged, "
+                  f"{skipped} legacy or mixed targets not judged")
             strict_errors.extend(link_errors)
     for error in strict_errors:
         print(error)
@@ -579,6 +579,9 @@ def verify_baseline(root: Path, manifest: dict) -> int:
 
 
 def classify(path: str, rule_id: str, manifest: dict) -> tuple[str, str]:
+    for entry in manifest["loaderInventory"].get("unbuiltVendorPaths", []):
+        if path.startswith(entry["prefix"]):
+            return "unbuilt-vendor", entry["reason"]
     for classification in manifest["loaderInventory"]["classifications"]:
         applicable_rules = classification.get("rules")
         if applicable_rules is None or rule_id in applicable_rules:
@@ -625,6 +628,49 @@ def native_telemetry_coverage(
     return "missing"
 
 
+def unbuilt_vendor_prefixes(manifest: dict) -> tuple[str, ...]:
+    entries = manifest.get("loaderInventory", {}).get("unbuiltVendorPaths", [])
+    return tuple(entry["prefix"] for entry in entries if isinstance(entry.get("prefix"), str))
+
+
+def validate_unbuilt_vendor_paths(root: Path, manifest: dict) -> list[str]:
+    """A vendored tree may skip loader telemetry only while no product builds it.
+
+    Each entry names one existing directory with a reason and the evidence
+    reviewed. Any recorded build tree (build*/toolchain-invocations.json) that
+    compiles a source under the prefix invalidates the exclusion.
+    """
+    errors: list[str] = []
+    entries = manifest.get("loaderInventory", {}).get("unbuiltVendorPaths", [])
+    for index, entry in enumerate(entries):
+        prefix = entry.get("prefix")
+        where = f"unbuiltVendorPaths[{index}]"
+        if not isinstance(prefix, str) or not prefix.endswith("/") or any(ch in prefix for ch in "*?["):
+            errors.append(f"{where}: prefix must be one directory ending in '/' (no glob)")
+            continue
+        if not (root / prefix).is_dir():
+            errors.append(f"{where}: {prefix} does not exist")
+        for field in ("reason", "evidence"):
+            if not isinstance(entry.get(field), str) or not entry[field].strip():
+                errors.append(f"{where}: {prefix} needs a non-empty {field}")
+    prefixes = unbuilt_vendor_prefixes(manifest)
+    if prefixes:
+        for record in sorted(root.glob("build*/toolchain-invocations.json")):
+            try:
+                entries_built = json.loads(record.read_text(encoding="utf-8")).get("entries", [])
+            except (OSError, ValueError):
+                continue
+            for built in entries_built:
+                source = built.get("source", "")
+                if source.startswith(prefixes):
+                    errors.append(
+                        f"{record.parent.name} compiles {source}, which is excluded as unbuilt vendor "
+                        "code; route its loader through telemetry or remove the exclusion"
+                    )
+                    break
+    return errors
+
+
 def supplemental_inventory_occurrences(root: Path, manifest: dict) -> list[dict]:
     results: list[dict] = []
     for path in source_files(root):
@@ -657,8 +703,10 @@ def supplemental_inventory_occurrences(root: Path, manifest: dict) -> list[dict]
                         "reason": reason,
                     }
                 if mechanism == "native-loader":
-                    record["telemetry"] = native_telemetry_coverage(
-                        root, relative, original, excerpt
+                    record["telemetry"] = (
+                        "unbuilt-vendor"
+                        if relative.startswith(unbuilt_vendor_prefixes(manifest))
+                        else native_telemetry_coverage(root, relative, original, excerpt)
                     )
                 results.append(record)
     return results
@@ -682,8 +730,9 @@ def inventory_document(root: Path, manifest: dict) -> dict:
     counts = Counter(item["classification"] for item in sites)
     native_sites = [item for item in sites if item["mechanism"] == "native-loader"]
     covered_native_sites = [
-        item for item in native_sites if item.get("telemetry") != "missing"
+        item for item in native_sites if item.get("telemetry") not in ("missing", "unbuilt-vendor")
     ]
+    native_sites = [item for item in native_sites if item.get("telemetry") != "unbuilt-vendor"]
     return {
         "version": 1,
         "description": "Static dynamic-loader site inventory for RFC 0001 retirement Phase A.",
@@ -1685,6 +1734,12 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
         )
     if args.write == args.verify:
         raise SystemExit("inventory requires exactly one of --verify or --write")
+    vendor_errors = validate_unbuilt_vendor_paths(root, manifest)
+    if vendor_errors:
+        for error in vendor_errors:
+            print(f"archlint: [inventory] {error}")
+        print(f"archlint: loader inventory rejected; {len(vendor_errors)} vendor exclusion problem(s)")
+        return 1
     inventory_expected = inventory_document(root, manifest)
     missing_native_telemetry = [
         site

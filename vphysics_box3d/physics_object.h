@@ -2,6 +2,7 @@
 #define PHYSICS_OBJECT_H
 
 #include "vphysics_interface.h"
+#include "foundation/units.h"
 #include "mathlib/mathlib.h"
 #include "box3d/id.h"
 
@@ -13,7 +14,11 @@ struct CPhysCollideBox3D;
 
 // Box3D runs in inches; VPhysics reports rotational inertia, angular impulse
 // and torque in IVP's metric units (kg*m^2), so those convert at the API.
-const float kInertiaToBox3D = ( 1.0f / 0.0254f ) * ( 1.0f / 0.0254f );
+const float kInertiaToBox3D =
+    foundation::units::kSourceUnitsPerMeterF * foundation::units::kSourceUnitsPerMeterF;
+// The frozen VPhysics ABI macro and the foundation owner must agree.
+static_assert(
+    METERS_PER_INCH == foundation::units::kMetersPerSourceUnitF, "unit owners disagree" );
 
 // Complete object state (IVP's vphysics_save_cphysicsobject_t equivalent):
 // what TransferObject, SerializeObjectToBuffer and save/restore carry.
@@ -64,10 +69,15 @@ const int kPhysicsObjectStateVersion = 1;
 // bodies; EnableMotion(false) pins a movable object by making it kinematic
 // with zero velocity (IVP's "pinned" core), and re-enabling restores it.
 //
-// Mass properties follow IVP, not Box3D's shape integration: mass is clamped
-// to [VPHYSICS_MIN_MASS, VPHYSICS_MAX_MASS], the diagonal rotational inertia
-// is mass * the collide's IVP per-mass inertia * the authored inertia scale,
-// clipped below at rotInertiaLimit * |I|, and SetMass rescales it. Damping,
+// Mass properties follow IVP by default, not Box3D's shape integration: mass
+// is clamped to [VPHYSICS_MIN_MASS, VPHYSICS_MAX_MASS], the diagonal
+// rotational inertia is mass * the collide's IVP per-mass inertia * the
+// authored inertia scale, clipped below at rotInertiaLimit * |I|, and SetMass
+// rescales it. An object created in an environment with the shape inertia
+// model (RFC 0013 vphysics.shape-inertia.v1) instead takes the full tensor of
+// its collision solid, with no clip: m_inertia is the tensor's diagonal and
+// m_inertiaCoupling its unit-diagonal coupling C, so the tensor is
+// D^1/2 C D^1/2 and the per-axis API (SetInertia, SetMass) scales D. Damping,
 // air drag and velocity limits are applied by the environment before each
 // step with IVP's formulas (Box3D's own damping is off).
 class CPhysicsObjectBox3D : public IPhysicsObject
@@ -254,6 +264,11 @@ public:
 	bool IsMarkedForDelete() const { return ( m_callbackFlags & CALLBACK_MARKED_FOR_DELETE ) != 0; }
 	// Fluid buoyancy uses the object's shapes.
 	int GetShapes( b3ShapeId *pShapes, int capacity ) const;
+	// The inertia tensor in object axes, kg*m^2 (diagonal under the legacy
+	// model), and its inverse applied to an object-space vector.
+	bool UsesShapeInertia() const { return m_shapeInertia; }
+	void GetInertiaTensor( float tensor[3][3] ) const;
+	Vector MultiplyInverseInertia( const Vector &local ) const;
 
 private:
 	void CreateBody( const Vector &position, const QAngle &angles );
@@ -261,6 +276,8 @@ private:
 	void CreateShapes();
 	void DestroyShapes();
 	void ComputeInitialInertia();
+	bool ComputeShapeInertia();
+	void GetInverseInertiaTensor( double inverse[3][3] ) const;
 	void ApplyMassProperties();
 	void ApplyBodyType();
 	void ApplyFilter();
@@ -281,7 +298,8 @@ private:
 	void *m_pGameData;
 	char m_name[64];
 	Vector m_massCenter;
-	Vector m_inertia;			// IVP units (kg*m^2), object axes, diagonal
+	Vector m_inertia;			// IVP units (kg*m^2), object axes, the tensor's diagonal
+	float m_inertiaCoupling[3][3];	// identity under the legacy model
 	Vector m_dragBasis;			// per IVP: projected area per mass (m^2/kg), object axes
 	Vector m_angDragBasis;
 	float m_mass;
@@ -315,6 +333,7 @@ private:
 	bool m_reportPreStep;
 	bool m_hasTouchedDynamic;
 	bool m_asleepSinceCreation;
+	bool m_shapeInertia;		// created under the shape inertia model
 	Vector m_preStepLinear;
 	Vector m_preStepAngular;	// world, radians/second
 	Vector m_uncommittedLinear; // world; game velocity changes since the last step

@@ -5,6 +5,7 @@
 //=============================================================================//
 
 #include "debugapi/debugapi_unix_socket.h"
+#include "foundation/scoped_resource.h"
 
 #include <cerrno>
 #include <cstring>
@@ -39,34 +40,14 @@ TransportError Failure( TransportErrorCode code, std::string message )
 	return TransportError{ code, std::move( message ) };
 }
 
-class ScopedFd
+// POSIX descriptors: every failing call that yields one returns -1.
+struct FdTraits
 {
-public:
-	ScopedFd() = default;
-	explicit ScopedFd( int fd ) : m_Fd( fd ) {}
-	ScopedFd( ScopedFd &&other ) noexcept : m_Fd( std::exchange( other.m_Fd, -1 ) ) {}
-	ScopedFd &operator=( ScopedFd &&other ) noexcept
-	{
-		if ( this != &other )
-		{
-			Reset();
-			m_Fd = std::exchange( other.m_Fd, -1 );
-		}
-		return *this;
-	}
-	~ScopedFd() { Reset(); }
-
-	int Get() const { return m_Fd; }
-	void Reset()
-	{
-		if ( m_Fd >= 0 )
-			::close( m_Fd );
-		m_Fd = -1;
-	}
-
-private:
-	int m_Fd = -1;
+	using Handle = int;
+	static constexpr int Invalid() noexcept { return -1; }
+	static void Close( int fd ) noexcept { ::close( fd ); }
 };
+using ScopedFd = foundation::ScopedResource<FdTraits>;
 
 bool ConfigureSocket( int fd )
 {

@@ -1334,7 +1334,14 @@ int RunBench( const BenchOptions_t &options )
 		Check( TIER_BOOT, "bench.authored-cube", pAuthoredCube != NULL, "%s", options.pCubePath );
 	int status;
 	if ( contract )
+	{
 		status = RunParallelContract( pAuthoredCube );
+		// A provider with either capability runs its clauses; one with
+		// neither (IVP) is unsupported.
+		int inertia = RunShapeInertiaContract();
+		if ( status == 3 && inertia != 3 )
+			status = 0;
+	}
 	else
 		status = RunScene( options, pAuthoredCube );
 	if ( cube.solidCount )

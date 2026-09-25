@@ -36,12 +36,21 @@ SCHEMA = "pbrt-published-map/v1"
 MOUNT_PREFIX = "pbrt-"
 
 
-def publish(build_summary, store=STORE):
-    """Copy a pipeline build's content root into the store; returns the record."""
+def publish(build_summary, store=STORE, sidecars=None):
+    """Copy a pipeline build's content root into the store; returns the record.
+
+    `sidecars` ({file name: text}) are build records published beside
+    published.json in the same rename, such as the USD compiler's provenance.
+    They are not game content and are never mounted as such."""
     name = build_summary["map"]
     files = portal_boot.content_files(build_summary["content_root"])
     if not any(relative == Path("maps", name + ".bsp") for _, relative in files):
         raise ValueError("content root has no maps/%s.bsp" % name)
+    sidecars = dict(sidecars or {})
+    for sidecar in sidecars:
+        if (Path(sidecar).name != sidecar or sidecar == RECORD or
+                not sidecar.endswith(".json")):
+            raise ValueError("invalid published-map sidecar name: " + sidecar)
     store = Path(store)
     store.mkdir(parents=True, exist_ok=True)
     staging = store / (".publish-%s-%d" % (name, os.getpid()))
@@ -49,6 +58,8 @@ def publish(build_summary, store=STORE):
     for source, relative in files:
         (staging / relative).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, staging / relative)
+    for sidecar, text in sidecars.items():
+        (staging / sidecar).write_text(text)
     record = {"schema": SCHEMA, "map": name, "status": build_summary["status"],
               "failed_gates": build_summary.get("failed_gates", []),
               "bsp2_sha256": build_summary.get("bsp2_sha256"),

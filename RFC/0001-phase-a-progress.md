@@ -323,6 +323,124 @@ Blind spots:
 
 Declared as `arch.hermetic` in `quality/baseline.json` (static group, user decision).
 
+## R04-TARGETS: link graph for every strict target (slice done, 2026-09-25)
+
+CAP006 now judges every target whose sources are all strict, native ones
+included, not only portable targets. RFC 0001's "external libraries are
+allowlisted" rule has an owner: a per-module `uselib` list.
+
+- **Rule.**
+  - A target's allowed modules are the union of its strict modules' closures;
+    every first-party target it links must stay inside that union.
+  - Every native SDK library it links must be granted by one of its modules'
+    `uselib`.
+  - Only native kinds may declare `uselib` (CAP004), so a portable target can
+    link none.
+  - Mixed targets, with strict plus legacy sources, are counted but not
+    judged. The link from `materialsystem` to `shaderapivulkan`, for example,
+    comes from legacy provider-catalog code, not from its strict modules.
+    Judging those needs the RFC's explicit per-target `arch_module` owner,
+    which is not installed.
+- **Grants.**
+  - `render.vulkan.core`: VULKAN only, never SDL3, preserving the rule that
+    only the SDL3↔Vulkan bridge sees both.
+  - The Vulkan bridges and native tests: VULKAN, and SDL3 where they own
+    SDL.
+  - The SDL3 launcher, render surface and tests: SDL3. The SDL2 window
+    provider and its test: SDL2.
+  - `content.ktx2-reader`: VULKAN, matching its declared `vulkan_core.h`
+    header grant.
+  - Edge: `platform.sdl3.native-tests` → `platform.sdl3.launcher`, the module
+    it tests.
+- **Evidence.**
+  - `arch.compile-deps` now also runs `build-r03-portal-features` (debug API
+    and KTX2) and passes in 22 s. Strict targets judged: 4 in
+    `portal-native`, 5 in `tests`, 4 in `dedicated`, 8 in `portal-features`.
+  - 110 archlint tests pass. Three mutants (dropping the grant check,
+    judging mixed targets, allowing portable grants) are each detected.
+
+Still open for R04:
+
+- per-target `arch_module` ownership for the mixed targets (80 in the Portal
+  trees, mostly legacy);
+- the Waf-time checker the RFC describes, beyond reading recorded
+  invocations.
+
+## R07-INVENTORY: loader inventory reconciled (slice done, 2026-09-25)
+
+`archlint inventory --verify` passes again; it had rejected 13 uninstrumented
+native loader sites.
+
+- **Two first-party sites now go through the Phase A telemetry adapter**
+  (`tier0/native_module_load_telemetry.h`):
+  - the RenderDoc in-application API probe in `shaderapivulkan.cpp`;
+  - the VPhysics conformance host's provider `dlopen`.
+
+  Both binaries were rebuilt and import `ModuleLoadTelemetry_dl*`. The
+  physics host still runs: IVP boot 150/150 and gameplay 453/453; Box3D
+  shows only its recorded 3 failures (R19).
+- **Eleven sites are in vendored trees no product builds**: Box3D's sokol
+  headers and samples (9) and the XSI SMD exporter (2). They are covered by a
+  reviewed `loaderInventory.unbuiltVendorPaths` exclusion.
+  - Each entry names one directory with a reason and the evidence reviewed.
+    At review, none of the 47 recorded `build*/toolchain-invocations.json`
+    files compiled a source under these prefixes, and no wscript names them.
+  - `inventory --verify` rechecks the recorded trees on every run, and fails
+    if any compiles a source under an excluded prefix.
+  - The sites are classified `unbuilt-vendor` rather than defaulting to
+    `first-party-composition`, and are left out of telemetry coverage.
+- **Reviewed inventory drift, then rewritten:**
+  - 36 entries only shifted line numbers;
+  - 10 new `retained-extension` sites are the Portal 2 GameUI/VScript glue
+    already owned in R04-DRIFT's exceptions (R39/R41);
+  - 1 new `optional-provider` and 1 `tool-indirection` site are the two
+    instrumented above;
+  - native telemetry coverage is complete at 92/92.
+- **Tests.** 4 fixtures (108 archlint tests). Two mutants (skipping the
+  built-vendor check; dropping the classification) are each detected.
+- **Recorded outcome.** `arch.inventory` is `pass` in `quality/baseline.json`
+  (agent decision under the user's standing instruction, 2026-09-25).
+
+**Fixture path and a tier0 logger race (same day).** `unittest_legacy`, the
+legacy test host recorded as crashing on both compilers, now passes.
+
+- *Fixture path.* `moduleloadtelemetrytest.cpp` `dlopen`ed
+  `./libmoduleloadfixture.so` and `./liblegacymoduleclientfixture.so`
+  relative to the working directory. The installed layout keeps them in
+  `bin/`. The test now resolves `./` then `./bin/` with `access()` before
+  loading. That makes no loader call, so the telemetry stream still holds
+  exactly the events the tests assert (for example 3 for the native
+  lifecycle).
+- *Logger race.* With the path fixed, clang crashed in 2 of 6 runs. The core
+  dump showed the `ConcurrentFailedLoad` threads calling `Warning()` together
+  and dying in `CDbgLogger::Write`'s `memmove`.
+  - `tier0/dbg.cpp`'s logger checked and incremented its message count with
+    no lock, so concurrent writers could take one slot or run past
+    `MAX_MSGS`.
+  - `Disable()` and the destructor also freed slots `iMsg..1`: one
+    uninitialized pointer past the end, and they leaked slot 0.
+  - Now a `CThreadFastMutex` guards the buffer and the file for
+    `Write`/`Init`/`Disable`. `Init` flushes buffered messages without
+    re-entering `Write`, and exactly `0..iMsg-1` are freed.
+
+  This logger is in every tier0 product, not only the test host.
+- *Evidence.*
+  - 20 of 20 runs pass with each compiler. At the observed pre-fix rate of
+    about 1 crash in 3 runs, 20 clean runs by chance would have probability
+    about 0.0003.
+  - The build group passes: 15 checks, the only `fail` being the recorded
+    R54 `toolchain.coverage`.
+  - `legacy.unittest`/`-clang` are unchanged. `legacy.unittest-legacy` and
+    `-clang` are recorded as `pass` (agent decision under the user's
+    standing instruction), with a 25 s budget for a complete run.
+
+Still open for R07: the telemetry cases for failed, duplicate and nested
+requests (the concurrent and nested tests now run to completion), the legacy
+bridge, and fake/native suites. No TSan run of tier0 was made; the logger
+race is fixed by construction and shown by the repeated runs.
+
+## Next increment
+
 Phase A is closed. Later RFC 0001 phases begin removing the frozen loader
 surface: rename the `LoadModule( CreateInterfaceFn )` pseudo-module overload,
 give `CAppSystemGroup` explicit `IAppSystem` instances, link mandatory

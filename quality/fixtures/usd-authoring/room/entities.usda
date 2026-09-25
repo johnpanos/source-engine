@@ -1,0 +1,74 @@
+#usda 1.0
+(
+    """Entities, props and the light of the U0 room. Sublayer of room.usda.
+    The physics cube references a prefab layer that carries its role and
+    model; each placement authors its own sourcemap:id."""
+    metersPerUnit = 0.0254
+    upAxis = "Z"
+)
+
+over "Map"
+{
+    def Scope "Entities"
+    {
+        def Xform "info_player_start"
+        {
+            uniform token sourcemap:role = "entity_point"
+            uniform string sourcemap:id = "entity.player-start"
+            uniform token sourcemap:classname = "info_player_start"
+            double3 xformOp:translate = (-192, -128, 8)
+            float xformOp:rotateZ = 90
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+        }
+
+        def Mesh "Trigger"
+        {
+            uniform token sourcemap:role = "entity_brush"
+            uniform string sourcemap:id = "entity.trigger-center"
+            uniform token sourcemap:classname = "trigger_multiple"
+            uniform token subdivisionScheme = "none"
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0, 3, 2, 1, 4, 5, 6, 7, 0, 1, 5, 4, 2, 3, 7, 6, 1, 2, 6, 5, 3, 0, 4, 7]
+            point3f[] points = [(-64, 64, 0), (64, 64, 0), (64, 160, 0), (-64, 160, 0), (-64, 64, 128), (64, 64, 128), (64, 160, 128), (-64, 160, 128)]
+        }
+    }
+
+    def Scope "Props"
+    {
+        def Xform "LabDesk"
+        {
+            uniform token sourcemap:role = "prop_static"
+            uniform string sourcemap:id = "prop.lab-desk"
+            uniform string sourcemap:model = "models/props/lab_desk01/lab_desk01.mdl"
+            uniform token sourcemap:collision = "vphysics"
+            # lab_desk01's model origin is its top: this stands it on the floor.
+            double3 xformOp:translate = (160, -128, 37.7)
+            float xformOp:rotateZ = 180
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+        }
+
+        def Xform "MetalBox" (
+            prepend references = @./prefabs/metal_box.usda@
+        )
+        {
+            uniform string sourcemap:id = "prop.metal-box"
+            double3 xformOp:translate = (0, -64, 24)
+            float xformOp:rotateZ = 30
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+        }
+    }
+
+    def Scope "Lights"
+    {
+        def SphereLight "CeilingLamp"
+        {
+            uniform token sourcemap:role = "light"
+            uniform string sourcemap:id = "light.ceiling-lamp"
+            color3f inputs:color = (1, 0.93, 0.82)
+            float inputs:intensity = 2000
+            float inputs:radius = 4
+            double3 xformOp:translate = (0, 0, 176)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+}

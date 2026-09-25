@@ -85,7 +85,10 @@ before deliberately formatting a whole file with the pinned formatter.
 First-party extensions: `.c`, `.cc`, `.cpp`, `.cxx`, `.h`, `.hh`, `.hpp`, `.inl`,
 `.m`, `.mm`. Vendor exclusions are owned by `VENDOR_ROOTS` in the checker:
 `thirdparty/`, `external/`, `ivp/`, `lib/`, `common/protobuf-2.3.0/`, `common/lzma/`,
-`utils/lzma/`, `utils/jpeglib/`, `utils/bzip2/`. Git-ignored untracked build outputs
+`utils/lzma/`, `utils/jpeglib/`, `utils/bzip2/`. Data fixtures whose exact text is
+part of an oracle are excluded by `DATA_FIXTURE_ROOTS`: `quality/fixtures/corpus/`
+(seeded constructs and line-numbered expectations of the corpus runner class).
+Other fixtures stay eligible. Git-ignored untracked build outputs
 and submodule contents are not enumerated. Symlinked source paths are rejected,
 not followed. New and modified text must be UTF-8. Under `--changed`, unchanged
 historical comment/literal lines may retain non-UTF-8 bytes when those exact lines

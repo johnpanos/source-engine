@@ -1,6 +1,6 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 #include "foundation/expected.h"
-#include "testing/runner.h"
+#include "testing/checks.h"
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -31,12 +31,11 @@ testing::TestResult RunExpectedConformance()
 {
 	using foundation::Expected;
 	using foundation::MakeUnexpected;
-	int failures = 0, checks = 0, live = 0;
-	auto check = [&]( bool value )
+	testing::Checks checks;
+	int live = 0;
+	auto check = [&]( bool value, std::source_location where = std::source_location::current() )
 	{
-		++checks;
-		if ( !value )
-			++failures;
+		checks.That( value, "check", where );
 	};
 	static_assert( !std::is_copy_constructible_v<Expected<Resource, int>> );
 	static_assert( std::is_nothrow_move_constructible_v<Expected<Resource, int>> );
@@ -71,7 +70,7 @@ testing::TestResult RunExpectedConformance()
 	    MakeUnexpected( std::make_unique<int>( 19 ) ) );
 	auto transferred = std::move( uniqueError );
 	check( !transferred && *transferred.Error() == 19 );
-	return { static_cast<std::size_t>( checks ), static_cast<std::size_t>( failures ), 0 };
+	return checks.Result();
 }
 
 #ifndef SOURCE_CONFORMANCE_LINKED

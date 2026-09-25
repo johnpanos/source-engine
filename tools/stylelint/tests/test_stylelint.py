@@ -148,7 +148,10 @@ class RepositoryTests(unittest.TestCase):
         self.write('legacy.cpp', 'int * legacy;\n\nint * changed;\n')
         self.write('new café file.cpp', 'int b;\n')
         self.write('thirdparty/vendor.cpp', 'int * b;\n')
-        self.assertEqual(self.selected(), {'legacy.cpp': [(3, 3)], 'new café file.cpp': None, 'staged.cpp': None})
+        self.write('quality/fixtures/corpus/seeded.cpp', 'int * c;\n')
+        self.write('quality/fixtures/other.cpp', 'int d;\n')
+        self.assertEqual(self.selected(), {'legacy.cpp': [(3, 3)], 'new café file.cpp': None,
+                                           'quality/fixtures/other.cpp': None, 'staged.cpp': None})
 
     def test_merge_base_includes_branch_and_worktree(self):
         base = self.git('rev-parse', 'HEAD')

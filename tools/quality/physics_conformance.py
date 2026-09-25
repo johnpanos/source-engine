@@ -8,7 +8,9 @@
 # one process, because both export the same entry points -- then:
 #
 #   1. requires the reference provider (IVP) to pass every check, so a check
-#      that fails on the legacy oracle is exposed as a wrong check;
+#      that fails on the legacy oracle is exposed as a wrong check, except the
+#      named reference deficiencies, which IVP must fail and every candidate
+#      must pass;
 #   2. compares each candidate's observations (surface table, parsed keyvalues,
 #      decoded geometry, traces) against the reference within each
 #      observation's declared tolerance;
@@ -86,6 +88,22 @@ FAULTS = {
     "collide-write-stub": ["collide.write"],
     "player-inert": ["player."],
     "vehicle-stub": ["vehicle."],
+    "gyro-off": ["gyro."],
+}
+
+# Checks the reference provider must FAIL: physical invariants IVP is known to
+# break. Each is asserted on the reference (a pass means the recorded
+# deficiency no longer reproduces, and the entry must be reviewed) and is
+# required of every candidate like any other check. It is never evidence for
+# fault detection, because it fails without a fault.
+REFERENCE_DEFICIENCIES = {
+    "gyro.free-energy-not-gained":
+        "IVP integrates the gyroscopic term with explicit Euler substeps "
+        "(ivp_calc_next_psi_solver.cxx calc_rotation_matrix), so a torque-free "
+        "tumbling body gains rotational energy",
+    "gyro.free-momentum-magnitude":
+        "the same explicit gyroscopic integration grows the angular momentum "
+        "of a torque-free tumbling body",
 }
 
 LINE_RE = re.compile(r"^(PASS|FAIL) (\S+) (\S+?)(?:: (.*))?$")
@@ -261,8 +279,31 @@ def compare_observations(reference, candidate):
 
 
 def fault_detected(result, prefixes):
-    return any(c["status"] == "fail" and any(c["name"].startswith(p) for p in prefixes)
+    return any(c["status"] == "fail" and c["name"] not in REFERENCE_DEFICIENCIES and
+               any(c["name"].startswith(p) for p in prefixes)
                for c in result["checks"])
+
+
+def judge_reference(result, deficiencies=None):
+    """Gate failures for the reference run.
+
+    Every check must pass except the named deficiencies, and each of those
+    must be present and fail."""
+    deficiencies = REFERENCE_DEFICIENCIES if deficiencies is None else deficiencies
+    if result["outcome"] not in ("pass", "fail"):
+        return ["reference %s did not pass (%s)" % (REFERENCE, result["outcome"])]
+    failures = []
+    status = {c["name"]: c["status"] for c in result["checks"]}
+    unexpected = sorted(c["name"] for c in result["checks"]
+                        if c["status"] == "fail" and c["name"] not in deficiencies)
+    if unexpected:
+        failures.append("reference %s did not pass (%d failed: %s)" % (
+            REFERENCE, len(unexpected), ", ".join(unexpected[:10])))
+    for name in sorted(deficiencies):
+        if status.get(name) != "fail":
+            failures.append("reference deficiency %s not reproduced (%s)" % (
+                name, status.get(name, "missing")))
+    return failures
 
 
 # ---------------------------------------------------------------------------
@@ -320,9 +361,7 @@ def main(argv=None):
                                      workers=0 if name == REFERENCE else args.candidate_workers)
 
     reference = results[REFERENCE]
-    gate_failures = []
-    if reference["outcome"] != "pass":
-        gate_failures.append("reference %s did not pass (%s)" % (REFERENCE, reference["outcome"]))
+    gate_failures = judge_reference(reference)
 
     comparisons = {}
     for name in providers:
@@ -373,6 +412,12 @@ def main(argv=None):
         "source": conformance.source_identity(root),
         "build": build,
         "reference": REFERENCE,
+        "reference_deficiencies": {
+            name: {"reason": reason,
+                   "reference": next((c["status"] for c in reference["checks"] if c["name"] == name), "missing"),
+                   "candidates": {n: next((c["status"] for c in results[n]["checks"] if c["name"] == name),
+                                          "missing") for n in providers if n != REFERENCE}}
+            for name, reason in sorted(REFERENCE_DEFICIENCIES.items())},
         "require": args.require,
         "candidate_workers": args.candidate_workers,
         "fixtures": provenance,
@@ -403,6 +448,10 @@ def main(argv=None):
             for div in comp["divergences"][:15]:
                 print("      %s ref=%s got=%s" % (div["key"], " ".join(div["reference"]),
                                                   " ".join(div["candidate"]) if div["candidate"] else "(missing)"))
+    for name in sorted(REFERENCE_DEFICIENCIES):
+        info = evidence["reference_deficiencies"][name]
+        print("deficiency %-32s %s %s, %s" % (name, REFERENCE, info["reference"], ", ".join(
+            "%s %s" % item for item in sorted(info["candidates"].items()))))
     for fault, info in sorted(sensitivity.items()):
         print("fault %-22s %s" % (fault, "detected" if info["detected"] else "NOT DETECTED"))
     print("Physics conformance: %s (%s)" % (evidence["status"], evidence_path))

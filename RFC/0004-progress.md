@@ -71,6 +71,47 @@ IVP 603/603; Box3D 600/603, whose three gameplay failures
 `box3d/src/contact_solver.c` patch and fail the same way without this fix;
 all 18 sensitivity faults are detected.
 
+Gyroscopic torque (2026-09-25, user direction): the shared suite has a
+`gyro.` clause family (`unittests/physicstest/test_vphysics_gyroscopic.cpp`),
+prompted by Box3D's origin: Chaos lacked gyroscopic torque, so slender bodies
+kept spinning. Each scene judges rotation from the reported orientation and
+the provider's own inertia (both providers report the same `.phy`-style box
+inertia, which is not the exact solid-box value):
+
+- a torque-free 48x24x8 box spun at 1 rev/s about each axis keeps its world
+  angular momentum and does not gain rotational energy while its angular
+  velocity wanders;
+- spin about the intermediate axis flips (about 3.3 s on both providers); spin
+  about the major axis stays;
+- a spinning plate on a ballsocket precesses at `m g r / (I3 s)` within 25%
+  with its axle within 10 degrees of level (IVP and Box3D both pass).
+
+At the user's request the IVP failure is asserted: the runner's
+`REFERENCE_DEFICIENCIES` requires IVP to fail `gyro.free-energy-not-gained`
+and `gyro.free-momentum-magnitude`, and every candidate to pass them. IVP
+integrates the gyroscopic term with explicit Euler substeps
+(`calc_rotation_matrix`), so the tumbling box gains 40.6% energy and 20%
+angular momentum in 3 s. Box3D's implicit solve loses energy instead (-19%,
+|L| -11%). The new fault `gyro-off` (world angular velocity held across each
+tick) is detected; without gyroscopic torque the plate falls through 89
+degrees instead of precessing. The gate on `build`: IVP fails only the two
+deficiencies (accepted), Box3D passes all 12 `gyro.` checks, no `gyro`
+observation diverges, and all 19 faults are detected; the three known Box3D
+gameplay failures and three divergences are unchanged. Runner self-tests:
+`python3 -m unittest tools/quality/tests/test_physics_conformance.py` (18).
+
+The playable map `gyro_lab` (`tools/quality/gyro_lab_map.py`, published to
+`run/maps`; `./play gyro_lab`, `PHYSICS=vphysics ./play gyro_lab`) stages the
+same scenes: four boxes in a zero-gravity `trigger_vphysics_motion` spun by
+`phys_torque` (intermediate, major, minor and body-diagonal axes) and a
+96x96 plate gyroscope on a `phys_ballsocket`, each restarted by a button. In
+headless boots (`portal_boot.py`, `physics_debug_entity` samples) the
+diagonal box's rotational energy rises 51% in about 25 s on IVP and falls 9%
+on Box3D, the intermediate box flips on both, and the plate precesses level on
+both. VPhysics takes a brush entity's inertia as diagonal in the entity frame
+(IVP's compact surface stores no principal-axis rotation), so the map keeps
+its boxes axis-aligned and tilts the torque axis instead.
+
 Gameplay regression fixes (2026-09-22): with Box3D, walking into props left the
 player stuck, and walking into a portal stopped the player short of it. Both came
 from provider traces and the player controller, not from the game:

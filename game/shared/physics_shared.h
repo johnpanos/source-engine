@@ -159,6 +159,11 @@ void PhysParseSurfaceData( class IPhysicsSurfaceProps *pProps, class IFileSystem
 // fill out this solid_t with the AABB defaults (high inertia/no rotation)
 void PhysGetDefaultAABBSolid( solid_t &solid );
 
+// Applies the launch's inertia model to a new, empty environment (RFC 0013
+// vphysics.shape-inertia.v1): -physics_shape_inertia selects the collision
+// solid's full inertia tensor when the provider offers it.
+void PhysApplyInertiaModel( IPhysicsEnvironment *pEnvironment, const char *pRole );
+
 // Compute an output velocity based on sliding along the current contact points 
 // in the closest direction toward inputVelocity.
 void PhysComputeSlideDirection( IPhysicsObject *pPhysics, const Vector &inputVelocity, const AngularImpulse &inputAngularVelocity, 

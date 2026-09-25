@@ -5,7 +5,7 @@
 //=============================================================================//
 
 #include "foundation/strong_id.h"
-#include "testing/runner.h"
+#include "testing/checks.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -36,12 +36,10 @@ static_assert( SignedId::kInvalid == -1 && !SignedId{}.IsValid() && SignedId{ 0 
 
 testing::TestResult RunStrongIdConformance()
 {
-	int failures = 0, checks = 0;
-	auto check = [&]( bool value )
+	testing::Checks checks;
+	auto check = [&]( bool value, std::source_location where = std::source_location::current() )
 	{
-		++checks;
-		if ( !value )
-			++failures;
+		checks.That( value, "check", where );
 	};
 
 	const AlphaId none;
@@ -66,7 +64,7 @@ testing::TestResult RunStrongIdConformance()
 	assigned = two;
 	check( assigned == two );
 
-	return { static_cast<std::size_t>( checks ), static_cast<std::size_t>( failures ), 0 };
+	return checks.Result();
 }
 
 #ifndef SOURCE_CONFORMANCE_LINKED

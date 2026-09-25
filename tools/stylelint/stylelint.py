@@ -26,6 +26,10 @@ VENDOR_ROOTS = (
     "thirdparty/", "external/", "ivp/", "lib/", "common/protobuf-2.3.0/",
     "common/lzma/", "utils/lzma/", "utils/jpeglib/", "utils/bzip2/",
 )
+# Data fixtures whose exact text is part of an oracle (seeded constructs, line
+# numbers in expectations, deliberately minimal toolchain inputs). They are
+# test inputs, not first-party code, so formatting them would change the test.
+DATA_FIXTURE_ROOTS = ("quality/fixtures/corpus/",)
 HUNK = re.compile(rb"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", re.MULTILINE)
 
 
@@ -72,7 +76,7 @@ def check_formatter(root: Path, executable: str) -> None:
 
 
 def eligible(name: str) -> bool:
-    return Path(name).suffix.lower() in SUFFIXES and not name.startswith(VENDOR_ROOTS)
+    return Path(name).suffix.lower() in SUFFIXES and not name.startswith(VENDOR_ROOTS + DATA_FIXTURE_ROOTS)
 
 
 def file_names(root: Path, *args: str) -> set[str]:

@@ -4568,6 +4568,276 @@
       ],
       "expect": "fail",
       "expected_divergence": "FAIL corpus.toolchain.recorder.policy-probe-stale.build.evidence: mod/ghost.cpp: claimed, but no compile of it ever ran"
+    },
+    {
+      "id": "corpus.usd-authoring.validator",
+      "domain": "Q-CONTENT",
+      "rfc": "0009",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0009 U0 authoring validator (tools/quality/usd_authoring_validate.py) against the source-authoring v1 profile (quality/usd_authoring/source_authoring_v1.json) under the pinned OpenUSD Python: the layered hand-authored room (quality/fixtures/usd-authoring/room) validates clean with its objects table (roles, prefab-composed model, Source-space origins/angles/bounds, surface materials, and for U1 each solid's outward face planes, corners and affine st rows and each light's UsdLux inputs); flattening, a Y-up centimetre re-authoring and a mirrored solid give the same result; ids survive rename, regrouping and a USDC round trip; and 66 bad variants generated from private copies of the fixture (plus a missing and an unparsable file) each produce exactly their one intended error code at their prim, covering every code the profile declares (role, property, id, transform, convex-solid topology, surface/st/material, composition and unsupported-feature checks). Source angles are checked against mathlib AngleVectors. Mutation evidence (disabling each code or check in a scratch copy fails a test, 74/74) is recorded by the owner's progress note, not by this row. Setup as corpus.usd.scene-module; skipped (never certified) when SOURCE_USD_TOOLCHAIN is unset.",
+      "result_protocol": "checks-v1",
+      "min_checks": 98,
+      "command": [
+        "{python}",
+        "tools/quality/corpus/usd_runner.py",
+        "tools.quality.tests.test_usd_authoring"
+      ],
+      "sources": [
+        "tools/quality/corpus/usd_runner.py",
+        "tools/quality/conformance_result.py",
+        "tools/quality/corpus/provenance.py",
+        "tools/quality/pbrt_map_toolchain.py",
+        "quality/product_profiles/pbrt-map-linux-tools.json",
+        "quality/product_profiles/openusd-linux-tools.json",
+        "tools/quality/usd_authoring_validate.py",
+        "tools/quality/tests/test_usd_authoring.py",
+        "quality/usd_authoring/source_authoring_v1.json",
+        "quality/fixtures/usd-authoring/room/room.usda",
+        "quality/fixtures/usd-authoring/room/world.usda",
+        "quality/fixtures/usd-authoring/room/entities.usda",
+        "quality/fixtures/usd-authoring/room/prefabs/metal_box.usda"
+      ],
+      "requires": [
+        "env:SOURCE_USD_TOOLCHAIN"
+      ],
+      "optional": true,
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.usd-map.compiler",
+      "domain": "Q-CONTENT",
+      "rfc": "0009",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "R59",
+      "description": "RFC 0009 U1 native USD map compiler (tools/quality/usd_map_compile.py; policy quality/usd_authoring/source_compile_v1.json): the U0 room compiles through validate -> content -> game -> brushset (source-authored-brushset/v1) -> vbsp -authored (utils/vbsp/authoredmap.cpp builds brushes and entities in memory; no VMF, no prior BSP) -> vvis -> vrad -> BSP2 assemble -> independent output checks (usd_map_check.py: container, entity records with authored ids, light policy, static-prop lump in the engine's layout, brushes per authored solid, open-surface coverage with material/st/provenance, point and box traces, vphysics models, clusters, line-of-sight and sealed-region visibility, lightmaps) -> one-rename publish into a private store with provenance.json and build.json. Also: two builds are byte-identical stage for stage; a divided room hides its two halves from each other; a 7-sided chamfered solid compiles. Negative fixtures each fail with their code and leave the store unchanged: a bad seal (compile.leak), a missing model, a physics model without collision, a missing material, a reserved role, a role changed against the published package, an unresolved prefab reference, a stale surface id after a clip, an unsupported light input. Seeded mutants of the compiler (swapped st axes, dropped face, shuffled provenance, doubled light, moved entity, skipped vvis, skipped driver leak test) are caught. Setup: SOURCE_USD_TOOLCHAIN as corpus.usd.scene-module; SOURCE_USD_MAP_TOOLS names an install of `./waf configure --tools` from this tree (vbsp with -authored, vvis, vrad, bsp2tool); Portal content in run/runtime ($SOURCE_USD_MAP_RUNTIME overrides). Skipped (never certified) without them.",
+      "result_protocol": "checks-v1",
+      "min_checks": 39,
+      "timeout_seconds": 900,
+      "command": [
+        "{python}",
+        "tools/quality/corpus/usd_runner.py",
+        "tools.quality.tests.test_usd_map_compile"
+      ],
+      "sources": [
+        "tools/quality/corpus/usd_runner.py",
+        "tools/quality/conformance_result.py",
+        "tools/quality/corpus/provenance.py",
+        "quality/product_profiles/pbrt-map-linux-tools.json",
+        "tools/quality/usd_map_compile.py",
+        "tools/quality/usd_map_check.py",
+        "tools/quality/usd_authoring_validate.py",
+        "tools/quality/playable_maps.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/source_content.py",
+        "tools/quality/bsp2_reader.py",
+        "tools/quality/legacy_bsp.py",
+        "tools/quality/tests/test_usd_map_compile.py",
+        "tools/quality/tests/test_usd_authoring.py",
+        "quality/usd_authoring/source_compile_v1.json",
+        "quality/usd_authoring/source_authoring_v1.json",
+        "quality/fixtures/usd-authoring/room/room.usda",
+        "quality/fixtures/usd-authoring/room/world.usda",
+        "quality/fixtures/usd-authoring/room/entities.usda",
+        "quality/fixtures/usd-authoring/room/prefabs/metal_box.usda",
+        "utils/vbsp/authoredmap.cpp",
+        "utils/vbsp/authoredmap.h",
+        "utils/vbsp/staticprop.cpp",
+        "utils/vrad/vradstaticprops.cpp"
+      ],
+      "requires": [
+        "env:SOURCE_USD_TOOLCHAIN",
+        "env:SOURCE_USD_MAP_TOOLS",
+        "path:run/runtime/portal/portal_pak_dir.vpk"
+      ],
+      "optional": true,
+      "expect": "pass"
+    },
+    {
+      "id": "foundation.strong-id",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "contract": "RFC/0006-modern-cpp-ownership-and-synchronization.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DNDEBUG"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/composition/test_strong_id.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "foundation.strong-id.mixed-tags",
+      "expected_diagnostic": "StrongId<BetaTag>",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/platformtest/composition/test_strong_id_mixed_tags.cpp"
+      ],
+      "expect": "compile-error"
+    },
+    {
+      "id": "foundation.strong-id.implicit",
+      "expected_diagnostic": "unsigned int",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/platformtest/composition/test_strong_id_implicit.cpp"
+      ],
+      "expect": "compile-error"
+    },
+    {
+      "id": "foundation.scoped-resource",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "contract": "RFC/0006-modern-cpp-ownership-and-synchronization.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DNDEBUG"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/composition/test_scoped_resource.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "foundation.scoped-resource.copy",
+      "expected_diagnostic": "deleted",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/platformtest/composition/test_scoped_resource_copy.cpp"
+      ],
+      "expect": "compile-error"
+    },
+    {
+      "id": "foundation.scoped-resource.release-ignored",
+      "expected_diagnostic": "nodiscard",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/platformtest/composition/test_scoped_resource_release_ignored.cpp"
+      ],
+      "expect": "compile-error"
+    },
+    {
+      "id": "debugapi.transport",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-D_GLIBCXX_USE_CXX11_ABI=0",
+        "-I.",
+        "-Iunittests/debugapitest"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/debugapitest/test_transport.cpp",
+        "unittests/debugapitest/conformance/transport_conformance.cpp",
+        "unittests/debugapitest/conformance/transport_fixtures.cpp",
+        "debugapi/core/memory_transport.cpp",
+        "debugapi/core/unix_socket_transport.cpp",
+        "debugapi/core/framing.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "debugapi.unix-socket-endpoint",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-D_GLIBCXX_USE_CXX11_ABI=0",
+        "-I.",
+        "-Iunittests/debugapitest"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/debugapitest/test_unix_socket_endpoint.cpp",
+        "unittests/debugapitest/conformance/transport_conformance.cpp",
+        "unittests/debugapitest/conformance/transport_fixtures.cpp",
+        "debugapi/core/memory_transport.cpp",
+        "debugapi/core/unix_socket_transport.cpp",
+        "debugapi/core/framing.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "debugapi.framing",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-D_GLIBCXX_USE_CXX11_ABI=0",
+        "-I.",
+        "-Iunittests/debugapitest"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/debugapitest/test_framing.cpp",
+        "debugapi/core/framing.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "testing.checks",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "contract": "RFC/0006-modern-cpp-ownership-and-synchronization.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DNDEBUG"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/composition/test_checks.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "testing.checks.failing",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "sources": [
+        "unittests/platformtest/composition/test_checks_failing.cpp"
+      ],
+      "expect": "fail"
+    },
+    {
+      "id": "foundation.units",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0006",
+      "contract": "RFC/0006-modern-cpp-ownership-and-synchronization.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "extra_flags": [
+        "-DNDEBUG"
+      ],
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/composition/test_units.cpp"
+      ],
+      "expect": "pass"
     }
   ]
 }

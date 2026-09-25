@@ -552,6 +552,19 @@
         }
       ]
     },
+    "shape-inertia": {
+      "state": "required",
+      "owner": "R67",
+      "description": "vphysics.shape-inertia.v1: an environment can give its objects the full inertia tensor of their collision solid (Box3D hull mass data about Source's mass center, products of inertia, no rotInertiaLimit); the per-axis API keeps its meaning, and the solver rotates with the tensor (torque-free momentum conserved, angular velocity wanders about a non-principal axis). The legacy model stays the default and is unchanged.",
+      "rules": [
+        {
+          "id": "shape-inertia.contract",
+          "kind": "contract_checks",
+          "provider": "vphysics_box3d",
+          "prefix": "inertia."
+        }
+      ]
+    },
     "ccd-bullets": {
       "state": "planned",
       "owner": "R67",
@@ -638,6 +651,30 @@
       "workload": "contract",
       "provider": "vphysics_box3d",
       "rule": "parallel.contract"
+    },
+    {
+      "fault": "inertia-model-ignored",
+      "workload": "contract",
+      "provider": "vphysics_box3d",
+      "rule": "shape-inertia.contract"
+    },
+    {
+      "fault": "inertia-accepts-populated",
+      "workload": "contract",
+      "provider": "vphysics_box3d",
+      "rule": "shape-inertia.contract"
+    },
+    {
+      "fault": "inertia-tensor-diagonal",
+      "workload": "contract",
+      "provider": "vphysics_box3d",
+      "rule": "shape-inertia.contract"
+    },
+    {
+      "fault": "inertia-clamped",
+      "workload": "contract",
+      "provider": "vphysics_box3d",
+      "rule": "shape-inertia.contract"
     }
   ],
   "profiles": {

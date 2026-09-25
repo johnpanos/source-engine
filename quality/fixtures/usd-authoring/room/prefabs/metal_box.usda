@@ -1,0 +1,14 @@
+#usda 1.0
+(
+    """Prefab for a Portal weighted cube placement. It carries the role and the
+    model; a referencing placement adds its own sourcemap:id and transform."""
+    defaultPrim = "MetalBox"
+    metersPerUnit = 0.0254
+    upAxis = "Z"
+)
+
+def Xform "MetalBox"
+{
+    uniform token sourcemap:role = "prop_physics"
+    uniform string sourcemap:model = "models/props/metal_box.mdl"
+}

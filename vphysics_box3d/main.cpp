@@ -1,5 +1,6 @@
 #include "vphysics_interface.h"
 #include "vphysics/parallel_step.h"
+#include "vphysics/shape_inertia.h"
 #include "vphysics/step_profile.h"
 #include "vstdlib/jobthread.h"
 #include "tier0/dbg.h"
@@ -9,6 +10,7 @@
 #include "box3d/constants.h"
 #include "box3d_convert.h"
 #include "physics_environment.h"
+#include "physics_object.h"
 #include "physics_object_hash.h"
 
 // Box3D runs in Source units: its tolerances scale with this length unit.
@@ -93,6 +95,18 @@ public:
 		m_environments.AddToTail( pEnvironment );
 		return pEnvironment;
 	}
+	// The environment of an object this provider created, or NULL.
+	const CPhysicsEnvironmentBox3D *FindObjectEnvironment( const IPhysicsObject *pObject ) const
+	{
+		for ( int i = 0; pObject && i < m_environments.Count(); i++ )
+		{
+			const CPhysicsEnvironmentBox3D *pEnvironment =
+			    static_cast<const CPhysicsEnvironmentBox3D *>( m_environments[i] );
+			if ( pEnvironment->ContainsObject( pObject ) )
+				return pEnvironment;
+		}
+		return NULL;
+	}
 	bool OwnsEnvironment( const IPhysicsEnvironment *pEnvironment ) const
 	{
 		for ( int i = 0; i < m_environments.Count(); i++ )
@@ -168,6 +182,38 @@ public:
 static CPhysicsStepProfileBox3D g_StepProfile;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CPhysicsStepProfileBox3D, IPhysicsStepProfile,
     VPHYSICS_STEP_PROFILE_INTERFACE_VERSION, g_StepProfile );
+
+// RFC 0013 vphysics.shape-inertia.v1: an environment's objects can take the
+// full inertia tensor of their collision solid (Box3D's hull mass data about
+// Source's mass center) instead of IVP's per-axis inertia; see
+// CPhysicsObjectBox3D::ComputeShapeInertia.
+class CPhysicsShapeInertiaBox3D : public IPhysicsShapeInertia
+{
+public:
+	virtual bool SetInertiaModel( IPhysicsEnvironment *pEnvironment, physics_inertia_model_t model )
+	{
+		if ( !pEnvironment || !g_MainDLLInterface.OwnsEnvironment( pEnvironment ) )
+			return false;
+		return static_cast<CPhysicsEnvironmentBox3D *>( pEnvironment )->SetInertiaModel( model );
+	}
+	virtual physics_inertia_model_t GetInertiaModel( const IPhysicsEnvironment *pEnvironment ) const
+	{
+		if ( !pEnvironment || !g_MainDLLInterface.OwnsEnvironment( pEnvironment ) )
+			return PHYSICS_INERTIA_LEGACY;
+		return static_cast<const CPhysicsEnvironmentBox3D *>( pEnvironment )->GetInertiaModel();
+	}
+	virtual bool GetInertiaTensor( const IPhysicsObject *pObject, float tensor[3][3] ) const
+	{
+		if ( !g_MainDLLInterface.FindObjectEnvironment( pObject ) )
+			return false;
+		static_cast<const CPhysicsObjectBox3D *>( pObject )->GetInertiaTensor( tensor );
+		return true;
+	}
+};
+
+static CPhysicsShapeInertiaBox3D g_ShapeInertia;
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CPhysicsShapeInertiaBox3D, IPhysicsShapeInertia,
+    VPHYSICS_SHAPE_INERTIA_INTERFACE_VERSION, g_ShapeInertia );
 
 #include "physics_collision.h"
 static CPhysicsCollisionBox3D g_PhysicsCollision;

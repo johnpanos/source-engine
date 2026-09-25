@@ -19,13 +19,19 @@ Source revision at assessment: `95798d15` (working tree; AGENTS.md portfolio row
   - It adds a `corpus` runner class of command suites that run a declared
     argv, report checks-v1 on stdout and reject Python `assert`, plus
     48 `corpus.*` rows in the `linux-host-corpus` profile.
-  - The manifest has 220 suites. Plain `plan` is still 157 headless;
-    `--runner gpu` selects 15 and `--runner corpus` 48.
+  - The manifest had 220 suites at the merge. Plain `plan` stayed at
+    157 headless; `--runner gpu` selected 15 and `--runner corpus` 48.
+    Later the same day, R05 and R59 U0 rows brought it to 230 suites:
+    166 headless, 15 GPU and 49 corpus.
   - On the main checkout the corpus class had 23 matched and 25 skipped.
     The skipped rows are optional and need `build-corpus-*` trees or
     environment settings that exist only in the corpus worktree.
   - `conformance.gcc`/`.clang` and the static audit group show 0 deviations.
   - None of the corpus rows is a `quality/baseline.json` check.
+  - Stylelint exempts `quality/fixtures/corpus/` through a new
+    `DATA_FIXTURE_ROOTS`. Those files are oracle inputs whose exact text
+    matters: seeded constructs and line-numbered expectations. There is a
+    fixture test (38 stylelint tests); removing the exemption makes it fail.
 - `quality/baseline.json` validates with 37 tools, 6 content corpora,
   17 profiles, 41 checks and 20 baseline entries.
 - Hosted CI: `conformance.yml` has run on GitHub. The two 2026-09-23 runs

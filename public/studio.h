@@ -3132,6 +3132,14 @@ inline const mstudioflexcontroller_t *mstudioflexcontrollerui_t::pController( in
 //							0x2000
 #define STUDIO_AL_POSE		0x4000		// layer blends using a pose parameter instead of parent cycle
 
+// Oldest version Studio_ConvertStudioHdrToNewVersion converts (Orange Box models are v44).
+// The conversion keeps the model's own version, so tools that need a usable header
+// check this range instead of STUDIO_VERSION.
+#define STUDIO_VERSION_CONVERTIBLE_MIN 44
+inline bool Studio_IsConvertibleVersion( int version )
+{
+	return version >= STUDIO_VERSION_CONVERTIBLE_MIN && version <= STUDIO_VERSION;
+}
 
 // Insert this code anywhere that you need to allow for conversion from an old STUDIO_VERSION
 // to a new one.

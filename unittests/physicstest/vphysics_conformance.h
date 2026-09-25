@@ -100,6 +100,8 @@ void TestVehicles( const VehicleFixture_t *pFixtures, int count );
 void TestCollideModels( const struct vcollide_t *pFixture, const char *pBsp );
 // Gameplay dynamics scenes with the authored cube (pCubeFixture: metal_box.phy).
 void TestDynamics( const struct vcollide_t *pCubeFixture );
+// Gyroscopic torque: torque-free tumble, intermediate axis, gyroscope precession.
+void TestGyroscopic();
 
 // Benchmark scenes and the parallel-step capability contract (RFC 0013),
 // run instead of the conformance clauses when --bench is given. See
@@ -117,5 +119,8 @@ struct BenchOptions_t
 // Returns 0 when the scene ran (its checks decide the result) and 3 when the
 // provider lacks a requested capability.
 int RunBench( const BenchOptions_t &options );
+// vphysics.shape-inertia.v1 contract (inertia.* checks), run with the
+// parallel-step contract; returns 3 when the provider lacks the capability.
+int RunShapeInertiaContract();
 
 #endif // VPHYSICS_CONFORMANCE_H

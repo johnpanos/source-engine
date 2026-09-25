@@ -304,6 +304,7 @@ CON_COMMAND( physics_step_profile, "Print the server physics environment's last 
 void CPhysicsHook::LevelInitPreEntity() 
 {
 	physenv = CreateServerPhysicsEnvironment();
+	PhysApplyInertiaModel( physenv, "server" );
 	physics_performanceparams_t params;
 	params.Defaults();
 	params.maxCollisionsPerObjectPerTimestep = 10;

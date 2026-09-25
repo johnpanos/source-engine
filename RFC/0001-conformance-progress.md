@@ -25,6 +25,23 @@ target to implement against and adds one manifest row when it lands.
 | Gyro aim policy (Android input) | `inputsystem/gyro_math.cpp` | `input.gyro` (+ `.sensitivity`) | pure policy green |
 | Single-vibrator rumble policy (Android input) | `inputsystem/vibrator_policy.cpp` | `input.vibrator` (+ `.sensitivity`) | pure policy green |
 
+**R06 clause map (reviewed 2026-09-25).** Each implementation clause of the
+R06 row has evidence in `platform.composition` (`test_composition.cpp`) or
+`platform.test-runner`:
+
+| R06 clause | Evidence |
+| --- | --- |
+| Unit runner composes typed providers without ambient factories | `utils/unittest/capability_runner.cpp` builds an `ApplicationComposition` from typed `ProviderDescriptor::Define<…>` entries, with no `CreateInterface` or factory lookup (`platform.test-runner`) |
+| Required/optional validation | `ValidateBeforeEffects`, and the optional-dependency cases: absent is explicit, present creates an edge, a mixed required+optional declaration is rejected |
+| Failure-at-each-stage rollback | `LifecycleOracle` at all six stages (construct, connect and init of source and consumer), with ordered rollback |
+| Repeat-instance tests | `RetryAndIsolation`: retry after a failed start, a second independent composition with separate authority, a teardown that leaves the first running, and idempotent stop |
+| Negative providers | The same oracle rejects `Borrow`, `Task`, `Subscription` and `Bridge` faults |
+
+R06 stays `partial` only because its hard-gate prerequisite R05 is open
+(quantity/conversion vocabulary and matchers). When R05 closes, R06 can close
+on this evidence plus a fresh run. That also clears `roadmap.check`'s
+"R15 done while R06 partial" error.
+
 The last four rows were added after the first three (2026-09-22 to
 2026-09-24). The composition and tool-process rows follow the contract pattern
 below. The two input rows test pure policy code; they have no contract header

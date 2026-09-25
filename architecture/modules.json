@@ -50,6 +50,9 @@
         "externalHeaders": [
           "ktx.h",
           "vulkan/vulkan_core.h"
+        ],
+        "uselib": [
+          "VULKAN"
         ]
       },
       {
@@ -160,6 +163,9 @@
           "tier1/convar.h",
           "tier1/utllinkedlist.h",
           "tier0/memdbgon.h"
+        ],
+        "uselib": [
+          "SDL3"
         ]
       },
       {
@@ -176,7 +182,11 @@
           "tier0/icommandline.h"
         ],
         "allowedEdges": [
-          "platform.window-provider-contract"
+          "platform.window-provider-contract",
+          "platform.sdl3.launcher"
+        ],
+        "uselib": [
+          "SDL3"
         ]
       },
       {
@@ -315,6 +325,9 @@
         ],
         "externalHeaders": [
           "vulkan/vulkan.h"
+        ],
+        "uselib": [
+          "VULKAN"
         ]
       },
       {
@@ -327,6 +340,9 @@
         "allowedEdges": [
           "content.texture-contract",
           "render.vulkan.core"
+        ],
+        "uselib": [
+          "VULKAN"
         ]
       },
       {
@@ -347,6 +363,9 @@
         "legacyIncludes": [
           "render/world_mesh_upload.h",
           "tier0/dbg.h"
+        ],
+        "uselib": [
+          "VULKAN"
         ]
       },
       {
@@ -360,6 +379,9 @@
         ],
         "externalHeaders": [
           "SDL3/SDL.h"
+        ],
+        "uselib": [
+          "SDL3"
         ]
       },
       {
@@ -377,6 +399,10 @@
           "SDL3/SDL.h",
           "SDL3/SDL_vulkan.h",
           "vulkan/vulkan.h"
+        ],
+        "uselib": [
+          "SDL3",
+          "VULKAN"
         ]
       },
       {
@@ -410,6 +436,10 @@
           "csignal",
           "fstream",
           "iterator"
+        ],
+        "uselib": [
+          "SDL3",
+          "VULKAN"
         ]
       },
       {
@@ -422,6 +452,9 @@
           "render.contracts",
           "render.conformance-tests",
           "render.vulkan.core"
+        ],
+        "uselib": [
+          "VULKAN"
         ]
       },
       {
@@ -495,6 +528,9 @@
           "render.contracts",
           "platform.composition",
           "platform.window-support"
+        ],
+        "uselib": [
+          "SDL2"
         ]
       },
       {
@@ -515,6 +551,9 @@
           "testing.contracts",
           "platform.composition",
           "platform.window-support"
+        ],
+        "uselib": [
+          "SDL2"
         ]
       },
       {
@@ -615,6 +654,7 @@
       "new",
       "optional",
       "set",
+      "source_location",
       "span",
       "sstream",
       "string",
@@ -920,6 +960,23 @@
           "public/"
         ],
         "reason": "First-party runtime module assembled by legacy application composition."
+      }
+    ],
+    "unbuiltVendorPaths": [
+      {
+        "prefix": "box3d/extern/",
+        "reason": "Box3D's vendored sokol headers used only by its standalone samples; vphysics_box3d compiles box3d/src only.",
+        "evidence": "Reviewed 2026-09-25 (R07): no Waf target or wscript names this tree, and none of the 47 recorded build*/toolchain-invocations.json files compiles a source under it; archlint rechecks the recorded trees on every run."
+      },
+      {
+        "prefix": "box3d/samples/",
+        "reason": "Box3D's standalone sample application, not part of any product.",
+        "evidence": "Reviewed 2026-09-25 (R07): no Waf target or wscript names this tree, and none of the 47 recorded build*/toolchain-invocations.json files compiles a source under it; archlint rechecks the recorded trees on every run."
+      },
+      {
+        "prefix": "external/portal2_steam2_xsi/",
+        "reason": "Vendored Softimage XSI SMD exporter plugin source, kept for reference; no product or tool target builds it.",
+        "evidence": "Reviewed 2026-09-25 (R07): no Waf target or wscript names this tree, and none of the 47 recorded build*/toolchain-invocations.json files compiles a source under it; archlint rechecks the recorded trees on every run."
       }
     ]
   },

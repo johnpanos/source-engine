@@ -150,6 +150,18 @@ class RuleTests(unittest.TestCase):
         self.assertFalse(bench.evaluate_rule(rule, {}, {"p": bad})[0])
         self.assertTrue(bench.evaluate_rule(rule, {}, {"p": {"outcome": "pass", "failed_checks": []}})[0])
 
+    def test_contract_checks_need_the_prefix_and_all_passing(self):
+        rule = {"kind": "contract_checks", "provider": "p", "prefix": "inertia."}
+        self.assertIsNone(bench.evaluate_rule(rule, {}, {})[0])
+        other = {"outcome": "fail", "check_status": {"parallel.creates": "fail", "inertia.selects": "pass"}}
+        self.assertTrue(bench.evaluate_rule(rule, {}, {"p": other})[0])
+        failing = {"outcome": "fail", "check_status": {"inertia.selects": "fail", "inertia.energy": "pass"}}
+        self.assertFalse(bench.evaluate_rule(rule, {}, {"p": failing})[0])
+        none = {"outcome": "pass", "check_status": {"parallel.creates": "pass"}}
+        self.assertFalse(bench.evaluate_rule(rule, {}, {"p": none})[0])
+        crashed = {"outcome": "crash", "check_status": {"inertia.selects": "pass"}}
+        self.assertFalse(bench.evaluate_rule(rule, {}, {"p": crashed})[0])
+
 
 class ContentionTests(unittest.TestCase):
     def test_contention_threshold(self):

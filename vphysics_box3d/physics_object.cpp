@@ -59,7 +59,8 @@ CPhysicsObjectBox3D::CPhysicsObjectBox3D( CPhysicsEnvironmentBox3D *pEnv, const 
 	  m_contents( CONTENTS_SOLID ), m_callbackFlags( kDefaultCallbacks ), m_gameFlags( 0 ), m_gameIndex( 0 ),
 	  m_isStatic( isStatic ), m_isTrigger( false ), m_collisionEnabled( pParams ? pParams->enableCollisions : true ),
 	  m_gravityEnabled( !isStatic ), m_stepGravity( false ), m_frictionless( false ), m_dragEnabled( false ), m_motionEnabled( true ), m_shadowTempGravityDisable( false ),
-	  m_wasAwake( false ), m_reportPreStep( false ), m_hasTouchedDynamic( false ), m_asleepSinceCreation( true )
+	  m_wasAwake( false ), m_reportPreStep( false ), m_hasTouchedDynamic( false ), m_asleepSinceCreation( true ),
+	  m_shapeInertia( !isStatic && pEnv->GetInertiaModel() == PHYSICS_INERTIA_SHAPE )
 {
 	objectparams_t defaults;
 	memset( &defaults, 0, sizeof( defaults ) );
@@ -336,6 +337,13 @@ int CPhysicsObjectBox3D::GetShapes( b3ShapeId *pShapes, int capacity ) const
 // clipped below at |I| * rotInertiaLimit.
 void CPhysicsObjectBox3D::ComputeInitialInertia()
 {
+	for ( int i = 0; i < 3; i++ )
+	{
+		for ( int j = 0; j < 3; j++ )
+			m_inertiaCoupling[i][j] = i == j ? 1.0f : 0.0f;
+	}
+	if ( m_shapeInertia && ComputeShapeInertia() )
+		return;
 	Vector perMass( 1, 1, 1 );
 	if ( m_sphereRadius > 0.0f )
 	{
@@ -355,6 +363,85 @@ void CPhysicsObjectBox3D::ComputeInitialInertia()
 	}
 }
 
+// RFC 0013 vphysics.shape-inertia.v1: the collision solid's tensor about the
+// mass center at this mass and inertia scale, with no rotInertiaLimit clip. A
+// sphere, or a collide without solid volume, keeps the legacy inertia (a
+// sphere's is already its exact 2/5 m r^2).
+bool CPhysicsObjectBox3D::ComputeShapeInertia()
+{
+	if ( m_sphereRadius > 0.0f || !m_pCollide )
+		return false;
+	double volume = 0.0;
+	double tensor[3][3];
+	if ( !ComputeSolidInertia( ToBox3D( m_pCollide ), m_massCenter, &volume, tensor ) )
+		return false;
+	// Unit density in cubic inches: the tensor per cubic inch is in square
+	// inches; scale to this mass and to kg*m^2.
+	double scale = (double)m_mass * m_inertiaScale / ( volume * kInertiaToBox3D );
+	for ( int i = 0; i < 3; i++ )
+	{
+		if ( tensor[i][i] <= 0.0 )
+			return false;
+	}
+	for ( int i = 0; i < 3; i++ )
+	{
+		m_inertia[i] = (float)( tensor[i][i] * scale );
+		for ( int j = 0; j < 3; j++ )
+			m_inertiaCoupling[i][j] = (float)( tensor[i][j] / sqrt( tensor[i][i] * tensor[j][j] ) );
+	}
+	return true;
+}
+
+void CPhysicsObjectBox3D::GetInertiaTensor( float tensor[3][3] ) const
+{
+	for ( int i = 0; i < 3; i++ )
+	{
+		for ( int j = 0; j < 3; j++ )
+		{
+			tensor[i][j] = i == j ? m_inertia[i]
+			                      : m_inertiaCoupling[i][j] * sqrtf( m_inertia[i] * m_inertia[j] );
+		}
+	}
+}
+
+void CPhysicsObjectBox3D::GetInverseInertiaTensor( double inverse[3][3] ) const
+{
+	float tensor[3][3];
+	GetInertiaTensor( tensor );
+	double cofactor[3][3];
+	for ( int i = 0; i < 3; i++ )
+	{
+		for ( int j = 0; j < 3; j++ )
+		{
+			int i1 = ( i + 1 ) % 3, i2 = ( i + 2 ) % 3, j1 = ( j + 1 ) % 3, j2 = ( j + 2 ) % 3;
+			cofactor[i][j] = (double)tensor[i1][j1] * tensor[i2][j2] - (double)tensor[i1][j2] * tensor[i2][j1];
+		}
+	}
+	double det = tensor[0][0] * cofactor[0][0] + tensor[0][1] * cofactor[0][1] + tensor[0][2] * cofactor[0][2];
+	for ( int i = 0; i < 3; i++ )
+	{
+		for ( int j = 0; j < 3; j++ )
+			inverse[i][j] = det > 0.0 ? cofactor[j][i] / det : 0.0;
+	}
+}
+
+Vector CPhysicsObjectBox3D::MultiplyInverseInertia( const Vector &local ) const
+{
+	if ( !m_isStatic && !m_motionEnabled )
+		return vec3_origin;
+	if ( !m_shapeInertia )
+	{
+		Vector invInertia = GetInvInertia();
+		return Vector( local.x * invInertia.x, local.y * invInertia.y, local.z * invInertia.z );
+	}
+	double inverse[3][3];
+	GetInverseInertiaTensor( inverse );
+	Vector out;
+	for ( int i = 0; i < 3; i++ )
+		out[i] = (float)( inverse[i][0] * local.x + inverse[i][1] * local.y + inverse[i][2] * local.z );
+	return out;
+}
+
 void CPhysicsObjectBox3D::ApplyMassProperties()
 {
 	if ( m_isStatic || b3Body_GetType( m_body ) != b3_dynamicBody )
@@ -371,9 +458,27 @@ void CPhysicsObjectBox3D::ApplyMassProperties()
 	Vector inertia = m_inertia * kInertiaToBox3D;
 	for ( int i = 0; i < 3; i++ )
 		inertia[i] = clamp( inertia[i], 1e-6f, kMaxBox3DInertia );
-	mass.inertia.cx = { inertia.x, 0, 0 };
-	mass.inertia.cy = { 0, inertia.y, 0 };
-	mass.inertia.cz = { 0, 0, inertia.z };
+	if ( m_shapeInertia )
+	{
+		// D^1/2 C D^1/2 with the clamped diagonal; column-major.
+		b3Vec3 *pColumns[3] = { &mass.inertia.cx, &mass.inertia.cy, &mass.inertia.cz };
+		for ( int col = 0; col < 3; col++ )
+		{
+			float values[3];
+			for ( int row = 0; row < 3; row++ )
+			{
+				values[row] = row == col ? inertia[row]
+				                         : m_inertiaCoupling[row][col] * sqrtf( inertia[row] * inertia[col] );
+			}
+			*pColumns[col] = { values[0], values[1], values[2] };
+		}
+	}
+	else
+	{
+		mass.inertia.cx = { inertia.x, 0, 0 };
+		mass.inertia.cy = { 0, inertia.y, 0 };
+		mass.inertia.cz = { 0, 0, inertia.z };
+	}
 	b3Body_SetMassData( m_body, mass );
 }
 
@@ -565,6 +670,14 @@ Vector CPhysicsObjectBox3D::GetInvInertia( void ) const
 {
 	if ( !m_isStatic && !m_motionEnabled )
 		return vec3_origin;
+	if ( m_shapeInertia )
+	{
+		// The inverse tensor's diagonal: the angular acceleration per unit
+		// torque about each object axis.
+		double inverse[3][3];
+		GetInverseInertiaTensor( inverse );
+		return Vector( (float)inverse[0][0], (float)inverse[1][1], (float)inverse[2][2] );
+	}
 	return Vector( m_inertia.x > 0 ? 1.0f / m_inertia.x : 0.0f, m_inertia.y > 0 ? 1.0f / m_inertia.y : 0.0f,
 		m_inertia.z > 0 ? 1.0f / m_inertia.z : 0.0f );
 }
@@ -628,6 +741,17 @@ float CPhysicsObjectBox3D::GetEnergy() const
 	WorldToLocalVector( &localAngular, angular );
 	float rotational = m_inertia.x * localAngular.x * localAngular.x + m_inertia.y * localAngular.y * localAngular.y +
 		m_inertia.z * localAngular.z * localAngular.z;
+	if ( m_shapeInertia )
+	{
+		float tensor[3][3];
+		GetInertiaTensor( tensor );
+		rotational = 0.0f;
+		for ( int i = 0; i < 3; i++ )
+		{
+			for ( int j = 0; j < 3; j++ )
+				rotational += localAngular[i] * tensor[i][j] * localAngular[j];
+		}
+	}
 	return 0.5f * ( m_mass * linear.LengthSqr() + rotational * kInertiaToBox3D );
 }
 
@@ -654,6 +778,14 @@ void CPhysicsObjectBox3D::RecomputeDragBases()
 
 	float invInertiaIvp[3] = { m_inertia.x > 0 ? 1.0f / m_inertia.x : 0.0f, m_inertia.z > 0 ? 1.0f / m_inertia.z : 0.0f,
 		m_inertia.y > 0 ? 1.0f / m_inertia.y : 0.0f };
+	if ( m_shapeInertia )
+	{
+		double inverse[3][3];
+		GetInverseInertiaTensor( inverse );
+		invInertiaIvp[0] = (float)inverse[0][0];
+		invInertiaIvp[1] = (float)inverse[2][2];
+		invInertiaIvp[2] = (float)inverse[1][1];
+	}
 	float hX = 0.5f * dX, hY = 0.5f * dY, hZ = 0.5f * dZ;
 	float angIvp[3];
 	angIvp[0] = areaFractions.z * AngDragIntegral( invInertiaIvp[0], hX, hY, hZ ) + areaFractions.y * AngDragIntegral( invInertiaIvp[0], hX, hZ, hY );
@@ -1005,6 +1137,16 @@ void CPhysicsObjectBox3D::CalculateVelocityOffset( const Vector &forceVector, co
 		Vector invInertia( m_inertia.x > 0 ? 1.0f / m_inertia.x : 0.0f, m_inertia.y > 0 ? 1.0f / m_inertia.y : 0.0f,
 			m_inertia.z > 0 ? 1.0f / m_inertia.z : 0.0f );
 		*centerAngularVelocity = AngularImpulse( torque.x * invInertia.x, torque.y * invInertia.y, torque.z * invInertia.z );
+		if ( m_shapeInertia )
+		{
+			double inverse[3][3];
+			GetInverseInertiaTensor( inverse );
+			for ( int i = 0; i < 3; i++ )
+			{
+				( *centerAngularVelocity )[i] =
+				    (float)( inverse[i][0] * torque.x + inverse[i][1] * torque.y + inverse[i][2] * torque.z );
+			}
+		}
 	}
 }
 
