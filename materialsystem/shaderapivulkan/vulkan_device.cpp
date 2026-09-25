@@ -44,6 +44,19 @@ void SetError( std::string *outError, const std::string &message )
 	Log( "error: %s\n", message.c_str() );
 }
 
+bool InstanceHasExtension( const char *name )
+{
+	uint32_t count = 0;
+	vkEnumerateInstanceExtensionProperties( nullptr, &count, nullptr );
+	std::vector<VkExtensionProperties> extensions( count );
+	if ( count )
+		vkEnumerateInstanceExtensionProperties( nullptr, &count, extensions.data() );
+	for ( const VkExtensionProperties &extension : extensions )
+		if ( std::strcmp( extension.extensionName, name ) == 0 )
+			return true;
+	return false;
+}
+
 const char *ResultString( VkResult r )
 {
 	switch ( r )
@@ -196,7 +209,14 @@ bool CVulkanContext::CreateInstance( std::string *outError )
 	}
 
 	m_validationEnabled = wantValidation && layerAvailable;
-	if ( m_validationEnabled )
+	// VK_EXT_debug_utils: the validation messenger, and object names and labels
+	// for capture tools (SetupDebugTools decides whether they are emitted).
+	m_debugUtilsExtension =
+	    m_validationEnabled || ( m_config.debugLabels != DebugLabelPolicy::Off &&
+	                               InstanceHasExtension( VK_EXT_DEBUG_UTILS_EXTENSION_NAME ) );
+	if ( m_debugUtilsExtension &&
+	     std::none_of( extensions.begin(), extensions.end(), []( const char *name )
+	         { return std::strcmp( name, VK_EXT_DEBUG_UTILS_EXTENSION_NAME ) == 0; } ) )
 		extensions.push_back( VK_EXT_DEBUG_UTILS_EXTENSION_NAME );
 
 	VkApplicationInfo appInfo = {};
@@ -462,6 +482,7 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 	}
 
 	std::vector<const char *> deviceExts = { kSwapchainExtension };
+	bool toolingInfo = false;
 	// sRGB views of the swapchain images (linear-space blending of sRGB writes).
 	{
 		uint32_t extCount = 0;
@@ -486,6 +507,13 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 			deviceExts.push_back( VK_KHR_MAINTENANCE_2_EXTENSION_NAME );
 			m_srgbAttachments = true;
 		}
+		// Debug shader variants carry NonSemantic.Shader.DebugInfo.100.
+		m_nonSemanticInfo = !m_config.shaderDebugDirectory.empty() &&
+		                    has( VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME );
+		if ( m_nonSemanticInfo )
+			deviceExts.push_back( VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME );
+		// A capture tool announces itself through VK_EXT_tooling_info.
+		toolingInfo = has( VK_EXT_TOOLING_INFO_EXTENSION_NAME );
 	}
 
 	// Exact occlusion counts, which auto-exposure's luminance histogram needs
@@ -566,6 +594,8 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 
 	vkGetDeviceQueue( m_device, m_graphicsQueueFamily, 0, &m_graphicsQueue );
 	vkGetDeviceQueue( m_device, m_presentQueueFamily, 0, &m_presentQueue );
+	SetupDebugTools( toolingInfo );
+	m_compute.SetDebugTools( &m_shaderLibrary, &m_debugUtils );
 	std::string computeError;
 	if ( !m_compute.Init( m_physicalDevice, m_device, m_computeCaps, &computeError ) )
 		std::fprintf( stderr, "[NativeVulkan] compute unavailable: %s\n", computeError.c_str() );
@@ -575,6 +605,51 @@ bool CVulkanContext::CreateLogicalDevice( std::string *outError )
 	    m_computeCaps.rayQuery ? "on" : "off", VK_API_VERSION_MAJOR( m_computeCaps.deviceApiVersion ),
 	    VK_API_VERSION_MINOR( m_computeCaps.deviceApiVersion ) );
 	return true;
+}
+
+void CVulkanContext::SetupDebugTools( bool toolingInfo )
+{
+	bool toolWantsMarkers = false;
+	std::string tools;
+	const auto getTools = toolingInfo
+	                          ? reinterpret_cast<PFN_vkGetPhysicalDeviceToolPropertiesEXT>(
+	                                vkGetInstanceProcAddr(
+	                                    m_instance, "vkGetPhysicalDeviceToolPropertiesEXT" ) )
+	                          : nullptr;
+	if ( getTools )
+	{
+		uint32_t count = 0;
+		getTools( m_physicalDevice, &count, nullptr );
+		std::vector<VkPhysicalDeviceToolPropertiesEXT> found( count );
+		for ( VkPhysicalDeviceToolPropertiesEXT &tool : found )
+			tool.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TOOL_PROPERTIES_EXT;
+		if ( count && getTools( m_physicalDevice, &count, found.data() ) == VK_SUCCESS )
+		{
+			for ( uint32_t i = 0; i < count; ++i )
+			{
+				toolWantsMarkers = toolWantsMarkers ||
+				                   ( found[i].purposes & VK_TOOL_PURPOSE_DEBUG_MARKERS_BIT_EXT );
+				tools += ( tools.empty() ? "" : ", " ) + std::string( found[i].name );
+			}
+		}
+	}
+	if ( DebugLabelsWanted( m_config.debugLabels, m_validationEnabled, toolWantsMarkers ) )
+	{
+		if ( m_debugUtilsExtension && m_debugUtils.Load( m_instance, m_device ) )
+			Log( "debug names and labels on (%s)\n",
+			    m_config.debugLabels == DebugLabelPolicy::On ? "-vkdebuglabels"
+			    : m_validationEnabled                        ? "validation"
+			                                                 : tools.c_str() );
+		else
+			Log( "debug names and labels unavailable (no VK_EXT_debug_utils)\n" );
+	}
+	if ( m_config.shaderDebugDirectory.empty() )
+		return;
+	const VulkanShaderLibrary::LoadReport report = m_shaderLibrary.LoadDebugDirectory(
+	    m_config.shaderDebugDirectory.c_str(), m_nonSemanticInfo );
+	Log( "debug shaders: %u from %s\n", report.loaded, m_config.shaderDebugDirectory.c_str() );
+	for ( const std::string &rejected : report.rejected )
+		Log( "debug shader not used: %s\n", rejected.c_str() );
 }
 
 bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldSwapchain )
@@ -726,6 +801,8 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 	vkGetSwapchainImagesKHR( m_device, m_swapchain, &actual, nullptr );
 	m_presentImages.resize( actual );
 	vkGetSwapchainImagesKHR( m_device, m_swapchain, &actual, m_presentImages.data() );
+	for ( uint32_t i = 0; i < actual; ++i )
+		m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE, m_presentImages[i], "swapchain image %u", i );
 	if ( !GrowRenderFinished( actual, outError ) )
 		return false;
 
@@ -783,6 +860,7 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 			SetError( outError, "vkCreateImage (back buffer) failed" );
 			return false;
 		}
+		m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE, m_swapImages[i], "back buffer %u", i );
 		VkMemoryRequirements req = {};
 		vkGetImageMemoryRequirements( m_device, m_swapImages[i], &req );
 		bool found = false;
@@ -862,6 +940,7 @@ bool CVulkanContext::CreateDepthResources( std::string *outError )
 			SetError( outError, "vkCreateImage (depth) failed" );
 			return false;
 		}
+		m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE, m_depthImages[i], "back buffer depth %u", i );
 		VkMemoryRequirements req = {};
 		vkGetImageMemoryRequirements( m_device, m_depthImages[i], &req );
 		bool found = false;
@@ -1291,8 +1370,13 @@ static bool VertexInputLocations( const uint32_t *words, size_t count, uint64_t 
 }
 
 bool CVulkanContext::CreateShaderModule(
-    const uint32_t *code, size_t sizeBytes, VkShaderModule *outModule, std::string *outError )
+    const uint32_t *embedded, size_t embeddedBytes, VkShaderModule *outModule,
+    std::string *outError )
 {
+	// The embedded code, or its debug variant (vulkan_shader_library.h).
+	const ShaderModuleCode resolved = m_shaderLibrary.Resolve( embedded, embeddedBytes );
+	const uint32_t *code = resolved.code;
+	const size_t sizeBytes = resolved.sizeBytes;
 	VkShaderModuleCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 	info.codeSize = sizeBytes;
@@ -1303,6 +1387,11 @@ bool CVulkanContext::CreateShaderModule(
 		SetError( outError, std::string( "vkCreateShaderModule failed: " ) + ResultString( r ) );
 		return false;
 	}
+	m_debugUtils.NameF( VK_OBJECT_TYPE_SHADER_MODULE, *outModule, "%s%s",
+	    resolved.name ? resolved.name : "unindexed shader",
+	    resolved.debugVariant ? " (debug)" : "" );
+	if ( m_debugUtils.Active() )
+		m_moduleNames[*outModule] = resolved.name ? resolved.name : "unindexed shader";
 	// A handle can be reused after its module is destroyed; forget the old one.
 	m_vertexInputLocations.erase( *outModule );
 	uint64_t locations = 0;
@@ -2829,6 +2918,7 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
 		m_whiteCubeHandle = CreateManagedTexture(
 		    1, 1, VK_FORMAT_R8G8B8A8_UNORM, outError, 0, 1, VK_FORMAT_UNDEFINED, true );
+		NameManagedTexture( m_whiteCubeHandle, "white cube" );
 		if ( m_whiteCubeHandle < 0 )
 			return false;
 		const uint8_t white[4] = { 255, 255, 255, 255 };
@@ -2841,6 +2931,7 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		// shadow field when the map has none).
 		m_whiteVolumeHandle = CreateManagedTexture(
 		    1, 1, VK_FORMAT_R8G8B8A8_UNORM, outError, 0, 1, VK_FORMAT_UNDEFINED, false, 2 );
+		NameManagedTexture( m_whiteVolumeHandle, "white volume" );
 		const uint8_t whiteVolume[8] = { 255, 255, 255, 255, 255, 255, 255, 255 };
 		if ( m_whiteVolumeHandle < 0 || !UploadManagedTexture( m_whiteVolumeHandle, whiteVolume,
 		                                    sizeof( whiteVolume ), outError ) )
@@ -3378,6 +3469,15 @@ VkPipeline CVulkanContext::BuildMaterialPipeline( const DynRasterState &state, V
 	if ( vkCreateGraphicsPipelines( m_device, m_pipelineCache, 1, &gp, nullptr, &pipeline ) !=
 	     VK_SUCCESS )
 		pipeline = VK_NULL_HANDLE;
+	if ( m_debugUtils.Active() && pipeline != VK_NULL_HANDLE )
+	{
+		const auto vertName = m_moduleNames.find( vert );
+		const auto fragName = m_moduleNames.find( frag );
+		m_debugUtils.NameF( VK_OBJECT_TYPE_PIPELINE, pipeline, "%s / %s%s",
+		    vertName != m_moduleNames.end() ? vertName->second : "?",
+		    fragName != m_moduleNames.end() ? fragName->second : "?",
+		    samples > 1 ? " (MSAA)" : "" );
+	}
 	return pipeline;
 }
 
@@ -3612,6 +3712,7 @@ bool CVulkanContext::InitPbrDirectPipeline( std::string *outError )
 	using namespace render::pbr;
 	m_pbrSplitSumHandle = CreateManagedTexture(
 	    kSplitSumSize, kSplitSumSize, VK_FORMAT_R32G32B32A32_SFLOAT, outError );
+	NameManagedTexture( m_pbrSplitSumHandle, "PBR split-sum LUT" );
 	if ( m_pbrSplitSumHandle < 0 )
 		return false;
 	std::vector<float> texels;
@@ -4816,6 +4917,7 @@ bool CVulkanContext::RecordPendingUploads( VkCommandBuffer cmd, StreamBuffer &st
 {
 	if ( m_pendingUploads.empty() )
 		return true;
+	ScopedDebugLabel label( m_debugUtils, "texture uploads" );
 	CFrameCostScope cost( m_frameCost, kCostTextureUpload );
 	if ( !EnsureStreamBuffer(
 	         stream, m_pendingUploadData.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT ) )
@@ -5338,8 +5440,73 @@ void CVulkanContext::BeginTargetPass( VkCommandBuffer cmd, int target, bool srgb
 		    srgb ? m_framebuffersSrgb[m_acquiredImage] : m_framebuffers[m_acquiredImage];
 	}
 	GetTargetExtent( target, &rp.renderArea.extent.width, &rp.renderArea.extent.height );
+	if ( m_debugUtils.Active() )
+	{
+		const std::string &name = IsRenderTargetTexture( target )
+		                              ? m_managedTextures[static_cast<size_t>( target )].debugName
+		                              : std::string();
+		char label[160];
+		std::snprintf( label, sizeof( label ), "pass: %s%s",
+		    target < 0 ? "back buffer" : name.empty() ? "render target" : name.c_str(),
+		    srgb ? " (sRGB)" : "" );
+		m_debugUtils.InsertLabel( label );
+	}
 	vkCmdBeginRenderPass( cmd, &rp, VK_SUBPASS_CONTENTS_INLINE );
 	m_frameCost.Add( kCostRenderPass, 0 );
+}
+
+void CVulkanContext::NameManagedTexture( int handle, const char *name )
+{
+	if ( !m_debugUtils.Active() || !name || handle < 0 ||
+	     handle >= static_cast<int>( m_managedTextures.size() ) )
+		return;
+	ManagedTexture &t = m_managedTextures[static_cast<size_t>( handle )];
+	t.debugName = name;
+	m_debugUtils.Name( VK_OBJECT_TYPE_IMAGE, t.image, name );
+	m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE_VIEW, t.view, "%s view", name );
+	m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE_VIEW, t.srgbView, "%s sRGB view", name );
+	m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE, t.depthImage, "%s depth", name );
+	m_debugUtils.NameF( VK_OBJECT_TYPE_IMAGE_VIEW, t.depthView, "%s depth view", name );
+	m_debugUtils.NameF( VK_OBJECT_TYPE_FRAMEBUFFER, t.framebuffer, "%s", name );
+	m_debugUtils.NameF( VK_OBJECT_TYPE_FRAMEBUFFER, t.framebufferSrgb, "%s sRGB", name );
+	m_debugUtils.NameF( VK_OBJECT_TYPE_DESCRIPTOR_SET, t.descSet, "%s", name );
+	m_debugUtils.NameF( VK_OBJECT_TYPE_DESCRIPTOR_SET, t.descSetSrgb, "%s sRGB", name );
+}
+
+void CVulkanContext::QueueFrameLabel( FrameLabelOp op, const char *name, uint32_t argb )
+{
+	if ( !m_debugUtils.Active() )
+		return;
+	// The first record after a present starts the next frame (AppendRecord).
+	if ( m_dynFramePresented )
+		ClearDynamicQueue();
+	m_frameLabels.push_back( { m_dynDrawRecords.size(), op, argb, name ? name : "" } );
+}
+
+void CVulkanContext::ReplayFrameLabels( size_t *cursor, size_t throughRecord )
+{
+	for ( ; *cursor < m_frameLabels.size() && m_frameLabels[*cursor].record <= throughRecord;
+	      ++*cursor )
+	{
+		const FrameLabel &label = m_frameLabels[*cursor];
+		switch ( label.op )
+		{
+		case FrameLabelOp::Push:
+		{
+			// D3DCOLOR (A8R8G8B8); PIX events usually leave alpha at 0.
+			const float color[4] = { ( ( label.argb >> 16 ) & 0xff ) / 255.0f,
+			    ( ( label.argb >> 8 ) & 0xff ) / 255.0f, ( label.argb & 0xff ) / 255.0f, 1.0f };
+			m_debugUtils.PushLabel( label.name.c_str(), label.argb ? color : nullptr );
+			break;
+		}
+		case FrameLabelOp::Pop:
+			m_debugUtils.PopLabel();
+			break;
+		case FrameLabelOp::Insert:
+			m_debugUtils.InsertLabel( label.name.c_str() );
+			break;
+		}
+	}
 }
 
 // D3D9 (SRGBWRITEENABLE) encodes an sRGB-writing draw in hardware and blends it
@@ -5408,6 +5575,7 @@ bool CVulkanContext::FirstPassWantsSrgb() const
 
 void CVulkanContext::RecordTargetCopy( VkCommandBuffer cmd, int srcTarget, const DynDraw &copy )
 {
+	ScopedDebugLabel label( m_debugUtils, "copy to render target" );
 	// Called outside any render pass. The source is the swapchain image (resting
 	// in COLOR_ATTACHMENT_OPTIMAL between passes) or a render-target texture
 	// (resting in SHADER_READ_ONLY); the destination is always a render target.
@@ -5829,6 +5997,7 @@ bool CVulkanContext::SetReflectionProbes(
 	std::string detail;
 	const int handle =
 	    CreateManagedTexture( int( width ), int( height ), VK_FORMAT_R16G16B16A16_SFLOAT, &detail );
+	    NameManagedTexture( handle, "RPRB reflection probes" );
 	if ( handle < 0 ||
 	     !UploadManagedTexture(
 	         handle, reinterpret_cast<const uint8_t *>( copy.data() ), copy.size() * 2, &detail ) )
@@ -6157,6 +6326,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		SetError( outError, std::string( "vkBeginCommandBuffer failed: " ) + ResultString( r ) );
 		return false;
 	}
+	m_debugUtils.BeginFrameCommands( cmd );
 	m_recordBeginUs = FrameClockMicros();
 	if ( m_timestampPool != VK_NULL_HANDLE )
 	{
@@ -6166,8 +6336,12 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	}
 	// Compute work queued since the last frame (RFC 0011 G5), ahead of every
 	// render pass; its barriers make the writes visible to this frame's draws.
-	for ( auto &work : m_computeWork )
-		work( cmd, m_submitSerial + 1 );
+	if ( !m_computeWork.empty() )
+	{
+		ScopedDebugLabel label( m_debugUtils, "compute work" );
+		for ( auto &work : m_computeWork )
+			work( cmd, m_submitSerial + 1 );
+	}
 	m_computeWork.clear();
 	// Texel uploads deferred since the last frame, ahead of every draw. This
 	// slot's staging buffer is free: its fence was waited on above.
@@ -6215,6 +6389,8 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 	rp.renderArea.extent = m_swapExtent;
 	rp.clearValueCount = 2;
 	rp.pClearValues = clears;
+	m_debugUtils.InsertLabel( firstPassSrgb ? "pass: back buffer, cleared (sRGB)"
+	                                        : "pass: back buffer, cleared" );
 	vkCmdBeginRenderPass( cmd, &rp, VK_SUBPASS_CONTENTS_INLINE );
 	m_frameCost.Add( kCostRenderPass, 0 );
 
@@ -6399,8 +6575,10 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 		const DynDraw *lastCopy = nullptr;
 		// Whether the latest scene capture holds this view's depth (glass reads it).
 		bool sceneDepthValid = false;
+		size_t labelCursor = 0;
 		for ( size_t recordIndex = 0; recordIndex < m_dynDrawRecords.size(); ++recordIndex )
 		{
+			ReplayFrameLabels( &labelCursor, recordIndex );
 			const DynDraw &d = m_dynDrawRecords[recordIndex];
 			// A render target deleted after these records were issued: what was
 			// rendered into it is discarded, as it would be on D3D9.
@@ -7245,6 +7423,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				vkCmdDraw( cmd, d.vertexCount, 1, d.firstVertex, fogIndex[recordIndex] );
 			}
 		}
+		ReplayFrameLabels( &labelCursor, m_dynDrawRecords.size() );
 		endActiveQuery( false );
 		// EndFrame closes the swapchain pass and transitions the image for
 		// present or capture, so the frame must end inside it. Either view's pass
@@ -7266,6 +7445,7 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 
 bool CVulkanContext::RecordCapture( VkCommandBuffer cmd, uint32_t imageIndex )
 {
+	ScopedDebugLabel label( m_debugUtils, "capture back buffer" );
 	// Copy the just-rendered color image (currently COLOR_ATTACHMENT_OPTIMAL)
 	// into the host-visible linear capture image.
 	VkImageMemoryBarrier toSrc = {};
@@ -7322,6 +7502,7 @@ bool CVulkanContext::RecordCapture( VkCommandBuffer cmd, uint32_t imageIndex )
 void CVulkanContext::RecordPresentBlit(
     VkCommandBuffer cmd, uint32_t imageIndex, VkImageLayout backBufferLayout, bool capture )
 {
+	ScopedDebugLabel label( m_debugUtils, "present: blit" );
 	VkImageMemoryBarrier pre[2] = {};
 	for ( VkImageMemoryBarrier &b : pre )
 	{
@@ -7617,6 +7798,7 @@ void CVulkanContext::DestroyMsaaPasses()
 
 void CVulkanContext::ResolveBackBuffer( VkCommandBuffer cmd, uint32_t imageIndex )
 {
+	ScopedDebugLabel label( m_debugUtils, "MSAA resolve" );
 	VkImageMemoryBarrier in[2] = {};
 	for ( VkImageMemoryBarrier &b : in )
 	{
@@ -7902,6 +8084,7 @@ bool CVulkanContext::EnsurePresentGamma( std::string *outError )
 	gp.renderPass = m_gammaRenderPass;
 	const VkResult r =
 	    vkCreateGraphicsPipelines( m_device, VK_NULL_HANDLE, 1, &gp, nullptr, &m_gammaPipeline );
+	m_debugUtils.Name( VK_OBJECT_TYPE_PIPELINE, m_gammaPipeline, "present gamma" );
 	vkDestroyShaderModule( m_device, vert, nullptr );
 	vkDestroyShaderModule( m_device, frag, nullptr );
 	if ( r != VK_SUCCESS )
@@ -8003,6 +8186,7 @@ void CVulkanContext::DestroyPresentGamma()
 bool CVulkanContext::RecordPresentGamma(
     VkCommandBuffer cmd, uint32_t imageIndex, VkImageLayout backBufferLayout, bool capture )
 {
+	ScopedDebugLabel label( m_debugUtils, "present: gamma" );
 	if ( m_gammaUnavailable )
 		return false;
 	std::string error;
@@ -8125,6 +8309,7 @@ bool CVulkanContext::EndFrame( std::string *outError )
 	if ( m_timestampPool != VK_NULL_HANDLE )
 		vkCmdWriteTimestamp( cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_timestampPool,
 		    m_currentFrame * 2 + 1 );
+	m_debugUtils.EndFrameCommands();
 	VkResult r = vkEndCommandBuffer( cmd );
 	m_frameCost.Add( kCostRecord, FrameClockMicros() - m_recordBeginUs );
 	if ( r != VK_SUCCESS )
@@ -8793,6 +8978,8 @@ void CVulkanContext::Shutdown()
 			}
 		}
 
+		m_debugUtils.Reset();
+		m_shaderLibrary = VulkanShaderLibrary();
 		vkDestroyDevice( m_device, nullptr );
 		m_device = VK_NULL_HANDLE;
 	}

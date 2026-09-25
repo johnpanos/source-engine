@@ -51,6 +51,8 @@ bool UploadWorldLightmapLayers( CVulkanContext &context,
 				*error = "WMSH LMAP layer upload failed: " + detail;
 			return false;
 		}
+		static const char *const kRoleNames[] = { "LMAP total", "LMAP direct", "LMAP indirect" };
+		context.NameManagedTexture( handle, kRoleNames[role] );
 		context.SetManagedTextureSamplerState( handle, CVulkanContext::kSamplerClampU |
 		                                                   CVulkanContext::kSamplerClampV |
 		                                                   CVulkanContext::kSamplerLinear );
@@ -93,6 +95,7 @@ bool UploadWorldShadowField( CVulkanContext &context,
 			context.DestroyManagedTexture( field );
 		return fail( "shadow field upload failed: " + detail );
 	}
+	context.NameManagedTexture( field, "SDFV shadow field" );
 	// Trilinear, clamped on every axis (a volume's W follows U).
 	context.SetManagedTextureSamplerState( field, CVulkanContext::kSamplerClampU |
 	                                                  CVulkanContext::kSamplerClampV |
@@ -140,6 +143,8 @@ bool UploadWorldProbeVolume( CVulkanContext &context,
 		context.DestroyManagedTexture( atlas );
 		return fail( "PRBV grid table upload failed: " + detail );
 	}
+	context.NameManagedTexture( atlas, "PRBV probe atlas" );
+	context.NameManagedTexture( grids, "PRBV grid table" );
 	// Clamped bilinear filtering is the C++ sampler's Bilinear(); the table
 	// and the state texels are read with texelFetch.
 	context.SetManagedTextureSamplerState( atlas, CVulkanContext::kSamplerClampU |
@@ -162,6 +167,7 @@ bool UploadWorldProbeVolume( CVulkanContext &context,
 			context.DestroyManagedTexture( atlas );
 			return fail( "PRBV change atlas upload failed: " + detail );
 		}
+		context.NameManagedTexture( delta, "PRBV change atlas" );
 		context.SetManagedTextureSamplerState( delta, CVulkanContext::kSamplerClampU |
 		                                                  CVulkanContext::kSamplerClampV |
 		                                                  CVulkanContext::kSamplerLinear );

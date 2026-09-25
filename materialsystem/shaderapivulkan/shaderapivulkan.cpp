@@ -127,7 +127,18 @@ static bool InitVulkanContext(
 	    render_vulkan::MakeSdl3LegacySurfaceHost( legacyWindowRef, outError );
 	if ( !host )
 		return false;
-	if ( !g_VulkanContext.Init( *host, config, outError ) )
+	// Capture-tool support (tools/renderdoc/README.md): object names and command
+	// labels (-vkdebuglabels, -novkdebuglabels; by default on under validation
+	// or a capture tool) and debug shader variants (-vkshaderdir DIR, written by
+	// shaders/regen_material_spv.py --debug-out).
+	render_vulkan::VulkanContextConfig withTools = config;
+	if ( CommandLine()->FindParm( "-vkdebuglabels" ) )
+		withTools.debugLabels = render_vulkan::DebugLabelPolicy::On;
+	else if ( CommandLine()->FindParm( "-novkdebuglabels" ) )
+		withTools.debugLabels = render_vulkan::DebugLabelPolicy::Off;
+	if ( const char *shaderDir = CommandLine()->ParmValue( "-vkshaderdir", (const char *)NULL ) )
+		withTools.shaderDebugDirectory = shaderDir;
+	if ( !g_VulkanContext.Init( *host, withTools, outError ) )
 		return false;
 	g_VulkanSurfaceHost = std::move( host );
 	// Frame-pacing telemetry (tools/quality/frame_pacing.py): one line per
@@ -2442,9 +2453,21 @@ public:
 	virtual bool SupportsCSAAMode( int nNumSamples, int nQualityLevel ) { return false; }
 
 	// Hooks for firing PIX events from outside the Material System...
-	virtual void BeginPIXEvent( unsigned long color, const char *szName ) {}
-	virtual void EndPIXEvent() {}
-	virtual void SetPIXMarker( unsigned long color, const char *szName ) {}
+	// Capture-tool labels (VK_EXT_debug_utils) in the frame's record order.
+	virtual void BeginPIXEvent( unsigned long color, const char *szName )
+	{
+		g_VulkanContext.QueueFrameLabel( render_vulkan::CVulkanContext::FrameLabelOp::Push, szName,
+		    static_cast<uint32_t>( color ) );
+	}
+	virtual void EndPIXEvent()
+	{
+		g_VulkanContext.QueueFrameLabel( render_vulkan::CVulkanContext::FrameLabelOp::Pop );
+	}
+	virtual void SetPIXMarker( unsigned long color, const char *szName )
+	{
+		g_VulkanContext.QueueFrameLabel( render_vulkan::CVulkanContext::FrameLabelOp::Insert,
+		    szName, static_cast<uint32_t>( color ) );
+	}
 
 	// The queued material system builds a dynamic mesh on the main thread into
 	// memory this describes, then copies it verbatim into the mesh
@@ -9668,6 +9691,7 @@ ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height,
 		Warning( "[NativeVulkan] CreateTexture failed: %s\n", error.c_str() );
 		return 0;
 	}
+	g_VulkanContext.NameManagedTexture( native, pDebugName );
 	NoteTextureCreated( native, pDebugName, dstImageFormat, width, height, pTextureGroupName,
 	    static_cast<int>( g_VulkanContext.ManagedTextureMipLevels( native ) ),
 	    ( flags & TEXTURE_CREATE_CUBEMAP ) != 0 );

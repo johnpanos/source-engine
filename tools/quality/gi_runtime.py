@@ -185,7 +185,8 @@ def capture(args):
              "--map", manifest["map"], "--width", str(CAPTURE_WIDTH),
              "--height", str(CAPTURE_HEIGHT),
              "--capture-wait", str(getattr(args, "capture_wait", None) or CAPTURE_WAIT),
-             "--console-command", line, "--out", boot],
+             "--console-command", line, "--out", boot] +
+            (["--renderdoc"] if getattr(args, "renderdoc", False) else []),
             cwd=ROOT, capture_output=True, text=True)
         evidence = json.loads((boot / "evidence.json").read_text()) \
             if (boot / "evidence.json").is_file() else {}
@@ -203,6 +204,7 @@ def capture(args):
                            "screenshot_sha256": shots[-1]["sha256"] if shots else None,
                            "source_fov": fovs["source_fov"], "commands": line,
                            "expected_dark": dark, "proof_camera": proof,
+                           "renderdoc": evidence.get("renderdoc", {}).get("captures"),
                            "returncode": result.returncode}
         print("[%s/%s] boot %s" % (args.fixture, camera, evidence.get("status")), flush=True)
     record = {"schema": CAPTURE_SCHEMA, "fixture": args.fixture, "map": manifest["map"],
@@ -475,6 +477,9 @@ def main():
     c = commands.add_parser("capture")
     capture_options(c)
     c.add_argument("--view", type=int, default=1, choices=(0, 1, 2, 3))
+    c.add_argument("--renderdoc", action="store_true",
+                   help="also capture the scored frame with RenderDoc (portal_boot.py "
+                        "--renderdoc; inspect with tools/renderdoc/rdc.py)")
     c.add_argument("--capture-wait", type=int,
                    help="frames from the start of the console line to the scored screenshot "
                         "(default %d; the camera placement uses %d of them)" % (

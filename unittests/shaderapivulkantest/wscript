@@ -40,7 +40,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='native_vulkan_bringup_conformance',
 		name='native_vulkan_bringup_conformance',
-		includes=includes, use=['VULKAN', 'SDL3'],
+		includes=includes, use=['VULKAN', 'SDL3', 'vulkan_debug'],
 		install_path=None)
 
 	# Substitutability proof (LSP): the native Vulkan provider of the
@@ -60,7 +60,7 @@ def build(bld):
 		# The render.contracts headers and shared suite need C++14+ aggregate
 		# initialization; the target is C++20 in quality/toolchain/policy.json,
 		# the same dialect the conformance runner uses.
-		use=['VULKAN'],
+		use=['VULKAN', 'vulkan_debug'],
 		install_path=None)
 
 	# RFC 0001 R16: the SDL3-Vulkan presentation bridge runs the SAME shared
@@ -82,7 +82,7 @@ def build(bld):
 		name='render_presentation_sdl3_vulkan_conformance',
 		includes=['../rendertest', '../../materialsystem/shaderapivulkan', '../../public']
 			+ bld.env.INCLUDES_SDL3 + bld.env.INCLUDES_VULKAN,
-		use=['VULKAN', 'SDL3'],
+		use=['VULKAN', 'SDL3', 'vulkan_debug'],
 		install_path=None)
 
 	# RFC 0007 R47: the native synthetic direct-light specular pipeline renders
@@ -101,7 +101,7 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp'],
 		target='pbr_native_pixel_conformance',
 		name='pbr_native_pixel_conformance',
-		includes=includes, use=['VULKAN', 'SDL3'],
+		includes=includes, use=['VULKAN', 'SDL3', 'vulkan_debug'],
 		install_path=None)
 
 	# RFC 0008 F3: real BC7 package blocks reach the Vulkan sampled-image path.
@@ -120,7 +120,7 @@ def build(bld):
 		target='ktx2_native_pixel_conformance',
 		name='ktx2_native_pixel_conformance',
 		includes=includes,
-		use=['VULKAN', 'SDL3', 'vulkan_texture_image']
+		use=['VULKAN', 'SDL3', 'vulkan_texture_image', 'vulkan_debug']
 			+ (['texturecontainer', 'KTXREAD'] if bld.env.KTX_READ_ENABLED else []),
 		defines=['RFC0008_KTX_READER'] if bld.env.KTX_READ_ENABLED else [],
 		install_path=None)
@@ -142,7 +142,7 @@ def build(bld):
 		target='world_pbr_native_pixel_conformance',
 		name='world_pbr_native_pixel_conformance',
 		includes=includes,
-		use=['VULKAN', 'SDL3', 'mapcontainer'],
+		use=['VULKAN', 'SDL3', 'mapcontainer', 'vulkan_debug'],
 		install_path=None)
 
 	# RFC 0007 glass and readable scene depth: transmissive WMSH batches over an
@@ -161,7 +161,7 @@ def build(bld):
 		target='world_glass_native_pixel_conformance',
 		name='world_glass_native_pixel_conformance',
 		includes=includes,
-		use=['VULKAN', 'SDL3', 'vulkan_texture_image'],
+		use=['VULKAN', 'SDL3', 'vulkan_texture_image', 'vulkan_debug'],
 		install_path=None)
 
 	# RFC 0007 R47: PBRMetalRough on dynamic meshes (models and props) through
@@ -184,7 +184,7 @@ def build(bld):
 		target='model_pbr_native_pixel_conformance',
 		name='model_pbr_native_pixel_conformance',
 		includes=includes,
-		use=['VULKAN', 'SDL3', 'vulkan_texture_image', 'mapcontainer'],
+		use=['VULKAN', 'SDL3', 'vulkan_texture_image', 'mapcontainer', 'vulkan_debug'],
 		install_path=None)
 
 	# RFC 0011 G5 render.compute: the compute foundation on a headless device
@@ -196,7 +196,7 @@ def build(bld):
 		target='compute_native_conformance',
 		name='compute_native_conformance',
 		includes=includes,
-		use=['VULKAN'],
+		use=['VULKAN', 'vulkan_debug'],
 		install_path=None)
 
 	# RFC 0011 G6 render.indirect-light.sdf: the shared producer suite run
@@ -209,7 +209,7 @@ def build(bld):
 		target='indirect_sdf_native_conformance',
 		name='indirect_sdf_native_conformance',
 		includes=includes,
-		use=['VULKAN', 'mapcontainer'],
+		use=['VULKAN', 'mapcontainer', 'vulkan_debug'],
 		install_path=None)
 
 	# RFC 0011 render.indirect-switching on native Vulkan: the producer
@@ -230,7 +230,7 @@ def build(bld):
 		target='indirect_switching_native_conformance',
 		name='indirect_switching_native_conformance',
 		includes=includes,
-		use=['VULKAN', 'SDL3', 'vulkan_texture_image', 'mapcontainer'],
+		use=['VULKAN', 'SDL3', 'vulkan_texture_image', 'mapcontainer', 'vulkan_debug'],
 		install_path=None)
 
 	# Material-facing integration slice: drives the legacy IShaderAPI/IShaderDevice
@@ -254,7 +254,7 @@ def build(bld):
 		includes=['../../materialsystem/shaderapivulkan', '../../public',
 			'../../public/tier0', '../../public/tier1']
 			+ bld.env.INCLUDES_SDL3 + bld.env.INCLUDES_VULKAN,
-		use=['shaderapivulkan', 'tier0', 'tier1', 'VULKAN', 'SDL3'],
+		use=['shaderapivulkan', 'tier0', 'tier1', 'VULKAN', 'SDL3', 'vulkan_debug'],
 		install_path=None)
 
 	# Queued-mesh contract (mat_queue_mode 2): ComputeVertexDescription plus the
@@ -292,5 +292,5 @@ def build(bld):
 		includes=['../../materialsystem/shaderapivulkan', '../../public',
 			'../../public/tier0', '../../public/tier1']
 			+ bld.env.INCLUDES_SDL3 + bld.env.INCLUDES_VULKAN,
-		use=['shaderapivulkan', 'tier0', 'tier1', 'VULKAN', 'SDL3'],
+		use=['shaderapivulkan', 'tier0', 'tier1', 'VULKAN', 'SDL3', 'vulkan_debug'],
 		install_path=None)

@@ -612,6 +612,10 @@ def main(argv=None):
     parser.add_argument("--draw-state-fixtures", action="store_true",
                         help="write the screenshot frame's per-draw state (source-draw-state/v1) "
                              "to draw-state/ for cross-backend comparison")
+    parser.add_argument("--renderdoc", action="store_true",
+                        help="run under RenderDoc (renderdoccmd) and capture the frame after "
+                             "the final screenshot command into renderdoc/*.rdc "
+                             "(tools/renderdoc/rdc.py inspects it)")
     parser.add_argument("--resize-stress", action="store_true",
                         help="resize the actual native game window through a versioned workload")
     parser.add_argument("--resize-mode", choices=("queued", "sync"), default="queued",
@@ -708,7 +712,11 @@ def main(argv=None):
             (stage / "portal/cfg/portal_boot_commands.cfg").write_text(
                 "".join(line + "\n" for line in args.console_command))
             command += ["+wait", "300", "+exec", "portal_boot_commands.cfg"]
-        command += ["+wait", str(args.capture_wait), "+screenshot", "+mat_spewvertexandpixelshaders",
+        command += ["+wait", str(args.capture_wait),
+                    # vk_renderdoc_capture: RenderDoc records the next presented
+                    # frame, the scene the screenshot shows.
+                    *( ["+vk_renderdoc_capture"] if args.renderdoc else [] ),
+                    "+screenshot", "+mat_spewvertexandpixelshaders",
                    # The exposure the client's auto-exposure settled on for the
                    # screenshot frame (it writes its goal here every frame).
                    "+mat_hdr_tonemapscale",
@@ -757,6 +765,15 @@ def main(argv=None):
         if environment.get("SDL_VIDEODRIVER") == "offscreen":
             # Nobody is watching or listening to a headless run.
             command[command.index("+map"):command.index("+map")] = ["+volume", "0"]
+        if args.renderdoc:
+            renderdoccmd = shutil.which("renderdoccmd")
+            if not renderdoccmd:
+                raise ValueError("--renderdoc needs renderdoccmd on PATH")
+            (output / "renderdoc").mkdir(exist_ok=True)
+            # The launcher re-executes itself to set its library path, so
+            # RenderDoc must follow children to reach the game process.
+            command = [renderdoccmd, "capture", "--opt-hook-children", "-w", "-c",
+                       str(output / "renderdoc" / args.map)] + command
         evidence["command"] = command
         evidence["requirements"] = requirements
         evidence["display_environment"] = {key: environment.get(key) for key in
@@ -785,6 +802,11 @@ def main(argv=None):
         if args.require_provider_catalog:
             evidence["provider_catalog"] = inspect_provider_catalog(log)
             failures.extend(evidence["provider_catalog"]["failures"])
+        if args.renderdoc:
+            captures = sorted((output / "renderdoc").glob("*.rdc"))
+            evidence["renderdoc"] = {"captures": [str(path) for path in captures]}
+            if not captures:
+                failures.append("requested RenderDoc capture was not written")
         if args.draw_state_fixtures:
             fixtures = sorted(fixture_dir.glob("*.jsonl"))
             evidence["draw_state_fixtures"] = [{"path": str(path), "sha256": sha256(path),

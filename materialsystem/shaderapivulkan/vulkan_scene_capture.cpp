@@ -87,6 +87,7 @@ bool CVulkanContext::EnsureSceneCapture( std::string *outError )
 	if ( color < 0 )
 		return false;
 	m_sceneColorHandle = color;
+	NameManagedTexture( color, "scene capture color" );
 	SetManagedTextureSamplerState(
 	    color, kSamplerClampU | kSamplerClampV | kSamplerLinear | kSamplerMipLinear );
 	ManagedTexture &colorTexture = m_managedTextures[static_cast<size_t>( color )];
@@ -205,6 +206,7 @@ bool CVulkanContext::EnsureSceneCapture( std::string *outError )
 	}
 	depth.uploaded = true;
 	m_sceneDepthHandle = StoreManagedTexture( depth );
+	NameManagedTexture( m_sceneDepthHandle, "scene capture depth" );
 	return true;
 }
 
@@ -249,6 +251,7 @@ void CVulkanContext::QueueSceneCaptureIfNeeded( uint64_t materialKey )
 
 bool CVulkanContext::RecordSceneCapture( VkCommandBuffer cmd, int target )
 {
+	ScopedDebugLabel label( m_debugUtils, "scene capture (glass)" );
 	if ( m_sceneColorHandle < 0 )
 		return false;
 	ManagedTexture &color = m_managedTextures[static_cast<size_t>( m_sceneColorHandle )];

@@ -2761,7 +2761,9 @@
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
-        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "pass"
     },
@@ -2788,7 +2790,9 @@
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
-        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "pass"
     },
@@ -2812,7 +2816,9 @@
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
         "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
-        "mapcontainer/probe_volume.cpp"
+        "mapcontainer/probe_volume.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "pass"
     },
@@ -2839,7 +2845,9 @@
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
         "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
-        "mapcontainer/probe_volume.cpp"
+        "mapcontainer/probe_volume.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "pass"
     },
@@ -2853,7 +2861,9 @@
       "description": "RFC 0011 G5 compute foundation on a headless device: capabilities queried and enabled through the VkPhysicalDeviceFeatures2 chain and claimed only as enabled (a provider claiming unenabled ray query is rejected); a compute program writes a storage buffer and an R32F storage image on the graphics queue, read back exactly; a retired resource lives until its submission completes and the seeded early free is caught; validation-clean with the layer. The same source runs on Android from /data/local/tmp",
       "sources": [
         "unittests/shaderapivulkantest/test_compute.cpp",
-        "materialsystem/shaderapivulkan/vulkan_compute.cpp"
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "pass"
     },
@@ -2871,7 +2881,9 @@
         "mapcontainer/probe_volume.cpp",
         "mapcontainer/radiosity_transfer.cpp",
         "mapcontainer/sdf_volume.cpp",
-        "mapcontainer/world_mesh.cpp"
+        "mapcontainer/world_mesh.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "pass",
       "min_checks": 26
@@ -2899,7 +2911,9 @@
         "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
         "mapcontainer/probe_volume.cpp",
         "mapcontainer/radiosity_transfer.cpp",
-        "mapcontainer/sdf_volume.cpp"
+        "mapcontainer/sdf_volume.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "pass"
     },
@@ -2929,7 +2943,9 @@
         "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
         "mapcontainer/probe_volume.cpp",
         "mapcontainer/radiosity_transfer.cpp",
-        "mapcontainer/sdf_volume.cpp"
+        "mapcontainer/sdf_volume.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "pass"
     },
@@ -2951,7 +2967,9 @@
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
-        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "pass"
     },
@@ -2967,7 +2985,9 @@
       "description": "shaders/pbr_brdf.glsl, the BRDF every native PBR stage includes, evaluated in a compute program on a headless device and compared with public/render/pbr_brdf.h on 1,080 cases (GGX, Smith, Schlick, the single-scatter lobe, multiple-scattering compensation and directional albedo, clear coat); seeded C++ models without compensation, with alpha = roughness, or with an unweighted coat are rejected by the same comparator; validation-clean with the layer",
       "sources": [
         "unittests/shaderapivulkantest/test_pbr_brdf_glsl.cpp",
-        "materialsystem/shaderapivulkan/vulkan_compute.cpp"
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "pass"
     },
@@ -2983,7 +3003,9 @@
         "unittests/shaderapivulkantest/test_reflection_probes_glsl.cpp",
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "mapcontainer/reflection_probes.cpp",
-        "mapcontainer/probe_volume.cpp"
+        "mapcontainer/probe_volume.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "pass"
     },
@@ -2998,7 +3020,9 @@
       "sources": [
         "unittests/shaderapivulkantest/test_descriptor_groups.cpp",
         "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
-        "materialsystem/shaderapivulkan/vulkan_compute.cpp"
+        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "pass"
     },
@@ -3020,7 +3044,9 @@
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
-        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "pass"
     },
@@ -3045,7 +3071,9 @@
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
-        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "pass"
     },
@@ -3066,11 +3094,32 @@
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
-        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp"
+        "materialsystem/shaderapivulkan/sdl3/sdl3_vulkan_surface_host.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
       ],
       "expect": "fail",
       "result_protocol": "checks-v1",
       "expected_divergence": "zero checks executed"
+    },
+    {
+      "id": "render.vulkan-debug-tools",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0001",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "description": "Native Vulkan capture-tool support without a device: material_spv_index.h agrees with material_spv.h (every embedded array's C++ FNV-1a hash is the generator's, a changed bit is unnamed); VulkanShaderLibrary takes a debug variant only for a known hash, well-formed SPIR-V and a device with VK_KHR_shader_non_semantic_info when it imports NonSemantic info, from files and from a directory scan that reports stale, partial and NonSemantic files, and resolves embedded code to it under the embedded name; DebugLabelsWanted's policy table; VulkanDebugUtils over recording entry points is inert until loaded, names objects, and keeps every command buffer's labels balanced over 200 seeded push/pop/insert/frame sequences, with controls proving the balance check rejects unclosed and unopened labels",
+      "sources": [
+        "unittests/shaderapivulkantest/test_vulkan_debug_tools.cpp",
+        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
+        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
+      ],
+      "link_flags": [
+        "-lvulkan"
+      ],
+      "min_checks": 180,
+      "expect": "pass"
     },
     {
       "id": "world.lightmap-layers",

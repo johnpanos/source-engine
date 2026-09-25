@@ -29,8 +29,10 @@
 #include "render/render_gamma_ramp.h"
 #include "vulkan_adapter.h"
 #include "vulkan_compute.h"
+#include "vulkan_debug_utils.h"
 #include "vulkan_descriptor_groups.h"
 #include "vulkan_frame_stats.h"
+#include "vulkan_shader_library.h"
 #include "vulkan_surface_host.h"
 
 #include <vulkan/vulkan.h>
@@ -90,6 +92,11 @@ struct VulkanContextConfig
 	// device's own maxBoundDescriptorSets). The suites set 4, the Vulkan
 	// minimum, to show what such a device draws.
 	uint32_t descriptorSetLimit = 0;
+	// Object names and command labels for capture tools (vulkan_debug_utils.h).
+	DebugLabelPolicy debugLabels = DebugLabelPolicy::Auto;
+	// A directory of debug shader variants (regen_material_spv.py --debug-out)
+	// used in place of the embedded code they were built from; empty: none.
+	std::string shaderDebugDirectory;
 };
 
 // A single, coherent native Vulkan presentation context bound to one window
@@ -386,6 +393,7 @@ public:
 		m_dynQueued.clear();
 		m_dynIndices.clear();
 		m_dynDrawRecords.clear();
+		m_frameLabels.clear();
 		m_dynSkinConstants.clear();
 		m_dynFramePresented = false;
 		m_sceneCaptureCurrent = false;
@@ -1052,6 +1060,23 @@ public:
 	bool IsDiscrete() const { return m_isDiscrete; }
 	bool ValidationEnabled() const { return m_validationEnabled; }
 
+	// VK_EXT_debug_utils names and labels; inert unless the config's policy
+	// wants them. Its label stack follows the frame command buffers, so it is
+	// used on the thread that records frames.
+	VulkanDebugUtils &DebugUtils() { return m_debugUtils; }
+	// Names a managed texture's image and views (Source's texture name); a
+	// render pass into it is labelled with the name.
+	void NameManagedTexture( int handle, const char *name );
+	// A label at the current point of the frame's record stream (IShaderAPI's
+	// PIX events), emitted when the records replay; dropped while labels are off.
+	enum class FrameLabelOp : uint8_t
+	{
+		Push,
+		Pop,
+		Insert,
+	};
+	void QueueFrameLabel( FrameLabelOp op, const char *name = nullptr, uint32_t argb = 0 );
+
 	// The back buffer the engine renders into (D3D9's BackBufferWidth/Height).
 	void GetSwapchainExtent( int &width, int &height ) const
 	{
@@ -1251,6 +1276,9 @@ private:
 	    const VkPipelineVertexInputStateCreateInfo *input, VkShaderModule vertex,
 	    ConsumedVertexInput *storage ) const;
 	std::map<VkShaderModule, uint64_t> m_vertexInputLocations;
+	// Each module's index name (material_spv_index.h), kept while debug labels
+	// are on, to name the pipelines built from it.
+	std::map<VkShaderModule, const char *> m_moduleNames;
 	bool CreateShaderModule(
 	    const uint32_t *code, size_t sizeBytes, VkShaderModule *outModule, std::string *outError );
 	bool CreateBuffer( VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props,
@@ -1793,6 +1821,8 @@ private:
 		VkImageView srgbView = VK_NULL_HANDLE;
 		VkFramebuffer framebufferSrgb = VK_NULL_HANDLE;
 		VkDescriptorSet descSetSrgb = VK_NULL_HANDLE;
+		// NameManagedTexture's name, kept only while debug labels are on.
+		std::string debugName;
 	};
 	std::vector<ManagedTexture> m_managedTextures;
 	int m_worldLightmapHandle = -1;
@@ -2018,6 +2048,16 @@ private:
 	// A draw record carrying the state current now, before its geometry.
 	DynDraw &AppendDrawRecord();
 	std::vector<DynDraw> m_dynDrawRecords;
+	// QueueFrameLabel's labels, each before the record at `record`.
+	struct FrameLabel
+	{
+		size_t record;
+		FrameLabelOp op;
+		uint32_t argb;
+		std::string name;
+	};
+	std::vector<FrameLabel> m_frameLabels;
+	void ReplayFrameLabels( size_t *cursor, size_t throughRecord );
 	// Target/viewport/scissor state captured by each record.
 	int m_dynTarget = -1;
 	int m_dynTag = -1;
@@ -2065,6 +2105,15 @@ private:
 	bool m_isDiscrete = false;
 	bool m_validationEnabled = false;
 	uint32_t m_validationErrorCount = 0;
+
+	// VK_EXT_debug_utils was enabled on the instance (for validation, or for
+	// names and labels when the policy is not Off).
+	bool m_debugUtilsExtension = false;
+	// VK_KHR_shader_non_semantic_info is enabled (debug shader variants).
+	bool m_nonSemanticInfo = false;
+	VulkanDebugUtils m_debugUtils;
+	VulkanShaderLibrary m_shaderLibrary;
+	void SetupDebugTools( bool toolingInfo );
 
 	// Debug-messenger entry points, resolved from the instance when validation
 	// is enabled.

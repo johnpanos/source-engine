@@ -27,6 +27,17 @@ def build(bld):
 		use = [ 'VULKAN' ],
 		install_path = None)
 
+	# Capture-tool support shared by the backend and its GPU suites: debug-utils
+	# names and labels, and the embedded shaders' names and debug variants.
+	bld.stlib(
+		features = 'c cxx',
+		source = [ 'vulkan_debug_utils.cpp', 'vulkan_shader_library.cpp' ],
+		target = 'vulkan_debug',
+		name = 'vulkan_debug',
+		includes = [ '.' ] + bld.env.INCLUDES_VULKAN,
+		use = [ 'VULKAN' ],
+		install_path = None)
+
 	source = [
 		'shaderapivulkan.cpp',
 		'vulkan_compute.cpp',
@@ -58,6 +69,7 @@ def build(bld):
 	defines = []
 
 	libs = ['tier0','tier1','vstdlib','mathlib','bitmap','VULKAN','SDL3','vulkan_texture_image',
+		'vulkan_debug',
 		'mapcontainer']
 	if bld.env.KTX_READ_ENABLED:
 		libs += ['texturecontainer', 'KTXREAD']

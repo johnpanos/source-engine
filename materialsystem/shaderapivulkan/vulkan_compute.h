@@ -19,6 +19,8 @@
 #define VULKAN_COMPUTE_H
 
 #include "render/gpu_compute.h"
+#include "vulkan_debug_utils.h"
+#include "vulkan_shader_library.h"
 
 #include <vulkan/vulkan.h>
 
@@ -93,6 +95,13 @@ public:
 	    std::string *error );
 	void Shutdown();
 	bool Ready() const { return m_device != VK_NULL_HANDLE && m_enabled.compute; }
+	// Borrowed, and outliving this object (either may be null): the code and
+	// name of each program's module, and object names and dispatch labels.
+	void SetDebugTools( const VulkanShaderLibrary *shaders, const VulkanDebugUtils *debug )
+	{
+		m_shaders = shaders;
+		m_debug = debug;
+	}
 	const ComputeCaps &Enabled() const { return m_enabled; }
 
 	// Resources, by handle (0 is never valid).
@@ -164,6 +173,7 @@ private:
 		uint32_t handle = 0;
 		ComputeBinding kind = ComputeBinding::StorageBuffer;
 		bool program = false;
+		const char *name = nullptr; // a program's shader (material_spv_index.h)
 		VkBuffer buffer = VK_NULL_HANDLE;
 		VkImage image = VK_NULL_HANDLE;
 		VkImageView view = VK_NULL_HANDLE;
@@ -211,6 +221,8 @@ private:
 	VkPhysicalDevice m_physical = VK_NULL_HANDLE;
 	VkDevice m_device = VK_NULL_HANDLE;
 	ComputeCaps m_enabled;
+	const VulkanShaderLibrary *m_shaders = nullptr;
+	const VulkanDebugUtils *m_debug = nullptr;
 	std::vector<Resource> m_resources;
 	std::vector<Retired> m_retired;
 	uint32_t m_next = 0;

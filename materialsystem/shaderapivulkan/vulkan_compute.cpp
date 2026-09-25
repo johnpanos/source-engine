@@ -591,10 +591,16 @@ uint32_t ComputeResources::CreateProgram( const uint32_t *spirv, size_t bytes,
 	pipelineLayout.setLayoutCount = 1;
 	pipelineLayout.pushConstantRangeCount = pushBytes ? 1 : 0;
 	pipelineLayout.pPushConstantRanges = &push;
+	ShaderModuleCode code;
+	code.code = spirv;
+	code.sizeBytes = bytes;
+	if ( m_shaders )
+		code = m_shaders->Resolve( spirv, bytes );
+	resource.name = code.name;
 	VkShaderModuleCreateInfo module = {};
 	module.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	module.codeSize = bytes;
-	module.pCode = spirv;
+	module.codeSize = code.sizeBytes;
+	module.pCode = code.code;
 	VkShaderModule shader = VK_NULL_HANDLE;
 	// One descriptor set per dispatch in flight, freed when its submission
 	// completes (Collect).
@@ -640,6 +646,8 @@ uint32_t ComputeResources::CreateProgram( const uint32_t *spirv, size_t bytes,
 		Destroy( resource );
 		return 0;
 	}
+	if ( m_debug && code.name )
+		m_debug->Name( VK_OBJECT_TYPE_PIPELINE, resource.pipeline, code.name );
 	resource.handle = ++m_next;
 	m_resources.push_back( resource );
 	return resource.handle;
@@ -753,7 +761,11 @@ bool ComputeResources::RecordDispatch( VkCommandBuffer cmd, uint64_t serial, uin
 	if ( pushBytes )
 		vkCmdPushConstants(
 		    cmd, pipeline->pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, pushBytes, push );
+	if ( m_debug )
+		m_debug->BeginLabel( cmd, pipeline->name ? pipeline->name : "compute dispatch" );
 	vkCmdDispatch( cmd, groupsX, groupsY, groupsZ );
+	if ( m_debug )
+		m_debug->EndLabel( cmd );
 	VkMemoryBarrier barrier = {};
 	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
 	barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
