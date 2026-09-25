@@ -142,7 +142,8 @@ vec3 IndirectChange( vec3 normal )
 
 #ifdef DIRECT_LIGHTS
 // Four vec4 per light: position.xyz, radius; color.rgb, minLight;
-// direction.xyz, outer cone cosine (below -1: no cone); inner cone cosine.
+// direction.xyz, outer cone cosine (below -1: no cone); inner cone cosine,
+// inverse square (1) or the legacy falloff, source radius.
 layout( set = 7, binding = 0 ) uniform DirectLights
 {
 	vec4 header; // x: the light count
@@ -161,6 +162,21 @@ float DynamicFalloff( float distanceSquared, float radius, float minLight )
 	return min( scale, 2.0 );
 }
 
+// render/light_set.h InverseSquareFalloff(): a physical bulb.
+float InverseSquareFalloff( float distanceSquared, float radius, float sourceRadius )
+{
+	float window = 1.0;
+	if ( radius > 0.0 )
+	{
+		float ratio = distanceSquared / ( radius * radius );
+		if ( ratio >= 1.0 )
+			return 0.0;
+		float edge = 1.0 - ratio * ratio;
+		window = edge * edge;
+	}
+	return 10000.0 / max( distanceSquared, sourceRadius * sourceRadius ) * window;
+}
+
 // The direct light the frame's unbaked lights return toward the eye: the
 // diffuse albedo times their diffuse light (the bake's unit), plus pi times
 // their incident light through the specular lobe, as model_pbr.frag lights.
@@ -175,10 +191,13 @@ vec3 DirectLightRadiance( vec3 normal, vec3 view, vec3 diffuseAlbedo, vec3 f0, f
 		vec4 positionRadius = directLights.lights[4 * i];
 		vec4 colorMinLight = directLights.lights[4 * i + 1];
 		vec4 directionOuter = directLights.lights[4 * i + 2];
-		float innerCos = directLights.lights[4 * i + 3].x;
+		vec4 coneFalloff = directLights.lights[4 * i + 3];
+		float innerCos = coneFalloff.x;
 		vec3 toLight = positionRadius.xyz - fragPosition;
 		float distanceSquared = dot( toLight, toLight );
-		float falloff = DynamicFalloff( distanceSquared, positionRadius.w, colorMinLight.w );
+		float falloff = coneFalloff.y > 0.5
+		                    ? InverseSquareFalloff( distanceSquared, positionRadius.w, coneFalloff.z )
+		                    : DynamicFalloff( distanceSquared, positionRadius.w, colorMinLight.w );
 		if ( falloff <= 0.0 )
 			continue;
 		vec3 light = toLight * inversesqrt( max( distanceSquared, 1e-8 ) );

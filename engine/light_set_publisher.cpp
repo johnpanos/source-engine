@@ -69,6 +69,8 @@ void GatherDynamic(
 			channel *= style;
 		input.radius = dl.GetRadius();
 		input.minLight = fpmax( g_flMinLightingValue, dl.minlight );
+		if ( dl.flags & DLIGHT_INVERSE_SQUARE )
+			input.falloff = LightFalloff::InverseSquare;
 		// m_OuterAngle 0 is a point light; below 180 degrees a spot.
 		input.spot = dl.m_OuterAngle > 0.0f && dl.m_OuterAngle < 180.0f;
 		if ( input.spot )

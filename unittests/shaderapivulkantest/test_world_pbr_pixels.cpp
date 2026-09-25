@@ -291,10 +291,12 @@ int main()
 				const render::pbr::Color brdf =
 				    render::pbr::EvaluateLayeredDirect( { baseRed, 0.0f, 0.0f }, 0.0f, 1.0f,
 				        normalDotLight, normalDotHalf, viewDotHalf, 128.0f / 255.0f );
-				const float incident =
-				    light.color[0] *
-				    ( falloff ? light_set::Falloff( distanceSquared, light.radius, light.minLight )
-				              : 1.0f );
+				const float scale =
+				    light.inverseSquare > 0.5f
+				        ? light_set::InverseSquareFalloff(
+				              distanceSquared, light.radius, light.sourceRadius )
+				        : light_set::Falloff( distanceSquared, light.radius, light.minLight );
+				const float incident = light.color[0] * ( falloff ? scale : 1.0f );
 				return render::pbr::kPi * incident * brdf.red * ( cosine ? normalDotLight : 1.0f );
 			};
 			context.SetDirectLights( &point, 1 );
@@ -307,6 +309,26 @@ int main()
 			check( std::abs( lit - srgbByte( expectedLinear( point, false, true ) ) ) > 6.0f &&
 			           std::abs( lit - srgbByte( expectedLinear( point, true, false ) ) ) > 6.0f,
 			    "the model's cosine and falloff terms are both visible (seeded controls)" );
+			// RFC 0011 G9: an inverse-square bulb (its color the light at 100
+			// units); the seeded control reads it through the legacy falloff.
+			render_vulkan::CVulkanContext::DirectLight bulb = point;
+			bulb.inverseSquare = 1.0f;
+			bulb.sourceRadius = 0.01f;
+			bulb.radius = 10.0f;
+			bulb.color[0] = bulb.color[1] = bulb.color[2] = 1.0e-5f;
+			context.SetDirectLights( &bulb, 1 );
+			std::uint8_t bulbLit = 0;
+			check( DrawWorld( context, &bulbLit, &error ), "an inverse-square light renders" );
+			render_vulkan::CVulkanContext::DirectLight legacyBulb = bulb;
+			legacyBulb.inverseSquare = 0.0f;
+			const float bulbExpected = srgbByte( expectedLinear( bulb, true, true ) );
+			std::fprintf(
+			    stderr, "inverse-square light red %u (expected %.1f)\n", bulbLit, bulbExpected );
+			check( std::abs( bulbLit - bulbExpected ) <= 3.0f && bulbLit > 20,
+			    "an inverse-square light adds (100 / d)^2 times its color, through N.L" );
+			check(
+			    std::abs( bulbLit - srgbByte( expectedLinear( legacyBulb, true, true ) ) ) > 6.0f,
+			    "the legacy falloff misses the inverse-square light (seeded control)" );
 			render_vulkan::CVulkanContext::DirectLight far = point;
 			far.position[2] = 2.0f; // 1.5 away, beyond its radius of 1
 			render_vulkan::CVulkanContext::DirectLight away = point;

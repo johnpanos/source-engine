@@ -39,6 +39,7 @@
 #include "tier2/tier2.h"
 #include "indirect_light_host.h"
 #include "mapcontainer/probe_volume.h"
+#include "render/light_set.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -1527,6 +1528,10 @@ static void WorldLightFromDynamicLight( dlight_t const& dynamicLight,
 	worldLight.constant_attn = 0;
 	worldLight.linear_attn = 0; 
 	worldLight.quadratic_attn = 1.0f / (minlight * radius * radius);
+	// RFC 0011 G9: an inverse-square bulb's color is its light at 100 units.
+	if ( dynamicLight.flags & DLIGHT_INVERSE_SQUARE )
+		worldLight.quadratic_attn = 1.0f / ( light_set::kInverseSquareReferenceDistance *
+		                                       light_set::kInverseSquareReferenceDistance );
 
 	// Set the max radius
 	worldLight.radius = radius;

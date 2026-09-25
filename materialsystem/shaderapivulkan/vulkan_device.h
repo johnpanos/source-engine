@@ -182,7 +182,9 @@ public:
 		float direction[3] = { 0, 0, -1 };
 		float outerCos = -2.0f; // below -1: no cone
 		float innerCos = 1.0f;
-		float pad[3] = {};
+		float inverseSquare = 0.0f; // 1: light_set::InverseSquareFalloff, else Falloff
+		float sourceRadius = 0.0f;  // the emitting sphere (inverse square)
+		float pad = 0.0f;
 	};
 	static constexpr uint32_t kMaxDirectLights = 7;
 	void SetDirectLights( const DirectLight *lights, uint32_t count );

@@ -10,6 +10,7 @@
 #include "render/light_set.h"
 #include "testing/conformance_result.h"
 
+#include <cmath>
 #include <cstdio>
 #include <set>
 #include <vector>
@@ -202,6 +203,30 @@ int main()
 	issued( g1, "new map: IDs are unique" );
 	Check( g1.mapSerial == 8 && g1.lights[0].id == 1 && g1.lights[0].styleScalar == 1.0f,
 	    "a new map rebinds world IDs; a style the engine does not report is 1" );
+
+	// RFC 0011 G9: an inverse-square light carries its falloff and source
+	// radius; its scale is (100 / d)^2, clamped at the source, windowed to 0
+	// at its radius.
+	{
+		DynamicLightInput bulb = Dynamic( 5, 21 );
+		bulb.falloff = LightFalloff::InverseSquare;
+		const Snapshot h = builder.Build( {}, {}, { bulb, Dynamic( 6, 22 ) } );
+		const RuntimeLight *inverse = Find( h, LightKind::Dynamic, 0 );
+		const RuntimeLight *legacy = Find( h, LightKind::Dynamic, 1 );
+		Check( inverse && inverse->falloff == LightFalloff::InverseSquare &&
+		           inverse->sourceRadius == kInverseSquareSourceRadius && legacy &&
+		           legacy->falloff == LightFalloff::Legacy && legacy->sourceRadius == 0.0f,
+		    "the falloff kind and source radius travel with each dynamic light" );
+		Check( std::fabs( InverseSquareFalloff( 100.0f * 100.0f, 0.0f, 2.0f ) - 1.0f ) < 1e-6f &&
+		           std::fabs( InverseSquareFalloff( 200.0f * 200.0f, 0.0f, 2.0f ) - 0.25f ) < 1e-6f,
+		    "an unbounded inverse-square light is 1 at 100 units and a quarter at 200" );
+		Check( InverseSquareFalloff( 0.0f, 0.0f, 2.0f ) == 2500.0f,
+		    "at its centre the light is clamped at its source radius" );
+		Check( InverseSquareFalloff( 1000.0f * 1000.0f, 1000.0f, 2.0f ) == 0.0f &&
+		           InverseSquareFalloff( 500.0f * 500.0f, 1000.0f, 2.0f ) > 0.03f &&
+		           InverseSquareFalloff( 500.0f * 500.0f, 1000.0f, 2.0f ) < 0.04f,
+		    "the window reaches 0 at the radius and keeps most of the light within it" );
+	}
 
 	if ( kSeeded )
 	{

@@ -25,6 +25,7 @@ Where this file disagrees with the versioned artifacts, the artifacts win:
 | G6 SDF-traced producer | done (2026-09-25, native Vulkan desktop; Android declared unsupported) | SDFV bake/pack/reader; shared suite plus a traced-field thin-wall oracle with a seeded leak; in game the door closes the far room to Cycles' dark within 64 frames while radiosity and baked fail; the sun move settles toward Cycles; 0.49 ms per update for 400 probes (budget 2.0) |
 | G7 ray-query producer | done (2026-09-25, native Vulkan desktop; Android declared unsupported) | Same producer and shader as G6, traced by ray queries against the world's triangles and proxy boxes; `rayquery` offered only with device ray query; shared suite plus thin-wall oracle; door (indirect and shaded) and sun gates pass at SDF's tolerance; 1.0 ms per update for 400 probes on a loaded host (budget 1.5) |
 | G8 product defaults and soak | done (2026-09-25; Android soak shortened to 5 min by the user; Apple unverified) | Per-profile defaults chosen from measurements, recorded in the product profiles and generated into the engine (`r_indirect_producer auto`; rollback `baked`); Linux 30-minute soak under validation passes (777 switches, 56 map changes, 0 validation messages, flat memory); Android soak passes; Apple has no R29 runner |
+| G9 moved lights (amendment) | active (2026-09-25) | Swinging-bulb `swing` fixture; SDF shadows (decision 4) and inverse-square `light_dynamic`; traced producers take unbaked lights. See [G9](#g9-moved-lights-active) |
 
 ## G0: Baseline, fixtures and runner
 
@@ -1075,3 +1076,47 @@ Open:
 - The validation layer is absent on this host, so these runs are not
   validation-checked.
 - Android was not measured.
+
+## G9: Moved lights (active)
+
+Scope, added 2026-09-25 at the user's direction: a light that moves must
+move its direct light, its shadows and its bounce. The pass scenario is a
+bulb swinging on a rope (fixture `swing`). The gate text is in the RFC's
+[G9](0011-runtime-indirect-lighting.md#g9-moved-lights-amendment-2026-09-25).
+
+Starting point (observed):
+
+- The traced producers claim `kLightMotion`, backed only by G6.3's moved
+  sun. That changes indirect light; the sun's baked direct light and its
+  shadow stay at the baked angle.
+- Their lights come from the SDFV alone; a light's position cannot change.
+- The world's unbaked lights (G2.5) add direct light with Source's dlight
+  falloff and no shadows.
+
+Steps: the light set's falloff kind; the SDF shadow in the world and model
+shaders; the producers' unbaked lights; the fixture and its references; the
+in-game lamp; the gate harness; costs.
+
+
+### G9.1 Inverse-square dynamic lights (done 2026-09-25)
+
+- `DLIGHT_INVERSE_SQUARE` (0x10, public/dlight.h) is `light_dynamic`
+  spawnflag 16: the entity's flags reach the dlight unchanged.
+- The light set carries `LightFalloff` and `sourceRadius`.
+  `light_set::InverseSquareFalloff` is (100 / d)² clamped at the 2-unit
+  source radius, with the window ( 1 − (d / radius)⁴ )² falling to 0 at the
+  radius (radius 0: unbounded).
+- The native world path (`world_pbr.frag -DDIRECT_LIGHTS`) evaluates it from
+  the direct-light block's spare floats. Models reach the same light through
+  the engine's dlight-to-world-light conversion (engine/lightcache.cpp), with
+  a quadratic attenuation of 1 / 100².
+- Legacy lightmapped surfaces (brush entities) keep the dlight falloff; they
+  never had the Lambert term either.
+
+Evidence:
+- `render.world-pbr.native-pixels`, 86 checks: the inverse-square light
+  draws 166 against the CPU model's 165.8, and the seeded legacy-falloff
+  reading misses it.
+- `render.light-set` and its three seeded builds, 36 checks: the falloff
+  kind and source radius travel per light; the scale is 1 at 100 units and
+  0.25 at 200, clamped at the source, and 0 at the radius.

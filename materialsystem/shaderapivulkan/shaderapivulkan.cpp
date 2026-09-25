@@ -2554,6 +2554,11 @@ public:
 			}
 			out.radius = light.radius;
 			out.minLight = light.minLight;
+			if ( light.falloff == light_set::LightFalloff::InverseSquare )
+			{
+				out.inverseSquare = 1.0f;
+				out.sourceRadius = light.sourceRadius;
+			}
 			if ( light.shape == light_set::LightShape::Spot )
 			{
 				out.outerCos = light.outerCos;

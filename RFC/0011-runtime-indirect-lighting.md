@@ -719,6 +719,67 @@ Done when:
 3. Apple profiles run baked and radiosity on their runners when R29 provides
    them. Otherwise that claim is recorded as unverified.
 
+### G9: Moved lights (amendment, 2026-09-25)
+
+Added after G8 at the user's direction. It closes open decision 4 and backs
+the traced producers' `LightMotion` claim, which G6 and G7 showed only for a
+moved sun's indirect light. The pass scenario, chosen by the user, is a
+light swinging on a rope.
+
+**Decisions.**
+
+- **Shadow technique (decision 4): SDF shadows.** The frame's unbaked lights
+  are shadowed per pixel by sphere tracing the map's `SDFV` distance field,
+  uploaded as a 3D texture. The traced producers already shadow with the
+  same field, so direct and bounced light agree about what is occluded.
+  Shadows are softened by the light's source radius. A profile or map
+  without an `SDFV` draws unbaked lights unshadowed and the log says so.
+  Shadow maps remain RFC 0008 F5's option for lights that need sharp
+  shadows or have no field.
+- **Inverse-square dynamic lights.** Source's dlight falloff is not
+  physical and cannot be compared with Cycles. A `light_dynamic` with
+  spawnflag 16 (`DLIGHT_INVERSE_SQUARE`) is an inverse-square bulb: its
+  diffuse light at distance d is its color times (100 / d)², following
+  vrad's convention of stating brightness at 100 units. Its source radius
+  is 2 units, and its radius is a smooth cutoff. The light set carries the
+  falloff kind; the native path honors it, and legacy paths keep the dlight
+  falloff.
+- **Producers take unbaked lights.** The traced producers add the frame's
+  unbaked lights to their light buffer, visible to every probe, and a light
+  moving changes their configuration. Radiosity does not; it declares
+  neither `LightMotion` nor the scenario.
+
+**Fixture `swing`.** A 5 × 5 × 3 m room with a red wall, a pillar and a
+probe sphere. A bulb (a 5 cm emissive sphere) hangs on a 1.5 m rope from the
+ceiling. The bake excludes the bulb, which is dynamic. Cycles references are
+rendered for three states: `rest` (hanging straight down) and `left` and
+`right` (40 degrees out). In game the bulb is a physics prop on a rope
+constraint, with a parented inverse-square `light_dynamic`, released from
+40 degrees so it swings.
+
+Done when:
+
+1. The light set carries the falloff kind and source radius, and a GPU check
+   matches the native world path's inverse-square light to the CPU model,
+   with a seeded legacy-falloff control that misses.
+2. A GPU check of the SDF shadow gives lit, occluded and penumbra texels
+   against an analytic occluder, and a seeded no-shadow control fails.
+3. **`swing`, frozen:** for each state the lamp is held at the state's
+   position.
+   - After the producer's declared convergence, the shaded capture matches
+     the Cycles total reference per region within the producer's
+     tolerance, and the indirect view matches the indirect reference.
+   - Radiosity's indirect view fails the moved states, and shadows off fails
+     the shadowed region. These show the scenario tells them apart.
+4. **`swing`, swinging:** a burst captured while the lamp swings has no
+   flicker beyond the motion. Its temporal score's high-frequency term
+   stays within the `gi_temporal` limits.
+5. The SDF shadow's cost at 1920 × 1080 is measured against a desktop budget
+   (provisional: ≤ 1 ms for one light on the Radeon 8060S), and the
+   producer's cost under continuous motion stays within its G6/G7 budget.
+   Android, where the traced producers are unsupported, draws the bulb
+   unshadowed with its direct light, and records that.
+
 ## Roadmap
 
 Not yet ranked. AGENTS.md owns ranks and states. This RFC proposes the
@@ -735,6 +796,7 @@ following rows for the user to rank:
 | R76 | SDF-traced producer (G6) | R73, R75 |
 | R77 | Ray-query producer (G7) | R73, R75 |
 | R78 | GI product defaults, soak and platform evidence (G8) | R74, R29 |
+| R79 | Moved lights: SDF shadows, inverse-square dynamic lights, traced producers' unbaked lights, `swing` fixture (G9) | R76 or R77 |
 
 R71 supplies the `PRBV` portion of R56, and R74 together with R76 or R77
 supplies the real-time indirect-light portion of R63. Neither row closes those
@@ -784,6 +846,8 @@ parents alone.
    decided by `room-states` quality versus memory in G4.
 4. Shadow technique for moved lights (shadow atlas versus SDF shadows), shared
    with RFC 0008 F5. This decides when `LightMotion` can be claimed.
+   *Decided 2026-09-25 (G9): SDF shadows from the `SDFV` for unbaked lights;
+   shadow maps stay F5's option for sharp shadows.*
 5. Whether relightable reflection probes are added so dynamic light reaches
    specular. This would be an RFC 0007 F amendment, not part of this RFC's
    producers.

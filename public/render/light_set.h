@@ -51,6 +51,19 @@ enum class LightShape : uint8_t
 	Directional,
 };
 
+// How a dynamic light's light falls with distance.
+enum class LightFalloff : uint8_t
+{
+	Legacy,        // Source's dlight falloff (Falloff below)
+	InverseSquare, // a physical bulb (InverseSquareFalloff below)
+};
+
+// An inverse-square light's color is its diffuse light at this distance
+// (vrad's convention for brightness), and it is a sphere of this radius:
+// the size its soft shadows take (RFC 0011 G9).
+constexpr float kInverseSquareReferenceDistance = 100.0f;
+constexpr float kInverseSquareSourceRadius = 2.0f;
+
 struct RuntimeLight
 {
 	uint32_t id = 0; // 0 is never a valid ID
@@ -65,6 +78,8 @@ struct RuntimeLight
 	float innerCos = 1.0f;             // spot cone
 	float outerCos = 1.0f;
 	float minLight = 0.0f; // dynamic lights: the falloff's threshold (see Falloff)
+	LightFalloff falloff = LightFalloff::Legacy;
+	float sourceRadius = 0.0f; // the emitting sphere (InverseSquare)
 	int style = 0;
 	float styleScalar = 1.0f;
 };
@@ -105,6 +120,7 @@ struct DynamicLightInput
 	float innerCos = 1.0f;
 	float outerCos = 1.0f;
 	float minLight = 0.0f;
+	LightFalloff falloff = LightFalloff::Legacy;
 	bool spot = false;
 };
 
@@ -121,6 +137,29 @@ struct DynamicLightInput
 	float scale = distanceSquared > 0.0f ? radiusSquared * minLight / distanceSquared : 1.0f;
 	scale *= 1.0f - distanceSquared / radiusSquared;
 	return scale > 2.0f ? 2.0f : scale;
+}
+
+// An inverse-square light's scale at a squared distance: (reference /
+// distance)^2, the distance no less than its source radius, times a window
+// that falls smoothly to 0 at its radius, ( 1 - (d / radius)^4 )^2 (radius
+// 0: unbounded). The native world path multiplies it by the Lambert cosine
+// (shaders/world_pbr.frag mirrors this function); models reach the same
+// light through a quadratic attenuation of 1 / reference^2.
+[[nodiscard]] inline float InverseSquareFalloff(
+    float distanceSquared, float radius, float sourceRadius )
+{
+	float window = 1.0f;
+	if ( radius > 0.0f )
+	{
+		const float ratio = distanceSquared / ( radius * radius );
+		if ( ratio >= 1.0f )
+			return 0.0f;
+		const float edge = 1.0f - ratio * ratio;
+		window = edge * edge;
+	}
+	const float nearest = sourceRadius * sourceRadius;
+	const float d2 = distanceSquared > nearest ? distanceSquared : nearest;
+	return kInverseSquareReferenceDistance * kInverseSquareReferenceDistance / d2 * window;
 }
 
 // A world light matches its bake when its style scalar is the baked value.
@@ -196,6 +235,9 @@ public:
 			light.innerCos = input.innerCos;
 			light.outerCos = input.outerCos;
 			light.minLight = input.minLight;
+			light.falloff = input.falloff;
+			light.sourceRadius =
+			    input.falloff == LightFalloff::InverseSquare ? kInverseSquareSourceRadius : 0.0f;
 			snapshot.lights.push_back( light );
 		}
 		// A light absent this frame loses its identity: if its slot and key
