@@ -40,6 +40,23 @@
 //          pbr-fallback: a PBRMetalRough VMT follows $fallbackmaterial to a
 //          distinct UnlitGeneric VMT and draws its green procedural texture.
 //
+//          bump: LightmappedGeneric's bumped lightmaps ($bumpmap, $ssbump). A
+//          white base over a lightmap allocated and packed as a bumped map
+//          surface's is (four pages side by side, TEXCOORD2 the page offset),
+//          whose three bumped pages are pure red, green and blue and whose flat
+//          page is gray. A solid normal map selects how the pages mix.
+//
+//          shadow: the Shadow shader's projected render-to-texture shadow
+//          (shadow_ps2x). A frame cleared to a known color is multiplied by it;
+//          the shadow texture's alpha, the vertex alpha fade and the five
+//          jittered taps decide the coverage.
+//
+//          post: the engine's post-processing passes: Engine_Post's bloom add
+//          and color correction (identity and inverting volume lookups, and
+//          their weights), Downsample_nohdr's luminance shaping and
+//          BlurFilterX's taps, each drawn as the client draws them
+//          (DrawScreenSpaceRectangle) over known inputs.
+//
 //          This program measures; it does not judge. It writes the inputs and
 //          the measured pixels as source-material-pixels/v1 JSON, and
 //          tools/quality/material_pixel_conformance.py applies the oracle:
@@ -49,7 +66,8 @@
 //          Run inside a staged game runtime (the driver stages one):
 //            material_pixel_conformance -game portal -renderer <id>
 //                -hdr <none|integer> [-family <lightmap|exposure|skinning|portal|
-//                                         modellight|cable|pbr-fallback|pbr-model>]
+//                                         modellight|cable|pbr-fallback|pbr-model|
+//                                         bump|shadow|post>]
 //                -out <file.json>
 //
 //=============================================================================//
@@ -232,11 +250,17 @@ private:
 	bool RunMonitorCases( FILE *out );
 	bool RunSpriteCases( FILE *out );
 	bool RunPbrFallbackCases( FILE *out );
+	bool RunBumpCases( FILE *out );
+	bool RunShadowCases( FILE *out );
+	bool RunPostCases( FILE *out );
+	// `bumped`: the lightmap is a bumped surface's four pages, and TEXCOORD2
+	// carries the offset from one page to the next, as the engine builds
+	// bumped brush vertices (matsys_interface.cpp).
 	bool RenderCase( IMaterial *pMaterial, int sortId, const int offset[2], int lightmapPageId,
 	    const float ( *points )[2], int pointCount, unsigned char ( *pixels )[3],
-	    float toneScale = 1.0f );
-	void DrawLightmappedQuad(
-	    IMaterial *pMaterial, int sortId, const int offset[2], const int pageSize[2] );
+	    float toneScale = 1.0f, bool bumped = false );
+	void DrawLightmappedQuad( IMaterial *pMaterial, int sortId, const int offset[2],
+	    const int pageSize[2], bool bumped = false );
 	bool ReadPixel( float fx, float fy, unsigned char rgb[3] );
 };
 
@@ -319,14 +343,17 @@ int CMaterialPixelApp::Main()
 	const bool sprite = !Q_stricmp( family, "sprite" );
 	const bool pbrFallback = !Q_stricmp( family, "pbr-fallback" );
 	const bool pbrModel = !Q_stricmp( family, "pbr-model" );
+	const bool bump = !Q_stricmp( family, "bump" );
+	const bool shadow = !Q_stricmp( family, "shadow" );
+	const bool post = !Q_stricmp( family, "post" );
 	if ( !outPath[0] || ( !integerHdr && Q_stricmp( hdr, "none" ) ) ||
 	     ( !exposure && !skinning && !portal && !modelLight && !cable && !sky && !monitor && !sprite &&
-	         !pbrFallback && !pbrModel &&
+	         !pbrFallback && !pbrModel && !bump && !shadow && !post &&
 	         Q_stricmp( family, "lightmap" ) ) )
 	{
-		Warning(
-		    "material pixel conformance: need -out <file>, -hdr <none|integer> and "
-		    "-family <lightmap|exposure|skinning|portal|modellight|cable|sky|monitor|sprite|pbr-fallback|pbr-model>\n" );
+		Warning( "material pixel conformance: need -out <file>, -hdr <none|integer> and "
+		         "-family <lightmap|exposure|skinning|portal|modellight|cable|sky|monitor|sprite|"
+		         "pbr-fallback|pbr-model|bump|shadow|post>\n" );
 		return 2;
 	}
 
@@ -402,6 +429,9 @@ int CMaterialPixelApp::Main()
 	                : monitor     ? RunMonitorCases( out )
 	                : sprite      ? RunSpriteCases( out )
 	                : pbrFallback ? RunPbrFallbackCases( out )
+	                : bump        ? RunBumpCases( out )
+	                : shadow      ? RunShadowCases( out )
+	                : post        ? RunPostCases( out )
 	                : pbrModel    ? RunPbrModelCases( out, outPath, WriteClearProbeThunk,
 	                                    integerHdr ? kModelLightToneScale : 1.0f )
 	                : portal      ? RunPortalCases( out, outPath, WriteClearProbeThunk )
@@ -1027,7 +1057,7 @@ bool CMaterialPixelApp::RunSpriteCases( FILE *out )
 }
 
 void CMaterialPixelApp::DrawLightmappedQuad(
-    IMaterial *pMaterial, int sortId, const int offset[2], const int pageSize[2] )
+    IMaterial *pMaterial, int sortId, const int offset[2], const int pageSize[2], bool bumped )
 {
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
 	for ( int mode = MATERIAL_VIEW; mode <= MATERIAL_PROJECTION; ++mode )
@@ -1060,6 +1090,8 @@ void CMaterialPixelApp::DrawLightmappedQuad(
 		const float s = ( st[0] * ( kLightmapSize - 2 ) + 1 + offset[0] ) / pageSize[0];
 		const float t = ( st[1] * ( kLightmapSize - 2 ) + 1 + offset[1] ) / pageSize[1];
 		meshBuilder.TexCoord2f( 1, s, t );
+		if ( bumped )
+			meshBuilder.TexCoord2f( 2, static_cast<float>( kLightmapSize ) / pageSize[0], 0.0f );
 		meshBuilder.TangentS3f( 1.0f, 0.0f, 0.0f );
 		meshBuilder.TangentT3f( 0.0f, 1.0f, 0.0f );
 		meshBuilder.AdvanceVertex();
@@ -1237,6 +1269,419 @@ bool CMaterialPixelApp::RunLightmapCases( FILE *out )
 	    kLightmapCases[rampMid].name, toneScale, toned[0][0], toned[0][1], toned[0][2], toned[1][0],
 	    toned[1][1], toned[1][2] );
 	pMaterial->DecrementReferenceCount();
+	return ok;
+}
+
+// The bump family's cases: a solid normal-map texel, and whether the material is
+// self-shadowed ($ssbump, whose texel weights the three pages directly). The
+// regular normals encode LightmappedGeneric's bump basis vectors (and +Z), each
+// of which lights with exactly one bumped page (or all three equally).
+struct BumpCase
+{
+	const char *name;
+	bool ssbump;
+	unsigned char texel[3];
+};
+const BumpCase kBumpCases[] = {
+    { "normal_up", false, { 128, 128, 255 } },
+    { "normal_basis0", false, { 232, 128, 201 } },  // ( 0.816, 0, 0.577 )
+    { "normal_basis1", false, { 75, 218, 201 } },   // ( -0.408, 0.707, 0.577 )
+    { "normal_basis2", false, { 75, 37, 201 } },    // ( -0.408, -0.707, 0.577 )
+    { "ssbump_first", true, { 255, 0, 0 } },
+    { "ssbump_second_third", true, { 0, 128, 128 } },
+};
+const int kBumpCaseCount = sizeof( kBumpCases ) / sizeof( kBumpCases[0] );
+// The flat page and the three bumped pages, linear light.
+const float kBumpPages[4][3] = {
+    { 0.25f, 0.25f, 0.25f }, { 0.8f, 0.0f, 0.0f }, { 0.0f, 0.8f, 0.0f }, { 0.0f, 0.0f, 0.8f } };
+
+bool CMaterialPixelApp::RunBumpCases( FILE *out )
+{
+	static CSolidColorRegenerator s_BaseRegenerator;
+	static CSolidColorRegenerator s_NormalRegenerator;
+	const int textureFlags =
+	    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL | TEXTUREFLAGS_SINGLECOPY;
+	ITexture *pBase = g_pMaterialSystem->CreateProceduralTexture(
+	    "conformance/bump_base", TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888, textureFlags );
+	ITexture *pNormal = g_pMaterialSystem->CreateProceduralTexture(
+	    "conformance/bump_normal", TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888, textureFlags );
+	if ( !pBase || !pNormal )
+		return false;
+	pBase->SetTextureRegenerator( &s_BaseRegenerator );
+	pNormal->SetTextureRegenerator( &s_NormalRegenerator );
+	pBase->Download();
+
+	IMaterial *pMaterials[2] = {};
+	for ( int ssbump = 0; ssbump < 2; ++ssbump )
+	{
+		KeyValues *pKeys = new KeyValues( "LightmappedGeneric" );
+		pKeys->SetString( "$basetexture", "conformance/bump_base" );
+		pKeys->SetString( "$bumpmap", "conformance/bump_normal" );
+		if ( ssbump )
+			pKeys->SetInt( "$ssbump", 1 );
+		pMaterials[ssbump] = g_pMaterialSystem->CreateMaterial(
+		    ssbump ? "conformance/ssbumped" : "conformance/bumped", pKeys );
+		if ( !pMaterials[ssbump] || pMaterials[ssbump]->IsErrorMaterial() )
+			return false;
+		pMaterials[ssbump]->IncrementReferenceCount();
+	}
+	g_pMaterialSystem->CacheUsedMaterials();
+	for ( IMaterial *pMaterial : pMaterials )
+	{
+		if ( pMaterial->GetVertexFormat() == 0 ||
+		     !pMaterial->GetPropertyFlag( MATERIAL_PROPERTY_NEEDS_BUMPED_LIGHTMAPS ) )
+		{
+			Warning( "material pixel conformance: %s is not a bumped lightmapped material\n",
+			    pMaterial->GetName() );
+			return false;
+		}
+	}
+
+	// A bumped surface's lightmap is four times its width: the flat page and the
+	// three bumped ones to its right (CMatLightmaps::UpdateLightmap).
+	int sortIds[kBumpCaseCount];
+	int offsets[kBumpCaseCount][2];
+	g_pMaterialSystem->BeginLightmapAllocation();
+	for ( int i = 0; i < kBumpCaseCount; ++i )
+		sortIds[i] = g_pMaterialSystem->AllocateLightmap( kLightmapSize * 4, kLightmapSize,
+		    offsets[i], pMaterials[kBumpCases[i].ssbump ? 1 : 0] );
+	g_pMaterialSystem->EndLightmapAllocation();
+	std::vector<MaterialSystem_SortInfo_t> sortInfo( g_pMaterialSystem->GetNumSortIDs() );
+	g_pMaterialSystem->GetSortInfo( sortInfo.data() );
+	float pages[4][kLightmapSize * kLightmapSize * 4];
+	for ( int page = 0; page < 4; ++page )
+	{
+		for ( int texel = 0; texel < kLightmapSize * kLightmapSize; ++texel )
+		{
+			for ( int k = 0; k < 3; ++k )
+				pages[page][texel * 4 + k] = kBumpPages[page][k];
+			pages[page][texel * 4 + 3] = 1.0f;
+		}
+	}
+	for ( int i = 0; i < kBumpCaseCount; ++i )
+	{
+		int size[2] = { kLightmapSize, kLightmapSize };
+		g_pMaterialSystem->UpdateLightmap( sortInfo[sortIds[i]].lightmapPageID, size, offsets[i],
+		    pages[0], pages[1], pages[2], pages[3] );
+	}
+
+	fprintf( out, "{\"schema\":\"source-material-pixels/v1\",\"family\":\"bump\"," );
+	WriteClearProbe( out );
+	fprintf( out, "\"pages\":[" );
+	for ( int page = 0; page < 4; ++page )
+		fprintf( out, "%s[%g,%g,%g]", page ? "," : "", kBumpPages[page][0], kBumpPages[page][1],
+		    kBumpPages[page][2] );
+	fprintf( out, "],\"base\":[255,255,255],\"cases\":[" );
+	bool ok = true;
+	const float kCenter[1][2] = { { 0.5f, 0.5f } };
+	for ( int i = 0; i < kBumpCaseCount; ++i )
+	{
+		const BumpCase &c = kBumpCases[i];
+		for ( int k = 0; k < 3; ++k )
+			s_NormalRegenerator.m_Color[k] = c.texel[k];
+		pNormal->Download();
+		unsigned char px[1][3] = {};
+		ok = RenderCase( pMaterials[c.ssbump ? 1 : 0], sortIds[i], offsets[i],
+		         sortInfo[sortIds[i]].lightmapPageID, kCenter, 1, px, 1.0f, true ) &&
+		     ok;
+		fprintf( out, "%s{\"name\":\"%s\",\"ssbump\":%s,\"texel\":[%d,%d,%d],\"pixel\":[%d,%d,%d]}",
+		    i ? "," : "", c.name, c.ssbump ? "true" : "false", c.texel[0], c.texel[1], c.texel[2],
+		    px[0][0], px[0][1], px[0][2] );
+	}
+	fprintf( out, "]}\n" );
+	for ( IMaterial *pMaterial : pMaterials )
+		pMaterial->DecrementReferenceCount();
+	return ok;
+}
+
+// The shadow family's cases: the shadow texture's alpha by column (a 4x4
+// point-sampled texture), the vertex alpha (the shadow's fade), the shadow
+// color ($color; 0 and 1 are exact through GammaToLinear) and where the pixel
+// is read. A lone opaque column read at its center shows the jitter: its four
+// jittered taps land on the columns beside it.
+struct ShadowCase
+{
+	const char *name;
+	unsigned char columns[4];
+	unsigned char fade;
+	float color[3];
+	float x;
+};
+const ShadowCase kShadowCases[] = {
+    { "opaque_black", { 255, 255, 255, 255 }, 0, { 0.0f, 0.0f, 0.0f }, 0.5f },
+    { "opaque_green", { 255, 255, 255, 255 }, 0, { 0.0f, 1.0f, 0.0f }, 0.5f },
+    { "half_alpha", { 128, 128, 128, 128 }, 0, { 0.0f, 0.0f, 0.0f }, 0.5f },
+    { "faded", { 255, 255, 255, 255 }, 128, { 0.0f, 0.0f, 0.0f }, 0.5f },
+    { "jittered_column", { 0, 255, 0, 0 }, 0, { 0.0f, 0.0f, 0.0f }, 0.375f },
+};
+const int kShadowCaseCount = sizeof( kShadowCases ) / sizeof( kShadowCases[0] );
+const unsigned char kShadowBackground[3] = { 200, 180, 160 };
+
+// A 4x4 texture whose alpha is set per column (RGB white).
+class CColumnAlphaRegenerator : public ITextureRegenerator
+{
+public:
+	unsigned char m_Alpha[4] = { 255, 255, 255, 255 };
+
+	void RegenerateTextureBits( ITexture *pTexture, IVTFTexture *pVTF, Rect_t *pRect ) override
+	{
+		int width = 0, height = 0, depth = 0;
+		pVTF->ComputeMipLevelDimensions( 0, &width, &height, &depth );
+		CPixelWriter writer;
+		writer.SetPixelMemory( pVTF->Format(), pVTF->ImageData( 0, 0, 0 ), pVTF->RowSizeInBytes( 0 ) );
+		for ( int y = 0; y < height; ++y )
+		{
+			writer.Seek( 0, y );
+			for ( int x = 0; x < width; ++x )
+				writer.WritePixel( 255, 255, 255, m_Alpha[x * 4 / width] );
+		}
+	}
+
+	void Release() override {}
+};
+
+bool CMaterialPixelApp::RunShadowCases( FILE *out )
+{
+	static CColumnAlphaRegenerator s_ShadowRegenerator;
+	ITexture *pShadow = g_pMaterialSystem->CreateProceduralTexture( "conformance/shadow_rtt",
+	    TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888,
+	    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL | TEXTUREFLAGS_SINGLECOPY |
+	        TEXTUREFLAGS_POINTSAMPLE | TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT );
+	if ( !pShadow )
+		return false;
+	pShadow->SetTextureRegenerator( &s_ShadowRegenerator );
+	KeyValues *pKeys = new KeyValues( "Shadow" );
+	pKeys->SetString( "$basetexture", "conformance/shadow_rtt" );
+	IMaterial *pMaterial = g_pMaterialSystem->CreateMaterial( "conformance/shadow", pKeys );
+	if ( !pMaterial || pMaterial->IsErrorMaterial() )
+		return false;
+	pMaterial->IncrementReferenceCount();
+	g_pMaterialSystem->CacheUsedMaterials();
+	IMaterialVar *pColor = pMaterial->FindVar( "$color", NULL );
+	if ( !pColor )
+		return false;
+
+	fprintf( out, "{\"schema\":\"source-material-pixels/v1\",\"family\":\"shadow\"," );
+	WriteClearProbe( out );
+	fprintf( out, "\"background\":[%d,%d,%d],\"cases\":[", kShadowBackground[0],
+	    kShadowBackground[1], kShadowBackground[2] );
+	bool ok = true;
+	for ( int i = 0; i < kShadowCaseCount; ++i )
+	{
+		const ShadowCase &c = kShadowCases[i];
+		memcpy( s_ShadowRegenerator.m_Alpha, c.columns, sizeof( c.columns ) );
+		pShadow->Download();
+		pColor->SetVecValue( c.color[0], c.color[1], c.color[2] );
+		unsigned char pixel[3] = {};
+		g_pMaterialSystem->BeginFrame( 0 );
+		{
+			CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+			int width = 0, height = 0;
+			g_pMaterialSystem->GetBackBufferDimensions( width, height );
+			pRenderContext->Viewport( 0, 0, width, height );
+			pRenderContext->ClearColor4ub(
+			    kShadowBackground[0], kShadowBackground[1], kShadowBackground[2], 255 );
+			pRenderContext->ClearBuffers( true, true );
+			for ( int mode = MATERIAL_VIEW; mode <= MATERIAL_MODEL; ++mode )
+			{
+				pRenderContext->MatrixMode( static_cast<MaterialMatrixMode_t>( mode ) );
+				pRenderContext->LoadIdentity();
+			}
+			pRenderContext->Bind( pMaterial );
+			IMesh *pMesh = pRenderContext->GetDynamicMesh();
+			CMeshBuilder meshBuilder;
+			meshBuilder.Begin( pMesh, MATERIAL_QUADS, 1 );
+			const float corners[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
+			for ( const float *st : corners )
+			{
+				meshBuilder.Position3f( st[0] * 2.0f - 1.0f, 1.0f - st[1] * 2.0f, 0.5f );
+				meshBuilder.Color4ub( 255, 255, 255, c.fade );
+				meshBuilder.TexCoord2f( 0, st[0], st[1] );
+				meshBuilder.AdvanceVertex();
+			}
+			meshBuilder.End();
+			pMesh->Draw();
+			ok = ReadPixel( c.x, 0.5f, pixel ) && ok;
+		}
+		g_pMaterialSystem->EndFrame();
+		g_pMaterialSystem->SwapBuffers();
+		fprintf( out,
+		    "%s{\"name\":\"%s\",\"columns\":[%d,%d,%d,%d],\"fade\":%d,\"color\":[%g,%g,%g],"
+		    "\"x\":%g,\"pixel\":[%d,%d,%d]}",
+		    i ? "," : "", c.name, c.columns[0], c.columns[1], c.columns[2], c.columns[3], c.fade,
+		    c.color[0], c.color[1], c.color[2], c.x, pixel[0], pixel[1], pixel[2] );
+	}
+	fprintf( out, "]}\n" );
+	pMaterial->DecrementReferenceCount();
+	return ok;
+}
+
+// The post family's Engine_Post cases: the frame (copied to _rt_FullFrameFB),
+// the bloom texture, and the color-correction lookups' weights (identity and
+// inverting; a negative weight leaves that lookup out). Correction off when
+// both are left out.
+struct PostCase
+{
+	const char *name;
+	unsigned char frame[3];
+	unsigned char bloom[3];
+	float identityWeight;
+	float invertWeight;
+};
+const PostCase kPostCases[] = {
+    { "bloom_add", { 100, 80, 60 }, { 40, 50, 60 }, -1.0f, -1.0f },
+    { "no_bloom", { 100, 80, 60 }, { 0, 0, 0 }, -1.0f, -1.0f },
+    { "cc_invert", { 100, 80, 60 }, { 0, 0, 0 }, -1.0f, 1.0f },
+    { "cc_half_invert", { 100, 80, 60 }, { 0, 0, 0 }, -1.0f, 0.5f },
+    { "cc_identity", { 100, 80, 60 }, { 0, 0, 0 }, 1.0f, -1.0f },
+    { "bloom_then_cc_invert", { 100, 80, 60 }, { 40, 50, 60 }, -1.0f, 1.0f },
+};
+const int kPostCaseCount = sizeof( kPostCases ) / sizeof( kPostCases[0] );
+// The Downsample_nohdr and BlurFilterX cases: a uniform source texture.
+const unsigned char kPostSource[3] = { 200, 150, 100 };
+
+bool CMaterialPixelApp::RunPostCases( FILE *out )
+{
+	// The engine's frame copy (matsys_interface.cpp CreateFullFrameFBTexture).
+	g_pMaterialSystem->BeginRenderTargetAllocation();
+	ITexture *pFrameBuffer = g_pMaterialSystem->CreateNamedRenderTargetTextureEx2(
+	    "_rt_FullFrameFB", 1, 1, RT_SIZE_FULL_FRAME_BUFFER, g_pMaterialSystem->GetBackBufferFormat(),
+	    MATERIAL_RT_DEPTH_SHARED, TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT,
+	    CREATERENDERTARGETFLAGS_HDR );
+	g_pMaterialSystem->EndRenderTargetAllocation();
+	if ( !pFrameBuffer || pFrameBuffer->IsError() )
+		return false;
+	pFrameBuffer->IncrementReferenceCount();
+	static CSolidColorRegenerator s_BloomRegenerator;
+	ITexture *pBloom = g_pMaterialSystem->CreateProceduralTexture( "conformance/post_bloom",
+	    TEXTURE_GROUP_OTHER, 4, 4, IMAGE_FORMAT_RGBA8888,
+	    TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL | TEXTUREFLAGS_SINGLECOPY |
+	        TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT );
+	if ( !pBloom )
+		return false;
+	pBloom->SetTextureRegenerator( &s_BloomRegenerator );
+
+	// Engine_Post as dev/engine_post names its inputs, with the frame mapped
+	// one to one ($AAINTERNAL2, which a proxy sets in game) and no anti-aliasing.
+	KeyValues *pKeys = new KeyValues( "Engine_Post" );
+	pKeys->SetString( "$basetexture", "conformance/post_bloom" );
+	pKeys->SetString( "$fbtexture", "_rt_FullFrameFB" );
+	pKeys->SetString( "$AAINTERNAL2", "[0 0 1 1]" );
+	IMaterial *pPost = g_pMaterialSystem->CreateMaterial( "conformance/engine_post", pKeys );
+	pKeys = new KeyValues( "Downsample_nohdr" );
+	pKeys->SetString( "$basetexture", "conformance/post_bloom" );
+	pKeys->SetInt( "$bloomtintenable", 0 );
+	IMaterial *pDownsample = g_pMaterialSystem->CreateMaterial( "conformance/downsample", pKeys );
+	pKeys = new KeyValues( "BlurFilterX" );
+	pKeys->SetString( "$basetexture", "conformance/post_bloom" );
+	IMaterial *pBlur = g_pMaterialSystem->CreateMaterial( "conformance/blurx", pKeys );
+	IMaterial *pMaterials[3] = { pPost, pDownsample, pBlur };
+	for ( IMaterial *pMaterial : pMaterials )
+	{
+		if ( !pMaterial || pMaterial->IsErrorMaterial() )
+			return false;
+		pMaterial->IncrementReferenceCount();
+	}
+	g_pMaterialSystem->CacheUsedMaterials();
+
+	// Identity and inverting lookups, loaded as a map's color_correction entity
+	// loads its raw file (32^3 color24, red fastest).
+	const int size = 32;
+	std::vector<unsigned char> identity( size * size * size * 3 ), invert( identity.size() );
+	for ( int b = 0; b < size; ++b )
+		for ( int g = 0; g < size; ++g )
+			for ( int r = 0; r < size; ++r )
+			{
+				const int in[3] = { r, g, b };
+				unsigned char *id = &identity[( ( b * size + g ) * size + r ) * 3];
+				unsigned char *inv = &invert[( ( b * size + g ) * size + r ) * 3];
+				for ( int k = 0; k < 3; ++k )
+				{
+					id[k] = static_cast<unsigned char>( ( in[k] * 255 + 15 ) / 31 );
+					inv[k] = static_cast<unsigned char>( 255 - id[k] );
+				}
+			}
+	const char *lookupFiles[2] = { "conformance_cc_identity.raw", "conformance_cc_invert.raw" };
+	const std::vector<unsigned char> *lookupData[2] = { &identity, &invert };
+	ColorCorrectionHandle_t lookups[2];
+	CMatRenderContextPtr pContext( g_pMaterialSystem );
+	for ( int i = 0; i < 2; ++i )
+	{
+		CUtlBuffer buffer;
+		buffer.Put( lookupData[i]->data(), static_cast<int>( lookupData[i]->size() ) );
+		if ( !g_pFullFileSystem->WriteFile( lookupFiles[i], "DEFAULT_WRITE_PATH", buffer ) )
+			return false;
+		lookups[i] = pContext->AddLookup( lookupFiles[i] );
+		pContext->LockLookup( lookups[i] );
+		pContext->LoadLookup( lookups[i], lookupFiles[i] );
+		pContext->UnlockLookup( lookups[i] );
+	}
+
+	fprintf( out, "{\"schema\":\"source-material-pixels/v1\",\"family\":\"post\"," );
+	WriteClearProbe( out );
+	fprintf( out, "\"cases\":[" );
+	int width = 0, height = 0;
+	g_pMaterialSystem->GetBackBufferDimensions( width, height );
+	bool ok = true;
+	const auto drawScreen = [&]( IMaterial *pMaterial, const unsigned char frame[3] ) -> bool
+	{
+		unsigned char pixel[3] = {};
+		bool drawn = true;
+		g_pMaterialSystem->BeginFrame( 0 );
+		{
+			CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+			pRenderContext->Viewport( 0, 0, width, height );
+			pRenderContext->ClearColor4ub( frame[0], frame[1], frame[2], 255 );
+			pRenderContext->ClearBuffers( true, true );
+			Rect_t whole = { 0, 0, width, height };
+			pRenderContext->CopyRenderTargetToTextureEx( pFrameBuffer, 0, &whole, NULL );
+			// Magenta underneath: a pass that draws nothing is unmistakable.
+			pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
+			pRenderContext->ClearBuffers( true, true );
+			pRenderContext->DrawScreenSpaceRectangle(
+			    pMaterial, 0, 0, width, height, 0, 0, width - 1, height - 1, width, height );
+			drawn = ReadPixel( 0.5f, 0.5f, pixel );
+		}
+		g_pMaterialSystem->EndFrame();
+		g_pMaterialSystem->SwapBuffers();
+		fprintf( out, "\"pixel\":[%d,%d,%d]}", pixel[0], pixel[1], pixel[2] );
+		return drawn;
+	};
+	for ( int i = 0; i < kPostCaseCount; ++i )
+	{
+		const PostCase &c = kPostCases[i];
+		for ( int k = 0; k < 3; ++k )
+			s_BloomRegenerator.m_Color[k] = c.bloom[k];
+		pBloom->Download();
+		const bool correction = c.identityWeight >= 0.0f || c.invertWeight >= 0.0f;
+		pContext->EnableColorCorrection( correction );
+		// Weights only rise until reset, as the client resets them each frame
+		// (C_ColorCorrection, ClientModeShared).
+		pContext->ResetLookupWeights();
+		pContext->SetLookupWeight( lookups[0], std::max( c.identityWeight, 0.0f ) );
+		pContext->SetLookupWeight( lookups[1], std::max( c.invertWeight, 0.0f ) );
+		fprintf( out,
+		    "%s{\"name\":\"%s\",\"pass\":\"engine_post\",\"frame\":[%d,%d,%d],"
+		    "\"bloom\":[%d,%d,%d],\"identity_weight\":%g,\"invert_weight\":%g,",
+		    i ? "," : "", c.name, c.frame[0], c.frame[1], c.frame[2], c.bloom[0], c.bloom[1],
+		    c.bloom[2], c.identityWeight, c.invertWeight );
+		ok = drawScreen( pPost, c.frame ) && ok;
+	}
+	pContext->EnableColorCorrection( false );
+	for ( int k = 0; k < 3; ++k )
+		s_BloomRegenerator.m_Color[k] = kPostSource[k];
+	pBloom->Download();
+	const unsigned char black[3] = { 0, 0, 0 };
+	fprintf( out, ",{\"name\":\"downsample\",\"pass\":\"downsample_nohdr\",\"source\":[%d,%d,%d],",
+	    kPostSource[0], kPostSource[1], kPostSource[2] );
+	ok = drawScreen( pDownsample, black ) && ok;
+	fprintf( out, ",{\"name\":\"blur_x\",\"pass\":\"blurfilterx\",\"source\":[%d,%d,%d],",
+	    kPostSource[0], kPostSource[1], kPostSource[2] );
+	ok = drawScreen( pBlur, black ) && ok;
+	fprintf( out, "]}\n" );
+	for ( IMaterial *pMaterial : pMaterials )
+		pMaterial->DecrementReferenceCount();
+	pFrameBuffer->DecrementReferenceCount();
 	return ok;
 }
 
@@ -1522,7 +1967,7 @@ bool CMaterialPixelApp::RunSkinningCases( FILE *out )
 // the given fractions of the back buffer (x from the left, y from the top).
 bool CMaterialPixelApp::RenderCase( IMaterial *pMaterial, int sortId, const int offset[2],
     int lightmapPageId, const float ( *points )[2], int pointCount, unsigned char ( *pixels )[3],
-    float toneScale )
+    float toneScale, bool bumped )
 {
 	int pageSize[2] = { 0, 0 };
 	g_pMaterialSystem->GetLightmapPageSize( lightmapPageId, &pageSize[0], &pageSize[1] );
@@ -1537,7 +1982,7 @@ bool CMaterialPixelApp::RenderCase( IMaterial *pMaterial, int sortId, const int 
 		// Magenta: a pixel the quad did not cover is unmistakable.
 		pRenderContext->ClearColor4ub( 255, 0, 255, 255 );
 		pRenderContext->ClearBuffers( true, true );
-		DrawLightmappedQuad( pMaterial, sortId, offset, pageSize );
+		DrawLightmappedQuad( pMaterial, sortId, offset, pageSize, bumped );
 		for ( int i = 0; i < pointCount; ++i )
 			ok = ReadPixel( points[i][0], points[i][1], pixels[i] ) && ok;
 	}

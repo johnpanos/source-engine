@@ -31,6 +31,22 @@ Families:
 * pbr-model: PBRMetalRough models under the modellight family's ambient cubes,
   local lights and placements, judged per pixel against the layered BRDF
   (material_pixel_pbr_model.py). Native Vulkan only: D3D9 has no PBR shader.
+* bump: LightmappedGeneric's bumped lightmaps. The three bumped pages are pure
+  red, green and blue and the flat page gray; a normal on one of the shader's
+  bump basis vectors lights with exactly one page, $ssbump weights the pages by
+  its texel. In integer HDR the pixels are held to lightmappedgeneric_ps2_3_x's
+  closed form; without HDR (whose lightmap encoding the oracle does not model)
+  to the channels each case must and must not light. A backend sampling only
+  the flat page fails every basis case.
+* shadow: the Shadow shader's projected render-to-texture shadow (shadow_ps2x)
+  multiplying a known frame: five jittered taps of the shadow texture's alpha,
+  less the vertex alpha fade, lerp the frame toward $color. Held to that closed
+  form in linear light (the frame is blended in linear, as D3D9 blends an sRGB
+  write).
+* post: Engine_Post's bloom add and color correction (identity and inverting
+  lookups and their weights against the default weight), Downsample_nohdr's
+  luminance shaping and BlurFilterX's normalized taps, held to their closed
+  forms on the raw (gamma) values these passes read and write.
 
 A backend that reports a different HDR mode than the run requested fails with
 that reason; it is never compared as if it supported the mode.
@@ -83,7 +99,7 @@ DARK = 2  # a channel at or below this reads as zero
 LIGHTMAP_CASES = ("black_lightmap", "ramp_low", "ramp_mid", "ramp_high", "channels",
                   "base_gray", "base_color")
 FAMILIES = ("lightmap", "exposure", "skinning", "portal", "modellight", "cable",
-            "sky", "monitor", "sprite", "pbr-fallback", "pbr-model")
+            "sky", "monitor", "sprite", "pbr-fallback", "pbr-model", "bump", "shadow", "post")
 # Families whose harness writes whole frames, and the oracle module of each
 # (validate, evaluate).
 FRAME_FAMILIES = {"portal": material_pixel_portal, "modellight": material_pixel_modellight,
@@ -99,6 +115,19 @@ CABLE_CASES = ("front_facing_normal", "side_facing_normal", "back_facing_normal"
 SKY_CASES = ("untinted_sky", "colored_sky")
 MONITOR_CASES = ("base_image", "second_image", "processed_flat", "processed_transforms")
 SPRITE_CASES = ("dim_linear", "tinted_linear", "tinted_srgb")
+BUMP_CASES = ("normal_up", "normal_basis0", "normal_basis1", "normal_basis2", "ssbump_first",
+              "ssbump_second_third")
+SHADOW_CASES = ("opaque_black", "opaque_green", "half_alpha", "faded", "jittered_column")
+POST_CASES = ("bloom_add", "no_bloom", "cc_invert", "cc_half_invert", "cc_identity",
+              "bloom_then_cc_invert", "downsample", "blur_x")
+# Downsample_nohdr's fixed tint ($bloomtintenable 0) and BlurFilter_ps2x's weights.
+DOWNSAMPLE_TINT = 0.333
+BLUR_WEIGHT_SUM = 0.2013 + 2 * (0.2185 + 0.0821 + 0.0461 + 0.0262 + 0.0162 + 0.0102)
+# common_fxc.h's bumpBasis: the directions the three bumped lightmap pages hold.
+OO_SQRT_3 = 0.57735025882720947
+BUMP_BASIS = ((0.81649661064147949, 0.0, OO_SQRT_3),
+              (-0.40824833512306213, 0.70710676908493042, OO_SQRT_3),
+              (-0.40824821591377258, -0.7071068286895752, OO_SQRT_3))
 # The model material is unlit: a covered pixel is its base color up to output
 # rounding and filtering.
 SKIN_COLOR_TOLERANCE = 12
@@ -190,6 +219,25 @@ def read_pixels(path):
                     for pixel in case["pixels"])
                 for case in report.get("cases", [])):
             raise PixelsError("%s has incomplete monitor cases %s" % (path, names))
+        return report
+    if family == "bump":
+        names = [case.get("name") for case in report.get("cases", [])]
+        if names != list(BUMP_CASES) or len(report.get("pages", [])) != 4 or any(
+                not isinstance(case.get("ssbump"), bool) or
+                any(not isinstance(case.get(key), list) or len(case[key]) != 3 or
+                    any(not isinstance(v, int) or not 0 <= v <= 255 for v in case[key])
+                    for key in ("texel", "pixel"))
+                for case in report.get("cases", [])):
+            raise PixelsError("%s has incomplete bump cases %s" % (path, names))
+        return report
+    if family in ("shadow", "post"):
+        names = [case.get("name") for case in report.get("cases", [])]
+        expected = SHADOW_CASES if family == "shadow" else POST_CASES
+        if names != list(expected) or any(
+                not isinstance(case.get("pixel"), list) or len(case["pixel"]) != 3 or
+                any(not isinstance(v, int) or not 0 <= v <= 255 for v in case["pixel"])
+                for case in report.get("cases", [])):
+            raise PixelsError("%s has incomplete %s cases %s" % (path, family, names))
         return report
     if family == "sprite":
         names = [case.get("name") for case in report.get("cases", [])]
@@ -541,6 +589,114 @@ def check_sprite(report):
 NATIVE_PBR_RENDERERS = ("native-vulkan",)
 
 
+def bump_weights(texel, ssbump):
+    """How lightmappedgeneric_ps2_3_x weights the three bumped pages for a
+    normal-map texel: an $ssbump texel weights them directly; a normal is
+    decoded to [-1, 1], and each page weighs its squared, saturated dot with the
+    normal over the sum of all three."""
+    if ssbump:
+        return [value / 255.0 for value in texel]
+    normal = [value / 255.0 * 2.0 - 1.0 for value in texel]
+    dots = [min(max(sum(n * b for n, b in zip(normal, basis)), 0.0), 1.0) ** 2
+            for basis in BUMP_BASIS]
+    total = sum(dots)
+    return [d / total for d in dots]
+
+
+def stored_bump_pages(pages):
+    """The bumped pages as the material system packs them (colorspace.h
+    LinearToBumpedLightmap): each channel scaled so the three pages average to
+    the flat page, so that flat bumped areas match unbumped ones."""
+    flat, bumps = pages[0], pages[1:]
+    stored = [[0.0] * 3 for _ in bumps]
+    for k in range(3):
+        average = sum(page[k] for page in bumps) / 3.0
+        scale = flat[k] / average if average != 0.0 else 0.0
+        for index, page in enumerate(bumps):
+            stored[index][k] = page[k] * scale
+    return stored
+
+
+def check_bump(report):
+    failures = []
+    pages = stored_bump_pages(report["pages"])
+    integer = report["hdr_type"] == HDR_TYPES["integer"]
+    for case in report["cases"]:
+        weights = bump_weights(case["texel"], case["ssbump"])
+        light = [sum(w * page[k] for w, page in zip(weights, pages)) for k in range(3)]
+        pixel = case["pixel"]
+        if integer:
+            expected = lightmap_model(report["base"], light)
+            if not _close(pixel, expected, MODEL_TOLERANCE):
+                failures.append("%s: %s, model %s (bumped light %s)"
+                                % (case["name"], pixel, expected, [round(v, 4) for v in light]))
+        # Every mode: a channel no weighted page lights stays dark, and one the
+        # pages light substantially is lit.
+        for k in range(3):
+            if light[k] < 0.01 and pixel[k] > DARK:
+                failures.append("%s: channel %d is %d, but no bumped page it weights lights it "
+                                "(pixel %s)" % (case["name"], k, pixel[k], pixel))
+            if light[k] > 0.2 and pixel[k] < 64:
+                failures.append("%s: channel %d is %d, but its bumped page lights it (pixel %s)"
+                                % (case["name"], k, pixel[k], pixel))
+    return failures
+
+
+def shadow_model(report, case):
+    """shadow_ps2x over the cleared frame: coverage is the mean alpha of the
+    shadow texture at the pixel and at ( +-1 texel, +-1 texel ) jitter (the
+    point-sampled, clamped 4-column texture), less the vertex alpha; the frame is
+    multiplied by 1 + coverage * ( color - 1 ) in linear light."""
+    columns = case["columns"]
+    column = min(int(case["x"] * len(columns)), len(columns) - 1)
+    taps = [column, column + 1, column - 1, column + 1, column - 1]
+    alpha = sum(columns[min(max(t, 0), len(columns) - 1)] for t in taps) / (5 * 255.0)
+    coverage = min(max(alpha - case["fade"] / 255.0, 0.0), 1.0)
+    return [_linear_to_srgb(_srgb_to_linear(b) * (1.0 + coverage * (c - 1.0)))
+            for b, c in zip(report["background"], case["color"])]
+
+
+def check_shadow(report):
+    failures = []
+    for case in report["cases"]:
+        expected = shadow_model(report, case)
+        if not _close(case["pixel"], expected, MODEL_TOLERANCE):
+            failures.append("%s: %s, model %s" % (case["name"], case["pixel"], expected))
+    return failures
+
+
+def post_model(case):
+    """The raw values each pass computes (none reads or writes sRGB)."""
+    if case["pass"] == "downsample_nohdr":
+        c = [v / 255.0 for v in case["source"]]
+        luminance = sum(v * DOWNSAMPLE_TINT for v in c)
+        out = [v * luminance for v in c]
+    elif case["pass"] == "blurfilterx":
+        out = [v / 255.0 * BLUR_WEIGHT_SUM for v in case["source"]]
+    else:
+        # Engine_Post: frame + BloomFactor (1) * bloom, then the lookups (read
+        # at clamped coordinates) weighted against the default weight.
+        x = [(f + b) / 255.0 for f, b in zip(case["frame"], case["bloom"])]
+        identity = max(case["identity_weight"], 0.0)
+        invert = max(case["invert_weight"], 0.0)
+        if case["identity_weight"] < 0 and case["invert_weight"] < 0:
+            out = x
+        else:
+            default = max(1.0 - identity - invert, 0.0)
+            clamped = [min(max(v, 0.0), 1.0) for v in x]
+            out = [v * default + identity * c + invert * (1.0 - c) for v, c in zip(x, clamped)]
+    return [round(min(max(v, 0.0), 1.0) * 255) for v in out]
+
+
+def check_post(report):
+    failures = []
+    for case in report["cases"]:
+        expected = post_model(case)
+        if not _close(case["pixel"], expected, MODEL_TOLERANCE):
+            failures.append("%s: %s, model %s" % (case["name"], case["pixel"], expected))
+    return failures
+
+
 def check_pbr_fallback(report):
     """The runtime must select and draw the referenced legacy VMT; a native PBR
     renderer must keep the primary shader instead. Either way, every invalid
@@ -684,6 +840,21 @@ def evaluate(report, hdr, reference=None):
         failures = check_monitor(report)
         if reference is not None:
             failures += compare_monitor(report, reference)
+        return failures
+    if report["family"] in ("shadow", "post"):
+        failures = check_shadow(report) if report["family"] == "shadow" else check_post(report)
+        if reference is not None:
+            failures += ["%s: %s, reference %s" % (c["name"], c["pixel"], r["pixel"])
+                         for c, r in zip(report["cases"], reference["cases"])
+                         if not _close(c["pixel"], r["pixel"], PIXEL_TOLERANCE)]
+        return failures
+    if report["family"] == "bump":
+        failures = check_bump(report)
+        if reference is not None and [c["pixel"] for c in report["cases"]] != \
+                [c["pixel"] for c in reference["cases"]]:
+            failures += ["%s: %s, reference %s" % (c["name"], c["pixel"], r["pixel"])
+                         for c, r in zip(report["cases"], reference["cases"])
+                         if not _close(c["pixel"], r["pixel"], PIXEL_TOLERANCE)]
         return failures
     if report["family"] == "sprite":
         failures = check_sprite(report)

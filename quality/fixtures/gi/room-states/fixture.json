@@ -78,7 +78,12 @@
     },
     "sun-low": {
       "layer": "states/sun-low.usda",
-      "note": "sun lowered to 12 degrees elevation, rotated 25 degrees in azimuth"
+      "note": "sun lowered to 12 degrees elevation, rotated 25 degrees in azimuth",
+      "sun_direction": [
+        -0.976807,
+        0.051192,
+        -0.207912
+      ]
     }
   }
 }

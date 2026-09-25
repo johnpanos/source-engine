@@ -524,6 +524,12 @@ def room_states(out):
         path = directory / "states" / (state + ".usda")
         write_state_with_connections(path, base, state_edits)
         states[state] = {"layer": "states/%s.usda" % state, "note": notes[state]}
+    # The moved sun's direction of travel in stage (Z-up) axes, which Source
+    # shares: the runtime's light-direction override (G6.3).
+    elevation, azimuth = math.radians(SUN_LOW_ELEVATION), math.radians(SUN_LOW_AZIMUTH)
+    states["sun-low"]["sun_direction"] = [
+        round(math.cos(elevation) * math.cos(azimuth), 6),
+        round(-math.cos(elevation) * math.sin(azimuth), 6), round(-math.sin(elevation), 6)]
     # Room interior (Z-up meters after conversion): x 0..6, y -8..0, z 0..3.
     # (Y-up cm (x, y, z) -> Z-up m (x, -z, y) / 100.)
     model = (2.7, -4.5, 1.4)
@@ -565,10 +571,13 @@ def write_state_with_connections(path, base, edits):
     layer.Save()
 
 
+SUN_LOW_ELEVATION, SUN_LOW_AZIMUTH = 12.0, 183.0  # degrees, room.usda's Y-up frame
+
+
 def sun_low_matrix():
     """room.usda's Sun (Y-up) re-aimed: rays at 12 degrees elevation (the
     default is 32) and 25 degrees further round in azimuth (default 158)."""
-    elevation, azimuth = math.radians(12.0), math.radians(183.0)
+    elevation, azimuth = math.radians(SUN_LOW_ELEVATION), math.radians(SUN_LOW_AZIMUTH)
     # Y-up direction of travel: down (-Y) and across the XZ plane.
     travel = (math.cos(elevation) * math.cos(azimuth), -math.sin(elevation),
               math.cos(elevation) * math.sin(azimuth))

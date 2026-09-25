@@ -253,6 +253,138 @@ class PbrFallbackTest(unittest.TestCase):
                             for failure in oracle.evaluate(report, "none")))
 
 
+def bump(hdr):
+    """The native Vulkan bump capture (no D3D9 capture exists for this family)."""
+    return json.loads((REFERENCES / ("bump-native-vulkan-%s.json" % hdr)).read_text())
+
+
+def with_bump_pixels(report, pixels):
+    changed = copy.deepcopy(report)
+    for case, pixel in zip(changed["cases"], pixels):
+        case["pixel"] = list(pixel)
+    return changed
+
+
+class BumpTest(unittest.TestCase):
+    def test_native_captures_satisfy_the_oracle(self):
+        for hdr in ("none", "integer"):
+            self.assertEqual(oracle.evaluate(bump(hdr), hdr, bump(hdr)), [], hdr)
+
+    def test_closed_form_holds_in_integer_hdr(self):
+        self.assertEqual(oracle.check_bump(bump("integer")), [])
+
+    def test_material_system_bump_page_correction_is_modelled(self):
+        # Without the flat-page correction the model is 6% too bright.
+        stored = oracle.stored_bump_pages(bump("integer")["pages"])
+        self.assertAlmostEqual(stored[0][0], 0.8 * 0.25 / (0.8 / 3.0))
+
+    def test_flat_lightmap_only_backend_is_detected(self):
+        # A backend that samples only the flat (gray) page, as the textured
+        # pipeline's approximation did, lights every channel of every case.
+        report = bump("integer")
+        flat = [oracle.lightmap_model(report["base"], report["pages"][0])] * len(report["cases"])
+        failures = oracle.evaluate(with_bump_pixels(report, flat), "integer", None)
+        self.assertTrue(any("normal_basis0" in failure for failure in failures))
+        self.assertTrue(any("ssbump_first" in failure for failure in failures))
+
+    def test_swapped_bump_pages_are_detected(self):
+        report = bump("none")
+        pixels = [case["pixel"] for case in report["cases"]]
+        swapped = [pixels[0], pixels[2], pixels[1]] + pixels[3:]
+        failures = oracle.evaluate(with_bump_pixels(report, swapped), "none", None)
+        self.assertTrue(any("normal_basis1" in failure for failure in failures))
+
+    def test_ssbump_decoded_as_a_normal_is_detected(self):
+        # Decoding the $ssbump texel ( 0, 0.5, 0.5 ) to [-1, 1] leans it toward
+        # the third page only.
+        report = bump("integer")
+        pixels = [case["pixel"] for case in report["cases"]]
+        pixels[5] = [0, 0, 225]
+        failures = oracle.evaluate(with_bump_pixels(report, pixels), "integer", None)
+        self.assertTrue(any("ssbump_second_third" in failure for failure in failures))
+
+    def test_missing_bump_case_is_rejected(self):
+        report = copy.deepcopy(bump("none"))
+        report["cases"].pop()
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pixels.json"
+            path.write_text(json.dumps(report))
+            with self.assertRaises(oracle.PixelsError):
+                oracle.read_pixels(path)
+
+
+def native(family, hdr="none"):
+    return json.loads((REFERENCES / ("%s-native-vulkan-%s.json" % (family, hdr))).read_text())
+
+
+def with_case_pixel(report, name, pixel):
+    changed = copy.deepcopy(report)
+    for case in changed["cases"]:
+        if case["name"] == name:
+            case["pixel"] = list(pixel)
+    return changed
+
+
+class ShadowTest(unittest.TestCase):
+    def test_native_capture_satisfies_the_closed_form(self):
+        self.assertEqual(oracle.evaluate(native("shadow"), "none", native("shadow")), [])
+
+    def test_missing_jitter_is_detected(self):
+        # A single tap reads the opaque column itself: full coverage, black.
+        report = with_case_pixel(native("shadow"), "jittered_column", [0, 0, 0])
+        failures = oracle.evaluate(report, "none", None)
+        self.assertTrue(any("jittered_column" in failure for failure in failures))
+
+    def test_ignored_fade_is_detected(self):
+        report = with_case_pixel(native("shadow"), "faded", [0, 0, 0])
+        self.assertTrue(any("faded" in f for f in oracle.evaluate(report, "none", None)))
+
+    def test_ignored_shadow_color_is_detected(self):
+        report = with_case_pixel(native("shadow"), "opaque_green", [0, 0, 0])
+        self.assertTrue(any("opaque_green" in f for f in oracle.evaluate(report, "none", None)))
+
+    def test_undrawn_shadow_is_detected(self):
+        # A declined draw leaves the cleared frame.
+        report = with_case_pixel(native("shadow"), "opaque_black", [200, 180, 160])
+        self.assertTrue(any("opaque_black" in f for f in oracle.evaluate(report, "none", None)))
+
+
+class PostTest(unittest.TestCase):
+    def test_native_capture_satisfies_the_closed_forms(self):
+        self.assertEqual(oracle.evaluate(native("post"), "none", native("post")), [])
+
+    def test_declined_engine_post_is_detected(self):
+        # The pass drawn over magenta that a declined draw leaves.
+        report = with_case_pixel(native("post"), "bloom_add", [255, 0, 255])
+        self.assertTrue(any("bloom_add" in f for f in oracle.evaluate(report, "none", None)))
+
+    def test_ignored_bloom_is_detected(self):
+        report = with_case_pixel(native("post"), "bloom_add", [100, 80, 60])
+        self.assertTrue(any("bloom_add" in f for f in oracle.evaluate(report, "none", None)))
+
+    def test_ignored_color_correction_is_detected(self):
+        report = with_case_pixel(native("post"), "cc_invert", [100, 80, 60])
+        self.assertTrue(any("cc_invert" in f for f in oracle.evaluate(report, "none", None)))
+
+    def test_ignored_default_weight_is_detected(self):
+        # Half weight must blend with the uncorrected color, not apply the lookup.
+        report = with_case_pixel(native("post"), "cc_half_invert", [155, 175, 195])
+        self.assertTrue(any("cc_half_invert" in f for f in oracle.evaluate(report, "none", None)))
+
+    def test_unshaped_downsample_is_detected(self):
+        report = with_case_pixel(native("post"), "downsample", [200, 150, 100])
+        self.assertTrue(any("downsample" in f for f in oracle.evaluate(report, "none", None)))
+
+    def test_missing_post_case_is_rejected(self):
+        report = copy.deepcopy(native("post"))
+        report["cases"].pop()
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pixels.json"
+            path.write_text(json.dumps(report))
+            with self.assertRaises(oracle.PixelsError):
+                oracle.read_pixels(path)
+
+
 class SeededDefectTest(unittest.TestCase):
     def test_readback_that_returns_zeros_invalidates_the_run(self):
         report = copy.deepcopy(capture("none"))

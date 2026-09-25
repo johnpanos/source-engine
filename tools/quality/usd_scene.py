@@ -308,6 +308,7 @@ def preview_summary(name, material):
             if summary["base_color"] != (1.0, 1.0, 1.0) or "base" in textures:
                 notes.append("diffuseColor unused at opacity 0; transmission is untinted")
             summary["base_color"] = (1.0, 1.0, 1.0)
+            summary["base_texture"] = None
             textures.pop("base", None)
     elif "opacity" in textures and summary["opacity_threshold"] <= 0:
         summary["opacity_threshold"] = 0.5

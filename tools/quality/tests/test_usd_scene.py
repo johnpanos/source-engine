@@ -199,6 +199,22 @@ class NegativeTest(unittest.TestCase):
         np.testing.assert_allclose(extractor.emitters[0]["emission"]["radiance"], (2.0, 2.0, 2.0))
         np.testing.assert_allclose(extractor.summaries["glow"]["emission_color"], (1.5, 1, 0.5))
 
+    def test_transparent_preview_surface_transmits_untinted(self):
+        stage = self.stage()
+        material = UsdShade.Material.Define(stage, "/World/Glass")
+        shader = UsdShade.Shader.Define(stage, "/World/Glass/Surface")
+        shader.CreateIdAttr("UsdPreviewSurface")
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(0, 0, 0))
+        shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(0.0)
+        material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+        UsdShade.MaterialBindingAPI.Apply(stage.GetPrimAtPath("/World/Quad")).Bind(material)
+        extractor = usd_scene.Extractor(stage, "memory")
+        extractor.run()
+        glass = extractor.summaries["glass"]
+        self.assertEqual(glass["transmission"], 1.0)
+        self.assertEqual(glass["base_color"], (1.0, 1.0, 1.0))
+        self.assertIn("untinted", glass["approximation"])
+
     def test_simplify_pattern_matching_nothing_fails(self):
         extractor = usd_scene.Extractor(self.grid_stage(2), "memory", [("/World/Rocks", 0.1)])
         with self.assertRaises(ValueError):

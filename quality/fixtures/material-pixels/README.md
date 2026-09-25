@@ -18,6 +18,10 @@ real material system. The backend is identified by each filename and report.
 | `sky-dxvk-none.json` | sky | `HDR_TYPE_NONE` | Sky_DX9 texture and tint, with translated texture coordinates sampled on both sides |
 | `monitor-dxvk-none.json` | monitor | `HDR_TYPE_NONE` | MonitorScreen_DX9 base and second images, contrast, saturation, tint, and independent UV transforms |
 | `sprite-dxvk-none.json` | sprite | `HDR_TYPE_NONE` | Sprite_DX9 translucent mode with dim and tinted vertex colors, alpha blending, and both sRGB settings |
+| `bump-native-vulkan-integer.json` | bump | `HDR_TYPE_INTEGER` | LightmappedGeneric bumped lightmaps (red, green and blue bumped pages over a gray flat page) under basis-vector normals and `$ssbump` texels; native Vulkan capture, which also matches the closed form (no D3D9 capture: DXVK work is deferred by direction) |
+| `bump-native-vulkan-none.json` | bump | `HDR_TYPE_NONE` | as above in 8-bit lightmaps; held to the lit and dark channels, not the closed form |
+| `shadow-native-vulkan-none.json` | shadow | `HDR_TYPE_NONE` | Shadow (shadow_ps2x) over a cleared frame: opaque, half-alpha, faded and a lone column read through its jittered taps; native Vulkan capture matching the closed form |
+| `post-native-vulkan-none.json` | post | `HDR_TYPE_NONE` | Engine_Post bloom add and color correction (identity and inverting lookups, full and half weight), Downsample_nohdr and BlurFilterX over a uniform source; native Vulkan capture matching the closed forms |
 
 `pbr-fallback-primary.vmt` and `pbr-fallback-legacy.vmt` are authored inputs
 for the `pbr-fallback` family. The driver copies them into a private runtime

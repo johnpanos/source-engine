@@ -102,6 +102,23 @@ def rect_records(obj, radiance, one_sided):
              "c": (b * SOURCE_UNITS_PER_METER).tolist()} for c, a, b in records], exact
 
 
+def emitted(albedo, summary, uv):
+    """(N, 3) emitted radiance at (N, 2) texture coordinates, as the stage's
+    material binds it (pbrt_blender.build_material): the emission texture
+    (scale and bias applied) or the emission colour, at strength 1."""
+    record = summary["textures"].get("emission")
+    if record:
+        rgb = albedo.texture(record)
+        height, width = rgb.shape[:2]
+        x = np.mod(np.floor(uv[:, 0] * width), width).astype(int)
+        y = np.mod(np.floor(uv[:, 1] * height), height).astype(int)
+        scale = np.asarray(record.get("scale", [1, 1, 1, 1])[:3], dtype=np.float64)
+        bias = np.asarray(record.get("bias", [0, 0, 0, 0])[:3], dtype=np.float64)
+        return np.maximum(rgb[y, x].astype(np.float64) * scale + bias, 0.0)
+    colour = summary["emission_color"] or (0.0, 0.0, 0.0)
+    return np.tile(np.asarray(colour[:3], dtype=np.float64), (len(uv), 1))
+
+
 def dome_radiance(scene, environment):
     """The environment's mean radiance over the sphere (solid-angle
     weighted): the dome the producer lights escaping rays with."""
@@ -217,11 +234,10 @@ def main():
             continue
         where = hit_index[members]
         reflectance[where] = albedo.evaluate(material, coords[members])
-        summary = map_scene.material_summary(scene, material)
-        colour = summary["emission_color"]
         blender = materials[material].name if material in materials else None
-        if colour and max(colour[:3]) > 0 and blender in emissive_style:
-            emission[where] = colour[:3]
+        if blender in emissive_style:
+            emission[where] = emitted(albedo, map_scene.material_summary(scene, material),
+                                      coords[members])
             style = emissive_style[blender]
             source[where] = style if style >= 0 else sdf_volume.NO_SOURCE
 

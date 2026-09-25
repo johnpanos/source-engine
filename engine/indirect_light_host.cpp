@@ -134,6 +134,12 @@ public:
 	}
 };
 
+#ifdef ANDROID
+constexpr bool kSdfProfileSupported = false;
+#else
+constexpr bool kSdfProfileSupported = true;
+#endif
+
 class EngineCatalog final : public IProducerCatalog
 {
 public:
@@ -145,9 +151,12 @@ public:
 			return true;
 		if ( kind == ProducerKind::PrecomputedRadiosity )
 			return scene.transfer != nullptr;
-		// The GPU producer: the map's field and a device that runs compute.
+		// The GPU producer: the map's field and a device that runs compute, on
+		// a profile whose budget it was measured within
+		// (quality/budgets/indirect-light-v1.json: unsupported on Android
+		// until measured there, RFC 0011 G6.4).
 		if ( kind == ProducerKind::SdfTraced )
-			return scene.sdf != nullptr && scene.gpu != nullptr &&
+			return kSdfProfileSupported && scene.sdf != nullptr && scene.gpu != nullptr &&
 			       scene.gpu->Capabilities().compute;
 		// The contract's scripted fake: switching tests only, never players.
 		return kind == ProducerKind::ScriptedFake && r_indirect_test_fake.GetBool();

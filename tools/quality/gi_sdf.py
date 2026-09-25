@@ -2,26 +2,35 @@
 """RFC 0011 G6 evidence for the SDF-traced producer, in game.
 
     python3 tools/quality/gi_sdf.py door --out quality-results/rfc0011-g6/door
+    python3 tools/quality/gi_sdf.py sun --out quality-results/rfc0011-g6/sun
 
-`door` (G6.2): the door fixture's map (quality-results/rfc0011-maps/door, or
---map-build) carries the SDFV and the door as a moving brush entity (`Door`,
-a func_brush open at spawn). Each capture boots the map headless on native
-Vulkan (gi_runtime.py capture), selects a producer, and screenshots the
-indirect-light view of the far room; gi_runtime.py compare judges it against
-the Cycles indirect-only reference of the state:
+Each capture boots a fixture's map (quality-results/rfc0011-maps/<fixture>,
+or --map-build; built with the gi-fixture profile, so it carries the SDFV)
+headless on native Vulkan (gi_runtime.py capture), selects a producer, lets
+it warm up for WARM_FRAMES, makes the scene change, and screenshots the
+indirect-light view CHANGE_FRAMES later: the producer's declared 60 frames
+(1 s) plus the input's latency. gi_runtime.py compare judges each capture
+against the Cycles indirect-only reference of its state, world and model
+regions gated, with the producer's declared response tolerance (0.1) as the
+absolute allowance (a fraction of the reference level) beside the world
+gate's relative 0.1. Every command writes gate.json; the exit status is
+nonzero when any capture is not as expected.
 
-  sdf-open        SDF, door open: must match `open`.
-  sdf-closed      SDF, `ent_fire Door Enable` CLOSE_FRAMES before the
-                  screenshot (the declared 60 frames plus the input's
-                  server-to-client latency): must match `closed`.
-  radiosity-closed  radiosity, door closed: must NOT match `closed` (it
-                  claims no GeometryMotion); the scenario tells them apart.
-  baked-closed    baked, door closed: must NOT match `closed`.
+`door` (G6.2): the door is a moving brush entity (`Door`, a func_brush open
+at spawn), closed by `ent_fire Door Enable`. SDF open must match `open` and
+SDF closed must match `closed`; radiosity and baked closed must NOT (they
+claim no GeometryMotion): the scenario tells them apart. The closed room is
+dark throughout (its reference is 0), so `closed` is judged at the `open`
+state's light level.
 
-The closed room is dark throughout (its reference is 0), so `closed` is
-judged at the `open` state's light level (--level-state open) with the
-producer's declared response tolerance (0.1) as the absolute allowance; the
-relative tolerance is the world gate's 0.1. Dynamic-model regions are gated.
+`sun` (G6.3, "sun angle changes converge"): room-states' sun (its light
+style from the radiosity transfer) is moved to the fixture's recorded sun-low
+direction by `r_indirect_light_direction`. SDF must match `default` before
+the move. After it, the capture CHANGE_FRAMES later must agree with one
+SETTLE_FRAMES later still (settled), and every region must be closer to the
+Cycles sun-low reference than the unchanged bake is; radiosity, which claims
+no LightDirection, must not be. The regions' absolute error against sun-low
+is recorded, not gated: this gate is convergence, not accuracy.
 """
 
 import argparse
@@ -38,58 +47,136 @@ import gi_runtime  # noqa: E402
 MAPS = ROOT / "quality-results" / "rfc0011-maps"
 # After the camera placement (gi_runtime.PLACEMENT_FRAMES), the producer is
 # selected and runs WARM_FRAMES (past its warmupFrames, 72, and the switch's
-# fade) before the door closes; the screenshot follows CLOSE_FRAMES later.
+# fade) before the scene changes; the screenshot follows CHANGE_FRAMES later.
 WARM_FRAMES = 150
-CLOSE_FRAMES = 64
+CHANGE_FRAMES = 64
+SETTLE_FRAMES = 240  # the later capture a converged producer must agree with
 RESPONSE_TOLERANCE = 0.1  # SdfTracedProducer::Caps().responseTolerance
 
 
-def door(args):
-    map_build = Path(args.map_build or MAPS / "door")
-    out = Path(args.out)
-    close = "wait %d; ent_fire Door Enable" % WARM_FRAMES
-    capture_wait = gi_runtime.PLACEMENT_FRAMES + WARM_FRAMES + CLOSE_FRAMES
-    captures = {
-        "sdf-open": ("open", "r_indirect_report 1; r_indirect_producer sdf; wait %d" %
-                     WARM_FRAMES, True),
-        "sdf-closed": ("closed", "r_indirect_report 1; r_indirect_producer sdf; " + close, True),
-        "radiosity-closed": ("closed", "r_indirect_producer radiosity; " + close, False),
-        "baked-closed": ("closed", "r_indirect_producer baked; " + close, False),
-    }
+def run_captures(fixture, map_build, out, captures, level_state, args):
+    """Each capture: (state, console command, expected to pass the state's
+    gate (None: measured only)[, extra frames before the screenshot]).
+    Returns (all as expected, per-capture results)."""
     results, passed = {}, True
-    for name, (state, command, should_pass) in captures.items():
+    for name, (state, command, should_pass, *extra) in captures.items():
+        settle = extra[0] if extra else 0
         target = out / name
-        capture = [sys.executable, HERE / "gi_runtime.py", "capture", "--fixture", "door",
+        capture = [sys.executable, HERE / "gi_runtime.py", "capture", "--fixture", fixture,
                    "--map-build", map_build, "--out", target, "--build", args.build,
-                   "--console-command", command, "--capture-wait", str(capture_wait)]
+                   "--console-command", command, "--capture-wait",
+                   str(gi_runtime.PLACEMENT_FRAMES + WARM_FRAMES + CHANGE_FRAMES + settle)]
         if args.runtime:
             capture += ["--runtime", args.runtime]
         booted = subprocess.run([str(part) for part in capture], capture_output=True, text=True,
                                 timeout=1200).returncode == 0
-        compare = subprocess.run(
-            [sys.executable, str(HERE / "gi_runtime.py"), "compare", "--fixture", "door",
-             "--state", state, "--capture", str(target), "--out", str(target / "gate.json"),
-             "--gate-models", "--level-state", "open",
-             "--absolute-fraction", str(RESPONSE_TOLERANCE)],
-            capture_output=True, text=True, timeout=600)
+        compare = [sys.executable, str(HERE / "gi_runtime.py"), "compare", "--fixture", fixture,
+                   "--state", state, "--capture", str(target), "--out",
+                   str(target / "gate.json"), "--gate-models",
+                   "--absolute-fraction", str(RESPONSE_TOLERANCE)]
+        if level_state:
+            compare += ["--level-state", level_state]
+        compared = subprocess.run(compare, capture_output=True, text=True, timeout=600)
         gate = json.loads((target / "gate.json").read_text()) \
             if (target / "gate.json").is_file() else {}
-        switched = producer_log(target)
-        ok = booted and (gate.get("status") == "pass") == should_pass
+        ok = booted and bool(gate) and (should_pass is None or
+                                        (gate.get("status") == "pass") == should_pass)
         passed &= ok
         results[name] = {"state": state, "command": command, "booted": booted,
-                         "expected": "pass" if should_pass else "fail",
+                         "settle_frames": settle, "regions": regions(gate),
+                         "expected": {True: "pass", False: "fail", None: "measured"}[should_pass],
                          "compare": gate.get("status"), "status": "pass" if ok else "fail",
-                         "producer_log": switched, "compare_log": compare.stdout[-2000:]}
-        print("%-17s %-6s expected %-4s compare %-4s -> %s" % (
+                         "producer_log": producer_log(target),
+                         "compare_log": compared.stdout[-2000:]}
+        print("%-17s %-8s expected %-4s compare %-4s -> %s" % (
             name, state, results[name]["expected"], gate.get("status"), results[name]["status"]))
-    record = {"gate": "G6.2 door", "status": "pass" if passed else "fail",
-              "build": args.build, "close_frames_before_capture": CLOSE_FRAMES,
-              "response_tolerance": RESPONSE_TOLERANCE, "captures": results}
+    return passed, results
+
+
+def regions(gate):
+    """{region: (measured, reference)} luminance of a compare result."""
+    return {region: (entry["measured_luminance"], entry["reference_luminance"])
+            for view in gate.get("views", {}).values() for region, entry in view.items()
+            if "measured_luminance" in entry}
+
+
+def write(out, gate, passed, results, **extra):
+    record = dict({"gate": gate, "status": "pass" if passed else "fail",
+                   "warm_frames": WARM_FRAMES, "change_frames_before_capture": CHANGE_FRAMES,
+                   "response_tolerance": RESPONSE_TOLERANCE, "captures": results}, **extra)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "door.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
-    print("G6.2 door: %s" % record["status"])
+    (out / "gate.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    print("%s: %s" % (gate, record["status"]))
     return 0 if passed else 1
+
+
+def door(args):
+    """G6.2. The closed room is dark throughout, so it is judged at the open
+    state's light level."""
+    change = "wait %d; ent_fire Door Enable" % WARM_FRAMES
+    captures = {
+        "sdf-open": ("open", "r_indirect_report 1; r_indirect_producer sdf; wait %d" %
+                     WARM_FRAMES, True),
+        "sdf-closed": ("closed", "r_indirect_report 1; r_indirect_producer sdf; " + change, True),
+        "radiosity-closed": ("closed", "r_indirect_report 1; r_indirect_producer radiosity; " +
+                             change, False),
+        "baked-closed": ("closed", "r_indirect_report 1; r_indirect_producer baked; " + change,
+                         False),
+    }
+    passed, results = run_captures("door", Path(args.map_build or MAPS / "door"),
+                                   Path(args.out), captures, "open", args)
+    return write(Path(args.out), "G6.2 door", passed, results, build=args.build)
+
+
+def sun(args):
+    """G6.3. The sun (its light style from the radiosity transfer) is moved
+    to the fixture's sun-low direction by the light-direction override."""
+    fixture = json.loads((ROOT / "quality/fixtures/gi/room-states/fixture.json").read_text())
+    direction = fixture["states"]["sun-low"]["sun_direction"]
+    map_build = Path(args.map_build or MAPS / "room-states")
+    sources = json.loads((map_build / "lighting/radiosity/rtrn-bake.json").read_text())["sources"]
+    style = next(source["style"] for source in sources if source["name"] == "Sun")
+    change = "wait %d; r_indirect_light_direction %d %s" % (
+        WARM_FRAMES, style, " ".join("%.6f" % v for v in direction))
+    captures = {
+        "sdf-default": ("default", "r_indirect_report 1; r_indirect_producer sdf; wait %d" %
+                        WARM_FRAMES, True),
+        "sdf-sun-low": ("sun-low", "r_indirect_report 1; r_indirect_producer sdf; " + change,
+                        None),
+        "sdf-sun-low-settled": ("sun-low", "r_indirect_report 1; r_indirect_producer sdf; " +
+                                change, None, SETTLE_FRAMES),
+        "radiosity-sun-low": ("sun-low", "r_indirect_report 1; r_indirect_producer radiosity; " +
+                              change, None),
+    }
+    passed, results = run_captures("room-states", map_build, Path(args.out), captures, None,
+                                   args)
+    # Settled: the capture CHANGE_FRAMES after the move agrees with the one
+    # SETTLE_FRAMES later, per region, within the response tolerance.
+    # Toward the reference: every region's error against the sun-low
+    # reference is below the unchanged bake's (the default-state capture);
+    # radiosity, which claims no LightDirection, must not get there.
+    before = results["sdf-default"]["regions"]
+    early, late = results["sdf-sun-low"]["regions"], results["sdf-sun-low-settled"]["regions"]
+    level = max(reference for _, reference in late.values())
+    settled = {region: abs(early[region][0] - late[region][0]) <=
+               RESPONSE_TOLERANCE * (late[region][0] + level) for region in late}
+
+    def toward(moved):
+        return {region: abs(moved[region][0] - moved[region][1]) <
+                abs(before[region][0] - moved[region][1]) for region in moved}
+    sdf_toward, radiosity_toward = toward(early), toward(results["radiosity-sun-low"]["regions"])
+    checks = {"settled": all(settled.values()), "sdf_toward_reference": all(sdf_toward.values()),
+              "radiosity_not_toward_reference": not all(radiosity_toward.values())}
+    for check, ok in checks.items():
+        print("%-32s %s" % (check, "pass" if ok else "fail"))
+    passed &= all(checks.values())
+    accuracy = {region: {"measured": value, "reference": reference,
+                         "relative_error": abs(value - reference) / max(reference, 1e-9)}
+                for region, (value, reference) in early.items()}
+    return write(Path(args.out), "G6.3 sun", passed, results, build=args.build, sun_style=style,
+                 sun_direction=direction, checks=checks, settled=settled,
+                 toward_reference={"sdf": sdf_toward, "radiosity": radiosity_toward},
+                 sdf_accuracy_measured=accuracy, settle_frames=SETTLE_FRAMES)
 
 
 def producer_log(target):
@@ -106,14 +193,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
-    command = commands.add_parser("door")
-    command.add_argument("--map-build", type=Path)
-    command.add_argument("--out", required=True)
-    command.add_argument("--build", default="build",
-                         help="the client build tree carrying the producer")
-    command.add_argument("--runtime", help="base runtime (a private copy is booted)")
+    for name in ("door", "sun"):
+        command = commands.add_parser(name)
+        command.add_argument("--map-build", type=Path)
+        command.add_argument("--out", required=True)
+        command.add_argument("--build", default="build",
+                             help="the client build tree carrying the producer")
+        command.add_argument("--runtime", help="base runtime (a private copy is booted)")
     args = parser.parse_args()
-    return {"door": door}[args.command](args)
+    return {"door": door, "sun": sun}[args.command](args)
 
 
 if __name__ == "__main__":
