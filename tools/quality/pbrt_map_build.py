@@ -27,6 +27,10 @@ pinned tools under build/toolchains/ and writes the default toolchain file;
                  irradiance and ray-traced visibility per probe (probe_volume_bake.py);
                  the map then has no vrad fallback light, and its leaf ambient is
                  derived from the volume (leaf_ambient_from_prbv.py) in `pack`
+    radiosity    optional RFC 0011 G4 RTRN (profile/manifest radiosity, needs probe_volume):
+                 patches, form factors, per-light injection and the probe gather
+                 (radiosity_transfer_bake.py); its switchable lights become named
+                 `light` entities in `collision` and the transfer is packed beside PRBV
     ktx2         atlas -> linear RGBA16F KTX2 (LMAP payload)
     sky          render stage = lighting stage + SkyDome for window views (scenes with a sky)
     collision    shell/solids/spawn VMF
@@ -52,7 +56,9 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
+import struct
 import subprocess
 import sys
 import time
@@ -69,7 +75,7 @@ import playable_maps  # noqa: E402
 import reference_compare  # noqa: E402
 
 STEPS = ("scene", "environment", "stage", "reference-gate", "bake", "denoise", "directional",
-         "probe", "probe-volume", "ktx2", "sky",
+         "probe", "probe-volume", "radiosity", "ktx2", "sky",
          "collision", "compile", "pack", "content", "boot", "camera-boot", "runtime-gate",
          "traversal-boot", "traversal", "audit")
 BAKE_SCOPE = "pbrt-shared-lightmap-uv-and-cycles-bake"
@@ -117,6 +123,34 @@ def load_profile(name):
     return profile
 
 
+def bsp_entities(path):
+    """The entity lump of a legacy VBSP as a list of key-value dicts."""
+    data = Path(path).read_bytes()
+    offset, length = struct.unpack_from("<ii", data, 8)
+    text = data[offset:offset + length].decode("latin-1").rstrip("\0")
+    entities, current = [], None
+    for match in re.finditer(r'"([^"]*)"\s*"([^"]*)"|([{}])', text):
+        if match.group(3) == "{":
+            current = {}
+        elif match.group(3) == "}":
+            entities.append(current)
+            current = None
+        elif current is not None:
+            current[match.group(1)] = match.group(2)
+    return entities
+
+
+def check_light_styles(bsp, controls):
+    """Each switchable source's `light` entity compiled with its RTRN style."""
+    styles = {entity.get("targetname"): entity.get("style") for entity in bsp_entities(bsp)
+              if entity.get("classname") == "light" and entity.get("targetname")}
+    wrong = [(c["name"], c["style"], styles.get(c["name"])) for c in controls
+             if styles.get(c["name"]) != str(c["style"])]
+    if wrong:
+        raise ValueError("compiled light styles differ from the radiosity transfer's: %s" %
+                         wrong)
+
+
 def with_defaults(manifest, profile, key):
     """Manifest value over the profile default; dicts merge, null disables."""
     default = profile.get(key)
@@ -162,6 +196,9 @@ class Pipeline:
                          "exclude_materials": lightmap.get("exclude_materials", [])}
         self.probe = with_defaults(manifest, self.profile, "reflection_probe")
         self.probe_volume = with_defaults(manifest, self.profile, "probe_volume")
+        self.radiosity = with_defaults(manifest, self.profile, "radiosity")
+        if self.radiosity and not self.probe_volume:
+            raise ValueError("radiosity needs the probe_volume it gathers into")
         reference = dict(self.profile.get("reference") or {}, **manifest.get("reference", {}))
         self.reference_render = reference.get("render")
         self.runtime_gate = with_defaults(manifest, self.profile, "runtime_gate")
@@ -189,6 +226,8 @@ class Pipeline:
             "probe": self.out / "lighting" / "probe",
             "prbv": self.out / "lighting" / "probe_volume.prbv",
             "prbv_work": self.out / "lighting" / "probe_volume",
+            "rtrn": self.out / "lighting" / "radiosity.rtrn",
+            "rtrn_work": self.out / "lighting" / "radiosity",
             "bsp_ambient": self.out / (self.map + "_leaf_ambient.bsp"),
             "sky_texture": self.out / "sky.png",
             "render_stage": self.out / "lighting" / (self.map + "_render.usda"),
@@ -221,6 +260,12 @@ class Pipeline:
             raise SystemExit("step %s failed (exit %d); log %s:\n  %s" %
                              (step, result.returncode, log, "\n  ".join(tail)))
         return time.monotonic() - started
+
+    def light_controls(self):
+        """The radiosity transfer's switchable sources, in style order."""
+        receipt = self.paths["rtrn_work"] / "rtrn-bake.json"
+        sources = json.loads(receipt.read_text())["sources"]
+        return [source for source in sources if source["style"] >= 0]
 
     def blender(self, step, script, arguments):
         return self.run(step, [self.tools["blender"], "-b", "--factory-startup",
@@ -442,6 +487,24 @@ class Pipeline:
                                        "pbrt_blender.py"],
                       [p["prbv"], p["prbv_work"]],
                       lambda: self.blender("probe-volume", "probe_volume_bake.py", volume_args))
+        radiosity = self.radiosity
+        if radiosity:
+            radiosity_args = ["--scene", scene, "--stage", p["stage"], "--prbv", p["prbv"],
+                              "--patch-size", str(radiosity["patch_size_m"]),
+                              "--transfer-rays", str(radiosity.get("transfer_rays", 256)),
+                              "--gather-rays", str(radiosity.get("gather_rays", 4096)),
+                              "--samples", str(radiosity.get("samples", 1024)),
+                              "--device", self.lightmap["device"],
+                              "--light-paths", self.lightmap["light_paths"],
+                              "--out", p["rtrn"], "--work", p["rtrn_work"]] + env_args
+            self.step("radiosity", [p["stage"], p["prbv"]] + ([environment] if environment
+                                                               else []),
+                      dict(radiosity, light_paths=self.lightmap["light_paths"]),
+                      SCENE_SCRIPTS + ["radiosity_transfer_bake.py", "radiosity_transfer.py",
+                                       "probe_volume.py", "pbrt_blender.py"],
+                      [p["rtrn"], p["rtrn_work"]],
+                      lambda: self.blender("radiosity", "radiosity_transfer_bake.py",
+                                           radiosity_args))
         # A scene sun: baked visibility + marker texels for dynamic specular.
         sun_args = []
         if self.scene.get("distant_lights") and probe:
@@ -478,13 +541,18 @@ class Pipeline:
                           self.map, "--out-dir", p["collision"]]
         if volume:
             collision_args.append("--no-fallback-light")
+        controls = self.light_controls() if radiosity else []
+        for control in controls:
+            collision_args += ["--light-control", control["name"]]
         for flag, key in (("--envelope-mesh", "envelope_meshes"),
                           ("--solid-material", "solid_materials"),
                           ("--solid-mesh", "solid_meshes")):
             for value in collision.get(key, []):
                 collision_args += [flag, value]
         self.step("collision", [scene, p["lighting_stage"]],
-                  dict(collision, **({"fallback_light": False} if volume else {})),
+                  dict(collision, **({"fallback_light": False} if volume else {}),
+                       **({"light_controls": [c["name"] for c in controls]} if controls
+                          else {})),
                   SCENE_SCRIPTS + ["pbrt_collision_vmf.py"], [p["collision"]],
                   lambda: self.usd_python("collision", "pbrt_collision_vmf.py", collision_args))
         vmf = p["collision"] / (self.map + "_collision.vmf")
@@ -504,6 +572,8 @@ class Pipeline:
 
         def pack():
             seconds = 0.0
+            if controls:
+                check_light_styles(p["bsp"], controls)
             if volume:
                 seconds += self.run("pack", [sys.executable, HERE / "leaf_ambient_from_prbv.py",
                                              "--bsp", p["bsp"], "--prbv", p["prbv"],
@@ -524,11 +594,13 @@ class Pipeline:
                       # Dynamic models are placed as entities, not world mesh.
                       [item for name in sorted(map_scene.prop_shape_names(self.scene))
                        for item in ("--exclude-mesh", name)] +
-                      (["--probe-volume", p["prbv"]] if volume else []))
+                      (["--probe-volume", p["prbv"]] if volume else []) +
+                      (["--radiosity-transfer", p["rtrn"]] if radiosity else []))
         self.step("pack", [pack_stage, p["lighting_stage"], p["bsp"], p["ktx2"]] +
-                  ([p["prbv"]] if volume else []),
+                  ([p["prbv"]] if volume else []) + ([p["rtrn"]] if radiosity else []),
                   dict({"prefix": self.map, **self.world_mesh},
-                       **({"probe_volume": True} if volume else {})),
+                       **({"probe_volume": True} if volume else {}),
+                       **({"radiosity_transfer": True} if radiosity else {})),
                   ["usd_worldmesh_pack.py", "worldmesh_seam_weld.py"] +
                   (["leaf_ambient_from_prbv.py", "probe_volume.py"] if volume else []),
                   [p["wmsh"], p["wmsh"].with_name(p["wmsh"].name + ".json"), p["bsp2"]] +

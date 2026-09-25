@@ -15,6 +15,12 @@
     "spacing_m": 1.0,
     "samples": 4096
   },
+  "radiosity": {
+    "patch_size_m": 0.25,
+    "transfer_rays": 256,
+    "gather_rays": 4096,
+    "samples": 1024
+  },
   "reflection_probe": null,
   "reference": null,
   "runtime_gate": null,

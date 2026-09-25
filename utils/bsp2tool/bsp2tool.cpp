@@ -11,6 +11,9 @@
 //   bsp2tool pack-world-lit <legacy.bsp> <world.wmsh> <atlas.ktx2> <out.bsp2>
 //   bsp2tool pack-world-probed <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv>
 //            <out.bsp2>                   also carries the RFC 0011 probe volume
+//   bsp2tool pack-world-gi <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv>
+//            <transfer.rtrn> <out.bsp2>   and its radiosity transfer, validated
+//                                          against that volume
 //
 // Exit status: 0 success, 1 container error, 2 usage or file I/O error.
 //
@@ -19,6 +22,7 @@
 #include "mapcontainer/map_container.h"
 #include "mapcontainer/map_container_builder.h"
 #include "mapcontainer/probe_volume.h"
+#include "mapcontainer/radiosity_transfer.h"
 #include "mapcontainer/world_lightmap.h"
 #include "mapcontainer/world_mesh.h"
 #include "mapcontainer/world_mesh_format.h"
@@ -115,6 +119,31 @@ bool ReadProbeVolume( const char *pPath, std::vector<std::byte> *pBytes )
 	return true;
 }
 
+// An RTRN radiosity transfer, fully validated and paired with its volume.
+bool ReadRadiosityTransfer(
+    const char *pPath, const std::vector<std::byte> &probeVolume, std::vector<std::byte> *pBytes )
+{
+	FileByteSource source( pPath );
+	if ( !source.IsOpen() || source.Size() < kRadiosityTransferHeaderBytes ||
+	     source.Size() > kRadiosityTransferMaxBytes )
+		return false;
+	pBytes->resize( size_t( source.Size() ) );
+	if ( !source.ReadAt( 0, pBytes->data(), pBytes->size() ) )
+		return false;
+	ProbeVolumeLayout volume = {};
+	if ( ValidateProbeVolume( probeVolume.data(), probeVolume.size(), &volume ) !=
+	     ProbeVolumeError::Ok )
+		return false;
+	const RadiosityTransferError error = ValidateRadiosityTransfer(
+	    pBytes->data(), pBytes->size(), nullptr, probeVolume.data(), &volume );
+	if ( error != RadiosityTransferError::Ok )
+	{
+		std::fprintf( stderr, "bsp2tool: RTRN %s\n", RadiosityTransferErrorName( error ) );
+		return false;
+	}
+	return true;
+}
+
 std::string FourCCText( uint32_t fourcc )
 {
 	std::string text;
@@ -179,20 +208,27 @@ int main( int argc, char **argv )
 		    "pack-world <legacy.bsp> <world.wmsh> <out.bsp2> | "
 		    "pack-world-lit <legacy.bsp> <world.wmsh> <atlas.ktx2> <out.bsp2> | "
 		    "pack-world-probed <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv> "
-		    "<out.bsp2>\n" );
+		    "<out.bsp2> | pack-world-gi <legacy.bsp> <world.wmsh> <atlas.ktx2> <volume.prbv> "
+		    "<transfer.rtrn> <out.bsp2>\n" );
 		return 2;
 	}
 	const std::string command = argv[1];
 	const bool bTwoPaths = command == "convert" || command == "export";
 	const bool bPackWorld = command == "pack-world";
-	const bool bPackWorldProbed = command == "pack-world-probed";
+	const bool bPackWorldGi = command == "pack-world-gi";
+	const bool bPackWorldProbed = command == "pack-world-probed" || bPackWorldGi;
 	const bool bPackWorldLit = command == "pack-world-lit" || bPackWorldProbed;
 	if ( !bTwoPaths && !bPackWorld && !bPackWorldLit && command != "info" && command != "verify" )
 	{
 		std::fprintf( stderr, "bsp2tool: unknown command '%s'\n", command.c_str() );
 		return 2;
 	}
-	if ( argc != ( bPackWorldProbed ? 7 : bPackWorldLit ? 6 : bPackWorld ? 5 : bTwoPaths ? 4 : 3 ) )
+	if ( argc != ( bPackWorldGi       ? 8
+	               : bPackWorldProbed ? 7
+	               : bPackWorldLit    ? 6
+	               : bPackWorld       ? 5
+	               : bTwoPaths        ? 4
+	                                  : 3 ) )
 	{
 		std::fprintf( stderr, "bsp2tool: wrong argument count for '%s'\n", command.c_str() );
 		return 2;
@@ -232,7 +268,15 @@ int main( int argc, char **argv )
 		std::fprintf( stderr, "bsp2tool: invalid PRBV file %s\n", argv[5] );
 		return 2;
 	}
-	const char *pOutput = argv[bPackWorldProbed ? 6 : bPackWorldLit ? 5 : bPackWorld ? 4 : 3];
+	std::vector<std::byte> transfer;
+	if ( bPackWorldGi && !ReadRadiosityTransfer( argv[6], probeVolume, &transfer ) )
+	{
+		std::fprintf( stderr, "bsp2tool: invalid RTRN file %s (or not baked for %s)\n", argv[6],
+		    argv[5] );
+		return 2;
+	}
+	const char *pOutput =
+	    argv[bPackWorldGi ? 7 : bPackWorldProbed ? 6 : bPackWorldLit ? 5 : bPackWorld ? 4 : 3];
 	const std::string temp = std::string( pOutput ) + ".tmp";
 	FileByteSink sink( temp );
 	// The lump version repeats the validated payload's own version.
@@ -244,8 +288,13 @@ int main( int argc, char **argv )
 	    kLumpWorldLightmap, lightmapVersion, 0, kBsp2BulkAlignment, lightmap };
 	const Bsp2LumpInput probeLump{
 	    kLumpProbeVolume, kProbeVolumeVersion, 0, kBsp2BulkAlignment, probeVolume };
-	const std::array<Bsp2LumpInput, 3> probedLumps = { worldLump, lightmapLump, probeLump };
-	const std::span<const Bsp2LumpInput> litLumps( probedLumps.data(), bPackWorldProbed ? 3 : 2 );
+	const Bsp2LumpInput transferLump{
+	    kLumpRadiosityTransfer, kRadiosityTransferVersion, 0, kBsp2BulkAlignment, transfer };
+	const std::array<Bsp2LumpInput, 4> probedLumps = {
+		worldLump, lightmapLump, probeLump, transferLump
+	};
+	const std::span<const Bsp2LumpInput> litLumps(
+	    probedLumps.data(), bPackWorldGi ? 4 : bPackWorldProbed ? 3 : 2 );
 	const MapContainerStatus status =
 	    command == "export" ? ExportLegacyFromBsp2( source, sink )
 	    : bPackWorldLit     ? ConvertLegacyToBsp2( source, sink, litLumps )

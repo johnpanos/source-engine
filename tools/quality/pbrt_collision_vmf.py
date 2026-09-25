@@ -341,6 +341,10 @@ def main():
                         help="omit the fallback light entity: the map's probe volume "
                              "(RFC 0011 PRBV) lights models and derives the leaf ambient, "
                              "so vrad must add no light of its own")
+    parser.add_argument("--light-control", action="append", default=[], metavar="NAME",
+                        help="a switchable baked light (RFC 0011 RTRN source), in style order: "
+                             "a named zero-brightness `light`, so vbsp gives it light style "
+                             "32 + its index and `ent_fire NAME TurnOff` switches the style")
     args = parser.parse_args()
     if args.out_dir.exists():
         parser.error("output directory already exists: " + str(args.out_dir))
@@ -448,6 +452,12 @@ def main():
                   ] + ([] if args.no_fallback_light else [
                   "entity", "{", '\t"id" "3"', '\t"classname" "light"',
                   '\t"origin" "%g %g %g"' % tuple(light), '\t"_light" "255 255 240 300"', "}"]))
+    # Switchable baked lights: the runtime owns their light (the radiosity
+    # transfer and its style scalar); vrad adds none.
+    for index, name in enumerate(args.light_control):
+        lines.extend(["entity", "{", '\t"id" "%d"' % (50 + index), '\t"classname" "light"',
+                      '\t"targetname" "%s"' % name,
+                      '\t"origin" "%g %g %g"' % tuple(light), '\t"_light" "0 0 0 0"', "}"])
     placed = []
     for index, prop in enumerate(map_scene.props(scene)):
         origin = [value * SOURCE_UNITS_PER_METER for value in prop["origin_m"]]
@@ -475,6 +485,8 @@ def main():
                "skipped_outside_or_thin": skipped,
                "spawn": spawn, "walkable_tops": tops, "dynamic_models": placed,
                "fallback_light": not args.no_fallback_light,
+               "light_controls": [{"name": name, "style": 32 + index}
+                                  for index, name in enumerate(args.light_control)],
                "policy": "18-DOP per connected component; floor triangles extruded; "
                          "solids are func_detail"}
     (args.out_dir / "collision-receipt.json").write_text(

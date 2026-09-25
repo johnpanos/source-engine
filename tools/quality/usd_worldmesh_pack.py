@@ -187,6 +187,8 @@ def main():
     parser.add_argument("--out-bsp2", type=Path)
     parser.add_argument("--probe-volume", type=Path,
                         help="PRBV probe volume to carry in the BSP2 (RFC 0011)")
+    parser.add_argument("--radiosity-transfer", type=Path,
+                        help="RTRN radiosity transfer baked for --probe-volume (RFC 0011 G4)")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     pack_requested = (args.lightmap_ktx2, args.bsp2tool, args.out_bsp2)
@@ -238,7 +240,13 @@ def main():
     if args.out_bsp2:
         if not args.lightmap_ktx2.is_file() or not args.bsp2tool.is_file():
             raise FileNotFoundError("lightmap KTX2 or BSP2 packer is missing")
-        if args.probe_volume:
+        if args.radiosity_transfer and not args.probe_volume:
+            raise ValueError("--radiosity-transfer needs the --probe-volume it was baked for")
+        if args.radiosity_transfer:
+            command = [str(args.bsp2tool.resolve()), "pack-world-gi", str(args.bsp),
+                       str(args.out), str(args.lightmap_ktx2), str(args.probe_volume),
+                       str(args.radiosity_transfer), str(args.out_bsp2)]
+        elif args.probe_volume:
             command = [str(args.bsp2tool.resolve()), "pack-world-probed", str(args.bsp),
                        str(args.out), str(args.lightmap_ktx2), str(args.probe_volume),
                        str(args.out_bsp2)]
@@ -254,6 +262,8 @@ def main():
                         lightmap_ktx2_sha256=sha256(args.lightmap_ktx2),
                         probe_volume_sha256=sha256(args.probe_volume)
                         if args.probe_volume else None,
+                        radiosity_transfer_sha256=sha256(args.radiosity_transfer)
+                        if args.radiosity_transfer else None,
                         bsp2_path=str(args.out_bsp2))
     receipt_path.write_text(json.dumps(evidence, indent=2,
                                        sort_keys=True) + "\n")
