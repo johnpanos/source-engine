@@ -545,6 +545,39 @@ def texdata_reflectivity(texdata, record):
 
 # ------------------------------------------------------------------ USD
 
+def indexed_triangles(polygons, uvs, plane_normals):
+    """Fan-triangulate polygons into one indexed mesh.
+
+    Corners at the same float32 position share a point, so faces that meet
+    (the triangles of one BSP face, and neighbouring faces of the same
+    material) are connected: the lightmap bake charts a flat wall as one
+    island instead of one island per triangle, whose separately baked and
+    denoised edges showed as seams along every triangle edge. Normals and
+    material UVs stay per corner (faceVarying), so shading inputs are the
+    polygon's own. Returns (points, counts, indices, normals, st).
+    """
+    points, counts, indices, normals, st = [], [], [], [], []
+    shared = {}
+    for polygon, uv, normal in zip(polygons, uvs, plane_normals):
+        area = np.zeros(3)
+        for i in range(1, len(polygon) - 1):
+            area += np.cross(polygon[i] - polygon[0], polygon[i + 1] - polygon[0])
+        # Counter-clockwise about the plane normal (USD's front face).
+        order = list(range(len(polygon)) if np.dot(area, normal) >= 0 else
+                     range(len(polygon) - 1, -1, -1))
+        for i in range(1, len(order) - 1):
+            for corner in (order[0], order[i], order[i + 1]):
+                key = np.asarray(polygon[corner], dtype=np.float32).tobytes()
+                if key not in shared:
+                    shared[key] = len(points)
+                    points.append(polygon[corner])
+                indices.append(shared[key])
+                st.append(uv[corner])
+                normals.append(normal)
+            counts.append(3)
+    return points, counts, indices, normals, st
+
+
 def write_usd(model, path, map_name):
     from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdShade, Vt
     if path.exists():
@@ -624,22 +657,7 @@ def write_usd(model, path, map_name):
 
     def mesh(name, polygons, uvs, plane_normals, mat):
         prim = UsdGeom.Mesh.Define(stage, world.AppendChild(name))
-        points, counts, indices, normals, st = [], [], [], [], []
-        for polygon, uv, normal in zip(polygons, uvs, plane_normals):
-            area = np.zeros(3)
-            for i in range(1, len(polygon) - 1):
-                area += np.cross(polygon[i] - polygon[0], polygon[i + 1] - polygon[0])
-            # Counter-clockwise about the plane normal (USD's front face).
-            order = range(len(polygon)) if np.dot(area, normal) >= 0 else \
-                range(len(polygon) - 1, -1, -1)
-            order = list(order)
-            for i in range(1, len(order) - 1):
-                for corner in (order[0], order[i], order[i + 1]):
-                    indices.append(len(points))
-                    points.append(polygon[corner])
-                    st.append(uv[corner])
-                    normals.append(normal)
-                counts.append(3)
+        points, counts, indices, normals, st = indexed_triangles(polygons, uvs, plane_normals)
         prim.CreatePointsAttr(Vt.Vec3fArray([Gf.Vec3f(*map(float, p)) for p in points]))
         prim.CreateFaceVertexCountsAttr(Vt.IntArray(counts))
         prim.CreateFaceVertexIndicesAttr(Vt.IntArray(indices))

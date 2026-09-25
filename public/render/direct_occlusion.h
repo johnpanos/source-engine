@@ -12,12 +12,13 @@
 //          normal, from the WMSH triangles rasterized in lightmap space, and
 //          the map's analytic lights (SDFV records: rectangles sampled 4 x 4,
 //          distant lights by direction). Compose (when the occluders
-//          change): per texel, the share of its unoccluded analytic light
-//          whose path a proxy blocks, times its direct layer, subtracted
-//          from its total. A texel no path of which a proxy blocks keeps its
-//          baked bytes exactly. Static occlusion is already in the bake and
-//          is not re-traced, so the share is of the light the texel would
-//          receive without static occluders.
+//          change): per texel, the light of the samples whose path a proxy
+//          blocks, as a share of the light the texel sees (its baked direct
+//          light: static occlusion is in the bake and is not re-traced), times
+//          its direct layer, subtracted from its total. A texel no path of
+//          which a proxy blocks keeps its baked bytes exactly. What a proxy
+//          blocks is assumed visible: a proxy hidden behind static geometry
+//          from a texel over-darkens it.
 //
 //===========================================================================//
 
@@ -169,6 +170,7 @@ public:
 private:
 	static constexpr uint32_t kBlock = 4096;
 	static constexpr float kFar = 1.0e6f; // a distant light's segment length
+	static constexpr double kPi = 3.14159265358979323846;
 
 	struct Texel
 	{
@@ -478,9 +480,16 @@ private:
 			}
 			if ( !( blocked > 0.0 ) || !( all > 0.0 ) )
 				continue;
-			const float share = float( blocked / all );
-			unsigned char *out = context.total + size_t( texel.index ) * 8;
+			// Static occlusion is in the bake, not in these samples: the bake's
+			// direct light over the samples' unoccluded light (both E / pi) is
+			// the part of them the texel actually sees. A moving occluder blocks
+			// a share of that part (a door shuts all of the light that came
+			// through its doorway), assuming what it blocks was visible.
 			const unsigned char *light = direct + size_t( texel.index ) * 8;
+			const float baked[3] = { Half( light ), Half( light + 2 ), Half( light + 4 ) };
+			const double visible = std::clamp( double( Luminance( baked ) ) * kPi, 1e-9, all );
+			const float share = float( std::min( 1.0, blocked / visible ) );
+			unsigned char *out = context.total + size_t( texel.index ) * 8;
 			for ( int c = 0; c < 3; ++c )
 			{
 				const float value = std::max( 0.0f, Half( out + 2 * c ) - share * Half( light + 2 * c ) );
