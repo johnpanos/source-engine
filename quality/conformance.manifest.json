@@ -671,6 +671,39 @@
       "expect": "pass"
     },
     {
+      "id": "jobsystem.radiosity.tsan.sensitivity",
+      "description": "The TSan lane's negative control: jobsystem.radiosity with a seeded unsynchronized counter written by concurrent batch items (-DRADIOSITY_SEED_RACE) must fail under ThreadSanitizer",
+      "domain": "Q-JOBS",
+      "rfc": "0011",
+      "contract": "RFC/0003-dependency-aware-job-system.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_batch.cpp",
+        "mapcontainer/probe_volume.cpp",
+        "mapcontainer/radiosity_transfer.cpp",
+        "unittests/jobsystemtest/radiositytest.cpp"
+      ],
+      "extra_flags": [
+        "-pthread",
+        "-fsanitize=thread",
+        "-O1",
+        "-g",
+        "-DRADIOSITY_SEED_RACE"
+      ],
+      "requires": [
+        "env:CONFORMANCE_TSAN"
+      ],
+      "optional": true,
+      "timeout_seconds": 900,
+      "expect": "fail",
+      "expected_divergence": "exit status 66"
+    },
+    {
       "id": "jobsystem.querycache",
       "domain": "Q-JOBS",
       "rfc": "0003",

@@ -19,6 +19,8 @@
 #include "testing/conformance_result.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -67,7 +69,14 @@ private:
 	int m_workers;
 };
 
-// The producer's executor over the job system's batch boundary.
+// The producer's executor over the job system's batch boundary. It counts the
+// distinct threads that ran items with relaxed atomics only, which order
+// nothing, so the count cannot hide a race from ThreadSanitizer.
+std::atomic<int> g_threadsSeen{ 0 };
+thread_local int t_generation = -1;
+std::atomic<int> g_generation{ 0 };
+int g_mostThreads = 0; // the most distinct threads one batch ran on
+
 class BatchExecutor final : public IBatchExecutor
 {
 public:
@@ -78,18 +87,39 @@ public:
 	void ParallelFor( const char *name, uint32_t count, void ( *body )( void *, uint32_t ),
 	    void *context ) override
 	{
+		Call call{ body, context };
 		jobsystem::BatchDesc desc;
 		desc.name = name;
-		desc.context = context;
+		desc.context = &call;
 		desc.count = count;
-		desc.process = body;
+		desc.process = &Trampoline;
 		desc.maxParticipants = m_backend ? unsigned( m_backend->WorkerCount() ) + 1 : 1;
+		g_generation.fetch_add( 1, std::memory_order_relaxed );
+		g_threadsSeen.store( 0, std::memory_order_relaxed );
 		if ( !jobsystem::ExecuteParallelBatch( desc, m_backend, m_mode ) )
 			failed = true;
+		g_mostThreads = std::max( g_mostThreads, g_threadsSeen.load( std::memory_order_relaxed ) );
 	}
 	bool failed = false;
 
 private:
+	struct Call
+	{
+		void ( *body )( void *, uint32_t );
+		void *context;
+	};
+	static void Trampoline( void *context, unsigned index )
+	{
+		const int generation = g_generation.load( std::memory_order_relaxed );
+		if ( t_generation != generation )
+		{
+			t_generation = generation;
+			g_threadsSeen.fetch_add( 1, std::memory_order_relaxed );
+		}
+		const Call &call = *static_cast<const Call *>( context );
+		call.body( call.context, index );
+	}
+
 	jobsystem::IWorkerBackend *m_backend;
 	jobsystem::BatchMode m_mode;
 };
@@ -105,6 +135,19 @@ template <typename T> void Put( std::vector<unsigned char> &bytes, uint64_t offs
 {
 	std::memcpy( bytes.data() + offset, &value, sizeof( T ) );
 }
+
+// A defective executor: skips the last item of every batch (the comparator's
+// negative control; a real race shows up the same way, as other bytes).
+class DroppingExecutor final : public IBatchExecutor
+{
+public:
+	void ParallelFor( const char *, uint32_t count, void ( *body )( void *, uint32_t ),
+	    void *context ) override
+	{
+		for ( uint32_t i = 0; i + 1 < count; ++i )
+			body( context, i );
+	}
+};
 
 // A random RTRN in the documented encoding (radiosity_transfer.py): rows
 // sum below one, gathers are normalized, every index is in range.
@@ -250,6 +293,33 @@ int main()
 	BatchExecutor serial( nullptr, jobsystem::BatchMode::Serial );
 	Check( Run( transfer, *base, &serial, frames ) == oracle && !serial.failed,
 	    "the job system's serial mode matches the inline oracle byte for byte" );
+#ifdef RADIOSITY_SEED_RACE
+	// The TSan lane's negative control: items that write one shared,
+	// unsynchronized counter. ThreadSanitizer must fail this build.
+	{
+		ThreadBackend backend( 4 );
+		BatchExecutor racy( &backend, jobsystem::BatchMode::Parallel );
+		static uint64_t shared = 0;
+		static std::atomic<int> entered{ 0 };
+		racy.ParallelFor( "radiosity.seeded-race", 64,
+		    []( void *, uint32_t )
+		    {
+			    // Relaxed: holds two items in flight at once without ordering them.
+			    entered.fetch_add( 1, std::memory_order_relaxed );
+			    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds( 2 );
+			    while ( entered.load( std::memory_order_relaxed ) < 2 &&
+			            std::chrono::steady_clock::now() < until )
+				    std::this_thread::yield();
+			    for ( int k = 0; k < 1000; ++k )
+				    ++shared;
+		    },
+		    nullptr );
+		std::printf( "seeded race counter %llu\n", (unsigned long long)shared );
+	}
+#endif
+	DroppingExecutor dropping;
+	Check( Run( transfer, *base, &dropping, frames ) != oracle,
+	    "the byte comparison catches an executor that drops an item" );
 	const int hardware = int( std::max( 4u, std::thread::hardware_concurrency() ) );
 	for ( int workers : { 1, 2, hardware } )
 	{
@@ -257,10 +327,16 @@ int main()
 		BatchExecutor pooled( &backend, jobsystem::BatchMode::Parallel );
 		bool identical = true;
 		const int repeats = workers == hardware ? 4 : 2;
+		g_mostThreads = 0;
 		for ( int repeat = 0; repeat < repeats; ++repeat )
 			identical = identical && Run( transfer, *base, &pooled, frames ) == oracle;
+		const int threads = g_mostThreads;
+		std::printf( "%d worker(s): up to %d threads ran one batch's items\n", workers, threads );
 		Check( identical && !pooled.failed, "pooled execution with " + std::to_string( workers ) +
 		                                        " worker(s) matches the serial oracle byte for byte" );
+		if ( workers > 1 )
+			Check( threads > 1, "pooled execution with " + std::to_string( workers ) +
+			                        " workers ran one batch's items on several threads" );
 	}
 	std::printf( "jobsystem.radiosity: %u patches, %u transfer links, %zu trace bytes, %d workers "
 	             "max\n",
