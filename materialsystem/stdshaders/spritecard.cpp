@@ -298,6 +298,12 @@ SHADER_DRAW
 			// the whole shebang - 2 sequences, with a possible multi-image sequence first
 			numTexCoords = 8;
 		}
+		if ( nSplineType && ( numTexCoords < 6 ) )
+		{
+			// Spline trails (Portal 2 render_sprite_trail) also send
+			// TEXCOORD4 = sheet uv range and TEXCOORD5 = tail color/alpha
+			numTexCoords = 6;
+		}
 		pShaderShadow->VertexShaderVertexFormat( flags,
 			numTexCoords, 
 			nSplineType? s_TexCoordSizeSpline : s_TexCoordSize, 0 );

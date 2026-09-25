@@ -866,11 +866,184 @@ uint32 C_OP_NoiseEmitter::Emit( CParticleCollection *pParticles, float flCurStre
 	return PARTICLE_ATTRIBUTE_CREATION_TIME_MASK;
 }
 
+//-----------------------------------------------------------------------------
+// Portal 2: emits particles to keep the active count at a target
+// (ported from the Portal 2 / CS:GO particle library)
+//-----------------------------------------------------------------------------
+struct MaintainEmitterContext_t
+{
+	int m_ActualParticlesToMaintain;
+	float m_flTimeOffset;
+	bool m_bOn;
+};
+
+class C_OP_MaintainEmitter : public CParticleOperatorInstance
+{
+	DECLARE_PARTICLE_OPERATOR( C_OP_MaintainEmitter );
+
+	uint32 GetWrittenAttributes( void ) const { return PARTICLE_ATTRIBUTE_CREATION_TIME_MASK; }
+
+	uint32 GetReadAttributes( void ) const { return 0; }
+
+	virtual uint64 GetReadControlPointMask() const
+	{
+		uint64 nMask = 0;
+		if ( m_nScaleControlPoint >= 0 )
+			nMask |= ( 1ULL << m_nScaleControlPoint );
+		return nMask;
+	}
+
+	virtual uint32 Emit(
+	    CParticleCollection *pParticles, float flCurStrength, void *pContext ) const;
+
+	// unpack structure will be applied by creator. add extra initialization needed here
+	virtual void InitParams( CParticleSystemDefinition *pDef, CDmxElement *pElement )
+	{
+		m_nScaleControlPointField = clamp( m_nScaleControlPointField, 0, 2 );
+		m_nScaleControlPoint = clamp( m_nScaleControlPoint, -1, MAX_PARTICLE_CONTROL_POINTS - 1 );
+	}
+
+	virtual void InitializeContextData( CParticleCollection *pParticles, void *pContext ) const
+	{
+		MaintainEmitterContext_t *pCtx = reinterpret_cast<MaintainEmitterContext_t *>( pContext );
+		pCtx->m_flTimeOffset = 0.0f;
+		pCtx->m_bOn = true;
+		pCtx->m_ActualParticlesToMaintain = m_nParticlesToMaintain;
+	}
+
+	virtual void StartEmission(
+	    CParticleCollection *pParticles, void *pContext, bool bInfiniteOnly ) const
+	{
+		MaintainEmitterContext_t *pCtx = reinterpret_cast<MaintainEmitterContext_t *>( pContext );
+		pCtx->m_bOn = true;
+	}
+
+	virtual void StopEmission(
+	    CParticleCollection *pParticles, void *pContext, bool bInfiniteOnly ) const
+	{
+		MaintainEmitterContext_t *pCtx = reinterpret_cast<MaintainEmitterContext_t *>( pContext );
+		pCtx->m_bOn = false;
+	}
+
+	virtual void Restart( CParticleCollection *pParticles, void *pContext )
+	{
+		MaintainEmitterContext_t *pCtx = reinterpret_cast<MaintainEmitterContext_t *>( pContext );
+		pCtx->m_flTimeOffset = pParticles->m_flCurTime;
+		pCtx->m_bOn = true;
+	}
+
+	virtual bool MayCreateMoreParticles( CParticleCollection *pParticles, void *pContext ) const
+	{
+		MaintainEmitterContext_t *pCtx = reinterpret_cast<MaintainEmitterContext_t *>( pContext );
+		return pCtx->m_bOn;
+	}
+
+	size_t GetRequiredContextBytes( void ) const { return sizeof( MaintainEmitterContext_t ); }
+
+	void UpdateActualParticlesToMaintain(
+	    CParticleCollection *pParticles, MaintainEmitterContext_t *pCtx ) const
+	{
+		pCtx->m_ActualParticlesToMaintain = m_nParticlesToMaintain;
+
+		// NOTE: CS:GO can also take the count from a control point snapshot
+		// ("control point with snapshot data"); this library has no
+		// snapshots, so that option is ignored.
+		if ( m_nScaleControlPoint >= 0 )
+		{
+			Vector vecScale;
+			float flStartTime = m_flStartTime + pCtx->m_flTimeOffset;
+			if ( ( flStartTime <= pParticles->m_flCurTime ) &&
+			     ( flStartTime >= pParticles->m_flCurTime - pParticles->m_flPreviousDt ) )
+			{
+				pParticles->GetControlPointAtTime( m_nScaleControlPoint, flStartTime, &vecScale );
+			}
+			else
+			{
+				pParticles->GetControlPointAtPrevTime( m_nScaleControlPoint, &vecScale );
+			}
+
+			pCtx->m_ActualParticlesToMaintain =
+			    m_nParticlesToMaintain * vecScale[m_nScaleControlPointField];
+		}
+
+		pCtx->m_ActualParticlesToMaintain = MAX( 0, pCtx->m_ActualParticlesToMaintain );
+	}
+
+	int m_nParticlesToMaintain;
+	float m_flStartTime;
+	int m_nScaleControlPoint;
+	int m_nScaleControlPointField;
+	int m_nSnapshotControlPoint;
+};
+
+DEFINE_PARTICLE_OPERATOR( C_OP_MaintainEmitter, "emit to maintain count", OPERATOR_GENERIC );
+
+BEGIN_PARTICLE_OPERATOR_UNPACK( C_OP_MaintainEmitter )
+DMXELEMENT_UNPACK_FIELD( "emission start time", "0", float, m_flStartTime )
+DMXELEMENT_UNPACK_FIELD( "count to maintain", "100", int, m_nParticlesToMaintain )
+DMXELEMENT_UNPACK_FIELD( "maintain count scale control point", "-1", int, m_nScaleControlPoint )
+DMXELEMENT_UNPACK_FIELD(
+    "maintain count scale control point field", "0", int, m_nScaleControlPointField )
+DMXELEMENT_UNPACK_FIELD( "control point with snapshot data", "-1", int, m_nSnapshotControlPoint )
+END_PARTICLE_OPERATOR_UNPACK( C_OP_MaintainEmitter )
+
+uint32 C_OP_MaintainEmitter::Emit(
+    CParticleCollection *pParticles, float flCurStrength, void *pContext ) const
+{
+	MaintainEmitterContext_t *pCtx = reinterpret_cast<MaintainEmitterContext_t *>( pContext );
+
+	if ( !pCtx->m_bOn )
+		return 0;
+
+	// Wait until we're told to start emitting
+	float flStartTime = m_flStartTime + pCtx->m_flTimeOffset;
+	if ( pParticles->m_flCurTime < flStartTime )
+		return 0;
+
+	// Update how many particles were supposed to be emitting
+	UpdateActualParticlesToMaintain( pParticles, pCtx );
+
+	// Don't emit any more if the particle system has emitted all it's supposed to.
+	if ( pParticles->m_nActiveParticles >= pCtx->m_ActualParticlesToMaintain ||
+	     pCtx->m_ActualParticlesToMaintain <= 0 )
+		return 0;
+
+	// We're only allowed to emit so many particles, though..
+	int nAllowedParticlesToEmit =
+	    pParticles->m_nMaxAllowedParticles - pParticles->m_nActiveParticles;
+	int nParticlesToTryToEmit = pCtx->m_ActualParticlesToMaintain - pParticles->m_nActiveParticles;
+	int nActualParticlesToEmit = MIN( nAllowedParticlesToEmit, nParticlesToTryToEmit );
+
+	if ( nActualParticlesToEmit <= 0 )
+		return 0;
+
+	int nStartParticle = pParticles->m_nActiveParticles;
+	pParticles->SetNActiveParticles( nActualParticlesToEmit + pParticles->m_nActiveParticles );
+
+	// While we always try to kick up to the specified number of particles,
+	// we'll space their creation times over the last frame to avoid clumping
+	float flEmissionStart = MAX( pParticles->m_flCurTime - pParticles->m_flDt, flStartTime );
+	float flDeltaTime = pParticles->m_flCurTime - flEmissionStart;
+	float flEmitTimeStep = flDeltaTime / nActualParticlesToEmit;
+	float flEmitTime = flEmissionStart;
+
+	for ( int i = nStartParticle; i < nStartParticle + nActualParticlesToEmit; i++ )
+	{
+		float *pTimeStamp =
+		    pParticles->GetFloatAttributePtrForWrite( PARTICLE_ATTRIBUTE_CREATION_TIME, i );
+		flEmitTime = MIN( flEmitTime, pParticles->m_flCurTime );
+		*pTimeStamp = flEmitTime;
+		flEmitTime += flEmitTimeStep;
+	}
+
+	return PARTICLE_ATTRIBUTE_CREATION_TIME_MASK;
+}
 
 void AddBuiltInParticleEmitters( void )
 {
 	REGISTER_PARTICLE_OPERATOR( FUNCTION_EMITTER, C_OP_ContinuousEmitter );
 	REGISTER_PARTICLE_OPERATOR( FUNCTION_EMITTER, C_OP_InstantaneousEmitter );
 	REGISTER_PARTICLE_OPERATOR( FUNCTION_EMITTER, C_OP_NoiseEmitter );
+	REGISTER_PARTICLE_OPERATOR( FUNCTION_EMITTER, C_OP_MaintainEmitter );
 }
 

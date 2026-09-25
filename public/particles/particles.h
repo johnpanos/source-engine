@@ -40,6 +40,8 @@ class CUtlBuffer;
 class IParticleOperatorDefinition;
 class CSheet;
 class CMeshBuilder;
+class FourRays;
+struct RayTracingResult;
 extern float s_pRandomFloats[];
 				
 
@@ -114,14 +116,23 @@ DEFPARTICLE_ATTRIBUTE( TRACE_P1, 18 );						// end pnt of trace
 DEFPARTICLE_ATTRIBUTE( TRACE_HIT_T, 19 );					// 0..1 if hit
 DEFPARTICLE_ATTRIBUTE( TRACE_HIT_NORMAL, 20 );				// 0 0 0 if no hit
 
+// Portal 2 and later: per-particle normal. Retail Portal 2 PCFs address it
+// by field index 21 (e.g. "Remap Velocity to Vector" output field).
+DEFPARTICLE_ATTRIBUTE( NORMAL, 21 );
 
 #define MAX_PARTICLE_CONTROL_POINTS 64
 
-#define ATTRIBUTES_WHICH_ARE_VEC3S_MASK ( PARTICLE_ATTRIBUTE_TRACE_P0_MASK | PARTICLE_ATTRIBUTE_TRACE_P1_MASK | \
-										  PARTICLE_ATTRIBUTE_TRACE_HIT_NORMAL | PARTICLE_ATTRIBUTE_XYZ_MASK | \
-                                          PARTICLE_ATTRIBUTE_PREV_XYZ_MASK | PARTICLE_ATTRIBUTE_TINT_RGB_MASK | \
-                                          PARTICLE_ATTRIBUTE_HITBOX_RELATIVE_XYZ_MASK )
+#define ATTRIBUTES_WHICH_ARE_VEC3S_MASK                                                            \
+	( PARTICLE_ATTRIBUTE_TRACE_P0_MASK | PARTICLE_ATTRIBUTE_TRACE_P1_MASK |                        \
+	    PARTICLE_ATTRIBUTE_TRACE_HIT_NORMAL | PARTICLE_ATTRIBUTE_XYZ_MASK |                        \
+	    PARTICLE_ATTRIBUTE_PREV_XYZ_MASK | PARTICLE_ATTRIBUTE_TINT_RGB_MASK |                      \
+	    PARTICLE_ATTRIBUTE_HITBOX_RELATIVE_XYZ_MASK | PARTICLE_ATTRIBUTE_NORMAL_MASK )
 #define ATTRIBUTES_WHICH_ARE_0_TO_1 (PARTICLE_ATTRIBUTE_ALPHA_MASK | PARTICLE_ATTRIBUTE_ALPHA2_MASK)
+#define ATTRIBUTES_WHICH_ARE_SIZE                                                                  \
+	( PARTICLE_ATTRIBUTE_RADIUS_MASK | PARTICLE_ATTRIBUTE_TRAIL_LENGTH_MASK )
+#define ATTRIBUTES_WHICH_ARE_COLOR_AND_OPACITY                                                     \
+	( PARTICLE_ATTRIBUTE_TINT_RGB_MASK | PARTICLE_ATTRIBUTE_ALPHA_MASK |                           \
+	    PARTICLE_ATTRIBUTE_ALPHA2_MASK )
 #define ATTRIBUTES_WHICH_ARE_ANGLES (PARTICLE_ATTRIBUTE_ROTATION_MASK | PARTICLE_ATTRIBUTE_YAW_MASK )
 #define ATTRIBUTES_WHICH_ARE_INTS (PARTICLE_ATTRIBUTE_PARTICLE_ID_MASK | PARTICLE_ATTRIBUTE_HITBOX_INDEX_MASK )
 
@@ -281,6 +292,46 @@ public:
 	virtual float GetPixelVisibility( int *pQueryHandle, const Vector &vecOrigin, float flScale ) = 0;
 
 	virtual void SetUpLightingEnvironment( const Vector& pos )
+	{
+	}
+
+	// Portal 2 / CS:GO hooks. Implementations that don't provide them keep
+	// these defaults: no ray trace environments (every ray misses), no
+	// models, no blobs.
+	virtual int GetRayTraceEnvironmentFromName( const char *pszRtEnvName ) { return 0; }
+
+	// Traces four rays against a named ray trace environment. The caller
+	// initializes rslt_out as four misses; an implementation without the
+	// environment leaves it untouched.
+	virtual void TraceAgainstRayTraceEnv( int envnumber, const FourRays &rays, fltx4 TMin,
+	    fltx4 TMax, RayTracingResult *rslt_out, int32 skip_id ) const
+	{
+	}
+
+	virtual void *GetModel( char const *pMdlName ) { return NULL; }
+
+	virtual int GetActivityNumber( void *pModel, const char *pszActivityName ) { return -1; }
+
+	virtual void BeginDrawModels(
+	    int nNumModels, Vector const &vecCenter, CParticleCollection *pParticles )
+	{
+	}
+
+	virtual void DrawModel( void *pModel, const matrix3x4_t &DrawMatrix,
+	    CParticleCollection *pParticles, int nParticleNumber, int nBodyPart, int nSubModel,
+	    int nSkin, int nAnimationSequence, float flAnimationRate, float r, float g, float b,
+	    float a )
+	{
+	}
+
+	virtual void FinishDrawModels( CParticleCollection *pParticles ) {}
+
+	// Renders an isosurface ("blobs") around the given particle centers with
+	// the bound material. CS:GO links the blobulator into the particle
+	// library; here the game DLL that owns a blobulator implements it.
+	virtual void DrawBlobs( IMatRenderContext *pRenderContext, IMaterial *pMaterial,
+	    const Vector *pCenters, int nCount, float flCubeWidth, float flCutoffRadius,
+	    float flRenderRadius )
 	{
 	}
 };

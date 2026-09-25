@@ -1393,12 +1393,17 @@ class C_OP_RenderSpritesTrail : public CParticleRenderOperatorInstance
 	virtual void RenderUnsorted( CParticleCollection *pParticles, void *pContext, IMatRenderContext *pRenderContext, CMeshBuilder &meshBuilder, int nVertexOffset, int nFirstParticle, int nParticleCount ) const;
 
 	void RenderSpriteTrail( CMeshBuilder &meshBuilder, SpriteTrailRenderInfo_t& info, int hParticle, const Vector &vecCameraPos, float flOODt, ParticleRenderData_t const *pSortlist ) const;
+	bool RenderSpriteTrailSpriteCard( CMeshBuilder &meshBuilder, SpriteTrailRenderInfo_t &info,
+	    int hParticle, float flOODt, ParticleRenderData_t const *pSortlist ) const;
+	float GetOODt( CParticleCollection *pParticles ) const;
 
+	Vector4D m_FadeColor;
 	float m_flAnimationRate;
 	float m_flLengthFadeInTime;
 	float m_flMaxLength;
 	float m_flMinLength;
-
+	bool m_bConstrainRadius;
+	bool m_bIgnoreDT;
 };
 
 DEFINE_PARTICLE_OPERATOR( C_OP_RenderSpritesTrail, "render_sprite_trail", OPERATOR_SINGLETON );
@@ -1408,7 +1413,17 @@ BEGIN_PARTICLE_RENDER_OPERATOR_UNPACK( C_OP_RenderSpritesTrail )
 	DMXELEMENT_UNPACK_FIELD( "length fade in time", "0", float, m_flLengthFadeInTime )
 	DMXELEMENT_UNPACK_FIELD( "max length", "2000", float, m_flMaxLength )
 	DMXELEMENT_UNPACK_FIELD( "min length", "0", float, m_flMinLength )
-END_PARTICLE_OPERATOR_UNPACK( C_OP_RenderSpritesTrail )
+    DMXELEMENT_UNPACK_FIELD( "constrain radius to length", "1", bool, m_bConstrainRadius )
+    DMXELEMENT_UNPACK_FIELD( "ignore delta time", "0", bool, m_bIgnoreDT )
+    DMXELEMENT_UNPACK_FIELD( "tail color and alpha scale factor", "1 1 1 1", Vector4D, m_FadeColor )
+    END_PARTICLE_OPERATOR_UNPACK( C_OP_RenderSpritesTrail )
+
+    float C_OP_RenderSpritesTrail::GetOODt( CParticleCollection *pParticles ) const
+    {
+	    if ( m_bIgnoreDT )
+		    return 1.0f;
+	    return ( pParticles->m_flDt != 0.0f ) ? ( 1.0f / pParticles->m_flDt ) : 1.0f;
+    }
 
 int C_OP_RenderSpritesTrail::GetParticlesToRender( CParticleCollection *pParticles, 
 												   void *pContext, int nFirstParticle, int nRemainingVertices,
@@ -1496,7 +1511,7 @@ void C_OP_RenderSpritesTrail::RenderSpriteTrail( CMeshBuilder &meshBuilder,
 	vecDelta *= flLength;
 
 	// Fade the width as the length fades to keep it at a square aspect ratio
-	if ( flLength < rad )
+	if ( ( flLength < rad ) && m_bConstrainRadius )
 	{
 		rad = flLength;
 	}
@@ -1544,6 +1559,132 @@ void C_OP_RenderSpritesTrail::RenderSpriteTrail( CMeshBuilder &meshBuilder,
 	info.m_nVertexOffset += 4;
 }
 
+//-----------------------------------------------------------------------------
+// SpriteCard trails ($splinetype materials): each particle is one quad whose
+// vertices carry the spline and the shader builds the geometry.
+//   POSITION  = ( t along the trail, v, side ) corner ids
+//   TEXCOORD0..3 = catmull-rom control points xyz + radius
+//   TEXCOORD4 = sheet uv range ( left, top, right, bottom )
+//   TEXCOORD5 = tail color and alpha ( color * "tail color and alpha scale factor" )
+// This is the mesh-builder path of the Portal 2 / CS:GO renderer.
+//-----------------------------------------------------------------------------
+bool C_OP_RenderSpritesTrail::RenderSpriteTrailSpriteCard( CMeshBuilder &meshBuilder,
+    SpriteTrailRenderInfo_t &info, int hParticle, float flOODt,
+    ParticleRenderData_t const *pSortList ) const
+{
+	// Setup our alpha
+	unsigned char ac = pSortList->m_nAlpha;
+	if ( ac == 0 )
+		return false;
+	Assert( hParticle != -1 );
+	int nGroup = hParticle / 4;
+	int nOffset = hParticle & 0x3;
+
+	// Setup our colors
+	int nColorIndex = nGroup * info.m_nRGBStride;
+	float a = pSortList->m_nAlpha / 255.0f;
+	float r = SubFloat( info.m_pRGB[nColorIndex], nOffset );
+	float g = SubFloat( info.m_pRGB[nColorIndex + 1], nOffset );
+	float b = SubFloat( info.m_pRGB[nColorIndex + 2], nOffset );
+
+	Assert( IsFinite( r ) && IsFinite( g ) && IsFinite( b ) );
+
+	unsigned char rc = FastFToC( r );
+	unsigned char gc = FastFToC( g );
+	unsigned char bc = FastFToC( b );
+
+	// Setup the scale and rotation
+	float rad = pSortList->m_flRadius;
+
+	// Find the sample for this frame
+	const SheetSequenceSample_t *pSample = &s_DefaultSheetSequence;
+	if ( info.m_pSheet )
+	{
+		pSample = GetSampleForSequence( info.m_pSheet,
+		    SubFloat( info.m_pCreationTimeStamp[nGroup * info.m_nCreationTimeStride], nOffset ),
+		    info.m_pParticles->m_flCurTime, info.m_flAgeScale,
+		    SubFloat( info.m_pSequenceNumber[nGroup * info.m_nSequenceStride], nOffset ) );
+	}
+
+	const SequenceSampleTextureCoords_t *pSample0 = &( pSample->m_TextureCoordData[0] );
+
+	int nCreationTimeIndex = nGroup * info.m_nCreationTimeStride;
+	float flAge = info.m_pParticles->m_flCurTime -
+	              SubFloat( info.m_pCreationTimeStamp[nCreationTimeIndex], nOffset );
+
+	float flLengthScale =
+	    ( flAge >= m_flLengthFadeInTime ) ? 1.0 : ( flAge / m_flLengthFadeInTime );
+
+	int nXYZIndex = nGroup * info.m_nXYZStride;
+	Vector vecWorldPos( SubFloat( info.m_pXYZ[nXYZIndex], nOffset ),
+	    SubFloat( info.m_pXYZ[nXYZIndex + 1], nOffset ),
+	    SubFloat( info.m_pXYZ[nXYZIndex + 2], nOffset ) );
+
+	// Get our last position
+	int nPrevXYZIndex = nGroup * info.m_nPrevXYZStride;
+	Vector vecPrevWorldPos( SubFloat( info.m_pPrevXYZ[nPrevXYZIndex], nOffset ),
+	    SubFloat( info.m_pPrevXYZ[nPrevXYZIndex + 1], nOffset ),
+	    SubFloat( info.m_pPrevXYZ[nPrevXYZIndex + 2], nOffset ) );
+
+	// Get the delta direction and find the magnitude, then scale the length by the desired length amount
+	Vector vecDelta;
+	VectorSubtract( vecPrevWorldPos, vecWorldPos, vecDelta );
+	float flMag = VectorNormalize( vecDelta );
+	float flLength = flLengthScale * flMag * flOODt *
+	                 SubFloat( info.m_pLength[nGroup * info.length_stride], nOffset );
+	if ( flLength <= 0.0f )
+		return false;
+
+	flLength = MAX( m_flMinLength, MIN( m_flMaxLength, flLength ) );
+
+	vecDelta *= flLength;
+
+	// Fade the width as the length fades to keep it at a square aspect ratio
+	if ( m_bConstrainRadius )
+	{
+		rad = MIN( rad, flLength );
+	}
+
+	Vector p0 = vecWorldPos - vecDelta;
+	Vector p1 = vecWorldPos;
+	Vector p2 = vecWorldPos + vecDelta;
+	Vector p3 = vecWorldPos + 2 * vecDelta;
+
+	Vector4D vFadeColor(
+	    r * m_FadeColor.x, g * m_FadeColor.y, b * m_FadeColor.z, a * m_FadeColor.w );
+
+	// ( t, v, side ) corner ids, in the same order as the mesh-builder quads
+	static const float s_flCorners[4][3] = {
+	    { 0.0f, 1.0f, 0.0f },
+	    { 0.0f, 1.0f, 1.0f },
+	    { 1.0f, 0.0f, 1.0f },
+	    { 1.0f, 0.0f, 0.0f },
+	};
+
+	for ( int nCorner = 0; nCorner < 4; ++nCorner )
+	{
+		meshBuilder.Position3fv( s_flCorners[nCorner] );
+		meshBuilder.Color4ub( rc, gc, bc, ac );
+		meshBuilder.TexCoord4f( 0, p0.x, p0.y, p0.z, rad );
+		meshBuilder.TexCoord4f( 1, p1.x, p1.y, p1.z, rad );
+		meshBuilder.TexCoord4f( 2, p2.x, p2.y, p2.z, rad );
+		meshBuilder.TexCoord4f( 3, p3.x, p3.y, p3.z, rad );
+		meshBuilder.TexCoord4f( 4, pSample0->m_fLeft_U0, pSample0->m_fTop_V0, pSample0->m_fRight_U0,
+		    pSample0->m_fBottom_V0 );
+		meshBuilder.TexCoord4fv( 5, vFadeColor.Base() );
+		meshBuilder.AdvanceVertex();
+	}
+
+	meshBuilder.FastIndex( info.m_nVertexOffset );
+	meshBuilder.FastIndex( info.m_nVertexOffset + 1 );
+	meshBuilder.FastIndex( info.m_nVertexOffset + 2 );
+	meshBuilder.FastIndex( info.m_nVertexOffset );
+	meshBuilder.FastIndex( info.m_nVertexOffset + 2 );
+	meshBuilder.FastIndex( info.m_nVertexOffset + 3 );
+	info.m_nVertexOffset += 4;
+
+	return true;
+}
 
 void C_OP_RenderSpritesTrail::Render( IMatRenderContext *pRenderContext, CParticleCollection *pParticles, void *pContext ) const
 {
@@ -1555,12 +1696,8 @@ void C_OP_RenderSpritesTrail::Render( IMatRenderContext *pRenderContext, CPartic
 		SetupParticleVisibility( pParticles, &pCtx->m_VisibilityData, &VisibilityInputs, &pCtx->m_nQueryHandle );
 	}
 
-	// Right now we only have a meshbuilder version!
-	if ( !HushAsserts() )
-		Assert( pMaterial->IsSpriteCard() == false );
-	if ( pMaterial->IsSpriteCard() )
-		return;
-		 
+	bool bSpriteCard = pMaterial->IsSpriteCard();
+
 	// Store matrices off so we can restore them in RenderEnd().
 	pRenderContext->Bind( pMaterial );
 
@@ -1577,7 +1714,7 @@ void C_OP_RenderSpritesTrail::Render( IMatRenderContext *pRenderContext, CPartic
 	const ParticleRenderData_t *pSortList = pParticles->GetRenderList( pRenderContext, true, &nParticles, &pCtx->m_VisibilityData );
 
 	int nMaxParticlesInBatch = GetMaxParticlesPerBatch( pRenderContext, pMaterial, false );
-	float flOODt = ( pParticles->m_flDt != 0.0f ) ? ( 1.0f / pParticles->m_flDt ) : 1.0f;
+	float flOODt = GetOODt( pParticles );
 	while ( nParticles )
 	{
 		int nParticlesInBatch = min( nMaxParticlesInBatch, nParticles );
@@ -1589,10 +1726,23 @@ void C_OP_RenderSpritesTrail::Render( IMatRenderContext *pRenderContext, CPartic
 		CMeshBuilder meshBuilder;
 		meshBuilder.Begin( pMesh, MATERIAL_TRIANGLES, nParticlesInBatch * 4, nParticlesInBatch * 6 );
 		info.m_nVertexOffset = 0;
-		for( int i = 0; i < nParticlesInBatch; i++ )
+		if ( bSpriteCard )
 		{
-			int hParticle = (--pSortList)->m_nIndex;
-			RenderSpriteTrail( meshBuilder, info, hParticle, vecCameraPos, flOODt, pSortList );
+			// Skipped particles (zero alpha or length) emit nothing, so the
+			// mesh may hold fewer quads than the batch
+			for ( int i = 0; i < nParticlesInBatch; i++ )
+			{
+				int hParticle = ( --pSortList )->m_nIndex;
+				RenderSpriteTrailSpriteCard( meshBuilder, info, hParticle, flOODt, pSortList );
+			}
+		}
+		else
+		{
+			for ( int i = 0; i < nParticlesInBatch; i++ )
+			{
+				int hParticle = ( --pSortList )->m_nIndex;
+				RenderSpriteTrail( meshBuilder, info, hParticle, vecCameraPos, flOODt, pSortList );
+			}
 		}
 		meshBuilder.End();
 		pMesh->Draw();
@@ -1614,7 +1764,7 @@ void C_OP_RenderSpritesTrail::RenderUnsorted( CParticleCollection *pParticles, v
 	int nParticles;
 	const ParticleRenderData_t *pSortList = pParticles->GetRenderList( pRenderContext, false, &nParticles, &pCtx->m_VisibilityData );
 
-	float flOODt = ( pParticles->m_flDt != 0.0f ) ? ( 1.0f / pParticles->m_flDt ) : 1.0f;
+	float flOODt = GetOODt( pParticles );
 	int hParticle = nFirstParticle;
 	for( int i = 0; i < nParticleCount; i++, hParticle++ )
 	{
@@ -2391,8 +2541,336 @@ void C_OP_RenderScreenVelocityRotate::Render( IMatRenderContext *pRenderContext,
 	}
 }
 
+//-----------------------------------------------------------------------------
+// Portal 2 renderers (ported from the Portal 2 / CS:GO particle library)
+//-----------------------------------------------------------------------------
 
+//-----------------------------------------------------------------------------
+// Render models: draws a studio model per particle through the game's
+// IParticleSystemQuery model hooks
+//-----------------------------------------------------------------------------
+#define MAX_MODEL_CHOICES 1
 
+class C_OP_RenderModels : public CParticleRenderOperatorInstance
+{
+	DECLARE_PARTICLE_OPERATOR( C_OP_RenderModels );
+
+	uint32 GetReadAttributes( void ) const
+	{
+		return PARTICLE_ATTRIBUTE_XYZ_MASK | PARTICLE_ATTRIBUTE_SEQUENCE_NUMBER_MASK |
+		       PARTICLE_ATTRIBUTE_SEQUENCE_NUMBER1_MASK | PARTICLE_ATTRIBUTE_TINT_RGB_MASK |
+		       PARTICLE_ATTRIBUTE_ALPHA_MASK | PARTICLE_ATTRIBUTE_ALPHA2_MASK |
+		       PARTICLE_ATTRIBUTE_RADIUS_MASK | PARTICLE_ATTRIBUTE_ROTATION_MASK |
+		       PARTICLE_ATTRIBUTE_YAW_MASK | PARTICLE_ATTRIBUTE_NORMAL_MASK |
+		       ( 1 << m_nAnimationScaleField );
+	}
+
+	uint32 GetWrittenAttributes( void ) const { return 0; }
+
+	virtual bool IsBatchable() const { return false; }
+
+	virtual void InitParams( CParticleSystemDefinition *pDef, CDmxElement *pElement )
+	{
+		m_nAnimationScaleField = clamp( m_nAnimationScaleField, 0, MAX_PARTICLE_ATTRIBUTES - 1 );
+		for ( int i = 0; i < MAX_MODEL_CHOICES; i++ )
+		{
+			m_pModels[i] = NULL;
+		}
+		m_bModelsLoaded = false;
+		m_nActivity = -1;
+	}
+
+	// Models load when a system using this renderer is first created, not at
+	// PCF parse time: the game's model loader isn't available that early.
+	virtual void InitializeContextData( CParticleCollection *pParticles, void *pContext ) const
+	{
+		const_cast<C_OP_RenderModels *>( this )->LoadModels();
+	}
+
+	void LoadModels( void );
+
+	virtual void Render(
+	    IMatRenderContext *pRenderContext, CParticleCollection *pParticles, void *pContext ) const;
+
+	char m_ActivityName[256];
+	char m_pszModelNames[MAX_MODEL_CHOICES][256];
+	void *m_pModels[MAX_MODEL_CHOICES];
+	bool m_bModelsLoaded;
+	bool m_bOrientZ;
+	bool m_bScaleAnimationRate;
+	int m_nAnimationScaleField;
+	int m_nSkin;
+	int m_nActivity;
+	float m_flAnimationRate;
+};
+
+DEFINE_PARTICLE_OPERATOR( C_OP_RenderModels, "Render models", OPERATOR_SINGLETON );
+
+BEGIN_PARTICLE_RENDER_OPERATOR_UNPACK( C_OP_RenderModels )
+DMXELEMENT_UNPACK_FIELD_STRING_USERDATA(
+    "sequence 0 model", "NONE", m_pszModelNames[0], "mdlPicker" )
+DMXELEMENT_UNPACK_FIELD( "animation rate", "30.0", float, m_flAnimationRate )
+DMXELEMENT_UNPACK_FIELD( "scale animation rate", "0", bool, m_bScaleAnimationRate )
+DMXELEMENT_UNPACK_FIELD_USERDATA( "animation rate scale field", "10", int, m_nAnimationScaleField,
+    "intchoice particlefield_scalar" )
+DMXELEMENT_UNPACK_FIELD( "orient model z to normal", "0", bool, m_bOrientZ )
+DMXELEMENT_UNPACK_FIELD( "skin number", "0", int, m_nSkin )
+DMXELEMENT_UNPACK_FIELD_STRING( "activity override", "", m_ActivityName )
+END_PARTICLE_OPERATOR_UNPACK( C_OP_RenderModels )
+
+void C_OP_RenderModels::LoadModels( void )
+{
+	if ( m_bModelsLoaded )
+		return;
+	m_bModelsLoaded = true;
+
+	for ( int i = 0; i < MAX_MODEL_CHOICES; i++ )
+	{
+		m_pModels[i] = g_pParticleSystemMgr->Query()->GetModel( m_pszModelNames[i] );
+	}
+
+	// Has to happen after the model is loaded
+	if ( V_strcmp( m_ActivityName, "" ) )
+		m_nActivity =
+		    g_pParticleSystemMgr->Query()->GetActivityNumber( m_pModels[0], m_ActivityName );
+	else
+		m_nActivity = -1;
+}
+
+// return a vector perpendicular to another, with smooth variation
+static void AVectorPerpendicularToVector( Vector const &in, Vector *pvecOut )
+{
+	float flY = in.y * in.y;
+	pvecOut->x = RemapVal( flY, 0, 1, in.z, 1 );
+	pvecOut->y = 0;
+	pvecOut->z = -in.x;
+	pvecOut->NormalizeInPlace();
+	float flDot = DotProduct( *pvecOut, in );
+	*pvecOut -= flDot * in;
+	pvecOut->NormalizeInPlace();
+}
+
+void C_OP_RenderModels::Render(
+    IMatRenderContext *pRenderContext, CParticleCollection *pParticles, void *pContext ) const
+{
+	if ( !m_pModels[0] )
+		return;
+
+	int nNumParticles;
+	CParticleVisibilityData visibilityData;
+	visibilityData.m_flAlphaVisibility = 1.0;
+	visibilityData.m_flRadiusVisibility = 1.0;
+	visibilityData.m_flCameraBias = 0.0f;
+	visibilityData.m_bUseVisibility = false;
+
+	const ParticleRenderData_t *pRenderList =
+	    pParticles->GetRenderList( pRenderContext, false, &nNumParticles, &visibilityData );
+
+	// CS:GO passes the average particle center; the bounds center stands in
+	// for it here (m_Center is private to the collection)
+	Vector vecMins, vecMaxs;
+	pParticles->GetBounds( &vecMins, &vecMaxs );
+	g_pParticleSystemMgr->Query()->BeginDrawModels(
+	    nNumParticles, 0.5f * ( vecMins + vecMaxs ), pParticles );
+
+	size_t xyz_stride;
+	const fltx4 *xyz = pParticles->GetM128AttributePtr( PARTICLE_ATTRIBUTE_XYZ, &xyz_stride );
+
+	size_t seq_stride;
+	const fltx4 *pSequenceNumber =
+	    pParticles->GetM128AttributePtr( PARTICLE_ATTRIBUTE_SEQUENCE_NUMBER, &seq_stride );
+
+	size_t seq1_stride;
+	const fltx4 *pSequence1Number =
+	    pParticles->GetM128AttributePtr( PARTICLE_ATTRIBUTE_SEQUENCE_NUMBER1, &seq1_stride );
+
+	size_t rgb_stride;
+	const fltx4 *pRGB = pParticles->GetM128AttributePtr( PARTICLE_ATTRIBUTE_TINT_RGB, &rgb_stride );
+
+	size_t nAlphaStride;
+	const fltx4 *pAlpha =
+	    pParticles->GetM128AttributePtr( PARTICLE_ATTRIBUTE_ALPHA, &nAlphaStride );
+
+	size_t nAlpha2Stride;
+	const fltx4 *pAlpha2 =
+	    pParticles->GetM128AttributePtr( PARTICLE_ATTRIBUTE_ALPHA2, &nAlpha2Stride );
+
+	size_t nRadStride;
+	const fltx4 *pRadius =
+	    pParticles->GetM128AttributePtr( PARTICLE_ATTRIBUTE_RADIUS, &nRadStride );
+
+	size_t nRotStride;
+	const fltx4 *pRot = pParticles->GetM128AttributePtr( PARTICLE_ATTRIBUTE_ROTATION, &nRotStride );
+
+	size_t nYawStride;
+	const fltx4 *pYaw = pParticles->GetM128AttributePtr( PARTICLE_ATTRIBUTE_YAW, &nYawStride );
+
+	size_t nScalerStride;
+	const fltx4 *pAnimationScale =
+	    pParticles->GetM128AttributePtr( m_nAnimationScaleField, &nScalerStride );
+
+	for ( int i = 0; i < nNumParticles; i++ )
+	{
+		int hParticle = ( --pRenderList )->m_nIndex;
+		int nGroup = ( hParticle / 4 );
+		int nOffset = hParticle & 0x3;
+
+		int nSequence = (int)SubFloat( pSequenceNumber[nGroup * seq_stride], nOffset );
+		int nAnimationSequence = m_nActivity;
+		if ( nAnimationSequence == -1 )
+			nAnimationSequence = (int)SubFloat( pSequence1Number[nGroup * seq1_stride], nOffset );
+		float flAnimationRate = m_flAnimationRate;
+		if ( m_bScaleAnimationRate )
+			flAnimationRate *= SubFloat( pAnimationScale[nGroup * nScalerStride], nOffset );
+
+		int nXYZIndex = nGroup * xyz_stride;
+		Vector vecWorldPos( SubFloat( xyz[nXYZIndex], nOffset ),
+		    SubFloat( xyz[nXYZIndex + 1], nOffset ), SubFloat( xyz[nXYZIndex + 2], nOffset ) );
+
+		const float *pNormal =
+		    pParticles->GetFloatAttributePtr( PARTICLE_ATTRIBUTE_NORMAL, hParticle );
+		Vector vecFwd, vecRight, vecUp;
+		SetVectorFromAttribute( vecFwd, pNormal );
+		vecFwd.NormalizeInPlace();
+		AVectorPerpendicularToVector( vecFwd, &vecRight );
+		vecUp = CrossProduct( vecFwd, vecRight );
+
+		int nColorIndex = nGroup * rgb_stride;
+		float r = SubFloat( pRGB[nColorIndex], nOffset );
+		float g = SubFloat( pRGB[nColorIndex + 1], nOffset );
+		float b = SubFloat( pRGB[nColorIndex + 2], nOffset );
+		float a = SubFloat( pAlpha[nGroup * nAlphaStride], nOffset ) *
+		          SubFloat( pAlpha2[nGroup * nAlpha2Stride], nOffset );
+
+		float flScale = SubFloat( pRadius[nGroup * nRadStride], nOffset );
+
+		float rot = SubFloat( pRot[nGroup * nRotStride], nOffset );
+		float yaw = SubFloat( pYaw[nGroup * nYawStride], nOffset );
+		// This library has no per-particle pitch attribute; CS:GO's defaults to 0
+		float pitch = 0.0f;
+
+		matrix3x4_t matRotate, matDir, matFinal;
+
+		QAngle qa( RAD2DEG( pitch ), RAD2DEG( yaw ), RAD2DEG( rot ) );
+		AngleMatrix( qa, matRotate );
+
+		if ( m_bOrientZ )
+		{
+			matDir.Init( vecUp * flScale, -vecRight * flScale, vecFwd * flScale, vec3_origin );
+		}
+		else
+		{
+			matDir.Init( vecFwd * flScale, vecRight * flScale, vecUp * flScale, vec3_origin );
+		}
+
+		MatrixMultiply( matDir, matRotate, matFinal );
+
+		MatrixSetColumn( vecWorldPos, 3, matFinal );
+
+		g_pParticleSystemMgr->Query()->DrawModel( m_pModels[0], matFinal, pParticles, hParticle,
+		    nSequence, 1, m_nSkin, nAnimationSequence, flAnimationRate, r, g, b, a );
+	}
+
+	g_pParticleSystemMgr->Query()->FinishDrawModels( pParticles );
+}
+
+#ifndef USE_BLOBULATOR
+
+//-----------------------------------------------------------------------------
+// render_blobs: isosurface around the particles. The blobulator lives in the
+// game DLL here, so the surface is built and drawn by
+// IParticleSystemQuery::DrawBlobs; games without one draw nothing.
+//-----------------------------------------------------------------------------
+class C_OP_RenderBlobs : public CParticleRenderOperatorInstance
+{
+	DECLARE_PARTICLE_OPERATOR( C_OP_RenderBlobs );
+
+	float m_cubeWidth;
+	float m_cutoffRadius;
+	float m_renderRadius;
+
+	struct C_OP_RenderBlobsContext_t
+	{
+		CParticleVisibilityData m_VisibilityData;
+		int m_nQueryHandle;
+	};
+
+	size_t GetRequiredContextBytes( void ) const { return sizeof( C_OP_RenderBlobsContext_t ); }
+
+	virtual void InitializeContextData( CParticleCollection *pParticles, void *pContext ) const
+	{
+		C_OP_RenderBlobsContext_t *pCtx = reinterpret_cast<C_OP_RenderBlobsContext_t *>( pContext );
+		pCtx->m_VisibilityData.m_bUseVisibility = ( VisibilityInputs.m_nCPin >= 0 );
+		pCtx->m_VisibilityData.m_flCameraBias = VisibilityInputs.m_flCameraBias;
+	}
+
+	uint32 GetWrittenAttributes( void ) const { return 0; }
+
+	uint32 GetReadAttributes( void ) const { return PARTICLE_ATTRIBUTE_XYZ_MASK; }
+
+	virtual void Render(
+	    IMatRenderContext *pRenderContext, CParticleCollection *pParticles, void *pContext ) const;
+
+	virtual bool IsBatchable() const { return false; }
+};
+
+DEFINE_PARTICLE_OPERATOR( C_OP_RenderBlobs, "render_blobs", OPERATOR_SINGLETON );
+
+BEGIN_PARTICLE_RENDER_OPERATOR_UNPACK( C_OP_RenderBlobs )
+DMXELEMENT_UNPACK_FIELD( "cube_width", "1.0f", float, m_cubeWidth )
+DMXELEMENT_UNPACK_FIELD( "cutoff_radius", "3.3f", float, m_cutoffRadius )
+DMXELEMENT_UNPACK_FIELD( "render_radius", "1.3f", float, m_renderRadius )
+END_PARTICLE_OPERATOR_UNPACK( C_OP_RenderBlobs )
+
+void C_OP_RenderBlobs::Render(
+    IMatRenderContext *pRenderContext, CParticleCollection *pParticles, void *pContext ) const
+{
+	C_OP_RenderBlobsContext_t *pCtx = reinterpret_cast<C_OP_RenderBlobsContext_t *>( pContext );
+
+	if ( pCtx->m_VisibilityData.m_bUseVisibility )
+	{
+		SetupParticleVisibility(
+		    pParticles, &pCtx->m_VisibilityData, &VisibilityInputs, &pCtx->m_nQueryHandle );
+	}
+
+	IMaterial *pMaterial = pParticles->m_pDef->GetMaterial();
+
+	int nParticles;
+	const ParticleRenderData_t *pSortList =
+	    pParticles->GetRenderList( pRenderContext, false, &nParticles, &pCtx->m_VisibilityData );
+	if ( nParticles <= 0 )
+		return;
+
+	size_t xyz_stride;
+	const fltx4 *xyz = pParticles->GetM128AttributePtr( PARTICLE_ATTRIBUTE_XYZ, &xyz_stride );
+
+	Vector bbMin;
+	Vector bbMax;
+	pParticles->GetBounds( &bbMin, &bbMax );
+	Vector bbCenter = 0.5f * ( bbMin + bbMax );
+
+	// FIXME: Make this configurable. Not all shaders perform lighting. Although it's pretty likely for isosurface shaders.
+	g_pParticleSystemMgr->Query()->SetUpLightingEnvironment( bbCenter );
+
+	// The particle system location goes to the blob shader lighting proxy
+	pRenderContext->Bind( pMaterial, &bbCenter );
+
+	CUtlVector<Vector> centers;
+	centers.SetCount( nParticles );
+	for ( int i = 0; i < nParticles; i++ )
+	{
+		int hParticle = ( --pSortList )->m_nIndex;
+		int nIndex = ( hParticle / 4 ) * xyz_stride;
+		int nOffset = hParticle & 0x3;
+		centers[i].Init( SubFloat( xyz[nIndex], nOffset ), SubFloat( xyz[nIndex + 1], nOffset ),
+		    SubFloat( xyz[nIndex + 2], nOffset ) );
+	}
+
+	g_pParticleSystemMgr->Query()->DrawBlobs( pRenderContext, pMaterial, centers.Base(), nParticles,
+	    m_cubeWidth, m_cutoffRadius, m_renderRadius );
+}
+
+#endif // !USE_BLOBULATOR
 
 //-----------------------------------------------------------------------------
 // Installs renderers
@@ -2409,6 +2887,11 @@ void AddBuiltInParticleRenderers( void )
 #ifdef USE_BLOBULATOR
 	REGISTER_PARTICLE_OPERATOR( FUNCTION_RENDERER, C_OP_RenderBlobs );
 #endif // blobs
+	REGISTER_PARTICLE_OPERATOR( FUNCTION_RENDERER, C_OP_RenderModels );
+#ifndef USE_BLOBULATOR
+	// Game-provided isosurface (IParticleSystemQuery::DrawBlobs)
+	REGISTER_PARTICLE_OPERATOR( FUNCTION_RENDERER, C_OP_RenderBlobs );
+#endif
 }
 
 

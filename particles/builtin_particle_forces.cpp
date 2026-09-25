@@ -531,13 +531,162 @@ END_PARTICLE_OPERATOR_UNPACK( C_OP_LennardJonesForce )
 
 #endif
 
+//-----------------------------------------------------------------------------
+// Portal 2 force generators (ported from the Portal 2 / CS:GO particle library)
+//-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+// Force based on distance from plane
+//-----------------------------------------------------------------------------
+class C_OP_ForceBasedOnDistanceToPlane : public CParticleOperatorInstance
+{
+	DECLARE_PARTICLE_OPERATOR( C_OP_ForceBasedOnDistanceToPlane );
+
+	uint32 GetWrittenAttributes( void ) const { return 0; }
+
+	uint32 GetReadAttributes( void ) const { return PARTICLE_ATTRIBUTE_XYZ_MASK; }
+
+	virtual uint64 GetReadControlPointMask() const { return 1ULL << m_nControlPointNumber; }
+
+	virtual void InitParams( CParticleSystemDefinition *pDef, CDmxElement *pElement )
+	{
+		m_nControlPointNumber =
+		    MAX( 0, MIN( MAX_PARTICLE_CONTROL_POINTS - 1, m_nControlPointNumber ) );
+	}
+
+	virtual void AddForces( FourVectors *pAccumulatedForces, CParticleCollection *pParticles,
+	    int nBlocks, float flStrength, void *pContext ) const;
+
+	float m_flMinDist;
+	Vector m_vecForceAtMinDist;
+	float m_flMaxDist;
+	Vector m_vecForceAtMaxDist;
+
+	Vector m_vecPlaneNormal;
+	int m_nControlPointNumber;
+
+	float m_flExponent;
+};
+
+void C_OP_ForceBasedOnDistanceToPlane::AddForces( FourVectors *pAccumulatedForces,
+    CParticleCollection *pParticles, int nBlocks, float flStrength, void *pContext ) const
+{
+	float flDeltaDistances = m_flMaxDist - m_flMinDist;
+	fltx4 fl4OORange = Four_Zeros;
+	if ( flDeltaDistances )
+	{
+		fl4OORange = ReplicateX4( 1.0 / flDeltaDistances );
+	}
+	Vector vecPointOnPlane = pParticles->GetControlPointAtCurrentTime( m_nControlPointNumber );
+	FourVectors v4PointOnPlane;
+	v4PointOnPlane.DuplicateVector( vecPointOnPlane );
+	FourVectors v4PlaneNormal;
+	v4PlaneNormal.DuplicateVector( m_vecPlaneNormal );
+	fltx4 fl4MinDist = ReplicateX4( m_flMinDist );
+
+	C4VAttributeIterator pXYZ( PARTICLE_ATTRIBUTE_XYZ, pParticles );
+
+	FourVectors v4Force0;
+	v4Force0.DuplicateVector( m_vecForceAtMinDist );
+	FourVectors v4ForceDelta;
+	v4ForceDelta.DuplicateVector( m_vecForceAtMaxDist - m_vecForceAtMinDist );
+
+	int nPowValue = 4.0 * m_flExponent;
+	for ( int i = 0; i < nBlocks; i++ )
+	{
+		FourVectors v4Ofs = *pXYZ;
+		v4Ofs -= v4PointOnPlane;
+		fltx4 fl4DistanceFromPlane = v4Ofs * v4PlaneNormal;
+		fl4DistanceFromPlane = MulSIMD( SubSIMD( fl4DistanceFromPlane, fl4MinDist ), fl4OORange );
+		fl4DistanceFromPlane = MaxSIMD( Four_Zeros, MinSIMD( Four_Ones, fl4DistanceFromPlane ) );
+		fl4DistanceFromPlane = Pow_FixedPoint_Exponent_SIMD( fl4DistanceFromPlane, nPowValue );
+		// now, calculate lerped force
+		FourVectors v4OutputForce = v4ForceDelta;
+		v4OutputForce *= fl4DistanceFromPlane;
+		v4OutputForce += v4Force0;
+		*( pAccumulatedForces++ ) += v4OutputForce;
+		++pXYZ;
+	}
+}
+
+DEFINE_PARTICLE_OPERATOR(
+    C_OP_ForceBasedOnDistanceToPlane, "Force based on distance from plane", OPERATOR_GENERIC );
+
+BEGIN_PARTICLE_OPERATOR_UNPACK( C_OP_ForceBasedOnDistanceToPlane )
+DMXELEMENT_UNPACK_FIELD( "Min distance from plane", "0", float, m_flMinDist )
+DMXELEMENT_UNPACK_FIELD( "Force at Min distance", "0 0 0", Vector, m_vecForceAtMinDist )
+DMXELEMENT_UNPACK_FIELD( "Max Distance from plane", "1", float, m_flMaxDist )
+DMXELEMENT_UNPACK_FIELD( "Force at Max distance", "0 0 0", Vector, m_vecForceAtMaxDist )
+DMXELEMENT_UNPACK_FIELD( "Plane Normal", "0 0 1", Vector, m_vecPlaneNormal )
+DMXELEMENT_UNPACK_FIELD( "Control point number", "0", int, m_nControlPointNumber )
+DMXELEMENT_UNPACK_FIELD( "Exponent", "1", float, m_flExponent )
+END_PARTICLE_OPERATOR_UNPACK( C_OP_ForceBasedOnDistanceToPlane )
+
+//-----------------------------------------------------------------------------
+// Turbulent force - four octaves of noise derivative
+//-----------------------------------------------------------------------------
+class C_OP_TurbulenceForce : public CParticleOperatorInstance
+{
+	DECLARE_PARTICLE_OPERATOR( C_OP_TurbulenceForce );
+
+	uint32 GetWrittenAttributes( void ) const { return 0; }
+
+	uint32 GetReadAttributes( void ) const { return PARTICLE_ATTRIBUTE_XYZ_MASK; }
+
+	virtual void AddForces( FourVectors *pAccumulatedForces, CParticleCollection *pParticles,
+	    int nBlocks, float flStrength, void *pContext ) const;
+
+	float m_flNoiseCoordScale[4];
+	Vector m_vecNoiseAmount[4];
+};
+
+void C_OP_TurbulenceForce::AddForces( FourVectors *pAccumulatedForces,
+    CParticleCollection *pParticles, int nBlocks, float flStrength, void *pContext ) const
+{
+	C4VAttributeIterator pXYZ( PARTICLE_ATTRIBUTE_XYZ, pParticles );
+	fltx4 fl4Scales[4];
+	FourVectors v4Amounts[4];
+	for ( int i = 0; i < ARRAYSIZE( fl4Scales ); i++ )
+	{
+		fl4Scales[i] = ReplicateX4( m_flNoiseCoordScale[i] );
+		v4Amounts[i].DuplicateVector( m_vecNoiseAmount[i] );
+	}
+	for ( int i = 0; i < nBlocks; i++ )
+	{
+		for ( int j = 0; j < ARRAYSIZE( fl4Scales ); j++ )
+		{
+			FourVectors ppos = *pXYZ;
+			ppos *= fl4Scales[j];
+			ppos = DNoiseSIMD( ppos );
+			ppos *= v4Amounts[j];
+			( *pAccumulatedForces ) += ppos;
+		}
+		++pAccumulatedForces;
+		++pXYZ;
+	}
+}
+
+DEFINE_PARTICLE_OPERATOR( C_OP_TurbulenceForce, "turbulent force", OPERATOR_GENERIC );
+
+BEGIN_PARTICLE_OPERATOR_UNPACK( C_OP_TurbulenceForce )
+DMXELEMENT_UNPACK_FIELD( "Noise scale 0", "1", float, m_flNoiseCoordScale[0] )
+DMXELEMENT_UNPACK_FIELD( "Noise amount 0", "1 1 1", Vector, m_vecNoiseAmount[0] )
+DMXELEMENT_UNPACK_FIELD( "Noise scale 1", "0", float, m_flNoiseCoordScale[1] )
+DMXELEMENT_UNPACK_FIELD( "Noise amount 1", ".5 .5 .5", Vector, m_vecNoiseAmount[1] )
+DMXELEMENT_UNPACK_FIELD( "Noise scale 2", "0", float, m_flNoiseCoordScale[2] )
+DMXELEMENT_UNPACK_FIELD( "Noise amount 2", ".25 .25 .25", Vector, m_vecNoiseAmount[2] )
+DMXELEMENT_UNPACK_FIELD( "Noise scale 3", "0", float, m_flNoiseCoordScale[3] )
+DMXELEMENT_UNPACK_FIELD( "Noise amount 3", ".125 .125 .125", Vector, m_vecNoiseAmount[3] )
+END_PARTICLE_OPERATOR_UNPACK( C_OP_TurbulenceForce )
 
 void AddBuiltInParticleForceGenerators( void )
 {
 	REGISTER_PARTICLE_OPERATOR( FUNCTION_FORCEGENERATOR, C_OP_RandomForce );
 	REGISTER_PARTICLE_OPERATOR( FUNCTION_FORCEGENERATOR, C_OP_TwistAroundAxis );
 	REGISTER_PARTICLE_OPERATOR( FUNCTION_FORCEGENERATOR, C_OP_AttractToControlPoint );
-	#ifdef USE_BLOBULATOR
+	REGISTER_PARTICLE_OPERATOR( FUNCTION_FORCEGENERATOR, C_OP_TurbulenceForce );
+	REGISTER_PARTICLE_OPERATOR( FUNCTION_FORCEGENERATOR, C_OP_ForceBasedOnDistanceToPlane );
+#ifdef USE_BLOBULATOR
 	REGISTER_PARTICLE_OPERATOR( FUNCTION_FORCEGENERATOR, C_OP_LennardJonesForce );
 	#endif
 }

@@ -12,6 +12,12 @@
 
 #if defined( CLIENT_DLL )
 #include "c_pixel_visibility.h"
+#include "animation.h"
+#include "tier3/mdlutils.h"
+#endif
+
+#if defined( CLIENT_DLL ) && defined( PORTAL2 )
+#include "blobulator/Implicit/ImpTiler.h"
 #endif
 
 #ifdef TF_CLIENT_DLL
@@ -72,6 +78,20 @@ public:
 
 	virtual float GetPixelVisibility( int *pQueryHandle, const Vector &vecOrigin, float flScale );
 	virtual void SetUpLightingEnvironment( const Vector& pos );
+
+	// Portal 2 particle hooks
+	virtual int GetRayTraceEnvironmentFromName( const char *pszRtEnvName );
+	virtual void *GetModel( char const *pMdlName );
+	virtual int GetActivityNumber( void *pModel, const char *pszActivityName );
+	virtual void BeginDrawModels(
+	    int nNumModels, Vector const &vecCenter, CParticleCollection *pParticles );
+	virtual void DrawModel( void *pModel, const matrix3x4_t &DrawMatrix,
+	    CParticleCollection *pParticles, int nParticleNumber, int nBodyPart, int nSubModel,
+	    int nSkin, int nAnimationSequence, float flAnimationRate, float r, float g, float b,
+	    float a );
+	virtual void DrawBlobs( IMatRenderContext *pRenderContext, IMaterial *pMaterial,
+	    const Vector *pCenters, int nCount, float flCubeWidth, float flCutoffRadius,
+	    float flRenderRadius );
 };
 
 
@@ -617,5 +637,160 @@ float CParticleSystemQuery::GetPixelVisibility( int *pQueryHandle, const Vector 
 	return flVisibility;
 #else
 	return 0.0f;
+#endif
+}
+
+//-----------------------------------------------------------------------------
+// Ray trace environments ("Cull relative to Ray Trace Environment"). The names
+// match Portal 2 / CS:GO. This game builds no environments (those come from
+// particle precipitation), so TraceAgainstRayTraceEnv keeps the interface
+// default and every ray misses.
+//-----------------------------------------------------------------------------
+struct RayTraceEnvironmentNameRecord_t
+{
+	const char *m_pszGroupName;
+	int m_nGroupID;
+};
+
+static RayTraceEnvironmentNameRecord_t s_RtEnvNameMap[] = {
+    { "PRECIPITATION", 0 },
+    { "PRECIPITATIONBLOCKER", 1 },
+};
+
+int CParticleSystemQuery::GetRayTraceEnvironmentFromName( const char *pszRtEnvName )
+{
+	for ( int i = 0; i < ARRAYSIZE( s_RtEnvNameMap ); i++ )
+	{
+		if ( !stricmp( s_RtEnvNameMap[i].m_pszGroupName, pszRtEnvName ) )
+			return s_RtEnvNameMap[i].m_nGroupID;
+	}
+	return 0;
+}
+
+//-----------------------------------------------------------------------------
+// Models drawn by the "Render models" particle renderer
+//-----------------------------------------------------------------------------
+void *CParticleSystemQuery::GetModel( char const *pMdlName )
+{
+#ifdef CLIENT_DLL
+	if ( !pMdlName || !pMdlName[0] || !V_stricmp( pMdlName, "NONE" ) )
+		return NULL;
+
+	char szModelName[MAX_PATH];
+	V_snprintf( szModelName, sizeof( szModelName ), "models/%s", pMdlName );
+	V_FixSlashes( szModelName, '/' );
+	return (void *)engine->LoadModel( szModelName );
+#else
+	return NULL;
+#endif
+}
+
+int CParticleSystemQuery::GetActivityNumber( void *pModel, const char *pszActivityName )
+{
+#ifdef CLIENT_DLL
+	const model_t *pMDL = (const model_t *)pModel;
+	if ( pMDL )
+	{
+		studiohdr_t *pStudioHdr = modelinfo->GetStudiomodel( pMDL );
+		if ( !pStudioHdr )
+			return -1;
+
+		CStudioHdr studioHdr( pStudioHdr, mdlcache );
+		int nActivityNum = LookupActivity( &studioHdr, pszActivityName );
+		return SelectWeightedSequence( &studioHdr, nActivityNum );
+	}
+#endif
+	return -1;
+}
+
+void CParticleSystemQuery::BeginDrawModels(
+    int nNumModels, Vector const &vecCenter, CParticleCollection *pParticles )
+{
+	// Light the models from the system's center
+	SetUpLightingEnvironment( vecCenter );
+}
+
+#ifdef CLIENT_DLL
+static void SetParticleModelBodygroup( studiohdr_t *pstudiohdr, int &body, int iGroup, int iValue )
+{
+	if ( !pstudiohdr )
+		return;
+
+	if ( iGroup >= pstudiohdr->numbodyparts )
+		return;
+
+	mstudiobodyparts_t *pbodypart = pstudiohdr->pBodypart( iGroup );
+
+	if ( iValue >= pbodypart->nummodels )
+		return;
+
+	int iCurrent = ( body / pbodypart->base ) % pbodypart->nummodels;
+
+	body = ( body - ( iCurrent * pbodypart->base ) + ( iValue * pbodypart->base ) );
+}
+#endif
+
+void CParticleSystemQuery::DrawModel( void *pModel, const matrix3x4_t &DrawMatrix,
+    CParticleCollection *pParticles, int nParticleNumber, int nBodyPart, int nSubModel, int nSkin,
+    int nAnimationSequence, float flAnimationRate, float r, float g, float b, float a )
+{
+#ifdef CLIENT_DLL
+	const model_t *pMDL = (const model_t *)pModel;
+	if ( !pMDL )
+		return;
+
+	MDLHandle_t hStudioHdr = modelinfo->GetCacheHandle( pMDL );
+	if ( hStudioHdr == MDLHANDLE_INVALID )
+		return;
+
+	studiohdr_t *pStudioHdr = mdlcache->GetStudioHdr( hStudioHdr );
+
+	CMDL MDL;
+	MDL.SetMDL( hStudioHdr );
+
+	SetParticleModelBodygroup( pStudioHdr, MDL.m_nBody, nBodyPart, nSubModel );
+	MDL.m_Color = Color( r * 255, g * 255, b * 255, a * 255 );
+
+	MDL.m_nSkin = nSkin;
+	MDL.m_nSequence = MAX( 0, nAnimationSequence );
+	MDL.m_flPlaybackRate = flAnimationRate;
+	MDL.m_flTime = pParticles->m_flCurTime;
+
+	MDL.Draw( DrawMatrix );
+#endif
+}
+
+//-----------------------------------------------------------------------------
+// render_blobs: Portal 2 draws the isosurface with the paint blob tiler
+//-----------------------------------------------------------------------------
+void CParticleSystemQuery::DrawBlobs( IMatRenderContext *pRenderContext, IMaterial *pMaterial,
+    const Vector *pCenters, int nCount, float flCubeWidth, float flCutoffRadius,
+    float flRenderRadius )
+{
+#if defined( CLIENT_DLL ) && defined( PORTAL2 )
+	if ( nCount <= 0 || !pRenderContext )
+		return;
+
+	ImpTiler *pTiler = ImpTilerFactory::factory->getTiler();
+	pTiler->SetCubeWidth( flCubeWidth );
+	pTiler->SetRenderRadius( flRenderRadius );
+	pTiler->SetCutoffRadius( flCutoffRadius );
+	pTiler->setTileIndexToDraw( -1 );
+	pTiler->SetRenderContext( &pRenderContext );
+
+	pTiler->beginFrame( Point3D( 0.0f, 0.0f, 0.0f ), true, false );
+	for ( int i = 0; i < nCount; ++i )
+	{
+		ImpParticleWithOneInterpolant particle;
+		particle.center = Point3D( pCenters[i] );
+		particle.setFieldScale( 1.0f );
+		particle.interpolants1 = Point3D( 1.0f, 1.0f, 1.0f );
+		pTiler->insertParticle( &particle );
+	}
+	pTiler->drawSurface( false );
+	pTiler->endFrame( false );
+
+	pTiler->SetRenderContext( NULL );
+	ImpTilerFactory::factory->returnTiler( pTiler );
 #endif
 }

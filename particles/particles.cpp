@@ -1029,6 +1029,7 @@ void CParticleCollection::Init( CParticleSystemDefinition *pDef, float flDelay, 
 	SetAttributeToConstant( PARTICLE_ATTRIBUTE_PARTICLE_ID, 0 );
 	SetAttributeToConstant( PARTICLE_ATTRIBUTE_YAW, 0 );
 	SetAttributeToConstant( PARTICLE_ATTRIBUTE_ALPHA2, 1.0f );
+	SetAttributeToConstant( PARTICLE_ATTRIBUTE_NORMAL, 0.0f, 0.0f, 1.0f );
 
 	// Offset the child in time
 	m_flCurTime = -flDelay;
