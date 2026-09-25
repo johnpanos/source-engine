@@ -11,7 +11,10 @@ branches on the source format itself. The shared model:
   materials       {name: ...}; read through `material_summary`
   emitters        area emitter meshes ({kind, points/indices or radius,
                   world_from_object, emission}); `space: "stage"` marks
-                  geometry already in stage (Z-up) space
+                  geometry already in stage (Z-up) space; USD emitters also
+                  carry their analytic `shape` (rect, disk or sphere: centre,
+                  radius_m, a disk's emitting normal), a DiskLight its Source
+                  `cone` ({inner, outer, exponent}) and a styled light `style`
   distant_lights  [{direction, irradiance, angle_degrees}] (USD only)
   environment     sky / dome light or None; `environment_equirect` resamples it
   camera, film    reference view; `camera_pose` gives eye/forward/up in stage space

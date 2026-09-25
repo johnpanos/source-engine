@@ -14,14 +14,19 @@ and that surface's attributes: the reflectance the radiosity bake calibrated
 in Cycles (read from its receipt) (specular + diffuse x base colour or texture), and its emitted
 radiance with the light style of its emissive-material source.
 
-Lights. The scene's area emitters become rectangles (centre, half axes whose
-cross product is the emitting side; two-sided emitters get a record per side;
-a non-rectangular emitter becomes the square of its area, recorded in the
-receipt), its distant lights distant records (the
+Lights. The scene's sphere lights become spheres and its disk lights spots
+(with a Source cone when the light authors one), exactly; its rectangle
+emitters rectangles (centre, half axes whose cross product is the emitting
+side; two-sided emitters get a record per side); any other emitter mesh the
+square of its area (recorded in the receipt). Its distant lights become distant records (the
 direction light travels, angular diameter), and a dome the mean radiance of
 the environment (solid-angle weighted). Their styles are the radiosity
 transfer's: the same sources in the same order (radiosity_transfer_bake's
 collect_sources).
+
+Light cells. sdf_light_cells.py lists, per cell of --light-cell meters over
+the voxels, the lights that can reach it: by range (--light-cutoff) and side,
+and with --bsp (a relit compiled map) by its PVS.
 """
 
 import argparse
@@ -41,6 +46,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import map_scene  # noqa: E402
 import pbrt_blender  # noqa: E402
 import radiosity_transfer_bake as rtb  # noqa: E402
+import legacy_bsp  # noqa: E402
+import sdf_light_cells  # noqa: E402
 import sdf_volume  # noqa: E402
 
 SOURCE_UNITS_PER_METER = 39.37007874015748
@@ -115,6 +122,19 @@ def rect_records(obj, radiance, one_sided):
              "c": (b * SOURCE_UNITS_PER_METER).tolist()} for c, a, b in records], exact
 
 
+def shape_record(shape, cone, radiance):
+    """A sphere or disk emitter as its exact SDFV record (Source units): a
+    sphere, or a spot (a disk; without a Source cone it lights its whole
+    hemisphere)."""
+    centre = (np.asarray(shape["centre"], np.float64) * SOURCE_UNITS_PER_METER).tolist()
+    radius = shape["radius_m"] * SOURCE_UNITS_PER_METER
+    if shape["kind"] == "sphere":
+        return {"kind": "sphere", "rgb": radiance.tolist(), "a": centre, "b": (radius, 0.0, 0.0)}
+    cone = cone or {"inner": -1.0, "outer": -1.0, "exponent": 1.0}
+    return {"kind": "spot", "rgb": radiance.tolist(), "a": centre, "b": list(shape["normal"]),
+            "c": (radius, cone["inner"], cone["outer"]), "d": (cone["exponent"], 0.0)}
+
+
 def emitted(albedo, summary, uv):
     """(N, 3) emitted radiance at (N, 2) texture coordinates, as the stage's
     material binds it (pbrt_blender.build_material): the emission texture
@@ -159,6 +179,13 @@ def main():
                              "reflectance and source styles are reused")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--work", type=Path, required=True)
+    parser.add_argument("--light-cell", type=float, default=2.0,
+                        help="light cell edge, meters (default 2)")
+    parser.add_argument("--light-cutoff", type=float, default=1e-3,
+                        help="a light is listed where its brightest light reaches this "
+                             "(irradiance / pi; default 0.001)")
+    parser.add_argument("--bsp", type=Path,
+                        help="the compiled map whose PVS also culls the cells (a relit map)")
     args = parser.parse_args(arguments)
     started = time.monotonic()
     scene = map_scene.parse(args.scene)
@@ -261,7 +288,12 @@ def main():
         obj = bpy.data.objects.get(pbrt_blender.emitter_name(index, shape))
         radiance = np.asarray(shape["emission"]["radiance"], np.float64) * \
             shape["emission"]["scale"]
-        records, exact = rect_records(obj, radiance, shape["emission"].get("one_sided", False))
+        analytic = shape.get("shape") or {}
+        if analytic.get("kind") in ("sphere", "disk"):
+            records, exact = [shape_record(analytic, shape.get("cone"), radiance)], True
+        else:
+            records, exact = rect_records(obj, radiance,
+                                          shape["emission"].get("one_sided", False))
         if not exact:
             approximated.append(name)
         for record in records:
@@ -279,13 +311,22 @@ def main():
         lights.append({"kind": "dome", "style": style_of.get(name, -1),
                        "rgb": dome_radiance(scene, args.environment).tolist()})
 
+    # The light cells over the voxels: which lights reach which region.
+    visibility = None
+    if args.bsp:
+        visibility = sdf_light_cells.Visibility.from_bsp(legacy_bsp.LegacyBsp.read(args.bsp))
+    units_lo = (lo - voxel / 2) * SOURCE_UNITS_PER_METER
+    units_hi = units_lo + dims * voxel * SOURCE_UNITS_PER_METER
+    cells, cell_report = sdf_light_cells.build(
+        lights, units_lo, units_hi, args.light_cell * SOURCE_UNITS_PER_METER, args.light_cutoff,
+        visibility)
     shape = (dims[2], dims[1], dims[0])
     data = sdf_volume.build((lo * SOURCE_UNITS_PER_METER).tolist(),
                             voxel * SOURCE_UNITS_PER_METER, dims.tolist(),
                             (distance * SOURCE_UNITS_PER_METER).reshape(shape),
                             reflectance.reshape(shape + (3,)), emission.reshape(shape + (3,)),
                             source.reshape(shape), lights,
-                            max_distance * SOURCE_UNITS_PER_METER)
+                            max_distance * SOURCE_UNITS_PER_METER, cells)
     volume = sdf_volume.Volume(data)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_bytes(data)
@@ -294,6 +335,8 @@ def main():
                "sdfv": args.out.name, "sdfv_sha256": hashlib.sha256(data).hexdigest(),
                "sdfv_bytes": len(data), "voxel_m": voxel, "dims": dims.tolist(),
                "lights": lights, "approximated_emitters": approximated,
+               "light_cells": dict(cell_report, bsp=str(args.bsp) if args.bsp else None,
+                                   bsp_sha256=sha256(args.bsp) if args.bsp else None),
                "sources": [{k: s[k] for k in ("name", "kind", "style")} for s in sources],
                "closed_meshes": int(closed.sum()), "meshes": len(world),
                "info": {k: v for k, v in volume.info().items() if k != "lights"},

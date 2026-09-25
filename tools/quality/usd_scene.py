@@ -237,6 +237,24 @@ def texture_input(surface, name, notes, context):
             "primvar": varname, "transform": transform}
 
 
+def source_cone(prim):
+    """A DiskLight's authored Source spot cone (`sourceEngine:coneInner`,
+    `coneOuter`: the cosines of vrad's inner and outer cones, `coneExponent`),
+    or None. The disk emits its radiance times vrad's cone multiplier."""
+    names = ("sourceEngine:coneInner", "sourceEngine:coneOuter", "sourceEngine:coneExponent")
+    attributes = [prim.GetAttribute(name) for name in names]
+    authored = [bool(a and a.HasAuthoredValue()) for a in attributes]
+    if not any(authored):
+        return None
+    if not all(authored):
+        raise ValueError("%s: sourceEngine:coneInner/Outer/Exponent go together" % prim.GetPath())
+    inner, outer, exponent = (float(a.Get()) for a in attributes)
+    if not (-1.0 <= outer <= inner <= 1.0 and exponent >= 0.0):
+        raise ValueError("%s: invalid Source cone %g %g %g" % (prim.GetPath(), inner, outer,
+                                                                exponent))
+    return {"inner": inner, "outer": outer, "exponent": exponent}
+
+
 def light_style(prim):
     """A light's authored `sourceEngine:lightStyle` (a compiled map's switchable
     light style, which the radiosity transfer then uses), or None."""
@@ -805,8 +823,21 @@ class Extractor:
         radiance, normalized = self.light_radiance(
             prim, area / (self.convert.meters ** 2))
         one_sided = kind != "SphereLight"
-        if UsdLux.ShapingAPI(prim) and prim.HasAPI(UsdLux.ShapingAPI):
+        cone = source_cone(prim)
+        if cone and kind != "DiskLight":
+            raise ValueError("%s: sourceEngine:cone* needs a DiskLight" % prim.GetPath())
+        if not cone and UsdLux.ShapingAPI(prim) and prim.HasAPI(UsdLux.ShapingAPI):
             self.notes.append("%s shaping (cone/IES) ignored" % prim.GetPath())
+        # The analytic shape, for producers that model lights exactly (SDFV).
+        centre = world_points.mean(axis=0) if kind != "DiskLight" else world_points[0]
+        shape = {"kind": {"RectLight": "rect", "DiskLight": "disk",
+                          "SphereLight": "sphere"}[kind], "centre": centre.tolist()}
+        if kind == "SphereLight":
+            shape["radius_m"] = float(np.linalg.norm(world_points - centre, axis=1).mean())
+        elif kind == "DiskLight":
+            shape["radius_m"] = float(np.linalg.norm(world_points[1:] - centre, axis=1).mean())
+            emits = self.convert.directions(np.array(((0.0, 0.0, -1.0),)), world)[0]
+            shape["normal"] = (emits / np.linalg.norm(emits)).tolist()
         self.emitters.append({
             "kind": "trianglemesh", "space": "stage", "prefix": prefix,
             "source": str(prim.GetPath()), "light_type": kind, "points": world_points.tolist(),
@@ -814,7 +845,9 @@ class Extractor:
             "world_from_object": np.eye(4).tolist(),
             "emission": {"radiance": radiance.tolist(), "scale": 1.0,
                          "two_sided": not one_sided, "one_sided": one_sided},
-            "normalized": normalized, "area_m2": float(area)})
+            "normalized": normalized, "area_m2": float(area), "shape": shape})
+        if cone:
+            self.emitters[-1]["cone"] = cone
         style = light_style(prim)
         if style is not None:
             self.emitters[-1]["style"] = style

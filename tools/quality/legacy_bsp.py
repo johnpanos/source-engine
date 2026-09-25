@@ -32,6 +32,7 @@ LUMP_ENTITIES = 0
 LUMP_PLANES = 1
 LUMP_TEXDATA = 2
 LUMP_VERTEXES = 3
+LUMP_VISIBILITY = 4
 LUMP_NODES = 5
 LUMP_TEXINFO = 6
 LUMP_FACES = 7
@@ -287,6 +288,50 @@ class LegacyBsp:
             if winding is not None and len(winding) >= 3:
                 result.append((index, winding))
         return result
+
+    # visibility --------------------------------------------------------
+    def leaves(self):
+        """Every leaf's contents, cluster (-1: none) and bounds, as arrays."""
+        if self.lump_version(LUMP_LEAFS) != 1:
+            raise ValueError("leaf lump version %d is unsupported" %
+                             self.lump_version(LUMP_LEAFS))
+        raw = np.frombuffer(self.lump(LUMP_LEAFS, LEAF_BYTES), dtype=np.dtype([
+            ("contents", "<i4"), ("cluster", "<i2"), ("flags", "<i2"), ("mins", "<i2", 3),
+            ("maxs", "<i2", 3), ("rest", "V12")]))
+        return (raw["contents"].astype(np.int64), raw["cluster"].astype(np.int64),
+                raw["mins"].astype(np.float64), raw["maxs"].astype(np.float64))
+
+    def visibility(self):
+        """The potentially visible set: a (clusters, clusters) bool matrix,
+        row c the clusters visible from cluster c; None without vis data."""
+        data = self.lump(LUMP_VISIBILITY)
+        if len(data) < 4:
+            return None
+        count = struct.unpack_from("<i", data, 0)[0]
+        if count <= 0 or 4 + 8 * count > len(data):
+            raise ValueError("visibility lump is malformed")
+        width = (count + 7) // 8
+        pvs = np.zeros((count, count), dtype=bool)
+        for cluster in range(count):
+            offset = struct.unpack_from("<i", data, 4 + 8 * cluster)[0]
+            row = bytearray()
+            while len(row) < width:
+                if offset >= len(data):
+                    raise ValueError("visibility row %d runs past the lump" % cluster)
+                byte = data[offset]
+                if byte:
+                    row.append(byte)
+                    offset += 1
+                else:
+                    if offset + 1 >= len(data):
+                        raise ValueError("visibility row %d is truncated" % cluster)
+                    row.extend(b"\0" * data[offset + 1])
+                    offset += 2
+            bits = np.unpackbits(np.frombuffer(bytes(row[:width]), np.uint8), bitorder="little")
+            pvs[cluster] = bits[:count].astype(bool)
+        # A cluster sees itself (vvis sets its own bit; be sure).
+        pvs[np.arange(count), np.arange(count)] = True
+        return pvs
 
     # lights ------------------------------------------------------------
     def world_lights(self, hdr=True):

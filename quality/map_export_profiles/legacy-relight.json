@@ -1,7 +1,7 @@
 {
   "schema": "map-export-profile/v1",
   "name": "legacy-relight",
-  "description": "Relight of a compiled legacy map (tools/quality/legacy_bsp_relight.py): the gi-fixture light paths (64 diffuse bounces, no clamping) baked on the GPU into a denoised 4096 atlas with separated direct and indirect LMAP v2 layers, a PRBV probe volume at 2 m (a whole Portal map spans about 100 x 60 x 40 m), a radiosity transfer at 1 m patches and an SDFV at 0.4 m voxels for the SDF-traced producer. The map's nodraw brush sides (relight_occluder) occlude in every bake but get no atlas space and are left out of the world mesh. No reflection probe, directional page or pipeline reference render.",
+  "description": "Relight of a compiled legacy map (tools/quality/legacy_bsp_relight.py): the gi-fixture light paths (64 diffuse bounces, no clamping) baked on the GPU into a denoised 4096 atlas with separated direct and indirect LMAP v2 layers, a PRBV probe volume at 2 m (a whole Portal map spans about 100 x 60 x 40 m), a radiosity transfer at 1 m patches and an SDFV at 0.4 m voxels for the SDF-traced producer. The map's nodraw brush sides (relight_occluder) occlude in every bake but get no atlas space and are left out of the world mesh. No reflection probe, directional page or pipeline reference render; the SDFV's light cells are 2 m, culled by range (0.001), side and the map's PVS.",
   "lightmap": {
     "size": 4096,
     "samples": 1024,
@@ -9,8 +9,13 @@
     "denoise": true,
     "directional": false,
     "light_paths": "gi-reference",
-    "layers": ["direct", "indirect"],
-    "exclude_materials": ["relight_occluder"]
+    "layers": [
+      "direct",
+      "indirect"
+    ],
+    "exclude_materials": [
+      "relight_occluder"
+    ]
   },
   "probe_volume": {
     "spacing_m": 2.0,
@@ -23,10 +28,14 @@
     "samples": 1024
   },
   "sdf_volume": {
-    "voxel_m": 0.4
+    "voxel_m": 0.4,
+    "light_cell_m": 2.0,
+    "light_cutoff": 0.001
   },
   "world_mesh": {
-    "exclude_materials": ["relight_occluder"]
+    "exclude_materials": [
+      "relight_occluder"
+    ]
   },
   "reflection_probe": null,
   "reference": null,

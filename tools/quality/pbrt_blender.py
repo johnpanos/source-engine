@@ -289,6 +289,35 @@ def emitter_material(index, shape):
     node = nodes.new("ShaderNodeEmission")
     node.inputs["Color"].default_value = tuple(emission["radiance"]) + (1.0,)
     node.inputs["Strength"].default_value = emission["scale"]
+    cone = shape.get("cone")
+    if cone:
+        # A Source spot: the disk's radiance times vrad's cone multiplier of
+        # the angle to the lit point (the disk's projected area supplies the
+        # cosine vrad also applies): 1 inside the inner cone, 0 outside the
+        # outer one, ((cos - outer) / (inner - outer)) ** exponent between.
+        links = result.node_tree.links
+        geometry = nodes.new("ShaderNodeNewGeometry")
+        cosine = nodes.new("ShaderNodeVectorMath")
+        cosine.operation = "DOT_PRODUCT"
+        links.new(geometry.outputs["Incoming"], cosine.inputs[0])
+        links.new(geometry.outputs["True Normal"], cosine.inputs[1])
+        ramp = nodes.new("ShaderNodeMapRange")
+        ramp.clamp = True
+        ramp.inputs["From Min"].default_value = cone["outer"]
+        ramp.inputs["From Max"].default_value = max(cone["inner"], cone["outer"] + 1e-6)
+        links.new(cosine.outputs["Value"], ramp.inputs["Value"])
+        multiplier = ramp.outputs["Result"]
+        if cone["exponent"] not in (0.0, 1.0):
+            power = nodes.new("ShaderNodeMath")
+            power.operation = "POWER"
+            links.new(multiplier, power.inputs[0])
+            power.inputs[1].default_value = cone["exponent"]
+            multiplier = power.outputs["Value"]
+        strength = nodes.new("ShaderNodeMath")
+        strength.operation = "MULTIPLY"
+        strength.inputs[0].default_value = emission["scale"]
+        links.new(multiplier, strength.inputs[1])
+        links.new(strength.outputs["Value"], node.inputs["Strength"])
     surface = node.outputs["Emission"]
     if emission.get("one_sided"):
         # UsdLux area lights emit from their front face only.

@@ -31,8 +31,10 @@ Lights come from vrad's compiled world lights (the HDR lump when present),
 in the engine's lightmap unit, which is the pipeline's (irradiance / pi):
   point  a SphereLight of radius 2 units whose light at 100 units (where vrad
          normalizes a light's brightness) matches vrad's falloff there;
-  spot   a one-sided DiskLight of that size facing the spot's direction and
-         matched on its axis (the cone is not modelled: recorded);
+  spot   a one-sided DiskLight of that size facing the spot's direction,
+         matched on its axis, with vrad's cone (`sourceEngine:coneInner`,
+         `coneOuter`, `coneExponent`), which the disk's projected area
+         completes exactly;
   sun    a DistantLight of irradiance pi x intensity (vrad's lightmap is
          intensity x cos);
   sky ambient  a constant DomeLight of radiance equal to the intensity (vrad
@@ -490,10 +492,11 @@ def build_model(bsp, resolver, texture_dir):
                 record["approximation"] = ("constant/linear falloff %s matched at %g units" %
                                            (list(light["attenuation"]), NORMALIZE_DISTANCE))
             if kind == "spot":
-                record["approximation"] = "; ".join(filter(None, [
-                    record.get("approximation"),
-                    "cone (cos %.3f..%.3f, exponent %g) approximated by a cosine lobe" %
-                    (light["stopdot"], light["stopdot2"], light["exponent"])]))
+                # vrad's cone: cosines of the inner and outer cones.
+                inner = float(np.clip(light["stopdot"], -1.0, 1.0))
+                record["cone"] = {"inner": inner,
+                                  "outer": float(np.clip(light["stopdot2"], -1.0, inner)),
+                                  "exponent": max(0.0, float(light["exponent"]))}
             if light["radius"] > 0:
                 record["approximation"] = "; ".join(filter(None, [
                     record.get("approximation"), "hard falloff radius %g ignored" %
@@ -719,6 +722,9 @@ def write_usd(model, path, map_name):
             light.CreateNormalizeAttr(False)
             colour(light, record["radiance"])
             look_at(light, record["origin"], record["normal"])
+            for key, value in (("Inner", "inner"), ("Outer", "outer"), ("Exponent", "exponent")):
+                light.GetPrim().CreateAttribute("sourceEngine:cone" + key, Sdf.ValueTypeNames.Float,
+                                                custom=True).Set(float(record["cone"][value]))
         elif record["type"] == "sky":
             light = UsdLux.DistantLight.Define(stage, path)
             light.CreateAngleAttr(float(record["angle_degrees"]))

@@ -714,11 +714,21 @@ class Pipeline:
                           "--voxel", str(field["voxel_m"]),
                           "--transfer-receipt", p["rtrn_work"] / "rtrn-bake.json",
                           "--out", p["sdfv"], "--work", p["sdfv_work"]] + env_args
+            # Light cells (profile sdf_volume.light_cell_m / light_cutoff); a
+            # relit map's PVS culls them too.
+            if "light_cell_m" in field:
+                field_args += ["--light-cell", str(field["light_cell_m"])]
+            if "light_cutoff" in field:
+                field_args += ["--light-cutoff", str(field["light_cutoff"])]
+            if self.legacy:
+                field_args += ["--bsp", self.legacy]
             self.step("sdf", [p["stage"], p["rtrn"]] + self.scene_sources() +
-                      ([environment] if environment else []),
+                      ([environment] if environment else []) +
+                      ([self.legacy] if self.legacy else []),
                       dict(field),
-                      SCENE_SCRIPTS + ["sdf_volume_bake.py", "sdf_volume.py",
-                                       "radiosity_transfer_bake.py", "pbrt_blender.py"],
+                      SCENE_SCRIPTS + ["sdf_volume_bake.py", "sdf_volume.py", "sdf_light_cells.py",
+                                       "legacy_bsp.py", "radiosity_transfer_bake.py",
+                                       "pbrt_blender.py"],
                       [p["sdfv"], p["sdfv_work"]],
                       lambda: self.blender("sdf", "sdf_volume_bake.py", field_args))
         # A scene sun: baked visibility + marker texels for dynamic specular.
