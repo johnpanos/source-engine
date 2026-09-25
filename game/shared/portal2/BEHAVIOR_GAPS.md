@@ -74,6 +74,12 @@ States: `todo`, `active`, `done` (built, with the evidence noted), `deferred`
 | G21 | `prop_tractor_beam` `NoEmitterParticles`; `vgui_screen` `IsTransparent`; `vgui_neurotoxin_countdown` `countdown`; `npc_bullseye` `AlwaysTransmit`; `point_viewcontrol` `TrackSpeed` | todo |
 | G22 | Retail-networked base classes (`func_brush`, `func_movelinear`, `func_button`, `prop_door_rotating`, `func_portal_bumper`) and co-op stats (`portal_mp_stats`) | todo |
 
+### Portal rendering
+
+| ID | Gap | State |
+| --- | --- | --- |
+| G23 | Portal 2's stencil fast path (bitmask stencil, batched portal quads, early-Z, scissor) ran only in queued material mode, which native Vulkan never uses, so the Portal 1-style `_Old` path always ran; early-Z had no caller | Portal 2 done (see log); Portal 1 backport todo |
+
 ### Low
 
 - Deferred stubs: `portal_ui_controller`, `portal2_research_data_tracker`,
@@ -161,3 +167,13 @@ Newest last. Each entry names the build and the check that passed.
   three other gameplay failures (Chell `model-simulates` non-finite,
   `tumble-travel-bounded`, `held-floor-quiet`) are pre-existing: they fail the
   same way with the main tree's build.
+- 2026-09-24, G23 (Portal 2): the fast path's queued-mode gate is lifted.
+  It only protected the reuse of the level-0 quad vertex buffer, which this
+  port replays through `CPortalQuadMeshReplayData`. `DrawEarlyZPortals` is
+  now called from `CBaseWorldView::DrawExecute` for main and portal views, as
+  in CS:GO. Oracle: headless `sp_a2_laser_relays` with an open portal pair in
+  front of and behind the player (recursion visible). gdb `dprintf` shows the
+  `_Old` path while `r_portal_fastpath 0` and the fast path plus early-Z
+  otherwise. Screenshots old, fast and fast+early-Z differ only inside the
+  animated portal rim (bounding box of >8 differences 609–672 × 288–397 at
+  1280×683).
