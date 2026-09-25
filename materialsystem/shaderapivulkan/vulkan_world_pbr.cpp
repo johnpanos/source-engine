@@ -205,23 +205,23 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 			const uint32_t *words;
 			size_t bytes;
 		} variants[3] = {
-			{ &m_worldPbrExtendedFrag[kWorldPbrDeltaVolume],
-			    m_clipPlanesSupported ? g_worldPbrDeltaClipFragSpv : g_worldPbrDeltaFragSpv,
-			    m_clipPlanesSupported ? sizeof( g_worldPbrDeltaClipFragSpv )
-			                          : sizeof( g_worldPbrDeltaFragSpv ) },
-			{ &m_worldPbrExtendedFrag[kWorldPbrDeltaVolume | kWorldPbrDirectLights],
-			    m_clipPlanesSupported ? g_worldPbrLightDeltaClipFragSpv
-			                          : g_worldPbrLightDeltaFragSpv,
-			    m_clipPlanesSupported ? sizeof( g_worldPbrLightDeltaClipFragSpv )
-			                          : sizeof( g_worldPbrLightDeltaFragSpv ) },
-			{ &m_worldPbrIndirectDeltaFrag,
-			    m_clipPlanesSupported ? g_worldPbrIndirectDeltaClipFragSpv
-			                          : g_worldPbrIndirectDeltaFragSpv,
-			    m_clipPlanesSupported ? sizeof( g_worldPbrIndirectDeltaClipFragSpv )
-			                          : sizeof( g_worldPbrIndirectDeltaFragSpv ) } };
+		    { &m_worldPbrExtendedFrag[kWorldPbrDeltaVolume],
+		        m_clipPlanesSupported ? g_worldPbrDeltaClipFragSpv : g_worldPbrDeltaFragSpv,
+		        m_clipPlanesSupported ? sizeof( g_worldPbrDeltaClipFragSpv )
+		                              : sizeof( g_worldPbrDeltaFragSpv ) },
+		    { &m_worldPbrExtendedFrag[kWorldPbrDeltaVolume | kWorldPbrDirectLights],
+		        m_clipPlanesSupported ? g_worldPbrLightDeltaClipFragSpv
+		                              : g_worldPbrLightDeltaFragSpv,
+		        m_clipPlanesSupported ? sizeof( g_worldPbrLightDeltaClipFragSpv )
+		                              : sizeof( g_worldPbrLightDeltaFragSpv ) },
+		    { &m_worldPbrIndirectDeltaFrag,
+		        m_clipPlanesSupported ? g_worldPbrIndirectDeltaClipFragSpv
+		                              : g_worldPbrIndirectDeltaFragSpv,
+		        m_clipPlanesSupported ? sizeof( g_worldPbrIndirectDeltaClipFragSpv )
+		                              : sizeof( g_worldPbrIndirectDeltaFragSpv ) } };
 		std::string deltaError;
-		bool ready =
-		    vkCreatePipelineLayout( m_device, &info, nullptr, &m_worldPbrDeltaLayout ) == VK_SUCCESS;
+		bool ready = vkCreatePipelineLayout( m_device, &info, nullptr, &m_worldPbrDeltaLayout ) ==
+		             VK_SUCCESS;
 		for ( const auto &variant : variants )
 			ready = ready &&
 			        CreateShaderModule( variant.words, variant.bytes, variant.module, &deltaError );

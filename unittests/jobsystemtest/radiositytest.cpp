@@ -141,8 +141,8 @@ template <typename T> void Put( std::vector<unsigned char> &bytes, uint64_t offs
 class DroppingExecutor final : public IBatchExecutor
 {
 public:
-	void ParallelFor( const char *, uint32_t count, void ( *body )( void *, uint32_t ),
-	    void *context ) override
+	void ParallelFor(
+	    const char *, uint32_t count, void ( *body )( void *, uint32_t ), void *context ) override
 	{
 		for ( uint32_t i = 0; i + 1 < count; ++i )
 			body( context, i );
@@ -207,7 +207,8 @@ std::vector<unsigned char> StressTransfer( const Volume &volume, uint32_t patche
 		const std::vector<uint32_t> targets = pick( links, patches );
 		for ( uint32_t k = 0; k < links; ++k )
 			Put( bytes, offsets[3] + ( uint64_t( p ) * links + k ) * 8,
-			    mapcontainer::RadiosityTransferLink{ targets[k], 0.9f / float( links ) * unit( random ) } );
+			    mapcontainer::RadiosityTransferLink{
+			        targets[k], 0.9f / float( links ) * unit( random ) } );
 		// Each patch lit by one source.
 		mapcontainer::RadiosityInjectionLink injection = {};
 		injection.patch = p;
@@ -241,12 +242,12 @@ std::vector<unsigned char> StressTransfer( const Volume &volume, uint32_t patche
 
 // A producer's run: a scalar change, then updates and compositions. Returns
 // every composed volume's bytes and the final patch changes.
-std::vector<unsigned char> Run( const std::shared_ptr<const Transfer> &transfer,
-    const Volume &base, IBatchExecutor *executor, int frames )
+std::vector<unsigned char> Run( const std::shared_ptr<const Transfer> &transfer, const Volume &base,
+    IBatchExecutor *executor, int frames )
 {
 	RadiositySolver solver;
-	solver.Init( transfer, std::vector<float>( transfer->layout.sourceCount, 1.0f ),
-	    RadiosityOptions() );
+	solver.Init(
+	    transfer, std::vector<float>( transfer->layout.sourceCount, 1.0f ), RadiosityOptions() );
 	std::vector<unsigned char> trace;
 	for ( int frame = 0; frame < frames; ++frame )
 	{
@@ -256,8 +257,8 @@ std::vector<unsigned char> Run( const std::shared_ptr<const Transfer> &transfer,
 		if ( !solver.Update( executor ) )
 			continue;
 		const auto volume = solver.Compose( base, executor );
-		trace.insert( trace.end(), volume->bytes.begin() + volume->layout.atlasOffset,
-		    volume->bytes.end() );
+		trace.insert(
+		    trace.end(), volume->bytes.begin() + volume->layout.atlasOffset, volume->bytes.end() );
 	}
 	for ( uint32_t p = 0; p < transfer->layout.patchCount; ++p )
 	{
@@ -301,7 +302,8 @@ int main()
 		BatchExecutor racy( &backend, jobsystem::BatchMode::Parallel );
 		static uint64_t shared = 0;
 		static std::atomic<int> entered{ 0 };
-		racy.ParallelFor( "radiosity.seeded-race", 64,
+		racy.ParallelFor(
+		    "radiosity.seeded-race", 64,
 		    []( void *, uint32_t )
 		    {
 			    // Relaxed: holds two items in flight at once without ordering them.
@@ -332,8 +334,9 @@ int main()
 			identical = identical && Run( transfer, *base, &pooled, frames ) == oracle;
 		const int threads = g_mostThreads;
 		std::printf( "%d worker(s): up to %d threads ran one batch's items\n", workers, threads );
-		Check( identical && !pooled.failed, "pooled execution with " + std::to_string( workers ) +
-		                                        " worker(s) matches the serial oracle byte for byte" );
+		Check(
+		    identical && !pooled.failed, "pooled execution with " + std::to_string( workers ) +
+		                                     " worker(s) matches the serial oracle byte for byte" );
 		if ( workers > 1 )
 			Check( threads > 1, "pooled execution with " + std::to_string( workers ) +
 			                        " workers ran one batch's items on several threads" );

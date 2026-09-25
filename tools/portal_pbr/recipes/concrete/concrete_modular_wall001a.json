@@ -1,0 +1,12 @@
+{
+	"schema": "portal-pbr-armorpaint-recipe-v1",
+	"material": "concrete/concrete_modular_wall001a",
+	"size": 4096,
+	"intent": "Cast concrete test-chamber wall: fully dielectric and matte, with form-tie holes and pour joints taken from the SSBump height. No envmap in the legacy VMT, so there is no gloss evidence.",
+	"cavity": {"source": "height", "range": [0.25, 0.45]},
+	"delight": {"strength": 0.0, "blur_px": 0},
+	"metal": {"constant": 0.0},
+	"f0": {"value_gain": 1.0, "saturation": 1.0},
+	"roughness": {"constant": 0.86, "seam_range": [0.3, 0.7], "seam": 0.95, "noise_scale": 220, "noise_amp": 0.05},
+	"occlusion": {"from": [0.0, 1.0], "to": [0.45, 1.0]}
+}

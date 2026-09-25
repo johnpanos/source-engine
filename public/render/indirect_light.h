@@ -336,8 +336,8 @@ class IBatchExecutor
 {
 public:
 	virtual ~IBatchExecutor() = default;
-	virtual void ParallelFor( const char *name, uint32_t count, void ( *body )( void *, uint32_t ),
-	    void *context ) = 0;
+	virtual void ParallelFor(
+	    const char *name, uint32_t count, void ( *body )( void *, uint32_t ), void *context ) = 0;
 };
 
 // One frame's work: CPU jobs the frame's executor runs (a producer never

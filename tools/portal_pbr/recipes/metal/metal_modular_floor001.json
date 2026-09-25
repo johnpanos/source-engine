@@ -1,0 +1,12 @@
+{
+	"schema": "portal-pbr-armorpaint-recipe-v1",
+	"material": "metal/metal_modular_floor001",
+	"size": 4096,
+	"intent": "Worn steel floor plates: metallic plate faces with scuffed gloss from the legacy SSBump-alpha spec mask, rough dielectric grime in the bevelled seams.",
+	"cavity": {"source": "height", "range": [0.4, 0.75]},
+	"delight": {"strength": 1.0, "blur_px": 12},
+	"metal": {"cavity_range": [0.5, 0.9]},
+	"f0": {"value_gain": 2.2, "saturation": 0.8},
+	"roughness": {"from_spec": [0.68, 0.34], "seam_range": [0.5, 0.9], "seam": 0.85, "noise_scale": 260, "noise_amp": 0.03},
+	"occlusion": {"from": [0.0, 1.0], "to": [0.55, 1.0]}
+}

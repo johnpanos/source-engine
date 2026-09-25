@@ -5011,10 +5011,10 @@ void CModelLoader::Map_LoadProbeVolume()
 			if ( !s_MapByteSource.ReadAt(
 			         transferLump.offset, transfer.Base(), transfer.Count() ) ||
 			     !s_pMapContainer->VerifyContent( transferLump, transfer.Base(), transfer.Count() )
-			          .Ok() )
+			         .Ok() )
 			{
-				Warning( "Map %s: RTRN read or hash failed; radiosity is not offered\n",
-				    s_szMapName );
+				Warning(
+				    "Map %s: RTRN read or hash failed; radiosity is not offered\n", s_szMapName );
 				transfer.Purge();
 			}
 		}

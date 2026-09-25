@@ -113,8 +113,8 @@ struct RadiosityTransferLayout
 	uint32_t gatherLinks;
 	uint64_t prbvHash;
 	// Byte offsets of the nine sections, in the encoding's order.
-	uint64_t sources, patches, transferRows, transfer, injectionRows, injection, gatherRows,
-	    gather, probeDirect;
+	uint64_t sources, patches, transferRows, transfer, injectionRows, injection, gatherRows, gather,
+	    probeDirect;
 };
 
 // Validates complete RTRN bytes: the header, the exact layout, every record,

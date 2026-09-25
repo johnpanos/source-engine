@@ -281,12 +281,12 @@ private:
 			{
 				for ( uint32_t layer = 0; layer < layout.layerCount && layer < 2; ++layer )
 				{
-					const uint32_t x0 = grid.irradianceOrigin[layer][0] +
-					                    ( local % grid.tilesPerRow ) * tile + 1;
-					const uint32_t y0 = grid.irradianceOrigin[layer][1] +
-					                    ( local / grid.tilesPerRow ) * tile + 1;
-					float *out = &m_baseInterior[( size_t( first + local ) * 2 + layer ) *
-					                             kTexels * 3];
+					const uint32_t x0 =
+					    grid.irradianceOrigin[layer][0] + ( local % grid.tilesPerRow ) * tile + 1;
+					const uint32_t y0 =
+					    grid.irradianceOrigin[layer][1] + ( local / grid.tilesPerRow ) * tile + 1;
+					float *out =
+					    &m_baseInterior[( size_t( first + local ) * 2 + layer ) * kTexels * 3];
 					for ( uint32_t v = 0; v < kInterior; ++v )
 						for ( uint32_t u = 0; u < kInterior; ++u )
 							for ( int c = 0; c < 3; ++c )
@@ -345,8 +345,8 @@ private:
 		float largest = 0.0f;
 		for ( uint32_t p = begin; p < end; ++p )
 		{
-			float sum[3] = { self.m_injection[size_t( p ) * 3], self.m_injection[size_t( p ) * 3 + 1],
-			    self.m_injection[size_t( p ) * 3 + 2] };
+			float sum[3] = { self.m_injection[size_t( p ) * 3],
+			    self.m_injection[size_t( p ) * 3 + 1], self.m_injection[size_t( p ) * 3 + 2] };
 			for ( auto *l = view.TransferBegin( p ), *end = view.TransferEnd( p ); l != end; ++l )
 			{
 				const float *q = reflected + size_t( l->patch ) * 3;
@@ -356,7 +356,8 @@ private:
 			}
 			for ( int c = 0; c < 3; ++c )
 			{
-				largest = std::max( largest, std::fabs( sum[c] - self.m_change[size_t( p ) * 3 + c] ) );
+				largest =
+				    std::max( largest, std::fabs( sum[c] - self.m_change[size_t( p ) * 3 + c] ) );
 				self.m_next[size_t( p ) * 3 + c] = sum[c];
 			}
 		}
@@ -368,7 +369,8 @@ private:
 		RadiositySolver &self = *static_cast<RadiositySolver *>( context );
 		const mapcontainer::RadiosityTransferView view = self.m_transfer->View();
 		const auto &layout = self.m_transfer->layout;
-		const uint32_t block = item * std::max( 1u, self.m_options.probeStride ) + self.m_probePhase;
+		const uint32_t block =
+		    item * std::max( 1u, self.m_options.probeStride ) + self.m_probePhase;
 		const uint32_t begin = block * kProbeBlock;
 		const uint32_t end = std::min( begin + kProbeBlock, layout.probeCount );
 		const float *reflected = self.m_reflected.data();
@@ -436,8 +438,8 @@ private:
 		for ( uint32_t g = 0; g < layout.gridCount; ++g )
 		{
 			const mapcontainer::ProbeGridLayout &grid = layout.grids[g];
-			for ( uint32_t i = std::max( begin, first ); i < std::min( end, first + grid.probeCount );
-			      ++i )
+			for ( uint32_t i = std::max( begin, first );
+			    i < std::min( end, first + grid.probeCount ); ++i )
 			{
 				const uint32_t local = i - first;
 				// A probe the change does not reach keeps the base's tiles.
@@ -449,7 +451,8 @@ private:
 					continue;
 				for ( uint32_t layer = 0; layer < layout.layerCount && layer < 2; ++layer )
 				{
-					const float *change = layer == 0 ? self.ProbeTotal( i ) : self.ProbeIndirect( i );
+					const float *change =
+					    layer == 0 ? self.ProbeTotal( i ) : self.ProbeIndirect( i );
 					const float *baseTexels =
 					    &self.m_baseInterior[( size_t( i ) * 2 + layer ) * kTexels * 3];
 					WriteTile( volume, grid.irradianceOrigin[layer], local, grid.tilesPerRow,
@@ -611,7 +614,8 @@ public:
 		    [this, executor]
 		    {
 			    if ( m_solver.Update( executor ) )
-				    m_published = PublishedVolume{ ++m_epoch, m_solver.Compose( *m_baked, executor ) };
+				    m_published =
+				        PublishedVolume{ ++m_epoch, m_solver.Compose( *m_baked, executor ) };
 		    } );
 	}
 

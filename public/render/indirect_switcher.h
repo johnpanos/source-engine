@@ -196,8 +196,8 @@ public:
 		                     } ),
 		    m_retired.end() );
 		m_frame.producer = m_active.kind;
-		m_frame.policy = m_fading.producer ? std::max( m_active.policy, m_fading.policy )
-		                                   : m_active.policy;
+		m_frame.policy =
+		    m_fading.producer ? std::max( m_active.policy, m_fading.policy ) : m_active.policy;
 		TrackResidency();
 		return m_frame;
 	}

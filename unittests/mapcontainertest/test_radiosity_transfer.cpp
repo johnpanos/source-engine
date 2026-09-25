@@ -105,14 +105,14 @@ void ReadsTheContract( const std::vector<unsigned char> &rtrn,
 	std::vector<unsigned char> moved = prbv;
 	const ProbeGridLayout &grid = prbvLayout.grids[0];
 	const size_t state = size_t(
-	    prbvLayout.atlasOffset + ( uint64_t( grid.stateOrigin[1] ) * prbvLayout.atlasWidth +
-	                                 grid.stateOrigin[0] ) *
-	                                 8 );
+	    prbvLayout.atlasOffset +
+	    ( uint64_t( grid.stateOrigin[1] ) * prbvLayout.atlasWidth + grid.stateOrigin[0] ) * 8 );
 	moved[state] ^= 0x01; // relocate probe 0 by a half-float ulp
 	ProbeVolumeLayout movedLayout = {};
 	Check( ValidateProbeVolume( moved.data(), moved.size(), &movedLayout ) == ProbeVolumeError::Ok,
 	    "the relocated volume is itself valid" );
-	Check( Validate( rtrn, nullptr, &moved, &movedLayout ) == RadiosityTransferError::TopologyMismatch,
+	Check(
+	    Validate( rtrn, nullptr, &moved, &movedLayout ) == RadiosityTransferError::TopologyMismatch,
 	    "a transfer is rejected against a volume it was not baked for" );
 }
 
@@ -191,8 +191,8 @@ int main()
 	const std::vector<unsigned char> rtrn = Load( "quality/fixtures/gi/rtrn/contract.rtrn" );
 	const std::vector<unsigned char> prbv = Load( "quality/fixtures/gi/prbv/contract.prbv" );
 	ProbeVolumeLayout prbvLayout = {};
-	Check( !rtrn.empty() && ValidateProbeVolume( prbv.data(), prbv.size(), &prbvLayout ) ==
-	                            ProbeVolumeError::Ok,
+	Check( !rtrn.empty() &&
+	           ValidateProbeVolume( prbv.data(), prbv.size(), &prbvLayout ) == ProbeVolumeError::Ok,
 	    "the contract transfer and volume fixtures load" );
 	if ( rtrn.empty() )
 		return testing::ReportConformance( g_checks, g_failures );

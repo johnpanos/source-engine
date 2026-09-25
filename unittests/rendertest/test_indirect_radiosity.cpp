@@ -77,9 +77,8 @@ float MeanProbe( const RadiositySolver &solver, const std::vector<uint32_t> &pro
 
 // Frames (updates) until the lit probes' indirect light is within 2% of the
 // furnace's 0.45, or 0 if it never is within `limit`.
-uint32_t FurnaceFrames(
-    const std::shared_ptr<const Transfer> &transfer, const RadiosityOptions &options,
-    uint32_t limit, float *settled )
+uint32_t FurnaceFrames( const std::shared_ptr<const Transfer> &transfer,
+    const RadiosityOptions &options, uint32_t limit, float *settled )
 {
 	RadiositySolver solver;
 	// Absolute: X is measured from zero light, starting cold.
@@ -102,8 +101,8 @@ void Furnace( const std::shared_ptr<const Transfer> &transfer )
 	const uint32_t declared = RadiosityProducer().Caps().convergenceFrames;
 	float settled = 0.0f;
 	const uint32_t frames = FurnaceFrames( transfer, RadiosityOptions(), declared * 4, &settled );
-	std::fprintf( stderr, "furnace: within 2%% after %u frame(s); settled indirect %.5f\n", frames,
-	    settled );
+	std::fprintf(
+	    stderr, "furnace: within 2%% after %u frame(s); settled indirect %.5f\n", frames, settled );
 	Check( frames >= 1 && frames <= declared,
 	    "the furnace reaches the infinite-bounce indirect light (0.45) within 2% in the declared " +
 	        std::to_string( declared ) + " frames" );
@@ -176,8 +175,8 @@ light_set::Snapshot Styles( float lamp )
 	return lights;
 }
 
-void Producer( const std::shared_ptr<const Volume> &seed,
-    const std::shared_ptr<const Transfer> &transfer )
+void Producer(
+    const std::shared_ptr<const Volume> &seed, const std::shared_ptr<const Transfer> &transfer )
 {
 	RadiosityProducer producer;
 	IndirectScene scene;
@@ -234,8 +233,8 @@ void Producer( const std::shared_ptr<const Volume> &seed,
 	std::fprintf( stderr, "lamp off: lit indirect %.5f (reference 0.3)\n", indirect );
 	Check( std::fabs( indirect - 0.3f ) < 0.02f * 0.3f,
 	    "the lamp's style turned off converges to the reference within the declared frames" );
-	Check( run( Styles( 0.0f ), 2 * declared ) == 0,
-	    "once converged, the producer stops computing" );
+	Check(
+	    run( Styles( 0.0f ), 2 * declared ) == 0, "once converged, the producer stops computing" );
 
 	// And back on: the publication returns to the bake.
 	run( Styles( 1.0f ), declared );

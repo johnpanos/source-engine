@@ -64,8 +64,8 @@ RadiosityTransferError CheckRows(
 }
 
 // Every link's patch index is in range and strictly increases within a row.
-RadiosityTransferError CheckIndices( const unsigned char *base, uint64_t rowsOffset,
-    uint32_t rows, uint64_t linksOffset, uint32_t linkBytes, uint32_t patches )
+RadiosityTransferError CheckIndices( const unsigned char *base, uint64_t rowsOffset, uint32_t rows,
+    uint64_t linksOffset, uint32_t linkBytes, uint32_t patches )
 {
 	const unsigned char *r = base + rowsOffset;
 	for ( uint32_t row = 0; row < rows; ++row )
@@ -89,9 +89,8 @@ RadiosityTransferError CheckIndices( const unsigned char *base, uint64_t rowsOff
 uint64_t ProbeVolumeTopologyHash( const void *prbv, const ProbeVolumeLayout &layout ) noexcept
 {
 	const unsigned char *p = static_cast<const unsigned char *>( prbv );
-	uint64_t state =
-	    Fnv( p, kProbeVolumeHeaderBytes + size_t( kProbeVolumeGridBytes ) * layout.gridCount,
-	        kFnvOffset );
+	uint64_t state = Fnv( p,
+	    kProbeVolumeHeaderBytes + size_t( kProbeVolumeGridBytes ) * layout.gridCount, kFnvOffset );
 	for ( uint32_t g = 0; g < layout.gridCount; ++g )
 	{
 		const ProbeGridLayout &grid = layout.grids[g];
@@ -109,7 +108,8 @@ uint64_t ProbeVolumeTopologyHash( const void *prbv, const ProbeVolumeLayout &lay
 }
 
 RadiosityTransferError ValidateRadiosityTransfer( const void *pData, size_t size,
-    RadiosityTransferLayout *pLayout, const void *prbv, const ProbeVolumeLayout *prbvLayout ) noexcept
+    RadiosityTransferLayout *pLayout, const void *prbv,
+    const ProbeVolumeLayout *prbvLayout ) noexcept
 {
 	const unsigned char *p = static_cast<const unsigned char *>( pData );
 	if ( !p || size < kRadiosityTransferHeaderBytes )
@@ -129,10 +129,9 @@ RadiosityTransferError ValidateRadiosityTransfer( const void *pData, size_t size
 	layout.prbvHash = U64( p + 48 );
 	if ( layout.sourceCount < 1 || layout.sourceCount > kRadiosityMaxSources ||
 	     layout.patchCount < 1 || layout.patchCount > kRadiosityMaxPatches ||
-	     layout.probeCount > kProbeVolumeMaxProbes ||
-	     U32( p + 28 ) != kRadiosityProbeTexels || U32( p + 44 ) != kRadiositySHCoefficients ||
-	     layout.transferLinks > kRadiosityMaxLinks || layout.injectionLinks > kRadiosityMaxLinks ||
-	     layout.gatherLinks > kRadiosityMaxLinks )
+	     layout.probeCount > kProbeVolumeMaxProbes || U32( p + 28 ) != kRadiosityProbeTexels ||
+	     U32( p + 44 ) != kRadiositySHCoefficients || layout.transferLinks > kRadiosityMaxLinks ||
+	     layout.injectionLinks > kRadiosityMaxLinks || layout.gatherLinks > kRadiosityMaxLinks )
 		return RadiosityTransferError::InvalidCounts;
 	// The canonical layout: nine sections, each 16-byte aligned, in order.
 	const uint64_t sizes[9] = { uint64_t( layout.sourceCount ) * sizeof( RadiositySource ),
@@ -173,7 +172,8 @@ RadiosityTransferError ValidateRadiosityTransfer( const void *pData, size_t size
 			if ( name[k] != 0 )
 				return RadiosityTransferError::InvalidSource;
 		for ( uint32_t t = 0; t < s; ++t )
-			if ( std::memcmp( name, p + layout.sources + uint64_t( t ) * sizeof( RadiositySource ) + 16,
+			if ( std::memcmp( name,
+			         p + layout.sources + uint64_t( t ) * sizeof( RadiositySource ) + 16,
 			         kRadiositySourceNameBytes ) == 0 )
 				return RadiosityTransferError::InvalidSource;
 	}
@@ -215,8 +215,8 @@ RadiosityTransferError ValidateRadiosityTransfer( const void *pData, size_t size
 	{
 		RadiosityTransferError error = CheckRows( p, links.rows, links.count, links.links );
 		if ( error == RadiosityTransferError::Ok )
-			error =
-			    CheckIndices( p, links.rows, links.count, links.first, links.bytes, layout.patchCount );
+			error = CheckIndices(
+			    p, links.rows, links.count, links.first, links.bytes, layout.patchCount );
 		if ( error != RadiosityTransferError::Ok )
 			return error;
 	}
@@ -227,8 +227,8 @@ RadiosityTransferError ValidateRadiosityTransfer( const void *pData, size_t size
 	for ( uint32_t row = 0; row < layout.patchCount; ++row )
 	{
 		double sum = 0.0;
-		for ( const RadiosityTransferLink *l = view.TransferBegin( row ); l != view.TransferEnd( row );
-		      ++l )
+		for ( const RadiosityTransferLink *l = view.TransferBegin( row );
+		    l != view.TransferEnd( row ); ++l )
 		{
 			if ( !Finite( l->factor ) || l->factor < 0.0f )
 				return RadiosityTransferError::InvalidWeight;
@@ -238,8 +238,8 @@ RadiosityTransferError ValidateRadiosityTransfer( const void *pData, size_t size
 			return RadiosityTransferError::TransferNotNormalized;
 	}
 	for ( uint32_t s = 0; s < layout.sourceCount; ++s )
-		for ( const RadiosityInjectionLink *l = view.InjectionBegin( s ); l != view.InjectionEnd( s );
-		      ++l )
+		for ( const RadiosityInjectionLink *l = view.InjectionBegin( s );
+		    l != view.InjectionEnd( s ); ++l )
 			for ( float light : l->light )
 				if ( !Finite( light ) || light < 0.0f )
 					return RadiosityTransferError::InvalidWeight;
@@ -256,8 +256,8 @@ RadiosityTransferError ValidateRadiosityTransfer( const void *pData, size_t size
 		if ( fraction > kRowSumLimit )
 			return RadiosityTransferError::GatherNotNormalized;
 	}
-	const uint64_t directFloats = uint64_t( layout.sourceCount ) * layout.probeCount *
-	                              kRadiosityProbeTexels * 3;
+	const uint64_t directFloats =
+	    uint64_t( layout.sourceCount ) * layout.probeCount * kRadiosityProbeTexels * 3;
 	for ( uint64_t k = 0; k < directFloats; ++k )
 	{
 		float light;
@@ -348,7 +348,8 @@ const RadiosityTransferLink *RadiosityTransferView::TransferEnd( uint32_t patch 
 	       Rows( m_layout.transferRows )[patch + 1];
 }
 
-const RadiosityInjectionLink *RadiosityTransferView::InjectionBegin( uint32_t source ) const noexcept
+const RadiosityInjectionLink *RadiosityTransferView::InjectionBegin(
+    uint32_t source ) const noexcept
 {
 	return reinterpret_cast<const RadiosityInjectionLink *>( m_bytes + m_layout.injection ) +
 	       Rows( m_layout.injectionRows )[source];

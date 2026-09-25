@@ -70,7 +70,8 @@ struct Options
 };
 
 // Probe positions (Source units, relocated) and activity, in PRBV order.
-void ProbePositions( const Volume &volume, std::vector<float> *positions, std::vector<bool> *active )
+void ProbePositions(
+    const Volume &volume, std::vector<float> *positions, std::vector<bool> *active )
 {
 	const mapcontainer::ProbeVolumeLayout &layout = volume.layout;
 	for ( uint32_t g = 0; g < layout.gridCount; ++g )
@@ -80,12 +81,12 @@ void ProbePositions( const Volume &volume, std::vector<float> *positions, std::v
 		for ( uint32_t i = 0; i < grid.probeCount; ++i )
 		{
 			const uint32_t index[3] = { i % grid.dims[0], ( i / grid.dims[0] ) % grid.dims[1],
-				i / ( grid.dims[0] * grid.dims[1] ) };
-			const unsigned char *state = volume.bytes.data() + layout.atlasOffset +
-			                             ( uint64_t( grid.stateOrigin[1] + i / row ) *
-			                                     layout.atlasWidth +
-			                                 grid.stateOrigin[0] + i % row ) *
-			                                 8;
+			    i / ( grid.dims[0] * grid.dims[1] ) };
+			const unsigned char *state =
+			    volume.bytes.data() + layout.atlasOffset +
+			    ( uint64_t( grid.stateOrigin[1] + i / row ) * layout.atlasWidth +
+			        grid.stateOrigin[0] + i % row ) *
+			        8;
 			uint16_t half[4];
 			std::memcpy( half, state, sizeof( half ) );
 			for ( int k = 0; k < 3; ++k )
@@ -104,8 +105,9 @@ int SourceIndex( const Transfer &transfer, const std::string &name )
 			return int( s );
 	char *end = nullptr;
 	const long index = std::strtol( name.c_str(), &end, 10 );
-	return end && *end == 0 && index >= 0 && index < long( transfer.layout.sourceCount ) ? int( index )
-	                                                                                   : -1;
+	return end && *end == 0 && index >= 0 && index < long( transfer.layout.sourceCount )
+	           ? int( index )
+	           : -1;
 }
 
 std::vector<float> Scalars( const Transfer &transfer, const Options &options, bool *ok )
@@ -129,8 +131,9 @@ int Info( const Volume &volume, const Transfer &transfer )
 {
 	const auto view = transfer.View();
 	const auto &t = transfer.layout;
-	std::printf( "{\"patches\": %u, \"probes\": %u, \"transfer_links\": %u, \"injection_links\": "
-	             "%u, \"gather_links\": %u, \"rtrn_bytes\": %zu, \"prbv_bytes\": %zu, \"sources\": [",
+	std::printf(
+	    "{\"patches\": %u, \"probes\": %u, \"transfer_links\": %u, \"injection_links\": "
+	    "%u, \"gather_links\": %u, \"rtrn_bytes\": %zu, \"prbv_bytes\": %zu, \"sources\": [",
 	    t.patchCount, t.probeCount, t.transferLinks, t.injectionLinks, t.gatherLinks,
 	    transfer.bytes.size(), volume.bytes.size() );
 	for ( uint32_t s = 0; s < t.sourceCount; ++s )
@@ -140,8 +143,8 @@ int Info( const Volume &volume, const Transfer &transfer )
 	return 0;
 }
 
-int Converge( const Volume &volume, const std::shared_ptr<const Transfer> &transfer,
-    const Options &options )
+int Converge(
+    const Volume &volume, const std::shared_ptr<const Transfer> &transfer, const Options &options )
 {
 	bool ok = true;
 	const std::vector<float> scalars = Scalars( *transfer, options, &ok );
@@ -164,10 +167,10 @@ int Converge( const Volume &volume, const std::shared_ptr<const Transfer> &trans
 	for ( uint32_t i = 0; i < transfer->layout.probeCount; ++i )
 	{
 		const float *p = &positions[size_t( i ) * 3];
-		const bool inside = !options.region ||
-		                    ( p[0] >= options.box[0] && p[1] >= options.box[1] &&
-		                        p[2] >= options.box[2] && p[0] <= options.box[3] &&
-		                        p[1] <= options.box[4] && p[2] <= options.box[5] );
+		const bool inside =
+		    !options.region ||
+		    ( p[0] >= options.box[0] && p[1] >= options.box[1] && p[2] >= options.box[2] &&
+		        p[0] <= options.box[3] && p[1] <= options.box[4] && p[2] <= options.box[5] );
 		if ( active[i] && inside && view.GatherBegin( i ) != view.GatherEnd( i ) )
 			selected.push_back( i );
 	}
@@ -184,8 +187,9 @@ int Converge( const Volume &volume, const std::shared_ptr<const Transfer> &trans
 				sum += 0.2126 * indirect[t * 3] + 0.7152 * indirect[t * 3 + 1] +
 				       0.0722 * indirect[t * 3 + 2];
 		}
-		means.push_back(
-		    selected.empty() ? 0.0 : sum / ( double( selected.size() ) * RadiositySolver::kTexels ) );
+		means.push_back( selected.empty()
+		                     ? 0.0
+		                     : sum / ( double( selected.size() ) * RadiositySolver::kTexels ) );
 	}
 	const double settled = means.empty() ? 0.0 : means.back();
 	const double target = options.expect ? options.expected : settled;
@@ -193,7 +197,8 @@ int Converge( const Volume &volume, const std::shared_ptr<const Transfer> &trans
 	for ( int frame = int( means.size() ) - 1; frame >= 0; --frame )
 	{
 		// The first frame after which every frame stays within tolerance.
-		if ( std::fabs( means[size_t( frame )] - target ) > options.tolerance * std::fabs( target ) )
+		if ( std::fabs( means[size_t( frame )] - target ) >
+		     options.tolerance * std::fabs( target ) )
 			break;
 		reached = frame + 1;
 	}
@@ -210,8 +215,8 @@ int Converge( const Volume &volume, const std::shared_ptr<const Transfer> &trans
 	return 0;
 }
 
-int Bench( const Volume &volume, const std::shared_ptr<const Transfer> &transfer,
-    const Options &options )
+int Bench(
+    const Volume &volume, const std::shared_ptr<const Transfer> &transfer, const Options &options )
 {
 	bool ok = true;
 	const std::vector<float> scalars = Scalars( *transfer, options, &ok );
@@ -231,7 +236,7 @@ int Bench( const Volume &volume, const std::shared_ptr<const Transfer> &transfer
 			const auto volumeOut = solver.Compose( volume, nullptr );
 			samples.push_back( std::chrono::duration<double, std::milli>(
 			    std::chrono::steady_clock::now() - start )
-			                       .count() );
+			        .count() );
 			(void)volumeOut;
 		}
 	}
@@ -240,8 +245,8 @@ int Bench( const Volume &volume, const std::shared_ptr<const Transfer> &transfer
 	const double worst = samples.empty() ? 0.0 : samples.back();
 	std::printf( "{\"updates\": %zu, \"median_ms\": %.4f, \"max_ms\": %.4f, \"patches\": %u, "
 	             "\"transfer_links\": %u, \"gather_links\": %u}\n",
-	    samples.size(), median, worst, transfer->layout.patchCount,
-	    transfer->layout.transferLinks, transfer->layout.gatherLinks );
+	    samples.size(), median, worst, transfer->layout.patchCount, transfer->layout.transferLinks,
+	    transfer->layout.gatherLinks );
 	return 0;
 }
 
@@ -265,7 +270,8 @@ int main( int argc, char **argv )
 	const auto transfer = Transfer::FromBytes( Load( argv[3] ), *volume );
 	if ( !transfer )
 	{
-		std::fprintf( stderr, "rtrntool: invalid RTRN %s (or not baked for %s)\n", argv[3], argv[2] );
+		std::fprintf(
+		    stderr, "rtrntool: invalid RTRN %s (or not baked for %s)\n", argv[3], argv[2] );
 		return 2;
 	}
 	Options options;

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Self-tests for the RFC 0011 GI tools: budgets, the EXR reader, region
-masks and runtime capture decoding. Run:
+masks, runtime capture decoding and the RTRN radiosity transfer reader. Run:
 
     python3 -m unittest tools/quality/tests/test_gi_tools.py
 """
@@ -22,6 +22,9 @@ import gi_budgets  # noqa: E402
 import gi_reference  # noqa: E402
 import gi_runtime  # noqa: E402
 import lightmap_layers  # noqa: E402
+import radiosity_transfer  # noqa: E402
+
+FIXTURES = HERE.parents[2] / "quality" / "fixtures" / "gi"
 
 
 def exr_bytes(width, height, channels, compression=0, multipart=False):
@@ -178,6 +181,51 @@ class LightmapLayersTest(unittest.TestCase):
         total, direct, indirect, covered = self.layers()
         failures, _ = lightmap_layers.judge(total + 0.01, direct, indirect, covered)
         self.assertTrue(failures)
+
+
+
+
+class RadiosityTransferTest(unittest.TestCase):
+    """RTRN (RFC 0011 G4): the independent reader and reference solver."""
+
+    def setUp(self):
+        self.prbv = (FIXTURES / "prbv" / "contract.prbv").read_bytes()
+        self.rtrn = (FIXTURES / "rtrn" / "contract.rtrn").read_bytes()
+
+    def test_checked_in_fixture_is_the_generator_output(self):
+        self.assertEqual(radiosity_transfer.fixture_contract(self.prbv), self.rtrn)
+
+    def test_contract_is_the_furnace(self):
+        transfer = radiosity_transfer.Transfer(self.rtrn, self.prbv)
+        light, direct = transfer.solve()
+        self.assertAlmostEqual(float(light[:, 0].mean()), 0.75, places=5)
+        _, indirect = transfer.probe_light(light)
+        lit = [i for i, row in enumerate(transfer.gather) if len(row[0])]
+        self.assertAlmostEqual(float(indirect[lit].mean()), 0.45, places=5)
+        # One bounce only: 0.3 + 0.6 * 0.3.
+        self.assertAlmostEqual(float(transfer.solve(bounces=1)[0][:, 0].mean()), 0.48, places=5)
+
+    def test_every_malformation_is_rejected(self):
+        for name, variant in radiosity_transfer.malformations(self.rtrn):
+            with self.subTest(name=name):
+                with self.assertRaises(radiosity_transfer.TransferError):
+                    radiosity_transfer.Transfer(variant, self.prbv)
+
+    def test_a_transfer_is_bound_to_its_volume(self):
+        other = bytearray(self.prbv)
+        volume = radiosity_transfer.probe_volume.Volume(bytes(other))
+        grid = volume.grids[0]
+        offset = struct.unpack_from("<Q", other, 40)[0]
+        x, y = grid.state_origin
+        other[offset + (y * volume.width + x) * 8] ^= 1
+        with self.assertRaises(radiosity_transfer.TransferError) as caught:
+            radiosity_transfer.Transfer(self.rtrn, bytes(other))
+        self.assertEqual(caught.exception.code, "topology-mismatch")
+
+    def test_mutation_fuzzing_rejects_or_reads_in_range(self):
+        counts = radiosity_transfer.fuzz(self.rtrn, self.prbv, iterations=400)
+        self.assertGreater(counts["rejected"], 50)
+        self.assertGreater(counts["accepted"], 10)
 
 
 if __name__ == "__main__":

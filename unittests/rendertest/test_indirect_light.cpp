@@ -437,7 +437,7 @@ std::vector<std::string> RunContract(
 		if ( !( caps.policies & PolicyBit( policy ) ) )
 			continue;
 		const std::string under = std::string( " (policy " ) +
-		                          ( policy == Policy::Baked            ? "Baked"
+		                          ( policy == Policy::Baked              ? "Baked"
 		                              : policy == Policy::BakedPlusDelta ? "BakedPlusDelta"
 		                                                                 : "RuntimeIndirect" ) +
 		                          ")";
@@ -463,8 +463,8 @@ std::vector<std::string> RunContract(
 		const bool lightResponse = ( caps.responds & kLightIntensity ) != 0;
 		for ( uint32_t frame = 1; frame <= frames; ++frame )
 		{
-			const SceneChange changes[2] = { { kGeometryMotion, 1, 1.0f },
-			    { kLightIntensity, kEverySource, kLightScale } };
+			const SceneChange changes[2] = {
+			    { kGeometryMotion, 1, 1.0f }, { kLightIntensity, kEverySource, kLightScale } };
 			FrameWork work;
 			work.frameSerial = gpu.SubmittedSerial() + 1;
 			work.resources = &gpu;

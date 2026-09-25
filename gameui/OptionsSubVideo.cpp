@@ -676,7 +676,8 @@ public:
 		// The layout's rows: Motion Blur's combo at 258, the next row's label
 		// at 292 and combo at 316, in its 24-unit row height.
 		const float scale = tall / 24.0f;
-		m_pIndirectLightingLabel->SetBounds( column, y + int( 34 * scale ), int( 138 * scale ), tall );
+		m_pIndirectLightingLabel->SetBounds(
+		    column, y + int( 34 * scale ), int( 138 * scale ), tall );
 		m_pIndirectLighting->SetBounds( column, y + int( 58 * scale ), wide, tall );
 		PopulateIndirectLighting();
 	}
@@ -727,8 +728,8 @@ public:
 		for ( int row = 0; row < m_pIndirectLighting->GetItemCount(); ++row )
 		{
 			char text[64];
-			m_pIndirectLighting->GetItemText( m_pIndirectLighting->GetItemIDFromRow( row ), text,
-			    sizeof( text ) );
+			m_pIndirectLighting->GetItemText(
+			    m_pIndirectLighting->GetItemIDFromRow( row ), text, sizeof( text ) );
 			if ( row )
 				V_strncat( out, ", ", size );
 			V_strncat( out, text, size );
@@ -744,7 +745,8 @@ public:
 			return;
 		for ( int row = 0; row < m_pIndirectLighting->GetItemCount(); ++row )
 		{
-			KeyValues *data = m_pIndirectLighting->GetItemUserData( m_pIndirectLighting->GetItemIDFromRow( row ) );
+			KeyValues *data = m_pIndirectLighting->GetItemUserData(
+			    m_pIndirectLighting->GetItemIDFromRow( row ) );
 			if ( data && !V_stricmp( data->GetString( "value" ), producer.GetString() ) )
 				m_pIndirectLighting->ActivateItemByRow( row );
 		}
@@ -863,7 +865,7 @@ public:
 			    producer->GetString( "value", "baked" ) );
 			engine->ClientCmd_Unrestricted( szCmd );
 		}
-		
+
 		CCvarSlider *pFOV = (CCvarSlider *)FindChildByName( "FOVSlider" );
 		if ( pFOV ) 
 		{

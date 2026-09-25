@@ -17,10 +17,10 @@ Where this file disagrees with the versioned artifacts, the artifacts win:
 | Gate | State | Summary |
 | --- | --- | --- |
 | G0 baseline, fixtures and runner | done (2026-09-24) | Six fixtures with Cycles total/indirect references; GPU runner; `mat_indirect_view` matches Cycles on five fixtures and rejects a seeded double; budgets per profile; models receive no baked indirect light today |
-| G1 probe volume, baked producer | active | Bake, pack, engine load and fallback, per-pixel `model_pbr` sampling and the CPU ambient cube done; all native oracles pass; the DXVK check (G1.7) is deferred by user direction; corpus load and memory being recorded |
+| G1 probe volume, baked producer | active | Bake, pack, engine load and fallback, per-pixel `model_pbr` sampling and the CPU ambient cube done; all native oracles pass; the DXVK check (G1.7) is deferred by user direction; corpus load and memory open: one of four corpus maps built (see [G1 corpus](#g1-corpus-open)) |
 | G2 light set, separated bake, policy | done (2026-09-24, native Vulkan) | `render.light-set.v1` published each frame, with seeded ID reuse rejected; separated-bake consistency with swapped and doubled layers rejected; `render.indirect-policy.v1` with the double count rejected by the furnace in the CPU model, the GPU and the engine; native WMSH direct light from unbaked lights |
-| G3 producer contract and switching | planned | — |
-| G4 precomputed radiosity | planned | — |
+| G3 producer contract and switching | active | Shared suite (Baked, radiosity, fake; seven bad producers and a one-bounce producer rejected), `r_indirect_producer` validation and native switching pass; `portal-view` and the Android backgrounding run are open |
+| G4 precomputed radiosity | active | RTRN bake, reader and fuzzing, the furnace, serial/pooled byte identity (TSan clean with a failing race control) and in-engine room states against Cycles pass; convergence time, CPU budgets and the Android run are open |
 | G5 GPU compute foundation | planned | — |
 | G6 SDF-traced producer | planned | — |
 | G7 ray-query producer | planned | — |
@@ -503,6 +503,23 @@ python3 tools/quality/gi_runtime.py indirect-view --gate-models --fixture room-s
 python3 tools/quality/conformance.py check --suite render.model-pbr.native-pixels
 ```
 
+### G1 corpus (open)
+
+The corpus run (`quality-results/rfc0011-corpus/build.log`, finished 18:56)
+built one of the four maps:
+
+| Map | Result |
+| --- | --- |
+| living-room | Every step passed (the bake alone took 3104 s) |
+| staircase2 | Baked; the probe-volume step ended with SIGTERM (exit −15) |
+| bedroom | Stopped at the reference gate: luminance SSIM 0.884, −0.22 stops |
+| bathroom | Stopped at the reference gate: luminance SSIM 0.917, −0.18 stops |
+
+The reference gate runs before the bake and compares the staged scene with
+its display reference, so the two failures belong to scene staging, not to
+the probe volume. Load time and memory per map aren't recorded yet. G1 stays
+active until they are.
+
 ### G1.7 Legacy leaf ambient and DXVK
 
 The exporter half is done: pipeline maps with a volume carry leaf ambient
@@ -663,3 +680,111 @@ world.
 - Archlint: the new contracts belong to `render.contracts`. The light-set
   key is a struct, because `<tuple>` is not on the standard-header list. No
   finding is in G2 files.
+
+## G3: Producer contract and runtime switching (active)
+
+This section was written on 2026-09-24 from another session's evidence and
+an independent rerun. It records where each done criterion stands; the work
+is still in progress.
+
+| Done criterion | State |
+| --- | --- |
+| 1. `render.indirect-light.v1` and its shared suite | Passes. Baked, the radiosity producer (`BakedPlusDelta` over the furnace transfer) and a scripted fake pass. Seven deliberately bad producers and a one-bounce radiosity producer are rejected. |
+| 2. `r_indirect_producer` saved and validated | Passes in engine (18:19–18:29 boots, below). |
+| 3. `render.indirect-switching` on native Vulkan | Passes for baked↔fake, a failed `Begin` and a simulated device loss mid-fade. **Android backgrounding is open:** it is covered only against the fake GPU timeline in the headless suite, not on a device. |
+| 4. `portal-view` | **Open.** No evidence yet. |
+
+**Contract and switcher.**
+[`render/indirect_light.h`](../public/render/indirect_light.h) holds the
+producer contract. [`render/indirect_switcher.h`](../public/render/indirect_switcher.h)
+owns the active and pending producers, the fade, and retirement behind
+completion serials. Device loss republishes the baked volume at once, and
+backgrounding stops scheduling. The engine host is
+[`engine/indirect_light_host.cpp`](../engine/indirect_light_host.cpp).
+
+**Headless.** `render.indirect-light` also runs the switching scenarios
+against a fake GPU timeline: baked↔fake, a failed `Begin`, device loss
+mid-fade, backgrounding and map change.
+
+**Native.** `render.indirect-switching.native-pixels` (RADV 8060S, real frames
+and completion serials): baked mean 164.2, fake 197.0. The darkest frame
+during a switch is 1.000 of the seed's mean, so there is no black frame, and
+fade residency is within budget.
+- The 18:22 run had the validation layer and passed 83 checks, with 0
+  messages.
+- The rerun had no layer and passed 82; the validation check needs the layer.
+
+**In engine** (`gi_room_states`, native Vulkan, headless):
+- `saved-value-boot`: a saved `rayquery` logs "is not offered here
+  (unavailable); using baked (offered: baked)".
+- `ui-boot`: Advanced Video lists only the offered producers
+  ("indirect lighting options: Baked").
+- `engine-switch`: baked → fake → an unavailable `rayquery` ("keeping
+  fake") → baked.
+
+These boots predate the radiosity producer being offered on a map.
+
+## G4: Precomputed radiosity (active)
+
+| Done criterion | State |
+| --- | --- |
+| 1. RTRN bake, reader, fuzzing | Passes. [`radiosity_transfer_bake.py`](../tools/quality/radiosity_transfer_bake.py) (Blender/Cycles) runs as a `pbrt_map_build.py` step after the probe volume and writes `lighting/radiosity.rtrn`. Its switchable sources compile as named `light` entities with matching styles, and a mismatch fails the build. `world.radiosity-transfer` validates the contract transfer and rejects every malformation with the independent Python reader's code ([`radiosity_transfer.py`](../tools/quality/radiosity_transfer.py)). It also rejects a transfer against the wrong volume and mutation-fuzzes without a crash. Tool: `utils/rtrntool`. |
+| 2. `furnace` | Passes in `render.indirect-radiosity`: within 2% of the infinite-bounce value in the declared `convergenceFrames` from a cold start. The one-bounce defect never gets there. Switched states match the independent Python solve. |
+| 3. `room-states` | Match passes (below). **Convergence time is open:** the capture waits a fixed interval after the toggle, and in-engine convergence frames aren't measured. |
+| 4. `jobsystem.radiosity` | Passes. On a 40000-patch stress transfer, the serial oracle's bytes are reproduced exactly with 1, 2 and N workers. Under TSan (clang++) the suite passes, and the seeded-race sensitivity build fails as it must. |
+| 5. CPU cost within budget | **Open.** Not measured on the desktop, the Fold7 or a low-core configuration. RTRN memory isn't recorded against the profile budget. |
+| 6. Android installed APK | **Open.** An Android build was started at 18:33. Its log ends mid-compile (step 463 of 2422). |
+
+G4 also depends on R20 (`partial`). The producer runs on the existing batch
+executor that R20's slice installed.
+
+**In-engine room states** (`quality-results/rfc0011-g4-room`, 19:43–19:44):
+- Setup:
+  - `r_indirect_producer radiosity`, then `ent_fire` on the named
+    emitters;
+  - `mat_indirect_view 1`;
+  - compared by `gi_runtime.py compare` with the Cycles indirect-only
+    reference for each state.
+- Relative error per region, for the ceiling, floor, walls and the dynamic
+  model:
+
+| State | Worst region error | Result |
+| --- | --- | --- |
+| default | 5.4% (model) | pass |
+| panel-off | 8.1% (walls) | pass |
+| screen-off | 9.3% (model) | pass |
+| baked producer, panel-off (control) | 70.7% (model) | fails, as it must: the bake can't follow the panel |
+
+### Verification (independent rerun, 2026-09-24 19:51–19:53)
+
+At `502bb424` plus the dirty tree (another session was editing these files),
+suites built in a private directory:
+
+- Headless: 6/6 suites, 125 checks.
+  - `render.indirect-light` 37;
+  - `render.indirect-radiosity` 23;
+  - `world.radiosity-transfer` 42;
+  - `jobsystem.radiosity` 10;
+  - `render.indirect-policy` 12, and its double-count row 1.
+- TSan (clang++): `jobsystem.radiosity.tsan` passes (10 checks). The
+  `.sensitivity` row fails as expected.
+  - g++ has no TSan runtime on this host (`libtsan.so.2.0.0` missing), as the
+    R01 baseline records. That evidence file shows the link failure only.
+- GPU: `render.indirect-switching.native-pixels` passes (82 checks).
+
+Evidence: `quality-results/rfc0011-g34-verify/{headless,tsan-clang++,gpu}.json`.
+The room-state captures were not rerun.
+
+```sh
+python3 tools/quality/conformance.py check --runner headless \
+    --suite render.indirect-light --suite render.indirect-radiosity \
+    --suite world.radiosity-transfer --suite jobsystem.radiosity \
+    --suite render.indirect-policy --suite render.indirect-policy.double-count
+CONFORMANCE_TSAN=1 python3 tools/quality/conformance.py check --cxx clang++ \
+    --suite jobsystem.radiosity.tsan --suite jobsystem.radiosity.tsan.sensitivity
+python3 tools/quality/conformance.py check --runner gpu \
+    --suite render.indirect-switching.native-pixels
+python3 tools/quality/gi_runtime.py compare --fixture room-states --state panel-off \
+    --capture quality-results/rfc0011-g4-room/radiosity-panel-off \
+    --out quality-results/rfc0011-g4-room/radiosity-panel-off/gate.json
+```

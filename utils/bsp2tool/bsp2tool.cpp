@@ -223,12 +223,12 @@ int main( int argc, char **argv )
 		std::fprintf( stderr, "bsp2tool: unknown command '%s'\n", command.c_str() );
 		return 2;
 	}
-	if ( argc != ( bPackWorldGi       ? 8
-	               : bPackWorldProbed ? 7
-	               : bPackWorldLit    ? 6
-	               : bPackWorld       ? 5
-	               : bTwoPaths        ? 4
-	                                  : 3 ) )
+	if ( argc != ( bPackWorldGi         ? 8
+	                 : bPackWorldProbed ? 7
+	                 : bPackWorldLit    ? 6
+	                 : bPackWorld       ? 5
+	                 : bTwoPaths        ? 4
+	                                    : 3 ) )
 	{
 		std::fprintf( stderr, "bsp2tool: wrong argument count for '%s'\n", command.c_str() );
 		return 2;
@@ -271,12 +271,15 @@ int main( int argc, char **argv )
 	std::vector<std::byte> transfer;
 	if ( bPackWorldGi && !ReadRadiosityTransfer( argv[6], probeVolume, &transfer ) )
 	{
-		std::fprintf( stderr, "bsp2tool: invalid RTRN file %s (or not baked for %s)\n", argv[6],
-		    argv[5] );
+		std::fprintf(
+		    stderr, "bsp2tool: invalid RTRN file %s (or not baked for %s)\n", argv[6], argv[5] );
 		return 2;
 	}
-	const char *pOutput =
-	    argv[bPackWorldGi ? 7 : bPackWorldProbed ? 6 : bPackWorldLit ? 5 : bPackWorld ? 4 : 3];
+	const char *pOutput = argv[bPackWorldGi       ? 7
+	                           : bPackWorldProbed ? 6
+	                           : bPackWorldLit    ? 5
+	                           : bPackWorld       ? 4
+	                                              : 3];
 	const std::string temp = std::string( pOutput ) + ".tmp";
 	FileByteSink sink( temp );
 	// The lump version repeats the validated payload's own version.
@@ -291,10 +294,10 @@ int main( int argc, char **argv )
 	const Bsp2LumpInput transferLump{
 	    kLumpRadiosityTransfer, kRadiosityTransferVersion, 0, kBsp2BulkAlignment, transfer };
 	const std::array<Bsp2LumpInput, 4> probedLumps = {
-		worldLump, lightmapLump, probeLump, transferLump
-	};
-	const std::span<const Bsp2LumpInput> litLumps(
-	    probedLumps.data(), bPackWorldGi ? 4 : bPackWorldProbed ? 3 : 2 );
+	    worldLump, lightmapLump, probeLump, transferLump };
+	const std::span<const Bsp2LumpInput> litLumps( probedLumps.data(), bPackWorldGi       ? 4
+	                                                                   : bPackWorldProbed ? 3
+	                                                                                      : 2 );
 	const MapContainerStatus status =
 	    command == "export" ? ExportLegacyFromBsp2( source, sink )
 	    : bPackWorldLit     ? ConvertLegacyToBsp2( source, sink, litLumps )

@@ -205,8 +205,10 @@ bool ChangeAtlas( const Volume &published, const Volume &baked, std::vector<unsi
 				for ( int c = 0; c < 3; ++c )
 				{
 					uint16_t now, then;
-					std::memcpy( &now, published.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
-					std::memcpy( &then, baked.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
+					std::memcpy(
+					    &now, published.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
+					std::memcpy(
+					    &then, baked.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
 					const uint16_t change = FloatToHalf(
 					    mapcontainer::HalfToFloat( now ) - mapcontainer::HalfToFloat( then ) );
 					std::memcpy( out->data() + texel + 2 * c, &change, 2 );
