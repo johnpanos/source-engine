@@ -387,6 +387,29 @@ class ManifestValidationTest(unittest.TestCase):
         with self.assertRaises(conformance.ManifestError):
             self._load([suite])
 
+    def test_missing_contract_rejected(self):
+        suite = make_suite("x", ["pass.cpp"])
+        suite["contract"] = "contracts/absent.v1.md"
+        with self.assertRaisesRegex(conformance.ManifestError, "missing contract"):
+            conformance.load_manifest(
+                self._write({"schema": conformance.MANIFEST_SCHEMA, "suites": [suite]}),
+                self.tmp)
+
+    def test_present_contract_accepted(self):
+        os.makedirs(os.path.join(self.tmp, "contracts"))
+        with open(os.path.join(self.tmp, "contracts", "present.v1.md"), "w") as f:
+            f.write("# contract\n")
+        suite = make_suite("x", ["pass.cpp"])
+        suite["contract"] = "contracts/present.v1.md"
+        conformance.load_manifest(
+            self._write({"schema": conformance.MANIFEST_SCHEMA, "suites": [suite]}), self.tmp)
+
+    def test_non_string_contract_rejected(self):
+        suite = make_suite("x", ["pass.cpp"])
+        suite["contract"] = ["contracts/a.md"]
+        with self.assertRaisesRegex(conformance.ManifestError, "invalid contract"):
+            self._load([suite])
+
     def test_invalid_min_checks_rejected(self):
         suite = make_suite("x", ["pass.cpp"])
         suite["min_checks"] = 0
@@ -710,6 +733,111 @@ class RunnerClassTest(unittest.TestCase):
         self.assertEqual(r["outcome"], conformance.OUTCOME_FAIL)
         self.assertFalse(r["matched"])
 
+
+
+PY = "tools/quality/tests/fixtures/py"
+
+
+def command_suite(sid, mode, expect="pass", script="command_suite.py", timeout=None):
+    s = {
+        "id": sid,
+        "domain": "Q-SELFTEST",
+        "rfc": "0005",
+        "kind": "self-test",
+        "profile": "self-test-corpus",
+        "command": ["{python}", PY + "/" + script, mode, "{out}"],
+        "sources": [PY + "/" + script],
+        "expect": expect,
+    }
+    if expect == "pass":
+        s["result_protocol"] = conformance.RESULT_PROTOCOL
+    if timeout is not None:
+        s["timeout_seconds"] = timeout
+    return s
+
+
+class CommandSuiteTest(unittest.TestCase):
+    """Command suites (the corpus runner class) obey the same result protocol."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.profile = conformance.load_profile(
+            os.path.join(REPO, PROFILES_DIR), "self-test-corpus")
+        cls.build_dir = tempfile.mkdtemp(prefix="conf-command-")
+
+    def _run(self, suite, **kwargs):
+        return conformance.run_suite(REPO, CXX, self.profile, suite, self.build_dir, **kwargs)
+
+    def test_pass_runs_from_the_root_with_an_empty_scratch_directory(self):
+        os.environ["EXPECT_CWD"] = REPO
+        try:
+            # Two attempts: the first leaves a file that the second must not see.
+            r = self._run(command_suite("cmd-pass", "pass"), repeat=2)
+        finally:
+            del os.environ["EXPECT_CWD"]
+        self.assertEqual(r["outcome"], conformance.OUTCOME_PASS, r["detail"])
+        self.assertTrue(r["certified"])
+        self.assertEqual(r["checks"], 4)
+        self.assertIn(PY + "/command_suite.py pass ", r["repro"])
+        self.assertNotIn("{out}", r["repro"])
+
+    def test_every_protocol_defect_fails(self):
+        for mode, divergence in [("failing", "FAIL arithmetic"),
+                                 ("zero", "exit status 1"),
+                                 ("exit0-with-failure", "1 failed check(s) with exit status 0"),
+                                 ("missing-record", "missing result record"),
+                                 ("duplicate-record", "2 result records"),
+                                 ("raise", "exit status 1")]:
+            with self.subTest(mode=mode):
+                r = self._run(command_suite("cmd-" + mode, mode))
+                self.assertEqual(r["outcome"], conformance.OUTCOME_FAIL)
+                self.assertFalse(r["matched"])
+                self.assertIn(divergence, r["first_divergence"] or "")
+
+    def test_timeout_is_detected(self):
+        r = self._run(command_suite("cmd-hang", "hang", timeout=1))
+        self.assertEqual(r["outcome"], conformance.OUTCOME_TIMEOUT)
+        self.assertFalse(r["matched"])
+
+    def test_missing_script_is_detected(self):
+        suite = command_suite("cmd-missing", "pass", script="no_such_script.py")
+        r = self._run(suite)
+        self.assertEqual(r["outcome"], conformance.OUTCOME_MISSING_SOURCE)
+
+    def test_assert_statement_is_rejected(self):
+        r = self._run(command_suite("cmd-assert", "pass", script="uses_assert.py"))
+        self.assertEqual(r["outcome"], conformance.OUTCOME_INVALID_ORACLE)
+
+    def test_negative_row_names_its_defect(self):
+        suite = command_suite("cmd-neg", "failing", expect="fail")
+        suite["kind"] = "sensitivity"
+        suite["expected_divergence"] = "FAIL arithmetic"
+        self.assertTrue(self._run(suite)["matched"])
+        suite = command_suite("cmd-neg-other", "zero", expect="fail")
+        suite["expected_divergence"] = "FAIL arithmetic"
+        self.assertFalse(self._run(suite)["matched"])
+
+    def test_manifest_rejects_malformed_command_suites(self):
+        tmp = tempfile.mkdtemp(prefix="conf-manifest-")
+        good = command_suite("c", "pass")
+        bad = [dict(good, command=[]), dict(good, command="python3 x.py"),
+               dict(good, command=["{python}", ""]), dict(good, sources=[]),
+               dict(good, extra_flags=["-O2"]),
+               dict(good, units=[{"id": "u", "dialect": "cxx20", "sources": ["x.cpp"]}])]
+        for suite in bad:
+            with self.subTest(suite=suite):
+                path = os.path.join(tmp, "m.json")
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump({"schema": conformance.MANIFEST_SCHEMA, "suites": [suite]}, f)
+                with self.assertRaises(conformance.ManifestError):
+                    conformance.load_manifest(path)
+
+    def test_corpus_class_runs_only_when_selected(self):
+        suites = [make_suite("p", ["pass.cpp"]), command_suite("c", "failing")]
+        e2e = EndToEndTest()
+        self.assertEqual(e2e._check(suites), 0)
+        self.assertEqual(e2e._check(suites, extra_args=["--runner", "corpus"]), 1)
+        self.assertEqual(e2e._check(suites, extra_args=["--suite", "c"]), 1)
 
 if __name__ == "__main__":
     unittest.main()

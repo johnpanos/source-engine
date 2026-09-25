@@ -78,7 +78,9 @@ PROVIDER_KINDS = ("executable", "env", "path", "vulkan-device")
 # headless class; GPU suites run on a runner that has the device and are
 # selected with --runner gpu (or any explicit selector). Every class is a
 # required gate on its own runner; none is folded into another's evidence.
-RUNNER_CLASSES = ("headless", "gpu")
+# The corpus class holds command suites that drive built products, legacy
+# executables, content and pinned host toolchains (--runner corpus).
+RUNNER_CLASSES = ("headless", "gpu", "corpus")
 DEFAULT_RUNNER = "headless"
 # `vulkan-device:<type>` accepts these device classes from `vulkaninfo`.
 VULKAN_DEVICE_TYPES = {
@@ -100,6 +102,8 @@ DEFAULT_MEMORY_LIMIT_MB = 4096
 # assert() is compiled out by NDEBUG; test sources must use counted checks.
 ASSERT_CALL = re.compile(r"(?<![\w.:>])assert\s*\(")
 RESULT_RECORD = re.compile(r"^CONFORMANCE ([0-9]+) ([0-9]+)$", re.MULTILINE)
+# `python -O` strips assert statements; command suites must count their checks.
+PY_ASSERT_STATEMENT = re.compile(r"^\s*assert\b", re.MULTILINE)
 
 
 class ManifestError(Exception):
@@ -135,7 +139,10 @@ def parse_requirement(text):
     return kind, value
 
 
-def load_manifest(path):
+def load_manifest(path, root=None):
+    """Load and validate a manifest. Contract paths resolve against `root`
+    (default: this repository)."""
+    root = root or repo_root()
     data = load_json(path)
     schema = data.get("schema")
     if schema != MANIFEST_SCHEMA:
@@ -152,7 +159,20 @@ def load_manifest(path):
         if sid in seen:
             raise ManifestError("duplicate suite id: %s" % sid)
         seen.add(sid)
-        if s.get("units") is not None:
+        if s.get("command") is not None:
+            command = s["command"]
+            if not isinstance(command, list) or not command or \
+                    not all(isinstance(a, str) and a for a in command):
+                raise ManifestError("suite %s 'command' must be a non-empty list of strings" % sid)
+            if s.get("units") is not None:
+                raise ManifestError("suite %s declares both command and units" % sid)
+            # The script and fixtures a command reads are its declared sources:
+            # they are digested and a missing one fails the suite.
+            if not s.get("sources"):
+                raise ManifestError("suite %s declares a command but no sources" % sid)
+            if s.get("extra_flags") or s.get("link_flags"):
+                raise ManifestError("suite %s is a command suite; it takes no compiler flags" % sid)
+        elif s.get("units") is not None:
             if s.get("sources"):
                 raise ManifestError("suite %s declares both sources and units" % sid)
             units = s["units"]
@@ -197,6 +217,14 @@ def load_manifest(path):
         if s.get("optional") and not requires:
             raise ManifestError(
                 "suite %s is optional but names no provider it may be skipped for" % sid)
+        # A declared contract is part of the suite's identity (suite_digest) and
+        # its obligations; a dangling reference would certify against nothing.
+        contract = s.get("contract")
+        if contract is not None:
+            if not isinstance(contract, str) or not contract:
+                raise ManifestError("suite %s has invalid contract %r" % (sid, contract))
+            if not os.path.isfile(os.path.join(root, contract)):
+                raise ManifestError("suite %s names missing contract %s" % (sid, contract))
     return data
 
 
@@ -520,9 +548,16 @@ def unit_build_commands(root, cxx, profile, suite, out_bin, config="default"):
 
 
 def assert_users(root, suite):
-    """Test sources (under unittests/) whose checks would vanish under NDEBUG."""
+    """Test sources whose checks would vanish under NDEBUG (C++ under unittests/)
+    or `python -O` (the Python sources of a command suite)."""
     offenders = []
     for relative in suite_sources(suite):
+        if suite.get("command") is not None and relative.endswith(".py"):
+            path = os.path.join(root, relative)
+            with open(path, "r", encoding="utf-8", errors="replace") as stream:
+                if PY_ASSERT_STATEMENT.search(stream.read()):
+                    offenders.append(relative)
+            continue
         if not relative.startswith("unittests/"):
             continue
         path = os.path.join(root, relative)
@@ -557,14 +592,25 @@ def _limit_child(limit_mb):
     return apply if resource is not None else None
 
 
-def execute(argv, timeout, limit_mb, env):
+def expand_command(root, command, out):
+    """A command suite's argv with {python}, {root} and {out} substituted."""
+    values = {"{python}": sys.executable, "{root}": root, "{out}": out}
+    expanded = []
+    for arg in command:
+        for key, value in values.items():
+            arg = arg.replace(key, value)
+        expanded.append(arg)
+    return expanded
+
+
+def execute(argv, timeout, limit_mb, env, cwd=None):
     """Run one suite process in its own session under time and memory bounds.
 
     Returns (returncode, stdout, stderr, timed_out). On timeout the whole
     process group is killed and whatever it wrote so far is retained.
     """
     proc = subprocess.Popen(
-        argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+        argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, cwd=cwd,
         start_new_session=True, preexec_fn=_limit_child(limit_mb))
     try:
         out, err = proc.communicate(timeout=timeout)
@@ -716,7 +762,16 @@ def build_suite(root, cxx, profile, suite, out_dir, config="default", log_dir=No
         result["first_divergence"] = "FAIL assert() in test source(s): " + ", ".join(offenders)
         finish(OUTCOME_INVALID_ORACLE,
                "assert() is compiled out by NDEBUG; use counted checks reported "
-               "through testing::ReportConformance")
+               "through testing::ReportConformance (Python: conformance_result.Checks)")
+        return built
+
+    if suite.get("command") is not None:
+        # A command suite has nothing to compile: it runs the declared argv.
+        command_out = os.path.join(out_dir, safe.replace(".", "_") + ".out")
+        result["repro"] = "cd %s && %s" % (root, " ".join(
+            expand_command(root, suite["command"], command_out)))
+        result["build_ok"] = True
+        built.update(done=False, out_bin=None, command_out=command_out)
         return built
 
     out_bin = os.path.join(out_dir, "%s.%s" % (safe.replace(".", "_"), config))
@@ -780,13 +835,22 @@ def run_suite(root, cxx, profile, suite, out_dir, config="default", repeat=1,
     env = run_environment(profile)
     env["CONFORMANCE_SEED"] = str(seed)
     env["CONFORMANCE_SUITE"] = sid
+    argv, cwd = [out_bin], None
+    if suite.get("command") is not None:
+        # Command suites run from the repository root with a private scratch
+        # directory ({out}, also $CONFORMANCE_OUT) emptied before each attempt.
+        argv, cwd = expand_command(root, suite["command"], built["command_out"]), root
+        env["CONFORMANCE_OUT"] = built["command_out"]
 
     # Every attempt is retained: repeats expose nondeterminism and are never a
     # retry-until-green mechanism. The suite matches only if all attempts do.
     for attempt in range(repeat):
         env["CONFORMANCE_ATTEMPT"] = str(attempt)
+        if suite.get("command") is not None:
+            shutil.rmtree(built["command_out"], ignore_errors=True)
+            os.makedirs(built["command_out"])
         start = datetime.datetime.now()
-        rc, stdout, stderr, timed_out = execute([out_bin], timeout, limit, env)
+        rc, stdout, stderr, timed_out = execute(argv, timeout, limit, env, cwd=cwd)
         duration = round((datetime.datetime.now() - start).total_seconds(), 3)
         if timed_out:
             observed = {"outcome": OUTCOME_TIMEOUT, "exit_code": None, "signal": None,
@@ -797,7 +861,7 @@ def run_suite(root, cxx, profile, suite, out_dir, config="default", repeat=1,
         observed["attempt"] = attempt
         observed["duration_s"] = duration
         observed["log"] = write_log(suite_log_dir, "run.%d.log" % attempt, [
-            ("command", out_bin),
+            ("command", " ".join(argv)),
             ("seed", str(seed)),
             ("exit", "timeout" if timed_out else str(rc)),
             ("stdout", stdout),
@@ -885,7 +949,7 @@ def select_suites(manifest, args):
 
 def cmd_list(args):
     root = args.root
-    manifest = load_manifest(os.path.join(root, args.manifest))
+    manifest = load_manifest(os.path.join(root, args.manifest), root)
     for s in manifest["suites"]:
         print("%-34s %-12s rfc:%-5s expect:%-14s %s"
               % (s["id"], s.get("domain", "-"), s.get("rfc", "-"),
@@ -931,7 +995,7 @@ def selected_runner(args):
 
 def cmd_plan(args):
     root = args.root
-    manifest = load_manifest(os.path.join(root, args.manifest))
+    manifest = load_manifest(os.path.join(root, args.manifest), root)
     selected, profiles, err = plan(root, manifest, args)
     if err:
         print("FATAL: " + err, file=sys.stderr)
@@ -960,7 +1024,7 @@ def evidence_paths(root, out_arg, build_dir, stamp):
 def cmd_check(args):
     root = args.root
     manifest_path = os.path.join(root, args.manifest)
-    manifest = load_manifest(manifest_path)
+    manifest = load_manifest(manifest_path, root)
     selected, profiles, err = plan(root, manifest, args)
     if err:
         print("FATAL: " + err, file=sys.stderr)

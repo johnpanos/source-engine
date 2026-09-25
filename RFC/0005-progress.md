@@ -14,6 +14,18 @@ Source revision at assessment: `95798d15` (working tree; AGENTS.md portfolio row
   [RFC 0011 G0.2](0011-progress.md#g02-gpu-runner-profile-done-2026-09-24))
   and `windows-pe-wine` (`parity_wine.py`).
 - Runner self-tests: 55 (`test_conformance.py`).
+- Gap corpus (2026-09-25): the `quality-corpus` branch (`478a1013`) was
+  applied to the main tree, uncommitted, at the user's direction.
+  - It adds a `corpus` runner class of command suites that run a declared
+    argv, report checks-v1 on stdout and reject Python `assert`, plus
+    48 `corpus.*` rows in the `linux-host-corpus` profile.
+  - The manifest has 220 suites. Plain `plan` is still 157 headless;
+    `--runner gpu` selects 15 and `--runner corpus` 48.
+  - On the main checkout the corpus class had 23 matched and 25 skipped.
+    The skipped rows are optional and need `build-corpus-*` trees or
+    environment settings that exist only in the corpus worktree.
+  - `conformance.gcc`/`.clang` and the static audit group show 0 deviations.
+  - None of the corpus rows is a `quality/baseline.json` check.
 - `quality/baseline.json` validates with 37 tools, 6 content corpora,
   17 profiles, 41 checks and 20 baseline entries.
 - Hosted CI: `conformance.yml` has run on GitHub. The two 2026-09-23 runs
@@ -36,7 +48,7 @@ domain's correctness, and this document makes no such claim.
 
 | Increment | Deliverable | State | Evidence |
 | --- | --- | --- | --- |
-| Q0 | Baseline profiles and current-check audit | **done (R01, Linux x86_64 host)** | [Q0 section below](#q0--r01-baseline-and-profile-inventory); `quality/baseline.json` |
+| Q0 | Baseline profiles and current-check audit | **done (R01, Linux x86_64 host; re-audited 2026-09-25)** | [Q0 section below](#q0--r01-baseline-and-profile-inventory); `quality/baseline.json` |
 | Q1 | Shared runner, fixtures, result schema | **done (R02)** | [Q1 section below](#q1--r02-runner-shared-conformance-runner); `tools/quality/conformance.py` |
 | Q2 | Q-ARCH and Q-FOUNDATION reference suites | partial (2026-09-25) | `tools/archlint`, `tools/stylelint` (R04-STYLE only); 21 Q-FOUNDATION manifest rows (platform capability suites with sensitivity rows, `foundation.expected`, `toolchain.abi.*`) |
 | Q3 | Domain oracles | partial | Q-EDITOR and Q-JOBS suites registered; the IVP/Box3D comparison runs outside the manifest (`physics.conformance` in `quality/baseline.json`) |
@@ -45,7 +57,7 @@ domain's correctness, and this document makes no such claim.
 
 ## Q0 — R01: baseline and profile inventory
 
-`done` (2026-09-22) for the R01 scope: current checks and their failures are
+`done` (2026-09-22; reopened and closed again by the [2026-09-25 re-audit](#re-audit-2026-09-25)) for the R01 scope: current checks and their failures are
 recorded; build, content and tool availability and the support matrix are
 established; baseline captures and budgets are identified per domain. Observed at
 source revision `2b2ee370` plus a dirty tree (107 files, digest
@@ -77,6 +89,9 @@ x86_64, 32 threads, 125 GiB, AMD Radeon 8060S (RADV, Mesa 26.2.2), Python 3.14.7
 
 ### Pre-existing failures (recorded, not fixed here)
 
+This table is the 2026-09-22 record. The current outcomes and owners are in the
+[2026-09-25 re-audit](#re-audit-2026-09-25) and `quality/baseline.json`.
+
 | Check | Outcome | Owner | Finding |
 | --- | --- | --- | --- |
 | `arch.check`, `arch.baseline` | fail | R04 | ARCH105 `CreateInterfaceFn` drift: 7 new (in-flight `shaderapivulkan.cpp`, `vphysics_box3d`, `physicstest`), 3 stale, 0 relocated |
@@ -86,8 +101,8 @@ x86_64, 32 threads, 125 GiB, AMD Radeon 8060S (RADV, Mesa 26.2.2), Python 3.14.7
 | `legacy.unittest-legacy` (gcc) | crash | R20 | SIGSEGV in tier0 `TSListTests::PushThreadFunc` (CTSQueue multithread pop), 4 of 4 runs; this is the `scripts/tests-ubuntu-amd64.sh` command. R02 triage: a lock-free `CTSQueue` defect (NULL tail via an unvalidated help path and untagged `pNext` CAS), not a runner defect; see [Q1](#legacy-host-and-ctsqueue-triage) |
 | `legacy.unittest-legacy-clang` | crash | R07 | `moduleloadtelemetrytest.cpp:289/291` cannot `dlopen("./libmoduleloadfixture.so")` from the installed layout, then crashes |
 
-Changes since this table (2026-09-25; source and static checks only, no
-`baseline.py audit` re-run):
+Changes since this table (2026-09-25, before the re-audit below confirmed
+them):
 
 - `legacy.unittest-legacy` (gcc): the CTSQueue crash is fixed by the
   synchronized `CTSQueue` ([scheduler trust](0003-scheduler-trust-progress.md#3-ctsqueue-crash-r20)).
@@ -95,8 +110,8 @@ Changes since this table (2026-09-25; source and static checks only, no
   baseline entry is re-attributed to R07.
 - `build.dedicated`, `build.dedicated-clang`: `dedicated/sys_linux.cpp` now
   calls `CDedicatedAppSystemGroup::LoadPhysicsModule` (`97e298c6`,
-  2026-09-23), not the protected `LoadModule`. The builds were not re-run
-  here, so the recorded `fail` outcome is unverified.
+  2026-09-23), not the protected `LoadModule`. The re-audit built both and
+  records them as `pass`.
 - `arch.check`, `arch.baseline`: still fail, now with 64 new and 1 stale
   occurrences. `arch.inventory`: still fails, now with 13 uninstrumented
   sites.
@@ -120,14 +135,53 @@ Drift fixed while recording the baseline:
 - The R39 row linked a non-existent `RFC/0001-phase-d-progress.md`. It now links
   the Phase B record section that tracks Phase D.
 
-### Re-audit (2026-09-25, active)
+### Re-audit (2026-09-25)
 
-Scope: rerun `baseline.py audit` for the static, suites, build and runtime
-groups at the current tree, review every deviating outcome, and fix each
-deviation or record it with its owner. A change to a declared outcome is a
-user decision; this slice proposes such changes and does not make them.
-The package group (`package.android-arm64`) is not rerun in this slice.
-Evidence: `quality-results/baseline/r01-reaudit-2026-09-25/`.
+Scope: rerun `baseline.py audit` over every group at the current tree, review
+each deviating outcome, and fix it or record it with its owner. Changes to
+declared outcomes were user decisions (2026-09-25). Evidence (git-ignored):
+`quality-results/baseline/r01-reaudit-2026-09-25*/`.
+
+First run (static, suites, build, runtime): 40 checks, 30 matched,
+10 deviations, 0 unavailable. Each was resolved as follows.
+
+| Check | Observed | Resolution |
+| --- | --- | --- |
+| `quality.selftest` | fail | Fixed tests. `test_android_profile` did not know the intended `ktx_software` Android pin. `test_usd_scene` imported `pxr` at module load; it now skips without OpenUSD, as `test_lightmap_seams` does. Under the pinned OpenUSD 25.11 it had never passed: `usd_scene.py` passed a list to `ComputeSurfaceSource` (25.11 takes one token), and the st-transform oracle assumed a 6.4 m span for a box floor whose side faces map z onto u. The oracle now reads the authored span (8.4 → 4.2); a mutant that drops the transform fails it (8.4 ≠ 4.2). 16/16 pass under `/usr/bin/python3.12` with the pinned `pxr`. |
+| `build.tests`, `build.tests-clang`, `build.tools`, `build.tools-clang` | fail | Stale Waf caches ("Can't find env cache …" for new subdirectories). Each tree was reconfigured with its declared `setup` line under its private lock. |
+| `build.tools-clang` (after reconfigure) | fail | Clang rejects legacy constructs that gcc's `-fpermissive` accepts under the C++20 policy. Fixed in source: pointer→`int` casts in `scriplib.cpp` and `brushbsp.cpp` (now `intp` and `offsetof`), an extra qualification in `vbsp/ivp.cpp`, and string literals passed as `void *` in `vbsp.cpp`. `vraddisps.cpp` passed `(int)&ctx` into an `intp` enumeration context, a real 64-bit pointer truncation, now `(intp)&ctx`. |
+| `build.tests-clang`, `build.dedicated-clang` (after reconfigure) | fail | The strict `dedicated_composition_bridge` includes `IAppSystem.h`, whose `CBaseAppSystem` defaults had named unused parameters (`-Werror,-Wunused-parameter`). The names are commented out; the ABI is unchanged. `sys_linux.cpp:118` passed a `long` handle to `dlsym`; it now casts to `void *`. |
+| `toolchain.boundary` | fail | Two defects. (1) `toolchain_dialect.py` selected a C dialect only for targets with the Waf `c` feature, so the `lzma/C/*.c` tasks of `vbsp`, `vrad` and `vvis` (cxx-only targets) escaped policy verification and recorded dialect `None` (TOOLCHAIN006). It now also selects a language when a target has sources of that language. (2) Invocations are written only by `waf build` (the clangdb hook), never by `waf install`, so the `build-r03-tests*` records were still from 2026-09-22. `build.tests*` now run `waf build install`. |
+| `legacy.unittest-legacy` | timeout | Ran stale pre-fix binaries because `build.tests` had failed. After the rebuild it matches the recorded R07 fixture crash. |
+| `build.dedicated`, `build.dedicated-clang` | pass (recorded fail) | `97e298c6` removed the protected `LoadModule` call, and this re-audit fixed the clang `dlsym` cast. Recorded as `pass` (user decision). |
+| `arch.hammer` | fail | The Hammer validator rejected the `hammer.formats` → `render.contracts` edge. By user decision it now accepts Hammer edges to registered `capabilityModules`, still rejects unknown targets and cycles, and rejects a Hammer module that reuses a capability id (3 new archlint tests, 75 total). |
+| `physics.conformance` | fail | Box3D fails 3 of 453 gameplay checks from the `contact_solver.c` restitution patch. By user decision the patch is pinned as `78c90a0` on branch `source-engine-restitution` of the fork `johnpanos/box3d` (`.gitmodules` updated). Recorded as a known `fail`, owner R19. |
+| `gi.references` | fail | Six hand-built fixtures predate `980565cd`'s renderer script, `portal-view` and `room-states` changed after rendering, and `portal-light`'s `room` regions have 0 pixels. Recorded as a known `fail`, owner R70 (user decision; R70 is unranked). |
+
+Reason text only (outcome unchanged): `arch.check`/`arch.baseline` now 64 new,
+1 stale; `arch.inventory` now 13 sites (adds `external/portal2_steam2_xsi`
+SMDExport ×2 and `shaderapivulkan.cpp:205`); `roadmap.check` also reports R02
+`done` over the reopened R01.
+
+Closing run (all five groups, including `package.android-arm64`, at
+`294066c6` plus a dirty tree; `r01-reaudit-2026-09-25-final/`): 41 checks,
+33 pass, 6 known fail, 2 known crash, **0 deviations, 0 unavailable**, about
+15 minutes. Known failures and owners: `arch.check`/`arch.baseline` (R04),
+`arch.inventory` (R07), `roadmap.check` (R15/R16), `physics.conformance`
+(R19), `gi.references` (R70), and both `unittest_legacy` hosts (crash, R07).
+R01 is `done` again. The four partial reruns in between cost more than the
+audit itself, because two `IAppSystem.h` edits rebuilt all ten trees twice.
+
+Caveat (2026-09-25, after closing): a concurrent session is adding parallel
+checks and per-check `budget_seconds` to `baseline.py`. With it, a 4-way
+static-group run at host load 33 timed `physics.filter-audit` out at 15 s
+(budget 5 s; 5.2 s alone). `arch.check` and `arch.inventory` ran over budget.
+Budget calibration belongs to that work; the outcomes above come from the
+serial run.
+
+Still unverified: the non-Linux profiles recorded as unavailable (macOS, iOS,
+Windows MSVC, linux-i386, FreeBSD), native window/GPU product boots, and any
+performance budget. R01 certifies no domain gate.
 
 ### Host availability
 

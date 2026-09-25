@@ -1,0 +1,12 @@
+"GameInfo"
+{
+    "game" "RFC0005 compile-equivalence corpus"
+    "FileSystem"
+    {
+        "SteamAppId" "0"
+        "SearchPaths"
+        {
+            "game" "|gameinfo_path|."
+        }
+    }
+}

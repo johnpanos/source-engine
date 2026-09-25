@@ -1,0 +1,42 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# Toolchain-recorder fixture (a): C sources in C++-only task generators.
+# Each target is one form the engine uses (or Waf accepts); the fixture policy
+# (quality/toolchain/policy.json) gives some of them C or C++ dialects.
+
+import os
+
+top = '.'
+out = 'build'
+
+
+def options(opt):
+	opt.load('recorder_fixture', tooldir=os.environ['TOOLCHAIN_FIXTURE_REPO'] + '/quality/fixtures/corpus/toolchain')
+
+
+def configure(conf):
+	conf.load('recorder_fixture', tooldir=os.environ['TOOLCHAIN_FIXTURE_REPO'] + '/quality/fixtures/corpus/toolchain')
+
+
+def build(bld):
+	scenario = os.environ.get('TOOLCHAIN_FIXTURE_TARGETS', 'common')
+	if scenario == 'common':
+		# utils/vbsp, vrad, vvis: features 'cxx cxxprogram' with utils/lzma/C/*.c sources.
+		bld(features='cxx cxxprogram', source='tool_main.cpp lz.c', target='cxxtool')
+		# Sources as Nodes (ant_glob), C++-only static library.
+		bld(features='cxx cxxstlib', source=bld.path.ant_glob('nodes/*.c nodes/*.cpp'),
+			target='cxxnodes')
+		# The engine's bld.shlib(features='cxx') form; c_aliases adds 'c' itself.
+		bld.shlib(features='cxx', source='shl.cpp shl_c.c', target='cxxshlib')
+		# A C++-only target whose policy entry selects an apply-mode C dialect:
+		# its .c task must get that dialect's flags, its .cpp task the C++ default.
+		bld(features='cxx cxxstlib', source='kern.c kern_host.cpp', target='ckernel')
+	elif scenario == 'extension-map':
+		# A C-only target with a '.C' source, which Waf compiles as C++
+		# (waflib/Tools/cxx.py binds .cpp .cc .cxx .C .c++).
+		bld(features='c cstlib', source='plain.c upper.C', target='cupper')
+		# The same form where the policy selects an apply-mode C++ dialect: the
+		# '.C' compile must get it (-std=c++20, no -fpermissive).
+		bld(features='c cstlib', source='upper2.C', target='cxxupper')
+	else:
+		bld.fatal('unknown TOOLCHAIN_FIXTURE_TARGETS %r' % scenario)

@@ -112,7 +112,216 @@ shared libraries (`libtier0.so`, `libunitlib.so`, `libvstdlib.so`), the two
 fixture libraries in the working directory, and `bin/filesystem_stdio.so`, run
 `./unittest -moduleloadtelemetry`.
 
-## Next increment
+## R04-DRIFT: loader-ratchet reconciliation (slice done, 2026-09-25)
+
+Scope: review each of the 64 new and 1 stale `check --all` occurrences
+(ARCH101–ARCH105). Classify each as one of:
+
+- legacy-ABI package membership;
+- relocated debt;
+- a test host;
+- a genuine new boundary expansion.
+
+Following RFC 0001's baseline rules, a genuine new expansion is not absorbed
+into `architecture/baseline.json`. It is fixed in code, or it becomes a
+manifest exception naming an owner and a removal condition. The ratchet's own
+negative fixtures must keep failing. The 13 uninstrumented native sites in
+`inventory --verify` are R07's and are not in this slice.
+
+Result: `archlint baseline --verify` passes, with 0 new and 0 stale entries.
+The review classified 65 new and 2 stale occurrences (the count had grown
+since the scope was written). User decisions of 2026-09-25 applied:
+
+- **Deleted dead code.** `game/client/gameui/` and
+  `game/client/gameui.{cpp,h}` were deleted. Their only build reference is
+  the `$IFDEF_GAMEUI_UISYSTEM2_ENABLED` VPC folder, which nothing defines.
+  No object in `build`, `build-p2` or `build-r03-portal-native` depended on
+  them; the check read 4,301 `.d` files in `build-p2`. This removed 18
+  occurrences.
+- **Legacy-ABI package.** Six reviewed files joined it:
+  - `matchmaking/main.cpp` and `mm_framework.h` (`IAppSystem::Connect`);
+  - the Portal 2 GameUI `gameui_interface.{h,cpp}` (`IGameUI`);
+  - `vphysics_box3d/main.cpp` (`IPhysics::QueryInterface`);
+  - the VPhysics conformance host.
+
+  The GameUI's duplicate declaration of `Portal2_ConnectMatchFramework` moved
+  into one owning header, `game/shared/portal2/portal2_matchframework_connect.h`,
+  which `portal2_shared_compat.h` also includes. The affected client and
+  server TUs compile with `build-p2`'s recorded commands.
+- **Baseline edits.** Two reformatted lines were replaced one for one
+  (`IAppSystem.h:61` and `physics_environment.cpp:204`). One entry was
+  removed as obsolete: `vphysics_box3d/main.cpp:9`, now covered by the
+  package.
+- **Exceptions.** `archlint` now enforces RFC 0001's rule for them.
+
+### Loader exceptions (2026-09-25)
+
+`architecture/modules.json` has a `loaderExceptions` section. Each entry
+names:
+
+- one existing file (never a glob or directory);
+- one ARCH101–ARCH105 rule;
+- the exact number of unbaselined occurrences it covers;
+- a reason, an owning roadmap row, a tracking record and a removal
+  condition.
+
+`check` and `baseline --verify` fail on a malformed entry, a count mismatch
+in either direction, or a stale entry. `baseline --write` never absorbs an
+excepted occurrence. The fixtures cover each rule: 5 new tests, 80 archlint
+tests in total. Three seeded mutants (count, stale, glob) are each detected.
+
+The 19 entries cover the Portal 2 reconstruction glue.
+
+- R39, which a typed composition replaces:
+  - `Portal2_ConnectEngineInterfaces`, `Portal2_ConnectMatchFramework` and
+    `Portal2_InitMatchFramework`;
+  - the engine's `g_ClientFactory` probe for an embedded GameUI;
+  - the `vscript` connection and its `Sys_LoadModule` fallback.
+- R41, which a named extension host replaces:
+  - the `vtex_dll` loads in the multiplayer options and add-ons dialogs;
+  - the GameUI platform-module loader.
+
+`check --all` still fails, only on 23 pre-existing CAP002 strict-capability
+include findings (rendertest, shaderapivulkan, platform/window,
+platform/sdl2, platformtest, `indirect_light.h`). That is the next R04 slice.
+`inventory --verify` (13 sites) belongs to R07. `quality/baseline.json`
+records `arch.baseline` as `pass` (user decision); `arch.check` stays
+`fail` with its reason updated.
+
+## R04-CAP: strict capability registrations (slice done, 2026-09-25)
+
+Scope: the 23 CAP002 findings left in `check --all`. They came from headers
+added after their strict modules were declared, and from the R14 SDL2 window
+provider (`2134571b`), whose files fell under `platform.composition`'s
+`platform/` prefix. Manifest-only changes; no source changed:
+
+- **`standardHeaders`:** `ctime`, `deque`, `fstream`, `iterator` and
+  `sstream` added.
+- **`render.vulkan.core`:** `vulkan_compute.h`, `vulkan_debug_utils.h`,
+  `vulkan_frame_stats.h` and `vulkan_shader_library.h` registered.
+- **`render.contracts`:** `gpu_compute.h` registered.
+- **`render.indirect-light`:** the RFC 0011 producer headers
+  (`direct_occlusion.h`, `indirect_sdf.h`, `indirect_radiosity.h`)
+  registered.
+- **New modules:**
+  - `platform.window-contracts` (`public/platform/window/`);
+  - `platform.window-support` (the portable `platform/window/` helpers
+    shared by providers and fakes);
+  - `platform.sdl2.window` (backend, `SDL.h`);
+  - `platform.sdl2.window.native-tests`.
+- **Edges:** the SDL2 provider depends on the composition kernel for
+  `IProviderLifecycle`, as the `platform.tests` fakes already do.
+  `platform.composition` and `platform.tests` gain edges to the window
+  contracts.
+
+Evidence:
+
+- `archlint check --all` passes, as do `baseline --verify`, `hammer
+  --verify` and the 80 archlint tests.
+- Four manifest mutants run against the real tree each fail:
+  - removing the provider's window-support edge;
+  - removing its `SDL.h` grant;
+  - unregistering `vulkan_compute.h`;
+  - granting `SDL.h` to the portable window-support module (CAP004).
+- `quality/baseline.json` records `arch.check` as `pass` (user decision).
+  The static audit group shows 0 deviations.
+
+Still open for R04: transitive include and Waf/link graph enforcement
+(`--compile-deps` is proposed, not installed), hermetic-build evidence, and
+the Hammer include-graph cycle. `inventory --verify` (13 sites) is R07's.
+
+## R04-DEPS: compiler-grounded transitive include check (slice done, 2026-09-25)
+
+`archlint check --all --compile-deps TREE` (repeatable) implements the RFC's
+"full mode" for the strict capability modules (CAP005). It reads every `-MMD`
+dependency file in TREE. For each translation unit owned by a strict module
+M, it checks:
+
+- every reached first-party header belongs to M or to a module in M's
+  transitive allowlist;
+- a portable (non-native) M reaches no external, vendored (`thirdparty/`,
+  `dependencies/`, `external/`, `box3d/`, `ivp/`) or unowned first-party
+  header;
+- a portable M reaches no native SDK. `-MMD` omits system-directory headers,
+  where SDL3 and Vulkan live, so the check scans the include lines of every
+  first-party file the compiler really reached for native families (SDL,
+  Vulkan, X11, xcb, Wayland, EGL/GL, Win32/D3D, Metal/UIKit/AppKit, Android,
+  GTK), ignoring commented-out includes.
+
+A tree without dependency files, or with no strict units, fails.
+
+Evidence:
+
+- The real trees are clean: `build-r03-portal-native` (2,506 dependency
+  files, 109 strict units), `build-r03-tests` (395 files, 24 units) and
+  `build-r03-dedicated` (2,679 files, 15 units). Units cover 19 modules,
+  46 of them portable (`world.map-container`, `platform.composition`,
+  `platform.tests`, `testing.runner` and others).
+- 8 fixtures (88 archlint tests in total) cover:
+  - the allowed closure;
+  - an out-of-closure header;
+  - unowned, vendored and external headers;
+  - a system Vulkan include reached through a first-party header;
+  - commented-out includes;
+  - native grants;
+  - non-strict units;
+  - the parser.
+- Four mutants (closure, native scan, unowned, vendored) are each detected.
+
+Blind spots:
+
+- Only configurations that were built are seen (the trees above, Linux).
+- `.d` files record what the preprocessor included under that tree's
+  defines, so another profile's `#ifdef` branch needs its own tree.
+- Hermetic one-line header compiles: see R04-HERMETIC below.
+- The link graph (CAP006, added the same day, below) judges only portable
+  strict targets.
+
+**Link graph (CAP006).** Each `--compile-deps TREE` also reads
+`TREE/toolchain-invocations.json` (each compile's target, sources and `use`).
+
+- A target whose strict sources are all portable may not `use` a native SDK
+  library (SDL, Vulkan, X11/XCB, Wayland, EGL/GL/GLES, GTK/GDK/libadwaita,
+  epoxy, D3D/DXVK, Metal/MoltenVK).
+- It may not link a first-party target whose strict code lies outside its
+  modules' allowed closure.
+- Targets that mix native and portable modules, or have no strict source,
+  are counted but not judged. That needs the RFC's per-target `arch_module`
+  ownership, which is not implemented.
+
+Results: 10 portable strict targets judged and clean. 19 mixed or native
+targets are not judged (18 in the Portal tree, 1 in dedicated). There are
+4 fixtures (92 archlint tests in total), and three mutants (native library,
+closure, mixed-target skip) are each detected. `arch.compile-deps` includes
+it.
+- It is declared as `arch.compile-deps` in `quality/baseline.json` over the three trees (user decision), and passes in 16 s.
+
+## R04-HERMETIC: hermetic contract-header compiles (slice done, 2026-09-25)
+
+`archlint hermetic [--cxx g++] [--cxx clang++]` implements CAP007. Every
+public header of a portable (non-native) strict module is compiled alone,
+from a one-line translation unit, with only the `public/` include root,
+`-std=c++20 -Wall -Wextra -Werror`, and `-M`.
+
+- `-M` lists system headers too, unlike the build's `-MMD`. So the check
+  rejects any native SDK path (SDL, Vulkan, X11/XCB, Wayland, EGL/GL, GTK,
+  libadwaita, D3D, Metal/MoltenVK, Android) anywhere in the resolved closure,
+  and any repository header outside `public/`.
+- On Linux the SDKs live in `/usr/include`, so omitting their `-I` paths
+  alone would prove nothing. The resolved closure is the evidence.
+
+Results: 49 headers, 0 errors with g++ 16.2.1 and with clang++ 22.1.8, in
+2.4 s. The 5 fixtures inject the compiler, so they need no host SDK; one
+uses the real g++. There are 97 archlint tests in total. Three mutants
+(native path, non-public header, compile failure) are each detected.
+
+Blind spots:
+
+- Headers of native (backend/interop) modules are out of scope by design.
+- Contract headers outside `public/` are not compiled.
+- Only the Linux host compilers are covered.
+
+Declared as `arch.hermetic` in `quality/baseline.json` (static group, user decision).
 
 Phase A is closed. Later RFC 0001 phases begin removing the frozen loader
 surface: rename the `LoadModule( CreateInterfaceFn )` pseudo-module overload,

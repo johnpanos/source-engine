@@ -204,7 +204,8 @@
           "public/render/light_set.h",
           "public/render/spark_light.h",
           "public/render/direct_light_selection.h",
-          "public/render/indirect_policy.h"
+          "public/render/indirect_policy.h",
+          "public/render/gpu_compute.h"
         ],
         "allowedEdges": []
       },
@@ -212,7 +213,10 @@
         "id": "render.indirect-light",
         "paths": [
           "public/render/indirect_light.h",
-          "public/render/indirect_switcher.h"
+          "public/render/indirect_switcher.h",
+          "public/render/direct_occlusion.h",
+          "public/render/indirect_sdf.h",
+          "public/render/indirect_radiosity.h"
         ],
         "allowedEdges": [
           "foundation",
@@ -300,7 +304,11 @@
           "materialsystem/shaderapivulkan/vulkan_render_backend.cpp",
           "materialsystem/shaderapivulkan/vulkan_render_backend_native.h",
           "materialsystem/shaderapivulkan/demo_triangle_spv.h",
-          "materialsystem/shaderapivulkan/material_spv.h"
+          "materialsystem/shaderapivulkan/material_spv.h",
+          "materialsystem/shaderapivulkan/vulkan_compute.h",
+          "materialsystem/shaderapivulkan/vulkan_debug_utils.h",
+          "materialsystem/shaderapivulkan/vulkan_frame_stats.h",
+          "materialsystem/shaderapivulkan/vulkan_shader_library.h"
         ],
         "allowedEdges": [
           "render.contracts"
@@ -452,6 +460,64 @@
         ]
       },
       {
+        "id": "platform.window-contracts",
+        "paths": [
+          "public/platform/window/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.contracts"
+        ]
+      },
+      {
+        "id": "platform.window-support",
+        "paths": [
+          "platform/window/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.window-contracts",
+          "render.contracts"
+        ]
+      },
+      {
+        "id": "platform.sdl2.window",
+        "kind": "backend",
+        "paths": [
+          "platform/sdl2/"
+        ],
+        "externalHeaders": [
+          "SDL.h"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.window-contracts",
+          "render.contracts",
+          "platform.composition",
+          "platform.window-support"
+        ]
+      },
+      {
+        "id": "platform.sdl2.window.native-tests",
+        "kind": "native-test",
+        "paths": [
+          "unittests/platformtest/window_sdl2/"
+        ],
+        "externalHeaders": [
+          "SDL.h"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.sdl2.window",
+          "platform.window-contracts",
+          "platform.tests",
+          "render.contracts",
+          "testing.contracts",
+          "platform.composition",
+          "platform.window-support"
+        ]
+      },
+      {
         "id": "platform.composition",
         "paths": [
           "public/platform/composition.h",
@@ -459,7 +525,9 @@
           "platform/"
         ],
         "allowedEdges": [
-          "foundation"
+          "foundation",
+          "platform.window-contracts",
+          "render.contracts"
         ]
       },
       {
@@ -491,7 +559,10 @@
           "platform.contracts",
           "platform.tool-process",
           "platform.composition",
-          "testing.contracts"
+          "testing.contracts",
+          "platform.window-contracts",
+          "render.contracts",
+          "platform.window-support"
         ]
       },
       {
@@ -530,8 +601,12 @@
       "cstdio",
       "cstdlib",
       "cstring",
+      "ctime",
+      "deque",
+      "fstream",
       "functional",
       "initializer_list",
+      "iterator",
       "limits",
       "map",
       "memory",
@@ -540,6 +615,7 @@
       "optional",
       "set",
       "span",
+      "sstream",
       "string",
       "string_view",
       "thread",
@@ -567,7 +643,7 @@
   },
   "description": "RFC 0001 architectural manifest. Phase A currently freezes legacy dynamic-loader boundaries.",
   "legacyAbi": {
-    "description": "Preserved binary ABI declarations and exact private compatibility adapters/tests. Video provider runtime supplies the existing IVideoSubSystem::Connect factory without exposing it through the typed catalog. The Linux VBSP host tool keeps its material and physics factories in its private legacy compile-tool adapters.",
+    "description": "Preserved binary ABI declarations and exact private compatibility adapters/tests. Video provider runtime supplies the existing IVideoSubSystem::Connect factory without exposing it through the typed catalog. The Linux VBSP host tool keeps its material and physics factories in its private legacy compile-tool adapters. Reviewed 2026-09-25 (R04-DRIFT, user decision): the imported matchmaking framework's IAppSystem::Connect, the Portal 2 GameUI's IGameUI::Initialize/Connect, the Box3D provider's IPhysics::QueryInterface and the VPhysics conformance test host, which loads each provider through its CreateInterface export.",
     "paths": [
       "video/provider_catalog_runtime.h",
       "video/provider_catalog_runtime.cpp",
@@ -585,7 +661,189 @@
       "unittests/shaderextensiontest/test_shaderextension_host.cpp",
       "unittests/shaderextensiontest/material_pixel_conformance.cpp",
       "utils/common/utilmatlib.cpp",
-      "utils/vbsp/ivp.cpp"
+      "utils/vbsp/ivp.cpp",
+      "matchmaking/main.cpp",
+      "matchmaking/mm_framework.h",
+      "game/client/portal2/gameui/gameui_interface.h",
+      "game/client/portal2/gameui/gameui_interface.cpp",
+      "vphysics_box3d/main.cpp",
+      "unittests/physicstest/test_vphysics_conformance.cpp"
+    ]
+  },
+  "loaderExceptions": {
+    "description": "RFC 0001 'Baseline and exceptions': reviewed exceptions to the ARCH101-ARCH105 loader ratchet. Each names one file, one rule and the exact number of unbaselined occurrences it covers, with a reason, an owning roadmap row, a tracking record and a removal condition. archlint fails on a count mismatch or a stale entry. Added 2026-09-25 by R04-DRIFT (user decision) for the Portal 2 reconstruction glue.",
+    "entries": [
+      {
+        "path": "engine/vgui_baseui_interface.cpp",
+        "rule": "ARCH105",
+        "count": 1,
+        "reason": "The engine probes the client factory for a GameUI embedded in the Portal 2 client.",
+        "owner": "R39",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "The engine asks the client for an embedded GameUI through a typed query instead of reading g_ClientFactory."
+      },
+      {
+        "path": "game/client/portal2/gameui/optionssubmultiplayer.cpp",
+        "rule": "ARCH101",
+        "count": 1,
+        "reason": "Retail Portal 2 multiplayer options load vtex_dll to convert spray images.",
+        "owner": "R41",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "vtex conversion runs through a named, versioned tool or extension host (R41), so the GameUI loads no module by filename."
+      },
+      {
+        "path": "game/client/portal2/gameui/optionssubmultiplayer.cpp",
+        "rule": "ARCH102",
+        "count": 1,
+        "reason": "Retail Portal 2 multiplayer options load vtex_dll to convert spray images.",
+        "owner": "R41",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "vtex conversion runs through a named, versioned tool or extension host (R41), so the GameUI loads no module by filename."
+      },
+      {
+        "path": "game/client/portal2/gameui/optionssubmultiplayer.cpp",
+        "rule": "ARCH105",
+        "count": 1,
+        "reason": "Retail Portal 2 multiplayer options load vtex_dll to convert spray images.",
+        "owner": "R41",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "vtex conversion runs through a named, versioned tool or extension host (R41), so the GameUI loads no module by filename."
+      },
+      {
+        "path": "game/client/portal2/gameui/portal2/vaddons.cpp",
+        "rule": "ARCH101",
+        "count": 1,
+        "reason": "Retail Portal 2 add-ons dialog loads vtex_dll to convert images.",
+        "owner": "R41",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "vtex conversion runs through a named, versioned tool or extension host (R41), so the GameUI loads no module by filename."
+      },
+      {
+        "path": "game/client/portal2/gameui/portal2/vaddons.cpp",
+        "rule": "ARCH102",
+        "count": 1,
+        "reason": "Retail Portal 2 add-ons dialog loads vtex_dll to convert images.",
+        "owner": "R41",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "vtex conversion runs through a named, versioned tool or extension host (R41), so the GameUI loads no module by filename."
+      },
+      {
+        "path": "game/client/portal2/gameui/portal2/vaddons.cpp",
+        "rule": "ARCH105",
+        "count": 1,
+        "reason": "Retail Portal 2 add-ons dialog loads vtex_dll to convert images.",
+        "owner": "R41",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "vtex conversion runs through a named, versioned tool or extension host (R41), so the GameUI loads no module by filename."
+      },
+      {
+        "path": "game/client/portal2/gameui/vguisystemmoduleloader.cpp",
+        "rule": "ARCH102",
+        "count": 3,
+        "reason": "Retail Portal 2 GameUI platform-module loader.",
+        "owner": "R41",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "Portal 2 GameUI platform modules are linked with typed factories or loaded only by a named extension host (R41)."
+      },
+      {
+        "path": "game/client/portal2/gameui/vguisystemmoduleloader.cpp",
+        "rule": "ARCH103",
+        "count": 1,
+        "reason": "Retail Portal 2 GameUI platform-module loader.",
+        "owner": "R41",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "Portal 2 GameUI platform modules are linked with typed factories or loaded only by a named extension host (R41)."
+      },
+      {
+        "path": "game/client/portal2/gameui/vguisystemmoduleloader.cpp",
+        "rule": "ARCH105",
+        "count": 6,
+        "reason": "Retail Portal 2 GameUI platform-module loader.",
+        "owner": "R41",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "Portal 2 GameUI platform modules are linked with typed factories or loaded only by a named extension host (R41)."
+      },
+      {
+        "path": "game/client/portal2/gameui/vguisystemmoduleloader.h",
+        "rule": "ARCH105",
+        "count": 3,
+        "reason": "Retail Portal 2 GameUI platform-module loader interface.",
+        "owner": "R41",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "Portal 2 GameUI platform modules are linked with typed factories or loaded only by a named extension host (R41)."
+      },
+      {
+        "path": "game/server/portal2/portal2_matchmaking.cpp",
+        "rule": "ARCH105",
+        "count": 1,
+        "reason": "Portal 2 server glue takes IMatchFrameworkHost from the app-system factory.",
+        "owner": "R39",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "The Portal 2 modules receive IMatchFrameworkHost and the engine interfaces as typed parameters from composition, so no CreateInterfaceFn crosses this glue (R39 typed linked factories)."
+      },
+      {
+        "path": "game/server/portal2/portal2_matchmaking.h",
+        "rule": "ARCH105",
+        "count": 1,
+        "reason": "Portal 2 server glue takes IMatchFrameworkHost from the app-system factory.",
+        "owner": "R39",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "The Portal 2 modules receive IMatchFrameworkHost and the engine interfaces as typed parameters from composition, so no CreateInterfaceFn crosses this glue (R39 typed linked factories)."
+      },
+      {
+        "path": "game/shared/portal2/portal2_matchframework_connect.h",
+        "rule": "ARCH105",
+        "count": 2,
+        "reason": "Portal 2 client and GameUI borrow the server's matchmaking framework through the engine factory.",
+        "owner": "R39",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "The Portal 2 modules receive IMatchFrameworkHost and the engine interfaces as typed parameters from composition, so no CreateInterfaceFn crosses this glue (R39 typed linked factories)."
+      },
+      {
+        "path": "game/shared/portal2/portal2_shared_compat.cpp",
+        "rule": "ARCH105",
+        "count": 2,
+        "reason": "Portal 2 engine-extension and matchmaking connection through the engine factory.",
+        "owner": "R39",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "The Portal 2 modules receive IMatchFrameworkHost and the engine interfaces as typed parameters from composition, so no CreateInterfaceFn crosses this glue (R39 typed linked factories)."
+      },
+      {
+        "path": "game/shared/portal2/portal2_shared_compat.h",
+        "rule": "ARCH105",
+        "count": 2,
+        "reason": "Portal 2 engine-extension connection through the engine factory.",
+        "owner": "R39",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "The Portal 2 modules receive IMatchFrameworkHost and the engine interfaces as typed parameters from composition, so no CreateInterfaceFn crosses this glue (R39 typed linked factories)."
+      },
+      {
+        "path": "game/shared/portal2/portal2_vscript_module.h",
+        "rule": "ARCH101",
+        "count": 1,
+        "reason": "Portal 2 connects the script manager from the app-system factory and falls back to loading vscript by filename.",
+        "owner": "R39",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "vscript is linked through a typed factory and the Sys_LoadModule fallback is deleted (R39)."
+      },
+      {
+        "path": "game/shared/portal2/portal2_vscript_module.h",
+        "rule": "ARCH102",
+        "count": 1,
+        "reason": "Portal 2 connects the script manager from the app-system factory and falls back to loading vscript by filename.",
+        "owner": "R39",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "vscript is linked through a typed factory and the Sys_LoadModule fallback is deleted (R39)."
+      },
+      {
+        "path": "game/shared/portal2/portal2_vscript_module.h",
+        "rule": "ARCH105",
+        "count": 2,
+        "reason": "Portal 2 connects the script manager from the app-system factory and falls back to loading vscript by filename.",
+        "owner": "R39",
+        "tracking": "RFC/0001-phase-a-progress.md#loader-exceptions-2026-09-25",
+        "removal": "vscript is linked through a typed factory and the Sys_LoadModule fallback is deleted (R39)."
+      }
     ]
   },
   "loaderInventory": {

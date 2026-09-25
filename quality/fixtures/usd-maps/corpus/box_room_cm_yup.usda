@@ -1,0 +1,63 @@
+#usda 1.0
+(
+    defaultPrim = "Room"
+    doc = """corpus-usd-rooms v1 / box_room_cm_yup (hand-written, 2026-09-25).
+Y-up centimetres. Explicit 8-vertex box meshes whose world bounds are known
+analytically, one of them mirrored by a negative scale, plus a UsdGeom.Cube
+that usd_scene records as skipped (it reads meshes only). The expected values
+live in tools/quality/tests/test_usd_corpus_rooms.py (BOX_CM); see fixture.json."""
+    metersPerUnit = 0.01
+    upAxis = "Y"
+)
+
+def Xform "Room"
+{
+    # Floor slab: x -300..300, y -10..0, z -400..400 cm; no transform.
+    def Mesh "Floor"
+    {
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [0, 3, 2, 1, 4, 5, 6, 7, 0, 1, 5, 4, 3, 7, 6, 2, 0, 4, 7, 3, 1, 2, 6, 5]
+        point3f[] points = [(-300, -10, -400), (300, -10, -400), (300, 0, -400), (-300, 0, -400), (-300, -10, 400), (300, -10, 400), (300, 0, 400), (-300, 0, 400)]
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Xform "Props"
+    {
+        double3 xformOp:translate = (0, 0, -100)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        # Unit box +-25 cm; scale (2, 1, 0.5), then rotateY 90, then translate.
+        def Mesh "Crate"
+        {
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0, 3, 2, 1, 4, 5, 6, 7, 0, 1, 5, 4, 3, 7, 6, 2, 0, 4, 7, 3, 1, 2, 6, 5]
+            point3f[] points = [(-25, -25, -25), (25, -25, -25), (25, 25, -25), (-25, 25, -25), (-25, -25, 25), (25, -25, 25), (25, 25, 25), (-25, 25, 25)]
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (100, 25, 50)
+            float xformOp:rotateY = 90
+            float3 xformOp:scale = (2, 1, 0.5)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateY", "xformOp:scale"]
+        }
+
+        # Asymmetric box x 0..40, y 0..60, z 0..20 mirrored in x (det < 0).
+        def Mesh "Mirror"
+        {
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0, 3, 2, 1, 4, 5, 6, 7, 0, 1, 5, 4, 3, 7, 6, 2, 0, 4, 7, 3, 1, 2, 6, 5]
+            point3f[] points = [(0, 0, 0), (40, 0, 0), (40, 60, 0), (0, 60, 0), (0, 0, 20), (40, 0, 20), (40, 60, 20), (0, 60, 20)]
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (-150, 30, 0)
+            float3 xformOp:scale = (-1, 1, 1)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        }
+
+        # Not a mesh: recorded as skipped. Placed 5 m up, so the room bounds
+        # would grow if it were read.
+        def Cube "Marker"
+        {
+            double size = 50
+            double3 xformOp:translate = (0, 500, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+}

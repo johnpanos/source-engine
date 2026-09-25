@@ -1,0 +1,65 @@
+{
+ "schema": "toolchain-policy/v1",
+ "description": "Fixture policy for the toolchain-recorder corpus project install_record (tools/quality/corpus/toolchain_recorder.py). Same dialect vocabulary as quality/toolchain/policy.json; the targets are the fixture's own.",
+ "compiler_families": {
+  "gcc": "gnu",
+  "g++": "gnu",
+  "clang": "gnu",
+  "clang++": "gnu"
+ },
+ "std_flag_prefixes": {
+  "gnu": [
+   "-std="
+  ]
+ },
+ "defaults": {
+  "c": "c-toolchain-default",
+  "c++": "cxx20-permissive"
+ },
+ "dialects": {
+  "c-toolchain-default": {
+   "language": "c",
+   "mode": "unconstrained",
+   "description": "Unconstrained legacy C.",
+   "gnu": {
+    "std": null,
+    "required": [],
+    "forbidden": []
+   }
+  },
+  "cxx20-permissive": {
+   "language": "c++",
+   "mode": "verify",
+   "description": "Default C++: C++20 plus -fpermissive, verified.",
+   "gnu": {
+    "std": "c++20",
+    "required": [
+     "-fpermissive"
+    ],
+    "forbidden": []
+   }
+  },
+  "cxx20": {
+   "language": "c++",
+   "mode": "apply",
+   "description": "Strict C++20, applied.",
+   "gnu": {
+    "std": "c++20",
+    "required": [],
+    "forbidden": [
+     "-fpermissive"
+    ]
+   }
+  }
+ },
+ "targets": {
+  "alpha": {
+   "dialect": "cxx20"
+  }
+ },
+ "cxx20_header_sets": [],
+ "abi": {
+  "libstdcxx_dual_abi_define": "_GLIBCXX_USE_CXX11_ABI",
+  "libstdcxx_dual_abi_default": "1"
+ }
+}

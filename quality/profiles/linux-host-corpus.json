@@ -1,0 +1,15 @@
+{
+  "schema": "conformance-profile/v1",
+  "id": "linux-host-corpus",
+  "description": "Linux x86_64 corpus runner (RFC 0005 Q0 gap corpus). Command suites that drive built products, legacy executables, content and pinned host toolchains, each with an oracle independent of the code under test and a seeded negative row. Selected with `--runner corpus` or an explicit selector; a plain `check` stays headless. Suites record their provenance (source revision, tool pins, reproduction command) under their scratch directory.",
+  "os": "linux",
+  "arch": "x86_64",
+  "runner": "corpus",
+  "dialect": "cxx20",
+  "include_roots": [
+    "public",
+    "."
+  ],
+  "timeout_seconds": 600,
+  "memory_limit_mb": 32768
+}

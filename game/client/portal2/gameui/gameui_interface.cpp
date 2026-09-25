@@ -120,9 +120,7 @@ inline UI_BASEMOD_PANEL_CLASS & ConstructUiBaseModPanelClass() { return *BasePan
 #include "gameui_util.h"
 
 #ifdef PORTAL2
-// Portal 2 port: game/shared/portal2/portal2_shared_compat.h (not included by the GameUI sources).
-bool Portal2_ConnectMatchFramework( CreateInterfaceFn engineFactory );
-void Portal2_DisconnectMatchFramework();
+#include "portal2_matchframework_connect.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!

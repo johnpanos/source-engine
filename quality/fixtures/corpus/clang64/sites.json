@@ -1,0 +1,4086 @@
+{
+ "schema": "corpus-clang64-sites/v1",
+ "version": 1,
+ "description": "Clang/64-bit hazard sites in every recorded cxx20-permissive compile of the declared Waf trees (tools/quality/corpus/clang64_sweep.py). Exact ratchet: keyed by file, diagnostic, message and source-line text. `classification` is for review (unreviewed / intentional / defect); the sweep never edits legacy code.",
+ "provenance": {
+  "schema": "corpus-provenance/v1",
+  "suite": "corpus.clang64.sweep",
+  "source_revision": "294066c6572fdd34a0aef28b58d16013d31287ed",
+  "dirty": true,
+  "dirty_digest": "f32bc83fb0ea0a0c1d938f7a0523b4297ae6908ecb99ff7ba501337d754a3799",
+  "submodules": {
+   "box3d": {
+    "revision": "9e5a4cde862fba95ff19f096b79567f3ea6c01fd",
+    "state": "clean"
+   },
+   "ivp": {
+    "revision": "47533475e01cbff05fbc3bbe8b4edc485f292cea",
+    "state": "clean"
+   },
+   "lib": {
+    "revision": "86a66ee92d9fda0a09f54a435e850faa7ab5d0fa",
+    "state": "clean"
+   },
+   "thirdparty": {
+    "revision": "c5b901ecef515ea068fa8b8a19ca5cd5353905cb",
+    "state": "clean"
+   }
+  },
+  "python": "3.14.7",
+  "python_executable": "/usr/bin/python3",
+  "tools": {
+   "clang++": "clang version 22.1.8 (Fedora 22.1.8-4.fc44)",
+   "python3": "3.14.7"
+  },
+  "inputs": {},
+  "reproduce": "cd /home/john/src/source-engine-corpus && /usr/bin/python3 tools/quality/corpus/clang64_sweep.py record",
+  "setup": "python3 tools/quality/corpus/clang64_sweep.py setup",
+  "check": "python3 tools/quality/conformance.py check --suite corpus.clang64.sweep --out -"
+ },
+ "sweep": {
+  "clang": "clang version 22.1.8 (Fedora 22.1.8-4.fc44)",
+  "hazard_warnings": [
+   "-Wint-to-pointer-cast",
+   "-Wint-to-void-pointer-cast",
+   "-Wpointer-to-int-cast",
+   "-Wvoid-pointer-to-int-cast",
+   "-Wpointer-to-enum-cast",
+   "-Wvoid-pointer-to-enum-cast",
+   "-Wformat"
+  ],
+  "hazard_errors": [
+   "error:pointer-to-smaller-int (err_bad_reinterpret_cast_small_int)"
+  ],
+  "pointer_sized_narrowing": {
+   "id": "-Wshorten-64-to-32:pointer-sized",
+   "source_types": [
+    "DWORD_PTR",
+    "INT_PTR",
+    "LONG_PTR",
+    "UINT_PTR",
+    "ULONG_PTR",
+    "VPANEL",
+    "intp",
+    "intptr_t",
+    "std::intptr_t",
+    "std::uintptr_t",
+    "uintp",
+    "uintptr_t",
+    "vgui::VPANEL"
+   ]
+  },
+  "advisory_warnings": [
+   "-Wshorten-64-to-32"
+  ],
+  "sweep_flags": [
+   "-fsyntax-only",
+   "-ferror-limit=0",
+   "-fno-color-diagnostics",
+   "-fdiagnostics-show-option",
+   "-fno-caret-diagnostics",
+   "-fno-diagnostics-fixit-info",
+   "-Wno-everything",
+   "-Wint-to-pointer-cast",
+   "-Wint-to-void-pointer-cast",
+   "-Wpointer-to-int-cast",
+   "-Wvoid-pointer-to-int-cast",
+   "-Wpointer-to-enum-cast",
+   "-Wvoid-pointer-to-enum-cast",
+   "-Wformat",
+   "-Wshorten-64-to-32"
+  ],
+  "dropped_recorded_flags": [
+   "-MD",
+   "-MF",
+   "-MMD",
+   "-MP",
+   "-MQ",
+   "-MT",
+   "-c",
+   "-o",
+   "-pipe",
+   "-w",
+   "-W*",
+   "-o<path>"
+  ],
+  "format_filter": "LP64 width mismatches only (see format_width)",
+  "werror_equivalent": [
+   "-Werror=int-to-pointer-cast",
+   "-Werror=int-to-void-pointer-cast",
+   "-Werror=pointer-to-int-cast",
+   "-Werror=void-pointer-to-int-cast",
+   "-Werror=pointer-to-enum-cast",
+   "-Werror=void-pointer-to-enum-cast",
+   "-Werror=format"
+  ]
+ },
+ "coverage": {
+  "configs": {
+   "tests": {
+    "recorded_compiler": "clang++",
+    "recorded_compiler_version": "22.1.8",
+    "permissive_tus": 169,
+    "permissive_targets": [
+     "appframework",
+     "appsystemgrouptest",
+     "audio_media_conformance",
+     "audio_provider_conformance",
+     "dedicatedcompositiontest",
+     "filesystem_stdio",
+     "jobsystemhostframetest",
+     "jobsystemlegacybatchtest",
+     "jobsystemportalcarvetest",
+     "jobsystemthreadpoolbench",
+     "jobsystemthreadpooltest",
+     "legacymoduleclientfixture",
+     "mathlib",
+     "mathlibtest",
+     "moduleloadfixture",
+     "moduleloadshutdownfixture",
+     "tier0",
+     "tier0test",
+     "tier1",
+     "tier1test",
+     "tier2",
+     "tier2test",
+     "tier3",
+     "tier3test",
+     "unitlib",
+     "unittest_legacy",
+     "vpklib",
+     "vstdlib"
+    ]
+   },
+   "tools": {
+    "recorded_compiler": "clang++",
+    "recorded_compiler_version": "22.1.8",
+    "permissive_tus": 447,
+    "permissive_targets": [
+     "bitmap",
+     "fgdlib",
+     "filesystem_stdio",
+     "materialsystem",
+     "mathlib",
+     "raytrace",
+     "shaderapiempty",
+     "shaderlib",
+     "stdshader_dx9",
+     "tier0",
+     "tier1",
+     "tier2",
+     "vbsp",
+     "vphysics",
+     "vpklib",
+     "vrad",
+     "vstdlib",
+     "vtex",
+     "vtex_dll",
+     "vtexconv",
+     "vtf",
+     "vvis"
+    ]
+   },
+   "dedicated": {
+    "recorded_compiler": "clang++",
+    "recorded_compiler_version": "22.1.8",
+    "permissive_tus": 1137,
+    "permissive_targets": [
+     "appframework",
+     "bitmap",
+     "choreoobjects",
+     "datacache",
+     "dedicated",
+     "dedicated_launcher",
+     "dmxloader",
+     "engine",
+     "materialsystem",
+     "mathlib",
+     "particles",
+     "scenefilecache",
+     "server",
+     "shaderapiempty",
+     "shaderlib",
+     "soundemittersystem",
+     "steam_api",
+     "studiorender",
+     "tier0",
+     "tier1",
+     "tier2",
+     "tier3",
+     "vgui_controls",
+     "vphysics",
+     "vphysics_box3d",
+     "vpklib",
+     "vstdlib",
+     "vtf"
+    ]
+   },
+   "portal-native": {
+    "recorded_compiler": "clang++",
+    "recorded_compiler_version": "22.1.8",
+    "permissive_tus": 2219,
+    "permissive_targets": [
+     "GameUI",
+     "ServerBrowser",
+     "appframework",
+     "audio_binding_conformance",
+     "audio_media_conformance",
+     "audio_provider_conformance",
+     "bitmap",
+     "builtin_shader_conformance",
+     "choreoobjects",
+     "client",
+     "compute_native_conformance",
+     "datacache",
+     "datamodel",
+     "dmxloader",
+     "engine",
+     "filesystem_stdio",
+     "hl2_launcher",
+     "indirect_sdf_native_conformance",
+     "indirect_switching_native_conformance",
+     "inputsystem",
+     "ktx2_native_pixel_conformance",
+     "launcher",
+     "legacy_render_provider_conformance",
+     "material_binding_conformance",
+     "material_equivalence_vulkan_conformance",
+     "material_facing_vulkan_conformance",
+     "material_pixel_conformance",
+     "materialsystem",
+     "mathlib",
+     "matsys_controls",
+     "model_pbr_native_pixel_conformance",
+     "moduleloadfixture",
+     "moduleloadshutdownfixture",
+     "mp3_provider_conformance",
+     "native_vulkan_bringup_conformance",
+     "particles",
+     "pbr_native_pixel_conformance",
+     "queued_mesh_contract_vulkan_conformance",
+     "scenefilecache",
+     "sdl3_launcher_conformance",
+     "sdl3_voice_record_test",
+     "server",
+     "shader_extension_conformance",
+     "shaderapiempty",
+     "shaderapivulkan",
+     "shaderlib",
+     "soundemittersystem",
+     "stdshader_dx9",
+     "steam_api",
+     "studiorender",
+     "tier0",
+     "tier1",
+     "tier2",
+     "tier3",
+     "vaudio_minimp3",
+     "vgui2",
+     "vgui_controls",
+     "vgui_surfacelib",
+     "vguimatsurface",
+     "video_provider_catalog_test",
+     "video_service_catalog_test",
+     "video_services",
+     "vphysics",
+     "vphysics_box3d",
+     "vphysics_conformance",
+     "vpklib",
+     "vstdlib",
+     "vtex",
+     "vtex_dll",
+     "vtf",
+     "vulkan_debug",
+     "world_glass_native_pixel_conformance",
+     "world_pbr_native_pixel_conformance"
+    ]
+   },
+   "portal-dxvk": {
+    "recorded_compiler": "g++",
+    "recorded_compiler_version": "16.2.1",
+    "permissive_tus": 2139,
+    "permissive_targets": [
+     "GameUI",
+     "ServerBrowser",
+     "appframework",
+     "audio_binding_conformance",
+     "audio_media_conformance",
+     "audio_provider_conformance",
+     "bitmap",
+     "builtin_shader_conformance",
+     "choreoobjects",
+     "client",
+     "datacache",
+     "datamodel",
+     "dmxloader",
+     "dxvk_math_conformance",
+     "dxvk_presentation_conformance",
+     "engine",
+     "filesystem_stdio",
+     "hl2_launcher",
+     "inputsystem",
+     "launcher",
+     "legacy_render_provider_conformance",
+     "material_binding_conformance",
+     "material_pixel_conformance",
+     "materialsystem",
+     "mathlib",
+     "matsys_controls",
+     "moduleloadfixture",
+     "moduleloadshutdownfixture",
+     "mp3_provider_conformance",
+     "particles",
+     "scenefilecache",
+     "sdl3_launcher_conformance",
+     "sdl3_voice_record_test",
+     "server",
+     "shader_extension_conformance",
+     "shaderapidx9",
+     "shaderapiempty",
+     "shaderlib",
+     "soundemittersystem",
+     "stdshader_dx9",
+     "steam_api",
+     "studiorender",
+     "tier0",
+     "tier1",
+     "tier2",
+     "tier3",
+     "vaudio_minimp3",
+     "vgui2",
+     "vgui_controls",
+     "vgui_surfacelib",
+     "vguimatsurface",
+     "video_provider_catalog_test",
+     "video_service_catalog_test",
+     "video_services",
+     "vphysics",
+     "vphysics_box3d",
+     "vphysics_conformance",
+     "vpklib",
+     "vstdlib",
+     "vtex",
+     "vtex_dll",
+     "vtf"
+    ]
+   },
+   "hl2": {
+    "recorded_compiler": "clang++",
+    "recorded_compiler_version": "22.1.8",
+    "permissive_tus": 2010,
+    "permissive_targets": [
+     "GameUI",
+     "ServerBrowser",
+     "appframework",
+     "bitmap",
+     "choreoobjects",
+     "client",
+     "datacache",
+     "datamodel",
+     "dmxloader",
+     "engine",
+     "filesystem_stdio",
+     "hl2_launcher",
+     "inputsystem",
+     "launcher",
+     "materialsystem",
+     "mathlib",
+     "matsys_controls",
+     "particles",
+     "scenefilecache",
+     "server",
+     "shaderapiempty",
+     "shaderlib",
+     "soundemittersystem",
+     "stdshader_dx9",
+     "steam_api",
+     "studiorender",
+     "tier0",
+     "tier1",
+     "tier2",
+     "tier3",
+     "togl",
+     "vaudio_minimp3",
+     "vgui2",
+     "vgui_controls",
+     "vgui_surfacelib",
+     "vguimatsurface",
+     "video_provider_catalog_test",
+     "video_service_catalog_test",
+     "video_services",
+     "vphysics",
+     "vphysics_box3d",
+     "vphysics_conformance",
+     "vpklib",
+     "vstdlib",
+     "vtex",
+     "vtex_dll",
+     "vtf"
+    ]
+   },
+   "portal2-native": {
+    "recorded_compiler": "clang++",
+    "recorded_compiler_version": "22.1.8",
+    "permissive_tus": 2497,
+    "permissive_targets": [
+     "GameUI",
+     "ServerBrowser",
+     "appframework",
+     "audio_binding_conformance",
+     "audio_media_conformance",
+     "audio_provider_conformance",
+     "bitmap",
+     "builtin_shader_conformance",
+     "choreoobjects",
+     "client",
+     "compute_native_conformance",
+     "datacache",
+     "datamodel",
+     "dmxloader",
+     "engine",
+     "filesystem_stdio",
+     "hl2_launcher",
+     "indirect_sdf_native_conformance",
+     "indirect_switching_native_conformance",
+     "inputsystem",
+     "ktx2_native_pixel_conformance",
+     "launcher",
+     "legacy_render_provider_conformance",
+     "matchmaking_portal2",
+     "material_binding_conformance",
+     "material_equivalence_vulkan_conformance",
+     "material_facing_vulkan_conformance",
+     "material_pixel_conformance",
+     "materialsystem",
+     "mathlib",
+     "matsys_controls",
+     "model_pbr_native_pixel_conformance",
+     "moduleloadfixture",
+     "moduleloadshutdownfixture",
+     "mp3_provider_conformance",
+     "native_vulkan_bringup_conformance",
+     "particles",
+     "pbr_native_pixel_conformance",
+     "queued_mesh_contract_vulkan_conformance",
+     "scenefilecache",
+     "sdl3_launcher_conformance",
+     "sdl3_voice_record_test",
+     "server",
+     "shader_extension_conformance",
+     "shaderapiempty",
+     "shaderapivulkan",
+     "shaderlib",
+     "soundemittersystem",
+     "stdshader_dx9",
+     "steam_api",
+     "studiorender",
+     "tier0",
+     "tier1",
+     "tier2",
+     "tier3",
+     "vaudio_minimp3",
+     "vgui2",
+     "vgui_controls",
+     "vgui_surfacelib",
+     "vguimatsurface",
+     "video_bink",
+     "video_provider_catalog_test",
+     "video_service_catalog_test",
+     "video_services",
+     "vphysics",
+     "vphysics_box3d",
+     "vphysics_conformance",
+     "vpklib",
+     "vscript",
+     "vstdlib",
+     "vtex",
+     "vtex_dll",
+     "vtf",
+     "vulkan_debug",
+     "world_glass_native_pixel_conformance",
+     "world_pbr_native_pixel_conformance"
+    ]
+   }
+  },
+  "config_options": {
+   "tests": {
+    "compiler": "clang",
+    "configure": [
+     "--tests",
+     "--use-sdl=0",
+     "--use-togl=0",
+     "--disable-warns",
+     "-T",
+     "release"
+    ]
+   },
+   "tools": {
+    "compiler": "clang",
+    "configure": [
+     "--tools",
+     "--disable-warns",
+     "-T",
+     "release"
+    ]
+   },
+   "dedicated": {
+    "compiler": "clang",
+    "configure": [
+     "--dedicated",
+     "--use-sdl=0",
+     "--use-togl=0",
+     "--build-games=portal",
+     "--physics-backend=both",
+     "--disable-warns",
+     "-T",
+     "release"
+    ]
+   },
+   "portal-native": {
+    "compiler": "clang",
+    "configure": [
+     "--platform-provider=sdl3",
+     "--render-backend=native-vulkan",
+     "--build-games=portal",
+     "--physics-backend=both",
+     "--disable-warns",
+     "-T",
+     "release"
+    ]
+   },
+   "portal-dxvk": {
+    "compiler": "gcc",
+    "configure": [
+     "--platform-provider=sdl3",
+     "--render-backend=vulkan",
+     "--dxvk-root={dxvk_root}",
+     "--build-games=portal",
+     "--disable-warns",
+     "-T",
+     "release"
+    ]
+   },
+   "hl2": {
+    "compiler": "clang",
+    "configure": [
+     "--build-games=hl2",
+     "--disable-warns",
+     "-T",
+     "release"
+    ]
+   },
+   "portal2-native": {
+    "compiler": "clang",
+    "configure": [
+     "--platform-provider=sdl3",
+     "--render-backend=native-vulkan",
+     "--build-games=portal2",
+     "--physics-backend=both",
+     "--video-provider=bink",
+     "--disable-warns",
+     "-T",
+     "release"
+    ]
+   }
+  },
+  "not_covered": [
+   {
+    "scope": "game/client, game/server for --build-games=hl2mp, hl1, episodic, hl1mp, cstrike, dod",
+    "reason": "each game compiles the shared client/server sources with its own defines (~1,500 TUs per game); only portal, hl2 and portal2 are swept"
+   },
+   {
+    "scope": "togles",
+    "reason": "GLES translation layer; only Android (non-SDL3) selects it"
+   },
+   {
+    "scope": "unicode",
+    "reason": "its wscript builds nothing unless DEST_OS is win32"
+   },
+   {
+    "scope": "engine/voice_codecs/celt, engine/voice_codecs/speex",
+    "reason": "have wscripts but no root project list reaches them"
+   },
+   {
+    "scope": "debugapi, texturecontainer (+ unittests/texturecontainertest)",
+    "reason": "strict cxx20 targets (not permissive); also unconfigured here because protoc and the KTX read dependency are absent, so any permissive code behind DEBUGAPI/KTX_READ_ENABLED guards is not swept"
+   },
+   {
+    "scope": "engine/voice_codecs/opus",
+    "reason": "only --enable-opus or Android (non-SDL3)"
+   },
+   {
+    "scope": "utils/bzip2",
+    "reason": "only win32 and Android SDL3 products"
+   },
+   {
+    "scope": "Android arm64 (portal-android-native-vulkan, portal2-android-native-vulkan)",
+    "reason": "NDK cross-build profiles; LP64 like x86_64 but with different platform #ifdefs; not replayed here"
+   },
+   {
+    "scope": "MSVC / Windows (LLP64: long stays 32-bit)",
+    "reason": "no MSVC toolchain on this host; LLP64 truncations such as (long)ptr are not hazards on LP64 Linux and are not detected by this sweep"
+   }
+  ]
+ },
+ "stats": {
+  "tus": 10618,
+  "wall_seconds": 397.3,
+  "jobs": 16,
+  "slowest": [
+   {
+    "seconds": 4.4,
+    "config": "portal2-native",
+    "source": "materialsystem/shaderapivulkan/shaderapivulkan.cpp"
+   },
+   {
+    "seconds": 4.1,
+    "config": "portal2-native",
+    "source": "unittests/shaderapivulkantest/test_indirect_sdf.cpp"
+   },
+   {
+    "seconds": 4.0,
+    "config": "portal2-native",
+    "source": "materialsystem/shaderapivulkan/vulkan_device.cpp"
+   },
+   {
+    "seconds": 3.3,
+    "config": "portal2-native",
+    "source": "materialsystem/shaderapivulkan/vulkan_device.cpp"
+   },
+   {
+    "seconds": 3.3,
+    "config": "hl2",
+    "source": "engine/indirect_light_host.cpp"
+   }
+  ]
+ },
+ "summary": {
+  "sites": 132,
+  "blocking_errors": 2,
+  "by_diagnostic": {
+   "-Wformat": 31,
+   "-Wshorten-64-to-32:pointer-sized": 101
+  },
+  "by_directory": {
+   "serverbrowser": 26,
+   "engine": 24,
+   "game/server": 14,
+   "public": 14,
+   "vscript/languages": 14,
+   "game/client": 5,
+   "materialsystem/shaderapidx9": 5,
+   "tier1": 5,
+   "game/shared": 3,
+   "utils/vrad": 3,
+   "vgui2/vgui_controls": 3,
+   "common": 2,
+   "filesystem": 2,
+   "tier2": 2,
+   "vgui2/src": 2,
+   "vphysics": 2,
+   "datacache": 1,
+   "datamodel": 1,
+   "materialsystem": 1,
+   "particles": 1,
+   "public/tier1": 1,
+   "tier0": 1
+  },
+  "by_target": {
+   "dedicated:datacache": 4,
+   "dedicated:dedicated": 2,
+   "dedicated:engine": 30,
+   "dedicated:materialsystem": 2,
+   "dedicated:particles": 1,
+   "dedicated:server": 16,
+   "dedicated:studiorender": 2,
+   "dedicated:tier0": 1,
+   "dedicated:tier1": 6,
+   "dedicated:tier2": 2,
+   "dedicated:tier3": 1,
+   "dedicated:vgui_controls": 3,
+   "dedicated:vphysics": 3,
+   "dedicated:vphysics_box3d": 1,
+   "hl2:ServerBrowser": 26,
+   "hl2:client": 6,
+   "hl2:datacache": 4,
+   "hl2:datamodel": 2,
+   "hl2:engine": 39,
+   "hl2:filesystem_stdio": 2,
+   "hl2:materialsystem": 2,
+   "hl2:matsys_controls": 1,
+   "hl2:particles": 1,
+   "hl2:server": 15,
+   "hl2:studiorender": 2,
+   "hl2:tier0": 1,
+   "hl2:tier1": 6,
+   "hl2:tier2": 2,
+   "hl2:tier3": 1,
+   "hl2:vgui2": 2,
+   "hl2:vgui_controls": 3,
+   "hl2:vphysics": 3,
+   "hl2:vphysics_box3d": 1,
+   "hl2:vphysics_conformance": 1,
+   "portal-dxvk:ServerBrowser": 26,
+   "portal-dxvk:client": 6,
+   "portal-dxvk:datacache": 4,
+   "portal-dxvk:datamodel": 2,
+   "portal-dxvk:engine": 39,
+   "portal-dxvk:filesystem_stdio": 2,
+   "portal-dxvk:materialsystem": 2,
+   "portal-dxvk:matsys_controls": 1,
+   "portal-dxvk:particles": 1,
+   "portal-dxvk:server": 16,
+   "portal-dxvk:shaderapidx9": 6,
+   "portal-dxvk:studiorender": 2,
+   "portal-dxvk:tier0": 1,
+   "portal-dxvk:tier1": 6,
+   "portal-dxvk:tier2": 2,
+   "portal-dxvk:tier3": 1,
+   "portal-dxvk:vgui2": 2,
+   "portal-dxvk:vgui_controls": 3,
+   "portal-dxvk:vphysics": 3,
+   "portal-dxvk:vphysics_box3d": 1,
+   "portal-dxvk:vphysics_conformance": 1,
+   "portal-native:ServerBrowser": 26,
+   "portal-native:client": 6,
+   "portal-native:datacache": 4,
+   "portal-native:datamodel": 2,
+   "portal-native:engine": 39,
+   "portal-native:filesystem_stdio": 2,
+   "portal-native:materialsystem": 2,
+   "portal-native:matsys_controls": 1,
+   "portal-native:particles": 1,
+   "portal-native:server": 16,
+   "portal-native:studiorender": 2,
+   "portal-native:tier0": 1,
+   "portal-native:tier1": 6,
+   "portal-native:tier2": 2,
+   "portal-native:tier3": 1,
+   "portal-native:vgui2": 2,
+   "portal-native:vgui_controls": 3,
+   "portal-native:vphysics": 3,
+   "portal-native:vphysics_box3d": 1,
+   "portal-native:vphysics_conformance": 1,
+   "portal2-native:ServerBrowser": 26,
+   "portal2-native:client": 10,
+   "portal2-native:datacache": 4,
+   "portal2-native:datamodel": 2,
+   "portal2-native:engine": 39,
+   "portal2-native:filesystem_stdio": 2,
+   "portal2-native:matchmaking_portal2": 1,
+   "portal2-native:materialsystem": 2,
+   "portal2-native:matsys_controls": 1,
+   "portal2-native:particles": 1,
+   "portal2-native:server": 17,
+   "portal2-native:studiorender": 2,
+   "portal2-native:tier0": 1,
+   "portal2-native:tier1": 6,
+   "portal2-native:tier2": 2,
+   "portal2-native:tier3": 1,
+   "portal2-native:vgui2": 2,
+   "portal2-native:vgui_controls": 3,
+   "portal2-native:vphysics": 3,
+   "portal2-native:vphysics_box3d": 1,
+   "portal2-native:vphysics_conformance": 1,
+   "portal2-native:vscript": 15,
+   "tests:filesystem_stdio": 2,
+   "tests:tier0": 1,
+   "tests:tier1": 6,
+   "tests:tier2": 2,
+   "tests:tier3": 1,
+   "tools:filesystem_stdio": 2,
+   "tools:materialsystem": 2,
+   "tools:tier0": 1,
+   "tools:tier1": 6,
+   "tools:tier2": 2,
+   "tools:vbsp": 2,
+   "tools:vphysics": 3,
+   "tools:vrad": 5,
+   "tools:vvis": 2
+  },
+  "advisory": {
+   "-Wshorten-64-to-32": {
+    "note": "unique file:line:column occurrences; recorded, not gated",
+    "total": 1276,
+    "by_directory": {
+     "game/client": 190,
+     "vscript/languages": 176,
+     "engine": 120,
+     "common": 82,
+     "game/shared": 78,
+     "tier1": 68,
+     "vgui2/vgui_controls": 55,
+     "game/server": 42,
+     "vgui2/src": 40,
+     "public": 39,
+     "vgui2/vgui_surfacelib": 31,
+     "filesystem": 30,
+     "particles": 29,
+     "utils/vrad": 26,
+     "togl/linuxwin": 25,
+     "engine/audio": 19,
+     "utils/common": 19,
+     "tier0": 18,
+     "utils/vbsp": 17,
+     "gameui": 15,
+     "thirdparty/minimp3": 12,
+     "materialsystem": 11,
+     "materialsystem/shaderapidx9": 11,
+     "public/tier1": 9,
+     "vguimatsurface": 9,
+     "utils/vvis": 8,
+     "utils/vtex": 7,
+     "vpklib": 7,
+     "dmxloader": 6,
+     "vgui2/matsys_controls": 6,
+     "meshutils": 5,
+     "serverbrowser": 5,
+     "unittests/jobsystemtest": 5,
+     "vphysics": 5,
+     "vtf": 5,
+     "inputsystem": 4,
+     "dedicated/console": 3,
+     "dedicated": 3,
+     "engine/voice_codecs": 3,
+     "scenefilecache": 3,
+     "utils/lzma": 3,
+     "bitmap": 2,
+     "datamodel": 2,
+     "launcher": 2,
+     "materialsystem/shaderapivulkan": 2,
+     "public/fgdlib": 2,
+     "public/tier0": 2,
+     "soundemittersystem": 2,
+     "studiorender": 2,
+     "vstdlib": 2,
+     "appframework": 1,
+     "dedicated_main": 1,
+     "fgdlib": 1,
+     "launcher_main": 1,
+     "matchmaking/portal2": 1,
+     "public/vscript": 1,
+     "public/vstdlib": 1,
+     "utils/unittest": 1,
+     "video/video_bink": 1
+    },
+    "by_source_type": {
+     "size_t": 546,
+     "__ptrdiff_t": 257,
+     "SQRESULT": 113,
+     "unsigned long": 54,
+     "SQInteger": 48,
+     "long": 42,
+     "HKeySymbol": 29,
+     "HFont": 28,
+     "ssize_t": 19,
+     "HTexture": 14,
+     "HPanel": 12,
+     "StringIndex_t": 11,
+     "SQUnsignedInteger": 11,
+     "time_t": 10,
+     "uint64": 10,
+     "__size_t": 7,
+     "int64": 7,
+     "vgui::HFont": 6,
+     "ThreadId_t": 5,
+     "size_type": 5,
+     "vgui::HTexture": 5,
+     "uint64_t": 4,
+     "LONG": 4,
+     "SDL_FingerID": 3,
+     "long long": 3,
+     "FT_Pos": 3,
+     "png_size_t": 2,
+     "unsigned long long": 2,
+     "VertexFormat_t": 2,
+     "HScheme": 2,
+     "ulg": 2,
+     "__off_t": 2,
+     "AGFixed": 1,
+     "ShaderAPITextureHandle_t": 1,
+     "VertexShader_t": 1,
+     "PixelShader_t": 1,
+     "uLong": 1,
+     "SizeT": 1,
+     "GLsizeiptr": 1,
+     "__time_t": 1
+    }
+   }
+  }
+ },
+ "sites": [
+  {
+   "file": "common/studiobyteswap.cpp",
+   "line": 1237,
+   "column": 44,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'uintp' (aka 'unsigned long long') to 'int'",
+   "line_text": "pAnimBlock->datastart = (uintp)pNewDest - (uintp)pNewDestBase;",
+   "width": "from uintp",
+   "targets": [
+    "dedicated:datacache",
+    "hl2:datacache",
+    "portal-dxvk:datacache",
+    "portal-native:datacache",
+    "portal2-native:datacache"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "common/studiobyteswap.cpp",
+   "line": 1258,
+   "column": 42,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'uintp' (aka 'unsigned long long') to 'int'",
+   "line_text": "pAnimBlock->dataend = (uintp)pNewDest - (uintp)pNewDestBase;",
+   "width": "from uintp",
+   "targets": [
+    "dedicated:datacache",
+    "hl2:datacache",
+    "portal-dxvk:datacache",
+    "portal-native:datacache",
+    "portal2-native:datacache"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "datacache/datacache.cpp",
+   "line": 1355,
+   "column": 3,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'unsigned int' but the argument has type 'DataCacheClientID_t' (aka 'unsigned long long')",
+   "line_text": "pItem->clientId, pItem->pItemData, hItem,",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "dedicated:datacache",
+    "hl2:datacache",
+    "portal-dxvk:datacache",
+    "portal-native:datacache",
+    "portal2-native:datacache"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "datamodel/dependencygraph.cpp",
+   "line": 71,
+   "column": 11,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'uintp' (aka 'unsigned long long') to 'uint' (aka 'unsigned int')",
+   "line_text": "return i >> 2; // since memory is allocated on a 4-byte (at least!) boundary",
+   "width": "from uintp",
+   "targets": [
+    "hl2:datamodel",
+    "portal-dxvk:datamodel",
+    "portal-native:datamodel",
+    "portal2-native:datamodel"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/cl_parse_event.cpp",
+   "line": 43,
+   "column": 44,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type 'intp' (aka 'long long')",
+   "line_text": "DevMsg( \"%02i %6.3ff %20s %03i bytes\\n\", slot, cl.GetTime(), eventname, Bits2Bytes( event->bits ) );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/cmodel_disp.cpp",
+   "line": 237,
+   "column": 26,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "if ( m_dispHullOffset[index] >= 0 )",
+   "width": "from intp",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/cmodel_disp.cpp",
+   "line": 239,
+   "column": 55,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "pList->pHull = m_pDispHullData + m_dispHullOffset[index];",
+   "width": "from intp",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/cmodel_disp.cpp",
+   "line": 327,
+   "column": 18,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "g_TerrainList[i] = NULL;",
+   "width": "from intp",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/cmodel_disp.cpp",
+   "line": 335,
+   "column": 17,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "g_TerrainList[i] = physcollision->CreateVirtualMesh( params );",
+   "width": "from intp",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/cmodel_private.h",
+   "line": 285,
+   "column": 50,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'unsigned int' but the argument has type '__size_t' (aka 'unsigned long')",
+   "line_text": "DevMsg(\"TODO: Refusing to discard %u bytes\\n\", sizeof(T) * m_nCount);",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 10,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/disp_interface.cpp",
+   "line": 1304,
+   "column": 9,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "return iElement;",
+   "width": "from intp",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/dt_localtransfer.cpp",
+   "line": 193,
+   "column": 72,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "AddPropOffsetToMap( pPrecalc, i | PROP_INDEX_VECTOR_ELEM_MARKER, offset );",
+   "width": "from intp",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/dt_localtransfer.cpp",
+   "line": 197,
+   "column": 40,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "AddPropOffsetToMap( pPrecalc, i, offset );",
+   "width": "from intp",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/host_saverestore.cpp",
+   "line": 137,
+   "column": 64,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type 'ThreadId_t' (aka 'unsigned long long')",
+   "line_text": "SaveMsg( \"FinishAsyncSave() (%d/%d)\\n\", ThreadInMainThread(), ThreadGetCurrentId() );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/host_saverestore.cpp",
+   "line": 657,
+   "column": 60,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type 'ThreadId_t' (aka 'unsigned long long')",
+   "line_text": "SaveMsg( \"Start save... (%d/%d)\\n\", ThreadInMainThread(), ThreadGetCurrentId() );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/modelloader.cpp",
+   "line": 4304,
+   "column": 21,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
+   "line_text": "int nMaterials = ((intptr_t*)(pModel->ppMaterials))[-1];",
+   "width": "from intptr_t",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/saverestore_filesystem.cpp",
+   "line": 153,
+   "column": 68,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'uintp' (aka 'unsigned long long') to 'int'",
+   "line_text": "SaveFile_t &GetFile( const FileHandle_t hFile ) { return GetFile( (uintp)hFile ); }",
+   "width": "from uintp",
+   "targets": [
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/saverestore_filesystem.cpp",
+   "line": 342,
+   "column": 12,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "GetFile( idx ).name = newID;",
+   "width": "from intp",
+   "targets": [
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/saverestore_filesystem.cpp",
+   "line": 387,
+   "column": 20,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "pFile = &GetFile( idx );",
+   "width": "from intp",
+   "targets": [
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/saverestore_filesystem.cpp",
+   "line": 587,
+   "column": 31,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'uintp' (aka 'unsigned long long') to 'int'",
+   "line_text": "SaveFile_t &file = GetFile( (uintp)hFile );",
+   "width": "from uintp",
+   "targets": [
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/shadowmgr.cpp",
+   "line": 608,
+   "column": 21,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "int materialEnum = (intp)pMaterial;",
+   "width": "from intp",
+   "targets": [
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/spatialpartition.cpp",
+   "line": 3168,
+   "column": 59,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type '__size_t' (aka 'unsigned long')",
+   "line_text": "Msg( \"Handle Count %d (%d bytes)\\n\", m_aHandles.Count(), m_aHandles.Count() * ( sizeof(EntityInfo_t) + 2 * sizeof(SpatialPartitionHandle_t) ) );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/sv_main.cpp",
+   "line": 1675,
+   "column": 9,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type 'size_t' (aka 'unsigned long')",
+   "line_text": "ApproximateProcessMemoryUsage() / ( 1024 * 1024 ), sv_memlimit.GetInt(),",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/sv_main.cpp",
+   "line": 1680,
+   "column": 97,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type 'size_t' (aka 'unsigned long')",
+   "line_text": "Warning( \"Server shutting down because of using %dMB with an sv_memory_limit of %dMB\\n\", ApproximateProcessMemoryUsage() / ( 1024 * 1024 ), sv_memlimit.GetInt() );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/sv_main.cpp",
+   "line": 1691,
+   "column": 7,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type 'size_t' (aka 'unsigned long')",
+   "line_text": "ApproximateProcessMemoryUsage() / ( 1024 * 1024 ), sv_memlimit.GetInt() );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/sv_packedentities.cpp",
+   "line": 56,
+   "column": 79,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type '__ptrdiff_t' (aka 'long')",
+   "line_text": "Host_Error(\"SV_EnsurePrivateData: pEdict->pvPrivateData==NULL (ent %d).\\n\", pEdict - sv.edicts);",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/tmessage.cpp",
+   "line": 196,
+   "column": 27,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "Q_strncpy( buf, pStart, len );",
+   "width": "from intp",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "engine/vgui_drawtreepanel.cpp",
+   "line": 379,
+   "column": 56,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'unsigned int' but the argument has type 'vgui::VPANEL' (aka 'unsigned long long')",
+   "line_text": "Q_snprintf( str, sizeof( str ), \"%s - [0x%x]\", name, current );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "filesystem/QueuedLoader.cpp",
+   "line": 492,
+   "column": 61,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'unsigned int' but the argument has type 'ThreadId_t' (aka 'unsigned long long')",
+   "line_text": "Msg( \"QueuedLoader: Computation:%8.8x, Size:%7d %s%s\\n\", ThreadGetCurrentId(), nSize, pLateString, szFilename );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "dedicated:dedicated",
+    "hl2:filesystem_stdio",
+    "portal-dxvk:filesystem_stdio",
+    "portal-native:filesystem_stdio",
+    "portal2-native:filesystem_stdio",
+    "tests:filesystem_stdio",
+    "tools:filesystem_stdio"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tests",
+    "tools"
+   ],
+   "tus": 7,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "filesystem/linux_support.cpp",
+   "line": 164,
+   "column": 22,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "dat->numMatches = n;",
+   "width": "from intp",
+   "targets": [
+    "dedicated:dedicated",
+    "hl2:filesystem_stdio",
+    "portal-dxvk:filesystem_stdio",
+    "portal-native:filesystem_stdio",
+    "portal2-native:filesystem_stdio",
+    "tests:filesystem_stdio",
+    "tools:filesystem_stdio",
+    "tools:vbsp",
+    "tools:vrad",
+    "tools:vvis"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tests",
+    "tools"
+   ],
+   "tus": 10,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/client/c_rope.cpp",
+   "line": 196,
+   "column": 87,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type 'size_t' (aka 'unsigned long')",
+   "line_text": "Warning( \"Overflowed rope queued rendering memory stack. Needed %d, have %d/%d\\n\", bytes, iMaxSize - m_QueuedRopeMemory[m_nCurrentStack].GetUsed(), iMaxSize );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "hl2:client",
+    "portal-dxvk:client",
+    "portal-native:client",
+    "portal2-native:client"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/client/c_rope.cpp",
+   "line": 1694,
+   "column": 23,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "data.m_nMaterial = (intp)this;",
+   "width": "from intp",
+   "targets": [
+    "hl2:client",
+    "portal-dxvk:client",
+    "portal-native:client",
+    "portal2-native:client"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/client/clientleafsystem.cpp",
+   "line": 1348,
+   "column": 57,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'CBucketHandlePram' (aka 'int')",
+   "line_text": "unsigned short idx = m_RenderablesInLeaf.FirstElement(leaf);",
+   "width": "from intp",
+   "targets": [
+    "hl2:client",
+    "portal-dxvk:client",
+    "portal-native:client",
+    "portal2-native:client"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/client/portal2/gameui/portal2/vsaveloadgamedialog.cpp",
+   "line": 1696,
+   "column": 29,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'unsigned int' but the argument has type 'time_t' (aka 'long')",
+   "line_text": "savename = CFmtStr( \"%u\", currentTime );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "portal2-native:client"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/client/proxyplayer.cpp",
+   "line": 413,
+   "column": 20,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "int playerindex = (intp)pC_BaseEntity;",
+   "width": "from intp",
+   "targets": [
+    "hl2:client",
+    "portal-dxvk:client",
+    "portal-native:client",
+    "portal2-native:client"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/server/ai_basenpc.h",
+   "line": 693,
+   "column": 65,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'AI_TaskFailureCode_t' (aka 'int')",
+   "line_text": "void\t\t\t\tTaskFail( const char *pszGeneralFailText )\t{ TaskFail( MakeFailCode( pszGeneralFailText ) ); }",
+   "width": "from intp",
+   "targets": [
+    "dedicated:server",
+    "hl2:server",
+    "portal-dxvk:server",
+    "portal-native:server",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 870,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/server/ai_behavior_follow.cpp",
+   "line": 141,
+   "column": 16,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "return it->slot;",
+   "width": "from intp",
+   "targets": [
+    "dedicated:server",
+    "hl2:server",
+    "portal-dxvk:server",
+    "portal-native:server",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/server/ai_behavior_follow.cpp",
+   "line": 2670,
+   "column": 36,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "pGroup->slotUsage.Clear( pBest->slot );",
+   "width": "from intp",
+   "targets": [
+    "dedicated:server",
+    "hl2:server",
+    "portal-dxvk:server",
+    "portal-native:server",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/server/ai_behavior_follow.cpp",
+   "line": 2741,
+   "column": 28,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "pGroup->slotUsage.Clear( slot );",
+   "width": "from intp",
+   "targets": [
+    "dedicated:server",
+    "hl2:server",
+    "portal-dxvk:server",
+    "portal-native:server",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/server/ai_hint.cpp",
+   "line": 753,
+   "column": 22,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "return gm_AllHints[i];",
+   "width": "from intp",
+   "targets": [
+    "dedicated:server",
+    "hl2:server",
+    "portal-dxvk:server",
+    "portal-native:server",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/server/ai_navigator.cpp",
+   "line": 1234,
+   "column": 31,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "return GetNetwork()->GetNode((intp)node)->GetPosition(GetHullType());",
+   "width": "from intp",
+   "targets": [
+    "dedicated:server",
+    "hl2:server",
+    "portal-dxvk:server",
+    "portal-native:server",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/server/ai_navigator.cpp",
+   "line": 1355,
+   "column": 15,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'AI_TaskFailureCode_t' (aka 'int')",
+   "line_text": "OnNavFailed( MakeFailCode( pszGeneralFailText ), bMovement );",
+   "width": "from intp",
+   "targets": [
+    "dedicated:server",
+    "hl2:server",
+    "portal-dxvk:server",
+    "portal-native:server",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/server/ai_senses.cpp",
+   "line": 603,
+   "column": 46,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "iCurrent = CSoundEnt::SoundPointerForIndex( iCurrent )->m_iNextAudible;",
+   "width": "from intp",
+   "targets": [
+    "dedicated:server",
+    "hl2:server",
+    "portal-dxvk:server",
+    "portal-native:server",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/server/ai_senses.cpp",
+   "line": 611,
+   "column": 42,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "return CSoundEnt::SoundPointerForIndex( iCurrent );",
+   "width": "from intp",
+   "targets": [
+    "dedicated:server",
+    "hl2:server",
+    "portal-dxvk:server",
+    "portal-native:server",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/server/ai_squad.cpp",
+   "line": 428,
+   "column": 41,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "if ( !IsSilentMember( m_SquadMembers[i] ) )",
+   "width": "from intp",
+   "targets": [
+    "dedicated:server",
+    "hl2:server",
+    "portal-dxvk:server",
+    "portal-native:server",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/server/ai_squad.cpp",
+   "line": 438,
+   "column": 24,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "return m_SquadMembers[i];",
+   "width": "from intp",
+   "targets": [
+    "dedicated:server",
+    "hl2:server",
+    "portal-dxvk:server",
+    "portal-native:server",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/server/episodic/npc_hunter.cpp",
+   "line": 1299,
+   "column": 64,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'AI_TaskFailureCode_t' (aka 'int')",
+   "line_text": "void\t\t\tTaskFail( const char *pszGeneralFailText )\t{ TaskFail( MakeFailCode( pszGeneralFailText ) ); }",
+   "width": "from intp",
+   "targets": [
+    "dedicated:server",
+    "portal-dxvk:server",
+    "portal-native:server"
+   ],
+   "configs": [
+    "dedicated",
+    "portal-dxvk",
+    "portal-native"
+   ],
+   "tus": 3,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/server/hl2/npc_metropolice.cpp",
+   "line": 2978,
+   "column": 24,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "m_nIdleChatterType = (intp)data;",
+   "width": "from intp",
+   "targets": [
+    "dedicated:server",
+    "hl2:server",
+    "portal-dxvk:server",
+    "portal-native:server"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/server/util.cpp",
+   "line": 203,
+   "column": 52,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type 'size_t' (aka 'unsigned long')",
+   "line_text": "Msg( \" %s: %d\", m_Factories.GetElementName( i ), m_Factories[i]->GetEntitySize() );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "dedicated:server",
+    "hl2:server",
+    "portal-dxvk:server",
+    "portal-native:server",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/shared/portal2/portal_player_shared.cpp",
+   "line": 1966,
+   "column": 33,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type '__ptrdiff_t' (aka 'long')",
+   "line_text": "DevMsg( \"Paint Power #%d\\n\", iter - begin );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "portal2-native:client",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 2,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/shared/portal2/portal_player_shared.cpp",
+   "line": 2101,
+   "column": 39,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type '__ptrdiff_t' (aka 'long')",
+   "line_text": "DevMsg( \"Paint Power Count: %d\\n\", touchedPowerRange.second - touchedPowerRange.first );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "portal2-native:client",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 2,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "game/shared/portal2/portal_player_shared.cpp",
+   "line": 2123,
+   "column": 41,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type '__ptrdiff_t' (aka 'long')",
+   "line_text": "DevMsg( \"Paint Power Count: %d\\n\", touchedPowerRange.second - touchedPowerRange.first );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "portal2-native:client",
+    "portal2-native:server"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 2,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "materialsystem/cmatrendercontext.cpp",
+   "line": 2152,
+   "column": 21,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "return (intp)pMat1 - (intp)pMat2;",
+   "width": "from intp",
+   "targets": [
+    "dedicated:materialsystem",
+    "hl2:materialsystem",
+    "portal-dxvk:materialsystem",
+    "portal-native:materialsystem",
+    "portal2-native:materialsystem",
+    "tools:materialsystem"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tools"
+   ],
+   "tus": 6,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "materialsystem/shaderapidx9/shaderdevicedx8.cpp",
+   "line": 2196,
+   "column": 133,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'unsigned long' but the argument has type 'HRESULT' (aka 'int')",
+   "line_text": "\"http://support.steampowered.com/cgi-bin/steampowered.cfg/php/enduser/std_adp.php?p_faqid=772\\n\", IsOpenGL() ? \"OpenGL\" : \"D3D\", hr, pszMoreInfo );",
+   "width": "8 vs 4 bytes",
+   "targets": [
+    "portal-dxvk:shaderapidx9"
+   ],
+   "configs": [
+    "portal-dxvk"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "materialsystem/shaderapidx9/shaderdevicedx8.cpp",
+   "line": 2201,
+   "column": 133,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'unsigned long' but the argument has type 'HRESULT' (aka 'int')",
+   "line_text": "\"http://support.steampowered.com/cgi-bin/steampowered.cfg/php/enduser/std_adp.php?p_faqid=772\\n\", IsOpenGL() ? \"OpenGL\" : \"D3D\", hr );",
+   "width": "8 vs 4 bytes",
+   "targets": [
+    "portal-dxvk:shaderapidx9"
+   ],
+   "configs": [
+    "portal-dxvk"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "materialsystem/shaderapidx9/shaderdevicedx8.cpp",
+   "line": 2664,
+   "column": 59,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'unsigned long' but the argument has type 'HRESULT' (aka 'int')",
+   "line_text": "Warning( \"ResizeWindow: Reset failed, hr = 0x%08lX.\\n\", hr );",
+   "width": "8 vs 4 bytes",
+   "targets": [
+    "portal-dxvk:shaderapidx9"
+   ],
+   "configs": [
+    "portal-dxvk"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "materialsystem/shaderapidx9/vertexshaderdx8.cpp",
+   "line": 3514,
+   "column": 82,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'unsigned int' but the argument has type 'VertexShader_t' (aka 'long long')",
+   "line_text": "Msg( \"vsh 0x%8.8x: static combo:%9d dynamic combos:%6d refcount:%4d \\\"%s\\\"\\n\", vshIndex,",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "portal-dxvk:shaderapidx9"
+   ],
+   "configs": [
+    "portal-dxvk"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "materialsystem/shaderapidx9/vertexshaderdx8.cpp",
+   "line": 3530,
+   "column": 82,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'unsigned int' but the argument has type 'PixelShader_t' (aka 'long long')",
+   "line_text": "Msg( \"psh 0x%8.8x: static combo:%9d dynamic combos:%6d refcount:%4d \\\"%s\\\"\\n\", pshIndex,",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "portal-dxvk:shaderapidx9"
+   ],
+   "configs": [
+    "portal-dxvk"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "particles/particles.cpp",
+   "line": 1009,
+   "column": 19,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "m_nRandomSeed = (intp)this;",
+   "width": "from intp",
+   "targets": [
+    "dedicated:particles",
+    "hl2:particles",
+    "portal-dxvk:particles",
+    "portal-native:particles",
+    "portal2-native:particles"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/XUnzip.cpp",
+   "line": 131,
+   "column": 17,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
+   "line_text": "*nread = read( (intptr_t) handle, outbuf, toread );",
+   "width": "from intptr_t",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/XUnzip.cpp",
+   "line": 136,
+   "column": 20,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
+   "line_text": "*written = write( (intptr_t) handle, buf, towrite );",
+   "width": "from intptr_t",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/XUnzip.cpp",
+   "line": 2778,
+   "column": 31,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
+   "line_text": "h = (void*)(intptr_t) dup( (intptr_t)hf );",
+   "width": "from intptr_t",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/XUnzip.cpp",
+   "line": 2806,
+   "column": 10,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
+   "line_text": "fstat( (intptr_t)h, &buf );",
+   "width": "from intptr_t",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/XUnzip.cpp",
+   "line": 2819,
+   "column": 25,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
+   "line_text": "lf->initial_offset = SetFilePointer(h,0,NULL,FILE_CURRENT);",
+   "width": "from intptr_t",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/XUnzip.cpp",
+   "line": 2838,
+   "column": 26,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
+   "line_text": "if (stream->is_handle) CloseHandle(stream->h);",
+   "width": "from intptr_t",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/XUnzip.cpp",
+   "line": 2849,
+   "column": 52,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
+   "line_text": "{ if (stream->is_handle && stream->canseek) return SetFilePointer(stream->h,0,NULL,FILE_CURRENT)-stream->initial_offset;",
+   "width": "from intptr_t",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/XUnzip.cpp",
+   "line": 2856,
+   "column": 27,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
+   "line_text": "{ if (whence==SEEK_SET) SetFilePointer(stream->h,stream->initial_offset+offset,0,FILE_BEGIN);",
+   "width": "from intptr_t",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/XUnzip.cpp",
+   "line": 2857,
+   "column": 32,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
+   "line_text": "else if (whence==SEEK_CUR) SetFilePointer(stream->h,offset,NULL,FILE_CURRENT);",
+   "width": "from intptr_t",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/XUnzip.cpp",
+   "line": 2858,
+   "column": 32,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
+   "line_text": "else if (whence==SEEK_END) SetFilePointer(stream->h,offset,NULL,FILE_END);",
+   "width": "from intptr_t",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/XUnzip.cpp",
+   "line": 4235,
+   "column": 9,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
+   "line_text": "fstat( (intptr_t)h, &sbuf );",
+   "width": "from intptr_t",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/XUnzip.cpp",
+   "line": 4256,
+   "column": 12,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
+   "line_text": "futimes( (intptr_t)h, tv );",
+   "width": "from intptr_t",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/XUnzip.cpp",
+   "line": 4260,
+   "column": 3,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
+   "line_text": "CloseHandle(h);",
+   "width": "from intptr_t",
+   "targets": [
+    "dedicated:engine",
+    "hl2:engine",
+    "portal-dxvk:engine",
+    "portal-native:engine",
+    "portal2-native:engine"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/basehandle.h",
+   "line": 118,
+   "column": 17,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'uintp' (aka 'unsigned long long') to 'int'",
+   "line_text": "return m_Index >> NUM_ENT_ENTRY_BITS;",
+   "width": "from uintp",
+   "targets": [
+    "dedicated:engine",
+    "dedicated:server",
+    "dedicated:studiorender",
+    "dedicated:tier3",
+    "dedicated:vphysics",
+    "dedicated:vphysics_box3d",
+    "hl2:client",
+    "hl2:engine",
+    "hl2:matsys_controls",
+    "hl2:server",
+    "hl2:studiorender",
+    "hl2:tier3",
+    "hl2:vphysics",
+    "hl2:vphysics_box3d",
+    "hl2:vphysics_conformance",
+    "portal-dxvk:client",
+    "portal-dxvk:engine",
+    "portal-dxvk:matsys_controls",
+    "portal-dxvk:server",
+    "portal-dxvk:studiorender",
+    "portal-dxvk:tier3",
+    "portal-dxvk:vphysics",
+    "portal-dxvk:vphysics_box3d",
+    "portal-dxvk:vphysics_conformance",
+    "portal-native:client",
+    "portal-native:engine",
+    "portal-native:matsys_controls",
+    "portal-native:server",
+    "portal-native:studiorender",
+    "portal-native:tier3",
+    "portal-native:vphysics",
+    "portal-native:vphysics_box3d",
+    "portal-native:vphysics_conformance",
+    "portal2-native:client",
+    "portal2-native:engine",
+    "portal2-native:matchmaking_portal2",
+    "portal2-native:matsys_controls",
+    "portal2-native:server",
+    "portal2-native:studiorender",
+    "portal2-native:tier3",
+    "portal2-native:vphysics",
+    "portal2-native:vphysics_box3d",
+    "portal2-native:vphysics_conformance",
+    "tests:tier3",
+    "tools:vbsp",
+    "tools:vphysics",
+    "tools:vrad",
+    "tools:vvis"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tests",
+    "tools"
+   ],
+   "tus": 6005,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "public/tier1/utlfixedmemory.h",
+   "line": 81,
+   "column": 44,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "return Iterator_t( pHeader, it.m_nIndex + 1 );",
+   "width": "from intp",
+   "targets": [
+    "dedicated:datacache",
+    "dedicated:engine",
+    "dedicated:materialsystem",
+    "dedicated:server",
+    "dedicated:studiorender",
+    "dedicated:tier1",
+    "hl2:client",
+    "hl2:datacache",
+    "hl2:datamodel",
+    "hl2:engine",
+    "hl2:materialsystem",
+    "hl2:server",
+    "hl2:studiorender",
+    "hl2:tier1",
+    "portal-dxvk:client",
+    "portal-dxvk:datacache",
+    "portal-dxvk:datamodel",
+    "portal-dxvk:engine",
+    "portal-dxvk:materialsystem",
+    "portal-dxvk:server",
+    "portal-dxvk:shaderapidx9",
+    "portal-dxvk:studiorender",
+    "portal-dxvk:tier1",
+    "portal-native:client",
+    "portal-native:datacache",
+    "portal-native:datamodel",
+    "portal-native:engine",
+    "portal-native:materialsystem",
+    "portal-native:server",
+    "portal-native:studiorender",
+    "portal-native:tier1",
+    "portal2-native:client",
+    "portal2-native:datacache",
+    "portal2-native:datamodel",
+    "portal2-native:engine",
+    "portal2-native:materialsystem",
+    "portal2-native:server",
+    "portal2-native:studiorender",
+    "portal2-native:tier1",
+    "portal2-native:vscript",
+    "tests:tier1",
+    "tools:materialsystem",
+    "tools:tier1"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tests",
+    "tools"
+   ],
+   "tus": 107,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/BaseGamesPage.cpp",
+   "line": 1686,
+   "column": 31,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'uintp' (aka 'unsigned long long') to 'int'",
+   "line_text": "int serverID = m_pGameList->GetItemUserData(m_pGameList->GetSelectedItem(i));",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/BaseGamesPage.cpp",
+   "line": 1855,
+   "column": 29,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'uintp' (aka 'unsigned long long') to 'int'",
+   "line_text": "serverID = m_pGameList->GetItemUserData( pQuickPanel->GetListID() );",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/BaseGamesPage.cpp",
+   "line": 1869,
+   "column": 27,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'uintp' (aka 'unsigned long long') to 'int'",
+   "line_text": "serverID = m_pGameList->GetItemUserData( m_pGameList->GetSelectedItem(0) );",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/DialogAddServer.cpp",
+   "line": 150,
+   "column": 39,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'uintp' (aka 'unsigned long long') to 'int'",
+   "line_text": "int serverID = m_pDiscoveredGames->GetItemUserData( m_pDiscoveredGames->GetSelectedItem(0) );",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/FavoriteGames.cpp",
+   "line": 132,
+   "column": 52,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'uintp' (aka 'unsigned long long') to 'int'",
+   "line_text": "int serverID = m_pGameList->GetItemData(itemID)->userData;",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/HistoryGames.cpp",
+   "line": 109,
+   "column": 52,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'uintp' (aka 'unsigned long long') to 'int'",
+   "line_text": "int serverID = m_pGameList->GetItemData(itemID)->userData;",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 17,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s1 = ServerBrowserDialog().GetServer(p1.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 18,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s2 = ServerBrowserDialog().GetServer(p2.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 40,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s1 = ServerBrowserDialog().GetServer(p1.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 41,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s2 = ServerBrowserDialog().GetServer(p2.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 71,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s1 = ServerBrowserDialog().GetServer(p1.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 72,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s2 = ServerBrowserDialog().GetServer(p2.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 94,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s1 = ServerBrowserDialog().GetServer(p1.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 95,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s2 = ServerBrowserDialog().GetServer(p2.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 120,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s1 = ServerBrowserDialog().GetServer(p1.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 121,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s2 = ServerBrowserDialog().GetServer(p2.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 138,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s1 = ServerBrowserDialog().GetServer(p1.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 139,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s2 = ServerBrowserDialog().GetServer(p2.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 159,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s1 = ServerBrowserDialog().GetServer(p1.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 160,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s2 = ServerBrowserDialog().GetServer(p2.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 177,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s1 = ServerBrowserDialog().GetServer(p1.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 178,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s2 = ServerBrowserDialog().GetServer(p2.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 220,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s1 = ServerBrowserDialog().GetServer(p1.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 221,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s2 = ServerBrowserDialog().GetServer(p2.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 238,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s1 = ServerBrowserDialog().GetServer(p1.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "serverbrowser/ServerListCompare.cpp",
+   "line": 239,
+   "column": 59,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'const uintp' (aka 'const unsigned long long') to 'unsigned int'",
+   "line_text": "newgameserver_t *s2 = ServerBrowserDialog().GetServer(p2.userData);",
+   "width": "from uintp",
+   "targets": [
+    "hl2:ServerBrowser",
+    "portal-dxvk:ServerBrowser",
+    "portal-native:ServerBrowser",
+    "portal2-native:ServerBrowser"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "tier0/threadtools.cpp",
+   "line": 177,
+   "column": 18,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'uintp' (aka 'unsigned long long') to 'unsigned int'",
+   "line_text": "unsigned nRet = (*info.pfnThread)(info.pParam);",
+   "width": "from uintp",
+   "targets": [
+    "dedicated:tier0",
+    "hl2:tier0",
+    "portal-dxvk:tier0",
+    "portal-native:tier0",
+    "portal2-native:tier0",
+    "tests:tier0",
+    "tools:tier0"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tests",
+    "tools"
+   ],
+   "tus": 7,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "tier1/kvpacker.cpp",
+   "line": 148,
+   "column": 28,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'uintptr_t' (aka 'unsigned long') to 'unsigned int'",
+   "line_text": "buffer.PutUnsignedInt( (uintptr_t)dat->GetPtr() );",
+   "width": "from uintptr_t",
+   "targets": [
+    "dedicated:tier1",
+    "hl2:tier1",
+    "portal-dxvk:tier1",
+    "portal-native:tier1",
+    "portal2-native:tier1",
+    "tests:tier1",
+    "tools:tier1"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tests",
+    "tools"
+   ],
+   "tus": 7,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "tier1/utlbuffer.cpp",
+   "line": 1791,
+   "column": 60,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "const char *pNext = V_strnistr( pCurr, \"\\r\\n\", nInCount - nCurrGet );",
+   "width": "from intp",
+   "targets": [
+    "dedicated:tier1",
+    "hl2:tier1",
+    "portal-dxvk:tier1",
+    "portal-native:tier1",
+    "portal2-native:tier1",
+    "tests:tier1",
+    "tools:tier1"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tests",
+    "tools"
+   ],
+   "tus": 7,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "tier1/utlbuffer.cpp",
+   "line": 1794,
+   "column": 33,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "outBuf.Put( pCurr, nInCount - nCurrGet );",
+   "width": "from intp",
+   "targets": [
+    "dedicated:tier1",
+    "hl2:tier1",
+    "portal-dxvk:tier1",
+    "portal-native:tier1",
+    "portal2-native:tier1",
+    "tests:tier1",
+    "tools:tier1"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tests",
+    "tools"
+   ],
+   "tus": 7,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "tier1/utlbuffer.cpp",
+   "line": 1813,
+   "column": 57,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "const char *pNext = V_strnchr( pCurr, '\\n', nInCount - nCurrGet );",
+   "width": "from intp",
+   "targets": [
+    "dedicated:tier1",
+    "hl2:tier1",
+    "portal-dxvk:tier1",
+    "portal-native:tier1",
+    "portal2-native:tier1",
+    "tests:tier1",
+    "tools:tier1"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tests",
+    "tools"
+   ],
+   "tus": 7,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "tier1/utlbuffer.cpp",
+   "line": 1816,
+   "column": 33,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "outBuf.Put( pCurr, nInCount - nCurrGet );",
+   "width": "from intp",
+   "targets": [
+    "dedicated:tier1",
+    "hl2:tier1",
+    "portal-dxvk:tier1",
+    "portal-native:tier1",
+    "portal2-native:tier1",
+    "tests:tier1",
+    "tools:tier1"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tests",
+    "tools"
+   ],
+   "tus": 7,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "tier2/keyvaluesmacros.cpp",
+   "line": 264,
+   "column": 41,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'const int'",
+   "line_text": "const int nSrcName = pkvUpdateSubKey->GetNameSymbol();",
+   "width": "from intp",
+   "targets": [
+    "dedicated:tier2",
+    "hl2:tier2",
+    "portal-dxvk:tier2",
+    "portal-native:tier2",
+    "portal2-native:tier2",
+    "tests:tier2",
+    "tools:tier2"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tests",
+    "tools"
+   ],
+   "tus": 7,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "tier2/keyvaluesmacros.cpp",
+   "line": 280,
+   "column": 39,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'const int'",
+   "line_text": "const int nDstName = pkvDstSubKey->GetNameSymbol();",
+   "width": "from intp",
+   "targets": [
+    "dedicated:tier2",
+    "hl2:tier2",
+    "portal-dxvk:tier2",
+    "portal-native:tier2",
+    "portal2-native:tier2",
+    "tests:tier2",
+    "tools:tier2"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tests",
+    "tools"
+   ],
+   "tus": 7,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "utils/vrad/lightmap.cpp",
+   "line": 802,
+   "column": 27,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type '__ptrdiff_t' (aka 'long')",
+   "line_text": "Msg( \"no samples %d\\n\", pLightInfo->face - g_pFaces );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "tools:vrad"
+   ],
+   "configs": [
+    "tools"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "utils/vrad/trace.cpp",
+   "line": 641,
+   "column": 84,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type '__size_t' (aka 'unsigned long')",
+   "line_text": "Error( \"***** ERROR! v(%u) >= ARRAYSIZE( dvertexes(%d) )!\", ( unsigned int )v, ARRAYSIZE( dvertexes ) );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "tools:vrad"
+   ],
+   "configs": [
+    "tools"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "utils/vrad/vraddisps.cpp",
+   "line": 1661,
+   "column": 55,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type '__ptrdiff_t' (aka 'long')",
+   "line_text": "Msg( \"BuildDispSamples: WARNING - no samples %d\\n\", pLightInfo->face - g_pFaces );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "tools:vrad"
+   ],
+   "configs": [
+    "tools"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vgui2/src/Scheme.cpp",
+   "line": 1010,
+   "column": 39,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "m_BorderList[i].borderSymbol = kv->GetNameSymbol();",
+   "width": "from intp",
+   "targets": [
+    "hl2:vgui2",
+    "portal-dxvk:vgui2",
+    "portal-native:vgui2",
+    "portal2-native:vgui2"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vgui2/src/Scheme.cpp",
+   "line": 1028,
+   "column": 39,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "m_BorderList[i].borderSymbol = kv->GetNameSymbol();",
+   "width": "from intp",
+   "targets": [
+    "hl2:vgui2",
+    "portal-dxvk:vgui2",
+    "portal-native:vgui2",
+    "portal2-native:vgui2"
+   ],
+   "configs": [
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 4,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vgui2/vgui_controls/MenuButton.cpp",
+   "line": 241,
+   "column": 24,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'VPANEL' (aka 'unsigned long long') to 'int'",
+   "line_text": "msg->SetInt(\"VPanel\", GetVPanel());",
+   "width": "from VPANEL",
+   "targets": [
+    "dedicated:vgui_controls",
+    "hl2:vgui_controls",
+    "portal-dxvk:vgui_controls",
+    "portal-native:vgui_controls",
+    "portal2-native:vgui_controls"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vgui2/vgui_controls/Panel.cpp",
+   "line": 4969,
+   "column": 29,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "int iMessageName = params->GetNameSymbol();",
+   "width": "from intp",
+   "targets": [
+    "dedicated:vgui_controls",
+    "hl2:vgui_controls",
+    "portal-dxvk:vgui_controls",
+    "portal-native:vgui_controls",
+    "portal2-native:vgui_controls"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vgui2/vgui_controls/Panel.cpp",
+   "line": 5166,
+   "column": 29,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "int iMessageName = params->GetNameSymbol();",
+   "width": "from intp",
+   "targets": [
+    "dedicated:vgui_controls",
+    "hl2:vgui_controls",
+    "portal-dxvk:vgui_controls",
+    "portal-native:vgui_controls",
+    "portal2-native:vgui_controls"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vphysics/main.cpp",
+   "line": 198,
+   "column": 26,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "return &m_collisionSets[index];",
+   "width": "from intp",
+   "targets": [
+    "dedicated:vphysics",
+    "hl2:vphysics",
+    "portal-dxvk:vphysics",
+    "portal-native:vphysics",
+    "portal2-native:vphysics",
+    "tools:vphysics"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tools"
+   ],
+   "tus": 6,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vphysics/main.cpp",
+   "line": 211,
+   "column": 34,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "return &m_collisionSets[index-1];",
+   "width": "from intp",
+   "targets": [
+    "dedicated:vphysics",
+    "hl2:vphysics",
+    "portal-dxvk:vphysics",
+    "portal-native:vphysics",
+    "portal2-native:vphysics",
+    "tools:vphysics"
+   ],
+   "configs": [
+    "dedicated",
+    "hl2",
+    "portal-dxvk",
+    "portal-native",
+    "portal2-native",
+    "tools"
+   ],
+   "tus": 6,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vscript/languages/squirrel/sqdbg/sqrdbg.cpp",
+   "line": 137,
+   "column": 13,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "rdbg->Hook(event_type,line,src,func);",
+   "width": "from intp",
+   "targets": [
+    "portal2-native:vscript"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vscript/languages/squirrel/sqdbg/sqrdbg.cpp",
+   "line": 137,
+   "column": 24,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "rdbg->Hook(event_type,line,src,func);",
+   "width": "from intp",
+   "targets": [
+    "portal2-native:vscript"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vscript/languages/squirrel/sqdbg/sqrdbg.cpp",
+   "line": 160,
+   "column": 56,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type 'SQInteger' (aka 'long long')",
+   "line_text": "scprintf(_SC(\"*FUNCTION [%s] %s line [%d]\\n\"),fn,src,si.line);",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "portal2-native:vscript"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vscript/languages/squirrel/sqplus/SquirrelObject.cpp",
+   "line": 403,
+   "column": 9,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'INT' (aka 'int')",
+   "line_text": "return ret;",
+   "width": "from intp",
+   "targets": [
+    "portal2-native:vscript"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vscript/languages/squirrel/sqplus/SquirrelObject.cpp",
+   "line": 490,
+   "column": 9,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'INT' (aka 'int')",
+   "line_text": "return ret;",
+   "width": "from intp",
+   "targets": [
+    "portal2-native:vscript"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vscript/languages/squirrel/sqplus/sqplus.h",
+   "line": 1931,
+   "column": 139,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "inline int            Get(TypeWrapper<int>,HSQUIRRELVM v,int idx)             { intp i; SQPLUS_CHECK_GET(sq_getinteger(v,idx,&i)); return i; }",
+   "width": "from intp",
+   "targets": [
+    "portal2-native:vscript"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 5,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vscript/languages/squirrel/squirrel/sqdebug.cpp",
+   "line": 80,
+   "column": 53,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type 'SQInteger' (aka 'long long')",
+   "line_text": "scsprintf(_sp(rsl(NUMBER_MAX_CHAR+1)), _SC(\"%d\"), _integer(o));",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "portal2-native:vscript"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vscript/languages/squirrel/squirrel/sqfuncstate.cpp",
+   "line": 86,
+   "column": 41,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type 'SQInteger' (aka 'long long')",
+   "line_text": "case OT_INTEGER: scprintf(_SC(\"{%d}\"),_integer(o));break;",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "portal2-native:vscript"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vscript/languages/squirrel/squirrel/sqvm.cpp",
+   "line": 265,
+   "column": 51,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type 'SQInteger' (aka 'long long')",
+   "line_text": "scsprintf(_sp(rsl(NUMBER_MAX_CHAR+1)),_SC(\"%d\"),_integer(o));",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "portal2-native:vscript"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vscript/languages/squirrel/vsquirrel/vsquirrel.cpp",
+   "line": 1013,
+   "column": 24,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'unsigned int'",
+   "line_text": "if ( m_TypeMap.Find( (intptr_t)pClassDesc ) != m_TypeMap.InvalidHandle() )",
+   "width": "from intptr_t",
+   "targets": [
+    "portal2-native:vscript"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vscript/languages/squirrel/vsquirrel/vsquirrel.cpp",
+   "line": 1064,
+   "column": 21,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'unsigned int'",
+   "line_text": "m_TypeMap.Insert( (intptr_t)pClassDesc, newClass._unVal.pClass );",
+   "width": "from intptr_t",
+   "targets": [
+    "portal2-native:vscript"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vscript/languages/squirrel/vsquirrel/vsquirrel.cpp",
+   "line": 1073,
+   "column": 62,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'unsigned int'",
+   "line_text": "sq_pushobject( m_hVM, SQObjectPtr(m_TypeMap[m_TypeMap.Find((intptr_t)pDesc)]) );",
+   "width": "from intptr_t",
+   "targets": [
+    "portal2-native:vscript"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vscript/languages/squirrel/vsquirrel/vsquirrel.cpp",
+   "line": 1377,
+   "column": 10,
+   "diagnostic": "-Wshorten-64-to-32:pointer-sized",
+   "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
+   "line_text": "return nReturnValue;",
+   "width": "from intp",
+   "targets": [
+    "portal2-native:vscript"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "vscript/languages/squirrel/vsquirrel/vsquirrel.cpp",
+   "line": 1492,
+   "column": 50,
+   "diagnostic": "-Wformat",
+   "message": "format specifies type 'int' but the argument has type 'SQInteger' (aka 'long long')",
+   "line_text": "Msg( \"%s [%d]\\n\", res._unVal.pString->_val, value._unVal.pRefCounted->_uiRef );",
+   "width": "4 vs 8 bytes",
+   "targets": [
+    "portal2-native:vscript"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  }
+ ],
+ "blocking_errors": [
+  {
+   "file": "video/video_bink/bink_material.cpp",
+   "line": 930,
+   "column": 17,
+   "diagnostic": "error:other",
+   "message": "no matching function for call to 'av_image_alloc'",
+   "line_text": "size_t size = av_image_alloc(m_AVVideoData, m_AVVideoLinesize,",
+   "targets": [
+    "portal2-native:video_bink"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  },
+  {
+   "file": "video/video_bink/bink_material.cpp",
+   "line": 933,
+   "column": 15,
+   "diagnostic": "error:other",
+   "message": "assigning to 'uint8_t *' (aka 'unsigned char *') from incompatible type 'void *'",
+   "line_text": "m_RGBData = calloc( m_VideoFrameWidth*m_VideoFrameHeight*3, 1 );",
+   "targets": [
+    "portal2-native:video_bink"
+   ],
+   "configs": [
+    "portal2-native"
+   ],
+   "tus": 1,
+   "classification": "unreviewed"
+  }
+ ]
+}

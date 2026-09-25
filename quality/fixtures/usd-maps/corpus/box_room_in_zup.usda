@@ -1,0 +1,55 @@
+#usda 1.0
+(
+    defaultPrim = "Room"
+    doc = """corpus-usd-rooms v1 / box_room_in_zup (hand-written, 2026-09-25).
+Z-up inches (metersPerUnit 0.0254). A slab, a board under a rotateZ 30
+parent, and a leftHanded box whose faces are authored clockwise from outside.
+The expected values live in tools/quality/tests/test_usd_corpus_rooms.py
+(BOX_IN); see fixture.json."""
+    metersPerUnit = 0.0254
+    upAxis = "Z"
+)
+
+def Xform "Room"
+{
+    # Slab: x 0..120, y 0..96, z -2..0 in.
+    def Mesh "Slab"
+    {
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [0, 3, 2, 1, 4, 5, 6, 7, 0, 1, 5, 4, 3, 7, 6, 2, 0, 4, 7, 3, 1, 2, 6, 5]
+        point3f[] points = [(0, 0, -2), (120, 0, -2), (120, 96, -2), (0, 96, -2), (0, 0, 0), (120, 0, 0), (120, 96, 0), (0, 96, 0)]
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Xform "Shelf"
+    {
+        double3 xformOp:translate = (60, 48, 0)
+        float xformOp:rotateZ = 30
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+
+        # Board: x -24..24, y -6..6, z -1..1 in, lifted 36 in.
+        def Mesh "Board"
+        {
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0, 3, 2, 1, 4, 5, 6, 7, 0, 1, 5, 4, 3, 7, 6, 2, 0, 4, 7, 3, 1, 2, 6, 5]
+            point3f[] points = [(-24, -6, -1), (24, -6, -1), (24, 6, -1), (-24, 6, -1), (-24, -6, 1), (24, -6, 1), (24, 6, 1), (-24, 6, 1)]
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (0, 0, 36)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    # Box x 0..10, y 0..10, z 0..10 in with every face's corners reversed
+    # (clockwise seen from outside) and orientation leftHanded: the faces
+    # still face outward.
+    def Mesh "LeftHanded"
+    {
+        int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [1, 2, 3, 0, 7, 6, 5, 4, 4, 5, 1, 0, 2, 6, 7, 3, 3, 7, 4, 0, 5, 6, 2, 1]
+        uniform token orientation = "leftHanded"
+        point3f[] points = [(0, 0, 0), (10, 0, 0), (10, 10, 0), (0, 10, 0), (0, 0, 10), (10, 0, 10), (10, 10, 10), (0, 10, 10)]
+        uniform token subdivisionScheme = "none"
+        double3 xformOp:translate = (100, 10, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}

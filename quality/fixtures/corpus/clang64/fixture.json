@@ -1,0 +1,45 @@
+{
+  "area": "clang64",
+  "description": "Recorded Clang/64-bit hazard inventory (sites.json) and the seeded negative-control TU (seeded/). Re-record with the provenance command after reviewing a ratchet failure.",
+  "files": {
+    "seeded/vrad_enum_context.cpp": "77b5e3b390567e6bf9a5be558ba68b76260993022ad9a5e76c439d43dc352659",
+    "sites.json": "4fef72a1c5b7b587a1feeb401b55ddc2778a1f94cb222d582c11cfea335db029"
+  },
+  "provenance": {
+    "check": "python3 tools/quality/conformance.py check --suite corpus.clang64.sweep --out -",
+    "dirty": true,
+    "dirty_digest": "f32bc83fb0ea0a0c1d938f7a0523b4297ae6908ecb99ff7ba501337d754a3799",
+    "inputs": {},
+    "python": "3.14.7",
+    "python_executable": "/usr/bin/python3",
+    "reproduce": "cd /home/john/src/source-engine-corpus && /usr/bin/python3 tools/quality/corpus/clang64_sweep.py record",
+    "schema": "corpus-provenance/v1",
+    "setup": "python3 tools/quality/corpus/clang64_sweep.py setup",
+    "source_revision": "294066c6572fdd34a0aef28b58d16013d31287ed",
+    "submodules": {
+      "box3d": {
+        "revision": "9e5a4cde862fba95ff19f096b79567f3ea6c01fd",
+        "state": "clean"
+      },
+      "ivp": {
+        "revision": "47533475e01cbff05fbc3bbe8b4edc485f292cea",
+        "state": "clean"
+      },
+      "lib": {
+        "revision": "86a66ee92d9fda0a09f54a435e850faa7ab5d0fa",
+        "state": "clean"
+      },
+      "thirdparty": {
+        "revision": "c5b901ecef515ea068fa8b8a19ca5cd5353905cb",
+        "state": "clean"
+      }
+    },
+    "suite": "corpus.clang64.sweep",
+    "tools": {
+      "clang++": "clang version 22.1.8 (Fedora 22.1.8-4.fc44)",
+      "python3": "3.14.7"
+    }
+  },
+  "schema": "corpus-fixture/v1",
+  "version": 1
+}

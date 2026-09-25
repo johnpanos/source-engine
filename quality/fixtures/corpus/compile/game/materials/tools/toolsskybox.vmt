@@ -1,0 +1,6 @@
+"UnlitGeneric"
+{
+    "$surfaceprop" "default"
+    "%compileSky" "1"
+    "%noportal" "1"
+}

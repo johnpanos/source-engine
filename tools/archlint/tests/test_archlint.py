@@ -88,6 +88,87 @@ class ArchlintTests(unittest.TestCase):
         self.assertEqual(1, len(new))
         self.assertEqual(1, len(stale))
 
+    def exception_manifest(self, **overrides) -> dict:
+        self.write("RFC/record.md", "# record\n")
+        entry = {
+            "path": "engine/glue.cpp",
+            "rule": "ARCH101",
+            "count": 2,
+            "reason": "test glue",
+            "owner": "R41",
+            "tracking": "RFC/record.md#glue",
+            "removal": "delete when the named host exists",
+        }
+        entry.update(overrides)
+        return dict(MANIFEST, loaderExceptions={"entries": [entry]})
+
+    def test_exception_covers_exactly_its_count(self) -> None:
+        manifest = self.exception_manifest()
+        self.write("engine/glue.cpp", 'void f() { Sys_LoadModule("a"); Sys_LoadModule("b"); }\n')
+        new, _ = archlint.compare_baseline(archlint.scan(self.root, manifest), {"entries": []})
+        remaining, errors = archlint.apply_loader_exceptions(new, manifest)
+        self.assertEqual(([], []), (remaining, errors))
+        self.assertEqual([], archlint.validate_loader_exceptions(self.root, manifest))
+
+    def test_exception_count_mismatch_fails_both_ways(self) -> None:
+        manifest = self.exception_manifest()
+        for body in ('Sys_LoadModule("a");',
+                     'Sys_LoadModule("a"); Sys_LoadModule("b"); Sys_LoadModule("c");'):
+            with self.subTest(body=body):
+                self.write("engine/glue.cpp", f"void f() {{ {body} }}\n")
+                new, _ = archlint.compare_baseline(archlint.scan(self.root, manifest), {"entries": []})
+                remaining, errors = archlint.apply_loader_exceptions(new, manifest)
+                self.assertEqual(len(new), len(remaining))
+                self.assertTrue(any("allows exactly 2" in error for error in errors))
+
+    def test_exception_does_not_cover_another_rule_or_file(self) -> None:
+        manifest = self.exception_manifest()
+        self.write("engine/glue.cpp", 'void f() { Sys_LoadModule("a"); Sys_LoadModule("b"); }\n')
+        self.write("engine/sibling.cpp", 'void g() { Sys_LoadModule("c"); Sys_GetFactory(m); }\n')
+        new, _ = archlint.compare_baseline(archlint.scan(self.root, manifest), {"entries": []})
+        remaining, errors = archlint.apply_loader_exceptions(new, manifest)
+        self.assertEqual([], errors)
+        self.assertEqual({("engine/sibling.cpp", "ARCH101"), ("engine/sibling.cpp", "ARCH102")},
+                         {(item.path, item.rule) for item in remaining})
+
+    def test_stale_exception_fails(self) -> None:
+        manifest = self.exception_manifest()
+        self.write("engine/glue.cpp", "void f() {}\n")
+        _, errors = archlint.apply_loader_exceptions([], manifest)
+        self.assertTrue(any("stale ARCH101 exception" in error for error in errors))
+        # A --changed run that did not select the file does not judge it.
+        self.assertEqual([], archlint.apply_loader_exceptions([], manifest, {"other.cpp"})[1])
+
+    def test_malformed_exceptions_are_rejected(self) -> None:
+        self.write("engine/glue.cpp", "void f() {}\n")
+        cases = {
+            "glob": {"path": "engine/*.cpp"},
+            "directory": {"path": "engine/"},
+            "missing file": {"path": "engine/absent.cpp"},
+            "rule": {"rule": "ARCH999"},
+            "count": {"count": 0},
+            "owner": {"owner": "someone"},
+            "reason": {"reason": " "},
+            "removal": {"removal": ""},
+            "tracking": {"tracking": "RFC/absent.md"},
+        }
+        for name, override in cases.items():
+            with self.subTest(case=name):
+                errors = archlint.validate_loader_exceptions(
+                    self.root, self.exception_manifest(**override))
+                self.assertTrue(errors, name)
+        # A path that exists but is spelled as a glob is still rejected as a glob.
+        self.write("engine/*.cpp", "void g() {}\n")
+        errors = archlint.validate_loader_exceptions(
+            self.root, self.exception_manifest(path="engine/*.cpp"))
+        self.assertTrue(any("not a glob" in error for error in errors))
+        incomplete = dict(MANIFEST, loaderExceptions={"entries": [{"path": "engine/glue.cpp"}]})
+        self.assertTrue(archlint.validate_loader_exceptions(self.root, incomplete))
+        twice = self.exception_manifest()
+        twice["loaderExceptions"]["entries"].append(dict(twice["loaderExceptions"]["entries"][0]))
+        self.assertTrue(any("duplicate" in error
+                            for error in archlint.validate_loader_exceptions(self.root, twice)))
+
     def test_create_interface_fn_is_allowed_only_in_legacy_package(self) -> None:
         self.write("legacy/interface.h", "CreateInterfaceFn Sys_GetFactory();\n")
         self.write("engine/new.h", "CreateInterfaceFn NewFactory();\n")

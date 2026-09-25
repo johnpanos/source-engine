@@ -1,0 +1,1569 @@
+{
+  "analytic_bounds": {
+    "energy_ratio_max": 1.01,
+    "energy_rise_fraction": 0.01,
+    "geometry_floor_z": -1.0,
+    "rest_gain_max": 0.1,
+    "rest_speed_max": 1.0,
+    "rest_travel_max": 0.5
+  },
+  "description": "IVP reference ranges for the Box3D restitution scenes (tools/quality/corpus/physics_restitution.py). Each case lists its variants, the IVP observations per variant, the ranges derived from them by the tolerance policy, and where IVP itself holds each gameplay clause. No Box3D measurement is recorded here.",
+  "gameplay_bounds": {
+    "dynamics.held-floor-quiet": {
+      "quiet_angular_lt": 360.0,
+      "travel_lt": 30.0
+    },
+    "dynamics.tumble-travel-bounded": {
+      "travel_lt": 48.0
+    }
+  },
+  "provenance": {
+    "content": {
+      "models/player/chell.phy": {
+        "origin": "portal_pak_dir.vpk:models/player/chell.phy",
+        "sha256": "deeb61617f79747db2a0e5b21da1d96b544fdb2f4af61e7edd88352c69507fae"
+      },
+      "models/props/metal_box.phy": {
+        "origin": "portal_pak_dir.vpk:models/props/metal_box.phy",
+        "sha256": "db11db575942e217cff35d6ff13e35975e903ac526ef37d32186c9586f1643ce"
+      },
+      "scripts/surfaceproperties.txt": {
+        "origin": "hl2:scripts/surfaceproperties.txt",
+        "sha256": "b75f463e4a5b351c0f9a155c100659ae0384003ae910d092a07398e611056e32"
+      },
+      "scripts/surfaceproperties_hl2.txt": {
+        "origin": "hl2:scripts/surfaceproperties_hl2.txt",
+        "sha256": "6eb6c622f9d566515d0909d610c6f7213d327ed69545807696d74162ee3c0280"
+      },
+      "scripts/surfaceproperties_manifest.txt": {
+        "origin": "portal_pak_dir.vpk:scripts/surfaceproperties_manifest.txt",
+        "sha256": "f88a59d766bc98449a5c2ae9515a8aafc67a9081de8b48ee8dadcd31e322fee2"
+      },
+      "scripts/surfaceproperties_portal.txt": {
+        "origin": "portal_pak_dir.vpk:scripts/surfaceproperties_portal.txt",
+        "sha256": "5109eaf4a8e221dfbc15ee619a63401e047be0d1aaf684fd0f6816cc59132631"
+      }
+    },
+    "dirty": true,
+    "dirty_digest": "b3afc6465745a96a0dd5d8eb82e11ff92df6430c67f3aee32492da31028926e3",
+    "fault": "none",
+    "host_build": {
+      "binary": "build-corpus-physics/corpus-restitution/restitution_scenes",
+      "built": "2026-09-25T20:58:50.660920+00:00",
+      "compiler": "g++ (GCC) 16.2.1 20260819 (Red Hat 16.2.1-2)",
+      "sha256": "e789ee69576d269de28d4fcfd31422112e968775a26128def9e9bd55970b63f1",
+      "sources": {
+        "unittests/physicstest/corpus/restitution_scenes.cpp": "ae98c3bb36e37e4027fbea87a121c773579a30ba086893f7a985cb9c462c3f05",
+        "unittests/physicstest/test_vphysics_bench.cpp": "1cfb8d83fad0b7004907c55d59c7c8df9ffcb9d762e13b671654079e8b19246d",
+        "unittests/physicstest/test_vphysics_collide.cpp": "e686da97190d6a1cc0f3c13991eca294d1d7a1a9ab74cec7c56512d2514d51d5",
+        "unittests/physicstest/test_vphysics_conformance.cpp": "074ea75bbbdd681d8d0711d79d57586bb830cbdaed693ec7d3a93f2f675ac995",
+        "unittests/physicstest/test_vphysics_constraints.cpp": "42a07c585ec96cc9e644bc6c0e6de4a0bde8eb4415f6e8757133bb7b72177afb",
+        "unittests/physicstest/test_vphysics_dynamics.cpp": "ce3a4d9350f72751ffae79de4487c0710117af6e2d0d97a99f92679d12fa1e88",
+        "unittests/physicstest/test_vphysics_fluids.cpp": "25ec874bb48eab60bea6a21ed132b33cd922f177396b6b6e6b4dfff56e5a67fa",
+        "unittests/physicstest/test_vphysics_objects.cpp": "64ed01863ce1047caea2ce40bf7a2a04b8a3653c5a0f70f785ed358ebb073e0f",
+        "unittests/physicstest/test_vphysics_player.cpp": "7c6c39f8a562e6be8b6b735f7dd5c25da46a5c7123f19edf1d25125cc46c65a8",
+        "unittests/physicstest/test_vphysics_saverestore.cpp": "1f77406bae1c451c71dcc3f89500bc5c93c1f325f879473fb7927e4de76457be",
+        "unittests/physicstest/test_vphysics_vehicle.cpp": "8277c59a7f5fd499c3e65b5b4c39082277e2f4682fc7e094b651cb6a3d50324e"
+      },
+      "waf_env": "build-corpus-physics/c4che/unittests/physicstest_cache.py"
+    },
+    "inputs": {
+      "fixture": {
+        "path": "quality/fixtures/corpus/physics/restitution-ivp.json",
+        "sha256": "d2cc010447b2913a49306da47c0eff92119adf0c3f9e23199aed6bf70d490d72"
+      },
+      "host": {
+        "path": "build-corpus-physics/corpus-restitution/restitution_scenes",
+        "sha256": "e789ee69576d269de28d4fcfd31422112e968775a26128def9e9bd55970b63f1"
+      }
+    },
+    "providers": {
+      "ivp": {
+        "library": "build-corpus-physics/vphysics/libvphysics.so",
+        "sha256": "3d7ad52dc3e582636c391e7de2cbff50a564f785cef05b6344327a6413cd791e"
+      }
+    },
+    "python": "3.14.7",
+    "python_executable": "/usr/bin/python3",
+    "reproduce": "cd /home/john/src/source-engine-corpus && /usr/bin/python3 tools/quality/corpus/physics_restitution.py record --out /tmp/claude-1000/-home-john-src-source-engine/9d65269e-0537-4167-8fcc-8b0615f72c45/scratchpad/rec",
+    "schema": "corpus-provenance/v1",
+    "source_revision": "294066c6572fdd34a0aef28b58d16013d31287ed",
+    "submodules": {
+      "box3d": {
+        "revision": "9e5a4cde862fba95ff19f096b79567f3ea6c01fd",
+        "state": "clean"
+      },
+      "ivp": {
+        "revision": "47533475e01cbff05fbc3bbe8b4edc485f292cea",
+        "state": "clean"
+      },
+      "lib": {
+        "revision": "86a66ee92d9fda0a09f54a435e850faa7ab5d0fa",
+        "state": "clean"
+      },
+      "thirdparty": {
+        "revision": "c5b901ecef515ea068fa8b8a19ca5cd5353905cb",
+        "state": "clean"
+      }
+    },
+    "suite": "corpus.physics.restitution (record)",
+    "tools": {
+      "host": "g++ (GCC) 16.2.1 20260819 (Red Hat 16.2.1-2)"
+    }
+  },
+  "reference": "ivp",
+  "schema": "corpus-physics-restitution/v1",
+  "suites": {
+    "corner": {
+      "cases": {
+        "box": {
+          "analytic": [
+            "finite",
+            "energy",
+            "rests-on-floor"
+          ],
+          "gameplay": [
+            "vcollide.model-simulates"
+          ],
+          "gated": [
+            "max_angular",
+            "apex_max",
+            "travel",
+            "settle_s"
+          ],
+          "ivp": {
+            "canonical": {
+              "all_finite": 1.0,
+              "apex_first": 0.982,
+              "apex_max": 0.982,
+              "bounces": 1.0,
+              "contacts_final": 4.0,
+              "contacts_max": 4.0,
+              "created": 1.0,
+              "energy0": 4800000.5,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 2262.5938,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.1047,
+              "final_x": -20.2214,
+              "final_y": 0.3915,
+              "final_z": 20.4636,
+              "finite": 1.0,
+              "first_contact_s": 0.765,
+              "focus_solid": 0.0,
+              "geom_min_z": 0.4267,
+              "geom_min_z_seen": 0.2644,
+              "max_angular": 708.8603,
+              "max_final_z": 20.4636,
+              "max_speed": 410.8719,
+              "min_final_z": 20.4636,
+              "min_geom_final_z": 0.4267,
+              "off_floor": 0.0,
+              "over_floor": 1.0,
+              "rested": 1.0,
+              "settle_s": 1.335,
+              "sleep_s": 1.65,
+              "solids": 1.0,
+              "travel": 20.2252,
+              "unrested": 0.0,
+              "worst_speed": 0.0,
+              "z_gain": 0.0
+            },
+            "drop-160": {
+              "all_finite": 1.0,
+              "apex_first": 0.6946,
+              "apex_max": 0.6946,
+              "bounces": 1.0,
+              "contacts_final": 4.0,
+              "contacts_max": 4.0,
+              "created": 1.0,
+              "energy0": 3840000.25,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 2087.5938,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.0,
+              "final_x": -15.717,
+              "final_y": 0.1304,
+              "final_z": 20.4998,
+              "finite": 1.0,
+              "first_contact_s": 0.66,
+              "focus_solid": 0.0,
+              "geom_min_z": 0.4998,
+              "geom_min_z_seen": 0.2819,
+              "max_angular": 632.0203,
+              "max_final_z": 20.4998,
+              "max_speed": 365.1472,
+              "min_final_z": 20.4998,
+              "min_geom_final_z": 0.4998,
+              "off_floor": 0.0,
+              "over_floor": 1.0,
+              "rested": 1.0,
+              "settle_s": 1.185,
+              "sleep_s": 1.65,
+              "solids": 1.0,
+              "travel": 15.7175,
+              "unrested": 0.0,
+              "worst_speed": 0.0,
+              "z_gain": 0.0
+            },
+            "drop-240": {
+              "all_finite": 1.0,
+              "apex_first": 1.2321,
+              "apex_max": 1.2321,
+              "bounces": 1.0,
+              "contacts_final": 4.0,
+              "contacts_max": 4.0,
+              "created": 1.0,
+              "energy0": 5760000.0,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 1648.8125,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.0862,
+              "final_x": -23.4276,
+              "final_y": 1.015,
+              "final_z": 20.4694,
+              "finite": 1.0,
+              "first_contact_s": 0.855,
+              "focus_solid": 0.0,
+              "geom_min_z": 0.439,
+              "geom_min_z_seen": 0.2735,
+              "max_angular": 769.8569,
+              "max_final_z": 20.4694,
+              "max_speed": 447.2059,
+              "min_final_z": 20.4694,
+              "min_geom_final_z": 0.439,
+              "off_floor": 0.0,
+              "over_floor": 1.0,
+              "rested": 1.0,
+              "settle_s": 1.53,
+              "sleep_s": 1.875,
+              "solids": 1.0,
+              "travel": 23.4496,
+              "unrested": 0.0,
+              "worst_speed": 0.0,
+              "z_gain": 0.0
+            },
+            "pitch-15-roll-10": {
+              "all_finite": 1.0,
+              "apex_first": 0.0,
+              "apex_max": 0.0,
+              "bounces": 0.0,
+              "contacts_final": 4.0,
+              "contacts_max": 4.0,
+              "created": 1.0,
+              "energy0": 4800000.5,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 1887.5312,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.0766,
+              "final_x": -25.7992,
+              "final_y": 16.2218,
+              "final_z": 20.4668,
+              "finite": 1.0,
+              "first_contact_s": 0.765,
+              "focus_solid": 0.0,
+              "geom_min_z": 0.4331,
+              "geom_min_z_seen": 0.2528,
+              "max_angular": 519.6655,
+              "max_final_z": 20.4668,
+              "max_speed": 406.9727,
+              "min_final_z": 20.4668,
+              "min_geom_final_z": 0.4331,
+              "off_floor": 0.0,
+              "over_floor": 1.0,
+              "rested": 1.0,
+              "settle_s": 1.365,
+              "sleep_s": 1.875,
+              "solids": 1.0,
+              "travel": 30.4753,
+              "unrested": 0.0,
+              "worst_speed": 0.0,
+              "z_gain": 0.0
+            },
+            "pitch-5-roll-0": {
+              "all_finite": 1.0,
+              "apex_first": 4.8007,
+              "apex_max": 4.8007,
+              "bounces": 2.0,
+              "contacts_final": 4.0,
+              "contacts_max": 4.0,
+              "created": 1.0,
+              "energy0": 4800000.5,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 909.625,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.0198,
+              "final_x": -28.4926,
+              "final_y": -9.8293,
+              "final_z": 20.4945,
+              "finite": 1.0,
+              "first_contact_s": 0.765,
+              "focus_solid": 0.0,
+              "geom_min_z": 0.4863,
+              "geom_min_z_seen": 0.253,
+              "max_angular": 791.3719,
+              "max_final_z": 20.4945,
+              "max_speed": 415.446,
+              "min_final_z": 20.4945,
+              "min_geom_final_z": 0.4863,
+              "off_floor": 0.0,
+              "over_floor": 1.0,
+              "rested": 1.0,
+              "settle_s": 1.545,
+              "sleep_s": 1.875,
+              "solids": 1.0,
+              "travel": 30.1404,
+              "unrested": 0.0,
+              "worst_speed": 0.0,
+              "z_gain": 0.0
+            },
+            "yaw-57": {
+              "all_finite": 1.0,
+              "apex_first": 0.982,
+              "apex_max": 0.982,
+              "bounces": 1.0,
+              "contacts_final": 4.0,
+              "contacts_max": 4.0,
+              "created": 1.0,
+              "energy0": 4800000.5,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 2174.2188,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.0839,
+              "final_x": -16.4692,
+              "final_y": -11.9443,
+              "final_z": 20.4737,
+              "finite": 1.0,
+              "first_contact_s": 0.765,
+              "focus_solid": 0.0,
+              "geom_min_z": 0.4417,
+              "geom_min_z_seen": 0.2718,
+              "max_angular": 708.8596,
+              "max_final_z": 20.4737,
+              "max_speed": 410.8719,
+              "min_final_z": 20.4737,
+              "min_geom_final_z": 0.4417,
+              "off_floor": 0.0,
+              "over_floor": 1.0,
+              "rested": 1.0,
+              "settle_s": 1.305,
+              "sleep_s": 1.65,
+              "solids": 1.0,
+              "travel": 20.3445,
+              "unrested": 0.0,
+              "worst_speed": 0.0,
+              "z_gain": 0.0
+            }
+          },
+          "ivp_holds": {
+            "vcollide.model-simulates": {
+              "canonical": true,
+              "drop-160": true,
+              "drop-240": true,
+              "pitch-15-roll-10": true,
+              "pitch-5-roll-0": true,
+              "yaw-57": true
+            }
+          },
+          "model": "models/props/metal_box.phy",
+          "ranges": {
+            "apex_max": [
+              0.0,
+              7.2011
+            ],
+            "bounces": [
+              0.0,
+              3.0
+            ],
+            "final_tilt": [
+              0.0,
+              2.1047
+            ],
+            "geom_min_z_seen": [
+              -0.7472,
+              1.2819
+            ],
+            "max_angular": [
+              123.9795,
+              1187.0578
+            ],
+            "min_geom_final_z": [
+              -0.5733,
+              1.4998
+            ],
+            "settle_s": [
+              0.4125,
+              2.3175
+            ],
+            "sleep_s": [
+              0.7125,
+              2.8125
+            ],
+            "travel": [
+              0.4798,
+              45.7129
+            ],
+            "unrested": [
+              0.0,
+              1.0
+            ],
+            "z_gain": [
+              0.0,
+              0.5
+            ]
+          },
+          "scene": "corner",
+          "source": "unittests/physicstest/test_vphysics_conformance.cpp:1033-1109",
+          "variants": [
+            {
+              "args": [],
+              "id": "canonical"
+            },
+            {
+              "args": [
+                "--angles",
+                "10,57,5"
+              ],
+              "id": "yaw-57"
+            },
+            {
+              "args": [
+                "--angles",
+                "15,20,10"
+              ],
+              "id": "pitch-15-roll-10"
+            },
+            {
+              "args": [
+                "--angles",
+                "5,20,0"
+              ],
+              "id": "pitch-5-roll-0"
+            },
+            {
+              "args": [
+                "--height",
+                "160"
+              ],
+              "id": "drop-160"
+            },
+            {
+              "args": [
+                "--height",
+                "240"
+              ],
+              "id": "drop-240"
+            }
+          ]
+        },
+        "ragdoll": {
+          "analytic": [
+            "finite",
+            "rests-on-floor"
+          ],
+          "gameplay": [
+            "vcollide.model-simulates"
+          ],
+          "gated": [],
+          "ivp": {
+            "canonical": {
+              "all_finite": 1.0,
+              "apex_first": 1.2621,
+              "apex_max": 3.3223,
+              "bounces": 12.0,
+              "contacts_final": 2.0,
+              "contacts_max": 4.0,
+              "created": 23.0,
+              "energy0": 3472856.5,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 77625.5,
+              "final_angular": 175.29,
+              "final_speed": 29.124,
+              "final_tilt": 40.632,
+              "final_x": -461.355,
+              "final_y": -59.7695,
+              "final_z": 10.6349,
+              "finite": 1.0,
+              "first_contact_s": 0.765,
+              "focus_solid": 0.0,
+              "geom_min_z": 0.3265,
+              "geom_min_z_seen": 0.25,
+              "max_angular": 543.6793,
+              "max_final_z": 10.6349,
+              "max_speed": 460.2433,
+              "min_final_z": -0.8267,
+              "min_geom_final_z": 0.3024,
+              "off_floor": 0.0,
+              "over_floor": 1.0,
+              "rested": 1.0,
+              "settle_s": -1.0,
+              "sleep_s": -1.0,
+              "solids": 23.0,
+              "travel": 186.4358,
+              "unrested": 0.0,
+              "worst_speed": 29.124,
+              "z_gain": 0.0
+            },
+            "drop-160": {
+              "all_finite": 1.0,
+              "apex_first": 0.977,
+              "apex_max": 3.4371,
+              "bounces": 10.0,
+              "contacts_final": 2.0,
+              "contacts_max": 3.0,
+              "created": 23.0,
+              "energy0": 2778285.25,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 87472.9688,
+              "final_angular": 165.8018,
+              "final_speed": 28.0009,
+              "final_tilt": 41.5712,
+              "final_x": -416.9489,
+              "final_y": -60.1216,
+              "final_z": 10.424,
+              "finite": 1.0,
+              "first_contact_s": 0.675,
+              "focus_solid": 0.0,
+              "geom_min_z": 0.2872,
+              "geom_min_z_seen": 0.2502,
+              "max_angular": 502.4814,
+              "max_final_z": 10.424,
+              "max_speed": 408.588,
+              "min_final_z": -0.832,
+              "min_geom_final_z": 0.2694,
+              "off_floor": 0.0,
+              "over_floor": 1.0,
+              "rested": 1.0,
+              "settle_s": -1.0,
+              "sleep_s": -1.0,
+              "solids": 23.0,
+              "travel": 170.1311,
+              "unrested": 0.0,
+              "worst_speed": 28.0009,
+              "z_gain": 0.0
+            },
+            "drop-240": {
+              "all_finite": 1.0,
+              "apex_first": 1.615,
+              "apex_max": 3.5892,
+              "bounces": 13.0,
+              "contacts_final": 2.0,
+              "contacts_max": 3.0,
+              "created": 23.0,
+              "energy0": 4167427.5,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 70719.25,
+              "final_angular": 179.893,
+              "final_speed": 32.9272,
+              "final_tilt": 37.2784,
+              "final_x": -488.2168,
+              "final_y": -50.102,
+              "final_z": 10.1815,
+              "finite": 1.0,
+              "first_contact_s": 0.855,
+              "focus_solid": 0.0,
+              "geom_min_z": 0.2887,
+              "geom_min_z_seen": 0.2507,
+              "max_angular": 602.7944,
+              "max_final_z": 17.3126,
+              "max_speed": 511.3181,
+              "min_final_z": 0.9261,
+              "min_geom_final_z": 0.2775,
+              "off_floor": 0.0,
+              "over_floor": 1.0,
+              "rested": 1.0,
+              "settle_s": -1.0,
+              "sleep_s": -1.0,
+              "solids": 23.0,
+              "travel": 208.3444,
+              "unrested": 0.0,
+              "worst_speed": 32.9272,
+              "z_gain": 0.0
+            },
+            "pitch-15-roll-10": {
+              "all_finite": 1.0,
+              "apex_first": 2.8874,
+              "apex_max": 3.4814,
+              "bounces": 8.0,
+              "contacts_final": 2.0,
+              "contacts_max": 5.0,
+              "created": 23.0,
+              "energy0": 3472856.5,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 94004.4375,
+              "final_angular": 142.5824,
+              "final_speed": 24.4826,
+              "final_tilt": 23.2467,
+              "final_x": -436.7953,
+              "final_y": -95.7746,
+              "final_z": 9.7876,
+              "finite": 1.0,
+              "first_contact_s": 0.765,
+              "focus_solid": 0.0,
+              "geom_min_z": 0.3198,
+              "geom_min_z_seen": 0.25,
+              "max_angular": 444.6075,
+              "max_final_z": 9.7876,
+              "max_speed": 458.9811,
+              "min_final_z": 0.512,
+              "min_geom_final_z": 0.3198,
+              "off_floor": 0.0,
+              "over_floor": 1.0,
+              "rested": 1.0,
+              "settle_s": -1.0,
+              "sleep_s": -1.0,
+              "solids": 23.0,
+              "travel": 143.2406,
+              "unrested": 0.0,
+              "worst_speed": 24.4826,
+              "z_gain": 0.0
+            },
+            "pitch-5-roll-0": {
+              "all_finite": 1.0,
+              "apex_first": 4.08,
+              "apex_max": 4.4554,
+              "bounces": 10.0,
+              "contacts_final": 2.0,
+              "contacts_max": 5.0,
+              "created": 23.0,
+              "energy0": 3472856.5,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 97387.9375,
+              "final_angular": 120.6407,
+              "final_speed": 20.9334,
+              "final_tilt": 27.4845,
+              "final_x": -282.1521,
+              "final_y": -358.9027,
+              "final_z": 10.7001,
+              "finite": 1.0,
+              "first_contact_s": 0.765,
+              "focus_solid": 0.0,
+              "geom_min_z": 0.2708,
+              "geom_min_z_seen": 0.251,
+              "max_angular": 540.5577,
+              "max_final_z": 10.7001,
+              "max_speed": 461.6467,
+              "min_final_z": -0.8488,
+              "min_geom_final_z": 0.2708,
+              "off_floor": 0.0,
+              "over_floor": 1.0,
+              "rested": 1.0,
+              "settle_s": -1.0,
+              "sleep_s": -1.0,
+              "solids": 23.0,
+              "travel": 162.9438,
+              "unrested": 0.0,
+              "worst_speed": 20.9334,
+              "z_gain": 0.0
+            },
+            "yaw-57": {
+              "all_finite": 1.0,
+              "apex_first": 1.2621,
+              "apex_max": 3.3216,
+              "bounces": 9.0,
+              "contacts_final": 0.0,
+              "contacts_max": 4.0,
+              "created": 23.0,
+              "energy0": 3472856.5,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 77644.8281,
+              "final_angular": 306.0628,
+              "final_speed": 643.2856,
+              "final_tilt": 27.2034,
+              "final_x": -557.8854,
+              "final_y": -169.9212,
+              "final_z": -366.3876,
+              "finite": 1.0,
+              "first_contact_s": 0.765,
+              "focus_solid": 0.0,
+              "geom_min_z": -377.4485,
+              "geom_min_z_seen": -0.351,
+              "max_angular": 543.6796,
+              "max_final_z": 8.9923,
+              "max_speed": 643.2856,
+              "min_final_z": -366.3876,
+              "min_geom_final_z": 0.2661,
+              "off_floor": 1.0,
+              "over_floor": 0.0,
+              "rested": 0.0,
+              "settle_s": -1.0,
+              "sleep_s": -1.0,
+              "solids": 23.0,
+              "travel": 190.9993,
+              "unrested": 1.0,
+              "worst_speed": 643.2856,
+              "z_gain": 0.0
+            }
+          },
+          "ivp_holds": {
+            "vcollide.model-simulates": {
+              "canonical": true,
+              "drop-160": true,
+              "drop-240": true,
+              "pitch-15-roll-10": true,
+              "pitch-5-roll-0": true,
+              "yaw-57": false
+            }
+          },
+          "model": "models/player/chell.phy",
+          "ranges": {
+            "apex_max": [
+              1.0939,
+              6.6831
+            ],
+            "bounces": [
+              1.5,
+              19.5
+            ],
+            "final_tilt": [
+              2.4611,
+              62.3568
+            ],
+            "geom_min_z_seen": [
+              -1.351,
+              1.251
+            ],
+            "max_angular": [
+              143.2103,
+              904.1916
+            ],
+            "min_geom_final_z": [
+              -0.7339,
+              1.3198
+            ],
+            "settle_s": null,
+            "sleep_s": null,
+            "travel": [
+              39.0684,
+              312.5166
+            ],
+            "unrested": [
+              0.0,
+              2.0
+            ],
+            "z_gain": [
+              0.0,
+              0.5
+            ]
+          },
+          "scene": "corner",
+          "source": "unittests/physicstest/test_vphysics_conformance.cpp:1033-1109",
+          "variants": [
+            {
+              "args": [],
+              "id": "canonical"
+            },
+            {
+              "args": [
+                "--angles",
+                "10,57,5"
+              ],
+              "id": "yaw-57"
+            },
+            {
+              "args": [
+                "--angles",
+                "15,20,10"
+              ],
+              "id": "pitch-15-roll-10"
+            },
+            {
+              "args": [
+                "--angles",
+                "5,20,0"
+              ],
+              "id": "pitch-5-roll-0"
+            },
+            {
+              "args": [
+                "--height",
+                "160"
+              ],
+              "id": "drop-160"
+            },
+            {
+              "args": [
+                "--height",
+                "240"
+              ],
+              "id": "drop-240"
+            }
+          ]
+        }
+      }
+    },
+    "held-floor": {
+      "cases": {
+        "box": {
+          "analytic": [
+            "finite",
+            "rests-on-floor"
+          ],
+          "gameplay": [
+            "dynamics.held-floor-contact",
+            "dynamics.held-floor-quiet"
+          ],
+          "gated": [
+            "travel",
+            "quiet_angular",
+            "gap"
+          ],
+          "ivp": {
+            "canonical": {
+              "apex_first": 0.0,
+              "apex_max": 0.0,
+              "bounces": 0.0,
+              "contact_ticks": 109.0,
+              "contacts_final": 0.0,
+              "contacts_max": 2.0,
+              "energy0": 35999.9961,
+              "energy_ratio_max": 14.3361,
+              "energy_rise": 4088.9131,
+              "final_angular": 3.6,
+              "final_speed": 0.0001,
+              "final_tilt": 0.6924,
+              "final_x": 0.0,
+              "final_y": 0.0,
+              "final_z": 21.5161,
+              "finite": 1.0,
+              "first_contact_s": 0.0167,
+              "gap": 1.5161,
+              "geom_min_z": 1.1757,
+              "geom_min_z_seen": 0.8208,
+              "impacts": 32.0,
+              "max_angular": 147.823,
+              "max_speed": 1000.0,
+              "over_floor": 1.0,
+              "quiet_angular": 96.5429,
+              "quiet_speed": 89.5682,
+              "settle_s": -1.0,
+              "sleep_s": -1.0,
+              "travel": 9.1631,
+              "z_gain": 0.0,
+              "z_spread": 0.0143
+            },
+            "depth-12": {
+              "apex_first": 0.4672,
+              "apex_max": 0.4672,
+              "bounces": 1.0,
+              "contact_ticks": 116.0,
+              "contacts_final": 1.0,
+              "contacts_max": 4.0,
+              "energy0": 35999.9961,
+              "energy_ratio_max": 14.3361,
+              "energy_rise": 23660.2539,
+              "final_angular": 3.6,
+              "final_speed": 0.0002,
+              "final_tilt": 3.1787,
+              "final_x": 0.0,
+              "final_y": 0.0,
+              "final_z": 22.3365,
+              "finite": 1.0,
+              "first_contact_s": 0.0167,
+              "gap": 2.3365,
+              "geom_min_z": 0.8565,
+              "geom_min_z_seen": 0.8145,
+              "impacts": 52.0,
+              "max_angular": 327.8442,
+              "max_speed": 1000.0,
+              "over_floor": 1.0,
+              "quiet_angular": 323.8645,
+              "quiet_speed": 215.3957,
+              "settle_s": -1.0,
+              "sleep_s": -1.0,
+              "travel": 18.9772,
+              "z_gain": 0.0,
+              "z_spread": 0.0338
+            },
+            "depth-4": {
+              "apex_first": 0.0,
+              "apex_max": 0.0,
+              "bounces": 0.0,
+              "contact_ticks": 120.0,
+              "contacts_final": 2.0,
+              "contacts_max": 2.0,
+              "energy0": 35999.9961,
+              "energy_ratio_max": 14.3361,
+              "energy_rise": 0.0,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.0,
+              "final_x": -0.0,
+              "final_y": -0.0,
+              "final_z": 20.7713,
+              "finite": 1.0,
+              "first_contact_s": 0.0167,
+              "gap": 0.7713,
+              "geom_min_z": 0.7713,
+              "geom_min_z_seen": 0.5507,
+              "impacts": 2.0,
+              "max_angular": 107.3408,
+              "max_speed": 1000.0,
+              "over_floor": 1.0,
+              "quiet_angular": 0.0,
+              "quiet_speed": 0.0,
+              "settle_s": 0.05,
+              "sleep_s": 0.6333,
+              "travel": 0.0,
+              "z_gain": 0.0,
+              "z_spread": 0.0
+            },
+            "start-80": {
+              "apex_first": 0.3646,
+              "apex_max": 0.3646,
+              "bounces": 1.0,
+              "contact_ticks": 109.0,
+              "contacts_final": 1.0,
+              "contacts_max": 2.0,
+              "energy0": 48000.0,
+              "energy_ratio_max": 11.0021,
+              "energy_rise": 4209.7275,
+              "final_angular": 3.6,
+              "final_speed": 0.0001,
+              "final_tilt": 0.9925,
+              "final_x": 0.0,
+              "final_y": -0.0,
+              "final_z": 21.5161,
+              "finite": 1.0,
+              "first_contact_s": 0.0333,
+              "gap": 1.5161,
+              "geom_min_z": 1.0292,
+              "geom_min_z_seen": 0.7273,
+              "impacts": 32.0,
+              "max_angular": 168.0641,
+              "max_speed": 1000.0,
+              "over_floor": 1.0,
+              "quiet_angular": 96.5433,
+              "quiet_speed": 89.5696,
+              "settle_s": -1.0,
+              "sleep_s": -1.0,
+              "travel": 9.5994,
+              "z_gain": 0.0,
+              "z_spread": 0.0143
+            },
+            "yaw-30": {
+              "apex_first": 0.0,
+              "apex_max": 0.0,
+              "bounces": 0.0,
+              "contact_ticks": 109.0,
+              "contacts_final": 0.0,
+              "contacts_max": 2.0,
+              "energy0": 35999.9961,
+              "energy_ratio_max": 14.3361,
+              "energy_rise": 4088.915,
+              "final_angular": 3.6,
+              "final_speed": 0.0001,
+              "final_tilt": 0.6924,
+              "final_x": 0.0,
+              "final_y": -0.0,
+              "final_z": 21.5161,
+              "finite": 1.0,
+              "first_contact_s": 0.0167,
+              "gap": 1.5161,
+              "geom_min_z": 1.1757,
+              "geom_min_z_seen": 0.8208,
+              "impacts": 32.0,
+              "max_angular": 147.8231,
+              "max_speed": 1000.0,
+              "over_floor": 1.0,
+              "quiet_angular": 96.5429,
+              "quiet_speed": 89.5682,
+              "settle_s": -1.0,
+              "sleep_s": -1.0,
+              "travel": 9.1631,
+              "z_gain": 0.0,
+              "z_spread": 0.0143
+            }
+          },
+          "ivp_holds": {
+            "dynamics.held-floor-contact": {
+              "canonical": true,
+              "depth-12": true,
+              "depth-4": true,
+              "start-80": true,
+              "yaw-30": true
+            },
+            "dynamics.held-floor-quiet": {
+              "canonical": true,
+              "depth-12": true,
+              "depth-4": true,
+              "start-80": true,
+              "yaw-30": true
+            }
+          },
+          "model": "models/props/metal_box.phy",
+          "ranges": {
+            "apex_max": [
+              0.0,
+              2.4672
+            ],
+            "bounces": [
+              0.0,
+              2.0
+            ],
+            "final_tilt": [
+              0.0,
+              5.1787
+            ],
+            "gap": [
+              -0.397,
+              3.5048
+            ],
+            "geom_min_z_seen": [
+              -0.4493,
+              1.8208
+            ],
+            "impacts": [
+              0.0,
+              78.0
+            ],
+            "max_angular": [
+              0.0,
+              491.7663
+            ],
+            "quiet_angular": [
+              0.0,
+              485.7968
+            ],
+            "settle_s": null,
+            "sleep_s": null,
+            "travel": [
+              0.0,
+              28.4658
+            ],
+            "z_gain": [
+              0.0,
+              0.5
+            ]
+          },
+          "scene": "held-floor",
+          "source": "unittests/physicstest/test_vphysics_dynamics.cpp:887-913",
+          "variants": [
+            {
+              "args": [],
+              "id": "canonical"
+            },
+            {
+              "args": [
+                "--angles",
+                "0,30,0"
+              ],
+              "id": "yaw-30"
+            },
+            {
+              "args": [
+                "--depth",
+                "4"
+              ],
+              "id": "depth-4"
+            },
+            {
+              "args": [
+                "--depth",
+                "12"
+              ],
+              "id": "depth-12"
+            },
+            {
+              "args": [
+                "--height",
+                "80"
+              ],
+              "id": "start-80"
+            }
+          ]
+        },
+        "rest": {
+          "analytic": [
+            "finite",
+            "energy",
+            "rests-on-floor",
+            "rest-no-gain",
+            "rest-still"
+          ],
+          "gameplay": [],
+          "gated": [
+            "z_gain",
+            "travel"
+          ],
+          "ivp": {
+            "above-1": {
+              "apex_first": 0.0,
+              "apex_max": 0.0,
+              "bounces": 0.0,
+              "contacts_final": 2.0,
+              "contacts_max": 2.0,
+              "energy0": 504000.0625,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 2287.9688,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.0,
+              "final_x": 0.0084,
+              "final_y": 0.0085,
+              "final_z": 20.3767,
+              "finite": 1.0,
+              "first_contact_s": 0.0167,
+              "geom_min_z": 0.3742,
+              "geom_min_z_seen": 0.2731,
+              "max_angular": 4.4547,
+              "max_speed": 19.9833,
+              "over_floor": 1.0,
+              "rest_height": 20.0,
+              "settle_s": 0.1167,
+              "sleep_s": 0.6333,
+              "travel": 0.012,
+              "z_gain": 0.0
+            },
+            "shell-0.5": {
+              "apex_first": 0.0,
+              "apex_max": 0.0,
+              "bounces": 0.0,
+              "contacts_final": 2.0,
+              "contacts_max": 2.0,
+              "energy0": 492000.0625,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 2341.25,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.0,
+              "final_x": 0.0081,
+              "final_y": 0.0082,
+              "final_z": 20.3796,
+              "finite": 1.0,
+              "first_contact_s": 0.0,
+              "geom_min_z": 0.3777,
+              "geom_min_z_seen": 0.2759,
+              "max_angular": 2.7679,
+              "max_speed": 3.4807,
+              "over_floor": 1.0,
+              "rest_height": 20.0,
+              "settle_s": 0.0833,
+              "sleep_s": 0.6333,
+              "travel": 0.0116,
+              "z_gain": 0.0
+            },
+            "shell-0.5-yaw-45": {
+              "apex_first": 0.0,
+              "apex_max": 0.0,
+              "bounces": 0.0,
+              "contacts_final": 2.0,
+              "contacts_max": 2.0,
+              "energy0": 492000.0625,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 2341.25,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.0,
+              "final_x": -0.0001,
+              "final_y": 0.0116,
+              "final_z": 20.3796,
+              "finite": 1.0,
+              "first_contact_s": 0.0,
+              "geom_min_z": 0.3777,
+              "geom_min_z_seen": 0.2759,
+              "max_angular": 2.7679,
+              "max_speed": 3.4807,
+              "over_floor": 1.0,
+              "rest_height": 20.0,
+              "settle_s": 0.0833,
+              "sleep_s": 0.6333,
+              "travel": 0.0116,
+              "z_gain": 0.0
+            }
+          },
+          "ivp_holds": {},
+          "model": "models/props/metal_box.phy",
+          "ranges": {
+            "apex_max": [
+              0.0,
+              2.0
+            ],
+            "bounces": [
+              0.0,
+              1.0
+            ],
+            "final_tilt": [
+              0.0,
+              2.0
+            ],
+            "geom_min_z_seen": [
+              -0.7269,
+              1.2759
+            ],
+            "max_angular": [
+              0.0,
+              94.4547
+            ],
+            "settle_s": [
+              0.0,
+              0.6167
+            ],
+            "sleep_s": [
+              0.1333,
+              1.1333
+            ],
+            "travel": [
+              0.0,
+              4.012
+            ],
+            "z_gain": [
+              0.0,
+              0.5
+            ]
+          },
+          "scene": "rest",
+          "source": "unittests/physicstest/corpus/restitution_scenes.cpp RunRest",
+          "variants": [
+            {
+              "args": [
+                "--height",
+                "0.5"
+              ],
+              "id": "shell-0.5"
+            },
+            {
+              "args": [
+                "--height",
+                "0.5",
+                "--angles",
+                "0,45,0"
+              ],
+              "id": "shell-0.5-yaw-45"
+            },
+            {
+              "args": [
+                "--height",
+                "1"
+              ],
+              "id": "above-1"
+            }
+          ]
+        }
+      }
+    },
+    "tumble-travel": {
+      "cases": {
+        "box": {
+          "analytic": [
+            "finite",
+            "energy",
+            "rests-on-floor"
+          ],
+          "gameplay": [
+            "dynamics.tumble-rests-flat",
+            "dynamics.tumble-settles",
+            "dynamics.tumble-travel-bounded"
+          ],
+          "gated": [
+            "travel",
+            "max_angular",
+            "apex_max",
+            "settle_s",
+            "audible_impacts"
+          ],
+          "ivp": {
+            "canonical": {
+              "apex_first": 0.0,
+              "apex_max": 0.0,
+              "audible_impacts": 4.0,
+              "bounces": 0.0,
+              "contacts_final": 4.0,
+              "contacts_max": 4.0,
+              "energy0": 2016000.25,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 2304.9688,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.0,
+              "final_x": -14.3833,
+              "final_y": 15.1979,
+              "final_z": 20.4998,
+              "finite": 1.0,
+              "first_contact_s": 0.3833,
+              "geom_min_z": 0.4996,
+              "geom_min_z_seen": 0.2525,
+              "impacts": 7.0,
+              "max_angular": 261.1232,
+              "max_speed": 235.4558,
+              "over_floor": 1.0,
+              "rest_height": 20.0,
+              "rest_offset_z": 0.4998,
+              "settle_s": 1.0333,
+              "sleep_s": 1.5333,
+              "travel": 20.925,
+              "z_gain": 0.0
+            },
+            "drop-48": {
+              "apex_first": 0.0,
+              "apex_max": 0.0,
+              "audible_impacts": 4.0,
+              "bounces": 0.0,
+              "contacts_final": 4.0,
+              "contacts_max": 4.0,
+              "energy0": 1632000.125,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 1004.0,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.1385,
+              "final_x": -11.3036,
+              "final_y": 11.6522,
+              "final_z": 20.4513,
+              "finite": 1.0,
+              "first_contact_s": 0.3167,
+              "geom_min_z": 0.4027,
+              "geom_min_z_seen": 0.2585,
+              "impacts": 7.0,
+              "max_angular": 220.0716,
+              "max_speed": 196.8648,
+              "over_floor": 1.0,
+              "rest_height": 20.0,
+              "rest_offset_z": 0.4513,
+              "settle_s": 0.8333,
+              "sleep_s": 1.2167,
+              "travel": 16.2341,
+              "z_gain": 0.0
+            },
+            "pitch-20-roll-20": {
+              "apex_first": 0.4528,
+              "apex_max": 0.4528,
+              "audible_impacts": 2.0,
+              "bounces": 1.0,
+              "contacts_final": 4.0,
+              "contacts_max": 4.0,
+              "energy0": 2016000.25,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 1037.625,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.0523,
+              "final_x": -11.0219,
+              "final_y": 13.1136,
+              "final_z": 20.4775,
+              "finite": 1.0,
+              "first_contact_s": 0.3833,
+              "geom_min_z": 0.4549,
+              "geom_min_z_seen": 0.2574,
+              "impacts": 8.0,
+              "max_angular": 246.7317,
+              "max_speed": 235.4558,
+              "over_floor": 1.0,
+              "rest_height": 20.0,
+              "rest_offset_z": 0.4775,
+              "settle_s": 0.9333,
+              "sleep_s": 1.5333,
+              "travel": 17.1303,
+              "z_gain": 0.0
+            },
+            "pitch-30-roll-10": {
+              "apex_first": 0.4581,
+              "apex_max": 0.4581,
+              "audible_impacts": 4.0,
+              "bounces": 1.0,
+              "contacts_final": 4.0,
+              "contacts_max": 4.0,
+              "energy0": 2016000.25,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 3345.4688,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.0,
+              "final_x": -15.1072,
+              "final_y": 15.5644,
+              "final_z": 20.4998,
+              "finite": 1.0,
+              "first_contact_s": 0.4,
+              "geom_min_z": 0.4996,
+              "geom_min_z_seen": 0.2745,
+              "impacts": 7.0,
+              "max_angular": 273.8538,
+              "max_speed": 245.0634,
+              "over_floor": 1.0,
+              "rest_height": 20.0,
+              "rest_offset_z": 0.4998,
+              "settle_s": 1.1833,
+              "sleep_s": 1.5333,
+              "travel": 21.6905,
+              "z_gain": 0.0
+            },
+            "yaw-30": {
+              "apex_first": 0.0,
+              "apex_max": 0.0,
+              "audible_impacts": 4.0,
+              "bounces": 0.0,
+              "contacts_final": 4.0,
+              "contacts_max": 4.0,
+              "energy0": 2016000.25,
+              "energy_ratio_max": 1.0,
+              "energy_rise": 2457.0625,
+              "final_angular": 0.0,
+              "final_speed": 0.0,
+              "final_tilt": 0.0198,
+              "final_x": -19.9112,
+              "final_y": 6.0371,
+              "final_z": 20.4938,
+              "finite": 1.0,
+              "first_contact_s": 0.3833,
+              "geom_min_z": 0.4877,
+              "geom_min_z_seen": 0.258,
+              "impacts": 6.0,
+              "max_angular": 261.1228,
+              "max_speed": 235.4558,
+              "over_floor": 1.0,
+              "rest_height": 20.0,
+              "rest_offset_z": 0.4938,
+              "settle_s": 1.0167,
+              "sleep_s": 1.5333,
+              "travel": 20.8063,
+              "z_gain": 0.0
+            }
+          },
+          "ivp_holds": {
+            "dynamics.tumble-rests-flat": {
+              "canonical": true,
+              "drop-48": true,
+              "pitch-20-roll-20": true,
+              "pitch-30-roll-10": true,
+              "yaw-30": true
+            },
+            "dynamics.tumble-settles": {
+              "canonical": true,
+              "drop-48": true,
+              "pitch-20-roll-20": true,
+              "pitch-30-roll-10": true,
+              "yaw-30": true
+            },
+            "dynamics.tumble-travel-bounded": {
+              "canonical": true,
+              "drop-48": true,
+              "pitch-20-roll-20": true,
+              "pitch-30-roll-10": true,
+              "yaw-30": true
+            }
+          },
+          "model": "models/props/metal_box.phy",
+          "ranges": {
+            "apex_max": [
+              0.0,
+              2.4581
+            ],
+            "audible_impacts": [
+              0.0,
+              6.0
+            ],
+            "bounces": [
+              0.0,
+              2.0
+            ],
+            "final_tilt": [
+              0.0,
+              2.1385
+            ],
+            "geom_min_z_seen": [
+              -0.7475,
+              1.2745
+            ],
+            "impacts": [
+              2.0,
+              12.0
+            ],
+            "max_angular": [
+              83.1447,
+              410.7807
+            ],
+            "settle_s": [
+              0.2417,
+              1.775
+            ],
+            "sleep_s": [
+              0.45,
+              2.2999
+            ],
+            "travel": [
+              5.3889,
+              32.5358
+            ],
+            "z_gain": [
+              0.0,
+              0.5
+            ]
+          },
+          "scene": "tumble",
+          "source": "unittests/physicstest/test_vphysics_dynamics.cpp:364-398",
+          "variants": [
+            {
+              "args": [],
+              "id": "canonical"
+            },
+            {
+              "args": [
+                "--angles",
+                "25,30,15"
+              ],
+              "id": "yaw-30"
+            },
+            {
+              "args": [
+                "--angles",
+                "20,0,20"
+              ],
+              "id": "pitch-20-roll-20"
+            },
+            {
+              "args": [
+                "--angles",
+                "30,0,10"
+              ],
+              "id": "pitch-30-roll-10"
+            },
+            {
+              "args": [
+                "--height",
+                "48"
+              ],
+              "id": "drop-48"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "tolerance_policy": {
+    "floors": {
+      "apex_max": 2.0,
+      "audible_impacts": 1.0,
+      "bounces": 1.0,
+      "final_tilt": 2.0,
+      "gap": 1.0,
+      "geom_min_z_seen": 1.0,
+      "impacts": 2.0,
+      "max_angular": 90.0,
+      "min_geom_final_z": 1.0,
+      "quiet_angular": 90.0,
+      "settle_s": 0.5,
+      "sleep_s": 0.5,
+      "travel": 4.0,
+      "unrested": 1.0,
+      "z_gain": 0.5
+    },
+    "relative": 0.5,
+    "rule": "margin = max(floor, relative * max|IVP value over variants)); range = [min - margin, max + margin], low end clamped at 0 unless signed; no range when a sentinel observation is -1 (never) in any IVP variant",
+    "sentinel": [
+      "settle_s",
+      "sleep_s"
+    ],
+    "signed": [
+      "gap",
+      "geom_min_z_seen",
+      "min_geom_final_z"
+    ]
+  },
+  "version": 1
+}

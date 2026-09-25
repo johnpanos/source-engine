@@ -73,6 +73,22 @@ are in [R48 progress](0007-progress.md#r48-cross-version-executable-baseline-202
 The dated entries below are history. Later work changed the current state as
 follows; the linked records hold the evidence. No F-phase gate is complete.
 
+- **vbsp2 dual-ABI island (R54 gap, 2026-09-25).** R03's `toolchain.coverage`
+  check fails with TOOLCHAIN007. `vbsp2` links `vbspworldstage` and
+  `sourceWorld`, built with `_GLIBCXX_USE_CXX11_ABI=1` for OpenUSD, into an
+  ABI=0 closure, and `quality/toolchain/policy.json` declares that
+  unsupported.
+  - Only ABI-neutral symbols cross today: the C signature of
+    `WriteWorldStageGeometry`, the BSP globals, `Msg`, and
+    `ConvertLegacyToBsp2` with byte spans and integer or pointer vtables.
+  - The ABI=1 object also emits inline `FileByteSink` COMDATs. `FileByteSink`
+    holds a `std::string`, so any future ABI=0 use of `map_file_io.h` in
+    `vbsp2` would collide with them silently.
+  - Recorded as a known fail owned by R54 (user decision). The fixes on the
+    table are a declared private-ABI island with a symbol-level check, or
+    moving the World Stage writer behind the `sourceWorld` shared library.
+    See the [R03-B record](0006-progress.md#r03-b-complete-linux-target-coverage-and-android-x86_64-slice-done-2026-09-25).
+
 - **WMSH draw.** `r_worldmesh_draw` defaults to 2 and is no longer a cheat
   (`engine/gl_rsurf.cpp`), so every map with a resident WMSH draws it; see the
   note in the [draw preview entry](#f4-native-vulkan-visible-wmsh-draw-preview-2026-09-23).

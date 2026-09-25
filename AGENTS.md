@@ -324,9 +324,11 @@ Missing tools and invalid history fail; no eligible changes are explicitly
 not-applicable. Whole-tree `--all` style checking is an optional legacy-debt audit,
 not a request for global formatting. Keep policy changes and fixture tests together.
 
-`check --changed` is a local convenience, not a full gate. `--compile-deps` and
-the new domain runners are proposed until implementation records working
-commands. Check the current Waf configuration before building; do not overwrite
+`check --changed` is a local convenience, not a full gate. `check --all
+--compile-deps <built tree>` (repeatable) checks strict modules' transitive
+includes from the tree's `.d` files (R04-DEPS; coverage and blind spots in the
+[Phase A record](RFC/0001-phase-a-progress.md)). New domain runners stay
+proposed until implementation records working commands. Check the current Waf configuration before building; do not overwrite
 someone's build profile just to run unrelated tests. Configure/build actual
 products as well as the limited `--tests` composition when their gate requires it.
 
@@ -353,10 +355,10 @@ revision `87955f67`; documentation alone marks no implementation gate done.
 
 | Rank / ID | Work and RFC scope | Prerequisites | Done looks like | State |
 | --- | --- | --- | --- | --- |
-| 1 / R01 | Reproducible baseline and profile inventory; 0005 Q0, baseline portions of all domains | — | Current checks/failures recorded; exact build/content/tool availability and supported profiles established; baseline captures and budgets identified | active (re-audit 2026-09-25; [Q0 baseline](RFC/0005-progress.md#q0--r01-baseline-and-profile-inventory)) |
+| 1 / R01 | Reproducible baseline and profile inventory; 0005 Q0, baseline portions of all domains | — | Current checks/failures recorded; exact build/content/tool availability and supported profiles established; baseline captures and budgets identified | done (re-audited 2026-09-25; [Q0 baseline](RFC/0005-progress.md#re-audit-2026-09-25)) |
 | 2 / R02 | Trustworthy runner, fixtures, evidence; 0005 Q1 | R01 | Zero/missing tests, skips, crashes, timeouts and incomplete output fail correctly; explicit test composition and reproducible artifacts work | done ([Q1 runner](RFC/0005-progress.md#q1--r02-runner-shared-conformance-runner)) |
-| 3 / R03 | Per-target C++20/toolchain boundary; 0006 M0 | R01, R02 | Compile/link/run proof; final flags verified; legacy/C17 settings and frozen-consumer ABI combinations preserved | active ([0006 progress](RFC/0006-progress.md)) |
-| 4 / R04 | Full architecture and migration enforcement; 0001 rank 1, 0002 H0 enforcement, Q-ARCH | R01, R02 | Ownership, direct/transitive includes, Waf/link graph, hermetic builds, exact debt and evidence schemas enforced; negative projects fail | partial |
+| 3 / R03 | Per-target C++20/toolchain boundary; 0006 M0 | R01, R02 | Compile/link/run proof; final flags verified; legacy/C17 settings and frozen-consumer ABI combinations preserved | active (R03-A ABI contract and R03-B full target coverage and Android x86_64 done 2026-09-25; open: Apple/MSVC, CI, R54 ABI island; [0006 progress](RFC/0006-progress.md#r03-b-complete-linux-target-coverage-and-android-x86_64-slice-done-2026-09-25)) |
+| 4 / R04 | Full architecture and migration enforcement; 0001 rank 1, 0002 H0 enforcement, Q-ARCH | R01, R02 | Ownership, direct/transitive includes, Waf/link graph, hermetic builds, exact debt and evidence schemas enforced; negative projects fail | active (`archlint check --all` passes since R04-DRIFT and R04-CAP; `--compile-deps` transitive include and portable link-graph checks installed and declared as `arch.compile-deps` (R04-DEPS) 2026-09-25; hermetic contract-header compiles installed (R04-HERMETIC); open: per-target `arch_module` ownership for mixed targets, the Hammer include cycle; [Phase A record](RFC/0001-phase-a-progress.md#r04-deps-compiler-grounded-transitive-include-check-slice-done-2026-09-25)) |
 | 5 / R05 | Results, IDs, quantities, ownership vocabulary; 0001 rank 2, 0006 M1 | R03, R04 | `Expected`, borrowing/scoped resources and matchers pass value/lifetime/ABI tests; a real consumer uses them | partial ([`Expected` and consumers](RFC/0006-progress.md)) |
 | 6 / R06 | Composition/lifecycle kernel and minimal test providers; 0001 rank 3, Q-FOUNDATION | R02, R05 | Unit runner composes typed providers without ambient factories; required/optional validation, failure-at-each-stage rollback and repeat-instance tests pass | partial (`platform/composition.cpp`; [conformance record](RFC/0001-conformance-progress.md)) |
 | 7 / R07 | Loader containment, telemetry and ABI fixtures; 0001 rank 4 / retirement A | R04, R06 | Scoped ownership, structured errors, legacy bridge and fake/native suites pass; telemetry handles failed/duplicate/nested requests; reviewed ratchet/inventory current | partial |
@@ -661,10 +663,9 @@ Keep the table concise and link details below or from the domain progress file.
     here. R14's event/input contracts and SDL2 adapter remain `planned`.
   - Open: the D3D9/DXVK pair stays on the legacy `SetMode` membrane (no D3D9
     new-contract device); Android, macOS and iOS surfaces are unverified; no CI
-    lane. Since 2026-09-24 archlint reports five `CAP002` findings in
-    `render.vulkan.core` (unregistered `vulkan_compute.h`, `vulkan_debug_utils.h`,
-    `vulkan_frame_stats.h`, `vulkan_shader_library.h`); the no-SDL rule still
-    holds. Findings: Wayland cannot unminimize; hiding after a FIFO present kills
+    lane. The four Vulkan helper headers that archlint reported as `CAP002`
+    from 2026-09-24 are registered in `render.vulkan.core` since R04-CAP
+    (2026-09-25); the no-SDL rule still holds. Findings: Wayland cannot unminimize; hiding after a FIFO present kills
     the connection. See the [presentation bridge record](RFC/0001-presentation-bridge-progress.md).
 
 - R01: `done` (2026-09-22) for the Q0 baseline and profile inventory:
@@ -684,19 +685,22 @@ Keep the table concise and link details below or from the domain progress file.
   - This certifies no domain or platform gate. See the
     [Q0 record](RFC/0005-progress.md#q0--r01-baseline-and-profile-inventory).
     Reopen R01 when an audit deviates and the declaration is not reviewed.
-  - Reopened 2026-09-25: the declaration no longer matches the tree.
-    - `arch.hammer` and `gi.references` fail but are declared `pass` (rerun
-      2026-09-25). The first rejects the `hammer.formats` → `render.contracts`
-      edge from the R47 schema work; the second has fixture references older
-      than `980565cd`.
-    - `physics.conformance` is declared `pass`; its runner verdict fails on
-      `dynamics.tumble.audible-impacts` (RFC 0004 record, not rerun here).
-    - The archlint reasons are stale: 64 new / 1 stale occurrences and 13
-      uninstrumented loader sites.
-    - The gcc TSList crash is gone, and the dedicated build's recorded cause
-      is fixed in source (`97e298c6`) but not rebuilt.
-
-    Close it again by rerunning `baseline.py audit` and reviewing each outcome.
+  - Reopened and closed again 2026-09-25: the closing audit over all five
+    groups has 41 checks (33 pass, 6 known fail, 2 known crash), with 0
+    deviations and 0 unavailable.
+    - Fixes: quality self-test drift, including USD scene oracles that had
+      never passed under the pinned OpenUSD, and clang C++20 errors in the
+      tools, including a real 64-bit pointer truncation in vrad.
+    - Fixes: the unused-parameter and `dlsym` errors in the dedicated clang
+      build, and a toolchain recorder gap. C sources in cxx-only targets
+      escaped dialect checks, and `waf install` never re-recorded
+      invocations.
+    - User decisions: the dedicated builds are recorded as `pass`;
+      `archlint hammer` accepts edges to capability modules; the Box3D
+      restitution patch is pinned in the fork `johnpanos/box3d`;
+      `physics.conformance` (R19) and `gi.references` (R70) are recorded as
+      known fails. See the
+      [re-audit](RFC/0005-progress.md#re-audit-2026-09-25).
 
 - R15: `done` (2026-09-22) for the rank 8 scope:
   - Contracts: feature profile, quirks and structured selection errors

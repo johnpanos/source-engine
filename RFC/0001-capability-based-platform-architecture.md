@@ -1001,9 +1001,12 @@ python3 tools/archlint/archlint.py check --all --compile-deps
 python3 tools/archlint/archlint.py baseline --verify
 ```
 
-The `--compile-deps` mode above is a proposed interface, not an implemented
-command at the initial Phase A snapshot. Record actual commands, coverage, and
-blind spots as each checker increment lands. Fast static checks precede expensive
+The `--compile-deps` mode above was a proposed interface at the initial Phase A
+snapshot. Since 2026-09-25 (R04-DEPS) it is installed as `--compile-deps TREE`,
+repeatable, reading a built tree's `-MMD` files; its coverage and blind spots
+are in the [Phase A record](0001-phase-a-progress.md#r04-deps-compiler-grounded-transitive-include-check-slice-done-2026-09-25).
+Record actual commands, coverage, and blind spots as each checker increment
+lands. Fast static checks precede expensive
 builds; compiler-grounded checks run after the selected configurations produce
 dependency data. RFC 0005 requires negative fixtures before a new gate is enabled.
 

@@ -222,14 +222,7 @@ typedef void *( *CreateInterfaceFn )( const char *pName, int *pReturnCode );
 bool Portal2_ConnectEngineInterfaces( CreateInterfaceFn engineFactory );
 
 #ifdef CLIENT_DLL
-// Borrows the matchmaking framework the server module published through the
-// engine's IMatchFrameworkHost and sets g_pMatchFramework. The engine
-// initializes the server module before its GameUI and the client, so the
-// GameUI (CGameUI::Initialize) and the client's Init both connect here; a
-// module that cannot connect fails its init. Idempotent.
-bool Portal2_ConnectMatchFramework( CreateInterfaceFn engineFactory );
-// Stops borrowing the framework (client shutdown; the server outlives it).
-void Portal2_DisconnectMatchFramework();
+#include "portal2_matchframework_connect.h"
 // Once per client frame: reports signon changes to the framework and runs it.
 void Portal2_MatchFrameworkClientFrame();
 #endif

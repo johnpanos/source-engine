@@ -1,0 +1,11 @@
+{
+  "schema": "conformance-profile/v1",
+  "id": "self-test-corpus",
+  "description": "Corpus-class profile used only by the conformance runner's own self-tests (tools/quality/tests). Not a product profile.",
+  "os": "linux",
+  "arch": "x86_64",
+  "runner": "corpus",
+  "cxx_std": "c++20",
+  "timeout_seconds": 30,
+  "memory_limit_mb": 1024
+}

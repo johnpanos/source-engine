@@ -1,0 +1,140 @@
+{
+ "version": 1,
+ "schema": "corpus-fixture/v1",
+ "area": "compile",
+ "description": "Authored VMF maps and a self-contained game root (materials, surface properties, empty lights.rad) for the legacy VBSP/VVIS/VRAD equivalence suite; expected.json holds the recorded lumps.",
+ "provenance": {
+  "schema": "corpus-provenance/v1",
+  "suite": "corpus.compile.legacy-lumps.record",
+  "source_revision": "294066c6572fdd34a0aef28b58d16013d31287ed",
+  "dirty": true,
+  "dirty_digest": "8b3f59523237d16aabac466c31a5019aa6395b736dbd991c7bd89d7cbe4f4512",
+  "submodules": {
+   "box3d": {
+    "revision": "9e5a4cde862fba95ff19f096b79567f3ea6c01fd",
+    "state": "clean"
+   },
+   "ivp": {
+    "revision": "47533475e01cbff05fbc3bbe8b4edc485f292cea",
+    "state": "clean"
+   },
+   "lib": {
+    "revision": "86a66ee92d9fda0a09f54a435e850faa7ab5d0fa",
+    "state": "clean"
+   },
+   "thirdparty": {
+    "revision": "c5b901ecef515ea068fa8b8a19ca5cd5353905cb",
+    "state": "clean"
+   }
+  },
+  "python": "3.14.7",
+  "python_executable": "/usr/bin/python3",
+  "tools": {
+   "setarch": "setarch from util-linux 2.41.5",
+   "gdb": "GNU gdb (Fedora Linux) 17.2-2.fc44",
+   "builds": {
+    "post-fix": {
+     "tools_dir": "/home/john/src/source-engine-corpus/build-corpus-tools/install",
+     "executables": {
+      "vbsp": {
+       "path": "/home/john/src/source-engine-corpus/build-corpus-tools/install/vbsp",
+       "sha256": "22935ef4d6a9b084d8b0154f432175e3257a97684b7fc3670fb380b8af4629c6"
+      },
+      "vvis": {
+       "path": "/home/john/src/source-engine-corpus/build-corpus-tools/install/vvis",
+       "sha256": "16380b5abf290af950bb3c4a40c536e3636c4c333bebbbc8a092a3bb908e1618"
+      },
+      "vrad": {
+       "path": "/home/john/src/source-engine-corpus/build-corpus-tools/install/vrad",
+       "sha256": "e7d7800275bc444c065166d980edd34b1880be813f95a11e31d2aff3357cca08"
+      }
+     },
+     "build_dir": "/home/john/src/source-engine-corpus/build-corpus-tools",
+     "cxx": "['/usr/lib64/ccache/g++']",
+     "cxxflags": "['-MMD', '-U_FORTIFY_SOURCE', '-fno-strict-aliasing', '-fvisibility=hidden', '-O2', '-funsafe-math-optimizations', '-ftree-vectorize', '-ffast-math', '-pipe', '-fPIC', '-L/home/john/src/source-engine-corpus/lib/linux/x86_64/', '-pthread', '-march=core2', '-mfpmath=sse', '-std=c++20', '-fpermissive', '-w']",
+     "git_commit_hash_define": "294066c6-dirty",
+     "compiler_version": "g++ (GCC) 16.2.1 20260819 (Red Hat 16.2.1-2)",
+     "worktree": "/home/john/src/source-engine-corpus",
+     "source_revision": "294066c6572fdd34a0aef28b58d16013d31287ed",
+     "tool_sources_dirty": [],
+     "executables_mtime": {
+      "vbsp": "2026-09-25T13:35:59-0700",
+      "vvis": "2026-09-25T13:36:03-0700",
+      "vrad": "2026-09-25T13:36:06-0700"
+     }
+    },
+    "pre-fix": {
+     "tools_dir": "/home/john/src/source-engine-corpus-prefix/build-corpus-tools/install",
+     "executables": {
+      "vbsp": {
+       "path": "/home/john/src/source-engine-corpus-prefix/build-corpus-tools/install/vbsp",
+       "sha256": "8036fd907ad1fc6de20eb00f41f187246a64141f37a8f3e2377b56fa549c7585"
+      },
+      "vvis": {
+       "path": "/home/john/src/source-engine-corpus-prefix/build-corpus-tools/install/vvis",
+       "sha256": "423af13e3976dc87d07eadc1352ee76703bda7a62f0f1cc45b754d4bb4d91c59"
+      },
+      "vrad": {
+       "path": "/home/john/src/source-engine-corpus-prefix/build-corpus-tools/install/vrad",
+       "sha256": "3ace8a64ec7471147be6c761387d67972d30394e968a5026a1435faada5b7d7e"
+      }
+     },
+     "build_dir": "/home/john/src/source-engine-corpus-prefix/build-corpus-tools",
+     "cxx": "['/usr/lib64/ccache/g++']",
+     "cxxflags": "['-MMD', '-U_FORTIFY_SOURCE', '-fno-strict-aliasing', '-fvisibility=hidden', '-O2', '-funsafe-math-optimizations', '-ftree-vectorize', '-ffast-math', '-pipe', '-fPIC', '-L/home/john/src/source-engine-corpus-prefix/lib/linux/x86_64/', '-pthread', '-march=core2', '-mfpmath=sse', '-std=c++20', '-fpermissive', '-w']",
+     "git_commit_hash_define": "a70d8c4a",
+     "compiler_version": "g++ (GCC) 16.2.1 20260819 (Red Hat 16.2.1-2)",
+     "worktree": "/home/john/src/source-engine-corpus-prefix",
+     "source_revision": "a70d8c4aa72756b0384be7df61c3b845a5548e36",
+     "tool_sources_dirty": [],
+     "executables_mtime": {
+      "vbsp": "2026-09-25T13:37:19-0700",
+      "vvis": "2026-09-25T13:37:20-0700",
+      "vrad": "2026-09-25T13:37:24-0700"
+     }
+    }
+   }
+  },
+  "inputs": {
+   "box_light": {
+    "path": "quality/fixtures/corpus/compile/maps/box_light.vmf",
+    "sha256": "d7a8b882fe5e3bdec78dc73501490c3886a90c7f31c8aa49c944cdfc3b9d7b86"
+   },
+   "disp_occluder": {
+    "path": "quality/fixtures/corpus/compile/maps/disp_occluder.vmf",
+    "sha256": "d9ec7dd7667c2cf25d1dea57a4a93b0272aea07df694a883e9491ef9d7741492"
+   },
+   "three_rooms": {
+    "path": "quality/fixtures/corpus/compile/maps/three_rooms.vmf",
+    "sha256": "e711973f0dc5c2e268412e239c7350cd0f377f90c0b16338f0a1ae0ac406b195"
+   },
+   "sky_spot": {
+    "path": "quality/fixtures/corpus/compile/maps/sky_spot.vmf",
+    "sha256": "453ad0568e50b095156a68fcaa33469c9fcb5de550beebfe1d637fa3140da23c"
+   },
+   "make_maps": {
+    "path": "quality/fixtures/corpus/compile/make_maps.py",
+    "sha256": "f1833e121f5a45fea06b4b779ed7dbc9f5309987eae96cc3700f795b6147999a"
+   }
+  },
+  "reproduce": "cd /home/john/src/source-engine-corpus && /usr/bin/python3 tools/quality/corpus/compile_equivalence.py record --tools build-corpus-tools/install --label post-fix --reference-tools /home/john/src/source-engine-corpus-prefix/build-corpus-tools/install --reference-label pre-fix --study-runs 10 --gdb-probe --out /tmp/claude-1000/-home-john-src-source-engine/9d65269e-0537-4167-8fcc-8b0615f72c45/scratchpad/record"
+ },
+ "expected_sha256": "b54cd4543d7c673230cb3272d734290aef76ef8d01471738d519635b5ee4c990",
+ "files": {
+  "game/gameinfo.txt": "66cfd77c317be8135ede7121a936b0d73b60212d629b17128d6852d962244868",
+  "game/lights.rad": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "game/materials/corpus/detail.vmt": "b4a09ecf13acd3bcd9cb4c69c56abe818f8e726a0a9cafcb0ce6f13124cd5dcc",
+  "game/materials/corpus/floor.vmt": "d1a3023eee279de8230458a5c87adcc624b8e1510436f7227978bb14173fe847",
+  "game/materials/corpus/ground.vmt": "cd2938e41e8b33b2d790bc566155560cdbfb68d8826d147ca219feb43c263045",
+  "game/materials/corpus/wall.vmt": "aef152296dcefc9adb8abc249d8cb183588a5f098394d75830b91b4f8c8195bd",
+  "game/materials/tools/toolsnodraw.vmt": "ce6ea7038696c84e6ff36497c36e973ab5de89574336cdd57fe71bc506ba4286",
+  "game/materials/tools/toolsskybox.vmt": "73b4c5a8a811fe5e86b0673db3c8ec479e993065e02f7bff2a8836822d8efd73",
+  "game/scripts/surfaceproperties.txt": "c7ad2c5b12c9c70fec76d960a8d310da4a75fcdb8fe65d87ccf88922bb9463db",
+  "game/scripts/surfaceproperties_manifest.txt": "7d374c46eb39fbfa189db4ba3661a09692b3f31eae528fee95a67fbfbc40b302",
+  "make_maps.py": "f1833e121f5a45fea06b4b779ed7dbc9f5309987eae96cc3700f795b6147999a",
+  "maps/box_light.vmf": "d7a8b882fe5e3bdec78dc73501490c3886a90c7f31c8aa49c944cdfc3b9d7b86",
+  "maps/disp_occluder.vmf": "d9ec7dd7667c2cf25d1dea57a4a93b0272aea07df694a883e9491ef9d7741492",
+  "maps/sky_spot.vmf": "453ad0568e50b095156a68fcaa33469c9fcb5de550beebfe1d637fa3140da23c",
+  "maps/three_rooms.vmf": "e711973f0dc5c2e268412e239c7350cd0f377f90c0b16338f0a1ae0ac406b195"
+ }
+}

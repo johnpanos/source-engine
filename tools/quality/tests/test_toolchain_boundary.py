@@ -83,6 +83,23 @@ class ToolchainBoundaryTests(unittest.TestCase):
         record["entries"] = []
         self.assertIn("zero compile invocations", " ".join(self.verify(record)))
 
+    def test_require_all_targets_names_each_uncovered_policy_target(self):
+        targets = sorted(self.policy["targets"])
+        covered = next(t for t in targets
+                       if policy_module.target_dialect(self.policy, t, "c++") == "cxx20")
+        errors, summary = boundary.verify_invocations(
+            ROOT, self.policy, self.record(self.cxx(target=covered,
+                                                    arguments=["g++", "-std=c++20"])), "fixture")
+        self.assertEqual([], errors)
+        self.assertEqual([covered], summary["policy_targets_covered"])
+        missing, seen = boundary.coverage_errors(self.policy, [summary])
+        self.assertEqual([covered], seen)
+        self.assertEqual(len(targets) - 1, len(missing))
+        self.assertFalse(any(" %s " % covered in message for message in missing))
+        self.assertTrue(all(message.startswith("TOOLCHAIN010") for message in missing))
+        complete = {"policy_targets_covered": targets}
+        self.assertEqual([], boundary.coverage_errors(self.policy, [summary, complete])[0])
+
     def test_msvc_cxx20_requires_true_language_macro(self):
         flags = policy_module.dialect_flags(self.policy, "cxx20-permissive", "msvc")
         self.assertEqual([], policy_module.check_flags(self.policy, "cxx20-permissive",

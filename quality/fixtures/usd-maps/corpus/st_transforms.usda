@@ -1,0 +1,340 @@
+#usda 1.0
+(
+    defaultPrim = "Room"
+    doc = """corpus-usd-rooms v1 / st_transforms (hand-written, 2026-09-25).
+Z-up metres. Six 1 m quads, each bound to a UsdPreviewSurface whose base
+texture reads its st through UsdPrimvarReader_float2 and (except Identity)
+UsdTransform2d. UsdPreviewSurface spec: result = rotate(in * scale) +
+translation, rotation in degrees counter-clockwise about the origin. The
+expected UVs live in tools/quality/tests/test_usd_corpus_rooms.py (ST); see
+fixture.json."""
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "Room"
+{
+    def Scope "Looks"
+    {
+        def Material "Identity"
+        {
+            token outputs:surface.connect = </Room/Looks/Identity/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = </Room/Looks/Identity/Base.outputs:rgb>
+                token outputs:surface
+            }
+
+            def Shader "Reader"
+            {
+                uniform token info:id = "UsdPrimvarReader_float2"
+                token inputs:varname = "st"
+                float2 outputs:result
+            }
+
+            def Shader "Base"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @./textures/checker.png@
+                float2 inputs:st.connect = </Room/Looks/Identity/Reader.outputs:result>
+                float3 outputs:rgb
+            }
+        }
+
+        def Material "Scale"
+        {
+            token outputs:surface.connect = </Room/Looks/Scale/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = </Room/Looks/Scale/Base.outputs:rgb>
+                token outputs:surface
+            }
+
+            def Shader "Reader"
+            {
+                uniform token info:id = "UsdPrimvarReader_float2"
+                token inputs:varname = "st"
+                float2 outputs:result
+            }
+
+            def Shader "Transform"
+            {
+                uniform token info:id = "UsdTransform2d"
+                float2 inputs:in.connect = </Room/Looks/Scale/Reader.outputs:result>
+                float2 inputs:scale = (2, 0.5)
+                float2 outputs:result
+            }
+
+            def Shader "Base"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @./textures/checker.png@
+                float2 inputs:st.connect = </Room/Looks/Scale/Transform.outputs:result>
+                float3 outputs:rgb
+            }
+        }
+
+        def Material "Rotate"
+        {
+            token outputs:surface.connect = </Room/Looks/Rotate/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = </Room/Looks/Rotate/Base.outputs:rgb>
+                token outputs:surface
+            }
+
+            def Shader "Reader"
+            {
+                uniform token info:id = "UsdPrimvarReader_float2"
+                token inputs:varname = "st"
+                float2 outputs:result
+            }
+
+            def Shader "Transform"
+            {
+                uniform token info:id = "UsdTransform2d"
+                float2 inputs:in.connect = </Room/Looks/Rotate/Reader.outputs:result>
+                float inputs:rotation = 90
+                float2 outputs:result
+            }
+
+            def Shader "Base"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @./textures/checker.png@
+                float2 inputs:st.connect = </Room/Looks/Rotate/Transform.outputs:result>
+                float3 outputs:rgb
+            }
+        }
+
+        # Scale, rotation and translation; the rotation comes through a
+        # material interface input.
+        def Material "Full"
+        {
+            float inputs:tileRotation = 30
+            token outputs:surface.connect = </Room/Looks/Full/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = </Room/Looks/Full/Base.outputs:rgb>
+                token outputs:surface
+            }
+
+            def Shader "Reader"
+            {
+                uniform token info:id = "UsdPrimvarReader_float2"
+                token inputs:varname = "st"
+                float2 outputs:result
+            }
+
+            def Shader "Transform"
+            {
+                uniform token info:id = "UsdTransform2d"
+                float2 inputs:in.connect = </Room/Looks/Full/Reader.outputs:result>
+                float inputs:rotation.connect = </Room/Looks/Full.inputs:tileRotation>
+                float2 inputs:scale = (2, 0.5)
+                float2 inputs:translation = (0.25, -1)
+                float2 outputs:result
+            }
+
+            def Shader "Base"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @./textures/checker.png@
+                float2 inputs:st.connect = </Room/Looks/Full/Transform.outputs:result>
+                float3 outputs:rgb
+            }
+        }
+
+        # Reads the mesh's second primvar uvB (named through the material
+        # interface), not st.
+        def Material "AltPrimvar"
+        {
+            token inputs:frame:stPrimvarName = "uvB"
+            token outputs:surface.connect = </Room/Looks/AltPrimvar/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = </Room/Looks/AltPrimvar/Base.outputs:rgb>
+                token outputs:surface
+            }
+
+            def Shader "Reader"
+            {
+                uniform token info:id = "UsdPrimvarReader_float2"
+                token inputs:varname.connect = </Room/Looks/AltPrimvar.inputs:frame:stPrimvarName>
+                float2 outputs:result
+            }
+
+            def Shader "Transform"
+            {
+                uniform token info:id = "UsdTransform2d"
+                float2 inputs:in.connect = </Room/Looks/AltPrimvar/Reader.outputs:result>
+                float2 inputs:translation = (0.5, 0.5)
+                float2 outputs:result
+            }
+
+            def Shader "Base"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @./textures/checker.png@
+                float2 inputs:st.connect = </Room/Looks/AltPrimvar/Transform.outputs:result>
+                float3 outputs:rgb
+            }
+        }
+
+        # Base and roughness textures use different transforms: the base
+        # colour's (scale 2) is applied and the difference is recorded.
+        def Material "Mixed"
+        {
+            token outputs:surface.connect = </Room/Looks/Mixed/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = </Room/Looks/Mixed/Base.outputs:rgb>
+                float inputs:roughness.connect = </Room/Looks/Mixed/Rough.outputs:r>
+                token outputs:surface
+            }
+
+            def Shader "Reader"
+            {
+                uniform token info:id = "UsdPrimvarReader_float2"
+                token inputs:varname = "st"
+                float2 outputs:result
+            }
+
+            def Shader "BaseTransform"
+            {
+                uniform token info:id = "UsdTransform2d"
+                float2 inputs:in.connect = </Room/Looks/Mixed/Reader.outputs:result>
+                float2 inputs:scale = (2, 2)
+                float2 outputs:result
+            }
+
+            def Shader "RoughTransform"
+            {
+                uniform token info:id = "UsdTransform2d"
+                float2 inputs:in.connect = </Room/Looks/Mixed/Reader.outputs:result>
+                float2 inputs:scale = (4, 4)
+                float2 outputs:result
+            }
+
+            def Shader "Base"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @./textures/checker.png@
+                float2 inputs:st.connect = </Room/Looks/Mixed/BaseTransform.outputs:result>
+                float3 outputs:rgb
+            }
+
+            def Shader "Rough"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @./textures/checker.png@
+                float2 inputs:st.connect = </Room/Looks/Mixed/RoughTransform.outputs:result>
+                float outputs:r
+            }
+        }
+    }
+
+    # Quad k spans x 2k..2k+1, y 0..1 at z 0. Vertex st (0.25, 0.5),
+    # (1.5, 0.5), (1.5, 2), (0.25, 2).
+    def Mesh "QuadIdentity" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </Room/Looks/Identity>
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0.25, 0.5), (1.5, 0.5), (1.5, 2), (0.25, 2)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Mesh "QuadScale" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </Room/Looks/Scale>
+        point3f[] points = [(2, 0, 0), (3, 0, 0), (3, 1, 0), (2, 1, 0)]
+        texCoord2f[] primvars:st = [(0.25, 0.5), (1.5, 0.5), (1.5, 2), (0.25, 2)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Mesh "QuadRotate" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </Room/Looks/Rotate>
+        point3f[] points = [(4, 0, 0), (5, 0, 0), (5, 1, 0), (4, 1, 0)]
+        texCoord2f[] primvars:st = [(0.25, 0.5), (1.5, 0.5), (1.5, 2), (0.25, 2)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Mesh "QuadFull" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </Room/Looks/Full>
+        point3f[] points = [(6, 0, 0), (7, 0, 0), (7, 1, 0), (6, 1, 0)]
+        texCoord2f[] primvars:st = [(0.25, 0.5), (1.5, 0.5), (1.5, 2), (0.25, 2)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+    }
+
+    # st is present but unused; uvB is faceVarying and indexed: corners
+    # 0..3 read values 2, 3, 0, 1 = (1, 1), (0, 1), (0, 0), (1, 0).
+    def Mesh "QuadAlt" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </Room/Looks/AltPrimvar>
+        point3f[] points = [(8, 0, 0), (9, 0, 0), (9, 1, 0), (8, 1, 0)]
+        texCoord2f[] primvars:st = [(0.25, 0.5), (1.5, 0.5), (1.5, 2), (0.25, 2)] (
+            interpolation = "vertex"
+        )
+        texCoord2f[] primvars:uvB = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "faceVarying"
+        )
+        int[] primvars:uvB:indices = [2, 3, 0, 1]
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Mesh "QuadMixed" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </Room/Looks/Mixed>
+        point3f[] points = [(10, 0, 0), (11, 0, 0), (11, 1, 0), (10, 1, 0)]
+        texCoord2f[] primvars:st = [(0.25, 0.5), (1.5, 0.5), (1.5, 2), (0.25, 2)] (
+            interpolation = "vertex"
+        )
+        uniform token subdivisionScheme = "none"
+    }
+}

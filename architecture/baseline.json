@@ -2327,11 +2327,11 @@
       "excerpt": "virtual bool Connect( CreateInterfaceFn factory ) = 0;"
     },
     {
-      "fingerprint": "c675f2051437d79bee4f",
+      "fingerprint": "b09c909813c28cc14831",
       "rule": "ARCH105",
       "path": "public/appframework/IAppSystem.h",
       "line": 61,
-      "excerpt": "virtual bool Connect( CreateInterfaceFn factory ) { return true; }"
+      "excerpt": "virtual bool Connect( CreateInterfaceFn /* factory */ ) { return true; }"
     },
     {
       "fingerprint": "4046c42dc408e47b1469",
@@ -4574,18 +4574,11 @@
       "excerpt": "CreateInterfaceFn factory = GetFactory();"
     },
     {
-      "fingerprint": "bcc7f46b8b7c481da910",
-      "rule": "ARCH105",
-      "path": "vphysics_box3d/main.cpp",
-      "line": 9,
-      "excerpt": "virtual bool Connect( CreateInterfaceFn factory ) { return true; }"
-    },
-    {
-      "fingerprint": "c387410e3eb4629316ad",
+      "fingerprint": "ed9f43ea20e88666da61",
       "rule": "ARCH105",
       "path": "vphysics_box3d/physics_environment.cpp",
-      "line": 24,
-      "excerpt": "void CPhysicsEnvironmentBox3D::SetDebugOverlay( CreateInterfaceFn debugOverlayFactory ) {}"
+      "line": 204,
+      "excerpt": "void CPhysicsEnvironmentBox3D::SetDebugOverlay( CreateInterfaceFn debugOverlayFactory )"
     },
     {
       "fingerprint": "5b01985e5211c8e1e499",

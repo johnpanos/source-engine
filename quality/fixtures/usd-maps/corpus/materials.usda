@@ -1,0 +1,193 @@
+#usda 1.0
+(
+    defaultPrim = "Room"
+    doc = """corpus-usd-rooms v1 / materials (hand-written, 2026-09-25).
+Z-up metres. One 1 m quad per material: a MaterialX-only surface, a custom
+shader id on the universal surface output, a material with no surface, a
+textured UsdPreviewSurface, a UsdPreviewSurface next to a MaterialX surface,
+and an MDL source-asset surface. The expected classification lives in
+tools/quality/tests/test_usd_corpus_rooms.py (MATERIALS); see fixture.json."""
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "Room"
+{
+    def Scope "Looks"
+    {
+        def Material "MtlxOnly"
+        {
+            token outputs:mtlx:surface.connect = </Room/Looks/MtlxOnly/Standard.outputs:out>
+
+            def Shader "Standard"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.9, 0.1, 0.1)
+                token outputs:out
+            }
+        }
+
+        def Material "Toon"
+        {
+            token outputs:surface.connect = </Room/Looks/Toon/Shader.outputs:surface>
+
+            def Shader "Shader"
+            {
+                uniform token info:id = "MyStudio_Toon"
+                color3f inputs:tint = (0.1, 0.9, 0.1)
+                token outputs:surface
+            }
+        }
+
+        def Material "Bare"
+        {
+        }
+
+        def Material "Textured"
+        {
+            token outputs:surface.connect = </Room/Looks/Textured/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = </Room/Looks/Textured/Base.outputs:rgb>
+                float inputs:metallic = 1
+                float inputs:roughness = 0.25
+                token outputs:surface
+            }
+
+            def Shader "Reader"
+            {
+                uniform token info:id = "UsdPrimvarReader_float2"
+                token inputs:varname = "st"
+                float2 outputs:result
+            }
+
+            def Shader "Base"
+            {
+                uniform token info:id = "UsdUVTexture"
+                float4 inputs:bias = (0.125, 0.125, 0.125, 0)
+                float4 inputs:fallback = (1, 0, 1, 1)
+                asset inputs:file = @./textures/checker.png@
+                float4 inputs:scale = (0.5, 0.5, 0.5, 1)
+                token inputs:sourceColorSpace = "sRGB"
+                float2 inputs:st.connect = </Room/Looks/Textured/Reader.outputs:result>
+                token inputs:wrapS = "repeat"
+                token inputs:wrapT = "mirror"
+                float3 outputs:rgb
+            }
+        }
+
+        def Material "PreviewAndMtlx"
+        {
+            token outputs:surface.connect = </Room/Looks/PreviewAndMtlx/Surface.outputs:surface>
+            token outputs:mtlx:surface.connect = </Room/Looks/PreviewAndMtlx/Standard.outputs:out>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.25, 0.5, 0.75)
+                float inputs:roughness = 0.75
+                token outputs:surface
+            }
+
+            def Shader "Standard"
+            {
+                uniform token info:id = "ND_standard_surface_surfaceshader"
+                color3f inputs:base_color = (0.9, 0.1, 0.1)
+                token outputs:out
+            }
+        }
+
+        def Material "Mdl"
+        {
+            token outputs:mdl:surface.connect = </Room/Looks/Mdl/Shader.outputs:out>
+
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                token outputs:out
+            }
+        }
+    }
+
+    def Mesh "QuadMtlxOnly" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </Room/Looks/MtlxOnly>
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+    }
+
+    def Mesh "QuadToon" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </Room/Looks/Toon>
+        point3f[] points = [(2, 0, 0), (3, 0, 0), (3, 1, 0), (2, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+    }
+
+    def Mesh "QuadBare" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </Room/Looks/Bare>
+        point3f[] points = [(4, 0, 0), (5, 0, 0), (5, 1, 0), (4, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+    }
+
+    def Mesh "QuadTextured" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </Room/Looks/Textured>
+        point3f[] points = [(6, 0, 0), (7, 0, 0), (7, 1, 0), (6, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+    }
+
+    def Mesh "QuadPreviewAndMtlx" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </Room/Looks/PreviewAndMtlx>
+        point3f[] points = [(8, 0, 0), (9, 0, 0), (9, 1, 0), (8, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+    }
+
+    def Mesh "QuadMdl" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        rel material:binding = </Room/Looks/Mdl>
+        point3f[] points = [(10, 0, 0), (11, 0, 0), (11, 1, 0), (10, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "vertex"
+        )
+    }
+}

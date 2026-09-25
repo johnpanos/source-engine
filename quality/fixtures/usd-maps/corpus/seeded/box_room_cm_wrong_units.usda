@@ -1,0 +1,13 @@
+#usda 1.0
+(
+    defaultPrim = "Room"
+    doc = """corpus-usd-rooms v1 seeded negative control (hand-written, 2026-09-25).
+box_room_cm_yup.usda with one seeded defect: the root layer declares
+metersPerUnit 0.1 (decimetres) instead of 0.01. Tests run against it must fail
+BoxRoomCmTest's bounds checks."""
+    metersPerUnit = 0.1
+    subLayers = [
+        @../box_room_cm_yup.usda@
+    ]
+    upAxis = "Y"
+)

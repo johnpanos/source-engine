@@ -324,6 +324,85 @@ def scan(root: Path, manifest: dict, selected: Iterable[str] | None = None) -> l
     return sorted(found, key=lambda item: (item.path, item.line, item.rule, item.fingerprint))
 
 
+EXCEPTION_ROW = re.compile(r"^R[0-9]{2,3}$")
+EXCEPTION_FIELDS = ("path", "rule", "count", "reason", "owner", "tracking", "removal")
+
+
+def loader_exceptions(manifest: dict) -> list[dict]:
+    return manifest.get("loaderExceptions", {}).get("entries", [])
+
+
+def validate_loader_exceptions(root: Path, manifest: dict) -> list[str]:
+    """RFC 0001 "Baseline and exceptions": one file, one rule, a reason, an
+    owner row, a tracking record and a removal condition; never a glob."""
+    errors: list[str] = []
+    rule_ids = {rule.rule_id for rule in RULES}
+    seen: set[tuple[str, str]] = set()
+    for index, entry in enumerate(loader_exceptions(manifest)):
+        where = f"loaderExceptions[{index}]"
+        missing = [field for field in EXCEPTION_FIELDS if field not in entry]
+        if missing:
+            errors.append(f"{where}: missing {', '.join(missing)}")
+            continue
+        path, rule = entry["path"], entry["rule"]
+        where = f"loaderExceptions {path} {rule}"
+        if not isinstance(path, str) or any(ch in path for ch in "*?[") or path.endswith("/"):
+            errors.append(f"{where}: path must name one file, not a glob or directory")
+        elif not (root / path).is_file():
+            errors.append(f"{where}: path does not exist")
+        if rule not in rule_ids:
+            errors.append(f"{where}: unknown rule")
+        if (path, rule) in seen:
+            errors.append(f"{where}: duplicate exception")
+        seen.add((path, rule))
+        count = entry["count"]
+        if not isinstance(count, int) or isinstance(count, bool) or count < 1:
+            errors.append(f"{where}: count must be a positive integer")
+        if not isinstance(entry["owner"], str) or not EXCEPTION_ROW.match(entry["owner"]):
+            errors.append(f"{where}: owner must be a roadmap row id such as R39")
+        for field in ("reason", "removal"):
+            if not isinstance(entry[field], str) or not entry[field].strip():
+                errors.append(f"{where}: {field} must be a non-empty string")
+        tracking = entry["tracking"]
+        if not isinstance(tracking, str) or not (root / tracking.split("#", 1)[0]).is_file():
+            errors.append(f"{where}: tracking must name an existing record")
+    return errors
+
+
+def apply_loader_exceptions(
+    new: Sequence[Occurrence], manifest: dict, selected: set[str] | None = None
+) -> tuple[list[Occurrence], list[str]]:
+    """Remove the exact excepted occurrences from `new`. An exception covers
+    exactly `count` unbaselined occurrences of its rule in its file: more or
+    fewer is an error, and one that covers nothing is stale."""
+    grouped: dict[tuple[str, str], list[Occurrence]] = {}
+    for item in new:
+        grouped.setdefault((item.path, item.rule), []).append(item)
+    remaining: list[Occurrence] = []
+    errors: list[str] = []
+    exceptions = {(entry["path"], entry["rule"]): entry for entry in loader_exceptions(manifest)}
+    for key, items in grouped.items():
+        entry = exceptions.get(key)
+        if entry is None:
+            remaining.extend(items)
+        elif len(items) != entry["count"]:
+            errors.append(
+                f"{key[0]}: {key[1]} exception allows exactly {entry['count']} occurrence(s), "
+                f"found {len(items)}; review the change and update the exception or the code"
+            )
+            remaining.extend(items)
+    for key, entry in exceptions.items():
+        if key not in grouped and (selected is None or key[0] in selected):
+            errors.append(
+                f"{key[0]}: stale {key[1]} exception (no unbaselined occurrence); remove it"
+            )
+    return remaining, errors
+
+
+def excepted_keys(manifest: dict) -> set[tuple[str, str]]:
+    return {(entry["path"], entry["rule"]) for entry in loader_exceptions(manifest)}
+
+
 def read_baseline(root: Path) -> dict:
     with (root / "architecture/baseline.json").open(encoding="utf-8") as stream:
         return json.load(stream)
@@ -430,6 +509,27 @@ def print_violation(prefix: str, item: Occurrence | dict) -> None:
 def check_command(args: argparse.Namespace, root: Path, manifest: dict) -> int:
     strict_errors = capabilities.check(root, manifest.get("capabilityModules"), strip_comments_and_literals)
     tool_errors = validate_tool_migrations(root, read_tool_migrations(root))
+    for tree in getattr(args, "compile_deps", []):
+        tree_path = (root / tree).resolve()
+        depfiles = [(tree_path, path) for path in sorted(tree_path.rglob("*.d"))]
+        if not depfiles:
+            strict_errors.append(f"CAP005 {tree}: no compiler dependency files; build the tree first")
+            continue
+        dep_errors, checked = capabilities.compile_dep_errors(
+            root, manifest.get("capabilityModules"), depfiles, strip_comments_and_literals
+        )
+        if checked == 0:
+            dep_errors.append(f"CAP005 {tree}: no strict translation units found in the dependency files")
+        print(f"archlint: compile-deps {tree}: {len(depfiles)} dependency files, {checked} strict units")
+        strict_errors.extend(dep_errors)
+        invocations = tree_path / "toolchain-invocations.json"
+        if invocations.is_file():
+            link_errors, judged, skipped = capabilities.link_graph_errors(
+                manifest.get("capabilityModules"), json.loads(invocations.read_text(encoding="utf-8"))
+            )
+            print(f"archlint: link-graph {tree}: {judged} portable strict targets judged, "
+                  f"{skipped} mixed/native targets not judged")
+            strict_errors.extend(link_errors)
     for error in strict_errors:
         print(error)
     for error in tool_errors:
@@ -440,11 +540,16 @@ def check_command(args: argparse.Namespace, root: Path, manifest: dict) -> int:
     current = scan(root, manifest, selected)
     baseline = read_baseline(root)
     new, stale = compare_baseline(current, baseline, selected)
+    exception_errors = validate_loader_exceptions(root, manifest)
+    new, applied_errors = apply_loader_exceptions(new, manifest, selected)
+    exception_errors += applied_errors
+    for error in exception_errors:
+        print(f"archlint: [exceptions] {error}")
     for item in new:
         print_violation("new dependency", item)
     for item in stale:
         print_violation("stale baseline entry", item)
-    if new or stale or strict_errors or tool_errors:
+    if new or stale or strict_errors or tool_errors or exception_errors:
         print(f"archlint: failed with {len(new)} new and {len(stale)} stale occurrence(s)")
         print_drift_triage(new, stale)
         return 1
@@ -456,11 +561,16 @@ def check_command(args: argparse.Namespace, root: Path, manifest: dict) -> int:
 def verify_baseline(root: Path, manifest: dict) -> int:
     current = scan(root, manifest)
     new, stale = compare_baseline(current, read_baseline(root))
+    exception_errors = validate_loader_exceptions(root, manifest)
+    new, applied_errors = apply_loader_exceptions(new, manifest)
+    exception_errors += applied_errors
+    for error in exception_errors:
+        print(f"archlint: [exceptions] {error}")
     for item in new:
         print_violation("new dependency", item)
     for item in stale:
         print_violation("stale baseline entry", item)
-    if new or stale:
+    if new or stale or exception_errors:
         print(f"archlint: baseline failed with {len(new)} new and {len(stale)} stale occurrence(s)")
         print_drift_triage(new, stale)
         return 1
@@ -1394,6 +1504,13 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--all", action="store_true")
     mode.add_argument("--changed", action="store_true")
     check.add_argument("--base", help="git base ref used with --changed")
+    check.add_argument(
+        "--compile-deps",
+        action="append",
+        default=[],
+        metavar="TREE",
+        help="also check the transitive includes recorded in TREE's -MMD .d files (repeatable)",
+    )
     baseline = subparsers.add_parser("baseline", help="verify or intentionally rewrite the baseline")
     baseline.add_argument("--verify", action="store_true")
     baseline.add_argument("--write", action="store_true")
@@ -1404,6 +1521,10 @@ def build_parser() -> argparse.ArgumentParser:
         "tools", help="verify the RFC 0001 Phase E tool cohort ledger and wrapper ratchet"
     )
     tools.add_argument("--verify", action="store_true", help="validate the authored ledger")
+    hermetic = subparsers.add_parser(
+        "hermetic", help="compile each portable contract header alone and check its full include closure"
+    )
+    hermetic.add_argument("--cxx", action="append", default=[], help="compiler (repeatable; default g++)")
     hammer = subparsers.add_parser("hammer", help="verify the RFC 0002 editor inventory, migrations, and ratchet")
     mode = hammer.add_mutually_exclusive_group()
     mode.add_argument("--verify", action="store_true", help="validate authored editor artifacts (default)")
@@ -1433,6 +1554,20 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
         return check_command(args, root, manifest)
     if args.command == "tools":
         return tool_migrations_command(root)
+    if args.command == "hermetic":
+        failures = 0
+        for cxx in args.cxx or ["g++"]:
+            errors, count = capabilities.hermetic_errors(
+                root, manifest["capabilityModules"], capabilities.compiler_deps(root, cxx)
+            )
+            for error in errors:
+                print(error)
+            if count == 0:
+                print(f"archlint: hermetic {cxx}: no portable public headers found")
+                failures += 1
+            print(f"archlint: hermetic {cxx}: {count} portable public headers, {len(errors)} error(s)")
+            failures += len(errors)
+        return 1 if failures else 0
     if args.command == "hammer":
         if args.coverage:
             return hammer_coverage_command(root, manifest, args)
@@ -1444,9 +1579,18 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
             raise SystemExit("baseline requires exactly one of --verify or --write")
         if args.verify:
             return verify_baseline(root, manifest)
+        # Manifest exceptions own their occurrences; the baseline never absorbs them.
+        excepted = excepted_keys(manifest)
+        baselined = {entry["fingerprint"] for entry in read_baseline(root)["entries"]}
         return verify_or_write(
             root / "architecture/baseline.json",
-            baseline_document(scan(root, manifest)),
+            baseline_document(
+                [
+                    item
+                    for item in scan(root, manifest)
+                    if item.fingerprint in baselined or (item.path, item.rule) not in excepted
+                ]
+            ),
             args.write,
             "baseline",
         )

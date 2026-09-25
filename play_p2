@@ -51,6 +51,9 @@ if [[ "$mode" == "--prepare" || "$mode" == "--configure-only" ]]; then
     exit 0
 fi
 
+# The ccache directory and size limit shared with ./play's tree (run.sh).
+. "$ROOT/tools/quality/launcher_ccache.sh"
+launcher_ccache "$P2_BUILD_DIR"
 (cd "$ROOT" && WAFLOCK="$P2_WAFLOCK" python3 ./waf build)
 
 python3 "$ROOT/tools/quality/stage_portal2_runtime.py" \

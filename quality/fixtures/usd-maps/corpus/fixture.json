@@ -1,0 +1,70 @@
+{
+  "description": "Hand-written OpenUSD rooms for the USD scene front end (tools/quality/usd_scene.py). The analytic expectations are restated in tools/quality/tests/test_usd_corpus_rooms.py and FixtureSpecTest proves each layer authors them; known usd_scene defects they expose are in tools/quality/tests/test_usd_corpus_defects.py. Each layer's doc metadata names this version.",
+  "files": {
+    "box_room_cm_yup.usda": {
+      "purpose": "Y-up cm; explicit 8-vertex boxes under translate/rotateY/scale, a negative-scale mirror, a UsdGeom.Cube recorded as skipped (spec: BOX_CM)",
+      "sha256": "e0a91450e9511ea310afd0039e9288b67dbc89daff80eaebebc1736206fa53a4"
+    },
+    "box_room_in_zup.usda": {
+      "purpose": "Z-up inches (metersPerUnit 0.0254); rotateZ 30 parent, leftHanded box authored clockwise (spec: BOX_IN)",
+      "sha256": "c904d70ca51a1bf63e28b5e5d2c4744f48307321fc4c79d1c127715a40bcbb25"
+    },
+    "materials.usda": {
+      "purpose": "MaterialX-only, custom universal id, no surface, textured UsdPreviewSurface, preview beside mtlx, MDL source asset (spec: MATERIALS)",
+      "sha256": "74b0d039abe52fbb5525ec29982bba3cddc1bfb61e7c5634659c9f6890eb1a7f"
+    },
+    "seeded/box_room_cm_wrong_units.usda": {
+      "purpose": "negative control: sublayers box_room_cm_yup.usda, root metersPerUnit 0.1 instead of 0.01",
+      "sha256": "c0c135908ffb90fcd58f42a9d007d5f57193928684ac8b71f7aa126e482c8f50"
+    },
+    "seeded/st_transforms_wrong_rotation.usda": {
+      "purpose": "negative control: sublayers st_transforms.usda, seeds Full's rotation -30 instead of 30",
+      "sha256": "70549df912bb9dbde9bfc52cf8caa767acb14a4934ad227172e4dc69a2459ccb"
+    },
+    "st_transforms.usda": {
+      "purpose": "UsdTransform2d scale/rotation/translation on the primvar reader chain, interface-connected rotation and primvar name, indexed faceVarying uvB, differing per-texture transforms (spec: ST, ST_LITERALS)",
+      "sha256": "597a69c9722af83576e7c628840aedf5d71b5373f228da3f97fa71709a3fd791"
+    },
+    "textures/checker.png": {
+      "purpose": "2x2 RGB checker written with the Python standard library (zlib), read by st_transforms.usda and materials.usda",
+      "sha256": "a5d87eaf47f8a1d537bdc8d1d8647eac882df7c755179ac0625363201e67f6bb"
+    }
+  },
+  "id": "usd-maps/corpus",
+  "produced_by": "hand-written 2026-09-25 (no generator; edit the .usda text, bump version, update the spec constants and these digests together)",
+  "provenance": {
+    "dirty": true,
+    "dirty_digest": "339a3403539c3af5dccb53398dcec7e5b417987b5615cd971d832ae7b807c3c4",
+    "inputs": {},
+    "python": "3.14.7",
+    "python_executable": "/usr/bin/python3",
+    "reproduce": "cd /home/john/src/source-engine-corpus && python3 tools/quality/corpus/usd_runner.py tools.quality.tests.test_usd_corpus_rooms",
+    "schema": "corpus-provenance/v1",
+    "source_revision": "294066c6572fdd34a0aef28b58d16013d31287ed",
+    "submodules": {
+      "box3d": {
+        "revision": "9e5a4cde862fba95ff19f096b79567f3ea6c01fd",
+        "state": "clean"
+      },
+      "ivp": {
+        "revision": "47533475e01cbff05fbc3bbe8b4edc485f292cea",
+        "state": "clean"
+      },
+      "lib": {
+        "revision": "86a66ee92d9fda0a09f54a435e850faa7ab5d0fa",
+        "state": "clean"
+      },
+      "thirdparty": {
+        "revision": "c5b901ecef515ea068fa8b8a19ca5cd5353905cb",
+        "state": "clean"
+      }
+    },
+    "suite": "corpus.usd.rooms",
+    "tools": {
+      "openusd_pin": "v25.11 (363a7c8da8d1937072a5f0989e91faf72eb1fa76)"
+    }
+  },
+  "schema": "corpus-fixture/v1",
+  "validated_with": "python3 tools/quality/corpus/usd_runner.py tools.quality.tests.test_usd_corpus_rooms (pinned OpenUSD Python)",
+  "version": 1
+}
