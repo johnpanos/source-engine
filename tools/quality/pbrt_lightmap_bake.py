@@ -354,7 +354,8 @@ def main():
     parser.add_argument("--size", type=int, default=2048)
     parser.add_argument("--samples", type=int, default=64)
     parser.add_argument("--exclude-material", action="append", default=[])
-    parser.add_argument("--device", choices=("cpu", "gpu", "auto"), default="auto")
+    parser.add_argument("--device", choices=pbrt_blender.DEVICES,
+                        default=pbrt_blender.DEFAULT_DEVICE)
     parser.add_argument("--light-paths", choices=sorted(pbrt_blender.LIGHT_PATH_POLICIES),
                         default="blender-default",
                         help="Cycles bounce/clamp policy (pbrt_blender.LIGHT_PATH_POLICIES)")

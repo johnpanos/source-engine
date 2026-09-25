@@ -552,6 +552,27 @@ unassigned. Nothing below is installed.
     [R49 preparation](#r49-preparation-four-sample-sh-l1-feasibility)).
   - The bake oracles are not in the conformance manifest.
 
+### Device policy (installed 2026-09-24)
+
+[`tools/quality/cycles_device.py`](../tools/quality/cycles_device.py) owns
+the Cycles device choice for the existing Blender scripts, pending the
+`CyclesBaker`:
+- **Bakes and previews use the GPU** and fail if none is found.
+- **Correctness checks use the CPU:**
+  - the pipeline reference render;
+  - `gi_reference.py`;
+  - the basis oracle and supplemental bakes;
+  - the `gi-fixture` export profile.
+
+Measured on the Ryzen AI Max+ 395 / Radeon 8060S host with Blender 5.2.1:
+- two CPU `DIFFUSE` bakes at the same seed were bit-identical;
+- two HIP bakes of the same scene differed from each other;
+- CPU+GPU hybrid baking took 32.2 s against 26.0 s for HIP alone, repeated
+  twice on a 2048² 1024-spp bake. Hybrid is therefore not offered.
+
+The existing G0 references were rendered on HIP. Re-rendering them on the CPU
+would change their recorded hashes, and has not been done.
+
 ### Scope
 
 1. `utils/lighting/` (strict C++20):

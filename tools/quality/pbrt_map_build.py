@@ -61,6 +61,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import cycles_device  # noqa: E402
 import map_scene  # noqa: E402
 import pbrt_map_toolchain  # noqa: E402
 import pbrt_traversal  # noqa: E402
@@ -154,7 +155,7 @@ class Pipeline:
                          "preview_gain": lightmap.get("preview_gain", 1.0),
                          "denoise": lightmap.get("denoise", True),
                          "directional": lightmap.get("directional", False),
-                         "device": lightmap.get("device", "auto"),
+                         "device": lightmap.get("device", cycles_device.BAKE_DEVICE),
                          "light_paths": lightmap.get("light_paths", "blender-default"),
                          # RFC 0011 separated light: LMAP v2 layers beside the total.
                          "layers": list(lightmap.get("layers", [])),
@@ -319,7 +320,7 @@ class Pipeline:
             stage_args += ["--render", p["reference"], "--samples",
                            str(reference.get("samples", 64)),
                            "--scale", str(reference.get("scale", 1.0)),
-                           "--device", reference.get("device", "auto")]
+                           "--device", reference.get("device", cycles_device.CHECK_DEVICE)]
         # A USD scene's stage is the `scene` step's output: an input here.
         self.step("stage", [scene] + ([environment] if environment else []) +
                   ([p["stage"]] if self.usd else []),

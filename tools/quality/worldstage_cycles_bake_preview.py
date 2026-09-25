@@ -14,6 +14,9 @@ from pathlib import Path
 import bpy
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import pbrt_blender  # noqa: E402
+
 
 SOURCE_RNM_BASIS = (
     (0.81649661064147949, 0.0, 0.57735025882720947),
@@ -88,6 +91,8 @@ def main():
     parser.add_argument("--width", type=int, required=True)
     parser.add_argument("--height", type=int, required=True)
     parser.add_argument("--samples", type=int, default=32)
+    parser.add_argument("--device", choices=pbrt_blender.DEVICES,
+                        default=pbrt_blender.DEFAULT_DEVICE)
     parser.add_argument("--manifest", type=Path,
                         help="Portal material manifest with source chart extents")
     parser.add_argument("--require-all-charts-lit", action="store_true",
@@ -153,9 +158,7 @@ def main():
         obj.data.uv_layers.active = obj.data.uv_layers["lightmap:st"]
 
     scene = bpy.context.scene
-    scene.render.engine = "CYCLES"
-    scene.cycles.device = "CPU"
-    scene.cycles.samples = args.samples
+    device = pbrt_blender.configure_cycles(args.samples, args.device)
     scene.cycles.use_denoising = False
     scene.world.use_nodes = True
     scene.world.node_tree.nodes.get("Background").inputs["Strength"].default_value = 0.0
@@ -217,7 +220,7 @@ def main():
         "status": "pass", "renderer": "Blender Cycles bake preview",
         "stage_sha256": digest(args.stage), "exr_sha256": digest(args.out),
         "width": args.width, "height": args.height, "samples": args.samples,
-        "source_meshes": len(meshes), "lights": len(lights),
+        "device": device, "source_meshes": len(meshes), "lights": len(lights),
         "lights_disabled": args.disable_lights,
         "nonzero_texels": int(lit.sum()),
         "chart_max_linear": chart_maxima,

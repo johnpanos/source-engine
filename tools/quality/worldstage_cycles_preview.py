@@ -14,6 +14,9 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import pbrt_blender  # noqa: E402
+
 
 def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -27,6 +30,8 @@ def main():
     parser.add_argument("--width", type=int, required=True)
     parser.add_argument("--height", type=int, required=True)
     parser.add_argument("--samples", type=int, default=32)
+    parser.add_argument("--device", choices=pbrt_blender.DEVICES,
+                        default=pbrt_blender.DEFAULT_DEVICE)
     parser.add_argument("--exposure", type=float, default=-5.0)
     parser.add_argument("--material-manifest", type=Path,
                         help="Portal PBR PNG mapping resolved from the USD and VMTs")
@@ -136,9 +141,7 @@ def main():
             mesh.data.materials.append(preview_material)
 
     scene = bpy.context.scene
-    scene.render.engine = "CYCLES"
-    scene.cycles.device = "CPU"
-    scene.cycles.samples = args.samples
+    device = pbrt_blender.configure_cycles(args.samples, args.device)
     scene.cycles.use_denoising = False
     scene.render.resolution_x = args.width
     scene.render.resolution_y = args.height
@@ -171,7 +174,7 @@ def main():
         "status": "pass", "renderer": "Blender Cycles preview", "blender": bpy.app.version_string,
         "stage_sha256": sha256(args.stage), "image_sha256": sha256(args.out),
         "width": args.width, "height": args.height, "samples": args.samples,
-        "exposure": args.exposure,
+        "device": device, "exposure": args.exposure,
         "lights_disabled": args.disable_lights,
         "meshes": len(meshes), "lights": len(lights),
         "material_policy": material_policy,

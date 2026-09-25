@@ -9,6 +9,7 @@ import os
 import subprocess
 from pathlib import Path
 
+import cycles_device
 from worldstage_sh_l1_plan import load_plan
 
 
@@ -27,6 +28,8 @@ def main():
     parser.add_argument("--height", type=int, required=True)
     parser.add_argument("--samples", type=int, required=True)
     parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--device", choices=cycles_device.DEVICES,
+                        default=cycles_device.CHECK_DEVICE)
     args = parser.parse_args()
     if min(args.width, args.height) < 64 or args.samples < 1 or args.timeout < 1:
         parser.error("invalid atlas dimensions, samples or timeout")
@@ -40,7 +43,7 @@ def main():
                 "plan_sha256": plan_hash, "stage_sha256": sha256(args.stage),
                 "manifest_sha256": sha256(args.manifest),
                 "width": args.width, "height": args.height, "samples": args.samples,
-                "bakes": {}}
+                "device": args.device, "bakes": {}}
     for entry in plan["additional"]:
         identity = entry["id"]
         target = args.out_dir / (identity + ".exr")
@@ -53,7 +56,7 @@ def main():
                    "--normal-local", *[str(value) for value in entry["normal"]],
                    "--require-all-charts-lit", "--out", str(target),
                    "--width", str(args.width), "--height", str(args.height),
-                   "--samples", str(args.samples)]
+                   "--samples", str(args.samples), "--device", args.device]
         try:
             with log.open("w") as handle:
                 result = subprocess.run(command, stdout=handle, stderr=subprocess.STDOUT,

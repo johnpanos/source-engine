@@ -1,14 +1,16 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: render.indirect-light.v1 and render.indirect-switching (RFC 0011
-//          G3): the shared producer suite run against the Baked producer, a
-//          scripted fake and each deliberately bad producer, then the
+//          G3, G4): the shared producer suite run against the Baked producer,
+//          the precomputed radiosity producer, a scripted fake and each
+//          deliberately bad producer, then the
 //          switcher's scenarios (baked <-> fake, a failed Begin, device loss
 //          mid-fade, backgrounding, map change) against a fake GPU timeline.
 //
 //===========================================================================//
 
 #include "render/indirect_light.h"
+#include "render/indirect_radiosity.h"
 #include "render/indirect_switcher.h"
 #include "testing/conformance_result.h"
 
@@ -123,10 +125,10 @@ private:
 	std::vector<std::string> m_violations;
 };
 
-std::shared_ptr<const Volume> LoadSeed()
+std::vector<unsigned char> LoadFile( const char *path )
 {
 	std::vector<unsigned char> bytes;
-	if ( std::FILE *file = std::fopen( "quality/fixtures/gi/prbv/contract.prbv", "rb" ) )
+	if ( std::FILE *file = std::fopen( path, "rb" ) )
 	{
 		unsigned char block[4096];
 		size_t read;
@@ -134,8 +136,23 @@ std::shared_ptr<const Volume> LoadSeed()
 			bytes.insert( bytes.end(), block, block + read );
 		std::fclose( file );
 	}
-	return Volume::FromBytes( std::move( bytes ) );
+	return bytes;
 }
+
+std::shared_ptr<const Volume> LoadSeed()
+{
+	return Volume::FromBytes( LoadFile( "quality/fixtures/gi/prbv/contract.prbv" ) );
+}
+
+// The seed's transfer: its lit side is a furnace enclosure (converged light
+// 0.75, indirect 0.45; radiosity_transfer.fixture_contract).
+std::shared_ptr<const Transfer> LoadTransfer( const Volume &seed )
+{
+	return Transfer::FromBytes( LoadFile( "quality/fixtures/gi/rtrn/contract.rtrn" ), seed );
+}
+
+// The suite's light change: every source at half its baked intensity.
+constexpr float kLightScale = 0.5f;
 
 // A copy of `seed` with layer `layer`'s irradiance scaled by `scale` on every
 // texel, and (optionally) layer 0 recomposed as seed direct + new indirect.
@@ -375,7 +392,8 @@ float DarkSample( const Volume &volume )
 // The shared suite: returns the obligations a producer breaks.
 std::vector<std::string> RunContract(
     const std::function<std::unique_ptr<IProducer>( const FakeGpu & )> &create,
-    const std::shared_ptr<const Volume> &seed, bool *destroyedEarly )
+    const std::shared_ptr<const Volume> &seed, const std::shared_ptr<const Transfer> &transfer,
+    bool *destroyedEarly )
 {
 	std::vector<std::string> broken;
 	FakeGpu gpu;
@@ -398,12 +416,13 @@ std::vector<std::string> RunContract(
 			broken.push_back( "Begin without a probe volume must fail with missing-scene-data and "
 			                  "leave nothing behind" );
 		// An unclaimed policy is rejected.
-		for ( Policy policy : { Policy::BakedPlusDelta, Policy::RuntimeIndirect } )
+		for ( Policy policy : { Policy::Baked, Policy::BakedPlusDelta, Policy::RuntimeIndirect } )
 		{
 			if ( caps.policies & PolicyBit( policy ) )
 				continue;
 			IndirectScene unsupported;
 			unsupported.baked = seed;
+			unsupported.transfer = transfer;
 			unsupported.policy = policy;
 			auto other = make();
 			const auto result = other->Begin( unsupported, PublishedVolume{ 0, seed }, gpu );
@@ -413,15 +432,19 @@ std::vector<std::string> RunContract(
 		}
 	}
 
-	for ( Policy policy : { Policy::Baked, Policy::RuntimeIndirect } )
+	for ( Policy policy : { Policy::Baked, Policy::BakedPlusDelta, Policy::RuntimeIndirect } )
 	{
 		if ( !( caps.policies & PolicyBit( policy ) ) )
 			continue;
 		const std::string under = std::string( " (policy " ) +
-		                          ( policy == Policy::Baked ? "Baked" : "RuntimeIndirect" ) + ")";
+		                          ( policy == Policy::Baked            ? "Baked"
+		                              : policy == Policy::BakedPlusDelta ? "BakedPlusDelta"
+		                                                                 : "RuntimeIndirect" ) +
+		                          ")";
 		auto producer = make();
 		IndirectScene scene;
 		scene.baked = seed;
+		scene.transfer = transfer;
 		scene.policy = policy;
 		if ( !producer->Begin( scene, PublishedVolume{ 0, seed }, gpu ) )
 		{
@@ -434,14 +457,19 @@ std::vector<std::string> RunContract(
 		const uint32_t changeFrame = 12;
 		const uint32_t frames = changeFrame + caps.convergenceFrames + 8;
 		double slowest = 0.0;
+		// A producer that claims light intensity sees every light halved at
+		// the change: its direct light halves at once, its indirect light
+		// within convergenceFrames (light is linear in the sources).
+		const bool lightResponse = ( caps.responds & kLightIntensity ) != 0;
 		for ( uint32_t frame = 1; frame <= frames; ++frame )
 		{
-			const SceneChange door{ kGeometryMotion, 1, 1.0f };
+			const SceneChange changes[2] = { { kGeometryMotion, 1, 1.0f },
+			    { kLightIntensity, kEverySource, kLightScale } };
 			FrameWork work;
 			work.frameSerial = gpu.SubmittedSerial() + 1;
 			work.resources = &gpu;
 			if ( frame == changeFrame )
-				work.changes = std::span<const SceneChange>( &door, 1 );
+				work.changes = std::span<const SceneChange>( changes, 2 );
 			// Schedule runs while the GPU is stalled: it must not wait for it.
 			gpu.Stall( frame == 3 );
 			const auto start = std::chrono::steady_clock::now();
@@ -471,10 +499,21 @@ std::vector<std::string> RunContract(
 			if ( DarkSample( volume ) > seedDark + 0.02f )
 				broken.push_back(
 				    "a published volume leaks light through the seed's wall" + under );
-			if ( std::fabs( DirectLight( volume ) - seedDirect ) > 0.01f * seedDirect )
+			const float directScale = lightResponse && frame >= changeFrame ? kLightScale : 1.0f;
+			if ( std::fabs( DirectLight( volume ) - directScale * seedDirect ) >
+			     0.01f * seedDirect )
 				broken.push_back( "total minus indirect departs from the seed's direct light (a "
 				                  "double count)" +
 				                  under );
+			if ( lightResponse && frame == changeFrame + caps.convergenceFrames + 2 )
+			{
+				const float expected = seed->MeanIrradiance( 1 ) * kLightScale;
+				if ( std::fabs( volume.MeanIrradiance( 1 ) - expected ) >
+				     caps.responseTolerance * expected )
+					broken.push_back( "claims LightIntensity but its indirect light is not the "
+					                  "halved lights' steady state within convergenceFrames" +
+					                  under );
+			}
 			if ( ( caps.responds & kGeometryMotion ) &&
 			     frame == changeFrame + caps.convergenceFrames + 2 )
 			{
@@ -577,6 +616,11 @@ int main()
 	Check( std::fabs( DirectLight( *seed ) - 0.5f * 0.3f ) < 0.01f && DarkSample( *seed ) >= 0.0f &&
 	           DarkSample( *seed ) < 0.02f,
 	    "the seed's lit side holds the furnace's direct light and its dark side none" );
+	const std::shared_ptr<const Transfer> transfer = LoadTransfer( *seed );
+	Check( transfer != nullptr,
+	    "the seed's transfer (quality/fixtures/gi/rtrn/contract.rtrn) loads and pairs with it" );
+	if ( !transfer )
+		return testing::ReportConformance( g_checks, g_failures );
 
 	// The shared suite: the good producers pass...
 	{
@@ -585,7 +629,7 @@ int main()
 		    {
 			    return std::make_unique<BakedProducer>();
 		    },
-		    seed, nullptr );
+		    seed, transfer, nullptr );
 		for ( const auto &b : broken )
 			std::fprintf( stderr, "  baked: %s\n", b.c_str() );
 		Check( broken.empty(), "the Baked producer passes the shared suite" );
@@ -597,7 +641,7 @@ int main()
 		    {
 			    return std::make_unique<ScriptedFake>( kNoDefect, &early, &gpu );
 		    },
-		    seed, &early );
+		    seed, transfer, &early );
 		for ( const auto &b : broken )
 			std::fprintf( stderr, "  fake: %s\n", b.c_str() );
 		Check( broken.empty(), "the scripted fake passes the shared suite" );
@@ -608,10 +652,41 @@ int main()
 		    {
 			    return std::make_unique<ScriptedFakeProducer>( 1.0f, 2 );
 		    },
-		    seed, nullptr );
+		    seed, transfer, nullptr );
 		for ( const auto &b : broken )
 			std::fprintf( stderr, "  product fake: %s\n", b.c_str() );
 		Check( broken.empty(), "the product's scripted fake passes the shared suite" );
+	}
+	{
+		const auto broken = RunContract(
+		    []( const FakeGpu & )
+		    {
+			    return std::make_unique<RadiosityProducer>();
+		    },
+		    seed, transfer, nullptr );
+		for ( const auto &b : broken )
+			std::fprintf( stderr, "  radiosity: %s\n", b.c_str() );
+		Check( broken.empty(), "the precomputed radiosity producer passes the shared suite" );
+	}
+	{
+		// The one-bounce radiosity defect claims LightIntensity but converges
+		// to one bounce of the change only.
+		RadiosityOptions oneBounce;
+		oneBounce.oneBounce = true;
+		const auto broken = RunContract(
+		    [&]( const FakeGpu & )
+		    {
+			    return std::make_unique<RadiosityProducer>( oneBounce );
+		    },
+		    seed, transfer, nullptr );
+		bool caught = false;
+		for ( const auto &b : broken )
+			caught |= b.find( "claims LightIntensity" ) != std::string::npos;
+		std::fprintf( stderr, "bad producer (one-bounce radiosity): %zu broken obligation(s)%s\n",
+		    broken.size(), caught ? "" : " -- NOT caught" );
+		for ( const auto &b : broken )
+			std::fprintf( stderr, "    %s\n", b.c_str() );
+		Check( caught, "the suite rejects a one-bounce radiosity producer" );
 	}
 	// ...and each deliberately bad producer fails it, for its own defect.
 	const struct
@@ -637,7 +712,7 @@ int main()
 		    {
 			    return std::make_unique<ScriptedFake>( entry.defect, &early, &gpu );
 		    },
-		    seed, &early );
+		    seed, transfer, &early );
 		bool caught = false;
 		for ( const auto &b : broken )
 			caught |= b.find( entry.expected ) != std::string::npos;

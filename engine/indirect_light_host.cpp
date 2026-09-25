@@ -291,14 +291,19 @@ const mapcontainer::ProbeVolumeView *IndirectLight_CurrentVolume()
 
 void IndirectLight_Background()
 {
-	if ( TheHost().switcher )
-		TheHost().switcher->Background();
+	if ( !TheHost().switcher )
+		return;
+	TheHost().switcher->Background();
+	Msg( "indirect light: background (%s stops scheduling)\n",
+	    ProducerName( TheHost().switcher->Active() ) );
 }
 
 void IndirectLight_Resume()
 {
-	if ( TheHost().switcher )
-		TheHost().switcher->Resume();
+	if ( !TheHost().switcher )
+		return;
+	TheHost().switcher->Resume();
+	Msg( "indirect light: resume (%s)\n", ProducerName( TheHost().switcher->Active() ) );
 }
 
 void IndirectLight_DeviceLost()

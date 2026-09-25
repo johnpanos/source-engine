@@ -429,6 +429,7 @@ public:
 		LoadControlSettings( "resource/OptionsSubVideoAdvancedDlg.res" );
 		MoveToCenterOfScreen();
 		SetSizeable( false );
+		CreateIndirectLightingControl();
 
 		m_pDXLevel->SetEnabled(false);
 		
@@ -660,6 +661,95 @@ public:
 		pKeyValues->deleteThis();
 	}
 
+	// RFC 0011: the indirect-light producer (r_indirect_producer), listing only
+	// what this device and map offer (r_indirect_producer_offered, which the
+	// engine sets per map). The row takes the free second-column slot below
+	// Field of View (High Dynamic Range holds the first); without the engine
+	// setting it stays hidden.
+	void CreateIndirectLightingControl()
+	{
+		m_pIndirectLightingLabel = new Label( this, "IndirectLightingLabel", "Indirect lighting" );
+		m_pIndirectLighting = new ComboBox( this, "IndirectLighting", 4, false );
+		int x, y, wide, tall, column, unused;
+		m_pMotionBlur->GetBounds( x, y, wide, tall );
+		m_pFilteringMode->GetBounds( column, unused, unused, unused );
+		// The layout's rows: Motion Blur's combo at 258, the next row's label
+		// at 292 and combo at 316, in its 24-unit row height.
+		const float scale = tall / 24.0f;
+		m_pIndirectLightingLabel->SetBounds( column, y + int( 34 * scale ), int( 138 * scale ), tall );
+		m_pIndirectLighting->SetBounds( column, y + int( 58 * scale ), wide, tall );
+		PopulateIndirectLighting();
+	}
+
+	void PopulateIndirectLighting()
+	{
+		static const struct
+		{
+			const char *value;
+			const char *label;
+		} kProducers[] = {
+		    { "baked", "Baked" },
+		    { "radiosity", "Radiosity" },
+		    { "sdf", "SDF traced" },
+		    { "rayquery", "Ray query" },
+		};
+		m_pIndirectLighting->RemoveAll();
+		ConVarRef offered( "r_indirect_producer_offered" );
+		const bool available = offered.IsValid();
+		m_pIndirectLighting->SetVisible( available );
+		m_pIndirectLightingLabel->SetVisible( available );
+		if ( !available )
+			return;
+		// Only offered values; the contract's test producer is never listed.
+		CUtlVector<char *> tokens;
+		V_SplitString( offered.GetString(), " ", tokens );
+		for ( const auto &producer : kProducers )
+		{
+			for ( char *token : tokens )
+			{
+				if ( !V_stricmp( token, producer.value ) )
+				{
+					m_pIndirectLighting->AddItem(
+					    producer.label, new KeyValues( "producer", "value", producer.value ) );
+					break;
+				}
+			}
+		}
+		tokens.PurgeAndDeleteElementsArray();
+		if ( !m_pIndirectLighting->GetItemCount() )
+			m_pIndirectLighting->AddItem( "Baked", new KeyValues( "producer", "value", "baked" ) );
+	}
+
+	// The listed options, for the developer check below.
+	void DescribeIndirectLighting( char *out, int size )
+	{
+		out[0] = 0;
+		for ( int row = 0; row < m_pIndirectLighting->GetItemCount(); ++row )
+		{
+			char text[64];
+			m_pIndirectLighting->GetItemText( m_pIndirectLighting->GetItemIDFromRow( row ), text,
+			    sizeof( text ) );
+			if ( row )
+				V_strncat( out, ", ", size );
+			V_strncat( out, text, size );
+		}
+	}
+
+	void ResetIndirectLighting()
+	{
+		PopulateIndirectLighting();
+		ConVarRef producer( "r_indirect_producer" );
+		m_pIndirectLighting->ActivateItemByRow( 0 );
+		if ( !producer.IsValid() )
+			return;
+		for ( int row = 0; row < m_pIndirectLighting->GetItemCount(); ++row )
+		{
+			KeyValues *data = m_pIndirectLighting->GetItemUserData( m_pIndirectLighting->GetItemIDFromRow( row ) );
+			if ( data && !V_stricmp( data->GetString( "value" ), producer.GetString() ) )
+				m_pIndirectLighting->ActivateItemByRow( row );
+		}
+	}
+
 	void ApplyChangesToConVar( const char *pConVarName, int value )
 	{
 		Assert( cvar->FindVar( pConVarName ) );
@@ -765,6 +855,14 @@ public:
 		ApplyChangesToConVar( "mat_colorcorrection", m_pColorCorrection->GetActiveItem() );
 
 		ApplyChangesToConVar( "mat_motion_blur_enabled", m_pMotionBlur->GetActiveItem() );
+
+		if ( KeyValues *producer = m_pIndirectLighting->GetActiveItemUserData() )
+		{
+			char szCmd[64];
+			Q_snprintf( szCmd, sizeof( szCmd ), "r_indirect_producer %s\n",
+			    producer->GetString( "value", "baked" ) );
+			engine->ClientCmd_Unrestricted( szCmd );
+		}
 		
 		CCvarSlider *pFOV = (CCvarSlider *)FindChildByName( "FOVSlider" );
 		if ( pFOV ) 
@@ -879,6 +977,8 @@ public:
 
 		m_pMotionBlur->ActivateItem( mat_motion_blur_enabled.GetInt() );
 
+		ResetIndirectLighting();
+
 		// get current hardware dx support level
 		char dxVer[64];
 		GetNameForDXLevel( mat_dxlevel.GetInt(), dxVer, sizeof( dxVer ) );
@@ -968,6 +1068,8 @@ private:
 	vgui::ComboBox *m_pColorCorrection;
 	vgui::ComboBox *m_pMotionBlur;
 	vgui::ComboBox *m_pDXLevel;
+	vgui::Label *m_pIndirectLightingLabel = nullptr;
+	vgui::ComboBox *m_pIndirectLighting = nullptr;
 
 	int m_nNumAAModes;
 	AAMode_t m_nAAModes[16];
@@ -1799,6 +1901,20 @@ bool COptionsSubVideo::RequiresRestart()
 //-----------------------------------------------------------------------------
 // Purpose: Opens advanced video mode options dialog
 //-----------------------------------------------------------------------------
+// Developer check (RFC 0011 G3.2): opens the advanced video dialog and prints
+// the Indirect lighting options it lists.
+CON_COMMAND_F( gameui_show_video_advanced,
+    "Opens the advanced video options dialog and lists its indirect-lighting options", FCVAR_CHEAT )
+{
+	static vgui::DHANDLE<COptionsSubVideoAdvancedDlg> s_dialog;
+	if ( !s_dialog.Get() )
+		s_dialog = new COptionsSubVideoAdvancedDlg( BasePanel() );
+	s_dialog->Activate();
+	char options[256];
+	s_dialog->DescribeIndirectLighting( options, sizeof( options ) );
+	Msg( "advanced video: indirect lighting options: %s\n", options );
+}
+
 void COptionsSubVideo::OpenAdvanced()
 {
 	if ( !m_hOptionsSubVideoAdvancedDlg.Get() )

@@ -140,7 +140,8 @@ def main():
     parser.add_argument("--render", type=Path, help="optional reference PNG (EXR beside it)")
     parser.add_argument("--samples", type=int, default=64)
     parser.add_argument("--scale", type=float, default=1.0)
-    parser.add_argument("--device", choices=("cpu", "gpu", "auto"), default="auto")
+    parser.add_argument("--device", choices=pbrt_blender.DEVICES,
+                        default=pbrt_blender.DEFAULT_DEVICE)
     parser.add_argument("--receipt", type=Path, required=True)
     args = parser.parse_args(arguments)
     if not os.environ.get("OCIO") or not Path(os.environ["OCIO"]).is_file():

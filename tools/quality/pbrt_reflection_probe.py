@@ -39,7 +39,8 @@ def main():
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--face-size", type=int, default=256)
     parser.add_argument("--samples", type=int, default=512)
-    parser.add_argument("--device", choices=("cpu", "gpu", "auto"), default="auto")
+    parser.add_argument("--device", choices=pbrt_blender.DEVICES,
+                        default=pbrt_blender.DEFAULT_DEVICE)
     parser.add_argument("--position", type=float, nargs=3)
     args = parser.parse_args(arguments)
     if not os.environ.get("OCIO"):

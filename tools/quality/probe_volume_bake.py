@@ -219,7 +219,8 @@ def main():
                         help="grid bounds in meters (min xyz, max xyz); default: the world "
                              "meshes' bounds, inset")
     parser.add_argument("--samples", type=int, required=True)
-    parser.add_argument("--device", choices=("cpu", "gpu", "auto"), default="auto")
+    parser.add_argument("--device", choices=pbrt_blender.DEVICES,
+                        default=pbrt_blender.DEFAULT_DEVICE)
     parser.add_argument("--light-paths", default="gi-reference")
     parser.add_argument("--out", type=Path, required=True, help="PRBV file")
     parser.add_argument("--work", type=Path, required=True, help="bake images and receipt")

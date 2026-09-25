@@ -39,6 +39,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import cycles_device  # noqa: E402
 import map_scene  # noqa: E402
 import pbrt_blender  # noqa: E402
 
@@ -83,7 +84,8 @@ def main():
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--samples", type=int, required=True)
     parser.add_argument("--seed", type=int, required=True)
-    parser.add_argument("--device", choices=("cpu", "gpu", "auto"), default="auto")
+    parser.add_argument("--device", choices=cycles_device.DEVICES,
+                        default=cycles_device.CHECK_DEVICE)
     parser.add_argument("--light-paths", default="gi-reference")
     args = parser.parse_args(arguments)
     if not os.environ.get("OCIO") or not Path(os.environ["OCIO"]).is_file():

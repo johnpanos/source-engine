@@ -1,0 +1,27 @@
+truncated-header truncated 63
+truncated-body size-mismatch 28108
+trailing-bytes size-mismatch 28128
+bad-magic bad-magic 28112 0:53
+version unsupported-version 28112 4:02
+flags unsupported-version 28112 12:01
+zero-sources invalid-counts 28112 16:00
+too-many-sources invalid-counts 28112 16:41
+probe-texels invalid-counts 28112 28:10
+sh-coefficients invalid-counts 28112 44:04
+source-kind invalid-source 28112 64:07
+source-style invalid-source 28112 68:40
+source-name-empty invalid-source 28112 80:00
+patch-nan invalid-patch 28112 194:c07f
+patch-normal invalid-patch 28112 206:0040
+patch-area invalid-patch 28112 218:0000
+patch-albedo invalid-patch 28112 220:0000c0
+rows-start invalid-rows 28112 1344:01
+rows-end invalid-rows 28112 1440:41
+link-index index-out-of-bounds 28112 1456:18
+link-negative invalid-weight 28112 1460:000080be
+link-nan invalid-weight 28112 1460:0000807f
+transfer-sum transfer-not-normalized 28112 1460:0000c03f
+injection-negative invalid-weight 28112 6084:000080bf
+gather-index index-out-of-bounds 28112 6608:ffffffff
+gather-sum gather-not-normalized 28112 6612:00002041
+probe-direct-negative invalid-weight 28112 14288:000000bf

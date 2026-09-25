@@ -5,7 +5,7 @@
   "lightmap": {
     "size": 2048,
     "samples": 2048,
-    "device": "auto",
+    "device": "gpu",
     "denoise": true,
     "directional": true
   },

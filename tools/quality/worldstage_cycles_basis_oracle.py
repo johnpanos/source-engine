@@ -1,5 +1,6 @@
 """Blender Cycles feasibility oracle for Source's four RNM bake directions."""
 
+import argparse
 import json
 from pathlib import Path
 import sys
@@ -7,6 +8,10 @@ import sys
 import bpy
 import numpy as np
 from mathutils import Vector
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import cycles_device  # noqa: E402
+import pbrt_blender  # noqa: E402
 
 
 BASIS = (
@@ -19,9 +24,13 @@ BASIS = (
 
 def main():
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    if len(arguments) != 1:
-        raise ValueError("usage: blender --python worldstage_cycles_basis_oracle.py -- OUT.json")
-    output = Path(arguments[0])
+    parser = argparse.ArgumentParser(
+        prog="blender --python worldstage_cycles_basis_oracle.py --")
+    parser.add_argument("out", type=Path, help="evidence JSON")
+    parser.add_argument("--device", choices=cycles_device.DEVICES,
+                        default=cycles_device.CHECK_DEVICE)
+    args = parser.parse_args(arguments)
+    output = args.out
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
     bpy.ops.mesh.primitive_plane_add(size=2.0)
@@ -47,9 +56,7 @@ def main():
     sun.data.energy = 2.0
     sun.data.angle = 0.0
     scene = bpy.context.scene
-    scene.render.engine = "CYCLES"
-    scene.cycles.device = "CPU"
-    scene.cycles.samples = 64
+    device = pbrt_blender.configure_cycles(64, args.device)
     scene.cycles.max_bounces = 0
     scene.cycles.use_denoising = False
     scene.world.use_nodes = True
@@ -80,6 +87,7 @@ def main():
     errors = [abs(actual - predicted) for actual, predicted in zip(ratios, expected_ratios)]
     evidence = {"status": "pass" if max(errors) < 0.08 else "fail",
                 "renderer": "Blender Cycles direct diffuse bake", "samples": 64,
+                "device": device,
                 "light_direction": BASIS[1], "basis": BASIS,
                 "measured_linear": measured, "measured_ratios": ratios,
                 "expected_clamped_cosine_ratios": expected_ratios,

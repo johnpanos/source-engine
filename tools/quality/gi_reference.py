@@ -47,6 +47,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
+import cycles_device  # noqa: E402
 import map_scene  # noqa: E402
 import pbrt_map_toolchain  # noqa: E402
 
@@ -505,7 +506,8 @@ def main():
     render.add_argument("--fixture", action="append")
     render.add_argument("--samples", type=int, default=DEFAULT_SAMPLES)
     render.add_argument("--seed", type=int, default=DEFAULT_SEED)
-    render.add_argument("--device", choices=("cpu", "gpu", "auto"), default="auto")
+    render.add_argument("--device", choices=cycles_device.DEVICES,
+                        default=cycles_device.CHECK_DEVICE)
     render.add_argument("--work", type=Path, default=WORK)
     render.add_argument("--toolchain", type=Path)
     check = commands.add_parser("check")

@@ -74,6 +74,9 @@ struct Snapshot
 	uint64_t mapSerial = 0;
 	uint64_t epoch = 0; // advances by one per built frame
 	std::vector<RuntimeLight> lights;
+	// Every light style's current scalar (1 is its baked value): the lights
+	// a map carries only in its bake (RTRN sources) are switched by style.
+	std::vector<float> styleScalars;
 };
 
 // The per-frame source data the engine gathers.
@@ -144,6 +147,7 @@ public:
 		Snapshot snapshot;
 		snapshot.mapSerial = m_mapSerial;
 		snapshot.epoch = ++m_epoch;
+		snapshot.styleScalars.assign( styleScalars.begin(), styleScalars.end() );
 		snapshot.lights.reserve( world.size() + dynamic.size() );
 		for ( const WorldLightInput &input : world )
 		{

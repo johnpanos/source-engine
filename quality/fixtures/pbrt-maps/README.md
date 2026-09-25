@@ -78,7 +78,7 @@ python3 tools/quality/pbrt_map_toolchain.py configure-client --build build
 | `reference.gate` | `max_mae`, `min_ssim`, `max_exposure_stops` for that render against the supplied image (scored through the reference's own fitted display curve) |
 | `runtime_gate` | `max_mae`, `min_ssim`, `max_grain_ratio`, `max_mottle_ratio`, optional `min_edge_f1` and `min_fine_edge_precision` for the camera-matched game frame against the Cycles render; the receipt always records orientation-aware structural and fine edge parity |
 | `lightmap.size` / `samples` | atlas edge and Cycles samples (2048 / 64 default; the shipped manifests use 4096 samples) |
-| `lightmap.device` | `auto` (default: GPU when Cycles finds HIP/CUDA/OptiX/oneAPI/Metal), `gpu` (fail without one) or `cpu`; the bake receipt records the device |
+| `lightmap.device` | `gpu` (default: HIP/CUDA/OptiX/oneAPI/Metal, failing without one; HIP on the AMD Fedora host), `auto` (GPU when Cycles finds one, else CPU) or `cpu`; the reflection-probe and probe-volume bakes use the same device, and each receipt records it |
 | `lightmap.exclude_materials` | extra materials that get no atlas space (transmissive and fully metallic ones never read the atlas and are always excluded) |
 | `lightmap.denoise` | OpenImageDenoise `RTLightmap` pass on the atlas (default `true`; needs `libOpenImageDenoise.so.2`); the UV gutter fill still runs when this is `false` |
 | `lightmap.preview_gain` | temporary display gain for the Source preview (default 1) |
@@ -114,6 +114,24 @@ GPU baking is the practical path to noise-free lightmaps: the living room's
 4096-sample 2048² bake takes about 6 minutes on a Radeon 8060S (HIP). The bake
 merges the baked meshes into one bake-only object, because Blender otherwise
 runs one render job per object and re-syncs the scene each time.
+
+On Fedora, Cycles HIP needs `rocm-hip` and `rocm-runtime` (Fedora's `blender`
+package ships precompiled kernels, including `gfx1151`), plus membership of the
+`render` and `video` groups for `/dev/kfd` and `/dev/dri/renderD*`. `rocminfo`
+and `rocm-smi` are optional diagnostics. A bake without a usable GPU fails with
+"no Cycles GPU device is available"; pass `--device auto` or set
+`lightmap.device` to `cpu` only on a host that intentionally bakes on the CPU.
+
+Correctness checks run on the CPU instead
+([`cycles_device.py`](../../../tools/quality/cycles_device.py) owns this policy):
+- the pipeline's reference render;
+- `gi_reference.py`;
+- the basis oracle and supplemental bakes;
+- the `gi-fixture` export profile.
+
+On this host a CPU bake is bit-identical across runs at the same seed, while
+two HIP bakes of the same scene differ. CPU+GPU hybrid rendering was measured
+about 24% slower than the GPU alone, so it is not offered.
 
 ## Owners
 

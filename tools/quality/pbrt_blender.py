@@ -12,6 +12,7 @@ from pathlib import Path
 import bpy
 from mathutils import Matrix, Vector
 
+import cycles_device
 import map_scene
 import pbrt_scene
 
@@ -378,6 +379,10 @@ def source_meshes():
 
 
 GPU_BACKENDS = ("OPTIX", "CUDA", "HIP", "ONEAPI", "METAL")
+# Cycles device requests; `cycles_device` owns the policy (bakes on the GPU,
+# correctness checks on the CPU).
+DEVICES = cycles_device.DEVICES
+DEFAULT_DEVICE = cycles_device.BAKE_DEVICE
 # Cycles light-path policies, by name. `blender-default` keeps Blender's own
 # defaults (4 diffuse bounces), which every map built before RFC 0011 used.
 # `gi-reference` is the RFC 0011 oracle setting: enough diffuse bounces that
@@ -406,17 +411,19 @@ def configure_light_paths(policy):
         "sample_clamp_direct", "sample_clamp_indirect")}}
 
 
-def configure_cycles(samples, device="cpu"):
+def configure_cycles(samples, device=DEFAULT_DEVICE):
     """Select Cycles, its sample count and device; return the device used.
 
-    `device` is "cpu", "gpu" (fail without one) or "auto" (GPU when Cycles
-    finds one). GPU and CPU renders are both unbiased estimates of the same
+    `device` is "gpu" (the default; fail without one), "auto" (GPU when
+    Cycles finds one, else CPU) or "cpu". GPU and CPU renders are both unbiased estimates of the same
     light; the receipt records which one produced the result.
     """
     render = bpy.context.scene
     render.render.engine = "CYCLES"
     render.cycles.samples = samples
     render.cycles.device = "CPU"
+    if device not in DEVICES:
+        raise ValueError("unknown Cycles device request " + str(device))
     if device == "cpu":
         return "CPU"
     preferences = bpy.context.preferences.addons["cycles"].preferences

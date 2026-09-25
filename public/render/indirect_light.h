@@ -31,6 +31,7 @@
 
 #include "foundation/expected.h"
 #include "mapcontainer/probe_volume.h"
+#include "mapcontainer/radiosity_transfer.h"
 #include "render/indirect_policy.h"
 #include "render/light_set.h"
 
@@ -257,6 +258,31 @@ struct Volume
 	return blended;
 }
 
+// A validated RTRN radiosity transfer paired with the map's volume (the
+// precomputed radiosity producer's input).
+struct Transfer
+{
+	std::vector<unsigned char> bytes;
+	mapcontainer::RadiosityTransferLayout layout{};
+
+	// Null when the bytes are not a valid transfer baked for `volume`.
+	[[nodiscard]] static std::shared_ptr<const Transfer> FromBytes(
+	    std::vector<unsigned char> bytes, const Volume &volume )
+	{
+		auto transfer = std::make_shared<Transfer>();
+		if ( mapcontainer::ValidateRadiosityTransfer( bytes.data(), bytes.size(), &transfer->layout,
+		         volume.bytes.data(), &volume.layout ) != mapcontainer::RadiosityTransferError::Ok )
+			return nullptr;
+		transfer->bytes = std::move( bytes );
+		return transfer;
+	}
+
+	[[nodiscard]] mapcontainer::RadiosityTransferView View() const
+	{
+		return mapcontainer::RadiosityTransferView( bytes.data(), layout );
+	}
+};
+
 struct PublishedVolume
 {
 	uint64_t epoch = 0;
@@ -266,13 +292,17 @@ struct PublishedVolume
 };
 
 // A scripted scene change (a door opening, a light toggled): the scenario
-// inputs a producer's response is judged on.
+// inputs a producer's response is judged on. A change persists until another
+// replaces it. For kLightIntensity and kEmission, `target` is a transfer
+// source index (or kEverySource) and `value` its scalar, which overrides the
+// light set's style scalar for that source.
 struct SceneChange
 {
 	uint32_t response = 0; // the Response bit it exercises
 	uint32_t target = 0;
 	float value = 0.0f;
 };
+constexpr uint32_t kEverySource = 0xFFFFFFFFu;
 
 struct IndirectScene
 {
@@ -280,7 +310,7 @@ struct IndirectScene
 	std::shared_ptr<const Volume> baked; // the map's PRBV: every producer's seed
 	indirect_policy::Policy policy = indirect_policy::Policy::Baked;
 	uint32_t deviceFeatures = 0;
-	bool hasTransfer = false; // RTRN (the radiosity producer's input, G4)
+	std::shared_ptr<const Transfer> transfer; // RTRN: the radiosity producer's input
 };
 
 // GPU resources a producer owns, released behind the provider's completion
@@ -296,13 +326,29 @@ public:
 	[[nodiscard]] virtual uint64_t CompletedSerial() const = 0;
 };
 
+// The frame executor's data-parallel form (RFC 0003): runs body( context, i )
+// for every i in [0, count), possibly concurrently on the engine's workers,
+// and returns once all have completed, so their writes happen-before the
+// return. Items must be independent and must not wait on this executor. The
+// serial mode, the oracle for the pooled one, runs them in ascending order
+// on the caller.
+class IBatchExecutor
+{
+public:
+	virtual ~IBatchExecutor() = default;
+	virtual void ParallelFor( const char *name, uint32_t count, void ( *body )( void *, uint32_t ),
+	    void *context ) = 0;
+};
+
 // One frame's work: CPU jobs the frame's executor runs (a producer never
 // creates threads; a CPU producer's serial mode runs its jobs in order), the
-// frame's scene changes, and read-only GPU progress. There is no GPU wait.
+// executor those jobs may fan out on (null: inline and serial), the frame's
+// scene changes, and read-only GPU progress. There is no GPU wait.
 struct FrameWork
 {
 	uint64_t frameSerial = 0;
 	std::vector<std::function<void()>> jobs;
+	IBatchExecutor *executor = nullptr;
 	IResourceTracker *resources = nullptr;
 	std::span<const SceneChange> changes;
 };
