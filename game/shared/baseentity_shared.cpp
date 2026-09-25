@@ -327,6 +327,30 @@ bool CBaseEntity::KeyValue( const char *szKeyName, const char *szValue )
 		*s = '\0';
 	}
 
+#if defined( PORTAL2 ) && !defined( CLIENT_DLL )
+	// CS:GO base: detail-level draw limits (see CBaseEntity::m_nMinCPULevel).
+	if ( FStrEq( szKeyName, "mincpulevel" ) )
+	{
+		m_nMinCPULevel = atoi( szValue );
+		return true;
+	}
+	if ( FStrEq( szKeyName, "maxcpulevel" ) )
+	{
+		m_nMaxCPULevel = atoi( szValue );
+		return true;
+	}
+	if ( FStrEq( szKeyName, "mingpulevel" ) )
+	{
+		m_nMinGPULevel = atoi( szValue );
+		return true;
+	}
+	if ( FStrEq( szKeyName, "maxgpulevel" ) )
+	{
+		m_nMaxGPULevel = atoi( szValue );
+		return true;
+	}
+#endif
+
 	if ( FStrEq( szKeyName, "rendercolor" ) || FStrEq( szKeyName, "rendercolor32" ))
 	{
 		color32 tmp;

@@ -418,7 +418,11 @@ int CAI_Senses::LookForHighPriorityEntities( int iDistance )
 #ifdef PORTAL
 				else
 				{
+#ifdef PORTAL2
+					CSightPortal *pPortal = HasSensingFlags( SENSING_FLAGS_DONT_LOOK_THROUGH_PORTALS ) ? NULL : GetOuter()->FInViewConeThroughPortal( pPlayer );
+#else
 					CSightPortal *pPortal = GetOuter()->FInViewConeThroughPortal( pPlayer );
+#endif
 					if ( pPortal && UTIL_Portal_DistanceThroughPortalSqr( pPortal, origin, pPlayer->GetAbsOrigin() ) < distSq && LookThroughPortal( pPortal, pPlayer ) )
 					{
 						nSeen++;

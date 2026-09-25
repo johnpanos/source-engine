@@ -139,6 +139,9 @@ BEGIN_DATADESC( CNPC_FloorTurret )
 	DEFINE_OUTPUT( m_OnTipped, "OnTipped" ),
 	DEFINE_OUTPUT( m_OnPhysGunPickup, "OnPhysGunPickup" ),
 	DEFINE_OUTPUT( m_OnPhysGunDrop, "OnPhysGunDrop" ),
+#ifdef PORTAL2
+	DEFINE_OUTPUT( m_OnExplode, "OnExplode" ),
+#endif
 
 	DEFINE_BASENPCINTERACTABLE_DATADESC(),
 
@@ -2058,6 +2061,10 @@ void CNPC_FloorTurret::BreakThink( void )
 		int iModelIndex = modelinfo->GetModelIndex( g_PropDataSystem.GetRandomChunkModel( "MetalChunks" ) );	
 		te->BreakModel( filter, 0.0, vecOrigin, GetAbsAngles(), Vector(40,40,40), gibVelocity, iModelIndex, 150, 4, 2.5, BREAK_METAL );
 	}
+
+#ifdef PORTAL2
+	m_OnExplode.FireOutput( NULL, this );
+#endif
 
 	// We're done!
 	UTIL_Remove( this );

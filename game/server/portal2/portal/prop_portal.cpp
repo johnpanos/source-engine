@@ -526,31 +526,20 @@ void CProp_Portal::Activate( void )
 //			Rather than addressing that directly, portal detectors look for portals with an explicit OBB check.
 //			
 //-----------------------------------------------------------------------------
-static void UpdatePortalDetectorClass( CProp_Portal *pPortal, const char *pClassName )
-{
-	CBaseEntity *pEntity = NULL;
-	while ( ( pEntity = gEntList.FindEntityByClassname( pEntity, pClassName ) ) != NULL )
-	{
-		CFuncPortalDetector *pDetector = dynamic_cast<CFuncPortalDetector *>( pEntity );
-		if ( !pDetector || !pDetector->IsActive() )
-			continue;
-
-		pDetector->OnActivate();
-		CFunc_Portalled *pPortalled = dynamic_cast<CFunc_Portalled *>( pDetector );
-		if ( pPortalled && pPortalled->IsPortalTouchingDetector( pPortal ) )
-			pPortal->SetFuncPortalled( pPortalled );
-	}
-}
-
 void CProp_Portal::UpdatePortalDetectorsOnPortalMoved( void )
 {
-	UpdatePortalDetectorClass( this, "func_portal_detector" );
-	UpdatePortalDetectorClass( this, "func_portalled" );
+	for ( CFuncPortalDetector *pDetector = GetPortalDetectorList(); pDetector != NULL; pDetector = pDetector->m_pNext )
+	{
+		pDetector->UpdateOnPortalMoved( this );
+	}
 }
 
 void CProp_Portal::UpdatePortalDetectorsOnPortalActivated( void )
 {
-	UpdatePortalDetectorsOnPortalMoved();
+	for ( CFuncPortalDetector *pDetector = GetPortalDetectorList(); pDetector != NULL; pDetector = pDetector->m_pNext )
+	{
+		pDetector->UpdateOnPortalActivated( this );
+	}
 }
 
 void CProp_Portal::UpdatePortalLinkage( void )

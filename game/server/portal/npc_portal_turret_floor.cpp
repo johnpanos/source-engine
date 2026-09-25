@@ -39,14 +39,25 @@
 #define FLOOR_TURRET_BC_YAW			"aim_yaw"
 #define FLOOR_TURRET_BC_PITCH		"aim_pitch"
 #define	PORTAL_FLOOR_TURRET_RANGE	1500
+#ifdef PORTAL2
+#define	PORTAL_FLOOR_TURRET_CURRENT_RANGE	( m_flTurretRange )	// TurretRange keyvalue
+#else
+#define	PORTAL_FLOOR_TURRET_CURRENT_RANGE	PORTAL_FLOOR_TURRET_RANGE
+#endif
 #define	PORTAL_FLOOR_TURRET_MAX_SHOT_DELAY	2.5f
 #define	FLOOR_TURRET_MAX_WAIT		5
 #define FLOOR_TURRET_SHORT_WAIT		2.0f		// Used for FAST_RETIRE spawnflag
 
 #define SF_FLOOR_TURRET_FASTRETIRE			0x00000080
 
+#ifdef PORTAL2
+// Retail Portal 2 constants (linux32 server.so .rodata 0xcf7190 / 0xcf718c)
+#define TURRET_FLOOR_DAMAGE_MULTIPLIER 6.0f
+#define TURRET_FLOOR_BULLET_FORCE_MULTIPLIER 0.85f
+#else
 #define TURRET_FLOOR_DAMAGE_MULTIPLIER 3.0f
 #define TURRET_FLOOR_BULLET_FORCE_MULTIPLIER 0.4f
+#endif
 #define TURRET_FLOOR_PHYSICAL_FORCE_MULTIPLIER 135.0f
 
 #ifndef PORTAL_FLOOR_TURRET_NUM_ROPES
@@ -254,6 +265,18 @@ BEGIN_DATADESC( CNPC_Portal_FloorTurret )
 	DEFINE_INPUTFUNC( FIELD_VOID, "DisablePickup", InputDisablePickup ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "SelfDestructImmediately", InputSelfDestructImmediately ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "SetAsBouncePainted", InputSetAsBouncePainted ),
+	DEFINE_INPUTFUNC( FIELD_INTEGER, "SetModel", InputSetModel ),
+
+	DEFINE_FIELD( m_bSeeEnemyThroughPortal, FIELD_BOOLEAN ),
+	DEFINE_FIELD( m_iNextShootingBarrel, FIELD_INTEGER ),
+	DEFINE_FIELD( m_hPreviousHeldOwner, FIELD_EHANDLE ),
+	DEFINE_KEYFIELD( m_nTurretModelIndex, FIELD_INTEGER, "ModelIndex" ),
+	DEFINE_KEYFIELD( m_bDisableMotion, FIELD_BOOLEAN, "DisableMotion" ),
+	DEFINE_KEYFIELD( m_flTurretRange, FIELD_FLOAT, "TurretRange" ),
+	DEFINE_KEYFIELD( m_nCollisionType, FIELD_INTEGER, "CollisionType" ),
+	DEFINE_KEYFIELD( m_bAllowShootThroughPortals, FIELD_BOOLEAN, "AllowShootThroughPortals" ),
+	DEFINE_KEYFIELD( m_bUseSuperDamageScale, FIELD_BOOLEAN, "UseSuperDamageScale" ),
+	DEFINE_KEYFIELD( m_bLoadAlternativeModels, FIELD_BOOLEAN, "LoadAlternativeModels" ),
 #endif
 
 END_DATADESC()
@@ -288,6 +311,14 @@ CNPC_Portal_FloorTurret::CNPC_Portal_FloorTurret( void )
 	m_bShootAtMovingObjects = false;
 	m_bSeeEnemyThroughPortal = false;
 	m_flBurnExplodeTime = 0.0f;
+	m_flTurretRange = 0.0f;
+	m_nCollisionType = 0;
+	m_bAllowShootThroughPortals = false;
+	m_bUseSuperDamageScale = false;
+	m_bLoadAlternativeModels = false;
+	m_nTurretModelIndex = TURRET_MODEL_NORMAL;
+	m_bDisableMotion = false;
+	m_iNextShootingBarrel = 0;
 #else
 	m_bDamageForce = true;
 #endif
@@ -303,6 +334,18 @@ void CNPC_Portal_FloorTurret::Precache( void )
 
 	m_sLaserHaloSprite = PrecacheModel( "sprites/redlaserglow.vmt" );
 	PrecacheModel("effects/redlaser1.vmt");
+
+#ifdef PORTAL2
+	// Retail precaches the variants only on request, then applies ModelIndex.
+	if ( m_bLoadAlternativeModels )
+	{
+		PrecacheModel( "models/npcs/turret/turret_boxed.mdl" );
+		PrecacheModel( "models/npcs/turret/turret_backwards.mdl" );
+		PrecacheModel( "models/npcs/turret/turret_skeleton.mdl" );
+	}
+	SetTurretModel( m_nTurretModelIndex );
+	PrecacheModel( STRING( GetModelName() ) );
+#endif
 
 	for ( int iTalkScript = 0; iTalkScript < PORTAL_TURRET_STATE_TOTAL; ++iTalkScript )
 	{
@@ -337,6 +380,25 @@ void CNPC_Portal_FloorTurret::Spawn( void )
 
 	m_bNoAlarmSounds = true;
 	m_bOutOfAmmo = ( m_spawnflags & SF_FLOOR_TURRET_OUT_OF_AMMO ) != 0;
+
+#ifdef PORTAL2
+	m_iAmmoType = GetAmmoDef()->Index( "PortalTurretBullet" );
+	m_iNextShootingBarrel = 0;
+	if ( m_flTurretRange == 0.0f )
+		m_flTurretRange = 1024.0f;
+
+	// Retail turrets find enemies themselves (HackFindEnemy) and only look
+	// through portals when the map allows it or after being picked up.
+	GetSenses()->AddSensingFlags( SENSING_FLAGS_DONT_LOOK | SENSING_FLAGS_DONT_LISTEN );
+	if ( !m_bAllowShootThroughPortals )
+		GetSenses()->AddSensingFlags( SENSING_FLAGS_DONT_LOOK_THROUGH_PORTALS );
+
+	if ( m_bDisableMotion && VPhysicsGetObject() )
+		VPhysicsGetObject()->EnableMotion( false );
+
+	if ( m_nCollisionType == 1 )
+		SetCollisionGroup( COLLISION_GROUP_DEBRIS_TRIGGER );
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -430,6 +492,17 @@ Vector CNPC_Portal_FloorTurret::GetAutoAimCenter()
 //-----------------------------------------------------------------------------
 void CNPC_Portal_FloorTurret::OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPickup_t reason )
 {
+#ifdef PORTAL2
+	m_hPreviousHeldOwner = pPhysGunUser;
+
+	// Retail: once carried, a turret may see and shoot through portals.
+	if ( !m_bAllowShootThroughPortals )
+	{
+		m_bAllowShootThroughPortals = true;
+		GetSenses()->RemoveSensingFlags( SENSING_FLAGS_DONT_LOOK_THROUGH_PORTALS );
+	}
+#endif
+
 	if ( m_lifeState == LIFE_ALIVE && m_bEnabled )
 	{
 		m_bActive = true;
@@ -578,6 +651,19 @@ void CNPC_Portal_FloorTurret::Shoot( const Vector &vecSrc, const Vector &vecDirT
 
 	info.m_flDamageForceScale = ( ( !m_bDamageForce ) ? ( 0.0f ) : ( TURRET_FLOOR_BULLET_FORCE_MULTIPLIER ) );
 
+#ifdef PORTAL2
+	// Retail fires one bullet per shot from each of the four barrels in turn;
+	// the backwards model fires out of its back.
+	QAngle angBarrelDir;
+	GetAttachment( m_iBarrelAttachments[ m_iNextShootingBarrel ], info.m_vecSrc, angBarrelDir );
+	if ( m_nTurretModelIndex == TURRET_MODEL_BACKWARDS )
+	{
+		info.m_vecDirShooting = -info.m_vecDirShooting;
+	}
+	info.m_flDistance = 16384.0f;
+	FireBullets( info );
+	m_iNextShootingBarrel = ( m_iNextShootingBarrel + 1 ) % 4;
+#else
 	int iBarrelIndex = ( m_bShootWithBottomBarrels ) ? ( 2 ) : ( 0 );
 	QAngle angBarrelDir;
 
@@ -602,6 +688,7 @@ void CNPC_Portal_FloorTurret::Shoot( const Vector &vecSrc, const Vector &vecDirT
 
 	// Flip shooting from the top or bottom
 	m_bShootWithBottomBarrels = !m_bShootWithBottomBarrels;
+#endif
 
 	EmitSound( "NPC_FloorTurret.ShotSounds" );
 	DoMuzzleFlash();
@@ -735,7 +822,15 @@ float CNPC_Portal_FloorTurret::GetAttackDamageScale( CBaseEntity *pVictim )
 			if ( OnSide() )
 				return 1.0f;
 
+#ifdef PORTAL2
+			// Retail: normal damage through a portal, and a 4x "super" scale
+			// the map can request.
+			if ( m_bSeeEnemyThroughPortal )
+				return 1.0f;
+			return m_bUseSuperDamageScale ? TURRET_FLOOR_DAMAGE_MULTIPLIER * 4.0f : TURRET_FLOOR_DAMAGE_MULTIPLIER;
+#else
 			return TURRET_FLOOR_DAMAGE_MULTIPLIER;
+#endif
 		}
 	}
 
@@ -824,7 +919,11 @@ void CNPC_Portal_FloorTurret::ActiveThink( void )
 
 	// If the enemy isn't in the normal fov, check the fov through portals
 	CSightPortal *pPortal = NULL;
+#ifdef PORTAL2
+	if ( pEnemy->IsAlive() && m_bAllowShootThroughPortals )
+#else
 	if ( pEnemy->IsAlive() )
+#endif
 	{
 		pPortal = FInViewConeThroughPortal( pEnemy );
 
@@ -896,7 +995,7 @@ void CNPC_Portal_FloorTurret::ActiveThink( void )
 	}
 
 	//Current enemy is not visible
-	if ( ( bEnemyVisible == false ) || ( m_flDistToEnemy > PORTAL_FLOOR_TURRET_RANGE ))
+	if ( ( bEnemyVisible == false ) || ( m_flDistToEnemy > PORTAL_FLOOR_TURRET_CURRENT_RANGE ))
 	{
 		m_flLastSight = gpGlobals->curtime + 2.0f;
 
@@ -1059,6 +1158,9 @@ void CNPC_Portal_FloorTurret::SearchThink( void )
 
 		// If the enemy isn't in the normal fov, check the fov through portals
 		CSightPortal *pPortal = NULL;
+#ifdef PORTAL2
+		if ( m_bAllowShootThroughPortals )
+#endif
 		pPortal = FInViewConeThroughPortal( pEnemy );
 
 		if ( pPortal && FVisibleThroughPortal( pPortal, pEnemy ) )
@@ -1083,7 +1185,7 @@ void CNPC_Portal_FloorTurret::SearchThink( void )
 		}
 
 		// Give enemies that are farther away a longer grace period
-		float fDistanceRatio = m_flDistToEnemy / PORTAL_FLOOR_TURRET_RANGE;
+		float fDistanceRatio = m_flDistToEnemy / PORTAL_FLOOR_TURRET_CURRENT_RANGE;
 		m_flShotTime = gpGlobals->curtime + fDistanceRatio * fDistanceRatio * PORTAL_FLOOR_TURRET_MAX_SHOT_DELAY;
 
 		m_flLastSight = 0;
@@ -1355,7 +1457,7 @@ void CNPC_Portal_FloorTurret::HackFindEnemy( void )
 	// dead enemies are cleared out before new ones are added.
 	GetEnemies()->RefreshMemories();
 
-	GetSenses()->Look( PORTAL_FLOOR_TURRET_RANGE );
+	GetSenses()->Look( PORTAL_FLOOR_TURRET_CURRENT_RANGE );
 	SetEnemy( BestEnemy() );
 
 	if ( GetEnemy() == NULL )
@@ -1364,7 +1466,7 @@ void CNPC_Portal_FloorTurret::HackFindEnemy( void )
 		AISightIter_t iter;
 		CBaseEntity *pObject;
 		CBaseEntity	*pNearest = NULL;
-		float flClosestDistSqr = PORTAL_FLOOR_TURRET_RANGE * PORTAL_FLOOR_TURRET_RANGE;
+		float flClosestDistSqr = PORTAL_FLOOR_TURRET_CURRENT_RANGE * PORTAL_FLOOR_TURRET_CURRENT_RANGE;
 
 		for ( pObject = GetSenses()->GetFirstSeenEntity( &iter, SEEN_MISC ); pObject; pObject = GetSenses()->GetNextSeenEntity( &iter ) )
 		{
@@ -1814,5 +1916,38 @@ bool CNPC_Portal_FloorTurret::IsProjectedWallBlockingTurretFromPlayer( CPortal_P
 	trace_t tr;
 	UTIL_TraceLine( EyePosition(), pPlayer->EyePosition(), MASK_SHOT, this, COLLISION_GROUP_NONE, &tr );
 	return tr.m_pEnt && FClassnameIs( tr.m_pEnt, "projected_wall_entity" );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Retail model variants. Index 1 and unknown values keep the model.
+//-----------------------------------------------------------------------------
+void CNPC_Portal_FloorTurret::SetTurretModel( int nModelIndex )
+{
+	m_nTurretModelIndex = nModelIndex;
+
+	switch ( nModelIndex )
+	{
+	case TURRET_MODEL_NORMAL:
+		SetModelName( MAKE_STRING( "models/npcs/turret/turret.mdl" ) );
+		break;
+	case TURRET_MODEL_BOXED:
+		SetModelName( MAKE_STRING( "models/npcs/turret/turret_boxed.mdl" ) );
+		break;
+	case TURRET_MODEL_BACKWARDS:
+		SetModelName( MAKE_STRING( "models/npcs/turret/turret_backwards.mdl" ) );
+		break;
+	case TURRET_MODEL_SKELETON:
+		SetModelName( MAKE_STRING( "models/npcs/turret/turret_skeleton.mdl" ) );
+		break;
+	default:
+		break;
+	}
+}
+
+void CNPC_Portal_FloorTurret::InputSetModel( inputdata_t &inputdata )
+{
+	SetTurretModel( inputdata.value.Int() );
+	PrecacheModel( STRING( GetModelName() ) );
+	SetModel( STRING( GetModelName() ) );
 }
 #endif // PORTAL2

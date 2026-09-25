@@ -118,6 +118,9 @@ $Project "Server (Portal 2)"
 {
 	$Folder	"Source Files"
 	{
+		// Portal 2 uses the CS:GO-base projected texture (portal2\env_projectedtexture.cpp)
+		-$File	"env_projectedtexture.cpp"
+
 		$Folder	"Portal 2 port adapters"
 		{
 			$File	"$SRCDIR\game\shared\portal2\portal2_shared_compat.cpp"
@@ -217,6 +220,8 @@ $Project "Server (Portal 2)"
 				$File	"portal2\info_placement_helper.h"
 				$File	"portal2\info_player_ping_detector.cpp"
 				$File	"portal2\logic_playerproxy.cpp"
+				$File	"portal2\portal_stats_controller.cpp"
+				$File	"portal2\env_projectedtexture.cpp"
 				$File	"portal2\logic_timescale.cpp"
 				$File	"portal2\logic_timescale.h"
 				$File	"portal2\item_nugget.cpp"

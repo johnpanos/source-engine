@@ -28,20 +28,10 @@ BEGIN_DATADESC( CFunc_Portalled )
 END_DATADESC()
 
 
+// Retail replaces the detector outputs with the portal notification.
 void CFunc_Portalled::PortalPlacedInsideBounds( CProp_Portal *pPortal )
 {
 	pPortal->SetFuncPortalled( this );
-}
-
-bool CFunc_Portalled::IsPortalTouchingDetector( CProp_Portal *pPortal )
-{
-	if ( !pPortal || !IsActive() || pPortal->GetLinkageGroup() != GetLinkageGroupID() )
-		return false;
-
-	Vector mins, maxs;
-	CollisionProp()->WorldSpaceAABB( &mins, &maxs );
-	return UTIL_IsBoxIntersectingPortal( ( mins + maxs ) * 0.5f,
-		( maxs - mins ) * 0.5f, pPortal );
 }
 
 void CFunc_Portalled::OnPrePortalled( CBaseEntity *pOther, bool bDeparting )

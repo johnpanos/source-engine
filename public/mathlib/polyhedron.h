@@ -68,6 +68,12 @@ CPolyhedron *ClipPolyhedron( const CPolyhedron *pExistingPolyhedron, const float
 
 CPolyhedron *GetTempPolyhedron( unsigned short iVertices, unsigned short iLines, unsigned short iIndices, unsigned short iPolygons ); //grab the temporary polyhedron. Avoids new/delete for quick work. Can only be in use by one chunk of code at a time
 
+// Builds a polyhedron with one triangle polygon per input triangle (3 indices each into pPoints).
+// Only referenced points are kept. Each triangle is oriented away from the points' centroid, so
+// the input winding does not matter; a flat mesh keeps its input winding. Returns NULL for
+// invalid input. Uses heap memory for its working sets, so any mesh size is safe.
+CPolyhedron *ConvertTriangleMeshToPolyhedron( const Vector *pPoints, int iPointCount, const int *pTriangleIndices, int iTriangleCount, bool bUseTemporaryMemory = false ); //be sure to polyhedron->Release()
+
 
 #endif //#ifndef POLYHEDRON_H_
 

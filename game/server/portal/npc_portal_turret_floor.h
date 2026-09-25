@@ -102,6 +102,18 @@ public:
 	void			InputDisablePickup( inputdata_t &inputdata );
 	void			InputSelfDestructImmediately( inputdata_t &inputdata );
 	void			InputSetAsBouncePainted( inputdata_t &inputdata );
+	void			InputSetModel( inputdata_t &inputdata );
+
+	// Retail model variants (ModelIndex keyvalue and SetModel input)
+	enum
+	{
+		TURRET_MODEL_NORMAL = 0,
+		TURRET_MODEL_BOXED = 2,
+		TURRET_MODEL_BACKWARDS = 3,
+		TURRET_MODEL_SKELETON = 4,
+	};
+	void			SetTurretModel( int nModelIndex );
+	float			GetTurretRange( void ) const { return m_flTurretRange; }
 
 	virtual void	Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
 
@@ -140,6 +152,17 @@ private:
 	bool			m_bUsedAsActor;
 	bool			m_bGagged;
 	bool			m_bSeeEnemyThroughPortal;
+
+	// Retail keyvalues
+	float			m_flTurretRange;				// TurretRange; 1024 when unset
+	int				m_nCollisionType;				// CollisionType; 1 = debris
+	bool			m_bAllowShootThroughPortals;	// AllowShootThroughPortals; set once picked up
+	bool			m_bUseSuperDamageScale;			// UseSuperDamageScale
+	bool			m_bLoadAlternativeModels;		// LoadAlternativeModels
+	int				m_nTurretModelIndex;			// ModelIndex (TURRET_MODEL_*)
+	bool			m_bDisableMotion;				// DisableMotion
+	int				m_iNextShootingBarrel;			// retail fires one barrel per shot, in turn
+	EHANDLE			m_hPreviousHeldOwner;
 };
 
 #endif // NPC_PORTAL_TURRET_FLOOR_H

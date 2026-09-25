@@ -607,7 +607,8 @@ void CPortalRender::DrawEarlyZPortals( CViewRender *pViewRender )
 {	 
 	VPROF_BUDGET( "CPortalRender::DrawEarlyZPortals", "DrawEarlyZPortals" );
 
-	if ( !r_portal_earlyz.GetBool() || !r_portal_fastpath.GetBool() || ( g_pMaterialSystem->GetThreadMode() == MATERIAL_SINGLE_THREADED ) )
+	// Portal 2 port: no queued-mode requirement (see DrawPortalsUsingStencils).
+	if ( !r_portal_earlyz.GetBool() || !r_portal_fastpath.GetBool() )
 	{
 		return;
 	}
@@ -764,8 +765,12 @@ bool CPortalRender::DrawPortalsUsingStencils( CViewRender *pViewRender )
 {	  
 	VPROF_BUDGET( "CPortalRender::DrawPortalsUsingStencils", "DrawPortalsUsingStencils" );
 
-	if ( !r_portal_fastpath.GetBool() || 
-		 ( g_pMaterialSystem->GetThreadMode() == MATERIAL_SINGLE_THREADED ) )	// only QMS supports the VB restores I'm doing right now
+	// Retail took the fast path only in queued mode, because it restored the
+	// level-0 portal quad vertex buffer in later passes and only the queued
+	// material system kept it alive. This port replays the mesh from its
+	// recorded inputs instead (CPortalQuadMeshReplayData), so the fast path
+	// works single-threaded too, which native Vulkan always is.
+	if ( !r_portal_fastpath.GetBool() )
 	{
 		return DrawPortalsUsingStencils_Old( pViewRender );
 	}

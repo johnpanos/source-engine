@@ -51,7 +51,23 @@ private:
 	bool	m_bLightOnlyTarget;
 	bool	m_bLightWorld;
 	bool	m_bCameraSpace;
+#ifdef PORTAL2
+	// Portal 2 / CS:GO base: color32 with timed transitions, brightness scale
+	// and light styles (see server/portal2/env_projectedtexture.cpp).
+	bool	m_bAlwaysUpdate;
+	bool	m_bSimpleProjection;
+	float	m_flBrightnessScale;
+	color32	m_LightColor;
+	float	m_flColorTransitionTime;
+	float	m_flProjectionSize;
+	float	m_flRotation;
+	int		m_iStyle;
+	Vector	m_CurrentLinearFloatLightColor;
+	float	m_flCurrentLinearFloatLightAlpha;
+	float	m_flCurrentLightStyle;
+#else
 	Vector	m_LinearFloatLightColor;
+#endif
 	float	m_flAmbient;
 	float	m_flNearZ;
 	float	m_flFarZ;
@@ -63,12 +79,27 @@ private:
 IMPLEMENT_CLIENTCLASS_DT( C_EnvProjectedTexture, DT_EnvProjectedTexture, CEnvProjectedTexture )
 	RecvPropEHandle( RECVINFO( m_hTargetEntity )	),
 	RecvPropBool(	 RECVINFO( m_bState )			),
+#ifdef PORTAL2
+	RecvPropBool(	 RECVINFO( m_bAlwaysUpdate )	),
+#endif
 	RecvPropFloat(	 RECVINFO( m_flLightFOV )		),
 	RecvPropBool(	 RECVINFO( m_bEnableShadows )	),
+#ifdef PORTAL2
+	RecvPropBool(	 RECVINFO( m_bSimpleProjection )	),
+#endif
 	RecvPropBool(	 RECVINFO( m_bLightOnlyTarget ) ),
 	RecvPropBool(	 RECVINFO( m_bLightWorld )		),
 	RecvPropBool(	 RECVINFO( m_bCameraSpace )		),
+#ifdef PORTAL2
+	RecvPropFloat(	 RECVINFO( m_flBrightnessScale )	),
+	RecvPropInt(	 RECVINFO( m_LightColor ) ),
+	RecvPropFloat(	 RECVINFO( m_flColorTransitionTime )	),
+	RecvPropFloat(	 RECVINFO( m_flProjectionSize )	),
+	RecvPropFloat(	 RECVINFO( m_flRotation )	),
+	RecvPropInt(	 RECVINFO( m_iStyle ) ),
+#else
 	RecvPropVector(	 RECVINFO( m_LinearFloatLightColor )		),
+#endif
 	RecvPropFloat(	 RECVINFO( m_flAmbient )		),
 	RecvPropString(  RECVINFO( m_SpotlightTextureName ) ),
 	RecvPropInt(	 RECVINFO( m_nSpotlightTextureFrame ) ),
@@ -80,6 +111,12 @@ END_RECV_TABLE()
 C_EnvProjectedTexture::C_EnvProjectedTexture( void )
 {
 	m_LightHandle = CLIENTSHADOW_INVALID_HANDLE;
+#ifdef PORTAL2
+	m_CurrentLinearFloatLightColor.Init();
+	m_flCurrentLinearFloatLightAlpha = -1.0f;	// snap to the first networked color
+	m_flCurrentLightStyle = -1.0f;
+	m_iStyle = 0;
+#endif
 }
 
 C_EnvProjectedTexture::~C_EnvProjectedTexture( void )
@@ -118,6 +155,38 @@ void C_EnvProjectedTexture::UpdateLight( bool bForceUpdate )
 
 		return;
 	}
+
+#ifdef PORTAL2
+	// Retail: approach the networked color over colortransitiontime and scale
+	// by the current light style; any change forces a state update.
+	Vector vLinearFloatLightColor( m_LightColor.r, m_LightColor.g, m_LightColor.b );
+	float flLinearFloatLightAlpha = m_LightColor.a;
+	if ( m_bAlwaysUpdate )
+	{
+		bForceUpdate = true;
+	}
+	if ( m_flCurrentLinearFloatLightAlpha < 0.0f )
+	{
+		m_CurrentLinearFloatLightColor = vLinearFloatLightColor;
+		m_flCurrentLinearFloatLightAlpha = flLinearFloatLightAlpha;
+		bForceUpdate = true;
+	}
+	else if ( m_CurrentLinearFloatLightColor != vLinearFloatLightColor || m_flCurrentLinearFloatLightAlpha != flLinearFloatLightAlpha )
+	{
+		float flColorTransitionSpeed = gpGlobals->frametime * m_flColorTransitionTime * 255.0f;
+		m_CurrentLinearFloatLightColor.x = Approach( vLinearFloatLightColor.x, m_CurrentLinearFloatLightColor.x, flColorTransitionSpeed );
+		m_CurrentLinearFloatLightColor.y = Approach( vLinearFloatLightColor.y, m_CurrentLinearFloatLightColor.y, flColorTransitionSpeed );
+		m_CurrentLinearFloatLightColor.z = Approach( vLinearFloatLightColor.z, m_CurrentLinearFloatLightColor.z, flColorTransitionSpeed );
+		m_flCurrentLinearFloatLightAlpha = Approach( flLinearFloatLightAlpha, m_flCurrentLinearFloatLightAlpha, flColorTransitionSpeed );
+		bForceUpdate = true;
+	}
+	const float flLightStyle = engine->LightStyleValue( m_iStyle );
+	if ( flLightStyle != m_flCurrentLightStyle )
+	{
+		m_flCurrentLightStyle = flLightStyle;
+		bForceUpdate = true;
+	}
+#endif
 
 	Vector vForward, vRight, vUp, vPos = GetAbsOrigin();
 	FlashlightState_t state;
@@ -184,9 +253,19 @@ void C_EnvProjectedTexture::UpdateLight( bool bForceUpdate )
 	state.m_fQuadraticAtten = 0.0;
 	state.m_fLinearAtten = 100;
 	state.m_fConstantAtten = 0.0f;
+#ifdef PORTAL2
+	// The retail shaders multiply the flashlight color by m_fBrightnessScale;
+	// this tree's FlashlightState_t has no such field, so fold it in here.
+	float flAlpha = m_flCurrentLinearFloatLightAlpha * ( 1.0f / 255.0f ) * m_flCurrentLightStyle;
+	float flScale = ( 1.0f / 255.0f ) * flAlpha * m_flBrightnessScale;
+	state.m_Color[0] = m_CurrentLinearFloatLightColor.x * flScale;
+	state.m_Color[1] = m_CurrentLinearFloatLightColor.y * flScale;
+	state.m_Color[2] = m_CurrentLinearFloatLightColor.z * flScale;
+#else
 	state.m_Color[0] = m_LinearFloatLightColor.x;
 	state.m_Color[1] = m_LinearFloatLightColor.y;
 	state.m_Color[2] = m_LinearFloatLightColor.z;
+#endif
 	state.m_Color[3] = 0.0f; // fixme: need to make ambient work m_flAmbient;
 	state.m_NearZ = m_flNearZ;
 	state.m_FarZ = m_flFarZ;

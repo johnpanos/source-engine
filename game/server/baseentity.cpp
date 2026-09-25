@@ -313,6 +313,10 @@ IMPLEMENT_SERVERCLASS_ST_NOBASE( CBaseEntity, DT_BaseEntity )
 
 #ifdef PORTAL2
 	SendPropInt		( SENDINFO( m_iObjectCapsCache ),		6, SPROP_UNSIGNED ),
+	SendPropInt		( SENDINFO( m_nMinCPULevel ),			2, SPROP_UNSIGNED ),
+	SendPropInt		( SENDINFO( m_nMaxCPULevel ),			2, SPROP_UNSIGNED ),
+	SendPropInt		( SENDINFO( m_nMinGPULevel ),			3, SPROP_UNSIGNED ),
+	SendPropInt		( SENDINFO( m_nMaxGPULevel ),			3, SPROP_UNSIGNED ),
 #endif
 
 END_SEND_TABLE()
@@ -1968,6 +1972,14 @@ BEGIN_DATADESC_NO_BASE( CBaseEntity )
 	DEFINE_INPUTFUNC( FIELD_VOID, "EnableShadow", InputEnableShadow ),
 
 	DEFINE_INPUTFUNC( FIELD_STRING, "AddOutput", InputAddOutput ),
+#ifdef PORTAL2
+	DEFINE_FIELD( m_nMinCPULevel, FIELD_CHARACTER ),
+	DEFINE_FIELD( m_nMaxCPULevel, FIELD_CHARACTER ),
+	DEFINE_FIELD( m_nMinGPULevel, FIELD_CHARACTER ),
+	DEFINE_FIELD( m_nMaxGPULevel, FIELD_CHARACTER ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "DisableDraw", InputDisableDraw ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "EnableDraw", InputEnableDraw ),
+#endif
 
 	DEFINE_INPUTFUNC( FIELD_STRING, "FireUser1", InputFireUser1 ),
 	DEFINE_INPUTFUNC( FIELD_STRING, "FireUser2", InputFireUser2 ),
@@ -8167,4 +8179,19 @@ void CC_Ent_Script_Dump( const CCommand& args )
 }
 static ConCommand ent_script_dump("ent_script_dump", CC_Ent_Script_Dump, "Dumps the names and values of this entity's script scope to the console\n\tArguments:   	{entity_name} / {class_name} / no argument picks what player is looking at ", FCVAR_CHEAT);
 
+#endif // PORTAL2
+
+#ifdef PORTAL2
+//-----------------------------------------------------------------------------
+// CS:GO base inputs used by Portal 2 maps.
+//-----------------------------------------------------------------------------
+void CBaseEntity::InputDisableDraw( inputdata_t &inputdata )
+{
+	AddEffects( EF_NODRAW );
+}
+
+void CBaseEntity::InputEnableDraw( inputdata_t &inputdata )
+{
+	RemoveEffects( EF_NODRAW );
+}
 #endif // PORTAL2

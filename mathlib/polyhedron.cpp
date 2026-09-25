@@ -2293,3 +2293,142 @@ void DumpPlaneToGlView( const float *pPlane, float fGrayScale, const char *pszFi
 #endif
 
 
+
+//-----------------------------------------------------------------------------
+// Triangle mesh -> polyhedron (the convex's own faces, as the IVP physics
+// provider's PolyhedronFromConvex builds them). Unlike GeneratePolyhedronFromPlanes
+// this does no clipping, so it cannot run away on nearly coincident planes.
+//-----------------------------------------------------------------------------
+CPolyhedron *ConvertTriangleMeshToPolyhedron( const Vector *pPoints, int iPointCount, const int *pTriangleIndices, int iTriangleCount, bool bUseTemporaryMemory )
+{
+	if ( !pPoints || !pTriangleIndices || iPointCount < 3 || iTriangleCount < 1 )
+		return NULL;
+
+	// Compact the referenced points.
+	CUtlVector<int> remap;
+	remap.SetCount( iPointCount );
+	for ( int i = 0; i != iPointCount; ++i )
+		remap[i] = -1;
+	int iUsedPoints = 0;
+	for ( int i = 0; i != iTriangleCount * 3; ++i )
+	{
+		int index = pTriangleIndices[i];
+		if ( index < 0 || index >= iPointCount )
+			return NULL;
+		if ( remap[index] == -1 )
+			remap[index] = iUsedPoints++;
+	}
+	if ( iUsedPoints < 3 || iUsedPoints > 0xFFFF )
+		return NULL;
+
+	Vector vCentroid( 0.0f, 0.0f, 0.0f );
+	for ( int i = 0; i != iPointCount; ++i )
+	{
+		if ( remap[i] != -1 )
+			vCentroid += pPoints[i];
+	}
+	vCentroid /= (float)iUsedPoints;
+
+	// Oriented triangles in compacted indices: normal ( p3 - p1 ) x ( p2 - p1 ) points outward.
+	// Triangles that repeat a point have no area and are dropped.
+	CUtlVector<int> triangles;
+	for ( int t = 0; t != iTriangleCount; ++t )
+	{
+		int a = pTriangleIndices[t * 3], b = pTriangleIndices[t * 3 + 1], c = pTriangleIndices[t * 3 + 2];
+		if ( a == b || b == c || a == c )
+			continue;
+		Vector vNormal = ( pPoints[c] - pPoints[a] ).Cross( pPoints[b] - pPoints[a] );
+		if ( vNormal.Dot( pPoints[a] - vCentroid ) < 0.0f )
+		{
+			int swap = b;
+			b = c;
+			c = swap;
+		}
+		triangles.AddToTail( remap[a] );
+		triangles.AddToTail( remap[b] );
+		triangles.AddToTail( remap[c] );
+	}
+	iTriangleCount = triangles.Count() / 3;
+	if ( iTriangleCount < 1 )
+		return NULL;
+
+	// Unique edges, each stored with the lower point index first.
+	CUtlVector<bool> links;
+	links.SetCount( iUsedPoints * iUsedPoints );
+	for ( int i = 0; i != links.Count(); ++i )
+		links[i] = false;
+	int iLineCount = 0;
+	for ( int t = 0; t != iTriangleCount; ++t )
+	{
+		for ( int e = 0; e != 3; ++e )
+		{
+			int p0 = triangles[t * 3 + e], p1 = triangles[t * 3 + ( e + 1 ) % 3];
+			int iLow = MIN( p0, p1 ), iHigh = MAX( p0, p1 );
+			if ( iLow != iHigh && !links[iLow * iUsedPoints + iHigh] )
+			{
+				links[iLow * iUsedPoints + iHigh] = true;
+				++iLineCount;
+			}
+		}
+	}
+	if ( iLineCount > 0xFFFF || iTriangleCount * 3 > 0xFFFF )
+		return NULL;
+
+	CPolyhedron *pReturn;
+	if ( bUseTemporaryMemory )
+		pReturn = GetTempPolyhedron( iUsedPoints, iLineCount, iTriangleCount * 3, iTriangleCount );
+	else
+		pReturn = CPolyhedron_AllocByNew::Allocate( iUsedPoints, iLineCount, iTriangleCount * 3, iTriangleCount );
+	if ( !pReturn )
+		return NULL;
+
+	for ( int i = 0; i != iPointCount; ++i )
+	{
+		if ( remap[i] != -1 )
+			pReturn->pVertices[remap[i]] = pPoints[i];
+	}
+
+	// Lines in ascending (low, high) order, with each low point's first line.
+	CUtlVector<int> firstLine;
+	firstLine.SetCount( iUsedPoints );
+	int iInsert = 0;
+	for ( int i = 0; i != iUsedPoints; ++i )
+	{
+		firstLine[i] = iInsert;
+		for ( int j = i + 1; j != iUsedPoints; ++j )
+		{
+			if ( links[i * iUsedPoints + j] )
+			{
+				pReturn->pLines[iInsert].iPointIndices[0] = i;
+				pReturn->pLines[iInsert].iPointIndices[1] = j;
+				++iInsert;
+			}
+		}
+	}
+
+	iInsert = 0;
+	for ( int t = 0; t != iTriangleCount; ++t )
+	{
+		pReturn->pPolygons[t].iFirstIndex = iInsert;
+		pReturn->pPolygons[t].iIndexCount = 3;
+
+		const Vector &p1 = pReturn->pVertices[triangles[t * 3]];
+		const Vector &p2 = pReturn->pVertices[triangles[t * 3 + 1]];
+		const Vector &p3 = pReturn->pVertices[triangles[t * 3 + 2]];
+		pReturn->pPolygons[t].polyNormal = ( p3 - p1 ).Cross( p2 - p1 );
+		pReturn->pPolygons[t].polyNormal.NormalizeInPlace();
+
+		for ( int e = 0; e != 3; ++e, ++iInsert )
+		{
+			int p0 = triangles[t * 3 + e], p1 = triangles[t * 3 + ( e + 1 ) % 3];
+			int iLow = MIN( p0, p1 ), iHigh = MAX( p0, p1 );
+			int iLine = firstLine[iLow];
+			while ( iLine != iLineCount && !( pReturn->pLines[iLine].iPointIndices[0] == iLow && pReturn->pLines[iLine].iPointIndices[1] == iHigh ) )
+				++iLine;
+			pReturn->pIndices[iInsert].iLineIndex = iLine;
+			pReturn->pIndices[iInsert].iEndPointIndex = ( p0 == iLow ) ? 1 : 0;
+		}
+	}
+
+	return pReturn;
+}

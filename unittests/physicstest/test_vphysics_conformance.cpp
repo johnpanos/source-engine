@@ -1071,7 +1071,7 @@ static void TestCorpus( const char *pListFile )
 	FILE *fp = fopen( pListFile, "r" );
 	if ( !Check( TIER_BOOT, "corpus.list", fp != NULL, "%s", pListFile ) )
 		return;
-	CorpusTally_t loads, extents, volumes, traces;
+	CorpusTally_t loads, extents, volumes, traces, polyhedra;
 	char line[1024];
 	int models = 0, flatSolids = 0;
 	while ( fgets( line, sizeof( line ), fp ) )
@@ -1154,6 +1154,38 @@ static void TestCorpus( const char *pListFile )
 			}
 			if ( pVerts )
 				s_pCollision->DestroyDebugMesh( vertCount, pVerts );
+
+			// Every convex piece as a polyhedron, as Portal's static collision
+			// cache and portal holes convert them
+			// (game/shared/portal2/staticcollisionpolyhedroncache.cpp). Shipped
+			// solids contain flat pieces (IVP returns a single triangle as a
+			// 3-vertex, 2-polygon polyhedron), which may yield no polyhedron or
+			// a degenerate one; a piece with volume needs a closed polyhedron.
+			// Any polyhedron returned must be finite and within the solid's bounds.
+			CPhysConvex *convexes[1024];
+			int convexCount = s_pCollision->GetConvexesUsedInCollideable( pSolid, convexes, ARRAYSIZE( convexes ) );
+			for ( int c = 0; c < convexCount; c++ )
+			{
+				CPolyhedron *pPolyhedron = s_pCollision->PolyhedronFromConvex( convexes[c], false );
+				bool flatConvex = s_pCollision->ConvexVolume( convexes[c] ) < 1.0f;
+				bool ok = pPolyhedron ? pPolyhedron->iVertexCount >= ( flatConvex ? 3 : 4 ) && pPolyhedron->iPolygonCount >= ( flatConvex ? 1 : 4 )
+									  : flatConvex;
+				int outside = -1;
+				for ( int v = 0; ok && pPolyhedron && v < pPolyhedron->iVertexCount; v++ )
+				{
+					ok = IsFiniteVec( pPolyhedron->pVertices[v] ) &&
+						pPolyhedron->pVertices[v].WithinAABox( mins - Vector( 1, 1, 1 ), maxs + Vector( 1, 1, 1 ) );
+					outside = ok ? -1 : v;
+				}
+				char convexWhat[600];
+				V_snprintf( convexWhat, sizeof( convexWhat ), "%s convex %d (%s, %d vertices, %d polygons, vertex %d outside)", what, c,
+					pPolyhedron ? "polyhedron" : "none", pPolyhedron ? pPolyhedron->iVertexCount : 0,
+					pPolyhedron ? pPolyhedron->iPolygonCount : 0, outside );
+				polyhedra.Record( ok, convexWhat );
+				if ( pPolyhedron )
+					pPolyhedron->Release();
+			}
+
 			if ( flat )
 				continue;
 			trace_t tr;
@@ -1171,6 +1203,7 @@ static void TestCorpus( const char *pListFile )
 	Check( TIER_GAMEPLAY, "corpus.solid-aabb", extents.failed == 0, "%d/%d failed, first %s", extents.failed, extents.total, extents.first );
 	Check( TIER_GAMEPLAY, "corpus.solid-volume", volumes.failed == 0, "%d/%d failed, first %s", volumes.failed, volumes.total, volumes.first );
 	Check( TIER_GAMEPLAY, "corpus.solid-trace-down", traces.failed == 0, "%d/%d failed, first %s", traces.failed, traces.total, traces.first );
+	Check( TIER_GAMEPLAY, "corpus.convex-polyhedron", polyhedra.total > 0 && polyhedra.failed == 0, "%d/%d failed, first %s", polyhedra.failed, polyhedra.total, polyhedra.first );
 	printf( "OBS corpus.flat-solids x %d\n", flatSolids );
 	printf( "CORPUS %d models %d solids (%d flat)\n", models, extents.total + flatSolids, flatSolids );
 }

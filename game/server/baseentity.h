@@ -691,6 +691,16 @@ public:
 	// its current use capabilities down for validity checking.
 	CNetworkVar( int,			m_iObjectCapsCache );
 	void		UpdateObjectCapsCache();
+
+	// Portal 2 (CS:GO base): the CPU/GPU detail range the entity draws at, as
+	// the map's level + 1 (0 = no limit). The client hides it outside that range.
+	CNetworkVar( unsigned char, m_nMinCPULevel );
+	CNetworkVar( unsigned char, m_nMaxCPULevel );
+	CNetworkVar( unsigned char, m_nMinGPULevel );
+	CNetworkVar( unsigned char, m_nMaxGPULevel );
+
+	void		InputDisableDraw( inputdata_t &inputdata );
+	void		InputEnableDraw( inputdata_t &inputdata );
 #endif // PORTAL2
 
 	// Verifies that the data description is valid in debug builds.

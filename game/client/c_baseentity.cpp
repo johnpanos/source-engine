@@ -467,6 +467,10 @@ BEGIN_RECV_TABLE_NOBASE(C_BaseEntity, DT_BaseEntity)
 	RecvPropInt( RECVINFO ( m_iTextureFrameIndex ) ),
 #ifdef PORTAL2
 	RecvPropInt( RECVINFO( m_iObjectCapsCache ) ),
+	RecvPropInt( RECVINFO( m_nMinCPULevel ) ),
+	RecvPropInt( RECVINFO( m_nMaxCPULevel ) ),
+	RecvPropInt( RECVINFO( m_nMinGPULevel ) ),
+	RecvPropInt( RECVINFO( m_nMaxGPULevel ) ),
 #endif
 #if !defined( NO_ENTITY_PREDICTION )
 	RecvPropDataTable( "predictable_id", 0, 0, &REFERENCE_RECV_TABLE( DT_PredictableId ) ),
@@ -912,6 +916,8 @@ C_BaseEntity::C_BaseEntity() :
 #ifdef PORTAL2
 	m_spawnflags = 0;
 	m_iObjectCapsCache = 0;
+	m_nMinCPULevel = m_nMaxCPULevel = 0;
+	m_nMinGPULevel = m_nMaxGPULevel = 0;
 #endif
 	m_bEnableRenderingClipPlane = false;
 
@@ -1437,6 +1443,11 @@ bool C_BaseEntity::ShouldDraw()
 	// Some rendermodes prevent rendering
 	if ( m_nRenderMode == kRenderNone )
 		return false;
+
+#ifdef PORTAL2
+	if ( IsOutsideDetailLevels() )
+		return false;
+#endif
 
 	return (model != 0) && !IsEffectActive(EF_NODRAW) && (index != 0);
 }
@@ -6546,3 +6557,23 @@ void CC_CL_Find_Ent_Index( const CCommand& args )
 	}
 }
 static ConCommand cl_find_ent_index("cl_find_ent_index", CC_CL_Find_Ent_Index, "Display data for clientside entity matching specified index.\nFormat: cl_find_ent_index <index>\n", FCVAR_CHEAT);
+
+#ifdef PORTAL2
+//-----------------------------------------------------------------------------
+// CPU/GPU detail levels (retail Portal 2 engine convars; CS:GO base semantics).
+// cpu_level: 0 low .. 2 high. gpu_level: 0 low .. 3 very high. The advanced
+// video options and portal render targets read the same convars.
+//-----------------------------------------------------------------------------
+ConVar cpu_level( "cpu_level", "2", FCVAR_ARCHIVE, "CPU detail level: 0 low, 1 medium, 2 high." );
+ConVar gpu_level( "gpu_level", "3", FCVAR_ARCHIVE, "GPU detail level: 0 low, 1 medium, 2 high, 3 very high." );
+
+bool C_BaseEntity::IsOutsideDetailLevels() const
+{
+	const int nCPULevel = cpu_level.GetInt();
+	if ( ( m_nMinCPULevel && m_nMinCPULevel - 1 > nCPULevel ) || ( m_nMaxCPULevel && m_nMaxCPULevel - 1 < nCPULevel ) )
+		return true;
+
+	const int nGPULevel = gpu_level.GetInt();
+	return ( m_nMinGPULevel && m_nMinGPULevel - 1 > nGPULevel ) || ( m_nMaxGPULevel && m_nMaxGPULevel - 1 < nGPULevel );
+}
+#endif // PORTAL2

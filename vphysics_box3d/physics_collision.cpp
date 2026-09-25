@@ -490,30 +490,18 @@ CPhysConvex *CPhysicsCollisionBox3D::BBoxToConvex( const Vector &mins, const Vec
 CPolyhedron *CPhysicsCollisionBox3D::PolyhedronFromConvex( CPhysConvex * const pConvex, bool bUseTempPolyhedron )
 {
 	CPhysConvexBox3D *pBox = pConvex ? ToBox3D( pConvex ) : NULL;
-	if ( !pBox || !pBox->hulls.Count() )
+	if ( !pBox || pBox->triangles.Count() < 3 )
 		return NULL;
-	// The convex's faces are the hull-piece planes that support every point
-	// (split planes are interior and are dropped).
-	CUtlVector<float> planes;
-	for ( int h = 0; h < pBox->hulls.Count(); h++ )
-	{
-		const b3HullData *pHull = pBox->hulls[h];
-		const b3Plane *pPlanes = b3GetHullPlanes( pHull );
-		for ( int i = 0; i < pHull->faceCount; i++ )
-		{
-			Vector normal = FromB3( pPlanes[i].normal );
-			bool supporting = true;
-			for ( int p = 0; supporting && p < pBox->points.Count(); p++ )
-				supporting = DotProduct( normal, pBox->points[p] ) <= pPlanes[i].offset + 0.01f;
-			if ( !supporting )
-				continue;
-			planes.AddToTail( normal.x );
-			planes.AddToTail( normal.y );
-			planes.AddToTail( normal.z );
-			planes.AddToTail( pPlanes[i].offset );
-		}
-	}
-	return GeneratePolyhedronFromPlanes( planes.Base(), planes.Count() / 4, 0.01f, bUseTempPolyhedron );
+	// The convex's own surface triangles, as IVP builds the polyhedron from its
+	// ledge. Rebuilding it from the hull pieces' planes
+	// (GeneratePolyhedronFromPlanes) overflowed the stack on shipped models whose
+	// pieces share nearly coincident planes (physics conformance
+	// corpus.convex-polyhedron).
+	CUtlVector<int> triangles;
+	triangles.SetCount( pBox->triangles.Count() - pBox->triangles.Count() % 3 );
+	for ( int i = 0; i < triangles.Count(); i++ )
+		triangles[i] = pBox->triangles[i];
+	return ConvertTriangleMeshToPolyhedron( pBox->points.Base(), pBox->points.Count(), triangles.Base(), triangles.Count() / 3, bUseTempPolyhedron );
 }
 
 //-----------------------------------------------------------------------------

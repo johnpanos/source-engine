@@ -145,6 +145,25 @@ private:
 	// TauntedByPlayer); the camera keeps its lens on that player until the taunt ends.
 	CHandle<CPortal_Player>	m_hTauntingPlayer;
 
+	// Retail co-op keys: which player team the camera watches (0 = both,
+	// TEAM_RED/TEAM_BLUE), set by TeamPlayerToLookAt and the LookAt* inputs.
+	int		m_nTeamPlayerToLookAt;
+	int		m_nTeamToLookAt;
+	bool	m_bLookAtPlayerPings;
+
+	void	InputLookAtBlue( inputdata_t &inputdata );
+	void	InputLookAtOrange( inputdata_t &inputdata );
+	void	InputLookAllTeams( inputdata_t &inputdata );
+	void	LookAtTeam( int nTeam );
+	bool	ShouldLookAtPlayer( CBasePlayer *pPlayer ) const;
+
+	COutputEvent m_OnTaunted;
+	COutputEvent m_OnTauntedBlue;
+	COutputEvent m_OnTauntedOrange;
+	COutputEvent m_OnTauntedFinished;
+	COutputEvent m_OnTauntedBlueFinished;
+	COutputEvent m_OnTauntedOrangeFinished;
+
 	DECLARE_DATADESC();
 };
 

@@ -17,6 +17,7 @@
 #include "explode.h"
 #ifdef PORTAL2
 #include "portal_base2d.h"
+#include "portal_mp_gamerules.h"
 #endif
 #include "IEffects.h"
 #include "animation.h"
@@ -244,6 +245,20 @@ BEGIN_DATADESC( CNPC_SecurityCamera )
 
 #ifdef PORTAL2
 	DEFINE_FIELD( m_hTauntingPlayer, FIELD_EHANDLE ),
+	DEFINE_KEYFIELD( m_bLookAtPlayerPings, FIELD_BOOLEAN, "LookAtPlayerPings" ),
+	DEFINE_KEYFIELD( m_nTeamToLookAt, FIELD_INTEGER, "TeamToLookAt" ),
+	DEFINE_KEYFIELD( m_nTeamPlayerToLookAt, FIELD_INTEGER, "TeamPlayerToLookAt" ),
+
+	DEFINE_INPUTFUNC( FIELD_VOID, "LookAtBlue", InputLookAtBlue ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "LookAtOrange", InputLookAtOrange ),
+	DEFINE_INPUTFUNC( FIELD_VOID, "LookAllTeams", InputLookAllTeams ),
+
+	DEFINE_OUTPUT( m_OnTaunted, "OnTaunted" ),
+	DEFINE_OUTPUT( m_OnTauntedBlue, "OnTauntedBlue" ),
+	DEFINE_OUTPUT( m_OnTauntedOrange, "OnTauntedOrange" ),
+	DEFINE_OUTPUT( m_OnTauntedFinished, "OnTauntedFinished" ),
+	DEFINE_OUTPUT( m_OnTauntedBlueFinished, "OnTauntedBlueFinished" ),
+	DEFINE_OUTPUT( m_OnTauntedOrangeFinished, "OnTauntedOrangeFinished" ),
 #endif
 
 END_DATADESC()
@@ -269,6 +284,11 @@ CNPC_SecurityCamera::CNPC_SecurityCamera( void )
 
 	m_pMovementSound = NULL;
 	m_hEyeGlow = NULL;
+#ifdef PORTAL2
+	m_nTeamPlayerToLookAt = 0;
+	m_nTeamToLookAt = 0;
+	m_bLookAtPlayerPings = false;
+#endif
 }
 
 CNPC_SecurityCamera::~CNPC_SecurityCamera( void )
@@ -841,7 +861,11 @@ void CNPC_SecurityCamera::SearchThink( void )
 		for( int i = 1; i <= gpGlobals->maxClients; ++i )
 		{
 			CBasePlayer *pPlayer = UTIL_PlayerByIndex( i );
+#ifdef PORTAL2
+			if ( pPlayer && pPlayer->IsAlive() && ShouldLookAtPlayer( pPlayer ) )
+#else
 			if ( pPlayer && pPlayer->IsAlive() )
+#endif
 			{
 				if ( FInViewCone( pPlayer ) && FVisible( pPlayer ) )
 				{
@@ -1231,6 +1255,12 @@ void CNPC_SecurityCamera::TauntedByPlayer( CPortal_Player *pPlayer )
 	if ( !pPlayer || !m_bActive )
 		return;
 
+	m_OnTaunted.FireOutput( pPlayer, this );
+	if ( pPlayer->GetTeamNumber() == TEAM_BLUE )
+		m_OnTauntedBlue.FireOutput( pPlayer, this );
+	else if ( pPlayer->GetTeamNumber() == TEAM_RED )
+		m_OnTauntedOrange.FireOutput( pPlayer, this );
+
 	m_hTauntingPlayer = pPlayer;
 	m_flPingTime = 0.0f;
 	Ping();
@@ -1242,7 +1272,47 @@ void CNPC_SecurityCamera::TauntedByPlayerFinished( CPortal_Player *pPlayer )
 	if ( m_hTauntingPlayer.Get() == pPlayer )
 	{
 		m_hTauntingPlayer = NULL;
+
+		m_OnTauntedFinished.FireOutput( pPlayer, this );
+		if ( pPlayer->GetTeamNumber() == TEAM_BLUE )
+			m_OnTauntedBlueFinished.FireOutput( pPlayer, this );
+		else if ( pPlayer->GetTeamNumber() == TEAM_RED )
+			m_OnTauntedOrangeFinished.FireOutput( pPlayer, this );
 	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: The co-op team filter. Retail's LookAt* inputs redeploy the camera
+//			(as Enable does) and set the team it watches.
+//-----------------------------------------------------------------------------
+bool CNPC_SecurityCamera::ShouldLookAtPlayer( CBasePlayer *pPlayer ) const
+{
+	return m_nTeamPlayerToLookAt == 0 || pPlayer->GetTeamNumber() == m_nTeamPlayerToLookAt;
+}
+
+void CNPC_SecurityCamera::LookAtTeam( int nTeam )
+{
+	Enable();
+	m_nTeamPlayerToLookAt = nTeam;
+
+	CBaseEntity *pEnemy = GetEnemy();
+	if ( pEnemy && pEnemy->IsPlayer() && !ShouldLookAtPlayer( ToBasePlayer( pEnemy ) ) )
+		SetEnemy( NULL );
+}
+
+void CNPC_SecurityCamera::InputLookAtBlue( inputdata_t &inputdata )
+{
+	LookAtTeam( TEAM_BLUE );
+}
+
+void CNPC_SecurityCamera::InputLookAtOrange( inputdata_t &inputdata )
+{
+	LookAtTeam( TEAM_RED );
+}
+
+void CNPC_SecurityCamera::InputLookAllTeams( inputdata_t &inputdata )
+{
+	LookAtTeam( 0 );
 }
 
 //-----------------------------------------------------------------------------

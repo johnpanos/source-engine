@@ -5323,6 +5323,15 @@ void CBaseWorldView::DrawExecute( float waterHeight, view_id_t viewID, float wat
 
 	pRenderContext.SafeRelease();
 
+#ifdef PORTAL2
+	// Portal 2 (CS:GO base): portal holes fill depth before the world so the
+	// room behind each portal's wall is depth-rejected (r_portal_earlyz).
+	if ( IsMainView( viewID ) )
+	{
+		g_pPortalRender->DrawEarlyZPortals( (CViewRender *)view );
+	}
+#endif
+
 	ERenderDepthMode DepthMode = DEPTH_MODE_NORMAL;
 
 	if ( m_DrawFlags & DF_DRAW_ENTITITES )

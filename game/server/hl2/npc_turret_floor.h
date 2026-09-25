@@ -248,6 +248,9 @@ protected:
 	COutputEvent m_OnTipped;
 	COutputEvent m_OnPhysGunPickup;
 	COutputEvent m_OnPhysGunDrop;
+#ifdef PORTAL2
+	COutputEvent m_OnExplode;	// Portal 2: fired as the turret blows up
+#endif
 
 	bool	m_bHackedByAlyx;
 	HSOUNDSCRIPTHANDLE			m_ShotSounds;

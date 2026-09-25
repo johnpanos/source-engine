@@ -39,6 +39,9 @@ enum seentype_t
 #define SENSING_FLAGS_NONE			0x00000000
 #define SENSING_FLAGS_DONT_LOOK		0x00000001 // Effectively makes the NPC blind
 #define SENSING_FLAGS_DONT_LISTEN	0x00000002 // Effectively makes the NPC deaf
+#ifdef PORTAL2
+#define SENSING_FLAGS_DONT_LOOK_THROUGH_PORTALS	0x00000004 // Portal 2 turrets: ignore enemies seen through portals
+#endif
 
 //-----------------------------------------------------------------------------
 // class CAI_ScriptConditions

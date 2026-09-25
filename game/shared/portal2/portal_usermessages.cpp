@@ -55,7 +55,7 @@ void RegisterUserMessages()
 	usermessages->Register( "InventoryFlash", sizeof( float ) + 1 );
 	usermessages->Register( "IndicatorFlash", sizeof( float ) + 1 );
 	usermessages->Register( "ControlHelperAnimate", 2 );
-	usermessages->Register( "TakePhoto", sizeof( long ) + sizeof( uint8 ) );
+	usermessages->Register( "TakePhoto", sizeof( int32 ) + sizeof( uint8 ) );
 	usermessages->Register( "Flash", sizeof( float ) + sizeof( Vector ) );
 	usermessages->Register( "HudPingIndicator", sizeof( Vector ) );
 	usermessages->Register( "OpenRadialMenu", -1 );
@@ -73,19 +73,19 @@ void RegisterUserMessages()
 
 	// Paint messages
 	usermessages->Register( "PaintWorld", -1 );
-	usermessages->Register( "PaintEntity", sizeof( long ) + sizeof( uint8 ) + sizeof( Vector ) );
-	usermessages->Register( "ChangePaintColor", sizeof( long ) + sizeof( uint8 ) );
+	usermessages->Register( "PaintEntity", sizeof( int32 ) + sizeof( uint8 ) + sizeof( Vector ) );
+	usermessages->Register( "ChangePaintColor", sizeof( int32 ) + sizeof( uint8 ) );
 	usermessages->Register( "PaintBombExplode", sizeof( Vector ) + sizeof( uint8 ) + sizeof( uint8 ) + sizeof( BYTE ) );
 	usermessages->Register( "RemoveAllPaint", 0 );
 	usermessages->Register( "PaintAllSurfaces", sizeof( BYTE ) );
-	usermessages->Register( "RemovePaint", sizeof( long ) );
+	usermessages->Register( "RemovePaint", sizeof( int32 ) );
 
-	usermessages->Register( "StartSurvey", sizeof( long ) );
-	usermessages->Register( "ApplyHitBoxDamageEffect", sizeof( long ) + sizeof( uint8 ) + sizeof( uint8 ) );
+	usermessages->Register( "StartSurvey", sizeof( int32 ) );
+	usermessages->Register( "ApplyHitBoxDamageEffect", sizeof( int32 ) + sizeof( uint8 ) + sizeof( uint8 ) );
 	usermessages->Register( "SetMixLayerTriggerFactor", -1 );
 	usermessages->Register( "TransitionFade", sizeof( float ) );
 
-	usermessages->Register( "ScoreboardTempUpdate", sizeof( long ) + sizeof( long ) );
+	usermessages->Register( "ScoreboardTempUpdate", sizeof( int32 ) + sizeof( int32 ) );
 	usermessages->Register( "ChallengeModeCheatSession", -1 );
 	usermessages->Register( "ChallengeModeCloseAllUI", -1 );
 

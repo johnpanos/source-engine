@@ -1841,11 +1841,40 @@ int CChangeLevel::InTransitionVolume( CBaseEntity *pEntity, const char *pVolumeN
 }
 
 
+#ifdef PORTAL2
+// The last point_changelevel transition (portal2/point_changelevel.cpp).
+const char *ChangeLevel_DestinationMapName( void );
+const char *ChangeLevel_OriginMapName( void );
+const char *ChangeLevel_GetLandmarkName( void );
+#endif
+
 //------------------------------------------------------------------------------
 // Builds the list of entities to save when moving across a transition
 //------------------------------------------------------------------------------
 int CChangeLevel::BuildChangeLevelList( levellist_t *pLevelList, int maxList )
 {
+#ifdef PORTAL2
+	// Portal 2 maps change level through point_changelevel, not triggers.
+	// Retail connects the two maps of the last point_changelevel transition
+	// through its landmarks: the origin map's info_landmark_entry leads to
+	// the destination, and the destination's info_landmark_exit leads back.
+	// Without this connection the engine disconnects the arriving player.
+	{
+		const char *pszOrigin = ChangeLevel_OriginMapName();
+		const char *pszDestination = ChangeLevel_DestinationMapName();
+		if ( pszOrigin && pszOrigin[0] && pszDestination && pszDestination[0] )
+		{
+			const bool bOnOrigin = V_stricmp( STRING( gpGlobals->mapname ), pszOrigin ) == 0;
+			CBaseEntity *pLandmark = gEntList.FindEntityByClassname( NULL, bOnOrigin ? "info_landmark_entry" : "info_landmark_exit" );
+			if ( pLandmark && pLandmark->edict() &&
+				 AddTransitionToList( pLevelList, 0, bOnOrigin ? pszDestination : pszOrigin, ChangeLevel_GetLandmarkName(), pLandmark->edict() ) )
+			{
+				return 1;
+			}
+		}
+	}
+#endif
+
 	int nCount = 0;
 
 	CBaseEntity *pentChangelevel = gEntList.FindEntityByClassname( NULL, "trigger_changelevel" );

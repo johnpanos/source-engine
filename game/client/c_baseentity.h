@@ -248,6 +248,13 @@ public:
 	// The +use bits of the server entity's ObjectCaps() (DT_BaseEntity).
 	int								GetServerObjectCaps() const { return m_iObjectCapsCache; }
 	int								m_iObjectCapsCache;
+
+	// CS:GO base: detail-level draw limits, level + 1 (0 = no limit).
+	unsigned char					m_nMinCPULevel;
+	unsigned char					m_nMaxCPULevel;
+	unsigned char					m_nMinGPULevel;
+	unsigned char					m_nMaxGPULevel;
+	bool							IsOutsideDetailLevels() const;
 #endif
 
 	// Called in the destructor to shutdown everything.
