@@ -146,10 +146,58 @@ vec3 IndirectChange( vec3 normal )
 // inverse square (1) or the legacy falloff, source radius.
 layout( set = 7, binding = 0 ) uniform DirectLights
 {
-	vec4 header; // x: the light count
+	vec4 header;      // x: the light count, y: 1 when the shadow field is bound
+	vec4 fieldOrigin; // the shadow field's first voxel centre, w its voxel size
+	vec4 fieldDims;   // its voxel counts
 	vec4 lights[28];
 }
 directLights;
+
+// RFC 0011 G9: the map's SDFV distances (Source units, R16F, trilinear),
+// which shadow the unbaked lights. After the variant's other sets.
+#ifdef DELTA_VOLUME
+layout( set = 10, binding = 0 ) uniform sampler3D shadowField;
+#else
+layout( set = 9, binding = 0 ) uniform sampler3D shadowField;
+#endif
+
+// The field's distance at `p`; outside it nothing occludes.
+float FieldDistance( vec3 p )
+{
+	vec3 g = ( p - directLights.fieldOrigin.xyz ) / directLights.fieldOrigin.w;
+	vec3 dims = directLights.fieldDims.xyz;
+	if ( any( lessThan( g, vec3( -0.5 ) ) ) || any( greaterThan( g, dims - 0.5 ) ) )
+		return 1e9;
+	return texture( shadowField, ( g + 0.5 ) / dims ).r;
+}
+
+// The share of a light of source radius `sourceRadius` at `lightPosition`
+// that reaches `p`: a sphere trace through the field from a voxel off the
+// surface, softened by the light's angular size (the nearest clearance d at
+// distance t along the ray, over the light's angular radius, as a fraction).
+float SdfShadow( vec3 p, vec3 normal, vec3 lightPosition, float sourceRadius )
+{
+	if ( directLights.header.y < 0.5 )
+		return 1.0;
+	float voxel = directLights.fieldOrigin.w;
+	vec3 start = p + normal * voxel;
+	vec3 toLight = lightPosition - start;
+	float distance = length( toLight );
+	vec3 direction = toLight / max( distance, 1e-4 );
+	float tMax = distance - max( sourceRadius, voxel );
+	float sharpness = distance / max( sourceRadius, 1.0 );
+	float visible = 1.0;
+	float t = 0.5 * voxel;
+	for ( int step = 0; step < 96 && t < tMax; ++step )
+	{
+		float d = FieldDistance( start + direction * t );
+		if ( d < 0.05 * voxel )
+			return 0.0;
+		visible = min( visible, sharpness * d / t );
+		t += max( d, 0.2 * voxel );
+	}
+	return smoothstep( 0.0, 1.0, clamp( visible, 0.0, 1.0 ) );
+}
 
 // render/light_set.h Falloff(): the legacy dlight falloff.
 float DynamicFalloff( float distanceSquared, float radius, float minLight )
@@ -211,6 +259,8 @@ vec3 DirectLightRadiance( vec3 normal, vec3 view, vec3 diffuseAlbedo, vec3 f0, f
 		float normalDotLight = max( dot( normal, light ), 0.0 );
 		if ( falloff <= 0.0 || normalDotLight <= 0.0 )
 			continue;
+		falloff *= SdfShadow( fragPosition, normalize( fragNormal ), positionRadius.xyz,
+		    coneFalloff.z );
 		vec3 incident = colorMinLight.rgb * falloff;
 		vec3 lit = diffuseAlbedo * incident * normalDotLight;
 		if ( dot( normal, view ) > 0.0 )

@@ -13,7 +13,7 @@
 namespace world_mesh_gpu
 {
 
-static const char *const kWorldMeshUploadInterface = "WorldMeshUpload005";
+static const char *const kWorldMeshUploadInterface = "WorldMeshUpload006";
 
 struct WorldMeshUploadRequest
 {
@@ -71,6 +71,17 @@ struct ProbeVolumeUploadRequest
 	const void *deltaAtlas = nullptr;
 };
 
+// RFC 0011 G9: the map's SDFV signed distances, which shadow the frame's
+// unbaked lights: half floats in Source units, x fastest, the first voxel's
+// centre at `origin`. The caller owns `distances` until the call returns.
+struct ShadowFieldUploadRequest
+{
+	float origin[3] = {};
+	float voxel = 0.0f;
+	uint32_t dims[3] = {};
+	const uint16_t *distances = nullptr;
+};
+
 class IWorldMeshUpload
 {
 public:
@@ -85,6 +96,9 @@ public:
 	// map: on failure models keep the engine's ambient cube (evaluated from
 	// the same volume) and nothing else changes.
 	virtual bool UploadProbeVolume( const ProbeVolumeUploadRequest &request ) = 0;
+	// The map's optional shadow field, after the world mesh. Optional: on
+	// failure unbaked lights stay unshadowed and nothing else changes.
+	virtual bool UploadShadowField( const ShadowFieldUploadRequest &request ) = 0;
 	// The caller binds the material first. The provider runs its material pass
 	// and queues this WMSH index range in the current ordered world view.
 	virtual bool DrawBatch( uint32_t firstIndex, uint32_t indexCount ) = 0;

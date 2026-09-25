@@ -720,6 +720,8 @@ bool CVulkanContext::CreateSwapchain( std::string *outError, VkSwapchainKHR oldS
 	vkGetSwapchainImagesKHR( m_device, m_swapchain, &actual, nullptr );
 	m_presentImages.resize( actual );
 	vkGetSwapchainImagesKHR( m_device, m_swapchain, &actual, m_presentImages.data() );
+	if ( !GrowRenderFinished( actual, outError ) )
+		return false;
 
 	// One back buffer per swapchain image, so a frame never renders into one an
 	// earlier frame is still presenting from (m_imagesInFlight guards both).
@@ -1102,11 +1104,35 @@ bool CVulkanContext::CreateCommandResources( std::string *outError )
 	return true;
 }
 
+// The semaphores a submit signals for present, one per swapchain image: a
+// present holds its image's until that image is acquired again, so a
+// per-frame semaphore could be signaled while an earlier present still
+// holds it (VUID-vkQueueSubmit-pSignalSemaphores-00067). They only grow: a
+// recreated swapchain keeps those an old present may still hold.
+bool CVulkanContext::GrowRenderFinished( size_t count, std::string *outError )
+{
+	VkSemaphoreCreateInfo sem = {};
+	sem.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	while ( m_renderFinished.size() < count )
+	{
+		VkSemaphore semaphore = VK_NULL_HANDLE;
+		if ( vkCreateSemaphore( m_device, &sem, nullptr, &semaphore ) != VK_SUCCESS )
+		{
+			SetError( outError, "failed to create a present semaphore" );
+			return false;
+		}
+		m_renderFinished.push_back( semaphore );
+	}
+	return true;
+}
+
 bool CVulkanContext::CreateSyncObjects( std::string *outError )
 {
 	m_imageAvailable.resize( m_framesInFlight );
-	m_renderFinished.resize( m_framesInFlight );
 	m_inFlight.resize( m_framesInFlight );
+	if ( !GrowRenderFinished( std::max<size_t>( m_framesInFlight, m_presentImages.size() ),
+	         outError ) )
+		return false;
 
 	VkSemaphoreCreateInfo sem = {};
 	sem.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -1117,7 +1143,6 @@ bool CVulkanContext::CreateSyncObjects( std::string *outError )
 	for ( uint32_t i = 0; i < m_framesInFlight; ++i )
 	{
 		if ( vkCreateSemaphore( m_device, &sem, nullptr, &m_imageAvailable[i] ) != VK_SUCCESS ||
-		     vkCreateSemaphore( m_device, &sem, nullptr, &m_renderFinished[i] ) != VK_SUCCESS ||
 		     vkCreateFence( m_device, &fence, nullptr, &m_inFlight[i] ) != VK_SUCCESS )
 		{
 			SetError( outError, "failed to create per-frame synchronization objects" );
@@ -3599,7 +3624,7 @@ bool CVulkanContext::UploadSkinConstants( std::vector<uint32_t> *offsets )
 	if ( ( m_dynSkinConstants.empty() && !lights ) || m_skinUbos.empty() )
 		return !m_dynSkinConstants.empty() ? false : true;
 	const VkDeviceSize block = sizeof( m_dynSkinConstants[0].ps );
-	static_assert( sizeof( float[4] ) + sizeof( DirectLight ) * kMaxDirectLights <=
+	static_assert( sizeof( float[3][4] ) + sizeof( DirectLight ) * kMaxDirectLights <=
 	                   sizeof( SkinConstants::ps ),
 	    "the direct lights fit one constants block" );
 	const VkDeviceSize stride = ( block + m_uboAlignment - 1 ) / m_uboAlignment * m_uboAlignment;
@@ -3656,7 +3681,12 @@ bool CVulkanContext::UploadSkinConstants( std::vector<uint32_t> *offsets )
 	{
 		unsigned char *out =
 		    static_cast<unsigned char *>( slot.mapped ) + stride * m_dynSkinConstants.size();
-		const float header[4] = { static_cast<float>( m_directLightCount ), 0.0f, 0.0f, 0.0f };
+		// world_pbr.frag DirectLights: the count and whether the shadow field
+		// is bound, the field's origin and voxel, its dimensions, the lights.
+		float header[3][4] = { { static_cast<float>( m_directLightCount ),
+		                           m_shadowFieldHandle >= 0 ? 1.0f : 0.0f, 0.0f, 0.0f } };
+		std::memcpy( header[1], m_shadowFieldOrigin, sizeof( header[1] ) );
+		std::memcpy( header[2], m_shadowFieldDims, sizeof( header[2] ) );
 		std::memcpy( out, header, sizeof( header ) );
 		std::memcpy(
 		    out + sizeof( header ), m_directLights, sizeof( DirectLight ) * m_directLightCount );
@@ -4572,11 +4602,16 @@ bool CVulkanContext::UploadManagedTextureRegion( int handle, uint32_t x, uint32_
 		return false;
 	}
 	const bool whole = x == 0 && y == 0 && width == levelWidth && height == levelHeight;
-	// A volume (8-bit color) is uploaded whole: every slice, tightly packed, one
-	// after another.
+	// A volume (8-bit color, or an R16F distance field) is uploaded whole:
+	// every slice, tightly packed, one after another.
+	const size_t volumeTexelBytes = t.format == VK_FORMAT_R16_SFLOAT ? 2
+	                                : t.format == VK_FORMAT_R8G8B8A8_UNORM ||
+	                                        t.format == VK_FORMAT_B8G8R8A8_UNORM
+	                                    ? 4
+	                                    : 0;
 	if ( t.depth > 1 &&
-	     ( !whole || dataSize != static_cast<size_t>( width ) * height * t.depth * 4 ||
-	         ( t.format != VK_FORMAT_R8G8B8A8_UNORM && t.format != VK_FORMAT_B8G8R8A8_UNORM ) ) )
+	     ( !whole || volumeTexelBytes == 0 ||
+	         dataSize != static_cast<size_t>( width ) * height * t.depth * volumeTexelBytes ) )
 	{
 		SetError( outError, "UploadManagedTexture: a volume texture is uploaded whole" );
 		return false;
@@ -5678,6 +5713,7 @@ void CVulkanContext::SetWorldLightmapHandles( int total, int direct, int indirec
 
 void CVulkanContext::SetProbeDeltaHandle( int atlas )
 {
+	SetShadowField( -1, nullptr, 0.0f, nullptr );
 	if ( m_probeDeltaHandle == atlas )
 		return;
 	const int old = m_probeDeltaHandle;
@@ -5722,6 +5758,20 @@ bool CVulkanContext::QueueWorldMeshBatch( uint32_t firstIndex, uint32_t indexCou
 	// Glass refracts what was drawn before it.
 	if ( m_dynShaderIndex == kDynShaderPbrGlass )
 		QueueSceneCaptureIfNeeded( m_dynGlassKey );
+void CVulkanContext::SetShadowField(
+    int handle, const float origin[3], float voxel, const uint32_t dims[3] )
+{
+	if ( m_shadowFieldHandle >= 0 && m_shadowFieldHandle != handle )
+		DestroyManagedTexture( m_shadowFieldHandle );
+	m_shadowFieldHandle = handle;
+	for ( int k = 0; k < 3; ++k )
+	{
+		m_shadowFieldOrigin[k] = handle >= 0 ? origin[k] : 0.0f;
+		m_shadowFieldDims[k] = handle >= 0 ? static_cast<float>( dims[k] ) : 0.0f;
+	}
+	m_shadowFieldOrigin[3] = handle >= 0 ? voxel : 0.0f;
+}
+
 	DynDraw &draw = AppendDrawRecord();
 	draw.worldMesh = true;
 	draw.worldMeshRevision = m_worldMeshRevision;
@@ -5839,6 +5889,7 @@ bool CVulkanContext::WaitForSubmittedFrame( uint64_t serial, uint64_t timeoutNs 
 
 bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 {
+	SetShadowField( -1, nullptr, 0.0f, nullptr );
 	if ( outSkip )
 		*outSkip = false;
 	m_frameBeginUs = FrameClockMicros();
@@ -6814,10 +6865,18 @@ bool CVulkanContext::BeginFrame( bool *outSkip, std::string *outError )
 				const PortalConstants &c = d.portal;
 				std::memcpy( pushData, c.model, sizeof( c.model ) );
 				std::memcpy( pushData + 16, c.viewProj, sizeof( c.viewProj ) );
+					{
 				std::memcpy( pushData + 32, c.texXform0, sizeof( c.texXform0 ) );
 				std::memcpy( pushData + 36, c.texXform1, sizeof( c.texXform1 ) );
 				pushData[40] = c.time;
 				pushData[41] = c.openAmount;
+						// RFC 0011 G9: the shadow field after the variant's other sets
+						// (a white volume, unread, when the map has none).
+						const VkDescriptorSet field = sampledSet(
+						    m_shadowFieldHandle >= 0 ? m_shadowFieldHandle : m_whiteVolumeHandle, 0 );
+						vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout,
+						    pbrWorldDelta ? 10 : 9, 1, &field, 0, nullptr );
+					}
 				pushData[42] = c.active;
 				pushData[43] = c.colorScale;
 				pushData[44] = d.alphaRef;
@@ -7880,7 +7939,7 @@ bool CVulkanContext::EndFrame( std::string *outError )
 	submit.commandBufferCount = 1;
 	submit.pCommandBuffers = &cmd;
 	submit.signalSemaphoreCount = 1;
-	submit.pSignalSemaphores = &m_renderFinished[m_currentFrame];
+	submit.pSignalSemaphores = &m_renderFinished[imageIndex];
 
 	vkResetFences( m_device, 1, &m_inFlight[m_currentFrame] );
 	{
@@ -7914,7 +7973,7 @@ bool CVulkanContext::EndFrame( std::string *outError )
 	VkPresentInfoKHR present = {};
 	present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	present.waitSemaphoreCount = 1;
-	present.pWaitSemaphores = &m_renderFinished[m_currentFrame];
+	present.pWaitSemaphores = &m_renderFinished[imageIndex];
 	present.swapchainCount = 1;
 	present.pSwapchains = &m_swapchain;
 	present.pImageIndices = &imageIndex;

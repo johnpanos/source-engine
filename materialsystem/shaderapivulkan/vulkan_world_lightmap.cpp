@@ -60,6 +60,42 @@ bool UploadWorldLightmapLayers( CVulkanContext &context,
 	return true;
 }
 
+bool UploadWorldShadowField( CVulkanContext &context,
+    const world_mesh_gpu::ShadowFieldUploadRequest &request, std::string *error )
+{
+	const auto fail = [&]( const std::string &message )
+	{
+		if ( error )
+			*error = message;
+		return false;
+	};
+	if ( !context.WorldMeshResident() )
+		return fail( "the shadow field requires a resident world mesh" );
+	const uint32_t edge = context.MaxVolumeTextureDimension();
+	if ( !request.distances || !( request.voxel > 0.0f ) || request.dims[0] < 2 ||
+	     request.dims[1] < 2 || request.dims[2] < 2 || request.dims[0] > edge ||
+	     request.dims[1] > edge || request.dims[2] > edge )
+		return fail( "shadow field upload request is malformed or exceeds the device's volumes" );
+	std::string detail;
+	const int field = context.CreateManagedTexture( int( request.dims[0] ), int( request.dims[1] ),
+	    VK_FORMAT_R16_SFLOAT, &detail, 0, 1, VK_FORMAT_UNDEFINED, false, request.dims[2] );
+	if ( field < 0 ||
+	     !context.UploadManagedTexture( field,
+	         reinterpret_cast<const uint8_t *>( request.distances ),
+	         size_t( request.dims[0] ) * request.dims[1] * request.dims[2] * 2, &detail ) )
+	{
+		if ( field >= 0 )
+			context.DestroyManagedTexture( field );
+		return fail( "shadow field upload failed: " + detail );
+	}
+	// Trilinear, clamped on every axis (a volume's W follows U).
+	context.SetManagedTextureSamplerState( field, CVulkanContext::kSamplerClampU |
+	                                                  CVulkanContext::kSamplerClampV |
+	                                                  CVulkanContext::kSamplerLinear );
+	context.SetShadowField( field, request.origin, request.voxel, request.dims );
+	return true;
+}
+
 bool UploadWorldProbeVolume( CVulkanContext &context,
     const world_mesh_gpu::ProbeVolumeUploadRequest &request, std::string *error )
 {

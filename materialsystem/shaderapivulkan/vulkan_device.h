@@ -133,6 +133,10 @@ public:
 	// none. Replacing or releasing (-1, -1, 0) destroys the previous images
 	// behind the frames that sample them; ReleaseWorldMesh releases them.
 	void SetProbeVolumeHandles( int atlas, int grids, uint32_t gridCount );
+	// RFC 0011 G9: the map's SDF shadow field (handle -1: none; the old one
+	// is destroyed behind the frames that may read it).
+	void SetShadowField( int handle, const float origin[3], float voxel, const uint32_t dims[3] );
+	bool ShadowFieldResident() const { return m_shadowFieldHandle >= 0; }
 	bool ProbeVolumeResident() const { return m_probeAtlasHandle >= 0 && m_probeGridCount > 0; }
 	// RFC 0011 G4: a BakedPlusDelta producer's change volume (an RGBA16F atlas
 	// in the volume's layout whose indirect layer holds the signed change),
@@ -1159,6 +1163,7 @@ private:
 	    VkCommandBuffer cmd, uint32_t imageIndex, VkImageLayout backBufferLayout, bool capture );
 	// Copies the presented swapchain image (in `layout`, last written at
 	// `srcStage`/`srcAccess`) for capture if requested, then transitions it to
+	bool GrowRenderFinished( size_t count, std::string *outError );
 	// PRESENT_SRC.
 	void RecordPresentedCaptureAndRelease( VkCommandBuffer cmd, uint32_t imageIndex,
 	    VkImageLayout layout, VkPipelineStageFlags srcStage, VkAccessFlags srcAccess,
@@ -1326,7 +1331,7 @@ private:
 	uint32_t m_framesInFlight = 2;
 	uint32_t m_currentFrame = 0;
 	std::vector<VkSemaphore> m_imageAvailable;
-	std::vector<VkSemaphore> m_renderFinished;
+	std::vector<VkSemaphore> m_renderFinished; // per swapchain image (GrowRenderFinished)
 	std::vector<VkFence> m_inFlight;
 	// Maps each swapchain image to the in-flight fence currently using it, so a
 	// freshly acquired image is not recorded into while a prior submission that
@@ -1745,6 +1750,9 @@ private:
 	void DestroyWorldPbrExtendedVariants();
 	void DestroyWorldPbrDeltaVariants();
 	// Deleted textures awaiting the completion of the submission that may still
+	int m_shadowFieldHandle = -1;
+	float m_shadowFieldOrigin[4] = {}; // xyz the first voxel centre, w the voxel size
+	float m_shadowFieldDims[4] = {};
 	// use them (`afterSerial`, a value of m_submitSerial), and handles free again.
 	struct RetiredTexture
 	{

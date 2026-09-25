@@ -65,6 +65,20 @@ bool CVulkanWorldMeshUpload::UploadProbeVolume(
 	return true;
 }
 
+bool CVulkanWorldMeshUpload::UploadShadowField(
+    const world_mesh_gpu::ShadowFieldUploadRequest &request )
+{
+	std::string error;
+	if ( !UploadWorldShadowField( m_context, request, &error ) )
+	{
+		Warning( "[NativeVulkan] SDF shadow field rejected: %s\n", error.c_str() );
+		return false;
+	}
+	Msg( "[NativeVulkan] SDF shadow field ready (%u x %u x %u, %.1f-unit voxels)\n",
+	    request.dims[0], request.dims[1], request.dims[2], request.voxel );
+	return true;
+}
+
 bool CVulkanWorldMeshUpload::DrawBatch( uint32_t firstIndex, uint32_t indexCount )
 {
 	return m_context.WorldMeshResident() && indexCount && m_drawBatch &&

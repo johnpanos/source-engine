@@ -36,6 +36,11 @@
 //
 //          Lights. The SDFV's light cells list the lights each region can
 //          see; the program lights a probe and a ray hit with its cell's.
+//          The frame's unbaked point and spot lights (the light set's; RFC
+//          0011 G9), the first kMaxUnbakedLights, join the live
+//          configuration: every ray hit is lit by them, so their bounce
+//          follows them as they move. Their direct light is the world's and
+//          the models' own (world_pbr's direct lights, the engine's dlights).
 //
 //          GPU lifetime. Four field, parameter, light and schedule buffers
 //          form a ring; at most two updates are in flight, so the field the
@@ -218,6 +223,7 @@ public:
 	static constexpr uint32_t kRing = 4;
 	static constexpr uint32_t kMaxInFlight = 2;
 	static constexpr uint32_t kPropagationUpdates = 24;
+	static constexpr uint32_t kMaxUnbakedLights = 8;
 	static constexpr uint32_t kReferenceUpdates = 64;
 	static constexpr uint32_t kActiveUpdates = 72;
 	// Below this reference irradiance a darkening is absolute, not relative.
@@ -292,7 +298,8 @@ public:
 			// The CPU reads each field back to compose the published volume.
 			m_field[k] = make( field, BufferUse::Readback );
 			m_params[k] = make( sizeof( SdfTraceParams ), BufferUse::Upload );
-			m_liveLights[k] = make( lightBytes, BufferUse::Upload );
+			m_liveLights[k] =
+			    make( lightBytes + kMaxUnbakedLights * sizeof( SdfTraceLight ), BufferUse::Upload );
 			m_liveSchedule[k] = make( size_t( m_probes ) * 8, BufferUse::Upload );
 			m_referenceSchedule[k] = make( size_t( m_probes ) * 8, BufferUse::Upload );
 		}
@@ -516,6 +523,7 @@ private:
 		float scale[64];
 		std::vector<float> directions; // 3 per light
 		std::vector<Proxy> proxies;
+		std::vector<SdfTraceLight> unbaked; // kind 5 records, after the SDFV's lights
 
 		uint64_t Hash() const
 		{
@@ -530,6 +538,7 @@ private:
 			mix( directions.data(), directions.size() * sizeof( float ) );
 			for ( const Proxy &proxy : proxies )
 				mix( &proxy, sizeof( proxy ) );
+			mix( unbaked.data(), unbaked.size() * sizeof( SdfTraceLight ) );
 			return h;
 		}
 	};
@@ -586,6 +595,28 @@ private:
 						config.directions[l * 3 + k] = light.direction[k];
 		for ( size_t p = 0; p < work.proxies.size() && p < SdfTraceParams::kMaxProxies; ++p )
 			config.proxies.push_back( work.proxies[p] );
+		for ( const light_set::RuntimeLight &light : lights.lights )
+		{
+			if ( light.baked || light.shape == light_set::LightShape::Directional ||
+			     config.unbaked.size() == kMaxUnbakedLights )
+				continue;
+			SdfTraceLight record = {};
+			record.kind[0] = 5.0f;
+			for ( int k = 0; k < 3; ++k )
+			{
+				record.rgb[k] = light.color[k];
+				record.a[k] = light.position[k];
+				record.c[k] = light.direction[k];
+			}
+			record.b[0] = light.radius;
+			record.b[1] = light.minLight;
+			record.b[2] = light.sourceRadius;
+			record.b[3] = light.falloff == light_set::LightFalloff::InverseSquare ? 1.0f : 0.0f;
+			const bool spot = light.shape == light_set::LightShape::Spot;
+			record.c[3] = spot ? light.outerCos : -2.0f;
+			record.d[0] = spot ? light.innerCos : 1.0f;
+			config.unbaked.push_back( record );
+		}
 		return config;
 	}
 
@@ -614,6 +645,7 @@ private:
 		params.cellOrigin[3] = m_cells.size;
 		params.counts[0] = uint32_t( config.proxies.size() );
 		params.counts[1] = mask;
+		params.counts[2] = uint32_t( config.unbaked.size() );
 		std::copy( std::begin( config.scale ), std::end( config.scale ), params.sourceScale );
 		for ( size_t p = 0; p < config.proxies.size(); ++p )
 		{
@@ -647,6 +679,7 @@ private:
 			record.d[0] = light.reserved[0];
 			record.d[1] = light.reserved[1];
 		}
+		std::copy( config.unbaked.begin(), config.unbaked.end(), out + m_lights.size() );
 	}
 
 	// Whether probe p has work: its reference to build, or live updates to

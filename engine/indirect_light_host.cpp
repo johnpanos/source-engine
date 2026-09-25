@@ -403,6 +403,7 @@ struct Host
 	std::vector<unsigned char> occludedTotal;
 	std::vector<Proxy> visibilityProxies;      // the proxies the consumed volume's visibility has
 	bool brushesLit = false;                   // brush entities lit from the consumed volume
+	bool shadowFieldUploaded = false;          // the SDFV's distances, for direct-light shadows
 	std::vector<LightOverride> lightOverrides; // r_indirect_light_direction
 	ProbeFocus focus;                          // the traced producers' probes near the camera
 	uint64_t uploadedGeneration = 0;
@@ -526,6 +527,24 @@ bool ChangeAtlas( const Volume &published, const Volume &baked, std::vector<unsi
 					    &then, baked.bytes.data() + layout.atlasOffset + texel + 2 * c, 2 );
 					const uint16_t change = FloatToHalf(
 					    mapcontainer::HalfToFloat( now ) - mapcontainer::HalfToFloat( then ) );
+	if ( !host.shadowFieldUploaded && host.scene.sdf )
+	{
+		// Once per map (G9): the SDFV's distances shadow the unbaked lights.
+		host.shadowFieldUploaded = true;
+		const mapcontainer::SdfVolumeLayout &f = host.scene.sdf->layout;
+		const size_t voxels = size_t( f.dims[0] ) * f.dims[1] * f.dims[2];
+		std::vector<uint16_t> distances( voxels );
+		const unsigned char *voxel = host.scene.sdf->bytes.data() + f.voxelOffset;
+		for ( size_t i = 0; i < voxels; ++i )
+			std::memcpy( &distances[i], voxel + i * mapcontainer::kSdfVoxelBytes, 2 );
+		world_mesh_gpu::ShadowFieldUploadRequest field;
+		std::memcpy( field.origin, f.origin, sizeof( field.origin ) );
+		field.voxel = f.voxel;
+		std::memcpy( field.dims, f.dims, sizeof( field.dims ) );
+		field.distances = distances.data();
+		if ( !uploader->UploadShadowField( field ) )
+			Warning( "indirect light: shadow field upload failed; unbaked lights are unshadowed\n" );
+	}
 					std::memcpy( out->data() + texel + 2 * c, &change, 2 );
 				}
 			}
@@ -751,6 +770,7 @@ void IndirectLight_BeginMap( const IndirectLightMapData &map )
 	host.switcher = std::make_unique<Switcher>( host.catalog, host.tracker );
 	ReportOffered();
 	ProducerKind requested = ProducerKind::Baked;
+	host.shadowFieldUploaded = false;
 	const char *saved = r_indirect_producer.GetString();
 	const bool parsed = ResolveProducer( saved, &requested );
 	const auto begun =
@@ -859,6 +879,7 @@ void IndirectLight_Background()
 	if ( !TheHost().switcher )
 		return;
 	TheHost().switcher->Background();
+	host.shadowFieldUploaded = false;
 	Msg( "indirect light: background (%s stops scheduling)\n",
 	    ProducerName( TheHost().switcher->Active() ) );
 }
@@ -892,7 +913,7 @@ void IndirectLight_DeviceRestored()
 	if ( !recovered )
 		Warning( "indirect light: %s is unavailable after device recovery (%s); using baked\n",
 		    r_indirect_producer.GetString(), IndirectErrorName( recovered.Error() ) );
-	// The recreated device gets the volume again.
+	// The recreated device gets the volume and the shadow field again.
 	host.uploadedGeneration = 0;
 	FrameWork work;
 	work.frameSerial = host.tracker.Frame() + 1;

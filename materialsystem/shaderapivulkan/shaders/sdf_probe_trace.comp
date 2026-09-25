@@ -23,6 +23,12 @@
 // spots (one-sided disks with vrad's cone). The dispatch's lights buffer is
 // either the live configuration's (style scalars applied) or the baked one's.
 //
+// The frame's unbaked lights (RFC 0011 G9: dlights, a swinging bulb) follow
+// the SDFV's in the live buffer, counts.z of them, as points with the light
+// set's falloff (kind 5). Every hit sees them, whatever its cell. They light
+// the probes only through what they bounce off: their direct light reaches
+// the world and models through their own direct-light paths.
+//
 // RAY_QUERY (G7, the ray-query producer): rays and visibility are traced
 // against a scene of the world's triangles (instance 0) and this frame's
 // proxy boxes (instances 1.., unit cubes scaled into place) instead of the
@@ -39,13 +45,16 @@ const float kPi = 3.14159265358979;
 
 struct Light
 {
-	vec4 kind; // x: 0 rect, 1 distant, 2 dome, 3 sphere, 4 spot
+	vec4 kind; // x: 0 rect, 1 distant, 2 dome, 3 sphere, 4 spot, 5 point (unbaked)
 	vec4 rgb;  // radiance (distant: irradiance), times the dispatch's scalar
 	vec4 a;    // rect/sphere/spot centre; distant: the direction light travels
 	vec4 b;    // rect half-axis u; distant: x the angular diameter; sphere: x radius;
 	           // spot: the emitting normal
 	vec4 c;    // rect half-axis v; spot: x radius, y cos inner, z cos outer
 	vec4 d;    // spot: x the cone exponent
+	// point: a the position; b x radius, y minLight, z source radius, w 1 for
+	// the inverse square (else Source's dlight falloff); c.xyz its cone's
+	// axis, c.w the outer cone cosine (below -1: no cone); d.x the inner.
 };
 struct Proxy
 {
@@ -64,7 +73,8 @@ layout( std430, set = 0, binding = 1 ) readonly buffer Params
 	vec4 probeOrigin;  // xyz, w normal bias
 	vec4 probeSpacing; // xyz, w max distance
 	uvec4 probeDims;   // xyz, w probe count
-	uvec4 counts;      // x proxy count, y ray-query instance mask (1: the world only)
+	uvec4 counts;      // x proxy count, y ray-query instance mask (1: the world only),
+	                   // z unbaked lights after the SDFV's
 	vec4 cellOrigin;   // xyz the light cells' low corner, w cell size
 	uvec4 cellDims;    // xyz
 	vec4 sourceScale[16];
@@ -428,6 +438,35 @@ vec3 LightSample( uint l, vec3 p, inout uint rng, out vec3 w, out vec3 target )
 		const float area = kPi * light.c.x * light.c.x;
 		return light.rgb.rgb * cone * cosLight * area / ( kPi * d2 );
 	}
+	if ( kind == 5u )
+	{
+		// render/light_set.h Falloff or InverseSquareFalloff, as world_pbr.frag.
+		const vec3 delta = light.a.xyz - p;
+		const float d2 = max( dot( delta, delta ), 1e-8 );
+		w = delta * inversesqrt( d2 );
+		target = light.a.xyz;
+		const float radius2 = light.b.x * light.b.x;
+		float scale = 0.0;
+		if ( light.b.w > 0.5 )
+		{
+			float window = 1.0;
+			if ( radius2 > 0.0 )
+			{
+				const float ratio = d2 / radius2;
+				window = ratio >= 1.0 ? 0.0 : ( 1.0 - ratio * ratio ) * ( 1.0 - ratio * ratio );
+			}
+			scale = 10000.0 / max( d2, light.b.z * light.b.z ) * window;
+		}
+		else if ( radius2 > 0.0 && d2 < radius2 )
+			scale = min( radius2 * light.b.y / d2 * ( 1.0 - d2 / radius2 ), 2.0 );
+		if ( light.c.w >= -1.0 )
+		{
+			const float cosine = dot( -w, normalize( light.c.xyz ) );
+			scale *= light.d.x > light.c.w + 1e-4 ? smoothstep( light.c.w, light.d.x, cosine )
+			                                      : step( light.c.w, cosine );
+		}
+		return light.rgb.rgb * scale;
+	}
 	w = vec3( 0.0, 0.0, 1.0 );
 	target = p;
 	return vec3( 0.0 );
@@ -576,6 +615,15 @@ void main()
 		for ( uint e = hitLights.x; e < hitLights.y; ++e )
 		{
 			const uint l = cellLights[e];
+			vec3 w, target;
+			const vec3 value = LightSample( l, lift, rng, w, target );
+			const float cosSurface = max( 0.0, dot( n, w ) );
+			if ( cosSurface > 0.0 && any( greaterThan( value, vec3( 0.0 ) ) ) &&
+			     Visible( lift, target ) )
+				arriving += value * cosSurface;
+		}
+		for ( uint l = params.sdfDims.w; l < params.sdfDims.w + params.counts.z; ++l )
+		{
 			vec3 w, target;
 			const vec3 value = LightSample( l, lift, rng, w, target );
 			const float cosSurface = max( 0.0, dot( n, w ) );

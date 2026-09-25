@@ -30,6 +30,20 @@
 
 namespace
 {
+// A float as a half (truncated; tiny values flush to zero): the shadow
+// field's distances.
+uint16_t ToHalf( float value )
+{
+	uint32_t bits;
+	std::memcpy( &bits, &value, 4 );
+	const uint32_t sign = ( bits >> 16 ) & 0x8000u;
+	const int exponent = int( ( bits >> 23 ) & 0xffu ) - 127 + 15;
+	if ( exponent <= 0 )
+		return uint16_t( sign );
+	if ( exponent >= 31 )
+		return uint16_t( sign | 0x7c00u );
+	return uint16_t( sign | ( uint32_t( exponent ) << 10 ) | ( ( bits >> 13 ) & 0x3ffu ) );
+}
 
 struct WorldVertex
 {
@@ -329,6 +343,61 @@ int main()
 			check(
 			    std::abs( bulbLit - srgbByte( expectedLinear( legacyBulb, true, true ) ) ) > 6.0f,
 			    "the legacy falloff misses the inverse-square light (seeded control)" );
+			// RFC 0011 G9: the SDF shadow field. A sphere occluder (an exact
+			// distance field, 0.02-unit voxels) sits across the path to a bulb
+			// of source radius 0.05 at (0.2, 0, 0.8): on the path the pixel is
+			// dark, beside it lit as unshadowed, and at a grazing clearance
+			// partly lit. The seeded control removes the field: the blocked
+			// pixel is then lit, which the occluded check rejects.
+			{
+				render_vulkan::CVulkanContext::DirectLight soft = bulb;
+				soft.sourceRadius = 0.05f;
+				const float lit = srgbByte( expectedLinear( soft, true, true ) );
+				const auto shadowed = [&]( float cx, float cz, float r, std::uint8_t *out )
+				{
+					world_mesh_gpu::ShadowFieldUploadRequest field;
+					field.voxel = 0.02f;
+					field.origin[0] = -0.5f, field.origin[1] = -0.3f, field.origin[2] = 0.3f;
+					field.dims[0] = 51, field.dims[1] = 31, field.dims[2] = 36;
+					std::vector<uint16_t> distances(
+					    size_t( field.dims[0] ) * field.dims[1] * field.dims[2] );
+					for ( uint32_t z = 0; z < field.dims[2]; ++z )
+						for ( uint32_t y = 0; y < field.dims[1]; ++y )
+							for ( uint32_t x = 0; x < field.dims[0]; ++x )
+							{
+								const float px = field.origin[0] + x * field.voxel - cx;
+								const float py = field.origin[1] + y * field.voxel;
+								const float pz = field.origin[2] + z * field.voxel - cz;
+								distances[x + field.dims[0] * ( y + field.dims[1] * z )] =
+								    ToHalf(
+								        std::sqrt( px * px + py * py + pz * pz ) - r );
+							}
+					field.distances = distances.data();
+					std::string fieldError;
+					const bool uploaded = render_vulkan::UploadWorldShadowField(
+					    context, field, &fieldError );
+					if ( !uploaded )
+						std::fprintf( stderr, "shadow field: %s\n", fieldError.c_str() );
+					context.SetDirectLights( &soft, 1 );
+					return uploaded && DrawWorld( context, out, &error );
+				};
+				std::uint8_t blocked = 255, beside = 0, grazing = 0, unfielded = 0;
+				check( shadowed( 0.1f, 0.65f, 0.06f, &blocked ) && blocked <= 2,
+				    "an occluder on the path to the light shadows the pixel" );
+				check( shadowed( 0.4f, 0.45f, 0.06f, &beside ) && std::abs( beside - lit ) <= 3.0f,
+				    "an occluder beside the path leaves the unshadowed light" );
+				// The segment's nearest point to (0.1, 0.65) is 0.018 inside the
+				// sphere's edge at radius 0.06 - 0.019: a clearance of ~0.001 to
+				// 0.02 along it, within the light's angular size: a penumbra.
+				check( shadowed( 0.1f + 0.06f, 0.65f - 0.04f, 0.045f, &grazing ) &&
+				           grazing > 5 && grazing < lit - 5.0f,
+				    "a grazing occluder gives a penumbra between dark and lit" );
+				std::fprintf( stderr, "SDF shadow: blocked %u, beside %u (lit %.1f), grazing %u\n",
+				    blocked, beside, lit, grazing );
+				context.SetShadowField( -1, nullptr, 0.0f, nullptr );
+				check( DrawWorld( context, &unfielded, &error ) && unfielded > blocked + 20,
+				    "without the field the blocked light reaches the pixel (seeded control)" );
+			}
 			render_vulkan::CVulkanContext::DirectLight far = point;
 			far.position[2] = 2.0f; // 1.5 away, beyond its radius of 1
 			render_vulkan::CVulkanContext::DirectLight away = point;

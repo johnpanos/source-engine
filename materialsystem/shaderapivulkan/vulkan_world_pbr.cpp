@@ -146,13 +146,14 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 	// RuntimeIndirect policy (the producer's indirect atlas, set 8). Optional:
 	// without nine sets or the ring, WMSH PBR draws the bake alone under the
 	// Baked policy and the log says so.
-	if ( properties.limits.maxBoundDescriptorSets >= 9 && m_skinUboLayout != VK_NULL_HANDLE )
+	// RFC 0011 G9: the direct lights' shadow field is set 9.
+	if ( properties.limits.maxBoundDescriptorSets >= 10 && m_skinUboLayout != VK_NULL_HANDLE )
 	{
-		VkDescriptorSetLayout extendedLayouts[9];
-		for ( int i = 0; i < 9; ++i )
+		VkDescriptorSetLayout extendedLayouts[10];
+		for ( int i = 0; i < 10; ++i )
 			extendedLayouts[i] = m_dynTexDescLayout;
 		extendedLayouts[7] = m_skinUboLayout;
-		info.setLayoutCount = 9;
+		info.setLayoutCount = 10;
 		info.pSetLayouts = extendedLayouts;
 		const struct
 		{
@@ -190,14 +191,15 @@ bool CVulkanContext::InitPbrWorldPipeline( std::string *outError )
 	// producer's change volume in set 8 and its grid table in set 9. Optional:
 	// without it the world keeps the bake and the log says so (models still
 	// sample the published volume).
-	if ( properties.limits.maxBoundDescriptorSets >= 10 &&
+	// With direct lights, their shadow field is set 10.
+	if ( properties.limits.maxBoundDescriptorSets >= 11 &&
 	     m_worldPbrExtendedLayout != VK_NULL_HANDLE )
 	{
-		VkDescriptorSetLayout deltaLayouts[10];
+		VkDescriptorSetLayout deltaLayouts[11];
 		for ( VkDescriptorSetLayout &layout : deltaLayouts )
 			layout = m_dynTexDescLayout;
 		deltaLayouts[7] = m_skinUboLayout;
-		info.setLayoutCount = 10;
+		info.setLayoutCount = 11;
 		info.pSetLayouts = deltaLayouts;
 		const struct
 		{
