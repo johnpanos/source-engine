@@ -34,18 +34,34 @@ END_DATADESC()
 
 
 //-----------------------------------------------------------------------------
-// Purpose: Laser targets are tiny invisible boxes that lasers can find
+// Purpose: Laser targets are invisible boxes that lasers can find. Retail
+//			sizes them in Spawn: relays' pass-through targets 10x10x17, a
+//			center catcher's target from its orientation (the whole face),
+//			other terminal targets 11 on each axis. Catchers parent their
+//			target before spawning it.
 //-----------------------------------------------------------------------------
 void CPortalLaserTarget::Spawn()
 {
+	BaseClass::Spawn();
+
 	// Lasers enumerate objects along their beam
 	AddFlag( FL_OBJECT );
 	m_bPowered = false;
 
-	const float flWidth = 6.0f;
-	UTIL_SetSize( this, -Vector( flWidth, flWidth, flWidth ), Vector( flWidth, flWidth, flWidth ) );
-
-	BaseClass::Spawn();
+	Vector vecExtents( 10.0f, 10.0f, 17.0f );
+	if ( m_bTerminalPoint )
+	{
+		vecExtents.Init( 11.0f, 11.0f, 11.0f );
+		CBaseEntity *pParent = GetMoveParent();
+		if ( pParent && !V_stricmp( STRING( pParent->GetModelName() ), "models/props/laser_catcher_center.mdl" ) )
+		{
+			Vector vecForward, vecRight, vecUp;
+			pParent->GetVectors( &vecForward, &vecRight, &vecUp );
+			vecExtents = vecForward * 15.0f + ( vecRight + vecUp ) * 20.0f;
+			vecExtents.Init( fabs( vecExtents.x ), fabs( vecExtents.y ), fabs( vecExtents.z ) );
+		}
+	}
+	UTIL_SetSize( this, -vecExtents, vecExtents );
 }
 
 //-----------------------------------------------------------------------------
@@ -293,9 +309,9 @@ void CLaserCatcher::CreateHelperEntities()
 		m_pCatcherLaserTarget->SetAbsOrigin( vecOrigin );
 		m_pCatcherLaserTarget->SetAbsAngles( GetAbsAngles() );
 		m_pCatcherLaserTarget->KeyValue( "terminalpoint", IsTerminalPoint() );
-		DispatchSpawn( m_pCatcherLaserTarget );
-
+		// Parented first: the target sizes itself from its catcher in Spawn.
 		m_pCatcherLaserTarget->SetParent( this );
+		DispatchSpawn( m_pCatcherLaserTarget );
 		m_pCatcherLaserTarget->SetCatcher( this );
 	}
 }

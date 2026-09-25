@@ -40,6 +40,8 @@ ConVar portal_laser_high_precision_update(
     "portal_laser_high_precision_update", "0.03f", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
 ConVar sv_debug_laser( "sv_debug_laser", "0", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
 ConVar sv_laser_cube_autoaim( "sv_laser_cube_autoaim", "0", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT );
+// Prints each server-side beam segment and what it hit (not in retail).
+ConVar sv_debug_laser_trace( "sv_debug_laser_trace", "0", FCVAR_CHEAT );
 
 int g_nTotalLaser = 0;
 
@@ -1021,6 +1023,13 @@ CBaseEntity *CPortalLaser::TraceLaser( bool bIsFirstTrace, const Vector &vecStar
 		ray.Init( vStart, vStart + vDir * MAX_TRACE_LENGTH );
 
 		UTIL_TraceRay( ray, MASK_SHOT & ~CONTENTS_WINDOW, &traceChain, &tr );
+
+		if ( sv_debug_laser_trace.GetBool() && !bIsFirstTrace )
+		{
+			Msg( "laser %d segment (%.1f %.1f %.1f) -> (%.1f %.1f %.1f) hit %s\n", entindex(),
+			    tr.startpos.x, tr.startpos.y, tr.startpos.z, tr.endpos.x, tr.endpos.y, tr.endpos.z,
+			    tr.m_pEnt ? tr.m_pEnt->GetClassname() : "nothing" );
+		}
 
 		if ( bDebug )
 		{

@@ -1,0 +1,22 @@
+{
+  "schema": "portal2-scenarios/v1",
+  "description": "sp_a2_triple_laser played through: portal pair on the defunct laser's placement helper, redirection cubes under the ceiling laser and in the wall laser, all three catchers powered and the exit door open. The driver takes a named screenshot (QA_SHOT) at each major step for a retail-vs-build composite. Run by tools/quality/portal2_scenarios.py.",
+  "driver": "../portal2-wheatley-v1/qa_driver.nut",
+  "scenarios": [
+    {
+      "name": "sp_a2_triple_laser",
+      "map": "sp_a2_triple_laser",
+      "script": "sp_a2_triple_laser.nut",
+      "timeout_seconds": 240,
+      "required_checks": [
+        "entry.cube_spawned",
+        "catchers.start_unpowered",
+        "defunct.through_portals",
+        "cube.picked_up",
+        "catchers.all_powered",
+        "exit.relay",
+        "exit.door_open"
+      ]
+    }
+  ]
+}
