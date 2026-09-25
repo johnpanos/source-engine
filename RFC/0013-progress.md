@@ -318,6 +318,31 @@ load ~50. It matches the benchmark's contended-host spikes, which are this
 default's main risk. No timing gate has certified the default on a
 contended host or on any mobile profile.
 
+### Acceptance run on the merged code (2026-09-25)
+
+`physics_bench.py --rounds 3 --sensitivity --wait-quiet 1800` on
+`09fc8441` (the pool bridge). Evidence is in the worktree's
+`quality-results/physics-bench-2026-09-25-merged`.
+
+- **Passed:** every non-timing rule.
+  - All 29 runs complete.
+  - Box3D repeats bitwise across rounds.
+  - One digest across 5 worker counts on each scaled workload.
+  - 0 threads added.
+  - No forbidden nested waits or starvation.
+  - Scene quality and memory limits met.
+  - The 48-check contract passes.
+  - **All 11 injected faults are detected.**
+- **Not certified: timing.** Load was 13.6, 12.1 and 10.3 before the rounds
+  but 33.3 after the last, above the 0.5-per-CPU ceiling. Both required
+  gates are therefore `incomplete`.
+- **Uncertified diagnostic:** evaluated anyway, every timing rule passes.
+  - p50 speedup from 1 to 4 workers: 2.65× (pile-4096), 3.04× (pile-1024).
+  - p95 speedup from 1 to 4 workers: 2.13× (ragdolls-128).
+  - Limits are met with headroom.
+
+Certifying the pool bridge's timing needs a run on a quiet host.
+
 ## Unverified and open
 
 - No product enables parallel stepping by default; that is a per-profile
